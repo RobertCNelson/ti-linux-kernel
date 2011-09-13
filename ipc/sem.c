@@ -623,7 +623,7 @@ static int perform_atomic_semop(struct sem_array *sma, struct sembuf *sops,
 		curr = sma->sem_base + sop->sem_num;
 		sem_op = sop->sem_op;
 		result = curr->semval;
-  
+
 		if (!sem_op && result)
 			goto would_block;
 
@@ -650,7 +650,7 @@ static int perform_atomic_semop(struct sem_array *sma, struct sembuf *sops,
 			un->semadj[sop->sem_num] -= sop->sem_op;
 		sop--;
 	}
-	
+
 	return 0;
 
 out_of_range:
@@ -682,6 +682,13 @@ undo:
 static void wake_up_sem_queue_prepare(struct list_head *pt,
 				struct sem_queue *q, int error)
 {
+#ifdef CONFIG_PREEMPT_RT_BASE
+	struct task_struct *p = q->sleeper;
+	get_task_struct(p);
+	q->status = error;
+	wake_up_process(p);
+	put_task_struct(p);
+#else
 	if (list_empty(pt)) {
 		/*
 		 * Hold preempt off so that we don't get preempted and have the
@@ -693,6 +700,7 @@ static void wake_up_sem_queue_prepare(struct list_head *pt,
 	q->pid = error;
 
 	list_add_tail(&q->list, pt);
+#endif
 }
 
 /**
@@ -706,6 +714,7 @@ static void wake_up_sem_queue_prepare(struct list_head *pt,
  */
 static void wake_up_sem_queue_do(struct list_head *pt)
 {
+#ifndef CONFIG_PREEMPT_RT_BASE
 	struct sem_queue *q, *t;
 	int did_something;
 
@@ -718,6 +727,7 @@ static void wake_up_sem_queue_do(struct list_head *pt)
 	}
 	if (did_something)
 		preempt_enable();
+#endif
 }
 
 static void unlink_queue(struct sem_array *sma, struct sem_queue *q)
@@ -1177,7 +1187,7 @@ static int semctl_nolock(struct ipc_namespace *ns, int semid,
 		err = security_sem_semctl(NULL, cmd);
 		if (err)
 			return err;
-		
+
 		memset(&seminfo,0,sizeof(seminfo));
 		seminfo.semmni = ns->sc_semmni;
 		seminfo.semmns = ns->sc_semmns;
@@ -1891,7 +1901,7 @@ SYSCALL_DEFINE4(semtimedop, int, semid, struct sembuf __user *, tsops,
 	/* We need to sleep on this operation, so we put the current
 	 * task into the pending queue and go to sleep.
 	 */
-		
+
 	queue.sops = sops;
 	queue.nsops = nsops;
 	queue.undo = un;
@@ -2026,7 +2036,7 @@ int copy_semundo(unsigned long clone_flags, struct task_struct *tsk)
 			return error;
 		atomic_inc(&undo_list->refcnt);
 		tsk->sysvsem.undo_list = undo_list;
-	} else 
+	} else
 		tsk->sysvsem.undo_list = NULL;
 
 	return 0;
