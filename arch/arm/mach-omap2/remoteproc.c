@@ -389,7 +389,8 @@ void __init omap_rproc_reserve_cma(int platform_type)
 	int rproc_size = 0;
 	int i, ret;
 
-	if (platform_type == RPROC_CMA_OMAP4) {
+	if ((platform_type == RPROC_CMA_OMAP4) ||
+	    (platform_type == RPROC_CMA_OMAP5)) {
 		rproc_pdev_data = omap4_rproc_pdev_data;
 		rproc_size = ARRAY_SIZE(omap4_rproc_pdev_data);
 	} else {
@@ -431,7 +432,7 @@ static int __init omap_rproc_init(void)
 	struct omap_device *od;
 	int i, ret = 0, oh_count;
 
-	if (!cpu_is_omap44xx())
+	if (!cpu_is_omap44xx() && !soc_is_omap54xx())
 		return 0;
 
 	for (i = 0; i < ARRAY_SIZE(omap4_rproc_pdev_data); i++) {
