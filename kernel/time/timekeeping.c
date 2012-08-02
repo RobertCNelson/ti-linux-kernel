@@ -1338,7 +1338,7 @@ ktime_t ktime_get_update_offsets(ktime_t *offs_real, ktime_t *offs_boot)
 	u64 secs, nsecs;
 
 	do {
-		seq = read_seqbegin(&timekeeper.lock);
+		seq = read_seqcount_begin(&timekeeper.seq);
 
 		secs = timekeeper.xtime.tv_sec;
 		nsecs = timekeeper.xtime.tv_nsec;
@@ -1348,7 +1348,7 @@ ktime_t ktime_get_update_offsets(ktime_t *offs_real, ktime_t *offs_boot)
 
 		*offs_real = timekeeper.offs_real;
 		*offs_boot = timekeeper.offs_boot;
-	} while (read_seqretry(&timekeeper.lock, seq));
+	} while (read_seqcount_retry(&timekeeper.seq, seq));
 
 	now = ktime_add_ns(ktime_set(secs, 0), nsecs);
 	now = ktime_sub(now, *offs_real);
