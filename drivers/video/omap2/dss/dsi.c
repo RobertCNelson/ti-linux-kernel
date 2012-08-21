@@ -38,6 +38,7 @@
 #include <linux/slab.h>
 #include <linux/debugfs.h>
 #include <linux/pm_runtime.h>
+#include <linux/of.h>
 
 #include <video/omapdss.h>
 #include <video/mipi_display.h>
@@ -372,6 +373,13 @@ struct dsi_packet_sent_handler_data {
 	struct platform_device *dsidev;
 	struct completion *completion;
 };
+
+struct dsi_module_id_data {
+	u32 address;
+	int id;
+};
+
+static const struct of_device_id dsi_of_match[];
 
 #ifdef DEBUG
 static bool dsi_perf;
@@ -5347,7 +5355,6 @@ static int omap_dsihw_probe(struct platform_device *dsidev)
 	if (!dsi)
 		return -ENOMEM;
 
-	dsi->module_id = dsidev->id;
 	dsi->pdev = dsidev;
 	dev_set_drvdata(&dsidev->dev, dsi);
 
@@ -5395,6 +5402,31 @@ static int omap_dsihw_probe(struct platform_device *dsidev)
 	if (r < 0) {
 		DSSERR("request_irq failed\n");
 		return r;
+	}
+
+	if (dsidev->dev.of_node) {
+		const struct of_device_id *match;
+		const struct dsi_module_id_data *d;
+
+		match = of_match_node(dsi_of_match, dsidev->dev.of_node);
+		if (!match) {
+			DSSERR("unsupported DSI module\n");
+			return -ENODEV;
+		}
+
+		d = match->data;
+
+		while (d->address != 0 && d->address != dsi_mem->start)
+			d++;
+
+		if (d->address == 0) {
+			DSSERR("unsupported DSI module\n");
+			return -ENODEV;
+		}
+
+		dsi->module_id = d->id;
+	} else {
+		dsi->module_id = dsidev->id;
 	}
 
 	/* DSI VCs initialization */
@@ -5445,6 +5477,7 @@ static int omap_dsihw_probe(struct platform_device *dsidev)
 	else if (dsi->module_id == 1)
 		dss_debugfs_create_file("dsi2_irqs", dsi2_dump_irqs);
 #endif
+
 	return 0;
 
 err_runtime_get:
@@ -5493,6 +5526,23 @@ static const struct dev_pm_ops dsi_pm_ops = {
 	.runtime_resume = dsi_runtime_resume,
 };
 
+static const struct dsi_module_id_data dsi_of_data_omap3[] = {
+	{ .address = 0x4804fc00, .id = 0, },
+	{ },
+};
+
+static const struct dsi_module_id_data dsi_of_data_omap4[] = {
+	{ .address = 0x58004000, .id = 0, },
+	{ .address = 0x58005000, .id = 1, },
+	{ },
+};
+
+static const struct of_device_id dsi_of_match[] = {
+	{ .compatible = "ti,omap3-dsi", .data = dsi_of_data_omap3, },
+	{ .compatible = "ti,omap4-dsi", .data = dsi_of_data_omap4, },
+	{},
+};
+
 static struct platform_driver omap_dsihw_driver = {
 	.probe		= omap_dsihw_probe,
 	.remove         = __exit_p(omap_dsihw_remove),
@@ -5500,6 +5550,7 @@ static struct platform_driver omap_dsihw_driver = {
 		.name   = "omapdss_dsi",
 		.owner  = THIS_MODULE,
 		.pm	= &dsi_pm_ops,
+		.of_match_table = dsi_of_match,
 	},
 };
 
