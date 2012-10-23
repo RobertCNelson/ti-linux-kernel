@@ -52,9 +52,10 @@ static int read_mpidr(void)
  * bL switcher core code.
  */
 
-static void bL_do_switch(void *_unused)
+static void bL_do_switch(void *_arg)
 {
 	unsigned mpidr, cpuid, clusterid, ob_cluster, ib_cluster;
+	long volatile handshake, **handshake_ptr = _arg;
 
 	pr_debug("%s\n", __func__);
 
@@ -63,6 +64,13 @@ static void bL_do_switch(void *_unused)
 	clusterid = MPIDR_AFFINITY_LEVEL(mpidr, 1);
 	ob_cluster = clusterid;
 	ib_cluster = clusterid ^ 1;
+
+	/* Advertise our handshake location */
+	if (handshake_ptr) {
+		handshake = 0;
+		*handshake_ptr = &handshake;
+	} else
+		handshake = -1;
 
 	/*
 	 * Our state has been saved at this point.  Let's release our
@@ -81,6 +89,14 @@ static void bL_do_switch(void *_unused)
 	 * Fancy under cover tasks could be performed here.  For now
 	 * we have none.
 	 */
+
+	/*
+	 * Let's wait until our inbound is alive.
+	 */
+	while (!handshake) {
+		wfe();
+		smp_mb();
+	}
 
 	/* Let's put ourself down. */
 	mcpm_cpu_power_down();
@@ -127,6 +143,7 @@ static int bL_switch_to(unsigned int new_cluster_id)
 	unsigned int mpidr, cpuid, clusterid, ob_cluster, ib_cluster, this_cpu;
 	struct tick_device *tdev;
 	enum clock_event_mode tdev_mode;
+	long volatile *handshake_ptr;
 	int ret;
 
 	mpidr = read_mpidr();
@@ -196,7 +213,7 @@ static int bL_switch_to(unsigned int new_cluster_id)
 				 sizeof(cpu_logical_map(this_cpu)));
 
 	/* Let's do the actual CPU switch. */
-	ret = cpu_suspend(0, bL_switchpoint);
+	ret = cpu_suspend((unsigned long)&handshake_ptr, bL_switchpoint);
 	if (ret > 0)
 		panic("%s: cpu_suspend() returned %d\n", __func__, ret);
 
@@ -219,6 +236,9 @@ static int bL_switch_to(unsigned int new_cluster_id)
 
 	local_fiq_enable();
 	local_irq_enable();
+
+	*handshake_ptr = 1;
+	dsb_sev();
 
 	if (ret)
 		pr_err("%s exiting with error %d\n", __func__, ret);
