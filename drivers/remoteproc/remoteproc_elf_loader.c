@@ -312,9 +312,24 @@ rproc_elf_find_rsc_table(struct rproc *rproc, const struct firmware *fw,
 	return table;
 }
 
+struct resource_table *rproc_elf_get_rsctab_addr(struct rproc *rproc,
+						 const struct firmware *fw)
+{
+	struct elf32_shdr *shdr;
+
+	shdr = find_rsc_shdr(&rproc->dev, (struct elf32_hdr *)fw->data,
+				fw->size);
+	if (!shdr)
+		return NULL;
+
+	/* Find resource table in loaded segments */
+	return rproc_da_to_va(rproc, shdr->sh_addr, shdr->sh_size);
+}
+
 const struct rproc_fw_ops rproc_elf_fw_ops = {
 	.load = rproc_elf_load_segments,
 	.find_rsc_table = rproc_elf_find_rsc_table,
 	.sanity_check = rproc_elf_sanity_check,
-	.get_boot_addr = rproc_elf_get_boot_addr
+	.get_boot_addr = rproc_elf_get_boot_addr,
+	.get_rsctab_addr = rproc_elf_get_rsctab_addr
 };
