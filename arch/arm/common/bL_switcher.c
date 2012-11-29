@@ -141,10 +141,11 @@ static unsigned int bL_gic_id[MAX_CPUS_PER_CLUSTER][MAX_NR_CLUSTERS];
 static int bL_switch_to(unsigned int new_cluster_id)
 {
 	unsigned int mpidr, cpuid, clusterid, ob_cluster, ib_cluster, this_cpu;
+	struct completion inbound_alive;
 	struct tick_device *tdev;
 	enum clock_event_mode tdev_mode;
 	long volatile *handshake_ptr;
-	int ret;
+	int ipi_nr, ret;
 
 	mpidr = read_mpidr();
 	cpuid = MPIDR_AFFINITY_LEVEL(mpidr, 0);
@@ -157,9 +158,17 @@ static int bL_switch_to(unsigned int new_cluster_id)
 
 	pr_debug("before switch: CPU %d in cluster %d\n", cpuid, clusterid);
 
+	this_cpu = smp_processor_id();
+
 	/* Close the gate for our entry vectors */
 	mcpm_set_entry_vector(cpuid, ob_cluster, NULL);
 	mcpm_set_entry_vector(cpuid, ib_cluster, NULL);
+
+	/* Install our "inbound alive" notifier. */
+	init_completion(&inbound_alive);
+	ipi_nr = register_ipi_completion(&inbound_alive, this_cpu);
+	ipi_nr |= ((1 << 16) << bL_gic_id[cpuid][ob_cluster]);
+	mcpm_set_early_poke(cpuid, ib_cluster, gic_get_sgir_physaddr(), ipi_nr);
 
 	/*
 	 * Let's wake up the inbound CPU now in case it requires some delay
@@ -172,22 +181,27 @@ static int bL_switch_to(unsigned int new_cluster_id)
 	}
 
 	/*
+	 * Raise a SGI on the inbound CPU to make sure it doesn't stall
+	 * in a possible WFI, such as in bL_power_down().
+	 */
+	gic_send_sgi(bL_gic_id[cpuid][ib_cluster], 0);
+
+	/*
+	 * Wait for the inbound to come up.  This allows for other
+	 * tasks to be scheduled in the mean time.
+	 */
+	wait_for_completion(&inbound_alive);
+	mcpm_set_early_poke(cpuid, ib_cluster, 0, 0);
+
+	/*
 	 * From this point we are entering the switch critical zone
 	 * and can't sleep/schedule anymore.
 	 */
 	local_irq_disable();
 	local_fiq_disable();
 
-	this_cpu = smp_processor_id();
-
 	/* redirect GIC's SGIs to our counterpart */
 	gic_migrate_target(bL_gic_id[cpuid][ib_cluster]);
-
-	/*
-	 * Raise a SGI on the inbound CPU to make sure it doesn't stall
-	 * in a possible WFI, such as in mcpm_power_down().
-	 */
-	arch_send_wakeup_ipi_mask(cpumask_of(this_cpu));
 
 	tdev = tick_get_device(this_cpu);
 	if (tdev && !cpumask_equal(tdev->evtdev->cpumask, cpumask_of(this_cpu)))
