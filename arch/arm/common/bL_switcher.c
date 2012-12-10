@@ -23,6 +23,7 @@
 #include <linux/hrtimer.h>
 #include <linux/tick.h>
 #include <linux/mm.h>
+#include <linux/mutex.h>
 #include <linux/string.h>
 #include <linux/sysfs.h>
 #include <linux/irqchip/arm-gic.h>
@@ -341,6 +342,7 @@ EXPORT_SYMBOL_GPL(bL_switch_request);
  * Activation and configuration code.
  */
 
+static DEFINE_MUTEX(bL_switcher_activation_lock);
 static unsigned int bL_switcher_active;
 static unsigned int bL_switcher_cpu_original_cluster[MAX_CPUS_PER_CLUSTER];
 static cpumask_t bL_switcher_removed_logical_cpus;
@@ -418,9 +420,11 @@ static int bL_switcher_enable(void)
 {
 	int cpu, ret;
 
+	mutex_lock(&bL_switcher_activation_lock);
 	cpu_hotplug_driver_lock();
 	if (bL_switcher_active) {
 		cpu_hotplug_driver_unlock();
+		mutex_unlock(&bL_switcher_activation_lock);
 		return 0;
 	}
 
@@ -429,6 +433,7 @@ static int bL_switcher_enable(void)
 	ret = bL_switcher_halve_cpus();
 	if (ret) {
 		cpu_hotplug_driver_unlock();
+		mutex_unlock(&bL_switcher_activation_lock);
 		return ret;
 	}
 
@@ -441,9 +446,10 @@ static int bL_switcher_enable(void)
 	}
 
 	bL_switcher_active = 1;
-	cpu_hotplug_driver_unlock();
-
 	pr_info("big.LITTLE switcher initialized\n");
+
+	cpu_hotplug_driver_unlock();
+	mutex_unlock(&bL_switcher_activation_lock);
 	return 0;
 }
 
@@ -455,9 +461,11 @@ static void bL_switcher_disable(void)
 	struct bL_thread *t;
 	struct task_struct *task;
 
+	mutex_lock(&bL_switcher_activation_lock);
 	cpu_hotplug_driver_lock();
 	if (!bL_switcher_active) {
 		cpu_hotplug_driver_unlock();
+		mutex_unlock(&bL_switcher_activation_lock);
 		return;
 	}
 	bL_switcher_active = 0;
@@ -507,6 +515,7 @@ static void bL_switcher_disable(void)
 
 	bL_switcher_restore_cpus();
 	cpu_hotplug_driver_unlock();
+	mutex_unlock(&bL_switcher_activation_lock);
 }
 
 static ssize_t bL_switcher_active_show(struct kobject *kobj,
@@ -563,6 +572,20 @@ static int __init bL_switcher_sysfs_init(void)
 }
 
 #endif  /* CONFIG_SYSFS */
+
+bool bL_switcher_get_enabled(void)
+{
+	mutex_lock(&bL_switcher_activation_lock);
+
+	return bL_switcher_active;
+}
+EXPORT_SYMBOL_GPL(bL_switcher_get_enabled);
+
+void bL_switcher_put_enabled(void)
+{
+	mutex_unlock(&bL_switcher_activation_lock);
+}
+EXPORT_SYMBOL_GPL(bL_switcher_put_enabled);
 
 /*
  * Veto any CPU hotplug operation while the switcher is active.
