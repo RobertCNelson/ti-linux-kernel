@@ -207,7 +207,6 @@ int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 	/*
 	 * Allocate non-cacheable memory for the vring. In the future
 	 * this call will also configure the IOMMU for us
-	 * TODO: let the rproc know the da of this vring
 	 */
 	va = dma_alloc_coherent(dev->parent, size, &dma, GFP_KERNEL);
 	if (!va) {
@@ -218,7 +217,6 @@ int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 	/*
 	 * Assign an rproc-wide unique index for this vring
 	 * TODO: assign a notifyid for rvdev updates as well
-	 * TODO: let the rproc know the notifyid of this vring
 	 * TODO: support predefined notifyids (via resource table)
 	 */
 	ret = idr_get_new(&rproc->notifyids, rvring, &notifyid);
@@ -238,6 +236,14 @@ int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 	rvring->dma = dma;
 	rvring->notifyid = notifyid;
 
+	/*
+	 * Let the rproc know the notifyid and da of this vring.
+	 * Not all platforms use dma_alloc_coherent to automatically
+	 * set up the iommu. In this case the device address (da) will
+	 * hold the physical address and not the device address.
+	 */
+	rvdev->rsc->vring[i].da = dma;
+	rvdev->rsc->vring[i].notifyid = notifyid;
 	return 0;
 }
 
@@ -364,6 +370,9 @@ static int rproc_handle_vdev(struct rproc *rproc, struct fw_rsc_vdev *rsc,
 
 	/* remember the device features */
 	rvdev->dfeatures = rsc->dfeatures;
+
+	/* remember the resource entry */
+	rvdev->rsc = rsc;
 
 	list_add_tail(&rvdev->node, &rproc->rvdevs);
 
