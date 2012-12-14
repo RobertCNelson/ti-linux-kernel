@@ -368,9 +368,6 @@ static int rproc_handle_vdev(struct rproc *rproc, struct fw_rsc_vdev *rsc,
 			goto free_rvdev;
 	}
 
-	/* remember the device features */
-	rvdev->dfeatures = rsc->dfeatures;
-
 	/* remember the resource entry */
 	rvdev->rsc = rsc;
 
