@@ -1,0 +1,13 @@
+for-next contents for 3.9:
+
+Format is a little different from before in an attempt to make it easier to read:
+
+<next/* branch>
+	<topic branch>
+		<contents>
+		<...>
+	<...>
+
+next/cleanup
+	timer/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git swarren-for-3.9-arm-timer-rework
