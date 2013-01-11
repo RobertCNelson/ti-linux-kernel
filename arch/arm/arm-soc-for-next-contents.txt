@@ -16,3 +16,8 @@ next/cleanup
 next/drivers
 	ux500/cpufreq
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-cpufreq-for-arm-soc
+
+
+next/multiplatform
+	omap/multiplatform
+		pull	git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.9/multiplatform-enable-signed-v2
