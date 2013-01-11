@@ -387,6 +387,11 @@
 			ti,hwmods = "spi0";
 			clocks = <&dpll_per_m2_div4_ck>;
 			clock-names = "fck";
+			dmas = <&edma 16
+				&edma 17
+				&edma 18
+				&edma 19>;
+			dma-names = "tx0", "rx0", "tx1", "rx1";
 			status = "disabled";
 		};
 
@@ -400,6 +405,11 @@
 			ti,hwmods = "spi1";
 			clocks = <&dpll_per_m2_div4_ck>;
 			clock-names = "fck";
+			dmas = <&edma 42
+				&edma 43
+				&edma 44
+				&edma 45>;
+			dma-names = "tx0", "rx0", "tx1", "rx1";
 			status = "disabled";
 		};
 
