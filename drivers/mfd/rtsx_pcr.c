@@ -22,6 +22,7 @@
 
 #include <linux/pci.h>
 #include <linux/module.h>
+#include <linux/slab.h>
 #include <linux/dma-mapping.h>
 #include <linux/highmem.h>
 #include <linux/interrupt.h>
@@ -997,8 +998,8 @@ static int rtsx_pci_init_chip(struct rtsx_pcr *pcr)
 	return 0;
 }
 
-static int __devinit rtsx_pci_probe(struct pci_dev *pcidev,
-				    const struct pci_device_id *id)
+static int rtsx_pci_probe(struct pci_dev *pcidev,
+			  const struct pci_device_id *id)
 {
 	struct rtsx_pcr *pcr;
 	struct pcr_handle *handle;
@@ -1122,7 +1123,7 @@ disable:
 	return ret;
 }
 
-static void __devexit rtsx_pci_remove(struct pci_dev *pcidev)
+static void rtsx_pci_remove(struct pci_dev *pcidev)
 {
 	struct pcr_handle *handle = pci_get_drvdata(pcidev);
 	struct rtsx_pcr *pcr = handle->pcr;
@@ -1240,7 +1241,7 @@ static struct pci_driver rtsx_pci_driver = {
 	.name = DRV_NAME_RTSX_PCI,
 	.id_table = rtsx_pci_ids,
 	.probe = rtsx_pci_probe,
-	.remove = __devexit_p(rtsx_pci_remove),
+	.remove = rtsx_pci_remove,
 	.suspend = rtsx_pci_suspend,
 	.resume = rtsx_pci_resume,
 };
