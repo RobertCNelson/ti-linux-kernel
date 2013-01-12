@@ -21,3 +21,5 @@ next/drivers
 next/multiplatform
 	omap/multiplatform
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.9/multiplatform-enable-signed-v2
+	vt8500/multiplatform
+		pull	git://server.prisktech.co.nz/git/linuxwmt.git tags/vt8500-multiplatform-3.9
