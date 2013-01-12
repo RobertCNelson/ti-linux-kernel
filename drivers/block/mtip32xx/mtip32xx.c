@@ -1724,7 +1724,7 @@ static int mtip_get_smart_attr(struct mtip_port *port, unsigned int id,
  *      -EINVAL		Invalid parameters passed in, trim not supported
  *      -EIO		Error submitting trim request to hw
  */
-int mtip_send_trim(struct driver_data *dd, unsigned int lba, unsigned int len)
+static int mtip_send_trim(struct driver_data *dd, unsigned int lba, unsigned int len)
 {
 	int i, rv = 0;
 	u64 tlba, tlen, sect_left;
@@ -4134,14 +4134,14 @@ static inline int mtip_get_next_rr_node(void)
 	return next_node;
 }
 
-DEFINE_HANDLER(0);
-DEFINE_HANDLER(1);
-DEFINE_HANDLER(2);
-DEFINE_HANDLER(3);
-DEFINE_HANDLER(4);
-DEFINE_HANDLER(5);
-DEFINE_HANDLER(6);
-DEFINE_HANDLER(7);
+static DEFINE_HANDLER(0);
+static DEFINE_HANDLER(1);
+static DEFINE_HANDLER(2);
+static DEFINE_HANDLER(3);
+static DEFINE_HANDLER(4);
+static DEFINE_HANDLER(5);
+static DEFINE_HANDLER(6);
+static DEFINE_HANDLER(7);
 
 /*
  * Called for each supported PCI device detected.
