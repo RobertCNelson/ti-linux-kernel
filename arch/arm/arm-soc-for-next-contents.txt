@@ -13,6 +13,7 @@ next/cleanup
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git swarren-for-3.9-arm-timer-rework
 		patch	1357666417-8803-1-git-send-email-swarren@wwwdotorg.org
 		patch	1358185342-7518-1-git-send-email-swarren@wwwdotorg.org
+		patch	1358232649-19964-1-git-send-email-linux@prisktech.co.nz
 	clocksource/cleanup
 		bundle	https://patchwork.kernel.org/user/bundle/3531/
 	vt8500/timer
