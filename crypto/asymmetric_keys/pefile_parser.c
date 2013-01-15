@@ -395,6 +395,8 @@ static int pefile_key_preparse(struct key_preparsed_payload *prep)
 {
 	struct pkcs7_message *pkcs7;
 	struct pefile_context ctx;
+	const void *saved_data;
+	size_t saved_datalen;
 	int ret;
 
 	kenter("");
@@ -440,7 +442,14 @@ static int pefile_key_preparse(struct key_preparsed_payload *prep)
 	if (ret < 0)
 		goto error;
 
-	ret = -ENOANO; // Not yet complete
+	/* We can now try to load the key */
+	saved_data = prep->data;
+	saved_datalen = prep->datalen;
+	prep->data += ctx.keylist_offset;
+	prep->datalen = ctx.keylist_len;
+	ret = x509_key_preparse(prep);
+	prep->data = saved_data;
+	prep->datalen = saved_datalen;
 
 error:
 	pkcs7_free_message(ctx.pkcs7);
