@@ -53,8 +53,9 @@ obj-$(CONFIG_SMP) += spinlock.o
 obj-$(CONFIG_DEBUG_SPINLOCK) += spinlock.o
 obj-$(CONFIG_PROVE_LOCKING) += spinlock.o
 obj-$(CONFIG_UID16) += uid16.o
+obj-$(CONFIG_SYSTEM_TRUSTED_KEYRING) += system_keyring.o system_certificates.o
 obj-$(CONFIG_MODULES) += module.o
-obj-$(CONFIG_MODULE_SIG) += module_signing.o modsign_pubkey.o modsign_certificate.o
+obj-$(CONFIG_MODULE_SIG) += module_signing.o
 obj-$(CONFIG_KALLSYMS) += kallsyms.o
 obj-$(CONFIG_BSD_PROCESS_ACCT) += acct.o
 obj-$(CONFIG_KEXEC) += kexec.o
@@ -133,13 +134,14 @@ targets += timeconst.h
 $(obj)/timeconst.h: $(src)/timeconst.pl FORCE
 	$(call if_changed,timeconst)
 
-ifeq ($(CONFIG_MODULE_SIG),y)
 ###############################################################################
 #
-# Roll all the X.509 certificates that we can find together and pull
-# them into the kernel.
+# Roll all the X.509 certificates that we can find together and pull them into
+# the kernel so that they get loaded into the system trusted keyring during
+# boot.
 #
 ###############################################################################
+ifeq ($(CONFIG_SYSTEM_TRUSTED_KEYRING),y)
 X509_CERTIFICATES-y := $(wildcard *.x509) $(wildcard $(srctree)/*.x509)
 X509_CERTIFICATES-$(CONFIG_MODULE_SIG) += signing_key.x509
 X509_CERTIFICATES := $(sort $(X509_CERTIFICATES-y))
@@ -155,10 +157,11 @@ $(shell rm $(obj)/.x509.list)
 endif
 endif
 
-kernel/modsign_certificate.o: $(obj)/x509_certificate_list
+kernel/system_certificates.o: $(obj)/x509_certificate_list
 
 quiet_cmd_x509certs  = CERTS   $@
-      cmd_x509certs  = cat $(X509_CERTIFICATES) /dev/null >$@
+      cmd_x509certs  = cat $(X509_CERTIFICATES) /dev/null >$@ $(foreach X509,$(X509_CERTIFICATES),; echo "  - Including cert $(X509)")
+
 targets += $(obj)/x509_certificate_list
 $(obj)/x509_certificate_list: $(X509_CERTIFICATES) $(obj)/.x509.list
 	$(call if_changed,x509certs)
@@ -168,7 +171,9 @@ $(obj)/.x509.list:
 	@echo $(X509_CERTIFICATES) >$@
 
 clean-files := x509_certificate_list .x509.list
+endif
 
+ifeq ($(CONFIG_MODULE_SIG),y)
 ###############################################################################
 #
 # If module signing is requested, say by allyesconfig, but a key has not been

@@ -13,6 +13,6 @@
 
 	.section ".init.data","aw"
 
-GLOBAL(modsign_certificate_list)
+GLOBAL(system_certificate_list)
 	.incbin "kernel/x509_certificate_list"
-GLOBAL(modsign_certificate_list_end)
+GLOBAL(system_certificate_list_end)
