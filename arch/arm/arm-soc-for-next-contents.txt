@@ -17,6 +17,8 @@ next/cleanup
 		bundle	https://patchwork.kernel.org/user/bundle/3531/
 	vt8500/timer
 		pull	git://server.prisktech.co.nz/git/linuxwmt.git tags/vt8500/timer
+	irqchip/gic-vic-move
+		pull	git://sources.calxeda.com/kernel/linux.git tags/gic-vic-to-irqchip
 
 next/drivers
 	ux500/cpufreq
