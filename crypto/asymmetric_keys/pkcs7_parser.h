@@ -60,6 +60,13 @@ extern struct pkcs7_message *pkcs7_parse_message(const void *data,
 extern void pkcs7_free_message(struct pkcs7_message *pkcs7);
 
 /*
+ * pkcs7_trust.c
+ */
+extern int pkcs7_validate_trust(struct pkcs7_message *pkcs7,
+				struct key *trust_keyring,
+				bool *_trusted);
+
+/*
  * pkcs7_verify.c
  */
 extern int pkcs7_verify(struct pkcs7_message *pkcs7);
