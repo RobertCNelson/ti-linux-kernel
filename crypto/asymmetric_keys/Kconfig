@@ -48,6 +48,7 @@ config PE_FILE_PARSER
 	tristate "PE binary-wrapped key parser"
 	depends on X509_CERTIFICATE_PARSER
 	depends on PKCS7_MESSAGE_PARSER
+	depends on SYSTEM_TRUSTED_KEYRING
 	help
 	  This option provides support for parsing signed PE binaries that
 	  contain an X.509 certificate in an internal section.

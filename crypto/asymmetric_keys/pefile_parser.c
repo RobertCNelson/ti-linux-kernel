@@ -18,6 +18,7 @@
 #include <linux/asn1.h>
 #include <keys/asymmetric-subtype.h>
 #include <keys/asymmetric-parser.h>
+#include <keys/system_keyring.h>
 #include <crypto/hash.h>
 #include "asymmetric_keys.h"
 #include "public_key.h"
@@ -432,6 +433,10 @@ static int pefile_key_preparse(struct key_preparsed_payload *prep)
 		goto error;
 
 	ret = pkcs7_verify(pkcs7);
+	if (ret < 0)
+		goto error;
+
+	ret = pkcs7_validate_trust(pkcs7, system_trusted_keyring, &prep->trusted);
 	if (ret < 0)
 		goto error;
 
