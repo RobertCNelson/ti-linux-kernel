@@ -1061,8 +1061,10 @@ static void gnttab_request_version(void)
 	int rc;
 	struct gnttab_set_version gsv;
 
-	gsv.version = 1;
-
+	if (xen_hvm_domain())
+		gsv.version = 1;
+	else
+		gsv.version = 2;
 	rc = HYPERVISOR_grant_table_op(GNTTABOP_set_version, &gsv, 1);
 	if (rc == 0 && gsv.version == 2) {
 		grant_table_version = 2;
