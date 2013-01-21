@@ -10,4 +10,6 @@
 #define __ALIGN .align 4
 #define __ALIGN_STR ".align 4"
 
+#define SYMBOL_NAME(_name_) _##_name_
+
 #endif
