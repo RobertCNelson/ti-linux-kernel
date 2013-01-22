@@ -37,3 +37,7 @@ next/soc
 		depends	vt8500/multiplatform
 		pull	git://server.prisktech.co.nz/git/linuxwmt.git tags/armsoc-3.9
 		patch	1358577868-29042-1-git-send-email-linux@prisktech.co.nz
+
+next/boards
+	renesas/defconfig
+		pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git defconfig
