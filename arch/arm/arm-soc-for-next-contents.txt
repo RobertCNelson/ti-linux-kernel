@@ -20,6 +20,7 @@ next/cleanup
 		pull	git://server.prisktech.co.nz/git/linuxwmt.git tags/vt8500/timer
 	irqchip/gic-vic-move
 		pull	git://sources.calxeda.com/kernel/linux.git tags/gic-vic-to-irqchip
+	patch	1358499506-9790-1-git-send-email-shawn.guo@linaro.org
 
 next/drivers
 	ux500/cpufreq
