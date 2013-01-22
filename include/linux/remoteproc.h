@@ -41,6 +41,7 @@
 #include <linux/virtio.h>
 #include <linux/completion.h>
 #include <linux/idr.h>
+#include <asm/checksum.h>
 
 /**
  * struct resource_table - firmware resource table header
@@ -429,6 +430,8 @@ struct rproc {
 	struct completion crash_comp;
 	bool recovery_disabled;
 	int max_notifyid;
+	struct resource_table *rsc;
+	__sum16 rsc_csum;
 };
 
 /* we currently support only two vrings per rvdev */

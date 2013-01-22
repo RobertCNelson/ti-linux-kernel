@@ -694,17 +694,16 @@ static rproc_handle_resource_t rproc_handle_notifyid_rsc[RSC_LAST] = {
 
 /* handle firmware resource entries before booting the remote processor */
 static int
-rproc_handle_resource(struct rproc *rproc, struct resource_table *table,
-				int len,
-				rproc_handle_resource_t handlers[RSC_LAST])
+rproc_handle_resource(struct rproc *rproc, int len,
+		      rproc_handle_resource_t handlers[RSC_LAST])
 {
 	struct device *dev = &rproc->dev;
 	rproc_handle_resource_t handler;
 	int ret = 0, i;
 
-	for (i = 0; i < table->num; i++) {
-		int offset = table->offset[i];
-		struct fw_rsc_hdr *hdr = (void *)table + offset;
+	for (i = 0; i < rproc->rsc->num; i++) {
+		int offset = rproc->rsc->offset[i];
+		struct fw_rsc_hdr *hdr = (void *)rproc->rsc + offset;
 		int avail = len - offset - sizeof(*hdr);
 		void *rsc = (void *)hdr + sizeof(*hdr);
 
@@ -783,8 +782,12 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 {
 	struct device *dev = &rproc->dev;
 	const char *name = rproc->firmware;
-	struct resource_table *table;
+	struct rproc_vdev *rvdev;
+	struct resource_table *table, *devmem_rsc, *tmp;
 	int ret, tablesz;
+
+	if (!rproc->rsc)
+		return -ENOMEM;
 
 	ret = rproc_fw_sanity_check(rproc, fw);
 	if (ret)
@@ -811,8 +814,17 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 		goto clean_up;
 	}
 
+	/* Verify that resource table in loaded fw is unchanged */
+	if (rproc->rsc_csum != ip_compute_csum(table, tablesz)) {
+		dev_err(dev, "resource checksum failed, fw changed?\n");
+		ret = -EINVAL;
+		goto clean_up;
+	}
+
+
 	/* handle fw resources which are required to boot rproc */
-	ret = rproc_handle_resource(rproc, table, tablesz, rproc_handle_rsc);
+	ret = rproc_handle_resource(rproc, tablesz,
+					rproc_handle_rsc);
 	if (ret) {
 		dev_err(dev, "Failed to process resources: %d\n", ret);
 		goto clean_up;
@@ -824,6 +836,26 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 		dev_err(dev, "Failed to load program segments: %d\n", ret);
 		goto clean_up;
 	}
+
+	/* Get the resource table address in device memory */
+	devmem_rsc = rproc_get_rsctab_addr(rproc, fw);
+
+	/* Copy the updated resource table to device memory */
+	memcpy(devmem_rsc, rproc->rsc, tablesz);
+
+	/* Free the copy of the resource table */
+	tmp = rproc->rsc;
+	rproc->rsc = devmem_rsc;
+	kfree(tmp);
+
+	/* Update the vdev rsc address */
+	list_for_each_entry(rvdev, &rproc->rvdevs, node) {
+		int offset = (void *)rvdev->rsc - (void *)tmp;
+		rvdev->rsc = (void *)devmem_rsc + offset;
+	}
+
+	/* Other virtio drivers will see the rsc table in device memory */
+	rproc->rsc = devmem_rsc;
 
 	/* power up the remote processor */
 	ret = rproc->ops->start(rproc);
@@ -866,14 +898,21 @@ static void rproc_fw_config_virtio(const struct firmware *fw, void *context)
 	if (!table)
 		goto out;
 
-	rproc->max_notifyid = 0;
+	rproc->rsc_csum = ip_compute_csum(table, tablesz);
 
 	/* count the numbe of notify-ids */
-	ret = rproc_handle_resource(rproc, table, tablesz,
+	rproc->max_notifyid = 0;
+	rproc->rsc = table;
+	ret = rproc_handle_resource(rproc, tablesz,
 						rproc_handle_notifyid_rsc);
 
+	/* Copy resource table containing vdev config info */
+	rproc->rsc = kmalloc(tablesz, GFP_KERNEL);
+	if (rproc->rsc)
+		memcpy(rproc->rsc, table, tablesz);
+
 	/* look for virtio devices and register them */
-	ret = rproc_handle_resource(rproc, table, tablesz,
+	ret = rproc_handle_resource(rproc, tablesz,
 						rproc_handle_vdev_rsc);
 	if (ret)
 		goto out;
