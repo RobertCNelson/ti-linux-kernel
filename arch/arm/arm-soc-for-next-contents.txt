@@ -36,3 +36,4 @@ next/soc
 	vt8500/wm8x50
 		depends	vt8500/multiplatform
 		pull	git://server.prisktech.co.nz/git/linuxwmt.git tags/armsoc-3.9
+		patch	1358577868-29042-1-git-send-email-linux@prisktech.co.nz
