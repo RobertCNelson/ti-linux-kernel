@@ -1792,26 +1792,10 @@ int cgroup_path(const struct cgroup *cgrp, char *buf, int buflen)
 		return 0;
 	}
 
-	start = buf + buflen - 1;
+	start = dentry_path_raw(dentry, buf, buflen);
+	if (IS_ERR(start))
+		return PTR_ERR(start);
 
-	*start = '\0';
-	for (;;) {
-		int len = dentry->d_name.len;
-
-		if ((start -= len) < buf)
-			return -ENAMETOOLONG;
-		memcpy(start, dentry->d_name.name, len);
-		cgrp = cgrp->parent;
-		if (!cgrp)
-			break;
-
-		dentry = cgrp->dentry;
-		if (!cgrp->parent)
-			continue;
-		if (--start < buf)
-			return -ENAMETOOLONG;
-		*start = '/';
-	}
 	memmove(buf, start, buf + buflen - start);
 	return 0;
 }
