@@ -58,6 +58,7 @@ struct ti_qspi {
 	u32 dc;
 
 	bool memory_mapped;
+	bool ctrl_mod;
 };
 
 #define QSPI_PID			(0x0)
@@ -151,9 +152,11 @@ void enable_qspi_memory_mapped(struct ti_qspi *qspi)
 	u32 val;
 
 	ti_qspi_write(qspi, MM_SWITCH, QSPI_SPI_SWITCH_REG);
-	val = readl(qspi->ctrl_base);
-	val |= MEM_CS;
-	writel(val, qspi->ctrl_base);
+	if (qspi->ctrl_mod) {
+		val = readl(qspi->ctrl_base);
+		val |= MEM_CS;
+		writel(val, qspi->ctrl_base);
+	}
 }
 
 void disable_qspi_memory_mapped(struct ti_qspi *qspi)
@@ -161,9 +164,11 @@ void disable_qspi_memory_mapped(struct ti_qspi *qspi)
 	u32 val;
 
 	ti_qspi_write(qspi, ~MM_SWITCH, QSPI_SPI_SWITCH_REG);
-	val = readl(qspi->ctrl_base);
-	val |= MEM_CS_DIS;
-	writel(val, qspi->ctrl_base);
+	if (qspi->ctrl_mod) {
+		val = readl(qspi->ctrl_base);
+		val |= MEM_CS_DIS;
+		writel(val, qspi->ctrl_base);
+	}
 }
 
 static int ti_qspi_setup(struct spi_device *spi)
@@ -538,9 +543,16 @@ static int ti_qspi_probe(struct platform_device *pdev)
 	qspi->master = master;
 	qspi->dev = &pdev->dev;
 
-	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	res_ctrl = platform_get_resource(pdev, IORESOURCE_MEM, 1);
-	res_mmap = platform_get_resource(pdev, IORESOURCE_MEM, 2);
+	r = platform_get_resource_byname(pdev, IORESOURCE_MEM, "qspi_base");
+	if (r == NULL) {
+		dev_err(&pdev->dev, "missing platform resources data\n");
+		return -ENODEV;
+	}
+
+	res_mmap = platform_get_resource_byname(pdev,
+			IORESOURCE_MEM, "qspi_mmap");
+	res_ctrl = platform_get_resource_byname(pdev,
+			IORESOURCE_MEM, "qspi_ctrlmod");
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
@@ -556,16 +568,21 @@ static int ti_qspi_probe(struct platform_device *pdev)
 		goto free_master;
 	}
 
-	qspi->ctrl_base = devm_ioremap_resource(&pdev->dev, res_ctrl);
-	if (IS_ERR(qspi->ctrl_base)) {
-		ret = PTR_ERR(qspi->ctrl_base);
-		goto free_master;
+	if (res_ctrl) {
+		qspi->ctrl_mod = true;
+		qspi->ctrl_base = devm_ioremap_resource(&pdev->dev, res_ctrl);
+		if (IS_ERR(qspi->ctrl_base)) {
+			ret = PTR_ERR(qspi->ctrl_base);
+			goto free_master;
+		}
 	}
 
-	qspi->mmap_base = devm_ioremap_resource(&pdev->dev, res_mmap);
-	if (IS_ERR(qspi->mmap_base)) {
-		ret = PTR_ERR(qspi->mmap_base);
-		goto free_master;
+	if (res_mmap) {
+		qspi->mmap_base = devm_ioremap_resource(&pdev->dev, res_mmap);
+		if (IS_ERR(qspi->mmap_base)) {
+			ret = PTR_ERR(qspi->mmap_base);
+			goto free_master;
+		}
 	}
 
 	ret = devm_request_irq(&pdev->dev, irq, ti_qspi_isr, 0,
