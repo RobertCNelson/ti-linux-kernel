@@ -45,6 +45,8 @@ next/cleanup
 next/drivers
 	ux500/cpufreq
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-cpufreq-for-arm-soc
+	u300/dma-cleanup
+		pull	http://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/coh901318-for-arm-soc
 
 
 next/multiplatform
