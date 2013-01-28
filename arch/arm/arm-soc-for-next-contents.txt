@@ -61,6 +61,8 @@ next/soc
 	prima2/marco
 		depends	depends/cleanup
 		pull	git://gitorious.org/sirfprima2-kernel/sirfprima2-kernel.git marco-timer-cleanup-rebase
+	imx/soc
+		pull	git://git.pengutronix.de/git/imx/linux-2.6.git tags/imx-soc
 
 next/boards
 	renesas/defconfig
