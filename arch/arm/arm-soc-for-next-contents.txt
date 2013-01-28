@@ -58,6 +58,9 @@ next/soc
 		depends	vt8500/multiplatform
 		pull	git://server.prisktech.co.nz/git/linuxwmt.git tags/armsoc-3.9
 		patch	1358577868-29042-1-git-send-email-linux@prisktech.co.nz
+	prima2/marco
+		depends	depends/cleanup
+		pull	git://gitorious.org/sirfprima2-kernel/sirfprima2-kernel.git marco-timer-cleanup-rebase
 
 next/boards
 	renesas/defconfig
