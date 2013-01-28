@@ -54,6 +54,8 @@ next/multiplatform
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.9/multiplatform-enable-signed-v2
 	vt8500/multiplatform
 		pull	git://server.prisktech.co.nz/git/linuxwmt.git tags/vt8500-multiplatform-3.9
+	patch	621fb4946273492b88fe9a903118047f497e00ee.1359057921.git.josh.cartwright@ni.com
+	patch	20130124201709.GB1036@beefymiracle.amer.corp.natinst.com
 
 next/soc
 	vt8500/wm8x50
