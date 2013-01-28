@@ -8,6 +8,12 @@ Format is a little different from before in an attempt to make it easier to read
 		<...>
 	<...>
 
+depends/cleanup
+	This branch contains next/cleanup as of
+	f8060f5446b1f2782f0a8ca9be2d870ea4198aee for others to base
+	their submissions on as needed.
+
+
 next/cleanup
 	timer/cleanup
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git swarren-for-3.9-arm-timer-rework
