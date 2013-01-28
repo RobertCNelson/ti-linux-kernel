@@ -31,6 +31,8 @@ next/cleanup
 	irqchip/gic-vic-move
 		pull	git://sources.calxeda.com/kernel/linux.git tags/gic-vic-to-irqchip
 	patch	1358499506-9790-1-git-send-email-shawn.guo@linaro.org
+	mvebu/cleanup
+		pull	git://git.infradead.org/users/jcooper/linux.git tags/cleanup_for_v3.9           
 
 next/drivers
 	ux500/cpufreq
