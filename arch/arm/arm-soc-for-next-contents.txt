@@ -13,6 +13,14 @@ depends/cleanup
 	f8060f5446b1f2782f0a8ca9be2d870ea4198aee for others to base
 	their submissions on as needed.
 
+depends/rmk-perf
+	(perf branch from Will, merged through rmk and us for dependency reasons)
+	pull	 git://git.kernel.org/pub/scm/linux/kernel/git/will/linux.git for-rmk/perf
+
+depends/rmk/psci
+	(psci branch from Will, merged through rmk and us for dependency reasons)
+	pull	git://git.kernel.org/pub/scm/linux/kernel/git/will/linux.git for-rmk/virt/psci
+
 
 next/fixes-non-critical
 	pxa/fixes-for-3.9
