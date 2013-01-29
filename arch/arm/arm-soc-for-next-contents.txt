@@ -77,3 +77,5 @@ next/boards
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git defconfig2
 	pxa/boards
 		pull	git://github.com/hzhuang1/linux.git armsoc/boar
+	renesas/boards
+		pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git boards
