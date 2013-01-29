@@ -70,6 +70,10 @@ next/soc
 		pull	git://gitorious.org/sirfprima2-kernel/sirfprima2-kernel.git marco-timer-cleanup-rebase
 	imx/soc
 		pull	git://git.pengutronix.de/git/imx/linux-2.6.git tags/imx-soc
+	renesas/soc
+		pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git soc
+	davinci/soc
+		pull	git://gitorious.org/linux-davinci/linux-davinci.git tags/davinci-for-v3.9/soc
 
 next/boards
 	renesas/defconfig
