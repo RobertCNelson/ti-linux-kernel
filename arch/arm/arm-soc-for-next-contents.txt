@@ -41,6 +41,7 @@ next/cleanup
 	patch	1358499506-9790-1-git-send-email-shawn.guo@linaro.org
 	mvebu/cleanup
 		pull	git://git.infradead.org/users/jcooper/linux.git tags/cleanup_for_v3.9           
+		pull	git://git.infradead.org/users/jcooper/linux.git tags/cleanup_for_v3.9_round2
 	imx/cleanup
 		pull	git://git.linaro.org/people/shawnguo/linux-2.6.git tags/imx-cleanup-3.9
 	bcm2835/cleanup
