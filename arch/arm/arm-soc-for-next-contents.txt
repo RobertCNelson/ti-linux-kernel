@@ -45,6 +45,7 @@ next/cleanup
 		pull	git://git.linaro.org/people/shawnguo/linux-2.6.git tags/imx-cleanup-3.9
 	bcm2835/cleanup
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-rpi.git bcm2835-for-3.9-cleanup
+	patch	1359376250-18841-1-git-send-email-michal.simek@xilinx.com
 
 next/sh-pinmux
 	pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git pfc
