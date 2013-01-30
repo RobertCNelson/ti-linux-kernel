@@ -25,6 +25,8 @@ depends/rmk/psci
 next/fixes-non-critical
 	pxa/fixes-for-3.9
 		pull	git://github.com/hzhuang1/linux.git armsoc/fix                                  
+	vexpress/fixes
+		pull	git://git.linaro.org/people/pawelmoll/linux.git tags/vexpress/fixes-for-3.9
 
 next/cleanup
 	timer/cleanup
