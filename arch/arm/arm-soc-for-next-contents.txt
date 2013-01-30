@@ -47,6 +47,8 @@ next/cleanup
 	bcm2835/cleanup
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-rpi.git bcm2835-for-3.9-cleanup
 	patch	1359376250-18841-1-git-send-email-michal.simek@xilinx.com
+	ux500/no-idh
+		pull	git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-no-idh
 
 next/sh-pinmux
 	pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git pfc
