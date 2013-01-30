@@ -27,6 +27,7 @@ next/fixes-non-critical
 		pull	git://github.com/hzhuang1/linux.git armsoc/fix                                  
 	vexpress/fixes
 		pull	git://git.linaro.org/people/pawelmoll/linux.git tags/vexpress/fixes-for-3.9
+	patch	1358786701-28414-1-git-send-email-michal.simek@xilinx.com
 
 next/cleanup
 	timer/cleanup
