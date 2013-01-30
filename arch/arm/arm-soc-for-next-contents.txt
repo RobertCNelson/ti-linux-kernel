@@ -63,6 +63,8 @@ next/drivers
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-cpufreq-for-arm-soc
 	u300/dma-cleanup
 		pull	http://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/coh901318-for-arm-soc
+	vexpress/drivers
+		pull	git://git.linaro.org/people/pawelmoll/linux.git tags/vexpress/drivers-for-3.9
 
 
 next/multiplatform
