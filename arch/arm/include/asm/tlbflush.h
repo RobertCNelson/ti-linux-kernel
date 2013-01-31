@@ -38,6 +38,7 @@
 #define TLB_V7_UIS_PAGE	(1 << 19)
 #define TLB_V7_UIS_FULL (1 << 20)
 #define TLB_V7_UIS_ASID (1 << 21)
+#define TLB_V7_UIS_BP	(1 << 22)
 
 #define TLB_BARRIER	(1 << 28)
 #define TLB_L2CLEAN_FR	(1 << 29)		/* Feroceon */
@@ -166,9 +167,11 @@
 #endif
 
 #define v7wbi_tlb_flags_smp	(TLB_WB | TLB_DCLEAN | TLB_BARRIER | \
-			 TLB_V7_UIS_FULL | TLB_V7_UIS_PAGE | TLB_V7_UIS_ASID)
+				 TLB_V7_UIS_FULL | TLB_V7_UIS_PAGE | \
+				 TLB_V7_UIS_ASID | TLB_V7_UIS_BP)
 #define v7wbi_tlb_flags_up	(TLB_WB | TLB_DCLEAN | TLB_BARRIER | \
-			 TLB_V6_U_FULL | TLB_V6_U_PAGE | TLB_V6_U_ASID)
+				 TLB_V6_U_FULL | TLB_V6_U_PAGE | \
+				 TLB_V6_U_ASID)
 
 #ifdef CONFIG_CPU_TLB_V7
 
@@ -329,6 +332,11 @@ static inline void local_flush_tlb_all(void)
 	tlb_op(TLB_V4_D_FULL | TLB_V6_D_FULL, "c8, c6, 0", zero);
 	tlb_op(TLB_V4_I_FULL | TLB_V6_I_FULL, "c8, c5, 0", zero);
 	tlb_op(TLB_V7_UIS_FULL, "c8, c3, 0", zero);
+
+	if (tlb_flag(TLB_V7_UIS_BP))
+		asm("mcr p15, 0, %0, c7, c1, 6" : : "r" (zero));
+	else
+		asm("mcr p15, 0, %0, c7, c5, 6" : : "r" (zero));
 
 	if (tlb_flag(TLB_BARRIER)) {
 		dsb();
