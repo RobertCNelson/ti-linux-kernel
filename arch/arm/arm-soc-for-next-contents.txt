@@ -54,6 +54,7 @@ next/cleanup
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-no-idh
 	zynq/timer
 		pull	git://git.xilinx.com/linux-xlnx.git zynq/timer
+	patch	1359518177-21245-1-git-send-email-swarren@wwwdotorg.org
 
 next/sh-pinmux
 	pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git pfc
