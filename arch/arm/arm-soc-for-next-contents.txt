@@ -104,6 +104,8 @@ next/boards
 		pull	git://gitorious.org/linux-davinci/linux-davinci.git tags/davinci-for-v3.9/board
 	bcm2835/defconfig
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-rpi.git bcm2835-for-3.9-defconfig
+	reneasas/boards2
+		pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-boards2-for-v3.9
 
 next/dt
 	davinci/dt
