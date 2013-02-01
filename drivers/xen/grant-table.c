@@ -47,6 +47,7 @@
 #include <xen/grant_table.h>
 #include <xen/interface/memory.h>
 #include <xen/hvc-console.h>
+#include <xen/balloon.h>
 #include <asm/xen/hypercall.h>
 #include <asm/xen/interface.h>
 
@@ -1139,27 +1140,41 @@ static void gnttab_request_version(void)
 		grant_table_version);
 }
 
+static int xlated_setup_gnttab_pages(int numpages, void **addr)
+{
+	int i, rc;
+	unsigned long pfns[numpages];
+	struct page *pages[numpages];
+
+	rc = alloc_xenballooned_pages(numpages, pages, 0);
+	if (rc != 0) {
+		pr_warn("%s Could not balloon alloc %d pfns rc:%d\n", __func__,
+			numpages, rc);
+		return -ENOMEM;
+	}
+	for (i = 0; i < numpages; i++)
+		pfns[i] = page_to_pfn(pages[i]);
+
+	rc = arch_gnttab_map_shared(pfns, numpages, numpages, addr);
+	return rc;
+}
+
 int gnttab_resume(void)
 {
-	unsigned int max_nr_gframes;
-	char *kmsg = "Failed to kmalloc pages for pv in hvm grant frames\n";
+	unsigned int rc, max_nr_gframes;
 
 	gnttab_request_version();
 	max_nr_gframes = gnttab_max_grant_frames();
 	if (max_nr_gframes < nr_grant_frames)
 		return -ENOSYS;
 
-	/* PVH note: xen will free existing kmalloc'd mfn in
-	 * XENMEM_add_to_physmap. TBD/FIXME: use xen ballooning instead of
-	 * kmalloc(). */
 	if (xen_pv_domain() && xen_feature(XENFEAT_auto_translated_physmap) &&
 	    !gnttab_shared.addr) {
-		gnttab_shared.addr =
-			kmalloc(max_nr_gframes * PAGE_SIZE, GFP_KERNEL);
-		if (!gnttab_shared.addr) {
-			pr_warn("%s", kmsg);
-			return -ENOMEM;
-		}
+
+		rc = xlated_setup_gnttab_pages(max_nr_gframes,
+					       &gnttab_shared.addr);
+		if (rc != 0)
+			return rc;
 	}
 	if (xen_pv_domain())
 		return gnttab_map(0, nr_grant_frames - 1);
