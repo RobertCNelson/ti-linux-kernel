@@ -390,6 +390,7 @@ pte_t *populate_extra_pte(unsigned long vaddr);
 
 #ifndef __ASSEMBLY__
 #include <linux/mm_types.h>
+#include <linux/log2.h>
 
 static inline int pte_none(pte_t pte)
 {
@@ -740,6 +741,18 @@ extern int pmdp_test_and_clear_young(struct vm_area_struct *vma,
 extern int pmdp_clear_flush_young(struct vm_area_struct *vma,
 				  unsigned long address, pmd_t *pmdp);
 
+/*
+ * The x86 doesn't have any external MMU info: the kernel page
+ * tables contain all the necessary information.
+ */
+static inline void update_mmu_cache(struct vm_area_struct *vma,
+		unsigned long addr, pte_t *ptep)
+{
+}
+static inline void update_mmu_cache_pmd(struct vm_area_struct *vma,
+		unsigned long addr, pmd_t *pmd)
+{
+}
 
 #define __HAVE_ARCH_PMDP_SPLITTING_FLUSH
 extern void pmdp_splitting_flush(struct vm_area_struct *vma,
@@ -783,17 +796,18 @@ static inline void clone_pgd_range(pgd_t *dst, pgd_t *src, int count)
        memcpy(dst, src, count * sizeof(pgd_t));
 }
 
-/*
- * The x86 doesn't have any external MMU info: the kernel page
- * tables contain all the necessary information.
- */
-static inline void update_mmu_cache(struct vm_area_struct *vma,
-		unsigned long addr, pte_t *ptep)
+#define PTE_SHIFT ilog2(PTRS_PER_PTE)
+static inline int page_level_shift(enum pg_level level)
 {
+	return (PAGE_SHIFT - PTE_SHIFT) + level * PTE_SHIFT;
 }
-static inline void update_mmu_cache_pmd(struct vm_area_struct *vma,
-		unsigned long addr, pmd_t *pmd)
+static inline unsigned long page_level_size(enum pg_level level)
 {
+	return 1UL << page_level_shift(level);
+}
+static inline unsigned long page_level_mask(enum pg_level level)
+{
+	return ~(page_level_size(level) - 1);
 }
 
 #include <asm-generic/pgtable.h>
