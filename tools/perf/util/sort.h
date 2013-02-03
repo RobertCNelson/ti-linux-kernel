@@ -55,9 +55,6 @@ struct he_stat {
 struct hist_entry_diff {
 	bool	computed;
 
-	/* PERF_HPP__DISPL */
-	int	displacement;
-
 	/* PERF_HPP__DELTA */
 	double	period_ratio_delta;
 
@@ -118,25 +115,29 @@ static inline struct hist_entry *hist_entry__next_pair(struct hist_entry *he)
 	return NULL;
 }
 
-static inline void hist__entry_add_pair(struct hist_entry *he,
+static inline void hist_entry__add_pair(struct hist_entry *he,
 					struct hist_entry *pair)
 {
 	list_add_tail(&he->pairs.head, &pair->pairs.node);
 }
 
 enum sort_type {
+	/* common sort keys */
 	SORT_PID,
 	SORT_COMM,
 	SORT_DSO,
 	SORT_SYM,
 	SORT_PARENT,
 	SORT_CPU,
-	SORT_DSO_FROM,
+	SORT_SRCLINE,
+
+	/* branch stack specific sort keys */
+	__SORT_BRANCH_STACK,
+	SORT_DSO_FROM = __SORT_BRANCH_STACK,
 	SORT_DSO_TO,
 	SORT_SYM_FROM,
 	SORT_SYM_TO,
 	SORT_MISPREDICT,
-	SORT_SRCLINE,
 };
 
 /*
