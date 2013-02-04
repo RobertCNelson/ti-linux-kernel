@@ -619,9 +619,10 @@ static struct ab8500_reg_init ab8500_reg_init[] = {
 	 */
 	REG_INIT(AB8500_VAUX12REGU,		0x04, 0x09, 0x0f),
 	/*
+	 * 0x0c, Vrf1Regu
 	 * 0x03, Vaux3Regu
 	 */
-	REG_INIT(AB8500_VRF1VAUX3REGU,		0x04, 0x0a, 0x03),
+	REG_INIT(AB8500_VRF1VAUX3REGU,		0x04, 0x0a, 0x0f),
 	/*
 	 * 0x3f, Vsmps1Sel1
 	 */

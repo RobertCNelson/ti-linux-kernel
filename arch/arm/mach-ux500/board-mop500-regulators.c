@@ -275,9 +275,10 @@ ab8500_regulator_reg_init[AB8500_NUM_REGULATOR_REGISTERS] = {
 	 */
 	INIT_REGULATOR_REGISTER(AB8500_VAUX12REGU, 0x01),
 	/*
-	 * Vaux3regu                = force off
+	 * Vrf1Regu                 = HW control
+	 * Vaux3Regu                = force off
 	 */
-	INIT_REGULATOR_REGISTER(AB8500_VRF1VAUX3REGU, 0x00),
+	INIT_REGULATOR_REGISTER(AB8500_VRF1VAUX3REGU, 0x08),
 	/*
 	 * Vsmps1                   = 1.15V
 	 */
