@@ -578,6 +578,24 @@ static struct ab8500_reg_init ab8500_reg_init[] = {
 	 */
 	REG_INIT(AB8500_REGUCTRL1VAMIC,		0x03, 0x84, 0x03),
 	/*
+	 * 0x0c, VBBNRegu
+	 * 0x03, VBBPRegu
+	 * NOTE! PRCMU register
+	 */
+	REG_INIT(AB8500_ARMREGU2,		0x04, 0x01, 0x0f),
+	/*
+	 * 0x0c, VBBPSel1
+	 * 0x03, VBBNSel1
+	 * NOTE! PRCMU register
+	 */
+	REG_INIT(AB8500_VBBSEL1,		0x04, 0x11, 0x0f),
+	/*
+	 * 0x0c, VBBNSel2
+	 * 0x03, VBBPSel2
+	 * NOTE! PRCMU register
+	 */
+	REG_INIT(AB8500_VBBSEL2,		0x04, 0x12, 0x0f),
+	/*
 	 * 0x0c, VanaRegu
 	 * 0x03, VpllRegu
 	 */

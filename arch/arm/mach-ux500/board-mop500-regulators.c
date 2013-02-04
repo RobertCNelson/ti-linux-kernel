@@ -234,6 +234,24 @@ ab8500_regulator_reg_init[AB8500_NUM_REGULATOR_REGISTERS] = {
 	 */
 	INIT_REGULATOR_REGISTER(AB8500_REGUCTRL1VAMIC, 0x00),
 	/*
+	 * VBBN                     = force OFF
+	 * VBBP                     = force OFF
+	 * NOTE! PRCMU register
+	 */
+	INIT_REGULATOR_REGISTER(AB8500_ARMREGU2,               0x00),
+	/*
+	 * VBBNSel1                 = VBBP = VBBPFB
+	 * VBBPSel1                 = 0 V
+	 * NOTE! PRCMU register
+	 */
+	INIT_REGULATOR_REGISTER(AB8500_VBBSEL1,                0x00),
+	/*
+	 * VBBNSel2                 = VBBP = VBBPFB
+	 * VBBPSel2                 = 0 V
+	 * NOTE! PRCMU register
+	 */
+	INIT_REGULATOR_REGISTER(AB8500_VBBSEL2,                0x00),
+	/*
 	 * VPll                     = Hw controlled
 	 * VanaRegu                 = force off
 	 */
