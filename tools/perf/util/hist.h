@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include "callchain.h"
 #include "header.h"
+#include "liblockdep.h"
 
 extern struct callchain_param callchain_param;
 

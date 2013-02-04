@@ -217,6 +217,18 @@ int main(void)
 endef
 endif
 
+ifndef NO_LIBLOCKDEP
+define SOURCE_LIBLOCKDEP
+#include <liblockdep/mutex.h>
+
+int main(void)
+{
+	liblockdep_init();
+	return 0;
+}
+endef
+endif
+
 define SOURCE_ON_EXIT
 #include <stdio.h>
 
