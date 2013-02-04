@@ -494,12 +494,14 @@ static struct ab8500_reg_init ab8500_reg_init[] = {
 	 */
 	REG_INIT(AB8500_REGUREQUESTCTRL4,	0x03, 0x06, 0x07),
 	/*
+	 * 0x01, Vsmps1SysClkReq1HPValid
+	 * 0x02, Vsmps2SysClkReq1HPValid
 	 * 0x08, VanaSysClkReq1HPValid
 	 * 0x20, Vaux1SysClkReq1HPValid
 	 * 0x40, Vaux2SysClkReq1HPValid
 	 * 0x80, Vaux3SysClkReq1HPValid
 	 */
-	REG_INIT(AB8500_REGUSYSCLKREQ1HPVALID1,	0x03, 0x07, 0xe8),
+	REG_INIT(AB8500_REGUSYSCLKREQ1HPVALID1,	0x03, 0x07, 0xeb),
 	/*
 	 * 0x10, VextSupply1SysClkReq1HPValid
 	 * 0x20, VextSupply2SysClkReq1HPValid
@@ -595,6 +597,16 @@ static struct ab8500_reg_init ab8500_reg_init[] = {
 	 * NOTE! PRCMU register
 	 */
 	REG_INIT(AB8500_VBBSEL2,		0x04, 0x12, 0x0f),
+	/*
+	 * 0x0c, Vsmps1SelCtrl
+	 * 0x03, Vsmps1Regu
+	 */
+	REG_INIT(AB8500_VSMPS1REGU,		0x04, 0x03, 0x0f),
+	/*
+	 * 0x0c, Vsmps2SelCtrl
+	 * 0x03, Vsmps2Regu
+	 */
+	REG_INIT(AB8500_VSMPS2REGU,		0x04, 0x04, 0x0f),
 	/*
 	 * 0x0c, VanaRegu
 	 * 0x03, VpllRegu
