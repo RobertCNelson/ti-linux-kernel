@@ -143,15 +143,16 @@ ab8500_regulator_reg_init[AB8500_NUM_REGULATOR_REGISTERS] = {
 	 */
 	INIT_REGULATOR_REGISTER(AB8500_REGUREQUESTCTRL4, 0x00),
 	/*
+	 * Vsmps1SysClkReq1HPValid  = enabled
+	 * Vsmps2SysClkReq1HPValid  = enabled
+	 * Vsmps3SysClkReq1HPValid  = enabled
 	 * VanaSysClkReq1HPValid    = disabled
 	 * VpllSysClkReq1HPValid    = enabled
 	 * Vaux1SysClkReq1HPValid   = disabled
 	 * Vaux2SysClkReq1HPValid   = disabled
 	 * Vaux3SysClkReq1HPValid   = disabled
-	 * Vsmps2SysClkReq1HPValid  = enabled
-	 * Vsmps1SysClkReq1HPValid  = enabled
 	 */
-	INIT_REGULATOR_REGISTER(AB8500_REGUSYSCLKREQ1HPVALID1, 0x13),
+	INIT_REGULATOR_REGISTER(AB8500_REGUSYSCLKREQ1HPVALID1, 0x17),
 	/*
 	 * VextSupply1SysClkReq1HPValid = disabled
 	 * VextSupply2SysClkReq1HPValid = disabled
@@ -256,15 +257,31 @@ ab8500_regulator_reg_init[AB8500_NUM_REGULATOR_REGISTERS] = {
 	 */
 	INIT_REGULATOR_REGISTER(AB8500_VBBSEL2,                0x00),
 	/*
-	 * Vsmps1SelCtrl            = Vsmps1 voltage defined by Vsmsp1Sel2
 	 * Vsmps1Regu               = HW control
+	 * Vsmps1SelCtrl            = Vsmps1 voltage defined by Vsmsp1Sel2
 	 */
 	INIT_REGULATOR_REGISTER(AB8500_VSMPS1REGU,             0x06),
 	/*
-	 * Vsmps2SelCtrl            = Vsmps2 voltage defined by Vsmsp2Sel2
 	 * Vsmps2Regu               = HW control
+	 * Vsmps2SelCtrl            = Vsmps2 voltage defined by Vsmsp2Sel2
 	 */
 	INIT_REGULATOR_REGISTER(AB8500_VSMPS2REGU,             0x06),
+	/*
+	 * Vsmps3Sel2               = 1.2125 V
+	 * NOTE! PRCMU register
+	 */
+	INIT_REGULATOR_REGISTER(AB8500_VSMPS3SEL2,             0x29),
+	/*
+	 * Vsmps3Regu               = HW control
+	 * Vsmps3SelCtrl            = Vsmps3 voltage defined by Vsmps3Sel2
+	 * NOTE! PRCMU register
+	 */
+	INIT_REGULATOR_REGISTER(AB8500_VSMPS3REGU,             0x06),
+	/*
+	 * Vsmps3Sel1               = 0.9 V
+	 * NOTE! PRCMU register
+	 */
+	INIT_REGULATOR_REGISTER(AB8500_VSMPS3SEL1,             0x10),
 	/*
 	 * VPll                     = Hw controlled
 	 * VanaRegu                 = force off
