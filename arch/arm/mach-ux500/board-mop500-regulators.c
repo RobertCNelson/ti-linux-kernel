@@ -126,6 +126,7 @@ struct ab8500_regulator_reg_init
 ab8500_regulator_reg_init[AB8500_NUM_REGULATOR_REGISTERS] = {
 	/*
 	 * VanaRequestCtrl          = HP/LP depending on VxRequest
+	 * VpllRequestCtrl          = HP/LP depending on VxRequest
 	 * VextSupply1RequestCtrl   = HP/LP depending on VxRequest
 	 */
 	INIT_REGULATOR_REGISTER(AB8500_REGUREQUESTCTRL2, 0x00),
@@ -143,13 +144,14 @@ ab8500_regulator_reg_init[AB8500_NUM_REGULATOR_REGISTERS] = {
 	INIT_REGULATOR_REGISTER(AB8500_REGUREQUESTCTRL4, 0x00),
 	/*
 	 * VanaSysClkReq1HPValid    = disabled
+	 * VpllSysClkReq1HPValid    = enabled
 	 * Vaux1SysClkReq1HPValid   = disabled
 	 * Vaux2SysClkReq1HPValid   = disabled
 	 * Vaux3SysClkReq1HPValid   = disabled
 	 * Vsmps2SysClkReq1HPValid  = enabled
 	 * Vsmps1SysClkReq1HPValid  = enabled
 	 */
-	INIT_REGULATOR_REGISTER(AB8500_REGUSYSCLKREQ1HPVALID1, 0x03),
+	INIT_REGULATOR_REGISTER(AB8500_REGUSYSCLKREQ1HPVALID1, 0x13),
 	/*
 	 * VextSupply1SysClkReq1HPValid = disabled
 	 * VextSupply2SysClkReq1HPValid = disabled

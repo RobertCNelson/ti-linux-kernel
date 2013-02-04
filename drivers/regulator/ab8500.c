@@ -477,7 +477,7 @@ struct ab8500_reg_init {
 static struct ab8500_reg_init ab8500_reg_init[] = {
 	/*
 	 * 0x30, VanaRequestCtrl
-	 * 0x0C, VpllRequestCtrl
+	 * 0x0c, VpllRequestCtrl
 	 * 0xc0, VextSupply1RequestCtrl
 	 */
 	REG_INIT(AB8500_REGUREQUESTCTRL2,	0x03, 0x04, 0xfc),
@@ -497,11 +497,12 @@ static struct ab8500_reg_init ab8500_reg_init[] = {
 	 * 0x01, Vsmps1SysClkReq1HPValid
 	 * 0x02, Vsmps2SysClkReq1HPValid
 	 * 0x08, VanaSysClkReq1HPValid
+	 * 0x10, VpllSysClkReq1HPValid
 	 * 0x20, Vaux1SysClkReq1HPValid
 	 * 0x40, Vaux2SysClkReq1HPValid
 	 * 0x80, Vaux3SysClkReq1HPValid
 	 */
-	REG_INIT(AB8500_REGUSYSCLKREQ1HPVALID1,	0x03, 0x07, 0xeb),
+	REG_INIT(AB8500_REGUSYSCLKREQ1HPVALID1,	0x03, 0x07, 0xfb),
 	/*
 	 * 0x10, VextSupply1SysClkReq1HPValid
 	 * 0x20, VextSupply2SysClkReq1HPValid
