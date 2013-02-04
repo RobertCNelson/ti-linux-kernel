@@ -73,6 +73,7 @@
 #include <linux/magic.h>
 #include "types.h"
 #include <sys/ttydefaults.h>
+#include "liblockdep.h"
 
 extern const char *graph_line;
 extern const char *graph_dotted_line;

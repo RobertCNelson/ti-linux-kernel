@@ -468,6 +468,8 @@ static void *thread_func(void *ctx)
 	char comm2[22];
 	int fd;
 
+	liblockdep_set_thread();
+
 	free(parms);
 
 	sprintf(comm2, ":%s", this_task->comm);
@@ -1677,8 +1679,8 @@ int cmd_sched(int argc, const char **argv, const char *prefix __maybe_unused)
 		},
 		.cmp_pid	      = LIST_HEAD_INIT(sched.cmp_pid),
 		.sort_list	      = LIST_HEAD_INIT(sched.sort_list),
-		.start_work_mutex     = PTHREAD_MUTEX_INITIALIZER,
-		.work_done_wait_mutex = PTHREAD_MUTEX_INITIALIZER,
+		.start_work_mutex     = LIBLOCKDEP_PTHREAD_MUTEX_INITIALIZER(sched.start_work_mutex),
+		.work_done_wait_mutex = LIBLOCKDEP_PTHREAD_MUTEX_INITIALIZER(sched.work_done_wait_mutex),
 		.curr_pid	      = { [0 ... MAX_CPUS - 1] = -1 },
 		.sort_order	      = default_sort_order,
 		.replay_repeat	      = 10,

@@ -589,6 +589,21 @@ ifneq ($(call try-cc,$(SOURCE_LIBUNWIND),$(FLAGS_UNWIND),libunwind),y)
 endif # Libunwind support
 endif # NO_LIBUNWIND
 
+ifndef NO_LIBLOCKDEP
+# for linking with liblockdep library, run like:
+# make LIBLOCKDEP=1
+ifeq ($(LOCKDEP),1)
+	LIBLOCKDEP_CFLAGS  := -I../lib/lockdep/include -D__USE_LIBLOCKDEP
+	LIBLOCKDEP_LDFLAGS := -L../lib/lockdep/ -llockdep
+endif
+
+FLAGS_LIBLOCKDEP=$(LIBLOCKDEP_CFLAGS) $(ALL_CFLAGS) $(LIBLOCKDEP_LDFLAGS) $(ALL_LDFLAGS) $(EXTLIBS)
+ifneq ($(call try-cc,$(SOURCE_LIBLOCKDEP),$(FLAGS_LIBLOCKDEP),liblockdep),y)
+	msg := $(warning No liblockdep support.);
+	NO_LIBLOCKDEP := 1
+endif # liblockdep support
+endif # NO_LIBLOCKDEP
+
 -include arch/$(ARCH)/Makefile
 
 ifneq ($(OUTPUT),)
@@ -636,6 +651,13 @@ ifndef NO_LIBUNWIND
 	BASIC_CFLAGS := $(LIBUNWIND_CFLAGS) $(BASIC_CFLAGS)
 	BASIC_LDFLAGS := $(LIBUNWIND_LDFLAGS) $(BASIC_LDFLAGS)
 	LIB_OBJS += $(OUTPUT)util/unwind.o
+endif
+
+ifndef NO_LIBLOCKDEP
+	BASIC_CFLAGS += -D__USE_LIBLOCKDEP
+	EXTLIBS += $(LIBLOCKDEP_LIBS)
+	BASIC_CFLAGS := $(LIBLOCKDEP_CFLAGS) $(BASIC_CFLAGS)
+	BASIC_LDFLAGS := $(LIBLOCKDEP_LDFLAGS) $(BASIC_LDFLAGS)
 endif
 
 ifndef NO_LIBAUDIT

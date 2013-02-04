@@ -455,6 +455,9 @@ int main(int argc, const char **argv)
 {
 	const char *cmd;
 
+	liblockdep_init();
+	liblockdep_set_thread();
+
 	page_size = sysconf(_SC_PAGE_SIZE);
 
 	cmd = perf_extract_argv0_path(argv[0]);
