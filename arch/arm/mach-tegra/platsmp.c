@@ -19,6 +19,7 @@
 #include <linux/smp.h>
 #include <linux/io.h>
 #include <linux/irqchip/arm-gic.h>
+#include <linux/clk/tegra.h>
 
 #include <asm/cacheflush.h>
 #include <asm/mach-types.h>
@@ -30,7 +31,6 @@
 #include "fuse.h"
 #include "flowctrl.h"
 #include "reset.h"
-#include "tegra_cpu_car.h"
 
 #include "common.h"
 #include "iomap.h"

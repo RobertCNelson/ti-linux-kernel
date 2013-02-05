@@ -111,6 +111,8 @@ next/soc
 		pull	git://git.infradead.org/users/jcooper/linux.git tags/drivers_for_v3.9
 	renesas/soc3
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-soc3-for-v3.9
+	tegra/soc-ccf
+		pull	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git tegra-for-3.9-soc-ccf
 
 next/boards
 	renesas/defconfig
