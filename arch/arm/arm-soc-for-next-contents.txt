@@ -102,6 +102,8 @@ next/soc
 	patch	1359956496-8997-1-git-send-email-Barry.Song@csr.com
 	imx/cpuidle
 		pull	git://git.linaro.org/people/shawnguo/linux-2.6.git tags/imx6q-cpudile-3.9
+	mvebu/drivers
+		pull	git://git.infradead.org/users/jcooper/linux.git tags/drivers_for_v3.9
 
 next/boards
 	renesas/defconfig
