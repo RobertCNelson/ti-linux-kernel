@@ -58,6 +58,8 @@ next/cleanup
 	patch	1359568170-26479-1-git-send-email-swarren@wwwdotorg.org
 	samsung/cleanup
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/cleanup-header
+	mvebu/cleanup
+		pull	git://git.infradead.org/users/jcooper/linux.git tags/drivers_for_v3.9
 
 next/sh-pinmux
 	pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git pfc
