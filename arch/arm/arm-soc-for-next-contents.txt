@@ -60,6 +60,8 @@ next/cleanup
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/cleanup-header
 	mvebu/cleanup
 		pull	git://git.infradead.org/users/jcooper/linux.git tags/drivers_for_v3.9
+	wdog/cleanup
+		pull	git://git.linaro.org/people/shawnguo/linux-2.6.git tags/cleanup-decompwdog-3.9
 
 next/sh-pinmux
 	pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git pfc
