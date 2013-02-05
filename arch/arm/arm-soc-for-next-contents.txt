@@ -63,6 +63,8 @@ next/cleanup
 	wdog/cleanup
 		pull	git://git.linaro.org/people/shawnguo/linux-2.6.git tags/cleanup-decompwdog-3.9
 	patch	1360017159-24318-1-git-send-email-maxime.ripard@free-electrons.com
+	tegra/cleanup
+		pull	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git tegra-for-3.9-cleanup
 
 next/sh-pinmux
 	pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git pfc
