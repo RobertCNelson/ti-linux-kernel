@@ -113,6 +113,12 @@ next/soc
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-soc3-for-v3.9
 	tegra/soc-ccf
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git tegra-for-3.9-soc-ccf
+	tegra/usb-cleanup
+		pull	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git tegra-for-3.9-soc-usb
+	tegra/cpuidle
+		pull	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git tegra-for-3.9-soc-cpuidle
+	tegra/t114
+		pull	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git tegra-for-3.9-soc-t114
 
 next/boards
 	renesas/defconfig
@@ -138,3 +144,4 @@ next/dt
 	bcm2835/dt
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-rpi.git bcm2835-for-3.9-dt
 	patch	1359708725-21978-1-git-send-email-linus.walleij@stericsson.com
+
