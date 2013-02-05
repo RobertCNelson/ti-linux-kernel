@@ -62,6 +62,7 @@ next/cleanup
 		pull	git://git.infradead.org/users/jcooper/linux.git tags/drivers_for_v3.9
 	wdog/cleanup
 		pull	git://git.linaro.org/people/shawnguo/linux-2.6.git tags/cleanup-decompwdog-3.9
+	patch	1360017159-24318-1-git-send-email-maxime.ripard@free-electrons.com
 
 next/sh-pinmux
 	pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git pfc
