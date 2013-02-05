@@ -130,3 +130,4 @@ next/dt
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-nomadik.git tags/nomadik-devicetree
 	bcm2835/dt
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-rpi.git bcm2835-for-3.9-dt
+	patch	1359708725-21978-1-git-send-email-linus.walleij@stericsson.com
