@@ -89,6 +89,7 @@ next/multiplatform
 		pull	git://server.prisktech.co.nz/git/linuxwmt.git tags/vt8500-multiplatform-3.9
 	patch	621fb4946273492b88fe9a903118047f497e00ee.1359057921.git.josh.cartwright@ni.com
 	patch	20130124201709.GB1036@beefymiracle.amer.corp.natinst.com
+	patch	20130205175126.GH25185@atomide.com
 
 next/soc
 	vt8500/wm8x50
