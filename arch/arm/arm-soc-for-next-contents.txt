@@ -119,6 +119,7 @@ next/soc
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git tegra-for-3.9-soc-cpuidle
 	tegra/t114
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git tegra-for-3.9-soc-t114
+	patch	1359976100-28871-1-git-send-email-hdoyu@nvidia.com
 
 next/boards
 	renesas/defconfig
