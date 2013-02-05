@@ -97,6 +97,7 @@ next/soc
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-rpi.git bcm2835-for-3.9-soc
 	renesas/soc2
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-soc2-for-v3.9
+	patch	1359956496-8997-1-git-send-email-Barry.Song@csr.com
 
 next/boards
 	renesas/defconfig
