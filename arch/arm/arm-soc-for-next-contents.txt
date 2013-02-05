@@ -127,6 +127,8 @@ next/soc
 	patch	1359976100-28871-1-git-send-email-hdoyu@nvidia.com
 	omap/pm
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.9/pm-signed
+	imx/soc2
+		pull	git://git.linaro.org/people/shawnguo/linux-2.6.git tags/imx-soc-3.9
 
 next/boards
 	renesas/defconfig
