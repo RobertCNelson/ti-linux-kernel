@@ -144,4 +144,7 @@ next/dt
 	bcm2835/dt
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-rpi.git bcm2835-for-3.9-dt
 	patch	1359708725-21978-1-git-send-email-linus.walleij@stericsson.com
+	tegra/dt
+		(pulls in next/soc as of tegra/t114 merge)
+		pull	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git tegra-for-3.9-dt
 
