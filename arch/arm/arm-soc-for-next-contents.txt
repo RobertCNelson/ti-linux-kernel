@@ -56,6 +56,8 @@ next/cleanup
 		pull	git://git.xilinx.com/linux-xlnx.git zynq/timer
 	patch	1359518177-21245-1-git-send-email-swarren@wwwdotorg.org
 	patch	1359568170-26479-1-git-send-email-swarren@wwwdotorg.org
+	samsung/cleanup
+		pull	git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/cleanup-header
 
 next/sh-pinmux
 	pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git pfc
