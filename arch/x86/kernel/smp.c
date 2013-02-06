@@ -117,11 +117,28 @@ static bool smp_no_nmi_ipi = false;
  */
 void ticket_spin_lock_wait(arch_spinlock_t *lock, struct __raw_tickets inc)
 {
-	for (;;) {
-		cpu_relax();
-		inc.head = ACCESS_ONCE(lock->tickets.head);
+	__ticket_t head = inc.head, ticket = inc.tail;
+	__ticket_t waiters_ahead;
+	unsigned loops;
 
-		if (inc.head == inc.tail)
+	for (;;) {
+		waiters_ahead = ticket - head - 1;
+		/*
+		 * We are next after the current lock holder. Check often
+		 * to avoid wasting time when the lock is released.
+		 */
+		if (!waiters_ahead) {
+			do {
+				cpu_relax();
+			} while (ACCESS_ONCE(lock->tickets.head) != ticket);
+			break;
+		}
+		loops = 50 * waiters_ahead;
+		while (loops--)
+			cpu_relax();
+
+		head = ACCESS_ONCE(lock->tickets.head);
+		if (head == ticket)
 			break;
 	}
 }
