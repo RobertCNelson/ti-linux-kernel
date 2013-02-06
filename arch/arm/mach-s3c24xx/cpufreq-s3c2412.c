@@ -1,5 +1,4 @@
-/* linux/arch/arm/mach-s3c2412/cpu-freq.c
- *
+/*
  * Copyright 2008 Simtec Electronics
  *	http://armlinux.simtec.co.uk/
  *	Ben Dooks <ben@simtec.co.uk>
@@ -26,11 +25,12 @@
 #include <asm/mach/map.h>
 
 #include <mach/regs-clock.h>
-#include <mach/regs-s3c2412-mem.h>
 
 #include <plat/cpu.h>
 #include <plat/clock.h>
 #include <plat/cpu-freq-core.h>
+
+#include "s3c2412.h"
 
 /* our clock resources. */
 static struct clk *xtal;
@@ -111,7 +111,7 @@ static int s3c2412_cpufreq_calcdivs(struct s3c_cpufreq_config *cfg)
 
 	return 0;
 
- invalid:
+invalid:
 	return -EINVAL;
 }
 
@@ -255,5 +255,4 @@ static int s3c2412_cpufreq_init(void)
 {
 	return subsys_interface_register(&s3c2412_cpufreq_interface);
 }
-
 arch_initcall(s3c2412_cpufreq_init);
