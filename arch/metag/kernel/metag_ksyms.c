@@ -43,7 +43,6 @@ EXPORT_SYMBOL(pfn_base);
 #ifdef CONFIG_FLATMEM
 /* needed for the pfn_valid macro */
 EXPORT_SYMBOL(max_pfn);
-EXPORT_SYMBOL(min_low_pfn);
 #endif
 
 /* TBI symbols */
