@@ -23,6 +23,7 @@
 #include <linux/interrupt.h>
 #include <linux/cpu.h>
 #include <linux/gfp.h>
+#include <linux/hash.h>
 
 #include <asm/mtrr.h>
 #include <asm/tlbflush.h>
@@ -116,6 +117,18 @@ static bool smp_no_nmi_ipi = false;
 #define DELAY_FIXED_1			(1<<DELAY_SHIFT)
 #define MIN_SPINLOCK_DELAY		(1 * DELAY_FIXED_1)
 #define MAX_SPINLOCK_DELAY		(16000 * DELAY_FIXED_1)
+#define DELAY_HASH_SHIFT		6
+struct delay_entry {
+	u32 hash;
+	u32 delay;
+};
+static DEFINE_PER_CPU(struct delay_entry [1 << DELAY_HASH_SHIFT], spinlock_delay) = {
+	[0 ... (1 << DELAY_HASH_SHIFT) - 1] = {
+		.hash = 0,
+		.delay = MIN_SPINLOCK_DELAY,
+	},
+};
+
 /*
  * Wait on a congested ticket spinlock. Many spinlocks are embedded in
  * data structures; having many CPUs pounce on the cache line with the
@@ -134,12 +147,14 @@ static bool smp_no_nmi_ipi = false;
  * the queue, to slowly increase the delay if we sleep for too short a
  * time, and to decrease the delay if we slept for too long.
  */
-DEFINE_PER_CPU(unsigned, spinlock_delay) = { MIN_SPINLOCK_DELAY };
 void ticket_spin_lock_wait(arch_spinlock_t *lock, struct __raw_tickets inc)
 {
 	__ticket_t head = inc.head, ticket = inc.tail;
 	__ticket_t waiters_ahead;
-	unsigned delay = __this_cpu_read(spinlock_delay);
+	u32 hash = hash32_ptr(lock);
+	u32 slot = hash_32(hash, DELAY_HASH_SHIFT);
+	struct delay_entry *ent = &__get_cpu_var(spinlock_delay[slot]);
+	u32 delay = (ent->hash == hash) ? ent->delay : MIN_SPINLOCK_DELAY;
 	unsigned loops;
 
 	for (;;) {
@@ -171,11 +186,12 @@ void ticket_spin_lock_wait(arch_spinlock_t *lock, struct __raw_tickets inc)
 			 * to get it back to a good value quickly.
 			 */
 			if (delay >= 2 * DELAY_FIXED_1)
-				delay -= max(delay/32, DELAY_FIXED_1);
+				delay -= max_t(u32, delay/32, DELAY_FIXED_1);
 			break;
 		}
 	}
-	__this_cpu_write(spinlock_delay, delay);
+	ent->hash = hash;
+	ent->delay = delay;
 }
 
 /*
