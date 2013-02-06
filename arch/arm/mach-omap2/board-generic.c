@@ -201,6 +201,7 @@ DT_MACHINE_START(OMAP5_DT, "Generic OMAP5 (Flattened Device Tree)")
 	.init_early	= omap5_init_early,
 	.init_irq	= omap_gic_of_init,
 	.init_machine	= omap_generic_init,
+	.init_late	= omap5_init_late,
 	.init_time	= omap5_realtime_timer_init,
 	.dt_compat	= omap5_boards_compat,
 	.restart	= omap44xx_restart,
