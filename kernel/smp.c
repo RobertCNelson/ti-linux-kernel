@@ -12,6 +12,7 @@
 #include <linux/gfp.h>
 #include <linux/smp.h>
 #include <linux/cpu.h>
+#include <linux/hardirq.h>
 
 #include "smpboot.h"
 
@@ -323,7 +324,7 @@ int smp_call_function_single(int cpu, smp_call_func_t func, void *info,
 	 * send smp call function interrupt to this cpu and as such deadlocks
 	 * can't happen.
 	 */
-	WARN_ON_ONCE(cpu_online(this_cpu) && irqs_disabled()
+	WARN_ON_ONCE(cpu_online(this_cpu) && (irqs_disabled() || in_interrupt())
 		     && !oops_in_progress);
 
 	if (cpu == this_cpu) {
@@ -421,8 +422,9 @@ void __smp_call_function_single(int cpu, struct call_single_data *data,
 	 * send smp call function interrupt to this cpu and as such deadlocks
 	 * can't happen.
 	 */
-	WARN_ON_ONCE(cpu_online(smp_processor_id()) && wait && irqs_disabled()
-		     && !oops_in_progress);
+	WARN_ON_ONCE(cpu_online(smp_processor_id()) && wait
+			&& (irqs_disabled() || in_interrupt())
+			&& !oops_in_progress);
 
 	if (cpu == this_cpu) {
 		local_irq_save(flags);
