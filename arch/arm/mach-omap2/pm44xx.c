@@ -52,7 +52,10 @@ static int omap4_pm_suspend(void)
 	/* Set targeted power domain states by suspend */
 	list_for_each_entry(pwrst, &pwrst_list, node) {
 		omap_set_pwrdm_state(pwrst->pwrdm, pwrst->next_state);
-		pwrdm_set_logic_retst(pwrst->pwrdm, PWRDM_POWER_OFF);
+		if (!strcmp(pwrst->pwrdm->name, "mpu_pwrdm"))
+			pwrdm_set_logic_retst(pwrst->pwrdm, PWRDM_POWER_ON);
+		else
+			pwrdm_set_logic_retst(pwrst->pwrdm, PWRDM_POWER_OFF);
 	}
 
 	/*
@@ -199,6 +202,31 @@ static inline int omap4_init_static_deps(void)
 }
 
 /**
+ * omap5_init_static_deps - Init static clkdm dependencies on OMAP5
+ *
+ * The dynamic dependency between MPUSS -> EMIF is broken and has
+ * not worked as expected. The hardware recommendation is to
+ * enable static dependencies for these to avoid system
+ * lock ups or random crashes.
+ */
+static inline int omap5_init_static_deps(void)
+{
+	struct clockdomain *mpuss_clkdm, *emif_clkdm;
+	int ret;
+
+	mpuss_clkdm = clkdm_lookup("mpu_clkdm");
+	emif_clkdm = clkdm_lookup("emif_clkdm");
+	if (!mpuss_clkdm || !emif_clkdm)
+	       return -EINVAL;
+
+	ret = clkdm_add_wkdep(mpuss_clkdm, emif_clkdm);
+	if (ret)
+	       pr_err("Failed to add MPUSS -> EMIF wakeup dependency\n");
+
+	return ret;
+}
+
+/**
  * omap4_pm_init - Init routine for OMAP4+ devices
  *
  * Initializes all powerdomain and clockdomain target states
@@ -222,10 +250,14 @@ int __init omap4_pm_init(void)
 		goto err2;
 	}
 
-	if (cpu_is_omap44xx()) {
+	if (cpu_is_omap44xx())
 		ret = omap4_init_static_deps();
-		if (ret)
-			goto err2;
+	else if (soc_is_omap54xx())
+		ret = omap5_init_static_deps();
+
+	if (ret) {
+		pr_err("Failed to initialise static dependencies.\n");
+		goto err2;
 	}
 
 	ret = omap4_mpuss_init();
