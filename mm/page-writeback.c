@@ -242,7 +242,7 @@ static unsigned long global_dirtyable_memory(void)
 		x -= highmem_dirtyable_memory(x);
 
 	/* Subtract min_free_kbytes */
-	x -= min(x, min_free_kbytes >> (PAGE_SHIFT - 10));
+	x -= min_t(unsigned long, x, min_free_kbytes >> (PAGE_SHIFT - 10));
 
 	return x + 1;	/* Ensure that we never return 0 */
 }
