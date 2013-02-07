@@ -134,6 +134,7 @@ out:
 	return error;
 }
 
+#ifdef CONFIG_SWAP
 static int swapin_walk_pmd_entry(pmd_t *pmd, unsigned long start,
 	unsigned long end, struct mm_walk *walk)
 {
@@ -209,6 +210,7 @@ static void force_shm_swapin_readahead(struct vm_area_struct *vma,
 
 	lru_add_drain();	/* Push any new pages onto the LRU now */
 }
+#endif		/* CONFIG_SWAP */
 
 /*
  * Schedule all required I/O operations.  Do not wait for completion.
