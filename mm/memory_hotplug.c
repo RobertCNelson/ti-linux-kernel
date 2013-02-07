@@ -1077,7 +1077,8 @@ out:
 int __ref add_memory(int nid, u64 start, u64 size)
 {
 	pg_data_t *pgdat = NULL;
-	int new_pgdat = 0, new_node = 0;
+	bool new_pgdat;
+	bool new_node;
 	struct resource *res;
 	int ret;
 
@@ -1088,8 +1089,8 @@ int __ref add_memory(int nid, u64 start, u64 size)
 	if (!res)
 		goto out;
 
-	new_pgdat = NODE_DATA(nid) ? 0 : 1;
-	new_node = node_online(nid) ? 0 : 1;
+	new_pgdat = (NODE_DATA(nid) == NULL);
+	new_node = !node_online(nid);
 	if (new_node) {
 		pgdat = hotadd_new_pgdat(nid, start);
 		ret = -ENOMEM;
