@@ -1295,7 +1295,7 @@ unsigned long do_mmap_pgoff(struct file *file, unsigned long addr,
 	 * Set 'VM_NORESERVE' if we should not account for the
 	 * memory use of this mapping.
 	 */
-	if ((flags & MAP_NORESERVE)) {
+	if (flags & MAP_NORESERVE) {
 		/* We honor MAP_NORESERVE if allowed to overcommit */
 		if (sysctl_overcommit_memory != OVERCOMMIT_NEVER)
 			vm_flags |= VM_NORESERVE;
