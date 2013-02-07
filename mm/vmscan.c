@@ -1983,7 +1983,7 @@ static void shrink_zone(struct zone *zone, struct scan_control *sc)
 			 * whole hierarchy is not sufficient.
 			 */
 			if (!global_reclaim(sc) &&
-					sc->nr_to_reclaim >= sc->nr_reclaimed) {
+					sc->nr_to_reclaim <= sc->nr_reclaimed) {
 				mem_cgroup_iter_break(root, memcg);
 				break;
 			}
