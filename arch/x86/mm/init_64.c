@@ -802,7 +802,7 @@ static bool __meminit free_pud_table(pud_t *pud_start, pgd_t *pgd)
 
 static void __meminit
 remove_pte_table(pte_t *pte_start, unsigned long addr, unsigned long end,
-		 bool direct)
+		 bool direct, bool split)
 {
 	unsigned long next, pages = 0;
 	pte_t *pte;
@@ -831,14 +831,30 @@ remove_pte_table(pte_t *pte_start, unsigned long addr, unsigned long end,
 		    IS_ALIGNED(next, PAGE_SIZE)) {
 			/*
 			 * Do not free direct mapping pages since they were
-			 * freed when offlining.
+			 * freed when offlining, or simplely not in use.
+			 *
+			 * Do not free pages split from larger page since only
+			 * the _count of the 1st page struct is available.
+			 * Free the larger page when it is fulfilled with 0xFD.
 			 */
-			if (!direct)
-				free_pagetable(pte_page(*pte), 0);
+			if (!direct) {
+				if (split) {
+					/*
+					 * Fill the split 4KB page with 0xFD.
+					 * When the whole 2MB page is fulfilled
+					 * with 0xFD, it could be freed.
+					 */
+					memset((void *)addr, PAGE_INUSE,
+						PAGE_SIZE);
+				} else
+					free_pagetable(pte_page(*pte), 0);
+			}
 
 			spin_lock(&init_mm.page_table_lock);
 			pte_clear(&init_mm, addr, pte);
 			spin_unlock(&init_mm.page_table_lock);
+
+			/* For non-direct mapping, pages means nothing. */
 			pages++;
 		} else {
 			/*
@@ -849,6 +865,10 @@ remove_pte_table(pte_t *pte_start, unsigned long addr, unsigned long end,
 			 */
 			memset((void *)addr, PAGE_INUSE, next - addr);
 
+			/*
+			 * If the range is not aligned to PAGE_SIZE, then the
+			 * page is definitely not split from larger page.
+			 */
 			page_addr = page_address(pte_page(*pte));
 			if (!memchr_inv(page_addr, PAGE_INUSE, PAGE_SIZE)) {
 				if (!direct)
@@ -870,11 +890,13 @@ remove_pte_table(pte_t *pte_start, unsigned long addr, unsigned long end,
 
 static void __meminit
 remove_pmd_table(pmd_t *pmd_start, unsigned long addr, unsigned long end,
-		 bool direct)
+		 bool direct, bool split)
 {
 	unsigned long pte_phys, next, pages = 0;
 	pte_t *pte_base;
 	pmd_t *pmd;
+	void *page_addr;
+	bool split_pmd = split, split_pte = false;
 
 	pmd = pmd_start + pmd_index(addr);
 	for (; addr < end; addr = next, pmd++) {
@@ -886,14 +908,32 @@ remove_pmd_table(pmd_t *pmd_start, unsigned long addr, unsigned long end,
 		if (pmd_large(*pmd)) {
 			if (IS_ALIGNED(addr, PMD_SIZE) &&
 			    IS_ALIGNED(next, PMD_SIZE)) {
-				if (!direct)
-					free_pagetable(pmd_page(*pmd),
+				if (!direct) {
+					if (split_pmd) {
+						/*
+						 * Fill the split 2MB page with
+						 * 0xFD. When the whole 1GB page
+						 * is fulfilled with 0xFD, it
+						 * could be freed.
+						 */
+						memset((void *)addr, PAGE_INUSE,
+							PMD_SIZE);
+					} else {
+						free_pagetable(pmd_page(*pmd),
 						       get_order(PMD_SIZE));
+					}
+				}
 
 				spin_lock(&init_mm.page_table_lock);
 				pmd_clear(pmd);
 				spin_unlock(&init_mm.page_table_lock);
+
+				/*
+				 * For non-direct mapping, pages means
+				 * nothing.
+				 */
 				pages++;
+
 				continue;
 			}
 
@@ -905,6 +945,7 @@ remove_pmd_table(pmd_t *pmd_start, unsigned long addr, unsigned long end,
 			BUG_ON(!pte_base);
 			__split_large_page((pte_t *)pmd, addr,
 					   (pte_t *)pte_base);
+			split_pte = true;
 
 			spin_lock(&init_mm.page_table_lock);
 			pmd_populate_kernel(&init_mm, pmd, __va(pte_phys));
@@ -914,7 +955,16 @@ remove_pmd_table(pmd_t *pmd_start, unsigned long addr, unsigned long end,
 		}
 
 		pte_base = (pte_t *)map_low_page((pte_t *)pmd_page_vaddr(*pmd));
-		remove_pte_table(pte_base, addr, next, direct);
+		remove_pte_table(pte_base, addr, next, direct, split_pte);
+
+		if (!direct && split_pte) {
+			page_addr = page_address(pmd_page(*pmd));
+			if (!memchr_inv(page_addr, PAGE_INUSE, PMD_SIZE)) {
+				free_pagetable(pmd_page(*pmd),
+					       get_order(PMD_SIZE));
+			}
+		}
+
 		free_pte_table(pte_base, pmd);
 		unmap_low_page(pte_base);
 	}
@@ -931,6 +981,8 @@ remove_pud_table(pud_t *pud_start, unsigned long addr, unsigned long end,
 	unsigned long pmd_phys, next, pages = 0;
 	pmd_t *pmd_base;
 	pud_t *pud;
+	void *page_addr;
+	bool split_pmd = false;
 
 	pud = pud_start + pud_index(addr);
 	for (; addr < end; addr = next, pud++) {
@@ -961,6 +1013,7 @@ remove_pud_table(pud_t *pud_start, unsigned long addr, unsigned long end,
 			BUG_ON(!pmd_base);
 			__split_large_page((pte_t *)pud, addr,
 					   (pte_t *)pmd_base);
+			split_pmd = true;
 
 			spin_lock(&init_mm.page_table_lock);
 			pud_populate(&init_mm, pud, __va(pmd_phys));
@@ -970,7 +1023,16 @@ remove_pud_table(pud_t *pud_start, unsigned long addr, unsigned long end,
 		}
 
 		pmd_base = (pmd_t *)map_low_page((pmd_t *)pud_page_vaddr(*pud));
-		remove_pmd_table(pmd_base, addr, next, direct);
+		remove_pmd_table(pmd_base, addr, next, direct, split_pmd);
+
+		if (!direct && split_pmd) {
+			page_addr = page_address(pud_page(*pud));
+			if (!memchr_inv(page_addr, PAGE_INUSE, PUD_SIZE)) {
+				free_pagetable(pud_page(*pud),
+					       get_order(PUD_SIZE));
+			}
+		}
+
 		free_pmd_table(pmd_base, pud);
 		unmap_low_page(pmd_base);
 	}
