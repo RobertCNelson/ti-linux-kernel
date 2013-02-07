@@ -43,7 +43,7 @@
 
 #ifdef CONFIG_NUMA
 #define NUMA(x)		(x)
-#define DO_NUMA(x)	(x)
+#define DO_NUMA(x)	do { (x); } while (0)
 #else
 #define NUMA(x)		(0)
 #define DO_NUMA(x)	do { } while (0)
