@@ -241,8 +241,6 @@ static inline struct bio *bio_clone_kmalloc(struct bio *bio, gfp_t gfp_mask)
 
 }
 
-void bio_endio_batch(struct bio *bio, int error, struct batch_complete *batch);
-
 /**
  * bio_endio - end I/O on a bio
  * @bio:	bio
@@ -551,6 +549,8 @@ struct batch_complete {
 	struct bio_list		bio;
 	struct rb_root		kiocb;
 };
+
+void bio_endio_batch(struct bio *bio, int error, struct batch_complete *batch);
 
 static inline void batch_complete_init(struct batch_complete *batch)
 {
