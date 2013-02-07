@@ -254,7 +254,6 @@ static int kiocb_cancel(struct kioctx *ctx, struct kiocb *kiocb,
 		if (!cancel || cancel == KIOCB_CANCELLED)
 			return ret;
 
-		BUG();
 		old = cancel;
 		cancel = cmpxchg(&kiocb->ki_cancel, old, KIOCB_CANCELLED);
 	} while (cancel != old);
