@@ -1017,11 +1017,14 @@ static pg_data_t __ref *hotadd_new_pgdat(int nid, u64 start)
 	unsigned long zholes_size[MAX_NR_ZONES] = {0};
 	unsigned long start_pfn = start >> PAGE_SHIFT;
 
-	pgdat = arch_alloc_nodedata(nid);
-	if (!pgdat)
-		return NULL;
+	pgdat = NODE_DATA(nid);
+	if (!pgdat) {
+		pgdat = arch_alloc_nodedata(nid);
+		if (!pgdat)
+			return NULL;
 
-	arch_refresh_nodedata(nid, pgdat);
+		arch_refresh_nodedata(nid, pgdat);
+	}
 
 	/* we can use NODE_DATA(nid) from here */
 
@@ -1074,7 +1077,7 @@ out:
 int __ref add_memory(int nid, u64 start, u64 size)
 {
 	pg_data_t *pgdat = NULL;
-	int new_pgdat = 0;
+	int new_pgdat = 0, new_node = 0;
 	struct resource *res;
 	int ret;
 
@@ -1085,12 +1088,13 @@ int __ref add_memory(int nid, u64 start, u64 size)
 	if (!res)
 		goto out;
 
-	if (!node_online(nid)) {
+	new_pgdat = NODE_DATA(nid) ? 0 : 1;
+	new_node = node_online(nid) ? 0 : 1;
+	if (new_node) {
 		pgdat = hotadd_new_pgdat(nid, start);
 		ret = -ENOMEM;
 		if (!pgdat)
 			goto error;
-		new_pgdat = 1;
 	}
 
 	/* call arch's memory hotadd */
@@ -1102,7 +1106,7 @@ int __ref add_memory(int nid, u64 start, u64 size)
 	/* we online node here. we can't roll back from here. */
 	node_set_online(nid);
 
-	if (new_pgdat) {
+	if (new_node) {
 		ret = register_one_node(nid);
 		/*
 		 * If sysfs file of new node can't create, cpu on the node
