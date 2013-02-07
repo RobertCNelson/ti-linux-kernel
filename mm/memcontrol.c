@@ -363,7 +363,7 @@ struct mem_cgroup {
 	struct mem_cgroup_lru_info info;
 };
 
-static inline size_t memcg_size(void)
+static size_t memcg_size(void)
 {
 	return sizeof(struct mem_cgroup) +
 		nr_node_ids * sizeof(struct mem_cgroup_per_node);
@@ -381,7 +381,7 @@ enum {
 		((1 << KMEM_ACCOUNTED_ACTIVE) | (1 << KMEM_ACCOUNTED_ACTIVATED))
 
 #ifdef CONFIG_MEMCG_KMEM
-static void memcg_kmem_set_active(struct mem_cgroup *memcg)
+static inline void memcg_kmem_set_active(struct mem_cgroup *memcg)
 {
 	set_bit(KMEM_ACCOUNTED_ACTIVE, &memcg->kmem_account_flags);
 }
