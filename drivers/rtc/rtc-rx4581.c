@@ -262,7 +262,7 @@ static const struct rtc_class_ops rx4581_rtc_ops = {
 	.set_time	= rx4581_set_datetime,
 };
 
-static int __devinit rx4581_probe(struct spi_device *spi)
+static int rx4581_probe(struct spi_device *spi)
 {
 	struct rtc_device *rtc;
 	unsigned char tmp;
@@ -281,7 +281,7 @@ static int __devinit rx4581_probe(struct spi_device *spi)
 	return 0;
 }
 
-static int __devexit rx4581_remove(struct spi_device *spi)
+static int rx4581_remove(struct spi_device *spi)
 {
 	struct rtc_device *rtc = dev_get_drvdata(&spi->dev);
 
@@ -307,7 +307,7 @@ static struct spi_driver rx4581_driver = {
 
 module_spi_driver(rx4581_driver);
 
-MODULE_DESCRIPTION ("rx4581 spi RTC driver");
-MODULE_AUTHOR ("Torben Hohn");
-MODULE_LICENSE ("GPL");
+MODULE_DESCRIPTION("rx4581 spi RTC driver");
+MODULE_AUTHOR("Torben Hohn");
+MODULE_LICENSE("GPL");
 MODULE_ALIAS("spi:rtc-rx4581");
