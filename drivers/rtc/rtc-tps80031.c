@@ -4,7 +4,7 @@
  * RTC driver for TI TPS80031/TPS80032 Fully Integrated
  * Power Management with Power Path and Battery Charger
  *
- * Copyright (c) 2012-2013, NVIDIA Corporation.
+ * Copyright (c) 2012, NVIDIA Corporation.
  *
  * Author: Laxman Dewangan <ldewangan@nvidia.com>
  *
@@ -233,7 +233,7 @@ static const struct rtc_class_ops tps80031_rtc_ops = {
 	.alarm_irq_enable = tps80031_rtc_alarm_irq_enable,
 };
 
-static int tps80031_rtc_probe(struct platform_device *pdev)
+static int __devinit tps80031_rtc_probe(struct platform_device *pdev)
 {
 	struct tps80031_rtc *rtc;
 	struct rtc_time tm;
@@ -261,7 +261,7 @@ static int tps80031_rtc_probe(struct platform_device *pdev)
 		(tm.tm_mday == TPS80031_RTC_POR_DAY)) {
 		tm.tm_year = 2000;
 		tm.tm_mday = 1;
-		tm.tm_mon = 0;
+		tm.tm_mon = 1;
 		ret = tps80031_rtc_set_time(&pdev->dev, &tm);
 		if (ret < 0) {
 			dev_err(&pdev->dev,
@@ -298,7 +298,7 @@ static int tps80031_rtc_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int tps80031_rtc_remove(struct platform_device *pdev)
+static int __devexit tps80031_rtc_remove(struct platform_device *pdev)
 {
 	struct tps80031_rtc *rtc = platform_get_drvdata(pdev);
 
