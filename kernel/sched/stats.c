@@ -81,6 +81,13 @@ static int show_schedstat(struct seq_file *seq, void *v)
 	return 0;
 }
 
+/*
+ * This itererator needs some explination.
+ * It returns 1 for the header position.
+ * This means 2 is cpu 0.
+ * In a hotplugged system some cpus, including cpu 0, may be missing so we have
+ * to use cpumask_* to iterate over the cpus.
+ */
 static void *schedstat_start(struct seq_file *file, loff_t *offset)
 {
 	unsigned long n = *offset;
