@@ -116,8 +116,25 @@ static bool smp_no_nmi_ipi = false;
 #define DELAY_SHIFT			8
 #define DELAY_FIXED_1			(1<<DELAY_SHIFT)
 #define MIN_SPINLOCK_DELAY		(1 * DELAY_FIXED_1)
-#define MAX_SPINLOCK_DELAY		(16000 * DELAY_FIXED_1)
+#define MAX_SPINLOCK_DELAY_NATIVE	(16000 * DELAY_FIXED_1)
+#define MAX_SPINLOCK_DELAY_GUEST	(16 * DELAY_FIXED_1)
 #define DELAY_HASH_SHIFT		6
+
+/*
+ * Modern Intel and AMD CPUs tell the hypervisor when a guest is
+ * spinning excessively on a spinlock. The hypervisor will then
+ * schedule something else, effectively taking care of the backoff
+ * for us. Doing our own backoff on top of the hypervisor's pause
+ * loop exit handling can lead to excessively long delays, and
+ * performance degradations. Limit the spinlock delay in virtual
+ * machines to a smaller value. Called from init_hypervisor_platform
+ */
+static int __read_mostly max_spinlock_delay = MAX_SPINLOCK_DELAY_NATIVE;
+void __init init_guest_spinlock_delay(void)
+{
+	max_spinlock_delay = MAX_SPINLOCK_DELAY_GUEST;
+}
+
 struct delay_entry {
 	u32 hash;
 	u32 delay;
@@ -171,7 +188,7 @@ void ticket_spin_lock_wait(arch_spinlock_t *lock, struct __raw_tickets inc)
 		}
 
 		/* Aggressively increase delay, to minimize lock accesses. */
-		if (delay < MAX_SPINLOCK_DELAY)
+		if (delay < max_spinlock_delay)
 			delay += DELAY_FIXED_1 / 7;
 
 		loops = (delay * waiters_ahead) >> DELAY_SHIFT;
