@@ -5079,9 +5079,9 @@ early_param("kernelcore", cmdline_parse_kernelcore);
 early_param("movablecore", cmdline_parse_movablecore);
 
 /**
- * insert_movablecore_map - Insert a memory range in to movablecore_map.map.
- * @start_pfn: start pfn of the range
- * @end_pfn: end pfn of the range
+ * insert_movablecore_map() - Insert a memory range in to movablecore_map.map.
+ * @start_pfn:	start pfn of the range
+ * @end_pfn:	end pfn of the range
  *
  * This function will also merge the overlapped ranges, and sort the array
  * by start_pfn in monotonic increasing order.
@@ -5142,9 +5142,9 @@ static void __init insert_movablecore_map(unsigned long start_pfn,
 }
 
 /**
- * movablecore_map_add_region - Add a memory range into movablecore_map.
- * @start: physical start address of range
- * @end: physical end address of range
+ * movablecore_map_add_region() - Add a memory range into movablecore_map.
+ * @start:	physical start address of range
+ * @end:	physical end address of range
  *
  * This function transform the physical address into pfn, and then add the
  * range into movablecore_map by calling insert_movablecore_map().
@@ -5171,8 +5171,13 @@ static void __init movablecore_map_add_region(u64 start, u64 size)
 }
 
 /*
- * movablecore_map=nn[KMG]@ss[KMG] sets the region of memory to be used as
- * movable memory.
+ * cmdline_parse_movablecore_map() - Parse boot option movablecore_map.
+ * @p:	The boot option of the following format:
+ * 	movablecore_map=nn[KMG]@ss[KMG]
+ *
+ * This option sets the memory range [ss, ss+nn) to be used as movable memory.
+ *
+ * Return: 0 on success or -EINVAL on failure.
  */
 static int __init cmdline_parse_movablecore_map(char *p)
 {
