@@ -234,7 +234,6 @@ static unsigned long highmem_dirtyable_memory(unsigned long total)
 static unsigned long global_dirtyable_memory(void)
 {
 	unsigned long x;
-	extern int min_free_kbytes;
 
 	x = global_page_state(NR_FREE_PAGES) + global_reclaimable_pages();
 	x -= min(x, dirty_balance_reserve);
