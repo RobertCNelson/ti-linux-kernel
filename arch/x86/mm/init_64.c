@@ -1011,7 +1011,7 @@ remove_pagetable(unsigned long start, unsigned long end, bool direct)
 	flush_tlb_all();
 }
 
-void __meminit
+static void __meminit
 kernel_physical_mapping_remove(unsigned long start, unsigned long end)
 {
 	start = (unsigned long)__va(start);
