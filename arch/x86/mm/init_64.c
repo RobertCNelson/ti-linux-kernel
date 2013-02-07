@@ -840,7 +840,7 @@ remove_pte_table(pte_t *pte_start, unsigned long addr, unsigned long end,
 		} else {
 			/*
 			 * If we are not removing the whole page, it means
-			 * other ptes in this page are being used and we canot
+			 * other ptes in this page are being used and we cannot
 			 * remove them. So fill the unused ptes with 0xFD, and
 			 * remove the page when it is wholly filled with 0xFD.
 			 */
