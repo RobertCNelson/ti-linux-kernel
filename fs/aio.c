@@ -224,28 +224,40 @@ static int aio_setup_ring(struct kioctx *ctx)
 
 void kiocb_set_cancel_fn(struct kiocb *req, kiocb_cancel_fn *cancel)
 {
-	if (!req->ki_list.next) {
-		struct kioctx *ctx = req->ki_ctx;
-		unsigned long flags;
+	struct kioctx *ctx = req->ki_ctx;
+	unsigned long flags;
 
-		spin_lock_irqsave(&ctx->ctx_lock, flags);
+	spin_lock_irqsave(&ctx->ctx_lock, flags);
+
+	if (!req->ki_list.next)
 		list_add(&req->ki_list, &ctx->active_reqs);
-		spin_unlock_irqrestore(&ctx->ctx_lock, flags);
-	}
 
 	req->ki_cancel = cancel;
+
+	spin_unlock_irqrestore(&ctx->ctx_lock, flags);
 }
 EXPORT_SYMBOL(kiocb_set_cancel_fn);
 
 static int kiocb_cancel(struct kioctx *ctx, struct kiocb *kiocb,
 			struct io_event *res)
 {
-	kiocb_cancel_fn *cancel;
+	kiocb_cancel_fn *old, *cancel;
 	int ret = -EINVAL;
 
-	cancel = xchg(&kiocb->ki_cancel, KIOCB_CANCELLED);
-	if (!cancel || cancel == KIOCB_CANCELLED)
-		return ret;
+	/*
+	 * Don't want to set kiocb->ki_cancel = KIOCB_CANCELLED unless it
+	 * actually has a cancel function, hence the cmpxchg()
+	 */
+
+	cancel = ACCESS_ONCE(kiocb->ki_cancel);
+	do {
+		if (!cancel || cancel == KIOCB_CANCELLED)
+			return ret;
+
+		BUG();
+		old = cancel;
+		cancel = cmpxchg(&kiocb->ki_cancel, old, KIOCB_CANCELLED);
+	} while (cancel != old);
 
 	atomic_inc(&kiocb->ki_users);
 	spin_unlock_irq(&ctx->ctx_lock);
