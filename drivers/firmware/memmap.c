@@ -150,12 +150,12 @@ static int firmware_map_add_entry(u64 start, u64 end,
  * firmware_map_remove_entry() - Does the real work to remove a firmware
  * memmap entry.
  * @entry: removed entry.
+ *
+ * The caller must hold map_entries_lock, and release it properly.
  **/
 static inline void firmware_map_remove_entry(struct firmware_map_entry *entry)
 {
-	spin_lock(&map_entries_lock);
 	list_del(&entry->list);
-	spin_unlock(&map_entries_lock);
 }
 
 /*
@@ -188,23 +188,28 @@ static inline void remove_sysfs_fw_map_entry(struct firmware_map_entry *entry)
 }
 
 /*
- * Search memmap entry
+ * firmware_map_find_entry: Search memmap entry.
+ * @start: Start of the memory range.
+ * @end:   End of the memory range (exclusive).
+ * @type:  Type of the memory range.
+ *
+ * This function is to find the memmap entey of a given memory range.
+ * The caller must hold map_entries_lock, and must not release the lock
+ * until the processing of the returned entry has completed.
+ *
+ * Return pointer to the entry to be found on success, or NULL on failure.
  */
-
 static struct firmware_map_entry * __meminit
 firmware_map_find_entry(u64 start, u64 end, const char *type)
 {
 	struct firmware_map_entry *entry;
 
-	spin_lock(&map_entries_lock);
 	list_for_each_entry(entry, &map_entries, list)
 		if ((entry->start == start) && (entry->end == end) &&
 		    (!strcmp(entry->type, type))) {
-			spin_unlock(&map_entries_lock);
 			return entry;
 		}
 
-	spin_unlock(&map_entries_lock);
 	return NULL;
 }
 
@@ -274,11 +279,15 @@ int __meminit firmware_map_remove(u64 start, u64 end, const char *type)
 {
 	struct firmware_map_entry *entry;
 
+	spin_lock(&map_entries_lock);
 	entry = firmware_map_find_entry(start, end - 1, type);
-	if (!entry)
+	if (!entry) {
+		spin_unlock(&map_entries_lock);
 		return -EINVAL;
+	}
 
 	firmware_map_remove_entry(entry);
+	spin_unlock(&map_entries_lock);
 
 	/* remove the memmap entry */
 	remove_sysfs_fw_map_entry(entry);
