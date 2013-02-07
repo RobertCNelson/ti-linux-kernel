@@ -103,7 +103,8 @@ static int rx4581_get_datetime(struct device *dev, struct rtc_time *tm)
 {
 	struct spi_device *spi = to_spi_device(dev);
 	unsigned char date[7];
-	unsigned char data, err;
+	unsigned char data;
+	int err;
 
 	/* First we ensure that the "update flag" is not set, we read the
 	 * time and date then re-read the "update flag". If the update flag
