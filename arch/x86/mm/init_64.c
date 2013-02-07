@@ -829,14 +829,13 @@ remove_pte_table(pte_t *pte_start, unsigned long addr, unsigned long end,
 
 		if (IS_ALIGNED(addr, PAGE_SIZE) &&
 		    IS_ALIGNED(next, PAGE_SIZE)) {
-			if (!direct) {
+			if (!direct)
 				free_pagetable(pte_page(*pte), 0);
-				pages++;
-			}
 
 			spin_lock(&init_mm.page_table_lock);
 			pte_clear(&init_mm, addr, pte);
 			spin_unlock(&init_mm.page_table_lock);
+			pages++;
 		} else {
 			/*
 			 * If we are not removing the whole page, it means
@@ -849,11 +848,11 @@ remove_pte_table(pte_t *pte_start, unsigned long addr, unsigned long end,
 
 			if (!memchr_inv(page_addr, PAGE_INUSE, PAGE_SIZE)) {
 				free_pagetable(pte_page(*pte), 0);
-				pages++;
 
 				spin_lock(&init_mm.page_table_lock);
 				pte_clear(&init_mm, addr, pte);
 				spin_unlock(&init_mm.page_table_lock);
+				pages++;
 			}
 		}
 	}
@@ -882,15 +881,14 @@ remove_pmd_table(pmd_t *pmd_start, unsigned long addr, unsigned long end,
 		if (pmd_large(*pmd)) {
 			if (IS_ALIGNED(addr, PMD_SIZE) &&
 			    IS_ALIGNED(next, PMD_SIZE)) {
-				if (!direct) {
+				if (!direct)
 					free_pagetable(pmd_page(*pmd),
 						       get_order(PMD_SIZE));
-					pages++;
-				}
 
 				spin_lock(&init_mm.page_table_lock);
 				pmd_clear(pmd);
 				spin_unlock(&init_mm.page_table_lock);
+				pages++;
 				continue;
 			}
 
@@ -939,15 +937,14 @@ remove_pud_table(pud_t *pud_start, unsigned long addr, unsigned long end,
 		if (pud_large(*pud)) {
 			if (IS_ALIGNED(addr, PUD_SIZE) &&
 			    IS_ALIGNED(next, PUD_SIZE)) {
-				if (!direct) {
+				if (!direct)
 					free_pagetable(pud_page(*pud),
 						       get_order(PUD_SIZE));
-					pages++;
-				}
 
 				spin_lock(&init_mm.page_table_lock);
 				pud_clear(pud);
 				spin_unlock(&init_mm.page_table_lock);
+				pages++;
 				continue;
 			}
 
