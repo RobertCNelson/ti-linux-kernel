@@ -1011,6 +1011,14 @@ remove_pagetable(unsigned long start, unsigned long end, bool direct)
 	flush_tlb_all();
 }
 
+void __ref vmemmap_free(struct page *memmap, unsigned long nr_pages)
+{
+	unsigned long start = (unsigned long)memmap;
+	unsigned long end = (unsigned long)(memmap + nr_pages);
+
+	remove_pagetable(start, end, false);
+}
+
 static void __meminit
 kernel_physical_mapping_remove(unsigned long start, unsigned long end)
 {
@@ -1346,14 +1354,6 @@ vmemmap_populate(struct page *start_page, unsigned long size, int node)
 	}
 	sync_global_pgds((unsigned long)start_page, end - 1);
 	return 0;
-}
-
-void __ref vmemmap_free(struct page *memmap, unsigned long nr_pages)
-{
-	unsigned long start = (unsigned long)memmap;
-	unsigned long end = (unsigned long)(memmap + nr_pages);
-
-	remove_pagetable(start, end, false);
 }
 
 #if defined(CONFIG_MEMORY_HOTPLUG_SPARSE) && defined(CONFIG_HAVE_BOOTMEM_INFO_NODE)
