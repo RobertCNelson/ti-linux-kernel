@@ -5079,7 +5079,7 @@ early_param("kernelcore", cmdline_parse_kernelcore);
 early_param("movablecore", cmdline_parse_movablecore);
 
 /**
- * insert_movablecore_map() - Insert a memory range in to movablecore_map.map.
+ * insert_movablecore_map - Insert a memory range in to movablecore_map.map.
  * @start_pfn:	start pfn of the range
  * @end_pfn:	end pfn of the range
  *
@@ -5142,7 +5142,7 @@ static void __init insert_movablecore_map(unsigned long start_pfn,
 }
 
 /**
- * movablecore_map_add_region() - Add a memory range into movablecore_map.
+ * movablecore_map_add_region - Add a memory range into movablecore_map.
  * @start:	physical start address of range
  * @end:	physical end address of range
  *
@@ -5171,7 +5171,7 @@ static void __init movablecore_map_add_region(u64 start, u64 size)
 }
 
 /*
- * cmdline_parse_movablecore_map() - Parse boot option movablecore_map.
+ * cmdline_parse_movablecore_map - Parse boot option movablecore_map.
  * @p:	The boot option of the following format:
  *	movablecore_map=nn[KMG]@ss[KMG]
  *
