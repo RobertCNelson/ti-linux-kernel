@@ -381,7 +381,7 @@ enum {
 		((1 << KMEM_ACCOUNTED_ACTIVE) | (1 << KMEM_ACCOUNTED_ACTIVATED))
 
 #ifdef CONFIG_MEMCG_KMEM
-static inline void memcg_kmem_set_active(struct mem_cgroup *memcg)
+static void memcg_kmem_set_active(struct mem_cgroup *memcg)
 {
 	set_bit(KMEM_ACCOUNTED_ACTIVE, &memcg->kmem_account_flags);
 }
@@ -645,6 +645,7 @@ static void drain_all_stock_async(struct mem_cgroup *memcg);
 static struct mem_cgroup_per_zone *
 mem_cgroup_zoneinfo(struct mem_cgroup *memcg, int nid, int zid)
 {
+	VM_BUG_ON((unsigned)nid >= nr_node_ids);
 	return &memcg->info.nodeinfo[nid]->zoneinfo[zid];
 }
 
