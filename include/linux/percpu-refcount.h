@@ -21,19 +21,18 @@
  * BACKGROUND:
  *
  * Percpu refcounts are quite useful for performance, but if we blindly
- * converted all refcounts to percpu counters we'd waste quite a bit of memory
- * think about all the refcounts embedded in kobjects, files, etc. most of which
- * aren't used much.
+ * converted all refcounts to percpu counters we'd waste quite a bit of memory.
  *
- * These start out as simple atomic counters - a little bigger than a bare
- * atomic_t, 16 bytes instead of 4 - but if we exceed some arbitrary number of
- * gets in one second, we then switch to percpu counters.
+ * Think about all the refcounts embedded in kobjects, files, etc. most of which
+ * aren't used much. These start out as simple atomic counters - a little bigger
+ * than a bare atomic_t, 16 bytes instead of 4 - but if we exceed some arbitrary
+ * number of gets in one second, we then switch to percpu counters.
  *
  * This heuristic isn't perfect because it'll fire if the refcount was only
  * being used on one cpu; ideally we'd be able to count the number of cache
  * misses on percpu_ref_get() or something similar, but that'd make the non
  * percpu path significantly heavier/more complex. We can count the number of
- * gets() without any extra atomic instructions, on arches that support
+ * gets() without any extra atomic instructions on arches that support
  * atomic64_t - simply by changing the atomic_inc() to atomic_add_return().
  *
  * USAGE:
