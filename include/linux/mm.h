@@ -1361,15 +1361,15 @@ extern void free_bootmem_with_active_regions(int nid,
 						unsigned long max_low_pfn);
 extern void sparse_memory_present_with_active_regions(int nid);
 
-#define MOVABLECORE_MAP_MAX MAX_NUMNODES
-struct movablecore_entry {
+#define MOVABLEMEM_MAP_MAX MAX_NUMNODES
+struct movablemem_entry {
 	unsigned long start_pfn;    /* start pfn of memory segment */
 	unsigned long end_pfn;      /* end pfn of memory segment (exclusive) */
 };
 
-struct movablecore_map {
+struct movablemem_map {
 	int nr_map;
-	struct movablecore_entry map[MOVABLECORE_MAP_MAX];
+	struct movablemem_entry map[MOVABLEMEM_MAP_MAX];
 };
 
 #endif /* CONFIG_HAVE_MEMBLOCK_NODE_MAP */
