@@ -4763,8 +4763,9 @@ static void mem_cgroup_reparent_charges(struct mem_cgroup *memcg)
 }
 
 /*
- * this mainly exists for tests during set of use_hierarchy. Since this is
- * the very setting we are changing, the current hierarchy value is meaningless
+ * This mainly exists for tests during the setting of set of use_hierarchy.
+ * Since this is the very setting we are changing, the current hierarchy value
+ * is meaningless
  */
 static inline bool __memcg_has_children(struct mem_cgroup *memcg)
 {
@@ -4777,11 +4778,11 @@ static inline bool __memcg_has_children(struct mem_cgroup *memcg)
 }
 
 /*
- * must be called with cgroup_lock held, unless the cgroup is guaranteed to be
- * already dead (like in mem_cgroup_force_empty, for instance).  This is
- * different than mem_cgroup_count_children, in the sense that we don't really
- * care how many children we have, we only need to know if we have any. It is
- * also count any memcg without hierarchy as infertile for that matter.
+ * Must be called with cgroup_lock held, unless the cgroup is guaranteed to be
+ * already dead (in mem_cgroup_force_empty(), for instance).  This is different
+ * from mem_cgroup_count_children(), in the sense that we don't really care how
+ * many children we have; we only need to know if we have any.  It also counts
+ * any memcg without hierarchy as infertile.
  */
 static inline bool memcg_has_children(struct mem_cgroup *memcg)
 {
