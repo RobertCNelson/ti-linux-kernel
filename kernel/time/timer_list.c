@@ -259,12 +259,12 @@ static int timer_list_show(struct seq_file *m, void *v)
 			   HRTIMER_MAX_CLOCK_BASES);
 		SEQ_printf(m, "now at %Ld nsecs\n", (unsigned long long)now);
 		SEQ_printf(m, "\n");
-	} else if (v < (void *)(nr_cpu_ids + 2)) {
+	} else if (v < (void *)(unsigned long)(nr_cpu_ids + 2)) {
 		cpu = (unsigned long)(v - 2);
 		print_cpu(m, cpu, now);
 	}
 #ifdef CONFIG_GENERIC_CLOCKEVENTS
-	else if (v == (void *)nr_cpu_ids + 2) {
+	else if (v == (void *)(unsigned long)nr_cpu_ids + 2) {
 		timer_list_show_tickdevices_header(m);
 	} else {
 		cpu = (unsigned long)(v - 3 - nr_cpu_ids);
@@ -306,7 +306,7 @@ static void *timer_list_start(struct seq_file *file, loff_t *offset)
 
 #ifdef CONFIG_GENERIC_CLOCKEVENTS
 	if (n == nr_cpu_ids + 1)
-		return (void *) (nr_cpu_ids + 2);
+		return (void *)(unsigned long)(nr_cpu_ids + 2);
 
 	if (n < nr_cpu_ids * 2 + 2) {
 		n -= (nr_cpu_ids + 2);
