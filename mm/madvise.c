@@ -509,14 +509,14 @@ SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
 		/* Still start < end. */
 		error = -ENOMEM;
 		if (!vma)
-			goto out;
+			goto out_plug;
 
 		/* Here start < (end|vma->vm_end). */
 		if (start < vma->vm_start) {
 			unmapped_error = -ENOMEM;
 			start = vma->vm_start;
 			if (start >= end)
-				goto out;
+				goto out_plug;
 		}
 
 		/* Here vma->vm_start <= start < (end|vma->vm_end) */
@@ -527,20 +527,21 @@ SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
 		/* Here vma->vm_start <= start < tmp <= (end|vma->vm_end). */
 		error = madvise_vma(vma, &prev, start, tmp, behavior);
 		if (error)
-			goto out;
+			goto out_plug;
 		start = tmp;
 		if (prev && start < prev->vm_end)
 			start = prev->vm_end;
 		error = unmapped_error;
 		if (start >= end)
-			goto out;
+			goto out_plug;
 		if (prev)
 			vma = prev->vm_next;
 		else	/* madvise_remove dropped mmap_sem */
 			vma = find_vma(current->mm, start);
 	}
-out:
+out_plug:
 	blk_finish_plug(&plug);
+out:
 	if (write)
 		up_write(&current->mm->mmap_sem);
 	else
