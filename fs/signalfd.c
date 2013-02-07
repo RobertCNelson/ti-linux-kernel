@@ -75,14 +75,14 @@ static unsigned int signalfd_poll(struct file *file, poll_table *wait)
 }
 
 /*
- * Copy a whole siginfo into users spaces.
+ * Copy a whole siginfo into userspace.
  * The main idea of this format is that it should be enough
  * for restoring siginfo back into the kernel.
  */
 static int signalfd_copy_raw_info(struct signalfd_siginfo __user *siginfo,
 					siginfo_t *kinfo)
 {
-	siginfo_t *uinfo = (siginfo_t *) siginfo;
+	siginfo_t __user *uinfo = (siginfo_t __user *)siginfo;
 	int err;
 
 	BUILD_BUG_ON(sizeof(siginfo_t) != sizeof(struct signalfd_siginfo));
@@ -91,19 +91,20 @@ static int signalfd_copy_raw_info(struct signalfd_siginfo __user *siginfo,
 
 #ifdef CONFIG_COMPAT
 	if (unlikely(is_compat_task())) {
-		compat_siginfo_t *compat_uinfo = (compat_siginfo_t *) siginfo;
+		compat_siginfo_t __user *compat_uinfo;
 
+		compat_uinfo = (compat_siginfo_t __user *)siginfo;
 		err |= copy_siginfo_to_user32(compat_uinfo, kinfo);
 		err |= put_user(kinfo->si_code, &compat_uinfo->si_code);
 
-		return err ? -EFAULT: sizeof(*compat_uinfo);
+		return err ? -EFAULT : sizeof(*compat_uinfo);
 	}
 #endif
 
 	err |= copy_siginfo_to_user(uinfo, kinfo);
 	err |= put_user(kinfo->si_code, &uinfo->si_code);
 
-	return err ? -EFAULT: sizeof(*uinfo);
+	return err ? -EFAULT : sizeof(*uinfo);
 }
 
 /*
