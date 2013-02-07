@@ -680,6 +680,9 @@ static inline void kioctx_ring_unlock(struct kioctx *ctx, unsigned tail)
 {
 	struct aio_ring *ring;
 
+	if (!ctx)
+		return;
+
 	smp_wmb();
 	/* make event visible before updating tail */
 
@@ -757,8 +760,7 @@ void batch_complete_aio(struct batch_complete *batch)
 		}
 
 		if (unlikely(req->ki_ctx != ctx)) {
-			if (ctx)
-				kioctx_ring_unlock(ctx, tail);
+			kioctx_ring_unlock(ctx, tail);
 
 			ctx = req->ki_ctx;
 			tail = kioctx_ring_lock(ctx);
