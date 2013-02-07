@@ -2018,7 +2018,8 @@ F:	drivers/misc/*
 
 CHECKPATCH
 M:	Andy Whitcroft <apw@canonical.com>
-S:	Supported
+M:	Joe Perches <joe@perches.com>
+S:	Maintained
 F:	scripts/checkpatch.pl
 
 CHINESE DOCUMENTATION
