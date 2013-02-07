@@ -1,0 +1,140 @@
+/*
+ * Copyright (C) 2013 Texas Instruments Incorporated - http://www.ti.com/
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+/dts-v1/;
+
+#include "dra7.dtsi"
+
+/ {
+	model = "TI DRA7";
+	compatible = "ti,dra7-evm", "ti,dra752", "ti,dra7";
+
+	memory {
+		device_type = "memory";
+		reg = <0x80000000 0x60000000>; /* 1536 MB */
+	};
+};
+
+&dra7_pmx_core {
+	i2c1_pins: pinmux_i2c1_pins {
+		pinctrl-single,pins = <
+			0x400 0x60000	/* i2c1_sda */
+			0x404 0x60000	/* i2c1_scl */
+		>;
+	};
+
+	i2c2_pins: pinmux_i2c2_pins {
+		pinctrl-single,pins = <
+			0x408 0x60000	/* i2c2_sda */
+			0x40c 0x60000	/* i2c2_scl */
+		>;
+	};
+
+	i2c3_pins: pinmux_i2c3_pins {
+		pinctrl-single,pins = <
+			0x410 0x60000	/* i2c3_sda */
+			0x414 0x60000	/* i2c3_scl */
+		>;
+	};
+
+	mcspi1_pins: pinmux_mcspi1_pins {
+		pinctrl-single,pins = <
+			0x3a4 0x40000	/* spi2_clk */
+			0x3a8 0x40000	/* spi2_d1 */
+			0x3ac 0x40000	/* spi2_d0 */
+			0x3b0 0xc0000	/* spi2_cs0 */
+			0x3b4 0xc0000	/* spi2_cs1 */
+			0x3b8 0xe0006	/* spi2_cs2 */
+			0x3bc 0xe0006	/* spi2_cs3 */
+		>;
+	};
+
+	mcspi2_pins: pinmux_mcspi2_pins {
+		pinctrl-single,pins = <
+			0x3c0 0x40000	/* spi2_sclk */
+			0x3c4 0xc0000	/* spi2_d1 */
+			0x3c8 0xc0000	/* spi2_d1 */
+			0x3cc 0xe0000	/* spi2_cs0 */
+		>;
+	};
+
+	uart1_pins: pinmux_uart1_pins {
+		pinctrl-single,pins = <
+			0x3e0 0xe0000	/* uart1_rxd */
+			0x3e4 0xe0000	/* uart1_txd */
+			0x3e8 0x60003	/* uart1_ctsn */
+			0x3ec 0x60003	/* uart1_rtsn */
+		>;
+	};
+
+	uart2_pins: pinmux_uart2_pins {
+		pinctrl-single,pins = <
+			0x3f0 0x60000 /* uart2_rxd */
+			0x3f4 0x60000 /* uart2_txd */
+			0x3f8 0x60000 /* uart2_ctsn */
+			0x3fc 0x60000 /* uart2_rtsn */
+		>;
+	};
+
+	uart3_pins: pinmux_uart3_pins {
+		pinctrl-single,pins = <
+			0x248 0xc0000 /* uart3_rxd */
+			0x24c 0xc0000 /* uart3_txd */
+		>;
+	};
+};
+
+&i2c1 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c1_pins>;
+	clock-frequency = <400000>;
+};
+
+&i2c2 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c2_pins>;
+	clock-frequency = <400000>;
+};
+
+&i2c3 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c3_pins>;
+	clock-frequency = <3400000>;
+};
+
+&mcspi1 {
+        status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&mcspi1_pins>;
+};
+
+&mcspi2 {
+        status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&mcspi2_pins>;
+};
+
+&uart1 {
+	status = "okay";
+        pinctrl-names = "default";
+        pinctrl-0 = <&uart1_pins>;
+};
+
+&uart2 {
+        status = "okay";
+        pinctrl-names = "default";
+        pinctrl-0 = <&uart2_pins>;
+};
+
+&uart3 {
+        status = "okay";
+        pinctrl-names = "default";
+        pinctrl-0 = <&uart3_pins>;
+};
