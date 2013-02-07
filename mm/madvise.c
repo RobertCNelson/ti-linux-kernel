@@ -16,6 +16,9 @@
 #include <linux/ksm.h>
 #include <linux/fs.h>
 #include <linux/file.h>
+#include <linux/blkdev.h>
+#include <linux/swap.h>
+#include <linux/swapops.h>
 
 /*
  * Any behaviour which results in changes to the vma->vm_flags needs to
@@ -131,6 +134,82 @@ out:
 	return error;
 }
 
+static int swapin_walk_pmd_entry(pmd_t *pmd, unsigned long start,
+	unsigned long end, struct mm_walk *walk)
+{
+	pte_t *orig_pte;
+	struct vm_area_struct *vma = walk->private;
+	unsigned long index;
+
+	if (pmd_none_or_trans_huge_or_clear_bad(pmd))
+		return 0;
+
+	for (index = start; index != end; index += PAGE_SIZE) {
+		pte_t pte;
+		swp_entry_t entry;
+		struct page *page;
+		spinlock_t *ptl;
+
+		orig_pte = pte_offset_map_lock(vma->vm_mm, pmd, start, &ptl);
+		pte = *(orig_pte + ((index - start) / PAGE_SIZE));
+		pte_unmap_unlock(orig_pte, ptl);
+
+		if (pte_present(pte) || pte_none(pte) || pte_file(pte))
+			continue;
+		entry = pte_to_swp_entry(pte);
+		if (unlikely(non_swap_entry(entry)))
+			continue;
+
+		page = read_swap_cache_async(entry, GFP_HIGHUSER_MOVABLE,
+								vma, index);
+		if (page)
+			page_cache_release(page);
+	}
+
+	return 0;
+}
+
+static void force_swapin_readahead(struct vm_area_struct *vma,
+		unsigned long start, unsigned long end)
+{
+	struct mm_walk walk = {
+		.mm = vma->vm_mm,
+		.pmd_entry = swapin_walk_pmd_entry,
+		.private = vma,
+	};
+
+	walk_page_range(start, end, &walk);
+
+	lru_add_drain();	/* Push any new pages onto the LRU now */
+}
+
+static void force_shm_swapin_readahead(struct vm_area_struct *vma,
+		unsigned long start, unsigned long end,
+		struct address_space *mapping)
+{
+	pgoff_t index;
+	struct page *page;
+	swp_entry_t swap;
+
+	for (; start < end; start += PAGE_SIZE) {
+		index = ((start - vma->vm_start) >> PAGE_SHIFT) + vma->vm_pgoff;
+
+		page = find_get_page(mapping, index);
+		if (!radix_tree_exceptional_entry(page)) {
+			if (page)
+				page_cache_release(page);
+			continue;
+		}
+		swap = radix_to_swp_entry(page);
+		page = read_swap_cache_async(swap, GFP_HIGHUSER_MOVABLE,
+								NULL, 0);
+		if (page)
+			page_cache_release(page);
+	}
+
+	lru_add_drain();	/* Push any new pages onto the LRU now */
+}
+
 /*
  * Schedule all required I/O operations.  Do not wait for completion.
  */
@@ -139,6 +218,18 @@ static long madvise_willneed(struct vm_area_struct * vma,
 			     unsigned long start, unsigned long end)
 {
 	struct file *file = vma->vm_file;
+
+#ifdef CONFIG_SWAP
+	if (!file || mapping_cap_swap_backed(file->f_mapping)) {
+		*prev = vma;
+		if (!file)
+			force_swapin_readahead(vma, start, end);
+		else
+			force_shm_swapin_readahead(vma, start, end,
+						file->f_mapping);
+		return 0;
+	}
+#endif
 
 	if (!file)
 		return -EBADF;
@@ -371,6 +462,7 @@ SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
 	int error = -EINVAL;
 	int write;
 	size_t len;
+	struct blk_plug plug;
 
 #ifdef CONFIG_MEMORY_FAILURE
 	if (behavior == MADV_HWPOISON || behavior == MADV_SOFT_OFFLINE)
@@ -410,6 +502,7 @@ SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
 	if (vma && start > vma->vm_start)
 		prev = vma;
 
+	blk_start_plug(&plug);
 	for (;;) {
 		/* Still start < end. */
 		error = -ENOMEM;
@@ -445,6 +538,7 @@ SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
 			vma = find_vma(current->mm, start);
 	}
 out:
+	blk_finish_plug(&plug);
 	if (write)
 		up_write(&current->mm->mmap_sem);
 	else
