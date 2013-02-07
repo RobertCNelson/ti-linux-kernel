@@ -207,6 +207,17 @@ free_initrd_mem (unsigned long start, unsigned long end)
 	start = PAGE_ALIGN(start);
 	end = end & PAGE_MASK;
 
+	/*
+	 * Initrd size is fixed in boot loader, but kernel parameter max_addr
+	 * which aligns in granules is fixed after boot loader, so initrd size
+	 * maybe overflow.
+	 */
+	if (max_addr != ~0UL) {
+		end = GRANULEROUNDDOWN(end);
+		if (start > end)
+			start = end;
+	}
+
 	if (start < end)
 		printk(KERN_INFO "Freeing initrd memory: %ldkB freed\n", (end - start) >> 10);
 
