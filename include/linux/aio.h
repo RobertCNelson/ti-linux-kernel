@@ -14,6 +14,17 @@ struct kiocb;
 
 #define KIOCB_SYNC_KEY		(~0U)
 
+/*
+ * We use ki_cancel == KIOCB_CANCELLED to indicate that a kiocb has been either
+ * cancelled or completed (this makes a certain amount of sense because
+ * successful cancellation - io_cancel() - does deliver the completion to
+ * userspace).
+ *
+ * And since most things don't implement kiocb cancellation and we'd really like
+ * kiocb completion to be lockless when possible, we use ki_cancel to
+ * synchronize cancellation and completion - we only set it to KIOCB_CANCELLED
+ * with xchg() or cmpxchg(), see batch_complete_aio() and kiocb_cancel().
+ */
 #define KIOCB_CANCELLED		((void *) (~0ULL))
 
 typedef int (kiocb_cancel_fn)(struct kiocb *, struct io_event *);
