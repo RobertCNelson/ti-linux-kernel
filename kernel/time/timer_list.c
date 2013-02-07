@@ -275,8 +275,8 @@ static int timer_list_show(struct seq_file *m, void *v)
 }
 
 /*
- * This itererator really needs some explination since it is offset and has
- * two passes one of which is controlled by a config option.
+ * This itererator really needs some explnation since it is offset and has
+ * two passes, one of which is controlled by a config option.
  * In a hotplugged system some cpus, including cpu 0, may be missing so we have
  * to use cpumask_* to iterate over the cpus.
  * For the first pass:
