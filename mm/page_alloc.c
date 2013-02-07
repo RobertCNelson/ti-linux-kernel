@@ -5317,7 +5317,7 @@ static int __init cmdline_parse_movablemem_map(char *p)
 	if (!p)
 		goto err;
 
-	if (!strncmp(p, "acpi", max(4, strlen(p))))
+	if (!strncmp(p, "acpi", max_t(size_t, 4, strlen(p))))
 		movablemem_map.acpi = true;
 
 	/*
