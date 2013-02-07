@@ -103,7 +103,7 @@ to_memmap_entry(struct kobject *kobj)
 	return container_of(kobj, struct firmware_map_entry, kobj);
 }
 
-static void release_firmware_map_entry(struct kobject *kobj)
+static void __meminit release_firmware_map_entry(struct kobject *kobj)
 {
 	struct firmware_map_entry *entry = to_memmap_entry(kobj);
 
@@ -127,7 +127,7 @@ static void release_firmware_map_entry(struct kobject *kobj)
 	kfree(entry);
 }
 
-static struct kobj_type memmap_ktype = {
+static struct kobj_type __refdata memmap_ktype = {
 	.release	= release_firmware_map_entry,
 	.sysfs_ops	= &memmap_attr_ops,
 	.default_attrs	= def_attrs,
