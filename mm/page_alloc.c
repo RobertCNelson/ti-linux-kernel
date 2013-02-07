@@ -5173,7 +5173,7 @@ static void __init movablecore_map_add_region(u64 start, u64 size)
 /*
  * cmdline_parse_movablecore_map() - Parse boot option movablecore_map.
  * @p:	The boot option of the following format:
- * 	movablecore_map=nn[KMG]@ss[KMG]
+ *	movablecore_map=nn[KMG]@ss[KMG]
  *
  * This option sets the memory range [ss, ss+nn) to be used as movable memory.
  *
