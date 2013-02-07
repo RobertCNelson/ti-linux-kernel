@@ -829,6 +829,10 @@ remove_pte_table(pte_t *pte_start, unsigned long addr, unsigned long end,
 
 		if (IS_ALIGNED(addr, PAGE_SIZE) &&
 		    IS_ALIGNED(next, PAGE_SIZE)) {
+			/*
+			 * Do not free direct mapping pages since they were
+			 * freed when offlining.
+			 */
 			if (!direct)
 				free_pagetable(pte_page(*pte), 0);
 
@@ -844,10 +848,11 @@ remove_pte_table(pte_t *pte_start, unsigned long addr, unsigned long end,
 			 * remove the page when it is wholly filled with 0xFD.
 			 */
 			memset((void *)addr, PAGE_INUSE, next - addr);
-			page_addr = page_address(pte_page(*pte));
 
+			page_addr = page_address(pte_page(*pte));
 			if (!memchr_inv(page_addr, PAGE_INUSE, PAGE_SIZE)) {
-				free_pagetable(pte_page(*pte), 0);
+				if (!direct)
+					free_pagetable(pte_page(*pte), 0);
 
 				spin_lock(&init_mm.page_table_lock);
 				pte_clear(&init_mm, addr, pte);
