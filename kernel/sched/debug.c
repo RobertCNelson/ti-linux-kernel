@@ -407,7 +407,7 @@ void sysrq_sched_debug_show(void)
 }
 
 /*
- * This itererator needs some explination.
+ * This itererator needs some explanation.
  * It returns 1 for the header position.
  * This means 2 is cpu 0.
  * In a hotplugged system some cpus, including cpu 0, may be missing so we have
