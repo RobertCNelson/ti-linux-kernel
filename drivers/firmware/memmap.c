@@ -209,7 +209,7 @@ static inline void remove_sysfs_fw_map_entry(struct firmware_map_entry *entry)
 }
 
 /*
- * firmware_map_find_entry_in_list: Search memmap entry in a given list.
+ * firmware_map_find_entry_in_list() - Search memmap entry in a given list.
  * @start: Start of the memory range.
  * @end:   End of the memory range (exclusive).
  * @type:  Type of the memory range.
@@ -219,7 +219,7 @@ static inline void remove_sysfs_fw_map_entry(struct firmware_map_entry *entry)
  * given list. The caller must hold map_entries_lock, and must not release
  * the lock until the processing of the returned entry has completed.
  *
- * Return pointer to the entry to be found on success, or NULL on failure.
+ * Return: Pointer to the entry to be found on success, or NULL on failure.
  */
 static struct firmware_map_entry * __meminit
 firmware_map_find_entry_in_list(u64 start, u64 end, const char *type,
@@ -237,7 +237,7 @@ firmware_map_find_entry_in_list(u64 start, u64 end, const char *type,
 }
 
 /*
- * firmware_map_find_entry: Search memmap entry in map_entries.
+ * firmware_map_find_entry() - Search memmap entry in map_entries.
  * @start: Start of the memory range.
  * @end:   End of the memory range (exclusive).
  * @type:  Type of the memory range.
@@ -246,7 +246,7 @@ firmware_map_find_entry_in_list(u64 start, u64 end, const char *type,
  * The caller must hold map_entries_lock, and must not release the lock
  * until the processing of the returned entry has completed.
  *
- * Return pointer to the entry to be found on success, or NULL on failure.
+ * Return: Pointer to the entry to be found on success, or NULL on failure.
  */
 static struct firmware_map_entry * __meminit
 firmware_map_find_entry(u64 start, u64 end, const char *type)
@@ -255,7 +255,7 @@ firmware_map_find_entry(u64 start, u64 end, const char *type)
 }
 
 /*
- * firmware_map_find_entry_bootmem: Search memmap entry in map_entries_bootmem.
+ * firmware_map_find_entry_bootmem() - Search memmap entry in map_entries_bootmem.
  * @start: Start of the memory range.
  * @end:   End of the memory range (exclusive).
  * @type:  Type of the memory range.
@@ -263,7 +263,7 @@ firmware_map_find_entry(u64 start, u64 end, const char *type)
  * This function is similar to firmware_map_find_entry except that it find the
  * given entry in map_entries_bootmem.
  *
- * Return pointer to the entry to be found on success, or NULL on failure.
+ * Return: Pointer to the entry to be found on success, or NULL on failure.
  */
 static struct firmware_map_entry * __meminit
 firmware_map_find_entry_bootmem(u64 start, u64 end, const char *type)
