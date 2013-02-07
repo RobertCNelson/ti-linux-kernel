@@ -24,6 +24,7 @@
 #include <linux/mempool.h>
 #include <linux/ioprio.h>
 #include <linux/bug.h>
+#include <linux/batch_complete.h>
 
 #ifdef CONFIG_BLOCK
 
@@ -438,10 +439,6 @@ static inline bool bio_mergeable(struct bio *bio)
  * member of the bio.  The bio_list also caches the last list member to allow
  * fast access to the tail.
  */
-struct bio_list {
-	struct bio *head;
-	struct bio *tail;
-};
 
 static inline int bio_list_empty(const struct bio_list *bl)
 {
@@ -544,11 +541,6 @@ static inline struct bio *bio_list_get(struct bio_list *bl)
 
 	return bio;
 }
-
-struct batch_complete {
-	struct bio_list		bio;
-	struct rb_root		kiocb;
-};
 
 void bio_endio_batch(struct bio *bio, int error, struct batch_complete *batch);
 

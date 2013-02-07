@@ -7,7 +7,7 @@
 #include <linux/uio.h>
 #include <linux/rcupdate.h>
 #include <linux/atomic.h>
-#include <linux/rbtree.h>
+#include <linux/batch_complete.h>
 
 struct kioctx;
 struct kiocb;
