@@ -258,7 +258,7 @@ static inline int __next_wq_cpu(int cpu, const struct cpumask *mask,
 		if (sw & 2)
 			return WORK_CPU_UNBOUND;
 	}
-	return WORK_CPU_NONE;
+	return WORK_CPU_END;
 }
 
 static inline int __next_cwq_cpu(int cpu, const struct cpumask *mask,
@@ -282,17 +282,17 @@ static inline int __next_cwq_cpu(int cpu, const struct cpumask *mask,
  */
 #define for_each_wq_cpu(cpu)						\
 	for ((cpu) = __next_wq_cpu(-1, cpu_possible_mask, 3);		\
-	     (cpu) < WORK_CPU_NONE;					\
+	     (cpu) < WORK_CPU_END;					\
 	     (cpu) = __next_wq_cpu((cpu), cpu_possible_mask, 3))
 
 #define for_each_online_wq_cpu(cpu)					\
 	for ((cpu) = __next_wq_cpu(-1, cpu_online_mask, 3);		\
-	     (cpu) < WORK_CPU_NONE;					\
+	     (cpu) < WORK_CPU_END;					\
 	     (cpu) = __next_wq_cpu((cpu), cpu_online_mask, 3))
 
 #define for_each_cwq_cpu(cpu, wq)					\
 	for ((cpu) = __next_cwq_cpu(-1, cpu_possible_mask, (wq));	\
-	     (cpu) < WORK_CPU_NONE;					\
+	     (cpu) < WORK_CPU_END;					\
 	     (cpu) = __next_cwq_cpu((cpu), cpu_possible_mask, (wq)))
 
 #ifdef CONFIG_DEBUG_OBJECTS_WORK
@@ -554,6 +554,13 @@ static void set_work_cwq(struct work_struct *work,
 {
 	set_work_data(work, (unsigned long)cwq,
 		      WORK_STRUCT_PENDING | WORK_STRUCT_CWQ | extra_flags);
+}
+
+static void set_work_pool_and_keep_pending(struct work_struct *work,
+					   int pool_id)
+{
+	set_work_data(work, (unsigned long)pool_id << WORK_OFFQ_POOL_SHIFT,
+		      WORK_STRUCT_PENDING);
 }
 
 static void set_work_pool_and_clear_pending(struct work_struct *work,
@@ -1061,6 +1068,7 @@ static int try_to_grab_pending(struct work_struct *work, bool is_dwork,
 			       unsigned long *flags)
 {
 	struct worker_pool *pool;
+	struct cpu_workqueue_struct *cwq;
 
 	local_irq_save(*flags);
 
@@ -1090,34 +1098,36 @@ static int try_to_grab_pending(struct work_struct *work, bool is_dwork,
 		goto fail;
 
 	spin_lock(&pool->lock);
-	if (!list_empty(&work->entry)) {
+	/*
+	 * work->data is guaranteed to point to cwq only while the work
+	 * item is queued on cwq->wq, and both updating work->data to point
+	 * to cwq on queueing and to pool on dequeueing are done under
+	 * cwq->pool->lock.  This in turn guarantees that, if work->data
+	 * points to cwq which is associated with a locked pool, the work
+	 * item is currently queued on that pool.
+	 */
+	cwq = get_work_cwq(work);
+	if (cwq && cwq->pool == pool) {
+		debug_work_deactivate(work);
+
 		/*
-		 * This work is queued, but perhaps we locked the wrong
-		 * pool.  In that case we must see the new value after
-		 * rmb(), see insert_work()->wmb().
+		 * A delayed work item cannot be grabbed directly because
+		 * it might have linked NO_COLOR work items which, if left
+		 * on the delayed_list, will confuse cwq->nr_active
+		 * management later on and cause stall.  Make sure the work
+		 * item is activated before grabbing.
 		 */
-		smp_rmb();
-		if (pool == get_work_pool(work)) {
-			debug_work_deactivate(work);
+		if (*work_data_bits(work) & WORK_STRUCT_DELAYED)
+			cwq_activate_delayed_work(work);
 
-			/*
-			 * A delayed work item cannot be grabbed directly
-			 * because it might have linked NO_COLOR work items
-			 * which, if left on the delayed_list, will confuse
-			 * cwq->nr_active management later on and cause
-			 * stall.  Make sure the work item is activated
-			 * before grabbing.
-			 */
-			if (*work_data_bits(work) & WORK_STRUCT_DELAYED)
-				cwq_activate_delayed_work(work);
+		list_del_init(&work->entry);
+		cwq_dec_nr_in_flight(get_work_cwq(work), get_work_color(work));
 
-			list_del_init(&work->entry);
-			cwq_dec_nr_in_flight(get_work_cwq(work),
-				get_work_color(work));
+		/* work->data points to cwq iff queued, point to pool */
+		set_work_pool_and_keep_pending(work, pool->id);
 
-			spin_unlock(&pool->lock);
-			return 1;
-		}
+		spin_unlock(&pool->lock);
+		return 1;
 	}
 	spin_unlock(&pool->lock);
 fail:
@@ -1149,13 +1159,6 @@ static void insert_work(struct cpu_workqueue_struct *cwq,
 
 	/* we own @work, set data and link */
 	set_work_cwq(work, cwq, extra_flags);
-
-	/*
-	 * Ensure that we get the right work->data if we see the
-	 * result of list_add() below, see try_to_grab_pending().
-	 */
-	smp_wmb();
-
 	list_add_tail(&work->entry, head);
 
 	/*
@@ -1339,10 +1342,9 @@ EXPORT_SYMBOL_GPL(queue_work);
 void delayed_work_timer_fn(unsigned long __data)
 {
 	struct delayed_work *dwork = (struct delayed_work *)__data;
-	struct cpu_workqueue_struct *cwq = get_work_cwq(&dwork->work);
 
 	/* should have been called from irqsafe timer with irq already off */
-	__queue_work(dwork->cpu, cwq->wq, &dwork->work);
+	__queue_work(dwork->cpu, dwork->wq, &dwork->work);
 }
 EXPORT_SYMBOL_GPL(delayed_work_timer_fn);
 
@@ -1351,7 +1353,6 @@ static void __queue_delayed_work(int cpu, struct workqueue_struct *wq,
 {
 	struct timer_list *timer = &dwork->timer;
 	struct work_struct *work = &dwork->work;
-	unsigned int lcpu;
 
 	WARN_ON_ONCE(timer->function != delayed_work_timer_fn ||
 		     timer->data != (unsigned long)dwork);
@@ -1371,30 +1372,7 @@ static void __queue_delayed_work(int cpu, struct workqueue_struct *wq,
 
 	timer_stats_timer_set_start_info(&dwork->timer);
 
-	/*
-	 * This stores cwq for the moment, for the timer_fn.  Note that the
-	 * work's pool is preserved to allow reentrance detection for
-	 * delayed works.
-	 */
-	if (!(wq->flags & WQ_UNBOUND)) {
-		struct worker_pool *pool = get_work_pool(work);
-
-		/*
-		 * If we cannot get the last pool from @work directly,
-		 * select the last CPU such that it avoids unnecessarily
-		 * triggering non-reentrancy check in __queue_work().
-		 */
-		lcpu = cpu;
-		if (pool)
-			lcpu = pool->cpu;
-		if (lcpu == WORK_CPU_UNBOUND)
-			lcpu = raw_smp_processor_id();
-	} else {
-		lcpu = WORK_CPU_UNBOUND;
-	}
-
-	set_work_cwq(work, get_cwq(lcpu, wq), 0);
-
+	dwork->wq = wq;
 	dwork->cpu = cpu;
 	timer->expires = jiffies + delay;
 
@@ -2814,15 +2792,10 @@ static bool start_flush_work(struct work_struct *work, struct wq_barrier *barr)
 		return false;
 
 	spin_lock_irq(&pool->lock);
-	if (!list_empty(&work->entry)) {
-		/*
-		 * See the comment near try_to_grab_pending()->smp_rmb().
-		 * If it was re-queued to a different pool under us, we
-		 * are not going to wait.
-		 */
-		smp_rmb();
-		cwq = get_work_cwq(work);
-		if (unlikely(!cwq || pool != cwq->pool))
+	/* see the comment in try_to_grab_pending() with the same code */
+	cwq = get_work_cwq(work);
+	if (cwq) {
+		if (unlikely(cwq->pool != pool))
 			goto already_gone;
 	} else {
 		worker = find_worker_executing_work(pool, work);
@@ -2944,8 +2917,7 @@ bool flush_delayed_work(struct delayed_work *dwork)
 {
 	local_irq_disable();
 	if (del_timer_sync(&dwork->timer))
-		__queue_work(dwork->cpu,
-			     get_work_cwq(&dwork->work)->wq, &dwork->work);
+		__queue_work(dwork->cpu, dwork->wq, &dwork->work);
 	local_irq_enable();
 	return flush_work(&dwork->work);
 }
@@ -3443,8 +3415,6 @@ EXPORT_SYMBOL_GPL(workqueue_congested);
  * Test whether @work is currently pending or running.  There is no
  * synchronization around this function and the test result is
  * unreliable and only useful as advisory hints or for debugging.
- * Especially for reentrant wqs, the pending state might hide the
- * running state.
  *
  * RETURNS:
  * OR'd bitmask of WORK_BUSY_* bits.
@@ -3455,17 +3425,15 @@ unsigned int work_busy(struct work_struct *work)
 	unsigned long flags;
 	unsigned int ret = 0;
 
-	if (!pool)
-		return 0;
-
-	spin_lock_irqsave(&pool->lock, flags);
-
 	if (work_pending(work))
 		ret |= WORK_BUSY_PENDING;
-	if (find_worker_executing_work(pool, work))
-		ret |= WORK_BUSY_RUNNING;
 
-	spin_unlock_irqrestore(&pool->lock, flags);
+	if (pool) {
+		spin_lock_irqsave(&pool->lock, flags);
+		if (find_worker_executing_work(pool, work))
+			ret |= WORK_BUSY_RUNNING;
+		spin_unlock_irqrestore(&pool->lock, flags);
+	}
 
 	return ret;
 }
@@ -3796,7 +3764,7 @@ static int __init init_workqueues(void)
 
 	/* make sure we have enough bits for OFFQ pool ID */
 	BUILD_BUG_ON((1LU << (BITS_PER_LONG - WORK_OFFQ_POOL_SHIFT)) <
-		     WORK_CPU_LAST * NR_STD_WORKER_POOLS);
+		     WORK_CPU_END * NR_STD_WORKER_POOLS);
 
 	cpu_notifier(workqueue_cpu_up_callback, CPU_PRI_WORKQUEUE_UP);
 	hotcpu_notifier(workqueue_cpu_down_callback, CPU_PRI_WORKQUEUE_DOWN);
