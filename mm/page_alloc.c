@@ -258,7 +258,7 @@ static int page_outside_zone_boundaries(struct zone *zone, struct page *page)
 	} while (zone_span_seqretry(zone, seq));
 
 	if (ret)
-		pr_debug("page %lu outside zone [ %lu - %lu ]\n",
+		pr_err("page %lu outside zone [ %lu - %lu ]\n",
 			pfn, start_pfn, start_pfn + sp);
 
 	return ret;
