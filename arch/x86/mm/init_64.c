@@ -993,11 +993,11 @@ remove_pagetable(unsigned long start, unsigned long end, bool direct)
 	bool pgd_changed = false;
 
 	for (; start < end; start = next) {
+		next = pgd_addr_end(start, end);
+
 		pgd = pgd_offset_k(start);
 		if (!pgd_present(*pgd))
 			continue;
-
-		next = pgd_addr_end(start, end);
 
 		pud = (pud_t *)pgd_page_vaddr(*pgd);
 		remove_pud_table(pud, start, next, direct);
