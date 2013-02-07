@@ -1039,7 +1039,17 @@ int memory_failure(unsigned long pfn, int trapno, int flags)
 		return 0;
 	}
 
-	nr_pages = 1 << compound_trans_order(hpage);
+	/*
+	 * Currently errors on hugetlbfs pages are contained in hugepage
+	 * unit, so nr_pages should be 1 << compound_order. OTOH when
+	 * errors are on transparent hugepages, they are supposed to be
+	 * split and error containment is done in normal page unit.
+	 * So nr_pages should be one in this case.
+	 */
+	if (PageHuge(p))
+		nr_pages = 1 << compound_order(hpage);
+	else /* normal page or thp */
+		nr_pages = 1;
 	atomic_long_add(nr_pages, &num_poisoned_pages);
 
 	/*
