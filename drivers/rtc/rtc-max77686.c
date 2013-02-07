@@ -129,7 +129,7 @@ static int max77686_rtc_tm_to_data(struct rtc_time *tm, u8 *data)
 	return 0;
 }
 
-static inline int max77686_rtc_update(struct max77686_rtc_info *info,
+static int max77686_rtc_update(struct max77686_rtc_info *info,
 	enum MAX77686_RTC_OP op)
 {
 	int ret;
