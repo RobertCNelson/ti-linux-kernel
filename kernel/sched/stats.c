@@ -25,14 +25,13 @@ static int show_schedstat(struct seq_file *seq, void *v)
 		seq_printf(seq, "version %d\n", SCHEDSTAT_VERSION);
 		seq_printf(seq, "timestamp %lu\n", jiffies);
 	} else {
-
-		cpu = (unsigned long)(v - 2);
-
-		struct rq *rq = cpu_rq(cpu);
+		struct rq *rq;
 #ifdef CONFIG_SMP
 		struct sched_domain *sd;
 		int dcount = 0;
 #endif
+		cpu = (unsigned long)(v - 2);
+		rq = cpu_rq(cpu);
 
 		/* runqueue-specific stats */
 		seq_printf(seq,
