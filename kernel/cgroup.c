@@ -1610,7 +1610,6 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 		struct cgroupfs_root *existing_root;
 		const struct cred *cred;
 		int i;
-		struct hlist_node *node;
 		struct css_set *cg;
 
 		BUG_ON(sb->s_root != NULL);
@@ -4492,7 +4491,7 @@ int __init_or_module cgroup_load_subsys(struct cgroup_subsys *ss)
 {
 	struct cgroup_subsys_state *css;
 	int i, ret;
-	struct hlist_node *node, *tmp;
+	struct hlist_node *tmp;
 	struct css_set *cg;
 	unsigned long key;
 
@@ -4570,7 +4569,7 @@ int __init_or_module cgroup_load_subsys(struct cgroup_subsys *ss)
 		cg->subsys[ss->subsys_id] = css;
 		/* recompute hash and restore entry */
 		key = css_set_hash(cg->subsys);
-		hash_add(css_set_table, node, key);
+		hash_add(css_set_table, &cg->hlist, key);
 	}
 	write_unlock(&css_set_lock);
 
