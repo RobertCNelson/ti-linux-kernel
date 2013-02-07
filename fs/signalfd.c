@@ -30,6 +30,7 @@
 #include <linux/signalfd.h>
 #include <linux/syscalls.h>
 #include <linux/proc_fs.h>
+#include <linux/compat.h>
 
 void signalfd_cleanup(struct sighand_struct *sighand)
 {
@@ -71,6 +72,38 @@ static unsigned int signalfd_poll(struct file *file, poll_table *wait)
 	spin_unlock_irq(&current->sighand->siglock);
 
 	return events;
+}
+
+/*
+ * Copy a whole siginfo into users spaces.
+ * The main idea of this format is that it should be enough
+ * for restoring siginfo back into the kernel.
+ */
+static int signalfd_copy_raw_info(struct signalfd_siginfo __user *siginfo,
+					siginfo_t *kinfo)
+{
+	siginfo_t *uinfo = (siginfo_t *) siginfo;
+	int err;
+
+	BUILD_BUG_ON(sizeof(siginfo_t) != sizeof(struct signalfd_siginfo));
+
+	err = __clear_user(uinfo, sizeof(*uinfo));
+
+#ifdef CONFIG_COMPAT
+	if (unlikely(is_compat_task())) {
+		compat_siginfo_t *compat_uinfo = (compat_siginfo_t *) siginfo;
+
+		err |= copy_siginfo_to_user32(compat_uinfo, kinfo);
+		err |= put_user(kinfo->si_code, &compat_uinfo->si_code);
+
+		return err ? -EFAULT: sizeof(*compat_uinfo);
+	}
+#endif
+
+	err |= copy_siginfo_to_user(uinfo, kinfo);
+	err |= put_user(kinfo->si_code, &uinfo->si_code);
+
+	return err ? -EFAULT: sizeof(*uinfo);
 }
 
 /*
@@ -205,6 +238,7 @@ static ssize_t signalfd_read(struct file *file, char __user *buf, size_t count,
 	struct signalfd_ctx *ctx = file->private_data;
 	struct signalfd_siginfo __user *siginfo;
 	int nonblock = file->f_flags & O_NONBLOCK;
+	bool raw = file->f_flags & SFD_RAW;
 	ssize_t ret, total = 0;
 	siginfo_t info;
 
@@ -217,7 +251,12 @@ static ssize_t signalfd_read(struct file *file, char __user *buf, size_t count,
 		ret = signalfd_dequeue(ctx, &info, nonblock);
 		if (unlikely(ret <= 0))
 			break;
-		ret = signalfd_copyinfo(siginfo, &info);
+
+		if (raw)
+			ret = signalfd_copy_raw_info(siginfo, &info);
+		else
+			ret = signalfd_copyinfo(siginfo, &info);
+
 		if (ret < 0)
 			break;
 		siginfo++;
@@ -262,7 +301,7 @@ SYSCALL_DEFINE4(signalfd4, int, ufd, sigset_t __user *, user_mask,
 	BUILD_BUG_ON(SFD_CLOEXEC != O_CLOEXEC);
 	BUILD_BUG_ON(SFD_NONBLOCK != O_NONBLOCK);
 
-	if (flags & ~(SFD_CLOEXEC | SFD_NONBLOCK))
+	if (flags & ~(SFD_CLOEXEC | SFD_NONBLOCK | SFD_RAW))
 		return -EINVAL;
 
 	if (sizemask != sizeof(sigset_t) ||
@@ -272,20 +311,35 @@ SYSCALL_DEFINE4(signalfd4, int, ufd, sigset_t __user *, user_mask,
 	signotset(&sigmask);
 
 	if (ufd == -1) {
+		struct file *file;
 		ctx = kmalloc(sizeof(*ctx), GFP_KERNEL);
 		if (!ctx)
 			return -ENOMEM;
 
 		ctx->sigmask = sigmask;
 
+		ufd = get_unused_fd_flags(flags);
+		if (ufd < 0) {
+			kfree(ctx);
+			goto out;
+		}
+
 		/*
 		 * When we call this, the initialization must be complete, since
 		 * anon_inode_getfd() will install the fd.
 		 */
-		ufd = anon_inode_getfd("[signalfd]", &signalfd_fops, ctx,
+		file = anon_inode_getfile("[signalfd]", &signalfd_fops, ctx,
 				       O_RDWR | (flags & (O_CLOEXEC | O_NONBLOCK)));
-		if (ufd < 0)
+		if (IS_ERR(file)) {
+			put_unused_fd(ufd);
+			ufd = PTR_ERR(file);
 			kfree(ctx);
+			goto out;
+		}
+
+		file->f_flags |= flags & SFD_RAW;
+
+		fd_install(ufd, file);
 	} else {
 		struct fd f = fdget(ufd);
 		if (!f.file)
@@ -302,7 +356,7 @@ SYSCALL_DEFINE4(signalfd4, int, ufd, sigset_t __user *, user_mask,
 		wake_up(&current->sighand->signalfd_wqh);
 		fdput(f);
 	}
-
+out:
 	return ufd;
 }
 

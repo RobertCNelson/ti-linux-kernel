@@ -15,6 +15,7 @@
 /* Flags for signalfd4.  */
 #define SFD_CLOEXEC O_CLOEXEC
 #define SFD_NONBLOCK O_NONBLOCK
+#define SFD_RAW O_DIRECT
 
 struct signalfd_siginfo {
 	__u32 ssi_signo;
