@@ -87,8 +87,8 @@ static int __add_to_swap_cache(struct page *page, swp_entry_t entry)
 	VM_BUG_ON(!PageSwapBacked(page));
 
 	page_cache_get(page);
-	set_page_private(page, entry.val);
 	SetPageSwapCache(page);
+	set_page_private(page, entry.val);
 
 	address_space = swap_address_space(entry);
 	spin_lock_irq(&address_space->tree_lock);
