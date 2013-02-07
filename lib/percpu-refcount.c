@@ -52,7 +52,8 @@ static void percpu_ref_alloc(struct percpu_ref *ref, unsigned long pcpu_count)
 		else
 			pr_debug("created");
 	} else {
-update_time:	new = now;
+update_time:
+		new = now;
 		cmpxchg(&ref->pcpu_count, pcpu_count, new);
 	}
 }
