@@ -1089,7 +1089,10 @@ int __ref add_memory(int nid, u64 start, u64 size)
 	if (!res)
 		goto out;
 
-	new_pgdat = (NODE_DATA(nid) == NULL);
+	{	/* Stupid hack to suppress address-never-null warning */
+		void *p = NODE_DATA(nid);
+		new_pgdat = !p;
+	}
 	new_node = !node_online(nid);
 	if (new_node) {
 		pgdat = hotadd_new_pgdat(nid, start);
