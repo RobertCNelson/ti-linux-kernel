@@ -415,7 +415,7 @@ static int lms501kf03_resume(struct spi_device *spi)
 #define lms501kf03_resume	NULL
 #endif
 
-void lms501kf03_shutdown(struct spi_device *spi)
+static void lms501kf03_shutdown(struct spi_device *spi)
 {
 	struct lms501kf03 *lcd = dev_get_drvdata(&spi->dev);
 
