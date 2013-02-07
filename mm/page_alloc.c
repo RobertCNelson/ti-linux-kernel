@@ -202,6 +202,9 @@ static unsigned long __meminitdata nr_all_pages;
 static unsigned long __meminitdata dma_reserve;
 
 #ifdef CONFIG_HAVE_MEMBLOCK_NODE_MAP
+/* Movable memory ranges, will also be used by memblock subsystem. */
+struct movablecore_map movablecore_map;
+
 static unsigned long __meminitdata arch_zone_lowest_possible_pfn[MAX_NR_ZONES];
 static unsigned long __meminitdata arch_zone_highest_possible_pfn[MAX_NR_ZONES];
 static unsigned long __initdata required_kernelcore;
@@ -5074,6 +5077,129 @@ static int __init cmdline_parse_movablecore(char *p)
 
 early_param("kernelcore", cmdline_parse_kernelcore);
 early_param("movablecore", cmdline_parse_movablecore);
+
+/**
+ * insert_movablecore_map - Insert a memory range in to movablecore_map.map.
+ * @start_pfn: start pfn of the range
+ * @end_pfn: end pfn of the range
+ *
+ * This function will also merge the overlapped ranges, and sort the array
+ * by start_pfn in monotonic increasing order.
+ */
+static void __init insert_movablecore_map(unsigned long start_pfn,
+					  unsigned long end_pfn)
+{
+	int pos, overlap;
+
+	/*
+	 * pos will be at the 1st overlapped range, or the position
+	 * where the element should be inserted.
+	 */
+	for (pos = 0; pos < movablecore_map.nr_map; pos++)
+		if (start_pfn <= movablecore_map.map[pos].end_pfn)
+			break;
+
+	/* If there is no overlapped range, just insert the element. */
+	if (pos == movablecore_map.nr_map ||
+	    end_pfn < movablecore_map.map[pos].start_pfn) {
+		/*
+		 * If pos is not the end of array, we need to move all
+		 * the rest elements backward.
+		 */
+		if (pos < movablecore_map.nr_map)
+			memmove(&movablecore_map.map[pos+1],
+				&movablecore_map.map[pos],
+				sizeof(struct movablecore_entry) *
+				(movablecore_map.nr_map - pos));
+		movablecore_map.map[pos].start_pfn = start_pfn;
+		movablecore_map.map[pos].end_pfn = end_pfn;
+		movablecore_map.nr_map++;
+		return;
+	}
+
+	/* overlap will be at the last overlapped range */
+	for (overlap = pos + 1; overlap < movablecore_map.nr_map; overlap++)
+		if (end_pfn < movablecore_map.map[overlap].start_pfn)
+			break;
+
+	/*
+	 * If there are more ranges overlapped, we need to merge them,
+	 * and move the rest elements forward.
+	 */
+	overlap--;
+	movablecore_map.map[pos].start_pfn = min(start_pfn,
+					movablecore_map.map[pos].start_pfn);
+	movablecore_map.map[pos].end_pfn = max(end_pfn,
+					movablecore_map.map[overlap].end_pfn);
+
+	if (pos != overlap && overlap + 1 != movablecore_map.nr_map)
+		memmove(&movablecore_map.map[pos+1],
+			&movablecore_map.map[overlap+1],
+			sizeof(struct movablecore_entry) *
+			(movablecore_map.nr_map - overlap - 1));
+
+	movablecore_map.nr_map -= overlap - pos;
+}
+
+/**
+ * movablecore_map_add_region - Add a memory range into movablecore_map.
+ * @start: physical start address of range
+ * @end: physical end address of range
+ *
+ * This function transform the physical address into pfn, and then add the
+ * range into movablecore_map by calling insert_movablecore_map().
+ */
+static void __init movablecore_map_add_region(u64 start, u64 size)
+{
+	unsigned long start_pfn, end_pfn;
+
+	/* In case size == 0 or start + size overflows */
+	if (start + size <= start)
+		return;
+
+	if (movablecore_map.nr_map >= ARRAY_SIZE(movablecore_map.map)) {
+		pr_err("movable_memory_map: too many entries;"
+			" ignoring [mem %#010llx-%#010llx]\n",
+			(unsigned long long) start,
+			(unsigned long long) (start + size - 1));
+		return;
+	}
+
+	start_pfn = PFN_DOWN(start);
+	end_pfn = PFN_UP(start + size);
+	insert_movablecore_map(start_pfn, end_pfn);
+}
+
+/*
+ * movablecore_map=nn[KMG]@ss[KMG] sets the region of memory to be used as
+ * movable memory.
+ */
+static int __init cmdline_parse_movablecore_map(char *p)
+{
+	char *oldp;
+	u64 start_at, mem_size;
+
+	if (!p)
+		goto err;
+
+	oldp = p;
+	mem_size = memparse(p, &p);
+	if (p == oldp)
+		goto err;
+
+	if (*p == '@') {
+		oldp = ++p;
+		start_at = memparse(p, &p);
+		if (p == oldp || *p != '\0')
+			goto err;
+
+		movablecore_map_add_region(start_at, mem_size);
+		return 0;
+	}
+err:
+	return -EINVAL;
+}
+early_param("movablecore_map", cmdline_parse_movablecore_map);
 
 #endif /* CONFIG_HAVE_MEMBLOCK_NODE_MAP */
 
