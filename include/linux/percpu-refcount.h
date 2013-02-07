@@ -6,7 +6,7 @@
 
 struct percpu_ref {
 	atomic64_t		count;
-	unsigned __percpu	*pcpu_count;
+	unsigned long		pcpu_count;
 };
 
 void percpu_ref_init(struct percpu_ref *ref);
