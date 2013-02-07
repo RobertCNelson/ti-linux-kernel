@@ -234,12 +234,16 @@ static unsigned long highmem_dirtyable_memory(unsigned long total)
 static unsigned long global_dirtyable_memory(void)
 {
 	unsigned long x;
+	extern int min_free_kbytes;
 
 	x = global_page_state(NR_FREE_PAGES) + global_reclaimable_pages();
 	x -= min(x, dirty_balance_reserve);
 
 	if (!vm_highmem_is_dirtyable)
 		x -= highmem_dirtyable_memory(x);
+
+	/* Subtract min_free_kbytes */
+	x -= min(x, min_free_kbytes >> (PAGE_SHIFT - 10));
 
 	return x + 1;	/* Ensure that we never return 0 */
 }
