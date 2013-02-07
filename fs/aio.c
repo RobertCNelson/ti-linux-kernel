@@ -852,12 +852,13 @@ EXPORT_SYMBOL(aio_complete_batch);
  *	Pull an event off of the ioctx's event ring.  Returns the number of
  *	events fetched
  */
-static int aio_read_events_ring(struct kioctx *ctx,
-				struct io_event __user *event, long nr)
+static long aio_read_events_ring(struct kioctx *ctx,
+				 struct io_event __user *event, long nr)
 {
 	struct aio_ring *ring;
 	unsigned head, pos;
-	int ret = 0, copy_ret;
+	long ret = 0;
+	int copy_ret;
 
 	if (!mutex_trylock(&ctx->ring_lock)) {
 		__set_current_state(TASK_RUNNING);
@@ -876,23 +877,24 @@ static int aio_read_events_ring(struct kioctx *ctx,
 	__set_current_state(TASK_RUNNING);
 
 	while (ret < nr) {
-		unsigned i = (head < ctx->shadow_tail ? ctx->shadow_tail : ctx->nr) - head;
+		long avail = (head < ctx->shadow_tail
+			      ? ctx->shadow_tail : ctx->nr) - head;
 		struct io_event *ev;
 		struct page *page;
 
 		if (head == ctx->shadow_tail)
 			break;
 
-		i = min_t(int, i, nr - ret);
-		i = min_t(int, i, AIO_EVENTS_PER_PAGE -
-			  ((head + AIO_EVENTS_OFFSET) % AIO_EVENTS_PER_PAGE));
+		avail = min(avail, nr - ret);
+		avail = min_t(long, avail, AIO_EVENTS_PER_PAGE -
+			      ((head + AIO_EVENTS_OFFSET) % AIO_EVENTS_PER_PAGE));
 
 		pos = head + AIO_EVENTS_OFFSET;
 		page = ctx->ring_pages[pos / AIO_EVENTS_PER_PAGE];
 		pos %= AIO_EVENTS_PER_PAGE;
 
 		ev = kmap(page);
-		copy_ret = copy_to_user(event + ret, ev + pos, sizeof(*ev) * i);
+		copy_ret = copy_to_user(event + ret, ev + pos, sizeof(*ev) * avail);
 		kunmap(page);
 
 		if (unlikely(copy_ret)) {
@@ -900,8 +902,8 @@ static int aio_read_events_ring(struct kioctx *ctx,
 			goto out;
 		}
 
-		ret += i;
-		head += i;
+		ret += avail;
+		head += avail;
 		head %= ctx->nr;
 	}
 
@@ -910,7 +912,7 @@ static int aio_read_events_ring(struct kioctx *ctx,
 	kunmap_atomic(ring);
 	flush_dcache_page(ctx->ring_pages[0]);
 
-	pr_debug("%d  h%u t%u\n", ret, head, ctx->shadow_tail);
+	pr_debug("%li  h%u t%u\n", ret, head, ctx->shadow_tail);
 
 	put_reqs_available(ctx, ret);
 out:
