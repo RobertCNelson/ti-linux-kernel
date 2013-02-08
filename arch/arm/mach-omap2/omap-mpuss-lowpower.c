@@ -85,6 +85,7 @@ struct cpu_pm_ops {
 	int (*finish_suspend)(unsigned long cpu_state);
 	void (*resume)(void);
 	void (*scu_prepare)(unsigned int cpu_id, unsigned int cpu_state);
+	void (*hotplug_restart)(void);
 };
 
 static DEFINE_PER_CPU(struct omap4_cpu_pm_info, omap4_pm_info);
@@ -108,6 +109,7 @@ struct cpu_pm_ops omap_pm_ops = {
 	.finish_suspend		= default_finish_suspend,
 	.resume			= dummy_cpu_resume,
 	.scu_prepare		= dummy_scu_prepare,
+	.hotplug_restart	= dummy_cpu_resume,
 };
 
 /*
@@ -306,7 +308,7 @@ int omap4_hotplug_cpu(unsigned int cpu, unsigned int power_state)
 
 	pwrdm_clear_all_prev_pwrst(pm_info->pwrdm);
 	pwrdm_set_next_pwrst(pm_info->pwrdm, power_state);
-	set_cpu_wakeup_addr(cpu, virt_to_phys(pm_info->secondary_startup));
+	set_cpu_wakeup_addr(cpu, virt_to_phys(omap_pm_ops.hotplug_restart));
 	omap_pm_ops.scu_prepare(cpu, power_state);
 
 	/*
@@ -341,6 +343,7 @@ static void enable_mercury_retention_mode(void)
 int __init omap4_mpuss_init(void)
 {
 	struct omap4_cpu_pm_info *pm_info;
+	u32 cpu_wakeup_addr = 0;
 
 	if (omap_rev() == OMAP4430_REV_ES1_0) {
 		WARN(1, "Power Management not supported on OMAP4430 ES1.0\n");
@@ -350,9 +353,13 @@ int __init omap4_mpuss_init(void)
 	sar_base = omap4_get_sar_ram_base();
 
 	/* Initilaise per CPU PM information */
+	if (cpu_is_omap44xx())
+		cpu_wakeup_addr = CPU0_WAKEUP_NS_PA_ADDR_OFFSET;
+	else if (soc_is_omap54xx())
+		cpu_wakeup_addr = OMAP5_CPU0_WAKEUP_NS_PA_ADDR_OFFSET;
 	pm_info = &per_cpu(omap4_pm_info, 0x0);
 	pm_info->scu_sar_addr = sar_base + SCU_OFFSET0;
-	pm_info->wkup_sar_addr = sar_base + CPU0_WAKEUP_NS_PA_ADDR_OFFSET;
+	pm_info->wkup_sar_addr = sar_base + cpu_wakeup_addr;
 	pm_info->l2x0_sar_addr = sar_base + L2X0_SAVE_OFFSET0;
 	pm_info->pwrdm = pwrdm_lookup("cpu0_pwrdm");
 	if (!pm_info->pwrdm) {
@@ -367,14 +374,15 @@ int __init omap4_mpuss_init(void)
 	/* Initialise CPU0 power domain state to ON */
 	pwrdm_set_next_pwrst(pm_info->pwrdm, PWRDM_POWER_ON);
 
+	if (cpu_is_omap44xx())
+		cpu_wakeup_addr = CPU1_WAKEUP_NS_PA_ADDR_OFFSET;
+	else if (soc_is_omap54xx())
+		cpu_wakeup_addr = OMAP5_CPU1_WAKEUP_NS_PA_ADDR_OFFSET;
+
 	pm_info = &per_cpu(omap4_pm_info, 0x1);
 	pm_info->scu_sar_addr = sar_base + SCU_OFFSET1;
-	pm_info->wkup_sar_addr = sar_base + CPU1_WAKEUP_NS_PA_ADDR_OFFSET;
+	pm_info->wkup_sar_addr = sar_base + cpu_wakeup_addr;
 	pm_info->l2x0_sar_addr = sar_base + L2X0_SAVE_OFFSET1;
-	if (cpu_is_omap446x())
-		pm_info->secondary_startup = omap4460_secondary_startup;
-	else
-		pm_info->secondary_startup = omap4_secondary_startup;
 
 	pm_info->pwrdm = pwrdm_lookup("cpu1_pwrdm");
 	if (!pm_info->pwrdm) {
@@ -407,15 +415,19 @@ int __init omap4_mpuss_init(void)
 
 	if (cpu_is_omap44xx()) {
 		omap_pm_ops.finish_suspend = omap4_finish_suspend;
+		omap_pm_ops.hotplug_restart = omap4_secondary_startup;
 		omap_pm_ops.resume = omap4_cpu_resume;
 		omap_pm_ops.scu_prepare = scu_pwrst_prepare;
 		cpu_context_offset = OMAP4_RM_CPU0_CPU0_CONTEXT_OFFSET;
 	} else if (soc_is_omap54xx()) {
+		omap_pm_ops.finish_suspend = omap5_finish_suspend;
+		omap_pm_ops.hotplug_restart = omap5_secondary_startup;
 		cpu_context_offset = OMAP54XX_RM_CPU0_CPU0_CONTEXT_OFFSET;
+		enable_mercury_retention_mode();
 	}
 
-	if (soc_is_omap54xx())
-		enable_mercury_retention_mode();
+	if (cpu_is_omap446x())
+		omap_pm_ops.hotplug_restart = omap4460_secondary_startup;
 
 	return 0;
 }
