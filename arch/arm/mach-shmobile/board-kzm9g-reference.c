@@ -35,6 +35,9 @@
 
 static void __init kzm_init(void)
 {
+	sh73a0_add_standard_devices_dt();
+	sh73a0_pinmux_init();
+
 	/* enable SCIFA4 */
 	gpio_request(GPIO_FN_SCIFA4_TXD, NULL);
 	gpio_request(GPIO_FN_SCIFA4_RXD, NULL);
@@ -61,8 +64,6 @@ static void __init kzm_init(void)
 	/* Early BRESP enable, Shared attribute override enable, 64K*8way */
 	l2x0_init(IOMEM(0xf0100000), 0x40460000, 0x82000fff);
 #endif
-
-	sh73a0_add_standard_devices_dt();
 }
 
 static void kzm9g_restart(char mode, const char *cmd)
