@@ -56,6 +56,27 @@ static void __init kzm_init(void)
 	gpio_request(GPIO_FN_MMCD0_6_PU,	NULL);
 	gpio_request(GPIO_FN_MMCD0_7_PU,	NULL);
 
+	/* enable SD */
+	gpio_request(GPIO_FN_SDHIWP0,		NULL);
+	gpio_request(GPIO_FN_SDHICD0,		NULL);
+	gpio_request(GPIO_FN_SDHICMD0,		NULL);
+	gpio_request(GPIO_FN_SDHICLK0,		NULL);
+	gpio_request(GPIO_FN_SDHID0_3,		NULL);
+	gpio_request(GPIO_FN_SDHID0_2,		NULL);
+	gpio_request(GPIO_FN_SDHID0_1,		NULL);
+	gpio_request(GPIO_FN_SDHID0_0,		NULL);
+	gpio_request(GPIO_FN_SDHI0_VCCQ_MC0_ON,	NULL);
+	gpio_request_one(GPIO_PORT15, GPIOF_OUT_INIT_HIGH, NULL); /* power */
+
+	/* enable Micro SD */
+	gpio_request(GPIO_FN_SDHID2_0,		NULL);
+	gpio_request(GPIO_FN_SDHID2_1,		NULL);
+	gpio_request(GPIO_FN_SDHID2_2,		NULL);
+	gpio_request(GPIO_FN_SDHID2_3,		NULL);
+	gpio_request(GPIO_FN_SDHICMD2,		NULL);
+	gpio_request(GPIO_FN_SDHICLK2,		NULL);
+	gpio_request_one(GPIO_PORT14, GPIOF_OUT_INIT_HIGH, NULL); /* power */
+
 	/* I2C 3 */
 	gpio_request(GPIO_FN_PORT27_I2C_SCL3, NULL);
 	gpio_request(GPIO_FN_PORT28_I2C_SDA3, NULL);
