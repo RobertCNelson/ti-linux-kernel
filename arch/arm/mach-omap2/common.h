@@ -261,6 +261,7 @@ extern int omap4_finish_suspend(unsigned long cpu_state);
 extern void omap4_cpu_resume(void);
 extern int omap4_hotplug_cpu(unsigned int cpu, unsigned int power_state);
 extern int omap5_finish_suspend(unsigned long cpu_state);
+extern void omap5_cpu_resume(void);
 #else
 static inline int omap4_enter_lowpower(unsigned int cpu,
 					unsigned int power_state)
@@ -292,6 +293,9 @@ static inline int omap5_finish_suspend(unsigned long cpu_state)
 {
 	return 0;
 }
+
+static inline void omap5_cpu_resume(void)
+{}
 
 #endif
 
