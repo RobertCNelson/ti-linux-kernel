@@ -144,6 +144,13 @@ struct worker_pool {
 
 	struct mutex		assoc_mutex;	/* protect POOL_DISASSOCIATED */
 	struct ida		worker_ida;	/* L: for worker IDs */
+
+	/*
+	 * The current concurrency level.  As it's likely to be accessed
+	 * from other CPUs during try_to_wake_up(), put it in a separate
+	 * cacheline.
+	 */
+	atomic_t		nr_running ____cacheline_aligned_in_smp;
 } ____cacheline_aligned_in_smp;
 
 /*
@@ -417,23 +424,12 @@ static LIST_HEAD(workqueues);
 static bool workqueue_freezing;		/* W: have wqs started freezing? */
 
 /*
- * The CPU standard worker pools.  nr_running is the only field which is
- * expected to be used frequently by other cpus via try_to_wake_up().  Put
- * it in a separate cacheline.
+ * The CPU and unbound standard worker pools.  The unbound ones have
+ * POOL_DISASSOCIATED set, and their workers have WORKER_UNBOUND set.
  */
-static DEFINE_PER_CPU(struct worker_pool [NR_STD_WORKER_POOLS],
-		      cpu_std_worker_pools);
-static DEFINE_PER_CPU_SHARED_ALIGNED(atomic_t [NR_STD_WORKER_POOLS],
-				     cpu_std_pool_nr_running);
-
-/*
- * Standard worker pools and nr_running counter for unbound CPU.  The pools
- * have POOL_DISASSOCIATED set, and all workers have WORKER_UNBOUND set.
- */
+static DEFINE_PER_CPU_SHARED_ALIGNED(struct worker_pool [NR_STD_WORKER_POOLS],
+				     cpu_std_worker_pools);
 static struct worker_pool unbound_std_worker_pools[NR_STD_WORKER_POOLS];
-static atomic_t unbound_std_pool_nr_running[NR_STD_WORKER_POOLS] = {
-	[0 ... NR_STD_WORKER_POOLS - 1]	= ATOMIC_INIT(0),	/* always 0 */
-};
 
 /* idr of all pools */
 static DEFINE_MUTEX(worker_pool_idr_mutex);
@@ -481,17 +477,6 @@ static struct worker_pool *get_std_worker_pool(int cpu, bool highpri)
 	struct worker_pool *pools = std_worker_pools(cpu);
 
 	return &pools[highpri];
-}
-
-static atomic_t *get_pool_nr_running(struct worker_pool *pool)
-{
-	int cpu = pool->cpu;
-	int idx = std_worker_pool_pri(pool);
-
-	if (cpu != WORK_CPU_UNBOUND)
-		return &per_cpu(cpu_std_pool_nr_running, cpu)[idx];
-	else
-		return &unbound_std_pool_nr_running[idx];
 }
 
 static struct cpu_workqueue_struct *get_cwq(unsigned int cpu,
@@ -626,9 +611,13 @@ static struct worker_pool *get_work_pool(struct work_struct *work)
  */
 static int get_work_pool_id(struct work_struct *work)
 {
-	struct worker_pool *pool = get_work_pool(work);
+	unsigned long data = atomic_long_read(&work->data);
 
-	return pool ? pool->id : WORK_OFFQ_POOL_NONE;
+	if (data & WORK_STRUCT_CWQ)
+		return ((struct cpu_workqueue_struct *)
+			(data & WORK_STRUCT_WQ_DATA_MASK))->pool->id;
+
+	return data >> WORK_OFFQ_POOL_SHIFT;
 }
 
 static void mark_work_canceling(struct work_struct *work)
@@ -654,7 +643,7 @@ static bool work_is_canceling(struct work_struct *work)
 
 static bool __need_more_worker(struct worker_pool *pool)
 {
-	return !atomic_read(get_pool_nr_running(pool));
+	return !atomic_read(&pool->nr_running);
 }
 
 /*
@@ -679,9 +668,8 @@ static bool may_start_working(struct worker_pool *pool)
 /* Do I need to keep working?  Called from currently running workers. */
 static bool keep_working(struct worker_pool *pool)
 {
-	atomic_t *nr_running = get_pool_nr_running(pool);
-
-	return !list_empty(&pool->worklist) && atomic_read(nr_running) <= 1;
+	return !list_empty(&pool->worklist) &&
+		atomic_read(&pool->nr_running) <= 1;
 }
 
 /* Do we need a new worker?  Called from manager. */
@@ -761,7 +749,7 @@ void wq_worker_waking_up(struct task_struct *task, unsigned int cpu)
 
 	if (!(worker->flags & WORKER_NOT_RUNNING)) {
 		WARN_ON_ONCE(worker->pool->cpu != cpu);
-		atomic_inc(get_pool_nr_running(worker->pool));
+		atomic_inc(&worker->pool->nr_running);
 	}
 }
 
@@ -785,7 +773,6 @@ struct task_struct *wq_worker_sleeping(struct task_struct *task,
 {
 	struct worker *worker = kthread_data(task), *to_wakeup = NULL;
 	struct worker_pool *pool;
-	atomic_t *nr_running;
 
 	/*
 	 * Rescuers, which may not have all the fields set up like normal
@@ -796,7 +783,6 @@ struct task_struct *wq_worker_sleeping(struct task_struct *task,
 		return NULL;
 
 	pool = worker->pool;
-	nr_running = get_pool_nr_running(pool);
 
 	/* this can only happen on the local cpu */
 	BUG_ON(cpu != raw_smp_processor_id());
@@ -812,7 +798,8 @@ struct task_struct *wq_worker_sleeping(struct task_struct *task,
 	 * manipulating idle_list, so dereferencing idle_list without pool
 	 * lock is safe.
 	 */
-	if (atomic_dec_and_test(nr_running) && !list_empty(&pool->worklist))
+	if (atomic_dec_and_test(&pool->nr_running) &&
+	    !list_empty(&pool->worklist))
 		to_wakeup = first_worker(pool);
 	return to_wakeup ? to_wakeup->task : NULL;
 }
@@ -844,14 +831,12 @@ static inline void worker_set_flags(struct worker *worker, unsigned int flags,
 	 */
 	if ((flags & WORKER_NOT_RUNNING) &&
 	    !(worker->flags & WORKER_NOT_RUNNING)) {
-		atomic_t *nr_running = get_pool_nr_running(pool);
-
 		if (wakeup) {
-			if (atomic_dec_and_test(nr_running) &&
+			if (atomic_dec_and_test(&pool->nr_running) &&
 			    !list_empty(&pool->worklist))
 				wake_up_worker(pool);
 		} else
-			atomic_dec(nr_running);
+			atomic_dec(&pool->nr_running);
 	}
 
 	worker->flags |= flags;
@@ -883,7 +868,7 @@ static inline void worker_clr_flags(struct worker *worker, unsigned int flags)
 	 */
 	if ((flags & WORKER_NOT_RUNNING) && (oflags & WORKER_NOT_RUNNING))
 		if (!(worker->flags & WORKER_NOT_RUNNING))
-			atomic_inc(get_pool_nr_running(pool));
+			atomic_inc(&pool->nr_running);
 }
 
 /**
@@ -1208,8 +1193,6 @@ static bool is_chained_work(struct workqueue_struct *wq)
 static void __queue_work(unsigned int cpu, struct workqueue_struct *wq,
 			 struct work_struct *work)
 {
-	bool highpri = wq->flags & WQ_HIGHPRI;
-	struct worker_pool *pool;
 	struct cpu_workqueue_struct *cwq;
 	struct list_head *worklist;
 	unsigned int work_flags;
@@ -1230,7 +1213,7 @@ static void __queue_work(unsigned int cpu, struct workqueue_struct *wq,
 	    WARN_ON_ONCE(!is_chained_work(wq)))
 		return;
 
-	/* determine pool to use */
+	/* determine the cwq to use */
 	if (!(wq->flags & WQ_UNBOUND)) {
 		struct worker_pool *last_pool;
 
@@ -1243,37 +1226,36 @@ static void __queue_work(unsigned int cpu, struct workqueue_struct *wq,
 		 * work needs to be queued on that cpu to guarantee
 		 * non-reentrancy.
 		 */
-		pool = get_std_worker_pool(cpu, highpri);
+		cwq = get_cwq(cpu, wq);
 		last_pool = get_work_pool(work);
 
-		if (last_pool && last_pool != pool) {
+		if (last_pool && last_pool != cwq->pool) {
 			struct worker *worker;
 
 			spin_lock(&last_pool->lock);
 
 			worker = find_worker_executing_work(last_pool, work);
 
-			if (worker && worker->current_cwq->wq == wq)
-				pool = last_pool;
-			else {
+			if (worker && worker->current_cwq->wq == wq) {
+				cwq = get_cwq(last_pool->cpu, wq);
+			} else {
 				/* meh... not running there, queue here */
 				spin_unlock(&last_pool->lock);
-				spin_lock(&pool->lock);
+				spin_lock(&cwq->pool->lock);
 			}
 		} else {
-			spin_lock(&pool->lock);
+			spin_lock(&cwq->pool->lock);
 		}
 	} else {
-		pool = get_std_worker_pool(WORK_CPU_UNBOUND, highpri);
-		spin_lock(&pool->lock);
+		cwq = get_cwq(WORK_CPU_UNBOUND, wq);
+		spin_lock(&cwq->pool->lock);
 	}
 
-	/* pool determined, get cwq and queue */
-	cwq = get_cwq(pool->cpu, wq);
+	/* cwq determined, queue */
 	trace_workqueue_queue_work(req_cpu, cwq, work);
 
 	if (WARN_ON(!list_empty(&work->entry))) {
-		spin_unlock(&pool->lock);
+		spin_unlock(&cwq->pool->lock);
 		return;
 	}
 
@@ -1291,7 +1273,7 @@ static void __queue_work(unsigned int cpu, struct workqueue_struct *wq,
 
 	insert_work(cwq, work, worklist, work_flags);
 
-	spin_unlock(&pool->lock);
+	spin_unlock(&cwq->pool->lock);
 }
 
 /**
@@ -1518,7 +1500,7 @@ static void worker_enter_idle(struct worker *worker)
 	 */
 	WARN_ON_ONCE(!(pool->flags & POOL_DISASSOCIATED) &&
 		     pool->nr_workers == pool->nr_idle &&
-		     atomic_read(get_pool_nr_running(pool)));
+		     atomic_read(&pool->nr_running));
 }
 
 /**
@@ -3506,7 +3488,7 @@ static void wq_unbind_fn(struct work_struct *work)
 	 * didn't already.
 	 */
 	for_each_std_worker_pool(pool, cpu)
-		atomic_set(get_pool_nr_running(pool), 0);
+		atomic_set(&pool->nr_running, 0);
 }
 
 /*
