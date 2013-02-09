@@ -439,12 +439,15 @@ EXPORT_SYMBOL(idr_preload);
  * @idr: the (initialized) idr
  * @ptr: pointer to be associated with the new id
  * @start: the minimum id (inclusive)
- * @end: the maximum id (exclusive, 0 for max)
+ * @end: the maximum id (exclusive, <= 0 for max)
  * @gfp_mask: memory allocation flags
  *
  * Allocate an id in [start, end) and associate it with @ptr.  If no ID is
  * available in the specified range, returns -ENOSPC.  On memory allocation
  * failure, returns -ENOMEM.
+ *
+ * Note that @end is treated as max when <= 0.  This is to always allow
+ * using @start + N as @end as long as N is inside integer range.
  *
  * The user is responsible for exclusively synchronizing all operations
  * which may modify @idr.  However, read-only accesses such as idr_find()
@@ -453,14 +456,14 @@ EXPORT_SYMBOL(idr_preload);
  */
 int idr_alloc(struct idr *idr, void *ptr, int start, int end, gfp_t gfp_mask)
 {
-	int max = end ? end - 1 : INT_MAX;	/* inclusive upper limit */
+	int max = end > 0 ? end - 1 : INT_MAX;	/* inclusive upper limit */
 	struct idr_layer *pa[MAX_IDR_LEVEL];
 	int id;
 
 	might_sleep_if(gfp_mask & __GFP_WAIT);
 
 	/* sanity checks */
-	if (WARN_ON_ONCE(start < 0 || end < 0))
+	if (WARN_ON_ONCE(start < 0))
 		return -EINVAL;
 	if (unlikely(max < start))
 		return -ENOSPC;
