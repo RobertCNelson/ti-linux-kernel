@@ -370,7 +370,7 @@ static int ipcget_public(struct ipc_namespace *ns, struct ipc_ids *ids,
 {
 	struct kern_ipc_perm *ipcp;
 	int flg = params->flg;
-	int err = 0;
+	int err;
 
 	/*
 	 * Take the lock as a writer since we are potentially going to add
@@ -382,8 +382,6 @@ static int ipcget_public(struct ipc_namespace *ns, struct ipc_ids *ids,
 		/* key not used */
 		if (!(flg & IPC_CREAT))
 			err = -ENOENT;
-		else if (!err)
-			err = -ENOMEM;
 		else
 			err = ops->getnew(ns, params);
 	} else {
