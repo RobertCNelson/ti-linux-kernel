@@ -8,6 +8,6 @@ void main(void)
 	pthread_mutex_init(&b, NULL);
 
 	pthread_mutex_lock(&a);
-	pthread_mutex_unlock(&b);
+	pthread_mutex_lock(&b);
 	pthread_mutex_lock(&a);
 }
