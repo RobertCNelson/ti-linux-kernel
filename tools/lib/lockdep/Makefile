@@ -143,7 +143,7 @@ do_app_build =						\
 
 do_compile_shared_library =			\
 	($(print_shared_lib_compile)		\
-	$(CC) --shared $^ -o $@)
+	$(CC) --shared -ldl $^ -o $@)
 
 do_build_static_lib =				\
 	($(print_static_lib_build)		\
@@ -161,7 +161,7 @@ $(obj)/%.o: $(src)/%.c
 %.o: $(src)/%.c
 	$(Q)$(call do_compile)
 
-PEVENT_LIB_OBJS = common.o lockdep.o
+PEVENT_LIB_OBJS = common.o lockdep.o preload.o rbtree.o
 
 ALL_OBJS = $(PEVENT_LIB_OBJS)
 
