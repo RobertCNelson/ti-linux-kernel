@@ -34,7 +34,9 @@ DESTDIR ?=
 DESTDIR_SQ = '$(subst ','\'',$(DESTDIR))'
 
 prefix ?= /usr/local
-bindir_relative = lib
+libdir_relative = lib
+libdir = $(prefix)/$(libdir_relative)
+bindir_relative = bin
 bindir = $(prefix)/$(bindir_relative)
 
 export DESTDIR DESTDIR_SQ INSTALL
@@ -90,13 +92,14 @@ objtree		:= $(CURDIR)
 src		:= $(srctree)
 obj		:= $(objtree)
 
-export prefix bindir src obj
+export prefix libdir bindir src obj
 
 # Shell quotes
+libdir_SQ = $(subst ','\'',$(libdir))
 bindir_SQ = $(subst ','\'',$(bindir))
-bindir_relative_SQ = $(subst ','\'',$(bindir_relative))
 
 LIB_FILE = liblockdep.a liblockdep.so
+BIN_FILE = lockdep
 
 CONFIG_INCLUDES =
 CONFIG_LIBS	=
@@ -229,7 +232,8 @@ define do_install
 endef
 
 install_lib: all_cmd
-	$(Q)$(call do_install,$(LIB_FILE),$(bindir_SQ))
+	$(Q)$(call do_install,$(LIB_FILE),$(libdir_SQ))
+	$(Q)$(call do_install,$(BIN_FILE),$(bindir_SQ))
 
 install: install_lib
 
