@@ -3,8 +3,11 @@
 
 #include <pthread.h>
 
+#ifndef CALLER_ADDR0
 #define CALLER_ADDR0 (__builtin_return_address(0))
 #define _THIS_IP_ CALLER_ADDR0
+#endif
+
 #define NR_LOCKDEP_CACHING_CLASSES 2
 #define MAX_LOCKDEP_SUBCLASSES 8UL
 
