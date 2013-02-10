@@ -223,7 +223,6 @@ define SOURCE_LIBLOCKDEP
 
 int main(void)
 {
-	liblockdep_init();
 	return 0;
 }
 endef

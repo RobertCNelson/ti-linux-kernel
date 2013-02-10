@@ -468,8 +468,6 @@ static void *thread_func(void *ctx)
 	char comm2[22];
 	int fd;
 
-	liblockdep_set_thread();
-
 	free(parms);
 
 	sprintf(comm2, ":%s", this_task->comm);

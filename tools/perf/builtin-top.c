@@ -588,8 +588,6 @@ static void *display_thread_tui(void *arg)
 		.refresh	= top->delay_secs,
 	};
 
-	liblockdep_set_thread();
-
 	perf_top__sort_new_samples(top);
 
 	/*
@@ -614,8 +612,6 @@ static void *display_thread(void *arg)
 	struct termios tc, save;
 	struct perf_top *top = arg;
 	int delay_msecs, c;
-
-	liblockdep_set_thread();
 
 	tcgetattr(0, &save);
 	tc = save;
