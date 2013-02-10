@@ -5,7 +5,6 @@ void main(void)
 {
 	liblockdep_pthread_mutex_t a, b, c, d;
 
-	liblockdep_init();
 	liblockdep_set_thread();
 
 	liblockdep_pthread_mutex_init(&a, NULL);

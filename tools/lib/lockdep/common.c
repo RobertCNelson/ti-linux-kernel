@@ -10,7 +10,7 @@ __thread struct task_struct current_obj;
 bool debug_locks = true;
 bool debug_locks_silent;
 
-void liblockdep_init(void)
+__attribute__((constructor)) static void liblockdep_init(void)
 {
 	lockdep_init();
 }

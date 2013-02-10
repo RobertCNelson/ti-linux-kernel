@@ -25,7 +25,6 @@ struct task_struct {
 extern __thread struct task_struct current_obj;
 #define current (&current_obj)
 
-void liblockdep_init(void);
 void liblockdep_set_thread(void);
 
 #define debug_locks_off() 1

@@ -26,7 +26,6 @@ struct lockdep_map {
 #endif
 };
 
-void liblockdep_init(void);
 void liblockdep_set_thread(void);
 void lockdep_init_map(struct lockdep_map *lock, const char *name,
 			struct lock_class_key *key, int subclass);
