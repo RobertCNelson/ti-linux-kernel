@@ -176,4 +176,6 @@ next/dt
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git tegra-for-3.9-dt
 	at91/dt
 		pull	git://github.com/at91linux/linux-at91.git tags/at91-dt
+	davinci/dt2
+		pull	git://gitorious.org/linux-davinci/linux-davinci.git tags/davinci-for-v3.9/dt-2
 
