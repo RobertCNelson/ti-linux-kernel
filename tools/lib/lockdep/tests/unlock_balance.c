@@ -4,8 +4,6 @@ void main(void)
 {
 	pthread_mutex_t a;
 
-	liblockdep_set_thread();
-
 	pthread_mutex_init(&a, NULL);
 
 	pthread_mutex_lock(&a);
