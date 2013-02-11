@@ -196,3 +196,4 @@ next/virt
 	virt/mach
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/will/linux.git for-arm-soc/virt/mach
 	patch	20130211174731.GO9801@mudshark.cambridge.arm.com
+	+patch to fix warning (local only)
