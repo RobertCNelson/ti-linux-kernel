@@ -46,6 +46,8 @@ int bL_switcher_unregister_notifier(struct notifier_block *nb);
 bool bL_switcher_get_enabled(void);
 void bL_switcher_put_enabled(void);
 
+int bL_switcher_trace_trigger(void);
+
 #else
 static inline int bL_switcher_register_notifier(struct notifier_block *nb)
 {
@@ -59,6 +61,7 @@ static inline int bL_switcher_unregister_notifier(struct notifier_block *nb)
 
 static inline bool bL_switcher_get_enabled(void) { return false; }
 static inline void bL_switcher_put_enabled(void) { }
+static inline int bL_switcher_trace_trigger(void) { return 0; }
 #endif /* CONFIG_BL_SWITCHER */
 
 #endif
