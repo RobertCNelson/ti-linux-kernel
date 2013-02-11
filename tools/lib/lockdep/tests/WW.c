@@ -4,9 +4,6 @@ void main(void)
 {
 	pthread_rwlock_t a, b;
 
-	liblockdep_init();
-	liblockdep_set_thread();
-
 	pthread_rwlock_init(&a, NULL);
 	pthread_rwlock_init(&b, NULL);
 

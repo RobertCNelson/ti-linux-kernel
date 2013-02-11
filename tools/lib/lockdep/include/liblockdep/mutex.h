@@ -1,8 +1,6 @@
 #ifndef _LIBLOCKDEP_MUTEX_H
 #define _LIBLOCKDEP_MUTEX_H
 
-#ifdef __USE_LIBLOCKDEP
-
 #include <pthread.h>
 #include "common.h"
 
@@ -60,6 +58,8 @@ static inline int liblockdep_pthread_mutex_destroy(liblockdep_pthread_mutex_t *l
 {
 	return pthread_mutex_destroy(&lock->mutex);
 }
+
+#ifdef __USE_LIBLOCKDEP
 
 #define pthread_mutex_t         liblockdep_pthread_mutex_t
 #define pthread_mutex_init      liblockdep_pthread_mutex_init

@@ -28,7 +28,9 @@
 #define noinline
 #define list_add_tail_rcu list_add_tail
 
+#ifndef CALLER_ADDR0
 #define _THIS_IP_ CALLER_ADDR0
 #define CALLER_ADDR0 ((unsigned long)__builtin_return_address(0))
+#endif
 
 #endif

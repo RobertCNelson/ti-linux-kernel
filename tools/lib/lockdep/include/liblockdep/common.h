@@ -3,8 +3,11 @@
 
 #include <pthread.h>
 
+#ifndef CALLER_ADDR0
 #define CALLER_ADDR0 (__builtin_return_address(0))
 #define _THIS_IP_ CALLER_ADDR0
+#endif
+
 #define NR_LOCKDEP_CACHING_CLASSES 2
 #define MAX_LOCKDEP_SUBCLASSES 8UL
 
@@ -26,8 +29,6 @@ struct lockdep_map {
 #endif
 };
 
-void liblockdep_init(void);
-void liblockdep_set_thread(void);
 void lockdep_init_map(struct lockdep_map *lock, const char *name,
 			struct lock_class_key *key, int subclass);
 void lock_acquire(struct lockdep_map *lock, unsigned int subclass,

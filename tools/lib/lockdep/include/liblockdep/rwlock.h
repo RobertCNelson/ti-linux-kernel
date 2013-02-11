@@ -1,8 +1,6 @@
 #ifndef _LIBLOCKDEP_RWLOCK_H
 #define _LIBLOCKDEP_RWLOCK_H
 
-#ifdef __USE_LIBLOCKDEP
-
 #include <pthread.h>
 #include "common.h"
 
@@ -76,6 +74,8 @@ static inline int liblockdep_rwlock_destroy(liblockdep_pthread_rwlock_t *lock)
 {
 	return pthread_rwlock_destroy(&lock->rwlock);
 }
+
+#ifdef __USE_LIBLOCKDEP
 
 #define pthread_rwlock_t		liblockdep_pthread_rwlock_t
 #define pthread_rwlock_init		liblockdep_pthread_rwlock_init
