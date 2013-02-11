@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2012 ARM Ltd.
+ * Copyright (C) 2012 - ARM Ltd
+ * Author: Marc Zyngier <marc.zyngier@arm.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -13,9 +14,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef __CLKSOURCE_ARM_GENERIC_H
-#define __CLKSOURCE_ARM_GENERIC_H
 
-extern int arm_generic_timer_init(void);
+#ifndef __ARM_KVM_PSCI_H__
+#define __ARM_KVM_PSCI_H__
 
-#endif
+bool kvm_psci_call(struct kvm_vcpu *vcpu);
+
+#endif /* __ARM_KVM_PSCI_H__ */
