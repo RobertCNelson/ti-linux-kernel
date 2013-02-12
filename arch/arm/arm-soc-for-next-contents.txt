@@ -145,6 +145,11 @@ next/soc
 		pull	git://git.linaro.org/people/shawnguo/linux-2.6.git tags/imx-soc-3.9
 	renesas/soc
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-soc4-for-v3.9
+	socfpga/hw
+		patch	1360625433-28067-2-git-send-email-dinguyen@altera.com
+		patch	1360625433-28067-3-git-send-email-dinguyen@altera.com
+		patch	1360625433-28067-4-git-send-email-dinguyen@altera.com
+		patch	1360625433-28067-5-git-send-email-dinguyen@altera.com
 
 next/boards
 	renesas/defconfig
