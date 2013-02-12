@@ -77,6 +77,7 @@ next/cleanup
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/cleanup-samsung
 	at91/cleanup
 		pull	git://github.com/at91linux/linux-at91.git tags/at91-cleanup
+	patch	1360706692-13622-1-git-send-email-robherring2@gmail.com
 
 next/sh-pinmux
 	pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git pfc
