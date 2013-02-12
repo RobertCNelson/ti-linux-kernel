@@ -208,3 +208,7 @@ next/virt
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/will/linux.git for-arm-soc/virt/mach
 	patch	20130211174731.GO9801@mudshark.cambridge.arm.com
 	+patch to fix warning (local only)
+
+late/dt
+	imx/dt
+		pull	git://git.linaro.org/people/shawnguo/linux-2.6.git tags/imx-dt-3.9
