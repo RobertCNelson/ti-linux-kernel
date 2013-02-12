@@ -214,3 +214,15 @@ next/virt
 late/dt
 	imx/dt
 		pull	git://git.linaro.org/people/shawnguo/linux-2.6.git tags/imx-dt-3.9
+
+late/omap
+	omap/late-soc
+		pull	git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.9/soc-signed
+	omap/late-am33xx
+		pull	git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.9/am33xx-signed
+	omap/late-pm
+		pull	git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.9/pm-wfi-take2-signed-v2
+	omap/late-clock
+		pull	git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.9/clock-signed
+	omap/late-pm-omap4
+		pull	git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.9/pm-omap4-signed
