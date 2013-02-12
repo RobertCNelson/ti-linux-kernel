@@ -29,6 +29,7 @@ next/fixes-non-critical
 	patch	1358786701-28414-1-git-send-email-michal.simek@xilinx.com
 	omap/fixes-non-critical
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.9/fixes-non-critical-signed-v2
+	patch	1359123276-15833-4-git-send-email-arnd@arndb.de
 
 next/cleanup
 	timer/cleanup
