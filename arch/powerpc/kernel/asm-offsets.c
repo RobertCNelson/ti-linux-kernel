@@ -77,6 +77,7 @@ int main(void)
 	DEFINE(NMI_MASK, NMI_MASK);
 	DEFINE(THREAD_DSCR, offsetof(struct thread_struct, dscr));
 	DEFINE(THREAD_DSCR_INHERIT, offsetof(struct thread_struct, dscr_inherit));
+	DEFINE(TASKTHREADPPR, offsetof(struct task_struct, thread.ppr));
 #else
 	DEFINE(THREAD_INFO, offsetof(struct task_struct, stack));
 #endif /* CONFIG_PPC64 */
@@ -119,6 +120,10 @@ int main(void)
 #endif
 #ifdef CONFIG_KVM_BOOKE_HV
 	DEFINE(THREAD_KVM_VCPU, offsetof(struct thread_struct, kvm_vcpu));
+#endif
+
+#ifdef CONFIG_PPC_BOOK3S_64
+	DEFINE(THREAD_TAR, offsetof(struct thread_struct, tar));
 #endif
 
 	DEFINE(TI_FLAGS, offsetof(struct thread_info, flags));
