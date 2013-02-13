@@ -158,9 +158,11 @@ extern __u32			cpu_caps_set[NCAPINTS];
 #ifdef CONFIG_SMP
 DECLARE_PER_CPU_SHARED_ALIGNED(struct cpuinfo_x86, cpu_info);
 #define cpu_data(cpu)		per_cpu(cpu_info, cpu)
+extern void init_guest_spinlock_delay(void);
 #else
 #define cpu_info		boot_cpu_data
 #define cpu_data(cpu)		boot_cpu_data
+static inline void init_guest_spinlock_delay(void) {}
 #endif
 
 extern const struct seq_operations cpuinfo_op;

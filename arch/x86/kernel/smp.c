@@ -23,6 +23,7 @@
 #include <linux/interrupt.h>
 #include <linux/cpu.h>
 #include <linux/gfp.h>
+#include <linux/hash.h>
 
 #include <asm/mtrr.h>
 #include <asm/tlbflush.h>
@@ -111,6 +112,104 @@
 
 static atomic_t stopping_cpu = ATOMIC_INIT(-1);
 static bool smp_no_nmi_ipi = false;
+
+#define DELAY_SHIFT			8
+#define DELAY_FIXED_1			(1<<DELAY_SHIFT)
+#define MIN_SPINLOCK_DELAY		(1 * DELAY_FIXED_1)
+#define MAX_SPINLOCK_DELAY_NATIVE	(16000 * DELAY_FIXED_1)
+#define MAX_SPINLOCK_DELAY_GUEST	(16 * DELAY_FIXED_1)
+#define DELAY_HASH_SHIFT		6
+
+/*
+ * Modern Intel and AMD CPUs tell the hypervisor when a guest is
+ * spinning excessively on a spinlock. The hypervisor will then
+ * schedule something else, effectively taking care of the backoff
+ * for us. Doing our own backoff on top of the hypervisor's pause
+ * loop exit handling can lead to excessively long delays, and
+ * performance degradations. Limit the spinlock delay in virtual
+ * machines to a smaller value. Called from init_hypervisor_platform
+ */
+static int __read_mostly max_spinlock_delay = MAX_SPINLOCK_DELAY_NATIVE;
+void __init init_guest_spinlock_delay(void)
+{
+	max_spinlock_delay = MAX_SPINLOCK_DELAY_GUEST;
+}
+
+struct delay_entry {
+	u32 hash;
+	u32 delay;
+};
+static DEFINE_PER_CPU(struct delay_entry [1 << DELAY_HASH_SHIFT], spinlock_delay) = {
+	[0 ... (1 << DELAY_HASH_SHIFT) - 1] = {
+		.hash = 0,
+		.delay = MIN_SPINLOCK_DELAY,
+	},
+};
+
+/*
+ * Wait on a congested ticket spinlock. Many spinlocks are embedded in
+ * data structures; having many CPUs pounce on the cache line with the
+ * spinlock simultaneously can slow down the lock holder, and the system
+ * as a whole.
+ *
+ * To prevent total performance collapse in case of bad spinlock contention,
+ * perform proportional backoff. The per-cpu value of delay is automatically
+ * tuned to limit the number of times spinning CPUs poll the lock before
+ * obtaining it. This limits the amount of cross-CPU traffic required to obtain
+ * a spinlock, and keeps system performance from dropping off a cliff.
+ *
+ * There is a tradeoff. If we poll too often, the whole system is slowed
+ * down. If we sleep too long, the lock will go unused for a period of
+ * time. The solution is to go for a fast spin if we are at the head of
+ * the queue, to slowly increase the delay if we sleep for too short a
+ * time, and to decrease the delay if we slept for too long.
+ */
+void ticket_spin_lock_wait(arch_spinlock_t *lock, struct __raw_tickets inc)
+{
+	__ticket_t head = inc.head, ticket = inc.tail;
+	__ticket_t waiters_ahead;
+	u32 hash = hash32_ptr(lock);
+	u32 slot = hash_32(hash, DELAY_HASH_SHIFT);
+	struct delay_entry *ent = &__get_cpu_var(spinlock_delay[slot]);
+	u32 delay = (ent->hash == hash) ? ent->delay : MIN_SPINLOCK_DELAY;
+	unsigned loops;
+
+	for (;;) {
+		waiters_ahead = ticket - head - 1;
+		/*
+		 * We are next after the current lock holder. Check often
+		 * to avoid wasting time when the lock is released.
+		 */
+		if (!waiters_ahead) {
+			do {
+				cpu_relax();
+			} while (ACCESS_ONCE(lock->tickets.head) != ticket);
+			break;
+		}
+
+		/* Aggressively increase delay, to minimize lock accesses. */
+		if (delay < max_spinlock_delay)
+			delay += DELAY_FIXED_1 / 7;
+
+		loops = (delay * waiters_ahead) >> DELAY_SHIFT;
+		while (loops--)
+			cpu_relax();
+
+		head = ACCESS_ONCE(lock->tickets.head);
+		if (head == ticket) {
+			/*
+			 * We overslept, and do not know by how much.
+			 * Exponentially decay the value of delay,
+			 * to get it back to a good value quickly.
+			 */
+			if (delay >= 2 * DELAY_FIXED_1)
+				delay -= max_t(u32, delay/32, DELAY_FIXED_1);
+			break;
+		}
+	}
+	ent->hash = hash;
+	ent->delay = delay;
+}
 
 /*
  * this function sends a 'reschedule' IPI to another CPU.

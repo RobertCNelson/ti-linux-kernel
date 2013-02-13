@@ -34,6 +34,8 @@
 # define UNLOCK_LOCK_PREFIX
 #endif
 
+extern void ticket_spin_lock_wait(arch_spinlock_t *, struct __raw_tickets);
+
 /*
  * Ticket locks are conceptually two parts, one indicating the current head of
  * the queue, and the other indicating the current tail. The lock is acquired
@@ -53,12 +55,9 @@ static __always_inline void __ticket_spin_lock(arch_spinlock_t *lock)
 
 	inc = xadd(&lock->tickets, inc);
 
-	for (;;) {
-		if (inc.head == inc.tail)
-			break;
-		cpu_relax();
-		inc.head = ACCESS_ONCE(lock->tickets.head);
-	}
+	if (inc.head != inc.tail)
+		ticket_spin_lock_wait(lock, inc);
+
 	barrier();		/* make sure nothing creeps before the lock is taken */
 }
 
