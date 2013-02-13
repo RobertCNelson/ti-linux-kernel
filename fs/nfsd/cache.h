@@ -12,6 +12,10 @@
 
 /*
  * Representation of a reply cache entry.
+ *
+ * Note that we use a sockaddr_in6 to hold the address instead of the more
+ * typical sockaddr_storage. This is for space reasons, since sockaddr_storage
+ * is much larger than a sockaddr_in6.
  */
 struct svc_cacherep {
 	struct hlist_node	c_hash;
@@ -20,7 +24,7 @@ struct svc_cacherep {
 	unsigned char		c_state,	/* unused, inprog, done */
 				c_type,		/* status, buffer */
 				c_secure : 1;	/* req came from port < 1024 */
-	struct sockaddr_in	c_addr;
+	struct sockaddr_in6	c_addr;
 	__be32			c_xid;
 	u32			c_prot;
 	u32			c_proc;
@@ -46,8 +50,7 @@ enum {
 enum {
 	RC_DROPIT,
 	RC_REPLY,
-	RC_DOIT,
-	RC_INTR
+	RC_DOIT
 };
 
 /*
@@ -66,6 +69,9 @@ enum {
  * If requests are retransmitted within this interval, they're dropped.
  */
 #define RC_DELAY		(HZ/5)
+
+/* Cache entries expire after this time period */
+#define RC_EXPIRE		(120 * HZ)
 
 int	nfsd_reply_cache_init(void);
 void	nfsd_reply_cache_shutdown(void);
