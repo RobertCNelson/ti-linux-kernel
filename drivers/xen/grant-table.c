@@ -974,10 +974,22 @@ static void gnttab_unmap_frames_v2(void)
 	arch_gnttab_unmap(grstatus, nr_status_frames(nr_grant_frames));
 }
 
+static xen_pfn_t pvh_get_grant_pfn(int grant_idx)
+{
+	unsigned long vaddr;
+	unsigned int level;
+	pte_t *pte;
+
+	vaddr = (unsigned long)(gnttab_shared.addr) + grant_idx * PAGE_SIZE;
+	pte = lookup_address(vaddr, &level);
+	BUG_ON(pte == NULL);
+	return pte_mfn(*pte);
+}
+
 static int gnttab_map(unsigned int start_idx, unsigned int end_idx)
 {
 	struct gnttab_setup_table setup;
-	unsigned long start_gpfn;
+	unsigned long start_gpfn = 0;
 	xen_pfn_t *frames;
 	unsigned int nr_gframes = end_idx + 1;
 	int rc;
@@ -989,8 +1001,6 @@ static int gnttab_map(unsigned int start_idx, unsigned int end_idx)
 
 		if (xen_hvm_domain())
 			start_gpfn = xen_hvm_resume_frames >> PAGE_SHIFT;
-		else
-			start_gpfn = virt_to_pfn(gnttab_shared.addr);
 		/*
 		 * Loop backwards, so that the first hypercall has the largest
 		 * index, ensuring that the table will grow only once.
@@ -999,7 +1009,11 @@ static int gnttab_map(unsigned int start_idx, unsigned int end_idx)
 			xatp.domid = DOMID_SELF;
 			xatp.idx = i;
 			xatp.space = XENMAPSPACE_grant_table;
-			xatp.gpfn = start_gpfn + i;
+			if (xen_hvm_domain())
+				xatp.gpfn = start_gpfn + i;
+			else
+				xatp.gpfn = pvh_get_grant_pfn(i);
+
 			rc = HYPERVISOR_memory_op(XENMEM_add_to_physmap, &xatp);
 			if (rc != 0) {
 				printk(KERN_WARNING
@@ -1089,7 +1103,13 @@ static void gnttab_request_version(void)
 		grant_table_version);
 }
 
-static int xlated_setup_gnttab_pages(int numpages, void **addr)
+/*
+ * PVH: we need three things: virtual address, pfns, and mfns. The pfns
+ * are allocated via ballooning, then we call arch_gnttab_map_shared to
+ * allocate the VA and put pfn's in the pte's for the VA. The mfn's are
+ * finally allocated in gnttab_map() by xen which also populates the P2M.
+ */
+static int xlated_setup_gnttab_pages(unsigned long numpages, void **addr)
 {
 	int i, rc;
 	unsigned long pfns[numpages];
@@ -1097,20 +1117,24 @@ static int xlated_setup_gnttab_pages(int numpages, void **addr)
 
 	rc = alloc_xenballooned_pages(numpages, pages, 0);
 	if (rc != 0) {
-		pr_warn("%s Could not balloon alloc %d pfns rc:%d\n", __func__,
+		pr_warn("%s Couldn't balloon alloc %ld pfns rc:%d\n", __func__,
 			numpages, rc);
-		return -ENOMEM;
+		return rc;
 	}
 	for (i = 0; i < numpages; i++)
 		pfns[i] = page_to_pfn(pages[i]);
 
 	rc = arch_gnttab_map_shared(pfns, numpages, numpages, addr);
+	if (rc != 0)
+		free_xenballooned_pages(numpages, pages);
+
 	return rc;
 }
 
 static int gnttab_setup(void)
 {
-	unsigned int rc, max_nr_gframes;
+	int rc;
+	unsigned int max_nr_gframes;
 
 	max_nr_gframes = gnttab_max_grant_frames();
 	if (max_nr_gframes < nr_grant_frames)
@@ -1119,7 +1143,7 @@ static int gnttab_setup(void)
 	if (xen_pv_domain() && xen_feature(XENFEAT_auto_translated_physmap) &&
 	    !gnttab_shared.addr) {
 
-		rc = xlated_setup_gnttab_pages(max_nr_gframes,
+		rc = xlated_setup_gnttab_pages((unsigned long)max_nr_gframes,
 					       &gnttab_shared.addr);
 		if (rc != 0)
 			return rc;
