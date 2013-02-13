@@ -95,6 +95,8 @@ acpi_device_modalias_show(struct device *dev, struct device_attribute *attr, cha
 }
 static DEVICE_ATTR(modalias, 0444, acpi_device_modalias_show, NULL);
 
+static void __acpi_bus_trim(struct acpi_device *start);
+
 /**
  * acpi_bus_hot_remove_device: hot-remove a device and its children
  * @context: struct acpi_eject_event pointer (freed in this func)
@@ -114,18 +116,14 @@ void acpi_bus_hot_remove_device(void *context)
 	acpi_status status = AE_OK;
 	u32 ost_code = ACPI_OST_SC_NON_SPECIFIC_FAILURE; /* default */
 
+	mutex_lock(&acpi_scan_lock);
+
 	ACPI_DEBUG_PRINT((ACPI_DB_INFO,
 		"Hot-removing device %s...\n", dev_name(&device->dev)));
 
-	acpi_bus_trim(device);
+	__acpi_bus_trim(device);
 	/* Device node has been released. */
 	device = NULL;
-
-	/* power off device */
-	status = acpi_evaluate_object(handle, "_PS3", NULL, NULL);
-	if (ACPI_FAILURE(status) && status != AE_NOT_FOUND)
-		printk(KERN_WARNING PREFIX
-				"Power-off device failed\n");
 
 	if (ACPI_SUCCESS(acpi_get_handle(handle, "_LCK", &temp))) {
 		arg_list.count = 1;
@@ -146,18 +144,14 @@ void acpi_bus_hot_remove_device(void *context)
 	status = acpi_evaluate_object(handle, "_EJ0", &arg_list, NULL);
 	if (ACPI_FAILURE(status)) {
 		if (status != AE_NOT_FOUND)
-			printk(KERN_WARNING PREFIX
-					"Eject device failed\n");
-		goto err_out;
+			acpi_handle_warn(handle, "Eject failed\n");
+
+		/* Tell the firmware the hot-remove operation has failed. */
+		acpi_evaluate_hotplug_ost(handle, ej_event->event,
+					  ost_code, NULL);
 	}
 
-	kfree(context);
-	return;
-
-err_out:
-	/* Inform firmware the hot-remove operation has completed w/ error */
-	(void) acpi_evaluate_hotplug_ost(handle,
-				ej_event->event, ost_code, NULL);
+	mutex_unlock(&acpi_scan_lock);
 	kfree(context);
 	return;
 }
@@ -780,10 +774,11 @@ static void acpi_device_unregister(struct acpi_device *device)
 
 	device_del(&device->dev);
 	/*
-	 * Drop the reference counts of all power resources the device depends
-	 * on and turn off the ones that have no more references.
+	 * Transition the device to D3cold to drop the reference counts of all
+	 * power resources the device depends on and turn off the ones that have
+	 * no more references.
 	 */
-	acpi_power_transition(device, ACPI_STATE_D3_COLD);
+	acpi_device_set_power(device, ACPI_STATE_D3_COLD);
 	put_device(&device->dev);
 }
 
@@ -1686,10 +1681,8 @@ static acpi_status acpi_bus_remove(acpi_handle handle, u32 lvl_not_used,
 	return AE_OK;
 }
 
-void acpi_bus_trim(struct acpi_device *start)
+static void __acpi_bus_trim(struct acpi_device *start)
 {
-	mutex_lock(&acpi_scan_lock);
-
 	/*
 	 * Execute acpi_bus_device_detach() as a post-order callback to detach
 	 * all ACPI drivers from the device nodes being removed.
@@ -1704,7 +1697,12 @@ void acpi_bus_trim(struct acpi_device *start)
 	acpi_walk_namespace(ACPI_TYPE_ANY, start->handle, ACPI_UINT32_MAX, NULL,
 			    acpi_bus_remove, NULL, NULL);
 	acpi_bus_remove(start->handle, 0, NULL, NULL);
+}
 
+void acpi_bus_trim(struct acpi_device *start)
+{
+	mutex_lock(&acpi_scan_lock);
+	__acpi_bus_trim(start);
 	mutex_unlock(&acpi_scan_lock);
 }
 EXPORT_SYMBOL_GPL(acpi_bus_trim);
