@@ -353,6 +353,7 @@ config MIPS_SEAD3
 	select USB_ARCH_HAS_EHCI
 	select USB_EHCI_BIG_ENDIAN_DESC
 	select USB_EHCI_BIG_ENDIAN_MMIO
+	select USE_OF
 	help
 	  This enables support for the MIPS Technologies SEAD3 evaluation
 	  board.
@@ -383,16 +384,6 @@ config NXP_STB225
 	select SOC_PNX8335
 	help
 	 Support for NXP Semiconductors STB225 Development Board.
-
-config PNX8550_JBS
-	bool "NXP PNX8550 based JBS board"
-	select PNX8550
-	select SYS_SUPPORTS_LITTLE_ENDIAN
-
-config PNX8550_STB810
-	bool "NXP PNX8550 based STB810 board"
-	select PNX8550
-	select SYS_SUPPORTS_LITTLE_ENDIAN
 
 config PMC_MSP
 	bool "PMC-Sierra MSP chipsets"
@@ -844,7 +835,7 @@ source "arch/mips/jazz/Kconfig"
 source "arch/mips/jz4740/Kconfig"
 source "arch/mips/lantiq/Kconfig"
 source "arch/mips/lasat/Kconfig"
-source "arch/mips/pmc-sierra/Kconfig"
+source "arch/mips/pmcs-msp71xx/Kconfig"
 source "arch/mips/powertv/Kconfig"
 source "arch/mips/sgi-ip27/Kconfig"
 source "arch/mips/sibyte/Kconfig"
@@ -1112,19 +1103,6 @@ config SOC_PNX8335
 	bool
 	select SOC_PNX833X
 
-config PNX8550
-	bool
-	select SOC_PNX8550
-
-config SOC_PNX8550
-	bool
-	select DMA_NONCOHERENT
-	select HW_HAS_PCI
-	select SYS_HAS_CPU_MIPS32_R1
-	select SYS_HAS_EARLY_PRINTK
-	select SYS_SUPPORTS_32BIT_KERNEL
-	select GENERIC_GPIO
-
 config SWAP_IO_SPACE
 	bool
 
@@ -1250,6 +1228,7 @@ config CPU_MIPS32_R2
 	select CPU_HAS_PREFETCH
 	select CPU_SUPPORTS_32BIT_KERNEL
 	select CPU_SUPPORTS_HIGHMEM
+	select HAVE_KVM
 	help
 	  Choose this option to build a kernel for release 2 or later of the
 	  MIPS32 architecture.  Most modern embedded systems with a 32-bit
@@ -1753,6 +1732,20 @@ config 64BIT
 
 endchoice
 
+config KVM_GUEST
+	bool "KVM Guest Kernel"
+	help
+	  Select this option if building a guest kernel for KVM (Trap & Emulate) mode
+
+config KVM_HOST_FREQ
+	int "KVM Host Processor Frequency (MHz)"
+	depends on KVM_GUEST
+	default 500
+	help
+	  Select this option if building a guest kernel for KVM to skip
+	  RTC emulation when determining guest CPU Frequency.  Instead, the guest
+	  processor frequency is automatically derived from the host frequency.
+
 choice
 	prompt "Kernel page size"
 	default PAGE_SIZE_4KB
@@ -2032,6 +2025,7 @@ config SB1_PASS_2_1_WORKAROUNDS
 	bool
 	depends on CPU_SB1 && CPU_SB1_PASS_2
 	default y
+
 
 config 64BIT_PHYS_ADDR
 	bool
@@ -2568,3 +2562,5 @@ source "security/Kconfig"
 source "crypto/Kconfig"
 
 source "lib/Kconfig"
+
+source "arch/mips/kvm/Kconfig"

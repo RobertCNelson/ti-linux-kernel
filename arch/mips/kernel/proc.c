@@ -1,7 +1,7 @@
 /*
  *  Copyright (C) 1995, 1996, 2001  Ralf Baechle
  *  Copyright (C) 2001, 2004  MIPS Technologies, Inc.
- *  Copyright (C) 2004  Maciej W. Rozycki
+ *  Copyright (C) 2004	Maciej W. Rozycki
  */
 #include <linux/delay.h>
 #include <linux/kernel.h>
@@ -63,6 +63,28 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 			seq_printf(m, "%s0x%04x", i ? ", " : "" ,
 				cpu_data[n].watch_reg_masks[i]);
 		seq_printf(m, "]\n");
+	}
+	if (cpu_has_mips_r) {
+		seq_printf(m, "isa\t\t\t:");
+		if (cpu_has_mips_1)
+			seq_printf(m, "%s", "mips1");
+		if (cpu_has_mips_2)
+			seq_printf(m, "%s", " mips2");
+		if (cpu_has_mips_3)
+			seq_printf(m, "%s", " mips3");
+		if (cpu_has_mips_4)
+			seq_printf(m, "%s", " mips4");
+		if (cpu_has_mips_5)
+			seq_printf(m, "%s", " mips5");
+		if (cpu_has_mips32r1)
+			seq_printf(m, "%s", " mips32r1");
+		if (cpu_has_mips32r2)
+			seq_printf(m, "%s", " mips32r2");
+		if (cpu_has_mips64r1)
+			seq_printf(m, "%s", " mips64r1");
+		if (cpu_has_mips64r2)
+			seq_printf(m, "%s", " mips64r2");
+		seq_printf(m, "\n");
 	}
 
 	seq_printf(m, "ASEs implemented\t:");

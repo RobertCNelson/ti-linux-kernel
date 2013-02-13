@@ -41,9 +41,9 @@
 
 /*
  * For historic reasons the pipe(2) syscall on MIPS has an unusual calling
- * convention.  It returns results in registers $v0 / $v1 which means there
+ * convention.	It returns results in registers $v0 / $v1 which means there
  * is no need for it to do verify the validity of a userspace pointer
- * argument.  Historically that used to be expensive in Linux.  These days
+ * argument.  Historically that used to be expensive in Linux.	These days
  * the performance advantage is negligible.
  */
 asmlinkage int sysm_pipe(nabi_no_regargs volatile struct pt_regs regs)
@@ -124,7 +124,7 @@ _sys_clone(nabi_no_regargs struct pt_regs regs)
 	child_tidptr = (int __user *) regs.regs[8];
 #endif
 	return do_fork(clone_flags, newsp, 0,
-	               parent_tidptr, child_tidptr);
+		       parent_tidptr, child_tidptr);
 }
 
 SYSCALL_DEFINE1(set_thread_area, unsigned long, addr)
@@ -138,10 +138,10 @@ SYSCALL_DEFINE1(set_thread_area, unsigned long, addr)
 	return 0;
 }
 
-static inline int mips_atomic_set(struct pt_regs *regs,
-	unsigned long addr, unsigned long new)
+static inline int mips_atomic_set(unsigned long addr, unsigned long new)
 {
 	unsigned long old, tmp;
+	struct pt_regs *regs;
 	unsigned int err;
 
 	if (unlikely(addr & 3))
@@ -222,6 +222,7 @@ static inline int mips_atomic_set(struct pt_regs *regs,
 	if (unlikely(err))
 		return err;
 
+	regs = current_pt_regs();
 	regs->regs[2] = old;
 	regs->regs[7] = 0;	/* No error */
 
@@ -235,22 +236,14 @@ static inline int mips_atomic_set(struct pt_regs *regs,
 	: "r" (regs));
 
 	/* unreached.  Honestly.  */
-	while (1);
+	unreachable();
 }
 
-save_static_function(sys_sysmips);
-static int __used noinline
-_sys_sysmips(nabi_no_regargs struct pt_regs regs)
+SYSCALL_DEFINE3(sysmips, long, cmd, long, arg1, long, arg2)
 {
-	long cmd, arg1, arg2;
-
-	cmd = regs.regs[4];
-	arg1 = regs.regs[5];
-	arg2 = regs.regs[6];
-
 	switch (cmd) {
 	case MIPS_ATOMIC_SET:
-		return mips_atomic_set(&regs, arg1, arg2);
+		return mips_atomic_set(arg1, arg2);
 
 	case MIPS_FIXADE:
 		if (arg1 & ~3)
