@@ -50,41 +50,6 @@ static void modify_scu_cpu_psr(unsigned long set, unsigned long clr)
 
 }
 
-static unsigned int __init emev2_get_core_count(void)
-{
-	if (!scu_base) {
-		scu_base = ioremap(EMEV2_SCU_BASE, PAGE_SIZE);
-		emev2_clock_init(); /* need ioremapped SMU */
-	}
-
-	WARN_ON_ONCE(!scu_base);
-
-	return scu_base ? scu_get_core_count(scu_base) : 1;
-}
-
-static int emev2_platform_cpu_kill(unsigned int cpu)
-{
-	return 0; /* not supported yet */
-}
-
-static int __maybe_unused emev2_cpu_kill(unsigned int cpu)
-{
-	int k;
-
-	/* this function is running on another CPU than the offline target,
-	 * here we need wait for shutdown code in platform_cpu_die() to
-	 * finish before asking SoC-specific code to power off the CPU core.
-	 */
-	for (k = 0; k < 1000; k++) {
-		if (shmobile_cpu_is_dead(cpu))
-			return emev2_platform_cpu_kill(cpu);
-		mdelay(1);
-	}
-
-	return 0;
-}
-
-
 static void __cpuinit emev2_secondary_init(unsigned int cpu)
 {
 	gic_secondary_init(0);
@@ -97,9 +62,6 @@ static int __cpuinit emev2_boot_secondary(unsigned int cpu, struct task_struct *
 	/* enable cache coherency */
 	modify_scu_cpu_psr(0, 3 << (cpu * 8));
 
-	/* Tell ROM loader about our vector (in headsmp.S) */
-	emev2_set_boot_vector(__pa(shmobile_secondary_vector));
-
 	arch_send_wakeup_ipi_mask(cpumask_of(cpu));
 	return 0;
 }
@@ -110,13 +72,23 @@ static void __init emev2_smp_prepare_cpus(unsigned int max_cpus)
 
 	scu_enable(scu_base);
 
+	/* Tell ROM loader about our vector (in headsmp.S) */
+	emev2_set_boot_vector(__pa(shmobile_secondary_vector));
+
 	/* enable cache coherency on CPU0 */
 	modify_scu_cpu_psr(0, 3 << (cpu * 8));
 }
 
 static void __init emev2_smp_init_cpus(void)
 {
-	unsigned int ncores = emev2_get_core_count();
+	unsigned int ncores;
+
+	if (!scu_base) {
+		scu_base = ioremap(EMEV2_SCU_BASE, PAGE_SIZE);
+		emev2_clock_init(); /* need ioremapped SMU */
+	}
+
+	ncores = scu_base ? scu_get_core_count(scu_base) : 1;
 
 	shmobile_smp_init_cpus(ncores);
 }
@@ -126,9 +98,4 @@ struct smp_operations emev2_smp_ops __initdata = {
 	.smp_prepare_cpus	= emev2_smp_prepare_cpus,
 	.smp_secondary_init	= emev2_secondary_init,
 	.smp_boot_secondary	= emev2_boot_secondary,
-#ifdef CONFIG_HOTPLUG_CPU
-	.cpu_kill		= emev2_cpu_kill,
-	.cpu_die		= shmobile_cpu_die,
-	.cpu_disable		= shmobile_cpu_disable,
-#endif
 };
