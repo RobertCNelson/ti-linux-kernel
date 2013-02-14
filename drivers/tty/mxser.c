@@ -1264,7 +1264,7 @@ static int mxser_set_serial_info(struct tty_struct *tty,
 				(new_serial.flags & ASYNC_FLAGS));
 		port->close_delay = new_serial.close_delay * HZ / 100;
 		port->closing_wait = new_serial.closing_wait * HZ / 100;
-		tty->low_latency = (port->flags & ASYNC_LOW_LATENCY) ? 1 : 0;
+		port->low_latency = (port->flags & ASYNC_LOW_LATENCY) ? 1 : 0;
 		if ((port->flags & ASYNC_SPD_MASK) == ASYNC_SPD_CUST &&
 				(new_serial.baud_base != info->baud_base ||
 				new_serial.custom_divisor !=
@@ -2079,7 +2079,7 @@ static void mxser_receive_chars(struct tty_struct *tty,
 		}
 		while (gdl--) {
 			ch = inb(port->ioaddr + UART_RX);
-			tty_insert_flip_char(tty, ch, 0);
+			tty_insert_flip_char(&port->port, ch, 0);
 			cnt++;
 		}
 		goto end_intr;
@@ -2118,7 +2118,7 @@ intr_old:
 				} else
 					flag = TTY_BREAK;
 			}
-			tty_insert_flip_char(tty, ch, flag);
+			tty_insert_flip_char(&port->port, ch, flag);
 			cnt++;
 			if (cnt >= recv_room) {
 				if (!port->ldisc_stop_rx)
@@ -2145,7 +2145,7 @@ end_intr:
 	 * recursive locking.
 	 */
 	spin_unlock(&port->slock);
-	tty_flip_buffer_push(tty);
+	tty_flip_buffer_push(&port->port);
 	spin_lock(&port->slock);
 }
 
