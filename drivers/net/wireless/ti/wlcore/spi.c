@@ -87,11 +87,8 @@ static void wl12xx_spi_reset(struct device *child)
 	struct spi_message m;
 
 	cmd = kzalloc(WSPI_INIT_CMD_LEN, GFP_KERNEL);
-	if (!cmd) {
-		dev_err(child->parent,
-			"could not allocate cmd for spi reset\n");
+	if (!cmd)
 		return;
-	}
 
 	memset(&t, 0, sizeof(t));
 	spi_message_init(&m);
@@ -115,11 +112,8 @@ static void wl12xx_spi_init(struct device *child)
 	struct spi_message m;
 
 	cmd = kzalloc(WSPI_INIT_CMD_LEN, GFP_KERNEL);
-	if (!cmd) {
-		dev_err(child->parent,
-			"could not allocate cmd for spi init\n");
+	if (!cmd)
 		return;
-	}
 
 	memset(crc, 0, sizeof(crc));
 	memset(&t, 0, sizeof(t));
@@ -270,7 +264,7 @@ static int __must_check wl12xx_spi_raw_write(struct device *child, int addr,
 					     void *buf, size_t len, bool fixed)
 {
 	struct wl12xx_spi_glue *glue = dev_get_drvdata(child->parent);
-	struct spi_transfer t[2 * WSPI_MAX_NUM_OF_CHUNKS];
+	struct spi_transfer t[2 * (WSPI_MAX_NUM_OF_CHUNKS + 1)];
 	struct spi_message m;
 	u32 commands[WSPI_MAX_NUM_OF_CHUNKS];
 	u32 *cmd;
@@ -340,10 +334,8 @@ static int wl1271_probe(struct spi_device *spi)
 	pdata->ops = &spi_ops;
 
 	glue = kzalloc(sizeof(*glue), GFP_KERNEL);
-	if (!glue) {
-		dev_err(&spi->dev, "can't allocate glue\n");
+	if (!glue)
 		goto out;
-	}
 
 	glue->dev = &spi->dev;
 
@@ -407,8 +399,7 @@ static int wl1271_remove(struct spi_device *spi)
 {
 	struct wl12xx_spi_glue *glue = spi_get_drvdata(spi);
 
-	platform_device_del(glue->core);
-	platform_device_put(glue->core);
+	platform_device_unregister(glue->core);
 	kfree(glue);
 
 	return 0;

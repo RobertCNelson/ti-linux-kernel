@@ -277,14 +277,12 @@ static int gfar_alloc_skb_resources(struct net_device *ndev)
 	/* Setup the skbuff rings */
 	for (i = 0; i < priv->num_tx_queues; i++) {
 		tx_queue = priv->tx_queue[i];
-		tx_queue->tx_skbuff = kmalloc(sizeof(*tx_queue->tx_skbuff) *
-					      tx_queue->tx_ring_size,
-					      GFP_KERNEL);
-		if (!tx_queue->tx_skbuff) {
-			netif_err(priv, ifup, ndev,
-				  "Could not allocate tx_skbuff\n");
+		tx_queue->tx_skbuff =
+			kmalloc_array(tx_queue->tx_ring_size,
+				      sizeof(*tx_queue->tx_skbuff),
+				      GFP_KERNEL);
+		if (!tx_queue->tx_skbuff)
 			goto cleanup;
-		}
 
 		for (k = 0; k < tx_queue->tx_ring_size; k++)
 			tx_queue->tx_skbuff[k] = NULL;
@@ -292,15 +290,12 @@ static int gfar_alloc_skb_resources(struct net_device *ndev)
 
 	for (i = 0; i < priv->num_rx_queues; i++) {
 		rx_queue = priv->rx_queue[i];
-		rx_queue->rx_skbuff = kmalloc(sizeof(*rx_queue->rx_skbuff) *
-					      rx_queue->rx_ring_size,
-					      GFP_KERNEL);
-
-		if (!rx_queue->rx_skbuff) {
-			netif_err(priv, ifup, ndev,
-				  "Could not allocate rx_skbuff\n");
+		rx_queue->rx_skbuff =
+			kmalloc_array(rx_queue->rx_ring_size,
+				      sizeof(*rx_queue->rx_skbuff),
+				      GFP_KERNEL);
+		if (!rx_queue->rx_skbuff)
 			goto cleanup;
-		}
 
 		for (j = 0; j < rx_queue->rx_ring_size; j++)
 			rx_queue->rx_skbuff[j] = NULL;
@@ -354,6 +349,10 @@ static void gfar_init_mac(struct net_device *ndev)
 		/* Program the RIR0 reg with the required distribution */
 		gfar_write(&regs->rir0, DEFAULT_RIR0);
 	}
+
+	/* Restore PROMISC mode */
+	if (ndev->flags & IFF_PROMISC)
+		rctrl |= RCTRL_PROM;
 
 	if (ndev->features & NETIF_F_RXCSUM)
 		rctrl |= RCTRL_CHECKSUMMING;
@@ -540,6 +539,19 @@ static void unmap_group_regs(struct gfar_private *priv)
 			iounmap(priv->gfargrp[i].regs);
 }
 
+static void free_gfar_dev(struct gfar_private *priv)
+{
+	int i, j;
+
+	for (i = 0; i < priv->num_grps; i++)
+		for (j = 0; j < GFAR_NUM_IRQS; j++) {
+			kfree(priv->gfargrp[i].irqinfo[j]);
+			priv->gfargrp[i].irqinfo[j] = NULL;
+		}
+
+	free_netdev(priv->ndev);
+}
+
 static void disable_napi(struct gfar_private *priv)
 {
 	int i;
@@ -559,40 +571,46 @@ static void enable_napi(struct gfar_private *priv)
 static int gfar_parse_group(struct device_node *np,
 			    struct gfar_private *priv, const char *model)
 {
+	struct gfar_priv_grp *grp = &priv->gfargrp[priv->num_grps];
 	u32 *queue_mask;
+	int i;
 
-	priv->gfargrp[priv->num_grps].regs = of_iomap(np, 0);
-	if (!priv->gfargrp[priv->num_grps].regs)
+	for (i = 0; i < GFAR_NUM_IRQS; i++) {
+		grp->irqinfo[i] = kzalloc(sizeof(struct gfar_irqinfo),
+					  GFP_KERNEL);
+		if (!grp->irqinfo[i])
+			return -ENOMEM;
+	}
+
+	grp->regs = of_iomap(np, 0);
+	if (!grp->regs)
 		return -ENOMEM;
 
-	priv->gfargrp[priv->num_grps].interruptTransmit =
-			irq_of_parse_and_map(np, 0);
+	gfar_irq(grp, TX)->irq = irq_of_parse_and_map(np, 0);
 
 	/* If we aren't the FEC we have multiple interrupts */
 	if (model && strcasecmp(model, "FEC")) {
-		priv->gfargrp[priv->num_grps].interruptReceive =
-			irq_of_parse_and_map(np, 1);
-		priv->gfargrp[priv->num_grps].interruptError =
-			irq_of_parse_and_map(np,2);
-		if (priv->gfargrp[priv->num_grps].interruptTransmit == NO_IRQ ||
-		    priv->gfargrp[priv->num_grps].interruptReceive  == NO_IRQ ||
-		    priv->gfargrp[priv->num_grps].interruptError    == NO_IRQ)
+		gfar_irq(grp, RX)->irq = irq_of_parse_and_map(np, 1);
+		gfar_irq(grp, ER)->irq = irq_of_parse_and_map(np, 2);
+		if (gfar_irq(grp, TX)->irq == NO_IRQ ||
+		    gfar_irq(grp, RX)->irq == NO_IRQ ||
+		    gfar_irq(grp, ER)->irq == NO_IRQ)
 			return -EINVAL;
 	}
 
-	priv->gfargrp[priv->num_grps].grp_id = priv->num_grps;
-	priv->gfargrp[priv->num_grps].priv = priv;
-	spin_lock_init(&priv->gfargrp[priv->num_grps].grplock);
+	grp->grp_id = priv->num_grps;
+	grp->priv = priv;
+	spin_lock_init(&grp->grplock);
 	if (priv->mode == MQ_MG_MODE) {
 		queue_mask = (u32 *)of_get_property(np, "fsl,rx-bit-map", NULL);
-		priv->gfargrp[priv->num_grps].rx_bit_map = queue_mask ?
+		grp->rx_bit_map = queue_mask ?
 			*queue_mask : (DEFAULT_MAPPING >> priv->num_grps);
 		queue_mask = (u32 *)of_get_property(np, "fsl,tx-bit-map", NULL);
-		priv->gfargrp[priv->num_grps].tx_bit_map = queue_mask ?
+		grp->tx_bit_map = queue_mask ?
 			*queue_mask : (DEFAULT_MAPPING >> priv->num_grps);
 	} else {
-		priv->gfargrp[priv->num_grps].rx_bit_map = 0xFF;
-		priv->gfargrp[priv->num_grps].tx_bit_map = 0xFF;
+		grp->rx_bit_map = 0xFF;
+		grp->tx_bit_map = 0xFF;
 	}
 	priv->num_grps++;
 
@@ -777,7 +795,7 @@ tx_alloc_failed:
 	free_tx_pointers(priv);
 err_grp_init:
 	unmap_group_regs(priv);
-	free_netdev(dev);
+	free_gfar_dev(priv);
 	return err;
 }
 
@@ -1182,15 +1200,16 @@ static int gfar_probe(struct platform_device *ofdev)
 
 	/* fill out IRQ number and name fields */
 	for (i = 0; i < priv->num_grps; i++) {
+		struct gfar_priv_grp *grp = &priv->gfargrp[i];
 		if (priv->device_flags & FSL_GIANFAR_DEV_HAS_MULTI_INTR) {
-			sprintf(priv->gfargrp[i].int_name_tx, "%s%s%c%s",
+			sprintf(gfar_irq(grp, TX)->name, "%s%s%c%s",
 				dev->name, "_g", '0' + i, "_tx");
-			sprintf(priv->gfargrp[i].int_name_rx, "%s%s%c%s",
+			sprintf(gfar_irq(grp, RX)->name, "%s%s%c%s",
 				dev->name, "_g", '0' + i, "_rx");
-			sprintf(priv->gfargrp[i].int_name_er, "%s%s%c%s",
+			sprintf(gfar_irq(grp, ER)->name, "%s%s%c%s",
 				dev->name, "_g", '0' + i, "_er");
 		} else
-			strcpy(priv->gfargrp[i].int_name_tx, dev->name);
+			strcpy(gfar_irq(grp, TX)->name, dev->name);
 	}
 
 	/* Initialize the filer table */
@@ -1223,7 +1242,7 @@ register_fail:
 		of_node_put(priv->phy_node);
 	if (priv->tbi_node)
 		of_node_put(priv->tbi_node);
-	free_netdev(dev);
+	free_gfar_dev(priv);
 	return err;
 }
 
@@ -1240,7 +1259,7 @@ static int gfar_remove(struct platform_device *ofdev)
 
 	unregister_netdev(priv->ndev);
 	unmap_group_regs(priv);
-	free_netdev(priv->ndev);
+	free_gfar_dev(priv);
 
 	return 0;
 }
@@ -1648,9 +1667,9 @@ void gfar_halt(struct net_device *dev)
 
 static void free_grp_irqs(struct gfar_priv_grp *grp)
 {
-	free_irq(grp->interruptError, grp);
-	free_irq(grp->interruptTransmit, grp);
-	free_irq(grp->interruptReceive, grp);
+	free_irq(gfar_irq(grp, TX)->irq, grp);
+	free_irq(gfar_irq(grp, RX)->irq, grp);
+	free_irq(gfar_irq(grp, ER)->irq, grp);
 }
 
 void stop_gfar(struct net_device *dev)
@@ -1679,7 +1698,7 @@ void stop_gfar(struct net_device *dev)
 			free_grp_irqs(&priv->gfargrp[i]);
 	} else {
 		for (i = 0; i < priv->num_grps; i++)
-			free_irq(priv->gfargrp[i].interruptTransmit,
+			free_irq(gfar_irq(&priv->gfargrp[i], TX)->irq,
 				 &priv->gfargrp[i]);
 	}
 
@@ -1854,32 +1873,34 @@ static int register_grp_irqs(struct gfar_priv_grp *grp)
 		/* Install our interrupt handlers for Error,
 		 * Transmit, and Receive
 		 */
-		if ((err = request_irq(grp->interruptError, gfar_error,
-				       0, grp->int_name_er, grp)) < 0) {
+		err = request_irq(gfar_irq(grp, ER)->irq, gfar_error, 0,
+				  gfar_irq(grp, ER)->name, grp);
+		if (err < 0) {
 			netif_err(priv, intr, dev, "Can't get IRQ %d\n",
-				  grp->interruptError);
+				  gfar_irq(grp, ER)->irq);
 
 			goto err_irq_fail;
 		}
-
-		if ((err = request_irq(grp->interruptTransmit, gfar_transmit,
-				       0, grp->int_name_tx, grp)) < 0) {
+		err = request_irq(gfar_irq(grp, TX)->irq, gfar_transmit, 0,
+				  gfar_irq(grp, TX)->name, grp);
+		if (err < 0) {
 			netif_err(priv, intr, dev, "Can't get IRQ %d\n",
-				  grp->interruptTransmit);
+				  gfar_irq(grp, TX)->irq);
 			goto tx_irq_fail;
 		}
-
-		if ((err = request_irq(grp->interruptReceive, gfar_receive,
-				       0, grp->int_name_rx, grp)) < 0) {
+		err = request_irq(gfar_irq(grp, RX)->irq, gfar_receive, 0,
+				  gfar_irq(grp, RX)->name, grp);
+		if (err < 0) {
 			netif_err(priv, intr, dev, "Can't get IRQ %d\n",
-				  grp->interruptReceive);
+				  gfar_irq(grp, RX)->irq);
 			goto rx_irq_fail;
 		}
 	} else {
-		if ((err = request_irq(grp->interruptTransmit, gfar_interrupt,
-				       0, grp->int_name_tx, grp)) < 0) {
+		err = request_irq(gfar_irq(grp, TX)->irq, gfar_interrupt, 0,
+				  gfar_irq(grp, TX)->name, grp);
+		if (err < 0) {
 			netif_err(priv, intr, dev, "Can't get IRQ %d\n",
-				  grp->interruptTransmit);
+				  gfar_irq(grp, TX)->irq);
 			goto err_irq_fail;
 		}
 	}
@@ -1887,9 +1908,9 @@ static int register_grp_irqs(struct gfar_priv_grp *grp)
 	return 0;
 
 rx_irq_fail:
-	free_irq(grp->interruptTransmit, grp);
+	free_irq(gfar_irq(grp, TX)->irq, grp);
 tx_irq_fail:
-	free_irq(grp->interruptError, grp);
+	free_irq(gfar_irq(grp, ER)->irq, grp);
 err_irq_fail:
 	return err;
 
@@ -2627,7 +2648,7 @@ static inline void count_errors(unsigned short status, struct net_device *dev)
 	if (status & RXBD_TRUNCATED) {
 		stats->rx_length_errors++;
 
-		estats->rx_trunc++;
+		atomic64_inc(&estats->rx_trunc);
 
 		return;
 	}
@@ -2636,20 +2657,20 @@ static inline void count_errors(unsigned short status, struct net_device *dev)
 		stats->rx_length_errors++;
 
 		if (status & RXBD_LARGE)
-			estats->rx_large++;
+			atomic64_inc(&estats->rx_large);
 		else
-			estats->rx_short++;
+			atomic64_inc(&estats->rx_short);
 	}
 	if (status & RXBD_NONOCTET) {
 		stats->rx_frame_errors++;
-		estats->rx_nonoctet++;
+		atomic64_inc(&estats->rx_nonoctet);
 	}
 	if (status & RXBD_CRCERR) {
-		estats->rx_crcerr++;
+		atomic64_inc(&estats->rx_crcerr);
 		stats->rx_crc_errors++;
 	}
 	if (status & RXBD_OVERRUN) {
-		estats->rx_overrun++;
+		atomic64_inc(&estats->rx_overrun);
 		stats->rx_crc_errors++;
 	}
 }
@@ -2723,7 +2744,7 @@ static int gfar_process_frame(struct net_device *dev, struct sk_buff *skb,
 	ret = napi_gro_receive(napi, skb);
 
 	if (GRO_DROP == ret)
-		priv->extra_stats.kernel_dropped++;
+		atomic64_inc(&priv->extra_stats.kernel_dropped);
 
 	return 0;
 }
@@ -2791,7 +2812,7 @@ int gfar_clean_rx_ring(struct gfar_priv_rx_q *rx_queue, int rx_work_limit)
 			} else {
 				netif_warn(priv, rx_err, dev, "Missing skb!\n");
 				rx_queue->stats.rx_dropped++;
-				priv->extra_stats.rx_skbmissing++;
+				atomic64_inc(&priv->extra_stats.rx_skbmissing);
 			}
 
 		}
@@ -3224,7 +3245,7 @@ static irqreturn_t gfar_error(int irq, void *grp_id)
 			netif_dbg(priv, tx_err, dev,
 				  "TX FIFO underrun, packet dropped\n");
 			dev->stats.tx_dropped++;
-			priv->extra_stats.tx_underrun++;
+			atomic64_inc(&priv->extra_stats.tx_underrun);
 
 			local_irq_save(flags);
 			lock_tx_qs(priv);
@@ -3239,7 +3260,7 @@ static irqreturn_t gfar_error(int irq, void *grp_id)
 	}
 	if (events & IEVENT_BSY) {
 		dev->stats.rx_errors++;
-		priv->extra_stats.rx_bsy++;
+		atomic64_inc(&priv->extra_stats.rx_bsy);
 
 		gfar_receive(irq, grp_id);
 
@@ -3248,19 +3269,19 @@ static irqreturn_t gfar_error(int irq, void *grp_id)
 	}
 	if (events & IEVENT_BABR) {
 		dev->stats.rx_errors++;
-		priv->extra_stats.rx_babr++;
+		atomic64_inc(&priv->extra_stats.rx_babr);
 
 		netif_dbg(priv, rx_err, dev, "babbling RX error\n");
 	}
 	if (events & IEVENT_EBERR) {
-		priv->extra_stats.eberr++;
+		atomic64_inc(&priv->extra_stats.eberr);
 		netif_dbg(priv, rx_err, dev, "bus error\n");
 	}
 	if (events & IEVENT_RXC)
 		netif_dbg(priv, rx_status, dev, "control frame\n");
 
 	if (events & IEVENT_BABT) {
-		priv->extra_stats.tx_babt++;
+		atomic64_inc(&priv->extra_stats.tx_babt);
 		netif_dbg(priv, tx_err, dev, "babbling TX error\n");
 	}
 	return IRQ_HANDLED;

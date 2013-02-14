@@ -67,6 +67,8 @@ extern void netdev_set_default_ethtool_ops(struct net_device *dev,
 #define NET_ADDR_PERM		0	/* address is permanent (default) */
 #define NET_ADDR_RANDOM		1	/* address is generated randomly */
 #define NET_ADDR_STOLEN		2	/* address is stolen from other device */
+#define NET_ADDR_SET		3	/* address is set using
+					 * dev_set_mac_address() */
 
 /* Backlog congestion levels */
 #define NET_RX_SUCCESS		0	/* keep 'em coming, baby */
@@ -859,8 +861,7 @@ struct netdev_fcoe_hbainfo {
  *	flow_id is a flow ID to be passed to rps_may_expire_flow() later.
  *	Return the filter ID on success, or a negative error code.
  *
- *	Slave management functions (for bridge, bonding, etc). User should
- *	call netdev_set_master() to set dev->master properly.
+ *	Slave management functions (for bridge, bonding, etc).
  * int (*ndo_add_slave)(struct net_device *dev, struct net_device *slave_dev);
  *	Called to make another netdev an underling.
  *
@@ -894,6 +895,14 @@ struct netdev_fcoe_hbainfo {
  * int (*ndo_bridge_setlink)(struct net_device *dev, struct nlmsghdr *nlh)
  * int (*ndo_bridge_getlink)(struct sk_buff *skb, u32 pid, u32 seq,
  *			     struct net_device *dev)
+ *
+ * int (*ndo_change_carrier)(struct net_device *dev, bool new_carrier);
+ *	Called to change device carrier. Soft-devices (like dummy, team, etc)
+ *	which do not represent real hardware may define this to allow their
+ *	userspace components to manage their virtual carrier state. Devices
+ *	that determine carrier state from physical hardware properties (eg
+ *	network cables) or protocol-dependent mechanisms (eg
+ *	USB_CDC_NOTIFY_NETWORK_CONNECTION) should NOT implement this function.
  */
 struct net_device_ops {
 	int			(*ndo_init)(struct net_device *dev);
@@ -1011,6 +1020,8 @@ struct net_device_ops {
 	int			(*ndo_bridge_getlink)(struct sk_buff *skb,
 						      u32 pid, u32 seq,
 						      struct net_device *dev);
+	int			(*ndo_change_carrier)(struct net_device *dev,
+						      bool new_carrier);
 };
 
 /*
@@ -1161,9 +1172,7 @@ struct net_device {
 						 * avoid dirtying this cache line.
 						 */
 
-	struct net_device	*master; /* Pointer to master device of a group,
-					  * which this device is member of.
-					  */
+	struct list_head	upper_dev_list; /* List of upper devices */
 
 	/* Interface address info used in eth_type_trans() */
 	unsigned char		*dev_addr;	/* hw address, (before bcast
@@ -1263,7 +1272,7 @@ struct net_device {
 	void (*destructor)(struct net_device *dev);
 
 #ifdef CONFIG_NETPOLL
-	struct netpoll_info	*npinfo;
+	struct netpoll_info __rcu	*npinfo;
 #endif
 
 #ifdef CONFIG_NET_NS
@@ -1277,9 +1286,12 @@ struct net_device {
 		struct pcpu_lstats __percpu	*lstats; /* loopback stats */
 		struct pcpu_tstats __percpu	*tstats; /* tunnel stats */
 		struct pcpu_dstats __percpu	*dstats; /* dummy stats */
+		struct pcpu_vstats __percpu	*vstats; /* veth stats */
 	};
 	/* GARP */
 	struct garp_port __rcu	*garp_port;
+	/* MRP */
+	struct mrp_port __rcu	*mrp_port;
 
 	/* class/net/name entry */
 	struct device		dev;
@@ -1396,6 +1408,7 @@ static inline void netdev_for_each_tx_queue(struct net_device *dev,
 
 extern struct netdev_queue *netdev_pick_tx(struct net_device *dev,
 					   struct sk_buff *skb);
+extern u16 __netdev_pick_tx(struct net_device *dev, struct sk_buff *skb);
 
 /*
  * Net namespace inlines
@@ -2095,6 +2108,18 @@ static inline void netif_wake_subqueue(struct net_device *dev, u16 queue_index)
 		__netif_schedule(txq->qdisc);
 }
 
+#ifdef CONFIG_XPS
+extern int netif_set_xps_queue(struct net_device *dev, struct cpumask *mask,
+			       u16 index);
+#else
+static inline int netif_set_xps_queue(struct net_device *dev,
+				      struct cpumask *mask,
+				      u16 index)
+{
+	return 0;
+}
+#endif
+
 /*
  * Returns a Tx hash for the given packet when dev->real_num_tx_queues is used
  * as a distribution range limit for the returned value.
@@ -2197,6 +2222,8 @@ extern int		dev_set_mtu(struct net_device *, int);
 extern void		dev_set_group(struct net_device *, int);
 extern int		dev_set_mac_address(struct net_device *,
 					    struct sockaddr *);
+extern int		dev_change_carrier(struct net_device *,
+					   bool new_carrier);
 extern int		dev_hard_start_xmit(struct sk_buff *skb,
 					    struct net_device *dev,
 					    struct netdev_queue *txq);
@@ -2624,12 +2651,28 @@ extern int		netdev_max_backlog;
 extern int		netdev_tstamp_prequeue;
 extern int		weight_p;
 extern int		bpf_jit_enable;
-extern int		netdev_set_master(struct net_device *dev, struct net_device *master);
-extern int netdev_set_bond_master(struct net_device *dev,
-				  struct net_device *master);
+
+extern bool netdev_has_upper_dev(struct net_device *dev,
+				 struct net_device *upper_dev);
+extern bool netdev_has_any_upper_dev(struct net_device *dev);
+extern struct net_device *netdev_master_upper_dev_get(struct net_device *dev);
+extern struct net_device *netdev_master_upper_dev_get_rcu(struct net_device *dev);
+extern int netdev_upper_dev_link(struct net_device *dev,
+				 struct net_device *upper_dev);
+extern int netdev_master_upper_dev_link(struct net_device *dev,
+					struct net_device *upper_dev);
+extern void netdev_upper_dev_unlink(struct net_device *dev,
+				    struct net_device *upper_dev);
 extern int skb_checksum_help(struct sk_buff *skb);
-extern struct sk_buff *skb_gso_segment(struct sk_buff *skb,
-	netdev_features_t features);
+extern struct sk_buff *__skb_gso_segment(struct sk_buff *skb,
+	netdev_features_t features, bool tx_path);
+
+static inline
+struct sk_buff *skb_gso_segment(struct sk_buff *skb, netdev_features_t features)
+{
+	return __skb_gso_segment(skb, features, true);
+}
+
 #ifdef CONFIG_BUG
 extern void netdev_rx_csum_fault(struct net_device *dev);
 #else

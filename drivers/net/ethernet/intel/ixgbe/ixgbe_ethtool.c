@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -156,7 +156,7 @@ static int ixgbe_get_settings(struct net_device *netdev,
 	struct ixgbe_hw *hw = &adapter->hw;
 	ixgbe_link_speed supported_link;
 	u32 link_speed = 0;
-	bool autoneg;
+	bool autoneg = false;
 	bool link_up;
 
 	hw->mac.ops.get_link_capabilities(hw, &supported_link, &autoneg);
@@ -333,10 +333,10 @@ static int ixgbe_set_settings(struct net_device *netdev,
 			return err;
 		/* this sets the link speed and restarts auto-neg */
 		hw->mac.autotry_restart = true;
-		err = hw->mac.ops.setup_link(hw, advertised, true, true);
+		err = hw->mac.ops.setup_link(hw, advertised, true);
 		if (err) {
 			e_info(probe, "setup link failed with code %d\n", err);
-			hw->mac.ops.setup_link(hw, old, true, true);
+			hw->mac.ops.setup_link(hw, old, true);
 		}
 	} else {
 		/* in this case we currently only support 10Gb/FULL */
@@ -1040,6 +1040,9 @@ static void ixgbe_get_ethtool_stats(struct net_device *netdev,
 			p = (char *) adapter +
 					ixgbe_gstrings_stats[i].stat_offset;
 			break;
+		default:
+			data[i] = 0;
+			continue;
 		}
 
 		data[i] = (ixgbe_gstrings_stats[i].sizeof_stat ==
@@ -1096,8 +1099,10 @@ static void ixgbe_get_strings(struct net_device *netdev, u32 stringset,
 
 	switch (stringset) {
 	case ETH_SS_TEST:
-		memcpy(data, *ixgbe_gstrings_test,
-		       IXGBE_TEST_LEN * ETH_GSTRING_LEN);
+		for (i = 0; i < IXGBE_TEST_LEN; i++) {
+			memcpy(data, ixgbe_gstrings_test[i], ETH_GSTRING_LEN);
+			data += ETH_GSTRING_LEN;
+		}
 		break;
 	case ETH_SS_STATS:
 		for (i = 0; i < IXGBE_GLOBAL_STATS_LEN; i++) {
@@ -1837,19 +1842,11 @@ static void ixgbe_diag_test(struct net_device *netdev,
                             struct ethtool_test *eth_test, u64 *data)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	struct ixgbe_hw *hw = &adapter->hw;
 	bool if_running = netif_running(netdev);
 
 	set_bit(__IXGBE_TESTING, &adapter->state);
 	if (eth_test->flags == ETH_TEST_FL_OFFLINE) {
-		/* Offline tests */
-
-		e_info(hw, "offline testing starting\n");
-
-		/* Link test performed before hardware reset so autoneg doesn't
-		 * interfere with test result */
-		if (ixgbe_link_test(adapter, &data[4]))
-			eth_test->flags |= ETH_TEST_FL_FAILED;
-
 		if (adapter->flags & IXGBE_FLAG_SRIOV_ENABLED) {
 			int i;
 			for (i = 0; i < adapter->num_vfs; i++) {
@@ -1870,12 +1867,24 @@ static void ixgbe_diag_test(struct net_device *netdev,
 			}
 		}
 
+		/* Offline tests */
+		e_info(hw, "offline testing starting\n");
+
 		if (if_running)
 			/* indicate we're in test mode */
 			dev_close(netdev);
-		else
-			ixgbe_reset(adapter);
 
+		/* bringing adapter down disables SFP+ optics */
+		if (hw->mac.ops.enable_tx_laser)
+			hw->mac.ops.enable_tx_laser(hw);
+
+		/* Link test performed before hardware reset so autoneg doesn't
+		 * interfere with test result
+		 */
+		if (ixgbe_link_test(adapter, &data[4]))
+			eth_test->flags |= ETH_TEST_FL_FAILED;
+
+		ixgbe_reset(adapter);
 		e_info(hw, "register testing starting\n");
 		if (ixgbe_reg_test(adapter, &data[0]))
 			eth_test->flags |= ETH_TEST_FL_FAILED;
@@ -1908,16 +1917,22 @@ static void ixgbe_diag_test(struct net_device *netdev,
 skip_loopback:
 		ixgbe_reset(adapter);
 
+		/* clear testing bit and return adapter to previous state */
 		clear_bit(__IXGBE_TESTING, &adapter->state);
 		if (if_running)
 			dev_open(netdev);
 	} else {
 		e_info(hw, "online testing starting\n");
+
+		/* if adapter is down, SFP+ optics will be disabled */
+		if (!if_running && hw->mac.ops.enable_tx_laser)
+			hw->mac.ops.enable_tx_laser(hw);
+
 		/* Online tests */
 		if (ixgbe_link_test(adapter, &data[4]))
 			eth_test->flags |= ETH_TEST_FL_FAILED;
 
-		/* Online tests aren't run; pass by default */
+		/* Offline tests aren't run; pass by default */
 		data[0] = 0;
 		data[1] = 0;
 		data[2] = 0;
@@ -1925,6 +1940,10 @@ skip_loopback:
 
 		clear_bit(__IXGBE_TESTING, &adapter->state);
 	}
+
+	/* if adapter was down, ensure SFP+ optics are disabled again */
+	if (!if_running && hw->mac.ops.disable_tx_laser)
+		hw->mac.ops.disable_tx_laser(hw);
 skip_ol_tests:
 	msleep_interruptible(4 * 1000);
 }
@@ -2695,6 +2714,14 @@ static int ixgbe_get_ts_info(struct net_device *dev,
 			(1 << HWTSTAMP_FILTER_NONE) |
 			(1 << HWTSTAMP_FILTER_PTP_V1_L4_SYNC) |
 			(1 << HWTSTAMP_FILTER_PTP_V1_L4_DELAY_REQ) |
+			(1 << HWTSTAMP_FILTER_PTP_V2_L2_EVENT) |
+			(1 << HWTSTAMP_FILTER_PTP_V2_L4_EVENT) |
+			(1 << HWTSTAMP_FILTER_PTP_V2_SYNC) |
+			(1 << HWTSTAMP_FILTER_PTP_V2_L2_SYNC) |
+			(1 << HWTSTAMP_FILTER_PTP_V2_L4_SYNC) |
+			(1 << HWTSTAMP_FILTER_PTP_V2_DELAY_REQ) |
+			(1 << HWTSTAMP_FILTER_PTP_V2_L2_DELAY_REQ) |
+			(1 << HWTSTAMP_FILTER_PTP_V2_L4_DELAY_REQ) |
 			(1 << HWTSTAMP_FILTER_PTP_V2_EVENT);
 		break;
 	default:

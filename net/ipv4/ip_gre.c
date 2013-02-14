@@ -738,7 +738,7 @@ drop:
 static netdev_tx_t ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct ip_tunnel *tunnel = netdev_priv(dev);
-	const struct iphdr  *old_iph = ip_hdr(skb);
+	const struct iphdr  *old_iph;
 	const struct iphdr  *tiph;
 	struct flowi4 fl4;
 	u8     tos;
@@ -755,6 +755,8 @@ static netdev_tx_t ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev
 	if (skb->ip_summed == CHECKSUM_PARTIAL &&
 	    skb_checksum_help(skb))
 		goto tx_error;
+
+	old_iph = ip_hdr(skb);
 
 	if (dev->type == ARPHRD_ETHER)
 		IPCB(skb)->flags = 0;
@@ -818,8 +820,8 @@ static netdev_tx_t ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev
 
 	ttl = tiph->ttl;
 	tos = tiph->tos;
-	if (tos == 1) {
-		tos = 0;
+	if (tos & 0x1) {
+		tos &= ~0x1;
 		if (skb->protocol == htons(ETH_P_IP))
 			tos = old_iph->tos;
 		else if (skb->protocol == htons(ETH_P_IPV6))
