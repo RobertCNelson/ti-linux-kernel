@@ -336,13 +336,9 @@ static struct acpi_device * dock_create_acpi_device(acpi_handle handle)
 static void dock_remove_acpi_device(acpi_handle handle)
 {
 	struct acpi_device *device;
-	int ret;
 
-	if (!acpi_bus_get_device(handle, &device)) {
-		ret = acpi_bus_trim(device);
-		if (ret)
-			pr_debug("error removing bus, %x\n", -ret);
-	}
+	if (!acpi_bus_get_device(handle, &device))
+		acpi_bus_trim(device);
 }
 
 /**
@@ -829,7 +825,7 @@ static ssize_t show_docked(struct device *dev,
 
 	struct dock_station *dock_station = dev->platform_data;
 
-	if (ACPI_SUCCESS(acpi_bus_get_device(dock_station->handle, &tmp)))
+	if (!acpi_bus_get_device(dock_station->handle, &tmp))
 		return snprintf(buf, PAGE_SIZE, "1\n");
 	return snprintf(buf, PAGE_SIZE, "0\n");
 }
