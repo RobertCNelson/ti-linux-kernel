@@ -246,7 +246,6 @@ static struct svc_cacherep *
 nfsd_cache_search(struct svc_rqst *rqstp)
 {
 	struct svc_cacherep	*rp;
-	struct hlist_node	*hn;
 	struct hlist_head 	*rh;
 	__be32			xid = rqstp->rq_xid;
 	u32			proto =  rqstp->rq_prot,
@@ -254,7 +253,7 @@ nfsd_cache_search(struct svc_rqst *rqstp)
 				proc = rqstp->rq_proc;
 
 	rh = &cache_hash[request_hash(xid)];
-	hlist_for_each_entry(rp, hn, rh, c_hash) {
+	hlist_for_each_entry(rp, rh, c_hash) {
 		if (xid == rp->c_xid && proc == rp->c_proc &&
 		    proto == rp->c_prot && vers == rp->c_vers &&
 		    rpc_cmp_addr(svc_addr(rqstp), (struct sockaddr *)&rp->c_addr) &&

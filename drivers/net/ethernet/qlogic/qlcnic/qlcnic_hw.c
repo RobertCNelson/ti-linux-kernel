@@ -576,14 +576,14 @@ void qlcnic_free_mac_list(struct qlcnic_adapter *adapter)
 void qlcnic_prune_lb_filters(struct qlcnic_adapter *adapter)
 {
 	struct qlcnic_filter *tmp_fil;
-	struct hlist_node *tmp_hnode, *n;
+	struct hlist_node *n;
 	struct hlist_head *head;
 	int i, time;
 	u8 cmd;
 
 	for (i = 0; i < adapter->fhash.fbucket_size; i++) {
 		head = &(adapter->fhash.fhead[i]);
-		hlist_for_each_entry_safe(tmp_fil, tmp_hnode, n, head, fnode) {
+		hlist_for_each_entry_safe(tmp_fil, n, head, fnode) {
 			cmd =  tmp_fil->vlan_id ? QLCNIC_MAC_VLAN_DEL :
 						  QLCNIC_MAC_DEL;
 			time = tmp_fil->ftime;
@@ -605,14 +605,14 @@ void qlcnic_prune_lb_filters(struct qlcnic_adapter *adapter)
 void qlcnic_delete_lb_filters(struct qlcnic_adapter *adapter)
 {
 	struct qlcnic_filter *tmp_fil;
-	struct hlist_node *tmp_hnode, *n;
+	struct hlist_node *n;
 	struct hlist_head *head;
 	int i;
 	u8 cmd;
 
 	for (i = 0; i < adapter->fhash.fbucket_size; i++) {
 		head = &(adapter->fhash.fhead[i]);
-		hlist_for_each_entry_safe(tmp_fil, tmp_hnode, n, head, fnode) {
+		hlist_for_each_entry_safe(tmp_fil, n, head, fnode) {
 			cmd =  tmp_fil->vlan_id ? QLCNIC_MAC_VLAN_DEL :
 						  QLCNIC_MAC_DEL;
 			qlcnic_sre_macaddr_change(adapter,
