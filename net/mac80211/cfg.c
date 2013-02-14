@@ -492,7 +492,10 @@ static void sta_set_sinfo(struct sta_info *sta, struct station_info *sinfo)
 #ifdef CONFIG_MAC80211_MESH
 		sinfo->filled |= STATION_INFO_LLID |
 				 STATION_INFO_PLID |
-				 STATION_INFO_PLINK_STATE;
+				 STATION_INFO_PLINK_STATE |
+				 STATION_INFO_LOCAL_PM |
+				 STATION_INFO_PEER_PM |
+				 STATION_INFO_NONPEER_PM;
 
 		sinfo->llid = le16_to_cpu(sta->llid);
 		sinfo->plid = le16_to_cpu(sta->plid);
@@ -501,6 +504,9 @@ static void sta_set_sinfo(struct sta_info *sta, struct station_info *sinfo)
 			sinfo->filled |= STATION_INFO_T_OFFSET;
 			sinfo->t_offset = sta->t_offset;
 		}
+		sinfo->local_pm = sta->local_pm;
+		sinfo->peer_pm = sta->peer_pm;
+		sinfo->nonpeer_pm = sta->nonpeer_pm;
 #endif
 	}
 
@@ -927,6 +933,7 @@ static int ieee80211_start_ap(struct wiphy *wiphy, struct net_device *dev,
 					IEEE80211_CHANCTX_SHARED);
 	if (err)
 		return err;
+	ieee80211_vif_copy_chanctx_to_vlans(sdata, false);
 
 	/*
 	 * Apply control port protocol, this allows us to
@@ -1041,6 +1048,7 @@ static int ieee80211_stop_ap(struct wiphy *wiphy, struct net_device *dev)
 	local->total_ps_buffered -= skb_queue_len(&sdata->u.ap.ps.bc_buf);
 	skb_queue_purge(&sdata->u.ap.ps.bc_buf);
 
+	ieee80211_vif_copy_chanctx_to_vlans(sdata, true);
 	ieee80211_vif_release_channel(sdata);
 
 	return 0;
@@ -1262,6 +1270,10 @@ static int sta_apply_parameters(struct ieee80211_local *local,
 					changed = mesh_plink_inc_estab_count(
 							sdata);
 				sta->plink_state = params->plink_state;
+
+				ieee80211_mps_sta_status_update(sta);
+				ieee80211_mps_set_sta_local_pm(sta,
+					sdata->u.mesh.mshcfg.power_mode);
 				break;
 			case NL80211_PLINK_LISTEN:
 			case NL80211_PLINK_BLOCKED:
@@ -1273,6 +1285,9 @@ static int sta_apply_parameters(struct ieee80211_local *local,
 					changed = mesh_plink_dec_estab_count(
 							sdata);
 				sta->plink_state = params->plink_state;
+
+				ieee80211_mps_sta_status_update(sta);
+				ieee80211_mps_local_status_update(sdata);
 				break;
 			default:
 				/*  nothing  */
@@ -1289,6 +1304,9 @@ static int sta_apply_parameters(struct ieee80211_local *local,
 				break;
 			}
 		}
+
+		if (params->local_pm)
+			ieee80211_mps_set_sta_local_pm(sta, params->local_pm);
 #endif
 	}
 
@@ -1777,6 +1795,15 @@ static int ieee80211_update_mesh_config(struct wiphy *wiphy,
 	if (_chg_mesh_attr(NL80211_MESHCONF_HWMP_CONFIRMATION_INTERVAL, mask))
 		conf->dot11MeshHWMPconfirmationInterval =
 			nconf->dot11MeshHWMPconfirmationInterval;
+	if (_chg_mesh_attr(NL80211_MESHCONF_POWER_MODE, mask)) {
+		conf->power_mode = nconf->power_mode;
+		ieee80211_mps_local_status_update(sdata);
+	}
+	if (_chg_mesh_attr(NL80211_MESHCONF_AWAKE_WINDOW, mask)) {
+		conf->dot11MeshAwakeWindowDuration =
+			nconf->dot11MeshAwakeWindowDuration;
+		ieee80211_bss_info_change_notify(sdata, BSS_CHANGED_BEACON);
+	}
 	return 0;
 }
 
@@ -2723,7 +2750,8 @@ static int ieee80211_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
 		goto out_unlock;
 	}
 
-	IEEE80211_SKB_CB(skb)->flags |= IEEE80211_TX_CTL_TX_OFFCHAN;
+	IEEE80211_SKB_CB(skb)->flags |= IEEE80211_TX_CTL_TX_OFFCHAN |
+					IEEE80211_TX_INTFL_OFFCHAN_TX_OK;
 	if (local->hw.flags & IEEE80211_HW_QUEUE_CONTROL)
 		IEEE80211_SKB_CB(skb)->hw_queue =
 			local->hw.offchannel_tx_hw_queue;
