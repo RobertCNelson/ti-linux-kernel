@@ -30,6 +30,7 @@ next/fixes-non-critical
 	omap/fixes-non-critical
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.9/fixes-non-critical-signed-v2
 	patch	1359123276-15833-4-git-send-email-arnd@arndb.de
+	patches 1360849767-1463135-1-git-send-email-arnd@arndb.de
 
 next/cleanup
 	timer/cleanup
@@ -80,6 +81,7 @@ next/cleanup
 	patch	1360706692-13622-1-git-send-email-robherring2@gmail.com
 	ux500/no-idh-fixes
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/for-arm-soc-cleanup
+	patch	1360850491-1463387-1-git-send-email-arnd@arndb.de
 
 next/sh-pinmux
 	pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git pfc
@@ -153,6 +155,7 @@ next/soc
 		patch	1360625433-28067-3-git-send-email-dinguyen@altera.com
 		patch	1360625433-28067-4-git-send-email-dinguyen@altera.com
 		patch	1360625433-28067-5-git-send-email-dinguyen@altera.com
+	patch	1360850491-1463387-2-git-send-email-arnd@arndb.de
 
 next/boards
 	renesas/defconfig
