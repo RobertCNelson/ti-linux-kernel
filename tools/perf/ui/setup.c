@@ -3,13 +3,16 @@
 #include "../util/cache.h"
 #include "../util/debug.h"
 #include "../util/hist.h"
+#include "../util/liblockdep.h"
 
-pthread_mutex_t ui__lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t ui__lock;
 
 void setup_browser(bool fallback_to_pager)
 {
 	if (!isatty(1) || dump_trace)
 		use_browser = 0;
+
+	pthread_mutex_init(&ui__lock, NULL);
 
 	/* default to TUI */
 	if (use_browser < 0)
@@ -30,6 +33,7 @@ void setup_browser(bool fallback_to_pager)
 		if (fallback_to_pager)
 			setup_pager();
 
+		perf_hpp__column_enable(PERF_HPP__OVERHEAD);
 		perf_hpp__init();
 		break;
 	}

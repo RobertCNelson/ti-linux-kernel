@@ -217,11 +217,33 @@ int main(void)
 endef
 endif
 
+ifndef NO_LIBLOCKDEP
+define SOURCE_LIBLOCKDEP
+#include <liblockdep/mutex.h>
+
+int main(void)
+{
+	return 0;
+}
+endef
+endif
+
 define SOURCE_ON_EXIT
 #include <stdio.h>
 
 int main(void)
 {
 	return on_exit(NULL, NULL);
+}
+endef
+
+define SOURCE_LIBNUMA
+#include <numa.h>
+#include <numaif.h>
+
+int main(void)
+{
+	numa_available();
+	return 0;
 }
 endef

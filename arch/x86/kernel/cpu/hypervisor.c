@@ -76,6 +76,15 @@ void __init init_hypervisor_platform(void)
 
 	init_hypervisor(&boot_cpu_data);
 
+	init_guest_spinlock_delay();
+
 	if (x86_hyper->init_platform)
 		x86_hyper->init_platform();
+}
+
+bool __init hypervisor_x2apic_available(void)
+{
+	return x86_hyper                   &&
+	       x86_hyper->x2apic_available &&
+	       x86_hyper->x2apic_available();
 }
