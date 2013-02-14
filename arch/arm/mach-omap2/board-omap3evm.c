@@ -746,7 +746,7 @@ static void __init omap3_evm_init(void)
 	omap3evm_init_smsc911x();
 	omap3_evm_display_init();
 	omap3_evm_wl12xx_init();
-	omap_twl4030_audio_init("omap3evm");
+	omap_twl4030_audio_init("omap3evm", NULL);
 }
 
 MACHINE_START(OMAP3EVM, "OMAP3 EVM")
@@ -759,6 +759,6 @@ MACHINE_START(OMAP3EVM, "OMAP3 EVM")
 	.handle_irq	= omap3_intc_handle_irq,
 	.init_machine	= omap3_evm_init,
 	.init_late	= omap35xx_init_late,
-	.timer		= &omap3_timer,
+	.init_time	= omap3_sync32k_timer_init,
 	.restart	= omap3xxx_restart,
 MACHINE_END

@@ -629,7 +629,7 @@ static void __init devkit8000_init(void)
 	board_nand_init(devkit8000_nand_partitions,
 			ARRAY_SIZE(devkit8000_nand_partitions), NAND_CS,
 			NAND_BUSWIDTH_16, NULL);
-	omap_twl4030_audio_init("omap3beagle");
+	omap_twl4030_audio_init("omap3beagle", NULL);
 
 	/* Ensure SDRC pins are mux'd for self-refresh */
 	omap_mux_init_signal("sdrc_cke0", OMAP_PIN_OUTPUT);
@@ -645,6 +645,6 @@ MACHINE_START(DEVKIT8000, "OMAP3 Devkit8000")
 	.handle_irq	= omap3_intc_handle_irq,
 	.init_machine	= devkit8000_init,
 	.init_late	= omap35xx_init_late,
-	.timer		= &omap3_secure_timer,
+	.init_time	= omap3_secure_sync32k_timer_init,
 	.restart	= omap3xxx_restart,
 MACHINE_END
