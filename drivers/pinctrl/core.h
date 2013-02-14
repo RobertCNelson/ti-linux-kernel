@@ -9,6 +9,7 @@
  * License terms: GNU General Public License (GPL) version 2
  */
 
+#include <linux/kref.h>
 #include <linux/mutex.h>
 #include <linux/radix-tree.h>
 #include <linux/pinctrl/pinconf.h>
@@ -30,6 +31,8 @@ struct pinctrl_gpio_range;
  * @driver_data: driver data for drivers registering to the pin controller
  *	subsystem
  * @p: result of pinctrl_get() for this device
+ * @hog_default: default state for pins hogged by this device
+ * @hog_sleep: sleep state for pins hogged by this device
  * @device_root: debugfs root for this device
  */
 struct pinctrl_dev {
@@ -41,6 +44,8 @@ struct pinctrl_dev {
 	struct module *owner;
 	void *driver_data;
 	struct pinctrl *p;
+	struct pinctrl_state *hog_default;
+	struct pinctrl_state *hog_sleep;
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *device_root;
 #endif
@@ -54,6 +59,7 @@ struct pinctrl_dev {
  * @state: the current state
  * @dt_maps: the mapping table chunks dynamically parsed from device tree for
  *	this device, if any
+ * @users: reference count
  */
 struct pinctrl {
 	struct list_head node;
@@ -61,6 +67,7 @@ struct pinctrl {
 	struct list_head states;
 	struct pinctrl_state *state;
 	struct list_head dt_maps;
+	struct kref users;
 };
 
 /**
@@ -163,6 +170,9 @@ static inline struct pin_desc *pin_desc_get(struct pinctrl_dev *pctldev,
 int pinctrl_register_map(struct pinctrl_map const *maps, unsigned num_maps,
 			 bool dup, bool locked);
 void pinctrl_unregister_map(struct pinctrl_map const *map);
+
+extern int pinctrl_force_sleep(struct pinctrl_dev *pctldev);
+extern int pinctrl_force_default(struct pinctrl_dev *pctldev);
 
 extern struct mutex pinctrl_mutex;
 extern struct list_head pinctrldev_list;
