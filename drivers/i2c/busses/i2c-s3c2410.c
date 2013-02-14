@@ -1041,12 +1041,10 @@ static int s3c24xx_i2c_probe(struct platform_device *pdev)
 		return -ENOENT;
 	}
 
-	i2c->regs = devm_request_and_ioremap(&pdev->dev, res);
+	i2c->regs = devm_ioremap_resource(&pdev->dev, res);
 
-	if (i2c->regs == NULL) {
-		dev_err(&pdev->dev, "cannot request and map IO\n");
-		return -ENXIO;
-	}
+	if (IS_ERR(i2c->regs))
+		return PTR_ERR(i2c->regs);
 
 	dev_dbg(&pdev->dev, "registers %p (%p)\n",
 		i2c->regs, res);

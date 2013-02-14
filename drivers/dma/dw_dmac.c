@@ -15,6 +15,7 @@
 #include <linux/dmaengine.h>
 #include <linux/dma-mapping.h>
 #include <linux/dmapool.h>
+#include <linux/err.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
@@ -1657,9 +1658,9 @@ static int dw_probe(struct platform_device *pdev)
 	if (irq < 0)
 		return irq;
 
-	regs = devm_request_and_ioremap(&pdev->dev, io);
-	if (!regs)
-		return -EBUSY;
+	regs = devm_ioremap_resource(&pdev->dev, io);
+	if (IS_ERR(regs))
+		return PTR_ERR(regs);
 
 	dw_params = dma_read_byaddr(regs, DW_PARAMS);
 	autocfg = dw_params >> DW_PARAMS_EN & 0x1;
