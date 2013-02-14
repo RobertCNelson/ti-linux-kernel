@@ -76,12 +76,14 @@ Configuration options:
  * attachment if necessary, and possibly to set other options supported by
  * manual attachment.
  */
-#include "../comedidev.h"
 
+#include <linux/pci.h>
 #include <linux/delay.h>
 #include <linux/gfp.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
+
+#include "../comedidev.h"
 
 #include "amcc_s5933.h"
 #include "8253.h"
@@ -2225,11 +2227,6 @@ static int adl_pci9118_pci_probe(struct pci_dev *dev,
 	return comedi_pci_auto_config(dev, &adl_pci9118_driver);
 }
 
-static void adl_pci9118_pci_remove(struct pci_dev *dev)
-{
-	comedi_pci_auto_unconfig(dev);
-}
-
 static DEFINE_PCI_DEVICE_TABLE(adl_pci9118_pci_table) = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_AMCC, 0x80d9) },
 	{ 0 }
@@ -2240,7 +2237,7 @@ static struct pci_driver adl_pci9118_pci_driver = {
 	.name		= "adl_pci9118",
 	.id_table	= adl_pci9118_pci_table,
 	.probe		= adl_pci9118_pci_probe,
-	.remove		= adl_pci9118_pci_remove,
+	.remove		= comedi_pci_auto_unconfig,
 };
 module_comedi_pci_driver(adl_pci9118_driver, adl_pci9118_pci_driver);
 
