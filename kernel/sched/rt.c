@@ -1615,6 +1615,14 @@ static struct task_struct *pick_next_pushable_task(struct rq *rq)
 	return p;
 }
 
+static int ok_to_push_task(struct task_struct *p, struct task_struct *curr)
+{
+	return p->nr_cpus_allowed > 1 &&
+		rt_task(curr) &&
+		(curr->nr_cpus_allowed < 2 ||
+		 curr->prio <= p->prio);
+}
+
 /*
  * If the current CPU has more than one RT task, see if the non
  * running task can migrate over to a CPU that is running a task
@@ -1644,7 +1652,7 @@ retry:
 	 * higher priority than current. If that's the case
 	 * just reschedule current.
 	 */
-	if (unlikely(next_task->prio < rq->curr->prio)) {
+	if (!ok_to_push_task(next_task, rq->curr)) {
 		resched_task(rq->curr);
 		return 0;
 	}
@@ -1809,10 +1817,7 @@ static void task_woken_rt(struct rq *rq, struct task_struct *p)
 	if (!task_running(rq, p) &&
 	    !test_tsk_need_resched(rq->curr) &&
 	    has_pushable_tasks(rq) &&
-	    p->nr_cpus_allowed > 1 &&
-	    rt_task(rq->curr) &&
-	    (rq->curr->nr_cpus_allowed < 2 ||
-	     rq->curr->prio <= p->prio))
+	    ok_to_push_task(p, rq->curr))
 		push_rt_tasks(rq);
 }
 

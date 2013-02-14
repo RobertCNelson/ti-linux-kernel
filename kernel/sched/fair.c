@@ -5222,9 +5222,10 @@ void idle_balance(int this_cpu, struct rq *this_rq)
 	update_rq_runnable_avg(this_rq, 1);
 
 	/*
-	 * Drop the rq->lock, but keep IRQ/preempt disabled.
+	 * Drop the rq->lock, but keep preempt disabled.
 	 */
-	raw_spin_unlock(&this_rq->lock);
+	preempt_disable();
+	raw_spin_unlock_irq(&this_rq->lock);
 
 	update_blocked_averages(this_cpu);
 	rcu_read_lock();
@@ -5251,7 +5252,8 @@ void idle_balance(int this_cpu, struct rq *this_rq)
 	}
 	rcu_read_unlock();
 
-	raw_spin_lock(&this_rq->lock);
+	raw_spin_lock_irq(&this_rq->lock);
+	preempt_enable();
 
 	if (pulled_task || time_after(jiffies, this_rq->next_balance)) {
 		/*
