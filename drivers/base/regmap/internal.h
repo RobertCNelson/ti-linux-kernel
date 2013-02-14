@@ -26,6 +26,7 @@ struct regmap_debugfs_off_cache {
 	off_t min;
 	off_t max;
 	unsigned int base_reg;
+	unsigned int max_reg;
 };
 
 struct regmap_format {
@@ -89,6 +90,8 @@ struct regmap {
 
 	int (*reg_read)(void *context, unsigned int reg, unsigned int *val);
 	int (*reg_write)(void *context, unsigned int reg, unsigned int val);
+
+	bool defer_caching;
 
 	u8 read_flag_mask;
 	u8 write_flag_mask;
@@ -195,5 +198,6 @@ void regmap_async_complete_cb(struct regmap_async *async, int ret);
 
 extern struct regcache_ops regcache_rbtree_ops;
 extern struct regcache_ops regcache_lzo_ops;
+extern struct regcache_ops regcache_flat_ops;
 
 #endif
