@@ -215,6 +215,7 @@ next/virt
 	+patch to fix warning (local only)
 	virt/vgic-vtimer
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/maz/arm-platforms.git kvm-arm/timer
+	+patch	1360882071-4072668-2-git-send-email-arnd@arndb.de
 
 late/dt
 	imx/dt
