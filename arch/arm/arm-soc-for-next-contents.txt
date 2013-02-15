@@ -108,6 +108,8 @@ next/multiplatform
 	patch	20130124201709.GB1036@beefymiracle.amer.corp.natinst.com
 	patch	20130205175126.GH25185@atomide.com
 	+ two more patches for omap
+	omap/multiplatform-fixes
+		patches from 1360882071-4072668-1-git-send-email-arnd@arndb.de
 
 next/soc
 	vt8500/wm8x50
