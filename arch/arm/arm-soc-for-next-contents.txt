@@ -231,3 +231,4 @@ late/omap
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.9/clock-signed
 	omap/late-pm-omap4
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.9/pm-omap4-signed
+	+patch 1360882071-4072668-4-git-send-email-arnd@arndb.de
