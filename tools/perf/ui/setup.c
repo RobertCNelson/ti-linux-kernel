@@ -9,7 +9,7 @@ pthread_mutex_t ui__lock;
 
 void setup_browser(bool fallback_to_pager)
 {
-	if (!isatty(1) || dump_trace)
+	if (use_browser < 2 && (!isatty(1) || dump_trace))
 		use_browser = 0;
 
 	pthread_mutex_init(&ui__lock, NULL);
