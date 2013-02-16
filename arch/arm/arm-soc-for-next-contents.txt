@@ -86,6 +86,7 @@ next/cleanup
 
 next/sh-pinmux
 	pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git pfc
+	pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-pinmux2-for-v3.9
 
 next/drivers
 	ux500/cpufreq
