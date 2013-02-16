@@ -19,13 +19,6 @@ smp-$(CONFIG_ARCH_SH73A0)	+= smp-sh73a0.o headsmp-scu.o
 smp-$(CONFIG_ARCH_R8A7779)	+= smp-r8a7779.o headsmp-scu.o
 smp-$(CONFIG_ARCH_EMEV2)	+= smp-emev2.o headsmp-scu.o
 
-# Pinmux setup
-pfc-y				:=
-pfc-$(CONFIG_ARCH_SH7372)	+= pfc-sh7372.o
-pfc-$(CONFIG_ARCH_SH73A0)	+= pfc-sh73a0.o
-pfc-$(CONFIG_ARCH_R8A7740)	+= pfc-r8a7740.o
-pfc-$(CONFIG_ARCH_R8A7779)	+= pfc-r8a7779.o
-
 # IRQ objects
 obj-$(CONFIG_ARCH_SH7372)	+= entry-intc.o
 obj-$(CONFIG_ARCH_R8A7740)	+= entry-intc.o
@@ -50,7 +43,7 @@ obj-$(CONFIG_MACH_MARZEN_REFERENCE)	+= board-marzen-reference.o
 obj-$(CONFIG_MACH_ARMADILLO800EVA)	+= board-armadillo800eva.o
 obj-$(CONFIG_MACH_KZM9D)	+= board-kzm9d.o
 obj-$(CONFIG_MACH_KZM9G)	+= board-kzm9g.o
+obj-$(CONFIG_MACH_KZM9G_REFERENCE)	+= board-kzm9g-reference.o
 
 # Framework support
 obj-$(CONFIG_SMP)		+= $(smp-y)
-obj-$(CONFIG_GENERIC_GPIO)	+= $(pfc-y)
