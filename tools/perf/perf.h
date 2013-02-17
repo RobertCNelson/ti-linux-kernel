@@ -104,6 +104,12 @@ void get_term_dimensions(struct winsize *ws);
 #define CPUINFO_PROC	"Processor"
 #endif
 
+#ifdef __metag__
+#define rmb()		asm volatile("" ::: "memory")
+#define cpu_relax()	asm volatile("" ::: "memory")
+#define CPUINFO_PROC	"CPU"
+#endif
+
 #include <time.h>
 #include <unistd.h>
 #include <sys/types.h>
