@@ -231,16 +231,12 @@ static int __init dove_find_tclk(void)
 	return 166666667;
 }
 
-static void __init dove_timer_init(void)
+void __init dove_timer_init(void)
 {
 	dove_tclk = dove_find_tclk();
 	orion_time_init(BRIDGE_VIRT_BASE, BRIDGE_INT_TIMER1_CLR,
 			IRQ_DOVE_BRIDGE, dove_tclk);
 }
-
-struct sys_timer dove_timer = {
-	.init = dove_timer_init,
-};
 
 /*****************************************************************************
  * Cryptographic Engines and Security Accelerator (CESA)
