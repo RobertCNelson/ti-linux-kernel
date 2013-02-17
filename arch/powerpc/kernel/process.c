@@ -271,7 +271,7 @@ void do_send_trap(struct pt_regs *regs, unsigned long address,
 	force_sig_info(SIGTRAP, &info, current);
 }
 #else	/* !CONFIG_PPC_ADV_DEBUG_REGS */
-void do_dabr(struct pt_regs *regs, unsigned long address,
+void do_break (struct pt_regs *regs, unsigned long address,
 		    unsigned long error_code)
 {
 	siginfo_t info;
@@ -281,11 +281,11 @@ void do_dabr(struct pt_regs *regs, unsigned long address,
 			11, SIGSEGV) == NOTIFY_STOP)
 		return;
 
-	if (debugger_dabr_match(regs))
+	if (debugger_break_match(regs))
 		return;
 
-	/* Clear the DABR */
-	set_dabr(0, 0);
+	/* Clear the breakpoint */
+	hw_breakpoint_disable();
 
 	/* Deliver the signal to userspace */
 	info.si_signo = SIGTRAP;
@@ -296,7 +296,7 @@ void do_dabr(struct pt_regs *regs, unsigned long address,
 }
 #endif	/* CONFIG_PPC_ADV_DEBUG_REGS */
 
-static DEFINE_PER_CPU(unsigned long, current_dabr);
+static DEFINE_PER_CPU(struct arch_hw_breakpoint, current_brk);
 
 #ifdef CONFIG_PPC_ADV_DEBUG_REGS
 /*
@@ -364,38 +364,102 @@ static void switch_booke_debug_regs(struct thread_struct *new_thread)
 #ifndef CONFIG_HAVE_HW_BREAKPOINT
 static void set_debug_reg_defaults(struct thread_struct *thread)
 {
-	if (thread->dabr) {
-		thread->dabr = 0;
-		thread->dabrx = 0;
-		set_dabr(0, 0);
-	}
+	thread->hw_brk.address = 0;
+	thread->hw_brk.type = 0;
+	set_breakpoint(&thread->hw_brk);
 }
 #endif /* !CONFIG_HAVE_HW_BREAKPOINT */
 #endif	/* CONFIG_PPC_ADV_DEBUG_REGS */
 
-int set_dabr(unsigned long dabr, unsigned long dabrx)
-{
-	__get_cpu_var(current_dabr) = dabr;
-
-	if (ppc_md.set_dabr)
-		return ppc_md.set_dabr(dabr, dabrx);
-
-	/* XXX should we have a CPU_FTR_HAS_DABR ? */
 #ifdef CONFIG_PPC_ADV_DEBUG_REGS
+static inline int __set_dabr(unsigned long dabr, unsigned long dabrx)
+{
 	mtspr(SPRN_DAC1, dabr);
 #ifdef CONFIG_PPC_47x
 	isync();
 #endif
+	return 0;
+}
 #elif defined(CONFIG_PPC_BOOK3S)
+static inline int __set_dabr(unsigned long dabr, unsigned long dabrx)
+{
 	mtspr(SPRN_DABR, dabr);
 	mtspr(SPRN_DABRX, dabrx);
-#endif
 	return 0;
+}
+#else
+static inline int __set_dabr(unsigned long dabr, unsigned long dabrx)
+{
+	return -EINVAL;
+}
+#endif
+
+static inline int set_dabr(struct arch_hw_breakpoint *brk)
+{
+	unsigned long dabr, dabrx;
+
+	dabr = brk->address | (brk->type & HW_BRK_TYPE_DABR);
+	dabrx = ((brk->type >> 3) & 0x7);
+
+	if (ppc_md.set_dabr)
+		return ppc_md.set_dabr(dabr, dabrx);
+
+	return __set_dabr(dabr, dabrx);
+}
+
+static inline int set_dawr(struct arch_hw_breakpoint *brk)
+{
+	unsigned long dawr, dawrx, mrd;
+
+	dawr = brk->address;
+
+	dawrx  = (brk->type & (HW_BRK_TYPE_READ | HW_BRK_TYPE_WRITE)) \
+		                   << (63 - 58); //* read/write bits */
+	dawrx |= ((brk->type & (HW_BRK_TYPE_TRANSLATE)) >> 2) \
+		                   << (63 - 59); //* translate */
+	dawrx |= (brk->type & (HW_BRK_TYPE_PRIV_ALL)) \
+		                   >> 3; //* PRIM bits */
+	/* dawr length is stored in field MDR bits 48:53.  Matches range in
+	   doublewords (64 bits) baised by -1 eg. 0b000000=1DW and
+	   0b111111=64DW.
+	   brk->len is in bytes.
+	   This aligns up to double word size, shifts and does the bias.
+	*/
+	mrd = ((brk->len + 7) >> 3) - 1;
+	dawrx |= (mrd & 0x3f) << (63 - 53);
+
+	if (ppc_md.set_dawr)
+		return ppc_md.set_dawr(dawr, dawrx);
+	mtspr(SPRN_DAWR, dawr);
+	mtspr(SPRN_DAWRX, dawrx);
+	return 0;
+}
+
+int set_breakpoint(struct arch_hw_breakpoint *brk)
+{
+	__get_cpu_var(current_brk) = *brk;
+
+	if (cpu_has_feature(CPU_FTR_DAWR))
+		return set_dawr(brk);
+
+	return set_dabr(brk);
 }
 
 #ifdef CONFIG_PPC64
 DEFINE_PER_CPU(struct cpu_usage, cpu_usage_array);
 #endif
+
+static inline bool hw_brk_match(struct arch_hw_breakpoint *a,
+			      struct arch_hw_breakpoint *b)
+{
+	if (a->address != b->address)
+		return false;
+	if (a->type != b->type)
+		return false;
+	if (a->len != b->len)
+		return false;
+	return true;
+}
 
 struct task_struct *__switch_to(struct task_struct *prev,
 	struct task_struct *new)
@@ -481,8 +545,8 @@ struct task_struct *__switch_to(struct task_struct *prev,
  * schedule DABR
  */
 #ifndef CONFIG_HAVE_HW_BREAKPOINT
-	if (unlikely(__get_cpu_var(current_dabr) != new->thread.dabr))
-		set_dabr(new->thread.dabr, new->thread.dabrx);
+	if (unlikely(hw_brk_match(&__get_cpu_var(current_brk), &new->thread.hw_brk)))
+		set_breakpoint(&new->thread.hw_brk);
 #endif /* CONFIG_HAVE_HW_BREAKPOINT */
 #endif
 
@@ -813,6 +877,8 @@ int copy_thread(unsigned long clone_flags, unsigned long usp,
 		p->thread.dscr_inherit = current->thread.dscr_inherit;
 		p->thread.dscr = current->thread.dscr;
 	}
+	if (cpu_has_feature(CPU_FTR_HAS_PPR))
+		p->thread.ppr = INIT_PPR;
 #endif
 	/*
 	 * The PPC64 ABI makes use of a TOC to contain function 

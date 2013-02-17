@@ -66,7 +66,7 @@ int (*__debugger_ipi)(struct pt_regs *regs) __read_mostly;
 int (*__debugger_bpt)(struct pt_regs *regs) __read_mostly;
 int (*__debugger_sstep)(struct pt_regs *regs) __read_mostly;
 int (*__debugger_iabr_match)(struct pt_regs *regs) __read_mostly;
-int (*__debugger_dabr_match)(struct pt_regs *regs) __read_mostly;
+int (*__debugger_break_match)(struct pt_regs *regs) __read_mostly;
 int (*__debugger_fault_handler)(struct pt_regs *regs) __read_mostly;
 
 EXPORT_SYMBOL(__debugger);
@@ -74,7 +74,7 @@ EXPORT_SYMBOL(__debugger_ipi);
 EXPORT_SYMBOL(__debugger_bpt);
 EXPORT_SYMBOL(__debugger_sstep);
 EXPORT_SYMBOL(__debugger_iabr_match);
-EXPORT_SYMBOL(__debugger_dabr_match);
+EXPORT_SYMBOL(__debugger_break_match);
 EXPORT_SYMBOL(__debugger_fault_handler);
 #endif
 
@@ -1515,7 +1515,7 @@ void unrecoverable_exception(struct pt_regs *regs)
 	die("Unrecoverable exception", regs, SIGABRT);
 }
 
-#ifdef CONFIG_BOOKE_WDT
+#if defined(CONFIG_BOOKE_WDT) || defined(CONFIG_40x)
 /*
  * Default handler for a Watchdog exception,
  * spins until a reboot occurs
