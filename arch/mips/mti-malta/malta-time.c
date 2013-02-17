@@ -72,6 +72,19 @@ static unsigned int __init estimate_cpu_frequency(void)
 	unsigned long flags;
 	unsigned int start;
 
+#if defined (CONFIG_KVM_GUEST) && defined (CONFIG_KVM_HOST_FREQ)
+	/*
+	 * XXXKYMA: hardwire the CPU frequency to Host Freq/4
+	 */
+	count = (CONFIG_KVM_HOST_FREQ * 1000000) >> 3;
+	if ((prid != (PRID_COMP_MIPS | PRID_IMP_20KC)) &&
+	    (prid != (PRID_COMP_MIPS | PRID_IMP_25KF)))
+		count *= 2;
+
+	mips_hpt_frequency = count;
+	return count;
+#endif
+
 	local_irq_save(flags);
 
 	/* Start counter exactly on falling edge of update flag */
@@ -95,7 +108,7 @@ static unsigned int __init estimate_cpu_frequency(void)
 	    (prid != (PRID_COMP_MIPS | PRID_IMP_25KF)))
 		count *= 2;
 
-	count += 5000;    /* round */
+	count += 5000;	  /* round */
 	count -= count%10000;
 
 	return count;
@@ -146,15 +159,15 @@ void __init plat_time_init(void)
 {
 	unsigned int est_freq;
 
-        /* Set Data mode - binary. */
-        CMOS_WRITE(CMOS_READ(RTC_CONTROL) | RTC_DM_BINARY, RTC_CONTROL);
+	/* Set Data mode - binary. */
+	CMOS_WRITE(CMOS_READ(RTC_CONTROL) | RTC_DM_BINARY, RTC_CONTROL);
 
 	est_freq = estimate_cpu_frequency();
 
 	printk("CPU frequency %d.%02d MHz\n", est_freq/1000000,
 	       (est_freq%1000000)*100/1000000);
 
-        cpu_khz = est_freq / 1000;
+	cpu_khz = est_freq / 1000;
 
 	mips_scroll_message();
 #ifdef CONFIG_I8253		/* Only Malta has a PIT */
