@@ -7,5 +7,8 @@
 #endif
 
 #define nop() 		__asm__ __volatile__ ("nop")
+#ifndef __ASSEMBLY__
+extern void (*sparc_idle)(void);
+#endif
 
 #endif
