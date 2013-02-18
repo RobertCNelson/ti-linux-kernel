@@ -200,10 +200,12 @@
 #define   CTRL_CT1	0x40000000	/* thread 1 */
 #define   CTRL_TE	0x00c00000	/* thread enable */
 #define   CTRL_RUNLATCH	0x1
+#define SPRN_DAWR	0xB4
+#define SPRN_DAWRX	0xBC
+#define   DAWRX_USER	(1UL << 0)
+#define   DAWRX_KERNEL	(1UL << 1)
+#define   DAWRX_HYP	(1UL << 2)
 #define SPRN_DABR	0x3F5	/* Data Address Breakpoint Register */
-#define   DABR_TRANSLATION	(1UL << 2)
-#define   DABR_DATA_WRITE	(1UL << 1)
-#define   DABR_DATA_READ	(1UL << 0)
 #define SPRN_DABR2	0x13D	/* e300 */
 #define SPRN_DABRX	0x3F7	/* Data Address Breakpoint Register Extension */
 #define   DABRX_USER	(1UL << 0)
@@ -235,6 +237,9 @@
 #define SPRN_HRMOR	0x139	/* Real mode offset register */
 #define SPRN_HSRR0	0x13A	/* Hypervisor Save/Restore 0 */
 #define SPRN_HSRR1	0x13B	/* Hypervisor Save/Restore 1 */
+#define SPRN_FSCR	0x099	/* Facility Status & Control Register */
+#define FSCR_TAR	(1<<8)	/* Enable Target Adress Register */
+#define SPRN_TAR	0x32f	/* Target Address Register */
 #define SPRN_LPCR	0x13E	/* LPAR Control Register */
 #define   LPCR_VPM0	(1ul << (63-0))
 #define   LPCR_VPM1	(1ul << (63-1))
@@ -289,6 +294,7 @@
 #define SPRN_DBAT6U	0x23C	/* Data BAT 6 Upper Register */
 #define SPRN_DBAT7L	0x23F	/* Data BAT 7 Lower Register */
 #define SPRN_DBAT7U	0x23E	/* Data BAT 7 Upper Register */
+#define SPRN_PPR	0x380	/* SMT Thread status Register */
 
 #define SPRN_DEC	0x016		/* Decrement Register */
 #define SPRN_DER	0x095		/* Debug Enable Regsiter */
@@ -483,6 +489,7 @@
 #ifndef SPRN_PIR
 #define SPRN_PIR	0x3FF	/* Processor Identification Register */
 #endif
+#define SPRN_TIR	0x1BE	/* Thread Identification Register */
 #define SPRN_PTEHI	0x3D5	/* 981 7450 PTE HI word (S/W TLB load) */
 #define SPRN_PTELO	0x3D6	/* 982 7450 PTE LO word (S/W TLB load) */
 #define SPRN_PURR	0x135	/* Processor Utilization of Resources Reg */
