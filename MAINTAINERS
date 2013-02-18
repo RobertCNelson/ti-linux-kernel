@@ -670,8 +670,16 @@ F:	drivers/input/serio/ambakmi.*
 F:	include/linux/amba/kmi.h
 
 ARM PRIMECELL MMCI PL180/1 DRIVER
-S:	Orphan
+M:	Russell King <linux@arm.linux.org.uk>
+S:	Maintained
 F:	drivers/mmc/host/mmci.*
+F:	include/linux/amba/mmci.h
+
+ARM PRIMECELL UART PL010 AND PL011 DRIVERS
+M:	Russell King <linux@arm.linux.org.uk>
+S:	Maintained
+F:	drivers/tty/serial/amba-pl01*.c
+F:	include/linux/amba/serial.h
 
 ARM PRIMECELL BUS SUPPORT
 M:	Russell King <linux@arm.linux.org.uk>
@@ -4479,6 +4487,15 @@ F:	Documentation/s390/kvm.txt
 F:	arch/s390/include/asm/kvm*
 F:	arch/s390/kvm/
 F:	drivers/s390/kvm/
+
+KERNEL VIRTUAL MACHINE (KVM) FOR ARM
+M:	Christoffer Dall <cdall@cs.columbia.edu>
+L:	kvmarm@lists.cs.columbia.edu
+W:	http://systems.cs.columbia.edu/projects/kvm-arm
+S:	Maintained
+F:	arch/arm/include/uapi/asm/kvm*
+F:	arch/arm/include/asm/kvm*
+F:	arch/arm/kvm/
 
 KEXEC
 M:	Eric Biederman <ebiederm@xmission.com>
