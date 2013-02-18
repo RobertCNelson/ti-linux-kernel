@@ -19,6 +19,7 @@
 
 #define pr_fmt(fmt)	"%s(): " fmt, __func__
 
+#include <linux/err.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/spinlock.h>
@@ -1185,9 +1186,9 @@ static int tegra_smmu_probe(struct platform_device *pdev)
 		res = platform_get_resource(pdev, IORESOURCE_MEM, i);
 		if (!res)
 			return -ENODEV;
-		smmu->regs[i] = devm_request_and_ioremap(&pdev->dev, res);
-		if (!smmu->regs[i])
-			return -EBUSY;
+		smmu->regs[i] = devm_ioremap_resource(&pdev->dev, res);
+		if (IS_ERR(smmu->regs[i]))
+			return PTR_ERR(smmu->regs[i]);
 		smmu->rege[i] = smmu->regs[i] + resource_size(res) - 1;
 	}
 	/* Same as "mc" 1st regiter block start address */
