@@ -206,6 +206,8 @@ next/dt
 		pull	git://git.linaro.org/people/shawnguo/linux-2.6.git tags/mxs-dt-3.9
 	sunxi/dt
 		pull	https://github.com/mripard/linux.git tags/sunxi-dt-for-3.9
+	at91/dt2
+		pull	git://github.com/at91linux/linux-at91.git tags/at91-dt-late
 
 
 next/virt
