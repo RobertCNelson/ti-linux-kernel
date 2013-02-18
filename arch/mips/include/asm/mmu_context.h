@@ -77,7 +77,7 @@ extern unsigned long pgd_current[];
 #define ASID_INC	0x1
 extern unsigned long smtc_asid_mask;
 #define ASID_MASK	(smtc_asid_mask)
-#define	HW_ASID_MASK	0xff
+#define HW_ASID_MASK	0xff
 /* End SMTC/34K debug hack */
 #else /* FIXME: not correct for R6000 */
 
@@ -106,15 +106,21 @@ static inline void enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk)
 static inline void
 get_new_mmu_context(struct mm_struct *mm, unsigned long cpu)
 {
+	extern void kvm_local_flush_tlb_all(void);
 	unsigned long asid = asid_cache(cpu);
 
 	if (! ((asid += ASID_INC) & ASID_MASK) ) {
 		if (cpu_has_vtag_icache)
 			flush_icache_all();
+#ifdef CONFIG_VIRTUALIZATION
+		kvm_local_flush_tlb_all();      /* start new asid cycle */
+#else
 		local_flush_tlb_all();	/* start new asid cycle */
+#endif
 		if (!asid)		/* fix version if needed */
 			asid = ASID_FIRST_VERSION;
 	}
+
 	cpu_context(cpu, mm) = asid_cache(cpu) = asid;
 }
 
@@ -140,7 +146,7 @@ init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 }
 
 static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
-                             struct task_struct *tsk)
+			     struct task_struct *tsk)
 {
 	unsigned int cpu = smp_processor_id();
 	unsigned long flags;
@@ -238,7 +244,7 @@ activate_mm(struct mm_struct *prev, struct mm_struct *next)
 	}
 	/* See comments for similar code above */
 	write_c0_entryhi((read_c0_entryhi() & ~HW_ASID_MASK) |
-	                 cpu_asid(cpu, next));
+			 cpu_asid(cpu, next));
 	ehb(); /* Make sure it propagates to TCStatus */
 	evpe(mtflags);
 #else
