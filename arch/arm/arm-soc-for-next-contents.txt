@@ -32,6 +32,8 @@ next/fixes-non-critical
 	patch	1359123276-15833-4-git-send-email-arnd@arndb.de
 	patches 1360849767-1463135-1-git-send-email-arnd@arndb.de
 	patch	1360882071-4072668-3-git-send-email-arnd@arndb.de
+	samsung/fixes
+		pull	git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/fixes-samsung
 
 next/cleanup
 	timer/cleanup
