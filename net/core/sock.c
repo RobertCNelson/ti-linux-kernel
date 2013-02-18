@@ -665,6 +665,9 @@ int sock_setsockopt(struct socket *sock, int level, int optname,
 	case SO_REUSEADDR:
 		sk->sk_reuse = (valbool ? SK_CAN_REUSE : SK_NO_REUSE);
 		break;
+	case SO_REUSEPORT:
+		sk->sk_reuseport = valbool;
+		break;
 	case SO_TYPE:
 	case SO_PROTOCOL:
 	case SO_DOMAIN:
@@ -861,6 +864,13 @@ set_rcvbuf:
 		ret = sk_detach_filter(sk);
 		break;
 
+	case SO_LOCK_FILTER:
+		if (sock_flag(sk, SOCK_FILTER_LOCKED) && !valbool)
+			ret = -EPERM;
+		else
+			sock_valbool_flag(sk, SOCK_FILTER_LOCKED, valbool);
+		break;
+
 	case SO_PASSSEC:
 		if (valbool)
 			set_bit(SOCK_PASSSEC, &sock->flags);
@@ -963,6 +973,10 @@ int sock_getsockopt(struct socket *sock, int level, int optname,
 
 	case SO_REUSEADDR:
 		v.val = sk->sk_reuse;
+		break;
+
+	case SO_REUSEPORT:
+		v.val = sk->sk_reuseport;
 		break;
 
 	case SO_KEEPALIVE:
@@ -1139,6 +1153,10 @@ int sock_getsockopt(struct socket *sock, int level, int optname,
 			return len;
 
 		goto lenout;
+
+	case SO_LOCK_FILTER:
+		v.val = sock_flag(sk, SOCK_FILTER_LOCKED);
+		break;
 
 	default:
 		return -ENOPROTOOPT;
@@ -2212,7 +2230,7 @@ EXPORT_SYMBOL(sk_reset_timer);
 
 void sk_stop_timer(struct sock *sk, struct timer_list* timer)
 {
-	if (timer_pending(timer) && del_timer(timer))
+	if (del_timer(timer))
 		__sock_put(sk);
 }
 EXPORT_SYMBOL(sk_stop_timer);

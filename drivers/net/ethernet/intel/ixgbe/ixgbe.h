@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -35,6 +35,7 @@
 #include <linux/cpumask.h>
 #include <linux/aer.h>
 #include <linux/if_vlan.h>
+#include <linux/jiffies.h>
 
 #include <linux/clocksource.h>
 #include <linux/net_tstamp.h>
@@ -91,21 +92,26 @@
  */
 #define IXGBE_RX_HDR_SIZE IXGBE_RXBUFFER_256
 
-#define MAXIMUM_ETHERNET_VLAN_SIZE (ETH_FRAME_LEN + ETH_FCS_LEN + VLAN_HLEN)
-
 /* How many Rx Buffers do we bundle into one write to the hardware ? */
 #define IXGBE_RX_BUFFER_WRITE	16	/* Must be power of 2 */
 
-#define IXGBE_TX_FLAGS_CSUM		(u32)(1)
-#define IXGBE_TX_FLAGS_HW_VLAN		(u32)(1 << 1)
-#define IXGBE_TX_FLAGS_SW_VLAN		(u32)(1 << 2)
-#define IXGBE_TX_FLAGS_TSO		(u32)(1 << 3)
-#define IXGBE_TX_FLAGS_IPV4		(u32)(1 << 4)
-#define IXGBE_TX_FLAGS_FCOE		(u32)(1 << 5)
-#define IXGBE_TX_FLAGS_FSO		(u32)(1 << 6)
-#define IXGBE_TX_FLAGS_TXSW		(u32)(1 << 7)
-#define IXGBE_TX_FLAGS_TSTAMP		(u32)(1 << 8)
-#define IXGBE_TX_FLAGS_NO_IFCS		(u32)(1 << 9)
+enum ixgbe_tx_flags {
+	/* cmd_type flags */
+	IXGBE_TX_FLAGS_HW_VLAN	= 0x01,
+	IXGBE_TX_FLAGS_TSO	= 0x02,
+	IXGBE_TX_FLAGS_TSTAMP	= 0x04,
+
+	/* olinfo flags */
+	IXGBE_TX_FLAGS_CC	= 0x08,
+	IXGBE_TX_FLAGS_IPV4	= 0x10,
+	IXGBE_TX_FLAGS_CSUM	= 0x20,
+
+	/* software defined flags */
+	IXGBE_TX_FLAGS_SW_VLAN	= 0x40,
+	IXGBE_TX_FLAGS_FCOE	= 0x80,
+};
+
+/* VLAN info */
 #define IXGBE_TX_FLAGS_VLAN_MASK	0xffff0000
 #define IXGBE_TX_FLAGS_VLAN_PRIO_MASK	0xe0000000
 #define IXGBE_TX_FLAGS_VLAN_PRIO_SHIFT  29
@@ -224,6 +230,7 @@ struct ixgbe_ring {
 		struct ixgbe_tx_buffer *tx_buffer_info;
 		struct ixgbe_rx_buffer *rx_buffer_info;
 	};
+	unsigned long last_rx_timestamp;
 	unsigned long state;
 	u8 __iomem *tail;
 	dma_addr_t dma;			/* phys. address of descriptor ring */
@@ -573,11 +580,14 @@ struct ixgbe_adapter {
 
 	struct ptp_clock *ptp_clock;
 	struct ptp_clock_info ptp_caps;
+	struct work_struct ptp_tx_work;
+	struct sk_buff *ptp_tx_skb;
+	unsigned long ptp_tx_start;
 	unsigned long last_overflow_check;
+	unsigned long last_rx_ptp_check;
 	spinlock_t tmreg_lock;
 	struct cyclecounter cc;
 	struct timecounter tc;
-	int rx_hwtstamp_filter;
 	u32 base_incval;
 
 	/* SR-IOV */
@@ -742,15 +752,32 @@ static inline struct netdev_queue *txring_txq(const struct ixgbe_ring *ring)
 extern void ixgbe_ptp_init(struct ixgbe_adapter *adapter);
 extern void ixgbe_ptp_stop(struct ixgbe_adapter *adapter);
 extern void ixgbe_ptp_overflow_check(struct ixgbe_adapter *adapter);
-extern void ixgbe_ptp_tx_hwtstamp(struct ixgbe_q_vector *q_vector,
-				  struct sk_buff *skb);
-extern void ixgbe_ptp_rx_hwtstamp(struct ixgbe_q_vector *q_vector,
-				  union ixgbe_adv_rx_desc *rx_desc,
-				  struct sk_buff *skb);
+extern void ixgbe_ptp_rx_hang(struct ixgbe_adapter *adapter);
+extern void __ixgbe_ptp_rx_hwtstamp(struct ixgbe_q_vector *q_vector,
+				    struct sk_buff *skb);
+static inline void ixgbe_ptp_rx_hwtstamp(struct ixgbe_ring *rx_ring,
+					 union ixgbe_adv_rx_desc *rx_desc,
+					 struct sk_buff *skb)
+{
+	if (unlikely(!ixgbe_test_staterr(rx_desc, IXGBE_RXDADV_STAT_TS)))
+		return;
+
+	__ixgbe_ptp_rx_hwtstamp(rx_ring->q_vector, skb);
+
+	/*
+	 * Update the last_rx_timestamp timer in order to enable watchdog check
+	 * for error case of latched timestamp on a dropped packet.
+	 */
+	rx_ring->last_rx_timestamp = jiffies;
+}
+
 extern int ixgbe_ptp_hwtstamp_ioctl(struct ixgbe_adapter *adapter,
 				    struct ifreq *ifr, int cmd);
 extern void ixgbe_ptp_start_cyclecounter(struct ixgbe_adapter *adapter);
 extern void ixgbe_ptp_reset(struct ixgbe_adapter *adapter);
 extern void ixgbe_ptp_check_pps_event(struct ixgbe_adapter *adapter, u32 eicr);
+#ifdef CONFIG_PCI_IOV
+void ixgbe_sriov_reinit(struct ixgbe_adapter *adapter);
+#endif
 
 #endif /* _IXGBE_H_ */

@@ -229,10 +229,8 @@ static int wl1271_probe(struct sdio_func *func,
 		return -ENODEV;
 
 	glue = kzalloc(sizeof(*glue), GFP_KERNEL);
-	if (!glue) {
-		dev_err(&func->dev, "can't allocate glue\n");
+	if (!glue)
 		goto out;
-	}
 
 	glue->dev = &func->dev;
 
@@ -326,8 +324,7 @@ static void wl1271_remove(struct sdio_func *func)
 	/* Undo decrement done above in wl1271_probe */
 	pm_runtime_get_noresume(&func->dev);
 
-	platform_device_del(glue->core);
-	platform_device_put(glue->core);
+	platform_device_unregister(glue->core);
 	kfree(glue);
 }
 

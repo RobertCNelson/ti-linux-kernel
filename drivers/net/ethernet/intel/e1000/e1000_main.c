@@ -1123,9 +1123,8 @@ static int e1000_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	}
 	/* don't block initalization here due to bad MAC address */
 	memcpy(netdev->dev_addr, hw->mac_addr, netdev->addr_len);
-	memcpy(netdev->perm_addr, hw->mac_addr, netdev->addr_len);
 
-	if (!is_valid_ether_addr(netdev->perm_addr))
+	if (!is_valid_ether_addr(netdev->dev_addr))
 		e_err(probe, "Invalid MAC Address\n");
 
 
@@ -1510,11 +1509,8 @@ static int e1000_setup_tx_resources(struct e1000_adapter *adapter,
 
 	size = sizeof(struct e1000_buffer) * txdr->count;
 	txdr->buffer_info = vzalloc(size);
-	if (!txdr->buffer_info) {
-		e_err(probe, "Unable to allocate memory for the Tx descriptor "
-		      "ring\n");
+	if (!txdr->buffer_info)
 		return -ENOMEM;
-	}
 
 	/* round up to nearest 4K */
 
@@ -1705,11 +1701,8 @@ static int e1000_setup_rx_resources(struct e1000_adapter *adapter,
 
 	size = sizeof(struct e1000_buffer) * rxdr->count;
 	rxdr->buffer_info = vzalloc(size);
-	if (!rxdr->buffer_info) {
-		e_err(probe, "Unable to allocate memory for the Rx descriptor "
-		      "ring\n");
+	if (!rxdr->buffer_info)
 		return -ENOMEM;
-	}
 
 	desc_len = sizeof(struct e1000_rx_desc);
 
@@ -2253,10 +2246,8 @@ static void e1000_set_rx_mode(struct net_device *netdev)
 	int mta_reg_count = E1000_NUM_MTA_REGISTERS;
 	u32 *mcarray = kcalloc(mta_reg_count, sizeof(u32), GFP_ATOMIC);
 
-	if (!mcarray) {
-		e_err(probe, "memory allocation failed\n");
+	if (!mcarray)
 		return;
-	}
 
 	/* Check for Promiscuous and All Multicast modes */
 
