@@ -144,9 +144,8 @@ static inline struct hlist_head *vni_head(struct net *net, u32 id)
 static struct vxlan_dev *vxlan_find_vni(struct net *net, u32 id)
 {
 	struct vxlan_dev *vxlan;
-	struct hlist_node *node;
 
-	hlist_for_each_entry_rcu(vxlan, node, vni_head(net, id), hlist) {
+	hlist_for_each_entry_rcu(vxlan, vni_head(net, id), hlist) {
 		if (vxlan->vni == id)
 			return vxlan;
 	}
@@ -291,9 +290,8 @@ static struct vxlan_fdb *vxlan_find_mac(struct vxlan_dev *vxlan,
 {
 	struct hlist_head *head = vxlan_fdb_head(vxlan, mac);
 	struct vxlan_fdb *f;
-	struct hlist_node *node;
 
-	hlist_for_each_entry_rcu(f, node, head, hlist) {
+	hlist_for_each_entry_rcu(f, head, hlist) {
 		if (compare_ether_addr(mac, f->eth_addr) == 0)
 			return f;
 	}
@@ -421,10 +419,9 @@ static int vxlan_fdb_dump(struct sk_buff *skb, struct netlink_callback *cb,
 
 	for (h = 0; h < FDB_HASH_SIZE; ++h) {
 		struct vxlan_fdb *f;
-		struct hlist_node *n;
 		int err;
 
-		hlist_for_each_entry_rcu(f, n, &vxlan->fdb_head[h], hlist) {
+		hlist_for_each_entry_rcu(f, &vxlan->fdb_head[h], hlist) {
 			if (idx < cb->args[0])
 				goto skip;
 
@@ -482,11 +479,10 @@ static bool vxlan_group_used(struct vxlan_net *vn,
 			     const struct vxlan_dev *this)
 {
 	const struct vxlan_dev *vxlan;
-	struct hlist_node *node;
 	unsigned h;
 
 	for (h = 0; h < VNI_HASH_SIZE; ++h)
-		hlist_for_each_entry(vxlan, node, &vn->vni_list[h], hlist) {
+		hlist_for_each_entry(vxlan, &vn->vni_list[h], hlist) {
 			if (vxlan == this)
 				continue;
 
