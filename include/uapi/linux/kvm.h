@@ -664,6 +664,7 @@ struct kvm_ppc_smmu_info {
 #define KVM_CAP_S390_CSS_SUPPORT 85
 #define KVM_CAP_PPC_EPR 86
 #define KVM_CAP_ARM_PSCI 87
+#define KVM_CAP_ARM_SET_DEVICE_ADDR 88
 
 #ifdef KVM_CAP_IRQ_ROUTING
 
@@ -811,6 +812,11 @@ struct kvm_msi {
 	__u8  pad[16];
 };
 
+struct kvm_arm_device_addr {
+	__u64 id;
+	__u64 addr;
+};
+
 /*
  * ioctls for VM fds
  */
@@ -896,6 +902,8 @@ struct kvm_s390_ucas_mapping {
 #define KVM_ALLOCATE_RMA	  _IOR(KVMIO,  0xa9, struct kvm_allocate_rma)
 /* Available with KVM_CAP_PPC_HTAB_FD */
 #define KVM_PPC_GET_HTAB_FD	  _IOW(KVMIO,  0xaa, struct kvm_get_htab_fd)
+/* Available with KVM_CAP_ARM_SET_DEVICE_ADDR */
+#define KVM_ARM_SET_DEVICE_ADDR	  _IOW(KVMIO,  0xab, struct kvm_arm_device_addr)
 
 /*
  * ioctls for vcpu fds
