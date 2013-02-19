@@ -74,5 +74,25 @@
 			status = "disabled";
 			/* No CD or WP GPIOs */
 		};
+
+		usb@d0050000 {
+			status = "okay";
+		};
+
+		usb@d0051000 {
+			status = "okay";
+		};
+
+		spi0: spi@d0010600 {
+			status = "okay";
+
+			spi-flash@0 {
+				#address-cells = <1>;
+				#size-cells = <1>;
+				compatible = "mx25l25635e";
+				reg = <0>; /* Chip select 0 */
+				spi-max-frequency = <50000000>;
+			};
+		};
 	};
 };
