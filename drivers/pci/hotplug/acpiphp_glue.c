@@ -724,8 +724,7 @@ static int acpiphp_bus_add(struct acpiphp_func *func)
 		/* this shouldn't be in here, so remove
 		 * the bus then re-add it...
 		 */
-		ret_val = acpi_bus_trim(device);
-		dbg("acpi_bus_trim return %x\n", ret_val);
+		acpi_bus_trim(device);
 	}
 
 	ret_val = acpi_bus_scan(func->handle);
@@ -754,11 +753,8 @@ static int acpiphp_bus_trim(acpi_handle handle)
 		return retval;
 	}
 
-	retval = acpi_bus_trim(device);
-	if (retval)
-		err("cannot remove from acpi list\n");
-
-	return retval;
+	acpi_bus_trim(device);
+	return 0;
 }
 
 static void acpiphp_set_acpi_region(struct acpiphp_slot *slot)
@@ -1141,6 +1137,8 @@ static void _handle_hotplug_event_bridge(struct work_struct *work)
 	type = hp_work->type;
 	bridge = (struct acpiphp_bridge *)hp_work->context;
 
+	acpi_scan_lock_acquire();
+
 	acpi_get_name(handle, ACPI_FULL_PATHNAME, &buffer);
 
 	switch (type) {
@@ -1195,6 +1193,7 @@ static void _handle_hotplug_event_bridge(struct work_struct *work)
 		break;
 	}
 
+	acpi_scan_lock_release();
 	kfree(hp_work); /* allocated in handle_hotplug_event_bridge */
 }
 
@@ -1237,6 +1236,8 @@ static void _handle_hotplug_event_func(struct work_struct *work)
 
 	acpi_get_name(handle, ACPI_FULL_PATHNAME, &buffer);
 
+	acpi_scan_lock_acquire();
+
 	switch (type) {
 	case ACPI_NOTIFY_BUS_CHECK:
 		/* bus re-enumerate */
@@ -1267,6 +1268,7 @@ static void _handle_hotplug_event_func(struct work_struct *work)
 		break;
 	}
 
+	acpi_scan_lock_release();
 	kfree(hp_work); /* allocated in handle_hotplug_event_func */
 }
 
