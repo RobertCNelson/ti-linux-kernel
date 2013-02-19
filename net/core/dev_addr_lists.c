@@ -780,14 +780,14 @@ static const struct file_operations dev_mc_seq_fops = {
 
 static int __net_init dev_mc_net_init(struct net *net)
 {
-	if (!proc_net_fops_create(net, "dev_mcast", 0, &dev_mc_seq_fops))
+	if (!proc_create("dev_mcast", 0, net->proc_net, &dev_mc_seq_fops))
 		return -ENOMEM;
 	return 0;
 }
 
 static void __net_exit dev_mc_net_exit(struct net *net)
 {
-	proc_net_remove(net, "dev_mcast");
+	remove_proc_entry("dev_mcast", net->proc_net);
 }
 
 static struct pernet_operations __net_initdata dev_mc_net_ops = {

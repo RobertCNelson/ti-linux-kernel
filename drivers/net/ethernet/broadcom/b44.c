@@ -1518,10 +1518,8 @@ static void b44_setup_pseudo_magicp(struct b44 *bp)
 	u8 pwol_mask[B44_PMASK_SIZE];
 
 	pwol_pattern = kzalloc(B44_PATTERN_SIZE, GFP_KERNEL);
-	if (!pwol_pattern) {
-		pr_err("Memory not available for WOL\n");
+	if (!pwol_pattern)
 		return;
-	}
 
 	/* Ipv4 magic packet pattern - pattern 0.*/
 	memset(pwol_mask, 0, B44_PMASK_SIZE);
@@ -2110,8 +2108,6 @@ static int b44_get_invariants(struct b44 *bp)
 		pr_err("Invalid MAC address found in EEPROM\n");
 		return -EINVAL;
 	}
-
-	memcpy(bp->dev->perm_addr, bp->dev->dev_addr, bp->dev->addr_len);
 
 	bp->imask = IMASK_DEF;
 
