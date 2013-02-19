@@ -275,8 +275,10 @@ fail:
 	if (ret) {
 		if (fbi)
 			framebuffer_release(fbi);
-		if (fb)
+		if (fb) {
+			drm_framebuffer_unregister_private(fb);
 			drm_framebuffer_remove(fb);
+		}
 	}
 
 	return ret;
@@ -294,25 +296,10 @@ static void omap_crtc_fb_gamma_get(struct drm_crtc *crtc,
 	DBG("fbdev: get gamma");
 }
 
-static int omap_fbdev_probe(struct drm_fb_helper *helper,
-		struct drm_fb_helper_surface_size *sizes)
-{
-	int new_fb = 0;
-	int ret;
-
-	if (!helper->fb) {
-		ret = omap_fbdev_create(helper, sizes);
-		if (ret)
-			return ret;
-		new_fb = 1;
-	}
-	return new_fb;
-}
-
 static struct drm_fb_helper_funcs omap_fb_helper_funcs = {
 	.gamma_set = omap_crtc_fb_gamma_set,
 	.gamma_get = omap_crtc_fb_gamma_get,
-	.fb_probe = omap_fbdev_probe,
+	.fb_probe = omap_fbdev_create,
 };
 
 static struct drm_fb_helper *get_fb(struct fb_info *fbi)
@@ -367,6 +354,10 @@ struct drm_fb_helper *omap_fbdev_init(struct drm_device *dev)
 	}
 
 	drm_fb_helper_single_add_all_connectors(helper);
+
+	/* disable all the possible outputs/crtcs before entering KMS mode */
+	drm_helper_disable_unused_functions(dev);
+
 	drm_fb_helper_initial_config(helper, 32);
 
 	priv->fbdev = helper;
@@ -400,8 +391,10 @@ void omap_fbdev_free(struct drm_device *dev)
 	fbdev = to_omap_fbdev(priv->fbdev);
 
 	/* this will free the backing object */
-	if (fbdev->fb)
+	if (fbdev->fb) {
+		drm_framebuffer_unregister_private(fbdev->fb);
 		drm_framebuffer_remove(fbdev->fb);
+	}
 
 	kfree(fbdev);
 
