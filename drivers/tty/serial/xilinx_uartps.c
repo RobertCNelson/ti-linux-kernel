@@ -148,14 +148,10 @@
 static irqreturn_t xuartps_isr(int irq, void *dev_id)
 {
 	struct uart_port *port = (struct uart_port *)dev_id;
-	struct tty_struct *tty;
 	unsigned long flags;
 	unsigned int isrstatus, numbytes;
 	unsigned int data;
 	char status = TTY_NORMAL;
-
-	/* Get the tty which could be NULL so don't assume it's valid */
-	tty = tty_port_tty_get(&port->state->port);
 
 	spin_lock_irqsave(&port->lock, flags);
 
@@ -188,14 +184,11 @@ static irqreturn_t xuartps_isr(int irq, void *dev_id)
 			} else if (isrstatus & XUARTPS_IXR_OVERRUN)
 				port->icount.overrun++;
 
-			if (tty)
-				uart_insert_char(port, isrstatus,
-						XUARTPS_IXR_OVERRUN, data,
-						status);
+			uart_insert_char(port, isrstatus, XUARTPS_IXR_OVERRUN,
+					data, status);
 		}
 		spin_unlock(&port->lock);
-		if (tty)
-			tty_flip_buffer_push(tty);
+		tty_flip_buffer_push(&port->state->port);
 		spin_lock(&port->lock);
 	}
 
@@ -238,7 +231,6 @@ static irqreturn_t xuartps_isr(int irq, void *dev_id)
 
 	/* be sure to release the lock and tty before leaving */
 	spin_unlock_irqrestore(&port->lock, flags);
-	tty_kref_put(tty);
 
 	return IRQ_HANDLED;
 }
@@ -1052,7 +1044,7 @@ MODULE_DEVICE_TABLE(of, xuartps_of_match);
 
 static struct platform_driver xuartps_platform_driver = {
 	.probe   = xuartps_probe,		/* Probe method */
-	.remove  = __exit_p(xuartps_remove),	/* Detach method */
+	.remove  = xuartps_remove,		/* Detach method */
 	.suspend = xuartps_suspend,		/* Suspend */
 	.resume  = xuartps_resume,		/* Resume after a suspend */
 	.driver  = {
