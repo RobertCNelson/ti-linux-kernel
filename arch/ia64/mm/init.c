@@ -207,6 +207,17 @@ free_initrd_mem (unsigned long start, unsigned long end)
 	start = PAGE_ALIGN(start);
 	end = end & PAGE_MASK;
 
+	/*
+	 * Initrd size is fixed in boot loader, but kernel parameter max_addr
+	 * which aligns in granules is fixed after boot loader, so initrd size
+	 * maybe overflow.
+	 */
+	if (max_addr != ~0UL) {
+		end = GRANULEROUNDDOWN(end);
+		if (start > end)
+			start = end;
+	}
+
 	if (start < end)
 		printk(KERN_INFO "Freeing initrd memory: %ldkB freed\n", (end - start) >> 10);
 
@@ -688,6 +699,24 @@ int arch_add_memory(int nid, u64 start, u64 size)
 
 	return ret;
 }
+
+#ifdef CONFIG_MEMORY_HOTREMOVE
+int arch_remove_memory(u64 start, u64 size)
+{
+	unsigned long start_pfn = start >> PAGE_SHIFT;
+	unsigned long nr_pages = size >> PAGE_SHIFT;
+	struct zone *zone;
+	int ret;
+
+	zone = page_zone(pfn_to_page(start_pfn));
+	ret = __remove_pages(zone, start_pfn, nr_pages);
+	if (ret)
+		pr_warn("%s: Problem encountered in __remove_pages() as"
+			" ret=%d\n", __func__,  ret);
+
+	return ret;
+}
+#endif
 #endif
 
 /*
