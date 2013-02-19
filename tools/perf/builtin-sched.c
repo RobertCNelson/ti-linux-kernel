@@ -1475,9 +1475,9 @@ static int perf_sched__read_events(struct perf_sched *sched, bool destroy,
 			goto out_delete;
 		}
 
-		sched->nr_events      = session->hists.stats.nr_events[0];
-		sched->nr_lost_events = session->hists.stats.total_lost;
-		sched->nr_lost_chunks = session->hists.stats.nr_events[PERF_RECORD_LOST];
+		sched->nr_events      = session->stats.nr_events[0];
+		sched->nr_lost_events = session->stats.total_lost;
+		sched->nr_lost_chunks = session->stats.nr_events[PERF_RECORD_LOST];
 	}
 
 	if (destroy)
@@ -1677,8 +1677,8 @@ int cmd_sched(int argc, const char **argv, const char *prefix __maybe_unused)
 		},
 		.cmp_pid	      = LIST_HEAD_INIT(sched.cmp_pid),
 		.sort_list	      = LIST_HEAD_INIT(sched.sort_list),
-		.start_work_mutex     = PTHREAD_MUTEX_INITIALIZER,
-		.work_done_wait_mutex = PTHREAD_MUTEX_INITIALIZER,
+		.start_work_mutex     = LIBLOCKDEP_PTHREAD_MUTEX_INITIALIZER(sched.start_work_mutex),
+		.work_done_wait_mutex = LIBLOCKDEP_PTHREAD_MUTEX_INITIALIZER(sched.work_done_wait_mutex),
 		.curr_pid	      = { [0 ... MAX_CPUS - 1] = -1 },
 		.sort_order	      = default_sort_order,
 		.replay_repeat	      = 10,
