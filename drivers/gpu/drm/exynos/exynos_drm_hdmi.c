@@ -108,18 +108,17 @@ static bool drm_hdmi_is_connected(struct device *dev)
 	return false;
 }
 
-static int drm_hdmi_get_edid(struct device *dev,
-		struct drm_connector *connector, u8 *edid, int len)
+static struct edid *drm_hdmi_get_edid(struct device *dev,
+			struct drm_connector *connector)
 {
 	struct drm_hdmi_context *ctx = to_context(dev);
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
 	if (hdmi_ops && hdmi_ops->get_edid)
-		return hdmi_ops->get_edid(ctx->hdmi_ctx->ctx, connector, edid,
-					  len);
+		return hdmi_ops->get_edid(ctx->hdmi_ctx->ctx, connector);
 
-	return 0;
+	return NULL;
 }
 
 static int drm_hdmi_check_timing(struct device *dev, void *timing)
@@ -385,7 +384,7 @@ static void hdmi_subdrv_remove(struct drm_device *drm_dev, struct device *dev)
 		mixer_ops->iommu_on(ctx->mixer_ctx->ctx, false);
 }
 
-static int __devinit exynos_drm_hdmi_probe(struct platform_device *pdev)
+static int exynos_drm_hdmi_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct exynos_drm_subdrv *subdrv;
@@ -413,7 +412,7 @@ static int __devinit exynos_drm_hdmi_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int __devexit exynos_drm_hdmi_remove(struct platform_device *pdev)
+static int exynos_drm_hdmi_remove(struct platform_device *pdev)
 {
 	struct drm_hdmi_context *ctx = platform_get_drvdata(pdev);
 
@@ -426,7 +425,7 @@ static int __devexit exynos_drm_hdmi_remove(struct platform_device *pdev)
 
 struct platform_driver exynos_drm_common_hdmi_driver = {
 	.probe		= exynos_drm_hdmi_probe,
-	.remove		= __devexit_p(exynos_drm_hdmi_remove),
+	.remove		= exynos_drm_hdmi_remove,
 	.driver		= {
 		.name	= "exynos-drm-hdmi",
 		.owner	= THIS_MODULE,

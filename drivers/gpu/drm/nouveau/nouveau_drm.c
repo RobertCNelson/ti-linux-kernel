@@ -84,11 +84,16 @@ nouveau_cli_create(struct pci_dev *pdev, const char *name,
 	struct nouveau_cli *cli;
 	int ret;
 
+	*pcli = NULL;
 	ret = nouveau_client_create_(name, nouveau_name(pdev), nouveau_config,
 				     nouveau_debug, size, pcli);
 	cli = *pcli;
-	if (ret)
+	if (ret) {
+		if (cli)
+			nouveau_client_destroy(&cli->base);
+		*pcli = NULL;
 		return ret;
+	}
 
 	mutex_init(&cli->mutex);
 	return 0;
@@ -189,8 +194,8 @@ nouveau_accel_init(struct nouveau_drm *drm)
 	nouveau_bo_move_init(drm);
 }
 
-static int __devinit
-nouveau_drm_probe(struct pci_dev *pdev, const struct pci_device_id *pent)
+static int nouveau_drm_probe(struct pci_dev *pdev,
+			     const struct pci_device_id *pent)
 {
 	struct nouveau_device *device;
 	struct apertures_struct *aper;
@@ -240,6 +245,8 @@ nouveau_drm_probe(struct pci_dev *pdev, const struct pci_device_id *pent)
 	return 0;
 }
 
+static struct lock_class_key drm_client_lock_class_key;
+
 static int
 nouveau_drm_load(struct drm_device *dev, unsigned long flags)
 {
@@ -251,6 +258,7 @@ nouveau_drm_load(struct drm_device *dev, unsigned long flags)
 	ret = nouveau_cli_create(pdev, "DRM", sizeof(*drm), (void**)&drm);
 	if (ret)
 		return ret;
+	lockdep_set_class(&drm->client.mutex, &drm_client_lock_class_key);
 
 	dev->dev_private = drm;
 	drm->dev = dev;

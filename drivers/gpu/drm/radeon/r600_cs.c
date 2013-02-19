@@ -2476,8 +2476,10 @@ static void r600_cs_parser_fini(struct radeon_cs_parser *parser, int error)
 	kfree(parser->relocs);
 	for (i = 0; i < parser->nchunks; i++) {
 		kfree(parser->chunks[i].kdata);
-		kfree(parser->chunks[i].kpage[0]);
-		kfree(parser->chunks[i].kpage[1]);
+		if (parser->rdev && (parser->rdev->flags & RADEON_IS_AGP)) {
+			kfree(parser->chunks[i].kpage[0]);
+			kfree(parser->chunks[i].kpage[1]);
+		}
 	}
 	kfree(parser->chunks);
 	kfree(parser->chunks_array);
@@ -2561,16 +2563,16 @@ int r600_dma_cs_next_reloc(struct radeon_cs_parser *p,
 	struct radeon_cs_chunk *relocs_chunk;
 	unsigned idx;
 
+	*cs_reloc = NULL;
 	if (p->chunk_relocs_idx == -1) {
 		DRM_ERROR("No relocation chunk !\n");
 		return -EINVAL;
 	}
-	*cs_reloc = NULL;
 	relocs_chunk = &p->chunks[p->chunk_relocs_idx];
 	idx = p->dma_reloc_idx;
-	if (idx >= relocs_chunk->length_dw) {
+	if (idx >= p->nrelocs) {
 		DRM_ERROR("Relocs at %d after relocations chunk end %d !\n",
-			  idx, relocs_chunk->length_dw);
+			  idx, p->nrelocs);
 		return -EINVAL;
 	}
 	*cs_reloc = p->relocs_ptr[idx];
@@ -2621,14 +2623,14 @@ int r600_dma_cs_parse(struct radeon_cs_parser *p)
 				return -EINVAL;
 			}
 			if (tiled) {
-				dst_offset = ib[idx+1];
+				dst_offset = radeon_get_ib_value(p, idx+1);
 				dst_offset <<= 8;
 
 				ib[idx+1] += (u32)(dst_reloc->lobj.gpu_offset >> 8);
 				p->idx += count + 5;
 			} else {
-				dst_offset = ib[idx+1];
-				dst_offset |= ((u64)(ib[idx+2] & 0xff)) << 32;
+				dst_offset = radeon_get_ib_value(p, idx+1);
+				dst_offset |= ((u64)(radeon_get_ib_value(p, idx+2) & 0xff)) << 32;
 
 				ib[idx+1] += (u32)(dst_reloc->lobj.gpu_offset & 0xfffffffc);
 				ib[idx+2] += upper_32_bits(dst_reloc->lobj.gpu_offset) & 0xff;
@@ -2656,37 +2658,50 @@ int r600_dma_cs_parse(struct radeon_cs_parser *p)
 				/* detile bit */
 				if (idx_value & (1 << 31)) {
 					/* tiled src, linear dst */
-					src_offset = ib[idx+1];
+					src_offset = radeon_get_ib_value(p, idx+1);
 					src_offset <<= 8;
 					ib[idx+1] += (u32)(src_reloc->lobj.gpu_offset >> 8);
 
-					dst_offset = ib[idx+5];
-					dst_offset |= ((u64)(ib[idx+6] & 0xff)) << 32;
+					dst_offset = radeon_get_ib_value(p, idx+5);
+					dst_offset |= ((u64)(radeon_get_ib_value(p, idx+6) & 0xff)) << 32;
 					ib[idx+5] += (u32)(dst_reloc->lobj.gpu_offset & 0xfffffffc);
 					ib[idx+6] += upper_32_bits(dst_reloc->lobj.gpu_offset) & 0xff;
 				} else {
 					/* linear src, tiled dst */
-					src_offset = ib[idx+5];
-					src_offset |= ((u64)(ib[idx+6] & 0xff)) << 32;
+					src_offset = radeon_get_ib_value(p, idx+5);
+					src_offset |= ((u64)(radeon_get_ib_value(p, idx+6) & 0xff)) << 32;
 					ib[idx+5] += (u32)(src_reloc->lobj.gpu_offset & 0xfffffffc);
 					ib[idx+6] += upper_32_bits(src_reloc->lobj.gpu_offset) & 0xff;
 
-					dst_offset = ib[idx+1];
+					dst_offset = radeon_get_ib_value(p, idx+1);
 					dst_offset <<= 8;
 					ib[idx+1] += (u32)(dst_reloc->lobj.gpu_offset >> 8);
 				}
 				p->idx += 7;
 			} else {
-				src_offset = ib[idx+2];
-				src_offset |= ((u64)(ib[idx+4] & 0xff)) << 32;
-				dst_offset = ib[idx+1];
-				dst_offset |= ((u64)(ib[idx+3] & 0xff)) << 32;
+				if (p->family >= CHIP_RV770) {
+					src_offset = radeon_get_ib_value(p, idx+2);
+					src_offset |= ((u64)(radeon_get_ib_value(p, idx+4) & 0xff)) << 32;
+					dst_offset = radeon_get_ib_value(p, idx+1);
+					dst_offset |= ((u64)(radeon_get_ib_value(p, idx+3) & 0xff)) << 32;
 
-				ib[idx+1] += (u32)(dst_reloc->lobj.gpu_offset & 0xfffffffc);
-				ib[idx+2] += (u32)(src_reloc->lobj.gpu_offset & 0xfffffffc);
-				ib[idx+3] += upper_32_bits(dst_reloc->lobj.gpu_offset) & 0xff;
-				ib[idx+4] += upper_32_bits(src_reloc->lobj.gpu_offset) & 0xff;
-				p->idx += 5;
+					ib[idx+1] += (u32)(dst_reloc->lobj.gpu_offset & 0xfffffffc);
+					ib[idx+2] += (u32)(src_reloc->lobj.gpu_offset & 0xfffffffc);
+					ib[idx+3] += upper_32_bits(dst_reloc->lobj.gpu_offset) & 0xff;
+					ib[idx+4] += upper_32_bits(src_reloc->lobj.gpu_offset) & 0xff;
+					p->idx += 5;
+				} else {
+					src_offset = radeon_get_ib_value(p, idx+2);
+					src_offset |= ((u64)(radeon_get_ib_value(p, idx+3) & 0xff)) << 32;
+					dst_offset = radeon_get_ib_value(p, idx+1);
+					dst_offset |= ((u64)(radeon_get_ib_value(p, idx+3) & 0xff0000)) << 16;
+
+					ib[idx+1] += (u32)(dst_reloc->lobj.gpu_offset & 0xfffffffc);
+					ib[idx+2] += (u32)(src_reloc->lobj.gpu_offset & 0xfffffffc);
+					ib[idx+3] += upper_32_bits(src_reloc->lobj.gpu_offset) & 0xff;
+					ib[idx+3] += (upper_32_bits(dst_reloc->lobj.gpu_offset) & 0xff) << 16;
+					p->idx += 4;
+				}
 			}
 			if ((src_offset + (count * 4)) > radeon_bo_size(src_reloc->robj)) {
 				dev_warn(p->dev, "DMA copy src buffer too small (%llu %lu)\n",
@@ -2709,8 +2724,8 @@ int r600_dma_cs_parse(struct radeon_cs_parser *p)
 				DRM_ERROR("bad DMA_PACKET_WRITE\n");
 				return -EINVAL;
 			}
-			dst_offset = ib[idx+1];
-			dst_offset |= ((u64)(ib[idx+3] & 0x00ff0000)) << 16;
+			dst_offset = radeon_get_ib_value(p, idx+1);
+			dst_offset |= ((u64)(radeon_get_ib_value(p, idx+3) & 0x00ff0000)) << 16;
 			if ((dst_offset + (count * 4)) > radeon_bo_size(dst_reloc->robj)) {
 				dev_warn(p->dev, "DMA constant fill buffer too small (%llu %lu)\n",
 					 dst_offset + (count * 4), radeon_bo_size(dst_reloc->robj));

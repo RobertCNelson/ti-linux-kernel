@@ -192,7 +192,7 @@ static void bcma_unregister_cores(struct bcma_bus *bus)
 		platform_device_unregister(bus->drv_cc.watchdog);
 }
 
-int __devinit bcma_bus_register(struct bcma_bus *bus)
+int bcma_bus_register(struct bcma_bus *bus)
 {
 	int err;
 	struct bcma_device *core;
@@ -268,6 +268,13 @@ int __devinit bcma_bus_register(struct bcma_bus *bus)
 void bcma_bus_unregister(struct bcma_bus *bus)
 {
 	struct bcma_device *cores[3];
+	int err;
+
+	err = bcma_gpio_unregister(&bus->drv_cc);
+	if (err == -EBUSY)
+		bcma_err(bus, "Some GPIOs are still in use.\n");
+	else if (err)
+		bcma_err(bus, "Can not unregister GPIO driver: %i\n", err);
 
 	cores[0] = bcma_find_core(bus, BCMA_CORE_MIPS_74K);
 	cores[1] = bcma_find_core(bus, BCMA_CORE_PCIE);

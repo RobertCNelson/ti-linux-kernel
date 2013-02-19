@@ -2062,7 +2062,8 @@ static void virtcons_remove(struct virtio_device *vdev)
 	/* Disable interrupts for vqs */
 	vdev->config->reset(vdev);
 	/* Finish up work that's lined up */
-	cancel_work_sync(&portdev->control_work);
+	if (use_multiport(portdev))
+		cancel_work_sync(&portdev->control_work);
 
 	list_for_each_entry_safe(port, port2, &portdev->ports, list)
 		unplug_port(port);
@@ -2186,11 +2187,7 @@ static struct virtio_driver virtio_console = {
 #endif
 };
 
-/*
- * virtio_rproc_serial refers to __devinit function which causes
- * section mismatch warnings. So use __refdata to silence warnings.
- */
-static struct virtio_driver __refdata virtio_rproc_serial = {
+static struct virtio_driver virtio_rproc_serial = {
 	.feature_table = rproc_serial_features,
 	.feature_table_size = ARRAY_SIZE(rproc_serial_features),
 	.driver.name =	"virtio_rproc_serial",

@@ -28,6 +28,7 @@
 
 #include <asm/arch_timer.h>
 #include <asm/cacheflush.h>
+#include <asm/cputype.h>
 #include <asm/smp_plat.h>
 #include <asm/smp_twd.h>
 #include <asm/hardware/arm_timer.h>
@@ -59,7 +60,7 @@ static void __init highbank_scu_map_io(void)
 
 void highbank_set_cpu_jump(int cpu, void *jump_addr)
 {
-	cpu = cpu_logical_map(cpu);
+	cpu = MPIDR_AFFINITY_LEVEL(cpu_logical_map(cpu), 0);
 	writel(virt_to_phys(jump_addr), HB_JUMP_TABLE_VIRT(cpu));
 	__cpuc_flush_dcache_area(HB_JUMP_TABLE_VIRT(cpu), 16);
 	outer_clean_range(HB_JUMP_TABLE_PHYS(cpu),
@@ -135,7 +136,7 @@ static struct sys_timer highbank_timer = {
 
 static void highbank_power_off(void)
 {
-	hignbank_set_pwr_shutdown();
+	highbank_set_pwr_shutdown();
 
 	while (1)
 		cpu_do_idle();
