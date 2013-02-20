@@ -517,9 +517,9 @@ EXPORT_SYMBOL(wait_on_sync_kiocb);
 void exit_aio(struct mm_struct *mm)
 {
 	struct kioctx *ctx;
-	struct hlist_node *p, *n;
+	struct hlist_node *n;
 
-	hlist_for_each_entry_safe(ctx, p, n, &mm->ioctx_list, list) {
+	hlist_for_each_entry_safe(ctx, n, &mm->ioctx_list, list) {
 		/*
 		 * We don't need to bother with munmap() here -
 		 * exit_mmap(mm) is coming and it'll unmap everything.
@@ -636,11 +636,10 @@ static struct kioctx *lookup_ioctx(unsigned long ctx_id)
 {
 	struct mm_struct *mm = current->mm;
 	struct kioctx *ctx, *ret = NULL;
-	struct hlist_node *n;
 
 	rcu_read_lock();
 
-	hlist_for_each_entry_rcu(ctx, n, &mm->ioctx_list, list)
+	hlist_for_each_entry_rcu(ctx, &mm->ioctx_list, list)
 		if (ctx->user_id == ctx_id){
 			percpu_ref_get(&ctx->users);
 			ret = ctx;
