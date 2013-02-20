@@ -1426,6 +1426,8 @@ void bio_endio_batch(struct bio *bio, int error, struct batch_complete *batch)
 	if (error)
 		bio->bi_error = error;
 
+	trace_block_bio_complete(bio, error);
+
 	if (batch)
 		bio_list_add(&batch->bio, bio);
 	else
@@ -1440,8 +1442,6 @@ void batch_complete(struct batch_complete *batch)
 
 	while ((bio = bio_list_pop(&batch->bio)))
 		__bio_endio(bio, batch);
-
-	trace_block_bio_complete(bio, error);
 
 	batch_complete_aio(batch);
 }
