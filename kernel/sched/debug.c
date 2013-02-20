@@ -437,7 +437,6 @@ static void sched_debug_stop(struct seq_file *file, void *data)
 {
 }
 
-
 static const struct seq_operations sched_debug_sops = {
 	.start = sched_debug_start,
 	.next = sched_debug_next,
