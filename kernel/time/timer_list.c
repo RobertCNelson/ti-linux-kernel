@@ -274,7 +274,6 @@ static int timer_list_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-
 static void *timer_list_start(struct seq_file *file, loff_t *offset)
 {
 	unsigned long n = *offset;
