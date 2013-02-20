@@ -281,6 +281,20 @@ next/boards
 	imx/defconfig
 		pull	git://git.pengutronix.de/git/imx/linux-2.6.git tags/arm-imx-defconfig
 
+These updates are all for board specific code, including
+
+* defconfig updates for shmobile, davinci, bcm2835, imx, omap and tegra
+* SD/MMC and I2C support on bcm2835 (Raspberry PI)
+* minor updates for PXA
+* shmobile updates to GPIO usage in board files
+* More things in OMAP board files are moved over to device tree probing
+* Better support for audio devices on some OMAP platforms
+
+Conflicts include the omap board-apollon.c file that is removed without
+a replacement, and conflicting context in the 4430sdp board file.
+
+====
+
 next/dt
 	davinci/dt
 		pull	git://gitorious.org/linux-davinci/linux-davinci.git tags/davinci-for-v3.9/dt
@@ -307,14 +321,18 @@ next/dt
 	tegra/ccf-fixes
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git tegra-for-3.9-soc-ccf-fixes
 
-These updates are all for board specific code, including
 
-* defconfig updates for shmobile, davinci, bcm2835, imx, omap and tegra
-* SD/MMC and I2C support on bcm2835 (Raspberry PI)
-* minor updates for PXA
-* shmobile updates to GPIO usage in board files
-* More things in OMAP board files are moved over to device tree probing
-* Better support for audio devices on some OMAP platforms
+These are device tree conversions for a number of platforms,
+with the intention of turning code from board files into
+device tree descriptions. Notable changes are:
+
+* davinci bindings for pinctrl, MTD, RTC, watchdog and i2c
+* nomadik bindings for all devices, removing the board files
+* bcm2835 bindings for mmc and i2c
+* tegra bindings for hdmi, keyboard, audio, as well as some updates
+* at91 bindings for hardware ecc and for devices on RM9200
+* mxs bindings for cfa100xx
+* sunxi support for Miniand Hackberry board
 
 ====
 
@@ -332,6 +350,22 @@ next/virt
 	virt/vgic-vtimer
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/maz/arm-platforms.git kvm-arm/timer
 	+patch	1360882071-4072668-2-git-send-email-arnd@arndb.de
+
+
+This contains parts of the ARM KVM support that have dependencies on
+other patches merged through the arm-soc tree. In combination with
+patches coming through Russell's tree, this will finally add full
+support for the kernel based virtual machine on ARM,  which has
+been awaited for some time now.
+
+Further, we now have a separate platform for virtual machines
+and qemu booting that is used by both Xen and KVM, separating
+these from the Versatile Express reference implementation.
+Obviously, this new platform is multiplatform capable so it
+can be combined with existing machines in the same kernel.
+
+====
+
 
 late/dt
 	depends on imx/cpuidle
