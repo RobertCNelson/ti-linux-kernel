@@ -41,6 +41,7 @@
 #include <linux/mount.h>
 #include <linux/btrfs.h>
 #include <linux/blkdev.h>
+#include <linux/aio.h>
 #include "compat.h"
 #include "ctree.h"
 #include "disk-io.h"
