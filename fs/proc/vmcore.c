@@ -178,7 +178,7 @@ static ssize_t read_vmcore(struct file *file, char __user *buffer,
         	return -EINVAL;
 
 	while (buflen) {
-		tsz = max_t(size_t, buflen, PAGE_SIZE - (start & ~PAGE_MASK));
+		tsz = min_t(size_t, buflen, PAGE_SIZE - (start & ~PAGE_MASK));
 
 		/* Calculate left bytes in current memory segment. */
 		nr_bytes = (curr_m->size - (start - curr_m->paddr));
