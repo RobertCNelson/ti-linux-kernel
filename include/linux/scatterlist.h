@@ -295,9 +295,9 @@ struct sg_mapping_iter {
 	size_t			consumed;	/* number of consumed bytes */
 
 	/* these are internal states, keep away */
-	struct scatterlist	*__sg;		/* current entry */
-	unsigned int		__nents;	/* nr of remaining entries */
-	unsigned int		__offset;	/* offset within sg */
+	unsigned int		__offset;	/* offset within page */
+	struct sg_page_iter	__piter;	/* page iterator */
+	unsigned int		__remaining;	/* remaining bytes on page */
 	unsigned int		__flags;
 };
 
