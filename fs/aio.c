@@ -103,6 +103,19 @@ struct kioctx {
 	struct {
 		struct mutex	ring_lock;
 		wait_queue_head_t wait;
+
+		/*
+		 * Copy of the real tail, that aio_complete uses - to reduce
+		 * cacheline bouncing. The real tail will tend to be much more
+		 * contended - since typically events are delivered one at a
+		 * time, and then aio_read_events() slurps them up a bunch at a
+		 * time - so it's helpful if aio_read_events() isn't also
+		 * contending for the tail. So, aio_complete() updates
+		 * shadow_tail whenever it updates tail.
+		 *
+		 * Also needed because tail is used as a hacky lock and isn't
+		 * always the real tail.
+		 */
 		unsigned	shadow_tail;
 	} ____cacheline_aligned_in_smp;
 
@@ -860,10 +873,7 @@ static long aio_read_events_ring(struct kioctx *ctx,
 	long ret = 0;
 	int copy_ret;
 
-	if (!mutex_trylock(&ctx->ring_lock)) {
-		__set_current_state(TASK_RUNNING);
-		mutex_lock(&ctx->ring_lock);
-	}
+	mutex_lock(&ctx->ring_lock);
 
 	ring = kmap_atomic(ctx->ring_pages[0]);
 	head = ring->head;
@@ -873,8 +883,6 @@ static long aio_read_events_ring(struct kioctx *ctx,
 
 	if (head == ctx->shadow_tail)
 		goto out;
-
-	__set_current_state(TASK_RUNNING);
 
 	while (ret < nr) {
 		long avail = (head < ctx->shadow_tail
@@ -954,6 +962,20 @@ static long read_events(struct kioctx *ctx, long min_nr, long nr,
 		until = timespec_to_ktime(ts);
 	}
 
+	/*
+	 * Note that aio_read_events() is being called as the conditional - i.e.
+	 * we're calling it after prepare_to_wait() has set task state to
+	 * TASK_INTERRUPTIBLE.
+	 *
+	 * But aio_read_events() can block, and if it blocks it's going to flip
+	 * the task state back to TASK_RUNNING.
+	 *
+	 * This should be ok, provided it doesn't flip the state back to
+	 * TASK_RUNNING and return 0 too much - that causes us to spin. That
+	 * will only happen if the mutex_lock() call blocks, and we then find
+	 * the ringbuffer empty. So in practice we should be ok, but it's
+	 * something to be aware of when touching this code.
+	 */
 	wait_event_interruptible_hrtimeout(ctx->wait,
 			aio_read_events(ctx, min_nr, nr, event, &ret), until);
 
