@@ -481,12 +481,9 @@ static void exit_mm(struct task_struct * tsk)
 		if (atomic_dec_and_test(&core_state->nr_threads))
 			complete(&core_state->startup);
 
-		for (;;) {
-			set_task_state(tsk, TASK_UNINTERRUPTIBLE);
-			if (!self.task) /* see coredump_finish() */
-				break;
+		set_task_state(tsk, TASK_UNINTERRUPTIBLE);
+		if (self.task) /* see coredump_finish() */
 			schedule();
-		}
 		__set_task_state(tsk, TASK_RUNNING);
 		down_read(&mm->mmap_sem);
 	}
