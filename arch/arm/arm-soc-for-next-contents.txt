@@ -307,6 +307,16 @@ next/dt
 	tegra/ccf-fixes
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git tegra-for-3.9-soc-ccf-fixes
 
+These updates are all for board specific code, including
+
+* defconfig updates for shmobile, davinci, bcm2835, imx, omap and tegra
+* SD/MMC and I2C support on bcm2835 (Raspberry PI)
+* minor updates for PXA
+* shmobile updates to GPIO usage in board files
+* More things in OMAP board files are moved over to device tree probing
+* Better support for audio devices on some OMAP platforms
+
+====
 
 next/virt
 	depends	depends/rmk-perf
