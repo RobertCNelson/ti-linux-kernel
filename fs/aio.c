@@ -337,7 +337,8 @@ static void free_ioctx(struct kioctx *ctx)
 	while (atomic_read(&ctx->reqs_available) < ctx->nr) {
 		wait_event(ctx->wait, head != ctx->shadow_tail);
 
-		avail = (head < ctx->shadow_tail ? ctx->shadow_tail : ctx->nr) - head;
+		avail = (head <= ctx->shadow_tail ?
+			 ctx->shadow_tail : ctx->nr) - head;
 
 		atomic_add(avail, &ctx->reqs_available);
 		head += avail;
@@ -885,7 +886,7 @@ static long aio_read_events_ring(struct kioctx *ctx,
 		goto out;
 
 	while (ret < nr) {
-		long avail = (head < ctx->shadow_tail
+		long avail = (head <= ctx->shadow_tail
 			      ? ctx->shadow_tail : ctx->nr) - head;
 		struct io_event *ev;
 		struct page *page;
