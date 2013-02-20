@@ -4113,6 +4113,7 @@ void debug_check_no_locks_held(struct task_struct *task)
 	if (unlikely(task->lockdep_depth > 0))
 		print_held_locks_bug(task);
 }
+EXPORT_SYMBOL_GPL(debug_check_no_locks_held);
 
 void debug_show_all_locks(void)
 {
