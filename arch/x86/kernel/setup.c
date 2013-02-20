@@ -284,8 +284,8 @@ static void __init cleanup_highmap(void)
 static void __init reserve_brk(void)
 {
 	if (_brk_end > _brk_start)
-		memblock_reserve(__pa(_brk_start),
-				 __pa(_brk_end) - __pa(_brk_start));
+		memblock_reserve(__pa_symbol(_brk_start),
+				 _brk_end - _brk_start);
 
 	/* Mark brk area as locked down and no longer taking any
 	   new allocations */
@@ -644,8 +644,6 @@ static __init void reserve_ibft_region(void)
 		memblock_reserve(addr, size);
 }
 
-static unsigned reserve_low = CONFIG_X86_RESERVE_LOW << 10;
-
 static bool __init snb_gfx_workaround_needed(void)
 {
 #ifdef CONFIG_PCI
@@ -734,8 +732,7 @@ static void __init trim_bios_range(void)
 	 * since some BIOSes are known to corrupt low memory.  See the
 	 * Kconfig help text for X86_RESERVE_LOW.
 	 */
-	e820_update_range(0, ALIGN(reserve_low, PAGE_SIZE),
-			  E820_RAM, E820_RESERVED);
+	e820_update_range(0, PAGE_SIZE, E820_RAM, E820_RESERVED);
 
 	/*
 	 * special case: Some BIOSen report the PC BIOS
@@ -768,6 +765,8 @@ static void __init e820_add_kernel_range(void)
 	e820_add_region(start, size, E820_RAM);
 }
 
+static unsigned reserve_low = CONFIG_X86_RESERVE_LOW << 10;
+
 static int __init parse_reservelow(char *p)
 {
 	unsigned long long size;
@@ -790,6 +789,11 @@ static int __init parse_reservelow(char *p)
 
 early_param("reservelow", parse_reservelow);
 
+static void __init trim_low_memory_range(void)
+{
+	memblock_reserve(0, ALIGN(reserve_low, PAGE_SIZE));
+}
+	
 /*
  * Determine if we were loaded by an EFI loader.  If so, then we have also been
  * passed the efi memmap, systab, etc., so we should use these data structures
@@ -903,12 +907,12 @@ void __init setup_arch(char **cmdline_p)
 	init_mm.end_data = (unsigned long) _edata;
 	init_mm.brk = _brk_end;
 
-	code_resource.start = virt_to_phys(_text);
-	code_resource.end = virt_to_phys(_etext)-1;
-	data_resource.start = virt_to_phys(_etext);
-	data_resource.end = virt_to_phys(_edata)-1;
-	bss_resource.start = virt_to_phys(&__bss_start);
-	bss_resource.end = virt_to_phys(&__bss_stop)-1;
+	code_resource.start = __pa_symbol(_text);
+	code_resource.end = __pa_symbol(_etext)-1;
+	data_resource.start = __pa_symbol(_etext);
+	data_resource.end = __pa_symbol(_edata)-1;
+	bss_resource.start = __pa_symbol(__bss_start);
+	bss_resource.end = __pa_symbol(__bss_stop)-1;
 
 #ifdef CONFIG_CMDLINE_BOOL
 #ifdef CONFIG_CMDLINE_OVERRIDE
@@ -1060,6 +1064,7 @@ void __init setup_arch(char **cmdline_p)
 	reserve_real_mode();
 
 	trim_platform_memory_ranges();
+	trim_low_memory_range();
 
 	init_mem_mapping();
 
