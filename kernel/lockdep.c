@@ -4096,10 +4096,10 @@ static void print_held_locks_bug(struct task_struct *curr)
 		return;
 
 	printk("\n");
-	printk("=====================================\n");
-	printk("[ BUG: lock held at task exit time! ]\n");
+	printk("=======================================\n");
+	printk("[ BUG: lock held at exit/freeze time! ]\n");
 	print_kernel_ident();
-	printk("-------------------------------------\n");
+	printk("---------------------------------------\n");
 	printk("%s/%d is exiting with locks still held!\n",
 		curr->comm, task_pid_nr(curr));
 	lockdep_print_held_locks(curr);
