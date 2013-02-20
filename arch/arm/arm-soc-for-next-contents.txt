@@ -101,6 +101,25 @@ next/cleanup
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/for-arm-soc-cleanup
 	patch	1360850491-1463387-1-git-send-email-arnd@arndb.de
 
+A large number of cleanups, all over the platforms. This is dominated
+largely by the Samsung platforms (s3c, s5p, exynos) and a few of the
+others moving code out of arch/arm into more appropriate subsystems.
+The clocksource and irqchip drivers are now abstracted to the point
+where platforms that are already cleaned up do not need to even specify
+the driver they use, it can all get configured from the device tree
+as we do for normal device drivers. The clocksource changes basically
+touch every single platform in the process.
+
+We further clean up the use of platform specific header files here,
+with the goal of turning more of the platforms over to being
+"multiplatform" enabled, which implies that they cannot expose
+their headers to architecture independent code any more.
+
+The overall reduction in total code lines is mostly the result of
+removing broken and obsolete code.
+=====
+
+
 next/sh-pinmux
 	pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git pfc
 	pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-pinmux2-for-v3.9
