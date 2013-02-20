@@ -456,6 +456,7 @@ drm_gem_flink_ioctl(struct drm_device *dev, void *data,
 		obj->name = ret;
 		args->name = (uint64_t) obj->name;
 		spin_unlock(&dev->object_name_lock);
+		idr_preload_end();
 
 		if (ret < 0)
 			goto err;
@@ -465,6 +466,7 @@ drm_gem_flink_ioctl(struct drm_device *dev, void *data,
 	} else {
 		args->name = (uint64_t) obj->name;
 		spin_unlock(&dev->object_name_lock);
+		idr_preload_end();
 		ret = 0;
 	}
 
