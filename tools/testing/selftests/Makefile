@@ -1,4 +1,4 @@
-TARGETS = breakpoints epoll kcmp mqueue vm cpu-hotplug memory-hotplug
+TARGETS = breakpoints epoll kcmp mqueue vm cpu-hotplug memory-hotplug efivarfs
 
 all:
 	for TARGET in $(TARGETS); do \
