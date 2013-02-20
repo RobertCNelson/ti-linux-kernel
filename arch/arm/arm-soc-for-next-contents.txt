@@ -180,8 +180,7 @@ next/multiplatform
 
 Converting more ARM platforms to multiplatform support. This time, OMAP gets
 converted, which is a major step since this is by far the largest platform
-in terms of code size. The same thing happens to the vt8500 platform, which
-gains support for newer CPU cores in the process.
+in terms of code size. The same thing happens to the vt8500 platform.
 
 Conflicts include:
 * Two mach/uncompress.h files are removed, the changes made to them elsewhere
@@ -240,6 +239,24 @@ next/soc
 	patch	1360850491-1463387-2-git-send-email-arnd@arndb.de
 	omap/usb
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.9/usb-signed
+
+
+This is a larger set of new functionality for the existing SoC families,
+including:
+
+* vt8500 gains support for new CPU cores, notably the Cortex-A9 based wm8850
+* prima2 gains support for the "marco" SoC family, its SMP based cousin
+* tegra gains support for the new Tegra4 (Tegra114) family
+* socfpga now supports a newer version of the hardware including SMP
+* i.mx31 and bcm2835 are now using DT probing for their clocks
+* lots of updates for sh-mobile
+* OMAP updates for clocks, power management and USB
+* i.mx6q and tegra now support cpuidle
+* kirkwood now supports PCIe hot plugging
+* tegra clock support is updated
+* tegra USB PHY probing gets implemented diffently
+
+====
 
 next/boards
 	renesas/defconfig
