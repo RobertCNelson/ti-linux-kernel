@@ -239,13 +239,12 @@ int kvm_set_irq_inatomic(struct kvm *kvm, int irq_source_id, u32 irq, int level)
 bool kvm_irq_has_notifier(struct kvm *kvm, unsigned irqchip, unsigned pin)
 {
 	struct kvm_irq_ack_notifier *kian;
-	struct hlist_node *n;
 	int gsi;
 
 	rcu_read_lock();
 	gsi = rcu_dereference(kvm->irq_routing)->chip[irqchip][pin];
 	if (gsi != -1)
-		hlist_for_each_entry_rcu(kian, n, &kvm->irq_ack_notifier_list,
+		hlist_for_each_entry_rcu(kian, &kvm->irq_ack_notifier_list,
 					 link)
 			if (kian->gsi == gsi) {
 				rcu_read_unlock();
