@@ -178,6 +178,19 @@ next/multiplatform
 	omap/multiplatform-fixes
 		patches from 1360882071-4072668-1-git-send-email-arnd@arndb.de
 
+Converting more ARM platforms to multiplatform support. This time, OMAP gets
+converted, which is a major step since this is by far the largest platform
+in terms of code size. The same thing happens to the vt8500 platform, which
+gains support for newer CPU cores in the process.
+
+Conflicts include:
+* Two mach/uncompress.h files are removed, the changes made to them elsewhere
+  can be discarded now.
+* Moving the OMAP4 irq_match array has context clashes with turning
+  omap4_sar_ram_init into an omap_early_initcall()
+
+====
+
 next/soc
 	vt8500/wm8x50
 		depends	vt8500/multiplatform
