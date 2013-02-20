@@ -315,7 +315,7 @@ loff_t seq_lseek(struct file *file, loff_t offset, int whence)
 			break;
 		retval = offset;
 		if (offset != m->read_pos) {
-			while ((retval=traverse(m, offset)) == -EAGAIN)
+			while ((retval = traverse(m, offset)) == -EAGAIN)
 				;
 			if (retval) {
 				/* with extreme prejudice... */
