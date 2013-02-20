@@ -718,9 +718,11 @@ static int wait_for_vfork_done(struct task_struct *child,
 {
 	int killed;
 
-	freezer_do_not_count();
+	if (current->mm)
+		freezer_do_not_count();
 	killed = wait_for_completion_killable(vfork);
-	freezer_count();
+	if (current->mm)
+		freezer_count();
 
 	if (killed) {
 		task_lock(child);
