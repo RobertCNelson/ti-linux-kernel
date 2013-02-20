@@ -115,14 +115,32 @@ with the goal of turning more of the platforms over to being
 "multiplatform" enabled, which implies that they cannot expose
 their headers to architecture independent code any more.
 
+It is expected that no functional changes are part of the cleanup.
 The overall reduction in total code lines is mostly the result of
 removing broken and obsolete code.
-=====
 
+=====
 
 next/sh-pinmux
 	pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git pfc
 	pull	git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-pinmux2-for-v3.9
+
+This is another cleanup series, containing the move of the Renesas
+SH-Mobile pin controller code from arch/arm/mach-shmobile over to the
+generic pinctrl subsystem, changing it over to the common interfaces in
+the process.
+
+Based on agreement between me, Paul Mundt, Linus Walleij and Simon,
+we're mergning this large branch of pinctrl conversion through arm-soc,
+even though it contains the corresponding conversions for arch/sh. Main
+reason for this is tight dependencies (that will now mostly be broken)
+between the arch/sh and mach-shmobile implementations.
+
+There will be more of this in 3.10 to do device-tree bindings, but this
+is the initial conversion.
+
+====
+
 
 next/drivers
 	ux500/cpufreq
