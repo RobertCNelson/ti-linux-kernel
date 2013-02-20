@@ -587,7 +587,6 @@ static void check_lifetime(struct work_struct *work)
 {
 	unsigned long now, next, next_sec, next_sched;
 	struct in_ifaddr *ifa;
-	struct hlist_node *node;
 	int i;
 
 	now = jiffies;
@@ -595,8 +594,7 @@ static void check_lifetime(struct work_struct *work)
 
 	rcu_read_lock();
 	for (i = 0; i < IN4_ADDR_HSIZE; i++) {
-		hlist_for_each_entry_rcu(ifa, node,
-					 &inet_addr_lst[i], hash) {
+		hlist_for_each_entry_rcu(ifa, &inet_addr_lst[i], hash) {
 			unsigned long age;
 
 			if (ifa->ifa_flags & IFA_F_PERMANENT)
