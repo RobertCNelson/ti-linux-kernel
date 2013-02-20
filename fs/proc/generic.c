@@ -829,8 +829,8 @@ void remove_proc_entry(const char *name, struct proc_dir_entry *parent)
 		parent->nlink--;
 	de->nlink = 0;
 	WARN(de->subdir, "%s: removing non-empty directory "
-			"'%s/%s', leaking at least '%s'\n", __func__,
-			de->parent->name, de->name, de->subdir->name);
+			 "'%s/%s', leaking at least '%s'\n", __func__,
+			 de->parent->name, de->name, de->subdir->name);
 	pde_put(de);
 }
 EXPORT_SYMBOL(remove_proc_entry);

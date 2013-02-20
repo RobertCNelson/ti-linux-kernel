@@ -997,7 +997,7 @@ static int sysctl_err(const char *path, struct ctl_table *table, char *fmt, ...)
 	vaf.va = &args;
 
 	pr_err("sysctl table check failed: %s/%s %pV\n",
-			path, table->procname, &vaf);
+	       path, table->procname, &vaf);
 
 	va_end(args);
 	return -EINVAL;
