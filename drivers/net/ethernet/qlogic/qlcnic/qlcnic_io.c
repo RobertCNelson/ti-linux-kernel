@@ -272,7 +272,7 @@ static void qlcnic_send_filter(struct qlcnic_adapter *adapter,
 			       struct sk_buff *skb)
 {
 	struct qlcnic_filter *fil, *tmp_fil;
-	struct hlist_node *tmp_hnode, *n;
+	struct hlist_node *n;
 	struct hlist_head *head;
 	struct net_device *netdev = adapter->netdev;
 	struct ethhdr *phdr = (struct ethhdr *)(skb->data);
@@ -294,7 +294,7 @@ static void qlcnic_send_filter(struct qlcnic_adapter *adapter,
 	hindex = qlcnic_mac_hash(src_addr) & (adapter->fhash.fbucket_size - 1);
 	head = &(adapter->fhash.fhead[hindex]);
 
-	hlist_for_each_entry_safe(tmp_fil, tmp_hnode, n, head, fnode) {
+	hlist_for_each_entry_safe(tmp_fil, n, head, fnode) {
 		if (!memcmp(tmp_fil->faddr, &src_addr, ETH_ALEN) &&
 		    tmp_fil->vlan_id == vlan_id) {
 			if (jiffies > (QLCNIC_READD_AGE * HZ + tmp_fil->ftime))
