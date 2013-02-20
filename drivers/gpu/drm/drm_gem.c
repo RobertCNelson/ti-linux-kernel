@@ -460,6 +460,7 @@ drm_gem_flink_ioctl(struct drm_device *dev, void *data,
 
 		if (ret < 0)
 			goto err;
+		ret = 0;
 
 		/* Allocate a reference for the name table.  */
 		drm_gem_object_reference(obj);
