@@ -935,16 +935,17 @@ out_list:
  */
 int i2c_add_adapter(struct i2c_adapter *adapter)
 {
-	int res;
+	int id;
 
 	mutex_lock(&core_lock);
-	res = idr_alloc(&i2c_adapter_idr, adapter,
-			__i2c_first_dynamic_bus_num, 0, GFP_KERNEL);
+	id = idr_alloc(&i2c_adapter_idr, adapter,
+		       __i2c_first_dynamic_bus_num, 0, GFP_KERNEL);
 	mutex_unlock(&core_lock);
-	if (res < 0)
-		return res;
+	if (id < 0)
+		return id;
 
-	adapter->nr = res;
+	adapter->nr = id;
+
 	return i2c_register_adapter(adapter);
 }
 EXPORT_SYMBOL(i2c_add_adapter);
