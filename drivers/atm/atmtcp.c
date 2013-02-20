@@ -267,7 +267,7 @@ static struct atm_vcc *find_vcc(struct atm_dev *dev, short vpi, int vci)
 
         head = &vcc_hash[vci & (VCC_HTABLE_SIZE -1)];
 
-        sk_for_each(s, head) {
+	sk_for_each(s, head) {
                 vcc = atm_sk(s);
                 if (vcc->dev == dev &&
                     vcc->vci == vci && vcc->vpi == vpi &&
