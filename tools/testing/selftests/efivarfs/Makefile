@@ -6,7 +6,7 @@ test_objs = open-unlink
 all: $(test_objs)
 
 run_tests: all
-	@/bin/sh ./efivarfs.sh || echo "efivarfs selftests: [FAIL]"
+	@/bin/bash ./efivarfs.sh || echo "efivarfs selftests: [FAIL]"
 
 clean:
 	rm -f $(test_objs)
