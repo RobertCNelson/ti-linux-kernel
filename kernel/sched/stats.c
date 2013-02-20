@@ -76,8 +76,8 @@ static int show_schedstat(struct seq_file *seq, void *v)
 		}
 		rcu_read_unlock();
 #endif
-		kfree(mask_str);
 	}
+	kfree(mask_str);
 	return 0;
 }
 
