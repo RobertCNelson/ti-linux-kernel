@@ -554,7 +554,6 @@ static struct css_set *find_existing_css_set(
 {
 	int i;
 	struct cgroupfs_root *root = cgrp->root;
-	struct hlist_node *node;
 	struct css_set *cg;
 	unsigned long key;
 
@@ -577,7 +576,7 @@ static struct css_set *find_existing_css_set(
 	}
 
 	key = css_set_hash(template);
-	hash_for_each_possible(css_set_table, cg, node, hlist, key) {
+	hash_for_each_possible(css_set_table, cg, hlist, key) {
 		if (!compare_css_sets(cg, oldcg, cgrp, template))
 			continue;
 
@@ -1666,7 +1665,7 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 		/* Link the top cgroup in this hierarchy into all
 		 * the css_set objects */
 		write_lock(&css_set_lock);
-		hash_for_each(css_set_table, i, node, cg, hlist)
+		hash_for_each(css_set_table, i, cg, hlist)
 			link_css_set(&tmp_cg_links, cg, root_cgrp);
 		write_unlock(&css_set_lock);
 
@@ -4561,7 +4560,7 @@ int __init_or_module cgroup_load_subsys(struct cgroup_subsys *ss)
 	 * this is all done under the css_set_lock.
 	 */
 	write_lock(&css_set_lock);
-	hash_for_each_safe(css_set_table, i, node, tmp, cg, hlist) {
+	hash_for_each_safe(css_set_table, i, tmp, cg, hlist) {
 		/* skip entries that we already rehashed */
 		if (cg->subsys[ss->subsys_id])
 			continue;
