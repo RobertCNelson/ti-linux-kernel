@@ -1510,6 +1510,11 @@ D: Natsemi ethernet
 D: Cobalt Networks (x86) support
 D: This-and-That
 
+N: Mark M. Hoffman
+E: mhoffman@lightlink.com
+D: Maintenance of drivers/hwmon/asb100.c, drivers/i2c/busses/i2c-sis96x.c
+D: i2c core contributions
+
 N: Dirk Hohndel
 E: hohndel@suse.de
 D: The XFree86[tm] Project
