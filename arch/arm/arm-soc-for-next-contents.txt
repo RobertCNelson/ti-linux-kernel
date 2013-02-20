@@ -141,7 +141,6 @@ is the initial conversion.
 
 ====
 
-
 next/drivers
 	ux500/cpufreq
 		pull	git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-cpufreq-for-arm-soc
@@ -154,6 +153,18 @@ next/drivers
 	mxs/soc
 		pull	git://git.linaro.org/people/shawnguo/linux-2.6.git tags/mxs-soc-3.9
 
+
+Device driver specific changes:
+* Updates to the ux500 cpufree code
+* Moving the u300 DMA controller driver to drivers/dma
+* Moving versatile express drivers out of arch/arm for sharing with arch/arm64
+* Device tree bindings for the OMAP General Purpose Memory Controller
+
+There is a simple conflict in drivers/cpufreq/dbx500-cpufreq.c, because
+the mach/id.h header and the cpu_is_u8500_family() function in it are now
+gone.
+
+====
 
 next/multiplatform
 	omap/multiplatform
