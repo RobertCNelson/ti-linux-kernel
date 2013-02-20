@@ -120,11 +120,6 @@ static struct sock *__raw_v4_lookup(struct net *net, struct sock *sk,
 		    !(sk->sk_bound_dev_if && sk->sk_bound_dev_if != dif))
 			goto found; /* gotcha */
 	}
-	sk_for_each_from (sk) {
-		struct inet_sock *inet=inet_sk(sk);
-		if (net_eq(sock_net(sk), net) && inet->inet_num == num && !(inet->inet_daddr && inet->inet_daddr != raddr) && !(inet->inet_rcv_saddr && inet->inet_rcv_saddr != laddr) && !(sk->sk_bound_dev_if && sk->sk_bound_dev_if != dif))
-			goto found;
-		}
 	sk = NULL;
 found:
 	return sk;
