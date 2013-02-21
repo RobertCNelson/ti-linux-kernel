@@ -20,8 +20,11 @@
 #include <linux/remoteproc.h>
 #include <linux/dma-contiguous.h>
 #include <linux/dma-mapping.h>
+#include <linux/of.h>
 #include <linux/platform_data/remoteproc-omap.h>
 #include <linux/platform_data/iommu-omap.h>
+
+#include <plat/dmtimer.h>
 
 #include "omap_device.h"
 #include "omap_hwmod.h"
@@ -65,6 +68,21 @@ struct omap_rproc_pdev_data {
 #define OMAP_RPROC_CMA_SIZE_IPU		(0x7000000)
 
 /*
+ * These data structures define the desired timers that would
+ * be needed by the respective processors. The timer info is
+ * defined through its hwmod name, which serves both for identifying
+ * the timer as well as a matching logic to be used to lookup
+ * the specific timer device node from the DT blob.
+ */
+static struct omap_rproc_timers_info ipu_timers[] = {
+	{ .name = "timer3", },
+};
+
+static struct omap_rproc_timers_info dsp_timers[] = {
+	{ .name = "timer5", },
+};
+
+/*
  * These data structures define platform-specific information
  * needed for each supported remote processor.
  */
@@ -74,6 +92,8 @@ static struct omap_rproc_pdata omap4_rproc_data[] = {
 		.firmware	= "tesla-dsp.xe64T",
 		.mbox_name	= "mbox-dsp",
 		.oh_name	= "dsp",
+		.timers		= dsp_timers,
+		.timers_cnt	= ARRAY_SIZE(dsp_timers),
 		.set_bootaddr	= omap_ctrl_write_dsp_boot_addr,
 	},
 	{
@@ -81,6 +101,8 @@ static struct omap_rproc_pdata omap4_rproc_data[] = {
 		.firmware	= "ducati-m3-core0.xem3",
 		.mbox_name	= "mbox-ipu",
 		.oh_name	= "ipu",
+		.timers		= ipu_timers,
+		.timers_cnt	= ARRAY_SIZE(ipu_timers),
 	},
 };
 
@@ -217,6 +239,139 @@ out:
 }
 
 /**
+ * of_dev_timer_lookup - look up needed timer node from dt blob
+ * @np: parent device_node of all the searchable nodes
+ * @hwmod_name: hwmod name of the desired timer
+ *
+ * Parse the dt blob and find out needed timer by matching hwmod
+ * name. The match logic only loops through one level of child
+ * nodes of the @np parent device node, and uses the @hwmod_name
+ * instead of the actual timer device name to minimize the need
+ * for defining SoC specific timer data (the DT node names would
+ * also incorporate addresses, so the same timer may have completely
+ * different addresses on different SoCs).
+ *
+ * Return: The device node on success or NULL on failure.
+ */
+static struct device_node *of_dev_timer_lookup(struct device_node *np,
+						const char *hwmod_name)
+{
+	struct device_node *np0 = NULL;
+	const char *p;
+
+	for_each_child_of_node(np, np0) {
+		if (of_find_property(np0, "ti,hwmods", NULL)) {
+			p = of_get_property(np0, "ti,hwmods", NULL);
+			if (!strcmp(p, hwmod_name))
+				return np0;
+		}
+	}
+
+	return NULL;
+}
+
+/**
+ * omap_rproc_enable_timers - enable the timers for a remoteproc
+ * @pdev - the remoteproc platform device
+ * @configure - boolean flag used to acquire and configure the timer handle
+ *
+ * This function is used primarily to enable the timers associated with
+ * a remoteproc. The configure flag is provided to allow the remoteproc
+ * driver core to either acquire and start a timer (during device
+ * initialization) or to just start a timer (during a resume operation).
+ */
+static int omap_rproc_enable_timers(struct platform_device *pdev,
+				    bool configure)
+{
+	int i;
+	int ret = 0;
+	struct omap_rproc_pdata *pdata = pdev->dev.platform_data;
+	struct omap_rproc_timers_info *timers = pdata->timers;
+	struct device_node *np = NULL;
+
+	if (!timers)
+		return -EINVAL;
+
+	if (!configure)
+		goto start_timers;
+
+	/*
+	 * support DT boot mode only since all supported SoCs for remoteproc
+	 * are DT-boot only on 3.10+ kernels
+	 */
+	if (!of_have_populated_dt())
+		return -EINVAL;
+
+	for (i = 0; i < pdata->timers_cnt; i++) {
+		/*
+		 * The current logic of requesting the desired timer utilizes
+		 * a somewhat crude lookup by finding the specific DT node from
+		 * all the sub-nodes of the 'ocp' node and matching it with its
+		 * hwmod name. This logic is expected to be eventually replaced
+		 * with a logic that uses the phandle to the appropriate timer
+		 * DT node.
+		 */
+		np = of_dev_timer_lookup(of_find_node_by_name(NULL, "ocp"),
+						timers[i].name);
+		if (!np) {
+			ret = -ENXIO;
+			dev_err(&pdev->dev, "device node lookup for timer %s failed: %d\n",
+				timers[i].name, ret);
+			goto free_timers;
+		}
+		timers[i].odt = omap_dm_timer_request_by_node(np);
+		if (!timers[i].odt) {
+			ret = -EBUSY;
+			dev_err(&pdev->dev, "request for timer %s failed: %d\n",
+				timers[i].name, ret);
+			goto free_timers;
+		}
+		omap_dm_timer_set_source(timers[i].odt, OMAP_TIMER_SRC_SYS_CLK);
+	}
+
+start_timers:
+	for (i = 0; i < pdata->timers_cnt; i++)
+		omap_dm_timer_start(timers[i].odt);
+	return 0;
+
+free_timers:
+	while (i--) {
+		omap_dm_timer_free(timers[i].odt);
+		timers[i].odt = NULL;
+	}
+
+	return ret;
+}
+
+/**
+ * omap_rproc_disable_timers - disable the timers for a remoteproc
+ * @pdev - the remoteproc platform device
+ * @configure - boolean flag used to release the timer handle
+ *
+ * This function is used primarily to disable the timers associated with
+ * a remoteproc. The configure flag is provided to allow the remoteproc
+ * driver core to either stop and release a timer (during device shutdown)
+ * or to just stop a timer (during a suspend operation).
+ */
+static int omap_rproc_disable_timers(struct platform_device *pdev,
+				     bool configure)
+{
+	int i;
+	struct omap_rproc_pdata *pdata = pdev->dev.platform_data;
+	struct omap_rproc_timers_info *timers = pdata->timers;
+
+	for (i = 0; i < pdata->timers_cnt; i++) {
+		omap_dm_timer_stop(timers[i].odt);
+		if (configure) {
+			omap_dm_timer_free(timers[i].odt);
+			timers[i].odt = NULL;
+		}
+	}
+
+	return 0;
+}
+
+/**
  * omap_rproc_reserve_cma - reserve CMA pools
  *
  * This function reserves the CMA pools for each of the remoteproc
@@ -292,6 +447,12 @@ static int __init omap_rproc_init(void)
 		omap4_rproc_data[i].device_enable = omap_rproc_device_enable;
 		omap4_rproc_data[i].device_shutdown =
 						omap_rproc_device_shutdown;
+		if (omap4_rproc_data[i].timers_cnt) {
+			omap4_rproc_data[i].enable_timers =
+						omap_rproc_enable_timers;
+			omap4_rproc_data[i].disable_timers =
+						omap_rproc_disable_timers;
+		}
 
 		device_initialize(&pdev->dev);
 		dev_set_name(&pdev->dev, "%s.%d", pdev->name,  pdev->id);
