@@ -142,7 +142,10 @@ $(obj)/timeconst.h: $(src)/timeconst.pl FORCE
 #
 ###############################################################################
 ifeq ($(CONFIG_SYSTEM_TRUSTED_KEYRING),y)
-X509_CERTIFICATES-y := $(wildcard *.x509) $(wildcard $(srctree)/*.x509)
+X509_CERTIFICATES-y := $(wildcard *.x509)
+ifneq ($(shell pwd), $(srctree))
+X509_CERTIFICATES-y += $(wildcard $(srctree)/*.x509)
+endif
 X509_CERTIFICATES-$(CONFIG_MODULE_SIG) += signing_key.x509
 X509_CERTIFICATES := $(sort $(X509_CERTIFICATES-y))
 
