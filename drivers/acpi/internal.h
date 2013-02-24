@@ -94,6 +94,12 @@ struct acpi_ec {
 
 extern struct acpi_ec *first_ec;
 
+#ifdef	CONFIG_ACPI_PCI_SLOT
+void acpi_pci_slot_init(void);
+#else
+static inline void acpi_pci_slot_init(void) { }
+#endif
+void acpi_pci_root_hp_init(void);
 int acpi_ec_init(void);
 int acpi_ec_ecdt_probe(void);
 int acpi_boot_ec_enable(void);
