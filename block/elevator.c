@@ -273,10 +273,10 @@ static void elv_rqhash_reposition(struct request_queue *q, struct request *rq)
 static struct request *elv_rqhash_find(struct request_queue *q, sector_t offset)
 {
 	struct elevator_queue *e = q->elevator;
-	struct hlist_node *entry, *next;
+	struct hlist_node *next;
 	struct request *rq;
 
-	hash_for_each_possible_safe(e->hash, rq, entry, next, hash, offset) {
+	hash_for_each_possible_safe(e->hash, rq, next, hash, offset) {
 		BUG_ON(!ELV_ON_HASH(rq));
 
 		if (unlikely(!rq_mergeable(rq))) {
