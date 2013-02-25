@@ -49,9 +49,14 @@
 #include <linux/jhash.h>
 #include <net/arp.h>
 
+#define DRV_VERSION "1.0.0"
+
+const char ipoib_driver_version[] = DRV_VERSION;
+
 MODULE_AUTHOR("Roland Dreier");
 MODULE_DESCRIPTION("IP-over-InfiniBand net driver");
 MODULE_LICENSE("Dual BSD/GPL");
+MODULE_VERSION(DRV_VERSION);
 
 int ipoib_sendq_size __read_mostly = IPOIB_TX_RING_SIZE;
 int ipoib_recvq_size __read_mostly = IPOIB_RX_RING_SIZE;
@@ -844,10 +849,10 @@ static u32 ipoib_addr_hash(struct ipoib_neigh_hash *htbl, u8 *daddr)
 	 * different subnets.
 	 */
 	 /* qpn octets[1:4) & port GUID octets[12:20) */
-	u32 *daddr_32 = (u32 *) daddr;
+	u32 *d32 = (u32 *) daddr;
 	u32 hv;
 
-	hv = jhash_3words(daddr_32[3], daddr_32[4], 0xFFFFFF & daddr_32[0], 0);
+	hv = jhash_3words(d32[3], d32[4], IPOIB_QPN_MASK & d32[0], 0);
 	return hv & htbl->mask;
 }
 
@@ -1688,6 +1693,8 @@ static void ipoib_remove_one(struct ib_device *device)
 		return;
 
 	dev_list = ib_get_client_data(device, &ipoib_client);
+	if (!dev_list)
+		return;
 
 	list_for_each_entry_safe(priv, tmp, dev_list, list) {
 		ib_unregister_event_handler(&priv->event_handler);
