@@ -522,6 +522,9 @@
 #define GEN7_ERR_INT	0x44040
 #define   ERR_INT_MMIO_UNCLAIMED (1<<13)
 
+#define FPGA_DBG		0x42300
+#define   FPGA_DBG_RM_NOCLAIM	(1<<31)
+
 #define DERRMR		0x44050
 
 /* GM45+ chicken bits -- debug workaround bits that may be required
@@ -591,6 +594,7 @@
 #define   I915_USER_INTERRUPT				(1<<1)
 #define   I915_ASLE_INTERRUPT				(1<<0)
 #define   I915_BSD_USER_INTERRUPT                      (1<<25)
+#define   DISPLAY_PLANE_FLIP_PENDING(plane) (1<<(11-(plane))) /* A and B only */
 #define EIR		0x020b0
 #define EMR		0x020b4
 #define ESR		0x020b8
