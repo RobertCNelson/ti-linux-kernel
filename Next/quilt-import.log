@@ -1,0 +1,61 @@
+Importing jdelvare-hwmon based on 54e37b8dbe9a398f74cef313404bd2f1deca7853
+Unchanged quilt series jdelvare-hwmon
+Importing device-mapper based on v3.8-rc7
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 836dc9e3fbbab0c30aa6e664417225f5c1fb1c39
+HEAD is now at 836dc9e Linux 3.8-rc7
+$ git am ../quilt/device-mapper/dm-do-not-replace-bioset-for-request-based-dm.patch
+Applying: This patch fixes a regression introduced in v3.8, which causes oops
+$ git am ../quilt/device-mapper/dm-thin-support-a-non-power-of-2-discard_granularity.patch
+Applying: Support a non-power-of-2 discard granularity in dm-thin, now that the block
+$ git am ../quilt/device-mapper/dm-table-remove-superfluous-variable-reset.patch
+Applying: If allocation fails, the local var *t is not used any more after kfree.
+$ git am ../quilt/device-mapper/dm-bufio-use-WRITE_FLUSH-instead-of-REQ_FLUSH.patch
+Applying: Use WRITE_FLUSH instead of REQ_FLUSH for submitted requests to make it
+$ git am ../quilt/device-mapper/dm-thin-use-block_size_is_power_of_two.patch
+Applying: Use block_size_is_power_of_two() rather than checking
+$ git am ../quilt/device-mapper/dm-remove-CONFIG_EXPERIMENTAL.patch
+Applying: Remove EXPERIMENTAL from all existing device-mapper targets.
+$ git am ../quilt/device-mapper/dm-persistent-data-remove-CONFIG_EXPERIMENTAL.patch
+Applying: The CONFIG_EXPERIMENTAL config item has not carried much meaning for a
+$ git am ../quilt/device-mapper/dm-clean-up-clone_bio.patch
+Applying: Remove the no-longer-used struct bio_set argument from clone_bio and split_bvec.
+$ git am ../quilt/device-mapper/dm-rename-request-variables-to-bios.patch
+Applying: Use 'bio' in the name of variables and functions that deal with
+$ git am ../quilt/device-mapper/dm-rename-bio-cloning-functions.patch
+Applying: Rename functions involved in splitting and cloning bios.
+$ git am ../quilt/device-mapper/dm-refactor-bio-cloning.patch
+Applying: Refactor part of the bio splitting and cloning code to try to make it
+$ git am ../quilt/device-mapper/dm-btree-set-some-fn-parms-const.patch
+Applying: Mark some constant parameters constant in some dm-btree functions.
+$ git am ../quilt/device-mapper/dm-snapshot-add-missing-module-aliases.patch
+Applying: Add module aliases so that autoloading works correctly if the user
+$ git am ../quilt/device-mapper/dm-fix-limits-initialization-when-there-are-no-data-devices.patch
+Applying: dm_calculate_queue_limits will first reset the provided limits to
+$ git am ../quilt/device-mapper/dm-remove-unused-_rq_bio_info_cache.patch
+Applying: Remove _rq_bio_info_cache, which is no longer used.
+$ git am ../quilt/device-mapper/dm-merge-io_pool-and-tio_pool.patch
+Applying: This patch merges io_pool and tio_pool into io_pool and cleans up
+$ git am ../quilt/device-mapper/dm-ioctl-introduce-ioctl_flags.patch
+Applying: This patch introduces flags for each ioctl function.
+$ git am ../quilt/device-mapper/dm-ioctl-optimize-functions-without-variable-params.patch
+Applying: Device-mapper ioctls receive and send data in a buffer supplied
+$ git am ../quilt/device-mapper/dm-kcopyd-introduce-configurable-throttling.patch
+Applying: This patch allows the administrator to reduce the rate at which kcopyd
+$ git am ../quilt/device-mapper/dm-add-target-num_write_bios-fn.patch
+Applying: Add a num_write_bios function to struct target.
+$ git am ../quilt/device-mapper/dm-persistent-data-add-btree_walk.patch
+Applying: Add dm_btree_walk to iterate through the contents of a btree.
+$ git am ../quilt/device-mapper/dm-bio-prison-pass-cell-memory-in.patch
+Applying: Change the dm_bio_prison interface so that instead of allocating memory
+$ git am ../quilt/device-mapper/dm-thin-remove-cells-from-stack.patch
+Applying: This patch takes advantage of the new bio-prison interface where the
+$ git am ../quilt/device-mapper/dm-persistent-data-add-transactional-array.patch
+Applying: Add a transactional array.
+$ git am ../quilt/device-mapper/dm-persistent-data-add-bitset.patch
+Applying: Add a persistent bitset as a wrapper around dm-array.
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:device-mapper/master
+From ../quilt-tmp
+ + 6b3df99...9d680a0 master     -> device-mapper/master  (forced update)
