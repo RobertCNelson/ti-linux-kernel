@@ -38,7 +38,6 @@
 #include <linux/vmalloc.h>
 #include <linux/uaccess.h>
 #include <linux/io.h>
-#include <linux/delay.h>
 #include <linux/hardirq.h>
 
 #include <xen/xen.h>
@@ -47,6 +46,7 @@
 #include <xen/grant_table.h>
 #include <xen/interface/memory.h>
 #include <xen/hvc-console.h>
+#include <xen/balloon.h>
 #include <asm/xen/hypercall.h>
 #include <asm/xen/interface.h>
 
@@ -823,52 +823,6 @@ unsigned int gnttab_max_grant_frames(void)
 }
 EXPORT_SYMBOL_GPL(gnttab_max_grant_frames);
 
-/* Handling of paged out grant targets (GNTST_eagain) */
-#define MAX_DELAY 256
-static inline void
-gnttab_retry_eagain_gop(unsigned int cmd, void *gop, int16_t *status,
-						const char *func)
-{
-	unsigned delay = 1;
-
-	do {
-		BUG_ON(HYPERVISOR_grant_table_op(cmd, gop, 1));
-		if (*status == GNTST_eagain)
-			msleep(delay++);
-	} while ((*status == GNTST_eagain) && (delay < MAX_DELAY));
-
-	if (delay >= MAX_DELAY) {
-		printk(KERN_ERR "%s: %s eagain grant\n", func, current->comm);
-		*status = GNTST_bad_page;
-	}
-}
-
-void gnttab_batch_map(struct gnttab_map_grant_ref *batch, unsigned count)
-{
-	struct gnttab_map_grant_ref *op;
-
-	if (HYPERVISOR_grant_table_op(GNTTABOP_map_grant_ref, batch, count))
-		BUG();
-	for (op = batch; op < batch + count; op++)
-		if (op->status == GNTST_eagain)
-			gnttab_retry_eagain_gop(GNTTABOP_map_grant_ref, op,
-						&op->status, __func__);
-}
-EXPORT_SYMBOL_GPL(gnttab_batch_map);
-
-void gnttab_batch_copy(struct gnttab_copy *batch, unsigned count)
-{
-	struct gnttab_copy *op;
-
-	if (HYPERVISOR_grant_table_op(GNTTABOP_copy, batch, count))
-		BUG();
-	for (op = batch; op < batch + count; op++)
-		if (op->status == GNTST_eagain)
-			gnttab_retry_eagain_gop(GNTTABOP_copy, op,
-						&op->status, __func__);
-}
-EXPORT_SYMBOL_GPL(gnttab_batch_copy);
-
 int gnttab_map_refs(struct gnttab_map_grant_ref *map_ops,
 		    struct gnttab_map_grant_ref *kmap_ops,
 		    struct page **pages, unsigned int count)
@@ -881,12 +835,6 @@ int gnttab_map_refs(struct gnttab_map_grant_ref *map_ops,
 	ret = HYPERVISOR_grant_table_op(GNTTABOP_map_grant_ref, map_ops, count);
 	if (ret)
 		return ret;
-
-	/* Retry eagain maps */
-	for (i = 0; i < count; i++)
-		if (map_ops[i].status == GNTST_eagain)
-			gnttab_retry_eagain_gop(GNTTABOP_map_grant_ref, map_ops + i,
-						&map_ops[i].status, __func__);
 
 	if (xen_feature(XENFEAT_auto_translated_physmap))
 		return ret;
@@ -1026,17 +974,33 @@ static void gnttab_unmap_frames_v2(void)
 	arch_gnttab_unmap(grstatus, nr_status_frames(nr_grant_frames));
 }
 
+static xen_pfn_t pvh_get_grant_pfn(int grant_idx)
+{
+	unsigned long vaddr;
+	unsigned int level;
+	pte_t *pte;
+
+	vaddr = (unsigned long)(gnttab_shared.addr) + grant_idx * PAGE_SIZE;
+	pte = lookup_address(vaddr, &level);
+	BUG_ON(pte == NULL);
+	return pte_mfn(*pte);
+}
+
 static int gnttab_map(unsigned int start_idx, unsigned int end_idx)
 {
 	struct gnttab_setup_table setup;
+	unsigned long start_gpfn = 0;
 	xen_pfn_t *frames;
 	unsigned int nr_gframes = end_idx + 1;
 	int rc;
 
-	if (xen_hvm_domain()) {
+	if (xen_hvm_domain() || xen_feature(XENFEAT_auto_translated_physmap)) {
 		struct xen_add_to_physmap xatp;
 		unsigned int i = end_idx;
 		rc = 0;
+
+		if (xen_hvm_domain())
+			start_gpfn = xen_hvm_resume_frames >> PAGE_SHIFT;
 		/*
 		 * Loop backwards, so that the first hypercall has the largest
 		 * index, ensuring that the table will grow only once.
@@ -1045,7 +1009,11 @@ static int gnttab_map(unsigned int start_idx, unsigned int end_idx)
 			xatp.domid = DOMID_SELF;
 			xatp.idx = i;
 			xatp.space = XENMAPSPACE_grant_table;
-			xatp.gpfn = (xen_hvm_resume_frames >> PAGE_SHIFT) + i;
+			if (xen_hvm_domain())
+				xatp.gpfn = start_gpfn + i;
+			else
+				xatp.gpfn = pvh_get_grant_pfn(i);
+
 			rc = HYPERVISOR_memory_op(XENMEM_add_to_physmap, &xatp);
 			if (rc != 0) {
 				printk(KERN_WARNING
@@ -1135,14 +1103,51 @@ static void gnttab_request_version(void)
 		grant_table_version);
 }
 
+/*
+ * PVH: we need three things: virtual address, pfns, and mfns. The pfns
+ * are allocated via ballooning, then we call arch_gnttab_map_shared to
+ * allocate the VA and put pfn's in the pte's for the VA. The mfn's are
+ * finally allocated in gnttab_map() by xen which also populates the P2M.
+ */
+static int xlated_setup_gnttab_pages(unsigned long numpages, void **addr)
+{
+	int i, rc;
+	unsigned long pfns[numpages];
+	struct page *pages[numpages];
+
+	rc = alloc_xenballooned_pages(numpages, pages, 0);
+	if (rc != 0) {
+		pr_warn("%s Couldn't balloon alloc %ld pfns rc:%d\n", __func__,
+			numpages, rc);
+		return rc;
+	}
+	for (i = 0; i < numpages; i++)
+		pfns[i] = page_to_pfn(pages[i]);
+
+	rc = arch_gnttab_map_shared(pfns, numpages, numpages, addr);
+	if (rc != 0)
+		free_xenballooned_pages(numpages, pages);
+
+	return rc;
+}
+
 static int gnttab_setup(void)
 {
+	int rc;
 	unsigned int max_nr_gframes;
 
 	max_nr_gframes = gnttab_max_grant_frames();
 	if (max_nr_gframes < nr_grant_frames)
 		return -ENOSYS;
 
+	if (xen_pv_domain() && xen_feature(XENFEAT_auto_translated_physmap) &&
+	    !gnttab_shared.addr) {
+
+		rc = xlated_setup_gnttab_pages((unsigned long)max_nr_gframes,
+					       &gnttab_shared.addr);
+		if (rc != 0)
+			return rc;
+	}
 	if (xen_pv_domain())
 		return gnttab_map(0, nr_grant_frames - 1);
 
