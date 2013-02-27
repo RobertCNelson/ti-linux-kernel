@@ -27,6 +27,11 @@ Large, sequential ios are probably better left on the origin device since
 spindles tend to have good bandwidth. The io_tracker tries to spot when
 the io is in one of these sequential modes.
 
+cleaner
+-------
+
+The cleaner writes back all dirty blocks in a cache to decommission it.
+
 Examples
 ========
 
