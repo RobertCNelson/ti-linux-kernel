@@ -1,0 +1,51 @@
+Overview of given cache replacement policies
+============================================
+
+multiqueue
+----------
+
+This policy is the default.
+
+multiqueue policy with two times 16 queues, one set for entries
+waiting for the cache and another one for those in the cache, aging
+cache entries in those queues based on logical time. Entry into cache is
+based on variable thresholds and queue selection is based on hit count
+on entry; aims to take different cache miss costs into account and to
+adjust to varying load patterns automatically; prefered, thus default
+replacement policy unless specific loads need better addressing by other
+policies described below
+
+Message and constructor argument pairs are:
+	'sequential_threshold <#nr_sequential>' and
+	'random_threshold <#nr_random>'.
+
+It also supports the 'multiqueue_timout #milliseconds' message and constructor
+argument pair allowing to set the lifetime in any of the multiple queues.
+
+supports io_tracker sequential and random thresholds defaulting to 512 and 4.
+Large, sequential ios are probably better left on the origin device since
+spindles tend to have good bandwidth. The io_tracker tries to spot when
+the io is in one of these sequential modes.
+
+cleaner
+-------
+
+The cleaner writes back all dirty blocks in a cache to decommission it.
+
+Examples
+========
+
+The syntax for a table is:
+	cache <metadata dev> <cache dev> <origin dev> <block size>
+	<#feature_args> [<feature arg>]*
+	<policy> <#policy_args> [<policy arg>]*
+
+The syntax to send a message using the dmsetup command is:
+	dmsetup message <mapped device> 0 sequential_threshold 1024
+	dmsetup message <mapped device> 0 random_threshold 8
+
+Using dmsetup:
+	dmsetup create blah --table "0 268435456 cache /dev/sdb /dev/sdc \
+		/dev/sdd 512 0 mq 4 sequential_threshold 1024 random_threshold 8"
+	creates a 128GB large mapped device named 'blah' with those two
+	policy argument pairs applied.
