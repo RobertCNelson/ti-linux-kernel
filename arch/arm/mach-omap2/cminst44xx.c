@@ -80,7 +80,7 @@ void omap_cm_base_init(void)
  * Return the IDLEST bitfield of a CM_*_CLKCTRL register, shifted down to
  * bit 0.
  */
-static u32 _clkctrl_idlest(u8 part, u16 inst, s16 cdoffs, u16 clkctrl_offs)
+static u32 _clkctrl_idlest(u8 part, u16 inst, u16 cdoffs, u16 clkctrl_offs)
 {
 	u32 v = omap4_cminst_read_inst_reg(part, inst, clkctrl_offs);
 	v &= OMAP4430_IDLEST_MASK;
@@ -98,7 +98,7 @@ static u32 _clkctrl_idlest(u8 part, u16 inst, s16 cdoffs, u16 clkctrl_offs)
  * Returns true if the module's CM_*_CLKCTRL.IDLEST bitfield is either
  * *FUNCTIONAL or *INTERFACE_IDLE; false otherwise.
  */
-static bool _is_module_ready(u8 part, u16 inst, s16 cdoffs, u16 clkctrl_offs)
+static bool _is_module_ready(u8 part, u16 inst, u16 cdoffs, u16 clkctrl_offs)
 {
 	u32 v;
 
@@ -111,7 +111,7 @@ static bool _is_module_ready(u8 part, u16 inst, s16 cdoffs, u16 clkctrl_offs)
 /* Public functions */
 
 /* Read a register in a CM instance */
-u32 omap4_cminst_read_inst_reg(u8 part, s16 inst, u16 idx)
+u32 omap4_cminst_read_inst_reg(u8 part, u16 inst, u16 idx)
 {
 	BUG_ON(part >= OMAP4_MAX_PRCM_PARTITIONS ||
 	       part == OMAP4430_INVALID_PRCM_PARTITION ||
@@ -120,7 +120,7 @@ u32 omap4_cminst_read_inst_reg(u8 part, s16 inst, u16 idx)
 }
 
 /* Write into a register in a CM instance */
-void omap4_cminst_write_inst_reg(u32 val, u8 part, s16 inst, u16 idx)
+void omap4_cminst_write_inst_reg(u32 val, u8 part, u16 inst, u16 idx)
 {
 	BUG_ON(part >= OMAP4_MAX_PRCM_PARTITIONS ||
 	       part == OMAP4430_INVALID_PRCM_PARTITION ||
@@ -152,7 +152,7 @@ u32 omap4_cminst_clear_inst_reg_bits(u32 bits, u8 part, s16 inst, s16 idx)
 	return omap4_cminst_rmw_inst_reg_bits(bits, 0x0, part, inst, idx);
 }
 
-u32 omap4_cminst_read_inst_reg_bits(u8 part, u16 inst, s16 idx, u32 mask)
+u32 omap4_cminst_read_inst_reg_bits(u8 part, u16 inst, u16 idx, u32 mask)
 {
 	u32 v;
 
@@ -177,7 +177,7 @@ u32 omap4_cminst_read_inst_reg_bits(u8 part, u16 inst, s16 idx, u32 mask)
  * @c must be the unshifted value for CLKTRCTRL - i.e., this function
  * will handle the shift itself.
  */
-static void _clktrctrl_write(u8 c, u8 part, s16 inst, u16 cdoffs)
+static void _clktrctrl_write(u8 c, u8 part, u16 inst, u16 cdoffs)
 {
 	u32 v;
 
@@ -196,7 +196,7 @@ static void _clktrctrl_write(u8 c, u8 part, s16 inst, u16 cdoffs)
  * Returns true if the clockdomain referred to by (@part, @inst, @cdoffs)
  * is in hardware-supervised idle mode, or 0 otherwise.
  */
-bool omap4_cminst_is_clkdm_in_hwsup(u8 part, s16 inst, u16 cdoffs)
+bool omap4_cminst_is_clkdm_in_hwsup(u8 part, u16 inst, u16 cdoffs)
 {
 	u32 v;
 
@@ -216,7 +216,7 @@ bool omap4_cminst_is_clkdm_in_hwsup(u8 part, s16 inst, u16 cdoffs)
  * Put a clockdomain referred to by (@part, @inst, @cdoffs) into
  * hardware-supervised idle mode.  No return value.
  */
-void omap4_cminst_clkdm_enable_hwsup(u8 part, s16 inst, u16 cdoffs)
+void omap4_cminst_clkdm_enable_hwsup(u8 part, u16 inst, u16 cdoffs)
 {
 	_clktrctrl_write(OMAP34XX_CLKSTCTRL_ENABLE_AUTO, part, inst, cdoffs);
 }
@@ -231,7 +231,7 @@ void omap4_cminst_clkdm_enable_hwsup(u8 part, s16 inst, u16 cdoffs)
  * software-supervised idle mode, i.e., controlled manually by the
  * Linux OMAP clockdomain code.  No return value.
  */
-void omap4_cminst_clkdm_disable_hwsup(u8 part, s16 inst, u16 cdoffs)
+void omap4_cminst_clkdm_disable_hwsup(u8 part, u16 inst, u16 cdoffs)
 {
 	_clktrctrl_write(OMAP34XX_CLKSTCTRL_DISABLE_AUTO, part, inst, cdoffs);
 }
@@ -245,7 +245,7 @@ void omap4_cminst_clkdm_disable_hwsup(u8 part, s16 inst, u16 cdoffs)
  * Take a clockdomain referred to by (@part, @inst, @cdoffs) out of idle,
  * waking it up.  No return value.
  */
-void omap4_cminst_clkdm_force_wakeup(u8 part, s16 inst, u16 cdoffs)
+void omap4_cminst_clkdm_force_wakeup(u8 part, u16 inst, u16 cdoffs)
 {
 	_clktrctrl_write(OMAP34XX_CLKSTCTRL_FORCE_WAKEUP, part, inst, cdoffs);
 }
@@ -266,7 +266,7 @@ void omap4_cminst_clkdm_force_wakeup(u8 part, s16 inst, u16 cdoffs)
  * sysconfig cannot be accessed and will probably lead to an "imprecise
  * external abort"
  */
-int omap4_cminst_wait_module_ready(u8 part, u16 inst, s16 cdoffs,
+int omap4_cminst_wait_module_ready(u8 part, u16 inst, u16 cdoffs,
 				   u16 clkctrl_offs)
 {
 	int i = 0;
@@ -292,7 +292,8 @@ int omap4_cminst_wait_module_ready(u8 part, u16 inst, s16 cdoffs,
  * like reset assertion or parent clock de-activation must wait the
  * module to be fully disabled.
  */
-int omap4_cminst_wait_module_idle(u8 part, u16 inst, s16 cdoffs, u16 clkctrl_offs)
+int omap4_cminst_wait_module_idle(u8 part, u16 inst,
+				  u16 cdoffs, u16 clkctrl_offs)
 {
 	int i = 0;
 
@@ -316,7 +317,7 @@ int omap4_cminst_wait_module_idle(u8 part, u16 inst, s16 cdoffs, u16 clkctrl_off
  *
  * No return value.
  */
-void omap4_cminst_module_enable(u8 mode, u8 part, u16 inst, s16 cdoffs,
+void omap4_cminst_module_enable(u8 mode, u8 part, u16 inst, u16 cdoffs,
 			    u16 clkctrl_offs)
 {
 	u32 v;
@@ -336,7 +337,7 @@ void omap4_cminst_module_enable(u8 mode, u8 part, u16 inst, s16 cdoffs,
  *
  * No return value.
  */
-void omap4_cminst_module_disable(u8 part, u16 inst, s16 cdoffs,
+void omap4_cminst_module_disable(u8 part, u16 inst, u16 cdoffs,
 			     u16 clkctrl_offs)
 {
 	u32 v;
