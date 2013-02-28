@@ -142,10 +142,9 @@ static struct wb_cache_entry *lookup_cache_entry(struct policy *p, dm_oblock_t o
 	struct hash *hash = &p->chash;
 	unsigned h = hash_64(from_oblock(oblock), hash->hash_bits);
 	struct wb_cache_entry *cur;
-	struct hlist_node *tmp;
 	struct hlist_head *bucket = &hash->table[h];
 
-	hlist_for_each_entry(cur, tmp, bucket, hlist) {
+	hlist_for_each_entry(cur, bucket, hlist) {
 		if (cur->oblock == oblock) {
 			/* Move upfront bucket for faster access. */
 			hlist_del(&cur->hlist);
