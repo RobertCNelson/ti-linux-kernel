@@ -12,10 +12,10 @@
 #include <linux/interrupt.h>
 #include <linux/clockchips.h>
 #include <linux/io.h>
+#include <linux/irqchip/arm-gic.h>
 #include <asm/mach/map.h>
 #include <asm/mach/time.h>
 #include <asm/mach/irq.h>
-#include <asm/hardware/gic.h>
 #include <asm/hardware/cache-l2x0.h>
 #include <mach/cns3xxx.h>
 #include "core.h"
@@ -235,16 +235,12 @@ static void __init __cns3xxx_timer_init(unsigned int timer_irq)
 	cns3xxx_clockevents_init(timer_irq);
 }
 
-static void __init cns3xxx_timer_init(void)
+void __init cns3xxx_timer_init(void)
 {
 	cns3xxx_tmr1 = IOMEM(CNS3XXX_TIMER1_2_3_BASE_VIRT);
 
 	__cns3xxx_timer_init(IRQ_CNS3XXX_TIMER0);
 }
-
-struct sys_timer cns3xxx_timer = {
-	.init = cns3xxx_timer_init,
-};
 
 #ifdef CONFIG_CACHE_L2X0
 
