@@ -146,6 +146,9 @@ static void mtip_command_cleanup(struct driver_data *dd)
 	struct mtip_cmd *command;
 	struct mtip_port *port = dd->port;
 	static int in_progress;
+	struct batch_complete batch;
+
+	batch_complete_init(&batch);
 
 	if (in_progress)
 		return;
@@ -162,7 +165,7 @@ static void mtip_command_cleanup(struct driver_data *dd)
 
 			if (atomic_read(&command->active)
 			    && (command->bio)) {
-				bio_endio(command->bio, -ENODEV);
+				bio_endio_batch(command->bio, -ENODEV, &batch);
 				command->bio = NULL;
 			}
 
@@ -171,9 +174,10 @@ static void mtip_command_cleanup(struct driver_data *dd)
 				command->scatter_ents,
 				command->direction);
 		}
+		up(&port->cmd_slot);
 	}
 
-	up(&port->cmd_slot);
+	batch_complete(&batch);
 
 	set_bit(MTIP_DDF_CLEANUP_BIT, &dd->dd_flag);
 	in_progress = 0;
@@ -562,6 +566,9 @@ static void mtip_timeout_function(unsigned long int data)
 	unsigned int bit, group;
 	unsigned int num_command_slots;
 	unsigned long to, tagaccum[SLOTBITS_IN_LONGS];
+	struct batch_complete batch;
+
+	batch_complete_init(&batch);
 
 	if (unlikely(!port))
 		return;
@@ -605,7 +612,7 @@ static void mtip_timeout_function(unsigned long int data)
 
 			/* Call the async completion callback. */
 			if (likely(command->bio))
-				bio_endio(command->bio, -EIO);
+				bio_endio_batch(command->bio, -EIO, &batch);
 			command->bio = NULL;
 
 			/* Unmap the DMA scatter list entries */
@@ -624,6 +631,8 @@ static void mtip_timeout_function(unsigned long int data)
 			up(&port->cmd_slot);
 		}
 	}
+
+	batch_complete(&batch);
 
 	if (cmdto_cnt) {
 		print_tags(port->dd, "timed out", tagaccum, cmdto_cnt);
@@ -773,6 +782,7 @@ static void mtip_handle_tfe(struct driver_data *dd)
 	unsigned char *buf;
 	char *fail_reason = NULL;
 	int fail_all_ncq_write = 0, fail_all_ncq_cmds = 0;
+	struct batch_complete batch;
 
 	dev_warn(&dd->pdev->dev, "Taskfile error\n");
 
@@ -797,6 +807,7 @@ static void mtip_handle_tfe(struct driver_data *dd)
 
 	/* clear the tag accumulator */
 	memset(tagaccum, 0, SLOTBITS_IN_LONGS * sizeof(long));
+	batch_complete_init(&batch);
 
 	/* Loop through all the groups */
 	for (group = 0; group < dd->slot_groups; group++) {
@@ -823,7 +834,7 @@ static void mtip_handle_tfe(struct driver_data *dd)
 				cmd->comp_func(port,
 					 tag,
 					 cmd->comp_data,
-					 0, NULL);
+					 0, &batch);
 			} else {
 				dev_err(&port->dd->pdev->dev,
 					"Missing completion func for tag %d",
@@ -836,6 +847,7 @@ static void mtip_handle_tfe(struct driver_data *dd)
 			}
 		}
 	}
+	batch_complete(&batch);
 
 	print_tags(dd, "completed (TFE)", tagaccum, cmd_cnt);
 
@@ -877,6 +889,7 @@ static void mtip_handle_tfe(struct driver_data *dd)
 
 	/* clear the tag accumulator */
 	memset(tagaccum, 0, SLOTBITS_IN_LONGS * sizeof(long));
+	batch_complete_init(&batch);
 
 	/* Loop through all the groups */
 	for (group = 0; group < dd->slot_groups; group++) {
@@ -910,7 +923,7 @@ static void mtip_handle_tfe(struct driver_data *dd)
 					if (cmd->comp_func) {
 						cmd->comp_func(port, tag,
 							cmd->comp_data,
-							-ENODATA, NULL);
+							-ENODATA, &batch);
 					}
 					continue;
 				}
@@ -940,13 +953,15 @@ static void mtip_handle_tfe(struct driver_data *dd)
 					port,
 					tag,
 					cmd->comp_data,
-					PORT_IRQ_TF_ERR, NULL);
+					PORT_IRQ_TF_ERR, &batch);
 			else
 				dev_warn(&port->dd->pdev->dev,
 					"Bad completion for tag %d\n",
 					tag);
 		}
 	}
+
+	batch_complete(&batch);
 	print_tags(dd, "reissued (TFE)", tagaccum, cmd_cnt);
 
 handle_tfe_exit:
@@ -994,8 +1009,8 @@ static inline void mtip_workq_sdbfx(struct mtip_port *port, int group,
 					port,
 					tag,
 					command->comp_data,
-						0,
-						&batch);
+					0,
+					&batch);
 			} else {
 				dev_warn(&dd->pdev->dev,
 					"Null completion "
@@ -1005,12 +1020,15 @@ static inline void mtip_workq_sdbfx(struct mtip_port *port, int group,
 				if (mtip_check_surprise_removal(
 					dd->pdev)) {
 					mtip_command_cleanup(dd);
-					return;
+					goto out;
 				}
 			}
 		}
 		completed >>= 1;
 	}
+
+out:
+	batch_complete(&batch);
 
 	/* If last, re-enable interrupts */
 	if (atomic_dec_return(&dd->irq_workers_active) == 0)
