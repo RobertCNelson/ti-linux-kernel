@@ -1541,7 +1541,8 @@ asmlinkage int vprintk_emit(int facility, int level,
 		 */
 		if (!oops_in_progress && !lockdep_recursing(current)) {
 			recursion_bug = 1;
-			goto out_restore_irqs;
+			local_irq_restore(flags);
+			return printed_len;
 		}
 		zap_locks();
 	}
@@ -1635,17 +1636,19 @@ asmlinkage int vprintk_emit(int facility, int level,
 	/*
 	 * Try to acquire and then immediately release the console semaphore.
 	 * The release will print out buffers and wake up /dev/kmsg and syslog()
-	 * users.
+	 * users. We call console_unlock() with interrupts enabled if possible
+	 * since printing can take a long time.
 	 *
 	 * The console_trylock_for_printk() function will release 'logbuf_lock'
 	 * regardless of whether it actually gets the console semaphore or not.
 	 */
-	if (console_trylock_for_printk(this_cpu))
+	if (console_trylock_for_printk(this_cpu)) {
+		local_irq_restore(flags);
 		console_unlock();
+	} else
+		local_irq_restore(flags);
 
 	lockdep_on();
-out_restore_irqs:
-	local_irq_restore(flags);
 
 	return printed_len;
 }
@@ -2065,6 +2068,8 @@ void console_unlock(void)
 	unsigned long flags;
 	bool wake_klogd = false;
 	bool retry;
+	u64 end_time, now;
+	int cur_cpu;
 
 	if (console_suspended) {
 		up(&console_sem);
@@ -2072,6 +2077,15 @@ void console_unlock(void)
 	}
 
 	console_may_schedule = 0;
+	preempt_disable();
+	cur_cpu = smp_processor_id();
+	/*
+	 * We give us some headroom because we check the time only after
+	 * printing the whole message
+	 */
+	end_time = cpu_clock(cur_cpu) + max_interrupt_disabled_duration() / 2;
+	preempt_enable();
+
 
 	/* flush buffered message fragment immediately to console */
 	console_cont_flush(text, sizeof(text));
@@ -2094,7 +2108,8 @@ again:
 			console_prev = 0;
 		}
 skip:
-		if (console_seq == log_next_seq)
+		now = sched_clock_cpu(cur_cpu);
+		if (console_seq == log_next_seq || now > end_time)
 			break;
 
 		msg = log_from_idx(console_idx);
@@ -2138,6 +2153,23 @@ skip:
 	raw_spin_unlock(&logbuf_lock);
 
 	up(&console_sem);
+
+	/*
+	 * If the printing took too long, wait a bit to give other CPUs a
+	 * chance to take console_sem or at least provide some time for
+	 * interrupts to be processed (if we are lucky enough and they are
+	 * enabled at this point).
+	 */
+	if (now > end_time) {
+		/*
+		 * We won't reach RCU quiescent state anytime soon, silence
+		 * the warnings.
+		 */
+		local_irq_save(flags);
+		rcu_cpu_stall_reset();
+		local_irq_restore(flags);
+		ndelay(max_interrupt_disabled_duration() / 2);
+	}
 
 	/*
 	 * Someone could have filled up the buffer again, so re-check if there's
