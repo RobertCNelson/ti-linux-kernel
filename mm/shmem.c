@@ -2897,6 +2897,7 @@ static struct dentry_operations anon_ops = {
  */
 struct file *shmem_file_setup(const char *name, loff_t size, unsigned long flags)
 {
+	int error;
 	struct file *res;
 	struct inode *inode;
 	struct path path;
