@@ -69,6 +69,8 @@
 #define bio_segments(bio)	((bio)->bi_vcnt - (bio)->bi_idx)
 #define bio_sectors(bio)	((bio)->bi_size >> 9)
 
+void bio_endio_batch(struct bio *bio, int error, struct batch_complete *batch);
+
 static inline unsigned int bio_cur_bytes(struct bio *bio)
 {
 	if (bio->bi_vcnt)
@@ -541,8 +543,6 @@ static inline struct bio *bio_list_get(struct bio_list *bl)
 
 	return bio;
 }
-
-void bio_endio_batch(struct bio *bio, int error, struct batch_complete *batch);
 
 static inline void batch_complete_init(struct batch_complete *batch)
 {
