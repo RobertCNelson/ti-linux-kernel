@@ -290,6 +290,7 @@ static int zap_threads(struct task_struct *tsk, struct mm_struct *mm,
 	if (!signal_group_exit(tsk->signal)) {
 		mm->core_state = core_state;
 		nr = zap_process(tsk, exit_code);
+		tsk->flags = PF_DUMPCORE;
 		tsk->signal->group_exit_task = tsk;
 		/* ignore all signals except SIGKILL, see prepare_signal() */
 		tsk->signal->flags = SIGNAL_GROUP_COREDUMP;
