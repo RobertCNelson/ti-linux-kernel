@@ -621,6 +621,9 @@ static int devkmsg_open(struct inode *inode, struct file *file)
 	struct devkmsg_user *user;
 	int err;
 
+	if (dmesg_restrict && !capable(CAP_SYSLOG))
+		return -EACCES;
+
 	/* write-only does not need any file context */
 	if ((file->f_flags & O_ACCMODE) == O_WRONLY)
 		return 0;
