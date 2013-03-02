@@ -1043,7 +1043,8 @@ static ssize_t aio_run_iocb(struct kiocb *req, bool compat)
 {
 	struct file *file = req->ki_filp;
 	ssize_t ret;
-	int rw, mode;
+	int rw;
+	fmode_t mode;
 	aio_rw_op *rw_op;
 
 	switch (req->ki_opcode) {
