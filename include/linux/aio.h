@@ -105,7 +105,10 @@ static inline void aio_put_req(struct kiocb *iocb) { }
 
 static inline void batch_complete_aio(struct batch_complete *batch) { }
 static inline void aio_complete_batch(struct kiocb *iocb, long res, long res2,
-				      struct batch_complete *batch) { return 0; }
+				      struct batch_complete *batch)
+{
+	return;
+}
 struct mm_struct;
 static inline void exit_aio(struct mm_struct *mm) { }
 static inline long do_io_submit(aio_context_t ctx_id, long nr,
