@@ -85,14 +85,21 @@ bool __refrigerator(bool check_kthr_stop)
 }
 EXPORT_SYMBOL(__refrigerator);
 
-static void fake_signal_wake_up(struct task_struct *p)
+static bool fake_signal_wake_up(struct task_struct *p)
 {
 	unsigned long flags;
+	bool ret = false;
+
+	if (p->flags & (PF_KTHREAD | PF_DUMPCORE))
+		return ret;
 
 	if (lock_task_sighand(p, &flags)) {
-		signal_wake_up(p, 0);
+		ret = !(p->flags & PF_DUMPCORE);
+		if (ret)
+			signal_wake_up(p, 0);
 		unlock_task_sighand(p, &flags);
 	}
+	return ret;
 }
 
 /**
@@ -100,8 +107,8 @@ static void fake_signal_wake_up(struct task_struct *p)
  * @p: task to send the request to
  *
  * If @p is freezing, the freeze request is sent either by sending a fake
- * signal (if it's not a kernel thread) or waking it up (if it's a kernel
- * thread).
+ * signal (if it's not a kernel thread or a coredumping thread) or waking
+ * it up otherwise.
  *
  * RETURNS:
  * %false, if @p is not freezing or already frozen; %true, otherwise
@@ -116,9 +123,7 @@ bool freeze_task(struct task_struct *p)
 		return false;
 	}
 
-	if (!(p->flags & PF_KTHREAD))
-		fake_signal_wake_up(p);
-	else
+	if (!fake_signal_wake_up(p))
 		wake_up_state(p, TASK_INTERRUPTIBLE);
 
 	spin_unlock_irqrestore(&freezer_lock, flags);
