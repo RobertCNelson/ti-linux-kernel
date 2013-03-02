@@ -337,7 +337,7 @@ static void free_ioctx(struct kioctx *ctx)
 	while (atomic_read(&ctx->reqs_available) < ctx->nr) {
 		wait_event(ctx->wait,
 			   (head != ctx->shadow_tail) ||
-			   (atomic_read(&ctx->reqs_available) >= ctr->nr));
+			   (atomic_read(&ctx->reqs_available) >= ctx->nr));
 
 		avail = (head <= ctx->shadow_tail ?
 			 ctx->shadow_tail : ctx->nr) - head;
