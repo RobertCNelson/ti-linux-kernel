@@ -2462,12 +2462,12 @@ static int hotkey_kthread(void *data)
 	unsigned int poll_freq;
 	bool was_frozen;
 
-	mutex_lock(&hotkey_thread_mutex);
-
 	if (tpacpi_lifecycle == TPACPI_LIFE_EXITING)
 		goto exit;
 
 	set_freezable();
+
+	mutex_lock(&hotkey_thread_mutex);
 
 	so = 0;
 	si = 1;
@@ -2522,8 +2522,8 @@ static int hotkey_kthread(void *data)
 		si ^= 1;
 	}
 
-exit:
 	mutex_unlock(&hotkey_thread_mutex);
+exit:
 	return 0;
 }
 
