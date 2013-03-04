@@ -67,7 +67,7 @@ static struct plat_sci_port scif0_platform_data = {
 	.scscr		= SCSCR_RE | SCSCR_TE | SCSCR_CKE1,
 	.scbrr_algo_id	= SCBRR_ALGO_2,
 	.type		= PORT_SCIF,
-	.irqs		= SCIx_IRQ_MUXED(gic_spi(88)),
+	.irqs		= SCIx_IRQ_MUXED(gic_iid(0x78)),
 };
 
 static struct platform_device scif0_device = {
@@ -84,7 +84,7 @@ static struct plat_sci_port scif1_platform_data = {
 	.scscr		= SCSCR_RE | SCSCR_TE | SCSCR_CKE1,
 	.scbrr_algo_id	= SCBRR_ALGO_2,
 	.type		= PORT_SCIF,
-	.irqs		= SCIx_IRQ_MUXED(gic_spi(89)),
+	.irqs		= SCIx_IRQ_MUXED(gic_iid(0x79)),
 };
 
 static struct platform_device scif1_device = {
@@ -101,7 +101,7 @@ static struct plat_sci_port scif2_platform_data = {
 	.scscr		= SCSCR_RE | SCSCR_TE | SCSCR_CKE1,
 	.scbrr_algo_id	= SCBRR_ALGO_2,
 	.type		= PORT_SCIF,
-	.irqs		= SCIx_IRQ_MUXED(gic_spi(90)),
+	.irqs		= SCIx_IRQ_MUXED(gic_iid(0x7a)),
 };
 
 static struct platform_device scif2_device = {
@@ -118,7 +118,7 @@ static struct plat_sci_port scif3_platform_data = {
 	.scscr		= SCSCR_RE | SCSCR_TE | SCSCR_CKE1,
 	.scbrr_algo_id	= SCBRR_ALGO_2,
 	.type		= PORT_SCIF,
-	.irqs		= SCIx_IRQ_MUXED(gic_spi(91)),
+	.irqs		= SCIx_IRQ_MUXED(gic_iid(0x7b)),
 };
 
 static struct platform_device scif3_device = {
@@ -135,7 +135,7 @@ static struct plat_sci_port scif4_platform_data = {
 	.scscr		= SCSCR_RE | SCSCR_TE | SCSCR_CKE1,
 	.scbrr_algo_id	= SCBRR_ALGO_2,
 	.type		= PORT_SCIF,
-	.irqs		= SCIx_IRQ_MUXED(gic_spi(92)),
+	.irqs		= SCIx_IRQ_MUXED(gic_iid(0x7c)),
 };
 
 static struct platform_device scif4_device = {
@@ -152,7 +152,7 @@ static struct plat_sci_port scif5_platform_data = {
 	.scscr		= SCSCR_RE | SCSCR_TE | SCSCR_CKE1,
 	.scbrr_algo_id	= SCBRR_ALGO_2,
 	.type		= PORT_SCIF,
-	.irqs		= SCIx_IRQ_MUXED(gic_spi(93)),
+	.irqs		= SCIx_IRQ_MUXED(gic_iid(0x7d)),
 };
 
 static struct platform_device scif5_device = {
@@ -179,7 +179,7 @@ static struct resource tmu00_resources[] = {
 		.flags	= IORESOURCE_MEM,
 	},
 	[1] = {
-		.start	= gic_spi(32),
+		.start	= gic_iid(0x40),
 		.flags	= IORESOURCE_IRQ,
 	},
 };
@@ -209,7 +209,7 @@ static struct resource tmu01_resources[] = {
 		.flags	= IORESOURCE_MEM,
 	},
 	[1] = {
-		.start	= gic_spi(33),
+		.start	= gic_iid(0x41),
 		.flags	= IORESOURCE_IRQ,
 	},
 };
@@ -231,7 +231,7 @@ static struct resource rcar_i2c0_res[] = {
 		.end    = 0xffc70fff,
 		.flags  = IORESOURCE_MEM,
 	}, {
-		.start  = gic_spi(79),
+		.start  = gic_iid(0x6f),
 		.flags  = IORESOURCE_IRQ,
 	},
 };
@@ -249,7 +249,7 @@ static struct resource rcar_i2c1_res[] = {
 		.end    = 0xffc71fff,
 		.flags  = IORESOURCE_MEM,
 	}, {
-		.start  = gic_spi(82),
+		.start  = gic_iid(0x72),
 		.flags  = IORESOURCE_IRQ,
 	},
 };
@@ -267,7 +267,7 @@ static struct resource rcar_i2c2_res[] = {
 		.end    = 0xffc72fff,
 		.flags  = IORESOURCE_MEM,
 	}, {
-		.start  = gic_spi(80),
+		.start  = gic_iid(0x70),
 		.flags  = IORESOURCE_IRQ,
 	},
 };
@@ -285,7 +285,7 @@ static struct resource rcar_i2c3_res[] = {
 		.end    = 0xffc73fff,
 		.flags  = IORESOURCE_MEM,
 	}, {
-		.start  = gic_spi(81),
+		.start  = gic_iid(0x71),
 		.flags  = IORESOURCE_IRQ,
 	},
 };
