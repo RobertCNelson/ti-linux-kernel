@@ -38,7 +38,8 @@ struct regmap_format {
 			     unsigned int reg, unsigned int val);
 	void (*format_reg)(void *buf, unsigned int reg, unsigned int shift);
 	void (*format_val)(void *buf, unsigned int val, unsigned int shift);
-	unsigned int (*parse_val)(void *buf);
+	unsigned int (*parse_val)(const void *buf);
+	void (*parse_inplace)(void *buf);
 };
 
 struct regmap_async {
@@ -188,10 +189,10 @@ int regcache_write(struct regmap *map,
 			unsigned int reg, unsigned int value);
 int regcache_sync(struct regmap *map);
 
-unsigned int regcache_get_val(const void *base, unsigned int idx,
-			      unsigned int word_size);
-bool regcache_set_val(void *base, unsigned int idx,
-		      unsigned int val, unsigned int word_size);
+unsigned int regcache_get_val(struct regmap *map, const void *base,
+			      unsigned int idx);
+bool regcache_set_val(struct regmap *map, void *base, unsigned int idx,
+		      unsigned int val);
 int regcache_lookup_reg(struct regmap *map, unsigned int reg);
 
 void regmap_async_complete_cb(struct regmap_async *async, int ret);
