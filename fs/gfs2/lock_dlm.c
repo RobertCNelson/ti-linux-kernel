@@ -464,7 +464,7 @@ static void gdlm_cancel(struct gfs2_glock *gl)
 #define JID_BITMAP_OFFSET 8 /* 4 byte generation number + 4 byte unused */
 
 static void control_lvb_read(struct lm_lockstruct *ls, uint32_t *lvb_gen,
-			     char *lvb_bits)
+			     void *lvb_bits)
 {
 	uint32_t gen;
 	memcpy(lvb_bits, ls->ls_control_lvb, GDLM_LVB_SIZE);
@@ -473,7 +473,7 @@ static void control_lvb_read(struct lm_lockstruct *ls, uint32_t *lvb_gen,
 }
 
 static void control_lvb_write(struct lm_lockstruct *ls, uint32_t lvb_gen,
-			      char *lvb_bits)
+			      void *lvb_bits)
 {
 	uint32_t gen;
 	memcpy(ls->ls_control_lvb, lvb_bits, GDLM_LVB_SIZE);
@@ -481,14 +481,10 @@ static void control_lvb_write(struct lm_lockstruct *ls, uint32_t lvb_gen,
 	memcpy(ls->ls_control_lvb, &gen, sizeof(uint32_t));
 }
 
-static int all_jid_bits_clear(char *lvb)
+static int all_jid_bits_clear(void *lvb)
 {
-	int i;
-	for (i = JID_BITMAP_OFFSET; i < GDLM_LVB_SIZE; i++) {
-		if (lvb[i])
-			return 0;
-	}
-	return 1;
+	return !memchr_inv(lvb + JID_BITMAP_OFFSET, 0,
+			GDLM_LVB_SIZE - JID_BITMAP_OFFSET);
 }
 
 static void sync_wait_cb(void *arg)
@@ -580,7 +576,7 @@ static void gfs2_control_func(struct work_struct *work)
 {
 	struct gfs2_sbd *sdp = container_of(work, struct gfs2_sbd, sd_control_work.work);
 	struct lm_lockstruct *ls = &sdp->sd_lockstruct;
-	char lvb_bits[GDLM_LVB_SIZE];
+	DECLARE_BITMAP(lvb_bits, GDLM_LVB_SIZE * BITS_PER_BYTE);
 	uint32_t block_gen, start_gen, lvb_gen, flags;
 	int recover_set = 0;
 	int write_lvb = 0;
@@ -758,7 +754,7 @@ static void gfs2_control_func(struct work_struct *work)
 static int control_mount(struct gfs2_sbd *sdp)
 {
 	struct lm_lockstruct *ls = &sdp->sd_lockstruct;
-	char lvb_bits[GDLM_LVB_SIZE];
+	DECLARE_BITMAP(lvb_bits, GDLM_LVB_SIZE * BITS_PER_BYTE);
 	uint32_t start_gen, block_gen, mount_gen, lvb_gen;
 	int mounted_mode;
 	int retries = 0;
@@ -949,7 +945,7 @@ static int dlm_recovery_wait(void *word)
 static int control_first_done(struct gfs2_sbd *sdp)
 {
 	struct lm_lockstruct *ls = &sdp->sd_lockstruct;
-	char lvb_bits[GDLM_LVB_SIZE];
+	DECLARE_BITMAP(lvb_bits, GDLM_LVB_SIZE * BITS_PER_BYTE);
 	uint32_t start_gen, block_gen;
 	int error;
 
