@@ -4,6 +4,7 @@
  * Copyright 2011-2012 Texas Instruments Inc.
  *
  * Author: Graeme Gregory <gg@slimlogic.co.uk>
+ * Author: Ian Lartey <ian@slimlogic.co.uk>
  *
  *  This program is free software; you can redistribute it and/or modify it
  *  under  the terms of the GNU General  Public License as published by the
@@ -156,7 +157,7 @@ static const struct regs_info palmas_regs_info[] = {
  *
  * So they are basically (maxV-minV)/stepV
  */
-#define PALMAS_SMPS_NUM_VOLTAGES	116
+#define PALMAS_SMPS_NUM_VOLTAGES	117
 #define PALMAS_SMPS10_NUM_VOLTAGES	2
 #define PALMAS_LDO_NUM_VOLTAGES		50
 
@@ -553,17 +554,17 @@ static void palmas_dt_to_pdata(struct device *dev,
 				sizeof(struct palmas_reg_init), GFP_KERNEL);
 
 		ret = of_property_read_u32(palmas_matches[idx].of_node,
-				"ti,warm_reset", &prop);
+				"ti,warm-reset", &prop);
 		if (!ret)
 			pdata->reg_init[idx]->warm_reset = prop;
 
 		ret = of_property_read_u32(palmas_matches[idx].of_node,
-				"ti,roof_floor", &prop);
+				"ti,roof-floor", &prop);
 		if (!ret)
 			pdata->reg_init[idx]->roof_floor = prop;
 
 		ret = of_property_read_u32(palmas_matches[idx].of_node,
-				"ti,mode_sleep", &prop);
+				"ti,mode-sleep", &prop);
 		if (!ret)
 			pdata->reg_init[idx]->mode_sleep = prop;
 
@@ -578,7 +579,7 @@ static void palmas_dt_to_pdata(struct device *dev,
 			pdata->reg_init[idx]->vsel = prop;
 	}
 
-	ret = of_property_read_u32(node, "ti,ldo6_vibrator", &prop);
+	ret = of_property_read_u32(node, "ti,ldo6-vibrator", &prop);
 	if (!ret)
 		pdata->ldo6_vibrator = prop;
 }
