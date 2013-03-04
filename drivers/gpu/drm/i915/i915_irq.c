@@ -60,26 +60,30 @@ ironlake_disable_display_irq(drm_i915_private_t *dev_priv, u32 mask)
 void
 i915_enable_pipestat(drm_i915_private_t *dev_priv, int pipe, u32 mask)
 {
-	if ((dev_priv->pipestat[pipe] & mask) != mask) {
-		u32 reg = PIPESTAT(pipe);
+	u32 reg = PIPESTAT(pipe);
+	u32 pipestat = I915_READ(reg) & 0x7fff0000;
 
-		dev_priv->pipestat[pipe] |= mask;
-		/* Enable the interrupt, clear any pending status */
-		I915_WRITE(reg, dev_priv->pipestat[pipe] | (mask >> 16));
-		POSTING_READ(reg);
-	}
+	if ((pipestat & mask) == mask)
+		return;
+
+	/* Enable the interrupt, clear any pending status */
+	pipestat |= mask | (mask >> 16);
+	I915_WRITE(reg, pipestat);
+	POSTING_READ(reg);
 }
 
 void
 i915_disable_pipestat(drm_i915_private_t *dev_priv, int pipe, u32 mask)
 {
-	if ((dev_priv->pipestat[pipe] & mask) != 0) {
-		u32 reg = PIPESTAT(pipe);
+	u32 reg = PIPESTAT(pipe);
+	u32 pipestat = I915_READ(reg) & 0x7fff0000;
 
-		dev_priv->pipestat[pipe] &= ~mask;
-		I915_WRITE(reg, dev_priv->pipestat[pipe]);
-		POSTING_READ(reg);
-	}
+	if ((pipestat & mask) == 0)
+		return;
+
+	pipestat &= ~mask;
+	I915_WRITE(reg, pipestat);
+	POSTING_READ(reg);
 }
 
 /**
@@ -915,6 +919,8 @@ static void i915_error_work_func(struct work_struct *work)
 		for_each_ring(ring, dev_priv, i)
 			wake_up_all(&ring->irq_queue);
 
+		intel_display_handle_reset(dev);
+
 		wake_up_all(&dev_priv->gpu_error.reset_queue);
 	}
 }
@@ -950,24 +956,23 @@ static void i915_get_extra_instdone(struct drm_device *dev,
 
 #ifdef CONFIG_DEBUG_FS
 static struct drm_i915_error_object *
-i915_error_object_create(struct drm_i915_private *dev_priv,
-			 struct drm_i915_gem_object *src)
+i915_error_object_create_sized(struct drm_i915_private *dev_priv,
+			       struct drm_i915_gem_object *src,
+			       const int num_pages)
 {
 	struct drm_i915_error_object *dst;
-	int i, count;
+	int i;
 	u32 reloc_offset;
 
 	if (src == NULL || src->pages == NULL)
 		return NULL;
 
-	count = src->base.size / PAGE_SIZE;
-
-	dst = kmalloc(sizeof(*dst) + count * sizeof(u32 *), GFP_ATOMIC);
+	dst = kmalloc(sizeof(*dst) + num_pages * sizeof(u32 *), GFP_ATOMIC);
 	if (dst == NULL)
 		return NULL;
 
 	reloc_offset = src->gtt_offset;
-	for (i = 0; i < count; i++) {
+	for (i = 0; i < num_pages; i++) {
 		unsigned long flags;
 		void *d;
 
@@ -1017,7 +1022,7 @@ i915_error_object_create(struct drm_i915_private *dev_priv,
 
 		reloc_offset += PAGE_SIZE;
 	}
-	dst->page_count = count;
+	dst->page_count = num_pages;
 	dst->gtt_offset = src->gtt_offset;
 
 	return dst;
@@ -1028,6 +1033,9 @@ unwind:
 	kfree(dst);
 	return NULL;
 }
+#define i915_error_object_create(dev_priv, src) \
+	i915_error_object_create_sized((dev_priv), (src), \
+				       (src)->base.size>>PAGE_SHIFT)
 
 static void
 i915_error_object_free(struct drm_i915_error_object *obj)
@@ -1313,7 +1321,8 @@ static void i915_capture_error_state(struct drm_device *dev)
 	kref_init(&error->ref);
 	error->eir = I915_READ(EIR);
 	error->pgtbl_er = I915_READ(PGTBL_ER);
-	error->ccid = I915_READ(CCID);
+	if (HAS_HW_CONTEXTS(dev))
+		error->ccid = I915_READ(CCID);
 
 	if (HAS_PCH_SPLIT(dev))
 		error->ier = I915_READ(DEIER) | I915_READ(GTIER);
@@ -1545,7 +1554,7 @@ void i915_handle_error(struct drm_device *dev, bool wedged)
 	queue_work(dev_priv->wq, &dev_priv->gpu_error.work);
 }
 
-static void i915_pageflip_stall_check(struct drm_device *dev, int pipe)
+static void __always_unused i915_pageflip_stall_check(struct drm_device *dev, int pipe)
 {
 	drm_i915_private_t *dev_priv = dev->dev_private;
 	struct drm_crtc *crtc = dev_priv->pipe_to_crtc_mapping[pipe];
@@ -2067,9 +2076,6 @@ static int valleyview_irq_postinstall(struct drm_device *dev)
 		I915_DISPLAY_PIPE_A_VBLANK_INTERRUPT |
 		I915_DISPLAY_PIPE_B_VBLANK_INTERRUPT;
 
-	dev_priv->pipestat[0] = 0;
-	dev_priv->pipestat[1] = 0;
-
 	/* Hack for broken MSIs on VLV */
 	pci_write_config_dword(dev_priv->dev->pdev, 0x94, 0xfee00000);
 	pci_read_config_word(dev->pdev, 0x98, &msid);
@@ -2199,9 +2205,6 @@ static int i8xx_irq_postinstall(struct drm_device *dev)
 {
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
 
-	dev_priv->pipestat[0] = 0;
-	dev_priv->pipestat[1] = 0;
-
 	I915_WRITE16(EMR,
 		     ~(I915_ERROR_PAGE_TABLE | I915_ERROR_MEMORY_REFRESH));
 
@@ -2222,6 +2225,37 @@ static int i8xx_irq_postinstall(struct drm_device *dev)
 	POSTING_READ16(IER);
 
 	return 0;
+}
+
+/*
+ * Returns true when a page flip has completed.
+ */
+static bool i8xx_handle_vblank(struct drm_device *dev,
+			       int pipe, u16 iir)
+{
+	drm_i915_private_t *dev_priv = dev->dev_private;
+	u16 flip_pending = DISPLAY_PLANE_FLIP_PENDING(pipe);
+
+	if (!drm_handle_vblank(dev, pipe))
+		return false;
+
+	if ((iir & flip_pending) == 0)
+		return false;
+
+	intel_prepare_page_flip(dev, pipe);
+
+	/* We detect FlipDone by looking for the change in PendingFlip from '1'
+	 * to '0' on the following vblank, i.e. IIR has the Pendingflip
+	 * asserted following the MI_DISPLAY_FLIP, but ISR is deasserted, hence
+	 * the flip is completed (no longer pending). Since this doesn't raise
+	 * an interrupt per se, we watch for the change at vblank.
+	 */
+	if (I915_READ16(ISR) & flip_pending)
+		return false;
+
+	intel_finish_page_flip(dev, pipe);
+
+	return true;
 }
 
 static irqreturn_t i8xx_irq_handler(int irq, void *arg)
@@ -2279,22 +2313,12 @@ static irqreturn_t i8xx_irq_handler(int irq, void *arg)
 			notify_ring(dev, &dev_priv->ring[RCS]);
 
 		if (pipe_stats[0] & PIPE_VBLANK_INTERRUPT_STATUS &&
-		    drm_handle_vblank(dev, 0)) {
-			if (iir & I915_DISPLAY_PLANE_A_FLIP_PENDING_INTERRUPT) {
-				intel_prepare_page_flip(dev, 0);
-				intel_finish_page_flip(dev, 0);
-				flip_mask &= ~I915_DISPLAY_PLANE_A_FLIP_PENDING_INTERRUPT;
-			}
-		}
+		    i8xx_handle_vblank(dev, 0, iir))
+			flip_mask &= ~DISPLAY_PLANE_FLIP_PENDING(0);
 
 		if (pipe_stats[1] & PIPE_VBLANK_INTERRUPT_STATUS &&
-		    drm_handle_vblank(dev, 1)) {
-			if (iir & I915_DISPLAY_PLANE_B_FLIP_PENDING_INTERRUPT) {
-				intel_prepare_page_flip(dev, 1);
-				intel_finish_page_flip(dev, 1);
-				flip_mask &= ~I915_DISPLAY_PLANE_B_FLIP_PENDING_INTERRUPT;
-			}
-		}
+		    i8xx_handle_vblank(dev, 1, iir))
+			flip_mask &= ~DISPLAY_PLANE_FLIP_PENDING(1);
 
 		iir = new_iir;
 	}
@@ -2341,9 +2365,6 @@ static int i915_irq_postinstall(struct drm_device *dev)
 {
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
 	u32 enable_mask;
-
-	dev_priv->pipestat[0] = 0;
-	dev_priv->pipestat[1] = 0;
 
 	I915_WRITE(EMR, ~(I915_ERROR_PAGE_TABLE | I915_ERROR_MEMORY_REFRESH));
 
@@ -2411,6 +2432,37 @@ static void i915_hpd_irq_setup(struct drm_device *dev)
 	}
 }
 
+/*
+ * Returns true when a page flip has completed.
+ */
+static bool i915_handle_vblank(struct drm_device *dev,
+			       int plane, int pipe, u32 iir)
+{
+	drm_i915_private_t *dev_priv = dev->dev_private;
+	u32 flip_pending = DISPLAY_PLANE_FLIP_PENDING(plane);
+
+	if (!drm_handle_vblank(dev, pipe))
+		return false;
+
+	if ((iir & flip_pending) == 0)
+		return false;
+
+	intel_prepare_page_flip(dev, plane);
+
+	/* We detect FlipDone by looking for the change in PendingFlip from '1'
+	 * to '0' on the following vblank, i.e. IIR has the Pendingflip
+	 * asserted following the MI_DISPLAY_FLIP, but ISR is deasserted, hence
+	 * the flip is completed (no longer pending). Since this doesn't raise
+	 * an interrupt per se, we watch for the change at vblank.
+	 */
+	if (I915_READ(ISR) & flip_pending)
+		return false;
+
+	intel_finish_page_flip(dev, pipe);
+
+	return true;
+}
+
 static irqreturn_t i915_irq_handler(int irq, void *arg)
 {
 	struct drm_device *dev = (struct drm_device *) arg;
@@ -2420,10 +2472,6 @@ static irqreturn_t i915_irq_handler(int irq, void *arg)
 	u32 flip_mask =
 		I915_DISPLAY_PLANE_A_FLIP_PENDING_INTERRUPT |
 		I915_DISPLAY_PLANE_B_FLIP_PENDING_INTERRUPT;
-	u32 flip[2] = {
-		I915_DISPLAY_PLANE_A_FLIP_PENDING_INTERRUPT,
-		I915_DISPLAY_PLANE_B_FLIP_PENDING_INTERRUPT
-	};
 	int pipe, ret = IRQ_NONE;
 
 	atomic_inc(&dev_priv->irq_received);
@@ -2485,14 +2533,10 @@ static irqreturn_t i915_irq_handler(int irq, void *arg)
 			int plane = pipe;
 			if (IS_MOBILE(dev))
 				plane = !plane;
+
 			if (pipe_stats[pipe] & PIPE_VBLANK_INTERRUPT_STATUS &&
-			    drm_handle_vblank(dev, pipe)) {
-				if (iir & flip[plane]) {
-					intel_prepare_page_flip(dev, plane);
-					intel_finish_page_flip(dev, pipe);
-					flip_mask &= ~flip[plane];
-				}
-			}
+			    i915_handle_vblank(dev, plane, pipe, iir))
+				flip_mask &= ~DISPLAY_PLANE_FLIP_PENDING(plane);
 
 			if (pipe_stats[pipe] & PIPE_LEGACY_BLC_EVENT_STATUS)
 				blc_event = true;
@@ -2581,13 +2625,13 @@ static int i965_irq_postinstall(struct drm_device *dev)
 			       I915_RENDER_COMMAND_PARSER_ERROR_INTERRUPT);
 
 	enable_mask = ~dev_priv->irq_mask;
+	enable_mask &= ~(I915_DISPLAY_PLANE_A_FLIP_PENDING_INTERRUPT |
+			 I915_DISPLAY_PLANE_B_FLIP_PENDING_INTERRUPT);
 	enable_mask |= I915_USER_INTERRUPT;
 
 	if (IS_G4X(dev))
 		enable_mask |= I915_BSD_USER_INTERRUPT;
 
-	dev_priv->pipestat[0] = 0;
-	dev_priv->pipestat[1] = 0;
 	i915_enable_pipestat(dev_priv, 0, PIPE_GMBUS_EVENT_ENABLE);
 
 	/*
@@ -2667,6 +2711,9 @@ static irqreturn_t i965_irq_handler(int irq, void *arg)
 	unsigned long irqflags;
 	int irq_received;
 	int ret = IRQ_NONE, pipe;
+	u32 flip_mask =
+		I915_DISPLAY_PLANE_A_FLIP_PENDING_INTERRUPT |
+		I915_DISPLAY_PLANE_B_FLIP_PENDING_INTERRUPT;
 
 	atomic_inc(&dev_priv->irq_received);
 
@@ -2675,7 +2722,7 @@ static irqreturn_t i965_irq_handler(int irq, void *arg)
 	for (;;) {
 		bool blc_event = false;
 
-		irq_received = iir != 0;
+		irq_received = (iir & ~flip_mask) != 0;
 
 		/* Can't rely on pipestat interrupt bit in iir as it might
 		 * have been cleared after the pipestat interrupt was received.
@@ -2722,7 +2769,7 @@ static irqreturn_t i965_irq_handler(int irq, void *arg)
 			I915_READ(PORT_HOTPLUG_STAT);
 		}
 
-		I915_WRITE(IIR, iir);
+		I915_WRITE(IIR, iir & ~flip_mask);
 		new_iir = I915_READ(IIR); /* Flush posted writes */
 
 		if (iir & I915_USER_INTERRUPT)
@@ -2730,18 +2777,10 @@ static irqreturn_t i965_irq_handler(int irq, void *arg)
 		if (iir & I915_BSD_USER_INTERRUPT)
 			notify_ring(dev, &dev_priv->ring[VCS]);
 
-		if (iir & I915_DISPLAY_PLANE_A_FLIP_PENDING_INTERRUPT)
-			intel_prepare_page_flip(dev, 0);
-
-		if (iir & I915_DISPLAY_PLANE_B_FLIP_PENDING_INTERRUPT)
-			intel_prepare_page_flip(dev, 1);
-
 		for_each_pipe(pipe) {
 			if (pipe_stats[pipe] & PIPE_START_VBLANK_INTERRUPT_STATUS &&
-			    drm_handle_vblank(dev, pipe)) {
-				i915_pageflip_stall_check(dev, pipe);
-				intel_finish_page_flip(dev, pipe);
-			}
+			    i915_handle_vblank(dev, pipe, pipe, iir))
+				flip_mask &= ~DISPLAY_PLANE_FLIP_PENDING(pipe);
 
 			if (pipe_stats[pipe] & PIPE_LEGACY_BLC_EVENT_STATUS)
 				blc_event = true;
