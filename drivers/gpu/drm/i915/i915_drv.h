@@ -905,7 +905,6 @@ typedef struct drm_i915_private {
 	struct mutex dpio_lock;
 
 	/** Cached value of IMR to avoid reads in updating the bitfield */
-	u32 pipestat[2];
 	u32 irq_mask;
 	u32 gt_irq_mask;
 
@@ -1898,6 +1897,11 @@ static inline uint32_t i915_vgacntrl_reg(struct drm_device *dev)
 		return VLV_VGACNTRL;
 	else
 		return VGACNTRL;
+}
+
+static inline void __user *to_user_ptr(u64 address)
+{
+	return (void __user *)(uintptr_t)address;
 }
 
 #endif

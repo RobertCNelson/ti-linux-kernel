@@ -71,8 +71,24 @@ typedef struct intel_limit intel_limit_t;
 struct intel_limit {
 	intel_range_t   dot, vco, n, m, m1, m2, p, p1;
 	intel_p2_t	    p2;
-	bool (* find_pll)(const intel_limit_t *, struct drm_crtc *,
-			int, int, intel_clock_t *, intel_clock_t *);
+	/**
+	 * find_pll() - Find the best values for the PLL
+	 * @limit: limits for the PLL
+	 * @crtc: current CRTC
+	 * @target: target frequency in kHz
+	 * @refclk: reference clock frequency in kHz
+	 * @match_clock: if provided, @best_clock P divider must
+	 *               match the P divider from @match_clock
+	 *               used for LVDS downclocking
+	 * @best_clock: best PLL values found
+	 *
+	 * Returns true on success, false on failure.
+	 */
+	bool (*find_pll)(const intel_limit_t *limit,
+			 struct drm_crtc *crtc,
+			 int target, int refclk,
+			 intel_clock_t *match_clock,
+			 intel_clock_t *best_clock);
 };
 
 /* FDI */
@@ -471,7 +487,6 @@ static const intel_limit_t *intel_ironlake_limit(struct drm_crtc *crtc,
 
 	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_LVDS)) {
 		if (intel_is_dual_link_lvds(dev)) {
-			/* LVDS dual channel */
 			if (refclk == 100000)
 				limit = &intel_limits_ironlake_dual_lvds_100m;
 			else
@@ -498,10 +513,8 @@ static const intel_limit_t *intel_g4x_limit(struct drm_crtc *crtc)
 
 	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_LVDS)) {
 		if (intel_is_dual_link_lvds(dev))
-			/* LVDS with dual channel */
 			limit = &intel_limits_g4x_dual_channel_lvds;
 		else
-			/* LVDS with dual channel */
 			limit = &intel_limits_g4x_single_channel_lvds;
 	} else if (intel_pipe_has_type(crtc, INTEL_OUTPUT_HDMI) ||
 		   intel_pipe_has_type(crtc, INTEL_OUTPUT_ANALOG)) {
@@ -2229,6 +2242,44 @@ intel_pipe_set_base_atomic(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 	return dev_priv->display.update_plane(crtc, fb, x, y);
 }
 
+void intel_display_handle_reset(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_crtc *crtc;
+
+	/*
+	 * Flips in the rings have been nuked by the reset,
+	 * so complete all pending flips so that user space
+	 * will get its events and not get stuck.
+	 *
+	 * Also update the base address of all primary
+	 * planes to the the last fb to make sure we're
+	 * showing the correct fb after a reset.
+	 *
+	 * Need to make two loops over the crtcs so that we
+	 * don't try to grab a crtc mutex before the
+	 * pending_flip_queue really got woken up.
+	 */
+
+	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
+		struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+		enum plane plane = intel_crtc->plane;
+
+		intel_prepare_page_flip(dev, plane);
+		intel_finish_page_flip_plane(dev, plane);
+	}
+
+	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
+		struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+
+		mutex_lock(&crtc->mutex);
+		if (intel_crtc->active)
+			dev_priv->display.update_plane(crtc, crtc->fb,
+						       crtc->x, crtc->y);
+		mutex_unlock(&crtc->mutex);
+	}
+}
+
 static int
 intel_finish_fb(struct drm_framebuffer *old_fb)
 {
@@ -2311,9 +2362,6 @@ intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 		DRM_ERROR("pin & fence failed\n");
 		return ret;
 	}
-
-	if (crtc->fb)
-		intel_finish_fb(crtc->fb);
 
 	ret = dev_priv->display.update_plane(crtc, fb, x, y);
 	if (ret) {
@@ -4486,11 +4534,7 @@ static void i8xx_update_pll(struct drm_crtc *crtc,
 			dpll |= PLL_P2_DIVIDE_BY_4;
 	}
 
-	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_TVOUT))
-		/* XXX: just matching BIOS for now */
-		/*	dpll |= PLL_REF_INPUT_TVCLKINBC; */
-		dpll |= 3;
-	else if (intel_pipe_has_type(crtc, INTEL_OUTPUT_LVDS) &&
+	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_LVDS) &&
 		 intel_panel_use_ssc(dev_priv) && num_connectors < 2)
 		dpll |= PLLB_REF_INPUT_SPREADSPECTRUMIN;
 	else
@@ -6410,20 +6454,6 @@ static void intel_crtc_gamma_set(struct drm_crtc *crtc, u16 *red, u16 *green,
 	intel_crtc_load_lut(crtc);
 }
 
-/**
- * Get a pipe with a simple mode set on it for doing load-based monitor
- * detection.
- *
- * It will be up to the load-detect code to adjust the pipe as appropriate for
- * its requirements.  The pipe will be connected to no other encoders.
- *
- * Currently this code will only succeed if there is a pipe with no encoders
- * configured for it.  In the future, it could choose to temporarily disable
- * some outputs to free up a pipe for its use.
- *
- * \return crtc, or NULL if no pipes are available.
- */
-
 /* VESA 640x480x72Hz mode to set on the pipe */
 static struct drm_display_mode load_detect_mode = {
 	DRM_MODE("640x480", DRM_MODE_TYPE_DEFAULT, 31500, 640, 664,
@@ -6928,7 +6958,6 @@ static void do_intel_finish_page_flip(struct drm_device *dev,
 	drm_i915_private_t *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	struct intel_unpin_work *work;
-	struct drm_i915_gem_object *obj;
 	unsigned long flags;
 
 	/* Ignore early vblank irqs */
@@ -6957,8 +6986,6 @@ static void do_intel_finish_page_flip(struct drm_device *dev,
 	drm_vblank_put(dev, intel_crtc->pipe);
 
 	spin_unlock_irqrestore(&dev->event_lock, flags);
-
-	obj = work->old_fb_obj;
 
 	wake_up_all(&dev_priv->pending_flip_queue);
 
@@ -8122,6 +8149,8 @@ static int intel_crtc_set_config(struct drm_mode_set *set)
 			goto fail;
 		}
 	} else if (config->fb_changed) {
+		intel_crtc_wait_for_pending_flips(set->crtc);
+
 		ret = intel_pipe_set_base(set->crtc,
 					  set->x, set->y, set->fb);
 	}

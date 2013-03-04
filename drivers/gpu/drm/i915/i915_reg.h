@@ -522,6 +522,9 @@
 #define GEN7_ERR_INT	0x44040
 #define   ERR_INT_MMIO_UNCLAIMED (1<<13)
 
+#define FPGA_DBG		0x42300
+#define   FPGA_DBG_RM_NOCLAIM	(1<<31)
+
 #define DERRMR		0x44050
 
 /* GM45+ chicken bits -- debug workaround bits that may be required
@@ -591,6 +594,7 @@
 #define   I915_USER_INTERRUPT				(1<<1)
 #define   I915_ASLE_INTERRUPT				(1<<0)
 #define   I915_BSD_USER_INTERRUPT                      (1<<25)
+#define   DISPLAY_PLANE_FLIP_PENDING(plane) (1<<(11-(plane))) /* A and B only */
 #define EIR		0x020b0
 #define EMR		0x020b4
 #define ESR		0x020b8
@@ -3754,14 +3758,16 @@
 #define HSW_VIDEO_DIP_VSC_ECC_B		0x61344
 #define HSW_VIDEO_DIP_GCP_B		0x61210
 
-#define HSW_TVIDEO_DIP_CTL(pipe) \
-	 _PIPE(pipe, HSW_VIDEO_DIP_CTL_A, HSW_VIDEO_DIP_CTL_B)
-#define HSW_TVIDEO_DIP_AVI_DATA(pipe) \
-	 _PIPE(pipe, HSW_VIDEO_DIP_AVI_DATA_A, HSW_VIDEO_DIP_AVI_DATA_B)
-#define HSW_TVIDEO_DIP_SPD_DATA(pipe) \
-	 _PIPE(pipe, HSW_VIDEO_DIP_SPD_DATA_A, HSW_VIDEO_DIP_SPD_DATA_B)
-#define HSW_TVIDEO_DIP_GCP(pipe) \
-	_PIPE(pipe, HSW_VIDEO_DIP_GCP_A, HSW_VIDEO_DIP_GCP_B)
+#define HSW_TVIDEO_DIP_CTL(trans) \
+	 _TRANSCODER(trans, HSW_VIDEO_DIP_CTL_A, HSW_VIDEO_DIP_CTL_B)
+#define HSW_TVIDEO_DIP_AVI_DATA(trans) \
+	 _TRANSCODER(trans, HSW_VIDEO_DIP_AVI_DATA_A, HSW_VIDEO_DIP_AVI_DATA_B)
+#define HSW_TVIDEO_DIP_SPD_DATA(trans) \
+	 _TRANSCODER(trans, HSW_VIDEO_DIP_SPD_DATA_A, HSW_VIDEO_DIP_SPD_DATA_B)
+#define HSW_TVIDEO_DIP_GCP(trans) \
+	_TRANSCODER(trans, HSW_VIDEO_DIP_GCP_A, HSW_VIDEO_DIP_GCP_B)
+#define HSW_TVIDEO_DIP_VSC_DATA(trans) \
+	 _TRANSCODER(trans, HSW_VIDEO_DIP_VSC_DATA_A, HSW_VIDEO_DIP_VSC_DATA_B)
 
 #define _TRANS_HTOTAL_B          0xe1000
 #define _TRANS_HBLANK_B          0xe1004
