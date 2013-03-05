@@ -144,6 +144,8 @@ static struct console bios_console = {
 	.index		= -1,
 };
 
+static struct console *early_console;
+
 static int __init setup_early_printk(char *buf)
 {
 	int keep_early = 0;
