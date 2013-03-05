@@ -202,7 +202,6 @@ int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 	/*
 	 * Allocate non-cacheable memory for the vring. In the future
 	 * this call will also configure the IOMMU for us
-	 * TODO: let the rproc know the da of this vring
 	 */
 	va = dma_alloc_coherent(dev->parent, size, &dma, GFP_KERNEL);
 	if (!va) {
@@ -213,7 +212,6 @@ int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 	/*
 	 * Assign an rproc-wide unique index for this vring
 	 * TODO: assign a notifyid for rvdev updates as well
-	 * TODO: let the rproc know the notifyid of this vring
 	 * TODO: support predefined notifyids (via resource table)
 	 */
 	ret = idr_alloc(&rproc->notifyids, rvring, 0, 0, GFP_KERNEL);
@@ -224,9 +222,6 @@ int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 	}
 	notifyid = ret;
 
-	/* Store largest notifyid */
-	rproc->max_notifyid = max(rproc->max_notifyid, notifyid);
-
 	dev_dbg(dev, "vring%d: va %p dma %llx size %x idr %d\n", i, va,
 				(unsigned long long)dma, size, notifyid);
 
@@ -234,6 +229,14 @@ int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 	rvring->dma = dma;
 	rvring->notifyid = notifyid;
 
+	/*
+	 * Let the rproc know the notifyid and da of this vring.
+	 * Not all platforms use dma_alloc_coherent to automatically
+	 * set up the iommu. In this case the device address (da) will
+	 * hold the physical address and not the device address.
+	 */
+	rvdev->rsc->vring[i].da = dma;
+	rvdev->rsc->vring[i].notifyid = notifyid;
 	return 0;
 }
 
@@ -268,25 +271,13 @@ rproc_parse_vring(struct rproc_vdev *rvdev, struct fw_rsc_vdev *rsc, int i)
 	return 0;
 }
 
-static int rproc_max_notifyid(int id, void *p, void *data)
-{
-	int *maxid = data;
-	*maxid = max(*maxid, id);
-	return 0;
-}
-
 void rproc_free_vring(struct rproc_vring *rvring)
 {
 	int size = PAGE_ALIGN(vring_size(rvring->len, rvring->align));
 	struct rproc *rproc = rvring->rvdev->rproc;
-	int maxid = 0;
 
 	dma_free_coherent(rproc->dev.parent, size, rvring->va, rvring->dma);
 	idr_remove(&rproc->notifyids, rvring->notifyid);
-
-	/* Find the largest remaining notifyid */
-	idr_for_each(&rproc->notifyids, rproc_max_notifyid, &maxid);
-	rproc->max_notifyid = maxid;
 }
 
 /**
@@ -358,8 +349,8 @@ static int rproc_handle_vdev(struct rproc *rproc, struct fw_rsc_vdev *rsc,
 			goto free_rvdev;
 	}
 
-	/* remember the device features */
-	rvdev->dfeatures = rsc->dfeatures;
+	/* remember the resource entry */
+	rvdev->rsc = rsc;
 
 	list_add_tail(&rvdev->node, &rproc->rvdevs);
 
@@ -669,28 +660,46 @@ free_carv:
 	return ret;
 }
 
+static int rproc_handle_notifyid(struct rproc *rproc, struct fw_rsc_vdev *rsc,
+								int avail)
+{
+	/* Summerize the number of notification IDs */
+	rproc->max_notifyid += rsc->num_of_vrings;
+
+	return 0;
+}
+
 /*
  * A lookup table for resource handlers. The indices are defined in
  * enum fw_resource_type.
  */
-static rproc_handle_resource_t rproc_handle_rsc[] = {
+static rproc_handle_resource_t rproc_handle_rsc[RSC_LAST] = {
 	[RSC_CARVEOUT] = (rproc_handle_resource_t)rproc_handle_carveout,
 	[RSC_DEVMEM] = (rproc_handle_resource_t)rproc_handle_devmem,
 	[RSC_TRACE] = (rproc_handle_resource_t)rproc_handle_trace,
 	[RSC_VDEV] = NULL, /* VDEVs were handled upon registrarion */
 };
 
+static rproc_handle_resource_t rproc_handle_vdev_rsc[RSC_LAST] = {
+	[RSC_VDEV] = (rproc_handle_resource_t)rproc_handle_vdev,
+};
+
+static rproc_handle_resource_t rproc_handle_notifyid_rsc[RSC_LAST] = {
+	[RSC_VDEV] = (rproc_handle_resource_t)rproc_handle_notifyid,
+};
+
 /* handle firmware resource entries before booting the remote processor */
 static int
-rproc_handle_boot_rsc(struct rproc *rproc, struct resource_table *table, int len)
+rproc_handle_resource(struct rproc *rproc, int len,
+		      rproc_handle_resource_t handlers[RSC_LAST])
 {
 	struct device *dev = &rproc->dev;
 	rproc_handle_resource_t handler;
 	int ret = 0, i;
 
-	for (i = 0; i < table->num; i++) {
-		int offset = table->offset[i];
-		struct fw_rsc_hdr *hdr = (void *)table + offset;
+	for (i = 0; i < rproc->rsc->num; i++) {
+		int offset = rproc->rsc->offset[i];
+		struct fw_rsc_hdr *hdr = (void *)rproc->rsc + offset;
 		int avail = len - offset - sizeof(*hdr);
 		void *rsc = (void *)hdr + sizeof(*hdr);
 
@@ -707,45 +716,11 @@ rproc_handle_boot_rsc(struct rproc *rproc, struct resource_table *table, int len
 			continue;
 		}
 
-		handler = rproc_handle_rsc[hdr->type];
+		handler = handlers[hdr->type];
 		if (!handler)
 			continue;
 
 		ret = handler(rproc, rsc, avail);
-		if (ret)
-			break;
-	}
-
-	return ret;
-}
-
-/* handle firmware resource entries while registering the remote processor */
-static int
-rproc_handle_virtio_rsc(struct rproc *rproc, struct resource_table *table, int len)
-{
-	struct device *dev = &rproc->dev;
-	int ret = 0, i;
-
-	for (i = 0; i < table->num; i++) {
-		int offset = table->offset[i];
-		struct fw_rsc_hdr *hdr = (void *)table + offset;
-		int avail = len - offset - sizeof(*hdr);
-		struct fw_rsc_vdev *vrsc;
-
-		/* make sure table isn't truncated */
-		if (avail < 0) {
-			dev_err(dev, "rsc table is truncated\n");
-			return -EINVAL;
-		}
-
-		dev_dbg(dev, "%s: rsc type %d\n", __func__, hdr->type);
-
-		if (hdr->type != RSC_VDEV)
-			continue;
-
-		vrsc = (struct fw_rsc_vdev *)hdr->data;
-
-		ret = rproc_handle_vdev(rproc, vrsc, avail);
 		if (ret)
 			break;
 	}
@@ -803,8 +778,12 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 {
 	struct device *dev = &rproc->dev;
 	const char *name = rproc->firmware;
-	struct resource_table *table;
+	struct rproc_vdev *rvdev;
+	struct resource_table *table, *devmem_rsc, *tmp;
 	int ret, tablesz;
+
+	if (!rproc->rsc)
+		return -ENOMEM;
 
 	ret = rproc_fw_sanity_check(rproc, fw);
 	if (ret)
@@ -831,8 +810,17 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 		goto clean_up;
 	}
 
+	/* Verify that resource table in loaded fw is unchanged */
+	if (rproc->rsc_csum != ip_compute_csum(table, tablesz)) {
+		dev_err(dev, "resource checksum failed, fw changed?\n");
+		ret = -EINVAL;
+		goto clean_up;
+	}
+
+
 	/* handle fw resources which are required to boot rproc */
-	ret = rproc_handle_boot_rsc(rproc, table, tablesz);
+	ret = rproc_handle_resource(rproc, tablesz,
+					rproc_handle_rsc);
 	if (ret) {
 		dev_err(dev, "Failed to process resources: %d\n", ret);
 		goto clean_up;
@@ -844,6 +832,26 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 		dev_err(dev, "Failed to load program segments: %d\n", ret);
 		goto clean_up;
 	}
+
+	/* Get the resource table address in device memory */
+	devmem_rsc = rproc_get_rsctab_addr(rproc, fw);
+
+	/* Copy the updated resource table to device memory */
+	memcpy(devmem_rsc, rproc->rsc, tablesz);
+
+	/* Free the copy of the resource table */
+	tmp = rproc->rsc;
+	rproc->rsc = devmem_rsc;
+	kfree(tmp);
+
+	/* Update the vdev rsc address */
+	list_for_each_entry(rvdev, &rproc->rvdevs, node) {
+		int offset = (void *)rvdev->rsc - (void *)tmp;
+		rvdev->rsc = (void *)devmem_rsc + offset;
+	}
+
+	/* Other virtio drivers will see the rsc table in device memory */
+	rproc->rsc = devmem_rsc;
 
 	/* power up the remote processor */
 	ret = rproc->ops->start(rproc);
@@ -886,8 +894,22 @@ static void rproc_fw_config_virtio(const struct firmware *fw, void *context)
 	if (!table)
 		goto out;
 
+	rproc->rsc_csum = ip_compute_csum(table, tablesz);
+
+	/* count the numbe of notify-ids */
+	rproc->max_notifyid = 0;
+	rproc->rsc = table;
+	ret = rproc_handle_resource(rproc, tablesz,
+						rproc_handle_notifyid_rsc);
+
+	/* Copy resource table containing vdev config info */
+	rproc->rsc = kmalloc(tablesz, GFP_KERNEL);
+	if (rproc->rsc)
+		memcpy(rproc->rsc, table, tablesz);
+
 	/* look for virtio devices and register them */
-	ret = rproc_handle_virtio_rsc(rproc, table, tablesz);
+	ret = rproc_handle_resource(rproc, tablesz,
+						rproc_handle_vdev_rsc);
 	if (ret)
 		goto out;
 
