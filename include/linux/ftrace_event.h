@@ -38,6 +38,12 @@ const char *ftrace_print_symbols_seq_u64(struct trace_seq *p,
 const char *ftrace_print_hex_seq(struct trace_seq *p,
 				 const unsigned char *buf, int len);
 
+struct trace_iterator;
+struct trace_event;
+
+int ftrace_raw_output_prep(struct trace_iterator *iter,
+			   struct trace_event *event);
+
 /*
  * The trace entry - the most basic unit of tracing. This is what
  * is printed in the end as a single line in the trace output, such as:
@@ -95,8 +101,6 @@ enum trace_iter_flags {
 };
 
 
-struct trace_event;
-
 typedef enum print_line_t (*trace_print_func)(struct trace_iterator *iter,
 				      int flags, struct trace_event *event);
 
@@ -128,6 +132,13 @@ enum print_line_t {
 void tracing_generic_entry_update(struct trace_entry *entry,
 				  unsigned long flags,
 				  int pc);
+struct ftrace_event_file;
+
+struct ring_buffer_event *
+trace_event_buffer_lock_reserve(struct ring_buffer **current_buffer,
+				struct ftrace_event_file *ftrace_file,
+				int type, unsigned long len,
+				unsigned long flags, int pc);
 struct ring_buffer_event *
 trace_current_buffer_lock_reserve(struct ring_buffer **current_buffer,
 				  int type, unsigned long len,
@@ -182,18 +193,20 @@ extern int ftrace_event_reg(struct ftrace_event_call *event,
 			    enum trace_reg type, void *data);
 
 enum {
-	TRACE_EVENT_FL_ENABLED_BIT,
 	TRACE_EVENT_FL_FILTERED_BIT,
-	TRACE_EVENT_FL_RECORDED_CMD_BIT,
 	TRACE_EVENT_FL_CAP_ANY_BIT,
 	TRACE_EVENT_FL_NO_SET_FILTER_BIT,
 	TRACE_EVENT_FL_IGNORE_ENABLE_BIT,
 };
 
+/*
+ * Event flags:
+ *  FILTERED	  - The event has a filter attached
+ *  CAP_ANY	  - Any user can enable for perf
+ *  NO_SET_FILTER - Set when filter has error and is to be ignored
+ */
 enum {
-	TRACE_EVENT_FL_ENABLED		= (1 << TRACE_EVENT_FL_ENABLED_BIT),
 	TRACE_EVENT_FL_FILTERED		= (1 << TRACE_EVENT_FL_FILTERED_BIT),
-	TRACE_EVENT_FL_RECORDED_CMD	= (1 << TRACE_EVENT_FL_RECORDED_CMD_BIT),
 	TRACE_EVENT_FL_CAP_ANY		= (1 << TRACE_EVENT_FL_CAP_ANY_BIT),
 	TRACE_EVENT_FL_NO_SET_FILTER	= (1 << TRACE_EVENT_FL_NO_SET_FILTER_BIT),
 	TRACE_EVENT_FL_IGNORE_ENABLE	= (1 << TRACE_EVENT_FL_IGNORE_ENABLE_BIT),
@@ -203,12 +216,44 @@ struct ftrace_event_call {
 	struct list_head	list;
 	struct ftrace_event_class *class;
 	char			*name;
-	struct dentry		*dir;
 	struct trace_event	event;
 	const char		*print_fmt;
 	struct event_filter	*filter;
+	struct list_head	*files;
 	void			*mod;
 	void			*data;
+	int			flags; /* static flags of different events */
+
+#ifdef CONFIG_PERF_EVENTS
+	int				perf_refcount;
+	struct hlist_head __percpu	*perf_events;
+#endif
+};
+
+struct trace_array;
+struct ftrace_subsystem_dir;
+
+enum {
+	FTRACE_EVENT_FL_ENABLED_BIT,
+	FTRACE_EVENT_FL_RECORDED_CMD_BIT,
+};
+
+/*
+ * Ftrace event file flags:
+ *  ENABELD	  - The event is enabled
+ *  RECORDED_CMD  - The comms should be recorded at sched_switch
+ */
+enum {
+	FTRACE_EVENT_FL_ENABLED		= (1 << FTRACE_EVENT_FL_ENABLED_BIT),
+	FTRACE_EVENT_FL_RECORDED_CMD	= (1 << FTRACE_EVENT_FL_RECORDED_CMD_BIT),
+};
+
+struct ftrace_event_file {
+	struct list_head		list;
+	struct ftrace_event_call	*event_call;
+	struct dentry			*dir;
+	struct trace_array		*tr;
+	struct ftrace_subsystem_dir	*system;
 
 	/*
 	 * 32 bit flags:
@@ -223,17 +268,12 @@ struct ftrace_event_call {
 	 *
 	 * Note: Reads of flags do not hold the event_mutex since
 	 * they occur in critical sections. But the way flags
-	 * is currently used, these changes do no affect the code
+	 * is currently used, these changes do not affect the code
 	 * except that when a change is made, it may have a slight
 	 * delay in propagating the changes to other CPUs due to
 	 * caching and such.
 	 */
 	unsigned int		flags;
-
-#ifdef CONFIG_PERF_EVENTS
-	int				perf_refcount;
-	struct hlist_head __percpu	*perf_events;
-#endif
 };
 
 #define __TRACE_EVENT_FLAGS(name, value)				\
