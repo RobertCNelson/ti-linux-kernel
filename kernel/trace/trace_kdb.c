@@ -26,7 +26,7 @@ static void ftrace_dump_buf(int skip_lines, long cpu_file)
 	trace_init_global_iter(&iter);
 
 	for_each_tracing_cpu(cpu) {
-		atomic_inc(&iter.tr->data[cpu]->disabled);
+		atomic_inc(&per_cpu_ptr(iter.tr->data, cpu)->disabled);
 	}
 
 	old_userobj = trace_flags;
@@ -43,7 +43,7 @@ static void ftrace_dump_buf(int skip_lines, long cpu_file)
 	iter.iter_flags |= TRACE_FILE_LAT_FMT;
 	iter.pos = -1;
 
-	if (cpu_file == TRACE_PIPE_ALL_CPU) {
+	if (cpu_file == RING_BUFFER_ALL_CPUS) {
 		for_each_tracing_cpu(cpu) {
 			iter.buffer_iter[cpu] =
 			ring_buffer_read_prepare(iter.tr->buffer, cpu);
@@ -83,7 +83,7 @@ out:
 	trace_flags = old_userobj;
 
 	for_each_tracing_cpu(cpu) {
-		atomic_dec(&iter.tr->data[cpu]->disabled);
+		atomic_dec(&per_cpu_ptr(iter.tr->data, cpu)->disabled);
 	}
 
 	for_each_tracing_cpu(cpu)
@@ -115,7 +115,7 @@ static int kdb_ftdump(int argc, const char **argv)
 		    !cpu_online(cpu_file))
 			return KDB_BADINT;
 	} else {
-		cpu_file = TRACE_PIPE_ALL_CPU;
+		cpu_file = RING_BUFFER_ALL_CPUS;
 	}
 
 	kdb_trap_printk++;
