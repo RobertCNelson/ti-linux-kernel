@@ -21,8 +21,6 @@
 
 #include <linux/irqchip/sunxi.h>
 
-#include <asm/hardware/vic.h>
-
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
 
@@ -80,8 +78,8 @@ static void __init sunxi_dt_init(void)
 }
 
 static const char * const sunxi_board_dt_compat[] = {
-	"allwinner,sun4i",
-	"allwinner,sun5i",
+	"allwinner,sun4i-a10",
+	"allwinner,sun5i-a13",
 	NULL,
 };
 
@@ -91,6 +89,6 @@ DT_MACHINE_START(SUNXI_DT, "Allwinner A1X (Device Tree)")
 	.init_irq	= sunxi_init_irq,
 	.handle_irq	= sunxi_handle_irq,
 	.restart	= sunxi_restart,
-	.timer		= &sunxi_timer,
+	.init_time	= &sunxi_timer_init,
 	.dt_compat	= sunxi_board_dt_compat,
 MACHINE_END
