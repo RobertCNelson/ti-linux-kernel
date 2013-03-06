@@ -8,7 +8,6 @@
  *   written by Ralf Baechle (ralf@linux-mips.org)
  */
 #include <linux/console.h>
-#include <linux/printk.h>
 #include <linux/init.h>
 
 #include <asm/setup.h>
@@ -25,18 +24,20 @@ static void early_console_write(struct console *con, const char *s, unsigned n)
 	}
 }
 
-static struct console early_console_prom = {
+static struct console early_console = {
 	.name	= "early",
 	.write	= early_console_write,
 	.flags	= CON_PRINTBUFFER | CON_BOOT,
 	.index	= -1
 };
 
+static int early_console_initialized __initdata;
+
 void __init setup_early_printk(void)
 {
-	if (early_console)
+	if (early_console_initialized)
 		return;
-	early_console = &early_console_prom;
+	early_console_initialized = 1;
 
-	register_console(&early_console_prom);
+	register_console(&early_console);
 }
