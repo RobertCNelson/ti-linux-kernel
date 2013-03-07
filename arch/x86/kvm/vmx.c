@@ -2080,6 +2080,7 @@ static __init void nested_vmx_setup_ctls_msrs(void)
 		CPU_BASED_MOV_DR_EXITING | CPU_BASED_UNCOND_IO_EXITING |
 		CPU_BASED_USE_IO_BITMAPS | CPU_BASED_MONITOR_EXITING |
 		CPU_BASED_RDPMC_EXITING | CPU_BASED_RDTSC_EXITING |
+		CPU_BASED_PAUSE_EXITING |
 		CPU_BASED_ACTIVATE_SECONDARY_CONTROLS;
 	/*
 	 * We can allow some features even when not supported by the
@@ -2094,7 +2095,8 @@ static __init void nested_vmx_setup_ctls_msrs(void)
 		nested_vmx_secondary_ctls_low, nested_vmx_secondary_ctls_high);
 	nested_vmx_secondary_ctls_low = 0;
 	nested_vmx_secondary_ctls_high &=
-		SECONDARY_EXEC_VIRTUALIZE_APIC_ACCESSES;
+		SECONDARY_EXEC_VIRTUALIZE_APIC_ACCESSES |
+		SECONDARY_EXEC_WBINVD_EXITING;
 }
 
 static inline bool vmx_control_verify(u32 control, u32 low, u32 high)
@@ -5908,6 +5910,52 @@ static int (*const kvm_vmx_exit_handlers[])(struct kvm_vcpu *vcpu) = {
 static const int kvm_vmx_max_exit_handlers =
 	ARRAY_SIZE(kvm_vmx_exit_handlers);
 
+static bool nested_vmx_exit_handled_io(struct kvm_vcpu *vcpu,
+				       struct vmcs12 *vmcs12)
+{
+	unsigned long exit_qualification;
+	gpa_t bitmap, last_bitmap;
+	unsigned int port;
+	int size;
+	u8 b;
+
+	if (nested_cpu_has(vmcs12, CPU_BASED_UNCOND_IO_EXITING))
+		return 1;
+
+	if (!nested_cpu_has(vmcs12, CPU_BASED_USE_IO_BITMAPS))
+		return 0;
+
+	exit_qualification = vmcs_readl(EXIT_QUALIFICATION);
+
+	port = exit_qualification >> 16;
+	size = (exit_qualification & 7) + 1;
+
+	last_bitmap = (gpa_t)-1;
+	b = -1;
+
+	while (size > 0) {
+		if (port < 0x8000)
+			bitmap = vmcs12->io_bitmap_a;
+		else if (port < 0x10000)
+			bitmap = vmcs12->io_bitmap_b;
+		else
+			return 1;
+		bitmap += (port & 0x7fff) / 8;
+
+		if (last_bitmap != bitmap)
+			if (kvm_read_guest(vcpu->kvm, bitmap, &b, 1))
+				return 1;
+		if (b & (1 << (port & 7)))
+			return 1;
+
+		port++;
+		size--;
+		last_bitmap = bitmap;
+	}
+
+	return 0;
+}
+
 /*
  * Return 1 if we should exit from L2 to L1 to handle an MSR access access,
  * rather than handle it ourselves in L0. I.e., check whether L1 expressed
@@ -5939,7 +5987,8 @@ static bool nested_vmx_exit_handled_msr(struct kvm_vcpu *vcpu,
 	/* Then read the msr_index'th bit from this bitmap: */
 	if (msr_index < 1024*8) {
 		unsigned char b;
-		kvm_read_guest(vcpu->kvm, bitmap + msr_index/8, &b, 1);
+		if (kvm_read_guest(vcpu->kvm, bitmap + msr_index/8, &b, 1))
+			return 1;
 		return 1 & (b >> (msr_index & 7));
 	} else
 		return 1; /* let L1 handle the wrong parameter */
@@ -6033,10 +6082,10 @@ static bool nested_vmx_exit_handled_cr(struct kvm_vcpu *vcpu,
  */
 static bool nested_vmx_exit_handled(struct kvm_vcpu *vcpu)
 {
-	u32 exit_reason = vmcs_read32(VM_EXIT_REASON);
 	u32 intr_info = vmcs_read32(VM_EXIT_INTR_INFO);
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	struct vmcs12 *vmcs12 = get_vmcs12(vcpu);
+	u32 exit_reason = vmx->exit_reason;
 
 	if (vmx->nested.nested_run_pending)
 		return 0;
@@ -6097,8 +6146,7 @@ static bool nested_vmx_exit_handled(struct kvm_vcpu *vcpu)
 	case EXIT_REASON_DR_ACCESS:
 		return nested_cpu_has(vmcs12, CPU_BASED_MOV_DR_EXITING);
 	case EXIT_REASON_IO_INSTRUCTION:
-		/* TODO: support IO bitmaps */
-		return 1;
+		return nested_vmx_exit_handled_io(vcpu, vmcs12);
 	case EXIT_REASON_MSR_READ:
 	case EXIT_REASON_MSR_WRITE:
 		return nested_vmx_exit_handled_msr(vcpu, vmcs12, exit_reason);
@@ -6388,7 +6436,7 @@ static void vmx_recover_nmi_blocking(struct vcpu_vmx *vmx)
 			ktime_to_ns(ktime_sub(ktime_get(), vmx->entry_time));
 }
 
-static void __vmx_complete_interrupts(struct vcpu_vmx *vmx,
+static void __vmx_complete_interrupts(struct kvm_vcpu *vcpu,
 				      u32 idt_vectoring_info,
 				      int instr_len_field,
 				      int error_code_field)
@@ -6399,46 +6447,43 @@ static void __vmx_complete_interrupts(struct vcpu_vmx *vmx,
 
 	idtv_info_valid = idt_vectoring_info & VECTORING_INFO_VALID_MASK;
 
-	vmx->vcpu.arch.nmi_injected = false;
-	kvm_clear_exception_queue(&vmx->vcpu);
-	kvm_clear_interrupt_queue(&vmx->vcpu);
+	vcpu->arch.nmi_injected = false;
+	kvm_clear_exception_queue(vcpu);
+	kvm_clear_interrupt_queue(vcpu);
 
 	if (!idtv_info_valid)
 		return;
 
-	kvm_make_request(KVM_REQ_EVENT, &vmx->vcpu);
+	kvm_make_request(KVM_REQ_EVENT, vcpu);
 
 	vector = idt_vectoring_info & VECTORING_INFO_VECTOR_MASK;
 	type = idt_vectoring_info & VECTORING_INFO_TYPE_MASK;
 
 	switch (type) {
 	case INTR_TYPE_NMI_INTR:
-		vmx->vcpu.arch.nmi_injected = true;
+		vcpu->arch.nmi_injected = true;
 		/*
 		 * SDM 3: 27.7.1.2 (September 2008)
 		 * Clear bit "block by NMI" before VM entry if a NMI
 		 * delivery faulted.
 		 */
-		vmx_set_nmi_mask(&vmx->vcpu, false);
+		vmx_set_nmi_mask(vcpu, false);
 		break;
 	case INTR_TYPE_SOFT_EXCEPTION:
-		vmx->vcpu.arch.event_exit_inst_len =
-			vmcs_read32(instr_len_field);
+		vcpu->arch.event_exit_inst_len = vmcs_read32(instr_len_field);
 		/* fall through */
 	case INTR_TYPE_HARD_EXCEPTION:
 		if (idt_vectoring_info & VECTORING_INFO_DELIVER_CODE_MASK) {
 			u32 err = vmcs_read32(error_code_field);
-			kvm_queue_exception_e(&vmx->vcpu, vector, err);
+			kvm_queue_exception_e(vcpu, vector, err);
 		} else
-			kvm_queue_exception(&vmx->vcpu, vector);
+			kvm_queue_exception(vcpu, vector);
 		break;
 	case INTR_TYPE_SOFT_INTR:
-		vmx->vcpu.arch.event_exit_inst_len =
-			vmcs_read32(instr_len_field);
+		vcpu->arch.event_exit_inst_len = vmcs_read32(instr_len_field);
 		/* fall through */
 	case INTR_TYPE_EXT_INTR:
-		kvm_queue_interrupt(&vmx->vcpu, vector,
-			type == INTR_TYPE_SOFT_INTR);
+		kvm_queue_interrupt(vcpu, vector, type == INTR_TYPE_SOFT_INTR);
 		break;
 	default:
 		break;
@@ -6449,7 +6494,7 @@ static void vmx_complete_interrupts(struct vcpu_vmx *vmx)
 {
 	if (is_guest_mode(&vmx->vcpu))
 		return;
-	__vmx_complete_interrupts(vmx, vmx->idt_vectoring_info,
+	__vmx_complete_interrupts(&vmx->vcpu, vmx->idt_vectoring_info,
 				  VM_EXIT_INSTRUCTION_LEN,
 				  IDT_VECTORING_ERROR_CODE);
 }
@@ -6458,7 +6503,7 @@ static void vmx_cancel_injection(struct kvm_vcpu *vcpu)
 {
 	if (is_guest_mode(vcpu))
 		return;
-	__vmx_complete_interrupts(to_vmx(vcpu),
+	__vmx_complete_interrupts(vcpu,
 				  vmcs_read32(VM_ENTRY_INTR_INFO_FIELD),
 				  VM_ENTRY_INSTRUCTION_LEN,
 				  VM_ENTRY_EXCEPTION_ERROR_CODE);
@@ -7223,6 +7268,8 @@ static int nested_vmx_run(struct kvm_vcpu *vcpu, bool launch)
 	vcpu->cpu = cpu;
 	put_cpu();
 
+	vmx_segment_cache_clear(vmx);
+
 	vmcs12->launch_state = 1;
 
 	prepare_vmcs02(vcpu, vmcs12);
@@ -7284,7 +7331,7 @@ vmcs12_guest_cr4(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12)
  * exit-information fields only. Other fields are modified by L1 with VMWRITE,
  * which already writes to vmcs12 directly.
  */
-void prepare_vmcs12(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12)
+static void prepare_vmcs12(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12)
 {
 	/* update guest state fields: */
 	vmcs12->guest_cr0 = vmcs12_guest_cr0(vcpu, vmcs12);
@@ -7349,13 +7396,12 @@ void prepare_vmcs12(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12)
 
 	/* update exit information fields: */
 
-	vmcs12->vm_exit_reason  = vmcs_read32(VM_EXIT_REASON);
+	vmcs12->vm_exit_reason  = to_vmx(vcpu)->exit_reason;
 	vmcs12->exit_qualification = vmcs_readl(EXIT_QUALIFICATION);
 
 	vmcs12->vm_exit_intr_info = vmcs_read32(VM_EXIT_INTR_INFO);
 	vmcs12->vm_exit_intr_error_code = vmcs_read32(VM_EXIT_INTR_ERROR_CODE);
-	vmcs12->idt_vectoring_info_field =
-		vmcs_read32(IDT_VECTORING_INFO_FIELD);
+	vmcs12->idt_vectoring_info_field = to_vmx(vcpu)->idt_vectoring_info;
 	vmcs12->idt_vectoring_error_code =
 		vmcs_read32(IDT_VECTORING_ERROR_CODE);
 	vmcs12->vm_exit_instruction_len = vmcs_read32(VM_EXIT_INSTRUCTION_LEN);
@@ -7375,7 +7421,8 @@ void prepare_vmcs12(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12)
  * Failures During or After Loading Guest State").
  * This function should be called when the active VMCS is L1's (vmcs01).
  */
-void load_vmcs12_host_state(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12)
+static void load_vmcs12_host_state(struct kvm_vcpu *vcpu,
+				   struct vmcs12 *vmcs12)
 {
 	if (vmcs12->vm_exit_controls & VM_EXIT_LOAD_IA32_EFER)
 		vcpu->arch.efer = vmcs12->host_ia32_efer;
@@ -7467,6 +7514,8 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu)
 	vmx_vcpu_load(vcpu, cpu);
 	vcpu->cpu = cpu;
 	put_cpu();
+
+	vmx_segment_cache_clear(vmx);
 
 	/* if no vmcs02 cache requested, remove the one we used */
 	if (VMCS02_POOL_SIZE == 0)
