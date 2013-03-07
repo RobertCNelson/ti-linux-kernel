@@ -231,7 +231,7 @@ struct palmas_platform_data {
 	 * then the two value to load into the registers if true
 	 */
 	int mux_from_pdata;
-	u8 pad1, pad2;
+	u8 pad1, pad2, pad3, pad4;
 
 	struct palmas_pmic_platform_data *pmic_pdata;
 	struct palmas_gpadc_platform_data *gpadc_pdata;
@@ -2476,6 +2476,16 @@ enum usb_irq_events {
 #define PALMAS_PU_PD_GPIO_CTRL1					0x6
 #define PALMAS_PU_PD_GPIO_CTRL2					0x7
 #define PALMAS_OD_OUTPUT_GPIO_CTRL				0x8
+#define PALMAS_GPIO_DATA_IN2					0x9
+#define PALMAS_GPIO_DATA_DIR2					0xA
+#define PALMAS_GPIO_DATA_OUT2					0xB
+#define PALMAS_GPIO_DEBOUNCE_EN2				0xC
+#define PALMAS_GPIO_CLEAR_DATA_OUT2				0xD
+#define PALMAS_GPIO_SET_DATA_OUT2				0xE
+#define PALMAS_PU_PD_GPIO_CTRL3					0xF
+#define PALMAS_PU_PD_GPIO_CTRL4					0x10
+#define PALMAS_OD_OUTPUT_GPIO_CTRL2				0x11
+#define PALMAS_GPO_CTRL						0x12
 
 /* Bit definitions for GPIO_DATA_IN */
 #define PALMAS_GPIO_DATA_IN_GPIO_7_IN				0x80
