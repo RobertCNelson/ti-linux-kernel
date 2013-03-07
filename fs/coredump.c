@@ -32,6 +32,7 @@
 #include <linux/pipe_fs_i.h>
 #include <linux/oom.h>
 #include <linux/compat.h>
+#include <linux/freezer.h>
 
 #include <asm/uaccess.h>
 #include <asm/mmu_context.h>
@@ -263,7 +264,6 @@ static int zap_process(struct task_struct *start, int exit_code)
 	struct task_struct *t;
 	int nr = 0;
 
-	start->signal->flags = SIGNAL_GROUP_EXIT;
 	start->signal->group_exit_code = exit_code;
 	start->signal->group_stop_count = 0;
 
@@ -280,8 +280,8 @@ static int zap_process(struct task_struct *start, int exit_code)
 	return nr;
 }
 
-static inline int zap_threads(struct task_struct *tsk, struct mm_struct *mm,
-				struct core_state *core_state, int exit_code)
+static int zap_threads(struct task_struct *tsk, struct mm_struct *mm,
+			struct core_state *core_state, int exit_code)
 {
 	struct task_struct *g, *p;
 	unsigned long flags;
@@ -291,6 +291,11 @@ static inline int zap_threads(struct task_struct *tsk, struct mm_struct *mm,
 	if (!signal_group_exit(tsk->signal)) {
 		mm->core_state = core_state;
 		nr = zap_process(tsk, exit_code);
+		tsk->flags = PF_DUMPCORE;
+		tsk->signal->group_exit_task = tsk;
+		/* ignore all signals except SIGKILL, see prepare_signal() */
+		tsk->signal->flags = SIGNAL_GROUP_COREDUMP;
+		clear_tsk_thread_flag(tsk, TIF_SIGPENDING);
 	}
 	spin_unlock_irq(&tsk->sighand->siglock);
 	if (unlikely(nr < 0))
@@ -340,6 +345,7 @@ static inline int zap_threads(struct task_struct *tsk, struct mm_struct *mm,
 				if (unlikely(p->mm == mm)) {
 					lock_task_sighand(p, &flags);
 					nr += zap_process(p, exit_code);
+					p->signal->flags = SIGNAL_GROUP_EXIT;
 					unlock_task_sighand(p, &flags);
 				}
 				break;
@@ -386,10 +392,17 @@ static int coredump_wait(int exit_code, struct core_state *core_state)
 	return core_waiters;
 }
 
-static void coredump_finish(struct mm_struct *mm)
+static void coredump_finish(struct mm_struct *mm, bool core_dumped)
 {
 	struct core_thread *curr, *next;
 	struct task_struct *task;
+
+	spin_lock_irq(&current->sighand->siglock);
+	if (core_dumped && !__fatal_signal_pending(current))
+		current->signal->group_exit_code |= 0x80;
+	current->signal->group_exit_task = NULL;
+	current->signal->flags = SIGNAL_GROUP_EXIT;
+	spin_unlock_irq(&current->sighand->siglock);
 
 	next = mm->core_state->dumper.next;
 	while ((curr = next) != NULL) {
@@ -416,17 +429,16 @@ static void wait_for_dump_helpers(struct file *file)
 	pipe_lock(pipe);
 	pipe->readers++;
 	pipe->writers--;
+	wake_up_interruptible_sync(&pipe->wait);
+	kill_fasync(&pipe->fasync_readers, SIGIO, POLL_IN);
+	pipe_unlock(pipe);
 
-	while ((pipe->readers > 1) && (!signal_pending(current))) {
-		wake_up_interruptible_sync(&pipe->wait);
-		kill_fasync(&pipe->fasync_readers, SIGIO, POLL_IN);
-		pipe_wait(pipe);
-	}
+	wait_event_freezable(pipe->wait, pipe->readers == 1);
 
+	pipe_lock(pipe);
 	pipe->readers--;
 	pipe->writers++;
 	pipe_unlock(pipe);
-
 }
 
 /*
@@ -471,6 +483,7 @@ void do_coredump(siginfo_t *siginfo)
 	int ispipe;
 	struct files_struct *displaced;
 	bool need_nonrelative = false;
+	bool core_dumped = false;
 	static atomic_t core_dump_count = ATOMIC_INIT(0);
 	struct coredump_params cprm = {
 		.siginfo = siginfo,
@@ -513,12 +526,6 @@ void do_coredump(siginfo_t *siginfo)
 		goto fail_creds;
 
 	old_cred = override_creds(cred);
-
-	/*
-	 * Clear any false indication of pending signals that might
-	 * be seen by the filesystem code called to write the core file.
-	 */
-	clear_thread_flag(TIF_SIGPENDING);
 
 	ispipe = format_corename(&cn, &cprm);
 
@@ -629,9 +636,8 @@ void do_coredump(siginfo_t *siginfo)
 		goto close_fail;
 	if (displaced)
 		put_files_struct(displaced);
-	retval = binfmt->core_dump(&cprm);
-	if (retval)
-		current->signal->group_exit_code |= 0x80;
+
+	core_dumped = binfmt->core_dump(&cprm);
 
 	if (ispipe && core_pipe_limit)
 		wait_for_dump_helpers(cprm.file);
@@ -644,7 +650,7 @@ fail_dropcount:
 fail_unlock:
 	kfree(cn.corename);
 fail_corename:
-	coredump_finish(mm);
+	coredump_finish(mm, core_dumped);
 	revert_creds(old_cred);
 fail_creds:
 	put_cred(cred);
