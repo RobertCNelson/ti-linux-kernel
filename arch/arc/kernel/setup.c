@@ -14,14 +14,13 @@
 #include <linux/module.h>
 #include <linux/cpu.h>
 #include <linux/of_fdt.h>
+#include <linux/cache.h>
 #include <asm/sections.h>
 #include <asm/arcregs.h>
 #include <asm/tlb.h>
-#include <asm/cache.h>
 #include <asm/setup.h>
 #include <asm/page.h>
 #include <asm/irq.h>
-#include <asm/arcregs.h>
 #include <asm/prom.h>
 #include <asm/unwind.h>
 #include <asm/clk.h>
@@ -232,10 +231,8 @@ char *arc_extn_mumbojumbo(int cpu_id, char *buf, int len)
 
 	n += scnprintf(buf + n, len - n, "\n");
 
-#ifdef _ASM_GENERIC_UNISTD_H
 	n += scnprintf(buf + n, len - n,
-		       "OS ABI [v2]\t: asm-generic/{unistd,stat,fcntl}\n");
-#endif
+		       "OS ABI [v3]\t: no-legacy-syscalls\n");
 
 	return buf;
 }
