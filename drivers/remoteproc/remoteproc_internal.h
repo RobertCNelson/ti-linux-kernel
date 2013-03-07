@@ -32,6 +32,7 @@ struct rproc;
  *			expects to find it
  * @sanity_check:	sanity check the fw image
  * @get_boot_addr:	get boot address to entry point specified in firmware
+ * @get_rsctab_addr:	get resouce table address as specified in firmware
  */
 struct rproc_fw_ops {
 	struct resource_table *(*find_rsc_table) (struct rproc *rproc,
@@ -40,6 +41,8 @@ struct rproc_fw_ops {
 	int (*load)(struct rproc *rproc, const struct firmware *fw);
 	int (*sanity_check)(struct rproc *rproc, const struct firmware *fw);
 	u32 (*get_boot_addr)(struct rproc *rproc, const struct firmware *fw);
+	struct resource_table *(*get_rsctab_addr)(struct rproc *rproc,
+						const struct firmware *fw);
 };
 
 /* from remoteproc_core.c */
@@ -98,6 +101,16 @@ struct resource_table *rproc_find_rsc_table(struct rproc *rproc,
 {
 	if (rproc->fw_ops->find_rsc_table)
 		return rproc->fw_ops->find_rsc_table(rproc, fw, tablesz);
+
+	return NULL;
+}
+
+static inline
+struct resource_table *rproc_get_rsctab_addr(struct rproc *rproc,
+				const struct firmware *fw)
+{
+	if (rproc->fw_ops->get_rsctab_addr)
+		return rproc->fw_ops->get_rsctab_addr(rproc, fw);
 
 	return NULL;
 }

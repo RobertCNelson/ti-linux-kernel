@@ -182,16 +182,21 @@ error:
  */
 static u8 rproc_virtio_get_status(struct virtio_device *vdev)
 {
-	return 0;
+	struct rproc_vdev *rvdev = vdev_to_rvdev(vdev);
+	return rvdev->rsc->status;
 }
 
 static void rproc_virtio_set_status(struct virtio_device *vdev, u8 status)
 {
+	struct rproc_vdev *rvdev = vdev_to_rvdev(vdev);
+	rvdev->rsc->status = status;
 	dev_dbg(&vdev->dev, "status: %d\n", status);
 }
 
 static void rproc_virtio_reset(struct virtio_device *vdev)
 {
+	struct rproc_vdev *rvdev = vdev_to_rvdev(vdev);
+	rvdev->rsc->status = 0;
 	dev_dbg(&vdev->dev, "reset !\n");
 }
 
@@ -200,7 +205,7 @@ static u32 rproc_virtio_get_features(struct virtio_device *vdev)
 {
 	struct rproc_vdev *rvdev = vdev_to_rvdev(vdev);
 
-	return rvdev->dfeatures;
+	return rvdev->rsc->dfeatures;
 }
 
 static void rproc_virtio_finalize_features(struct virtio_device *vdev)
@@ -219,7 +224,31 @@ static void rproc_virtio_finalize_features(struct virtio_device *vdev)
 	 * fixed as part of a small resource table overhaul and then an
 	 * extension of the virtio resource entries.
 	 */
-	rvdev->gfeatures = vdev->features[0];
+	rvdev->rsc->gfeatures = vdev->features[0];
+}
+
+void rproc_virtio_get(struct virtio_device *vdev, unsigned offset,
+							void *buf, unsigned len)
+{
+	struct rproc_vdev *rvdev = vdev_to_rvdev(vdev);
+	void *cfg = &rvdev->rsc->vring[rvdev->rsc->num_of_vrings];
+	if (offset + len > rvdev->rsc->config_len)
+		dev_err(&vdev->dev,
+			"rproc_virtio_get: access out of bounds\n");
+	else
+		memcpy(buf, cfg + offset, len);
+}
+
+void rproc_virtio_set(struct virtio_device *vdev, unsigned offset,
+		      const void *buf, unsigned len)
+{
+	struct rproc_vdev *rvdev = vdev_to_rvdev(vdev);
+	void *cfg = &rvdev->rsc->vring[rvdev->rsc->num_of_vrings];
+	if (offset + len > rvdev->rsc->config_len)
+		dev_err(&vdev->dev,
+			"rproc_virtio_set: access out of bounds\n");
+	else
+		memcpy(cfg + offset, buf, len);
 }
 
 static const struct virtio_config_ops rproc_virtio_config_ops = {
@@ -230,6 +259,9 @@ static const struct virtio_config_ops rproc_virtio_config_ops = {
 	.reset		= rproc_virtio_reset,
 	.set_status	= rproc_virtio_set_status,
 	.get_status	= rproc_virtio_get_status,
+	.get		= rproc_virtio_get,
+	.set		= rproc_virtio_set,
+
 };
 
 /*
