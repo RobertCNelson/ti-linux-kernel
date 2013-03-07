@@ -150,8 +150,6 @@ static int intelfb_create(struct drm_fb_helper *helper,
 	}
 	info->screen_size = size;
 
-//	memset(info->screen_base, 0, size);
-
 	drm_fb_helper_fill_fix(info, fb->pitches[0], fb->depth);
 	drm_fb_helper_fill_var(info, &ifbdev->helper, sizes->fb_width, sizes->fb_height);
 
