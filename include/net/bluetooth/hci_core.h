@@ -248,8 +248,6 @@ struct hci_dev {
 	__u32			req_status;
 	__u32			req_result;
 
-	__u16			init_last_cmd;
-
 	struct list_head	mgmt_pending;
 
 	struct discovery_state	discovery;
@@ -574,7 +572,7 @@ static inline struct hci_conn *hci_conn_hash_lookup_state(struct hci_dev *hdev,
 	return NULL;
 }
 
-void hci_acl_disconn(struct hci_conn *conn, __u8 reason);
+void hci_disconnect(struct hci_conn *conn, __u8 reason);
 void hci_setup_sync(struct hci_conn *conn, __u16 handle);
 void hci_sco_setup(struct hci_conn *conn, __u8 status);
 
@@ -1041,6 +1039,17 @@ static inline u16 eir_append_data(u8 *eir, u16 eir_len, u8 type, u8 *data,
 int hci_register_cb(struct hci_cb *hcb);
 int hci_unregister_cb(struct hci_cb *hcb);
 
+struct hci_request {
+	struct hci_dev		*hdev;
+	struct sk_buff_head	cmd_q;
+};
+
+void hci_req_init(struct hci_request *req, struct hci_dev *hdev);
+int hci_req_run(struct hci_request *req, hci_req_complete_t complete);
+int hci_req_add(struct hci_request *req, u16 opcode, u32 plen, void *param);
+void hci_req_cmd_complete(struct hci_dev *hdev, u16 opcode, u8 status);
+void hci_req_cmd_status(struct hci_dev *hdev, u16 opcode, u8 status);
+
 int hci_send_cmd(struct hci_dev *hdev, __u16 opcode, __u32 plen, void *param);
 void hci_send_acl(struct hci_chan *chan, struct sk_buff *skb, __u16 flags);
 void hci_send_sco(struct hci_conn *conn, struct sk_buff *skb);
@@ -1152,8 +1161,6 @@ struct hci_sec_filter {
 
 #define hci_req_lock(d)		mutex_lock(&d->req_lock)
 #define hci_req_unlock(d)	mutex_unlock(&d->req_lock)
-
-void hci_req_complete(struct hci_dev *hdev, __u16 cmd, int result);
 
 void hci_le_conn_update(struct hci_conn *conn, u16 min, u16 max,
 					u16 latency, u16 to_multiplier);
