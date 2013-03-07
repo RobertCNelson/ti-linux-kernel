@@ -1,0 +1,25 @@
+Importing jdelvare-hwmon based on 2a7d2b96d5cba7568139d9ab157a0e97ab32440f
+Unchanged quilt series jdelvare-hwmon
+Importing device-mapper based on v3.9-rc1
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 6dbe51c251a327e012439c4772097a13df43c5b8
+HEAD is now at 6dbe51c Linux 3.9-rc1
+$ git am ../quilt/device-mapper/dm-thin-fix-discard-corruption.patch
+Applying: Fix a bug in dm_btree_remove that could leave leaf values with incorrect
+$ git am ../quilt/device-mapper/dm-verity-avoid-deadlock.patch
+Applying: A deadlock was found in the prefetch code in the dm verity map
+$ git am ../quilt/device-mapper/dm-cache-avoid-64-bit-division-on-32-bit.patch
+Applying: Introduce block_div to squash various 32bit link errors.
+$ git am ../quilt/device-mapper/dm-cache-detect-cache_create-failure.patch
+Applying: Return error if cache_create() fails.
+$ git am ../quilt/device-mapper/dm-cache-avoid-calling-policy-destructor-twice-on-error.patch
+Applying: If the cache policy's config values are not able to be set we must
+$ git am ../quilt/device-mapper/dm-cache-metadata-clear-dirty-bits-on-clean-shutdown.patch
+Applying: When writing the dirty bitset to the metadata device on a clean
+$ git am ../quilt/device-mapper/dm-cache-fix-race-in-writethrough-implementation.patch
+Applying: We have found a race in the optimisation used in the dm cache
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:device-mapper/master
+From ../quilt-tmp
+   6dbe51c..28467d5  master     -> device-mapper/master
