@@ -445,7 +445,7 @@
 		};
 
 		wdt2: wdt@4a314000 {
-			compatible = "ti,omap4-wdt", "ti,omap3-wdt";
+			compatible = "ti,omap4-wdt";
 			reg = <0x4a314000 0x80>;
 			interrupts = <GIC_SPI 80 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "wd_timer2";

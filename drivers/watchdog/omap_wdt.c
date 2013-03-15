@@ -43,6 +43,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/interrupt.h>
 #include <linux/platform_data/omap-wd-timer.h>
+#include <linux/of.h>
 
 #include "omap_wdt.h"
 
@@ -207,6 +208,11 @@ static int omap_wdt_ping(struct watchdog_device *wdog)
 {
 	struct omap_wdt_dev *wdev = watchdog_get_drvdata(wdog);
 
+	if (kernelpet) {
+		pr_info("Hw ping is enabled,Skipping userspace ping\n");
+		return 0;
+	}
+
 	mutex_lock(&wdev->lock);
 	omap_wdt_reload(wdev);
 	mutex_unlock(&wdev->lock);
@@ -280,12 +286,22 @@ static int omap_wdt_probe(struct platform_device *pdev)
 	if (!wdev->base)
 		return -ENOMEM;
 
-	irq = platform_get_irq(pdev, 0);
-	ret = devm_request_irq(&pdev->dev, irq, omap_wdt_interrupt, 0,
-			       dev_name(&pdev->dev), omap_wdt);
-	if (ret < 0)
-		dev_err(&pdev->dev, "can't get irq %d, err %d\n",
-			irq, ret);
+	if (pdev->dev.of_node) {
+		if (of_device_is_compatible(pdev->dev.of_node, "ti,omap3-wdt"))
+			kernelpet = 0;
+	} else {
+		if (pdata->ip_rev == WDTIMER2_IP3)
+			kernelpet = 0;
+	}
+
+	if (kernelpet) {
+		irq = platform_get_irq(pdev, 0);
+		ret = devm_request_irq(&pdev->dev, irq, omap_wdt_interrupt, 0,
+				       dev_name(&pdev->dev), omap_wdt);
+		if (ret < 0)
+			dev_err(&pdev->dev, "can't get irq %d, err %d\n",
+				irq, ret);
+	}
 
 	omap_wdt->info	      = &omap_wdt_info;
 	omap_wdt->ops	      = &omap_wdt_ops;
@@ -412,7 +428,8 @@ static int omap_wdt_resume(struct platform_device *pdev)
 #endif
 
 static const struct of_device_id omap_wdt_of_match[] = {
-	{ .compatible = "ti,omap3-wdt", },
+	{ .compatible = "ti,omap3-wdt" },
+	{ .compatible = "ti,omap4-wdt" },
 	{},
 };
 MODULE_DEVICE_TABLE(of, omap_wdt_of_match);

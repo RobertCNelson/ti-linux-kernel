@@ -16,6 +16,14 @@
 #include <linux/types.h>
 
 /*
+ * WATCHDOG IP Revisions
+ *	WDTIMER2_IP3 - Used in OMAP3
+ *	WDTIMER2_IP4 - Used in OMAP4+ Soc's
+ */
+#define WDTIMER2_IP3	1
+#define WDTIMER2_IP4	2
+
+/*
  * Standardized OMAP reset source bits
  *
  * This is a subset of the ones listed in arch/arm/mach-omap2/prm.h
@@ -33,6 +41,7 @@
  */
 struct omap_wd_timer_platform_data {
 	u32 (*read_reset_sources)(void);
+	u32 ip_rev;
 };
 
 #endif
