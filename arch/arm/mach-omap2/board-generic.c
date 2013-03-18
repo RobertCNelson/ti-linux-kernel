@@ -60,6 +60,8 @@ static void __init omap_generic_init(void)
 		legacy_init_ehci_clk("auxclk3_ck");
 	else if (of_machine_is_compatible("ti,omap5-uevm"))
 		legacy_init_ehci_clk("auxclk1_ck");
+
+	omapdss_init_of();
 }
 
 #ifdef CONFIG_SOC_OMAP2420
