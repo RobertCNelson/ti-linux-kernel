@@ -691,6 +691,14 @@ static int dss_dpi_select_source_omap5(int module_id, enum omap_channel channel)
 	return 0;
 }
 
+static int dss_dpi_select_source_dra7xx(int module_id, enum omap_channel channel)
+{
+	if (module_id != 0)
+		return 0;
+
+	return dss_dpi_select_source_omap5(module_id, channel);
+}
+
 int dss_dpi_select_source(int module_id, enum omap_channel channel)
 {
 	return dss.feat->dpi_select_source(module_id, channel);
@@ -797,6 +805,13 @@ static const struct dss_features omap54xx_dss_feats __initconst = {
 	.dpi_select_source	=	&dss_dpi_select_source_omap5,
 };
 
+static const struct dss_features dra7xx_dss_feats __initconst = {
+	.fck_div_max		=	64,
+	.dss_fck_multiplier	=	1,
+	.clk_name		=	"dpll_per_h12x2_ck",
+	.dpi_select_source	=	&dss_dpi_select_source_dra7xx,
+};
+
 static int __init dss_init_features(struct platform_device *pdev)
 {
 	const struct dss_features *src;
@@ -830,8 +845,11 @@ static int __init dss_init_features(struct platform_device *pdev)
 		break;
 
 	case OMAPDSS_VER_OMAP5:
-	case OMAPDSS_VER_DRA7xx:
 		src = &omap54xx_dss_feats;
+		break;
+
+	case OMAPDSS_VER_DRA7xx:
+		src = &dra7xx_dss_feats;
 		break;
 
 	default:
