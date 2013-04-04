@@ -386,6 +386,10 @@ static inline bool dsi_pll_calc(struct platform_device *dsidev,
 int dpi_init_platform_driver(void) __init;
 void dpi_uninit_platform_driver(void) __exit;
 
+/* DRA7x DPI */
+int dra7xx_dpi_init_platform_driver(void) __init;
+void dra7xx_dpi_uninit_platform_driver(void) __exit;
+
 /* DISPC */
 int dispc_init_platform_driver(void) __init;
 void dispc_uninit_platform_driver(void) __exit;
