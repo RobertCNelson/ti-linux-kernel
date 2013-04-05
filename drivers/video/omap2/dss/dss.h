@@ -100,6 +100,13 @@ enum dss_writeback_channel {
 	DSS_WB_LCD3_MGR =	7,
 };
 
+enum dss_dpll {
+	DSS_DPLL_VIDEO1 = 0,
+	DSS_DPLL_VIDEO2,
+	DSS_DPLL_HDMI,
+	DSS_DPLL_NONE,
+};
+
 struct dss_clock_info {
 	/* rates that we get with dividers below */
 	unsigned long fck;
@@ -137,6 +144,12 @@ struct dsi_clock_info {
 	u16 regm_dsi;	/* OMAP3: REGM4
 			 * OMAP4: REGM5 */
 	u16 lp_clk_div;
+};
+
+struct dss_dpll_cinfo {
+	unsigned long fint, clkin, clkout, hsdiv_clk;
+
+	u16 regm, regn, regm_hsdiv;
 };
 
 struct reg_field {
@@ -226,6 +239,7 @@ unsigned long dss_get_dispc_clk_rate(void);
 int dss_dpi_select_source(int module_id, enum omap_channel channel);
 void dss_select_hdmi_venc_clk_source(enum dss_hdmi_venc_clk_source_select);
 enum dss_hdmi_venc_clk_source_select dss_get_hdmi_venc_clk_source(void);
+void dss_use_dpll_lcd(enum omap_channel channel, bool use_dpll);
 const char *dss_get_generic_clk_source_name(enum omap_dss_clk_source clk_src);
 void dss_dump_clocks(struct seq_file *s);
 
@@ -448,5 +462,28 @@ static inline void dss_collect_irq_stats(u32 irqstatus, unsigned *irq_arr)
 	}
 }
 #endif
+
+typedef bool (*dss_dpll_calc_func)(int regn, int regm, unsigned long fint,
+		unsigned long pll, void *data);
+typedef bool (*dss_dpll_hsdiv_calc_func)(int regm_dispc, unsigned long dispc,
+		void *data);
+bool dss_dpll_disabled(enum dss_dpll dpll);
+unsigned long dpll_get_clkin(enum dss_dpll dpll);
+bool dss_dpll_calc(enum dss_dpll dpll, unsigned long clkin,
+		unsigned long pll_min, unsigned long pll_max,
+		dss_dpll_calc_func func, void *data);
+bool dss_dpll_hsdiv_calc(enum dss_dpll dpll, unsigned long pll,
+		unsigned long out_min, dss_dpll_hsdiv_calc_func func,
+		void *data);
+int dss_dpll_set_clock_div(enum dss_dpll dpll, struct dss_dpll_cinfo *cinfo);
+
+void dss_dpll_enable_ctrl(enum dss_dpll dpll, bool enable);
+int dss_dpll_activate(enum dss_dpll dpll);
+void dss_dpll_set_control_mux(enum omap_channel channel, enum dss_dpll dpll);
+void dss_dpll_disable(enum dss_dpll dpll);
+int dss_dpll_init_regulator(enum dss_dpll dpll);
+int dss_dpll_configure(struct platform_device *pdev);
+int dss_dpll_configure_ctrl(void);
+void dss_dpll_unconfigure_ctrl(void);
 
 #endif
