@@ -1,5 +1,5 @@
 /*
- * OMAP4XXX L3 Interconnect  error handling driver header
+ * OMAP L3 Interconnect  error handling driver header
  *
  * Copyright (C) 2011 Texas Corporation
  *	Santosh Shilimkar <santosh.shilimkar@ti.com>
@@ -20,10 +20,10 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
  * USA
  */
-#ifndef __ARCH_ARM_MACH_OMAP2_L3_INTERCONNECT_3XXX_H
-#define __ARCH_ARM_MACH_OMAP2_L3_INTERCONNECT_3XXX_H
+#ifndef OMAP_L3_NOC_H
+#define OMAP_L3_NOC_H
 
-#define L3_MODULES			3
+#define OMAP_L3_MODULES			3
 #define CLEAR_STDERR_LOG		(1 << 31)
 #define CUSTOM_ERROR			0x2
 #define STANDARD_ERROR			0x0
@@ -37,16 +37,16 @@
 #define L3_TARG_STDERRLOG_MSTADDR	0x68
 #define L3_FLAGMUX_REGERR0		0xc
 
-#define NUM_OF_L3_MASTERS	(sizeof(l3_masters)/sizeof(l3_masters[0]))
+#define OMAP_NUM_OF_L3_MASTERS	(sizeof(omap_l3_masters)/sizeof(l3_masters[0]))
 
-static u32 l3_flagmux[L3_MODULES] = {
+static u32 omap_l3_flagmux[] = {
 	0x500,
 	0x1000,
 	0X0200
 };
 
 /* L3 Target standard Error register offsets */
-static u32 l3_targ_inst_clk1[] = {
+static u32 omap_l3_targ_inst_clk1[] = {
 	0x100, /* DMM1 */
 	0x200, /* DMM2 */
 	0x300, /* ABE */
@@ -56,7 +56,7 @@ static u32 l3_targ_inst_clk1[] = {
 	0x900	/* L4 Wakeup */
 };
 
-static u32 l3_targ_inst_clk2[] = {
+static u32 omap_l3_targ_inst_clk2[] = {
 	0x500, /* CORTEX M3 */
 	0x300, /* DSS */
 	0x100, /* GPMC */
@@ -80,7 +80,7 @@ static u32 l3_targ_inst_clk2[] = {
 	0x1700 /* LLI */
 };
 
-static u32 l3_targ_inst_clk3[] = {
+static u32 omap_l3_targ_inst_clk3[] = {
 	0x0100	/* EMUSS */,
 	0x0300, /* DEBUGSS_CT_TBR */
 	0x0 /* HOST CLK3 */
@@ -89,7 +89,7 @@ static u32 l3_targ_inst_clk3[] = {
 static struct l3_masters_data {
 	u32 id;
 	char name[10];
-} l3_masters[] = {
+} omap_l3_masters[] = {
 	{ 0x0 , "MPU"},
 	{ 0x10, "CS_ADP"},
 	{ 0x14, "xxx"},
@@ -117,7 +117,7 @@ static struct l3_masters_data {
 	{ 0xC8, "USBHOSTFS"}
 };
 
-static char *l3_targ_inst_name[L3_MODULES][21] = {
+static char *omap_l3_targ_inst_name[][21] = {
 	{
 		"DMM1",
 		"DMM2",
@@ -157,20 +157,38 @@ static char *l3_targ_inst_name[L3_MODULES][21] = {
 	},
 };
 
-static u32 *l3_targ[L3_MODULES] = {
-	l3_targ_inst_clk1,
-	l3_targ_inst_clk2,
-	l3_targ_inst_clk3,
+static u32 *omap_l3_targ[] = {
+	omap_l3_targ_inst_clk1,
+	omap_l3_targ_inst_clk2,
+	omap_l3_targ_inst_clk3,
 };
 
-struct omap4_l3 {
+struct omap_l3 {
 	struct device *dev;
 	struct clk *ick;
 
 	/* memory base */
-	void __iomem *l3_base[L3_MODULES];
+	void __iomem *l3_base[3];
 
+	u32 **l3_targets;
+	struct l3_masters_data *masters_names;
+	char *(*target_names)[21];
+	u32 **l3_timeout_targets;
+	u32 *l3_flag_mux;
 	int debug_irq;
 	int app_irq;
+	int num_modules;
+	int num_masters;
 };
+
+struct omap_l3 omap_l3_data = {
+	.l3_targets = omap_l3_targ,
+	.masters_names = omap_l3_masters,
+	.target_names = omap_l3_targ_inst_name,
+	.l3_timeout_targets = NULL,
+	.num_modules = OMAP_L3_MODULES,
+	.num_masters = sizeof(omap_l3_masters)/sizeof(struct l3_masters_data),
+	.l3_flag_mux = omap_l3_flagmux,
+};
+
 #endif
