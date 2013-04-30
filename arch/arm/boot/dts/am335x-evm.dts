@@ -26,7 +26,7 @@
 
 	am33xx_pinmux: pinmux@44e10800 {
 		pinctrl-names = "default";
-		pinctrl-0 = <&matrix_keypad_s0 &volume_keys_s0 &clkout2_pin>;
+		pinctrl-0 = <&matrix_keypad_s0 &volume_keys_s0 &clkout2_pin &mmc2_pins &wlan_pins>;
 
 		matrix_keypad_s0: matrix_keypad_s0 {
 			pinctrl-single,pins = <
@@ -195,6 +195,29 @@
 				0x110 (PIN_INPUT_PULLDOWN | MUX_MODE4) /* mii1_txd3.mcasp1_fsx */
 				0x108 (PIN_OUTPUT_PULLDOWN | MUX_MODE4) /* mii1_col.mcasp1_axr2 */
 				0x144 (PIN_INPUT_PULLDOWN | MUX_MODE4) /* rmii1_ref_clk.mcasp1_axr3 */
+			>;
+		};
+
+		/* wl12xx/wl18xx card on mmc2 */
+		mmc2_pins: pinmux_mmc2_pins {
+			pinctrl-single,pins = <
+				0x44 0x33	/* gpmc_a1.mmc2_dat0, INPUT_PULLUP | MODE3 */
+				0x48 0x33	/* gpmc_a2.mmc2_dat1, INPUT_PULLUP | MODE3 */
+				0x4C 0x33	/* gpmc_a3.mmc2_dat2, INPUT_PULLUP | MODE3 */
+				0x78 0x33	/* gpmc_ben1.mmc2_dat3, INPUT_PULLUP | MODE3 */
+				0x88 0x33	/* gpmc_csn3.mmc2_cmd, INPUT_PULLUP | MODE3 */
+				0x8C 0x33	/* gpmc_clk.mmc2_clk, INPUT_PULLUP | MODE3 */
+			>;
+		};
+
+		/* wl12xx/wl18xx card enable/irq GPIOs. works with ECO board
+		   for wowlan.*/
+		wlan_pins: pinmux_wlan_pins {
+			pinctrl-single,pins = <
+				/* TODO: disable pullup when WLAN is off (saves power?) */
+				0x198 0x17	/* mcasp0_axr0.gpio3_16, OUTPUT_PULLUP | MODE7 */
+				0x1B0 0x27	/* xdma_event_intr0.gpio0_19, INPUT | MODE7 */
+				0x1AC 0x17	/* mcasp0_ahclkx.gpio3_21, OUTPUT_PULLUP | MODE7 */
 			>;
 		};
 	};
@@ -440,6 +463,20 @@
 		regulator-boot-on;
 	};
 
+	wlan_en_reg: fixedregulator@2 {
+		compatible = "regulator-fixed";
+		regulator-name = "wlan-en-regulator";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+
+		/* WLAN_EN GPIO for this board - Bank1, pin16 */
+		gpio = <&gpio1 16 0>;
+
+		/* WLAN card specific delay */
+		startup-delay-us = <70000>;
+		enable-active-high;
+	};
+
 	matrix_keypad: matrix_keypad@0 {
 		compatible = "gpio-matrix-keypad";
 		debounce-delay-ms = <5>;
@@ -521,6 +558,19 @@
 			};
 		};
 	};
+
+	wlcore {
+		compatible = "wlcore";
+		gpio = <113>; /* Bank3, pin17 */
+
+		/* use edge irqs for suspend/resume */
+		platform-quirks = <1>;
+
+		/* if a 12xx card is there, configure the clock to
+		   WL12XX_REFCLOCK_38_XTAL */
+		board-ref-clock = <4>;
+	};
+
 };
 
 #include "tps65910.dtsi"
@@ -664,4 +714,25 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&mmc1_pins>;
 	cd-gpios = <&gpio0 6 GPIO_ACTIVE_HIGH>;
+};
+
+&mmc3 {
+	/* these are on the crossbar and are outlined in the
+	   xbar-event-map element */
+	dmas = <&edma 12
+		&edma 13>;
+	dma-names = "tx", "rx";
+
+	status = "okay";
+	vmmc-supply = <&wlan_en_reg>;
+	bus-width = <4>;
+	ti,non-removable;
+	ti,needs-special-hs-handling;
+	cap-power-off-card;
+	keep-power-in-suspend;
+};
+
+&edma {
+	ti,edma-xbar-event-map = <1 12
+				  2 13>;
 };
