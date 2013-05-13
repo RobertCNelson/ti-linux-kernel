@@ -13,6 +13,7 @@
 #include <linux/interrupt.h>
 #include <linux/platform_device.h>
 #include <linux/io.h>
+#include <linux/delay.h>
 
 #include "omap-mbox.h"
 
@@ -37,6 +38,7 @@ struct omap_mbox1_fifo {
 struct omap_mbox1_priv {
 	struct omap_mbox1_fifo tx_fifo;
 	struct omap_mbox1_fifo rx_fifo;
+	bool empty_flag;
 };
 
 static inline int mbox_read_reg(size_t ofs)
@@ -59,6 +61,7 @@ static mbox_msg_t omap1_mbox_fifo_read(struct omap_mbox *mbox)
 	msg = mbox_read_reg(fifo->data);
 	msg |= ((mbox_msg_t) mbox_read_reg(fifo->cmd)) << 16;
 
+	(struct omap_mbox1_priv *)(mbox->priv)->empty_flag = false;
 	return msg;
 }
 
@@ -74,7 +77,9 @@ omap1_mbox_fifo_write(struct omap_mbox *mbox, mbox_msg_t msg)
 
 static int omap1_mbox_fifo_empty(struct omap_mbox *mbox)
 {
-	return 0;
+	struct omap_mbox1_priv *priv = (struct omap_mbox1_priv *)mbox->priv;
+
+	return priv->empty_flag ? 0 : 1;
 }
 
 static int omap1_mbox_fifo_full(struct omap_mbox *mbox)
@@ -83,6 +88,18 @@ static int omap1_mbox_fifo_full(struct omap_mbox *mbox)
 		&((struct omap_mbox1_priv *)mbox->priv)->rx_fifo;
 
 	return mbox_read_reg(fifo->flag);
+}
+
+static int omap1_mbox_poll_for_space(struct omap_mbox *mbox)
+{
+	int i = 1000;
+
+	while (omap1_mbox_fifo_full(mbox)) {
+		if (--i == 0)
+			return -1;
+		udelay(1);
+	}
+	return 0;
 }
 
 /* irq */
@@ -103,17 +120,21 @@ omap1_mbox_disable_irq(struct omap_mbox *mbox, omap_mbox_irq_t irq)
 static int
 omap1_mbox_is_irq(struct omap_mbox *mbox, omap_mbox_irq_t irq)
 {
+	struct omap_mbox1_priv *priv = (struct omap_mbox1_priv *)mbox->priv;
+
 	if (irq == IRQ_TX)
 		return 0;
+	if (irq == IRQ_RX)
+		priv->empty_flag = true;
+
 	return 1;
 }
 
 static struct omap_mbox_ops omap1_mbox_ops = {
-	.type		= OMAP_MBOX_TYPE1,
 	.fifo_read	= omap1_mbox_fifo_read,
 	.fifo_write	= omap1_mbox_fifo_write,
 	.fifo_empty	= omap1_mbox_fifo_empty,
-	.fifo_full	= omap1_mbox_fifo_full,
+	.poll_for_space	= omap1_mbox_poll_for_space,
 	.enable_irq	= omap1_mbox_enable_irq,
 	.disable_irq	= omap1_mbox_disable_irq,
 	.is_irq		= omap1_mbox_is_irq,
