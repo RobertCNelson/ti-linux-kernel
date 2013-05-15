@@ -34,9 +34,6 @@
 
 static struct omap_mbox **mboxes;
 
-static int mbox_configured;
-static DEFINE_MUTEX(mbox_configured_lock);
-
 static unsigned int mbox_kfifo_size = CONFIG_OMAP_MBOX_KFIFO_SIZE;
 module_param(mbox_kfifo_size, uint, S_IRUGO);
 MODULE_PARM_DESC(mbox_kfifo_size, "Size of omap's mailbox kfifo (bytes)");
@@ -265,14 +262,12 @@ static int omap_mbox_startup(struct omap_mbox *mbox)
 {
 	int ret = 0;
 	struct omap_mbox_queue *mq;
+	struct omap_mbox_device *mdev = mbox->parent;
 
-	mutex_lock(&mbox_configured_lock);
-	if (!mbox_configured++) {
-		if (likely(mbox->ops->startup)) {
-			ret = mbox->ops->startup(mbox);
-			if (unlikely(ret))
-				goto fail_startup;
-		} else
+	mutex_lock(&mdev->cfg_lock);
+	if (mbox->ops->startup) {
+		ret = mbox->ops->startup(mbox);
+		if (ret)
 			goto fail_startup;
 	}
 
@@ -301,7 +296,7 @@ static int omap_mbox_startup(struct omap_mbox *mbox)
 
 		omap_mbox_enable_irq(mbox, IRQ_RX);
 	}
-	mutex_unlock(&mbox_configured_lock);
+	mutex_unlock(&mdev->cfg_lock);
 	return 0;
 
 fail_request_irq:
@@ -313,14 +308,15 @@ fail_alloc_txq:
 		mbox->ops->shutdown(mbox);
 	mbox->use_count--;
 fail_startup:
-	mbox_configured--;
-	mutex_unlock(&mbox_configured_lock);
+	mutex_unlock(&mdev->cfg_lock);
 	return ret;
 }
 
 static void omap_mbox_fini(struct omap_mbox *mbox)
 {
-	mutex_lock(&mbox_configured_lock);
+	struct omap_mbox_device *mdev = mbox->parent;
+
+	mutex_lock(&mdev->cfg_lock);
 
 	if (!--mbox->use_count) {
 		omap_mbox_disable_irq(mbox, IRQ_RX);
@@ -331,12 +327,10 @@ static void omap_mbox_fini(struct omap_mbox *mbox)
 		mbox_queue_free(mbox->rxq);
 	}
 
-	if (likely(mbox->ops->shutdown)) {
-		if (!--mbox_configured)
-			mbox->ops->shutdown(mbox);
-	}
+	if (mbox->ops->shutdown)
+		mbox->ops->shutdown(mbox);
 
-	mutex_unlock(&mbox_configured_lock);
+	mutex_unlock(&mdev->cfg_lock);
 }
 
 struct omap_mbox *omap_mbox_get(const char *name, struct notifier_block *nb)

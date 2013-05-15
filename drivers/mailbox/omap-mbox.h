@@ -45,12 +45,22 @@ struct omap_mbox_queue {
 	bool full;
 };
 
+struct omap_mbox_device {
+	struct device *dev;
+	struct mutex cfg_lock;
+	void __iomem *mbox_base;
+	u32 num_users;
+	u32 num_fifos;
+	struct omap_mbox **mboxes;
+};
+
 struct omap_mbox {
 	const char		*name;
 	unsigned int		irq;
 	struct omap_mbox_queue	*txq, *rxq;
 	struct omap_mbox_ops	*ops;
 	struct device		*dev;
+	struct omap_mbox_device *parent;
 	void			*priv;
 	int			use_count;
 	struct blocking_notifier_head	notifier;

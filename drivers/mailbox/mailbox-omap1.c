@@ -27,7 +27,7 @@
 #define MAILBOX_DSP2ARM1_Flag		0x1c
 #define MAILBOX_DSP2ARM2_Flag		0x20
 
-static void __iomem *mbox_base;
+static struct omap_mbox_device omap1_mbox_device;
 
 struct omap_mbox1_fifo {
 	unsigned long cmd;
@@ -43,12 +43,12 @@ struct omap_mbox1_priv {
 
 static inline int mbox_read_reg(size_t ofs)
 {
-	return __raw_readw(mbox_base + ofs);
+	return __raw_readw(omap1_mbox_device.mbox_base + ofs);
 }
 
 static inline void mbox_write_reg(u32 val, size_t ofs)
 {
-	__raw_writew(val, mbox_base + ofs);
+	__raw_writew(val, omap1_mbox_device.mbox_base + ofs);
 }
 
 /* msg */
@@ -160,6 +160,7 @@ static struct omap_mbox mbox_dsp_info = {
 	.name	= "dsp",
 	.ops	= &omap1_mbox_ops,
 	.priv	= &omap1_mbox_dsp_priv,
+	.parent	= &omap1_mbox_device,
 };
 
 static struct omap_mbox *omap1_mboxes[] = { &mbox_dsp_info, NULL };
@@ -169,6 +170,7 @@ static int omap1_mbox_probe(struct platform_device *pdev)
 	struct resource *mem;
 	int ret;
 	struct omap_mbox **list;
+	struct omap_mbox_device *mdev = &omap1_mbox_device;
 
 	list = omap1_mboxes;
 	list[0]->irq = platform_get_irq_byname(pdev, "dsp");
@@ -177,13 +179,18 @@ static int omap1_mbox_probe(struct platform_device *pdev)
 	if (!mem)
 		return -ENOENT;
 
-	mbox_base = ioremap(mem->start, resource_size(mem));
-	if (!mbox_base)
+	mdev->mbox_base = ioremap(mem->start, resource_size(mem));
+	if (!mdev->mbox_base)
 		return -ENOMEM;
+	mutex_init(&mdev->cfg_lock);
+	mdev->dev = &pdev->dev;
+	mdev->mboxes = omap1_mboxes;
+	mdev->num_users = 2;
+	mdev->num_fifos = 4;
 
 	ret = omap_mbox_register(&pdev->dev, list);
 	if (ret) {
-		iounmap(mbox_base);
+		iounmap(mdev->mbox_base);
 		return ret;
 	}
 
@@ -192,8 +199,14 @@ static int omap1_mbox_probe(struct platform_device *pdev)
 
 static int omap1_mbox_remove(struct platform_device *pdev)
 {
+	struct omap_mbox_device *mdev = &omap1_mbox_device;
+
 	omap_mbox_unregister();
-	iounmap(mbox_base);
+	iounmap(mdev->mbox_base);
+	mdev->mbox_base = NULL;
+	mdev->mboxes = NULL;
+	mdev->dev = NULL;
+
 	return 0;
 }
 
