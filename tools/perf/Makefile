@@ -28,6 +28,9 @@ ifeq ($(JOBS),)
   ifeq ($(JOBS),)
     JOBS := 1
   endif
+  ifeq ($(ARCH),mips)
+    LIB_H += arch/mips/include/perf_regs.h
+  endif
 endif
 
 #
