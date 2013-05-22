@@ -81,6 +81,7 @@ config SOC_AM43XX
 	select ARM_GIC
 	select COMMON_CLK
 	select MACH_OMAP_GENERIC
+	select MIGHT_HAVE_CACHE_L2X0
 
 config ARCH_OMAP2PLUS
 	bool
