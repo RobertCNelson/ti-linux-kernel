@@ -1641,7 +1641,6 @@ static void dispc_ovl_set_rotation_attrs(enum omap_plane plane, u8 rotation,
 			row_repeat = false;
 	}
 
-	REG_FLD_MOD(DISPC_OVL_ATTRIBUTES(plane), vidrot, 13, 12);
 	if (dss_has_feature(FEAT_ROWREPEATENABLE))
 		REG_FLD_MOD(DISPC_OVL_ATTRIBUTES(plane),
 			row_repeat ? 1 : 0, 18, 18);
@@ -1650,10 +1649,14 @@ static void dispc_ovl_set_rotation_attrs(enum omap_plane plane, u8 rotation,
 		bool doublestride = (rotation_type == OMAP_DSS_ROT_TILER) &&
 					(rotation == OMAP_DSS_ROT_0 ||
 					rotation == OMAP_DSS_ROT_180);
+
+		vidrot = rotation_type != OMAP_DSS_ROT_TILER ? 1 : vidrot;
+
 		/* DOUBLESTRIDE */
 		REG_FLD_MOD(DISPC_OVL_ATTRIBUTES(plane), doublestride, 22, 22);
 	}
 
+	REG_FLD_MOD(DISPC_OVL_ATTRIBUTES(plane), vidrot, 13, 12);
 }
 
 static int color_mode_to_bpp(enum omap_color_mode color_mode)
