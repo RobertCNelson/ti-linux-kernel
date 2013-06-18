@@ -1,0 +1,48 @@
+Binding for Texas Instruments autoidling clock.
+
+This binding uses the common clock binding[1]. Autoidle clocks
+are inherited clocks from basic divider-clock [2] or
+fixed-factor-clock [3] and just add autoidle support on top of
+this. Autoidle is an OMAP clock feature, which allows the clock
+to gate autonomously by hardware when they are no longer needed.
+The autoidle feature must be enabled manually for these clocks.
+Otherwise the clocks behave exactly as their base clock type.
+
+[1] Documentation/devicetree/bindings/clock/clock-bindings.txt
+[2] Documentation/devicetree/bindings/clock/divider-clock.txt
+[3] Documentation/devicetree/bindings/clock/fixed-factor-clock.txt
+
+Required properties:
+- compatible : shall be one of:
+		"ti,divider-clock",
+		"ti,fixed-factor-clock"
+- ti,autoidle-shift : bit shift of the autoidle enable bit for the clock
+- reg : base address for the control register of this clock
+
+Optional properties:
+- ti,autoidle-low : autoidle is enabled by setting the bit to 0
+
+Other properties as per the base clock type.
+
+Examples:
+	dpll_abe_m2x2_ck: dpll_abe_m2x2_ck@4a0051f0 {
+		#clock-cells = <0>;
+		compatible = "ti,divider-clock";
+		clocks = <&dpll_abe_x2_ck>;
+		ti,autoidle-shift = <8>;
+		reg = <0x4a0051f0 0x4>;
+		bit-mask = <0x1f>;
+		index-starts-at-one;
+		ti,autoidle-low;
+	};
+
+	dpll_usb_clkdcoldo_ck: dpll_usb_clkdcoldo_ck@4a0081b4 {
+		#clock-cells = <0>;
+		compatible = "ti,fixed-factor-clock";
+		clocks = <&dpll_usb_ck>;
+		ti,autoidle-shift = <8>;
+		clock-div = <1>;
+		reg = <0x4a0081b4 0x4>;
+		clock-mult = <1>;
+		ti,autoidle-low;
+	};

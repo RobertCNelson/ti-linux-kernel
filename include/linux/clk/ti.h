@@ -180,6 +180,13 @@ int omap3_dpll4_set_rate(struct clk_hw *clk, unsigned long rate,
 			 unsigned long parent_rate);
 
 void omap_dt_clocks_register(struct omap_dt_clk *oclks);
+#ifdef CONFIG_OF
+void of_omap_clk_allow_autoidle_all(void);
+void of_omap_clk_deny_autoidle_all(void);
+#else
+static inline void of_omap_clk_allow_autoidle_all(void) { }
+static inline void of_omap_clk_deny_autoidle_all(void) { }
+#endif
 
 extern const struct clk_hw_omap_ops clkhwops_omap3_dpll;
 extern const struct clk_hw_omap_ops clkhwops_omap4_dpllmx;
