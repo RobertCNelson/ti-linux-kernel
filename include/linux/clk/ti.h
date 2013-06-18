@@ -132,6 +132,33 @@ struct clk_hw_omap {
 	const struct clk_hw_omap_ops	*ops;
 };
 
+/*
+ * struct clk_hw_omap.flags possibilities
+ *
+ * XXX document the rest of the clock flags here
+ *
+ * ENABLE_REG_32BIT: (OMAP1 only) clock control register must be accessed
+ *     with 32bit ops, by default OMAP1 uses 16bit ops.
+ * CLOCK_IDLE_CONTROL: (OMAP1 only) clock has autoidle support.
+ * CLOCK_NO_IDLE_PARENT: (OMAP1 only) when clock is enabled, its parent
+ *     clock is put to no-idle mode.
+ * ENABLE_ON_INIT: Clock is enabled on init.
+ * INVERT_ENABLE: By default, clock enable bit behavior is '1' enable, '0'
+ *     disable. This inverts the behavior making '0' enable and '1' disable.
+ * CLOCK_CLKOUTX2: (OMAP4 only) DPLL CLKOUT and CLKOUTX2 GATE_CTRL
+ *     bits share the same register.  This flag allows the
+ *     omap4_dpllmx*() code to determine which GATE_CTRL bit field
+ *     should be used.  This is a temporary solution - a better approach
+ *     would be to associate clock type-specific data with the clock,
+ *     similar to the struct dpll_data approach.
+ */
+#define ENABLE_REG_32BIT        (1 << 0)        /* Use 32-bit access */
+#define CLOCK_IDLE_CONTROL      (1 << 1)
+#define CLOCK_NO_IDLE_PARENT    (1 << 2)
+#define ENABLE_ON_INIT          (1 << 3)        /* Enable upon framework init */
+#define INVERT_ENABLE           (1 << 4)        /* 0 enables, 1 disables */
+#define CLOCK_CLKOUTX2          (1 << 5)
+
 /* CM_CLKEN_PLL*.EN* bit values - not all are available for every DPLL */
 #define DPLL_LOW_POWER_STOP	0x1
 #define DPLL_LOW_POWER_BYPASS	0x5
@@ -176,8 +203,13 @@ long omap2_dpll_round_rate(struct clk_hw *hw, unsigned long target_rate,
 void omap2_init_clk_clkdm(struct clk_hw *clk);
 unsigned long omap3_clkoutx2_recalc(struct clk_hw *hw,
 				    unsigned long parent_rate);
+int omap2_clkops_enable_clkdm(struct clk_hw *hw);
+void omap2_clkops_disable_clkdm(struct clk_hw *hw);
 int omap3_dpll4_set_rate(struct clk_hw *clk, unsigned long rate,
 			 unsigned long parent_rate);
+int omap2_dflt_clk_enable(struct clk_hw *hw);
+void omap2_dflt_clk_disable(struct clk_hw *hw);
+int omap2_dflt_clk_is_enabled(struct clk_hw *hw);
 
 void omap_dt_clocks_register(struct omap_dt_clk *oclks);
 #ifdef CONFIG_OF
@@ -190,5 +222,8 @@ static inline void of_omap_clk_deny_autoidle_all(void) { }
 
 extern const struct clk_hw_omap_ops clkhwops_omap3_dpll;
 extern const struct clk_hw_omap_ops clkhwops_omap4_dpllmx;
+extern const struct clk_hw_omap_ops clkhwops_wait;
+extern const struct clk_hw_omap_ops clkhwops_omap3430es2_dss_usbhost_wait;
+extern const struct clk_hw_omap_ops clkhwops_am35xx_ipss_module_wait;
 
 #endif
