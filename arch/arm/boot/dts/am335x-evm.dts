@@ -268,7 +268,7 @@
 			nand@0,0 {
 				reg = <0 0 0>; /* CS0, offset 0 */
 				nand-bus-width = <8>;
-				ti,nand-ecc-opt = "bch8";
+				ti,nand-ecc-scheme = "bch8";
 				gpmc,device-nand = "true";
 				gpmc,device-width = <1>;
 				gpmc,sync-clk-ps = <0>;
@@ -296,7 +296,7 @@
 
 				#address-cells = <1>;
 				#size-cells = <1>;
-				elm_id = <&elm>;
+				ti,elm-id = <&elm>;
 
 				/* MTD partition table */
 				partition@0 {
