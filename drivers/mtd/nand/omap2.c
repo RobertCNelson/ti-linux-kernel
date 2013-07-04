@@ -1407,7 +1407,7 @@ static int is_elm_present(struct omap_nand_info *info,
 	}
 	/* ELM module available, now configure it */
 	info->elm_dev = &pdev->dev;
-	if (elm_config(info->elm_dev, bch_type))
+	if (elm_config(info->elm_dev, &info->mtd, bch_type))
 		return -ENODEV;
 	return 0;
 }
