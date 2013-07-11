@@ -1,0 +1,41 @@
+/*
+ * Copyright (C) 2013 Texas Instruments Incorporated - http://www.ti.com/
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+&tps {
+	compatible = "ti,tps65218";
+	interrupt-controller;
+	#interrupt-cells = <2>;
+
+	dcdc1: regulator-dcdc1 {
+		compatible = "ti,tps65218-dcdc1";
+	};
+
+	dcdc2: regulator-dcdc2 {
+		compatible = "ti,tps65218-dcdc2";
+	};
+
+	dcdc3: regulator-dcdc3 {
+		compatible = "ti,tps65218-dcdc3";
+	};
+
+	dcdc4: regulator-dcdc4 {
+		compatible = "ti,tps65218-dcdc4";
+	};
+
+	dcdc5: regulator-dcdc5 {
+		compatible = "ti,tps65218-dcdc5";
+	};
+
+	dcdc6: regulator-dcdc6 {
+		compatible = "ti,tps65218-dcdc6";
+	};
+
+	ldo1: regulator-ldo1 {
+		compatible = "ti,tps65218-ldo1";
+	};
+};
