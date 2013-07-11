@@ -801,6 +801,35 @@
 			reg = <0x44e00000 0x1300>;
 			#reset-cells = <1>;
 		};
+
+		sham: sham@53100000 {
+			compatible = "ti,omap4-sham";
+			ti,hwmods = "sham";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0x53100000 0x200>;
+			interrupt-parent = <&intc>;
+			interrupts = <109>;
+			dmas = <&edma 36>;
+			dma-names = "rx";
+			clocks = <&l3_gclk>;
+			clock-names = "fck";
+		};
+
+		aes: aes@53500000 {
+			compatible = "ti,omap4-aes";
+			ti,hwmods = "aes";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0x53500000 0xa0>;
+			interrupt-parent = <&intc>;
+			interrupts = <103>;
+			dmas = <&edma 6
+				&edma 5>;
+			dma-names = "tx", "rx";
+			clocks = <&aes0_fck>;
+			clock-names = "fck";
+		};
 	};
 
 	clocks {
