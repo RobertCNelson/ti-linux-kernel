@@ -48,6 +48,16 @@ perf_callchain_kernel(struct perf_callchain_entry *entry, struct pt_regs *regs)
 	arc_unwind_core(NULL, regs, callchain_trace, &ctrl);
 }
 
+void
+perf_callchain_user(struct perf_callchain_entry *entry, struct pt_regs *regs)
+{
+	/*
+	 * User stack can't be unwound trivially with kernel dwarf unwinder
+	 * So for now just record the user PC
+	 */
+	perf_callchain_store(entry, instruction_pointer(regs));
+}
+
 /*
  * Some ARC pct quirks:
  *
