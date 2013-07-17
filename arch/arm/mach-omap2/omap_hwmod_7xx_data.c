@@ -2106,6 +2106,12 @@ static struct omap_hwmod_addr_space dra7xx_mmu0_dsp1_addrs[] = {
 		.pa_end		= 0x40d010ff,
 		.flags		= ADDR_TYPE_RT,
 	},
+	{
+		.name		= "dsp_system",
+		.pa_start	= 0x40d00000,
+		.pa_end		= 0x40d000ff,
+		.flags		= ADDR_TYPE_RT,
+	},
 	{ }
 };
 
@@ -2122,6 +2128,12 @@ static struct omap_hwmod_addr_space dra7xx_mmu1_dsp1_addrs[] = {
 	{
 		.pa_start	= 0x40d02000,
 		.pa_end		= 0x40d020ff,
+		.flags		= ADDR_TYPE_RT,
+	},
+	{
+		.name		= "dsp_system",
+		.pa_start	= 0x40d00000,
+		.pa_end		= 0x40d000ff,
 		.flags		= ADDR_TYPE_RT,
 	},
 	{ }
@@ -2142,6 +2154,12 @@ static struct omap_hwmod_addr_space dra7xx_mmu0_dsp2_addrs[] = {
 		.pa_end		= 0x415010ff,
 		.flags		= ADDR_TYPE_RT,
 	},
+	{
+		.name		= "dsp_system",
+		.pa_start	= 0x41500000,
+		.pa_end		= 0x415000ff,
+		.flags		= ADDR_TYPE_RT,
+	},
 	{ }
 };
 
@@ -2158,6 +2176,12 @@ static struct omap_hwmod_addr_space dra7xx_mmu1_dsp2_addrs[] = {
 	{
 		.pa_start	= 0x41502000,
 		.pa_end		= 0x415020ff,
+		.flags		= ADDR_TYPE_RT,
+	},
+	{
+		.name		= "dsp_system",
+		.pa_start	= 0x41500000,
+		.pa_end		= 0x415000ff,
 		.flags		= ADDR_TYPE_RT,
 	},
 	{ }
