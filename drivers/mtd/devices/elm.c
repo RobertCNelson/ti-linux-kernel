@@ -223,6 +223,35 @@ static void elm_load_syndrome(struct elm_info *info,
 				elm_write_reg(info, (ELM_SYNDROME_FRAGMENT_3 +
 						 offset), cpu_to_le32(val));
 				break;
+			case BCH16_ECC:
+				val =	*(ecc + 25) << 0  | *(ecc + 24) <<  8 |
+					*(ecc + 23) << 16 | *(ecc + 22) << 24;
+				elm_write_reg(info, (ELM_SYNDROME_FRAGMENT_0 +
+						 offset), cpu_to_le32(val));
+				val =	*(ecc + 21) <<  0 | *(ecc + 20) <<  8 |
+					*(ecc + 19) << 16 | *(ecc + 18) << 24;
+				elm_write_reg(info, (ELM_SYNDROME_FRAGMENT_1 +
+						 offset), cpu_to_le32(val));
+				val =	*(ecc + 17) <<  0 | *(ecc + 16) <<  8 |
+					*(ecc + 15) << 16 | *(ecc + 14) << 24;
+				elm_write_reg(info, (ELM_SYNDROME_FRAGMENT_2 +
+						 offset), cpu_to_le32(val));
+				val =	*(ecc + 13) <<  0 | *(ecc + 12) <<  8 |
+					*(ecc + 11) << 16 | *(ecc + 10) << 24;
+				elm_write_reg(info, (ELM_SYNDROME_FRAGMENT_3 +
+						 offset), cpu_to_le32(val));
+				val =	*(ecc +  9) <<  0 | *(ecc +  8) <<  8 |
+					*(ecc +  7) << 16 | *(ecc +  6) << 24;
+				elm_write_reg(info, (ELM_SYNDROME_FRAGMENT_4 +
+						 offset), cpu_to_le32(val));
+				val =	*(ecc +  5) <<  0 | *(ecc +  4) <<  8 |
+					*(ecc +  3) << 16 | *(ecc +  2) << 24;
+				elm_write_reg(info, (ELM_SYNDROME_FRAGMENT_5 +
+						 offset), cpu_to_le32(val));
+				val =	*(ecc +  1) <<  0 | *(ecc +  0) <<  8;
+				elm_write_reg(info, (ELM_SYNDROME_FRAGMENT_6 +
+						 offset), cpu_to_le32(val));
+				break;
 			}
 		}
 	}
