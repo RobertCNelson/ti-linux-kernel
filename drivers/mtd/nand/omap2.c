@@ -130,9 +130,13 @@
 #define BADBLOCK_MARKER_LENGTH		0x2
 
 #ifdef CONFIG_MTD_NAND_OMAP_BCH
-static u_char bch8_vector[] = {0xf3, 0xdb, 0x14, 0x16, 0x8b, 0xd2, 0xbe, 0xcc,
-	0xac, 0x6b, 0xff, 0x99, 0x7b};
-static u_char bch4_vector[] = {0x00, 0x6b, 0x31, 0xdd, 0x41, 0xbc, 0x10};
+static u_char bch4_vector[]  = {0x00, 0x6b, 0x31, 0xdd, 0x41, 0xbc, 0x10};
+static u_char bch8_vector[]  = {0xf3, 0xdb, 0x14, 0x16, 0x8b, 0xd2, 0xbe, 0xcc,
+				0xac, 0x6b, 0xff, 0x99, 0x7b};
+static u_char bch16_vector[] = {0xf5, 0x24, 0x1c, 0xd0, 0x61, 0xb3, 0xf1, 0x55,
+				0x2e, 0x2c, 0x86, 0xa3, 0xed, 0x36, 0x1b, 0x78,
+				0x48, 0x76, 0xa9, 0x3b, 0x97, 0xd1, 0x7a, 0x93,
+				0x07, 0x0e};
 #endif
 static u8  bch4_polynomial[] = {0x28, 0x13, 0xcc, 0x39, 0x96, 0xac, 0x7f};
 static u8  bch8_polynomial[] = {0xef, 0x51, 0x2e, 0x09, 0xed, 0x93, 0x9a, 0xc2,
@@ -1062,6 +1066,19 @@ static void omap_enable_hwecc(struct mtd_info *mtd, int mode)
 			eccsize1 = 28; /* OOB bits in nibbles per sector */
 		}
 		break;
+	case OMAP_ECC_BCH16_CODE_HW:
+		ecc_algo = 0x1;
+		bch_type = 0x2;
+		if (mode == GPMC_ECC_READ) {
+			bch_wrapmode = 0x01;
+			eccsize0 = 52; /* ECC bits in nibbles per sector */
+			eccsize1 = 0;  /* non-ECC bits in nibbles per sector */
+		} else if (mode == GPMC_ECC_WRITE) {
+			bch_wrapmode = 0x01;
+			eccsize0 = 0;  /* extra bits in nibbles per sector */
+			eccsize1 = 52; /* OOB bits in nibbles per sector */
+		}
+		break;
 	default:
 		pr_err("selected ECC scheme not supported or not enabled\n");
 	}
@@ -1153,6 +1170,41 @@ static int omap_calculate_ecc_bch(struct mtd_info *mtd, const u_char *dat,
 			*(ecc_ptr++) = ((val >>  8) & 0xFF);
 			*(ecc_ptr++) = ((val >>  0) & 0xFF);
 			break;
+		case OMAP_ECC_BCH16_CODE_HW:
+			val = readl(gpmc_regs->gpmc_bch_result6[i]);
+			*(ecc_ptr++) = ((val >>  8) & 0xFF);
+			*(ecc_ptr++) = ((val >>  0) & 0xFF);
+			val = readl(gpmc_regs->gpmc_bch_result5[i]);
+			*(ecc_ptr++) = ((val >> 24) & 0xFF);
+			*(ecc_ptr++) = ((val >> 16) & 0xFF);
+			*(ecc_ptr++) = ((val >>  8) & 0xFF);
+			*(ecc_ptr++) = ((val >>  0) & 0xFF);
+			val = readl(gpmc_regs->gpmc_bch_result4[i]);
+			*(ecc_ptr++) = ((val >> 24) & 0xFF);
+			*(ecc_ptr++) = ((val >> 16) & 0xFF);
+			*(ecc_ptr++) = ((val >>  8) & 0xFF);
+			*(ecc_ptr++) = ((val >>  0) & 0xFF);
+			val = readl(gpmc_regs->gpmc_bch_result3[i]);
+			*(ecc_ptr++) = ((val >> 24) & 0xFF);
+			*(ecc_ptr++) = ((val >> 16) & 0xFF);
+			*(ecc_ptr++) = ((val >>  8) & 0xFF);
+			*(ecc_ptr++) = ((val >>  0) & 0xFF);
+			val = readl(gpmc_regs->gpmc_bch_result2[i]);
+			*(ecc_ptr++) = ((val >> 24) & 0xFF);
+			*(ecc_ptr++) = ((val >> 16) & 0xFF);
+			*(ecc_ptr++) = ((val >>  8) & 0xFF);
+			*(ecc_ptr++) = ((val >>  0) & 0xFF);
+			val = readl(gpmc_regs->gpmc_bch_result1[i]);
+			*(ecc_ptr++) = ((val >> 24) & 0xFF);
+			*(ecc_ptr++) = ((val >> 16) & 0xFF);
+			*(ecc_ptr++) = ((val >>  8) & 0xFF);
+			*(ecc_ptr++) = ((val >>  0) & 0xFF);
+			val = readl(gpmc_regs->gpmc_bch_result0[i]);
+			*(ecc_ptr++) = ((val >> 24) & 0xFF);
+			*(ecc_ptr++) = ((val >> 16) & 0xFF);
+			*(ecc_ptr++) = ((val >>  8) & 0xFF);
+			*(ecc_ptr++) = ((val >>  0) & 0xFF);
+			break;
 		default:
 			return -EINVAL;
 		}
@@ -1175,6 +1227,8 @@ static int omap_calculate_ecc_bch(struct mtd_info *mtd, const u_char *dat,
 			break;
 		case OMAP_ECC_BCH8_CODE_HW:
 			*(ecc_ptr++) = 0x00;
+			break;
+		case OMAP_ECC_BCH16_CODE_HW:
 			break;
 		}
 		/* update pointer to next sector */
@@ -1217,7 +1271,6 @@ static int omap_elm_correct_data(struct mtd_info *mtd, u_char *data,
 
 	/* Initialize elm error vector to zero */
 	memset(err_vec, 0, sizeof(err_vec));
-
 	for (i = 0; i < eccsteps ; i++) {
 		flag_read_ecc = 0;
 		ecc = calc_ecc + (i * eccbytes);
@@ -1231,12 +1284,16 @@ static int omap_elm_correct_data(struct mtd_info *mtd, u_char *data,
 		/* check if its a erased-page */
 		if (flag_read_ecc) {
 			switch (ecc_opt) {
+			case OMAP_ECC_BCH4_CODE_HW:
+				if (memcmp(ecc, bch4_vector, eccbytes))
+					err_vec[i].error_reported = true;
+				break;
 			case OMAP_ECC_BCH8_CODE_HW:
 				if (memcmp(ecc, bch8_vector, eccbytes))
 					err_vec[i].error_reported = true;
 				break;
-			case OMAP_ECC_BCH4_CODE_HW:
-				if (memcmp(ecc, bch4_vector, eccbytes))
+			case OMAP_ECC_BCH16_CODE_HW:
+				if (memcmp(ecc, bch16_vector, eccbytes))
 					err_vec[i].error_reported = true;
 				break;
 			default:
@@ -1272,6 +1329,10 @@ static int omap_elm_correct_data(struct mtd_info *mtd, u_char *data,
 				case OMAP_ECC_BCH8_CODE_HW:
 					error_max = SECTOR_BYTES +
 							(eccbytes - 1);
+					pos = err_vec[i].error_loc[j];
+					break;
+				case OMAP_ECC_BCH16_CODE_HW:
+					error_max = SECTOR_BYTES + eccbytes;
 					pos = err_vec[i].error_loc[j];
 					break;
 				default:
@@ -1774,6 +1835,37 @@ static int omap_nand_probe(struct platform_device *pdev)
 		goto out_release_mem_region;
 #endif
 		break;
+	case OMAP_ECC_BCH16_CODE_HW:
+#ifdef CONFIG_MTD_NAND_OMAP_BCH
+		pr_info("using OMAP_ECC_BCH16_CODE_HW ECC scheme\n");
+		chip->ecc.mode		= NAND_ECC_HW;
+		chip->ecc.size		= 512;
+		/* 14th bit is kept reserved for ROM-code compatibility */
+		chip->ecc.bytes		= 26;
+		chip->ecc.strength	= 16;
+		chip->ecc.hwctl		= omap_enable_hwecc;
+		chip->ecc.correct	= omap_elm_correct_data;
+		chip->ecc.calculate	= omap_calculate_ecc_bch;
+		chip->ecc.read_page	= omap_read_page_bch;
+		chip->ecc.write_page	= omap_write_page_bch;
+		/* ELM H/W engine is used for locating errors */
+		if (is_elm_present(info, pdata->elm_of_node, BCH16_ECC) < 0) {
+			pr_err("ELM module not detected, required for ECC\n");
+			err = -EINVAL;
+			goto out_release_mem_region;
+		}
+		/* define custom ECC layout */
+		omap_oobinfo.eccbytes	= chip->ecc.bytes *
+					   (mtd->writesize / chip->ecc.size);
+		omap_oobinfo.eccpos[0]	= BADBLOCK_MARKER_LENGTH;
+		omap_oobinfo.oobfree->offset = omap_oobinfo.eccpos[0] +
+						omap_oobinfo.eccbytes;
+		goto custom_ecc_layout;
+#else
+		pr_err("nand: error: CONFIG_MTD_NAND_OMAP_BCH not enabled\n");
+		err = -EINVAL;
+		goto out_release_mem_region;
+#endif
 	default:
 		pr_err("nand: error: invalid or unsupported ECC scheme\n");
 		err = -EINVAL;
