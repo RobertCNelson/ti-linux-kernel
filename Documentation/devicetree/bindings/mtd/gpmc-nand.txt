@@ -25,6 +25,7 @@ Optional properties:
 		"ham1"		1-bit Hamming ecc code
 		"bch4"		4-bit BCH ecc code
 		"bch8"		8-bit BCH ecc code
+		"bch16"		16-bit BCH ecc code
 
  - ti,nand-xfer-type:		A string setting the data transfer type. One of:
 
