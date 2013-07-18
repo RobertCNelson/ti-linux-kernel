@@ -646,4 +646,11 @@
 			status = "disabled";
 		};
 	};
+
+	clocks {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+		/include/ "am33xx-clocks.dtsi"
+	};
 };
