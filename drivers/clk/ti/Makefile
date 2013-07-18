@@ -1,3 +1,3 @@
 ifneq ($(CONFIG_OF),)
-obj-y					+= dpll.o
+obj-y					+= clk.o dpll.o
 endif
