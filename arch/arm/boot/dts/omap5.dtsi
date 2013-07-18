@@ -724,4 +724,18 @@
 			compatible = "ti,omap5430-bandgap";
 		};
 	};
+
+	clocks {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+		/include/ "omap54xx-clocks.dtsi"
+	};
+
+	clockdomains {
+		l3init_clkdm: l3init_clkdm {
+			compatible = "ti,clockdomain";
+			clocks = <&dpll_usb_ck>;
+		};
+	};
 };
