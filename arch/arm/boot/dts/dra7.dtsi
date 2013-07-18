@@ -86,6 +86,25 @@
 		ranges;
 		ti,hwmods = "l3_main_1", "l3_main_2";
 
+		crossbar_mpu: mpuirq@4a002a48 {
+			compatible = "crossbar";
+			crossbar-name = "mpu-irq";
+			reg = <0x4a002a48 0x0130>;
+			reg-width = <16>;
+			crossbar-lines = "mpu-irq", "rtc-ss-alarm", <0x9f 0xd9 0x12e>,
+					 "mpu-irq", "mcasp3-arevt", <0x9e 0x96 0x12c>,
+					 "mpu-irq", "mcasp3-axevt", <0x9d 0x97 0x12a>;
+		};
+
+		crossbar_dma: dmareq@4a002b78 {
+			compatible = "crossbar";
+			crossbar-name = "dma-req";
+			reg = <0x4a002b78 0x0100>;
+			reg-width = <16>;
+			crossbar-lines = "dma-req", "mcasp3-rx", <0x7e 0x84 0xfc>,
+					 "dma-req", "mcasp3-tx", <0x7d 0x85 0xfa>;
+		};
+
 		counter32k: counter@4ae04000 {
 			compatible = "ti,omap-counter32k";
 			reg = <0x4ae04000 0x40>;
