@@ -195,6 +195,7 @@ void of_mux_clk_setup(struct device_node *node)
 	u8 clk_mux_flags = 0;
 	u32 mask = 0;
 	u32 shift = 0;
+	u32 flags = 0;
 
 	of_property_read_string(node, "clock-output-names", &clk_name);
 
@@ -234,8 +235,11 @@ void of_mux_clk_setup(struct device_node *node)
 	if (of_property_read_bool(node, "hiword-mask"))
 		clk_mux_flags |= CLK_MUX_HIWORD_MASK;
 
+	if (of_property_read_bool(node, "set-rate-parent"))
+		flags |= CLK_SET_RATE_PARENT;
+
 	clk = clk_register_mux_table(NULL, clk_name, parent_names, num_parents,
-			0, reg, shift, mask, clk_mux_flags, NULL, NULL);
+			flags, reg, shift, mask, clk_mux_flags, NULL, NULL);
 
 	if (!IS_ERR(clk))
 		of_clk_add_provider(node, of_clk_src_simple_get, clk);

@@ -390,6 +390,7 @@ void of_divider_clk_setup(struct device_node *node)
 	u32 mask = 0;
 	u32 shift = 0;
 	struct clk_div_table *table;
+	u32 flags = 0;
 
 	of_property_read_string(node, "clock-output-names", &clk_name);
 
@@ -424,11 +425,14 @@ void of_divider_clk_setup(struct device_node *node)
 	if (of_property_read_bool(node, "hiword-mask"))
 		clk_divider_flags |= CLK_DIVIDER_HIWORD_MASK;
 
+	if (of_property_read_bool(node, "set-rate-parent"))
+		flags |= CLK_SET_RATE_PARENT;
+
 	table = of_clk_get_div_table(node);
 	if (IS_ERR(table))
 		return;
 
-	clk = _register_divider(NULL, clk_name, parent_name, 0, reg, shift,
+	clk = _register_divider(NULL, clk_name, parent_name, flags, reg, shift,
 			mask, clk_divider_flags, table, NULL);
 
 	if (!IS_ERR(clk))

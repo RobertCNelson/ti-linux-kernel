@@ -177,6 +177,7 @@ void of_gate_clk_setup(struct device_node *node)
 	const char *parent_name;
 	u8 clk_gate_flags = 0;
 	u32 bit_idx = 0;
+	u32 flags = 0;
 
 	of_property_read_string(node, "clock-output-names", &clk_name);
 
@@ -200,8 +201,11 @@ void of_gate_clk_setup(struct device_node *node)
 	if (of_property_read_bool(node, "hiword-mask"))
 		clk_gate_flags |= CLK_GATE_HIWORD_MASK;
 
-	clk = clk_register_gate(NULL, clk_name, parent_name, 0, reg, bit_idx,
-			clk_gate_flags, NULL);
+	if (of_property_read_bool(node, "set-rate-parent"))
+		flags |= CLK_SET_RATE_PARENT;
+
+	clk = clk_register_gate(NULL, clk_name, parent_name, flags, reg,
+			bit_idx, clk_gate_flags, NULL);
 
 	if (!IS_ERR(clk))
 		of_clk_add_provider(node, of_clk_src_simple_get, clk);
