@@ -97,6 +97,10 @@ static struct omap_rproc_timers_info dsp_timers[] = {
 	{ .name = "timer5", },
 };
 
+static struct omap_rproc_timers_info ipu1_timers[] = {
+	{ .name = "timer11", },
+};
+
 /*
  * These data structures define platform-specific information
  * needed for each supported remote processor.
@@ -134,6 +138,8 @@ static struct omap_rproc_pdata dra7_rproc_data[] = {
 		.firmware	= "dra7-ipu2-fw.xem4",
 		.mbox_name	= "mbox-ipu2",
 		.oh_name	= "ipu2",
+		.timers		= ipu_timers,
+		.timers_cnt	= ARRAY_SIZE(ipu_timers),
 	},
 	{
 		.name		= "dsp2",
@@ -147,6 +153,8 @@ static struct omap_rproc_pdata dra7_rproc_data[] = {
 		.firmware	= "dra7-ipu1-fw.xem4",
 		.mbox_name	= "mbox-ipu1",
 		.oh_name	= "ipu1",
+		.timers		= ipu1_timers,
+		.timers_cnt	= ARRAY_SIZE(ipu1_timers),
 	},
 };
 
