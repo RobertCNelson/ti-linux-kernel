@@ -533,4 +533,11 @@
 			ram-bits = <12>;
 		};
 	};
+
+	clocks {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+		/include/ "omap3xxx-clocks.dtsi"
+	};
 };
