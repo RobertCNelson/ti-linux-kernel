@@ -107,6 +107,8 @@
 			compatible = "ti,omap-counter32k";
 			reg = <0x4a304000 0x20>;
 			ti,hwmods = "counter_32k";
+			clocks = <&sys_32k_ck>;
+			clock-names = "fck";
 		};
 
 		omap4_pmx_core: pinmux@4a100040 {
@@ -136,6 +138,8 @@
 			#dma-cells = <1>;
 			#dma-channels = <32>;
 			#dma-requests = <127>;
+			clocks = <&l3_div_ck>;
+			clock-names = "fck";
 		};
 
 		gpio1: gpio@4a310000 {
@@ -143,6 +147,8 @@
 			reg = <0x4a310000 0x200>;
 			interrupts = <GIC_SPI 29 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "gpio1";
+			clocks = <&l4_wkup_clk_mux_ck>, <&gpio1_dbclk>;
+			clock-names = "fck", "dbclk";
 			ti,gpio-always-on;
 			gpio-controller;
 			#gpio-cells = <2>;
@@ -155,6 +161,8 @@
 			reg = <0x48055000 0x200>;
 			interrupts = <GIC_SPI 30 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "gpio2";
+			clocks = <&l4_div_ck>, <&gpio2_dbclk>;
+			clock-names = "fck", "dbclk";
 			gpio-controller;
 			#gpio-cells = <2>;
 			interrupt-controller;
@@ -166,6 +174,8 @@
 			reg = <0x48057000 0x200>;
 			interrupts = <GIC_SPI 31 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "gpio3";
+			clocks = <&l4_div_ck>, <&gpio3_dbclk>;
+			clock-names = "fck", "dbclk";
 			gpio-controller;
 			#gpio-cells = <2>;
 			interrupt-controller;
@@ -177,6 +187,8 @@
 			reg = <0x48059000 0x200>;
 			interrupts = <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "gpio4";
+			clocks = <&l4_div_ck>, <&gpio4_dbclk>;
+			clock-names = "fck", "dbclk";
 			gpio-controller;
 			#gpio-cells = <2>;
 			interrupt-controller;
@@ -188,6 +200,8 @@
 			reg = <0x4805b000 0x200>;
 			interrupts = <GIC_SPI 33 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "gpio5";
+			clocks = <&l4_div_ck>, <&gpio5_dbclk>;
+			clock-names = "fck", "dbclk";
 			gpio-controller;
 			#gpio-cells = <2>;
 			interrupt-controller;
@@ -199,6 +213,8 @@
 			reg = <0x4805d000 0x200>;
 			interrupts = <GIC_SPI 34 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "gpio6";
+			clocks = <&l4_div_ck>, <&gpio6_dbclk>;
+			clock-names = "fck", "dbclk";
 			gpio-controller;
 			#gpio-cells = <2>;
 			interrupt-controller;
@@ -221,6 +237,8 @@
 			reg = <0x4806a000 0x100>;
 			interrupts = <GIC_SPI 72 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "uart1";
+			clocks = <&func_48m_fclk>;
+			clock-names = "fck";
 			clock-frequency = <48000000>;
 		};
 
@@ -229,6 +247,8 @@
 			reg = <0x4806c000 0x100>;
 			interrupts = <GIC_SPI 73 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "uart2";
+			clocks = <&func_48m_fclk>;
+			clock-names = "fck";
 			clock-frequency = <48000000>;
 		};
 
@@ -237,6 +257,8 @@
 			reg = <0x48020000 0x100>;
 			interrupts = <GIC_SPI 74 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "uart3";
+			clocks = <&func_48m_fclk>;
+			clock-names = "fck";
 			clock-frequency = <48000000>;
 		};
 
@@ -245,6 +267,8 @@
 			reg = <0x4806e000 0x100>;
 			interrupts = <GIC_SPI 70 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "uart4";
+			clocks = <&func_48m_fclk>;
+			clock-names = "fck";
 			clock-frequency = <48000000>;
 		};
 
@@ -255,6 +279,8 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			ti,hwmods = "i2c1";
+			clocks = <&func_96m_fclk>;
+			clock-names = "fck";
 		};
 
 		i2c2: i2c@48072000 {
@@ -264,6 +290,8 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			ti,hwmods = "i2c2";
+			clocks = <&func_96m_fclk>;
+			clock-names = "fck";
 		};
 
 		i2c3: i2c@48060000 {
@@ -273,6 +301,8 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			ti,hwmods = "i2c3";
+			clocks = <&func_96m_fclk>;
+			clock-names = "fck";
 		};
 
 		i2c4: i2c@48350000 {
@@ -282,6 +312,8 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			ti,hwmods = "i2c4";
+			clocks = <&func_96m_fclk>;
+			clock-names = "fck";
 		};
 
 		mcspi1: spi@48098000 {
@@ -291,6 +323,8 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			ti,hwmods = "mcspi1";
+			clocks = <&func_48m_fclk>;
+			clock-names = "fck";
 			ti,spi-num-cs = <4>;
 			dmas = <&sdma 35>,
 			       <&sdma 36>,
@@ -311,6 +345,8 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			ti,hwmods = "mcspi2";
+			clocks = <&func_48m_fclk>;
+			clock-names = "fck";
 			ti,spi-num-cs = <2>;
 			dmas = <&sdma 43>,
 			       <&sdma 44>,
@@ -326,6 +362,8 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			ti,hwmods = "mcspi3";
+			clocks = <&func_48m_fclk>;
+			clock-names = "fck";
 			ti,spi-num-cs = <2>;
 			dmas = <&sdma 15>, <&sdma 16>;
 			dma-names = "tx0", "rx0";
@@ -338,6 +376,8 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			ti,hwmods = "mcspi4";
+			clocks = <&func_48m_fclk>;
+			clock-names = "fck";
 			ti,spi-num-cs = <1>;
 			dmas = <&sdma 70>, <&sdma 71>;
 			dma-names = "tx0", "rx0";
@@ -348,6 +388,8 @@
 			reg = <0x4809c000 0x400>;
 			interrupts = <GIC_SPI 83 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "mmc1";
+			clocks = <&hsmmc1_fclk>;
+			clock-names = "fck";
 			ti,dual-volt;
 			ti,needs-special-reset;
 			dmas = <&sdma 61>, <&sdma 62>;
@@ -359,6 +401,8 @@
 			reg = <0x480b4000 0x400>;
 			interrupts = <GIC_SPI 86 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "mmc2";
+			clocks = <&hsmmc2_fclk>;
+			clock-names = "fck";
 			ti,needs-special-reset;
 			dmas = <&sdma 47>, <&sdma 48>;
 			dma-names = "tx", "rx";
@@ -369,6 +413,8 @@
 			reg = <0x480ad000 0x400>;
 			interrupts = <GIC_SPI 94 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "mmc3";
+			clocks = <&func_48m_fclk>;
+			clock-names = "fck";
 			ti,needs-special-reset;
 			dmas = <&sdma 77>, <&sdma 78>;
 			dma-names = "tx", "rx";
@@ -379,6 +425,8 @@
 			reg = <0x480d1000 0x400>;
 			interrupts = <GIC_SPI 96 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "mmc4";
+			clocks = <&func_48m_fclk>;
+			clock-names = "fck";
 			ti,needs-special-reset;
 			dmas = <&sdma 57>, <&sdma 58>;
 			dma-names = "tx", "rx";
@@ -389,6 +437,8 @@
 			reg = <0x480d5000 0x400>;
 			interrupts = <GIC_SPI 59 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "mmc5";
+			clocks = <&func_48m_fclk>;
+			clock-names = "fck";
 			ti,needs-special-reset;
 			dmas = <&sdma 59>, <&sdma 60>;
 			dma-names = "tx", "rx";
@@ -399,6 +449,8 @@
 			reg = <0x4a314000 0x80>;
 			interrupts = <GIC_SPI 80 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "wd_timer2";
+			clocks = <&sys_32k_ck>;
+			clock-names = "fck";
 		};
 
 		mcpdm: mcpdm@40132000 {
@@ -408,6 +460,8 @@
 			reg-names = "mpu", "dma";
 			interrupts = <GIC_SPI 112 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "mcpdm";
+			clocks = <&pad_clks_ck>;
+			clock-names = "fck";
 			dmas = <&sdma 65>,
 			       <&sdma 66>;
 			dma-names = "up_link", "dn_link";
@@ -420,6 +474,8 @@
 			reg-names = "mpu", "dma";
 			interrupts = <GIC_SPI 114 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "dmic";
+			clocks = <&func_dmic_abe_gfclk>;
+			clock-names = "fck";
 			dmas = <&sdma 67>;
 			dma-names = "up_link";
 		};
@@ -433,6 +489,8 @@
 			interrupt-names = "common";
 			ti,buffer-size = <128>;
 			ti,hwmods = "mcbsp1";
+			clocks = <&func_mcbsp1_gfclk>, <&pad_clks_ck>, <&mcbsp1_sync_mux_ck>;
+			clock-names = "fck", "pad_fck", "prcm_fck";
 			dmas = <&sdma 33>,
 			       <&sdma 34>;
 			dma-names = "tx", "rx";
@@ -447,6 +505,8 @@
 			interrupt-names = "common";
 			ti,buffer-size = <128>;
 			ti,hwmods = "mcbsp2";
+			clocks = <&func_mcbsp2_gfclk>, <&pad_clks_ck>, <&mcbsp2_sync_mux_ck>;
+			clock-names = "fck", "pad_fck", "prcm_fck";
 			dmas = <&sdma 17>,
 			       <&sdma 18>;
 			dma-names = "tx", "rx";
@@ -461,6 +521,8 @@
 			interrupt-names = "common";
 			ti,buffer-size = <128>;
 			ti,hwmods = "mcbsp3";
+			clocks = <&func_mcbsp3_gfclk>, <&pad_clks_ck>, <&mcbsp3_sync_mux_ck>;
+			clock-names = "fck", "pad_fck", "prcm_fck";
 			dmas = <&sdma 19>,
 			       <&sdma 20>;
 			dma-names = "tx", "rx";
@@ -474,6 +536,8 @@
 			interrupt-names = "common";
 			ti,buffer-size = <128>;
 			ti,hwmods = "mcbsp4";
+			clocks = <&per_mcbsp4_gfclk>, <&pad_clks_ck>, <&mcbsp4_sync_mux_ck>;
+			clock-names = "fck", "pad_fck", "prcm_fck";
 			dmas = <&sdma 31>,
 			       <&sdma 32>;
 			dma-names = "tx", "rx";
@@ -485,6 +549,8 @@
 			interrupts = <GIC_SPI 120 IRQ_TYPE_LEVEL_HIGH>;
 			reg-names = "mpu";
 			ti,hwmods = "kbd";
+			clocks = <&sys_32k_ck>;
+			clock-names = "fck";
 		};
 
 		emif1: emif@4c000000 {
@@ -492,6 +558,8 @@
 			reg = <0x4c000000 0x100>;
 			interrupts = <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "emif1";
+			clocks = <&ddrphy_ck>;
+			clock-names = "fck";
 			phy-type = <1>;
 			hw-caps-read-idle-ctrl;
 			hw-caps-ll-interface;
@@ -503,6 +571,8 @@
 			reg = <0x4d000000 0x100>;
 			interrupts = <GIC_SPI 111 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "emif2";
+			clocks = <&ddrphy_ck>;
+			clock-names = "fck";
 			phy-type = <1>;
 			hw-caps-read-idle-ctrl;
 			hw-caps-ll-interface;
@@ -516,6 +586,8 @@
 			#size-cells = <1>;
 			ranges;
 			ti,hwmods = "ocp2scp_usb_phy";
+			clocks = <&ocp2scp_usb_phy_phy_48m>;
+			clock-names = "fck";
 			usb2_phy: usb2phy@4a0ad080 {
 				compatible = "ti,omap-usb2";
 				reg = <0x4a0ad080 0x58>;
@@ -528,6 +600,8 @@
 			reg = <0x4a318000 0x80>;
 			interrupts = <GIC_SPI 37 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer1";
+			clocks = <&dmt1_clk_mux>;
+			clock-names = "fck";
 			ti,timer-alwon;
 		};
 
@@ -536,6 +610,8 @@
 			reg = <0x48032000 0x80>;
 			interrupts = <GIC_SPI 38 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer2";
+			clocks = <&cm2_dm2_mux>;
+			clock-names = "fck";
 		};
 
 		timer3: timer@48034000 {
@@ -543,6 +619,8 @@
 			reg = <0x48034000 0x80>;
 			interrupts = <GIC_SPI 39 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer3";
+			clocks = <&cm2_dm3_mux>;
+			clock-names = "fck";
 		};
 
 		timer4: timer@48036000 {
@@ -550,6 +628,8 @@
 			reg = <0x48036000 0x80>;
 			interrupts = <GIC_SPI 40 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer4";
+			clocks = <&cm2_dm4_mux>;
+			clock-names = "fck";
 		};
 
 		timer5: timer@40138000 {
@@ -558,6 +638,8 @@
 			      <0x49038000 0x80>;
 			interrupts = <GIC_SPI 41 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer5";
+			clocks = <&timer5_sync_mux>;
+			clock-names = "fck";
 			ti,timer-dsp;
 		};
 
@@ -567,6 +649,8 @@
 			      <0x4903a000 0x80>;
 			interrupts = <GIC_SPI 42 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer6";
+			clocks = <&timer6_sync_mux>;
+			clock-names = "fck";
 			ti,timer-dsp;
 		};
 
@@ -576,6 +660,8 @@
 			      <0x4903c000 0x80>;
 			interrupts = <GIC_SPI 43 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer7";
+			clocks = <&timer7_sync_mux>;
+			clock-names = "fck";
 			ti,timer-dsp;
 		};
 
@@ -585,6 +671,8 @@
 			      <0x4903e000 0x80>;
 			interrupts = <GIC_SPI 44 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer8";
+			clocks = <&timer8_sync_mux>;
+			clock-names = "fck";
 			ti,timer-pwm;
 			ti,timer-dsp;
 		};
@@ -594,6 +682,8 @@
 			reg = <0x4803e000 0x80>;
 			interrupts = <GIC_SPI 45 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer9";
+			clocks = <&cm2_dm9_mux>;
+			clock-names = "fck";
 			ti,timer-pwm;
 		};
 
@@ -602,6 +692,8 @@
 			reg = <0x48086000 0x80>;
 			interrupts = <GIC_SPI 46 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer10";
+			clocks = <&cm2_dm10_mux>;
+			clock-names = "fck";
 			ti,timer-pwm;
 		};
 
@@ -610,6 +702,8 @@
 			reg = <0x48088000 0x80>;
 			interrupts = <GIC_SPI 47 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer11";
+			clocks = <&cm2_dm11_mux>;
+			clock-names = "fck";
 			ti,timer-pwm;
 		};
 
@@ -618,12 +712,16 @@
 			reg = <0x4a062000 0x1000>;
 			interrupts = <GIC_SPI 78 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "usb_tll_hs";
+			clocks = <&usb_tll_hs_ick>;
+			clock-names = "fck";
 		};
 
 		usbhshost: usbhshost@4a064000 {
 			compatible = "ti,usbhs-host";
 			reg = <0x4a064000 0x800>;
 			ti,hwmods = "usb_host_hs";
+			clocks = <&usb_host_hs_fck>;
+			clock-names = "fck";
 			#address-cells = <1>;
 			#size-cells = <1>;
 			ranges;
@@ -657,6 +755,8 @@
 			interrupts = <GIC_SPI 92 IRQ_TYPE_LEVEL_HIGH>, <GIC_SPI 93 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-names = "mc", "dma";
 			ti,hwmods = "usb_otg_hs";
+			clocks = <&usb_otg_hs_ick>, <&usb_otg_hs_xclk>;
+			clock-names = "fck", "xclk";
 			usb-phy = <&usb2_phy>;
 			multipoint = <1>;
 			num-eps = <16>;
