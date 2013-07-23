@@ -324,12 +324,20 @@ dpll_pcie_ref_m2ldo_ck: dpll_pcie_ref_m2ldo_ck@4a008210 {
 	ti,autoidle-low;
 };
 
+apll_pcie_in_clk_mux: apll_pcie_in_clk_mux@4ae06118 {
+	compatible = "mux-clock";
+	clocks = <&dpll_pcie_ref_ck>, <&pciesref_acs_clk_ck>;
+	#clock-cells = <0>;
+	reg = <0x4a00821c 0x4>;
+	bit-mask = <0x80>;
+};
+
 apll_pcie_ck: apll_pcie_ck@4a008200 {
 	#clock-cells = <0>;
-	compatible = "ti,omap4-dpll-clock";
-	clocks = <&dpll_pcie_ref_ck>, <&dpll_pcie_ref_ck>;
-	reg = <0x4a008200 0x4>, <0x4a008204 0x4>, <0x4a008208 0x4>, <0x4a00820c 0x4>;
-	reg-names = "control", "idlest", "autoidle", "mult-div1";
+	compatible = "ti,dra7-apll-clock";
+	clocks = <&apll_pcie_in_clk_mux>, <&dpll_pcie_ref_ck>;
+	reg = <0x4a00821c 0x4>, <0x4a008220 0x4>;
+	reg-names = "control", "idlest";
 };
 
 apll_pcie_clkvcoldo: apll_pcie_clkvcoldo {
