@@ -259,6 +259,7 @@
 			ti,hwmods = "i2c1";
 			clocks = <&func_96m_fclk>;
 			clock-names = "fck";
+			status = "disabled";
 		};
 
 		i2c2: i2c@48072000 {
@@ -270,6 +271,7 @@
 			ti,hwmods = "i2c2";
 			clocks = <&func_96m_fclk>;
 			clock-names = "fck";
+			status = "disabled";
 		};
 
 		i2c3: i2c@48060000 {
@@ -281,6 +283,7 @@
 			ti,hwmods = "i2c3";
 			clocks = <&func_96m_fclk>;
 			clock-names = "fck";
+			status = "disabled";
 		};
 
 		i2c4: i2c@4807a000 {
@@ -292,6 +295,7 @@
 			ti,hwmods = "i2c4";
 			clocks = <&func_96m_fclk>;
 			clock-names = "fck";
+			status = "disabled";
 		};
 
 		i2c5: i2c@4807c000 {
@@ -303,6 +307,7 @@
 			ti,hwmods = "i2c5";
 			clocks = <&func_96m_fclk>;
 			clock-names = "fck";
+			status = "disabled";
 		};
 
 		mcspi1: spi@48098000 {
@@ -325,6 +330,7 @@
 			       <&sdma 42>;
 			dma-names = "tx0", "rx0", "tx1", "rx1",
 				    "tx2", "rx2", "tx3", "rx3";
+			status = "disabled";
 		};
 
 		mcspi2: spi@4809a000 {
@@ -342,6 +348,7 @@
 			       <&sdma 45>,
 			       <&sdma 46>;
 			dma-names = "tx0", "rx0", "tx1", "rx1";
+			status = "disabled";
 		};
 
 		mcspi3: spi@480b8000 {
@@ -356,6 +363,7 @@
 			ti,spi-num-cs = <2>;
 			dmas = <&sdma 15>, <&sdma 16>;
 			dma-names = "tx0", "rx0";
+			status = "disabled";
 		};
 
 		mcspi4: spi@480ba000 {
@@ -370,6 +378,7 @@
 			ti,spi-num-cs = <1>;
 			dmas = <&sdma 70>, <&sdma 71>;
 			dma-names = "tx0", "rx0";
+			status = "disabled";
 		};
 
 		uart1: serial@4806a000 {
@@ -380,6 +389,7 @@
 			clocks = <&func_48m_fclk>;
 			clock-names = "fck";
 			clock-frequency = <48000000>;
+			status = "disabled";
 		};
 
 		uart2: serial@4806c000 {
@@ -390,6 +400,7 @@
 			clocks = <&func_48m_fclk>;
 			clock-names = "fck";
 			clock-frequency = <48000000>;
+                        status = "disabled";
 		};
 
 		uart3: serial@48020000 {
@@ -400,6 +411,7 @@
 			clocks = <&func_48m_fclk>;
 			clock-names = "fck";
 			clock-frequency = <48000000>;
+                        status = "disabled";
 		};
 
 		uart4: serial@4806e000 {
@@ -410,6 +422,7 @@
 			clocks = <&func_48m_fclk>;
 			clock-names = "fck";
 			clock-frequency = <48000000>;
+			status = "disabled";
 		};
 
 		uart5: serial@48066000 {
@@ -420,6 +433,7 @@
 			clocks = <&func_48m_fclk>;
 			clock-names = "fck";
 			clock-frequency = <48000000>;
+			status = "disabled";
 		};
 
 		uart6: serial@48068000 {
@@ -430,6 +444,7 @@
 			clocks = <&func_48m_fclk>;
 			clock-names = "fck";
 			clock-frequency = <48000000>;
+			status = "disabled";
 		};
 
 		mmc1: mmc@4809c000 {
