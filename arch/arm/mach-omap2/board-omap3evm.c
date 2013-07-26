@@ -723,7 +723,7 @@ static void __init omap3_evm_init(void)
 		omap_mux_init_gpio(135, OMAP_PIN_OUTPUT);
 		phy_data[0].reset_gpio = 135;
 	}
-	usb_bind_phy("musb-hdrc.0.auto", 0, "twl4030_usb");
+	usb_bind_phy("musb-hdrc.0", 0, "twl4030_usb");
 	usb_musb_init(&musb_board_data);
 
 	usbhs_init_phys(phy_data, ARRAY_SIZE(phy_data));
