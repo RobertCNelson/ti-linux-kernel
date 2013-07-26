@@ -503,6 +503,8 @@ static inline void musb_configure_ep0(struct musb *musb)
 extern const char musb_driver_name[];
 
 extern void musb_stop(struct musb *musb);
+extern int musb_get_id(struct device *dev, gfp_t gfp_mask);
+extern void musb_put_id(struct device *dev, int id);
 
 extern void musb_write_fifo(struct musb_hw_ep *ep, u16 len, const u8 *src);
 extern void musb_read_fifo(struct musb_hw_ep *ep, u16 len, u8 *dst);
