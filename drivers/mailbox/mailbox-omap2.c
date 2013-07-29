@@ -36,6 +36,8 @@
 #define MAILBOX_IRQ_NEWMSG(m)		(1 << (2 * (m)))
 #define MAILBOX_IRQ_NOTFULL(m)		(1 << (2 * (m) + 1))
 
+#define AM33X_MBOX_WKUPM3_USR		3
+
 #define MBOX_REG_SIZE			0x120
 
 #define OMAP4_MBOX_REG_SIZE		0x130
@@ -179,6 +181,57 @@ static int omap2_mbox_is_irq(struct omap_mbox *mbox, omap_mbox_irq_t irq)
 	return (int)(enable & status & bit);
 }
 
+static void wkupm3_mbox_enable_irq(struct omap_mbox *mbox, omap_mbox_irq_t irq)
+{
+	struct omap_mbox2_priv *p = mbox->priv;
+	u32 l, bit = (irq == IRQ_TX) ? p->notfull_bit : p->newmsg_bit;
+	unsigned long irqenable = ((irq == IRQ_RX) ?
+		OMAP4_MAILBOX_IRQENABLE(AM33X_MBOX_WKUPM3_USR) : p->irqenable);
+
+	l = mbox_read_reg(mbox->parent, irqenable);
+	l |= bit;
+	mbox_write_reg(mbox->parent, l, irqenable);
+}
+
+static void wkupm3_mbox_disable_irq(struct omap_mbox *mbox, omap_mbox_irq_t irq)
+{
+	struct omap_mbox2_priv *p = mbox->priv;
+	u32 bit = (irq == IRQ_TX) ? p->notfull_bit : p->newmsg_bit;
+	unsigned long irqdisable = ((irq == IRQ_RX) ?
+	    OMAP4_MAILBOX_IRQENABLE_CLR(AM33X_MBOX_WKUPM3_USR) : p->irqdisable);
+
+	mbox_write_reg(mbox->parent, bit, irqdisable);
+}
+
+static void wkupm3_mbox_ack_irq(struct omap_mbox *mbox, omap_mbox_irq_t irq)
+{
+	struct omap_mbox2_priv *p = mbox->priv;
+	u32 bit = (irq == IRQ_TX) ? p->notfull_bit : p->newmsg_bit;
+	unsigned long irqstatus = ((irq == IRQ_RX) ?
+		OMAP4_MAILBOX_IRQSTATUS(AM33X_MBOX_WKUPM3_USR) : p->irqstatus);
+
+	mbox_write_reg(mbox->parent, bit, irqstatus);
+
+	/* Flush posted write for irq status to avoid spurious interrupts */
+	mbox_read_reg(mbox->parent, irqstatus);
+}
+
+static int wkupm3_mbox_is_irq(struct omap_mbox *mbox, omap_mbox_irq_t irq)
+{
+	struct omap_mbox2_priv *p = mbox->priv;
+	u32 bit = (irq == IRQ_TX) ? p->notfull_bit : p->newmsg_bit;
+	u32 enable, status;
+
+	/* WkupM3 mailbox does not use a receive queue */
+	if (irq == IRQ_RX)
+		return 0;
+
+	enable = mbox_read_reg(mbox->parent, p->irqenable);
+	status = mbox_read_reg(mbox->parent, p->irqstatus);
+
+	return (int)(enable & status & bit);
+}
+
 static void omap2_mbox_save_ctx(struct omap_mbox *mbox)
 {
 	int i;
@@ -215,6 +268,20 @@ static void omap2_mbox_restore_ctx(struct omap_mbox *mbox)
 	}
 }
 
+static void wkupm3_mbox_send_data(struct omap_mbox *mbox, mbox_msg_t msg)
+{
+	mbox_msg_t rmsg;
+
+	/* enable the mbox Rx interrupt for WkupM3 only briefly */
+	wkupm3_mbox_enable_irq(mbox, IRQ_RX);
+	omap2_mbox_fifo_write(mbox, msg);
+	wkupm3_mbox_disable_irq(mbox, IRQ_RX);
+
+	/* read back the message and ack the interrupt on behalf of WkupM3 */
+	rmsg = omap2_mbox_fifo_read(mbox);
+	wkupm3_mbox_ack_irq(mbox, IRQ_RX);
+}
+
 static struct omap_mbox_ops omap2_mbox_ops = {
 	.startup	= omap2_mbox_startup,
 	.shutdown	= omap2_mbox_shutdown,
@@ -226,6 +293,21 @@ static struct omap_mbox_ops omap2_mbox_ops = {
 	.disable_irq	= omap2_mbox_disable_irq,
 	.ack_irq	= omap2_mbox_ack_irq,
 	.is_irq		= omap2_mbox_is_irq,
+	.save_ctx	= omap2_mbox_save_ctx,
+	.restore_ctx	= omap2_mbox_restore_ctx,
+};
+
+static struct omap_mbox_ops wkupm3_mbox_ops = {
+	.startup	= omap2_mbox_startup,
+	.shutdown	= omap2_mbox_shutdown,
+	.fifo_read	= omap2_mbox_fifo_read,
+	.fifo_write	= wkupm3_mbox_send_data,
+	.fifo_empty	= omap2_mbox_fifo_empty,
+	.poll_for_space	= omap2_mbox_poll_for_space,
+	.enable_irq	= wkupm3_mbox_enable_irq,
+	.disable_irq	= wkupm3_mbox_disable_irq,
+	.ack_irq	= wkupm3_mbox_ack_irq,
+	.is_irq		= wkupm3_mbox_is_irq,
 	.save_ctx	= omap2_mbox_save_ctx,
 	.restore_ctx	= omap2_mbox_restore_ctx,
 };
@@ -387,7 +469,10 @@ static int omap2_mbox_probe(struct platform_device *pdev)
 		mbox->priv = priv;
 		mbox->parent = mdev;
 		mbox->name = info->name;
-		mbox->ops = &omap2_mbox_ops;
+		if (!strcmp(mbox->name, "wkup_m3"))
+			mbox->ops = &wkupm3_mbox_ops;
+		else
+			mbox->ops = &omap2_mbox_ops;
 		mbox->irq = platform_get_irq(pdev, info->irq_id);
 		if (mbox->irq < 0) {
 			ret = mbox->irq;
