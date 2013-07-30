@@ -21,10 +21,11 @@ usb2phy@4a0ad080 {
 	#phy-cells = <0>;
 };
 
-OMAP USB3 PHY
+OMAP PIPE3 PHY
 
 Required properties:
- - compatible: Should be "ti,omap-usb3"
+ - compatible: Should be "ti,omap-usb3", "ti,omap-pipe3", "ti,omap-sata"
+   or "ti,omap-pcie"
  - reg : Address and length of the register set for the device.
  - reg-names: The names of the register addresses corresponding to the registers
    filled in "reg".
