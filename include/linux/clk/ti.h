@@ -214,6 +214,7 @@ int omap3_dpll4_set_rate(struct clk_hw *clk, unsigned long rate,
 int omap2_dflt_clk_enable(struct clk_hw *hw);
 void omap2_dflt_clk_disable(struct clk_hw *hw);
 int omap2_dflt_clk_is_enabled(struct clk_hw *hw);
+void omap3_clk_lock_dpll5(void);
 
 void omap_dt_clocks_register(struct omap_dt_clk *oclks);
 #ifdef CONFIG_OF
