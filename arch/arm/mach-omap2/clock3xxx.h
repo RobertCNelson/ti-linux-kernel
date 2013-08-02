@@ -9,6 +9,10 @@
 #define __ARCH_ARM_MACH_OMAP2_CLOCK3XXX_H
 
 int omap3xxx_clk_init(void);
+int omap3430_clk_init(void);
+int omap3630_clk_init(void);
+int ti81xx_clk_init(void);
+int am35xx_clk_init(void);
 int omap3_core_dpll_m2_set_rate(struct clk_hw *clk, unsigned long rate,
 					unsigned long parent_rate);
 
