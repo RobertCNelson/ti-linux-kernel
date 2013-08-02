@@ -1,0 +1,42 @@
+TI LCD Controller on DA830/DA850/AM335x SoC's
+
+Required properties:
+- compatible:
+	DA830, DA850 - "ti,da8xx-tilcdc"
+	AM335x SoC's - "ti,am33xx-tilcdc"
+- reg: Address range of lcdc register set
+- interrupts: lcdc interrupt
+- display-timings: typical videomode of lcd panel, represented as child.
+  Refer Documentation/devicetree/bindings/video/display-timing.txt for
+  display timing binding details. If multiple videomodes are mentioned
+  in display timings node, typical videomode has to be mentioned as the
+  native mode or it has to be first child (driver cares only for native
+  videomode).
+
+Recommended properties:
+- ti,hwmods: Name of the hwmod associated to the LCDC
+
+Example for am335x SoC's:
+
+lcdc@4830e000 {
+	compatible = "ti,am33xx-tilcdc";
+	reg =  <0x4830e000 0x1000>;
+	interrupts = <36>;
+	ti,hwmods = "lcdc";
+	status = "okay";
+	display-timings {
+		800x480p62 {
+			clock-frequency = <30000000>;
+			hactive = <800>;
+			vactive = <480>;
+			hfront-porch = <39>;
+			hback-porch = <39>;
+			hsync-len = <47>;
+			vback-porch = <29>;
+			vfront-porch = <13>;
+			vsync-len = <2>;
+			hsync-active = <1>;
+			vsync-active = <1>;
+		};
+	};
+};

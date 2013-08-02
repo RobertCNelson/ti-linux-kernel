@@ -36,6 +36,7 @@
 #include <linux/slab.h>
 #include <linux/delay.h>
 #include <linux/lcm.h>
+#include <video/of_display_timing.h>
 #include <video/da8xx-fb.h>
 #include <asm/div64.h>
 
@@ -1312,11 +1313,53 @@ static struct fb_ops da8xx_fb_ops = {
 	.fb_blank = cfb_blank,
 };
 
+static struct lcd_ctrl_config *da8xx_fb_create_cfg(struct platform_device *dev)
+{
+	struct lcd_ctrl_config *cfg;
+
+	cfg = devm_kzalloc(&dev->dev, sizeof(struct fb_videomode), GFP_KERNEL);
+	if (!cfg)
+		return NULL;
+
+	/* default values */
+
+	if (lcd_revision == LCD_VERSION_1)
+		cfg->bpp = 16;
+	else
+		cfg->bpp = 32;
+
+	/*
+	 * For panels so far used with this LCDC, below statement is sufficient.
+	 * For new panels, if required, struct lcd_ctrl_cfg fields to be updated
+	 * with additional/modified values. Those values would have to be then
+	 * obtained from dt(requiring new dt bindings).
+	 */
+
+	cfg->panel_shade = COLOR_ACTIVE;
+
+	return cfg;
+}
+
 static struct fb_videomode *da8xx_fb_get_videomode(struct platform_device *dev)
 {
 	struct da8xx_lcdc_platform_data *fb_pdata = dev->dev.platform_data;
 	struct fb_videomode *lcdc_info;
+	struct device_node *np = dev->dev.of_node;
 	int i;
+
+	if (np) {
+		lcdc_info = devm_kzalloc(&dev->dev,
+					 sizeof(struct fb_videomode),
+					 GFP_KERNEL);
+		if (!lcdc_info)
+			return NULL;
+
+		if (of_get_fb_videomode(np, lcdc_info, OF_USE_NATIVE_MODE)) {
+			dev_err(&dev->dev, "timings not available in DT\n");
+			return NULL;
+		}
+		return lcdc_info;
+	}
 
 	for (i = 0, lcdc_info = known_lcd_panels;
 		i < ARRAY_SIZE(known_lcd_panels); i++, lcdc_info++) {
@@ -1346,7 +1389,7 @@ static int fb_probe(struct platform_device *device)
 	int ret;
 	unsigned long ulcm;
 
-	if (fb_pdata == NULL) {
+	if (fb_pdata == NULL && !device->dev.of_node) {
 		dev_err(&device->dev, "Can not get platform data\n");
 		return -ENOENT;
 	}
@@ -1386,7 +1429,10 @@ static int fb_probe(struct platform_device *device)
 		break;
 	}
 
-	lcd_cfg = (struct lcd_ctrl_config *)fb_pdata->controller_data;
+	if (device->dev.of_node)
+		lcd_cfg = da8xx_fb_create_cfg(device);
+	else
+		lcd_cfg = fb_pdata->controller_data;
 
 	if (!lcd_cfg) {
 		ret = -EINVAL;
@@ -1405,7 +1451,7 @@ static int fb_probe(struct platform_device *device)
 	par->dev = &device->dev;
 	par->lcdc_clk = tmp_lcdc_clk;
 	par->lcdc_clk_rate = clk_get_rate(par->lcdc_clk);
-	if (fb_pdata->panel_power_ctrl) {
+	if (fb_pdata && fb_pdata->panel_power_ctrl) {
 		par->panel_power_ctrl = fb_pdata->panel_power_ctrl;
 		par->panel_power_ctrl(1);
 	}
@@ -1653,6 +1699,19 @@ static int fb_resume(struct platform_device *dev)
 #define fb_resume NULL
 #endif
 
+#if IS_ENABLED(CONFIG_OF)
+static const struct of_device_id da8xx_fb_of_match[] = {
+	/*
+	 * this driver supports version 1 and version 2 of the
+	 * Texas Instruments lcd controller (lcdc) hardware block
+	 */
+	{.compatible = "ti,da8xx-tilcdc", },
+	{.compatible = "ti,am33xx-tilcdc", },
+	{},
+};
+MODULE_DEVICE_TABLE(of, da8xx_fb_of_match);
+#endif
+
 static struct platform_driver da8xx_fb_driver = {
 	.probe = fb_probe,
 	.remove = fb_remove,
@@ -1661,6 +1720,7 @@ static struct platform_driver da8xx_fb_driver = {
 	.driver = {
 		   .name = DRIVER_NAME,
 		   .owner = THIS_MODULE,
+		   .of_match_table = of_match_ptr(da8xx_fb_of_match),
 		   },
 };
 
