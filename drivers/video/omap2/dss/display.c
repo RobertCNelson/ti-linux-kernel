@@ -137,6 +137,9 @@ int omapdss_register_display(struct omap_dss_device *dssdev)
 	snprintf(dssdev->alias, sizeof(dssdev->alias),
 			"display%d", disp_num_counter++);
 
+	if (dssdev->name == NULL)
+		dssdev->name = dssdev->alias;
+
 	if (drv && drv->get_resolution == NULL)
 		drv->get_resolution = omapdss_default_get_resolution;
 	if (drv && drv->get_recommended_bpp == NULL)
