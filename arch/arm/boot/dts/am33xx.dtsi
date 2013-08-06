@@ -830,6 +830,15 @@
 			clocks = <&aes0_fck>;
 			clock-names = "fck";
 		};
+
+		rng: rng@48310000 {
+			compatible = "ti,omap4-rng";
+			ti,hwmods = "rng";
+			reg = <0x48310000 0x2000>;
+			interrupts = <111>;
+			clocks = <&rng_fck>;
+			clock-names = "fck";
+		};
 	};
 
 	clocks {
