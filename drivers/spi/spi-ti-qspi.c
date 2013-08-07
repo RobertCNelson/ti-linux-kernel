@@ -62,6 +62,7 @@ struct ti_qspi {
 	u32 stat;
 
 	bool memory_mapped;
+	bool ctrl_mod;
 };
 
 #define QSPI_PID			(0x0)
@@ -155,9 +156,11 @@ void enable_qspi_memory_mapped(struct ti_qspi *qspi)
 	u32 val;
 
 	ti_qspi_write(qspi, MM_SWITCH, QSPI_SPI_SWITCH_REG);
-	val = readl(qspi->ctrl_base);
-	val |= MEM_CS;
-	writel(val, qspi->ctrl_base);
+	if (qspi->ctrl_mod) {
+		val = readl(qspi->ctrl_base);
+		val |= MEM_CS;
+		writel(val, qspi->ctrl_base);
+	}
 }
 
 void disable_qspi_memory_mapped(struct ti_qspi *qspi)
@@ -165,9 +168,11 @@ void disable_qspi_memory_mapped(struct ti_qspi *qspi)
 	u32 val;
 
 	ti_qspi_write(qspi, ~MM_SWITCH, QSPI_SPI_SWITCH_REG);
-	val = readl(qspi->ctrl_base);
-	val |= MEM_CS_DIS;
-	writel(val, qspi->ctrl_base);
+	if (qspi->ctrl_mod) {
+		val = readl(qspi->ctrl_base);
+		val |= MEM_CS_DIS;
+		writel(val, qspi->ctrl_base);
+	}
 }
 
 static int ti_qspi_setup(struct spi_device *spi)
@@ -545,7 +550,7 @@ static int ti_qspi_probe(struct platform_device *pdev)
 	if (!master)
 		return -ENOMEM;
 
-	master->mode_bits = SPI_CPOL | SPI_CPHA | SPI_RX_QUAD;
+	master->mode_bits = SPI_CPOL | SPI_CPHA | SPI_RX_QUAD | SPI_RX_DUAL;
 
 	master->bus_num = -1;
 	master->flags = SPI_MASTER_HALF_DUPLEX;
@@ -564,9 +569,14 @@ static int ti_qspi_probe(struct platform_device *pdev)
 	qspi->master = master;
 	qspi->dev = &pdev->dev;
 
+	if (of_property_read_bool(np, "ctrl_mod"))
+		qspi->ctrl_mod = true;
+
+
 	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	res_ctrl = platform_get_resource(pdev, IORESOURCE_MEM, 1);
-	res_mmap = platform_get_resource(pdev, IORESOURCE_MEM, 2);
+	res_mmap = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (qspi->ctrl_mod)
+		res_ctrl = platform_get_resource(pdev, IORESOURCE_MEM, 2);
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
@@ -583,10 +593,12 @@ static int ti_qspi_probe(struct platform_device *pdev)
 		goto free_master;
 	}
 
-	qspi->ctrl_base = devm_ioremap_resource(&pdev->dev, res_ctrl);
-	if (IS_ERR(qspi->ctrl_base)) {
-		ret = PTR_ERR(qspi->ctrl_base);
-		goto free_master;
+	if (qspi->ctrl_mod) {
+		qspi->ctrl_base = devm_ioremap_resource(&pdev->dev, res_ctrl);
+		if (IS_ERR(qspi->ctrl_base)) {
+			ret = PTR_ERR(qspi->ctrl_base);
+			goto free_master;
+		}
 	}
 
 	qspi->mmap_base = devm_ioremap_resource(&pdev->dev, res_mmap);
