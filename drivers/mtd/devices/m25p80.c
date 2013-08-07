@@ -1151,17 +1151,7 @@ static int m25p_probe(struct spi_device *spi)
 	else if (flash->mtd.size > 0x1000000) {
 		/* enable 4-byte addressing if the device exceeds 16MiB */
 		flash->addr_width = 4;
-		if (JEDEC_MFR(info->jedec_id) == CFI_MFR_AMD) {
-			/* Dedicated 4-byte command set */
-			flash->read_opcode = flash->fast_read ?
-				OPCODE_FAST_READ_4B :
-				OPCODE_NORM_READ_4B;
-			flash->program_opcode = OPCODE_PP_4B;
-			/* No small sector erase for 4-byte command set */
-			flash->erase_opcode = OPCODE_SE_4B;
-			flash->mtd.erasesize = info->sector_size;
-		} else
-			set_4byte(flash, info->jedec_id, 1);
+		set_4byte(flash, info->jedec_id, 1);
 	} else {
 		flash->addr_width = 3;
 	}
