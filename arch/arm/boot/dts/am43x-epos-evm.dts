@@ -186,6 +186,17 @@
 			0x164 (PIN_OUTPUT_PULLUP | MUX_MODE7) /* ECAP0_IN_PWM0_OUT -> GPIO 0_7 BACKLIGHT */
 		>;
 	};
+
+	qspi1_default: qspi1_default {
+		pinctrl-single,pins = <
+			0x7c (PIN_INPUT_PULLUP | MUX_MODE3)
+			0x88 (PIN_INPUT_PULLUP | MUX_MODE2)
+			0x90 (PIN_INPUT_PULLUP | MUX_MODE3)
+			0x94 (PIN_INPUT_PULLUP | MUX_MODE3)
+			0x98 (PIN_INPUT_PULLUP | MUX_MODE3)
+			0x9c (PIN_INPUT_PULLUP | MUX_MODE3)
+		>;
+	};
 };
 
 &gpio0 {
@@ -201,6 +212,11 @@
 };
 
 &qspi {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&qspi1_default>;
+
+	qspi-gpio = <&gpio1 16 GPIO_ACTIVE_LOW>;
 	spi-max-frequency = <48000000>;
 	m25p80@0 {
 		compatible = "mx66l51235l";
@@ -208,8 +224,8 @@
 		reg = <0>;
 		spi-cpol;
 		spi-cpha;
-		tx-nbits = <1>;
-		rx-nbits = <4>;
+		spi-tx-bus-width = <1>;
+		spi-rx-bus-width = <4>;
 	};
 };
 
