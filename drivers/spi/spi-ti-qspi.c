@@ -135,6 +135,7 @@ static int ti_qspi_setup(struct spi_device *spi)
 	struct ti_qspi_regs *ctx_reg = &qspi->ctx_reg;
 	int clk_div = 0, ret;
 	u32 clk_ctrl_reg, clk_rate, clk_mask;
+	qspi->dc = 0;
 
 	if (spi->master->busy) {
 		dev_dbg(qspi->dev, "master busy doing other trasnfers\n");
@@ -181,6 +182,15 @@ static int ti_qspi_setup(struct spi_device *spi)
 	clk_mask = QSPI_CLK_EN | clk_div;
 	ti_qspi_write(qspi, clk_mask, QSPI_SPI_CLOCK_CNTRL_REG);
 	ctx_reg->clkctrl = clk_mask;
+
+	if (spi->mode & SPI_CPHA)
+		qspi->dc |= QSPI_CKPHA(spi->chip_select);
+	if (spi->mode & SPI_CPOL)
+		qspi->dc |= QSPI_CKPOL(spi->chip_select);
+	if (spi->mode & SPI_CS_HIGH)
+		qspi->dc |= QSPI_CSPOL(spi->chip_select);
+
+	ti_qspi_write(qspi, qspi->dc, QSPI_SPI_DC_REG);
 
 	pm_runtime_mark_last_busy(qspi->dev);
 	ret = pm_runtime_put_autosuspend(qspi->dev);
@@ -345,16 +355,6 @@ static int ti_qspi_start_transfer_one(struct spi_master *master,
 	int status = 0, ret;
 	int frame_length;
 
-	/* setup device control reg */
-	qspi->dc = 0;
-
-	if (spi->mode & SPI_CPHA)
-		qspi->dc |= QSPI_CKPHA(spi->chip_select);
-	if (spi->mode & SPI_CPOL)
-		qspi->dc |= QSPI_CKPOL(spi->chip_select);
-	if (spi->mode & SPI_CS_HIGH)
-		qspi->dc |= QSPI_CSPOL(spi->chip_select);
-
 	frame_length = (m->frame_length << 3) / spi->bits_per_word;
 
 	frame_length = clamp(frame_length, 0, QSPI_FRAME);
@@ -366,7 +366,6 @@ static int ti_qspi_start_transfer_one(struct spi_master *master,
 	qspi->cmd |= QSPI_WC_CMD_INT_EN;
 
 	ti_qspi_write(qspi, QSPI_WC_INT_EN, QSPI_INTR_ENABLE_SET_REG);
-	ti_qspi_write(qspi, qspi->dc, QSPI_SPI_DC_REG);
 
 	mutex_lock(&qspi->list_lock);
 
