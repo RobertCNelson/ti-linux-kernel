@@ -93,7 +93,8 @@
 			reg-width = <16>;
 			crossbar-lines = "mpu-irq", "rtc-ss-alarm", <0x9f 0xd9 0x12e>,
 					 "mpu-irq", "mcasp3-arevt", <0x9e 0x96 0x12c>,
-					 "mpu-irq", "mcasp3-axevt", <0x9d 0x97 0x12a>;
+					 "mpu-irq", "mcasp3-axevt", <0x9d 0x97 0x12a>,
+					 "mpu-irq", "qspi", <0x7c 0x157 0x0ec>;
 		};
 
 		crossbar_dma: dmareq@4a002b78 {
@@ -593,6 +594,18 @@
 			dmas = <&sdma 57>, <&sdma 58>;
 			dma-names = "tx", "rx";
 			status = "disabled";
+		};
+
+		qspi: qspi@4b300000 {
+			compatible = "ti,dra7xxx-qspi";
+			reg = <0x4b300000 0x100>, <0x4a002558 0x4>,
+				<0x5c000000 0x3ffffff>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			ti,hwmods = "qspi";
+			ti,spi-num-cs = <4>;
+			interrupts = <0 124 0x4>;
+			mmap_read;
 		};
 
 		mcspi1: spi@48098000 {
