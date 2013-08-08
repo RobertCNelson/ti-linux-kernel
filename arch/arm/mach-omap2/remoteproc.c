@@ -157,6 +157,25 @@ static struct omap_rproc_pdev_data omap4_rproc_pdev_data[] = {
 	},
 };
 
+static struct omap_rproc_pdev_data omap5_rproc_pdev_data[] = {
+	{
+#ifdef CONFIG_OMAP_REMOTEPROC_DSP
+		.enabled = 1,
+#endif
+		.pdev = &omap4_dsp,
+		.cma_addr = OMAP_RPROC_CMA_BASE_DSP,
+		.cma_size = OMAP_RPROC_CMA_SIZE_DSP,
+	},
+	{
+#ifdef CONFIG_OMAP_REMOTEPROC_IPU
+		.enabled = 1,
+#endif
+		.pdev = &omap4_ipu,
+		.cma_addr = OMAP_RPROC_CMA_BASE_IPU,
+		.cma_size = OMAP_RPROC_CMA_SIZE_IPU,
+	},
+};
+
 /**
  * omap_rproc_device_enable - enable the remoteproc device
  * @pdev: the rproc platform device
@@ -389,10 +408,12 @@ void __init omap_rproc_reserve_cma(int platform_type)
 	int rproc_size = 0;
 	int i, ret;
 
-	if ((platform_type == RPROC_CMA_OMAP4) ||
-	    (platform_type == RPROC_CMA_OMAP5)) {
+	if (platform_type == RPROC_CMA_OMAP4) {
 		rproc_pdev_data = omap4_rproc_pdev_data;
 		rproc_size = ARRAY_SIZE(omap4_rproc_pdev_data);
+	} else if (platform_type == RPROC_CMA_OMAP5) {
+		rproc_pdev_data = omap5_rproc_pdev_data;
+		rproc_size = ARRAY_SIZE(omap5_rproc_pdev_data);
 	} else {
 		pr_err("incompatible machine");
 		return;
@@ -431,18 +452,33 @@ static int __init omap_rproc_init(void)
 	struct omap_hwmod *oh;
 	struct omap_device *od;
 	int i, ret = 0, oh_count;
+	struct omap_rproc_pdata *rproc_data = NULL;
+	struct omap_iommu_arch_data *rproc_iommu = NULL;
+	struct omap_rproc_pdev_data *rproc_pdev_data = NULL;
+	int rproc_size = 0;
 
-	if (!cpu_is_omap44xx() && !soc_is_omap54xx())
+	if (cpu_is_omap44xx()) {
+		rproc_pdev_data = omap4_rproc_pdev_data;
+		rproc_size = ARRAY_SIZE(omap4_rproc_pdev_data);
+		rproc_data = omap4_rproc_data;
+		rproc_iommu = omap4_rproc_iommu;
+	} else if (soc_is_omap54xx()) {
+		rproc_pdev_data = omap5_rproc_pdev_data;
+		rproc_size = ARRAY_SIZE(omap5_rproc_pdev_data);
+		rproc_data = omap4_rproc_data;
+		rproc_iommu = omap4_rproc_iommu;
+	} else {
 		return 0;
+	}
 
-	for (i = 0; i < ARRAY_SIZE(omap4_rproc_pdev_data); i++) {
-		const char *oh_name = omap4_rproc_data[i].oh_name;
-		struct platform_device *pdev = omap4_rproc_pdev_data[i].pdev;
+	for (i = 0; i < rproc_size; i++) {
+		const char *oh_name = rproc_data[i].oh_name;
+		struct platform_device *pdev = rproc_pdev_data[i].pdev;
 		oh_count = 0;
 
-		if (!omap4_rproc_pdev_data[i].enabled) {
+		if (!rproc_pdev_data[i].enabled) {
 			pr_info("skipping platform_device creation for %s\n",
-				omap4_rproc_data[i].oh_name);
+				rproc_data[i].oh_name);
 			continue;
 		}
 
@@ -454,13 +490,11 @@ static int __init omap_rproc_init(void)
 		}
 		oh_count++;
 
-		omap4_rproc_data[i].device_enable = omap_rproc_device_enable;
-		omap4_rproc_data[i].device_shutdown =
-						omap_rproc_device_shutdown;
-		if (omap4_rproc_data[i].timers_cnt) {
-			omap4_rproc_data[i].enable_timers =
-						omap_rproc_enable_timers;
-			omap4_rproc_data[i].disable_timers =
+		rproc_data[i].device_enable = omap_rproc_device_enable;
+		rproc_data[i].device_shutdown = omap_rproc_device_shutdown;
+		if (rproc_data[i].timers_cnt) {
+			rproc_data[i].enable_timers = omap_rproc_enable_timers;
+			rproc_data[i].disable_timers =
 						omap_rproc_disable_timers;
 		}
 
@@ -475,7 +509,7 @@ static int __init omap_rproc_init(void)
 			continue;
 		}
 
-		ret = platform_device_add_data(pdev, &omap4_rproc_data[i],
+		ret = platform_device_add_data(pdev, &rproc_data[i],
 					       sizeof(struct omap_rproc_pdata));
 		if (ret) {
 			dev_err(&pdev->dev, "can't add pdata\n");
@@ -484,7 +518,7 @@ static int __init omap_rproc_init(void)
 			continue;
 		}
 
-		pdev->dev.archdata.iommu = &omap4_rproc_iommu[i];
+		pdev->dev.archdata.iommu = &rproc_iommu[i];
 
 		ret = omap_device_register(pdev);
 		if (ret) {
@@ -494,7 +528,7 @@ static int __init omap_rproc_init(void)
 			continue;
 		}
 		dev_info(&pdev->dev, "platform_device for rproc %s created\n",
-			 omap4_rproc_data[i].oh_name);
+			 rproc_data[i].oh_name);
 	}
 
 	return ret;
