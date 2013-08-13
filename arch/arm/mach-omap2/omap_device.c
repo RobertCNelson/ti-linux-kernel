@@ -45,8 +45,8 @@
 static void _add_clkdev(struct omap_device *od, const char *clk_alias,
 		       const char *clk_name)
 {
+	int ret;
 	struct clk *r;
-	struct clk_lookup *l;
 	struct device *dev = &od->pdev->dev;
 
 	if (!clk_alias || !clk_name)
@@ -61,19 +61,10 @@ static void _add_clkdev(struct omap_device *od, const char *clk_alias,
 		return;
 	}
 
-	r = clk_get(NULL, clk_name);
-	if (IS_ERR(r)) {
-		dev_err(dev, "clk_get for %s failed\n", clk_name);
-		return;
-	}
-
-	l = clkdev_alloc(r, clk_alias, dev_name(dev));
-	if (!l) {
-		dev_err(dev, "clkdev_alloc for %s failed\n", clk_alias);
-		return;
-	}
-
-	clkdev_add(l);
+	ret = clk_add_alias(clk_alias, dev_name(dev), (char *)clk_name, dev);
+	if (ret)
+		dev_err(dev, "Failed to alias %s to %s: %d\n", clk_alias,
+			clk_name, ret);
 }
 
 /**
