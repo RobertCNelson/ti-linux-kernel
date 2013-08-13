@@ -48,18 +48,24 @@ static void _add_clkdev(struct omap_device *od, const char *clk_alias,
 	int ret;
 	struct clk *r;
 	struct device *dev = &od->pdev->dev;
+	struct device_node *node = dev->of_node;
 
 	if (!clk_alias || !clk_name)
 		return;
 
 	dev_dbg(dev, "Creating %s -> %s\n", clk_alias, clk_name);
 
-	r = clk_get_sys(dev_name(dev), clk_alias);
+	r = clk_get(dev, clk_alias);
 	if (!IS_ERR(r)) {
-		dev_warn(dev, "alias %s already exists\n", clk_alias);
+		if (!node)
+			dev_warn(dev, "alias '%s' already exists\n", clk_alias);
 		clk_put(r);
 		return;
 	}
+
+	if (node)
+		dev_err(dev, "FIXME: clock-name '%s' DOES NOT exist in dt!\n",
+			clk_alias);
 
 	ret = clk_add_alias(clk_alias, dev_name(dev), (char *)clk_name, dev);
 	if (ret)
