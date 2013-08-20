@@ -713,6 +713,7 @@
 		emif1: emif@0x4c000000 {
 			compatible	= "ti,emif-4d5";
 			ti,hwmods	= "emif1";
+			ti,no-idle;
 			clocks = <&dpll_core_h11x2_ck>;
 			clock-names = "fck";
 			phy-type	= <2>; /* DDR PHY type: Intelli PHY */
@@ -726,6 +727,7 @@
 		emif2: emif@0x4d000000 {
 			compatible	= "ti,emif-4d5";
 			ti,hwmods	= "emif2";
+			ti,no-idle;
 			clocks = <&dpll_core_h11x2_ck>;
 			clock-names = "fck";
 			phy-type	= <2>; /* DDR PHY type: Intelli PHY */

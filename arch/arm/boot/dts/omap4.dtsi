@@ -230,6 +230,7 @@
 			gpmc,num-cs = <8>;
 			gpmc,num-waitpins = <4>;
 			ti,hwmods = "gpmc";
+			ti,no-idle;
 		};
 
 		uart1: serial@4806a000 {
@@ -558,6 +559,7 @@
 			reg = <0x4c000000 0x100>;
 			interrupts = <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "emif1";
+			ti,no-idle;
 			clocks = <&ddrphy_ck>;
 			clock-names = "fck";
 			phy-type = <1>;
@@ -571,6 +573,7 @@
 			reg = <0x4d000000 0x100>;
 			interrupts = <GIC_SPI 111 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "emif2";
+			ti,no-idle;
 			clocks = <&ddrphy_ck>;
 			clock-names = "fck";
 			phy-type = <1>;
