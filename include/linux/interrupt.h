@@ -14,6 +14,7 @@
 #include <linux/hrtimer.h>
 #include <linux/kref.h>
 #include <linux/workqueue.h>
+#include <linux/swork.h>
 
 #include <linux/atomic.h>
 #include <asm/ptrace.h>
@@ -229,7 +230,11 @@ extern void resume_device_irqs(void);
 struct irq_affinity_notify {
 	unsigned int irq;
 	struct kref kref;
+#ifdef CONFIG_PREEMPT_RT_BASE
+	struct swork_event swork;
+#else
 	struct work_struct work;
+#endif
 	void (*notify)(struct irq_affinity_notify *, const cpumask_t *mask);
 	void (*release)(struct kref *ref);
 };
