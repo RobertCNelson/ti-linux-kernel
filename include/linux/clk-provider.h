@@ -280,7 +280,7 @@ struct clk_divider {
 	struct clk_hw	hw;
 	void __iomem	*reg;
 	u8		shift;
-	u8		width;
+	u32		mask;
 	u8		flags;
 	const struct clk_div_table	*table;
 	spinlock_t	*lock;

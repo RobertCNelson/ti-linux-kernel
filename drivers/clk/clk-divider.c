@@ -30,8 +30,6 @@
 
 #define to_clk_divider(_hw) container_of(_hw, struct clk_divider, hw)
 
-#define div_mask(d)	((1 << ((d)->width)) - 1)
-
 static unsigned int _get_table_maxdiv(const struct clk_div_table *table)
 {
 	unsigned int maxdiv = 0;
@@ -46,12 +44,12 @@ static unsigned int _get_table_maxdiv(const struct clk_div_table *table)
 static unsigned int _get_maxdiv(struct clk_divider *divider)
 {
 	if (divider->flags & CLK_DIVIDER_ONE_BASED)
-		return div_mask(divider);
+		return divider->mask;
 	if (divider->flags & CLK_DIVIDER_POWER_OF_TWO)
-		return 1 << div_mask(divider);
+		return 1 << divider->mask;
 	if (divider->table)
 		return _get_table_maxdiv(divider->table);
-	return div_mask(divider) + 1;
+	return divider->mask + 1;
 }
 
 static unsigned int _get_table_div(const struct clk_div_table *table,
@@ -105,7 +103,7 @@ static unsigned long clk_divider_recalc_rate(struct clk_hw *hw,
 	unsigned int div, val;
 
 	val = clk_readl(divider->reg) >> divider->shift;
-	val &= div_mask(divider);
+	val &= divider->mask;
 
 	div = _get_div(divider, val);
 	if (!div) {
@@ -221,17 +219,17 @@ static int clk_divider_set_rate(struct clk_hw *hw, unsigned long rate,
 	div = parent_rate / rate;
 	value = _get_val(divider, div);
 
-	if (value > div_mask(divider))
-		value = div_mask(divider);
+	if (value > divider->mask)
+		value = divider->mask;
 
 	if (divider->lock)
 		spin_lock_irqsave(divider->lock, flags);
 
 	if (divider->flags & CLK_DIVIDER_HIWORD_MASK) {
-		val = div_mask(divider) << (divider->shift + 16);
+		val = divider->mask << (divider->shift + 16);
 	} else {
 		val = clk_readl(divider->reg);
-		val &= ~(div_mask(divider) << divider->shift);
+		val &= ~(divider->mask << divider->shift);
 	}
 	val |= value << divider->shift;
 	clk_writel(val, divider->reg);
@@ -251,7 +249,7 @@ EXPORT_SYMBOL_GPL(clk_divider_ops);
 
 static struct clk *_register_divider(struct device *dev, const char *name,
 		const char *parent_name, unsigned long flags,
-		void __iomem *reg, u8 shift, u8 width,
+		void __iomem *reg, u8 shift, u32 mask,
 		u8 clk_divider_flags, const struct clk_div_table *table,
 		spinlock_t *lock)
 {
@@ -260,8 +258,9 @@ static struct clk *_register_divider(struct device *dev, const char *name,
 	struct clk_init_data init;
 
 	if (clk_divider_flags & CLK_DIVIDER_HIWORD_MASK) {
-		if (width + shift > 16) {
-			pr_warn("divider value exceeds LOWORD field\n");
+		if ((mask << shift) & 0xffff0000) {
+			pr_warn("%s: divider value exceeds LOWORD field\n",
+					__func__);
 			return ERR_PTR(-EINVAL);
 		}
 	}
@@ -282,7 +281,7 @@ static struct clk *_register_divider(struct device *dev, const char *name,
 	/* struct clk_divider assignments */
 	div->reg = reg;
 	div->shift = shift;
-	div->width = width;
+	div->mask = mask;
 	div->flags = clk_divider_flags;
 	div->lock = lock;
 	div->hw.init = &init;
@@ -315,7 +314,7 @@ struct clk *clk_register_divider(struct device *dev, const char *name,
 		u8 clk_divider_flags, spinlock_t *lock)
 {
 	return _register_divider(dev, name, parent_name, flags, reg, shift,
-			width, clk_divider_flags, NULL, lock);
+			((1 << width) - 1), clk_divider_flags, NULL, lock);
 }
 EXPORT_SYMBOL_GPL(clk_register_divider);
 
@@ -340,6 +339,6 @@ struct clk *clk_register_divider_table(struct device *dev, const char *name,
 		spinlock_t *lock)
 {
 	return _register_divider(dev, name, parent_name, flags, reg, shift,
-			width, clk_divider_flags, table, lock);
+			((1 << width) - 1), clk_divider_flags, table, lock);
 }
 EXPORT_SYMBOL_GPL(clk_register_divider_table);
