@@ -15,6 +15,8 @@
 #include <linux/io.h>
 #include <linux/err.h>
 #include <linux/string.h>
+#include <linux/of.h>
+#include <linux/of_address.h>
 
 /**
  * DOC: basic gatable clock which can gate and ungate it's ouput
@@ -162,3 +164,48 @@ struct clk *clk_register_gate(struct device *dev, const char *name,
 	return clk;
 }
 EXPORT_SYMBOL_GPL(clk_register_gate);
+
+#ifdef CONFIG_OF
+/**
+ * of_gate_clk_setup() - Setup function for simple gate rate clock
+ */
+void of_gate_clk_setup(struct device_node *node)
+{
+	struct clk *clk;
+	const char *clk_name = node->name;
+	void __iomem *reg;
+	const char *parent_name;
+	u8 clk_gate_flags = 0;
+	u32 bit_idx = 0;
+
+	of_property_read_string(node, "clock-output-names", &clk_name);
+
+	parent_name = of_clk_get_parent_name(node, 0);
+
+	reg = of_iomap(node, 0);
+	if (!reg) {
+		pr_err("%s: no memory mapped for property reg\n", __func__);
+		return;
+	}
+
+	if (of_property_read_u32(node, "bit-shift", &bit_idx)) {
+		pr_err("%s: missing bit-shift property for %s\n",
+				__func__, node->name);
+		return;
+	}
+
+	if (of_property_read_bool(node, "set-bit-to-disable"))
+		clk_gate_flags |= CLK_GATE_SET_TO_DISABLE;
+
+	if (of_property_read_bool(node, "hiword-mask"))
+		clk_gate_flags |= CLK_GATE_HIWORD_MASK;
+
+	clk = clk_register_gate(NULL, clk_name, parent_name, 0, reg, bit_idx,
+			clk_gate_flags, NULL);
+
+	if (!IS_ERR(clk))
+		of_clk_add_provider(node, of_clk_src_simple_get, clk);
+}
+EXPORT_SYMBOL_GPL(of_gate_clk_setup);
+CLK_OF_DECLARE(gate_clk, "gate-clock", of_gate_clk_setup);
+#endif

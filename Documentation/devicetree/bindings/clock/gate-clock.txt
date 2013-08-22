@@ -1,0 +1,36 @@
+Binding for simple gate clock.
+
+This binding uses the common clock binding[1].  It assumes a
+register-mapped clock gate controlled by a single bit that has only one
+input clock or parent.  By default setting the specified bit gates the
+clock signal and clearing the bit ungates it.
+
+The binding must provide the register to control the gate and the bit
+shift for the corresponding gate control bit. Some clocks set the bit to
+gate the clock signal, and clear it to ungate the clock signal. The
+optional "set-bit-to-disable" specifies this behavior.
+
+[1] Documentation/devicetree/bindings/clock/clock-bindings.txt
+
+Required properties:
+- compatible : shall be "gate-clock".
+- #clock-cells : from common clock binding; shall be set to 0.
+- clocks : link to phandle of parent clock
+- reg : base address for register controlling adjustable gate
+- bit-shift : bit shift for programming the clock gate
+
+Optional properties:
+- clock-output-names : from common clock binding.
+- set-bit-to-disable : inverts default gate programming. Setting the bit
+  gates the clock and clearing the bit ungates the clock.
+- hiword-mask : lower half of the register controls the gate, upper half
+  of the register indicates bits that were updated in the lower half
+
+Examples:
+	clock_foo: clock_foo@4a008100 {
+		compatible = "gate-clock";
+		#clock-cells = <0>;
+		clocks = <&clock_bar>;
+		reg = <0x4a008100 0x4>
+		bit-shift = <3>
+	};
