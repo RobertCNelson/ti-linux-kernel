@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011 Sascha Hauer, Pengutronix <s.hauer@pengutronix.de>
  * Copyright (C) 2011 Richard Zhao, Linaro <richard.zhao@linaro.org>
- * Copyright (C) 2011-2012 Mike Turquette, Linaro Ltd <mturquette@linaro.org>
+ * Copyright (C) 2011-2013 Mike Turquette, Linaro Ltd <mturquette@linaro.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -17,6 +17,8 @@
 #include <linux/err.h>
 #include <linux/string.h>
 #include <linux/log2.h>
+#include <linux/of.h>
+#include <linux/of_address.h>
 
 /*
  * DOC: basic adjustable divider clock that cannot gate
@@ -342,3 +344,96 @@ struct clk *clk_register_divider_table(struct device *dev, const char *name,
 			((1 << width) - 1), clk_divider_flags, table, lock);
 }
 EXPORT_SYMBOL_GPL(clk_register_divider_table);
+
+#ifdef CONFIG_OF
+struct clk_div_table *of_clk_get_div_table(struct device_node *node)
+{
+	int i;
+	u32 table_size;
+	struct clk_div_table *table;
+	const __be32 *tablespec;
+	u32 val;
+
+	tablespec = of_get_property(node, "table", &table_size);
+
+	if (!tablespec)
+		return NULL;
+
+	table_size /= sizeof(struct clk_div_table);
+
+	table = kzalloc(sizeof(struct clk_div_table) * table_size, GFP_KERNEL);
+	if (!table) {
+		pr_err("%s: unable to allocate memory for %s table\n", __func__, node->name);
+		return NULL;
+	}
+
+	for (i = 0; i < table_size; i++) {
+		of_property_read_u32_index(node, "table", i * 2, &val);
+		table[i].div = val;
+		of_property_read_u32_index(node, "table", i * 2 + 1, &val);
+		table[i].val = val;
+	}
+
+	return table;
+}
+
+/**
+ * of_divider_clk_setup() - Setup function for simple div rate clock
+ */
+void of_divider_clk_setup(struct device_node *node)
+{
+	struct clk *clk;
+	const char *clk_name = node->name;
+	void __iomem *reg;
+	const char *parent_name;
+	u8 clk_divider_flags = 0;
+	u32 mask = 0;
+	u32 shift = 0;
+	struct clk_div_table *table;
+
+	of_property_read_string(node, "clock-output-names", &clk_name);
+
+	parent_name = of_clk_get_parent_name(node, 0);
+
+	reg = of_iomap(node, 0);
+	if (!reg) {
+		pr_err("%s: no memory mapped for property reg\n", __func__);
+		return;
+	}
+
+	if (of_property_read_u32(node, "bit-mask", &mask)) {
+		pr_err("%s: missing bit-mask property for %s\n", __func__, node->name);
+		return;
+	}
+
+	if (of_property_read_u32(node, "bit-shift", &shift)) {
+		shift = __ffs(mask);
+		pr_debug("%s: bit-shift property defaults to 0x%x for %s\n",
+				__func__, shift, node->name);
+	}
+
+	if (of_property_read_bool(node, "index-starts-at-one"))
+		clk_divider_flags |= CLK_DIVIDER_ONE_BASED;
+
+	if (of_property_read_bool(node, "index-power-of-two"))
+		clk_divider_flags |= CLK_DIVIDER_POWER_OF_TWO;
+
+	if (of_property_read_bool(node, "index-allow-zero"))
+		clk_divider_flags |= CLK_DIVIDER_ALLOW_ZERO;
+
+	if (of_property_read_bool(node, "hiword-mask"))
+		clk_divider_flags |= CLK_DIVIDER_HIWORD_MASK;
+
+	table = of_clk_get_div_table(node);
+	if (IS_ERR(table))
+		return;
+
+	clk = _register_divider(NULL, clk_name, parent_name, 0, reg, shift,
+			mask, clk_divider_flags, table, NULL);
+
+	if (!IS_ERR(clk))
+		of_clk_add_provider(node, of_clk_src_simple_get, clk);
+}
+EXPORT_SYMBOL_GPL(of_divider_clk_setup);
+CLK_OF_DECLARE(divider_clk, "divider-clock", of_divider_clk_setup);
+#endif

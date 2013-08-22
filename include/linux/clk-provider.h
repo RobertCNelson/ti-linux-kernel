@@ -302,6 +302,8 @@ struct clk *clk_register_divider_table(struct device *dev, const char *name,
 		u8 clk_divider_flags, const struct clk_div_table *table,
 		spinlock_t *lock);
 
+void of_divider_clk_setup(struct device_node *node);
+
 /**
  * struct clk_mux - multiplexer clock
  *
