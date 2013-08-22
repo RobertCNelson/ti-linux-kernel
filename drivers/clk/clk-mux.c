@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011 Sascha Hauer, Pengutronix <s.hauer@pengutronix.de>
  * Copyright (C) 2011 Richard Zhao, Linaro <richard.zhao@linaro.org>
- * Copyright (C) 2011-2012 Mike Turquette, Linaro Ltd <mturquette@linaro.org>
+ * Copyright (C) 2011-2013 Mike Turquette, Linaro Ltd <mturquette@linaro.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -16,6 +16,8 @@
 #include <linux/slab.h>
 #include <linux/io.h>
 #include <linux/err.h>
+#include <linux/of.h>
+#include <linux/of_address.h>
 
 /*
  * DOC: basic adjustable multiplexer clock that cannot gate
@@ -177,3 +179,67 @@ struct clk *clk_register_mux(struct device *dev, const char *name,
 				      NULL, lock);
 }
 EXPORT_SYMBOL_GPL(clk_register_mux);
+
+#ifdef CONFIG_OF
+/**
+ * of_mux_clk_setup() - Setup function for simple mux rate clock
+ */
+void of_mux_clk_setup(struct device_node *node)
+{
+	struct clk *clk;
+	const char *clk_name = node->name;
+	void __iomem *reg;
+	int num_parents;
+	const char **parent_names;
+	int i;
+	u8 clk_mux_flags = 0;
+	u32 mask = 0;
+	u32 shift = 0;
+
+	of_property_read_string(node, "clock-output-names", &clk_name);
+
+	num_parents = of_clk_get_parent_count(node);
+	if (num_parents < 1) {
+		pr_err("%s: mux-clock %s must have parent(s)\n",
+				__func__, node->name);
+		return;
+	}
+
+	parent_names = kzalloc((sizeof(char*) * num_parents),
+			GFP_KERNEL);
+
+	for (i = 0; i < num_parents; i++)
+		parent_names[i] = of_clk_get_parent_name(node, i);
+
+	reg = of_iomap(node, 0);
+	if (!reg) {
+		pr_err("%s: no memory mapped for property reg\n", __func__);
+		return;
+	}
+
+	if (of_property_read_u32(node, "bit-mask", &mask)) {
+		pr_err("%s: missing bit-mask property for %s\n", __func__, node->name);
+		return;
+	}
+
+	if (of_property_read_u32(node, "bit-shift", &shift)) {
+		shift = __ffs(mask);
+		pr_debug("%s: bit-shift property defaults to 0x%x for %s\n",
+				__func__, shift, node->name);
+	}
+
+	if (of_property_read_bool(node, "index-starts-at-one"))
+		clk_mux_flags |= CLK_MUX_INDEX_ONE;
+
+	if (of_property_read_bool(node, "hiword-mask"))
+		clk_mux_flags |= CLK_MUX_HIWORD_MASK;
+
+	clk = clk_register_mux_table(NULL, clk_name, parent_names, num_parents,
+			0, reg, shift, mask, clk_mux_flags, NULL, NULL);
+
+	if (!IS_ERR(clk))
+		of_clk_add_provider(node, of_clk_src_simple_get, clk);
+}
+EXPORT_SYMBOL_GPL(of_mux_clk_setup);
+CLK_OF_DECLARE(mux_clk, "mux-clock", of_mux_clk_setup);
+#endif
