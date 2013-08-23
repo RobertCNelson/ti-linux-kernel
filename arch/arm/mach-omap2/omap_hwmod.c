@@ -827,8 +827,7 @@ static const char **_parse_opt_clks_dt(struct omap_hwmod *oh,
 		of_property_read_string_index(np, "clock-names", i, &clk_name);
 		if (!strcmp(clk_name, "fck"))
 			continue;
-		opt_clks_cnt++;
-		opt_clk_names[i] = clk_name;
+		opt_clk_names[(*opt_clks_cnt)++] = clk_name;
 	}
 	return opt_clk_names;
 }
@@ -851,7 +850,7 @@ static int _init_opt_clks_dt(struct omap_hwmod *oh, struct device_node *np)
 
 	oh->opt_clks_cnt = opt_clks_cnt;
 
-	for (i = 0; i < oh->opt_clks_cnt; i++) {
+	for (i = 0; i < opt_clks_cnt; i++) {
 		c = of_clk_get_by_name(np, opt_clk_names[i]);
 		if (IS_ERR(c)) {
 			pr_warn("omap_hwmod: %s: cannot clk_get opt_clk %s\n",
