@@ -83,7 +83,7 @@ struct omap_des_ctx {
 	struct omap_des_dev *dd;
 
 	int		keylen;
-	u32		key[DES_KEY_SIZE / sizeof(u32)];
+	u32		key[(3 * DES_KEY_SIZE) / sizeof(u32)];
 	unsigned long	flags;
 };
 
@@ -265,8 +265,10 @@ static int omap_des_write_ctrl(struct omap_des_dev *dd)
 		val |= DES_REG_CTRL_CBC;
 	if (dd->flags & FLAGS_ENCRYPT)
 		val |= DES_REG_CTRL_DIRECTION;
+	if (key32 == 6)
+		val |= DES_REG_CTRL_TDES;
 
-	mask |= DES_REG_CTRL_CBC | DES_REG_CTRL_DIRECTION;
+	mask |= DES_REG_CTRL_CBC | DES_REG_CTRL_DIRECTION | DES_REG_CTRL_TDES;
 
 	omap_des_write_mask(dd, DES_REG_CTRL(dd), val, mask);
 
@@ -725,7 +727,7 @@ static int omap_des_setkey(struct crypto_ablkcipher *tfm, const u8 *key,
 {
 	struct omap_des_ctx *ctx = crypto_ablkcipher_ctx(tfm);
 
-	if (keylen != DES_KEY_SIZE)
+	if (keylen != DES_KEY_SIZE && keylen != (3*DES_KEY_SIZE))
 		return -EINVAL;
 
 	pr_debug("enter, keylen: %d\n", keylen);
@@ -812,6 +814,51 @@ static struct crypto_alg algs_ecb_cbc[] = {
 	.cra_u.ablkcipher = {
 		.min_keysize	= DES_KEY_SIZE,
 		.max_keysize	= DES_KEY_SIZE,
+		.ivsize		= DES_BLOCK_SIZE,
+		.setkey		= omap_des_setkey,
+		.encrypt	= omap_des_cbc_encrypt,
+		.decrypt	= omap_des_cbc_decrypt,
+	}
+},
+{
+	.cra_name		= "ecb(des3_ede)",
+	.cra_driver_name	= "ecb-des3-omap",
+	.cra_priority		= 100,
+	.cra_flags		= CRYPTO_ALG_TYPE_ABLKCIPHER |
+				  CRYPTO_ALG_KERN_DRIVER_ONLY |
+				  CRYPTO_ALG_ASYNC,
+	.cra_blocksize		= DES_BLOCK_SIZE,
+	.cra_ctxsize		= sizeof(struct omap_des_ctx),
+	.cra_alignmask		= 0,
+	.cra_type		= &crypto_ablkcipher_type,
+	.cra_module		= THIS_MODULE,
+	.cra_init		= omap_des_cra_init,
+	.cra_exit		= omap_des_cra_exit,
+	.cra_u.ablkcipher = {
+		.min_keysize	= 3*DES_KEY_SIZE,
+		.max_keysize	= 3*DES_KEY_SIZE,
+		.setkey		= omap_des_setkey,
+		.encrypt	= omap_des_ecb_encrypt,
+		.decrypt	= omap_des_ecb_decrypt,
+	}
+},
+{
+	.cra_name		= "cbc(des3_ede)",
+	.cra_driver_name	= "cbc-des3-omap",
+	.cra_priority		= 100,
+	.cra_flags		= CRYPTO_ALG_TYPE_ABLKCIPHER |
+				  CRYPTO_ALG_KERN_DRIVER_ONLY |
+				  CRYPTO_ALG_ASYNC,
+	.cra_blocksize		= DES_BLOCK_SIZE,
+	.cra_ctxsize		= sizeof(struct omap_des_ctx),
+	.cra_alignmask		= 0,
+	.cra_type		= &crypto_ablkcipher_type,
+	.cra_module		= THIS_MODULE,
+	.cra_init		= omap_des_cra_init,
+	.cra_exit		= omap_des_cra_exit,
+	.cra_u.ablkcipher = {
+		.min_keysize	= 3*DES_KEY_SIZE,
+		.max_keysize	= 3*DES_KEY_SIZE,
 		.ivsize		= DES_BLOCK_SIZE,
 		.setkey		= omap_des_setkey,
 		.encrypt	= omap_des_cbc_encrypt,
