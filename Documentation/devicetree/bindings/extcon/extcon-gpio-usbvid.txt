@@ -1,0 +1,20 @@
+EXTCON FOR USB VIA GPIO
+
+Required Properties:
+ - compatible : Should be "ti,gpio-usb-vid" for USB VBUS-ID detector
+		using gpios or "ti,gpio-usb-id" for USB ID pin detector
+ - gpios : phandle and args ID pin gpio and VBUS gpio.
+	   The first gpio used  for ID pin detection
+	   and the second used for VBUS detection.
+	   ID pin gpio is mandatory and VBUS is optional
+	   depending on implementation.
+
+Please refer to ../gpio/gpio.txt for details of the common GPIO bindings
+
+Example:
+
+	gpio_usbvid_extcon1 {
+		compatible = "ti,gpio-usb-vid";
+		gpios = <&gpio1 1 0>,
+			<&gpio2 2 0>;
+	};
