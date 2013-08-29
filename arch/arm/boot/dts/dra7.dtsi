@@ -565,4 +565,18 @@
 			status = "disabled";
 		};
 	};
+
+	clocks {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+		/include/ "dra7xx-clocks.dtsi"
+	};
+
+	clockdomains {
+		coreaon_clkdm: coreaon_clkdm {
+			compatible = "ti,clockdomain";
+			clocks = <&dpll_usb_ck>;
+		};
+	};
 };
