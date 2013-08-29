@@ -226,6 +226,7 @@ static inline void of_omap_clk_deny_autoidle_all(void) { }
 #endif
 
 int omap5xxx_clk_init(void);
+int dra7xx_clk_init(void);
 
 extern const struct clk_hw_omap_ops clkhwops_omap3_dpll;
 extern const struct clk_hw_omap_ops clkhwops_omap4_dpllmx;
