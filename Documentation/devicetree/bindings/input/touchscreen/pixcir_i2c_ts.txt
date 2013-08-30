@@ -1,0 +1,29 @@
+* Pixcir I2C touchscreen controllers
+
+Required properties:
+- compatible: must be "pixcir,pixcir_ts"
+- reg: I2C address of the chip
+- interrupts: interrupt to which the chip is connected
+- attb-gpio: GPIO connected to the ATTB line of the chip
+- x-size: horizontal resolution of touchscreen
+- y-size: vertical resolution of touchscreen
+
+Example:
+
+	i2c@00000000 {
+		/* ... */
+
+		pixcir_ts@5c {
+			compatible = "pixcir,tangoc";
+			reg = <0x5c>;
+			interrupts = <2 0>;
+
+			attb-gpio = <&gpf 2 0 2>;
+			reset-gpio = <&gpf 5 1 0>;
+
+			x-size = <800>;
+			y-size = <600>;
+		};
+
+		/* ... */
+	};
