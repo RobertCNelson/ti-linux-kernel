@@ -3,8 +3,9 @@
 
 struct pixcir_ts_platform_data {
 	int (*attb_read_val)(void);
-	int x_max;
-	int y_max;
+	unsigned int x_size;	/* X axis resolution */
+	unsigned int y_size;	/* Y axis resolution */
+	int gpio_attb;		/* GPIO connected to ATTB line */
 };
 
 #endif

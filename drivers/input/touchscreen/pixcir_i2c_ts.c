@@ -24,6 +24,10 @@
 #include <linux/i2c.h>
 #include <linux/input.h>
 #include <linux/input/pixcir_ts.h>
+#include <linux/gpio.h>
+#include <linux/of.h>
+#include <linux/of_gpio.h>
+#include <linux/of_device.h>
 
 struct pixcir_i2c_ts_data {
 	struct i2c_client *client;
@@ -125,15 +129,65 @@ static int pixcir_i2c_ts_resume(struct device *dev)
 static SIMPLE_DEV_PM_OPS(pixcir_dev_pm_ops,
 			 pixcir_i2c_ts_suspend, pixcir_i2c_ts_resume);
 
+#if defined(CONFIG_OF)
+static const struct of_device_id pixcir_of_match[];
+
+static struct pixcir_ts_platform_data *pixcir_parse_dt(struct device *dev)
+{
+	struct pixcir_ts_platform_data *pdata;
+	struct device_node *np = dev->of_node;
+	const struct of_device_id *match;
+
+	match = of_match_device(of_match_ptr(pixcir_of_match), dev);
+	if (!match)
+		return ERR_PTR(-EINVAL);
+
+	pdata = devm_kzalloc(dev, sizeof(*pdata), GFP_KERNEL);
+	if (!pdata)
+		return ERR_PTR(-ENOMEM);
+
+	pdata->gpio_attb = of_get_named_gpio(np, "attb-gpio", 0);
+	if (!gpio_is_valid(pdata->gpio_attb))
+		dev_err(dev, "Failed to get ATTB GPIO\n");
+
+	if (of_property_read_u32(np, "x-size", &pdata->x_size)) {
+		dev_err(dev, "Failed to get x-size property\n");
+		return ERR_PTR(-EINVAL);
+	}
+
+	if (of_property_read_u32(np, "y-size", &pdata->y_size)) {
+		dev_err(dev, "Failed to get y-size property\n");
+		return ERR_PTR(-EINVAL);
+	}
+
+	dev_dbg(dev, "%s: x %d, y %d, gpio %d\n", __func__,
+				pdata->x_size, pdata->y_size, pdata->gpio_attb);
+
+	return pdata;
+}
+#else
+static struct pixcir_ts_platform_data *pixcir_parse_dt(struct device *dev)
+{
+	return NULL;
+}
+#endif
+
 static int pixcir_i2c_ts_probe(struct i2c_client *client,
 					 const struct i2c_device_id *id)
 {
 	const struct pixcir_ts_platform_data *pdata = client->dev.platform_data;
+	struct device *dev = &client->dev;
+	struct device_node *np = dev->of_node;
 	struct pixcir_i2c_ts_data *tsdata;
 	struct input_dev *input;
 	int error;
 
-	if (!pdata) {
+	if (np) {
+		pdata = pixcir_parse_dt(dev);
+		if (IS_ERR(pdata))
+			return PTR_ERR(pdata);
+
+	} else if (!pdata) {
 		dev_err(&client->dev, "platform data not defined\n");
 		return -EINVAL;
 	}
@@ -157,10 +211,14 @@ static int pixcir_i2c_ts_probe(struct i2c_client *client,
 	__set_bit(EV_KEY, input->evbit);
 	__set_bit(EV_ABS, input->evbit);
 	__set_bit(BTN_TOUCH, input->keybit);
-	input_set_abs_params(input, ABS_X, 0, pdata->x_max, 0, 0);
-	input_set_abs_params(input, ABS_Y, 0, pdata->y_max, 0, 0);
-	input_set_abs_params(input, ABS_MT_POSITION_X, 0, pdata->x_max, 0, 0);
-	input_set_abs_params(input, ABS_MT_POSITION_Y, 0, pdata->y_max, 0, 0);
+	input_set_abs_params(input, ABS_X,
+					0, pdata->x_size - 1, 0, 0);
+	input_set_abs_params(input, ABS_Y,
+					0, pdata->y_size - 1, 0, 0);
+	input_set_abs_params(input, ABS_MT_POSITION_X,
+					0, pdata->x_size - 1, 0, 0);
+	input_set_abs_params(input, ABS_MT_POSITION_Y,
+					0, pdata->y_size - 1, 0, 0);
 
 	input_set_drvdata(input, tsdata);
 
@@ -211,11 +269,20 @@ static const struct i2c_device_id pixcir_i2c_ts_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, pixcir_i2c_ts_id);
 
+#if defined(CONFIG_OF)
+static const struct of_device_id pixcir_of_match[] = {
+	{ .compatible = "pixcir,pixcir_ts", },
+	{ }
+};
+MODULE_DEVICE_TABLE(of, pixcir_of_match);
+#endif
+
 static struct i2c_driver pixcir_i2c_ts_driver = {
 	.driver = {
 		.owner	= THIS_MODULE,
 		.name	= "pixcir_ts",
 		.pm	= &pixcir_dev_pm_ops,
+		.of_match_table = of_match_ptr(pixcir_of_match),
 	},
 	.probe		= pixcir_i2c_ts_probe,
 	.remove		= pixcir_i2c_ts_remove,
