@@ -103,6 +103,172 @@ static irqreturn_t pixcir_ts_isr(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+static int pixcir_set_power_mode(struct pixcir_i2c_ts_data *ts, enum pixcir_power_mode mode)
+{
+	struct device *dev = &ts->client->dev;
+	int ret;
+
+	ret = i2c_smbus_read_byte_data(ts->client, PIXCIR_REG_POWER_MODE);
+	if (ret < 0) {
+		dev_err(dev, "%s: can't read reg 0x%x : %d\n",
+					__func__, PIXCIR_REG_POWER_MODE, ret);
+		return ret;
+	}
+
+	ret &= ~PIXCIR_POWER_MODE_MASK;
+	ret |= mode;
+
+	/* Always AUTO_IDLE */
+	ret |= PIXCIR_POWER_ALLOW_IDLE;
+
+	ret = i2c_smbus_write_byte_data(ts->client, PIXCIR_REG_POWER_MODE, ret);
+	if (ret < 0) {
+		dev_err(dev, "%s: can't write reg 0x%x : %d\n",
+					__func__, PIXCIR_REG_POWER_MODE, ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+/*
+ * Set the interrupt mode for the device i.e. ATTB line behaviour
+ *
+ * @polarity : 1 for active high, 0 for active low.
+ */
+static int pixcir_set_int_mode(struct pixcir_i2c_ts_data *ts, enum pixcir_int_mode mode,
+					bool polarity)
+{
+	struct device *dev = &ts->client->dev;
+	int ret;
+
+	ret = i2c_smbus_read_byte_data(ts->client, PIXCIR_REG_INT_MODE);
+	if (ret < 0) {
+		dev_err(dev, "%s: can't read reg 0x%x : %d\n",
+					__func__, PIXCIR_REG_INT_MODE, ret);
+		return ret;
+	}
+
+	ret &= ~PIXCIR_INT_MODE_MASK;
+	ret |= mode;
+
+	if (polarity)
+		ret |= PIXCIR_INT_POL_HIGH;
+	else
+		ret &= ~PIXCIR_INT_POL_HIGH;
+
+	ret = i2c_smbus_write_byte_data(ts->client, PIXCIR_REG_INT_MODE, ret);
+	if (ret < 0) {
+		dev_err(dev, "%s: can't write reg 0x%x : %d\n",
+					__func__, PIXCIR_REG_INT_MODE, ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+/*
+ * Enable/disable interrupt generation
+ */
+static int pixcir_int_enable(struct pixcir_i2c_ts_data *ts, bool enable)
+{
+	struct device *dev = &ts->client->dev;
+	int ret;
+
+	ret = i2c_smbus_read_byte_data(ts->client, PIXCIR_REG_INT_MODE);
+	if (ret < 0) {
+		dev_err(dev, "%s: can't read reg 0x%x : %d\n",
+					__func__, PIXCIR_REG_INT_MODE, ret);
+		return ret;
+	}
+
+	if (enable)
+		ret |= PIXCIR_INT_ENABLE;
+	else
+		ret &= ~PIXCIR_INT_ENABLE;
+
+	ret = i2c_smbus_write_byte_data(ts->client, PIXCIR_REG_INT_MODE, ret);
+	if (ret < 0) {
+		dev_err(dev, "%s: can't write reg 0x%x : %d\n",
+					__func__, PIXCIR_REG_INT_MODE, ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int pixcir_start(struct pixcir_i2c_ts_data *ts)
+{
+	struct device *dev = &ts->client->dev;
+	int ret;
+
+	/* LEVEL_TOUCH interrupt with active high polarity */
+	ret = pixcir_set_int_mode(ts, PIXCIR_INT_LEVEL_TOUCH, 1);
+	if (ret) {
+		dev_err(dev, "Failed to set interrupt mode\n");
+		return ret;
+	}
+
+	enable_irq(ts->client->irq);
+	/* enable interrupt generation */
+	ret = pixcir_int_enable(ts, 1);
+	if (ret) {
+		dev_err(dev, "Failed to enable interrupt generation\n");
+		return ret;
+	}
+
+	/* switch to full power */
+	ret = pixcir_set_power_mode(ts, PIXCIR_POWER_ACTIVE);
+	if (ret) {
+		dev_err(dev, "Failed to set ACTIVE power mode\n");
+		pixcir_int_enable(ts, 0);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int pixcir_stop(struct pixcir_i2c_ts_data *ts)
+{
+	struct device *dev = &ts->client->dev;
+	int ret;
+
+	/* disable interrupt generation */
+	ret = pixcir_int_enable(ts, 0);
+	if (ret) {
+		dev_err(dev, "Failed to disable interrupt generation\n");
+		return ret;
+	}
+
+	disable_irq(ts->client->irq);
+
+	/* switch to low power */
+	ret = pixcir_set_power_mode(ts, PIXCIR_POWER_IDLE);
+	if (ret) {
+		dev_err(dev, "Failed to power down\n");
+		return ret;
+	}
+
+	return 0;
+}
+
+static int pixcir_input_open(struct input_dev *dev)
+{
+        struct pixcir_i2c_ts_data *ts = input_get_drvdata(dev);
+
+        return pixcir_start(ts);
+}
+
+static void pixcir_input_close(struct input_dev *dev)
+{
+        struct pixcir_i2c_ts_data *ts = input_get_drvdata(dev);
+
+        pixcir_stop(ts);
+
+        return;
+}
+
+
 #ifdef CONFIG_PM_SLEEP
 static int pixcir_i2c_ts_suspend(struct device *dev)
 {
@@ -189,6 +355,8 @@ static int pixcir_i2c_ts_probe(struct i2c_client *client,
 	input->name = client->name;
 	input->id.bustype = BUS_I2C;
 	input->dev.parent = &client->dev;
+	input->open = pixcir_input_open;
+	input->close = pixcir_input_close;
 
 	__set_bit(EV_KEY, input->evbit);
 	__set_bit(EV_ABS, input->evbit);
@@ -207,6 +375,11 @@ static int pixcir_i2c_ts_probe(struct i2c_client *client,
 		dev_err(&client->dev, "Unable to request touchscreen IRQ.\n");
 		goto err_free_mem;
 	}
+
+	/* put device in low power till opened */
+	error = pixcir_stop(tsdata);
+	if (error)
+		goto err_free_irq;
 
 	error = input_register_device(input);
 	if (error)
