@@ -3,6 +3,7 @@ config USB_DWC3
 	depends on (USB || USB_GADGET) && HAS_DMA
 	depends on EXTCON
 	select USB_PHY
+	select GENERIC_PHY
 	select USB_XHCI_PLATFORM if USB_SUPPORT && USB_XHCI_HCD
 	help
 	  Say Y or M here if your system has a Dual Role SuperSpeed

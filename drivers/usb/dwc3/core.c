@@ -82,6 +82,12 @@ static void dwc3_core_soft_reset(struct dwc3 *dwc)
 
 	usb_phy_init(dwc->usb2_phy);
 	usb_phy_init(dwc->usb3_phy);
+
+	if (dwc->usb2_generic_phy)
+		phy_init(dwc->usb2_generic_phy);
+	if (dwc->usb3_generic_phy)
+		phy_init(dwc->usb3_generic_phy);
+
 	mdelay(100);
 
 	/* Clear USB3 PHY reset */
@@ -343,6 +349,11 @@ static void dwc3_core_exit(struct dwc3 *dwc)
 {
 	usb_phy_shutdown(dwc->usb2_phy);
 	usb_phy_shutdown(dwc->usb3_phy);
+
+	if (dwc->usb2_generic_phy)
+		phy_power_off(dwc->usb2_generic_phy);
+	if (dwc->usb3_generic_phy)
+		phy_power_off(dwc->usb3_generic_phy);
 }
 
 #define DWC3_ALIGN_MASK		(16 - 1)
@@ -427,6 +438,23 @@ static int dwc3_probe(struct platform_device *pdev)
 		dwc->usb3_phy = devm_usb_get_phy(dev, USB_PHY_TYPE_USB3);
 	}
 
+	if (of_property_read_bool(node, "phys") || pdata->has_phy) {
+		dwc->usb2_generic_phy = devm_phy_get(dev, "usb2-phy");
+		if (IS_ERR(dwc->usb2_generic_phy)) {
+			dev_err(dev, "no usb2 phy configured yet");
+			return PTR_ERR(dwc->usb2_generic_phy);
+		}
+
+		dwc->usb3_generic_phy = devm_phy_get(dev, "usb3-phy");
+		if (IS_ERR(dwc->usb3_generic_phy)) {
+			dev_err(dev, "no usb3 phy configured yet");
+			return PTR_ERR(dwc->usb3_generic_phy);
+		}
+	} else {
+		dwc->usb2_generic_phy = NULL;
+		dwc->usb3_generic_phy = NULL;
+	}
+
 	/* default to superspeed if no maximum_speed passed */
 	if (dwc->maximum_speed == USB_SPEED_UNKNOWN)
 		dwc->maximum_speed = USB_SPEED_SUPER;
@@ -449,6 +477,11 @@ static int dwc3_probe(struct platform_device *pdev)
 
 	usb_phy_set_suspend(dwc->usb2_phy, 0);
 	usb_phy_set_suspend(dwc->usb3_phy, 0);
+
+	if (dwc->usb2_generic_phy)
+		phy_power_on(dwc->usb2_generic_phy);
+	if (dwc->usb3_generic_phy)
+		phy_power_on(dwc->usb3_generic_phy);
 
 	spin_lock_init(&dwc->lock);
 	platform_set_drvdata(pdev, dwc);
@@ -576,6 +609,11 @@ static int dwc3_remove(struct platform_device *pdev)
 	usb_phy_set_suspend(dwc->usb2_phy, 1);
 	usb_phy_set_suspend(dwc->usb3_phy, 1);
 
+	if (dwc->usb2_generic_phy)
+		phy_power_off(dwc->usb2_generic_phy);
+	if (dwc->usb3_generic_phy)
+		phy_power_off(dwc->usb3_generic_phy);
+
 	pm_runtime_put(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
 
@@ -673,6 +711,11 @@ static int dwc3_suspend(struct device *dev)
 	usb_phy_shutdown(dwc->usb3_phy);
 	usb_phy_shutdown(dwc->usb2_phy);
 
+	if (dwc->usb2_generic_phy)
+		phy_exit(dwc->usb2_generic_phy);
+	if (dwc->usb3_generic_phy)
+		phy_exit(dwc->usb3_generic_phy);
+
 	return 0;
 }
 
@@ -683,6 +726,12 @@ static int dwc3_resume(struct device *dev)
 
 	usb_phy_init(dwc->usb3_phy);
 	usb_phy_init(dwc->usb2_phy);
+
+	if (dwc->usb2_generic_phy)
+		phy_init(dwc->usb2_generic_phy);
+	if (dwc->usb3_generic_phy)
+		phy_init(dwc->usb3_generic_phy);
+
 	msleep(100);
 
 	spin_lock_irqsave(&dwc->lock, flags);
