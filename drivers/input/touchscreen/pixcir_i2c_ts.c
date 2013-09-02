@@ -340,12 +340,14 @@ static int pixcir_i2c_ts_probe(struct i2c_client *client,
 		return -EINVAL;
 	}
 
-	tsdata = kzalloc(sizeof(*tsdata), GFP_KERNEL);
-	input = input_allocate_device();
-	if (!tsdata || !input) {
-		dev_err(&client->dev, "Failed to allocate driver data!\n");
-		error = -ENOMEM;
-		goto err_free_mem;
+	tsdata = devm_kzalloc(dev, sizeof(*tsdata), GFP_KERNEL);
+	if (!tsdata)
+		return -ENOMEM;
+
+	input = devm_input_allocate_device(dev);
+	if (!input) {
+		dev_err(&client->dev, "Failed to allocate input device\n");
+		return -ENOMEM;
 	}
 
 	tsdata->client = client;
@@ -368,34 +370,27 @@ static int pixcir_i2c_ts_probe(struct i2c_client *client,
 
 	input_set_drvdata(input, tsdata);
 
-	error = request_threaded_irq(client->irq, NULL, pixcir_ts_isr,
+	error = devm_request_threaded_irq(dev, client->irq, NULL, pixcir_ts_isr,
 				     IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
 				     client->name, tsdata);
 	if (error) {
-		dev_err(&client->dev, "Unable to request touchscreen IRQ.\n");
-		goto err_free_mem;
+		dev_err(dev, "failed to request irq %d\n", client->irq);
+		return error;
 	}
 
 	/* put device in low power till opened */
 	error = pixcir_stop(tsdata);
 	if (error)
-		goto err_free_irq;
+		return error;
 
 	error = input_register_device(input);
 	if (error)
-		goto err_free_irq;
+		return error;
 
 	i2c_set_clientdata(client, tsdata);
 	device_init_wakeup(&client->dev, 1);
 
 	return 0;
-
-err_free_irq:
-	free_irq(client->irq, tsdata);
-err_free_mem:
-	input_free_device(input);
-	kfree(tsdata);
-	return error;
 }
 
 static int pixcir_i2c_ts_remove(struct i2c_client *client)
@@ -406,10 +401,6 @@ static int pixcir_i2c_ts_remove(struct i2c_client *client)
 
 	tsdata->exiting = true;
 	mb();
-	free_irq(client->irq, tsdata);
-
-	input_unregister_device(tsdata->input);
-	kfree(tsdata);
 
 	return 0;
 }
