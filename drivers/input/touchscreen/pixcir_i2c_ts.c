@@ -27,6 +27,7 @@
 #include <linux/gpio.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
+#include <linux/of_device.h>
 
 struct pixcir_i2c_ts_data {
 	struct i2c_client *client;
@@ -296,14 +297,25 @@ static int pixcir_i2c_ts_resume(struct device *dev)
 static SIMPLE_DEV_PM_OPS(pixcir_dev_pm_ops,
 			 pixcir_i2c_ts_suspend, pixcir_i2c_ts_resume);
 
+#if defined (CONFIG_OF)
+static const struct of_device_id pixcir_of_match[];
+#endif
+
 static struct pixcir_ts_platform_data *pixcir_parse_dt(struct device *dev)
 {
 	struct pixcir_ts_platform_data *pdata;
 	struct device_node *np = dev->of_node;
+	const struct of_device_id *match;
+
+	match = of_match_device(of_match_ptr(pixcir_of_match), dev);
+	if (!match)
+		return ERR_PTR(-EINVAL);
 
 	pdata = devm_kzalloc(dev, sizeof(*pdata), GFP_KERNEL);
 	if (!pdata)
 		return ERR_PTR(-ENOMEM);
+
+	pdata->chip = *(const struct pixcir_i2c_chip_data *)match->data;
 
 	pdata->gpio_attb = of_get_named_gpio(np, "attb-gpio", 0);
 	if (!gpio_is_valid(pdata->gpio_attb))
