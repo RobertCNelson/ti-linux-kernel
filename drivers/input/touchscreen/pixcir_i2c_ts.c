@@ -549,13 +549,19 @@ static int pixcir_i2c_ts_remove(struct i2c_client *client)
 
 static const struct i2c_device_id pixcir_i2c_ts_id[] = {
 	{ "pixcir_ts", 0 },
+	{ "pixcir_tangoc", 0},
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, pixcir_i2c_ts_id);
 
 #if defined(CONFIG_OF)
+static const struct pixcir_i2c_chip_data tangoc_data = {
+	.num_report_ids = 5,
+};
+
 static const struct of_device_id pixcir_of_match[] = {
 	{ .compatible = "pixcir,pixcir_ts", },
+	{ .compatible = "pixcir,pixcir_tangoc", .data = &tangoc_data, },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, pixcir_of_match);
