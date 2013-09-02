@@ -14,7 +14,7 @@ Example:
 		/* ... */
 
 		pixcir_ts@5c {
-			compatible = "pixcir,tangoc";
+			compatible = "pixcir,pixcir_ts";
 			reg = <0x5c>;
 			interrupts = <2 0>;
 
