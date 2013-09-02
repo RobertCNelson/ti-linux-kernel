@@ -558,8 +558,14 @@ static const struct i2c_device_id pixcir_i2c_ts_id[] = {
 MODULE_DEVICE_TABLE(i2c, pixcir_i2c_ts_id);
 
 #if defined (CONFIG_OF)
+static const struct pixcir_i2c_chip_data tangoc_data = {
+	.num_report_ids = 5,
+	.reportid_min = 'A',
+};
+
 static const struct of_device_id pixcir_of_match[] = {
 	{ .compatible = "pixcir,pixcir_ts", },
+	{ .compatible = "pixcir,tangoc", .data = &tangoc_data, },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, pixcir_of_match);

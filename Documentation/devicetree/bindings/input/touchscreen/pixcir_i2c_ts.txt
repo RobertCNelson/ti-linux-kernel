@@ -1,7 +1,7 @@
 * Pixcir I2C touchscreen controllers
 
 Required properties:
-- compatible: must be "pixcir,pixcir_ts"
+- compatible: must be "pixcir,pixcir_ts" or "pixcir,tangoc"
 - reg: I2C address of the chip
 - interrupts: interrupt to which the chip is connected
 - attb-gpio: GPIO connected to the ATTB line of the chip
