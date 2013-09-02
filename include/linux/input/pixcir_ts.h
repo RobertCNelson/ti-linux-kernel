@@ -49,12 +49,10 @@ enum pixcir_int_mode {
  *                      if 0 it means chip doesn't support finger id reporting
  *                      and driver will resort to Type A Multi-Touch reporting.
  * @reportid_min:       Minimum possible finger id
- * @reportid_max:       Maximum possible finger id
  */
 struct pixcir_i2c_chip_data {
         u8 num_report_ids;
         u8 reportid_min;
-        u8 reportid_max;
 };
 
 struct pixcir_ts_platform_data {
