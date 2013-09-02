@@ -91,11 +91,12 @@ static void pixcir_ts_poscheck(struct pixcir_i2c_ts_data *data)
 static irqreturn_t pixcir_ts_isr(int irq, void *dev_id)
 {
 	struct pixcir_i2c_ts_data *tsdata = dev_id;
+	const struct pixcir_ts_platform_data *pdata = tsdata->chip;
 
 	while (!tsdata->exiting) {
 		pixcir_ts_poscheck(tsdata);
 
-		if (tsdata->chip->attb_read_val())
+		if (gpio_get_value(pdata->gpio_attb))
 			break;
 
 		msleep(20);
@@ -301,8 +302,10 @@ static struct pixcir_ts_platform_data *pixcir_parse_dt(struct device *dev)
 		return ERR_PTR(-ENOMEM);
 
 	pdata->gpio_attb = of_get_named_gpio(np, "attb-gpio", 0);
-	if (!gpio_is_valid(pdata->gpio_attb))
+	if (!gpio_is_valid(pdata->gpio_attb)) {
 		dev_err(dev, "Failed to get ATTB GPIO\n");
+		return ERR_PTR(-EINVAL);
+	}
 
 	if (of_property_read_u32(np, "x-size", &pdata->x_size)) {
 		dev_err(dev, "Failed to get x-size property\n");
@@ -344,6 +347,11 @@ static int pixcir_i2c_ts_probe(struct i2c_client *client,
 	} else if (!pdata) {
 		dev_err(&client->dev, "platform data not defined\n");
 		return -EINVAL;
+	} else {
+		if (!gpio_is_valid(pdata->gpio_attb)) {
+			dev_err(dev, "Invalid gpio_attb in pdata\n");
+			return -EINVAL;
+		}
 	}
 
 	tsdata = devm_kzalloc(dev, sizeof(*tsdata), GFP_KERNEL);
@@ -379,6 +387,13 @@ static int pixcir_i2c_ts_probe(struct i2c_client *client,
 					0, pdata->y_size - 1, 0, 0);
 
 	input_set_drvdata(input, tsdata);
+
+	error = devm_gpio_request_one(dev, pdata->gpio_attb,
+			GPIOF_DIR_IN, "pixcir_i2c_attb");
+	if (error) {
+		dev_err(dev, "Failed to request ATTB gpio\n");
+		return error;
+	}
 
 	error = devm_request_threaded_irq(dev, client->irq, NULL, pixcir_ts_isr,
 				     IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
