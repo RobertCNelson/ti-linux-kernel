@@ -424,8 +424,8 @@ MODULE_DEVICE_TABLE(i2c, pixcir_i2c_ts_id);
 
 #if defined (CONFIG_OF)
 static const struct of_device_id pixcir_of_match[] = {
-       { .compatible = "pixcir,pixcir_ts", },
-       { }
+	{ .compatible = "pixcir,pixcir_ts", },
+	{ }
 };
 MODULE_DEVICE_TABLE(of, pixcir_of_match);
 #endif
