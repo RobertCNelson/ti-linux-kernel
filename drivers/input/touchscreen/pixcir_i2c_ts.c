@@ -23,85 +23,187 @@
 #include <linux/slab.h>
 #include <linux/i2c.h>
 #include <linux/input.h>
+#include <linux/input/mt.h>
 #include <linux/input/pixcir_ts.h>
 #include <linux/gpio.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/of_device.h>
 
+struct pixcir_slot {
+	bool active;
+	bool updated;	/* only updated slots will be reported */
+	int id;
+	int x;
+	int y;
+};
+
 struct pixcir_i2c_ts_data {
 	struct i2c_client *client;
 	struct input_dev *input;
 	const struct pixcir_ts_platform_data *pdata;
 	bool exiting;
+	int num_slots;	/* number of slots in slot table */
+	struct pixcir_slot *slots;	/*slot table */
 };
 
-static void pixcir_ts_poscheck(struct pixcir_i2c_ts_data *data)
+static void pixcir_ts_typea_report(struct pixcir_i2c_ts_data *tsdata)
 {
-	struct pixcir_i2c_ts_data *tsdata = data;
+	const struct pixcir_ts_platform_data *pdata = tsdata->pdata;
 	u8 rdbuf[10], wrbuf[1] = { 0 };
 	u8 touch;
 	int ret;
 
-	ret = i2c_master_send(tsdata->client, wrbuf, sizeof(wrbuf));
-	if (ret != sizeof(wrbuf)) {
-		dev_err(&tsdata->client->dev,
-			"%s: i2c_master_send failed(), ret=%d\n",
-			__func__, ret);
-		return;
-	}
+	while (!tsdata->exiting) {
 
-	ret = i2c_master_recv(tsdata->client, rdbuf, sizeof(rdbuf));
-	if (ret != sizeof(rdbuf)) {
-		dev_err(&tsdata->client->dev,
-			"%s: i2c_master_recv failed(), ret=%d\n",
-			__func__, ret);
-		return;
-	}
-
-	touch = rdbuf[0];
-	if (touch) {
-		u16 posx1 = (rdbuf[3] << 8) | rdbuf[2];
-		u16 posy1 = (rdbuf[5] << 8) | rdbuf[4];
-		u16 posx2 = (rdbuf[7] << 8) | rdbuf[6];
-		u16 posy2 = (rdbuf[9] << 8) | rdbuf[8];
-
-		input_report_key(tsdata->input, BTN_TOUCH, 1);
-		input_report_abs(tsdata->input, ABS_X, posx1);
-		input_report_abs(tsdata->input, ABS_Y, posy1);
-
-		input_report_abs(tsdata->input, ABS_MT_POSITION_X, posx1);
-		input_report_abs(tsdata->input, ABS_MT_POSITION_Y, posy1);
-		input_mt_sync(tsdata->input);
-
-		if (touch == 2) {
-			input_report_abs(tsdata->input,
-					 ABS_MT_POSITION_X, posx2);
-			input_report_abs(tsdata->input,
-					 ABS_MT_POSITION_Y, posy2);
-			input_mt_sync(tsdata->input);
+		ret = i2c_master_send(tsdata->client, wrbuf, sizeof(wrbuf));
+		if (ret != sizeof(wrbuf)) {
+			dev_err(&tsdata->client->dev,
+				 "%s: i2c_master_send failed(), ret=%d\n",
+				 __func__, ret);
+			return;
 		}
-	} else {
-		input_report_key(tsdata->input, BTN_TOUCH, 0);
-	}
 
-	input_sync(tsdata->input);
+		ret = i2c_master_recv(tsdata->client, rdbuf, sizeof(rdbuf));
+		if (ret != sizeof(rdbuf)) {
+			dev_err(&tsdata->client->dev,
+				 "%s: i2c_master_recv failed(), ret=%d\n",
+				 __func__, ret);
+			return;
+		}
+
+		touch = rdbuf[0];
+		if (touch) {
+			u16 posx1 = (rdbuf[3] << 8) | rdbuf[2];
+			u16 posy1 = (rdbuf[5] << 8) | rdbuf[4];
+			u16 posx2 = (rdbuf[7] << 8) | rdbuf[6];
+			u16 posy2 = (rdbuf[9] << 8) | rdbuf[8];
+
+			input_report_key(tsdata->input, BTN_TOUCH, 1);
+			input_report_abs(tsdata->input, ABS_X, posx1);
+			input_report_abs(tsdata->input, ABS_Y, posy1);
+
+			input_report_abs(tsdata->input, ABS_MT_POSITION_X,
+									posx1);
+			input_report_abs(tsdata->input, ABS_MT_POSITION_Y,
+									posy1);
+			input_mt_sync(tsdata->input);
+
+			if (touch == 2) {
+				input_report_abs(tsdata->input,
+						ABS_MT_POSITION_X, posx2);
+				input_report_abs(tsdata->input,
+						ABS_MT_POSITION_Y, posy2);
+				input_mt_sync(tsdata->input);
+			}
+		} else {
+			input_report_key(tsdata->input, BTN_TOUCH, 0);
+		}
+
+		input_sync(tsdata->input);
+
+		if (gpio_is_valid(pdata->gpio_attb) &&
+				!gpio_get_value(pdata->gpio_attb))
+			break;
+
+		msleep(20);
+	}
+}
+
+static void pixcir_ts_typeb_report(struct pixcir_i2c_ts_data *ts)
+{
+	const struct pixcir_ts_platform_data *pdata = ts->pdata;
+	struct device *dev = &ts->client->dev;
+	u8 rdbuf[31], wrbuf[1] = { 0 };
+	u8 *bufptr;
+	u8 num_fingers;
+	u8 unreliable;
+	int ret, i;
+
+	while (!ts->exiting) {
+
+		ret = i2c_master_send(ts->client, wrbuf, sizeof(wrbuf));
+		if (ret != sizeof(wrbuf)) {
+			dev_err(dev, "%s: i2c_master_send failed(), ret=%d\n",
+				 __func__, ret);
+			return;
+		}
+
+		ret = i2c_master_recv(ts->client, rdbuf, sizeof(rdbuf));
+		if (ret != sizeof(rdbuf)) {
+			dev_err(dev, "%s: i2c_master_recv failed(), ret=%d\n",
+				 __func__, ret);
+			return;
+		}
+
+		unreliable = rdbuf[0] & 0xe0;
+
+		if (unreliable)
+			goto next;	/* ignore unreliable data */
+
+		num_fingers = rdbuf[0] & 0x7;
+		bufptr = &rdbuf[2];
+
+		/* figure out updated slots */
+		for (i = 0; i < ts->num_slots; i++) {
+			ts->slots[i].updated = 0;
+		}
+
+		for (i = 0; i < num_fingers; i++) {
+			u8 reportid = bufptr[4];
+			int id = reportid - pdata->chip.reportid_min;
+
+			ts->slots[id].updated = 1;
+			ts->slots[id].x = bufptr[1] << 8 | bufptr[0];
+			ts->slots[id].y = bufptr[3] << 8 | bufptr[2];
+		}
+
+		/*
+		 * if a previously active slot is not updated it means it has
+		 * turned inactive and we need to report that to input subsys.
+		 */
+		for (i = 0; i < ts->num_slots; i++) {
+			if (ts->slots[i].active &&
+				!ts->slots[i].updated) {
+
+				ts->slots[i].updated = 1;
+				ts->slots[i].active = 0;
+			}
+		}
+
+		/* report all updated slots */
+		for (i = 0; i < ts->num_slots; i++) {
+			if (!ts->slots[i].updated)
+				continue;
+
+			input_mt_slot(ts->input, i);
+			input_mt_report_slot_state(ts->input, MT_TOOL_FINGER,
+							ts->slots[i].active);
+
+			input_report_abs(ts->input, ABS_X, ts->slots[i].x);
+			input_report_abs(ts->input, ABS_Y, ts->slots[i].y);
+		}
+
+		input_mt_report_pointer_emulation(ts->input, true);
+		input_sync(ts->input);
+
+next:
+		if (gpio_is_valid(pdata->gpio_attb) &&
+				!gpio_get_value(pdata->gpio_attb))
+			break;
+
+		msleep(20);
+	}
 }
 
 static irqreturn_t pixcir_ts_isr(int irq, void *dev_id)
 {
 	struct pixcir_i2c_ts_data *tsdata = dev_id;
-	const struct pixcir_ts_platform_data *pdata = tsdata->pdata;
 
-	while (!tsdata->exiting) {
-		pixcir_ts_poscheck(tsdata);
-
-		if (gpio_is_valid(pdata->gpio_attb) &&
-			!gpio_get_value(pdata->gpio_attb))
-			break;
-
-		msleep(20);
-	}
+	if (tsdata->num_slots)
+		pixcir_ts_typeb_report(tsdata);
+	else
+		pixcir_ts_typea_report(tsdata);
 
 	return IRQ_HANDLED;
 }
@@ -381,6 +483,27 @@ static int pixcir_i2c_ts_probe(struct i2c_client *client,
 	input_set_abs_params(input, ABS_Y, 0, pdata->y_max, 0, 0);
 	input_set_abs_params(input, ABS_MT_POSITION_X, 0, pdata->x_max, 0, 0);
 	input_set_abs_params(input, ABS_MT_POSITION_Y, 0, pdata->y_max, 0, 0);
+
+	/* Type-B Multi-Touch support */
+	if (pdata->chip.num_report_ids) {
+		const struct pixcir_i2c_chip_data *chip = &pdata->chip;
+		unsigned int num_mt_slots;
+
+		num_mt_slots = chip->reportid_max - chip->reportid_min + 1;
+		tsdata->num_slots = num_mt_slots;
+
+		tsdata->slots = devm_kzalloc(dev,
+					num_mt_slots * sizeof (*tsdata->slots),
+					GFP_KERNEL);
+		if (!tsdata->slots)
+			return -ENOMEM;
+
+		error = input_mt_init_slots(input, num_mt_slots, 0);
+		if (error) {
+			dev_err(dev, "Error initializing Multi-Touch slots\n");
+			return error;
+		}
+	}
 
 	input_set_drvdata(input, tsdata);
 
