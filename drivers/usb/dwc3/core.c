@@ -387,16 +387,38 @@ static int dwc3_probe(struct platform_device *pdev)
 	if (node) {
 		dwc->maximum_speed = of_usb_get_maximum_speed(node);
 
-		dwc->usb2_phy = devm_usb_get_phy_by_phandle(dev, "usb-phy", 0);
-		dwc->usb3_phy = devm_usb_get_phy_by_phandle(dev, "usb-phy", 1);
+		if (of_property_read_bool(node, "usb-phy")) {
+			dwc->usb2_phy = devm_usb_get_phy_by_phandle(dev,
+				"usb-phy", 0);
+			if (IS_ERR(dwc->usb2_phy))
+				return PTR_ERR(dwc->usb2_phy);
+			dwc->usb3_phy = devm_usb_get_phy_by_phandle(dev,
+				"usb-phy", 1);
+			if (IS_ERR(dwc->usb3_phy))
+				return PTR_ERR(dwc->usb3_phy);
+		} else {
+			dwc->usb2_phy = NULL;
+			dwc->usb3_phy = NULL;
+		}
 
 		dwc->needs_fifo_resize = of_property_read_bool(node, "tx-fifo-resize");
 		dwc->dr_mode = of_usb_get_dr_mode(node);
 	} else if (pdata) {
 		dwc->maximum_speed = pdata->maximum_speed;
 
-		dwc->usb2_phy = devm_usb_get_phy(dev, USB_PHY_TYPE_USB2);
-		dwc->usb3_phy = devm_usb_get_phy(dev, USB_PHY_TYPE_USB3);
+		if (pdata->has_phy) {
+			dwc->usb2_phy = devm_usb_get_phy(dev,
+				USB_PHY_TYPE_USB2);
+			if (IS_ERR(dwc->usb2_phy))
+				return PTR_ERR(dwc->usb2_phy);
+			dwc->usb3_phy = devm_usb_get_phy(dev,
+				USB_PHY_TYPE_USB3);
+			if (IS_ERR(dwc->usb3_phy))
+				return PTR_ERR(dwc->usb3_phy);
+		} else {
+			dwc->usb2_phy = NULL;
+			dwc->usb3_phy = NULL;
+		}
 
 		dwc->needs_fifo_resize = pdata->tx_fifo_resize;
 		dwc->dr_mode = pdata->dr_mode;
@@ -408,36 +430,6 @@ static int dwc3_probe(struct platform_device *pdev)
 	/* default to superspeed if no maximum_speed passed */
 	if (dwc->maximum_speed == USB_SPEED_UNKNOWN)
 		dwc->maximum_speed = USB_SPEED_SUPER;
-
-	if (IS_ERR(dwc->usb2_phy)) {
-		ret = PTR_ERR(dwc->usb2_phy);
-
-		/*
-		 * if -ENXIO is returned, it means PHY layer wasn't
-		 * enabled, so it makes no sense to return -EPROBE_DEFER
-		 * in that case, since no PHY driver will ever probe.
-		 */
-		if (ret == -ENXIO)
-			return ret;
-
-		dev_err(dev, "no usb2 phy configured\n");
-		return -EPROBE_DEFER;
-	}
-
-	if (IS_ERR(dwc->usb3_phy)) {
-		ret = PTR_ERR(dwc->usb3_phy);
-
-		/*
-		 * if -ENXIO is returned, it means PHY layer wasn't
-		 * enabled, so it makes no sense to return -EPROBE_DEFER
-		 * in that case, since no PHY driver will ever probe.
-		 */
-		if (ret == -ENXIO)
-			return ret;
-
-		dev_err(dev, "no usb3 phy configured\n");
-		return -EPROBE_DEFER;
-	}
 
 	dwc->xhci_resources[0].start = res->start;
 	dwc->xhci_resources[0].end = dwc->xhci_resources[0].start +
