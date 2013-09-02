@@ -43,10 +43,21 @@ enum pixcir_int_mode {
 #define PIXCIR_INT_ENABLE	(1UL << 3)
 #define PIXCIR_INT_POL_HIGH	(1UL << 2)
 
+/**
+ * struct pixcir_irc_chip_data - chip related data
+ * @num_report_ids:     Max number of finger ids reported simultaneously.
+ *                      if 0 it means chip doesn't support finger id reporting
+ *                      and driver will resort to Type A Multi-Touch reporting.
+ */
+struct pixcir_i2c_chip_data {
+	u8 num_report_ids;
+};
+
 struct pixcir_ts_platform_data {
 	unsigned int x_size;	/* X axis resolution */
 	unsigned int y_size;	/* Y axis resolution */
 	int gpio_attb;		/* GPIO connected to ATTB line */
+	struct pixcir_i2c_chip_data chip;
 };
 
 #endif

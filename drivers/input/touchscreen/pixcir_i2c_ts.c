@@ -32,7 +32,7 @@
 struct pixcir_i2c_ts_data {
 	struct i2c_client *client;
 	struct input_dev *input;
-	const struct pixcir_ts_platform_data *chip;
+	const struct pixcir_ts_platform_data *pdata;
 	bool exiting;
 };
 
@@ -91,7 +91,7 @@ static void pixcir_ts_poscheck(struct pixcir_i2c_ts_data *data)
 static irqreturn_t pixcir_ts_isr(int irq, void *dev_id)
 {
 	struct pixcir_i2c_ts_data *tsdata = dev_id;
-	const struct pixcir_ts_platform_data *pdata = tsdata->chip;
+	const struct pixcir_ts_platform_data *pdata = tsdata->pdata;
 
 	while (!tsdata->exiting) {
 		pixcir_ts_poscheck(tsdata);
@@ -301,6 +301,8 @@ static struct pixcir_ts_platform_data *pixcir_parse_dt(struct device *dev)
 	if (!pdata)
 		return ERR_PTR(-ENOMEM);
 
+	pdata->chip = *(const struct pixcir_i2c_chip_data *)match->data;
+
 	pdata->gpio_attb = of_get_named_gpio(np, "attb-gpio", 0);
 	if (!gpio_is_valid(pdata->gpio_attb)) {
 		dev_err(dev, "Failed to get ATTB GPIO\n");
@@ -366,7 +368,7 @@ static int pixcir_i2c_ts_probe(struct i2c_client *client,
 
 	tsdata->client = client;
 	tsdata->input = input;
-	tsdata->chip = pdata;
+	tsdata->pdata = pdata;
 
 	input->name = client->name;
 	input->id.bustype = BUS_I2C;
