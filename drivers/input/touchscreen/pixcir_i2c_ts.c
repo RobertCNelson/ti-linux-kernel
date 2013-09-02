@@ -31,7 +31,7 @@
 struct pixcir_i2c_ts_data {
 	struct i2c_client *client;
 	struct input_dev *input;
-	const struct pixcir_ts_platform_data *chip;
+	const struct pixcir_ts_platform_data *pdata;
 	bool exiting;
 };
 
@@ -90,7 +90,7 @@ static void pixcir_ts_poscheck(struct pixcir_i2c_ts_data *data)
 static irqreturn_t pixcir_ts_isr(int irq, void *dev_id)
 {
 	struct pixcir_i2c_ts_data *tsdata = dev_id;
-	const struct pixcir_ts_platform_data *pdata = tsdata->chip;
+	const struct pixcir_ts_platform_data *pdata = tsdata->pdata;
 
 	while (!tsdata->exiting) {
 		pixcir_ts_poscheck(tsdata);
@@ -354,7 +354,7 @@ static int pixcir_i2c_ts_probe(struct i2c_client *client,
 
 	tsdata->client = client;
 	tsdata->input = input;
-	tsdata->chip = pdata;
+	tsdata->pdata = pdata;
 
 	input->name = client->name;
 	input->id.bustype = BUS_I2C;
