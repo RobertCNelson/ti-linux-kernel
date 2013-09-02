@@ -489,7 +489,7 @@ static int pixcir_i2c_ts_probe(struct i2c_client *client,
 		const struct pixcir_i2c_chip_data *chip = &pdata->chip;
 		unsigned int num_mt_slots;
 
-		num_mt_slots = chip->reportid_max - chip->reportid_min + 1;
+		num_mt_slots = chip->num_report_ids * 2;
 		tsdata->num_slots = num_mt_slots;
 
 		tsdata->slots = devm_kzalloc(dev,
