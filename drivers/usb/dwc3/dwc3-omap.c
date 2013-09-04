@@ -32,6 +32,7 @@
 #include <linux/extcon.h>
 #include <linux/extcon/of_extcon.h>
 #include <linux/regulator/consumer.h>
+#include <linux/clk.h>
 
 #include <linux/usb/otg.h>
 
@@ -119,6 +120,8 @@
 #define USBOTGSS_UTMI_OTG_STATUS_SESSVALID	(1 << 2)
 #define USBOTGSS_UTMI_OTG_STATUS_VBUSVALID	(1 << 1)
 
+#define USBOTGSS_REFCLK "usb_otg_ss_refclk960m"
+
 struct dwc3_omap {
 	/* device lock */
 	spinlock_t		lock;
@@ -144,6 +147,7 @@ struct dwc3_omap {
 	struct notifier_block	id_nb;
 
 	struct regulator	*vbus_reg;
+	struct clk		*refclk;
 };
 
 enum omap_dwc3_vbus_id_status {
@@ -449,6 +453,12 @@ static int dwc3_omap_probe(struct platform_device *pdev)
 		}
 	}
 
+	omap->refclk = devm_clk_get(dev, USBOTGSS_REFCLK);
+	if (IS_ERR(omap->refclk)) {
+		dev_err(dev, "couldn't get %s\n", USBOTGSS_REFCLK);
+		return PTR_ERR(omap->refclk);
+	}
+
 	spin_lock_init(&omap->lock);
 
 	omap->dev	= dev;
@@ -463,6 +473,8 @@ static int dwc3_omap_probe(struct platform_device *pdev)
 		dev_err(dev, "get_sync failed with err %d\n", ret);
 		goto err0;
 	}
+
+	clk_prepare_enable(omap->refclk);
 
 	reg = dwc3_omap_readl(omap->base, USBOTGSS_REVISION);
 	omap->revision = reg;
@@ -593,6 +605,7 @@ static int dwc3_omap_remove(struct platform_device *pdev)
 		extcon_unregister_interest(&omap->extcon_id_dev);
 	dwc3_omap_disable_irqs(omap);
 	pm_runtime_put_sync(&pdev->dev);
+	clk_disable_unprepare(omap->refclk);
 	pm_runtime_disable(&pdev->dev);
 	device_for_each_child(&pdev->dev, NULL, dwc3_omap_remove_core);
 
