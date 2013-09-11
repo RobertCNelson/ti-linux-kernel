@@ -1340,15 +1340,6 @@ static void __maybe_unused gpmc_read_timings_dt(struct device_node *np,
 }
 
 #ifdef CONFIG_MTD_NAND
-
-static const char * const nand_ecc_opts[] = {
-	[OMAP_ECC_HAMMING_CODE_DEFAULT]		= "sw",
-	[OMAP_ECC_HAMMING_CODE_HW]		= "hw",
-	[OMAP_ECC_HAMMING_CODE_HW_ROMCODE]	= "hw-romcode",
-	[OMAP_ECC_BCH4_CODE_HW]			= "bch4",
-	[OMAP_ECC_BCH8_CODE_HW]			= "bch8",
-};
-
 static const char * const nand_xfer_types[] = {
 	[NAND_OMAP_PREFETCH_POLLED]		= "prefetch-polled",
 	[NAND_OMAP_POLLED]			= "polled",
@@ -1363,6 +1354,8 @@ static int gpmc_probe_nand_child(struct platform_device *pdev,
 	const char *s;
 	struct gpmc_timings gpmc_t;
 	struct omap_nand_platform_data *gpmc_nand_data;
+	const __be32 *parp;
+	int lenp;
 
 	if (of_property_read_u32(child, "reg", &val) < 0) {
 		dev_err(&pdev->dev, "%s has no 'reg' property\n",
@@ -1378,12 +1371,36 @@ static int gpmc_probe_nand_child(struct platform_device *pdev,
 	gpmc_nand_data->cs = val;
 	gpmc_nand_data->of_node = child;
 
-	if (!of_property_read_string(child, "ti,nand-ecc-opt", &s))
-		for (val = 0; val < ARRAY_SIZE(nand_ecc_opts); val++)
-			if (!strcasecmp(s, nand_ecc_opts[val])) {
-				gpmc_nand_data->ecc_opt = val;
-				break;
-			}
+	/* Detect availability of ELM module */
+	parp = of_get_property(child, "ti,elm-id", &lenp);
+	if ((parp == NULL) && (lenp != (sizeof(void *) * 2))) {
+		pr_warn("%s: ti,elm-id property not found\n", __func__);
+		gpmc_nand_data->elm_of_node = NULL;
+	} else {
+		gpmc_nand_data->elm_of_node =
+				of_find_node_by_phandle(be32_to_cpup(parp));
+	}
+	/* select NAND ecc-scheme */
+	if (of_property_read_string(child, "ti,nand-ecc-scheme", &s)) {
+		pr_err("%s: valid ti,nand-ecc-scheme not found\n", __func__);
+		return -ENODEV;
+	}
+	if (!strcmp(s, "ham1"))
+		gpmc_nand_data->ecc_opt = OMAP_ECC_HAMMING_CODE_HW;
+	else if (!strcmp(s, "bch4"))
+		if (gpmc_nand_data->elm_of_node)
+			gpmc_nand_data->ecc_opt = OMAP_ECC_BCH4_CODE_HW;
+		else
+			gpmc_nand_data->ecc_opt =
+				OMAP_ECC_BCH4_CODE_HW_DETECTION_SW;
+	else if (!strcmp(s, "bch8"))
+		if (gpmc_nand_data->elm_of_node)
+			gpmc_nand_data->ecc_opt = OMAP_ECC_BCH8_CODE_HW;
+		else
+			gpmc_nand_data->ecc_opt =
+				OMAP_ECC_BCH8_CODE_HW_DETECTION_SW;
+	else
+		pr_err("%s: ti,ecc-scheme: invalid property value\n", __func__);
 
 	if (!of_property_read_string(child, "ti,nand-xfer-type", &s))
 		for (val = 0; val < ARRAY_SIZE(nand_xfer_types); val++)
