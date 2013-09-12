@@ -1,0 +1,31 @@
+* Texas Instruments SATA Controller Wrapper
+
+Required properties:
+- compatible	: "ti,sata"
+- ti,hwmods	: "sata"
+- reg		: Register mapping
+- #address-cells: <1>
+- #size-cells	: <1>
+- ranges	: allows valid translation between child's address space and parent's
+		  address space.
+- Must contain at least one child node for the SATA controller core
+
+Example:
+
+	sata: sata@4a141100 {
+		compatible = "ti,sata";
+		ti,hwmods = "sata";
+		reg = <0x4a141100 0x7>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+		dwc-ahci@4a140000 {
+			compatible = "snps,dwc-ahci";
+			reg = <0x4a140000 0x1100>;
+			interrupts = <GIC_SPI 54 IRQ_TYPE_LEVEL_HIGH>;
+			phys = <&sata_phy>;
+			phy-names = "sata-phy";
+			clocks = <&sata_ref_clk>;
+			clock-names = "optclk";
+		};
+	};
