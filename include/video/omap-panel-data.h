@@ -62,6 +62,20 @@ struct encoder_tpd12s015_platform_data {
 };
 
 /**
+ * encoder_sil9022 platform data
+ * @name: name for this display entity
+ * @res_gpio: Gpio to switch lcd and hdmi. Used as reset for Sil9022
+ * as a temproary solution.
+ */
+struct encoder_sil9022_platform_data {
+	const char *name;
+	const char *source;
+	int reset_gpio;
+	int data_lines;
+};
+
+
+/**
  * connector_dvi platform data
  * @name: name for this display entity
  * @source: name of the display entity used as a video source
