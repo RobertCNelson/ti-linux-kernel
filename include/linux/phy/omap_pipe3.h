@@ -29,6 +29,11 @@ struct pipe3_dpll_params {
 	u32	mf;
 };
 
+struct pipe3_dpll_map {
+	unsigned long rate;
+	struct pipe3_dpll_params params;
+};
+
 struct omap_pipe3 {
 	void __iomem		*pll_ctrl_base;
 	struct device		*dev;
@@ -37,6 +42,7 @@ struct omap_pipe3 {
 	struct clk		*sys_clk;
 	struct clk		*optclk;
 	struct clk		*optclk2;
+	struct pipe3_dpll_map	*dpll_map;
 };
 
 static inline u32 omap_pipe3_readl(void __iomem *addr, unsigned offset)
