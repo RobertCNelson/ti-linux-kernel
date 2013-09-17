@@ -47,8 +47,7 @@ usb2phy@4a0ad080 {
 OMAP PIPE3 PHY
 
 Required properties:
- - compatible: Should be "ti,omap-usb3", "ti,omap-pipe3", "ti,omap-sata"
-   or "ti,omap-pcie"
+ - compatible: Should be "ti,phy-pipe3-usb3" or "ti,phy-pipe3-sata"
  - reg : Address and length of the register set for the device.
  - reg-names: The names of the register addresses corresponding to the registers
    filled in "reg".

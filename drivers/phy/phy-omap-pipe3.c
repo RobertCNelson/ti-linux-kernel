@@ -219,16 +219,12 @@ static struct phy_ops ops = {
 #ifdef CONFIG_OF
 static const struct of_device_id omap_pipe3_id_table[] = {
 	{
-		.compatible = "ti,omap-pipe3",
+		.compatible = "ti,phy-pipe3-usb3",
 		.data = dpll_map_usb,
 	},
 	{
-		.compatible = "ti,omap-sata",
+		.compatible = "ti,phy-pipe3-sata",
 		.data = dpll_map_sata,
-	},
-	{
-		.compatible = "ti,omap-usb3",
-		.data = dpll_map_usb,
 	},
 	{},
 };
