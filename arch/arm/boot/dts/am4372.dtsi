@@ -425,4 +425,12 @@
 			#reset-cells = <1>;
 		};
 	};
+
+	clocks {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+		/include/ "am43xx-clocks.dtsi"
+	};
+
 };
