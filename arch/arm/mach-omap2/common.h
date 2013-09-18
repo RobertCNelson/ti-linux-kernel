@@ -60,7 +60,7 @@ static inline int omap3_pm_init(void)
 }
 #endif
 
-#if defined(CONFIG_PM) && (defined(CONFIG_ARCH_OMAP4) || defined(CONFIG_SOC_OMAP5))
+#if defined(CONFIG_PM) && (defined(CONFIG_ARCH_OMAP4) || defined(CONFIG_SOC_OMAP5) || defined(CONFIG_SOC_DRA7XX))
 int omap4_pm_init(void);
 #else
 static inline int omap4_pm_init(void)
@@ -112,6 +112,7 @@ void ti81xx_init_late(void);
 void omap5_init_late(void);
 int omap2_common_pm_late_init(void);
 void dra7xx_init_early(void);
+void dra7xx_init_late(void);
 
 #ifdef CONFIG_SOC_BUS
 void omap_soc_device_init(void);

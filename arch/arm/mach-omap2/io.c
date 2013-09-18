@@ -700,8 +700,14 @@ void __init dra7xx_init_early(void)
 	omap_hwmod_init_postsetup();
 	omap_clk_init = dra7xx_clk_init;
 }
-#endif
 
+void __init dra7xx_init_late(void)
+{
+	omap2_common_pm_late_init();
+	omap4_pm_init();
+	omap2_clk_enable_autoidle_all();
+}
+#endif
 
 void __init omap_sdrc_init(struct omap_sdrc_params *sdrc_cs0,
 				      struct omap_sdrc_params *sdrc_cs1)
