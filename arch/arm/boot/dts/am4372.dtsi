@@ -52,12 +52,16 @@
 		#size-cells = <1>;
 		ranges;
 		ti,hwmods = "l3_main";
+		clocks = <&l3_gclk>;
+		clock-names = "fck";
 
 		uart0: serial@44e09000 {
 			compatible = "ti,am4372-uart","ti,omap2-uart";
 			reg = <0x44e09000 0x2000>;
 			interrupts = <GIC_SPI 72 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "uart1";
+			clocks = <&dpll_per_m2_div4_wkupdm_ck>;
+			clock-names = "fck";
 		};
 
 		uart1: serial@48022000 {
@@ -65,6 +69,8 @@
 			reg = <0x48022000 0x2000>;
 			interrupts = <GIC_SPI 73 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "uart2";
+			clocks = <&dpll_per_m2_div4_ck>;
+			clock-names = "fck";
 			status = "disabled";
 		};
 
@@ -73,6 +79,8 @@
 			reg = <0x48024000 0x2000>;
 			interrupts = <GIC_SPI 74 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "uart3";
+			clocks = <&dpll_per_m2_div4_ck>;
+			clock-names = "fck";
 			status = "disabled";
 		};
 
@@ -81,6 +89,8 @@
 			reg = <0x481a6000 0x2000>;
 			interrupts = <GIC_SPI 44 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "uart4";
+			clocks = <&dpll_per_m2_div4_ck>;
+			clock-names = "fck";
 			status = "disabled";
 		};
 
@@ -89,6 +99,8 @@
 			reg = <0x481a8000 0x2000>;
 			interrupts = <GIC_SPI 45 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "uart5";
+			clocks = <&dpll_per_m2_div4_ck>;
+			clock-names = "fck";
 			status = "disabled";
 		};
 
@@ -97,6 +109,8 @@
 			reg = <0x481aa000 0x2000>;
 			interrupts = <GIC_SPI 46 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "uart6";
+			clocks = <&dpll_per_m2_div4_ck>;
+			clock-names = "fck";
 			status = "disabled";
 		};
 
@@ -106,6 +120,8 @@
 			interrupts = <GIC_SPI 67 IRQ_TYPE_LEVEL_HIGH>;
 			ti,timer-alwon;
 			ti,hwmods = "timer1";
+			clocks = <&timer1_fck>;
+			clock-names = "fck";
 		};
 
 		timer2: timer@48040000  {
@@ -113,6 +129,8 @@
 			reg = <0x48040000  0x400>;
 			interrupts = <GIC_SPI 68 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer2";
+			clocks = <&timer2_fck>;
+			clock-names = "fck";
 		};
 
 		timer3: timer@48042000 {
@@ -120,6 +138,8 @@
 			reg = <0x48042000 0x400>;
 			interrupts = <GIC_SPI 69 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer3";
+			clocks = <&timer3_fck>;
+			clock-names = "fck";
 			status = "disabled";
 		};
 
@@ -129,6 +149,8 @@
 			interrupts = <GIC_SPI 92 IRQ_TYPE_LEVEL_HIGH>;
 			ti,timer-pwm;
 			ti,hwmods = "timer4";
+			clocks = <&timer4_fck>;
+			clock-names = "fck";
 			status = "disabled";
 		};
 
@@ -138,6 +160,8 @@
 			interrupts = <GIC_SPI 93 IRQ_TYPE_LEVEL_HIGH>;
 			ti,timer-pwm;
 			ti,hwmods = "timer5";
+			clocks = <&timer5_fck>;
+			clock-names = "fck";
 			status = "disabled";
 		};
 
@@ -147,6 +171,8 @@
 			interrupts = <GIC_SPI 94 IRQ_TYPE_LEVEL_HIGH>;
 			ti,timer-pwm;
 			ti,hwmods = "timer6";
+			clocks = <&timer6_fck>;
+			clock-names = "fck";
 			status = "disabled";
 		};
 
@@ -156,6 +182,8 @@
 			interrupts = <GIC_SPI 95 IRQ_TYPE_LEVEL_HIGH>;
 			ti,timer-pwm;
 			ti,hwmods = "timer7";
+			clocks = <&timer7_fck>;
+			clock-names = "fck";
 			status = "disabled";
 		};
 
@@ -164,6 +192,8 @@
 			reg = <0x481c1000 0x400>;
 			interrupts = <GIC_SPI 131 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer8";
+			clocks = <&timer8_fck>;
+			clock-names = "fck";
 			status = "disabled";
 		};
 
@@ -172,6 +202,8 @@
 			reg = <0x4833d000 0x400>;
 			interrupts = <GIC_SPI 132 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer9";
+			clocks = <&timer9_fck>;
+			clock-names = "fck";
 			status = "disabled";
 		};
 
@@ -180,6 +212,8 @@
 			reg = <0x4833f000 0x400>;
 			interrupts = <GIC_SPI 133 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer10";
+			clocks = <&timer10_fck>;
+			clock-names = "fck";
 			status = "disabled";
 		};
 
@@ -188,6 +222,8 @@
 			reg = <0x48341000 0x400>;
 			interrupts = <GIC_SPI 134 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer11";
+			clocks = <&timer11_fck>;
+			clock-names = "fck";
 			status = "disabled";
 		};
 
@@ -195,6 +231,8 @@
 			compatible = "ti,am4372-counter32k","ti,omap-counter32k";
 			reg = <0x44e86000 0x40>;
 			ti,hwmods = "counter_32k";
+			clocks = <&synctimer_32kclk>;
+			clock-names = "fck";
 		};
 
 		rtc@44e3e000 {
@@ -203,6 +241,8 @@
 			interrupts = <GIC_SPI 75 IRQ_TYPE_LEVEL_HIGH
 				      GIC_SPI 76 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "rtc";
+			clocks = <&clk_32768_ck>;
+			clock-names = "fck";
 			status = "disabled";
 		};
 
@@ -211,6 +251,8 @@
 			reg = <0x44e35000 0x1000>;
 			interrupts = <GIC_SPI 91 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "wd_timer2";
+			clocks = <&wdt1_fck>;
+			clock-names = "fck";
 			status = "disabled";
 		};
 
@@ -223,6 +265,8 @@
 			interrupt-controller;
 			#interrupt-cells = <2>;
 			ti,hwmods = "gpio1";
+			clocks = <&sys_clkin_ck>, <&gpio0_dbclk>;
+			clock-names = "fck", "dbclk";
 			status = "disabled";
 		};
 
@@ -235,6 +279,8 @@
 			interrupt-controller;
 			#interrupt-cells = <2>;
 			ti,hwmods = "gpio2";
+			clocks = <&l4ls_gclk>, <&gpio1_dbclk>;
+			clock-names = "fck", "dbclk";
 			status = "disabled";
 		};
 
@@ -247,6 +293,8 @@
 			interrupt-controller;
 			#interrupt-cells = <2>;
 			ti,hwmods = "gpio3";
+			clocks = <&l4ls_gclk>, <&gpio2_dbclk>;
+			clock-names = "fck", "dbclk";
 			status = "disabled";
 		};
 
@@ -259,6 +307,8 @@
 			interrupt-controller;
 			#interrupt-cells = <2>;
 			ti,hwmods = "gpio4";
+			clocks = <&l4ls_gclk>, <&gpio3_dbclk>;
+			clock-names = "fck", "dbclk";
 			status = "disabled";
 		};
 
@@ -271,6 +321,8 @@
 			interrupt-controller;
 			#interrupt-cells = <2>;
 			ti,hwmods = "gpio5";
+			clocks = <&l4ls_gclk>, <&gpio4_dbclk>;
+			clock-names = "fck", "dbclk";
 			status = "disabled";
 		};
 
@@ -283,6 +335,8 @@
 			interrupt-controller;
 			#interrupt-cells = <2>;
 			ti,hwmods = "gpio6";
+			clocks = <&l4ls_gclk>, <&gpio5_dbclk>;
+			clock-names = "fck", "dbclk";
 			status = "disabled";
 		};
 
@@ -291,6 +345,8 @@
 			reg = <0x44e0b000 0x1000>;
 			interrupts = <GIC_SPI 70 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "i2c1";
+			clocks = <&dpll_per_m2_div4_wkupdm_ck>;
+			clock-names = "fck";
 			#address-cells = <1>;
 			#size-cells = <0>;
 			status = "disabled";
@@ -301,6 +357,8 @@
 			reg = <0x4802a000 0x1000>;
 			interrupts = <GIC_SPI 71 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "i2c2";
+			clocks = <&dpll_per_m2_div4_ck>;
+			clock-names = "fck";
 			#address-cells = <1>;
 			#size-cells = <0>;
 			status = "disabled";
@@ -311,6 +369,8 @@
 			reg = <0x4819c000 0x1000>;
 			interrupts = <GIC_SPI 30 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "i2c3";
+			clocks = <&dpll_per_m2_div4_ck>;
+			clock-names = "fck";
 			#address-cells = <1>;
 			#size-cells = <0>;
 			status = "disabled";
@@ -321,6 +381,8 @@
 			reg = <0x48030000 0x400>;
 			interrupts = <GIC_SPI 65 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "spi0";
+			clocks = <&dpll_per_m2_div4_ck>;
+			clock-names = "fck";
 			#address-cells = <1>;
 			#size-cells = <0>;
 			status = "disabled";
@@ -331,6 +393,8 @@
 			reg = <0x481a0000 0x400>;
 			interrupts = <GIC_SPI 125 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "spi1";
+			clocks = <&dpll_per_m2_div4_ck>;
+			clock-names = "fck";
 			#address-cells = <1>;
 			#size-cells = <0>;
 			status = "disabled";
@@ -341,6 +405,8 @@
 			reg = <0x481a2000 0x400>;
 			interrupts = <GIC_SPI 126 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "spi2";
+			clocks = <&dpll_per_m2_div4_ck>;
+			clock-names = "fck";
 			#address-cells = <1>;
 			#size-cells = <0>;
 			status = "disabled";
@@ -351,6 +417,8 @@
 			reg = <0x481a4000 0x400>;
 			interrupts = <GIC_SPI 136 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "spi3";
+			clocks = <&dpll_per_m2_div4_ck>;
+			clock-names = "fck";
 			#address-cells = <1>;
 			#size-cells = <0>;
 			status = "disabled";
@@ -361,6 +429,8 @@
 			reg = <0x48345000 0x400>;
 			interrupts = <GIC_SPI 137 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "spi4";
+			clocks = <&dpll_per_m2_div4_ck>;
+			clock-names = "fck";
 			#address-cells = <1>;
 			#size-cells = <0>;
 			status = "disabled";
@@ -377,12 +447,16 @@
 			#address-cells = <1>;
 			#size-cells = <1>;
 			ti,hwmods = "cpgmac0";
+			clocks = <&cpsw_125mhz_gclk>;
+			clock-names = "fck";
 			status = "disabled";
 
 			mdio@4a101000 {
 				compatible = "ti,am4372-mdio","ti,davinci_mdio";
 				reg = <0x4a101000 0x100>;
 				ti,hwmods = "davinci_mdio";
+				clocks = <&cpsw_125mhz_gclk>;
+				clock-names = "fck";
 				status = "disabled";
 			};
 		};
@@ -394,12 +468,16 @@
 			#size-cells = <1>;
 			ranges;
 			ti,hwmods = "epwmss0";
+			clocks = <&l4ls_gclk>;
+			clock-names = "fck";
 			status = "disabled";
 
 			ecap0: ecap@48300100 {
 				compatible = "ti,am4372-ecap","ti,am33xx-ecap";
 				reg = <0x48300100 0x80>;
 				ti,hwmods = "ecap0";
+				clocks = <&l4ls_gclk>;
+				clock-names = "fck";
 				status = "disabled";
 			};
 
@@ -407,6 +485,8 @@
 				compatible = "ti,am4372-ehrpwm","ti,am33xx-ehrpwm";
 				reg = <0x48300200 0x80>;
 				ti,hwmods = "ehrpwm0";
+				clocks = <&l4ls_gclk>;
+				clock-names = "fck";
 				status = "disabled";
 			};
 		};
@@ -418,12 +498,16 @@
 			#size-cells = <1>;
 			ranges;
 			ti,hwmods = "epwmss1";
+			clocks = <&l4ls_gclk>;
+			clock-names = "fck";
 			status = "disabled";
 
 			ecap1: ecap@48302100 {
 				compatible = "ti,am4372-ecap","ti,am33xx-ecap";
 				reg = <0x48302100 0x80>;
 				ti,hwmods = "ecap1";
+				clocks = <&l4ls_gclk>;
+				clock-names = "fck";
 				status = "disabled";
 			};
 
@@ -431,6 +515,8 @@
 				compatible = "ti,am4372-ehrpwm","ti,am33xx-ehrpwm";
 				reg = <0x48302200 0x80>;
 				ti,hwmods = "ehrpwm1";
+				clocks = <&l4ls_gclk>;
+				clock-names = "fck";
 				status = "disabled";
 			};
 		};
@@ -442,12 +528,16 @@
 			#size-cells = <1>;
 			ranges;
 			ti,hwmods = "epwmss2";
+			clocks = <&l4ls_gclk>;
+			clock-names = "fck";
 			status = "disabled";
 
 			ecap2: ecap@48304100 {
 				compatible = "ti,am4372-ecap","ti,am33xx-ecap";
 				reg = <0x48304100 0x80>;
 				ti,hwmods = "ecap2";
+				clocks = <&l4ls_gclk>;
+				clock-names = "fck";
 				status = "disabled";
 			};
 
@@ -455,6 +545,8 @@
 				compatible = "ti,am4372-ehrpwm","ti,am33xx-ehrpwm";
 				reg = <0x48304200 0x80>;
 				ti,hwmods = "ehrpwm2";
+				clocks = <&l4ls_gclk>;
+				clock-names = "fck";
 				status = "disabled";
 			};
 		};
@@ -466,12 +558,16 @@
 			#size-cells = <1>;
 			ranges;
 			ti,hwmods = "epwmss3";
+			clocks = <&l4ls_gclk>;
+			clock-names = "fck";
 			status = "disabled";
 
 			ehrpwm3: ehrpwm@48306200 {
 				compatible = "ti,am4372-ehrpwm","ti,am33xx-ehrpwm";
 				reg = <0x48306200 0x80>;
 				ti,hwmods = "ehrpwm3";
+				clocks = <&l4ls_gclk>;
+				clock-names = "fck";
 				status = "disabled";
 			};
 		};
@@ -483,12 +579,16 @@
 			#size-cells = <1>;
 			ranges;
 			ti,hwmods = "epwmss4";
+			clocks = <&l4ls_gclk>;
+			clock-names = "fck";
 			status = "disabled";
 
 			ehrpwm4: ehrpwm@48308200 {
 				compatible = "ti,am4372-ehrpwm","ti,am33xx-ehrpwm";
 				reg = <0x48308200 0x80>;
 				ti,hwmods = "ehrpwm4";
+				clocks = <&l4ls_gclk>;
+				clock-names = "fck";
 				status = "disabled";
 			};
 		};
@@ -500,12 +600,16 @@
 			#size-cells = <1>;
 			ranges;
 			ti,hwmods = "epwmss5";
+			clocks = <&l4ls_gclk>;
+			clock-names = "fck";
 			status = "disabled";
 
 			ehrpwm5: ehrpwm@4830a200 {
 				compatible = "ti,am4372-ehrpwm","ti,am33xx-ehrpwm";
 				reg = <0x4830a200 0x80>;
 				ti,hwmods = "ehrpwm5";
+				clocks = <&l4ls_gclk>;
+				clock-names = "fck";
 				status = "disabled";
 			};
 		};
@@ -515,6 +619,8 @@
 			reg = <0x44d00000 0x4000	/* M3 UMEM */
 			       0x44d80000 0x2000>;	/* M3 DMEM */
 			ti,hwmods = "wkup_m3";
+			clocks = <&sys_clkin_ck>;
+			clock-names = "fck";
 			status = "disabled";
 		};
 
@@ -522,6 +628,8 @@
 			compatible = "ti,am4372-tscadc","ti,am3359-tscadc";
 			reg = <0x44e0d000 0x1000>;
 			ti,hwmods = "adc_tsc";
+			clocks = <&adc_tsc_fck>;
+			clock-names = "fck";
 			status = "disabled";
 		};
 
@@ -529,12 +637,16 @@
 			compatible = "ti,am4372-ocmcram","ti,am3352-ocmcram";
 			reg = <0x40300000 0x40000>;
 			ti,hwmods = "ocmcram";
+			clocks = <&l3_gclk>;
+			clock-names = "fck";
 			status = "disabled";
 		};
 
 		dcan0: d_can@481cc000 {
 			compatible = "bosch,d_can";
 			ti,hwmods = "d_can0";
+			clocks = <&dcan0_fck>;
+			clock-names = "fck";
 			reg = <0x481cc000 0x2000
 				0x44e10644 0x4>;
 			status = "disabled";
@@ -543,6 +655,8 @@
 		dcan1: d_can@481d0000 {
 			compatible = "bosch,d_can";
 			ti,hwmods = "d_can1";
+			clocks = <&dcan1_fck>;
+			clock-names = "fck";
 			reg = <0x481d0000 0x2000
 				0x44e10644 0x4>;
 			status = "disabled";
@@ -552,12 +666,16 @@
 			compatible = "ti,am4372-elm","ti,am3352-elm";
 			reg = <0x48080000 0x2000>;
 			ti,hwmods = "elm";
+			clocks = <&l4ls_gclk>;
+			clock-names = "fck";
 			status = "disabled";
 		};
 
 		gpmc: gpmc@50000000 {
 			compatible = "ti,am4372-gpmc","ti,am3352-gpmc";
 			ti,hwmods = "gpmc";
+			clocks = <&l3s_gclk>;
+			clock-names = "fck";
 			reg = <0x50000000 0x2000>;
 			status = "disabled";
 		};
