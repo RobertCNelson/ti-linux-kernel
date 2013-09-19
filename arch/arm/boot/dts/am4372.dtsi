@@ -731,6 +731,18 @@
 			clocks = <&aes0_fck>;
 			clock-names = "fck";
 		};
+
+		des: des@53701000 {
+			compatible = "ti,omap4-des";
+			ti,hwmods = "des";
+			reg = <0x53701000 0xa0>;
+			interrupts = <GIC_SPI 130 IRQ_TYPE_LEVEL_HIGH>;
+			dmas = <&edma 34
+				&edma 33>;
+			dma-names = "tx", "rx";
+			clocks = <&l3_gclk>;
+			clock-names = "fck";
+		};
 	};
 
 	clocks {
