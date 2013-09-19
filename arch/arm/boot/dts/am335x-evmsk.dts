@@ -419,3 +419,7 @@
 	phy_id = <&davinci_mdio>, <1>;
 	phy-mode = "rgmii-txid";
 };
+
+&gpio0 {
+	ti,no-reset;
+};	
