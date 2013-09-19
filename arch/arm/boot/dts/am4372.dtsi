@@ -719,6 +719,18 @@
 			clocks = <&l3_gclk>;
 			clock-names = "fck";
 		};
+
+		aes: aes@53501000 {
+			compatible = "ti,omap4-aes";
+			ti,hwmods = "aes";
+			reg = <0x53501000 0xa0>;
+			interrupts = <GIC_SPI 103 IRQ_TYPE_LEVEL_HIGH>;
+			dmas = <&edma 6
+				&edma 5>;
+			dma-names = "tx", "rx";
+			clocks = <&aes0_fck>;
+			clock-names = "fck";
+		};
 	};
 
 	clocks {
