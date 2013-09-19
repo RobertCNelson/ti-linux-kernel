@@ -41,6 +41,8 @@
 
 u16 pm44xx_errata;
 
+extern unsigned long arch_timer_freq;
+
 /* SCU base address */
 static void __iomem *scu_base;
 
@@ -64,6 +66,13 @@ static void omap4_secondary_init(unsigned int cpu)
 	if (cpu_is_omap443x() && (omap_type() != OMAP2_DEVICE_TYPE_GP))
 		omap_secure_dispatcher(OMAP4_PPA_CPU_ACTRL_SMP_INDEX,
 							4, 0, 0, 0, 0, 0);
+
+	/*
+	 * Configure the CNTFRQ register for the secondary cpu's which
+	 * indicates the frequency of the cpu local timers.
+	 */
+	if (soc_is_omap54xx() || soc_is_dra7xx())
+		omap_smc1(OMAP5_DRA7_MON_SET_CNTFRQ_INDEX, arch_timer_freq);
 
 	/*
 	 * Synchronise with the boot thread.

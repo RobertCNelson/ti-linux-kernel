@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011 Sascha Hauer, Pengutronix <s.hauer@pengutronix.de>
  * Copyright (C) 2011 Richard Zhao, Linaro <richard.zhao@linaro.org>
- * Copyright (C) 2011-2012 Mike Turquette, Linaro Ltd <mturquette@linaro.org>
+ * Copyright (C) 2011-2013 Mike Turquette, Linaro Ltd <mturquette@linaro.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -17,6 +17,8 @@
 #include <linux/err.h>
 #include <linux/string.h>
 #include <linux/log2.h>
+#include <linux/of.h>
+#include <linux/of_address.h>
 
 /*
  * DOC: basic adjustable divider clock that cannot gate
@@ -29,8 +31,6 @@
  */
 
 #define to_clk_divider(_hw) container_of(_hw, struct clk_divider, hw)
-
-#define div_mask(d)	((1 << ((d)->width)) - 1)
 
 static unsigned int _get_table_maxdiv(const struct clk_div_table *table)
 {
@@ -46,12 +46,12 @@ static unsigned int _get_table_maxdiv(const struct clk_div_table *table)
 static unsigned int _get_maxdiv(struct clk_divider *divider)
 {
 	if (divider->flags & CLK_DIVIDER_ONE_BASED)
-		return div_mask(divider);
+		return divider->mask;
 	if (divider->flags & CLK_DIVIDER_POWER_OF_TWO)
-		return 1 << div_mask(divider);
+		return 1 << divider->mask;
 	if (divider->table)
 		return _get_table_maxdiv(divider->table);
-	return div_mask(divider) + 1;
+	return divider->mask + 1;
 }
 
 static unsigned int _get_table_div(const struct clk_div_table *table,
@@ -105,7 +105,7 @@ static unsigned long clk_divider_recalc_rate(struct clk_hw *hw,
 	unsigned int div, val;
 
 	val = clk_readl(divider->reg) >> divider->shift;
-	val &= div_mask(divider);
+	val &= divider->mask;
 
 	div = _get_div(divider, val);
 	if (!div) {
@@ -221,17 +221,17 @@ static int clk_divider_set_rate(struct clk_hw *hw, unsigned long rate,
 	div = parent_rate / rate;
 	value = _get_val(divider, div);
 
-	if (value > div_mask(divider))
-		value = div_mask(divider);
+	if (value > divider->mask)
+		value = divider->mask;
 
 	if (divider->lock)
 		spin_lock_irqsave(divider->lock, flags);
 
 	if (divider->flags & CLK_DIVIDER_HIWORD_MASK) {
-		val = div_mask(divider) << (divider->shift + 16);
+		val = divider->mask << (divider->shift + 16);
 	} else {
 		val = clk_readl(divider->reg);
-		val &= ~(div_mask(divider) << divider->shift);
+		val &= ~(divider->mask << divider->shift);
 	}
 	val |= value << divider->shift;
 	clk_writel(val, divider->reg);
@@ -251,7 +251,7 @@ EXPORT_SYMBOL_GPL(clk_divider_ops);
 
 static struct clk *_register_divider(struct device *dev, const char *name,
 		const char *parent_name, unsigned long flags,
-		void __iomem *reg, u8 shift, u8 width,
+		void __iomem *reg, u8 shift, u32 mask,
 		u8 clk_divider_flags, const struct clk_div_table *table,
 		spinlock_t *lock)
 {
@@ -260,8 +260,9 @@ static struct clk *_register_divider(struct device *dev, const char *name,
 	struct clk_init_data init;
 
 	if (clk_divider_flags & CLK_DIVIDER_HIWORD_MASK) {
-		if (width + shift > 16) {
-			pr_warn("divider value exceeds LOWORD field\n");
+		if ((mask << shift) & 0xffff0000) {
+			pr_warn("%s: divider value exceeds LOWORD field\n",
+					__func__);
 			return ERR_PTR(-EINVAL);
 		}
 	}
@@ -282,7 +283,7 @@ static struct clk *_register_divider(struct device *dev, const char *name,
 	/* struct clk_divider assignments */
 	div->reg = reg;
 	div->shift = shift;
-	div->width = width;
+	div->mask = mask;
 	div->flags = clk_divider_flags;
 	div->lock = lock;
 	div->hw.init = &init;
@@ -315,7 +316,7 @@ struct clk *clk_register_divider(struct device *dev, const char *name,
 		u8 clk_divider_flags, spinlock_t *lock)
 {
 	return _register_divider(dev, name, parent_name, flags, reg, shift,
-			width, clk_divider_flags, NULL, lock);
+			((1 << width) - 1), clk_divider_flags, NULL, lock);
 }
 EXPORT_SYMBOL_GPL(clk_register_divider);
 
@@ -340,6 +341,103 @@ struct clk *clk_register_divider_table(struct device *dev, const char *name,
 		spinlock_t *lock)
 {
 	return _register_divider(dev, name, parent_name, flags, reg, shift,
-			width, clk_divider_flags, table, lock);
+			((1 << width) - 1), clk_divider_flags, table, lock);
 }
 EXPORT_SYMBOL_GPL(clk_register_divider_table);
+
+#ifdef CONFIG_OF
+struct clk_div_table *of_clk_get_div_table(struct device_node *node)
+{
+	int i;
+	u32 table_size;
+	struct clk_div_table *table;
+	const __be32 *tablespec;
+	u32 val;
+
+	tablespec = of_get_property(node, "table", &table_size);
+
+	if (!tablespec)
+		return NULL;
+
+	table_size /= sizeof(struct clk_div_table);
+
+	table = kzalloc(sizeof(struct clk_div_table) * table_size, GFP_KERNEL);
+	if (!table) {
+		pr_err("%s: unable to allocate memory for %s table\n", __func__, node->name);
+		return NULL;
+	}
+
+	for (i = 0; i < table_size; i++) {
+		of_property_read_u32_index(node, "table", i * 2, &val);
+		table[i].div = val;
+		of_property_read_u32_index(node, "table", i * 2 + 1, &val);
+		table[i].val = val;
+	}
+
+	return table;
+}
+
+/**
+ * of_divider_clk_setup() - Setup function for simple div rate clock
+ */
+void of_divider_clk_setup(struct device_node *node)
+{
+	struct clk *clk;
+	const char *clk_name = node->name;
+	void __iomem *reg;
+	const char *parent_name;
+	u8 clk_divider_flags = 0;
+	u32 mask = 0;
+	u32 shift = 0;
+	struct clk_div_table *table;
+	u32 flags = 0;
+
+	of_property_read_string(node, "clock-output-names", &clk_name);
+
+	parent_name = of_clk_get_parent_name(node, 0);
+
+	reg = of_iomap(node, 0);
+	if (!reg) {
+		pr_err("%s: no memory mapped for property reg\n", __func__);
+		return;
+	}
+
+	if (of_property_read_u32(node, "bit-mask", &mask)) {
+		pr_err("%s: missing bit-mask property for %s\n", __func__, node->name);
+		return;
+	}
+
+	if (of_property_read_u32(node, "bit-shift", &shift)) {
+		shift = __ffs(mask);
+		pr_debug("%s: bit-shift property defaults to 0x%x for %s\n",
+				__func__, shift, node->name);
+	}
+
+	if (of_property_read_bool(node, "index-starts-at-one"))
+		clk_divider_flags |= CLK_DIVIDER_ONE_BASED;
+
+	if (of_property_read_bool(node, "index-power-of-two"))
+		clk_divider_flags |= CLK_DIVIDER_POWER_OF_TWO;
+
+	if (of_property_read_bool(node, "index-allow-zero"))
+		clk_divider_flags |= CLK_DIVIDER_ALLOW_ZERO;
+
+	if (of_property_read_bool(node, "hiword-mask"))
+		clk_divider_flags |= CLK_DIVIDER_HIWORD_MASK;
+
+	if (of_property_read_bool(node, "set-rate-parent"))
+		flags |= CLK_SET_RATE_PARENT;
+
+	table = of_clk_get_div_table(node);
+	if (IS_ERR(table))
+		return;
+
+	clk = _register_divider(NULL, clk_name, parent_name, flags, reg, shift,
+			mask, clk_divider_flags, table, NULL);
+
+	if (!IS_ERR(clk))
+		of_clk_add_provider(node, of_clk_src_simple_get, clk);
+}
+EXPORT_SYMBOL_GPL(of_divider_clk_setup);
+CLK_OF_DECLARE(divider_clk, "divider-clock", of_divider_clk_setup);
+#endif

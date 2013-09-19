@@ -30,4 +30,24 @@
 		       0x4a00232C 0x4>;
 		compatible = "ti,omap4430-bandgap";
 	};
+
+	clocks {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+		/include/ "omap44xx-clocks.dtsi"
+		/include/ "omap443x-clocks.dtsi"
+	};
+
+	clockdomains {
+		l3_init_clkdm: l3_init_clkdm {
+			compatible = "ti,clockdomain";
+			clocks = <&dpll_usb_ck>;
+		};
+
+		emu_sys_clkdm: emu_sys_clkdm {
+			compatible = "ti,clockdomain";
+			clocks = <&trace_clk_div_ck>;
+		};
+	};
 };
