@@ -665,6 +665,16 @@
 			dma-names = "tx0", "rx0";
 			status = "disabled";
 		};
+
+		rtcss@48838000 {
+			compatible = "ti,da830-rtc";
+			reg = <0x48838000 0x100>;
+			interrupts = <0 159 0x4>,
+				     <0 159 0x4>;
+			ti,hwmods = "rtcss";
+			clocks = <&sys_32k_ck>;
+			clock-names = "fck";
+		};
 	};
 
 	clocks {
