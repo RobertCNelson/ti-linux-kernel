@@ -685,6 +685,15 @@
 			reg = <0x44df0000 0xa000>;
 			#reset-cells = <1>;
 		};
+
+		rng: rng@48310000 {
+			compatible = "ti,omap4-rng";
+			ti,hwmods = "rng";
+			reg = <0x48310000 0x2000>;
+			interrupts = <GIC_SPI 111 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&rng_fck>;
+			clock-names = "fck";
+		};
 	};
 
 	clocks {
