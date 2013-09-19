@@ -302,6 +302,14 @@ sha0_fck: sha0_fck {
 	clock-div = <1>;
 };
 
+rng_fck: rng_fck {
+	#clock-cells = <0>;
+	compatible = "fixed-factor-clock";
+	clocks = <&sys_clkin_ck>;
+	clock-mult = <1>;
+	clock-div = <1>;
+};
+
 aes0_fck: aes0_fck {
 	#clock-cells = <0>;
 	compatible = "fixed-factor-clock";
