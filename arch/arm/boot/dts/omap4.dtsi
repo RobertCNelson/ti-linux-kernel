@@ -827,7 +827,12 @@
 
 			hdmi: encoder@58006000 {
 				compatible = "ti,omap4-hdmi";
-				reg = <0x58006000 0x1000>;
+				reg = <0x58006000 0x200>,
+				      <0x58006200 0x100>,
+				      <0x58006300 0x100>,
+				      <0x58006400 0x1000>;
+				reg-names = "hdmi_wp", "hdmi_pllctrl",
+					    "hdmi_txphy", "hdmi_core";
 				interrupts = <0 101 0x4>;
 				ti,hwmods = "dss_hdmi";
 			};
