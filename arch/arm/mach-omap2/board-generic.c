@@ -147,6 +147,24 @@ DT_MACHINE_START(OMAP3_GP_DT, "Generic OMAP3-GP (Flattened Device Tree)")
 	.dt_compat	= omap3_gp_boards_compat,
 	.restart	= omap3xxx_restart,
 MACHINE_END
+
+static const char *omap3630_gp_boards_compat[] __initdata = {
+	"ti,omap3-beagle-xm",
+	NULL,
+};
+
+DT_MACHINE_START(OMAP3630_GP_DT, "Generic OMAP3630-GP (Flattened Device Tree)")
+	.reserve	= omap_reserve,
+	.map_io		= omap3_map_io,
+	.init_early	= omap3630_init_early,
+	.init_irq	= omap_intc_of_init,
+	.handle_irq	= omap3_intc_handle_irq,
+	.init_machine	= omap_generic_init,
+	.init_late	= omap3_init_late,
+	.init_time	= omap3_secure_sync32k_timer_init,
+	.dt_compat	= omap3630_gp_boards_compat,
+	.restart	= omap3xxx_restart,
+MACHINE_END
 #endif
 
 #ifdef CONFIG_SOC_AM33XX
