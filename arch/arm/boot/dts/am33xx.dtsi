@@ -839,6 +839,18 @@
 			clocks = <&rng_fck>;
 			clock-names = "fck";
 		};
+
+		lcdc: lcdc@0x4830e000 {
+			compatible = "ti,am33xx-tilcdc";
+			reg = <0x4830e000 0x1000>;
+			interrupt-parent = <&intc>;
+			interrupts = <36>;
+			clocks = <&lcd_gclk>;
+			clock-names = "fck";
+			ti,hwmods = "lcdc";
+			status = "disabled";
+		};
+
 	};
 
 	clocks {
