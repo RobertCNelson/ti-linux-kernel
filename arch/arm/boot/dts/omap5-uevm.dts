@@ -89,6 +89,8 @@
 			&mcbsp2_pins
 			&usbhost_pins
 			&led_gpio_pins
+			&dss_hdmi_pins
+			&tpd12s015_pins
 	>;
 
 	twl6040_pins: pinmux_twl6040_pins {
@@ -219,6 +221,19 @@
 		>;
 	};
 
+	 dss_hdmi_pins: pinmux_dss_hdmi_pins {
+		pinctrl-single,pins = <
+			0x0fc (PIN_INPUT_PULLUP | MUX_MODE0)	/* hdmi_cec.hdmi_cec */
+			0x100 (PIN_INPUT | MUX_MODE0)	/* DDC-SCL */
+			0x102 (PIN_INPUT | MUX_MODE0)	/* DDC-SDA */
+                >;
+        };
+
+	tpd12s015_pins: pinmux_tpd12s015_pins {
+		pinctrl-single,pins = <
+			0x0fe (PIN_INPUT_PULLDOWN | MUX_MODE6)	/* hdmi_hpd.gpio7_193 */
+		>;
+	};
 };
 
 &omap5_pmx_wkup {
@@ -455,6 +470,13 @@
 	pinctrl-0 = <&i2c5_pins>;
 
 	clock-frequency = <400000>;
+
+	tca6424a: tca6424a@22 {
+		compatible = "ti,tca6424";
+		reg = <0x22>;
+		gpio-controller;
+		#gpio-cells = <2>;
+	};
 };
 
 &mcbsp3 {
@@ -502,4 +524,38 @@
 &uart5 {
         pinctrl-names = "default";
         pinctrl-0 = <&uart5_pins>;
+};
+
+&hdmi {
+	vdda_hdmi_dac-supply = <&ldo4_reg>;
+};
+
+&dsi1 {
+	vdds_dsi-supply = <&ldo4_reg>;
+};
+
+&dsi2 {
+	vdds_dsi-supply = <&ldo4_reg>;
+};
+
+/ {
+	aliases {
+		display0 = &hdmi0;
+	};
+
+	tpd12s015: encoder@0 {
+		compatible = "ti,tpd12s015";
+
+		video-source = <&hdmi>;
+
+		gpios = <&tca6424a 0 0>,	/* TCA6424A P01, CT CP HPD */
+			<&tca6424a 1 0>,	/* TCA6424A P00, LS OE */
+			<&gpio7 1 0>;		/* GPIO 193, HPD */
+	};
+
+	hdmi0: connector@0 {
+		compatible = "ti,hdmi_connector";
+
+		video-source = <&tpd12s015>;
+	};
 };
