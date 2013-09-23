@@ -255,8 +255,8 @@
 				reg = <0x48>;
 			};
 
-			tlv320aic3x: tlv320aic3x@1b {
-				compatible = "ti,tlv320aic3x";
+			tlv320aic3106: tlv320aic3106@1b {
+				compatible = "ti,tlv320aic3106";
 				reg = <0x1b>;
 				status = "okay";
 
@@ -366,7 +366,7 @@
 		sound {
 			compatible = "ti,da830-evm-audio";
 			ti,model = "DA830 EVM";
-			ti,audio-codec = <&tlv320aic3x>;
+			ti,audio-codec = <&tlv320aic3106>;
 			ti,mcasp-controller = <&mcasp1>;
 			ti,codec-clock-rate = <12000000>;
 			ti,audio-routing =
