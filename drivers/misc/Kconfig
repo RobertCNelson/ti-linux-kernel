@@ -528,6 +528,14 @@ config SRAM
 	  the genalloc API. It is supposed to be used for small on-chip SRAM
 	  areas found on many SoCs.
 
+config CROSSBAR
+	bool "on-chip crossbar driver"
+	select REGMAP_MMIO
+	help
+	  This driver is for IRQ/DMA crossbar devices which is responsible for
+	  muxing the irq/dma requests from external peripherals to the corresponding
+	  controller's inputs.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"

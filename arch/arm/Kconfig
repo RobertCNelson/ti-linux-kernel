@@ -1606,6 +1606,7 @@ config ARCH_NR_GPIO
 	default 352 if ARCH_VT8500
 	default 288 if ARCH_SUNXI
 	default 264 if MACH_H4700
+	default 192 if SOC_AM43XX
 	default 0
 	help
 	  Maximum number of GPIOs in the system.

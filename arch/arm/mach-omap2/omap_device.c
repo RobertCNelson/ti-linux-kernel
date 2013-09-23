@@ -45,37 +45,32 @@
 static void _add_clkdev(struct omap_device *od, const char *clk_alias,
 		       const char *clk_name)
 {
+	int ret;
 	struct clk *r;
-	struct clk_lookup *l;
+	struct device *dev = &od->pdev->dev;
+	struct device_node *node = dev->of_node;
 
 	if (!clk_alias || !clk_name)
 		return;
 
-	dev_dbg(&od->pdev->dev, "Creating %s -> %s\n", clk_alias, clk_name);
+	dev_dbg(dev, "Creating %s -> %s\n", clk_alias, clk_name);
 
-	r = clk_get_sys(dev_name(&od->pdev->dev), clk_alias);
+	r = clk_get(dev, clk_alias);
 	if (!IS_ERR(r)) {
-		dev_warn(&od->pdev->dev,
-			 "alias %s already exists\n", clk_alias);
+		if (!node)
+			dev_warn(dev, "alias '%s' already exists\n", clk_alias);
 		clk_put(r);
 		return;
 	}
 
-	r = clk_get(NULL, clk_name);
-	if (IS_ERR(r)) {
-		dev_err(&od->pdev->dev,
-			"clk_get for %s failed\n", clk_name);
-		return;
-	}
+	if (node)
+		dev_err(dev, "FIXME: clock-name '%s' DOES NOT exist in dt!\n",
+			clk_alias);
 
-	l = clkdev_alloc(r, clk_alias, dev_name(&od->pdev->dev));
-	if (!l) {
-		dev_err(&od->pdev->dev,
-			"clkdev_alloc for %s failed\n", clk_alias);
-		return;
-	}
-
-	clkdev_add(l);
+	ret = clk_add_alias(clk_alias, dev_name(dev), (char *)clk_name, dev);
+	if (ret)
+		dev_err(dev, "Failed to alias %s to %s: %d\n", clk_alias,
+			clk_name, ret);
 }
 
 /**

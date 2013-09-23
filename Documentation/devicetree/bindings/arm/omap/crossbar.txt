@@ -1,0 +1,24 @@
+* TI - IRQ/DMA Crossbar
+
+This version is an implementation of the Crossbar IRQ/DMA IP
+
+Required properties:
+- compatible : Should be "ti,dra-crossbar"
+- crossbar-name: Name of the controller to which crossbar output is routed
+- reg:	Contains crossbar register address range
+- reg-width: Represents the width of the individual registers
+- crossbar-lines:  Default mappings.Should contain the crossbar-name
+		   device name, int/dma request number, crossbar number,
+		   register offset in the same order.
+
+Examples:
+		crossbar_mpu: mpuirq@4a002a48 {
+			compatible = "crossbar";
+			crossbar-name = "mpu-irq";
+			reg = <0x4a002a48 0x0130>;
+			reg-width = <16>;
+			crossbar-lines = "mpu-irq", "rtc-ss-alarm", <0x9f 0xd9 0x12c>,
+					 "mpu-irq", "mcasp3-arevt", <0x9e 0x96 0x12a>,
+					 "mpu-irq", "mcasp3-axevt", <0x9d 0x97 0x128>;
+		};
+
