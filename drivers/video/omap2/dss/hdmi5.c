@@ -85,6 +85,7 @@ static void hdmi_runtime_put(void)
 
 static int hdmi_init_regulator(void)
 {
+	int r;
 	struct regulator *reg;
 
 	if (hdmi.vdda_hdmi_dac_reg != NULL)
@@ -95,6 +96,10 @@ static int hdmi_init_regulator(void)
 		DSSERR("can't get VDDA_HDMI_DAC regulator\n");
 		return PTR_ERR(reg);
 	}
+
+	r = regulator_set_voltage(reg, 1500000, 1800000);
+	if (r)
+		DSSWARN("can't set the regulator voltage");
 
 	hdmi.vdda_hdmi_dac_reg = reg;
 
