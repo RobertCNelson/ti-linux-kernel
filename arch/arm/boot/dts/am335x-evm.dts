@@ -266,7 +266,6 @@
 				DRVDD-supply = <&vaux2_reg>;
 				DVDD-supply = <&vbat>;
 			};
-
 		};
 
 		elm: elm@48080000 {
@@ -376,7 +375,6 @@
 				"LINE1L",               "Line In",
 				"LINE1R",               "Line In";
 		};
-
 	};
 
 	vbat: fixedregulator@0 {
