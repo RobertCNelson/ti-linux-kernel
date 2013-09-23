@@ -365,7 +365,7 @@
 
 		sound {
 			compatible = "ti,da830-evm-audio";
-			ti,model = "DA830 EVM";
+			ti,model = "AM335x-EVM";
 			ti,audio-codec = <&tlv320aic3106>;
 			ti,mcasp-controller = <&mcasp1>;
 			ti,codec-clock-rate = <12000000>;
