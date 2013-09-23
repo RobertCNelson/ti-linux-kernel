@@ -753,8 +753,6 @@
 		omap_dwc3@4a020000 {
 			compatible = "ti,dwc3";
 			ti,hwmods = "usb_otg_ss";
-			clocks = <&dpll_core_h13x2_ck>, <&usb_otg_ss_refclk960m>;
-			clock-names = "fck", "refclk960m";
 			reg = <0x4a020000 0x1000>;
 			interrupts = <GIC_SPI 93 IRQ_TYPE_LEVEL_HIGH>;
 			#address-cells = <1>;
@@ -780,6 +778,8 @@
 				compatible = "ti,omap-usb2";
 				reg = <0x4a084000 0x7c>;
 				ctrl-module = <&omap_control_usb2phy>;
+				clocks = <&usb_phy_cm_clk32k>, <&usb_otg_ss_refclk960m>;
+				clock-names = "wkupclk", "refclk";
 			};
 
 			usb3_phy: usb3phy@4a084400 {
@@ -789,6 +789,12 @@
 				      <0x4a084c00 0x40>;
 				reg-names = "phy_rx", "phy_tx", "pll_ctrl";
 				ctrl-module = <&omap_control_usb3phy>;
+				clocks = <&usb_phy_cm_clk32k>,
+					 <&usb_otg_ss_refclk960m>,
+					 <&dpll_core_h13x2_ck>;
+				clock-names =	"wkupclk",
+						"refclk",
+						"refclk2";
 			};
 		};
 
