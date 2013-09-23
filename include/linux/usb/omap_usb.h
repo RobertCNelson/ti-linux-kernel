@@ -39,6 +39,7 @@ struct omap_usb {
 	struct clk		*wkupclk;
 	struct clk		*sys_clk;
 	struct clk		*optclk;
+	struct clk		*optclk2;
 	u8			is_suspended:1;
 };
 

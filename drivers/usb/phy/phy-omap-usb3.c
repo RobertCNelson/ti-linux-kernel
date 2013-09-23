@@ -226,19 +226,26 @@ static int omap_usb3_probe(struct platform_device *pdev)
 	phy->phy.type		= USB_PHY_TYPE_USB3;
 
 	phy->is_suspended	= 1;
-	phy->wkupclk = devm_clk_get(phy->dev, "usb_phy_cm_clk32k");
+	phy->wkupclk = devm_clk_get(phy->dev, "wkupclk");
 	if (IS_ERR(phy->wkupclk)) {
-		dev_err(&pdev->dev, "unable to get usb_phy_cm_clk32k\n");
+		dev_err(&pdev->dev, "unable to get wkupclk\n");
 		return PTR_ERR(phy->wkupclk);
 	}
 	clk_prepare(phy->wkupclk);
 
-	phy->optclk = devm_clk_get(phy->dev, "usb_otg_ss_refclk960m");
+	phy->optclk = devm_clk_get(phy->dev, "refclk");
 	if (IS_ERR(phy->optclk)) {
-		dev_err(&pdev->dev, "unable to get usb_otg_ss_refclk960m\n");
+		dev_err(&pdev->dev, "unable to get refclk\n");
 		return PTR_ERR(phy->optclk);
 	}
 	clk_prepare(phy->optclk);
+
+	phy->optclk2 = devm_clk_get(phy->dev, "refclk2");
+	if (IS_ERR(phy->optclk2)) {
+		dev_err(&pdev->dev, "unable to get refclk2\n");
+		return PTR_ERR(phy->optclk2);
+	}
+	clk_prepare(phy->optclk2);
 
 	phy->sys_clk = devm_clk_get(phy->dev, "sys_clkin");
 	if (IS_ERR(phy->sys_clk)) {
@@ -276,6 +283,7 @@ static int omap_usb3_remove(struct platform_device *pdev)
 
 	clk_unprepare(phy->wkupclk);
 	clk_unprepare(phy->optclk);
+	clk_unprepare(phy->optclk2);
 	usb_remove_phy(&phy->phy);
 	if (!pm_runtime_suspended(&pdev->dev))
 		pm_runtime_put(&pdev->dev);
@@ -293,6 +301,7 @@ static int omap_usb3_runtime_suspend(struct device *dev)
 
 	clk_disable(phy->wkupclk);
 	clk_disable(phy->optclk);
+	clk_disable(phy->optclk2);
 
 	return 0;
 }
@@ -315,8 +324,16 @@ static int omap_usb3_runtime_resume(struct device *dev)
 		goto err2;
 	}
 
+	ret = clk_enable(phy->optclk2);
+	if (ret) {
+		dev_err(phy->dev, "Failed to enable optclk2 %d\n", ret);
+		goto err3;
+	}
+
 	return 0;
 
+err3:
+	clk_disable(phy->wkupclk);
 err2:
 	clk_disable(phy->optclk);
 

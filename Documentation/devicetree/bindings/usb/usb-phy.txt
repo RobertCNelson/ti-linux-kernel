@@ -9,6 +9,9 @@ Required properties:
    filled in "reg".
  - #phy-cells: determine the number of cells that should be given in the
    phandle while referencing this phy.
+ - clocks: phandle to PHY clocks i.e. 32KHz wakup clock, 960MHz clock and lfps clock.
+   Use as per Documentation/devicetree/bindings/clock/clock-bindings.txt
+ - clock-names: should contain "wkupclk", "refclk1" and "refclk2"
 
 Optional properties:
  - ctrl-module : phandle of the control module used by PHY driver to power on
