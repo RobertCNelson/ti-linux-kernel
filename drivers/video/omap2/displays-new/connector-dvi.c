@@ -301,7 +301,7 @@ static int dvic_probe_of(struct platform_device *pdev)
 		adapter = of_find_i2c_adapter_by_node(adapter_node);
 		if (adapter == NULL) {
 			dev_err(&pdev->dev, "failed to parse i2c-bus\n");
-			return -EINVAL;
+			return -EPROBE_DEFER;
 		}
 
 		ddata->i2c_adapter = adapter;
