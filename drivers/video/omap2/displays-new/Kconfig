@@ -70,4 +70,11 @@ config DISPLAY_PANEL_NEC_NL8048HL11
 		This NEC NL8048HL11 panel is TFT LCD used in the
 		Zoom2/3/3630 sdp boards.
 
+config DISPLAY_PANEL_TFCS9700
+	tristate "Three Five DPI panel"
+	depends on I2C
+	help
+		A TFT LCD DPI panel used on the LCD daughter board
+		of Vayu EVM
+
 endmenu
