@@ -17,6 +17,16 @@
 		device_type = "memory";
 		reg = <0x80000000 0x60000000>; /* 1536 MB */
 	};
+
+	extcon1: gpio_usbvid_extcon1 {
+		compatible = "ti,gpio-usb-id";
+		gpios = <&gpio21 1 0>;
+	};
+
+	extcon2: gpio_usbvid_extcon2 {
+		compatible = "ti,gpio-usb-id";
+		gpios = <&gpio21 2 0>;
+	};
 };
 
 &dra7_pmx_core {
@@ -120,6 +130,30 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c1_pins>;
 	clock-frequency = <400000>;
+
+	gpio20: gpio@20 {
+		compatible = "ti,pcf8575";
+		reg = <0x20>;
+		lines-initial-states = <0x4000>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		interrupt-parent = <&gpio6>;
+		interrupts = <11 2>;
+		interrupt-controller;
+		#interrupt-cells = <2>;
+	};
+
+	gpio21: gpio@21 {
+		compatible = "ti,pcf8575";
+		reg = <0x21>;
+		lines-initial-states = <0x1408>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		interrupt-parent = <&gpio20>;
+		interrupts = <14 2>;
+		interrupt-controller;
+		#interrupt-cells = <2>;
+	};
 };
 
 &i2c2 {
@@ -193,4 +227,12 @@
 	dr_mode = "host";
 	pinctrl-names = "default";
 	pinctrl-0 = <&usb2_pins>;
+};
+
+&dwc3_1 {
+	extcon = <&extcon1>;
+};
+
+&dwc3_2 {
+	extcon = <&extcon2>;
 };
