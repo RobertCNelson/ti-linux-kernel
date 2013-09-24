@@ -2,7 +2,8 @@ EXTCON FOR PALMAS/TWL CHIPS
 
 PALMAS USB COMPARATOR
 Required Properties:
- - compatible : Should be "ti,palmas-usb" or "ti,twl6035-usb"
+ - compatible : Should be "ti,palmas-usb-vid". "ti,twl6035-usb" and
+   "ti,palmas-usb" is deprecated and is kept for backward compatibility.
 
 Optional Properties:
  - ti,wakeup : To enable the wakeup comparator in probe

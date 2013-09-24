@@ -1,4 +1,4 @@
-OMAP PHY
+OMAP PHY: DT DOCUMENTATION FOR PHYs in OMAP PLATFORM
 
 OMAP USB2 PHY
 
@@ -7,9 +7,6 @@ Required properties:
  - reg : Address and length of the register set for the device.
  - #phy-cells: determine the number of cells that should be given in the
    phandle while referencing this phy.
- - clocks: phandle to PHY clocks i.e. 32KHz wakup clock and 960MHz clock.
-   Use as per Documentation/devicetree/bindings/clock/clock-bindings.txt
- - clock-names: should contain "wkupclk" and "refclk".
 
 Optional properties:
  - ctrl-module : phandle of the control module used by PHY driver to power on
@@ -18,12 +15,38 @@ Optional properties:
 This is usually a subnode of ocp2scp to which it is connected.
 
 usb2phy@4a0ad080 {
-        compatible = "ti,omap-usb2";
-        reg = <0x4a0ad080 0x58>;
-        ctrl-module = <&omap_control_usb>;
-        #phy-cells = <0>;
-	clocks = <&usb_phy_cm_clk32k>, <&usb_otg_ss_refclk960m>;
-	clock-names = "wkupclk", "refclk";
+	compatible = "ti,omap-usb2";
+	reg = <0x4a0ad080 0x58>;
+	ctrl-module = <&omap_control_usb>;
+	#phy-cells = <0>;
 };
 
+OMAP PIPE3 PHY
 
+Required properties:
+ - compatible: Should be "ti,omap-usb3", "ti,omap-pipe3", "ti,omap-sata"
+   or "ti,omap-pcie"
+ - reg : Address and length of the register set for the device.
+ - reg-names: The names of the register addresses corresponding to the registers
+   filled in "reg".
+ - #phy-cells: determine the number of cells that should be given in the
+   phandle while referencing this phy.
+ - clocks: phandle to PHY clocks i.e. 32KHz wakup clock, 960MHz clock and lfps clock.
+   Use as per Documentation/devicetree/bindings/clock/clock-bindings.txt
+ - clock-names: should contain "wkupclk", "refclk1" and "refclk2"
+
+Optional properties:
+ - ctrl-module : phandle of the control module used by PHY driver to power on
+   the PHY.
+
+This is usually a subnode of ocp2scp to which it is connected.
+
+usb3phy@4a084400 {
+	compatible = "ti,omap-usb3";
+	reg = <0x4a084400 0x80>,
+	      <0x4a084800 0x64>,
+	      <0x4a084c00 0x40>;
+	reg-names = "phy_rx", "phy_tx", "pll_ctrl";
+	ctrl-module = <&omap_control_usb>;
+	#phy-cells = <0>;
+};
