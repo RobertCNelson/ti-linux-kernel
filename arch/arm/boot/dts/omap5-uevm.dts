@@ -259,6 +259,7 @@
 };
 
 &i2c1 {
+	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c1_pins>;
 
@@ -451,6 +452,7 @@
 };
 
 &i2c5 {
+	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c5_pins>;
 
@@ -471,35 +473,41 @@
 };
 
 &mcspi1 {
-
+	status = "okay";
 };
 
 &mcspi2 {
+	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&mcspi2_pins>;
 };
 
 &mcspi3 {
+	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&mcspi3_pins>;
 };
 
 &mcspi4 {
+	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&mcspi4_pins>;
 };
 
 &uart1 {
+	status = "okay";
         pinctrl-names = "default";
         pinctrl-0 = <&uart1_pins>;
 };
 
 &uart3 {
+	status = "okay";
         pinctrl-names = "default";
         pinctrl-0 = <&uart3_pins>;
 };
 
 &uart5 {
+	status = "okay";
         pinctrl-names = "default";
         pinctrl-0 = <&uart5_pins>;
 };
