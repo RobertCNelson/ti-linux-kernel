@@ -49,18 +49,33 @@
 	};
 };
 
-&lcdc {
-	status = "okay";
-};
-
-
-/ {
-	hdmi {
-		compatible = "ti,tilcdc,slave";
-		i2c = <&i2c0>;
-		pinctrl-names = "default", "off";
-		pinctrl-0 = <&nxp_hdmi_bonelt_pins>;
-		pinctrl-1 = <&nxp_hdmi_bonelt_off_pins>;
-		status = "okay";
+&i2c0 {
+	hdmi1: hdmi@70 {
+	      compatible = "nxp,tda998x";
+	      reg = <0x70>;
 	};
 };
+
+&lcdc {
+	pinctrl-names = "default", "off";
+	pinctrl-0 = <&nxp_hdmi_bonelt_pins>;
+	pinctrl-1 = <&nxp_hdmi_bonelt_off_pins>;
+	status = "okay";
+	hdmi = <&hdmi1>;
+	display-timings {
+		640x480P60 {
+		   clock-frequency = <25200000>;
+		   hactive = <640>;
+		   vactive = <480>;
+		   hfront-porch = <16>;
+		   hback-porch = <48>;
+		   hsync-len = <96>;
+		   vback-porch = <31>;
+		   vfront-porch = <11>;
+		   vsync-len = <2>;
+		   hsync-active = <0>;
+		   vsync-active = <0>;
+		};
+	};
+};
+
