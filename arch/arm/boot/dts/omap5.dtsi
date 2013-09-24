@@ -750,7 +750,7 @@
 			reg-names = "power";
 		};
 
-		omap_dwc3@4a020000 {
+		usb3: omap_dwc3@4a020000 {
 			compatible = "ti,dwc3";
 			ti,hwmods = "usb_otg_ss";
 			clocks = <&dpll_core_h13x2_ck>, <&usb_otg_ss_refclk960m>;
