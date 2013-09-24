@@ -387,16 +387,34 @@ static int dwc3_probe(struct platform_device *pdev)
 	if (node) {
 		dwc->maximum_speed = of_usb_get_maximum_speed(node);
 
-		dwc->usb2_phy = devm_usb_get_phy_by_phandle(dev, "usb-phy", 0);
-		dwc->usb3_phy = devm_usb_get_phy_by_phandle(dev, "usb-phy", 1);
+		switch (dwc->maximum_speed) {
+		case USB_SPEED_SUPER:
+			dwc->usb2_phy = devm_usb_get_phy_by_phandle(dev, "usb-phy", 0);
+			dwc->usb3_phy = devm_usb_get_phy_by_phandle(dev, "usb-phy", 1);
+			break;
+		case USB_SPEED_HIGH:
+		case USB_SPEED_FULL:
+		case USB_SPEED_LOW:
+			dwc->usb2_phy = devm_usb_get_phy_by_phandle(dev, "usb-phy", 0);
+			break;
+		}
 
 		dwc->needs_fifo_resize = of_property_read_bool(node, "tx-fifo-resize");
 		dwc->dr_mode = of_usb_get_dr_mode(node);
 	} else if (pdata) {
 		dwc->maximum_speed = pdata->maximum_speed;
 
-		dwc->usb2_phy = devm_usb_get_phy(dev, USB_PHY_TYPE_USB2);
-		dwc->usb3_phy = devm_usb_get_phy(dev, USB_PHY_TYPE_USB3);
+		switch (dwc->maximum_speed) {
+		case USB_SPEED_SUPER:
+			dwc->usb2_phy = devm_usb_get_phy(dev, USB_PHY_TYPE_USB2);
+			dwc->usb3_phy = devm_usb_get_phy(dev, USB_PHY_TYPE_USB3);
+			break;
+		case USB_SPEED_HIGH:
+		case USB_SPEED_FULL:
+		case USB_SPEED_LOW:
+			dwc->usb2_phy = devm_usb_get_phy(dev, USB_PHY_TYPE_USB2);
+			break;
+		}
 
 		dwc->needs_fifo_resize = pdata->tx_fifo_resize;
 		dwc->dr_mode = pdata->dr_mode;
@@ -424,19 +442,21 @@ static int dwc3_probe(struct platform_device *pdev)
 		return -EPROBE_DEFER;
 	}
 
-	if (IS_ERR(dwc->usb3_phy)) {
-		ret = PTR_ERR(dwc->usb3_phy);
+	if (dwc->maximum_speed == USB_SPEED_SUPER) {
+		if (IS_ERR(dwc->usb3_phy)) {
+			ret = PTR_ERR(dwc->usb2_phy);
 
-		/*
-		 * if -ENXIO is returned, it means PHY layer wasn't
-		 * enabled, so it makes no sense to return -EPROBE_DEFER
-		 * in that case, since no PHY driver will ever probe.
-		 */
-		if (ret == -ENXIO)
-			return ret;
+			/*
+			 * if -ENXIO is returned, it means PHY layer wasn't
+			 * enabled, so it makes no sense to return -EPROBE_DEFER
+			 * in that case, since no PHY driver will ever probe.
+			 */
+			if (ret == -ENXIO)
+				return ret;
 
-		dev_err(dev, "no usb3 phy configured\n");
-		return -EPROBE_DEFER;
+			dev_err(dev, "no usb3 phy configured\n");
+			return -EPROBE_DEFER;
+		}
 	}
 
 	dwc->xhci_resources[0].start = res->start;
