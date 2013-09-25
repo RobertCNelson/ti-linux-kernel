@@ -98,7 +98,11 @@
 			reg-width = <16>;
 			crossbar-lines = "mpu-irq", "rtc-ss-alarm", <0x9f 0xd9 0x12e>,
 					 "mpu-irq", "mcasp3-arevt", <0x9e 0x96 0x12c>,
-					 "mpu-irq", "mcasp3-axevt", <0x9d 0x97 0x12a>;
+					 "mpu-irq", "mcasp3-axevt", <0x9d 0x97 0x12a>,
+					 "mpu-irq", "ipu2-mmu", <0x8e 0x18c 0x10c>,
+					 "mpu-irq", "dsp1-mmu1", <0x8f 0x91 0x10e>,
+					 "mpu-irq", "dsp2-mmu0", <0x90 0x92 0x110>,
+					 "mpu-irq", "dsp2-mmu1", <0x91 0x93 0x112>;
 		};
 
 		crossbar_dma: dmareq@4a002b78 {
