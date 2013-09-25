@@ -200,7 +200,6 @@ static struct omap_timer_capability_dev_attr capability_dsp_pwm_dev_attr = {
 static struct omap_hwmod omap3xxx_timer1_hwmod = {
 	.name		= "timer1",
 	.mpu_irqs	= omap2_timer1_mpu_irqs,
-	.main_clk	= "gpt1_fck",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -219,7 +218,6 @@ static struct omap_hwmod omap3xxx_timer1_hwmod = {
 static struct omap_hwmod omap3xxx_timer2_hwmod = {
 	.name		= "timer2",
 	.mpu_irqs	= omap2_timer2_mpu_irqs,
-	.main_clk	= "gpt2_fck",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -237,7 +235,6 @@ static struct omap_hwmod omap3xxx_timer2_hwmod = {
 static struct omap_hwmod omap3xxx_timer3_hwmod = {
 	.name		= "timer3",
 	.mpu_irqs	= omap2_timer3_mpu_irqs,
-	.main_clk	= "gpt3_fck",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -255,7 +252,6 @@ static struct omap_hwmod omap3xxx_timer3_hwmod = {
 static struct omap_hwmod omap3xxx_timer4_hwmod = {
 	.name		= "timer4",
 	.mpu_irqs	= omap2_timer4_mpu_irqs,
-	.main_clk	= "gpt4_fck",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -273,7 +269,6 @@ static struct omap_hwmod omap3xxx_timer4_hwmod = {
 static struct omap_hwmod omap3xxx_timer5_hwmod = {
 	.name		= "timer5",
 	.mpu_irqs	= omap2_timer5_mpu_irqs,
-	.main_clk	= "gpt5_fck",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -292,7 +287,6 @@ static struct omap_hwmod omap3xxx_timer5_hwmod = {
 static struct omap_hwmod omap3xxx_timer6_hwmod = {
 	.name		= "timer6",
 	.mpu_irqs	= omap2_timer6_mpu_irqs,
-	.main_clk	= "gpt6_fck",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -311,7 +305,6 @@ static struct omap_hwmod omap3xxx_timer6_hwmod = {
 static struct omap_hwmod omap3xxx_timer7_hwmod = {
 	.name		= "timer7",
 	.mpu_irqs	= omap2_timer7_mpu_irqs,
-	.main_clk	= "gpt7_fck",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -330,7 +323,6 @@ static struct omap_hwmod omap3xxx_timer7_hwmod = {
 static struct omap_hwmod omap3xxx_timer8_hwmod = {
 	.name		= "timer8",
 	.mpu_irqs	= omap2_timer8_mpu_irqs,
-	.main_clk	= "gpt8_fck",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -349,7 +341,6 @@ static struct omap_hwmod omap3xxx_timer8_hwmod = {
 static struct omap_hwmod omap3xxx_timer9_hwmod = {
 	.name		= "timer9",
 	.mpu_irqs	= omap2_timer9_mpu_irqs,
-	.main_clk	= "gpt9_fck",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -368,7 +359,6 @@ static struct omap_hwmod omap3xxx_timer9_hwmod = {
 static struct omap_hwmod omap3xxx_timer10_hwmod = {
 	.name		= "timer10",
 	.mpu_irqs	= omap2_timer10_mpu_irqs,
-	.main_clk	= "gpt10_fck",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -387,7 +377,6 @@ static struct omap_hwmod omap3xxx_timer10_hwmod = {
 static struct omap_hwmod omap3xxx_timer11_hwmod = {
 	.name		= "timer11",
 	.mpu_irqs	= omap2_timer11_mpu_irqs,
-	.main_clk	= "gpt11_fck",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -411,7 +400,6 @@ static struct omap_hwmod_irq_info omap3xxx_timer12_mpu_irqs[] = {
 static struct omap_hwmod omap3xxx_timer12_hwmod = {
 	.name		= "timer12",
 	.mpu_irqs	= omap3xxx_timer12_mpu_irqs,
-	.main_clk	= "gpt12_fck",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -467,7 +455,6 @@ static struct omap_hwmod_class omap3xxx_wd_timer_hwmod_class = {
 static struct omap_hwmod omap3xxx_wd_timer2_hwmod = {
 	.name		= "wd_timer2",
 	.class		= &omap3xxx_wd_timer_hwmod_class,
-	.main_clk	= "wdt2_fck",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -489,7 +476,6 @@ static struct omap_hwmod omap3xxx_uart1_hwmod = {
 	.name		= "uart1",
 	.mpu_irqs	= omap2_uart1_mpu_irqs,
 	.sdma_reqs	= omap2_uart1_sdma_reqs,
-	.main_clk	= "uart1_fck",
 	.flags		= DEBUG_TI81XXUART1_FLAGS | HWMOD_SWSUP_SIDLE_ACT,
 	.prcm		= {
 		.omap2 = {
@@ -508,7 +494,6 @@ static struct omap_hwmod omap3xxx_uart2_hwmod = {
 	.name		= "uart2",
 	.mpu_irqs	= omap2_uart2_mpu_irqs,
 	.sdma_reqs	= omap2_uart2_sdma_reqs,
-	.main_clk	= "uart2_fck",
 	.flags		= DEBUG_TI81XXUART2_FLAGS | HWMOD_SWSUP_SIDLE_ACT,
 	.prcm		= {
 		.omap2 = {
@@ -527,7 +512,6 @@ static struct omap_hwmod omap3xxx_uart3_hwmod = {
 	.name		= "uart3",
 	.mpu_irqs	= omap2_uart3_mpu_irqs,
 	.sdma_reqs	= omap2_uart3_sdma_reqs,
-	.main_clk	= "uart3_fck",
 	.flags		= DEBUG_OMAP3UART3_FLAGS | DEBUG_TI81XXUART3_FLAGS |
 				HWMOD_SWSUP_SIDLE_ACT,
 	.prcm		= {
@@ -807,7 +791,6 @@ static struct omap_hwmod omap3xxx_i2c1_hwmod = {
 	.flags		= HWMOD_16BIT_REG | HWMOD_SET_DEFAULT_CLOCKACT,
 	.mpu_irqs	= omap2_i2c1_mpu_irqs,
 	.sdma_reqs	= omap2_i2c1_sdma_reqs,
-	.main_clk	= "i2c1_fck",
 	.prcm		= {
 		.omap2 = {
 			.module_offs = CORE_MOD,
@@ -832,7 +815,6 @@ static struct omap_hwmod omap3xxx_i2c2_hwmod = {
 	.flags		= HWMOD_16BIT_REG | HWMOD_SET_DEFAULT_CLOCKACT,
 	.mpu_irqs	= omap2_i2c2_mpu_irqs,
 	.sdma_reqs	= omap2_i2c2_sdma_reqs,
-	.main_clk	= "i2c2_fck",
 	.prcm		= {
 		.omap2 = {
 			.module_offs = CORE_MOD,
@@ -868,7 +850,6 @@ static struct omap_hwmod omap3xxx_i2c3_hwmod = {
 	.flags		= HWMOD_16BIT_REG | HWMOD_SET_DEFAULT_CLOCKACT,
 	.mpu_irqs	= i2c3_mpu_irqs,
 	.sdma_reqs	= i2c3_sdma_reqs,
-	.main_clk	= "i2c3_fck",
 	.prcm		= {
 		.omap2 = {
 			.module_offs = CORE_MOD,
@@ -911,17 +892,11 @@ static struct omap_gpio_dev_attr gpio_dev_attr = {
 };
 
 /* gpio1 */
-static struct omap_hwmod_opt_clk gpio1_opt_clks[] = {
-	{ .role = "dbclk", .clk = "gpio1_dbck", },
-};
 
 static struct omap_hwmod omap3xxx_gpio1_hwmod = {
 	.name		= "gpio1",
 	.flags		= HWMOD_CONTROL_OPT_CLKS_IN_RESET,
 	.mpu_irqs	= omap2_gpio1_irqs,
-	.main_clk	= "gpio1_ick",
-	.opt_clks	= gpio1_opt_clks,
-	.opt_clks_cnt	= ARRAY_SIZE(gpio1_opt_clks),
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -936,17 +911,11 @@ static struct omap_hwmod omap3xxx_gpio1_hwmod = {
 };
 
 /* gpio2 */
-static struct omap_hwmod_opt_clk gpio2_opt_clks[] = {
-	{ .role = "dbclk", .clk = "gpio2_dbck", },
-};
 
 static struct omap_hwmod omap3xxx_gpio2_hwmod = {
 	.name		= "gpio2",
 	.flags		= HWMOD_CONTROL_OPT_CLKS_IN_RESET,
 	.mpu_irqs	= omap2_gpio2_irqs,
-	.main_clk	= "gpio2_ick",
-	.opt_clks	= gpio2_opt_clks,
-	.opt_clks_cnt	= ARRAY_SIZE(gpio2_opt_clks),
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -961,17 +930,11 @@ static struct omap_hwmod omap3xxx_gpio2_hwmod = {
 };
 
 /* gpio3 */
-static struct omap_hwmod_opt_clk gpio3_opt_clks[] = {
-	{ .role = "dbclk", .clk = "gpio3_dbck", },
-};
 
 static struct omap_hwmod omap3xxx_gpio3_hwmod = {
 	.name		= "gpio3",
 	.flags		= HWMOD_CONTROL_OPT_CLKS_IN_RESET,
 	.mpu_irqs	= omap2_gpio3_irqs,
-	.main_clk	= "gpio3_ick",
-	.opt_clks	= gpio3_opt_clks,
-	.opt_clks_cnt	= ARRAY_SIZE(gpio3_opt_clks),
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -986,17 +949,11 @@ static struct omap_hwmod omap3xxx_gpio3_hwmod = {
 };
 
 /* gpio4 */
-static struct omap_hwmod_opt_clk gpio4_opt_clks[] = {
-	{ .role = "dbclk", .clk = "gpio4_dbck", },
-};
 
 static struct omap_hwmod omap3xxx_gpio4_hwmod = {
 	.name		= "gpio4",
 	.flags		= HWMOD_CONTROL_OPT_CLKS_IN_RESET,
 	.mpu_irqs	= omap2_gpio4_irqs,
-	.main_clk	= "gpio4_ick",
-	.opt_clks	= gpio4_opt_clks,
-	.opt_clks_cnt	= ARRAY_SIZE(gpio4_opt_clks),
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -1016,17 +973,11 @@ static struct omap_hwmod_irq_info omap3xxx_gpio5_irqs[] = {
 	{ .irq = -1 },
 };
 
-static struct omap_hwmod_opt_clk gpio5_opt_clks[] = {
-	{ .role = "dbclk", .clk = "gpio5_dbck", },
-};
 
 static struct omap_hwmod omap3xxx_gpio5_hwmod = {
 	.name		= "gpio5",
 	.flags		= HWMOD_CONTROL_OPT_CLKS_IN_RESET,
 	.mpu_irqs	= omap3xxx_gpio5_irqs,
-	.main_clk	= "gpio5_ick",
-	.opt_clks	= gpio5_opt_clks,
-	.opt_clks_cnt	= ARRAY_SIZE(gpio5_opt_clks),
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -1046,17 +997,11 @@ static struct omap_hwmod_irq_info omap3xxx_gpio6_irqs[] = {
 	{ .irq = -1 },
 };
 
-static struct omap_hwmod_opt_clk gpio6_opt_clks[] = {
-	{ .role = "dbclk", .clk = "gpio6_dbck", },
-};
 
 static struct omap_hwmod omap3xxx_gpio6_hwmod = {
 	.name		= "gpio6",
 	.flags		= HWMOD_CONTROL_OPT_CLKS_IN_RESET,
 	.mpu_irqs	= omap3xxx_gpio6_irqs,
-	.main_clk	= "gpio6_ick",
-	.opt_clks	= gpio6_opt_clks,
-	.opt_clks_cnt	= ARRAY_SIZE(gpio6_opt_clks),
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -1100,7 +1045,6 @@ static struct omap_hwmod omap3xxx_dma_system_hwmod = {
 	.name		= "dma",
 	.class		= &omap3xxx_dma_hwmod_class,
 	.mpu_irqs	= omap2_dma_system_irqs,
-	.main_clk	= "core_l3_ick",
 	.prcm = {
 		.omap2 = {
 			.module_offs		= CORE_MOD,
@@ -1135,15 +1079,7 @@ static struct omap_hwmod_class omap3xxx_mcbsp_hwmod_class = {
 };
 
 /* McBSP functional clock mapping */
-static struct omap_hwmod_opt_clk mcbsp15_opt_clks[] = {
-	{ .role = "pad_fck", .clk = "mcbsp_clks" },
-	{ .role = "prcm_fck", .clk = "core_96m_fck" },
-};
 
-static struct omap_hwmod_opt_clk mcbsp234_opt_clks[] = {
-	{ .role = "pad_fck", .clk = "mcbsp_clks" },
-	{ .role = "prcm_fck", .clk = "per_96m_fck" },
-};
 
 /* mcbsp1 */
 static struct omap_hwmod_irq_info omap3xxx_mcbsp1_irqs[] = {
@@ -1158,7 +1094,6 @@ static struct omap_hwmod omap3xxx_mcbsp1_hwmod = {
 	.class		= &omap3xxx_mcbsp_hwmod_class,
 	.mpu_irqs	= omap3xxx_mcbsp1_irqs,
 	.sdma_reqs	= omap2_mcbsp1_sdma_reqs,
-	.main_clk	= "mcbsp1_fck",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -1168,8 +1103,6 @@ static struct omap_hwmod omap3xxx_mcbsp1_hwmod = {
 			.idlest_idle_bit = OMAP3430_ST_MCBSP1_SHIFT,
 		},
 	},
-	.opt_clks	= mcbsp15_opt_clks,
-	.opt_clks_cnt	= ARRAY_SIZE(mcbsp15_opt_clks),
 };
 
 /* mcbsp2 */
@@ -1189,7 +1122,6 @@ static struct omap_hwmod omap3xxx_mcbsp2_hwmod = {
 	.class		= &omap3xxx_mcbsp_hwmod_class,
 	.mpu_irqs	= omap3xxx_mcbsp2_irqs,
 	.sdma_reqs	= omap2_mcbsp2_sdma_reqs,
-	.main_clk	= "mcbsp2_fck",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -1199,8 +1131,6 @@ static struct omap_hwmod omap3xxx_mcbsp2_hwmod = {
 			.idlest_idle_bit = OMAP3430_ST_MCBSP2_SHIFT,
 		},
 	},
-	.opt_clks	= mcbsp234_opt_clks,
-	.opt_clks_cnt	= ARRAY_SIZE(mcbsp234_opt_clks),
 	.dev_attr	= &omap34xx_mcbsp2_dev_attr,
 };
 
@@ -1221,7 +1151,6 @@ static struct omap_hwmod omap3xxx_mcbsp3_hwmod = {
 	.class		= &omap3xxx_mcbsp_hwmod_class,
 	.mpu_irqs	= omap3xxx_mcbsp3_irqs,
 	.sdma_reqs	= omap2_mcbsp3_sdma_reqs,
-	.main_clk	= "mcbsp3_fck",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -1231,8 +1160,6 @@ static struct omap_hwmod omap3xxx_mcbsp3_hwmod = {
 			.idlest_idle_bit = OMAP3430_ST_MCBSP3_SHIFT,
 		},
 	},
-	.opt_clks	= mcbsp234_opt_clks,
-	.opt_clks_cnt	= ARRAY_SIZE(mcbsp234_opt_clks),
 	.dev_attr	= &omap34xx_mcbsp3_dev_attr,
 };
 
@@ -1255,7 +1182,6 @@ static struct omap_hwmod omap3xxx_mcbsp4_hwmod = {
 	.class		= &omap3xxx_mcbsp_hwmod_class,
 	.mpu_irqs	= omap3xxx_mcbsp4_irqs,
 	.sdma_reqs	= omap3xxx_mcbsp4_sdma_chs,
-	.main_clk	= "mcbsp4_fck",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -1265,8 +1191,6 @@ static struct omap_hwmod omap3xxx_mcbsp4_hwmod = {
 			.idlest_idle_bit = OMAP3430_ST_MCBSP4_SHIFT,
 		},
 	},
-	.opt_clks	= mcbsp234_opt_clks,
-	.opt_clks_cnt	= ARRAY_SIZE(mcbsp234_opt_clks),
 };
 
 /* mcbsp5 */
@@ -1288,7 +1212,6 @@ static struct omap_hwmod omap3xxx_mcbsp5_hwmod = {
 	.class		= &omap3xxx_mcbsp_hwmod_class,
 	.mpu_irqs	= omap3xxx_mcbsp5_irqs,
 	.sdma_reqs	= omap3xxx_mcbsp5_sdma_chs,
-	.main_clk	= "mcbsp5_fck",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -1298,8 +1221,6 @@ static struct omap_hwmod omap3xxx_mcbsp5_hwmod = {
 			.idlest_idle_bit = OMAP3430_ST_MCBSP5_SHIFT,
 		},
 	},
-	.opt_clks	= mcbsp15_opt_clks,
-	.opt_clks_cnt	= ARRAY_SIZE(mcbsp15_opt_clks),
 };
 
 /* 'mcbsp sidetone' class */
@@ -1324,7 +1245,6 @@ static struct omap_hwmod omap3xxx_mcbsp2_sidetone_hwmod = {
 	.name		= "mcbsp2_sidetone",
 	.class		= &omap3xxx_mcbsp_sidetone_hwmod_class,
 	.mpu_irqs	= omap3xxx_mcbsp2_sidetone_irqs,
-	.main_clk	= "mcbsp2_fck",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -1346,7 +1266,6 @@ static struct omap_hwmod omap3xxx_mcbsp3_sidetone_hwmod = {
 	.name		= "mcbsp3_sidetone",
 	.class		= &omap3xxx_mcbsp_sidetone_hwmod_class,
 	.mpu_irqs	= omap3xxx_mcbsp3_sidetone_irqs,
-	.main_clk	= "mcbsp3_fck",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -1571,7 +1490,6 @@ static struct omap_hwmod omap34xx_mcspi1 = {
 	.name		= "mcspi1",
 	.mpu_irqs	= omap2_mcspi1_mpu_irqs,
 	.sdma_reqs	= omap2_mcspi1_sdma_reqs,
-	.main_clk	= "mcspi1_fck",
 	.prcm		= {
 		.omap2 = {
 			.module_offs = CORE_MOD,
@@ -1594,7 +1512,6 @@ static struct omap_hwmod omap34xx_mcspi2 = {
 	.name		= "mcspi2",
 	.mpu_irqs	= omap2_mcspi2_mpu_irqs,
 	.sdma_reqs	= omap2_mcspi2_sdma_reqs,
-	.main_clk	= "mcspi2_fck",
 	.prcm		= {
 		.omap2 = {
 			.module_offs = CORE_MOD,
@@ -1630,7 +1547,6 @@ static struct omap_hwmod omap34xx_mcspi3 = {
 	.name		= "mcspi3",
 	.mpu_irqs	= omap34xx_mcspi3_mpu_irqs,
 	.sdma_reqs	= omap34xx_mcspi3_sdma_reqs,
-	.main_clk	= "mcspi3_fck",
 	.prcm		= {
 		.omap2 = {
 			.module_offs = CORE_MOD,
@@ -1664,7 +1580,6 @@ static struct omap_hwmod omap34xx_mcspi4 = {
 	.name		= "mcspi4",
 	.mpu_irqs	= omap34xx_mcspi4_mpu_irqs,
 	.sdma_reqs	= omap34xx_mcspi4_sdma_reqs,
-	.main_clk	= "mcspi4_fck",
 	.prcm		= {
 		.omap2 = {
 			.module_offs = CORE_MOD,
@@ -1707,7 +1622,6 @@ static struct omap_hwmod_irq_info omap3xxx_usbhsotg_mpu_irqs[] = {
 static struct omap_hwmod omap3xxx_usbhsotg_hwmod = {
 	.name		= "usb_otg_hs",
 	.mpu_irqs	= omap3xxx_usbhsotg_mpu_irqs,
-	.main_clk	= "hsotgusb_ick",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -1782,9 +1696,6 @@ static struct omap_hwmod_dma_info omap34xx_mmc1_sdma_reqs[] = {
 	{ .dma_req = -1 }
 };
 
-static struct omap_hwmod_opt_clk omap34xx_mmc1_opt_clks[] = {
-	{ .role = "dbck", .clk = "omap_32k_fck", },
-};
 
 static struct omap_mmc_dev_attr mmc1_dev_attr = {
 	.flags = OMAP_HSMMC_SUPPORTS_DUAL_VOLT,
@@ -1800,9 +1711,6 @@ static struct omap_hwmod omap3xxx_pre_es3_mmc1_hwmod = {
 	.name		= "mmc1",
 	.mpu_irqs	= omap34xx_mmc1_mpu_irqs,
 	.sdma_reqs	= omap34xx_mmc1_sdma_reqs,
-	.opt_clks	= omap34xx_mmc1_opt_clks,
-	.opt_clks_cnt	= ARRAY_SIZE(omap34xx_mmc1_opt_clks),
-	.main_clk	= "mmchs1_fck",
 	.prcm		= {
 		.omap2 = {
 			.module_offs = CORE_MOD,
@@ -1820,9 +1728,6 @@ static struct omap_hwmod omap3xxx_es3plus_mmc1_hwmod = {
 	.name		= "mmc1",
 	.mpu_irqs	= omap34xx_mmc1_mpu_irqs,
 	.sdma_reqs	= omap34xx_mmc1_sdma_reqs,
-	.opt_clks	= omap34xx_mmc1_opt_clks,
-	.opt_clks_cnt	= ARRAY_SIZE(omap34xx_mmc1_opt_clks),
-	.main_clk	= "mmchs1_fck",
 	.prcm		= {
 		.omap2 = {
 			.module_offs = CORE_MOD,
@@ -1849,9 +1754,6 @@ static struct omap_hwmod_dma_info omap34xx_mmc2_sdma_reqs[] = {
 	{ .dma_req = -1 }
 };
 
-static struct omap_hwmod_opt_clk omap34xx_mmc2_opt_clks[] = {
-	{ .role = "dbck", .clk = "omap_32k_fck", },
-};
 
 /* See 35xx errata 2.1.1.128 in SPRZ278F */
 static struct omap_mmc_dev_attr mmc2_pre_es3_dev_attr = {
@@ -1862,9 +1764,6 @@ static struct omap_hwmod omap3xxx_pre_es3_mmc2_hwmod = {
 	.name		= "mmc2",
 	.mpu_irqs	= omap34xx_mmc2_mpu_irqs,
 	.sdma_reqs	= omap34xx_mmc2_sdma_reqs,
-	.opt_clks	= omap34xx_mmc2_opt_clks,
-	.opt_clks_cnt	= ARRAY_SIZE(omap34xx_mmc2_opt_clks),
-	.main_clk	= "mmchs2_fck",
 	.prcm		= {
 		.omap2 = {
 			.module_offs = CORE_MOD,
@@ -1882,9 +1781,6 @@ static struct omap_hwmod omap3xxx_es3plus_mmc2_hwmod = {
 	.name		= "mmc2",
 	.mpu_irqs	= omap34xx_mmc2_mpu_irqs,
 	.sdma_reqs	= omap34xx_mmc2_sdma_reqs,
-	.opt_clks	= omap34xx_mmc2_opt_clks,
-	.opt_clks_cnt	= ARRAY_SIZE(omap34xx_mmc2_opt_clks),
-	.main_clk	= "mmchs2_fck",
 	.prcm		= {
 		.omap2 = {
 			.module_offs = CORE_MOD,
@@ -1910,17 +1806,11 @@ static struct omap_hwmod_dma_info omap34xx_mmc3_sdma_reqs[] = {
 	{ .dma_req = -1 }
 };
 
-static struct omap_hwmod_opt_clk omap34xx_mmc3_opt_clks[] = {
-	{ .role = "dbck", .clk = "omap_32k_fck", },
-};
 
 static struct omap_hwmod omap3xxx_mmc3_hwmod = {
 	.name		= "mmc3",
 	.mpu_irqs	= omap34xx_mmc3_mpu_irqs,
 	.sdma_reqs	= omap34xx_mmc3_sdma_reqs,
-	.opt_clks	= omap34xx_mmc3_opt_clks,
-	.opt_clks_cnt	= ARRAY_SIZE(omap34xx_mmc3_opt_clks),
-	.main_clk	= "mmchs3_fck",
 	.prcm		= {
 		.omap2 = {
 			.prcm_reg_id = 1,
@@ -1954,9 +1844,6 @@ static struct omap_hwmod_class omap3xxx_usb_host_hs_hwmod_class = {
 	.sysc = &omap3xxx_usb_host_hs_sysc,
 };
 
-static struct omap_hwmod_opt_clk omap3xxx_usb_host_hs_opt_clks[] = {
-	  { .role = "ehci_logic_fck", .clk = "usbhost_120m_fck", },
-};
 
 static struct omap_hwmod_irq_info omap3xxx_usb_host_hs_irqs[] = {
 	{ .name = "ohci-irq", .irq = 76 + OMAP_INTC_START, },
@@ -1969,7 +1856,6 @@ static struct omap_hwmod omap3xxx_usb_host_hs_hwmod = {
 	.class		= &omap3xxx_usb_host_hs_hwmod_class,
 	.clkdm_name	= "l3_init_clkdm",
 	.mpu_irqs	= omap3xxx_usb_host_hs_irqs,
-	.main_clk	= "usbhost_48m_fck",
 	.prcm = {
 		.omap2 = {
 			.module_offs = OMAP3430ES2_USBHOST_MOD,
@@ -1980,8 +1866,6 @@ static struct omap_hwmod omap3xxx_usb_host_hs_hwmod = {
 			.idlest_stdby_bit = OMAP3430ES2_ST_USBHOST_STDBY_SHIFT,
 		},
 	},
-	.opt_clks	= omap3xxx_usb_host_hs_opt_clks,
-	.opt_clks_cnt	= ARRAY_SIZE(omap3xxx_usb_host_hs_opt_clks),
 
 	/*
 	 * Errata: USBHOST Configured In Smart-Idle Can Lead To a Deadlock
@@ -2062,7 +1946,6 @@ static struct omap_hwmod omap3xxx_usb_tll_hs_hwmod = {
 	.class		= &omap3xxx_usb_tll_hs_hwmod_class,
 	.clkdm_name	= "l3_init_clkdm",
 	.mpu_irqs	= omap3xxx_usb_tll_hs_irqs,
-	.main_clk	= "usbtll_fck",
 	.prcm = {
 		.omap2 = {
 			.module_offs = CORE_MOD,
@@ -2139,7 +2022,6 @@ static struct omap_hwmod omap3xxx_counter_32k_hwmod = {
 	.class		= &omap3xxx_counter_hwmod_class,
 	.clkdm_name	= "wkup_clkdm",
 	.flags		= HWMOD_SWSUP_SIDLE,
-	.main_clk	= "wkup_32k_fck",
 	.prcm		= {
 		.omap2	= {
 			.module_offs = WKUP_MOD,
@@ -2181,7 +2063,6 @@ static struct omap_hwmod omap3xxx_gpmc_hwmod = {
 	.class		= &omap3xxx_gpmc_hwmod_class,
 	.clkdm_name	= "core_l3_clkdm",
 	.mpu_irqs	= omap3xxx_gpmc_irqs,
-	.main_clk	= "gpmc_fck",
 	/*
 	 * XXX HWMOD_INIT_NO_RESET should not be needed for this IP
 	 * block.  It is not being added due to any known bugs with

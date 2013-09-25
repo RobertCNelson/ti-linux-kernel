@@ -71,6 +71,7 @@ config SOC_AM33XX
 	select CPU_V7
 	select MULTI_IRQ_HANDLER
 	select COMMON_CLK
+	select ARCH_HAS_RESET_CONTROLLER
 
 config SOC_AM43XX
 	bool "TI AM43x"
@@ -81,6 +82,8 @@ config SOC_AM43XX
 	select ARM_GIC
 	select COMMON_CLK
 	select MACH_OMAP_GENERIC
+	select MIGHT_HAVE_CACHE_L2X0
+	select ARCH_HAS_RESET_CONTROLLER
 
 config ARCH_OMAP2PLUS
 	bool
@@ -141,6 +144,7 @@ config SOC_DRA7XX
 	select ARM_GIC
 	select HAVE_SMP
 	select COMMON_CLK
+	select CROSSBAR
 
 comment "OMAP Core Type"
 	depends on ARCH_OMAP2

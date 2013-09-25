@@ -38,4 +38,24 @@
 		interrupts = <0 126 IRQ_TYPE_LEVEL_HIGH>; /* talert */
 		gpios = <&gpio3 22 0>; /* tshut */
 	};
+
+	clocks {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+		/include/ "omap44xx-clocks.dtsi"
+		/include/ "omap446x-clocks.dtsi"
+	};
+
+	clockdomains {
+		l3_init_clkdm: l3_init_clkdm {
+			compatible = "ti,clockdomain";
+			clocks = <&dpll_usb_ck>;
+		};
+
+		emu_sys_clkdm: emu_sys_clkdm {
+			compatible = "ti,clockdomain";
+			clocks = <&trace_clk_div_ck>;
+		};
+	};
 };

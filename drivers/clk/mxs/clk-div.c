@@ -96,7 +96,7 @@ struct clk *mxs_clk_div(const char *name, const char *parent_name,
 
 	div->divider.reg = reg;
 	div->divider.shift = shift;
-	div->divider.width = width;
+	div->divider.mask = BIT(width) - 1;
 	div->divider.flags = CLK_DIVIDER_ONE_BASED;
 	div->divider.lock = &mxs_lock;
 	div->divider.hw.init = &init;

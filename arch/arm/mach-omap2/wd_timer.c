@@ -123,6 +123,11 @@ static int __init omap_init_wdt(void)
 
 	pdata.read_reset_sources = prm_read_reset_sources;
 
+	if (cpu_is_omap44xx() || soc_is_omap54xx())
+		pdata.ip_rev = WDTIMER2_IP4;
+	else
+		pdata.ip_rev = WDTIMER2_IP3;
+
 	pdev = omap_device_build(dev_name, id, oh, &pdata,
 				 sizeof(struct omap_wd_timer_platform_data));
 	WARN(IS_ERR(pdev), "Can't build omap_device for %s:%s.\n",
