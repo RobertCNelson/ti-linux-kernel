@@ -675,6 +675,52 @@
 			clocks = <&sys_32k_ck>;
 			clock-names = "fck";
 		};
+
+		dss: dss@58000000 {
+			compatible = "ti,omap4-dss", "simple-bus";
+			reg = <0x58000000 0x80>,
+			      <0x58004000 0x340>,
+			      <0x58005000 0x340>;
+			ti,hwmods = "dss_core";
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges;
+
+			dispc@58001000 {
+				compatible = "ti,omap4-dispc";
+				reg = <0x58001000 0x1000>;
+				interrupts = <0 25 0x4>;
+				ti,hwmods = "dss_dispc";
+			};
+
+			dpi1: encoder@0 {
+				compatible = "ti,dra7xx-dpi";
+				id = <0>;
+				channel = <0>;
+			};
+
+			dpi2: encoder@1 {
+				compatible = "ti,dra7xx-dpi";
+				id = <1>;
+			};
+
+			dpi3: encoder@2 {
+				compatible = "ti,dra7xx-dpi";
+				id = <2>;
+			};
+
+			hdmi: encoder@58040000 {
+				compatible = "ti,omap5-hdmi";
+				reg = <0x58040000 0x100>,
+				      <0x58040200 0x40>,
+				      <0x58040300 0x40>,
+				      <0x58060000 0x19000>;
+				reg-names = "hdmi_wp", "hdmi_pllctrl",
+					    "hdmi_txphy", "hdmi_core";
+				interrupts = <0 101 0x4>;
+				ti,hwmods = "dss_hdmi";
+			};
+		};
 	};
 
 	clocks {
