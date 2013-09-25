@@ -266,25 +266,22 @@ static int omap_pipe3_probe(struct platform_device *pdev)
 	phy->dev		= &pdev->dev;
 
 	phy->wkupclk = devm_clk_get(phy->dev, "wkupclk");
-	if (IS_ERR(phy->wkupclk)) {
-		dev_err(&pdev->dev, "unable to get wkupclk\n");
-		return PTR_ERR(phy->wkupclk);
-	}
-	clk_prepare(phy->wkupclk);
+	if (IS_ERR(phy->wkupclk))
+		dev_dbg(&pdev->dev, "unable to get wkupclk\n");
+	else
+		clk_prepare(phy->wkupclk);
 
 	phy->optclk = devm_clk_get(phy->dev, "refclk");
-	if (IS_ERR(phy->optclk)) {
-		dev_err(&pdev->dev, "unable to get refclk\n");
-		return PTR_ERR(phy->optclk);
-	}
-	clk_prepare(phy->optclk);
+	if (IS_ERR(phy->optclk))
+		dev_dbg(&pdev->dev, "unable to get refclk\n");
+	else
+		clk_prepare(phy->optclk);
 
 	phy->optclk2 = devm_clk_get(phy->dev, "refclk2");
-	if (IS_ERR(phy->optclk2)) {
-		dev_err(&pdev->dev, "unable to get refclk2\n");
-		return PTR_ERR(phy->optclk2);
-	}
-	clk_prepare(phy->optclk2);
+	if (IS_ERR(phy->optclk2))
+		dev_dbg(&pdev->dev, "unable to get refclk2\n");
+	else
+		clk_prepare(phy->optclk2);
 
 	phy->sys_clk = devm_clk_get(phy->dev, "sys_clkin");
 	if (IS_ERR(phy->sys_clk)) {
@@ -331,9 +328,12 @@ static int omap_pipe3_remove(struct platform_device *pdev)
 {
 	struct omap_pipe3 *phy = platform_get_drvdata(pdev);
 
-	clk_unprepare(phy->wkupclk);
-	clk_unprepare(phy->optclk);
-	clk_unprepare(phy->optclk2);
+	if (!IS_ERR(phy->wkupclk))
+		clk_unprepare(phy->wkupclk);
+	if (!IS_ERR(phy->optclk))
+		clk_unprepare(phy->optclk);
+	if (!IS_ERR(phy->optclk2))
+		clk_unprepare(phy->optclk2);
 	if (!pm_runtime_suspended(&pdev->dev))
 		pm_runtime_put(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
@@ -347,9 +347,12 @@ static int omap_pipe3_runtime_suspend(struct device *dev)
 {
 	struct omap_pipe3	*phy = dev_get_drvdata(dev);
 
-	clk_disable(phy->wkupclk);
-	clk_disable(phy->optclk);
-	clk_disable(phy->optclk2);
+	if (!IS_ERR(phy->wkupclk))
+		clk_disable(phy->wkupclk);
+	if (!IS_ERR(phy->optclk))
+		clk_disable(phy->optclk);
+	if (!IS_ERR(phy->optclk2))
+		clk_disable(phy->optclk2);
 
 	return 0;
 }
@@ -359,30 +362,38 @@ static int omap_pipe3_runtime_resume(struct device *dev)
 	u32 ret = 0;
 	struct omap_pipe3	*phy = dev_get_drvdata(dev);
 
-	ret = clk_enable(phy->optclk);
-	if (ret) {
-		dev_err(phy->dev, "Failed to enable optclk %d\n", ret);
-		goto err1;
+	if (!IS_ERR(phy->optclk)) {
+		ret = clk_enable(phy->optclk);
+		if (ret) {
+			dev_err(phy->dev, "Failed to enable optclk %d\n", ret);
+			goto err1;
+		}
 	}
 
-	ret = clk_enable(phy->wkupclk);
-	if (ret) {
-		dev_err(phy->dev, "Failed to enable wkupclk %d\n", ret);
-		goto err2;
+	if (!IS_ERR(phy->wkupclk)) {
+		ret = clk_enable(phy->wkupclk);
+		if (ret) {
+			dev_err(phy->dev, "Failed to enable wkupclk %d\n", ret);
+			goto err2;
+		}
 	}
 
-	ret = clk_enable(phy->optclk2);
-	if (ret) {
-		dev_err(phy->dev, "Failed to enable optclk2 %d\n", ret);
-		goto err3;
+	if (!IS_ERR(phy->optclk2)) {
+		ret = clk_enable(phy->optclk2);
+		if (ret) {
+			dev_err(phy->dev, "Failed to enable optclk2 %d\n", ret);
+			goto err3;
+		}
 	}
 
 	return 0;
 
 err3:
-	clk_disable(phy->wkupclk);
+	if (!IS_ERR(phy->wkupclk))
+		clk_disable(phy->wkupclk);
 err2:
-	clk_disable(phy->optclk);
+	if (!IS_ERR(phy->optclk))
+		clk_disable(phy->optclk);
 
 err1:
 	return ret;
