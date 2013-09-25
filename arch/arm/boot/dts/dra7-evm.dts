@@ -268,6 +268,13 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c2_pins>;
 	clock-frequency = <400000>;
+
+	pcf_hdmi: gpio@26 {
+		compatible = "nxp,pcf8575";
+		reg = <0x26>;
+		gpio-controller;
+		#gpio-cells = <2>;
+	};
 };
 
 &i2c3 {
@@ -311,8 +318,30 @@
 	vdda_video-supply = <&ldoln_reg>;
 };
 
+&hdmi {
+	vdda_hdmi_dac-supply = <&ldo3_reg>;
+};
+
 / {
 	aliases {
 		display0 = &tlc59108;
+		display1 = &hdmi0;
 	};
+
+	tpd12s015: encoder@0 {
+		compatible = "ti,draevm-tpd12s015";
+
+		video-source = <&hdmi>;
+
+		gpios = <&pcf_hdmi 4 0>,	/* P4, CT CP HPD */
+			<&pcf_hdmi 5 0>,	/* P5, LS OE */
+			<&gpio7 12 0>;		/* gpio7_12/sp1_cs2, HPD */
+	};
+
+	hdmi0: connector@0 {
+		compatible = "ti,hdmi_connector";
+
+		video-source = <&tpd12s015>;
+	};
+
 };
