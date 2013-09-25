@@ -21,13 +21,11 @@ Optional properties:
 				is wired that way. If not specified, a bus
 				width of 8 is assumed.
 
- - ti,nand-ecc-opt:		A string setting the ECC layout to use. One of:
-
-		"sw"		Software method (default)
-		"hw"		Hardware method
-		"hw-romcode"	gpmc hamming mode method & romcode layout
+ - ti,nand-ecc-scheme:		A string setting the ECC layout to use. One of:
+		"ham1"		1-bit Hamming ecc code
 		"bch4"		4-bit BCH ecc code
 		"bch8"		8-bit BCH ecc code
+		"bch16"		16-bit BCH ecc code
 
  - ti,nand-xfer-type:		A string setting the data transfer type. One of:
 
@@ -36,8 +34,11 @@ Optional properties:
 		"prefetch-dma"		Prefetch enabled sDMA mode
 		"prefetch-irq"		Prefetch enabled irq mode
 
- - elm_id:	Specifies elm device node. This is required to support BCH
- 		error correction using ELM module.
+ - ti,elm-id:	Specifies pHandle of the ELM devicetree node.
+		ELM is an on-chip hardware engine on TI SoC which is used for
+		locating ECC errors for BCHx algorithms. SoC devices which have
+		ELM hardware engines should specify this device node in .dtsi
+		Using ELM for ECC error correction frees some CPU cycles.
 
 For inline partiton table parsing (optional):
 
