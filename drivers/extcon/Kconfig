@@ -64,4 +64,9 @@ config EXTCON_PALMAS
 	  Say Y here to enable support for USB peripheral and USB host
 	  detection by palmas usb.
 
+config EXTCON_GPIO_USBVID
+	tristate "Generic USB VBUS/ID detection using GPIO EXTCON support"
+	help
+	  Say Y here to enable support for USB VBUS/ID deetction by GPIO.
+
 endif # MULTISTATE_SWITCH

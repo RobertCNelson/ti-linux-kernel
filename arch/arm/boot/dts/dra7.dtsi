@@ -722,6 +722,7 @@
 					 <&usb_otg_ss1_refclk960m>;
 				clock-names =	"wkupclk",
 						"refclk";
+				#phy-cells = <0>;
 			};
 
 			usb2_phy2: usb2phy2@4a085000 {
@@ -732,6 +733,7 @@
 					 <&usb_otg_ss2_refclk960m>;
 				clock-names =	"wkupclk",
 						"refclk";
+				#phy-cells = <0>;
 			};
 
 			usb3_phy1: usb3phy@4a084400 {
@@ -747,10 +749,11 @@
 				clock-names =	"wkupclk",
 						"refclk",
 						"refclk2";
+				#phy-cells = <0>;
 			};
 		};
 
-		omap_dwc3_1@48880000 {
+		dwc3_1: omap_dwc3_1@48880000 {
 			compatible = "ti,dwc3";
 			ti,hwmods = "usb_otg_ss1";
 			reg = <0x48880000 0x10000>;
@@ -763,14 +766,15 @@
 				compatible = "synopsys,dwc3";
 				reg = <0x48890000 0x17000>;
 				interrupts = <0 76 4>;
-				usb-phy = <&usb2_phy1>, <&usb3_phy1>;
+				phys = <&usb2_phy1>, <&usb3_phy1>;
+				phy-names = "usb2-phy", "usb3-phy";
 				tx-fifo-resize;
 				maximum-speed = "super-speed";
 				dr_mode = "otg";
 			};
 		};
 
-		omap_dwc3_2@488c0000 {
+		dwc3_2: omap_dwc3_2@488c0000 {
 			compatible = "ti,dwc3";
 			ti,hwmods = "usb_otg_ss2";
 			reg = <0x488c0000 0x10000>;
@@ -783,7 +787,8 @@
 				compatible = "synopsys,dwc3";
 				reg = <0x488d0000 0x17000>;
 				interrupts = <0 78 4>;
-				usb-phy = <&usb2_phy2>;
+				phys = <&usb2_phy2>;
+				phy-names = "usb2-phy";
 				tx-fifo-resize;
 				maximum-speed = "high-speed";
 				dr_mode = "otg";
@@ -791,7 +796,7 @@
 		};
 
 		/* IRQ for DWC3_3 and DWC3_4 need IRQ crossbar */
-		omap_dwc3_3@48900000 {
+		dwc3_3: omap_dwc3_3@48900000 {
 			compatible = "ti,dwc3";
 			ti,hwmods = "usb_otg_ss3";
 			reg = <0x48900000 0x10000>;
@@ -800,6 +805,7 @@
 			#size-cells = <1>;
 			utmi-mode = <2>;
 			ranges;
+			status = "disabled";
 			usb3: usb@48910000 {
 				compatible = "synopsys,dwc3";
 				reg = <0x48910000 0x17000>;
@@ -810,7 +816,7 @@
 			};
 		};
 
-		omap_dwc3_4@48940000 {
+		dwc3_4: omap_dwc3_4@48940000 {
 			compatible = "ti,dwc3";
 			ti,hwmods = "usb_otg_ss4";
 			reg = <0x48940000 0x10000>;
@@ -819,6 +825,7 @@
 			#size-cells = <1>;
 			utmi-mode = <2>;
 			ranges;
+			status = "disabled";
 			usb4: usb@48950000 {
 				compatible = "synopsys,dwc3";
 				reg = <0x48950000 0x17000>;
