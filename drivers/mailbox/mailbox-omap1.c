@@ -188,7 +188,7 @@ static int omap1_mbox_probe(struct platform_device *pdev)
 	mdev->num_users = 2;
 	mdev->num_fifos = 4;
 
-	ret = omap_mbox_register(&pdev->dev, list);
+	ret = omap_mbox_register(mdev);
 	if (ret) {
 		iounmap(mdev->mbox_base);
 		return ret;
@@ -201,7 +201,7 @@ static int omap1_mbox_remove(struct platform_device *pdev)
 {
 	struct omap_mbox_device *mdev = &omap1_mbox_device;
 
-	omap_mbox_unregister();
+	omap_mbox_unregister(mdev);
 	iounmap(mdev->mbox_base);
 	mdev->mbox_base = NULL;
 	mdev->mboxes = NULL;

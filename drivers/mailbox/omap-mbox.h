@@ -52,6 +52,7 @@ struct omap_mbox_device {
 	u32 num_users;
 	u32 num_fifos;
 	struct omap_mbox **mboxes;
+	struct list_head elem;
 };
 
 struct omap_mbox {
@@ -66,7 +67,7 @@ struct omap_mbox {
 	struct blocking_notifier_head	notifier;
 };
 
-int omap_mbox_register(struct device *parent, struct omap_mbox **);
-int omap_mbox_unregister(void);
+int omap_mbox_register(struct omap_mbox_device *device);
+int omap_mbox_unregister(struct omap_mbox_device *device);
 
 #endif /* OMAP_MBOX_H */

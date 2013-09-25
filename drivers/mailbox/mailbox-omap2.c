@@ -498,7 +498,7 @@ static int omap2_mbox_probe(struct platform_device *pdev)
 	mdev->num_users = num_users;
 	mdev->num_fifos = num_fifos;
 	mdev->mboxes = list;
-	ret = omap_mbox_register(&pdev->dev, list);
+	ret = omap_mbox_register(mdev);
 	if (ret)
 		goto unmap_mbox;
 	platform_set_drvdata(pdev, mdev);
@@ -533,7 +533,7 @@ static int omap2_mbox_remove(struct platform_device *pdev)
 	pm_runtime_disable(mdev->dev);
 
 	privblk = mboxblk->priv;
-	omap_mbox_unregister();
+	omap_mbox_unregister(mdev);
 	iounmap(mdev->mbox_base);
 	kfree(privblk);
 	kfree(mboxblk);

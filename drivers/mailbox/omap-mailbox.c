@@ -32,7 +32,9 @@
 
 #include "omap-mbox.h"
 
-static struct omap_mbox **mboxes;
+/* global variables for the mailbox devices */
+static DEFINE_MUTEX(omap_mbox_devices_lock);
+static LIST_HEAD(omap_mbox_devices);
 
 static unsigned int mbox_kfifo_size = CONFIG_OMAP_MBOX_KFIFO_SIZE;
 module_param(mbox_kfifo_size, uint, S_IRUGO);
@@ -333,20 +335,38 @@ static void omap_mbox_fini(struct omap_mbox *mbox)
 	mutex_unlock(&mdev->cfg_lock);
 }
 
-struct omap_mbox *omap_mbox_get(const char *name, struct notifier_block *nb)
+static struct omap_mbox *omap_mbox_device_find(struct omap_mbox_device *mdev,
+						const char *mbox_name)
 {
 	struct omap_mbox *_mbox, *mbox = NULL;
-	int i, ret;
+	struct omap_mbox **mboxes = mdev->mboxes;
+	int i;
 
 	if (!mboxes)
-		return ERR_PTR(-EINVAL);
+		return NULL;
 
 	for (i = 0; (_mbox = mboxes[i]); i++) {
-		if (!strcmp(_mbox->name, name)) {
+		if (!strcmp(_mbox->name, mbox_name)) {
 			mbox = _mbox;
 			break;
 		}
 	}
+	return mbox;
+}
+
+struct omap_mbox *omap_mbox_get(const char *name, struct notifier_block *nb)
+{
+	struct omap_mbox *mbox = NULL;
+	struct omap_mbox_device *mdev;
+	int ret;
+
+	mutex_lock(&omap_mbox_devices_lock);
+	list_for_each_entry(mdev, &omap_mbox_devices, elem) {
+		mbox = omap_mbox_device_find(mdev, name);
+		if (mbox)
+			break;
+	}
+	mutex_unlock(&omap_mbox_devices_lock);
 
 	if (!mbox)
 		return ERR_PTR(-ENOENT);
@@ -373,19 +393,20 @@ EXPORT_SYMBOL(omap_mbox_put);
 
 static struct class omap_mbox_class = { .name = "mbox", };
 
-int omap_mbox_register(struct device *parent, struct omap_mbox **list)
+int omap_mbox_register(struct omap_mbox_device *mdev)
 {
 	int ret;
 	int i;
+	struct omap_mbox **mboxes;
 
-	mboxes = list;
-	if (!mboxes)
+	if (!mdev || !mdev->mboxes)
 		return -EINVAL;
 
+	mboxes = mdev->mboxes;
 	for (i = 0; mboxes[i]; i++) {
 		struct omap_mbox *mbox = mboxes[i];
 		mbox->dev = device_create(&omap_mbox_class,
-				parent, 0, mbox, "%s", mbox->name);
+				mdev->dev, 0, mbox, "%s", mbox->name);
 		if (IS_ERR(mbox->dev)) {
 			ret = PTR_ERR(mbox->dev);
 			goto err_out;
@@ -393,6 +414,11 @@ int omap_mbox_register(struct device *parent, struct omap_mbox **list)
 
 		BLOCKING_INIT_NOTIFIER_HEAD(&mbox->notifier);
 	}
+
+	mutex_lock(&omap_mbox_devices_lock);
+	list_add(&mdev->elem, &omap_mbox_devices);
+	mutex_unlock(&omap_mbox_devices_lock);
+
 	return 0;
 
 err_out:
@@ -402,16 +428,21 @@ err_out:
 }
 EXPORT_SYMBOL(omap_mbox_register);
 
-int omap_mbox_unregister(void)
+int omap_mbox_unregister(struct omap_mbox_device *mdev)
 {
 	int i;
+	struct omap_mbox **mboxes;
 
-	if (!mboxes)
+	if (!mdev || !mdev->mboxes)
 		return -EINVAL;
 
+	mutex_lock(&omap_mbox_devices_lock);
+	list_del(&mdev->elem);
+	mutex_unlock(&omap_mbox_devices_lock);
+
+	mboxes = mdev->mboxes;
 	for (i = 0; mboxes[i]; i++)
 		device_unregister(mboxes[i]->dev);
-	mboxes = NULL;
 	return 0;
 }
 EXPORT_SYMBOL(omap_mbox_unregister);
