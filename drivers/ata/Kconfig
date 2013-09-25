@@ -137,6 +137,13 @@ config SATA_SIL24
 
 	  If unsure, say N.
 
+config SATA_TI
+	tristate "Texas Instruments SATA Wrapper driver"
+	depends on ARCH_OMAP
+	help
+	  This options enables SATA Wrapper driver for Texas Instruments SoCs.
+	  It is found on OMAP5 and DRA7.
+
 config ATA_SFF
 	bool "ATA SFF support (for legacy IDE and PATA)"
 	default y

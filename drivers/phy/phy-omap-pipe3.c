@@ -26,7 +26,7 @@
 #include <linux/err.h>
 #include <linux/pm_runtime.h>
 #include <linux/delay.h>
-#include <linux/usb/omap_control_usb.h>
+#include <linux/phy/omap_control_phy.h>
 #include <linux/of_platform.h>
 
 #define	PLL_STATUS		0x00000004
@@ -37,15 +37,15 @@
 #define	PLL_CONFIGURATION4	0x00000020
 
 #define	PLL_REGM_MASK		0x001FFE00
-#define	PLL_REGM_SHIFT		0x9
+#define	PLL_REGM_SHIFT		9
 #define	PLL_REGM_F_MASK		0x0003FFFF
-#define	PLL_REGM_F_SHIFT	0x0
+#define	PLL_REGM_F_SHIFT	0
 #define	PLL_REGN_MASK		0x000001FE
-#define	PLL_REGN_SHIFT		0x1
+#define	PLL_REGN_SHIFT		1
 #define	PLL_SELFREQDCO_MASK	0x0000000E
-#define	PLL_SELFREQDCO_SHIFT	0x1
+#define	PLL_SELFREQDCO_SHIFT	1
 #define	PLL_SD_MASK		0x0003FC00
-#define	PLL_SD_SHIFT		0x9
+#define	PLL_SD_SHIFT		10
 #define	SET_PLL_GO		0x1
 #define	PLL_TICOPWDN		0x10000
 #define	PLL_LOCK		0x2
@@ -58,29 +58,41 @@
  */
 # define PLL_IDLE_TIME  100;
 
-struct pipe3_dpll_map {
-	unsigned long rate;
-	struct pipe3_dpll_params params;
-};
-
-static struct pipe3_dpll_map dpll_map[] = {
+static struct pipe3_dpll_map dpll_map_usb[] = {
 	{12000000, {1250, 5, 4, 20, 0} },	/* 12 MHz */
 	{16800000, {3125, 20, 4, 20, 0} },	/* 16.8 MHz */
 	{19200000, {1172, 8, 4, 20, 65537} },	/* 19.2 MHz */
 	{20000000, {1000, 7, 4, 10, 0} },	/* 20 MHz */
 	{26000000, {1250, 12, 4, 20, 0} },	/* 26 MHz */
 	{38400000, {3125, 47, 4, 20, 92843} },	/* 38.4 MHz */
+	{ },					/* Terminator */
 };
 
-static struct pipe3_dpll_params *omap_pipe3_get_dpll_params(unsigned long rate)
-{
-	int i;
+static struct pipe3_dpll_map dpll_map_sata[] = {
+	{12000000, {1000, 7, 4, 6, 0} },	/* 12 MHz */
+	{16800000, {714, 7, 4, 6, 0} },		/* 16.8 MHz */
+	{19200000, {625, 7, 4, 6, 0} },		/* 19.2 MHz */
+	{20000000, {600, 7, 4, 6, 0} },		/* 20 MHz */
+	{26000000, {461, 7, 4, 6, 0} },		/* 26 MHz */
+	{38400000, {312, 7, 4, 6, 0} },		/* 38.4 MHz */
+	{ },					/* Terminator */
+};
 
-	for (i = 0; i < ARRAY_SIZE(dpll_map); i++) {
-		if (rate == dpll_map[i].rate)
-			return &dpll_map[i].params;
+static struct pipe3_dpll_params *omap_pipe3_get_dpll_params(struct omap_pipe3
+									*pipe3)
+{
+	unsigned long rate;
+	struct pipe3_dpll_map *dpll_map = pipe3->dpll_map;
+
+	rate = clk_get_rate(pipe3->sys_clk);
+
+	for (; dpll_map->rate; dpll_map++) {
+		if (rate == dpll_map->rate)
+			return &dpll_map->params;
 	}
 
+	dev_err(pipe3->dev,
+		  "No DPLL configuration for %lu Hz SYS CLK\n", rate);
 	return 0;
 }
 
@@ -101,7 +113,7 @@ static int omap_pipe3_power_off(struct phy *x)
 		udelay(1);
 	} while (--timeout);
 
-	omap_control_usb_phy_power(phy->control_dev, 0);
+	omap_control_phy_power(phy->control_dev, 0);
 
 	return 0;
 }
@@ -148,10 +160,8 @@ static int omap_pipe3_dpll_lock(struct omap_pipe3 *phy)
 	struct pipe3_dpll_params *dpll_params;
 
 	rate = clk_get_rate(phy->sys_clk);
-	dpll_params = omap_pipe3_get_dpll_params(rate);
+	dpll_params = omap_pipe3_get_dpll_params(phy);
 	if (!dpll_params) {
-		dev_err(phy->dev,
-			  "No DPLL configuration for %lu Hz SYS CLK\n", rate);
 		return -EINVAL;
 	}
 
@@ -194,7 +204,7 @@ static int omap_pipe3_init(struct phy *x)
 	if (ret)
 		return ret;
 
-	omap_control_usb_phy_power(phy->control_dev, 1);
+	omap_control_phy_power(phy->control_dev, 1);
 
 	return 0;
 }
@@ -206,6 +216,21 @@ static struct phy_ops ops = {
 	.owner		= THIS_MODULE,
 };
 
+#ifdef CONFIG_OF
+static const struct of_device_id omap_pipe3_id_table[] = {
+	{
+		.compatible = "ti,phy-pipe3-usb3",
+		.data = dpll_map_usb,
+	},
+	{
+		.compatible = "ti,phy-pipe3-sata",
+		.data = dpll_map_sata,
+	},
+	{},
+};
+MODULE_DEVICE_TABLE(of, omap_pipe3_id_table);
+#endif
+
 static int omap_pipe3_probe(struct platform_device *pdev)
 {
 	struct omap_pipe3 *phy;
@@ -215,14 +240,22 @@ static int omap_pipe3_probe(struct platform_device *pdev)
 	struct device_node *node = pdev->dev.of_node;
 	struct device_node *control_node;
 	struct platform_device *control_pdev;
+	const struct of_device_id *match;
 
-	if (!node)
+	match = of_match_device(of_match_ptr(omap_pipe3_id_table), &pdev->dev);
+	if (!match)
 		return -EINVAL;
 
 	phy = devm_kzalloc(&pdev->dev, sizeof(*phy), GFP_KERNEL);
 	if (!phy) {
 		dev_err(&pdev->dev, "unable to alloc mem for OMAP PIPE3 PHY\n");
 		return -ENOMEM;
+	}
+
+	phy->dpll_map = (struct pipe3_dpll_map *)match->data;
+	if (!phy->dpll_map) {
+		dev_err(&pdev->dev, "no dpll data\n");
+		return -EINVAL;
 	}
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "pll_ctrl");
@@ -233,25 +266,22 @@ static int omap_pipe3_probe(struct platform_device *pdev)
 	phy->dev		= &pdev->dev;
 
 	phy->wkupclk = devm_clk_get(phy->dev, "wkupclk");
-	if (IS_ERR(phy->wkupclk)) {
-		dev_err(&pdev->dev, "unable to get wkupclk\n");
-		return PTR_ERR(phy->wkupclk);
-	}
-	clk_prepare(phy->wkupclk);
+	if (IS_ERR(phy->wkupclk))
+		dev_dbg(&pdev->dev, "unable to get wkupclk\n");
+	else
+		clk_prepare(phy->wkupclk);
 
 	phy->optclk = devm_clk_get(phy->dev, "refclk");
-	if (IS_ERR(phy->optclk)) {
-		dev_err(&pdev->dev, "unable to get refclk\n");
-		return PTR_ERR(phy->optclk);
-	}
-	clk_prepare(phy->optclk);
+	if (IS_ERR(phy->optclk))
+		dev_dbg(&pdev->dev, "unable to get refclk\n");
+	else
+		clk_prepare(phy->optclk);
 
 	phy->optclk2 = devm_clk_get(phy->dev, "refclk2");
-	if (IS_ERR(phy->optclk2)) {
-		dev_err(&pdev->dev, "unable to get refclk2\n");
-		return PTR_ERR(phy->optclk2);
-	}
-	clk_prepare(phy->optclk2);
+	if (IS_ERR(phy->optclk2))
+		dev_dbg(&pdev->dev, "unable to get refclk2\n");
+	else
+		clk_prepare(phy->optclk2);
 
 	phy->sys_clk = devm_clk_get(phy->dev, "sys_clkin");
 	if (IS_ERR(phy->sys_clk)) {
@@ -278,7 +308,7 @@ static int omap_pipe3_probe(struct platform_device *pdev)
 
 	phy->control_dev = &control_pdev->dev;
 
-	omap_control_usb_phy_power(phy->control_dev, 0);
+	omap_control_phy_power(phy->control_dev, 0);
 
 	platform_set_drvdata(pdev, phy);
 	pm_runtime_enable(phy->dev);
@@ -298,9 +328,12 @@ static int omap_pipe3_remove(struct platform_device *pdev)
 {
 	struct omap_pipe3 *phy = platform_get_drvdata(pdev);
 
-	clk_unprepare(phy->wkupclk);
-	clk_unprepare(phy->optclk);
-	clk_unprepare(phy->optclk2);
+	if (!IS_ERR(phy->wkupclk))
+		clk_unprepare(phy->wkupclk);
+	if (!IS_ERR(phy->optclk))
+		clk_unprepare(phy->optclk);
+	if (!IS_ERR(phy->optclk2))
+		clk_unprepare(phy->optclk2);
 	if (!pm_runtime_suspended(&pdev->dev))
 		pm_runtime_put(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
@@ -314,9 +347,12 @@ static int omap_pipe3_runtime_suspend(struct device *dev)
 {
 	struct omap_pipe3	*phy = dev_get_drvdata(dev);
 
-	clk_disable(phy->wkupclk);
-	clk_disable(phy->optclk);
-	clk_disable(phy->optclk2);
+	if (!IS_ERR(phy->wkupclk))
+		clk_disable(phy->wkupclk);
+	if (!IS_ERR(phy->optclk))
+		clk_disable(phy->optclk);
+	if (!IS_ERR(phy->optclk2))
+		clk_disable(phy->optclk2);
 
 	return 0;
 }
@@ -326,30 +362,38 @@ static int omap_pipe3_runtime_resume(struct device *dev)
 	u32 ret = 0;
 	struct omap_pipe3	*phy = dev_get_drvdata(dev);
 
-	ret = clk_enable(phy->optclk);
-	if (ret) {
-		dev_err(phy->dev, "Failed to enable optclk %d\n", ret);
-		goto err1;
+	if (!IS_ERR(phy->optclk)) {
+		ret = clk_enable(phy->optclk);
+		if (ret) {
+			dev_err(phy->dev, "Failed to enable optclk %d\n", ret);
+			goto err1;
+		}
 	}
 
-	ret = clk_enable(phy->wkupclk);
-	if (ret) {
-		dev_err(phy->dev, "Failed to enable wkupclk %d\n", ret);
-		goto err2;
+	if (!IS_ERR(phy->wkupclk)) {
+		ret = clk_enable(phy->wkupclk);
+		if (ret) {
+			dev_err(phy->dev, "Failed to enable wkupclk %d\n", ret);
+			goto err2;
+		}
 	}
 
-	ret = clk_enable(phy->optclk2);
-	if (ret) {
-		dev_err(phy->dev, "Failed to enable optclk2 %d\n", ret);
-		goto err3;
+	if (!IS_ERR(phy->optclk2)) {
+		ret = clk_enable(phy->optclk2);
+		if (ret) {
+			dev_err(phy->dev, "Failed to enable optclk2 %d\n", ret);
+			goto err3;
+		}
 	}
 
 	return 0;
 
 err3:
-	clk_disable(phy->wkupclk);
+	if (!IS_ERR(phy->wkupclk))
+		clk_disable(phy->wkupclk);
 err2:
-	clk_disable(phy->optclk);
+	if (!IS_ERR(phy->optclk))
+		clk_disable(phy->optclk);
 
 err1:
 	return ret;
@@ -363,17 +407,6 @@ static const struct dev_pm_ops omap_pipe3_pm_ops = {
 #define DEV_PM_OPS     (&omap_pipe3_pm_ops)
 #else
 #define DEV_PM_OPS     NULL
-#endif
-
-#ifdef CONFIG_OF
-static const struct of_device_id omap_pipe3_id_table[] = {
-	{ .compatible = "ti,omap-pipe3" },
-	{ .compatible = "ti,omap-sata" },
-	{ .compatible = "ti,omap-pcie" },
-	{ .compatible = "ti,omap-usb3" },
-	{}
-};
-MODULE_DEVICE_TABLE(of, omap_pipe3_id_table);
 #endif
 
 static struct platform_driver omap_pipe3_driver = {
