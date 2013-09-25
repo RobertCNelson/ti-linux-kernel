@@ -36,11 +36,12 @@
 static DEFINE_MUTEX(omap_mbox_devices_lock);
 static LIST_HEAD(omap_mbox_devices);
 
+/* default size for the fifos, configured through kernel menuconfig */
 static unsigned int mbox_kfifo_size = CONFIG_OMAP_MBOX_KFIFO_SIZE;
 module_param(mbox_kfifo_size, uint, S_IRUGO);
 MODULE_PARM_DESC(mbox_kfifo_size, "Size of omap's mailbox kfifo (bytes)");
 
-/* Mailbox FIFO handle functions */
+/* mailbox h/w transport communication handler helper functions */
 static inline mbox_msg_t mbox_fifo_read(struct omap_mbox *mbox)
 {
 	return mbox->ops->fifo_read(mbox);
@@ -53,12 +54,16 @@ static inline int mbox_fifo_empty(struct omap_mbox *mbox)
 {
 	return mbox->ops->fifo_empty(mbox);
 }
+/*
+ * local helper to check if the h/w transport is busy or free.
+ * Returns 0 if free, and non-zero otherwise
+ */
 static inline int mbox_poll_for_space(struct omap_mbox *mbox)
 {
 	return mbox->ops->poll_for_space(mbox);
 }
 
-/* Mailbox IRQ handle functions */
+/* mailbox h/w irq handler helper functions */
 static inline void ack_mbox_irq(struct omap_mbox *mbox, omap_mbox_irq_t irq)
 {
 	if (mbox->ops->ack_irq)
@@ -69,8 +74,20 @@ static inline int is_mbox_irq(struct omap_mbox *mbox, omap_mbox_irq_t irq)
 	return mbox->ops->is_irq(mbox, irq);
 }
 
-/*
- * message sender
+/**
+ * omap_mbox_msg_send() - send a mailbox message
+ * @mbox: handle to the acquired mailbox on which to send the message
+ * @msg: the mailbox message to be sent
+ *
+ * This API is called by a client user to send a mailbox message on an
+ * acquired mailbox. The API transmits the message immediately on the h/w
+ * communication transport if it is available, otherwise buffers the
+ * message for transmission as soon as the h/w transport is ready.
+ *
+ * The only failure from this function is when neither the h/w transport
+ * is available nor the s/w buffer fifo is empty.
+ *
+ * Returns 0 on success, or an error otherwise
  */
 int omap_mbox_msg_send(struct omap_mbox *mbox, mbox_msg_t msg)
 {
@@ -100,6 +117,17 @@ out:
 }
 EXPORT_SYMBOL(omap_mbox_msg_send);
 
+/**
+ * omap_mbox_save_ctx: save the context of a mailbox
+ * @mbox: handle to the acquired mailbox
+ *
+ * This allows a client (controlling a remote) to request a mailbox to
+ * save its context when it is powering down the remote.
+ *
+ * NOTE: This will be eventually deprecated, new clients should not use this.
+ *	 The same feature can be enabled through runtime_pm enablement of
+ *	 mailbox.
+ */
 void omap_mbox_save_ctx(struct omap_mbox *mbox)
 {
 	if (!mbox->ops->save_ctx) {
@@ -111,6 +139,18 @@ void omap_mbox_save_ctx(struct omap_mbox *mbox)
 }
 EXPORT_SYMBOL(omap_mbox_save_ctx);
 
+/**
+ * omap_mbox_restore_ctx: restore the context of a mailbox
+ * @mbox: handle to the acquired mailbox
+ *
+ * This allows a client (controlling a remote) to request a mailbox to
+ * restore its context after restoring the remote, so that it can
+ * communicate with the remote as it would normally.
+ *
+ * NOTE: This will be deprecated, new clients should not use this.
+ *	 The same feature can be enabled through runtime_pm enablement
+ *	 of mailbox.
+ */
 void omap_mbox_restore_ctx(struct omap_mbox *mbox)
 {
 	if (!mbox->ops->restore_ctx) {
@@ -122,18 +162,48 @@ void omap_mbox_restore_ctx(struct omap_mbox *mbox)
 }
 EXPORT_SYMBOL(omap_mbox_restore_ctx);
 
+/**
+ * omap_mbox_enable_irq: enable a specific mailbox Rx or Tx interrupt source
+ * @mbox: handle to the acquired mailbox
+ * @irq: interrupt type associated with either the Rx or Tx
+ *
+ * This allows a client (having its own shared memory communication protocol
+ * with the remote) to request a mailbox to enable a particular interrupt
+ * signal source of the mailbox, as part of its communication state machine.
+ *
+ * NOTE: This will be deprecated, new clients should not use this. It is
+ *	 being exported for TI DSP/Bridge driver.
+ */
 void omap_mbox_enable_irq(struct omap_mbox *mbox, omap_mbox_irq_t irq)
 {
 	mbox->ops->enable_irq(mbox, irq);
 }
 EXPORT_SYMBOL(omap_mbox_enable_irq);
 
+/**
+ * omap_mbox_disable_irq: disable a specific mailbox Rx or Tx interrupt source
+ * @mbox: handle to the acquired mailbox
+ * @irq: interrupt type associated with either the Rx or Tx
+ *
+ * This allows a client (having its own shared memory communication protocal
+ * with the remote) to request a mailbox to disable a particular interrupt
+ * signal source of the mailbox, as part of its communication state machine.
+ *
+ * NOTE: This will be deprecated, new clients should not use this. It is
+ *	 being exported for TI DSP/Bridge driver.
+ */
 void omap_mbox_disable_irq(struct omap_mbox *mbox, omap_mbox_irq_t irq)
 {
 	mbox->ops->disable_irq(mbox, irq);
 }
 EXPORT_SYMBOL(omap_mbox_disable_irq);
 
+/*
+ * This is the tasklet function in which all the buffered messages are
+ * sent until the h/w transport is busy again. The tasklet is scheduled
+ * upon receiving an interrupt indicating the availability of the h/w
+ * transport.
+ */
 static void mbox_tx_tasklet(unsigned long tx_data)
 {
 	struct omap_mbox *mbox = (struct omap_mbox *)tx_data;
@@ -156,7 +226,12 @@ static void mbox_tx_tasklet(unsigned long tx_data)
 }
 
 /*
- * Message receiver(workqueue)
+ * This is the message receiver workqueue function, which is responsible
+ * for delivering all the received messages stored in the receive kfifo
+ * to the clients. Each message is delivered to all the registered mailbox
+ * clients. It also re-enables the receive interrupt on the mailbox (disabled
+ * when the s/w kfifo is full) after emptying atleast a message from the
+ * fifo.
  */
 static void mbox_rx_work(struct work_struct *work)
 {
@@ -181,7 +256,9 @@ static void mbox_rx_work(struct work_struct *work)
 }
 
 /*
- * Mailbox interrupt handler
+ * Interrupt handler for Tx interrupt source for each of the mailboxes.
+ * This schedules the tasklet to transmit the messages buffered in the
+ * Tx fifo.
  */
 static void __mbox_tx_interrupt(struct omap_mbox *mbox)
 {
@@ -190,6 +267,12 @@ static void __mbox_tx_interrupt(struct omap_mbox *mbox)
 	tasklet_schedule(&mbox->txq->tasklet);
 }
 
+/*
+ * Interrupt handler for Rx interrupt source for each of the mailboxes.
+ * This performs the read from the h/w mailbox until the transport is
+ * free of any incoming messages, and buffers the read message. The
+ * buffers are delivered to clients by scheduling a work-queue.
+ */
 static void __mbox_rx_interrupt(struct omap_mbox *mbox)
 {
 	struct omap_mbox_queue *mq = mbox->rxq;
@@ -215,6 +298,10 @@ nomem:
 	schedule_work(&mbox->rxq->work);
 }
 
+/*
+ * The core mailbox interrupt handler function. The interrupt core would
+ * call this for each of the mailboxes the interrupt is configured.
+ */
 static irqreturn_t mbox_interrupt(int irq, void *p)
 {
 	struct omap_mbox *mbox = p;
@@ -228,6 +315,12 @@ static irqreturn_t mbox_interrupt(int irq, void *p)
 	return IRQ_HANDLED;
 }
 
+/*
+ * Helper function to allocate a mailbox queue object. This function
+ * also creates either or both of the work-queue or tasklet to
+ * deal with processing of messages on the kfifo associated with
+ * the mailbox queue object.
+ */
 static struct omap_mbox_queue *mbox_queue_alloc(struct omap_mbox *mbox,
 					void (*work) (struct work_struct *),
 					void (*tasklet)(unsigned long))
@@ -254,12 +347,21 @@ error:
 	return NULL;
 }
 
+/*
+ * Helper function to free a mailbox queue object.
+ */
 static void mbox_queue_free(struct omap_mbox_queue *q)
 {
 	kfifo_free(&q->fifo);
 	kfree(q);
 }
 
+/*
+ * Helper function to initialize a mailbox. This function creates
+ * the mailbox queue objects associated with the mailbox h/w channel
+ * and plugs-in the interrupt associated with the mailbox, when the
+ * mailbox h/w channel is requested for the first time.
+ */
 static int omap_mbox_startup(struct omap_mbox *mbox)
 {
 	int ret = 0;
@@ -314,6 +416,9 @@ fail_startup:
 	return ret;
 }
 
+/*
+ * Helper function to de-initialize a mailbox
+ */
 static void omap_mbox_fini(struct omap_mbox *mbox)
 {
 	struct omap_mbox_device *mdev = mbox->parent;
@@ -335,6 +440,11 @@ static void omap_mbox_fini(struct omap_mbox *mbox)
 	mutex_unlock(&mdev->cfg_lock);
 }
 
+/*
+ * Helper function to find a mailbox. It is currently assumed that all the
+ * mailbox names are unique among all the mailbox devices. This can be
+ * easily extended if only a particular mailbox device is to searched.
+ */
 static struct omap_mbox *omap_mbox_device_find(struct omap_mbox_device *mdev,
 						const char *mbox_name)
 {
@@ -354,6 +464,23 @@ static struct omap_mbox *omap_mbox_device_find(struct omap_mbox_device *mdev,
 	return mbox;
 }
 
+/**
+ * omap_mbox_get() - acquire a mailbox
+ * @name: name of the mailbox to acquire
+ * @nb: notifier block to be invoked on received messages
+ *
+ * This API is called by a client user to use a mailbox. The returned handle
+ * needs to be used by the client for invoking any other mailbox API. Any
+ * message received on the mailbox is delivered to the client through the
+ * 'nb' notifier. There are currently no restrictions on multiple clients
+ * acquiring the same mailbox - the same message is delivered to each of the
+ * clients through their respective notifiers.
+ *
+ * The function ensures that the mailbox is put into an operational state
+ * before the function returns.
+ *
+ * Returns a usable mailbox handle on success, or NULL otherwise
+ */
 struct omap_mbox *omap_mbox_get(const char *name, struct notifier_block *nb)
 {
 	struct omap_mbox *mbox = NULL;
@@ -384,6 +511,18 @@ struct omap_mbox *omap_mbox_get(const char *name, struct notifier_block *nb)
 }
 EXPORT_SYMBOL(omap_mbox_get);
 
+/**
+ * omap_mbox_put() - release a mailbox
+ * @mbox: handle to the acquired mailbox
+ * @nb: notifier block used while acquiring the mailbox
+ *
+ * This API is to be called by a client user once it is done using the
+ * mailbox. The particular user's notifier function is removed from the
+ * notifier list of received messages on this mailbox. It also undoes
+ * any h/w configuration done during the acquisition of the mailbox.
+ *
+ * No return value
+ */
 void omap_mbox_put(struct omap_mbox *mbox, struct notifier_block *nb)
 {
 	blocking_notifier_chain_unregister(&mbox->notifier, nb);
@@ -393,6 +532,21 @@ EXPORT_SYMBOL(omap_mbox_put);
 
 static struct class omap_mbox_class = { .name = "mbox", };
 
+/**
+ * omap_mbox_register() - register the list of mailboxes
+ * @mdev: mailbox device handle containing the mailboxes that need to be
+ *	  with the mailbox core
+ *
+ * This API is to be called by individual mailbox driver implementations
+ * for registering the set of mailboxes contained in a h/w communication
+ * block with the mailbox core. Each of the mailbox represents a h/w
+ * communication channel, contained within the h/w communication block or ip.
+ *
+ * An associated device is also created for each of the mailboxes, and the
+ * mailbox device is added to a global list of registered mailbox devices.
+ *
+ * Return 0 on success, or a failure code otherwise
+ */
 int omap_mbox_register(struct omap_mbox_device *mdev)
 {
 	int ret;
@@ -428,6 +582,18 @@ err_out:
 }
 EXPORT_SYMBOL(omap_mbox_register);
 
+/**
+ * omap_mbox_unregister() - unregister the list of mailboxes
+ * @mdev: parent mailbox device handle containing the mailboxes that need
+ *	  to be unregistered
+ *
+ * This API is to be called by individual mailbox driver implementations
+ * for unregistering the set of mailboxes contained in a h/w communication
+ * block. Once unregistered, these mailboxes are not available for any
+ * client users/drivers.
+ *
+ * Return 0 on success, or a failure code otherwise
+ */
 int omap_mbox_unregister(struct omap_mbox_device *mdev)
 {
 	int i;
