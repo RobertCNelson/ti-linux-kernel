@@ -2234,6 +2234,14 @@ config FB_DA8XX
 	  found on DA8xx/OMAP-L1xx/AM335x SoCs.
 	  If unsure, say N.
 
+config FB_DA8XX_TDA998X
+       tristate "NXP TDA998x HDMI driver for BeagleBone Black"
+       depends on FB_DA8XX
+	---help---
+	  This is a driver for NXP TDA998X HDMI as used on the BeagleBone
+	  Black.
+	  If unsure, say N.
+
 config FB_VIRTUAL
 	tristate "Virtual Frame Buffer support (ONLY FOR TESTING!)"
 	depends on FB
