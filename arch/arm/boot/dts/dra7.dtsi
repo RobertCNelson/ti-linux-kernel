@@ -93,7 +93,9 @@
 			reg-width = <16>;
 			crossbar-lines = "mpu-irq", "rtc-ss-alarm", <0x9f 0xd9 0x12e>,
 					 "mpu-irq", "mcasp3-arevt", <0x9e 0x96 0x12c>,
-					 "mpu-irq", "mcasp3-axevt", <0x9d 0x97 0x12a>;
+					 "mpu-irq", "mcasp3-axevt", <0x9d 0x97 0x12a>,
+					 "mpu-irq", "mailbox5", <0x88 0xfb 0x100>,
+					 "mpu-irq", "mailbox6", <0x8d 0xff 0x10a>;
 		};
 
 		crossbar_dma: dmareq@4a002b78 {
