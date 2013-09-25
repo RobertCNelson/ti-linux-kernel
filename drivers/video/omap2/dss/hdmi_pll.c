@@ -25,6 +25,8 @@ struct hdmi_pll_features {
 	bool sys_reset;
 	/* this is a hack, need to replace it with a better computation of M2 */
 	bool bound_dcofreq;
+	bool ext_mux_ctrl;
+
 	unsigned long fint_min, fint_max;
 	u16 regm_max;
 	unsigned long dcofreq_low_min, dcofreq_low_max;
@@ -184,6 +186,9 @@ int hdmi_pll_enable(struct hdmi_pll_data *pll, struct hdmi_wp_data *wp)
 {
 	u16 r = 0;
 
+	if (pll_feat->ext_mux_ctrl)
+		dss_dpll_enable_ctrl(DSS_DPLL_HDMI, true);
+
 	r = hdmi_wp_set_pll_pwr(wp, HDMI_PLLPWRCMD_ALLOFF);
 	if (r)
 		return r;
@@ -205,12 +210,16 @@ int hdmi_pll_enable(struct hdmi_pll_data *pll, struct hdmi_wp_data *wp)
 
 void hdmi_pll_disable(struct hdmi_pll_data *pll, struct hdmi_wp_data *wp)
 {
+	if (pll_feat->ext_mux_ctrl)
+		dss_dpll_enable_ctrl(DSS_DPLL_HDMI, false);
+
 	hdmi_wp_set_pll_pwr(wp, HDMI_PLLPWRCMD_ALLOFF);
 }
 
 static const struct hdmi_pll_features omap44xx_pll_feats = {
 	.sys_reset		=	false,
 	.bound_dcofreq		=	false,
+	.ext_mux_ctrl		=	false,
 	.fint_min		=	500000,
 	.fint_max		=	2500000,
 	.regm_max		=	4095,
@@ -223,6 +232,20 @@ static const struct hdmi_pll_features omap44xx_pll_feats = {
 static const struct hdmi_pll_features omap54xx_pll_feats = {
 	.sys_reset		=	true,
 	.bound_dcofreq		=	true,
+	.ext_mux_ctrl		=	false,
+	.fint_min		=	620000,
+	.fint_max		=	2500000,
+	.regm_max		=	2046,
+	.dcofreq_low_min	=	750000000,
+	.dcofreq_low_max	=	1500000000,
+	.dcofreq_high_min	=	1250000000,
+	.dcofreq_high_max	=	2500000000UL,
+};
+
+static const struct hdmi_pll_features dra7xx_pll_feats = {
+	.sys_reset		=	true,
+	.bound_dcofreq		=	true,
+	.ext_mux_ctrl		=	true,
 	.fint_min		=	620000,
 	.fint_max		=	2500000,
 	.regm_max		=	2046,
@@ -251,8 +274,10 @@ static int hdmi_pll_init_features(struct platform_device *pdev)
 		break;
 
 	case OMAPDSS_VER_OMAP5:
-	case OMAPDSS_VER_DRA7xx:
 		src = &omap54xx_pll_feats;
+		break;
+	case OMAPDSS_VER_DRA7xx:
+		src = &dra7xx_pll_feats;
 		break;
 
 	default:
