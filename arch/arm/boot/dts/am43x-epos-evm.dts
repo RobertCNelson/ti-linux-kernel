@@ -16,3 +16,16 @@
 	model = "TI AM43x EPOS EVM";
 	compatible = "ti,am43x-epos-evm","ti,am4372","ti,am43";
 };
+
+&qspi {
+	spi-max-frequency = <48000000>;
+	m25p80@0 {
+		compatible = "mx66l51235l";
+		spi-max-frequency = <48000000>;
+		reg = <0>;
+		spi-cpol;
+		spi-cpha;
+		tx-nbits = <1>;
+		rx-nbits = <4>;
+	};
+};

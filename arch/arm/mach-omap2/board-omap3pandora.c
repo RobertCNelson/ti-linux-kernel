@@ -607,7 +607,7 @@ static void __init omap3pandora_init(void)
 	usbhs_init_phys(phy_data, ARRAY_SIZE(phy_data));
 	usbhs_init(&usbhs_bdata);
 
-	usb_bind_phy("musb-hdrc.0.auto", 0, "twl4030_usb");
+	usb_bind_phy("musb-hdrc.0", 0, "twl4030_usb");
 	usb_musb_init(NULL);
 	gpmc_nand_init(&pandora_nand_data, NULL);
 

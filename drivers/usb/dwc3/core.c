@@ -82,6 +82,12 @@ static void dwc3_core_soft_reset(struct dwc3 *dwc)
 
 	usb_phy_init(dwc->usb2_phy);
 	usb_phy_init(dwc->usb3_phy);
+
+	if (dwc->usb2_generic_phy)
+		phy_init(dwc->usb2_generic_phy);
+	if (dwc->usb3_generic_phy)
+		phy_init(dwc->usb3_generic_phy);
+
 	mdelay(100);
 
 	/* Clear USB3 PHY reset */
@@ -343,6 +349,11 @@ static void dwc3_core_exit(struct dwc3 *dwc)
 {
 	usb_phy_shutdown(dwc->usb2_phy);
 	usb_phy_shutdown(dwc->usb3_phy);
+
+	if (dwc->usb2_generic_phy)
+		phy_power_off(dwc->usb2_generic_phy);
+	if (dwc->usb3_generic_phy)
+		phy_power_off(dwc->usb3_generic_phy);
 }
 
 #define DWC3_ALIGN_MASK		(16 - 1)
@@ -387,16 +398,102 @@ static int dwc3_probe(struct platform_device *pdev)
 	if (node) {
 		dwc->maximum_speed = of_usb_get_maximum_speed(node);
 
-		dwc->usb2_phy = devm_usb_get_phy_by_phandle(dev, "usb-phy", 0);
-		dwc->usb3_phy = devm_usb_get_phy_by_phandle(dev, "usb-phy", 1);
+		switch (dwc->maximum_speed) {
+		case USB_SPEED_SUPER:
+			if (of_property_read_bool(node, "usb-phy")) {
+				dwc->usb2_phy = devm_usb_get_phy_by_phandle(dev,
+					"usb-phy", 0);
+				if (IS_ERR(dwc->usb2_phy))
+					return PTR_ERR(dwc->usb2_phy);
+				dwc->usb3_phy = devm_usb_get_phy_by_phandle(dev,
+					"usb-phy", 1);
+				if (IS_ERR(dwc->usb3_phy))
+					return PTR_ERR(dwc->usb3_phy);
+			} else {
+				dwc->usb2_phy = NULL;
+				dwc->usb3_phy = NULL;
+			}
+
+			if (of_property_read_bool(node, "phys")) {
+				dwc->usb2_generic_phy = devm_phy_get(dev,
+					"usb2-phy");
+				if (IS_ERR(dwc->usb2_generic_phy)) {
+					dev_err(dev, "no usb2 phy configured");
+					return PTR_ERR(dwc->usb2_generic_phy);
+				}
+
+				dwc->usb3_generic_phy = devm_phy_get(dev,
+					"usb3-phy");
+				if (IS_ERR(dwc->usb3_generic_phy)) {
+					dev_err(dev, "no usb3 phy configured");
+					return PTR_ERR(dwc->usb3_generic_phy);
+				}
+			} else {
+				dwc->usb2_generic_phy = NULL;
+				dwc->usb3_generic_phy = NULL;
+			}
+			break;
+		case USB_SPEED_HIGH:
+		case USB_SPEED_FULL:
+		case USB_SPEED_LOW:
+			dwc->usb3_phy = NULL;
+			dwc->usb3_generic_phy = NULL;
+			if (of_property_read_bool(node, "usb-phy")) {
+				dwc->usb2_phy = devm_usb_get_phy_by_phandle(dev,
+					"usb-phy", 0);
+				if (IS_ERR(dwc->usb2_phy))
+					return PTR_ERR(dwc->usb2_phy);
+			} else {
+				dwc->usb2_phy = NULL;
+			}
+			if (of_property_read_bool(node, "phys")) {
+				dwc->usb2_generic_phy = devm_phy_get(dev,
+					"usb2-phy");
+				if (IS_ERR(dwc->usb2_generic_phy)) {
+					dev_err(dev, "no usb2 phy configured");
+					return PTR_ERR(dwc->usb2_generic_phy);
+			}
+			} else {
+				dwc->usb2_generic_phy = NULL;
+			}
+			break;
+		}
 
 		dwc->needs_fifo_resize = of_property_read_bool(node, "tx-fifo-resize");
 		dwc->dr_mode = of_usb_get_dr_mode(node);
 	} else if (pdata) {
 		dwc->maximum_speed = pdata->maximum_speed;
 
-		dwc->usb2_phy = devm_usb_get_phy(dev, USB_PHY_TYPE_USB2);
-		dwc->usb3_phy = devm_usb_get_phy(dev, USB_PHY_TYPE_USB3);
+		switch (dwc->maximum_speed) {
+		case USB_SPEED_SUPER:
+			if (pdata->has_phy) {
+				dwc->usb2_phy = devm_usb_get_phy(dev,
+					USB_PHY_TYPE_USB2);
+				if (IS_ERR(dwc->usb2_phy))
+					return PTR_ERR(dwc->usb2_phy);
+				dwc->usb3_phy = devm_usb_get_phy(dev,
+					USB_PHY_TYPE_USB3);
+				if (IS_ERR(dwc->usb3_phy))
+					return PTR_ERR(dwc->usb3_phy);
+			} else {
+				dwc->usb2_phy = NULL;
+				dwc->usb3_phy = NULL;
+			}
+			break;
+		case USB_SPEED_HIGH:
+		case USB_SPEED_FULL:
+		case USB_SPEED_LOW:
+			dwc->usb3_phy = NULL;
+			if (pdata->has_phy) {
+				dwc->usb2_phy = devm_usb_get_phy(dev,
+					USB_PHY_TYPE_USB2);
+				if (IS_ERR(dwc->usb2_phy))
+					return PTR_ERR(dwc->usb2_phy);
+			} else {
+				dwc->usb2_phy = NULL;
+			}
+			break;
+		}
 
 		dwc->needs_fifo_resize = pdata->tx_fifo_resize;
 		dwc->dr_mode = pdata->dr_mode;
@@ -408,36 +505,6 @@ static int dwc3_probe(struct platform_device *pdev)
 	/* default to superspeed if no maximum_speed passed */
 	if (dwc->maximum_speed == USB_SPEED_UNKNOWN)
 		dwc->maximum_speed = USB_SPEED_SUPER;
-
-	if (IS_ERR(dwc->usb2_phy)) {
-		ret = PTR_ERR(dwc->usb2_phy);
-
-		/*
-		 * if -ENXIO is returned, it means PHY layer wasn't
-		 * enabled, so it makes no sense to return -EPROBE_DEFER
-		 * in that case, since no PHY driver will ever probe.
-		 */
-		if (ret == -ENXIO)
-			return ret;
-
-		dev_err(dev, "no usb2 phy configured\n");
-		return -EPROBE_DEFER;
-	}
-
-	if (IS_ERR(dwc->usb3_phy)) {
-		ret = PTR_ERR(dwc->usb3_phy);
-
-		/*
-		 * if -ENXIO is returned, it means PHY layer wasn't
-		 * enabled, so it makes no sense to return -EPROBE_DEFER
-		 * in that case, since no PHY driver will ever probe.
-		 */
-		if (ret == -ENXIO)
-			return ret;
-
-		dev_err(dev, "no usb3 phy configured\n");
-		return -EPROBE_DEFER;
-	}
 
 	dwc->xhci_resources[0].start = res->start;
 	dwc->xhci_resources[0].end = dwc->xhci_resources[0].start +
@@ -457,6 +524,11 @@ static int dwc3_probe(struct platform_device *pdev)
 
 	usb_phy_set_suspend(dwc->usb2_phy, 0);
 	usb_phy_set_suspend(dwc->usb3_phy, 0);
+
+	if (dwc->usb2_generic_phy)
+		phy_power_on(dwc->usb2_generic_phy);
+	if (dwc->usb3_generic_phy)
+		phy_power_on(dwc->usb3_generic_phy);
 
 	spin_lock_init(&dwc->lock);
 	platform_set_drvdata(pdev, dwc);
@@ -584,6 +656,11 @@ static int dwc3_remove(struct platform_device *pdev)
 	usb_phy_set_suspend(dwc->usb2_phy, 1);
 	usb_phy_set_suspend(dwc->usb3_phy, 1);
 
+	if (dwc->usb2_generic_phy)
+		phy_power_off(dwc->usb2_generic_phy);
+	if (dwc->usb3_generic_phy)
+		phy_power_off(dwc->usb3_generic_phy);
+
 	pm_runtime_put(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
 
@@ -681,6 +758,11 @@ static int dwc3_suspend(struct device *dev)
 	usb_phy_shutdown(dwc->usb3_phy);
 	usb_phy_shutdown(dwc->usb2_phy);
 
+	if (dwc->usb2_generic_phy)
+		phy_exit(dwc->usb2_generic_phy);
+	if (dwc->usb3_generic_phy)
+		phy_exit(dwc->usb3_generic_phy);
+
 	return 0;
 }
 
@@ -691,6 +773,12 @@ static int dwc3_resume(struct device *dev)
 
 	usb_phy_init(dwc->usb3_phy);
 	usb_phy_init(dwc->usb2_phy);
+
+	if (dwc->usb2_generic_phy)
+		phy_init(dwc->usb2_generic_phy);
+	if (dwc->usb3_generic_phy)
+		phy_init(dwc->usb3_generic_phy);
+
 	msleep(100);
 
 	spin_lock_irqsave(&dwc->lock, flags);

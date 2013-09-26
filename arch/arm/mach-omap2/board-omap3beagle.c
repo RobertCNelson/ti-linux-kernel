@@ -289,18 +289,12 @@ static struct regulator_consumer_supply beagle_vsim_supply[] = {
 
 static struct gpio_led gpio_leds[];
 
-/* PHY's VCC regulator might be added later, so flag that we need it */
-static struct usb_phy_gen_xceiv_platform_data hsusb2_phy_data = {
-	.needs_vcc = true,
-};
-
 static struct usbhs_phy_data phy_data[] = {
 	{
 		.port = 2,
 		.reset_gpio = 147,
 		.vcc_gpio = -1,		/* updated in beagle_twl_gpio_setup */
 		.vcc_polarity = 1,	/* updated in beagle_twl_gpio_setup */
-		.platform_data = &hsusb2_phy_data,
 	},
 };
 
@@ -567,7 +561,7 @@ static void __init omap3_beagle_init(void)
 	omap_sdrc_init(mt46h32m32lf6_sdrc_params,
 				  mt46h32m32lf6_sdrc_params);
 
-	usb_bind_phy("musb-hdrc.0.auto", 0, "twl4030_usb");
+	usb_bind_phy("musb-hdrc.0", 0, "twl4030_usb");
 	usb_musb_init(NULL);
 
 	usbhs_init(&usbhs_bdata);

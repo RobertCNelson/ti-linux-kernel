@@ -353,7 +353,7 @@ void __init zoom_peripherals_init(void)
 	omap_i2c_init();
 	pwm_add_table(zoom_pwm_lookup, ARRAY_SIZE(zoom_pwm_lookup));
 	platform_add_devices(zoom_devices, ARRAY_SIZE(zoom_devices));
-	usb_bind_phy("musb-hdrc.0.auto", 0, "twl4030_usb");
+	usb_bind_phy("musb-hdrc.0", 0, "twl4030_usb");
 	usb_musb_init(NULL);
 	enable_board_wakeup_source();
 	omap_serial_init();

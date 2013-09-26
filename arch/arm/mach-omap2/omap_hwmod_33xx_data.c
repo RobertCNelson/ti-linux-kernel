@@ -1197,6 +1197,32 @@ static struct omap_hwmod am33xx_spinlock_hwmod = {
 	},
 };
 
+static struct omap_hwmod_class_sysconfig am43xx_qspi_sysc = {
+	.sysc_offs      = 0x0010,
+	.sysc_flags     = SYSC_HAS_SIDLEMODE,
+	.idlemodes      = (SIDLE_FORCE | SIDLE_NO | SIDLE_SMART |
+				SIDLE_SMART_WKUP),
+	.sysc_fields    = &omap_hwmod_sysc_type2,
+};
+
+static struct omap_hwmod_class am43xx_qspi_hwmod_class = {
+	.name   = "qspi",
+	.sysc   = &am43xx_qspi_sysc,
+};
+
+static struct omap_hwmod am43xx_qspi_hwmod = {
+	.name           = "qspi",
+	.class          = &am43xx_qspi_hwmod_class,
+	.clkdm_name     = "l3s_clkdm",
+	.main_clk       = "l3s_gclk",
+	.prcm = {
+		.omap4 = {
+			.clkctrl_offs = AM43XX_CM_PER_QSPI_CLKCTRL_OFFSET,
+			.modulemode   = MODULEMODE_SWCTRL,
+		},
+	},
+};
+
 /* 'timer 2-7' class */
 static struct omap_hwmod_class_sysconfig am33xx_timer_sysc = {
 	.rev_offs	= 0x0000,
@@ -2293,6 +2319,13 @@ static struct omap_hwmod_ocp_if am33xx_l3_s__mmc2 = {
 	.user		= OCP_USER_MPU,
 };
 
+static struct omap_hwmod_ocp_if am43xx_l3_s__qspi = {
+	.master         = &am33xx_l3_s_hwmod,
+	.slave          = &am43xx_qspi_hwmod,
+	.clk            = "l3s_gclk",
+	.user           = OCP_USER_MPU | OCP_USER_SDMA,
+};
+
 /* l4 ls -> mcspi0 */
 static struct omap_hwmod_ocp_if am33xx_l4_ls__mcspi0 = {
 	.master		= &am33xx_l4_ls_hwmod,
@@ -2945,6 +2978,7 @@ static struct omap_hwmod_ocp_if *am43xx_hwmod_ocp_ifs[] __initdata = {
 	&am43xx_l4_ls__gpio5,
 	&am43xx_l3_main__pruss,
 	&am43xx_l3_main__des,
+	&am43xx_l3_s__qspi,
 	NULL,
 };
 

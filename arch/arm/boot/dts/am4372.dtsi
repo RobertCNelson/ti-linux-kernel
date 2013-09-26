@@ -139,6 +139,17 @@
 			ti,mbox-data = <0 0 0 0>;
 		};
 
+		qspi: qspi@47900000 {
+			compatible = "ti,am4372-qspi";
+			reg = <0x47900000 0x100>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			ti,hwmods = "qspi";
+			interrupts = <0 138 0x4>;
+			num-cs = <4>;
+			mmap_read;
+		};
+
 		timer1: timer@44e31000 {
 			compatible = "ti,am4372-timer-1ms","ti,am335x-timer-1ms";
 			reg = <0x44e31000 0x400>;

@@ -22,8 +22,11 @@
 #include <linux/of.h>
 #include <linux/sched.h>
 #include <linux/pm_runtime.h>
+#include <linux/mtd/mtd.h>
+#include <linux/mtd/nand.h>
 #include <linux/platform_data/elm.h>
 
+#define	DRIVER_NAME			"omap-elm"
 #define ELM_SYSCONFIG			0x010
 #define ELM_IRQSTATUS			0x018
 #define ELM_IRQENABLE			0x01c
@@ -82,8 +85,10 @@ struct elm_info {
 	void __iomem *elm_base;
 	struct completion elm_completion;
 	struct list_head list;
+	struct mtd_info *mtd;
 	enum bch_ecc bch_type;
 	struct elm_registers elm_regs;
+	int eccsteps;
 };
 
 static LIST_HEAD(elm_devices);
@@ -103,19 +108,42 @@ static u32 elm_read_reg(struct elm_info *info, int offset)
  * @dev:	ELM device
  * @bch_type:	Type of BCH ecc
  */
-int elm_config(struct device *dev, enum bch_ecc bch_type)
+int elm_config(struct device *dev, struct mtd_info *mtd,
+		enum bch_ecc bch_type)
 {
 	u32 reg_val;
-	struct elm_info *info = dev_get_drvdata(dev);
-
-	if (!info) {
-		dev_err(dev, "Unable to configure elm - device not probed?\n");
+	struct elm_info	 *info;
+	struct nand_chip *chip;
+	if (!dev) {
+		pr_err("%s: ELM device not found\n", DRIVER_NAME);
 		return -ENODEV;
 	}
-
+	info = dev_get_drvdata(dev);
+	if (!info) {
+		pr_err("%s: ELM device data not found\n", DRIVER_NAME);
+		return -ENODEV;
+	}
+	if (!mtd) {
+		pr_err("%s: MTD device not found\n", DRIVER_NAME);
+		return -ENODEV;
+	}
+	chip = mtd->priv;
+	/* ELM supports error correction in chunks of 512bytes of data only
+	 * where each 512bytes of data has its own ECC syndrome */
+	if (chip->ecc.size != 512) {
+		pr_err("%s: invalid ecc_size configuration", DRIVER_NAME);
+		return -EINVAL;
+	}
+	if (mtd->writesize > 4096) {
+		pr_err("%s: page-size > 4096 is not supported", DRIVER_NAME);
+		return -EINVAL;
+	}
+	/* ELM eccsteps required to decode complete NAND page */
+	info->mtd	= mtd;
+	info->bch_type	= bch_type;
+	info->eccsteps = mtd->writesize / chip->ecc.size;
 	reg_val = (bch_type & ECC_BCH_LEVEL_MASK) | (ELM_ECC_SIZE << 16);
 	elm_write_reg(info, ELM_LOCATION_CONFIG, reg_val);
-	info->bch_type = bch_type;
 
 	return 0;
 }
@@ -152,55 +180,80 @@ static void elm_configure_page_mode(struct elm_info *info, int index,
  * Load syndrome fragment registers with calculated ecc in reverse order.
  */
 static void elm_load_syndrome(struct elm_info *info,
-		struct elm_errorvec *err_vec, u8 *ecc)
+		struct elm_errorvec *err_vec, u8 *ecc_calc)
 {
+	struct nand_chip *chip	= info->mtd->priv;
+	unsigned int eccbytes	= chip->ecc.bytes;
+	u8 *ecc = ecc_calc;
 	int i, offset;
 	u32 val;
 
-	for (i = 0; i < ERROR_VECTOR_MAX; i++) {
-
+	for (i = 0; i < info->eccsteps; i++) {
 		/* Check error reported */
 		if (err_vec[i].error_reported) {
 			elm_configure_page_mode(info, i, true);
-			offset = ELM_SYNDROME_FRAGMENT_0 +
-				SYNDROME_FRAGMENT_REG_SIZE * i;
-
-			/* BCH8 */
-			if (info->bch_type) {
-
-				/* syndrome fragment 0 = ecc[9-12B] */
-				val = cpu_to_be32(*(u32 *) &ecc[9]);
-				elm_write_reg(info, offset, val);
-
-				/* syndrome fragment 1 = ecc[5-8B] */
-				offset += 4;
-				val = cpu_to_be32(*(u32 *) &ecc[5]);
-				elm_write_reg(info, offset, val);
-
-				/* syndrome fragment 2 = ecc[1-4B] */
-				offset += 4;
-				val = cpu_to_be32(*(u32 *) &ecc[1]);
-				elm_write_reg(info, offset, val);
-
-				/* syndrome fragment 3 = ecc[0B] */
-				offset += 4;
-				val = ecc[0];
-				elm_write_reg(info, offset, val);
-			} else {
-				/* syndrome fragment 0 = ecc[20-52b] bits */
-				val = (cpu_to_be32(*(u32 *) &ecc[3]) >> 4) |
-					((ecc[2] & 0xf) << 28);
-				elm_write_reg(info, offset, val);
-
-				/* syndrome fragment 1 = ecc[0-20b] bits */
-				offset += 4;
-				val = cpu_to_be32(*(u32 *) &ecc[0]) >> 12;
-				elm_write_reg(info, offset, val);
+			offset = SYNDROME_FRAGMENT_REG_SIZE * i;
+			ecc = ecc_calc + (i * eccbytes);
+			switch (info->bch_type) {
+			case BCH4_ECC:
+				val =	((*(ecc + 6) >>  4) & 0x0F) |
+					*(ecc +  5) <<  4 | *(ecc +  4) << 12 |
+					*(ecc +  3) << 20 | *(ecc +  2) << 28;
+				elm_write_reg(info, (ELM_SYNDROME_FRAGMENT_0 +
+						 offset), cpu_to_le32(val));
+				val =	((*(ecc + 2) >>  4) & 0x0F) |
+					*(ecc +  1) <<  4 | *(ecc +  0) << 12;
+				elm_write_reg(info, (ELM_SYNDROME_FRAGMENT_1 +
+						 offset), cpu_to_le32(val));
+				break;
+			case BCH8_ECC:
+				val =	*(ecc + 12) << 0  | *(ecc + 11) <<  8 |
+					*(ecc + 10) << 16 | *(ecc +  9) << 24;
+				elm_write_reg(info, (ELM_SYNDROME_FRAGMENT_0 +
+						 offset), cpu_to_le32(val));
+				val =	*(ecc +  8) <<  0 | *(ecc +  7) <<  8 |
+					*(ecc +  6) << 16 | *(ecc +  5) << 24;
+				elm_write_reg(info, (ELM_SYNDROME_FRAGMENT_1 +
+						 offset), cpu_to_le32(val));
+				val =	*(ecc +  4) <<  0 | *(ecc +  3) <<  8 |
+					*(ecc +  2) << 16 | *(ecc +  1) << 24;
+				elm_write_reg(info, (ELM_SYNDROME_FRAGMENT_2 +
+						 offset), cpu_to_le32(val));
+				val =	*(ecc +  0) <<  0 & 0x000000FF;
+				elm_write_reg(info, (ELM_SYNDROME_FRAGMENT_3 +
+						 offset), cpu_to_le32(val));
+				break;
+			case BCH16_ECC:
+				val =	*(ecc + 25) << 0  | *(ecc + 24) <<  8 |
+					*(ecc + 23) << 16 | *(ecc + 22) << 24;
+				elm_write_reg(info, (ELM_SYNDROME_FRAGMENT_0 +
+						 offset), cpu_to_le32(val));
+				val =	*(ecc + 21) <<  0 | *(ecc + 20) <<  8 |
+					*(ecc + 19) << 16 | *(ecc + 18) << 24;
+				elm_write_reg(info, (ELM_SYNDROME_FRAGMENT_1 +
+						 offset), cpu_to_le32(val));
+				val =	*(ecc + 17) <<  0 | *(ecc + 16) <<  8 |
+					*(ecc + 15) << 16 | *(ecc + 14) << 24;
+				elm_write_reg(info, (ELM_SYNDROME_FRAGMENT_2 +
+						 offset), cpu_to_le32(val));
+				val =	*(ecc + 13) <<  0 | *(ecc + 12) <<  8 |
+					*(ecc + 11) << 16 | *(ecc + 10) << 24;
+				elm_write_reg(info, (ELM_SYNDROME_FRAGMENT_3 +
+						 offset), cpu_to_le32(val));
+				val =	*(ecc +  9) <<  0 | *(ecc +  8) <<  8 |
+					*(ecc +  7) << 16 | *(ecc +  6) << 24;
+				elm_write_reg(info, (ELM_SYNDROME_FRAGMENT_4 +
+						 offset), cpu_to_le32(val));
+				val =	*(ecc +  5) <<  0 | *(ecc +  4) <<  8 |
+					*(ecc +  3) << 16 | *(ecc +  2) << 24;
+				elm_write_reg(info, (ELM_SYNDROME_FRAGMENT_5 +
+						 offset), cpu_to_le32(val));
+				val =	*(ecc +  1) <<  0 | *(ecc +  0) <<  8;
+				elm_write_reg(info, (ELM_SYNDROME_FRAGMENT_6 +
+						 offset), cpu_to_le32(val));
+				break;
 			}
 		}
-
-		/* Update ecc pointer with ecc byte size */
-		ecc += info->bch_type ? BCH8_SIZE : BCH4_SIZE;
 	}
 }
 
@@ -223,7 +276,7 @@ static void elm_start_processing(struct elm_info *info,
 	 * Set syndrome vector valid, so that ELM module
 	 * will process it for vectors error is reported
 	 */
-	for (i = 0; i < ERROR_VECTOR_MAX; i++) {
+	for (i = 0; i < info->eccsteps; i++) {
 		if (err_vec[i].error_reported) {
 			offset = ELM_SYNDROME_FRAGMENT_6 +
 				SYNDROME_FRAGMENT_REG_SIZE * i;
@@ -252,7 +305,7 @@ static void elm_error_correction(struct elm_info *info,
 	int offset;
 	u32 reg_val;
 
-	for (i = 0; i < ERROR_VECTOR_MAX; i++) {
+	for (i = 0; i < info->eccsteps; i++) {
 
 		/* Check error reported */
 		if (err_vec[i].error_reported) {
@@ -263,14 +316,12 @@ static void elm_error_correction(struct elm_info *info,
 			if (reg_val & ECC_CORRECTABLE_MASK) {
 				offset = ELM_ERROR_LOCATION_0 +
 					ERROR_LOCATION_SIZE * i;
-
 				/* Read count of correctable errors */
 				err_vec[i].error_count = reg_val &
 					ECC_NB_ERRORS_MASK;
 
 				/* Update the error locations in error vector */
 				for (j = 0; j < err_vec[i].error_count; j++) {
-
 					reg_val = elm_read_reg(info, offset);
 					err_vec[i].error_loc[j] = reg_val &
 						ECC_ERROR_LOCATION_MASK;

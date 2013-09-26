@@ -403,7 +403,7 @@ static void __init omap_ldp_init(void)
 	omap_ads7846_init(1, 54, 310, NULL);
 	omap_serial_init();
 	omap_sdrc_init(NULL, NULL);
-	usb_bind_phy("musb-hdrc.0.auto", 0, "twl4030_usb");
+	usb_bind_phy("musb-hdrc.0", 0, "twl4030_usb");
 	usb_musb_init(NULL);
 	board_nand_init(ldp_nand_partitions, ARRAY_SIZE(ldp_nand_partitions),
 			ZOOM_NAND_CS, 0, nand_default_timings);

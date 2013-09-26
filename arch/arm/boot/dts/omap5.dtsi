@@ -259,6 +259,7 @@
 			ti,hwmods = "i2c1";
 			clocks = <&func_96m_fclk>;
 			clock-names = "fck";
+			status = "disabled";
 		};
 
 		i2c2: i2c@48072000 {
@@ -270,6 +271,7 @@
 			ti,hwmods = "i2c2";
 			clocks = <&func_96m_fclk>;
 			clock-names = "fck";
+			status = "disabled";
 		};
 
 		i2c3: i2c@48060000 {
@@ -281,6 +283,7 @@
 			ti,hwmods = "i2c3";
 			clocks = <&func_96m_fclk>;
 			clock-names = "fck";
+			status = "disabled";
 		};
 
 		i2c4: i2c@4807a000 {
@@ -292,6 +295,7 @@
 			ti,hwmods = "i2c4";
 			clocks = <&func_96m_fclk>;
 			clock-names = "fck";
+			status = "disabled";
 		};
 
 		i2c5: i2c@4807c000 {
@@ -303,6 +307,7 @@
 			ti,hwmods = "i2c5";
 			clocks = <&func_96m_fclk>;
 			clock-names = "fck";
+			status = "disabled";
 		};
 
 		mcspi1: spi@48098000 {
@@ -325,6 +330,7 @@
 			       <&sdma 42>;
 			dma-names = "tx0", "rx0", "tx1", "rx1",
 				    "tx2", "rx2", "tx3", "rx3";
+			status = "disabled";
 		};
 
 		mcspi2: spi@4809a000 {
@@ -342,6 +348,7 @@
 			       <&sdma 45>,
 			       <&sdma 46>;
 			dma-names = "tx0", "rx0", "tx1", "rx1";
+			status = "disabled";
 		};
 
 		mcspi3: spi@480b8000 {
@@ -356,6 +363,7 @@
 			ti,spi-num-cs = <2>;
 			dmas = <&sdma 15>, <&sdma 16>;
 			dma-names = "tx0", "rx0";
+			status = "disabled";
 		};
 
 		mcspi4: spi@480ba000 {
@@ -370,6 +378,7 @@
 			ti,spi-num-cs = <1>;
 			dmas = <&sdma 70>, <&sdma 71>;
 			dma-names = "tx0", "rx0";
+			status = "disabled";
 		};
 
 		uart1: serial@4806a000 {
@@ -380,6 +389,7 @@
 			clocks = <&func_48m_fclk>;
 			clock-names = "fck";
 			clock-frequency = <48000000>;
+			status = "disabled";
 		};
 
 		uart2: serial@4806c000 {
@@ -390,6 +400,7 @@
 			clocks = <&func_48m_fclk>;
 			clock-names = "fck";
 			clock-frequency = <48000000>;
+                        status = "disabled";
 		};
 
 		uart3: serial@48020000 {
@@ -400,6 +411,7 @@
 			clocks = <&func_48m_fclk>;
 			clock-names = "fck";
 			clock-frequency = <48000000>;
+                        status = "disabled";
 		};
 
 		uart4: serial@4806e000 {
@@ -410,6 +422,7 @@
 			clocks = <&func_48m_fclk>;
 			clock-names = "fck";
 			clock-frequency = <48000000>;
+			status = "disabled";
 		};
 
 		uart5: serial@48066000 {
@@ -420,6 +433,7 @@
 			clocks = <&func_48m_fclk>;
 			clock-names = "fck";
 			clock-frequency = <48000000>;
+			status = "disabled";
 		};
 
 		uart6: serial@48068000 {
@@ -430,6 +444,7 @@
 			clocks = <&func_48m_fclk>;
 			clock-names = "fck";
 			clock-frequency = <48000000>;
+			status = "disabled";
 		};
 
 		mmc1: mmc@4809c000 {
@@ -491,6 +506,50 @@
 			ti,needs-special-reset;
 			dmas = <&sdma 59>, <&sdma 60>;
 			dma-names = "tx", "rx";
+		};
+
+		omap_control_sata: control-phy@4a002374 {
+			compatible = "ti,control-phy-pipe3";
+			reg = <0x4a002374 0x4>;
+			reg-names = "power";
+			clocks = <&sys_clkin>;
+			clock-names = "sysclk";
+		};
+
+		ocp2scp@4a090000 {
+			compatible = "ti,omap-ocp2scp";
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges;
+			ti,hwmods = "ocp2scp3";
+			reg = <0x4a090000 0x1c>;	/* ocp2scp3 */
+			sata_phy: sata-phy@4A096000 {
+				compatible = "ti,phy-pipe3-sata";
+				reg = <0x4A096000 0x80>, /* phy_rx */
+				      <0x4A096400 0x64>, /* phy_tx */
+				      <0x4A096800 0x40>; /* pll_ctrl */
+				reg-names = "phy_rx", "phy_tx", "pll_ctrl";
+				ctrl-module = <&omap_control_sata>;
+				#phy-cells = <0>;
+				clocks = <&sata_ref_clk>;
+				clock-names = "refclk";
+			};
+		};
+
+		sata@4a141100 {
+			compatible = "ti,sata";
+			ti,hwmods = "sata";
+			reg = <0x4a141100 0x100>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges;
+			sata@4a140000 {
+				  compatible = "snps,dwc-ahci";
+				  reg = <0x4a140000 0x1100>;
+				  interrupts = <GIC_SPI 54 IRQ_TYPE_LEVEL_HIGH>;
+				  phys = <&sata_phy>;
+				  phy-names = "sata-phy";
+			};
 		};
 
 		keypad: keypad@4ae1c000 {
@@ -738,21 +797,25 @@
 			hw-caps-temp-alert;
 		};
 
-		omap_control_usb: omap-control-usb@4a002300 {
-			compatible = "ti,omap-control-usb";
-			reg = <0x4a002300 0x4>,
-			      <0x4a002370 0x4>;
-			reg-names = "control_dev_conf", "phy_power_usb";
-			ti,type = <2>;
+		omap_control_usb2phy: control-phy@4a002300 {
+			compatible = "ti,control-phy-usb2";
+			reg = <0x4a002300 0x4>;
+			reg-names = "power";
 		};
 
-		omap_dwc3@4a020000 {
+		omap_control_usb3phy: control-phy@4a002370 {
+			compatible = "ti,control-phy-pipe3";
+			reg = <0x4a002370 0x4>;
+			reg-names = "power";
+		};
+
+		usb3: omap_dwc3@4a020000 {
 			compatible = "ti,dwc3";
 			ti,hwmods = "usb_otg_ss";
 			clocks = <&dpll_core_h13x2_ck>, <&usb_otg_ss_refclk960m>;
 			clock-names = "fck", "refclk960m";
 			reg = <0x4a020000 0x10000>;
-			
+
 			interrupts = <GIC_SPI 93 IRQ_TYPE_LEVEL_HIGH>;
 			#address-cells = <1>;
 			#size-cells = <1>;
@@ -762,7 +825,10 @@
 				compatible = "snps,dwc3";
 				reg = <0x4a030000 0x10000>;
 				interrupts = <GIC_SPI 92 IRQ_TYPE_LEVEL_HIGH>;
-				usb-phy = <&usb2_phy>, <&usb3_phy>;
+				phys = <&usb2_phy>, <&usb3_phy>;
+				phy-names = "usb2-phy", "usb3-phy";
+				maximum-speed = "super-speed";
+				dr_mode = "peripheral";
 				tx-fifo-resize;
 			};
 		};
@@ -777,16 +843,26 @@
 			usb2_phy: usb2phy@4a084000 {
 				compatible = "ti,omap-usb2";
 				reg = <0x4a084000 0x7c>;
-				ctrl-module = <&omap_control_usb>;
+				ctrl-module = <&omap_control_usb2phy>;
+				clocks = <&usb_phy_cm_clk32k>, <&usb_otg_ss_refclk960m>;
+				clock-names = "wkupclk", "refclk";
+				#phy-cells = <0>;
 			};
 
 			usb3_phy: usb3phy@4a084400 {
-				compatible = "ti,omap-usb3";
+				compatible = "ti,phy-pipe3-usb3";
 				reg = <0x4a084400 0x80>,
 				      <0x4a084800 0x64>,
 				      <0x4a084c00 0x40>;
 				reg-names = "phy_rx", "phy_tx", "pll_ctrl";
-				ctrl-module = <&omap_control_usb>;
+				ctrl-module = <&omap_control_usb3phy>;
+				clocks = <&usb_phy_cm_clk32k>,
+					 <&usb_otg_ss_refclk960m>,
+					 <&dpll_core_h13x2_ck>;
+				clock-names =	"wkupclk",
+						"refclk",
+						"refclk2";
+				#phy-cells = <0>;
 			};
 		};
 
@@ -804,6 +880,8 @@
 			#address-cells = <1>;
 			#size-cells = <1>;
 			ranges;
+			clocks = <&l3init_60m_fclk>;
+			clock-names = "init_60m_fclk";
 
 			usbhsohci: ohci@4a064800 {
 				compatible = "ti,ohci-omap3", "usb-ohci";

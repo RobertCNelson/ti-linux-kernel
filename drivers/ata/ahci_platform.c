@@ -23,6 +23,7 @@
 #include <linux/platform_device.h>
 #include <linux/libata.h>
 #include <linux/ahci_platform.h>
+#include <linux/phy/phy.h>
 #include "ahci.h"
 
 static void ahci_host_stop(struct ata_host *host);
@@ -141,16 +142,32 @@ static int ahci_probe(struct platform_device *pdev)
 		}
 	}
 
+	hpriv->phy = devm_phy_get(dev, "sata-phy");
+	if (IS_ERR(hpriv->phy)) {
+		dev_dbg(dev, "can't get sata-phy\n");
+		/* return only if -EPROBE_DEFER */
+		if (PTR_ERR(hpriv->phy) == -EPROBE_DEFER) {
+			rc = -EPROBE_DEFER;
+			goto disable_unprepare_clk;
+		}
+	}
+
+	if (!IS_ERR(hpriv->phy)) {
+		phy_init(hpriv->phy);
+		phy_power_on(hpriv->phy);
+	}
+
 	/*
 	 * Some platforms might need to prepare for mmio region access,
 	 * which could be done in the following init call. So, the mmio
 	 * region shouldn't be accessed before init (if provided) has
 	 * returned successfully.
 	 */
+
 	if (pdata && pdata->init) {
 		rc = pdata->init(dev, hpriv->mmio);
 		if (rc)
-			goto disable_unprepare_clk;
+			goto disable_phy;
 	}
 
 	ahci_save_initial_config(dev, hpriv,
@@ -220,6 +237,12 @@ static int ahci_probe(struct platform_device *pdev)
 pdata_exit:
 	if (pdata && pdata->exit)
 		pdata->exit(dev);
+disable_phy:
+	if (!IS_ERR(hpriv->phy)) {
+		phy_power_off(hpriv->phy);
+		phy_exit(hpriv->phy);
+	}
+
 disable_unprepare_clk:
 	if (!IS_ERR(hpriv->clk))
 		clk_disable_unprepare(hpriv->clk);
@@ -237,6 +260,11 @@ static void ahci_host_stop(struct ata_host *host)
 
 	if (pdata && pdata->exit)
 		pdata->exit(dev);
+
+	if (!IS_ERR(hpriv->phy)) {
+		phy_power_off(hpriv->phy);
+		phy_exit(hpriv->phy);
+	}
 
 	if (!IS_ERR(hpriv->clk)) {
 		clk_disable_unprepare(hpriv->clk);
@@ -328,6 +356,7 @@ static SIMPLE_DEV_PM_OPS(ahci_pm_ops, ahci_suspend, ahci_resume);
 static const struct of_device_id ahci_of_match[] = {
 	{ .compatible = "snps,spear-ahci", },
 	{ .compatible = "snps,exynos5440-ahci", },
+	{ .compatible = "snps,dwc-ahci", },
 	{},
 };
 MODULE_DEVICE_TABLE(of, ahci_of_match);

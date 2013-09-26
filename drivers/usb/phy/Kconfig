@@ -56,38 +56,6 @@ config NOP_USB_XCEIV
 	  built-in with usb ip or which are autonomous and doesn't require any
 	  phy programming such as ISP1x04 etc.
 
-config OMAP_CONTROL_USB
-	tristate "OMAP CONTROL USB Driver"
-	depends on ARCH_OMAP2PLUS || COMPILE_TEST
-	help
-	  Enable this to add support for the USB part present in the control
-	  module. This driver has API to power on the USB2 PHY and to write to
-	  the mailbox. The mailbox is present only in omap4 and the register to
-	  power on the USB2 PHY is present in OMAP4 and OMAP5. OMAP5 has an
-	  additional register to power on USB3 PHY.
-
-config OMAP_USB2
-	tristate "OMAP USB2 PHY Driver"
-	depends on ARCH_OMAP2PLUS
-	select OMAP_CONTROL_USB
-	select USB_PHY
-	help
-	  Enable this to support the transceiver that is part of SOC. This
-	  driver takes care of all the PHY functionality apart from comparator.
-	  The USB OTG controller communicates with the comparator using this
-	  driver.
-
-config OMAP_USB3
-	tristate "OMAP USB3 PHY Driver"
-	depends on ARCH_OMAP2PLUS || COMPILE_TEST
-	select OMAP_CONTROL_USB
-	select USB_PHY
-	help
-	  Enable this to support the USB3 PHY that is part of SOC. This
-	  driver takes care of all the PHY functionality apart from comparator.
-	  This driver interacts with the "OMAP Control USB Driver" to power
-	  on/off the PHY.
-
 config AM335X_CONTROL_USB
 	tristate
 
@@ -122,16 +90,6 @@ config SAMSUNG_USB3PHY
 	help
 	  Enable this to support Samsung USB 3.0 (Super Speed) phy controller
 	  for samsung SoCs.
-
-config TWL4030_USB
-	tristate "TWL4030 USB Transceiver Driver"
-	depends on TWL4030_CORE && REGULATOR_TWL4030 && USB_MUSB_OMAP2PLUS
-	select USB_PHY
-	help
-	  Enable this to support the USB OTG transceiver on TWL4030
-	  family chips (including the TWL5030 and TPS659x0 devices).
-	  This transceiver supports high and full speed devices plus,
-	  in host mode, low speed.
 
 config TWL6030_USB
 	tristate "TWL6030 USB Transceiver Driver"

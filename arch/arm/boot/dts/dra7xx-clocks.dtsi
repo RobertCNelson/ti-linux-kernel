@@ -1179,6 +1179,14 @@ l3init_60m_fclk: l3init_60m_fclk@4a008104 {
 	bit-mask = <0x1>;
 };
 
+l3init_960m_gfclk: l3init_960m_gfclk@4a0086c0 {
+	#clock-cells = <0>;
+	compatible = "gate-clock";
+	clocks = <&dpll_usb_clkdcoldo>;
+	bit-shift = <8>;
+	reg = <0x4a0086c0 0x4>;
+};
+
 l4_root_clk_div: l4_root_clk_div {
 	#clock-cells = <0>;
 	compatible = "fixed-factor-clock";
@@ -1433,7 +1441,7 @@ sata_ref_clk: sata_ref_clk@4a009388 {
 usb_otg_ss1_refclk960m: usb_otg_ss1_refclk960m@4a0093f0 {
 	#clock-cells = <0>;
 	compatible = "gate-clock";
-	clocks = <&dpll_usb_clkdcoldo>;
+	clocks = <&l3init_960m_gfclk>;
 	bit-shift = <8>;
 	reg = <0x4a0093f0 0x4>;
 };
@@ -1441,7 +1449,7 @@ usb_otg_ss1_refclk960m: usb_otg_ss1_refclk960m@4a0093f0 {
 usb_otg_ss2_refclk960m: usb_otg_ss2_refclk960m@4a009340 {
 	#clock-cells = <0>;
 	compatible = "gate-clock";
-	clocks = <&dpll_usb_clkdcoldo>;
+	clocks = <&l3init_960m_gfclk>;
 	bit-shift = <8>;
 	reg = <0x4a009340 0x4>;
 };

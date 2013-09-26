@@ -511,7 +511,7 @@ static void __init overo_init(void)
 				  mt46h32m32lf6_sdrc_params);
 	board_nand_init(overo_nand_partitions,
 			ARRAY_SIZE(overo_nand_partitions), NAND_CS, 0, NULL);
-	usb_bind_phy("musb-hdrc.0.auto", 0, "twl4030_usb");
+	usb_bind_phy("musb-hdrc.0", 0, "twl4030_usb");
 	usb_musb_init(NULL);
 
 	usbhs_init_phys(phy_data, ARRAY_SIZE(phy_data));

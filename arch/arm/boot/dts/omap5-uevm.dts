@@ -27,45 +27,19 @@
 		regulator-max-microvolt = <3000000>;
 	};
 
-	/* HS USB Port 2 RESET */
-	hsusb2_reset: hsusb2_reset_reg {
-		compatible = "regulator-fixed";
-		regulator-name = "hsusb2_reset";
-		regulator-min-microvolt = <3300000>;
-		regulator-max-microvolt = <3300000>;
-		gpio = <&gpio3 16 GPIO_ACTIVE_HIGH>; /* gpio3_80 HUB_NRESET */
-		startup-delay-us = <70000>;
-		enable-active-high;
-	};
-
 	/* HS USB Host PHY on PORT 2 */
 	hsusb2_phy: hsusb2_phy {
 		compatible = "usb-nop-xceiv";
-		reset-supply = <&hsusb2_reset>;
-	/**
-	  * FIXME
-	  * Put the right clock phandle here when available
-	  *	clocks = <&auxclk1>;
-	  *	clock-names = "main_clk";
-	  */
+		reset-gpios = <&gpio3 16 GPIO_ACTIVE_LOW>; /* gpio3_80 HUB_NRESET */
+		clocks = <&auxclk1_ck>;
+		clock-names = "main_clk";
 		clock-frequency = <19200000>;
-	};
-
-	/* HS USB Port 3 RESET */
-	hsusb3_reset: hsusb3_reset_reg {
-		compatible = "regulator-fixed";
-		regulator-name = "hsusb3_reset";
-		regulator-min-microvolt = <3300000>;
-		regulator-max-microvolt = <3300000>;
-		gpio = <&gpio3 15 GPIO_ACTIVE_HIGH>; /* gpio3_79 ETH_NRESET */
-		startup-delay-us = <70000>;
-		enable-active-high;
 	};
 
 	/* HS USB Host PHY on PORT 3 */
 	hsusb3_phy: hsusb3_phy {
 		compatible = "usb-nop-xceiv";
-		reset-supply = <&hsusb3_reset>;
+		reset-gpios = <&gpio3 15 GPIO_ACTIVE_LOW>; /* gpio3_79 ETH_NRESET */
 	};
 
 	leds {
@@ -145,6 +119,12 @@
 		pinctrl-single,pins = <
 			0x184 (PIN_INPUT | MUX_MODE0)		/* i2c5_scl */
 			0x186 (PIN_INPUT | MUX_MODE0)		/* i2c5_sda */
+		>;
+	};
+
+	mmc1_pins: pinmux_mmc1_pins {
+		pinctrl-single,pins = <
+			0x194 (PIN_INPUT | MUX_MODE6)		/* gpio5_152  */
 		>;
 	};
 
@@ -235,8 +215,11 @@
 };
 
 &mmc1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&mmc1_pins>;
 	vmmc-supply = <&ldo9_reg>;
 	bus-width = <4>;
+	cd-gpios = <&gpio5 24 0>; /* gpio 152 */
 };
 
 &mmc2 {
@@ -259,6 +242,7 @@
 };
 
 &i2c1 {
+	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c1_pins>;
 
@@ -271,6 +255,13 @@
 		reg = <0x48>;
 		interrupt-controller;
 		#interrupt-cells = <2>;
+
+		extcon_usb3: palmas_usb {
+			compatible = "ti,palmas-usb-vid";
+			ti,enable-vbus-detection;
+			ti,enable-id-detection;
+			ti,wakeup;
+		};
 
 		palmas_pmic {
 			compatible = "ti,palmas-pmic";
@@ -334,13 +325,20 @@
 					ti,smps-range = <0x80>;
 				};
 
-				smps10_reg: smps10 {
+				smps10_out2_reg: smps10_out2 {
 					/* VBUS_5V_OTG */
-					regulator-name = "smps10";
+					regulator-name = "smps10_out2";
 					regulator-min-microvolt = <5000000>;
 					regulator-max-microvolt = <5000000>;
 					regulator-always-on;
 					regulator-boot-on;
+				};
+
+				smps10_out1_reg: smps10_out1 {
+					/* VBUS_5V_OTG */
+					regulator-name = "smps10_out1";
+					regulator-min-microvolt = <5000000>;
+					regulator-max-microvolt = <5000000>;
 				};
 
 				ldo1_reg: ldo1 {
@@ -451,6 +449,7 @@
 };
 
 &i2c5 {
+	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c5_pins>;
 
@@ -470,36 +469,47 @@
 	phys = <0 &hsusb2_phy &hsusb3_phy>;
 };
 
-&mcspi1 {
+&usb3 {
+	extcon = <&extcon_usb3>;
+	vbus-supply = <&smps10_out1_reg>;
+};
 
+&mcspi1 {
+	status = "okay";
 };
 
 &mcspi2 {
+	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&mcspi2_pins>;
 };
 
 &mcspi3 {
+	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&mcspi3_pins>;
 };
 
 &mcspi4 {
+	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&mcspi4_pins>;
 };
 
 &uart1 {
+	status = "okay";
         pinctrl-names = "default";
         pinctrl-0 = <&uart1_pins>;
 };
 
 &uart3 {
+	status = "okay";
         pinctrl-names = "default";
         pinctrl-0 = <&uart3_pins>;
 };
 
 &uart5 {
+	status = "okay";
         pinctrl-names = "default";
         pinctrl-0 = <&uart5_pins>;
 };
