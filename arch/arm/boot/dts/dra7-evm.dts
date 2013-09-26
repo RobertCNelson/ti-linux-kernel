@@ -27,6 +27,13 @@
 		compatible = "ti,gpio-usb-id";
 		gpios = <&gpio21 2 0>;
 	};
+
+	mmc2_3v3: fixedregulator-mmc2 {
+		compatible = "regulator-fixed";
+		regulator-name = "mmc2_3v3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+	};
 };
 
 &dra7_pmx_core {
@@ -348,4 +355,17 @@
 
 &dwc3_2 {
 	extcon = <&extcon2>;
+};
+
+&mmc1 {
+	status = "okay";
+	vmmc-supply = <&ldo1_reg>;
+	bus-width = <4>;
+};
+
+&mmc2 {
+	status = "okay";
+	vmmc-supply = <&mmc2_3v3>;
+	bus-width = <8>;
+	ti,non-removable;
 };
