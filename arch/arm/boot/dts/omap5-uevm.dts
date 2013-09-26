@@ -122,6 +122,12 @@
 		>;
 	};
 
+	mmc1_pins: pinmux_mmc1_pins {
+		pinctrl-single,pins = <
+			0x194 (PIN_INPUT | MUX_MODE6)		/* gpio5_152  */
+		>;
+	};
+
 	mcspi2_pins: pinmux_mcspi2_pins {
 		pinctrl-single,pins = <
 			0xbc (PIN_INPUT | MUX_MODE0)		/*  mcspi2_clk */
@@ -209,8 +215,11 @@
 };
 
 &mmc1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&mmc1_pins>;
 	vmmc-supply = <&ldo9_reg>;
 	bus-width = <4>;
+	cd-gpios = <&gpio5 24 0>; /* gpio 152 */
 };
 
 &mmc2 {
