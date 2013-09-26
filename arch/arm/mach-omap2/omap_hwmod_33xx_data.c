@@ -2319,8 +2319,7 @@ static struct omap_hwmod_ocp_if am33xx_l3_s__mmc2 = {
 	.user		= OCP_USER_MPU,
 };
 
-/* l3_main_1 -> qspi */
-static struct omap_hwmod_ocp_if am33xx_l3_s__qspi = {
+static struct omap_hwmod_ocp_if am43xx_l3_s__qspi = {
 	.master         = &am33xx_l3_s_hwmod,
 	.slave          = &am43xx_qspi_hwmod,
 	.clk            = "l3s_gclk",
@@ -2979,6 +2978,7 @@ static struct omap_hwmod_ocp_if *am43xx_hwmod_ocp_ifs[] __initdata = {
 	&am43xx_l4_ls__gpio5,
 	&am43xx_l3_main__pruss,
 	&am43xx_l3_main__des,
+	&am43xx_l3_s__qspi,
 	NULL,
 };
 
@@ -3028,7 +3028,6 @@ static struct omap_hwmod_ocp_if *amx3xx_hwmod_ocp_ifs[] __initdata = {
 	&am33xx_l4_ls__mmc0,
 	&am33xx_l4_ls__mmc1,
 	&am33xx_l3_s__mmc2,
-	&am33xx_l3_s__qspi,
 	&am33xx_l4_ls__timer2,
 	&am33xx_l4_ls__timer3,
 	&am33xx_l4_ls__timer4,
