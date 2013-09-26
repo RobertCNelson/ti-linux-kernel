@@ -349,3 +349,9 @@
 &dwc3_2 {
 	extcon = <&extcon2>;
 };
+
+&mmc1 {
+	status = "okay";
+	vmmc-supply = <&ldo1_reg>;
+	bus-width = <4>;
+};
