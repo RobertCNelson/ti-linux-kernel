@@ -676,6 +676,13 @@
 			clock-names = "fck";
 		};
 
+		dmm: dmm@4e000000 {
+			compatible = "ti,omap5-dmm";
+			reg = <0x4e000000 0x800>;
+			interrupts = <0 113 0x4>;
+			ti,hwmods = "dmm";
+		};
+
 		dss: dss@58000000 {
 			compatible = "ti,omap4-dss", "simple-bus";
 			reg = <0x58000000 0x80>,
