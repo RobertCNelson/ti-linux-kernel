@@ -850,6 +850,45 @@
 			clocks = <&rng_fck>;
 			clock-names = "fck";
 		};
+
+		lcdc: lcdc@0x4830e000 {
+			compatible = "ti,am33xx-tilcdc";
+			reg = <0x4830e000 0x1000>;
+			interrupt-parent = <&intc>;
+			interrupts = <36>;
+			clocks = <&lcd_gclk>;
+			clock-names = "fck";
+			ti,hwmods = "lcdc";
+			status = "disabled";
+		};
+
+		mcasp0: mcasp@48038000 {
+			compatible = "ti,omap2-mcasp-audio";
+			ti,hwmods = "mcasp0";
+			reg = <0x48038000 0x2000>,
+			      <0x46400000 0x400000>;
+			reg-names = "mpu", "dma";
+			interrupts = <80 81>;
+			interrupts-names = "tx", "rx";
+			status = "disabled";
+			dmas = <&edma 8
+				&edma 9>;
+			dma-names = "tx", "rx";
+		};
+
+		mcasp1: mcasp@4803C000 {
+			compatible = "ti,omap2-mcasp-audio";
+			ti,hwmods = "mcasp1";
+			reg = <0x4803C000 0x2000>,
+			      <0x46400000 0x400000>;
+			reg-names = "mpu", "dma";
+			interrupts = <82 83>;
+			interrupts-names = "tx", "rx";
+			status = "disabled";
+			dmas = <&edma 10
+				&edma 11>;
+			dma-names = "tx", "rx";
+		};
 	};
 
 	clocks {

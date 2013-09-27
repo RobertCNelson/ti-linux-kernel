@@ -12,6 +12,8 @@
 #ifndef DA8XX_FB_H
 #define DA8XX_FB_H
 
+#include <linux/fb.h>
+
 enum panel_shade {
 	MONOCHROME = 0,
 	COLOR_ACTIVE,
@@ -90,6 +92,23 @@ struct lcd_sync_arg {
 
 /* Proprietary FB_SYNC_ flags */
 #define FB_SYNC_CLK_INVERT 0x40000000
+
+struct da8xx_encoder {
+	struct list_head list;  /* internal use only */
+	struct i2c_client *client;
+	void *priv;
+	void (*set_mode)(struct da8xx_encoder *encoder,
+			struct fb_videomode *panel);
+	struct device_node *node;
+};
+
+void da8xx_register_encoder(struct da8xx_encoder *encoder);
+void da8xx_unregister_encoder(struct da8xx_encoder *encoder);
+
+
+typedef void (*vsync_callback_t)(void *arg);
+int register_vsync_cb(vsync_callback_t handler, void *arg, int idx);
+int unregister_vsync_cb(vsync_callback_t handler, void *arg, int idx);
 
 #endif  /* ifndef DA8XX_FB_H */
 
