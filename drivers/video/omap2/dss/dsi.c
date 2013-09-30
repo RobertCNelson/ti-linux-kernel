@@ -5092,6 +5092,7 @@ static enum omap_channel dsi_get_channel(int module_id)
 	case OMAPDSS_VER_OMAP34xx_ES3:
 	case OMAPDSS_VER_OMAP3630:
 	case OMAPDSS_VER_AM35xx:
+	case OMAPDSS_VER_AM43xx:
 		return OMAP_DSS_CHANNEL_LCD;
 
 	case OMAPDSS_VER_OMAP4430_ES1:

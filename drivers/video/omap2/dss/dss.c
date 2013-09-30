@@ -837,6 +837,13 @@ static const struct dss_features dra7xx_dss_feats __initconst = {
 	.dpll_clks		=	true,
 };
 
+static const struct dss_features am4xxx_dss_feats __initconst = {
+	.fck_div_max		=	16,
+	.dss_fck_multiplier	=	1,
+	.clk_name		=	NULL,
+	.dpi_select_source	=	&dss_dpi_select_source_omap2_omap3,
+};
+
 static int __init dss_init_features(struct platform_device *pdev)
 {
 	const struct dss_features *src;
@@ -875,6 +882,10 @@ static int __init dss_init_features(struct platform_device *pdev)
 
 	case OMAPDSS_VER_DRA7xx:
 		src = &dra7xx_dss_feats;
+		break;
+
+	case OMAPDSS_VER_AM43xx:
+		src = &am4xxx_dss_feats;
 		break;
 
 	default:
