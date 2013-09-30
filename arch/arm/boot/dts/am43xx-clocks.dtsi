@@ -61,7 +61,7 @@ tclkin_ck: tclkin_ck {
 
 dpll_core_ck: dpll_core_ck@44df2d20 {
 	#clock-cells = <0>;
-	compatible = "ti,omap4-dpll-core-lock";
+	compatible = "ti,omap4-dpll-core-clock";
 	clocks = <&sys_clkin_ck>, <&sys_clkin_ck>;
 	reg = <0x44df2d20 0x4>, <0x44df2d24 0x4>, <0x44df2d2c 0x4>;
 	reg-names = "control", "idlest", "mult-div1";
