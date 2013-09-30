@@ -3010,7 +3010,7 @@ static struct omap_hwmod_ocp_if *amx3xx_hwmod_ocp_ifs[] __initdata = {
 	&am33xx_l4_wkup__smartreflex1,
 	&am33xx_l4_wkup__uart1,
 	&am33xx_l4_wkup__timer1,
-	&am33xx_l4_wkup__rtc,
+	//&am33xx_l4_wkup__rtc,
 	&am33xx_l4_wkup__i2c1,
 	&am33xx_l4_wkup__gpio0,
 	&am33xx_l4_wkup__adc_tsc,
