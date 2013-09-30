@@ -156,6 +156,37 @@
 				0x0203006c	/* DOWN */
 				0x03030069>;	/* LEFT */
 		};
+
+	aliases {
+		display0 = &lcd0;
+		display1 = &hdmi0;
+	};
+
+	lcd0: display@0 {
+		compatible = "osddisplays,osd057T0559-34ts", "panel-dpi";
+		video-source = <&dpi>;
+		data-lines = <24>;
+		panel-timing {
+			clock-frequency = <33000000>;
+			hactive = <800>;
+			vactive = <480>;
+			hfront-porch = <210>;
+			hback-porch = <16>;
+			hsync-len = <30>;
+			vback-porch = <10>;
+			vfront-porch = <22>;
+			vsync-len = <13>;
+			hsync-active = <0>;
+			vsync-active = <0>;
+			de-active = <1>;
+			pixelclk-active = <1>;
+		};
+	};
+	hdmi0: connector@1 {
+		compatible = "ti,hdmi_connector";
+		video-source = <&sii9022>;
+	};
+
 };
 
 &qspi {
@@ -228,6 +259,14 @@
 
 		x-size = <1024>;
 		y-size = <768>;
+	};
+
+	sii9022: sii9022@3b {
+		compatible = "sii,sii9022";
+		reg = <0x3b>;
+		gpios = <&gpio2 1 0>;	/* 65, Mode 7 PINMUX 'SelLCDorHDMI' Gpio */
+		video-source = <&dpi>;
+		data-lines = <24>;
 	};
 };
 
