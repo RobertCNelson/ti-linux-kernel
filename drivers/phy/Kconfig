@@ -37,6 +37,19 @@ config OMAP_USB2
 	  The USB OTG controller communicates with the comparator using this
 	  driver.
 
+config AM43XX_USB
+	tristate "AM43XX USB PHY Driver"
+	depends on ARCH_OMAP2PLUS
+	select GENERIC_PHY
+	select USB_PHY
+	select OMAP_CONTROL_PHY
+	help
+	  Enable this to support the transceiver that is part of AM43xx SOC. This
+	  driver takes care of all the PHY functionality.
+	  The USB OTG controller communicates with the comparator using this
+	  driver.
+
+
 config OMAP_PIPE3
 	tristate "OMAP PIPE3 PHY Driver"
 	select GENERIC_PHY

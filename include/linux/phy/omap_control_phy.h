@@ -24,6 +24,7 @@ enum omap_control_phy_type {
 	OMAP_CTRL_TYPE_USB2,	/* USB2_PHY, power down in CONTROL_DEV_CONF */
 	OMAP_CTRL_TYPE_PIPE3,	/* PIPE3 PHY, DPLL & seperate Rx/Tx power */
 	OMAP_CTRL_TYPE_DRA7USB2, /* USB2 PHY, power and power_aux e.g. DRA7 */
+	OMAP_CTRL_TYPE_AM43USB2, /* USB2 PHY, power and power_aux e.g. AM43 */
 };
 
 struct omap_control_phy {
@@ -63,6 +64,8 @@ enum omap_control_usb_mode {
 #define	OMAP_CTRL_PIPE3_PHY_TX_RX_POWEROFF	0x0
 
 #define OMAP_CTRL_USB2_PHY_PD		BIT(28)
+
+#define AM43XX_CTRL_USB2_PHY_PD		BIT(0)
 
 #if IS_ENABLED(CONFIG_OMAP_CONTROL_PHY)
 extern void omap_control_phy_power(struct device *dev, int on);
