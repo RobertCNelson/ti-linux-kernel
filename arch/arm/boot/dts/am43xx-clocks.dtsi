@@ -687,3 +687,31 @@ usbphy_32khz_clkmux: usbphy_32khz_clkmux@44df4260 {
 	reg = <0x44df4260 0x4>;
 	bit-mask = <0x1>;
 };
+
+usb_otg_ss0_refclk960m: usb_otg_ss0_refclk960m@44df8a60 {
+	#clock-cells = <0>;
+	compatible = "gate-clock";
+	clocks = <&dpll_per_clkdcoldo>;
+	bit-shift = <8>;
+	reg = <0x44df8a60 0x4>;
+};
+
+usb_otg_ss1_refclk960m: usb_otg_ss1_refclk960m@44df8a68 {
+	#clock-cells = <0>;
+	compatible = "gate-clock";
+	clocks = <&dpll_per_clkdcoldo>;
+	bit-shift = <8>;
+	reg = <0x44df8a68 0x4>;
+};
+
+usb_phy1_always_on_clk32k: usb_phy1_always_on_clk32k {
+	#clock-cells = <0>;
+	compatible = "fixed-clock";
+	clocks = <&clk_32768_ck>;
+};
+
+usb_phy2_always_on_clk32k: usb_phy2_always_on_clk32k {
+	#clock-cells = <0>;
+	compatible = "fixed-clock";
+	clocks = <&clk_32768_ck>;
+};
