@@ -674,3 +674,19 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart0_pins>;
 };
+
+&mcasp1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&mcasp1_pins>;
+
+	status = "okay";
+
+	op-mode = <0>;		/* MCASP_IIS_MODE */
+	tdm-slots = <2>;
+	/* 4 serializer */
+	serial-dir = <	/* 0: INACTIVE, 1: TX, 2: RX */
+		1 2 0 0
+	>;
+	tx-num-evt = <1>;
+	rx-num-evt = <1>;
+};
