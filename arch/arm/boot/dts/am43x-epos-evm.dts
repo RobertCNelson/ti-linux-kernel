@@ -22,8 +22,6 @@
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
 		enable-active-high;
-/*		gpio = <&pmic 3 0>;		 */
-/*		uncomment after adding pmic node */
 	};
 };
 
