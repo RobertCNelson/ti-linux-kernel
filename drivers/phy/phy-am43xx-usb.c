@@ -36,7 +36,7 @@ struct am43xx_usb {
 	u32		id;
 };
 
-#define phy_to_am43xxphy(x)	container_of((x), struct amxxxx_phy, phy)
+#define phy_to_am43xxphy(x)	container_of((x), struct am43xx_phy, phy)
 
 
 static int am43xx_usb_set_host(struct usb_otg *otg, struct usb_bus *host)
