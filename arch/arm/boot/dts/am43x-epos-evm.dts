@@ -116,3 +116,7 @@
 	phy_id = <&davinci_mdio>, <1>;
 	phy-mode = "rmii";
 };
+
+&i2c0 {
+	status = "okay";
+};
