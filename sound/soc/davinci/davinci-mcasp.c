@@ -37,6 +37,16 @@
 #include "davinci-pcm.h"
 #include "davinci-mcasp.h"
 
+struct davinci_mcasp_context {
+	u32	txfmtctl;
+	u32	rxfmtctl;
+	u32	txfmt;
+	u32	rxfmt;
+	u32	aclkxctl;
+	u32	aclkrctl;
+	u32	pdir;
+};
+
 struct davinci_mcasp {
 	struct davinci_pcm_dma_params dma_params[2];
 	struct snd_dmaengine_dai_dma_data dma_data[2];
@@ -58,6 +68,10 @@ struct davinci_mcasp {
 	u8	rxnumevt;
 
 	bool	dat_port;
+
+#ifdef CONFIG_PM_SLEEP
+	struct davinci_mcasp_context context;
+#endif
 };
 
 static inline void mcasp_set_bits(struct davinci_mcasp *mcasp, u32 offset,
@@ -1117,12 +1131,51 @@ static int davinci_mcasp_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_PM_SLEEP
+static int davinci_mcasp_suspend(struct device *dev)
+{
+	struct davinci_mcasp *mcasp = dev_get_drvdata(dev);
+	struct davinci_mcasp_context *context = &mcasp->context;
+
+	context->txfmtctl = mcasp_get_reg(mcasp, DAVINCI_MCASP_TXFMCTL_REG);
+	context->rxfmtctl = mcasp_get_reg(mcasp, DAVINCI_MCASP_RXFMCTL_REG);
+	context->txfmt = mcasp_get_reg(mcasp, DAVINCI_MCASP_TXFMT_REG);
+	context->rxfmt = mcasp_get_reg(mcasp, DAVINCI_MCASP_RXFMT_REG);
+	context->aclkxctl = mcasp_get_reg(mcasp, DAVINCI_MCASP_ACLKXCTL_REG);
+	context->aclkrctl = mcasp_get_reg(mcasp, DAVINCI_MCASP_ACLKRCTL_REG);
+	context->pdir = mcasp_get_reg(mcasp, DAVINCI_MCASP_PDIR_REG);
+
+	return 0;
+}
+
+static int davinci_mcasp_resume(struct device *dev)
+{
+	struct davinci_mcasp *mcasp = dev_get_drvdata(dev);
+	struct davinci_mcasp_context *context = &mcasp->context;
+
+	mcasp_set_reg(mcasp, DAVINCI_MCASP_TXFMCTL_REG, context->txfmtctl);
+	mcasp_set_reg(mcasp, DAVINCI_MCASP_RXFMCTL_REG, context->rxfmtctl);
+	mcasp_set_reg(mcasp, DAVINCI_MCASP_TXFMT_REG, context->txfmt);
+	mcasp_set_reg(mcasp, DAVINCI_MCASP_RXFMT_REG, context->rxfmt);
+	mcasp_set_reg(mcasp, DAVINCI_MCASP_ACLKXCTL_REG, context->aclkxctl);
+	mcasp_set_reg(mcasp, DAVINCI_MCASP_ACLKRCTL_REG, context->aclkrctl);
+	mcasp_set_reg(mcasp, DAVINCI_MCASP_PDIR_REG, context->pdir);
+
+	return 0;
+}
+#endif
+
+SIMPLE_DEV_PM_OPS(davinci_mcasp_pm_ops,
+		  davinci_mcasp_suspend,
+		  davinci_mcasp_resume);
+
 static struct platform_driver davinci_mcasp_driver = {
 	.probe		= davinci_mcasp_probe,
 	.remove		= davinci_mcasp_remove,
 	.driver		= {
 		.name	= "davinci-mcasp",
 		.owner	= THIS_MODULE,
+		.pm	= &davinci_mcasp_pm_ops,
 		.of_match_table = mcasp_dt_ids,
 	},
 };
