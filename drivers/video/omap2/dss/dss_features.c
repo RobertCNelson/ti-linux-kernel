@@ -174,6 +174,20 @@ static const enum omap_display_type omap5_dss_supported_displays[] = {
 	OMAP_DISPLAY_TYPE_DSI,
 };
 
+static const enum omap_display_type dra7xx_dss_supported_displays[] = {
+	/* OMAP_DSS_CHANNEL_LCD */
+	OMAP_DISPLAY_TYPE_DPI,
+
+	/* OMAP_DSS_CHANNEL_DIGIT */
+	OMAP_DISPLAY_TYPE_HDMI | OMAP_DISPLAY_TYPE_DPI,
+
+	/* OMAP_DSS_CHANNEL_LCD2 */
+	OMAP_DISPLAY_TYPE_DPI,
+
+	/* OMAP_DSS_CHANNEL_LCD3 */
+	OMAP_DISPLAY_TYPE_DPI,
+};
+
 static const enum omap_dss_output_id omap2_dss_supported_outputs[] = {
 	/* OMAP_DSS_CHANNEL_LCD */
 	OMAP_DSS_OUTPUT_DPI | OMAP_DSS_OUTPUT_DBI,
@@ -227,6 +241,20 @@ static const enum omap_dss_output_id omap5_dss_supported_outputs[] = {
 	/* OMAP_DSS_CHANNEL_LCD3 */
 	OMAP_DSS_OUTPUT_DPI | OMAP_DSS_OUTPUT_DBI |
 	OMAP_DSS_OUTPUT_DSI2,
+};
+
+static const enum omap_dss_output_id dra7xx_dss_supported_outputs[] = {
+	/* OMAP_DSS_CHANNEL_LCD */
+	OMAP_DSS_OUTPUT_DPI,
+
+	/* OMAP_DSS_CHANNEL_DIGIT */
+	OMAP_DSS_OUTPUT_HDMI | OMAP_DSS_OUTPUT_DPI,
+
+	/* OMAP_DSS_CHANNEL_LCD2 */
+	OMAP_DSS_OUTPUT_DPI | OMAP_DSS_OUTPUT_DPI1,
+
+	/* OMAP_DSS_CHANNEL_LCD3 */
+	OMAP_DSS_OUTPUT_DPI | OMAP_DSS_OUTPUT_DPI2,
 };
 
 static const enum omap_color_mode omap2_dss_supported_color_modes[] = {
@@ -789,49 +817,26 @@ static const struct omap_dss_features omap5_dss_features = {
 	.burst_size_unit = 16,
 };
 
-#if defined(CONFIG_OMAP4_DSS_HDMI)
-/* HDMI OMAP4 Functions*/
-static const struct ti_hdmi_ip_ops omap4_hdmi_functions = {
+/* DRA DSS Features */
+static const struct omap_dss_features dra7xx_dss_features = {
+	.reg_fields = omap5_dss_reg_fields,
+	.num_reg_fields = ARRAY_SIZE(omap5_dss_reg_fields),
 
-	.video_configure	=	ti_hdmi_4xxx_basic_configure,
-	.phy_enable		=	ti_hdmi_4xxx_phy_enable,
-	.phy_disable		=	ti_hdmi_4xxx_phy_disable,
-	.read_edid		=	ti_hdmi_4xxx_read_edid,
-	.pll_enable		=	ti_hdmi_4xxx_pll_enable,
-	.pll_disable		=	ti_hdmi_4xxx_pll_disable,
-	.video_enable		=	ti_hdmi_4xxx_wp_video_start,
-	.video_disable		=	ti_hdmi_4xxx_wp_video_stop,
-	.dump_wrapper		=	ti_hdmi_4xxx_wp_dump,
-	.dump_core		=	ti_hdmi_4xxx_core_dump,
-	.dump_pll		=	ti_hdmi_4xxx_pll_dump,
-	.dump_phy		=	ti_hdmi_4xxx_phy_dump,
-#if defined(CONFIG_OMAP4_DSS_HDMI_AUDIO)
-	.audio_enable		=       ti_hdmi_4xxx_wp_audio_enable,
-	.audio_disable		=       ti_hdmi_4xxx_wp_audio_disable,
-	.audio_start		=       ti_hdmi_4xxx_audio_start,
-	.audio_stop		=       ti_hdmi_4xxx_audio_stop,
-	.audio_config		=	ti_hdmi_4xxx_audio_config,
-	.audio_get_dma_port	=	ti_hdmi_4xxx_audio_get_dma_port,
-#endif
+	.features = omap5_dss_feat_list,
+	.num_features = ARRAY_SIZE(omap5_dss_feat_list),
 
+	.num_mgrs = 4,
+	.num_ovls = 4,
+	.supported_displays = dra7xx_dss_supported_displays,
+	.supported_outputs = dra7xx_dss_supported_outputs,
+	.supported_color_modes = omap4_dss_supported_color_modes,
+	.overlay_caps = omap4_dss_overlay_caps,
+	.clksrc_names = omap5_dss_clk_source_names,
+	.dss_params = omap5_dss_param_range,
+	.supported_rotation_types = OMAP_DSS_ROT_DMA | OMAP_DSS_ROT_TILER,
+	.buffer_size_unit = 16,
+	.burst_size_unit = 16,
 };
-
-void dss_init_hdmi_ip_ops(struct hdmi_ip_data *ip_data,
-		enum omapdss_version version)
-{
-	switch (version) {
-	case OMAPDSS_VER_OMAP4430_ES1:
-	case OMAPDSS_VER_OMAP4430_ES2:
-	case OMAPDSS_VER_OMAP4:
-		ip_data->ops = &omap4_hdmi_functions;
-		break;
-	default:
-		ip_data->ops = NULL;
-	}
-
-	WARN_ON(ip_data->ops == NULL);
-}
-#endif
 
 /* Functions returning values related to a DSS feature */
 int dss_feat_get_num_mgrs(void)
@@ -965,6 +970,10 @@ void dss_features_init(enum omapdss_version version)
 
 	case OMAPDSS_VER_OMAP5:
 		omap_current_dss_features = &omap5_dss_features;
+		break;
+
+	case OMAPDSS_VER_DRA7xx:
+		omap_current_dss_features = &dra7xx_dss_features;
 		break;
 
 	case OMAPDSS_VER_AM35xx:

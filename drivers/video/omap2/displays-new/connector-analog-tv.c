@@ -12,6 +12,7 @@
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/of.h>
 
 #include <video/omapdss.h>
 #include <video/omap-panel-data.h>
@@ -40,6 +41,12 @@ static const struct omap_video_timings tvc_pal_timings = {
 	.vbp		= 41,
 
 	.interlace	= true,
+};
+
+static const struct of_device_id tvc_of_match[];
+
+struct tvc_of_data {
+	enum omap_dss_venc_type connector_type;
 };
 
 #define to_panel_data(x) container_of(x, struct panel_drv_data, dssdev)
@@ -191,7 +198,7 @@ static int tvc_probe_pdata(struct platform_device *pdev)
 	in = omap_dss_find_output(pdata->source);
 	if (in == NULL) {
 		dev_err(&pdev->dev, "Failed to find video source\n");
-		return -ENODEV;
+		return -EPROBE_DEFER;
 	}
 
 	ddata->in = in;
@@ -204,6 +211,36 @@ static int tvc_probe_pdata(struct platform_device *pdev)
 
 	return 0;
 }
+
+static int tvc_probe_of(struct platform_device *pdev,
+		const struct tvc_of_data *data)
+{
+	struct panel_drv_data *ddata = platform_get_drvdata(pdev);
+	struct device_node *node = pdev->dev.of_node;
+	struct omap_dss_device *in;
+	struct device_node *src_node;
+
+	src_node = of_parse_phandle(node, "video-source", 0);
+	if (!src_node) {
+		dev_err(&pdev->dev, "failed to parse video source\n");
+		return -ENODEV;
+	}
+
+	in = omap_dss_find_output_by_node(src_node);
+	if (in == NULL) {
+		dev_err(&pdev->dev, "failed to find video source\n");
+		return -EPROBE_DEFER;
+	}
+	ddata->in = in;
+
+	ddata->connector_type = data->connector_type;
+
+	ddata->invert_polarity =
+		of_property_read_bool(node, "invert-polarity");
+
+	return 0;
+}
+
 
 static int tvc_probe(struct platform_device *pdev)
 {
@@ -220,6 +257,18 @@ static int tvc_probe(struct platform_device *pdev)
 
 	if (dev_get_platdata(&pdev->dev)) {
 		r = tvc_probe_pdata(pdev);
+		if (r)
+			return r;
+	} else if (pdev->dev.of_node) {
+		const struct of_device_id *match;
+
+		match = of_match_node(tvc_of_match, pdev->dev.of_node);
+		if (!match) {
+			dev_err(&pdev->dev, "unsupported device\n");
+			return -ENODEV;
+		}
+
+		r = tvc_probe_of(pdev, match->data);
 		if (r)
 			return r;
 	} else {
@@ -263,12 +312,33 @@ static int __exit tvc_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static const struct tvc_of_data tv_svideo_data = {
+	.connector_type = OMAP_DSS_VENC_TYPE_SVIDEO,
+};
+
+static const struct tvc_of_data tv_composite_video_data = {
+	.connector_type = OMAP_DSS_VENC_TYPE_COMPOSITE,
+};
+
+static const struct of_device_id tvc_of_match[] = {
+	{
+		.compatible = "ti,svideo-connector",
+		.data = &tv_svideo_data,
+	},
+	{
+		.compatible = "ti,composite-video-connector",
+		.data = &tv_composite_video_data,
+	},
+	{},
+};
+
 static struct platform_driver tvc_connector_driver = {
 	.probe	= tvc_probe,
 	.remove	= __exit_p(tvc_remove),
 	.driver	= {
 		.name	= "connector-analog-tv",
 		.owner	= THIS_MODULE,
+		.of_match_table = tvc_of_match,
 	},
 };
 

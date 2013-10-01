@@ -12,6 +12,12 @@ config DISPLAY_ENCODER_TPD12S015
 	  Driver for TPD12S015, which offers HDMI ESD protection and level
 	  shifting.
 
+config DISPLAY_DRA_EVM_ENCODER_TPD12S015
+        tristate "TPD12S015 HDMI ESD protection and level shifter on DRA7 EVM"
+	help
+	  Driver for TPD12S015, which offers HDMI ESD protection and level
+	  shifting on DRA EVM.
+
 config DISPLAY_CONNECTOR_DVI
         tristate "DVI Connector"
 	depends on I2C
@@ -69,5 +75,12 @@ config DISPLAY_PANEL_NEC_NL8048HL11
 	help
 		This NEC NL8048HL11 panel is TFT LCD used in the
 		Zoom2/3/3630 sdp boards.
+
+config DISPLAY_PANEL_TFCS9700
+	tristate "Three Five DPI panel"
+	depends on I2C
+	help
+		A TFT LCD DPI panel used on the LCD daughter board
+		of Vayu EVM
 
 endmenu
