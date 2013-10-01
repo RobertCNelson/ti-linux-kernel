@@ -340,6 +340,15 @@
 	status = "okay";
 };
 
+&i2c0 {
+	status = "okay";
+	clock-frequency = <400000>;
+
+	tps: tps@24 {
+		reg = <0x24>;
+	};
+};
+
 &mcasp1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&mcasp1_pins>;
@@ -355,3 +364,5 @@
 	tx-num-evt = <1>;
 	rx-num-evt = <1>;
 };
+
+#include "tps65218.dtsi"

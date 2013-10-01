@@ -398,10 +398,6 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			status = "disabled";
-
-			tps: tps@24 {
-				reg = <0x24>;
-			};
 		};
 
 		i2c1: i2c@4802a000 {
@@ -1003,5 +999,3 @@
 	};
 
 };
-
-/include/ "tps65218.dtsi"
