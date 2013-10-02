@@ -537,7 +537,6 @@ static int __init omap2_init_devices(void)
 		omap_init_wl12xx_of();
 	}
 	omap_init_sti();
-	omap_init_rng();
 
 	return 0;
 }
