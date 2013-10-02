@@ -41,9 +41,6 @@ struct ti_qspi_regs {
 struct ti_qspi {
 	struct completion       transfer_complete;
 
-	/* IRQ synchronization */
-	spinlock_t              lock;
-
 	/* list synchronization */
 	struct mutex            list_lock;
 
@@ -59,7 +56,6 @@ struct ti_qspi {
 	u32 spi_max_frequency;
 	u32 cmd;
 	u32 dc;
-	u32 stat;
 
 	bool memory_mapped;
 };
@@ -470,13 +466,12 @@ static irqreturn_t ti_qspi_isr(int irq, void *dev_id)
 {
 	struct ti_qspi *qspi = dev_id;
 	u16 int_stat;
+	u32 stat;
 
 	irqreturn_t ret = IRQ_HANDLED;
 
-	spin_lock(&qspi->lock);
-
 	int_stat = ti_qspi_read(qspi, QSPI_INTR_STATUS_ENABLED_CLEAR);
-	qspi->stat = ti_qspi_read(qspi, QSPI_SPI_STATUS_REG);
+	stat = ti_qspi_read(qspi, QSPI_SPI_STATUS_REG);
 
 	if (!int_stat) {
 		dev_dbg(qspi->dev, "No IRQ triggered\n");
@@ -484,33 +479,12 @@ static irqreturn_t ti_qspi_isr(int irq, void *dev_id)
 		goto out;
 	}
 
-	ret = IRQ_WAKE_THREAD;
-
-	ti_qspi_write(qspi, QSPI_WC_INT_DISABLE, QSPI_INTR_ENABLE_CLEAR_REG);
 	ti_qspi_write(qspi, QSPI_WC_INT_DISABLE,
 				QSPI_INTR_STATUS_ENABLED_CLEAR);
-
-out:
-	spin_unlock(&qspi->lock);
-
-	return ret;
-}
-
-static irqreturn_t ti_qspi_threaded_isr(int this_irq, void *dev_id)
-{
-	struct ti_qspi *qspi = dev_id;
-	unsigned long flags;
-
-	spin_lock_irqsave(&qspi->lock, flags);
-
-	if (qspi->stat & WC)
+	if (stat & WC)
 		complete(&qspi->transfer_complete);
-
-	spin_unlock_irqrestore(&qspi->lock, flags);
-
-	ti_qspi_write(qspi, QSPI_WC_INT_EN, QSPI_INTR_ENABLE_SET_REG);
-
-	return IRQ_HANDLED;
+out:
+	return ret;
 }
 
 static int ti_qspi_runtime_resume(struct device *dev)
@@ -574,7 +548,6 @@ static int ti_qspi_probe(struct platform_device *pdev)
 		return irq;
 	}
 
-	spin_lock_init(&qspi->lock);
 	mutex_init(&qspi->list_lock);
 
 	qspi->base = devm_ioremap_resource(&pdev->dev, r);
@@ -595,8 +568,7 @@ static int ti_qspi_probe(struct platform_device *pdev)
 		goto free_master;
 	}
 
-	ret = devm_request_threaded_irq(&pdev->dev, irq, ti_qspi_isr,
-			ti_qspi_threaded_isr, 0,
+	ret = devm_request_irq(&pdev->dev, irq, ti_qspi_isr, 0,
 			dev_name(&pdev->dev), qspi);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Failed to register ISR for IRQ %d\n",
@@ -637,6 +609,7 @@ static int ti_qspi_remove(struct platform_device *pdev)
 {
 	struct	ti_qspi *qspi = platform_get_drvdata(pdev);
 
+	ti_qspi_write(qspi, QSPI_WC_INT_DISABLE, QSPI_INTR_ENABLE_CLEAR_REG);
 	spi_unregister_master(qspi->master);
 
 	return 0;
