@@ -19,6 +19,8 @@
 
 	aliases {
 		serial0 = &uart0;
+		ethernet0 = &cpsw_emac0;
+		ethernet1 = &cpsw_emac1;
 	};
 
 	cpus {
