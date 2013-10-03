@@ -909,7 +909,7 @@
 				phys = <&usb2_phy1>;
 				phy-names = "usb2-phy";
 				maximum-speed = "high-speed";
-				dr_mode = "host";
+				dr_mode = "peripheral";
 			};
 		};
 
