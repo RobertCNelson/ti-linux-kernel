@@ -271,3 +271,7 @@
 &avs_iva {
 	avs-supply = <&smps8_reg>;
 };
+
+&cpu0 {
+	cpu0-supply = <&avs_mpu>;
+};
