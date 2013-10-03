@@ -78,10 +78,37 @@
 				0x18c (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE0)	/* i2c0_scl.i2c0_scl */
 			>;
 		};
+
+		qspi1_default: qspi1_default {
+                        pinctrl-single,pins = <
+				0x7c (PIN_INPUT_PULLUP | MUX_MODE3)
+				0x88 (PIN_INPUT_PULLUP | MUX_MODE2)
+				0x90 (PIN_INPUT_PULLUP | MUX_MODE3)
+				0x94 (PIN_INPUT_PULLUP | MUX_MODE3)
+				0x98 (PIN_INPUT_PULLUP | MUX_MODE3)
+				0x9c (PIN_INPUT_PULLUP | MUX_MODE3)
+			>;
+		};
+
+		qspi1_sleep: qspi1_sleep {
+			pinctrl-single,pins = <
+				0x7c (PIN_INPUT_PULLDOWN | MUX_MODE7)
+				0x88 (PIN_INPUT_PULLDOWN | MUX_MODE7)
+				0x90 (PIN_OUTPUT_PULLDOWN | MUX_MODE7)
+				0x94 (PIN_INPUT_PULLDOWN | MUX_MODE7)
+				0x98 (PIN_OUTPUT_PULLDOWN | MUX_MODE7)
+				0x9c (PIN_OUTPUT_PULLDOWN | MUX_MODE7)
+                        >;
+                };
 	};
 };
 
 &qspi {
+	status = "okay";
+        pinctrl-names = "default", "sleep";
+        pinctrl-0 = <&qspi1_default>;
+        pinctrl-1 = <&qspi1_sleep>;
+
 	spi-max-frequency = <48000000>;
 	m25p80@0 {
 		compatible = "mx66l51235l";
@@ -89,8 +116,8 @@
 		reg = <0>;
 		spi-cpol;
 		spi-cpha;
-		tx-nbits = <1>;
-		rx-nbits = <4>;
+		spi-tx-bus-width = <1>;
+		spi-rx-bus-width = <4>;
 	};
 };
 
