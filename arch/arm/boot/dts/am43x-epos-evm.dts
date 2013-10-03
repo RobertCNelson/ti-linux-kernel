@@ -118,6 +118,7 @@
 		spi-cpha;
 		spi-tx-bus-width = <1>;
 		spi-rx-bus-width = <4>;
+		macronix,quad_enable;
 	};
 };
 

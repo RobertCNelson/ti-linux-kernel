@@ -338,7 +338,27 @@ static int m25p80_erase(struct mtd_info *mtd, struct erase_info *instr)
 	return 0;
 }
 
-static int quad_enable(struct m25p *flash)
+static int macronix_quad_enable(struct m25p *flash)
+{
+	int ret;
+	u8 cmd[2];
+	cmd[0] = OPCODE_WRSR;
+	cmd[1] = 0x00;
+
+	ret = read_sr(flash);
+	ret = ret | (1 << 6);
+	write_enable(flash);
+	cmd[1] = ret;
+
+	spi_write(flash->spi, &cmd, 2);
+
+	if (wait_till_ready(flash))
+		return 1;
+
+	return 0;
+}
+
+static int spansion_quad_enable(struct m25p *flash)
 {
 	u8 cmd[3];
 	cmd[0] = OPCODE_WRSR;
@@ -1083,7 +1103,10 @@ static int m25p_probe(struct spi_device *spi)
 
 	flash->quad_read = false;
 	if (spi->mode && SPI_RX_QUAD) {
-		quad_enable(flash);
+		if (of_property_read_bool(np, "macronix,quad_enable"))
+			macronix_quad_enable(flash);
+		else
+			spansion_quad_enable(flash);
 		flash->mtd._read = m25p80_quad_read;
 		flash->quad_read = true;
 	} else
