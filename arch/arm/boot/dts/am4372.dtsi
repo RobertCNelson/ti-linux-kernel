@@ -131,7 +131,7 @@
 		mailbox: mailbox@480C8000 {
 			compatible = "ti,omap4-mailbox";
 			reg = <0x480C8000 0x200>;
-			interrupts = <77>;
+			interrupts = <GIC_SPI 77 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "mailbox";
 			ti,mbox-num-users = <4>;
 			ti,mbox-num-fifos = <8>;
