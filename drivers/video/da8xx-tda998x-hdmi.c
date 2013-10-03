@@ -345,28 +345,6 @@ cec_write(struct tda998x_encoder *encoder, uint16_t addr, uint8_t val)
 			ret, addr);
 }
 
-static uint8_t
-cec_read(struct tda998x_encoder *encoder, uint8_t addr)
-{
-	struct i2c_client *client = to_tda998x_priv(encoder)->cec;
-	uint8_t val;
-	int ret;
-
-	ret = i2c_master_send(client, &addr, sizeof(addr));
-	if (ret < 0)
-		goto fail;
-
-	ret = i2c_master_recv(client, &val, sizeof(val));
-	if (ret < 0)
-		goto fail;
-
-	return val;
-
-fail:
-	dev_err(&client->dev, "Error %d reading from cec:0x%x\n", ret, addr);
-	return 0;
-}
-
 static void
 set_page(struct tda998x_encoder *encoder, uint16_t reg)
 {
