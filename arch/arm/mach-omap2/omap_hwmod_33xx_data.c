@@ -980,7 +980,6 @@ static struct omap_hwmod am33xx_mailbox_hwmod = {
 	.name		= "mailbox",
 	.class		= &am33xx_mailbox_hwmod_class,
 	.clkdm_name	= "l4ls_clkdm",
-	.main_clk	= "l4ls_gclk",
 	.prcm = {
 		.omap4 = {
 			.modulemode	= MODULEMODE_SWCTRL,
