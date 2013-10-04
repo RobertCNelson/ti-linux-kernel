@@ -490,7 +490,7 @@ int dss_calc_clock_rates(struct dss_clock_info *cinfo)
 		cinfo->fck = prate / cinfo->fck_div *
 			dss.feat->dss_fck_multiplier;
 	} else {
-		if (cinfo->fck_div != 0)
+		if (cinfo->fck_div != 1)
 			return -EINVAL;
 		cinfo->fck = clk_get_rate(dss.dss_clk);
 	}
@@ -553,7 +553,7 @@ int dss_set_clock_div(struct dss_clock_info *cinfo)
 		if (r)
 			return r;
 	} else {
-		if (cinfo->fck_div != 0)
+		if (cinfo->fck_div != 1)
 			return -EINVAL;
 	}
 
