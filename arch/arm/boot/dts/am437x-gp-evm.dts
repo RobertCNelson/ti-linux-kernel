@@ -35,8 +35,7 @@
 		compatible = "osddisplays,osd057T0559-34ts", "panel-dpi";
 		video-source = <&dpi>;
 		data-lines = <24>;
-		gpios = <0			    /* No Enable GPIO */
-			 &gpio0 7 GPIO_ACTIVE_LOW>; /* LCD backlight GPIO */
+		gpios = <0>;			    /* No Enable GPIO */
 		activelow_backlight;		    /* LCD backlight is Active low */
 		panel-timing {
 			clock-frequency = <33000000>;
@@ -195,7 +194,6 @@
 			0x0E8 (PIN_OUTPUT_PULLUP | MUX_MODE0) /* DSS PCLK */
 			0x0EC (PIN_OUTPUT_PULLUP | MUX_MODE0) /* DSS AC BIAS EN */
 			0x238 (PIN_OUTPUT_PULLUP | MUX_MODE7) /* GPIO 5_8 to select LCD / HDMI */
-			0x164 (PIN_OUTPUT_PULLUP | MUX_MODE7) /* ECAP0_IN_PWM0_OUT -> GPIO 0_7 BACKLIGHT */
 		>;
 	};
 
