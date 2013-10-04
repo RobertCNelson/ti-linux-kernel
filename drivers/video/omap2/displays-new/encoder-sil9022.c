@@ -25,6 +25,7 @@
 #include <linux/gpio.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
+#include <linux/of_gpio.h>
 
 #include <video/omapdss.h>
 #include <video/omap-panel-data.h>
@@ -471,7 +472,7 @@ static int sil9022_enable(struct omap_dss_device *dssdev)
 		return r;
 
 	if (gpio_is_valid(ddata->reset_gpio))
-		gpio_set_value_cansleep(ddata->reset_gpio, 1);
+		gpio_set_value_cansleep(ddata->reset_gpio, 0);
 
 	r = sil9022_hw_enable(dssdev);
 	if (r)
@@ -493,7 +494,7 @@ static void sil9022_disable(struct omap_dss_device *dssdev)
 		return;
 
 	if (gpio_is_valid(ddata->reset_gpio))
-		gpio_set_value_cansleep(ddata->reset_gpio, 0);
+		gpio_set_value_cansleep(ddata->reset_gpio, 1);
 
 	in->ops.dpi->disable(in);
 
@@ -710,19 +711,14 @@ static int sil9022_probe_of(struct i2c_client *client)
 	}
 	ddata->in = in;
 
-	/* gpio parsing removing for now */
-
-	/*reset_gpio = of_get_gpio(node, 0);
+	reset_gpio = of_get_named_gpio(node, "reset-gpio", 0);
 
 	if (gpio_is_valid(reset_gpio) || reset_gpio == -ENOENT) {
 		ddata->reset_gpio = reset_gpio;
 	} else {
 		dev_err(&client->dev, "failed to parse lcdorhdmi gpio\n");
-		return gpio;
-	} */
-
-	/*hard coding gpio for now */
-	ddata->reset_gpio = 0x64;
+		return reset_gpio;
+	}
 
 	r = of_property_read_u32(node, "data-lines", &datalines);
 	if (r) {
@@ -731,6 +727,7 @@ static int sil9022_probe_of(struct i2c_client *client)
 	}
 
 	ddata->data_lines = datalines;
+	ddata->reset_gpio = reset_gpio;
 	dssdev = &ddata->dssdev;
 
 	return 0;
@@ -798,6 +795,7 @@ static int sil9022_probe(struct i2c_client *client,
 		if (err)
 			goto err_gpio;
 	}
+
 	ddata->regmap = regmap;
 	ddata->i2c_client = client;
 	dssdev = &ddata->dssdev;
