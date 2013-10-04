@@ -555,6 +555,7 @@
 / {
 	aliases {
 		display0 = &hdmi0;
+		ethernet0 = &smsc0;
 	};
 
 	tpd12s015: encoder@0 {
@@ -571,5 +572,10 @@
 		compatible = "ti,hdmi_connector";
 
 		video-source = <&tpd12s015>;
+	};
+
+	smsc0: smsc95xx@0 {
+		/* Filled in by U-Boot */
+		mac-address = [ 00 00 00 00 00 00 ];
 	};
 };
