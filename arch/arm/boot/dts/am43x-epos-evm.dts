@@ -156,6 +156,12 @@
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c0_pins>;
+
+	at24@50 {
+		compatible = "at24,24c256";
+		pagesize = <64>;
+		reg = <0x50>;
+	};
 };
 
 &wdt2 {
