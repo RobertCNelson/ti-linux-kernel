@@ -113,6 +113,44 @@
 			clock-names = "fck";
 		};
 
+		avs_mpu: regulator-avs@0x4A003B18 {
+			compatible = "ti,avsclass0";
+			reg = <0x4A003B18 20>;
+			efuse-settings = <1090000 8
+			1210000 12
+			1280000 16>;
+		};
+
+		avs_core: regulator-avs@0x4A0025EC {
+			compatible = "ti,avsclass0";
+			reg = <0x4A0025EC 20>;
+			efuse-settings = <1030000 8>;
+		};
+
+		avs_gpu: regulator-avs@0x4A003B00 {
+			compatible = "ti,avsclass0";
+			reg = <0x4A003B00 20>;
+			efuse-settings = <1090000 8
+			1210000 12
+			1280000 16>;
+		};
+
+		avs_dspeve: regulator-avs@0x4A0025D8 {
+			compatible = "ti,avsclass0";
+			reg = <0x4A0025D8 20>;
+			efuse-settings = <1055000 8
+			1150000 12
+			1250000 16>;
+		};
+
+		avs_iva: regulator-avs@0x4A0025C4 {
+			compatible = "ti,avsclass0";
+			reg = <0x4A0025C4 20>;
+			efuse-settings = <1055000 8
+			1150000 12
+			1250000 16>;
+		};
+
 		dra7_pmx_core: pinmux@4a003400 {
 			compatible = "pinctrl-single";
 			reg = <0x4a003400 0x0464>;
