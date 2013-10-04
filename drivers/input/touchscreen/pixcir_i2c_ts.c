@@ -563,8 +563,13 @@ static const struct pixcir_i2c_chip_data tangoc_data = {
 	.reportid_min = 'A',
 };
 
+static const struct pixcir_i2c_chip_data pixcir_ts_data = {
+	.num_report_ids = 5,
+	.reportid_min = 'A',
+};
+
 static const struct of_device_id pixcir_of_match[] = {
-	{ .compatible = "pixcir,pixcir_ts", },
+	{ .compatible = "pixcir,pixcir_ts", .data = &pixcir_ts_data, },
 	{ .compatible = "pixcir,tangoc", .data = &tangoc_data, },
 	{ }
 };
