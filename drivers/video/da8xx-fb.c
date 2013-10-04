@@ -771,8 +771,8 @@ static int da8xx_fb_config_clk_divider(struct da8xx_fb_par *par,
 }
 
 static unsigned int da8xx_fb_calc_clk_divider(struct da8xx_fb_par *par,
-					      unsigned pixclock,
-					      unsigned *lcdc_clk_rate)
+			      unsigned pixclock,
+			      unsigned *lcdc_clk_rate)
 {
 	unsigned lcdc_clk_div;
 
@@ -806,7 +806,7 @@ static int da8xx_fb_calc_config_clk_divider(struct da8xx_fb_par *par,
 }
 
 static unsigned da8xx_fb_round_clk(struct da8xx_fb_par *par,
-					  unsigned pixclock)
+				  unsigned pixclock)
 {
 	unsigned lcdc_clk_div, lcdc_clk_rate;
 
@@ -819,54 +819,54 @@ static int lcd_init(struct da8xx_fb_par *par, const struct lcd_ctrl_config *cfg,
 {
 	u32 bpp;
 	int ret = 0;
-
-#if !defined(CONFIG_FB_DA8XX_TDA998X) && \
-	!defined(CONFIG_FB_DA8XX_TDA998X_MODULE)
-	/*
-	 * Not using external encoder, using old and more inaccurate method of
-	 * setting the clocks
-	 */
-	ret = da8xx_fb_calc_config_clk_divider(par, panel);
-	if (IS_ERR_VALUE(ret)) {
-		dev_err(par->dev, "unable to configure clock\n");
-		return ret;
-	}
-#else /* if CONFIG_FB_DA8XX_TDA998X */
-	unsigned int div = 0;
-	unsigned long pixclock = 0;
 	struct da8xx_encoder *enc = 0;
 
-	pr_debug("pixclock from panel %d\n", panel->pixclock);
-	pixclock = PICOS2KHZ(panel->pixclock) * 1000;
-	pr_debug("pixclock converted to hz %ld\n", pixclock);
-	/* remove any rounding errors as this seems to mess up clk */
-	pixclock = (pixclock/10000)*10000;
-	pr_debug("rounded clock rate %ld\n",
-		clk_round_rate(par->lcdc_clk, pixclock*2));
-	/* in raster mode, minimum divisor is 2: */
-	ret = clk_set_rate(par->disp_clk, pixclock * 2);
-	if (IS_ERR_VALUE(ret)) {
-		dev_err(par->dev, "failed to set display clock rate to: %ld\n",
-			pixclock);
-		return ret;
+	if (IS_ENABLED(CONFIG_FB_DA8XX_TDA998X) && par->hdmi_node) {
+		unsigned int div = 0;
+		unsigned long pixclock = 0;
+
+		pr_debug("pixclock from panel %d\n", panel->pixclock);
+		pixclock = PICOS2KHZ(panel->pixclock) * 1000;
+		pr_debug("pixclock converted to hz %ld\n", pixclock);
+		/* remove any rounding errors as this seems to mess up clk */
+		pixclock = (pixclock/10000)*10000;
+		pr_debug("rounded clock rate %ld\n",
+			clk_round_rate(par->lcdc_clk, pixclock*2));
+		/* in raster mode, minimum divisor is 2: */
+		ret = clk_set_rate(par->disp_clk, pixclock * 2);
+		if (IS_ERR_VALUE(ret)) {
+			dev_err(par->dev, "failed to set display clock rate to: %ld\n",
+				pixclock);
+			return ret;
+		}
+
+		par->lcdc_clk_rate = clk_get_rate(par->lcdc_clk);
+		div = par->lcdc_clk_rate / pixclock;
+
+		pr_debug("lcd_clk=%u, mode clock=%ld, div=%u\n",
+			par->lcdc_clk_rate, pixclock, div);
+		pr_debug("fck=%lu, dpll_disp_ck=%lu\n",
+			clk_get_rate(par->lcdc_clk),
+			clk_get_rate(par->disp_clk));
+
+		/* Configure the LCD clock divisor. */
+		lcdc_write(LCD_CLK_DIVISOR(div) |
+			(LCD_RASTER_MODE & 0x1), LCD_CTRL_REG);
+
+		if (lcd_revision == LCD_VERSION_2)
+			lcdc_write(LCD_V2_DMA_CLK_EN | LCD_V2_LIDD_CLK_EN |
+				LCD_V2_CORE_CLK_EN, LCD_CLK_ENABLE_REG);
+	} else {
+		/*
+		 * Not using external encoder, using old and more inaccurate
+		 * method of setting the clocks.
+		 */
+		ret = da8xx_fb_calc_config_clk_divider(par, panel);
+		if (IS_ERR_VALUE(ret)) {
+			dev_err(par->dev, "unable to configure clock\n");
+			return ret;
+		}
 	}
-
-	par->lcdc_clk_rate = clk_get_rate(par->lcdc_clk);
-	div = par->lcdc_clk_rate / pixclock;
-
-	pr_debug("lcd_clk=%u, mode clock=%ld, div=%u\n",
-		par->lcdc_clk_rate, pixclock, div);
-	pr_debug("fck=%lu, dpll_disp_ck=%lu\n",
-		clk_get_rate(par->lcdc_clk), clk_get_rate(par->disp_clk));
-
-	/* Configure the LCD clock divisor. */
-	lcdc_write(LCD_CLK_DIVISOR(div) |
-		(LCD_RASTER_MODE & 0x1), LCD_CTRL_REG);
-
-	if (lcd_revision == LCD_VERSION_2)
-		lcdc_write(LCD_V2_DMA_CLK_EN | LCD_V2_LIDD_CLK_EN |
-			LCD_V2_CORE_CLK_EN, LCD_CLK_ENABLE_REG);
-#endif
 
 	if (panel->sync & FB_SYNC_CLK_INVERT)
 		lcdc_write((lcdc_read(LCD_RASTER_TIMING_2_REG) |
@@ -905,17 +905,16 @@ static int lcd_init(struct da8xx_fb_par *par, const struct lcd_ctrl_config *cfg,
 	lcdc_write((lcdc_read(LCD_RASTER_CTRL_REG) & 0xfff00fff) |
 		       (cfg->fdd << 12), LCD_RASTER_CTRL_REG);
 
-#if defined(CONFIG_FB_DA8XX_TDA998X_MODULE) || defined(CONFIG_FB_DA8XX_TDA998X)
-	/*
-	 * keep doing this lookup, because there is a posibility that
-	 * somebody went and unloaded the encoder driver from out beneath
-	 * us
-	 */
-	enc = da8xx_get_encoder_from_phandle(par->hdmi_node);
-	if (enc)
-		enc->set_mode(enc, panel);
-#endif
-
+	if (IS_ENABLED(CONFIG_FB_DA8XX_TDA998X) && par->hdmi_node) {
+		/*
+		 * keep doing this lookup, because there is a posibility that
+		 * somebody went and unloaded the encoder driver from out
+		 * beneath us
+		 */
+		enc = da8xx_get_encoder_from_phandle(par->hdmi_node);
+		if (enc)
+			enc->set_mode(enc, panel);
+	}
 	return 0;
 }
 
@@ -1156,15 +1155,13 @@ static int fb_check_var(struct fb_var_screeninfo *var,
 	if (var->yres + var->yoffset > var->yres_virtual)
 		var->yoffset = var->yres_virtual - var->yres;
 
-#if !defined(CONFIG_FB_DA8XX_TDA998X) && \
-	!defined(CONFIG_FB_DA8XX_TDA998X_MODULE)
 	/*
 	 * if we don't have an encoder attached, use the legacy
 	 * clock setting code that works on da8xx but is a bit
 	 * inaccurate for the encoders on AM335x
 	 */
-	var->pixclock = da8xx_fb_round_clk(par, var->pixclock);
-#endif
+	if (!IS_ENABLED(CONFIG_FB_DA8XX_TDA998X) || (par->hdmi_node == 0))
+		var->pixclock = da8xx_fb_round_clk(par, var->pixclock);
 
 	return err;
 }

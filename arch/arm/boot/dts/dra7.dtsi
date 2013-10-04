@@ -96,7 +96,8 @@
 					 "mpu-irq", "mcasp3-axevt", <0x9d 0x97 0x12a>,
 					 "mpu-irq", "mailbox5", <0x88 0xfb 0x100>,
 					 "mpu-irq", "mailbox6", <0x8d 0xff 0x10a>,
-					 "mpu-irq", "qspi", <0x7c 0x157 0x0ec>;
+					 "mpu-irq", "qspi", <0x7c 0x157 0x0ec>,
+					 "mpu-irq", "vpe", <0x9c 0x162 0x128>;
 		};
 
 		crossbar_dma: dmareq@4a002b78 {
@@ -1020,6 +1021,82 @@
 			};
 		};
 
+		dmm: dmm@4e000000 {
+			compatible = "ti,omap5-dmm";
+			reg = <0x4e000000 0x800>;
+			interrupts = <0 113 0x4>;
+			ti,hwmods = "dmm";
+		};
+
+		dss: dss@58000000 {
+			compatible = "ti,omap4-dss", "simple-bus";
+			reg = <0x58000000 0x80>,
+			      <0x58004000 0x340>,
+			      <0x58005000 0x340>;
+			ti,hwmods = "dss_core";
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges;
+
+			dispc@58001000 {
+				compatible = "ti,omap4-dispc";
+				reg = <0x58001000 0x1000>;
+				interrupts = <0 25 0x4>;
+				ti,hwmods = "dss_dispc";
+			};
+
+			dpi1: encoder@0 {
+				compatible = "ti,dra7xx-dpi";
+				id = <0>;
+				channel = <0>;
+			};
+
+			dpi2: encoder@1 {
+				compatible = "ti,dra7xx-dpi";
+				id = <1>;
+			};
+
+			dpi3: encoder@2 {
+				compatible = "ti,dra7xx-dpi";
+				id = <2>;
+			};
+
+			hdmi: encoder@58040000 {
+				compatible = "ti,omap5-hdmi";
+				reg = <0x58040000 0x100>,
+				      <0x58040200 0x40>,
+				      <0x58040300 0x40>,
+				      <0x58060000 0x19000>;
+				reg-names = "hdmi_wp", "hdmi_pllctrl",
+					    "hdmi_txphy", "hdmi_core";
+				interrupts = <0 101 0x4>;
+				ti,hwmods = "dss_hdmi";
+			};
+		};
+
+		vpe {
+			compatible = "ti,vpe";
+			ti,hwmods = "vpe";
+			reg = <0x489d0000 0x120>,
+			      <0x489d0300 0x20>,
+			      <0x489d0400 0x20>,
+			      <0x489d0500 0x20>,
+			      <0x489d0600 0x3c>,
+			      <0x489d0700 0x80>,
+			      <0x489d5700 0x18>,
+			      <0x489dd000 0x400>;
+			reg-names = "vpe_top",
+				    "vpe_chr_us0",
+				    "vpe_chr_us1",
+				    "vpe_chr_us2",
+				    "vpe_dei",
+				    "vpe_sc",
+				    "vpe_csc",
+				    "vpdma";
+			interrupts = <0 0x9c 0x4>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
 	};
 
 	clocks {

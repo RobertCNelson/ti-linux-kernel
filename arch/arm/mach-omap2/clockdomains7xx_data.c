@@ -554,7 +554,7 @@ static struct clockdomain dss_7xx_clkdm = {
 	.dep_bit	  = DRA7XX_DSS_STATDEP_SHIFT,
 	.wkdep_srcs	  = dss_wkup_sleep_deps,
 	.sleepdep_srcs	  = dss_wkup_sleep_deps,
-	.flags		  = CLKDM_CAN_HWSUP_SWSUP,
+	.flags		  = CLKDM_CAN_SWSUP,
 };
 
 static struct clockdomain emif_7xx_clkdm = {

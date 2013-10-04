@@ -256,6 +256,9 @@ static int (*dss_output_drv_reg_funcs[])(void) __initdata = {
 #ifdef CONFIG_OMAP2_DSS_DPI
 	dpi_init_platform_driver,
 #endif
+#ifdef CONFIG_OMAP2_DSS_DRA7XX_DPI
+	dra7xx_dpi_init_platform_driver,
+#endif
 #ifdef CONFIG_OMAP2_DSS_SDI
 	sdi_init_platform_driver,
 #endif
@@ -266,7 +269,10 @@ static int (*dss_output_drv_reg_funcs[])(void) __initdata = {
 	venc_init_platform_driver,
 #endif
 #ifdef CONFIG_OMAP4_DSS_HDMI
-	hdmi_init_platform_driver,
+	hdmi4_init_platform_driver,
+#endif
+#ifdef CONFIG_OMAP5_DSS_HDMI
+	hdmi5_init_platform_driver,
 #endif
 };
 
@@ -276,6 +282,9 @@ static void (*dss_output_drv_unreg_funcs[])(void) __exitdata = {
 #endif
 #ifdef CONFIG_OMAP2_DSS_DPI
 	dpi_uninit_platform_driver,
+#endif
+#ifdef CONFIG_OMAP2_DSS_DRA7XX_DPI
+	dra7xx_dpi_uninit_platform_driver,
 #endif
 #ifdef CONFIG_OMAP2_DSS_SDI
 	sdi_uninit_platform_driver,
@@ -287,7 +296,10 @@ static void (*dss_output_drv_unreg_funcs[])(void) __exitdata = {
 	venc_uninit_platform_driver,
 #endif
 #ifdef CONFIG_OMAP4_DSS_HDMI
-	hdmi_uninit_platform_driver,
+	hdmi4_uninit_platform_driver,
+#endif
+#ifdef CONFIG_OMAP5_DSS_HDMI
+	hdmi5_uninit_platform_driver,
 #endif
 };
 

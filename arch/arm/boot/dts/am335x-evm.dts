@@ -395,8 +395,25 @@
 			};
 		};
 
-		lcdc: lcdc@0x4830e000 {
+		lcdc: lcdc@0x4830e000 {		
+			pinctrl-names = "default";
+			pinctrl-0 = <&lcd_pins_s0>;
 			status = "okay";
+			display-timings {
+				800x480p62 {
+					clock-frequency = <30000000>;
+					hactive = <800>;
+					vactive = <480>;
+					hfront-porch = <39>;
+					hback-porch = <39>;
+					hsync-len = <47>;
+					vback-porch = <29>;
+					vfront-porch = <13>;
+					vsync-len = <2>;
+					hsync-active = <1>;
+					vsync-active = <1>;
+				};
+			};
 		};
 
 		sound {
