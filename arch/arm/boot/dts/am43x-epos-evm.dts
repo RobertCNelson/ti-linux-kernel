@@ -12,6 +12,7 @@
 
 #include "am4372.dtsi"
 #include <dt-bindings/pinctrl/am43xx.h>
+#include <dt-bindings/gpio/gpio.h>
 
 / {
 	model = "TI AM43x EPOS EVM";
@@ -26,6 +27,8 @@
 	};
 
 	am43xx_pinmux: pinmux@44e10800 {
+		pinctrl-names = "default";
+		pinctrl-0 = <&matrix_keypad_s0>;
 		cpsw_default: cpsw_default {
 			pinctrl-single,pins = <
 				/* Slave 1 */
@@ -78,6 +81,20 @@
 				0x18c (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE0)	/* i2c0_scl.i2c0_scl */
 			>;
 		};
+
+		matrix_keypad_s0: matrix_keypad_s0 {
+			pinctrl-single,pins = <
+				0x92c (PIN_OUTPUT_PULLDOWN | MUX_MODE7)  /* gmm1_txclk.gpio0_12 */
+				0x930 (PIN_OUTPUT_PULLDOWN | MUX_MODE7)  /* gmm1_rxclk.gpio0_13 */
+				0x934 (PIN_INPUT_PULLDOWN | MUX_MODE7)   /* gmm1_rxd3.gpio0_14 */
+				0x938 (PIN_INPUT_PULLDOWN | MUX_MODE7)   /* gmm1_rxd2.gpio0_15 */
+				0x978 (PIN_INPUT_PULLDOWN | MUX_MODE7)   /* uart1_ctsn.gpio3_9 */
+				0x97c (PIN_INPUT_PULLDOWN | MUX_MODE7)   /* uart1_rtsn.gpio3_10 */
+				0x980 (PIN_INPUT_PULLDOWN | MUX_MODE7)   /* uart1_rxd.gpio3_18 */
+				0x984 (PIN_INPUT_PULLDOWN | MUX_MODE7)   /* uart_txd.gpio3_19 */
+			>;
+		};
+
 	};
 };
 
