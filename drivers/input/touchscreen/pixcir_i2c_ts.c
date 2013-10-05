@@ -121,7 +121,6 @@ static void pixcir_ts_typeb_report(struct pixcir_i2c_ts_data *ts)
 	int ret, i;
 
 	while (!ts->exiting) {
-
 		ret = i2c_master_send(ts->client, wrbuf, sizeof(wrbuf));
 		if (ret != sizeof(wrbuf)) {
 			dev_err(dev, "%s: i2c_master_send failed(), ret=%d\n",
@@ -150,12 +149,9 @@ static void pixcir_ts_typeb_report(struct pixcir_i2c_ts_data *ts)
 		}
 
 		for (i = 0; i < num_fingers; i++) {
-			u8 reportid = bufptr[4];
-			int id = reportid - pdata->chip.reportid_min;
-
-			ts->slots[id].updated = 1;
-			ts->slots[id].x = bufptr[1] << 8 | bufptr[0];
-			ts->slots[id].y = bufptr[3] << 8 | bufptr[2];
+			ts->slots[i].updated = 1;
+			ts->slots[i].x = bufptr[1] << 8 | bufptr[0];
+			ts->slots[i].y = bufptr[3] << 8 | bufptr[2];
 		}
 
 		/*
@@ -446,6 +442,7 @@ static int pixcir_i2c_ts_probe(struct i2c_client *client,
 	struct input_dev *input;
 	int error;
 
+
 	if (np) {
 		pdata = pixcir_parse_dt(dev);
 		if (IS_ERR(pdata))
@@ -517,7 +514,7 @@ static int pixcir_i2c_ts_probe(struct i2c_client *client,
 	}
 
 	error = devm_request_threaded_irq(dev, client->irq, NULL, pixcir_ts_isr,
-				     IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+				     IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING | IRQF_ONESHOT,
 				     client->name, tsdata);
 	if (error) {
 		dev_err(dev, "failed to request irq %d\n", client->irq);
