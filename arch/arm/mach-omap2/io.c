@@ -595,6 +595,11 @@ void __init am33xx_init_early(void)
 	omap_hwmod_init_postsetup();
 	omap_clk_init = am33xx_clk_init;
 }
+
+void __init am33xx_init_late(void)
+{
+	omap_hwmod_force_mstandby_repeated();
+}
 #endif
 
 #ifdef CONFIG_SOC_AM43XX

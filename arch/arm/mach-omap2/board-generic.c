@@ -177,6 +177,7 @@ DT_MACHINE_START(AM33XX_DT, "Generic AM33XX (Flattened Device Tree)")
 	.reserve	= am33xx_reserve,
 	.map_io		= am33xx_map_io,
 	.init_early	= am33xx_init_early,
+	.init_late	= am33xx_init_late,
 	.init_irq	= omap_intc_of_init,
 	.handle_irq	= omap3_intc_handle_irq,
 	.init_machine	= omap_generic_init,

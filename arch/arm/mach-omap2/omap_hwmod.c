@@ -141,6 +141,7 @@
 #include <linux/cpu.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
+#include <linux/suspend.h>
 
 #include <asm/system_misc.h>
 
@@ -207,6 +208,9 @@ static struct omap_hwmod *mpu_oh;
 
 /* io_chain_lock: used to serialize reconfigurations of the I/O chain */
 static DEFINE_SPINLOCK(io_chain_lock);
+
+/* _oh_force_mstandby_repeated_list for tracking nonstandard mstandby hwmods */
+static LIST_HEAD(_oh_force_mstandby_repeated_list);
 
 /*
  * linkspace: ptr to a buffer that struct omap_hwmod_link records are
@@ -3900,6 +3904,75 @@ int omap_hwmod_disable_wakeup(struct omap_hwmod *oh)
 
 	_set_idle_ioring_wakeup(oh, false);
 	spin_unlock_irqrestore(&oh->_lock, flags);
+
+	return 0;
+}
+
+/*
+ * There are some IPs that do not have MSTANDBY asserted by default
+ * which is necessary for PER domain transition. If the drivers
+ * are not compiled into the kernel HWMOD code will not change the
+ * state of the IPs if the IP was never enabled, so we keep track of
+ * them here to idle them with a pm_notifier.
+ */
+
+static int _omap_mstandby_pm_notifier(struct notifier_block *self,
+					unsigned long action, void *dev)
+{
+	struct omap_hwmod_list *oh_list_item = NULL;
+	switch (action) {
+	case PM_POST_SUSPEND:
+		list_for_each_entry(oh_list_item,
+			&_oh_force_mstandby_repeated_list, oh_list) {
+			omap_hwmod_enable(oh_list_item->oh);
+			omap_hwmod_idle(oh_list_item->oh);
+		}
+	}
+
+	return NOTIFY_DONE;
+}
+
+struct notifier_block pm_nb = {
+	.notifier_call = _omap_mstandby_pm_notifier,
+};
+
+static int _check_for_force_mstandby_repeated(struct omap_hwmod *oh, void *data)
+{
+	if (oh->flags & HWMOD_FORCE_MSTANDBY_REPEATED)
+		omap_hwmod_enable_force_mstandby_repeated(oh);
+
+	return 0;
+}
+
+int omap_hwmod_force_mstandby_repeated(void)
+{
+	omap_hwmod_for_each(_check_for_force_mstandby_repeated, NULL);
+	register_pm_notifier(&pm_nb);
+	return 0;
+}
+
+int omap_hwmod_enable_force_mstandby_repeated(struct omap_hwmod *oh)
+{
+	struct omap_hwmod_list *oh_list_item = NULL;
+
+	oh_list_item = kzalloc(sizeof(*oh_list_item), GFP_KERNEL);
+	oh_list_item->oh = oh;
+	list_add(&oh_list_item->oh_list, &_oh_force_mstandby_repeated_list);
+
+	return 0;
+}
+
+int omap_hwmod_disable_force_mstandby_repeated(struct omap_hwmod *oh)
+{
+	struct omap_hwmod_list *oh_list_item, *tmp;
+
+	list_for_each_entry_safe(oh_list_item, tmp,
+		&_oh_force_mstandby_repeated_list, oh_list) {
+			if (oh_list_item->oh == oh) {
+				list_del(&oh_list_item->oh_list);
+				kfree(oh_list_item);
+			}
+		}
 
 	return 0;
 }

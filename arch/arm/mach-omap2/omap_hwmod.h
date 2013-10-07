@@ -528,6 +528,7 @@ struct omap_hwmod_omap4_prcm {
 #define HWMOD_BLOCK_WFI				(1 << 10)
 #define HWMOD_FORCE_MSTANDBY			(1 << 11)
 #define HWMOD_SWSUP_SIDLE_ACT			(1 << 12)
+#define HWMOD_FORCE_MSTANDBY_REPEATED		(1 << 13)
 
 /*
  * omap_hwmod._int_flags definitions
@@ -678,6 +679,11 @@ struct omap_hwmod {
 	u8				_postsetup_state;
 };
 
+struct omap_hwmod_list {
+	struct omap_hwmod *oh;
+	struct list_head oh_list;
+};
+
 struct omap_hwmod *omap_hwmod_lookup(const char *name);
 int omap_hwmod_for_each(int (*fn)(struct omap_hwmod *oh, void *data),
 			void *data);
@@ -730,6 +736,10 @@ int omap_hwmod_get_context_loss_count(struct omap_hwmod *oh);
 int omap_hwmod_no_setup_reset(struct omap_hwmod *oh);
 
 int omap_hwmod_pad_route_irq(struct omap_hwmod *oh, int pad_idx, int irq_idx);
+
+int omap_hwmod_force_mstandby_repeated(void);
+int omap_hwmod_enable_force_mstandby_repeated(struct omap_hwmod *oh);
+int omap_hwmod_disable_force_mstandby_repeated(struct omap_hwmod *oh);
 
 extern void __init omap_hwmod_init(void);
 
