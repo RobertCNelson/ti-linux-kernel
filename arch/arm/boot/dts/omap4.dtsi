@@ -792,6 +792,7 @@
 			num-eps = <16>;
 			ram-bits = <12>;
 			ctrl-module = <&omap_control_usbotg>;
+			dr_mode = "peripheral";
 		};
 
 		dss@58000000 {
