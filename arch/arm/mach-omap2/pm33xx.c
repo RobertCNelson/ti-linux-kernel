@@ -157,7 +157,6 @@ static void am33xx_m3_state_machine_reset(void)
 		}
 	} else {
 		pr_warn("PM: Unable to ping CM3\n");
-		return -1;
 	}
 }
 
@@ -222,20 +221,12 @@ static const struct platform_suspend_ops am33xx_pm_ops = {
 };
 #endif /* CONFIG_SUSPEND */
 
-void am33xx_txev_handler(void)
+static void am33xx_txev_handler(void)
 {
 	switch (am33xx_pm->state) {
 	case M3_STATE_RESET:
 		am33xx_pm->state = M3_STATE_INITED;
-		am33xx_pm->ver = wkup_m3_fw_version_read();
-		if (am33xx_pm->ver == M3_VERSION_UNKNOWN ||
-			am33xx_pm->ver < M3_BASELINE_VERSION) {
-			pr_warn("PM: CM3 Firmware Version %x not supported\n",
-						am33xx_pm->ver);
-		} else {
-			pr_info("PM: CM3 Firmware Version = 0x%x\n",
-						am33xx_pm->ver);
-		}
+		complete(&am33xx_pm_sync);
 		break;
 	case M3_STATE_MSG_FOR_RESET:
 		am33xx_pm->state = M3_STATE_INITED;
@@ -250,6 +241,44 @@ void am33xx_txev_handler(void)
 
 	return;
 }
+
+static void am33xx_m3_fw_ready_cb(void)
+{
+	int ret = 0;
+
+	ret = wkup_m3_prepare();
+	if (ret) {
+		pr_err("PM: Could not prepare WKUP_M3\n");
+		return;
+	}
+
+	ret = wait_for_completion_timeout(&am33xx_pm_sync,
+					msecs_to_jiffies(500));
+
+	if (WARN(ret == 0, "PM: MPU<->CM3 sync failure\n"))
+		return;
+
+	am33xx_pm->ver = wkup_m3_fw_version_read();
+
+	if (am33xx_pm->ver == M3_VERSION_UNKNOWN ||
+		am33xx_pm->ver < M3_BASELINE_VERSION) {
+		pr_warn("PM: CM3 Firmware Version %x not supported\n",
+					am33xx_pm->ver);
+		return;
+	} else {
+		pr_info("PM: CM3 Firmware Version = 0x%x\n",
+					am33xx_pm->ver);
+	}
+
+#ifdef CONFIG_SUSPEND
+	suspend_set_ops(&am33xx_pm_ops);
+#endif /* CONFIG_SUSPEND */
+}
+
+static struct wkup_m3_ops am33xx_wkup_m3_ops = {
+	.txev_handler = am33xx_txev_handler,
+	.firmware_loaded = am33xx_m3_fw_ready_cb,
+};
 
 /*
  * Push the minimal suspend-resume code to SRAM
@@ -320,25 +349,19 @@ int __init am33xx_pm_init(void)
 	else
 		pr_err("PM: Failed to get cefuse_pwrdm\n");
 
-	wkup_m3_fw_version_clear();
-
 	am33xx_pm->state = M3_STATE_RESET;
 
-	wkup_m3_register_txev_handler(am33xx_txev_handler);
+	wkup_m3_set_ops(&am33xx_wkup_m3_ops);
 
-	ret = wkup_m3_prepare();
-	if (ret) {
-		pr_err("PM: Could not prepare WKUP_M3\n");
-		return ret;
-	}
+	/* m3 may have already loaded but ops were not set yet,
+	 * manually invoke */
+
+	if (wkup_m3_is_valid())
+		am33xx_m3_fw_ready_cb();
 
 	/* Physical resume address to be used by ROM code */
 	am33xx_pm->ipc.reg0 = (AM33XX_OCMC_END -
 		am33xx_do_wfi_sz + am33xx_resume_offset + 0x4);
-
-#ifdef CONFIG_SUSPEND
-	suspend_set_ops(&am33xx_pm_ops);
-#endif /* CONFIG_SUSPEND */
 
 	return 0;
 

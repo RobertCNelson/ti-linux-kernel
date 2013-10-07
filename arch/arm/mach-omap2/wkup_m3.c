@@ -59,8 +59,8 @@ struct wkup_m3_context {
 	struct device	*dev;
 	void __iomem	*code;
 	void __iomem	*ipc;
-	u8				is_valid;
-	void (*txev_handler)(void);
+	u8		is_valid;
+	struct wkup_m3_ops *ops;
 	struct omap_mbox *mbox;
 };
 
@@ -135,14 +135,14 @@ static void am33xx_ctrl_ipc_read(struct am33xx_ipc_regs *ipc_regs)
 					+ AM33XX_CONTROL_IPC_MSG_REG7);
 }
 
+int wkup_m3_is_valid()
+{
+	return wkup_m3->is_valid;
+}
+
 int wkup_m3_ping(void)
 {
 	int ret = 0;
-
-	if (!wkup_m3->is_valid) {
-		pr_err("PM: No M3 Firmware has been loaded.\n");
-		return -EIO;
-	}
 
 	if (!wkup_m3->mbox) {
 		pr_err("PM: No IPC channel to communicate with wkup_m3!\n");
@@ -197,7 +197,7 @@ int wkup_m3_pm_status(void)
  * register (ipc_regs + 0x8).
  */
 
-void wkup_m3_fw_version_clear(void)
+static void wkup_m3_fw_version_clear(void)
 {
 	struct am33xx_ipc_regs ipc_regs;
 
@@ -222,16 +222,17 @@ void wkup_m3_pm_set_cmd(struct am33xx_ipc_regs *ipc_regs)
 	am33xx_ctrl_ipc_write(ipc_regs);
 }
 
-void wkup_m3_register_txev_handler(void (*txev_handler)(void))
+void wkup_m3_set_ops(struct wkup_m3_ops *ops)
 {
-	wkup_m3->txev_handler = txev_handler;
+	wkup_m3->ops = ops;
 }
 
 static irqreturn_t wkup_m3_txev_handler(int irq, void *unused)
 {
 	am33xx_txev_eoi();
 
-	wkup_m3->txev_handler();
+	if (wkup_m3->ops && wkup_m3->ops->firmware_loaded)
+		wkup_m3->ops->txev_handler();
 
 	am33xx_txev_enable();
 
@@ -250,6 +251,8 @@ int wkup_m3_prepare(void)
 		pr_err("PM: IPC Request for A8->M3 Channel failed!\n");
 		return ret;
 	}
+
+	wkup_m3_fw_version_clear();
 
 	/* check that the code is loaded */
 	ret = omap_device_deassert_hardreset(pdev, "wkup_m3");
@@ -279,10 +282,14 @@ static void wkup_m3_firmware_cb(const struct firmware *fw, void *context)
 
 	ret = wkup_m3_copy_code(fw->data, fw->size);
 
-	if (ret)
+	if (ret) {
 		pr_info("PM: Failed to copy firmware for M3");
-	else
+	} else {
+		if (wkup_m3->ops && wkup_m3->ops->firmware_loaded)
+			wkup_m3->ops->firmware_loaded();
+
 		wkup_m3->is_valid = true;
+	}
 
 	return;
 }
@@ -351,10 +358,9 @@ static int wkup_m3_probe(struct platform_device *pdev)
 		goto err;
 	}
 
-	pr_info("PM: Loading am335x-pm-firmware.bin");
-
-	/* first make sure is_valid flag is false */
 	wkup_m3->is_valid = false;
+
+	pr_info("PM: Loading am335x-pm-firmware.bin");
 
 	/* We don't want to delay boot */
 	ret = request_firmware_nowait(THIS_MODULE, 0, "am335x-pm-firmware.bin",
