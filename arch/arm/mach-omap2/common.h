@@ -307,6 +307,10 @@ struct omap2_hsmmc_info;
 extern int omap4_twl6030_hsmmc_init(struct omap2_hsmmc_info *controllers);
 extern void omap_reserve(void);
 
+extern void am33xx_reserve(void);
+extern void am33xx_dram_sync_init(void);
+extern void __iomem *am33xx_dram_sync;
+
 struct omap_hwmod;
 extern int omap_dss_reset(struct omap_hwmod *);
 
