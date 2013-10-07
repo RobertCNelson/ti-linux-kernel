@@ -2454,7 +2454,7 @@ static void __init _init_mpu_rt_base(struct omap_hwmod *oh, void *data,
 		if (!np)
 			return;
 
-		va_start = of_iomap(np, 0);
+		va_start = of_iomap(np, oh->mpu_rt_idx);
 	} else {
 		va_start = ioremap(mem->pa_start, mem->pa_end - mem->pa_start);
 	}
