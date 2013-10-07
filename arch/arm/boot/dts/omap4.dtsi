@@ -602,6 +602,8 @@
 				compatible = "ti,omap-usb2";
 				reg = <0x4a0ad080 0x58>;
 				ctrl-module = <&omap_control_usb2phy>;
+                                clocks = <&usb_phy_cm_clk32k>, <&ocp2scp_usb_phy_phy_48m>;
+                                clock-names = "wkupclk", "refclk";
 				#phy-cells = <0>;
 			};
 		};
@@ -790,6 +792,7 @@
 			num-eps = <16>;
 			ram-bits = <12>;
 			ctrl-module = <&omap_control_usbotg>;
+			dr_mode = "peripheral";
 		};
 
 		dss@58000000 {
