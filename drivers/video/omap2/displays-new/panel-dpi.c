@@ -84,7 +84,7 @@ static int panel_dpi_enable(struct omap_dss_device *dssdev)
 		gpio_set_value_cansleep(ddata->enable_gpio, 1);
 
 	if (gpio_is_valid(ddata->backlight_gpio))
-		gpio_set_value_cansleep(ddata->backlight_gpio, 1);
+		gpio_set_value_cansleep(ddata->backlight_gpio, 0);
 
 	dssdev->state = OMAP_DSS_DISPLAY_ACTIVE;
 
@@ -103,7 +103,7 @@ static void panel_dpi_disable(struct omap_dss_device *dssdev)
 		gpio_set_value_cansleep(ddata->enable_gpio, 0);
 
 	if (gpio_is_valid(ddata->backlight_gpio))
-		gpio_set_value_cansleep(ddata->backlight_gpio, 0);
+		gpio_set_value_cansleep(ddata->backlight_gpio, 1);
 
 	in->ops.dpi->disable(in);
 
@@ -226,6 +226,10 @@ static int panel_dpi_probe_of(struct platform_device *pdev)
 	}
 
 	gpio = of_get_gpio(node, 1);
+
+	if (gpio == -ENOENT)
+		gpio = of_get_named_gpio(node, "backlight-gpio", 0);
+
 	if (gpio_is_valid(gpio) || gpio == -ENOENT) {
 		ddata->backlight_gpio = gpio;
 	} else {
