@@ -118,7 +118,7 @@ static void pixcir_ts_typeb_report(struct pixcir_i2c_ts_data *ts)
 	u8 *bufptr;
 	u8 num_fingers;
 	u8 unreliable;
-	int ret, i;
+	int ret, i, j;
 
 	while (!ts->exiting) {
 		ret = i2c_master_send(ts->client, wrbuf, sizeof(wrbuf));
@@ -148,10 +148,10 @@ static void pixcir_ts_typeb_report(struct pixcir_i2c_ts_data *ts)
 			ts->slots[i].updated = 0;
 		}
 
-		for (i = 0; i < num_fingers; i++) {
+		for (i = 0, j = 0; i < num_fingers; i++, j += 5) {
 			ts->slots[i].updated = 1;
-			ts->slots[i].x = bufptr[1] << 8 | bufptr[0];
-			ts->slots[i].y = bufptr[3] << 8 | bufptr[2];
+			ts->slots[i].x = bufptr[j + 1] << 8 | bufptr[j];
+			ts->slots[i].y = bufptr[j + 3] << 8 | bufptr[j + 2];
 		}
 
 		/*
@@ -486,7 +486,7 @@ static int pixcir_i2c_ts_probe(struct i2c_client *client,
 		const struct pixcir_i2c_chip_data *chip = &pdata->chip;
 		unsigned int num_mt_slots;
 
-		num_mt_slots = chip->num_report_ids * 2;
+		num_mt_slots = chip->num_report_ids;
 		tsdata->num_slots = num_mt_slots;
 
 		tsdata->slots = devm_kzalloc(dev,
