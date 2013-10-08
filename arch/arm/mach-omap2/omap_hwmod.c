@@ -2454,7 +2454,7 @@ static void __init _init_mpu_rt_base(struct omap_hwmod *oh, void *data,
 		if (!np)
 			return;
 
-		va_start = of_iomap(np, 0);
+		va_start = of_iomap(np, oh->mpu_rt_idx);
 	} else {
 		va_start = ioremap(mem->pa_start, mem->pa_end - mem->pa_start);
 	}
@@ -2504,11 +2504,12 @@ static int __init _init(struct omap_hwmod *oh, void *data)
 		return -EINVAL;
 	}
 
-	if (np)
+	if (np) {
 		if (of_find_property(np, "ti,no-reset", NULL))
 			oh->flags |= HWMOD_INIT_NO_RESET;
 		if (of_find_property(np, "ti,no-idle", NULL))
 			oh->flags |= HWMOD_INIT_NO_IDLE;
+	}
 
 	oh->_state = _HWMOD_STATE_INITIALIZED;
 
