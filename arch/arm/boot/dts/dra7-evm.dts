@@ -251,3 +251,27 @@
         pinctrl-names = "default";
         pinctrl-0 = <&uart3_pins>;
 };
+
+&avs_mpu {
+	avs-supply = <&smps123_reg>;
+};
+
+&avs_core {
+	avs-supply = <&smps7_reg>;
+};
+
+&avs_gpu {
+	avs-supply = <&smps6_reg>;
+};
+
+&avs_dspeve {
+	avs-supply = <&smps45_reg>;
+};
+
+&avs_iva {
+	avs-supply = <&smps8_reg>;
+};
+
+&cpu0 {
+	cpu0-supply = <&avs_mpu>;
+};
