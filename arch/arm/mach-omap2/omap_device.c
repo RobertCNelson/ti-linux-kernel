@@ -35,6 +35,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/of.h>
 #include <linux/notifier.h>
+#include <linux/suspend.h>
 
 #include "soc.h"
 #include "omap_device.h"
@@ -845,6 +846,7 @@ static int __init omap_device_late_idle(struct device *dev, void *data)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct omap_device *od = to_omap_device(pdev);
+	struct omap_hwmod *oh = NULL;
 	int i;
 
 	if (!od)
@@ -868,6 +870,19 @@ static int __init omap_device_late_idle(struct device *dev, void *data)
 			dev_warn(dev, "%s: enabled but no driver.  Idling\n",
 				 __func__);
 			omap_device_idle(pdev);
+		}
+	} else {
+	/*
+	 * There are some IPs that do not have MSTANDBY asserted by default
+	 * which is necessary for PER domain transition. If the drivers
+	 * are not compiled into the kernel HWMOD code will not change the
+	 * state of the IPs if the IP was never enabled, so we keep track of
+	 * them here to idle them with a pm_notifier.
+	 */
+		for (i = 0; i < od->hwmods_cnt; i++) {
+			oh = od->hwmods[i];
+			if (oh->flags & HWMOD_FORCE_MSTANDBY_REPEATED)
+				omap_hwmod_disable_force_mstandby_repeated(oh);
 		}
 	}
 

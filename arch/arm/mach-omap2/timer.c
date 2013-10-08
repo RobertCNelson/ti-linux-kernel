@@ -120,6 +120,29 @@ static void omap2_gp_timer_set_mode(enum clock_event_mode mode,
 	}
 }
 
+static void omap_clkevt_suspend(struct clock_event_device *unused)
+{
+	struct omap_hwmod *oh;
+
+	oh = omap_hwmod_lookup(clockevent_gpt.name);
+	if (!oh)
+		return;
+
+	omap_hwmod_idle(oh);
+}
+
+static void omap_clkevt_resume(struct clock_event_device *unused)
+{
+	struct omap_hwmod *oh;
+
+	oh = omap_hwmod_lookup(clockevent_gpt.name);
+	if (!oh)
+		return;
+
+	omap_hwmod_enable(oh);
+	__omap_dm_timer_int_enable(&clkev, OMAP_TIMER_INT_OVERFLOW);
+}
+
 static struct clock_event_device clockevent_gpt = {
 	.features       = CLOCK_EVT_FEAT_PERIODIC | CLOCK_EVT_FEAT_ONESHOT,
 	.rating		= 300,
@@ -328,6 +351,11 @@ static void __init omap2_gp_clockevent_init(int gptimer_id,
 
 	clkev.id = gptimer_id;
 	clkev.errata = omap_dm_timer_get_errata();
+
+	if (soc_is_am33xx()) {
+		clockevent_gpt.suspend = omap_clkevt_suspend;
+		clockevent_gpt.resume = omap_clkevt_resume;
+	}
 
 	/*
 	 * For clock-event timers we never read the timer counter and

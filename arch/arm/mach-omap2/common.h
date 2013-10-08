@@ -69,6 +69,15 @@ static inline int omap4_pm_init(void)
 }
 #endif
 
+#if defined(CONFIG_PM) && defined(CONFIG_SOC_AM33XX)
+int am33xx_pm_init(void);
+#else
+static inline int am33xx_pm_init(void)
+{
+	return 0;
+}
+#endif
+
 #ifdef CONFIG_OMAP_MUX
 int omap_mux_late_init(void);
 #else
@@ -107,8 +116,10 @@ void omap2430_init_late(void);
 void omap3430_init_late(void);
 void omap35xx_init_late(void);
 void omap3630_init_late(void);
+void am33xx_init_late(void);
 void am35xx_init_late(void);
 void ti81xx_init_late(void);
+void am33xx_init_late(void);
 void omap5_init_late(void);
 int omap2_common_pm_late_init(void);
 void dra7xx_init_early(void);
@@ -154,6 +165,14 @@ static inline void omap44xx_restart(enum reboot_mode mode, const char *cmd)
 }
 #endif
 
+#if defined(CONFIG_SUSPEND)
+void omap2_common_suspend_init(void);
+#else
+inline void omap2_common_suspend_init(void);
+{
+}
+#endif
+
 /* This gets called from mach-omap2/io.c, do not call this */
 void __init omap2_set_globals_tap(u32 class, void __iomem *tap);
 
@@ -167,7 +186,6 @@ void __init ti81xx_map_io(void);
 
 /* omap_barriers_init() is OMAP4 only */
 void omap_barriers_init(void);
-
 /**
  * omap_test_timeout - busy-loop, testing a condition
  * @cond: condition to test until it evaluates to true
@@ -306,6 +324,10 @@ extern void omap_sdrc_init(struct omap_sdrc_params *sdrc_cs0,
 struct omap2_hsmmc_info;
 extern int omap4_twl6030_hsmmc_init(struct omap2_hsmmc_info *controllers);
 extern void omap_reserve(void);
+
+extern void am33xx_reserve(void);
+extern void am33xx_dram_sync_init(void);
+extern void __iomem *am33xx_dram_sync;
 
 struct omap_hwmod;
 extern int omap_dss_reset(struct omap_hwmod *);
