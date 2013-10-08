@@ -1,0 +1,152 @@
+/*
+ * Copyright (C) 2013 Texas Instruments Incorporated - http://www.ti.com/
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/* AM43x GP EVM */
+
+/dts-v1/;
+
+#include "am4372.dtsi"
+#include <dt-bindings/pinctrl/am43xx.h>
+#include <dt-bindings/gpio/gpio.h>
+
+/ {
+	model = "TI AM43x GP EVM";
+	compatible = "ti,am43x-gp-evm","ti,am4372","ti,am43";
+
+	vmmcsd_fixed: fixedregulator-sd {
+		compatible = "regulator-fixed";
+		regulator-name = "vmmcsd_fixed";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		enable-active-high;
+	};
+
+	vcodec_fixed: fixedregulator-codec {
+		compatible = "regulator-fixed";
+		regulator-name = "vcodec_fixed";
+		enable-active-high;
+	};
+
+	am43xx_pinmux: pinmux@44e10800 {
+
+		i2c0_pins: pinmux_i2c0_pins {
+			pinctrl-single,pins = <
+				0x188 (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE0)	/* i2c0_sda.i2c0_sda */
+				0x18c (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE0)	/* i2c0_scl.i2c0_scl */
+			>;
+		};
+
+		i2c1_pins: i2c1_pins {
+			pinctrl-single,pins = <
+				0x15c	(PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE2)	/* spi0_cs0.i2c1_scl */
+				0x158	(PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE2)	/* spi0_d1.i2c1_sda */
+			>;
+		};
+
+		audio_pins: audio_pins {
+			pinctrl-single,pins = <
+				0x10c (PIN_INPUT_PULLDOWN | MUX_MODE4) /* mii1_crs.mcasp1_aclkx */
+				0x110 (PIN_INPUT_PULLDOWN | MUX_MODE4) /* mii1_rxerr.mcasp1_fsx */
+				0x108 (PIN_OUTPUT_PULLDOWN | MUX_MODE4) /* mii1_col.mcasp1_axr2 */
+				0x144 (PIN_INPUT_PULLDOWN | MUX_MODE4) /* rmii1_ref_clk.mcasp1_axr3 */
+			>;
+		};
+	};
+
+	ocp {
+		sound {
+			compatible = "ti,da830-evm-audio";
+			ti,model = "AM335x-EVM";
+			ti,audio-codec = <&tlv320aic3106>;
+			ti,mcasp-controller = <&mcasp1>;
+			ti,codec-clock-rate = <12000000>;
+			ti,audio-routing =
+				"Headphone Jack",       "HPLOUT",
+				"Headphone Jack",       "HPROUT",
+				"LINE1L",               "Line In",
+				"LINE1R",               "Line In";
+		};
+	};
+};
+
+&mmc1 {
+	status = "okay";
+	vmmc-supply = <&vmmcsd_fixed>;
+	bus-width = <4>;
+};
+
+&i2c0 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c0_pins>;
+
+	at24@50 {
+		compatible = "at24,24c256";
+		pagesize = <64>;
+		reg = <0x50>;
+	};
+
+};
+
+&i2c1 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c1_pins>;
+
+	tlv320aic3106: tlv320aic3106@1b {
+		compatible = "ti,tlv320aic3106";
+		reg = <0x1b>;
+		status = "okay";
+
+		/* Regulators */
+		AVDD-supply = <&vcodec_fixed>;
+		IOVDD-supply = <&vcodec_fixed>;
+		DRVDD-supply = <&vcodec_fixed>;
+		DVDD-supply = <&vcodec_fixed>;
+
+	};
+};
+
+&mcasp1 {
+		pinctrl-names = "default";
+		pinctrl-0 = <&audio_pins>;
+
+		status = "okay";
+
+		op-mode = <0>;          /* MCASP_IIS_MODE */
+		tdm-slots = <2>;
+		/* 16 serializer */
+		serial-dir = <  /* 0: INACTIVE, 1: TX, 2: RX */
+			0 0 1 2
+			0 0 0 0
+			0 0 0 0
+			0 0 0 0
+		>;
+		tx-num-evt = <1>;
+		rx-num-evt = <1>;
+};
+
+&wdt2 {
+	status = "okay";
+};
+
+&gpio0 {
+	status = "okay";
+};
+
+&gpio1 {
+	status = "okay";
+};
+
+&gpio2 {
+	status = "okay";
+};
+
+&gpio3 {
+	status = "okay";
+};
