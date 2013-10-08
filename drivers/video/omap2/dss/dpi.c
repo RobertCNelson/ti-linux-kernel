@@ -684,6 +684,7 @@ static void dpi_init_output(struct platform_device *pdev)
 	out->owner = THIS_MODULE;
 
 	omapdss_register_output(out);
+
 }
 
 static void __exit dpi_uninit_output(struct platform_device *pdev)
@@ -698,6 +699,9 @@ static int omap_dpi_probe(struct platform_device *pdev)
 	dpi.pdev = pdev;
 
 	mutex_init(&dpi.lock);
+
+	/*for Am43xx - will add check later */
+	pinctrl_pm_select_default_state(&pdev->dev);
 
 	dpi_init_output(pdev);
 
