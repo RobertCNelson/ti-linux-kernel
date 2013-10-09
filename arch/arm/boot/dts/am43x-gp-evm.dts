@@ -48,7 +48,7 @@
 			>;
 		};
 
-		audio_pins: audio_pins {
+		mcasp1_pins: pinmux_mcasp1_pins {
 			pinctrl-single,pins = <
 				0x10c (PIN_INPUT_PULLDOWN | MUX_MODE4) /* mii1_crs.mcasp1_aclkx */
 				0x110 (PIN_INPUT_PULLDOWN | MUX_MODE4) /* mii1_rxerr.mcasp1_fsx */
@@ -114,7 +114,7 @@
 
 &mcasp1 {
 		pinctrl-names = "default";
-		pinctrl-0 = <&audio_pins>;
+		pinctrl-0 = <&mcasp1_pins>;
 
 		status = "okay";
 
