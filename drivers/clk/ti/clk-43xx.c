@@ -110,6 +110,10 @@ static struct omap_dt_clk am43xx_clks[] = {
 	{ .node_name = NULL },
 };
 
+static const char *enable_init_clks[] = {
+	"l4ls_gclk",
+};
+
 int __init am43xx_clk_init(void)
 {
 	of_clk_init(NULL);
@@ -117,6 +121,9 @@ int __init am43xx_clk_init(void)
 	omap_dt_clocks_register(am43xx_clks);
 
 	omap2_clk_disable_autoidle_all();
+
+	omap2_clk_enable_init_clocks(enable_init_clks,
+				     ARRAY_SIZE(enable_init_clks));
 
 	return 0;
 }
