@@ -157,6 +157,15 @@
 				0x164 (PIN_OUTPUT_PULLUP | MUX_MODE7) /* ECAP0_IN_PWM0_OUT -> GPIO 0_7 BACKLIGHT */
 			>;
 		};
+
+		mcasp1_pins: pinmux_mcasp1_pins {
+			pinctrl-single,pins = <
+				0x1a0 (PIN_INPUT_PULLDOWN | MUX_MODE3) /* mcasp0_aclkr.mcasp1_aclkx */
+				0x1a4 (PIN_INPUT_PULLDOWN | MUX_MODE3) /* mcasp0_fsr.mcasp1_fsx */
+				0x1a8 (PIN_OUTPUT_PULLDOWN | MUX_MODE3) /* mcasp0_axr1.mcasp1_axr0 */
+				0x1ac (PIN_INPUT_PULLDOWN | MUX_MODE3) /* mcasp0_ahclkx.mcasp1_axr1 */
+			>;
+		};
 	};
 
 	matrix_keypad: matrix_keypad@0 {
@@ -329,4 +338,20 @@
 
 &gpio3 {
 	status = "okay";
+};
+
+&mcasp1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&mcasp1_pins>;
+
+	status = "okay";
+
+	op-mode = <0>;          /* MCASP_IIS_MODE */
+	tdm-slots = <2>;
+	/* 4 serializer */
+	serial-dir = <  /* 0: INACTIVE, 1: TX, 2: RX */
+		1 2 0 0
+	>;
+	tx-num-evt = <1>;
+	rx-num-evt = <1>;
 };
