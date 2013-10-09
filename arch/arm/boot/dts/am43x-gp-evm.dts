@@ -61,7 +61,7 @@
 	ocp {
 		sound {
 			compatible = "ti,da830-evm-audio";
-			ti,model = "AM335x-EVM";
+			ti,model = "AM43x-GP-EVM";
 			ti,audio-codec = <&tlv320aic3106>;
 			ti,mcasp-controller = <&mcasp1>;
 			ti,codec-clock-rate = <12000000>;
