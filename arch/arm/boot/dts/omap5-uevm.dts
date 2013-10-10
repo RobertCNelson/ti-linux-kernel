@@ -548,6 +548,10 @@
 	vdds_dsi-supply = <&ldo4_reg>;
 };
 
+&cpu0 {
+	cpu0-supply = <&smps123_reg>;
+};
+
 / {
 	aliases {
 		display0 = &hdmi0;

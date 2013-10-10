@@ -538,7 +538,8 @@ static struct omap_hwmod am33xx_cpgmac0_hwmod = {
 	.name		= "cpgmac0",
 	.class		= &am33xx_cpgmac0_hwmod_class,
 	.clkdm_name	= "cpsw_125mhz_clkdm",
-	.flags		= (HWMOD_SWSUP_SIDLE | HWMOD_SWSUP_MSTANDBY),
+	.flags		= (HWMOD_SWSUP_SIDLE | HWMOD_SWSUP_MSTANDBY |
+			   HWMOD_FORCE_MSTANDBY_REPEATED),
 	.mpu_rt_idx	= 1,
 	.prcm		= {
 		.omap4	= {
@@ -1452,7 +1453,8 @@ static struct omap_hwmod am33xx_tptc0_hwmod = {
 	.name		= "tptc0",
 	.class		= &am33xx_tptc_hwmod_class,
 	.clkdm_name	= "l3_clkdm",
-	.flags		= HWMOD_SWSUP_SIDLE | HWMOD_SWSUP_MSTANDBY,
+	.flags		= HWMOD_SWSUP_SIDLE | HWMOD_SWSUP_MSTANDBY |
+				  HWMOD_FORCE_MSTANDBY_REPEATED,
 	.main_clk	= "l3_gclk",
 	.prcm		= {
 		.omap4	= {
@@ -1466,7 +1468,8 @@ static struct omap_hwmod am33xx_tptc1_hwmod = {
 	.name		= "tptc1",
 	.class		= &am33xx_tptc_hwmod_class,
 	.clkdm_name	= "l3_clkdm",
-	.flags		= (HWMOD_SWSUP_SIDLE | HWMOD_SWSUP_MSTANDBY),
+	.flags		= (HWMOD_SWSUP_SIDLE | HWMOD_SWSUP_MSTANDBY |
+				   HWMOD_FORCE_MSTANDBY_REPEATED),
 	.main_clk	= "l3_gclk",
 	.prcm		= {
 		.omap4	= {
@@ -1480,7 +1483,8 @@ static struct omap_hwmod am33xx_tptc2_hwmod = {
 	.name		= "tptc2",
 	.class		= &am33xx_tptc_hwmod_class,
 	.clkdm_name	= "l3_clkdm",
-	.flags		= (HWMOD_SWSUP_SIDLE | HWMOD_SWSUP_MSTANDBY),
+	.flags		= (HWMOD_SWSUP_SIDLE | HWMOD_SWSUP_MSTANDBY |
+				   HWMOD_FORCE_MSTANDBY_REPEATED),
 	.main_clk	= "l3_gclk",
 	.prcm		= {
 		.omap4	= {
@@ -1636,7 +1640,8 @@ static struct omap_hwmod am33xx_usbss_hwmod = {
 	.name		= "usb_otg_hs",
 	.class		= &am33xx_usbotg_class,
 	.clkdm_name	= "l3s_clkdm",
-	.flags		= HWMOD_SWSUP_SIDLE | HWMOD_SWSUP_MSTANDBY,
+	.flags		= HWMOD_SWSUP_SIDLE | HWMOD_SWSUP_MSTANDBY |
+				  HWMOD_FORCE_MSTANDBY_REPEATED,
 	.prcm		= {
 		.omap4	= {
 			.clkctrl_offs	= AM33XX_CM_PER_USB0_CLKCTRL_OFFSET,
