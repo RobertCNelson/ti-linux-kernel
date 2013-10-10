@@ -328,7 +328,7 @@
 		attb-gpio = <&gpio1 17 GPIO_ACTIVE_HIGH>;
 
 		x-size = <1024>;
-		y-size = <768>;
+		y-size = <600>;
 	};
 
 	sii9022: sii9022@3b {
