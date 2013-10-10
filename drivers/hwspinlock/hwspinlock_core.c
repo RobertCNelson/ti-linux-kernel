@@ -1,7 +1,7 @@
 /*
  * Hardware spinlock framework
  *
- * Copyright (C) 2010 Texas Instruments Incorporated - http://www.ti.com
+ * Copyright (C) 2010-2013 Texas Instruments Incorporated - http://www.ti.com
  *
  * Contact: Ohad Ben-Cohen <ohad@wizery.com>
  *
@@ -27,6 +27,7 @@
 #include <linux/hwspinlock.h>
 #include <linux/pm_runtime.h>
 #include <linux/mutex.h>
+#include <linux/of.h>
 
 #include "hwspinlock_internal.h"
 
@@ -261,6 +262,33 @@ void __hwspin_unlock(struct hwspinlock *hwlock, int mode, unsigned long *flags)
 		spin_unlock(&hwlock->lock);
 }
 EXPORT_SYMBOL_GPL(__hwspin_unlock);
+
+/**
+ * of_hwspin_lock_get_num_locks() - OF helper to retrieve number of locks
+ * @dn: device node pointer
+ *
+ * This is an OF helper function that can be called by the underlying
+ * platform-specific implementations, to retrieve the number of locks
+ * present within a hwspinlock device instance. The hwlock-num-locks
+ * DT property may be optional for some platforms, while mandatory for
+ * some others, so this function is typically called only by needed
+ * platform-specific implementations.
+ *
+ * Returns a positive number of locks on success, -ENODEV on generic
+ * failure or an appropriate error code as returned by the OF layer
+ */
+int of_hwspin_lock_get_num_locks(struct device_node *dn)
+{
+	unsigned int val;
+	int ret = -ENODEV;
+
+	ret = of_property_read_u32(dn, "hwlock-num-locks", &val);
+	if (!ret)
+		ret = val ? val : -ENODEV;
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(of_hwspin_lock_get_num_locks);
 
 static int hwspin_lock_register_single(struct hwspinlock *hwlock, int id)
 {
@@ -590,6 +618,61 @@ out:
 	return hwlock;
 }
 EXPORT_SYMBOL_GPL(hwspin_lock_request_specific);
+
+/**
+ * of_hwspin_lock_request_specific() - request a OF phandle-based specific lock
+ * @np: device node from which to request the specific hwlock
+ * @propname: property name containing hwlock specifier(s)
+ * @index: index of the hwlock
+ *
+ * This function is the OF equivalent of hwspin_lock_request_specific(). This
+ * function provides a means for users of the hwspinlock module to request a
+ * specific hwspinlock using the phandle of the hwspinlock device. The requested
+ * lock number is indexed relative to the hwspinlock device, unlike the
+ * hwspin_lock_request_specific() which is an absolute lock number.
+ *
+ * Returns the address of the assigned hwspinlock, or NULL on error
+ */
+struct hwspinlock *of_hwspin_lock_request_specific(struct device_node *np,
+					const char *propname, int index)
+{
+	struct hwspinlock_device *bank;
+	struct of_phandle_args args;
+	unsigned int id;
+	int ret;
+
+	ret = of_parse_phandle_with_fixed_args(np, propname, 1, index, &args);
+	if (ret) {
+		pr_warn("%s: can't parse hwlocks property of node '%s[%d]' ret = %d\n",
+			__func__, np->full_name, index, ret);
+		return NULL;
+	}
+
+	/* sanity check (this shouldn't happen) */
+	WARN_ON(args.args_count != 1);
+
+	mutex_lock(&hwspinlock_tree_lock);
+	list_for_each_entry(bank, &hwspinlock_devices, list)
+		if (bank->dev->of_node == args.np)
+			break;
+	mutex_unlock(&hwspinlock_tree_lock);
+	if (&bank->list == &hwspinlock_devices) {
+		pr_warn("%s: requested hwspinlock device %s is not registered\n",
+			__func__, args.np->full_name);
+		return NULL;
+	}
+
+	id = args.args[0];
+	if (id >= bank->num_locks) {
+		pr_warn("%s: requested lock %d is out of range [0, %d]\n",
+			__func__, id, bank->num_locks - 1);
+		return NULL;
+	}
+
+	id += bank->base_id;
+	return hwspin_lock_request_specific(id);
+}
+EXPORT_SYMBOL(of_hwspin_lock_request_specific);
 
 /**
  * hwspin_lock_free() - free a specific hwspinlock
