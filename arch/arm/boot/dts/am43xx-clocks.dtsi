@@ -47,7 +47,6 @@ virt_26000000_ck: virt_26000000_ck {
 sys_clkin_ck: sys_clkin_ck@44e10040 {
 	#clock-cells = <0>;
 	compatible = "mux-clock";
-	clocks = <&virt_19200000_ck>, <&virt_24000000_ck>, <&virt_25000000_ck>, <&virt_26000000_ck>;
 	bit-shift = <22>;
 	reg = <0x44e10040 0x4>;
 	bit-mask = <0x3>;

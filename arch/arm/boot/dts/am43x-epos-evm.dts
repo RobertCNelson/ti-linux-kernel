@@ -454,4 +454,8 @@
 	};
 };
 
+&sys_clkin_ck {
+	clocks = <&virt_25000000_ck>;
+};
+
 #include "tps65218.dtsi"

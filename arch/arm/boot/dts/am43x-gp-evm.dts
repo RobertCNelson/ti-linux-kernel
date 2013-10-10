@@ -147,3 +147,7 @@
 &gpio3 {
 	status = "okay";
 };
+
+&sys_clkin_ck {
+	clocks = <&virt_24000000_ck>;
+};
