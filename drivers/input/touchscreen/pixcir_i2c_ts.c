@@ -284,9 +284,9 @@ static int pixcir_int_enable(struct pixcir_i2c_ts_data *ts, bool enable)
 	}
 
 	if (enable)
-		ret |= PIXCIR_INT_ENABLE;
+		ret |= PIXCIR_INT_ENABLE | PIXCIR_INT_PULSE_TOUCH;
 	else
-		ret &= ~PIXCIR_INT_ENABLE;
+		ret &= ~(PIXCIR_INT_ENABLE | PIXCIR_INT_PULSE_TOUCH);
 
 	ret = i2c_smbus_write_byte_data(ts->client, PIXCIR_REG_INT_MODE, ret);
 	if (ret < 0) {
@@ -514,7 +514,7 @@ static int pixcir_i2c_ts_probe(struct i2c_client *client,
 	}
 
 	error = devm_request_threaded_irq(dev, client->irq, NULL, pixcir_ts_isr,
-				     IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING | IRQF_ONESHOT,
+				     IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
 				     client->name, tsdata);
 	if (error) {
 		dev_err(dev, "failed to request irq %d\n", client->irq);
