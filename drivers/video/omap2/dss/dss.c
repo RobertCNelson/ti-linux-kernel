@@ -758,7 +758,7 @@ static int dss_get_clocks(void)
 		clk = clk_get_parent(clk);
 		DSSDBG("PLL %s\n", clk->name);
 
-		r = clk_set_rate(clk, 132000000);
+		r = clk_set_rate(clk, 150000000);
 		if (!r)
 			DSSERR("SET CLK RATE Failed");
 		clk = NULL;
