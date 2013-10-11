@@ -22,6 +22,8 @@
 		serial3 = &uart4;
 		serial4 = &uart5;
 		serial5 = &uart6;
+		ethernet0 = &cpsw_emac0;
+		ethernet1 = &cpsw_emac1;
 	};
 
 	cpus {
@@ -108,7 +110,11 @@
 					 "mpu-irq", "mailbox5", <0x88 0xfb 0x100>,
 					 "mpu-irq", "mailbox6", <0x8d 0xff 0x10a>,
 					 "mpu-irq", "qspi", <0x7c 0x157 0x0ec>,
-					 "mpu-irq", "vpe", <0x9c 0x162 0x128>;
+					 "mpu-irq", "vpe", <0x9c 0x162 0x128>,
+					 "mpu-irq", "cpsw-rx-thresh", <0x32 0x14e 0x58>,
+					 "mpu-irq", "cpsw-rx", <0x33 0x14f 0x5a>,
+					 "mpu-irq", "cpsw-tx", <0x34 0x150 0x5c>,
+					 "mpu-irq", "cpsw-misc", <0x35 0x151 0x5e>;
 		};
 
 		crossbar_dma: dmareq@4a002b78 {
@@ -1145,6 +1151,56 @@
 			interrupts = <0 0x9c 0x4>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+		};
+
+		mac: ethernet@4a100000 {
+			compatible = "ti,cpsw";
+			ti,hwmods = "gmac";
+			cpdma_channels = <8>;
+			ale_entries = <1024>;
+			bd_ram_size = <0x2000>;
+			no_bd_ram = <0>;
+			rx_descs = <64>;
+			mac_control = <0x20>;
+			slaves = <2>;
+			active_slave = <0>;
+			cpts_clock_mult = <0x80000000>;
+			cpts_clock_shift = <29>;
+			reg = <0x48484000 0x800
+			       0x48485200 0x100>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			/*
+			 * rx_thresh_pend
+			 * rx_pend
+			 * tx_pend
+			 * misc_pend
+			 */
+			interrupts = <GIC_SPI 50 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 51 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 52 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 53 IRQ_TYPE_LEVEL_HIGH>;
+			ranges;
+			status = "disabled";
+
+			davinci_mdio: mdio@4a101000 {
+				compatible = "ti,davinci_mdio";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				ti,hwmods = "davinci_mdio";
+				bus_freq = <1000000>;
+				reg = <0x48485000 0x100>;
+			};
+
+			cpsw_emac0: slave@4a100200 {
+				/* Filled in by U-Boot */
+				mac-address = [ 00 00 00 00 00 00 ];
+			};
+
+			cpsw_emac1: slave@4a100300 {
+				/* Filled in by U-Boot */
+				mac-address = [ 00 00 00 00 00 00 ];
+			};
 		};
 	};
 
