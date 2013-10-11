@@ -122,6 +122,14 @@
 				0x48 (PIN_INPUT_PULLUP | MUX_MODE7)  /* gpmc_a1.gpio1_17 */
 			>;
 		};
+
+		i2c2_pins: pinmux_i2c2_pins {
+			pinctrl-single,pins = <
+				0x1C0 (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE8)	/* i2c2_sda.i2c0_sda */
+				0x1C4 (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE8)	/* i2c2_scl.i2c0_scl */
+			>;
+		};
+
 		dss_pinctrl: dss_pinctrl {
 			pinctrl-single,pins = <
 				0x020 (PIN_OUTPUT_PULLUP | MUX_MODE1) /*gpmc ad 8 -> DSS DATA 23 */
@@ -330,6 +338,14 @@
 		x-size = <1024>;
 		y-size = <600>;
 	};
+
+
+};
+
+&i2c2 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c2_pins>;
 
 	sii9022: sii9022@3b {
 		compatible = "sii,sii9022";
