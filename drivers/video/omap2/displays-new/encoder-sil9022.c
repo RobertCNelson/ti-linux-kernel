@@ -222,13 +222,14 @@ static int sil9022_hw_enable(struct omap_dss_device *dssdev)
 	}
 
 	/* Write out the TPI Pixel Repetition Data (24 bit wide bus,
-	falling edge, no pixel replication) */
+	falling edge, 1:1 CLK ration, no pixel replication) */
 	val = TPI_AVI_PIXEL_REP_BUS_24BIT |
 		TPI_AVI_PIXEL_REP_FALLING_EDGE |
-		TPI_AVI_PIXEL_REP_NONE;
+		TPI_AVI_PIXEL_REP_NONE | 0x40;
 	err = sil9022_write_reg(dssdev,
 				HDMI_TPI_PIXEL_REPETITION_REG,
 				val);
+
 	if (err < 0) {
 		dev_err(dssdev->dev,
 			"ERROR: writing TPI pixel repetition data\n");
@@ -650,6 +651,8 @@ static int sil9022_read_edid(struct omap_dss_device *dssdev,
 		dev_err(&client->dev, "ERROR: Releasing DDC Bus Access\n");
 		return err;
 		}
+
+	print_hex_dump(KERN_ERR, "\t", DUMP_PREFIX_NONE, 16, 1, edid, len, 0);
 
 	return 0;
 
