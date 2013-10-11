@@ -143,6 +143,11 @@ static void pixcir_ts_typeb_report(struct pixcir_i2c_ts_data *ts)
 		num_fingers = rdbuf[0] & 0x7;
 		bufptr = &rdbuf[2];
 
+		if (!num_fingers) {
+			input_report_key(ts->input, BTN_TOUCH, 0);
+			goto next;
+		}
+
 		/* figure out updated slots */
 		for (i = 0; i < ts->num_slots; i++) {
 			ts->slots[i].updated = 0;
@@ -168,6 +173,8 @@ static void pixcir_ts_typeb_report(struct pixcir_i2c_ts_data *ts)
 			}
 		}
 
+		input_report_key(ts->input, BTN_TOUCH, 1);
+
 		/* report all updated slots */
 		for (i = 0; i < ts->num_slots; i++) {
 			if (!ts->slots[i].updated)
@@ -188,10 +195,10 @@ static void pixcir_ts_typeb_report(struct pixcir_i2c_ts_data *ts)
 			input_mt_sync(ts->input);
 		}
 
+next:
 		input_mt_report_pointer_emulation(ts->input, true);
 		input_sync(ts->input);
 
-next:
 		if (gpio_is_valid(pdata->gpio_attb) &&
 				!gpio_get_value(pdata->gpio_attb))
 			break;
