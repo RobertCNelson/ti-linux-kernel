@@ -119,6 +119,7 @@ static void pixcir_ts_typeb_report(struct pixcir_i2c_ts_data *ts)
 	u8 num_fingers;
 	u8 unreliable;
 	int ret, i, j;
+	bool button_report = false;
 
 	while (!ts->exiting) {
 		ret = i2c_master_send(ts->client, wrbuf, sizeof(wrbuf));
@@ -159,9 +160,12 @@ static void pixcir_ts_typeb_report(struct pixcir_i2c_ts_data *ts)
 			x = bufptr[j + 1] << 8 | bufptr[j];
 			y = bufptr[j + 3] << 8 | bufptr[j + 2];
 
-			if (ts->slots[i].id == bufptr[j + 4])
+			if (ts->slots[i].id == bufptr[j + 4]) {
 				if (ts->slots[i].x == x && ts->slots[i].y == y)
 					continue;
+				else
+					button_report = true;
+			}
 
 			ts->slots[i].updated = 1;
 			ts->slots[i].x = x;
@@ -182,7 +186,8 @@ static void pixcir_ts_typeb_report(struct pixcir_i2c_ts_data *ts)
 			}
 		}
 
-		input_report_key(ts->input, BTN_TOUCH, 1);
+		if (button_report)
+			input_report_key(ts->input, BTN_TOUCH, 1);
 
 		/* report all updated slots */
 		for (i = 0; i < ts->num_slots; i++) {
