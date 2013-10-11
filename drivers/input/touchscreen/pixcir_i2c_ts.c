@@ -158,7 +158,7 @@ static void pixcir_ts_typeb_report(struct pixcir_i2c_ts_data *ts)
 			int x, y;
 
 			x = bufptr[j + 1] << 8 | bufptr[j];
-			y = bufptr[j + 3] << 8 | bufptr[j + 2];
+			y = (bufptr[j + 3] << 8 | bufptr[j + 2]) - 40;
 
 			if (ts->slots[i].id == bufptr[j + 4]) {
 				if (ts->slots[i].x == x && ts->slots[i].y == y)
