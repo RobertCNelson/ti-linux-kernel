@@ -154,9 +154,18 @@ static void pixcir_ts_typeb_report(struct pixcir_i2c_ts_data *ts)
 		}
 
 		for (i = 0, j = 0; i < num_fingers; i++, j += 5) {
+			int x, y;
+
+			x = bufptr[j + 1] << 8 | bufptr[j];
+			y = bufptr[j + 3] << 8 | bufptr[j + 2];
+
+			if (ts->slots[i].id == bufptr[j + 4])
+				if (ts->slots[i].x == x && ts->slots[i].y == y)
+					continue;
+
 			ts->slots[i].updated = 1;
-			ts->slots[i].x = bufptr[j + 1] << 8 | bufptr[j];
-			ts->slots[i].y = bufptr[j + 3] << 8 | bufptr[j + 2];
+			ts->slots[i].x = x;
+			ts->slots[i].y = y;
 			ts->slots[i].id = bufptr[j + 4];
 		}
 
