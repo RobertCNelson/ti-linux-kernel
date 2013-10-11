@@ -152,6 +152,7 @@ static void pixcir_ts_typeb_report(struct pixcir_i2c_ts_data *ts)
 			ts->slots[i].updated = 1;
 			ts->slots[i].x = bufptr[j + 1] << 8 | bufptr[j];
 			ts->slots[i].y = bufptr[j + 3] << 8 | bufptr[j + 2];
+			ts->slots[i].id = bufptr[j + 4];
 		}
 
 		/*
@@ -178,6 +179,13 @@ static void pixcir_ts_typeb_report(struct pixcir_i2c_ts_data *ts)
 
 			input_report_abs(ts->input, ABS_X, ts->slots[i].x);
 			input_report_abs(ts->input, ABS_Y, ts->slots[i].y);
+			input_report_abs(ts->input, ABS_MT_POSITION_X,
+					 ts->slots[i].x);
+			input_report_abs(ts->input, ABS_MT_POSITION_Y,
+					 ts->slots[i].y);
+			input_report_abs(ts->input, ABS_MT_TRACKING_ID,
+					 ts->slots[i].id);
+			input_mt_sync(ts->input);
 		}
 
 		input_mt_report_pointer_emulation(ts->input, true);
