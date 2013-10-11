@@ -119,6 +119,7 @@ static void pixcir_ts_typeb_report(struct pixcir_i2c_ts_data *ts)
 	u8 num_fingers;
 	u8 unreliable;
 	int ret, i, j;
+	bool button_report = false;
 
 	while (!ts->exiting) {
 		ret = i2c_master_send(ts->client, wrbuf, sizeof(wrbuf));
@@ -143,15 +144,33 @@ static void pixcir_ts_typeb_report(struct pixcir_i2c_ts_data *ts)
 		num_fingers = rdbuf[0] & 0x7;
 		bufptr = &rdbuf[2];
 
+		if (!num_fingers) {
+			input_report_key(ts->input, BTN_TOUCH, 0);
+			goto next;
+		}
+
 		/* figure out updated slots */
 		for (i = 0; i < ts->num_slots; i++) {
 			ts->slots[i].updated = 0;
 		}
 
 		for (i = 0, j = 0; i < num_fingers; i++, j += 5) {
+			int x, y;
+
+			x = bufptr[j + 1] << 8 | bufptr[j];
+			y = (bufptr[j + 3] << 8 | bufptr[j + 2]) - 40;
+
+			if (ts->slots[i].id == bufptr[j + 4]) {
+				if (ts->slots[i].x == x && ts->slots[i].y == y)
+					continue;
+				else
+					button_report = true;
+			}
+
 			ts->slots[i].updated = 1;
-			ts->slots[i].x = bufptr[j + 1] << 8 | bufptr[j];
-			ts->slots[i].y = bufptr[j + 3] << 8 | bufptr[j + 2];
+			ts->slots[i].x = x;
+			ts->slots[i].y = y;
+			ts->slots[i].id = bufptr[j + 4];
 		}
 
 		/*
@@ -167,6 +186,9 @@ static void pixcir_ts_typeb_report(struct pixcir_i2c_ts_data *ts)
 			}
 		}
 
+		if (button_report)
+			input_report_key(ts->input, BTN_TOUCH, 1);
+
 		/* report all updated slots */
 		for (i = 0; i < ts->num_slots; i++) {
 			if (!ts->slots[i].updated)
@@ -178,12 +200,19 @@ static void pixcir_ts_typeb_report(struct pixcir_i2c_ts_data *ts)
 
 			input_report_abs(ts->input, ABS_X, ts->slots[i].x);
 			input_report_abs(ts->input, ABS_Y, ts->slots[i].y);
+			input_report_abs(ts->input, ABS_MT_POSITION_X,
+					 ts->slots[i].x);
+			input_report_abs(ts->input, ABS_MT_POSITION_Y,
+					 ts->slots[i].y);
+			input_report_abs(ts->input, ABS_MT_TRACKING_ID,
+					 ts->slots[i].id);
+			input_mt_sync(ts->input);
 		}
 
+next:
 		input_mt_report_pointer_emulation(ts->input, true);
 		input_sync(ts->input);
 
-next:
 		if (gpio_is_valid(pdata->gpio_attb) &&
 				!gpio_get_value(pdata->gpio_attb))
 			break;
@@ -284,9 +313,9 @@ static int pixcir_int_enable(struct pixcir_i2c_ts_data *ts, bool enable)
 	}
 
 	if (enable)
-		ret |= PIXCIR_INT_ENABLE;
+		ret |= PIXCIR_INT_ENABLE | PIXCIR_INT_PULSE_TOUCH;
 	else
-		ret &= ~PIXCIR_INT_ENABLE;
+		ret &= ~(PIXCIR_INT_ENABLE | PIXCIR_INT_PULSE_TOUCH);
 
 	ret = i2c_smbus_write_byte_data(ts->client, PIXCIR_REG_INT_MODE, ret);
 	if (ret < 0) {
@@ -514,7 +543,7 @@ static int pixcir_i2c_ts_probe(struct i2c_client *client,
 	}
 
 	error = devm_request_threaded_irq(dev, client->irq, NULL, pixcir_ts_isr,
-				     IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING | IRQF_ONESHOT,
+				     IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
 				     client->name, tsdata);
 	if (error) {
 		dev_err(dev, "failed to request irq %d\n", client->irq);
