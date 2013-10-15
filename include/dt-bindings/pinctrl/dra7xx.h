@@ -1,14 +1,18 @@
 /*
- * This header provides constants for OMAP pinctrl bindings.
+ * Copyright (C) 2013 Texas Instruments Incorporated - http://www.ti.com/
  *
- * Copyright (C) 2009 Nokia
- * Copyright (C) 2009-2010 Texas Instruments
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+/*
+ * This header provides constants specific to DRA7XX pinctrl bindings.
  */
 
-#ifndef _DT_BINDINGS_PINCTRL_OMAP_H
-#define _DT_BINDINGS_PINCTRL_OMAP_H
+#ifndef _DT_BINDINGS_PINCTRL_DRA7XX_H_
+#define _DT_BINDINGS_PINCTRL_DRA7XX_H_
 
-/* 34xx mux mode options for each pin. See TRM for options */
+/* dra7xx specific mux bit defines */
 #define MUX_MODE0	0
 #define MUX_MODE1	1
 #define MUX_MODE2	2
@@ -18,20 +22,12 @@
 #define MUX_MODE6	6
 #define MUX_MODE7	7
 
-/* 24xx/34xx mux bit defines */
-#define PULL_ENA		(1 << 3)
-#define PULL_UP			(1 << 4)
-#define ALTELECTRICALSEL	(1 << 5)
-
-/* omap3/4/5 specific mux bit defines */
-#define INPUT_EN		(1 << 8)
-#define OFF_EN			(1 << 9)
-#define OFFOUT_EN		(1 << 10)
-#define OFFOUT_VAL		(1 << 11)
-#define OFF_PULL_EN		(1 << 12)
-#define OFF_PULL_UP		(1 << 13)
-#define WAKEUP_EN		(1 << 14)
-#define WAKEUP_EVENT		(1 << 15)
+#define PULL_ENA		(1 << 16)
+#define PULL_UP			(1 << 17)
+#define INPUT_EN		(1 << 18)
+#define SLEWCTRL_FAST		(1 << 19)
+#define WAKEUP_EN		(1 << 24)
+#define WAKEUP_EVENT		(1 << 25)
 
 /* Active pin states */
 #define PIN_OUTPUT		0
@@ -50,4 +46,3 @@
 #define PIN_OFF_WAKEUPENABLE	WAKEUP_EN
 
 #endif
-

@@ -1,0 +1,16 @@
+* Smart Mixed-Signal Connectivity (SMSC) 95xx Controller
+
+Required properties:
+None
+
+Optional properties:
+- mac-address - Read the mac address that was stored by uBoot
+- local-address - Read the mac address that was stored by uBoot
+- address - Read the mac address that was stored by uBoot
+
+Examples:
+
+smsc0: smsc95xx@0 {
+	/* Filled in by U-Boot */
+	mac-address = [ 00 00 00 00 00 00 ];
+};
