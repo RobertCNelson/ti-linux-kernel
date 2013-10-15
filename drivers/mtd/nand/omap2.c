@@ -1102,6 +1102,7 @@ static void omap_enable_hwecc(struct mtd_info *mtd, int mode)
 	writel(ECCCLEAR | ECC1, info->reg.gpmc_ecc_control);
 }
 
+#if defined(CONFIG_MTD_NAND_ECC_BCH) || defined(CONFIG_MTD_NAND_OMAP_BCH)
 /**
  * omap_calculate_ecc_bch - Generate bytes of ECC bytes
  * @mtd:	MTD device structure
@@ -1236,6 +1237,7 @@ static int omap_calculate_ecc_bch(struct mtd_info *mtd, const u_char *dat,
 	}
 	return 0;
 }
+#endif /*defined(CONFIG_MTD_NAND_ECC_BCH) || defined(CONFIG_MTD_NAND_OMAP_BCH)*/
 
 #ifdef CONFIG_MTD_NAND_OMAP_BCH
 /**
