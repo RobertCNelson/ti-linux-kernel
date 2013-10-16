@@ -370,7 +370,7 @@
 			};
 		};
 
-	gpio20: gpio@20 {
+	pcf_gpio_20: gpio@20 {
 		compatible = "ti,pcf8575";
 		reg = <0x20>;
 		lines-initial-states = <0x4000>;
@@ -388,24 +388,17 @@
 		lines-initial-states = <0x1408>;
 		gpio-controller;
 		#gpio-cells = <2>;
-		interrupt-parent = <&gpio20>;
+		interrupt-parent = <&pcf_gpio_20>;
 		interrupts = <14 2>;
 		interrupt-controller;
 		#interrupt-cells = <2>;
-	};
-
-	pcf_lcd: gpio@20 {
-		compatible = "nxp,pcf8575";
-		reg = <0x20>;
-		gpio-controller;
-		#gpio-cells = <2>;
 	};
 
 	/* TLC chip for LCD panel power and backlight */
 	tlc59108: tlc59108@40 {
 		compatible = "ti,tlc59108";
 		reg = <0x40>;
-		gpios = <&pcf_lcd 13 0>; /* P15, CON_LCD_PWR_DN */
+		gpios = <&pcf_gpio_20 13 0>; /* P15, CON_LCD_PWR_DN */
 		video-source = <&dpi1>;
 		data-lines = <24>;
 	};
