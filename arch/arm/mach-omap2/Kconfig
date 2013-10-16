@@ -147,6 +147,8 @@ config SOC_DRA7XX
 	select HAVE_SMP
 	select COMMON_CLK
 	select CROSSBAR
+	select ARCH_HAS_RESET_CONTROLLER
+	select RESET_TI
 
 comment "OMAP Core Type"
 	depends on ARCH_OMAP2

@@ -61,6 +61,20 @@ static struct ti_reset_data am43x_reset_data = {
 	.nr_resets	= ARRAY_SIZE(am43x_reset_reg_data),
 };
 
+static struct ti_reset_reg_data dra7_reset_reg_data[] = {
+	{
+		.rstctrl_offs	= 0x1310,
+		.rstst_offs	= 0x1314,
+		.rstctrl_bit	= 0,
+		.rstst_bit	= 0,
+	},
+};
+
+static struct ti_reset_data dra7_reset_data = {
+	.reg_data	= dra7_reset_reg_data,
+	.nr_resets	= ARRAY_SIZE(dra7_reset_reg_data),
+};
+
 static int ti_reset_clear_reset(struct reset_controller_dev *rcdev,
 				  unsigned long id)
 {
@@ -111,6 +125,7 @@ static struct reset_controller_dev ti_reset_controller = {
 static const struct of_device_id ti_reset_of_match[] = {
 	{ .compatible = "ti,am3352-prcm", .data = &am335x_reset_data,},
 	{ .compatible = "ti,am4372-prcm", .data = &am43x_reset_data,},
+	{ .compatible = "ti,dra7-prcm", .data = &dra7_reset_data,},
 	{},
 };
 
