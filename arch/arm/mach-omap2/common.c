@@ -21,6 +21,8 @@
 #include "common.h"
 #include "omap-secure.h"
 
+#define AM33XX_DRAM_SYNC_VA 0xfe600000
+
 /*
  * Stub function for OMAP2 so that common files
  * continue to build when custom builds are used
@@ -55,7 +57,7 @@ void __init am33xx_dram_sync_init(void)
 {
 	struct map_desc dram_io_desc[1];
 
-	dram_io_desc[0].virtual = __phys_to_virt(am33xx_paddr);
+	dram_io_desc[0].virtual = AM33XX_DRAM_SYNC_VA;
 	dram_io_desc[0].pfn = __phys_to_pfn(am33xx_paddr);
 	dram_io_desc[0].length = am33xx_size;
 	dram_io_desc[0].type = MT_MEMORY_SO;
