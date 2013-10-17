@@ -126,6 +126,12 @@
 					 "dma-req", "mcasp3-tx", <0x7d 0x85 0xfa>;
 		};
 
+		prcm: prcm@4ae06000 {
+			compatible = "ti,dra7-prcm";
+			reg = <0x4ae06000 0x1f00>;
+			#reset-cells = <1>;
+		};
+
 		counter32k: counter@4ae04000 {
 			compatible = "ti,omap-counter32k";
 			reg = <0x4ae04000 0x40>;

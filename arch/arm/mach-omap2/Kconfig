@@ -75,6 +75,7 @@ config SOC_AM33XX
 	select ARCH_HAS_RESET_CONTROLLER
 	select OMAP_MBOX_FWK if PM
 	select OMAP2PLUS_MBOX if PM
+	select RESET_TI
 
 config SOC_AM43XX
 	bool "TI AM43x"
@@ -87,6 +88,7 @@ config SOC_AM43XX
 	select MACH_OMAP_GENERIC
 	select MIGHT_HAVE_CACHE_L2X0
 	select ARCH_HAS_RESET_CONTROLLER
+	select RESET_TI
 
 config ARCH_OMAP2PLUS
 	bool
@@ -148,6 +150,8 @@ config SOC_DRA7XX
 	select HAVE_SMP
 	select COMMON_CLK
 	select CROSSBAR
+	select ARCH_HAS_RESET_CONTROLLER
+	select RESET_TI
 
 comment "OMAP Core Type"
 	depends on ARCH_OMAP2
