@@ -277,6 +277,8 @@
 		mmc1: mmc@48060000 {
 			compatible = "ti,omap4-hsmmc";
 			ti,hwmods = "mmc1";
+			clocks = <&mmc_clk>, <&clkdiv32k_ick>;
+			clock-names = "fck", "mmchsdb_fck";
 			ti,dual-volt;
 			ti,needs-special-reset;
 			ti,needs-special-hs-handling;
@@ -292,6 +294,8 @@
 		mmc2: mmc@481d8000 {
 			compatible = "ti,omap4-hsmmc";
 			ti,hwmods = "mmc2";
+			clocks = <&mmc_clk>, <&clkdiv32k_ick>;
+			clock-names = "fck", "mmchsdb_fck";
 			ti,needs-special-reset;
 			dmas = <&edma 2
 				&edma 3>;
@@ -305,6 +309,8 @@
 		mmc3: mmc@47810000 {
 			compatible = "ti,omap4-hsmmc";
 			ti,hwmods = "mmc3";
+			clocks = <&mmc_clk>, <&clkdiv32k_ick>;
+			clock-names = "fck", "mmchsdb_fck";
 			ti,needs-special-reset;
 			interrupts = <29>;
 			interrupt-parent = <&intc>;
