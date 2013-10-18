@@ -2102,3 +2102,11 @@ optfclk_pciephy_div_clk: optfclk_pciephy_div_clk@4a0093b0 {
 	reg = <0x4a0093b0 0x4>;
 	bit-shift = <10>;
 };
+
+optfclk_pciephy_32khz: optfclk_pcie1phy_32khz@4a0093b0 {
+	compatible = "gate-clock";
+	clocks = <&sys_32k_ck>;
+	#clock-cells = <0>;
+	reg = <0x4a0093b0 0x4>;
+	bit-shift = <8>;
+};
