@@ -772,24 +772,9 @@ static int smsc95xx_ioctl(struct net_device *netdev, struct ifreq *rq, int cmd)
 
 static void smsc95xx_init_mac_address(struct usbnet *dev)
 {
-
-#ifdef CONFIG_OF
-	struct device_node *ap;
+	struct device_node *ap = NULL;
 	const char *mac = NULL;
 	char *of_name = SMSC95XX_OF_NAME;
-
-	sprintf(of_name, "%s%i", SMSC95XX_OF_NAME, dev->udev->dev.id);
-	ap = of_find_node_by_path(of_name);
-	if (ap) {
-		mac = of_get_mac_address(ap);
-		if (is_valid_ether_addr(mac)) {
-			/* Device tree has a mac for this so use that */
-			memcpy(dev->net->dev_addr, mac, ETH_ALEN);
-			netif_dbg(dev, ifup, dev->net, "MAC address read from DTB\n");
-			return;
-		}
-	}
-#endif
 
 	/* try reading mac address from EEPROM */
 	if (smsc95xx_read_eeprom(dev, EEPROM_MAC_OFFSET, ETH_ALEN,
@@ -800,6 +785,20 @@ static void smsc95xx_init_mac_address(struct usbnet *dev)
 			return;
 		}
 	}
+
+#ifdef CONFIG_OF
+	sprintf(of_name, "%s%i", SMSC95XX_OF_NAME, dev->udev->dev.id);
+	ap = of_find_node_by_path(of_name);
+	if (ap) {
+		mac = of_get_mac_address(ap);
+		if ((mac != NULL) && (is_valid_ether_addr(mac))) {
+			/* Device tree has a mac for this so use that */
+			memcpy(dev->net->dev_addr, mac, ETH_ALEN);
+			netif_dbg(dev, ifup, dev->net, "MAC address read from DTB\n");
+			return;
+		}
+	}
+#endif
 
 	/* no eeprom, or eeprom values are invalid. generate random MAC */
 	eth_hw_addr_random(dev->net);
