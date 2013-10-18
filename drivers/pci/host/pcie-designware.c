@@ -243,10 +243,10 @@ static int assign_irq(int no_irqs, struct msi_desc *desc, int *pos)
 		goto no_valid_irq;
 
 	i = 0;
+	irq_alloc_descs(irq, irq, no_irqs, 0);
+	irq_set_msi_desc(irq, desc);
 	while (i < no_irqs) {
 		set_bit(pos0 + i, pp->msi_irq_in_use);
-		irq_alloc_descs((irq + i), (irq + i), 1, 0);
-		irq_set_msi_desc(irq + i, desc);
 		/*Enable corresponding interrupt in MSI interrupt controller */
 		res = ((pos0 + i) / 32) * 12;
 		bit = (pos0 + i) % 32;
