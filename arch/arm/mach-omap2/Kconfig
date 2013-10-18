@@ -129,6 +129,7 @@ config SOC_DRA7XX
 	select CROSSBAR
 	select ARCH_HAS_RESET_CONTROLLER
 	select RESET_TI
+	select PCI
 
 comment "OMAP Core Type"
 	depends on ARCH_OMAP2
