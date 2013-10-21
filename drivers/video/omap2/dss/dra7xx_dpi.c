@@ -379,7 +379,6 @@ static void dra7xx_dpi_display_disable(struct omap_dss_device *dssdev)
 	if (dpi->dpll != DSS_DPLL_NONE) {
 		dss_use_dpll_lcd(dssdev->dispc_channel, false);
 		dss_dpll_disable(dpi->dpll);
-		dpi->dpll = DSS_DPLL_NONE;
 	}
 
 	dispc_runtime_put();
@@ -471,10 +470,14 @@ static int dra7xx_dpi_connect(struct omap_dss_device *dssdev,
 static void dra7xx_dpi_disconnect(struct omap_dss_device *dssdev,
 		struct omap_dss_device *dst)
 {
+	struct dpi_data *dpi = dev_get_drvdata(dssdev->dev);
+
 	WARN_ON(dst != dssdev->dst);
 
 	if (dst != dssdev->dst)
 		return;
+
+	dpi->dpll = DSS_DPLL_NONE;
 
 	omapdss_output_unset_device(dssdev);
 
