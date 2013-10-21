@@ -1033,7 +1033,7 @@ static const struct of_device_id mcasp_dt_ids[] = {
 		.data = &da830_mcasp_pdata,
 	},
 	{
-		.compatible = "ti,omap2-mcasp-audio",
+		.compatible = "ti,am33xx-mcasp-audio",
 		.data = &omap2_mcasp_pdata,
 	},
 	{ /* sentinel */ }
@@ -1150,7 +1150,7 @@ nodata:
 static int davinci_mcasp_probe(struct platform_device *pdev)
 {
 	struct davinci_pcm_dma_params *dma_data;
-	struct resource *mem, *ioarea, *res, *dma;
+	struct resource *mem, *ioarea, *res, *dat;
 	struct snd_platform_data *pdata;
 	struct davinci_audio_dev *dev;
 	int ret;
@@ -1213,16 +1213,16 @@ static int davinci_mcasp_probe(struct platform_device *pdev)
 	dev->rxnumevt = pdata->rxnumevt;
 	dev->dev = &pdev->dev;
 
-	dma = platform_get_resource_byname(pdev, IORESOURCE_MEM, "dma");
-	if (!dma)
-		dma = mem;
+	dat = platform_get_resource_byname(pdev, IORESOURCE_MEM, "dat");
+	if (!dat)
+		dat = mem;
 
 	dma_data = &dev->dma_params[SNDRV_PCM_STREAM_PLAYBACK];
 	dma_data->asp_chan_q = pdata->asp_chan_q;
 	dma_data->ram_chan_q = pdata->ram_chan_q;
 	dma_data->sram_pool = pdata->sram_pool;
 	dma_data->sram_size = pdata->sram_size_playback;
-	dma_data->dma_addr = dma->start + pdata->tx_dma_offset;
+	dma_data->dma_addr = dat->start + pdata->tx_dma_offset;
 
 	res = platform_get_resource(pdev, IORESOURCE_DMA, 0);
 	if (res)
@@ -1235,7 +1235,7 @@ static int davinci_mcasp_probe(struct platform_device *pdev)
 	dma_data->ram_chan_q = pdata->ram_chan_q;
 	dma_data->sram_pool = pdata->sram_pool;
 	dma_data->sram_size = pdata->sram_size_capture;
-	dma_data->dma_addr = dma->start + pdata->rx_dma_offset;
+	dma_data->dma_addr = dat->start + pdata->rx_dma_offset;
 
 	res = platform_get_resource(pdev, IORESOURCE_DMA, 1);
 	if (res)
