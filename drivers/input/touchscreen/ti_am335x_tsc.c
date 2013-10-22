@@ -348,8 +348,15 @@ static int titsc_parse_dt(struct platform_device *pdev,
 	if (err < 0)
 		return err;
 
-	err = of_property_read_u32(node, "ti,coordiante-readouts",
+	/*
+	 * try with new binding first. If it fails, still try with
+	 * bogus, miss-spelled version.
+	 */
+	err = of_property_read_u32(node, "ti,coordinate-readouts",
 			&ts_dev->coordinate_readouts);
+	if (err < 0)
+		err = of_property_read_u32(node, "ti,coordiante-readouts",
+				&ts_dev->coordinate_readouts);
 	if (err < 0)
 		return err;
 
