@@ -661,7 +661,7 @@ static int dwc3_remove(struct platform_device *pdev)
 	if (dwc->usb3_generic_phy)
 		phy_power_off(dwc->usb3_generic_phy);
 
-	pm_runtime_put(&pdev->dev);
+	pm_runtime_put_sync(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
 
 	dwc3_debugfs_exit(dwc);
