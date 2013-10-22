@@ -873,10 +873,33 @@ config ARCH_OMAP1
 	help
 	  Support for older TI OMAP1 (omap7xx, omap15xx or omap16xx)
 
+config ARCH_OMAP2PLUS
+	bool "TI OMAP2+"
+	depends on MMU
+	select ARCH_HAS_BANDGAP
+	select ARCH_HAS_CPUFREQ
+	select ARCH_HAS_HOLES_MEMORYMODEL
+	select ARCH_OMAP
+	select ARCH_REQUIRE_GPIOLIB
+	select CLKDEV_LOOKUP
+	select CLKSRC_MMIO
+	select GENERIC_CLOCKEVENTS
+	select GENERIC_IRQ_CHIP
+	select HAVE_CLK
+	select OMAP_DM_TIMER
+	select PINCTRL
+	select PROC_DEVICETREE if PROC_FS
+	select SOC_BUS
+	select SPARSE_IRQ
+	select TI_PRIV_EDMA
+	select USE_OF
+	select AUTO_ZRELADDR
+	help
+	  SUpport for OMAP2, OMAP3, OMAP4 and OMAP5
+
 endchoice
 
 menu "Multiple platform selection"
-	depends on ARCH_MULTIPLATFORM
 
 comment "CPU Core family selection"
 
