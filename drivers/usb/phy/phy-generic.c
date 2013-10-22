@@ -94,7 +94,7 @@ int usb_gen_phy_init(struct usb_phy *phy)
 	}
 
 	if (!IS_ERR(nop->clk))
-		clk_enable(nop->clk);
+		clk_prepare_enable(nop->clk);
 
 	/* De-assert RESET */
 	nop_reset_set(nop, 0);
@@ -111,7 +111,7 @@ void usb_gen_phy_shutdown(struct usb_phy *phy)
 	nop_reset_set(nop, 1);
 
 	if (!IS_ERR(nop->clk))
-		clk_disable(nop->clk);
+		clk_disable_unprepare(nop->clk);
 
 	if (!IS_ERR(nop->vcc)) {
 		if (regulator_disable(nop->vcc))
@@ -173,14 +173,6 @@ int usb_phy_gen_create_phy(struct device *dev, struct usb_phy_gen_xceiv *nop,
 		}
 	}
 
-	if (!IS_ERR(nop->clk)) {
-		err = clk_prepare(nop->clk);
-		if (err) {
-			dev_err(dev, "Error preparing clock\n");
-			return err;
-		}
-	}
-
 	nop->vcc = devm_regulator_get(dev, "vcc");
 	if (IS_ERR(nop->vcc)) {
 		dev_dbg(dev, "Error getting vcc regulator: %ld\n",
@@ -222,13 +214,6 @@ int usb_phy_gen_create_phy(struct device *dev, struct usb_phy_gen_xceiv *nop,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(usb_phy_gen_create_phy);
-
-void usb_phy_gen_cleanup_phy(struct usb_phy_gen_xceiv *nop)
-{
-	if (!IS_ERR(nop->clk))
-		clk_unprepare(nop->clk);
-}
-EXPORT_SYMBOL_GPL(usb_phy_gen_cleanup_phy);
 
 static int usb_phy_gen_xceiv_probe(struct platform_device *pdev)
 {
@@ -280,15 +265,13 @@ static int usb_phy_gen_xceiv_probe(struct platform_device *pdev)
 	if (err) {
 		dev_err(&pdev->dev, "can't register transceiver, err: %d\n",
 			err);
-		goto err_add;
+		return err;
 	}
 
 	platform_set_drvdata(pdev, nop);
 
 	return 0;
 
-err_add:
-	usb_phy_gen_cleanup_phy(nop);
 	return err;
 }
 
@@ -296,7 +279,6 @@ static int usb_phy_gen_xceiv_remove(struct platform_device *pdev)
 {
 	struct usb_phy_gen_xceiv *nop = platform_get_drvdata(pdev);
 
-	usb_phy_gen_cleanup_phy(nop);
 	usb_remove_phy(&nop->phy);
 
 	return 0;
