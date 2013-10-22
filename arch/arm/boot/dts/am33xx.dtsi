@@ -909,4 +909,11 @@
 		ranges;
 		/include/ "am33xx-clocks.dtsi"
 	};
+
+       clockdomains {
+               clk_24mhz_clkdm: clk_24mhz_clkdm {
+                       compatible = "ti,clockdomain";
+                       clocks = <&clkdiv32k_ick>;
+               };
+       };
 };
