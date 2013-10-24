@@ -1139,7 +1139,7 @@ static int mxt_probe(struct i2c_client *client,
 	if (!pdata)
 		return -EINVAL;
 
-	data = kzalloc(sizeof(struct mxt_data), GFP_KERNEL);
+	data = devm_kzalloc(&client->dev, sizeof(struct mxt_data), GFP_KERNEL);
 	input_dev = input_allocate_device();
 	if (!data || !input_dev) {
 		dev_err(&client->dev, "Failed to allocate memory\n");
@@ -1254,7 +1254,6 @@ err_free_object:
 	kfree(data->object_table);
 err_free_mem:
 	input_free_device(input_dev);
-	kfree(data);
 	return error;
 }
 
@@ -1265,7 +1264,6 @@ static int mxt_remove(struct i2c_client *client)
 	sysfs_remove_group(&client->dev.kobj, &mxt_attr_group);
 	input_unregister_device(data->input_dev);
 	kfree(data->object_table);
-	kfree(data);
 
 	return 0;
 }
