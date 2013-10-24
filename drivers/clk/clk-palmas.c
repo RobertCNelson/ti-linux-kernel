@@ -44,6 +44,7 @@ struct palmas_clk32k_desc {
 	unsigned int enable_mask;
 	unsigned int sleep_mask;
 	unsigned int sleep_reqstr_id;
+	int delay;
 };
 
 struct palmas_clock_info {
@@ -68,12 +69,14 @@ static struct palmas_clk32k_desc palmas_clk32k_descs[] = {
 		.enable_mask = PALMAS_CLK32KG_CTRL_MODE_ACTIVE,
 		.sleep_mask = PALMAS_CLK32KG_CTRL_MODE_SLEEP,
 		.sleep_reqstr_id = PALMAS_EXTERNAL_REQSTR_ID_CLK32KG,
+		.delay = 200,
 	}, {
 		.clk_name = "clk32k_kg_audio",
 		.control_reg = PALMAS_CLK32KGAUDIO_CTRL,
 		.enable_mask = PALMAS_CLK32KG_CTRL_MODE_ACTIVE,
 		.sleep_mask = PALMAS_CLK32KG_CTRL_MODE_SLEEP,
 		.sleep_reqstr_id = PALMAS_EXTERNAL_REQSTR_ID_CLK32KGAUDIO,
+		.delay = 200,
 	},
 };
 
@@ -101,6 +104,8 @@ static int palmas_clks_prepare(struct clk_hw *hw)
 	if (ret < 0)
 		dev_err(palmas_clks->dev, "Reg 0x%02x update failed, %d\n",
 			cinfo->clk_desc->control_reg, ret);
+	else if (cinfo->clk_desc->delay)
+		udelay(cinfo->clk_desc->delay);
 
 	return ret;
 }
