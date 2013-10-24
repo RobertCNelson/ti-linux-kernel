@@ -21,6 +21,7 @@
 #include <linux/platform_device.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
+#include <linux/suspend.h>
 
 static unsigned int transition_latency;
 static unsigned int voltage_tolerance; /* in percentage */
@@ -29,6 +30,8 @@ static struct device *cpu_dev;
 static struct clk *cpu_clk;
 static struct regulator *cpu_reg;
 static struct cpufreq_frequency_table *freq_table;
+static DEFINE_MUTEX(cpu_lock);
+static bool is_suspended;
 
 static int cpu0_verify_speed(struct cpufreq_policy *policy)
 {
@@ -50,12 +53,19 @@ static int cpu0_set_target(struct cpufreq_policy *policy,
 	unsigned int index;
 	int ret;
 
+	mutex_lock(&cpu_lock);
+
+	if (is_suspended) {
+		ret = -EBUSY;
+		goto out;
+	}
+
 	ret = cpufreq_frequency_table_target(policy, freq_table, target_freq,
 					     relation, &index);
 	if (ret) {
 		pr_err("failed to match target freqency %d: %d\n",
 		       target_freq, ret);
-		return ret;
+		goto out;
 	}
 
 	freq_Hz = clk_round_rate(cpu_clk, freq_table[index].frequency * 1000);
@@ -65,8 +75,10 @@ static int cpu0_set_target(struct cpufreq_policy *policy,
 	freqs.new = freq_Hz / 1000;
 	freqs.old = clk_get_rate(cpu_clk) / 1000;
 
-	if (freqs.old == freqs.new)
-		return 0;
+	if (freqs.old == freqs.new) {
+		ret = 0;
+		goto out;
+	}
 
 	cpufreq_notify_transition(policy, &freqs, CPUFREQ_PRECHANGE);
 
@@ -122,8 +134,31 @@ static int cpu0_set_target(struct cpufreq_policy *policy,
 post_notify:
 	cpufreq_notify_transition(policy, &freqs, CPUFREQ_POSTCHANGE);
 
+out:
+	mutex_unlock(&cpu_lock);
 	return ret;
 }
+
+static int cpu0_pm_notify(struct notifier_block *nb, unsigned long event,
+	void *dummy)
+{
+	mutex_lock(&cpu_lock);
+	switch (event) {
+	case PM_SUSPEND_PREPARE:
+		is_suspended = true;
+		break;
+	case PM_POST_SUSPEND:
+		is_suspended = false;
+		break;
+	}
+	mutex_unlock(&cpu_lock);
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block cpu_pm_notifier = {
+	.notifier_call = cpu0_pm_notify,
+};
 
 static int cpu0_cpufreq_init(struct cpufreq_policy *policy)
 {
@@ -147,11 +182,17 @@ static int cpu0_cpufreq_init(struct cpufreq_policy *policy)
 
 	cpufreq_frequency_table_get_attr(freq_table, policy->cpu);
 
+	if (!IS_ERR(cpu_reg))
+		register_pm_notifier(&cpu_pm_notifier);
+
 	return 0;
 }
 
 static int cpu0_cpufreq_exit(struct cpufreq_policy *policy)
 {
+	if (!IS_ERR(cpu_reg))
+		unregister_pm_notifier(&cpu_pm_notifier);
+
 	cpufreq_frequency_table_put_attr(policy->cpu);
 
 	return 0;
