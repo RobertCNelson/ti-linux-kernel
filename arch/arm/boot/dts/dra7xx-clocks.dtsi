@@ -326,7 +326,7 @@ dpll_pcie_ref_m2ldo_ck: dpll_pcie_ref_m2ldo_ck@4a008210 {
 
 apll_pcie_in_clk_mux: apll_pcie_in_clk_mux@4ae06118 {
 	compatible = "mux-clock";
-	clocks = <&dpll_pcie_ref_ck>, <&pciesref_acs_clk_ck>;
+	clocks = <&dpll_pcie_ref_m2ldo_ck>, <&pciesref_acs_clk_ck>;
 	#clock-cells = <0>;
 	reg = <0x4a00821c 0x4>;
 	bit-mask = <0x80>;
