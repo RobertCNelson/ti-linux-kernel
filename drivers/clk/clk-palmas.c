@@ -296,7 +296,7 @@ static int palmas_clks_probe(struct platform_device *pdev)
 		}
 	}
 
-	ret = of_clk_add_provider(pdev->dev.of_node, of_clk_src_simple_get,
+	ret = of_clk_add_provider(pdev->dev.of_node, of_clk_src_onecell_get,
 			&palmas_clks->clk_data);
 	if (ret < 0)
 		dev_err(&pdev->dev, "Fail to add clock driver, %d\n", ret);
