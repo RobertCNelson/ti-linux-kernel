@@ -282,6 +282,16 @@
 			ti,backup-battery-chargeable;
 		};
 
+		clk32kg: palmas_clk32k@0 {
+			compatible = "ti,palmas-clk32kg";
+			#clock-cells = <0>;
+		};
+
+		clk32kgaudio: palmas_clk32k@1 {
+			compatible = "ti,palmas-clk32kgaudio";
+			#clock-cells = <0>;
+		};
+
 		palmas_pmic {
 			compatible = "ti,palmas-pmic";
 			interrupt-parent = <&palmas>;
