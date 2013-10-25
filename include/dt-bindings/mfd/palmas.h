@@ -15,8 +15,4 @@
 #define PALMAS_EXT_CONTROL_PIN_ENABLE2	2
 #define PALMAS_EXT_CONTROL_PIN_NSLEEP	3
 
-/* Palmas device's clocks id */
-#define PALMAS_CLOCKS_CLK32K_KG		0
-#define PALMAS_CLOCKS_CLK32K_KG_AUDIO	1
-
 #endif /* __DT_BINDINGS_PALMAS_H */

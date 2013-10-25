@@ -5,46 +5,31 @@ Palmas device has two clock output pins for 32KHz, KG and KG_AUDIO.
 This binding uses the common clock binding ./clock-bindings.txt.
 
 Required properties:
-- compatible : shall be "ti,palmas-clk".
-- #clock-cells : from common clock binding; shall be set to 1. The clock id for
-		different clocks are:
-			0 for CLK32K_KG
-			1 for CLK32K_KG_AUDIO.
-		The macros of clocks id for DTS is defined at
-			dt-bindings/mfd/palmas.h
+- compatible :	"ti,palmas-clk32kg" for clk32kg clock
+		"ti,palmas-clk32kgaudio" for clk32kgaudio clock
+- #clock-cells : shall be set to 0.
 
-Optional subnode:
-	The clock node has optional subnode to provide the init configuration of
-	clocks like sleep control.
-
-	The subnode name is fixed and it should be
-		clk32k_kg for the 32KHz KG clock.
-		clk32k_kg_audio for the 32KHz KG_AUDIO clock.
-
-	Optional subnode properties:
-	ti,external-sleep-control: The external enable input pins controlled the
-		enable/disable of clocks.  The external enable input pins ENABLE1,
-		ENABLE2 and NSLEEP. The valid values for the external pins are:
-			1 for ENABLE1
-			2 for ENABLE2
-			3 for NSLEEP.
-		Option 0 or missing this property means the clock is
-		enabled/disabled via register access and these pins do
-		not have any control.
-		The macros of external control pins for DTS is defined at
-			dt-bindings/mfd/palmas.h
+Optional property:
+- ti,external-sleep-control: The external enable input pins controlled the
+	enable/disable of clocks.  The external enable input pins ENABLE1,
+	ENABLE2 and NSLEEP. The valid values for the external pins are:
+		PALMAS_EXT_CONTROL_PIN_ENABLE1 for ENABLE1 pin
+		PALMAS_EXT_CONTROL_PIN_ENABLE2 for ENABLE2 pin
+		PALMAS_EXT_CONTROL_PIN_NSLEEP for NSLEEP pin
+	Option 0 or missing this property means the clock is enabled/disabled
+	via register access and these pins do not have any control.
+	The macros of external control pins for DTS is defined at
+	dt-bindings/mfd/palmas.h
 
 Example:
 	#include <dt-bindings/mfd/palmas.h>
 	...
 	palmas: tps65913@58 {
 		...
-		clock {
-			compatible = "ti,palmas-clk";
-			#clock-cells = <1>;
-			clk32k_kg {
-				ti,external-sleep-control = <PALMAS_EXT_CONTROL_PIN_NSLEEP>;
-			};
+		clk32kg: palmas_clk32k@0 {
+			compatible = "ti,palmas-clk32kg";
+			#clock-cells = <0>;
+			ti,external-sleep-control = <PALMAS_EXT_CONTROL_PIN_NSLEEP>;
 		};
 		...
 	};

@@ -30,13 +30,9 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 
-#define PALMAS_CLOCK_MAX			2
-
 #define PALMAS_CLOCK_DT_EXT_CONTROL_ENABLE1	1
 #define PALMAS_CLOCK_DT_EXT_CONTROL_ENABLE2	2
 #define PALMAS_CLOCK_DT_EXT_CONTROL_NSLEEP	3
-
-struct palmas_clks;
 
 struct palmas_clk32k_desc {
 	const char *clk_name;
@@ -48,36 +44,12 @@ struct palmas_clk32k_desc {
 };
 
 struct palmas_clock_info {
+	struct device *dev;
 	struct clk *clk;
 	struct clk_hw hw;
-	struct palmas_clk32k_desc *clk_desc;
-	struct palmas_clks *palmas_clk;
-	int ext_control_pin;
-};
-
-struct palmas_clks {
-	struct device *dev;
 	struct palmas *palmas;
-	struct clk_onecell_data clk_data;
-	struct palmas_clock_info clk_info[PALMAS_CLOCK_MAX];
-};
-
-static struct palmas_clk32k_desc palmas_clk32k_descs[] = {
-	{
-		.clk_name = "clk32k_kg",
-		.control_reg = PALMAS_CLK32KG_CTRL,
-		.enable_mask = PALMAS_CLK32KG_CTRL_MODE_ACTIVE,
-		.sleep_mask = PALMAS_CLK32KG_CTRL_MODE_SLEEP,
-		.sleep_reqstr_id = PALMAS_EXTERNAL_REQSTR_ID_CLK32KG,
-		.delay = 200,
-	}, {
-		.clk_name = "clk32k_kg_audio",
-		.control_reg = PALMAS_CLK32KGAUDIO_CTRL,
-		.enable_mask = PALMAS_CLK32KG_CTRL_MODE_ACTIVE,
-		.sleep_mask = PALMAS_CLK32KG_CTRL_MODE_SLEEP,
-		.sleep_reqstr_id = PALMAS_EXTERNAL_REQSTR_ID_CLK32KGAUDIO,
-		.delay = 200,
-	},
+	struct palmas_clk32k_desc *clk_desc;
+	int ext_control_pin;
 };
 
 static inline struct palmas_clock_info *to_palmas_clks_info(struct clk_hw *hw)
@@ -86,7 +58,7 @@ static inline struct palmas_clock_info *to_palmas_clks_info(struct clk_hw *hw)
 }
 
 static unsigned long palmas_clks_recalc_rate(struct clk_hw *hw,
-	unsigned long parent_rate)
+					     unsigned long parent_rate)
 {
 	return 32768;
 }
@@ -94,15 +66,14 @@ static unsigned long palmas_clks_recalc_rate(struct clk_hw *hw,
 static int palmas_clks_prepare(struct clk_hw *hw)
 {
 	struct palmas_clock_info *cinfo = to_palmas_clks_info(hw);
-	struct palmas_clks *palmas_clks = cinfo->palmas_clk;
 	int ret;
 
-	ret = palmas_update_bits(palmas_clks->palmas, PALMAS_RESOURCE_BASE,
-			cinfo->clk_desc->control_reg,
-			cinfo->clk_desc->enable_mask,
-			cinfo->clk_desc->enable_mask);
+	ret = palmas_update_bits(cinfo->palmas, PALMAS_RESOURCE_BASE,
+				 cinfo->clk_desc->control_reg,
+				 cinfo->clk_desc->enable_mask,
+				 cinfo->clk_desc->enable_mask);
 	if (ret < 0)
-		dev_err(palmas_clks->dev, "Reg 0x%02x update failed, %d\n",
+		dev_err(cinfo->dev, "Reg 0x%02x update failed, %d\n",
 			cinfo->clk_desc->control_reg, ret);
 	else if (cinfo->clk_desc->delay)
 		udelay(cinfo->clk_desc->delay);
@@ -113,7 +84,6 @@ static int palmas_clks_prepare(struct clk_hw *hw)
 static void palmas_clks_unprepare(struct clk_hw *hw)
 {
 	struct palmas_clock_info *cinfo = to_palmas_clks_info(hw);
-	struct palmas_clks *palmas_clks = cinfo->palmas_clk;
 	int ret;
 
 	/*
@@ -123,11 +93,11 @@ static void palmas_clks_unprepare(struct clk_hw *hw)
 	if (cinfo->ext_control_pin)
 		return;
 
-	ret = palmas_update_bits(palmas_clks->palmas, PALMAS_RESOURCE_BASE,
-			cinfo->clk_desc->control_reg,
-			cinfo->clk_desc->enable_mask, 0);
+	ret = palmas_update_bits(cinfo->palmas, PALMAS_RESOURCE_BASE,
+				 cinfo->clk_desc->control_reg,
+				 cinfo->clk_desc->enable_mask, 0);
 	if (ret < 0)
-		dev_err(palmas_clks->dev, "Reg 0x%02x update failed, %d\n",
+		dev_err(cinfo->dev, "Reg 0x%02x update failed, %d\n",
 			cinfo->clk_desc->control_reg, ret);
 
 }
@@ -135,18 +105,17 @@ static void palmas_clks_unprepare(struct clk_hw *hw)
 static int palmas_clks_is_prepared(struct clk_hw *hw)
 {
 	struct palmas_clock_info *cinfo = to_palmas_clks_info(hw);
-	struct palmas_clks *palmas_clks = cinfo->palmas_clk;
 	int ret;
 	u32 val;
 
 	if (cinfo->ext_control_pin)
 		return 1;
 
-	ret = palmas_read(palmas_clks->palmas, PALMAS_RESOURCE_BASE,
-			cinfo->clk_desc->control_reg, &val);
+	ret = palmas_read(cinfo->palmas, PALMAS_RESOURCE_BASE,
+			  cinfo->clk_desc->control_reg, &val);
 	if (ret < 0) {
-		dev_err(palmas_clks->dev, "Reg 0x%02x read failed, %d\n",
-				cinfo->clk_desc->control_reg, ret);
+		dev_err(cinfo->dev, "Reg 0x%02x read failed, %d\n",
+			cinfo->clk_desc->control_reg, ret);
 		return ret;
 	}
 	return !!(val & cinfo->clk_desc->enable_mask);
@@ -159,74 +128,90 @@ static struct clk_ops palmas_clks_ops = {
 	.recalc_rate	= palmas_clks_recalc_rate,
 };
 
-static struct clk_init_data palmas_clks_hw_init[PALMAS_CLOCK_MAX] = {
-	{
-		.name = "clk32k_kg",
-		.ops = &palmas_clks_ops,
-		.flags = CLK_IS_ROOT | CLK_IGNORE_UNUSED,
-	}, {
-		.name = "clk32k_kg_audio",
+struct palmas_clks_of_match {
+	struct clk_init_data init;
+	struct palmas_clk32k_desc desc;
+};
+
+static struct palmas_clks_of_match palmas_of_clk32kg = {
+	.init = {
+		.name = "clk32kg",
 		.ops = &palmas_clks_ops,
 		.flags = CLK_IS_ROOT | CLK_IGNORE_UNUSED,
 	},
+	.desc = {
+		.clk_name = "clk32kg",
+		.control_reg = PALMAS_CLK32KG_CTRL,
+		.enable_mask = PALMAS_CLK32KG_CTRL_MODE_ACTIVE,
+		.sleep_mask = PALMAS_CLK32KG_CTRL_MODE_SLEEP,
+		.sleep_reqstr_id = PALMAS_EXTERNAL_REQSTR_ID_CLK32KG,
+		.delay = 200,
+	},
 };
 
-static int palmas_clks_get_clk_data(struct platform_device *pdev,
-	struct palmas_clks *palmas_clks)
+static struct palmas_clks_of_match palmas_of_clk32kgaudio = {
+	.init = {
+		.name = "clk32kgaudio",
+		.ops = &palmas_clks_ops,
+		.flags = CLK_IS_ROOT | CLK_IGNORE_UNUSED,
+	},
+	.desc = {
+		.clk_name = "clk32kgaudio",
+		.control_reg = PALMAS_CLK32KGAUDIO_CTRL,
+		.enable_mask = PALMAS_CLK32KG_CTRL_MODE_ACTIVE,
+		.sleep_mask = PALMAS_CLK32KG_CTRL_MODE_SLEEP,
+		.sleep_reqstr_id = PALMAS_EXTERNAL_REQSTR_ID_CLK32KGAUDIO,
+		.delay = 200,
+	},
+};
+
+static struct of_device_id of_palmas_clks_match_tbl[] = {
+	{ .compatible = "ti,palmas-clk32kg", .data = &palmas_of_clk32kg, },
+	{ .compatible = "ti,palmas-clk32kgaudio", .data = &palmas_of_clk32kgaudio, },
+	{},
+};
+MODULE_DEVICE_TABLE(of, of_palmas_clks_match_tbl);
+
+static void palmas_clks_get_clk_data(struct platform_device *pdev,
+				     struct palmas_clock_info *cinfo)
 {
 	struct device_node *node = pdev->dev.of_node;
-	struct device_node *child;
-	struct palmas_clock_info *cinfo;
 	unsigned int prop;
 	int ret;
-	int i;
 
-	for (i = 0; i < PALMAS_CLOCK_MAX; ++i) {
-		child = of_get_child_by_name(node,
-				palmas_clk32k_descs[i].clk_name);
-		if (!child)
-			continue;
+	ret = of_property_read_u32(node, "ti,external-sleep-control",
+				   &prop);
+	if (ret)
+		return;
 
-		cinfo = &palmas_clks->clk_info[i];
-
-		ret = of_property_read_u32(child, "ti,external-sleep-control",
-					&prop);
-		if (!ret) {
-			switch (prop) {
-			case PALMAS_CLOCK_DT_EXT_CONTROL_ENABLE1:
-				prop = PALMAS_EXT_CONTROL_ENABLE1;
-				break;
-			case PALMAS_CLOCK_DT_EXT_CONTROL_ENABLE2:
-				prop = PALMAS_EXT_CONTROL_ENABLE2;
-				break;
-			case PALMAS_CLOCK_DT_EXT_CONTROL_NSLEEP:
-				prop = PALMAS_EXT_CONTROL_NSLEEP;
-				break;
-			default:
-				WARN_ON(1);
-				dev_warn(&pdev->dev,
-					"%s: Invalid ext control option: %u\n",
-					child->name, prop);
-				prop = 0;
-				break;
-			}
-			cinfo->ext_control_pin = prop;
-		}
+	switch (prop) {
+	case PALMAS_CLOCK_DT_EXT_CONTROL_ENABLE1:
+		prop = PALMAS_EXT_CONTROL_ENABLE1;
+		break;
+	case PALMAS_CLOCK_DT_EXT_CONTROL_ENABLE2:
+		prop = PALMAS_EXT_CONTROL_ENABLE2;
+		break;
+	case PALMAS_CLOCK_DT_EXT_CONTROL_NSLEEP:
+		prop = PALMAS_EXT_CONTROL_NSLEEP;
+		break;
+	default:
+		dev_warn(&pdev->dev, "%s: Invalid ext control option: %u\n",
+			 node->name, prop);
+		prop = 0;
+		break;
 	}
-
-	return 0;
+	cinfo->ext_control_pin = prop;
 }
 
 static int palmas_clks_init_configure(struct palmas_clock_info *cinfo)
 {
-	struct palmas_clks *palmas_clks = cinfo->palmas_clk;
 	int ret;
 
-	ret = palmas_update_bits(palmas_clks->palmas, PALMAS_RESOURCE_BASE,
-			cinfo->clk_desc->control_reg,
-			cinfo->clk_desc->sleep_mask, 0);
+	ret = palmas_update_bits(cinfo->palmas, PALMAS_RESOURCE_BASE,
+				 cinfo->clk_desc->control_reg,
+				 cinfo->clk_desc->sleep_mask, 0);
 	if (ret < 0) {
-		dev_err(palmas_clks->dev, "Reg 0x%02x update failed, %d\n",
+		dev_err(cinfo->dev, "Reg 0x%02x update failed, %d\n",
 			cinfo->clk_desc->control_reg, ret);
 		return ret;
 	}
@@ -234,17 +219,15 @@ static int palmas_clks_init_configure(struct palmas_clock_info *cinfo)
 	if (cinfo->ext_control_pin) {
 		ret = clk_prepare(cinfo->clk);
 		if (ret < 0) {
-			dev_err(palmas_clks->dev,
-				"Clock prep failed, %d\n", ret);
+			dev_err(cinfo->dev, "Clock prep failed, %d\n", ret);
 			return ret;
 		}
 
-		ret = palmas_ext_control_req_config(palmas_clks->palmas,
-				cinfo->clk_desc->sleep_reqstr_id,
-				cinfo->ext_control_pin, true);
+		ret = palmas_ext_control_req_config(cinfo->palmas,
+					cinfo->clk_desc->sleep_reqstr_id,
+					cinfo->ext_control_pin, true);
 		if (ret < 0) {
-			dev_err(palmas_clks->dev,
-				"Ext config for %s failed, %d\n",
+			dev_err(cinfo->dev, "Ext config for %s failed, %d\n",
 				cinfo->clk_desc->clk_name, ret);
 			return ret;
 		}
@@ -252,57 +235,47 @@ static int palmas_clks_init_configure(struct palmas_clock_info *cinfo)
 
 	return ret;
 }
-
 static int palmas_clks_probe(struct platform_device *pdev)
 {
 	struct palmas *palmas = dev_get_drvdata(pdev->dev.parent);
+	struct device_node *node = pdev->dev.of_node;
+	struct palmas_clks_of_match *match_data;
+	const struct of_device_id *match;
 	struct palmas_clock_info *cinfo;
-	struct palmas_clks *palmas_clks;
 	struct clk *clk;
-	int i, ret;
+	int ret;
 
-	palmas_clks = devm_kzalloc(&pdev->dev, sizeof(*palmas_clks),
-				GFP_KERNEL);
-	if (!palmas_clks)
+	match = of_match_device(of_palmas_clks_match_tbl, &pdev->dev);
+	match_data = (struct palmas_clks_of_match *) match->data;
+
+	cinfo = devm_kzalloc(&pdev->dev, sizeof(*cinfo), GFP_KERNEL);
+	if (!cinfo)
 		return -ENOMEM;
 
-	palmas_clks->clk_data.clks = devm_kzalloc(&pdev->dev,
-			PALMAS_CLOCK_MAX * sizeof(*palmas_clks->clk_data.clks),
-			GFP_KERNEL);
-	if (!palmas_clks->clk_data.clks)
-		return -ENOMEM;
+	palmas_clks_get_clk_data(pdev, cinfo);
+	platform_set_drvdata(pdev, cinfo);
 
-	palmas_clks_get_clk_data(pdev, palmas_clks);
-	platform_set_drvdata(pdev, palmas_clks);
+	cinfo->dev = &pdev->dev;
+	cinfo->palmas = palmas;
 
-	palmas_clks->dev = &pdev->dev;
-	palmas_clks->palmas = palmas;
-
-	for (i = 0; i < PALMAS_CLOCK_MAX; i++) {
-		cinfo = &palmas_clks->clk_info[i];
-		cinfo->clk_desc = &palmas_clk32k_descs[i];
-		cinfo->hw.init = &palmas_clks_hw_init[i];
-		cinfo->palmas_clk = palmas_clks;
-		clk = devm_clk_register(&pdev->dev, &cinfo->hw);
-		if (IS_ERR(clk)) {
-			ret = PTR_ERR(clk);
-			dev_err(&pdev->dev, "Fail to register clock %s, %d\n",
-				palmas_clk32k_descs[i].clk_name, ret);
-			return ret;
-		}
-
-		cinfo->clk = clk;
-		palmas_clks->clk_data.clks[i] = clk;
-		palmas_clks->clk_data.clk_num++;
-		ret = palmas_clks_init_configure(cinfo);
-		if (ret < 0) {
-			dev_err(&pdev->dev, "Clock config failed, %d\n", ret);
-			return ret;
-		}
+	cinfo->clk_desc = &match_data->desc;
+	cinfo->hw.init = &match_data->init;
+	clk = devm_clk_register(&pdev->dev, &cinfo->hw);
+	if (IS_ERR(clk)) {
+		ret = PTR_ERR(clk);
+		dev_err(&pdev->dev, "Fail to register clock %s, %d\n",
+			match_data->desc.clk_name, ret);
+		return ret;
 	}
 
-	ret = of_clk_add_provider(pdev->dev.of_node, of_clk_src_onecell_get,
-			&palmas_clks->clk_data);
+	cinfo->clk = clk;
+	ret = palmas_clks_init_configure(cinfo);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "Clock config failed, %d\n", ret);
+		return ret;
+	}
+
+	ret = of_clk_add_provider(node, of_clk_src_simple_get, cinfo->clk);
 	if (ret < 0)
 		dev_err(&pdev->dev, "Fail to add clock driver, %d\n", ret);
 	return ret;
@@ -313,12 +286,6 @@ static int palmas_clks_remove(struct platform_device *pdev)
 	of_clk_del_provider(pdev->dev.of_node);
 	return 0;
 }
-
-static struct of_device_id of_palmas_clks_match_tbl[] = {
-	{ .compatible = "ti,palmas-clk", },
-	{},
-};
-MODULE_DEVICE_TABLE(of, of_palmas_clks_match_tbl);
 
 static struct platform_driver palmas_clks_driver = {
 	.driver = {
