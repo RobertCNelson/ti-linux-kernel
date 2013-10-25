@@ -43,28 +43,6 @@ static struct platform_device gpmc_nand_device = {
 	.resource	= gpmc_nand_resource,
 };
 
-static bool gpmc_hwecc_bch_capable(enum omap_ecc ecc_opt)
-{
-	/* support only OMAP3 class */
-	if (!cpu_is_omap34xx() && !soc_is_am33xx()) {
-		pr_err("BCH ecc is not supported on this CPU\n");
-		return 0;
-	}
-
-	/*
-	 * For now, assume 4-bit mode is only supported on OMAP3630 ES1.x, x>=1
-	 * and AM33xx derivates. Other chips may be added if confirmed to work.
-	 */
-	if ((ecc_opt == OMAP_ECC_BCH4_CODE_HW) &&
-	    (!cpu_is_omap3630() || (GET_OMAP_REVISION() == 0)) &&
-	    (!soc_is_am33xx())) {
-		pr_err("BCH 4-bit mode is not supported on this CPU\n");
-		return 0;
-	}
-
-	return 1;
-}
-
 int gpmc_nand_init(struct omap_nand_platform_data *gpmc_nand_data,
 		   struct gpmc_timings *gpmc_t)
 {
@@ -126,9 +104,6 @@ int gpmc_nand_init(struct omap_nand_platform_data *gpmc_nand_data,
 	}
 
 	gpmc_update_nand_reg(&gpmc_nand_data->reg, gpmc_nand_data->cs);
-
-	if (!gpmc_hwecc_bch_capable(gpmc_nand_data->ecc_opt))
-		return -EINVAL;
 
 	err = platform_device_register(&gpmc_nand_device);
 	if (err < 0) {
