@@ -322,8 +322,7 @@
 			nand@0,0 {
 				reg = <0 0 0>; /* CS0, offset 0 */
 				nand-bus-width = <8>;
-				ti,nand-ecc-scheme = "bch8";
-				gpmc,device-nand = "true";
+				ti,nand-ecc-opt= "bch8";
 				gpmc,device-width = <1>;
 				gpmc,sync-clk-ps = <0>;
 				gpmc,cs-on-ns = <0>;
@@ -347,47 +346,38 @@
 				gpmc,wait-monitoring-ns = <0>;
 				gpmc,wr-access-ns = <40>;
 				gpmc,wr-data-mux-bus-ns = <0>;
-
 				#address-cells = <1>;
 				#size-cells = <1>;
 				ti,elm-id = <&elm>;
-
 				/* MTD partition table */
 				partition@0 {
 					label = "SPL1";
 					reg = <0x00000000 0x000020000>;
 				};
-
 				partition@1 {
 					label = "SPL2";
 					reg = <0x00020000 0x00020000>;
 				};
-
 				partition@2 {
 					label = "SPL3";
 					reg = <0x00040000 0x00020000>;
 				};
-
 				partition@3 {
 					label = "SPL4";
 					reg = <0x00060000 0x00020000>;
 				};
-
 				partition@4 {
 					label = "U-boot";
 					reg = <0x00080000 0x001e0000>;
 				};
-
 				partition@5 {
 					label = "environment";
 					reg = <0x00260000 0x00020000>;
 				};
-
 				partition@6 {
 					label = "Kernel";
 					reg = <0x00280000 0x00500000>;
 				};
-
 				partition@7 {
 					label = "File-System";
 					reg = <0x00780000 0x0F880000>;
