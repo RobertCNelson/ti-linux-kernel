@@ -1363,8 +1363,6 @@ static int gpmc_probe_nand_child(struct platform_device *pdev,
 	const char *s;
 	struct gpmc_timings gpmc_t;
 	struct omap_nand_platform_data *gpmc_nand_data;
-	const __be32 *parp;
-	int lenp;
 
 	if (of_property_read_u32(child, "reg", &val) < 0) {
 		dev_err(&pdev->dev, "%s has no 'reg' property\n",
@@ -1379,22 +1377,21 @@ static int gpmc_probe_nand_child(struct platform_device *pdev,
 
 	gpmc_nand_data->cs = val;
 	gpmc_nand_data->of_node = child;
-
 	/* Detect availability of ELM module */
-	parp = of_get_property(child, "ti,elm-id", &lenp);
-	if ((parp == NULL) && (lenp != (sizeof(void *) * 2))) {
-		pr_warn("%s: ti,elm-id property not found\n", __func__);
-		gpmc_nand_data->elm_of_node = NULL;
-	} else {
+	gpmc_nand_data->elm_of_node = of_parse_phandle(child, "ti,elm-id", 0);
+	if (gpmc_nand_data->elm_of_node == NULL)
 		gpmc_nand_data->elm_of_node =
-				of_find_node_by_phandle(be32_to_cpup(parp));
-	}
+					of_parse_phandle(child, "elm_id", 0);
+	if (gpmc_nand_data->elm_of_node == NULL)
+		pr_warn("%s: ti,elm-id property not found\n", __func__);
+
 	/* select NAND ecc-scheme */
-	if (of_property_read_string(child, "ti,nand-ecc-scheme", &s)) {
-		pr_err("%s: valid ti,nand-ecc-scheme not found\n", __func__);
+	if (of_property_read_string(child, "ti,nand-ecc-opt", &s)) {
+		pr_err("%s: valid ti,nand-ecc-opt not found\n", __func__);
 		return -ENODEV;
 	}
-	if (!strcmp(s, "ham1"))
+	if (!strcmp(s, "ham1") || !strcmp(s, "sw") || !strcmp(s, "hw") ||
+		!strcmp(s, "hw-romcode"))
 		gpmc_nand_data->ecc_opt = OMAP_ECC_HAMMING_CODE_HW;
 	else if (!strcmp(s, "bch4"))
 		if (gpmc_nand_data->elm_of_node)
@@ -1411,7 +1408,7 @@ static int gpmc_probe_nand_child(struct platform_device *pdev,
 	else if (!strcmp(s, "bch16"))
 			gpmc_nand_data->ecc_opt = OMAP_ECC_BCH16_CODE_HW;
 	else
-		pr_err("%s: ti,ecc-scheme: invalid property value\n", __func__);
+		pr_err("%s: ti,nand-ecc-opt: invalid property val\n", __func__);
 
 	if (!of_property_read_string(child, "ti,nand-xfer-type", &s))
 		for (val = 0; val < ARRAY_SIZE(nand_xfer_types); val++)
