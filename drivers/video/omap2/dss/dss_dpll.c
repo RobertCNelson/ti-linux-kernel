@@ -230,6 +230,12 @@ int dss_dpll_set_clock_div(enum dss_dpll dpll, struct dss_dpll_cinfo *cinfo)
 			regm_hsdiv_start, regm_hsdiv_end);
 	dpll_write_reg(dpll, PLL_CONFIGURATION1, l);
 
+	/* CONFIGURATION3 */
+	l = dpll_read_reg(dpll, PLL_CONFIGURATION3);
+	/* M6_CLOCK_DIV */
+	l = FLD_MOD(l, cinfo->regm_hsdiv > 0 ? cinfo->regm_hsdiv - 1 : 0, 4, 0);
+	dpll_write_reg(dpll, PLL_CONFIGURATION3, l);
+
 	/* CONFIGURATION2 */
 	l = dpll_read_reg(dpll, PLL_CONFIGURATION2);
 	l = FLD_MOD(l, 1, 13, 13);	/* PLL_REFEN */
@@ -262,11 +268,12 @@ int dss_dpll_set_clock_div(enum dss_dpll dpll, struct dss_dpll_cinfo *cinfo)
 	l = FLD_MOD(l, 1, 13, 13);	/* PLL_REFEN */
 	l = FLD_MOD(l, 1, 14, 14);	/* PHY_CLKINEN */
 	l = FLD_MOD(l, 0, 15, 15);	/* BYPASSEN */
-	l = FLD_MOD(l, 1, 16, 16);	/* CLOCK_EN */
+	l = FLD_MOD(l, 1, 16, 16);	/* M4_CLOCK_EN */
 	l = FLD_MOD(l, 0, 17, 17);	/* CLOCK_PWDN */
 	l = FLD_MOD(l, 1, 18, 18);	/* PROTO_CLOCK_EN */
 	l = FLD_MOD(l, 0, 19, 19);	/* PROTO_CLOCK_PWDN */
 	l = FLD_MOD(l, 0, 20, 20);	/* HSDIVBYPASS */
+	l = FLD_MOD(l, 1, 23, 23);	/* M6_CLOCK_EN */
 	dpll_write_reg(dpll, PLL_CONFIGURATION2, l);
 
 	DSSDBG("PLL config done\n");
