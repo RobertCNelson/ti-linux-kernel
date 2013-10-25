@@ -1101,7 +1101,7 @@
 			compatible = "ti,omap4-dss", "simple-bus";
 			reg = <0x58000000 0x80>,
 			      <0x58004000 0x340>,
-			      <0x58005000 0x340>;
+			      <0x58009000 0x340>;
 			ti,hwmods = "dss_core";
 			#address-cells = <1>;
 			#size-cells = <1>;
