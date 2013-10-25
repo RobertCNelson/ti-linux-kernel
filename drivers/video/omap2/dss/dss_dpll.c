@@ -404,7 +404,7 @@ void dss_dpll_set_control_mux(enum omap_channel channel, enum dss_dpll dpll)
 			val = 0;
 			break;
 		default:
-			printk("error in mux config\n");
+			DSSERR("error in mux config for LCD\n");
 			return;
 		}
 	} else if (channel == OMAP_DSS_CHANNEL_LCD2) {
@@ -413,28 +413,28 @@ void dss_dpll_set_control_mux(enum omap_channel channel, enum dss_dpll dpll)
 
 		switch (dpll) {
 		case DSS_DPLL_VIDEO1:
-			val = 1;
-			break;
-		case DSS_DPLL_VIDEO2:
 			val = 0;
 			break;
+		case DSS_DPLL_VIDEO2:
+			val = 1;
+			break;
 		default:
-			printk("error in mux config\n");
+			DSSERR("error in mux config for LCD2\n");
 			return;
 		}
 	} else {
-		start = 7;
-		end = 8;
+		start = 8;
+		end = 7;
 
 		switch (dpll) {
 		case DSS_DPLL_VIDEO1:
-			val = 0;
-			break;
-		case DSS_DPLL_VIDEO2:
 			val = 1;
 			break;
+		case DSS_DPLL_VIDEO2:
+			val = 0;
+			break;
 		default:
-			printk("error in mux config\n");
+			DSSERR("error in mux config for LCD3\n");
 			return;
 		}
 	}
