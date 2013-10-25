@@ -80,14 +80,6 @@ static void dwc3_core_soft_reset(struct dwc3 *dwc)
 	reg |= DWC3_GUSB2PHYCFG_PHYSOFTRST;
 	dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0), reg);
 
-	usb_phy_init(dwc->usb2_phy);
-	usb_phy_init(dwc->usb3_phy);
-
-	if (dwc->usb2_generic_phy)
-		phy_init(dwc->usb2_generic_phy);
-	if (dwc->usb3_generic_phy)
-		phy_init(dwc->usb3_generic_phy);
-
 	mdelay(100);
 
 	/* Clear USB3 PHY reset */
@@ -522,13 +514,19 @@ static int dwc3_probe(struct platform_device *pdev)
 	if (IS_ERR(regs))
 		return PTR_ERR(regs);
 
+	usb_phy_init(dwc->usb2_phy);
+	usb_phy_init(dwc->usb3_phy);
 	usb_phy_set_suspend(dwc->usb2_phy, 0);
 	usb_phy_set_suspend(dwc->usb3_phy, 0);
 
-	if (dwc->usb2_generic_phy)
+	if (dwc->usb2_generic_phy) {
+		phy_init(dwc->usb2_generic_phy);
 		phy_power_on(dwc->usb2_generic_phy);
-	if (dwc->usb3_generic_phy)
+	}
+	if (dwc->usb3_generic_phy) {
+		phy_init(dwc->usb3_generic_phy);
 		phy_power_on(dwc->usb3_generic_phy);
+	}
 
 	spin_lock_init(&dwc->lock);
 	platform_set_drvdata(pdev, dwc);
