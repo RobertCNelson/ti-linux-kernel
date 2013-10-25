@@ -135,6 +135,8 @@ static int omap_pipe3_power_on(struct phy *x)
 		udelay(1);
 	} while (--timeout);
 
+	msleep(100);
+
 	return 0;
 }
 
