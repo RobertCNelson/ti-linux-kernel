@@ -437,21 +437,43 @@ static void hdmi_core_mask_interrupts(struct hdmi_core_data *core)
 {
 	void __iomem *base = core->base;
 
-	REG_FLD_MOD(base, HDMI_CORE_VP_MASK, 0x0, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_FC_MASK0, 0x0, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_FC_MASK1, 0x0, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_FC_MASK2, 0x0, 1, 0);
-	REG_FLD_MOD(base, HDMI_CORE_PHY_MASK0, 0x0, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_PHY_I2CM_INT_ADDR, 0x8, 3, 0);
-	REG_FLD_MOD(base, HDMI_CORE_PHY_I2CM_CTLINT_ADDR, 0x88, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_AUD_INT, 0xa3, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_AUD_CC08, 0x0, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_AUD_D010, 0x0, 7, 0);
+	/* Master IRQ mask */
+	REG_FLD_MOD(base, HDMI_CORE_IH_MUTE, 0x3, 1, 0);
+
+	/* Mask all the interrupts in HDMI core */
+
+	REG_FLD_MOD(base, HDMI_CORE_VP_MASK, 0xff, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_FC_MASK0, 0xe7, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_FC_MASK1, 0xfb, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_FC_MASK2, 0x3, 1, 0);
+
+	REG_FLD_MOD(base, HDMI_CORE_AUD_INT, 0x3, 3, 2);
 	REG_FLD_MOD(base, HDMI_CORE_AUD_GP_MASK, 0x3, 1, 0);
-	REG_FLD_MOD(base, HDMI_CORE_HDCP_MASK, 0x0, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_CEC_MASK, 0xff, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_INT, 0x1, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_CTLINT, 0xff, 7, 0);
+
+	REG_FLD_MOD(base, HDMI_CORE_CEC_MASK, 0x7f, 6, 0);
+
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_CTLINT, 0x1, 6, 6);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_CTLINT, 0x1, 2, 2);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_INT, 0x1, 2, 2);
+
+	REG_FLD_MOD(base, HDMI_CORE_PHY_MASK0, 0xf3, 7, 0);
+
+	REG_FLD_MOD(base, HDMI_CORE_IH_PHY_STAT0, 0xff, 7, 0);
+
+	/* Clear all the current interrupt bits */
+
+	REG_FLD_MOD(base, HDMI_CORE_IH_VP_STAT0, 0xff, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_IH_FC_STAT0, 0xe7, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_IH_FC_STAT1, 0xfb, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_IH_FC_STAT2, 0x3, 1, 0);
+
+	REG_FLD_MOD(base, HDMI_CORE_IH_AS_STAT0, 0x7, 2, 0);
+
+	REG_FLD_MOD(base, HDMI_CORE_IH_CEC_STAT0, 0x7f, 6, 0);
+
+	REG_FLD_MOD(base, HDMI_CORE_IH_I2CM_STAT0, 0x3, 1, 0);
+
+	REG_FLD_MOD(base, HDMI_CORE_IH_PHY_STAT0, 0xff, 7, 0);
 }
 
 static void hdmi_core_enable_interrupts(struct hdmi_core_data *core)
