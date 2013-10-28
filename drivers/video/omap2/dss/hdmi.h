@@ -351,8 +351,6 @@ struct hdmi_pll_data {
 
 struct hdmi_phy_data {
 	void __iomem *base;
-
-	int irq;
 };
 
 struct hdmi_core_data {
@@ -418,9 +416,7 @@ void hdmi_pll_compute(struct hdmi_pll_data *pll, unsigned long clkin, int phy);
 int hdmi_pll_init(struct platform_device *pdev, struct hdmi_pll_data *pll);
 
 /* HDMI PHY funcs */
-int hdmi_phy_enable(struct hdmi_phy_data *phy, struct hdmi_wp_data *wp,
-		struct hdmi_config *cfg);
-void hdmi_phy_disable(struct hdmi_phy_data *phy, struct hdmi_wp_data *wp);
+int hdmi_phy_configure(struct hdmi_phy_data *phy, struct hdmi_config *cfg);
 void hdmi_phy_dump(struct hdmi_phy_data *phy, struct seq_file *s);
 int hdmi_phy_init(struct platform_device *pdev, struct hdmi_phy_data *phy);
 
