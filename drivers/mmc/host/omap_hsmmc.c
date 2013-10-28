@@ -202,6 +202,13 @@ struct omap_hsmmc_host {
 	struct	omap_mmc_platform_data	*pdata;
 };
 
+static int
+omap_hsmmc_prepare_data(struct omap_hsmmc_host *host, struct mmc_request *req);
+
+static void set_data_timeout(struct omap_hsmmc_host *host,
+			     unsigned int timeout_ns,
+			     unsigned int timeout_clks);
+
 static int omap_hsmmc_card_detect(struct device *dev, int slot)
 {
 	struct omap_hsmmc_host *host = dev_get_drvdata(dev);
@@ -780,7 +787,7 @@ static DEVICE_ATTR(slot_name, S_IRUGO, omap_hsmmc_show_slot_name, NULL);
  */
 static void
 omap_hsmmc_start_command(struct omap_hsmmc_host *host, struct mmc_command *cmd,
-	struct mmc_data *data)
+	struct mmc_data *data, bool autocmd12)
 {
 	int cmdreg = 0, resptype = 0, cmdtype = 0;
 
@@ -810,7 +817,8 @@ omap_hsmmc_start_command(struct omap_hsmmc_host *host, struct mmc_command *cmd,
 		cmdtype = 0x3;
 
 	cmdreg = (cmd->opcode << 24) | (resptype << 16) | (cmdtype << 22);
-	if ((host->flags & AUTO_CMD12) && mmc_op_multi(cmd->opcode))
+	if ((host->flags & AUTO_CMD12) && mmc_op_multi(cmd->opcode) &&
+								autocmd12)
 		cmdreg |= ACEN_ACMD12;
 
 	if (data) {
@@ -896,7 +904,7 @@ omap_hsmmc_xfer_done(struct omap_hsmmc_host *host, struct mmc_data *data)
 		 * If there is any error or open-end read/write with autocmd12
 		 * disabled
 		 */
-		omap_hsmmc_start_command(host, data->stop, NULL);
+		omap_hsmmc_start_command(host, data->stop, NULL, 0);
 	} else {
 		/* status update for autocmd12 of open-end read/write */
 		if (data->stop && !host->mrq->sbc)
@@ -908,12 +916,39 @@ omap_hsmmc_xfer_done(struct omap_hsmmc_host *host, struct mmc_data *data)
 	return;
 }
 
+static void omap_hsmmc_start_dma_transfer(struct omap_hsmmc_host *host)
+{
+	struct mmc_request *req;
+	struct dma_chan *chan;
+	req = host->mrq;
+
+	if (!req->data)
+		return;
+	OMAP_HSMMC_WRITE(host->base, BLK, (req->data->blksz)
+				| (req->data->blocks << 16));
+	set_data_timeout(host, req->data->timeout_ns,
+				req->data->timeout_clks);
+	chan = omap_hsmmc_get_dma_chan(host, req->data);
+	dma_async_issue_pending(chan);
+}
+
 /*
  * Notify the core about command completion
  */
 static void
 omap_hsmmc_cmd_done(struct omap_hsmmc_host *host, struct mmc_command *cmd)
 {
+	struct mmc_request *req;
+	req = host->mrq;
+
+	if ((host->mrq->sbc) && (host->cmd == host->mrq->sbc)) {
+		host->cmd = NULL;
+		omap_hsmmc_start_dma_transfer(host);
+		omap_hsmmc_start_command(host, host->mrq->cmd,
+						host->mrq->data, 0);
+		return;
+	}
+
 	host->cmd = NULL;
 
 	if (cmd->flags & MMC_RSP_PRESENT) {
@@ -1316,7 +1351,7 @@ static int omap_hsmmc_pre_dma_transfer(struct omap_hsmmc_host *host,
 /*
  * Routine to configure and start DMA for the MMC card
  */
-static int omap_hsmmc_start_dma_transfer(struct omap_hsmmc_host *host,
+static int omap_hsmmc_setup_dma_transfer(struct omap_hsmmc_host *host,
 					struct mmc_request *req)
 {
 	struct dma_slave_config cfg;
@@ -1374,8 +1409,6 @@ static int omap_hsmmc_start_dma_transfer(struct omap_hsmmc_host *host,
 	dmaengine_submit(tx);
 
 	host->dma_ch = 1;
-
-	dma_async_issue_pending(chan);
 
 	return 0;
 }
@@ -1437,12 +1470,8 @@ omap_hsmmc_prepare_data(struct omap_hsmmc_host *host, struct mmc_request *req)
 		return 0;
 	}
 
-	OMAP_HSMMC_WRITE(host->base, BLK, (req->data->blksz)
-					| (req->data->blocks << 16));
-	set_data_timeout(host, req->data->timeout_ns, req->data->timeout_clks);
-
 	if (host->use_dma) {
-		ret = omap_hsmmc_start_dma_transfer(host, req);
+		ret = omap_hsmmc_setup_dma_transfer(host, req);
 		if (ret != 0) {
 			dev_err(mmc_dev(host->mmc), "MMC start dma failure\n");
 			return ret;
@@ -1526,8 +1555,12 @@ static void omap_hsmmc_request(struct mmc_host *mmc, struct mmc_request *req)
 		mmc_request_done(mmc, req);
 		return;
 	}
-
-	omap_hsmmc_start_command(host, req->cmd, req->data);
+	if (req->sbc) {
+		omap_hsmmc_start_command(host, req->sbc, NULL, 0);
+		return;
+	}
+	omap_hsmmc_start_dma_transfer(host);
+	omap_hsmmc_start_command(host, req->cmd, req->data, 1);
 }
 
 /* Routine to configure clock values. Exposed API to core */
