@@ -224,6 +224,7 @@ static const char *am43_boards_compat[] __initdata = {
 };
 
 DT_MACHINE_START(AM43_DT, "Generic AM43 (Flattened Device Tree)")
+	.reserve	= am33xx_reserve,
 	.map_io		= am33xx_map_io,
 	.init_early	= am43xx_init_early,
 	.init_irq	= omap_gic_of_init,
