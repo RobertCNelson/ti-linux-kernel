@@ -89,6 +89,7 @@
 			&mcbsp2_pins
 			&usbhost_pins
 			&led_gpio_pins
+			&palmas_pins
 	>;
 
 	twl6040_pins: pinmux_twl6040_pins {
@@ -218,6 +219,13 @@
 			0x176 (PIN_OUTPUT | MUX_MODE0) /* uart5_cts.uart5_rts */
 		>;
 	};
+
+	palmas_pins: pinmux_palmas_pins {
+		pinctrl-single,pins = <
+			0x140 (PIN_INPUT_PULLUP | MUX_MODE1)	/* MSECURE */
+		>;
+	};
+
 
 };
 
