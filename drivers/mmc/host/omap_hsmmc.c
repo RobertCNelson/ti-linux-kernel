@@ -61,6 +61,7 @@
 #define OMAP_HSMMC_ISE		0x0138
 #define OMAP_HSMMC_AC12		0x013C
 #define OMAP_HSMMC_CAPA		0x0140
+#define OMAP_HSMMC_REV		0x01FC
 
 #define VS18			(1 << 26)
 #define VS30			(1 << 25)
@@ -140,6 +141,11 @@
 
 #define AUTO_CMD12		(1 << 0)	/* Auto CMD12 support */
 #define AUTO_CMD23		(1 << 1)	/* Auto CMD23 support */
+
+#define OMAP_HSMMC_REV_SHIFT	24
+/* HSMMC controller revision on OMAP5, DRA7 */
+#define OMAP_HSMMC_REV_33	0x33
+
 /*
  * One controller can have multiple slots, like on some omap boards using
  * omap.c controller driver. Luckily this is not currently done on any known
@@ -1875,6 +1881,7 @@ static int omap_hsmmc_probe(struct platform_device *pdev)
 	dma_cap_mask_t mask;
 	unsigned tx_req, rx_req;
 	struct pinctrl *pinctrl;
+	u32 revision;
 
 	match = of_match_device(of_match_ptr(omap_mmc_of_match), &pdev->dev);
 	if (match) {
@@ -2071,6 +2078,12 @@ static int omap_hsmmc_probe(struct platform_device *pdev)
 		if (ret)
 			goto err_reg;
 		host->use_reg = 1;
+	}
+
+	revision = OMAP_HSMMC_READ(host->base, REV);
+	if ((revision >> OMAP_HSMMC_REV_SHIFT) >= OMAP_HSMMC_REV_33) {
+		mmc->caps |= MMC_CAP_CMD23;
+		host->flags |= AUTO_CMD23;
 	}
 
 	mmc->ocr_avail = mmc_slot(host).ocr_mask;
