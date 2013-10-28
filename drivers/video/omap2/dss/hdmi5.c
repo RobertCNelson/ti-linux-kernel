@@ -345,13 +345,20 @@ static void hdmi_dump_regs(struct seq_file *s)
 static int read_edid(u8 *buf, int len)
 {
 	int r;
+	int idlemode;
 
 	mutex_lock(&hdmi.lock);
 
 	r = hdmi_runtime_get();
 	BUG_ON(r);
 
+	idlemode = REG_GET(hdmi.wp.base, HDMI_WP_SYSCONFIG, 3, 2);
+	/* No-idle mode */
+	REG_FLD_MOD(hdmi.wp.base, HDMI_WP_SYSCONFIG, 1, 3, 2);
+
 	r = hdmi5_read_edid(&hdmi.core,  buf, len);
+
+	REG_FLD_MOD(hdmi.wp.base, HDMI_WP_SYSCONFIG, idlemode, 3, 2);
 
 	hdmi_runtime_put();
 	mutex_unlock(&hdmi.lock);
