@@ -45,6 +45,18 @@ static const struct csc_table csc_table_deepcolor[] = {
 static void hdmi_core_ddc_init(struct hdmi_core_data *core)
 {
 	void __iomem *base = core->base;
+	const unsigned long long iclk = 266000000;	/* DSS L3 ICLK */
+	const unsigned ss_scl_high = 4000;		/* ns */
+	const unsigned ss_scl_low = 4700;		/* ns */
+	const unsigned fs_scl_high = 600;		/* ns */
+	const unsigned fs_scl_low = 1300;		/* ns */
+	const unsigned sda_hold = 300;			/* ns */
+	const unsigned sfr_div = 10;
+	unsigned long long sfr;
+	unsigned v;
+
+	sfr = iclk / sfr_div;	/* SFR_DIV */
+	sfr /= 1000;		/* SFR clock in kHz */
 
 	/* Reset */
 	REG_FLD_MOD(base, HDMI_CORE_I2CM_SOFTRSTZ, 0, 0, 0);
@@ -52,23 +64,40 @@ static void hdmi_core_ddc_init(struct hdmi_core_data *core)
 				0, 0, 1) != 1)
 		DSSERR("HDMI I2CM reset failed\n");
 
-	/* Master clock division */
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_DIV, 0x1, 3, 3);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_DIV, 0x3, 2, 0);
+	/* Standard (0) or Fast (1) Mode */
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_DIV, 0, 3, 3);
 
-	/* Standard speed counter */
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_SS_SCL_HCNT_1_ADDR, 0x00, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_SS_SCL_HCNT_0_ADDR, 0x6c, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_SS_SCL_LCNT_1_ADDR, 0x00, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_SS_SCL_LCNT_0_ADDR, 0x7f, 7, 0);
+	/* Standard Mode SCL High counter */
+	v = DIV_ROUND_UP_ULL(ss_scl_high * sfr, 1000000);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_SS_SCL_HCNT_1_ADDR,
+			(v >> 8) & 0xff, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_SS_SCL_HCNT_0_ADDR,
+			v & 0xff, 7, 0);
 
-	/* Fast speed counter */
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_FS_SCL_HCNT_1_ADDR, 0x0, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_FS_SCL_HCNT_0_ADDR, 0x11, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_FS_SCL_LCNT_1_ADDR, 0x0, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_FS_SCL_LCNT_0_ADDR, 0x24, 7, 0);
+	/* Standard Mode SCL Low counter */
+	v = DIV_ROUND_UP_ULL(ss_scl_low * sfr, 1000000);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_SS_SCL_LCNT_1_ADDR,
+			(v >> 8) & 0xff, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_SS_SCL_LCNT_0_ADDR,
+			v & 0xff, 7, 0);
 
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_SDA_HOLD_ADDR, 0x9, 7, 0);
+	/* Fast Mode SCL High Counter */
+	v = DIV_ROUND_UP_ULL(fs_scl_high * sfr, 1000000);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_FS_SCL_HCNT_1_ADDR,
+			(v >> 8) & 0xff, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_FS_SCL_HCNT_0_ADDR,
+			v & 0xff, 7, 0);
+
+	/* Fast Mode SCL Low Counter */
+	v = DIV_ROUND_UP_ULL(fs_scl_low * sfr, 1000000);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_FS_SCL_LCNT_1_ADDR,
+			(v >> 8) & 0xff, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_FS_SCL_LCNT_0_ADDR,
+			v & 0xff, 7, 0);
+
+	/* SDA Hold Time */
+	v = DIV_ROUND_UP_ULL(sda_hold * sfr, 1000000);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_SDA_HOLD_ADDR, v & 0xff, 7, 0);
 
 	REG_FLD_MOD(base, HDMI_CORE_I2CM_SLAVE, 0x50, 6, 0);
 	REG_FLD_MOD(base, HDMI_CORE_I2CM_SEGADDR, 0x30, 6, 0);
