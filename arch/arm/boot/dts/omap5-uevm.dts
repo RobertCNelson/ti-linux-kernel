@@ -65,6 +65,7 @@
 			&led_gpio_pins
 			&dss_hdmi_pins
 			&tpd12s015_pins
+			&palmas_pins
 	>;
 
 	twl6040_pins: pinmux_twl6040_pins {
@@ -214,6 +215,12 @@
 			0x0fe (PIN_INPUT_PULLDOWN | MUX_MODE6)	/* hdmi_hpd.gpio7_193 */
 		>;
 	};
+
+	palmas_pins: pinmux_palmas_pins {
+		pinctrl-single,pins = <
+			0x140 (PIN_INPUT_PULLUP | MUX_MODE1)	/* MSECURE */
+		>;
+	};
 };
 
 &omap5_pmx_wkup {
@@ -276,6 +283,13 @@
 			ti,enable-vbus-detection;
 			ti,enable-id-detection;
 			ti,wakeup;
+		};
+
+		palmas_rtc: rtc {
+			compatible = "ti,palmas-rtc";
+			interrupt-parent = <&palmas>;
+			interrupts = <8 IRQ_TYPE_NONE>;
+			ti,backup-battery-chargeable;
 		};
 
 		palmas_pmic {
