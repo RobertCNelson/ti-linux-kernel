@@ -210,11 +210,29 @@ static int verify_eraseblock(int ebnum)
 static int verify_eraseblock_in_one_go(int ebnum)
 {
 	struct mtd_oob_ops ops;
-	int err = 0;
+	int i, err = 0;
 	loff_t addr = ebnum * mtd->erasesize;
 	size_t len = mtd->ecclayout->oobavail * pgcnt;
 
-	prandom_bytes_state(&rnd_state, writebuf, len);
+	/*
+	 * if mtd->ecclayout->oobavail is not a multiple of 4 then
+	 * while generating psuedo random numbers to write to flash
+	 * prandom_bytes_state () generates the extra random bytes
+	 * which wont be done if we do for the whole length. So check
+	 * for mtd->ecclayout->oobavail if its multiple of 4 then
+	 * generate for full len (mtd->ecclayout->oobavail * pgcnt)
+	 * else generate prandom of mtd->ecclayout->oobavail bytes
+	 * pgcnt times.
+	 */
+
+	if (mtd->ecclayout->oobavail % sizeof(u32)) {
+		for (i = 0; i < len; i += mtd->ecclayout->oobavail)
+			prandom_bytes_state(&rnd_state, writebuf + i,
+						mtd->ecclayout->oobavail);
+	} else {
+		prandom_bytes_state(&rnd_state, writebuf, len);
+	}
+
 	ops.mode      = MTD_OPS_AUTO_OOB;
 	ops.len       = 0;
 	ops.retlen    = 0;
@@ -266,7 +284,7 @@ static int verify_all_eraseblocks(void)
 static int __init mtd_oobtest_init(void)
 {
 	int err = 0;
-	unsigned int i;
+	unsigned int i, j;
 	uint64_t tmp;
 	struct mtd_oob_ops ops;
 	loff_t addr = 0, addr0;
@@ -341,7 +359,6 @@ static int __init mtd_oobtest_init(void)
 	err = verify_all_eraseblocks();
 	if (err)
 		goto out;
-
 	/*
 	 * Second test: write all OOB, a block at a time, read it back and
 	 * verify.
@@ -591,10 +608,26 @@ static int __init mtd_oobtest_init(void)
 	prandom_seed_state(&rnd_state, 11);
 	pr_info("verifying all eraseblocks\n");
 	for (i = 0; i < ebcnt - 1; ++i) {
+		size_t sz = mtd->ecclayout->oobavail;
 		if (bbt[i] || bbt[i + 1])
 			continue;
-		prandom_bytes_state(&rnd_state, writebuf,
-					mtd->ecclayout->oobavail * 2);
+	/*
+	 * if mtd->ecclayout->oobavail is not a multiple of 4 then
+	 * while generating psuedo random numbers to write to flash
+	 * prandom_bytes_state () generates the extra random bytes
+	 * which wont be done if we do for the whole length. So check
+	 * for mtd->ecclayout->oobavail if its multiple of 4 then
+	 * generate for full len (mtd->ecclayout->oobavail * pgcnt)
+	 * else generate prandom of mtd->ecclayout->oobavail bytes
+	 * pgcnt times.
+	 */
+		if (sz % sizeof(u32)) {
+			for (j = 0; j < sz * 2; j += sz)
+				prandom_bytes_state(&rnd_state,
+							writebuf + j , sz);
+		} else {
+			prandom_bytes_state(&rnd_state, writebuf, sz * 2);
+		}
 		addr = (i + 1) * mtd->erasesize - mtd->writesize;
 		ops.mode      = MTD_OPS_AUTO_OOB;
 		ops.len       = 0;
