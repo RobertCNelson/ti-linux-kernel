@@ -250,6 +250,7 @@ void hdmi5_core_dump(struct hdmi_core_data *core, struct seq_file *s)
 	DUMPCORE(HDMI_CORE_I2CM_FS_SCL_HCNT_0_ADDR);
 	DUMPCORE(HDMI_CORE_I2CM_FS_SCL_LCNT_1_ADDR);
 	DUMPCORE(HDMI_CORE_I2CM_FS_SCL_LCNT_0_ADDR);
+	DUMPCORE(HDMI_CORE_I2CM_SDA_HOLD_ADDR);
 }
 
 static void hdmi_core_init(struct hdmi_core_vid_config *video_cfg,
