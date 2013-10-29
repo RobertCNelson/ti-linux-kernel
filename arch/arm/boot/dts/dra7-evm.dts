@@ -443,6 +443,7 @@
 
 	mxt244: touchscreen@4a {
 		compatible = "atmel,mXT244";
+		status = "okay";
 		reg = <0x4a>;
 		interrupts = <0 119 0x4>;
 
