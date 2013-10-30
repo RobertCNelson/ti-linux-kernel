@@ -79,9 +79,19 @@
 			0x14c (PIN_INPUT_PULLDOWN | MUX_MODE7)
 		>;
 	};
+
+	mmc1_pins: pinmux_mmc1_pins {
+		pinctrl-single,pins = <
+			0x160 (PIN_INPUT | MUX_MODE7) /* spi0_cs1.gpio0_6 */
+		>;
+	};
 };
 
 &rtc {
+	status = "okay";
+};
+
+&gpio0 {
 	status = "okay";
 };
 
@@ -113,4 +123,7 @@
 	status = "okay";
 	vmmc-supply = <&vmmcsd_fixed>;
 	bus-width = <4>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&mmc1_pins>;
+	cd-gpios = <&gpio0 6 GPIO_ACTIVE_HIGH>;
 };
