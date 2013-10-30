@@ -25,6 +25,7 @@ Optional properties for fsl,imx6q-pcie
 - power-on-gpio: gpio pin number of power-enable signal
 - wake-up-gpio: gpio pin number of incoming wakeup signal
 - disable-gpio: gpio pin number of outgoing rfkill/endpoint disable signal
+- base-mask: address mask for the PCIe controller target port
 
 Example:
 
