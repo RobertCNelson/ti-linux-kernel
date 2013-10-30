@@ -1326,6 +1326,14 @@ dss_video2_clk: dss_video2_clk@4a009120 {
 	reg = <0x4a009120 0x4>;
 };
 
+dss_deshdcp_clk: dss_deshdcp_clk@4a002558 {
+	compatible = "gate-clock";
+	clocks = <&l3_iclk_div>;
+	#clock-cells = <0>;
+	reg = <0x4a002558 0x1>;
+	bit-shift = <0>;
+};
+
 gpio1_dbclk: gpio1_dbclk@4ae07838 {
 	#clock-cells = <0>;
 	compatible = "gate-clock";
