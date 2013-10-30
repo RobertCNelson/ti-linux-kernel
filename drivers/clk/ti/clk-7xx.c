@@ -180,6 +180,7 @@ static struct omap_dt_clk dra7xx_clks[] = {
 	DT_CLK(NULL, "dss_hdmi_clk", "dss_hdmi_clk"),
 	DT_CLK(NULL, "dss_video1_clk", "dss_video1_clk"),
 	DT_CLK(NULL, "dss_video2_clk", "dss_video2_clk"),
+	DT_CLK(NULL, "dss_deshdcp_clk", "dss_deshdcp_clk"),
 	DT_CLK(NULL, "gpio1_dbclk", "gpio1_dbclk"),
 	DT_CLK(NULL, "gpio2_dbclk", "gpio2_dbclk"),
 	DT_CLK(NULL, "gpio3_dbclk", "gpio3_dbclk"),
@@ -282,7 +283,7 @@ static struct omap_dt_clk dra7xx_clks[] = {
 int __init dra7xx_clk_init(void)
 {
 	int rc;
-	struct clk *abe_dpll_mux, *sys_clkin2, *dpll_ck;
+	struct clk *abe_dpll_mux, *sys_clkin2, *dpll_ck, *deshdcp_clk;
 
 	of_clk_init(NULL);
 
@@ -314,6 +315,11 @@ int __init dra7xx_clk_init(void)
 	rc = clk_set_rate(dpll_ck, DRA7_DPLL_USB_DEFFREQ/2);
 	if (rc)
 		pr_err("%s: failed to set USB_DPLL M2 OUT\n", __func__);
+
+	deshdcp_clk = clk_get_sys(NULL, "dss_deshdcp_clk");
+	rc = clk_prepare_enable(deshdcp_clk);
+	if (rc)
+		pr_err("%s: failed to enable DESHDCP clock\n", __func__);
 
 	return rc;
 }
