@@ -16,6 +16,14 @@
 / {
 	model = "TI AM43x EPOS EVM";
 	compatible = "ti,am43x-epos-evm","ti,am4372","ti,am43";
+
+	vmmcsd_fixed: fixedregulator-sd {
+		compatible = "regulator-fixed";
+		regulator-name = "vmmcsd_fixed";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		enable-active-high;
+	};
 };
 
 &am43xx_pinmux {
@@ -101,4 +109,10 @@
 &cpsw_emac1 {
 	phy_id = <&davinci_mdio>, <1>;
 	phy-mode = "rmii";
+};
+
+&mmc1 {
+	status = "okay";
+	vmmc-supply = <&vmmcsd_fixed>;
+	bus-width = <4>;
 };
