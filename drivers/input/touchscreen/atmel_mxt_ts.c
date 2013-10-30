@@ -1234,6 +1234,7 @@ static const struct of_device_id mxt_dt_ids[] = {
 	{ .compatible = "atmel,mXT244", },
 	{ /* sentinel */ }
 };
+MODULE_DEVICE_TABLE(of, mxt_dt_ids);
 
 static int mxt_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
