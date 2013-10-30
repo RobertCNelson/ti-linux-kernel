@@ -253,6 +253,7 @@ static int ti_qspi_setup(struct spi_device *spi)
 			break;
 		}
 		ti_qspi_write(qspi, memval, QSPI_SPI_SETUP0_REG);
+		spi->mode |= SPI_RX_MMAP;
 	}
 
 	pm_runtime_mark_last_busy(qspi->dev);
@@ -524,7 +525,7 @@ static int ti_qspi_probe(struct platform_device *pdev)
 	if (!master)
 		return -ENOMEM;
 
-	master->mode_bits = SPI_CPOL | SPI_CPHA | SPI_RX_QUAD;
+	master->mode_bits = SPI_CPOL | SPI_CPHA | SPI_RX_QUAD | SPI_RX_MMAP;
 
 	master->bus_num = -1;
 	master->flags = SPI_MASTER_HALF_DUPLEX;
