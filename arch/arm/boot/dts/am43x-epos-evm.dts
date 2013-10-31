@@ -121,6 +121,10 @@
 	phy-mode = "rmii";
 };
 
+&phy_sel {
+	rmii-clock-ext;
+};
+
 &mmc1 {
 	status = "okay";
 	vmmc-supply = <&vmmcsd_fixed>;
