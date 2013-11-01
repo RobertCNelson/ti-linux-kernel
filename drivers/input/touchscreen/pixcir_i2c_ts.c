@@ -347,32 +347,6 @@ static void pixcir_input_close(struct input_dev *dev)
 	return;
 }
 
-
-#ifdef CONFIG_PM_SLEEP
-static int pixcir_i2c_ts_suspend(struct device *dev)
-{
-	struct i2c_client *client = to_i2c_client(dev);
-
-	if (device_may_wakeup(&client->dev))
-		enable_irq_wake(client->irq);
-
-	return 0;
-}
-
-static int pixcir_i2c_ts_resume(struct device *dev)
-{
-	struct i2c_client *client = to_i2c_client(dev);
-
-	if (device_may_wakeup(&client->dev))
-		disable_irq_wake(client->irq);
-
-	return 0;
-}
-#endif
-
-static SIMPLE_DEV_PM_OPS(pixcir_dev_pm_ops,
-			 pixcir_i2c_ts_suspend, pixcir_i2c_ts_resume);
-
 #if defined(CONFIG_OF)
 static const struct of_device_id pixcir_of_match[];
 
@@ -546,6 +520,69 @@ static int pixcir_i2c_ts_remove(struct i2c_client *client)
 
 	return 0;
 }
+
+#ifdef CONFIG_PM_SLEEP
+static int pixcir_i2c_ts_suspend(struct device *dev)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct pixcir_i2c_ts_data *ts = i2c_get_clientdata(client);
+	struct input_dev *input = ts->input;
+	int ret = 0;
+
+	mutex_lock(&input->mutex);
+
+	if (device_may_wakeup(&client->dev)) {
+		/* need to start device if not open, to be wakeup source */
+		if (!input->users) {
+			ret = pixcir_start(ts);
+			if (ret)
+				goto unlock;
+		}
+
+		enable_irq_wake(client->irq);
+
+	} else if (input->users) {
+		ret = pixcir_stop(ts);
+	}
+
+unlock:
+	mutex_unlock(&input->mutex);
+
+	return ret;
+}
+
+static int pixcir_i2c_ts_resume(struct device *dev)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct pixcir_i2c_ts_data *ts = i2c_get_clientdata(client);
+	struct input_dev *input = ts->input;
+	int ret = 0;
+
+	mutex_lock(&input->mutex);
+
+	if (device_may_wakeup(&client->dev)) {
+		disable_irq_wake(client->irq);
+
+		/* need to stop device if it was not open on suspend */
+		if (!input->users) {
+			ret = pixcir_stop(ts);
+			if (ret)
+				goto unlock;
+		}
+
+	} else if (input->users) {
+		ret = pixcir_start(ts);
+	}
+
+unlock:
+	mutex_unlock(&input->mutex);
+
+	return ret;
+}
+#endif
+
+static SIMPLE_DEV_PM_OPS(pixcir_dev_pm_ops,
+				pixcir_i2c_ts_suspend, pixcir_i2c_ts_resume);
 
 static const struct i2c_device_id pixcir_i2c_ts_id[] = {
 	{ "pixcir_ts", 0 },
