@@ -1324,6 +1324,16 @@
 			clocks = <&l3_iclk_div>;
 			clock-names = "fck";
 		};
+
+		atl_clkin: atl@0x4843c000 {
+			compatible = "ti,dra7-atl-clock";
+			reg = <0x4843c000 0x3ff>;
+			ti,hwmods = "atl";
+			#clock-cells = <1>;
+			clocks = <&atl_gfclk_mux>;
+			clock-names = "fck";
+			status = "disabled";
+		};
 	};
 
 	clocks {
