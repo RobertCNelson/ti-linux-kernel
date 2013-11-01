@@ -9,6 +9,7 @@
 
 #include "dra7.dtsi"
 #include <dt-bindings/pinctrl/dra7xx.h>
+#include <dt-bindings/clk/ti-dra7-atl.h>
 
 / {
 	model = "TI DRA7";
@@ -35,6 +36,29 @@
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
 	};
+
+	aic_dvdd_1v8: fixedregulator-aic-dvdd-1v8 {
+		compatible = "regulator-fixed";
+		regulator-name = "aic-dvdd-1v8";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		regulator-boot-on;
+	};
+
+	sound {
+		compatible = "ti,dra7xx-evm-audio";
+		ti,model = "DRA7xx-EVM";
+		ti,audio-codec = <&tlv320aic3106>;
+		ti,mcasp-controller = <&mcasp3>;
+		ti,codec-clock-rate = <5644800>;
+		clocks = <&atl_clkin 2>;
+		clock-names = "ti,codec-clock";
+		ti,audio-routing =
+			"Headphone Jack",       "HPLOUT",
+			"Headphone Jack",       "HPROUT",
+			"LINE1L",               "Line In",
+			"LINE1R",               "Line In";
+	};
 };
 
 &dra7_pmx_core {
@@ -42,7 +66,15 @@
 	pinctrl-0 = <
 		&vout1_pins
 		&irq_pins
+		&atl_pins
 	>;
+
+	atl_pins: pinmux_atl_pins {
+		pinctrl-single,pins = <
+			0x298 0x00000005	/* xref_clk1.atl_clk1 OUTPUT | MODE5 */
+			0x29c 0x00000005	/* xref_clk2.atl_clk2 OUTPUT | MODE5 */
+		>;
+	};
 
 	i2c1_pins: pinmux_i2c1_pins {
 		pinctrl-single,pins = <
@@ -293,6 +325,15 @@
 			0xD0 	0x0	/* (PIN_OUTPUT 	   | MUX_MODE0)	gpmc_be0n_cle */
 		>;
 	};
+
+	mcasp3_pins: pinmux_mcasp3_pins {
+		pinctrl-single,pins = <
+			0x324 0x10000	/* mcasp3_aclkx.mcasp3_aclkx	Mode0.Output.PD */
+			0x328 0x10000	/* mcasp3_fsx.mcasp3_fsx	Mode0.Output.PD */
+			0x32c 0x10000	/* mcasp3_axr0.mcasp3_axr0	Mode0.Output.PD */
+			0x330 0x50000	/* mcasp3_axr1.mcasp3_axr1	Mode0.Input.PD */
+		>;
+	};
 };
 
 &i2c1 {
@@ -503,6 +544,19 @@
 		atmel,voltage = <2800000>;
 		atmel,orient = <0x4>;
 	};
+
+	tlv320aic3106: tlv320aic3106@18 {
+		compatible = "ti,tlv320aic3106";
+		reg = <0x18>;
+		adc-settle-ms = <40>;
+		status = "okay";
+
+		/* Regulators */
+		AVDD-supply = <&evm_3v3_sw>;
+		IOVDD-supply = <&evm_3v3_sw>;
+		DRVDD-supply = <&evm_3v3_sw>;
+		DVDD-supply = <&aic_dvdd_1v8>;
+	};
 };
 
 &i2c2 {
@@ -514,6 +568,7 @@
 	pcf_hdmi: gpio@26 {
 		compatible = "nxp,pcf8575";
 		reg = <0x26>;
+		lines-initial-states = <0xffef>;
 		gpio-controller;
 		#gpio-cells = <2>;
 	};
@@ -758,4 +813,33 @@
 			reg = <0x00780000 0x0F880000>;
 		};
 	};
+};
+
+&atl_clkin {
+	fck_parent = "dpll_abe_m2_ck";
+	status = "okay";
+
+	atl2 {
+		bws = <DRA7_ATL_WS_MCASP2_FSX>;
+		aws = <DRA7_ATL_WS_MCASP3_FSX>;
+	};
+};
+
+&mcasp3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&mcasp3_pins>;
+
+	fck_parent = "atl_clkin2_ck";
+
+	status = "okay";
+
+	op-mode = <0>;          /* MCASP_IIS_MODE */
+	tdm-slots = <2>;
+	/* 16 serializer */
+	serial-dir = <  /* 0: INACTIVE, 1: TX, 2: RX */
+		1 2 0 0
+		0 0 0 0
+		0 0 0 0
+		0 0 0 0
+	>;
 };
