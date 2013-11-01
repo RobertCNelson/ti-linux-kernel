@@ -1334,6 +1334,22 @@
 			clock-names = "fck";
 			status = "disabled";
 		};
+
+		mcasp3: mcasp@48468000 {
+			compatible = "ti,dra7-mcasp-audio";
+			ti,hwmods = "mcasp3";
+			reg = <0x48468000 0x2000>;
+			reg-names = "mpu";
+			interrupts = <0 157 0x4>,	/* Crossbar 151 */
+				     <0 158 0x4>;	/* Crossbar 150 */
+			interrupts-names = "tx", "rx";
+			dmas =	<&sdma 125>,		/* Crossbar 133 */
+				<&sdma 126>;		/* Crossbar 132 */
+			dma-names = "tx", "rx";
+			clocks = <&mcasp3_ahclkx_mux>;
+			clock-names = "fck";
+			status = "disabled";
+		};
 	};
 
 	clocks {
