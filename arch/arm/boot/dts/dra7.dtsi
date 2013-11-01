@@ -129,8 +129,8 @@
 			crossbar-name = "dma-req";
 			reg = <0x4a002b78 0x0100>;
 			reg-width = <16>;
-			crossbar-lines = "dma-req", "mcasp3-rx", <0x7e 0x84 0xfc>,
-					 "dma-req", "mcasp3-tx", <0x7d 0x85 0xfa>;
+			crossbar-lines = "dma-req", "mcasp3-tx", <124 133 0xf8>,
+					 "dma-req", "mcasp3-rx", <125 132 0xfa>;
 		};
 
 		prcm: prcm@4ae06000 {
