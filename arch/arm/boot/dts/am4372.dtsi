@@ -304,7 +304,6 @@
 			ti,hwmods = "wd_timer2";
 			clocks = <&wdt1_fck>;
 			clock-names = "fck";
-			status = "disabled";
 		};
 
 		gpio0: gpio@44e07000 {
