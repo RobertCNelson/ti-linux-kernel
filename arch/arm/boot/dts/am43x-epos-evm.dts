@@ -110,9 +110,19 @@
 			0x19c (PIN_OUTPUT | MUX_MODE3)          /* mcasp0_ahclkr.spi1_cs0 */
 		>;
 	};
+
+	pixcir_ts_pins: pixcir_ts_pins {
+		pinctrl-single,pins = <
+			0x48 (PIN_INPUT_PULLUP | MUX_MODE7)  /* gpmc_a1.gpio1_17 */
+		>;
+	};
 };
 
 &gpio0 {
+	status = "okay";
+};
+
+&gpio1 {
 	status = "okay";
 };
 
@@ -170,6 +180,21 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c0_pins>;
 	status = "okay";
+	clock-frequency = <400000>;
+
+	pixcir_ts@5c {
+		compatible = "pixcir,pixcir_tangoc";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pixcir_ts_pins>;
+		reg = <0x5c>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <17 0>;
+
+		attb-gpio = <&gpio1 17 GPIO_ACTIVE_HIGH>;
+
+		x-size = <1024>;
+		y-size = <600>;
+	};
 };
 
 &i2c2 {
