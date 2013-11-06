@@ -68,7 +68,7 @@ static int tps65218_ldo1_dcdc3_vsel_to_uv(unsigned int vsel)
 
 static int tps65218_ldo1_dcdc3_uv_to_vsel(int uV, unsigned int *vsel)
 {
-	if (uV <= 15500000)
+	if (uV <= 1550000)
 		*vsel = DIV_ROUND_UP(uV - 900000, 25000);
 	else
 		*vsel = 26 + DIV_ROUND_UP(uV - 1550000, 50000);
@@ -90,7 +90,7 @@ static int tps65218_dcdc1_2_vsel_to_uv(unsigned int vsel)
 
 static int tps65218_dcdc1_2_uv_to_vsel(int uV, unsigned int *vsel)
 {
-	if (uV <= 13500000)
+	if (uV <= 1350000)
 		*vsel = DIV_ROUND_UP(uV - 850000, 10000);
 	else
 		*vsel = 50 + DIV_ROUND_UP(uV - 1350000, 25000);
@@ -112,7 +112,7 @@ static int tps65218_dcd4_vsel_to_uv(unsigned int vsel)
 
 static int tps65218_dcdc4_uv_to_vsel(int uV, unsigned int *vsel)
 {
-	if (uV <= 15500000)
+	if (uV <= 1550000)
 		*vsel = DIV_ROUND_UP(uV - 1175000, 25000);
 	else
 		*vsel = 15 + DIV_ROUND_UP(uV - 1550000, 50000);
