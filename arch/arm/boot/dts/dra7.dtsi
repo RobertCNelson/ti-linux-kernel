@@ -173,6 +173,18 @@
 			pinctrl-single,function-mask = <0x3fffffff>;
 		};
 
+		bandgap: bandgap {
+			reg = <0x4a0021e0 0xc
+				0x4a00232c 0xc
+				0x4a002380 0x2c
+				0x4a0023C0 0x3c
+				0x4a002564 0x8
+				0x4a002574 0x50>;
+			compatible = "ti,dra752-bandgap";
+			interrupts = <GIC_SPI 126 IRQ_TYPE_LEVEL_HIGH>;
+			#thermal-sensor-cells = <1>;
+		};
+
 		sdma: dma-controller@4a056000 {
 			compatible = "ti,omap4430-sdma";
 			reg = <0x4a056000 0x1000>;
