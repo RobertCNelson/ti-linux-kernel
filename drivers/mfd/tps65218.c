@@ -258,6 +258,11 @@ static int tps65218_remove(struct i2c_client *client)
 	return 0;
 }
 
+static const struct i2c_device_id tps65218_id_table[] = {
+	{"tps65218", TPS65218},
+};
+MODULE_DEVICE_TABLE(i2c, tps65218_id_table);
+
 static struct i2c_driver tps65218_driver = {
 	.driver		= {
 		.name	= "tps65218",
@@ -266,6 +271,7 @@ static struct i2c_driver tps65218_driver = {
 	},
 	.probe		= tps65218_probe,
 	.remove		= tps65218_remove,
+	.id_table       = tps65218_id_table,
 };
 
 module_i2c_driver(tps65218_driver);
