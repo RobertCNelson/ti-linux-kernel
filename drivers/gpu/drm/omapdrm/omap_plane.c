@@ -122,6 +122,7 @@ static void omap_plane_pre_apply(struct omap_drm_apply *apply)
 	enum omap_channel channel;
 	bool enabled = omap_plane->enabled && crtc;
 	bool ilace, replication;
+	u32 low, high;
 	int ret;
 
 	DBG("%s, enabled=%d", omap_plane->name, enabled);
@@ -148,6 +149,10 @@ static void omap_plane_pre_apply(struct omap_drm_apply *apply)
 	/* TODO: */
 	ilace = false;
 	replication = false;
+
+	dispc_ovl_compute_fifo_thresholds(omap_plane->id, &low, &high,
+		false, false);
+	dispc_ovl_set_fifo_threshold(omap_plane->id, low, high);
 
 	/* and finally, update omapdss: */
 	ret = dispc_ovl_setup(omap_plane->id, info,

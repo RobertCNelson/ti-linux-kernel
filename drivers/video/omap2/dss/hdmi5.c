@@ -83,6 +83,52 @@ static void hdmi_runtime_put(void)
 	WARN_ON(r < 0 && r != -ENOSYS);
 }
 
+static irqreturn_t hdmi_irq_handler(int irq, void *data)
+{
+	struct hdmi_wp_data *wp = data;
+	u32 irqstatus;
+
+	irqstatus = hdmi_wp_get_irqstatus(wp);
+	hdmi_wp_set_irqstatus(wp, irqstatus);
+
+	if ((irqstatus & HDMI_IRQ_LINK_CONNECT) &&
+			irqstatus & HDMI_IRQ_LINK_DISCONNECT) {
+		u32 v;
+		/*
+		 * If we get both connect and disconnect interrupts at the same
+		 * time, turn off the PHY, clear interrupts, and restart, which
+		 * raises connect interrupt if a cable is connected, or nothing
+		 * if cable is not connected.
+		 */
+
+		hdmi_wp_set_phy_pwr(wp, HDMI_PHYPWRCMD_OFF);
+
+		/*
+		 * We always get bogus CONNECT & DISCONNECT interrupts when
+		 * setting the PHY to LDOON. To ignore those, we force the RXDET
+		 * line to 0 until the PHY power state has been changed.
+		 */
+		v = hdmi_read_reg(hdmi.phy.base, HDMI_TXPHY_PAD_CFG_CTRL);
+		v = FLD_MOD(v, 1, 15, 15); /* FORCE_RXDET_HIGH */
+		v = FLD_MOD(v, 0, 14, 7); /* RXDET_LINE */
+		hdmi_write_reg(hdmi.phy.base, HDMI_TXPHY_PAD_CFG_CTRL, v);
+
+		hdmi_wp_set_irqstatus(wp, HDMI_IRQ_LINK_CONNECT |
+				HDMI_IRQ_LINK_DISCONNECT);
+
+		hdmi_wp_set_phy_pwr(wp, HDMI_PHYPWRCMD_LDOON);
+
+		REG_FLD_MOD(hdmi.phy.base, HDMI_TXPHY_PAD_CFG_CTRL, 0, 15, 15);
+
+	} else if (irqstatus & HDMI_IRQ_LINK_CONNECT) {
+		hdmi_wp_set_phy_pwr(wp, HDMI_PHYPWRCMD_TXON);
+	} else if (irqstatus & HDMI_IRQ_LINK_DISCONNECT) {
+		hdmi_wp_set_phy_pwr(wp, HDMI_PHYPWRCMD_LDOON);
+	}
+
+	return IRQ_HANDLED;
+}
+
 static int hdmi_init_regulator(void)
 {
 	int r;
@@ -150,8 +196,6 @@ static int hdmi_power_on_full(struct omap_dss_device *dssdev)
 	if (r)
 		return r;
 
-	dss_mgr_disable(mgr);
-
 	p = &hdmi.cfg.timings;
 
 	DSSDBG("hdmi_power_on x_res= %d y_res = %d\n", p->x_res, p->y_res);
@@ -160,7 +204,10 @@ static int hdmi_power_on_full(struct omap_dss_device *dssdev)
 
 	hdmi_pll_compute(&hdmi.pll, clk_get_rate(hdmi.sys_clk), phy);
 
-	hdmi_wp_video_stop(&hdmi.wp);
+	/* disable and clear irqs */
+	hdmi_wp_clear_irqenable(&hdmi.wp, 0xffffffff);
+	hdmi_wp_set_irqstatus(&hdmi.wp,
+			hdmi_wp_get_irqstatus(&hdmi.wp));
 
 	/* config the PLL and PHY hdmi_set_pll_pwrfirst */
 	r = hdmi_pll_enable(&hdmi.pll, &hdmi.wp);
@@ -169,11 +216,15 @@ static int hdmi_power_on_full(struct omap_dss_device *dssdev)
 		goto err_pll_enable;
 	}
 
-	r = hdmi_phy_enable(&hdmi.phy, &hdmi.wp, &hdmi.cfg);
+	r = hdmi_phy_configure(&hdmi.phy, &hdmi.cfg);
 	if (r) {
 		DSSDBG("Failed to start PHY\n");
-		goto err_phy_enable;
+		goto err_phy_cfg;
 	}
+
+	r = hdmi_wp_set_phy_pwr(&hdmi.wp, HDMI_PHYPWRCMD_LDOON);
+	if (r)
+		goto err_phy_pwr;
 
 	hdmi5_configure(&hdmi.core, &hdmi.wp, &hdmi.cfg);
 
@@ -191,13 +242,17 @@ static int hdmi_power_on_full(struct omap_dss_device *dssdev)
 	if (r)
 		goto err_mgr_enable;
 
+	hdmi_wp_set_irqenable(&hdmi.wp,
+			HDMI_IRQ_LINK_CONNECT | HDMI_IRQ_LINK_DISCONNECT);
+
 	return 0;
 
 err_mgr_enable:
 	hdmi_wp_video_stop(&hdmi.wp);
 err_vid_enable:
-	hdmi_phy_disable(&hdmi.phy, &hdmi.wp);
-err_phy_enable:
+	hdmi_wp_set_phy_pwr(&hdmi.wp, HDMI_PHYPWRCMD_OFF);
+err_phy_pwr:
+err_phy_cfg:
 	hdmi_pll_disable(&hdmi.pll, &hdmi.wp);
 err_pll_enable:
 	hdmi_power_off_core(dssdev);
@@ -208,10 +263,14 @@ static void hdmi_power_off_full(struct omap_dss_device *dssdev)
 {
 	struct omap_overlay_manager *mgr = hdmi.output.manager;
 
+	hdmi_wp_clear_irqenable(&hdmi.wp, 0xffffffff);
+
 	dss_mgr_disable(mgr);
 
 	hdmi_wp_video_stop(&hdmi.wp);
-	hdmi_phy_disable(&hdmi.phy, &hdmi.wp);
+
+	hdmi_wp_set_phy_pwr(&hdmi.wp, HDMI_PHYPWRCMD_OFF);
+
 	hdmi_pll_disable(&hdmi.pll, &hdmi.wp);
 
 	hdmi_power_off_core(dssdev);
@@ -286,13 +345,20 @@ static void hdmi_dump_regs(struct seq_file *s)
 static int read_edid(u8 *buf, int len)
 {
 	int r;
+	int idlemode;
 
 	mutex_lock(&hdmi.lock);
 
 	r = hdmi_runtime_get();
 	BUG_ON(r);
 
+	idlemode = REG_GET(hdmi.wp.base, HDMI_WP_SYSCONFIG, 3, 2);
+	/* No-idle mode */
+	REG_FLD_MOD(hdmi.wp.base, HDMI_WP_SYSCONFIG, 1, 3, 2);
+
 	r = hdmi5_read_edid(&hdmi.core,  buf, len);
+
+	REG_FLD_MOD(hdmi.wp.base, HDMI_WP_SYSCONFIG, idlemode, 3, 2);
 
 	hdmi_runtime_put();
 	mutex_unlock(&hdmi.lock);
@@ -606,6 +672,7 @@ static void __exit hdmi_uninit_output(struct platform_device *pdev)
 static int omapdss_hdmihw_probe(struct platform_device *pdev)
 {
 	int r;
+	int irq;
 
 	hdmi.pdev = pdev;
 
@@ -630,6 +697,20 @@ static int omapdss_hdmihw_probe(struct platform_device *pdev)
 	r = hdmi_get_clocks(pdev);
 	if (r) {
 		DSSERR("can't get clocks\n");
+		return r;
+	}
+
+	irq = platform_get_irq(pdev, 0);
+	if (irq < 0) {
+		DSSERR("platform_get_irq failed\n");
+		return -ENODEV;
+	}
+
+	r = devm_request_threaded_irq(&pdev->dev, irq,
+			NULL, hdmi_irq_handler,
+			IRQF_ONESHOT, "OMAP HDMI", &hdmi.wp);
+	if (r) {
+		DSSERR("HDMI IRQ request failed\n");
 		return r;
 	}
 

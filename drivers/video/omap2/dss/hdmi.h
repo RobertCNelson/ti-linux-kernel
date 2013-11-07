@@ -41,14 +41,14 @@
 #define HDMI_WP_VIDEO_SIZE			0x60
 #define HDMI_WP_VIDEO_TIMING_H			0x68
 #define HDMI_WP_VIDEO_TIMING_V			0x6C
-#define HDMI_WP_WP_CLK				0x70
+#define HDMI_WP_CLK				0x70
 #define HDMI_WP_AUDIO_CFG			0x80
 #define HDMI_WP_AUDIO_CFG2			0x84
 #define HDMI_WP_AUDIO_CTRL			0x88
 #define HDMI_WP_AUDIO_DATA			0x8C
 
 /* HDMI WP IRQ flags */
-
+#define HDMI_IRQ_CORE				(1 << 0)
 #define HDMI_IRQ_OCP_TIMEOUT			(1 << 4)
 #define HDMI_IRQ_AUDIO_FIFO_UNDERFLOW		(1 << 8)
 #define HDMI_IRQ_AUDIO_FIFO_OVERFLOW		(1 << 9)
@@ -351,8 +351,6 @@ struct hdmi_pll_data {
 
 struct hdmi_phy_data {
 	void __iomem *base;
-
-	int irq;
 };
 
 struct hdmi_core_data {
@@ -379,15 +377,15 @@ static inline u32 hdmi_read_reg(void __iomem *base_addr, const u32 idx)
 	FLD_GET(hdmi_read_reg(base, idx), start, end)
 
 static inline int hdmi_wait_for_bit_change(void __iomem *base_addr,
-		const u16 idx, int b2, int b1, u32 val)
+		const u32 idx, int b2, int b1, u32 val)
 {
-	u32 t = 0;
-	while (val != REG_GET(base_addr, idx, b2, b1)) {
-		udelay(1);
+	u32 t = 0, v;
+	while (val != (v = REG_GET(base_addr, idx, b2, b1))) {
 		if (t++ > 10000)
-			return !val;
+			return v;
+		udelay(1);
 	}
-	return val;
+	return v;
 }
 
 /* HDMI wrapper funcs */
@@ -418,9 +416,7 @@ void hdmi_pll_compute(struct hdmi_pll_data *pll, unsigned long clkin, int phy);
 int hdmi_pll_init(struct platform_device *pdev, struct hdmi_pll_data *pll);
 
 /* HDMI PHY funcs */
-int hdmi_phy_enable(struct hdmi_phy_data *phy, struct hdmi_wp_data *wp,
-		struct hdmi_config *cfg);
-void hdmi_phy_disable(struct hdmi_phy_data *phy, struct hdmi_wp_data *wp);
+int hdmi_phy_configure(struct hdmi_phy_data *phy, struct hdmi_config *cfg);
 void hdmi_phy_dump(struct hdmi_phy_data *phy, struct seq_file *s);
 int hdmi_phy_init(struct platform_device *pdev, struct hdmi_phy_data *phy);
 

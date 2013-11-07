@@ -41,48 +41,15 @@ void hdmi_phy_dump(struct hdmi_phy_data *phy, struct seq_file *s)
 		DUMPPHY(HDMI_TXPHY_BIST_CONTROL);
 }
 
-static irqreturn_t hdmi_irq_handler(int irq, void *data)
+int hdmi_phy_configure(struct hdmi_phy_data *phy, struct hdmi_config *cfg)
 {
-	struct hdmi_wp_data *wp = data;
-	u32 irqstatus;
-
-	irqstatus = hdmi_wp_get_irqstatus(wp);
-	hdmi_wp_set_irqstatus(wp, irqstatus);
-
-	if ((irqstatus & HDMI_IRQ_LINK_CONNECT) &&
-			irqstatus & HDMI_IRQ_LINK_DISCONNECT) {
-		/*
-		 * If we get both connect and disconnect interrupts at the same
-		 * time, turn off the PHY, clear interrupts, and restart, which
-		 * raises connect interrupt if a cable is connected, or nothing
-		 * if cable is not connected.
-		 */
-		hdmi_wp_set_phy_pwr(wp, HDMI_PHYPWRCMD_OFF);
-
-		hdmi_wp_set_irqstatus(wp, HDMI_IRQ_LINK_CONNECT |
-				HDMI_IRQ_LINK_DISCONNECT);
-
-		hdmi_wp_set_phy_pwr(wp, HDMI_PHYPWRCMD_LDOON);
-	} else if (irqstatus & HDMI_IRQ_LINK_CONNECT) {
-		hdmi_wp_set_phy_pwr(wp, HDMI_PHYPWRCMD_TXON);
-	} else if (irqstatus & HDMI_IRQ_LINK_DISCONNECT) {
-		hdmi_wp_set_phy_pwr(wp, HDMI_PHYPWRCMD_LDOON);
-	}
-
-	return IRQ_HANDLED;
-}
-
-int hdmi_phy_enable(struct hdmi_phy_data *phy, struct hdmi_wp_data *wp,
-			struct hdmi_config *cfg)
-{
-	u16 r = 0;
-	u32 irqstatus;
 	u8 freqout;
 
-	hdmi_wp_clear_irqenable(wp, 0xffffffff);
-
-	irqstatus = hdmi_wp_get_irqstatus(wp);
-	hdmi_wp_set_irqstatus(wp, irqstatus);
+	/*
+	 * Read address 0 in order to get the SCP reset done completed
+	 * Dummy access performed to make sure reset is done
+	 */
+	hdmi_read_reg(phy->base, HDMI_TXPHY_TX_CTRL);
 
 	/*
 	 * In OMAP5+, the HFBITCLK must be divided by 2 before issuing the
@@ -90,16 +57,6 @@ int hdmi_phy_enable(struct hdmi_phy_data *phy, struct hdmi_wp_data *wp,
 	*/
 	if (phy_feat->bist_ctrl)
 		REG_FLD_MOD(phy->base, HDMI_TXPHY_BIST_CONTROL, 1, 11, 11);
-
-	r = hdmi_wp_set_phy_pwr(wp, HDMI_PHYPWRCMD_LDOON);
-	if (r)
-		return r;
-
-	/*
-	 * Read address 0 in order to get the SCP reset done completed
-	 * Dummy access performed to make sure reset is done
-	 */
-	hdmi_read_reg(phy->base, HDMI_TXPHY_TX_CTRL);
 
 	if (phy_feat->calc_freqout) {
 		/* DCOCLK/10 is pixel clock, compare pclk with DCOCLK_MIN/10 */
@@ -133,25 +90,7 @@ int hdmi_phy_enable(struct hdmi_phy_data *phy, struct hdmi_wp_data *wp,
 	/* Write to phy address 3 to change the polarity control */
 	REG_FLD_MOD(phy->base, HDMI_TXPHY_PAD_CFG_CTRL, 0x1, 27, 27);
 
-	r = request_threaded_irq(phy->irq, NULL, hdmi_irq_handler,
-				IRQF_ONESHOT, "OMAP HDMI", wp);
-	if (r) {
-		DSSERR("HDMI IRQ request failed\n");
-		hdmi_wp_set_phy_pwr(wp, HDMI_PHYPWRCMD_OFF);
-		return r;
-	}
-
-	hdmi_wp_set_irqenable(wp,
-		HDMI_IRQ_LINK_CONNECT | HDMI_IRQ_LINK_DISCONNECT);
-
 	return 0;
-}
-
-void hdmi_phy_disable(struct hdmi_phy_data *phy, struct hdmi_wp_data *wp)
-{
-	free_irq(phy->irq, wp);
-
-	hdmi_wp_set_phy_pwr(wp, HDMI_PHYPWRCMD_OFF);
 }
 
 static const struct hdmi_phy_features omap44xx_phy_feats = {
@@ -222,12 +161,6 @@ int hdmi_phy_init(struct platform_device *pdev, struct hdmi_phy_data *phy)
 	if (!phy->base) {
 		DSSERR("can't ioremap PLL ctrl\n");
 		return -ENOMEM;
-	}
-
-	phy->irq = platform_get_irq(pdev, 0);
-	if (phy->irq < 0) {
-		DSSERR("platform_get_irq failed\n");
-		return -ENODEV;
 	}
 
 	return 0;
