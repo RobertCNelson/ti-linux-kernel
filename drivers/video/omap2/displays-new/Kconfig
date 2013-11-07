@@ -18,6 +18,14 @@ config DISPLAY_DRA_EVM_ENCODER_TPD12S015
 	  Driver for TPD12S015, which offers HDMI ESD protection and level
 	  shifting on DRA EVM.
 
+config DISPLAY_ENCODER_SIL9022
+        tristate "Sil9022 DPI to HDMI Encoder"
+	depends on I2C
+	help
+	  Driver for Silicon Image Sil9022 DPI to HDMI encoder and
+	  a brief about Sil9022 can be found here:
+	  http://www.semiconductorstore.com/pdf/newsite/siliconimage/SiI9022a_pb.pdf
+
 config DISPLAY_CONNECTOR_DVI
         tristate "DVI Connector"
 	depends on I2C
