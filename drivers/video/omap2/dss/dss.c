@@ -34,6 +34,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/gfp.h>
 #include <linux/sizes.h>
+#include <linux/clk-private.h>
 
 #include <video/omapdss.h>
 
@@ -490,7 +491,7 @@ int dss_calc_clock_rates(struct dss_clock_info *cinfo)
 		cinfo->fck = prate / cinfo->fck_div *
 			dss.feat->dss_fck_multiplier;
 	} else {
-		if (cinfo->fck_div != 0)
+		if (cinfo->fck_div != 1)
 			return -EINVAL;
 		cinfo->fck = clk_get_rate(dss.dss_clk);
 	}
@@ -553,7 +554,7 @@ int dss_set_clock_div(struct dss_clock_info *cinfo)
 		if (r)
 			return r;
 	} else {
-		if (cinfo->fck_div != 0)
+		if (cinfo->fck_div != 1)
 			return -EINVAL;
 	}
 
@@ -746,6 +747,20 @@ static int dss_get_clocks(void)
 			return PTR_ERR(clk);
 		}
 	} else {
+		int r;
+
+		DSSDBG("DSS CLOCK HACK\n");
+		printk("FCK %s\n", clk->name);
+
+		clk = clk_get_parent(clk);
+		DSSDBG("GATE %s\n", clk->name);
+
+		clk = clk_get_parent(clk);
+		DSSDBG("PLL %s\n", clk->name);
+
+		r = clk_set_rate(clk, 150000000);
+		if (!r)
+			DSSERR("SET CLK RATE Failed");
 		clk = NULL;
 	}
 
@@ -837,6 +852,13 @@ static const struct dss_features dra7xx_dss_feats __initconst = {
 	.dpll_clks		=	true,
 };
 
+static const struct dss_features am43xx_dss_feats __initconst = {
+	.fck_div_max		=	0,
+	.dss_fck_multiplier	=	0,
+	.clk_name		=	NULL,
+	.dpi_select_source	=	&dss_dpi_select_source_omap2_omap3,
+};
+
 static int __init dss_init_features(struct platform_device *pdev)
 {
 	const struct dss_features *src;
@@ -875,6 +897,10 @@ static int __init dss_init_features(struct platform_device *pdev)
 
 	case OMAPDSS_VER_DRA7xx:
 		src = &dra7xx_dss_feats;
+		break;
+
+	case OMAPDSS_VER_AM43xx:
+		src = &am43xx_dss_feats;
 		break;
 
 	default:

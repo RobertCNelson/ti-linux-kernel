@@ -24,9 +24,45 @@
 		regulator-max-microvolt = <3300000>;
 		enable-active-high;
 	};
+
+	aliases {
+		display0 = &lcd0;
+		display1 = &hdmi0;
+	};
+
+	lcd0: display@0 {
+		compatible = "osddisplays,osd057T0559-34ts", "panel-dpi";
+		video-source = <&dpi>;
+		data-lines = <24>;
+		gpios = <0			    /* No Enable GPIO */
+			 &gpio0 7 GPIO_ACTIVE_LOW>; /* LCD backlight GPIO */
+		activelow_backlight;		    /* LCD backlight is Active low */
+		panel-timing {
+			clock-frequency = <33000000>;
+			hactive = <800>;
+			vactive = <480>;
+			hfront-porch = <210>;
+			hback-porch = <16>;
+			hsync-len = <30>;
+			vback-porch = <10>;
+			vfront-porch = <22>;
+			vsync-len = <13>;
+			hsync-active = <0>;
+			vsync-active = <0>;
+			de-active = <1>;
+			pixelclk-active = <1>;
+		};
+	};
+
+	hdmi0: connector@1 {
+		compatible = "ti,hdmi_connector";
+		video-source = <&sii9022>;
+	};
 };
 
 &am43xx_pinmux {
+	pinctrl-names = "default";
+	pinctrl-0 = <&dss_pinctrl>;
 	cpsw_default: cpsw_default {
 		pinctrl-single,pins = <
 			/* Slave 1 */
@@ -99,6 +135,41 @@
 			0x158   (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE2)  /* spi0_d1.i2c1_sda */
 		>;
 	};
+
+	dss_pinctrl: dss_pinctrl {
+		pinctrl-single,pins = <
+			0x020 (PIN_OUTPUT_PULLUP | MUX_MODE1) /*gpmc ad 8 -> DSS DATA 23 */
+			0x024 (PIN_OUTPUT_PULLUP | MUX_MODE1)
+			0x028 (PIN_OUTPUT_PULLUP | MUX_MODE1)
+			0x02C (PIN_OUTPUT_PULLUP | MUX_MODE1)
+			0x030 (PIN_OUTPUT_PULLUP | MUX_MODE1)
+			0x034 (PIN_OUTPUT_PULLUP | MUX_MODE1)
+			0x038 (PIN_OUTPUT_PULLUP | MUX_MODE1)
+			0x03C (PIN_OUTPUT_PULLUP | MUX_MODE1) /*gpmc ad 15 -> DSS DATA 16 */
+			0x0A0 (PIN_OUTPUT_PULLUP | MUX_MODE0) /* DSS DATA 0 */
+			0x0A4 (PIN_OUTPUT_PULLUP | MUX_MODE0)
+			0x0A8 (PIN_OUTPUT_PULLUP | MUX_MODE0)
+			0x0AC (PIN_OUTPUT_PULLUP | MUX_MODE0)
+			0x0B0 (PIN_OUTPUT_PULLUP | MUX_MODE0)
+			0x0B4 (PIN_OUTPUT_PULLUP | MUX_MODE0)
+			0x0B8 (PIN_OUTPUT_PULLUP | MUX_MODE0)
+			0x0BC (PIN_OUTPUT_PULLUP | MUX_MODE0)
+			0x0C0 (PIN_OUTPUT_PULLUP | MUX_MODE0)
+			0x0C4 (PIN_OUTPUT_PULLUP | MUX_MODE0)
+			0x0C8 (PIN_OUTPUT_PULLUP | MUX_MODE0)
+			0x0CC (PIN_OUTPUT_PULLUP | MUX_MODE0)
+			0x0D0 (PIN_OUTPUT_PULLUP | MUX_MODE0)
+			0x0D4 (PIN_OUTPUT_PULLUP | MUX_MODE0)
+			0x0D8 (PIN_OUTPUT_PULLUP | MUX_MODE0)
+			0x0DC (PIN_OUTPUT_PULLUP | MUX_MODE0) /* DSS DATA 15 */
+			0x0E0 (PIN_OUTPUT_PULLUP | MUX_MODE0) /* DSS VSYNC */
+			0x0E4 (PIN_OUTPUT_PULLUP | MUX_MODE0) /* DSS HSYNC */
+			0x0E8 (PIN_OUTPUT_PULLUP | MUX_MODE0) /* DSS PCLK */
+			0x0EC (PIN_OUTPUT_PULLUP | MUX_MODE0) /* DSS AC BIAS EN */
+			0x238 (PIN_OUTPUT_PULLUP | MUX_MODE7) /* GPIO 5_8 to select LCD / HDMI */
+			0x164 (PIN_OUTPUT_PULLUP | MUX_MODE7) /* ECAP0_IN_PWM0_OUT -> GPIO 0_7 BACKLIGHT */
+		>;
+	};
 };
 
 &rtc {
@@ -106,6 +177,10 @@
 };
 
 &gpio0 {
+	status = "okay";
+};
+
+&gpio5 {
 	status = "okay";
 };
 
@@ -152,4 +227,12 @@
         status = "okay";
         pinctrl-names = "default";
         pinctrl-0 = <&i2c1_pins>;
+
+	sii9022: sii9022@3b {
+		compatible = "sii,sii9022";
+		reg = <0x3b>;
+		reset-gpio = <&gpio5 8 GPIO_ACTIVE_LOW>;/* 'SelLCDorHDMI' Gpio, LOW to select HDMI */
+		video-source = <&dpi>;
+		data-lines = <24>;
+	};
 };
