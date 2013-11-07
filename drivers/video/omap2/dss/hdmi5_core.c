@@ -42,73 +42,149 @@ static const struct csc_table csc_table_deepcolor[] = {
 	[3] = { 8192, 0, 0, 0, 0, 8192, 0, 0, 0, 0, 8192, 0, },
 };
 
-static void hdmi_core_ddc_req_addr(struct hdmi_core_data *core, u8 addr, u8 ext)
-{
-	void __iomem *base = core->base;
-	u8 seg_ptr = ext / 2;
-	u8 edidaddr = ((ext % 2) * 0x80) + addr;
-
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_ADDRESS, edidaddr, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_SEGPTR, seg_ptr, 7, 0);
-
-	if (seg_ptr)
-		REG_FLD_MOD(base, HDMI_CORE_I2CM_OPERATION, 1, 1, 1);
-	else
-		REG_FLD_MOD(base, HDMI_CORE_I2CM_OPERATION, 1, 0, 0);
-}
-
 static void hdmi_core_ddc_init(struct hdmi_core_data *core)
 {
 	void __iomem *base = core->base;
+	const unsigned long long iclk = 266000000;	/* DSS L3 ICLK */
+	const unsigned ss_scl_high = 4000;		/* ns */
+	const unsigned ss_scl_low = 4700;		/* ns */
+	const unsigned fs_scl_high = 600;		/* ns */
+	const unsigned fs_scl_low = 1300;		/* ns */
+	const unsigned sda_hold = 300;			/* ns */
+	const unsigned sfr_div = 10;
+	unsigned long long sfr;
+	unsigned v;
 
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_SDA_HOLD_ADDR, 0x18, 7, 0);
+	sfr = iclk / sfr_div;	/* SFR_DIV */
+	sfr /= 1000;		/* SFR clock in kHz */
 
-	/* mask the i2c interrupts */
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_CTLINT, 0x0, 2, 2);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_CTLINT, 0x0, 6, 6);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_INT, 0x0, 2, 2);
+	/* Reset */
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_SOFTRSTZ, 0, 0, 0);
+	if (hdmi_wait_for_bit_change(base, HDMI_CORE_I2CM_SOFTRSTZ,
+				0, 0, 1) != 1)
+		DSSERR("HDMI I2CM reset failed\n");
 
-	/* Master clock division */
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_DIV, 0x5, 3, 0);
+	/* Standard (0) or Fast (1) Mode */
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_DIV, 0, 3, 3);
 
-	/* Standard speed counter */
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_SS_SCL_HCNT_1_ADDR, 0x00, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_SS_SCL_HCNT_0_ADDR, 0x6c, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_SS_SCL_LCNT_1_ADDR, 0x00, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_SS_SCL_LCNT_0_ADDR, 0x7f, 7, 0);
+	/* Standard Mode SCL High counter */
+	v = DIV_ROUND_UP_ULL(ss_scl_high * sfr, 1000000);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_SS_SCL_HCNT_1_ADDR,
+			(v >> 8) & 0xff, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_SS_SCL_HCNT_0_ADDR,
+			v & 0xff, 7, 0);
 
-	/* Fast speed counter */
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_FS_SCL_HCNT_1_ADDR, 0x0, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_FS_SCL_HCNT_0_ADDR, 0x0f, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_FS_SCL_LCNT_1_ADDR, 0x0, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_FS_SCL_LCNT_0_ADDR, 0x21, 7, 0);
+	/* Standard Mode SCL Low counter */
+	v = DIV_ROUND_UP_ULL(ss_scl_low * sfr, 1000000);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_SS_SCL_LCNT_1_ADDR,
+			(v >> 8) & 0xff, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_SS_SCL_LCNT_0_ADDR,
+			v & 0xff, 7, 0);
+
+	/* Fast Mode SCL High Counter */
+	v = DIV_ROUND_UP_ULL(fs_scl_high * sfr, 1000000);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_FS_SCL_HCNT_1_ADDR,
+			(v >> 8) & 0xff, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_FS_SCL_HCNT_0_ADDR,
+			v & 0xff, 7, 0);
+
+	/* Fast Mode SCL Low Counter */
+	v = DIV_ROUND_UP_ULL(fs_scl_low * sfr, 1000000);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_FS_SCL_LCNT_1_ADDR,
+			(v >> 8) & 0xff, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_FS_SCL_LCNT_0_ADDR,
+			v & 0xff, 7, 0);
+
+	/* SDA Hold Time */
+	v = DIV_ROUND_UP_ULL(sda_hold * sfr, 1000000);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_SDA_HOLD_ADDR, v & 0xff, 7, 0);
 
 	REG_FLD_MOD(base, HDMI_CORE_I2CM_SLAVE, 0x50, 6, 0);
 	REG_FLD_MOD(base, HDMI_CORE_I2CM_SEGADDR, 0x30, 6, 0);
+
+	/* NACK_POL to high */
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_CTLINT, 0x1, 7, 7);
+
+	/* NACK_MASK to unmasked */
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_CTLINT, 0x0, 6, 6);
+
+	/* ARBITRATION_POL to high */
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_CTLINT, 0x1, 3, 3);
+
+	/* ARBITRATION_MASK to unmasked */
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_CTLINT, 0x0, 2, 2);
+
+	/* DONE_POL to high */
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_INT, 0x1, 3, 3);
+
+	/* DONE_MASK to unmasked */
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_INT, 0x0, 2, 2);
+}
+
+static void hdmi_core_ddc_uninit(struct hdmi_core_data *core)
+{
+	void __iomem *base = core->base;
+
+	/* Mask I2C interrupts */
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_CTLINT, 0x1, 6, 6);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_CTLINT, 0x1, 2, 2);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_INT, 0x1, 2, 2);
 }
 
 static int hdmi_core_ddc_edid(struct hdmi_core_data *core, u8 *pedid, u8 ext)
 {
 	void __iomem *base = core->base;
-	u8 cur_addr = 0;
+	u8 cur_addr;
 	char checksum = 0;
+	const int retries = 1000;
+	u8 seg_ptr = ext / 2;
+	u8 edidbase = ((ext % 2) * 0x80);
 
-	hdmi_core_ddc_req_addr(core, cur_addr, ext);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_SEGPTR, seg_ptr, 7, 0);
 
-	/* unmask the i2c interrupts */
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_CTLINT, 0x1, 2, 2);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_CTLINT, 0x1, 6, 6);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_INT, 0x1, 2, 2);
-
-	/* FIXME: We read 128 bytes of data here with a msleep. Ideally, we
-	 * should read based on a completion interrupt and. It doesn't seem
-	 * to work at the moment, so we just sleep for a millisecond instead.
+	/*
+	 * TODO: We use polling here, although we probably should use proper
+	 * interrupts.
 	 */
-	while (cur_addr < 128) {
-		msleep(1);
+	for (cur_addr = 0; cur_addr < 128; ++cur_addr) {
+		int i;
+
+		/* clear ERROR and DONE */
+		REG_FLD_MOD(base, HDMI_CORE_IH_I2CM_STAT0, 0x3, 1, 0);
+
+		REG_FLD_MOD(base, HDMI_CORE_I2CM_ADDRESS,
+				edidbase + cur_addr, 7, 0);
+
+		if (seg_ptr)
+			REG_FLD_MOD(base, HDMI_CORE_I2CM_OPERATION, 1, 1, 1);
+		else
+			REG_FLD_MOD(base, HDMI_CORE_I2CM_OPERATION, 1, 0, 0);
+
+		for (i = 0; i < retries; ++i) {
+			u32 stat;
+
+			stat = REG_GET(base, HDMI_CORE_IH_I2CM_STAT0, 1, 0);
+
+			/* I2CM_ERROR */
+			if (stat & 1) {
+				DSSERR("HDMI I2C Master Error\n");
+				return -EIO;
+			}
+
+			/* I2CM_DONE */
+			if (stat & (1 << 1))
+				break;
+
+			usleep_range(250, 1000);
+		}
+
+		if (i == retries) {
+			DSSERR("HDMI I2C timeout reading EDID\n");
+			return -EIO;
+		}
+
 		pedid[cur_addr] = REG_GET(base, HDMI_CORE_I2CM_DATAI, 7, 0);
-		checksum += pedid[cur_addr++];
-		hdmi_core_ddc_req_addr(core, cur_addr, ext);
+		checksum += pedid[cur_addr];
 	}
 
 	return 0;
@@ -126,22 +202,24 @@ int hdmi5_read_edid(struct hdmi_core_data *core, u8 *edid, int len)
 	hdmi_core_ddc_init(core);
 
 	r = hdmi_core_ddc_edid(core, edid, 0);
-	if (r) {
-		return r;
-	} else {
-		n = edid[0x7e];
+	if (r)
+		goto out;
 
-		if (n > max_ext_blocks)
-			n = max_ext_blocks;
+	n = edid[0x7e];
 
-		for (i = 1; i <= n; i++) {
-			r = hdmi_core_ddc_edid(core, edid + i * EDID_LENGTH, i);
-			if (r)
-				return r;
-		}
+	if (n > max_ext_blocks)
+		n = max_ext_blocks;
+
+	for (i = 1; i <= n; i++) {
+		r = hdmi_core_ddc_edid(core, edid + i * EDID_LENGTH, i);
+		if (r)
+			goto out;
 	}
 
-	return 0;
+out:
+	hdmi_core_ddc_uninit(core);
+
+	return r;
 }
 
 void hdmi5_core_dump(struct hdmi_core_data *core, struct seq_file *s)
@@ -201,6 +279,7 @@ void hdmi5_core_dump(struct hdmi_core_data *core, struct seq_file *s)
 	DUMPCORE(HDMI_CORE_I2CM_FS_SCL_HCNT_0_ADDR);
 	DUMPCORE(HDMI_CORE_I2CM_FS_SCL_LCNT_1_ADDR);
 	DUMPCORE(HDMI_CORE_I2CM_FS_SCL_LCNT_0_ADDR);
+	DUMPCORE(HDMI_CORE_I2CM_SDA_HOLD_ADDR);
 }
 
 static void hdmi_core_init(struct hdmi_core_vid_config *video_cfg,
@@ -437,21 +516,43 @@ static void hdmi_core_mask_interrupts(struct hdmi_core_data *core)
 {
 	void __iomem *base = core->base;
 
-	REG_FLD_MOD(base, HDMI_CORE_VP_MASK, 0x0, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_FC_MASK0, 0x0, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_FC_MASK1, 0x0, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_FC_MASK2, 0x0, 1, 0);
-	REG_FLD_MOD(base, HDMI_CORE_PHY_MASK0, 0x0, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_PHY_I2CM_INT_ADDR, 0x8, 3, 0);
-	REG_FLD_MOD(base, HDMI_CORE_PHY_I2CM_CTLINT_ADDR, 0x88, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_AUD_INT, 0xa3, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_AUD_CC08, 0x0, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_AUD_D010, 0x0, 7, 0);
+	/* Master IRQ mask */
+	REG_FLD_MOD(base, HDMI_CORE_IH_MUTE, 0x3, 1, 0);
+
+	/* Mask all the interrupts in HDMI core */
+
+	REG_FLD_MOD(base, HDMI_CORE_VP_MASK, 0xff, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_FC_MASK0, 0xe7, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_FC_MASK1, 0xfb, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_FC_MASK2, 0x3, 1, 0);
+
+	REG_FLD_MOD(base, HDMI_CORE_AUD_INT, 0x3, 3, 2);
 	REG_FLD_MOD(base, HDMI_CORE_AUD_GP_MASK, 0x3, 1, 0);
-	REG_FLD_MOD(base, HDMI_CORE_HDCP_MASK, 0x0, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_CEC_MASK, 0xff, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_INT, 0x1, 7, 0);
-	REG_FLD_MOD(base, HDMI_CORE_I2CM_CTLINT, 0xff, 7, 0);
+
+	REG_FLD_MOD(base, HDMI_CORE_CEC_MASK, 0x7f, 6, 0);
+
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_CTLINT, 0x1, 6, 6);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_CTLINT, 0x1, 2, 2);
+	REG_FLD_MOD(base, HDMI_CORE_I2CM_INT, 0x1, 2, 2);
+
+	REG_FLD_MOD(base, HDMI_CORE_PHY_MASK0, 0xf3, 7, 0);
+
+	REG_FLD_MOD(base, HDMI_CORE_IH_PHY_STAT0, 0xff, 7, 0);
+
+	/* Clear all the current interrupt bits */
+
+	REG_FLD_MOD(base, HDMI_CORE_IH_VP_STAT0, 0xff, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_IH_FC_STAT0, 0xe7, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_IH_FC_STAT1, 0xfb, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_IH_FC_STAT2, 0x3, 1, 0);
+
+	REG_FLD_MOD(base, HDMI_CORE_IH_AS_STAT0, 0x7, 2, 0);
+
+	REG_FLD_MOD(base, HDMI_CORE_IH_CEC_STAT0, 0x7f, 6, 0);
+
+	REG_FLD_MOD(base, HDMI_CORE_IH_I2CM_STAT0, 0x3, 1, 0);
+
+	REG_FLD_MOD(base, HDMI_CORE_IH_PHY_STAT0, 0xff, 7, 0);
 }
 
 static void hdmi_core_enable_interrupts(struct hdmi_core_data *core)
