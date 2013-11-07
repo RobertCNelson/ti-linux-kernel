@@ -993,6 +993,8 @@ static irqreturn_t lcdc_irq_handler_rev02(int irq, void *arg)
 				   LCD_DMA_FRM_BUF_CEILING_ADDR_1_REG);
 			par->vsync_flag = 1;
 			wake_up_interruptible(&par->vsync_wait);
+			if (vsync_cb_handler)
+				vsync_cb_handler(vsync_cb_arg);
 		}
 
 		/* Set only when controller is disabled and at the end of
@@ -1058,8 +1060,6 @@ static irqreturn_t lcdc_irq_handler_rev01(int irq, void *arg)
 				   LCD_DMA_FRM_BUF_CEILING_ADDR_1_REG);
 			par->vsync_flag = 1;
 			wake_up_interruptible(&par->vsync_wait);
-			if (vsync_cb_handler)
-				vsync_cb_handler(vsync_cb_arg);
 		}
 	}
 
