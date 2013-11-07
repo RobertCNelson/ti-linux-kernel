@@ -238,6 +238,8 @@ int twl6040_power(struct twl6040 *twl6040, int on)
 		if (twl6040->power_count++)
 			goto out;
 
+		clk_prepare_enable(twl6040->clk32k);
+
 		if (gpio_is_valid(twl6040->audpwron)) {
 			/* use automatic power-up sequence */
 			ret = twl6040_power_up_automatic(twl6040);
@@ -281,6 +283,8 @@ int twl6040_power(struct twl6040 *twl6040, int on)
 		}
 		twl6040->sysclk = 0;
 		twl6040->mclk = 0;
+
+		clk_disable_unprepare(twl6040->clk32k);
 	}
 
 out:
@@ -558,6 +562,12 @@ static int twl6040_probe(struct i2c_client *client,
 		return PTR_ERR(twl6040->regmap);
 
 	i2c_set_clientdata(client, twl6040);
+
+	twl6040->clk32k = devm_clk_get(&client->dev, "clk32k");
+	if (IS_ERR(twl6040->clk32k)) {
+		dev_info(&client->dev, "clk32k is not handled\n");
+		twl6040->clk32k = NULL;
+	}
 
 	twl6040->supplies[0].supply = "vio";
 	twl6040->supplies[1].supply = "v2v1";
