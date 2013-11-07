@@ -150,7 +150,7 @@ struct omap_mbox_device {
  */
 struct omap_mbox {
 	const char		*name;
-	unsigned int		irq;
+	int			irq;
 	struct omap_mbox_queue	*txq, *rxq;
 	struct omap_mbox_ops	*ops;
 	struct device		*dev;
