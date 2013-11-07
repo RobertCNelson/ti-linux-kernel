@@ -219,7 +219,7 @@ static int tps65218_probe(struct i2c_client *client,
 
 	i2c_set_clientdata(client, tps);
 	tps->dev = &client->dev;
-
+	tps->irq = client->irq;
 	tps->regmap = devm_regmap_init_i2c(client, &tps65218_regmap_config);
 	if (IS_ERR(tps->regmap)) {
 		ret = PTR_ERR(tps->regmap);
