@@ -13,6 +13,7 @@
 #include "am43x-common-evm.dtsi"
 #include <dt-bindings/pinctrl/am43xx.h>
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/pwm/pwm.h>
 
 / {
 	model = "TI AM43x EPOS EVM";
@@ -90,6 +91,13 @@
 				0x0103006a      /* RIGHT */
 				0x0203006c      /* DOWN */
 				0x03030069>;    /* LEFT */
+	};
+
+	backlight {
+		compatible = "pwm-backlight";
+		pwms = <&ecap0 0 50000 PWM_POLARITY_INVERTED>;
+		brightness-levels = <0 51 53 56 62 75 101 152 255>;
+		default-brightness-level = <8>;
 	};
 };
 
@@ -231,6 +239,12 @@
 			0x9c (PIN_INPUT_PULLUP | MUX_MODE3)
 		>;
 	};
+
+	ecap0_pins: backlight_pins {
+		pinctrl-single,pins = <
+			0x164 MUX_MODE0		/* eCAP0_in_PWM0_out.eCAP0_in_PWM0_out MODE0 */
+		>;
+	};
 };
 
 &gpio0 {
@@ -348,5 +362,15 @@
 &spi1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&spi1_pins>;
+	status = "okay";
+};
+
+&ecap0 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&ecap0_pins>;
+};
+
+&epwmss0 {
 	status = "okay";
 };

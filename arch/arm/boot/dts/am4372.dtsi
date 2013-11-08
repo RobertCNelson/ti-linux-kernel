@@ -601,6 +601,7 @@
 
 			ecap0: ecap@48300100 {
 				compatible = "ti,am4372-ecap","ti,am33xx-ecap";
+				#pwm-cells = <3>;
 				reg = <0x48300100 0x80>;
 				ti,hwmods = "ecap0";
 				clocks = <&l4ls_gclk>;
