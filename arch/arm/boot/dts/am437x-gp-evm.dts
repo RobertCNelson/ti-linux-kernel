@@ -12,6 +12,7 @@
 
 #include "am43x-common-evm.dtsi"
 #include <dt-bindings/pinctrl/am43xx.h>
+#include <dt-bindings/pwm/pwm.h>
 
 / {
 	model = "TI AM437x gp EVM";
@@ -77,6 +78,13 @@
 				0x0101006a      /* RIGHT */
 				0x02000069	/* LEFT */
 				0x0201006c>;      /* DOWN */
+	};
+
+	backlight {
+		compatible = "pwm-backlight";
+		pwms = <&ecap0 0 50000 PWM_POLARITY_INVERTED>;
+		brightness-levels = <0 51 53 56 62 75 101 152 255>;
+		default-brightness-level = <8>;
 	};
 };
 
@@ -190,6 +198,12 @@
 			0x164 (PIN_OUTPUT_PULLUP | MUX_MODE7) /* ECAP0_IN_PWM0_OUT -> GPIO 0_7 BACKLIGHT */
 		>;
 	};
+
+	ecap0_pins: backlight_pins {
+		pinctrl-single,pins = <
+			0x164 0x0       /* eCAP0_in_PWM0_out.eCAP0_in_PWM0_out MODE0 */
+		>;
+	};
 };
 
 &rtc {
@@ -263,4 +277,14 @@
 		video-source = <&dpi>;
 		data-lines = <24>;
 	};
+};
+
+&ecap0 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&ecap0_pins>;
+};
+
+&epwmss0 {
+	status = "okay";
 };
