@@ -189,7 +189,7 @@
 
 	pixcir_ts_pins: pixcir_ts_pins {
 		pinctrl-single,pins = <
-			0x48 (PIN_INPUT_PULLUP | MUX_MODE7)  /* gpmc_a1.gpio1_17 */
+			0x44 (PIN_INPUT_PULLUP | MUX_MODE7)  /* gpmc_a1.gpio1_17 */
 		>;
 	};
 
