@@ -1148,12 +1148,12 @@ int pci_reenable_device(struct pci_dev *dev)
 
 static void pci_enable_bridge(struct pci_dev *dev)
 {
+	struct pci_dev *bridge;
 	int retval;
 
-	if (!dev)
-		return;
-
-	pci_enable_bridge(dev->bus->self);
+	bridge = pci_upstream_bridge(dev);
+	if (bridge)
+		pci_enable_bridge(bridge);
 
 	if (pci_is_enabled(dev)) {
 		if (!dev->is_busmaster) {
@@ -1172,6 +1172,7 @@ static void pci_enable_bridge(struct pci_dev *dev)
 
 static int pci_enable_device_flags(struct pci_dev *dev, unsigned long flags)
 {
+	struct pci_dev *bridge;
 	int err;
 	int i, bars = 0;
 
@@ -1190,7 +1191,9 @@ static int pci_enable_device_flags(struct pci_dev *dev, unsigned long flags)
 	if (atomic_inc_return(&dev->enable_cnt) > 1)
 		return 0;		/* already enabled */
 
-	pci_enable_bridge(dev->bus->self);
+	bridge = pci_upstream_bridge(dev);
+	if (bridge)
+		pci_enable_bridge(bridge);
 
 	/* only skip sriov related */
 	for (i = 0; i <= PCI_ROM_RESOURCE; i++)
@@ -3979,6 +3982,7 @@ int pcie_get_mps(struct pci_dev *dev)
 
 	return 128 << ((ctl & PCI_EXP_DEVCTL_PAYLOAD) >> 5);
 }
+EXPORT_SYMBOL(pcie_get_mps);
 
 /**
  * pcie_set_mps - set PCI Express maximum payload size
@@ -4003,6 +4007,7 @@ int pcie_set_mps(struct pci_dev *dev, int mps)
 	return pcie_capability_clear_and_set_word(dev, PCI_EXP_DEVCTL,
 						  PCI_EXP_DEVCTL_PAYLOAD, v);
 }
+EXPORT_SYMBOL(pcie_set_mps);
 
 /**
  * pcie_get_minimum_link - determine minimum link settings of a PCI device
