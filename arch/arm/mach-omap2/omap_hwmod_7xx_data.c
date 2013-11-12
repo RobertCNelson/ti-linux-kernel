@@ -1678,36 +1678,6 @@ static struct omap_hwmod dra7xx_spinlock_hwmod = {
  * 'timer']
  */
 
-static struct omap_hwmod_class_sysconfig dra7xx_timer_1ms_sysc = {
-	.rev_offs	= 0x0000,
-	.sysc_offs	= 0x0010,
-	.sysc_flags	= (SYSC_HAS_EMUFREE | SYSC_HAS_RESET_STATUS |
-			   SYSC_HAS_SIDLEMODE | SYSC_HAS_SOFTRESET),
-	.idlemodes	= (SIDLE_FORCE | SIDLE_NO | SIDLE_SMART |
-			   SIDLE_SMART_WKUP),
-	.sysc_fields	= &omap_hwmod_sysc_type2,
-};
-
-static struct omap_hwmod_class dra7xx_timer_1ms_hwmod_class = {
-	.name	= "timer",
-	.sysc	= &dra7xx_timer_1ms_sysc,
-};
-
-static struct omap_hwmod_class_sysconfig dra7xx_timer_secure_sysc = {
-	.rev_offs	= 0x0000,
-	.sysc_offs	= 0x0010,
-	.sysc_flags	= (SYSC_HAS_EMUFREE | SYSC_HAS_RESET_STATUS |
-			   SYSC_HAS_SIDLEMODE | SYSC_HAS_SOFTRESET),
-	.idlemodes	= (SIDLE_FORCE | SIDLE_NO | SIDLE_SMART |
-			   SIDLE_SMART_WKUP),
-	.sysc_fields	= &omap_hwmod_sysc_type2,
-};
-
-static struct omap_hwmod_class dra7xx_timer_secure_hwmod_class = {
-	.name	= "timer",
-	.sysc	= &dra7xx_timer_secure_sysc,
-};
-
 static struct omap_hwmod_class_sysconfig dra7xx_timer_sysc = {
 	.rev_offs	= 0x0000,
 	.sysc_offs	= 0x0010,
@@ -1726,7 +1696,7 @@ static struct omap_hwmod_class dra7xx_timer_hwmod_class = {
 /* timer1 */
 static struct omap_hwmod dra7xx_timer1_hwmod = {
 	.name		= "timer1",
-	.class		= &dra7xx_timer_1ms_hwmod_class,
+	.class		= &dra7xx_timer_hwmod_class,
 	.clkdm_name	= "wkupaon_clkdm",
 	.prcm = {
 		.omap4 = {
@@ -1740,7 +1710,7 @@ static struct omap_hwmod dra7xx_timer1_hwmod = {
 /* timer2 */
 static struct omap_hwmod dra7xx_timer2_hwmod = {
 	.name		= "timer2",
-	.class		= &dra7xx_timer_1ms_hwmod_class,
+	.class		= &dra7xx_timer_hwmod_class,
 	.clkdm_name	= "l4per_clkdm",
 	.prcm = {
 		.omap4 = {
@@ -1768,7 +1738,7 @@ static struct omap_hwmod dra7xx_timer3_hwmod = {
 /* timer4 */
 static struct omap_hwmod dra7xx_timer4_hwmod = {
 	.name		= "timer4",
-	.class		= &dra7xx_timer_secure_hwmod_class,
+	.class		= &dra7xx_timer_hwmod_class,
 	.clkdm_name	= "l4per_clkdm",
 	.prcm = {
 		.omap4 = {
@@ -1852,7 +1822,7 @@ static struct omap_hwmod dra7xx_timer9_hwmod = {
 /* timer10 */
 static struct omap_hwmod dra7xx_timer10_hwmod = {
 	.name		= "timer10",
-	.class		= &dra7xx_timer_1ms_hwmod_class,
+	.class		= &dra7xx_timer_hwmod_class,
 	.clkdm_name	= "l4per_clkdm",
 	.prcm = {
 		.omap4 = {

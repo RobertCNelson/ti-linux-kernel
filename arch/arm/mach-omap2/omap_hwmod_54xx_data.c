@@ -1319,22 +1319,6 @@ static struct omap_hwmod omap54xx_ocp2scp1_hwmod = {
  * This class contains several variants: ['timer_1ms', 'timer']
  */
 
-static struct omap_hwmod_class_sysconfig omap54xx_timer_1ms_sysc = {
-	.rev_offs	= 0x0000,
-	.sysc_offs	= 0x0010,
-	.sysc_flags	= (SYSC_HAS_EMUFREE | SYSC_HAS_RESET_STATUS |
-			   SYSC_HAS_SIDLEMODE | SYSC_HAS_SOFTRESET),
-	.idlemodes	= (SIDLE_FORCE | SIDLE_NO | SIDLE_SMART |
-			   SIDLE_SMART_WKUP),
-	.sysc_fields	= &omap_hwmod_sysc_type2,
-	.clockact	= CLOCKACT_TEST_ICLK,
-};
-
-static struct omap_hwmod_class omap54xx_timer_1ms_hwmod_class = {
-	.name	= "timer",
-	.sysc	= &omap54xx_timer_1ms_sysc,
-};
-
 static struct omap_hwmod_class_sysconfig omap54xx_timer_sysc = {
 	.rev_offs	= 0x0000,
 	.sysc_offs	= 0x0010,
@@ -1353,9 +1337,8 @@ static struct omap_hwmod_class omap54xx_timer_hwmod_class = {
 /* timer1 */
 static struct omap_hwmod omap54xx_timer1_hwmod = {
 	.name		= "timer1",
-	.class		= &omap54xx_timer_1ms_hwmod_class,
+	.class		= &omap54xx_timer_hwmod_class,
 	.clkdm_name	= "wkupaon_clkdm",
-	.flags		= HWMOD_SET_DEFAULT_CLOCKACT,
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = OMAP54XX_CM_WKUPAON_TIMER1_CLKCTRL_OFFSET,
@@ -1368,9 +1351,8 @@ static struct omap_hwmod omap54xx_timer1_hwmod = {
 /* timer2 */
 static struct omap_hwmod omap54xx_timer2_hwmod = {
 	.name		= "timer2",
-	.class		= &omap54xx_timer_1ms_hwmod_class,
+	.class		= &omap54xx_timer_hwmod_class,
 	.clkdm_name	= "l4per_clkdm",
-	.flags		= HWMOD_SET_DEFAULT_CLOCKACT,
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = OMAP54XX_CM_L4PER_TIMER2_CLKCTRL_OFFSET,
@@ -1481,9 +1463,8 @@ static struct omap_hwmod omap54xx_timer9_hwmod = {
 /* timer10 */
 static struct omap_hwmod omap54xx_timer10_hwmod = {
 	.name		= "timer10",
-	.class		= &omap54xx_timer_1ms_hwmod_class,
+	.class		= &omap54xx_timer_hwmod_class,
 	.clkdm_name	= "l4per_clkdm",
-	.flags		= HWMOD_SET_DEFAULT_CLOCKACT,
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = OMAP54XX_CM_L4PER_TIMER10_CLKCTRL_OFFSET,
