@@ -12,6 +12,7 @@
 
 #include "am43x-common-evm.dtsi"
 #include <dt-bindings/pinctrl/am43xx.h>
+#include <dt-bindings/pwm/pwm.h>
 
 / {
 	model = "TI AM437x gp EVM";
@@ -34,8 +35,7 @@
 		compatible = "osddisplays,osd057T0559-34ts", "panel-dpi";
 		video-source = <&dpi>;
 		data-lines = <24>;
-		gpios = <0			    /* No Enable GPIO */
-			 &gpio0 7 GPIO_ACTIVE_LOW>; /* LCD backlight GPIO */
+		gpios = <0>;			    /* No Enable GPIO */
 		activelow_backlight;		    /* LCD backlight is Active low */
 		panel-timing {
 			clock-frequency = <33000000>;
@@ -57,6 +57,33 @@
 	hdmi0: connector@1 {
 		compatible = "ti,hdmi_connector";
 		video-source = <&sii9022>;
+	};
+
+	matrix_keypad: matrix_keypad@0 {
+		compatible = "gpio-matrix-keypad";
+		debounce-delay-ms = <5>;
+		col-scan-delay-us = <2>;
+
+		row-gpios = <&gpio3 21 GPIO_ACTIVE_HIGH /* Bank3, pin21 */
+				&gpio4 3 GPIO_ACTIVE_HIGH /* Bank4, pin3 */
+				&gpio4 2 GPIO_ACTIVE_HIGH>; /* Bank4, pin2 */
+
+		col-gpios = <&gpio3 19 GPIO_ACTIVE_HIGH /* Bank3, pin19 */
+				&gpio3 20 GPIO_ACTIVE_HIGH>; /* Bank3, pin20 */
+
+		linux,keymap = <0x00000201      /* P1 */
+				0x00010202      /* P2 */
+				0x01000067      /* UP */
+				0x0101006a      /* RIGHT */
+				0x02000069	/* LEFT */
+				0x0201006c>;      /* DOWN */
+	};
+
+	backlight {
+		compatible = "pwm-backlight";
+		pwms = <&ecap0 0 50000 PWM_POLARITY_INVERTED>;
+		brightness-levels = <0 51 53 56 62 75 101 152 255>;
+		default-brightness-level = <8>;
 	};
 };
 
@@ -167,7 +194,18 @@
 			0x0E8 (PIN_OUTPUT_PULLUP | MUX_MODE0) /* DSS PCLK */
 			0x0EC (PIN_OUTPUT_PULLUP | MUX_MODE0) /* DSS AC BIAS EN */
 			0x238 (PIN_OUTPUT_PULLUP | MUX_MODE7) /* GPIO 5_8 to select LCD / HDMI */
-			0x164 (PIN_OUTPUT_PULLUP | MUX_MODE7) /* ECAP0_IN_PWM0_OUT -> GPIO 0_7 BACKLIGHT */
+		>;
+	};
+
+	ecap0_pins: backlight_pins {
+		pinctrl-single,pins = <
+			0x164 0x0       /* eCAP0_in_PWM0_out.eCAP0_in_PWM0_out MODE0 */
+		>;
+	};
+
+	pixcir_ts_pins: pixcir_ts_pins {
+		pinctrl-single,pins = <
+			0x264 (PIN_INPUT_PULLUP | MUX_MODE7)  /* spi2_d0.gpio3_22 */
 		>;
 	};
 };
@@ -177,6 +215,14 @@
 };
 
 &gpio0 {
+	status = "okay";
+};
+
+&gpio3 {
+	status = "okay";
+};
+
+&gpio4 {
 	status = "okay";
 };
 
@@ -235,4 +281,28 @@
 		video-source = <&dpi>;
 		data-lines = <24>;
 	};
+
+	pixcir_ts@5c {
+		compatible = "pixcir,pixcir_tangoc";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pixcir_ts_pins>;
+		reg = <0x5c>;
+		interrupt-parent = <&gpio3>;
+		interrupts = <22 0>;
+
+		attb-gpio = <&gpio3 22 GPIO_ACTIVE_HIGH>;
+
+		x-size = <1024>;
+		y-size = <600>;
+	};
+};
+
+&ecap0 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&ecap0_pins>;
+};
+
+&epwmss0 {
+	status = "okay";
 };

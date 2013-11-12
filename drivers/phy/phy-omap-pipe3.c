@@ -47,7 +47,8 @@
 #define	PLL_SD_MASK		0x0003FC00
 #define	PLL_SD_SHIFT		10
 #define	SET_PLL_GO		0x1
-#define	PLL_TICOPWDN		0x10000
+#define	PLL_TICOPWDN		BIT(16)
+#define PLL_LDOPWDN		BIT(15)
 #define	PLL_LOCK		0x2
 #define	PLL_IDLE		0x1
 
@@ -56,7 +57,8 @@
  * value required for the PIPE3PHY_PLL_CONFIGURATION2.PLL_IDLE status
  * to be correctly reflected in the PIPE3PHY_PLL_STATUS register.
  */
-# define PLL_IDLE_TIME  100;
+#define PLL_IDLE_TIME	100	/* in milliseconds */
+#define PLL_LOCK_TIME	100	/* in milliseconds */
 
 static struct pipe3_dpll_map dpll_map_usb[] = {
 	{12000000, {1250, 5, 4, 20, 0} },	/* 12 MHz */
@@ -96,66 +98,28 @@ static struct pipe3_dpll_params *omap_pipe3_get_dpll_params(struct omap_pipe3
 	return 0;
 }
 
-static int omap_pipe3_power_off(struct phy *x)
-{
-	struct omap_pipe3 *phy = phy_get_drvdata(x);
-	int val;
-	int timeout = PLL_IDLE_TIME;
-
-	val = omap_pipe3_readl(phy->pll_ctrl_base, PLL_CONFIGURATION2);
-	val |= PLL_IDLE;
-	omap_pipe3_writel(phy->pll_ctrl_base, PLL_CONFIGURATION2, val);
-
-	do {
-		val = omap_pipe3_readl(phy->pll_ctrl_base, PLL_STATUS);
-		if (val & PLL_TICOPWDN)
-			break;
-		udelay(1);
-	} while (--timeout);
-
-	omap_control_phy_power(phy->control_dev, 0);
-
-	return 0;
-}
-
-static int omap_pipe3_power_on(struct phy *x)
-{
-	struct omap_pipe3 *phy = phy_get_drvdata(x);
-	int val;
-	int timeout = PLL_IDLE_TIME;
-
-	val = omap_pipe3_readl(phy->pll_ctrl_base, PLL_CONFIGURATION2);
-	val &= ~PLL_IDLE;
-	omap_pipe3_writel(phy->pll_ctrl_base, PLL_CONFIGURATION2, val);
-
-	do {
-		val = omap_pipe3_readl(phy->pll_ctrl_base, PLL_STATUS);
-		if (!(val & PLL_TICOPWDN))
-			break;
-		udelay(1);
-	} while (--timeout);
-
-	msleep(100);
-
-	return 0;
-}
-
-static void omap_pipe3_dpll_relock(struct omap_pipe3 *phy)
+static int omap_pipe3_wait_lock(struct omap_pipe3 *phy)
 {
 	u32		val;
 	unsigned long	timeout;
 
-	omap_pipe3_writel(phy->pll_ctrl_base, PLL_GO, SET_PLL_GO);
-
-	timeout = jiffies + msecs_to_jiffies(20);
+	timeout = jiffies + msecs_to_jiffies(PLL_LOCK_TIME);
 	do {
+		cpu_relax();
 		val = omap_pipe3_readl(phy->pll_ctrl_base, PLL_STATUS);
 		if (val & PLL_LOCK)
 			break;
-	} while (!WARN_ON(time_after(jiffies, timeout)));
+	} while (!time_after(jiffies, timeout));
+
+	if (!(val & PLL_LOCK)) {
+		dev_err(phy->dev, "DPLL failed to lock\n");
+		return -EBUSY;
+	}
+
+	return 0;
 }
 
-static int omap_pipe3_dpll_lock(struct omap_pipe3 *phy)
+static int omap_pipe3_dpll_program(struct omap_pipe3 *phy)
 {
 	u32			val;
 	unsigned long		rate;
@@ -164,6 +128,7 @@ static int omap_pipe3_dpll_lock(struct omap_pipe3 *phy)
 	rate = clk_get_rate(phy->sys_clk);
 	dpll_params = omap_pipe3_get_dpll_params(phy);
 	if (!dpll_params) {
+		dev_err(phy->dev, "Invalid DPLL parameters\n");
 		return -EINVAL;
 	}
 
@@ -192,21 +157,75 @@ static int omap_pipe3_dpll_lock(struct omap_pipe3 *phy)
 	val |= dpll_params->sd << PLL_SD_SHIFT;
 	omap_pipe3_writel(phy->pll_ctrl_base, PLL_CONFIGURATION3, val);
 
-	omap_pipe3_dpll_relock(phy);
+	omap_pipe3_writel(phy->pll_ctrl_base, PLL_GO, SET_PLL_GO);
 
+	return omap_pipe3_wait_lock(phy);
+}
+
+static int omap_pipe3_power_off(struct phy *x)
+{
+	struct omap_pipe3 *phy = phy_get_drvdata(x);
+
+	omap_control_phy_power(phy->control_dev, 0);
+	return 0;
+}
+
+static int omap_pipe3_power_on(struct phy *x)
+{
+	struct omap_pipe3 *phy = phy_get_drvdata(x);
+
+	omap_control_phy_power(phy->control_dev, 1);
 	return 0;
 }
 
 static int omap_pipe3_init(struct phy *x)
 {
 	struct omap_pipe3 *phy = phy_get_drvdata(x);
-	int ret;
+	u32 val;
+	int ret = 0;
 
-	ret = omap_pipe3_dpll_lock(phy);
-	if (ret)
-		return ret;
+	/* Program the DPLL only if not locked */
+	val = omap_pipe3_readl(phy->pll_ctrl_base, PLL_STATUS);
+	if (!(val & PLL_LOCK))
+		if (omap_pipe3_dpll_program(phy))
+			return -EINVAL;
 
-	omap_control_phy_power(phy->control_dev, 1);
+	/* Bring it out of IDLE if it is IDLE */
+	val = omap_pipe3_readl(phy->pll_ctrl_base, PLL_CONFIGURATION2);
+	if (val & PLL_IDLE) {
+		val &= ~PLL_IDLE;
+		omap_pipe3_writel(phy->pll_ctrl_base, PLL_CONFIGURATION2, val);
+		ret = omap_pipe3_wait_lock(phy);
+	}
+
+	return ret;
+}
+
+static int omap_pipe3_exit(struct phy *x)
+{
+	struct omap_pipe3 *phy = phy_get_drvdata(x);
+	u32 val;
+	unsigned long timeout;
+
+	/* Put DPLL in IDLE mode */
+	val = omap_pipe3_readl(phy->pll_ctrl_base, PLL_CONFIGURATION2);
+	val |= PLL_IDLE;
+	omap_pipe3_writel(phy->pll_ctrl_base, PLL_CONFIGURATION2, val);
+
+	/* wait for LDO and Oscillator to power down */
+	timeout = jiffies + msecs_to_jiffies(PLL_IDLE_TIME);
+	do {
+		cpu_relax();
+		val = omap_pipe3_readl(phy->pll_ctrl_base, PLL_STATUS);
+		if ((val & PLL_TICOPWDN) && (val & PLL_LDOPWDN))
+			break;
+	} while (!time_after(jiffies, timeout));
+
+	if (!(val & PLL_TICOPWDN) || !(val & PLL_LDOPWDN)) {
+		dev_err(phy->dev, "Failed to power down: PLL_STATUS 0x%x\n",
+									val);
+		return -EBUSY;
+	}
 
 	return 0;
 }
@@ -215,6 +234,7 @@ static struct phy_ops ops = {
 	.init		= omap_pipe3_init,
 	.power_on	= omap_pipe3_power_on,
 	.power_off	= omap_pipe3_power_off,
+	.exit		= omap_pipe3_exit,
 	.owner		= THIS_MODULE,
 };
 
@@ -270,20 +290,14 @@ static int omap_pipe3_probe(struct platform_device *pdev)
 	phy->wkupclk = devm_clk_get(phy->dev, "wkupclk");
 	if (IS_ERR(phy->wkupclk))
 		dev_dbg(&pdev->dev, "unable to get wkupclk\n");
-	else
-		clk_prepare(phy->wkupclk);
 
 	phy->optclk = devm_clk_get(phy->dev, "refclk");
 	if (IS_ERR(phy->optclk))
 		dev_dbg(&pdev->dev, "unable to get refclk\n");
-	else
-		clk_prepare(phy->optclk);
 
 	phy->optclk2 = devm_clk_get(phy->dev, "refclk2");
 	if (IS_ERR(phy->optclk2))
 		dev_dbg(&pdev->dev, "unable to get refclk2\n");
-	else
-		clk_prepare(phy->optclk2);
 
 	phy->sys_clk = devm_clk_get(phy->dev, "sys_clkin");
 	if (IS_ERR(phy->sys_clk)) {
@@ -321,23 +335,15 @@ static int omap_pipe3_probe(struct platform_device *pdev)
 
 	phy_set_drvdata(generic_phy, phy);
 
-	pm_runtime_get(&pdev->dev);
+	pm_runtime_get_sync(&pdev->dev);
 
 	return 0;
 }
 
 static int omap_pipe3_remove(struct platform_device *pdev)
 {
-	struct omap_pipe3 *phy = platform_get_drvdata(pdev);
-
-	if (!IS_ERR(phy->wkupclk))
-		clk_unprepare(phy->wkupclk);
-	if (!IS_ERR(phy->optclk))
-		clk_unprepare(phy->optclk);
-	if (!IS_ERR(phy->optclk2))
-		clk_unprepare(phy->optclk2);
 	if (!pm_runtime_suspended(&pdev->dev))
-		pm_runtime_put(&pdev->dev);
+		pm_runtime_put_sync(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
 
 	return 0;
@@ -350,11 +356,11 @@ static int omap_pipe3_runtime_suspend(struct device *dev)
 	struct omap_pipe3	*phy = dev_get_drvdata(dev);
 
 	if (!IS_ERR(phy->wkupclk))
-		clk_disable(phy->wkupclk);
+		clk_disable_unprepare(phy->wkupclk);
 	if (!IS_ERR(phy->optclk))
-		clk_disable(phy->optclk);
+		clk_disable_unprepare(phy->optclk);
 	if (!IS_ERR(phy->optclk2))
-		clk_disable(phy->optclk2);
+		clk_disable_unprepare(phy->optclk2);
 
 	return 0;
 }
@@ -365,7 +371,7 @@ static int omap_pipe3_runtime_resume(struct device *dev)
 	struct omap_pipe3	*phy = dev_get_drvdata(dev);
 
 	if (!IS_ERR(phy->optclk)) {
-		ret = clk_enable(phy->optclk);
+		ret = clk_prepare_enable(phy->optclk);
 		if (ret) {
 			dev_err(phy->dev, "Failed to enable optclk %d\n", ret);
 			goto err1;
@@ -373,7 +379,7 @@ static int omap_pipe3_runtime_resume(struct device *dev)
 	}
 
 	if (!IS_ERR(phy->wkupclk)) {
-		ret = clk_enable(phy->wkupclk);
+		ret = clk_prepare_enable(phy->wkupclk);
 		if (ret) {
 			dev_err(phy->dev, "Failed to enable wkupclk %d\n", ret);
 			goto err2;
@@ -381,7 +387,7 @@ static int omap_pipe3_runtime_resume(struct device *dev)
 	}
 
 	if (!IS_ERR(phy->optclk2)) {
-		ret = clk_enable(phy->optclk2);
+		ret = clk_prepare_enable(phy->optclk2);
 		if (ret) {
 			dev_err(phy->dev, "Failed to enable optclk2 %d\n", ret);
 			goto err3;
@@ -392,10 +398,10 @@ static int omap_pipe3_runtime_resume(struct device *dev)
 
 err3:
 	if (!IS_ERR(phy->wkupclk))
-		clk_disable(phy->wkupclk);
+		clk_disable_unprepare(phy->wkupclk);
 err2:
 	if (!IS_ERR(phy->optclk))
-		clk_disable(phy->optclk);
+		clk_disable_unprepare(phy->optclk);
 
 err1:
 	return ret;
