@@ -269,10 +269,23 @@ wait_emif_enable1:
 	ldr	r1, emif_ref_ctrl_val
 	str	r1, [r0, #EMIF_SDRAM_REFRESH_CONTROL]
 	str	r1, [r0, #EMIF_SDRAM_REFRESH_CTRL_SHDW]
-	ldr	r1, emif_pmcr_val
-	str	r1, [r0, #EMIF_POWER_MANAGEMENT_CONTROL]
+
 	ldr	r1, emif_pmcr_shdw_val
 	str	r1, [r0, #EMIF_POWER_MANAGEMENT_CTRL_SHDW]
+	/*
+	 * Toggle EMIF to exit refresh mode:
+	 * if EMIF lost context, PWR_MGT_CTRL is currently 0, writing disable
+	 *   (0x0), wont do diddly squat! so do a toggle from SR(0x2) to disable
+	 *   (0x0) here.
+	 * *If* EMIF did not loose context, nothing broken as we write the same
+	 *   value(0x2) to reg before we write a disable (0x0).
+	 */
+	ldr	r1, emif_pmcr_val
+	bic	r1, r1, #EMIF_POWER_MGMT_SELF_REFRESH_MODE_MASK
+	orr	r1, r1, #EMIF_POWER_MGMT_SELF_REFRESH_MODE
+	str	r1, [r0, #EMIF_POWER_MANAGEMENT_CONTROL]
+	bic	r1, r1, #EMIF_POWER_MGMT_SELF_REFRESH_MODE_MASK
+	str	r1, [r0, #EMIF_POWER_MANAGEMENT_CONTROL]
 
 	/*
 	 * Output impedence calib needed only for DDR3
@@ -298,10 +311,14 @@ wait_emif_enable1:
 
 resume_to_ddr:
 	/* EMIF needs some time before read/write possible */
-	mov	r0, #EMIF_POWER_MGMT_DELAY_PERIOD
+	mov	r1, #EMIF_POWER_MGMT_DELAY_PERIOD
 wait_resume:
-	subs	r0, r0, #1
+	subs	r1, r1, #1
 	bne	wait_resume
+
+	/* All done.. so restore back enter into suspend configuration */
+	ldr	r1, emif_pmcr_val
+	str	r1, [r0, #EMIF_POWER_MANAGEMENT_CONTROL]
 
 	/* We are back. Branch to the common CPU resume routine */
 	mov	r0, #0
