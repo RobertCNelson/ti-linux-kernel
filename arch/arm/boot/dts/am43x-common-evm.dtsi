@@ -6,13 +6,4 @@
  * published by the Free Software Foundation.
  */
 
-/* AM43x EPOS EVM */
-
-/dts-v1/;
-
-#include "am43x-common-evm.dtsi"
-
-/ {
-	model = "TI AM43x EPOS EVM";
-	compatible = "ti,am43x-epos-evm","ti,am4372","ti,am43";
-};
+#include "am4372.dtsi"

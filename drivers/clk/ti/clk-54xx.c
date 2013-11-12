@@ -183,17 +183,6 @@ static struct omap_dt_clk omap54xx_clks[] = {
 	DT_CLK(NULL, "auxclk3_ck", "auxclk3_ck"),
 	DT_CLK(NULL, "auxclkreq3_ck", "auxclkreq3_ck"),
 	DT_CLK(NULL, "timer_32k_ck", "sys_32k_ck"),
-	DT_CLK("omap_timer.1", "sys_ck", "sys_clkin"),
-	DT_CLK("omap_timer.2", "sys_ck", "sys_clkin"),
-	DT_CLK("omap_timer.3", "sys_ck", "sys_clkin"),
-	DT_CLK("omap_timer.4", "sys_ck", "sys_clkin"),
-	DT_CLK("omap_timer.9", "sys_ck", "sys_clkin"),
-	DT_CLK("omap_timer.10", "sys_ck", "sys_clkin"),
-	DT_CLK("omap_timer.11", "sys_ck", "sys_clkin"),
-	DT_CLK("omap_timer.5", "sys_ck", "dss_syc_gfclk_div"),
-	DT_CLK("omap_timer.6", "sys_ck", "dss_syc_gfclk_div"),
-	DT_CLK("omap_timer.7", "sys_ck", "dss_syc_gfclk_div"),
-	DT_CLK("omap_timer.8", "sys_ck", "dss_syc_gfclk_div"),
 	{ .node_name = NULL },
 };
 

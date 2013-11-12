@@ -227,7 +227,7 @@ clkdiv32k_ck: clkdiv32k_ck {
 
 clkdiv32k_ick: clkdiv32k_ick@44e0014c {
 	#clock-cells = <0>;
-	compatible = "gate-clock";
+	compatible = "ti,gate-clock";
 	clocks = <&clkdiv32k_ck>;
 	reg = <0x44e0014c 0x4>;
 	bit-shift = <1>;

@@ -112,11 +112,25 @@ static struct omap_dt_clk am43xx_clks[] = {
 
 int __init am43xx_clk_init(void)
 {
+	struct clk *clk1, *clk2;
+
 	of_clk_init(NULL);
 
 	omap_dt_clocks_register(am43xx_clks);
 
 	omap2_clk_disable_autoidle_all();
+
+	/*
+	 * The external 32KHz RTC clock source may not always be available
+	 * on board like in the case of ePOS EVM. By default sync timer, which
+	 * is used as clock source, feeds of this clock. This is a problem.
+	 * Change the parent of sync timer to PER PLL 32KHz clock instead
+	 * which is always present. This has a side effect that in low power
+	 * modes, sync timer will stop.
+	 */
+	clk1 = clk_get_sys(NULL, "mux_synctimer32k_ck");
+	clk2 = clk_get_sys(NULL, "clkdiv32k_ick");
+	clk_set_parent(clk1, clk2);
 
 	return 0;
 }
