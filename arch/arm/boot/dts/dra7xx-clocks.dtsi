@@ -326,7 +326,7 @@ dpll_pcie_ref_m2ldo_ck: dpll_pcie_ref_m2ldo_ck@4a008210 {
 
 apll_pcie_in_clk_mux: apll_pcie_in_clk_mux@4ae06118 {
 	compatible = "mux-clock";
-	clocks = <&dpll_pcie_ref_ck>, <&pciesref_acs_clk_ck>;
+	clocks = <&dpll_pcie_ref_m2ldo_ck>, <&pciesref_acs_clk_ck>;
 	#clock-cells = <0>;
 	reg = <0x4a00821c 0x4>;
 	bit-mask = <0x80>;
@@ -2083,6 +2083,7 @@ optfclk_pciephy_div: optfclk_pciephy_div@4a00821c {
 	clocks = <&apll_pcie_ck>;
 	#clock-cells = <0>;
 	reg = <0x4a00821c 0x4>;
+	table = < 2 0 >, < 1 1 >;
 	bit-mask = <0x100>;
 };
 
@@ -2100,4 +2101,12 @@ optfclk_pciephy_div_clk: optfclk_pciephy_div_clk@4a0093b0 {
 	#clock-cells = <0>;
 	reg = <0x4a0093b0 0x4>;
 	bit-shift = <10>;
+};
+
+optfclk_pciephy_32khz: optfclk_pcie1phy_32khz@4a0093b0 {
+	compatible = "gate-clock";
+	clocks = <&sys_32k_ck>;
+	#clock-cells = <0>;
+	reg = <0x4a0093b0 0x4>;
+	bit-shift = <8>;
 };
