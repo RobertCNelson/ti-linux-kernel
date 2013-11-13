@@ -14,6 +14,11 @@ clk_32768_ck: clk_32768_ck {
 	clock-frequency = <32768>;
 };
 
+/*
+ * The accuracy of this clock source is -50 to 100% making this
+ * incapable of providing reliable clock alternative. Hence try
+ * to avoid using this as a clock source.
+ */
 clk_rc32k_ck: clk_rc32k_ck {
 	#clock-cells = <0>;
 	compatible = "fixed-clock";
