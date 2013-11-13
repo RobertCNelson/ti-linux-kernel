@@ -749,8 +749,7 @@ int omap_hwmod_no_setup_reset(struct omap_hwmod *oh);
 int omap_hwmod_pad_route_irq(struct omap_hwmod *oh, int pad_idx, int irq_idx);
 
 int omap_hwmod_force_mstandby_repeated(void);
-int omap_hwmod_enable_force_mstandby_repeated(struct omap_hwmod *oh);
-int omap_hwmod_disable_force_mstandby_repeated(struct omap_hwmod *oh);
+struct list_head *omap_hwmod_force_mstandby_list_get(void);
 
 extern void __init omap_hwmod_init(void);
 
