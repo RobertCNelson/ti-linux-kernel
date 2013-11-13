@@ -16,6 +16,12 @@
 / {
 	model = "TI AM43x EPOS EVM";
 	compatible = "ti,am43x-epos-evm","ti,am4372","ti,am43";
+
+	cpus {
+		cpu@0 {
+			cpu0-supply = <&dcdc2>;
+		};
+	};
 };
 
 &am43xx_pinmux {
