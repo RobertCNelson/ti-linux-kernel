@@ -164,8 +164,8 @@
 
 	i2c2_pins: pinmux_i2c2_pins {
 		pinctrl-single,pins = <
-			0x1c0 (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE0)    /* i2c2_sda.i2c2_sda */
-			0x1c4 (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE0)    /* i2c2_scl.i2c2_scl */
+			0x1c0 (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE8)    /* i2c2_sda.i2c2_sda */
+			0x1c4 (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE8)    /* i2c2_scl.i2c2_scl */
 		>;
 	};
 
