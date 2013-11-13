@@ -11,10 +11,28 @@
 /dts-v1/;
 
 #include "am43x-common-evm.dtsi"
+#include <dt-bindings/pinctrl/am43xx.h>
 
 / {
 	model = "TI AM437x gp EVM";
 	compatible = "ti,am437x-gp-evm","ti,am4372","ti,am43";
+};
+
+&am43xx_pinmux {
+	pinctrl-names = "default";
+
+	i2c0_pins: pinmux_i2c0_pins {
+		pinctrl-single,pins = <
+			0x188 (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE0)    /* i2c0_sda.i2c0_sda */
+			0x18c (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE0)    /* i2c0_scl.i2c0_scl */
+		>;
+	};
+};
+
+&i2c0 {
+        status = "okay";
+        pinctrl-names = "default";
+        pinctrl-0 = <&i2c0_pins>;
 };
 
 &rtc {
