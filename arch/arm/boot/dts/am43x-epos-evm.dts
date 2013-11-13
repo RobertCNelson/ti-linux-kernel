@@ -275,6 +275,16 @@
 		pinctrl-single,pins = <
 			0x164 MUX_MODE0		/* eCAP0_in_PWM0_out.eCAP0_in_PWM0_out MODE0 */
 		>;
+
+	};
+
+	mcasp1_pins: pinmux_mcasp1_pins {
+		pinctrl-single,pins = <
+			0x1a0 (PIN_INPUT_PULLDOWN | MUX_MODE3) /* MCASP0_ACLKR/MCASP1_ACLKX */
+			0x1a4 (PIN_INPUT_PULLDOWN | MUX_MODE3) /* MCASP0_FSR/MCASP1_FSX */
+			0x1a8 (PIN_OUTPUT_PULLDOWN | MUX_MODE3)/* MCASP0_AXR1/MCASP1_AXR0 */
+			0x1ac (PIN_INPUT_PULLDOWN | MUX_MODE3) /* MCASP0_AHCLKX/MCASP1_AXR1 */
+		>;
 	};
 
 	wlirq_pins: pinmux_wlirq_pins {
