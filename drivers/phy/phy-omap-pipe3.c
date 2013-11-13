@@ -184,6 +184,9 @@ static int omap_pipe3_init(struct phy *x)
 	u32 val;
 	int ret = 0;
 
+	if (of_device_is_compatible(phy->dev->of_node, "ti,phy-pipe3-pcie"))
+		return 0;
+
 	/* Program the DPLL only if not locked */
 	val = omap_pipe3_readl(phy->pll_ctrl_base, PLL_STATUS);
 	if (!(val & PLL_LOCK))
@@ -206,6 +209,9 @@ static int omap_pipe3_exit(struct phy *x)
 	struct omap_pipe3 *phy = phy_get_drvdata(x);
 	u32 val;
 	unsigned long timeout;
+
+	if (of_device_is_compatible(phy->dev->of_node, "ti,phy-pipe3-pcie"))
+		return 0;
 
 	/* Put DPLL in IDLE mode */
 	val = omap_pipe3_readl(phy->pll_ctrl_base, PLL_CONFIGURATION2);
@@ -248,6 +254,9 @@ static const struct of_device_id omap_pipe3_id_table[] = {
 		.compatible = "ti,phy-pipe3-sata",
 		.data = dpll_map_sata,
 	},
+	{
+		.compatible = "ti,phy-pipe3-pcie",
+	},
 	{},
 };
 MODULE_DEVICE_TABLE(of, omap_pipe3_id_table);
@@ -263,29 +272,58 @@ static int omap_pipe3_probe(struct platform_device *pdev)
 	struct device_node *control_node;
 	struct platform_device *control_pdev;
 	const struct of_device_id *match;
-
-	match = of_match_device(of_match_ptr(omap_pipe3_id_table), &pdev->dev);
-	if (!match)
-		return -EINVAL;
+	struct clk *clk;
 
 	phy = devm_kzalloc(&pdev->dev, sizeof(*phy), GFP_KERNEL);
 	if (!phy) {
 		dev_err(&pdev->dev, "unable to alloc mem for OMAP PIPE3 PHY\n");
 		return -ENOMEM;
 	}
-
-	phy->dpll_map = (struct pipe3_dpll_map *)match->data;
-	if (!phy->dpll_map) {
-		dev_err(&pdev->dev, "no dpll data\n");
-		return -EINVAL;
-	}
-
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "pll_ctrl");
-	phy->pll_ctrl_base = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(phy->pll_ctrl_base))
-		return PTR_ERR(phy->pll_ctrl_base);
-
 	phy->dev		= &pdev->dev;
+
+	if (!of_device_is_compatible(node, "ti,phy-pipe3-pcie")) {
+		match = of_match_device(of_match_ptr(omap_pipe3_id_table), &pdev->dev);
+		if (!match)
+			return -EINVAL;
+
+		phy->dpll_map = (struct pipe3_dpll_map *)match->data;
+		if (!phy->dpll_map) {
+			dev_err(&pdev->dev, "no dpll data\n");
+			return -EINVAL;
+		}
+
+		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "pll_ctrl");
+		phy->pll_ctrl_base = devm_ioremap_resource(&pdev->dev, res);
+		if (IS_ERR(phy->pll_ctrl_base))
+			return PTR_ERR(phy->pll_ctrl_base);
+
+		phy->sys_clk = devm_clk_get(phy->dev, "sys_clkin");
+		if (IS_ERR(phy->sys_clk)) {
+			pr_err("%s: unable to get sys_clkin\n", __func__);
+			return -EINVAL;
+		}
+	} else {
+		clk = devm_clk_get(phy->dev, "dpll_ref");
+		if (IS_ERR(clk)) {
+			dev_err(&pdev->dev, "unable to get dpll ref clk\n");
+			return PTR_ERR(clk);
+		}
+		clk_set_rate(clk, 1500000000);
+
+		clk = devm_clk_get(phy->dev, "dpll_ref_m2");
+		if (IS_ERR(clk)) {
+			dev_err(&pdev->dev, "unable to get dpll ref m2 clk\n");
+			return PTR_ERR(clk);
+		}
+		clk_set_rate(clk, 100000000);
+
+		clk = devm_clk_get(phy->dev, "pcie-phy-div");
+		if (IS_ERR(clk)) {
+			dev_err(&pdev->dev, "unable to get pcie-phy-div clk\n");
+			return PTR_ERR(clk);
+		}
+		clk_set_rate(clk, 100000000);
+	}
 
 	phy->wkupclk = devm_clk_get(phy->dev, "wkupclk");
 	if (IS_ERR(phy->wkupclk))
@@ -298,12 +336,6 @@ static int omap_pipe3_probe(struct platform_device *pdev)
 	phy->optclk2 = devm_clk_get(phy->dev, "refclk2");
 	if (IS_ERR(phy->optclk2))
 		dev_dbg(&pdev->dev, "unable to get refclk2\n");
-
-	phy->sys_clk = devm_clk_get(phy->dev, "sys_clkin");
-	if (IS_ERR(phy->sys_clk)) {
-		pr_err("%s: unable to get sys_clkin\n", __func__);
-		return -EINVAL;
-	}
 
 	control_node = of_parse_phandle(node, "ctrl-module", 0);
 	if (!control_node) {

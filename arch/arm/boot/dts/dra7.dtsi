@@ -119,7 +119,9 @@
 					 "mpu-irq", "cpsw-rx-thresh", <0x32 0x14e 0x58>,
 					 "mpu-irq", "cpsw-rx", <0x33 0x14f 0x5a>,
 					 "mpu-irq", "cpsw-tx", <0x34 0x150 0x5c>,
-					 "mpu-irq", "cpsw-misc", <0x35 0x151 0x5e>;
+					 "mpu-irq", "cpsw-misc", <0x35 0x151 0x5e>,
+					 "mpu-irq", "pcie1-main", <0x81 0xE8 0xF6>,
+					 "mpu-irq", "pcie1-msi", <0x86 0xE9 0xFC>;
 		};
 
 		crossbar_dma: dmareq@4a002b78 {
@@ -824,6 +826,14 @@
 			clock-names = "sysclk";
 		};
 
+		omap_control_pcie1phy: omap-control-pciephy@0x4a003c40 {
+			compatible = "ti,control-phy-pipe3";
+			reg = <0x4a003c40 0x4>;
+			reg-names = "power";
+			clocks = <&sys_clkin1>;
+			clock-names = "sysclk";
+		};
+
 		ocp2scp@4a090000 {
 			compatible = "ti,omap-ocp2scp";
 			#address-cells = <1>;
@@ -842,7 +852,47 @@
 				clock-names = "refclk";
 				#phy-cells = <0>;
 			};
+
+			pcie1_phy: pciephy@4a094000 {
+				compatible = "ti,phy-pipe3-pcie";
+				ctrl-module = <&omap_control_pcie1phy>;
+				clocks = <&dpll_pcie_ref_ck>,
+					 <&dpll_pcie_ref_m2ldo_ck>,
+					 <&optfclk_pciephy_32khz>,
+					 <&optfclk_pciephy_clk>,
+					 <&optfclk_pciephy_div_clk>,
+					 <&optfclk_pciephy_div>;
+				clock-names = "dpll_ref", "dpll_ref_m2",
+					      "wkupclk", "refclk",
+					      "refclk2", "pcie-phy-div";
+				#phy-cells = <0>;
+				ti,hwmods = "pcie1-phy";
+			};
 		};
+
+		pcie@51000000 {
+			compatible = "ti,dra7xx-pcie";
+			reg = <0x51002000 0x14c>, <0x51000000 0x2000>, <0x4A002540 0x1f>;
+			reg-names = "ti_conf", "rc_dbics", "mmr_unlock";
+			interrupts = <0 129 0x4>, <0 134 0x4>;
+			#address-cells = <3>;
+			#size-cells = <2>;
+			device_type = "pci";
+			ti,device_type = <3>;
+			ranges = <0x00000800 0 0x20001000 0x20001000 0 0x00001000
+				  0x81000000 0 0	  0x20002000 0 0x00010000
+				  0x82000000 0 0x20012000 0x20012000 0 0xffee000>;
+			#interrupt-cells = <1>;
+			base-mask = <0x00000000 0x0fffffff>;
+			num-lanes = <1>;
+			interrupt-map-mask = <0 0 0 0>;
+			interrupt-map = <0x0 0 &gic 134>;
+			ti,hwmods = "pcie1";
+			phys = <&pcie1_phy>;
+			phy-names = "pcie-phy1";
+			resets = <&prcm 0>;
+			reset-names = "reset";
+                };
 
 		sata@4a141100 {
 			compatible = "ti,sata";
