@@ -326,6 +326,12 @@
 			0x270 (PIN_OUTPUT_PULLDOWN | MUX_MODE3)	/* XDMA_EVENT_INTR0/CLKOUT1 */
 		>;
 	};
+
+	tlv320aic3111_reset_pin: pinmux_tlv320aic3111_reset_pin {
+		pinctrl-single,pins = <
+			0x078 (PIN_OUTPUT_PULLUP | MUX_MODE7) /* GPMC_BE1n/GPIO1_28 */
+		>;
+	};
 };
 
 &gpio0 {
