@@ -17,9 +17,11 @@
 #include <linux/platform_data/edma.h>
 #include <linux/i2c.h>
 #include <linux/of_platform.h>
+#include <linux/clk.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/soc.h>
+#include <sound/pcm_params.h>
 
 #include <asm/dma.h>
 #include <asm/mach-types.h>
@@ -31,11 +33,41 @@
 #include "davinci-mcasp.h"
 
 struct snd_soc_card_drvdata_davinci {
+	struct clk *mclk;
 	unsigned sysclk;
+	unsigned clk_gpio;
+	struct snd_pcm_hw_constraint_list *rate_constraint;
 };
+
+/* If changing sample format the tda998x configuration (REG_CTS_N) needs
+   to be changed. */
+#define TDA998X_SAMPLE_FORMAT SNDRV_PCM_FORMAT_S32_LE
 
 #define AUDIO_FORMAT (SND_SOC_DAIFMT_DSP_B | \
 		SND_SOC_DAIFMT_CBM_CFM | SND_SOC_DAIFMT_IB_NF)
+
+static int evm_startup(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_card *soc_card = rtd->codec->card;
+	struct clk *mclk = ((struct snd_soc_card_drvdata_davinci *)
+			    snd_soc_card_get_drvdata(soc_card))->mclk;
+	if (mclk)
+		return clk_prepare_enable(mclk);
+
+	return 0;
+}
+
+static void evm_shutdown(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_card *soc_card = rtd->codec->card;
+	struct clk *mclk = ((struct snd_soc_card_drvdata_davinci *)
+			    snd_soc_card_get_drvdata(soc_card))->mclk;
+	if (mclk)
+		clk_disable_unprepare(mclk);
+}
+
 static int evm_hw_params(struct snd_pcm_substream *substream,
 			 struct snd_pcm_hw_params *params)
 {
@@ -81,12 +113,84 @@ static int evm_spdif_hw_params(struct snd_pcm_substream *substream,
 	return snd_soc_dai_set_fmt(cpu_dai, AUDIO_FORMAT);
 }
 
+static int evm_tda998x_startup(struct snd_pcm_substream *substream)
+{
+	struct snd_pcm_runtime *runtime = substream->runtime;
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_card *soc_card = rtd->codec->card;
+	struct snd_soc_card_drvdata_davinci *drvdata =
+		(struct snd_soc_card_drvdata_davinci *)
+		snd_soc_card_get_drvdata(soc_card);
+	struct snd_mask *fmt = constrs_mask(&runtime->hw_constraints,
+					    SNDRV_PCM_HW_PARAM_FORMAT);
+	snd_mask_none(fmt);
+	snd_mask_set(fmt, TDA998X_SAMPLE_FORMAT);
+
+	runtime->hw.rate_min = drvdata->rate_constraint->list[0];
+	runtime->hw.rate_max = drvdata->rate_constraint->list[
+		drvdata->rate_constraint->count - 1];
+	runtime->hw.rates = SNDRV_PCM_RATE_KNOT;
+
+	snd_pcm_hw_constraint_list(runtime, 0, SNDRV_PCM_HW_PARAM_RATE,
+				   drvdata->rate_constraint);
+	snd_pcm_hw_constraint_minmax(runtime, SNDRV_PCM_HW_PARAM_CHANNELS,
+				     2, 2);
+
+	return evm_startup(substream);
+}
+
+static unsigned int evm_get_bclk(struct snd_pcm_hw_params *params,
+				 int channels)
+{
+	int sample_size = snd_pcm_format_width(params_format(params));
+	int rate = params_rate(params);
+
+	return sample_size * channels * rate;
+}
+
+static int evm_tda998x_hw_params(struct snd_pcm_substream *substream,
+				 struct snd_pcm_hw_params *params)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct snd_soc_codec *codec = rtd->codec;
+	struct snd_soc_card *soc_card = codec->card;
+	struct platform_device *pdev = to_platform_device(soc_card->dev);
+	unsigned int bclk_freq = evm_get_bclk(params, 2);
+	unsigned sysclk = ((struct snd_soc_card_drvdata_davinci *)
+			   snd_soc_card_get_drvdata(soc_card))->sysclk;
+	int ret;
+
+	ret = snd_soc_dai_set_clkdiv(cpu_dai, 1, sysclk / bclk_freq);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "can't set CPU DAI clock divider %d\n",
+			ret);
+		return ret;
+	}
+
+	ret = snd_soc_dai_set_sysclk(cpu_dai, 0, sysclk, SND_SOC_CLOCK_IN);
+	if (ret < 0)
+		return ret;
+
+	return ret;
+}
+
 static struct snd_soc_ops evm_ops = {
+	.startup = evm_startup,
+	.shutdown = evm_shutdown,
 	.hw_params = evm_hw_params,
 };
 
 static struct snd_soc_ops evm_spdif_ops = {
+	.startup = evm_startup,
+	.shutdown = evm_shutdown,
 	.hw_params = evm_spdif_hw_params,
+};
+
+static struct snd_soc_ops evm_tda998x_ops = {
+	.startup = evm_tda998x_startup,
+	.shutdown = evm_shutdown,
+	.hw_params = evm_tda998x_hw_params,
 };
 
 /* davinci-evm machine dapm widgets */
@@ -151,6 +255,80 @@ static int evm_aic3x_init(struct snd_soc_pcm_runtime *rtd)
 	snd_soc_dapm_enable_pin(dapm, "Line Out");
 	snd_soc_dapm_enable_pin(dapm, "Mic Jack");
 	snd_soc_dapm_enable_pin(dapm, "Line In");
+
+	return 0;
+}
+
+static unsigned int tda998x_hdmi_rates[] = {
+	32000,
+	44100,
+	48000,
+	88200,
+	96000,
+};
+
+static struct snd_pcm_hw_constraint_list *evm_tda998x_rate_constraint(
+	struct snd_soc_card *soc_card)
+{
+	struct platform_device *pdev = to_platform_device(soc_card->dev);
+	unsigned sysclk = ((struct snd_soc_card_drvdata_davinci *)
+			   snd_soc_card_get_drvdata(soc_card))->sysclk;
+	struct snd_pcm_hw_constraint_list *ret;
+	unsigned int *rates;
+	int i = 0, j = 0;
+
+	ret = devm_kzalloc(soc_card->dev, sizeof(*ret) +
+			   sizeof(tda998x_hdmi_rates), GFP_KERNEL);
+	if (!ret) {
+		dev_err(&pdev->dev, "Unable to allocate rate constraint!\n");
+		return NULL;
+	}
+
+	ret->list = rates = (unsigned int *) &ret[1];
+	ret->mask = 0;
+	for (; i < ARRAY_SIZE(tda998x_hdmi_rates); i++) {
+		unsigned int bclk_freq = tda998x_hdmi_rates[i] * 2 *
+			snd_pcm_format_width(TDA998X_SAMPLE_FORMAT);
+		if (sysclk % bclk_freq == 0) {
+			rates[j++] = tda998x_hdmi_rates[i];
+			dev_dbg(soc_card->dev, "Allowing rate %u\n",
+				tda998x_hdmi_rates[i]);
+		}
+	}
+	ret->count = j;
+	return ret;
+}
+
+static const struct snd_soc_dapm_widget tda998x_dapm_widgets[] = {
+	SND_SOC_DAPM_OUTPUT("HDMI Out"),
+};
+
+static int evm_tda998x_init(struct snd_soc_pcm_runtime *rtd)
+{
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct snd_soc_dapm_context *dapm = &rtd->codec->dapm;
+	struct snd_soc_card *soc_card = rtd->codec->card;
+	struct snd_soc_card_drvdata_davinci *drvdata =
+		(struct snd_soc_card_drvdata_davinci *)
+		snd_soc_card_get_drvdata(soc_card);
+	int ret;
+
+	ret = snd_soc_dai_set_clkdiv(cpu_dai, 0, 1);
+	if (ret < 0)
+		return ret;
+
+	drvdata->rate_constraint = evm_tda998x_rate_constraint(soc_card);
+
+	snd_soc_dapm_new_controls(dapm, tda998x_dapm_widgets,
+				  ARRAY_SIZE(tda998x_dapm_widgets));
+
+	ret = snd_soc_of_parse_audio_routing(soc_card, "ti,audio-routing");
+
+	/* not connected */
+	snd_soc_dapm_disable_pin(dapm, "RX");
+
+	/* always connected */
+	snd_soc_dapm_enable_pin(dapm, "HDMI Out");
 
 	return 0;
 }
@@ -327,7 +505,7 @@ static struct snd_soc_card da850_snd_soc_card = {
 #if defined(CONFIG_OF)
 
 /*
- * The struct is used as place holder. It will be completely
+ * The structs are used as place holders. They will be completely
  * filled with data from dt node.
  */
 static struct snd_soc_dai_link evm_dai_tlv320aic3x = {
@@ -338,10 +516,24 @@ static struct snd_soc_dai_link evm_dai_tlv320aic3x = {
 	.init           = evm_aic3x_init,
 };
 
+static struct snd_soc_dai_link evm_dai_tda998x_hdmi = {
+	.name		= "NXP TDA998x HDMI Chip",
+	.stream_name	= "HDMI",
+	.codec_dai_name	= "hdmi-hifi",
+	.ops		= &evm_tda998x_ops,
+	.init           = evm_tda998x_init,
+	.dai_fmt	= (SND_SOC_DAIFMT_CBS_CFS | SND_SOC_DAIFMT_I2S |
+			   SND_SOC_DAIFMT_IB_NF),
+};
+
 static const struct of_device_id davinci_evm_dt_ids[] = {
 	{
 		.compatible = "ti,da830-evm-audio",
-		.data = (void *) &evm_dai_tlv320aic3x,
+		.data = &evm_dai_tlv320aic3x,
+	},
+	{
+		.compatible = "ti,am33xx-beaglebone-black",
+		.data = &evm_dai_tda998x_hdmi,
 	},
 	{ /* sentinel */ }
 };
@@ -360,6 +552,7 @@ static int davinci_evm_probe(struct platform_device *pdev)
 		of_match_device(of_match_ptr(davinci_evm_dt_ids), &pdev->dev);
 	struct snd_soc_dai_link *dai = (struct snd_soc_dai_link *) match->data;
 	struct snd_soc_card_drvdata_davinci *drvdata = NULL;
+	struct clk *mclk;
 	int ret = 0;
 
 	evm_soc_card.dai_link = dai;
@@ -379,13 +572,38 @@ static int davinci_evm_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+	mclk = of_clk_get_by_name(np, "ti,codec-clock");
+	if (PTR_ERR(mclk) == -EPROBE_DEFER)
+		return -EPROBE_DEFER;
+	else if (IS_ERR(mclk)) {
+		dev_dbg(&pdev->dev, "Codec clock not found.\n");
+		mclk = NULL;
+	}
+
 	drvdata = devm_kzalloc(&pdev->dev, sizeof(*drvdata), GFP_KERNEL);
 	if (!drvdata)
 		return -ENOMEM;
 
+	drvdata->mclk = mclk;
+
 	ret = of_property_read_u32(np, "ti,codec-clock-rate", &drvdata->sysclk);
-	if (ret < 0)
-		return -EINVAL;
+
+	if (ret < 0) {
+		if (!drvdata->mclk) {
+			dev_err(&pdev->dev,
+				"No clock or clock rate defined.\n");
+			return -EINVAL;
+		}
+		drvdata->sysclk = clk_get_rate(drvdata->mclk);
+	} else if (drvdata->mclk) {
+		unsigned int requestd_rate = drvdata->sysclk;
+		clk_set_rate(drvdata->mclk, drvdata->sysclk);
+		drvdata->sysclk = clk_get_rate(drvdata->mclk);
+		if (drvdata->sysclk != requestd_rate)
+			dev_warn(&pdev->dev,
+				 "Could not get requested rate %u using %u.\n",
+				 requestd_rate, drvdata->sysclk);
+	}
 
 	snd_soc_card_set_drvdata(&evm_soc_card, drvdata);
 	ret = snd_soc_register_card(&evm_soc_card);
@@ -399,6 +617,12 @@ static int davinci_evm_probe(struct platform_device *pdev)
 static int davinci_evm_remove(struct platform_device *pdev)
 {
 	struct snd_soc_card *card = platform_get_drvdata(pdev);
+	struct snd_soc_card_drvdata_davinci *drvdata =
+		(struct snd_soc_card_drvdata_davinci *)
+		snd_soc_card_get_drvdata(card);
+
+	if (drvdata->mclk)
+		clk_put(drvdata->mclk);
 
 	snd_soc_unregister_card(card);
 
