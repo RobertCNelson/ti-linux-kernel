@@ -890,7 +890,7 @@
 			compatible = "ti,omap2-mcasp-audio";
 			ti,hwmods = "mcasp0";
 			reg = <0x48038000 0x2000>,
-			      <0x46400000 0x400000>;
+			      <0x46000000 0x400000>;
 			reg-names = "mpu", "dma";
 			interrupts = <80 81>;
 			interrupts-names = "tx", "rx";
