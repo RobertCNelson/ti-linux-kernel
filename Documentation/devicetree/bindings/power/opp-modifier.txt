@@ -1,0 +1,71 @@
+* OPP-Modifier - opp modifier to selectively enable operating point
+
+OMAP devices that have selectively modifiable OPPs can specify
+all available OPPs in their operating-points listing and then define
+opp_modifiers to enable or disable the OPPs that are actually available
+on the specific hardware.
+
+* OPP Modifier Provider
+
+properties:
+- compatible : Should be "ti,opp-omap"
+- reg : Address and length of the registers needed to identify available
+	OPPs, here we provide efuse_sma address and device_id address
+
+Sub-nodes:
+Sub-nodes are defined as a container to hold opp modifier table for a
+specific device with an operating-points table already defined
+
+Sub-node properties:
+- opp-modifier: A collection of rows consisting of the following entries to
+		allow specification of available OPPs:
+	-kHz: The opp to be enabled based on following criteria
+	-Rev: The revision of the part this OPP applies to, specified
+	      using OPP_REV macro
+	-offset: Offset into efuse register where relevant bits are located
+	-mask: Bit that indicates availability of OPP
+
+The OPP_REV macro defined under include/dt-bindings/opp/am33xx.h allows
+specification of specific part revision through usage:
+
+	OPP_REV([MAJOR PART REVISION], [MINOR PART REVISION]);
+
+so ES2.1 silicon for AM33XX would be indicated using OPP_REV(2,1);
+
+Example:
+
+	efuse_sma: efuse@0x44e107fc {
+		compatible = "ti,opp-omap";
+		reg = <0x44e107fc 0x04          /* EFUSE_SMA */
+		       0x44e10600 0x04>;        /* DEVICE_ID */
+
+		mpu_opp_modifier: mpu_opp_modifier {
+			opp-modifier = <
+			/* kHz   Rev		offset  mask */
+			1000000  OPP_REV(2,1)	0	BIT_1
+			720000   OPP_REV(1,0)	0	BIT_2
+			>;
+		};
+	};
+
+* OPP Modifier Consumer
+
+Properties:
+- platform-opp-modifier: phandle to the sub-node of the proper opp-modifier
+		provider that contains the appropriate opp-modifier table
+
+Example:
+
+cpu@0 {
+        compatible = "arm,cortex-a8";
+        device_type = "cpu";
+
+        operating-points = <
+                /* kHz    uV */
+                1000000 1351000
+                720000  1285000
+        >;
+
+        platform-opp-modifier = <&mpu_opp_modifier>;
+};
+
