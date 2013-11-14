@@ -82,6 +82,12 @@ static irqreturn_t l3_interrupt_handler(int irq, void *_l3)
 			/* Identify the source from control status register */
 			err_src = __ffs(err_reg);
 
+			if (*(l3->l3_targets[i] + err_src) == 0xdeadbeef) {
+				WARN(true, "L3 error for UN IDENTIFIED TARGET: %d\n",
+				     err_src);
+				break;
+			}
+
 			/* Read the stderrlog_main_source from clk domain */
 			l3_targ_base = base + *(l3->l3_targets[i] + err_src);
 			std_err_main =  __raw_readl(l3_targ_base +
