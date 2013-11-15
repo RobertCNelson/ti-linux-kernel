@@ -76,7 +76,7 @@ struct clk *clk_register_gpio(struct device *dev, const char *name,
 		unsigned int gpio, bool active_low)
 {
 	struct clk_gpio *clk_gpio;
-	struct clk *clk;
+	struct clk *clk = ERR_PTR(-EINVAL);
 	struct clk_init_data init = { NULL };
 	unsigned long gpio_flags;
 	int err;
@@ -94,6 +94,7 @@ struct clk *clk_register_gpio(struct device *dev, const char *name,
 	if (err) {
 		pr_err("%s: %s: Error requesting clock control gpio %u\n",
 		       __func__, name, gpio);
+		clk = ERR_PTR(err);
 		goto clk_register_gpio_err;
 	}
 
@@ -105,6 +106,7 @@ struct clk *clk_register_gpio(struct device *dev, const char *name,
 
 	if (!clk_gpio) {
 		pr_err("%s: %s: could not allocate gpio clk\n", __func__, name);
+		clk = ERR_PTR(-ENOMEM);
 		goto clk_register_gpio_err;
 	}
 
@@ -123,8 +125,6 @@ struct clk *clk_register_gpio(struct device *dev, const char *name,
 	if (!IS_ERR(clk))
 		return clk;
 
-	err = PTR_ERR(clk);
-
 	if (!dev)
 		kfree(clk_gpio);
 
@@ -132,7 +132,7 @@ clk_register_gpio_err:
 	if (!dev)
 		gpio_free(gpio);
 
-	return err;
+	return clk;
 }
 EXPORT_SYMBOL_GPL(clk_register_gpio);
 
