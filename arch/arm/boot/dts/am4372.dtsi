@@ -34,6 +34,18 @@
 			compatible = "arm,cortex-a9";
 			device_type = "cpu";
 			reg = <0>;
+
+			operating-points = <
+				/* kHz    uV */
+				300000	950000
+				600000	1100000
+				720000	1200000
+			>;
+
+			clocks = <&dpll_mpu_ck>;
+			clock-names = "cpu";
+
+			clock-latency = <300000>; /* From omap-cpufreq driver */
 		};
 	};
 
@@ -403,10 +415,6 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			status = "disabled";
-
-			tps: tps@24 {
-				reg = <0x24>;
-			};
 		};
 
 		i2c1: i2c@4802a000 {
@@ -987,5 +995,3 @@
 	};
 
 };
-
-/include/ "tps65218.dtsi"

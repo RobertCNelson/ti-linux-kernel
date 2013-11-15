@@ -219,7 +219,7 @@ static int tps65218_probe(struct i2c_client *client,
 
 	i2c_set_clientdata(client, tps);
 	tps->dev = &client->dev;
-
+	tps->irq = client->irq;
 	tps->regmap = devm_regmap_init_i2c(client, &tps65218_regmap_config);
 	if (IS_ERR(tps->regmap)) {
 		ret = PTR_ERR(tps->regmap);
@@ -258,6 +258,11 @@ static int tps65218_remove(struct i2c_client *client)
 	return 0;
 }
 
+static const struct i2c_device_id tps65218_id_table[] = {
+	{"tps65218", TPS65218},
+};
+MODULE_DEVICE_TABLE(i2c, tps65218_id_table);
+
 static struct i2c_driver tps65218_driver = {
 	.driver		= {
 		.name	= "tps65218",
@@ -266,6 +271,7 @@ static struct i2c_driver tps65218_driver = {
 	},
 	.probe		= tps65218_probe,
 	.remove		= tps65218_remove,
+	.id_table       = tps65218_id_table,
 };
 
 module_i2c_driver(tps65218_driver);
