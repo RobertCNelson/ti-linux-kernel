@@ -1,0 +1,68 @@
+Binding for Texas Instruments DPLL clock.
+
+This binding uses the common clock binding[1].  It assumes a
+register-mapped DPLL with usually two selectable input clocks
+(reference clock and bypass clock), with digital phase locked
+loop logic for multiplying the input clock to a desired output
+clock. This clock also typically supports different operation
+modes (locked, low power stop etc.) This binding has several
+sub-types, which effectively result in slightly different setup
+for the actual DPLL clock.
+
+[1] Documentation/devicetree/bindings/clock/clock-bindings.txt
+
+Required properties:
+- compatible : shall be one of:
+		"ti,omap4-dpll-x2-clock",
+		"ti,omap3-dpll-clock",
+		"ti,omap3-dpll-core-clock",
+		"ti,omap3-dpll-per-clock",
+		"ti,omap3-dpll-per-j-type-clock",
+		"ti,omap4-dpll-clock",
+		"ti,omap4-dpll-core-clock",
+		"ti,omap4-dpll-m4xen-clock",
+		"ti,omap4-dpll-j-type-clock",
+		"ti,omap4-dpll-no-gate-clock",
+		"ti,omap4-dpll-no-gate-j-type-clock",
+
+- #clock-cells : from common clock binding; shall be set to 0.
+- clocks : link phandles of parent clocks, first entry lists reference clock
+  and second entry bypass clock
+- reg : address and length of the register set for controlling the DPLL.
+  It contains the information of registers in the same order as described by
+  reg-names.
+- reg-names : array of the register names for controlling the device, sorted
+  in the same order as the reg property.
+	"control" - contains the control register base address
+        "idlest" - contains the idle status register base address
+        "autoidle" - contains the autoidle register base address
+        "mult-div1" - contains the multiplier / divider register base address
+
+Optional properties:
+- ti,modes : available modes for the DPLL, bitmask of:
+  0x02 - DPLL supports low power stop mode
+  0x20 - DPLL can be put to low power bypass mode
+  0x80 - DPLL can be put to lock mode (running)
+  Other values currently unsupported.
+- ti,clkdm-name : clockdomain name for the DPLL
+
+Examples:
+	dpll_core_ck: dpll_core_ck@44e00490 {
+		#clock-cells = <0>;
+		compatible = "ti,omap4-dpll-core-clock";
+		clocks = <&sys_clkin_ck>, <&sys_clkin_ck>;
+		reg = <0x44e00490 0x4>, <0x44e0045c 0x4>, <0x0 0x4>,
+				<0x44e00468 0x4>;
+		reg-names = "control", "idlest", "autoidle", "mult-div1";
+	};
+
+	dpll2_ck: dpll2_ck@48004004 {
+		#clock-cells = <0>;
+		compatible = "ti,omap3-dpll-clock";
+		clocks = <&sys_ck>, <&dpll2_fck>;
+		ti,modes = <0xa2>;
+		reg = <0x48004004 0x4>, <0x48004024 0x4>, <0x48004034 0x4>,
+			<0x48004040 0x4>;
+		reg-names = "control", "idlest", "autoidle", "mult-div1";
+		ti,clkdm-name = "dpll2_clkdm";
+	};

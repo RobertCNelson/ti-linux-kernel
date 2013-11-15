@@ -11,3 +11,17 @@ menuconfig RESET_CONTROLLER
 	  via GPIOs or SoC-internal reset controller modules.
 
 	  If unsure, say no.
+
+if	RESET_CONTROLLER
+
+config	RESET_TI
+	bool "TI reset controller"
+	help
+	  Reset controller support for TI SoC's
+
+	  Reset controller found in TI's AM series of SoC's like
+	  AM335x and AM43x and OMAP SoC's like OMAP5 and DRA7
+
+	  If unsure, say no.
+
+endif

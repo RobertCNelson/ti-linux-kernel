@@ -45,37 +45,32 @@
 static void _add_clkdev(struct omap_device *od, const char *clk_alias,
 		       const char *clk_name)
 {
+	int ret;
 	struct clk *r;
-	struct clk_lookup *l;
+	struct device *dev = &od->pdev->dev;
+	struct device_node *node = dev->of_node;
 
 	if (!clk_alias || !clk_name)
 		return;
 
-	dev_dbg(&od->pdev->dev, "Creating %s -> %s\n", clk_alias, clk_name);
+	dev_dbg(dev, "Creating %s -> %s\n", clk_alias, clk_name);
 
-	r = clk_get_sys(dev_name(&od->pdev->dev), clk_alias);
+	r = clk_get(dev, clk_alias);
 	if (!IS_ERR(r)) {
-		dev_warn(&od->pdev->dev,
-			 "alias %s already exists\n", clk_alias);
+		if (!node)
+			dev_warn(dev, "alias '%s' already exists\n", clk_alias);
 		clk_put(r);
 		return;
 	}
 
-	r = clk_get(NULL, clk_name);
-	if (IS_ERR(r)) {
-		dev_err(&od->pdev->dev,
-			"clk_get for %s failed\n", clk_name);
-		return;
-	}
+	if (node)
+		dev_err(dev, "FIXME: clock-name '%s' DOES NOT exist in dt!\n",
+			clk_alias);
 
-	l = clkdev_alloc(r, clk_alias, dev_name(&od->pdev->dev));
-	if (!l) {
-		dev_err(&od->pdev->dev,
-			"clkdev_alloc for %s failed\n", clk_alias);
-		return;
-	}
-
-	clkdev_add(l);
+	ret = clk_add_alias(clk_alias, dev_name(dev), (char *)clk_name, dev);
+	if (ret)
+		dev_err(dev, "Failed to alias %s to %s: %d\n", clk_alias,
+			clk_name, ret);
 }
 
 /**
@@ -621,6 +616,13 @@ static int _od_suspend_noirq(struct device *dev)
 
 	if (!ret && !pm_runtime_status_suspended(dev)) {
 		if (pm_generic_runtime_suspend(dev) == 0) {
+			if (!pm_runtime_suspended(dev)) {
+				/* NOTE: *might* indicate driver race */
+				dev_dbg(dev, "%s: Force suspending\n",
+					__func__);
+				pm_runtime_set_suspended(dev);
+				od->flags |= OMAP_DEVICE_SUSPEND_FORCED;
+			}
 			omap_device_idle(pdev);
 			od->flags |= OMAP_DEVICE_SUSPENDED;
 		}
@@ -634,10 +636,15 @@ static int _od_resume_noirq(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct omap_device *od = to_omap_device(pdev);
 
-	if ((od->flags & OMAP_DEVICE_SUSPENDED) &&
-	    !pm_runtime_status_suspended(dev)) {
+	if (od->flags & OMAP_DEVICE_SUSPENDED) {
 		od->flags &= ~OMAP_DEVICE_SUSPENDED;
 		omap_device_enable(pdev);
+
+		if (od->flags & OMAP_DEVICE_SUSPEND_FORCED) {
+			pm_runtime_set_active(dev);
+			od->flags &= ~OMAP_DEVICE_SUSPEND_FORCED;
+		}
+
 		pm_generic_runtime_resume(dev);
 	}
 

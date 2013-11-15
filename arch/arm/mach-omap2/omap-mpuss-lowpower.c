@@ -56,6 +56,7 @@
 #include "omap4-sar-layout.h"
 #include "pm.h"
 #include "prcm_mpu44xx.h"
+#include "prcm_mpu54xx.h"
 #include "prminst44xx.h"
 #include "prcm44xx.h"
 #include "prm44xx.h"
@@ -84,11 +85,13 @@ struct cpu_pm_ops {
 	int (*finish_suspend)(unsigned long cpu_state);
 	void (*resume)(void);
 	void (*scu_prepare)(unsigned int cpu_id, unsigned int cpu_state);
+	void (*hotplug_restart)(void);
 };
 
 static DEFINE_PER_CPU(struct omap4_cpu_pm_info, omap4_pm_info);
 static struct powerdomain *mpuss_pd;
 static void __iomem *sar_base;
+static u32 cpu_context_offset;
 
 static int default_finish_suspend(unsigned long cpu_state)
 {
@@ -106,6 +109,7 @@ struct cpu_pm_ops omap_pm_ops = {
 	.finish_suspend		= default_finish_suspend,
 	.resume			= dummy_cpu_resume,
 	.scu_prepare		= dummy_scu_prepare,
+	.hotplug_restart	= dummy_cpu_resume,
 };
 
 /*
@@ -116,7 +120,8 @@ static inline void set_cpu_wakeup_addr(unsigned int cpu_id, u32 addr)
 {
 	struct omap4_cpu_pm_info *pm_info = &per_cpu(omap4_pm_info, cpu_id);
 
-	__raw_writel(addr, pm_info->wkup_sar_addr);
+	if (pm_info->wkup_sar_addr)
+		__raw_writel(addr, pm_info->wkup_sar_addr);
 }
 
 /*
@@ -126,6 +131,9 @@ static void scu_pwrst_prepare(unsigned int cpu_id, unsigned int cpu_state)
 {
 	struct omap4_cpu_pm_info *pm_info = &per_cpu(omap4_pm_info, cpu_id);
 	u32 scu_pwr_st;
+
+	if (!pm_info->scu_sar_addr)
+		return;
 
 	switch (cpu_state) {
 	case PWRDM_POWER_RET:
@@ -161,14 +169,14 @@ static inline void cpu_clear_prev_logic_pwrst(unsigned int cpu_id)
 
 	if (cpu_id) {
 		reg = omap4_prcm_mpu_read_inst_reg(OMAP4430_PRCM_MPU_CPU1_INST,
-					OMAP4_RM_CPU1_CPU1_CONTEXT_OFFSET);
+					cpu_context_offset);
 		omap4_prcm_mpu_write_inst_reg(reg, OMAP4430_PRCM_MPU_CPU1_INST,
-					OMAP4_RM_CPU1_CPU1_CONTEXT_OFFSET);
+					cpu_context_offset);
 	} else {
 		reg = omap4_prcm_mpu_read_inst_reg(OMAP4430_PRCM_MPU_CPU0_INST,
-					OMAP4_RM_CPU0_CPU0_CONTEXT_OFFSET);
+					cpu_context_offset);
 		omap4_prcm_mpu_write_inst_reg(reg, OMAP4430_PRCM_MPU_CPU0_INST,
-					OMAP4_RM_CPU0_CPU0_CONTEXT_OFFSET);
+					cpu_context_offset);
 	}
 }
 
@@ -179,7 +187,8 @@ static void l2x0_pwrst_prepare(unsigned int cpu_id, unsigned int save_state)
 {
 	struct omap4_cpu_pm_info *pm_info = &per_cpu(omap4_pm_info, cpu_id);
 
-	__raw_writel(save_state, pm_info->l2x0_sar_addr);
+	if (pm_info->l2x0_sar_addr)
+		__raw_writel(save_state, pm_info->l2x0_sar_addr);
 }
 
 /*
@@ -235,6 +244,8 @@ int omap4_enter_lowpower(unsigned int cpu, unsigned int power_state)
 		save_state = 1;
 		break;
 	case PWRDM_POWER_RET:
+		save_state = 0;
+		break;
 	default:
 		/*
 		 * CPUx CSWR is invalid hardware state. Also CPUx OSWR
@@ -304,7 +315,7 @@ int omap4_hotplug_cpu(unsigned int cpu, unsigned int power_state)
 
 	pwrdm_clear_all_prev_pwrst(pm_info->pwrdm);
 	pwrdm_set_next_pwrst(pm_info->pwrdm, power_state);
-	set_cpu_wakeup_addr(cpu, virt_to_phys(pm_info->secondary_startup));
+	set_cpu_wakeup_addr(cpu, virt_to_phys(omap_pm_ops.hotplug_restart));
 	omap_pm_ops.scu_prepare(cpu, power_state);
 
 	/*
@@ -320,11 +331,26 @@ int omap4_hotplug_cpu(unsigned int cpu, unsigned int power_state)
 
 
 /*
+ * Enable Mercury Fast HG retention mode by default.
+ */
+static void enable_mercury_retention_mode(void)
+{
+	u32 reg;
+
+	reg = omap4_prcm_mpu_read_inst_reg(OMAP54XX_PRCM_MPU_DEVICE_INST,
+			OMAP54XX_PRCM_MPU_PRM_PSCON_COUNT_OFFSET);
+	reg |= BIT(24) | BIT(25);
+	omap4_prcm_mpu_write_inst_reg(reg, OMAP54XX_PRCM_MPU_DEVICE_INST,
+			OMAP54XX_PRCM_MPU_PRM_PSCON_COUNT_OFFSET);
+}
+
+/*
  * Initialise OMAP4 MPUSS
  */
 int __init omap4_mpuss_init(void)
 {
 	struct omap4_cpu_pm_info *pm_info;
+	u32 cpu_wakeup_addr = 0;
 
 	if (omap_rev() == OMAP4430_REV_ES1_0) {
 		WARN(1, "Power Management not supported on OMAP4430 ES1.0\n");
@@ -334,10 +360,16 @@ int __init omap4_mpuss_init(void)
 	sar_base = omap4_get_sar_ram_base();
 
 	/* Initilaise per CPU PM information */
+	if (cpu_is_omap44xx())
+		cpu_wakeup_addr = CPU0_WAKEUP_NS_PA_ADDR_OFFSET;
+	else if (soc_is_omap54xx())
+		cpu_wakeup_addr = OMAP5_CPU0_WAKEUP_NS_PA_ADDR_OFFSET;
 	pm_info = &per_cpu(omap4_pm_info, 0x0);
-	pm_info->scu_sar_addr = sar_base + SCU_OFFSET0;
-	pm_info->wkup_sar_addr = sar_base + CPU0_WAKEUP_NS_PA_ADDR_OFFSET;
-	pm_info->l2x0_sar_addr = sar_base + L2X0_SAVE_OFFSET0;
+	if (sar_base) {
+		pm_info->scu_sar_addr = sar_base + SCU_OFFSET0;
+		pm_info->wkup_sar_addr = sar_base + cpu_wakeup_addr;
+		pm_info->l2x0_sar_addr = sar_base + L2X0_SAVE_OFFSET0;
+	}
 	pm_info->pwrdm = pwrdm_lookup("cpu0_pwrdm");
 	if (!pm_info->pwrdm) {
 		pr_err("Lookup failed for CPU0 pwrdm\n");
@@ -351,14 +383,17 @@ int __init omap4_mpuss_init(void)
 	/* Initialise CPU0 power domain state to ON */
 	pwrdm_set_next_pwrst(pm_info->pwrdm, PWRDM_POWER_ON);
 
+	if (cpu_is_omap44xx())
+		cpu_wakeup_addr = CPU1_WAKEUP_NS_PA_ADDR_OFFSET;
+	else if (soc_is_omap54xx())
+		cpu_wakeup_addr = OMAP5_CPU1_WAKEUP_NS_PA_ADDR_OFFSET;
+
 	pm_info = &per_cpu(omap4_pm_info, 0x1);
-	pm_info->scu_sar_addr = sar_base + SCU_OFFSET1;
-	pm_info->wkup_sar_addr = sar_base + CPU1_WAKEUP_NS_PA_ADDR_OFFSET;
-	pm_info->l2x0_sar_addr = sar_base + L2X0_SAVE_OFFSET1;
-	if (cpu_is_omap446x())
-		pm_info->secondary_startup = omap4460_secondary_startup;
-	else
-		pm_info->secondary_startup = omap4_secondary_startup;
+	if (sar_base) {
+		pm_info->scu_sar_addr = sar_base + SCU_OFFSET1;
+		pm_info->wkup_sar_addr = sar_base + cpu_wakeup_addr;
+		pm_info->l2x0_sar_addr = sar_base + L2X0_SAVE_OFFSET1;
+	}
 
 	pm_info->pwrdm = pwrdm_lookup("cpu1_pwrdm");
 	if (!pm_info->pwrdm) {
@@ -382,18 +417,31 @@ int __init omap4_mpuss_init(void)
 	mpuss_clear_prev_logic_pwrst();
 
 	/* Save device type on scratchpad for low level code to use */
-	if (omap_type() != OMAP2_DEVICE_TYPE_GP)
-		__raw_writel(1, sar_base + OMAP_TYPE_OFFSET);
-	else
-		__raw_writel(0, sar_base + OMAP_TYPE_OFFSET);
+	if (sar_base) {
+		if (omap_type() != OMAP2_DEVICE_TYPE_GP)
+			__raw_writel(1, sar_base + OMAP_TYPE_OFFSET);
+		else
+			__raw_writel(0, sar_base + OMAP_TYPE_OFFSET);
 
-	save_l2x0_context();
+		save_l2x0_context();
+	}
 
 	if (cpu_is_omap44xx()) {
 		omap_pm_ops.finish_suspend = omap4_finish_suspend;
+		omap_pm_ops.hotplug_restart = omap4_secondary_startup;
 		omap_pm_ops.resume = omap4_cpu_resume;
 		omap_pm_ops.scu_prepare = scu_pwrst_prepare;
+		cpu_context_offset = OMAP4_RM_CPU0_CPU0_CONTEXT_OFFSET;
+	} else if (soc_is_omap54xx() || soc_is_dra7xx()) {
+		omap_pm_ops.finish_suspend = omap5_finish_suspend;
+		omap_pm_ops.hotplug_restart = omap5_secondary_startup;
+		omap_pm_ops.resume = omap5_cpu_resume;
+		cpu_context_offset = OMAP54XX_RM_CPU0_CPU0_CONTEXT_OFFSET;
+		enable_mercury_retention_mode();
 	}
+
+	if (cpu_is_omap446x())
+		omap_pm_ops.hotplug_restart = omap4460_secondary_startup;
 
 	return 0;
 }
