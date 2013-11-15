@@ -42,6 +42,15 @@ struct snd_soc_card_drvdata_davinci {
    to be changed. */
 #define TDA998X_SAMPLE_FORMAT SNDRV_PCM_FORMAT_S32_LE
 
+static unsigned int evm_get_bclk(struct snd_pcm_hw_params *params)
+{
+	int sample_size = snd_pcm_format_width(params_format(params));
+	int rate = params_rate(params);
+	int channels = params_channels(params);
+
+	return sample_size * channels * rate;
+}
+
 static int evm_startup(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
@@ -115,15 +124,6 @@ static int evm_tda998x_startup(struct snd_pcm_substream *substream)
 	return evm_startup(substream);
 }
 
-static unsigned int evm_get_bclk(struct snd_pcm_hw_params *params,
-				 int channels)
-{
-	int sample_size = snd_pcm_format_width(params_format(params));
-	int rate = params_rate(params);
-
-	return sample_size * channels * rate;
-}
-
 static int evm_tda998x_hw_params(struct snd_pcm_substream *substream,
 				 struct snd_pcm_hw_params *params)
 {
@@ -132,7 +132,7 @@ static int evm_tda998x_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_codec *codec = rtd->codec;
 	struct snd_soc_card *soc_card = codec->card;
 	struct platform_device *pdev = to_platform_device(soc_card->dev);
-	unsigned int bclk_freq = evm_get_bclk(params, 2);
+	unsigned int bclk_freq = evm_get_bclk(params);
 	unsigned sysclk = ((struct snd_soc_card_drvdata_davinci *)
 			   snd_soc_card_get_drvdata(soc_card))->sysclk;
 	int ret;
