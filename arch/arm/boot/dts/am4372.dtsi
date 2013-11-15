@@ -31,6 +31,18 @@
 			compatible = "arm,cortex-a9";
 			device_type = "cpu";
 			reg = <0>;
+
+			operating-points = <
+				/* kHz    uV */
+				300000	950000
+				600000	1100000
+				720000	1200000
+			>;
+
+			clocks = <&dpll_mpu_ck>;
+			clock-names = "cpu";
+
+			clock-latency = <300000>; /* From omap-cpufreq driver */
 		};
 	};
 
@@ -47,6 +59,15 @@
 		reg = <0x48242000 0x1000>;
 		cache-unified;
 		cache-level = <2>;
+	};
+
+	am43xx_pinmux: pinmux@44e10800 {
+		compatible = "pinctrl-single";
+		reg = <0x44e10800 0x31c>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		pinctrl-single,register-width = <32>;
+		pinctrl-single,function-mask = <0xffffffff>;
 	};
 
 	ocp {
@@ -377,10 +398,6 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			status = "disabled";
-
-			tps: tps@24 {
-				reg = <0x24>;
-			};
 		};
 
 		i2c1: i2c@4802a000 {
@@ -770,5 +787,3 @@
 	};
 
 };
-
-/include/ "tps65218.dtsi"

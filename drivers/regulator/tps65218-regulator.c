@@ -68,7 +68,7 @@ static int tps65218_ldo1_dcdc3_vsel_to_uv(unsigned int vsel)
 
 static int tps65218_ldo1_dcdc3_uv_to_vsel(int uV, unsigned int *vsel)
 {
-	if (uV <= 15500000)
+	if (uV <= 1550000)
 		*vsel = DIV_ROUND_UP(uV - 900000, 25000);
 	else
 		*vsel = 26 + DIV_ROUND_UP(uV - 1550000, 50000);
@@ -90,7 +90,7 @@ static int tps65218_dcdc1_2_vsel_to_uv(unsigned int vsel)
 
 static int tps65218_dcdc1_2_uv_to_vsel(int uV, unsigned int *vsel)
 {
-	if (uV <= 13500000)
+	if (uV <= 1350000)
 		*vsel = DIV_ROUND_UP(uV - 850000, 10000);
 	else
 		*vsel = 50 + DIV_ROUND_UP(uV - 1350000, 25000);
@@ -112,7 +112,7 @@ static int tps65218_dcd4_vsel_to_uv(unsigned int vsel)
 
 static int tps65218_dcdc4_uv_to_vsel(int uV, unsigned int *vsel)
 {
-	if (uV <= 15500000)
+	if (uV <= 1550000)
 		*vsel = DIV_ROUND_UP(uV - 1175000, 25000);
 	else
 		*vsel = 15 + DIV_ROUND_UP(uV - 1550000, 50000);
@@ -314,7 +314,7 @@ static const struct regulator_desc regulators[] = {
 			   1, -1, -1, TPS65218_REG_ENABLE1,
 			   TPS65218_ENABLE1_DC6_EN, NULL),
 	TPS65218_REGULATOR("LDO1", TPS65218_LDO_1, tps65218_ldo1_dcdc34_ops, 64,
-			   TPS65218_REG_CONTROL_DCDC4,
+			   TPS65218_REG_CONTROL_LDO1,
 			   TPS65218_CONTROL_LDO1_MASK, TPS65218_REG_ENABLE2,
 			   TPS65218_ENABLE2_LDO1_EN, NULL),
 };
@@ -346,6 +346,7 @@ static int tps65218_regulator_probe(struct platform_device *pdev)
 	config.init_data = init_data;
 	config.driver_data = tps;
 	config.regmap = tps->regmap;
+	config.of_node = pdev->dev.of_node;
 
 	rdev = regulator_register(&regulators[id], &config);
 	if (IS_ERR(rdev)) {
