@@ -29,7 +29,6 @@ struct panel_drv_data {
 	struct omap_video_timings videomode;
 
 	int backlight_gpio;
-	bool backlight_enable;
 	int enable_gpio;
 };
 
@@ -85,7 +84,7 @@ static int panel_dpi_enable(struct omap_dss_device *dssdev)
 		gpio_set_value_cansleep(ddata->enable_gpio, 1);
 
 	if (gpio_is_valid(ddata->backlight_gpio))
-		gpio_set_value_cansleep(ddata->backlight_gpio, ddata->backlight_enable);
+		gpio_set_value_cansleep(ddata->backlight_gpio, 1);
 
 	dssdev->state = OMAP_DSS_DISPLAY_ACTIVE;
 
@@ -104,7 +103,7 @@ static void panel_dpi_disable(struct omap_dss_device *dssdev)
 		gpio_set_value_cansleep(ddata->enable_gpio, 0);
 
 	if (gpio_is_valid(ddata->backlight_gpio))
-		gpio_set_value_cansleep(ddata->backlight_gpio, ~(ddata->backlight_enable));
+		gpio_set_value_cansleep(ddata->backlight_gpio, 0);
 
 	in->ops.dpi->disable(in);
 
@@ -196,7 +195,6 @@ static int panel_dpi_probe_of(struct platform_device *pdev)
 	struct display_timing timing;
 	struct videomode vm;
 	int gpio;
-	enum of_gpio_flags gpio_flags;
 
 	src_node = of_parse_phandle(node, "video-source", 0);
 	if (!src_node) {
@@ -227,19 +225,13 @@ static int panel_dpi_probe_of(struct platform_device *pdev)
 		return gpio;
 	}
 
-	gpio = of_get_gpio_flags(node, 1, &gpio_flags);
-
+	gpio = of_get_gpio(node, 1);
 	if (gpio_is_valid(gpio) || gpio == -ENOENT) {
 		ddata->backlight_gpio = gpio;
 	} else {
 		dev_err(&pdev->dev, "failed to parse backlight gpio\n");
 		return gpio;
 	}
-
-	if (gpio_flags == OF_GPIO_ACTIVE_LOW)
-		ddata->backlight_enable = 0;
-	else
-		ddata->backlight_enable = 1;
 
 	r = of_get_display_timing(node, "panel-timing", &timing);
 	if (r) {
