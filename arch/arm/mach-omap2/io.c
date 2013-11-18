@@ -28,6 +28,7 @@
 #include <linux/omap-dma.h>
 
 #include "omap_hwmod.h"
+#include "omap_device.h"
 #include "soc.h"
 #include "iomap.h"
 #include "voltage.h"
@@ -599,7 +600,7 @@ void __init am33xx_init_early(void)
 
 void __init am33xx_init_late(void)
 {
-	omap_hwmod_force_mstandby_repeated();
+	omap_device_force_mstandby_repeated();
 	omap2_common_pm_late_init();
 	am33xx_pm_init();
 }
