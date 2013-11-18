@@ -898,6 +898,8 @@
 			dmas = <&edma 8
 				&edma 9>;
 			dma-names = "tx", "rx";
+			clocks = <&mcasp0_fck>;
+			clock-names = "fck";
 		};
 
 		mcasp1: mcasp@4803C000 {
@@ -912,6 +914,8 @@
 			dmas = <&edma 10
 				&edma 11>;
 			dma-names = "tx", "rx";
+			clocks = <&mcasp1_fck>;
+			clock-names = "fck";
 		};
 	};
 
