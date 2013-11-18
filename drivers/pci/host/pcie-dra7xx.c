@@ -424,7 +424,7 @@ static int __init dra7xx_pcie_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int dra7xx_pcie_remove(struct platform_device *pdev)
+static int __exit dra7xx_pcie_remove(struct platform_device *pdev)
 {
 	struct dra7xx_pcie *dra7xx = platform_get_drvdata(pdev);
 
@@ -443,15 +443,15 @@ static const struct of_device_id of_dra7xx_pcie_match[] = {
 MODULE_DEVICE_TABLE(of, of_dra7xx_pcie_match);
 
 static struct platform_driver dra7xx_pcie_driver = {
-	.probe		= dra7xx_pcie_probe,
-	.remove		= dra7xx_pcie_remove,
+	.remove		= __exit_p(dra7xx_pcie_remove),
 	.driver = {
 		.name	= "dra7xx-pcie",
 		.owner	= THIS_MODULE,
 		.of_match_table = of_match_ptr(of_dra7xx_pcie_match),
 	},
 };
-module_platform_driver(dra7xx_pcie_driver);
+
+module_platform_driver_probe(dra7xx_pcie_driver, dra7xx_pcie_probe);
 
 MODULE_AUTHOR("Kishon Vijay Abraham I <kishon@ti.com>");
 MODULE_DESCRIPTION("TI PCIe controller driver");
