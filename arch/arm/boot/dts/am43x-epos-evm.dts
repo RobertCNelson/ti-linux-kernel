@@ -107,8 +107,7 @@
 };
 
 &am43xx_pinmux {
-	pinctrl-names = "default";
-	pinctrl-0 = <&dss_pinctrl>;
+
 	cpsw_default: cpsw_default {
 		pinctrl-single,pins = <
 			/* Slave 1 */
@@ -265,6 +264,11 @@
 
 &gpio3 {
 	status = "okay";
+};
+
+&dpi {
+	pinctrl-names = "default";
+	pinctrl-0 = <&dss_pinctrl>;
 };
 
 &qspi {
