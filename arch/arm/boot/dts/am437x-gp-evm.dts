@@ -35,8 +35,6 @@
 		compatible = "osddisplays,osd057T0559-34ts", "panel-dpi";
 		video-source = <&dpi>;
 		data-lines = <24>;
-		gpios = <0>;			    /* No Enable GPIO */
-		activelow_backlight;		    /* LCD backlight is Active low */
 		panel-timing {
 			clock-frequency = <33000000>;
 			hactive = <800>;
