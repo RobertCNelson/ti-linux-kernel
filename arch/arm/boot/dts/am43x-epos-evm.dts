@@ -120,6 +120,21 @@
 			cpu0-supply = <&dcdc2>;
 		};
 	};
+
+	sound {
+		compatible = "ti,am43xx-epos-evm-audio";
+		ti,model = "AM43x-EPOS-EVM";
+		ti,audio-codec = <&tlv320aic3111>;
+		ti,mcasp-controller = <&mcasp1>;
+		ti,codec-clock-rate = <12000000>;
+		ti,audio-routing =
+			"Speaker", 		"SPL",
+			"Speaker", 		"SPR",
+			"Headphone Jack",       "HPL",
+			"Headphone Jack",       "HPR",
+			"MIC1LP",               "Mic Jack",
+			"MIC1RP",               "Mic Jack";
+	};
 };
 
 &am43xx_pinmux {
@@ -545,6 +560,16 @@
 			regulator-boot-on;
 			regulator-always-on;
 		};
+	};
+
+	tlv320aic3111: tlv320aic3111@18 {
+		compatible = "ti,tlv320aic311x";
+		reg = <0x18>;
+		status = "okay";
+		pinctrl-names = "default";
+		pinctrl-0 = <&tlv320aic3111_reset_pin>;
+
+		gpio-reset = <&gpio1 28 GPIO_ACTIVE_HIGH>;
 	};
 };
 
