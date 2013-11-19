@@ -251,6 +251,14 @@ static int cpufreq_stats_create_table(struct cpufreq_policy *policy,
 	stat->last_time = get_jiffies_64();
 	stat->last_index = freq_table_get_index(stat, policy->cur);
 	spin_unlock(&cpufreq_stats_lock);
+
+	if (stat->last_index == -1) {
+		pr_err("%s: No match for current freq %u in table. Disabled!\n",
+		       __func__, policy->cur);
+		ret = -EINVAL;
+		goto error_out;
+	}
+
 	cpufreq_cpu_put(current_policy);
 	return 0;
 error_out:
