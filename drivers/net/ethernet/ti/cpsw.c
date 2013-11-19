@@ -2093,19 +2093,6 @@ static int cpsw_probe(struct platform_device *pdev)
 		goto clean_ale_ret;
 	}
 
-	while ((res = platform_get_resource(priv->pdev, IORESOURCE_IRQ, k))) {
-		for (i = res->start; i <= res->end; i++) {
-			if (devm_request_irq(&pdev->dev, i, cpsw_interrupt, 0,
-					     dev_name(priv->dev), priv)) {
-				dev_err(priv->dev, "error attaching irq\n");
-				goto clean_ale_ret;
-			}
-			priv->irqs_table[k] = i;
-			priv->num_irqs = k + 1;
-		}
-		k++;
-	}
-
 	ndev->features |= NETIF_F_HW_VLAN_CTAG_FILTER;
 
 	ndev->netdev_ops = &cpsw_netdev_ops;
@@ -2119,6 +2106,19 @@ static int cpsw_probe(struct platform_device *pdev)
 		dev_err(priv->dev, "error registering net device\n");
 		ret = -ENODEV;
 		goto clean_ale_ret;
+	}
+
+	while ((res = platform_get_resource(priv->pdev, IORESOURCE_IRQ, k))) {
+		for (i = res->start; i <= res->end; i++) {
+			if (devm_request_irq(&pdev->dev, i, cpsw_interrupt, 0,
+					     netdev_name(ndev), priv)) {
+				dev_err(priv->dev, "error attaching irq\n");
+				goto clean_ale_ret;
+			}
+			priv->irqs_table[k] = i;
+			priv->num_irqs = k + 1;
+		}
+		k++;
 	}
 
 	if (cpts_register(&pdev->dev, priv->cpts,
