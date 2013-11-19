@@ -766,6 +766,10 @@ static void ieee80211_do_stop(struct ieee80211_sub_if_data *sdata,
 	if (sdata->vif.type == NL80211_IFTYPE_STATION)
 		ieee80211_mgd_stop(sdata);
 
+	if (sdata->vif.type == NL80211_IFTYPE_ADHOC)
+		ieee80211_ibss_stop(sdata);
+
+
 	/*
 	 * Remove all stations associated with this interface.
 	 *
@@ -1124,7 +1128,7 @@ static void ieee80211_iface_work(struct work_struct *work)
 	if (!ieee80211_sdata_running(sdata))
 		return;
 
-	if (local->scanning)
+	if (local->scanning && !local->ops->hw_scan)
 		return;
 
 	/*
@@ -1642,6 +1646,10 @@ int ieee80211_if_add(struct ieee80211_local *local, const char *name,
 
 		sdata->dev = ndev;
 	}
+
+	/* hack for android */
+	if (0 == strcmp(sdata->name, "p2p0"))
+		sdata->vif.dummy_p2p = true;
 
 	/* initialise type-independent data */
 	sdata->wdev.wiphy = local->hw.wiphy;

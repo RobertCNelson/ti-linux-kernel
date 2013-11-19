@@ -57,13 +57,18 @@ struct ieee80211_local;
 #define IEEE80211_UNSET_POWER_LEVEL	INT_MIN
 
 /*
- * Some APs experience problems when working with U-APSD. Decrease the
- * probability of that happening by using legacy mode for all ACs but VO.
- * The AP that caused us trouble was a Cisco 4410N. It ignores our
- * setting, and always treats non-VO ACs as legacy.
+ * Some APs experience problems when working with U-APSD:
+ * Cisco 4410N - It ignores our setting, and always treats non-VO ACs as legacy.
+ *
+ * AVM FritzBox 7930 - Setting U-APSD on VO AC only (which solves the
+ * Cisco 4410N problem) causes the FritzBox to limit the rates of packets
+ * sent by it to 39Mbps and disables AMPDU aggregation. This causes a major
+ * througput degradation with this AP.
+ *
+ * Avoid these issues by using legacy mode for all ACs by default.
+ * U-APSD can still be configured from userspace.
  */
-#define IEEE80211_DEFAULT_UAPSD_QUEUES \
-	IEEE80211_WMM_IE_STA_QOSINFO_AC_VO
+#define IEEE80211_DEFAULT_UAPSD_QUEUES 0
 
 #define IEEE80211_DEFAULT_MAX_SP_LEN		\
 	IEEE80211_WMM_IE_STA_QOSINFO_SP_ALL
@@ -487,6 +492,7 @@ struct ieee80211_if_managed {
 
 struct ieee80211_if_ibss {
 	struct timer_list timer;
+	struct work_struct csa_connection_drop_work;
 
 	unsigned long last_scan_completed;
 
@@ -770,6 +776,8 @@ struct ieee80211_sub_if_data {
 		struct dentry *default_mgmt_key;
 	} debugfs;
 #endif
+	bool sched_scan_stop_pending;
+	struct ieee80211_sched_scan_ies sched_scan_ies;
 
 	/* must be last, dynamically sized area in this! */
 	struct ieee80211_vif vif;
@@ -940,6 +948,7 @@ struct ieee80211_local {
 	 * via ieee80211_queue_work()
 	 */
 	struct workqueue_struct *workqueue;
+	struct workqueue_struct *freezable_workqueue;
 
 	unsigned long queue_stop_reasons[IEEE80211_MAX_QUEUES];
 	/* also used to protect ampdu_ac_queue and amdpu_ac_stop_refcnt */
@@ -1177,6 +1186,7 @@ struct ieee80211_local {
 	struct work_struct hw_roc_start, hw_roc_done;
 	unsigned long hw_roc_start_time;
 	u64 roc_cookie_counter;
+	u64 expired_roc_cookie;
 
 	struct idr ack_status_frames;
 	spinlock_t ack_status_lock;
@@ -1333,6 +1343,10 @@ int ieee80211_ibss_leave(struct ieee80211_sub_if_data *sdata);
 void ieee80211_ibss_work(struct ieee80211_sub_if_data *sdata);
 void ieee80211_ibss_rx_queued_mgmt(struct ieee80211_sub_if_data *sdata,
 				   struct sk_buff *skb);
+int ieee80211_ibss_csa_beacon(struct ieee80211_sub_if_data *sdata,
+			      struct cfg80211_csa_settings *csa_settings);
+int ieee80211_ibss_finish_csa(struct ieee80211_sub_if_data *sdata);
+void ieee80211_ibss_stop(struct ieee80211_sub_if_data *sdata);
 
 /* mesh code */
 void ieee80211_mesh_work(struct ieee80211_sub_if_data *sdata);
@@ -1484,6 +1498,29 @@ void ieee80211_apply_vhtcap_overrides(struct ieee80211_sub_if_data *sdata,
 void ieee80211_process_measurement_req(struct ieee80211_sub_if_data *sdata,
 				       struct ieee80211_mgmt *mgmt,
 				       size_t len);
+/**
+ * ieee80211_parse_ch_switch_ie - parses channel switch IEs
+ * @sdata: the sdata of the interface which has received the frame
+ * @elems: parsed 802.11 elements received with the frame
+ * @beacon: indicates if the frame was a beacon or probe response
+ * @current_band: indicates the current band
+ * @sta_flags: contains information about own capabilities and restrictions
+ *	to decide which channel switch announcements can be accepted. Only the
+ *	following subset of &enum ieee80211_sta_flags are evaluated:
+ *	%IEEE80211_STA_DISABLE_HT, %IEEE80211_STA_DISABLE_VHT,
+ *	%IEEE80211_STA_DISABLE_40MHZ, %IEEE80211_STA_DISABLE_80P80MHZ,
+ *	%IEEE80211_STA_DISABLE_160MHZ.
+ * @count: to be filled with the counter until the switch (on success only)
+ * @bssid: the currently connected bssid (for reporting)
+ * @mode: to be filled with CSA mode (on success only)
+ * @new_chandef: to be filled with destination chandef (on success only)
+ * Return: 0 on success, <0 on error and >0 if there is nothing to parse.
+ */
+int ieee80211_parse_ch_switch_ie(struct ieee80211_sub_if_data *sdata,
+				 struct ieee802_11_elems *elems, bool beacon,
+				 enum ieee80211_band current_band,
+				 u32 sta_flags, u8 *bssid, u8 *count, u8 *mode,
+				 struct cfg80211_chan_def *new_chandef);
 
 /* Suspend/resume and hw reconfiguration */
 int ieee80211_reconfig(struct ieee80211_local *local);
@@ -1657,6 +1694,7 @@ int ieee80211_add_ext_srates_ie(struct ieee80211_sub_if_data *sdata,
 void ieee80211_ht_oper_to_chandef(struct ieee80211_channel *control_chan,
 				  const struct ieee80211_ht_operation *ht_oper,
 				  struct cfg80211_chan_def *chandef);
+u32 ieee80211_chandef_downgrade(struct cfg80211_chan_def *c);
 
 int __must_check
 ieee80211_vif_use_channel(struct ieee80211_sub_if_data *sdata,

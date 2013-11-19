@@ -437,6 +437,15 @@ bool cfg80211_chandef_usable(struct wiphy *wiphy,
 			     u32 prohibited_flags);
 
 /**
+ * cfg80211_chandef_dfs_required - checks if radar detection is required
+ * @wiphy: the wiphy to validate against
+ * @chandef: the channel definition to check
+ * Return: 1 if radar detection is required, 0 if it is not, < 0 on error
+ */
+int cfg80211_chandef_dfs_required(struct wiphy *wiphy,
+				  const struct cfg80211_chan_def *c);
+
+/**
  * ieee80211_chandef_rate_flags - returns rate flags for a channel
  *
  * In some channel types, not all rates may be used - for example CCK
@@ -1346,6 +1355,9 @@ struct cfg80211_ssid {
  * @wdev: the wireless device to scan for
  * @aborted: (internal) scan request was notified as aborted
  * @notified: (internal) scan request was notified as done or aborted
+ * @min_dwell: minimum time to wait on each channel for active scans
+ * @max_dwell: maximum time to wait on each channel for active scans
+ * @num_probe: number of probe requests to transmit on each active scan channel
  * @no_cck: used to send probe requests at non CCK rate in 2GHz band
  */
 struct cfg80211_scan_request {
@@ -1366,6 +1378,10 @@ struct cfg80211_scan_request {
 	unsigned long scan_start;
 	bool aborted, notified;
 	bool no_cck;
+
+	u32 min_dwell;
+	u32 max_dwell;
+	u8 num_probe;
 
 	/* keep last */
 	struct ieee80211_channel *channels[0];
@@ -1388,6 +1404,10 @@ struct cfg80211_match_set {
  * @n_channels: total number of channels to scan
  * @scan_width: channel width for scanning
  * @interval: interval between each scheduled scan cycle
+ * @long_interval: interval between each long scheduled scan cycle
+ * @short_interval: interval between each short scheduled scan cycle
+ * @n_short_intevals: number of short intervals scheduled scan cycles before
+ *      switching to the long interval
  * @ie: optional information element(s) to add into Probe Request or %NULL
  * @ie_len: length of ie in octets
  * @flags: bit field of flags controlling operation
@@ -1408,6 +1428,9 @@ struct cfg80211_sched_scan_request {
 	u32 n_channels;
 	enum nl80211_bss_scan_width scan_width;
 	u32 interval;
+	u32 long_interval;
+	u32 short_interval;
+	u8 n_short_intervals;
 	const u8 *ie;
 	size_t ie_len;
 	u32 flags;
@@ -3505,6 +3528,20 @@ void cfg80211_sched_scan_results(struct wiphy *wiphy);
  * is then called back via the sched_scan_stop operation when done.
  */
 void cfg80211_sched_scan_stopped(struct wiphy *wiphy);
+
+/**
+ * cfg80211_current_sched_scan_request - get current cached
+ * sched scan request
+ *
+ * @wiphy: the wiphy on which the scheduled scan is active
+ *
+ * The driver can call this function to get a reference of
+ * the current active scheduled scan request parameters.
+ *
+ * Return: A referenced struct, or NULL if request is no loner available.
+ */
+struct cfg80211_sched_scan_request *
+cfg80211_current_sched_scan_request(struct wiphy *wiphy);
 
 /**
  * cfg80211_inform_bss_width_frame - inform cfg80211 of a received BSS frame

@@ -824,7 +824,8 @@ struct wl1271_acx_inconnection_sta {
 	struct acx_header header;
 
 	u8 addr[ETH_ALEN];
-	u8 padding1[2];
+	u8 role_id;
+	u8 padding;
 } __packed;
 
 /*
@@ -1111,14 +1112,16 @@ int wl1271_acx_set_ht_information(struct wl1271 *wl,
 int wl12xx_acx_set_ba_initiator_policy(struct wl1271 *wl,
 				       struct wl12xx_vif *wlvif);
 int wl12xx_acx_set_ba_receiver_session(struct wl1271 *wl, u8 tid_index,
-				       u16 ssn, bool enable, u8 peer_hlid);
+				       u16 ssn, bool enable, u8 peer_hlid,
+				       u8 win_size);
 int wl12xx_acx_tsf_info(struct wl1271 *wl, struct wl12xx_vif *wlvif,
 			u64 *mactime);
 int wl1271_acx_ps_rx_streaming(struct wl1271 *wl, struct wl12xx_vif *wlvif,
 			       bool enable);
 int wl1271_acx_ap_max_tx_retry(struct wl1271 *wl, struct wl12xx_vif *wlvif);
 int wl12xx_acx_config_ps(struct wl1271 *wl, struct wl12xx_vif *wlvif);
-int wl1271_acx_set_inconnection_sta(struct wl1271 *wl, u8 *addr);
+int wl1271_acx_set_inconnection_sta(struct wl1271 *wl,
+				    struct wl12xx_vif *wlvif, u8 *addr);
 int wl1271_acx_fm_coex(struct wl1271 *wl);
 int wl12xx_acx_set_rate_mgmt_params(struct wl1271 *wl);
 int wl12xx_acx_config_hangover(struct wl1271 *wl);

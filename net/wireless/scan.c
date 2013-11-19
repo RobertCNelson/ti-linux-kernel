@@ -266,7 +266,8 @@ void __cfg80211_sched_scan_results(struct work_struct *wk)
 			__cfg80211_bss_expire(rdev, request->scan_start);
 			spin_unlock_bh(&rdev->bss_lock);
 			request->scan_start =
-				jiffies + msecs_to_jiffies(request->interval);
+				jiffies +
+				msecs_to_jiffies(request->long_interval);
 		}
 		nl80211_send_sched_scan_results(rdev, request->dev);
 	}
@@ -296,9 +297,17 @@ void cfg80211_sched_scan_stopped(struct wiphy *wiphy)
 }
 EXPORT_SYMBOL(cfg80211_sched_scan_stopped);
 
+struct cfg80211_sched_scan_request *
+cfg80211_current_sched_scan_request(struct wiphy *wiphy)
+{
+	return wiphy_to_dev(wiphy)->sched_scan_req;
+}
+EXPORT_SYMBOL(cfg80211_current_sched_scan_request);
+
 int __cfg80211_stop_sched_scan(struct cfg80211_registered_device *rdev,
 			       bool driver_initiated)
 {
+	int err = 0;
 	struct net_device *dev;
 
 	ASSERT_RTNL();
@@ -309,17 +318,15 @@ int __cfg80211_stop_sched_scan(struct cfg80211_registered_device *rdev,
 	dev = rdev->sched_scan_req->dev;
 
 	if (!driver_initiated) {
-		int err = rdev_sched_scan_stop(rdev, dev);
-		if (err)
-			return err;
+		err = rdev->ops->sched_scan_stop(&rdev->wiphy, dev);
+	} else {
+		nl80211_send_sched_scan(rdev, dev,
+					NL80211_CMD_SCHED_SCAN_STOPPED);
+		kfree(rdev->sched_scan_req);
+		rdev->sched_scan_req = NULL;
 	}
 
-	nl80211_send_sched_scan(rdev, dev, NL80211_CMD_SCHED_SCAN_STOPPED);
-
-	kfree(rdev->sched_scan_req);
-	rdev->sched_scan_req = NULL;
-
-	return 0;
+	return err;
 }
 
 void cfg80211_bss_age(struct cfg80211_registered_device *dev,
