@@ -338,3 +338,28 @@ ENTRY(\name\()_tlb_fns)
 	.globl	\x
 	.equ	\x, \y
 .endm
+
+.macro write_actlr_smp x, y
+	mrc p15, 0, \x, c1, c0, 1
+	orr \x, \x, #0x40
+	ldr \y, __temp
+	and \y, \y, #0
+	orr \x, \x, \y
+	mcr p15, 0, \x, c1, c0, 1
+	isb
+	dsb
+.endm
+
+.macro clear_actlr_smp x, y
+	mrc p15, 0, \x, c1, c0, 1
+	bic \x, \x, #0x40
+	ldr \y, __temp
+	and \y, \y, #0
+	orr \x, \x, \y
+	mcr p15, 0, \x, c1, c0, 1
+	isb
+	dsb
+.endm
+
+__temp:
+	.space 4
