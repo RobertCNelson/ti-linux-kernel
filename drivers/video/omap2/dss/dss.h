@@ -107,14 +107,6 @@ enum dss_dpll {
 	DSS_DPLL_NONE,
 };
 
-struct dss_clock_info {
-	/* rates that we get with dividers below */
-	unsigned long fck;
-
-	/* dividers */
-	u16 fck_div;
-};
-
 struct dispc_clock_info {
 	/* rates that we get with dividers below */
 	unsigned long lck;
@@ -264,12 +256,11 @@ enum omap_dss_clk_source dss_get_lcd_clk_source(enum omap_channel channel);
 void dss_set_venc_output(enum omap_dss_venc_type type);
 void dss_set_dac_pwrdn_bgz(bool enable);
 
-unsigned long dss_get_dpll4_rate(void);
-int dss_calc_clock_rates(struct dss_clock_info *cinfo);
-int dss_set_clock_div(struct dss_clock_info *cinfo);
+int dss_set_fck_rate(unsigned long rate);
 
-typedef bool (*dss_div_calc_func)(int fckd, unsigned long fck, void *data);
-bool dss_div_calc(unsigned long fck_min, dss_div_calc_func func, void *data);
+typedef bool (*dss_div_calc_func)(unsigned long fck, void *data);
+bool dss_div_calc(unsigned long pck, unsigned long fck_min,
+		dss_div_calc_func func, void *data);
 
 /* SDI */
 int sdi_init_platform_driver(void) __init;
