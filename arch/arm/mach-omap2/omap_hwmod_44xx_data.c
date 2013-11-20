@@ -2090,6 +2090,11 @@ static struct omap_mmu_dev_attr mmu_ipu_dev_attr = {
 };
 
 static struct omap_hwmod omap44xx_mmu_ipu_hwmod;
+static struct omap_hwmod_irq_info omap44xx_mmu_ipu_irqs[] = {
+	{ .irq = 100 + OMAP44XX_IRQ_GIC_START },
+	{ .irq = -1 }
+};
+
 static struct omap_hwmod_rst_info omap44xx_mmu_ipu_resets[] = {
 	{ .name = "mmu_cache", .rst_shift = 2 },
 };
@@ -2116,6 +2121,7 @@ static struct omap_hwmod omap44xx_mmu_ipu_hwmod = {
 	.name		= "mmu_ipu",
 	.class		= &omap44xx_mmu_hwmod_class,
 	.clkdm_name	= "ducati_clkdm",
+	.mpu_irqs	= omap44xx_mmu_ipu_irqs,
 	.rst_lines	= omap44xx_mmu_ipu_resets,
 	.rst_lines_cnt	= ARRAY_SIZE(omap44xx_mmu_ipu_resets),
 	.main_clk	= "ducati_clk_mux_ck",
@@ -2139,6 +2145,11 @@ static struct omap_mmu_dev_attr mmu_dsp_dev_attr = {
 };
 
 static struct omap_hwmod omap44xx_mmu_dsp_hwmod;
+static struct omap_hwmod_irq_info omap44xx_mmu_dsp_irqs[] = {
+	{ .irq = 28 + OMAP44XX_IRQ_GIC_START },
+	{ .irq = -1 }
+};
+
 static struct omap_hwmod_rst_info omap44xx_mmu_dsp_resets[] = {
 	{ .name = "mmu_cache", .rst_shift = 1 },
 };
@@ -2165,6 +2176,7 @@ static struct omap_hwmod omap44xx_mmu_dsp_hwmod = {
 	.name		= "mmu_dsp",
 	.class		= &omap44xx_mmu_hwmod_class,
 	.clkdm_name	= "tesla_clkdm",
+	.mpu_irqs	= omap44xx_mmu_dsp_irqs,
 	.rst_lines	= omap44xx_mmu_dsp_resets,
 	.rst_lines_cnt	= ARRAY_SIZE(omap44xx_mmu_dsp_resets),
 	.main_clk	= "dpll_iva_m4x2_ck",
