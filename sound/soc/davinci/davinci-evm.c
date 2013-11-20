@@ -354,6 +354,47 @@ static int evm_tda998x_init(struct snd_soc_pcm_runtime *rtd)
 	return 0;
 }
 
+static const struct snd_soc_dapm_widget aic31xx_dapm_widgets[] = {
+	SND_SOC_DAPM_HP("Headphone Jack", NULL),
+	SND_SOC_DAPM_SPK("Speaker", NULL),
+	SND_SOC_DAPM_MIC("Mic Jack", NULL),
+};
+
+static const struct snd_kcontrol_new aic31xx_controls[] = {
+	SOC_DAPM_PIN_SWITCH("Headphone Jack"),
+	SOC_DAPM_PIN_SWITCH("Speaker"),
+	SOC_DAPM_PIN_SWITCH("Mic Jack"),
+};
+
+/* Logic for EVMs with an aic31xx */
+static int evm_aic31xx_init(struct snd_soc_pcm_runtime *rtd)
+{
+	struct snd_soc_codec *codec = rtd->codec;
+	struct snd_soc_dapm_context *dapm = &codec->dapm;
+	struct device_node *np = codec->card->dev->of_node;
+	int ret;
+
+	snd_soc_dapm_new_controls(dapm, aic31xx_dapm_widgets,
+				  ARRAY_SIZE(aic31xx_dapm_widgets));
+
+	if (np) {
+		ret = snd_soc_of_parse_audio_routing(codec->card,
+						     "ti,audio-routing");
+		if (ret)
+			return ret;
+	}
+
+	/* not connected */
+	snd_soc_dapm_disable_pin(dapm, "MIC1LM");
+
+	/* always connected */
+	snd_soc_dapm_enable_pin(dapm, "Headphone Jack");
+	snd_soc_dapm_enable_pin(dapm, "Speaker");
+	snd_soc_dapm_enable_pin(dapm, "Mic Jack");
+
+	return 0;
+}
+
 /* davinci-evm digital audio interface glue - connects codec <--> CPU */
 static struct snd_soc_dai_link dm6446_evm_dai = {
 	.name = "TLV320AIC3X",
@@ -574,6 +615,16 @@ static struct snd_soc_dai_link dra7xx_evm_link = {
 		   SND_SOC_DAIFMT_IB_NF,
 };
 
+static struct snd_soc_dai_link evm_dai_tlv320aic3111 = {
+	.name		= "TLV320AIC3111",
+	.stream_name	= "AIC3111",
+	.codec_dai_name	= "tlv320aic31xx-hifi",
+	.ops		= &evm_ops,
+	.init		= evm_aic31xx_init,
+	.dai_fmt	= (SND_SOC_DAIFMT_CBM_CFM | SND_SOC_DAIFMT_DSP_B |
+			   SND_SOC_DAIFMT_IB_NF),
+};
+
 static const struct of_device_id davinci_evm_dt_ids[] = {
 	{
 		.compatible = "ti,da830-evm-audio",
@@ -586,6 +637,10 @@ static const struct of_device_id davinci_evm_dt_ids[] = {
 	{
 		.compatible = "ti,dra7xx-evm-audio",
 		.data = (void *) &dra7xx_evm_link,
+	},
+	{
+		.compatible = "ti,am43xx-epos-evm-audio",
+		.data = &evm_dai_tlv320aic3111,
 	},
 	{ /* sentinel */ }
 };
