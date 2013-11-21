@@ -184,6 +184,7 @@ dpll_disp_m2_ck: dpll_disp_m2_ck@44df2e30 {
 	bit-mask = <0x1f>;
 	index-starts-at-one;
 	ti,autoidle-low;
+	set-rate-parent;
 };
 
 dpll_per_ck: dpll_per_ck@44df2de0 {
@@ -560,6 +561,7 @@ disp_clk: disp_clk@44df4244 {
 	clocks = <&dpll_disp_m2_ck>, <&dpll_core_m5_ck>, <&dpll_per_m2_ck>;
 	reg = <0x44df4244 0x4>;
 	bit-mask = <0x3>;
+	set-rate-parent;
 };
 
 dpll_extdev_ck: dpll_extdev_ck@44df2e60 {

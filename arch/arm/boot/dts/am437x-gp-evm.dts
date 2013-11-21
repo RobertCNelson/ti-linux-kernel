@@ -35,8 +35,6 @@
 		compatible = "osddisplays,osd057T0559-34ts", "panel-dpi";
 		video-source = <&dpi>;
 		data-lines = <24>;
-		gpios = <0>;			    /* No Enable GPIO */
-		activelow_backlight;		    /* LCD backlight is Active low */
 		panel-timing {
 			clock-frequency = <33000000>;
 			hactive = <800>;
@@ -94,8 +92,7 @@
 };
 
 &am43xx_pinmux {
-	pinctrl-names = "default";
-	pinctrl-0 = <&dss_pinctrl>;
+
 	cpsw_default: cpsw_default {
 		pinctrl-single,pins = <
 			/* Slave 1 */
@@ -296,6 +293,11 @@
 
 &gpio5 {
 	status = "okay";
+};
+
+&dpi {
+	pinctrl-names = "default";
+	pinctrl-0 = <&dss_pinctrl>;
 };
 
 &mac {
