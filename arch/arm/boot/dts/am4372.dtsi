@@ -826,6 +826,14 @@
 			#reset-cells = <1>;
 		};
 
+		sgx@0x56000000 {
+			compatible = "ti,sgx";
+			ti,hwmods = "gfx";
+			reg = <0x56000000 0x1000000>;
+			interrupts = <GIC_SPI 37 IRQ_TYPE_LEVEL_HIGH>;
+			resets = <&prcm 0>;
+		};
+
 		rng: rng@48310000 {
 			compatible = "ti,omap4-rng";
 			ti,hwmods = "rng";
