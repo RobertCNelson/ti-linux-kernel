@@ -187,12 +187,6 @@ static int omap_pipe3_init(struct phy *x)
 	if (of_device_is_compatible(phy->dev->of_node, "ti,phy-pipe3-pcie"))
 		return 0;
 
-	/* Program the DPLL only if not locked */
-	val = omap_pipe3_readl(phy->pll_ctrl_base, PLL_STATUS);
-	if (!(val & PLL_LOCK))
-		if (omap_pipe3_dpll_program(phy))
-			return -EINVAL;
-
 	/* Bring it out of IDLE if it is IDLE */
 	val = omap_pipe3_readl(phy->pll_ctrl_base, PLL_CONFIGURATION2);
 	if (val & PLL_IDLE) {
@@ -200,6 +194,12 @@ static int omap_pipe3_init(struct phy *x)
 		omap_pipe3_writel(phy->pll_ctrl_base, PLL_CONFIGURATION2, val);
 		ret = omap_pipe3_wait_lock(phy);
 	}
+
+	/* Program the DPLL only if not locked */
+	val = omap_pipe3_readl(phy->pll_ctrl_base, PLL_STATUS);
+	if (!(val & PLL_LOCK))
+		if (omap_pipe3_dpll_program(phy))
+			return -EINVAL;
 
 	return ret;
 }

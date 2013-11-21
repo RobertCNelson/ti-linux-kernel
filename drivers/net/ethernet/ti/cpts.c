@@ -237,13 +237,11 @@ static void cpts_overflow_check(struct work_struct *work)
 	schedule_delayed_work(&cpts->overflow_work, CPTS_OVERFLOW_PERIOD);
 }
 
-#define CPTS_REF_CLOCK_NAME "cpsw_cpts_rft_clk"
-
-static void cpts_clk_init(struct cpts *cpts)
+static void cpts_clk_init(struct device *dev, struct cpts *cpts)
 {
-	cpts->refclk = clk_get(NULL, CPTS_REF_CLOCK_NAME);
+	cpts->refclk = devm_clk_get(dev, "cpts");
 	if (IS_ERR(cpts->refclk)) {
-		pr_err("Failed to clk_get %s\n", CPTS_REF_CLOCK_NAME);
+		pr_err("Failed to clk_get cpts clk\n");
 		cpts->refclk = NULL;
 		return;
 	}
@@ -395,7 +393,7 @@ int cpts_register(struct device *dev, struct cpts *cpts,
 	for (i = 0; i < CPTS_MAX_EVENTS; i++)
 		list_add(&cpts->pool_data[i].list, &cpts->pool);
 
-	cpts_clk_init(cpts);
+	cpts_clk_init(dev, cpts);
 	cpts_write32(cpts, CPTS_EN, control);
 	cpts_write32(cpts, TS_PEND_EN, int_enable);
 
