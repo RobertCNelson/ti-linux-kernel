@@ -10,7 +10,7 @@
 
 /dts-v1/;
 
-#include "am4372.dtsi"
+#include "am43x-common-evm.dtsi"
 
 / {
 	model = "TI AM43x EPOS EVM";

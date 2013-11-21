@@ -122,7 +122,7 @@ struct clk {
 		},						\
 		.reg = _reg,					\
 		.shift = _shift,				\
-		.width = _width,				\
+		.mask = ((1 << _width) - 1),			\
 		.flags = _divider_flags,			\
 		.table = _table,				\
 		.lock = _lock,					\

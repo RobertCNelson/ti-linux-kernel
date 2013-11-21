@@ -656,6 +656,8 @@ static struct clockdomain *_get_clkdm(struct omap_hwmod *oh)
 	if (oh->clkdm) {
 		return oh->clkdm;
 	} else if (oh->_clk) {
+		if (__clk_get_flags(oh->_clk) & CLK_IS_BASIC)
+			return NULL;
 		clk = to_clk_hw_omap(__clk_get_hw(oh->_clk));
 		return  clk->clkdm;
 	}
@@ -728,14 +730,18 @@ static int _del_initiator_dep(struct omap_hwmod *oh, struct omap_hwmod *init_oh)
  * functional clock pointer) if a main_clk is present.  Returns 0 on
  * success or -EINVAL on error.
  */
-static int _init_main_clk(struct omap_hwmod *oh)
+static int _init_main_clk(struct omap_hwmod *oh, struct device_node *np)
 {
 	int ret = 0;
 
-	if (!oh->main_clk)
+	if (!oh->main_clk && !of_get_property(np, "clocks", NULL))
 		return 0;
 
-	oh->_clk = clk_get(NULL, oh->main_clk);
+	if (oh->main_clk)
+		oh->_clk = clk_get(NULL, oh->main_clk);
+	else
+		oh->_clk = of_clk_get_by_name(np, "fck");
+
 	if (IS_ERR(oh->_clk)) {
 		pr_warning("omap_hwmod: %s: cannot clk_get main_clk %s\n",
 			   oh->name, oh->main_clk);
@@ -801,6 +807,63 @@ static int _init_interface_clks(struct omap_hwmod *oh)
 	return ret;
 }
 
+static const char **_parse_opt_clks_dt(struct omap_hwmod *oh,
+				       struct device_node *np,
+				       int *opt_clks_cnt)
+{
+	int i, clks_cnt;
+	const char *clk_name;
+	const char **opt_clk_names;
+
+	clks_cnt = of_property_count_strings(np, "clock-names");
+	if (!clks_cnt)
+		return NULL;
+
+	opt_clk_names = kzalloc(sizeof(char *)*clks_cnt, GFP_KERNEL);
+	if (!opt_clk_names)
+		return NULL;
+
+	for (i = 0; i < clks_cnt; i++) {
+		of_property_read_string_index(np, "clock-names", i, &clk_name);
+		if (!strcmp(clk_name, "fck"))
+			continue;
+		opt_clk_names[(*opt_clks_cnt)++] = clk_name;
+	}
+	return opt_clk_names;
+}
+
+static int _init_opt_clks_dt(struct omap_hwmod *oh, struct device_node *np)
+{
+	struct clk *c;
+	int i, opt_clks_cnt = 0;
+	int ret = 0;
+	const char **opt_clk_names;
+
+	opt_clk_names = _parse_opt_clks_dt(oh, np, &opt_clks_cnt);
+	if (!opt_clk_names)
+		return -EINVAL;
+
+	oh->opt_clks = kzalloc(sizeof(struct omap_hwmod_opt_clk *)
+			       * opt_clks_cnt, GFP_KERNEL);
+	if (!oh->opt_clks)
+		return -ENOMEM;
+
+	oh->opt_clks_cnt = opt_clks_cnt;
+
+	for (i = 0; i < opt_clks_cnt; i++) {
+		c = of_clk_get_by_name(np, opt_clk_names[i]);
+		if (IS_ERR(c)) {
+			pr_warn("omap_hwmod: %s: cannot clk_get opt_clk %s\n",
+				oh->name, opt_clk_names[i]);
+			ret = -EINVAL;
+		}
+		oh->opt_clks[i]._clk = c;
+		oh->opt_clks[i].role = opt_clk_names[i];
+		clk_prepare(oh->opt_clks[i]._clk);
+	}
+	return ret;
+}
+
 /**
  * _init_opt_clk - get a struct clk * for the the hwmod's optional clocks
  * @oh: struct omap_hwmod *
@@ -808,12 +871,15 @@ static int _init_interface_clks(struct omap_hwmod *oh)
  * Called from _init_clocks().  Populates the @oh omap_hwmod_opt_clk
  * clock pointers.  Returns 0 on success or -EINVAL on error.
  */
-static int _init_opt_clks(struct omap_hwmod *oh)
+static int _init_opt_clks(struct omap_hwmod *oh, struct device_node *np)
 {
 	struct omap_hwmod_opt_clk *oc;
 	struct clk *c;
 	int i;
 	int ret = 0;
+
+	if (of_get_property(np, "clocks", NULL))
+		return _init_opt_clks_dt(oh, np);
 
 	for (i = oh->opt_clks_cnt, oc = oh->opt_clks; i > 0; i--, oc++) {
 		c = clk_get(NULL, oc->clk);
@@ -1544,7 +1610,7 @@ static int _init_clkdm(struct omap_hwmod *oh)
 	if (!oh->clkdm) {
 		pr_warning("omap_hwmod: %s: could not associate to clkdm %s\n",
 			oh->name, oh->clkdm_name);
-		return -EINVAL;
+		return 0;
 	}
 
 	pr_debug("omap_hwmod: %s: associated to clkdm %s\n",
@@ -1563,7 +1629,8 @@ static int _init_clkdm(struct omap_hwmod *oh)
  * Resolves all clock names embedded in the hwmod.  Returns 0 on
  * success, or a negative error code on failure.
  */
-static int _init_clocks(struct omap_hwmod *oh, void *data)
+static int _init_clocks(struct omap_hwmod *oh, void *data,
+			struct device_node *np)
 {
 	int ret = 0;
 
@@ -1575,9 +1642,9 @@ static int _init_clocks(struct omap_hwmod *oh, void *data)
 	if (soc_ops.init_clkdm)
 		ret |= soc_ops.init_clkdm(oh);
 
-	ret |= _init_main_clk(oh);
+	ret |= _init_main_clk(oh, np);
 	ret |= _init_interface_clks(oh);
-	ret |= _init_opt_clks(oh);
+	ret |= _init_opt_clks(oh, np);
 
 	if (!ret)
 		oh->_state = _HWMOD_STATE_CLKS_INITED;
@@ -2361,21 +2428,23 @@ static struct device_node *of_dev_hwmod_lookup(struct device_node *np,
  * Cache the virtual address used by the MPU to access this IP block's
  * registers.  This address is needed early so the OCP registers that
  * are part of the device's address space can be ioremapped properly.
- * No return value.
+ *
+ * Returns 0 on success, -EINVAL if an invalid hwmod is passed, and
+ * -ENXIO on absent or invalid register target address space.
  */
-static void __init _init_mpu_rt_base(struct omap_hwmod *oh, void *data)
+static int __init _init_mpu_rt_base(struct omap_hwmod *oh, void *data,
+				     struct device_node *np)
 {
 	struct omap_hwmod_addr_space *mem;
 	void __iomem *va_start = NULL;
-	struct device_node *np;
 
 	if (!oh)
-		return;
+		return -EINVAL;
 
 	_save_mpu_port_index(oh);
 
 	if (oh->_int_flags & _HWMOD_NO_MPU_PORT)
-		return;
+		return -ENXIO;
 
 	mem = _find_mpu_rt_addr_space(oh);
 	if (!mem) {
@@ -2383,25 +2452,24 @@ static void __init _init_mpu_rt_base(struct omap_hwmod *oh, void *data)
 			 oh->name);
 
 		/* Extract the IO space from device tree blob */
-		if (!of_have_populated_dt())
-			return;
+		if (!np)
+			return -ENXIO;
 
-		np = of_dev_hwmod_lookup(of_find_node_by_name(NULL, "ocp"), oh);
-		if (np)
-			va_start = of_iomap(np, oh->mpu_rt_idx);
+		va_start = of_iomap(np, oh->mpu_rt_idx);
 	} else {
 		va_start = ioremap(mem->pa_start, mem->pa_end - mem->pa_start);
 	}
 
 	if (!va_start) {
 		pr_err("omap_hwmod: %s: Could not ioremap\n", oh->name);
-		return;
+		return -ENXIO;
 	}
 
 	pr_debug("omap_hwmod: %s: MPU register target at va %p\n",
 		 oh->name, va_start);
 
 	oh->_mpu_rt_va = va_start;
+	return 0;
 }
 
 /**
@@ -2414,23 +2482,41 @@ static void __init _init_mpu_rt_base(struct omap_hwmod *oh, void *data)
  * registered at this point.  This is the first of two phases for
  * hwmod initialization.  Code called here does not touch any hardware
  * registers, it simply prepares internal data structures.  Returns 0
- * upon success or if the hwmod isn't registered, or -EINVAL upon
- * failure.
+ * upon success or if the hwmod isn't registered or if the hwmod's
+ * address space is not defined, or -EINVAL upon failure.
  */
 static int __init _init(struct omap_hwmod *oh, void *data)
 {
 	int r;
+	struct device_node *np = NULL;
 
 	if (oh->_state != _HWMOD_STATE_REGISTERED)
 		return 0;
 
-	if (oh->class->sysc)
-		_init_mpu_rt_base(oh, NULL);
+	/* If booting with DT, parse the DT node for IO space/clocks etc */
+	if (of_have_populated_dt())
+		np = of_dev_hwmod_lookup(of_find_node_by_name(NULL, "ocp"), oh);
 
-	r = _init_clocks(oh, NULL);
+	if (oh->class->sysc) {
+		r = _init_mpu_rt_base(oh, NULL, np);
+		if (r < 0) {
+			WARN(1, "omap_hwmod: %s: doesn't have mpu register target base\n",
+			     oh->name);
+			return 0;
+		}
+	}
+
+	r = _init_clocks(oh, NULL, np);
 	if (r < 0) {
 		WARN(1, "omap_hwmod: %s: couldn't init clocks\n", oh->name);
 		return -EINVAL;
+	}
+
+	if (np) {
+		if (of_find_property(np, "ti,no-reset", NULL))
+			oh->flags |= HWMOD_INIT_NO_RESET;
+		if (of_find_property(np, "ti,no-idle", NULL))
+			oh->flags |= HWMOD_INIT_NO_IDLE;
 	}
 
 	oh->_state = _HWMOD_STATE_INITIALIZED;
@@ -4115,6 +4201,7 @@ void __init omap_hwmod_init(void)
 		soc_ops.assert_hardreset = _omap2_assert_hardreset;
 		soc_ops.deassert_hardreset = _omap2_deassert_hardreset;
 		soc_ops.is_hardreset_asserted = _omap2_is_hardreset_asserted;
+		soc_ops.init_clkdm = _init_clkdm;
 	} else if (cpu_is_omap44xx() || soc_is_omap54xx() || soc_is_dra7xx()) {
 		soc_ops.enable_module = _omap4_enable_module;
 		soc_ops.disable_module = _omap4_disable_module;
@@ -4125,6 +4212,14 @@ void __init omap_hwmod_init(void)
 		soc_ops.init_clkdm = _init_clkdm;
 		soc_ops.update_context_lost = _omap4_update_context_lost;
 		soc_ops.get_context_lost = _omap4_get_context_lost;
+	} else if (soc_is_am43xx()) {
+		soc_ops.enable_module = _omap4_enable_module;
+		soc_ops.disable_module = _omap4_disable_module;
+		soc_ops.wait_target_ready = _omap4_wait_target_ready;
+		soc_ops.assert_hardreset = _omap4_assert_hardreset;
+		soc_ops.deassert_hardreset = _omap4_deassert_hardreset;
+		soc_ops.is_hardreset_asserted = _omap4_is_hardreset_asserted;
+		soc_ops.init_clkdm = _init_clkdm;
 	} else if (soc_is_am33xx()) {
 		soc_ops.enable_module = _am33xx_enable_module;
 		soc_ops.disable_module = _am33xx_disable_module;

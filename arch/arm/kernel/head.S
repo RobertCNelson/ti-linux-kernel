@@ -534,7 +534,8 @@ smp_on_up:
 __do_fixup_smp_on_up:
 	cmp	r4, r5
 	movhs	pc, lr
-	ldmia	r4!, {r0, r6}
+	ldmia	r4!, {r0}
+	ldmia	r4!, {r6}
  ARM(	str	r6, [r0, r3]	)
  THUMB(	add	r0, r0, r3	)
 #ifdef __ARMEB__
