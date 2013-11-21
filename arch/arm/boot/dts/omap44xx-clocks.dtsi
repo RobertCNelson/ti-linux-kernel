@@ -758,6 +758,14 @@ aes2_fck: aes2_fck@4a0095a8 {
 	reg = <0x4a0095a8 0x4>;
 };
 
+des_fck: des_fck@4a0095b0 {
+	#clock-cells = <0>;
+	compatible = "gate-clock";
+	clocks = <&l3_div_ck>;
+	bit-shift = <1>;
+	reg = <0x4a0095b0 0x4>;
+};
+
 dmic_sync_mux_ck: dmic_sync_mux_ck@4a004538 {
 	#clock-cells = <0>;
 	compatible = "mux-clock";
