@@ -3737,6 +3737,8 @@ static int dispc_runtime_suspend(struct device *dev)
 
 static int dispc_runtime_resume(struct device *dev)
 {
+	_omap_dispc_initial_config();
+
 	dispc_restore_context();
 
 	return 0;

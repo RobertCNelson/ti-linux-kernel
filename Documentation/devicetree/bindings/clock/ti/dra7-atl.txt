@@ -1,0 +1,52 @@
+Device Tree Clock bindings for ATL (Audio Tracking Logic) of DRA7 SoC.
+
+This binding uses the common clock binding[1].
+The ATL IP is used to generate clock to be used to synchronize baseband and
+audio codec.
+ATL can maintain a clock averages to some desired frequency based on the bws/aws
+signals - can compensate the drift between the two ws signal.
+
+[1] Documentation/devicetree/bindings/clock/clock-bindings.txt
+
+Required properties:
+- compatible : shall be "ti,dra7-atl-clock"
+- #clock-cells : from common clock binding; shall be set to 1.
+- clocks : link phandles to functional clock of ATL
+- clock-names : Shall be set to "fck"
+- reg : base address for the ATL IP
+- ti,hwmods : Shall be set to "atl"
+
+Optional properties:
+- fck_parent : Should contain a valid clock name which will be used as parent
+	       for the ATL fck
+Configuration of ATL instances:
+- atl{0/1/2/3} {
+	- bws : Baseband word select signal selection
+	- aws : Audio word select signal selection
+};
+
+For valid word select signals, see the dt-bindings/clk/ti-dra7-atl.h include
+file.
+
+Examples:
+atl_clkin: atl@0x4843c000 {
+	compatible = "ti,dra7-atl-clock";
+	reg = <0x4843c000 0x3ff>;
+	ti,hwmods = "atl";
+	#clock-cells = <1>;
+	clocks = <&atl_gfclk_mux>;
+	clock-names = "fck";
+	status = "disabled";
+};
+
+#include <dt-bindings/clk/ti-dra7-atl.h>
+
+&atl_clkin {
+	fck_parent = "dpll_abe_m2_ck";
+	status = "okay";
+
+	atl2 {
+		bws = <DRA7_ATL_WS_MCASP2_FSX>;
+		aws = <DRA7_ATL_WS_MCASP3_FSX>;
+	};
+};
