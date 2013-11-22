@@ -33,7 +33,13 @@
 
 	am33xx_pinmux: pinmux@44e10800 {
 		pinctrl-names = "default";
-		pinctrl-0 = <&gpio_keys_s0 &clkout2_pin>;
+		pinctrl-0 = <&gpio_keys_s0 &clkout2_pin &ddr3_vtt_toggle>;
+
+		ddr3_vtt_toggle: ddr3_vtt_toggle {
+			pinctrl-single,pins = <
+				0x164 0x7	/* ecap0_in_pwm0_out.gpio0_7, OUTPUT | MODE7 */
+			>;
+		};
 
 		user_leds_s0: user_leds_s0 {
 			pinctrl-single,pins = <
@@ -319,6 +325,11 @@
 		brightness-levels = <0 58 61 66 75 90 125 170 255>;
 		default-brightness-level = <8>;
 	};
+};
+
+&wkup_m3 {
+	ti,needs-vtt-toggle;
+	ti,vtt-gpio-pin = <7>;
 };
 
 #include "tps65910.dtsi"
