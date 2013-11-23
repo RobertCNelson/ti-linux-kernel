@@ -226,7 +226,7 @@ int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 	notifyid = ret;
 
 	dev_dbg(dev, "vring%d: va %p dma %llx size %x idr %d\n", i, va,
-				(unsigned long long)dma, size, notifyid);
+		(unsigned long long)dma, size, notifyid);
 
 	rvring->va = va;
 	rvring->dma = dma;
@@ -253,7 +253,7 @@ rproc_parse_vring(struct rproc_vdev *rvdev, struct fw_rsc_vdev *rsc, int i)
 	struct rproc_vring *rvring = &rvdev->vring[i];
 
 	dev_dbg(dev, "vdev rsc: vring%d: da %x, qsz %d, align %d\n",
-				i, vring->da, vring->num, vring->align);
+		i, vring->da, vring->num, vring->align);
 
 	/* make sure reserved bytes are zeroes */
 	if (vring->reserved) {
@@ -264,7 +264,7 @@ rproc_parse_vring(struct rproc_vdev *rvdev, struct fw_rsc_vdev *rsc, int i)
 	/* verify queue size and vring alignment are sane */
 	if (!vring->num || !vring->align) {
 		dev_err(dev, "invalid qsz (%d) or alignment (%d)\n",
-						vring->num, vring->align);
+			vring->num, vring->align);
 		return -EINVAL;
 	}
 
@@ -347,7 +347,7 @@ static int rproc_handle_vdev(struct rproc *rproc, struct fw_rsc_vdev *rsc,
 		return -EINVAL;
 	}
 
-	rvdev = kzalloc(sizeof(struct rproc_vdev), GFP_KERNEL);
+	rvdev = kzalloc(sizeof(*rvdev), GFP_KERNEL);
 	if (!rvdev)
 		return -ENOMEM;
 
@@ -447,7 +447,7 @@ static int rproc_handle_trace(struct rproc *rproc, struct fw_rsc_trace *rsc,
 	rproc->num_traces++;
 
 	dev_dbg(dev, "%s added: va %p, da 0x%x, len 0x%x\n", name, ptr,
-						rsc->da, rsc->len);
+		rsc->da, rsc->len);
 
 	return 0;
 }
@@ -523,7 +523,7 @@ static int rproc_handle_devmem(struct rproc *rproc, struct fw_rsc_devmem *rsc,
 	list_add_tail(&mapping->node, &rproc->mappings);
 
 	dev_dbg(dev, "mapped devmem pa 0x%x, da 0x%x, len 0x%x\n",
-					rsc->pa, rsc->da, rsc->len);
+		rsc->pa, rsc->da, rsc->len);
 
 	return 0;
 
@@ -573,7 +573,7 @@ static int rproc_handle_carveout(struct rproc *rproc,
 	}
 
 	dev_dbg(dev, "carveout rsc: da %x, pa %x, len %x, flags %x\n",
-			rsc->da, rsc->pa, rsc->len, rsc->flags);
+		rsc->da, rsc->pa, rsc->len, rsc->flags);
 
 	carveout = kzalloc(sizeof(*carveout), GFP_KERNEL);
 	if (!carveout) {
@@ -589,7 +589,7 @@ static int rproc_handle_carveout(struct rproc *rproc,
 	}
 
 	dev_dbg(dev, "carveout va %p, dma %llx, len 0x%x\n", va,
-					(unsigned long long)dma, rsc->len);
+		(unsigned long long)dma, rsc->len);
 
 	/*
 	 * Ok, this is non-standard.
@@ -635,7 +635,7 @@ static int rproc_handle_carveout(struct rproc *rproc,
 		list_add_tail(&mapping->node, &rproc->mappings);
 
 		dev_dbg(dev, "carveout mapped 0x%x to 0x%llx\n",
-					rsc->da, (unsigned long long)dma);
+			rsc->da, (unsigned long long)dma);
 	}
 
 	/*
@@ -770,7 +770,7 @@ static void rproc_resource_cleanup(struct rproc *rproc)
 		if (unmapped != entry->len) {
 			/* nothing much to do besides complaining */
 			dev_err(dev, "failed to unmap %u/%zu\n", entry->len,
-								unmapped);
+				unmapped);
 		}
 
 		list_del(&entry->node);
@@ -820,9 +820,8 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 
 	/* look for the resource table */
 	table = rproc_find_rsc_table(rproc, fw, &tablesz);
-	if (!table) {
+	if (!table)
 		goto clean_up;
-	}
 
 	/* Verify that resource table in loaded fw is unchanged */
 	if (rproc->table_csum != crc32(0, table, tablesz)) {
@@ -1280,7 +1279,7 @@ struct rproc *rproc_alloc(struct device *dev, const char *name,
 		 */
 		name_len = strlen(name) + strlen(template) - 2 + 1;
 
-	rproc = kzalloc(sizeof(struct rproc) + len + name_len, GFP_KERNEL);
+	rproc = kzalloc(sizeof(*rproc) + len + name_len, GFP_KERNEL);
 	if (!rproc) {
 		dev_err(dev, "%s: kzalloc failed\n", __func__);
 		return NULL;
