@@ -759,3 +759,47 @@ usb_phy2_always_on_clk32k: usb_phy2_always_on_clk32k {
 	compatible = "fixed-clock";
 	clocks = <&clk_32768_ck>;
 };
+
+clkout_32k_mux_ck: clkout_32k_mux_ck@44df4100 {
+	#clock-cells = <0>;
+	compatible = "mux-clock";
+	clocks = <&clk_32k_tpm_ck>, <&clk_32768_ck>;
+	reg = <0x44df4100 0x4>;
+	bit-mask = <0x1>;
+	bit-shift = <24>;
+};
+
+clkout2_mux_ck: clkout2_mux_ck@44df4108 {
+	#clock-cells = <0>;
+	compatible = "mux-clock";
+	clocks = <&clkout_32k_mux_ck>, <&sysclk_div>, <&dpll_ddr_m2_ck>, <&dpll_per_m2_ck>, <&dpll_disp_m2_ck>, <&dpll_mpu_ck>;
+	reg = <0x44df4108 0x4>;
+	bit-mask = <0x7>;
+};
+
+clkout2_div_ck: clkout2_div_ck@44df4108 {
+	#clock-cells = <0>;
+	compatible = "divider-clock";
+	clocks = <&clkout2_mux_ck>;
+	reg = <0x44df4108 0x4>;
+	bit-mask = <0x7>;
+	bit-shift = <4>;
+};
+
+clkout2_post_div_ck: clkout2_post_div_ck@44df4108 {
+	#clock-cells = <0>;
+	compatible = "divider-clock";
+	clocks = <&clkout2_div_ck>;
+	reg = <0x44df4108 0x4>;
+	bit-mask = <0x7>;
+	bit-shift = <8>;
+	index-power-of-two;
+};
+
+clkout2_ck: clkout2_ck@44df4108 {
+	#clock-cells = <0>;
+	compatible = "gate-clock";
+	clocks = <&clkout2_post_div_ck>;
+	bit-shift = <16>;
+	reg = <0x44df4108 0x4>;
+};
