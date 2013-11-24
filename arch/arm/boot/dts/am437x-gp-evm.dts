@@ -112,7 +112,8 @@
 };
 
 &am43xx_pinmux {
-
+	pinctrl-names = "default";
+	pinctrl-0 = <&dss_pinctrl &clkout2_pin>;
 	cpsw_default: cpsw_default {
 		pinctrl-single,pins = <
 			/* Slave 1 */
@@ -243,6 +244,12 @@
 	pixcir_ts_pins: pixcir_ts_pins {
 		pinctrl-single,pins = <
 			0x264 (PIN_INPUT_PULLUP | MUX_MODE7)  /* spi2_d0.gpio3_22 */
+		>;
+	};
+
+	clkout2_pin: clkout2_pin {
+		pinctrl-single,pins = <
+			0x274 (PIN_OUTPUT_PULLUP | MUX_MODE3)
 		>;
 	};
 
@@ -699,4 +706,8 @@
 			vdpol = <0>;
 		};
 	};
+};
+
+&clkout_32k_mux_ck {
+	clock-default = <&clk_32768_ck>;
 };
