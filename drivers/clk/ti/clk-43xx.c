@@ -109,7 +109,13 @@ static struct omap_dt_clk am43xx_clks[] = {
 	DT_CLK(NULL, "usbphy_32khz_clkmux", "usbphy_32khz_clkmux"),
 	DT_CLK(NULL, "vpfe0_fck", "vpfe0_fck"),
 	DT_CLK(NULL, "vpfe1_fck", "vpfe1_fck"),
+	DT_CLK(NULL, "clkout2_ck", "clkout2_ck"),
 	{ .node_name = NULL },
+};
+
+static const char *enable_init_clks[] = {
+	/* Required for external peripherals like WL8 etc */
+	"clkout2_ck",
 };
 
 int __init am43xx_clk_init(void)
@@ -121,6 +127,9 @@ int __init am43xx_clk_init(void)
 	omap_dt_clocks_register(am43xx_clks);
 
 	omap2_clk_disable_autoidle_all();
+
+	omap2_clk_enable_init_clocks(enable_init_clks,
+				     ARRAY_SIZE(enable_init_clks));
 
 	/*
 	 * The external 32KHz RTC clock source may not always be available
