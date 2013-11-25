@@ -325,7 +325,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c0_pins>;
 	status = "okay";
-	clock-frequency = <400000>;
+	clock-frequency = <100000>;
 
 	pixcir_ts@5c {
 		compatible = "pixcir,pixcir_tangoc";
