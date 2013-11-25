@@ -2304,6 +2304,9 @@ static int omap_hsmmc_probe(struct platform_device *pdev)
 	if ((revision >> OMAP_HSMMC_REV_SHIFT) >= OMAP_HSMMC_REV_33) {
 		mmc->caps |= MMC_CAP_CMD23;
 		host->flags |= AUTO_CMD23;
+		if (host->vcc_aux)
+			mmc->caps |= MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25
+				| MMC_CAP_UHS_DDR50;
 	}
 
 	mmc->ocr_avail = mmc_slot(host).ocr_mask;
