@@ -77,6 +77,28 @@
 		>;
 	};
 
+	mmc1_muxpu: pinmux_mmc1_muxpu {
+		pinctrl-single,pins = <
+			0x354 0x60000	/* mmc1_clk.clk INPUT PULLUP | MODE0 */
+			0x358 0x60000	/* mmc1_cmd.cmd INPUT PULLUP | MODE0 */
+			0x35c 0x60000	/* mmc1_dat0.dat0 INPUT PULLUP | MODE0 */
+			0x360 0x60000	/* mmc1_dat1.dat1 INPUT PULLUP | MODE0 */
+			0x364 0x60000	/* mmc1_dat2.dat2 INPUT PULLUP | MODE0 */
+			0x368 0x60000	/* mmc1_dat3.dat3 INPUT PULLUP | MODE0 */
+		>;
+	};
+
+	mmc1_muxpd: pinmux_mmc1_muxpd {
+		pinctrl-single,pins = <
+			0x354 0x20000	/* mmc1_clk.clk INPUT PULLUP | MODE0 */
+			0x358 0x20000	/* mmc1_cmd.cmd INPUT PULLUP | MODE0 */
+			0x35c 0x20000	/* mmc1_dat0.dat0 INPUT PULLUP | MODE0 */
+			0x360 0x20000	/* mmc1_dat1.dat1 INPUT PULLUP | MODE0 */
+			0x364 0x20000	/* mmc1_dat2.dat2 INPUT PULLUP | MODE0 */
+			0x368 0x20000	/* mmc1_dat3.dat3 INPUT PULLUP | MODE0 */
+		>;
+	};
+
 	mcspi1_pins: pinmux_mcspi1_pins {
 		pinctrl-single,pins = <
 			0x3a4 0x40000	/* spi2_clk */
@@ -581,8 +603,10 @@
 	vmmc-supply = <&ldo1_reg>;
 	pbias-supply = <&pbias_regulator>;
 	bus-width = <4>;
-	pinctrl-names = "default";
+	pinctrl-names = "default", "muxpu", "muxpd";
 	pinctrl-0 = <&mmc1_pins>;
+	pinctrl-1 = <&mmc1_muxpu>;
+	pinctrl-2 = <&mmc1_muxpd>;
 	cd-gpios = <&gpio6 27 0>; /* gpio 187 */
 };
 

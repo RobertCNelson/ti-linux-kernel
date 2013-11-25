@@ -224,6 +224,8 @@ struct omap_hsmmc_host {
 	unsigned int		flags;
 	struct omap_hsmmc_next	next_data;
 	struct	omap_mmc_platform_data	*pdata;
+	struct pinctrl		*pinctrl;
+	struct pinctrl_state	*pinctrl_muxpu, *pinctrl_muxpd;
 	int needs_vmmc:1;
 	int needs_vmmc_aux:1;
 };
@@ -1822,6 +1824,14 @@ static int omap_start_signal_voltage_switch(struct mmc_host *mmc,
 		return 0;
 	}
 
+	if (host->pinctrl_muxpd) {
+		ret = pinctrl_select_state(host->pinctrl, host->pinctrl_muxpd);
+		if (ret < 0) {
+			dev_err(host->dev, "pinctrl pinctrl_muxpd select error\n");
+			goto voltage_switch_error;
+		}
+	}
+
 	if (ios->signal_voltage == MMC_SIGNAL_VOLTAGE_180) {
 		value = OMAP_HSMMC_READ(host->base, HCTL);
 		value &= ~SDVS_MASK;
@@ -1836,6 +1846,12 @@ static int omap_start_signal_voltage_switch(struct mmc_host *mmc,
 			dev_dbg(mmc_dev(host->mmc), "failed to switch 1.8v\n");
 			goto voltage_switch_error;
 		}
+	}
+
+	if (host->pinctrl_muxpu) {
+		ret = pinctrl_select_state(host->pinctrl, host->pinctrl_muxpu);
+		if (ret < 0)
+			dev_err(host->dev, "pinctrl pinctrl_muxpu select error\n");
 	}
 
 voltage_switch_error:
@@ -2086,7 +2102,6 @@ static int omap_hsmmc_probe(struct platform_device *pdev)
 	const struct of_device_id *match;
 	dma_cap_mask_t mask;
 	unsigned tx_req, rx_req;
-	struct pinctrl *pinctrl;
 	u32 revision;
 
 	match = of_match_device(of_match_ptr(omap_mmc_of_match), &pdev->dev);
@@ -2311,10 +2326,22 @@ static int omap_hsmmc_probe(struct platform_device *pdev)
 
 	omap_hsmmc_disable_irq(host);
 
-	pinctrl = devm_pinctrl_get_select_default(&pdev->dev);
-	if (IS_ERR(pinctrl))
-		dev_warn(&pdev->dev,
-			"pins are not configured from the driver\n");
+	host->pinctrl = devm_pinctrl_get(host->dev);
+	if (IS_ERR(host->pinctrl)) {
+		dev_warn(host->dev,
+			 "pins are not configured from the driver\n");
+		host->pinctrl = NULL;
+	}
+	host->pinctrl_muxpu = pinctrl_lookup_state(host->pinctrl, "muxpu");
+	if (IS_ERR(host->pinctrl_muxpu)) {
+		dev_vdbg(host->dev, "optional: pinctrl_muxpu lookup error");
+		host->pinctrl_muxpu = NULL;
+	}
+	host->pinctrl_muxpd = pinctrl_lookup_state(host->pinctrl, "muxpd");
+	if (IS_ERR(host->pinctrl_muxpd)) {
+		dev_vdbg(host->dev, "optional: pinctrl_muxpd lookup error");
+		host->pinctrl_muxpd = NULL;
+	}
 
 	omap_hsmmc_protect_card(host);
 
