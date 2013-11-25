@@ -1,0 +1,21 @@
+PBIAS internal regulator for SD card i/o pads on OMAP SoCs.
+
+Required properties:
+- compatible:
+  - "regulator-pbias-omap2" for OMAP2
+  - "regulator-pbias-omap3" for OMAP3
+  - "regulator-pbias-omap4" for OMAP4
+  - "regulator-pbias-omap5" for OMAP5, DRA7
+- pbias-reg-offset: PBIAS control register offset from syscon base address
+
+Optional properties:
+- Any optional property defined in bindings/regulator/regulator.txt
+
+Example:
+
+		pbias_regulator: pbias_regulator {
+			pbias-reg-offset = <0>;
+			regulator-name = "pbias_regulator";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <3000000>;
+	};
