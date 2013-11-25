@@ -33,7 +33,7 @@
 
 	am33xx_pinmux: pinmux@44e10800 {
 		pinctrl-names = "default";
-		pinctrl-0 = <&gpio_keys_s0 &clkout2_pin>;
+		pinctrl-0 = <&gpio_keys_s0 &clkout2_pin &clkout1_pin>;
 
 		lcd_pins_s0: lcd_pins_s0 {
 			pinctrl-single,pins = <
@@ -97,6 +97,12 @@
 			pinctrl-single,pins = <
 				0x170 (PIN_INPUT_PULLUP | MUX_MODE0)	/* uart0_rxd.uart0_rxd */
 				0x174 (PIN_OUTPUT_PULLDOWN | MUX_MODE0)		/* uart0_txd.uart0_txd */
+			>;
+		};
+
+		clkout1_pin: pinmux_clkout1_pin {
+			pinctrl-single,pins = <
+				0x1b0 (PIN_OUTPUT_PULLDOWN | MUX_MODE3)		/* xdma_event_intr0.clkout1 */
 			>;
 		};
 
