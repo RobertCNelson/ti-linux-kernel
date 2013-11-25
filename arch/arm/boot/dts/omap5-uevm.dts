@@ -20,9 +20,17 @@
 		reg = <0x80000000 0x7F000000>; /* 2032 MB */
 	};
 
-	vmmcsd_fixed: fixedregulator-mmcsd {
+	vmmc_mmc1: fixedregulator-mmc1 {
 		compatible = "regulator-fixed";
-		regulator-name = "vmmcsd_fixed";
+		regulator-name = "vmmc_mmc1";
+		regulator-min-microvolt = <3000000>;
+		regulator-max-microvolt = <3000000>;
+		vin-supply = <&regen3_reg>;
+	};
+
+	vmmc_mmc2: fixedregulator-mmc2{
+		compatible = "regulator-fixed";
+		regulator-name = "vmmc_mmc2";
 		regulator-min-microvolt = <3000000>;
 		regulator-max-microvolt = <3000000>;
 	};
@@ -275,14 +283,15 @@
 	pinctrl-0 = <&mmc1_pins>;
 	pinctrl-1 = <&mmc1_muxpu>;
 	pinctrl-2 = <&mmc1_muxpd>;
-	vmmc-supply = <&ldo9_reg>;
+	vmmc-supply = <&vmmc_mmc1>;
+	vmmc_aux-supply = <&ldo9_reg>;
 	pbias-supply = <&pbias_regulator>;
 	bus-width = <4>;
 	cd-gpios = <&gpio5 24 0>; /* gpio 152 */
 };
 
 &mmc2 {
-	vmmc-supply = <&vmmcsd_fixed>;
+	vmmc-supply = <&vmmc_mmc2>;
 	bus-width = <8>;
 	ti,non-removable;
 };
@@ -516,7 +525,6 @@
 				regen3_reg: regen3 {
 					/* REGEN3 controls LDO9 supply to card */
 					regulator-name = "regen3";
-					regulator-always-on;
 					regulator-boot-on;
 				};
 			};
