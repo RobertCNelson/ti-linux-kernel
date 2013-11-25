@@ -29,6 +29,20 @@
 			pinctrl-single,function-mask = <0x3f>;
 		};
 
+		tisyscon: tisyscon@490024A0 {
+			compatible = "ti,control-syscon", "syscon", "simple-bus";
+			reg = <0x490024A0 0x4>;
+				pbias_regulator: pbias_regulator {
+					compatible = "regulator-pbias-omap2";
+					pbias-reg-offset = <0>;
+					regulator-name = "pbias_regulator";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt = <3000000>;
+					regulator-boot-on;
+					startup-delay-us = <10>;
+			};
+		};
+
 		gpio1: gpio@4900c000 {
 			compatible = "ti,omap2-gpio";
 			reg = <0x4900c000 0x200>;
