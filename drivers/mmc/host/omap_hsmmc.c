@@ -146,6 +146,10 @@
 /* HSMMC controller revision on OMAP5, DRA7 */
 #define OMAP_HSMMC_REV_33	0x33
 
+#define VDD_1V8			1800000		/* 180000 uV */
+#define VDD_3V0			3000000		/* 300000 uV */
+#define VDD_165_195		(ffs(MMC_VDD_165_195) - 1)
+
 /*
  * One controller can have multiple slots, like on some omap boards using
  * omap.c controller driver. Luckily this is not currently done on any known
@@ -184,6 +188,8 @@ struct omap_hsmmc_host {
 	 */
 	struct	regulator	*vcc;
 	struct	regulator	*vcc_aux;
+	struct	regulator	*pbias;
+	bool			pbias_enabled;
 	int			pbias_disable;
 	void	__iomem		*base;
 	resource_size_t		mapbase;
@@ -300,6 +306,15 @@ static int omap_hsmmc_set_power(struct device *dev, int slot, int power_on,
 	if (mmc_slot(host).before_set_reg)
 		mmc_slot(host).before_set_reg(dev, slot, power_on, vdd);
 
+	if (host->pbias) {
+		if (host->pbias_enabled == 1) {
+			ret = regulator_disable(host->pbias);
+			if (!ret)
+				host->pbias_enabled = 0;
+		}
+		regulator_set_voltage(host->pbias, VDD_3V0, VDD_3V0);
+	}
+
 	/*
 	 * Assume Vcc regulator is used only to power the card ... OMAP
 	 * VDDS is used to power the pins, optionally with a transceiver to
@@ -334,9 +349,29 @@ static int omap_hsmmc_set_power(struct device *dev, int slot, int power_on,
 		}
 	}
 
+	if (host->pbias) {
+		if (vdd == VDD_165_195)
+			ret = regulator_set_voltage(host->pbias, VDD_1V8,
+								VDD_1V8);
+		else
+			ret = regulator_set_voltage(host->pbias, VDD_3V0,
+								VDD_3V0);
+		if (ret < 0)
+			goto error_set_power;
+
+		if (host->pbias_enabled == 0) {
+			ret = regulator_enable(host->pbias);
+			if (!ret) {
+				host->pbias_enabled = 1;
+				goto error_set_power;
+			}
+		}
+	}
+
 	if (mmc_slot(host).after_set_reg)
 		mmc_slot(host).after_set_reg(dev, slot, power_on, vdd);
 
+error_set_power:
 	return ret;
 }
 
@@ -370,6 +405,9 @@ static int omap_hsmmc_reg_get(struct omap_hsmmc_host *host)
 	reg = regulator_get(host->dev, "vmmc_aux");
 	host->vcc_aux = IS_ERR(reg) ? NULL : reg;
 
+	reg = regulator_get(host->dev, "pbias");
+	host->pbias = IS_ERR(reg) ? NULL : reg;
+
 	/* For eMMC do not power off when not in sleep state */
 	if (mmc_slot(host).no_regulator_off_init)
 		return 0;
@@ -392,6 +430,7 @@ static void omap_hsmmc_reg_put(struct omap_hsmmc_host *host)
 {
 	regulator_put(host->vcc);
 	regulator_put(host->vcc_aux);
+	regulator_put(host->pbias);
 	mmc_slot(host).set_power = NULL;
 }
 
@@ -1920,6 +1959,7 @@ static int omap_hsmmc_probe(struct platform_device *pdev)
 	host->base	= ioremap(host->mapbase, SZ_4K);
 	host->power_mode = MMC_POWER_OFF;
 	host->next_data.cookie = 1;
+	host->pbias_enabled = 0;
 
 	platform_set_drvdata(pdev, host);
 
