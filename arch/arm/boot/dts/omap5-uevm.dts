@@ -252,6 +252,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&mmc1_pins>;
 	vmmc-supply = <&ldo9_reg>;
+	pbias-supply = <&pbias_regulator>;
 	bus-width = <4>;
 	cd-gpios = <&gpio5 24 0>; /* gpio 152 */
 };

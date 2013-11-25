@@ -129,6 +129,7 @@
 &mmc1 {
 	vmmc-supply = <&vmmc1>;
 	vmmc_aux-supply = <&vsim>;
+	pbias-supply = <&pbias_regulator>;
 	bus-width = <8>;
 };
 

@@ -112,6 +112,7 @@
       pinctrl-0 = <&mmc1_pins>;
       vmmc-supply = <&vmmc1>;
       vmmc_aux-supply = <&vsim>;
+      pbias-supply = <&pbias_regulator>;
       bus-width = <8>;
 };
 

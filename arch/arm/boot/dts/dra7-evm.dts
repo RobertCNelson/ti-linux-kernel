@@ -579,6 +579,7 @@
 &mmc1 {
 	status = "okay";
 	vmmc-supply = <&ldo1_reg>;
+	pbias-supply = <&pbias_regulator>;
 	bus-width = <4>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&mmc1_pins>;
