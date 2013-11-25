@@ -66,6 +66,8 @@ struct omap_mmc_platform_data {
 
 	/* Register offset deviation */
 	u16 reg_offset;
+	unsigned needs_vmmc:1;
+	unsigned needs_vmmc_aux:1;
 
 	struct omap_mmc_slot_data {
 

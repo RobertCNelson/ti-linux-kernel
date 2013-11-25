@@ -216,6 +216,8 @@ struct omap_hsmmc_host {
 	unsigned int		flags;
 	struct omap_hsmmc_next	next_data;
 	struct	omap_mmc_platform_data	*pdata;
+	int needs_vmmc:1;
+	int needs_vmmc_aux:1;
 };
 
 static int
@@ -373,11 +375,12 @@ static int omap_hsmmc_reg_get(struct omap_hsmmc_host *host)
 	int ocr_value = 0;
 
 	reg = regulator_get(host->dev, "vmmc");
-	if (IS_ERR(reg)) {
+	if (IS_ERR(reg) && host->needs_vmmc) {
 		dev_err(host->dev, "unable to get vmmc regulator %ld\n",
 			PTR_ERR(reg));
 		return PTR_ERR(reg);
-	} else {
+	}
+	if (!IS_ERR(reg)) {
 		host->vcc = reg;
 		ocr_value = mmc_regulator_get_ocrmask(reg);
 		if (!mmc_slot(host).ocr_mask) {
@@ -396,6 +399,11 @@ static int omap_hsmmc_reg_get(struct omap_hsmmc_host *host)
 	/* Allow an aux regulator */
 	reg = regulator_get(host->dev, "vmmc_aux");
 	host->vcc_aux = IS_ERR(reg) ? NULL : reg;
+	if (IS_ERR(reg) && host->needs_vmmc_aux) {
+		dev_err(host->dev, "unable to get vmmc_aux regulator %ld\n",
+			PTR_ERR(reg));
+		return PTR_ERR(reg);
+	}
 
 	reg = regulator_get(host->dev, "pbias");
 	host->pbias = IS_ERR(reg) ? NULL : reg;
@@ -1868,6 +1876,9 @@ static struct omap_mmc_platform_data *of_get_hsmmc_pdata(struct device *dev)
 	if (of_find_property(np, "ti,needs-special-hs-handling", NULL))
 		pdata->slots[0].features |= HSMMC_HAS_HSPE_SUPPORT;
 
+	pdata->needs_vmmc = of_property_read_bool(np, "vmmc-supply");
+	pdata->needs_vmmc_aux = of_property_read_bool(np, "vmmc_aux-supply");
+
 	return pdata;
 }
 #else
@@ -1946,6 +1957,8 @@ static int omap_hsmmc_probe(struct platform_device *pdev)
 	host->power_mode = MMC_POWER_OFF;
 	host->next_data.cookie = 1;
 	host->pbias_enabled = 0;
+	host->needs_vmmc = pdata->needs_vmmc;
+	host->needs_vmmc_aux = pdata->needs_vmmc_aux;
 
 	platform_set_drvdata(pdev, host);
 
