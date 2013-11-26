@@ -271,6 +271,12 @@
 			status = "disabled";
 		};
 
+		hwspinlock: spinlock@480ca000 {
+			compatible = "ti,omap4-hwspinlock";
+			reg = <0x480ca000 0x1000>;
+			ti,hwmods = "spinlock";
+		};
+
 		mmc1: mmc@48060000 {
 			compatible = "ti,omap4-hsmmc";
 			ti,hwmods = "mmc1";
