@@ -18,6 +18,9 @@
 	interrupt-parent = <&intc>;
 
 	aliases {
+		i2c0 = &i2c0;
+		i2c1 = &i2c1;
+		i2c2 = &i2c2;
 		serial0 = &uart0;
 		serial1 = &uart1;
 		serial2 = &uart2;
@@ -858,4 +861,11 @@
 		ranges;
 		/include/ "am33xx-clocks.dtsi"
 	};
+
+       clockdomains {
+               clk_24mhz_clkdm: clk_24mhz_clkdm {
+                       compatible = "ti,clockdomain";
+                       clocks = <&clkdiv32k_ick>;
+               };
+       };
 };

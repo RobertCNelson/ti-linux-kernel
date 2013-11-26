@@ -179,6 +179,7 @@ static struct omap_dt_clk dra7xx_clks[] = {
 	DT_CLK(NULL, "dss_hdmi_clk", "dss_hdmi_clk"),
 	DT_CLK(NULL, "dss_video1_clk", "dss_video1_clk"),
 	DT_CLK(NULL, "dss_video2_clk", "dss_video2_clk"),
+	DT_CLK(NULL, "dss_deshdcp_clk", "dss_deshdcp_clk"),
 	DT_CLK(NULL, "gpio1_dbclk", "gpio1_dbclk"),
 	DT_CLK(NULL, "gpio2_dbclk", "gpio2_dbclk"),
 	DT_CLK(NULL, "gpio3_dbclk", "gpio3_dbclk"),
@@ -263,17 +264,6 @@ static struct omap_dt_clk dra7xx_clks[] = {
 	DT_CLK(NULL, "vip2_gclk_mux", "vip2_gclk_mux"),
 	DT_CLK(NULL, "vip3_gclk_mux", "vip3_gclk_mux"),
 	DT_CLK(NULL, "timer_32k_ck", "sys_32k_ck"),
-	DT_CLK("4ae18000.timer", "timer_sys_ck", "sys_clkin2"),
-	DT_CLK("48032000.timer", "timer_sys_ck", "sys_clkin2"),
-	DT_CLK("48034000.timer", "timer_sys_ck", "sys_clkin2"),
-	DT_CLK("48036000.timer", "timer_sys_ck", "sys_clkin2"),
-	DT_CLK("4803e000.timer", "timer_sys_ck", "sys_clkin2"),
-	DT_CLK("48086000.timer", "timer_sys_ck", "sys_clkin2"),
-	DT_CLK("48088000.timer", "timer_sys_ck", "sys_clkin2"),
-	DT_CLK("48820000.timer", "timer_sys_ck", "timer_sys_clk_div"),
-	DT_CLK("48822000.timer", "timer_sys_ck", "timer_sys_clk_div"),
-	DT_CLK("48824000.timer", "timer_sys_ck", "timer_sys_clk_div"),
-	DT_CLK("48826000.timer", "timer_sys_ck", "timer_sys_clk_div"),
 	DT_CLK(NULL, "sys_clkin", "sys_clkin1"),
 	{ .node_name = NULL },
 };
@@ -281,7 +271,7 @@ static struct omap_dt_clk dra7xx_clks[] = {
 int __init dra7xx_clk_init(void)
 {
 	int rc;
-	struct clk *abe_dpll_mux, *sys_clkin2, *dpll_ck;
+	struct clk *abe_dpll_mux, *sys_clkin2, *dpll_ck, *deshdcp_clk;
 
 	of_clk_init(NULL);
 
@@ -303,6 +293,11 @@ int __init dra7xx_clk_init(void)
 	rc = clk_set_rate(dpll_ck, DRA7_DPLL_GMAC_DEFFREQ);
 	if (rc)
 		pr_err("%s: failed to configure GMAC DPLL!\n", __func__);
+
+	deshdcp_clk = clk_get_sys(NULL, "dss_deshdcp_clk");
+	rc = clk_prepare_enable(deshdcp_clk);
+	if (rc)
+		pr_err("%s: failed to enable DESHDCP clock\n", __func__);
 
 	return rc;
 }

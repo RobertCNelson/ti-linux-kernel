@@ -18,6 +18,9 @@
 
 
 	aliases {
+		i2c0 = &i2c0;
+		i2c1 = &i2c1;
+		i2c2 = &i2c2;
 		serial0 = &uart0;
 	};
 
@@ -260,7 +263,7 @@
 			clock-names = "fck";
 		};
 
-		rtc@44e3e000 {
+		rtc: rtc@44e3e000 {
 			compatible = "ti,am4372-rtc","ti,da830-rtc";
 			reg = <0x44e3e000 0x1000>;
 			interrupts = <GIC_SPI 75 IRQ_TYPE_LEVEL_HIGH
@@ -278,7 +281,6 @@
 			ti,hwmods = "wd_timer2";
 			clocks = <&wdt1_fck>;
 			clock-names = "fck";
-			status = "disabled";
 		};
 
 		gpio0: gpio@44e07000 {

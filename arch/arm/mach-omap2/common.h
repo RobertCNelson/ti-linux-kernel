@@ -101,6 +101,7 @@ void am43xx_init_early(void);
 void omap4430_init_early(void);
 void omap5_init_early(void);
 void omap3_init_late(void);	/* Do not use this one */
+void am33xx_init_late(void);
 void omap4430_init_late(void);
 void omap2420_init_late(void);
 void omap2430_init_late(void);
@@ -134,6 +135,14 @@ static inline void omap2xxx_restart(enum reboot_mode mode, const char *cmd)
 void am33xx_restart(enum reboot_mode mode, const char *cmd);
 #else
 static inline void am33xx_restart(enum reboot_mode mode, const char *cmd)
+{
+}
+#endif
+
+#ifdef CONFIG_SOC_AM43XX
+void am43xx_restart(enum reboot_mode mode, const char *cmd);
+#else
+static inline void am43xx_restart(enum reboot_mode mode, const char *cmd)
 {
 }
 #endif

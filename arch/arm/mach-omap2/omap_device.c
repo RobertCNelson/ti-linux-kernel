@@ -153,7 +153,7 @@ static int omap_device_build_from_dt(struct platform_device *pdev)
 	}
 
 	od = omap_device_alloc(pdev, hwmods, oh_cnt);
-	if (!od) {
+	if (IS_ERR(od)) {
 		dev_err(&pdev->dev, "Cannot allocate omap_device for :%s\n",
 			oh_name);
 		ret = PTR_ERR(od);
@@ -616,6 +616,13 @@ static int _od_suspend_noirq(struct device *dev)
 
 	if (!ret && !pm_runtime_status_suspended(dev)) {
 		if (pm_generic_runtime_suspend(dev) == 0) {
+			if (!pm_runtime_suspended(dev)) {
+				/* NOTE: *might* indicate driver race */
+				dev_dbg(dev, "%s: Force suspending\n",
+					__func__);
+				pm_runtime_set_suspended(dev);
+				od->flags |= OMAP_DEVICE_SUSPEND_FORCED;
+			}
 			omap_device_idle(pdev);
 			od->flags |= OMAP_DEVICE_SUSPENDED;
 		}
@@ -629,10 +636,15 @@ static int _od_resume_noirq(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct omap_device *od = to_omap_device(pdev);
 
-	if ((od->flags & OMAP_DEVICE_SUSPENDED) &&
-	    !pm_runtime_status_suspended(dev)) {
+	if (od->flags & OMAP_DEVICE_SUSPENDED) {
 		od->flags &= ~OMAP_DEVICE_SUSPENDED;
 		omap_device_enable(pdev);
+
+		if (od->flags & OMAP_DEVICE_SUSPEND_FORCED) {
+			pm_runtime_set_active(dev);
+			od->flags &= ~OMAP_DEVICE_SUSPEND_FORCED;
+		}
+
 		pm_generic_runtime_resume(dev);
 	}
 
