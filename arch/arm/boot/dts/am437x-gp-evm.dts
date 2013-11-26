@@ -26,6 +26,13 @@
 		enable-active-high;
 	};
 
+	evm_v3p3: tps63031 {
+		compatible = "regulator-fixed";
+		regulator-name = "evm_v3p3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+	};
+
 	aliases {
 		display0 = &lcd0;
 		display1 = &hdmi0;
@@ -55,6 +62,19 @@
 	hdmi0: connector@1 {
 		compatible = "ti,hdmi_connector";
 		video-source = <&sii9022>;
+	};
+
+	sound {
+		compatible = "ti,da830-evm-audio";
+		ti,model = "AM437x-GP-EVM";
+		ti,audio-codec = <&tlv320aic3106>;
+		ti,mcasp-controller = <&mcasp1>;
+		ti,codec-clock-rate = <12000000>;
+		ti,audio-routing =
+			"Headphone Jack",       "HPLOUT",
+			"Headphone Jack",       "HPROUT",
+			"LINE1L",               "Line In",
+			"LINE1R",               "Line In";
 	};
 
 	matrix_keypad: matrix_keypad@0 {
@@ -225,6 +245,16 @@
 			0x184 (PIN_INPUT_PULLUP | MUX_MODE2) /* uart1_txd.d_can1_rx */
 		>;
 	};
+
+	mcasp1_pins: mcasp1_pins {
+		pinctrl-single,pins = <
+			0x108 (PIN_OUTPUT_PULLDOWN | MUX_MODE4)	/* mii1_col.mcasp1_axr2 */
+			0x10c (PIN_INPUT_PULLDOWN | MUX_MODE4)	/* mii1_crs.mcasp1_aclkx */
+			0x110 (PIN_INPUT_PULLDOWN | MUX_MODE4)	/* mii1_rxerr.mcasp1_fsx */
+			0x144 (PIN_INPUT_PULLDOWN | MUX_MODE4)	/* rmii1_ref_clk.mcasp1_axr3 */
+		>;
+	};
+
 };
 
 &i2c0 {
@@ -361,6 +391,19 @@
 		x-size = <1024>;
 		y-size = <600>;
 	};
+
+	tlv320aic3106: tlv320aic3106@1b {
+		compatible = "ti,tlv320aic3106";
+		reg = <0x1b>;
+		status = "okay";
+
+		/* Regulators */
+		AVDD-supply = <&evm_v3p3>;
+		IOVDD-supply = <&evm_v3p3>;
+		DRVDD-supply = <&evm_v3p3>;
+		DVDD-supply = <&ldo1>;
+
+	};
 };
 
 &ecap0 {
@@ -383,4 +426,20 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&dcan1_default>;
 	status = "okay";
+};
+
+&mcasp1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&mcasp1_pins>;
+
+	status = "okay";
+
+	op-mode = <0>; /* MCASP_IIS_MODE */
+	tdm-slots = <2>;
+	/* 4 serializers */
+	serial-dir = <  /* 0: INACTIVE, 1: TX, 2: RX */
+		0 0 1 2
+	>;
+	tx-num-evt = <1>;
+	rx-num-evt = <1>;
 };

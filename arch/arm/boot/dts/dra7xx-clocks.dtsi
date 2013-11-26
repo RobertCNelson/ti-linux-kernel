@@ -26,7 +26,7 @@ atl_clkin2_ck: atl_clkin2_ck {
 	clock-frequency = <0>;
 };
 
-atlclkin3_ck: atlclkin3_ck {
+atl_clkin3_ck: atl_clkin3_ck {
 	#clock-cells = <0>;
 	compatible = "fixed-clock";
 	clock-frequency = <0>;
@@ -1572,7 +1572,7 @@ l3instr_ts_gclk_div: l3instr_ts_gclk_div@4a008e50 {
 mcasp1_ahclkr_mux: mcasp1_ahclkr_mux@4a005550 {
 	#clock-cells = <0>;
 	compatible = "mux-clock";
-	clocks = <&abe_24m_fclk>, <&abe_sys_clk_div>, <&func_24m_clk>, <&atlclkin3_ck>, <&atl_clkin2_ck>, <&atl_clkin1_ck>, <&atl_clkin0_ck>, <&sys_clkin2>, <&ref_clkin0_ck>, <&ref_clkin1_ck>, <&ref_clkin2_ck>, <&ref_clkin3_ck>, <&mlb_clk>, <&mlbp_clk>;
+	clocks = <&abe_24m_fclk>, <&abe_sys_clk_div>, <&func_24m_clk>, <&atl_clkin3_ck>, <&atl_clkin2_ck>, <&atl_clkin1_ck>, <&atl_clkin0_ck>, <&sys_clkin2>, <&ref_clkin0_ck>, <&ref_clkin1_ck>, <&ref_clkin2_ck>, <&ref_clkin3_ck>, <&mlb_clk>, <&mlbp_clk>;
 	bit-shift = <28>;
 	reg = <0x4a005550 0x4>;
 	bit-mask = <0xf>;
@@ -1581,7 +1581,7 @@ mcasp1_ahclkr_mux: mcasp1_ahclkr_mux@4a005550 {
 mcasp1_ahclkx_mux: mcasp1_ahclkx_mux@4a005550 {
 	#clock-cells = <0>;
 	compatible = "mux-clock";
-	clocks = <&abe_24m_fclk>, <&abe_sys_clk_div>, <&func_24m_clk>, <&atlclkin3_ck>, <&atl_clkin2_ck>, <&atl_clkin1_ck>, <&atl_clkin0_ck>, <&sys_clkin2>, <&ref_clkin0_ck>, <&ref_clkin1_ck>, <&ref_clkin2_ck>, <&ref_clkin3_ck>, <&mlb_clk>, <&mlbp_clk>;
+	clocks = <&abe_24m_fclk>, <&abe_sys_clk_div>, <&func_24m_clk>, <&atl_clkin3_ck>, <&atl_clkin2_ck>, <&atl_clkin1_ck>, <&atl_clkin0_ck>, <&sys_clkin2>, <&ref_clkin0_ck>, <&ref_clkin1_ck>, <&ref_clkin2_ck>, <&ref_clkin3_ck>, <&mlb_clk>, <&mlbp_clk>;
 	bit-shift = <24>;
 	reg = <0x4a005550 0x4>;
 	bit-mask = <0xf>;
@@ -1599,7 +1599,7 @@ mcasp1_aux_gfclk_mux: mcasp1_aux_gfclk_mux@4a005550 {
 mcasp2_ahclkr_mux: mcasp2_ahclkr_mux@4a009860 {
 	#clock-cells = <0>;
 	compatible = "mux-clock";
-	clocks = <&abe_24m_fclk>, <&abe_sys_clk_div>, <&func_24m_clk>, <&atlclkin3_ck>, <&atl_clkin2_ck>, <&atl_clkin1_ck>, <&atl_clkin0_ck>, <&sys_clkin2>, <&ref_clkin0_ck>, <&ref_clkin1_ck>, <&ref_clkin2_ck>, <&ref_clkin3_ck>, <&mlb_clk>, <&mlbp_clk>;
+	clocks = <&abe_24m_fclk>, <&abe_sys_clk_div>, <&func_24m_clk>, <&atl_clkin3_ck>, <&atl_clkin2_ck>, <&atl_clkin1_ck>, <&atl_clkin0_ck>, <&sys_clkin2>, <&ref_clkin0_ck>, <&ref_clkin1_ck>, <&ref_clkin2_ck>, <&ref_clkin3_ck>, <&mlb_clk>, <&mlbp_clk>;
 	bit-shift = <28>;
 	reg = <0x4a009860 0x4>;
 	bit-mask = <0xf>;
@@ -1608,7 +1608,7 @@ mcasp2_ahclkr_mux: mcasp2_ahclkr_mux@4a009860 {
 mcasp2_ahclkx_mux: mcasp2_ahclkx_mux@4a009860 {
 	#clock-cells = <0>;
 	compatible = "mux-clock";
-	clocks = <&abe_24m_fclk>, <&abe_sys_clk_div>, <&func_24m_clk>, <&atlclkin3_ck>, <&atl_clkin2_ck>, <&atl_clkin1_ck>, <&atl_clkin0_ck>, <&sys_clkin2>, <&ref_clkin0_ck>, <&ref_clkin1_ck>, <&ref_clkin2_ck>, <&ref_clkin3_ck>, <&mlb_clk>, <&mlbp_clk>;
+	clocks = <&abe_24m_fclk>, <&abe_sys_clk_div>, <&func_24m_clk>, <&atl_clkin3_ck>, <&atl_clkin2_ck>, <&atl_clkin1_ck>, <&atl_clkin0_ck>, <&sys_clkin2>, <&ref_clkin0_ck>, <&ref_clkin1_ck>, <&ref_clkin2_ck>, <&ref_clkin3_ck>, <&mlb_clk>, <&mlbp_clk>;
 	bit-shift = <28>;
 	reg = <0x4a009860 0x4>;
 	bit-mask = <0xf>;
@@ -1626,7 +1626,7 @@ mcasp2_aux_gfclk_mux: mcasp2_aux_gfclk_mux@4a009860 {
 mcasp3_ahclkx_mux: mcasp3_ahclkx_mux@4a009868 {
 	#clock-cells = <0>;
 	compatible = "mux-clock";
-	clocks = <&abe_24m_fclk>, <&abe_sys_clk_div>, <&func_24m_clk>, <&atlclkin3_ck>, <&atl_clkin2_ck>, <&atl_clkin1_ck>, <&atl_clkin0_ck>, <&sys_clkin2>, <&ref_clkin0_ck>, <&ref_clkin1_ck>, <&ref_clkin2_ck>, <&ref_clkin3_ck>, <&mlb_clk>, <&mlbp_clk>;
+	clocks = <&abe_24m_fclk>, <&abe_sys_clk_div>, <&func_24m_clk>, <&atl_clkin3_ck>, <&atl_clkin2_ck>, <&atl_clkin1_ck>, <&atl_clkin0_ck>, <&sys_clkin2>, <&ref_clkin0_ck>, <&ref_clkin1_ck>, <&ref_clkin2_ck>, <&ref_clkin3_ck>, <&mlb_clk>, <&mlbp_clk>;
 	bit-shift = <24>;
 	reg = <0x4a009868 0x4>;
 	bit-mask = <0xf>;
@@ -1644,7 +1644,7 @@ mcasp3_aux_gfclk_mux: mcasp3_aux_gfclk_mux@4a009868 {
 mcasp4_ahclkx_mux: mcasp4_ahclkx_mux@4a009898 {
 	#clock-cells = <0>;
 	compatible = "mux-clock";
-	clocks = <&abe_24m_fclk>, <&abe_sys_clk_div>, <&func_24m_clk>, <&atlclkin3_ck>, <&atl_clkin2_ck>, <&atl_clkin1_ck>, <&atl_clkin0_ck>, <&sys_clkin2>, <&ref_clkin0_ck>, <&ref_clkin1_ck>, <&ref_clkin2_ck>, <&ref_clkin3_ck>, <&mlb_clk>, <&mlbp_clk>;
+	clocks = <&abe_24m_fclk>, <&abe_sys_clk_div>, <&func_24m_clk>, <&atl_clkin3_ck>, <&atl_clkin2_ck>, <&atl_clkin1_ck>, <&atl_clkin0_ck>, <&sys_clkin2>, <&ref_clkin0_ck>, <&ref_clkin1_ck>, <&ref_clkin2_ck>, <&ref_clkin3_ck>, <&mlb_clk>, <&mlbp_clk>;
 	bit-shift = <24>;
 	reg = <0x4a009898 0x4>;
 	bit-mask = <0xf>;
@@ -1662,7 +1662,7 @@ mcasp4_aux_gfclk_mux: mcasp4_aux_gfclk_mux@4a009898 {
 mcasp5_ahclkx_mux: mcasp5_ahclkx_mux@4a009878 {
 	#clock-cells = <0>;
 	compatible = "mux-clock";
-	clocks = <&abe_24m_fclk>, <&abe_sys_clk_div>, <&func_24m_clk>, <&atlclkin3_ck>, <&atl_clkin2_ck>, <&atl_clkin1_ck>, <&atl_clkin0_ck>, <&sys_clkin2>, <&ref_clkin0_ck>, <&ref_clkin1_ck>, <&ref_clkin2_ck>, <&ref_clkin3_ck>, <&mlb_clk>, <&mlbp_clk>;
+	clocks = <&abe_24m_fclk>, <&abe_sys_clk_div>, <&func_24m_clk>, <&atl_clkin3_ck>, <&atl_clkin2_ck>, <&atl_clkin1_ck>, <&atl_clkin0_ck>, <&sys_clkin2>, <&ref_clkin0_ck>, <&ref_clkin1_ck>, <&ref_clkin2_ck>, <&ref_clkin3_ck>, <&mlb_clk>, <&mlbp_clk>;
 	bit-shift = <24>;
 	reg = <0x4a009878 0x4>;
 	bit-mask = <0xf>;
@@ -1680,7 +1680,7 @@ mcasp5_aux_gfclk_mux: mcasp5_aux_gfclk_mux@4a009878 {
 mcasp6_ahclkx_mux: mcasp6_ahclkx_mux@4a009904 {
 	#clock-cells = <0>;
 	compatible = "mux-clock";
-	clocks = <&abe_24m_fclk>, <&abe_sys_clk_div>, <&func_24m_clk>, <&atlclkin3_ck>, <&atl_clkin2_ck>, <&atl_clkin1_ck>, <&atl_clkin0_ck>, <&sys_clkin2>, <&ref_clkin0_ck>, <&ref_clkin1_ck>, <&ref_clkin2_ck>, <&ref_clkin3_ck>, <&mlb_clk>, <&mlbp_clk>;
+	clocks = <&abe_24m_fclk>, <&abe_sys_clk_div>, <&func_24m_clk>, <&atl_clkin3_ck>, <&atl_clkin2_ck>, <&atl_clkin1_ck>, <&atl_clkin0_ck>, <&sys_clkin2>, <&ref_clkin0_ck>, <&ref_clkin1_ck>, <&ref_clkin2_ck>, <&ref_clkin3_ck>, <&mlb_clk>, <&mlbp_clk>;
 	bit-shift = <24>;
 	reg = <0x4a009904 0x4>;
 	bit-mask = <0xf>;
@@ -1698,7 +1698,7 @@ mcasp6_aux_gfclk_mux: mcasp6_aux_gfclk_mux@4a009904 {
 mcasp7_ahclkx_mux: mcasp7_ahclkx_mux@4a009908 {
 	#clock-cells = <0>;
 	compatible = "mux-clock";
-	clocks = <&abe_24m_fclk>, <&abe_sys_clk_div>, <&func_24m_clk>, <&atlclkin3_ck>, <&atl_clkin2_ck>, <&atl_clkin1_ck>, <&atl_clkin0_ck>, <&sys_clkin2>, <&ref_clkin0_ck>, <&ref_clkin1_ck>, <&ref_clkin2_ck>, <&ref_clkin3_ck>, <&mlb_clk>, <&mlbp_clk>;
+	clocks = <&abe_24m_fclk>, <&abe_sys_clk_div>, <&func_24m_clk>, <&atl_clkin3_ck>, <&atl_clkin2_ck>, <&atl_clkin1_ck>, <&atl_clkin0_ck>, <&sys_clkin2>, <&ref_clkin0_ck>, <&ref_clkin1_ck>, <&ref_clkin2_ck>, <&ref_clkin3_ck>, <&mlb_clk>, <&mlbp_clk>;
 	bit-shift = <24>;
 	reg = <0x4a009908 0x4>;
 	bit-mask = <0xf>;
@@ -1716,7 +1716,7 @@ mcasp7_aux_gfclk_mux: mcasp7_aux_gfclk_mux@4a009908 {
 mcasp8_ahclk_mux: mcasp8_ahclk_mux@4a009890 {
 	#clock-cells = <0>;
 	compatible = "mux-clock";
-	clocks = <&abe_24m_fclk>, <&abe_sys_clk_div>, <&func_24m_clk>, <&atlclkin3_ck>, <&atl_clkin2_ck>, <&atl_clkin1_ck>, <&atl_clkin0_ck>, <&sys_clkin2>, <&ref_clkin0_ck>, <&ref_clkin1_ck>, <&ref_clkin2_ck>, <&ref_clkin3_ck>, <&mlb_clk>, <&mlbp_clk>;
+	clocks = <&abe_24m_fclk>, <&abe_sys_clk_div>, <&func_24m_clk>, <&atl_clkin3_ck>, <&atl_clkin2_ck>, <&atl_clkin1_ck>, <&atl_clkin0_ck>, <&sys_clkin2>, <&ref_clkin0_ck>, <&ref_clkin1_ck>, <&ref_clkin2_ck>, <&ref_clkin3_ck>, <&mlb_clk>, <&mlbp_clk>;
 	bit-shift = <22>;
 	reg = <0x4a009890 0x4>;
 	bit-mask = <0x3>;
