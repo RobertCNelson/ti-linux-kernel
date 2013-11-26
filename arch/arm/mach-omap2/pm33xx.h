@@ -41,6 +41,8 @@ struct am33xx_suspend_params {
 	void __iomem *dram_sync;
 };
 
+void wkup_m3_reset_data_pos(void);
+int wkup_m3_copy_data(const u8 *data, size_t size);
 
 #endif
 

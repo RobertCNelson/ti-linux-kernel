@@ -58,6 +58,9 @@
 struct wkup_m3_context {
 	struct device	*dev;
 	void __iomem	*code;
+	void __iomem	*data;
+	void __iomem	*data_end;
+	size_t		data_size;
 	void __iomem	*ipc;
 	u8		is_valid;
 	struct wkup_m3_ops *ops;
@@ -157,6 +160,31 @@ int wkup_m3_ping(void)
 	ret = omap_mbox_msg_send(wkup_m3->mbox, 0xABCDABCD);
 
 	return ret;
+}
+
+/*
+ * This pair of functions allows data to be stuffed into the end of the
+ * CM3 data memory. This is currently used for passing the I2C sleep/wake
+ * sequences to the firmware.
+ */
+
+/* Clear out the pointer for data stored at the end of DMEM */
+void wkup_m3_reset_data_pos(void)
+{
+	wkup_m3->data_end = wkup_m3->data + wkup_m3->data_size;
+}
+
+/*
+ * Store a block of data at the end of DMEM, return the offset within DMEM
+ * that the data is stored at, or -ENOMEM if the data did not fit
+ */
+int wkup_m3_copy_data(const u8 *data, size_t size)
+{
+	if (wkup_m3->data + size > wkup_m3->data_end)
+		return -ENOMEM;
+	wkup_m3->data_end -= size;
+	memcpy_toio(wkup_m3->data_end, data, size);
+	return wkup_m3->data_end - wkup_m3->data;
 }
 
 struct wkup_m3_wakeup_src wkup_m3_wake_src(void)
@@ -350,6 +378,23 @@ static int wkup_m3_probe(struct platform_device *pdev)
 		ret = -EADDRNOTAVAIL;
 		goto err;
 	}
+
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "m3_dmem");
+	if (!res) {
+		dev_err(&pdev->dev, "no memory resource for dmem\n");
+		ret = -ENXIO;
+		goto err;
+	}
+
+	wkup_m3->data = devm_request_and_ioremap(wkup_m3->dev, res);
+	if (!wkup_m3->data) {
+		dev_err(wkup_m3->dev, "could not ioremap dmem\n");
+		ret = -EADDRNOTAVAIL;
+		goto err;
+	}
+
+	wkup_m3->data_size = resource_size(res);
+	wkup_m3_reset_data_pos();
 
 	ret = devm_request_irq(wkup_m3->dev, irq, wkup_m3_txev_handler,
 		  IRQF_DISABLED, "wkup_m3_txev", NULL);
