@@ -27,6 +27,23 @@
 		enable-active-high;
 	};
 
+
+	vmmcwl_fixed: fixedregulator-mmcwl {
+		compatible = "regulator-fixed";
+		regulator-name = "vmmcwl_fixed";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		gpio = <&gpio1 23 0>;
+		startup-delay-us = <70000>;
+		enable-active-high;
+	};
+
+	wlcore {
+		compatible = "wlcore";
+		gpio = <31>;
+		pinctrl-names = "default";
+	};
+
 	aliases {
 		display0 = &lcd0;
 		display1 = &hdmi0;
@@ -159,6 +176,18 @@
 		>;
 	};
 
+	mmc2_pins: pinmux_mmc2_pins {
+		pinctrl-single,pins = <
+			0x210 (PIN_INPUT_PULLUP | MUX_MODE1)      /*cam0_data2.mmc1_clk  */
+			0x214 (PIN_INPUT_PULLUP | MUX_MODE1)      /*cam0_data3.mmc1_cmd  */
+			0x218 (PIN_INPUT_PULLUP | MUX_MODE1)      /*cam0_data4.mmc1_dat0 */
+			0x21c (PIN_INPUT_PULLUP | MUX_MODE1)      /*cam0_data5.mmc1_dat1 */
+			0x220 (PIN_INPUT_PULLUP | MUX_MODE1)      /*cam0_data6.mmc1_dat2 */
+			0x224 (PIN_INPUT_PULLUP | MUX_MODE1)      /*cam0_data7.mmc1_dat3 */
+			0x05c (PIN_OUTPUT | MUX_MODE7)            /*gpmc_a7.gpio1_23 */
+		>;
+	};
+
 	i2c0_pins: pinmux_i2c0_pins {
 		pinctrl-single,pins = <
 			0x188 (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE0)	/* i2c0_sda.i2c0_sda */
@@ -247,6 +276,12 @@
 			0x164 MUX_MODE0		/* eCAP0_in_PWM0_out.eCAP0_in_PWM0_out MODE0 */
 		>;
 	};
+
+	wlirq_pins: pinmux_wlirq_pins {
+		pinctrl-single,pins = <
+			0x74 (PIN_INPUT | WAKEUP_ENABLE | MUX_MODE7)   /*gpmc_wpn.gpio0_31 */
+		>;
+	};
 };
 
 &gpio0 {
@@ -319,6 +354,17 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&mmc1_pins>;
 	cd-gpios = <&gpio0 6 GPIO_ACTIVE_HIGH>;
+};
+
+&mmc2 {
+	status = "okay";
+	vmmc-supply = <&vmmcwl_fixed>;
+	bus-width = <4>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&mmc2_pins>;
+	cap-power-off-card;
+	keep-power-in-suspend;
+	ti,non-removable;
 };
 
 &i2c0 {
