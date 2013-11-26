@@ -603,6 +603,7 @@ void __init am33xx_init_late(void)
 	omap_device_force_mstandby_repeated();
 	omap2_common_pm_late_init();
 	am33xx_pm_init();
+	omap_soc_device_init();
 }
 #endif
 
@@ -694,6 +695,7 @@ void __init omap5_init_late(void)
 	omap2_common_suspend_init();
 	omap4_pm_init();
 	omap2_clk_enable_autoidle_all();
+	omap_soc_device_init();
 }
 #endif
 
