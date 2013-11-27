@@ -10,6 +10,7 @@
 
 #include <linux/usb.h>
 
+#define SIMPLE_IO_TIMEOUT	10000	/* in milliseconds */
 
 /*-------------------------------------------------------------------------*/
 
@@ -366,6 +367,7 @@ static int simple_io(
 	int			max = urb->transfer_buffer_length;
 	struct completion	completion;
 	int			retval = 0;
+	unsigned long		expire;
 
 	urb->context = &completion;
 	while (retval == 0 && iterations-- > 0) {
@@ -378,9 +380,15 @@ static int simple_io(
 		if (retval != 0)
 			break;
 
-		/* NOTE:  no timeouts; can't be broken out of by interrupt */
-		wait_for_completion(&completion);
-		retval = urb->status;
+		expire = msecs_to_jiffies(SIMPLE_IO_TIMEOUT);
+		if (!wait_for_completion_timeout(&completion, expire)) {
+			usb_kill_urb(urb);
+			retval = (urb->status == -ENOENT ?
+				  -ETIMEDOUT : urb->status);
+		} else {
+			retval = urb->status;
+		}
+
 		urb->dev = udev;
 		if (retval == 0 && usb_pipein(urb->pipe))
 			retval = simple_check_buf(tdev, urb);
@@ -1383,8 +1391,17 @@ static int test_halt(struct usbtest_dev *tdev, int ep, struct urb *urb)
 		return retval;
 	}
 	retval = verify_halted(tdev, ep, urb);
-	if (retval < 0)
+	if (retval < 0) {
+		int ret;
+
+		/* clear halt anyways, else further tests will fail */
+		ret = usb_clear_halt(urb->dev, urb->pipe);
+		if (ret)
+			ERROR(tdev, "ep %02x couldn't clear halt, %d\n",
+			      ep, ret);
+
 		return retval;
+	}
 
 	/* clear halt (tests API + protocol), verify it worked */
 	retval = usb_clear_halt(urb->dev, urb->pipe);

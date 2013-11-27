@@ -134,17 +134,6 @@
 		pinctrl-single,pins = <
 			0x3e0 0xe0000	/* uart1_rxd */
 			0x3e4 0xe0000	/* uart1_txd */
-			0x3e8 0x60003	/* uart1_ctsn */
-			0x3ec 0x60003	/* uart1_rtsn */
-		>;
-	};
-
-	uart2_pins: pinmux_uart2_pins {
-		pinctrl-single,pins = <
-			0x3f0 0x60000 /* uart2_rxd */
-			0x3f4 0x60000 /* uart2_txd */
-			0x3f8 0x60000 /* uart2_ctsn */
-			0x3fc 0x60000 /* uart2_rtsn */
 		>;
 	};
 
@@ -597,12 +586,6 @@
 	status = "okay";
         pinctrl-names = "default";
         pinctrl-0 = <&uart1_pins>;
-};
-
-&uart2 {
-        status = "okay";
-        pinctrl-names = "default";
-        pinctrl-0 = <&uart2_pins>;
 };
 
 &uart3 {
