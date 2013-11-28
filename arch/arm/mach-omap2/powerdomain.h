@@ -254,6 +254,7 @@ extern void omap242x_powerdomains_init(void);
 extern void omap243x_powerdomains_init(void);
 extern void omap3xxx_powerdomains_init(void);
 extern void am33xx_powerdomains_init(void);
+extern void am43xx_powerdomains_init(void);
 extern void omap44xx_powerdomains_init(void);
 extern void omap54xx_powerdomains_init(void);
 extern void dra7xx_powerdomains_init(void);

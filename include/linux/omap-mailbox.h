@@ -9,20 +9,27 @@
 #ifndef OMAP_MAILBOX_H
 #define OMAP_MAILBOX_H
 
+/* forward declaration for clients */
 typedef u32 mbox_msg_t;
 struct omap_mbox;
 
+/* interrupt direction identifiers */
 typedef int __bitwise omap_mbox_irq_t;
 #define IRQ_TX ((__force omap_mbox_irq_t) 1)
 #define IRQ_RX ((__force omap_mbox_irq_t) 2)
 
+/* client api for message transmission */
 int omap_mbox_msg_send(struct omap_mbox *, mbox_msg_t msg);
 
+/* client api for acquiring and releasing a mailbox */
 struct omap_mbox *omap_mbox_get(const char *, struct notifier_block *nb);
 void omap_mbox_put(struct omap_mbox *mbox, struct notifier_block *nb);
 
+/* client api for saving and restoring context */
 void omap_mbox_save_ctx(struct omap_mbox *mbox);
 void omap_mbox_restore_ctx(struct omap_mbox *mbox);
+
+/* client api for manipulating mailbox interrupts */
 void omap_mbox_enable_irq(struct omap_mbox *mbox, omap_mbox_irq_t irq);
 void omap_mbox_disable_irq(struct omap_mbox *mbox, omap_mbox_irq_t irq);
 

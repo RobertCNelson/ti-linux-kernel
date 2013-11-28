@@ -95,7 +95,7 @@ struct clk *imx_clk_busy_divider(const char *name, const char *parent_name,
 
 	busy->div.reg = reg;
 	busy->div.shift = shift;
-	busy->div.width = width;
+	busy->div.mask = BIT(width) - 1;
 	busy->div.lock = &imx_ccm_lock;
 	busy->div_ops = &clk_divider_ops;
 

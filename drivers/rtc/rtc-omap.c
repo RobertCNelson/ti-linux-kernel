@@ -393,6 +393,10 @@ static int __init omap_rtc_probe(struct platform_device *pdev)
 	 */
 	rtc_write(0, OMAP_RTC_INTERRUPTS_REG);
 
+	/* Selecting CLK cource for RTC */
+	rtc_writel((1 << 3) | (1 << 6), OMAP_RTC_OSC_REG);
+	rtc_writel(0x3, OMAP_RTC_IRQWAKEEN);
+
 	/* clear old status */
 	reg = rtc_read(OMAP_RTC_STATUS_REG);
 	if (reg & (u8) OMAP_RTC_STATUS_POWER_UP) {
