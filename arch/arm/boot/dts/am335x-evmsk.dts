@@ -33,7 +33,13 @@
 
 	am33xx_pinmux: pinmux@44e10800 {
 		pinctrl-names = "default";
-		pinctrl-0 = <&gpio_keys_s0 &clkout2_pin>;
+		pinctrl-0 = <&gpio_keys_s0 &clkout2_pin &ddr3_vtt_toggle>;
+
+		ddr3_vtt_toggle: ddr3_vtt_toggle {
+			pinctrl-single,pins = <
+				0x164 0x7	/* ecap0_in_pwm0_out.gpio0_7, OUTPUT | MODE7 */
+			>;
+		};
 
 		lcd_pins_s0: lcd_pins_s0 {
 			pinctrl-single,pins = <
@@ -426,6 +432,11 @@
 	};
 };
 
+&wkup_m3 {
+	ti,needs-vtt-toggle;
+	ti,vtt-gpio-pin = <7>;
+};
+
 #include "tps65910.dtsi"
 
 &tps {
@@ -448,10 +459,10 @@
 		};
 
 		vdd1_reg: regulator@2 {
-			/* VDD_MPU voltage limits 0.95V - 1.26V with +/-4% tolerance */
+			/* VDD_MPU voltage limits 0.95V - 1.325V with +/-4% tolerance */
 			regulator-name = "vdd_mpu";
 			regulator-min-microvolt = <912500>;
-			regulator-max-microvolt = <1312500>;
+			regulator-max-microvolt = <1378000>;
 			regulator-boot-on;
 			regulator-always-on;
 		};

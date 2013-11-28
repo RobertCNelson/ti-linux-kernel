@@ -10,6 +10,7 @@
 
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/pinctrl/am33xx.h>
+#include <dt-bindings/opp/am33xx.h>
 
 #include "skeleton.dtsi"
 
@@ -52,12 +53,18 @@
 			 */
 			operating-points = <
 				/* kHz    uV */
+				1000000 1351000
+				800000	1285000
 				720000  1285000
 				600000  1225000
 				500000  1125000
+				300000  1125000
 				275000  1125000
 			>;
+
 			voltage-tolerance = <2>; /* 2 percentage */
+
+			platform-opp-modifier = <&mpu_opp_modifier>;
 
 			clocks = <&dpll_mpu_ck>;
 			clock-names = "cpu";
@@ -930,6 +937,29 @@
 			dma-names = "tx", "rx";
 			clocks = <&mcasp1_fck>;
 			clock-names = "fck";
+		};
+
+		efuse_sma: efuse@0x44e107fc {
+			compatible = "ti,opp-omap";
+			reg = <0x44e107fc 0x04		/* EFUSE_SMA */
+			       0x44e10600 0x04>;	/* DEVICE_ID */
+
+			mpu_opp_modifier: mpu_opp_modifier {
+				opp-modifier = <
+				/* kHz	 Rev				offset	mask */
+				1000000	 OPP_REV(2,1)			0	AM33XX_EFUSE_SMA_OPP_NITRO_1GHZ_BIT
+				800000	 OPP_REV(2,1)			0	AM33XX_EFUSE_SMA_OPP_TURBO_800MHZ_BIT
+				720000	 OPP_REV(2,1)			0	AM33XX_EFUSE_SMA_OPP_120_720MHZ_BIT
+				600000	 OPP_REV(2,1)			0	AM33XX_EFUSE_SMA_OPP_100_600MHZ_BIT
+				300000	 (OPP_REV(2,0) | OPP_REV(2,1)) 	0	0
+				1000000	 OPP_REV(2,0)			0	0
+				800000	 OPP_REV(2,0)			0	0
+				720000	 (OPP_REV(1,0) | OPP_REV(2,0)) 	0	0
+				600000	 (OPP_REV(1,0) | OPP_REV(2,0))	0	0
+				500000	 (OPP_REV(1,0))			0	0
+				275000	 (OPP_REV(1,0))			0	0
+				>;
+			};
 		};
 	};
 

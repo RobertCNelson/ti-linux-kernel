@@ -1,0 +1,44 @@
+I2C suspend/resume sequences
+
+This provides the ability for a simple I2C sequence to be written at
+suspend time and resume time. This is for sequences that cannot be written
+by the I2C bus driver for reasons such as needing to be run from SRAM
+or needing to be written by firmware.
+
+The sequence is composed of messages. Each message contains a length byte,
+an address byte, and then the message.
+
+Optional properties:
+- sleep-sequence
+	I2C sequence to write during suspend
+
+- wake-sequence
+	I2C sequence to write during wake
+
+Examples :
+
+i2c0: i2c@0 {
+	/* Set OPP50 (0.95V) for VDD core on TPS65217 */
+	sleep-sequence = /bits/ 8 <
+		0x02 0x24 0x0b 0x6d /* Password unlock 1 */
+		0x02 0x24 0x10 0x02 /* Set DCDC3 to 0.95V */
+		0x02 0x24 0x0b 0x6d /* Password unlock 2 */
+		0x02 0x24 0x10 0x02 /* Set DCDC3 to 0.95V */
+		0x02 0x24 0x0b 0x6c /* Password unlock 1 */
+		0x02 0x24 0x11 0x86 /* Apply DCDC changes */
+		0x02 0x24 0x0b 0x6c /* Password unlock 2 */
+		0x02 0x24 0x11 0x86 /* Apply DCDC changes */
+	>;
+
+	/* Set OPP100 (1.10V) for VDD core */
+	wake-sequence = /bits/ 8 <
+		0x02 0x24 0x0b 0x6d /* Password unlock 1 */
+		0x02 0x24 0x10 0x08 /* Set DCDC3 to 1.1V */
+		0x02 0x24 0x0b 0x6d /* Password unlock 2 */
+		0x02 0x24 0x10 0x08 /* Set DCDC3 to 1.1V */
+		0x02 0x24 0x0b 0x6c /* Password unlock 1 */
+		0x02 0x24 0x11 0x86 /* Apply DCDC changes */
+		0x02 0x24 0x0b 0x6c /* Password unlock 2 */
+		0x02 0x24 0x11 0x86 /* Apply DCDC changes */
+	>;
+}

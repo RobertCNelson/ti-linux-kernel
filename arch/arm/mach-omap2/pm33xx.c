@@ -29,6 +29,7 @@
 #include <linux/ti_emif.h>
 #include <linux/omap-mailbox.h>
 
+#include <asm/unaligned.h>
 #include <asm/suspend.h>
 #include <asm/proc-fns.h>
 #include <asm/sizes.h>
@@ -43,11 +44,17 @@
 #include "powerdomain.h"
 #include "soc.h"
 #include "sram.h"
+#include "omap_device.h"
 
 static void __iomem *am33xx_emif_base;
 static struct powerdomain *cefuse_pwrdm, *gfx_pwrdm, *per_pwrdm, *mpu_pwrdm;
 static struct clockdomain *gfx_l4ls_clkdm;
 static struct clockdomain *l3s_clkdm, *l4fw_clkdm, *clk_24mhz_clkdm;
+
+static char *am33xx_i2c_sleep_sequence;
+static char *am33xx_i2c_wake_sequence;
+static size_t i2c_sleep_sequence_sz;
+static size_t i2c_wake_sequence_sz;
 
 static struct am33xx_pm_context *am33xx_pm;
 
@@ -172,7 +179,29 @@ static int am33xx_pm_begin(suspend_state_t state)
 {
 	int i;
 
+	unsigned long param4;
+	int pos;
+
 	cpu_idle_poll_ctrl(true);
+
+	param4 = DS_IPC_DEFAULT;
+
+	wkup_m3_reset_data_pos();
+	if (am33xx_i2c_sleep_sequence) {
+		pos = wkup_m3_copy_data(am33xx_i2c_sleep_sequence,
+						i2c_sleep_sequence_sz);
+		/* Lower 16 bits stores offset to sleep sequence */
+		param4 &= ~0xffff;
+		param4 |= pos;
+	}
+
+	if (am33xx_i2c_wake_sequence) {
+		pos = wkup_m3_copy_data(am33xx_i2c_wake_sequence,
+						i2c_wake_sequence_sz);
+		/* Upper 16 bits stores offset to wake sequence */
+		param4 &= ~0xffff0000;
+		param4 |= pos << 16;
+	}
 
 	switch (state) {
 	case PM_SUSPEND_MEM:
@@ -185,7 +214,7 @@ static int am33xx_pm_begin(suspend_state_t state)
 
 	am33xx_pm->ipc.reg2		= DS_IPC_DEFAULT;
 	am33xx_pm->ipc.reg3		= DS_IPC_DEFAULT;
-
+	am33xx_pm->ipc.reg5		= param4;
 	wkup_m3_pm_set_cmd(&am33xx_pm->ipc);
 
 	am33xx_pm->state = M3_STATE_MSG_FOR_LP;
@@ -311,10 +340,68 @@ static int __init am33xx_map_emif(void)
 	return 0;
 }
 
+static int __init am33xx_setup_sleep_sequence(void)
+{
+	int ret;
+	int sz;
+	const void *prop;
+	struct device *dev;
+	u32 freq_hz = 100000;
+	unsigned short freq_khz;
+
+	/*
+	 * We put the device tree node in the I2C controller that will
+	 * be sending the sequence. i2c1 is the only controller that can
+	 * be accessed by the firmware as it is the only controller in the
+	 * WKUP domain.
+	 */
+	dev = omap_device_get_by_hwmod_name("i2c1");
+	if (IS_ERR(dev))
+		return PTR_ERR(dev);
+
+	of_property_read_u32(dev->of_node, "clock-frequency", &freq_hz);
+	freq_khz = freq_hz / 1000;
+
+	prop = of_get_property(dev->of_node, "sleep-sequence", &sz);
+	if (prop) {
+		/*
+		 * Length is sequence length + 2 bytes for freq_khz, and 1
+		 * byte for terminator.
+		 */
+		am33xx_i2c_sleep_sequence = kzalloc(sz + 3, GFP_KERNEL);
+
+		if (!am33xx_i2c_sleep_sequence)
+			return -ENOMEM;
+		put_unaligned_le16(freq_khz, am33xx_i2c_sleep_sequence);
+		memcpy(am33xx_i2c_sleep_sequence + 2, prop, sz);
+		i2c_sleep_sequence_sz = sz + 3;
+	}
+
+	prop = of_get_property(dev->of_node, "wake-sequence", &sz);
+	if (prop) {
+		am33xx_i2c_wake_sequence = kzalloc(sz + 3, GFP_KERNEL);
+		if (!am33xx_i2c_wake_sequence) {
+			ret = -ENOMEM;
+			goto cleanup_sleep;
+		}
+		put_unaligned_le16(freq_khz, am33xx_i2c_wake_sequence);
+		memcpy(am33xx_i2c_wake_sequence + 2, prop, sz);
+		i2c_wake_sequence_sz = sz + 3;
+	}
+
+	return 0;
+
+cleanup_sleep:
+	kfree(am33xx_i2c_sleep_sequence);
+	am33xx_i2c_sleep_sequence = NULL;
+	return ret;
+}
+
 int __init am33xx_pm_init(void)
 {
 	int ret;
 	u32 temp;
+	struct device_node *np;
 
 	if (!soc_is_am33xx())
 		return -ENODEV;
@@ -354,7 +441,27 @@ int __init am33xx_pm_init(void)
 	susp_params.emif_addr_virt = am33xx_emif_base;
 	susp_params.dram_sync = am33xx_dram_sync;
 	susp_params.mem_type = temp;
-	am33xx_pm->ipc.reg4 = temp;
+	am33xx_pm->ipc.reg4 = temp & MEM_TYPE_MASK;
+
+	np = of_find_compatible_node(NULL, NULL, "ti,am3353-wkup-m3");
+	if (np) {
+		if (of_find_property(np, "ti,needs-vtt-toggle", NULL) &&
+		    (!(of_property_read_u32(np, "ti,vtt-gpio-pin",
+							&temp)))) {
+			if (temp >= 0 && temp <= 31)
+				am33xx_pm->ipc.reg4 |=
+					((1 << VTT_STAT_SHIFT) |
+					(temp << VTT_GPIO_PIN_SHIFT));
+			else
+				pr_warn("PM: Invalid VTT GPIO(%d) pin\n", temp);
+		}
+	}
+
+	ret = am33xx_setup_sleep_sequence();
+	if (ret) {
+		pr_err("Error fetching I2C sleep/wake sequence\n");
+		goto err;
+	}
 
 	(void) clkdm_for_each(omap_pm_clkdms_setup, NULL);
 

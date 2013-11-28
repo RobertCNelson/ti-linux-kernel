@@ -24,6 +24,7 @@
 #include <linux/opp.h>
 #include <linux/of.h>
 #include <linux/export.h>
+#include <linux/opp-modifier.h>
 
 /*
  * Internal data structure organization with the OPP layer library is as
@@ -626,6 +627,13 @@ int opp_init_cpufreq_table(struct device *dev,
 	struct opp *opp;
 	struct cpufreq_frequency_table *freq_table;
 	int i = 0;
+	int ret;
+
+	ret = opp_modify_dev_table(dev);
+	if (ret) {
+		pr_err("failed to modify OPP table: %d\n", ret);
+		return ret;
+	}
 
 	/* Pretend as if I am an updater */
 	mutex_lock(&dev_opp_list_lock);
