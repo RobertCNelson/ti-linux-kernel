@@ -89,6 +89,7 @@
 			&mcbsp2_pins
 			&usbhost_pins
 			&led_gpio_pins
+			&palmas_pins
 	>;
 
 	twl6040_pins: pinmux_twl6040_pins {
@@ -219,6 +220,13 @@
 		>;
 	};
 
+	palmas_pins: pinmux_palmas_pins {
+		pinctrl-single,pins = <
+			0x140 (PIN_INPUT_PULLUP | MUX_MODE1)	/* MSECURE */
+		>;
+	};
+
+
 };
 
 &omap5_pmx_wkup {
@@ -271,6 +279,13 @@
 		reg = <0x48>;
 		interrupt-controller;
 		#interrupt-cells = <2>;
+
+		palmas_rtc: rtc {
+			compatible = "ti,palmas-rtc";
+			interrupt-parent = <&palmas>;
+			interrupts = <8 IRQ_TYPE_NONE>;
+			ti,backup-battery-chargeable;
+		};
 
 		palmas_pmic {
 			compatible = "ti,palmas-pmic";

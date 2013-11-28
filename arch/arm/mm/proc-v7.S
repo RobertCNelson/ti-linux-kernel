@@ -381,7 +381,7 @@ __v7_setup:
 	mov	pc, lr				@ return to head.S:__ret
 ENDPROC(__v7_setup)
 
-	.align	2
+	.align	10
 __v7_setup_stack:
 	.space	4 * 11				@ 11 registers
 

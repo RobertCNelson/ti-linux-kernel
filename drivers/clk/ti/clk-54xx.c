@@ -25,6 +25,18 @@
  */
 #define OMAP5_DPLL_USB_DEFFREQ				960000000
 
+/*
+ * OMAP5 IVA DPLL frequency settings. The recommended maximum DPLL locked
+ * frequency is 2330 MHz for OPP_LOW & OPP_NOM (value for DPLL_IVA_X2_CLK),
+ * so the DPLL_IVA_DEFFREQ is defined to be half of this value. Note that
+ * the value 1164.8 MHz is chosen so that the DPLL can be locked with proper
+ * M & N divider values. The output clock values are based on the OPP_NOM
+ * frequencies for DSP and IVAHD subsystems.
+ */
+#define OMAP5_DPLL_IVA_DEFFREQ				1164800000
+#define OMAP5_DSP_GCLK_NOMFREQ				466000000
+#define OMAP5_IVA_GCLK_NOMFREQ				388300000
+
 static struct omap_dt_clk omap54xx_clks[] = {
 	DT_CLK(NULL, "pad_clks_src_ck", "pad_clks_src_ck"),
 	DT_CLK(NULL, "pad_clks_ck", "pad_clks_ck"),
@@ -183,17 +195,6 @@ static struct omap_dt_clk omap54xx_clks[] = {
 	DT_CLK(NULL, "auxclk3_ck", "auxclk3_ck"),
 	DT_CLK(NULL, "auxclkreq3_ck", "auxclkreq3_ck"),
 	DT_CLK(NULL, "timer_32k_ck", "sys_32k_ck"),
-	DT_CLK("omap_timer.1", "sys_ck", "sys_clkin"),
-	DT_CLK("omap_timer.2", "sys_ck", "sys_clkin"),
-	DT_CLK("omap_timer.3", "sys_ck", "sys_clkin"),
-	DT_CLK("omap_timer.4", "sys_ck", "sys_clkin"),
-	DT_CLK("omap_timer.9", "sys_ck", "sys_clkin"),
-	DT_CLK("omap_timer.10", "sys_ck", "sys_clkin"),
-	DT_CLK("omap_timer.11", "sys_ck", "sys_clkin"),
-	DT_CLK("omap_timer.5", "sys_ck", "dss_syc_gfclk_div"),
-	DT_CLK("omap_timer.6", "sys_ck", "dss_syc_gfclk_div"),
-	DT_CLK("omap_timer.7", "sys_ck", "dss_syc_gfclk_div"),
-	DT_CLK("omap_timer.8", "sys_ck", "dss_syc_gfclk_div"),
 	{ .node_name = NULL },
 };
 
@@ -201,6 +202,7 @@ int __init omap5xxx_clk_init(void)
 {
 	int rc;
 	struct clk *abe_dpll_ref, *abe_dpll, *sys_32k_ck, *usb_dpll;
+	struct clk *iva_dpll, *iva_h11x2_dpll, *iva_h12x2_dpll;
 
 	of_clk_init(NULL);
 
@@ -226,6 +228,29 @@ int __init omap5xxx_clk_init(void)
 	rc = clk_set_rate(usb_dpll, OMAP5_DPLL_USB_DEFFREQ/2);
 	if (rc)
 		pr_err("%s: failed to set USB_DPLL M2 OUT\n", __func__);
+
+	/*
+	 * Lock the IVA DPLL and its derivative clocks so that the DSP and
+	 * IVA processors are running at nominal operating points rather
+	 * than at a bypass clock rate or at a misconfigured output rate.
+	 */
+	iva_dpll = clk_get_sys(NULL, "dpll_iva_ck");
+	rc = clk_set_rate(iva_dpll, OMAP5_DPLL_IVA_DEFFREQ);
+	if (!rc) {
+		iva_h11x2_dpll = clk_get_sys(NULL, "dpll_iva_h11x2_ck");
+		rc = clk_set_rate(iva_h11x2_dpll, OMAP5_DSP_GCLK_NOMFREQ);
+		if (rc)
+			pr_err("%s: failed to configure IVA DPLL h11x2 divider!\n",
+			       __func__);
+
+		iva_h12x2_dpll = clk_get_sys(NULL, "dpll_iva_h12x2_ck");
+		rc = clk_set_rate(iva_h12x2_dpll, OMAP5_IVA_GCLK_NOMFREQ);
+		if (rc)
+			pr_err("%s: failed to configure IVA DPLL h12x2 divider!\n",
+			       __func__);
+	} else {
+		pr_err("%s: failed to configure IVA DPLL!\n", __func__);
+	}
 
 	return 0;
 }

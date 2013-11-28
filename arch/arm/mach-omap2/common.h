@@ -138,6 +138,14 @@ static inline void am33xx_restart(enum reboot_mode mode, const char *cmd)
 }
 #endif
 
+#ifdef CONFIG_SOC_AM43XX
+void am43xx_restart(enum reboot_mode mode, const char *cmd);
+#else
+static inline void am43xx_restart(enum reboot_mode mode, const char *cmd)
+{
+}
+#endif
+
 #ifdef CONFIG_ARCH_OMAP3
 void omap3xxx_restart(enum reboot_mode mode, const char *cmd);
 #else

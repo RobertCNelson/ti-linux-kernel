@@ -377,6 +377,7 @@ static struct omap_hwmod_class_sysconfig am33xx_aes0_sysc = {
 	.sysc_offs	= 0x84,
 	.syss_offs	= 0x88,
 	.sysc_flags	= SYSS_HAS_RESET_STATUS,
+	.sysc_fields	= &omap_hwmod_sysc_type4,
 };
 
 static struct omap_hwmod_class am33xx_aes0_hwmod_class = {
@@ -2953,6 +2954,7 @@ static struct omap_hwmod_ocp_if *am33xx_hwmod_ocp_ifs[] __initdata = {
 	&am33xx_l4_hs__pruss,
 	&am33xx_l3_main__lcdc,
 	&am33xx_l3_s__usbss,
+	&am33xx_l4_wkup__rtc,
 	NULL,
 };
 
@@ -2975,7 +2977,6 @@ static struct omap_hwmod_ocp_if *amx3xx_hwmod_ocp_ifs[] __initdata = {
 	&am33xx_l4_wkup__smartreflex1,
 	&am33xx_l4_wkup__uart1,
 	&am33xx_l4_wkup__timer1,
-	&am33xx_l4_wkup__rtc,
 	&am33xx_l4_wkup__i2c1,
 	&am33xx_l4_wkup__gpio0,
 	&am33xx_l4_wkup__adc_tsc,
