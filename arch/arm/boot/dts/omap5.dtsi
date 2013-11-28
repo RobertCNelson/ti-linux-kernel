@@ -328,6 +328,12 @@
 			status = "disabled";
 		};
 
+		hwspinlock: spinlock@4a0f6000 {
+			compatible = "ti,omap4-hwspinlock";
+			reg = <0x4a0f6000 0x1000>;
+			ti,hwmods = "spinlock";
+		};
+
 		mcspi1: spi@48098000 {
 			compatible = "ti,omap4-mcspi";
 			reg = <0x48098000 0x200>;
@@ -840,7 +846,6 @@
 			clocks = <&dpll_core_h13x2_ck>, <&usb_otg_ss_refclk960m>;
 			clock-names = "fck", "refclk960m";
 			reg = <0x4a020000 0x10000>;
-
 			interrupts = <GIC_SPI 93 IRQ_TYPE_LEVEL_HIGH>;
 			#address-cells = <1>;
 			#size-cells = <1>;

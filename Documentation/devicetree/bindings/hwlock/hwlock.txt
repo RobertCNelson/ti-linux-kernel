@@ -1,0 +1,49 @@
+Generic hwlock bindings
+=======================
+
+Generic bindings that are common to all the hwlock platform specific driver
+implementations, the retrieved values are used for registering the device
+specific parameters with the hwspinlock core.
+
+The validity and need of these common properties may vary from one platform
+implementation to another. The platform specific bindings should explicitly
+state if a property is mandatory or optional. Please look through the
+individual platform specific hwlock binding documentations for identifying
+the applicable properties.
+
+Common properties:
+- hwlock-num-locks:	Number of locks present in a hwlock device. This
+			property is needed on hwlock devices, where the number
+			of supported locks within a hwlock device cannot be
+			read from a register.
+
+Hwlock Users:
+=============
+
+Nodes that require specific hwlock(s) should specify them using one or more
+properties, each containing a phandle to the hwlock node and a 0-indexed
+relative hwlock number within that hwlock node. Multiple hwlocks can be
+requested using an array of the phandle and hwlock number specifier tuple.
+
+1. Example of a node using a single specific hwlock:
+
+The following example has a node requesting third hwlock in the bank
+defined by the node hwlock1.
+
+	node {
+		...
+		hwlocks = <&hwlock1 2>;
+		...
+	};
+
+2. Example of a node using multiple specific hwlocks:
+
+The following example has a node requesting two hwlocks, third hwlock within
+the hwlock device node 'hwlock1', and the first hwlock within the hwlock
+device node 'hwlock2'.
+
+	node {
+		...
+		hwlocks = <&hwlock1 2>, <&hwlock2 0>;
+		...
+	};
