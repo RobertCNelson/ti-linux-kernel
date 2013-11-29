@@ -34,7 +34,6 @@
 #include <linux/pm_runtime.h>
 #include <linux/gfp.h>
 #include <linux/sizes.h>
-#include <linux/clk-private.h>
 
 #include <video/omapdss.h>
 
@@ -690,20 +689,6 @@ static int dss_get_clocks(void)
 			return PTR_ERR(clk);
 		}
 	} else {
-		int r;
-
-		DSSDBG("DSS CLOCK HACK\n");
-		printk("FCK %s\n", clk->name);
-
-		clk = clk_get_parent(clk);
-		DSSDBG("GATE %s\n", clk->name);
-
-		clk = clk_get_parent(clk);
-		DSSDBG("PLL %s\n", clk->name);
-
-		r = clk_set_rate(clk, 150000000);
-		if (!r)
-			DSSERR("SET CLK RATE Failed");
 		clk = NULL;
 	}
 
