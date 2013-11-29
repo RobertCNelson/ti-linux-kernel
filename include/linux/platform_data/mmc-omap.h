@@ -66,6 +66,8 @@ struct omap_mmc_platform_data {
 
 	/* Register offset deviation */
 	u16 reg_offset;
+	unsigned needs_vmmc:1;
+	unsigned needs_vmmc_aux:1;
 
 	struct omap_mmc_slot_data {
 
@@ -118,7 +120,7 @@ struct omap_mmc_platform_data {
 
 		int (*set_bus_mode)(struct device *dev, int slot, int bus_mode);
 		int (*set_power)(struct device *dev, int slot,
-				 int power_on, int vdd);
+				 int power_on, int vdd_iopower);
 		int (*get_ro)(struct device *dev, int slot);
 		void (*remux)(struct device *dev, int slot, int power_on);
 		/* Call back before enabling / disabling regulators */

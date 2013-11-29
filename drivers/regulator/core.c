@@ -3488,9 +3488,10 @@ regulator_register(const struct regulator_desc *regulator_desc,
 
 		/* Enable supply if rail is enabled */
 		if (_regulator_is_enabled(rdev)) {
-			ret = regulator_enable(rdev->supply);
-			if (ret < 0)
-				goto scrub;
+			if (!_regulator_is_enabled(rdev->supply->rdev))
+				ret = regulator_enable(rdev->supply);
+				if (ret < 0)
+					goto scrub;
 		}
 	}
 

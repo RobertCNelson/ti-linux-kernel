@@ -30,6 +30,15 @@
 		gpios = <&gpio21 2 0>;
 	};
 
+	evm_3v3_sd: fixedregulator-sd {
+		compatible = "regulator-fixed";
+		regulator-name = "evm_3v3_sd";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		enable-active-high;
+		gpio = <&gpio21 5 0>;
+	};
+
 	evm_3v3_sw: fixedregulator-evm_3v3_sw {
 		compatible = "regulator-fixed";
 		regulator-name = "evm_3v3_sw";
@@ -106,6 +115,28 @@
 	mmc1_pins: pinmux_mmc1_pins {
 		pinctrl-single,pins = <
 			0x36c 0x4000e	/* mmc1sdcd.gpio INPUT | MODE15 */
+		>;
+	};
+
+	mmc1_muxpu: pinmux_mmc1_muxpu {
+		pinctrl-single,pins = <
+			0x354 0x60000	/* mmc1_clk.clk INPUT PULLUP | MODE0 */
+			0x358 0x60000	/* mmc1_cmd.cmd INPUT PULLUP | MODE0 */
+			0x35c 0x60000	/* mmc1_dat0.dat0 INPUT PULLUP | MODE0 */
+			0x360 0x60000	/* mmc1_dat1.dat1 INPUT PULLUP | MODE0 */
+			0x364 0x60000	/* mmc1_dat2.dat2 INPUT PULLUP | MODE0 */
+			0x368 0x60000	/* mmc1_dat3.dat3 INPUT PULLUP | MODE0 */
+		>;
+	};
+
+	mmc1_muxpd: pinmux_mmc1_muxpd {
+		pinctrl-single,pins = <
+			0x354 0x20000	/* mmc1_clk.clk INPUT PULLUP | MODE0 */
+			0x358 0x20000	/* mmc1_cmd.cmd INPUT PULLUP | MODE0 */
+			0x35c 0x20000	/* mmc1_dat0.dat0 INPUT PULLUP | MODE0 */
+			0x360 0x20000	/* mmc1_dat1.dat1 INPUT PULLUP | MODE0 */
+			0x364 0x20000	/* mmc1_dat2.dat2 INPUT PULLUP | MODE0 */
+			0x368 0x20000	/* mmc1_dat3.dat3 INPUT PULLUP | MODE0 */
 		>;
 	};
 
@@ -395,6 +426,7 @@
 						regulator-name = "ldo1";
 						regulator-min-microvolt = <1800000>;
 						regulator-max-microvolt = <3300000>;
+						regulator-always-on;
 						regulator-boot-on;
 					};
 
@@ -633,10 +665,14 @@
 
 &mmc1 {
 	status = "okay";
-	vmmc-supply = <&ldo1_reg>;
+	vmmc-supply = <&evm_3v3_sd>;
+	vmmc_aux-supply = <&ldo1_reg>;
+	pbias-supply = <&pbias_regulator>;
 	bus-width = <4>;
-	pinctrl-names = "default";
+	pinctrl-names = "default", "muxpu", "muxpd";
 	pinctrl-0 = <&mmc1_pins>;
+	pinctrl-1 = <&mmc1_muxpu>;
+	pinctrl-2 = <&mmc1_muxpd>;
 	cd-gpios = <&gpio6 27 0>; /* gpio 187 */
 };
 

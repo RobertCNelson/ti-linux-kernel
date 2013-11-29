@@ -61,6 +61,7 @@
 /* on board microSD slot */
 &mmc1 {
 	vmmc-supply = <&vmmc1>;
+	pbias-supply = <&pbias_regulator>;
 	bus-width = <4>;
 };
 

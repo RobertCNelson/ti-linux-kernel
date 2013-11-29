@@ -75,6 +75,7 @@
 
 &mmc1 {
 	vmmc-supply = <&vmmc>;
+	pbias-supply = <&pbias_regulator>;
 	ti,bus-width = <8>;
 	ti,non-removable;
 };

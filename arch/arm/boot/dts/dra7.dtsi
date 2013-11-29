@@ -206,6 +206,20 @@
 			#thermal-sensor-cells = <1>;
 		};
 
+		tisyscon: tisyscon@4A100600 {
+			compatible = "ti,control-syscon", "syscon", "simple-bus";
+			reg = <0x4A002E00 0x4>;
+				pbias_regulator: pbias_regulator {
+					compatible = "regulator-pbias-omap5";
+					pbias-reg-offset = <0>;
+					regulator-name = "pbias_regulator";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt = <3000000>;
+					regulator-boot-on;
+					startup-delay-us = <10>;
+			};
+		};
+
 		sdma: dma-controller@4a056000 {
 			compatible = "ti,omap4430-sdma";
 			reg = <0x4a056000 0x1000>;
