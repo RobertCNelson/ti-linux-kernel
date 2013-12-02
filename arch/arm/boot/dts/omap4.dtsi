@@ -645,6 +645,7 @@
 			ti,hwmods = "timer3";
 			clocks = <&cm2_dm3_mux>;
 			clock-names = "fck";
+			ti,timer-ipu;
 		};
 
 		timer4: timer@48036000 {
@@ -654,6 +655,7 @@
 			ti,hwmods = "timer4";
 			clocks = <&cm2_dm4_mux>;
 			clock-names = "fck";
+			ti,timer-ipu;
 		};
 
 		timer5: timer@40138000 {
@@ -708,6 +710,7 @@
 			ti,hwmods = "timer9";
 			clocks = <&cm2_dm9_mux>;
 			clock-names = "fck";
+			ti,timer-ipu;
 			ti,timer-pwm;
 		};
 
@@ -728,6 +731,7 @@
 			ti,hwmods = "timer11";
 			clocks = <&cm2_dm11_mux>;
 			clock-names = "fck";
+			ti,timer-ipu;
 			ti,timer-pwm;
 		};
 

@@ -25,6 +25,7 @@
 #include <linux/omap-dma.h>
 #include <linux/platform_data/spi-omap2-mcspi.h>
 #include <linux/platform_data/asoc-ti-mcbsp.h>
+#include <linux/platform_data/iommu-omap.h>
 #include <plat/dmtimer.h>
 
 #include "omap_hwmod.h"
@@ -326,6 +327,37 @@ static struct omap_hwmod omap54xx_dmic_hwmod = {
 			.clkctrl_offs = OMAP54XX_CM_ABE_DMIC_CLKCTRL_OFFSET,
 			.context_offs = OMAP54XX_RM_ABE_DMIC_CONTEXT_OFFSET,
 			.modulemode   = MODULEMODE_SWCTRL,
+		},
+	},
+};
+
+/*
+ * 'dsp' class
+ * dsp sub-system
+ */
+
+static struct omap_hwmod_class omap54xx_dsp_hwmod_class = {
+	.name	= "dsp",
+};
+
+static struct omap_hwmod_rst_info omap54xx_dsp_resets[] = {
+	{ .name = "dsp", .rst_shift = 0 },
+};
+
+/* dsp */
+static struct omap_hwmod omap54xx_dsp_hwmod = {
+	.name		= "dsp",
+	.class		= &omap54xx_dsp_hwmod_class,
+	.clkdm_name	= "dsp_clkdm",
+	.rst_lines	= omap54xx_dsp_resets,
+	.rst_lines_cnt	= ARRAY_SIZE(omap54xx_dsp_resets),
+	.main_clk	= "dpll_iva_h11x2_ck",
+	.prcm = {
+		.omap4 = {
+			.clkctrl_offs = OMAP54XX_CM_DSP_DSP_CLKCTRL_OFFSET,
+			.rstctrl_offs = OMAP54XX_RM_DSP_RSTCTRL_OFFSET,
+			.context_offs = OMAP54XX_RM_DSP_DSP_CONTEXT_OFFSET,
+			.modulemode   = MODULEMODE_HWCTRL,
 		},
 	},
 };
@@ -643,6 +675,38 @@ static struct omap_hwmod omap54xx_i2c5_hwmod = {
 		},
 	},
 	.dev_attr	= &i2c_dev_attr,
+};
+
+/*
+ * 'ipu' class
+ * imaging processor unit
+ */
+
+static struct omap_hwmod_class omap54xx_ipu_hwmod_class = {
+	.name	= "ipu",
+};
+
+static struct omap_hwmod_rst_info omap54xx_ipu_resets[] = {
+	{ .name = "cpu0", .rst_shift = 0 },
+	{ .name = "cpu1", .rst_shift = 1 },
+};
+
+/* ipu */
+static struct omap_hwmod omap54xx_ipu_hwmod = {
+	.name		= "ipu",
+	.class		= &omap54xx_ipu_hwmod_class,
+	.clkdm_name	= "ipu_clkdm",
+	.rst_lines	= omap54xx_ipu_resets,
+	.rst_lines_cnt	= ARRAY_SIZE(omap54xx_ipu_resets),
+	.main_clk	= "dpll_core_h22x2_ck",
+	.prcm = {
+		.omap4 = {
+			.clkctrl_offs = OMAP54XX_CM_IPU_IPU_CLKCTRL_OFFSET,
+			.rstctrl_offs = OMAP54XX_RM_IPU_RSTCTRL_OFFSET,
+			.context_offs = OMAP54XX_RM_IPU_IPU_CONTEXT_OFFSET,
+			.modulemode   = MODULEMODE_HWCTRL,
+		},
+	},
 };
 
 /*
@@ -1022,6 +1086,98 @@ static struct omap_hwmod omap54xx_mmc5_hwmod = {
 			.modulemode   = MODULEMODE_SWCTRL,
 		},
 	},
+};
+
+/*
+ * 'mmu' class
+ * The memory management unit performs virtual to physical address translation
+ * for its requestors.
+ */
+
+static struct omap_hwmod_class_sysconfig omap54xx_mmu_sysc = {
+	.rev_offs	= 0x0000,
+	.sysc_offs	= 0x0010,
+	.syss_offs	= 0x0014,
+	.sysc_flags	= (SYSC_HAS_AUTOIDLE | SYSC_HAS_CLOCKACTIVITY |
+			   SYSC_HAS_SIDLEMODE | SYSC_HAS_SOFTRESET |
+			   SYSS_HAS_RESET_STATUS),
+	.idlemodes	= (SIDLE_FORCE | SIDLE_NO | SIDLE_SMART),
+	.sysc_fields	= &omap_hwmod_sysc_type1,
+};
+
+static struct omap_hwmod_class omap54xx_mmu_hwmod_class = {
+	.name = "mmu",
+	.sysc = &omap54xx_mmu_sysc,
+};
+
+/* mmu dsp */
+static struct omap_mmu_dev_attr omap54xx_mmu_dsp_dev_attr = {
+	.da_start	= 0x20000000,
+	.da_end		= 0xfffff000,
+	.nr_tlb_entries = 32,
+};
+
+static struct omap_hwmod_irq_info omap54xx_mmu_dsp_irqs[] = {
+	{ .irq = 28 + OMAP54XX_IRQ_GIC_START },
+	{ .irq = -1 }
+};
+
+static struct omap_hwmod_rst_info omap54xx_mmu_dsp_resets[] = {
+	{ .name = "mmu_cache", .rst_shift = 1 },
+};
+
+static struct omap_hwmod omap54xx_mmu_dsp_hwmod = {
+	.name		= "mmu_dsp",
+	.class		= &omap54xx_mmu_hwmod_class,
+	.clkdm_name	= "dsp_clkdm",
+	.mpu_irqs	= omap54xx_mmu_dsp_irqs,
+	.rst_lines	= omap54xx_mmu_dsp_resets,
+	.rst_lines_cnt	= ARRAY_SIZE(omap54xx_mmu_dsp_resets),
+	.main_clk	= "dpll_iva_h11x2_ck",
+	.prcm = {
+		.omap4 = {
+			.clkctrl_offs = OMAP54XX_CM_DSP_DSP_CLKCTRL_OFFSET,
+			.rstctrl_offs = OMAP54XX_RM_DSP_RSTCTRL_OFFSET,
+			.context_offs = OMAP54XX_RM_DSP_DSP_CONTEXT_OFFSET,
+			.modulemode   = MODULEMODE_HWCTRL,
+		},
+	},
+	.dev_attr	= &omap54xx_mmu_dsp_dev_attr,
+};
+
+/* mmu ipu */
+static struct omap_mmu_dev_attr omap54xx_mmu_ipu_dev_attr = {
+	.da_start	= 0x0,
+	.da_end		= 0xfffff000,
+	.nr_tlb_entries = 32,
+};
+
+static struct omap_hwmod_irq_info omap54xx_mmu_ipu_irqs[] = {
+	{ .irq = 100 + OMAP54XX_IRQ_GIC_START, },
+	{ .irq = -1 }
+};
+
+static struct omap_hwmod_rst_info omap54xx_mmu_ipu_resets[] = {
+	{ .name = "mmu_cache", .rst_shift = 2 },
+};
+
+static struct omap_hwmod omap54xx_mmu_ipu_hwmod = {
+	.name		= "mmu_ipu",
+	.class		= &omap54xx_mmu_hwmod_class,
+	.clkdm_name	= "ipu_clkdm",
+	.mpu_irqs	= omap54xx_mmu_ipu_irqs,
+	.rst_lines	= omap54xx_mmu_ipu_resets,
+	.rst_lines_cnt	= ARRAY_SIZE(omap54xx_mmu_ipu_resets),
+	.main_clk	= "dpll_core_h22x2_ck",
+	.prcm = {
+		.omap4 = {
+			.clkctrl_offs = OMAP54XX_CM_IPU_IPU_CLKCTRL_OFFSET,
+			.rstctrl_offs = OMAP54XX_RM_IPU_RSTCTRL_OFFSET,
+			.context_offs = OMAP54XX_RM_IPU_IPU_CONTEXT_OFFSET,
+			.modulemode   = MODULEMODE_HWCTRL,
+		},
+	},
+	.dev_attr	= &omap54xx_mmu_ipu_dev_attr,
 };
 
 /*
@@ -1487,6 +1643,32 @@ static struct omap_hwmod_ocp_if omap54xx_l4_cfg__l3_main_1 = {
 	.user		= OCP_USER_MPU | OCP_USER_SDMA,
 };
 
+/* dsp -> l3_main_1 */
+static struct omap_hwmod_ocp_if omap54xx_dsp__l3_main_1 = {
+	.master		= &omap54xx_dsp_hwmod,
+	.slave		= &omap54xx_l3_main_1_hwmod,
+	.clk		= "l3_iclk_div",
+	.user		= OCP_USER_MPU | OCP_USER_SDMA,
+};
+
+static struct omap_hwmod_addr_space omap54xx_mmu_dsp_addrs[] = {
+	{
+		.pa_start	= 0x4a066000,
+		.pa_end		= 0x4a0660ff,
+		.flags		= ADDR_TYPE_RT,
+	},
+	{ }
+};
+
+/* l4_cfg -> mmu_dsp */
+static struct omap_hwmod_ocp_if omap54xx_l4_cfg__mmu_dsp = {
+	.master		= &omap54xx_l4_cfg_hwmod,
+	.slave		= &omap54xx_mmu_dsp_hwmod,
+	.clk		= "l4_root_clk_div",
+	.addr		= omap54xx_mmu_dsp_addrs,
+	.user		= OCP_USER_MPU | OCP_USER_SDMA,
+};
+
 /* mpu -> l3_main_1 */
 static struct omap_hwmod_ocp_if omap54xx_mpu__l3_main_1 = {
 	.master		= &omap54xx_mpu_hwmod,
@@ -1508,6 +1690,38 @@ static struct omap_hwmod_ocp_if omap54xx_l4_cfg__l3_main_2 = {
 	.master		= &omap54xx_l4_cfg_hwmod,
 	.slave		= &omap54xx_l3_main_2_hwmod,
 	.clk		= "l3_iclk_div",
+	.user		= OCP_USER_MPU | OCP_USER_SDMA,
+};
+
+/* l3_main_2 -> ipu */
+static struct omap_hwmod_ocp_if omap54xx_l3_main_2__ipu = {
+	.master		= &omap54xx_l3_main_2_hwmod,
+	.slave		= &omap54xx_ipu_hwmod,
+	.clk		= "l3_iclk_div",
+	.user		= OCP_USER_MPU | OCP_USER_SDMA,
+};
+
+static struct omap_hwmod_addr_space omap54xx_mmu_ipu_addrs[] = {
+	{
+		.name		= "ipu_mmu",
+		.pa_start	= 0x55082000,
+		.pa_end		= 0x550820ff,
+		.flags		= ADDR_TYPE_RT
+	},
+	{
+		.name		= "unicache_mmu",
+		.pa_start	= 0x55080800,
+		.pa_end		= 0x55080fff,
+	},
+	{ }
+};
+
+/* l3_main_2 -> mmu_ipu */
+static struct omap_hwmod_ocp_if omap54xx_l3_main_2__mmu_ipu = {
+	.master		= &omap54xx_l3_main_2_hwmod,
+	.slave		= &omap54xx_mmu_ipu_hwmod,
+	.clk		= "l3_iclk_div",
+	.addr		= omap54xx_mmu_ipu_addrs,
 	.user		= OCP_USER_MPU | OCP_USER_SDMA,
 };
 
@@ -2030,7 +2244,9 @@ static struct omap_hwmod_ocp_if *omap54xx_hwmod_ocp_ifs[] __initdata = {
 	&omap54xx_l3_main_3__l3_instr,
 	&omap54xx_l3_main_2__l3_main_1,
 	&omap54xx_l4_cfg__l3_main_1,
+	&omap54xx_dsp__l3_main_1,
 	&omap54xx_mpu__l3_main_1,
+	&omap54xx_l3_main_2__ipu,
 	&omap54xx_l3_main_1__l3_main_2,
 	&omap54xx_l4_cfg__l3_main_2,
 	&omap54xx_l3_main_1__l3_main_3,
@@ -2045,6 +2261,7 @@ static struct omap_hwmod_ocp_if *omap54xx_hwmod_ocp_ifs[] __initdata = {
 	&omap54xx_l4_wkup__counter_32k,
 	&omap54xx_l4_cfg__dma_system,
 	&omap54xx_l4_abe__dmic,
+	&omap54xx_l4_cfg__mmu_dsp,
 	&omap54xx_mpu__emif1,
 	&omap54xx_mpu__emif2,
 	&omap54xx_l4_wkup__gpio1,
@@ -2060,6 +2277,7 @@ static struct omap_hwmod_ocp_if *omap54xx_hwmod_ocp_ifs[] __initdata = {
 	&omap54xx_l4_per__i2c3,
 	&omap54xx_l4_per__i2c4,
 	&omap54xx_l4_per__i2c5,
+	&omap54xx_l3_main_2__mmu_ipu,
 	&omap54xx_l4_wkup__kbd,
 	&omap54xx_l4_cfg__mailbox,
 	&omap54xx_l4_abe__mcbsp1,

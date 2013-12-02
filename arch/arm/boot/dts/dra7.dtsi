@@ -100,7 +100,11 @@
 					 "mpu-irq", "mcasp3-arevt", <0x9e 0x96 0x12c>,
 					 "mpu-irq", "mcasp3-axevt", <0x9d 0x97 0x12a>,
 					 "mpu-irq", "mailbox5", <0x88 0xfb 0x100>,
-					 "mpu-irq", "mailbox6", <0x8d 0xff 0x10a>;
+					 "mpu-irq", "mailbox6", <0x8d 0xff 0x10a>,
+					 "mpu-irq", "ipu2-mmu", <0x8e 0x18c 0x10c>,
+					 "mpu-irq", "dsp1-mmu1", <0x8f 0x91 0x10e>,
+					 "mpu-irq", "dsp2-mmu0", <0x90 0x92 0x110>,
+					 "mpu-irq", "dsp2-mmu1", <0x91 0x93 0x112>;
 		};
 
 		crossbar_dma: dmareq@4a002b78 {
@@ -513,6 +517,7 @@
 			ti,hwmods = "timer3";
 			clocks = <&timer3_gfclk_mux>, <&sys_clkin2>;
 			clock-names = "fck", "timer_sys_ck";
+			ti,timer-ipu;
 		};
 
 		timer4: timer@48036000 {
@@ -522,6 +527,7 @@
 			ti,hwmods = "timer4";
 			clocks = <&timer4_gfclk_mux>, <&sys_clkin2>;
 			clock-names = "fck", "timer_sys_ck";
+			ti,timer-ipu;
 		};
 
 		timer5: timer@48820000 {
@@ -573,6 +579,7 @@
 			ti,hwmods = "timer9";
 			clocks = <&timer9_gfclk_mux>, <&sys_clkin2>;
 			clock-names = "fck", "timer_sys_ck";
+			ti,timer-ipu;
 		};
 
 		timer10: timer@48086000 {
@@ -591,6 +598,7 @@
 			ti,hwmods = "timer11";
 			clocks = <&timer11_gfclk_mux>, <&sys_clkin2>;
 			clock-names = "fck", "timer_sys_ck";
+			ti,timer-ipu;
 			ti,timer-pwm;
 		};
 

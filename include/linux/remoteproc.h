@@ -404,6 +404,7 @@ enum rproc_crash_type {
  * @table_ptr: pointer to the resource table in effect
  * @cached_table: copy of the resource table
  * @table_csum: checksum of the resource table
+ * @fw_version: human readable version information extracted from f/w
  */
 struct rproc {
 	struct klist_node node;
@@ -435,6 +436,7 @@ struct rproc {
 	struct resource_table *table_ptr;
 	struct resource_table *cached_table;
 	u32 table_csum;
+	char *fw_version;
 };
 
 /* we currently support only two vrings per rvdev */
@@ -489,6 +491,9 @@ int rproc_del(struct rproc *rproc);
 int rproc_boot(struct rproc *rproc);
 void rproc_shutdown(struct rproc *rproc);
 void rproc_report_crash(struct rproc *rproc, enum rproc_crash_type type);
+struct rproc *rproc_vdev_to_rproc_safe(struct virtio_device *vdev);
+int rproc_get_platform_id(struct rproc *rproc);
+int rproc_pa_to_da(struct rproc *rproc, phys_addr_t pa, u64 *da);
 
 static inline struct rproc_vdev *vdev_to_rvdev(struct virtio_device *vdev)
 {

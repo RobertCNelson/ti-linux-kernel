@@ -18,6 +18,9 @@
 
 #define DRA7_DPLL_ABE_DEFFREQ				361267200
 #define DRA7_DPLL_GMAC_DEFFREQ				1000000000
+#define DRA7_DPLL_DSP_DEFFREQ				600000000
+#define DRA7_DPLL_DSP_GFCLK_NOMFREQ			600000000
+#define DRA7_DPLL_EVE_GCLK_NOMFREQ			400000000
 
 
 static struct omap_dt_clk dra7xx_clks[] = {
@@ -272,6 +275,7 @@ int __init dra7xx_clk_init(void)
 {
 	int rc;
 	struct clk *abe_dpll_mux, *sys_clkin2, *dpll_ck, *deshdcp_clk;
+	struct clk *dsp_dpll, *dsp_m2_dpll, *dsp_m3x2_dpll;
 
 	of_clk_init(NULL);
 
@@ -298,6 +302,24 @@ int __init dra7xx_clk_init(void)
 	rc = clk_prepare_enable(deshdcp_clk);
 	if (rc)
 		pr_err("%s: failed to enable DESHDCP clock\n", __func__);
+
+	dsp_dpll = clk_get_sys(NULL, "dpll_dsp_ck");
+	rc = clk_set_rate(dsp_dpll, DRA7_DPLL_DSP_DEFFREQ);
+	if (!rc) {
+		dsp_m2_dpll = clk_get_sys(NULL, "dpll_dsp_m2_ck");
+		rc = clk_set_rate(dsp_m2_dpll, DRA7_DPLL_DSP_GFCLK_NOMFREQ);
+		if (rc)
+			pr_err("%s: failed to configure DSP DPLL m2 output!\n",
+			       __func__);
+
+		dsp_m3x2_dpll = clk_get_sys(NULL, "dpll_dsp_m3x2_ck");
+		rc = clk_set_rate(dsp_m3x2_dpll, DRA7_DPLL_EVE_GCLK_NOMFREQ);
+		if (rc)
+			pr_err("%s: failed to configure DSP DPLL m3x2 divider!\n",
+			       __func__);
+	} else {
+		pr_err("%s: failed to configure DSP DPLL!\n", __func__);
+	}
 
 	return rc;
 }
