@@ -44,7 +44,11 @@ struct vpdma_data_format {
 	u8 depth;
 };
 
-#define VPDMA_DESC_ALIGN		16	/* 16-byte descriptor alignment */
+/* 16-byte descriptor alignment */
+#define VPDMA_DESC_ALIGN		16
+
+/* line stride of source and destination buffers should be 16 byte aligned */
+#define VPDMA_STRIDE_ALIGN		16
 
 #define VPDMA_DTD_DESC_SIZE		32	/* 8 words */
 #define VPDMA_CFD_CTD_DESC_SIZE		16	/* 4 words */
