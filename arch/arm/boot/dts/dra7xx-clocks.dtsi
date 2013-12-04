@@ -1600,7 +1600,7 @@ mcasp2_ahclkr_mux: mcasp2_ahclkr_mux@4a009860 {
 	#clock-cells = <0>;
 	compatible = "mux-clock";
 	clocks = <&abe_24m_fclk>, <&abe_sys_clk_div>, <&func_24m_clk>, <&atl_clkin3_ck>, <&atl_clkin2_ck>, <&atl_clkin1_ck>, <&atl_clkin0_ck>, <&sys_clkin2>, <&ref_clkin0_ck>, <&ref_clkin1_ck>, <&ref_clkin2_ck>, <&ref_clkin3_ck>, <&mlb_clk>, <&mlbp_clk>;
-	bit-shift = <28>;
+	bit-shift = <24>;
 	reg = <0x4a009860 0x4>;
 	bit-mask = <0xf>;
 };
