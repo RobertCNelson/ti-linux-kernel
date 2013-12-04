@@ -725,6 +725,13 @@ static int jffs2_flash_setup(struct jffs2_sb_info *c) {
 			return ret;
 	}
 
+	/* m25p80 spi flash */
+	if (jffs2_nor_spi_wbuf_flash(c)) {
+		ret = jffs2_nor_wbuf_flash_setup(c);
+		if (ret)
+			return ret;
+	}
+
 	/* and an UBI volume */
 	if (jffs2_ubivol(c)) {
 		ret = jffs2_ubivol_setup(c);
