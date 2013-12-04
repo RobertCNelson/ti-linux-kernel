@@ -146,56 +146,24 @@ static int omap_l3_probe(struct platform_device *pdev)
 {
 	static struct omap_l3 *l3;
 	struct resource	*res;
-	int ret;
+	int ret, i;
 	const struct of_device_id *of_id =
 				of_match_device(l3_noc_match, &pdev->dev);
 
 	l3 = (struct omap_l3 *)of_id->data;
 
 	if (!l3)
-		return -ENOMEM;
+		return -EINVAL;
 
 	platform_set_drvdata(pdev, l3);
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		dev_err(&pdev->dev, "couldn't find resource 0\n");
-		ret = -ENODEV;
-		goto err0;
-	}
 
-	l3->l3_base[0] = ioremap(res->start, resource_size(res));
-	if (!l3->l3_base[0]) {
-		dev_err(&pdev->dev, "ioremap failed\n");
-		ret = -ENOMEM;
-		goto err0;
-	}
-
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
-	if (!res) {
-		dev_err(&pdev->dev, "couldn't find resource 1\n");
-		ret = -ENODEV;
-		goto err1;
-	}
-
-	l3->l3_base[1] = ioremap(res->start, resource_size(res));
-	if (!l3->l3_base[1]) {
-		dev_err(&pdev->dev, "ioremap failed\n");
-		ret = -ENOMEM;
-		goto err1;
-	}
-
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 2);
-	if (!res) {
-		dev_err(&pdev->dev, "couldn't find resource 2\n");
-		ret = -ENODEV;
-		goto err2;
-	}
-
-	l3->l3_base[2] = ioremap(res->start, resource_size(res));
-	if (!l3->l3_base[2]) {
-		dev_err(&pdev->dev, "ioremap failed\n");
-		ret = -ENOMEM;
-		goto err2;
+	for (i = 0; i < l3->num_modules; i++) {
+		res = platform_get_resource(pdev, IORESOURCE_MEM, i);
+		if (res == NULL)
+			return -ENOENT;
+		l3->l3_base[i] = devm_ioremap_resource(&pdev->dev, res);
+		if (IS_ERR(l3->l3_base[i]))
+			return PTR_ERR(l3->l3_base[i]);
 	}
 
 	/*
@@ -208,7 +176,7 @@ static int omap_l3_probe(struct platform_device *pdev)
 	if (ret) {
 		pr_crit("L3: request_irq failed to register for 0x%x\n",
 						l3->debug_irq);
-		goto err3;
+		return ret;
 	}
 
 	l3->app_irq = platform_get_irq(pdev, 1);
@@ -218,21 +186,9 @@ static int omap_l3_probe(struct platform_device *pdev)
 	if (ret) {
 		pr_crit("L3: request_irq failed to register for 0x%x\n",
 						l3->app_irq);
-		goto err4;
+		free_irq(l3->debug_irq, l3);
 	}
 
-	return 0;
-
-err4:
-	free_irq(l3->debug_irq, l3);
-err3:
-	iounmap(l3->l3_base[2]);
-err2:
-	iounmap(l3->l3_base[1]);
-err1:
-	iounmap(l3->l3_base[0]);
-err0:
-	kfree(l3);
 	return ret;
 }
 
@@ -242,10 +198,6 @@ static int omap_l3_remove(struct platform_device *pdev)
 
 	free_irq(l3->app_irq, l3);
 	free_irq(l3->debug_irq, l3);
-	iounmap(l3->l3_base[0]);
-	iounmap(l3->l3_base[1]);
-	iounmap(l3->l3_base[2]);
-	kfree(l3);
 
 	return 0;
 }
