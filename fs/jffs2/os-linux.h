@@ -134,6 +134,8 @@ int jffs2_ubivol_setup(struct jffs2_sb_info *c);
 void jffs2_ubivol_cleanup(struct jffs2_sb_info *c);
 
 #define jffs2_nor_wbuf_flash(c) (c->mtd->type == MTD_NORFLASH && ! (c->mtd->flags & MTD_BIT_WRITEABLE))
+#define jffs2_nor_spi_wbuf_flash(c) \
+	(c->mtd->type == MTD_NORFLASH && (c->mtd->flags & MTD_CAP_NORFLASH))
 int jffs2_nor_wbuf_flash_setup(struct jffs2_sb_info *c);
 void jffs2_nor_wbuf_flash_cleanup(struct jffs2_sb_info *c);
 void jffs2_dirty_trigger(struct jffs2_sb_info *c);
