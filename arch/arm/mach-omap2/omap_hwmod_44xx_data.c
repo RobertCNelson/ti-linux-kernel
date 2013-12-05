@@ -2004,6 +2004,11 @@ static struct omap_mmu_dev_attr mmu_ipu_dev_attr = {
 };
 
 static struct omap_hwmod omap44xx_mmu_ipu_hwmod;
+static struct omap_hwmod_irq_info omap44xx_mmu_ipu_irqs[] = {
+	{ .irq = 100 + OMAP44XX_IRQ_GIC_START },
+	{ .irq = -1 }
+};
+
 static struct omap_hwmod_rst_info omap44xx_mmu_ipu_resets[] = {
 	{ .name = "mmu_cache", .rst_shift = 2 },
 };
@@ -2030,6 +2035,7 @@ static struct omap_hwmod omap44xx_mmu_ipu_hwmod = {
 	.name		= "mmu_ipu",
 	.class		= &omap44xx_mmu_hwmod_class,
 	.clkdm_name	= "ducati_clkdm",
+	.mpu_irqs	= omap44xx_mmu_ipu_irqs,
 	.rst_lines	= omap44xx_mmu_ipu_resets,
 	.rst_lines_cnt	= ARRAY_SIZE(omap44xx_mmu_ipu_resets),
 	.main_clk	= "ducati_clk_mux_ck",
@@ -2047,12 +2053,17 @@ static struct omap_hwmod omap44xx_mmu_ipu_hwmod = {
 /* mmu dsp */
 
 static struct omap_mmu_dev_attr mmu_dsp_dev_attr = {
-	.da_start	= 0x0,
+	.da_start	= 0x20000000,
 	.da_end		= 0xfffff000,
 	.nr_tlb_entries = 32,
 };
 
 static struct omap_hwmod omap44xx_mmu_dsp_hwmod;
+static struct omap_hwmod_irq_info omap44xx_mmu_dsp_irqs[] = {
+	{ .irq = 28 + OMAP44XX_IRQ_GIC_START },
+	{ .irq = -1 }
+};
+
 static struct omap_hwmod_rst_info omap44xx_mmu_dsp_resets[] = {
 	{ .name = "mmu_cache", .rst_shift = 1 },
 };
@@ -2079,6 +2090,7 @@ static struct omap_hwmod omap44xx_mmu_dsp_hwmod = {
 	.name		= "mmu_dsp",
 	.class		= &omap44xx_mmu_hwmod_class,
 	.clkdm_name	= "tesla_clkdm",
+	.mpu_irqs	= omap44xx_mmu_dsp_irqs,
 	.rst_lines	= omap44xx_mmu_dsp_resets,
 	.rst_lines_cnt	= ARRAY_SIZE(omap44xx_mmu_dsp_resets),
 	.main_clk	= "dpll_iva_m4x2_ck",
@@ -2536,6 +2548,16 @@ static struct omap_timer_capability_dev_attr capability_dsp_pwm_dev_attr = {
 	.timer_capability       = OMAP_TIMER_HAS_DSP_IRQ | OMAP_TIMER_HAS_PWM,
 };
 
+/* timers with IPU interrupt dev attribute */
+static struct omap_timer_capability_dev_attr capability_ipu_dev_attr = {
+	.timer_capability       = OMAP_TIMER_HAS_IPU_IRQ,
+};
+
+/* pwm timers with IPU interrupt dev attribute */
+static struct omap_timer_capability_dev_attr capability_ipu_pwm_dev_attr = {
+	.timer_capability       = OMAP_TIMER_HAS_IPU_IRQ | OMAP_TIMER_HAS_PWM,
+};
+
 /* timer1 */
 static struct omap_hwmod omap44xx_timer1_hwmod = {
 	.name		= "timer1",
@@ -2579,6 +2601,7 @@ static struct omap_hwmod omap44xx_timer3_hwmod = {
 			.modulemode   = MODULEMODE_SWCTRL,
 		},
 	},
+	.dev_attr	= &capability_ipu_dev_attr,
 };
 
 /* timer4 */
@@ -2593,6 +2616,7 @@ static struct omap_hwmod omap44xx_timer4_hwmod = {
 			.modulemode   = MODULEMODE_SWCTRL,
 		},
 	},
+	.dev_attr	= &capability_ipu_dev_attr,
 };
 
 /* timer5 */
@@ -2667,7 +2691,7 @@ static struct omap_hwmod omap44xx_timer9_hwmod = {
 			.modulemode   = MODULEMODE_SWCTRL,
 		},
 	},
-	.dev_attr	= &capability_pwm_dev_attr,
+	.dev_attr	= &capability_ipu_pwm_dev_attr,
 };
 
 /* timer10 */
@@ -2698,7 +2722,7 @@ static struct omap_hwmod omap44xx_timer11_hwmod = {
 			.modulemode   = MODULEMODE_SWCTRL,
 		},
 	},
-	.dev_attr	= &capability_pwm_dev_attr,
+	.dev_attr	= &capability_ipu_pwm_dev_attr,
 };
 
 /*
