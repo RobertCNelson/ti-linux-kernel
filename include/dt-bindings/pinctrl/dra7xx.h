@@ -29,6 +29,22 @@
 #define WAKEUP_EN		(1 << 24)
 #define WAKEUP_EVENT		(1 << 25)
 
+/*
+ * Delay value - to be added to control module register to some pins
+ * to garuntee IO timings. Add delay mode select
+ * and delay value for respective pins.
+ */
+
+#define DELAYMODE_SELECT	(1 << 8)
+
+/*
+ * DSS_VOUT3 is not timing closed wrt clock on vin1a_fld0 port.
+ * To mux vin1a_fld0 to DSS_VOUT3, we need to add delay.
+ * Below delay value ensure the timing is closed
+ */
+
+#define DELAY_VIN1A		(15 << 4)
+
 /* Active pin states */
 #define PIN_OUTPUT		0
 #define PIN_OUTPUT_PULLUP	(PIN_OUTPUT | PULL_ENA | PULL_UP)

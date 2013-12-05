@@ -33,7 +33,7 @@
 
 	am33xx_pinmux: pinmux@44e10800 {
 		pinctrl-names = "default";
-		pinctrl-0 = <&gpio_keys_s0 &clkout2_pin &ddr3_vtt_toggle>;
+		pinctrl-0 = <&gpio_keys_s0 &clkout2_pin &clkout1_pin &ddr3_vtt_toggle>;
 
 		ddr3_vtt_toggle: ddr3_vtt_toggle {
 			pinctrl-single,pins = <
@@ -103,6 +103,12 @@
 			pinctrl-single,pins = <
 				0x170 (PIN_INPUT_PULLUP | MUX_MODE0)	/* uart0_rxd.uart0_rxd */
 				0x174 (PIN_OUTPUT_PULLDOWN | MUX_MODE0)		/* uart0_txd.uart0_txd */
+			>;
+		};
+
+		clkout1_pin: pinmux_clkout1_pin {
+			pinctrl-single,pins = <
+				0x1b0 (PIN_OUTPUT_PULLDOWN | MUX_MODE3)		/* xdma_event_intr0.clkout1 */
 			>;
 		};
 
@@ -339,7 +345,7 @@
 			ti,model = "AM335x-EVMSK";
 			ti,audio-codec = <&tlv320aic3106>;
 			ti,mcasp-controller = <&mcasp1>;
-			ti,codec-clock-rate = <24576000>;
+			ti,codec-clock-rate = <24000000>;
 			ti,audio-routing =
 				"Headphone Jack",       "HPLOUT",
 				"Headphone Jack",       "HPROUT";
