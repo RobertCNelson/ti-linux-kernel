@@ -67,7 +67,7 @@ static int of_opp_check_availability(struct device *dev, struct device_node *np)
 	const struct property *prop;
 	const __be32 *val;
 	unsigned long efuse_val, freq, rev, offset, bit;
-	int nr;
+	int nr, idx;
 
 	if (!dev || !np)
 		return -EINVAL;
@@ -84,8 +84,19 @@ static int of_opp_check_availability(struct device *dev, struct device_node *np)
 		return -EINVAL;
 	}
 
+	/* Disable all OPPs */
 	val = prop->value;
-	while (nr) {
+	idx = nr / 4;
+	while (idx--) {
+		freq = be32_to_cpup(val) * 1000;
+		opp_disable(dev, freq);
+		val += 4;
+	}
+
+	/* Reiterate and enable appropriate OPPs */
+	val = prop->value;
+	idx = nr / 4;
+	while (idx--) {
 		freq = be32_to_cpup(val++) * 1000;
 		rev = be32_to_cpup(val++);
 		offset = be32_to_cpup(val++);
@@ -96,16 +107,7 @@ static int of_opp_check_availability(struct device *dev, struct device_node *np)
 		if (OPP_REV_CMP(rev, am33xx_devrev_to_opp_rev(rev_id))) {
 			if (((~efuse_val & bit) || !bit))
 				opp_enable(dev, freq);
-			else if (bit && !(~efuse_val & bit))
-				opp_disable(dev, freq);
-		} else if (!OPP_REV_CMP(rev,
-					am33xx_devrev_to_opp_rev(rev_id))) {
-			opp_disable(dev, freq);
-		} else {
-			opp_disable(dev, freq);
 		}
-
-		nr -= 4;
 	}
 
 	return 0;
