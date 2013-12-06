@@ -39,6 +39,7 @@ struct opp_efuse_context {
 	struct device   *dev;
 	void __iomem    *efuse;
 	void __iomem	*id;
+	bool		enable_low;
 };
 
 static struct opp_efuse_context *opp_efuse;
@@ -104,8 +105,11 @@ static int of_opp_check_availability(struct device *dev, struct device_node *np)
 
 		efuse_val = opp_omap_efuse_read(offset);
 
+		if (opp_efuse->enable_low)
+			efuse_val = ~efuse_val;
+
 		if (OPP_REV_CMP(rev, am33xx_devrev_to_opp_rev(rev_id))) {
-			if (((~efuse_val & bit) || !bit))
+			if (((efuse_val & bit) || !bit))
 				opp_enable(dev, freq);
 		}
 	}
@@ -147,6 +151,7 @@ static struct opp_modifier_dev omap_opp_modifier_dev = {
 static int opp_omap_probe(struct platform_device *pdev)
 {
 	struct resource *res;
+	struct device_node *np = pdev->dev.of_node;
 	int ret = 0;
 
 	opp_efuse = devm_kzalloc(&pdev->dev, sizeof(*opp_efuse), GFP_KERNEL);
@@ -189,6 +194,9 @@ static int opp_omap_probe(struct platform_device *pdev)
 
 	rev_id = (readl(opp_efuse->id) & AM33XX_CTRL_DEVICE_ID_DEVREV_MASK)
 		  >> AM33XX_CTRL_DEVICE_ID_DEVREV_SHIFT;
+
+	if (of_get_property(np, "ti,efuse-bit-enable-low", NULL))
+		opp_efuse->enable_low = true;
 
 	omap_opp_modifier_dev.ops = &omap_opp_ops;
 	omap_opp_modifier_dev.of_node = pdev->dev.of_node;
