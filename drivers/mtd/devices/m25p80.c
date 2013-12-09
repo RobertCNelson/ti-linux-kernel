@@ -1111,7 +1111,6 @@ static int m25p_probe(struct spi_device *spi)
 	if (!flash)
 		return -ENOMEM;
 
-
 	flash->command = devm_kzalloc(&spi->dev, MAX_CMD_SIZE, GFP_KERNEL);
 	if (!flash->command)
 		return -ENOMEM;
