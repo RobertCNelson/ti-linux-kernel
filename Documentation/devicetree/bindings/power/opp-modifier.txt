@@ -12,6 +12,10 @@ properties:
 - reg : Address and length of the registers needed to identify available
 	OPPs, here we provide efuse_sma address and device_id address
 
+Optional Properties:
+- ti,efuse-bit-enable-low: Take the complement of efuse before comparing mask
+		     defined below under opp-modifier.
+
 Sub-nodes:
 Sub-nodes are defined as a container to hold opp modifier table for a
 specific device with an operating-points table already defined
