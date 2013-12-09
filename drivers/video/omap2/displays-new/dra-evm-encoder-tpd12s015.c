@@ -110,7 +110,7 @@ mcasp_err:
  * use I2C2 to configure pcf8575@26 to set/unset LS_OE and CT_HPD, use HDMI to
  * read edid via the HDMI ddc lines, and recieve HPD events
  */
-void config_demux(struct device *dev, int sel)
+static void config_demux(struct device *dev, int sel)
 {
 	void __iomem *mcasp2_base = ioremap(MCASP2_BASE, SZ_1K);
 	void __iomem *ctrl_base = ioremap(CTRL_BASE, SZ_1K);
