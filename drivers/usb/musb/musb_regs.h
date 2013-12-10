@@ -202,6 +202,12 @@
 #define MUSB_RXCSR_H_REQPKT		0x0020
 #define MUSB_RXCSR_H_ERROR		0x0004
 
+/*BABBLE  control register offs 0x61 */
+#define MUSB_BABBLE_FORCE_TXIDLE         0x80
+#define MUSB_BABBLE_SW_SESSION_CTRL      0x40
+#define MUSB_BABBLE_STUCK_J              0x20
+#define MUSB_BABBLE_RCV_DISABLE          0x04
+
 /* RXCSR bits to avoid zeroing (write zero clears, write 1 ignored) */
 #define MUSB_RXCSR_P_WZC_BITS	\
 	(MUSB_RXCSR_P_SENTSTALL | MUSB_RXCSR_P_OVERRUN \
@@ -246,6 +252,7 @@
  */
 
 #define MUSB_DEVCTL		0x60	/* 8 bit */
+#define MUSB_BABBLE_CTL		0x61	/* 8 bit */
 
 /* These are always controlled through the INDEX register */
 #define MUSB_TXFIFOSZ		0x62	/* 8-bit (see masks) */
