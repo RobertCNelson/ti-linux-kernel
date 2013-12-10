@@ -105,6 +105,7 @@
 			ti,hwmods = "uart1";
 			clocks = <&dpll_per_m2_div4_wkupdm_ck>;
 			clock-names = "fck";
+			status = "disabled";
 		};
 
 		uart1: serial@48022000 {
