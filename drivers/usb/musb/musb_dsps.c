@@ -253,6 +253,75 @@ static void dsps_musb_try_idle(struct musb *musb, unsigned long timeout)
 	mod_timer(&glue->timer, timeout);
 }
 
+static void sw_babble_control(struct musb *musb)
+{
+	struct device *dev = musb->controller;
+	struct dsps_glue *glue = dev_get_drvdata(dev->parent);
+	const struct dsps_musb_wrapper *wrp = glue->wrp;
+	void __iomem *base = musb->mregs;
+	int timeout = 10;
+	u8 babble_ctl, session_restart = 0;
+
+	/* wait for 320 clock cycles and check whether still babble
+	 * present on the bus */
+	udelay(6);
+
+	babble_ctl = musb_readb(musb->mregs, MUSB_BABBLE_CTL);
+	dev_dbg(musb->controller, "babble: MUSB_BABBLE_CTL value %x\n",
+		babble_ctl);
+
+	/* check line monitor flag to check whether babble is
+	 * due to noise
+	 */
+	dev_dbg(musb->controller, "STUCK_J is %s\n",
+		babble_ctl & MUSB_BABBLE_STUCK_J ? "set" : "reset");
+
+	if (babble_ctl & MUSB_BABBLE_STUCK_J) {
+		/* babble is due to noise, then set transmit idle (d7 bit)
+		 * to resume normal operation
+		 */
+		babble_ctl = musb_readb(musb->mregs, MUSB_BABBLE_CTL);
+		babble_ctl |= MUSB_BABBLE_FORCE_TXIDLE;
+		musb_writeb(musb->mregs, MUSB_BABBLE_CTL, babble_ctl);
+
+		/* wait till line monitor flag cleared */
+		dev_dbg(musb->controller, "Set TXIDLE, wait J to clear\n");
+		do {
+			babble_ctl = musb_readb(musb->mregs, MUSB_BABBLE_CTL);
+			udelay(1);
+		} while ((babble_ctl & MUSB_BABBLE_STUCK_J) && timeout--);
+
+		/* check whether stuck_at_j bit cleared */
+		babble_ctl = musb_readb(musb->mregs, MUSB_BABBLE_CTL);
+		if (babble_ctl & MUSB_BABBLE_STUCK_J) {
+			/* real babble condition is occured
+			 * restart the controller to start the
+			 * session again
+			 */
+			dev_dbg(musb->controller, "J not cleared, misc (%x)\n",
+				babble_ctl);
+
+			session_restart = 1;
+		}
+	} else {
+		session_restart = 1;
+	}
+
+	if (session_restart) {
+		u32 devctl;
+
+		devctl = musb_readb(musb->mregs, MUSB_DEVCTL);
+		devctl &= ~MUSB_DEVCTL_SESSION;
+		musb_writeb(musb->mregs, MUSB_DEVCTL, devctl);
+
+		/* Reset the controller */
+		dsps_writel(base, wrp->control, (1 << wrp->reset));
+
+		musb_platform_set_mode(musb, MUSB_HOST);
+		musb_babble_reinit(musb);
+	}
+}
+
 static irqreturn_t dsps_interrupt(int irq, void *hci)
 {
 	struct musb  *musb = hci;
@@ -263,6 +332,7 @@ static irqreturn_t dsps_interrupt(int irq, void *hci)
 	unsigned long flags;
 	irqreturn_t ret = IRQ_NONE;
 	u32 epintr, usbintr;
+	bool babble_detected = false;
 
 	spin_lock_irqsave(&musb->lock, flags);
 
@@ -293,8 +363,12 @@ static irqreturn_t dsps_interrupt(int irq, void *hci)
 	 * value but DEVCTL.BDEVICE is invalid without DEVCTL.SESSION set.
 	 * Also, DRVVBUS pulses for SRP (but not at 5V) ...
 	 */
-	if (is_host_active(musb) && usbintr & MUSB_INTR_BABBLE)
-		pr_info("CAUTION: musb: Babble Interrupt Occurred\n");
+	if (is_host_active(musb) && (usbintr & MUSB_INTR_BABBLE) &&
+	    (musb->xceiv->state == OTG_STATE_A_HOST)) {
+		musb->int_usb |= MUSB_INTR_DISCONNECT;
+		babble_detected = true;
+		ERR("CAUTION: musb: Babble Interrupt Occurred\n");
+	}
 
 	if (usbintr & ((1 << wrp->drvvbus) << wrp->usb_shift)) {
 		int drvvbus = dsps_readl(reg_base, wrp->status);
@@ -347,6 +421,9 @@ static irqreturn_t dsps_interrupt(int irq, void *hci)
 	/* Poll for ID change */
 	if (musb->xceiv->state == OTG_STATE_B_IDLE)
 		mod_timer(&glue->timer, jiffies + wrp->poll_seconds * HZ);
+
+	if (babble_detected)
+		sw_babble_control(musb);
 out:
 	spin_unlock_irqrestore(&musb->lock, flags);
 
@@ -394,6 +471,14 @@ static int dsps_musb_init(struct musb *musb)
 	val = dsps_readl(reg_base, wrp->phy_utmi);
 	val &= ~(1 << wrp->otg_disable);
 	dsps_writel(musb->ctrl_base, wrp->phy_utmi, val);
+
+	/* enable s/w controlled session bit during
+	 * babble condition
+	 */
+	val = musb_readb(musb->mregs, MUSB_BABBLE_CTL);
+	val |= MUSB_BABBLE_SW_SESSION_CTRL;
+	musb_writeb(musb->mregs, MUSB_BABBLE_CTL, val);
+	dev_info(musb->controller, "Enabled SW babble control\n");
 
 	return 0;
 }

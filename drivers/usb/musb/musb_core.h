@@ -506,6 +506,7 @@ extern const char musb_driver_name[];
 
 extern void musb_stop(struct musb *musb);
 extern void musb_start(struct musb *musb);
+void musb_babble_reinit(struct musb *musb);
 
 extern int musb_get_id(struct device *dev, gfp_t gfp_mask);
 extern void musb_put_id(struct device *dev, int id);
