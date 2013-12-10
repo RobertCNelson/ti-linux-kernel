@@ -1203,7 +1203,6 @@ static struct omap_hwmod am33xx_spinlock_hwmod = {
 	.name		= "spinlock",
 	.class		= &am33xx_spinlock_hwmod_class,
 	.clkdm_name	= "l4ls_clkdm",
-	.main_clk	= "l4ls_gclk",
 	.prcm		= {
 		.omap4	= {
 			.modulemode	= MODULEMODE_SWCTRL,
