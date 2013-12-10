@@ -219,7 +219,7 @@ int hdmi5_read_edid(struct hdmi_core_data *core, u8 *edid, int len)
 out:
 	hdmi_core_ddc_uninit(core);
 
-	return r;
+	return r ? r : len;
 }
 
 void hdmi5_core_dump(struct hdmi_core_data *core, struct seq_file *s)
