@@ -944,6 +944,8 @@
 			reg = <0x44e107fc 0x04		/* EFUSE_SMA */
 			       0x44e10600 0x04>;	/* DEVICE_ID */
 
+			ti,efuse-bit-enable-low;
+
 			mpu_opp_modifier: mpu_opp_modifier {
 				opp-modifier = <
 				/* kHz	 Rev				offset	mask */

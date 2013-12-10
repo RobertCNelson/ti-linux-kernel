@@ -710,6 +710,7 @@
 			ti,hwmods = "timer3";
 			clocks = <&timer3_gfclk_mux>, <&sys_clkin>;
 			clock-names = "fck", "timer_sys_ck";
+			ti,timer-ipu;
 		};
 
 		timer4: timer@48036000 {
@@ -719,6 +720,7 @@
 			ti,hwmods = "timer4";
 			clocks = <&timer4_gfclk_mux>, <&sys_clkin>;
 			clock-names = "fck", "timer_sys_ck";
+			ti,timer-ipu;
 		};
 
 		timer5: timer@40138000 {
@@ -775,6 +777,7 @@
 			ti,hwmods = "timer9";
 			clocks = <&timer9_gfclk_mux>, <&sys_clkin>;
 			clock-names = "fck", "timer_sys_ck";
+			ti,timer-ipu;
 			ti,timer-pwm;
 		};
 
@@ -795,6 +798,7 @@
 			ti,hwmods = "timer11";
 			clocks = <&timer11_gfclk_mux>, <&sys_clkin>;
 			clock-names = "fck", "timer_sys_ck";
+			ti,timer-ipu;
 			ti,timer-pwm;
 		};
 

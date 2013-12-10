@@ -570,17 +570,22 @@ static int davinci_probe(struct platform_device *pdev)
 	musb_resources[2].end = pdev->resource[2].end;
 	musb_resources[2].flags = pdev->resource[2].flags;
 
-	pinfo = davinci_dev_info;
-	pinfo.parent = &pdev->dev;
-	pinfo.res = musb_resources;
-	pinfo.num_res = ARRAY_SIZE(musb_resources);
-	pinfo.data = pdata;
-	pinfo.size_data = sizeof(*pdata);
+	ret = platform_device_add_resources(musb, musb_resources,
+			ARRAY_SIZE(musb_resources));
+	if (ret) {
+		dev_err(&pdev->dev, "failed to add resources\n");
+		goto err5;
+	}
 
-	glue->musb = musb = platform_device_register_full(&pinfo);
-	if (IS_ERR(musb)) {
-		ret = PTR_ERR(musb);
-		dev_err(&pdev->dev, "failed to register musb device: %d\n", ret);
+	ret = platform_device_add_data(musb, pdata, sizeof(*pdata));
+	if (ret) {
+		dev_err(&pdev->dev, "failed to add platform_data\n");
+		goto err5;
+	}
+
+	ret = platform_device_add(musb);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to register musb device\n");
 		goto err5;
 	}
 
