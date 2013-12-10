@@ -1391,7 +1391,6 @@ static struct omap_hwmod dra7xx_spinlock_hwmod = {
 	.name		= "spinlock",
 	.class		= &dra7xx_spinlock_hwmod_class,
 	.clkdm_name	= "l4cfg_clkdm",
-	.main_clk	= "l3_iclk_div",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = DRA7XX_CM_L4CFG_SPINLOCK_CLKCTRL_OFFSET,
