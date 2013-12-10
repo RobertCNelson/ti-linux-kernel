@@ -29,7 +29,9 @@ OMAP USB2 PHY
 
 Required properties:
  - compatible: Should be either of
-	* "ti,omap-usb2" for OMAP4,OMAP5,DRA7
+	* "ti,omap-usb2" for OMAP4
+	* "ti,omap5-usb2" for OMAP5
+	* "ti,dra7x-usb2" for DRA7
 	* "ti,am437x-usb2" for AM437x
  - reg : Address and length of the register set for the device.
  - #phy-cells: determine the number of cells that should be given in the

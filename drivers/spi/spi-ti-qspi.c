@@ -123,18 +123,9 @@ struct ti_qspi {
 #define MEM_CS		0x100
 #define MEM_CS_DIS	0xfffff0ff
 
-#define	QSPI_CMD_RD		(0x3 << 0)
-#define QSPI_CMD_DUAL_RD	(0x3b << 0)
-#define	QSPI_CMD_QUAD_RD	(0x6b << 0)
-#define	QSPI_CMD_READ_FAST	(0x0b << 0)
-#define	QSPI_SETUP0_A_BYTES	(0x3 << 8)
-#define	QSPI_SETUP0_NO_BITS	(0x0 << 10)
-#define	QSPI_SETUP0_8_BITS	(0x1 << 10)
-#define	QSPI_SETUP0_RD_NORMAL	(0x0 << 12)
-#define QSPI_SETUP0_RD_DUAL	(0x1 << 12)
-#define	QSPI_SETUP0_RD_QUAD	(0x3 << 12)
-#define	QSPI_CMD_WRITE		(0x2 << 16)
-#define	QSPI_NUM_DUMMY_BITS	(0x0 << 24)
+#define QSPI_SETUP0_RD_NORMAL   (0x0 << 12)
+#define QSPI_SETUP0_RD_DUAL     (0x1 << 12)
+#define QSPI_SETUP0_RD_QUAD     (0x3 << 12)
 
 #define	QSPI_FRAME			4096
 
@@ -181,7 +172,7 @@ static int ti_qspi_setup(struct spi_device *spi)
 	struct ti_qspi	*qspi = spi_master_get_devdata(spi->master);
 	struct ti_qspi_regs *ctx_reg = &qspi->ctx_reg;
 	int clk_div = 0, ret;
-	u32 clk_ctrl_reg, clk_rate, clk_mask, memval = 0, mode;
+	u32 clk_ctrl_reg, clk_rate, clk_mask;
 	qspi->dc = 0;
 
 	if (spi->master->busy) {
@@ -239,29 +230,6 @@ static int ti_qspi_setup(struct spi_device *spi)
 
 	ti_qspi_write(qspi, qspi->dc, QSPI_SPI_DC_REG);
 
-	if (qspi->memory_mapped) {
-		mode = spi->mode & (SPI_RX_DUAL | SPI_RX_QUAD);
-		switch (mode) {
-		case SPI_RX_DUAL:
-			memval |= (QSPI_CMD_DUAL_RD | QSPI_SETUP0_A_BYTES |
-				QSPI_SETUP0_8_BITS | QSPI_SETUP0_RD_DUAL |
-				QSPI_CMD_WRITE | QSPI_NUM_DUMMY_BITS);
-			break;
-		case SPI_RX_QUAD:
-			memval |= (QSPI_CMD_QUAD_RD | QSPI_SETUP0_A_BYTES |
-				QSPI_SETUP0_8_BITS | QSPI_SETUP0_RD_QUAD |
-				QSPI_CMD_WRITE | QSPI_NUM_DUMMY_BITS);
-			break;
-		default:
-			memval |= (QSPI_CMD_RD | QSPI_SETUP0_A_BYTES |
-				QSPI_SETUP0_NO_BITS | QSPI_SETUP0_RD_NORMAL |
-				QSPI_CMD_WRITE | QSPI_NUM_DUMMY_BITS);
-			break;
-		}
-		ti_qspi_write(qspi, memval, QSPI_SPI_SETUP0_REG);
-		spi->mode |= SPI_RX_MMAP;
-	}
-
 	pm_runtime_mark_last_busy(qspi->dev);
 	ret = pm_runtime_put_autosuspend(qspi->dev);
 	if (ret < 0) {
@@ -270,6 +238,46 @@ static int ti_qspi_setup(struct spi_device *spi)
 	}
 
 	return 0;
+}
+
+static void ti_qspi_configure_from_slave(struct spi_device *spi, u8 *val)
+{
+	struct ti_qspi  *qspi = spi_master_get_devdata(spi->master);
+	u32 memval, mode;
+
+	mode = spi->mode & (SPI_RX_DUAL | SPI_RX_QUAD);
+	memval =  (val[0] << 0) | (val[1] << 16) |
+			((val[2] - 1) << 8) | (val[3] << 10);
+
+	switch (mode) {
+	case SPI_RX_DUAL:
+		memval |= QSPI_SETUP0_RD_DUAL;
+		break;
+	case SPI_RX_QUAD:
+		memval |= QSPI_SETUP0_RD_QUAD;
+		break;
+	default:
+		memval |= QSPI_SETUP0_RD_NORMAL;
+		break;
+	}
+	ti_qspi_write(qspi, memval, QSPI_SPI_SETUP0_REG);
+}
+
+static inline void  __iomem *ti_qspi_get_mem_buf(struct spi_master *master)
+{
+	struct ti_qspi *qspi = spi_master_get_devdata(master);
+
+	pm_runtime_get_sync(qspi->dev);
+	enable_qspi_memory_mapped(qspi);
+	return qspi->mmap_base;
+}
+
+static void ti_qspi_put_mem_buf(struct spi_master *master)
+{
+	struct ti_qspi *qspi = spi_master_get_devdata(master);
+
+	disable_qspi_memory_mapped(qspi);
+	pm_runtime_put(qspi->dev);
 }
 
 static void ti_qspi_restore_ctx(struct ti_qspi *qspi)
@@ -424,7 +432,6 @@ static int ti_qspi_start_transfer_one(struct spi_master *master,
 	struct spi_transfer *t;
 	int status = 0, ret;
 	int frame_length;
-	size_t from = 0;
 
 	frame_length = (m->frame_length << 3) / spi->bits_per_word;
 
@@ -441,16 +448,6 @@ static int ti_qspi_start_transfer_one(struct spi_master *master,
 	mutex_lock(&qspi->list_lock);
 
 	list_for_each_entry(t, &m->transfers, transfer_list) {
-		if (t->memory_map) {
-			if (t->tx_buf) {
-				from = t->len;
-				continue;
-			}
-			enable_qspi_memory_mapped(qspi);
-			memcpy(t->rx_buf, qspi->mmap_base + from, t->len);
-			disable_qspi_memory_mapped(qspi);
-			goto out;
-		}
 		qspi->cmd |= QSPI_WLEN(t->bits_per_word);
 
 		ret = qspi_transfer_msg(qspi, t);
@@ -463,7 +460,6 @@ static int ti_qspi_start_transfer_one(struct spi_master *master,
 		m->actual_length += t->len;
 	}
 
-out:
 	mutex_unlock(&qspi->list_lock);
 
 	m->status = status;
@@ -553,6 +549,10 @@ static int ti_qspi_probe(struct platform_device *pdev)
 	master->transfer_one_message = ti_qspi_start_transfer_one;
 	master->dev.of_node = pdev->dev.of_node;
 	master->bits_per_word_mask = BIT(32 - 1) | BIT(16 - 1) | BIT(8 - 1);
+	master->configure_from_slave = ti_qspi_configure_from_slave;
+	master->get_buf = ti_qspi_get_mem_buf;
+	master->put_buf = ti_qspi_put_mem_buf;
+	master->mmap = true;
 
 	if (!of_property_read_u32(np, "num-cs", &num_cs))
 		master->num_chipselect = num_cs;
@@ -661,6 +661,9 @@ static int ti_qspi_remove(struct platform_device *pdev)
 
 	pm_runtime_put(qspi->dev);
 	pm_runtime_disable(&pdev->dev);
+
+	if (qspi->mmap_base)
+		iounmap(qspi->mmap_base);
 
 	spi_unregister_master(qspi->master);
 

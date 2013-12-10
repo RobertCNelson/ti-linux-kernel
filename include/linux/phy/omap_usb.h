@@ -37,6 +37,8 @@ struct omap_usb {
 	struct device		*control_dev;
 	struct clk		*wkupclk;
 	struct clk		*optclk;
+	void __iomem		*phy_base;
+	u32			flags;
 };
 
 struct usb_phy_data {
@@ -44,10 +46,10 @@ struct usb_phy_data {
 	u32 flags;
 };
 
-enum usb_phy_data_flags {
-	OMAP_USB2_HAS_START_SRP = 1,
-	OMAP_USB2_HAS_SET_VBUS,
-};
+/* Driver Flags */
+#define OMAP_USB2_HAS_START_SRP (1 << 0)
+#define OMAP_USB2_HAS_SET_VBUS (1 << 1)
+#define OMAP_USB2_CALIBRATE_FALSE_DISCONNECT (1 << 2)
 
 #define	phy_to_omapusb(x)	container_of((x), struct omap_usb, phy)
 

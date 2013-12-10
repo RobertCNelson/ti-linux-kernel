@@ -889,7 +889,7 @@
 			ranges;
 			ti,hwmods = "ocp2scp1";
 			usb2_phy: usb2phy@4a084000 {
-				compatible = "ti,omap-usb2";
+				compatible = "ti,omap5-usb2";
 				reg = <0x4a084000 0x7c>;
 				ctrl-module = <&omap_control_usb2phy>;
 				clocks = <&usb_phy_cm_clk32k>, <&usb_otg_ss_refclk960m>;

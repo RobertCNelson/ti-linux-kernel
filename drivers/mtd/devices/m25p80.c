@@ -103,7 +103,7 @@ struct m25p {
 	u8			*command;
 	bool			fast_read;
 	bool			quad_read;
-	bool			mmap;
+	void __iomem		*mem_addr;
 };
 
 static inline struct m25p *mtd_to_m25p(struct mtd_info *mtd)
@@ -473,6 +473,24 @@ static inline int m25p80_dummy_cycles_read(struct m25p *flash)
 }
 
 /*
+ * This API can be used to transfer flash information to
+ * SPI controller which needs some of its registers to get
+ * configured on flash.
+ */
+static void m25p80_fill_flash_information(struct m25p *flash)
+{
+	struct spi_master *master = flash->spi->master;
+	u8 info[4];
+
+	info[0] = flash->read_opcode;
+	info[1] = flash->program_opcode;
+	info[2] = flash->addr_width;
+	info[3] = m25p80_dummy_cycles_read(flash);
+
+	master->configure_from_slave(flash->spi, info);
+}
+
+/*
  * Read an address range from the flash chip.  The address range
  * may be any size provided it is within the physical boundaries.
  */
@@ -480,6 +498,7 @@ static int m25p80_read(struct mtd_info *mtd, loff_t from, size_t len,
 	size_t *retlen, u_char *buf)
 {
 	struct m25p *flash = mtd_to_m25p(mtd);
+	struct spi_master *master = flash->spi->master;
 	struct spi_transfer t[2];
 	struct spi_message m;
 	uint8_t opcode;
@@ -487,16 +506,28 @@ static int m25p80_read(struct mtd_info *mtd, loff_t from, size_t len,
 	pr_debug("%s: %s from 0x%08x, len %zd\n", dev_name(&flash->spi->dev),
 			__func__, (u32)from, len);
 
+	if (master->mmap) {
+		mutex_lock(&flash->lock);
+		if (wait_till_ready(flash)) {
+			/* REVISIT status return?? */
+			mutex_unlock(&flash->lock);
+			return 1;
+		}
+		flash->mem_addr = master->get_buf(master);
+		memcpy(buf, flash->mem_addr + from, len);
+		master->put_buf(master);
+		*retlen = len;
+		goto out;
+	}
+
 	spi_message_init(&m);
 	memset(t, 0, (sizeof t));
 
-	t[0].memory_map = 1;
 	t[0].tx_buf = flash->command;
-	t[0].len = flash->mmap ? from : m25p_cmdsz(flash) +
+	t[0].len = m25p_cmdsz(flash) +
 			m25p80_dummy_cycles_read(flash);
 	spi_message_add_tail(&t[0], &m);
 
-	t[1].memory_map = 1;
 	t[1].rx_nbits = flash->quad_read ? SPI_NBITS_QUAD : 1;
 	t[1].rx_buf = buf;
 	t[1].len = len;
@@ -518,9 +549,10 @@ static int m25p80_read(struct mtd_info *mtd, loff_t from, size_t len,
 
 	spi_sync(flash->spi, &m);
 
-	*retlen = flash->mmap ? len : m.actual_length - m25p_cmdsz(flash) -
+	*retlen = m.actual_length - m25p_cmdsz(flash) -
 			m25p80_dummy_cycles_read(flash);
 
+out:
 	mutex_unlock(&flash->lock);
 
 	return 0;
@@ -1215,8 +1247,8 @@ static int m25p_probe(struct spi_device *spi)
 		flash->addr_width = 3;
 	}
 
-	if (spi->mode & SPI_RX_MMAP)
-		flash->mmap = true;
+	if (spi->master->configure_from_slave)
+		m25p80_fill_flash_information(flash);
 
 	dev_info(&spi->dev, "%s (%lld Kbytes)\n", id->name,
 			(long long)flash->mtd.size >> 10);

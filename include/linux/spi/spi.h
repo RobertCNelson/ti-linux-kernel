@@ -279,6 +279,14 @@ static inline void spi_unregister_driver(struct spi_driver *sdrv)
  *	number. Any individual value may be -ENOENT for CS lines that
  *	are not GPIOs (driven by the SPI controller itself).
  *
+ * @get_buf: used for memory mapped cases, when the slave device wants to
+ *       know the address to be used for memcopy.
+ * @put_buf: Used for memory mapped cases after get_buf, after the memcpy
+ *       has finished.
+ * @configure_from_slave: Used when SPI controller has registers which need
+ *      to be configured from slave specifics information(typical use case for
+ *      SPI flash device).
+ * @mmap: Used to show that controller supports memory mapped operation.
  * Each SPI master controller can communicate with one or more @spi_device
  * children.  These make a small bus, sharing MOSI, MISO and SCK signals
  * but not chip select signals.  Each device may be configured to use a
@@ -395,8 +403,13 @@ struct spi_master {
 				    struct spi_message *mesg);
 	int (*unprepare_transfer_hardware)(struct spi_master *master);
 
+	void	__iomem *(*get_buf)(struct spi_master *master);
+	void	(*put_buf)(struct spi_master *master);
+	void	(*configure_from_slave)(struct spi_device *spi, u8 *val);
+
 	/* gpio chip select */
 	int			*cs_gpios;
+	bool    mmap;
 };
 
 static inline void *spi_master_get_devdata(struct spi_master *master)
