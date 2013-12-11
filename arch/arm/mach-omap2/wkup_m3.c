@@ -27,9 +27,8 @@
 #include <linux/interrupt.h>
 #include <linux/of.h>
 #include <linux/omap-mailbox.h>
-
-#include "pm33xx.h"
-#include "omap_device.h"
+#include <linux/reset.h>
+#include "wkup_m3.h"
 
 #define WKUP_M3_WAKE_SRC_MASK			0xFF
 
@@ -270,6 +269,7 @@ static irqreturn_t wkup_m3_txev_handler(int irq, void *unused)
 int wkup_m3_prepare(void)
 {
 	int ret = 0;
+	struct reset_control *rst_ctrl;
 	struct platform_device *pdev = to_platform_device(wkup_m3->dev);
 
 	wkup_m3->mbox = omap_mbox_get("wkup_m3", NULL);
@@ -283,7 +283,15 @@ int wkup_m3_prepare(void)
 	wkup_m3_fw_version_clear();
 
 	/* check that the code is loaded */
-	ret = omap_device_deassert_hardreset(pdev, "wkup_m3");
+	rst_ctrl = reset_control_get(&pdev->dev, NULL);
+
+	if (IS_ERR(rst_ctrl)) {
+		dev_err(wkup_m3->dev, "Unable to get reset control\n");
+		return -EINVAL;
+	}
+
+	ret = reset_control_deassert(rst_ctrl);
+	reset_control_put(rst_ctrl);
 
 	return ret;
 }
