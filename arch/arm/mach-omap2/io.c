@@ -629,7 +629,11 @@ void __init am43xx_init_early(void)
 
 void __init am43xx_init_late(void)
 {
+	omap_hwmod_force_mstandby_repeated();
 	omap2_common_pm_late_init();
+	am33xx_pm_init();
+	omap_soc_device_init();
+	omap2_clk_enable_autoidle_all();
 }
 #endif
 

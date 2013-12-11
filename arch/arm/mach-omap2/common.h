@@ -119,6 +119,7 @@ void omap3430_init_late(void);
 void omap35xx_init_late(void);
 void omap3630_init_late(void);
 void am33xx_init_late(void);
+void am43xx_init_late(void);
 void am35xx_init_late(void);
 void ti81xx_init_late(void);
 void am33xx_init_late(void);

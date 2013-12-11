@@ -20,10 +20,17 @@
 
 #ifndef __ASSEMBLER__
 
+struct am33xx_pm_ops {
+	int (*init)(void);
+	void (*pre_suspend)(unsigned int state);
+	void (*post_suspend)(unsigned int state);
+};
+
 struct am33xx_pm_context {
 	struct am33xx_ipc_regs	ipc;
 	struct firmware		*firmware;
 	struct omap_mbox	*mbox;
+	struct am33xx_pm_ops	*ops;
 	u8			state;
 	u32			ver;
 };
@@ -39,6 +46,7 @@ struct am33xx_suspend_params {
 	void __iomem *emif_addr_virt;
 	u32 mem_type;
 	void __iomem *dram_sync;
+	void __iomem *l2_base_virt;
 };
 
 void wkup_m3_reset_data_pos(void);
@@ -61,6 +69,19 @@ int wkup_m3_copy_data(const u8 *data, size_t size);
 
 #define AM33XX_OCMC_END			0x40310000
 #define AM33XX_EMIF_BASE		0x4C000000
+
+#define AM43XX_CM_BASE			0x44DF0000
+
+#define AM43XX_CM_REGADDR(inst, reg)				\
+	AM33XX_L4_WK_IO_ADDRESS(AM43XX_CM_BASE + (inst) + (reg))
+
+#define AM43XX_PM_MPU_PWRSTCTRL AM43XX_CM_REGADDR(0x0300, 0x00)
+#define AM43XX_CM_MPU_CLKSTCTRL AM43XX_CM_REGADDR(0x8300, 0x00)
+#define AM43XX_CM_MPU_MPU_CLKCTRL AM43XX_CM_REGADDR(0x8300, 0x20)
+#define AM43XX_CM_PER_EMIF_CLKCTRL  AM43XX_CM_REGADDR(0x8800, 0x0720)
+
+#define AM43XX_CM_PER_EMIF_CLKCTRL_OFFSET 0x0720
+#define AM43XX_PRM_EMIF_CTRL_OFFSET	0x30
 
 #define MEM_TYPE_DDR2		2
 
