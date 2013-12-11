@@ -148,7 +148,7 @@ static int tiadc_read_raw(struct iio_dev *indio_dev,
 	unsigned long timeout = jiffies + usecs_to_jiffies
 				(IDLE_TIMEOUT * adc_dev->channels);
 	step_en = get_adc_step_mask(adc_dev);
-	am335x_tsc_se_set(adc_dev->mfd_tscadc, step_en);
+	am335x_tsc_se_set_once(adc_dev->mfd_tscadc, step_en);
 
 	/* Wait for ADC sequencer to complete sampling */
 	while (tiadc_readl(adc_dev, REG_ADCFSM) & SEQ_STATUS) {

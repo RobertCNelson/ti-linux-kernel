@@ -48,32 +48,40 @@ static const struct regmap_config tscadc_regmap_config = {
 	.val_bits = 32,
 };
 
-void am335x_tsc_se_update(struct ti_tscadc_dev *tsadc)
+void am335x_tsc_se_update(struct ti_tscadc_dev *tsadc, u32 val)
 {
-	tscadc_writel(tsadc, REG_SE, tsadc->reg_se_cache);
+	tscadc_writel(tsadc, REG_SE, tsadc->reg_se_cache | val);
 }
 EXPORT_SYMBOL_GPL(am335x_tsc_se_update);
 
-void am335x_tsc_se_set(struct ti_tscadc_dev *tsadc, u32 val)
+void am335x_tsc_se_set_cont(struct ti_tscadc_dev *tsadc, u32 val)
 {
 	unsigned long flags;
 
 	spin_lock_irqsave(&tsadc->reg_lock, flags);
-	tsadc->reg_se_cache = tscadc_readl(tsadc, REG_SE);
 	tsadc->reg_se_cache |= val;
-	am335x_tsc_se_update(tsadc);
+	am335x_tsc_se_update(tsadc, 0);
 	spin_unlock_irqrestore(&tsadc->reg_lock, flags);
 }
-EXPORT_SYMBOL_GPL(am335x_tsc_se_set);
+EXPORT_SYMBOL_GPL(am335x_tsc_se_set_cont);
+
+void am335x_tsc_se_set_once(struct ti_tscadc_dev *tsadc, u32 val)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&tsadc->reg_lock, flags);
+	am335x_tsc_se_update(tsadc, val);
+	spin_unlock_irqrestore(&tsadc->reg_lock, flags);
+}
+EXPORT_SYMBOL_GPL(am335x_tsc_se_set_once);
 
 void am335x_tsc_se_clr(struct ti_tscadc_dev *tsadc, u32 val)
 {
 	unsigned long flags;
 
 	spin_lock_irqsave(&tsadc->reg_lock, flags);
-	tsadc->reg_se_cache = tscadc_readl(tsadc, REG_SE);
 	tsadc->reg_se_cache &= ~val;
-	am335x_tsc_se_update(tsadc);
+	am335x_tsc_se_update(tsadc, 0);
 	spin_unlock_irqrestore(&tsadc->reg_lock, flags);
 }
 EXPORT_SYMBOL_GPL(am335x_tsc_se_clr);
@@ -302,7 +310,7 @@ static int tscadc_resume(struct device *dev)
 
 	if (tscadc_dev->tsc_cell != -1)
 		tscadc_idle_config(tscadc_dev);
-	am335x_tsc_se_update(tscadc_dev);
+	am335x_tsc_se_update(tscadc_dev, 0);
 	restore = tscadc_readl(tscadc_dev, REG_CTRL);
 	tscadc_writel(tscadc_dev, REG_CTRL,
 			(restore | CNTRLREG_TSCSSENB));

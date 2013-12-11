@@ -196,7 +196,7 @@ static void titsc_step_config(struct titsc *ts_dev)
 
 	/* The steps1 … end and bit 0 for TS_Charge */
 	stepenable = (1 << (end_step + 2)) - 1;
-	am335x_tsc_se_set(ts_dev->mfd_tscadc, stepenable);
+	am335x_tsc_se_set_cont(ts_dev->mfd_tscadc, stepenable);
 }
 
 static void titsc_read_coordinates(struct titsc *ts_dev,
@@ -316,7 +316,7 @@ static irqreturn_t titsc_irq(int irq, void *dev)
 
 	if (irqclr) {
 		titsc_writel(ts_dev, REG_IRQSTATUS, irqclr);
-		am335x_tsc_se_update(ts_dev->mfd_tscadc);
+		am335x_tsc_se_update(ts_dev->mfd_tscadc, 0);
 		return IRQ_HANDLED;
 	}
 	return IRQ_NONE;
