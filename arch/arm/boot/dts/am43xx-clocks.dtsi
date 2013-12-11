@@ -664,10 +664,13 @@ dpll_ddr_m4_ck: dpll_ddr_m4_ck@44df2db8 {
 
 dpll_per_clkdcoldo: dpll_per_clkdcoldo {
 	#clock-cells = <0>;
-	compatible = "fixed-factor-clock";
+	compatible = "ti,fixed-factor-clock";
 	clocks = <&dpll_per_ck>;
+	ti,autoidle-shift = <8>;
 	clock-mult = <1>;
+	reg = <0x44df2e14 0x4>;
 	clock-div = <1>;
+	ti,autoidle-low;
 };
 
 dll_aging_clk_div: dll_aging_clk_div@44df4250 {
