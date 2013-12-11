@@ -20,10 +20,17 @@
 
 #ifndef __ASSEMBLER__
 
+struct am33xx_pm_ops {
+	int (*init)(void);
+	void (*pre_suspend)(unsigned int state);
+	void (*post_suspend)(unsigned int state);
+};
+
 struct am33xx_pm_context {
 	struct am33xx_ipc_regs	ipc;
 	struct firmware		*firmware;
 	struct omap_mbox	*mbox;
+	struct am33xx_pm_ops	*ops;
 	u8			state;
 	u32			ver;
 };
@@ -39,6 +46,7 @@ struct am33xx_suspend_params {
 	void __iomem *emif_addr_virt;
 	u32 mem_type;
 	void __iomem *dram_sync;
+	void __iomem *l2_base_virt;
 };
 
 void wkup_m3_reset_data_pos(void);
