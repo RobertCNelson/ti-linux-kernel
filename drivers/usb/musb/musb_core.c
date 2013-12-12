@@ -1847,9 +1847,6 @@ static void musb_free(struct musb *musb)
 	}
 	cancel_work_sync(&musb->irq_work);
 
-	if (musb->dma_controller)
-		dma_controller_destroy(musb->dma_controller);
-
 	musb_host_free(musb);
 }
 
