@@ -56,6 +56,24 @@ static u32 get_adc_step_mask(struct tiadc_device *adc_dev)
 	return step_en;
 }
 
+static u32 get_adc_chan_step_mask(struct tiadc_device *adc_dev,
+		struct iio_chan_spec const *chan)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(adc_dev->channel_step); i++) {
+		if (chan->channel == adc_dev->channel_line[i]) {
+			u32 step;
+
+			step = adc_dev->channel_step[i];
+			/* +1 for the charger */
+			return 1 << (step + 1);
+		}
+	}
+	WARN_ON(1);
+	return 0;
+}
+
 static void tiadc_step_config(struct tiadc_device *adc_dev)
 {
 	unsigned int stepconfig;
@@ -147,13 +165,19 @@ static int tiadc_read_raw(struct iio_dev *indio_dev,
 	u32 step_en;
 	unsigned long timeout = jiffies + usecs_to_jiffies
 				(IDLE_TIMEOUT * adc_dev->channels);
-	step_en = get_adc_step_mask(adc_dev);
-	am335x_tsc_se_set(adc_dev->mfd_tscadc, step_en);
 
-	/* Wait for ADC sequencer to complete sampling */
-	while (tiadc_readl(adc_dev, REG_ADCFSM) & SEQ_STATUS) {
-		if (time_after(jiffies, timeout))
+	step_en = get_adc_chan_step_mask(adc_dev, chan);
+	if (!step_en)
+		return -EINVAL;
+
+	am335x_tsc_se_set_once(adc_dev->mfd_tscadc, step_en);
+
+	/* Wait for Fifo threshold interrupt */
+	while (!(tiadc_readl(adc_dev, REG_RAWIRQSTATUS) & IRQENB_FIFO1THRES)) {
+		if (time_after(jiffies, timeout)) {
+			am335x_tsc_se_adc_done(adc_dev->mfd_tscadc);
 			return -EAGAIN;
+		}
 	}
 	map_val = chan->channel + TOTAL_CHANNELS;
 
@@ -174,8 +198,10 @@ static int tiadc_read_raw(struct iio_dev *indio_dev,
 			break;
 		}
 	}
-	if (WARN_ON_ONCE(step == UINT_MAX))
+	if (WARN_ON_ONCE(step == UINT_MAX)) {
+		am335x_tsc_se_adc_done(adc_dev->mfd_tscadc);
 		return -EINVAL;
+	}
 
 	fifo1count = tiadc_readl(adc_dev, REG_FIFO1CNT);
 	for (i = 0; i < fifo1count; i++) {
@@ -190,8 +216,12 @@ static int tiadc_read_raw(struct iio_dev *indio_dev,
 		}
 	}
 
+	tiadc_writel(adc_dev, REG_IRQSTATUS, IRQENB_FIFO1THRES);
+	am335x_tsc_se_adc_done(adc_dev->mfd_tscadc);
+
 	if (found == false)
 		return -EBUSY;
+
 	return IIO_VAL_INT;
 }
 
@@ -238,6 +268,7 @@ static int tiadc_probe(struct platform_device *pdev)
 	indio_dev->info = &tiadc_info;
 
 	tiadc_step_config(adc_dev);
+	tiadc_writel(adc_dev, REG_FIFO1THR, 1 - 1);
 
 	err = tiadc_channel_init(indio_dev, adc_dev->channels);
 	if (err < 0)

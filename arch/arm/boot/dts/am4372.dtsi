@@ -784,6 +784,15 @@
 			clocks = <&adc_tsc_fck>;
 			clock-names = "fck";
 			status = "disabled";
+
+			tsc {
+				compatible = "ti,am4372-tsc", "ti,am3359-tsc";
+			};
+
+			adc {
+				#io-channel-cells = <1>;
+				compatible = "ti,am4372-adc", "ti,am3359-adc";
+			};
 		};
 
 		ocmcram: ocmcram@40300000 {
