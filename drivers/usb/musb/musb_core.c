@@ -1873,16 +1873,13 @@ musb_init_controller(struct device *dev, int nIrq, void __iomem *ctrl)
 	 */
 	if (!plat) {
 		dev_dbg(dev, "no platform_data?\n");
-		status = -ENODEV;
-		goto fail0;
+		return -ENODEV;
 	}
 
 	/* allocate */
 	musb = allocate_instance(dev, plat->config, ctrl);
-	if (!musb) {
-		status = -ENOMEM;
-		goto fail0;
-	}
+	if (!musb)
+		return -ENOMEM;
 
 	pm_runtime_use_autosuspend(musb->controller);
 	pm_runtime_set_autosuspend_delay(musb->controller, 200);
@@ -1981,23 +1978,23 @@ musb_init_controller(struct device *dev, int nIrq, void __iomem *ctrl)
 	case MUSB_PORT_MODE_HOST:
 		status = musb_host_setup(musb, plat->power);
 		if (status < 0)
-			goto fail3;
+			goto fail3_5;
 		status = musb_platform_set_mode(musb, MUSB_HOST);
 		break;
 	case MUSB_PORT_MODE_GADGET:
 		status = musb_gadget_setup(musb);
 		if (status < 0)
-			goto fail3;
+			goto fail3_5;
 		status = musb_platform_set_mode(musb, MUSB_PERIPHERAL);
 		break;
 	case MUSB_PORT_MODE_DUAL_ROLE:
 		status = musb_host_setup(musb, plat->power);
 		if (status < 0)
-			goto fail3;
+			goto fail3_5;
 		status = musb_gadget_setup(musb);
 		if (status) {
 			musb_host_cleanup(musb);
-			goto fail3;
+			goto fail3_5;
 		}
 		status = musb_platform_set_mode(musb, MUSB_OTG);
 		break;
@@ -2007,7 +2004,7 @@ musb_init_controller(struct device *dev, int nIrq, void __iomem *ctrl)
 	}
 
 	if (status < 0)
-		goto fail3;
+		goto fail4;
 
 	status = musb_init_debugfs(musb);
 	if (status < 0)
@@ -2025,8 +2022,25 @@ fail5:
 	musb_exit_debugfs(musb);
 
 fail4:
-	musb_gadget_cleanup(musb);
-	musb_host_cleanup(musb);
+	switch (musb->port_mode) {
+	case MUSB_PORT_MODE_HOST:
+		musb_host_cleanup(musb);
+		break;
+	case MUSB_PORT_MODE_GADGET:
+		musb_gadget_cleanup(musb);
+		break;
+	case MUSB_PORT_MODE_DUAL_ROLE:
+		break;
+		musb_gadget_cleanup(musb);
+		musb_host_cleanup(musb);
+	default:
+		break;
+	}
+
+fail3_5:
+	if (musb->irq_wake)
+		disable_irq_wake(musb->nIrq);
+	free_irq(musb->nIrq, musb);
 
 fail3:
 	if (musb->dma_controller)
@@ -2041,12 +2055,9 @@ fail2:
 
 fail1:
 	pm_runtime_disable(musb->controller);
+	musb_host_free(musb);
 	dev_err(musb->controller,
 		"musb_init_controller failed with status %d\n", status);
-
-	musb_free(musb);
-
-fail0:
 
 	return status;
 
