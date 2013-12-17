@@ -25,6 +25,7 @@
 
 #define AM4372_L3_MODULES		2
 #define OMAP_L3_MODULES			3
+#define MAX_L3_MODULES			OMAP_L3_MODULES
 #define CLEAR_STDERR_LOG		(1 << 31)
 #define CUSTOM_ERROR			0x2
 #define STANDARD_ERROR			0x0
