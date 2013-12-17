@@ -18,6 +18,13 @@
 		reg = <0x80000000 0x10000000>; /* 256 MB */
 	};
 
+	/* You dont need operating points for cpufreq! */
+	cpus {
+		cpu@0 {
+			operating-points = < >;
+		};
+	};
+
 	am33xx_pinmux: pinmux@44e10800 {
 		i2c0_pins: pinmux_i2c0_pins {
 			pinctrl-single,pins = <
