@@ -69,14 +69,20 @@ enum omap_control_usb_mode {
 #define AM437X_CTRL_USB2_OTG_PD		BIT(1)
 #define AM437X_CTRL_USB2_OTGVDET_EN	BIT(19)
 #define AM437X_CTRL_USB2_OTGSESSEND_EN	BIT(20)
+#define AM437X_CTRL_USB2_WKUP_EN	BIT(21)
 
 #if IS_ENABLED(CONFIG_OMAP_CONTROL_PHY)
 extern void omap_control_phy_power(struct device *dev, int on);
+void omap_control_phy_wkup(struct device *dev, int on);
 extern void omap_control_usb_set_mode(struct device *dev,
 	enum omap_control_usb_mode mode);
 #else
 
 static inline void omap_control_phy_power(struct device *dev, int on)
+{
+}
+
+static inline void omap_control_phy_wkup(struct device *dev, int on)
 {
 }
 
