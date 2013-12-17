@@ -1603,6 +1603,9 @@ EXPORT_SYMBOL_GPL(musb_interrupt);
 
 void musb_babble_reinit(struct musb *musb)
 {
+	musb_core_init(musb->config->multipoint
+			? MUSB_CONTROLLER_MHDRC
+			: MUSB_CONTROLLER_HDRC, musb);
 	musb_start(musb);
 }
 EXPORT_SYMBOL_GPL(musb_babble_reinit);

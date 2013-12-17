@@ -334,7 +334,13 @@ static void sw_babble_control(struct musb *musb)
 		/* Reset the controller */
 		dsps_writel(base, wrp->control, (1 << wrp->reset));
 
+		usb_phy_shutdown(musb->xceiv);
+		mdelay(100);
 		musb_platform_set_mode(musb, MUSB_HOST);
+		mdelay(100);
+		usb_phy_init(musb->xceiv);
+		mdelay(100);
+
 		musb_babble_reinit(musb);
 	}
 }
