@@ -64,6 +64,7 @@ static irqreturn_t l3_interrupt_handler(int irq, void *_l3)
 	u32 std_err_main, err_reg, clear, masterid;
 	void __iomem *base, *l3_targ_base;
 	char *target_name, *master_name = "UN IDENTIFIED";
+	static u32 mask0[MAX_L3_MODULES], mask1[MAX_L3_MODULES];
 
 	/* Get the Type of interrupt */
 	inttype = irq == l3->app_irq ? L3_APPLICATION_ERROR : L3_DEBUG_ERROR;
@@ -76,6 +77,7 @@ static irqreturn_t l3_interrupt_handler(int irq, void *_l3)
 		base = l3->l3_base[i];
 		err_reg = __raw_readl(base + l3->l3_flag_mux[i] +
 					+ L3_FLAGMUX_REGERR0 + (inttype << 3));
+		err_reg &= inttype ? ~mask1[i] : ~mask0[i];
 
 		/* Get the corresponding error and analyse */
 		if (err_reg) {
@@ -93,6 +95,10 @@ static irqreturn_t l3_interrupt_handler(int irq, void *_l3)
 					err_src, i, "(unclearable)");
 				val = readl(reg);
 				val &= ~(1 << err_src);
+				if (inttype)
+					mask1[i] |= (1 << err_src);
+				else
+					mask0[i] |= (1 << err_src);
 				writel(val, reg);
 				break;
 			}
