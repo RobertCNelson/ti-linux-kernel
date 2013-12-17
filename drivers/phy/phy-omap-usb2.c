@@ -178,7 +178,7 @@ static const struct usb_phy_data dra7x_usb2_data = {
 
 static const struct usb_phy_data am437x_usb2_data = {
 	.label = "am437x_usb2",
-	.flags =  0,
+	.flags =  OMAP_USB2_ENABLE_PHYWKUP,
 };
 
 static const struct of_device_id omap_usb2_id_table[] = {
@@ -243,6 +243,9 @@ static int omap_usb2_probe(struct platform_device *pdev)
 
 	if (phy_data->flags & OMAP_USB2_CALIBRATE_FALSE_DISCONNECT)
 		phy->flags |= OMAP_USB2_CALIBRATE_FALSE_DISCONNECT;
+
+	if (phy_data->flags & OMAP_USB2_ENABLE_PHYWKUP)
+		phy->flags |= OMAP_USB2_ENABLE_PHYWKUP;
 
 	phy_provider = devm_of_phy_provider_register(phy->dev,
 			of_phy_simple_xlate);
@@ -312,24 +315,30 @@ static int omap_usb2_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM_RUNTIME
-
-static int omap_usb2_runtime_suspend(struct device *dev)
+static int omap_usb2_enable_phywkup(struct omap_usb *phy)
 {
-	struct platform_device	*pdev = to_platform_device(dev);
-	struct omap_usb	*phy = platform_get_drvdata(pdev);
-
-	clk_disable(phy->wkupclk);
-	if (!IS_ERR(phy->optclk))
-		clk_disable(phy->optclk);
+	omap_control_phy_wkup(phy->control_dev, 1);
 
 	return 0;
 }
 
-static int omap_usb2_runtime_resume(struct device *dev)
+static int omap_usb2_disable_phywkup(struct omap_usb *phy)
 {
-	struct platform_device	*pdev = to_platform_device(dev);
-	struct omap_usb	*phy = platform_get_drvdata(pdev);
+	omap_control_phy_wkup(phy->control_dev, 0);
+
+	return 0;
+}
+
+static void omap_usb2_disable_clocks(struct omap_usb *phy)
+{
+
+	clk_disable(phy->wkupclk);
+	if (!IS_ERR(phy->optclk))
+		clk_disable(phy->optclk);
+}
+
+static int omap_usb2_enable_clocks(struct omap_usb *phy)
+{
 	int ret;
 
 	ret = clk_enable(phy->wkupclk);
@@ -355,15 +364,61 @@ err0:
 	return ret;
 }
 
+#ifdef CONFIG_PM_RUNTIME
+static int omap_usb2_runtime_suspend(struct device *dev)
+{
+	struct platform_device	*pdev = to_platform_device(dev);
+	struct omap_usb	*phy = platform_get_drvdata(pdev);
+
+	omap_usb2_disable_clocks(phy);
+
+	return 0;
+}
+
+static int omap_usb2_runtime_resume(struct device *dev)
+{
+	struct platform_device	*pdev = to_platform_device(dev);
+	struct omap_usb	*phy = platform_get_drvdata(pdev);
+	int ret;
+
+	ret = omap_usb2_enable_clocks(phy);
+
+	return ret;
+}
+#endif
+
+static int omap_usb2_suspend(struct device *dev)
+{
+	struct platform_device	*pdev = to_platform_device(dev);
+	struct omap_usb	*phy = platform_get_drvdata(pdev);
+
+	if (phy->flags & OMAP_USB2_ENABLE_PHYWKUP)
+		omap_usb2_enable_phywkup(phy);
+
+	omap_usb2_disable_clocks(phy);
+
+	return 0;
+}
+
+static int omap_usb2_resume(struct device *dev)
+{
+	struct platform_device	*pdev = to_platform_device(dev);
+	struct omap_usb	*phy = platform_get_drvdata(pdev);
+	int ret;
+
+	ret = omap_usb2_enable_clocks(phy);
+	if (phy->flags & OMAP_USB2_ENABLE_PHYWKUP)
+		omap_usb2_disable_phywkup(phy);
+
+	return ret;
+}
+
 static const struct dev_pm_ops omap_usb2_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(omap_usb2_suspend, omap_usb2_resume)
 	SET_RUNTIME_PM_OPS(omap_usb2_runtime_suspend, omap_usb2_runtime_resume,
 		NULL)
 };
 
-#define DEV_PM_OPS     (&omap_usb2_pm_ops)
-#else
-#define DEV_PM_OPS     NULL
-#endif
 
 static struct platform_driver omap_usb2_driver = {
 	.probe		= omap_usb2_probe,
@@ -371,7 +426,7 @@ static struct platform_driver omap_usb2_driver = {
 	.driver		= {
 		.name	= "omap-usb2",
 		.owner	= THIS_MODULE,
-		.pm	= DEV_PM_OPS,
+		.pm	= &omap_usb2_pm_ops,
 		.of_match_table = of_match_ptr(omap_usb2_id_table),
 	},
 };
