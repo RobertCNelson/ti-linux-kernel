@@ -1603,6 +1603,9 @@ EXPORT_SYMBOL_GPL(musb_interrupt);
 
 void musb_babble_reinit(struct musb *musb)
 {
+	musb_core_init(musb->config->multipoint
+			? MUSB_CONTROLLER_MHDRC
+			: MUSB_CONTROLLER_HDRC, musb);
 	musb_start(musb);
 }
 EXPORT_SYMBOL_GPL(musb_babble_reinit);
@@ -2096,6 +2099,8 @@ static int musb_remove(struct platform_device *pdev)
 	musb_exit_debugfs(musb);
 	musb_shutdown(pdev);
 
+	if (musb->dma_controller)
+		dma_controller_destroy(musb->dma_controller);
 
 	musb_free(musb);
 	device_init_wakeup(dev, 0);
@@ -2269,16 +2274,28 @@ static int musb_suspend(struct device *dev)
 		 */
 	}
 
+	musb_save_context(musb);
+
 	spin_unlock_irqrestore(&musb->lock, flags);
 	return 0;
 }
 
 static int musb_resume_noirq(struct device *dev)
 {
-	/* for static cmos like DaVinci, register values were preserved
+	struct musb	*musb = dev_to_musb(dev);
+
+	/*
+	 * For static cmos like DaVinci, register values were preserved
 	 * unless for some reason the whole soc powered down or the USB
 	 * module got reset through the PSC (vs just being disabled).
+	 *
+	 * For the DSPS glue layer though, a full register restore has to
+	 * be done. As it shouldn't harm other platforms, we do it
+	 * unconditionally.
 	 */
+
+	musb_restore_context(musb);
+
 	return 0;
 }
 
