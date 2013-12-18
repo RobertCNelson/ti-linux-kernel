@@ -19,8 +19,12 @@
 #define AIC31XX_RATES	SNDRV_PCM_RATE_8000_192000
 
 /* AIC31XX supports the word formats 16bits, 20bits, 24bits and 32 bits */
+#if 0
 #define AIC31XX_FORMATS	(SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S20_3LE \
 			 | SNDRV_PCM_FMTBIT_S24_3LE | SNDRV_PCM_FMTBIT_S32_LE)
+#else
+#define AIC31XX_FORMATS	(SNDRV_PCM_FMTBIT_S16_LE)
+#endif
 
 /* Audio data word length = 16-bits (default setting) */
 #define AIC31XX_WORD_LEN_16BITS		0x00
