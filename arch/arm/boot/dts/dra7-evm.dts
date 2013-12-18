@@ -596,7 +596,7 @@
 	pcf_hdmi: gpio@26 {
 		compatible = "nxp,pcf8575";
 		reg = <0x26>;
-		lines-initial-states = <0xffef>;
+		lines-initial-states = <0xffeb>;
 		gpio-controller;
 		#gpio-cells = <2>;
 	};
