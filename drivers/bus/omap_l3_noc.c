@@ -84,8 +84,9 @@ static irqreturn_t l3_interrupt_handler(int irq, void *_l3)
 			/* Identify the source from control status register */
 			err_src = __ffs(err_reg);
 
-			if (*(l3->l3_targets[i] + err_src) ==
-						L3_FLAGMUX_TARGET_OFS_INVALID) {
+			if ((err_src >= l3->num_targets[i]) ||
+			    (*(l3->l3_targets[i] + err_src) ==
+			    L3_FLAGMUX_TARGET_OFS_INVALID)) {
 				u32 val;
 				void __iomem *reg = base + l3->l3_flag_mux[i] +
 					L3_FLAGMUX_MASK0 + (inttype << 3);

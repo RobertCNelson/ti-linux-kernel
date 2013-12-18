@@ -293,6 +293,7 @@ struct omap_l3 {
 	int app_irq;
 	int num_modules;
 	int num_masters;
+	unsigned num_targets[MAX_L3_MODULES];
 };
 
 struct omap_l3 omap_l3_data = {
@@ -303,6 +304,11 @@ struct omap_l3 omap_l3_data = {
 	.num_modules = OMAP_L3_MODULES,
 	.num_masters = sizeof(omap_l3_masters)/sizeof(struct l3_masters_data),
 	.l3_flag_mux = omap_l3_flagmux,
+	.num_targets = {
+		ARRAY_SIZE(omap_l3_targ_inst_clk1),
+		ARRAY_SIZE(omap_l3_targ_inst_clk2),
+		ARRAY_SIZE(omap_l3_targ_inst_clk3),
+	},
 };
 
 struct omap_l3 am4372_l3_data = {
@@ -313,6 +319,10 @@ struct omap_l3 am4372_l3_data = {
 	.num_modules = AM4372_L3_MODULES,
 	.num_masters = sizeof(am4372_l3_masters)/sizeof(struct l3_masters_data),
 	.l3_flag_mux = am4372_l3_flagmux,
+	.num_targets = {
+		ARRAY_SIZE(am4372_l3_targ_inst_200f),
+		ARRAY_SIZE(am4372_l3_targ_inst_100s),
+	},
 };
 
 #endif
