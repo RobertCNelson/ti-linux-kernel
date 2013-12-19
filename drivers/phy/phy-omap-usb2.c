@@ -124,19 +124,9 @@ static int omap_usb_power_on(struct phy *x)
 static int omap_usb_init(struct phy *x)
 {
 	struct omap_usb *phy = phy_get_drvdata(x);
-	struct resource *res;
-	struct platform_device *pdev = to_platform_device(phy->dev);
 	u32 val;
 
 	if (phy->flags & OMAP_USB2_CALIBRATE_FALSE_DISCONNECT) {
-		res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-		if (!res) {
-			dev_err(&pdev->dev, "memory resource not available\n");
-			return -ENODEV;
-		}
-		phy->phy_base = devm_request_and_ioremap(&pdev->dev, res);
-		if (!phy->phy_base)
-			return -ENOMEM;
 		/*
 		 *
 		 * Reduce the sensitivity of internal PHY by enabling the
@@ -211,6 +201,7 @@ static int omap_usb2_probe(struct platform_device *pdev)
 	struct device_node *control_node;
 	struct platform_device *control_pdev;
 	struct phy *generic_phy;
+	struct resource *res;
 	struct phy_provider *phy_provider;
 	const struct of_device_id *of_id;
 	struct usb_phy_data *phy_data;
@@ -241,8 +232,17 @@ static int omap_usb2_probe(struct platform_device *pdev)
 	phy->phy.otg		= otg;
 	phy->phy.type		= USB_PHY_TYPE_USB2;
 
-	if (phy_data->flags & OMAP_USB2_CALIBRATE_FALSE_DISCONNECT)
+	if (phy_data->flags & OMAP_USB2_CALIBRATE_FALSE_DISCONNECT) {
+		res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+		if (!res) {
+			dev_err(&pdev->dev, "memory resource not available\n");
+			return -ENODEV;
+		}
+		phy->phy_base = devm_request_and_ioremap(&pdev->dev, res);
+		if (!phy->phy_base)
+			return -ENOMEM;
 		phy->flags |= OMAP_USB2_CALIBRATE_FALSE_DISCONNECT;
+	}
 
 	if (phy_data->flags & OMAP_USB2_ENABLE_PHYWKUP)
 		phy->flags |= OMAP_USB2_ENABLE_PHYWKUP;
