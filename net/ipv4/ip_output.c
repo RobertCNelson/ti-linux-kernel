@@ -79,6 +79,7 @@
 #include <linux/mroute.h>
 #include <linux/netlink.h>
 #include <linux/tcp.h>
+#include <linux/locallock.h>
 
 int sysctl_ip_default_ttl __read_mostly = IPDEFTTL;
 EXPORT_SYMBOL(sysctl_ip_default_ttl);
@@ -1522,6 +1523,9 @@ static DEFINE_PER_CPU(struct inet_sock, unicast_sock) = {
 	.uc_ttl		= -1,
 };
 
+/* serialize concurrent calls on the same CPU to ip_send_unicast_reply */
+static DEFINE_LOCAL_IRQ_LOCK(unicast_lock);
+
 void ip_send_unicast_reply(struct net *net, struct sk_buff *skb,
 			   const struct ip_options *sopt,
 			   __be32 daddr, __be32 saddr,
@@ -1565,8 +1569,7 @@ void ip_send_unicast_reply(struct net *net, struct sk_buff *skb,
 	if (IS_ERR(rt))
 		return;
 
-	get_cpu_light();
-	inet = &__get_cpu_var(unicast_sock);
+	inet = &get_locked_var(unicast_lock, unicast_sock);
 
 	inet->tos = arg->tos;
 	sk = &inet->sk;
@@ -1595,7 +1598,7 @@ void ip_send_unicast_reply(struct net *net, struct sk_buff *skb,
 		ip_push_pending_frames(sk, &fl4);
 	}
 out:
-	put_cpu_light();
+	put_locked_var(unicast_lock, unicast_sock);
 
 	ip_rt_put(rt);
 }
