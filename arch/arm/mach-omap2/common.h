@@ -347,6 +347,8 @@ extern void __iomem *am33xx_dram_sync;
 struct omap_hwmod;
 extern int omap_dss_reset(struct omap_hwmod *);
 
+extern void omap_fb_reserve_memblock(void);
+
 /* SoC specific clock initializer */
 extern int (*omap_clk_init)(void);
 

@@ -33,6 +33,7 @@
 
 #include "soc.h"
 #include "display.h"
+#include "common.h"
 
 #ifdef CONFIG_OMAP2_VRFB
 
@@ -106,10 +107,84 @@ static struct platform_device omap_fb_device = {
 	.num_resources = 0,
 };
 
+static phys_addr_t omapfb_mem_base __initdata;
+static phys_addr_t omapfb_mem_size __initdata;
+
+static int __init early_omapfb_vram(char *p)
+{
+	omapfb_mem_size = memparse(p, &p);
+
+	if (!omapfb_mem_size) {
+		pr_err("omapfb: bad size for 'omapfb_vram' param\n");
+		return 0;
+	}
+
+	if (*p == '@') {
+		omapfb_mem_base = memparse(p + 1, NULL);
+
+		if (!omapfb_mem_base) {
+			pr_err("omapfb: bad addr for 'omapfb_vram' param\n");
+			omapfb_mem_size = 0;
+			return 0;
+		}
+	}
+
+	return 0;
+}
+early_param("omapfb_vram", early_omapfb_vram);
+
+void __init omap_fb_reserve_memblock(void)
+{
+	int r;
+
+	if (!omapfb_mem_size)
+		return;
+
+	if (omapfb_mem_base) {
+		r = memblock_reserve(omapfb_mem_base, omapfb_mem_size);
+
+		if (r) {
+			pr_err("omapfb: memblock_reserve failed: %d\n", r);
+			return;
+		}
+	} else {
+		omapfb_mem_base = memblock_alloc(omapfb_mem_size, SZ_1M);
+
+		if (!omapfb_mem_base) {
+			pr_err("omapfb: memblock_alloc failed\n");
+			return;
+		}
+	}
+
+	memblock_free(omapfb_mem_base, omapfb_mem_size);
+	memblock_remove(omapfb_mem_base, omapfb_mem_size);
+
+	pr_info("omapfb: reserved %pa bytes at %pa\n",
+		&omapfb_mem_size, &omapfb_mem_base);
+}
+
 int __init omap_init_fb(void)
 {
-	return platform_device_register(&omap_fb_device);
+	int r;
+
+	r = platform_device_register(&omap_fb_device);
+
+	if (r)
+		return r;
+
+	if (!omapfb_mem_base)
+		return 0;
+
+	r = dma_declare_coherent_memory(&omap_fb_device.dev,
+					omapfb_mem_base, omapfb_mem_base,
+					omapfb_mem_size, DMA_MEMORY_MAP);
+	if (!(r & DMA_MEMORY_MAP))
+		pr_err("omapfb: dma_declare_coherent_memory failed\n");
+
+	return 0;
 }
+
 #else
+void __init omap_fb_reserve_memblock(void) { }
 int __init omap_init_fb(void) { return 0; }
 #endif
