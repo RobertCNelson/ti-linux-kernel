@@ -64,6 +64,7 @@ struct omapfb2_mem_region {
 	atomic_t	map_count;
 	struct rw_semaphore lock;
 	atomic_t	lock_count;
+	bool		noclear;	/* don't clear the fb on alloc */
 };
 
 /* appended to fb_info */
