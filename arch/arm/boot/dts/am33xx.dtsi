@@ -870,7 +870,7 @@
 		};
 
 		efuse_sma: efuse@0x44e107fc {
-			compatible = "ti,opp-omap";
+			compatible = "ti,opp-omap-am3352";
 			reg = <0x44e107fc 0x04		/* EFUSE_SMA */
 			       0x44e10600 0x04>;	/* DEVICE_ID */
 
