@@ -64,6 +64,14 @@ static unsigned long am33xx_devrev_to_opp_rev(int rev)
 		return 0;
 }
 
+static unsigned long am43xx_devrev_to_opp_rev(int rev)
+{
+	if (rev_id == 0)
+		return OPP_REV(1, 0);
+	else
+		return 0;
+}
+
 static int of_opp_check_availability(struct device *dev, struct device_node *np)
 {
 	const struct property *prop;
@@ -232,6 +240,10 @@ static struct of_device_id opp_omap_of_match[] = {
 	{
 		.compatible = "ti,opp-omap-am3352",
 		.data = (void *)am33xx_devrev_to_opp_rev,
+	},
+	{
+		.compatible = "ti,opp-omap-am4372",
+		.data = (void *)am43xx_devrev_to_opp_rev,
 	},
 	{ },
 };
