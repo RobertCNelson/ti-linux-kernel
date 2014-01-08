@@ -297,6 +297,16 @@
 			0x174 (PIN_INPUT_PULLUP | SLEWCTRL_FAST | DS0_PULL_UP_DOWN_EN | MUX_MODE0) /* uart0_txd.uart0_txd */
 		>;
 	};
+
+	tsl2550: tsl2550@39 {
+		compatible = "taos,tsl2550";
+		reg = <0x39>;
+	};
+
+	tmp275: tmp275@48 {
+		compatible = "ti,tmp275";
+		reg = <0x48>;
+	};
 };
 
 &i2c0 {
