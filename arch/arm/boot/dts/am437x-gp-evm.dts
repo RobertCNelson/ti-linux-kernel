@@ -302,6 +302,11 @@
 		compatible = "taos,tsl2550";
 		reg = <0x39>;
 	};
+
+	tmp275: tmp275@48 {
+		compatible = "ti,tmp275";
+		reg = <0x48>;
+	};
 };
 
 &i2c0 {
