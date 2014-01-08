@@ -234,10 +234,6 @@ static int opp_omap_remove(struct platform_device *pdev)
 
 static struct of_device_id opp_omap_of_match[] = {
 	{
-		.compatible = "ti,opp-omap",
-		.data = (void *)am33xx_devrev_to_opp_rev,
-	},
-	{
 		.compatible = "ti,opp-omap-am3352",
 		.data = (void *)am33xx_devrev_to_opp_rev,
 	},
