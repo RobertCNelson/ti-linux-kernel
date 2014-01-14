@@ -53,6 +53,10 @@ static LIST_HEAD(deferred_probe_pending_list);
 static LIST_HEAD(deferred_probe_active_list);
 static struct workqueue_struct *deferred_wq;
 
+static atomic_t probe_count = ATOMIC_INIT(0);
+static DECLARE_WAIT_QUEUE_HEAD(probe_waitqueue);
+static bool deferral_retry;
+
 /**
  * deferred_probe_work_func() - Retry probing devices in the active list.
  */
@@ -140,6 +144,11 @@ static void driver_deferred_probe_trigger(void)
 {
 	if (!driver_deferred_probe_enable)
 		return;
+
+	if (atomic_read(&probe_count) > 1)
+		deferral_retry = true;
+	else
+		deferral_retry = false;
 
 	/*
 	 * A successful probe means that all the devices in the pending list
@@ -259,9 +268,6 @@ int device_bind_driver(struct device *dev)
 }
 EXPORT_SYMBOL_GPL(device_bind_driver);
 
-static atomic_t probe_count = ATOMIC_INIT(0);
-static DECLARE_WAIT_QUEUE_HEAD(probe_waitqueue);
-
 static int really_probe(struct device *dev, struct device_driver *drv)
 {
 	int ret = 0;
@@ -310,6 +316,16 @@ probe_failed:
 		/* Driver requested deferred probing */
 		dev_info(dev, "Driver %s requests probe deferral\n", drv->name);
 		driver_deferred_probe_add(dev);
+		/*
+		 * This is the last driver to load and asking to be deferred.
+		 * If other driver(s) loaded while this driver was loading, we
+		 * should try the deferred modules again to avoid missing
+		 * dependency for this driver.
+		 */
+		if (atomic_read(&probe_count) == 1 && deferral_retry) {
+			deferral_retry = false;
+			driver_deferred_probe_trigger();
+		}
 	} else if (ret != -ENODEV && ret != -ENXIO) {
 		/* driver matched but the probe failed */
 		printk(KERN_WARNING
