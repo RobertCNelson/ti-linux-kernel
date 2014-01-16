@@ -199,7 +199,6 @@ struct da8xx_fb_par {
 	unsigned int		dma_start;
 	unsigned int		dma_end;
 	struct clk *lcdc_clk;
-	struct clk *disp_clk;
 	int irq;
 	unsigned int palette_sz;
 	int blank;
@@ -824,35 +823,30 @@ static int lcd_init(struct da8xx_fb_par *par, const struct lcd_ctrl_config *cfg,
 	struct da8xx_encoder *enc = NULL;
 
 	if (IS_ENABLED(CONFIG_FB_DA8XX_TDA998X) && par->hdmi_node) {
-		unsigned int div = 0;
-		unsigned long pixclock = 0;
+		const unsigned clkdiv = 2; /* we use fixed div 2 */
+		unsigned long pixclock;
 
-		pr_debug("pixclock from panel %d\n", panel->pixclock);
 		pixclock = PICOS2KHZ(panel->pixclock) * 1000;
-		pr_debug("pixclock converted to hz %ld\n", pixclock);
-		/* remove any rounding errors as this seems to mess up clk */
-		pixclock = (pixclock/10000)*10000;
-		pr_debug("rounded clock rate %ld\n",
-			clk_round_rate(par->lcdc_clk, pixclock*2));
-		/* in raster mode, minimum divisor is 2: */
-		ret = clk_set_rate(par->disp_clk, pixclock * 2);
-		if (IS_ERR_VALUE(ret)) {
-			dev_err(par->dev, "failed to set display clock rate to: %ld\n",
-				pixclock);
+
+		pr_debug("target pixclock %d ps, %lu Hz\n",
+			panel->pixclock, pixclock);
+
+		ret = clk_set_rate(par->lcdc_clk, pixclock * clkdiv);
+		if (ret < 0) {
+			dev_err(par->dev,
+				"failed to set display clock rate to %lu: %d\n",
+				pixclock, ret);
 			return ret;
 		}
 
 		par->lcdc_clk_rate = clk_get_rate(par->lcdc_clk);
-		div = par->lcdc_clk_rate / pixclock;
+		pixclock = par->lcdc_clk_rate / clkdiv;
 
-		pr_debug("lcd_clk=%u, mode clock=%ld, div=%u\n",
-			par->lcdc_clk_rate, pixclock, div);
-		pr_debug("fck=%lu, dpll_disp_ck=%lu\n",
-			clk_get_rate(par->lcdc_clk),
-			clk_get_rate(par->disp_clk));
+		pr_debug("lcd_clk=%u, pixclock=%lu, div=%u\n",
+			par->lcdc_clk_rate, pixclock, clkdiv);
 
 		/* Configure the LCD clock divisor. */
-		lcdc_write(LCD_CLK_DIVISOR(div) |
+		lcdc_write(LCD_CLK_DIVISOR(clkdiv) |
 			(LCD_RASTER_MODE & 0x1), LCD_CTRL_REG);
 
 		if (lcd_revision == LCD_VERSION_2)
@@ -1515,7 +1509,7 @@ static int fb_probe(struct platform_device *device)
 	struct fb_videomode *lcdc_info;
 	struct fb_info *da8xx_fb_info;
 	struct da8xx_fb_par *par;
-	struct clk *tmp_lcdc_clk, *tmp_disp_clk;
+	struct clk *tmp_lcdc_clk;
 	int ret;
 	unsigned long ulcm;
 	struct device_node *hdmi_node = NULL;
@@ -1550,12 +1544,6 @@ static int fb_probe(struct platform_device *device)
 	if (IS_ERR(tmp_lcdc_clk)) {
 		dev_err(&device->dev, "Can not get device clock\n");
 		return PTR_ERR(tmp_lcdc_clk);
-	}
-
-	tmp_disp_clk = devm_clk_get(&device->dev, "dpll_disp_ck");
-	if (IS_ERR(tmp_disp_clk)) {
-		/* we can live if dpll_disp_ck is not available */
-		tmp_disp_clk = NULL;
 	}
 
 	pm_runtime_enable(&device->dev);
@@ -1608,7 +1596,6 @@ static int fb_probe(struct platform_device *device)
 	par->dev = &device->dev;
 	par->lcdc_clk = tmp_lcdc_clk;
 	par->lcdc_clk_rate = clk_get_rate(par->lcdc_clk);
-	par->disp_clk = tmp_disp_clk;
 
 	if (fb_pdata && fb_pdata->panel_power_ctrl) {
 		par->panel_power_ctrl = fb_pdata->panel_power_ctrl;
