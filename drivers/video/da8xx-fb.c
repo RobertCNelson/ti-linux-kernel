@@ -168,14 +168,15 @@ void da8xx_unregister_encoder(struct da8xx_encoder *encoder)
 EXPORT_SYMBOL(da8xx_unregister_encoder);
 
 
-struct da8xx_encoder *da8xx_get_encoder_from_phandle(struct device_node *node)
+static struct da8xx_encoder
+	*da8xx_get_encoder_from_phandle(struct device_node *node)
 {
 	struct da8xx_encoder *entry;
 	list_for_each_entry(entry, &encoder_modules, list)
 		if (entry->node == node)
 			return entry;
 
-	return 0;
+	return NULL;
 }
 
 static unsigned int lcdc_read(unsigned int addr)
@@ -820,7 +821,7 @@ static int lcd_init(struct da8xx_fb_par *par, const struct lcd_ctrl_config *cfg,
 {
 	u32 bpp;
 	int ret = 0;
-	struct da8xx_encoder *enc = 0;
+	struct da8xx_encoder *enc = NULL;
 
 	if (IS_ENABLED(CONFIG_FB_DA8XX_TDA998X) && par->hdmi_node) {
 		unsigned int div = 0;
@@ -1161,7 +1162,7 @@ static int fb_check_var(struct fb_var_screeninfo *var,
 	 * clock setting code that works on da8xx but is a bit
 	 * inaccurate for the encoders on AM335x
 	 */
-	if (!IS_ENABLED(CONFIG_FB_DA8XX_TDA998X) || (par->hdmi_node == 0))
+	if (!IS_ENABLED(CONFIG_FB_DA8XX_TDA998X) || (par->hdmi_node == NULL))
 		var->pixclock = da8xx_fb_round_clk(par, var->pixclock);
 
 	return err;
@@ -1282,7 +1283,7 @@ static int fb_ioctl(struct fb_info *info, unsigned int cmd,
 	case FBIPUT_COLOR:
 		return -ENOTTY;
 	case FBIPUT_HSYNC:
-		if (copy_from_user(&sync_arg, (char *)arg,
+		if (copy_from_user(&sync_arg, (void __user *)arg,
 				sizeof(struct lcd_sync_arg)))
 			return -EFAULT;
 		lcd_cfg_horizontal_sync(sync_arg.back_porch,
@@ -1290,7 +1291,7 @@ static int fb_ioctl(struct fb_info *info, unsigned int cmd,
 					sync_arg.front_porch);
 		break;
 	case FBIPUT_VSYNC:
-		if (copy_from_user(&sync_arg, (char *)arg,
+		if (copy_from_user(&sync_arg, (void __user *)arg,
 				sizeof(struct lcd_sync_arg)))
 			return -EFAULT;
 		lcd_cfg_vertical_sync(sync_arg.back_porch,
@@ -1529,7 +1530,7 @@ static int fb_probe(struct platform_device *device)
 		hdmi_node = of_parse_phandle(device->dev.of_node,
 					"hdmi", 0);
 		if (hdmi_node &&
-			(da8xx_get_encoder_from_phandle(hdmi_node) == 0)) {
+			(da8xx_get_encoder_from_phandle(hdmi_node) == NULL)) {
 			/* i2c encoder has not initialized yet, defer */
 			of_node_put(hdmi_node);
 			return -EPROBE_DEFER;
@@ -1554,7 +1555,7 @@ static int fb_probe(struct platform_device *device)
 	tmp_disp_clk = devm_clk_get(&device->dev, "dpll_disp_ck");
 	if (IS_ERR(tmp_disp_clk)) {
 		/* we can live if dpll_disp_ck is not available */
-		tmp_disp_clk = 0;
+		tmp_disp_clk = NULL;
 	}
 
 	pm_runtime_enable(&device->dev);
@@ -1755,7 +1756,7 @@ err_pm_runtime_disable:
 }
 
 #ifdef CONFIG_PM
-struct lcdc_context {
+static struct lcdc_context {
 	u32 clk_enable;
 	u32 ctrl;
 	u32 dma_ctrl;
