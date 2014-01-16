@@ -207,6 +207,9 @@ struct da8xx_fb_par {
 	int			vsync_timeout;
 	spinlock_t		lock_for_chan_update;
 
+	wait_queue_head_t	palette_wait;
+	int			palette_loaded_flag;
+
 	/*
 	 * LCDC has 2 ping pong DMA channels, channel 0
 	 * and channel 1.
@@ -398,6 +401,24 @@ static void lcd_blit(int load_mode, struct da8xx_fb_par *par)
 	 * set.
 	 */
 	lcd_enable_raster();
+}
+
+static void lcd_load_palette(struct da8xx_fb_par *par)
+{
+	int r;
+
+	par->palette_loaded_flag = 0;
+
+	lcd_blit(LOAD_PALETTE, par);
+
+	r = wait_event_interruptible_timeout(par->palette_wait,
+					       par->palette_loaded_flag != 0,
+					       msecs_to_jiffies(50));
+
+	if (r == 0)
+		pr_err("LCDC timeout when loading palette\n");
+
+	lcd_blit(LOAD_DATA, par);
 }
 
 /* Configure the Burst Size and fifo threhold of DMA */
@@ -723,7 +744,7 @@ static int fb_setcolreg(unsigned regno, unsigned red, unsigned green,
 
 	/* Update the palette in the h/w as needed. */
 	if (update_hw)
-		lcd_blit(LOAD_PALETTE, par);
+		lcd_load_palette(par);
 
 	return 0;
 }
@@ -897,6 +918,8 @@ static int lcd_init(struct da8xx_fb_par *par, const struct lcd_ctrl_config *cfg,
 	if (ret < 0)
 		return ret;
 
+	lcd_load_palette(par);
+
 	/* Configure FDD */
 	lcdc_write((lcdc_read(LCD_RASTER_CTRL_REG) & 0xfff00fff) |
 		       (cfg->fdd << 12), LCD_RASTER_CTRL_REG);
@@ -964,8 +987,8 @@ static irqreturn_t lcdc_irq_handler_rev02(int irq, void *arg)
 		/* Disable PL completion interrupt */
 		lcdc_write(LCD_V2_PL_INT_ENA, LCD_INT_ENABLE_CLR_REG);
 
-		/* Setup and start data loading mode */
-		lcd_blit(LOAD_DATA, par);
+		par->palette_loaded_flag = 1;
+		wake_up_interruptible(&par->palette_wait);
 	} else {
 		lcdc_write(stat, LCD_MASKED_STAT_REG);
 
@@ -1033,8 +1056,8 @@ static irqreturn_t lcdc_irq_handler_rev01(int irq, void *arg)
 		reg_ras &= ~LCD_V1_PL_INT_ENA;
 		lcdc_write(reg_ras, LCD_RASTER_CTRL_REG);
 
-		/* Setup and start data loading mode */
-		lcd_blit(LOAD_DATA, par);
+		par->palette_loaded_flag = 1;
+		wake_up_interruptible(&par->palette_wait);
 	} else {
 		lcdc_write(stat, LCD_STAT_REG);
 
@@ -1656,6 +1679,18 @@ static int fb_probe(struct platform_device *device)
 		goto err_release_pl_mem;
 	}
 
+	if (lcd_revision == LCD_VERSION_1)
+		lcdc_irq_handler = lcdc_irq_handler_rev01;
+	else {
+		init_waitqueue_head(&frame_done_wq);
+		lcdc_irq_handler = lcdc_irq_handler_rev02;
+	}
+
+	ret = devm_request_irq(&device->dev, par->irq, lcdc_irq_handler, 0,
+			       DRIVER_NAME, par);
+	if (ret)
+		goto err_release_pl_mem;
+
 	da8xx_fb_var.grayscale =
 	    lcd_cfg->panel_shade == MONOCHROME ? 1 : 0;
 	da8xx_fb_var.bits_per_pixel = lcd_cfg->bpp;
@@ -1674,10 +1709,6 @@ static int fb_probe(struct platform_device *device)
 		goto err_release_pl_mem;
 	da8xx_fb_info->cmap.len = par->palette_sz;
 
-	/* initialize var_screeninfo */
-	da8xx_fb_var.activate = FB_ACTIVATE_FORCE;
-	fb_set_var(da8xx_fb_info, &da8xx_fb_var);
-
 	dev_set_drvdata(&device->dev, da8xx_fb_info);
 
 	/* initialize the vsync wait queue */
@@ -1685,6 +1716,12 @@ static int fb_probe(struct platform_device *device)
 	par->vsync_timeout = HZ / 5;
 	par->which_dma_channel_done = -1;
 	spin_lock_init(&par->lock_for_chan_update);
+
+	init_waitqueue_head(&par->palette_wait);
+
+	/* set var and par */
+	da8xx_fb_var.activate = FB_ACTIVATE_FORCE;
+	fb_set_var(da8xx_fb_info, &da8xx_fb_var);
 
 	/* Register the Frame Buffer  */
 	if (register_framebuffer(da8xx_fb_info) < 0) {
@@ -1702,22 +1739,9 @@ static int fb_probe(struct platform_device *device)
 	}
 #endif
 
-	if (lcd_revision == LCD_VERSION_1)
-		lcdc_irq_handler = lcdc_irq_handler_rev01;
-	else {
-		init_waitqueue_head(&frame_done_wq);
-		lcdc_irq_handler = lcdc_irq_handler_rev02;
-	}
-
-	ret = devm_request_irq(&device->dev, par->irq, lcdc_irq_handler, 0,
-			       DRIVER_NAME, par);
-	if (ret)
-		goto irq_freq;
 	return 0;
 
-irq_freq:
 #ifdef CONFIG_CPU_FREQ
-	lcd_da8xx_cpufreq_deregister(par);
 err_cpu_freq:
 #endif
 	unregister_framebuffer(da8xx_fb_info);
