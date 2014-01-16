@@ -83,7 +83,6 @@ config USB_MUSB_AM35X
 
 config USB_MUSB_DSPS
 	tristate "TI DSPS platforms"
-	select USB_MUSB_AM335X_CHILD
 	depends on OF_IRQ
 
 config USB_MUSB_BLACKFIN
@@ -96,7 +95,11 @@ config USB_MUSB_UX500
 endchoice
 
 config USB_MUSB_AM335X_CHILD
-	bool
+	tristate "Enable support for AM335x devices"
+	depends on USB_MUSB_DSPS
+	default USB_MUSB_DSPS
+	help
+	  Say 'y' or 'm' here if you have an AM335x device. If unsure, say 'n'.
 
 choice
 	prompt 'MUSB DMA mode'

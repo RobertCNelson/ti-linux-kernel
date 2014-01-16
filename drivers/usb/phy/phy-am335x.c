@@ -52,17 +52,18 @@ static int am335x_phy_probe(struct platform_device *pdev)
 		return am_phy->id;
 	}
 
+	platform_set_drvdata(pdev, am_phy);
+
 	ret = usb_phy_gen_create_phy(dev, &am_phy->usb_phy_gen, NULL);
 	if (ret)
 		return ret;
 
-	ret = usb_add_phy_dev(&am_phy->usb_phy_gen.phy);
-	if (ret)
-		return ret;
 	am_phy->usb_phy_gen.phy.init = am335x_init;
 	am_phy->usb_phy_gen.phy.shutdown = am335x_shutdown;
 
-	platform_set_drvdata(pdev, am_phy);
+	ret = usb_add_phy_dev(&am_phy->usb_phy_gen.phy);
+	if (ret)
+		return ret;
 	device_init_wakeup(dev, true);
 
 	/*
