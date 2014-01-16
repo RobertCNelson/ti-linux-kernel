@@ -42,6 +42,8 @@
 				1000000 1325000
 			>;
 
+			voltage-tolerance = <2>; /* 2 percentage */
+
 			platform-opp-modifier = <&mpu_opp_modifier>;
 
 			clocks = <&dpll_mpu_ck>;
