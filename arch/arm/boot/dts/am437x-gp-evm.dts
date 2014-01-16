@@ -375,6 +375,7 @@
 
 &gpio5 {
 	status = "okay";
+	ti,no-reset;
 };
 
 &dpi {
