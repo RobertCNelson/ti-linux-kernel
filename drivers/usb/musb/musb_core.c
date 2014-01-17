@@ -1848,7 +1848,6 @@ static void musb_free(struct musb *musb)
 			disable_irq_wake(musb->nIrq);
 		free_irq(musb->nIrq, musb);
 	}
-	cancel_work_sync(&musb->irq_work);
 
 	musb_host_free(musb);
 }
@@ -1935,6 +1934,9 @@ musb_init_controller(struct device *dev, int nIrq, void __iomem *ctrl)
 	musb_platform_disable(musb);
 	musb_generic_disable(musb);
 
+	/* Init IRQ workqueue before request_irq */
+	INIT_WORK(&musb->irq_work, musb_irq_work);
+
 	/* setup musb parts of the core (especially endpoints) */
 	status = musb_core_init(plat->config->multipoint
 			? MUSB_CONTROLLER_MHDRC
@@ -1943,9 +1945,6 @@ musb_init_controller(struct device *dev, int nIrq, void __iomem *ctrl)
 		goto fail3;
 
 	setup_timer(&musb->otg_timer, musb_otg_timer_func, (unsigned long) musb);
-
-	/* Init IRQ workqueue before request_irq */
-	INIT_WORK(&musb->irq_work, musb_irq_work);
 
 	/* attach to the IRQ */
 	if (request_irq(nIrq, musb->isr, 0, dev_name(dev), musb)) {
@@ -2029,6 +2028,7 @@ fail4:
 	musb_host_cleanup(musb);
 
 fail3:
+	cancel_work_sync(&musb->irq_work);
 	if (musb->dma_controller)
 		dma_controller_destroy(musb->dma_controller);
 fail2_5:
@@ -2090,6 +2090,8 @@ static int musb_remove(struct platform_device *pdev)
 
 	if (musb->dma_controller)
 		dma_controller_destroy(musb->dma_controller);
+
+	cancel_work_sync(&musb->irq_work);
 
 	musb_free(musb);
 	device_init_wakeup(dev, 0);
