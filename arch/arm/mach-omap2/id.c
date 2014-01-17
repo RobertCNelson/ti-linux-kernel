@@ -645,6 +645,10 @@ static const char * __init omap_get_family(void)
 		return kasprintf(GFP_KERNEL, "OMAP4");
 	else if (soc_is_omap54xx())
 		return kasprintf(GFP_KERNEL, "OMAP5");
+	else if (soc_is_am33xx())
+		return kasprintf(GFP_KERNEL, "AM33xx");
+	else if (soc_is_am43xx())
+		return kasprintf(GFP_KERNEL, "AM43xx");
 	else
 		return kasprintf(GFP_KERNEL, "Unknown");
 }

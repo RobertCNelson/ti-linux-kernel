@@ -778,6 +778,7 @@
 			ti,no-reset;
 			clocks = <&dpll_core_m4_div2_ck>;
 			clock-names = "fck";
+			resets = <&prcm 1>;
 		};
 
 		elm: elm@48080000 {

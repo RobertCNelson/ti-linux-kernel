@@ -40,6 +40,12 @@ static struct ti_reset_reg_data am335x_reset_reg_data[] = {
 		.rstctrl_bit	= 0,
 		.rstst_bit	= 0,
 	},
+	{
+		.rstctrl_offs	= 0x0D00,
+		.rstst_offs	= 0x0D0C,
+		.rstctrl_bit	= 3,
+		.rstst_bit	= 5,
+	},
 };
 
 static struct ti_reset_data am335x_reset_data = {
@@ -53,6 +59,12 @@ static struct ti_reset_reg_data am43x_reset_reg_data[] = {
 		.rstst_offs	= 0x414,
 		.rstctrl_bit	= 0,
 		.rstst_bit	= 0,
+	},
+	{
+		.rstctrl_offs	= 0x2010,
+		.rstst_offs	= 0x2014,
+		.rstctrl_bit	= 3,
+		.rstst_bit	= 5,
 	},
 };
 

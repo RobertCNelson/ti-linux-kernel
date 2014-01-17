@@ -857,7 +857,6 @@ static struct omap_hwmod am33xx_gpmc_hwmod = {
 	.name		= "gpmc",
 	.class		= &am33xx_gpmc_hwmod_class,
 	.clkdm_name	= "l3s_clkdm",
-	.flags		= HWMOD_INIT_NO_RESET,
 	.prcm		= {
 		.omap4	= {
 			.modulemode	= MODULEMODE_SWCTRL,
@@ -2772,7 +2771,6 @@ static void am43xx_hwmod_clkctrl(void)
 	CLKCTRL(am33xx_mcasp0_hwmod, AM43XX_CM_PER_MCASP0_CLKCTRL_OFFSET);
 	CLKCTRL(am33xx_mcasp1_hwmod, AM43XX_CM_PER_MCASP1_CLKCTRL_OFFSET);
 	CLKCTRL(am33xx_l4_ls_hwmod, AM43XX_CM_PER_L4LS_CLKCTRL_OFFSET);
-	CLKCTRL(am33xx_l3_main_hwmod, AM43XX_CM_PER_L3_CLKCTRL_OFFSET);
 	CLKCTRL(am33xx_tpcc_hwmod, AM43XX_CM_PER_TPCC_CLKCTRL_OFFSET);
 	CLKCTRL(am33xx_tptc0_hwmod, AM43XX_CM_PER_TPTC0_CLKCTRL_OFFSET);
 	CLKCTRL(am33xx_tptc1_hwmod, AM43XX_CM_PER_TPTC1_CLKCTRL_OFFSET);

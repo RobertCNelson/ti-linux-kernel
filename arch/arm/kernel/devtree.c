@@ -21,6 +21,7 @@
 
 #include <asm/cputype.h>
 #include <asm/setup.h>
+#include <asm/sections.h>
 #include <asm/page.h>
 #include <asm/smp_plat.h>
 #include <asm/mach/arch.h>
@@ -200,6 +201,13 @@ const struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
 		return NULL;
 
 	devtree = phys_to_virt(dt_phys);
+
+	if ((char *)devtree <= _end) {
+		early_print("Error: Device tree overwritten by kernel image\n");
+		early_print("Please check your kernel config and/or bootloader\n");
+		while (true)
+			;
+	}
 
 	/* check device tree validity */
 	if (be32_to_cpu(devtree->magic) != OF_DT_HEADER)

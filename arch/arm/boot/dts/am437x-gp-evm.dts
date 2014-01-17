@@ -86,3 +86,8 @@
 &rtc {
 	status = "okay";
 };
+
+&gpio5 {
+	status = "okay";
+	ti,no-reset;
+};

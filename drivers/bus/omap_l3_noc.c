@@ -1,5 +1,5 @@
 /*
- * OMAP4XXX L3 Interconnect error handling driver
+ * OMAP L3 Interconnect error handling driver
  *
  * Copyright (C) 2011 Texas Corporation
  *	Santosh Shilimkar <santosh.shilimkar@ti.com>
@@ -27,6 +27,8 @@
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
+#include <linux/of.h>
+#include <linux/of_device.h>
 
 #include "omap_l3_noc.h"
 
@@ -56,32 +58,54 @@
 static irqreturn_t l3_interrupt_handler(int irq, void *_l3)
 {
 
-	struct omap4_l3 *l3 = _l3;
+	struct omap_l3 *l3 = _l3;
 	int inttype, i, k;
 	int err_src = 0;
 	u32 std_err_main, err_reg, clear, masterid;
 	void __iomem *base, *l3_targ_base;
 	char *target_name, *master_name = "UN IDENTIFIED";
+	static u32 mask0[MAX_L3_MODULES], mask1[MAX_L3_MODULES];
 
 	/* Get the Type of interrupt */
 	inttype = irq == l3->app_irq ? L3_APPLICATION_ERROR : L3_DEBUG_ERROR;
 
-	for (i = 0; i < L3_MODULES; i++) {
+	for (i = 0; i < l3->num_modules; i++) {
 		/*
 		 * Read the regerr register of the clock domain
 		 * to determine the source
 		 */
 		base = l3->l3_base[i];
-		err_reg = __raw_readl(base + l3_flagmux[i] +
+		err_reg = __raw_readl(base + l3->l3_flag_mux[i] +
 					+ L3_FLAGMUX_REGERR0 + (inttype << 3));
+		err_reg &= inttype ? ~mask1[i] : ~mask0[i];
 
 		/* Get the corresponding error and analyse */
 		if (err_reg) {
 			/* Identify the source from control status register */
 			err_src = __ffs(err_reg);
 
+			if ((err_src >= l3->num_targets[i]) ||
+			    (*(l3->l3_targets[i] + err_src) ==
+			    L3_FLAGMUX_TARGET_OFS_INVALID)) {
+				u32 val;
+				void __iomem *reg = base + l3->l3_flag_mux[i] +
+					L3_FLAGMUX_MASK0 + (inttype << 3);
+
+				pr_warn("L3 %s error: target %d clkdm %d %s\n",
+					inttype ? "debug" : "application",
+					err_src, i, "(unclearable)");
+				val = readl(reg);
+				val &= ~(1 << err_src);
+				if (inttype)
+					mask1[i] |= (1 << err_src);
+				else
+					mask0[i] |= (1 << err_src);
+				writel(val, reg);
+				break;
+			}
+
 			/* Read the stderrlog_main_source from clk domain */
-			l3_targ_base = base + *(l3_targ[i] + err_src);
+			l3_targ_base = base + *(l3->l3_targets[i] + err_src);
 			std_err_main =  __raw_readl(l3_targ_base +
 					L3_TARG_STDERRLOG_MAIN);
 			masterid = __raw_readl(l3_targ_base +
@@ -90,7 +114,7 @@ static irqreturn_t l3_interrupt_handler(int irq, void *_l3)
 			switch (std_err_main & CUSTOM_ERROR) {
 			case STANDARD_ERROR:
 				target_name =
-					l3_targ_inst_name[i][err_src];
+					l3->target_names[i][err_src];
 				WARN(true, "L3 standard error: TARGET:%s at address 0x%x\n",
 					target_name,
 					__raw_readl(l3_targ_base +
@@ -103,11 +127,11 @@ static irqreturn_t l3_interrupt_handler(int irq, void *_l3)
 
 			case CUSTOM_ERROR:
 				target_name =
-					l3_targ_inst_name[i][err_src];
-				for (k = 0; k < NUM_OF_L3_MASTERS; k++) {
-					if (masterid == l3_masters[k].id)
+					l3->target_names[i][err_src];
+				for (k = 0; k < l3->num_masters; k++) {
+					if (masterid == ((l3->masters_names)[k]).id)
 						master_name =
-							l3_masters[k].name;
+							((l3->masters_names)[k]).name;
 				}
 				WARN(true, "L3 custom error: MASTER:%s TARGET:%s\n",
 					master_name, target_name);
@@ -128,57 +152,35 @@ static irqreturn_t l3_interrupt_handler(int irq, void *_l3)
 	return IRQ_HANDLED;
 }
 
-static int omap4_l3_probe(struct platform_device *pdev)
-{
-	static struct omap4_l3 *l3;
-	struct resource	*res;
-	int ret;
+static const struct of_device_id l3_noc_match[] = {
+	{.compatible = "ti,omap4-l3-noc", .data = &omap_l3_data},
+	{.compatible = "ti,am4372-l3-noc", .data = &am4372_l3_data},
+	{},
+};
+MODULE_DEVICE_TABLE(of, l3_noc_match);
 
-	l3 = kzalloc(sizeof(*l3), GFP_KERNEL);
+static int omap_l3_probe(struct platform_device *pdev)
+{
+	static struct omap_l3 *l3;
+	struct resource	*res;
+	int ret, i;
+	const struct of_device_id *of_id =
+				of_match_device(l3_noc_match, &pdev->dev);
+
+	l3 = (struct omap_l3 *)of_id->data;
+
 	if (!l3)
-		return -ENOMEM;
+		return -EINVAL;
 
 	platform_set_drvdata(pdev, l3);
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		dev_err(&pdev->dev, "couldn't find resource 0\n");
-		ret = -ENODEV;
-		goto err0;
-	}
 
-	l3->l3_base[0] = ioremap(res->start, resource_size(res));
-	if (!l3->l3_base[0]) {
-		dev_err(&pdev->dev, "ioremap failed\n");
-		ret = -ENOMEM;
-		goto err0;
-	}
-
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
-	if (!res) {
-		dev_err(&pdev->dev, "couldn't find resource 1\n");
-		ret = -ENODEV;
-		goto err1;
-	}
-
-	l3->l3_base[1] = ioremap(res->start, resource_size(res));
-	if (!l3->l3_base[1]) {
-		dev_err(&pdev->dev, "ioremap failed\n");
-		ret = -ENOMEM;
-		goto err1;
-	}
-
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 2);
-	if (!res) {
-		dev_err(&pdev->dev, "couldn't find resource 2\n");
-		ret = -ENODEV;
-		goto err2;
-	}
-
-	l3->l3_base[2] = ioremap(res->start, resource_size(res));
-	if (!l3->l3_base[2]) {
-		dev_err(&pdev->dev, "ioremap failed\n");
-		ret = -ENOMEM;
-		goto err2;
+	for (i = 0; i < l3->num_modules; i++) {
+		res = platform_get_resource(pdev, IORESOURCE_MEM, i);
+		if (res == NULL)
+			return -ENOENT;
+		l3->l3_base[i] = devm_ioremap_resource(&pdev->dev, res);
+		if (IS_ERR(l3->l3_base[i]))
+			return PTR_ERR(l3->l3_base[i]);
 	}
 
 	/*
@@ -191,7 +193,7 @@ static int omap4_l3_probe(struct platform_device *pdev)
 	if (ret) {
 		pr_crit("L3: request_irq failed to register for 0x%x\n",
 						l3->debug_irq);
-		goto err3;
+		return ret;
 	}
 
 	l3->app_irq = platform_get_irq(pdev, 1);
@@ -201,66 +203,40 @@ static int omap4_l3_probe(struct platform_device *pdev)
 	if (ret) {
 		pr_crit("L3: request_irq failed to register for 0x%x\n",
 						l3->app_irq);
-		goto err4;
+		free_irq(l3->debug_irq, l3);
 	}
 
-	return 0;
-
-err4:
-	free_irq(l3->debug_irq, l3);
-err3:
-	iounmap(l3->l3_base[2]);
-err2:
-	iounmap(l3->l3_base[1]);
-err1:
-	iounmap(l3->l3_base[0]);
-err0:
-	kfree(l3);
 	return ret;
 }
 
-static int omap4_l3_remove(struct platform_device *pdev)
+static int omap_l3_remove(struct platform_device *pdev)
 {
-	struct omap4_l3 *l3 = platform_get_drvdata(pdev);
+	struct omap_l3 *l3 = platform_get_drvdata(pdev);
 
 	free_irq(l3->app_irq, l3);
 	free_irq(l3->debug_irq, l3);
-	iounmap(l3->l3_base[0]);
-	iounmap(l3->l3_base[1]);
-	iounmap(l3->l3_base[2]);
-	kfree(l3);
 
 	return 0;
 }
 
-#if defined(CONFIG_OF)
-static const struct of_device_id l3_noc_match[] = {
-	{.compatible = "ti,omap4-l3-noc", },
-	{},
-};
-MODULE_DEVICE_TABLE(of, l3_noc_match);
-#else
-#define l3_noc_match NULL
-#endif
-
-static struct platform_driver omap4_l3_driver = {
-	.probe		= omap4_l3_probe,
-	.remove		= omap4_l3_remove,
+static struct platform_driver omap_l3_driver = {
+	.probe		= omap_l3_probe,
+	.remove		= omap_l3_remove,
 	.driver		= {
 		.name		= "omap_l3_noc",
 		.owner		= THIS_MODULE,
-		.of_match_table = l3_noc_match,
+		.of_match_table = of_match_ptr(l3_noc_match),
 	},
 };
 
-static int __init omap4_l3_init(void)
+static int __init omap_l3_init(void)
 {
-	return platform_driver_register(&omap4_l3_driver);
+	return platform_driver_register(&omap_l3_driver);
 }
-postcore_initcall_sync(omap4_l3_init);
+postcore_initcall_sync(omap_l3_init);
 
-static void __exit omap4_l3_exit(void)
+static void __exit omap_l3_exit(void)
 {
-	platform_driver_unregister(&omap4_l3_driver);
+	platform_driver_unregister(&omap_l3_driver);
 }
-module_exit(omap4_l3_exit);
+module_exit(omap_l3_exit);
