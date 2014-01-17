@@ -416,9 +416,9 @@ static int wkup_m3_probe(struct platform_device *pdev)
 	pr_info("PM: Loading am335x-pm-firmware.bin");
 
 	/* We don't want to delay boot */
-	ret = request_firmware_nowait(THIS_MODULE, 0, "am335x-pm-firmware.bin",
-				&pdev->dev, GFP_KERNEL, NULL,
-				wkup_m3_firmware_cb);
+	ret = request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
+			"am335x-pm-firmware.bin", &pdev->dev, GFP_KERNEL, NULL,
+			wkup_m3_firmware_cb);
 
 err:
 	return ret;

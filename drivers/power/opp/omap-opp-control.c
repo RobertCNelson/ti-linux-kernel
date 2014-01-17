@@ -40,6 +40,7 @@ struct opp_efuse_context {
 	void __iomem    *efuse;
 	void __iomem	*id;
 	bool		enable_low;
+	unsigned long (*devrev_to_opp_rev)(int rev);
 };
 
 static struct opp_efuse_context *opp_efuse;
@@ -59,6 +60,14 @@ static unsigned long am33xx_devrev_to_opp_rev(int rev)
 		return OPP_REV(2, 0);
 	else if (rev_id == 2)
 		return OPP_REV(2, 1);
+	else
+		return 0;
+}
+
+static unsigned long am43xx_devrev_to_opp_rev(int rev)
+{
+	if (rev_id == 0)
+		return OPP_REV(1, 0);
 	else
 		return 0;
 }
@@ -108,7 +117,7 @@ static int of_opp_check_availability(struct device *dev, struct device_node *np)
 		if (opp_efuse->enable_low)
 			efuse_val = ~efuse_val;
 
-		if (OPP_REV_CMP(rev, am33xx_devrev_to_opp_rev(rev_id))) {
+		if (OPP_REV_CMP(rev, opp_efuse->devrev_to_opp_rev(rev_id))) {
 			if (((efuse_val & bit) || !bit))
 				opp_enable(dev, freq);
 		}
@@ -150,6 +159,7 @@ static struct opp_modifier_dev omap_opp_modifier_dev = {
 
 static int opp_omap_probe(struct platform_device *pdev)
 {
+	const struct of_device_id *match;
 	struct resource *res;
 	struct device_node *np = pdev->dev.of_node;
 	int ret = 0;
@@ -160,6 +170,16 @@ static int opp_omap_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto err;
 	}
+
+	match = of_match_device(opp_omap_of_match, &pdev->dev);
+
+	if (!match) {
+		dev_err(&pdev->dev, "Invalid match data value\n");
+		ret = -EINVAL;
+		goto err;
+	}
+
+	opp_efuse->devrev_to_opp_rev = (void *)match->data;
 
 	opp_efuse->dev = &pdev->dev;
 
@@ -213,7 +233,14 @@ static int opp_omap_remove(struct platform_device *pdev)
 }
 
 static struct of_device_id opp_omap_of_match[] = {
-	{ .compatible = "ti,opp-omap",},
+	{
+		.compatible = "ti,opp-omap-am3352",
+		.data = (void *)am33xx_devrev_to_opp_rev,
+	},
+	{
+		.compatible = "ti,opp-omap-am4372",
+		.data = (void *)am43xx_devrev_to_opp_rev,
+	},
 	{ },
 };
 MODULE_DEVICE_TABLE(of, opp_omap_of_match);
