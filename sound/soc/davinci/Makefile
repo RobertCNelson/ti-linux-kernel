@@ -14,3 +14,4 @@ snd-soc-evm-objs := davinci-evm.o
 
 obj-$(CONFIG_SND_AM335X_SOC_NXPTDA_EVM) += snd-soc-evm.o
 obj-$(CONFIG_SND_DAVINCI_SOC_GENERIC_EVM) += snd-soc-evm.o
+obj-$(CONFIG_SND_AM43XX_SOC_EPOS_EVM) += snd-soc-evm.o

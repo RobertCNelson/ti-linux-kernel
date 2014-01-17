@@ -44,6 +44,21 @@
 		pinctrl-names = "default";
 	};
 
+	evm_v3p3: tps63031 {
+		compatible = "regulator-fixed";
+		regulator-name = "evm_v3p3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+	};
+
+	vbat: fixedregulator@0 {
+		compatible = "regulator-fixed";
+		regulator-name = "vbat";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		regulator-boot-on;
+	};
+
 	aliases {
 		display0 = &lcd0;
 		display1 = &hdmi0;
@@ -119,6 +134,21 @@
 		cpu@0 {
 			cpu0-supply = <&dcdc2>;
 		};
+	};
+
+	sound {
+		compatible = "ti,am43xx-epos-evm-audio";
+		ti,model = "AM43x-EPOS-EVM";
+		ti,audio-codec = <&tlv320aic3111>;
+		ti,mcasp-controller = <&mcasp1>;
+		ti,codec-clock-rate = <12000000>;
+		ti,audio-routing =
+			"Speaker", 		"SPL",
+			"Speaker", 		"SPR",
+			"Headphone Jack",       "HPL",
+			"Headphone Jack",       "HPR",
+			"MIC1LP",               "Mic Jack",
+			"MIC1RP",               "Mic Jack";
 	};
 };
 
@@ -275,6 +305,16 @@
 		pinctrl-single,pins = <
 			0x164 MUX_MODE0		/* eCAP0_in_PWM0_out.eCAP0_in_PWM0_out MODE0 */
 		>;
+
+	};
+
+	mcasp1_pins: pinmux_mcasp1_pins {
+		pinctrl-single,pins = <
+			0x1a0 (PIN_INPUT_PULLDOWN | MUX_MODE3) /* MCASP0_ACLKR/MCASP1_ACLKX */
+			0x1a4 (PIN_INPUT_PULLDOWN | MUX_MODE3) /* MCASP0_FSR/MCASP1_FSX */
+			0x1a8 (PIN_OUTPUT_PULLDOWN | MUX_MODE3)/* MCASP0_AXR1/MCASP1_AXR0 */
+			0x1ac (PIN_INPUT_PULLDOWN | MUX_MODE3) /* MCASP0_AHCLKX/MCASP1_AXR1 */
+		>;
 	};
 
 	wlirq_pins: pinmux_wlirq_pins {
@@ -308,6 +348,18 @@
 		pinctrl-single,pins = <
 			0x170 (PIN_INPUT_PULLUP | SLEWCTRL_FAST | DS0_PULL_UP_DOWN_EN | MUX_MODE0) /* uart0_rxd.uart0_rxd */
 			0x174 (PIN_INPUT_PULLUP | SLEWCTRL_FAST | DS0_PULL_UP_DOWN_EN | MUX_MODE0) /* uart0_txd.uart0_txd */
+		>;
+	};
+
+	clkout1_pin: pinmux_clkout1_pin {
+		pinctrl-single,pins = <
+			0x270 (PIN_OUTPUT_PULLDOWN | MUX_MODE3)	/* XDMA_EVENT_INTR0/CLKOUT1 */
+		>;
+	};
+
+	tlv320aic3111_reset_pin: pinmux_tlv320aic3111_reset_pin {
+		pinctrl-single,pins = <
+			0x078 (PIN_OUTPUT_PULLUP | MUX_MODE7) /* GPMC_BE1n/GPIO1_28 */
 		>;
 	};
 };
@@ -524,6 +576,24 @@
 			regulator-always-on;
 		};
 	};
+
+	tlv320aic3111: tlv320aic3111@18 {
+		compatible = "ti,tlv320aic311x";
+		reg = <0x18>;
+		status = "okay";
+		pinctrl-names = "default";
+		pinctrl-0 = <&tlv320aic3111_reset_pin>;
+
+		gpio-reset = <&gpio1 28 GPIO_ACTIVE_HIGH>;
+
+		/* Regulators */
+		HPVDD-supply = <&evm_v3p3>; /* v3_3d */
+		SPRVDD-supply = <&vbat>; /* vbat */
+		SPLVDD-supply = <&vbat>; /* vbat */
+		AVDD-supply = <&evm_v3p3>; /* v3_3d */
+		IOVDD-supply = <&evm_v3p3>; /* v3_3d */
+		DVDD-supply = <&ldo1>; /* v1_8d */
+	};
 };
 
 &i2c2 {
@@ -657,4 +727,20 @@
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart0_pins>;
+};
+
+&mcasp1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&mcasp1_pins>;
+
+	status = "okay";
+
+	op-mode = <0>;		/* MCASP_IIS_MODE */
+	tdm-slots = <2>;
+	/* 4 serializer */
+	serial-dir = <	/* 0: INACTIVE, 1: TX, 2: RX */
+		1 2 0 0
+	>;
+	tx-num-evt = <1>;
+	rx-num-evt = <1>;
 };
