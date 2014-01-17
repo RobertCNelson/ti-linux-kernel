@@ -362,6 +362,27 @@
 			0x078 (PIN_OUTPUT_PULLUP | MUX_MODE7) /* GPMC_BE1n/GPIO1_28 */
 		>;
 	};
+
+	vpfe1_pins: vpfe1_pins {
+		pinctrl-single,pins = <
+			0x270 (PIN_OUTPUT_PULLUP | MUX_MODE3)  /* xdma_event_intr0.clkout1 mode 3*/
+			0x1CC (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data9 mode 0*/
+			0x1D0 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data8 mode 0*/
+			0x1D4 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_hd mode 0*/
+			0x1D8 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_vd mode 0*/
+			0x1DC (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_pclk mode 0*/
+			0x1E0 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_field mode 0*/
+			0x1E4 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_wen mode 0*/
+			0x1E8 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data0 mode 0*/
+			0x1EC (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data1 mode 0*/
+			0x1F0 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data2 mode 0*/
+			0x1F4 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data3 mode 0*/
+			0x1F8 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data4 mode 0*/
+			0x1FC (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data5 mode 0*/
+			0x200 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data6 mode 0*/
+			0x204 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data7 mode 0*/
+		>;
+	};
 };
 
 &gpio0 {
@@ -594,6 +615,18 @@
 		IOVDD-supply = <&evm_v3p3>; /* v3_3d */
 		DVDD-supply = <&ldo1>; /* v1_8d */
 	};
+
+	ov2659@30 {
+		compatible = "ti,ov2659";
+		reg = <0x30>;
+
+		port {
+			ov2659_1: endpoint {
+				remote-endpoint = <&vpfe1_ep>;
+				mclk-frequency = <25000000>;
+			};
+		};
+	};
 };
 
 &i2c2 {
@@ -743,4 +776,21 @@
 	>;
 	tx-num-evt = <1>;
 	rx-num-evt = <1>;
+};
+
+&vpfe1 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&vpfe1_pins>;
+
+	/* Camera port */
+	port {
+		vpfe1_ep: endpoint {
+			remote-endpoint = <&ov2659_1>;
+			if_type = <2>;
+			bus_width = <8>;
+			hdpol = <0>;
+			vdpol = <0>;
+		};
+	};
 };
