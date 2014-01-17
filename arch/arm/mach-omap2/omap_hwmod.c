@@ -431,14 +431,14 @@ static int _set_softreset(struct omap_hwmod *oh, u32 *v)
 }
 
 /**
- * _clr_softreset: clear OCP_SYSCONFIG.SOFTRESET bit in @v
+ * _clear_softreset: clear OCP_SYSCONFIG.SOFTRESET bit in @v
  * @oh: struct omap_hwmod *
  * @v: pointer to register contents to modify
  *
  * Clear the SOFTRESET bit in @v for hwmod @oh.  Returns -EINVAL upon
  * error or 0 upon success.
  */
-static int _clr_softreset(struct omap_hwmod *oh, u32 *v)
+static int _clear_softreset(struct omap_hwmod *oh, u32 *v)
 {
 	u32 softrst_mask;
 
@@ -2014,7 +2014,8 @@ static int _ocp_softreset(struct omap_hwmod *oh)
 		goto dis_opt_clks;
 
 	_write_sysconfig(v, oh);
-	ret = _clr_softreset(oh, &v);
+
+	ret = _clear_softreset(oh, &v);
 	if (ret)
 		goto dis_opt_clks;
 
@@ -3276,7 +3277,7 @@ int omap_hwmod_softreset(struct omap_hwmod *oh)
 		goto error;
 	_write_sysconfig(v, oh);
 
-	ret = _clr_softreset(oh, &v);
+	ret = _clear_softreset(oh, &v);
 	if (ret)
 		goto error;
 	_write_sysconfig(v, oh);
