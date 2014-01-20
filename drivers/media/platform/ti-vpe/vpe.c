@@ -887,6 +887,9 @@ static int job_ready(void *priv)
 	if (v4l2_m2m_num_src_bufs_ready(ctx->m2m_ctx) < needed)
 		return 0;
 
+	if (v4l2_m2m_num_dst_bufs_ready(ctx->m2m_ctx) < needed)
+		return 0;
+
 	return 1;
 }
 
@@ -983,7 +986,6 @@ static void add_out_dtd(struct vpe_ctx *ctx, int port)
 	struct vpe_q_data *q_data = &ctx->q_data[Q_DATA_DST];
 	const struct vpe_port_data *p_data = &port_data[port];
 	struct vb2_buffer *vb = ctx->dst_vb;
-	struct v4l2_rect *c_rect = &q_data->c_rect;
 	struct vpe_fmt *fmt = q_data->fmt;
 	const struct vpdma_data_format *vpdma_fmt;
 	int mv_buf_selector = !ctx->src_mv_buf_selector;
@@ -1012,7 +1014,7 @@ static void add_out_dtd(struct vpe_ctx *ctx, int port)
 	if (q_data->flags & Q_DATA_MODE_TILED)
 		flags |= VPDMA_DATA_MODE_TILED;
 
-	vpdma_add_out_dtd(&ctx->desc_list, c_rect, vpdma_fmt, dma_addr,
+	vpdma_add_out_dtd(&ctx->desc_list, q_data->width, vpdma_fmt, dma_addr,
 		p_data->channel, flags);
 }
 
@@ -1021,11 +1023,11 @@ static void add_in_dtd(struct vpe_ctx *ctx, int port)
 	struct vpe_q_data *q_data = &ctx->q_data[Q_DATA_SRC];
 	const struct vpe_port_data *p_data = &port_data[port];
 	struct vb2_buffer *vb = ctx->src_vbs[p_data->vb_index];
-	struct v4l2_rect *c_rect = &q_data->c_rect;
 	struct vpe_fmt *fmt = q_data->fmt;
 	const struct vpdma_data_format *vpdma_fmt;
 	int mv_buf_selector = ctx->src_mv_buf_selector;
 	int field = vb->v4l2_buf.field == V4L2_FIELD_BOTTOM;
+	int frame_width, frame_height;
 	dma_addr_t dma_addr;
 	u32 flags = 0;
 
@@ -1052,8 +1054,15 @@ static void add_in_dtd(struct vpe_ctx *ctx, int port)
 	if (q_data->flags & Q_DATA_MODE_TILED)
 		flags |= VPDMA_DATA_MODE_TILED;
 
-	vpdma_add_in_dtd(&ctx->desc_list, q_data->width, q_data->height,
-		c_rect, vpdma_fmt, dma_addr, p_data->channel, field, flags);
+	frame_width = q_data->c_rect.width;
+	frame_height = q_data->c_rect.height;
+
+	if (p_data->vb_part && fmt->fourcc == V4L2_PIX_FMT_NV12)
+		frame_height /= 2;
+
+	vpdma_add_in_dtd(&ctx->desc_list, q_data->width, &q_data->c_rect,
+		vpdma_fmt, dma_addr, p_data->channel, field, flags, frame_width,
+		frame_height, 0, 0);
 }
 
 /*
@@ -1565,6 +1574,90 @@ static int vpe_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 	return set_srcdst_params(ctx);
 }
 
+static int __vpe_try_crop(struct vpe_ctx *ctx, struct v4l2_crop *cr)
+{
+	struct vpe_q_data *q_data;
+
+	q_data = get_q_data(ctx, cr->type);
+	if (!q_data)
+		return -EINVAL;
+
+	/* we don't support crop on capture plane */
+	if (cr->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
+		cr->c.top = cr->c.left = 0;
+		cr->c.width = q_data->width;
+		cr->c.height = q_data->height;
+		return 0;
+	}
+
+	if (cr->c.top < 0 || cr->c.left < 0) {
+		vpe_err(ctx->dev, "negative values for top and left\n");
+		cr->c.top = cr->c.left = 0;
+	}
+
+	v4l_bound_align_image(&cr->c.width, MIN_W, q_data->width, 1,
+		&cr->c.height, MIN_H, q_data->height, H_ALIGN, S_ALIGN);
+
+	/* adjust left/top if cropping rectangle is out of bounds */
+	if (cr->c.left + cr->c.width > q_data->width)
+		cr->c.left = q_data->width - cr->c.width;
+	if (cr->c.top + cr->c.height > q_data->height)
+		cr->c.top = q_data->height - cr->c.height;
+
+	return 0;
+}
+
+static int vpe_cropcap(struct file *file, void *priv, struct v4l2_cropcap *cr)
+{
+	struct vpe_ctx *ctx = file2ctx(file);
+	struct vpe_q_data *q_data;
+
+	q_data = get_q_data(ctx, cr->type);
+	if (!q_data)
+		return -EINVAL;
+
+	cr->bounds.left = 0;
+	cr->bounds.top = 0;
+	cr->bounds.width = q_data->width;
+	cr->bounds.height = q_data->height;
+	cr->defrect = cr->bounds;
+
+	return 0;
+}
+
+static int vpe_g_crop(struct file *file, void *fh, struct v4l2_crop *cr)
+{
+	struct vpe_ctx *ctx = file2ctx(file);
+	struct vpe_q_data *q_data;
+
+	q_data = get_q_data(ctx, cr->type);
+	if (!q_data)
+		return -EINVAL;
+
+	cr->c = q_data->c_rect;
+
+	return 0;
+}
+
+static int vpe_s_crop(struct file *file, void *priv,
+		const struct v4l2_crop *crop)
+{
+	struct vpe_ctx *ctx = file2ctx(file);
+	struct vpe_q_data *q_data;
+	struct v4l2_crop cr = *crop;
+	int ret;
+
+	ret = __vpe_try_crop(ctx, &cr);
+	if (ret)
+		return ret;
+
+	q_data = get_q_data(ctx, cr.type);
+
+	q_data->c_rect = cr.c;
+
+	return set_srcdst_params(ctx);
+}
+
 static int vpe_reqbufs(struct file *file, void *priv,
 		       struct v4l2_requestbuffers *reqbufs)
 {
@@ -1647,6 +1740,10 @@ static const struct v4l2_ioctl_ops vpe_ioctl_ops = {
 	.vidioc_g_fmt_vid_out_mplane	= vpe_g_fmt,
 	.vidioc_try_fmt_vid_out_mplane	= vpe_try_fmt,
 	.vidioc_s_fmt_vid_out_mplane	= vpe_s_fmt,
+
+	.vidioc_cropcap			= vpe_cropcap,
+	.vidioc_g_crop			= vpe_g_crop,
+	.vidioc_s_crop			= vpe_s_crop,
 
 	.vidioc_reqbufs		= vpe_reqbufs,
 	.vidioc_querybuf	= vpe_querybuf,
