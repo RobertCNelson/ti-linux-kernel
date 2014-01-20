@@ -1391,7 +1391,7 @@
 			clock-names = "fck";
 		};
 
-		atl_clkin: atl@0x4843c000 {
+		atl_clkin: atl@4843c000 {
 			compatible = "ti,dra7-atl-clock";
 			reg = <0x4843c000 0x3ff>;
 			ti,hwmods = "atl";
