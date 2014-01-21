@@ -123,16 +123,9 @@ static int am335x_phy_resume(struct device *dev)
 
 	return 0;
 }
-#define DEV_PM_OPS     (&am335x_pm_ops)
-#else
-#define DEV_PM_OPS     NULL
 #endif
 
-
-static const struct dev_pm_ops am335x_pm_ops = {
-	.suspend = am335x_phy_suspend,
-	.resume = am335x_phy_resume,
-};
+static SIMPLE_DEV_PM_OPS(am335x_pm_ops, am335x_phy_suspend, am335x_phy_resume);
 
 static const struct of_device_id am335x_phy_ids[] = {
 	{ .compatible = "ti,am335x-usb-phy" },
@@ -146,7 +139,7 @@ static struct platform_driver am335x_phy_driver = {
 	.driver         = {
 		.name   = "am335x-phy-driver",
 		.owner  = THIS_MODULE,
-		.pm = DEV_PM_OPS,
+		.pm = &am335x_pm_ops,
 		.of_match_table = am335x_phy_ids,
 	},
 };
