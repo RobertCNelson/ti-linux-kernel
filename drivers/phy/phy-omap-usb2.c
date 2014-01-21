@@ -395,7 +395,8 @@ static int omap_usb2_suspend(struct device *dev)
 	if (phy->flags & OMAP_USB2_ENABLE_PHYWKUP)
 		omap_usb2_enable_phywkup(phy);
 
-	omap_usb2_disable_clocks(phy);
+	if (!pm_runtime_suspended(dev))
+		omap_usb2_disable_clocks(phy);
 
 	return 0;
 }
@@ -409,6 +410,10 @@ static int omap_usb2_resume(struct device *dev)
 	ret = omap_usb2_enable_clocks(phy);
 	if (phy->flags & OMAP_USB2_ENABLE_PHYWKUP)
 		omap_usb2_disable_phywkup(phy);
+
+	pm_runtime_disable(dev);
+	pm_runtime_set_active(dev);
+	pm_runtime_enable(dev);
 
 	return ret;
 }
