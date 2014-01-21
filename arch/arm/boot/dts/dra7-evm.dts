@@ -60,7 +60,7 @@
 		ti,audio-codec = <&tlv320aic3106>;
 		ti,mcasp-controller = <&mcasp3>;
 		ti,codec-clock-rate = <5644800>;
-		clocks = <&atl_clkin 2>;
+		clocks = <&atl_clkin2_ck>;
 		clock-names = "ti,codec-clock";
 		ti,audio-routing =
 			"Headphone Jack",       "HPLOUT",
@@ -908,8 +908,7 @@
 	};
 };
 
-&atl_clkin {
-	fck_parent = "dpll_abe_m2_ck";
+&atl {
 	status = "okay";
 
 	atl2 {
