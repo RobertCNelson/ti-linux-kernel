@@ -213,6 +213,10 @@ static int omap_pipe3_exit(struct phy *x)
 	if (of_device_is_compatible(phy->dev->of_node, "ti,phy-pipe3-pcie"))
 		return 0;
 
+	/* SATA DPLL can't be powered down due to Errata i783 */
+	if (of_device_is_compatible(phy->dev->of_node, "ti,phy-pipe3-sata"))
+		return 0;
+
 	/* Put DPLL in IDLE mode */
 	val = omap_pipe3_readl(phy->pll_ctrl_base, PLL_CONFIGURATION2);
 	val |= PLL_IDLE;
