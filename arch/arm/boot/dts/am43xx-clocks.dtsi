@@ -419,6 +419,22 @@ l3_gclk: l3_gclk {
 	clock-div = <1>;
 };
 
+vpfe0_fck: vpfe0_fck@44df8868 {
+	#clock-cells = <0>;
+	compatible = "mux-clock";
+	clocks = <&l3_gclk>;
+	reg = <0x44df8868 0x4>;
+	bit-mask = <0x1>;
+};
+
+vpfe1_fck: vpfe1_fck@44df8870 {
+	#clock-cells = <0>;
+	compatible = "mux-clock";
+	clocks = <&l3_gclk>;
+	reg = <0x44df8870 0x4>;
+	bit-mask = <0x1>;
+};
+
 dpll_core_m4_div2_ck: dpll_core_m4_div2_ck {
 	#clock-cells = <0>;
 	compatible = "fixed-factor-clock";
