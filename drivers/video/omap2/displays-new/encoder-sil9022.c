@@ -436,7 +436,6 @@ static void sil9022_disconnect(struct omap_dss_device *dssdev,
 {
 	struct panel_drv_data *ddata = to_panel_data(dssdev);
 	struct omap_dss_device *in = ddata->in;
-	int err;
 
 	WARN_ON(!omapdss_device_is_connected(dssdev));
 	if (!omapdss_device_is_connected(dssdev))
@@ -446,11 +445,14 @@ static void sil9022_disconnect(struct omap_dss_device *dssdev,
 	if (dst != dssdev->dst)
 		return;
 
+	/* XXX we don't control the RESET pin, so we can't wake up from D3 */
+#if 0
 	/* Move from ENABLED -> LOW Power state */
 	err = sil9022_write_reg(dssdev, HDMI_TPI_POWER_STATE_CTRL_REG,
 			TPI_AVI_POWER_STATE_D3);
 	if (err < 0)
 		dev_err(dssdev->dev, "ERROR: Setting device power state to D3\n");
+#endif
 
 	dst->src = NULL;
 	dssdev->dst = NULL;
