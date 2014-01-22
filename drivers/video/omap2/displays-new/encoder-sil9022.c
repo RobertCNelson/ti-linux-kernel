@@ -48,111 +48,6 @@ struct panel_drv_data {
 
 #define to_panel_data(x) container_of(x, struct panel_drv_data, dssdev)
 
-static int sil9022_blockwrite_reg(struct i2c_client *client,
-				  u8 reg, u16 alength, u8 *val, u16 *out_len)
-{
-	int err = 0, i;
-	struct i2c_msg msg[1];
-	u8 data[2];
-
-	if (!client->adapter) {
-		dev_err(&client->dev, "ERROR: No HDMI Device\n");
-		return -ENODEV;
-	}
-
-	msg->addr = client->addr;
-	msg->flags = 0;
-	msg->len = 2;
-	msg->buf = data;
-
-	/* high byte goes out first */
-	data[0] = reg >> 8;
-
-	for (i = 0; i < alength - 1; i++) {
-		data[1] = val[i];
-		err = i2c_transfer(client->adapter, msg, 1);
-		udelay(50);
-		dev_dbg(&client->dev, "i2c Block write at 0x%x, "
-				      "*val=%d flags=%d byte[%d] err=%d\n",
-			data[0], data[1], msg->flags, i, err);
-		if (err < 0)
-			break;
-	}
-	/* set the number of bytes written*/
-	*out_len = i;
-
-	if (err < 0) {
-		dev_err(&client->dev, "ERROR:  i2c Block Write at 0x%x, "
-				      "*val=%d flags=%d bytes written=%d "
-				      "err=%d\n",
-			data[0], data[1], msg->flags, i, err);
-		return err;
-	}
-	return 0;
-}
-
-static int sil9022_blockread_reg(struct i2c_client *client,
-		      u16 data_length, u16 alength,
-		      u8 reg, u8 *val, u16 *out_len)
-{
-	int err = 0, i;
-	struct i2c_msg msg[1];
-	u8 data[2];
-
-	if (!client->adapter) {
-		dev_err(&client->dev, "ERROR: No HDMI Device\n");
-		return -ENODEV;
-	}
-
-	msg->addr = client->addr;
-	msg->flags = 0;
-	msg->len = 1;
-	msg->buf = data;
-
-	/* High byte goes out first */
-	data[0] = reg;
-	err = i2c_transfer(client->adapter, msg, 1);
-	dev_dbg(&client->dev, "Block Read1 at 0x%x, "
-			       "*val=%d flags=%d err=%d\n",
-		 data[0], data[1], msg->flags, err);
-
-	for (i = 0; i < alength; i++) {
-		if (err >= 0) {
-			mdelay(3);
-			msg->flags = I2C_M_RD;
-			msg->len = data_length;
-			err = i2c_transfer(client->adapter, msg, 1);
-		} else {
-			break;
-		}
-		if (err >= 0) {
-			val[i] = 0;
-			/* High byte comes first */
-			if (data_length == 1)
-				val[i] = data[0];
-			else if (data_length == 2)
-				val[i] = data[1] + (data[0] << 8);
-			dev_dbg(&client->dev, "i2c Block Read2 at 0x%x, "
-					       "*val=%d flags=%d byte=%d "
-					       "err=%d\n",
-				 reg, val[i], msg->flags, i, err);
-		} else {
-			break;
-		}
-	}
-	*out_len = i;
-	dev_dbg(&client->dev, "i2c Block Read at 0x%x, bytes read = %d\n",
-		client->addr, *out_len);
-
-	if (err < 0) {
-		dev_err(&client->dev, "ERROR:  i2c Read at 0x%x, "
-				      "*val=%d flags=%d bytes read=%d err=%d\n",
-			reg, *val, msg->flags, i, err);
-		return err;
-	}
-	return 0;
-}
-
 static int sil9022_write_reg(struct omap_dss_device *dssdev,
 					u8 reg, unsigned int val)
 {
@@ -178,7 +73,6 @@ static int sil9022_hw_enable(struct omap_dss_device *dssdev)
 	int		err;
 	u8		vals[14];
 	unsigned int val;
-	u16		out_len = 0;
 	u16		horizontal_res;
 	u16		vertical_res;
 	u16		pixel_clk;
@@ -216,13 +110,11 @@ static int sil9022_hw_enable(struct omap_dss_device *dssdev)
 	vals[7] = ((vertical_res & 0xFF00) >> 8);
 
 	/*  Write out the TPI Video Mode Data */
-	out_len = 0;
-	err = sil9022_blockwrite_reg(sil9022_client,
-				     HDMI_TPI_VIDEO_DATA_BASE_REG,
-				     8, vals, &out_len);
+
+	err = regmap_bulk_write(ddata->regmap, HDMI_TPI_VIDEO_DATA_BASE_REG,
+		&vals, 8);
 	if (err < 0) {
-		dev_err(dssdev->dev,
-			"ERROR: writing TPI video mode data\n");
+		dev_err(dssdev->dev, "ERROR: writing TPI video mode data\n");
 		return err;
 	}
 
@@ -565,7 +457,6 @@ static int sil9022_read_edid(struct omap_dss_device *dssdev,
 	int err =  0;
 	unsigned int val = 0;
 	int retries = 0;
-	u16 out_len = 0;
 	int i2c_client_addr;
 	struct panel_drv_data *ddata = to_panel_data(dssdev);
 	struct i2c_client *client = ddata->i2c_client;
@@ -643,9 +534,9 @@ static int sil9022_read_edid(struct omap_dss_device *dssdev,
 	/*  Read the EDID structure from the monitor I2C address  */
 	i2c_client_addr = client->addr;
 	client->addr = HDMI_I2C_MONITOR_ADDRESS;
-	err = sil9022_blockread_reg(client, 1, len,
-				    0x00, edid, &out_len);
-	if (err < 0 || out_len <= 0) {
+
+	err = regmap_raw_read(ddata->regmap, 0x00, edid, len);
+	if (err < 0) {
 		dev_err(&client->dev, "ERROR: Reading EDID\n");
 		return err;
 	}
