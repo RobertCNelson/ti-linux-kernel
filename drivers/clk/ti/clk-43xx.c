@@ -107,6 +107,8 @@ static struct omap_dt_clk am43xx_clks[] = {
 	DT_CLK(NULL, "func_12m_clk", "func_12m_clk"),
 	DT_CLK(NULL, "vtp_clk_div", "vtp_clk_div"),
 	DT_CLK(NULL, "usbphy_32khz_clkmux", "usbphy_32khz_clkmux"),
+	DT_CLK(NULL, "vpfe0_fck", "vpfe0_fck"),
+	DT_CLK(NULL, "vpfe1_fck", "vpfe1_fck"),
 	{ .node_name = NULL },
 };
 
