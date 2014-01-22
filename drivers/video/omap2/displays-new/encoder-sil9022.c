@@ -736,28 +736,6 @@ static int sil9022_probe_of(struct i2c_client *client)
 	return 0;
 
 }
-static int sil9022_probe_pdata(struct i2c_client *client)
-{
-	struct encoder_sil9022_platform_data *pdata;
-	struct panel_drv_data *ddata = dev_get_drvdata(&client->dev);
-	struct omap_dss_device *dssdev, *in;
-	pdata = dev_get_platdata(&client->dev);
-
-	ddata->reset_gpio = pdata->reset_gpio;
-	ddata->data_lines = pdata->data_lines;
-
-	in = omap_dss_find_output(pdata->source);
-	if (in == NULL) {
-		dev_err(&client->dev, "Failed to find video source\n");
-		return -ENODEV;
-	}
-
-	ddata->in = in;
-	dssdev = &ddata->dssdev;
-	dssdev->name = pdata->name;
-
-	return 0;
-}
 
 static int sil9022_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
@@ -780,11 +758,7 @@ static int sil9022_probe(struct i2c_client *client,
 
 	dev_set_drvdata(&client->dev, ddata);
 
-	if (dev_get_platdata(&client->dev)) {
-		err = sil9022_probe_pdata(client);
-		if (err)
-			return err;
-	} else if (client->dev.of_node) {
+	if (client->dev.of_node) {
 		err = sil9022_probe_of(client);
 		if (err)
 			return err;
