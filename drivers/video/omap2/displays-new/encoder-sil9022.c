@@ -31,6 +31,11 @@
 #include <video/omap-panel-data.h>
 #include "encoder-sil9022.h"
 
+static struct regmap_config sil9022_regmap_config = {
+	.reg_bits = 8,
+	.val_bits = 8,
+};
+
 struct panel_drv_data {
 	struct omap_dss_device dssdev;
 	struct omap_dss_device *in;
