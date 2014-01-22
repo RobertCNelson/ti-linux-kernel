@@ -452,8 +452,6 @@ static void sil9022_disconnect(struct omap_dss_device *dssdev,
 	}
 
 	in->ops.dpi->disconnect(in, &ddata->dssdev);
-	return;
-
 }
 
 static int sil9022_enable(struct omap_dss_device *dssdev)
@@ -505,7 +503,6 @@ static void sil9022_disable(struct omap_dss_device *dssdev)
 	in->ops.dpi->disable(in);
 
 	dssdev->state = OMAP_DSS_DISPLAY_DISABLED;
-	return;
 }
 
 static void sil9022_set_timings(struct omap_dss_device *dssdev,
@@ -523,7 +520,6 @@ static void sil9022_set_timings(struct omap_dss_device *dssdev,
 	dssdev->panel.timings = *sil9022_timings;
 
 	in->ops.dpi->set_timings(in, sil9022_timings);
-	return;
 }
 
 static void sil9022_get_timings(struct omap_dss_device *dssdev,
@@ -531,7 +527,6 @@ static void sil9022_get_timings(struct omap_dss_device *dssdev,
 {
 	struct panel_drv_data *ddata = to_panel_data(dssdev);
 	*timings = ddata->timings;
-	return;
 }
 
 static int sil9022_check_timings(struct omap_dss_device *dssdev,
@@ -826,11 +821,6 @@ static int sil9022_remove(struct i2c_client *client)
 		sil9022_disconnect(dssdev, dssdev->dst);
 
 	omap_dss_put_device(ddata->in);
-
-	if (!client->adapter) {
-		dev_err(&client->dev, "No HDMI Device\n");
-		return -ENODEV;
-	}
 
 	return 0;
 }
