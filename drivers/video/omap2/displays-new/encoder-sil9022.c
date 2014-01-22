@@ -419,11 +419,16 @@ static int sil9022_connect(struct omap_dss_device *dssdev,
 			TPI_AVI_POWER_STATE_D2);
 	if (err < 0) {
 		dev_err(dssdev->dev, "ERROR: Setting device power state to D2\n");
-		return err;
+		goto err_pwr;
 	}
 
 	return 0;
 
+err_pwr:
+	dst->src = NULL;
+	dssdev->dst = NULL;
+	in->ops.dpi->disconnect(in, dssdev);
+	return err;
 }
 
 static void sil9022_disconnect(struct omap_dss_device *dssdev,
@@ -441,17 +446,16 @@ static void sil9022_disconnect(struct omap_dss_device *dssdev,
 	if (dst != dssdev->dst)
 		return;
 
-	dst->src = NULL;
-	dssdev->dst = NULL;
-
 	/* Move from ENABLED -> LOW Power state */
 	err = sil9022_write_reg(dssdev, HDMI_TPI_POWER_STATE_CTRL_REG,
 			TPI_AVI_POWER_STATE_D3);
-	if (err < 0) {
+	if (err < 0)
 		dev_err(dssdev->dev, "ERROR: Setting device power state to D3\n");
-	}
 
-	in->ops.dpi->disconnect(in, &ddata->dssdev);
+	dst->src = NULL;
+	dssdev->dst = NULL;
+
+	in->ops.dpi->disconnect(in, dssdev);
 }
 
 static int sil9022_enable(struct omap_dss_device *dssdev)
@@ -480,10 +484,19 @@ static int sil9022_enable(struct omap_dss_device *dssdev)
 
 	r = sil9022_hw_enable(dssdev);
 	if (r)
-		return r;
+		goto err_hw_enable;
 
 	dssdev->state = OMAP_DSS_DISPLAY_ACTIVE;
+
 	return 0;
+
+err_hw_enable:
+	if (gpio_is_valid(ddata->reset_gpio))
+		gpio_set_value_cansleep(ddata->reset_gpio, 1);
+
+	in->ops.dpi->disable(in);
+
+	return r;
 }
 
 static void sil9022_disable(struct omap_dss_device *dssdev)
@@ -494,8 +507,7 @@ static void sil9022_disable(struct omap_dss_device *dssdev)
 	if (!omapdss_device_is_enabled(dssdev))
 		return;
 
-	if (!sil9022_hw_disable(dssdev))
-		return;
+	sil9022_hw_disable(dssdev);
 
 	if (gpio_is_valid(ddata->reset_gpio))
 		gpio_set_value_cansleep(ddata->reset_gpio, 1);
@@ -782,11 +794,6 @@ static int sil9022_probe(struct i2c_client *client,
 	dssdev->output_type = OMAP_DISPLAY_TYPE_HDMI;
 	dssdev->owner = THIS_MODULE;
 	dssdev->phy.dpi.data_lines = ddata->data_lines;
-	err = omapdss_register_output(dssdev);
-	if (err) {
-		dev_err(&client->dev, "Failed to register output\n");
-		goto err_reg;
-	}
 
 	/* Read sil9022 chip version */
 	err = sil9022_probe_chip_version(dssdev);
@@ -795,11 +802,17 @@ static int sil9022_probe(struct i2c_client *client,
 		goto err_i2c;
 	}
 
+	err = omapdss_register_output(dssdev);
+	if (err) {
+		dev_err(&client->dev, "Failed to register output\n");
+		goto err_reg;
+	}
+
 	return 0;
 
-err_gpio:
 err_reg:
 err_i2c:
+err_gpio:
 	omap_dss_put_device(ddata->in);
 	return err;
 }
@@ -810,7 +823,7 @@ static int sil9022_remove(struct i2c_client *client)
 	struct panel_drv_data *ddata = dev_get_drvdata(&client->dev);
 	struct omap_dss_device *dssdev = &ddata->dssdev;
 
-	omapdss_unregister_output(&ddata->dssdev);
+	omapdss_unregister_output(dssdev);
 
 	WARN_ON(omapdss_device_is_enabled(dssdev));
 	if (omapdss_device_is_enabled(dssdev))
