@@ -304,6 +304,11 @@ static int ahci_suspend(struct device *dev)
 	if (pdata && pdata->suspend)
 		return pdata->suspend(dev);
 
+	if (!IS_ERR(hpriv->phy)) {
+		phy_power_off(hpriv->phy);
+		phy_exit(hpriv->phy);
+	}
+
 	if (!IS_ERR(hpriv->clk))
 		clk_disable_unprepare(hpriv->clk);
 
@@ -323,6 +328,11 @@ static int ahci_resume(struct device *dev)
 			dev_err(dev, "clock prepare enable failed");
 			return rc;
 		}
+	}
+
+	if (!IS_ERR(hpriv->phy)) {
+		phy_init(hpriv->phy);
+		phy_power_on(hpriv->phy);
 	}
 
 	if (pdata && pdata->resume) {
