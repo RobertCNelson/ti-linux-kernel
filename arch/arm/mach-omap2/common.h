@@ -179,7 +179,7 @@ static inline void omap44xx_restart(enum reboot_mode mode, const char *cmd)
 #if defined(CONFIG_SUSPEND)
 void omap2_common_suspend_init(void);
 #else
-inline void omap2_common_suspend_init(void);
+static inline void omap2_common_suspend_init(void)
 {
 }
 #endif

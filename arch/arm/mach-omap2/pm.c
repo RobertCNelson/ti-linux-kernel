@@ -313,8 +313,9 @@ int __init omap2_common_pm_late_init(void)
 	return 0;
 }
 
+#ifdef CONFIG_SUSPEND
 void __init omap2_common_suspend_init(void)
 {
 	suspend_set_ops(&omap_pm_ops);
 }
-
+#endif

@@ -47,8 +47,10 @@
 #include "sram.h"
 #include "omap_device.h"
 
-static void __iomem *am33xx_emif_base, *scu_base;
-static struct powerdomain *cefuse_pwrdm, *gfx_pwrdm, *per_pwrdm, *mpu_pwrdm;
+#ifdef CONFIG_SUSPEND
+static void __iomem *scu_base;
+static void __iomem *am33xx_emif_base;
+static struct powerdomain *mpu_pwrdm, *per_pwrdm, *gfx_pwrdm;
 static struct clockdomain *gfx_l4ls_clkdm;
 static struct clockdomain *l3s_clkdm, *l4fw_clkdm, *clk_24mhz_clkdm;
 
@@ -64,8 +66,6 @@ static DECLARE_COMPLETION(am33xx_pm_sync);
 static void (*am33xx_do_wfi_sram)(struct am33xx_suspend_params *);
 
 static struct am33xx_suspend_params susp_params;
-
-#ifdef CONFIG_SUSPEND
 
 static int am33xx_do_sram_idle(long unsigned int unused)
 {
@@ -244,7 +244,6 @@ static const struct platform_suspend_ops am33xx_pm_ops = {
 	.enter		= am33xx_pm_enter,
 	.valid		= am33xx_pm_valid,
 };
-#endif /* CONFIG_SUSPEND */
 
 static void am33xx_txev_handler(void)
 {
@@ -295,9 +294,7 @@ static void am33xx_m3_fw_ready_cb(void)
 					am33xx_pm->ver);
 	}
 
-#ifdef CONFIG_SUSPEND
 	suspend_set_ops(&am33xx_pm_ops);
-#endif /* CONFIG_SUSPEND */
 }
 
 static struct wkup_m3_ops am33xx_wkup_m3_ops = {
@@ -484,16 +481,21 @@ static struct am33xx_pm_ops am43xx_ops = {
 	.pre_suspend = am43xx_pre_suspend,
 	.post_suspend = am43xx_post_suspend,
 };
+#endif /* CONFIG_SUSPEND */
 
 int __init am33xx_pm_init(void)
 {
+	struct powerdomain *cefuse_pwrdm;
+#ifdef CONFIG_SUSPEND
 	int ret;
 	u32 temp;
 	struct device_node *np;
+#endif /* CONFIG_SUSPEND */
 
 	if (!soc_is_am33xx() && !soc_is_am43xx())
 		return -ENODEV;
 
+#ifdef CONFIG_SUSPEND
 	gfx_pwrdm = pwrdm_lookup("gfx_pwrdm");
 	per_pwrdm = pwrdm_lookup("per_pwrdm");
 	mpu_pwrdm = pwrdm_lookup("mpu_pwrdm");
@@ -560,6 +562,7 @@ int __init am33xx_pm_init(void)
 		pr_err("Error fetching I2C sleep/wake sequence\n");
 		goto err;
 	}
+#endif /* CONFIG_SUSPEND */
 
 	(void) clkdm_for_each(omap_pm_clkdms_setup, NULL);
 
@@ -570,6 +573,7 @@ int __init am33xx_pm_init(void)
 	else
 		pr_err("PM: Failed to get cefuse_pwrdm\n");
 
+#ifdef CONFIG_SUSPEND
 	am33xx_pm->state = M3_STATE_RESET;
 
 	wkup_m3_set_ops(&am33xx_wkup_m3_ops);
@@ -579,10 +583,13 @@ int __init am33xx_pm_init(void)
 
 	if (wkup_m3_is_valid())
 		am33xx_m3_fw_ready_cb();
+#endif /* CONFIG_SUSPEND */
 
 	return 0;
 
+#ifdef CONFIG_SUSPEND
 err:
 	kfree(am33xx_pm);
 	return ret;
+#endif /* CONFIG_SUSPEND */
 }

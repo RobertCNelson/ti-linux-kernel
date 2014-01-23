@@ -285,7 +285,7 @@ static inline int omap34xx_sram_init(void)
 }
 #endif /* CONFIG_ARCH_OMAP3 */
 
-#ifdef CONFIG_SOC_AM33XX
+#if defined(CONFIG_SOC_AM33XX) && defined(CONFIG_CPU_PM)
 static inline int am33xx_sram_init(void)
 {
 	am33xx_push_sram_idle();
@@ -298,7 +298,7 @@ static inline int am33xx_sram_init(void)
 }
 #endif
 
-#ifdef CONFIG_SOC_AM43XX
+#if defined(CONFIG_SOC_AM43XX) && defined(CONFIG_CPU_PM)
 static inline int am43xx_sram_init(void)
 {
 	am43xx_push_sram_idle();
