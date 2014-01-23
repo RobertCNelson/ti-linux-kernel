@@ -134,7 +134,6 @@
 	cpsw_sleep: cpsw_sleep {
 		pinctrl-single,pins = <
 			/* Slave 1 reset value */
-			0x10c (PIN_INPUT_PULLDOWN | MUX_MODE7)
 			0x114 (PIN_INPUT_PULLDOWN | MUX_MODE7)
 			0x118 (PIN_INPUT_PULLDOWN | MUX_MODE7)
 			0x11c (PIN_INPUT_PULLDOWN | MUX_MODE7)
