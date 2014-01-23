@@ -84,7 +84,13 @@ ENTRY(am33xx_do_wfi)
 	ldr	r1, kernel_flush
 	blx	r1
 
+	/* Save EMIF power management regs */
 	ldr	r0, emif_addr_virt
+	ldr	r1, [r0, #EMIF_POWER_MANAGEMENT_CONTROL]
+	str	r1, emif_pmcr_val
+	ldr	r1, [r0, #EMIF_POWER_MANAGEMENT_CTRL_SHDW]
+	str	r1, emif_pmcr_shdw_val
+
 	/* Save EMIF configuration */
 	ldr	r1, [r0, #EMIF_SDRAM_REFRESH_CONTROL]
 	str	r1, emif_ref_ctrl_val
@@ -94,10 +100,6 @@ ENTRY(am33xx_do_wfi)
 	str	r1, emif_timing2_val
 	ldr	r1, [r0, #EMIF_SDRAM_TIMING_3]
 	str	r1, emif_timing3_val
-	ldr	r1, [r0, #EMIF_POWER_MANAGEMENT_CONTROL]
-	str	r1, emif_pmcr_val
-	ldr	r1, [r0, #EMIF_POWER_MANAGEMENT_CTRL_SHDW]
-	str	r1, emif_pmcr_shdw_val
 	ldr	r1, [r0, #EMIF_SDRAM_OUTPUT_IMPEDANCE_CALIBRATION_CONFIG]
 	str	r1, emif_zqcfg_val
 	ldr	r1, [r0, #EMIF_DDR_PHY_CTRL_1]
@@ -202,9 +204,9 @@ wait_emif_enable:
 
 	/* Disable EMIF self-refresh */
 	ldr	r0, emif_addr_virt
-	ldr	r1, [r0, #EMIF_POWER_MANAGEMENT_CONTROL]
-	bic	r1, r1, #LP_MODE_MASK
+	ldr	r1, emif_pmcr_val
 	str	r1, [r0, #EMIF_POWER_MANAGEMENT_CONTROL]
+	ldr	r1, emif_pmcr_shdw_val
 	str	r1, [r0, #EMIF_POWER_MANAGEMENT_CTRL_SHDW]
 
 	/*
