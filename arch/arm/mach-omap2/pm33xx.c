@@ -46,6 +46,7 @@
 #include "soc.h"
 #include "sram.h"
 #include "omap_device.h"
+#include "control.h"
 
 #ifdef CONFIG_SUSPEND
 static void __iomem *scu_base;
@@ -396,6 +397,8 @@ cleanup_sleep:
 
 static int am33xx_suspend_init(void)
 {
+	u32 temp;
+
 	gfx_l4ls_clkdm = clkdm_lookup("gfx_l4ls_gfx_clkdm");
 	l3s_clkdm = clkdm_lookup("l3s_clkdm");
 	l4fw_clkdm = clkdm_lookup("l4fw_clkdm");
@@ -410,6 +413,14 @@ static int am33xx_suspend_init(void)
 	/* Physical resume address to be used by ROM code */
 	am33xx_pm->ipc.reg0 = (AM33XX_OCMC_END -
 		am33xx_do_wfi_sz + am33xx_resume_offset + 0x4);
+
+	/*
+	 * Save SDRAM config in shadow register.
+	 * When the EMIF gets powered back up, its SDRAM_CONFIG register gets
+	 * loaded from the SECURE_SDRAM_CONFIG register.
+	 */
+	temp = readl(am33xx_emif_base + EMIF_SDRAM_CONFIG);
+	omap_ctrl_writel(temp, AM33XX_CONTROL_SECURE_SDRAM_CONFIG);
 
 	return 0;
 }
