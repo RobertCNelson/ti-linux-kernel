@@ -50,6 +50,7 @@ struct am33xx_ipc_regs {
 int wkup_m3_prepare(void);
 void wkup_m3_set_ops(struct wkup_m3_ops *ops);
 int wkup_m3_ping(void);
+int wkup_m3_ping_noirq(void);
 struct wkup_m3_wakeup_src wkup_m3_wake_src(void);
 int wkup_m3_pm_status(void);
 int wkup_m3_is_valid(void);

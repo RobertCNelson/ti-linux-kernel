@@ -186,6 +186,25 @@ int wkup_m3_copy_data(const u8 *data, size_t size)
 	return wkup_m3->data_end - wkup_m3->data;
 }
 
+int wkup_m3_ping_noirq(void)
+{
+	int ret = 0;
+
+	if (!wkup_m3->mbox) {
+		pr_err("PM: No IPC channel to communicate with wkup_m3!\n");
+		return -EIO;
+	}
+
+	/*
+	 * Write a dummy message to the mailbox in order to trigger the RX
+	 * interrupt to alert the M3 that data is available in the IPC
+	 * registers.
+	 */
+	ret = omap_mbox_msg_send_noirq(wkup_m3->mbox, 0xABCDABCD);
+
+	return ret;
+}
+
 struct wkup_m3_wakeup_src wkup_m3_wake_src(void)
 {
 	struct am33xx_ipc_regs ipc_regs;
