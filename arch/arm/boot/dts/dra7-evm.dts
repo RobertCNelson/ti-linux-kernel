@@ -355,6 +355,15 @@
 		>;
 	};
 
+	mcasp3_sleep_pins: pinmux_mcasp3_sleep_pins {
+		pinctrl-single,pins = <
+			0x324 (PIN_OFF_NONE)
+			0x328 (PIN_OFF_NONE)
+			0x32c (PIN_OFF_NONE)
+			0x330 (PIN_OFF_NONE)
+		>;
+	};
+
 	hpd_pin: pinmux_hpd_pin {
 		pinctrl-single,pins = <
 			0x3b8	0x5000e	/* gpio7_12 INPUT | MODE14 */
@@ -918,8 +927,9 @@
 };
 
 &mcasp3 {
-	pinctrl-names = "default";
+	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&mcasp3_pins>;
+	pinctrl-1 = <&mcasp3_sleep_pins>;
 
 	fck_parent = "atl_clkin2_ck";
 
