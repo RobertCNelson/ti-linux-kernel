@@ -220,13 +220,11 @@
 			>;
 		};
 
-		/* wl12xx/wl18xx card enable/irq GPIOs. works with ECO board
-		   for wowlan.*/
+		/* wl12xx/wl18xx card enable/irq GPIOs. */
 		wlan_pins: pinmux_wlan_pins {
 			pinctrl-single,pins = <
-				/* TODO: disable pullup when WLAN is off (saves power?) */
-				0x198 0x17	/* mcasp0_axr0.gpio3_16, OUTPUT_PULLUP | MODE7 */
-				0x1B0 0x27	/* xdma_event_intr0.gpio0_19, INPUT | MODE7 */
+				0x40 0x07	/* gpmc_a0.gpio1_16, OUTPUT | MODE7 */
+				0x19C 0x27	/* mcasp0_ahclkr.gpio3_17, INPUT | MODE7 */
 				0x1AC 0x17	/* mcasp0_ahclkx.gpio3_21, OUTPUT_PULLUP | MODE7 */
 			>;
 		};
