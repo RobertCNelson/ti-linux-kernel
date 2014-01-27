@@ -348,7 +348,7 @@ static struct vpe_fmt *find_format(struct v4l2_format *f)
  */
 struct vpe_dev {
 	struct v4l2_device	v4l2_dev;
-	struct video_device	vfd;
+	struct video_device	*vfd;
 	struct v4l2_m2m_dev	*m2m_dev;
 
 	atomic_t		num_instances;	/* count of driver instances */
@@ -2117,7 +2117,13 @@ static void vpe_fw_cb(struct platform_device *pdev)
 	struct video_device *vfd;
 	int ret;
 
-	vfd = &dev->vfd;
+	vfd = video_device_alloc();
+	if (!vfd) {
+		vpe_err(dev, "Failed to allocate video device\n");
+		return;
+	}
+
+	dev->vfd = vfd;
 	*vfd = vpe_videodev;
 	vfd->lock = &dev->dev_mutex;
 	vfd->v4l2_dev = &dev->v4l2_dev;
@@ -2131,6 +2137,7 @@ static void vpe_fw_cb(struct platform_device *pdev)
 		pm_runtime_disable(&pdev->dev);
 		v4l2_m2m_release(dev->m2m_dev);
 		vb2_dma_contig_cleanup_ctx(dev->alloc_ctx);
+		video_device_release(vfd);
 		v4l2_device_unregister(&dev->v4l2_dev);
 
 		return;
@@ -2254,7 +2261,7 @@ static int vpe_remove(struct platform_device *pdev)
 	v4l2_info(&dev->v4l2_dev, "Removing " VPE_MODULE_NAME);
 
 	v4l2_m2m_release(dev->m2m_dev);
-	video_unregister_device(&dev->vfd);
+	video_unregister_device(dev->vfd);
 	v4l2_device_unregister(&dev->v4l2_dev);
 	vb2_dma_contig_cleanup_ctx(dev->alloc_ctx);
 
