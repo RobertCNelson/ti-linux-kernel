@@ -254,22 +254,32 @@
 
 &avs_mpu {
 	avs-supply = <&smps123_reg>;
+	/* Account for Palmas accuracy not < 10mV */
+	voltage-tolerance = <1>;
 };
 
 &avs_core {
 	avs-supply = <&smps7_reg>;
+	/* Account for Palmas accuracy not < 10mV */
+	voltage-tolerance = <1>;
 };
 
 &avs_gpu {
 	avs-supply = <&smps6_reg>;
+	/* Account for Palmas accuracy not < 10mV */
+	voltage-tolerance = <1>;
 };
 
 &avs_dspeve {
 	avs-supply = <&smps45_reg>;
+	/* Account for Palmas accuracy not < 10mV */
+	voltage-tolerance = <1>;
 };
 
 &avs_iva {
 	avs-supply = <&smps8_reg>;
+	/* Account for Palmas accuracy not < 10mV */
+	voltage-tolerance = <1>;
 };
 
 &cpu0 {
