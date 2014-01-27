@@ -307,6 +307,48 @@
 		compatible = "ti,tmp275";
 		reg = <0x48>;
 	};
+
+	vpfe0_pins: vpfe0_pins {
+		pinctrl-single,pins = <
+			/*0x270 (PIN_OUTPUT_PULLUP | MUX_MODE3) */  /* xdma_event_intr0.clkout1 mode 3*/
+			0x1B0 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam0_hd mode 0*/
+			0x1B4 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam0_vd mode 0*/
+			0x1B8 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam0_field mode 0*/
+			0x1BC (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam0_wen mode 0*/
+			0x1C0 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam0_pclk mode 0*/
+			0x1C4 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam0_data8 mode 0*/
+			0x1C8 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam0_data9 mode 0*/
+			0x208 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam0_data0 mode 0*/
+			0x20C (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam0_data1 mode 0*/
+			0x210 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam0_data2 mode 0*/
+			0x214 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam0_data3 mode 0*/
+			0x218 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam0_data4 mode 0*/
+			0x21C (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam0_data5 mode 0*/
+			0x220 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam0_data6 mode 0*/
+			0x224 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam0_data7 mode 0*/
+		>;
+	};
+
+	vpfe1_pins: vpfe1_pins {
+		pinctrl-single,pins = <
+			/* 0x270 (PIN_OUTPUT_PULLUP | MUX_MODE3) */ /* xdma_event_intr0.clkout1 mode 3*/
+			0x1CC (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data9 mode 0*/
+			0x1D0 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data8 mode 0*/
+			0x1D4 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_hd mode 0*/
+			0x1D8 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_vd mode 0*/
+			0x1DC (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_pclk mode 0*/
+			0x1E0 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_field mode 0*/
+			0x1E4 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_wen mode 0*/
+			0x1E8 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data0 mode 0*/
+			0x1EC (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data1 mode 0*/
+			0x1F0 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data2 mode 0*/
+			0x1F4 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data3 mode 0*/
+			0x1F8 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data4 mode 0*/
+			0x1FC (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data5 mode 0*/
+			0x200 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data6 mode 0*/
+			0x204 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data7 mode 0*/
+		>;
+	};
 };
 
 &i2c0 {
@@ -424,6 +466,18 @@
         status = "okay";
         pinctrl-names = "default";
         pinctrl-0 = <&i2c0_pins>;
+
+        ov2659@30 {
+		compatible = "ti,ov2659";
+		reg = <0x30>;
+
+		port {
+			ov2659_0: endpoint {
+				remote-endpoint = <&vpfe1_ep>;
+				mclk-frequency = <12000000>;
+			};
+		};
+	};
 };
 
 &i2c1 {
@@ -464,6 +518,18 @@
 		DRVDD-supply = <&evm_v3p3>;
 		DVDD-supply = <&ldo1>;
 
+	};
+
+	ov2659@30 {
+		compatible = "ti,ov2659";
+		reg = <0x30>;
+
+		port {
+			ov2659_1: endpoint {
+				remote-endpoint = <&vpfe0_ep>;
+				mclk-frequency = <12000000>;
+			};
+		};
 	};
 };
 
@@ -600,4 +666,38 @@
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart0_pins>;
+};
+
+&vpfe1 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&vpfe1_pins>;
+
+	/* Camera port */
+	port {
+		vpfe1_ep: endpoint {
+			remote-endpoint = <&ov2659_0>;
+			if_type = <2>;
+			bus_width = <8>;
+			hdpol = <0>;
+			vdpol = <0>;
+		};
+	};
+};
+
+&vpfe0 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&vpfe0_pins>;
+
+	/* Camera port */
+	port {
+		vpfe0_ep: endpoint {
+			remote-endpoint = <&ov2659_1>;
+			if_type = <2>;
+			bus_width = <8>;
+			hdpol = <0>;
+			vdpol = <0>;
+		};
+	};
 };
