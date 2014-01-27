@@ -89,21 +89,18 @@ static inline int is_mbox_irq(struct omap_mbox *mbox, omap_mbox_irq_t irq)
  *
  * Returns 0 on success, or an error otherwise
  */
-int omap_mbox_msg_send(struct omap_mbox *mbox, mbox_msg_t msg)
+int omap_mbox_msg_send_noirq(struct omap_mbox *mbox, mbox_msg_t msg)
 {
 	struct omap_mbox_queue *mq = mbox->txq;
-	int ret = 0, len;
-
-	spin_lock_bh(&mq->lock);
+	int len;
 
 	if (kfifo_avail(&mq->fifo) < sizeof(msg)) {
-		ret = -ENOMEM;
-		goto out;
+		return -ENOMEM;
 	}
 
 	if (kfifo_is_empty(&mq->fifo) && !mbox_poll_for_space(mbox)) {
 		mbox_fifo_write(mbox, msg);
-		goto out;
+		return 0;
 	}
 
 	len = kfifo_in(&mq->fifo, (unsigned char *)&msg, sizeof(msg));
@@ -111,8 +108,19 @@ int omap_mbox_msg_send(struct omap_mbox *mbox, mbox_msg_t msg)
 
 	tasklet_schedule(&mbox->txq->tasklet);
 
-out:
+	return 0;
+}
+EXPORT_SYMBOL(omap_mbox_msg_send_noirq);
+
+int omap_mbox_msg_send(struct omap_mbox *mbox, mbox_msg_t msg)
+{
+	struct omap_mbox_queue *mq = mbox->txq;
+	int ret;
+
+	spin_lock_bh(&mq->lock);
+	ret = omap_mbox_msg_send_noirq(mbox, msg);
 	spin_unlock_bh(&mq->lock);
+
 	return ret;
 }
 EXPORT_SYMBOL(omap_mbox_msg_send);

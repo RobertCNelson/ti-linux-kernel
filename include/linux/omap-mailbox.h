@@ -20,6 +20,7 @@ typedef int __bitwise omap_mbox_irq_t;
 
 /* client api for message transmission */
 int omap_mbox_msg_send(struct omap_mbox *, mbox_msg_t msg);
+int omap_mbox_msg_send_noirq(struct omap_mbox *mbox, mbox_msg_t msg);
 
 /* client api for acquiring and releasing a mailbox */
 struct omap_mbox *omap_mbox_get(const char *, struct notifier_block *nb);

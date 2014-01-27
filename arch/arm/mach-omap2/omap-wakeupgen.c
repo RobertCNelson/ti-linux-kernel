@@ -59,6 +59,7 @@ static unsigned int max_irqs = DEFAULT_IRQS;
 static unsigned int omap_secure_apis, secure_api_index;
 static unsigned int irq_banks = MAX_NR_REG_BANKS;
 static unsigned int irq_target_cpu[MAX_IRQS];
+#ifdef CONFIG_CPU_PM
 static unsigned int wakeupgen_context[MAX_NR_REG_BANKS];
 
 struct omap_wakeupgen_ops {
@@ -67,6 +68,7 @@ struct omap_wakeupgen_ops {
 };
 
 static struct omap_wakeupgen_ops *wakeupgen_ops;
+#endif /* CONFIG_CPU_PM */
 
 /*
  * Static helper functions.
@@ -432,6 +434,7 @@ int omap_secure_apis_support(void)
 	return omap_secure_apis;
 }
 
+#ifdef CONFIG_CPU_PM
 /* Define ops for context save and restore for each SoC */
 
 static struct omap_wakeupgen_ops omap4_wakeupgen_ops = {
@@ -448,6 +451,7 @@ static struct omap_wakeupgen_ops am43xx_wakeupgen_ops = {
 	.save_context = am43xx_irq_save_context,
 	.restore_context = am43xx_irq_restore_context,
 };
+#endif /* CONFIG_CPU_PM */
 
 /*
  * Initialise the wakeupgen module.
@@ -474,13 +478,19 @@ int __init omap_wakeupgen_init(void)
 		irq_banks = OMAP4_NR_BANKS;
 		omap_secure_apis = 1;
 		secure_api_index = OMAP4_HAL_SAVEGIC_INDEX;
+#ifdef CONFIG_CPU_PM
 		wakeupgen_ops = &omap4_wakeupgen_ops;
+#endif
 	} else if (soc_is_omap54xx()) {
 		secure_api_index = OMAP5_HAL_SAVEGIC_INDEX;
+#ifdef CONFIG_CPU_PM
 		wakeupgen_ops = &omap5_wakeupgen_ops;
+#endif
 	} else if (am43x) {
 		irq_banks = MAX_NR_REG_BANKS;
+#ifdef CONFIG_CPU_PM
 		wakeupgen_ops = &am43xx_wakeupgen_ops;
+#endif
 	}
 
 	max_irqs = MAX_IRQS;
