@@ -24,6 +24,11 @@ endif
 $(obj)/version.h: $(WLCORE_VERSION_DEPS)
 	@$(call filechk,version.h)
 
+# seems like in some cases, for unknown reason,
+# this dependency is not enforced implictly,
+# so add it explicitly
+$(obj)/main.c: $(src)/version.h
+
 wlcore_spi-objs 	= spi.o
 wlcore_sdio-objs	= sdio.o
 
