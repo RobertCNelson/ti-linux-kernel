@@ -2073,6 +2073,9 @@ static struct omap_mmc_platform_data *of_get_hsmmc_pdata(struct device *dev)
 	if (of_find_property(np, "cap-power-off-card", NULL))
 		pdata->slots[0].caps |= MMC_CAP_POWER_OFF_CARD;
 
+	if (of_find_property(np, "cap-mmc-dual-data-rate", NULL))
+		pdata->slots[0].caps |= MMC_CAP_1_8V_DDR;
+
 	if (of_find_property(np, "keep-power-in-suspend", NULL))
 		pdata->slots[0].pm_caps |= MMC_PM_KEEP_POWER;
 
