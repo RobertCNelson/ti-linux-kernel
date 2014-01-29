@@ -455,7 +455,7 @@ static int davinci_config_channel_size(struct davinci_mcasp *mcasp,
 	return 0;
 }
 
-static int davinci_hw_common_param(struct davinci_mcasp *mcasp, int stream,
+static int mcasp_common_hw_param(struct davinci_mcasp *mcasp, int stream,
 				    int channels)
 {
 	int i;
@@ -531,7 +531,7 @@ static int davinci_hw_common_param(struct davinci_mcasp *mcasp, int stream,
 	return 0;
 }
 
-static void davinci_hw_param(struct davinci_mcasp *mcasp, int stream)
+static void mcasp_i2s_hw_param(struct davinci_mcasp *mcasp, int stream)
 {
 	int i, active_slots;
 	u32 mask = 0;
@@ -574,7 +574,7 @@ static void davinci_hw_param(struct davinci_mcasp *mcasp, int stream)
 }
 
 /* S/PDIF */
-static void davinci_hw_dit_param(struct davinci_mcasp *mcasp)
+static void mcasp_dit_hw_param(struct davinci_mcasp *mcasp)
 {
 	/* Set the TX format : 24 bit right rotation, 32 bit slot, Pad 0
 	   and LSB first */
@@ -618,7 +618,8 @@ static int davinci_mcasp_hw_params(struct snd_pcm_substream *substream,
 
 	active_serializers = (channels + slots - 1) / slots;
 
-	if (davinci_hw_common_param(mcasp, substream->stream, channels) == -EINVAL)
+	if (mcasp_common_hw_param(mcasp, substream->stream,
+				  channels) == -EINVAL)
 		return -EINVAL;
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
 		fifo_level = mcasp->txnumevt * active_serializers;
@@ -626,9 +627,9 @@ static int davinci_mcasp_hw_params(struct snd_pcm_substream *substream,
 		fifo_level = mcasp->rxnumevt * active_serializers;
 
 	if (mcasp->op_mode == DAVINCI_MCASP_DIT_MODE)
-		davinci_hw_dit_param(mcasp);
+		mcasp_dit_hw_param(mcasp);
 	else
-		davinci_hw_param(mcasp, substream->stream);
+		mcasp_i2s_hw_param(mcasp, substream->stream);
 
 	switch (params_format(params)) {
 	case SNDRV_PCM_FORMAT_U8:
