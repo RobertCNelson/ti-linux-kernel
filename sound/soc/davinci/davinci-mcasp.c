@@ -605,22 +605,12 @@ static int davinci_mcasp_hw_params(struct snd_pcm_substream *substream,
 	u8 fifo_level;
 	u8 slots = mcasp->tdm_slots;
 	u8 active_serializers;
-	int channels;
+	int channels = params_channels(params);
 	int ret;
-	struct snd_interval *pcm_channels = hw_param_interval(params,
-					SNDRV_PCM_HW_PARAM_CHANNELS);
-	channels = pcm_channels->min;
-
-	active_serializers = (channels + slots - 1) / slots;
 
 	ret = mcasp_common_hw_param(mcasp, substream->stream, channels);
 	if (ret)
 		return ret;
-
-	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-		fifo_level = mcasp->txnumevt * active_serializers;
-	else
-		fifo_level = mcasp->rxnumevt * active_serializers;
 
 	if (mcasp->op_mode == DAVINCI_MCASP_DIT_MODE)
 		ret = mcasp_dit_hw_param(mcasp);
@@ -661,6 +651,13 @@ static int davinci_mcasp_hw_params(struct snd_pcm_substream *substream,
 		printk(KERN_WARNING "davinci-mcasp: unsupported PCM format");
 		return -EINVAL;
 	}
+
+	/* Calculate FIFO level */
+	active_serializers = (channels + slots - 1) / slots;
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+		fifo_level = mcasp->txnumevt * active_serializers;
+	else
+		fifo_level = mcasp->rxnumevt * active_serializers;
 
 	if (mcasp->version == MCASP_VERSION_2 && !fifo_level)
 		dma_params->acnt = 4;
