@@ -16,12 +16,16 @@
  *
  */
 
+#include <linux/io.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/err.h>
 #include <linux/pm_runtime.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
+
+#define	OCP2SCP_TIMING	0x18
+#define	SYNC2_MASK	0xf
 
 static int ocp2scp_remove_devices(struct device *dev, void *c)
 {
@@ -35,6 +39,9 @@ static int ocp2scp_remove_devices(struct device *dev, void *c)
 static int omap_ocp2scp_probe(struct platform_device *pdev)
 {
 	int ret;
+	u32 reg;
+	void __iomem *regs;
+	struct resource *res;
 	struct device_node *np = pdev->dev.of_node;
 
 	if (np) {
@@ -46,7 +53,23 @@ static int omap_ocp2scp_probe(struct platform_device *pdev)
 		}
 	}
 
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	regs = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(regs))
+		return PTR_ERR(regs);
+
 	pm_runtime_enable(&pdev->dev);
+
+	/*
+	 * Read path of OCP2SCP is not working properly due to low reset value
+	 * of SYNC2 parameter in OCP2SCP. Suggested reset value is 0x6.
+	 */
+	pm_runtime_get_sync(&pdev->dev);
+	reg = readl(regs + OCP2SCP_TIMING);
+	reg &= ~(SYNC2_MASK);
+	reg |= 0x6;
+	writel(reg, regs + OCP2SCP_TIMING);
+	pm_runtime_put_sync(&pdev->dev);
 
 	return 0;
 
