@@ -833,6 +833,7 @@ static int kim_probe(struct platform_device *pdev)
 	kim_gdata->baud_rate = pdata->baud_rate;
 	pr_info("sysfs entries created\n");
 
+#ifdef CONFIG_DEBUG_FS
 	kim_debugfs_dir = debugfs_create_dir("ti-st", NULL);
 	if (IS_ERR(kim_debugfs_dir)) {
 		pr_err(" debugfs entries creation failed ");
@@ -849,6 +850,7 @@ static int kim_probe(struct platform_device *pdev)
 
 err_debugfs_dir:
 	sysfs_remove_group(&pdev->dev.kobj, &uim_attr_grp);
+#endif
 
 err_sysfs_group:
 	st_core_exit(kim_gdata->core_data);
