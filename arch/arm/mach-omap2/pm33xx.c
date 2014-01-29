@@ -334,7 +334,8 @@ static void am33xx_m3_fw_ready_cb(void)
 					am33xx_pm->ver);
 	}
 
-	am33xx_idle_init(susp_params.wfi_flags & WFI_MEM_TYPE_DDR3);
+	if (soc_is_am33xx())
+		am33xx_idle_init(susp_params.wfi_flags & WFI_MEM_TYPE_DDR3);
 
 #ifdef CONFIG_SUSPEND
 	suspend_set_ops(&am33xx_pm_ops);
