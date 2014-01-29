@@ -186,10 +186,12 @@ EXPORT_SYMBOL_GPL(clk_register_mux);
  */
 void of_mux_clk_setup(struct device_node *node)
 {
-	struct clk *clk;
+	struct clk *clk, *parent;
+	struct device_node *parent_node;
+	struct of_phandle_args clkspec;
 	const char *clk_name = node->name;
 	void __iomem *reg;
-	int num_parents;
+	int num_parents, parent_idx;
 	const char **parent_names;
 	int i;
 	u8 clk_mux_flags = 0;
@@ -243,6 +245,24 @@ void of_mux_clk_setup(struct device_node *node)
 
 	if (!IS_ERR(clk))
 		of_clk_add_provider(node, of_clk_src_simple_get, clk);
+
+	parent_node = of_parse_phandle(node, "clock-default", 0);
+
+	if (parent_node) {
+		parent_idx = of_count_phandle_with_args(node, "clocks",
+							"#clock-cells");
+		while (parent_idx--) {
+			if (parent_node == of_parse_phandle(node, "clocks",
+							    parent_idx)) {
+				clkspec.np = parent_node;
+				parent = of_clk_get_from_provider(&clkspec);
+				if (parent)
+					clk_set_parent(clk, parent);
+				break;
+			}
+		}
+		of_node_put(parent_node);
+	}
 }
 EXPORT_SYMBOL_GPL(of_mux_clk_setup);
 CLK_OF_DECLARE(mux_clk, "mux-clock", of_mux_clk_setup);
