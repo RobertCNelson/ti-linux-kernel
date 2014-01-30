@@ -319,7 +319,6 @@ static struct omap_hwmod dra7xx_mdio_hwmod = {
 	.name		= "davinci_mdio",
 	.class		= &dra7xx_mdio_hwmod_class,
 	.clkdm_name	= "gmac_clkdm",
-	.main_clk	= "dpll_gmac_ck",
 };
 
 /*
@@ -487,22 +486,12 @@ static struct omap_hwmod_dma_info dra7xx_dss_sdma_reqs[] = {
 	{ .dma_req = -1 }
 };
 
-static struct omap_hwmod_opt_clk dss_opt_clks[] = {
-	{ .role = "dss_clk", .clk = "dss_dss_clk" },
-	{ .role = "hdmi_phy_clk", .clk = "dss_48mhz_clk" },
-	{ .role = "32khz_clk", .clk = "dss_32khz_clk" },
-	{ .role = "video2_clk", .clk = "dss_video2_clk" },
-	{ .role = "video1_clk", .clk = "dss_video1_clk" },
-	{ .role = "hdmi_clk", .clk = "dss_hdmi_clk" },
-};
-
 static struct omap_hwmod dra7xx_dss_hwmod = {
 	.name		= "dss_core",
 	.class		= &dra7xx_dss_hwmod_class,
 	.clkdm_name	= "dss_clkdm",
 	.flags		= HWMOD_CONTROL_OPT_CLKS_IN_RESET,
 	.sdma_reqs	= dra7xx_dss_sdma_reqs,
-	.main_clk	= "dss_dss_clk",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = DRA7XX_CM_DSS_DSS_CLKCTRL_OFFSET,
@@ -510,8 +499,6 @@ static struct omap_hwmod dra7xx_dss_hwmod = {
 			.modulemode   = MODULEMODE_SWCTRL,
 		},
 	},
-	.opt_clks	= dss_opt_clks,
-	.opt_clks_cnt	= ARRAY_SIZE(dss_opt_clks),
 };
 
 /*
@@ -548,7 +535,6 @@ static struct omap_hwmod dra7xx_dss_dispc_hwmod = {
 	.name		= "dss_dispc",
 	.class		= &dra7xx_dispc_hwmod_class,
 	.clkdm_name	= "dss_clkdm",
-	.main_clk	= "dss_dss_clk",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = DRA7XX_CM_DSS_DSS_CLKCTRL_OFFSET,
@@ -580,23 +566,16 @@ static struct omap_hwmod_class dra7xx_hdmi_hwmod_class = {
 
 /* dss_hdmi */
 
-static struct omap_hwmod_opt_clk dss_hdmi_opt_clks[] = {
-	{ .role = "sys_clk", .clk = "dss_hdmi_clk" },
-};
-
 static struct omap_hwmod dra7xx_dss_hdmi_hwmod = {
 	.name		= "dss_hdmi",
 	.class		= &dra7xx_hdmi_hwmod_class,
 	.clkdm_name	= "dss_clkdm",
-	.main_clk	= "dss_48mhz_clk",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = DRA7XX_CM_DSS_DSS_CLKCTRL_OFFSET,
 			.flags = HWMOD_OMAP4_NO_CONTEXT_LOSS_BIT,
 		},
 	},
-	.opt_clks	= dss_hdmi_opt_clks,
-	.opt_clks_cnt	= ARRAY_SIZE(dss_hdmi_opt_clks),
 };
 
 /*
@@ -627,7 +606,6 @@ static struct omap_hwmod dra7xx_elm_hwmod = {
 	.name		= "elm",
 	.class		= &dra7xx_elm_hwmod_class,
 	.clkdm_name	= "l4per_clkdm",
-	.main_clk	= "l3_iclk_div",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = DRA7XX_CM_L4PER_ELM_CLKCTRL_OFFSET,
@@ -888,7 +866,6 @@ static struct omap_hwmod dra7xx_gpmc_hwmod = {
 	.class		= &dra7xx_gpmc_hwmod_class,
 	.clkdm_name	= "l3main1_clkdm",
 	.flags		= HWMOD_INIT_NO_IDLE | HWMOD_INIT_NO_RESET,
-	.main_clk	= "l3_iclk_div",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = DRA7XX_CM_L3MAIN1_GPMC_CLKCTRL_OFFSET,
@@ -1715,7 +1692,6 @@ static struct omap_hwmod dra7xx_mpu_hwmod = {
 	.class		= &dra7xx_mpu_hwmod_class,
 	.clkdm_name	= "mpu_clkdm",
 	.flags		= HWMOD_INIT_NO_IDLE | HWMOD_INIT_NO_RESET,
-	.main_clk	= "dpll_mpu_m2_ck",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = DRA7XX_CM_MPU_MPU_CLKCTRL_OFFSET,
@@ -1750,7 +1726,6 @@ static struct omap_hwmod dra7xx_ocp2scp1_hwmod = {
 	.name		= "ocp2scp1",
 	.class		= &dra7xx_ocp2scp_hwmod_class,
 	.clkdm_name	= "l3init_clkdm",
-	.main_clk	= "l4_root_clk_div",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = DRA7XX_CM_L3INIT_OCP2SCP1_CLKCTRL_OFFSET,
@@ -1798,7 +1773,6 @@ static struct omap_hwmod dra7xx_pcie1_hwmod = {
 	.name		= "pcie1",
 	.class		= &dra7xx_pcie_hwmod_class,
 	.clkdm_name	= "l3init_clkdm",
-	.main_clk	= "l4_root_clk_div",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs	= DRA7XX_CM_PCIE_CLKSTCTRL_OFFSET,
@@ -1835,7 +1809,6 @@ static struct omap_hwmod dra7xx_pcie1_phy_hwmod = {
 	.name		= "pcie1-phy",
 	.class		= &dra7xx_pcie_phy_hwmod_class,
 	.clkdm_name	= "l3init_clkdm",
-	.main_clk	= "l4_root_clk_div",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = DRA7XX_CM_L3INIT_PCIESS1_CLKCTRL_OFFSET,
@@ -1883,7 +1856,6 @@ static struct omap_hwmod dra7xx_qspi_hwmod = {
 	.name		= "qspi",
 	.class		= &dra7xx_qspi_hwmod_class,
 	.clkdm_name	= "l4per2_clkdm",
-	.main_clk	= "qspi_gfclk_div",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = DRA7XX_CM_L4PER2_QSPI_CLKCTRL_OFFSET,
@@ -1951,7 +1923,6 @@ static struct omap_hwmod dra7xx_sata_hwmod = {
 	.class		= &dra7xx_sata_hwmod_class,
 	.clkdm_name	= "l3init_clkdm",
 	.flags		= HWMOD_SWSUP_SIDLE | HWMOD_SWSUP_MSTANDBY,
-	.main_clk	= "func_48m_fclk",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = DRA7XX_CM_L3INIT_SATA_CLKCTRL_OFFSET,
@@ -2376,16 +2347,10 @@ static struct omap_hwmod_class dra7xx_usb_otg_ss_hwmod_class = {
 	.sysc	= &dra7xx_usb_otg_ss_sysc,
 };
 
-/* usb_otg_ss1 */
-static struct omap_hwmod_opt_clk usb_otg_ss1_opt_clks[] = {
-	{ .role = "refclk960m", .clk = "usb_otg_ss1_refclk960m" },
-};
-
 static struct omap_hwmod dra7xx_usb_otg_ss1_hwmod = {
 	.name		= "usb_otg_ss1",
 	.class		= &dra7xx_usb_otg_ss_hwmod_class,
 	.clkdm_name	= "l3init_clkdm",
-	.main_clk	= "dpll_core_h13x2_ck",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = DRA7XX_CM_L3INIT_USB_OTG_SS1_CLKCTRL_OFFSET,
@@ -2393,20 +2358,12 @@ static struct omap_hwmod dra7xx_usb_otg_ss1_hwmod = {
 			.modulemode   = MODULEMODE_HWCTRL,
 		},
 	},
-	.opt_clks	= usb_otg_ss1_opt_clks,
-	.opt_clks_cnt	= ARRAY_SIZE(usb_otg_ss1_opt_clks),
-};
-
-/* usb_otg_ss2 */
-static struct omap_hwmod_opt_clk usb_otg_ss2_opt_clks[] = {
-	{ .role = "refclk960m", .clk = "usb_otg_ss2_refclk960m" },
 };
 
 static struct omap_hwmod dra7xx_usb_otg_ss2_hwmod = {
 	.name		= "usb_otg_ss2",
 	.class		= &dra7xx_usb_otg_ss_hwmod_class,
 	.clkdm_name	= "l3init_clkdm",
-	.main_clk	= "dpll_core_h13x2_ck",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = DRA7XX_CM_L3INIT_USB_OTG_SS2_CLKCTRL_OFFSET,
@@ -2414,8 +2371,6 @@ static struct omap_hwmod dra7xx_usb_otg_ss2_hwmod = {
 			.modulemode   = MODULEMODE_HWCTRL,
 		},
 	},
-	.opt_clks	= usb_otg_ss2_opt_clks,
-	.opt_clks_cnt	= ARRAY_SIZE(usb_otg_ss2_opt_clks),
 };
 
 /* usb_otg_ss3 */
@@ -2423,7 +2378,6 @@ static struct omap_hwmod dra7xx_usb_otg_ss3_hwmod = {
 	.name		= "usb_otg_ss3",
 	.class		= &dra7xx_usb_otg_ss_hwmod_class,
 	.clkdm_name	= "l3init_clkdm",
-	.main_clk	= "dpll_core_h13x2_ck",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = DRA7XX_CM_L3INIT_USB_OTG_SS3_CLKCTRL_OFFSET,
@@ -2438,7 +2392,6 @@ static struct omap_hwmod dra7xx_usb_otg_ss4_hwmod = {
 	.name		= "usb_otg_ss4",
 	.class		= &dra7xx_usb_otg_ss_hwmod_class,
 	.clkdm_name	= "l3init_clkdm",
-	.main_clk	= "dpll_core_h13x2_ck",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = DRA7XX_CM_L3INIT_USB_OTG_SS4_CLKCTRL_OFFSET,
@@ -2546,7 +2499,6 @@ static struct omap_hwmod dra7xx_vpe_hwmod = {
 	.name		= "vpe",
 	.class		= &dra7xx_vpe_hwmod_class,
 	.clkdm_name	= "vpe_clkdm",
-	.main_clk	= "dpll_core_h23x2_ck",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = DRA7XX_CM_VPE_VPE_CLKCTRL_OFFSET,

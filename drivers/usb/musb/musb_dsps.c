@@ -327,6 +327,7 @@ static void sw_babble_control(struct musb *musb)
 	if (session_restart) {
 		u32 devctl;
 
+		dev_dbg(musb->controller, "Restarting session\n");
 		devctl = musb_readb(musb->mregs, MUSB_DEVCTL);
 		devctl &= ~MUSB_DEVCTL_SESSION;
 		musb_writeb(musb->mregs, MUSB_DEVCTL, devctl);
@@ -335,14 +336,21 @@ static void sw_babble_control(struct musb *musb)
 		dsps_writel(base, wrp->control, (1 << wrp->reset));
 
 		usb_phy_shutdown(musb->xceiv);
-		mdelay(100);
+		usleep_range(100, 200);
 		musb_platform_set_mode(musb, MUSB_HOST);
-		mdelay(100);
+		usleep_range(100, 200);
 		usb_phy_init(musb->xceiv);
-		mdelay(100);
+		msleep(100);
 
 		musb_babble_reinit(musb);
 	}
+}
+
+static void dsps_babble_work(struct work_struct *work)
+{
+	struct musb *musb = container_of(work, struct musb, babble_work);
+
+	sw_babble_control(musb);
 }
 
 static irqreturn_t dsps_interrupt(int irq, void *hci)
@@ -446,7 +454,7 @@ static irqreturn_t dsps_interrupt(int irq, void *hci)
 		mod_timer(&glue->timer, jiffies + wrp->poll_seconds * HZ);
 
 	if (babble_detected)
-		sw_babble_control(musb);
+		schedule_work(&musb->babble_work);
 out:
 	spin_unlock_irqrestore(&musb->lock, flags);
 
@@ -482,6 +490,7 @@ static int dsps_musb_init(struct musb *musb)
 	if (!rev)
 		return -ENODEV;
 
+	INIT_WORK(&musb->babble_work, dsps_babble_work);
 	usb_phy_init(musb->xceiv);
 	setup_timer(&glue->timer, otg_timer, (unsigned long) musb);
 

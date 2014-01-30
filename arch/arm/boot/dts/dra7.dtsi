@@ -87,6 +87,8 @@
 		mpu {
 			compatible = "ti,omap5-mpu";
 			ti,hwmods = "mpu";
+			clocks = <&dpll_mpu_m2_ck>;
+			clock-names = "fck";
 		};
 	};
 
@@ -853,6 +855,8 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			ti,hwmods = "qspi";
+			clocks = <&qspi_gfclk_div>;
+			clock-names = "fck";
 			ti,spi-num-cs = <4>;
 			interrupts = <0 124 0x4>;
 			mmap_read;
@@ -901,10 +905,12 @@
 					 <&optfclk_pciephy_32khz>,
 					 <&optfclk_pciephy_clk>,
 					 <&optfclk_pciephy_div_clk>,
-					 <&optfclk_pciephy_div>;
+					 <&optfclk_pciephy_div>,
+					 <&l4_root_clk_div>;
 				clock-names = "dpll_ref", "dpll_ref_m2",
 					      "wkupclk", "refclk",
-					      "refclk2", "pcie-phy-div";
+					      "refclk2", "pcie-phy-div",
+					      "fck";
 				#phy-cells = <0>;
 				ti,hwmods = "pcie1-phy";
 			};
@@ -915,6 +921,8 @@
 			reg = <0x51002000 0x14c>, <0x51000000 0x2000>, <0x4A002540 0x1f>;
 			reg-names = "ti_conf", "rc_dbics", "mmr_unlock";
 			interrupts = <0 129 0x4>, <0 134 0x4>;
+			clocks = <&l4_root_clk_div>;
+			clock-names = "fck";
 			#address-cells = <3>;
 			#size-cells = <2>;
 			device_type = "pci";
@@ -938,6 +946,8 @@
 			compatible = "ti,sata";
 			ti,hwmods = "sata";
 			reg = <0x4a141100 0x100>;
+			clocks = <&func_48m_fclk>;
+			clock-names = "fck";
 			#address-cells = <1>;
 			#size-cells = <1>;
 			ranges;
@@ -1057,6 +1067,8 @@
 			ranges;
 			ti,hwmods = "ocp2scp1";
 			reg = <0x4a080000 0x400>;	/* ocp2scp1 */
+			clocks = <&l4_root_clk_div>;
+			clock-names = "fck";
 
 			usb2_phy1: usb2phy1@4a084000 {
 				compatible = "ti,dra7x-usb2";
@@ -1102,6 +1114,8 @@
 			ti,hwmods = "usb_otg_ss1";
 			reg = <0x48880000 0x10000>;
 			interrupts = <0 77 4>;
+			clocks = <&dpll_core_h13x2_ck>;
+			clock-names = "fck";
 			#address-cells = <1>;
 			#size-cells = <1>;
 			utmi-mode = <2>;
@@ -1123,6 +1137,8 @@
 			ti,hwmods = "usb_otg_ss2";
 			reg = <0x488c0000 0x10000>;
 			interrupts = <0 92 4>;
+			clocks = <&dpll_core_h13x2_ck>;
+			clock-names = "fck";
 			#address-cells = <1>;
 			#size-cells = <1>;
 			utmi-mode = <2>;
@@ -1144,6 +1160,8 @@
 			compatible = "ti,dwc3";
 			ti,hwmods = "usb_otg_ss3";
 			reg = <0x48900000 0x10000>;
+			clocks = <&dpll_core_h13x2_ck>;
+			clock-names = "fck";
 		/*	interrupts = <0 TBD 4>; */
 			#address-cells = <1>;
 			#size-cells = <1>;
@@ -1164,6 +1182,8 @@
 			compatible = "ti,dwc3";
 			ti,hwmods = "usb_otg_ss4";
 			reg = <0x48940000 0x10000>;
+			clocks = <&dpll_core_h13x2_ck>;
+			clock-names = "fck";
 		/*	interrupts = <0 TBD 4>; */
 			#address-cells = <1>;
 			#size-cells = <1>;
@@ -1193,6 +1213,12 @@
 			      <0x58004000 0x340>,
 			      <0x58009000 0x340>;
 			ti,hwmods = "dss_core";
+			clocks = <&dss_dss_clk>, <&dss_48mhz_clk>,
+				 <&dss_32khz_clk>, <&dss_video1_clk>,
+				 <&dss_video2_clk>, <&dss_hdmi_clk>;
+			clock-names = "fck", "hdmi_phy_clk",
+				      "32khz_clk", "video1_clk",
+				      "video2_clk", "hdmi_clk";
 			#address-cells = <1>;
 			#size-cells = <1>;
 			ranges;
@@ -1202,6 +1228,8 @@
 				reg = <0x58001000 0x1000>;
 				interrupts = <0 25 0x4>;
 				ti,hwmods = "dss_dispc";
+				clocks = <&dss_dss_clk>;
+				clock-names = "fck";
 			};
 
 			dpi1: encoder@0 {
@@ -1230,12 +1258,16 @@
 					    "hdmi_txphy", "hdmi_core";
 				interrupts = <0 101 0x4>;
 				ti,hwmods = "dss_hdmi";
+				clocks = <&dss_48mhz_clk>, <&dss_hdmi_clk>;
+				clock-names = "fck", "sys_clk";
 			};
 		};
 
 		vpe {
 			compatible = "ti,vpe";
 			ti,hwmods = "vpe";
+			clocks = <&dpll_core_h23x2_ck>;
+			clock-names = "fck";
 			reg = <0x489d0000 0x120>,
 			      <0x489d0300 0x20>,
 			      <0x489d0400 0x20>,
@@ -1294,6 +1326,8 @@
 				#address-cells = <1>;
 				#size-cells = <0>;
 				ti,hwmods = "davinci_mdio";
+				clocks = <&dpll_gmac_ck>;
+				clock-names = "fck";
 				bus_freq = <1000000>;
 				reg = <0x48485000 0x100>;
 			};
@@ -1315,6 +1349,8 @@
 			reg = <0x48078000 0x2000>;
 			interrupts = <GIC_SPI 4 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "elm";
+			clocks = <&l3_iclk_div>;
+			clock-names = "fck";
 			status = "disabled";
 		};
 
@@ -1322,6 +1358,8 @@
 			compatible = "ti,am3352-gpmc";
 		/* 	compatible = "ti,gpmc"; */
 			ti,hwmods = "gpmc";
+			clocks = <&l3_iclk_div>;
+			clock-names = "fck";
 			reg = <0x50000000 0x2000>;
 			interrupts = <GIC_SPI 20 IRQ_TYPE_LEVEL_HIGH>;
 			gpmc,num-cs = <8>;

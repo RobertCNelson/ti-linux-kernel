@@ -735,6 +735,7 @@
 	vmmc-supply = <&evm_3v3_sw>;
 	bus-width = <8>;
 	ti,non-removable;
+	cap-mmc-dual-data-rate;
 };
 
 &dss {

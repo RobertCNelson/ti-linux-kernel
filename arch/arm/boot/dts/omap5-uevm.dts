@@ -329,6 +329,7 @@
 	vmmc-supply = <&vmmc_mmc2>;
 	bus-width = <8>;
 	ti,non-removable;
+	cap-mmc-dual-data-rate;
 };
 
 &mmc3 {

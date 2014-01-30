@@ -153,6 +153,8 @@
 };
 
 &am43xx_pinmux {
+	pinctrl-names = "default";
+	pinctrl-0 = <&dss_pinctrl &clkout2_pin>;
 
 	cpsw_default: cpsw_default {
 		pinctrl-single,pins = <
@@ -314,6 +316,12 @@
 			0x1a4 (PIN_INPUT_PULLDOWN | MUX_MODE3) /* MCASP0_FSR/MCASP1_FSX */
 			0x1a8 (PIN_OUTPUT_PULLDOWN | MUX_MODE3)/* MCASP0_AXR1/MCASP1_AXR0 */
 			0x1ac (PIN_INPUT_PULLDOWN | MUX_MODE3) /* MCASP0_AHCLKX/MCASP1_AXR1 */
+		>;
+	};
+
+	clkout2_pin: clkout2_pin {
+		pinctrl-single,pins = <
+			0x274 (PIN_OUTPUT_PULLUP | MUX_MODE3)
 		>;
 	};
 
@@ -793,4 +801,8 @@
 			vdpol = <0>;
 		};
 	};
+};
+
+&clkout_32k_mux_ck {
+        clock-default =  <&clk_32k_tpm_ck>;
 };
