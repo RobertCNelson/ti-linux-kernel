@@ -615,7 +615,6 @@
 	nand@0,0 {
 		reg = <0 0 0>; /* CS0, offset 0 */
 		nand-bus-width = <8>;
-		ti,nand-ecc-opt = "bch16";
 		gpmc,device-width = <1>;
 		gpmc,sync-clk-ps = <0>;
 		gpmc,cs-on-ns = <0>;
@@ -639,49 +638,53 @@
 		gpmc,wait-monitoring-ns = <0>;
 		gpmc,wr-access-ns = <40>;
 		gpmc,wr-data-mux-bus-ns = <0>;
-		#address-cells = <1>;
-		#size-cells = <1>;
+		ti,nand-ecc-opt = "bch16";
 		ti,elm-id = <&elm>;
 		/* MTD partition table */
+		/* All SPL-* partitions are sized to minimal length
+		 * which can be independently programmable. For
+		 * NAND flash this is equal to size of erase-block */
+		#address-cells = <1>;
+		#size-cells = <1>;
 		partition@0 {
-			label = "SPL";
-			reg = <0x00000000 0x000040000>;
+			label = "NAND.SPL";
+			reg = <0x00000000 0x00040000>;
 		};
 		partition@1 {
-			label = "SPL.backup1";
+			label = "NAND.SPL.backup1";
 			reg = <0x00040000 0x00040000>;
 		};
 		partition@2 {
-			label = "SPL.backup2";
+			label = "NAND.SPL.backup2";
 			reg = <0x00080000 0x00040000>;
 		};
 		partition@3 {
-			label = "SPL.backup3";
+			label = "NAND.SPL.backup3";
 			reg = <0x000C0000 0x00040000>;
 		};
 		partition@4 {
-			label = "u-boot";
-			reg = <0x00100000 0x00100000>;
+			label = "NAND.u-boot-spl-os";
+			reg = <0x00100000 0x00080000>;
 		};
 		partition@5 {
-			label = "u-boot-spl-os";
-			reg = <0x00200000 0x00080000>;
+			label = "NAND.u-boot";
+			reg = <0x00180000 0x00100000>;
 		};
 		partition@6 {
-			label = "u-boot-env";
+			label = "NAND.u-boot-env";
 			reg = <0x00280000 0x00040000>;
 		};
 		partition@7 {
-			label = "u-boot-env.backup1";
+			label = "NAND.u-boot-env.backup1";
 			reg = <0x002C0000 0x00040000>;
 		};
 		partition@8 {
-			label = "kernel";
-			reg = <0x00300000 0x00500000>;
+			label = "NAND.kernel";
+			reg = <0x00300000 0x00700000>;
 		};
 		partition@9 {
-			label = "file-system";
-			reg = <0x00800000 0x0F800000>;
+			label = "NAND.file-system";
+			reg = <0x00A00000 0x0F600000>;
 		};
 	};
 };
