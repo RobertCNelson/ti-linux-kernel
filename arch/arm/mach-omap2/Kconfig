@@ -53,6 +53,7 @@ config SOC_OMAP5
 	bool "TI OMAP5"
 	depends on ARCH_MULTI_V7
 	select ARCH_OMAP2PLUS
+	select ARCH_HAS_OPP
 	select ARM_CPU_SUSPEND if PM
 	select ARM_GIC
 	select CPU_V7
@@ -77,6 +78,7 @@ config SOC_AM33XX
 	select OMAP_MBOX_FWK if PM
 	select OMAP2PLUS_MBOX if PM
 	select RESET_TI
+	select ARCH_HAS_OPP
 
 config SOC_AM43XX
 	bool "TI AM43x"
@@ -90,6 +92,7 @@ config SOC_AM43XX
 	select MIGHT_HAVE_CACHE_L2X0
 	select ARCH_HAS_RESET_CONTROLLER
 	select RESET_TI
+	select ARCH_HAS_OPP
 
 if ARCH_OMAP2PLUS
 
@@ -131,6 +134,7 @@ config SOC_DRA7XX
 	select ARCH_HAS_RESET_CONTROLLER
 	select RESET_TI
 	select ARM_ERRATA_799270
+	select ARCH_HAS_OPP
 
 comment "OMAP Core Type"
 	depends on ARCH_OMAP2
