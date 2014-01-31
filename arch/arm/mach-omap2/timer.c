@@ -352,7 +352,7 @@ static void __init omap2_gp_clockevent_init(int gptimer_id,
 	clkev.id = gptimer_id;
 	clkev.errata = omap_dm_timer_get_errata();
 
-	if (soc_is_am33xx()) {
+	if (soc_is_am33xx() || soc_is_am43xx()) {
 		clockevent_gpt.suspend = omap_clkevt_suspend;
 		clockevent_gpt.resume = omap_clkevt_resume;
 	}
