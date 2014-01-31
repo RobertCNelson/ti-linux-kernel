@@ -220,17 +220,24 @@
 		>;
 	};
 
-	i2c0_pins: pinmux_i2c0_pins {
+	i2c0_default: pinmux_i2c0_default {
 		pinctrl-single,pins = <
 			0x188 (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE0)	/* i2c0_sda.i2c0_sda */
 			0x18c (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE0)	/* i2c0_scl.i2c0_scl */
 		>;
 	};
 
-	i2c2_pins: pinmux_i2c2_pins {
+	i2c2_default: pinmux_i2c2_default {
 		pinctrl-single,pins = <
 			0x1c0 (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE8)    /* i2c2_sda.i2c2_sda */
 			0x1c4 (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE8)    /* i2c2_scl.i2c2_scl */
+		>;
+	};
+
+	i2c2_sleep: pinmux_i2c2_sleep {
+		pinctrl-single,pins = <
+			0x1c0 (MUX_MODE8)
+			0x1c4 (MUX_MODE8)
 		>;
 	};
 
@@ -526,7 +533,7 @@
 
 &i2c0 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&i2c0_pins>;
+	pinctrl-0 = <&i2c0_default>;
 
 	/* Set OPP50 (0.95V) for VDD MPU and core */
 	sleep-sequence = /bits/ 8 <
@@ -638,8 +645,9 @@
 };
 
 &i2c2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c2_pins>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&i2c2_default>;
+	pinctrl-1 = <&i2c2_sleep>;
 	status = "okay";
 
 	sii9022: sii9022@3b {
