@@ -208,11 +208,6 @@ static int ecap_pwm_probe(struct platform_device *pdev)
 	struct clk *clk;
 	struct ecap_pwm_chip *pc;
 	u16 status;
-	struct pinctrl *pinctrl;
-
-	pinctrl = devm_pinctrl_get_select_default(&pdev->dev);
-	if (IS_ERR(pinctrl))
-		dev_warn(&pdev->dev, "unable to select pin group\n");
 
 	pc = devm_kzalloc(&pdev->dev, sizeof(*pc), GFP_KERNEL);
 	if (!pc) {
@@ -317,6 +312,9 @@ static int ecap_pwm_suspend(struct device *dev)
 	if (test_bit(PWMF_ENABLED, &pwm->flags))
 		pm_runtime_put_sync(dev);
 
+	/* Select sleep pin state */
+	pinctrl_pm_select_sleep_state(dev);
+
 	return 0;
 }
 
@@ -324,6 +322,9 @@ static int ecap_pwm_resume(struct device *dev)
 {
 	struct ecap_pwm_chip *pc = dev_get_drvdata(dev);
 	struct pwm_device *pwm = pc->chip.pwms;
+
+	/* Select default pin state */
+	pinctrl_pm_select_default_state(dev);
 
 	/* Enable explicitly if PWM was running */
 	if (test_bit(PWMF_ENABLED, &pwm->flags))
