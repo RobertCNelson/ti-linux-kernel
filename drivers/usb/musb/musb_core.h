@@ -424,6 +424,8 @@ struct musb {
 	struct musb_hdrc_config	*config;
 
 	int			xceiv_old_state;
+
+	bool			suspended;	/* controller suspended */
 #ifdef CONFIG_DEBUG_FS
 	struct dentry		*debugfs_root;
 #endif
