@@ -241,7 +241,7 @@
 		>;
 	};
 
-	spi0_pins: pinmux_spi0_pins {
+	spi0_default: pinmux_spi0_default {
 		pinctrl-single,pins = <
 			0x150 (PIN_INPUT_PULLUP | MUX_MODE0)	/* spi0_clk.spi0_clk */
 			0x154 (PIN_INPUT_PULLUP | MUX_MODE0)	/* spi0_d0.spi0_d0 */
@@ -250,7 +250,16 @@
 		>;
 	};
 
-	spi1_pins: pinmux_spi1_pins {
+	spi0_sleep: pinmux_spi0_sleep {
+		pinctrl-single,pins = <
+			0x150 (DS0_PULL_UP_DOWN_EN | INPUT_EN | MUX_MODE7)
+			0x154 (DS0_PULL_UP_DOWN_EN | INPUT_EN | MUX_MODE7)
+			0x158 (DS0_PULL_UP_DOWN_EN | INPUT_EN | MUX_MODE7)
+			0x15c (DS0_PULL_UP_DOWN_EN | INPUT_EN | MUX_MODE7)
+		>;
+	};
+
+	spi1_default: pinmux_spi1_default {
 		pinctrl-single,pins = <
 			0x190 (PIN_INPUT_PULLUP | MUX_MODE3)	/* mcasp0_aclkx.spi1_clk */
 			0x194 (PIN_INPUT_PULLUP | MUX_MODE3)	/* mcasp0_fsx.spi1_d0 */
@@ -258,6 +267,15 @@
 			0x19c (PIN_OUTPUT | MUX_MODE3)		/* mcasp0_ahclkr.spi1_cs0 */
 		>;
 	};
+
+	spi1_sleep: pinmux_spi1_sleep {
+		pinctrl-single,pins = <
+			0x190 (DS0_PULL_UP_DOWN_EN | INPUT_EN | MUX_MODE7)
+			0x194 (DS0_PULL_UP_DOWN_EN | INPUT_EN | MUX_MODE7)
+			0x198 (DS0_PULL_UP_DOWN_EN | INPUT_EN | MUX_MODE7)
+			0x19c (DS0_PULL_UP_DOWN_EN | INPUT_EN | MUX_MODE7)
+		>;
+        };
 
 	pixcir_ts_pins: pixcir_ts_pins {
 		pinctrl-single,pins = <
@@ -660,14 +678,16 @@
 };
 
 &spi0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&spi0_pins>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&spi0_default>;
+	pinctrl-1 = <&spi0_sleep>;
 	status = "okay";
 };
 
 &spi1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&spi1_pins>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&spi1_default>;
+	pinctrl-1 = <&spi1_sleep>;
 	status = "okay";
 };
 
