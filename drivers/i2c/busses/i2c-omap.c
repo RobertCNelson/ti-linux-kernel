@@ -42,6 +42,7 @@
 #include <linux/slab.h>
 #include <linux/i2c-omap.h>
 #include <linux/pm_runtime.h>
+#include <linux/pinctrl/consumer.h>
 
 /* I2C controller revisions */
 #define OMAP_I2C_OMAP1_REV_2		0x20
@@ -1304,7 +1305,27 @@ static int omap_i2c_runtime_resume(struct device *dev)
 }
 #endif /* CONFIG_PM_RUNTIME */
 
+#ifdef CONFIG_PM_SLEEP
+static int omap_i2c_suspend(struct device *dev)
+{
+	pinctrl_pm_select_sleep_state(dev);
+
+	return 0;
+}
+
+static int omap_i2c_resume(struct device *dev)
+{
+	/* First go to the default state */
+	pinctrl_pm_select_default_state(dev);
+	/* Then let's idle the pins until the next transfer happens */
+	pinctrl_pm_select_idle_state(dev);
+
+	return 0;
+}
+#endif
+
 static struct dev_pm_ops omap_i2c_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(omap_i2c_suspend, omap_i2c_resume)
 	SET_RUNTIME_PM_OPS(omap_i2c_runtime_suspend,
 			   omap_i2c_runtime_resume, NULL)
 };
