@@ -298,6 +298,7 @@ long omap2_dpll_round_rate(struct clk_hw *hw, unsigned long target_rate,
 	struct dpll_data *dd;
 	unsigned long ref_rate;
 	const char *clk_name;
+	unsigned long diff, closest_diff = ~0;
 
 	if (!clk || !clk->dpll_data)
 		return ~0;
@@ -306,7 +307,7 @@ long omap2_dpll_round_rate(struct clk_hw *hw, unsigned long target_rate,
 
 	ref_rate = __clk_get_rate(dd->clk_ref);
 	clk_name = __clk_get_name(hw->clk);
-	pr_debug("clock: %s: starting DPLL round_rate, target rate %ld\n",
+	pr_debug("clock: %s: starting DPLL round_rate, target rate %lu\n",
 		 clk_name, target_rate);
 
 	scaled_rt_rp = target_rate / (ref_rate / DPLL_SCALE_FACTOR);
@@ -342,23 +343,29 @@ long omap2_dpll_round_rate(struct clk_hw *hw, unsigned long target_rate,
 		if (r == DPLL_MULT_UNDERFLOW)
 			continue;
 
-		pr_debug("clock: %s: m = %d: n = %d: new_rate = %ld\n",
+		pr_debug("clock: %s: m = %d: n = %d: new_rate = %lu\n",
 			 clk_name, m, n, new_rate);
 
-		if (target_rate == new_rate) {
+		diff = max(target_rate, new_rate) - min(target_rate, new_rate);
+
+		if (diff < closest_diff) {
+			closest_diff = diff;
+
 			dd->last_rounded_m = m;
 			dd->last_rounded_n = n;
-			dd->last_rounded_rate = target_rate;
-			break;
+			dd->last_rounded_rate = new_rate;
+
+			if (diff == 0)
+				break;
 		}
 	}
 
-	if (target_rate != new_rate) {
-		pr_debug("clock: %s: cannot round to rate %ld\n",
+	if (closest_diff == ~0) {
+		pr_debug("clock: %s: cannot round to rate %lu\n",
 			 clk_name, target_rate);
 		return ~0;
 	}
 
-	return target_rate;
+	return dd->last_rounded_rate;
 }
 
