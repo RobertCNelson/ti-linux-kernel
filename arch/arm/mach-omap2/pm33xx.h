@@ -106,6 +106,8 @@ int am33xx_do_sram_cpuidle(u32, u32);
 #define VTT_STAT_MASK		(0x1 << 3)
 #define VTT_GPIO_PIN_SHIFT	(0x4)
 #define VTT_GPIO_PIN_MASK	(0x3f << 4)
+#define IO_ISOLATION_STAT_SHIFT (10)
+#define IO_ISOLATION_STAT_MASK  (0x1 << 10)
 
 #define MPU_WAKE		0x800
 
