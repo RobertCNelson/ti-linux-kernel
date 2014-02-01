@@ -61,7 +61,7 @@ int am33xx_do_sram_cpuidle(u32, u32);
 #define IPC_CMD_RESET			0xe
 #define DS_IPC_DEFAULT			0xffffffff
 #define M3_VERSION_UNKNOWN		0x0000ffff
-#define M3_BASELINE_VERSION		0x183
+#define M3_BASELINE_VERSION		0x185
 
 #define M3_STATE_UNKNOWN		0
 #define M3_STATE_RESET			1
