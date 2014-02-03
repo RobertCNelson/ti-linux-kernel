@@ -60,7 +60,7 @@
 		ti,audio-codec = <&tlv320aic3106>;
 		ti,mcasp-controller = <&mcasp3>;
 		ti,codec-clock-rate = <5644800>;
-		clocks = <&atl_clkin 2>;
+		clocks = <&atl_clkin2_ck>;
 		clock-names = "ti,codec-clock";
 		ti,audio-routing =
 			"Headphone Jack",       "HPLOUT",
@@ -352,6 +352,15 @@
 			0x328 0x10000	/* mcasp3_fsx.mcasp3_fsx	Mode0.Output.PD */
 			0x32c 0x10000	/* mcasp3_axr0.mcasp3_axr0	Mode0.Output.PD */
 			0x330 0x50000	/* mcasp3_axr1.mcasp3_axr1	Mode0.Input.PD */
+		>;
+	};
+
+	mcasp3_sleep_pins: pinmux_mcasp3_sleep_pins {
+		pinctrl-single,pins = <
+			0x324 (PIN_OFF_NONE)
+			0x328 (PIN_OFF_NONE)
+			0x32c (PIN_OFF_NONE)
+			0x330 (PIN_OFF_NONE)
 		>;
 	};
 
@@ -911,8 +920,7 @@
 	};
 };
 
-&atl_clkin {
-	fck_parent = "dpll_abe_m2_ck";
+&atl {
 	status = "okay";
 
 	atl2 {
@@ -922,8 +930,9 @@
 };
 
 &mcasp3 {
-	pinctrl-names = "default";
+	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&mcasp3_pins>;
+	pinctrl-1 = <&mcasp3_sleep_pins>;
 
 	fck_parent = "atl_clkin2_ck";
 
