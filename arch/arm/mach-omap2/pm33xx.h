@@ -47,6 +47,7 @@ struct am33xx_suspend_params {
 	u32 wfi_flags;
 	void __iomem *dram_sync;
 	void __iomem *l2_base_virt;
+	void __iomem *cke_override_virt;
 };
 
 void wkup_m3_reset_data_pos(void);
@@ -61,7 +62,7 @@ int am33xx_do_sram_cpuidle(u32, u32);
 #define IPC_CMD_RESET			0xe
 #define DS_IPC_DEFAULT			0xffffffff
 #define M3_VERSION_UNKNOWN		0x0000ffff
-#define M3_BASELINE_VERSION		0x183
+#define M3_BASELINE_VERSION		0x185
 
 #define M3_STATE_UNKNOWN		0
 #define M3_STATE_RESET			1
@@ -73,6 +74,8 @@ int am33xx_do_sram_cpuidle(u32, u32);
 #define AM33XX_EMIF_BASE		0x4C000000
 
 #define AM43XX_CM_BASE			0x44DF0000
+
+#define AM43XX_CTRL_CKE_OVERRIDE	0x44E1131C
 
 #define AM43XX_CM_REGADDR(inst, reg)				\
 	AM33XX_L4_WK_IO_ADDRESS(AM43XX_CM_BASE + (inst) + (reg))
@@ -106,6 +109,8 @@ int am33xx_do_sram_cpuidle(u32, u32);
 #define VTT_STAT_MASK		(0x1 << 3)
 #define VTT_GPIO_PIN_SHIFT	(0x4)
 #define VTT_GPIO_PIN_MASK	(0x3f << 4)
+#define IO_ISOLATION_STAT_SHIFT (10)
+#define IO_ISOLATION_STAT_MASK  (0x1 << 10)
 
 #define MPU_WAKE		0x800
 

@@ -481,6 +481,14 @@ static int am43xx_suspend_init(void)
 
 	susp_params.l2_base_virt = omap4_get_l2cache_base();
 
+	susp_params.cke_override_virt =
+		ioremap(AM43XX_CTRL_CKE_OVERRIDE, SZ_4);
+
+	if (!susp_params.cke_override_virt) {
+		pr_err("PM: Could not ioremap CKE override in Control Module\n");
+		return -ENOMEM;
+	}
+
 	/* Physical resume address to be used by ROM code */
 	am33xx_pm->ipc.reg0 = (AM33XX_OCMC_END -
 		am43xx_do_wfi_sz + am43xx_resume_offset + 0x4);
@@ -627,6 +635,9 @@ int __init am33xx_pm_init(void)
 			else
 				pr_warn("PM: Invalid VTT GPIO(%d) pin\n", temp);
 		}
+
+		if (of_find_property(np, "ti,set-io-isolation", NULL))
+			am33xx_pm->ipc.reg4 |= (1 << IO_ISOLATION_STAT_SHIFT);
 	}
 
 #ifdef CONFIG_SUSPEND

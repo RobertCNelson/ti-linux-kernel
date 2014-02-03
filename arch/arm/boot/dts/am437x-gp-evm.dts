@@ -113,7 +113,8 @@
 
 &am43xx_pinmux {
 	pinctrl-names = "default";
-	pinctrl-0 = <&dss_pinctrl &clkout2_pin>;
+	pinctrl-0 = <&dss_pinctrl &clkout2_pin &ddr3_vtt_toggle_default>;
+
 	cpsw_default: cpsw_default {
 		pinctrl-single,pins = <
 			/* Slave 1 */
@@ -201,6 +202,12 @@
 			0x14 (PIN_INPUT_PULLUP | MUX_MODE1) /* gpmc_ad5.mmc1_dat5 */
 			0x18 (PIN_INPUT_PULLUP | MUX_MODE1) /* gpmc_ad6.mmc1_dat6 */
 			0x1c (PIN_INPUT_PULLUP | MUX_MODE1) /* gpmc_ad7.mmc1_dat7 */
+		>;
+	};
+
+	ddr3_vtt_toggle_default: ddr_vtt_toggle_default {
+		pinctrl-single,pins = <
+			0x25C (DS0_PULL_UP_DOWN_EN | PIN_OUTPUT_PULLUP | DS0_FORCE_OFF_MODE | MUX_MODE7) /* spi0_cs0.gpio5_7 */
 		>;
 	};
 
@@ -741,4 +748,8 @@
 
 &clkout_32k_mux_ck {
 	clock-default = <&clk_32768_ck>;
+};
+
+&wkup_m3 {
+	ti,set-io-isolation;
 };

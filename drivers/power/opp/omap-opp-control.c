@@ -54,22 +54,28 @@ static unsigned long opp_omap_efuse_read(int offset)
 
 static unsigned long am33xx_devrev_to_opp_rev(int rev)
 {
-	if (rev_id == 0)
+	switch (rev) {
+	case 0:
 		return OPP_REV(1, 0);
-	else if (rev_id == 1)
+	case 1:
 		return OPP_REV(2, 0);
-	else if (rev_id == 2)
+	case 2:
 		return OPP_REV(2, 1);
-	else
-		return 0;
+	}
+
+	return OPP_REV(1, 0);
 }
 
 static unsigned long am43xx_devrev_to_opp_rev(int rev)
 {
-	if (rev_id == 0)
+	switch (rev) {
+	case 0:
 		return OPP_REV(1, 0);
-	else
-		return 0;
+	case 1:
+		return OPP_REV(1, 1);
+	}
+
+	return OPP_REV(1, 0);
 }
 
 static int of_opp_check_availability(struct device *dev, struct device_node *np)

@@ -30,7 +30,6 @@
 #include "omap44xx.h"
 #include <asm/hardware/cache-l2x0.h>
 
-#define EMIF_POWER_MGMT_WAIT_SELF_REFRESH_8192_CYCLES	0x00a0
 #define EMIF_POWER_MGMT_SR_TIMER_MASK			0x00f0
 
 #define EMIF_POWER_MGMT_SELF_REFRESH_MODE		0x0200
@@ -71,13 +70,14 @@
 ENTRY(am43xx_do_wfi)
 	stmfd	sp!, {r4 - r11, lr}	@ save registers on stack
 
-	ldm	r0, {r1-r6}		@ gather values passed
+	ldm	r0, {r1-r5}		@ gather values passed
 
 	/* Save the values passed */
 	str	r1, emif_addr_virt
 	str	r2, mem_type
 	str	r3, dram_sync_word
 	str	r4, l2_base_virt
+	str	r5, cke_override_virt
 
 	ldr	r0, emif_addr_virt
 	/* Save EMIF configuration */
@@ -212,12 +212,6 @@ sync:
 	ldr	r0, emif_addr_virt
 	/* Put SDRAM in self-refresh */
 	ldr	r1, [r0, #EMIF_POWER_MANAGEMENT_CONTROL]
-	bic	r1, r1, #EMIF_POWER_MGMT_SR_TIMER_MASK
-	orr	r1, r1, #EMIF_POWER_MGMT_WAIT_SELF_REFRESH_8192_CYCLES
-	str	r1, [r0, #EMIF_POWER_MANAGEMENT_CONTROL]
-	str	r1, [r0, #EMIF_POWER_MANAGEMENT_CTRL_SHDW]
-
-	ldr	r1, [r0, #EMIF_POWER_MANAGEMENT_CONTROL]
 	bic	r1, r1, #EMIF_POWER_MGMT_SELF_REFRESH_MODE_MASK
 	orr	r1, r1, #EMIF_POWER_MGMT_SELF_REFRESH_MODE
 	str	r1, [r0, #EMIF_POWER_MANAGEMENT_CONTROL]
@@ -241,6 +235,12 @@ wait_emif_disable:
 	ldr	r3, module_disabled_val
 	cmp	r2, r3
 	bne	wait_emif_disable
+
+	/*enable CKE override for both CKE0 and CKE1*/
+	/*ensures CKE stays low throughout sleep*/
+	ldr    r2, cke_override_virt
+	mov    r1, #0
+	str    r1, [r2]
 
 	/*
 	 * For the MPU WFI to be registered as an interrupt
@@ -417,6 +417,11 @@ ddr_phy_ctrl_restore:
 	cmp	r2, #AM43XX_EMIF_PHY_CTRL_REG_COUNT
 	bne	ddr_phy_ctrl_restore
 
+	/*disable CKE override for both CKE0 and CKE1*/
+	ldr    r2, cke_override_phys
+	mov    r1, #3
+	str    r1, [r2]
+
 	/*
 	 * Toggle EMIF to exit refresh mode:
 	 * if EMIF lost context, PWR_MGT_CTRL is currently 0, writing disable
@@ -429,10 +434,6 @@ ddr_phy_ctrl_restore:
 	bic	r1, r1, #EMIF_POWER_MGMT_SELF_REFRESH_MODE_MASK
 	orr	r1, r1, #EMIF_POWER_MGMT_SELF_REFRESH_MODE
 	str	r1, [r0, #EMIF_POWER_MANAGEMENT_CONTROL]
-
-	/* Restore sdram_config for AM43xx and disable EMIF poweroff */
-	ldr     r1, emif_sdcfg_val
-	str     r1, [r0, #EMIF_SDRAM_CONFIG]
 
 	ldr	r2, am43xx_phys_emif_poweroff
 	mov	r1, #AM43XX_EMIF_POWEROFF_DISABLE
@@ -447,10 +448,6 @@ ddr_phy_ctrl_restore:
 wait_resume:
 	subs	r1, r1, #1
 	bne	wait_resume
-
-	/* All done.. so restore back enter into suspend configuration */
-	ldr	r1, emif_pmcr_val
-	str	r1, [r0, #EMIF_POWER_MANAGEMENT_CONTROL]
 
 #ifdef CONFIG_CACHE_L2X0
 	ldr	r2, l2_cache_base
@@ -522,6 +519,11 @@ ddr_start:
 	.word	PAGE_OFFSET
 emif_phys_addr:
 	.word	AM33XX_EMIF_BASE
+
+cke_override_virt:
+	.word	0xDEADBEEF
+cke_override_phys:
+	.word	AM43XX_CTRL_CKE_OVERRIDE
 
 am43xx_phys_emif_poweroff:
 	.word   (AM43XX_CM_BASE + AM43XX_PRM_DEVICE_INST + \
