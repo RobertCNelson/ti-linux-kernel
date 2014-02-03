@@ -118,7 +118,10 @@ void isif_setwin(struct vpfe_isif_device *isif, struct v4l2_rect *image_win,
 	int vert_start, vert_nr_lines;
 	int val = 0, mid_img = 0;
 
-	dev_dbg(isif->isif_cfg.dev, "\nStarting isif_setwin...");
+	dev_dbg(isif->isif_cfg.dev, "isif_setwin: %dx%d (WxH)\n",
+		image_win->width, image_win->height);
+	dev_dbg(isif->isif_cfg.dev, "isif_setwin: top %d left %d\n",
+		image_win->top, image_win->left);
 	/*
 	 * ppc - per pixel count. indicates how many pixels per cell
 	 * output to SDRAM. example, for ycbcr, it is one y and one c, so 2.
@@ -159,7 +162,7 @@ void isif_setwin(struct vpfe_isif_device *isif, struct v4l2_rect *image_win,
 		(vert_start << ISIF_VERT_START_SLV0_SHIFT) | vert_start,
 	    ISIF_VERT_START);
 	isif_write(isif, vert_nr_lines, ISIF_VERT_LINES);
-	dev_dbg(isif->isif_cfg.dev, "\nEnd of isif_setwin...");
+	dev_dbg(isif->isif_cfg.dev, "End of isif_setwin...\n");
 }
 
 static void isif_readregs(struct vpfe_isif_device *isif)
@@ -323,7 +326,7 @@ void isif_config_ycbcr(struct vpfe_isif_device *isif)
 	struct isif_params_ycbcr *params = &isif->isif_cfg.ycbcr;
 	u32 syn_mode;
 
-	dev_dbg(isif->isif_cfg.dev, "\nStarting isif_config_ycbcr...");
+	dev_dbg(isif->isif_cfg.dev, "isif_config_ycbcr:\n");
 	/*
 	 * first restore the ISIF registers to default values
 	 * This is important since we assume default values to be set in
@@ -458,7 +461,7 @@ void isif_config_raw(struct vpfe_isif_device *isif)
 	unsigned int syn_mode = 0;
 	unsigned int val;
 
-	dev_dbg(isif->isif_cfg.dev, "\nStarting isif_config_raw...");
+	dev_dbg(isif->isif_cfg.dev, "isif_config_raw:\n");
 
 	/* Reset ISIF */
 	isif_restore_defaults(isif);
@@ -543,7 +546,7 @@ void isif_config_raw(struct vpfe_isif_device *isif)
 	dev_dbg(isif->isif_cfg.dev,
 		"\nWriting 0x%x to SYN_MODE...\n", syn_mode);
 
-	dev_dbg(isif->isif_cfg.dev, "\nend of isif_config_raw...");
+	dev_dbg(isif->isif_cfg.dev, "end of isif_config_raw...\n");
 	isif_readregs(isif);
 }
 
@@ -597,6 +600,9 @@ static int isif_set_pixel_format(struct vpfe_isif_device *isif, u32 pixfmt)
 
 	if (isif->isif_cfg.if_type == VPFE_RAW_BAYER) {
 		isif->isif_cfg.bayer.pix_fmt = ISIF_PIXFMT_RAW;
+		/* Need to clear it in case it was left on
+		   after the last capture. */
+		isif->isif_cfg.bayer.config_params.alaw.enable = 0;
 		if (pixfmt == V4L2_PIX_FMT_SBGGR8)
 			isif->isif_cfg.bayer.config_params.alaw.enable = 1;
 		else if (pixfmt == V4L2_PIX_FMT_YUYV)
@@ -606,6 +612,8 @@ static int isif_set_pixel_format(struct vpfe_isif_device *isif, u32 pixfmt)
 		else if (pixfmt == V4L2_PIX_FMT_YUV420)
 			; /*nothing for now */
 		else if (pixfmt == V4L2_PIX_FMT_NV12)
+			; /*nothing for now */
+		else if (pixfmt == V4L2_PIX_FMT_RGB565X)
 			; /*nothing for now */
 		else if (pixfmt != V4L2_PIX_FMT_SBGGR16)
 			return -EINVAL;
@@ -955,6 +963,7 @@ static void isif_config_defaults(struct vpfe_isif_device *isif)
 	isif->isif_cfg.bayer.win.width = 800;
 	isif->isif_cfg.bayer.win.height = 600;
 	isif->isif_cfg.bayer.config_params.data_sz = ISIF_DATA_8BITS;
+	isif->isif_cfg.bayer.config_params.alaw.gamma_wd = ISIF_GAMMA_BITS_09_0;
 }
 
 int vpfe_isif_init(struct vpfe_isif_device *isif, struct platform_device *pdev)

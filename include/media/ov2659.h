@@ -13,15 +13,10 @@
 /**
  * struct ov2659_platform_data - ov2659 driver platform data
  * @mclk_frequency: the sensor's master clock frequency in Hz
- * @gpio_pwdn:	    number of a GPIO connected to OV2659 PWDN pin
- * @gpio_reset:     number of a GPIO connected to OV2659 RESET pin
  *
- * If any of @gpio_pwdn or @gpio_reset are unused then they should be
- * set to a negative value. @mclk_frequency must always be specified.
+ * @mclk_frequency must always be specified.
  */
 struct ov2659_platform_data {
 	unsigned int mclk_frequency;
-	int gpio_pwdn;
-	int gpio_reset;
 };
 #endif /* OV2659_H_ */
