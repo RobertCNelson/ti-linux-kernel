@@ -31,7 +31,6 @@ struct cppi41_dma_channel {
 	u8 port_num;
 	u8 is_tx;
 	u8 is_allocated;
-	u8 usb_toggle;
 
 	dma_addr_t buf_addr;
 	u32 total_len;
@@ -55,50 +54,6 @@ struct cppi41_dma_controller {
 	u32 tx_mode;
 	u32 auto_req;
 };
-
-static void save_rx_toggle(struct cppi41_dma_channel *cppi41_channel)
-{
-	u16 csr;
-	u8 toggle;
-
-	if (cppi41_channel->is_tx)
-		return;
-	if (!is_host_active(cppi41_channel->controller->musb))
-		return;
-
-	csr = musb_readw(cppi41_channel->hw_ep->regs, MUSB_RXCSR);
-	toggle = csr & MUSB_RXCSR_H_DATATOGGLE ? 1 : 0;
-
-	cppi41_channel->usb_toggle = toggle;
-}
-
-static void update_rx_toggle(struct cppi41_dma_channel *cppi41_channel)
-{
-	u16 csr;
-	u8 toggle;
-
-	if (cppi41_channel->is_tx)
-		return;
-	if (!is_host_active(cppi41_channel->controller->musb))
-		return;
-
-	csr = musb_readw(cppi41_channel->hw_ep->regs, MUSB_RXCSR);
-	toggle = csr & MUSB_RXCSR_H_DATATOGGLE ? 1 : 0;
-
-	/*
-	 * AM335x Advisory 1.0.13: Due to internal synchronisation error the
-	 * data toggle may reset from DATA1 to DATA0 during receiving data from
-	 * more than one endpoint.
-	 */
-	if (!toggle && toggle == cppi41_channel->usb_toggle) {
-		csr |= MUSB_RXCSR_H_DATATOGGLE | MUSB_RXCSR_H_WR_DATATOGGLE;
-		musb_writew(cppi41_channel->hw_ep->regs, MUSB_RXCSR, csr);
-		dev_dbg(cppi41_channel->controller->musb->controller,
-				"Restoring DATA1 toggle.\n");
-	}
-
-	cppi41_channel->usb_toggle = toggle;
-}
 
 static bool musb_is_tx_fifo_empty(struct musb_hw_ep *hw_ep)
 {
@@ -261,8 +216,6 @@ static void cppi41_dma_callback(void *private_data)
 		hw_ep->epnum, cppi41_channel->transferred,
 		cppi41_channel->total_len);
 
-	update_rx_toggle(cppi41_channel);
-
 	if (cppi41_channel->transferred == cppi41_channel->total_len ||
 			transferred < cppi41_channel->packet_sz)
 		cppi41_channel->prog_len = 0;
@@ -393,7 +346,6 @@ static bool cppi41_configure_channel(struct dma_channel *channel,
 	struct dma_async_tx_descriptor *dma_desc;
 	enum dma_transfer_direction direction;
 	struct musb *musb = cppi41_channel->controller->musb;
-	unsigned use_gen_rndis = 0;
 
 	dev_dbg(musb->controller,
 		"configure ep%d/%x packet_sz=%d, mode=%d, dma_addr=0x%llx, len=%d is_tx=%d\n",
@@ -406,39 +358,26 @@ static bool cppi41_configure_channel(struct dma_channel *channel,
 	cppi41_channel->transferred = 0;
 	cppi41_channel->packet_sz = packet_sz;
 
-	/*
-	 * Due to AM335x' Advisory 1.0.13 we are not allowed to transfer more
-	 * than max packet size at a time.
-	 */
-	if (cppi41_channel->is_tx)
-		use_gen_rndis = 1;
+	/* RNDIS mode */
+	if (len > packet_sz) {
+		musb_writel(musb->ctrl_base,
+			    RNDIS_REG(cppi41_channel->port_num), len);
+		/* gen rndis */
+		cppi41_set_dma_mode(cppi41_channel,
+				    EP_MODE_DMA_GEN_RNDIS);
 
-	if (use_gen_rndis) {
-		/* RNDIS mode */
-		if (len > packet_sz) {
-			musb_writel(musb->ctrl_base,
-				RNDIS_REG(cppi41_channel->port_num), len);
-			/* gen rndis */
-			cppi41_set_dma_mode(cppi41_channel,
-					EP_MODE_DMA_GEN_RNDIS);
-
-			/* auto req */
-			cppi41_set_autoreq_mode(cppi41_channel,
+		/* auto req */
+		cppi41_set_autoreq_mode(cppi41_channel,
 					EP_MODE_AUTOREG_ALL_NEOP);
-		} else {
-			musb_writel(musb->ctrl_base,
-					RNDIS_REG(cppi41_channel->port_num), 0);
-			cppi41_set_dma_mode(cppi41_channel,
-					EP_MODE_DMA_TRANSPARENT);
-			cppi41_set_autoreq_mode(cppi41_channel,
-					EP_MODE_AUTOREG_NONE);
-		}
 	} else {
-		/* fallback mode */
-		cppi41_set_dma_mode(cppi41_channel, EP_MODE_DMA_TRANSPARENT);
-		cppi41_set_autoreq_mode(cppi41_channel, EP_MODE_AUTOREG_NONE);
-		len = min_t(u32, packet_sz, len);
+		musb_writel(musb->ctrl_base,
+			    RNDIS_REG(cppi41_channel->port_num), 0);
+		cppi41_set_dma_mode(cppi41_channel,
+				    EP_MODE_DMA_TRANSPARENT);
+		cppi41_set_autoreq_mode(cppi41_channel,
+					EP_MODE_AUTOREG_NONE);
 	}
+
 	cppi41_channel->prog_len = len;
 	direction = cppi41_channel->is_tx ? DMA_MEM_TO_DEV : DMA_DEV_TO_MEM;
 	dma_desc = dmaengine_prep_slave_single(dc, dma_addr, len, direction,
@@ -450,7 +389,6 @@ static bool cppi41_configure_channel(struct dma_channel *channel,
 	dma_desc->callback_param = channel;
 	cppi41_channel->cookie = dma_desc->tx_submit(dma_desc);
 
-	save_rx_toggle(cppi41_channel);
 	dma_async_issue_pending(dc);
 	return true;
 }

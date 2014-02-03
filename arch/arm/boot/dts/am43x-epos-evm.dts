@@ -95,6 +95,12 @@
 		debounce-delay-ms = <5>;
 		col-scan-delay-us = <2>;
 
+		pinctrl-names = "default", "sleep";
+		pinctrl-0 = <&matrix_keypad_default>;
+		pinctrl-1 = <&matrix_keypad_sleep>;
+
+		linux,wakeup;
+
 		row-gpios = <&gpio0 12 GPIO_ACTIVE_HIGH	/* Bank0, pin12 */
 				&gpio0 13 GPIO_ACTIVE_HIGH /* Bank0, pin13 */
 				&gpio0 14 GPIO_ACTIVE_HIGH /* Bank0, pin14 */
@@ -204,7 +210,24 @@
 
 	mmc1_pins: pinmux_mmc1_pins {
 		pinctrl-single,pins = <
+			0x100 (PIN_INPUT_PULLUP | MUX_MODE0) /* mmc0_clk.mmc0_clk */
+			0x104 (PIN_INPUT_PULLUP | MUX_MODE0) /* mmc0_cmd.mmc0_cmd */
+			0x0f0 (PIN_INPUT_PULLUP | MUX_MODE0) /* mmc0_dat0.mmc0_dat0 */
+			0x0f4 (PIN_INPUT_PULLUP | MUX_MODE0) /* mmc0_dat1.mmc0_dat1 */
+			0x0f8 (PIN_INPUT_PULLUP | MUX_MODE0) /* mmc0_dat2.mmc0_dat2 */
+			0x0fc (PIN_INPUT_PULLUP | MUX_MODE0) /* mmc0_dat3.mmc0_dat3 */
 			0x160 (PIN_INPUT | MUX_MODE7) /* spi0_cs1.gpio0_6 */
+		>;
+	};
+
+	mmc1_sleep_pins: pinmux_mmc1_sleep_pins {
+		pinctrl-single,pins = <
+			0x100 (PIN_INPUT | MUX_MODE0) /* mmc0_clk.mmc0_clk */
+			0x104 (PIN_INPUT | MUX_MODE0) /* mmc0_cmd.mmc0_cmd */
+			0x0f0 (PIN_INPUT | MUX_MODE0) /* mmc0_dat0.mmc0_dat0 */
+			0x0f4 (PIN_INPUT | MUX_MODE0) /* mmc0_dat1.mmc0_dat1 */
+			0x0f8 (PIN_INPUT | MUX_MODE0) /* mmc0_dat2.mmc0_dat2 */
+			0x0fc (PIN_INPUT | MUX_MODE0) /* mmc0_dat3.mmc0_dat3 */
 		>;
 	};
 
@@ -220,21 +243,28 @@
 		>;
 	};
 
-	i2c0_pins: pinmux_i2c0_pins {
+	i2c0_default: pinmux_i2c0_default {
 		pinctrl-single,pins = <
 			0x188 (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE0)	/* i2c0_sda.i2c0_sda */
 			0x18c (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE0)	/* i2c0_scl.i2c0_scl */
 		>;
 	};
 
-	i2c2_pins: pinmux_i2c2_pins {
+	i2c2_default: pinmux_i2c2_default {
 		pinctrl-single,pins = <
 			0x1c0 (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE8)    /* i2c2_sda.i2c2_sda */
 			0x1c4 (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE8)    /* i2c2_scl.i2c2_scl */
 		>;
 	};
 
-	spi0_pins: pinmux_spi0_pins {
+	i2c2_sleep: pinmux_i2c2_sleep {
+		pinctrl-single,pins = <
+			0x1c0 (MUX_MODE8)
+			0x1c4 (MUX_MODE8)
+		>;
+	};
+
+	spi0_default: pinmux_spi0_default {
 		pinctrl-single,pins = <
 			0x150 (PIN_INPUT_PULLUP | MUX_MODE0)	/* spi0_clk.spi0_clk */
 			0x154 (PIN_INPUT_PULLUP | MUX_MODE0)	/* spi0_d0.spi0_d0 */
@@ -243,7 +273,16 @@
 		>;
 	};
 
-	spi1_pins: pinmux_spi1_pins {
+	spi0_sleep: pinmux_spi0_sleep {
+		pinctrl-single,pins = <
+			0x150 (DS0_PULL_UP_DOWN_EN | INPUT_EN | MUX_MODE7)
+			0x154 (DS0_PULL_UP_DOWN_EN | INPUT_EN | MUX_MODE7)
+			0x158 (DS0_PULL_UP_DOWN_EN | INPUT_EN | MUX_MODE7)
+			0x15c (DS0_PULL_UP_DOWN_EN | INPUT_EN | MUX_MODE7)
+		>;
+	};
+
+	spi1_default: pinmux_spi1_default {
 		pinctrl-single,pins = <
 			0x190 (PIN_INPUT_PULLUP | MUX_MODE3)	/* mcasp0_aclkx.spi1_clk */
 			0x194 (PIN_INPUT_PULLUP | MUX_MODE3)	/* mcasp0_fsx.spi1_d0 */
@@ -251,6 +290,15 @@
 			0x19c (PIN_OUTPUT | MUX_MODE3)		/* mcasp0_ahclkr.spi1_cs0 */
 		>;
 	};
+
+	spi1_sleep: pinmux_spi1_sleep {
+		pinctrl-single,pins = <
+			0x190 (DS0_PULL_UP_DOWN_EN | INPUT_EN | MUX_MODE7)
+			0x194 (DS0_PULL_UP_DOWN_EN | INPUT_EN | MUX_MODE7)
+			0x198 (DS0_PULL_UP_DOWN_EN | INPUT_EN | MUX_MODE7)
+			0x19c (DS0_PULL_UP_DOWN_EN | INPUT_EN | MUX_MODE7)
+		>;
+        };
 
 	pixcir_ts_pins: pixcir_ts_pins {
 		pinctrl-single,pins = <
@@ -303,11 +351,18 @@
 		>;
 	};
 
-	ecap0_pins: backlight_pins {
+
+	ecap0_default: backlight_default {
 		pinctrl-single,pins = <
 			0x164 MUX_MODE0		/* eCAP0_in_PWM0_out.eCAP0_in_PWM0_out MODE0 */
 		>;
 
+	};
+
+	ecap0_sleep: backlight_sleep {
+		pinctrl-single,pins = <
+			0x164 (INPUT_EN | MUX_MODE7)
+		>;
 	};
 
 	mcasp1_pins: pinmux_mcasp1_pins {
@@ -389,6 +444,24 @@
 			0x1FC (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data5 mode 0*/
 			0x200 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data6 mode 0*/
 			0x204 (PIN_INPUT_PULLUP | MUX_MODE0)  /* cam1_data7 mode 0*/
+		>;
+	};
+
+	matrix_keypad_default: matrix_keypad_default {
+		pinctrl-single,pins = <
+			0x12c (PIN_OUTPUT | MUX_MODE7)	/* mii1_tx_clk.gpio3_9 */
+			0x130 (PIN_OUTPUT | MUX_MODE7)	/* mii1_rx_clk.gpio3_10 */
+			0x134 (PIN_OUTPUT | MUX_MODE7)	/* mii1_rxd3.gpio2_18 */
+			0x138 (PIN_OUTPUT | MUX_MODE7)	/* mii1_rxd2.gpio2_19 */
+		>;
+	};
+
+	matrix_keypad_sleep: matrix_keypad_sleep {
+		pinctrl-single,pins = <
+			0x12c (PULL_UP | MUX_MODE7)
+			0x130 (PULL_UP | MUX_MODE7)
+			0x134 (PULL_UP | MUX_MODE7)
+			0x138 (PULL_UP | MUX_MODE7)
 		>;
 	};
 };
@@ -508,8 +581,9 @@
 	status = "okay";
 	vmmc-supply = <&vmmcsd_fixed>;
 	bus-width = <4>;
-	pinctrl-names = "default";
+	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&mmc1_pins>;
+	pinctrl-1 = <&mmc1_sleep_pins>;
 	cd-gpios = <&gpio0 6 GPIO_ACTIVE_HIGH>;
 };
 
@@ -526,7 +600,7 @@
 
 &i2c0 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&i2c0_pins>;
+	pinctrl-0 = <&i2c0_default>;
 
 	/* Set OPP50 (0.95V) for VDD MPU and core */
 	sleep-sequence = /bits/ 8 <
@@ -638,8 +712,9 @@
 };
 
 &i2c2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c2_pins>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&i2c2_default>;
+	pinctrl-1 = <&i2c2_sleep>;
 	status = "okay";
 
 	sii9022: sii9022@3b {
@@ -652,14 +727,16 @@
 };
 
 &spi0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&spi0_pins>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&spi0_default>;
+	pinctrl-1 = <&spi0_sleep>;
 	status = "okay";
 };
 
 &spi1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&spi1_pins>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&spi1_default>;
+	pinctrl-1 = <&spi1_sleep>;
 	status = "okay";
 };
 
@@ -673,8 +750,9 @@
 
 &ecap0 {
 	status = "okay";
-	pinctrl-names = "default";
-	pinctrl-0 = <&ecap0_pins>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&ecap0_default>;
+	pinctrl-1 = <&ecap0_sleep>;
 };
 
 &epwmss0 {
@@ -693,22 +771,21 @@
 	nand@0,0 {
 		reg = <0 0 0>; /* CS0, offset 0 */
 		nand-bus-width = <8>;
-		ti,nand-ecc-opt = "bch16";
 		gpmc,device-width = <1>;
 		gpmc,sync-clk-ps = <0>;
 		gpmc,cs-on-ns = <0>;
-		gpmc,cs-rd-off-ns = <160>; /* tCEA + tCHZ + 1 */
-		gpmc,cs-wr-off-ns = <160>;
+		gpmc,cs-rd-off-ns = <40>; /* tCEA + tCHZ + 1 */
+		gpmc,cs-wr-off-ns = <40>;
 		gpmc,adv-on-ns = <0>;  /* cs-on-ns */
-		gpmc,adv-rd-off-ns = <24>; /* min( tALH + tALS + 1) */
-		gpmc,adv-wr-off-ns = <24>; /* min( tALH + tALS + 1) */
+		gpmc,adv-rd-off-ns = <25>; /* min( tALH + tALS + 1) */
+		gpmc,adv-wr-off-ns = <25>; /* min( tALH + tALS + 1) */
 		gpmc,we-on-ns = <0>;   /* cs-on-ns */
 		gpmc,we-off-ns = <20>; /* we-on-time + tWP + 2 */
 		gpmc,oe-on-ns = <3>;  /* cs-on-ns + tRR + 2 */
-		gpmc,oe-off-ns = <51>; /* oe-on-ns + tRP + 2 */
-		gpmc,access-ns = <40>; /* tCEA + 4*/
-		gpmc,rd-cycle-ns = <160>;
-		gpmc,wr-cycle-ns = <160>;
+		gpmc,oe-off-ns = <30>; /* oe-on-ns + tRP + 2 */
+		gpmc,access-ns = <30>; /* tCEA + 4*/
+		gpmc,rd-cycle-ns = <40>;
+		gpmc,wr-cycle-ns = <40>;
 		gpmc,wait-on-read = "true";
 		gpmc,wait-on-write = "true";
 		gpmc,bus-turnaround-ns = <0>;
@@ -717,49 +794,53 @@
 		gpmc,wait-monitoring-ns = <0>;
 		gpmc,wr-access-ns = <40>;
 		gpmc,wr-data-mux-bus-ns = <0>;
-		#address-cells = <1>;
-		#size-cells = <1>;
+		ti,nand-ecc-opt = "bch16";
 		ti,elm-id = <&elm>;
 		/* MTD partition table */
+		/* All SPL-* partitions are sized to minimal length
+		 * which can be independently programmable. For
+		 * NAND flash this is equal to size of erase-block */
+		#address-cells = <1>;
+		#size-cells = <1>;
 		partition@0 {
-			label = "SPL";
-			reg = <0x00000000 0x000040000>;
+			label = "NAND.SPL";
+			reg = <0x00000000 0x00040000>;
 		};
 		partition@1 {
-			label = "SPL.backup1";
+			label = "NAND.SPL.backup1";
 			reg = <0x00040000 0x00040000>;
 		};
 		partition@2 {
-			label = "SPL.backup2";
+			label = "NAND.SPL.backup2";
 			reg = <0x00080000 0x00040000>;
 		};
 		partition@3 {
-			label = "SPL.backup3";
+			label = "NAND.SPL.backup3";
 			reg = <0x000C0000 0x00040000>;
 		};
 		partition@4 {
-			label = "u-boot";
-			reg = <0x00100000 0x00100000>;
+			label = "NAND.u-boot-spl-os";
+			reg = <0x00100000 0x00080000>;
 		};
 		partition@5 {
-			label = "u-boot-spl-os";
-			reg = <0x00200000 0x00080000>;
+			label = "NAND.u-boot";
+			reg = <0x00180000 0x00100000>;
 		};
 		partition@6 {
-			label = "u-boot-env";
+			label = "NAND.u-boot-env";
 			reg = <0x00280000 0x00040000>;
 		};
 		partition@7 {
-			label = "u-boot-env.backup1";
+			label = "NAND.u-boot-env.backup1";
 			reg = <0x002c0000 0x00040000>;
 		};
 		partition@8 {
-			label = "kernel";
-			reg = <0x00300000 0x00500000>;
+			label = "NAND.kernel";
+			reg = <0x00300000 0x00700000>;
 		};
 		partition@9 {
-			label = "file-system";
-			reg = <0x00800000 0x0F800000>;
+			label = "NAND.file-system";
+			reg = <0x00A00000 0x0F600000>;
 		};
 	};
 };

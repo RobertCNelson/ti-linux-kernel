@@ -2265,8 +2265,13 @@ static int musb_suspend(struct device *dev)
 		 */
 	}
 
-	musb_save_context(musb);
+	if (musb->suspended)
+		goto exit;
 
+	musb_save_context(musb);
+	musb->suspended = true;
+
+exit:
 	spin_unlock_irqrestore(&musb->lock, flags);
 	return 0;
 }
@@ -2285,7 +2290,15 @@ static int musb_resume_noirq(struct device *dev)
 	 * unconditionally.
 	 */
 
+	if (!musb->suspended)
+		return 0;
+
 	musb_restore_context(musb);
+	musb->suspended = false;
+
+	pm_runtime_disable(dev);
+	pm_runtime_set_active(dev);
+	pm_runtime_enable(dev);
 
 	return 0;
 }
@@ -2294,7 +2307,12 @@ static int musb_runtime_suspend(struct device *dev)
 {
 	struct musb	*musb = dev_to_musb(dev);
 
+	dev_dbg(dev, "%s\n", __func__);
+	if (musb->suspended)
+		return 0;
+
 	musb_save_context(musb);
+	musb->suspended = true;
 
 	return 0;
 }
@@ -2302,20 +2320,19 @@ static int musb_runtime_suspend(struct device *dev)
 static int musb_runtime_resume(struct device *dev)
 {
 	struct musb	*musb = dev_to_musb(dev);
-	static int	first = 1;
 
-	/*
-	 * When pm_runtime_get_sync called for the first time in driver
-	 * init,  some of the structure is still not initialized which is
-	 * used in restore function. But clock needs to be
-	 * enabled before any register access, so
-	 * pm_runtime_get_sync has to be called.
-	 * Also context restore without save does not make
-	 * any sense
+	dev_dbg(dev, "%s\n", __func__);
+	if (!musb->suspended)
+		return 0;
+
+	/* HACK
+	 * Delay here to prevent Spurious Babble interrupt on
+	 * remote wakeup resume.
 	 */
-	if (!first)
-		musb_restore_context(musb);
-	first = 0;
+	mdelay(20);
+
+	musb_restore_context(musb);
+	musb->suspended = false;
 
 	return 0;
 }
