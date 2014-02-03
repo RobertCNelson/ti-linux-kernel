@@ -115,9 +115,4 @@
 #define TPI_AVI_POWER_STATE_D2              (2 << 0)
 #define TPI_AVI_POWER_STATE_D0              (0 << 0)
 
-struct regmap_config sil9022_regmap_config = {
-	.reg_bits = 8,
-	.val_bits = 8,
-};
-
 #endif

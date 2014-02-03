@@ -1384,18 +1384,36 @@ static int omapfb_alloc_fbmem(struct fb_info *fbi, unsigned long size,
 	rg->type = 0;
 	rg->alloc = false;
 	rg->map = false;
+	rg->noclear = 0;
 
 	size = PAGE_ALIGN(size);
 
-	dma_set_attr(DMA_ATTR_WRITE_COMBINE, &attrs);
+	if (paddr) {
+		DBG("reserving %#lx bytes at %#lx\n", size, paddr);
 
-	if (ofbi->rotation_type == OMAP_DSS_ROT_VRFB)
-		dma_set_attr(DMA_ATTR_NO_KERNEL_MAPPING, &attrs);
+		token = dma_mark_declared_memory_occupied(fbdev->dev,
+			paddr, size);
 
-	DBG("allocating %lu bytes for fb %d\n", size, ofbi->id);
+		if (IS_ERR(token)) {
+			dev_err(fbdev->dev,
+				"dma_mark_declared_memory_occupied failed: %ld\n",
+				PTR_ERR(token));
+			return PTR_ERR(token);
+		}
 
-	token = dma_alloc_attrs(fbdev->dev, size, &dma_handle,
-			GFP_KERNEL, &attrs);
+		dma_handle = paddr;
+		rg->noclear = 1;
+	} else {
+		dma_set_attr(DMA_ATTR_WRITE_COMBINE, &attrs);
+
+		if (ofbi->rotation_type == OMAP_DSS_ROT_VRFB)
+			dma_set_attr(DMA_ATTR_NO_KERNEL_MAPPING, &attrs);
+
+		DBG("allocating %lu bytes for fb %d\n", size, ofbi->id);
+
+		token = dma_alloc_attrs(fbdev->dev, size, &dma_handle,
+				GFP_KERNEL, &attrs);
+	}
 
 	if (token == NULL) {
 		dev_err(fbdev->dev, "failed to allocate framebuffer\n");
@@ -1513,9 +1531,6 @@ static int omapfb_parse_vram_param(const char *param, int max_entries,
 				return -EINVAL;
 
 		}
-
-		WARN_ONCE(paddr,
-			"reserving memory at predefined address not supported\n");
 
 		paddrs[fbnum] = paddr;
 		sizes[fbnum] = size;
@@ -1949,6 +1964,9 @@ static int omapfb_create_framebuffers(struct omapfb2_device *fbdev)
 		struct omapfb_info *ofbi = FB2OFB(fbi);
 
 		if (ofbi->region->size == 0)
+			continue;
+
+		if (ofbi->region->noclear)
 			continue;
 
 		omapfb_clear_fb(fbi);

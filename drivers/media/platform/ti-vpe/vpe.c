@@ -348,7 +348,7 @@ static struct vpe_fmt *find_format(struct v4l2_format *f)
  */
 struct vpe_dev {
 	struct v4l2_device	v4l2_dev;
-	struct video_device	vfd;
+	struct video_device	*vfd;
 	struct v4l2_m2m_dev	*m2m_dev;
 
 	atomic_t		num_instances;	/* count of driver instances */
@@ -1894,11 +1894,6 @@ static int vpe_open(struct file *file)
 
 	vpe_dbg(dev, "vpe_open\n");
 
-	if (!dev->vpdma->ready) {
-		vpe_err(dev, "vpdma firmware not loaded\n");
-		return -ENODEV;
-	}
-
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx)
 		return -ENOMEM;
@@ -2116,10 +2111,47 @@ static void vpe_runtime_put(struct platform_device *pdev)
 	WARN_ON(r < 0 && r != -ENOSYS);
 }
 
+static void vpe_fw_cb(struct platform_device *pdev)
+{
+	struct vpe_dev *dev = platform_get_drvdata(pdev);
+	struct video_device *vfd;
+	int ret;
+
+	vfd = video_device_alloc();
+	if (!vfd) {
+		vpe_err(dev, "Failed to allocate video device\n");
+		return;
+	}
+
+	dev->vfd = vfd;
+	*vfd = vpe_videodev;
+	vfd->lock = &dev->dev_mutex;
+	vfd->v4l2_dev = &dev->v4l2_dev;
+
+	ret = video_register_device(vfd, VFL_TYPE_GRABBER, 0);
+	if (ret) {
+		vpe_err(dev, "Failed to register video device\n");
+
+		vpe_set_clock_enable(dev, 0);
+		vpe_runtime_put(pdev);
+		pm_runtime_disable(&pdev->dev);
+		v4l2_m2m_release(dev->m2m_dev);
+		vb2_dma_contig_cleanup_ctx(dev->alloc_ctx);
+		video_device_release(vfd);
+		v4l2_device_unregister(&dev->v4l2_dev);
+
+		return;
+	}
+
+	video_set_drvdata(vfd, dev);
+	snprintf(vfd->name, sizeof(vfd->name), "%s", vpe_videodev.name);
+	dev_info(dev->v4l2_dev.dev, "Device registered as /dev/video%d\n",
+		vfd->num);
+}
+
 static int vpe_probe(struct platform_device *pdev)
 {
 	struct vpe_dev *dev;
-	struct video_device *vfd;
 	int ret, irq, func;
 
 	dev = devm_kzalloc(&pdev->dev, sizeof(*dev), GFP_KERNEL);
@@ -2200,27 +2232,11 @@ static int vpe_probe(struct platform_device *pdev)
 		goto runtime_put;
 	}
 
-	dev->vpdma = vpdma_create(pdev);
+	dev->vpdma = vpdma_create(pdev, vpe_fw_cb);
 	if (IS_ERR(dev->vpdma)) {
 		ret = PTR_ERR(dev->vpdma);
 		goto runtime_put;
 	}
-
-	vfd = &dev->vfd;
-	*vfd = vpe_videodev;
-	vfd->lock = &dev->dev_mutex;
-	vfd->v4l2_dev = &dev->v4l2_dev;
-
-	ret = video_register_device(vfd, VFL_TYPE_GRABBER, 0);
-	if (ret) {
-		vpe_err(dev, "Failed to register video device\n");
-		goto runtime_put;
-	}
-
-	video_set_drvdata(vfd, dev);
-	snprintf(vfd->name, sizeof(vfd->name), "%s", vpe_videodev.name);
-	dev_info(dev->v4l2_dev.dev, "Device registered as /dev/video%d\n",
-		vfd->num);
 
 	return 0;
 
@@ -2245,7 +2261,7 @@ static int vpe_remove(struct platform_device *pdev)
 	v4l2_info(&dev->v4l2_dev, "Removing " VPE_MODULE_NAME);
 
 	v4l2_m2m_release(dev->m2m_dev);
-	video_unregister_device(&dev->vfd);
+	video_unregister_device(dev->vfd);
 	v4l2_device_unregister(&dev->v4l2_dev);
 	vb2_dma_contig_cleanup_ctx(dev->alloc_ctx);
 

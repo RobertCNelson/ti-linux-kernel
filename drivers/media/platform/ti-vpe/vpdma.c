@@ -805,7 +805,7 @@ static void vpdma_firmware_cb(const struct firmware *f, void *context)
 	/* already initialized */
 	if (read_field_reg(vpdma, VPDMA_LIST_ATTR, VPDMA_LIST_RDY_MASK,
 			VPDMA_LIST_RDY_SHFT)) {
-		vpdma->ready = true;
+		vpdma->cb(vpdma->pdev);
 		return;
 	}
 
@@ -835,7 +835,7 @@ static void vpdma_firmware_cb(const struct firmware *f, void *context)
 		goto free_buf;
 	}
 
-	vpdma->ready = true;
+	vpdma->cb(vpdma->pdev);
 
 free_buf:
 	vpdma_unmap_desc_buf(vpdma, &fw_dma_buf);
@@ -863,7 +863,8 @@ static int vpdma_load_firmware(struct vpdma_data *vpdma)
 	return 0;
 }
 
-struct vpdma_data *vpdma_create(struct platform_device *pdev)
+struct vpdma_data *vpdma_create(struct platform_device *pdev,
+		void (*cb)(struct platform_device *pdev))
 {
 	struct resource *res;
 	struct vpdma_data *vpdma;
@@ -878,6 +879,7 @@ struct vpdma_data *vpdma_create(struct platform_device *pdev)
 	}
 
 	vpdma->pdev = pdev;
+	vpdma->cb = cb;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "vpdma");
 	if (res == NULL) {

@@ -31,6 +31,11 @@
 #include <video/omap-panel-data.h>
 #include "encoder-sil9022.h"
 
+static struct regmap_config sil9022_regmap_config = {
+	.reg_bits = 8,
+	.val_bits = 8,
+};
+
 struct panel_drv_data {
 	struct omap_dss_device dssdev;
 	struct omap_dss_device *in;
@@ -43,137 +48,11 @@ struct panel_drv_data {
 
 #define to_panel_data(x) container_of(x, struct panel_drv_data, dssdev)
 
-static int sil9022_blockwrite_reg(struct i2c_client *client,
-				  u8 reg, u16 alength, u8 *val, u16 *out_len)
-{
-	int err = 0, i;
-	struct i2c_msg msg[1];
-	u8 data[2];
-
-	if (!client->adapter) {
-		dev_err(&client->dev, "ERROR: No HDMI Device\n");
-		return -ENODEV;
-	}
-
-	msg->addr = client->addr;
-	msg->flags = 0;
-	msg->len = 2;
-	msg->buf = data;
-
-	/* high byte goes out first */
-	data[0] = reg >> 8;
-
-	for (i = 0; i < alength - 1; i++) {
-		data[1] = val[i];
-		err = i2c_transfer(client->adapter, msg, 1);
-		udelay(50);
-		dev_dbg(&client->dev, "i2c Block write at 0x%x, "
-				      "*val=%d flags=%d byte[%d] err=%d\n",
-			data[0], data[1], msg->flags, i, err);
-		if (err < 0)
-			break;
-	}
-	/* set the number of bytes written*/
-	*out_len = i;
-
-	if (err < 0) {
-		dev_err(&client->dev, "ERROR:  i2c Block Write at 0x%x, "
-				      "*val=%d flags=%d bytes written=%d "
-				      "err=%d\n",
-			data[0], data[1], msg->flags, i, err);
-		return err;
-	}
-	return 0;
-}
-
-static int sil9022_blockread_reg(struct i2c_client *client,
-		      u16 data_length, u16 alength,
-		      u8 reg, u8 *val, u16 *out_len)
-{
-	int err = 0, i;
-	struct i2c_msg msg[1];
-	u8 data[2];
-
-	if (!client->adapter) {
-		dev_err(&client->dev, "ERROR: No HDMI Device\n");
-		return -ENODEV;
-	}
-
-	msg->addr = client->addr;
-	msg->flags = 0;
-	msg->len = 1;
-	msg->buf = data;
-
-	/* High byte goes out first */
-	data[0] = reg;
-	err = i2c_transfer(client->adapter, msg, 1);
-	dev_dbg(&client->dev, "Block Read1 at 0x%x, "
-			       "*val=%d flags=%d err=%d\n",
-		 data[0], data[1], msg->flags, err);
-
-	for (i = 0; i < alength; i++) {
-		if (err >= 0) {
-			mdelay(3);
-			msg->flags = I2C_M_RD;
-			msg->len = data_length;
-			err = i2c_transfer(client->adapter, msg, 1);
-		} else {
-			break;
-		}
-		if (err >= 0) {
-			val[i] = 0;
-			/* High byte comes first */
-			if (data_length == 1)
-				val[i] = data[0];
-			else if (data_length == 2)
-				val[i] = data[1] + (data[0] << 8);
-			dev_dbg(&client->dev, "i2c Block Read2 at 0x%x, "
-					       "*val=%d flags=%d byte=%d "
-					       "err=%d\n",
-				 reg, val[i], msg->flags, i, err);
-		} else {
-			break;
-		}
-	}
-	*out_len = i;
-	dev_dbg(&client->dev, "i2c Block Read at 0x%x, bytes read = %d\n",
-		client->addr, *out_len);
-
-	if (err < 0) {
-		dev_err(&client->dev, "ERROR:  i2c Read at 0x%x, "
-				      "*val=%d flags=%d bytes read=%d err=%d\n",
-			reg, *val, msg->flags, i, err);
-		return err;
-	}
-	return 0;
-}
-
-static int sil9022_write_reg(struct omap_dss_device *dssdev,
-					u8 reg, unsigned int val)
-{
-	struct panel_drv_data *ddata = to_panel_data(dssdev);
-	struct regmap *map = ddata->regmap;
-	int err = 0;
-	err = regmap_write(map, reg, val);
-	return err;
-}
-
-static int sil9022_read_reg(struct omap_dss_device *dssdev,
-					u8 reg, unsigned int *val)
-{
-	struct panel_drv_data *ddata = to_panel_data(dssdev);
-	struct regmap *map = ddata->regmap;
-	int err = 0;
-	err = regmap_read(map, reg, val);
-	return err;
-}
-
 static int sil9022_hw_enable(struct omap_dss_device *dssdev)
 {
 	int		err;
 	u8		vals[14];
 	unsigned int val;
-	u16		out_len = 0;
 	u16		horizontal_res;
 	u16		vertical_res;
 	u16		pixel_clk;
@@ -181,6 +60,7 @@ static int sil9022_hw_enable(struct omap_dss_device *dssdev)
 	struct panel_drv_data *ddata = to_panel_data(dssdev);
 	struct omap_video_timings *hdmi_timings = &ddata->timings;
 	struct i2c_client *sil9022_client = ddata->i2c_client;
+	struct regmap *regmap = ddata->regmap;
 
 	memset(vals, 0, 14);
 
@@ -211,13 +91,11 @@ static int sil9022_hw_enable(struct omap_dss_device *dssdev)
 	vals[7] = ((vertical_res & 0xFF00) >> 8);
 
 	/*  Write out the TPI Video Mode Data */
-	out_len = 0;
-	err = sil9022_blockwrite_reg(sil9022_client,
-				     HDMI_TPI_VIDEO_DATA_BASE_REG,
-				     8, vals, &out_len);
+
+	err = regmap_bulk_write(ddata->regmap, HDMI_TPI_VIDEO_DATA_BASE_REG,
+		&vals, 8);
 	if (err < 0) {
-		dev_err(dssdev->dev,
-			"ERROR: writing TPI video mode data\n");
+		dev_err(dssdev->dev, "ERROR: writing TPI video mode data\n");
 		return err;
 	}
 
@@ -226,9 +104,7 @@ static int sil9022_hw_enable(struct omap_dss_device *dssdev)
 	val = TPI_AVI_PIXEL_REP_BUS_24BIT |
 		TPI_AVI_PIXEL_REP_FALLING_EDGE |
 		TPI_AVI_PIXEL_REP_NONE | TPI_CLK_RATIO_1X;
-	err = sil9022_write_reg(dssdev,
-				HDMI_TPI_PIXEL_REPETITION_REG,
-				val);
+	err = regmap_write(regmap, HDMI_TPI_PIXEL_REPETITION_REG, val);
 
 	if (err < 0) {
 		dev_err(dssdev->dev,
@@ -240,9 +116,7 @@ static int sil9022_hw_enable(struct omap_dss_device *dssdev)
 	val = TPI_AVI_INPUT_BITMODE_8BIT |
 		TPI_AVI_INPUT_RANGE_AUTO |
 		TPI_AVI_INPUT_COLORSPACE_RGB;
-	err = sil9022_write_reg(dssdev,
-				HDMI_TPI_AVI_IN_FORMAT_REG,
-				val);
+	err = regmap_write(regmap, HDMI_TPI_AVI_IN_FORMAT_REG, val);
 	if (err < 0) {
 		dev_err(dssdev->dev,
 			"ERROR: writing TPI AVI Input format\n");
@@ -253,8 +127,7 @@ static int sil9022_hw_enable(struct omap_dss_device *dssdev)
 	val = TPI_AVI_OUTPUT_CONV_BT709 |
 		TPI_AVI_OUTPUT_RANGE_AUTO |
 		TPI_AVI_OUTPUT_COLORSPACE_RGBHDMI;
-	err = sil9022_write_reg(dssdev,
-				HDMI_TPI_AVI_OUT_FORMAT_REG, val);
+	err = regmap_write(regmap, HDMI_TPI_AVI_OUT_FORMAT_REG, val);
 	if (err < 0) {
 		dev_err(dssdev->dev,
 			"ERROR: writing TPI AVI output format\n");
@@ -263,7 +136,7 @@ static int sil9022_hw_enable(struct omap_dss_device *dssdev)
 
 	/* Write out the TPI System Control Data to power down */
 	val = TPI_SYS_CTRL_POWER_DOWN;
-	err = sil9022_write_reg(dssdev, HDMI_SYS_CTRL_DATA_REG, val);
+	err = regmap_write(regmap, HDMI_SYS_CTRL_DATA_REG, val);
 	if (err < 0) {
 		dev_err(dssdev->dev,
 			"ERROR: writing TPI power down control data\n");
@@ -272,8 +145,7 @@ static int sil9022_hw_enable(struct omap_dss_device *dssdev)
 
 	/* Move from ENABLED -> FULLY ENABLED Power State  */
 	val = TPI_AVI_POWER_STATE_D0;
-	err = sil9022_write_reg(dssdev,
-				HDMI_TPI_POWER_STATE_CTRL_REG, val);
+	err = regmap_write(regmap, HDMI_TPI_POWER_STATE_CTRL_REG, val);
 	if (err < 0) {
 		dev_err(&sil9022_client->dev,
 			"<%s> ERROR: Setting device power state to D0\n",
@@ -285,7 +157,7 @@ static int sil9022_hw_enable(struct omap_dss_device *dssdev)
 	 * select output mode
 	 */
 	val = TPI_SYS_CTRL_POWER_ACTIVE | TPI_SYS_CTRL_OUTPUT_MODE_HDMI;
-	err = sil9022_write_reg(dssdev, HDMI_SYS_CTRL_DATA_REG, val);
+	err = regmap_write(regmap, HDMI_SYS_CTRL_DATA_REG, val);
 	if (err < 0) {
 		dev_err(&sil9022_client->dev,
 			"<%s> ERROR: Writing system control data\n", __func__);
@@ -294,7 +166,7 @@ static int sil9022_hw_enable(struct omap_dss_device *dssdev)
 
 	/*  Read back TPI System Control Data to latch settings */
 	msleep(20);
-	err = sil9022_read_reg(dssdev, HDMI_SYS_CTRL_DATA_REG, &val);
+	err = regmap_read(regmap, HDMI_SYS_CTRL_DATA_REG, &val);
 	if (err < 0) {
 		dev_err(&sil9022_client->dev,
 			"<%s> ERROR: Writing system control data\n",
@@ -304,8 +176,7 @@ static int sil9022_hw_enable(struct omap_dss_device *dssdev)
 
 	/* HDCP */
 	val = 0; /* DISABLED */
-	err = sil9022_write_reg(dssdev,
-				HDMI_TPI_HDCP_CONTROLDATA_REG, val);
+	err = regmap_write(regmap, HDMI_TPI_HDCP_CONTROLDATA_REG, val);
 	if (err < 0) {
 		dev_err(&sil9022_client->dev,
 			"<%s> ERROR: Enable (1) / Disable (0) => HDCP: %d\n",
@@ -320,12 +191,13 @@ static int sil9022_hw_enable(struct omap_dss_device *dssdev)
 
 static int sil9022_hw_disable(struct omap_dss_device *dssdev)
 {
+	struct panel_drv_data *ddata = to_panel_data(dssdev);
 	unsigned int val = 0;
 	int err = 0;
 
 	/*  Write out the TPI System Control Data to power down  */
 	val = TPI_SYS_CTRL_POWER_DOWN;
-	err = sil9022_write_reg(dssdev, HDMI_SYS_CTRL_DATA_REG, val);
+	err = regmap_write(ddata->regmap, HDMI_SYS_CTRL_DATA_REG, val);
 	if (err < 0) {
 		dev_err(dssdev->dev,
 			"ERROR: writing control data - power down\n");
@@ -334,8 +206,8 @@ static int sil9022_hw_disable(struct omap_dss_device *dssdev)
 
 	/*  Move from FULLY ENABLED -> ENABLED Power state */
 	val = TPI_AVI_POWER_STATE_D2;
-	err = sil9022_write_reg(dssdev,
-			  HDMI_TPI_DEVICE_POWER_STATE_DATA, val);
+	err = regmap_write(ddata->regmap, HDMI_TPI_DEVICE_POWER_STATE_DATA,
+			val);
 	if (err < 0) {
 		dev_err(dssdev->dev,
 			"ERROR: Setting device power state to D2\n");
@@ -344,7 +216,7 @@ static int sil9022_hw_disable(struct omap_dss_device *dssdev)
 
 	/*  Read back TPI System Control Data to latch settings */
 	mdelay(10);
-	err = sil9022_read_reg(dssdev, HDMI_SYS_CTRL_DATA_REG, &val);
+	err = regmap_read(ddata->regmap, HDMI_SYS_CTRL_DATA_REG, &val);
 	if (err < 0) {
 		dev_err(dssdev->dev,
 			"ERROR:  Reading System control data "
@@ -359,11 +231,12 @@ static int sil9022_hw_disable(struct omap_dss_device *dssdev)
 
 static int sil9022_probe_chip_version(struct omap_dss_device *dssdev)
 {
+	struct panel_drv_data *ddata = to_panel_data(dssdev);
 	int err = 0;
 	unsigned int ver;
 
 	/* probe for sil9022 chip version*/
-	err = sil9022_write_reg(dssdev, SIL9022_REG_TPI_RQB, 0x00);
+	err = regmap_write(ddata->regmap, SIL9022_REG_TPI_RQB, 0x00);
 	if (err < 0) {
 		dev_err(dssdev->dev,
 			"ERROR: Writing HDMI configuration to "
@@ -372,7 +245,7 @@ static int sil9022_probe_chip_version(struct omap_dss_device *dssdev)
 		return err;
 	}
 
-	err = sil9022_read_reg(dssdev, SIL9022_REG_CHIPID0, &ver);
+	err = regmap_read(ddata->regmap, SIL9022_REG_CHIPID0, &ver);
 	if (err < 0) {
 		dev_err(dssdev->dev,
 			"ERROR: Reading HDMI version Id\n");
@@ -410,15 +283,20 @@ static int sil9022_connect(struct omap_dss_device *dssdev,
 	dssdev->dst = dst;
 
 	/* Move from LOW -> ENABLED Power state */
-	err = sil9022_write_reg(dssdev, HDMI_TPI_POWER_STATE_CTRL_REG,
+	err = regmap_write(ddata->regmap, HDMI_TPI_POWER_STATE_CTRL_REG,
 			TPI_AVI_POWER_STATE_D2);
 	if (err < 0) {
 		dev_err(dssdev->dev, "ERROR: Setting device power state to D2\n");
-		return err;
+		goto err_pwr;
 	}
 
 	return 0;
 
+err_pwr:
+	dst->src = NULL;
+	dssdev->dst = NULL;
+	in->ops.dpi->disconnect(in, dssdev);
+	return err;
 }
 
 static void sil9022_disconnect(struct omap_dss_device *dssdev,
@@ -426,7 +304,6 @@ static void sil9022_disconnect(struct omap_dss_device *dssdev,
 {
 	struct panel_drv_data *ddata = to_panel_data(dssdev);
 	struct omap_dss_device *in = ddata->in;
-	int err;
 
 	WARN_ON(!omapdss_device_is_connected(dssdev));
 	if (!omapdss_device_is_connected(dssdev))
@@ -436,19 +313,19 @@ static void sil9022_disconnect(struct omap_dss_device *dssdev,
 	if (dst != dssdev->dst)
 		return;
 
+	/* XXX we don't control the RESET pin, so we can't wake up from D3 */
+#if 0
+	/* Move from ENABLED -> LOW Power state */
+	err = regmap_write(ddata->regmap, HDMI_TPI_POWER_STATE_CTRL_REG,
+			TPI_AVI_POWER_STATE_D3);
+	if (err < 0)
+		dev_err(dssdev->dev, "ERROR: Setting device power state to D3\n");
+#endif
+
 	dst->src = NULL;
 	dssdev->dst = NULL;
 
-	/* Move from ENABLED -> LOW Power state */
-	err = sil9022_write_reg(dssdev, HDMI_TPI_POWER_STATE_CTRL_REG,
-			TPI_AVI_POWER_STATE_D3);
-	if (err < 0) {
-		dev_err(dssdev->dev, "ERROR: Setting device power state to D3\n");
-	}
-
-	in->ops.dpi->disconnect(in, &ddata->dssdev);
-	return;
-
+	in->ops.dpi->disconnect(in, dssdev);
 }
 
 static int sil9022_enable(struct omap_dss_device *dssdev)
@@ -477,10 +354,19 @@ static int sil9022_enable(struct omap_dss_device *dssdev)
 
 	r = sil9022_hw_enable(dssdev);
 	if (r)
-		return r;
+		goto err_hw_enable;
 
 	dssdev->state = OMAP_DSS_DISPLAY_ACTIVE;
+
 	return 0;
+
+err_hw_enable:
+	if (gpio_is_valid(ddata->reset_gpio))
+		gpio_set_value_cansleep(ddata->reset_gpio, 1);
+
+	in->ops.dpi->disable(in);
+
+	return r;
 }
 
 static void sil9022_disable(struct omap_dss_device *dssdev)
@@ -491,8 +377,7 @@ static void sil9022_disable(struct omap_dss_device *dssdev)
 	if (!omapdss_device_is_enabled(dssdev))
 		return;
 
-	if (!sil9022_hw_disable(dssdev))
-		return;
+	sil9022_hw_disable(dssdev);
 
 	if (gpio_is_valid(ddata->reset_gpio))
 		gpio_set_value_cansleep(ddata->reset_gpio, 1);
@@ -500,7 +385,6 @@ static void sil9022_disable(struct omap_dss_device *dssdev)
 	in->ops.dpi->disable(in);
 
 	dssdev->state = OMAP_DSS_DISPLAY_DISABLED;
-	return;
 }
 
 static void sil9022_set_timings(struct omap_dss_device *dssdev,
@@ -518,7 +402,6 @@ static void sil9022_set_timings(struct omap_dss_device *dssdev,
 	dssdev->panel.timings = *sil9022_timings;
 
 	in->ops.dpi->set_timings(in, sil9022_timings);
-	return;
 }
 
 static void sil9022_get_timings(struct omap_dss_device *dssdev,
@@ -526,7 +409,6 @@ static void sil9022_get_timings(struct omap_dss_device *dssdev,
 {
 	struct panel_drv_data *ddata = to_panel_data(dssdev);
 	*timings = ddata->timings;
-	return;
 }
 
 static int sil9022_check_timings(struct omap_dss_device *dssdev,
@@ -551,7 +433,6 @@ static int sil9022_read_edid(struct omap_dss_device *dssdev,
 	int err =  0;
 	unsigned int val = 0;
 	int retries = 0;
-	u16 out_len = 0;
 	int i2c_client_addr;
 	struct panel_drv_data *ddata = to_panel_data(dssdev);
 	struct i2c_client *client = ddata->i2c_client;
@@ -562,7 +443,7 @@ static int sil9022_read_edid(struct omap_dss_device *dssdev,
 	dev_info(&client->dev, "Reading HDMI EDID\n");
 
 	val = 0;
-	err = sil9022_read_reg(dssdev, 0x3D, &val);
+	err = regmap_read(ddata->regmap, 0x3D, &val);
 		if (err < 0) {
 			dev_err(&client->dev,
 				"ERROR: Reading Monitor Status register\n");
@@ -576,7 +457,7 @@ static int sil9022_read_edid(struct omap_dss_device *dssdev,
 
 	/* Disable TMDS clock */
 	val = 0x11;
-	err = sil9022_write_reg(dssdev, HDMI_SYS_CTRL_DATA_REG, val);
+	err = regmap_write(ddata->regmap, HDMI_SYS_CTRL_DATA_REG, val);
 	if (err < 0) {
 		dev_err(&client->dev,
 			"ERROR: Failed to disable TMDS clock\n");
@@ -586,7 +467,7 @@ static int sil9022_read_edid(struct omap_dss_device *dssdev,
 	val = 0;
 
 	/* Read TPI system control register*/
-	err = sil9022_read_reg(dssdev, HDMI_SYS_CTRL_DATA_REG, &val);
+	err = regmap_read(ddata->regmap, HDMI_SYS_CTRL_DATA_REG, &val);
 	if (err < 0) {
 		dev_err(&client->dev,
 			"ERROR: Reading DDC BUS REQUEST\n");
@@ -597,7 +478,7 @@ static int sil9022_read_edid(struct omap_dss_device *dssdev,
 	 * DDC(Display Data Channel) bus
 	 */
 	val |= TPI_SYS_CTRL_DDC_BUS_REQUEST;
-	err = sil9022_write_reg(dssdev, HDMI_SYS_CTRL_DATA_REG, val);
+	err = regmap_write(ddata->regmap, HDMI_SYS_CTRL_DATA_REG, val);
 	if (err < 0) {
 		dev_err(&client->dev,
 			"ERROR: Writing DDC BUS REQUEST\n");
@@ -608,7 +489,7 @@ static int sil9022_read_edid(struct omap_dss_device *dssdev,
 	dev_info(&client->dev, "Poll for DDC bus access\n");
 	val = 0;
 	do {
-		err = sil9022_read_reg(dssdev, HDMI_SYS_CTRL_DATA_REG, &val);
+		err = regmap_read(ddata->regmap, HDMI_SYS_CTRL_DATA_REG, &val);
 		if (retries++ > 100)
 			return err;
 
@@ -616,7 +497,7 @@ static int sil9022_read_edid(struct omap_dss_device *dssdev,
 
 	/*  Close the switch to the DDC */
 	val |= TPI_SYS_CTRL_DDC_BUS_REQUEST | TPI_SYS_CTRL_DDC_BUS_GRANTED;
-	err = sil9022_write_reg(dssdev, HDMI_SYS_CTRL_DATA_REG, val);
+	err = regmap_write(ddata->regmap, HDMI_SYS_CTRL_DATA_REG, val);
 	if (err < 0) {
 		dev_err(&client->dev,
 			"<%s> ERROR: Close switch to DDC BUS REQUEST\n",
@@ -629,9 +510,9 @@ static int sil9022_read_edid(struct omap_dss_device *dssdev,
 	/*  Read the EDID structure from the monitor I2C address  */
 	i2c_client_addr = client->addr;
 	client->addr = HDMI_I2C_MONITOR_ADDRESS;
-	err = sil9022_blockread_reg(client, 1, len,
-				    0x00, edid, &out_len);
-	if (err < 0 || out_len <= 0) {
+
+	err = regmap_raw_read(ddata->regmap, 0x00, edid, len);
+	if (err < 0) {
 		dev_err(&client->dev, "ERROR: Reading EDID\n");
 		return err;
 	}
@@ -642,7 +523,7 @@ static int sil9022_read_edid(struct omap_dss_device *dssdev,
 
 	retries = 0;
 	do {
-		err = sil9022_write_reg(dssdev, HDMI_SYS_CTRL_DATA_REG, val);
+		err = regmap_write(ddata->regmap, HDMI_SYS_CTRL_DATA_REG, val);
 		if (err >= 0)
 			break;
 		retries++;
@@ -736,28 +617,6 @@ static int sil9022_probe_of(struct i2c_client *client)
 	return 0;
 
 }
-static int sil9022_probe_pdata(struct i2c_client *client)
-{
-	struct encoder_sil9022_platform_data *pdata;
-	struct panel_drv_data *ddata = dev_get_drvdata(&client->dev);
-	struct omap_dss_device *dssdev, *in;
-	pdata = dev_get_platdata(&client->dev);
-
-	ddata->reset_gpio = pdata->reset_gpio;
-	ddata->data_lines = pdata->data_lines;
-
-	in = omap_dss_find_output(pdata->source);
-	if (in == NULL) {
-		dev_err(&client->dev, "Failed to find video source\n");
-		return -ENODEV;
-	}
-
-	ddata->in = in;
-	dssdev = &ddata->dssdev;
-	dssdev->name = pdata->name;
-
-	return 0;
-}
 
 static int sil9022_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
@@ -780,11 +639,7 @@ static int sil9022_probe(struct i2c_client *client,
 
 	dev_set_drvdata(&client->dev, ddata);
 
-	if (dev_get_platdata(&client->dev)) {
-		err = sil9022_probe_pdata(client);
-		if (err)
-			return err;
-	} else if (client->dev.of_node) {
+	if (client->dev.of_node) {
 		err = sil9022_probe_of(client);
 		if (err)
 			return err;
@@ -808,11 +663,6 @@ static int sil9022_probe(struct i2c_client *client,
 	dssdev->output_type = OMAP_DISPLAY_TYPE_HDMI;
 	dssdev->owner = THIS_MODULE;
 	dssdev->phy.dpi.data_lines = ddata->data_lines;
-	err = omapdss_register_output(dssdev);
-	if (err) {
-		dev_err(&client->dev, "Failed to register output\n");
-		goto err_reg;
-	}
 
 	/* Read sil9022 chip version */
 	err = sil9022_probe_chip_version(dssdev);
@@ -821,11 +671,17 @@ static int sil9022_probe(struct i2c_client *client,
 		goto err_i2c;
 	}
 
+	err = omapdss_register_output(dssdev);
+	if (err) {
+		dev_err(&client->dev, "Failed to register output\n");
+		goto err_reg;
+	}
+
 	return 0;
 
-err_gpio:
 err_reg:
 err_i2c:
+err_gpio:
 	omap_dss_put_device(ddata->in);
 	return err;
 }
@@ -836,7 +692,7 @@ static int sil9022_remove(struct i2c_client *client)
 	struct panel_drv_data *ddata = dev_get_drvdata(&client->dev);
 	struct omap_dss_device *dssdev = &ddata->dssdev;
 
-	omapdss_unregister_output(&ddata->dssdev);
+	omapdss_unregister_output(dssdev);
 
 	WARN_ON(omapdss_device_is_enabled(dssdev));
 	if (omapdss_device_is_enabled(dssdev))
@@ -847,11 +703,6 @@ static int sil9022_remove(struct i2c_client *client)
 		sil9022_disconnect(dssdev, dssdev->dst);
 
 	omap_dss_put_device(ddata->in);
-
-	if (!client->adapter) {
-		dev_err(&client->dev, "No HDMI Device\n");
-		return -ENODEV;
-	}
 
 	return 0;
 }
