@@ -2903,9 +2903,9 @@ static struct omap_hwmod_addr_space dra7xx_mcasp3_addrs[] = {
 	{ }
 };
 
-/* l3_main_1 -> mcasp3 */
-static struct omap_hwmod_ocp_if dra7xx_l3_main_1__mcasp3 = {
-	.master		= &dra7xx_l3_main_1_hwmod,
+/* l4_per2 -> mcasp3 */
+static struct omap_hwmod_ocp_if dra7xx_l4_per2__mcasp3 = {
+	.master		= &dra7xx_l4_per2_hwmod,
 	.slave		= &dra7xx_mcasp3_hwmod,
 	.clk		= "l3_iclk_div",
 	.addr		= dra7xx_mcasp3_addrs,
@@ -3651,7 +3651,7 @@ static struct omap_hwmod_ocp_if *dra7xx_hwmod_ocp_ifs[] __initdata = {
 	&dra7xx_dsp2__l3_main_1,
 	&dra7xx_l3_main_1__hdmi,
 	&dra7xx_l3_main_1__aes,
-	&dra7xx_l3_main_1__mcasp3,
+	&dra7xx_l4_per2__mcasp3,
 	&dra7xx_l4_per1__elm,
 	&dra7xx_l4_wkup__gpio1,
 	&dra7xx_l4_per1__gpio2,

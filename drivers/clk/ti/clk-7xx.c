@@ -22,6 +22,7 @@
 #define DRA7_DPLL_DSP_DEFFREQ               600000000
 #define DRA7_DPLL_DSP_GFCLK_NOMFREQ			600000000
 #define DRA7_DPLL_EVE_GCLK_NOMFREQ			400000000
+#define DRA7_ATL2_DEFFREQ				5644800
 
 
 static struct omap_dt_clk dra7xx_clks[] = {
@@ -277,6 +278,7 @@ int __init dra7xx_clk_init(void)
 	int rc;
 	struct clk *abe_dpll_mux, *sys_clkin2, *dpll_ck, *deshdcp_clk;
 	struct clk *dsp_dpll, *dsp_m2_dpll, *dsp_m3x2_dpll;
+	struct clk *atl_fck, *atl_parent;
 
 	of_clk_init(NULL);
 
@@ -336,6 +338,17 @@ int __init dra7xx_clk_init(void)
 	} else {
 		pr_err("%s: failed to configure DSP DPLL!\n", __func__);
 	}
+
+	atl_fck = clk_get_sys(NULL, "atl_gfclk_mux");
+	atl_parent = clk_get_sys(NULL, "dpll_abe_m2_ck");
+	rc = clk_set_parent(atl_fck, atl_parent);
+	if (rc)
+		pr_err("%s: failed to reparent atl_gfclk_mux\n", __func__);
+
+	atl_fck = clk_get_sys(NULL, "atl_clkin2_ck");
+	rc = clk_set_rate(atl_fck, DRA7_ATL2_DEFFREQ);
+	if (rc)
+		pr_err("%s: failed to set atl_clkin2_ck\n", __func__);
 
 	return rc;
 }

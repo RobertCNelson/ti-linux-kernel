@@ -325,6 +325,15 @@
 		>;
 	};
 
+	mcasp1_sleep_pins: pinmux_mcasp1_sleep_pins {
+		pinctrl-single,pins = <
+			0x1a0 (PIN_INPUT_PULLDOWN | MUX_MODE7)
+			0x1a4 (PIN_INPUT_PULLDOWN | MUX_MODE7)
+			0x1a8 (PIN_INPUT_PULLDOWN | MUX_MODE7)
+			0x1ac (PIN_INPUT_PULLDOWN | MUX_MODE7)
+		>;
+	};
+
 	wlirq_pins: pinmux_wlirq_pins {
 		pinctrl-single,pins = <
 			0x74 (PIN_INPUT | WAKEUP_ENABLE | MUX_MODE7)   /*gpmc_wpn.gpio0_31 */
@@ -771,8 +780,9 @@
 };
 
 &mcasp1 {
-	pinctrl-names = "default";
+	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&mcasp1_pins>;
+	pinctrl-1 = <&mcasp1_sleep_pins>;
 
 	status = "okay";
 

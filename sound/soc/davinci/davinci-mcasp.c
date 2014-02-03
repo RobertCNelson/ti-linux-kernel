@@ -37,6 +37,16 @@
 #include "davinci-pcm.h"
 #include "davinci-mcasp.h"
 
+struct davinci_mcasp_context {
+	u32	txfmtctl;
+	u32	rxfmtctl;
+	u32	txfmt;
+	u32	rxfmt;
+	u32	aclkxctl;
+	u32	aclkrctl;
+	u32	pdir;
+};
+
 struct davinci_mcasp {
 	struct davinci_pcm_dma_params dma_params[2];
 	struct snd_dmaengine_dai_dma_data dma_data[2];
@@ -58,6 +68,10 @@ struct davinci_mcasp {
 	u8	rxnumevt;
 
 	bool	dat_port;
+
+#ifdef CONFIG_PM_SLEEP
+	struct davinci_mcasp_context context;
+#endif
 };
 
 static inline void mcasp_set_bits(struct davinci_mcasp *mcasp, u32 offset,
@@ -251,7 +265,9 @@ static int davinci_mcasp_set_dai_fmt(struct snd_soc_dai *cpu_dai,
 					 unsigned int fmt)
 {
 	struct davinci_mcasp *mcasp = snd_soc_dai_get_drvdata(cpu_dai);
+	int ret = 0;
 
+	pm_runtime_get_sync(mcasp->dev);
 	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
 	case SND_SOC_DAIFMT_DSP_B:
 	case SND_SOC_DAIFMT_AC97:
@@ -305,7 +321,8 @@ static int davinci_mcasp_set_dai_fmt(struct snd_soc_dai *cpu_dai,
 		break;
 
 	default:
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	}
 
 	switch (fmt & SND_SOC_DAIFMT_INV_MASK) {
@@ -342,10 +359,12 @@ static int davinci_mcasp_set_dai_fmt(struct snd_soc_dai *cpu_dai,
 		break;
 
 	default:
-		return -EINVAL;
+		ret = -EINVAL;
+		break;
 	}
-
-	return 0;
+out:
+	pm_runtime_put_sync(mcasp->dev);
+	return ret;
 }
 
 static int davinci_mcasp_set_clkdiv(struct snd_soc_dai *dai, int div_id, int div)
@@ -436,7 +455,7 @@ static int davinci_config_channel_size(struct davinci_mcasp *mcasp,
 	return 0;
 }
 
-static int davinci_hw_common_param(struct davinci_mcasp *mcasp, int stream,
+static int mcasp_common_hw_param(struct davinci_mcasp *mcasp, int stream,
 				    int channels)
 {
 	int i;
@@ -512,11 +531,17 @@ static int davinci_hw_common_param(struct davinci_mcasp *mcasp, int stream,
 	return 0;
 }
 
-static void davinci_hw_param(struct davinci_mcasp *mcasp, int stream)
+static int mcasp_i2s_hw_param(struct davinci_mcasp *mcasp, int stream)
 {
 	int i, active_slots;
 	u32 mask = 0;
 	u32 busel = 0;
+
+	if ((mcasp->tdm_slots < 2) || (mcasp->tdm_slots > 32)) {
+		dev_err(mcasp->dev, "tdm slot %d not supported\n",
+			mcasp->tdm_slots);
+		return -EINVAL;
+	}
 
 	active_slots = (mcasp->tdm_slots > 31) ? 32 : mcasp->tdm_slots;
 	for (i = 0; i < active_slots; i++)
@@ -527,35 +552,21 @@ static void davinci_hw_param(struct davinci_mcasp *mcasp, int stream)
 	if (!mcasp->dat_port)
 		busel = TXSEL;
 
-	if (stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		/* bit stream is MSB first  with no delay */
-		/* DSP_B mode */
-		mcasp_set_reg(mcasp, DAVINCI_MCASP_TXTDM_REG, mask);
-		mcasp_set_bits(mcasp, DAVINCI_MCASP_TXFMT_REG, busel | TXORD);
+	mcasp_set_reg(mcasp, DAVINCI_MCASP_TXTDM_REG, mask);
+	mcasp_set_bits(mcasp, DAVINCI_MCASP_TXFMT_REG, busel | TXORD);
+	mcasp_mod_bits(mcasp, DAVINCI_MCASP_TXFMCTL_REG,
+		       FSXMOD(mcasp->tdm_slots), FSXMOD(0x1FF));
 
-		if ((mcasp->tdm_slots >= 2) && (mcasp->tdm_slots <= 32))
-			mcasp_mod_bits(mcasp, DAVINCI_MCASP_TXFMCTL_REG,
-				       FSXMOD(mcasp->tdm_slots), FSXMOD(0x1FF));
-		else
-			printk(KERN_ERR "playback tdm slot %d not supported\n",
-				mcasp->tdm_slots);
-	} else {
-		/* bit stream is MSB first with no delay */
-		/* DSP_B mode */
-		mcasp_set_bits(mcasp, DAVINCI_MCASP_RXFMT_REG, busel | RXORD);
-		mcasp_set_reg(mcasp, DAVINCI_MCASP_RXTDM_REG, mask);
+	mcasp_set_reg(mcasp, DAVINCI_MCASP_RXTDM_REG, mask);
+	mcasp_set_bits(mcasp, DAVINCI_MCASP_RXFMT_REG, busel | RXORD);
+	mcasp_mod_bits(mcasp, DAVINCI_MCASP_RXFMCTL_REG,
+		       FSRMOD(mcasp->tdm_slots), FSRMOD(0x1FF));
 
-		if ((mcasp->tdm_slots >= 2) && (mcasp->tdm_slots <= 32))
-			mcasp_mod_bits(mcasp, DAVINCI_MCASP_RXFMCTL_REG,
-				       FSRMOD(mcasp->tdm_slots), FSRMOD(0x1FF));
-		else
-			printk(KERN_ERR "capture tdm slot %d not supported\n",
-				mcasp->tdm_slots);
-	}
+	return 0;
 }
 
 /* S/PDIF */
-static void davinci_hw_dit_param(struct davinci_mcasp *mcasp)
+static int mcasp_dit_hw_param(struct davinci_mcasp *mcasp)
 {
 	/* Set the TX format : 24 bit right rotation, 32 bit slot, Pad 0
 	   and LSB first */
@@ -577,6 +588,8 @@ static void davinci_hw_dit_param(struct davinci_mcasp *mcasp)
 
 	/* Enable the DIT */
 	mcasp_set_bits(mcasp, DAVINCI_MCASP_TXDITCTL_REG, DITEN);
+
+	return 0;
 }
 
 static int davinci_mcasp_hw_params(struct snd_pcm_substream *substream,
@@ -592,24 +605,20 @@ static int davinci_mcasp_hw_params(struct snd_pcm_substream *substream,
 	u8 fifo_level;
 	u8 slots = mcasp->tdm_slots;
 	u8 active_serializers;
-	int channels;
-	struct snd_interval *pcm_channels = hw_param_interval(params,
-					SNDRV_PCM_HW_PARAM_CHANNELS);
-	channels = pcm_channels->min;
+	int channels = params_channels(params);
+	int ret;
 
-	active_serializers = (channels + slots - 1) / slots;
-
-	if (davinci_hw_common_param(mcasp, substream->stream, channels) == -EINVAL)
-		return -EINVAL;
-	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-		fifo_level = mcasp->txnumevt * active_serializers;
-	else
-		fifo_level = mcasp->rxnumevt * active_serializers;
+	ret = mcasp_common_hw_param(mcasp, substream->stream, channels);
+	if (ret)
+		return ret;
 
 	if (mcasp->op_mode == DAVINCI_MCASP_DIT_MODE)
-		davinci_hw_dit_param(mcasp);
+		ret = mcasp_dit_hw_param(mcasp);
 	else
-		davinci_hw_param(mcasp, substream->stream);
+		ret = mcasp_i2s_hw_param(mcasp, substream->stream);
+
+	if (ret)
+		return ret;
 
 	switch (params_format(params)) {
 	case SNDRV_PCM_FORMAT_U8:
@@ -643,6 +652,13 @@ static int davinci_mcasp_hw_params(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 
+	/* Calculate FIFO level */
+	active_serializers = (channels + slots - 1) / slots;
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+		fifo_level = mcasp->txnumevt * active_serializers;
+	else
+		fifo_level = mcasp->rxnumevt * active_serializers;
+
 	if (mcasp->version == MCASP_VERSION_2 && !fifo_level)
 		dma_params->acnt = 4;
 	else
@@ -666,19 +682,9 @@ static int davinci_mcasp_trigger(struct snd_pcm_substream *substream,
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
-		ret = pm_runtime_get_sync(mcasp->dev);
-		if (IS_ERR_VALUE(ret))
-			dev_err(mcasp->dev, "pm_runtime_get_sync() failed\n");
 		davinci_mcasp_start(mcasp, substream->stream);
 		break;
-
 	case SNDRV_PCM_TRIGGER_SUSPEND:
-		davinci_mcasp_stop(mcasp, substream->stream);
-		ret = pm_runtime_put_sync(mcasp->dev);
-		if (IS_ERR_VALUE(ret))
-			dev_err(mcasp->dev, "pm_runtime_put_sync() failed\n");
-		break;
-
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 		davinci_mcasp_stop(mcasp, substream->stream);
@@ -714,6 +720,43 @@ static const struct snd_soc_dai_ops davinci_mcasp_dai_ops = {
 	.set_sysclk	= davinci_mcasp_set_sysclk,
 };
 
+#ifdef CONFIG_PM_SLEEP
+static int davinci_mcasp_suspend(struct snd_soc_dai *dai)
+{
+	struct davinci_mcasp *mcasp = snd_soc_dai_get_drvdata(dai);
+	struct davinci_mcasp_context *context = &mcasp->context;
+
+	context->txfmtctl = mcasp_get_reg(mcasp, DAVINCI_MCASP_TXFMCTL_REG);
+	context->rxfmtctl = mcasp_get_reg(mcasp, DAVINCI_MCASP_RXFMCTL_REG);
+	context->txfmt = mcasp_get_reg(mcasp, DAVINCI_MCASP_TXFMT_REG);
+	context->rxfmt = mcasp_get_reg(mcasp, DAVINCI_MCASP_RXFMT_REG);
+	context->aclkxctl = mcasp_get_reg(mcasp, DAVINCI_MCASP_ACLKXCTL_REG);
+	context->aclkrctl = mcasp_get_reg(mcasp, DAVINCI_MCASP_ACLKRCTL_REG);
+	context->pdir = mcasp_get_reg(mcasp, DAVINCI_MCASP_PDIR_REG);
+
+	return 0;
+}
+
+static int davinci_mcasp_resume(struct snd_soc_dai *dai)
+{
+	struct davinci_mcasp *mcasp = snd_soc_dai_get_drvdata(dai);
+	struct davinci_mcasp_context *context = &mcasp->context;
+
+	mcasp_set_reg(mcasp, DAVINCI_MCASP_TXFMCTL_REG, context->txfmtctl);
+	mcasp_set_reg(mcasp, DAVINCI_MCASP_RXFMCTL_REG, context->rxfmtctl);
+	mcasp_set_reg(mcasp, DAVINCI_MCASP_TXFMT_REG, context->txfmt);
+	mcasp_set_reg(mcasp, DAVINCI_MCASP_RXFMT_REG, context->rxfmt);
+	mcasp_set_reg(mcasp, DAVINCI_MCASP_ACLKXCTL_REG, context->aclkxctl);
+	mcasp_set_reg(mcasp, DAVINCI_MCASP_ACLKRCTL_REG, context->aclkrctl);
+	mcasp_set_reg(mcasp, DAVINCI_MCASP_PDIR_REG, context->pdir);
+
+	return 0;
+}
+#else
+#define davinci_mcasp_suspend NULL
+#define davinci_mcasp_resume NULL
+#endif
+
 #define DAVINCI_MCASP_RATES	SNDRV_PCM_RATE_8000_192000
 
 #define DAVINCI_MCASP_PCM_FMTS (SNDRV_PCM_FMTBIT_S8 | \
@@ -730,6 +773,8 @@ static const struct snd_soc_dai_ops davinci_mcasp_dai_ops = {
 static struct snd_soc_dai_driver davinci_mcasp_dai[] = {
 	{
 		.name		= "davinci-mcasp.0",
+		.suspend	= davinci_mcasp_suspend,
+		.resume		= davinci_mcasp_resume,
 		.playback	= {
 			.channels_min	= 2,
 			.channels_max	= 32 * 16,

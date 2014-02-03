@@ -218,6 +218,16 @@
 				0x144 (PIN_INPUT_PULLDOWN | MUX_MODE4) /* rmii1_ref_clk.mcasp1_axr3 */
 			>;
 		};
+
+		mcasp1_sleep_pins: mcasp1_sleep_pins {
+			pinctrl-single,pins = <
+				0x10c (PIN_INPUT_PULLDOWN | MUX_MODE7)
+				0x110 (PIN_INPUT_PULLDOWN | MUX_MODE7)
+				0x108 (PIN_INPUT_PULLDOWN | MUX_MODE7)
+				0x144 (PIN_INPUT_PULLDOWN | MUX_MODE7)
+			>;
+		};
+
 	};
 
 	ocp {
@@ -579,8 +589,9 @@
 };
 
 &mcasp1 {
-		pinctrl-names = "default";
+		pinctrl-names = "default", "sleep";
 		pinctrl-0 = <&mcasp1_pins>;
+		pinctrl-1 = <&mcasp1_sleep_pins>;
 
 		status = "okay";
 
