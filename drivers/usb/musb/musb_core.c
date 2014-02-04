@@ -2325,12 +2325,6 @@ static int musb_runtime_resume(struct device *dev)
 	if (!musb->suspended)
 		return 0;
 
-	/* HACK
-	 * Delay here to prevent Spurious Babble interrupt on
-	 * remote wakeup resume.
-	 */
-	mdelay(20);
-
 	musb_restore_context(musb);
 	musb->suspended = false;
 
