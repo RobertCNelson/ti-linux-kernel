@@ -124,64 +124,6 @@ const struct vpfe_standard vpfe_standards[] = {
 	{V4L2_STD_625_50, 720, 576, {54, 59}, 1},
 };
 
-/* Used when raw Bayer image from isif is directly captured to SDRAM */
-static const struct vpfe_pixel_format vpfe_pix_fmts[] = {
-	{
-		.fmtdesc = {
-			.index = 0,
-			.type = V4L2_BUF_TYPE_VIDEO_CAPTURE,
-			.description = "Bayer GrRBGb 8bit A-Law compr.",
-			.pixelformat = V4L2_PIX_FMT_SBGGR8,
-		},
-		.bpp = 1,
-	},
-	{
-		.fmtdesc = {
-			.index = 1,
-			.type = V4L2_BUF_TYPE_VIDEO_CAPTURE,
-			.description = "Bayer GrRBGb - 16bit",
-			.pixelformat = V4L2_PIX_FMT_SBGGR16,
-		},
-		.bpp = 2,
-	},
-	{
-		.fmtdesc = {
-			.index = 2,
-			.type = V4L2_BUF_TYPE_VIDEO_CAPTURE,
-			.description = "Bayer GrRBGb 8bit DPCM compr.",
-			.pixelformat = V4L2_PIX_FMT_SGRBG10DPCM8,
-		},
-		.bpp = 1,
-	},
-	{
-		.fmtdesc = {
-			.index = 3,
-			.type = V4L2_BUF_TYPE_VIDEO_CAPTURE,
-			.description = "YCbCr 4:2:2 Interleaved UYVY",
-			.pixelformat = V4L2_PIX_FMT_UYVY,
-		},
-		.bpp = 2,
-	},
-	{
-		.fmtdesc = {
-			.index = 4,
-			.type = V4L2_BUF_TYPE_VIDEO_CAPTURE,
-			.description = "YCbCr 4:2:2 Interleaved YUYV",
-			.pixelformat = V4L2_PIX_FMT_YUYV,
-		},
-		.bpp = 2,
-	},
-	{
-		.fmtdesc = {
-			.index = 5,
-			.type = V4L2_BUF_TYPE_VIDEO_CAPTURE,
-			.description = "Y/CbCr 4:2:0 - Semi planar",
-			.pixelformat = V4L2_PIX_FMT_NV12,
-		},
-		.bpp = 1,
-	},
-};
-
 /* map mbus_fmt to pixelformat */
 void mbus_to_pix(struct vpfe_device *vpfe_dev,
 		const struct v4l2_mbus_framefmt *mbus,
@@ -926,7 +868,6 @@ vpfe_remote_subdev(struct vpfe_device *vpfe_dev, u32 *pad)
 
 	if (pad)
 		*pad = remote->index;
-	dev_dbg(vpfe_dev->pdev, "vpfe_remote_subdev: before media_entity_to_v4l2_subdev\n");
 	return media_entity_to_v4l2_subdev(remote->entity);
 }
 
@@ -1011,9 +952,6 @@ static int vpfe_enum_fmt(struct file *file, void  *priv,
 	ret = v4l2_subdev_call(subdev, pad, enum_mbus_code, NULL, &mbus_code);
 	if (ret)
 		return -EINVAL;
-
-	dev_dbg(vpfe_dev->pdev, "vpfe_enum_format: mbus index: %d code: %x\n",
-		mbus_code.index, mbus_code.code);
 
 	/* convert mbus_format to v4l2_format */
 	/* just populate pix with dummy size value, those don't matter here */
