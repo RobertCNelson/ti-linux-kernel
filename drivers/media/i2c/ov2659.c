@@ -309,8 +309,9 @@ struct ov2659 {
 
 	unsigned short id;
 	const struct ov2659_framesize *frame_size;
-	/* YUYV sequence (pixel format) control register */
-	u8 tslb_reg;
+	/* Current Output format Register Value (REG_FORMAT_CTRL00) */
+	struct sensor_register *format_ctrl_regs;
+
 	struct v4l2_mbus_framefmt format;
 
 	struct ov2659_ctrls ctrls;
@@ -853,15 +854,56 @@ static const struct ov2659_framesize ov2659_framesizes[] = {
 struct ov2659_pixfmt {
 	enum v4l2_mbus_pixelcode code;
 	u32 colorspace;
-	/* REG_TSLB value, only bits [3:2] may be set. */
-	u8 tslb_reg;
+	/* Output format Register Value (REG_FORMAT_CTRL00) */
+	struct sensor_register *format_ctrl_regs;
+};
+
+/* Output Format Configuration
+ * 0x00 -- RAW Bayer BGGR <== Verified
+ * 0x30 -- YUV422 YUYV    <== Verified
+ * 0x32 -- YUV422 UYVY    <== Verified
+ * 0x40 -- YUV420         <== Does not appear to be supported
+ * 0x50 -- YUV420 Legacy  <== Does not appear to be supported
+ * 0x60 -- RGB565         <== Not Verified yet
+ */
+
+/* YUV422 YUYV*/
+static struct sensor_register ov2659_format_yuyv[] = {
+	{0x4300, 0x30}, /* Format */
+	{0xffff, 0x0}
+};
+
+/* YUV422 UYVY  */
+static struct sensor_register ov2659_format_uyvy[] = {
+	{0x4300, 0x32}, /* Format */
+	{0xffff, 0x0}
+};
+
+/* Raw Bayer BGGR */
+static struct sensor_register ov2659_format_bggr[] = {
+	{0x4300, 0x00}, /* Format */
+	{0xffff, 0x0}
+};
+
+/* RGB565 */
+static struct sensor_register ov2659_format_rgb565[] = {
+	{0x4300, 0x60}, /* Format */
+	{0xffff, 0x0}
 };
 
 static const struct ov2659_pixfmt ov2659_formats[] = {
-	{ V4L2_MBUS_FMT_YUYV8_2X8, V4L2_COLORSPACE_JPEG, 0x00},
-	{ V4L2_MBUS_FMT_UYVY8_2X8, V4L2_COLORSPACE_JPEG, 0x0c},
-	{ V4L2_MBUS_FMT_RGB565_2X8_BE, V4L2_COLORSPACE_JPEG, 0x04},
-	{ V4L2_MBUS_FMT_SBGGR8_1X8, V4L2_COLORSPACE_SMPTE170M, 0x08},
+	{ V4L2_MBUS_FMT_YUYV8_2X8,
+		V4L2_COLORSPACE_JPEG,
+		ov2659_format_yuyv},
+	{ V4L2_MBUS_FMT_UYVY8_2X8,
+		V4L2_COLORSPACE_JPEG,
+		ov2659_format_uyvy},
+	{ V4L2_MBUS_FMT_RGB565_2X8_BE,
+		V4L2_COLORSPACE_JPEG,
+		ov2659_format_rgb565},
+	{ V4L2_MBUS_FMT_SBGGR8_1X8,
+		V4L2_COLORSPACE_SMPTE170M,
+		ov2659_format_bggr},
 };
 
 /*
@@ -1640,7 +1682,8 @@ static int ov2659_set_fmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 		} else {
 			ov2659->frame_size = size;
 			ov2659->format = fmt->format;
-			ov2659->tslb_reg = ov2659_formats[index].tslb_reg;
+			ov2659->format_ctrl_regs =
+				ov2659_formats[index].format_ctrl_regs;
 			ov2659->apply_frame_fmt = 1;
 		}
 	}
@@ -1663,7 +1706,15 @@ static int ov2659_set_fmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 static int ov2659_set_frame_size(struct ov2659 *ov2659)
 {
 	return ov2659_write_array(ov2659->client,
-						 ov2659->frame_size->regs);
+					ov2659->frame_size->regs);
+}
+
+static int ov2659_set_format(struct ov2659 *ov2659)
+{
+	struct i2c_client *client = ov2659->client;
+	dev_dbg(&client->dev, "%s\n", __func__);
+	return ov2659_write_array(ov2659->client,
+					ov2659->format_ctrl_regs);
 }
 
 static int __ov2659_set_params(struct ov2659 *ov2659)
@@ -1675,14 +1726,9 @@ static int __ov2659_set_params(struct ov2659 *ov2659)
 		if (ret < 0)
 			return ret;
 
-/*		ret = ov2659_read(ov2659->client, REG_TSLB, &reg);
+		ret = ov2659_set_format(ov2659);
 		if (ret < 0)
 			return ret;
-		reg &= ~TSLB_YUYV_MASK;
-		reg |= ov2659->tslb_reg;
-		ret = ov2659_write(ov2659->client, REG_TSLB, reg);
-		if (ret < 0)
-			return ret; */
 	}
 
 	return 0;
@@ -1899,6 +1945,7 @@ static int ov2659_probe(struct i2c_client *client,
 
 	ov2659_get_default_format(&ov2659->format);
 	ov2659->frame_size = &ov2659_framesizes[2];
+	ov2659->format_ctrl_regs = ov2659_formats[0].format_ctrl_regs;
 	ov2659->fiv = &ov2659_intervals[1];
 
 	ret = ov2659_detect_sensor(sd);
