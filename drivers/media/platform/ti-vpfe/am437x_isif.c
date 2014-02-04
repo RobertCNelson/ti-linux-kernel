@@ -600,6 +600,9 @@ static int isif_set_pixel_format(struct vpfe_isif_device *isif, u32 pixfmt)
 
 	if (isif->isif_cfg.if_type == VPFE_RAW_BAYER) {
 		isif->isif_cfg.bayer.pix_fmt = ISIF_PIXFMT_RAW;
+		/* Need to clear it in case it was left on
+		   after the last capture. */
+		isif->isif_cfg.bayer.config_params.alaw.enable = 0;
 		if (pixfmt == V4L2_PIX_FMT_SBGGR8)
 			isif->isif_cfg.bayer.config_params.alaw.enable = 1;
 		else if (pixfmt == V4L2_PIX_FMT_YUYV)
@@ -609,6 +612,8 @@ static int isif_set_pixel_format(struct vpfe_isif_device *isif, u32 pixfmt)
 		else if (pixfmt == V4L2_PIX_FMT_YUV420)
 			; /*nothing for now */
 		else if (pixfmt == V4L2_PIX_FMT_NV12)
+			; /*nothing for now */
+		else if (pixfmt == V4L2_PIX_FMT_RGB565X)
 			; /*nothing for now */
 		else if (pixfmt != V4L2_PIX_FMT_SBGGR16)
 			return -EINVAL;
@@ -958,6 +963,7 @@ static void isif_config_defaults(struct vpfe_isif_device *isif)
 	isif->isif_cfg.bayer.win.width = 800;
 	isif->isif_cfg.bayer.win.height = 600;
 	isif->isif_cfg.bayer.config_params.data_sz = ISIF_DATA_8BITS;
+	isif->isif_cfg.bayer.config_params.alaw.gamma_wd = ISIF_GAMMA_BITS_09_0;
 }
 
 int vpfe_isif_init(struct vpfe_isif_device *isif, struct platform_device *pdev)
