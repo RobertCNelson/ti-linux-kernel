@@ -2584,6 +2584,10 @@ static int vpfe_suspend(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct vpfe_device *vpfe_dev = platform_get_drvdata(pdev);
 	isif_suspend(&vpfe_dev->vpfe_isif, dev);
+
+	/* Select sleep pin state */
+	pinctrl_pm_select_sleep_state(dev);
+
 	return 0;
 }
 
@@ -2592,6 +2596,10 @@ static int vpfe_resume(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct vpfe_device *vpfe_dev = platform_get_drvdata(pdev);
 	isif_resume(&vpfe_dev->vpfe_isif, dev);
+
+	/* Select default pin state */
+	pinctrl_pm_select_default_state(dev);
+
 	return 0;
 }
 
