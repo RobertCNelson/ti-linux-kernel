@@ -1845,12 +1845,18 @@ static int fb_suspend(struct platform_device *dev, pm_message_t state)
 	pm_runtime_put_sync(&dev->dev);
 	console_unlock();
 
+	/* Select sleep pin state */
+	pinctrl_pm_select_sleep_state(&dev->dev);
+
 	return 0;
 }
 static int fb_resume(struct platform_device *dev)
 {
 	struct fb_info *info = platform_get_drvdata(dev);
 	struct da8xx_fb_par *par = info->par;
+
+	/* Select default pin state */
+	pinctrl_pm_select_default_state(&dev->dev);
 
 	console_lock();
 	pm_runtime_get_sync(&dev->dev);
