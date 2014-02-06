@@ -625,6 +625,11 @@ static int lcd_cfg_frame_buffer(struct da8xx_fb_par *par, u32 width, u32 height,
 
 	par->palette_sz = 16 * 2;
 
+	if (lcd_revision == LCD_VERSION_2) {
+		reg &= ~LCD_V2_TFT_24BPP_MODE;
+		reg &= ~LCD_V2_TFT_24BPP_UNPACK;
+	}
+
 	switch (bpp) {
 	case 1:
 	case 2:
