@@ -817,6 +817,7 @@ static int dsps_suspend(struct device *dev)
 	glue->context.tx_mode = dsps_readl(mbase, wrp->tx_mode);
 	glue->context.rx_mode = dsps_readl(mbase, wrp->rx_mode);
 
+	usb_phy_shutdown(musb->xceiv);
 	return 0;
 }
 
@@ -827,6 +828,7 @@ static int dsps_resume_noirq(struct device *dev)
 	struct musb *musb = platform_get_drvdata(glue->musb);
 	void __iomem *mbase = musb->ctrl_base;
 
+	usb_phy_init(musb->xceiv);
 	dsps_writel(mbase, wrp->control, glue->context.control);
 	dsps_writel(mbase, wrp->epintr_set, glue->context.epintr);
 	dsps_writel(mbase, wrp->coreintr_set, glue->context.coreintr);

@@ -106,8 +106,6 @@ static int am335x_phy_suspend(struct device *dev)
 	if (device_may_wakeup(dev))
 		phy_ctrl_wkup(am_phy->phy_ctrl, am_phy->id, true);
 
-	phy_ctrl_power(am_phy->phy_ctrl, am_phy->id, false);
-
 	return 0;
 }
 
@@ -115,8 +113,6 @@ static int am335x_phy_resume(struct device *dev)
 {
 	struct platform_device	*pdev = to_platform_device(dev);
 	struct am335x_phy	*am_phy = platform_get_drvdata(pdev);
-
-	phy_ctrl_power(am_phy->phy_ctrl, am_phy->id, true);
 
 	if (device_may_wakeup(dev))
 		phy_ctrl_wkup(am_phy->phy_ctrl, am_phy->id, false);
