@@ -2490,12 +2490,6 @@ static int musb_bus_suspend(struct usb_hcd *hcd)
 
 static int musb_bus_resume(struct usb_hcd *hcd)
 {
-	struct musb *musb = hcd_to_musb(hcd);
-
-	if (musb->config &&
-	    musb->config->host_port_deassert_reset_at_resume)
-		musb_port_reset(musb, false);
-
 	return 0;
 }
 
