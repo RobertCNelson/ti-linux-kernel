@@ -801,7 +801,7 @@ static const struct of_device_id musb_dsps_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, musb_dsps_of_match);
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 static int dsps_suspend(struct device *dev)
 {
 	struct dsps_glue *glue = dev_get_drvdata(dev);
@@ -820,7 +820,7 @@ static int dsps_suspend(struct device *dev)
 	return 0;
 }
 
-static int dsps_resume(struct device *dev)
+static int dsps_resume_noirq(struct device *dev)
 {
 	struct dsps_glue *glue = dev_get_drvdata(dev);
 	const struct dsps_musb_wrapper *wrp = glue->wrp;
@@ -839,7 +839,12 @@ static int dsps_resume(struct device *dev)
 }
 #endif
 
-static SIMPLE_DEV_PM_OPS(dsps_pm_ops, dsps_suspend, dsps_resume);
+static const struct dev_pm_ops dsps_pm_ops = {
+#ifdef CONFIG_PM_SLEEP
+	.suspend        = dsps_suspend,
+	.resume_noirq   = dsps_resume_noirq,
+#endif
+};
 
 static struct platform_driver dsps_usbss_driver = {
 	.probe		= dsps_probe,
