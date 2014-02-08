@@ -80,12 +80,21 @@
 			>;
 		};
 
-		uart1_pins: pinmux_uart1_pins {
+		uart1_pins_default: pinmux_uart1_pins_default {
 			pinctrl-single,pins = <
 				0x178 (PIN_INPUT | MUX_MODE0)			/* uart1_ctsn.uart1_ctsn */
 				0x17C (PIN_OUTPUT_PULLDOWN | MUX_MODE0)	/* uart1_rtsn.uart1_rtsn */
 				0x180 (PIN_INPUT_PULLUP | MUX_MODE0)	/* uart1_rxd.uart1_rxd */
 				0x184 (PIN_OUTPUT_PULLDOWN | MUX_MODE0) 	/* uart1_txd.uart1_txd */
+			>;
+		};
+
+		uart1_pins_sleep: pinmux_uart1_pins_sleep {
+			pinctrl-single,pins = <
+				0x178 (PIN_INPUT_PULLDOWN | MUX_MODE7)
+				0x17C (PIN_INPUT_PULLDOWN | MUX_MODE7)
+				0x180 (PIN_INPUT_PULLDOWN | MUX_MODE7)
+				0x184 (PIN_INPUT_PULLDOWN | MUX_MODE7)
 			>;
 		};
 
@@ -298,8 +307,9 @@
 		};
 
 		uart1: serial@48022000 {
-			pinctrl-names = "default";
-			pinctrl-0 = <&uart1_pins>;
+			pinctrl-names = "default", "sleep";
+			pinctrl-0 = <&uart1_pins_default>;
+			pinctrl-1 = <&uart1_pins_sleep>;
 
 			status = "okay";
 		};
