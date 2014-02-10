@@ -353,6 +353,8 @@ static int dpi_display_enable(struct omap_dss_device *dssdev)
 
 	mutex_lock(&dpi.lock);
 
+	pinctrl_pm_select_default_state(&dpi.pdev->dev);
+
 	if (dss_has_feature(FEAT_DPI_USES_VDDS_DSI) && !dpi.vdds_dsi_reg) {
 		DSSERR("no VDSS_DSI regulator\n");
 		r = -ENODEV;
@@ -421,6 +423,7 @@ err_get_dispc:
 err_reg_enable:
 err_no_out_mgr:
 err_no_reg:
+	pinctrl_pm_select_sleep_state(&dpi.pdev->dev);
 	mutex_unlock(&dpi.lock);
 	return r;
 }
@@ -443,6 +446,8 @@ static void dpi_display_disable(struct omap_dss_device *dssdev)
 
 	if (dss_has_feature(FEAT_DPI_USES_VDDS_DSI))
 		regulator_disable(dpi.vdds_dsi_reg);
+
+	pinctrl_pm_select_sleep_state(&dpi.pdev->dev);
 
 	mutex_unlock(&dpi.lock);
 }
