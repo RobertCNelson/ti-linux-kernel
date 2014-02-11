@@ -31,6 +31,7 @@
 #include "mmc.h"
 #include "wd_timer.h"
 #include "soc.h"
+#include "hdq1w.h"
 
 /*
  * IP blocks
@@ -1230,6 +1231,32 @@ static struct omap_hwmod am43xx_qspi_hwmod = {
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = AM43XX_CM_PER_QSPI_CLKCTRL_OFFSET,
+			.modulemode   = MODULEMODE_SWCTRL,
+		},
+	},
+};
+
+static struct omap_hwmod_class_sysconfig am43xx_hdq1w_sysc = {
+	.rev_offs       = 0x0000,
+	.sysc_offs      = 0x0014,
+	.syss_offs      = 0x0018,
+	.sysc_flags     = (SYSC_HAS_SOFTRESET),
+	.sysc_fields    = &omap_hwmod_sysc_type4,
+};
+
+static struct omap_hwmod_class am43xx_hdq1w_hwmod_class = {
+	.name   = "hdq1w",
+	.sysc   = &am43xx_hdq1w_sysc,
+	.reset	= &omap_hdq1w_reset,
+};
+
+static struct omap_hwmod am43xx_hdq1w_hwmod = {
+	.name           = "hdq1w",
+	.class          = &am43xx_hdq1w_hwmod_class,
+	.clkdm_name     = "l4ls_clkdm",
+	.prcm = {
+		.omap4 = {
+			.clkctrl_offs = AM43XX_CM_PER_HDQ1W_CLKCTRL_OFFSET,
 			.modulemode   = MODULEMODE_SWCTRL,
 		},
 	},
@@ -2496,6 +2523,14 @@ static struct omap_hwmod_ocp_if am43xx_l3_s__qspi = {
 	.user           = OCP_USER_MPU | OCP_USER_SDMA,
 };
 
+/* l4_per -> hdq1w */
+static struct omap_hwmod_ocp_if am43xx_l4_ls__hdq1w = {
+	.master         = &am33xx_l4_ls_hwmod,
+	.slave          = &am43xx_hdq1w_hwmod,
+	.clk            = "l4ls_gclk",
+	.user           = OCP_USER_MPU | OCP_USER_SDMA,
+};
+
 /* l3_main_1 -> usb_otg_ss0 */
 static struct omap_hwmod_ocp_if am43xx_l3_s__usbotgss0 = {
 	.master         = &am33xx_l3_s_hwmod,
@@ -3276,6 +3311,7 @@ static struct omap_hwmod_ocp_if *am43xx_hwmod_ocp_ifs[] __initdata = {
 	&am43xx_l4_ls__dss_rfbi,
 	&am43xx_l3__vpfe0,
 	&am43xx_l3__vpfe1,
+	&am43xx_l4_ls__hdq1w,
 	NULL,
 };
 
