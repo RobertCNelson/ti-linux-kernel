@@ -494,6 +494,12 @@
 			0x138 (PULL_UP | MUX_MODE7)
 		>;
 	};
+
+	hdq_pins: pinmux_hdq_pins {
+		pinctrl-single,pins = <
+			0x234 (PIN_INPUT_PULLUP | MUX_MODE1)    /* cam1_wen.hdq_gpio */
+		>;
+	};
 };
 
 &gpio0 {
@@ -558,27 +564,27 @@
 		};
 		partition@4 {
 			label = "QSPI.u-boot";
-			reg = <0x00040000 0x00180000>;
+			reg = <0x00040000 0x00100000>;
 		};
 		partition@5 {
 			label = "QSPI.u-boot-spl-os";
-			reg = <0x001c0000 0x00010000>;
+			reg = <0x00150000 0x00010000>;
 		};
 		partition@6 {
 			label = "QSPI.u-boot-env";
-			reg = <0x001d0000 0x00010000>;
+			reg = <0x00150000 0x00010000>;
 		};
 		partition@7 {
 			label = "QSPI.u-boot-env.backup1";
-			reg = <0x001e0000 0x0010000>;
+			reg = <0x00160000 0x0010000>;
 		};
 		partition@8 {
 			label = "QSPI.kernel";
-			reg = <0x001f0000 0x00500000>;
+			reg = <0x00170000 0x00800000>;
 		};
 		partition@9 {
 			label = "QSPI.file-system";
-			reg = <0x006f0000 0x03910000>;
+			reg = <0x00970000 0x03690000>;
 		};
 	};
 };
@@ -918,4 +924,10 @@
 
 &clkout_32k_mux_ck {
         clock-default =  <&clk_32k_tpm_ck>;
+};
+
+&hdq {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&hdq_pins>;
 };
