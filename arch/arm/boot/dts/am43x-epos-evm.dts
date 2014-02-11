@@ -464,6 +464,12 @@
 			0x138 (PULL_UP | MUX_MODE7)
 		>;
 	};
+
+	hdq_pins: pinmux_hdq_pins {
+		pinctrl-single,pins = <
+			0x234 (PIN_INPUT_PULLUP | MUX_MODE1)    /* cam1_wen.hdq_gpio */
+		>;
+	};
 };
 
 &gpio0 {
@@ -886,4 +892,10 @@
 
 &clkout_32k_mux_ck {
         clock-default =  <&clk_32k_tpm_ck>;
+};
+
+&hdq {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&hdq_pins>;
 };
