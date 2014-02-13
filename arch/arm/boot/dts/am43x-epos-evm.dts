@@ -603,7 +603,7 @@
 		};
 		partition@5 {
 			label = "QSPI.u-boot-spl-os";
-			reg = <0x00150000 0x00010000>;
+			reg = <0x00140000 0x00010000>;
 		};
 		partition@6 {
 			label = "QSPI.u-boot-env";
