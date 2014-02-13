@@ -688,7 +688,7 @@
 		};
 		partition@8 {
 			label = "QSPI.kernel";
-			reg = <0x00170000 0x00970000>;
+			reg = <0x00170000 0x0800000>;
 		};
 		partition@9 {
 			label = "QSPI.file-system";
