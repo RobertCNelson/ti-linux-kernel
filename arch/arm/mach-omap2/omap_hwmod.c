@@ -181,6 +181,9 @@
  * device drivers.  Until then, this should avoid huge blocks of cpu_is_*()
  * conditionals in this code.
  */
+
+#define SOC_HWMOD_CHECK_FOR_CONTEXT_FLAG	(0x1 << 0)
+
 struct omap_hwmod_soc_ops {
 	void (*enable_module)(struct omap_hwmod *oh);
 	int (*disable_module)(struct omap_hwmod *oh);
@@ -194,6 +197,7 @@ struct omap_hwmod_soc_ops {
 	int (*init_clkdm)(struct omap_hwmod *oh);
 	void (*update_context_lost)(struct omap_hwmod *oh);
 	int (*get_context_lost)(struct omap_hwmod *oh);
+	u8 flags;
 };
 
 /* soc_ops: adapts the omap_hwmod code to the currently-booted SoC */
@@ -4117,9 +4121,19 @@ int omap_hwmod_get_context_loss_count(struct omap_hwmod *oh)
 	struct powerdomain *pwrdm;
 	int ret = 0;
 
-	if (soc_ops.get_context_lost)
-		return soc_ops.get_context_lost(oh);
+	if (soc_ops.get_context_lost) {
+		/*
+		 * On SoCs like AM437x where we dont use hwmod to check context
+		 * loss on certain devices..
+		 */
+		if ((soc_ops.flags & SOC_HWMOD_CHECK_FOR_CONTEXT_FLAG) &&
+		    !(oh->prcm.omap4.flags & HWMOD_AM437X_HAS_CONTEXT_LOSS_BIT))
+			goto get_pwrdm_context_loss_count;
 
+		return soc_ops.get_context_lost(oh);
+	}
+
+get_pwrdm_context_loss_count:
 	pwrdm = omap_hwmod_get_pwrdm(oh);
 	if (pwrdm)
 		ret = pwrdm_get_context_loss_count(pwrdm);
@@ -4247,6 +4261,7 @@ void __init omap_hwmod_init(void)
 		soc_ops.init_clkdm = _init_clkdm;
 		soc_ops.update_context_lost = _am437x_update_context_lost;
 		soc_ops.get_context_lost = _omap4_get_context_lost;
+		soc_ops.flags = SOC_HWMOD_CHECK_FOR_CONTEXT_FLAG;
 	} else if (soc_is_am33xx()) {
 		soc_ops.enable_module = _am33xx_enable_module;
 		soc_ops.disable_module = _am33xx_disable_module;
