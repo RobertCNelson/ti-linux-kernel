@@ -2124,6 +2124,31 @@ static void _omap4_update_context_lost(struct omap_hwmod *oh)
 }
 
 /**
+ * _am437x_update_context_lost - increment hwmod context loss counter if
+ * hwmod context was lost, and clear hardware context loss reg
+ * @oh: hwmod to check for context loss
+ *
+ * If the PRCM indicates that the hwmod @oh lost context, increment
+ * our in-memory context loss counter, and clear the RM_*_CONTEXT
+ * bits. No return value.
+ */
+static void _am437x_update_context_lost(struct omap_hwmod *oh)
+{
+	if (!(oh->prcm.omap4.flags & HWMOD_AM437X_HAS_CONTEXT_LOSS_BIT))
+		return;
+
+	if (!prm_was_any_context_lost_old(oh->clkdm->pwrdm.ptr->prcm_partition,
+					  oh->clkdm->pwrdm.ptr->prcm_offs,
+					  oh->prcm.omap4.context_offs))
+		return;
+
+	oh->prcm.omap4.context_lost_counter++;
+	prm_clear_context_loss_flags_old(oh->clkdm->pwrdm.ptr->prcm_partition,
+					 oh->clkdm->pwrdm.ptr->prcm_offs,
+					 oh->prcm.omap4.context_offs);
+}
+
+/**
  * _omap4_get_context_lost - get context loss counter for a hwmod
  * @oh: hwmod to get context loss counter for
  *
@@ -4220,6 +4245,8 @@ void __init omap_hwmod_init(void)
 		soc_ops.deassert_hardreset = _omap4_deassert_hardreset;
 		soc_ops.is_hardreset_asserted = _omap4_is_hardreset_asserted;
 		soc_ops.init_clkdm = _init_clkdm;
+		soc_ops.update_context_lost = _am437x_update_context_lost;
+		soc_ops.get_context_lost = _omap4_get_context_lost;
 	} else if (soc_is_am33xx()) {
 		soc_ops.enable_module = _am33xx_enable_module;
 		soc_ops.disable_module = _am33xx_disable_module;

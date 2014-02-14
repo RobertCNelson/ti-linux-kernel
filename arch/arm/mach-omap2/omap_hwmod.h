@@ -450,6 +450,7 @@ struct omap_hwmod_omap2_prcm {
  *     flag bit should be set in those cases
  */
 #define HWMOD_OMAP4_NO_CONTEXT_LOSS_BIT		(1 << 0)
+#define HWMOD_AM437X_HAS_CONTEXT_LOSS_BIT		(1 << 1)
 
 /**
  * struct omap_hwmod_omap4_prcm - OMAP4-specific PRCM data
