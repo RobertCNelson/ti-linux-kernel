@@ -1921,7 +1921,9 @@ static struct omap_hwmod am43xx_dss_core_hwmod = {
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = AM43XX_CM_PER_DSS_CLKCTRL_OFFSET,
+			.context_offs = AM43XX_PRM_RM_PER_DSS_CONTEXT,
 			.modulemode   = MODULEMODE_SWCTRL,
+			.flags = HWMOD_AM437X_HAS_CONTEXT_LOSS_BIT,
 		},
 	},
 };
