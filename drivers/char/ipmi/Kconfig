@@ -5,6 +5,7 @@
 menuconfig IPMI_HANDLER
        tristate 'IPMI top-level message handler'
        depends on HAS_IOMEM
+       default y if ACPI
        help
          This enables the central IPMI message handler, required for IPMI
 	 to work.
@@ -45,6 +46,7 @@ config IPMI_DEVICE_INTERFACE
 
 config IPMI_SI
        tristate 'IPMI System Interface handler'
+       default y if ACPI
        help
          Provides a driver for System Interfaces (KCS, SMIC, BT).
 	 Currently, only KCS and SMIC are supported.  If
