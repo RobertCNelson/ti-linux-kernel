@@ -480,7 +480,8 @@ static int pixcir_i2c_ts_probe(struct i2c_client *client,
 	}
 
 	error = devm_request_threaded_irq(dev, client->irq, NULL, pixcir_ts_isr,
-				     IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+				     IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING
+				     | IRQF_ONESHOT,
 				     client->name, tsdata);
 	if (error) {
 		dev_err(dev, "failed to request irq %d\n", client->irq);
