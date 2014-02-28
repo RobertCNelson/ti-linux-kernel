@@ -465,6 +465,9 @@ static int titsc_suspend(struct device *dev)
 
 	tscadc_dev = ti_tscadc_dev_get(to_platform_device(dev));
 	if (device_may_wakeup(tscadc_dev->dev)) {
+		/* Flush any pending interrupts */
+		titsc_writel(ts_dev, REG_IRQSTATUS, 0xffffffff);
+
 		idle = titsc_readl(ts_dev, REG_IRQENABLE);
 		titsc_writel(ts_dev, REG_IRQENABLE,
 				(idle | IRQENB_HW_PEN));
