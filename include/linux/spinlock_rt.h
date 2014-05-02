@@ -40,6 +40,7 @@ extern int atomic_dec_and_spin_lock(atomic_t *atomic, spinlock_t *lock);
 extern void __lockfunc __rt_spin_lock__no_mg(struct rt_mutex *lock);
 extern void __lockfunc __rt_spin_lock(struct rt_mutex *lock);
 extern void __lockfunc __rt_spin_unlock(struct rt_mutex *lock);
+extern int __lockfunc __rt_spin_trylock(struct rt_mutex *lock);
 
 #define spin_lock(lock)			rt_spin_lock(lock)
 
