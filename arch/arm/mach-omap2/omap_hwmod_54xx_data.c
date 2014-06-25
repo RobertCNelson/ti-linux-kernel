@@ -1106,7 +1106,8 @@ static struct omap_hwmod omap54xx_mcpdm_hwmod = {
 	 * current exception.
 	 */
 
-	.flags		= HWMOD_EXT_OPT_MAIN_CLK,
+	.flags		= HWMOD_EXT_OPT_MAIN_CLK | HWMOD_SWSUP_SIDLE,
+	.main_clk	= "pad_clks_ck",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = OMAP54XX_CM_ABE_MCPDM_CLKCTRL_OFFSET,
