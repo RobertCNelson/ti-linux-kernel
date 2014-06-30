@@ -59,23 +59,18 @@ struct hrtimer_sleeper;
 # define rt_mutex_debug_check_no_locks_held(task)	do { } while (0)
 #endif
 
-#ifdef CONFIG_DEBUG_RT_MUTEXES
-# define __DEBUG_RT_MUTEX_INITIALIZER(mutexname) \
-	, .name = #mutexname, .file = __FILE__, .line = __LINE__
 # define rt_mutex_init(mutex)					\
 	do {							\
 		raw_spin_lock_init(&(mutex)->wait_lock);	\
 		__rt_mutex_init(mutex, #mutex);			\
 	} while (0)
 
+#ifdef CONFIG_DEBUG_RT_MUTEXES
+# define __DEBUG_RT_MUTEX_INITIALIZER(mutexname) \
+	, .name = #mutexname, .file = __FILE__, .line = __LINE__
  extern void rt_mutex_debug_task_free(struct task_struct *tsk);
 #else
 # define __DEBUG_RT_MUTEX_INITIALIZER(mutexname)
-# define rt_mutex_init(mutex)					\
-	 do {							\
-		 raw_spin_lock_init(&(mutex)->wait_lock);	\
-		 __rt_mutex_init(mutex, #mutex);		\
-	 } while (0)
 # define rt_mutex_debug_task_free(t)			do { } while (0)
 #endif
 

@@ -250,7 +250,7 @@ void __lockfunc rt_read_lock(rwlock_t *rwlock)
 	 */
 	if (rt_mutex_owner(lock) != current) {
 		migrate_disable();
-		rwlock_acquire_read(&rwlock->dep_map, 0, 0, _RET_IP_);
+		rwlock_acquire(&rwlock->dep_map, 0, 0, _RET_IP_);
 		__rt_spin_lock(lock);
 	}
 	rwlock->read_depth++;
@@ -366,6 +366,7 @@ void rt_down_write_nested_lock(struct rw_semaphore *rwsem,
 	rwsem_acquire_nest(&rwsem->dep_map, 0, 0, nest, _RET_IP_);
 	rt_mutex_lock(&rwsem->lock);
 }
+EXPORT_SYMBOL(rt_down_write_nested_lock);
 
 int  rt_down_read_trylock(struct rw_semaphore *rwsem)
 {
