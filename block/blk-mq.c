@@ -48,9 +48,14 @@ static struct blk_mq_ctx *blk_mq_get_ctx(struct request_queue *q)
 	return __blk_mq_get_ctx(q, get_cpu_light());
 }
 
-static void blk_mq_put_ctx(struct blk_mq_ctx *ctx)
+static void __blk_mq_put_ctx(struct blk_mq_ctx *ctx)
 {
 	spin_unlock(&ctx->cpu_lock);
+}
+
+static void blk_mq_put_ctx(struct blk_mq_ctx *ctx)
+{
+	__blk_mq_put_ctx(ctx);
 	put_cpu_light();
 }
 
@@ -980,6 +985,7 @@ static void blk_mq_hctx_notify(void *data, unsigned long action,
 		clear_bit(ctx->index_hw, hctx->ctx_map);
 	}
 	spin_unlock(&ctx->lock);
+	__blk_mq_put_ctx(ctx);
 
 	if (list_empty(&tmp))
 		return;

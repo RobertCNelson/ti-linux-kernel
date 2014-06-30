@@ -649,7 +649,7 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen)
 		/* CPU didn't die: tell everyone.  Can't complain. */
 		smpboot_unpark_threads(cpu);
 		cpu_notify_nofail(CPU_DOWN_FAILED | mod, hcpu);
-		goto out_cancel;
+		goto out_release;
 	}
 	BUG_ON(cpu_online(cpu));
 

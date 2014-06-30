@@ -94,7 +94,11 @@ static __always_inline bool __preempt_count_dec_and_test(void)
 {
 	if (____preempt_count_dec_and_test())
 		return true;
+#ifdef CONFIG_PREEMPT_LAZY
 	return test_thread_flag(TIF_NEED_RESCHED_LAZY);
+#else
+	return false;
+#endif
 }
 
 /*
@@ -102,8 +106,12 @@ static __always_inline bool __preempt_count_dec_and_test(void)
  */
 static __always_inline bool should_resched(void)
 {
+#ifdef CONFIG_PREEMPT_LAZY
 	return unlikely(!__this_cpu_read_4(__preempt_count) || \
 			test_thread_flag(TIF_NEED_RESCHED_LAZY));
+#else
+	return unlikely(!__this_cpu_read_4(__preempt_count));
+#endif
 }
 
 #ifdef CONFIG_PREEMPT

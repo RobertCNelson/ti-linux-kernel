@@ -126,8 +126,7 @@ do { \
 #define preempt_enable_notrace() \
 do { \
 	barrier(); \
-	if (unlikely(__preempt_count_dec_and_test() || \
-				test_thread_flag(TIF_NEED_RESCHED_LAZY))) \
+	if (unlikely(__preempt_count_dec_and_test())) \
 		__preempt_schedule_context(); \
 } while (0)
 #else

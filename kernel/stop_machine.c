@@ -675,7 +675,7 @@ int stop_machine_from_inactive_cpu(int (*fn)(void *), void *data,
 	ret = multi_cpu_stop(&msdata);
 
 	/* Busy wait for completion. */
-	while (!atomic_read(&done.nr_todo))
+	while (atomic_read(&done.nr_todo))
 		cpu_relax();
 
 	mutex_unlock(&stop_cpus_mutex);
