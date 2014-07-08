@@ -118,19 +118,6 @@ static inline __deprecated void set_need_resched(void)
 	 */
 }
 
-#ifdef CONFIG_PREEMPT_LAZY
-#define tif_need_resched() (test_thread_flag(TIF_NEED_RESCHED) || \
-		test_thread_flag(TIF_NEED_RESCHED_LAZY))
-#define tif_need_resched_now() (test_thread_flag(TIF_NEED_RESCHED))
-#define tif_need_resched_lazy() (test_thread_flag(TIF_NEED_RESCHED_LAZY))
-
-#else
-#define tif_need_resched() (test_thread_flag(TIF_NEED_RESCHED))
-#define tif_need_resched_now() (test_thread_flag(TIF_NEED_RESCHED))
-#define tif_need_resched_lazy() (0)
-
-#endif
-
 #if defined TIF_RESTORE_SIGMASK && !defined HAVE_SET_RESTORE_SIGMASK
 /*
  * An arch can define its own version of set_restore_sigmask() to get the
