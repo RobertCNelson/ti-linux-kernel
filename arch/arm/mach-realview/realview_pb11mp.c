@@ -345,6 +345,11 @@ static void __init realview_pb11mp_init(void)
 	 * Bits:  .... ...0 0111 1001 0000 .... .... ....
 	 */
 	l2x0_init(__io_address(REALVIEW_TC11MP_L220_BASE), 0x00790000, 0xfe000fff);
+	/*
+	 * due to a bug in the l220 cache controller, we must not call
+	 * the sync function. stub it out here instead!
+	 */
+	outer_cache.sync = NULL;
 #endif
 
 	realview_flash_register(realview_pb11mp_flash_resource,
