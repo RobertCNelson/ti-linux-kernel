@@ -37,6 +37,7 @@
 #include <linux/of.h>
 #include <net/netlink.h>
 #include <net/genetlink.h>
+#include <linux/suspend.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/thermal.h>
@@ -58,6 +59,9 @@ static LIST_HEAD(thermal_governor_list);
 
 static DEFINE_MUTEX(thermal_list_lock);
 static DEFINE_MUTEX(thermal_governor_lock);
+
+static struct notifier_block thermal_pm_nb;
+static bool no_thermal_update;
 
 static struct thermal_governor *def_governor;
 
@@ -490,6 +494,9 @@ static void thermal_zone_device_reset(struct thermal_zone_device *tz)
 void thermal_zone_device_update(struct thermal_zone_device *tz)
 {
 	int count;
+
+	if (no_thermal_update)
+		return;
 
 	if (!tz->ops->get_temp)
 		return;
@@ -1823,6 +1830,33 @@ static void thermal_unregister_governors(void)
 	thermal_gov_user_space_unregister();
 }
 
+static int thermal_notify(struct notifier_block *nb,
+				unsigned long mode, void *_unused)
+{
+	struct thermal_zone_device *tz;
+
+	switch (mode) {
+	case PM_HIBERNATION_PREPARE:
+	case PM_RESTORE_PREPARE:
+	case PM_SUSPEND_PREPARE:
+		no_thermal_update = true;
+		break;
+	case PM_POST_HIBERNATION:
+	case PM_POST_RESTORE:
+	case PM_POST_SUSPEND:
+		no_thermal_update = false;
+		list_for_each_entry(tz, &thermal_tz_list, node) {
+			thermal_zone_device_reset(tz);
+			thermal_zone_device_update(tz);
+		}
+		break;
+	default:
+		break;
+	}
+	return 0;
+}
+
+
 static int __init thermal_init(void)
 {
 	int result;
@@ -1842,6 +1876,9 @@ static int __init thermal_init(void)
 	result = of_parse_thermal_zones();
 	if (result)
 		goto exit_netlink;
+
+	thermal_pm_nb.notifier_call = thermal_notify;
+	register_pm_notifier(&thermal_pm_nb);
 
 	return 0;
 
