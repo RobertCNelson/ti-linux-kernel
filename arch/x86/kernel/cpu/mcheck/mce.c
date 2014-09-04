@@ -1411,6 +1411,11 @@ static int mce_notify_work_init(void)
 
 static void mce_notify_work(void)
 {
+	if (WARN_ON_ONCE(!mce_notify_helper)) {
+		pr_info(HW_ERR "Machine check event before MCE init; ignored\n");
+		return;
+	}
+
 	wake_up_process(mce_notify_helper);
 }
 #else
