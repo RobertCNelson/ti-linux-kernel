@@ -3229,15 +3229,20 @@ __ATTR(safe_mode_delay, S_IRUGO|S_IWUSR,safe_delay_show, safe_delay_store);
 static ssize_t
 level_show(struct mddev *mddev, char *page)
 {
-	struct md_personality *p = mddev->pers;
+	struct md_personality *p;
+	int ret;
+	spin_lock(&mddev->lock);
+	p = mddev->pers;
 	if (p)
-		return sprintf(page, "%s\n", p->name);
+		ret = sprintf(page, "%s\n", p->name);
 	else if (mddev->clevel[0])
-		return sprintf(page, "%s\n", mddev->clevel);
+		ret = sprintf(page, "%s\n", mddev->clevel);
 	else if (mddev->level != LEVEL_NONE)
-		return sprintf(page, "%d\n", mddev->level);
+		ret = sprintf(page, "%d\n", mddev->level);
 	else
-		return 0;
+		ret = 0;
+	spin_unlock(&mddev->lock);
+	return ret;
 }
 
 static ssize_t
@@ -3245,7 +3250,7 @@ level_store(struct mddev *mddev, const char *buf, size_t len)
 {
 	char clevel[16];
 	ssize_t rv = len;
-	struct md_personality *pers;
+	struct md_personality *pers, *oldpers;
 	long level;
 	void *priv;
 	struct md_rdev *rdev;
@@ -3336,10 +3341,11 @@ level_store(struct mddev *mddev, const char *buf, size_t len)
 	}
 
 	/* Looks like we have a winner */
+	oldpers = mddev->pers;
 	mddev_suspend(mddev);
-	mddev->pers->stop(mddev);
+	oldpers->stop(mddev);
 
-	if (mddev->pers->sync_request == NULL &&
+	if (oldpers->sync_request == NULL &&
 	    pers->sync_request != NULL) {
 		/* need to add the md_redundancy_group */
 		if (sysfs_create_group(&mddev->kobj, &md_redundancy_group))
@@ -3348,14 +3354,14 @@ level_store(struct mddev *mddev, const char *buf, size_t len)
 			       mdname(mddev));
 		mddev->sysfs_action = sysfs_get_dirent(mddev->kobj.sd, "sync_action");
 	}
-	if (mddev->pers->sync_request != NULL &&
+	if (oldpers->sync_request != NULL &&
 	    pers->sync_request == NULL) {
 		/* need to remove the md_redundancy_group */
 		if (mddev->to_remove == NULL)
 			mddev->to_remove = &md_redundancy_group;
 	}
 
-	if (mddev->pers->sync_request == NULL &&
+	if (oldpers->sync_request == NULL &&
 	    mddev->external) {
 		/* We are converting from a no-redundancy array
 		 * to a redundancy array and metadata is managed
@@ -3394,7 +3400,7 @@ level_store(struct mddev *mddev, const char *buf, size_t len)
 		}
 	}
 
-	module_put(mddev->pers->owner);
+	spin_lock(&mddev->lock);
 	mddev->pers = pers;
 	mddev->private = priv;
 	strlcpy(mddev->clevel, pers->name, sizeof(mddev->clevel));
@@ -3404,6 +3410,9 @@ level_store(struct mddev *mddev, const char *buf, size_t len)
 	mddev->delta_disks = 0;
 	mddev->reshape_backwards = 0;
 	mddev->degraded = 0;
+	spin_unlock(&mddev->lock);
+
+	module_put(oldpers->owner);
 	if (mddev->pers->sync_request == NULL) {
 		/* this is now an array without redundancy, so
 		 * it must always be in_sync
@@ -4826,8 +4835,9 @@ int md_run(struct mddev *mddev)
 			       mddev->clevel);
 		return -EINVAL;
 	}
-	mddev->pers = pers;
 	spin_unlock(&pers_lock);
+	spin_lock(&mddev->lock);
+	mddev->pers = pers;
 	if (mddev->level != pers->level) {
 		mddev->level = pers->level;
 		mddev->new_level = pers->level;
@@ -4838,6 +4848,7 @@ int md_run(struct mddev *mddev)
 	    pers->start_reshape == NULL) {
 		/* This personality cannot handle reshaping... */
 		mddev->pers = NULL;
+		spin_unlock(&mddev->lock);
 		module_put(pers->owner);
 		return -EINVAL;
 	}
@@ -4880,6 +4891,7 @@ int md_run(struct mddev *mddev)
 
 	if (start_readonly && mddev->ro == 0)
 		mddev->ro = 2; /* read-only, but switch on first write */
+	spin_unlock(&mddev->lock);
 
 	err = mddev->pers->run(mddev);
 	if (err)
@@ -4904,8 +4916,10 @@ int md_run(struct mddev *mddev)
 		}
 	}
 	if (err) {
+		spin_lock(&mddev->lock);
 		module_put(mddev->pers->owner);
 		mddev->pers = NULL;
+		spin_unlock(&mddev->lock);
 		bitmap_destroy(mddev);
 		return err;
 	}
@@ -5072,12 +5086,15 @@ EXPORT_SYMBOL_GPL(md_stop_writes);
 
 static void __md_stop(struct mddev *mddev)
 {
+	struct md_personality *pers = mddev->pers;
 	mddev->ready = 0;
-	mddev->pers->stop(mddev);
-	if (mddev->pers->sync_request && mddev->to_remove == NULL)
-		mddev->to_remove = &md_redundancy_group;
-	module_put(mddev->pers->owner);
+	spin_lock(&mddev->lock);
 	mddev->pers = NULL;
+	spin_unlock(&mddev->lock);
+	pers->stop(mddev);
+	if (pers->sync_request && mddev->to_remove == NULL)
+		mddev->to_remove = &md_redundancy_group;
+	module_put(pers->owner);
 	clear_bit(MD_RECOVERY_FROZEN, &mddev->recovery);
 }
 
@@ -6866,6 +6883,7 @@ static int md_seq_show(struct seq_file *seq, void *v)
 	if (mddev_lock(mddev) < 0)
 		return -EINTR;
 
+	spin_lock(&mddev->lock);
 	if (mddev->pers || mddev->raid_disks || !list_empty(&mddev->disks)) {
 		seq_printf(seq, "%s : %sactive", mdname(mddev),
 						mddev->pers ? "" : "in");
@@ -6936,6 +6954,7 @@ static int md_seq_show(struct seq_file *seq, void *v)
 
 		seq_printf(seq, "\n");
 	}
+	spin_unlock(&mddev->lock);
 	mddev_unlock(mddev);
 
 	return 0;
