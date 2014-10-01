@@ -938,11 +938,13 @@ static int omap_calculate_ecc(struct mtd_info *mtd, const u_char *dat,
 	u32 val;
 
 	val = readl(info->reg.gpmc_ecc_config);
+
 	if (((val >> 1) & 0x7) != info->gpmc_cs) {
 		pr_err("%s: invalid ECC configuration for chip-select=%d",
 				DRIVER_NAME, info->gpmc_cs);
 		return -EINVAL;
 	}
+
 	/* read ecc result */
 	val = readl(info->reg.gpmc_ecc1_result);
 	*ecc_code++ = val;          /* P128e, ..., P1e */
