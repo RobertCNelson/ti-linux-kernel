@@ -5291,11 +5291,14 @@ static void raid5d(struct md_thread *thread)
 static ssize_t
 raid5_show_stripe_cache_size(struct mddev *mddev, char *page)
 {
-	struct r5conf *conf = mddev->private;
+	struct r5conf *conf;
+	int ret = 0;
+	spin_lock(&mddev->lock);
+	conf = mddev->private;
 	if (conf)
-		return sprintf(page, "%d\n", conf->max_nr_stripes);
-	else
-		return 0;
+		ret = sprintf(page, "%d\n", conf->max_nr_stripes);
+	spin_unlock(&mddev->lock);
+	return ret;
 }
 
 int
@@ -5359,11 +5362,14 @@ raid5_stripecache_size = __ATTR(stripe_cache_size, S_IRUGO | S_IWUSR,
 static ssize_t
 raid5_show_preread_threshold(struct mddev *mddev, char *page)
 {
-	struct r5conf *conf = mddev->private;
+	struct r5conf *conf;
+	int ret = 0;
+	spin_lock(&mddev->lock);
+	conf = mddev->private;
 	if (conf)
-		return sprintf(page, "%d\n", conf->bypass_threshold);
-	else
-		return 0;
+		ret = sprintf(page, "%d\n", conf->bypass_threshold);
+	spin_unlock(&mddev->lock);
+	return ret;
 }
 
 static ssize_t
@@ -5393,11 +5399,14 @@ raid5_preread_bypass_threshold = __ATTR(preread_bypass_threshold,
 static ssize_t
 raid5_show_skip_copy(struct mddev *mddev, char *page)
 {
-	struct r5conf *conf = mddev->private;
+	struct r5conf *conf;
+	int ret = 0;
+	spin_lock(&mddev->lock);
+	conf = mddev->private;
 	if (conf)
-		return sprintf(page, "%d\n", conf->skip_copy);
-	else
-		return 0;
+		ret = sprintf(page, "%d\n", conf->skip_copy);
+	spin_unlock(&mddev->lock);
+	return ret;
 }
 
 static ssize_t
@@ -5449,11 +5458,14 @@ raid5_stripecache_active = __ATTR_RO(stripe_cache_active);
 static ssize_t
 raid5_show_group_thread_cnt(struct mddev *mddev, char *page)
 {
-	struct r5conf *conf = mddev->private;
+	struct r5conf *conf;
+	int ret = 0;
+	spin_lock(&mddev->lock);
+	conf = mddev->private;
 	if (conf)
-		return sprintf(page, "%d\n", conf->worker_cnt_per_group);
-	else
-		return 0;
+		ret = sprintf(page, "%d\n", conf->worker_cnt_per_group);
+	spin_unlock(&mddev->lock);
+	return ret;
 }
 
 static int alloc_thread_groups(struct r5conf *conf, int cnt,
@@ -6262,8 +6274,10 @@ static int stop(struct mddev *mddev)
 	md_unregister_thread(&mddev->thread);
 	if (mddev->queue)
 		mddev->queue->backing_dev_info.congested_fn = NULL;
-	free_conf(conf);
+	spin_lock(&mddev->lock);
 	mddev->private = NULL;
+	spin_unlock(&mddev->lock);
+	free_conf(conf);
 	mddev->to_remove = &raid5_attrs_group;
 	return 0;
 }
