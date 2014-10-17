@@ -182,18 +182,38 @@ static void axs101_early_init(void)
 	/* map GPIO 14:10 to ARC 9:5 (IRQ mux change for rev 2 boards) */
 	iowrite32(0x52, (void __iomem *) AXC001_CREG + CREG_MB_ARC770_IRQ_MUX);
 
-	/*
-	 * Set clock for PGU, 150 Mhz
-	 * to obtain 75MHz pixel clock, required for 720p60
-	 * (25 * 18) / 3 == 25 * 6 == 150
-	 */
+	/* Set clock divider value depending on mother board version */
+	if (ioread32((void __iomem *) AXS_MB_CREG + 0x234) & (1 << 28)) {
+		/*
+		 * 1 => HT-3 (rev3.0)
+		 *
+		 * Set clock for PGU, 74.25 Mhz
+		 * to obtain 74.25MHz pixel clock, required for 720p60
+		 * (27 * 22) / 8 == 74.25
+		 */
+		write_cgu_reg(0x2041, (void __iomem *) 0xe0010080,
+			      (void __iomem *) 0xe0010110);
+		write_cgu_reg((22 << 6) | 22, (void __iomem *) 0xe0010084,
+			      (void __iomem *) 0xe0010110);
+		write_cgu_reg((8 << 6) | 8, (void __iomem *) 0xe0010088,
+			      (void __iomem *) 0xe0010110);
+	}
+	else {
+		/*
+		 * 0 => HT-2 (rev2.0)
+		 *
+		 * Set clock for PGU, 150 Mhz
+		 * to obtain 75MHz pixel clock, required for 720p60
+		 * (25 * 18) / 3 == 25 * 6 == 150
+		 */
 
-	write_cgu_reg(0x2000,
-		      (void __iomem *) 0xe0010080, (void __iomem *) 0xe0010110);
-	write_cgu_reg((18 << 6) | 18,
-		      (void __iomem *) 0xe0010084, (void __iomem *) 0xe0010110);
-	write_cgu_reg((3 << 6) | 3,
-		      (void __iomem *) 0xe0010088, (void __iomem *) 0xe0010110);
+		write_cgu_reg(0x2000, (void __iomem *) 0xe0010080,
+			      (void __iomem *) 0xe0010110);
+		write_cgu_reg((18 << 6) | 18, (void __iomem *) 0xe0010084,
+			      (void __iomem *) 0xe0010110);
+		write_cgu_reg((3 << 6) | 3, (void __iomem *) 0xe0010088,
+			      (void __iomem *) 0xe0010110);
+	}
 }
 
 static const char *axs101_compat[] __initconst = {
