@@ -49,12 +49,14 @@ EXPORT_SYMBOL(iounmap);
 
 #undef memcpy
 #undef memset
-#undef strcmp
 extern void * memset(void *, int, __kernel_size_t);
 extern void * memcpy(void *, const void *, __kernel_size_t);
 EXPORT_SYMBOL(memcpy);
 EXPORT_SYMBOL(memset);
+#ifdef CONFIG_ETRAX_ARCH_V32
+#undef strcmp
 EXPORT_SYMBOL(strcmp);
+#endif
 
 #ifdef CONFIG_ETRAX_FAST_TIMER
 /* Fast timer functions */
