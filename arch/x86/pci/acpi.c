@@ -270,12 +270,13 @@ static acpi_status setup_resource(struct acpi_resource *acpi_res, void *data)
 		if (r.end <= r.start) {
 			dev_info(&info->bridge->dev,
 				"host bridge window [%#llx-%#llx] (ignored, not CPU addressable)\n",
-				 r.start, orig_end);
+				 (unsigned long long)r.start, orig_end);
 			return AE_OK;
 		} else if (orig_end != r.end) {
 			dev_info(&info->bridge->dev,
 				"host bridge window [%#llx-%#llx] ([%#llx-%#llx] ignored, not CPU addressable)\n",
-				r.start, orig_end, r.end + 1, orig_end);
+				 (unsigned long long)r.start, orig_end,
+				 (unsigned long long)r.end + 1, orig_end);
 		}
 	}
 
