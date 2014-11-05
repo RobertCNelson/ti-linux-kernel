@@ -626,7 +626,7 @@ static int ft1000_open(struct net_device *dev)
 {
 	struct ft1000_info *pInfo = netdev_priv(dev);
 	struct ft1000_usb *pFt1000Dev = pInfo->priv;
-	struct timeval tv;
+	time64_t time;
 
 	DEBUG("ft1000_open is called for card %d\n", pFt1000Dev->CardNumber);
 
@@ -634,8 +634,8 @@ static int ft1000_open(struct net_device *dev)
 	pInfo->stats.tx_bytes = 0;
 	pInfo->stats.rx_packets = 0;
 	pInfo->stats.tx_packets = 0;
-	do_gettimeofday(&tv);
-	pInfo->ConTm = tv.tv_sec;
+	time = get_seconds();
+	pInfo->ConTm = time;
 	pInfo->ProgConStat = 0;
 
 	netif_start_queue(dev);
