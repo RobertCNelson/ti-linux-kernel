@@ -196,7 +196,7 @@ struct ssif_info {
 	struct ipmi_smi_msg *waiting_msg;
 	struct ipmi_smi_msg *curr_msg;
 	enum ssif_intf_state ssif_state;
-	unsigned long       ssif_debug;
+	unsigned int        ssif_debug;
 
 	struct ipmi_smi_handlers handlers;
 
@@ -1294,6 +1294,60 @@ restart:
 	return found;
 }
 
+static int ssif_parse_parms(struct ssif_info *ssif_info,
+			    const char *parms, u8 *slave_addr)
+{
+	int rv;
+	char end;
+
+	if (!parms)
+		return 0;
+
+	while (*parms) {
+		const char *next = parms;
+		const char *val;
+		int parmlen;
+
+		while (*next && !isspace(*next) && *next != '=')
+			next++;
+
+		if (*next != '=') {
+			pr_err("IPMI SSIF invalid parm starting at %s\n",
+			       parms);
+			return -EINVAL;
+		}
+
+		parmlen = next - parms;
+		next++;
+		val = next;
+		while (*next && !isspace(*next))
+			next++;
+
+		if (strncmp(parms, "ipmb", parmlen) == 0) {
+			rv = sscanf(val, "%hhx%c", slave_addr, &end);
+			if ((rv < 1) || ((rv > 1) && !isspace(end))) {
+				pr_err("Invalid ipmb address: %s\n", val);
+				return -EINVAL;
+			}
+		} else if (strncmp(parms, "debug", parmlen) == 0) {
+			rv = sscanf(val, "%i%c", &ssif_info->ssif_debug, &end);
+			if ((rv < 1) || ((rv > 1) && !isspace(end))) {
+				pr_err("Invalid debug value: %s\n", val);
+				return -EINVAL;
+			}
+		} else {
+			pr_err("Invalid IPMI SSIF parameter: %s\n", parms);
+			return -EINVAL;
+		}
+
+		while (*next && isspace(*next))
+			next++;
+		parms = next;
+	}
+
+	return 0;
+}
+
 static bool check_acpi(struct ssif_info *ssif_info, struct device *dev)
 {
 #ifdef CONFIG_ACPI
@@ -1337,6 +1391,12 @@ static int ssif_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		if (!addr_info) {
 			/* Must have come in through sysfs. */
 			ssif_info->addr_source = SI_HOTMOD;
+			rv = ssif_parse_parms(ssif_info, client->parms,
+					      &slave_addr);
+			if (rv) {
+				pr_err(PFX "Unable to parse parms from i2c\n");
+				goto out;
+			}
 		} else {
 			ssif_info->addr_source = addr_info->addr_src;
 			ssif_info->ssif_debug = addr_info->debug;
