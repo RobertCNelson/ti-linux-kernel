@@ -771,6 +771,7 @@ struct kvm_ppc_smmu_info {
 #define KVM_CAP_CHECK_EXTENSION_VM 105
 #define KVM_CAP_S390_USER_SIGP 106
 #define KVM_CAP_S390_SKEYS 107
+#define KVM_CAP_S390_INJECT_IRQ 108
 
 #ifdef KVM_CAP_IRQ_ROUTING
 
@@ -1149,6 +1150,8 @@ struct kvm_s390_ucas_mapping {
 /* Available with KVM_CAP_S390_SKEYS */
 #define KVM_S390_GET_SKEYS      _IOW(KVMIO, 0xb1, struct kvm_s390_skeys)
 #define KVM_S390_SET_SKEYS      _IOW(KVMIO, 0xb2, struct kvm_s390_skeys)
+/* Available with KVM_CAP_S390_INJECT_IRQ */
+#define KVM_S390_IRQ              _IOW(KVMIO,  0xb3, struct kvm_s390_irq)
 
 #define KVM_DEV_ASSIGN_ENABLE_IOMMU	(1 << 0)
 #define KVM_DEV_ASSIGN_PCI_2_3		(1 << 1)

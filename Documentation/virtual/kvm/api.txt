@@ -2774,6 +2774,51 @@ single frame starting at start_gfn for count frames.
 Note: If any architecturally invalid key value is found in the given data then
 the ioctl will return -EINVAL.
 
+4.91 KVM_S390_IRQ
+
+Capability: KVM_CAP_S390_INJECT_IRQ
+Architectures: s390
+Type: vcpu ioctl
+Parameters: struct kvm_s390_irq (in)
+Returns: 0 on success, -1 on error
+
+Allows to inject an interrupt to the guest.
+
+Interrupt parameters are passed via kvm_s390_irq:
+
+struct kvm_s390_irq {
+	__u64 type;
+	union {
+		struct kvm_s390_io_info io;
+		struct kvm_s390_ext_info ext;
+		struct kvm_s390_pgm_info pgm;
+		struct kvm_s390_emerg_info emerg;
+		struct kvm_s390_extcall_info extcall;
+		struct kvm_s390_prefix_info prefix;
+		struct kvm_s390_stop_info stop;
+		struct kvm_s390_mchk_info mchk;
+		char reserved[64];
+	} u;
+};
+
+type can be one of the following:
+
+KVM_S390_SIGP_STOP (vcpu) - sigp stop
+KVM_S390_PROGRAM_INT (vcpu) - program check
+KVM_S390_SIGP_SET_PREFIX (vcpu) - sigp set prefix
+KVM_S390_RESTART (vcpu) - restart
+KVM_S390_INT_VIRTIO (vm) - virtio external interrupt
+KVM_S390_INT_SERVICE (vm) - sclp external interrupt
+KVM_S390_INT_EMERGENCY (vcpu) - sigp emergency; source cpu in parm
+KVM_S390_INT_EXTERNAL_CALL (vcpu) - sigp external call
+KVM_S390_INT_IO(ai,cssid,ssid,schid) (vm) - compound value to indicate an
+    I/O interrupt (ai - adapter interrupt; cssid,ssid,schid - subchannel);
+    I/O interruption parameters in parm (subchannel) and parm64 (intparm,
+    interruption subclass)
+KVM_S390_MCHK (vm, vcpu) - machine check interrupt
+
+Note that the vcpu ioctl is asynchronous to vcpu execution.
+
 5. The kvm_run structure
 ------------------------
 
