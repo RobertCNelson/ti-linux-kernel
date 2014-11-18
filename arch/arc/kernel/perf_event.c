@@ -16,15 +16,149 @@
 #include <linux/perf_event.h>
 #include <linux/platform_device.h>
 #include <asm/arcregs.h>
+#include "perf_event.h"
 
-struct arc_pmu {
-	struct pmu	pmu;
-	int		counter_size;	/* in bits */
-	int		n_counters;
-	unsigned long	used_mask[BITS_TO_LONGS(ARC_PMU_MAX_HWEVENTS)];
-	int		ev_hw_idx[PERF_COUNT_ARC_HW_MAX];
+/*
+ * Some ARC pct quirks:
+ *
+ * PERF_COUNT_HW_STALLED_CYCLES_BACKEND
+ * PERF_COUNT_HW_STALLED_CYCLES_FRONTEND
+ *	The ARC 700 can either measure stalls per pipeline stage, or all stalls
+ *	combined; for now we assign all stalls to STALLED_CYCLES_BACKEND
+ *	and all pipeline flushes (e.g. caused by mispredicts, etc.) to
+ *	STALLED_CYCLES_FRONTEND.
+ *
+ *	We could start multiple performance counters and combine everything
+ *	afterwards, but that makes it complicated.
+ *
+ *	Note that I$ cache misses aren't counted by either of the two!
+ */
+
+static const char * const arc_pmu_ev_hw_map[] = {
+	/* count cycles */
+	[PERF_COUNT_HW_CPU_CYCLES] = "crun",
+	[PERF_COUNT_HW_REF_CPU_CYCLES] = "crun",
+	[PERF_COUNT_HW_BUS_CYCLES] = "crun",
+
+	[PERF_COUNT_HW_STALLED_CYCLES_FRONTEND] = "bflush",
+	[PERF_COUNT_HW_STALLED_CYCLES_BACKEND] = "bstall",
+
+	/* counts condition */
+	[PERF_COUNT_HW_INSTRUCTIONS] = "iall",
+	[PERF_COUNT_HW_BRANCH_INSTRUCTIONS] = "ijmp",
+	[PERF_COUNT_ARC_BPOK]         = "bpok",	  /* NP-NT, PT-T, PNT-NT */
+	[PERF_COUNT_HW_BRANCH_MISSES] = "bpfail", /* NP-T, PT-NT, PNT-T */
+
+	[PERF_COUNT_ARC_DCLM] = "dclm",		/* D-cache Load Miss */
+	[PERF_COUNT_ARC_DCSM] = "dcsm",		/* D-cache Store Miss */
+	[PERF_COUNT_ARC_ICM] = "icm",		/* I-cache Miss */
+	[PERF_COUNT_ARC_EDTLB] = "edtlb",	/* D-TLB Miss */
+	[PERF_COUNT_ARC_EITLB] = "eitlb",	/* I-TLB Miss */
 };
 
+#define C(_x)			PERF_COUNT_HW_CACHE_##_x
+#define CACHE_OP_UNSUPPORTED	0xffff
+
+static const unsigned arc_pmu_cache_map[C(MAX)][C(OP_MAX)][C(RESULT_MAX)] = {
+	[C(L1D)] = {
+		[C(OP_READ)] = {
+			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_MISS)]	= PERF_COUNT_ARC_DCLM,
+		},
+		[C(OP_WRITE)] = {
+			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_MISS)]	= PERF_COUNT_ARC_DCSM,
+		},
+		[C(OP_PREFETCH)] = {
+			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_MISS)]	= CACHE_OP_UNSUPPORTED,
+		},
+	},
+	[C(L1I)] = {
+		[C(OP_READ)] = {
+			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_MISS)]	= PERF_COUNT_ARC_ICM,
+		},
+		[C(OP_WRITE)] = {
+			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_MISS)]	= CACHE_OP_UNSUPPORTED,
+		},
+		[C(OP_PREFETCH)] = {
+			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_MISS)]	= CACHE_OP_UNSUPPORTED,
+		},
+	},
+	[C(LL)] = {
+		[C(OP_READ)] = {
+			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_MISS)]	= CACHE_OP_UNSUPPORTED,
+		},
+		[C(OP_WRITE)] = {
+			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_MISS)]	= CACHE_OP_UNSUPPORTED,
+		},
+		[C(OP_PREFETCH)] = {
+			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_MISS)]	= CACHE_OP_UNSUPPORTED,
+		},
+	},
+	[C(DTLB)] = {
+		[C(OP_READ)] = {
+			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_MISS)]	= PERF_COUNT_ARC_EDTLB,
+		},
+		[C(OP_WRITE)] = {
+			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_MISS)]	= CACHE_OP_UNSUPPORTED,
+		},
+		[C(OP_PREFETCH)] = {
+			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_MISS)]	= CACHE_OP_UNSUPPORTED,
+		},
+	},
+	[C(ITLB)] = {
+		[C(OP_READ)] = {
+			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_MISS)]	= PERF_COUNT_ARC_EITLB,
+		},
+		[C(OP_WRITE)] = {
+			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_MISS)]	= CACHE_OP_UNSUPPORTED,
+		},
+		[C(OP_PREFETCH)] = {
+			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_MISS)]	= CACHE_OP_UNSUPPORTED,
+		},
+	},
+	[C(BPU)] = {
+		[C(OP_READ)] = {
+			[C(RESULT_ACCESS)] = PERF_COUNT_HW_BRANCH_INSTRUCTIONS,
+			[C(RESULT_MISS)]	= PERF_COUNT_HW_BRANCH_MISSES,
+		},
+		[C(OP_WRITE)] = {
+			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_MISS)]	= CACHE_OP_UNSUPPORTED,
+		},
+		[C(OP_PREFETCH)] = {
+			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_MISS)]	= CACHE_OP_UNSUPPORTED,
+		},
+	},
+	[C(NODE)] = {
+		[C(OP_READ)] = {
+			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_MISS)]	= CACHE_OP_UNSUPPORTED,
+		},
+		[C(OP_WRITE)] = {
+			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_MISS)]	= CACHE_OP_UNSUPPORTED,
+		},
+		[C(OP_PREFETCH)] = {
+			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_MISS)]	= CACHE_OP_UNSUPPORTED,
+		},
+	},
+};
 /* read counter #idx; note that counter# != event# on ARC! */
 static uint64_t arc_pmu_read_counter(int idx)
 {
