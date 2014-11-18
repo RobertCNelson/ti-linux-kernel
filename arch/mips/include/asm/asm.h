@@ -342,6 +342,19 @@ symbol		=	value
 #define LONGLOG		3
 #endif
 
+#ifdef CONFIG_CPU_MIPSR6
+#define MIPS_ISA_LEVEL_RAW mips64r6
+#define MIPS_ISA_LEVEL "mips64r6"
+#define MIPS_ISA_ARCH_LEVEL_RAW MIPS_ISA_LEVEL_RAW
+#define MIPS_ISA_ARCH_LEVEL MIPS_ISA_LEVEL
+#else
+/* MIPS64 is a superset of MIPS32 */
+#define MIPS_ISA_LEVEL_RAW mips64r2
+#define MIPS_ISA_LEVEL "mips64r2"
+#define MIPS_ISA_ARCH_LEVEL_RAW arch=r4000
+#define MIPS_ISA_ARCH_LEVEL "arch=r4000"
+#endif /* CONFIG_CPU_MIPSR6 */
+
 /*
  * How to add/sub/load/store/shift pointers.
  */
