@@ -780,21 +780,18 @@ static int hid_scan_report(struct hid_device *hid)
 		hid->group = HID_GROUP_MULTITOUCH_WIN_8;
 
 	/*
-	* Vendor specific handlings
-	*/
-	if ((hid->vendor == USB_VENDOR_ID_SYNAPTICS) &&
-	    (hid->group == HID_GROUP_GENERIC) &&
-	    /* only bind to the mouse interface of composite USB devices */
-	    (hid->bus != BUS_USB || hid->type == HID_TYPE_USBMOUSE))
-		/* hid-rmi should take care of them, not hid-generic */
-		hid->group = HID_GROUP_RMI;
-
-	/*
 	 * Vendor specific handlings
 	 */
 	switch (hid->vendor) {
 	case USB_VENDOR_ID_WACOM:
 		hid->group = HID_GROUP_WACOM;
+		break;
+	case USB_VENDOR_ID_SYNAPTICS:
+		if ((hid->group == HID_GROUP_GENERIC) &&
+		    (hid->bus != BUS_USB || hid->type == HID_TYPE_USBMOUSE))
+			/* hid-rmi should only bind to the mouse interface of
+			 * composite USB devices */
+			hid->group = HID_GROUP_RMI;
 		break;
 	}
 
@@ -1822,6 +1819,7 @@ static const struct hid_device_id hid_have_special_driver[] = {
 	{ HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_S510_RECEIVER_2) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_RECEIVER) },
 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_HARMONY_PS3) },
+	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_T651) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_DINOVO_DESKTOP) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_DINOVO_EDGE) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_DINOVO_MINI) },
@@ -2539,7 +2537,8 @@ int hid_add_device(struct hid_device *hdev)
 	 * Scan generic devices for group information
 	 */
 	if (hid_ignore_special_drivers ||
-	    !hid_match_id(hdev, hid_have_special_driver)) {
+	    (!hdev->group &&
+	     !hid_match_id(hdev, hid_have_special_driver))) {
 		ret = hid_scan_report(hdev);
 		if (ret)
 			hid_warn(hdev, "bad device descriptor (%d)\n", ret);
