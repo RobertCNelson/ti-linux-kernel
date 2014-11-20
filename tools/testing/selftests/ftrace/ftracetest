@@ -37,7 +37,7 @@ abspath() {
 }
 
 find_testcases() { #directory
-  echo `find $1 -name \*.tc`
+  echo `find $1 -name \*.tc | sort`
 }
 
 parse_opts() { # opts
@@ -82,7 +82,7 @@ parse_opts() { # opts
 }
 
 # Parameters
-DEBUGFS_DIR=`grep debugfs /proc/mounts | cut -f2 -d' '`
+DEBUGFS_DIR=`grep debugfs /proc/mounts | cut -f2 -d' ' | head -1`
 TRACING_DIR=$DEBUGFS_DIR/tracing
 TOP_DIR=`absdir $0`
 TEST_DIR=$TOP_DIR/test.d
@@ -218,7 +218,7 @@ trap 'SIG_RESULT=$XFAIL' $SIG_XFAIL
 # Run one test case
 run_test() { # testfile
   local testname=`basename $1`
-  local testlog=`mktemp --tmpdir=$LOG_DIR ${testname}-XXXXXX.log`
+  local testlog=`mktemp $LOG_DIR/${testname}-log.XXXXXX`
   testcase $1
   echo "execute: "$1 > $testlog
   SIG_RESULT=0
@@ -234,6 +234,9 @@ run_test() { # testfile
     TOTAL_RESULT=1
   fi
 }
+
+# load in the helper functions
+. $TEST_DIR/functions
 
 # Main loop
 for t in $TEST_CASES; do
