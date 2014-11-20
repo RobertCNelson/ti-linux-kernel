@@ -688,6 +688,10 @@ static int ovl_mount_dir_noesc(const char *name, struct path *path)
 {
 	int err = -EINVAL;
 
+	if (!*name) {
+		pr_err("overlayfs: empty lowerdir\n");
+		return err;
+	}
 	err = kern_path(name, LOOKUP_FOLLOW, path);
 	if (err)
 		pr_err("overlayfs: failed to resolve '%s': %i\n", name, err);
@@ -720,7 +724,7 @@ static int ovl_lower_dir(const char *name, struct path *path, long *namelen,
 	int err;
 	struct kstatfs statfs;
 
-	err = ovl_mount_dir(name, path);
+	err = ovl_mount_dir_noesc(name, path);
 	if (err)
 		return err;
 
@@ -747,15 +751,38 @@ static bool ovl_workdir_ok(struct dentry *workdir, struct dentry *upperdir)
 	return ok;
 }
 
+static unsigned int ovl_split_lowerdirs(char *str)
+{
+	unsigned int ctr = 1;
+	char *s, *d;
+
+	for (s = d = str;; s++, d++) {
+		if (*s == '\\') {
+			s++;
+		} else if (*s == ':') {
+			*d = '\0';
+			ctr++;
+			continue;
+		}
+		*d = *s;
+		if (!*s)
+			break;
+	}
+	return ctr;
+}
+
 static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 {
-	struct path lowerpath;
 	struct path upperpath = { NULL, NULL };
 	struct path workpath = { NULL, NULL };
 	struct dentry *root_dentry;
 	struct ovl_entry *oe;
 	struct ovl_fs *ufs;
-	struct vfsmount *mnt;
+	struct path *stack = NULL;
+	char *lowertmp;
+	char *lower;
+	unsigned int numlower;
+	unsigned int stacklen = 0;
 	unsigned int i;
 	int err;
 
@@ -800,11 +827,25 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 		}
 		sb->s_stack_depth = upperpath.mnt->mnt_sb->s_stack_depth;
 	}
-
-	err = ovl_lower_dir(ufs->config.lowerdir, &lowerpath,
-			    &ufs->lower_namelen, &sb->s_stack_depth);
-	if (err)
+	err = -ENOMEM;
+	lowertmp = kstrdup(ufs->config.lowerdir, GFP_KERNEL);
+	if (!lowertmp)
 		goto out_put_workpath;
+
+	stacklen = ovl_split_lowerdirs(lowertmp);
+	stack = kcalloc(stacklen, sizeof(struct path), GFP_KERNEL);
+	if (!stack)
+		goto out_free_lowertmp;
+
+	lower = lowertmp;
+	for (numlower = 0; numlower < stacklen; numlower++) {
+		err = ovl_lower_dir(lower, &stack[numlower],
+				    &ufs->lower_namelen, &sb->s_stack_depth);
+		if (err)
+			goto out_put_lowerpath;
+
+		lower = strchr(lower, '\0') + 1;
+	}
 
 	err = -EINVAL;
 	sb->s_stack_depth++;
@@ -830,24 +871,25 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 		}
 	}
 
-	ufs->lower_mnt = kcalloc(1, sizeof(struct vfsmount *), GFP_KERNEL);
+	ufs->lower_mnt = kcalloc(numlower, sizeof(struct vfsmount *), GFP_KERNEL);
 	if (ufs->lower_mnt == NULL)
 		goto out_put_workdir;
+	for (i = 0; i < numlower; i++) {
+		struct vfsmount *mnt = clone_private_mount(&stack[i]);
 
-	mnt = clone_private_mount(&lowerpath);
-	err = PTR_ERR(mnt);
-	if (IS_ERR(mnt)) {
-		pr_err("overlayfs: failed to clone lowerpath\n");
-		goto out_put_lower_mnt;
+		if (IS_ERR(mnt)) {
+			pr_err("overlayfs: failed to clone lowerpath\n");
+			goto out_put_lower_mnt;
+		}
+		/*
+		 * Make lower_mnt R/O.  That way fchmod/fchown on lower file
+		 * will fail instead of modifying lower fs.
+		 */
+		mnt->mnt_flags |= MNT_READONLY;
+
+		ufs->lower_mnt[ufs->numlower] = mnt;
+		ufs->numlower++;
 	}
-	/*
-	 * Make lower_mnt R/O.  That way fchmod/fchown on lower file
-	 * will fail instead of modifying lower fs.
-	 */
-	mnt->mnt_flags |= MNT_READONLY;
-
-	ufs->lower_mnt[0] = mnt;
-	ufs->numlower = 1;
 
 	/* If the upper fs is r/o or nonexistent, we mark overlayfs r/o too */
 	if (!ufs->upper_mnt || (ufs->upper_mnt->mnt_sb->s_flags & MS_RDONLY))
@@ -856,7 +898,7 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 	sb->s_d_op = &ovl_dentry_operations;
 
 	err = -ENOMEM;
-	oe = ovl_alloc_entry(1);
+	oe = ovl_alloc_entry(numlower);
 	if (!oe)
 		goto out_put_lower_mnt;
 
@@ -865,12 +907,16 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 		goto out_free_oe;
 
 	mntput(upperpath.mnt);
-	mntput(lowerpath.mnt);
+	for (i = 0; i < numlower; i++)
+		mntput(stack[i].mnt);
 	path_put(&workpath);
+	kfree(lowertmp);
 
 	oe->__upperdentry = upperpath.dentry;
-	oe->lowerstack[0].dentry = lowerpath.dentry;
-	oe->lowerstack[0].mnt = ufs->lower_mnt[0];
+	for (i = 0; i < numlower; i++) {
+		oe->lowerstack[i].dentry = stack[i].dentry;
+		oe->lowerstack[i].mnt = ufs->lower_mnt[i];
+	}
 
 	root_dentry->d_fsdata = oe;
 
@@ -892,7 +938,11 @@ out_put_workdir:
 out_put_upper_mnt:
 	mntput(ufs->upper_mnt);
 out_put_lowerpath:
-	path_put(&lowerpath);
+	for (i = 0; i < numlower; i++)
+		path_put(&stack[i]);
+	kfree(stack);
+out_free_lowertmp:
+	kfree(lowertmp);
 out_put_workpath:
 	path_put(&workpath);
 out_put_upperpath:
