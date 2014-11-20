@@ -334,82 +334,119 @@ struct dentry *ovl_lookup(struct inode *dir, struct dentry *dentry,
 			  unsigned int flags)
 {
 	struct ovl_entry *oe;
-	struct dentry *upperdir;
-	struct path lowerdir;
-	struct dentry *upperdentry = NULL;
-	struct dentry *lowerdentry = NULL;
+	struct ovl_entry *poe = dentry->d_parent->d_fsdata;
+	struct path *stack;
+	unsigned int ctr = 0;
+	unsigned int loweroffset = 0;
 	struct inode *inode = NULL;
+	bool upperopaque = false;
+	struct dentry *prev = NULL;
+	int idx, next;
+	unsigned int i;
 	int err;
 
 	err = -ENOMEM;
-	oe = ovl_alloc_entry(1);
-	if (!oe)
+	stack = kcalloc(poe->numlower + 1, sizeof(struct path), GFP_KERNEL);
+	if (!stack)
 		goto out;
 
-	upperdir = ovl_dentry_upper(dentry->d_parent);
-	ovl_path_lower(dentry->d_parent, &lowerdir);
+	for (idx = 0; idx != -1; idx = next) {
+		struct dentry *this;
+		struct path dir;
+		bool opaque = false;
 
-	if (upperdir) {
-		upperdentry = ovl_lookup_real(upperdir, &dentry->d_name);
-		err = PTR_ERR(upperdentry);
-		if (IS_ERR(upperdentry))
-			goto out_put_dir;
+		next = ovl_path_next(&idx, dentry->d_parent, &dir);
 
-		if (lowerdir.dentry && upperdentry) {
-			if (ovl_is_whiteout(upperdentry)) {
-				dput(upperdentry);
-				upperdentry = NULL;
-				oe->opaque = true;
-			} else if (ovl_is_opaquedir(upperdentry)) {
-				oe->opaque = true;
+		this = ovl_lookup_real(dir.dentry, &dentry->d_name);
+		err = PTR_ERR(this);
+		if (IS_ERR(this))
+			goto out_put;
+
+		/*
+		 * If this is not the lowermost layer, check whiteout and opaque
+		 * directory.
+		 */
+		if (next != -1 && this) {
+			if (ovl_is_whiteout(this)) {
+				dput(this);
+				this = NULL;
+				opaque = true;
+			} else if (ovl_is_opaquedir(this)) {
+				opaque = true;
+			}
+			if (opaque && idx == 0)
+				upperopaque = true;
+		}
+		if (this) {
+			/*
+			 * If this is a non-directory and is not the upper layer
+			 * then stop here.
+			 *
+			 * If this is the upper layer, then we can't stop even
+			 * if this isn't a directory, since we need to check for
+			 * existence of a lower layer (to know if need to
+			 * whiteout on removal or not).
+			 *
+			 * FIXME: check for opaqueness maybe better done in
+			 * remove code.
+			 */
+			if (idx != 0 && !S_ISDIR(this->d_inode->i_mode)) {
+				opaque = true;
+			} else if (prev && (!S_ISDIR(prev->d_inode->i_mode) ||
+					    !S_ISDIR(this->d_inode->i_mode))) {
+				dput(this);
+				this = NULL;
+				opaque = true;
+				if (loweroffset && prev == stack[0].dentry)
+					upperopaque = true;
 			}
 		}
+		if (this) {
+			stack[ctr].dentry = this;
+			stack[ctr].mnt = dir.mnt;
+			ctr++;
+			prev = this;
+			if (idx == 0)
+				loweroffset = 1;
+		}
+		if (opaque)
+			break;
 	}
-	if (lowerdir.dentry && !oe->opaque) {
-		lowerdentry = ovl_lookup_real(lowerdir.dentry, &dentry->d_name);
-		err = PTR_ERR(lowerdentry);
-		if (IS_ERR(lowerdentry))
-			goto out_dput_upper;
-	}
+	oe = ovl_alloc_entry(ctr - loweroffset);
+	err = -ENOMEM;
+	if (!oe)
+		goto out_put;
 
-	if (lowerdentry && upperdentry &&
-	    (!S_ISDIR(upperdentry->d_inode->i_mode) ||
-	     !S_ISDIR(lowerdentry->d_inode->i_mode))) {
-		dput(lowerdentry);
-		lowerdentry = NULL;
-		oe->opaque = true;
-	}
+	if (ctr) {
+		struct dentry *realdentry = stack[0].dentry;
 
-	if (lowerdentry || upperdentry) {
-		struct dentry *realdentry;
-
-		realdentry = upperdentry ? upperdentry : lowerdentry;
 		err = -ENOMEM;
 		inode = ovl_new_inode(dentry->d_sb, realdentry->d_inode->i_mode,
 				      oe);
 		if (!inode)
-			goto out_dput;
+			goto out_free_oe;
 		ovl_copyattr(realdentry->d_inode, inode);
 	}
 
-	oe->__upperdentry = upperdentry;
-	if (lowerdentry) {
-		oe->lowerstack[0].dentry = lowerdentry;
-		oe->lowerstack[0].mnt = lowerdir.mnt;
-	} else {
-		oe->numlower = 0;
+	oe->opaque = upperopaque;
+	if (loweroffset)
+		oe->__upperdentry = stack[0].dentry;
+	if (oe->numlower) {
+		memcpy(oe->lowerstack, stack + loweroffset,
+		       sizeof(struct path) * oe->numlower);
 	}
+	kfree(stack);
 	dentry->d_fsdata = oe;
 	d_add(dentry, inode);
 
 	return NULL;
 
-out_dput:
-	dput(lowerdentry);
-out_dput_upper:
-	dput(upperdentry);
-out_put_dir:
+out_free_oe:
 	kfree(oe);
+out_put:
+	for (i = 0; i < ctr; i++)
+		dput(stack[i].dentry);
+	kfree(stack);
 out:
 	return ERR_PTR(err);
 }
