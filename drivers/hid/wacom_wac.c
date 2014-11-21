@@ -600,8 +600,8 @@ static void wacom_intuos_general(struct wacom_wac *wacom)
 		}
 		input_report_abs(input, ABS_PRESSURE, t);
 		input_report_abs(input, ABS_TILT_X,
-				((data[7] << 1) & 0x7e) | (data[8] >> 7));
-		input_report_abs(input, ABS_TILT_Y, data[8] & 0x7f);
+				 (((data[7] << 1) & 0x7e) | (data[8] >> 7)) - 64);
+		input_report_abs(input, ABS_TILT_Y, (data[8] & 0x7f) - 64);
 		input_report_key(input, BTN_STYLUS, data[1] & 2);
 		input_report_key(input, BTN_STYLUS2, data[1] & 4);
 		input_report_key(input, BTN_TOUCH, t > 10);
@@ -612,8 +612,8 @@ static void wacom_intuos_general(struct wacom_wac *wacom)
 		input_report_abs(input, ABS_WHEEL,
 				(data[6] << 2) | ((data[7] >> 6) & 3));
 		input_report_abs(input, ABS_TILT_X,
-				((data[7] << 1) & 0x7e) | (data[8] >> 7));
-		input_report_abs(input, ABS_TILT_Y, data[8] & 0x7f);
+				 (((data[7] << 1) & 0x7e) | (data[8] >> 7)) - 64);
+		input_report_abs(input, ABS_TILT_Y, (data[8] & 0x7f) - 64);
 	}
 }
 
@@ -915,8 +915,8 @@ static int wacom_intuos_irq(struct wacom_wac *wacom)
 				input_report_key(input, BTN_EXTRA,  data[6] & 0x10);
 
 				input_report_abs(input, ABS_TILT_X,
-					((data[7] << 1) & 0x7e) | (data[8] >> 7));
-				input_report_abs(input, ABS_TILT_Y, data[8] & 0x7f);
+					(((data[7] << 1) & 0x7e) | (data[8] >> 7)) - 64);
+				input_report_abs(input, ABS_TILT_Y, (data[8] & 0x7f) - 64);
 			} else {
 				/* 2D mouse packet */
 				input_report_key(input, BTN_LEFT,   data[8] & 0x04);
@@ -1929,8 +1929,10 @@ static void wacom_setup_cintiq(struct wacom_wac *wacom_wac)
 	input_set_abs_params(input_dev, ABS_DISTANCE,
 			     0, wacom_wac->features.distance_max, 0, 0);
 	input_set_abs_params(input_dev, ABS_WHEEL, 0, 1023, 0, 0);
-	input_set_abs_params(input_dev, ABS_TILT_X, 0, 127, 0, 0);
-	input_set_abs_params(input_dev, ABS_TILT_Y, 0, 127, 0, 0);
+	input_set_abs_params(input_dev, ABS_TILT_X, -64, 63, 0, 0);
+	input_abs_set_res(input_dev, ABS_TILT_X, 57);
+	input_set_abs_params(input_dev, ABS_TILT_Y, -64, 63, 0, 0);
+	input_abs_set_res(input_dev, ABS_TILT_Y, 57);
 }
 
 static void wacom_setup_intuos(struct wacom_wac *wacom_wac)
@@ -1950,6 +1952,7 @@ static void wacom_setup_intuos(struct wacom_wac *wacom_wac)
 	__set_bit(BTN_TOOL_LENS, input_dev->keybit);
 
 	input_set_abs_params(input_dev, ABS_RZ, -900, 899, 0, 0);
+	input_abs_set_res(input_dev, ABS_RZ, 287);
 	input_set_abs_params(input_dev, ABS_THROTTLE, -1023, 1023, 0, 0);
 }
 
@@ -2092,6 +2095,7 @@ int wacom_setup_pentouch_input_capabilities(struct input_dev *input_dev,
 
 	case WACOM_24HD:
 		input_set_abs_params(input_dev, ABS_Z, -900, 899, 0, 0);
+		input_abs_set_res(input_dev, ABS_Z, 287);
 		input_set_abs_params(input_dev, ABS_THROTTLE, 0, 71, 0, 0);
 		/* fall through */
 
@@ -2106,6 +2110,7 @@ int wacom_setup_pentouch_input_capabilities(struct input_dev *input_dev,
 	case WACOM_BEE:
 	case CINTIQ:
 		input_set_abs_params(input_dev, ABS_Z, -900, 899, 0, 0);
+		input_abs_set_res(input_dev, ABS_Z, 287);
 
 		__set_bit(INPUT_PROP_DIRECT, input_dev->propbit);
 
@@ -2114,6 +2119,7 @@ int wacom_setup_pentouch_input_capabilities(struct input_dev *input_dev,
 
 	case WACOM_13HD:
 		input_set_abs_params(input_dev, ABS_Z, -900, 899, 0, 0);
+		input_abs_set_res(input_dev, ABS_Z, 287);
 		__set_bit(INPUT_PROP_DIRECT, input_dev->propbit);
 		wacom_setup_cintiq(wacom_wac);
 		break;
@@ -2122,6 +2128,7 @@ int wacom_setup_pentouch_input_capabilities(struct input_dev *input_dev,
 	case INTUOS3L:
 	case INTUOS3S:
 		input_set_abs_params(input_dev, ABS_Z, -900, 899, 0, 0);
+		input_abs_set_res(input_dev, ABS_Z, 287);
 		/* fall through */
 
 	case INTUOS:
@@ -2144,6 +2151,7 @@ int wacom_setup_pentouch_input_capabilities(struct input_dev *input_dev,
 					      0, 0);
 
 			input_set_abs_params(input_dev, ABS_Z, -900, 899, 0, 0);
+			input_abs_set_res(input_dev, ABS_Z, 287);
 
 			wacom_setup_intuos(wacom_wac);
 		} else if (features->device_type == BTN_TOOL_FINGER) {
@@ -2162,6 +2170,7 @@ int wacom_setup_pentouch_input_capabilities(struct input_dev *input_dev,
 	case INTUOS4L:
 	case INTUOS4S:
 		input_set_abs_params(input_dev, ABS_Z, -900, 899, 0, 0);
+		input_abs_set_res(input_dev, ABS_Z, 287);
 		wacom_setup_intuos(wacom_wac);
 
 		__set_bit(INPUT_PROP_POINTER, input_dev->propbit);
@@ -2264,6 +2273,7 @@ int wacom_setup_pentouch_input_capabilities(struct input_dev *input_dev,
 
 	case CINTIQ_HYBRID:
 		input_set_abs_params(input_dev, ABS_Z, -900, 899, 0, 0);
+		input_abs_set_res(input_dev, ABS_Z, 287);
 		__set_bit(INPUT_PROP_DIRECT, input_dev->propbit);
 
 		wacom_setup_cintiq(wacom_wac);
