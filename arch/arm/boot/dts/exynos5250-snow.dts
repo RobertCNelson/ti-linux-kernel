@@ -624,6 +624,10 @@
 	num-cs = <1>;
 };
 
+&usbdrd_dwc3 {
+	dr_mode = "host";
+};
+
 &usbdrd_phy {
 	vbus-supply = <&usb3_vbus_reg>;
 };
