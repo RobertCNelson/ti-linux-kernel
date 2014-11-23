@@ -131,7 +131,13 @@ static inline bool __ref_is_percpu(struct percpu_ref *ref,
 	/* paired with smp_store_release() in percpu_ref_reinit() */
 	unsigned long percpu_ptr = lockless_dereference(ref->percpu_count_ptr);
 
-	if (unlikely(percpu_ptr & __PERCPU_REF_ATOMIC))
+	/*
+	 * Theoretically, the following could test just ATOMIC; however,
+	 * then we'd have to mask off DEAD separately as DEAD may be
+	 * visible without ATOMIC if we race with percpu_ref_kill().  DEAD
+	 * implies ATOMIC anyway.  Test them together.
+	 */
+	if (unlikely(percpu_ptr & __PERCPU_REF_ATOMIC_DEAD))
 		return false;
 
 	*percpu_countp = (unsigned long __percpu *)percpu_ptr;
