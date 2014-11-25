@@ -4129,7 +4129,6 @@ static void irq_remapping_prepare_irte(struct amd_ir_data *data,
 	struct msi_msg *msg = &data->msi_entry;
 	struct IO_APIC_route_entry *entry;
 
-	irq_cfg->remapped = 1;
 	data->irq_2_irte.devid = devid;
 	data->irq_2_irte.index = index + sub_handle;
 
