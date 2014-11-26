@@ -781,6 +781,14 @@ int __compute_return_epc_for_insn(struct pt_regs *regs,
 		regs->cp0_epc = epc;
 		break;
 #endif
+	case bc6_op:
+		/* Only valid for MIPS R6 */
+		if (!cpu_has_mips_r6) {
+			ret = -SIGILL;
+			break;
+		}
+		regs->cp0_epc += 8;
+		break;
 	}
 
 	return ret;
