@@ -729,6 +729,7 @@ static void sdma_get_pc(struct sdma_channel *sdmac,
 	case IMX_DMATYPE_CSPI:
 	case IMX_DMATYPE_EXT:
 	case IMX_DMATYPE_SSI:
+	case IMX_DMATYPE_SAI:
 		per_2_emi = sdma->script_addrs->app_2_mcu_addr;
 		emi_2_per = sdma->script_addrs->mcu_2_app_addr;
 		break;
@@ -1346,7 +1347,7 @@ static int sdma_get_firmware(struct sdma_engine *sdma,
 	return ret;
 }
 
-static int __init sdma_init(struct sdma_engine *sdma)
+static int sdma_init(struct sdma_engine *sdma)
 {
 	int i, ret;
 	dma_addr_t ccb_phys;
