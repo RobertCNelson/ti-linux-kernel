@@ -1885,7 +1885,7 @@ static int ioapic_set_affinity(struct irq_data *irq_data,
 	raw_spin_lock_irqsave(&ioapic_lock, flags);
 	if (ret >= 0 && ret != IRQ_SET_MASK_OK_DONE) {
 		cfg = irqd_cfg(irq_data);
-		data->entry.dest = SET_APIC_LOGICAL_ID(cfg->dest_apicid);
+		data->entry.dest = cfg->dest_apicid;
 		data->entry.vector = cfg->vector;
 		for_each_irq_pin(entry, data->irq_2_pin)
 			__ioapic_write_entry(entry->apic, entry->pin,
