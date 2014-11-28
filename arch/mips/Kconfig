@@ -2127,9 +2127,17 @@ config SB1_PASS_2_1_WORKAROUNDS
 config ARCH_PHYS_ADDR_T_64BIT
        bool
 
+choice
+	prompt "SmartMIPS or microMIPS ASE support"
+
+config CPU_NEEDS_NO_SMARTMIPS_OR_MICROMIPS
+	bool "None"
+	help
+	  Select this if you want neither microMIPS nor SmartMIPS support
+
 config CPU_HAS_SMARTMIPS
 	depends on SYS_SUPPORTS_SMARTMIPS
-	bool "Support for the SmartMIPS ASE"
+	bool "SmartMIPS"
 	help
 	  SmartMIPS is a extension of the MIPS32 architecture aimed at
 	  increased security at both hardware and software level for
@@ -2145,6 +2153,8 @@ config CPU_MICROMIPS
 	help
 	  When this option is enabled the kernel will be built using the
 	  microMIPS ISA
+
+endchoice
 
 config CPU_HAS_MSA
 	bool "Support for the MIPS SIMD Architecture (EXPERIMENTAL)"
