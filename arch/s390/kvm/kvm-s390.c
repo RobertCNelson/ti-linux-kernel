@@ -374,9 +374,9 @@ static int kvm_s390_get_mem_control(struct kvm *kvm, struct kvm_device_attr *att
 	switch (attr->attr) {
 	case KVM_S390_VM_MEM_LIMIT_SIZE:
 		ret = 0;
-		VM_EVENT(kvm, 3, "QUERY: max guest memory: %lu bytes",
-			 kvm->arch.gmap->asce_end);
-		if (put_user(kvm->arch.gmap->asce_end, (u64 __user *)attr->addr))
+		VM_EVENT(kvm, 3, "QUERY: max guest memory: %llu bytes",
+			 sclp.hamax);
+		if (put_user(sclp.hamax, (u64 __user *)attr->addr))
 			ret = -EFAULT;
 		break;
 	default:
@@ -428,7 +428,7 @@ static int kvm_s390_set_mem_control(struct kvm *kvm, struct kvm_device_attr *att
 		if (get_user(new_limit, (u64 __user *)attr->addr))
 			return -EFAULT;
 
-		if (new_limit > kvm->arch.gmap->asce_end)
+		if (new_limit > sclp.hamax)
 			return -E2BIG;
 
 		ret = -EBUSY;
@@ -1158,7 +1158,7 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 	if (type & KVM_VM_S390_UCONTROL) {
 		kvm->arch.gmap = NULL;
 	} else {
-		kvm->arch.gmap = gmap_alloc(current->mm, (1UL << 44) - 1);
+		kvm->arch.gmap = gmap_alloc(current->mm, sclp.hamax);
 		if (!kvm->arch.gmap)
 			goto out_err;
 		kvm->arch.gmap->private = kvm;
@@ -2734,6 +2734,9 @@ int kvm_arch_prepare_memory_region(struct kvm *kvm,
 		return -EINVAL;
 
 	if (mem->memory_size & 0xffffful)
+		return -EINVAL;
+
+	if (mem->guest_phys_addr + mem->memory_size - 1 > sclp.hamax)
 		return -EINVAL;
 
 	return 0;
