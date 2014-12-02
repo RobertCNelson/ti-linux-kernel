@@ -2789,10 +2789,10 @@ isert_set_prot_checks(u8 prot_checks)
 }
 
 static int
-isert_reg_sig_mr(struct isert_conn *isert_conn, struct se_cmd *se_cmd,
-		 struct fast_reg_descriptor *fr_desc,
-		 struct ib_sge *data_sge, struct ib_sge *prot_sge,
-		 struct ib_sge *sig_sge)
+isert_reg_sig_mr(struct isert_conn *isert_conn,
+		 struct se_cmd *se_cmd,
+		 struct isert_rdma_wr *rdma_wr,
+		 struct fast_reg_descriptor *fr_desc)
 {
 	struct ib_send_wr sig_wr, inv_wr;
 	struct ib_send_wr *bad_wr, *wr = NULL;
@@ -2822,13 +2822,13 @@ isert_reg_sig_mr(struct isert_conn *isert_conn, struct se_cmd *se_cmd,
 	memset(&sig_wr, 0, sizeof(sig_wr));
 	sig_wr.opcode = IB_WR_REG_SIG_MR;
 	sig_wr.wr_id = ISER_FASTREG_LI_WRID;
-	sig_wr.sg_list = data_sge;
+	sig_wr.sg_list = &rdma_wr->ib_sg[DATA];
 	sig_wr.num_sge = 1;
 	sig_wr.wr.sig_handover.access_flags = IB_ACCESS_LOCAL_WRITE;
 	sig_wr.wr.sig_handover.sig_attrs = &sig_attrs;
 	sig_wr.wr.sig_handover.sig_mr = pi_ctx->sig_mr;
 	if (se_cmd->t_prot_sg)
-		sig_wr.wr.sig_handover.prot = prot_sge;
+		sig_wr.wr.sig_handover.prot = &rdma_wr->ib_sg[PROT];
 
 	if (!wr)
 		wr = &sig_wr;
@@ -2842,21 +2842,68 @@ isert_reg_sig_mr(struct isert_conn *isert_conn, struct se_cmd *se_cmd,
 	}
 	fr_desc->ind &= ~ISERT_SIG_KEY_VALID;
 
-	sig_sge->lkey = pi_ctx->sig_mr->lkey;
-	sig_sge->addr = 0;
-	sig_sge->length = se_cmd->data_length;
+	rdma_wr->ib_sg[SIG].lkey = pi_ctx->sig_mr->lkey;
+	rdma_wr->ib_sg[SIG].addr = 0;
+	rdma_wr->ib_sg[SIG].length = se_cmd->data_length;
 	if (se_cmd->prot_op != TARGET_PROT_DIN_STRIP &&
 	    se_cmd->prot_op != TARGET_PROT_DOUT_INSERT)
 		/*
 		 * We have protection guards on the wire
 		 * so we need to set a larget transfer
 		 */
-		sig_sge->length += se_cmd->prot_length;
+		rdma_wr->ib_sg[SIG].length += se_cmd->prot_length;
 
 	pr_debug("sig_sge: addr: 0x%llx  length: %u lkey: %x\n",
-		 sig_sge->addr, sig_sge->length,
-		 sig_sge->lkey);
+		  rdma_wr->ib_sg[SIG].addr, rdma_wr->ib_sg[SIG].length,
+		  rdma_wr->ib_sg[SIG].lkey);
 err:
+	return ret;
+}
+
+static int
+isert_handle_prot_cmd(struct isert_conn *isert_conn,
+		      struct isert_cmd *isert_cmd,
+		      struct isert_rdma_wr *wr)
+{
+	struct se_cmd *se_cmd = &isert_cmd->iscsi_cmd->se_cmd;
+	int ret;
+
+	if (se_cmd->t_prot_sg) {
+		ret = isert_map_data_buf(isert_conn, isert_cmd,
+					 se_cmd->t_prot_sg,
+					 se_cmd->t_prot_nents,
+					 se_cmd->prot_length,
+					 0, wr->iser_ib_op, &wr->prot);
+		if (ret) {
+			pr_err("conn %p failed to map protection buffer\n",
+				  isert_conn);
+			return ret;
+		}
+
+		memset(&wr->ib_sg[PROT], 0, sizeof(wr->ib_sg[PROT]));
+		ret = isert_fast_reg_mr(isert_conn, wr->fr_desc, &wr->prot,
+					ISERT_PROT_KEY_VALID, &wr->ib_sg[PROT]);
+		if (ret) {
+			pr_err("conn %p failed to fast reg mr\n",
+				  isert_conn);
+			goto unmap_prot_cmd;
+		}
+	}
+
+	ret = isert_reg_sig_mr(isert_conn, se_cmd, wr, wr->fr_desc);
+	if (ret) {
+		pr_err("conn %p failed to fast reg mr\n",
+			  isert_conn);
+		goto unmap_prot_cmd;
+	}
+	wr->fr_desc->ind |= ISERT_PROTECTED;
+
+	return 0;
+
+unmap_prot_cmd:
+	if (se_cmd->t_prot_sg)
+		isert_unmap_data_buf(isert_conn, &wr->prot);
+
 	return ret;
 }
 
@@ -2867,9 +2914,9 @@ isert_reg_rdma(struct iscsi_conn *conn, struct iscsi_cmd *cmd,
 	struct se_cmd *se_cmd = &cmd->se_cmd;
 	struct isert_cmd *isert_cmd = iscsit_priv_cmd(cmd);
 	struct isert_conn *isert_conn = conn->context;
-	struct ib_sge data_sge;
-	struct ib_send_wr *send_wr;
 	struct fast_reg_descriptor *fr_desc = NULL;
+	struct ib_send_wr *send_wr;
+	struct ib_sge *ib_sg;
 	u32 offset;
 	int ret = 0;
 	unsigned long flags;
@@ -2894,38 +2941,21 @@ isert_reg_rdma(struct iscsi_conn *conn, struct iscsi_cmd *cmd,
 	}
 
 	ret = isert_fast_reg_mr(isert_conn, fr_desc, &wr->data,
-				ISERT_DATA_KEY_VALID, &data_sge);
+				ISERT_DATA_KEY_VALID, &wr->ib_sg[DATA]);
 	if (ret)
 		goto unmap_cmd;
 
 	if (se_cmd->prot_op != TARGET_PROT_NORMAL) {
-		struct ib_sge prot_sge, sig_sge;
-
-		if (se_cmd->t_prot_sg) {
-			ret = isert_map_data_buf(isert_conn, isert_cmd,
-						 se_cmd->t_prot_sg,
-						 se_cmd->t_prot_nents,
-						 se_cmd->prot_length,
-						 0, wr->iser_ib_op, &wr->prot);
-			if (ret)
-				goto unmap_cmd;
-
-			ret = isert_fast_reg_mr(isert_conn, fr_desc, &wr->prot,
-						ISERT_PROT_KEY_VALID, &prot_sge);
-			if (ret)
-				goto unmap_prot_cmd;
-		}
-
-		ret = isert_reg_sig_mr(isert_conn, se_cmd, fr_desc,
-				       &data_sge, &prot_sge, &sig_sge);
+		ret = isert_handle_prot_cmd(isert_conn, isert_cmd, wr);
 		if (ret)
-			goto unmap_prot_cmd;
+			goto unmap_cmd;
 
-		fr_desc->ind |= ISERT_PROTECTED;
-		memcpy(&wr->s_ib_sge, &sig_sge, sizeof(sig_sge));
-	} else
-		memcpy(&wr->s_ib_sge, &data_sge, sizeof(data_sge));
+		ib_sg = &wr->ib_sg[SIG];
+	} else {
+		ib_sg = &wr->ib_sg[DATA];
+	}
 
+	memcpy(&wr->s_ib_sge, ib_sg, sizeof(*ib_sg));
 	wr->ib_sge = &wr->s_ib_sge;
 	wr->send_wr_num = 1;
 	memset(&wr->s_send_wr, 0, sizeof(*send_wr));
@@ -2950,9 +2980,7 @@ isert_reg_rdma(struct iscsi_conn *conn, struct iscsi_cmd *cmd,
 	}
 
 	return 0;
-unmap_prot_cmd:
-	if (se_cmd->t_prot_sg)
-		isert_unmap_data_buf(isert_conn, &wr->prot);
+
 unmap_cmd:
 	if (fr_desc) {
 		spin_lock_irqsave(&isert_conn->conn_lock, flags);
