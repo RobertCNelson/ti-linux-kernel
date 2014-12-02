@@ -772,8 +772,12 @@ isert_connected_handler(struct rdma_cm_id *cma_id)
 
 	pr_info("conn %p\n", isert_conn);
 
+	if (!kref_get_unless_zero(&isert_conn->conn_kref)) {
+		pr_warn("conn %p connect_release is running\n", isert_conn);
+		return;
+	}
+
 	isert_conn->state = ISER_CONN_UP;
-	kref_get(&isert_conn->conn_kref);
 }
 
 static void
