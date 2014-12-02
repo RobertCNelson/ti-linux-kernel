@@ -777,7 +777,10 @@ isert_connected_handler(struct rdma_cm_id *cma_id)
 		return;
 	}
 
-	isert_conn->state = ISER_CONN_UP;
+	mutex_lock(&isert_conn->conn_mutex);
+	if (isert_conn->state != ISER_CONN_FULL_FEATURE)
+		isert_conn->state = ISER_CONN_UP;
+	mutex_unlock(&isert_conn->conn_mutex);
 }
 
 static void
@@ -1136,7 +1139,9 @@ isert_put_login_tx(struct iscsi_conn *conn, struct iscsi_login *login,
 				return ret;
 
 			/* Now we are in FULL_FEATURE phase */
+			mutex_lock(&isert_conn->conn_mutex);
 			isert_conn->state = ISER_CONN_FULL_FEATURE;
+			mutex_unlock(&isert_conn->conn_mutex);
 			goto post_send;
 		}
 
