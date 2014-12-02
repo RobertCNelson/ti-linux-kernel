@@ -58,6 +58,7 @@ static int
 isert_rdma_post_recvl(struct isert_conn *isert_conn);
 static int
 isert_rdma_accept(struct isert_conn *isert_conn);
+struct rdma_cm_id *isert_setup_id(struct isert_np *isert_np);
 
 static void
 isert_qp_event_callback(struct ib_event *e, void *context)
@@ -843,15 +844,40 @@ isert_conn_terminate(struct isert_conn *isert_conn)
 }
 
 static int
-isert_disconnected_handler(struct rdma_cm_id *cma_id)
+isert_np_cma_handler(struct isert_np *isert_np,
+		     enum rdma_cm_event_type event)
+{
+	pr_debug("isert np %p, handling event %d\n", isert_np, event);
+
+	switch (event) {
+	case RDMA_CM_EVENT_DEVICE_REMOVAL:
+		isert_np->np_cm_id = NULL;
+		break;
+	case RDMA_CM_EVENT_ADDR_CHANGE:
+		isert_np->np_cm_id = isert_setup_id(isert_np);
+		if (IS_ERR(isert_np->np_cm_id)) {
+			pr_err("isert np %p setup id failed: %ld\n",
+				 isert_np, PTR_ERR(isert_np->np_cm_id));
+			isert_np->np_cm_id = NULL;
+		}
+		break;
+	default:
+		pr_err("isert np %p Unexpected event %d\n",
+			  isert_np, event);
+	}
+
+	return -1;
+}
+
+static int
+isert_disconnected_handler(struct rdma_cm_id *cma_id,
+			   enum rdma_cm_event_type event)
 {
 	struct isert_np *isert_np = cma_id->context;
 	struct isert_conn *isert_conn;
 
-	if (isert_np->np_cm_id == cma_id) {
-		isert_np->np_cm_id = NULL;
-		return -1;
-	}
+	if (isert_np->np_cm_id == cma_id)
+		return isert_np_cma_handler(cma_id->context, event);
 
 	isert_conn = cma_id->qp->qp_context;
 
@@ -895,7 +921,7 @@ isert_cma_handler(struct rdma_cm_id *cma_id, struct rdma_cm_event *event)
 	case RDMA_CM_EVENT_DISCONNECTED:   /* FALLTHRU */
 	case RDMA_CM_EVENT_DEVICE_REMOVAL: /* FALLTHRU */
 	case RDMA_CM_EVENT_TIMEWAIT_EXIT:  /* FALLTHRU */
-		ret = isert_disconnected_handler(cma_id);
+		ret = isert_disconnected_handler(cma_id, event->event);
 		break;
 	case RDMA_CM_EVENT_REJECTED:       /* FALLTHRU */
 	case RDMA_CM_EVENT_UNREACHABLE:    /* FALLTHRU */
