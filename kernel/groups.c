@@ -222,6 +222,7 @@ bool may_setgroups(void)
 	 * the user namespace has been established.
 	 */
 	return userns_gid_mappings_established(user_ns) &&
+		userns_setgroups_allowed(user_ns) &&
 		ns_capable(user_ns, CAP_SETGID);
 }
 
