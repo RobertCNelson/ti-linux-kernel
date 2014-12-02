@@ -602,7 +602,6 @@ isert_connect_request(struct rdma_cm_id *cma_id, struct rdma_cm_event *event)
 	spin_lock_init(&isert_conn->conn_lock);
 	INIT_LIST_HEAD(&isert_conn->conn_fr_pool);
 
-	cma_id->context = isert_conn;
 	isert_conn->conn_cm_id = cma_id;
 
 	isert_conn->login_buf = kzalloc(ISCSI_DEF_MAX_RECV_SEG_LEN +
@@ -734,17 +733,17 @@ isert_connect_release(struct isert_conn *isert_conn)
 	if (device && device->use_fastreg)
 		isert_conn_free_fastreg_pool(isert_conn);
 
+	isert_free_rx_descriptors(isert_conn);
+	rdma_destroy_id(isert_conn->conn_cm_id);
+
 	if (isert_conn->conn_qp) {
 		cq_index = ((struct isert_cq_desc *)
 			isert_conn->conn_qp->recv_cq->cq_context)->cq_index;
 		pr_debug("isert_connect_release: cq_index: %d\n", cq_index);
 		isert_conn->conn_device->cq_active_qps[cq_index]--;
 
-		rdma_destroy_qp(isert_conn->conn_cm_id);
+		ib_destroy_qp(isert_conn->conn_qp);
 	}
-
-	isert_free_rx_descriptors(isert_conn);
-	rdma_destroy_id(isert_conn->conn_cm_id);
 
 	ib_dereg_mr(isert_conn->conn_mr);
 	ib_dealloc_pd(isert_conn->conn_pd);
@@ -768,7 +767,7 @@ isert_connect_release(struct isert_conn *isert_conn)
 static void
 isert_connected_handler(struct rdma_cm_id *cma_id)
 {
-	struct isert_conn *isert_conn = cma_id->context;
+	struct isert_conn *isert_conn = cma_id->qp->qp_context;
 
 	pr_info("conn %p\n", isert_conn);
 
@@ -846,16 +845,16 @@ isert_conn_terminate(struct isert_conn *isert_conn)
 static int
 isert_disconnected_handler(struct rdma_cm_id *cma_id)
 {
+	struct iscsi_np *np = cma_id->context;
+	struct isert_np *isert_np = np->np_context;
 	struct isert_conn *isert_conn;
 
-	if (!cma_id->qp) {
-		struct isert_np *isert_np = cma_id->context;
-
+	if (isert_np->np_cm_id == cma_id) {
 		isert_np->np_cm_id = NULL;
 		return -1;
 	}
 
-	isert_conn = (struct isert_conn *)cma_id->context;
+	isert_conn = cma_id->qp->qp_context;
 
 	mutex_lock(&isert_conn->conn_mutex);
 	isert_conn_terminate(isert_conn);
@@ -870,7 +869,7 @@ isert_disconnected_handler(struct rdma_cm_id *cma_id)
 static void
 isert_connect_error(struct rdma_cm_id *cma_id)
 {
-	struct isert_conn *isert_conn = (struct isert_conn *)cma_id->context;
+	struct isert_conn *isert_conn = cma_id->qp->qp_context;
 
 	isert_put_conn(isert_conn);
 }
