@@ -96,8 +96,7 @@ isert_query_device(struct ib_device *ib_dev, struct ib_device_attr *devattr)
 }
 
 static int
-isert_conn_setup_qp(struct isert_conn *isert_conn, struct rdma_cm_id *cma_id,
-		    u8 protection)
+isert_conn_setup_qp(struct isert_conn *isert_conn, struct rdma_cm_id *cma_id)
 {
 	struct isert_device *device = isert_conn->conn_device;
 	struct ib_qp_init_attr attr;
@@ -132,7 +131,7 @@ isert_conn_setup_qp(struct isert_conn *isert_conn, struct rdma_cm_id *cma_id,
 	attr.cap.max_recv_sge = 1;
 	attr.sq_sig_type = IB_SIGNAL_REQ_WR;
 	attr.qp_type = IB_QPT_RC;
-	if (protection)
+	if (device->pi_capable)
 		attr.create_flags |= IB_QP_CREATE_SIGNATURE_EN;
 
 	pr_debug("isert_conn_setup_qp cma_id->device: %p\n",
@@ -503,7 +502,7 @@ err_pi_ctx:
 
 static int
 isert_create_fr_desc(struct ib_device *ib_device, struct ib_pd *pd,
-		     struct fast_reg_descriptor *fr_desc, u8 protection)
+		     struct fast_reg_descriptor *fr_desc)
 {
 	int ret;
 
@@ -524,18 +523,10 @@ isert_create_fr_desc(struct ib_device *ib_device, struct ib_pd *pd,
 	}
 	fr_desc->ind |= ISERT_DATA_KEY_VALID;
 
-	if (protection) {
-		ret = isert_create_pi_ctx(fr_desc, ib_device, pd);
-		if (ret)
-			goto err_data_mr;
-	}
-
 	pr_debug("Created fr_desc %p\n", fr_desc);
 
 	return 0;
 
-err_data_mr:
-	ib_dereg_mr(fr_desc->data_mr);
 err_data_frpl:
 	ib_free_fast_reg_page_list(fr_desc->data_frpl);
 
@@ -543,7 +534,7 @@ err_data_frpl:
 }
 
 static int
-isert_conn_create_fastreg_pool(struct isert_conn *isert_conn, u8 pi_support)
+isert_conn_create_fastreg_pool(struct isert_conn *isert_conn)
 {
 	struct fast_reg_descriptor *fr_desc;
 	struct isert_device *device = isert_conn->conn_device;
@@ -567,8 +558,7 @@ isert_conn_create_fastreg_pool(struct isert_conn *isert_conn, u8 pi_support)
 		}
 
 		ret = isert_create_fr_desc(device->ib_device,
-					   isert_conn->conn_pd, fr_desc,
-					   pi_support);
+					   isert_conn->conn_pd, fr_desc);
 		if (ret) {
 			pr_err("Failed to create fastreg descriptor err=%d\n",
 			       ret);
@@ -599,7 +589,6 @@ isert_connect_request(struct rdma_cm_id *cma_id, struct rdma_cm_event *event)
 	struct isert_device *device;
 	struct ib_device *ib_dev = cma_id->device;
 	int ret = 0;
-	u8 pi_support;
 
 	spin_lock_bh(&np->np_thread_lock);
 	if (!np->enabled) {
@@ -699,15 +688,7 @@ isert_connect_request(struct rdma_cm_id *cma_id, struct rdma_cm_event *event)
 		goto out_mr;
 	}
 
-	pi_support = np->tpg_np->tpg->tpg_attrib.t10_pi;
-	if (pi_support && !device->pi_capable) {
-		pr_err("Protection information requested but not supported, "
-		       "rejecting connect request\n");
-		ret = rdma_reject(cma_id, NULL, 0);
-		goto out_mr;
-	}
-
-	ret = isert_conn_setup_qp(isert_conn, cma_id, pi_support);
+	ret = isert_conn_setup_qp(isert_conn, cma_id);
 	if (ret)
 		goto out_conn_dev;
 
@@ -1169,11 +1150,7 @@ isert_put_login_tx(struct iscsi_conn *conn, struct iscsi_login *login,
 		if (login->login_complete) {
 			if (!conn->sess->sess_ops->SessionType &&
 			    isert_conn->conn_device->use_fastreg) {
-				/* Normal Session and fastreg is used */
-				u8 pi_support = login->np->tpg_np->tpg->tpg_attrib.t10_pi;
-
-				ret = isert_conn_create_fastreg_pool(isert_conn,
-								     pi_support);
+				ret = isert_conn_create_fastreg_pool(isert_conn);
 				if (ret) {
 					pr_err("Conn: %p failed to create"
 					       " fastreg pool\n", isert_conn);
@@ -2865,8 +2842,20 @@ isert_handle_prot_cmd(struct isert_conn *isert_conn,
 		      struct isert_cmd *isert_cmd,
 		      struct isert_rdma_wr *wr)
 {
+	struct isert_device *device = isert_conn->conn_device;
 	struct se_cmd *se_cmd = &isert_cmd->iscsi_cmd->se_cmd;
 	int ret;
+
+	if (!wr->fr_desc->pi_ctx) {
+		ret = isert_create_pi_ctx(wr->fr_desc,
+					  device->ib_device,
+					  isert_conn->conn_pd);
+		if (ret) {
+			pr_err("conn %p failed to allocate pi_ctx\n",
+				  isert_conn);
+			return ret;
+		}
+	}
 
 	if (se_cmd->t_prot_sg) {
 		ret = isert_map_data_buf(isert_conn, isert_cmd,
