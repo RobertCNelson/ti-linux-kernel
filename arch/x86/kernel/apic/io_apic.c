@@ -1289,9 +1289,9 @@ static void io_apic_print_entries(unsigned int apic, unsigned int nr_entries)
 		entry = ioapic_read_entry(apic, i);
 		snprintf(buf, sizeof(buf),
 			 " pin%02x, %s, %s, %s, V(%02X), IRR(%1d), S(%1d)",
-			 i, entry.mask ? "enabled" : "disabled",
-			 entry.trigger ? "level" : "edge",
-			 entry.polarity ? "high" : "low",
+			 i, entry.mask ? "disabled" : "enabled ",
+			 entry.trigger ? "level" : "edge ",
+			 entry.polarity ? "low " : "high",
 			 entry.vector, entry.irr, entry.delivery_status);
 		if (ir_entry->format)
 			printk(KERN_DEBUG "%s, remapped, I(%04X),  Z(%X)\n",
@@ -1299,7 +1299,7 @@ static void io_apic_print_entries(unsigned int apic, unsigned int nr_entries)
 			       ir_entry->zero);
 		else
 			printk(KERN_DEBUG "%s, %s, D(%02X), M(%1d)\n",
-			       buf, entry.dest_mode ? "logical" : "physical",
+			       buf, entry.dest_mode ? "logical " : "physical",
 			       entry.dest, entry.delivery_mode);
 	}
 }
