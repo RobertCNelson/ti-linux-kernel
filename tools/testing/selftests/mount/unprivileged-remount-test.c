@@ -144,13 +144,12 @@ static void create_and_enter_userns(void)
 			strerror(errno));
 	}
 
+	if (access("/proc/self/setgroups", F_OK) == 0) {
+		write_file("/proc/self/setgroups", "deny");
+	}
 	write_file("/proc/self/uid_map", "0 %d 1", uid);
 	write_file("/proc/self/gid_map", "0 %d 1", gid);
 
-	if (setgroups(0, NULL) != 0) {
-		die("setgroups failed: %s\n",
-			strerror(errno));
-	}
 	if (setgid(0) != 0) {
 		die ("setgid(0) failed %s\n",
 			strerror(errno));
