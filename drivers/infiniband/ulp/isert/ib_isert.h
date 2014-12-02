@@ -138,7 +138,6 @@ struct isert_conn {
 	struct ib_mr		*conn_mr;
 	struct ib_qp		*conn_qp;
 	struct isert_device	*conn_device;
-	struct work_struct	conn_logout_work;
 	struct mutex		conn_mutex;
 	struct completion	conn_wait;
 	struct completion	conn_wait_comp_err;

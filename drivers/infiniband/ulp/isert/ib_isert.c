@@ -804,21 +804,6 @@ isert_conn_terminate(struct isert_conn *isert_conn)
 	}
 }
 
-static void
-isert_disconnect_work(struct work_struct *work)
-{
-	struct isert_conn *isert_conn = container_of(work,
-				struct isert_conn, conn_logout_work);
-
-	pr_debug("isert_disconnect_work(): >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
-	mutex_lock(&isert_conn->conn_mutex);
-	isert_conn_terminate(isert_conn);
-	mutex_unlock(&isert_conn->conn_mutex);
-
-	pr_info("conn %p completing conn_wait\n", isert_conn);
-	complete(&isert_conn->conn_wait);
-}
-
 static int
 isert_disconnected_handler(struct rdma_cm_id *cma_id)
 {
@@ -833,8 +818,12 @@ isert_disconnected_handler(struct rdma_cm_id *cma_id)
 
 	isert_conn = (struct isert_conn *)cma_id->context;
 
-	INIT_WORK(&isert_conn->conn_logout_work, isert_disconnect_work);
-	schedule_work(&isert_conn->conn_logout_work);
+	mutex_lock(&isert_conn->conn_mutex);
+	isert_conn_terminate(isert_conn);
+	mutex_unlock(&isert_conn->conn_mutex);
+
+	pr_info("conn %p completing conn_wait\n", isert_conn);
+	complete(&isert_conn->conn_wait);
 
 	return 0;
 }
