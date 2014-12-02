@@ -442,6 +442,66 @@ isert_conn_free_fastreg_pool(struct isert_conn *isert_conn)
 }
 
 static int
+isert_create_pi_ctx(struct fast_reg_descriptor *desc,
+		    struct ib_device *device,
+		    struct ib_pd *pd)
+{
+	struct ib_mr_init_attr mr_init_attr;
+	struct pi_context *pi_ctx;
+	int ret;
+
+	pi_ctx = kzalloc(sizeof(*desc->pi_ctx), GFP_KERNEL);
+	if (!pi_ctx) {
+		pr_err("Failed to allocate pi context\n");
+		return -ENOMEM;
+	}
+
+	pi_ctx->prot_frpl = ib_alloc_fast_reg_page_list(device,
+					    ISCSI_ISER_SG_TABLESIZE);
+	if (IS_ERR(pi_ctx->prot_frpl)) {
+		pr_err("Failed to allocate prot frpl err=%ld\n",
+			  PTR_ERR(pi_ctx->prot_frpl));
+		ret = PTR_ERR(pi_ctx->prot_frpl);
+		goto err_pi_ctx;
+	}
+
+	pi_ctx->prot_mr = ib_alloc_fast_reg_mr(pd, ISCSI_ISER_SG_TABLESIZE);
+	if (IS_ERR(pi_ctx->prot_mr)) {
+		pr_err("Failed to allocate prot frmr err=%ld\n",
+			  PTR_ERR(pi_ctx->prot_mr));
+		ret = PTR_ERR(pi_ctx->prot_mr);
+		goto err_prot_frpl;
+	}
+	desc->ind |= ISERT_PROT_KEY_VALID;
+
+	memset(&mr_init_attr, 0, sizeof(mr_init_attr));
+	mr_init_attr.max_reg_descriptors = 2;
+	mr_init_attr.flags |= IB_MR_SIGNATURE_EN;
+	pi_ctx->sig_mr = ib_create_mr(pd, &mr_init_attr);
+	if (IS_ERR(pi_ctx->sig_mr)) {
+		pr_err("Failed to allocate signature enabled mr err=%ld\n",
+			  PTR_ERR(pi_ctx->sig_mr));
+		ret = PTR_ERR(pi_ctx->sig_mr);
+		goto err_prot_mr;
+	}
+
+	desc->pi_ctx = pi_ctx;
+	desc->ind |= ISERT_SIG_KEY_VALID;
+	desc->ind &= ~ISERT_PROTECTED;
+
+	return 0;
+
+err_prot_mr:
+	ib_dereg_mr(desc->pi_ctx->prot_mr);
+err_prot_frpl:
+	ib_free_fast_reg_page_list(desc->pi_ctx->prot_frpl);
+err_pi_ctx:
+	kfree(desc->pi_ctx);
+
+	return ret;
+}
+
+static int
 isert_create_fr_desc(struct ib_device *ib_device, struct ib_pd *pd,
 		     struct fast_reg_descriptor *fr_desc, u8 protection)
 {
@@ -462,60 +522,18 @@ isert_create_fr_desc(struct ib_device *ib_device, struct ib_pd *pd,
 		ret = PTR_ERR(fr_desc->data_mr);
 		goto err_data_frpl;
 	}
-	pr_debug("Create fr_desc %p page_list %p\n",
-		 fr_desc, fr_desc->data_frpl->page_list);
 	fr_desc->ind |= ISERT_DATA_KEY_VALID;
 
 	if (protection) {
-		struct ib_mr_init_attr mr_init_attr = {0};
-		struct pi_context *pi_ctx;
-
-		fr_desc->pi_ctx = kzalloc(sizeof(*fr_desc->pi_ctx), GFP_KERNEL);
-		if (!fr_desc->pi_ctx) {
-			pr_err("Failed to allocate pi context\n");
-			ret = -ENOMEM;
+		ret = isert_create_pi_ctx(fr_desc, ib_device, pd);
+		if (ret)
 			goto err_data_mr;
-		}
-		pi_ctx = fr_desc->pi_ctx;
-
-		pi_ctx->prot_frpl = ib_alloc_fast_reg_page_list(ib_device,
-						    ISCSI_ISER_SG_TABLESIZE);
-		if (IS_ERR(pi_ctx->prot_frpl)) {
-			pr_err("Failed to allocate prot frpl err=%ld\n",
-			       PTR_ERR(pi_ctx->prot_frpl));
-			ret = PTR_ERR(pi_ctx->prot_frpl);
-			goto err_pi_ctx;
-		}
-
-		pi_ctx->prot_mr = ib_alloc_fast_reg_mr(pd, ISCSI_ISER_SG_TABLESIZE);
-		if (IS_ERR(pi_ctx->prot_mr)) {
-			pr_err("Failed to allocate prot frmr err=%ld\n",
-			       PTR_ERR(pi_ctx->prot_mr));
-			ret = PTR_ERR(pi_ctx->prot_mr);
-			goto err_prot_frpl;
-		}
-		fr_desc->ind |= ISERT_PROT_KEY_VALID;
-
-		mr_init_attr.max_reg_descriptors = 2;
-		mr_init_attr.flags |= IB_MR_SIGNATURE_EN;
-		pi_ctx->sig_mr = ib_create_mr(pd, &mr_init_attr);
-		if (IS_ERR(pi_ctx->sig_mr)) {
-			pr_err("Failed to allocate signature enabled mr err=%ld\n",
-			       PTR_ERR(pi_ctx->sig_mr));
-			ret = PTR_ERR(pi_ctx->sig_mr);
-			goto err_prot_mr;
-		}
-		fr_desc->ind |= ISERT_SIG_KEY_VALID;
 	}
-	fr_desc->ind &= ~ISERT_PROTECTED;
+
+	pr_debug("Created fr_desc %p\n", fr_desc);
 
 	return 0;
-err_prot_mr:
-	ib_dereg_mr(fr_desc->pi_ctx->prot_mr);
-err_prot_frpl:
-	ib_free_fast_reg_page_list(fr_desc->pi_ctx->prot_frpl);
-err_pi_ctx:
-	kfree(fr_desc->pi_ctx);
+
 err_data_mr:
 	ib_dereg_mr(fr_desc->data_mr);
 err_data_frpl:
