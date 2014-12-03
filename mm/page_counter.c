@@ -4,6 +4,8 @@
  * Copyright (C) 2014 Red Hat, Inc., Johannes Weiner
  */
 
+#include <linux/kernel.h>
+#include <linux/bug.h>
 #include <linux/page_counter.h>
 #include <linux/atomic.h>
 #include <linux/sched.h>
