@@ -166,6 +166,7 @@ void __init proc_root_init(void)
 {
 	int err;
 
+	proc_root.subdir = RB_ROOT;
 	proc_init_inodecache();
 	err = register_filesystem(&proc_fs_type);
 	if (err)
