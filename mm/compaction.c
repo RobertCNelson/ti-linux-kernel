@@ -1127,21 +1127,30 @@ unsigned long compaction_suitable(struct zone *zone, int order,
 	if (order == -1)
 		return COMPACT_CONTINUE;
 
+	watermark = low_wmark_pages(zone);
+	/*
+	 * If watermarks for high-order allocation are already met, there
+	 * should be no need for compaction at all.
+	 */
+	if (zone_watermark_ok(zone, order, watermark, classzone_idx,
+								alloc_flags))
+		return COMPACT_PARTIAL;
+
 	/*
 	 * Watermarks for order-0 must be met for compaction. Note the 2UL.
 	 * This is because during migration, copies of pages need to be
 	 * allocated and for a short time, the footprint is higher
 	 */
-	watermark = low_wmark_pages(zone) + (2UL << order);
-	if (!zone_watermark_ok(zone, 0, watermark, 0, 0))
+	watermark += (2UL << order);
+	if (!zone_watermark_ok(zone, 0, watermark, classzone_idx, alloc_flags))
 		return COMPACT_SKIPPED;
 
 	/*
 	 * fragmentation index determines if allocation failures are due to
 	 * low memory or external fragmentation
 	 *
-	 * index of -1000 implies allocations might succeed depending on
-	 * watermarks
+	 * index of -1000 would imply allocations might succeed depending on
+	 * watermarks, but we already failed the high-order watermark check
 	 * index towards 0 implies failure is due to lack of memory
 	 * index towards 1000 implies failure is due to fragmentation
 	 *
@@ -1150,10 +1159,6 @@ unsigned long compaction_suitable(struct zone *zone, int order,
 	fragindex = fragmentation_index(zone, order);
 	if (fragindex >= 0 && fragindex <= sysctl_extfrag_threshold)
 		return COMPACT_SKIPPED;
-
-	if (fragindex == -1000 && zone_watermark_ok(zone, order, watermark,
-	    classzone_idx, alloc_flags))
-		return COMPACT_PARTIAL;
 
 	return COMPACT_CONTINUE;
 }
