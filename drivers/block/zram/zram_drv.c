@@ -948,7 +948,7 @@ static void zram_slot_free_notify(struct block_device *bdev,
 static int zram_rw_page(struct block_device *bdev, sector_t sector,
 		       struct page *page, int rw)
 {
-	int offset, ret;
+	int offset, err;
 	u32 index;
 	struct zram *zram;
 	struct bio_vec bv;
@@ -956,13 +956,13 @@ static int zram_rw_page(struct block_device *bdev, sector_t sector,
 	zram = bdev->bd_disk->private_data;
 	if (!valid_io_request(zram, sector, PAGE_SIZE)) {
 		atomic64_inc(&zram->stats.invalid_io);
-		ret = -EINVAL;
+		err = -EINVAL;
 		goto out;
 	}
 
 	down_read(&zram->init_lock);
 	if (unlikely(!init_done(zram))) {
-		ret = -EIO;
+		err = -EIO;
 		goto out_unlock;
 	}
 
@@ -973,13 +973,18 @@ static int zram_rw_page(struct block_device *bdev, sector_t sector,
 	bv.bv_len = PAGE_SIZE;
 	bv.bv_offset = 0;
 
-	ret = zram_bvec_rw(zram, &bv, index, offset, rw);
+	err = zram_bvec_rw(zram, &bv, index, offset, rw);
 
 out_unlock:
 	up_read(&zram->init_lock);
 out:
-	page_endio(page, rw, ret);
-	return ret;
+	page_endio(page, rw, err);
+
+	/*
+	 * Return 0 prevents I/O fallback trial caused by rw_page fail
+	 * and upper layer can handle this IO error via page error.
+	 */
+	return 0;
 }
 
 static const struct block_device_operations zram_devops = {
