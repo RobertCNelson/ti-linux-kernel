@@ -465,16 +465,15 @@ static void smaps_account(struct mem_size_stats *mss, struct page *page,
 			mss->shared_dirty += size;
 		else
 			mss->shared_clean += size;
-		mss->pss += (size << PSS_SHIFT) / mapcount;
+		mss->pss += ((u64)size << PSS_SHIFT) / mapcount;
 	} else {
 		if (dirty || PageDirty(page))
 			mss->private_dirty += size;
 		else
 			mss->private_clean += size;
-		mss->pss += (size << PSS_SHIFT);
+		mss->pss += (u64)size << PSS_SHIFT;
 	}
 }
-
 
 static void smaps_pte_entry(pte_t *pte, unsigned long addr,
 		struct mm_walk *walk)
