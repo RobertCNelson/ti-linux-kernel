@@ -911,7 +911,7 @@ static int zs_register_cpu_notifier(void)
 	return notifier_to_errno(ret);
 }
 
-static void zs_exit(void)
+static void __exit zs_exit(void)
 {
 #ifdef CONFIG_ZPOOL
 	zpool_unregister_driver(&zs_zpool_driver);
@@ -919,7 +919,7 @@ static void zs_exit(void)
 	zs_unregister_cpu_notifier();
 }
 
-static int zs_init(void)
+static int __init zs_init(void)
 {
 	int ret = zs_register_cpu_notifier();
 
