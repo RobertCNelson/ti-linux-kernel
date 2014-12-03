@@ -373,7 +373,7 @@ static struct omap_rtc *omap_rtc_power_off_rtc;
  * The two-second alarm offset is the shortest offset possible as the alarm
  * registers must be set before the next timer update and the offset
  * calculation is too heavy for everything to be done within a single access
- * period (~15us).
+ * period (~15 us).
  *
  * Called with local interrupts disabled.
  */
@@ -417,8 +417,12 @@ static void omap_rtc_power_off(void)
 	rtc_writel(rtc, OMAP_RTC_INTERRUPTS_REG,
 			val | OMAP_RTC_INTERRUPTS_IT_ALARM2);
 
-	/* Allow alarm to trigger before returning */
-	mdelay(2000);
+	/*
+	 * Wait for alarm to trigger (within two seconds) and external PMIC to
+	 * power off the system. Add a 500 ms margin for external latencies
+	 * (e.g. debounce circuits).
+	 */
+	mdelay(2500);
 }
 
 static struct rtc_class_ops omap_rtc_ops = {
