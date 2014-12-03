@@ -1203,6 +1203,7 @@ static int compact_zone(struct zone *zone, struct compact_control *cc)
 	while ((ret = compact_finished(zone, cc, migratetype)) ==
 						COMPACT_CONTINUE) {
 		int err;
+		unsigned long last_migrated_pfn = 0;
 
 		switch (isolate_migratepages(zone, cc)) {
 		case ISOLATE_ABORT:
@@ -1211,7 +1212,12 @@ static int compact_zone(struct zone *zone, struct compact_control *cc)
 			cc->nr_migratepages = 0;
 			goto out;
 		case ISOLATE_NONE:
-			continue;
+			/*
+			 * We haven't isolated and migrated anything, but
+			 * there might still be unflushed migrations from
+			 * previous cc->order aligned block.
+			 */
+			goto check_drain;
 		case ISOLATE_SUCCESS:
 			;
 		}
@@ -1236,6 +1242,39 @@ static int compact_zone(struct zone *zone, struct compact_control *cc)
 				goto out;
 			}
 		}
+
+		/*
+		 * Record where we have freed pages by migration and not yet
+		 * flushed them to buddy allocator. Subtract 1, because often
+		 * we finish a pageblock and migrate_pfn points to the first
+		 * page* of the next one. In that case we want the drain below
+		 * to happen immediately.
+		 */
+		if (!last_migrated_pfn)
+			last_migrated_pfn = cc->migrate_pfn - 1;
+
+check_drain:
+		/*
+		 * Have we moved away from the previous cc->order aligned block
+		 * where we migrated from? If yes, flush the pages that were
+		 * freed, so that they can merge and compact_finished() can
+		 * detect immediately if allocation should succeed.
+		 */
+		if (cc->order > 0 && last_migrated_pfn) {
+			int cpu;
+			unsigned long current_block_start =
+				cc->migrate_pfn & ~((1UL << cc->order) - 1);
+
+			if (last_migrated_pfn < current_block_start) {
+				cpu = get_cpu();
+				lru_add_drain_cpu(cpu);
+				drain_local_pages(zone);
+				put_cpu();
+				/* No more flushing until we migrate again */
+				last_migrated_pfn = 0;
+			}
+		}
+
 	}
 
 out:
