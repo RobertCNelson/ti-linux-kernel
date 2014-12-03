@@ -425,16 +425,20 @@ static inline void prep_zero_page(struct page *page, unsigned int order,
 
 #ifdef CONFIG_DEBUG_PAGEALLOC
 unsigned int _debug_guardpage_minorder;
-bool _debug_pagealloc_enabled __read_mostly = true;
+bool _debug_pagealloc_enabled __read_mostly;
 bool _debug_guardpage_enabled __read_mostly;
 
-static int __init early_disable_debug_pagealloc(char *buf)
+static int __init early_debug_pagealloc(char *buf)
 {
-	_debug_pagealloc_enabled = false;
+	if (!buf)
+		return -EINVAL;
+
+	if (strcmp(buf, "on") == 0)
+		_debug_pagealloc_enabled = true;
 
 	return 0;
 }
-early_param("disable_debug_pagealloc", early_disable_debug_pagealloc);
+early_param("debug_pagealloc", early_debug_pagealloc);
 
 static bool need_debug_guardpage(void)
 {
