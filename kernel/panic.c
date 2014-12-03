@@ -23,7 +23,6 @@
 #include <linux/sysrq.h>
 #include <linux/init.h>
 #include <linux/nmi.h>
-#include <linux/crash_dump.h>
 
 #define PANIC_TIMER_STEP 100
 #define PANIC_BLINK_SPD 18
@@ -423,8 +422,7 @@ static void warn_slowpath_common(const char *file, int line, void *caller,
 {
 	disable_trace_on_warning();
 
-	if (!panic_on_warn)
-		pr_warn("------------[ cut here ]------------\n");
+	pr_warn("------------[ cut here ]------------\n");
 	pr_warn("WARNING: CPU: %d PID: %d at %s:%d %pS()\n",
 		raw_smp_processor_id(), current->pid, file, line, caller);
 
@@ -433,8 +431,10 @@ static void warn_slowpath_common(const char *file, int line, void *caller,
 
 	if (panic_on_warn) {
 		/*
-		 * A flood of WARN()s may occur.  Prevent further WARN()s
-		 * from panicking the system.
+		 * This thread may hit another WARN() in the panic path.
+		 * Resetting this prevents additional WARN() from panicking the
+		 * system on this thread.  Other threads are blocked by the
+		 * panic_mutex in panic().
 		 */
 		panic_on_warn = 0;
 		panic("panic_on_warn set ...\n");
