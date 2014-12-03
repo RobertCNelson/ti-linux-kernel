@@ -215,7 +215,7 @@ static int sirfsoc_rtc_alarm_irq_enable(struct device *dev,
 	unsigned long rtc_status_reg = 0x0;
 	struct sirfsoc_rtc_drv *rtcdrv;
 
-	rtcdrv = (struct sirfsoc_rtc_drv *)dev_get_drvdata(dev);
+	rtcdrv = dev_get_drvdata(dev);
 
 	local_irq_disable();
 
