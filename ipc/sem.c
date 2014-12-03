@@ -330,8 +330,8 @@ static inline int sem_lock(struct sem_array *sma, struct sembuf *sops,
 			 * The ipc object lock check must be visible on all
 			 * cores before rechecking the complex count.  Otherwise
 			 * we can race with  another thread that does:
-			 * 	complex_count++++;
-			 * 	spin_unlock(sem_perm.lock);
+			 *	complex_count++;
+			 *	spin_unlock(sem_perm.lock);
 			 */
 			smp_rmb();
 
