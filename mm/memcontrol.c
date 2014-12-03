@@ -5406,7 +5406,7 @@ static void mem_cgroup_clear_mc(void)
 	mc.to = NULL;
 	spin_unlock(&mc.lock);
 
-	atomic_dec(&memcg->moving_account);
+	atomic_dec(&from->moving_account);
 }
 
 static int mem_cgroup_can_attach(struct cgroup_subsys_state *css,
@@ -5446,7 +5446,7 @@ static int mem_cgroup_can_attach(struct cgroup_subsys_state *css,
 			 * its pages to another memcg.  Then wait for
 			 * already started RCU-only updates to finish.
 			 */
-			atomic_inc(&memcg->moving_account);
+			atomic_inc(&from->moving_account);
 			synchronize_rcu();
 
 			spin_lock(&mc.lock);
