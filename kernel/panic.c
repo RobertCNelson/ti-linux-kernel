@@ -23,6 +23,7 @@
 #include <linux/sysrq.h>
 #include <linux/init.h>
 #include <linux/nmi.h>
+#include <linux/crash_dump.h>
 
 #define PANIC_TIMER_STEP 100
 #define PANIC_BLINK_SPD 18
@@ -436,7 +437,7 @@ static void warn_slowpath_common(const char *file, int line, void *caller,
 		 * from panicking the system.
 		 */
 		panic_on_warn = 0;
-		panic("panic_on_warn set ... \n");
+		panic("panic_on_warn set ...\n");
 	}
 
 	print_modules();
@@ -496,6 +497,7 @@ EXPORT_SYMBOL(__stack_chk_fail);
 
 core_param(panic, panic_timeout, int, 0644);
 core_param(pause_on_oops, pause_on_oops, int, 0644);
+core_param(panic_on_warn, panic_on_warn, int, 0644);
 
 static int __init setup_crash_kexec_post_notifiers(char *s)
 {
@@ -513,10 +515,3 @@ static int __init oops_setup(char *s)
 	return 0;
 }
 early_param("oops", oops_setup);
-
-static int __init panic_on_warn_setup(char *s)
-{
-	panic_on_warn = 1;
-	return 0;
-}
-early_param("panic_on_warn", panic_on_warn_setup);
