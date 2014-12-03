@@ -352,9 +352,8 @@ set:
 0. Configuration
 
 a. Enable CONFIG_CGROUPS
-b. Enable CONFIG_RESOURCE_COUNTERS
-c. Enable CONFIG_MEMCG
-d. Enable CONFIG_MEMCG_SWAP (to use swap extension)
+b. Enable CONFIG_MEMCG
+c. Enable CONFIG_MEMCG_SWAP (to use swap extension)
 d. Enable CONFIG_MEMCG_KMEM (to use kmem extension)
 
 1. Prepare the cgroups (see cgroups.txt, Why are cgroups needed?)
