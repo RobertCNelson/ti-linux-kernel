@@ -896,7 +896,7 @@ static void zs_unregister_cpu_notifier(void)
 
 static int zs_register_cpu_notifier(void)
 {
-	int cpu, ret;
+	int cpu, uninitialized_var(ret);
 
 	cpu_notifier_register_begin();
 
