@@ -1190,7 +1190,7 @@ static int do_mmap_private(struct vm_area_struct *vma,
 		kdebug("try to alloc exact %lu pages", total);
 		base = alloc_pages_exact(len, GFP_KERNEL);
 	} else {
-		base = __get_free_pages(GFP_KERNEL, order);
+		base = (void *)__get_free_pages(GFP_KERNEL, order);
 	}
 
 	if (!base)
