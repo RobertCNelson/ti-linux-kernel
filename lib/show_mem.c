@@ -8,9 +8,7 @@
 #include <linux/mm.h>
 #include <linux/nmi.h>
 #include <linux/quicklist.h>
-#ifdef CONFIG_CMA
 #include <linux/cma.h>
-#endif
 
 void show_mem(unsigned int filter)
 {
