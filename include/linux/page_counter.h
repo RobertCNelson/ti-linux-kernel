@@ -2,6 +2,8 @@
 #define _LINUX_PAGE_COUNTER_H
 
 #include <linux/atomic.h>
+#include <linux/kernel.h>
+#include <asm/page.h>
 
 struct page_counter {
 	atomic_long_t count;
