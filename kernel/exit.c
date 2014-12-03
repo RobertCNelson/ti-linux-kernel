@@ -571,7 +571,7 @@ static void forget_original_parent(struct task_struct *father)
 	list_for_each_entry_safe(p, n, &father->children, sibling) {
 		for_each_thread(p, t) {
 			t->real_parent = reaper;
-			BUG_ON(!t->ptrace != (t->parent == father));
+			BUG_ON((!t->ptrace) != (t->parent == father));
 			if (likely(!t->ptrace))
 				t->parent = t->real_parent;
 			if (t->pdeath_signal)
