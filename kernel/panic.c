@@ -33,6 +33,7 @@ static int pause_on_oops;
 static int pause_on_oops_flag;
 static DEFINE_SPINLOCK(pause_on_oops_lock);
 static bool crash_kexec_post_notifiers;
+int panic_on_warn __read_mostly;
 
 int panic_timeout = CONFIG_PANIC_TIMEOUT;
 EXPORT_SYMBOL_GPL(panic_timeout);
@@ -421,12 +422,22 @@ static void warn_slowpath_common(const char *file, int line, void *caller,
 {
 	disable_trace_on_warning();
 
-	pr_warn("------------[ cut here ]------------\n");
+	if (!panic_on_warn)
+		pr_warn("------------[ cut here ]------------\n");
 	pr_warn("WARNING: CPU: %d PID: %d at %s:%d %pS()\n",
 		raw_smp_processor_id(), current->pid, file, line, caller);
 
 	if (args)
 		vprintk(args->fmt, args->args);
+
+	if (panic_on_warn) {
+		/*
+		 * A flood of WARN()s may occur.  Prevent further WARN()s
+		 * from panicking the system.
+		 */
+		panic_on_warn = 0;
+		panic("panic_on_warn set ... \n");
+	}
 
 	print_modules();
 	dump_stack();
@@ -502,3 +513,10 @@ static int __init oops_setup(char *s)
 	return 0;
 }
 early_param("oops", oops_setup);
+
+static int __init panic_on_warn_setup(char *s)
+{
+	panic_on_warn = 1;
+	return 0;
+}
+early_param("panic_on_warn", panic_on_warn_setup);
