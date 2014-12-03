@@ -956,8 +956,7 @@ static int zram_rw_page(struct block_device *bdev, sector_t sector,
 	zram = bdev->bd_disk->private_data;
 	if (!valid_io_request(zram, sector, PAGE_SIZE)) {
 		atomic64_inc(&zram->stats.invalid_io);
-		err = -EINVAL;
-		goto out;
+		return -EINVAL;
 	}
 
 	down_read(&zram->init_lock);
@@ -974,15 +973,11 @@ static int zram_rw_page(struct block_device *bdev, sector_t sector,
 	bv.bv_offset = 0;
 
 	err = zram_bvec_rw(zram, &bv, index, offset, rw);
-
 out_unlock:
 	up_read(&zram->init_lock);
-out:
-	if (unlikely(err))
-		return err;
-
-	page_endio(page, rw, 0);
-	return 0;
+	if (err == 0)
+		page_endio(page, rw, 0);
+	return err;
 }
 
 static const struct block_device_operations zram_devops = {
