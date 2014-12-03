@@ -1245,8 +1245,8 @@ out:
 	 */
 	if (cc->nr_freepages > 0) {
 		unsigned long free_pfn = release_freepages(&cc->freepages);
-		cc->nr_freepages = 0;
 
+		cc->nr_freepages = 0;
 		VM_BUG_ON(free_pfn == 0);
 		/* The cached pfn is always the first in a pageblock */
 		free_pfn &= ~(pageblock_nr_pages-1);
