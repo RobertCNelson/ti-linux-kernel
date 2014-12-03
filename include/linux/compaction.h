@@ -104,7 +104,7 @@ static inline bool compaction_restarting(struct zone *zone, int order)
 static inline unsigned long try_to_compact_pages(struct zonelist *zonelist,
 			int order, gfp_t gfp_mask, nodemask_t *nodemask,
 			enum migrate_mode mode, int *contended,
-			int alloc_flags, int classzone_idx);
+			int alloc_flags, int classzone_idx)
 {
 	return COMPACT_CONTINUE;
 }
