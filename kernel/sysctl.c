@@ -1749,6 +1749,10 @@ static int _proc_do_string(char *data, int maxlen, int write,
 		while ((p - buffer) < *lenp && len < maxlen - 1) {
 			if (get_user(c, p++))
 				return -EFAULT;
+			/*
+			 * \r terminates input to partially prevent attackers
+			 * from hiding info from sysadmins who use cat
+			 */
 			if (c == 0 || c == '\n' || c == '\r')
 				break;
 			data[len++] = c;
