@@ -195,16 +195,12 @@ static void update_pageblock_skip(struct compact_control *cc,
 
 	/* Update where async and sync compaction should restart */
 	if (migrate_scanner) {
-		if (cc->finished_update_migrate)
-			return;
 		if (pfn > zone->compact_cached_migrate_pfn[0])
 			zone->compact_cached_migrate_pfn[0] = pfn;
 		if (cc->mode != MIGRATE_ASYNC &&
 		    pfn > zone->compact_cached_migrate_pfn[1])
 			zone->compact_cached_migrate_pfn[1] = pfn;
 	} else {
-		if (cc->finished_update_free)
-			return;
 		if (pfn < zone->compact_cached_free_pfn)
 			zone->compact_cached_free_pfn = pfn;
 	}
@@ -715,7 +711,6 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 		del_page_from_lru_list(page, lruvec, page_lru(page));
 
 isolate_success:
-		cc->finished_update_migrate = true;
 		list_add(&page->lru, migratelist);
 		cc->nr_migratepages++;
 		nr_isolated++;
@@ -887,15 +882,6 @@ static void isolate_freepages(struct compact_control *cc)
 		cc->free_pfn = (isolate_start_pfn < block_end_pfn) ?
 				isolate_start_pfn :
 				block_start_pfn - pageblock_nr_pages;
-
-		/*
-		 * Set a flag that we successfully isolated in this pageblock.
-		 * In the next loop iteration, zone->compact_cached_free_pfn
-		 * will not be updated and thus it will effectively contain the
-		 * highest pageblock we isolated pages from.
-		 */
-		if (isolated)
-			cc->finished_update_free = true;
 
 		/*
 		 * isolate_freepages_block() might have aborted due to async
