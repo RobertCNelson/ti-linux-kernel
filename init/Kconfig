@@ -1300,7 +1300,7 @@ config INIT_FALLBACK
 
 	  The default value of Y is consistent with historical behavior.
 	  Selecting N is likely to be more appropriate for most uses,
-	  especially on kiosks and on kernels that are indended to be
+	  especially on kiosks and on kernels that are intended to be
 	  run under the control of a script.
 
 config CC_OPTIMIZE_FOR_SIZE
