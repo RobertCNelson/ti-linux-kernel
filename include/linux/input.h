@@ -536,10 +536,17 @@ int input_ff_create_memless(struct input_dev *dev, void *data,
 
 #ifdef CONFIG_INPUT_LEDS
 
+void input_led_init(void);
+void input_led_exit(void);
+
 int input_led_connect(struct input_dev *dev);
 void input_led_disconnect(struct input_dev *dev);
 
 #else
+
+static inline void input_led_init(void) { }
+
+static inline void input_led_exit(void) { }
 
 static inline int input_led_connect(struct input_dev *dev)
 {

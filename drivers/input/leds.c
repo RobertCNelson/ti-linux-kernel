@@ -255,22 +255,18 @@ void input_led_disconnect(struct input_dev *dev)
 	mutex_unlock(&vt_led_registered_lock);
 }
 
-static int __init input_led_init(void)
+void __init input_led_init(void)
 {
 	unsigned i;
 
 	for (i = 0; i < LED_CNT; i++)
 		INIT_WORK(&vt_led_work[i], vt_led_cb);
-
-	return 0;
 }
 
-static void __exit input_led_exit(void)
+void __exit input_led_exit(void)
 {
-}
+	unsigned i;
 
-MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("User LED support for input layer");
-MODULE_AUTHOR("Samuel Thibault <samuel.thibault@ens-lyon.org>");
-module_init(input_led_init);
-module_exit(input_led_exit);
+	for (i = 0; i < LED_CNT; i++)
+		cancel_work_sync(&vt_led_work[i]);
+}
