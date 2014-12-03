@@ -978,12 +978,10 @@ static int zram_rw_page(struct block_device *bdev, sector_t sector,
 out_unlock:
 	up_read(&zram->init_lock);
 out:
-	page_endio(page, rw, err);
+	if (unlikely(err))
+		return err;
 
-	/*
-	 * Return 0 prevents I/O fallback trial caused by rw_page fail
-	 * and upper layer can handle this IO error via page error.
-	 */
+	page_endio(page, rw, 0);
 	return 0;
 }
 
