@@ -217,7 +217,7 @@ static void dlm_purge_lockres(struct dlm_ctxt *dlm,
 	else {
 		mlog(ML_ERROR, "Resource %.*s not on the Tracking list\n",
 				res->lockname.len, res->lockname.name);
-		dlm_print_one_lock_resource(res);
+		__dlm_print_one_lock_resource(res);
 	}
 	spin_unlock(&dlm->track_lock);
 
