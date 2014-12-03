@@ -2764,7 +2764,7 @@ int ocfs2_del_inode_from_orphan(struct ocfs2_super *osb,
 		goto bail_unlock_orphan;
 	}
 
-	BUG_ON(!di->i_flags & cpu_to_le32(OCFS2_DIO_ORPHANED_FL));
+	BUG_ON(!(di->i_flags & cpu_to_le32(OCFS2_DIO_ORPHANED_FL)));
 
 	/* Only delete entry if OCFS2_ORPHANED_FL not set, or
 	 * there are two entries added */
