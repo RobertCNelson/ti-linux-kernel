@@ -417,6 +417,7 @@ static void omap_rtc_power_off(void)
 	rtc_writel(rtc, OMAP_RTC_INTERRUPTS_REG,
 			val | OMAP_RTC_INTERRUPTS_IT_ALARM2);
 
+	/* Allow alarm to trigger before returning */
 	mdelay(2000);
 }
 
