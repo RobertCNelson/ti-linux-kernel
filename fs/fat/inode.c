@@ -334,7 +334,7 @@ static sector_t _fat_bmap(struct address_space *mapping, sector_t block)
 /*
  * fat_block_truncate_page() zeroes out a mapping from file offset `from'
  * up to the end of the block which corresponds to `from'.
- * This is required during truncate to physically zero out the tail end
+ * This is required during truncate to physically zeroout the tail end
  * of that block so it doesn't yield old data if the file is later grown.
  * Also, avoid causing failure from fsx for cases of "data past EOF"
  */
