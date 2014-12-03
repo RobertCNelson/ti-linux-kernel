@@ -529,7 +529,7 @@ static long ds1374_wdt_ioctl(struct file *file, unsigned int cmd,
 		wdt_margin = new_margin;
 		ds1374_wdt_settimeout(new_margin);
 		ds1374_wdt_ping();
-		/* Fall */
+		/* fallthrough */
 	case WDIOC_GETTIMEOUT:
 		return put_user(wdt_margin, (int __user *)arg);
 	case WDIOC_SETOPTIONS:
