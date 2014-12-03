@@ -63,7 +63,7 @@ struct msginfo {
  * MSGMNB is the default size of a new message queue. Non-root tasks can
  * decrease the size with msgctl(IPC_SET), root tasks
  * (actually: CAP_SYS_RESOURCE) can both increase and decrease the queue
- * size. The optimal value is application dependant.
+ * size. The optimal value is application dependent.
  * 16384 is used because it was always used (since 0.99.10)
  *
  * MAXMAX is the maximum size of an individual message, it's a global
