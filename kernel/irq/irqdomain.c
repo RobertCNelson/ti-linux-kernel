@@ -46,31 +46,14 @@ struct irq_domain *__irq_domain_add(struct device_node *of_node, int size,
 				    void *host_data)
 {
 	struct irq_domain *domain;
-	gfp_t gfp_flags = GFP_KERNEL;
-
-#ifdef CONFIG_X86
-	/*
-	 * BIG FAT COMMENT: Early initialization paths like enable_IR_x2apic(),
-	 * for example, call into here with interrupts disabled but then we do
-	 * allocate memory and can sleep so no-no. A proper fix would be to do
-	 * x2APIC IR setup in the early irq setup path but it is too late for
-	 * fixing it this way now, shortly before the merge window.
-	 *
-	 * So we do this little brown paper bag, which is temporary! Do not even
-	 * think of calling irq domain setup code with IRQs disabled. You will
-	 * get frozen-sharked!
-	 */
-	if (irqs_disabled())
-		gfp_flags = GFP_NOFS;
-#endif
 
 	domain = kzalloc_node(sizeof(*domain) + (sizeof(unsigned int) * size),
-			      gfp_flags, of_node_to_nid(of_node));
+			      GFP_KERNEL, of_node_to_nid(of_node));
 	if (WARN_ON(!domain))
 		return NULL;
 
 	/* Fill structure */
-	INIT_RADIX_TREE(&domain->revmap_tree, gfp_flags);
+	INIT_RADIX_TREE(&domain->revmap_tree, GFP_KERNEL);
 	domain->ops = ops;
 	domain->host_data = host_data;
 	domain->of_node = of_node_get(of_node);
