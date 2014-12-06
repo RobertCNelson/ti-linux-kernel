@@ -34,6 +34,7 @@
 
 #define _MASKED_BIT_ENABLE(a) (((a) << 16) | (a))
 #define _MASKED_BIT_DISABLE(a) ((a) << 16)
+#define _MASKED_FIELD(value, mask) (((mask) << 16) | (value))
 
 /* PCI config space */
 
@@ -1282,7 +1283,7 @@ enum punit_power_well {
 #define   GEN6_WIZ_HASHING_8x8				GEN6_WIZ_HASHING(0, 0)
 #define   GEN6_WIZ_HASHING_8x4				GEN6_WIZ_HASHING(0, 1)
 #define   GEN6_WIZ_HASHING_16x4				GEN6_WIZ_HASHING(1, 0)
-#define   GEN6_WIZ_HASHING_MASK				(GEN6_WIZ_HASHING(1, 1) << 16)
+#define   GEN6_WIZ_HASHING_MASK				GEN6_WIZ_HASHING(1, 1)
 #define   GEN6_TD_FOUR_ROW_DISPATCH_DISABLE		(1 << 5)
 
 #define GFX_MODE	0x02520
