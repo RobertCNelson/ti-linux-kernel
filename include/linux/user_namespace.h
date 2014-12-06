@@ -37,6 +37,15 @@ struct user_namespace {
 
 extern struct user_namespace init_user_ns;
 
+static inline bool userns_gid_mappings_established(const struct user_namespace *ns)
+{
+	bool established;
+	smp_mb__before_atomic();
+	established = ACCESS_ONCE(ns->gid_map.nr_extents) != 0;
+	smp_mb__after_atomic();
+	return established;
+}
+
 #ifdef CONFIG_USER_NS
 
 static inline struct user_namespace *get_user_ns(struct user_namespace *ns)

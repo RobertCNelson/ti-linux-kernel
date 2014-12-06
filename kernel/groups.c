@@ -6,6 +6,7 @@
 #include <linux/slab.h>
 #include <linux/security.h>
 #include <linux/syscalls.h>
+#include <linux/user_namespace.h>
 #include <asm/uaccess.h>
 
 /* init to 2 - one for init_task, one to ensure it is never freed */
@@ -217,7 +218,11 @@ bool may_setgroups(void)
 {
 	struct user_namespace *user_ns = current_user_ns();
 
-	return ns_capable(user_ns, CAP_SETGID);
+	/* It is not safe to use setgroups until a gid mapping in
+	 * the user namespace has been established.
+	 */
+	return userns_gid_mappings_established(user_ns) &&
+		ns_capable(user_ns, CAP_SETGID);
 }
 
 /*
