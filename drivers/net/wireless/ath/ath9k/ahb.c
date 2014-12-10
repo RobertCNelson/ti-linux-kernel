@@ -126,6 +126,7 @@ static int ath_ahb_probe(struct platform_device *pdev)
 	sc = hw->priv;
 	sc->hw = hw;
 	sc->dev = &pdev->dev;
+	dev_set_drvdata(sc->dev, sc);
 	sc->mem = mem;
 	sc->irq = irq;
 
@@ -175,7 +176,6 @@ static struct platform_driver ath_ahb_driver = {
 	.remove     = ath_ahb_remove,
 	.driver		= {
 		.name	= "ath9k",
-		.owner	= THIS_MODULE,
 	},
 	.id_table    = ath9k_platform_id_table,
 };
