@@ -386,7 +386,18 @@ struct mddev {
 
 	struct work_struct del_work;	/* used for delayed sysfs removal */
 
-	spinlock_t			write_lock;
+	/* "lock" protects:
+	 *   flush_bio transition from NULL to !NULL
+	 *   rdev superblocks, events
+	 *   clearing MD_CHANGE_*
+	 *   in_sync - and related safemode and MD_CHANGE changes
+	 *   pers (also protected by reconfig_mutex and pending IO).
+	 *   clearing ->bitmap
+	 *   clearing ->bitmap_info.file
+	 *   changing ->resync_{min,max}
+	 *   setting MD_RECOVERY_RUNNING (which interacts with resync_{min,max})
+	 */
+	spinlock_t			lock;
 	wait_queue_head_t		sb_wait;	/* for waiting on superblock updates */
 	atomic_t			pending_writes;	/* number of active superblock writes */
 
@@ -438,6 +449,30 @@ struct mddev {
 	struct work_struct event_work;	/* used by dm to report failure event */
 	void (*sync_super)(struct mddev *mddev, struct md_rdev *rdev);
 };
+
+static inline int __must_check mddev_lock(struct mddev *mddev)
+{
+	return mutex_lock_interruptible(&mddev->reconfig_mutex);
+}
+
+/* Sometimes we need to take the lock in a situation where
+ * failure due to interrupts is not acceptable.
+ */
+static inline void mddev_lock_nointr(struct mddev *mddev)
+{
+	mutex_lock(&mddev->reconfig_mutex);
+}
+
+static inline int mddev_is_locked(struct mddev *mddev)
+{
+	return mutex_is_locked(&mddev->reconfig_mutex);
+}
+
+static inline int mddev_trylock(struct mddev *mddev)
+{
+	return mutex_trylock(&mddev->reconfig_mutex);
+}
+extern void mddev_unlock(struct mddev *mddev);
 
 static inline void rdev_dec_pending(struct md_rdev *rdev, struct mddev *mddev)
 {
