@@ -149,6 +149,11 @@ static inline u32 mp_pin_to_gsi(int ioapic, int pin)
 	return mp_ioapic_gsi_routing(ioapic)->gsi_base + pin;
 }
 
+static inline bool mp_is_legacy_irq(int irq)
+{
+	return irq >= 0 && irq < nr_legacy_irqs();
+}
+
 /*
  * Initialize all legacy IRQs and all pins on the first IOAPIC
  * if we have legacy interrupt controller. Kernel boot option "pirq="
@@ -159,7 +164,7 @@ static inline int mp_init_irq_at_boot(int ioapic, int irq)
 	if (!nr_legacy_irqs())
 		return 0;
 
-	return ioapic == 0 || (irq >= 0 && irq < nr_legacy_irqs());
+	return ioapic == 0 || mp_is_legacy_irq(irq);
 }
 
 static inline struct irq_domain *mp_ioapic_irqdomain(int ioapic)
@@ -960,7 +965,7 @@ static int alloc_irq_from_domain(struct irq_domain *domain, int ioapic, u32 gsi,
 		 */
 		if (!ioapic_initialized || gsi >= nr_legacy_irqs())
 			irq = gsi;
-		legacy = irq >= 0 && irq < nr_legacy_irqs();
+		legacy = mp_is_legacy_irq(irq);
 		break;
 	case IOAPIC_DOMAIN_STRICT:
 		irq = gsi;
@@ -1031,8 +1036,8 @@ static int mp_map_pin_to_irq(u32 gsi, int idx, int ioapic, int pin,
 		return -ENOSYS;
 
 	if (idx >= 0 && test_bit(mp_irqs[idx].srcbus, mp_bus_not_pci)) {
-		legacy = true;
 		irq = mp_irqs[idx].srcbusirq;
+		legacy = mp_is_legacy_irq(irq);
 	}
 
 	mutex_lock(&ioapic_mutex);
