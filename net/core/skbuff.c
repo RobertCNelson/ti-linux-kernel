@@ -265,7 +265,7 @@ struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 		skb->fclone = SKB_FCLONE_ORIG;
 		atomic_set(&fclones->fclone_ref, 1);
 
-		fclones->skb2.fclone = SKB_FCLONE_FREE;
+		fclones->skb2.fclone = SKB_FCLONE_CLONE;
 		fclones->skb2.pfmemalloc = pfmemalloc;
 	}
 out:
@@ -541,26 +541,27 @@ static void kfree_skbmem(struct sk_buff *skb)
 	switch (skb->fclone) {
 	case SKB_FCLONE_UNAVAILABLE:
 		kmem_cache_free(skbuff_head_cache, skb);
-		break;
+		return;
 
 	case SKB_FCLONE_ORIG:
 		fclones = container_of(skb, struct sk_buff_fclones, skb1);
-		if (atomic_dec_and_test(&fclones->fclone_ref))
-			kmem_cache_free(skbuff_fclone_cache, fclones);
+
+		/* We usually free the clone (TX completion) before original skb
+		 * This test would have no chance to be true for the clone,
+		 * while here, branch prediction will be good.
+		 */
+		if (atomic_read(&fclones->fclone_ref) == 1)
+			goto fastpath;
 		break;
 
-	case SKB_FCLONE_CLONE:
+	default: /* SKB_FCLONE_CLONE */
 		fclones = container_of(skb, struct sk_buff_fclones, skb2);
-
-		/* The clone portion is available for
-		 * fast-cloning again.
-		 */
-		skb->fclone = SKB_FCLONE_FREE;
-
-		if (atomic_dec_and_test(&fclones->fclone_ref))
-			kmem_cache_free(skbuff_fclone_cache, fclones);
 		break;
 	}
+	if (!atomic_dec_and_test(&fclones->fclone_ref))
+		return;
+fastpath:
+	kmem_cache_free(skbuff_fclone_cache, fclones);
 }
 
 static void skb_release_head_state(struct sk_buff *skb)
@@ -872,15 +873,15 @@ struct sk_buff *skb_clone(struct sk_buff *skb, gfp_t gfp_mask)
 	struct sk_buff_fclones *fclones = container_of(skb,
 						       struct sk_buff_fclones,
 						       skb1);
-	struct sk_buff *n = &fclones->skb2;
+	struct sk_buff *n;
 
 	if (skb_orphan_frags(skb, gfp_mask))
 		return NULL;
 
 	if (skb->fclone == SKB_FCLONE_ORIG &&
-	    n->fclone == SKB_FCLONE_FREE) {
-		n->fclone = SKB_FCLONE_CLONE;
-		atomic_inc(&fclones->fclone_ref);
+	    atomic_read(&fclones->fclone_ref) == 1) {
+		n = &fclones->skb2;
+		atomic_set(&fclones->fclone_ref, 2);
 	} else {
 		if (skb_pfmemalloc(skb))
 			gfp_mask |= __GFP_MEMALLOC;
@@ -3002,7 +3003,7 @@ struct sk_buff *skb_segment(struct sk_buff *head_skb,
 		if (nskb->len == len + doffset)
 			goto perform_csum_check;
 
-		if (!sg) {
+		if (!sg && !nskb->remcsum_offload) {
 			nskb->ip_summed = CHECKSUM_NONE;
 			nskb->csum = skb_copy_and_csum_bits(head_skb, offset,
 							    skb_put(nskb, len),
@@ -3074,7 +3075,7 @@ skip_fraglist:
 		nskb->truesize += nskb->data_len;
 
 perform_csum_check:
-		if (!csum) {
+		if (!csum && !nskb->remcsum_offload) {
 			nskb->csum = skb_checksum(nskb, doffset,
 						  nskb->len - doffset, 0);
 			nskb->ip_summed = CHECKSUM_NONE;
@@ -3088,6 +3089,16 @@ perform_csum_check:
 	 * (see validate_xmit_skb_list() for example)
 	 */
 	segs->prev = tail;
+
+	/* Following permits correct backpressure, for protocols
+	 * using skb_set_owner_w().
+	 * Idea is to tranfert ownership from head_skb to last segment.
+	 */
+	if (head_skb->destructor == sock_wfree) {
+		swap(tail->truesize, head_skb->truesize);
+		swap(tail->destructor, head_skb->destructor);
+		swap(tail->sk, head_skb->sk);
+	}
 	return segs;
 
 err:
@@ -4129,6 +4140,113 @@ err_free:
 	return NULL;
 }
 EXPORT_SYMBOL(skb_vlan_untag);
+
+int skb_ensure_writable(struct sk_buff *skb, int write_len)
+{
+	if (!pskb_may_pull(skb, write_len))
+		return -ENOMEM;
+
+	if (!skb_cloned(skb) || skb_clone_writable(skb, write_len))
+		return 0;
+
+	return pskb_expand_head(skb, 0, 0, GFP_ATOMIC);
+}
+EXPORT_SYMBOL(skb_ensure_writable);
+
+/* remove VLAN header from packet and update csum accordingly. */
+static int __skb_vlan_pop(struct sk_buff *skb, u16 *vlan_tci)
+{
+	struct vlan_hdr *vhdr;
+	unsigned int offset = skb->data - skb_mac_header(skb);
+	int err;
+
+	__skb_push(skb, offset);
+	err = skb_ensure_writable(skb, VLAN_ETH_HLEN);
+	if (unlikely(err))
+		goto pull;
+
+	skb_postpull_rcsum(skb, skb->data + (2 * ETH_ALEN), VLAN_HLEN);
+
+	vhdr = (struct vlan_hdr *)(skb->data + ETH_HLEN);
+	*vlan_tci = ntohs(vhdr->h_vlan_TCI);
+
+	memmove(skb->data + VLAN_HLEN, skb->data, 2 * ETH_ALEN);
+	__skb_pull(skb, VLAN_HLEN);
+
+	vlan_set_encap_proto(skb, vhdr);
+	skb->mac_header += VLAN_HLEN;
+
+	if (skb_network_offset(skb) < ETH_HLEN)
+		skb_set_network_header(skb, ETH_HLEN);
+
+	skb_reset_mac_len(skb);
+pull:
+	__skb_pull(skb, offset);
+
+	return err;
+}
+
+int skb_vlan_pop(struct sk_buff *skb)
+{
+	u16 vlan_tci;
+	__be16 vlan_proto;
+	int err;
+
+	if (likely(vlan_tx_tag_present(skb))) {
+		skb->vlan_tci = 0;
+	} else {
+		if (unlikely((skb->protocol != htons(ETH_P_8021Q) &&
+			      skb->protocol != htons(ETH_P_8021AD)) ||
+			     skb->len < VLAN_ETH_HLEN))
+			return 0;
+
+		err = __skb_vlan_pop(skb, &vlan_tci);
+		if (err)
+			return err;
+	}
+	/* move next vlan tag to hw accel tag */
+	if (likely((skb->protocol != htons(ETH_P_8021Q) &&
+		    skb->protocol != htons(ETH_P_8021AD)) ||
+		   skb->len < VLAN_ETH_HLEN))
+		return 0;
+
+	vlan_proto = skb->protocol;
+	err = __skb_vlan_pop(skb, &vlan_tci);
+	if (unlikely(err))
+		return err;
+
+	__vlan_hwaccel_put_tag(skb, vlan_proto, vlan_tci);
+	return 0;
+}
+EXPORT_SYMBOL(skb_vlan_pop);
+
+int skb_vlan_push(struct sk_buff *skb, __be16 vlan_proto, u16 vlan_tci)
+{
+	if (vlan_tx_tag_present(skb)) {
+		unsigned int offset = skb->data - skb_mac_header(skb);
+		int err;
+
+		/* __vlan_insert_tag expect skb->data pointing to mac header.
+		 * So change skb->data before calling it and change back to
+		 * original position later
+		 */
+		__skb_push(skb, offset);
+		err = __vlan_insert_tag(skb, skb->vlan_proto,
+					vlan_tx_tag_get(skb));
+		if (err)
+			return err;
+		skb->protocol = skb->vlan_proto;
+		skb->mac_len += VLAN_HLEN;
+		__skb_pull(skb, offset);
+
+		if (skb->ip_summed == CHECKSUM_COMPLETE)
+			skb->csum = csum_add(skb->csum, csum_partial(skb->data
+					+ (2 * ETH_ALEN), VLAN_HLEN, 0));
+	}
+	__vlan_hwaccel_put_tag(skb, vlan_proto, vlan_tci);
+	return 0;
+}
+EXPORT_SYMBOL(skb_vlan_push);
 
 /**
  * alloc_skb_with_frags - allocate skb with page frags

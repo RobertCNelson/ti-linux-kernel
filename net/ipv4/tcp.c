@@ -1349,7 +1349,7 @@ static int tcp_recv_urg(struct sock *sk, struct msghdr *msg, int len, int flags)
 
 		if (len > 0) {
 			if (!(flags & MSG_TRUNC))
-				err = memcpy_toiovec(msg->msg_iov, &c, 1);
+				err = memcpy_to_msg(msg, &c, 1);
 			len = 1;
 		} else
 			msg->msg_flags |= MSG_TRUNC;
@@ -1377,7 +1377,7 @@ static int tcp_peek_sndq(struct sock *sk, struct msghdr *msg, int len)
 	/* XXX -- need to support SO_PEEK_OFF */
 
 	skb_queue_walk(&sk->sk_write_queue, skb) {
-		err = skb_copy_datagram_iovec(skb, 0, msg->msg_iov, skb->len);
+		err = skb_copy_datagram_msg(skb, 0, msg, skb->len);
 		if (err)
 			break;
 
@@ -1833,8 +1833,7 @@ do_prequeue:
 		}
 
 		if (!(flags & MSG_TRUNC)) {
-			err = skb_copy_datagram_iovec(skb, offset,
-						      msg->msg_iov, used);
+			err = skb_copy_datagram_msg(skb, offset, msg, used);
 			if (err) {
 				/* Exception. Bailout! */
 				if (!copied)

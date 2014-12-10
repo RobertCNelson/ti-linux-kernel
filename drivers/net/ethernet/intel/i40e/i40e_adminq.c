@@ -51,7 +51,7 @@ static inline bool i40e_is_nvm_update_op(struct i40e_aq_desc *desc)
 static void i40e_adminq_init_regs(struct i40e_hw *hw)
 {
 	/* set head and tail registers in our local struct */
-	if (hw->mac.type == I40E_MAC_VF) {
+	if (i40e_is_vf(hw)) {
 		hw->aq.asq.tail = I40E_VF_ATQT1;
 		hw->aq.asq.head = I40E_VF_ATQH1;
 		hw->aq.asq.len  = I40E_VF_ATQLEN1;
@@ -853,7 +853,6 @@ i40e_status i40e_asq_send_command(struct i40e_hw *hw,
 	 */
 	if (!details->async && !details->postpone) {
 		u32 total_delay = 0;
-		u32 delay_len = 10;
 
 		do {
 			/* AQ designers suggest use of head for better
@@ -861,9 +860,8 @@ i40e_status i40e_asq_send_command(struct i40e_hw *hw,
 			 */
 			if (i40e_asq_done(hw))
 				break;
-			/* ugh! delay while spin_lock */
-			udelay(delay_len);
-			total_delay += delay_len;
+			usleep_range(1000, 2000);
+			total_delay++;
 		} while (total_delay < hw->aq.asq_cmd_timeout);
 	}
 
@@ -958,9 +956,6 @@ i40e_status i40e_clean_arq_element(struct i40e_hw *hw,
 	ntu = (rd32(hw, hw->aq.arq.head) & I40E_PF_ARQH_ARQH_MASK);
 	if (ntu == ntc) {
 		/* nothing to do - shouldn't need to update ring's values */
-		i40e_debug(hw,
-			   I40E_DEBUG_AQ_MESSAGE,
-			   "AQRX: Queue is empty.\n");
 		ret_code = I40E_ERR_ADMIN_QUEUE_NO_WORK;
 		goto clean_arq_element_out;
 	}
@@ -982,10 +977,10 @@ i40e_status i40e_clean_arq_element(struct i40e_hw *hw,
 
 	e->desc = *desc;
 	datalen = le16_to_cpu(desc->datalen);
-	e->msg_size = min(datalen, e->msg_size);
-	if (e->msg_buf != NULL && (e->msg_size != 0))
+	e->msg_len = min(datalen, e->buf_len);
+	if (e->msg_buf != NULL && (e->msg_len != 0))
 		memcpy(e->msg_buf, hw->aq.arq.r.arq_bi[desc_idx].va,
-		       e->msg_size);
+		       e->msg_len);
 
 	i40e_debug(hw, I40E_DEBUG_AQ_MESSAGE, "AQRX: desc and buffer:\n");
 	i40e_debug_aq(hw, I40E_DEBUG_AQ_COMMAND, (void *)desc, e->msg_buf,

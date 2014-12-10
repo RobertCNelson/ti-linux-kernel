@@ -662,7 +662,7 @@ int ping_common_sendmsg(int family, struct msghdr *msg, size_t len,
 	 *	Fetch the ICMP header provided by the userland.
 	 *	iovec is modified! The ICMP header is consumed.
 	 */
-	if (memcpy_fromiovec(user_icmph, msg->msg_iov, icmph_len))
+	if (memcpy_from_msg(user_icmph, msg, icmph_len))
 		return -EFAULT;
 
 	if (family == AF_INET) {
@@ -869,7 +869,7 @@ int ping_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	}
 
 	/* Don't bother checking the checksum */
-	err = skb_copy_datagram_iovec(skb, 0, msg->msg_iov, copied);
+	err = skb_copy_datagram_msg(skb, 0, msg, copied);
 	if (err)
 		goto done;
 
@@ -949,7 +949,7 @@ EXPORT_SYMBOL_GPL(ping_queue_rcv_skb);
  *	All we need to do is get the socket.
  */
 
-void ping_rcv(struct sk_buff *skb)
+bool ping_rcv(struct sk_buff *skb)
 {
 	struct sock *sk;
 	struct net *net = dev_net(skb->dev);
@@ -968,11 +968,11 @@ void ping_rcv(struct sk_buff *skb)
 		pr_debug("rcv on socket %p\n", sk);
 		ping_queue_rcv_skb(sk, skb_get(skb));
 		sock_put(sk);
-		return;
+		return true;
 	}
 	pr_debug("no socket, dropping\n");
 
-	/* We're called from icmp_rcv(). kfree_skb() is done there. */
+	return false;
 }
 EXPORT_SYMBOL_GPL(ping_rcv);
 

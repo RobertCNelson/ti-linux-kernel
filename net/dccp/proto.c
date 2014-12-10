@@ -781,7 +781,7 @@ int dccp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 		goto out_release;
 
 	skb_reserve(skb, sk->sk_prot->max_header);
-	rc = memcpy_fromiovec(skb_put(skb, len), msg->msg_iov, len);
+	rc = memcpy_from_msg(skb_put(skb, len), msg, len);
 	if (rc != 0)
 		goto out_discard;
 
@@ -896,7 +896,7 @@ verify_sock_status:
 		else if (len < skb->len)
 			msg->msg_flags |= MSG_TRUNC;
 
-		if (skb_copy_datagram_iovec(skb, 0, msg->msg_iov, len)) {
+		if (skb_copy_datagram_msg(skb, 0, msg, len)) {
 			/* Exception. Bailout! */
 			len = -EFAULT;
 			break;

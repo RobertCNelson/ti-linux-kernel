@@ -43,6 +43,7 @@
 #define I40E_DEV_ID_QSFP_A		0x1583
 #define I40E_DEV_ID_QSFP_B		0x1584
 #define I40E_DEV_ID_QSFP_C		0x1585
+#define I40E_DEV_ID_10G_BASE_T		0x1586
 #define I40E_DEV_ID_VF		0x154C
 #define I40E_DEV_ID_VF_HV		0x1571
 
@@ -474,6 +475,8 @@ struct i40e_hw {
 	/* debug mask */
 	u32 debug_mask;
 };
+
+#define i40e_is_vf(_hw)	((_hw)->mac.type == I40E_MAC_VF)
 
 struct i40e_driver_version {
 	u8 major_version;
