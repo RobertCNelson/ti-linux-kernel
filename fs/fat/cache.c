@@ -303,6 +303,29 @@ static int fat_bmap_cluster(struct inode *inode, int cluster)
 	return dclus;
 }
 
+int fat_get_mapped_cluster(struct inode *inode, sector_t sector,
+			   sector_t last_block,
+			   unsigned long *mapped_blocks, sector_t *bmap)
+{
+	struct super_block *sb = inode->i_sb;
+	struct msdos_sb_info *sbi = MSDOS_SB(sb);
+	int cluster, offset;
+
+	cluster = sector >> (sbi->cluster_bits - sb->s_blocksize_bits);
+	offset  = sector & (sbi->sec_per_clus - 1);
+	cluster = fat_bmap_cluster(inode, cluster);
+	if (cluster < 0)
+		return cluster;
+	else if (cluster) {
+		*bmap = fat_clus_to_blknr(sbi, cluster) + offset;
+		*mapped_blocks = sbi->sec_per_clus - offset;
+		if (*mapped_blocks > last_block - sector)
+			*mapped_blocks = last_block - sector;
+	}
+
+	return 0;
+}
+
 int fat_bmap(struct inode *inode, sector_t sector, sector_t *phys,
 	     unsigned long *mapped_blocks, int create)
 {
@@ -311,7 +334,6 @@ int fat_bmap(struct inode *inode, sector_t sector, sector_t *phys,
 	const unsigned long blocksize = sb->s_blocksize;
 	const unsigned char blocksize_bits = sb->s_blocksize_bits;
 	sector_t last_block;
-	int cluster, offset;
 
 	*phys = 0;
 	*mapped_blocks = 0;
@@ -338,16 +360,6 @@ int fat_bmap(struct inode *inode, sector_t sector, sector_t *phys,
 			return 0;
 	}
 
-	cluster = sector >> (sbi->cluster_bits - sb->s_blocksize_bits);
-	offset  = sector & (sbi->sec_per_clus - 1);
-	cluster = fat_bmap_cluster(inode, cluster);
-	if (cluster < 0)
-		return cluster;
-	else if (cluster) {
-		*phys = fat_clus_to_blknr(sbi, cluster) + offset;
-		*mapped_blocks = sbi->sec_per_clus - offset;
-		if (*mapped_blocks > last_block - sector)
-			*mapped_blocks = last_block - sector;
-	}
-	return 0;
+	return fat_get_mapped_cluster(inode, sector, last_block, mapped_blocks,
+				      phys);
 }

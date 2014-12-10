@@ -187,7 +187,7 @@ void usb_stor_dbg(const struct us_data *us, const char *fmt, ...)
 
 	va_start(args, fmt);
 
-	dev_vprintk_emit(7, &us->pusb_dev->dev, fmt, args);
+	dev_vprintk_emit(LOGLEVEL_DEBUG, &us->pusb_dev->dev, fmt, args);
 
 	va_end(args);
 }
