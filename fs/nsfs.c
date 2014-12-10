@@ -3,6 +3,8 @@
 #include <linux/fs.h>
 #include <linux/proc_ns.h>
 #include <linux/magic.h>
+#include <linux/ktime.h>
+#include <linux/timekeeping.h>
 
 static struct vfsmount *nsfs_mnt;
 
