@@ -47,8 +47,6 @@
  * runtime initialization.
  */
 
-struct notifier_block;
-
 typedef	int (*notifier_fn_t)(struct notifier_block *nb,
 			unsigned long action, void *data);
 
@@ -72,6 +70,12 @@ struct raw_notifier_head {
 	struct notifier_block __rcu *head;
 };
 
+struct srcu_notifier_head {
+	struct mutex mutex;
+	struct srcu_struct srcu;
+	struct notifier_block __rcu *head;
+};
+
 #define ATOMIC_INIT_NOTIFIER_HEAD(name) do {	\
 		spin_lock_init(&(name)->lock);	\
 		(name)->head = NULL;		\
@@ -84,6 +88,11 @@ struct raw_notifier_head {
 		(name)->head = NULL;		\
 	} while (0)
 
+/* srcu_notifier_heads must be initialized and cleaned up dynamically */
+extern void srcu_init_notifier_head(struct srcu_notifier_head *nh);
+#define srcu_cleanup_notifier_head(name)	\
+		cleanup_srcu_struct(&(name)->srcu);
+
 #define ATOMIC_NOTIFIER_INIT(name) {				\
 		.lock = __SPIN_LOCK_UNLOCKED(name.lock),	\
 		.head = NULL }
@@ -92,6 +101,7 @@ struct raw_notifier_head {
 		.head = NULL }
 #define RAW_NOTIFIER_INIT(name)	{				\
 		.head = NULL }
+/* srcu_notifier_heads cannot be initialized statically */
 
 #define ATOMIC_NOTIFIER_HEAD(name)				\
 	struct atomic_notifier_head name =			\
@@ -111,6 +121,8 @@ extern int blocking_notifier_chain_register(struct blocking_notifier_head *nh,
 		struct notifier_block *nb);
 extern int raw_notifier_chain_register(struct raw_notifier_head *nh,
 		struct notifier_block *nb);
+extern int srcu_notifier_chain_register(struct srcu_notifier_head *nh,
+		struct notifier_block *nb);
 
 extern int blocking_notifier_chain_cond_register(
 		struct blocking_notifier_head *nh,
@@ -121,6 +133,8 @@ extern int atomic_notifier_chain_unregister(struct atomic_notifier_head *nh,
 extern int blocking_notifier_chain_unregister(struct blocking_notifier_head *nh,
 		struct notifier_block *nb);
 extern int raw_notifier_chain_unregister(struct raw_notifier_head *nh,
+		struct notifier_block *nb);
+extern int srcu_notifier_chain_unregister(struct srcu_notifier_head *nh,
 		struct notifier_block *nb);
 
 extern int atomic_notifier_call_chain(struct atomic_notifier_head *nh,
@@ -134,6 +148,10 @@ extern int __blocking_notifier_call_chain(struct blocking_notifier_head *nh,
 extern int raw_notifier_call_chain(struct raw_notifier_head *nh,
 		unsigned long val, void *v);
 extern int __raw_notifier_call_chain(struct raw_notifier_head *nh,
+	unsigned long val, void *v, int nr_to_call, int *nr_calls);
+extern int srcu_notifier_call_chain(struct srcu_notifier_head *nh,
+		unsigned long val, void *v);
+extern int __srcu_notifier_call_chain(struct srcu_notifier_head *nh,
 	unsigned long val, void *v, int nr_to_call, int *nr_calls);
 
 #define NOTIFY_DONE		0x0000		/* Don't care */
@@ -192,31 +210,6 @@ static inline int notifier_to_errno(int ret)
 #define KBD_POST_KEYSYM		0x0005 /* Called after keyboard keysym interpretation */
 
 extern struct blocking_notifier_head reboot_notifier_list;
-
-#ifdef CONFIG_SRCU
-
-struct srcu_notifier_head {
-	struct mutex mutex;
-	struct srcu_struct srcu;
-	struct notifier_block __rcu *head;
-};
-
-/* srcu_notifier_heads must be initialized and cleaned up dynamically
- * srcu_notifier_heads cannot be initialized statically
- */
-extern void srcu_init_notifier_head(struct srcu_notifier_head *nh);
-#define srcu_cleanup_notifier_head(name) cleanup_srcu_struct(&(name)->srcu)
-
-extern int srcu_notifier_chain_register(struct srcu_notifier_head *nh,
-		struct notifier_block *nb);
-extern int srcu_notifier_chain_unregister(struct srcu_notifier_head *nh,
-		struct notifier_block *nb);
-extern int srcu_notifier_call_chain(struct srcu_notifier_head *nh,
-		unsigned long val, void *v);
-extern int __srcu_notifier_call_chain(struct srcu_notifier_head *nh,
-	unsigned long val, void *v, int nr_to_call, int *nr_calls);
-
-#endif /* CONFIG_SRCU */
 
 #endif /* __KERNEL__ */
 #endif /* _LINUX_NOTIFIER_H */
