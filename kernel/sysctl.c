@@ -1104,6 +1104,15 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= proc_dointvec,
 	},
 #endif
+	{
+		.procname	= "panic_on_warn",
+		.data		= &panic_on_warn,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &one,
+	},
 	{ }
 };
 
@@ -1740,7 +1749,11 @@ static int _proc_do_string(char *data, int maxlen, int write,
 		while ((p - buffer) < *lenp && len < maxlen - 1) {
 			if (get_user(c, p++))
 				return -EFAULT;
-			if (c == 0 || c == '\n')
+			/*
+			 * \r terminates input to partially prevent attackers
+			 * from hiding info from sysadmins who use cat
+			 */
+			if (c == 0 || c == '\n' || c == '\r')
 				break;
 			data[len++] = c;
 		}
