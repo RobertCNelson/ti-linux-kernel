@@ -907,7 +907,7 @@ cmds(struct pt_regs *excp)
 		case 'u':
 			dump_segments();
 			break;
-#elif defined(CONFIG_4xx)
+#elif defined(CONFIG_44x)
 		case 'u':
 			dump_tlb_44x();
 			break;
@@ -981,7 +981,8 @@ static void bootcmds(void)
 	else if (cmd == 'h')
 		ppc_md.halt();
 	else if (cmd == 'p')
-		ppc_md.power_off();
+		if (pm_power_off)
+			pm_power_off();
 }
 
 static int cpu_cmd(void)
