@@ -146,7 +146,7 @@ asm volatile ("\n"					\
 		"	.previous"				\
 		: "+d" (res), "=&" #reg (__gu_val)		\
 		: "m" (*(ptr)), "i" (err));			\
-	(x) = (typeof(*(ptr)))(unsigned long)__gu_val;		\
+	(x) = (__force typeof(*(ptr)))(__force unsigned long)__gu_val;		\
 })
 
 #define __get_user(x, ptr)						\
@@ -188,7 +188,7 @@ asm volatile ("\n"					\
 			  "+a" (__gu_ptr)				\
 			: "i" (-EFAULT)					\
 			: "memory");					\
-		(x) = (typeof(*(ptr)))__gu_val;				\
+		(x) = (__force typeof(*(ptr)))__gu_val;				\
 		break;							\
 	    }	*/							\
 	default:							\
