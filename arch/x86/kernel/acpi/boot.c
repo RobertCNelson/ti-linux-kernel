@@ -31,12 +31,12 @@
 #include <linux/module.h>
 #include <linux/dmi.h>
 #include <linux/irq.h>
-#include <linux/irqdomain.h>
 #include <linux/slab.h>
 #include <linux/bootmem.h>
 #include <linux/ioport.h>
 #include <linux/pci.h>
 
+#include <asm/irqdomain.h>
 #include <asm/pci_x86.h>
 #include <asm/pgtable.h>
 #include <asm/io_apic.h>
@@ -75,6 +75,19 @@ int acpi_fix_pin2_polarity __initdata;
 #ifdef CONFIG_X86_LOCAL_APIC
 static u64 acpi_lapic_addr __initdata = APIC_DEFAULT_PHYS_BASE;
 #endif
+
+/*
+ * Locks related to IOAPIC hotplug
+ * Hotplug side:
+ *	->device_hotplug_lock
+ *		->acpi_ioapic_lock
+ *			->ioapic_lock
+ * Interrupt mapping side:
+ *	->acpi_ioapic_lock
+ *		->ioapic_mutex
+ *			->ioapic_lock
+ */
+static DEFINE_MUTEX(acpi_ioapic_lock);
 
 /* --------------------------------------------------------------------------
                               Boot-time Configuration
@@ -387,63 +400,13 @@ static int mp_config_acpi_gsi(struct device *dev, u32 gsi, int trigger,
 	return 0;
 }
 
-static int mp_register_gsi(struct device *dev, u32 gsi, int trigger,
-			   int polarity)
-{
-	int irq, node;
-
-	if (acpi_irq_model != ACPI_IRQ_MODEL_IOAPIC)
-		return gsi;
-
-	/* Don't set up the ACPI SCI because it's already set up */
-	if (acpi_gbl_FADT.sci_interrupt == gsi)
-		return mp_map_gsi_to_irq(gsi, IOAPIC_MAP_ALLOC);
-
-	trigger = trigger == ACPI_EDGE_SENSITIVE ? 0 : 1;
-	polarity = polarity == ACPI_ACTIVE_HIGH ? 0 : 1;
-	node = dev ? dev_to_node(dev) : NUMA_NO_NODE;
-	if (mp_set_gsi_attr(gsi, trigger, polarity, node)) {
-		pr_warn("Failed to set pin attr for GSI%d\n", gsi);
-		return -1;
-	}
-
-	irq = mp_map_gsi_to_irq(gsi, IOAPIC_MAP_ALLOC);
-	if (irq < 0)
-		return irq;
-
-	if (enable_update_mptable)
-		mp_config_acpi_gsi(dev, gsi, trigger, polarity);
-
-	return irq;
-}
-
-static void mp_unregister_gsi(u32 gsi)
-{
-	int irq;
-
-	if (acpi_irq_model != ACPI_IRQ_MODEL_IOAPIC)
-		return;
-
-	if (acpi_gbl_FADT.sci_interrupt == gsi)
-		return;
-
-	irq = mp_map_gsi_to_irq(gsi, 0);
-	if (irq > 0)
-		mp_unmap_irq(irq);
-}
-
-static struct irq_domain_ops acpi_irqdomain_ops = {
-	.map = mp_irqdomain_map,
-	.unmap = mp_irqdomain_unmap,
-};
-
 static int __init
 acpi_parse_ioapic(struct acpi_subtable_header * header, const unsigned long end)
 {
 	struct acpi_madt_io_apic *ioapic = NULL;
 	struct ioapic_domain_cfg cfg = {
 		.type = IOAPIC_DOMAIN_DYNAMIC,
-		.ops = &acpi_irqdomain_ops,
+		.ops = &mp_ioapic_irqdomain_ops,
 	};
 
 	ioapic = (struct acpi_madt_io_apic *)header;
@@ -609,8 +572,11 @@ int acpi_gsi_to_irq(u32 gsi, unsigned int *irqp)
 	if (acpi_irq_model == ACPI_IRQ_MODEL_PIC) {
 		*irqp = gsi;
 	} else {
+		mutex_lock(&acpi_ioapic_lock);
 		irq = mp_map_gsi_to_irq(gsi,
-					IOAPIC_MAP_ALLOC | IOAPIC_MAP_CHECK);
+					IOAPIC_MAP_ALLOC | IOAPIC_MAP_CHECK,
+					NULL);
+		mutex_unlock(&acpi_ioapic_lock);
 		if (irq < 0)
 			return -1;
 		*irqp = irq;
@@ -648,9 +614,22 @@ static int acpi_register_gsi_ioapic(struct device *dev, u32 gsi,
 				    int trigger, int polarity)
 {
 	int irq = gsi;
-
 #ifdef CONFIG_X86_IO_APIC
-	irq = mp_register_gsi(dev, gsi, trigger, polarity);
+	int node;
+	struct irq_alloc_info info;
+
+	node = dev ? dev_to_node(dev) : NUMA_NO_NODE;
+	trigger = trigger == ACPI_EDGE_SENSITIVE ? 0 : 1;
+	polarity = polarity == ACPI_ACTIVE_HIGH ? 0 : 1;
+	ioapic_set_alloc_attr(&info, node, trigger, polarity);
+
+	mutex_lock(&acpi_ioapic_lock);
+	irq = mp_map_gsi_to_irq(gsi, IOAPIC_MAP_ALLOC, &info);
+	/* Don't set up the ACPI SCI because it's already set up */
+	if (irq >= 0 && enable_update_mptable &&
+	    acpi_gbl_FADT.sci_interrupt != gsi)
+		mp_config_acpi_gsi(dev, gsi, trigger, polarity);
+	mutex_unlock(&acpi_ioapic_lock);
 #endif
 
 	return irq;
@@ -659,7 +638,13 @@ static int acpi_register_gsi_ioapic(struct device *dev, u32 gsi,
 static void acpi_unregister_gsi_ioapic(u32 gsi)
 {
 #ifdef CONFIG_X86_IO_APIC
-	mp_unregister_gsi(gsi);
+	int irq;
+
+	mutex_lock(&acpi_ioapic_lock);
+	irq = mp_map_gsi_to_irq(gsi, 0, NULL);
+	if (irq > 0)
+		mp_unmap_irq(irq);
+	mutex_unlock(&acpi_ioapic_lock);
 #endif
 }
 
@@ -690,6 +675,7 @@ void acpi_unregister_gsi(u32 gsi)
 }
 EXPORT_SYMBOL_GPL(acpi_unregister_gsi);
 
+#ifdef CONFIG_X86_LOCAL_APIC
 static void __init acpi_set_irq_model_ioapic(void)
 {
 	acpi_irq_model = ACPI_IRQ_MODEL_IOAPIC;
@@ -697,6 +683,7 @@ static void __init acpi_set_irq_model_ioapic(void)
 	__acpi_unregister_gsi = acpi_unregister_gsi_ioapic;
 	acpi_ioapic = 1;
 }
+#endif
 
 /*
  *  ACPI based hotplug support for CPU
@@ -759,19 +746,73 @@ EXPORT_SYMBOL(acpi_unmap_lsapic);
 
 int acpi_register_ioapic(acpi_handle handle, u64 phys_addr, u32 gsi_base)
 {
-	/* TBD */
-	return -EINVAL;
-}
+	int ret = -ENOSYS;
+#ifdef CONFIG_ACPI_HOTPLUG_IOAPIC
+	int ioapic_id;
+	u64 addr;
+	struct ioapic_domain_cfg cfg = {
+		.type = IOAPIC_DOMAIN_DYNAMIC,
+		.ops = &mp_ioapic_irqdomain_ops,
+	};
 
+	ioapic_id = acpi_get_ioapic_id(handle, gsi_base, &addr);
+	if (ioapic_id < 0) {
+		unsigned long long uid;
+		acpi_status status;
+
+		status = acpi_evaluate_integer(handle, METHOD_NAME__UID,
+					       NULL, &uid);
+		if (ACPI_FAILURE(status)) {
+			acpi_handle_warn(handle, "failed to get IOAPIC ID.\n");
+			return -EINVAL;
+		}
+		ioapic_id = (int)uid;
+	}
+
+	mutex_lock(&acpi_ioapic_lock);
+	ret  = mp_register_ioapic(ioapic_id, phys_addr, gsi_base, &cfg);
+	mutex_unlock(&acpi_ioapic_lock);
+#endif
+
+	return ret;
+}
 EXPORT_SYMBOL(acpi_register_ioapic);
 
 int acpi_unregister_ioapic(acpi_handle handle, u32 gsi_base)
 {
-	/* TBD */
-	return -EINVAL;
-}
+	int ret = -ENOSYS;
 
+#ifdef CONFIG_ACPI_HOTPLUG_IOAPIC
+	mutex_lock(&acpi_ioapic_lock);
+	ret  = mp_unregister_ioapic(gsi_base);
+	mutex_unlock(&acpi_ioapic_lock);
+#endif
+
+	return ret;
+}
 EXPORT_SYMBOL(acpi_unregister_ioapic);
+
+/**
+ * acpi_ioapic_registered - Check whether IOAPIC assoicatied with @gsi_base
+ *			    has been registered
+ * @handle:	ACPI handle of the IOAPIC deivce
+ * @gsi_base:	GSI base associated with the IOAPIC
+ *
+ * Assume caller holds some type of lock to serialize acpi_ioapic_registered()
+ * with acpi_register_ioapic()/acpi_unregister_ioapic().
+ */
+int acpi_ioapic_registered(acpi_handle handle, u32 gsi_base)
+{
+	int ret = 0;
+
+#ifdef CONFIG_ACPI_HOTPLUG_IOAPIC
+	mutex_lock(&acpi_ioapic_lock);
+	ret  = mp_ioapic_registered(gsi_base);
+	mutex_unlock(&acpi_ioapic_lock);
+#endif
+
+	return ret;
+}
 
 static int __init acpi_parse_sbf(struct acpi_table_header *table)
 {
@@ -1185,7 +1226,9 @@ static void __init acpi_process_madt(void)
 			/*
 			 * Parse MADT IO-APIC entries
 			 */
+			mutex_lock(&acpi_ioapic_lock);
 			error = acpi_parse_madt_ioapic_entries();
+			mutex_unlock(&acpi_ioapic_lock);
 			if (!error) {
 				acpi_set_irq_model_ioapic();
 
