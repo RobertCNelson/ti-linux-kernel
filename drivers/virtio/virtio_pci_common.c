@@ -475,12 +475,23 @@ MODULE_DEVICE_TABLE(pci, virtio_pci_id_table);
 static int virtio_pci_probe(struct pci_dev *pci_dev,
 			    const struct pci_device_id *id)
 {
+	int rc;
+
+	rc = virtio_pci_modern_probe(pci_dev, id);
+	if (rc != -ENODEV)
+		return rc;
+
 	return virtio_pci_legacy_probe(pci_dev, id);
 }
 
 static void virtio_pci_remove(struct pci_dev *pci_dev)
 {
-     virtio_pci_legacy_remove(pci_dev);
+	struct virtio_pci_device *vp_dev = pci_get_drvdata(pci_dev);
+
+	if (vp_dev->ioaddr)
+	     virtio_pci_legacy_remove(pci_dev);
+	else
+	     virtio_pci_modern_remove(pci_dev);
 }
 
 static struct pci_driver virtio_pci_driver = {
