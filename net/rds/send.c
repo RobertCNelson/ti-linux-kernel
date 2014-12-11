@@ -982,7 +982,7 @@ int rds_sendmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 			ret = -ENOMEM;
 			goto out;
 		}
-		ret = rds_message_copy_from_user(rm, msg->msg_iov, payload_len);
+		ret = rds_message_copy_from_user(rm, &msg->msg_iter);
 		if (ret)
 			goto out;
 	}

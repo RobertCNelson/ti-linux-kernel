@@ -1932,7 +1932,7 @@ irqreturn_t bnx2x_interrupt(int irq, void *dev_instance)
 			for_each_cos_in_tx_queue(fp, cos)
 				prefetch(fp->txdata_ptr[cos]->tx_cons_sb);
 			prefetch(&fp->sb_running_index[SM_RX_ID]);
-			napi_schedule(&bnx2x_fp(bp, fp->index, napi));
+			napi_schedule_irqoff(&bnx2x_fp(bp, fp->index, napi));
 			status &= ~mask;
 		}
 	}
@@ -3164,6 +3164,8 @@ static void bnx2x_pf_q_prep_general(struct bnx2x *bp,
 		gen_init->mtu = bp->dev->mtu;
 
 	gen_init->cos = cos;
+
+	gen_init->fp_hsi = ETH_FP_HSI_VERSION;
 }
 
 static void bnx2x_pf_rx_q_prep(struct bnx2x *bp,
@@ -12538,7 +12540,7 @@ static int bnx2x_validate_addr(struct net_device *dev)
 }
 
 static int bnx2x_get_phys_port_id(struct net_device *netdev,
-				  struct netdev_phys_port_id *ppid)
+				  struct netdev_phys_item_id *ppid)
 {
 	struct bnx2x *bp = netdev_priv(netdev);
 

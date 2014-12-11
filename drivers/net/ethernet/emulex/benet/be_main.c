@@ -887,7 +887,8 @@ static struct sk_buff *be_insert_vlan_in_pkt(struct be_adapter *adapter,
 	}
 
 	if (vlan_tag) {
-		skb = __vlan_put_tag(skb, htons(ETH_P_8021Q), vlan_tag);
+		skb = vlan_insert_tag_set_proto(skb, htons(ETH_P_8021Q),
+						vlan_tag);
 		if (unlikely(!skb))
 			return skb;
 		skb->vlan_tci = 0;
@@ -896,7 +897,8 @@ static struct sk_buff *be_insert_vlan_in_pkt(struct be_adapter *adapter,
 	/* Insert the outer VLAN, if any */
 	if (adapter->qnq_vid) {
 		vlan_tag = adapter->qnq_vid;
-		skb = __vlan_put_tag(skb, htons(ETH_P_8021Q), vlan_tag);
+		skb = vlan_insert_tag_set_proto(skb, htons(ETH_P_8021Q),
+						vlan_tag);
 		if (unlikely(!skb))
 			return skb;
 		if (skip_hw_vlan)
@@ -1015,9 +1017,8 @@ static struct sk_buff *be_xmit_workarounds(struct be_adapter *adapter,
 	 * to pad short packets (<= 32 bytes) to a 36-byte length.
 	 */
 	if (unlikely(!BEx_chip(adapter) && skb->len <= 32)) {
-		if (skb_padto(skb, 36))
+		if (skb_put_padto(skb, 36))
 			return NULL;
-		skb->len = 36;
 	}
 
 	if (BEx_chip(adapter) || lancer_chip(adapter)) {
@@ -2853,10 +2854,10 @@ static int be_close(struct net_device *netdev)
 
 static int be_rx_qs_create(struct be_adapter *adapter)
 {
+	struct rss_info *rss = &adapter->rss_info;
+	u8 rss_key[RSS_HASH_KEY_LEN];
 	struct be_rx_obj *rxo;
 	int rc, i, j;
-	u8 rss_hkey[RSS_HASH_KEY_LEN];
-	struct rss_info *rss = &adapter->rss_info;
 
 	for_all_rx_queues(adapter, rxo, i) {
 		rc = be_queue_alloc(adapter, &rxo->q, RX_Q_LEN,
@@ -2901,15 +2902,15 @@ static int be_rx_qs_create(struct be_adapter *adapter)
 		rss->rss_flags = RSS_ENABLE_NONE;
 	}
 
-	get_random_bytes(rss_hkey, RSS_HASH_KEY_LEN);
+	netdev_rss_key_fill(rss_key, RSS_HASH_KEY_LEN);
 	rc = be_cmd_rss_config(adapter, rss->rsstable, rss->rss_flags,
-			       128, rss_hkey);
+			       128, rss_key);
 	if (rc) {
 		rss->rss_flags = RSS_ENABLE_NONE;
 		return rc;
 	}
 
-	memcpy(rss->rss_hkey, rss_hkey, RSS_HASH_KEY_LEN);
+	memcpy(rss->rss_hkey, rss_key, RSS_HASH_KEY_LEN);
 
 	/* First time posting */
 	for_all_rx_queues(adapter, rxo, i)
@@ -4365,7 +4366,8 @@ static int be_ndo_bridge_getlink(struct sk_buff *skb, u32 pid, u32 seq,
 
 	return ndo_dflt_bridge_getlink(skb, pid, seq, dev,
 				       hsw_mode == PORT_FWD_TYPE_VEPA ?
-				       BRIDGE_MODE_VEPA : BRIDGE_MODE_VEB);
+				       BRIDGE_MODE_VEPA : BRIDGE_MODE_VEB,
+				       0, 0);
 }
 
 #ifdef CONFIG_BE2NET_VXLAN
