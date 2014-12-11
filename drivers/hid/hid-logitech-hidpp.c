@@ -313,6 +313,9 @@ static char *hidpp_get_unifying_name(struct hidpp_device *hidpp_dev)
 
 	len = response.rap.params[1];
 
+	if (2 + len > sizeof(response.rap.params))
+		return NULL;
+
 	name = kzalloc(len + 1, GFP_KERNEL);
 	if (!name)
 		return NULL;
@@ -461,7 +464,7 @@ static int hidpp_devicenametype_get_device_name(struct hidpp_device *hidpp,
 	return count;
 }
 
-static char *hidpp_get_device_name(struct hidpp_device *hidpp, u8 *name_length)
+static char *hidpp_get_device_name(struct hidpp_device *hidpp)
 {
 	u8 feature_type;
 	u8 feature_index;
@@ -473,28 +476,29 @@ static char *hidpp_get_device_name(struct hidpp_device *hidpp, u8 *name_length)
 	ret = hidpp_root_get_feature(hidpp, HIDPP_PAGE_GET_DEVICE_NAME_TYPE,
 		&feature_index, &feature_type);
 	if (ret)
-		goto out_err;
+		return NULL;
 
 	ret = hidpp_devicenametype_get_count(hidpp, feature_index,
 		&__name_length);
 	if (ret)
-		goto out_err;
+		return NULL;
 
 	name = kzalloc(__name_length + 1, GFP_KERNEL);
 	if (!name)
-		goto out_err;
+		return NULL;
 
-	*name_length = __name_length + 1;
-	while (index < __name_length)
-		index += hidpp_devicenametype_get_device_name(hidpp,
+	while (index < __name_length) {
+		ret = hidpp_devicenametype_get_device_name(hidpp,
 			feature_index, index, name + index,
 			__name_length - index);
+		if (ret <= 0) {
+			kfree(name);
+			return NULL;
+		}
+		index += ret;
+	}
 
 	return name;
-
-out_err:
-	*name_length = 0;
-	return NULL;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -989,7 +993,6 @@ static void hidpp_overwrite_name(struct hid_device *hdev, bool use_unifying)
 {
 	struct hidpp_device *hidpp = hid_get_drvdata(hdev);
 	char *name;
-	u8 name_length;
 
 	if (use_unifying)
 		/*
@@ -999,7 +1002,7 @@ static void hidpp_overwrite_name(struct hid_device *hdev, bool use_unifying)
 		 */
 		name = hidpp_get_unifying_name(hidpp);
 	else
-		name = hidpp_get_device_name(hidpp, &name_length);
+		name = hidpp_get_device_name(hidpp);
 
 	if (!name)
 		hid_err(hdev, "unable to retrieve the name of the device");
@@ -1053,7 +1056,6 @@ static void hidpp_connect_event(struct hidpp_device *hidpp)
 	bool connected = atomic_read(&hidpp->connected);
 	struct input_dev *input;
 	char *name, *devm_name;
-	u8 name_length;
 
 	if (hidpp->quirks & HIDPP_QUIRK_CLASS_WTP)
 		wtp_connect(hdev, connected);
@@ -1080,7 +1082,7 @@ static void hidpp_connect_event(struct hidpp_device *hidpp)
 		return;
 	}
 
-	name = hidpp_get_device_name(hidpp, &name_length);
+	name = hidpp_get_device_name(hidpp);
 	if (!name) {
 		hid_err(hdev, "unable to retrieve the name of the device");
 	} else {
@@ -1119,7 +1121,7 @@ static int hidpp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	if (hidpp->quirks & HIDPP_QUIRK_CLASS_WTP) {
 		ret = wtp_allocate(hdev, id);
 		if (ret)
-			return ret;
+			goto wtp_allocate_fail;
 	}
 
 	INIT_WORK(&hidpp->work, delayed_work_cb);
@@ -1139,6 +1141,7 @@ static int hidpp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	if (id->group != HID_GROUP_LOGITECH_DJ_DEVICE) {
 		if (!connected) {
 			hid_err(hdev, "Device not connected");
+			hid_device_io_stop(hdev);
 			goto hid_parse_fail;
 		}
 
@@ -1184,6 +1187,7 @@ hid_hw_start_fail:
 hid_parse_fail:
 	cancel_work_sync(&hidpp->work);
 	mutex_destroy(&hidpp->send_mutex);
+wtp_allocate_fail:
 	hid_set_drvdata(hdev, NULL);
 	return ret;
 }
