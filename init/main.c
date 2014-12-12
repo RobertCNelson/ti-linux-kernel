@@ -79,6 +79,7 @@
 #include <linux/random.h>
 #include <linux/list.h>
 #include <linux/proc_ns.h>
+#include <linux/fs_struct.h>
 
 #include <asm/io.h>
 #include <asm/bugs.h>
@@ -401,7 +402,7 @@ static noinline void __init_refok rest_init(void)
 	 * the init task will end up wanting to create kthreads, which, if
 	 * we schedule it before we create kthreadd, will OOPS.
 	 */
-	kernel_thread(kernel_init, NULL, CLONE_FS);
+	kernel_thread(kernel_init, NULL, 0);
 	numa_default_policy();
 	pid = kernel_thread(kthreadd, NULL, CLONE_FS | CLONE_FILES);
 	rcu_read_lock();
@@ -933,6 +934,7 @@ static int __ref kernel_init(void *unused)
 {
 	int ret;
 
+	current->fs->umask = 0022;
 	kernel_init_freeable();
 	/* need to finish all async __init code before freeing the memory */
 	async_synchronize_full();
