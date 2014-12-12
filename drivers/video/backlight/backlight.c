@@ -181,8 +181,6 @@ int backlight_device_set_brightness(struct backlight_device *bd, int brightness)
 	}
 	mutex_unlock(&bd->ops_lock);
 
-	backlight_generate_event(bd, BACKLIGHT_UPDATE_SYSFS);
-
 	return rc;
 }
 EXPORT_SYMBOL(backlight_device_set_brightness);
