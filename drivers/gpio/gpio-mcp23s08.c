@@ -444,7 +444,7 @@ static int mcp23s08_irq_reqres(struct irq_data *data)
 {
 	struct mcp23s08 *mcp = irq_data_get_irq_chip_data(data);
 
-	if (gpio_lock_as_irq(&mcp->chip, data->hwirq)) {
+	if (gpiochip_lock_as_irq(&mcp->chip, data->hwirq)) {
 		dev_err(mcp->chip.dev,
 			"unable to lock HW IRQ %lu for IRQ usage\n",
 			data->hwirq);
@@ -458,7 +458,7 @@ static void mcp23s08_irq_relres(struct irq_data *data)
 {
 	struct mcp23s08 *mcp = irq_data_get_irq_chip_data(data);
 
-	gpio_unlock_as_irq(&mcp->chip, data->hwirq);
+	gpiochip_unlock_as_irq(&mcp->chip, data->hwirq);
 }
 
 static struct irq_chip mcp23s08_irq_chip = {
@@ -485,7 +485,8 @@ static int mcp23s08_irq_setup(struct mcp23s08 *mcp)
 		return -ENODEV;
 
 	err = devm_request_threaded_irq(chip->dev, mcp->irq, NULL, mcp23s08_irq,
-					IRQF_TRIGGER_LOW | IRQF_ONESHOT,
+					IRQF_TRIGGER_LOW | IRQF_ONESHOT |
+					IRQF_SHARED,
 					dev_name(chip->dev), mcp);
 	if (err != 0) {
 		dev_err(chip->dev, "unable to request IRQ#%d: %d\n",
@@ -513,8 +514,6 @@ static int mcp23s08_irq_setup(struct mcp23s08 *mcp)
 static void mcp23s08_irq_teardown(struct mcp23s08 *mcp)
 {
 	unsigned int irq, i;
-
-	free_irq(mcp->irq, mcp);
 
 	for (i = 0; i < mcp->chip.ngpio; i++) {
 		irq = irq_find_mapping(mcp->irq_domain, i);
@@ -936,11 +935,14 @@ static int mcp23s08_probe(struct spi_device *spi)
 		return -ENOMEM;
 	spi_set_drvdata(spi, data);
 
+	spi->irq = irq_of_parse_and_map(spi->dev.of_node, 0);
+
 	for (addr = 0; addr < ARRAY_SIZE(pdata->chip); addr++) {
 		if (!(spi_present_mask & (1 << addr)))
 			continue;
 		chips--;
 		data->mcp[addr] = &data->chip[chips];
+		data->mcp[addr]->irq = spi->irq;
 		status = mcp23s08_probe_one(data->mcp[addr], &spi->dev, spi,
 					    0x40 | (addr << 1), type, pdata,
 					    addr);
@@ -981,6 +983,8 @@ static int mcp23s08_remove(struct spi_device *spi)
 		if (!data->mcp[addr])
 			continue;
 
+		if (spi->irq && data->mcp[addr]->irq_controller)
+			mcp23s08_irq_teardown(data->mcp[addr]);
 		gpiochip_remove(&data->mcp[addr]->chip);
 	}
 	kfree(data);
