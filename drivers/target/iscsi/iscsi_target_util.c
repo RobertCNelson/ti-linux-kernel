@@ -164,7 +164,7 @@ struct iscsi_cmd *iscsit_allocate_cmd(struct iscsi_conn *conn, int state)
 
 	size = sizeof(struct iscsi_cmd) + conn->conn_transport->priv_size;
 	cmd = (struct iscsi_cmd *)(se_sess->sess_cmd_map + (tag * size));
-	memset(cmd, 0, size);
+	memset(cmd, 0, sizeof(struct iscsi_cmd));
 
 	cmd->se_cmd.map_tag = tag;
 	cmd->conn = conn;
