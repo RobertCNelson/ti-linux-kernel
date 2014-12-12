@@ -3,6 +3,19 @@
 
 #include <linux/errno.h> /* for ENODEV */
 
+struct acpi_video_brightness_flags {
+	u8 _BCL_no_ac_battery_levels:1;	/* no AC/Battery levels in _BCL */
+	u8 _BCL_reversed:1;		/* _BCL package is in a reversed order */
+	u8 _BQC_use_index:1;		/* _BQC returns an index value */
+};
+
+struct acpi_video_device_brightness {
+	int curr;
+	int count;
+	int *levels;
+	struct acpi_video_brightness_flags flags;
+};
+
 struct acpi_device;
 
 #define ACPI_VIDEO_CLASS	"video"
@@ -22,6 +35,8 @@ extern void acpi_video_unregister(void);
 extern void acpi_video_unregister_backlight(void);
 extern int acpi_video_get_edid(struct acpi_device *device, int type,
 			       int device_id, void **edid);
+extern int acpi_video_get_levels(struct acpi_device *device,
+				struct acpi_video_device_brightness **dev_br);
 extern bool acpi_video_verify_backlight_support(void);
 #else
 static inline int acpi_video_register(void) { return 0; }
@@ -29,6 +44,11 @@ static inline void acpi_video_unregister(void) { return; }
 static inline void acpi_video_unregister_backlight(void) { return; }
 static inline int acpi_video_get_edid(struct acpi_device *device, int type,
 				      int device_id, void **edid)
+{
+	return -ENODEV;
+}
+static int acpi_video_get_levels(struct acpi_device *device,
+			struct acpi_video_device_brightness **dev_br)
 {
 	return -ENODEV;
 }
