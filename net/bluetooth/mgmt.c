@@ -2199,12 +2199,14 @@ static void le_enable_complete(struct hci_dev *hdev, u8 status)
 {
 	struct cmd_lookup match = { NULL, hdev };
 
+	hci_dev_lock(hdev);
+
 	if (status) {
 		u8 mgmt_err = mgmt_status(status);
 
 		mgmt_pending_foreach(MGMT_OP_SET_LE, hdev, cmd_status_rsp,
 				     &mgmt_err);
-		return;
+		goto unlock;
 	}
 
 	mgmt_pending_foreach(MGMT_OP_SET_LE, hdev, settings_rsp, &match);
@@ -2222,17 +2224,16 @@ static void le_enable_complete(struct hci_dev *hdev, u8 status)
 	if (test_bit(HCI_LE_ENABLED, &hdev->dev_flags)) {
 		struct hci_request req;
 
-		hci_dev_lock(hdev);
-
 		hci_req_init(&req, hdev);
 		update_adv_data(&req);
 		update_scan_rsp_data(&req);
 		hci_req_run(&req, NULL);
 
 		hci_update_background_scan(hdev);
-
-		hci_dev_unlock(hdev);
 	}
+
+unlock:
+	hci_dev_unlock(hdev);
 }
 
 static int set_le(struct sock *sk, struct hci_dev *hdev, void *data, u16 len)
@@ -3114,14 +3115,13 @@ static void pairing_complete(struct pending_cmd *cmd, u8 status)
 	conn->disconn_cfm_cb = NULL;
 
 	hci_conn_drop(conn);
-	hci_conn_put(conn);
-
-	mgmt_pending_remove(cmd);
 
 	/* The device is paired so there is no need to remove
 	 * its connection parameters anymore.
 	 */
 	clear_bit(HCI_CONN_PARAM_REMOVAL_PEND, &conn->flags);
+
+	hci_conn_put(conn);
 }
 
 void mgmt_smp_complete(struct hci_conn *conn, bool complete)
@@ -3130,8 +3130,10 @@ void mgmt_smp_complete(struct hci_conn *conn, bool complete)
 	struct pending_cmd *cmd;
 
 	cmd = find_pairing(conn);
-	if (cmd)
+	if (cmd) {
 		cmd->cmd_complete(cmd, status);
+		mgmt_pending_remove(cmd);
+	}
 }
 
 static void pairing_complete_cb(struct hci_conn *conn, u8 status)
@@ -3141,10 +3143,13 @@ static void pairing_complete_cb(struct hci_conn *conn, u8 status)
 	BT_DBG("status %u", status);
 
 	cmd = find_pairing(conn);
-	if (!cmd)
+	if (!cmd) {
 		BT_DBG("Unable to find a pending command");
-	else
-		cmd->cmd_complete(cmd, mgmt_status(status));
+		return;
+	}
+
+	cmd->cmd_complete(cmd, mgmt_status(status));
+	mgmt_pending_remove(cmd);
 }
 
 static void le_pairing_complete_cb(struct hci_conn *conn, u8 status)
@@ -3157,10 +3162,13 @@ static void le_pairing_complete_cb(struct hci_conn *conn, u8 status)
 		return;
 
 	cmd = find_pairing(conn);
-	if (!cmd)
+	if (!cmd) {
 		BT_DBG("Unable to find a pending command");
-	else
-		cmd->cmd_complete(cmd, mgmt_status(status));
+		return;
+	}
+
+	cmd->cmd_complete(cmd, mgmt_status(status));
+	mgmt_pending_remove(cmd);
 }
 
 static int pair_device(struct sock *sk, struct hci_dev *hdev, void *data,
@@ -3274,8 +3282,10 @@ static int pair_device(struct sock *sk, struct hci_dev *hdev, void *data,
 	cmd->user_data = hci_conn_get(conn);
 
 	if ((conn->state == BT_CONNECTED || conn->state == BT_CONFIG) &&
-	    hci_conn_security(conn, sec_level, auth_type, true))
-		pairing_complete(cmd, 0);
+	    hci_conn_security(conn, sec_level, auth_type, true)) {
+		cmd->cmd_complete(cmd, 0);
+		mgmt_pending_remove(cmd);
+	}
 
 	err = 0;
 
@@ -3317,7 +3327,8 @@ static int cancel_pair_device(struct sock *sk, struct hci_dev *hdev, void *data,
 		goto unlock;
 	}
 
-	pairing_complete(cmd, MGMT_STATUS_CANCELLED);
+	cmd->cmd_complete(cmd, MGMT_STATUS_CANCELLED);
+	mgmt_pending_remove(cmd);
 
 	err = cmd_complete(sk, hdev->id, MGMT_OP_CANCEL_PAIR_DEVICE, 0,
 			   addr, sizeof(*addr));
@@ -3791,7 +3802,7 @@ static bool trigger_discovery(struct hci_request *req, u8 *status)
 
 		/* All active scans will be done with either a resolvable
 		 * private address (when privacy feature has been enabled)
-		 * or unresolvable private address.
+		 * or non-resolvable private address.
 		 */
 		err = hci_update_random_address(req, true, &own_addr_type);
 		if (err < 0) {
@@ -4279,12 +4290,14 @@ static void set_advertising_complete(struct hci_dev *hdev, u8 status)
 {
 	struct cmd_lookup match = { NULL, hdev };
 
+	hci_dev_lock(hdev);
+
 	if (status) {
 		u8 mgmt_err = mgmt_status(status);
 
 		mgmt_pending_foreach(MGMT_OP_SET_ADVERTISING, hdev,
 				     cmd_status_rsp, &mgmt_err);
-		return;
+		goto unlock;
 	}
 
 	if (test_bit(HCI_LE_ADV, &hdev->dev_flags))
@@ -4299,6 +4312,9 @@ static void set_advertising_complete(struct hci_dev *hdev, u8 status)
 
 	if (match.sk)
 		sock_put(match.sk);
+
+unlock:
+	hci_dev_unlock(hdev);
 }
 
 static int set_advertising(struct sock *sk, struct hci_dev *hdev, void *data,
@@ -6681,8 +6697,10 @@ void mgmt_auth_failed(struct hci_conn *conn, u8 hci_status)
 	mgmt_event(MGMT_EV_AUTH_FAILED, conn->hdev, &ev, sizeof(ev),
 		    cmd ? cmd->sk : NULL);
 
-	if (cmd)
-		pairing_complete(cmd, status);
+	if (cmd) {
+		cmd->cmd_complete(cmd, status);
+		mgmt_pending_remove(cmd);
+	}
 }
 
 void mgmt_auth_enable_complete(struct hci_dev *hdev, u8 status)
