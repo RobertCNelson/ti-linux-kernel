@@ -586,8 +586,6 @@ static int ping_evictor_main(void *arg)
 	struct l_wait_info lwi = { 0 };
 	time_t expire_time;
 
-	unshare_fs_struct();
-
 	CDEBUG(D_HA, "Starting Ping Evictor\n");
 	pet_state = PET_READY;
 	while (1) {

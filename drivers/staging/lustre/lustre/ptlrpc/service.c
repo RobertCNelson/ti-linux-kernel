@@ -2277,7 +2277,6 @@ static int ptlrpc_main(void *arg)
 	int counter = 0, rc = 0;
 
 	thread->t_pid = current_pid();
-	unshare_fs_struct();
 
 	/* NB: we will call cfs_cpt_bind() for all threads, because we
 	 * might want to run lustre server only on a subset of system CPUs,
@@ -2478,7 +2477,6 @@ static int ptlrpc_hr_main(void *arg)
 
 	snprintf(threadname, sizeof(threadname), "ptlrpc_hr%02d_%03d",
 		 hrp->hrp_cpt, hrt->hrt_id);
-	unshare_fs_struct();
 
 	rc = cfs_cpt_bind(ptlrpc_hr.hr_cpt_table, hrp->hrp_cpt);
 	if (rc != 0) {

@@ -164,8 +164,6 @@ static int sec_gc_main(void *arg)
 	struct ptlrpc_thread *thread = (struct ptlrpc_thread *) arg;
 	struct l_wait_info    lwi;
 
-	unshare_fs_struct();
-
 	/* Record that the thread is running */
 	thread_set_flags(thread, SVC_RUNNING);
 	wake_up(&thread->t_ctl_waitq);
