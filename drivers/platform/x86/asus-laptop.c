@@ -1698,7 +1698,6 @@ static void asus_platform_exit(struct asus_laptop *asus)
 static struct platform_driver platform_driver = {
 	.driver = {
 		.name = ASUS_LAPTOP_FILE,
-		.owner = THIS_MODULE,
 	},
 };
 
