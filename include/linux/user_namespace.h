@@ -18,6 +18,12 @@ struct uid_gid_map {	/* 64 bytes -- 1 cache line */
 	} extent[UID_GID_MAP_MAX_EXTENTS];
 };
 
+enum user_namespace_flags {
+	USERNS_SETGROUPS_ALLOWED,
+};
+
+#define USERNS_INIT_FLAGS BIT(USERNS_SETGROUPS_ALLOWED)
+
 struct user_namespace {
 	struct uid_gid_map	uid_map;
 	struct uid_gid_map	gid_map;
@@ -28,6 +34,7 @@ struct user_namespace {
 	kuid_t			owner;
 	kgid_t			group;
 	struct ns_common	ns;
+	unsigned long		flags;
 
 	/* Register of per-UID persistent keyrings for this namespace */
 #ifdef CONFIG_PERSISTENT_KEYRINGS
@@ -37,6 +44,31 @@ struct user_namespace {
 };
 
 extern struct user_namespace init_user_ns;
+
+static inline bool userns_gid_mappings_established(const struct user_namespace *ns)
+{
+	bool established;
+	smp_mb__before_atomic();
+	established = ACCESS_ONCE(ns->gid_map.nr_extents) != 0;
+	smp_mb__after_atomic();
+	return established;
+}
+
+static inline bool userns_setgroups_allowed(const struct user_namespace *ns)
+{
+	bool allowed;
+	smp_mb__before_atomic();
+	allowed = test_bit(USERNS_SETGROUPS_ALLOWED, &ns->flags);
+	smp_mb__after_atomic();
+	return allowed;
+}
+
+static inline void userns_disable_setgroups(struct user_namespace *ns)
+{
+	smp_mb__before_atomic();
+	clear_bit(USERNS_SETGROUPS_ALLOWED, &ns->flags);
+	smp_mb__after_atomic();
+}
 
 #ifdef CONFIG_USER_NS
 
@@ -61,9 +93,11 @@ struct seq_operations;
 extern const struct seq_operations proc_uid_seq_operations;
 extern const struct seq_operations proc_gid_seq_operations;
 extern const struct seq_operations proc_projid_seq_operations;
+extern const struct seq_operations proc_setgroups_seq_operations;
 extern ssize_t proc_uid_map_write(struct file *, const char __user *, size_t, loff_t *);
 extern ssize_t proc_gid_map_write(struct file *, const char __user *, size_t, loff_t *);
 extern ssize_t proc_projid_map_write(struct file *, const char __user *, size_t, loff_t *);
+extern ssize_t proc_setgroups_write(struct file *, const char __user *, size_t, loff_t *);
 #else
 
 static inline struct user_namespace *get_user_ns(struct user_namespace *ns)
