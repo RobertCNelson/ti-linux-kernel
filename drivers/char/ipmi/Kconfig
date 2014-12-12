@@ -5,6 +5,7 @@
 menuconfig IPMI_HANDLER
        tristate 'IPMI top-level message handler'
        depends on HAS_IOMEM
+       default y if ACPI
        help
          This enables the central IPMI message handler, required for IPMI
 	 to work.
@@ -45,6 +46,7 @@ config IPMI_DEVICE_INTERFACE
 
 config IPMI_SI
        tristate 'IPMI System Interface handler'
+       default y if ACPI
        help
          Provides a driver for System Interfaces (KCS, SMIC, BT).
 	 Currently, only KCS and SMIC are supported.  If
@@ -61,6 +63,20 @@ config IPMI_SI_PROBE_DEFAULTS
 	 delays. Say "n" here to disable this manual probing. IPMI will then
 	 only be available on older systems if the "ipmi_si_intf.trydefaults=1"
 	 boot argument is passed.
+
+config IPMI_SSIF
+       tristate 'IPMI SMBus handler (SSIF)'
+       select I2C
+       help
+         Provides a driver for a SMBus interface to a BMC, meaning that you
+	 have a driver that must be accessed over an I2C bus instead of a
+	 standard interface.  This module requires I2C support.
+
+config IPMI_POWERNV
+       depends on PPC_POWERNV
+       tristate 'POWERNV (OPAL firmware) IPMI interface'
+       help
+         Provides a driver for OPAL firmware-based IPMI interfaces.
 
 config IPMI_WATCHDOG
        tristate 'IPMI Watchdog Timer'
