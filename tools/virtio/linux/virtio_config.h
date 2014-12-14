@@ -1,8 +1,7 @@
 #include <linux/virtio_byteorder.h>
 #include <linux/virtio.h>
+#include <uapi/linux/virtio_config.h>
 
-#define VIRTIO_TRANSPORT_F_START	28
-#define VIRTIO_TRANSPORT_F_END		32
 /*
  * __virtio_test_bit - helper to test feature bits. For use by transports.
  *                     Devices should normally use virtio_has_feature,
@@ -14,6 +13,28 @@ static inline bool __virtio_test_bit(const struct virtio_device *vdev,
 				     unsigned int fbit)
 {
 	return vdev->features & (1ULL << fbit);
+}
+
+/**
+ * __virtio_set_bit - helper to set feature bits. For use by transports.
+ * @vdev: the device
+ * @fbit: the feature bit
+ */
+static inline void __virtio_set_bit(struct virtio_device *vdev,
+				    unsigned int fbit)
+{
+	vdev->features |= (1ULL << fbit);
+}
+
+/**
+ * __virtio_clear_bit - helper to clear feature bits. For use by transports.
+ * @vdev: the device
+ * @fbit: the feature bit
+ */
+static inline void __virtio_clear_bit(struct virtio_device *vdev,
+				      unsigned int fbit)
+{
+	vdev->features &= ~(1ULL << fbit);
 }
 
 #define virtio_has_feature(dev, feature) \
