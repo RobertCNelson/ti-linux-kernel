@@ -382,7 +382,6 @@ static int ptlrpcd(void *arg)
 	struct lu_env env = { .le_ses = NULL };
 	int rc, exit = 0;
 
-	unshare_fs_struct();
 #if defined(CONFIG_SMP)
 	if (test_bit(LIOD_BIND, &pc->pc_flags)) {
 		int index = pc->pc_index;
