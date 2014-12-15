@@ -128,7 +128,6 @@ static const char *scsi_debug_version_date = "20141022";
 #define DEF_REMOVABLE false
 #define DEF_SCSI_LEVEL   6    /* INQUIRY, byte2 [6->SPC-4] */
 #define DEF_SECTOR_SIZE 512
-#define DEF_TAGGED_QUEUING 0 /* 0 | MSG_SIMPLE_TAG | MSG_ORDERED_TAG */
 #define DEF_UNMAP_ALIGNMENT 0
 #define DEF_UNMAP_GRANULARITY 1
 #define DEF_UNMAP_MAX_BLOCKS 0xFFFFFFFF
@@ -4988,32 +4987,6 @@ sdebug_change_qdepth(struct scsi_device *sdev, int qdepth)
 }
 
 static int
-sdebug_change_qtype(struct scsi_device *sdev, int qtype)
-{
-	qtype = scsi_change_queue_type(sdev, qtype);
-	if (SCSI_DEBUG_OPT_Q_NOISE & scsi_debug_opts) {
-		const char *cp;
-
-		switch (qtype) {
-		case 0:
-			cp = "untagged";
-			break;
-		case MSG_SIMPLE_TAG:
-			cp = "simple tags";
-			break;
-		case MSG_ORDERED_TAG:
-			cp = "ordered tags";
-			break;
-		default:
-			cp = "unknown";
-			break;
-		}
-		sdev_printk(KERN_INFO, sdev, "%s: to %s\n", __func__, cp);
-	}
-	return qtype;
-}
-
-static int
 check_inject(struct scsi_cmnd *scp)
 {
 	struct sdebug_scmd_extra_t *ep = scsi_cmd_priv(scp);
@@ -5212,7 +5185,6 @@ static struct scsi_host_template sdebug_driver_template = {
 	.ioctl =		scsi_debug_ioctl,
 	.queuecommand =		sdebug_queuecommand_lock_or_not,
 	.change_queue_depth =	sdebug_change_qdepth,
-	.change_queue_type =	sdebug_change_qtype,
 	.eh_abort_handler =	scsi_debug_abort,
 	.eh_device_reset_handler = scsi_debug_device_reset,
 	.eh_target_reset_handler = scsi_debug_target_reset,
