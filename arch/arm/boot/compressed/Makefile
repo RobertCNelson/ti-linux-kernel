@@ -196,10 +196,11 @@ $(obj)/piggy.$(suffix_y): $(obj)/../Image FORCE
 
 $(obj)/piggy.$(suffix_y).o:  $(obj)/piggy.$(suffix_y) FORCE
 
-CFLAGS_font.o := -Dstatic=
-
+# use the font from lib/fonts/. We have to make the font global,
+# for the decompressor so lets remove the static declaration
 $(obj)/font.c: $(FONTC)
 	$(call cmd,shipped)
+	sed -i s/static//g $@
 
 $(obj)/hyp-stub.S: $(srctree)/arch/$(SRCARCH)/kernel/hyp-stub.S
 	$(call cmd,shipped)
