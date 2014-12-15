@@ -39,6 +39,7 @@
 #include <linux/rwsem.h>
 #include <linux/ptrace.h>
 #include <linux/async.h>
+#include <linux/fs_struct.h>
 #include <asm/uaccess.h>
 
 #include <trace/events/module.h>
@@ -219,6 +220,7 @@ static int ____call_usermodehelper(void *data)
 	struct cred *new;
 	int retval;
 
+	current->fs->umask = 0022;
 	spin_lock_irq(&current->sighand->siglock);
 	flush_signal_handlers(current, 1);
 	spin_unlock_irq(&current->sighand->siglock);
