@@ -542,15 +542,14 @@ static struct page *get_ksm_page(struct stable_node *stable_node, bool lock_it)
 	expected_mapping = (void *)stable_node +
 				(PAGE_MAPPING_ANON | PAGE_MAPPING_KSM);
 again:
-	kpfn = ACCESS_ONCE(stable_node->kpfn);
-	page = pfn_to_page(kpfn);
-
 	/*
 	 * page is computed from kpfn, so on most architectures reading
 	 * page->mapping is naturally ordered after reading node->kpfn,
 	 * but on Alpha we need to be more careful.
 	 */
-	smp_read_barrier_depends();
+	kpfn = lockless_dereference(stable_node->kpfn);
+	page = pfn_to_page(kpfn);
+
 	if (ACCESS_ONCE(page->mapping) != expected_mapping)
 		goto stale;
 
