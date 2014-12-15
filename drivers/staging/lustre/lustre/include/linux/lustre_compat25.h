@@ -69,8 +69,6 @@
 # define inode_dio_read(i)		atomic_inc(&(i)->i_dio_count)
 /* inode_dio_done(i) use as-is for read unlock */
 
-#define TREE_READ_LOCK_IRQ(mapping)	spin_lock_irq(&(mapping)->tree_lock)
-#define TREE_READ_UNLOCK_IRQ(mapping)	spin_unlock_irq(&(mapping)->tree_lock)
 
 #ifndef FS_HAS_FIEMAP
 #define FS_HAS_FIEMAP			(0)
@@ -115,8 +113,7 @@ ll_quota_on(struct super_block *sb, int off, int ver, char *name, int remount)
 					   );
 		path_put(&path);
 		return rc;
-	}
-	else
+	} else
 		return -ENOSYS;
 }
 
@@ -125,8 +122,7 @@ static inline int ll_quota_off(struct super_block *sb, int off, int remount)
 	if (sb->s_qcop->quota_off) {
 		return sb->s_qcop->quota_off(sb, off
 					    );
-	}
-	else
+	} else
 		return -ENOSYS;
 }
 
