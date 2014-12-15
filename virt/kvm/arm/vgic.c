@@ -1607,7 +1607,7 @@ static int vgic_validate_injection(struct kvm_vcpu *vcpu, int irq, int level)
 	}
 }
 
-static bool vgic_update_irq_pending(struct kvm *kvm, int cpuid,
+static int vgic_update_irq_pending(struct kvm *kvm, int cpuid,
 				  unsigned int irq_num, bool level)
 {
 	struct vgic_dist *dist = &kvm->arch.vgic;
@@ -1643,9 +1643,10 @@ static bool vgic_update_irq_pending(struct kvm *kvm, int cpuid,
 			vgic_dist_irq_clear_level(vcpu, irq_num);
 			if (!vgic_dist_irq_soft_pend(vcpu, irq_num))
 				vgic_dist_irq_clear_pending(vcpu, irq_num);
-		} else {
-			vgic_dist_irq_clear_pending(vcpu, irq_num);
 		}
+
+		ret = false;
+		goto out;
 	}
 
 	enabled = vgic_irq_is_enabled(vcpu, irq_num);
@@ -1672,7 +1673,7 @@ static bool vgic_update_irq_pending(struct kvm *kvm, int cpuid,
 out:
 	spin_unlock(&dist->lock);
 
-	return ret;
+	return ret ? cpuid : -EINVAL;
 }
 
 /**
@@ -1692,9 +1693,14 @@ out:
 int kvm_vgic_inject_irq(struct kvm *kvm, int cpuid, unsigned int irq_num,
 			bool level)
 {
-	if (likely(vgic_initialized(kvm)) &&
-	    vgic_update_irq_pending(kvm, cpuid, irq_num, level))
-		vgic_kick_vcpus(kvm);
+	int vcpu_id;
+
+	if (likely(vgic_initialized(kvm))) {
+		vcpu_id = vgic_update_irq_pending(kvm, cpuid, irq_num, level);
+		if (vcpu_id >= 0)
+			/* kick the specified vcpu */
+			kvm_vcpu_kick(kvm_get_vcpu(kvm, vcpu_id));
+	}
 
 	return 0;
 }
