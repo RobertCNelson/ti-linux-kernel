@@ -2366,7 +2366,6 @@ MODULE_DEVICE_TABLE(of, atmel_nand_nfc_match);
 static struct platform_driver atmel_nand_nfc_driver = {
 	.driver = {
 		.name = "atmel_nand_nfc",
-		.owner = THIS_MODULE,
 		.of_match_table = of_match_ptr(atmel_nand_nfc_match),
 	},
 	.probe = atmel_nand_nfc_probe,
@@ -2378,7 +2377,6 @@ static struct platform_driver atmel_nand_driver = {
 	.remove		= atmel_nand_remove,
 	.driver		= {
 		.name	= "atmel_nand",
-		.owner	= THIS_MODULE,
 		.of_match_table	= of_match_ptr(atmel_nand_dt_ids),
 	},
 };

@@ -261,7 +261,6 @@ static struct platform_driver gpio_charger_driver = {
 	.remove = gpio_charger_remove,
 	.driver = {
 		.name = "gpio-charger",
-		.owner = THIS_MODULE,
 		.pm = &gpio_charger_pm_ops,
 		.of_match_table = gpio_charger_match,
 	},

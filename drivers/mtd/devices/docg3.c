@@ -2130,7 +2130,6 @@ MODULE_DEVICE_TABLE(of, docg3_dt_ids);
 static struct platform_driver g3_driver = {
 	.driver		= {
 		.name	= "docg3",
-		.owner	= THIS_MODULE,
 		.of_match_table = of_match_ptr(docg3_dt_ids),
 	},
 	.suspend	= docg3_suspend,
