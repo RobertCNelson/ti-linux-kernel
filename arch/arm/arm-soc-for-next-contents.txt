@@ -1,0 +1,380 @@
+next/fixes-non-critical
+	omap/fixes-not-urgent
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/fixes-not-urgent-part1
+	bcm/cygnus-maintainers
+		http://github.com/brcm/linux tags/arm-soc/for-3.19/cygnus-maintainers-v2
+	patch
+		MAINTAINERS: update email address and cleanup for exynos entry
+		MAINTAINERS: update brcmstb entries
+		MAINTAINERS: add entry for the GISB arbiter driver
+		MAINTAINERS: Add ahci_st.c to ARCH/STI architecture
+		arm: ep93xx: add dma_masks for the M2P and M2M DMA controllers
+	samsung/fixes
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-fixes-v3.19
+	patch
+		MAINTAINERS: ARM Versatile Express platform
+	tegra/core
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.19-soc
+
+next/cleanup
+	cleanup/dts-subdirs
+		git://git.kernel.org/pub/scm/linux/kernel/git/rric/linux tags/dts-subdirs-for-arm-soc-v3.19
+	samsung/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-cleanup
+	renesas/cleanup-kconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-kconfig-cleanups-for-v3.19
+	renesas/cleanup-boards
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-boards-cleanups-for-v3.19
+	renesas/cleanup-soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-cleanups-for-v3.19
+	renesas/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-cleanup-for-v3.19
+	at91/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-cleanup
+	patch
+		ARM: at91: fix build breakage due to legacy board removals
+	renesas/boards-cleanups2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-boards-cleanups2-for-v3.19
+	renesas/dt-du
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-du-for-v3.19
+	patch
+		ARM: at91: remove useless init_time for DT-only SoCs
+	renesas/cleanup-dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-cleanups-for-v3.19
+	renesas/koelsch-board-removal
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-koelsch-board-removal-for-v3.19
+	at91/cleanup2
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-cleanup2
+	davinci/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v3.19/cleanup
+	renesas/cleanup2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-cleanups2-for-v3.19
+	samsung/cleanup2
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-cleanup-2
+	imx/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-cleanup-3.19
+	patch
+		ARM: vexpress: Remove non-DT code
+	at91/cleanup3
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-cleanup3
+	at91/cleanup4
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-cleanup4
+	patch
+		ARM: vexpress: Enable regulator framework when MMCI is in use
+	zynq/cleanup
+		https://github.com/Xilinx/linux-xlnx tags/zynq-cleanup-for-3.19
+	at91/cleanup5
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-cleanup5
+
+next/soc
+	rk/cpufreq
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.18-rockchip-cpufreqdev-v2
+	brcm/stb-smp-uart
+		http://github.com/brcm/linux tags/brcmstb-smp-uart-for-3.19
+	integrator/multiplatform
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/integrator-multiplatform-for-arm-soc
+	samsung/pm2
+		http://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung v3.19-next/pm-samsung-2
+	berlin/soc
+		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-soc-3.19-1
+	ux500/core
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson tags/ux500-core-for-arm-soc
+	patch
+		ARM: fix multiplatform allmodcompile
+	renesas/runtime-pm
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-runtime-pm-for-v3.19
+	renesas/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-for-v3.19
+	renesas/soc2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc2-for-v3.19
+	renesas/soc3
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc3-for-v3.19
+	renesas/boards
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-boards-for-v3.19
+	pxa/soc
+		https://github.com/rjarzmik/linux tags/pxa-for-3.19
+	omap/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/clocks-and-pm
+	omap/prcm-cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/prcm-cleanup
+	patch
+		ARM: debug: move StrongARM debug include to arch/arm/include/debug
+	bcm/cygnus-platform
+		http://github.com/brcm/linux tags/arm-soc/for-3.19/cygnus-platform-v2
+	bcm/cygnus-defconfig
+		http://github.com/brcm/linux tags/arm-soc/for-3.19/cygnus-defconfig-v2
+	mediatek/soc
+		https://github.com/mbgg/linux-mediatek tags/v3.19-next-soc
+	patch
+		socfpga: hotplug: put cpu1 in wfi
+	integrator/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/integrator-v3.19-arm-soc-2
+	rk/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.19-rockchip-soc2
+	meson/soc
+		https://github.com/carlocaione/linux-meson tags/v3.19-meson-soc
+	sunxi/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-core-for-3.19
+	patch
+		ARM: BCM5301X: fix early serial console
+	berlin/soc2
+		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-soc-3.19-2
+	renesas/soc4
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc4-for-v3.19
+	samsung/exynos
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-exynos-v3.19
+		contains samsung/cleanup
+		contains samsung/fixes
+	samsung/pm-3
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-pm-3
+	omap/soc2-part1
+		Merge (part of) tag 'omap-for-v3.19/hwmod-and-defconfig' of git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap into next/soc
+	imx/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-soc-3.19
+	patch
+		ARM: add mach-asm9260
+		ARM: add lolevel debug support for asm9260
+	mvebu/soc
+		git://git.infradead.org/linux-mvebu tags/mvebu-soc-3.19
+	mvebu/soc-suspend
+		git://git.infradead.org/linux-mvebu tags/mvebu-soc-suspend-3.19
+	patch
+		soc: integrator: Add terminating entry for integrator_cm_match
+		ARM: mvebu: use the cpufreq-dt platform_data for independent clocks
+
+next/boards
+
+next/dt
+	samsung/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt
+	realview/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/arm-realview-dt-for-arm-soc
+	renesas/cleanup-dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-cleanups-for-v3.19
+	renesas/dt-timers
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-r8a73a4-dt-timers-for-v3.19
+	rk/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.19-rockchip-dts1
+	renesas/dt-clocksource
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-clocksource-for-v3.19
+	brcm/cygnus-dts
+		http://github.com/brcm/linux tags/arm-soc/for-3.18/cygnus-dts-v9
+	sti/dt
+		git://git.stlinux.com/devel/kernel/linux-sti tags/sti-dt-for-v3.19-1
+	berlin/dt
+		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-dt-3.19-1
+	at91/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-dt
+	nomadik/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-nomadik tags/nomadik-for-v3.19
+	renesas/dt-du
+		Merge branch 'renesas/dt-du' into next/dt
+	renesas/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-for-v3.19
+	renesas/dt-cleanup2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-cleanups2-for-v3.19
+	renesas/dt-cleanup3
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-cleanups3-for-v3.19
+	hisilicon/hix5hd2-dt
+		git://github.com/hisilicon/linux-hisi tags/hix5hd2-dt-for-3.19
+	mvebu/dt
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-3.19
+	omap/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/dt-part1
+	patch
+		ARM: bcm2835: Add device tree for Raspberry Pi model B+
+		dt-bindings: Document correct and deprecated vendor-prefix with device isl29028
+		dt-bindings: Document deprecated device vendor name to fix related warning
+		Staging: iio: light: Added correct vendor-prefix for device isl29028
+		arch: arm: boot: dts: Correct vendor-prefix for iio device isl29028 in compatible property
+	bcm/cygnus-dts
+		http://github.com/brcm/linux tags/arm-soc/for-3.19/cygnus-dts-v2
+	keystone/dts
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-dts
+	mediatek/dts
+		https://github.com/mbgg/linux-mediatek tags/v3.19-next-dts
+	sti/dt2
+		git://git.stlinux.com/devel/kernel/linux-sti tags/sti-dt-for-v3.19-2
+	meson/dts
+		https://github.com/carlocaione/linux-meson tags/v3.19-meson-dts
+	sunxi/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-dt-for-3.19
+	rk/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.19-rockchip-dts2
+	berlin/dt2
+		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-dt-3.19-2
+	renesas/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt2-for-v3.19
+	socfgpa/dts
+		git://git.rocketboards.org/linux-socfpga-next tags/socfpga_dts_updates_for_v3.19
+	sunxi/dt-fixed
+		Merge branch 'sunxi/dt' into next/dt
+	rk/dts3
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.19-rockchip-dts3
+	samsung/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt-2
+	samsung/dt-3
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt-3
+	omap/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/dt-part2-updated
+	imx/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-dt-3.19
+		contains imx/soc
+	sunxi/simplefb
+		https://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-simplefb-for-3.19
+	sirf/dts
+		git://git.kernel.org/pub/scm/linux/kernel/git/baohua/linux tags/sirf-dts-for-3.19
+	mvebu/dt-2
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-3.19-2
+	bcm5301x/dt
+		https://github.com/hauke/linux tags/bcm5301x-dt-2014-11-27
+	zynq/dt
+		https://github.com/Xilinx/linux-xlnx tags/zynq-dt-for-3.19
+	rockchip/dt4
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.19-rockchip-dts4
+
+next/drivers
+	berlin/drivers
+		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-driver-3.19-1
+	omap/w1-and-l3-noc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/w1-and-l3-noc
+	keystone/drivers-soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-driver-soc
+	at91/drivers
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-drivers
+	drivers/arm-perf
+		git://git.kernel.org/pub/scm/linux/kernel/git/will/linux tags/arm-perf-3.19
+	at91/cleanup
+		Merge branch 'at91/cleanup' into next/drivers
+	davinci/edma
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v3.19/edma
+	patch
+		ARM: common: edma: edma_pm_resume may be unused
+		bus: brcmstb_gisb: resolve section mismatch
+	samsung/driver
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-driver
+	bcm/brcmstb-drivers
+		https://github.com/brcm/linux tags/arm-soc/for-3.19/brcmstb-drivers
+	driver/reset
+		git://git.pengutronix.de/git/pza/linux tags/reset-for-3.19-2
+	tegra/iommu
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.19-iommu
+
+next/defconfig
+	renesas/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig-for-v3.19
+	hisilicon/hix5hd2-config
+		git://github.com/hisilicon/linux-hisi tags/hix5hd2-config-for-3.19
+	mvebu/defconfig
+		git://git.infradead.org/linux-mvebu tags/mvebu-defconfig-3.19
+	patch
+		ARM: multi_v7_defconfig: remove one level of menu from Kconfig
+		ARM: multi_v7_defconfig: Enable Broadcom Cygnus
+	keystone/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-soc
+	patch
+		ARM: multi_v7_defconfig: Enable cgroups
+	sti/defconfig
+		git://git.stlinux.com/devel/kernel/linux-sti tags/sti-defconfig-for-v3.19-1
+	patch
+		ARM: exynos_defconfig: Use 16 minors per MMC block device
+		ARM: multi_v7_defconfig: add driver support for hix5hd2
+	mvebu/defconfig2
+		git://git.infradead.org/linux-mvebu tags/mvebu-defconfig-3.19-2
+	tegra/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.19-defconfig
+	patch
+		ARM: defconfig: imx_v6_v7_defconfig updates
+	at91/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-defconfig
+
+next/arm64
+	cleanup/dts-subdirs
+		Merge branch 'cleanup/dts-subdirs' into next/arm64
+	patch
+		arm64: Create link to include/dt-bindings to enable C preprocessor use.
+		arm64: Add Juno board device tree.
+		arm64: amd-seattle: Adding device tree for AMD Seattle platform
+		arm64: ARM: Fix the Generic Timers interrupt active level description
+		arm64: amd-seattle: Fix PCI bus range due to SMMU limitation
+
+next/omap-gpmc
+	omap/dt
+		Merge branch 'omap/dt' into next/omap-gpmc
+	omap/gpmc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/gpmc-timings
+	omap/gpmc-cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/cleanup-part1
+	omap/gpmc-move
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/gpmc-move-v2
+
+next/dt2
+	samsung/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt
+	realview/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/arm-realview-dt-for-arm-soc
+	renesas/cleanup-dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-cleanups-for-v3.19
+	renesas/dt-timers
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-r8a73a4-dt-timers-for-v3.19
+	rk/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.19-rockchip-dts1
+	renesas/dt-clocksource
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-clocksource-for-v3.19
+	brcm/cygnus-dts
+		http://github.com/brcm/linux tags/arm-soc/for-3.18/cygnus-dts-v9
+	sti/dt
+		git://git.stlinux.com/devel/kernel/linux-sti tags/sti-dt-for-v3.19-1
+	berlin/dt
+		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-dt-3.19-1
+	at91/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-dt
+	nomadik/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-nomadik tags/nomadik-for-v3.19
+	renesas/dt-du
+		Merge branch 'renesas/dt-du' into next/dt
+	renesas/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-for-v3.19
+	renesas/dt-cleanup2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-cleanups2-for-v3.19
+	renesas/dt-cleanup3
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-cleanups3-for-v3.19
+	hisilicon/hix5hd2-dt
+		git://github.com/hisilicon/linux-hisi tags/hix5hd2-dt-for-3.19
+	mvebu/dt
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-3.19
+	omap/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/dt-part1
+	patch
+		ARM: bcm2835: Add device tree for Raspberry Pi model B+
+		dt-bindings: Document correct and deprecated vendor-prefix with device isl29028
+		dt-bindings: Document deprecated device vendor name to fix related warning
+		Staging: iio: light: Added correct vendor-prefix for device isl29028
+		arch: arm: boot: dts: Correct vendor-prefix for iio device isl29028 in compatible property
+	bcm/cygnus-dts
+		http://github.com/brcm/linux tags/arm-soc/for-3.19/cygnus-dts-v2
+	keystone/dts
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-dts
+	<no branch> (fef4cbf2ab830fcd695d892927386ad9ccc46339)
+		git://git.infradead.org/users/vkoul/slave-dma topic/at_xdmac
+	at91/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-dt2
+	<no branch> (206c5f60a3d902bc4b56dab2de3e88de5eb06108)
+		Merge tag 'v3.18-rc4' into next/dt2
+	<no branch> (2fbbc96d16009276153fd33823616877dcca30d8)
+		Merge tag 'depends/phy-dt-header' into next/dt2
+	mvebu/dt-3
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-usb-phy-3.19-3
+	tegra/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.19-dt
+		contains tegra/iommu
+
+next/iommu-config
+	<no branch> (a42a7a1fb5f1f9004b023594609dc22da02fc08b)
+		git://git.kernel.org/pub/scm/linux/kernel/git/will/linux tags/of-iommu-configure
+
+fixes
+	patch
+		arm: ep93xx: add dma_masks for the M2P and M2M DMA controllers
+
+
