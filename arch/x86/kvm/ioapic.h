@@ -19,7 +19,6 @@ struct kvm_vcpu;
 /* Direct registers. */
 #define IOAPIC_REG_SELECT  0x00
 #define IOAPIC_REG_WINDOW  0x10
-#define IOAPIC_REG_EOI     0x40	/* IA64 IOSAPIC only */
 
 /* Indirect registers. */
 #define IOAPIC_REG_APIC_ID 0x00	/* x86 IOAPIC only */
@@ -83,7 +82,7 @@ static inline struct kvm_ioapic *ioapic_irqchip(struct kvm *kvm)
 
 void kvm_rtc_eoi_tracking_restore_one(struct kvm_vcpu *vcpu);
 int kvm_apic_match_dest(struct kvm_vcpu *vcpu, struct kvm_lapic *source,
-		int short_hand, int dest, int dest_mode);
+		int short_hand, unsigned int dest, int dest_mode);
 int kvm_apic_compare_prio(struct kvm_vcpu *vcpu1, struct kvm_vcpu *vcpu2);
 void kvm_ioapic_update_eoi(struct kvm_vcpu *vcpu, int vector,
 			int trigger_mode);
@@ -97,7 +96,6 @@ int kvm_irq_delivery_to_apic(struct kvm *kvm, struct kvm_lapic *src,
 		struct kvm_lapic_irq *irq, unsigned long *dest_map);
 int kvm_get_ioapic(struct kvm *kvm, struct kvm_ioapic_state *state);
 int kvm_set_ioapic(struct kvm *kvm, struct kvm_ioapic_state *state);
-void kvm_vcpu_request_scan_ioapic(struct kvm *kvm);
 void kvm_ioapic_scan_entry(struct kvm_vcpu *vcpu, u64 *eoi_exit_bitmap,
 			u32 *tmr);
 
