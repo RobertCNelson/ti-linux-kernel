@@ -219,7 +219,7 @@ struct smb2_negotiate_req {
 #define SMB2_LARGE_FILES		0x00200000
 
 /* Hash Algorithm Types */
-#define SMB2_PREAUTH_INTEGRITY_SHA512	0x0001
+#define SMB2_PREAUTH_INTEGRITY_SHA512	cpu_to_le16(0x0001)
 
 struct smb2_preauth_neg_context_req {
 	__le16	ContextType; /* 1 */
