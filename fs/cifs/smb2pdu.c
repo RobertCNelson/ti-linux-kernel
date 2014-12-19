@@ -393,6 +393,10 @@ SMB2_negotiate(const unsigned int xid, struct cifs_ses *ses)
 		cifs_dbg(FYI, "negotiated smb3.0 dialect\n");
 	else if (rsp->DialectRevision == cpu_to_le16(SMB302_PROT_ID))
 		cifs_dbg(FYI, "negotiated smb3.02 dialect\n");
+#ifdef CONFIG_CIFS_SMB31
+	else if (rsp->DialectRevision == cpu_to_le16(SMB31_PROT_ID))
+		cifs_dbg(FYI, "negotiated smb3.1 dialect\n");
+#endif /* SMB31 */
 	else {
 		cifs_dbg(VFS, "Illegal dialect returned by server %d\n",
 			 le16_to_cpu(rsp->DialectRevision));
@@ -572,7 +576,7 @@ ssetup_ntlmssp_authenticate:
 		return rc;
 
 	req->hdr.SessionId = 0; /* First session, not a reauthenticate */
-	req->VcNumber = 0; /* MBZ */
+	req->Flags = 0; /* MBZ */
 	/* to enable echos and oplocks */
 	req->hdr.CreditRequest = cpu_to_le16(3);
 

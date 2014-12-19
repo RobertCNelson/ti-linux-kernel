@@ -110,7 +110,7 @@ struct smb2_hdr {
 	__le16 CreditRequest;  /* CreditResponse */
 	__le32 Flags;
 	__le32 NextCommand;
-	__u64  MessageId;	/* opaque - so can stay little endian */
+	__le64 MessageId;
 	__le32 ProcessId;
 	__u32  TreeId;		/* opaque - so do not make little endian */
 	__u64  SessionId;	/* opaque - so do not make little endian */
@@ -135,9 +135,6 @@ struct smb2_transform_hdr {
 	__le16 EncryptionAlgorithm;
 	__u64  SessionId;
 } __packed;
-
-/* Encryption Algorithms */
-#define SMB2_ENCRYPTION_AES128_CCM	cpu_to_le16(0x0001)
 
 /*
  *	SMB2 flag definitions
@@ -191,7 +188,10 @@ struct smb2_negotiate_req {
 	__le16 Reserved;	/* MBZ */
 	__le32 Capabilities;
 	__u8   ClientGUID[SMB2_CLIENT_GUID_SIZE];
-	__le64 ClientStartTime;	/* MBZ */
+	/* In SMB3.02 and earlier next three were MBZ le64 ClientStartTime */
+	__le32 NegotiateContextOffset; /* SMB3.1 only. MBZ earlier */
+	__le16 NegotiateContextCount;  /* SMB3.1 only. MBZ earlier */
+	__le16 Reserved2;
 	__le16 Dialects[1]; /* One dialect (vers=) at a time for now */
 } __packed;
 
@@ -200,6 +200,7 @@ struct smb2_negotiate_req {
 #define SMB21_PROT_ID 0x0210
 #define SMB30_PROT_ID 0x0300
 #define SMB302_PROT_ID 0x0302
+#define SMB31_PROT_ID 0x0310
 #define BAD_PROT_ID   0xFFFF
 
 /* SecurityMode flags */
@@ -217,12 +218,37 @@ struct smb2_negotiate_req {
 #define SMB2_NT_FIND			0x00100000
 #define SMB2_LARGE_FILES		0x00200000
 
+/* Hash Algorithm Types */
+#define SMB2_PREAUTH_INTEGRITY_SHA512	0x0001
+
+struct smb2_preauth_neg_context_req {
+	__le16	ContextType; /* 1 */
+	__le16	DataLength;
+	__le32	Reserved;
+	__le16	HashAlgorithmCount; /* 1 */
+	__le16	SaltLength; /* 32 */
+	__le16	HashAlgorithms; /* HashAlgorithms[0] since only one defined */
+	__u8	Salt[32];
+} __packed;
+
+/* Encryption Algorithms Ciphers */
+#define SMB2_ENCRYPTION_AES128_CCM	cpu_to_le16(0x0001)
+#define SMB2_ENCRYPTION_AES128_GCM	cpu_to_le16(0x0002)
+
+struct smb2_encryption_neg_context_req {
+	__le16	ContextType; /* 2 */
+	__le16	DataLength;
+	__le32	Reserved;
+	__le16	CipherCount; /* 1 for time being, only AES-128-CCM */
+	__le16	Ciphers; /* Ciphers[0] since only one used now */
+} __packed;
+
 struct smb2_negotiate_rsp {
 	struct smb2_hdr hdr;
 	__le16 StructureSize;	/* Must be 65 */
 	__le16 SecurityMode;
 	__le16 DialectRevision;
-	__le16 Reserved;	/* MBZ */
+	__le16 NegotiateContextCount;	/* Prior to SMB3.1 was Reserved & MBZ */
 	__u8   ServerGUID[16];
 	__le32 Capabilities;
 	__le32 MaxTransactSize;
@@ -232,14 +258,18 @@ struct smb2_negotiate_rsp {
 	__le64 ServerStartTime;
 	__le16 SecurityBufferOffset;
 	__le16 SecurityBufferLength;
-	__le32 Reserved2;	/* may be any value, ignore */
+	__le32 NegotiateContextOffset;	/* Pre:SMB3.1 was reserved/ignored */
 	__u8   Buffer[1];	/* variable length GSS security buffer */
 } __packed;
+
+/* Flags */
+#define SMB2_SESSION_REQ_FLAG_BINDING		0x01
+#define SMB2_SESSION_REQ_FLAG_ENCRYPT_DATA	0x04
 
 struct smb2_sess_setup_req {
 	struct smb2_hdr hdr;
 	__le16 StructureSize; /* Must be 25 */
-	__u8   VcNumber;
+	__u8   Flags;
 	__u8   SecurityMode;
 	__le32 Capabilities;
 	__le32 Channel;
@@ -274,10 +304,13 @@ struct smb2_logoff_rsp {
 	__le16 Reserved;
 } __packed;
 
+/* Flags/Reserved for SMB3.1 */
+#define SMB2_SHAREFLAG_CLUSTER_RECONNECT	0x0001
+
 struct smb2_tree_connect_req {
 	struct smb2_hdr hdr;
 	__le16 StructureSize;	/* Must be 9 */
-	__le16 Reserved;
+	__le16 Reserved; /* Flags in SMB3.1 */
 	__le16 PathOffset;
 	__le16 PathLength;
 	__u8   Buffer[1];	/* variable length */
