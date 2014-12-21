@@ -171,6 +171,10 @@ enum smb_version {
 	Smb_21,
 	Smb_30,
 	Smb_302,
+#ifdef CONFIG_CIFS_SMB31
+	Smb_31,
+#endif /* SMB31 */
+	Smb_version_err
 };
 
 struct mid_q_entry;
@@ -661,16 +665,16 @@ set_credits(struct TCP_Server_Info *server, const int val)
 	server->ops->set_credits(server, val);
 }
 
-static inline __u64
+static inline __le64
 get_next_mid64(struct TCP_Server_Info *server)
 {
-	return server->ops->get_next_mid(server);
+	return cpu_to_le64(server->ops->get_next_mid(server));
 }
 
 static inline __le16
 get_next_mid(struct TCP_Server_Info *server)
 {
-	__u16 mid = get_next_mid64(server);
+	__u16 mid = server->ops->get_next_mid(server);
 	/*
 	 * The value in the SMB header should be little endian for easy
 	 * on-the-wire decoding.
@@ -1617,4 +1621,7 @@ extern struct smb_version_values smb30_values;
 #define SMB302_VERSION_STRING	"3.02"
 /*extern struct smb_version_operations smb302_operations;*/ /* not needed yet */
 extern struct smb_version_values smb302_values;
+#define SMB31_VERSION_STRING	"3.1"
+/*extern struct smb_version_operations smb31_operations;*/ /* not needed yet */
+extern struct smb_version_values smb31_values;
 #endif	/* _CIFS_GLOB_H */
