@@ -425,7 +425,6 @@ static struct audit_entry *audit_data_to_entry(struct audit_rule_data *data,
 		goto exit_nofree;
 
 	bufp = data->buf;
-	entry->rule.vers_ops = 2;
 	for (i = 0; i < data->field_count; i++) {
 		struct audit_field *f = &entry->rule.fields[i];
 
@@ -762,7 +761,6 @@ struct audit_entry *audit_dupe_rule(struct audit_krule *old)
 		return ERR_PTR(-ENOMEM);
 
 	new = &entry->rule;
-	new->vers_ops = old->vers_ops;
 	new->flags = old->flags;
 	new->listnr = old->listnr;
 	new->action = old->action;
