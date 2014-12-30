@@ -183,6 +183,7 @@ static void blk_mq_rq_ctx_init(struct request_queue *q, struct blk_mq_ctx *ctx,
 #if defined(CONFIG_BLK_DEV_INTEGRITY)
 	rq->nr_integrity_segments = 0;
 #endif
+	rq->bio = NULL;
 	rq->special = NULL;
 	/* tag was already set */
 	rq->errors = 0;
