@@ -246,7 +246,7 @@ static bool acpi_video_use_native_backlight(void)
 bool acpi_video_verify_backlight_support(void)
 {
 	if (acpi_osi_is_win8() && acpi_video_use_native_backlight() &&
-	    backlight_device_registered(BACKLIGHT_RAW))
+	    backlight_device_get_by_type(BACKLIGHT_RAW))
 		return false;
 	return acpi_video_backlight_support();
 }
