@@ -19,6 +19,7 @@
 #include <linux/device.h>
 #include <linux/pci.h>
 #include <linux/ptp_classify.h>
+#include <linux/clocksource.h>
 
 #include "igb.h"
 
@@ -256,14 +257,9 @@ static int igb_ptp_adjtime_82576(struct ptp_clock_info *ptp, s64 delta)
 	struct igb_adapter *igb = container_of(ptp, struct igb_adapter,
 					       ptp_caps);
 	unsigned long flags;
-	s64 now;
 
 	spin_lock_irqsave(&igb->tmreg_lock, flags);
-
-	now = timecounter_read(&igb->tc);
-	now += delta;
-	timecounter_init(&igb->tc, &igb->cc, now);
-
+	timecounter_adjtime(&igb->tc, delta);
 	spin_unlock_irqrestore(&igb->tmreg_lock, flags);
 
 	return 0;
