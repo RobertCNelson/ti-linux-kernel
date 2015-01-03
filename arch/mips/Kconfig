@@ -2680,7 +2680,6 @@ config MIPS32_O32
 
 config MIPS32_N32
 	bool "Kernel support for n32 binaries"
-	depends on MIPS32_COMPAT
 	select COMPAT
 	select MIPS32_COMPAT
 	select SYSVIPC_COMPAT if SYSVIPC
