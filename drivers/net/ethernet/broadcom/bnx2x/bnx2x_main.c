@@ -57,6 +57,7 @@
 #include <linux/semaphore.h>
 #include <linux/stringify.h>
 #include <linux/vmalloc.h>
+#include <linux/clocksource.h>
 
 #include "bnx2x.h"
 #include "bnx2x_init.h"
