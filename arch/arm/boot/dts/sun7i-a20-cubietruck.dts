@@ -12,8 +12,12 @@
  */
 
 /dts-v1/;
-/include/ "sun7i-a20.dtsi"
-/include/ "sunxi-common-regulators.dtsi"
+#include "sun7i-a20.dtsi"
+#include "sunxi-common-regulators.dtsi"
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/pinctrl/sun4i-a10.h>
 
 / {
 	model = "Cubietech Cubietruck";
@@ -25,7 +29,7 @@
 			pinctrl-0 = <&mmc0_pins_a>, <&mmc0_cd_pin_reference_design>;
 			vmmc-supply = <&reg_vcc3v3>;
 			bus-width = <4>;
-			cd-gpios = <&pio 7 1 0>; /* PH1 */
+			cd-gpios = <&pio 7 1 GPIO_ACTIVE_HIGH>; /* PH1 */
 			cd-inverted;
 			status = "okay";
 		};
@@ -70,35 +74,35 @@
 		pinctrl@01c20800 {
 			mmc3_pins_a: mmc3@0 {
 				/* AP6210 requires pull-up */
-				allwinner,pull = <1>;
+				allwinner,pull = <SUN4I_PINCTRL_PULL_UP>;
 			};
 
 			vmmc3_pin_cubietruck: vmmc3_pin@0 {
 				allwinner,pins = "PH9";
 				allwinner,function = "gpio_out";
-				allwinner,drive = <0>;
-				allwinner,pull = <0>;
+				allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+				allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 			};
 
 			ahci_pwr_pin_cubietruck: ahci_pwr_pin@1 {
 				allwinner,pins = "PH12";
 				allwinner,function = "gpio_out";
-				allwinner,drive = <0>;
-				allwinner,pull = <0>;
+				allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+				allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 			};
 
 			led_pins_cubietruck: led_pins@0 {
 				allwinner,pins = "PH7", "PH11", "PH20", "PH21";
 				allwinner,function = "gpio_out";
-				allwinner,drive = <0>;
-				allwinner,pull = <0>;
+				allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+				allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 			};
 
 			usb0_vbus_pin_a: usb0_vbus_pin@0 {
 				allwinner,pins = "PH17";
 				allwinner,function = "gpio_out";
-				allwinner,drive = <0>;
-				allwinner,pull = <0>;
+				allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+				allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 			};
 		};
 
@@ -129,7 +133,7 @@
 				compatible = "x-powers,axp209";
 				reg = <0x34>;
 				interrupt-parent = <&nmi_intc>;
-				interrupts = <0 8>;
+				interrupts = <0 IRQ_TYPE_LEVEL_LOW>;
 
 				interrupt-controller;
 				#interrupt-cells = <1>;
@@ -168,34 +172,34 @@
 
 		blue {
 			label = "cubietruck:blue:usr";
-			gpios = <&pio 7 21 0>;
+			gpios = <&pio 7 21 GPIO_ACTIVE_HIGH>;
 		};
 
 		orange {
 			label = "cubietruck:orange:usr";
-			gpios = <&pio 7 20 0>;
+			gpios = <&pio 7 20 GPIO_ACTIVE_HIGH>;
 		};
 
 		white {
 			label = "cubietruck:white:usr";
-			gpios = <&pio 7 11 0>;
+			gpios = <&pio 7 11 GPIO_ACTIVE_HIGH>;
 		};
 
 		green {
 			label = "cubietruck:green:usr";
-			gpios = <&pio 7 7 0>;
+			gpios = <&pio 7 7 GPIO_ACTIVE_HIGH>;
 		};
 	};
 
 	reg_ahci_5v: ahci-5v {
 		pinctrl-0 = <&ahci_pwr_pin_cubietruck>;
-		gpio = <&pio 7 12 0>;
+		gpio = <&pio 7 12 GPIO_ACTIVE_HIGH>;
 		status = "okay";
 	};
 
 	reg_usb0_vbus: usb0-vbus {
 		pinctrl-0 = <&usb0_vbus_pin_a>;
-		gpio = <&pio 7 17 0>;
+		gpio = <&pio 7 17 GPIO_ACTIVE_HIGH>;
 		status = "okay";
 	};
 
@@ -215,6 +219,6 @@
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
 		enable-active-high;
-		gpio = <&pio 7 9 0>;
+		gpio = <&pio 7 9 GPIO_ACTIVE_HIGH>;
 	};
 };
