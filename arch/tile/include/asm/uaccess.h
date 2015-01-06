@@ -218,6 +218,8 @@ extern int __get_user_bad(void)
 		case 8: __get_user_8(x, ptr, __ret); break;		\
 		default: __ret = __get_user_bad(); break;		\
 		}							\
+		if (0)							\
+			x = *(__force typeof(*ptr) *)(ptr);		\
 		__ret;							\
 	})
 
@@ -297,6 +299,8 @@ extern int __put_user_bad(void)
 	case 8: __put_user_8(x, ptr, __ret); break;			\
 	default: __ret = __put_user_bad(); break;			\
 	}								\
+	if (0)								\
+		*(__force typeof(*ptr) *)(ptr) = x;			\
 	__ret;								\
 })
 
