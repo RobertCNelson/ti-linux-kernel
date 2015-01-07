@@ -20,6 +20,7 @@
 #include <linux/types.h>
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
+#include <sound/asound.h>
 
 #define SST_HSW_NO_CHANNELS		4
 #define SST_HSW_MAX_DX_REGIONS		14
@@ -452,6 +453,14 @@ u32 sst_hsw_stream_get_peak_reg(struct sst_hsw *hsw,
 	struct sst_hsw_stream *stream, u32 channel);
 u32 sst_hsw_stream_get_vol_reg(struct sst_hsw *hsw,
 	struct sst_hsw_stream *stream, u32 channel);
+snd_pcm_uframes_t sst_hsw_stream_get_old_position(struct sst_hsw *hsw,
+	struct sst_hsw_stream *stream);
+void sst_hsw_stream_set_old_position(struct sst_hsw *hsw,
+	struct sst_hsw_stream *stream, snd_pcm_uframes_t val);
+bool sst_hsw_stream_get_silence_start(struct sst_hsw *hsw,
+	struct sst_hsw_stream *stream);
+void sst_hsw_stream_set_silence_start(struct sst_hsw *hsw,
+	struct sst_hsw_stream *stream, bool val);
 int sst_hsw_mixer_get_info(struct sst_hsw *hsw);
 
 /* Stream ALSA trigger operations */
