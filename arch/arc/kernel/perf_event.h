@@ -54,7 +54,9 @@ struct arc_reg_cc_build {
 #define PERF_COUNT_ARC_BPOK	(PERF_COUNT_HW_MAX + 3)
 #define PERF_COUNT_ARC_EDTLB	(PERF_COUNT_HW_MAX + 4)
 #define PERF_COUNT_ARC_EITLB	(PERF_COUNT_HW_MAX + 5)
-#define PERF_COUNT_ARC_HW_MAX	(PERF_COUNT_HW_MAX + 6)
+#define PERF_COUNT_ARC_LDC	(PERF_COUNT_HW_MAX + 6)
+#define PERF_COUNT_ARC_STC	(PERF_COUNT_HW_MAX + 7)
+#define PERF_COUNT_ARC_HW_MAX	(PERF_COUNT_HW_MAX + 8)
 
 struct arc_pmu {
 	struct pmu	pmu;
