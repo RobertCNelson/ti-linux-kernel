@@ -58,6 +58,8 @@ static const char * const arc_pmu_ev_hw_map[] = {
 	[PERF_COUNT_ARC_BPOK]         = "bpok",	  /* NP-NT, PT-T, PNT-NT */
 	[PERF_COUNT_HW_BRANCH_MISSES] = "bpfail", /* NP-T, PT-NT, PNT-T */
 
+	[PERF_COUNT_ARC_LDC] = "imemrdc",	/* Instr: mem read cached */
+	[PERF_COUNT_ARC_STC] = "imemwrc",	/* Instr: mem write cached */
 	[PERF_COUNT_ARC_DCLM] = "dclm",		/* D-cache Load Miss */
 	[PERF_COUNT_ARC_DCSM] = "dcsm",		/* D-cache Store Miss */
 	[PERF_COUNT_ARC_ICM] = "icm",		/* I-cache Miss */
@@ -71,11 +73,11 @@ static const char * const arc_pmu_ev_hw_map[] = {
 static const unsigned arc_pmu_cache_map[C(MAX)][C(OP_MAX)][C(RESULT_MAX)] = {
 	[C(L1D)] = {
 		[C(OP_READ)] = {
-			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_ACCESS)]	= PERF_COUNT_ARC_LDC,
 			[C(RESULT_MISS)]	= PERF_COUNT_ARC_DCLM,
 		},
 		[C(OP_WRITE)] = {
-			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_ACCESS)]	= PERF_COUNT_ARC_STC,
 			[C(RESULT_MISS)]	= PERF_COUNT_ARC_DCSM,
 		},
 		[C(OP_PREFETCH)] = {
@@ -85,7 +87,7 @@ static const unsigned arc_pmu_cache_map[C(MAX)][C(OP_MAX)][C(RESULT_MAX)] = {
 	},
 	[C(L1I)] = {
 		[C(OP_READ)] = {
-			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_ACCESS)]	= PERF_COUNT_HW_INSTRUCTIONS,
 			[C(RESULT_MISS)]	= PERF_COUNT_ARC_ICM,
 		},
 		[C(OP_WRITE)] = {
@@ -113,7 +115,7 @@ static const unsigned arc_pmu_cache_map[C(MAX)][C(OP_MAX)][C(RESULT_MAX)] = {
 	},
 	[C(DTLB)] = {
 		[C(OP_READ)] = {
-			[C(RESULT_ACCESS)]	= CACHE_OP_UNSUPPORTED,
+			[C(RESULT_ACCESS)]	= PERF_COUNT_ARC_LDC,
 			[C(RESULT_MISS)]	= PERF_COUNT_ARC_EDTLB,
 		},
 		[C(OP_WRITE)] = {
