@@ -28,9 +28,9 @@
 static inline int klp_check_compiler_support(void)
 {
 #ifndef CC_USING_FENTRY
-	        return 1;
+	return 1;
 #endif
-	        return 0;
+	return 0;
 }
 extern int klp_write_module_reloc(struct module *mod, unsigned long type,
 				  unsigned long loc, unsigned long value);
