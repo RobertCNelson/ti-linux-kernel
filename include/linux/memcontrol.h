@@ -138,12 +138,10 @@ static inline bool mem_cgroup_disabled(void)
 	return false;
 }
 
-struct mem_cgroup *mem_cgroup_begin_page_stat(struct page *page, bool *locked,
-					      unsigned long *flags);
-void mem_cgroup_end_page_stat(struct mem_cgroup *memcg, bool *locked,
-			      unsigned long *flags);
+struct mem_cgroup *mem_cgroup_begin_page_stat(struct page *page);
 void mem_cgroup_update_page_stat(struct mem_cgroup *memcg,
 				 enum mem_cgroup_stat_index idx, int val);
+void mem_cgroup_end_page_stat(struct mem_cgroup *memcg);
 
 static inline void mem_cgroup_inc_page_stat(struct mem_cgroup *memcg,
 					    enum mem_cgroup_stat_index idx)
@@ -285,14 +283,12 @@ mem_cgroup_print_oom_info(struct mem_cgroup *memcg, struct task_struct *p)
 {
 }
 
-static inline struct mem_cgroup *mem_cgroup_begin_page_stat(struct page *page,
-					bool *locked, unsigned long *flags)
+static inline struct mem_cgroup *mem_cgroup_begin_page_stat(struct page *page)
 {
 	return NULL;
 }
 
-static inline void mem_cgroup_end_page_stat(struct mem_cgroup *memcg,
-					bool *locked, unsigned long *flags)
+static inline void mem_cgroup_end_page_stat(struct mem_cgroup *memcg)
 {
 }
 
@@ -403,10 +399,9 @@ void memcg_update_array_size(int num_groups);
 struct kmem_cache *__memcg_kmem_get_cache(struct kmem_cache *cachep);
 void __memcg_kmem_put_cache(struct kmem_cache *cachep);
 
-int __memcg_charge_slab(struct kmem_cache *cachep, gfp_t gfp, int order);
-void __memcg_uncharge_slab(struct kmem_cache *cachep, int order);
-
-int __memcg_cleanup_cache_params(struct kmem_cache *s);
+int memcg_charge_kmem(struct mem_cgroup *memcg, gfp_t gfp,
+		      unsigned long nr_pages);
+void memcg_uncharge_kmem(struct mem_cgroup *memcg, unsigned long nr_pages);
 
 /**
  * memcg_kmem_newpage_charge: verify if a new kmem allocation is allowed.
