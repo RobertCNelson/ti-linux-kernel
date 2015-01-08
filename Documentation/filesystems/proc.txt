@@ -811,7 +811,7 @@ MemAvailable: An estimate of how much memory is available for starting new
      Buffers: Relatively temporary storage for raw disk blocks
               shouldn't get tremendously large (20MB or so)
       Cached: in-memory cache for files read from the disk (the
-              pagecache).  Doesn't include SwapCached
+              pagecache).  Doesn't include SwapCached or Shmem.
   SwapCached: Memory that once was swapped out, is swapped back in but
               still also is in the swapfile (if memory is needed it
               doesn't need to be swapped out AGAIN because it is already
