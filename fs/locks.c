@@ -687,6 +687,14 @@ static void locks_insert_lock(struct file_lock **pos, struct file_lock *fl)
 	locks_insert_global_locks(fl);
 }
 
+static void
+locks_insert_lock_ctx(struct file_lock *fl, struct list_head *before)
+{
+	fl->fl_nspid = get_pid(task_tgid(current));
+	list_add_tail(&fl->fl_list, before);
+	locks_insert_global_locks(fl);
+}
+
 /**
  * locks_delete_lock - Delete a lock and then free it.
  * @thisfl_p: pointer that points to the fl_next field of the previous
@@ -730,6 +738,18 @@ static void locks_delete_lock(struct file_lock **thisfl_p,
 		list_add(&fl->fl_list, dispose);
 	else
 		locks_free_lock(fl);
+}
+
+static void
+locks_delete_lock_ctx(struct file_lock *fl, struct list_head *dispose)
+{
+	locks_delete_global_locks(fl);
+	if (fl->fl_nspid) {
+		put_pid(fl->fl_nspid);
+		fl->fl_nspid = NULL;
+	}
+	locks_wake_up_blocks(fl);
+	list_move(&fl->fl_list, dispose);
 }
 
 /* Determine if lock sys_fl blocks lock caller_fl. Common functionality
@@ -881,11 +901,16 @@ static int posix_locks_deadlock(struct file_lock *caller_fl,
 static int flock_lock_file(struct file *filp, struct file_lock *request)
 {
 	struct file_lock *new_fl = NULL;
-	struct file_lock **before;
-	struct inode * inode = file_inode(filp);
+	struct file_lock *fl;
+	struct file_lock_context *ctx;
+	struct inode *inode = file_inode(filp);
 	int error = 0;
-	int found = 0;
+	bool found = false;
 	LIST_HEAD(dispose);
+
+	ctx = locks_get_lock_context(inode);
+	if (!ctx)
+		return -ENOMEM;
 
 	if (!(request->fl_flags & FL_ACCESS) && (request->fl_type != F_UNLCK)) {
 		new_fl = locks_alloc_lock();
@@ -897,18 +922,13 @@ static int flock_lock_file(struct file *filp, struct file_lock *request)
 	if (request->fl_flags & FL_ACCESS)
 		goto find_conflict;
 
-	for_each_lock(inode, before) {
-		struct file_lock *fl = *before;
-		if (IS_POSIX(fl))
-			break;
-		if (IS_LEASE(fl))
-			continue;
+	list_for_each_entry(fl, &ctx->flc_flock, fl_list) {
 		if (filp != fl->fl_file)
 			continue;
 		if (request->fl_type == fl->fl_type)
 			goto out;
-		found = 1;
-		locks_delete_lock(before, &dispose);
+		found = true;
+		locks_delete_lock_ctx(fl, &dispose);
 		break;
 	}
 
@@ -929,12 +949,7 @@ static int flock_lock_file(struct file *filp, struct file_lock *request)
 	}
 
 find_conflict:
-	for_each_lock(inode, before) {
-		struct file_lock *fl = *before;
-		if (IS_POSIX(fl))
-			break;
-		if (IS_LEASE(fl))
-			continue;
+	list_for_each_entry(fl, &ctx->flc_flock, fl_list) {
 		if (!flock_locks_conflict(request, fl))
 			continue;
 		error = -EAGAIN;
@@ -947,7 +962,7 @@ find_conflict:
 	if (request->fl_flags & FL_ACCESS)
 		goto out;
 	locks_copy_lock(new_fl, request);
-	locks_insert_lock(before, new_fl);
+	locks_insert_lock_ctx(new_fl, &ctx->flc_flock);
 	new_fl = NULL;
 	error = 0;
 
@@ -2406,7 +2421,7 @@ locks_remove_flock(struct file *filp)
 		.fl_end = OFFSET_MAX,
 	};
 
-	if (!file_inode(filp)->i_flock)
+	if (!file_inode(filp)->i_flctx)
 		return;
 
 	if (filp->f_op->flock)
