@@ -1377,12 +1377,12 @@ static int nfs4_reclaim_locks(struct nfs4_state *state, const struct nfs4_state_
 	/* Guard against delegation returns and new lock/unlock calls */
 	down_write(&nfsi->rwsem);
 	/* Protect inode->i_flock using the BKL */
-	spin_lock(&inode->i_lock);
+	spin_lock(&flctx->flc_lock);
 restart:
 	list_for_each_entry(fl, list, fl_list) {
 		if (nfs_file_open_context(fl->fl_file)->state != state)
 			continue;
-		spin_unlock(&inode->i_lock);
+		spin_unlock(&flctx->flc_lock);
 		status = ops->recover_lock(state, fl);
 		switch (status) {
 			case 0:
@@ -1409,13 +1409,13 @@ restart:
 				/* kill_proc(fl->fl_pid, SIGLOST, 1); */
 				status = 0;
 		}
-		spin_lock(&inode->i_lock);
+		spin_lock(&flctx->flc_lock);
 	}
 	if (list == &flctx->flc_posix) {
 		list = &flctx->flc_flock;
 		goto restart;
 	}
-	spin_unlock(&inode->i_lock);
+	spin_unlock(&flctx->flc_lock);
 out:
 	up_write(&nfsi->rwsem);
 	return status;
