@@ -704,13 +704,11 @@ static struct snd_pcm_ops snd_fm801_capture_ops = {
 	.pointer =	snd_fm801_capture_pointer,
 };
 
-static int snd_fm801_pcm(struct fm801 *chip, int device, struct snd_pcm **rpcm)
+static int snd_fm801_pcm(struct fm801 *chip, int device)
 {
 	struct snd_pcm *pcm;
 	int err;
 
-	if (rpcm)
-		*rpcm = NULL;
 	if ((err = snd_pcm_new(chip->card, "FM801", device, 1, 1, &pcm)) < 0)
 		return err;
 
@@ -726,16 +724,10 @@ static int snd_fm801_pcm(struct fm801 *chip, int device, struct snd_pcm **rpcm)
 					      snd_dma_pci_data(chip->pci),
 					      chip->multichannel ? 128*1024 : 64*1024, 128*1024);
 
-	err = snd_pcm_add_chmap_ctls(pcm, SNDRV_PCM_STREAM_PLAYBACK,
+	return snd_pcm_add_chmap_ctls(pcm, SNDRV_PCM_STREAM_PLAYBACK,
 				     snd_pcm_alt_chmaps,
 				     chip->multichannel ? 6 : 2, 0,
 				     NULL);
-	if (err < 0)
-		return err;
-
-	if (rpcm)
-		*rpcm = pcm;
-	return 0;
 }
 
 /*
@@ -1186,12 +1178,6 @@ static int snd_fm801_free(struct fm801 *chip)
 		v4l2_device_unregister(&chip->v4l2_dev);
 	}
 #endif
-	if (chip->irq >= 0)
-		free_irq(chip->irq, chip);
-	pci_release_regions(chip->pci);
-	pci_disable_device(chip->pci);
-
-	kfree(chip);
 	return 0;
 }
 
@@ -1214,28 +1200,23 @@ static int snd_fm801_create(struct snd_card *card,
 	};
 
 	*rchip = NULL;
-	if ((err = pci_enable_device(pci)) < 0)
+	if ((err = pcim_enable_device(pci)) < 0)
 		return err;
-	chip = kzalloc(sizeof(*chip), GFP_KERNEL);
-	if (chip == NULL) {
-		pci_disable_device(pci);
+	chip = devm_kzalloc(&pci->dev, sizeof(*chip), GFP_KERNEL);
+	if (chip == NULL)
 		return -ENOMEM;
-	}
 	spin_lock_init(&chip->reg_lock);
 	chip->card = card;
 	chip->pci = pci;
 	chip->irq = -1;
 	chip->tea575x_tuner = tea575x_tuner;
-	if ((err = pci_request_regions(pci, "FM801")) < 0) {
-		kfree(chip);
-		pci_disable_device(pci);
+	if ((err = pci_request_regions(pci, "FM801")) < 0)
 		return err;
-	}
 	chip->port = pci_resource_start(pci, 0);
 	if ((tea575x_tuner & TUNER_ONLY) == 0) {
-		if (request_irq(pci->irq, snd_fm801_interrupt, IRQF_SHARED,
-				KBUILD_MODNAME, chip)) {
-			dev_err(card->dev, "unable to grab IRQ %d\n", chip->irq);
+		if (devm_request_irq(&pci->dev, pci->irq, snd_fm801_interrupt,
+				IRQF_SHARED, KBUILD_MODNAME, chip)) {
+			dev_err(card->dev, "unable to grab IRQ %d\n", pci->irq);
 			snd_fm801_free(chip);
 			return -EBUSY;
 		}
@@ -1249,12 +1230,6 @@ static int snd_fm801_create(struct snd_card *card,
 	snd_fm801_chip_init(chip, 0);
 	/* init might set tuner access method */
 	tea575x_tuner = chip->tea575x_tuner;
-
-	if (chip->irq >= 0 && (tea575x_tuner & TUNER_ONLY)) {
-		pci_clear_master(pci);
-		free_irq(chip->irq, chip);
-		chip->irq = -1;
-	}
 
 	if ((err = snd_device_new(card, SNDRV_DEV_LOWLEVEL, chip, &ops)) < 0) {
 		snd_fm801_free(chip);
@@ -1340,7 +1315,7 @@ static int snd_card_fm801_probe(struct pci_dev *pci,
 	if (chip->tea575x_tuner & TUNER_ONLY)
 		goto __fm801_tuner_only;
 
-	if ((err = snd_fm801_pcm(chip, 0, NULL)) < 0) {
+	if ((err = snd_fm801_pcm(chip, 0)) < 0) {
 		snd_card_free(card);
 		return err;
 	}
