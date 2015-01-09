@@ -45,7 +45,7 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 	committed = percpu_counter_read_positive(&vm_committed_as);
 
 	cached = global_page_state(NR_FILE_PAGES) -
-			total_swapcache_pages() - i.bufferram;
+			total_swapcache_pages() - i.bufferram - i.sharedram;
 	if (cached < 0)
 		cached = 0;
 
