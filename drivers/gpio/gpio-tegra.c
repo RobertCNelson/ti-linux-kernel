@@ -85,12 +85,12 @@ static struct tegra_gpio_bank *tegra_gpio_banks;
 
 static inline void tegra_gpio_writel(u32 val, u32 reg)
 {
-	__raw_writel(val, regs + reg);
+	writel_relaxed(val, regs + reg);
 }
 
 static inline u32 tegra_gpio_readl(u32 reg)
 {
-	return __raw_readl(regs + reg);
+	return readl_relaxed(regs + reg);
 }
 
 static int tegra_gpio_compose(int bank, int port, int bit)
