@@ -97,6 +97,14 @@ and have the following read/write attributes:
 		for "rising" and "falling" edges will follow this
 		setting.
 
+	"wakeup" ... reads as either "enabled" or "disabled". Write these
+		strings to set/clear the 'wakeup' flag of the IRQ associated
+		with this GPIO. If the IRQ has the 'wakeup' flag set, it can
+		wake the system from sleep states.
+
+		This file exists only if the pin can generate interrupts and
+		the driver implements the required infrastructure.
+
 GPIO controllers have paths like /sys/class/gpio/gpiochip42/ (for the
 controller implementing GPIOs starting at #42) and have the following
 read-only attributes:
