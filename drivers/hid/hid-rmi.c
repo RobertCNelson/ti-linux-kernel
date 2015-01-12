@@ -35,6 +35,7 @@
 
 /* device flags */
 #define RMI_DEVICE			BIT(0)
+#define RMI_DEVICE_HAS_PHYS_BUTTONS	BIT(1)
 
 enum rmi_mode_type {
 	RMI_MODE_OFF			= 0,
@@ -472,6 +473,15 @@ static int rmi_event(struct hid_device *hdev, struct hid_field *field,
 	if ((data->device_flags & RMI_DEVICE) &&
 	    (field->application == HID_GD_POINTER ||
 	    field->application == HID_GD_MOUSE)) {
+		if (data->device_flags & RMI_DEVICE_HAS_PHYS_BUTTONS) {
+			if ((usage->hid & HID_USAGE_PAGE) == HID_UP_BUTTON)
+				return 0;
+
+			if ((usage->hid == HID_GD_X || usage->hid == HID_GD_Y)
+			    && !value)
+				return 1;
+		}
+
 		rmi_schedule_reset(hdev);
 		return 1;
 	}
@@ -942,8 +952,13 @@ static int rmi_input_mapping(struct hid_device *hdev,
 	 * we want to make HID ignore the advertised HID collection
 	 * for RMI deivces
 	 */
-	if (data->device_flags & RMI_DEVICE)
+	if (data->device_flags & RMI_DEVICE) {
+		if ((data->device_flags & RMI_DEVICE_HAS_PHYS_BUTTONS) &&
+		    ((usage->hid & HID_USAGE_PAGE) == HID_UP_BUTTON))
+			return 0;
+
 		return -1;
+	}
 
 	return 0;
 }
@@ -991,6 +1006,9 @@ static int rmi_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		return ret;
 	}
 
+	if (id->driver_data)
+		data->device_flags = id->driver_data;
+
 	/*
 	 * Check for the RMI specific report ids. If they are misisng
 	 * simply return and let the events be processed by hid-input
@@ -1007,7 +1025,7 @@ static int rmi_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		goto start;
 	}
 
-	data->input_report_size = (input_report->size >> 3) + 1 /* report id */;
+	data->input_report_size = hid_report_len(input_report);
 
 	if (!rmi_check_valid_report_id(hdev, HID_OUTPUT_REPORT,
 	    RMI_WRITE_REPORT_ID, &output_report)) {
@@ -1016,8 +1034,7 @@ static int rmi_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		goto start;
 	}
 
-	data->output_report_size = (output_report->size >> 3)
-					+ 1 /* report id */;
+	data->output_report_size = hid_report_len(output_report);
 
 	data->device_flags |= RMI_DEVICE;
 	alloc_size = data->output_report_size + data->input_report_size;
@@ -1065,6 +1082,8 @@ static void rmi_remove(struct hid_device *hdev)
 }
 
 static const struct hid_device_id rmi_id[] = {
+	{ HID_USB_DEVICE(USB_VENDOR_ID_RAZER, USB_DEVICE_ID_RAZER_BLADE_14),
+		.driver_data = RMI_DEVICE_HAS_PHYS_BUTTONS },
 	{ HID_DEVICE(HID_BUS_ANY, HID_GROUP_RMI, HID_ANY_ID, HID_ANY_ID) },
 	{ }
 };
