@@ -11,7 +11,10 @@
  * http://www.gnu.org/copyleft/gpl.html
  */
 
-/include/ "skeleton.dtsi"
+#include "skeleton.dtsi"
+
+#include <dt-bindings/dma/sun4i-a10.h>
+#include <dt-bindings/pinctrl/sun4i-a10.h>
 
 / {
 	interrupt-parent = <&intc>;
@@ -24,10 +27,26 @@
 	cpus {
 		#address-cells = <1>;
 		#size-cells = <0>;
-		cpu@0 {
+
+		cpu0: cpu@0 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a8";
 			reg = <0x0>;
+			clocks = <&cpu>;
+			clock-latency = <244144>; /* 8 32k periods */
+			operating-points = <
+				/* kHz    uV */
+				1104000	1500000
+				1008000 1400000
+				912000  1350000
+				864000  1300000
+				624000  1200000
+				576000  1200000
+				432000  1200000
+				>;
+			#cooling-cells = <2>;
+			cooling-min-level = <0>;
+			cooling-max-level = <6>;
 		};
 	};
 
@@ -304,7 +323,8 @@
 			interrupts = <10>;
 			clocks = <&ahb_gates 20>, <&spi0_clk>;
 			clock-names = "ahb", "mod";
-			dmas = <&dma 1 27>, <&dma 1 26>;
+			dmas = <&dma SUN4I_DMA_DEDICATED 27>,
+			       <&dma SUN4I_DMA_DEDICATED 26>;
 			dma-names = "rx", "tx";
 			status = "disabled";
 			#address-cells = <1>;
@@ -317,7 +337,8 @@
 			interrupts = <11>;
 			clocks = <&ahb_gates 21>, <&spi1_clk>;
 			clock-names = "ahb", "mod";
-			dmas = <&dma 1 9>, <&dma 1 8>;
+			dmas = <&dma SUN4I_DMA_DEDICATED 9>,
+			       <&dma SUN4I_DMA_DEDICATED 8>;
 			dma-names = "rx", "tx";
 			status = "disabled";
 			#address-cells = <1>;
@@ -349,8 +370,8 @@
 			reg-names = "phy_ctrl", "pmu1";
 			clocks = <&usb_clk 8>;
 			clock-names = "usb_phy";
-			resets = <&usb_clk 1>;
-			reset-names = "usb1_reset";
+			resets = <&usb_clk 0>, <&usb_clk 1>;
+			reset-names = "usb0_reset", "usb1_reset";
 			status = "disabled";
 		};
 
@@ -380,7 +401,8 @@
 			interrupts = <12>;
 			clocks = <&ahb_gates 22>, <&spi2_clk>;
 			clock-names = "ahb", "mod";
-			dmas = <&dma 1 29>, <&dma 1 28>;
+			dmas = <&dma SUN4I_DMA_DEDICATED 29>,
+			       <&dma SUN4I_DMA_DEDICATED 28>;
 			dma-names = "rx", "tx";
 			status = "disabled";
 			#address-cells = <1>;
@@ -408,43 +430,43 @@
 			uart1_pins_a: uart1@0 {
 				allwinner,pins = "PE10", "PE11";
 				allwinner,function = "uart1";
-				allwinner,drive = <0>;
-				allwinner,pull = <0>;
+				allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+				allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 			};
 
 			uart1_pins_b: uart1@1 {
 				allwinner,pins = "PG3", "PG4";
 				allwinner,function = "uart1";
-				allwinner,drive = <0>;
-				allwinner,pull = <0>;
+				allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+				allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 			};
 
 			i2c0_pins_a: i2c0@0 {
 				allwinner,pins = "PB0", "PB1";
 				allwinner,function = "i2c0";
-				allwinner,drive = <0>;
-				allwinner,pull = <0>;
+				allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+				allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 			};
 
 			i2c1_pins_a: i2c1@0 {
 				allwinner,pins = "PB15", "PB16";
 				allwinner,function = "i2c1";
-				allwinner,drive = <0>;
-				allwinner,pull = <0>;
+				allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+				allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 			};
 
 			i2c2_pins_a: i2c2@0 {
 				allwinner,pins = "PB17", "PB18";
 				allwinner,function = "i2c2";
-				allwinner,drive = <0>;
-				allwinner,pull = <0>;
+				allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+				allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 			};
 
 			mmc0_pins_a: mmc0@0 {
 				allwinner,pins = "PF0","PF1","PF2","PF3","PF4","PF5";
 				allwinner,function = "mmc0";
-				allwinner,drive = <2>;
-				allwinner,pull = <0>;
+				allwinner,drive = <SUN4I_PINCTRL_30_MA>;
+				allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 			};
 		};
 
@@ -460,6 +482,13 @@
 			reg = <0x01c20c90 0x10>;
 		};
 
+		lradc: lradc@01c22800 {
+			compatible = "allwinner,sun4i-a10-lradc-keys";
+			reg = <0x01c22800 0x100>;
+			interrupts = <31>;
+			status = "disabled";
+		};
+
 		sid: eeprom@01c23800 {
 			compatible = "allwinner,sun4i-a10-sid";
 			reg = <0x01c23800 0x10>;
@@ -469,6 +498,7 @@
 			compatible = "allwinner,sun4i-a10-ts";
 			reg = <0x01c25000 0x100>;
 			interrupts = <29>;
+			#thermal-sensor-cells = <0>;
 		};
 
 		uart1: serial@01c28400 {
