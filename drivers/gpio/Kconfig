@@ -200,6 +200,7 @@ config GPIO_F7188X
 config GPIO_MOXART
 	bool "MOXART GPIO support"
 	depends on ARCH_MOXART
+	select GPIO_GENERIC
 	help
 	  Select this option to enable GPIO driver for
 	  MOXA ART SoC devices.
@@ -613,6 +614,7 @@ config GPIO_RC5T583
 config GPIO_SX150X
 	bool "Semtech SX150x I2C GPIO expander"
 	depends on I2C=y
+	select GPIOLIB_IRQCHIP
 	default n
 	help
 	  Say yes here to provide support for Semtech SX150-series I2C
