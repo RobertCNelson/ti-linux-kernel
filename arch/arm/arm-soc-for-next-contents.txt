@@ -1,0 +1,52 @@
+next/fixes-non-critical
+
+next/cleanup
+	renesas/lager-board-removal
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-lager-board-removal-for-v3.20
+
+next/soc
+	renesas/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-for-v3.20
+
+next/boards
+
+next/dt
+	renesas/dt-cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-cleanups-for-v3.20
+	renesas/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-for-v3.20
+	patch
+		ARM: dts: Only build dtb if associated Arch and/or SoC is enabled
+
+next/drivers
+	renesas/sh73a0-ccf
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-sh73a0-ccf-for-v3.20
+
+next/defconfig
+	renesas/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig-for-v3.20
+
+next/arm64
+
+next/omap-gpmc
+
+next/late
+
+fixes
+	<no branch> (6618e478954d2866754798c3b07805dc9dbb2fc4)
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.19-rockchip-dtsfixes1
+	<no branch> (7a9f0604bd56936b2b18f49824e0e392dc7878c3)
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-fixes-3.19
+	<no branch> (7ac72746aa9bb305fa74b44ec73eae99bbbe9b66)
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/fixes-rc1
+	<no branch> (bb682e44c77731711818c2cf9f6d4bc277207eee)
+		git://git.infradead.org/linux-mvebu tags/mvebu-fixes-3.19-2
+	patch
+		ARM: nomadik: fix up leftover device tree pins
+	<no branch> (5138d5c562e3bfe30964e20ab46eec9f8b89225d)
+		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-fixes-for-3.19-1
+	patch
+		ARM: rockchip: disable jtag/sdmmc autoswitching on rk3288
+	<no branch> (b8659752c37ec157ee254cff443b1c9d523aea22)
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-fixes
+
