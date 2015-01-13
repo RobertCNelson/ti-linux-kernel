@@ -17,6 +17,8 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-for-v3.20
 	patch
 		ARM: dts: Only build dtb if associated Arch and/or SoC is enabled
+	berlin/dt
+		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-dt-for-3.20-1
 
 next/drivers
 	renesas/sh73a0-ccf
@@ -49,4 +51,7 @@ fixes
 		ARM: rockchip: disable jtag/sdmmc autoswitching on rk3288
 	<no branch> (b8659752c37ec157ee254cff443b1c9d523aea22)
 		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-fixes
+	patch
+		drivers: bus: check cci device tree node status
+		ARM: dts: disable CCI on exynos5420 based arndale-octa
 
