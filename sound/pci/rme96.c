@@ -922,8 +922,7 @@ snd_rme96_setframelog(struct rme96 *rme96,
 }
 
 static int
-snd_rme96_playback_setformat(struct rme96 *rme96,
-			     int format)
+snd_rme96_playback_setformat(struct rme96 *rme96, snd_pcm_format_t format)
 {
 	switch (format) {
 	case SNDRV_PCM_FORMAT_S16_LE:
@@ -940,8 +939,7 @@ snd_rme96_playback_setformat(struct rme96 *rme96,
 }
 
 static int
-snd_rme96_capture_setformat(struct rme96 *rme96,
-			    int format)
+snd_rme96_capture_setformat(struct rme96 *rme96, snd_pcm_format_t format)
 {
 	switch (format) {
 	case SNDRV_PCM_FORMAT_S16_LE:
@@ -2358,7 +2356,6 @@ snd_rme96_create_switches(struct snd_card *card,
 
 static int rme96_suspend(struct device *dev)
 {
-	struct pci_dev *pci = to_pci_dev(dev);
 	struct snd_card *card = dev_get_drvdata(dev);
 	struct rme96 *rme96 = card->private_data;
 
@@ -2381,25 +2378,13 @@ static int rme96_suspend(struct device *dev)
 	/* disable the DAC  */
 	rme96->areg &= ~RME96_AR_DAC_EN;
 	writel(rme96->areg, rme96->iobase + RME96_IO_ADDITIONAL_REG);
-
-	pci_disable_device(pci);
-	pci_save_state(pci);
-
 	return 0;
 }
 
 static int rme96_resume(struct device *dev)
 {
-	struct pci_dev *pci = to_pci_dev(dev);
 	struct snd_card *card = dev_get_drvdata(dev);
 	struct rme96 *rme96 = card->private_data;
-
-	pci_restore_state(pci);
-	if (pci_enable_device(pci) < 0) {
-		dev_err(dev, "pci_enable_device failed, disabling device\n");
-		snd_card_disconnect(card);
-		return -EIO;
-	}
 
 	/* reset playback and record buffer pointers */
 	writel(0, rme96->iobase + RME96_IO_SET_PLAY_POS
