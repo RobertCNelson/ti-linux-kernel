@@ -944,7 +944,6 @@ fail:
 static int fsl_dma_device_terminate_all(struct dma_chan *dchan)
 {
 	struct fsldma_chan *chan;
-	int size;
 
 	if (!dchan)
 		return -EINVAL;
@@ -1371,6 +1370,11 @@ static int fsldma_of_probe(struct platform_device *op)
 	fdev->common.device_config = fsl_dma_device_config;
 	fdev->common.device_terminate_all = fsl_dma_device_terminate_all;
 	fdev->common.dev = &op->dev;
+
+	fdev->common.src_addr_widths = FSL_DMA_BUSWIDTHS;
+	fdev->common.dst_addr_widths = FSL_DMA_BUSWIDTHS;
+	fdev->common.directions = BIT(DMA_DEV_TO_MEM) | BIT(DMA_MEM_TO_DEV);
+	fdev->common.residue_granularity = DMA_RESIDUE_GRANULARITY_DESCRIPTOR;
 
 	dma_set_mask(&(op->dev), DMA_BIT_MASK(36));
 
