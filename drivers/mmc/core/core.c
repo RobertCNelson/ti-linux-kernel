@@ -1232,6 +1232,34 @@ EXPORT_SYMBOL(mmc_of_parse_voltage);
 
 #endif /* CONFIG_OF */
 
+static int mmc_of_get_func_num(struct device_node *node)
+{
+	u32 reg;
+	int ret;
+
+	ret = of_property_read_u32(node, "reg", &reg);
+	if (ret < 0)
+		return ret;
+
+	return reg;
+}
+
+struct device_node *mmc_of_find_child_device(struct mmc_host *host,
+		unsigned func_num)
+{
+	struct device_node *node;
+
+	if (!host->parent || !host->parent->of_node)
+		return NULL;
+
+	for_each_child_of_node(host->parent->of_node, node) {
+		if (mmc_of_get_func_num(node) == func_num)
+			return node;
+	}
+
+	return NULL;
+}
+
 #ifdef CONFIG_REGULATOR
 
 /**
@@ -2245,66 +2273,27 @@ static void mmc_hw_reset_for_init(struct mmc_host *host)
 	mmc_host_clk_release(host);
 }
 
-int mmc_can_reset(struct mmc_card *card)
-{
-	u8 rst_n_function;
-
-	if (!mmc_card_mmc(card))
-		return 0;
-	rst_n_function = card->ext_csd.rst_n_function;
-	if ((rst_n_function & EXT_CSD_RST_N_EN_MASK) != EXT_CSD_RST_N_ENABLED)
-		return 0;
-	return 1;
-}
-EXPORT_SYMBOL(mmc_can_reset);
-
-static int mmc_do_hw_reset(struct mmc_host *host, int check)
-{
-	struct mmc_card *card = host->card;
-
-	if (!(host->caps & MMC_CAP_HW_RESET) || !host->ops->hw_reset)
-		return -EOPNOTSUPP;
-
-	if (!card)
-		return -EINVAL;
-
-	if (!mmc_can_reset(card))
-		return -EOPNOTSUPP;
-
-	mmc_host_clk_hold(host);
-	mmc_set_clock(host, host->f_init);
-
-	host->ops->hw_reset(host);
-
-	/* If the reset has happened, then a status command will fail */
-	if (check) {
-		u32 status;
-
-		if (!mmc_send_status(card, &status)) {
-			mmc_host_clk_release(host);
-			return -ENOSYS;
-		}
-	}
-
-	/* Set initial state and call mmc_set_ios */
-	mmc_set_initial_state(host);
-
-	mmc_host_clk_release(host);
-
-	return host->bus_ops->power_restore(host);
-}
-
 int mmc_hw_reset(struct mmc_host *host)
 {
-	return mmc_do_hw_reset(host, 0);
+	int ret;
+
+	if (!host->card)
+		return -EINVAL;
+
+	mmc_bus_get(host);
+	if (!host->bus_ops || host->bus_dead || !host->bus_ops->reset) {
+		mmc_bus_put(host);
+		return -EOPNOTSUPP;
+	}
+
+	ret = host->bus_ops->reset(host);
+	mmc_bus_put(host);
+
+	pr_warn("%s: tried to reset card\n", mmc_hostname(host));
+
+	return ret;
 }
 EXPORT_SYMBOL(mmc_hw_reset);
-
-int mmc_hw_reset_check(struct mmc_host *host)
-{
-	return mmc_do_hw_reset(host, 1);
-}
-EXPORT_SYMBOL(mmc_hw_reset_check);
 
 static int mmc_rescan_try_freq(struct mmc_host *host, unsigned freq)
 {
