@@ -19,7 +19,6 @@
 #include <linux/dmaengine.h>
 #include <linux/platform_device.h>
 #include <linux/device.h>
-#include <mach/regs-icu.h>
 #include <linux/platform_data/dma-mmp_tdma.h>
 #include <linux/of_device.h>
 #include <linux/of_dma.h>
@@ -472,6 +471,8 @@ static int mmp_tdma_terminate_all(struct dma_chan *chan)
 	mmp_tdma_disable_chan(chan);
 	/* disable interrupt */
 	mmp_tdma_enable_irq(tdmac, false);
+
+	return 0;
 }
 
 static int mmp_tdma_config(struct dma_chan *chan,
