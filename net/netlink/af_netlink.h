@@ -50,6 +50,7 @@ struct netlink_sock {
 #endif /* CONFIG_NETLINK_MMAP */
 
 	struct rhash_head	node;
+	struct rcu_head		rcu;
 };
 
 static inline struct netlink_sock *nlk_sk(struct sock *sk)
@@ -73,6 +74,5 @@ struct netlink_table {
 
 extern struct netlink_table *nl_table;
 extern rwlock_t nl_table_lock;
-extern struct mutex nl_sk_hash_lock;
 
 #endif
