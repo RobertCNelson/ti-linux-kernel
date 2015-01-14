@@ -65,7 +65,7 @@ static inline void __bic32(void __iomem *ptr, u32 val)
 	writel(readl(ptr) & ~val, ptr);
 }
 
-/* forward decleration of functions */
+/* forward declaration of functions */
 static void s3c_hsotg_dump(struct dwc2_hsotg *hsotg);
 
 /**
@@ -1305,7 +1305,7 @@ static void s3c_hsotg_rx_data(struct dwc2_hsotg *hsotg, int ep_idx, int size)
 		u32 epctl = readl(hsotg->regs + DOEPCTL(ep_idx));
 		int ptr;
 
-		dev_warn(hsotg->dev,
+		dev_dbg(hsotg->dev,
 			 "%s: FIFO %d bytes on ep%d but no req (DXEPCTl=0x%08x)\n",
 			 __func__, size, ep_idx, epctl);
 
@@ -1988,30 +1988,23 @@ static void s3c_hsotg_irq_enumdone(struct dwc2_hsotg *hsotg)
  * @hsotg: The device state.
  * @ep: The endpoint the requests may be on.
  * @result: The result code to use.
- * @force: Force removal of any current requests
  *
  * Go through the requests on the given endpoint and mark them
  * completed with the given result code.
  */
 static void kill_all_requests(struct dwc2_hsotg *hsotg,
 			      struct s3c_hsotg_ep *ep,
-			      int result, bool force)
+			      int result)
 {
 	struct s3c_hsotg_req *req, *treq;
 	unsigned size;
 
-	list_for_each_entry_safe(req, treq, &ep->queue, queue) {
-		/*
-		 * currently, we can't do much about an already
-		 * running request on an in endpoint
-		 */
+	ep->req = NULL;
 
-		if (ep->req == req && ep->dir_in && !force)
-			continue;
-
+	list_for_each_entry_safe(req, treq, &ep->queue, queue)
 		s3c_hsotg_complete_request(hsotg, ep, req,
 					   result);
-	}
+
 	if (!hsotg->dedicated_fifos)
 		return;
 	size = (readl(hsotg->regs + DTXFSTS(ep->index)) & 0xffff) * 4;
@@ -2036,7 +2029,7 @@ void s3c_hsotg_disconnect(struct dwc2_hsotg *hsotg)
 
 	hsotg->connected = 0;
 	for (ep = 0; ep < hsotg->num_of_eps; ep++)
-		kill_all_requests(hsotg, &hsotg->eps[ep], -ESHUTDOWN, true);
+		kill_all_requests(hsotg, &hsotg->eps[ep], -ESHUTDOWN);
 
 	call_gadget(hsotg, disconnect);
 }
@@ -2334,7 +2327,7 @@ irq_retry:
 				       msecs_to_jiffies(200))) {
 
 				kill_all_requests(hsotg, &hsotg->eps[0],
-							  -ECONNRESET, true);
+							  -ECONNRESET);
 
 				s3c_hsotg_core_init_disconnected(hsotg);
 				s3c_hsotg_core_connect(hsotg);
@@ -2588,7 +2581,7 @@ static int s3c_hsotg_ep_disable_force(struct usb_ep *ep, bool force)
 
 	spin_lock_irqsave(&hsotg->lock, flags);
 	/* terminate all requests with shutdown */
-	kill_all_requests(hsotg, hs_ep, -ESHUTDOWN, force);
+	kill_all_requests(hsotg, hs_ep, -ESHUTDOWN);
 
 	hsotg->fifo_map &= ~(1<<hs_ep->fifo_index);
 	hs_ep->fifo_index = 0;
@@ -3414,8 +3407,6 @@ int dwc2_gadget_init(struct dwc2_hsotg *hsotg, int irq)
 {
 	struct device *dev = hsotg->dev;
 	struct s3c_hsotg_plat *plat = dev->platform_data;
-	struct phy *phy;
-	struct usb_phy *uphy;
 	struct s3c_hsotg_ep *eps;
 	int epnum;
 	int ret;
@@ -3425,30 +3416,23 @@ int dwc2_gadget_init(struct dwc2_hsotg *hsotg, int irq)
 	hsotg->phyif = GUSBCFG_PHYIF16;
 
 	/*
-	 * Attempt to find a generic PHY, then look for an old style
-	 * USB PHY, finally fall back to pdata
+	 * If platform probe couldn't find a generic PHY or an old style
+	 * USB PHY, fall back to pdata
 	 */
-	phy = devm_phy_get(dev, "usb2-phy");
-	if (IS_ERR(phy)) {
-		uphy = devm_usb_get_phy(dev, USB_PHY_TYPE_USB2);
-		if (IS_ERR(uphy)) {
-			/* Fallback for pdata */
-			plat = dev_get_platdata(dev);
-			if (!plat) {
-				dev_err(dev,
-				"no platform data or transceiver defined\n");
-				return -EPROBE_DEFER;
-			}
-			hsotg->plat = plat;
-		} else
-			hsotg->uphy = uphy;
-	} else {
-		hsotg->phy = phy;
+	if (IS_ERR_OR_NULL(hsotg->phy) && IS_ERR_OR_NULL(hsotg->uphy)) {
+		plat = dev_get_platdata(dev);
+		if (!plat) {
+			dev_err(dev,
+			"no platform data or transceiver defined\n");
+			return -EPROBE_DEFER;
+		}
+		hsotg->plat = plat;
+	} else if (hsotg->phy) {
 		/*
 		 * If using the generic PHY framework, check if the PHY bus
 		 * width is 8-bit and set the phyif appropriately.
 		 */
-		if (phy_get_bus_width(phy) == 8)
+		if (phy_get_bus_width(hsotg->phy) == 8)
 			hsotg->phyif = GUSBCFG_PHYIF8;
 	}
 
