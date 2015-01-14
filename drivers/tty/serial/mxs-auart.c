@@ -1231,34 +1231,29 @@ static int mxs_auart_probe(struct platform_device *pdev)
 	int ret = 0;
 	struct resource *r;
 
-	s = kzalloc(sizeof(struct mxs_auart_port), GFP_KERNEL);
-	if (!s) {
-		ret = -ENOMEM;
-		goto out;
-	}
+	s = devm_kzalloc(&pdev->dev, sizeof(*s), GFP_KERNEL);
+	if (!s)
+		return -ENOMEM;
 
 	ret = serial_mxs_probe_dt(s, pdev);
 	if (ret > 0)
 		s->port.line = pdev->id < 0 ? 0 : pdev->id;
 	else if (ret < 0)
-		goto out_free;
+		return ret;
 
 	if (of_id) {
 		pdev->id_entry = of_id->data;
 		s->devtype = pdev->id_entry->driver_data;
 	}
 
-	s->clk = clk_get(&pdev->dev, NULL);
-	if (IS_ERR(s->clk)) {
-		ret = PTR_ERR(s->clk);
-		goto out_free;
-	}
+	s->clk = devm_clk_get(&pdev->dev, NULL);
+	if (IS_ERR(s->clk))
+		return PTR_ERR(s->clk);
 
 	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!r) {
-		ret = -ENXIO;
-		goto out_free_clk;
-	}
+	if (!r)
+		return -ENXIO;
+
 
 	s->port.mapbase = r->start;
 	s->port.membase = ioremap(r->start, resource_size(r));
@@ -1273,9 +1268,10 @@ static int mxs_auart_probe(struct platform_device *pdev)
 
 	s->irq = platform_get_irq(pdev, 0);
 	s->port.irq = s->irq;
-	ret = request_irq(s->irq, mxs_auart_irq_handle, 0, dev_name(&pdev->dev), s);
+	ret = devm_request_irq(&pdev->dev, s->irq, mxs_auart_irq_handle, 0,
+			       dev_name(&pdev->dev), s);
 	if (ret)
-		goto out_free_clk;
+		return ret;
 
 	platform_set_drvdata(pdev, s);
 
@@ -1288,7 +1284,7 @@ static int mxs_auart_probe(struct platform_device *pdev)
 	 */
 	ret = mxs_auart_request_gpio_irq(s);
 	if (ret)
-		goto out_free_irq;
+		return ret;
 
 	auart_port[s->port.line] = s;
 
@@ -1307,14 +1303,7 @@ static int mxs_auart_probe(struct platform_device *pdev)
 
 out_free_gpio_irq:
 	mxs_auart_free_gpio_irq(s);
-out_free_irq:
 	auart_port[pdev->id] = NULL;
-	free_irq(s->irq, s);
-out_free_clk:
-	clk_put(s->clk);
-out_free:
-	kfree(s);
-out:
 	return ret;
 }
 
@@ -1323,13 +1312,8 @@ static int mxs_auart_remove(struct platform_device *pdev)
 	struct mxs_auart_port *s = platform_get_drvdata(pdev);
 
 	uart_remove_one_port(&auart_driver, &s->port);
-
 	auart_port[pdev->id] = NULL;
-
 	mxs_auart_free_gpio_irq(s);
-	clk_put(s->clk);
-	free_irq(s->irq, s);
-	kfree(s);
 
 	return 0;
 }
