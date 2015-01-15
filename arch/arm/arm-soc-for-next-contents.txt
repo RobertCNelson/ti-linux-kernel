@@ -74,4 +74,5 @@ fixes
 		ARM: dts: disable CCI on exynos5420 based arndale-octa
 	<no branch> (b0ddb319db3d7a1943445f0de0a45c07a7f3457a) (2):
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-fixes-for-v3.19
-
+	patch:
+		reset: sunxi: fix spinlock initialization
