@@ -22,6 +22,7 @@
 #include "unipro.h"
 #include "ufs-qcom.h"
 #include "ufshci.h"
+#include "ufs-qcom-ice.h"
 
 static struct ufs_qcom_host *ufs_qcom_hosts[MAX_UFS_QCOM_HOSTS];
 
@@ -294,6 +295,13 @@ static int ufs_qcom_hce_enable_notify(struct ufs_hba *hba, bool status)
 		/* check if UFS PHY moved from DISABLED to HIBERN8 */
 		err = ufs_qcom_check_hibern8(hba);
 		ufs_qcom_enable_hw_clk_gating(hba);
+		if (!err) {
+			err = ufs_qcom_ice_reset(host);
+			if (err)
+				dev_err(hba->dev,
+					"%s: ufs_qcom_ice_reset() failed %d\n",
+					__func__, err);
+		}
 
 		break;
 	default:
@@ -453,6 +461,10 @@ static int ufs_qcom_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 		 */
 		ufs_qcom_disable_lane_clks(host);
 		phy_power_off(phy);
+		ret = ufs_qcom_ice_suspend(host);
+		if (ret)
+			dev_err(hba->dev, "%s: failed ufs_qcom_ice_suspend %d\n",
+					__func__, ret);
 
 		/* Assert PHY soft reset */
 		ufs_qcom_assert_reset(hba);
@@ -463,8 +475,10 @@ static int ufs_qcom_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 	 * If UniPro link is not active, PHY ref_clk, main PHY analog power
 	 * rail and low noise analog power rail for PLL can be switched off.
 	 */
-	if (!ufs_qcom_is_link_active(hba))
+	if (!ufs_qcom_is_link_active(hba)) {
 		phy_power_off(phy);
+		ufs_qcom_ice_suspend(host);
+	}
 
 out:
 	return ret;
@@ -479,6 +493,13 @@ static int ufs_qcom_resume(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 	err = phy_power_on(phy);
 	if (err) {
 		dev_err(hba->dev, "%s: failed enabling regs, err = %d\n",
+			__func__, err);
+		goto out;
+	}
+
+	err = ufs_qcom_ice_resume(host);
+	if (err) {
+		dev_err(hba->dev, "%s: ufs_qcom_ice_resume failed, err = %d\n",
 			__func__, err);
 		goto out;
 	}
@@ -917,6 +938,30 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 	host->hba = hba;
 	hba->priv = (void *)host;
 
+	err = ufs_qcom_ice_get_dev(host);
+	if (err == -EPROBE_DEFER) {
+		/*
+		 * UFS driver might be probed before ICE driver does.
+		 * In that case we would like to return EPROBE_DEFER code
+		 * in order to delay its probing.
+		 */
+		dev_err(dev, "%s: required ICE device not probed yet err = %d\n",
+			__func__, err);
+		goto out_host_free;
+
+	} else if (err == -ENODEV) {
+		/*
+		 * ICE device is not enabled in DTS file. No need for further
+		 * initialization of ICE driver.
+		 */
+		dev_warn(dev, "%s: ICE device is not enabled",
+			__func__);
+	} else if (err) {
+		dev_err(dev, "%s: ufs_qcom_ice_get_dev failed %d\n",
+			__func__, err);
+		goto out_host_free;
+	}
+
 	host->generic_phy = devm_phy_get(dev, "ufsphy");
 
 	if (IS_ERR(host->generic_phy)) {
@@ -944,6 +989,15 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 	hba->caps |= UFSHCD_CAP_AUTO_BKOPS_SUSPEND;
 
 	ufs_qcom_setup_clocks(hba, true);
+	if (host->ice.pdev) {
+		err = ufs_qcom_ice_init(host);
+		if (err) {
+			dev_err(dev, "%s: ICE driver initialization failed (%d)\n",
+				__func__, err);
+			device_remove_file(dev, &host->bus_vote.max_bus_bw);
+			goto out_disable_phy;
+		}
+	}
 
 	if (hba->dev->id < MAX_UFS_QCOM_HOSTS)
 		ufs_qcom_hosts[hba->dev->id] = host;
