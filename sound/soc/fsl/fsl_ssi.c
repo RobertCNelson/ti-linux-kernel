@@ -160,7 +160,7 @@ struct fsl_ssi_soc_data {
  */
 struct fsl_ssi_private {
 	struct regmap *regs;
-	unsigned int irq;
+	int irq;
 	struct snd_soc_dai_driver cpu_dai_drv;
 
 	unsigned int dai_fmt;
@@ -1362,8 +1362,8 @@ static int fsl_ssi_probe(struct platform_device *pdev)
 	}
 
 	ssi_private->irq = platform_get_irq(pdev, 0);
-	if (ssi_private->irq < 0) {
-		dev_err(&pdev->dev, "no irq for node %s\n", np->full_name);
+	if (!ssi_private->irq) {
+		dev_err(&pdev->dev, "no irq for node %s\n", pdev->name);
 		return ssi_private->irq;
 	}
 
