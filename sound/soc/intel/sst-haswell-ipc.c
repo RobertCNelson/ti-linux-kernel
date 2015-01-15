@@ -94,6 +94,8 @@
 /* Mailbox */
 #define IPC_MAX_MAILBOX_BYTES	256
 
+#define INVALID_STREAM_HW_ID	0xffffffff
+
 /* Global Message - Types and Replies */
 enum ipc_glb_type {
 	IPC_GLB_GET_FW_VERSION = 0,		/* Retrieves firmware version */
@@ -1208,6 +1210,7 @@ struct sst_hsw_stream *sst_hsw_stream_new(struct sst_hsw *hsw, int id,
 		return NULL;
 
 	spin_lock_irqsave(&sst->spinlock, flags);
+	stream->reply.stream_hw_id = INVALID_STREAM_HW_ID;
 	list_add(&stream->node, &hsw->stream_list);
 	stream->notify_position = notify_position;
 	stream->pdata = data;
@@ -1227,6 +1230,11 @@ int sst_hsw_stream_free(struct sst_hsw *hsw, struct sst_hsw_stream *stream)
 	int ret = 0;
 	struct sst_dsp *sst = hsw->dsp;
 	unsigned long flags;
+
+	if (!stream) {
+		dev_warn(hsw->dev, "warning: stream is NULL, no stream to free, ignore it.\n");
+		return 0;
+	}
 
 	/* dont free DSP streams that are not commited */
 	if (!stream->commited)
@@ -1415,6 +1423,16 @@ int sst_hsw_stream_commit(struct sst_hsw *hsw, struct sst_hsw_stream *stream)
 	u32 header;
 	int ret;
 
+	if (!stream) {
+		dev_warn(hsw->dev, "warning: stream is NULL, no stream to commit, ignore it.\n");
+		return 0;
+	}
+
+	if (stream->commited) {
+		dev_warn(hsw->dev, "warning: stream is already committed, ignore it.\n");
+		return 0;
+	}
+
 	trace_ipc_request("stream alloc", stream->host_id);
 
 	header = IPC_GLB_TYPE(IPC_GLB_ALLOCATE_STREAM);
@@ -1519,6 +1537,11 @@ int sst_hsw_stream_pause(struct sst_hsw *hsw, struct sst_hsw_stream *stream,
 {
 	int ret;
 
+	if (!stream) {
+		dev_warn(hsw->dev, "warning: stream is NULL, no stream to pause, ignore it.\n");
+		return 0;
+	}
+
 	trace_ipc_request("stream pause", stream->reply.stream_hw_id);
 
 	ret = sst_hsw_stream_operations(hsw, IPC_STR_PAUSE,
@@ -1535,6 +1558,11 @@ int sst_hsw_stream_resume(struct sst_hsw *hsw, struct sst_hsw_stream *stream,
 {
 	int ret;
 
+	if (!stream) {
+		dev_warn(hsw->dev, "warning: stream is NULL, no stream to resume, ignore it.\n");
+		return 0;
+	}
+
 	trace_ipc_request("stream resume", stream->reply.stream_hw_id);
 
 	ret = sst_hsw_stream_operations(hsw, IPC_STR_RESUME,
@@ -1549,6 +1577,11 @@ int sst_hsw_stream_resume(struct sst_hsw *hsw, struct sst_hsw_stream *stream,
 int sst_hsw_stream_reset(struct sst_hsw *hsw, struct sst_hsw_stream *stream)
 {
 	int ret, tries = 10;
+
+	if (!stream) {
+		dev_warn(hsw->dev, "warning: stream is NULL, no stream to reset, ignore it.\n");
+		return 0;
+	}
 
 	/* dont reset streams that are not commited */
 	if (!stream->commited)

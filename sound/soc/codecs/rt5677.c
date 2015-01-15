@@ -925,6 +925,8 @@ static int is_sys_clk_from_pll(struct snd_soc_dapm_widget *source,
 static int is_using_asrc(struct snd_soc_dapm_widget *source,
 			 struct snd_soc_dapm_widget *sink)
 {
+	struct snd_soc_codec *codec = source->codec;
+	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
 	unsigned int reg, shift, val;
 
 	if (source->reg == RT5677_ASRC_1) {
@@ -991,7 +993,9 @@ static int is_using_asrc(struct snd_soc_dapm_widget *source,
 		}
 	}
 
-	val = (snd_soc_read(source->codec, reg) >> shift) & 0xf;
+	regmap_read(rt5677->regmap, reg, &val);
+	val = (val >> shift) & 0xf;
+
 	switch (val) {
 	case 1 ... 6:
 		return 1;
@@ -2174,10 +2178,14 @@ static int rt5677_set_pll1_event(struct snd_soc_dapm_widget *w,
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
 
 	switch (event) {
-	case SND_SOC_DAPM_POST_PMU:
+	case SND_SOC_DAPM_PRE_PMU:
 		regmap_update_bits(rt5677->regmap, RT5677_PLL1_CTRL2, 0x2, 0x2);
+		break;
+
+	case SND_SOC_DAPM_POST_PMU:
 		regmap_update_bits(rt5677->regmap, RT5677_PLL1_CTRL2, 0x2, 0x0);
 		break;
+
 	default:
 		return 0;
 	}
@@ -2192,10 +2200,14 @@ static int rt5677_set_pll2_event(struct snd_soc_dapm_widget *w,
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
 
 	switch (event) {
-	case SND_SOC_DAPM_POST_PMU:
+	case SND_SOC_DAPM_PRE_PMU:
 		regmap_update_bits(rt5677->regmap, RT5677_PLL2_CTRL2, 0x2, 0x2);
+		break;
+
+	case SND_SOC_DAPM_POST_PMU:
 		regmap_update_bits(rt5677->regmap, RT5677_PLL2_CTRL2, 0x2, 0x0);
 		break;
+
 	default:
 		return 0;
 	}
@@ -2303,9 +2315,11 @@ static int rt5677_vref_event(struct snd_soc_dapm_widget *w,
 
 static const struct snd_soc_dapm_widget rt5677_dapm_widgets[] = {
 	SND_SOC_DAPM_SUPPLY("PLL1", RT5677_PWR_ANLG2, RT5677_PWR_PLL1_BIT,
-		0, rt5677_set_pll1_event, SND_SOC_DAPM_POST_PMU),
+		0, rt5677_set_pll1_event, SND_SOC_DAPM_PRE_PMU |
+		SND_SOC_DAPM_POST_PMU),
 	SND_SOC_DAPM_SUPPLY("PLL2", RT5677_PWR_ANLG2, RT5677_PWR_PLL2_BIT,
-		0, rt5677_set_pll2_event, SND_SOC_DAPM_POST_PMU),
+		0, rt5677_set_pll2_event, SND_SOC_DAPM_PRE_PMU |
+		SND_SOC_DAPM_POST_PMU),
 
 	/* ASRC */
 	SND_SOC_DAPM_SUPPLY_S("I2S1 ASRC", 1, RT5677_ASRC_1, 0, 0, NULL, 0),
@@ -4088,7 +4102,8 @@ static int rt5677_set_tdm_slot(struct snd_soc_dai *dai, unsigned int tx_mask,
 			unsigned int rx_mask, int slots, int slot_width)
 {
 	struct snd_soc_codec *codec = dai->codec;
-	unsigned int val = 0;
+	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
+	unsigned int val = 0, slot_width_25 = 0;
 
 	if (rx_mask || tx_mask)
 		val |= (1 << 12);
@@ -4112,6 +4127,8 @@ static int rt5677_set_tdm_slot(struct snd_soc_dai *dai, unsigned int tx_mask,
 	case 20:
 		val |= (1 << 8);
 		break;
+	case 25:
+		slot_width_25 = 0x8080;
 	case 24:
 		val |= (2 << 8);
 		break;
@@ -4125,10 +4142,16 @@ static int rt5677_set_tdm_slot(struct snd_soc_dai *dai, unsigned int tx_mask,
 
 	switch (dai->id) {
 	case RT5677_AIF1:
-		snd_soc_update_bits(codec, RT5677_TDM1_CTRL1, 0x1f00, val);
+		regmap_update_bits(rt5677->regmap, RT5677_TDM1_CTRL1, 0x1f00,
+			val);
+		regmap_update_bits(rt5677->regmap, RT5677_DIG_MISC, 0x8000,
+			slot_width_25);
 		break;
 	case RT5677_AIF2:
-		snd_soc_update_bits(codec, RT5677_TDM2_CTRL1, 0x1f00, val);
+		regmap_update_bits(rt5677->regmap, RT5677_TDM2_CTRL1, 0x1f00,
+			val);
+		regmap_update_bits(rt5677->regmap, RT5677_DIG_MISC, 0x80,
+			slot_width_25);
 		break;
 	default:
 		break;
@@ -4912,6 +4935,11 @@ static int rt5677_i2c_probe(struct i2c_client *i2c,
 					RT5677_GPIO5_DIR_MASK,
 					RT5677_GPIO5_DIR_OUT);
 	}
+
+	if (rt5677->pdata.micbias1_vdd_3v3)
+		regmap_update_bits(rt5677->regmap, RT5677_MICBIAS,
+			RT5677_MICBIAS1_CTRL_VDD_MASK,
+			RT5677_MICBIAS1_CTRL_VDD_3_3V);
 
 	rt5677_init_gpio(i2c);
 	rt5677_init_irq(i2c);
