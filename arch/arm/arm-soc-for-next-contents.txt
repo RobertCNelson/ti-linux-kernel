@@ -1,0 +1,78 @@
+next/fixes-non-critical
+
+next/cleanup
+	renesas/lager-board-removal (6):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-lager-board-removal-for-v3.20
+	patch:
+		ARM: versatile: core: Remove unused function
+
+next/soc
+	renesas/soc (4):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-for-v3.20
+	brcm/stb-smp (1):
+		http://github.com/broadcom/stblinux tags/arm-soc/for-3.20/brcmstb-smp
+	mvebu/soc (3):
+		git://git.infradead.org/linux-mvebu tags/mvebu-soc-3.20
+
+next/boards
+
+next/dt
+	renesas/dt-cleanup (7):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-cleanups-for-v3.20
+	renesas/dt (30):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-for-v3.20
+	patch:
+		ARM: dts: Only build dtb if associated Arch and/or SoC is enabled
+	berlin/dt (2):
+		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-dt-for-3.20-1
+	mtk/dt (8):
+		https://github.com/mbgg/linux-mediatek tags/v3.20-next-dts
+	mvebu/dt (13):
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-3.20
+
+next/drivers
+	renesas/sh73a0-ccf (6):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-sh73a0-ccf-for-v3.20
+
+next/defconfig
+	renesas/defconfig (5):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig-for-v3.20
+	mtk/defconfig (1):
+		https://github.com/mbgg/linux-mediatek tags/v3.20-next-defconfig
+	patch:
+		ARM: config: multi_v7: Update it for Keystone defconfig
+	mvebu/defconfig (1):
+		git://git.infradead.org/linux-mvebu tags/mvebu-defconfig-3.20
+	patch:
+		ARM: multi_v7_defconfig: Enable Hip01 platform
+
+next/arm64
+
+next/omap-gpmc
+
+next/late
+
+fixes
+	<no branch> (6618e478954d2866754798c3b07805dc9dbb2fc4) (1):
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.19-rockchip-dtsfixes1
+	<no branch> (7a9f0604bd56936b2b18f49824e0e392dc7878c3) (6):
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-fixes-3.19
+	<no branch> (7ac72746aa9bb305fa74b44ec73eae99bbbe9b66) (7):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/fixes-rc1
+	<no branch> (bb682e44c77731711818c2cf9f6d4bc277207eee) (1):
+		git://git.infradead.org/linux-mvebu tags/mvebu-fixes-3.19-2
+	patch:
+		ARM: nomadik: fix up leftover device tree pins
+	<no branch> (5138d5c562e3bfe30964e20ab46eec9f8b89225d) (3):
+		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-fixes-for-3.19-1
+	patch:
+		ARM: rockchip: disable jtag/sdmmc autoswitching on rk3288
+	<no branch> (b8659752c37ec157ee254cff443b1c9d523aea22) (4):
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-fixes
+	patch:
+		drivers: bus: check cci device tree node status
+		ARM: dts: disable CCI on exynos5420 based arndale-octa
+	<no branch> (b0ddb319db3d7a1943445f0de0a45c07a7f3457a) (2):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-fixes-for-v3.19
+	patch:
+		reset: sunxi: fix spinlock initialization
