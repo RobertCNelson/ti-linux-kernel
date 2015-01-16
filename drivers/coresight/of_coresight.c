@@ -93,7 +93,7 @@ static int of_coresight_alloc_memory(struct device *dev,
 	if (!pdata->outports)
 		return -ENOMEM;
 
-	/* Children connected to this component via @outport */
+	/* Children connected to this component via @outports */
 	 pdata->child_names = devm_kzalloc(dev, pdata->nr_outport *
 					  sizeof(*pdata->child_names),
 					  GFP_KERNEL);
@@ -126,7 +126,7 @@ struct coresight_platform_data *of_get_coresight_platform_data(
 	if (!pdata)
 		return ERR_PTR(-ENOMEM);
 
-	/* Use device name as debugfs handle */
+	/* Use device name as sysfs handle */
 	pdata->name = dev_name(dev);
 
 	/* Get the number of input and output port for this component */
@@ -174,7 +174,7 @@ struct coresight_platform_data *of_get_coresight_platform_data(
 				continue;
 
 			rdev = of_coresight_get_endpoint_device(rparent);
-			if (!dev)
+			if (!rdev)
 				continue;
 
 			pdata->child_names[i] = dev_name(rdev);

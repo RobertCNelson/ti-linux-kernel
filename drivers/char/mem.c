@@ -28,7 +28,7 @@
 #include <linux/io.h>
 #include <linux/aio.h>
 
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 
 #ifdef CONFIG_IA64
 # include <linux/efi.h>
@@ -341,7 +341,6 @@ static int mmap_mem(struct file *file, struct vm_area_struct *vma)
 	return 0;
 }
 
-#ifdef CONFIG_DEVKMEM
 static int mmap_kmem(struct file *file, struct vm_area_struct *vma)
 {
 	unsigned long pfn;
@@ -362,9 +361,7 @@ static int mmap_kmem(struct file *file, struct vm_area_struct *vma)
 	vma->vm_pgoff = pfn;
 	return mmap_mem(file, vma);
 }
-#endif
 
-#ifdef CONFIG_DEVKMEM
 /*
  * This function reads the *virtual* memory as seen by the kernel.
  */
@@ -544,9 +541,7 @@ static ssize_t write_kmem(struct file *file, const char __user *buf,
 	*ppos = p;
 	return virtr + wrote ? : err;
 }
-#endif
 
-#ifdef CONFIG_DEVPORT
 static ssize_t read_port(struct file *file, char __user *buf,
 			 size_t count, loff_t *ppos)
 {
@@ -575,6 +570,7 @@ static ssize_t write_port(struct file *file, const char __user *buf,
 		return -EFAULT;
 	while (count-- > 0 && i < 65536) {
 		char c;
+
 		if (__get_user(c, tmp)) {
 			if (tmp > buf)
 				break;
@@ -587,7 +583,6 @@ static ssize_t write_port(struct file *file, const char __user *buf,
 	*ppos = i;
 	return tmp-buf;
 }
-#endif
 
 static ssize_t read_null(struct file *file, char __user *buf,
 			 size_t count, loff_t *ppos)
@@ -631,6 +626,7 @@ static ssize_t read_iter_zero(struct kiocb *iocb, struct iov_iter *iter)
 
 	while (iov_iter_count(iter)) {
 		size_t chunk = iov_iter_count(iter), n;
+
 		if (chunk > PAGE_SIZE)
 			chunk = PAGE_SIZE;	/* Just for latency reasons */
 		n = iov_iter_zero(chunk, iter);
@@ -715,7 +711,7 @@ static int open_port(struct inode *inode, struct file *filp)
 #define open_mem	open_port
 #define open_kmem	open_mem
 
-static const struct file_operations mem_fops = {
+static const struct file_operations __maybe_unused mem_fops = {
 	.llseek		= memory_lseek,
 	.read		= read_mem,
 	.write		= write_mem,
@@ -724,8 +720,7 @@ static const struct file_operations mem_fops = {
 	.get_unmapped_area = get_unmapped_area_mem,
 };
 
-#ifdef CONFIG_DEVKMEM
-static const struct file_operations kmem_fops = {
+static const struct file_operations __maybe_unused kmem_fops = {
 	.llseek		= memory_lseek,
 	.read		= read_kmem,
 	.write		= write_kmem,
@@ -733,7 +728,6 @@ static const struct file_operations kmem_fops = {
 	.open		= open_kmem,
 	.get_unmapped_area = get_unmapped_area_mem,
 };
-#endif
 
 static const struct file_operations null_fops = {
 	.llseek		= null_lseek,
@@ -744,14 +738,12 @@ static const struct file_operations null_fops = {
 	.splice_write	= splice_write_null,
 };
 
-#ifdef CONFIG_DEVPORT
-static const struct file_operations port_fops = {
+static const struct file_operations __maybe_unused port_fops = {
 	.llseek		= memory_lseek,
 	.read		= read_port,
 	.write		= write_port,
 	.open		= open_port,
 };
-#endif
 
 static const struct file_operations zero_fops = {
 	.llseek		= zero_lseek,
@@ -785,7 +777,9 @@ static const struct memdev {
 	const struct file_operations *fops;
 	struct backing_dev_info *dev_info;
 } devlist[] = {
+#ifdef CONFIG_DEVMEM
 	 [1] = { "mem", 0, &mem_fops, &directly_mappable_cdev_bdi },
+#endif
 #ifdef CONFIG_DEVKMEM
 	 [2] = { "kmem", 0, &kmem_fops, &directly_mappable_cdev_bdi },
 #endif
