@@ -403,7 +403,8 @@ EXPORT_SYMBOL_GPL(rt286_mic_detect);
 static int is_mclk_mode(struct snd_soc_dapm_widget *source,
 			 struct snd_soc_dapm_widget *sink)
 {
-	struct rt286_priv *rt286 = snd_soc_codec_get_drvdata(source->codec);
+	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(source->dapm);
+	struct rt286_priv *rt286 = snd_soc_codec_get_drvdata(codec);
 
 	if (rt286->clk_id == RT286_SCLK_S_MCLK)
 		return 1;
@@ -500,7 +501,7 @@ SOC_DAPM_ENUM("SPO source", rt286_spo_enum);
 static int rt286_spk_event(struct snd_soc_dapm_widget *w,
 			    struct snd_kcontrol *kcontrol, int event)
 {
-	struct snd_soc_codec *codec = w->codec;
+	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
 
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
@@ -522,7 +523,7 @@ static int rt286_spk_event(struct snd_soc_dapm_widget *w,
 static int rt286_set_dmic1_event(struct snd_soc_dapm_widget *w,
 				  struct snd_kcontrol *kcontrol, int event)
 {
-	struct snd_soc_codec *codec = w->codec;
+	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
 
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
@@ -541,7 +542,7 @@ static int rt286_set_dmic1_event(struct snd_soc_dapm_widget *w,
 static int rt286_adc_event(struct snd_soc_dapm_widget *w,
 			     struct snd_kcontrol *kcontrol, int event)
 {
-	struct snd_soc_codec *codec = w->codec;
+	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
 	unsigned int nid;
 
 	nid = (w->reg >> 20) & 0xff;
@@ -567,7 +568,7 @@ static int rt286_adc_event(struct snd_soc_dapm_widget *w,
 static int rt286_vref_event(struct snd_soc_dapm_widget *w,
 			     struct snd_kcontrol *kcontrol, int event)
 {
-	struct snd_soc_codec *codec = w->codec;
+	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
@@ -585,7 +586,7 @@ static int rt286_vref_event(struct snd_soc_dapm_widget *w,
 static int rt286_ldo2_event(struct snd_soc_dapm_widget *w,
 			     struct snd_kcontrol *kcontrol, int event)
 {
-	struct snd_soc_codec *codec = w->codec;
+	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
 
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
@@ -604,7 +605,7 @@ static int rt286_ldo2_event(struct snd_soc_dapm_widget *w,
 static int rt286_mic1_event(struct snd_soc_dapm_widget *w,
 			     struct snd_kcontrol *kcontrol, int event)
 {
-	struct snd_soc_codec *codec = w->codec;
+	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
@@ -861,10 +862,8 @@ static int rt286_hw_params(struct snd_pcm_substream *substream,
 		RT286_I2S_CTRL1, 0x0018, d_len_code << 3);
 	dev_dbg(codec->dev, "format val = 0x%x\n", val);
 
-	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-		snd_soc_update_bits(codec, RT286_DAC_FORMAT, 0x407f, val);
-	else
-		snd_soc_update_bits(codec, RT286_ADC_FORMAT, 0x407f, val);
+	snd_soc_update_bits(codec, RT286_DAC_FORMAT, 0x407f, val);
+	snd_soc_update_bits(codec, RT286_ADC_FORMAT, 0x407f, val);
 
 	return 0;
 }
