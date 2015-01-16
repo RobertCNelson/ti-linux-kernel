@@ -12,13 +12,10 @@ config VIRTIO_PCI
 	depends on PCI
 	select VIRTIO
 	---help---
-	  This drivers provides support for virtio based paravirtual device
+	  This driver provides support for virtio based paravirtual device
 	  drivers over PCI.  This requires that your VMM has appropriate PCI
 	  virtio backends.  Most QEMU based VMMs should support these devices
 	  (like KVM or Xen).
-
-	  Currently, the ABI is not considered stable so there is no guarantee
-	  that this version of the driver will work with your VMM.
 
 	  If unsure, say M.
 
