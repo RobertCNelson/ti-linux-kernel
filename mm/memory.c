@@ -2894,7 +2894,11 @@ static int do_cow_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 			unlock_page(fault_page);
 			page_cache_release(fault_page);
 		} else {
-			mutex_unlock(&vma->vm_file->f_mapping->i_mmap_mutex);
+			/*
+			 * DAX doesn't have a page to lock, so it uses
+			 * i_mmap_lock()
+			 */
+			i_mmap_unlock_read(&vma->vm_file->f_mapping);
 		}
 		goto uncharge_out;
 	}
@@ -2906,7 +2910,11 @@ static int do_cow_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 		unlock_page(fault_page);
 		page_cache_release(fault_page);
 	} else {
-		mutex_unlock(&vma->vm_file->f_mapping->i_mmap_mutex);
+			/*
+			 * DAX doesn't have a page to lock, so it uses
+			 * i_mmap_lock()
+			 */
+			i_mmap_unlock_read(&vma->vm_file->f_mapping);
 	}
 	return ret;
 uncharge_out:
