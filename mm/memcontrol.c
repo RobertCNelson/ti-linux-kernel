@@ -373,7 +373,7 @@ bool memcg_kmem_is_active(struct mem_cgroup *memcg)
  */
 #define MOVE_ANON	0x1U
 #define MOVE_FILE	0x2U
-#define MOVE_MASK	0x3U
+#define MOVE_MASK	(MOVE_ANON | MOVE_FILE)
 
 /* "mc" and its members are protected by cgroup_mutex */
 static struct move_charge_struct {
