@@ -255,17 +255,20 @@ again:
 		__xip_unmap(mapping, vmf->pgoff);
 
 found:
-		/* We must recheck i_size under i_mmap_mutex */
-		mutex_lock(&mapping->i_mmap_mutex);
+		/*
+		 * We must recheck i_size under i_mmap_rwsem to prevent races
+		 * with truncation
+		 */
+		i_mmap_lock_read(mapping);
 		size = (i_size_read(inode) + PAGE_CACHE_SIZE - 1) >>
 							PAGE_CACHE_SHIFT;
 		if (unlikely(vmf->pgoff >= size)) {
-			mutex_unlock(&mapping->i_mmap_mutex);
+			i_mmap_unlock_read(mapping);
 			return VM_FAULT_SIGBUS;
 		}
 		err = vm_insert_mixed(vma, (unsigned long)vmf->virtual_address,
 							xip_pfn);
-		mutex_unlock(&mapping->i_mmap_mutex);
+		i_mmap_unlock_read(mapping);
 		if (err == -ENOMEM)
 			return VM_FAULT_OOM;
 		/*
@@ -290,8 +293,11 @@ found:
 		if (error != -ENODATA)
 			goto out;
 
-		/* We must recheck i_size under i_mmap_mutex */
-		mutex_lock(&mapping->i_mmap_mutex);
+		/*
+		 * We must recheck i_size under i_mmap_rwsem to prevent races
+		 * with truncation
+		 */
+		i_mmap_lock_read(mapping);
 		size = (i_size_read(inode) + PAGE_CACHE_SIZE - 1) >>
 							PAGE_CACHE_SHIFT;
 		if (unlikely(vmf->pgoff >= size)) {
@@ -309,7 +315,7 @@ found:
 
 		ret = VM_FAULT_NOPAGE;
 unlock:
-		mutex_unlock(&mapping->i_mmap_mutex);
+		i_mmap_unlock_read(mapping);
 out:
 		write_seqcount_end(&xip_sparse_seq);
 		mutex_unlock(&xip_sparse_mutex);
