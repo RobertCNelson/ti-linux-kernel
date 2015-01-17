@@ -25,6 +25,8 @@ char *compaction_status_string[] = {
 	"continue",
 	"partial",
 	"complete",
+	"no_suitable_page",
+	"not_suitable_zone",
 };
 
 static inline void count_compact_event(enum vm_event_item item)
@@ -1048,7 +1050,7 @@ static isolate_migrate_t isolate_migratepages(struct zone *zone,
 	return cc->nr_migratepages ? ISOLATE_SUCCESS : ISOLATE_NONE;
 }
 
-static int compact_finished(struct zone *zone, struct compact_control *cc,
+static int __compact_finished(struct zone *zone, struct compact_control *cc,
 			    const int migratetype)
 {
 	unsigned int order;
@@ -1103,7 +1105,20 @@ static int compact_finished(struct zone *zone, struct compact_control *cc,
 			return COMPACT_PARTIAL;
 	}
 
-	return COMPACT_CONTINUE;
+	return COMPACT_NO_SUITABLE_PAGE;
+}
+
+static int compact_finished(struct zone *zone, struct compact_control *cc,
+			    const int migratetype)
+{
+	int ret;
+
+	ret = __compact_finished(zone, cc, migratetype);
+	trace_mm_compaction_finished(zone, cc->order, ret);
+	if (ret == COMPACT_NO_SUITABLE_PAGE)
+		ret = COMPACT_CONTINUE;
+
+	return ret;
 }
 
 /*
@@ -1113,7 +1128,7 @@ static int compact_finished(struct zone *zone, struct compact_control *cc,
  *   COMPACT_PARTIAL  - If the allocation would succeed without compaction
  *   COMPACT_CONTINUE - If compaction should run now
  */
-unsigned long compaction_suitable(struct zone *zone, int order,
+static unsigned long __compaction_suitable(struct zone *zone, int order,
 					int alloc_flags, int classzone_idx)
 {
 	int fragindex;
@@ -1157,9 +1172,22 @@ unsigned long compaction_suitable(struct zone *zone, int order,
 	 */
 	fragindex = fragmentation_index(zone, order);
 	if (fragindex >= 0 && fragindex <= sysctl_extfrag_threshold)
-		return COMPACT_SKIPPED;
+		return COMPACT_NOT_SUITABLE_ZONE;
 
 	return COMPACT_CONTINUE;
+}
+
+unsigned long compaction_suitable(struct zone *zone, int order,
+					int alloc_flags, int classzone_idx)
+{
+	unsigned long ret;
+
+	ret = __compaction_suitable(zone, order, alloc_flags, classzone_idx);
+	trace_mm_compaction_suitable(zone, order, ret);
+	if (ret == COMPACT_NOT_SUITABLE_ZONE)
+		ret = COMPACT_SKIPPED;
+
+	return ret;
 }
 
 static int compact_zone(struct zone *zone, struct compact_control *cc)
@@ -1374,6 +1402,8 @@ unsigned long try_to_compact_pages(gfp_t gfp_mask, unsigned int order,
 	/* Check if the GFP flags allow compaction */
 	if (!order || !may_enter_fs || !may_perform_io)
 		return COMPACT_SKIPPED;
+
+	trace_mm_compaction_try_to_compact_pages(order, gfp_mask, mode);
 
 	/* Compact each zone in the list */
 	for_each_zone_zonelist_nodemask(zone, z, ac->zonelist, ac->high_zoneidx,
