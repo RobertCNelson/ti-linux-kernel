@@ -39,7 +39,6 @@ static int ext2_dax_mkwrite(struct vm_area_struct *vma, struct vm_fault *vmf)
 static const struct vm_operations_struct ext2_dax_vm_ops = {
 	.fault		= ext2_dax_fault,
 	.page_mkwrite	= ext2_dax_mkwrite,
-	.remap_pages	= generic_file_remap_pages,
 };
 
 static int ext2_file_mmap(struct file *file, struct vm_area_struct *vma)
