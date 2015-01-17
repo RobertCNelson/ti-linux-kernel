@@ -3442,9 +3442,13 @@ static ssize_t mem_cgroup_write(struct kernfs_open_file *of,
 	int ret;
 
 	buf = strstrip(buf);
-	ret = page_counter_memparse(buf, &nr_pages);
-	if (ret)
-		return ret;
+	if (!strcmp(buf, "-1")) {
+		nr_pages = PAGE_COUNTER_MAX;
+	} else {
+		ret = page_counter_memparse(buf, &nr_pages);
+		if (ret)
+			return ret;
+	}
 
 	switch (MEMFILE_ATTR(of_cft(of)->private)) {
 	case RES_LIMIT:
@@ -3814,9 +3818,13 @@ static int __mem_cgroup_usage_register_event(struct mem_cgroup *memcg,
 	unsigned long usage;
 	int i, size, ret;
 
-	ret = page_counter_memparse(args, &threshold);
-	if (ret)
-		return ret;
+	if (!strcmp(args, "-1")) {
+		threshold = PAGE_COUNTER_MAX;
+	} else {
+		ret = page_counter_memparse(args, &threshold);
+		if (ret)
+			return ret;
+	}
 
 	mutex_lock(&memcg->thresholds_lock);
 
