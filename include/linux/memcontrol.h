@@ -267,7 +267,7 @@ mem_cgroup_inactive_anon_is_low(struct lruvec *lruvec)
 	return 1;
 }
 
-bool mem_cgroup_lruvec_online(struct lruvec *lruvec)
+static inline bool mem_cgroup_lruvec_online(struct lruvec *lruvec)
 {
 	return true;
 }
