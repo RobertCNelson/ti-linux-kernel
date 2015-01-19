@@ -2001,9 +2001,15 @@ static int filename_lookup(int dfd, struct filename *name,
 static int do_path_lookup(int dfd, const char *name,
 				unsigned int flags, struct nameidata *nd)
 {
-	struct filename filename = { .name = name };
+	int retval;
+	struct filename *filename;
 
-	return filename_lookup(dfd, &filename, flags, nd);
+	filename = getname_kernel(name);
+	if (unlikely(IS_ERR(filename)))
+		return PTR_ERR(filename);
+	retval = filename_lookup(dfd, filename, flags, nd);
+	putname(filename);
+	return retval;
 }
 
 /* does lookup, returns the object with parent locked */
@@ -2368,8 +2374,15 @@ int
 kern_path_mountpoint(int dfd, const char *name, struct path *path,
 			unsigned int flags)
 {
-	struct filename s = {.name = name};
-	return filename_mountpoint(dfd, &s, path, flags);
+	int retval;
+	struct filename *s;
+
+	s = getname_kernel(name);
+	if (unlikely(IS_ERR(s)))
+		return PTR_ERR(s);
+	retval = filename_mountpoint(dfd, s, path, flags);
+	putname(s);
+	return retval;
 }
 EXPORT_SYMBOL(kern_path_mountpoint);
 
@@ -3259,7 +3272,7 @@ struct file *do_file_open_root(struct dentry *dentry, struct vfsmount *mnt,
 {
 	struct nameidata nd;
 	struct file *file;
-	struct filename filename = { .name = name };
+	struct filename *filename;
 	int flags = op->lookup_flags | LOOKUP_ROOT;
 
 	nd.root.mnt = mnt;
@@ -3268,11 +3281,16 @@ struct file *do_file_open_root(struct dentry *dentry, struct vfsmount *mnt,
 	if (d_is_symlink(dentry) && op->intent & LOOKUP_OPEN)
 		return ERR_PTR(-ELOOP);
 
-	file = path_openat(-1, &filename, &nd, op, flags | LOOKUP_RCU);
+	filename = getname_kernel(name);
+	if (unlikely(IS_ERR(filename)))
+		return (void *)filename;
+
+	file = path_openat(-1, filename, &nd, op, flags | LOOKUP_RCU);
 	if (unlikely(file == ERR_PTR(-ECHILD)))
-		file = path_openat(-1, &filename, &nd, op, flags);
+		file = path_openat(-1, filename, &nd, op, flags);
 	if (unlikely(file == ERR_PTR(-ESTALE)))
-		file = path_openat(-1, &filename, &nd, op, flags | LOOKUP_REVAL);
+		file = path_openat(-1, filename, &nd, op, flags | LOOKUP_REVAL);
+	putname(filename);
 	return file;
 }
 
