@@ -1883,6 +1883,10 @@ out_alloc:
 	n = audit_alloc_name(context, AUDIT_TYPE_NORMAL);
 	if (!n)
 		return;
+	if (name)
+		/* no need to set ->name_put as the original will cleanup */
+		n->name = name;
+
 out:
 	if (parent) {
 		n->name_len = n->name ? parent_len(n->name->name) : AUDIT_NAME_FULL;

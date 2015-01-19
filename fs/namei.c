@@ -242,6 +242,7 @@ getname_kernel(const char * filename)
 	strlcpy((char *)result->name, filename, len);
 	result->uptr = NULL;
 	result->aname = NULL;
+	audit_getname(result);
 
 	return result;
 }
