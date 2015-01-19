@@ -117,15 +117,6 @@
  * POSIX.1 2.4: an empty pathname is invalid (ENOENT).
  * PATH_MAX includes the nul terminator --RR.
  */
-void final_putname(struct filename *name)
-{
-	if (name->separate) {
-		__putname(name->name);
-		kfree(name);
-	} else {
-		__putname(name);
-	}
-}
 
 #define EMBEDDED_NAME_MAX	(PATH_MAX - sizeof(struct filename))
 
@@ -144,6 +135,7 @@ getname_flags(const char __user *filename, int flags, int *empty)
 	result = __getname();
 	if (unlikely(!result))
 		return ERR_PTR(-ENOMEM);
+	result->refcnt = 1;
 
 	/*
 	 * First, try to embed the struct filename inside the names_cache
@@ -178,6 +170,7 @@ recopy:
 		}
 		result->name = kname;
 		result->separate = true;
+		result->refcnt = 1;
 		max = PATH_MAX;
 		goto recopy;
 	}
@@ -201,7 +194,7 @@ recopy:
 	return result;
 
 error:
-	final_putname(result);
+	putname(result);
 	return err;
 }
 
@@ -242,19 +235,25 @@ getname_kernel(const char * filename)
 	strlcpy((char *)result->name, filename, len);
 	result->uptr = NULL;
 	result->aname = NULL;
+	result->refcnt = 1;
 	audit_getname(result);
 
 	return result;
 }
 
-#ifdef CONFIG_AUDITSYSCALL
 void putname(struct filename *name)
 {
-	if (unlikely(!audit_dummy_context()))
-		return audit_putname(name);
-	final_putname(name);
+	BUG_ON(name->refcnt <= 0);
+
+	if (--name->refcnt > 0)
+		return;
+
+	if (name->separate) {
+		__putname(name->name);
+		kfree(name);
+	} else
+		__putname(name);
 }
-#endif
 
 static int check_acl(struct inode *inode, int mask)
 {
