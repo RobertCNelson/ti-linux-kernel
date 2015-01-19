@@ -12,8 +12,12 @@
  */
 
 /dts-v1/;
-/include/ "sun7i-a20.dtsi"
-/include/ "sunxi-common-regulators.dtsi"
+#include "sun7i-a20.dtsi"
+#include "sunxi-common-regulators.dtsi"
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/pinctrl/sun4i-a10.h>
 
 / {
 	model = "Cubietech Cubieboard2";
@@ -25,7 +29,7 @@
 			pinctrl-0 = <&mmc0_pins_a>, <&mmc0_cd_pin_reference_design>;
 			vmmc-supply = <&reg_vcc3v3>;
 			bus-width = <4>;
-			cd-gpios = <&pio 7 1 0>; /* PH1 */
+			cd-gpios = <&pio 7 1 GPIO_ACTIVE_HIGH>; /* PH1 */
 			cd-inverted;
 			status = "okay";
 		};
@@ -61,8 +65,8 @@
 			led_pins_cubieboard2: led_pins@0 {
 				allwinner,pins = "PH20", "PH21";
 				allwinner,function = "gpio_out";
-				allwinner,drive = <0>;
-				allwinner,pull = <0>;
+				allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+				allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 			};
 		};
 
@@ -87,7 +91,7 @@
 				compatible = "x-powers,axp209";
 				reg = <0x34>;
 				interrupt-parent = <&nmi_intc>;
-				interrupts = <0 8>;
+				interrupts = <0 IRQ_TYPE_LEVEL_LOW>;
 
 				interrupt-controller;
 				#interrupt-cells = <1>;
@@ -120,12 +124,12 @@
 
 		blue {
 			label = "cubieboard2:blue:usr";
-			gpios = <&pio 7 21 0>;
+			gpios = <&pio 7 21 GPIO_ACTIVE_HIGH>;
 		};
 
 		green {
 			label = "cubieboard2:green:usr";
-			gpios = <&pio 7 20 0>;
+			gpios = <&pio 7 20 GPIO_ACTIVE_HIGH>;
 		};
 	};
 
