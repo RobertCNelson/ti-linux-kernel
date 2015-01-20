@@ -7,11 +7,29 @@
 #include "comedi_fc.h"
 #include "amcc_s5933.h"
 
+/*
+ * PCI Bar 0 Register map (devpriv->amcc)
+ * see amcc_s5933.h for register and bit defines
+ */
+
+/*
+ * PCI Bar 1 Register map (dev->iobase)
+ */
+#define APCI1500_Z8536_PORTC_REG	0x00
+#define APCI1500_Z8536_PORTB_REG	0x01
+#define APCI1500_Z8536_PORTA_REG	0x02
+#define APCI1500_Z8536_CTRL_REG		0x03
+
+/*
+ * PCI Bar 2 Register map (devpriv->addon)
+ */
+#define APCI1500_CLK_SEL_REG		0x00
+#define APCI1500_DI_REG			0x00
+#define APCI1500_DO_REG			0x02
+
 struct apci1500_private {
-	int iobase;
-	int i_IobaseAmcc;
-	int i_IobaseAddon;
-	int i_IobaseReserved;
+	unsigned long amcc;
+	unsigned long addon;
 	unsigned char b_OutputMemoryStatus;
 	struct task_struct *tsk_Current;
 };
@@ -35,10 +53,8 @@ static int apci1500_auto_attach(struct comedi_device *dev,
 		return ret;
 
 	dev->iobase = pci_resource_start(pcidev, 1);
-	devpriv->iobase = dev->iobase;
-	devpriv->i_IobaseAmcc = pci_resource_start(pcidev, 0);
-	devpriv->i_IobaseAddon = pci_resource_start(pcidev, 2);
-	devpriv->i_IobaseReserved = pci_resource_start(pcidev, 3);
+	devpriv->amcc = pci_resource_start(pcidev, 0);
+	devpriv->addon = pci_resource_start(pcidev, 2);
 
 	if (pcidev->irq > 0) {
 		ret = request_irq(pcidev->irq, apci1500_interrupt, IRQF_SHARED,
