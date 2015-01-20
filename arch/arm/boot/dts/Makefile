@@ -1,5 +1,7 @@
 ifeq ($(CONFIG_OF),y)
 
+dtb-$(CONFIG_MACH_ASM9260) += \
+	alphascale-asm9260-devkit.dtb
 # Keep at91 dtb files sorted alphabetically for each SoC
 # rm9200
 dtb-$(CONFIG_ARCH_AT91) += at91rm9200ek.dtb
@@ -627,7 +629,6 @@ dtb-$(CONFIG_ARCH_MEDIATEK) += \
 	mt6592-evb.dtb \
 	mt8127-moose.dtb \
 	mt8135-evbp1.dtb
-
 endif
 
 always		:= $(dtb-y)
