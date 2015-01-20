@@ -53,6 +53,7 @@ config PWM_ATMEL
 config PWM_ATMEL_HLCDC_PWM
 	tristate "Atmel HLCDC PWM support"
 	depends on MFD_ATMEL_HLCDC
+	depends on HAVE_CLK
 	help
 	  Generic PWM framework driver for the PWM output of the HLCDC
 	  (Atmel High-end LCD Controller). This PWM output is mainly used
@@ -282,6 +283,16 @@ config PWM_STI
 
 	  To compile this driver as a module, choose M here: the module
 	  will be called pwm-sti.
+
+config PWM_SUN4I
+	tristate "Allwinner PWM support"
+	depends on ARCH_SUNXI || COMPILE_TEST
+	depends on HAS_IOMEM && COMMON_CLK
+	help
+	  Generic PWM framework driver for Allwinner SoCs.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called pwm-sun4i.
 
 config PWM_TEGRA
 	tristate "NVIDIA Tegra PWM support"
