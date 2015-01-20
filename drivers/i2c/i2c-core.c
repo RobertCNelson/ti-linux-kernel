@@ -102,7 +102,7 @@ static int acpi_i2c_add_resource(struct acpi_resource *ares, void *data)
 		struct acpi_resource_i2c_serialbus *sb;
 
 		sb = &ares->data.i2c_serial_bus;
-		if (sb->type == ACPI_RESOURCE_SERIAL_TYPE_I2C) {
+		if (!info->addr && sb->type == ACPI_RESOURCE_SERIAL_TYPE_I2C) {
 			info->addr = sb->slave_address;
 			if (sb->access_mode == ACPI_I2C_10BIT_MODE)
 				info->flags |= I2C_CLIENT_TEN;
@@ -698,101 +698,6 @@ static void i2c_device_shutdown(struct device *dev)
 		driver->shutdown(client);
 }
 
-#ifdef CONFIG_PM_SLEEP
-static int i2c_legacy_suspend(struct device *dev, pm_message_t mesg)
-{
-	struct i2c_client *client = i2c_verify_client(dev);
-	struct i2c_driver *driver;
-
-	if (!client || !dev->driver)
-		return 0;
-	driver = to_i2c_driver(dev->driver);
-	if (!driver->suspend)
-		return 0;
-	return driver->suspend(client, mesg);
-}
-
-static int i2c_legacy_resume(struct device *dev)
-{
-	struct i2c_client *client = i2c_verify_client(dev);
-	struct i2c_driver *driver;
-
-	if (!client || !dev->driver)
-		return 0;
-	driver = to_i2c_driver(dev->driver);
-	if (!driver->resume)
-		return 0;
-	return driver->resume(client);
-}
-
-static int i2c_device_pm_suspend(struct device *dev)
-{
-	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
-
-	if (pm)
-		return pm_generic_suspend(dev);
-	else
-		return i2c_legacy_suspend(dev, PMSG_SUSPEND);
-}
-
-static int i2c_device_pm_resume(struct device *dev)
-{
-	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
-
-	if (pm)
-		return pm_generic_resume(dev);
-	else
-		return i2c_legacy_resume(dev);
-}
-
-static int i2c_device_pm_freeze(struct device *dev)
-{
-	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
-
-	if (pm)
-		return pm_generic_freeze(dev);
-	else
-		return i2c_legacy_suspend(dev, PMSG_FREEZE);
-}
-
-static int i2c_device_pm_thaw(struct device *dev)
-{
-	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
-
-	if (pm)
-		return pm_generic_thaw(dev);
-	else
-		return i2c_legacy_resume(dev);
-}
-
-static int i2c_device_pm_poweroff(struct device *dev)
-{
-	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
-
-	if (pm)
-		return pm_generic_poweroff(dev);
-	else
-		return i2c_legacy_suspend(dev, PMSG_HIBERNATE);
-}
-
-static int i2c_device_pm_restore(struct device *dev)
-{
-	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
-
-	if (pm)
-		return pm_generic_restore(dev);
-	else
-		return i2c_legacy_resume(dev);
-}
-#else /* !CONFIG_PM_SLEEP */
-#define i2c_device_pm_suspend	NULL
-#define i2c_device_pm_resume	NULL
-#define i2c_device_pm_freeze	NULL
-#define i2c_device_pm_thaw	NULL
-#define i2c_device_pm_poweroff	NULL
-#define i2c_device_pm_restore	NULL
-#endif /* !CONFIG_PM_SLEEP */
-
 static void i2c_client_dev_release(struct device *dev)
 {
 	kfree(to_i2c_client(dev));
@@ -837,27 +742,12 @@ static const struct attribute_group *i2c_dev_attr_groups[] = {
 	NULL
 };
 
-static const struct dev_pm_ops i2c_device_pm_ops = {
-	.suspend = i2c_device_pm_suspend,
-	.resume = i2c_device_pm_resume,
-	.freeze = i2c_device_pm_freeze,
-	.thaw = i2c_device_pm_thaw,
-	.poweroff = i2c_device_pm_poweroff,
-	.restore = i2c_device_pm_restore,
-	SET_RUNTIME_PM_OPS(
-		pm_generic_runtime_suspend,
-		pm_generic_runtime_resume,
-		NULL
-	)
-};
-
 struct bus_type i2c_bus_type = {
 	.name		= "i2c",
 	.match		= i2c_device_match,
 	.probe		= i2c_device_probe,
 	.remove		= i2c_device_remove,
 	.shutdown	= i2c_device_shutdown,
-	.pm		= &i2c_device_pm_ops,
 };
 EXPORT_SYMBOL_GPL(i2c_bus_type);
 
@@ -1122,6 +1012,10 @@ EXPORT_SYMBOL_GPL(i2c_new_device);
  */
 void i2c_unregister_device(struct i2c_client *client)
 {
+#if IS_ENABLED(CONFIG_OF_DYNAMIC)
+	if (client->dev.of_node)
+		of_node_clear_flag(client->dev.of_node, OF_POPULATED);
+#endif
 	device_unregister(&client->dev);
 }
 EXPORT_SYMBOL_GPL(i2c_unregister_device);
@@ -1441,8 +1335,11 @@ static void of_i2c_register_devices(struct i2c_adapter *adap)
 
 	dev_dbg(&adap->dev, "of_i2c: walking child nodes\n");
 
-	for_each_available_child_of_node(adap->dev.of_node, node)
+	for_each_available_child_of_node(adap->dev.of_node, node) {
+		if (of_node_test_and_set_flag(node, OF_POPULATED))
+			continue;
 		of_i2c_register_device(adap, node);
+	}
 }
 
 static int of_dev_node_match(struct device *dev, void *data)
@@ -1859,14 +1756,6 @@ int i2c_register_driver(struct module *owner, struct i2c_driver *driver)
 	if (res)
 		return res;
 
-	/* Drivers should switch to dev_pm_ops instead. */
-	if (driver->suspend)
-		pr_warn("i2c-core: driver [%s] using legacy suspend method\n",
-			driver->driver.name);
-	if (driver->resume)
-		pr_warn("i2c-core: driver [%s] using legacy resume method\n",
-			driver->driver.name);
-
 	pr_debug("i2c-core: driver [%s] registered\n", driver->driver.name);
 
 	INIT_LIST_HEAD(&driver->clients);
@@ -1976,6 +1865,11 @@ static int of_i2c_notify(struct notifier_block *nb, unsigned long action,
 		if (adap == NULL)
 			return NOTIFY_OK;	/* not for us */
 
+		if (of_node_test_and_set_flag(rd->dn, OF_POPULATED)) {
+			put_device(&adap->dev);
+			return NOTIFY_OK;
+		}
+
 		client = of_i2c_register_device(adap, rd->dn);
 		put_device(&adap->dev);
 
@@ -1986,6 +1880,10 @@ static int of_i2c_notify(struct notifier_block *nb, unsigned long action,
 		}
 		break;
 	case OF_RECONFIG_CHANGE_REMOVE:
+		/* already depopulated? */
+		if (!of_node_check_flag(rd->dn, OF_POPULATED))
+			return NOTIFY_OK;
+
 		/* find our device by node */
 		client = of_find_i2c_device_by_node(rd->dn);
 		if (client == NULL)
