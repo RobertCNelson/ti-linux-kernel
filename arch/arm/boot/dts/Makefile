@@ -392,6 +392,7 @@ dtb-$(CONFIG_ARCH_OMAP3) += \
 	omap3-sbc-t3730.dtb \
 	omap3-thunder.dtb \
 	omap3-zoom3.dtb
+dtb-$(CONFIG_SOC_TI81XX) += dm8168-evm.dtb
 dtb-$(CONFIG_SOC_AM33XX) += \
 	am335x-base0033.dtb \
 	am335x-bone.dtb \
@@ -413,6 +414,7 @@ dtb-$(CONFIG_ARCH_OMAP4) += \
 dtb-$(CONFIG_SOC_AM43XX) += \
 	am43x-epos-evm.dtb \
 	am437x-sk-evm.dtb \
+	am437x-idk-evm.dtb \
 	am437x-gp-evm.dtb
 dtb-$(CONFIG_SOC_OMAP5) += \
 	omap5-cm-t54.dtb \
