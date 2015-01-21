@@ -1,5 +1,5 @@
 /*
- * Line6 Linux USB driver - 0.9.1beta
+ * Line 6 Linux USB driver
  *
  * Copyright (C) 2004-2010 Markus Grabner (grabner@icg.tugraz.at)
  *
@@ -25,7 +25,7 @@
 #define LINE6_MESSAGE_MAXLEN 256
 
 /*
-	Line6 MIDI control commands
+	Line 6 MIDI control commands
 */
 #define LINE6_PARAM_CHANGE   0xb0
 #define LINE6_PROGRAM_CHANGE 0xc0
@@ -48,17 +48,6 @@
 
 #define LINE6_CHANNEL_MASK 0x0f
 
-#define MISSING_CASE	\
-	pr_err("line6usb driver bug: missing case in %s:%d\n", \
-		__FILE__, __LINE__)
-
-#define CHECK_RETURN(x)		\
-do {				\
-	err = x;		\
-	if (err < 0)		\
-		return err;	\
-} while (0)
-
 #define CHECK_STARTUP_PROGRESS(x, n)	\
 do {					\
 	if ((x) >= (n))			\
@@ -72,14 +61,9 @@ static const int SYSEX_DATA_OFS = sizeof(line6_midi_id) + 3;
 static const int SYSEX_EXTRA_SIZE = sizeof(line6_midi_id) + 4;
 
 /**
-	 Common properties of Line6 devices.
+	 Common properties of Line 6 devices.
 */
 struct line6_properties {
-	/**
-		 Bit identifying this device in the line6usb driver.
-	*/
-	int device_bit;
-
 	/**
 		 Card id string (maximum 16 characters).
 		 This can be used to address the device in ALSA programs as
@@ -97,10 +81,17 @@ struct line6_properties {
 		 line6usb driver.
 	*/
 	int capabilities;
+
+	int altsetting;
+
+	unsigned ep_ctrl_r;
+	unsigned ep_ctrl_w;
+	unsigned ep_audio_r;
+	unsigned ep_audio_w;
 };
 
 /**
-	 Common data shared by all Line6 devices.
+	 Common data shared by all Line 6 devices.
 	 Corresponds to a pair of USB endpoints.
 */
 struct usb_line6 {
@@ -110,19 +101,9 @@ struct usb_line6 {
 	struct usb_device *usbdev;
 
 	/**
-		 Product id.
-	*/
-	int product;
-
-	/**
 		 Properties.
 	*/
 	const struct line6_properties *properties;
-
-	/**
-		 Interface number.
-	*/
-	int interface_number;
 
 	/**
 		 Interval (ms).
@@ -140,30 +121,20 @@ struct usb_line6 {
 	struct device *ifcdev;
 
 	/**
-		 Line6 sound card data structure.
+		 Line 6 sound card data structure.
 		 Each device has at least MIDI or PCM.
 	*/
 	struct snd_card *card;
 
 	/**
-		 Line6 PCM device data structure.
+		 Line 6 PCM device data structure.
 	*/
 	struct snd_line6_pcm *line6pcm;
 
 	/**
-		 Line6 MIDI device data structure.
+		 Line 6 MIDI device data structure.
 	*/
 	struct snd_line6_midi *line6midi;
-
-	/**
-		 USB endpoint for listening to control commands.
-	*/
-	int ep_control_read;
-
-	/**
-		 USB endpoint for writing control commands.
-	*/
-	int ep_control_write;
 
 	/**
 		 URB for listening to PODxt Pro control endpoint.
@@ -184,6 +155,9 @@ struct usb_line6 {
 		 Length of message to be processed.
 	*/
 	int message_length;
+
+	void (*process_message)(struct usb_line6 *);
+	void (*disconnect)(struct usb_interface *);
 };
 
 extern char *line6_alloc_sysex_buffer(struct usb_line6 *line6, int code1,
@@ -194,9 +168,6 @@ extern int line6_read_data(struct usb_line6 *line6, int address, void *data,
 			   size_t datalen);
 extern int line6_read_serial_number(struct usb_line6 *line6,
 				    int *serial_number);
-extern int line6_send_program(struct usb_line6 *line6, u8 value);
-extern int line6_send_raw_message(struct usb_line6 *line6, const char *buffer,
-				  int size);
 extern int line6_send_raw_message_async(struct usb_line6 *line6,
 					const char *buffer, int size);
 extern int line6_send_sysex_message(struct usb_line6 *line6,
@@ -206,10 +177,19 @@ extern ssize_t line6_set_raw(struct device *dev, struct device_attribute *attr,
 extern void line6_start_timer(struct timer_list *timer, unsigned int msecs,
 			      void (*function)(unsigned long),
 			      unsigned long data);
-extern int line6_transmit_parameter(struct usb_line6 *line6, int param,
-				    u8 value);
 extern int line6_version_request_async(struct usb_line6 *line6);
 extern int line6_write_data(struct usb_line6 *line6, int address, void *data,
 			    size_t datalen);
+
+int line6_probe(struct usb_interface *interface,
+		struct usb_line6 *line6,
+		const struct line6_properties *properties,
+		int (*private_init)(struct usb_interface *, struct usb_line6 *));
+void line6_disconnect(struct usb_interface *interface);
+
+#ifdef CONFIG_PM
+int line6_suspend(struct usb_interface *interface, pm_message_t message);
+int line6_resume(struct usb_interface *interface);
+#endif
 
 #endif
