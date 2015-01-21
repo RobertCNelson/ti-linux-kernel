@@ -1,0 +1,69 @@
+next/fixes-non-critical
+	brcm/maintainers (4):
+		http://github.com/broadcom/stblinux tags/arm-soc/for-3.20/maintainer
+
+next/cleanup
+	renesas/lager-board-removal (6):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-lager-board-removal-for-v3.20
+	patch:
+		ARM: versatile: core: Remove unused function
+	at91/cleanup (11):
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-cleanup
+
+next/soc
+	renesas/soc (4):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-for-v3.20
+	brcm/stb-smp (1):
+		http://github.com/broadcom/stblinux tags/arm-soc/for-3.20/brcmstb-smp
+	mvebu/soc (3):
+		git://git.infradead.org/linux-mvebu tags/mvebu-soc-3.20
+
+next/boards
+
+next/dt
+	renesas/dt-cleanup (7):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-cleanups-for-v3.20
+	renesas/dt (30):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-for-v3.20
+	patch:
+		ARM: dts: Only build dtb if associated Arch and/or SoC is enabled
+	berlin/dt (2):
+		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-dt-for-3.20-1
+	mtk/dt (8):
+		https://github.com/mbgg/linux-mediatek tags/v3.20-next-dts
+	mvebu/dt (13):
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-3.20
+	csr/atlas7-init-dts (2):
+		git://git.kernel.org/pub/scm/linux/kernel/git/baohua/linux tags/atlas7-init-dts-for-3.20
+	at91/dt (18):
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-dt
+
+next/drivers
+	renesas/sh73a0-ccf (6):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-sh73a0-ccf-for-v3.20
+	at91/drivers (12):
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-drivers
+
+next/defconfig
+	renesas/defconfig (5):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig-for-v3.20
+	mtk/defconfig (1):
+		https://github.com/mbgg/linux-mediatek tags/v3.20-next-defconfig
+	patch:
+		ARM: config: multi_v7: Update it for Keystone defconfig
+	mvebu/defconfig (1):
+		git://git.infradead.org/linux-mvebu tags/mvebu-defconfig-3.20
+	patch:
+		ARM: multi_v7_defconfig: Enable Hip01 platform
+		ARM: efm32: update defconfig
+	at91/defconfig (2):
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-defconfig
+
+next/arm64
+	exynos/dt-64 (5):
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt-64
+
+fixes
+	patch:
+		Merge tag 'mvebu-fixes-3.19-3' of git://git.infradead.org/linux-mvebu into fixes
+
