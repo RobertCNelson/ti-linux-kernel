@@ -17,6 +17,16 @@ next/soc
 		http://github.com/broadcom/stblinux tags/arm-soc/for-3.20/brcmstb-smp
 	mvebu/soc (3):
 		git://git.infradead.org/linux-mvebu tags/mvebu-soc-3.20
+	<no branch> (01ea63d99397fcdcb9cc235c77a8e11f4e4a63e9) (2):
+		git://git.kernel.org/pub/scm/linux/kernel/git/baohua/linux tags/atlas7-lldebug-for-3.20
+	<no branch> (4cba058526a7563603ab18f06e298633dd69fc77) (5):
+		git://git.kernel.org/pub/scm/linux/kernel/git/baohua/linux tags/new-atlas7mach-for-3.20
+	patch:
+		ARM: debug: add HiP01 debug uart
+		ARM: hisi: enable HiP01 SoC
+		ARM: hisi: rename smp_prepares_cpus function
+		ARM: hisi: rename secondary_startup function
+		ARM: hisi: enable smp for HiP01
 
 next/boards
 
@@ -43,6 +53,8 @@ next/dt
 		ARM: dts: move alphascale in makefile
 	renesas/dt-cleanup2 (4):
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-cleanups2-for-v3.20
+	patch:
+		ARM: dts: Add hip01-ca9x2 dts file
 
 next/drivers
 	renesas/sh73a0-ccf (6):
@@ -64,6 +76,8 @@ next/defconfig
 		ARM: efm32: update defconfig
 	at91/defconfig (2):
 		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-defconfig
+	patch:
+		ARM: config: enable ARCH_HIP01
 
 next/arm64
 	exynos/dt-64 (5):
