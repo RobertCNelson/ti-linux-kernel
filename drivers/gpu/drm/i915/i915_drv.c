@@ -942,8 +942,7 @@ static int i915_pm_suspend(struct device *dev)
 
 static int i915_pm_suspend_late(struct device *dev)
 {
-	struct pci_dev *pdev = to_pci_dev(dev);
-	struct drm_device *drm_dev = pci_get_drvdata(pdev);
+	struct drm_device *drm_dev = dev_to_i915(dev)->dev;
 
 	/*
 	 * We have a suspedn ordering issue with the snd-hda driver also
@@ -962,8 +961,7 @@ static int i915_pm_suspend_late(struct device *dev)
 
 static int i915_pm_resume_early(struct device *dev)
 {
-	struct pci_dev *pdev = to_pci_dev(dev);
-	struct drm_device *drm_dev = pci_get_drvdata(pdev);
+	struct drm_device *drm_dev = dev_to_i915(dev)->dev;
 
 	if (drm_dev->switch_power_state == DRM_SWITCH_POWER_OFF)
 		return 0;
@@ -973,8 +971,7 @@ static int i915_pm_resume_early(struct device *dev)
 
 static int i915_pm_resume(struct device *dev)
 {
-	struct pci_dev *pdev = to_pci_dev(dev);
-	struct drm_device *drm_dev = pci_get_drvdata(pdev);
+	struct drm_device *drm_dev = dev_to_i915(dev)->dev;
 
 	if (drm_dev->switch_power_state == DRM_SWITCH_POWER_OFF)
 		return 0;
@@ -1368,8 +1365,6 @@ static int intel_runtime_suspend(struct device *device)
 	if (WARN_ON_ONCE(!HAS_RUNTIME_PM(dev)))
 		return -ENODEV;
 
-	assert_force_wake_inactive(dev_priv);
-
 	DRM_DEBUG_KMS("Suspending device\n");
 
 	/*
@@ -1408,6 +1403,7 @@ static int intel_runtime_suspend(struct device *device)
 	}
 
 	del_timer_sync(&dev_priv->gpu_error.hangcheck_timer);
+	intel_uncore_forcewake_reset(dev, false);
 	dev_priv->pm.suspended = true;
 
 	/*
@@ -1434,6 +1430,8 @@ static int intel_runtime_suspend(struct device *device)
 		 */
 		intel_opregion_notify_adapter(dev, PCI_D3hot);
 	}
+
+	assert_forcewakes_inactive(dev_priv);
 
 	DRM_DEBUG_KMS("Device suspended\n");
 	return 0;
