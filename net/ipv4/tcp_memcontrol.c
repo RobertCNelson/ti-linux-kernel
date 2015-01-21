@@ -120,9 +120,13 @@ static ssize_t tcp_cgroup_write(struct kernfs_open_file *of,
 	switch (of_cft(of)->private) {
 	case RES_LIMIT:
 		/* see memcontrol.c */
-		ret = page_counter_memparse(buf, &nr_pages);
-		if (ret)
-			break;
+		if (!strcmp(buf, "-1")) {
+			nr_pages = PAGE_COUNTER_MAX;
+		} else {
+			ret = page_counter_memparse(buf, &nr_pages);
+			if (ret)
+				break;
+		}
 		mutex_lock(&tcp_limit_mutex);
 		ret = tcp_update_limit(memcg, nr_pages);
 		mutex_unlock(&tcp_limit_mutex);
