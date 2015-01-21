@@ -708,8 +708,8 @@ unsigned int cfg80211_classify8021d(struct sk_buff *skb,
 	if (skb->priority >= 256 && skb->priority <= 263)
 		return skb->priority - 256;
 
-	if (vlan_tx_tag_present(skb)) {
-		vlan_priority = (vlan_tx_tag_get(skb) & VLAN_PRIO_MASK)
+	if (skb_vlan_tag_present(skb)) {
+		vlan_priority = (skb_vlan_tag_get(skb) & VLAN_PRIO_MASK)
 			>> VLAN_PRIO_SHIFT;
 		if (vlan_priority > 0)
 			return vlan_priority;
@@ -1073,10 +1073,24 @@ static u32 cfg80211_calculate_bitrate_vht(struct rate_info *rate)
 	if (WARN_ON_ONCE(rate->mcs > 9))
 		return 0;
 
-	idx = rate->flags & (RATE_INFO_FLAGS_160_MHZ_WIDTH |
-			     RATE_INFO_FLAGS_80P80_MHZ_WIDTH) ? 3 :
-		  rate->flags & RATE_INFO_FLAGS_80_MHZ_WIDTH ? 2 :
-		  rate->flags & RATE_INFO_FLAGS_40_MHZ_WIDTH ? 1 : 0;
+	switch (rate->bw) {
+	case RATE_INFO_BW_160:
+		idx = 3;
+		break;
+	case RATE_INFO_BW_80:
+		idx = 2;
+		break;
+	case RATE_INFO_BW_40:
+		idx = 1;
+		break;
+	case RATE_INFO_BW_5:
+	case RATE_INFO_BW_10:
+	default:
+		WARN_ON(1);
+		/* fall through */
+	case RATE_INFO_BW_20:
+		idx = 0;
+	}
 
 	bitrate = base[idx][rate->mcs];
 	bitrate *= rate->nss;
@@ -1107,8 +1121,7 @@ u32 cfg80211_calculate_bitrate(struct rate_info *rate)
 	modulation = rate->mcs & 7;
 	streams = (rate->mcs >> 3) + 1;
 
-	bitrate = (rate->flags & RATE_INFO_FLAGS_40_MHZ_WIDTH) ?
-			13500000 : 6500000;
+	bitrate = (rate->bw == RATE_INFO_BW_40) ? 13500000 : 6500000;
 
 	if (modulation < 4)
 		bitrate *= (modulation + 1);

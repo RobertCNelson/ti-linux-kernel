@@ -30,6 +30,8 @@
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#define _GNU_SOURCE
+
 #include <arpa/inet.h>
 #include <asm/types.h>
 #include <error.h>
@@ -58,14 +60,6 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
-
-/* ugly hack to work around netinet/in.h and linux/ipv6.h conflicts */
-#ifndef in6_pktinfo
-struct in6_pktinfo {
-	struct in6_addr	ipi6_addr;
-	int		ipi6_ifindex;
-};
-#endif
 
 /* command line parameters */
 static int cfg_proto = SOCK_STREAM;
