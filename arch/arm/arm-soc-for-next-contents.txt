@@ -37,6 +37,12 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/baohua/linux tags/atlas7-init-dts-for-3.20
 	at91/dt (18):
 		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-dt
+	asm/dt (3):
+		Merge branch 'asm/dt' into next/dt
+	patch:
+		ARM: dts: move alphascale in makefile
+	renesas/dt-cleanup2 (4):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-cleanups2-for-v3.20
 
 next/drivers
 	renesas/sh73a0-ccf (6):
@@ -66,4 +72,6 @@ next/arm64
 fixes
 	patch:
 		Merge tag 'mvebu-fixes-3.19-3' of git://git.infradead.org/linux-mvebu into fixes
+	<no branch> (0fb22a8fb7f3bc1b00a36d4a97ce4f93191f7559) (2):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/gic-regression-v2
 
