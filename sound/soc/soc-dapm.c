@@ -517,8 +517,8 @@ static int soc_dapm_update_bits(struct snd_soc_dapm_context *dapm,
 {
 	if (!dapm->component)
 		return -EIO;
-	return snd_soc_component_update_bits_async(dapm->component, reg,
-		mask, value);
+	return snd_soc_component_update_bits(dapm->component, reg,
+					     mask, value);
 }
 
 static int soc_dapm_test_bits(struct snd_soc_dapm_context *dapm,
@@ -3144,8 +3144,6 @@ snd_soc_dapm_new_control(struct snd_soc_dapm_context *dapm,
 	}
 
 	w->dapm = dapm;
-	if (dapm->component)
-		w->codec = dapm->component->codec;
 	INIT_LIST_HEAD(&w->sources);
 	INIT_LIST_HEAD(&w->sinks);
 	INIT_LIST_HEAD(&w->list);
