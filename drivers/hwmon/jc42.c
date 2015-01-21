@@ -201,7 +201,7 @@ struct jc42_data {
 #define JC42_TEMP_MIN		0
 #define JC42_TEMP_MAX		125000
 
-static u16 jc42_temp_to_reg(int temp, bool extended)
+static u16 jc42_temp_to_reg(long temp, bool extended)
 {
 	int ntemp = clamp_val(temp,
 			      extended ? JC42_TEMP_MIN_EXTENDED :
@@ -213,11 +213,7 @@ static u16 jc42_temp_to_reg(int temp, bool extended)
 
 static int jc42_temp_from_reg(s16 reg)
 {
-	reg &= 0x1fff;
-
-	/* sign extend register */
-	if (reg & 0x1000)
-		reg |= 0xf000;
+	reg = sign_extend32(reg, 12);
 
 	/* convert from 0.0625 to 0.001 resolution */
 	return reg * 125 / 2;
@@ -316,7 +312,9 @@ static ssize_t set_temp_crit_hyst(struct device *dev,
 	if (kstrtoul(buf, 10, &val) < 0)
 		return -EINVAL;
 
+	val = clamp_val(val, 0, JC42_TEMP_MAX);
 	diff = jc42_temp_from_reg(data->temp[t_crit]) - val;
+
 	hyst = 0;
 	if (diff > 0) {
 		if (diff < 2250)
