@@ -1572,6 +1572,10 @@ static void vnt_configure(struct ieee80211_hw *hw,
 
 	if (changed_flags & FIF_ALLMULTI) {
 		if (*total_flags & FIF_ALLMULTI) {
+			unsigned long flags;
+
+			spin_lock_irqsave(&priv->lock, flags);
+
 			if (priv->mc_list_count > 2) {
 				MACvSelectPage1(priv->PortOffset);
 
@@ -1592,6 +1596,8 @@ static void vnt_configure(struct ieee80211_hw *hw,
 
 				MACvSelectPage0(priv->PortOffset);
 			}
+
+			spin_unlock_irqrestore(&priv->lock, flags);
 
 			rx_mode |= RCR_MULTICAST | RCR_BROADCAST;
 		} else {
@@ -1676,7 +1682,7 @@ static const struct ieee80211_ops vnt_mac_ops = {
 	.reset_tsf		= vnt_reset_tsf,
 };
 
-int vnt_init(struct vnt_private *priv)
+static int vnt_init(struct vnt_private *priv)
 {
 	SET_IEEE80211_PERM_ADDR(priv->hw, priv->abyCurrentNetAddr);
 

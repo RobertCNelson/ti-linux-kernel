@@ -81,14 +81,105 @@ libcfs_next_nidstring(void)
 	return str;
 }
 
-static int  libcfs_lo_str2addr(const char *str, int nob, __u32 *addr);
-static void libcfs_ip_addr2str(__u32 addr, char *str);
-static int  libcfs_ip_str2addr(const char *str, int nob, __u32 *addr);
-static void libcfs_decnum_addr2str(__u32 addr, char *str);
-static void libcfs_hexnum_addr2str(__u32 addr, char *str);
-static int  libcfs_num_str2addr(const char *str, int nob, __u32 *addr);
-static int  libcfs_num_parse(char *str, int len, struct list_head *list);
-static int  libcfs_num_match(__u32 addr, struct list_head *list);
+static int libcfs_lo_str2addr(const char *str, int nob, __u32 *addr)
+{
+	*addr = 0;
+	return 1;
+}
+
+static void libcfs_ip_addr2str(__u32 addr, char *str)
+{
+	snprintf(str, LNET_NIDSTR_SIZE, "%u.%u.%u.%u",
+		 (addr >> 24) & 0xff, (addr >> 16) & 0xff,
+		 (addr >> 8) & 0xff, addr & 0xff);
+}
+
+static int libcfs_ip_str2addr(const char *str, int nob, __u32 *addr)
+{
+	unsigned int	a;
+	unsigned int	b;
+	unsigned int	c;
+	unsigned int	d;
+	int		n = nob; /* XscanfX */
+
+	/* numeric IP? */
+	if (sscanf(str, "%u.%u.%u.%u%n", &a, &b, &c, &d, &n) >= 4 &&
+	    n == nob &&
+	    (a & ~0xff) == 0 && (b & ~0xff) == 0 &&
+	    (c & ~0xff) == 0 && (d & ~0xff) == 0) {
+		*addr = ((a<<24)|(b<<16)|(c<<8)|d);
+		return 1;
+	}
+
+	return 0;
+}
+
+static void libcfs_decnum_addr2str(__u32 addr, char *str)
+{
+	snprintf(str, LNET_NIDSTR_SIZE, "%u", addr);
+}
+
+static void libcfs_hexnum_addr2str(__u32 addr, char *str)
+{
+	snprintf(str, LNET_NIDSTR_SIZE, "0x%x", addr);
+}
+
+static int libcfs_num_str2addr(const char *str, int nob, __u32 *addr)
+{
+	int     n;
+
+	n = nob;
+	if (sscanf(str, "0x%x%n", addr, &n) >= 1 && n == nob)
+		return 1;
+
+	n = nob;
+	if (sscanf(str, "0X%x%n", addr, &n) >= 1 && n == nob)
+		return 1;
+
+	n = nob;
+	if (sscanf(str, "%u%n", addr, &n) >= 1 && n == nob)
+		return 1;
+
+	return 0;
+}
+
+/**
+ * Nf_parse_addrlist method for networks using numeric addresses.
+ *
+ * Examples of such networks are gm and elan.
+ *
+ * \retval 0 if \a str parsed to numeric address
+ * \retval errno otherwise
+ */
+static int
+libcfs_num_parse(char *str, int len, struct list_head *list)
+{
+	struct cfs_expr_list *el;
+	int	rc;
+
+	rc = cfs_expr_list_parse(str, len, 0, MAX_NUMERIC_VALUE, &el);
+	if (rc == 0)
+		list_add_tail(&el->el_link, list);
+
+	return rc;
+}
+
+/*
+ * Nf_match_addr method for networks using numeric addresses
+ *
+ * \retval 1 on match
+ * \retval 0 otherwise
+ */
+static int
+libcfs_num_match(__u32 addr, struct list_head *numaddr)
+{
+	struct cfs_expr_list *el;
+
+	LASSERT(!list_empty(numaddr));
+	el = list_entry(numaddr->next, struct cfs_expr_list, el_link);
+
+	return cfs_expr_list_match(addr, el);
+}
 
 struct netstrfns {
 	int	  nf_type;
@@ -197,24 +288,7 @@ static struct netstrfns  libcfs_netstrfns[] = {
 	{/* .nf_type      */  -1},
 };
 
-const int libcfs_nnetstrfns = ARRAY_SIZE(libcfs_netstrfns);
-
-int
-libcfs_lo_str2addr(const char *str, int nob, __u32 *addr)
-{
-	*addr = 0;
-	return 1;
-}
-
-void
-libcfs_ip_addr2str(__u32 addr, char *str)
-{
-#if 0   /* never lookup */
-#endif
-	snprintf(str, LNET_NIDSTR_SIZE, "%u.%u.%u.%u",
-		 (addr >> 24) & 0xff, (addr >> 16) & 0xff,
-		 (addr >> 8) & 0xff, addr & 0xff);
-}
+static const int libcfs_nnetstrfns = ARRAY_SIZE(libcfs_netstrfns);
 
 /* CAVEAT EMPTOR XscanfX
  * I use "%n" at the end of a sscanf format to detect trailing junk.  However
@@ -223,60 +297,7 @@ libcfs_ip_addr2str(__u32 addr, char *str)
  * fine, if it doesn't, then the scan ended at the end of the string, which is
  * fine too :) */
 
-int
-libcfs_ip_str2addr(const char *str, int nob, __u32 *addr)
-{
-	unsigned int	a;
-	unsigned int	b;
-	unsigned int	c;
-	unsigned int	d;
-	int		n = nob; /* XscanfX */
-
-	/* numeric IP? */
-	if (sscanf(str, "%u.%u.%u.%u%n", &a, &b, &c, &d, &n) >= 4 &&
-	    n == nob &&
-	    (a & ~0xff) == 0 && (b & ~0xff) == 0 &&
-	    (c & ~0xff) == 0 && (d & ~0xff) == 0) {
-		*addr = ((a<<24)|(b<<16)|(c<<8)|d);
-		return 1;
-	}
-
-	return 0;
-}
-
-void
-libcfs_decnum_addr2str(__u32 addr, char *str)
-{
-	snprintf(str, LNET_NIDSTR_SIZE, "%u", addr);
-}
-
-void
-libcfs_hexnum_addr2str(__u32 addr, char *str)
-{
-	snprintf(str, LNET_NIDSTR_SIZE, "0x%x", addr);
-}
-
-int
-libcfs_num_str2addr(const char *str, int nob, __u32 *addr)
-{
-	int     n;
-
-	n = nob;
-	if (sscanf(str, "0x%x%n", addr, &n) >= 1 && n == nob)
-		return 1;
-
-	n = nob;
-	if (sscanf(str, "0X%x%n", addr, &n) >= 1 && n == nob)
-		return 1;
-
-	n = nob;
-	if (sscanf(str, "%u%n", addr, &n) >= 1 && n == nob)
-		return 1;
-
-	return 0;
-}
-
-struct netstrfns *
+static struct netstrfns *
 libcfs_lnd2netstrfns(int lnd)
 {
 	int    i;
@@ -289,7 +310,7 @@ libcfs_lnd2netstrfns(int lnd)
 	return NULL;
 }
 
-struct netstrfns *
+static struct netstrfns *
 libcfs_namenum2netstrfns(const char *name)
 {
 	struct netstrfns *nf;
@@ -304,7 +325,7 @@ libcfs_namenum2netstrfns(const char *name)
 	return NULL;
 }
 
-struct netstrfns *
+static struct netstrfns *
 libcfs_name2netstrfns(const char *name)
 {
 	int    i;
@@ -586,27 +607,6 @@ struct addrrange {
 };
 
 /**
- * Nf_parse_addrlist method for networks using numeric addresses.
- *
- * Examples of such networks are gm and elan.
- *
- * \retval 0 if \a str parsed to numeric address
- * \retval errno otherwise
- */
-static int
-libcfs_num_parse(char *str, int len, struct list_head *list)
-{
-	struct cfs_expr_list *el;
-	int	rc;
-
-	rc = cfs_expr_list_parse(str, len, 0, MAX_NUMERIC_VALUE, &el);
-	if (rc == 0)
-		list_add_tail(&el->el_link, list);
-
-	return rc;
-}
-
-/**
  * Parses \<addrrange\> token on the syntax.
  *
  * Allocates struct addrrange and links to \a nidrange via
@@ -811,23 +811,6 @@ cfs_parse_nidlist(char *str, int len, struct list_head *nidlist)
 	return 1;
 }
 EXPORT_SYMBOL(cfs_parse_nidlist);
-
-/*
- * Nf_match_addr method for networks using numeric addresses
- *
- * \retval 1 on match
- * \retval 0 otherwise
- */
-static int
-libcfs_num_match(__u32 addr, struct list_head *numaddr)
-{
-	struct cfs_expr_list *el;
-
-	LASSERT(!list_empty(numaddr));
-	el = list_entry(numaddr->next, struct cfs_expr_list, el_link);
-
-	return cfs_expr_list_match(addr, el);
-}
 
 /**
  * Matches a nid (\a nid) against the compiled list of nidranges (\a nidlist).
