@@ -414,6 +414,7 @@ dtb-$(CONFIG_ARCH_OMAP4) += \
 dtb-$(CONFIG_SOC_AM43XX) += \
 	am43x-epos-evm.dtb \
 	am437x-sk-evm.dtb \
+	am437x-idk-evm.dtb \
 	am437x-gp-evm.dtb
 dtb-$(CONFIG_SOC_OMAP5) += \
 	omap5-cm-t54.dtb \
@@ -503,7 +504,8 @@ dtb-$(CONFIG_ARCH_STI) += \
 	stih415-b2020.dtb \
 	stih416-b2000.dtb \
 	stih416-b2020.dtb \
-	stih416-b2020e.dtb
+	stih416-b2020e.dtb \
+	stih418-b2199.dtb
 dtb-$(CONFIG_MACH_SUN4I) += \
 	sun4i-a10-a1000.dtb \
 	sun4i-a10-ba10-tvbox.dtb \
