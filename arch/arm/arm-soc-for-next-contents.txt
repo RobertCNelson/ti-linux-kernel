@@ -1,6 +1,8 @@
 next/fixes-non-critical
 	brcm/maintainers (4):
 		http://github.com/broadcom/stblinux tags/arm-soc/for-3.20/maintainer
+	omap/fixes-not-urgent (6):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/fixes-not-urgent-pt1
 
 next/cleanup
 	renesas/lager-board-removal (6):
@@ -9,6 +11,10 @@ next/cleanup
 		ARM: versatile: core: Remove unused function
 	at91/cleanup (11):
 		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-cleanup
+	omap/cleanup (14):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/cleanup-pt1
+	davince/cleanup (2):
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v3.20/cleanup
 
 next/soc
 	renesas/soc (4):
@@ -17,9 +23,9 @@ next/soc
 		http://github.com/broadcom/stblinux tags/arm-soc/for-3.20/brcmstb-smp
 	mvebu/soc (3):
 		git://git.infradead.org/linux-mvebu tags/mvebu-soc-3.20
-	<no branch> (01ea63d99397fcdcb9cc235c77a8e11f4e4a63e9) (2):
+	csr/atlas7-lldebug (2):
 		git://git.kernel.org/pub/scm/linux/kernel/git/baohua/linux tags/atlas7-lldebug-for-3.20
-	<no branch> (4cba058526a7563603ab18f06e298633dd69fc77) (5):
+	csr/atlas7-mach (5):
 		git://git.kernel.org/pub/scm/linux/kernel/git/baohua/linux tags/new-atlas7mach-for-3.20
 	patch:
 		ARM: debug: add HiP01 debug uart
@@ -27,6 +33,16 @@ next/soc
 		ARM: hisi: rename smp_prepares_cpus function
 		ARM: hisi: rename secondary_startup function
 		ARM: hisi: enable smp for HiP01
+	at91/cleanup2 (37):
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-cleanup2
+		contains at91/cleanup
+		contains at91/dt
+	sti/soc (1):
+		git://git.stlinux.com/devel/kernel/linux-sti tags/sti-soc-for-v3.20-1
+	renesas/soc2 (3):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc2-for-v3.20
+	renesas/soc3 (3):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc3-for-v3.20
 
 next/boards
 
@@ -55,12 +71,24 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-cleanups2-for-v3.20
 	patch:
 		ARM: dts: Add hip01-ca9x2 dts file
+	sti/dt (8):
+		git://git.stlinux.com/devel/kernel/linux-sti tags/sti-dt-for-v3.20-1
+	omap/dt (21):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/dt-pt1
+	renesas/dt2 (11):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt2-for-v3.20
+	qcom/dt (2):
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-dt-for-3.20
 
 next/drivers
 	renesas/sh73a0-ccf (6):
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-sh73a0-ccf-for-v3.20
 	at91/drivers (12):
 		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-drivers
+	renesas/sh73a0-ccf2 (1):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-sh73a0-ccf2-for-v3.20
+	patch:
+		of/platform: teardown DMA mappings on device destruction
 
 next/defconfig
 	renesas/defconfig (5):
@@ -78,6 +106,10 @@ next/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-defconfig
 	patch:
 		ARM: config: enable ARCH_HIP01
+	renesas/defconfig2 (1):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig2-for-v3.20
+	sti/defconfig (2):
+		git://git.stlinux.com/devel/kernel/linux-sti tags/sti-defconfig-for-v3.20-1
 
 next/arm64
 	exynos/dt-64 (5):
@@ -88,4 +120,6 @@ fixes
 		Merge tag 'mvebu-fixes-3.19-3' of git://git.infradead.org/linux-mvebu into fixes
 	<no branch> (0fb22a8fb7f3bc1b00a36d4a97ce4f93191f7559) (2):
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/gic-regression-v2
+	<no branch> (f469cde20a7ee342070b4a459b6fce469a3186db) (2):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-fixes2-for-v3.19
 
