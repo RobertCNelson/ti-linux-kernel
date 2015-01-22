@@ -173,14 +173,8 @@ int page_counter_limit(struct page_counter *counter, unsigned long limit)
  */
 int page_counter_memparse(const char *buf, unsigned long *nr_pages)
 {
-	char unlimited[] = "-1";
 	char *end;
 	u64 bytes;
-
-	if (!strncmp(buf, unlimited, sizeof(unlimited))) {
-		*nr_pages = PAGE_COUNTER_MAX;
-		return 0;
-	}
 
 	bytes = memparse(buf, &end);
 	if (*end != '\0')
