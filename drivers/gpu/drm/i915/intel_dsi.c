@@ -78,14 +78,14 @@ static void intel_dsi_hot_plug(struct intel_encoder *encoder)
 }
 
 static bool intel_dsi_compute_config(struct intel_encoder *encoder,
-				     struct intel_crtc_config *config)
+				     struct intel_crtc_state *config)
 {
 	struct intel_dsi *intel_dsi = container_of(encoder, struct intel_dsi,
 						   base);
 	struct intel_connector *intel_connector = intel_dsi->attached_connector;
 	struct drm_display_mode *fixed_mode = intel_connector->panel.fixed_mode;
-	struct drm_display_mode *adjusted_mode = &config->adjusted_mode;
-	struct drm_display_mode *mode = &config->requested_mode;
+	struct drm_display_mode *adjusted_mode = &config->base.adjusted_mode;
+	struct drm_display_mode *mode = &config->base.mode;
 
 	DRM_DEBUG_KMS("\n");
 
@@ -237,7 +237,7 @@ static void intel_dsi_pre_enable(struct intel_encoder *encoder)
 	I915_WRITE(DPLL(pipe), tmp);
 
 	/* update the hw state for DPLL */
-	intel_crtc->config.dpll_hw_state.dpll = DPLL_INTEGRATED_CLOCK_VLV |
+	intel_crtc->config->dpll_hw_state.dpll = DPLL_INTEGRATED_CLOCK_VLV |
 		DPLL_REFA_CLK_ENABLE_VLV;
 
 	tmp = I915_READ(DSPCLK_GATE_D);
@@ -437,7 +437,7 @@ static bool intel_dsi_get_hw_state(struct intel_encoder *encoder,
 }
 
 static void intel_dsi_get_config(struct intel_encoder *encoder,
-				 struct intel_crtc_config *pipe_config)
+				 struct intel_crtc_state *pipe_config)
 {
 	u32 pclk;
 	DRM_DEBUG_KMS("\n");
@@ -452,7 +452,7 @@ static void intel_dsi_get_config(struct intel_encoder *encoder,
 	if (!pclk)
 		return;
 
-	pipe_config->adjusted_mode.crtc_clock = pclk;
+	pipe_config->base.adjusted_mode.crtc_clock = pclk;
 	pipe_config->port_clock = pclk;
 }
 
@@ -511,7 +511,7 @@ static void set_dsi_timings(struct drm_encoder *encoder,
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(encoder);
 	enum port port;
-	unsigned int bpp = intel_crtc->config.pipe_bpp;
+	unsigned int bpp = intel_crtc->config->pipe_bpp;
 	unsigned int lane_count = intel_dsi->lane_count;
 
 	u16 hactive, hfp, hsync, hbp, vfp, vsync, vbp;
@@ -566,9 +566,9 @@ static void intel_dsi_prepare(struct intel_encoder *intel_encoder)
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(encoder);
 	struct drm_display_mode *adjusted_mode =
-		&intel_crtc->config.adjusted_mode;
+		&intel_crtc->config->base.adjusted_mode;
 	enum port port;
-	unsigned int bpp = intel_crtc->config.pipe_bpp;
+	unsigned int bpp = intel_crtc->config->pipe_bpp;
 	u32 val, tmp;
 	u16 mode_hdisplay;
 
