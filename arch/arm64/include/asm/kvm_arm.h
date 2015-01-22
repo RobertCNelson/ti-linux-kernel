@@ -192,4 +192,6 @@
 /* Hyp Prefetch Fault Address Register (HPFAR/HDFAR) */
 #define HPFAR_MASK	(~UL(0xf))
 
+#define ESR_EL2_HVC_IMM_MASK	((1UL << 16) - 1)
+
 #endif /* __ARM64_KVM_ARM_H__ */
