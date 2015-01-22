@@ -10,6 +10,7 @@ adapteva	Adapteva, Inc.
 adi	Analog Devices, Inc.
 aeroflexgaisler	Aeroflex Gaisler AB
 allwinner	Allwinner Technology Co., Ltd.
+alphascale	AlphaScale Integrated Circuits Systems, Inc.
 altr	Altera Corp.
 amcc	Applied Micro Circuits Corporation (APM, formally AMCC)
 amd	Advanced Micro Devices (AMD), Inc.

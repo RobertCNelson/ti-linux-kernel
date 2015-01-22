@@ -118,7 +118,8 @@ void omap3630_init_early(void);
 void omap3_init_early(void);	/* Do not use this one */
 void am33xx_init_early(void);
 void am35xx_init_early(void);
-void ti81xx_init_early(void);
+void ti814x_init_early(void);
+void ti816x_init_early(void);
 void am33xx_init_early(void);
 void am43xx_init_early(void);
 void am43xx_init_late(void);
@@ -171,6 +172,14 @@ static inline void omap3xxx_restart(enum reboot_mode mode, const char *cmd)
 }
 #endif
 
+#ifdef CONFIG_SOC_TI81XX
+void ti81xx_restart(enum reboot_mode mode, const char *cmd);
+#else
+static inline void ti81xx_restart(enum reboot_mode mode, const char *cmd)
+{
+}
+#endif
+
 #if defined(CONFIG_ARCH_OMAP4) || defined(CONFIG_SOC_OMAP5) || \
 	defined(CONFIG_SOC_DRA7XX) || defined(CONFIG_SOC_AM43XX)
 void omap44xx_restart(enum reboot_mode mode, const char *cmd);
@@ -219,6 +228,7 @@ extern struct device *omap2_get_iva_device(void);
 extern struct device *omap2_get_l3_device(void);
 extern struct device *omap4_get_dsp_device(void);
 
+unsigned int omap4_xlate_irq(unsigned int hwirq);
 void omap_gic_of_init(void);
 
 #ifdef CONFIG_CACHE_L2X0
