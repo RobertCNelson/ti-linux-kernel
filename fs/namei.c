@@ -118,15 +118,6 @@
  * POSIX.1 2.4: an empty pathname is invalid (ENOENT).
  * PATH_MAX includes the nul terminator --RR.
  */
-void final_putname(struct filename *name)
-{
-	if (name->separate) {
-		__putname(name->name);
-		kfree(name);
-	} else {
-		__putname(name);
-	}
-}
 
 #define EMBEDDED_NAME_MAX	(PATH_MAX - sizeof(struct filename))
 
@@ -145,6 +136,7 @@ getname_flags(const char __user *filename, int flags, int *empty)
 	result = __getname();
 	if (unlikely(!result))
 		return ERR_PTR(-ENOMEM);
+	result->refcnt = 1;
 
 	/*
 	 * First, try to embed the struct filename inside the names_cache
@@ -179,6 +171,7 @@ recopy:
 		}
 		result->name = kname;
 		result->separate = true;
+		result->refcnt = 1;
 		max = PATH_MAX;
 		goto recopy;
 	}
@@ -202,7 +195,7 @@ recopy:
 	return result;
 
 error:
-	final_putname(result);
+	putname(result);
 	return err;
 }
 
@@ -212,43 +205,56 @@ getname(const char __user * filename)
 	return getname_flags(filename, 0, NULL);
 }
 
-/*
- * The "getname_kernel()" interface doesn't do pathnames longer
- * than EMBEDDED_NAME_MAX. Deal with it - you're a kernel user.
- */
 struct filename *
 getname_kernel(const char * filename)
 {
 	struct filename *result;
-	char *kname;
-	int len;
-
-	len = strlen(filename);
-	if (len >= EMBEDDED_NAME_MAX)
-		return ERR_PTR(-ENAMETOOLONG);
+	int len = strlen(filename) + 1;
 
 	result = __getname();
 	if (unlikely(!result))
 		return ERR_PTR(-ENOMEM);
 
-	kname = (char *)result + sizeof(*result);
-	result->name = kname;
+	if (len <= EMBEDDED_NAME_MAX) {
+		result->name = (char *)(result) + sizeof(*result);
+		result->separate = false;
+	} else if (len <= PATH_MAX) {
+		struct filename *tmp;
+
+		tmp = kmalloc(sizeof(*tmp), GFP_KERNEL);
+		if (unlikely(!tmp)) {
+			__putname(result);
+			return ERR_PTR(-ENOMEM);
+		}
+		tmp->name = (char *)result;
+		tmp->separate = true;
+		result = tmp;
+	} else {
+		__putname(result);
+		return ERR_PTR(-ENAMETOOLONG);
+	}
+	strlcpy((char *)result->name, filename, len);
 	result->uptr = NULL;
 	result->aname = NULL;
-	result->separate = false;
+	result->refcnt = 1;
+	audit_getname(result);
 
-	strlcpy(kname, filename, EMBEDDED_NAME_MAX);
 	return result;
 }
 
-#ifdef CONFIG_AUDITSYSCALL
 void putname(struct filename *name)
 {
-	if (unlikely(!audit_dummy_context()))
-		return audit_putname(name);
-	final_putname(name);
+	BUG_ON(name->refcnt <= 0);
+
+	if (--name->refcnt > 0)
+		return;
+
+	if (name->separate) {
+		__putname(name->name);
+		kfree(name);
+	} else
+		__putname(name);
 }
-#endif
 
 static int check_acl(struct inode *inode, int mask)
 {
@@ -2036,9 +2042,15 @@ static int filename_lookup(int dfd, struct filename *name,
 static int do_path_lookup(int dfd, const char *name,
 				unsigned int flags, struct nameidata *nd)
 {
-	struct filename filename = { .name = name };
+	int retval;
+	struct filename *filename;
 
-	return filename_lookup(dfd, &filename, flags, nd);
+	filename = getname_kernel(name);
+	if (unlikely(IS_ERR(filename)))
+		return PTR_ERR(filename);
+	retval = filename_lookup(dfd, filename, flags, nd);
+	putname(filename);
+	return retval;
 }
 
 /* does lookup, returns the object with parent locked */
@@ -2392,8 +2404,15 @@ int
 kern_path_mountpoint(int dfd, const char *name, struct path *path,
 			unsigned int flags)
 {
-	struct filename s = {.name = name};
-	return filename_mountpoint(dfd, &s, path, flags);
+	int retval;
+	struct filename *s;
+
+	s = getname_kernel(name);
+	if (unlikely(IS_ERR(s)))
+		return PTR_ERR(s);
+	retval = filename_mountpoint(dfd, s, path, flags);
+	putname(s);
+	return retval;
 }
 EXPORT_SYMBOL(kern_path_mountpoint);
 
@@ -3273,7 +3292,7 @@ struct file *do_file_open_root(struct dentry *dentry, struct vfsmount *mnt,
 {
 	struct nameidata nd;
 	struct file *file;
-	struct filename filename = { .name = name };
+	struct filename *filename;
 	int flags = op->lookup_flags | LOOKUP_ROOT;
 
 	nd.root.mnt = mnt;
@@ -3282,11 +3301,16 @@ struct file *do_file_open_root(struct dentry *dentry, struct vfsmount *mnt,
 	if (d_is_symlink(dentry) && op->intent & LOOKUP_OPEN)
 		return ERR_PTR(-ELOOP);
 
-	file = path_openat(-1, &filename, &nd, op, flags | LOOKUP_RCU);
+	filename = getname_kernel(name);
+	if (unlikely(IS_ERR(filename)))
+		return (void *)filename;
+
+	file = path_openat(-1, filename, &nd, op, flags | LOOKUP_RCU);
 	if (unlikely(file == ERR_PTR(-ECHILD)))
-		file = path_openat(-1, &filename, &nd, op, flags);
+		file = path_openat(-1, filename, &nd, op, flags);
 	if (unlikely(file == ERR_PTR(-ESTALE)))
-		file = path_openat(-1, &filename, &nd, op, flags | LOOKUP_REVAL);
+		file = path_openat(-1, filename, &nd, op, flags | LOOKUP_REVAL);
+	putname(filename);
 	return file;
 }
 

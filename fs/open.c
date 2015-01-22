@@ -971,8 +971,15 @@ struct file *file_open_name(struct filename *name, int flags, umode_t mode)
  */
 struct file *filp_open(const char *filename, int flags, umode_t mode)
 {
-	struct filename name = {.name = filename};
-	return file_open_name(&name, flags, mode);
+	struct file *file;
+	struct filename *name;
+
+	name = getname_kernel(filename);
+	if (unlikely(IS_ERR(name)))
+		return (void *)name;
+	file = file_open_name(name, flags, mode);
+	putname(name);
+	return file;
 }
 EXPORT_SYMBOL(filp_open);
 

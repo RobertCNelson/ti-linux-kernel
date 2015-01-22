@@ -794,8 +794,15 @@ exit:
 
 struct file *open_exec(const char *name)
 {
-	struct filename tmp = { .name = name };
-	return do_open_execat(AT_FDCWD, &tmp, 0);
+	struct file *file;
+	struct filename *tmp;
+
+	tmp = getname_kernel(name);
+	if (unlikely(IS_ERR(tmp)))
+		return (void *)tmp;
+	file = do_open_execat(AT_FDCWD, tmp, 0);
+	putname(tmp);
+	return file;
 }
 EXPORT_SYMBOL(open_exec);
 
