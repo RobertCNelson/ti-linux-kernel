@@ -72,6 +72,8 @@
 #include <linux/fs_struct.h>
 #include <linux/compat.h>
 #include <linux/ctype.h>
+#include <linux/string.h>
+#include <uapi/linux/limits.h>
 
 #include "audit.h"
 
@@ -1861,8 +1863,7 @@ void __audit_inode(struct filename *name, const struct dentry *dentry,
 	}
 
 	list_for_each_entry_reverse(n, &context->names_list, list) {
-		/* does the name pointer match? */
-		if (!n->name || n->name->name != name->name)
+		if (!n->name || strcmp(n->name->name, name->name))
 			continue;
 
 		/* match the correct record type */
@@ -1882,11 +1883,7 @@ out_alloc:
 	if (!n)
 		return;
 	if (name)
-		/* since name is not NULL we know there is already a matching
-		 * name record, see audit_getname(), so there must be a type
-		 * mismatch; reuse the string path since the original name
-		 * record will keep the string valid until we free it in
-		 * audit_free_names() */
+		/* no need to set ->name_put as the original will cleanup */
 		n->name = name;
 
 out:
