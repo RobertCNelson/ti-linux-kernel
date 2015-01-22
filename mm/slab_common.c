@@ -293,8 +293,8 @@ unsigned long calculate_alignment(unsigned long flags,
 }
 
 static struct kmem_cache *
-do_kmem_cache_create(char *name, size_t object_size, size_t size, size_t align,
-		     unsigned long flags, void (*ctor)(void *),
+do_kmem_cache_create(const char *name, size_t object_size, size_t size,
+		     size_t align, unsigned long flags, void (*ctor)(void *),
 		     struct mem_cgroup *memcg, struct kmem_cache *root_cache)
 {
 	struct kmem_cache *s;
@@ -361,7 +361,7 @@ kmem_cache_create(const char *name, size_t size, size_t align,
 		  unsigned long flags, void (*ctor)(void *))
 {
 	struct kmem_cache *s;
-	char *cache_name;
+	const char *cache_name;
 	int err;
 
 	get_online_cpus();
