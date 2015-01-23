@@ -152,6 +152,9 @@ in a keyring called ".system_keyring" that can be seen by:
 	302d2d52 I------     1 perm 1f010000     0     0 asymmetri Fedora kernel signing key: d69a84e6bce3d216b979e9505b3e3ef9a7118079: X509.RSA a7118079 []
 	...
 
+CONFIG_KEYS_DEBUG_PROC_KEYS needs to be enabled for the above procfs interface
+to be available.
+
 Beyond the public key generated specifically for module signing, any file
 placed in the kernel source root directory or the kernel build root directory
 whose name is suffixed with ".x509" will be assumed to be an X.509 public key
