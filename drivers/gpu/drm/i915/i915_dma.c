@@ -92,6 +92,9 @@ static int i915_getparam(struct drm_device *dev, void *data,
 	case I915_PARAM_HAS_VEBOX:
 		value = intel_ring_initialized(&dev_priv->ring[VECS]);
 		break;
+	case I915_PARAM_HAS_BSD2:
+		value = intel_ring_initialized(&dev_priv->ring[VCS2]);
+		break;
 	case I915_PARAM_HAS_RELAXED_FENCING:
 		value = 1;
 		break;
@@ -141,6 +144,9 @@ static int i915_getparam(struct drm_device *dev, void *data,
 		value = i915_cmd_parser_get_version();
 		break;
 	case I915_PARAM_HAS_COHERENT_PHYS_GTT:
+		value = 1;
+		break;
+	case I915_PARAM_MMAP_VERSION:
 		value = 1;
 		break;
 	default:
@@ -598,6 +604,17 @@ static void intel_device_info_runtime_init(struct drm_device *dev)
 			info->num_pipes = 0;
 		}
 	}
+
+	if (IS_CHERRYVIEW(dev)) {
+		u32 fuse, mask_eu;
+
+		fuse = I915_READ(CHV_FUSE_GT);
+		mask_eu = fuse & (CHV_FGT_EU_DIS_SS0_R0_MASK |
+				  CHV_FGT_EU_DIS_SS0_R1_MASK |
+				  CHV_FGT_EU_DIS_SS1_R0_MASK |
+				  CHV_FGT_EU_DIS_SS1_R1_MASK);
+		info->eu_total = 16 - hweight32(mask_eu);
+	}
 }
 
 /**
@@ -830,6 +847,8 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 
 	intel_runtime_pm_enable(dev_priv);
 
+	i915_audio_component_init(dev_priv);
+
 	return 0;
 
 out_power_well:
@@ -869,6 +888,8 @@ int i915_driver_unload(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int ret;
+
+	i915_audio_component_cleanup(dev_priv);
 
 	ret = i915_gem_suspend(dev);
 	if (ret) {
@@ -1063,6 +1084,8 @@ const struct drm_ioctl_desc i915_ioctls[] = {
 	DRM_IOCTL_DEF_DRV(I915_REG_READ, i915_reg_read_ioctl, DRM_UNLOCKED|DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(I915_GET_RESET_STATS, i915_get_reset_stats_ioctl, DRM_UNLOCKED|DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(I915_GEM_USERPTR, i915_gem_userptr_ioctl, DRM_UNLOCKED|DRM_RENDER_ALLOW),
+	DRM_IOCTL_DEF_DRV(I915_GEM_CONTEXT_GETPARAM, i915_gem_context_getparam_ioctl, DRM_UNLOCKED|DRM_RENDER_ALLOW),
+	DRM_IOCTL_DEF_DRV(I915_GEM_CONTEXT_SETPARAM, i915_gem_context_setparam_ioctl, DRM_UNLOCKED|DRM_RENDER_ALLOW),
 };
 
 int i915_max_ioctl = ARRAY_SIZE(i915_ioctls);

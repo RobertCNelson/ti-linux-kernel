@@ -1081,6 +1081,7 @@ i915_gem_execbuffer_parse(struct intel_engine_cs *ring,
 {
 	struct drm_i915_private *dev_priv = to_i915(batch_obj->base.dev);
 	struct drm_i915_gem_object *shadow_batch_obj;
+	bool need_reloc = false;
 	int ret;
 
 	shadow_batch_obj = i915_gem_batch_pool_get(&dev_priv->mm.batch_pool,
@@ -1106,6 +1107,7 @@ i915_gem_execbuffer_parse(struct intel_engine_cs *ring,
 		vma->exec_entry = shadow_exec_entry;
 		vma->exec_entry->flags = __EXEC_OBJECT_PURGEABLE;
 		drm_gem_object_reference(&shadow_batch_obj->base);
+		i915_gem_execbuffer_reserve_vma(vma, ring, &need_reloc);
 		list_add_tail(&vma->exec_list, &eb->vmas);
 
 		shadow_batch_obj->base.pending_read_domains =
@@ -1378,13 +1380,35 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 		return -EINVAL;
 	}
 
+	if (((args->flags & I915_EXEC_RING_MASK) != I915_EXEC_BSD) &&
+	    ((args->flags & I915_EXEC_BSD_MASK) != 0)) {
+		DRM_DEBUG("execbuf with non bsd ring but with invalid "
+			"bsd dispatch flags: %d\n", (int)(args->flags));
+		return -EINVAL;
+	} 
+
 	if ((args->flags & I915_EXEC_RING_MASK) == I915_EXEC_DEFAULT)
 		ring = &dev_priv->ring[RCS];
 	else if ((args->flags & I915_EXEC_RING_MASK) == I915_EXEC_BSD) {
 		if (HAS_BSD2(dev)) {
 			int ring_id;
-			ring_id = gen8_dispatch_bsd_ring(dev, file);
-			ring = &dev_priv->ring[ring_id];
+
+			switch (args->flags & I915_EXEC_BSD_MASK) {
+			case I915_EXEC_BSD_DEFAULT:
+				ring_id = gen8_dispatch_bsd_ring(dev, file);
+				ring = &dev_priv->ring[ring_id];
+				break;
+			case I915_EXEC_BSD_RING1:
+				ring = &dev_priv->ring[VCS];
+				break;
+			case I915_EXEC_BSD_RING2:
+				ring = &dev_priv->ring[VCS2];
+				break;
+			default:
+				DRM_DEBUG("execbuf with unknown bsd ring: %d\n",
+					  (int)(args->flags & I915_EXEC_BSD_MASK));
+				return -EINVAL;
+			}
 		} else
 			ring = &dev_priv->ring[VCS];
 	} else

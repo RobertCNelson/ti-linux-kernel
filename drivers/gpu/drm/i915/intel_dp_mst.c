@@ -30,7 +30,7 @@
 #include <drm/drm_edid.h>
 
 static bool intel_dp_mst_compute_config(struct intel_encoder *encoder,
-					struct intel_crtc_config *pipe_config)
+					struct intel_crtc_state *pipe_config)
 {
 	struct intel_dp_mst_encoder *intel_mst = enc_to_mst(&encoder->base);
 	struct intel_digital_port *intel_dig_port = intel_mst->primary;
@@ -38,7 +38,7 @@ static bool intel_dp_mst_compute_config(struct intel_encoder *encoder,
 	struct drm_device *dev = encoder->base.dev;
 	int bpp;
 	int lane_count, slots;
-	struct drm_display_mode *adjusted_mode = &pipe_config->adjusted_mode;
+	struct drm_display_mode *adjusted_mode = &pipe_config->base.adjusted_mode;
 	struct intel_connector *found = NULL, *intel_connector;
 	int mst_pbn;
 
@@ -157,7 +157,8 @@ static void intel_mst_pre_enable_dp(struct intel_encoder *encoder)
 	if (intel_dp->active_mst_links == 0) {
 		enum port port = intel_ddi_get_encoder_port(encoder);
 
-		I915_WRITE(PORT_CLK_SEL(port), intel_crtc->config.ddi_pll_sel);
+		I915_WRITE(PORT_CLK_SEL(port),
+			   intel_crtc->config->ddi_pll_sel);
 
 		intel_ddi_init_dp_buf_reg(&intel_dig_port->base);
 
@@ -170,7 +171,8 @@ static void intel_mst_pre_enable_dp(struct intel_encoder *encoder)
 	}
 
 	ret = drm_dp_mst_allocate_vcpi(&intel_dp->mst_mgr,
-				       intel_mst->port, intel_crtc->config.pbn, &slots);
+				       intel_mst->port,
+				       intel_crtc->config->pbn, &slots);
 	if (ret == false) {
 		DRM_ERROR("failed to allocate vcpi\n");
 		return;
@@ -216,14 +218,14 @@ static bool intel_dp_mst_enc_get_hw_state(struct intel_encoder *encoder,
 }
 
 static void intel_dp_mst_enc_get_config(struct intel_encoder *encoder,
-					struct intel_crtc_config *pipe_config)
+					struct intel_crtc_state *pipe_config)
 {
 	struct intel_dp_mst_encoder *intel_mst = enc_to_mst(&encoder->base);
 	struct intel_digital_port *intel_dig_port = intel_mst->primary;
 	struct intel_crtc *crtc = to_intel_crtc(encoder->base.crtc);
 	struct drm_device *dev = encoder->base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	enum transcoder cpu_transcoder = crtc->config.cpu_transcoder;
+	enum transcoder cpu_transcoder = crtc->config->cpu_transcoder;
 	u32 temp, flags = 0;
 
 	pipe_config->has_dp_encoder = true;
@@ -254,7 +256,7 @@ static void intel_dp_mst_enc_get_config(struct intel_encoder *encoder,
 	default:
 		break;
 	}
-	pipe_config->adjusted_mode.flags |= flags;
+	pipe_config->base.adjusted_mode.flags |= flags;
 	intel_dp_get_m_n(crtc, pipe_config);
 
 	intel_ddi_clock_get(&intel_dig_port->base, pipe_config);
