@@ -64,10 +64,12 @@ dtb-$(CONFIG_ARCH_BCM2835) += \
 	bcm2835-rpi-b-plus.dtb
 dtb-$(CONFIG_ARCH_BCM_5301X) += \
 	bcm4708-buffalo-wzr-1750dhp.dtb \
+	bcm4708-luxul-xwc-1000.dtb \
 	bcm4708-netgear-r6250.dtb \
 	bcm4708-netgear-r6300-v2.dtb \
 	bcm47081-asus-rt-n18u.dtb \
-	bcm47081-buffalo-wzr-600dhp2.dtb
+	bcm47081-buffalo-wzr-600dhp2.dtb \
+	bcm47081-buffalo-wzr-900dhp.dtb
 dtb-$(CONFIG_ARCH_BCM_63XX) += \
 	bcm963138dvt.dtb
 dtb-$(CONFIG_ARCH_BCM_CYGNUS) += \
@@ -393,6 +395,8 @@ dtb-$(CONFIG_ARCH_OMAP3) += \
 	omap3-sbc-t3730.dtb \
 	omap3-thunder.dtb \
 	omap3-zoom3.dtb
+dtb-$(CONFIG_SOC_TI81XX) += \
+	dm8168-evm.dtb
 dtb-$(CONFIG_SOC_AM33XX) += \
 	am335x-base0033.dtb \
 	am335x-bone.dtb \
