@@ -227,6 +227,7 @@ struct fsl_qspi {
 	u32 nor_num;
 	u32 clk_rate;
 	unsigned int chip_base_addr; /* We may support two chips. */
+	bool has_second_chip;
 };
 
 static inline int is_vybrid_qspi(struct fsl_qspi *q)
@@ -783,7 +784,6 @@ static int fsl_qspi_probe(struct platform_device *pdev)
 	struct spi_nor *nor;
 	struct mtd_info *mtd;
 	int ret, i = 0;
-	bool has_second_chip = false;
 	const struct of_device_id *of_id =
 			of_match_device(fsl_qspi_dt_ids, &pdev->dev);
 
@@ -860,14 +860,14 @@ static int fsl_qspi_probe(struct platform_device *pdev)
 		goto irq_failed;
 
 	if (of_get_property(np, "fsl,qspi-has-second-chip", NULL))
-		has_second_chip = true;
+		q->has_second_chip = true;
 
 	/* iterate the subnodes. */
 	for_each_available_child_of_node(dev->of_node, np) {
 		char modalias[40];
 
 		/* skip the holes */
-		if (!has_second_chip)
+		if (!q->has_second_chip)
 			i *= 2;
 
 		nor = &q->nor[i];
@@ -943,9 +943,12 @@ static int fsl_qspi_probe(struct platform_device *pdev)
 	return 0;
 
 last_init_failed:
-	for (i = 0; i < q->nor_num; i++)
+	for (i = 0; i < q->nor_num; i++) {
+		/* skip the holes */
+		if (!q->has_second_chip)
+			i *= 2;
 		mtd_device_unregister(&q->mtd[i]);
-
+	}
 irq_failed:
 	clk_disable_unprepare(q->clk);
 clk_failed:
@@ -960,8 +963,12 @@ static int fsl_qspi_remove(struct platform_device *pdev)
 	struct fsl_qspi *q = platform_get_drvdata(pdev);
 	int i;
 
-	for (i = 0; i < q->nor_num; i++)
+	for (i = 0; i < q->nor_num; i++) {
+		/* skip the holes */
+		if (!q->has_second_chip)
+			i *= 2;
 		mtd_device_unregister(&q->mtd[i]);
+	}
 
 	/* disable the hardware */
 	writel(QUADSPI_MCR_MDIS_MASK, q->iobase + QUADSPI_MCR);
@@ -969,6 +976,22 @@ static int fsl_qspi_remove(struct platform_device *pdev)
 
 	clk_unprepare(q->clk);
 	clk_unprepare(q->clk_en);
+	return 0;
+}
+
+static int fsl_qspi_suspend(struct platform_device *pdev, pm_message_t state)
+{
+	return 0;
+}
+
+static int fsl_qspi_resume(struct platform_device *pdev)
+{
+	struct fsl_qspi *q = platform_get_drvdata(pdev);
+
+	fsl_qspi_nor_setup(q);
+	fsl_qspi_set_map_addr(q);
+	fsl_qspi_nor_setup_last(q);
+
 	return 0;
 }
 
@@ -980,6 +1003,8 @@ static struct platform_driver fsl_qspi_driver = {
 	},
 	.probe          = fsl_qspi_probe,
 	.remove		= fsl_qspi_remove,
+	.suspend	= fsl_qspi_suspend,
+	.resume		= fsl_qspi_resume,
 };
 module_platform_driver(fsl_qspi_driver);
 

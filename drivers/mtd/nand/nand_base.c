@@ -157,7 +157,6 @@ static uint8_t nand_read_byte(struct mtd_info *mtd)
 
 /**
  * nand_read_byte16 - [DEFAULT] read one byte endianness aware from the chip
- * nand_read_byte16 - [DEFAULT] read one byte endianness aware from the chip
  * @mtd: MTD device structure
  *
  * Default read function for 16bit buswidth with endianness conversion.
@@ -2944,6 +2943,16 @@ static void nand_resume(struct mtd_info *mtd)
 			__func__);
 }
 
+/**
+ * nand_shutdown - [MTD Interface] Finish the current NAND operation and
+ *                 prevent further operations
+ * @mtd: MTD device structure
+ */
+static void nand_shutdown(struct mtd_info *mtd)
+{
+	nand_get_device(mtd, FL_SHUTDOWN);
+}
+
 /* Set default functions */
 static void nand_set_defaults(struct nand_chip *chip, int busw)
 {
@@ -4146,6 +4155,7 @@ int nand_scan_tail(struct mtd_info *mtd)
 	mtd->_unlock = NULL;
 	mtd->_suspend = nand_suspend;
 	mtd->_resume = nand_resume;
+	mtd->_reboot = nand_shutdown;
 	mtd->_block_isreserved = nand_block_isreserved;
 	mtd->_block_isbad = nand_block_isbad;
 	mtd->_block_markbad = nand_block_markbad;
@@ -4161,7 +4171,7 @@ int nand_scan_tail(struct mtd_info *mtd)
 	 * properly set.
 	 */
 	if (!mtd->bitflip_threshold)
-		mtd->bitflip_threshold = mtd->ecc_strength;
+		mtd->bitflip_threshold = DIV_ROUND_UP(mtd->ecc_strength * 3, 4);
 
 	/* Check, if we should skip the bad block table scan */
 	if (chip->options & NAND_SKIP_BBTSCAN)
