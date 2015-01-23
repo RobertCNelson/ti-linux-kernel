@@ -3,6 +3,8 @@ next/fixes-non-critical
 		http://github.com/broadcom/stblinux tags/arm-soc/for-3.20/maintainer
 	omap/fixes-not-urgent (6):
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/fixes-not-urgent-pt1
+	pxa/for-3.20 (6):
+		https://github.com/rjarzmik/linux tags/pxa-for-3.20
 
 next/cleanup
 	renesas/lager-board-removal (6):
@@ -15,6 +17,8 @@ next/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/cleanup-pt1
 	davince/cleanup (2):
 		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v3.20/cleanup
+	omap/drop-legacy-3517 (5):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/drop-legacy-3517-v2
 
 next/soc
 	renesas/soc (4):
@@ -43,6 +47,12 @@ next/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc2-for-v3.20
 	renesas/soc3 (3):
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc3-for-v3.20
+	rockchip/soc (3):
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.20-rockchip-soc1
+	mvebu/soc2 (6):
+		git://git.infradead.org/linux-mvebu tags/mvebu-soc-3.20-2
+	mtk/soc (2):
+		https://github.com/mbgg/linux-mediatek tags/v3.20-next-soc1
 
 next/boards
 
@@ -79,6 +89,16 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt2-for-v3.20
 	qcom/dt (2):
 		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-dt-for-3.20
+	omap/dt2 (4):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/dt-pt2
+	brcm/5301x-dt (4):
+		https://github.com/hauke/linux tags/bcm5301x-dt-2015-01-20
+	rockchip/dt (3):
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.20-rockchip-dts1
+	mvebu/dt2 (5):
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-3.20-2
+	mtk/dt2 (1):
+		https://github.com/mbgg/linux-mediatek tags/v3.20-next-dts2
 
 next/drivers
 	renesas/sh73a0-ccf (6):
@@ -110,6 +130,8 @@ next/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig2-for-v3.20
 	sti/defconfig (2):
 		git://git.stlinux.com/devel/kernel/linux-sti tags/sti-defconfig-for-v3.20-1
+	omap/defconfig (7):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/defconfig-modular
 
 next/arm64
 	exynos/dt-64 (5):
@@ -122,4 +144,10 @@ fixes
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/gic-regression-v2
 	<no branch> (f469cde20a7ee342070b4a459b6fce469a3186db) (2):
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-fixes2-for-v3.19
+	<no branch> (38bdf45f4aa5cb6186d50a29e6cbbd9d486a1519) (2):
+		git://git.infradead.org/linux-mvebu tags/mvebu-fixes-3.19-4
+	patch:
+		arm64: dts: add baud rate to Juno stdout-path
+	<no branch> (7ecd0bde5bfea524a843ad8fa8cb66ccbce68779) (1):
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-fixes-3.19-2
 
