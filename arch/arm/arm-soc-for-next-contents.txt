@@ -53,6 +53,12 @@ next/soc
 		git://git.infradead.org/linux-mvebu tags/mvebu-soc-3.20-2
 	mtk/soc (2):
 		https://github.com/mbgg/linux-mediatek tags/v3.20-next-soc1
+	imx/soc (10):
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-soc-3.20
+	tegra/soc (9):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.20-soc
+	qcom/soc (12):
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-soc-for-3.20-2
 
 next/boards
 
@@ -99,6 +105,12 @@ next/dt
 		git://git.infradead.org/linux-mvebu tags/mvebu-dt-3.20-2
 	mtk/dt2 (1):
 		https://github.com/mbgg/linux-mediatek tags/v3.20-next-dts2
+	imx/dt (28):
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-dt-3.20
+	patch:
+		ARM: dts: imx6q: sort dtbs in makefile
+	tegra/dt (4):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.20-dt
 
 next/drivers
 	renesas/sh73a0-ccf (6):
@@ -132,10 +144,17 @@ next/defconfig
 		git://git.stlinux.com/devel/kernel/linux-sti tags/sti-defconfig-for-v3.20-1
 	omap/defconfig (7):
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/defconfig-modular
+	imx/defconfig (4):
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-defconfig-3.20
+	tegra/defconfig (1):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.20-defconfig
 
 next/arm64
 	exynos/dt-64 (5):
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt-64
+	tegra/arm64 (10):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.20-arm64
+		contains tegra/soc
 
 fixes
 	patch:
