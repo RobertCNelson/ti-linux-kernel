@@ -2030,6 +2030,7 @@ retry_cpuset:
 	return page;
 }
 
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
 /**
  * alloc_hugepage_vma: Allocate a hugepage for a VMA
  * @gfp:
@@ -2057,7 +2058,7 @@ retry_cpuset:
  * all allocations for pages that will be mapped into
  * user space. Returns NULL when no page can be allocated.
  *
- * Should be called with the mm_sem of the vma hold.
+ * Should be called with vma->vm_mm->mmap_sem held.
  *
  */
 struct page *alloc_hugepage_vma(gfp_t gfp, struct vm_area_struct *vma,
@@ -2099,6 +2100,7 @@ alloc_with_fallback:
 	 */
 	return alloc_pages_vma(gfp, order, vma, addr, node);
 }
+#endif
 
 /**
  * 	alloc_pages_current - Allocate pages.
