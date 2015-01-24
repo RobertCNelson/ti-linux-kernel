@@ -795,7 +795,7 @@ static bool free_pages_prepare(struct page *page, unsigned int order)
 	bad += free_pages_check(page);
 	for (i = 1; i < (1 << order); i++) {
 		if (compound)
-			free_tail_pages_check(page, page + i);
+			bad += free_tail_pages_check(page, page + i);
 		bad += free_pages_check(page + i);
 	}
 	if (bad)
