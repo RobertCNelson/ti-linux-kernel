@@ -716,7 +716,7 @@ follow_huge_pmd(struct mm_struct *mm, unsigned long address,
 
 struct page *
 follow_huge_pud(struct mm_struct *mm, unsigned long address,
-		pmd_t *pmd, int write)
+		pud_t *pud, int write)
 {
 	BUG();
 	return NULL;
