@@ -75,6 +75,7 @@
 #include <linux/sysfs.h>
 #include <linux/miscdevice.h>
 #include <linux/falloc.h>
+#include <linux/uio.h>
 #include "loop.h"
 
 #include <asm/uaccess.h>
@@ -84,28 +85,6 @@ static DEFINE_MUTEX(loop_index_mutex);
 
 static int max_part;
 static int part_shift;
-
-/*
- * Transfer functions
- */
-static int transfer_none(struct loop_device *lo, int cmd,
-			 struct page *raw_page, unsigned raw_off,
-			 struct page *loop_page, unsigned loop_off,
-			 int size, sector_t real_block)
-{
-	char *raw_buf = kmap_atomic(raw_page) + raw_off;
-	char *loop_buf = kmap_atomic(loop_page) + loop_off;
-
-	if (cmd == READ)
-		memcpy(loop_buf, raw_buf, size);
-	else
-		memcpy(raw_buf, loop_buf, size);
-
-	kunmap_atomic(loop_buf);
-	kunmap_atomic(raw_buf);
-	cond_resched();
-	return 0;
-}
 
 static int transfer_xor(struct loop_device *lo, int cmd,
 			struct page *raw_page, unsigned raw_off,
@@ -145,7 +124,6 @@ static int xor_init(struct loop_device *lo, const struct loop_info64 *info)
 
 static struct loop_func_table none_funcs = {
 	.number = LO_CRYPT_NONE,
-	.transfer = transfer_none,
 }; 	
 
 static struct loop_func_table xor_funcs = {
@@ -212,203 +190,161 @@ lo_do_transfer(struct loop_device *lo, int cmd,
 	       struct page *lpage, unsigned loffs,
 	       int size, sector_t rblock)
 {
-	if (unlikely(!lo->transfer))
+	int ret;
+
+	ret = lo->transfer(lo, cmd, rpage, roffs, lpage, loffs, size, rblock);
+	if (likely(!ret))
 		return 0;
 
-	return lo->transfer(lo, cmd, rpage, roffs, lpage, loffs, size, rblock);
+	printk_ratelimited(KERN_ERR
+		"loop: Transfer error at byte offset %llu, length %i.\n",
+		(unsigned long long)rblock << 9, size);
+	return ret;
 }
 
-/**
- * __do_lo_send_write - helper for writing data to a loop device
- *
- * This helper just factors out common code between do_lo_send_direct_write()
- * and do_lo_send_write().
- */
-static int __do_lo_send_write(struct file *file,
-		u8 *buf, const int len, loff_t pos)
+static int lo_write_bvec(struct file *file, struct bio_vec *bvec, loff_t *ppos)
 {
+	struct iov_iter i;
 	ssize_t bw;
-	mm_segment_t old_fs = get_fs();
+
+	iov_iter_bvec(&i, ITER_BVEC | WRITE, bvec, 1, bvec->bv_len);
 
 	file_start_write(file);
-	set_fs(get_ds());
-	bw = file->f_op->write(file, buf, len, &pos);
-	set_fs(old_fs);
+	bw = vfs_iter_write(file, &i, ppos);
 	file_end_write(file);
-	if (likely(bw == len))
+
+	if (likely(bw ==  bvec->bv_len))
 		return 0;
-	printk_ratelimited(KERN_ERR "loop: Write error at byte offset %llu, length %i.\n",
-			(unsigned long long)pos, len);
+
+	printk_ratelimited(KERN_ERR
+		"loop: Write error at byte offset %llu, length %i.\n",
+		(unsigned long long)*ppos, bvec->bv_len);
 	if (bw >= 0)
 		bw = -EIO;
 	return bw;
 }
 
-/**
- * do_lo_send_direct_write - helper for writing data to a loop device
- *
- * This is the fast, non-transforming version that does not need double
- * buffering.
- */
-static int do_lo_send_direct_write(struct loop_device *lo,
-		struct bio_vec *bvec, loff_t pos, struct page *page)
+static int lo_write_simple(struct loop_device *lo, struct bio *bio, loff_t pos)
 {
-	ssize_t bw = __do_lo_send_write(lo->lo_backing_file,
-			kmap(bvec->bv_page) + bvec->bv_offset,
-			bvec->bv_len, pos);
-	kunmap(bvec->bv_page);
-	cond_resched();
-	return bw;
+	struct bio_vec bvec;
+	struct bvec_iter iter;
+	int ret = 0;
+
+	bio_for_each_segment(bvec, bio, iter) {
+		ret = lo_write_bvec(lo->lo_backing_file, &bvec, &pos);
+		if (ret < 0)
+			break;
+		cond_resched();
+	}
+
+	return ret;
 }
 
-/**
- * do_lo_send_write - helper for writing data to a loop device
- *
+/*
  * This is the slow, transforming version that needs to double buffer the
  * data as it cannot do the transformations in place without having direct
  * access to the destination pages of the backing file.
  */
-static int do_lo_send_write(struct loop_device *lo, struct bio_vec *bvec,
-		loff_t pos, struct page *page)
+static int lo_write_transfer(struct loop_device *lo, struct bio *bio,
+		loff_t pos)
 {
-	int ret = lo_do_transfer(lo, WRITE, page, 0, bvec->bv_page,
-			bvec->bv_offset, bvec->bv_len, pos >> 9);
-	if (likely(!ret))
-		return __do_lo_send_write(lo->lo_backing_file,
-				page_address(page), bvec->bv_len,
-				pos);
-	printk_ratelimited(KERN_ERR "loop: Transfer error at byte offset %llu, "
-			"length %i.\n", (unsigned long long)pos, bvec->bv_len);
-	if (ret > 0)
-		ret = -EIO;
-	return ret;
-}
-
-static int lo_send(struct loop_device *lo, struct bio *bio, loff_t pos)
-{
-	int (*do_lo_send)(struct loop_device *, struct bio_vec *, loff_t,
-			struct page *page);
-	struct bio_vec bvec;
+	struct bio_vec bvec, b;
 	struct bvec_iter iter;
-	struct page *page = NULL;
+	struct page *page;
 	int ret = 0;
 
-	if (lo->transfer != transfer_none) {
-		page = alloc_page(GFP_NOIO | __GFP_HIGHMEM);
-		if (unlikely(!page))
-			goto fail;
-		kmap(page);
-		do_lo_send = do_lo_send_write;
-	} else {
-		do_lo_send = do_lo_send_direct_write;
-	}
+	page = alloc_page(GFP_NOIO);
+	if (unlikely(!page))
+		return -ENOMEM;
 
 	bio_for_each_segment(bvec, bio, iter) {
-		ret = do_lo_send(lo, &bvec, pos, page);
+		ret = lo_do_transfer(lo, WRITE, page, 0, bvec.bv_page,
+			bvec.bv_offset, bvec.bv_len, pos >> 9);
+		if (unlikely(ret))
+			break;
+
+		b.bv_page = page;
+		b.bv_offset = 0;
+		b.bv_len = bvec.bv_len;
+		ret = lo_write_bvec(lo->lo_backing_file, &b, &pos);
 		if (ret < 0)
 			break;
-		pos += bvec.bv_len;
 	}
-	if (page) {
-		kunmap(page);
-		__free_page(page);
-	}
-out:
+
+	__free_page(page);
 	return ret;
-fail:
-	printk_ratelimited(KERN_ERR "loop: Failed to allocate temporary page for write.\n");
-	ret = -ENOMEM;
-	goto out;
 }
 
-struct lo_read_data {
-	struct loop_device *lo;
-	struct page *page;
-	unsigned offset;
-	int bsize;
-};
-
-static int
-lo_splice_actor(struct pipe_inode_info *pipe, struct pipe_buffer *buf,
-		struct splice_desc *sd)
-{
-	struct lo_read_data *p = sd->u.data;
-	struct loop_device *lo = p->lo;
-	struct page *page = buf->page;
-	sector_t IV;
-	int size;
-
-	IV = ((sector_t) page->index << (PAGE_CACHE_SHIFT - 9)) +
-							(buf->offset >> 9);
-	size = sd->len;
-	if (size > p->bsize)
-		size = p->bsize;
-
-	if (lo_do_transfer(lo, READ, page, buf->offset, p->page, p->offset, size, IV)) {
-		printk_ratelimited(KERN_ERR "loop: transfer error block %ld\n",
-		       page->index);
-		size = -EINVAL;
-	}
-
-	flush_dcache_page(p->page);
-
-	if (size > 0)
-		p->offset += size;
-
-	return size;
-}
-
-static int
-lo_direct_splice_actor(struct pipe_inode_info *pipe, struct splice_desc *sd)
-{
-	return __splice_from_pipe(pipe, sd, lo_splice_actor);
-}
-
-static ssize_t
-do_lo_receive(struct loop_device *lo,
-	      struct bio_vec *bvec, int bsize, loff_t pos)
-{
-	struct lo_read_data cookie;
-	struct splice_desc sd;
-	struct file *file;
-	ssize_t retval;
-
-	cookie.lo = lo;
-	cookie.page = bvec->bv_page;
-	cookie.offset = bvec->bv_offset;
-	cookie.bsize = bsize;
-
-	sd.len = 0;
-	sd.total_len = bvec->bv_len;
-	sd.flags = 0;
-	sd.pos = pos;
-	sd.u.data = &cookie;
-
-	file = lo->lo_backing_file;
-	retval = splice_direct_to_actor(file, &sd, lo_direct_splice_actor);
-
-	return retval;
-}
-
-static int
-lo_receive(struct loop_device *lo, struct bio *bio, int bsize, loff_t pos)
+static int lo_read_simple(struct loop_device *lo, struct bio *bio, loff_t pos)
 {
 	struct bio_vec bvec;
 	struct bvec_iter iter;
-	ssize_t s;
+	struct iov_iter i;
+	ssize_t len;
 
 	bio_for_each_segment(bvec, bio, iter) {
-		s = do_lo_receive(lo, &bvec, bsize, pos);
-		if (s < 0)
-			return s;
+		iov_iter_bvec(&i, ITER_BVEC | READ, &bvec, 1, bvec.bv_len);
+		len = vfs_iter_read(lo->lo_backing_file, &i, &pos);
+		if (len < 0)
+			return len;
 
-		if (s != bvec.bv_len) {
+		flush_dcache_page(bvec.bv_page);
+
+		if (len != bvec.bv_len) {
 			zero_fill_bio(bio);
 			break;
 		}
-		pos += bvec.bv_len;
+		cond_resched();
 	}
+
 	return 0;
+}
+
+static int lo_read_transfer(struct loop_device *lo, struct bio *bio,
+		loff_t pos)
+{
+	struct bio_vec bvec, b;
+	struct bvec_iter iter;
+	struct iov_iter i;
+	struct page *page;
+	ssize_t len;
+	int ret = 0;
+
+	page = alloc_page(GFP_NOIO);
+	if (unlikely(!page))
+		return -ENOMEM;
+
+	bio_for_each_segment(bvec, bio, iter) {
+		loff_t offset = pos;
+
+		b.bv_page = page;
+		b.bv_offset = 0;
+		b.bv_len = bvec.bv_len;
+
+		iov_iter_bvec(&i, ITER_BVEC | READ, &b, 1, b.bv_len);
+		len = vfs_iter_read(lo->lo_backing_file, &i, &pos);
+		if (len < 0) {
+			ret = len;
+			goto out_free_page;
+		}
+
+		ret = lo_do_transfer(lo, READ, page, 0, bvec.bv_page,
+			bvec.bv_offset, len, offset >> 9);
+		if (ret)
+			goto out_free_page;
+
+		flush_dcache_page(bvec.bv_page);
+
+		if (len != bvec.bv_len) {
+			zero_fill_bio(bio);
+			break;
+		}
+	}
+
+	ret = 0;
+out_free_page:
+	__free_page(page);
+	return ret;
 }
 
 static int do_bio_filebacked(struct loop_device *lo, struct bio *bio)
@@ -452,15 +388,22 @@ static int do_bio_filebacked(struct loop_device *lo, struct bio *bio)
 			goto out;
 		}
 
-		ret = lo_send(lo, bio, pos);
+		if (lo->transfer)
+			ret = lo_write_transfer(lo, bio, pos);
+		else
+			ret = lo_write_simple(lo, bio, pos);
 
 		if ((bio->bi_rw & REQ_FUA) && !ret) {
 			ret = vfs_fsync(file, 0);
 			if (unlikely(ret && ret != -EINVAL))
 				ret = -EIO;
 		}
-	} else
-		ret = lo_receive(lo, bio, lo->lo_blocksize, pos);
+	} else {
+		if (lo->transfer)
+			ret = lo_read_transfer(lo, bio, pos);
+		else
+			ret = lo_read_simple(lo, bio, pos);
+	}
 
 out:
 	return ret;
@@ -886,7 +829,7 @@ static int loop_set_fd(struct loop_device *lo, fmode_t mode,
 	lo->lo_device = bdev;
 	lo->lo_flags = lo_flags;
 	lo->lo_backing_file = file;
-	lo->transfer = transfer_none;
+	lo->transfer = NULL;
 	lo->ioctl = NULL;
 	lo->lo_sizelimit = 0;
 	lo->lo_bio_count = 0;
