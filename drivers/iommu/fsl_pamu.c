@@ -1214,17 +1214,7 @@ error:
 	return ret;
 }
 
-static const struct of_device_id fsl_of_pamu_ids[] = {
-	{
-		.compatible = "fsl,p4080-pamu",
-	},
-	{
-		.compatible = "fsl,pamu",
-	},
-	{},
-};
-
-static struct platform_driver fsl_of_pamu_driver = {
+static struct platform_driver fsl_of_pamu_driver __initdata = {
 	.driver = {
 		.name = "fsl-of-pamu",
 	},
