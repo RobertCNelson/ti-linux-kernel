@@ -1,0 +1,172 @@
+next/fixes-non-critical
+	brcm/maintainers (4):
+		http://github.com/broadcom/stblinux tags/arm-soc/for-3.20/maintainer
+	omap/fixes-not-urgent (6):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/fixes-not-urgent-pt1
+	pxa/for-3.20 (6):
+		https://github.com/rjarzmik/linux tags/pxa-for-3.20
+
+next/cleanup
+	renesas/lager-board-removal (6):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-lager-board-removal-for-v3.20
+	patch:
+		ARM: versatile: core: Remove unused function
+	at91/cleanup (11):
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-cleanup
+	omap/cleanup (14):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/cleanup-pt1
+	davince/cleanup (2):
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v3.20/cleanup
+	omap/drop-legacy-3517 (5):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/drop-legacy-3517-v2
+
+next/soc
+	renesas/soc (4):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-for-v3.20
+	brcm/stb-smp (1):
+		http://github.com/broadcom/stblinux tags/arm-soc/for-3.20/brcmstb-smp
+	mvebu/soc (3):
+		git://git.infradead.org/linux-mvebu tags/mvebu-soc-3.20
+	csr/atlas7-lldebug (2):
+		git://git.kernel.org/pub/scm/linux/kernel/git/baohua/linux tags/atlas7-lldebug-for-3.20
+	csr/atlas7-mach (5):
+		git://git.kernel.org/pub/scm/linux/kernel/git/baohua/linux tags/new-atlas7mach-for-3.20
+	patch:
+		ARM: debug: add HiP01 debug uart
+		ARM: hisi: enable HiP01 SoC
+		ARM: hisi: rename smp_prepares_cpus function
+		ARM: hisi: rename secondary_startup function
+		ARM: hisi: enable smp for HiP01
+	at91/cleanup2 (37):
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-cleanup2
+		contains at91/cleanup
+		contains at91/dt
+	sti/soc (1):
+		git://git.stlinux.com/devel/kernel/linux-sti tags/sti-soc-for-v3.20-1
+	renesas/soc2 (3):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc2-for-v3.20
+	renesas/soc3 (3):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc3-for-v3.20
+	rockchip/soc (3):
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.20-rockchip-soc1
+	mvebu/soc2 (6):
+		git://git.infradead.org/linux-mvebu tags/mvebu-soc-3.20-2
+	mtk/soc (2):
+		https://github.com/mbgg/linux-mediatek tags/v3.20-next-soc1
+	imx/soc (10):
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-soc-3.20
+	tegra/soc (9):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.20-soc
+	qcom/soc (12):
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-soc-for-3.20-2
+
+next/boards
+
+next/dt
+	renesas/dt-cleanup (7):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-cleanups-for-v3.20
+	renesas/dt (30):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-for-v3.20
+	patch:
+		ARM: dts: Only build dtb if associated Arch and/or SoC is enabled
+	berlin/dt (2):
+		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-dt-for-3.20-1
+	mtk/dt (8):
+		https://github.com/mbgg/linux-mediatek tags/v3.20-next-dts
+	mvebu/dt (13):
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-3.20
+	csr/atlas7-init-dts (2):
+		git://git.kernel.org/pub/scm/linux/kernel/git/baohua/linux tags/atlas7-init-dts-for-3.20
+	at91/dt (18):
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-dt
+	asm/dt (3):
+		Merge branch 'asm/dt' into next/dt
+	patch:
+		ARM: dts: move alphascale in makefile
+	renesas/dt-cleanup2 (4):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-cleanups2-for-v3.20
+	patch:
+		ARM: dts: Add hip01-ca9x2 dts file
+	sti/dt (8):
+		git://git.stlinux.com/devel/kernel/linux-sti tags/sti-dt-for-v3.20-1
+	omap/dt (21):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/dt-pt1
+	renesas/dt2 (11):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt2-for-v3.20
+	qcom/dt (2):
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-dt-for-3.20
+	omap/dt2 (4):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/dt-pt2
+	brcm/5301x-dt (4):
+		https://github.com/hauke/linux tags/bcm5301x-dt-2015-01-20
+	rockchip/dt (3):
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.20-rockchip-dts1
+	mvebu/dt2 (5):
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-3.20-2
+	mtk/dt2 (1):
+		https://github.com/mbgg/linux-mediatek tags/v3.20-next-dts2
+	imx/dt (28):
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-dt-3.20
+	patch:
+		ARM: dts: imx6q: sort dtbs in makefile
+	tegra/dt (4):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.20-dt
+
+next/drivers
+	renesas/sh73a0-ccf (6):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-sh73a0-ccf-for-v3.20
+	at91/drivers (12):
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-drivers
+	renesas/sh73a0-ccf2 (1):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-sh73a0-ccf2-for-v3.20
+	patch:
+		of/platform: teardown DMA mappings on device destruction
+
+next/defconfig
+	renesas/defconfig (5):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig-for-v3.20
+	mtk/defconfig (1):
+		https://github.com/mbgg/linux-mediatek tags/v3.20-next-defconfig
+	patch:
+		ARM: config: multi_v7: Update it for Keystone defconfig
+	mvebu/defconfig (1):
+		git://git.infradead.org/linux-mvebu tags/mvebu-defconfig-3.20
+	patch:
+		ARM: multi_v7_defconfig: Enable Hip01 platform
+		ARM: efm32: update defconfig
+	at91/defconfig (2):
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-defconfig
+	patch:
+		ARM: config: enable ARCH_HIP01
+	renesas/defconfig2 (1):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig2-for-v3.20
+	sti/defconfig (2):
+		git://git.stlinux.com/devel/kernel/linux-sti tags/sti-defconfig-for-v3.20-1
+	omap/defconfig (7):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/defconfig-modular
+	imx/defconfig (4):
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-defconfig-3.20
+	tegra/defconfig (1):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.20-defconfig
+
+next/arm64
+	exynos/dt-64 (5):
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt-64
+	tegra/arm64 (10):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.20-arm64
+		contains tegra/soc
+
+fixes
+	patch:
+		Merge tag 'mvebu-fixes-3.19-3' of git://git.infradead.org/linux-mvebu into fixes
+	<no branch> (0fb22a8fb7f3bc1b00a36d4a97ce4f93191f7559) (2):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/gic-regression-v2
+	<no branch> (f469cde20a7ee342070b4a459b6fce469a3186db) (2):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-fixes2-for-v3.19
+	<no branch> (38bdf45f4aa5cb6186d50a29e6cbbd9d486a1519) (2):
+		git://git.infradead.org/linux-mvebu tags/mvebu-fixes-3.19-4
+	patch:
+		arm64: dts: add baud rate to Juno stdout-path
+	<no branch> (7ecd0bde5bfea524a843ad8fa8cb66ccbce68779) (1):
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-fixes-3.19-2
+
