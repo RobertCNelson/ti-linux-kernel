@@ -1,5 +1,5 @@
 /*
- * Copyright 2014 Chen-Yu Tsai <wens@csie.org>
+ * Copyright 2015 Hans de Goede <hdegoede@redhat.com>
  *
  * This file is dual-licensed: you can use it either under the terms
  * of the GPL or the X11 license, at your option. Note that this dual
@@ -46,122 +46,80 @@
  */
 
 /dts-v1/;
-#include "sun5i-a13.dtsi"
+#include "sun5i-a10s.dtsi"
 #include "sunxi-common-regulators.dtsi"
-
 #include <dt-bindings/gpio/gpio.h>
-#include <dt-bindings/pinctrl/sun4i-a10.h>
 
 / {
-	model = "HSG H702";
-	compatible = "hsg,h702", "allwinner,sun5i-a13";
+	model = "MK802-A10s";
+	compatible = "allwinner,a10s-mk802", "allwinner,sun5i-a10s";
 
-	aliases {
-		serial0 = &uart1;
-	};
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&led_pins_mk802>;
 
-	soc@01c00000 {
-		mmc0: mmc@01c0f000 {
-			pinctrl-names = "default";
-			pinctrl-0 = <&mmc0_pins_a>, <&mmc0_cd_pin_h702>;
-			vmmc-supply = <&reg_vcc3v3>;
-			bus-width = <4>;
-			cd-gpios = <&pio 6 0 GPIO_ACTIVE_HIGH>; /* PG0 */
-			cd-inverted;
-			status = "okay";
-		};
-
-		usbphy: phy@01c13400 {
-			usb1_vbus-supply = <&reg_ldo3>;
-			status = "okay";
-		};
-
-		ehci0: usb@01c14000 {
-			status = "okay";
-		};
-
-		ohci0: usb@01c14400 {
-			status = "okay";
-		};
-
-		pinctrl@01c20800 {
-			mmc0_cd_pin_h702: mmc0_cd_pin@0 {
-				allwinner,pins = "PG0";
-				allwinner,function = "gpio_in";
-				allwinner,drive = <SUN4I_PINCTRL_10_MA>;
-				allwinner,pull = <SUN4I_PINCTRL_PULL_UP>;
-			};
-		};
-
-		uart1: serial@01c28400 {
-			pinctrl-names = "default";
-			pinctrl-0 = <&uart1_pins_b>;
-			status = "okay";
-		};
-
-		i2c0: i2c@01c2ac00 {
-			pinctrl-names = "default";
-			pinctrl-0 = <&i2c0_pins_a>;
-			status = "okay";
-
-			axp209: pmic@34 {
-				reg = <0x34>;
-				interrupts = <0>;
-			};
-		};
-
-		i2c1: i2c@01c2b000 {
-			pinctrl-names = "default";
-			pinctrl-0 = <&i2c1_pins_a>;
-			status = "okay";
-
-			pcf8563: rtc@51 {
-				compatible = "nxp,pcf8563";
-				reg = <0x51>;
-			};
-		};
-
-		i2c2: i2c@01c2b400 {
-			pinctrl-names = "default";
-			pinctrl-0 = <&i2c2_pins_a>;
-			status = "okay";
+		red {
+			label = "mk802:red:usr";
+			gpios = <&pio 1 2 GPIO_ACTIVE_HIGH>; /* PB2 */
 		};
 	};
 };
 
-#include "axp209.dtsi"
-
-&cpu0 {
-	cpu-supply = <&reg_dcdc2>;
+&ehci0 {
+	status = "okay";
 };
 
-&reg_dcdc2 {
-	regulator-always-on;
-	regulator-min-microvolt = <1000000>;
-	regulator-max-microvolt = <1500000>;
-	regulator-name = "vdd-cpu";
+&mmc0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&mmc0_pins_a>, <&mmc0_cd_pin_mk802>;
+	vmmc-supply = <&reg_vcc3v3>;
+	bus-width = <4>;
+	cd-gpios = <&pio 6 1 GPIO_ACTIVE_HIGH>; /* PG1 */
+	cd-inverted;
+	status = "okay";
 };
 
-&reg_dcdc3 {
-	regulator-always-on;
-	regulator-min-microvolt = <1000000>;
-	regulator-max-microvolt = <1400000>;
-	regulator-name = "vdd-int-dll";
+&ohci0 {
+	status = "okay";
 };
 
-&reg_ldo1 {
-	regulator-name = "vdd-rtc";
+&pio {
+	led_pins_mk802: led_pins@0 {
+		allwinner,pins = "PB2";
+		allwinner,function = "gpio_out";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
+	};
+
+	mmc0_cd_pin_mk802: mmc0_cd_pin@0 {
+		allwinner,pins = "PG1";
+		allwinner,function = "gpio_in";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_PULL_UP>;
+	};
+
+	usb1_vbus_pin_mk802: usb1_vbus_pin@0 {
+		allwinner,pins = "PB10";
+		allwinner,function = "gpio_out";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
+	};
 };
 
-&reg_ldo2 {
-	regulator-always-on;
-	regulator-min-microvolt = <3000000>;
-	regulator-max-microvolt = <3000000>;
-	regulator-name = "avcc";
+&reg_usb1_vbus {
+	pinctrl-0 = <&usb1_vbus_pin_mk802>;
+	gpio = <&pio 1 10 GPIO_ACTIVE_HIGH>; /* PB10 */
+	status = "okay";
 };
 
-&reg_ldo3 {
-	regulator-min-microvolt = <3300000>;
-	regulator-max-microvolt = <3300000>;
-	regulator-name = "vcc-wifi";
+&uart0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart0_pins_a>;
+	status = "okay";
+};
+
+&usbphy {
+	usb1_vbus-supply = <&reg_usb1_vbus>;
+	status = "okay";
 };
