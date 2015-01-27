@@ -20,9 +20,6 @@
 
 struct host1x;
 
-int host1x_bus_init(void);
-void host1x_bus_exit(void);
-
 int host1x_register(struct host1x *host1x);
 int host1x_unregister(struct host1x *host1x);
 

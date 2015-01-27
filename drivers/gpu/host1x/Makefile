@@ -1,5 +1,4 @@
 host1x-y = \
-	bus.o \
 	syncpt.o \
 	dev.o \
 	intr.o \
@@ -13,3 +12,5 @@ host1x-y = \
 	hw/host1x04.o
 
 obj-$(CONFIG_TEGRA_HOST1X) += host1x.o
+
+obj-y += bus.o
