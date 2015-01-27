@@ -105,6 +105,8 @@ enum {
 	CP_DISCARD,
 };
 
+#define BATCHED_TRIM_SEGMENTS(sbi)	(((sbi)->segs_per_sec) << 5)
+
 struct cp_control {
 	int reason;
 	__u64 trim_start;
