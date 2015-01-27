@@ -290,11 +290,21 @@ enum chip_type {
 	T5_LAST_REV	= T5_A1,
 };
 
+struct devlog_params {
+	u32 memtype;                    /* which memory (EDC0, EDC1, MC) */
+	u32 start;                      /* start of log in firmware memory */
+	u32 size;                       /* size of log */
+};
+
 struct adapter_params {
 	struct sge_params sge;
 	struct tp_params  tp;
 	struct vpd_params vpd;
 	struct pci_params pci;
+	struct devlog_params devlog;
+	enum pcie_memwin drv_memwin;
+
+	unsigned int cim_la_size;
 
 	unsigned int sf_size;             /* serial flash size in bytes */
 	unsigned int sf_nsec;             /* # of flash sectors */
@@ -658,6 +668,9 @@ struct adapter {
 	unsigned int l2t_start;
 	unsigned int l2t_end;
 	struct l2t_data *l2t;
+	unsigned int clipt_start;
+	unsigned int clipt_end;
+	struct clip_tbl *clipt;
 	void *uld_handle[CXGB4_ULD_MAX];
 	struct list_head list_node;
 	struct list_head rcu_node;
@@ -995,7 +1008,10 @@ static inline int t4_memory_write(struct adapter *adap, int mtype, u32 addr,
 
 int t4_seeprom_wp(struct adapter *adapter, bool enable);
 int get_vpd_params(struct adapter *adapter, struct vpd_params *p);
+int t4_read_flash(struct adapter *adapter, unsigned int addr,
+		  unsigned int nwords, u32 *data, int byte_oriented);
 int t4_load_fw(struct adapter *adapter, const u8 *fw_data, unsigned int size);
+int t4_fwcache(struct adapter *adap, enum fw_params_param_dev_fwcache op);
 int t4_fw_upgrade(struct adapter *adap, unsigned int mbox,
 		  const u8 *fw_data, unsigned int size, int force);
 unsigned int t4_flash_cfg_addr(struct adapter *adapter);
@@ -1022,10 +1038,26 @@ int t4_config_rss_range(struct adapter *adapter, int mbox, unsigned int viid,
 			int start, int n, const u16 *rspq, unsigned int nrspq);
 int t4_config_glbl_rss(struct adapter *adapter, int mbox, unsigned int mode,
 		       unsigned int flags);
+int t4_read_rss(struct adapter *adapter, u16 *entries);
+void t4_read_rss_key(struct adapter *adapter, u32 *key);
+void t4_write_rss_key(struct adapter *adap, const u32 *key, int idx);
+void t4_read_rss_pf_config(struct adapter *adapter, unsigned int index,
+			   u32 *valp);
+void t4_read_rss_vf_config(struct adapter *adapter, unsigned int index,
+			   u32 *vfl, u32 *vfh);
+u32 t4_read_rss_pf_map(struct adapter *adapter);
+u32 t4_read_rss_pf_mask(struct adapter *adapter);
+
 int t4_mc_read(struct adapter *adap, int idx, u32 addr, __be32 *data,
 	       u64 *parity);
 int t4_edc_read(struct adapter *adap, int idx, u32 addr, __be32 *data,
 		u64 *parity);
+int t4_cim_read(struct adapter *adap, unsigned int addr, unsigned int n,
+		unsigned int *valp);
+int t4_cim_write(struct adapter *adap, unsigned int addr, unsigned int n,
+		 const unsigned int *valp);
+int t4_cim_read_la(struct adapter *adap, u32 *la_buf, unsigned int *wrptr);
+void t4_read_cimq_cfg(struct adapter *adap, u16 *base, u16 *size, u16 *thres);
 const char *t4_get_port_type_description(enum fw_port_type port_type);
 void t4_get_port_stats(struct adapter *adap, int idx, struct port_stats *p);
 void t4_read_mtu_tbl(struct adapter *adap, u16 *mtus, u8 *mtu_log);
