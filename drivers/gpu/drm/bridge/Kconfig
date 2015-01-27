@@ -1,8 +1,11 @@
 config DRM_PTN3460
 	tristate "PTN3460 DP/LVDS bridge"
 	depends on DRM
+	depends on OF
 	select DRM_KMS_HELPER
+	select DRM_PANEL
 	---help---
+	  ptn3460 eDP-LVDS bridge chip driver.
 
 config DRM_DW_HDMI
 	tristate
