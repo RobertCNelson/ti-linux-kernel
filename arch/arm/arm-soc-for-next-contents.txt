@@ -5,6 +5,8 @@ next/fixes-non-critical
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/fixes-not-urgent-pt1
 	pxa/for-3.20 (6):
 		https://github.com/rjarzmik/linux tags/pxa-for-3.20
+	omap/fixes-not-urgent2 (5):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/fixes-not-urgent-pt2
 
 next/cleanup
 	renesas/lager-board-removal (6):
@@ -59,6 +61,13 @@ next/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.20-soc
 	qcom/soc (12):
 		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-soc-for-3.20-2
+	at91/cleanup3 (9):
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-cleanup3
+	sunxi/core (2):
+		https://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-core-for-3.20
+	omap/dm816x-data (9):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/dm816x-data
+		contains omap/fixes-not-urgent
 
 next/boards
 
@@ -111,6 +120,14 @@ next/dt
 		ARM: dts: imx6q: sort dtbs in makefile
 	tegra/dt (4):
 		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.20-dt
+	patch:
+		ARM: dts: re-fromat AT91 part to match other entries
+	samsung/dt (14):
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt
+	sunxi/dt (64):
+		https://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-dt-for-3.20
+	at91/dt2 (7):
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-dt2
 
 next/drivers
 	renesas/sh73a0-ccf (6):
@@ -148,6 +165,8 @@ next/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-defconfig-3.20
 	tegra/defconfig (1):
 		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.20-defconfig
+	sunxi/defconfig (4):
+		https://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-defconfig-for-3.20
 
 next/arm64
 	exynos/dt-64 (5):
@@ -169,4 +188,6 @@ fixes
 		arm64: dts: add baud rate to Juno stdout-path
 	<no branch> (7ecd0bde5bfea524a843ad8fa8cb66ccbce68779) (1):
 		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-fixes-3.19-2
+	<no branch> (117a2cc38ffe0b46bcc6f991a3534b345477439c) (4):
+		https://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-fixes-for-3.19
 
