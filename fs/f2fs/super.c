@@ -30,6 +30,7 @@
 #include "segment.h"
 #include "xattr.h"
 #include "gc.h"
+#include "trace.h"
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/f2fs.h>
@@ -381,7 +382,7 @@ static struct inode *f2fs_alloc_inode(struct super_block *sb)
 	atomic_set(&fi->dirty_pages, 0);
 	fi->i_current_depth = 1;
 	fi->i_advise = 0;
-	rwlock_init(&fi->ext.ext_lock);
+	rwlock_init(&fi->ext_lock);
 	init_rwsem(&fi->i_sem);
 	INIT_RADIX_TREE(&fi->inmem_root, GFP_NOFS);
 	INIT_LIST_HEAD(&fi->inmem_pages);
@@ -446,8 +447,13 @@ static void f2fs_put_super(struct super_block *sb)
 	f2fs_destroy_stats(sbi);
 	stop_gc_thread(sbi);
 
-	/* We don't need to do checkpoint when it's clean */
-	if (sbi->s_dirty) {
+	/*
+	 * We don't need to do checkpoint when superblock is clean.
+	 * But, the previous checkpoint was not done by umount, it needs to do
+	 * clean checkpoint again.
+	 */
+	if (sbi->s_dirty ||
+			!is_set_ckpt_flags(F2FS_CKPT(sbi), CP_UMOUNT_FLAG)) {
 		struct cp_control cpc = {
 			.reason = CP_UMOUNT,
 		};
@@ -486,13 +492,15 @@ int f2fs_sync_fs(struct super_block *sb, int sync)
 	if (sync) {
 		struct cp_control cpc;
 
-		cpc.reason = test_opt(sbi, FASTBOOT) ? CP_UMOUNT : CP_SYNC;
+		cpc.reason = (test_opt(sbi, FASTBOOT) || sbi->s_closing) ?
+							CP_UMOUNT : CP_SYNC;
 		mutex_lock(&sbi->gc_mutex);
 		write_checkpoint(sbi, &cpc);
 		mutex_unlock(&sbi->gc_mutex);
 	} else {
 		f2fs_balance_fs(sbi);
 	}
+	f2fs_trace_ios(NULL, NULL, 1);
 
 	return 0;
 }
@@ -1188,11 +1196,18 @@ static struct dentry *f2fs_mount(struct file_system_type *fs_type, int flags,
 	return mount_bdev(fs_type, flags, dev_name, data, f2fs_fill_super);
 }
 
+static void kill_f2fs_super(struct super_block *sb)
+{
+	if (sb->s_root)
+		F2FS_SB(sb)->s_closing = true;
+	kill_block_super(sb);
+}
+
 static struct file_system_type f2fs_fs_type = {
 	.owner		= THIS_MODULE,
 	.name		= "f2fs",
 	.mount		= f2fs_mount,
-	.kill_sb	= kill_block_super,
+	.kill_sb	= kill_f2fs_super,
 	.fs_flags	= FS_REQUIRES_DEV,
 };
 MODULE_ALIAS_FS("f2fs");
@@ -1220,6 +1235,8 @@ static int __init init_f2fs_fs(void)
 {
 	int err;
 
+	f2fs_build_trace_ios();
+
 	err = init_inodecache();
 	if (err)
 		goto fail;
@@ -1229,12 +1246,9 @@ static int __init init_f2fs_fs(void)
 	err = create_segment_manager_caches();
 	if (err)
 		goto free_node_manager_caches;
-	err = create_gc_caches();
-	if (err)
-		goto free_segment_manager_caches;
 	err = create_checkpoint_caches();
 	if (err)
-		goto free_gc_caches;
+		goto free_segment_manager_caches;
 	f2fs_kset = kset_create_and_add("f2fs", NULL, fs_kobj);
 	if (!f2fs_kset) {
 		err = -ENOMEM;
@@ -1251,8 +1265,6 @@ free_kset:
 	kset_unregister(f2fs_kset);
 free_checkpoint_caches:
 	destroy_checkpoint_caches();
-free_gc_caches:
-	destroy_gc_caches();
 free_segment_manager_caches:
 	destroy_segment_manager_caches();
 free_node_manager_caches:
@@ -1269,11 +1281,11 @@ static void __exit exit_f2fs_fs(void)
 	f2fs_destroy_root_stats();
 	unregister_filesystem(&f2fs_fs_type);
 	destroy_checkpoint_caches();
-	destroy_gc_caches();
 	destroy_segment_manager_caches();
 	destroy_node_manager_caches();
 	destroy_inodecache();
 	kset_unregister(f2fs_kset);
+	f2fs_destroy_trace_ios();
 }
 
 module_init(init_f2fs_fs)
