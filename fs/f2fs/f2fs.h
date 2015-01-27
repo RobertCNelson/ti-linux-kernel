@@ -104,6 +104,7 @@ enum {
 	CP_DISCARD,
 };
 
+#define BATCHED_TRIM_SEGMENTS	10
 struct cp_control {
 	int reason;
 	__u64 trim_start;
