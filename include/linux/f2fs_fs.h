@@ -148,7 +148,7 @@ struct f2fs_orphan_block {
  */
 struct f2fs_extent {
 	__le32 fofs;		/* start file offset of the extent */
-	__le32 blk_addr;	/* start block address of the extent */
+	__le32 blk;		/* start block address of the extent */
 	__le32 len;		/* lengh of the extent */
 } __packed;
 
@@ -223,6 +223,8 @@ enum {
 	DENT_BIT_SHIFT,
 	OFFSET_BIT_SHIFT
 };
+
+#define OFFSET_BIT_MASK		(0x07)	/* (0x01 << OFFSET_BIT_SHIFT) - 1 */
 
 struct node_footer {
 	__le32 nid;		/* node id */
