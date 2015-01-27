@@ -7,6 +7,8 @@ next/fixes-non-critical
 		https://github.com/rjarzmik/linux tags/pxa-for-3.20
 	omap/fixes-not-urgent2 (5):
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/fixes-not-urgent-pt2
+	patch:
+		ARM: pxa: fix broken isa interrupts for zeus and viper
 
 next/cleanup
 	renesas/lager-board-removal (6):
@@ -68,6 +70,9 @@ next/soc
 	omap/dm816x-data (9):
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/dm816x-data
 		contains omap/fixes-not-urgent
+	patch:
+		ARM: initial support for Conexant Digicolor CX92755 SoC
+		ARM: digicolor: add low level debug support
 
 next/boards
 
@@ -128,6 +133,11 @@ next/dt
 		https://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-dt-for-3.20
 	at91/dt2 (7):
 		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-dt2
+	patch:
+		ARM: devicetree: document supported Conexant Digicolor SoC
+		Documentation: DT: Add bindings for FSL NS16550A UART
+		Documentation: DT: Add entry for FSL LS2085A SoC and Simulator model
+		Documentation: DT: Add entry for FSL Management Complex
 
 next/drivers
 	renesas/sh73a0-ccf (6):
@@ -174,6 +184,9 @@ next/arm64
 	tegra/arm64 (10):
 		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.20-arm64
 		contains tegra/soc
+	patch:
+		arm64: Add DTS support for FSL's LS2085A SoC
+		arm64: Add support for FSL's LS2085A SoC in Kconfig and defconfig
 
 fixes
 	patch:
