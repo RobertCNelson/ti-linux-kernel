@@ -42,6 +42,20 @@ static const struct intel_dsi_device intel_dsi_devices[] = {
 	},
 };
 
+static void wait_for_dsi_fifo_empty(struct intel_dsi *intel_dsi, enum port port)
+{
+	struct drm_encoder *encoder = &intel_dsi->base.base;
+	struct drm_device *dev = encoder->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	u32 mask;
+
+	mask = LP_CTRL_FIFO_EMPTY | HS_CTRL_FIFO_EMPTY |
+		LP_DATA_FIFO_EMPTY | HS_DATA_FIFO_EMPTY;
+
+	if (wait_for((I915_READ(MIPI_GEN_FIFO_STAT(port)) & mask) == mask, 100))
+		DRM_ERROR("DPI FIFOs are not empty\n");
+}
+
 static void band_gap_reset(struct drm_i915_private *dev_priv)
 {
 	mutex_lock(&dev_priv->dpio_lock);
@@ -54,12 +68,6 @@ static void band_gap_reset(struct drm_i915_private *dev_priv)
 	vlv_flisdsi_write(dev_priv, 0x08, 0x0000);
 
 	mutex_unlock(&dev_priv->dpio_lock);
-}
-
-static struct intel_dsi *intel_attached_dsi(struct drm_connector *connector)
-{
-	return container_of(intel_attached_encoder(connector),
-			    struct intel_dsi, base);
 }
 
 static inline bool is_vid_mode(struct intel_dsi *intel_dsi)
@@ -78,14 +86,13 @@ static void intel_dsi_hot_plug(struct intel_encoder *encoder)
 }
 
 static bool intel_dsi_compute_config(struct intel_encoder *encoder,
-				     struct intel_crtc_config *config)
+				     struct intel_crtc_state *config)
 {
 	struct intel_dsi *intel_dsi = container_of(encoder, struct intel_dsi,
 						   base);
 	struct intel_connector *intel_connector = intel_dsi->attached_connector;
 	struct drm_display_mode *fixed_mode = intel_connector->panel.fixed_mode;
-	struct drm_display_mode *adjusted_mode = &config->adjusted_mode;
-	struct drm_display_mode *mode = &config->requested_mode;
+	struct drm_display_mode *adjusted_mode = &config->base.adjusted_mode;
 
 	DRM_DEBUG_KMS("\n");
 
@@ -94,10 +101,6 @@ static bool intel_dsi_compute_config(struct intel_encoder *encoder,
 
 	/* DSI uses short packets for sync events, so clear mode flags for DSI */
 	adjusted_mode->flags = 0;
-
-	if (intel_dsi->dev.dev_ops->mode_fixup)
-		return intel_dsi->dev.dev_ops->mode_fixup(&intel_dsi->dev,
-							  mode, adjusted_mode);
 
 	return true;
 }
@@ -197,23 +200,25 @@ static void intel_dsi_enable(struct intel_encoder *encoder)
 {
 	struct drm_device *dev = encoder->base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
-	enum port port = intel_dsi_pipe_to_port(intel_crtc->pipe);
+	enum port port;
 
 	DRM_DEBUG_KMS("\n");
 
-	if (is_cmd_mode(intel_dsi))
-		I915_WRITE(MIPI_MAX_RETURN_PKT_SIZE(port), 8 * 4);
-	else {
+	if (is_cmd_mode(intel_dsi)) {
+		for_each_dsi_port(port, intel_dsi->ports)
+			I915_WRITE(MIPI_MAX_RETURN_PKT_SIZE(port), 8 * 4);
+	} else {
 		msleep(20); /* XXX */
-		dpi_send_cmd(intel_dsi, TURN_ON, DPI_LP_MODE_EN);
+		for_each_dsi_port(port, intel_dsi->ports)
+			dpi_send_cmd(intel_dsi, TURN_ON, DPI_LP_MODE_EN, port);
 		msleep(100);
 
 		if (intel_dsi->dev.dev_ops->enable)
 			intel_dsi->dev.dev_ops->enable(&intel_dsi->dev);
 
-		wait_for_dsi_fifo_empty(intel_dsi);
+		for_each_dsi_port(port, intel_dsi->ports)
+			wait_for_dsi_fifo_empty(intel_dsi, port);
 
 		intel_dsi_port_enable(encoder);
 	}
@@ -226,6 +231,7 @@ static void intel_dsi_pre_enable(struct intel_encoder *encoder)
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
 	enum pipe pipe = intel_crtc->pipe;
+	enum port port;
 	u32 tmp;
 
 	DRM_DEBUG_KMS("\n");
@@ -237,7 +243,7 @@ static void intel_dsi_pre_enable(struct intel_encoder *encoder)
 	I915_WRITE(DPLL(pipe), tmp);
 
 	/* update the hw state for DPLL */
-	intel_crtc->config.dpll_hw_state.dpll = DPLL_INTEGRATED_CLOCK_VLV |
+	intel_crtc->config->dpll_hw_state.dpll = DPLL_INTEGRATED_CLOCK_VLV |
 		DPLL_REFA_CLK_ENABLE_VLV;
 
 	tmp = I915_READ(DSPCLK_GATE_D);
@@ -252,10 +258,8 @@ static void intel_dsi_pre_enable(struct intel_encoder *encoder)
 	if (intel_dsi->dev.dev_ops->panel_reset)
 		intel_dsi->dev.dev_ops->panel_reset(&intel_dsi->dev);
 
-	if (intel_dsi->dev.dev_ops->send_otp_cmds)
-		intel_dsi->dev.dev_ops->send_otp_cmds(&intel_dsi->dev);
-
-	wait_for_dsi_fifo_empty(intel_dsi);
+	for_each_dsi_port(port, intel_dsi->ports)
+		wait_for_dsi_fifo_empty(intel_dsi, port);
 
 	/* Enable port in pre-enable phase itself because as per hw team
 	 * recommendation, port should be enabled befor plane & pipe */
@@ -275,12 +279,14 @@ static void intel_dsi_enable_nop(struct intel_encoder *encoder)
 static void intel_dsi_pre_disable(struct intel_encoder *encoder)
 {
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
+	enum port port;
 
 	DRM_DEBUG_KMS("\n");
 
 	if (is_vid_mode(intel_dsi)) {
 		/* Send Shutdown command to the panel in LP mode */
-		dpi_send_cmd(intel_dsi, SHUTDOWN, DPI_LP_MODE_EN);
+		for_each_dsi_port(port, intel_dsi->ports)
+			dpi_send_cmd(intel_dsi, SHUTDOWN, DPI_LP_MODE_EN, port);
 		msleep(10);
 	}
 }
@@ -296,7 +302,8 @@ static void intel_dsi_disable(struct intel_encoder *encoder)
 	DRM_DEBUG_KMS("\n");
 
 	if (is_vid_mode(intel_dsi)) {
-		wait_for_dsi_fifo_empty(intel_dsi);
+		for_each_dsi_port(port, intel_dsi->ports)
+			wait_for_dsi_fifo_empty(intel_dsi, port);
 
 		intel_dsi_port_disable(encoder);
 		msleep(2);
@@ -325,7 +332,8 @@ static void intel_dsi_disable(struct intel_encoder *encoder)
 	if (intel_dsi->dev.dev_ops->disable)
 		intel_dsi->dev.dev_ops->disable(&intel_dsi->dev);
 
-	wait_for_dsi_fifo_empty(intel_dsi);
+	for_each_dsi_port(port, intel_dsi->ports)
+		wait_for_dsi_fifo_empty(intel_dsi, port);
 }
 
 static void intel_dsi_clear_device_ready(struct intel_encoder *encoder)
@@ -437,7 +445,7 @@ static bool intel_dsi_get_hw_state(struct intel_encoder *encoder,
 }
 
 static void intel_dsi_get_config(struct intel_encoder *encoder,
-				 struct intel_crtc_config *pipe_config)
+				 struct intel_crtc_state *pipe_config)
 {
 	u32 pclk;
 	DRM_DEBUG_KMS("\n");
@@ -452,7 +460,7 @@ static void intel_dsi_get_config(struct intel_encoder *encoder,
 	if (!pclk)
 		return;
 
-	pipe_config->adjusted_mode.crtc_clock = pclk;
+	pipe_config->base.adjusted_mode.crtc_clock = pclk;
 	pipe_config->port_clock = pclk;
 }
 
@@ -462,7 +470,6 @@ intel_dsi_mode_valid(struct drm_connector *connector,
 {
 	struct intel_connector *intel_connector = to_intel_connector(connector);
 	struct drm_display_mode *fixed_mode = intel_connector->panel.fixed_mode;
-	struct intel_dsi *intel_dsi = intel_attached_dsi(connector);
 
 	DRM_DEBUG_KMS("\n");
 
@@ -478,7 +485,7 @@ intel_dsi_mode_valid(struct drm_connector *connector,
 			return MODE_PANEL;
 	}
 
-	return intel_dsi->dev.dev_ops->mode_valid(&intel_dsi->dev, mode);
+	return MODE_OK;
 }
 
 /* return txclkesc cycles in terms of divider and duration in us */
@@ -511,7 +518,7 @@ static void set_dsi_timings(struct drm_encoder *encoder,
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(encoder);
 	enum port port;
-	unsigned int bpp = intel_crtc->config.pipe_bpp;
+	unsigned int bpp = intel_crtc->config->pipe_bpp;
 	unsigned int lane_count = intel_dsi->lane_count;
 
 	u16 hactive, hfp, hsync, hbp, vfp, vsync, vbp;
@@ -566,9 +573,9 @@ static void intel_dsi_prepare(struct intel_encoder *intel_encoder)
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(encoder);
 	struct drm_display_mode *adjusted_mode =
-		&intel_crtc->config.adjusted_mode;
+		&intel_crtc->config->base.adjusted_mode;
 	enum port port;
-	unsigned int bpp = intel_crtc->config.pipe_bpp;
+	unsigned int bpp = intel_crtc->config->pipe_bpp;
 	u32 val, tmp;
 	u16 mode_hdisplay;
 
@@ -727,20 +734,7 @@ static void intel_dsi_pre_pll_enable(struct intel_encoder *encoder)
 static enum drm_connector_status
 intel_dsi_detect(struct drm_connector *connector, bool force)
 {
-	struct intel_dsi *intel_dsi = intel_attached_dsi(connector);
-	struct intel_encoder *intel_encoder = &intel_dsi->base;
-	enum intel_display_power_domain power_domain;
-	enum drm_connector_status connector_status;
-	struct drm_i915_private *dev_priv = intel_encoder->base.dev->dev_private;
-
-	DRM_DEBUG_KMS("\n");
-	power_domain = intel_display_port_power_domain(intel_encoder);
-
-	intel_display_power_get(dev_priv, power_domain);
-	connector_status = intel_dsi->dev.dev_ops->detect(&intel_dsi->dev);
-	intel_display_power_put(dev_priv, power_domain);
-
-	return connector_status;
+	return connector_status_connected;
 }
 
 static int intel_dsi_get_modes(struct drm_connector *connector)

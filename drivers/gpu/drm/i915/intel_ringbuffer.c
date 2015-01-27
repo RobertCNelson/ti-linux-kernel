@@ -539,7 +539,7 @@ static int init_ring_common(struct intel_engine_cs *ring)
 	struct drm_i915_gem_object *obj = ringbuf->obj;
 	int ret = 0;
 
-	gen6_gt_force_wake_get(dev_priv, FORCEWAKE_ALL);
+	intel_uncore_forcewake_get(dev_priv, FORCEWAKE_ALL);
 
 	if (!stop_ring(ring)) {
 		/* G45 ring initialization often fails to reset head to zero */
@@ -611,7 +611,7 @@ static int init_ring_common(struct intel_engine_cs *ring)
 	memset(&ring->hangcheck, 0, sizeof(ring->hangcheck));
 
 out:
-	gen6_gt_force_wake_put(dev_priv, FORCEWAKE_ALL);
+	intel_uncore_forcewake_put(dev_priv, FORCEWAKE_ALL);
 
 	return ret;
 }
@@ -796,6 +796,16 @@ static int bdw_init_workarounds(struct intel_engine_cs *ring)
 			  HDC_DONOT_FETCH_MEM_WHEN_MASKED |
 			  (IS_BDW_GT3(dev) ? HDC_FENCE_DEST_SLM_DISABLE : 0));
 
+	/* From the Haswell PRM, Command Reference: Registers, CACHE_MODE_0:
+	 * "The Hierarchical Z RAW Stall Optimization allows non-overlapping
+	 *  polygons in the same 8x4 pixel/sample area to be processed without
+	 *  stalling waiting for the earlier ones to write to Hierarchical Z
+	 *  buffer."
+	 *
+	 * This optimization is off by default for Broadwell; turn it on.
+	 */
+	WA_CLR_BIT_MASKED(CACHE_MODE_0_GEN7, HIZ_RAW_STALL_OPT_DISABLE);
+
 	/* Wa4x4STCOptimizationDisable:bdw */
 	WA_SET_BIT_MASKED(CACHE_MODE_1,
 			  GEN8_4x4_STC_OPTIMIZATION_DISABLE);
@@ -835,6 +845,30 @@ static int chv_init_workarounds(struct intel_engine_cs *ring)
 	WA_SET_BIT_MASKED(HDC_CHICKEN0,
 			  HDC_FORCE_NON_COHERENT |
 			  HDC_DONOT_FETCH_MEM_WHEN_MASKED);
+
+	/* According to the CACHE_MODE_0 default value documentation, some
+	 * CHV platforms disable this optimization by default.  Turn it on.
+	 */
+	WA_CLR_BIT_MASKED(CACHE_MODE_0_GEN7, HIZ_RAW_STALL_OPT_DISABLE);
+
+	/* Wa4x4STCOptimizationDisable:chv */
+	WA_SET_BIT_MASKED(CACHE_MODE_1,
+			  GEN8_4x4_STC_OPTIMIZATION_DISABLE);
+
+	/* Improve HiZ throughput on CHV. */
+	WA_SET_BIT_MASKED(HIZ_CHICKEN, CHV_HZ_8X8_MODE_IN_1X);
+
+	/*
+	 * BSpec recommends 8x4 when MSAA is used,
+	 * however in practice 16x4 seems fastest.
+	 *
+	 * Note that PS/WM thread counts depend on the WIZ hashing
+	 * disable bit, which we don't touch here, but it's good
+	 * to keep in mind (see 3DSTATE_PS and 3DSTATE_WM).
+	 */
+	WA_SET_FIELD_MASKED(GEN7_GT_MODE,
+			    GEN6_WIZ_HASHING_MASK,
+			    GEN6_WIZ_HASHING_16x4);
 
 	return 0;
 }
@@ -1931,7 +1965,7 @@ static int intel_ring_wait_request(struct intel_engine_cs *ring, int n)
 		return 0;
 
 	list_for_each_entry(request, &ring->request_list, list) {
-		if (__intel_ring_space(request->tail, ringbuf->tail,
+		if (__intel_ring_space(request->postfix, ringbuf->tail,
 				       ringbuf->size) >= n) {
 			break;
 		}
