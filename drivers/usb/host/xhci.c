@@ -2962,12 +2962,6 @@ void xhci_endpoint_reset(struct usb_hcd *hcd,
 		struct usb_host_endpoint *ep)
 {
 	struct xhci_hcd *xhci;
-	struct usb_device *udev;
-	unsigned int ep_index;
-	unsigned long flags;
-	int ret;
-	struct xhci_virt_ep *virt_ep;
-	struct xhci_command *command;
 
 	xhci = hcd_to_xhci(hcd);
 	udev = (struct usb_device *) ep->hcpriv;
@@ -2990,14 +2984,6 @@ void xhci_endpoint_reset(struct usb_hcd *hcd,
 		return;
 	}
 
-	command = xhci_alloc_command(xhci, false, false, GFP_ATOMIC);
-	if (!command)
-		return;
-
-	xhci_dbg_trace(xhci, trace_xhci_dbg_reset_ep,
-			"Queueing reset endpoint command");
-	spin_lock_irqsave(&xhci->lock, flags);
-	ret = xhci_queue_reset_ep(xhci, command, udev->slot_id, ep_index);
 	/*
 	 * Can't change the ring dequeue pointer until it's transitioned to the
 	 * stopped state, which is only upon a successful reset endpoint
