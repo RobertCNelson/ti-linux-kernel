@@ -254,9 +254,9 @@ extern void slab_init_memcg_params(struct kmem_cache *);
 #else /* !CONFIG_MEMCG_KMEM */
 
 #define for_each_memcg_cache(iter, root) \
-	for (iter = NULL, (root); 0; )
+	for ((void)(iter), (void)(root); 0; )
 #define for_each_memcg_cache_safe(iter, tmp, root) \
-	for (iter = NULL, tmp = NULL, (root); 0; )
+	for ((void)(iter), (void)(tmp), (void)(root); 0; )
 
 static inline bool is_root_cache(struct kmem_cache *s)
 {
