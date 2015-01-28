@@ -2398,13 +2398,24 @@ redo:
 	 * reading from one cpu area. That does not matter as long
 	 * as we end up on the original cpu again when doing the cmpxchg.
 	 *
-	 * Preemption is disabled for the retrieval of the tid because that
-	 * must occur from the current processor. We cannot allow rescheduling
-	 * on a different processor between the determination of the pointer
-	 * and the retrieval of the tid.
+	 * We should guarantee that tid and kmem_cache are retrieved on
+	 * the same cpu. It could be different if CONFIG_PREEMPT so we need
+	 * to check if it is matched or not.
 	 */
-	preempt_disable();
-	c = this_cpu_ptr(s->cpu_slab);
+	do {
+		tid = this_cpu_read(s->cpu_slab->tid);
+		c = raw_cpu_ptr(s->cpu_slab);
+	} while (IS_ENABLED(CONFIG_PREEMPT) && unlikely(tid != c->tid));
+
+	/*
+	 * Irqless object alloc/free algorithm used here depends on sequence
+	 * of fetching cpu_slab's data. tid should be fetched before anything
+	 * on c to guarantee that object and page associated with previous tid
+	 * won't be used with current tid. If we fetch tid first, object and
+	 * page could be one associated with next tid and our alloc/free
+	 * request will be failed. In this case, we will retry. So, no problem.
+	 */
+	barrier();
 
 	/*
 	 * The transaction ids are globally unique per cpu and per operation on
@@ -2412,8 +2423,6 @@ redo:
 	 * occurs on the right processor and that there was no operation on the
 	 * linked list in between.
 	 */
-	tid = c->tid;
-	preempt_enable();
 
 	object = c->freelist;
 	page = c->page;
@@ -2512,7 +2521,7 @@ EXPORT_SYMBOL(kmem_cache_alloc_node_trace);
 #endif
 
 /*
- * Slow patch handling. This may still be called frequently since objects
+ * Slow path handling. This may still be called frequently since objects
  * have a longer lifetime than the cpu slabs in most processing loads.
  *
  * So we still attempt to reduce cache line usage. Just take the slab
@@ -2659,11 +2668,13 @@ redo:
 	 * data is retrieved via this pointer. If we are on the same cpu
 	 * during the cmpxchg then the free will succedd.
 	 */
-	preempt_disable();
-	c = this_cpu_ptr(s->cpu_slab);
+	do {
+		tid = this_cpu_read(s->cpu_slab->tid);
+		c = raw_cpu_ptr(s->cpu_slab);
+	} while (IS_ENABLED(CONFIG_PREEMPT) && unlikely(tid != c->tid));
 
-	tid = c->tid;
-	preempt_enable();
+	/* Same with comment on barrier() in slab_alloc_node() */
+	barrier();
 
 	if (likely(page == c->page)) {
 		set_freepointer(s, object, c->freelist);
@@ -3566,6 +3577,7 @@ static struct kmem_cache * __init bootstrap(struct kmem_cache *static_cache)
 			p->slab_cache = s;
 #endif
 	}
+	slab_init_memcg_params(s);
 	list_add(&s->list, &slab_caches);
 	return s;
 }
@@ -3624,13 +3636,10 @@ struct kmem_cache *
 __kmem_cache_alias(const char *name, size_t size, size_t align,
 		   unsigned long flags, void (*ctor)(void *))
 {
-	struct kmem_cache *s;
+	struct kmem_cache *s, *c;
 
 	s = find_mergeable(size, align, flags, name, ctor);
 	if (s) {
-		int i;
-		struct kmem_cache *c;
-
 		s->refcount++;
 
 		/*
@@ -3640,10 +3649,7 @@ __kmem_cache_alias(const char *name, size_t size, size_t align,
 		s->object_size = max(s->object_size, (int)size);
 		s->inuse = max_t(int, s->inuse, ALIGN(size, sizeof(void *)));
 
-		for_each_memcg_cache_index(i) {
-			c = cache_from_memcg_idx(s, i);
-			if (!c)
-				continue;
+		for_each_memcg_cache(c, s) {
 			c->object_size = s->object_size;
 			c->inuse = max_t(int, c->inuse,
 					 ALIGN(size, sizeof(void *)));
@@ -4070,20 +4076,16 @@ static int list_locations(struct kmem_cache *s, char *buf,
 
 		if (num_online_cpus() > 1 &&
 				!cpumask_empty(to_cpumask(l->cpus)) &&
-				len < PAGE_SIZE - 60) {
-			len += sprintf(buf + len, " cpus=");
-			len += cpulist_scnprintf(buf + len,
-						 PAGE_SIZE - len - 50,
-						 to_cpumask(l->cpus));
-		}
+				len < PAGE_SIZE - 60)
+			len += scnprintf(buf + len, PAGE_SIZE - len - 50,
+					 " cpus=%*pbl",
+					 cpumask_pr_args(to_cpumask(l->cpus)));
 
 		if (nr_online_nodes > 1 && !nodes_empty(l->nodes) &&
-				len < PAGE_SIZE - 60) {
-			len += sprintf(buf + len, " nodes=");
-			len += nodelist_scnprintf(buf + len,
-						  PAGE_SIZE - len - 50,
-						  l->nodes);
-		}
+				len < PAGE_SIZE - 60)
+			len += scnprintf(buf + len, PAGE_SIZE - len - 50,
+					 " nodes=%*pbl",
+					 nodemask_pr_args(&l->nodes));
 
 		len += sprintf(buf + len, "\n");
 	}
@@ -4909,7 +4911,7 @@ static ssize_t slab_attr_store(struct kobject *kobj,
 	err = attribute->store(s, buf, len);
 #ifdef CONFIG_MEMCG_KMEM
 	if (slab_state >= FULL && err >= 0 && is_root_cache(s)) {
-		int i;
+		struct kmem_cache *c;
 
 		mutex_lock(&slab_mutex);
 		if (s->max_attr_size < len)
@@ -4932,11 +4934,8 @@ static ssize_t slab_attr_store(struct kobject *kobj,
 		 * directly either failed or succeeded, in which case we loop
 		 * through the descendants with best-effort propagation.
 		 */
-		for_each_memcg_cache_index(i) {
-			struct kmem_cache *c = cache_from_memcg_idx(s, i);
-			if (c)
-				attribute->store(c, buf, len);
-		}
+		for_each_memcg_cache(c, s)
+			attribute->store(c, buf, len);
 		mutex_unlock(&slab_mutex);
 	}
 #endif
@@ -4953,7 +4952,7 @@ static void memcg_propagate_slab_attrs(struct kmem_cache *s)
 	if (is_root_cache(s))
 		return;
 
-	root_cache = s->memcg_params->root_cache;
+	root_cache = s->memcg_params.root_cache;
 
 	/*
 	 * This mean this cache had no attribute written. Therefore, no point
@@ -5033,7 +5032,7 @@ static inline struct kset *cache_kset(struct kmem_cache *s)
 {
 #ifdef CONFIG_MEMCG_KMEM
 	if (!is_root_cache(s))
-		return s->memcg_params->root_cache->memcg_kset;
+		return s->memcg_params.root_cache->memcg_kset;
 #endif
 	return slab_kset;
 }
