@@ -1390,7 +1390,7 @@ static struct clk *clk_calc_new_rates(struct clk *clk, unsigned long rate)
 	}
 
 	/* try finding the new parent index */
-	if (parent) {
+	if (parent && clk->num_parents > 1) {
 		p_index = clk_fetch_parent_index(clk, parent);
 		if (p_index < 0) {
 			pr_debug("%s: clk %s can not be parent of clk %s\n",
@@ -1650,6 +1650,36 @@ void __clk_reparent(struct clk *clk, struct clk *new_parent)
 	__clk_recalc_accuracies(clk);
 	__clk_recalc_rates(clk, POST_RATE_CHANGE);
 }
+
+/**
+ * clk_has_parent - check if a clock is a possible parent for another
+ * @clk: clock source
+ * @parent: parent clock source
+ *
+ * This function can be used in drivers that need to check that a clock can be
+ * the parent of another without actually changing the parent.
+ *
+ * Returns true if @parent is a possible parent for @clk, false otherwise.
+ */
+bool clk_has_parent(struct clk *clk, struct clk *parent)
+{
+	unsigned int i;
+
+	/* NULL clocks should be nops, so return success if either is NULL. */
+	if (!clk || !parent)
+		return true;
+
+	/* Optimize for the case where the parent is already the parent. */
+	if (clk->parent == parent)
+		return true;
+
+	for (i = 0; i < clk->num_parents; i++)
+		if (strcmp(clk->parent_names[i], parent->name) == 0)
+			return true;
+
+	return false;
+}
+EXPORT_SYMBOL_GPL(clk_has_parent);
 
 /**
  * clk_set_parent - switch the parent of a mux clk
