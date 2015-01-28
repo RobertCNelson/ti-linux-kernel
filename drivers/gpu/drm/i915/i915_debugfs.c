@@ -1105,7 +1105,7 @@ static int i915_frequency_info(struct seq_file *m, void *unused)
 		if (ret)
 			goto out;
 
-		gen6_gt_force_wake_get(dev_priv, FORCEWAKE_ALL);
+		intel_uncore_forcewake_get(dev_priv, FORCEWAKE_ALL);
 
 		reqf = I915_READ(GEN6_RPNSWREQ);
 		reqf &= ~GEN6_TURBO_DISABLE;
@@ -1113,7 +1113,7 @@ static int i915_frequency_info(struct seq_file *m, void *unused)
 			reqf >>= 24;
 		else
 			reqf >>= 25;
-		reqf *= GT_FREQUENCY_MULTIPLIER;
+		reqf = intel_gpu_freq(dev_priv, reqf);
 
 		rpmodectl = I915_READ(GEN6_RP_CONTROL);
 		rpinclimit = I915_READ(GEN6_RP_UP_THRESHOLD);
@@ -1130,9 +1130,9 @@ static int i915_frequency_info(struct seq_file *m, void *unused)
 			cagf = (rpstat & HSW_CAGF_MASK) >> HSW_CAGF_SHIFT;
 		else
 			cagf = (rpstat & GEN6_CAGF_MASK) >> GEN6_CAGF_SHIFT;
-		cagf *= GT_FREQUENCY_MULTIPLIER;
+		cagf = intel_gpu_freq(dev_priv, cagf);
 
-		gen6_gt_force_wake_put(dev_priv, FORCEWAKE_ALL);
+		intel_uncore_forcewake_put(dev_priv, FORCEWAKE_ALL);
 		mutex_unlock(&dev->struct_mutex);
 
 		if (IS_GEN6(dev) || IS_GEN7(dev)) {
@@ -1178,18 +1178,18 @@ static int i915_frequency_info(struct seq_file *m, void *unused)
 
 		max_freq = (rp_state_cap & 0xff0000) >> 16;
 		seq_printf(m, "Lowest (RPN) frequency: %dMHz\n",
-			   max_freq * GT_FREQUENCY_MULTIPLIER);
+			   intel_gpu_freq(dev_priv, max_freq));
 
 		max_freq = (rp_state_cap & 0xff00) >> 8;
 		seq_printf(m, "Nominal (RP1) frequency: %dMHz\n",
-			   max_freq * GT_FREQUENCY_MULTIPLIER);
+			   intel_gpu_freq(dev_priv, max_freq));
 
 		max_freq = rp_state_cap & 0xff;
 		seq_printf(m, "Max non-overclocked (RP0) frequency: %dMHz\n",
-			   max_freq * GT_FREQUENCY_MULTIPLIER);
+			   intel_gpu_freq(dev_priv, max_freq));
 
 		seq_printf(m, "Max overclocked frequency: %dMHz\n",
-			   dev_priv->rps.max_freq * GT_FREQUENCY_MULTIPLIER);
+			   intel_gpu_freq(dev_priv, dev_priv->rps.max_freq));
 	} else if (IS_VALLEYVIEW(dev)) {
 		u32 freq_sts;
 
@@ -1199,16 +1199,17 @@ static int i915_frequency_info(struct seq_file *m, void *unused)
 		seq_printf(m, "DDR freq: %d MHz\n", dev_priv->mem_freq);
 
 		seq_printf(m, "max GPU freq: %d MHz\n",
-			   vlv_gpu_freq(dev_priv, dev_priv->rps.max_freq));
+			   intel_gpu_freq(dev_priv, dev_priv->rps.max_freq));
 
 		seq_printf(m, "min GPU freq: %d MHz\n",
-			   vlv_gpu_freq(dev_priv, dev_priv->rps.min_freq));
+			   intel_gpu_freq(dev_priv, dev_priv->rps.min_freq));
 
-		seq_printf(m, "efficient (RPe) frequency: %d MHz\n",
-			   vlv_gpu_freq(dev_priv, dev_priv->rps.efficient_freq));
+		seq_printf(m,
+			   "efficient (RPe) frequency: %d MHz\n",
+			   intel_gpu_freq(dev_priv, dev_priv->rps.efficient_freq));
 
 		seq_printf(m, "current GPU freq: %d MHz\n",
-			   vlv_gpu_freq(dev_priv, (freq_sts >> 8) & 0xff));
+			   intel_gpu_freq(dev_priv, (freq_sts >> 8) & 0xff));
 		mutex_unlock(&dev_priv->rps.hw_lock);
 	} else {
 		seq_puts(m, "no P-state info available\n");
@@ -1288,14 +1289,31 @@ static int ironlake_drpc_info(struct seq_file *m)
 	return 0;
 }
 
+static int i915_forcewake_domains(struct seq_file *m, void *data)
+{
+	struct drm_info_node *node = m->private;
+	struct drm_device *dev = node->minor->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_uncore_forcewake_domain *fw_domain;
+	int i;
+
+	spin_lock_irq(&dev_priv->uncore.lock);
+	for_each_fw_domain(fw_domain, dev_priv, i) {
+		seq_printf(m, "%s.wake_count = %u\n",
+			   intel_uncore_forcewake_domain_to_str(i),
+			   fw_domain->wake_count);
+	}
+	spin_unlock_irq(&dev_priv->uncore.lock);
+
+	return 0;
+}
+
 static int vlv_drpc_info(struct seq_file *m)
 {
-
 	struct drm_info_node *node = m->private;
 	struct drm_device *dev = node->minor->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 rpmodectl1, rcctl1, pw_status;
-	unsigned fw_rendercount = 0, fw_mediacount = 0;
 
 	intel_runtime_pm_get(dev_priv);
 
@@ -1327,22 +1345,11 @@ static int vlv_drpc_info(struct seq_file *m)
 	seq_printf(m, "Media RC6 residency since boot: %u\n",
 		   I915_READ(VLV_GT_MEDIA_RC6));
 
-	spin_lock_irq(&dev_priv->uncore.lock);
-	fw_rendercount = dev_priv->uncore.fw_rendercount;
-	fw_mediacount = dev_priv->uncore.fw_mediacount;
-	spin_unlock_irq(&dev_priv->uncore.lock);
-
-	seq_printf(m, "Forcewake Render Count = %u\n", fw_rendercount);
-	seq_printf(m, "Forcewake Media Count = %u\n", fw_mediacount);
-
-
-	return 0;
+	return i915_forcewake_domains(m, NULL);
 }
-
 
 static int gen6_drpc_info(struct seq_file *m)
 {
-
 	struct drm_info_node *node = m->private;
 	struct drm_device *dev = node->minor->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -1356,7 +1363,7 @@ static int gen6_drpc_info(struct seq_file *m)
 	intel_runtime_pm_get(dev_priv);
 
 	spin_lock_irq(&dev_priv->uncore.lock);
-	forcewake_count = dev_priv->uncore.forcewake_count;
+	forcewake_count = dev_priv->uncore.fw_domain[FW_DOMAIN_ID_RENDER].wake_count;
 	spin_unlock_irq(&dev_priv->uncore.lock);
 
 	if (forcewake_count) {
@@ -1671,7 +1678,7 @@ static int i915_ring_freq_table(struct seq_file *m, void *unused)
 				       GEN6_PCODE_READ_MIN_FREQ_TABLE,
 				       &ia_freq);
 		seq_printf(m, "%d\t\t%d\t\t\t\t%d\n",
-			   gpu_freq * GT_FREQUENCY_MULTIPLIER,
+			   intel_gpu_freq(dev_priv, gpu_freq),
 			   ((ia_freq >> 0) & 0xff) * 100,
 			   ((ia_freq >> 8) & 0xff) * 100);
 	}
@@ -1928,7 +1935,7 @@ static int i915_execlists(struct seq_file *m, void *data)
 	intel_runtime_pm_get(dev_priv);
 
 	for_each_ring(ring, dev_priv, ring_id) {
-		struct intel_ctx_submit_request *head_req = NULL;
+		struct drm_i915_gem_request *head_req = NULL;
 		int count = 0;
 		unsigned long flags;
 
@@ -1961,7 +1968,7 @@ static int i915_execlists(struct seq_file *m, void *data)
 		list_for_each(cursor, &ring->execlist_queue)
 			count++;
 		head_req = list_first_entry_or_null(&ring->execlist_queue,
-				struct intel_ctx_submit_request, execlist_link);
+				struct drm_i915_gem_request, execlist_link);
 		spin_unlock_irqrestore(&ring->execlist_lock, flags);
 
 		seq_printf(m, "\t%d requests in queue\n", count);
@@ -1980,30 +1987,6 @@ static int i915_execlists(struct seq_file *m, void *data)
 
 	intel_runtime_pm_put(dev_priv);
 	mutex_unlock(&dev->struct_mutex);
-
-	return 0;
-}
-
-static int i915_gen6_forcewake_count_info(struct seq_file *m, void *data)
-{
-	struct drm_info_node *node = m->private;
-	struct drm_device *dev = node->minor->dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
-	unsigned forcewake_count = 0, fw_rendercount = 0, fw_mediacount = 0;
-
-	spin_lock_irq(&dev_priv->uncore.lock);
-	if (IS_VALLEYVIEW(dev)) {
-		fw_rendercount = dev_priv->uncore.fw_rendercount;
-		fw_mediacount = dev_priv->uncore.fw_mediacount;
-	} else
-		forcewake_count = dev_priv->uncore.forcewake_count;
-	spin_unlock_irq(&dev_priv->uncore.lock);
-
-	if (IS_VALLEYVIEW(dev)) {
-		seq_printf(m, "fw_rendercount = %u\n", fw_rendercount);
-		seq_printf(m, "fw_mediacount = %u\n", fw_mediacount);
-	} else
-		seq_printf(m, "forcewake count = %u\n", forcewake_count);
 
 	return 0;
 }
@@ -2400,6 +2383,14 @@ static const char *power_domain_str(enum intel_display_power_domain domain)
 		return "AUDIO";
 	case POWER_DOMAIN_PLLS:
 		return "PLLS";
+	case POWER_DOMAIN_AUX_A:
+		return "AUX_A";
+	case POWER_DOMAIN_AUX_B:
+		return "AUX_B";
+	case POWER_DOMAIN_AUX_C:
+		return "AUX_C";
+	case POWER_DOMAIN_AUX_D:
+		return "AUX_D";
 	case POWER_DOMAIN_INIT:
 		return "INIT";
 	default:
@@ -2628,7 +2619,8 @@ static int i915_display_info(struct seq_file *m, void *unused)
 
 		seq_printf(m, "CRTC %d: pipe: %c, active=%s (size=%dx%d)\n",
 			   crtc->base.base.id, pipe_name(crtc->pipe),
-			   yesno(crtc->active), crtc->config.pipe_src_w, crtc->config.pipe_src_h);
+			   yesno(crtc->active), crtc->config->pipe_src_w,
+			   crtc->config->pipe_src_h);
 		if (crtc->active) {
 			intel_crtc_info(m, crtc);
 
@@ -3362,9 +3354,9 @@ static void hsw_trans_edp_pipe_A_crc_wa(struct drm_device *dev)
 	 * relevant on hsw with pipe A when using the always-on power well
 	 * routing.
 	 */
-	if (crtc->config.cpu_transcoder == TRANSCODER_EDP &&
-	    !crtc->config.pch_pfit.enabled) {
-		crtc->config.pch_pfit.force_thru = true;
+	if (crtc->config->cpu_transcoder == TRANSCODER_EDP &&
+	    !crtc->config->pch_pfit.enabled) {
+		crtc->config->pch_pfit.force_thru = true;
 
 		intel_display_power_get(dev_priv,
 					POWER_DOMAIN_PIPE_PANEL_FITTER(PIPE_A));
@@ -3388,8 +3380,8 @@ static void hsw_undo_trans_edp_pipe_A_crc_wa(struct drm_device *dev)
 	 * relevant on hsw with pipe A when using the always-on power well
 	 * routing.
 	 */
-	if (crtc->config.pch_pfit.force_thru) {
-		crtc->config.pch_pfit.force_thru = false;
+	if (crtc->config->pch_pfit.force_thru) {
+		crtc->config->pch_pfit.force_thru = false;
 
 		dev_priv->display.crtc_disable(&crtc->base);
 		dev_priv->display.crtc_enable(&crtc->base);
@@ -4128,10 +4120,7 @@ i915_max_freq_get(void *data, u64 *val)
 	if (ret)
 		return ret;
 
-	if (IS_VALLEYVIEW(dev))
-		*val = vlv_gpu_freq(dev_priv, dev_priv->rps.max_freq_softlimit);
-	else
-		*val = dev_priv->rps.max_freq_softlimit * GT_FREQUENCY_MULTIPLIER;
+	*val = intel_gpu_freq(dev_priv, dev_priv->rps.max_freq_softlimit);
 	mutex_unlock(&dev_priv->rps.hw_lock);
 
 	return 0;
@@ -4160,12 +4149,12 @@ i915_max_freq_set(void *data, u64 val)
 	 * Turbo will still be enabled, but won't go above the set value.
 	 */
 	if (IS_VALLEYVIEW(dev)) {
-		val = vlv_freq_opcode(dev_priv, val);
+		val = intel_freq_opcode(dev_priv, val);
 
 		hw_max = dev_priv->rps.max_freq;
 		hw_min = dev_priv->rps.min_freq;
 	} else {
-		do_div(val, GT_FREQUENCY_MULTIPLIER);
+		val = intel_freq_opcode(dev_priv, val);
 
 		rp_state_cap = I915_READ(GEN6_RP_STATE_CAP);
 		hw_max = dev_priv->rps.max_freq;
@@ -4209,10 +4198,7 @@ i915_min_freq_get(void *data, u64 *val)
 	if (ret)
 		return ret;
 
-	if (IS_VALLEYVIEW(dev))
-		*val = vlv_gpu_freq(dev_priv, dev_priv->rps.min_freq_softlimit);
-	else
-		*val = dev_priv->rps.min_freq_softlimit * GT_FREQUENCY_MULTIPLIER;
+	*val = intel_gpu_freq(dev_priv, dev_priv->rps.min_freq_softlimit);
 	mutex_unlock(&dev_priv->rps.hw_lock);
 
 	return 0;
@@ -4241,12 +4227,12 @@ i915_min_freq_set(void *data, u64 val)
 	 * Turbo will still be enabled, but won't go below the set value.
 	 */
 	if (IS_VALLEYVIEW(dev)) {
-		val = vlv_freq_opcode(dev_priv, val);
+		val = intel_freq_opcode(dev_priv, val);
 
 		hw_max = dev_priv->rps.max_freq;
 		hw_min = dev_priv->rps.min_freq;
 	} else {
-		do_div(val, GT_FREQUENCY_MULTIPLIER);
+		val = intel_freq_opcode(dev_priv, val);
 
 		rp_state_cap = I915_READ(GEN6_RP_STATE_CAP);
 		hw_max = dev_priv->rps.max_freq;
@@ -4338,7 +4324,8 @@ static int i915_forcewake_open(struct inode *inode, struct file *file)
 	if (INTEL_INFO(dev)->gen < 6)
 		return 0;
 
-	gen6_gt_force_wake_get(dev_priv, FORCEWAKE_ALL);
+	intel_runtime_pm_get(dev_priv);
+	intel_uncore_forcewake_get(dev_priv, FORCEWAKE_ALL);
 
 	return 0;
 }
@@ -4351,7 +4338,8 @@ static int i915_forcewake_release(struct inode *inode, struct file *file)
 	if (INTEL_INFO(dev)->gen < 6)
 		return 0;
 
-	gen6_gt_force_wake_put(dev_priv, FORCEWAKE_ALL);
+	intel_uncore_forcewake_put(dev_priv, FORCEWAKE_ALL);
+	intel_runtime_pm_put(dev_priv);
 
 	return 0;
 }
@@ -4425,7 +4413,7 @@ static const struct drm_info_list i915_debugfs_list[] = {
 	{"i915_context_status", i915_context_status, 0},
 	{"i915_dump_lrc", i915_dump_lrc, 0},
 	{"i915_execlists", i915_execlists, 0},
-	{"i915_gen6_forcewake_count", i915_gen6_forcewake_count_info, 0},
+	{"i915_forcewake_domains", i915_forcewake_domains, 0},
 	{"i915_swizzle_info", i915_swizzle_info, 0},
 	{"i915_ppgtt_info", i915_ppgtt_info, 0},
 	{"i915_llc", i915_llc, 0},
