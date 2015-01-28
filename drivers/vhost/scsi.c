@@ -171,7 +171,9 @@ enum {
 /* Note: can't set VIRTIO_F_VERSION_1 yet, since that implies ANY_LAYOUT. */
 enum {
 	VHOST_SCSI_FEATURES = VHOST_FEATURES | (1ULL << VIRTIO_SCSI_F_HOTPLUG) |
-					       (1ULL << VIRTIO_SCSI_F_T10_PI)
+					       (1ULL << VIRTIO_SCSI_F_T10_PI) |
+					       (1ULL << VIRTIO_F_ANY_LAYOUT) |
+					       (1ULL << VIRTIO_F_VERSION_1)
 };
 
 #define VHOST_SCSI_MAX_TARGET	256
@@ -1644,7 +1646,10 @@ static void vhost_scsi_handle_kick(struct vhost_work *work)
 						poll.work);
 	struct vhost_scsi *vs = container_of(vq->dev, struct vhost_scsi, dev);
 
-	vhost_scsi_handle_vq(vs, vq);
+	if (vhost_has_feature(vq, VIRTIO_F_ANY_LAYOUT))
+		vhost_scsi_handle_vqal(vs, vq);
+	else
+		vhost_scsi_handle_vq(vs, vq);
 }
 
 static void vhost_scsi_flush_vq(struct vhost_scsi *vs, int index)
