@@ -131,6 +131,9 @@ static const u16 mgmt_events[] = {
 
 #define CACHE_TIMEOUT	msecs_to_jiffies(2 * 1000)
 
+#define ZERO_KEY "\x00\x00\x00\x00\x00\x00\x00\x00" \
+		 "\x00\x00\x00\x00\x00\x00\x00\x00"
+
 struct pending_cmd {
 	struct list_head list;
 	u16 opcode;
@@ -3633,9 +3636,15 @@ unlock:
 static int add_remote_oob_data(struct sock *sk, struct hci_dev *hdev,
 			       void *data, u16 len)
 {
+	struct mgmt_addr_info *addr = data;
 	int err;
 
 	BT_DBG("%s ", hdev->name);
+
+	if (!bdaddr_type_is_valid(addr->type))
+		return cmd_complete(sk, hdev->id, MGMT_OP_ADD_REMOTE_OOB_DATA,
+				    MGMT_STATUS_INVALID_PARAMS, addr,
+				    sizeof(*addr));
 
 	hci_dev_lock(hdev);
 
@@ -3666,15 +3675,19 @@ static int add_remote_oob_data(struct sock *sk, struct hci_dev *hdev,
 		u8 *rand192, *hash192;
 		u8 status;
 
-		if (cp->addr.type != BDADDR_BREDR) {
-			err = cmd_complete(sk, hdev->id,
-					   MGMT_OP_ADD_REMOTE_OOB_DATA,
-					   MGMT_STATUS_INVALID_PARAMS,
-					   &cp->addr, sizeof(cp->addr));
-			goto unlock;
-		}
-
 		if (bdaddr_type_is_le(cp->addr.type)) {
+			/* Enforce zero-valued 192-bit parameters as
+			 * long as legacy SMP OOB isn't implemented.
+			 */
+			if (memcmp(cp->rand192, ZERO_KEY, 16) ||
+			    memcmp(cp->hash192, ZERO_KEY, 16)) {
+				err = cmd_complete(sk, hdev->id,
+						   MGMT_OP_ADD_REMOTE_OOB_DATA,
+						   MGMT_STATUS_INVALID_PARAMS,
+						   addr, sizeof(*addr));
+				goto unlock;
+			}
+
 			rand192 = NULL;
 			hash192 = NULL;
 		} else {
@@ -4691,9 +4704,16 @@ static int set_bredr(struct sock *sk, struct hci_dev *hdev, void *data, u16 len)
 		 * Dual-mode controllers shall operate with the public
 		 * address as its identity address for BR/EDR and LE. So
 		 * reject the attempt to create an invalid configuration.
+		 *
+		 * The same restrictions applies when secure connections
+		 * has been enabled. For BR/EDR this is a controller feature
+		 * while for LE it is a host stack feature. This means that
+		 * switching BR/EDR back on when secure connections has been
+		 * enabled is not a supported transaction.
 		 */
 		if (!test_bit(HCI_BREDR_ENABLED, &hdev->dev_flags) &&
-		    bacmp(&hdev->static_addr, BDADDR_ANY)) {
+		    (bacmp(&hdev->static_addr, BDADDR_ANY) ||
+		     test_bit(HCI_SC_ENABLED, &hdev->dev_flags))) {
 			err = cmd_status(sk, hdev->id, MGMT_OP_SET_BREDR,
 					 MGMT_STATUS_REJECTED);
 			goto unlock;
@@ -4736,11 +4756,57 @@ unlock:
 	return err;
 }
 
+static void sc_enable_complete(struct hci_dev *hdev, u8 status, u16 opcode)
+{
+	struct pending_cmd *cmd;
+	struct mgmt_mode *cp;
+
+	BT_DBG("%s status %u", hdev->name, status);
+
+	hci_dev_lock(hdev);
+
+	cmd = mgmt_pending_find(MGMT_OP_SET_SECURE_CONN, hdev);
+	if (!cmd)
+		goto unlock;
+
+	if (status) {
+		cmd_status(cmd->sk, cmd->index, cmd->opcode,
+			   mgmt_status(status));
+		goto remove;
+	}
+
+	cp = cmd->param;
+
+	switch (cp->val) {
+	case 0x00:
+		clear_bit(HCI_SC_ENABLED, &hdev->dev_flags);
+		clear_bit(HCI_SC_ONLY, &hdev->dev_flags);
+		break;
+	case 0x01:
+		set_bit(HCI_SC_ENABLED, &hdev->dev_flags);
+		clear_bit(HCI_SC_ONLY, &hdev->dev_flags);
+		break;
+	case 0x02:
+		set_bit(HCI_SC_ENABLED, &hdev->dev_flags);
+		set_bit(HCI_SC_ONLY, &hdev->dev_flags);
+		break;
+	}
+
+	send_settings_rsp(cmd->sk, MGMT_OP_SET_SECURE_CONN, hdev);
+	new_settings(hdev, cmd->sk);
+
+remove:
+	mgmt_pending_remove(cmd);
+unlock:
+	hci_dev_unlock(hdev);
+}
+
 static int set_secure_conn(struct sock *sk, struct hci_dev *hdev,
 			   void *data, u16 len)
 {
 	struct mgmt_mode *cp = data;
 	struct pending_cmd *cmd;
+	struct hci_request req;
 	u8 val;
 	int err;
 
@@ -4750,6 +4816,11 @@ static int set_secure_conn(struct sock *sk, struct hci_dev *hdev,
 	    !test_bit(HCI_LE_ENABLED, &hdev->dev_flags))
 		return cmd_status(sk, hdev->id, MGMT_OP_SET_SECURE_CONN,
 				  MGMT_STATUS_NOT_SUPPORTED);
+
+	if (test_bit(HCI_BREDR_ENABLED, &hdev->dev_flags) &&
+	    !test_bit(HCI_SSP_ENABLED, &hdev->dev_flags))
+		return cmd_status(sk, hdev->id, MGMT_OP_SET_SECURE_CONN,
+				  MGMT_STATUS_REJECTED);
 
 	if (cp->val != 0x00 && cp->val != 0x01 && cp->val != 0x02)
 		return cmd_status(sk, hdev->id, MGMT_OP_SET_SECURE_CONN,
@@ -4804,16 +4875,13 @@ static int set_secure_conn(struct sock *sk, struct hci_dev *hdev,
 		goto failed;
 	}
 
-	err = hci_send_cmd(hdev, HCI_OP_WRITE_SC_SUPPORT, 1, &val);
+	hci_req_init(&req, hdev);
+	hci_req_add(&req, HCI_OP_WRITE_SC_SUPPORT, 1, &val);
+	err = hci_req_run(&req, sc_enable_complete);
 	if (err < 0) {
 		mgmt_pending_remove(cmd);
 		goto failed;
 	}
-
-	if (cp->val == 0x02)
-		set_bit(HCI_SC_ONLY, &hdev->dev_flags);
-	else
-		clear_bit(HCI_SC_ONLY, &hdev->dev_flags);
 
 failed:
 	hci_dev_unlock(hdev);
@@ -6262,14 +6330,16 @@ static int powered_update_hci(struct hci_dev *hdev)
 
 	if (test_bit(HCI_SSP_ENABLED, &hdev->dev_flags) &&
 	    !lmp_host_ssp_capable(hdev)) {
-		u8 ssp = 1;
+		u8 mode = 0x01;
 
-		hci_req_add(&req, HCI_OP_WRITE_SSP_MODE, 1, &ssp);
-	}
+		hci_req_add(&req, HCI_OP_WRITE_SSP_MODE, sizeof(mode), &mode);
 
-	if (bredr_sc_enabled(hdev) && !lmp_host_sc_capable(hdev)) {
-		u8 sc = 0x01;
-		hci_req_add(&req, HCI_OP_WRITE_SC_SUPPORT, sizeof(sc), &sc);
+		if (bredr_sc_enabled(hdev) && !lmp_host_sc_capable(hdev)) {
+			u8 support = 0x01;
+
+			hci_req_add(&req, HCI_OP_WRITE_SC_SUPPORT,
+				    sizeof(support), &support);
+		}
 	}
 
 	if (test_bit(HCI_LE_ENABLED, &hdev->dev_flags) &&
@@ -6989,43 +7059,6 @@ void mgmt_ssp_enable_complete(struct hci_dev *hdev, u8 enable, u8 status)
 	hci_req_run(&req, NULL);
 }
 
-void mgmt_sc_enable_complete(struct hci_dev *hdev, u8 enable, u8 status)
-{
-	struct cmd_lookup match = { NULL, hdev };
-	bool changed = false;
-
-	if (status) {
-		u8 mgmt_err = mgmt_status(status);
-
-		if (enable) {
-			if (test_and_clear_bit(HCI_SC_ENABLED,
-					       &hdev->dev_flags))
-				new_settings(hdev, NULL);
-			clear_bit(HCI_SC_ONLY, &hdev->dev_flags);
-		}
-
-		mgmt_pending_foreach(MGMT_OP_SET_SECURE_CONN, hdev,
-				     cmd_status_rsp, &mgmt_err);
-		return;
-	}
-
-	if (enable) {
-		changed = !test_and_set_bit(HCI_SC_ENABLED, &hdev->dev_flags);
-	} else {
-		changed = test_and_clear_bit(HCI_SC_ENABLED, &hdev->dev_flags);
-		clear_bit(HCI_SC_ONLY, &hdev->dev_flags);
-	}
-
-	mgmt_pending_foreach(MGMT_OP_SET_SECURE_CONN, hdev,
-			     settings_rsp, &match);
-
-	if (changed)
-		new_settings(hdev, match.sk);
-
-	if (match.sk)
-		sock_put(match.sk);
-}
-
 static void sk_lookup(struct pending_cmd *cmd, void *data)
 {
 	struct cmd_lookup *match = data;
@@ -7238,7 +7271,8 @@ void mgmt_device_found(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 link_type,
 	 * However when using service discovery, the value 127 will be
 	 * returned when the RSSI is not available.
 	 */
-	if (rssi == HCI_RSSI_INVALID && !hdev->discovery.report_invalid_rssi)
+	if (rssi == HCI_RSSI_INVALID && !hdev->discovery.report_invalid_rssi &&
+	    link_type == ACL_LINK)
 		rssi = 0;
 
 	bacpy(&ev->addr.bdaddr, bdaddr);
