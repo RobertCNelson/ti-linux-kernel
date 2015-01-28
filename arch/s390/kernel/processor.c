@@ -18,6 +18,14 @@
 
 static DEFINE_PER_CPU(struct cpuid, cpu_id);
 
+void cpu_relax(void)
+{
+	if (!smp_cpu_mtid && MACHINE_HAS_DIAG44)
+		asm volatile("diag 0,0,0x44");
+	barrier();
+}
+EXPORT_SYMBOL(cpu_relax);
+
 /*
  * cpu_init - initializes state that is per-CPU.
  */
