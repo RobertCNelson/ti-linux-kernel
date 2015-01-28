@@ -856,16 +856,16 @@ mwifiex_parse_htinfo(struct mwifiex_private *priv, u8 tx_htinfo,
 			/* HT or VHT */
 			switch (tx_htinfo & (BIT(3) | BIT(2))) {
 			case 0:
-				/* This will be 20MHz */
+				rate->bw = RATE_INFO_BW_20;
 				break;
 			case (BIT(2)):
-				rate->flags |= RATE_INFO_FLAGS_40_MHZ_WIDTH;
+				rate->bw = RATE_INFO_BW_40;
 				break;
 			case (BIT(3)):
-				rate->flags |= RATE_INFO_FLAGS_80_MHZ_WIDTH;
+				rate->bw = RATE_INFO_BW_80;
 				break;
 			case (BIT(3) | BIT(2)):
-				rate->flags |= RATE_INFO_FLAGS_160_MHZ_WIDTH;
+				rate->bw = RATE_INFO_BW_160;
 				break;
 			}
 
@@ -885,8 +885,9 @@ mwifiex_parse_htinfo(struct mwifiex_private *priv, u8 tx_htinfo,
 		if ((tx_htinfo & BIT(0)) && (priv->tx_rate < 16)) {
 			rate->mcs = priv->tx_rate;
 			rate->flags |= RATE_INFO_FLAGS_MCS;
+			rate->bw = RATE_INFO_BW_20;
 			if (tx_htinfo & BIT(1))
-				rate->flags |= RATE_INFO_FLAGS_40_MHZ_WIDTH;
+				rate->bw = RATE_INFO_BW_40;
 			if (tx_htinfo & BIT(2))
 				rate->flags |= RATE_INFO_FLAGS_SHORT_GI;
 		}
@@ -910,10 +911,10 @@ mwifiex_dump_station_info(struct mwifiex_private *priv,
 {
 	u32 rate;
 
-	sinfo->filled = STATION_INFO_RX_BYTES | STATION_INFO_TX_BYTES |
-			STATION_INFO_RX_PACKETS | STATION_INFO_TX_PACKETS |
-			STATION_INFO_TX_BITRATE |
-			STATION_INFO_SIGNAL | STATION_INFO_SIGNAL_AVG;
+	sinfo->filled = BIT(NL80211_STA_INFO_RX_BYTES) | BIT(NL80211_STA_INFO_TX_BYTES) |
+			BIT(NL80211_STA_INFO_RX_PACKETS) | BIT(NL80211_STA_INFO_TX_PACKETS) |
+			BIT(NL80211_STA_INFO_TX_BITRATE) |
+			BIT(NL80211_STA_INFO_SIGNAL) | BIT(NL80211_STA_INFO_SIGNAL_AVG);
 
 	/* Get signal information from the firmware */
 	if (mwifiex_send_cmd(priv, HostCmd_CMD_RSSI_INFO,
@@ -944,7 +945,7 @@ mwifiex_dump_station_info(struct mwifiex_private *priv,
 	sinfo->txrate.legacy = rate * 5;
 
 	if (priv->bss_mode == NL80211_IFTYPE_STATION) {
-		sinfo->filled |= STATION_INFO_BSS_PARAM;
+		sinfo->filled |= BIT(NL80211_STA_INFO_BSS_PARAM);
 		sinfo->bss_param.flags = 0;
 		if (priv->curr_bss_params.bss_descriptor.cap_info_bitmap &
 						WLAN_CAPABILITY_SHORT_PREAMBLE)
@@ -1037,10 +1038,11 @@ mwifiex_cfg80211_dump_survey(struct wiphy *wiphy, struct net_device *dev,
 	survey->channel = ieee80211_get_channel(wiphy,
 	    ieee80211_channel_to_frequency(pchan_stats[idx].chan_num, band));
 	survey->filled = SURVEY_INFO_NOISE_DBM |
-		SURVEY_INFO_CHANNEL_TIME | SURVEY_INFO_CHANNEL_TIME_BUSY;
+			 SURVEY_INFO_TIME |
+			 SURVEY_INFO_TIME_BUSY;
 	survey->noise = pchan_stats[idx].noise;
-	survey->channel_time = pchan_stats[idx].cca_scan_dur;
-	survey->channel_time_busy = pchan_stats[idx].cca_busy_dur;
+	survey->time = pchan_stats[idx].cca_scan_dur;
+	survey->time_busy = pchan_stats[idx].cca_busy_dur;
 
 	return 0;
 }
@@ -1784,6 +1786,7 @@ mwifiex_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
 			 struct cfg80211_connect_params *sme)
 {
 	struct mwifiex_private *priv = mwifiex_netdev_get_priv(dev);
+	struct mwifiex_adapter *adapter = priv->adapter;
 	int ret;
 
 	if (GET_BSS_ROLE(priv) != MWIFIEX_BSS_ROLE_STA) {
@@ -1796,6 +1799,13 @@ mwifiex_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
 	if (priv->wdev && priv->wdev->current_bss) {
 		wiphy_warn(wiphy, "%s: already connected\n", dev->name);
 		return -EALREADY;
+	}
+
+	if (adapter->surprise_removed || adapter->is_cmd_timedout) {
+		wiphy_err(wiphy,
+			  "%s: Ignore connection. Card removed or FW in bad state\n",
+			  dev->name);
+		return -EFAULT;
 	}
 
 	wiphy_dbg(wiphy, "info: Trying to associate to %s and bssid %pM\n",
@@ -2386,6 +2396,10 @@ int mwifiex_del_virtual_intf(struct wiphy *wiphy, struct wireless_dev *wdev)
 
 	priv->bss_mode = NL80211_IFTYPE_UNSPECIFIED;
 
+	if (GET_BSS_ROLE(priv) == MWIFIEX_BSS_ROLE_STA ||
+	    GET_BSS_ROLE(priv) == MWIFIEX_BSS_ROLE_UAP)
+		kfree(priv->hist_data);
+
 	return 0;
 }
 EXPORT_SYMBOL_GPL(mwifiex_del_virtual_intf);
@@ -2421,30 +2435,16 @@ mwifiex_is_pattern_supported(struct cfg80211_pkt_pattern *pat, s8 *byte_seq,
 }
 
 #ifdef CONFIG_PM
-static int mwifiex_cfg80211_suspend(struct wiphy *wiphy,
-				    struct cfg80211_wowlan *wowlan)
+static int mwifiex_set_mef_filter(struct mwifiex_private *priv,
+				  struct cfg80211_wowlan *wowlan)
 {
-	struct mwifiex_adapter *adapter = mwifiex_cfg80211_get_adapter(wiphy);
-	struct mwifiex_ds_mef_cfg mef_cfg;
-	struct mwifiex_mef_entry *mef_entry;
-	int i, filt_num = 0, ret;
+	int i, filt_num = 0, ret = 0;
 	bool first_pat = true;
 	u8 byte_seq[MWIFIEX_MEF_MAX_BYTESEQ + 1];
 	const u8 ipv4_mc_mac[] = {0x33, 0x33};
 	const u8 ipv6_mc_mac[] = {0x01, 0x00, 0x5e};
-	struct mwifiex_private *priv =
-			mwifiex_get_priv(adapter, MWIFIEX_BSS_ROLE_STA);
-
-	if (!wowlan) {
-		dev_warn(adapter->dev, "None of the WOWLAN triggers enabled\n");
-		return 0;
-	}
-
-	if (!priv->media_connected) {
-		dev_warn(adapter->dev,
-			 "Can not configure WOWLAN in disconnected state\n");
-		return 0;
-	}
+	struct mwifiex_ds_mef_cfg mef_cfg;
+	struct mwifiex_mef_entry *mef_entry;
 
 	mef_entry = kzalloc(sizeof(*mef_entry), GFP_KERNEL);
 	if (!mef_entry)
@@ -2459,9 +2459,9 @@ static int mwifiex_cfg80211_suspend(struct wiphy *wiphy,
 	for (i = 0; i < wowlan->n_patterns; i++) {
 		memset(byte_seq, 0, sizeof(byte_seq));
 		if (!mwifiex_is_pattern_supported(&wowlan->patterns[i],
-						  byte_seq,
-						  MWIFIEX_MEF_MAX_BYTESEQ)) {
-			wiphy_err(wiphy, "Pattern not supported\n");
+					byte_seq,
+					MWIFIEX_MEF_MAX_BYTESEQ)) {
+			dev_err(priv->adapter->dev, "Pattern not supported\n");
 			kfree(mef_entry);
 			return -EOPNOTSUPP;
 		}
@@ -2485,9 +2485,9 @@ static int mwifiex_cfg80211_suspend(struct wiphy *wiphy,
 
 		mef_entry->filter[filt_num].repeat = 1;
 		mef_entry->filter[filt_num].offset =
-						wowlan->patterns[i].pkt_offset;
+			wowlan->patterns[i].pkt_offset;
 		memcpy(mef_entry->filter[filt_num].byte_seq, byte_seq,
-		       sizeof(byte_seq));
+				sizeof(byte_seq));
 		mef_entry->filter[filt_num].filt_type = TYPE_EQ;
 
 		if (first_pat)
@@ -2502,9 +2502,9 @@ static int mwifiex_cfg80211_suspend(struct wiphy *wiphy,
 		mef_cfg.criteria |= MWIFIEX_CRITERIA_UNICAST;
 		mef_entry->filter[filt_num].repeat = 16;
 		memcpy(mef_entry->filter[filt_num].byte_seq, priv->curr_addr,
-		       ETH_ALEN);
+				ETH_ALEN);
 		mef_entry->filter[filt_num].byte_seq[MWIFIEX_MEF_MAX_BYTESEQ] =
-								ETH_ALEN;
+			ETH_ALEN;
 		mef_entry->filter[filt_num].offset = 28;
 		mef_entry->filter[filt_num].filt_type = TYPE_EQ;
 		if (filt_num)
@@ -2513,9 +2513,9 @@ static int mwifiex_cfg80211_suspend(struct wiphy *wiphy,
 		filt_num++;
 		mef_entry->filter[filt_num].repeat = 16;
 		memcpy(mef_entry->filter[filt_num].byte_seq, priv->curr_addr,
-		       ETH_ALEN);
+				ETH_ALEN);
 		mef_entry->filter[filt_num].byte_seq[MWIFIEX_MEF_MAX_BYTESEQ] =
-								ETH_ALEN;
+			ETH_ALEN;
 		mef_entry->filter[filt_num].offset = 56;
 		mef_entry->filter[filt_num].filt_type = TYPE_EQ;
 		mef_entry->filter[filt_num].filt_action = TYPE_OR;
@@ -2523,13 +2523,58 @@ static int mwifiex_cfg80211_suspend(struct wiphy *wiphy,
 
 	if (!mef_cfg.criteria)
 		mef_cfg.criteria = MWIFIEX_CRITERIA_BROADCAST |
-				   MWIFIEX_CRITERIA_UNICAST |
-				   MWIFIEX_CRITERIA_MULTICAST;
+			MWIFIEX_CRITERIA_UNICAST |
+			MWIFIEX_CRITERIA_MULTICAST;
 
 	ret = mwifiex_send_cmd(priv, HostCmd_CMD_MEF_CFG,
-			       HostCmd_ACT_GEN_SET, 0, &mef_cfg, true);
+			HostCmd_ACT_GEN_SET, 0, &mef_cfg, true);
 
 	kfree(mef_entry);
+	return ret;
+}
+
+static int mwifiex_cfg80211_suspend(struct wiphy *wiphy,
+				    struct cfg80211_wowlan *wowlan)
+{
+	struct mwifiex_adapter *adapter = mwifiex_cfg80211_get_adapter(wiphy);
+	struct mwifiex_ds_hs_cfg hs_cfg;
+	int ret = 0;
+	struct mwifiex_private *priv =
+			mwifiex_get_priv(adapter, MWIFIEX_BSS_ROLE_STA);
+
+	if (!wowlan) {
+		dev_warn(adapter->dev, "None of the WOWLAN triggers enabled\n");
+		return 0;
+	}
+
+	if (!priv->media_connected) {
+		dev_warn(adapter->dev,
+			 "Can not configure WOWLAN in disconnected state\n");
+		return 0;
+	}
+
+	if (wowlan->n_patterns || wowlan->magic_pkt) {
+		ret = mwifiex_set_mef_filter(priv, wowlan);
+		if (ret) {
+			dev_err(adapter->dev, "Failed to set MEF filter\n");
+			return ret;
+		}
+	}
+
+	if (wowlan->disconnect) {
+		memset(&hs_cfg, 0, sizeof(hs_cfg));
+		hs_cfg.is_invoke_hostcmd = false;
+		hs_cfg.conditions = HS_CFG_COND_MAC_EVENT;
+		hs_cfg.gpio = HS_CFG_GPIO_DEF;
+		hs_cfg.gap = HS_CFG_GAP_DEF;
+		ret = mwifiex_set_hs_params(priv, HostCmd_ACT_GEN_SET,
+					    MWIFIEX_SYNC_CMD, &hs_cfg);
+		if (ret) {
+			dev_err(adapter->dev, "Failed to set HS params\n");
+			return ret;
+		}
+	}
+
 	return ret;
 }
 
@@ -2870,7 +2915,7 @@ static struct cfg80211_ops mwifiex_cfg80211_ops = {
 
 #ifdef CONFIG_PM
 static const struct wiphy_wowlan_support mwifiex_wowlan_support = {
-	.flags = WIPHY_WOWLAN_MAGIC_PKT,
+	.flags = WIPHY_WOWLAN_MAGIC_PKT | WIPHY_WOWLAN_DISCONNECT,
 	.n_patterns = MWIFIEX_MEF_MAX_FILTERS,
 	.pattern_min_len = 1,
 	.pattern_max_len = MWIFIEX_MAX_PATTERN_LEN,
