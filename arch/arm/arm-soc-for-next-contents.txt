@@ -138,6 +138,8 @@ next/dt
 		Documentation: DT: Add bindings for FSL NS16550A UART
 		Documentation: DT: Add entry for FSL LS2085A SoC and Simulator model
 		Documentation: DT: Add entry for FSL Management Complex
+	rockchip/dt2 (6):
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.20-rockchip-dts2
 
 next/drivers
 	renesas/sh73a0-ccf (6):
@@ -187,20 +189,12 @@ next/arm64
 	patch:
 		arm64: Add DTS support for FSL's LS2085A SoC
 		arm64: Add support for FSL's LS2085A SoC in Kconfig and defconfig
+	mtk/arm64 (3):
+		https://github.com/mbgg/linux-mediatek tags/v3.20-next-arm64
+	patch:
+		arm64: Fix sort of platform Kconfig entries
 
 fixes
-	patch:
-		Merge tag 'mvebu-fixes-3.19-3' of git://git.infradead.org/linux-mvebu into fixes
-	<no branch> (0fb22a8fb7f3bc1b00a36d4a97ce4f93191f7559) (2):
-		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/gic-regression-v2
-	<no branch> (f469cde20a7ee342070b4a459b6fce469a3186db) (2):
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-fixes2-for-v3.19
-	<no branch> (38bdf45f4aa5cb6186d50a29e6cbbd9d486a1519) (2):
-		git://git.infradead.org/linux-mvebu tags/mvebu-fixes-3.19-4
-	patch:
-		arm64: dts: add baud rate to Juno stdout-path
-	<no branch> (7ecd0bde5bfea524a843ad8fa8cb66ccbce68779) (1):
-		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-fixes-3.19-2
 	<no branch> (117a2cc38ffe0b46bcc6f991a3534b345477439c) (4):
 		https://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-fixes-for-3.19
 
