@@ -154,7 +154,7 @@ static void ll_invalidate_negative_children(struct inode *dir)
 			list_for_each_entry_safe(child, tmp_subdir,
 						 &dentry->d_subdirs,
 						 d_child) {
-				if (child->d_inode == NULL)
+				if (fs_inode(child) == NULL)
 					d_lustre_invalidate(child, 1);
 			}
 		}
@@ -391,7 +391,7 @@ struct dentry *ll_splice_alias(struct inode *inode, struct dentry *de)
 			iput(inode);
 			CDEBUG(D_DENTRY,
 			       "Reuse dentry %p inode %p refc %d flags %#x\n",
-			      new, new->d_inode, d_count(new), new->d_flags);
+			      new, fs_inode(new), d_count(new), new->d_flags);
 			return new;
 		}
 	}
@@ -400,7 +400,7 @@ struct dentry *ll_splice_alias(struct inode *inode, struct dentry *de)
 		return ERR_PTR(rc);
 	d_add(de, inode);
 	CDEBUG(D_DENTRY, "Add dentry %p inode %p refc %d flags %#x\n",
-	       de, de->d_inode, d_count(de), de->d_flags);
+	       de, fs_inode(de), d_count(de), de->d_flags);
 	return de;
 }
 
@@ -540,7 +540,7 @@ static struct dentry *ll_lookup_it(struct inode *parent, struct dentry *dentry,
 		goto out;
 	}
 
-	inode = dentry->d_inode;
+	inode = fs_inode(dentry);
 	if ((it->it_op & IT_OPEN) && inode &&
 	    !S_ISREG(inode->i_mode) &&
 	    !S_ISDIR(inode->i_mode)) {
@@ -636,9 +636,9 @@ static int ll_atomic_open(struct inode *dir, struct dentry *dentry,
 
 			*opened |= FILE_CREATED;
 		}
-		if (dentry->d_inode && it_disposition(it, DISP_OPEN_OPEN)) {
+		if (fs_inode(dentry) && it_disposition(it, DISP_OPEN_OPEN)) {
 			/* Open dentry. */
-			if (S_ISFIFO(dentry->d_inode->i_mode)) {
+			if (S_ISFIFO(fs_inode(dentry)->i_mode)) {
 				/* We cannot call open here as it would
 				 * deadlock.
 				 */
@@ -860,8 +860,8 @@ static int ll_create_nd(struct inode *dir, struct dentry *dentry,
 
 static inline void ll_get_child_fid(struct dentry *child, struct lu_fid *fid)
 {
-	if (child->d_inode)
-		*fid = *ll_inode2fid(child->d_inode);
+	if (fs_inode(child))
+		*fid = *ll_inode2fid(fs_inode(child));
 }
 
 /**
@@ -1073,7 +1073,7 @@ static int ll_symlink(struct inode *dir, struct dentry *dentry,
 static int ll_link(struct dentry *old_dentry, struct inode *dir,
 		   struct dentry *new_dentry)
 {
-	struct inode *src = old_dentry->d_inode;
+	struct inode *src = fs_inode(old_dentry);
 	struct ll_sb_info *sbi = ll_i2sbi(dir);
 	struct ptlrpc_request *request = NULL;
 	struct md_op_data *op_data;
