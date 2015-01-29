@@ -294,6 +294,7 @@ struct clk *clk_register_gate(struct device *dev, const char *name,
 		const char *parent_name, unsigned long flags,
 		void __iomem *reg, u8 bit_idx,
 		u8 clk_gate_flags, spinlock_t *lock);
+void clk_unregister_gate(struct clk *clk);
 
 struct clk_div_table {
 	unsigned int	val;
@@ -352,6 +353,17 @@ struct clk_divider {
 #define CLK_DIVIDER_READ_ONLY		BIT(5)
 
 extern const struct clk_ops clk_divider_ops;
+
+unsigned long divider_recalc_rate(struct clk_hw *hw, unsigned long parent_rate,
+		unsigned int val, const struct clk_div_table *table,
+		unsigned long flags);
+long divider_round_rate(struct clk_hw *hw, unsigned long rate,
+		unsigned long *prate, const struct clk_div_table *table,
+		u8 width, unsigned long flags);
+int divider_get_val(unsigned long rate, unsigned long parent_rate,
+		const struct clk_div_table *table, u8 width,
+		unsigned long flags);
+
 struct clk *clk_register_divider(struct device *dev, const char *name,
 		const char *parent_name, unsigned long flags,
 		void __iomem *reg, u8 shift, u8 width,
@@ -361,6 +373,7 @@ struct clk *clk_register_divider_table(struct device *dev, const char *name,
 		void __iomem *reg, u8 shift, u8 width,
 		u8 clk_divider_flags, const struct clk_div_table *table,
 		spinlock_t *lock);
+void clk_unregister_divider(struct clk *clk);
 
 /**
  * struct clk_mux - multiplexer clock
@@ -382,6 +395,8 @@ struct clk *clk_register_divider_table(struct device *dev, const char *name,
  *	register, and mask of mux bits are in higher 16-bit of this register.
  *	While setting the mux bits, higher 16-bit should also be updated to
  *	indicate changing mux bits.
+ * CLK_MUX_ROUND_CLOSEST - Use the parent rate that is closest to the desired
+ *	frequency.
  */
 struct clk_mux {
 	struct clk_hw	hw;
@@ -396,7 +411,8 @@ struct clk_mux {
 #define CLK_MUX_INDEX_ONE		BIT(0)
 #define CLK_MUX_INDEX_BIT		BIT(1)
 #define CLK_MUX_HIWORD_MASK		BIT(2)
-#define CLK_MUX_READ_ONLY	BIT(3) /* mux setting cannot be changed */
+#define CLK_MUX_READ_ONLY		BIT(3) /* mux can't be changed */
+#define CLK_MUX_ROUND_CLOSEST		BIT(4)
 
 extern const struct clk_ops clk_mux_ops;
 extern const struct clk_ops clk_mux_ro_ops;
@@ -410,6 +426,8 @@ struct clk *clk_register_mux_table(struct device *dev, const char *name,
 		const char **parent_names, u8 num_parents, unsigned long flags,
 		void __iomem *reg, u8 shift, u32 mask,
 		u8 clk_mux_flags, u32 *table, spinlock_t *lock);
+
+void clk_unregister_mux(struct clk *clk);
 
 void of_fixed_factor_clk_setup(struct device_node *node);
 
@@ -550,6 +568,9 @@ bool __clk_is_prepared(struct clk *clk);
 bool __clk_is_enabled(struct clk *clk);
 struct clk *__clk_lookup(const char *name);
 long __clk_mux_determine_rate(struct clk_hw *hw, unsigned long rate,
+			      unsigned long *best_parent_rate,
+			      struct clk_hw **best_parent_p);
+long __clk_mux_determine_rate_closest(struct clk_hw *hw, unsigned long rate,
 			      unsigned long *best_parent_rate,
 			      struct clk_hw **best_parent_p);
 

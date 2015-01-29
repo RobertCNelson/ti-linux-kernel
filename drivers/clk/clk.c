@@ -343,13 +343,9 @@ unlock:
 static void clk_debug_unregister(struct clk *clk)
 {
 	mutex_lock(&clk_debug_lock);
-	if (!clk->dentry)
-		goto out;
-
 	hlist_del_init(&clk->debug_node);
 	debugfs_remove_recursive(clk->dentry);
 	clk->dentry = NULL;
-out:
 	mutex_unlock(&clk_debug_lock);
 }
 
@@ -694,14 +690,20 @@ struct clk *__clk_lookup(const char *name)
 	return NULL;
 }
 
-/*
- * Helper for finding best parent to provide a given frequency. This can be used
- * directly as a determine_rate callback (e.g. for a mux), or from a more
- * complex clock that may combine a mux with other operations.
- */
-long __clk_mux_determine_rate(struct clk_hw *hw, unsigned long rate,
-			      unsigned long *best_parent_rate,
-			      struct clk_hw **best_parent_p)
+static bool mux_is_better_rate(unsigned long rate, unsigned long now,
+			   unsigned long best, unsigned long flags)
+{
+	if (flags & CLK_MUX_ROUND_CLOSEST)
+		return abs(now - rate) < abs(best - rate);
+
+	return now <= rate && now > best;
+}
+
+static long
+clk_mux_determine_rate_flags(struct clk_hw *hw, unsigned long rate,
+			     unsigned long *best_parent_rate,
+			     struct clk_hw **best_parent_p,
+			     unsigned long flags)
 {
 	struct clk *clk = hw->clk, *parent, *best_parent = NULL;
 	int i, num_parents;
@@ -729,7 +731,7 @@ long __clk_mux_determine_rate(struct clk_hw *hw, unsigned long rate,
 			parent_rate = __clk_round_rate(parent, rate);
 		else
 			parent_rate = __clk_get_rate(parent);
-		if (parent_rate <= rate && parent_rate > best) {
+		if (mux_is_better_rate(rate, parent_rate, best, flags)) {
 			best_parent = parent;
 			best = parent_rate;
 		}
@@ -742,7 +744,30 @@ out:
 
 	return best;
 }
+
+/*
+ * Helper for finding best parent to provide a given frequency. This can be used
+ * directly as a determine_rate callback (e.g. for a mux), or from a more
+ * complex clock that may combine a mux with other operations.
+ */
+long __clk_mux_determine_rate(struct clk_hw *hw, unsigned long rate,
+			      unsigned long *best_parent_rate,
+			      struct clk_hw **best_parent_p)
+{
+	return clk_mux_determine_rate_flags(hw, rate, best_parent_rate,
+					    best_parent_p, 0);
+}
 EXPORT_SYMBOL_GPL(__clk_mux_determine_rate);
+
+long __clk_mux_determine_rate_closest(struct clk_hw *hw, unsigned long rate,
+			      unsigned long *best_parent_rate,
+			      struct clk_hw **best_parent_p)
+{
+	return clk_mux_determine_rate_flags(hw, rate, best_parent_rate,
+					    best_parent_p,
+					    CLK_MUX_ROUND_CLOSEST);
+}
+EXPORT_SYMBOL_GPL(__clk_mux_determine_rate_closest);
 
 /***        clk api        ***/
 
@@ -1390,7 +1415,7 @@ static struct clk *clk_calc_new_rates(struct clk *clk, unsigned long rate)
 	}
 
 	/* try finding the new parent index */
-	if (parent) {
+	if (parent && clk->num_parents > 1) {
 		p_index = clk_fetch_parent_index(clk, parent);
 		if (p_index < 0) {
 			pr_debug("%s: clk %s can not be parent of clk %s\n",
@@ -1652,6 +1677,36 @@ void __clk_reparent(struct clk *clk, struct clk *new_parent)
 }
 
 /**
+ * clk_has_parent - check if a clock is a possible parent for another
+ * @clk: clock source
+ * @parent: parent clock source
+ *
+ * This function can be used in drivers that need to check that a clock can be
+ * the parent of another without actually changing the parent.
+ *
+ * Returns true if @parent is a possible parent for @clk, false otherwise.
+ */
+bool clk_has_parent(struct clk *clk, struct clk *parent)
+{
+	unsigned int i;
+
+	/* NULL clocks should be nops, so return success if either is NULL. */
+	if (!clk || !parent)
+		return true;
+
+	/* Optimize for the case where the parent is already the parent. */
+	if (clk->parent == parent)
+		return true;
+
+	for (i = 0; i < clk->num_parents; i++)
+		if (strcmp(clk->parent_names[i], parent->name) == 0)
+			return true;
+
+	return false;
+}
+EXPORT_SYMBOL_GPL(clk_has_parent);
+
+/**
  * clk_set_parent - switch the parent of a mux clk
  * @clk: the mux clk whose input we are switching
  * @parent: the new input to clk
@@ -1778,6 +1833,7 @@ out_unlock:
 out:
 	return ret;
 }
+EXPORT_SYMBOL_GPL(clk_set_phase);
 
 /**
  * clk_get_phase - return the phase shift of a clock signal
@@ -1800,6 +1856,7 @@ int clk_get_phase(struct clk *clk)
 out:
 	return ret;
 }
+EXPORT_SYMBOL_GPL(clk_get_phase);
 
 /**
  * __clk_init - initialize the data structures in a struct clk
