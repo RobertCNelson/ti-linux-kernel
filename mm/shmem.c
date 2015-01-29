@@ -544,7 +544,7 @@ EXPORT_SYMBOL_GPL(shmem_truncate_range);
 
 static int shmem_setattr(struct dentry *dentry, struct iattr *attr)
 {
-	struct inode *inode = dentry->d_inode;
+	struct inode *inode = fs_inode(dentry);
 	struct shmem_inode_info *info = SHMEM_I(inode);
 	int error;
 
@@ -2271,7 +2271,7 @@ static int shmem_create(struct inode *dir, struct dentry *dentry, umode_t mode,
  */
 static int shmem_link(struct dentry *old_dentry, struct inode *dir, struct dentry *dentry)
 {
-	struct inode *inode = old_dentry->d_inode;
+	struct inode *inode = fs_inode(old_dentry);
 	int ret;
 
 	/*
@@ -2295,7 +2295,7 @@ out:
 
 static int shmem_unlink(struct inode *dir, struct dentry *dentry)
 {
-	struct inode *inode = dentry->d_inode;
+	struct inode *inode = fs_inode(dentry);
 
 	if (inode->i_nlink > 1 && !S_ISDIR(inode->i_mode))
 		shmem_free_inode(inode->i_sb);
@@ -2312,7 +2312,7 @@ static int shmem_rmdir(struct inode *dir, struct dentry *dentry)
 	if (!simple_empty(dentry))
 		return -ENOTEMPTY;
 
-	drop_nlink(dentry->d_inode);
+	drop_nlink(fs_inode(dentry));
 	drop_nlink(dir);
 	return shmem_unlink(dir, dentry);
 }
@@ -2333,8 +2333,8 @@ static int shmem_exchange(struct inode *old_dir, struct dentry *old_dentry, stru
 	}
 	old_dir->i_ctime = old_dir->i_mtime =
 	new_dir->i_ctime = new_dir->i_mtime =
-	old_dentry->d_inode->i_ctime =
-	new_dentry->d_inode->i_ctime = CURRENT_TIME;
+	fs_inode(old_dentry)->i_ctime =
+	fs_inode(new_dentry)->i_ctime = CURRENT_TIME;
 
 	return 0;
 }
@@ -2373,7 +2373,7 @@ static int shmem_whiteout(struct inode *old_dir, struct dentry *old_dentry)
  */
 static int shmem_rename2(struct inode *old_dir, struct dentry *old_dentry, struct inode *new_dir, struct dentry *new_dentry, unsigned int flags)
 {
-	struct inode *inode = old_dentry->d_inode;
+	struct inode *inode = fs_inode(old_dentry);
 	int they_are_dirs = S_ISDIR(inode->i_mode);
 
 	if (flags & ~(RENAME_NOREPLACE | RENAME_EXCHANGE | RENAME_WHITEOUT))
@@ -2393,10 +2393,10 @@ static int shmem_rename2(struct inode *old_dir, struct dentry *old_dentry, struc
 			return error;
 	}
 
-	if (new_dentry->d_inode) {
+	if (fs_inode(new_dentry)) {
 		(void) shmem_unlink(new_dir, new_dentry);
 		if (they_are_dirs) {
-			drop_nlink(new_dentry->d_inode);
+			drop_nlink(fs_inode(new_dentry));
 			drop_nlink(old_dir);
 		}
 	} else if (they_are_dirs) {
@@ -2473,14 +2473,14 @@ static int shmem_symlink(struct inode *dir, struct dentry *dentry, const char *s
 
 static void *shmem_follow_short_symlink(struct dentry *dentry, struct nameidata *nd)
 {
-	nd_set_link(nd, SHMEM_I(dentry->d_inode)->symlink);
+	nd_set_link(nd, SHMEM_I(fs_inode(dentry))->symlink);
 	return NULL;
 }
 
 static void *shmem_follow_link(struct dentry *dentry, struct nameidata *nd)
 {
 	struct page *page = NULL;
-	int error = shmem_getpage(dentry->d_inode, 0, &page, SGP_READ, NULL);
+	int error = shmem_getpage(fs_inode(dentry), 0, &page, SGP_READ, NULL);
 	nd_set_link(nd, error ? ERR_PTR(error) : kmap(page));
 	if (page)
 		unlock_page(page);
@@ -2571,7 +2571,7 @@ static int shmem_xattr_validate(const char *name)
 static ssize_t shmem_getxattr(struct dentry *dentry, const char *name,
 			      void *buffer, size_t size)
 {
-	struct shmem_inode_info *info = SHMEM_I(dentry->d_inode);
+	struct shmem_inode_info *info = SHMEM_I(fs_inode(dentry));
 	int err;
 
 	/*
@@ -2592,7 +2592,7 @@ static ssize_t shmem_getxattr(struct dentry *dentry, const char *name,
 static int shmem_setxattr(struct dentry *dentry, const char *name,
 			  const void *value, size_t size, int flags)
 {
-	struct shmem_inode_info *info = SHMEM_I(dentry->d_inode);
+	struct shmem_inode_info *info = SHMEM_I(fs_inode(dentry));
 	int err;
 
 	/*
@@ -2612,7 +2612,7 @@ static int shmem_setxattr(struct dentry *dentry, const char *name,
 
 static int shmem_removexattr(struct dentry *dentry, const char *name)
 {
-	struct shmem_inode_info *info = SHMEM_I(dentry->d_inode);
+	struct shmem_inode_info *info = SHMEM_I(fs_inode(dentry));
 	int err;
 
 	/*
@@ -2632,7 +2632,7 @@ static int shmem_removexattr(struct dentry *dentry, const char *name)
 
 static ssize_t shmem_listxattr(struct dentry *dentry, char *buffer, size_t size)
 {
-	struct shmem_inode_info *info = SHMEM_I(dentry->d_inode);
+	struct shmem_inode_info *info = SHMEM_I(fs_inode(dentry));
 	return simple_xattr_list(&info->xattrs, buffer, size);
 }
 #endif /* CONFIG_TMPFS_XATTR */
