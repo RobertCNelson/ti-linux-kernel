@@ -15,7 +15,6 @@
 #include "wacom_wac.h"
 #include "wacom.h"
 #include <linux/input/mt.h>
-#include <linux/hid.h>
 
 /* resolution for penabled devices */
 #define WACOM_PL_RES		20
@@ -444,9 +443,6 @@ static int wacom_intuos_inout(struct wacom_wac *wacom)
 
 	/* Enter report */
 	if ((data[1] & 0xfc) == 0xc0) {
-		if (features->quirks & WACOM_QUIRK_MULTI_INPUT)
-			wacom->shared->stylus_in_proximity = true;
-
 		/* serial number of the tool */
 		wacom->serial[idx] = ((data[3] & 0x0f) << 28) +
 			(data[4] << 20) + (data[5] << 12) +
@@ -535,24 +531,46 @@ static int wacom_intuos_inout(struct wacom_wac *wacom)
 		return 1;
 	}
 
+	/*
+	 * don't report events for invalid data
+	 */
 	/* older I4 styli don't work with new Cintiqs */
-	if (!((wacom->id[idx] >> 20) & 0x01) &&
-			(features->type == WACOM_21UX2))
+	if ((!((wacom->id[idx] >> 20) & 0x01) &&
+			(features->type == WACOM_21UX2)) ||
+	    /* Only large Intuos support Lense Cursor */
+	    (wacom->tool[idx] == BTN_TOOL_LENS &&
+		(features->type == INTUOS3 ||
+		 features->type == INTUOS3S ||
+		 features->type == INTUOS4 ||
+		 features->type == INTUOS4S ||
+		 features->type == INTUOS5 ||
+		 features->type == INTUOS5S ||
+		 features->type == INTUOSPM ||
+		 features->type == INTUOSPS)) ||
+	   /* Cintiq doesn't send data when RDY bit isn't set */
+	   (features->type == CINTIQ && !(data[1] & 0x40)))
 		return 1;
 
-	/* Range Report */
-	if ((data[1] & 0xfe) == 0x20) {
+	if (features->quirks & WACOM_QUIRK_MULTI_INPUT)
+		wacom->shared->stylus_in_proximity = true;
+
+	/* in Range while exiting */
+	if (((data[1] & 0xfe) == 0x20) && wacom->reporting_data) {
 		input_report_key(input, BTN_TOUCH, 0);
 		input_report_abs(input, ABS_PRESSURE, 0);
 		input_report_abs(input, ABS_DISTANCE, wacom->features.distance_max);
-		if (features->quirks & WACOM_QUIRK_MULTI_INPUT)
-			wacom->shared->stylus_in_proximity = true;
+		return 2;
 	}
 
 	/* Exit report */
 	if ((data[1] & 0xfe) == 0x80) {
 		if (features->quirks & WACOM_QUIRK_MULTI_INPUT)
 			wacom->shared->stylus_in_proximity = false;
+		wacom->reporting_data = false;
+
+		/* don't report exit if we don't know the ID */
+		if (!wacom->id[idx])
+			return 1;
 
 		/*
 		 * Reset all states otherwise we lose the initial states
@@ -586,6 +604,11 @@ static int wacom_intuos_inout(struct wacom_wac *wacom)
 		wacom->id[idx] = 0;
 		return 2;
 	}
+
+	/* don't report other events if we don't know the ID */
+	if (!wacom->id[idx])
+		return 1;
+
 	return 0;
 }
 
@@ -760,6 +783,12 @@ static int wacom_intuos_irq(struct wacom_wac *wacom)
 			input_report_key(input, BTN_7, (data[4] & 0x40));  /* Left   */
 			input_report_key(input, BTN_8, (data[4] & 0x80));  /* Down   */
 			input_report_key(input, BTN_0, (data[3] & 0x01));  /* Center */
+
+			if (data[4] | (data[3] & 0x01)) {
+				input_report_abs(input, ABS_MISC, PAD_DEVICE_ID);
+			} else {
+				input_report_abs(input, ABS_MISC, 0);
+			}
 		} else if (features->type >= INTUOS5S && features->type <= INTUOSPL) {
 			int i;
 
@@ -842,28 +871,6 @@ static int wacom_intuos_irq(struct wacom_wac *wacom)
 	result = wacom_intuos_inout(wacom);
 	if (result)
                 return result - 1;
-
-	/* don't proceed if we don't know the ID */
-	if (!wacom->id[idx])
-		return 0;
-
-	/* Only large Intuos support Lense Cursor */
-	if (wacom->tool[idx] == BTN_TOOL_LENS &&
-	    (features->type == INTUOS3 ||
-	     features->type == INTUOS3S ||
-	     features->type == INTUOS4 ||
-	     features->type == INTUOS4S ||
-	     features->type == INTUOS5 ||
-	     features->type == INTUOS5S ||
-	     features->type == INTUOSPM ||
-	     features->type == INTUOSPS)) {
-
-		return 0;
-	}
-
-	/* Cintiq doesn't send data when RDY bit isn't set */
-	if (features->type == CINTIQ && !(data[1] & 0x40))
-                 return 0;
 
 	if (features->type >= INTUOS3S) {
 		input_report_abs(input, ABS_X, (data[2] << 9) | (data[3] << 1) | ((data[9] >> 1) & 1));
@@ -951,6 +958,7 @@ static int wacom_intuos_irq(struct wacom_wac *wacom)
 	input_report_abs(input, ABS_MISC, wacom->id[idx]); /* report tool id */
 	input_report_key(input, wacom->tool[idx], 1);
 	input_event(input, EV_MSC, MSC_SERIAL, wacom->serial[idx]);
+	wacom->reporting_data = true;
 	return 1;
 }
 
@@ -1513,13 +1521,6 @@ static void wacom_wac_finger_report(struct hid_device *hdev,
 	/* keep touch state for pen event */
 	wacom_wac->shared->touch_down = wacom_wac_finger_count_touches(hdev);
 }
-
-#define WACOM_PEN_FIELD(f)	(((f)->logical == HID_DG_STYLUS) || \
-				 ((f)->physical == HID_DG_STYLUS) || \
-				 ((f)->application == HID_DG_PEN))
-#define WACOM_FINGER_FIELD(f)	(((f)->logical == HID_DG_FINGER) || \
-				 ((f)->physical == HID_DG_FINGER) || \
-				 ((f)->application == HID_DG_TOUCHSCREEN))
 
 void wacom_wac_usage_mapping(struct hid_device *hdev,
 		struct hid_field *field, struct hid_usage *usage)
