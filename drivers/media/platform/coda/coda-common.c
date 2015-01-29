@@ -1844,10 +1844,11 @@ static int coda_register_device(struct coda_dev *dev, int i)
 {
 	struct video_device *vfd = &dev->vfd[i];
 
-	if (i > ARRAY_SIZE(dev->vfd))
+	if (i >= dev->devtype->num_vdevs)
 		return -EINVAL;
 
-	snprintf(vfd->name, sizeof(vfd->name), dev->devtype->vdevs[i]->name);
+	snprintf(vfd->name, sizeof(vfd->name), "%s",
+		 dev->devtype->vdevs[i]->name);
 	vfd->fops	= &coda_fops;
 	vfd->ioctl_ops	= &coda_ioctl_ops;
 	vfd->release	= video_device_release_empty,
@@ -2001,7 +2002,6 @@ static const struct coda_devtype coda_devdata[] = {
 
 static struct platform_device_id coda_platform_ids[] = {
 	{ .name = "coda-imx27", .driver_data = CODA_IMX27 },
-	{ .name = "coda-imx53", .driver_data = CODA_IMX53 },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(platform, coda_platform_ids);
@@ -2160,7 +2160,7 @@ static int coda_probe(struct platform_device *pdev)
 
 	/*
 	 * Start activated so we can directly call coda_hw_init in
-	 * coda_fw_callback regardless of whether CONFIG_PM_RUNTIME is
+	 * coda_fw_callback regardless of whether CONFIG_PM is
 	 * enabled or whether the device is associated with a PM domain.
 	 */
 	pm_runtime_get_noresume(&pdev->dev);
@@ -2200,7 +2200,7 @@ static int coda_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM_RUNTIME
+#ifdef CONFIG_PM
 static int coda_runtime_resume(struct device *dev)
 {
 	struct coda_dev *cdev = dev_get_drvdata(dev);
@@ -2225,7 +2225,6 @@ static struct platform_driver coda_driver = {
 	.remove	= coda_remove,
 	.driver	= {
 		.name	= CODA_NAME,
-		.owner	= THIS_MODULE,
 		.of_match_table = of_match_ptr(coda_dt_ids),
 		.pm	= &coda_pm_ops,
 	},

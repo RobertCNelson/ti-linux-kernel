@@ -82,6 +82,8 @@ static void xhci_pci_quirks(struct device *dev, struct xhci_hcd *xhci)
 				"must be suspended extra slowly",
 				pdev->revision);
 		}
+		if (pdev->device == PCI_DEVICE_ID_FRESCO_LOGIC_PDK)
+			xhci->quirks |= XHCI_BROKEN_STREAMS;
 		/* Fresco Logic confirms: all revisions of this chip do not
 		 * support MSI, even though some of them claim to in their PCI
 		 * capabilities.
@@ -281,7 +283,7 @@ static int xhci_pci_suspend(struct usb_hcd *hcd, bool do_wakeup)
 	if (xhci->quirks & XHCI_COMP_MODE_QUIRK)
 		pdev->no_d3cold = true;
 
-	return xhci_suspend(xhci);
+	return xhci_suspend(xhci, do_wakeup);
 }
 
 static int xhci_pci_resume(struct usb_hcd *hcd, bool hibernated)
