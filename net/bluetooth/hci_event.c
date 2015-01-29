@@ -36,6 +36,9 @@
 #include "amp.h"
 #include "smp.h"
 
+#define ZERO_KEY "\x00\x00\x00\x00\x00\x00\x00\x00" \
+		 "\x00\x00\x00\x00\x00\x00\x00\x00"
+
 /* Handle HCI Event packets */
 
 static void hci_cc_inquiry_cancel(struct hci_dev *hdev, struct sk_buff *skb)
@@ -197,7 +200,8 @@ static void hci_cc_reset(struct hci_dev *hdev, struct sk_buff *skb)
 	/* Reset all non-persistent flags */
 	hdev->dev_flags &= ~HCI_PERSISTENT_MASK;
 
-	hdev->discovery.state = DISCOVERY_STOPPED;
+	hci_discovery_set_state(hdev, DISCOVERY_STOPPED);
+
 	hdev->inq_tx_power = HCI_TX_POWER_INVALID;
 	hdev->adv_tx_power = HCI_TX_POWER_INVALID;
 
@@ -525,9 +529,7 @@ static void hci_cc_write_sc_support(struct hci_dev *hdev, struct sk_buff *skb)
 			hdev->features[1][0] &= ~LMP_HOST_SC;
 	}
 
-	if (test_bit(HCI_MGMT, &hdev->dev_flags))
-		mgmt_sc_enable_complete(hdev, sent->support, status);
-	else if (!status) {
+	if (!test_bit(HCI_MGMT, &hdev->dev_flags) && !status) {
 		if (sent->support)
 			set_bit(HCI_SC_ENABLED, &hdev->dev_flags);
 		else
@@ -3098,7 +3100,9 @@ static void hci_hardware_error_evt(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	struct hci_ev_hardware_error *ev = (void *) skb->data;
 
-	BT_ERR("%s hardware error 0x%2.2x", hdev->name, ev->code);
+	hdev->hw_error_code = ev->code;
+
+	queue_work(hdev->req_workqueue, &hdev->error_reset);
 }
 
 static void hci_role_change_evt(struct hci_dev *hdev, struct sk_buff *skb)
@@ -3857,6 +3861,31 @@ static u8 hci_get_auth_req(struct hci_conn *conn)
 	return (conn->remote_auth & ~0x01) | (conn->auth_type & 0x01);
 }
 
+static u8 bredr_oob_data_present(struct hci_conn *conn)
+{
+	struct hci_dev *hdev = conn->hdev;
+	struct oob_data *data;
+
+	data = hci_find_remote_oob_data(hdev, &conn->dst, BDADDR_BREDR);
+	if (!data)
+		return 0x00;
+
+	/* When Secure Connections Only mode is enabled, then the P-256
+	 * values are required. If they are not available, then do not
+	 * declare that OOB data is present.
+	 */
+	if (bredr_sc_enabled(hdev) &&
+	    test_bit(HCI_SC_ONLY, &hdev->dev_flags) &&
+	    (!memcmp(data->rand256, ZERO_KEY, 16) ||
+	     !memcmp(data->hash256, ZERO_KEY, 16)))
+		return 0x00;
+
+	if (conn->out || test_bit(HCI_CONN_REMOTE_OOB, &conn->flags))
+		return 0x01;
+
+	return 0x00;
+}
+
 static void hci_io_capa_request_evt(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	struct hci_ev_io_capa_request *ev = (void *) skb->data;
@@ -3908,12 +3937,7 @@ static void hci_io_capa_request_evt(struct hci_dev *hdev, struct sk_buff *skb)
 			conn->auth_type &= HCI_AT_NO_BONDING_MITM;
 
 		cp.authentication = conn->auth_type;
-
-		if (hci_find_remote_oob_data(hdev, &conn->dst, BDADDR_BREDR) &&
-		    (conn->out || test_bit(HCI_CONN_REMOTE_OOB, &conn->flags)))
-			cp.oob_data = 0x01;
-		else
-			cp.oob_data = 0x00;
+		cp.oob_data = bredr_oob_data_present(conn);
 
 		hci_send_cmd(hdev, HCI_OP_IO_CAPABILITY_REPLY,
 			     sizeof(cp), &cp);
@@ -4165,33 +4189,39 @@ static void hci_remote_oob_data_request_evt(struct hci_dev *hdev,
 		goto unlock;
 
 	data = hci_find_remote_oob_data(hdev, &ev->bdaddr, BDADDR_BREDR);
-	if (data) {
-		if (bredr_sc_enabled(hdev)) {
-			struct hci_cp_remote_oob_ext_data_reply cp;
-
-			bacpy(&cp.bdaddr, &ev->bdaddr);
-			memcpy(cp.hash192, data->hash192, sizeof(cp.hash192));
-			memcpy(cp.rand192, data->rand192, sizeof(cp.rand192));
-			memcpy(cp.hash256, data->hash256, sizeof(cp.hash256));
-			memcpy(cp.rand256, data->rand256, sizeof(cp.rand256));
-
-			hci_send_cmd(hdev, HCI_OP_REMOTE_OOB_EXT_DATA_REPLY,
-				     sizeof(cp), &cp);
-		} else {
-			struct hci_cp_remote_oob_data_reply cp;
-
-			bacpy(&cp.bdaddr, &ev->bdaddr);
-			memcpy(cp.hash, data->hash192, sizeof(cp.hash));
-			memcpy(cp.rand, data->rand192, sizeof(cp.rand));
-
-			hci_send_cmd(hdev, HCI_OP_REMOTE_OOB_DATA_REPLY,
-				     sizeof(cp), &cp);
-		}
-	} else {
+	if (!data) {
 		struct hci_cp_remote_oob_data_neg_reply cp;
 
 		bacpy(&cp.bdaddr, &ev->bdaddr);
 		hci_send_cmd(hdev, HCI_OP_REMOTE_OOB_DATA_NEG_REPLY,
+			     sizeof(cp), &cp);
+		goto unlock;
+	}
+
+	if (bredr_sc_enabled(hdev)) {
+		struct hci_cp_remote_oob_ext_data_reply cp;
+
+		bacpy(&cp.bdaddr, &ev->bdaddr);
+		if (test_bit(HCI_SC_ONLY, &hdev->dev_flags)) {
+			memset(cp.hash192, 0, sizeof(cp.hash192));
+			memset(cp.rand192, 0, sizeof(cp.rand192));
+		} else {
+			memcpy(cp.hash192, data->hash192, sizeof(cp.hash192));
+			memcpy(cp.rand192, data->rand192, sizeof(cp.rand192));
+		}
+		memcpy(cp.hash256, data->hash256, sizeof(cp.hash256));
+		memcpy(cp.rand256, data->rand256, sizeof(cp.rand256));
+
+		hci_send_cmd(hdev, HCI_OP_REMOTE_OOB_EXT_DATA_REPLY,
+			     sizeof(cp), &cp);
+	} else {
+		struct hci_cp_remote_oob_data_reply cp;
+
+		bacpy(&cp.bdaddr, &ev->bdaddr);
+		memcpy(cp.hash, data->hash192, sizeof(cp.hash));
+		memcpy(cp.rand, data->rand192, sizeof(cp.rand));
+
+		hci_send_cmd(hdev, HCI_OP_REMOTE_OOB_DATA_REPLY,
 			     sizeof(cp), &cp);
 	}
 
