@@ -150,16 +150,6 @@ renew_client_locked(struct nfs4_client *clp)
 	clp->cl_time = get_seconds();
 }
 
-static inline void
-renew_client(struct nfs4_client *clp)
-{
-	struct nfsd_net *nn = net_generic(clp->net, nfsd_net_id);
-
-	spin_lock(&nn->client_lock);
-	renew_client_locked(clp);
-	spin_unlock(&nn->client_lock);
-}
-
 static void put_client_renew_locked(struct nfs4_client *clp)
 {
 	struct nfsd_net *nn = net_generic(clp->net, nfsd_net_id);
@@ -688,7 +678,7 @@ static void nfs4_put_deleg_lease(struct nfs4_file *fp)
 	struct file *filp = NULL;
 
 	spin_lock(&fp->fi_lock);
-	if (fp->fi_deleg_file && atomic_dec_and_test(&fp->fi_delegees))
+	if (fp->fi_deleg_file && --fp->fi_delegees == 0)
 		swap(filp, fp->fi_deleg_file);
 	spin_unlock(&fp->fi_lock);
 
@@ -1518,7 +1508,12 @@ unhash_session(struct nfsd4_session *ses)
 static int
 STALE_CLIENTID(clientid_t *clid, struct nfsd_net *nn)
 {
-	if (clid->cl_boot == nn->boot_time)
+	/*
+	 * We're assuming the clid was not given out from a boot
+	 * precisely 2^32 (about 136 years) before this one.  That seems
+	 * a safe assumption:
+	 */
+	if (clid->cl_boot == (u32)nn->boot_time)
 		return 0;
 	dprintk("NFSD stale clientid (%08x/%08x) boot_time %08lx\n",
 		clid->cl_boot, clid->cl_id, nn->boot_time);
@@ -3855,12 +3850,12 @@ static int nfs4_setlease(struct nfs4_delegation *dp)
 	/* Race breaker */
 	if (fp->fi_deleg_file) {
 		status = 0;
-		atomic_inc(&fp->fi_delegees);
+		++fp->fi_delegees;
 		hash_delegation_locked(dp, fp);
 		goto out_unlock;
 	}
 	fp->fi_deleg_file = filp;
-	atomic_set(&fp->fi_delegees, 1);
+	fp->fi_delegees = 1;
 	hash_delegation_locked(dp, fp);
 	spin_unlock(&fp->fi_lock);
 	spin_unlock(&state_lock);
@@ -3901,7 +3896,7 @@ nfs4_set_delegation(struct nfs4_client *clp, struct svc_fh *fh,
 		status = -EAGAIN;
 		goto out_unlock;
 	}
-	atomic_inc(&fp->fi_delegees);
+	++fp->fi_delegees;
 	hash_delegation_locked(dp, fp);
 	status = 0;
 out_unlock:
