@@ -240,7 +240,7 @@ static struct dentry *autofs4_lookup_expiring(struct dentry *dentry,
 		spin_lock(&expiring->d_lock);
 
 		/* We've already been dentry_iput or unlinked */
-		if (!expiring->d_inode)
+		if (!fs_inode(expiring))
 			goto next;
 
 		qstr = &expiring->d_name;
@@ -371,7 +371,7 @@ static struct vfsmount *autofs4_d_automount(struct path *path)
 	 * having d_mountpoint() true, so there's no need to call back
 	 * to the daemon.
 	 */
-	if (dentry->d_inode && d_is_symlink(dentry)) {
+	if (fs_inode(dentry) && d_is_symlink(dentry)) {
 		spin_unlock(&sbi->fs_lock);
 		goto done;
 	}
@@ -459,7 +459,7 @@ static int autofs4_d_manage(struct dentry *dentry, bool rcu_walk)
 			return 0;
 		if (d_mountpoint(dentry))
 			return 0;
-		inode = ACCESS_ONCE(dentry->d_inode);
+		inode = fs_inode_once(dentry);
 		if (inode && S_ISLNK(inode->i_mode))
 			return -EISDIR;
 		if (list_empty(&dentry->d_subdirs))
@@ -485,7 +485,7 @@ static int autofs4_d_manage(struct dentry *dentry, bool rcu_walk)
 		 * an incorrect ELOOP error return.
 		 */
 		if ((!d_mountpoint(dentry) && !simple_empty(dentry)) ||
-		    (dentry->d_inode && d_is_symlink(dentry)))
+		    (fs_inode(dentry) && d_is_symlink(dentry)))
 			status = -EISDIR;
 	}
 	spin_unlock(&sbi->fs_lock);
@@ -625,8 +625,8 @@ static int autofs4_dir_unlink(struct inode *dir, struct dentry *dentry)
 	}
 	dput(ino->dentry);
 
-	dentry->d_inode->i_size = 0;
-	clear_nlink(dentry->d_inode);
+	fs_inode(dentry)->i_size = 0;
+	clear_nlink(fs_inode(dentry));
 
 	dir->i_mtime = CURRENT_TIME;
 
@@ -719,8 +719,8 @@ static int autofs4_dir_rmdir(struct inode *dir, struct dentry *dentry)
 			atomic_dec(&p_ino->count);
 	}
 	dput(ino->dentry);
-	dentry->d_inode->i_size = 0;
-	clear_nlink(dentry->d_inode);
+	fs_inode(dentry)->i_size = 0;
+	clear_nlink(fs_inode(dentry));
 
 	if (dir->i_nlink)
 		drop_nlink(dir);
@@ -839,7 +839,7 @@ static inline int autofs4_ask_umount(struct vfsmount *mnt, int __user *p)
 */
 int is_autofs4_dentry(struct dentry *dentry)
 {
-	return dentry && dentry->d_inode &&
+	return dentry && fs_inode(dentry) &&
 		dentry->d_op == &autofs4_dentry_operations &&
 		dentry->d_fsdata != NULL;
 }
