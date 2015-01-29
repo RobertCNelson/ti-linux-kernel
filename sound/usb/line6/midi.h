@@ -1,5 +1,5 @@
 /*
- * Line6 Linux USB driver - 0.9.1beta
+ * Line 6 Linux USB driver
  *
  * Copyright (C) 2004-2010 Markus Grabner (grabner@icg.tugraz.at)
  *
@@ -20,7 +20,7 @@
 
 struct snd_line6_midi {
 	/**
-		 Pointer back to the Line6 driver data structure.
+		 Pointer back to the Line 6 driver data structure.
 	*/
 	struct usb_line6 *line6;
 
@@ -40,14 +40,9 @@ struct snd_line6_midi {
 	int num_active_send_urbs;
 
 	/**
-		 Spin lock to protect updates of send_urb.
-	*/
-	spinlock_t send_urb_lock;
-
-	/**
 		 Spin lock to protect MIDI buffer handling.
 	*/
-	spinlock_t midi_transmit_lock;
+	spinlock_t lock;
 
 	/**
 		 Wait queue for MIDI transmission.
