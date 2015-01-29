@@ -4655,9 +4655,13 @@ static void hub_port_connect(struct usb_hub *hub, int port1, u16 portstatus,
 	if (!(portstatus & USB_PORT_STAT_CONNECTION) ||
 			test_bit(port1, hub->removed_bits)) {
 
-		/* maybe switch power back on (e.g. root hub was reset) */
+		/*
+		 * maybe switch power back on (e.g. root hub was reset)
+		 * but only if the port isn't owned by someone else.
+		 */
 		if (hub_is_port_power_switchable(hub)
-				&& !port_is_power_on(hub, portstatus))
+				&& !port_is_power_on(hub, portstatus)
+				&& !port_dev->port_owner)
 			set_port_feature(hdev, port1, USB_PORT_FEAT_POWER);
 
 		if (portstatus & USB_PORT_STAT_ENABLE)
@@ -5589,26 +5593,19 @@ EXPORT_SYMBOL_GPL(usb_reset_device);
  *   possible; depending on how the driver attached to each interface
  *   handles ->pre_reset(), the second reset might happen or not.
  *
- * - If a driver is unbound and it had a pending reset, the reset will
- *   be cancelled.
+ * - If the reset is delayed so long that the interface is unbound from
+ *   its driver, the reset will be skipped.
  *
- * - This function can be called during .probe() or .disconnect()
- *   times. On return from .disconnect(), any pending resets will be
- *   cancelled.
- *
- * There is no no need to lock/unlock the @reset_ws as schedule_work()
- * does its own.
- *
- * NOTE: We don't do any reference count tracking because it is not
- *     needed. The lifecycle of the work_struct is tied to the
- *     usb_interface. Before destroying the interface we cancel the
- *     work_struct, so the fact that work_struct is queued and or
- *     running means the interface (and thus, the device) exist and
- *     are referenced.
+ * - This function can be called during .probe().  It can also be called
+ *   during .disconnect(), but doing so is pointless because the reset
+ *   will not occur.  If you really want to reset the device during
+ *   .disconnect(), call usb_reset_device() directly -- but watch out
+ *   for nested unbinding issues!
  */
 void usb_queue_reset_device(struct usb_interface *iface)
 {
-	schedule_work(&iface->reset_ws);
+	if (schedule_work(&iface->reset_ws))
+		usb_get_intf(iface);
 }
 EXPORT_SYMBOL_GPL(usb_queue_reset_device);
 
