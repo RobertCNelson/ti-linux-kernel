@@ -1004,7 +1004,7 @@ mds_commit:
 		inc_zone_page_state(req->wb_page, NR_UNSTABLE_NFS);
 		inc_bdi_stat(inode_to_bdi(page_file_mapping(req->wb_page)->host),
 			     BDI_RECLAIMABLE);
-		__mark_inode_dirty(req->wb_context->dentry->d_inode,
+		__mark_inode_dirty(fs_inode(req->wb_context->dentry),
 				   I_DIRTY_DATASYNC);
 	}
 }

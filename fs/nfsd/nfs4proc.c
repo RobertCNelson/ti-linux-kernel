@@ -52,7 +52,7 @@
 static inline void
 nfsd4_security_inode_setsecctx(struct svc_fh *resfh, struct xdr_netobj *label, u32 *bmval)
 {
-	struct inode *inode = resfh->fh_dentry->d_inode;
+	struct inode *inode = fs_inode(resfh->fh_dentry);
 	int status;
 
 	mutex_lock(&inode->i_mutex);
@@ -110,7 +110,7 @@ check_attr_support(struct svc_rqst *rqstp, struct nfsd4_compound_state *cstate,
 	 * in current environment or not.
 	 */
 	if (bmval[0] & FATTR4_WORD0_ACL) {
-		if (!IS_POSIXACL(dentry->d_inode))
+		if (!IS_POSIXACL(fs_inode(dentry)))
 			return nfserr_attrnotsupp;
 	}
 
@@ -209,7 +209,7 @@ do_open_permission(struct svc_rqst *rqstp, struct svc_fh *current_fh, struct nfs
 
 static __be32 nfsd_check_obj_isreg(struct svc_fh *fh)
 {
-	umode_t mode = fh->fh_dentry->d_inode->i_mode;
+	umode_t mode = fs_inode(fh->fh_dentry)->i_mode;
 
 	if (S_ISREG(mode))
 		return nfs_ok;
@@ -881,7 +881,7 @@ nfsd4_secinfo(struct svc_rqst *rqstp, struct nfsd4_compound_state *cstate,
 				    &exp, &dentry);
 	if (err)
 		return err;
-	if (dentry->d_inode == NULL) {
+	if (fs_inode(dentry) == NULL) {
 		exp_put(exp);
 		err = nfserr_noent;
 	} else

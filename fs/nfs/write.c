@@ -702,7 +702,7 @@ static void nfs_inode_add_request(struct inode *inode, struct nfs_page *req)
  */
 static void nfs_inode_remove_request(struct nfs_page *req)
 {
-	struct inode *inode = req->wb_context->dentry->d_inode;
+	struct inode *inode = fs_inode(req->wb_context->dentry);
 	struct nfs_inode *nfsi = NFS_I(inode);
 	struct nfs_page *head;
 
@@ -793,7 +793,7 @@ nfs_request_add_commit_list(struct nfs_page *req, struct list_head *dst,
 		inc_zone_page_state(req->wb_page, NR_UNSTABLE_NFS);
 		inc_bdi_stat(inode_to_bdi(page_file_mapping(req->wb_page)->host),
 			     BDI_RECLAIMABLE);
-		__mark_inode_dirty(req->wb_context->dentry->d_inode,
+		__mark_inode_dirty(fs_inode(req->wb_context->dentry),
 				   I_DIRTY_DATASYNC);
 	}
 }
@@ -866,7 +866,7 @@ static void
 nfs_clear_request_commit(struct nfs_page *req)
 {
 	if (test_bit(PG_CLEAN, &req->wb_flags)) {
-		struct inode *inode = req->wb_context->dentry->d_inode;
+		struct inode *inode = fs_inode(req->wb_context->dentry);
 		struct nfs_commit_info cinfo;
 
 		nfs_init_cinfo_from_inode(&cinfo, inode);
@@ -1566,7 +1566,7 @@ void nfs_init_commit(struct nfs_commit_data *data,
 		     struct nfs_commit_info *cinfo)
 {
 	struct nfs_page *first = nfs_list_entry(head->next);
-	struct inode *inode = first->wb_context->dentry->d_inode;
+	struct inode *inode = fs_inode(first->wb_context->dentry);
 
 	/* Set up the RPC argument and reply structs
 	 * NB: take care not to mess about with data->commit et al. */
@@ -1668,7 +1668,7 @@ static void nfs_commit_release_pages(struct nfs_commit_data *data)
 
 		dprintk("NFS:       commit (%s/%llu %d@%lld)",
 			req->wb_context->dentry->d_sb->s_id,
-			(unsigned long long)NFS_FILEID(req->wb_context->dentry->d_inode),
+			(unsigned long long)NFS_FILEID(fs_inode(req->wb_context->dentry)),
 			req->wb_bytes,
 			(long long)req_offset(req));
 		if (status < 0) {
