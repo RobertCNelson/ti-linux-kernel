@@ -939,7 +939,7 @@ static void update_dentry_lease(struct dentry *dentry,
 	     dentry, duration, ttl);
 
 	/* make lease_rdcache_gen match directory */
-	dir = dentry->d_parent->d_inode;
+	dir = fs_inode(dentry->d_parent);
 	di->lease_shared_gen = ceph_inode(dir)->i_shared_gen;
 
 	if (duration == 0)
@@ -979,7 +979,7 @@ static struct dentry *splice_dentry(struct dentry *dn, struct inode *in,
 {
 	struct dentry *realdn;
 
-	BUG_ON(dn->d_inode);
+	BUG_ON(fs_inode(dn));
 
 	/* dn must be unhashed */
 	if (!d_unhashed(dn))
@@ -997,13 +997,13 @@ static struct dentry *splice_dentry(struct dentry *dn, struct inode *in,
 		     "inode %p ino %llx.%llx\n",
 		     dn, d_count(dn),
 		     realdn, d_count(realdn),
-		     realdn->d_inode, ceph_vinop(realdn->d_inode));
+		     fs_inode(realdn), ceph_vinop(fs_inode(realdn)));
 		dput(dn);
 		dn = realdn;
 	} else {
 		BUG_ON(!ceph_dentry(dn));
 		dout("dn %p attached to %p ino %llx.%llx\n",
-		     dn, dn->d_inode, ceph_vinop(dn->d_inode));
+		     dn, fs_inode(dn), ceph_vinop(fs_inode(dn)));
 	}
 	if ((!prehash || *prehash) && d_unhashed(dn))
 		d_rehash(dn);
@@ -1124,11 +1124,11 @@ retry_lookup:
 					dput(parent);
 					goto done;
 				}
-			} else if (dn->d_inode &&
-				   (ceph_ino(dn->d_inode) != vino.ino ||
-				    ceph_snap(dn->d_inode) != vino.snap)) {
+			} else if (fs_inode(dn) &&
+				   (ceph_ino(fs_inode(dn)) != vino.ino ||
+				    ceph_snap(fs_inode(dn)) != vino.snap)) {
 				dout(" dn %p points to wrong inode %p\n",
-				     dn, dn->d_inode);
+				     dn, fs_inode(dn));
 				d_delete(dn);
 				dput(dn);
 				goto retry_lookup;
@@ -1182,7 +1182,7 @@ retry_lookup:
 
 		BUG_ON(!dn);
 		BUG_ON(!dir);
-		BUG_ON(dn->d_parent->d_inode != dir);
+		BUG_ON(fs_inode(dn->d_parent) != dir);
 		BUG_ON(ceph_ino(dir) !=
 		       le64_to_cpu(rinfo->diri.in->ino));
 		BUG_ON(ceph_snap(dir) !=
@@ -1234,7 +1234,7 @@ retry_lookup:
 		/* null dentry? */
 		if (!rinfo->head->is_target) {
 			dout("fill_trace null dentry\n");
-			if (dn->d_inode) {
+			if (fs_inode(dn)) {
 				ceph_dir_clear_ordered(dir);
 				dout("d_delete %p\n", dn);
 				d_delete(dn);
@@ -1251,7 +1251,7 @@ retry_lookup:
 		}
 
 		/* attach proper inode */
-		if (!dn->d_inode) {
+		if (!fs_inode(dn)) {
 			ceph_dir_clear_ordered(dir);
 			ihold(in);
 			dn = splice_dentry(dn, in, &have_lease);
@@ -1260,9 +1260,9 @@ retry_lookup:
 				goto done;
 			}
 			req->r_dentry = dn;  /* may have spliced */
-		} else if (dn->d_inode && dn->d_inode != in) {
+		} else if (fs_inode(dn) && fs_inode(dn) != in) {
 			dout(" %p links to %p %llx.%llx, not %llx.%llx\n",
-			     dn, dn->d_inode, ceph_vinop(dn->d_inode),
+			     dn, fs_inode(dn), ceph_vinop(fs_inode(dn)),
 			     ceph_vinop(in));
 			have_lease = false;
 		}
@@ -1362,7 +1362,7 @@ int ceph_readdir_prepopulate(struct ceph_mds_request *req,
 		return readdir_prepopulate_inodes_only(req, session);
 
 	if (le32_to_cpu(rinfo->head->op) == CEPH_MDS_OP_LSSNAP) {
-		snapdir = ceph_get_snapdir(parent->d_inode);
+		snapdir = ceph_get_snapdir(fs_inode(parent));
 		parent = d_find_alias(snapdir);
 		dout("readdir_prepopulate %d items under SNAPDIR dn %p\n",
 		     rinfo->dir_nr, parent);
@@ -1370,7 +1370,7 @@ int ceph_readdir_prepopulate(struct ceph_mds_request *req,
 		dout("readdir_prepopulate %d items under dn %p\n",
 		     rinfo->dir_nr, parent);
 		if (rinfo->dir_dir)
-			ceph_fill_dirfrag(parent->d_inode, rinfo->dir_dir);
+			ceph_fill_dirfrag(fs_inode(parent), rinfo->dir_dir);
 	}
 
 	/* FIXME: release caps/leases if error occurs */
@@ -1404,11 +1404,11 @@ retry_lookup:
 				err = ret;
 				goto out;
 			}
-		} else if (dn->d_inode &&
-			   (ceph_ino(dn->d_inode) != vino.ino ||
-			    ceph_snap(dn->d_inode) != vino.snap)) {
+		} else if (fs_inode(dn) &&
+			   (ceph_ino(fs_inode(dn)) != vino.ino ||
+			    ceph_snap(fs_inode(dn)) != vino.snap)) {
 			dout(" dn %p points to wrong inode %p\n",
-			     dn, dn->d_inode);
+			     dn, fs_inode(dn));
 			d_delete(dn);
 			dput(dn);
 			goto retry_lookup;
@@ -1422,8 +1422,8 @@ retry_lookup:
 		}
 
 		/* inode */
-		if (dn->d_inode) {
-			in = dn->d_inode;
+		if (fs_inode(dn)) {
+			in = fs_inode(dn);
 		} else {
 			in = ceph_get_inode(parent->d_sb, vino);
 			if (IS_ERR(in)) {
@@ -1439,7 +1439,7 @@ retry_lookup:
 			       req->r_request_started, -1,
 			       &req->r_caps_reservation) < 0) {
 			pr_err("fill_inode badness on %p\n", in);
-			if (!dn->d_inode)
+			if (!fs_inode(dn))
 				iput(in);
 			d_drop(dn);
 			goto next_item;
@@ -1690,7 +1690,7 @@ retry:
  */
 static void *ceph_sym_follow_link(struct dentry *dentry, struct nameidata *nd)
 {
-	struct ceph_inode_info *ci = ceph_inode(dentry->d_inode);
+	struct ceph_inode_info *ci = ceph_inode(fs_inode(dentry));
 	nd_set_link(nd, ci->i_symlink);
 	return NULL;
 }
@@ -1711,7 +1711,7 @@ static const struct inode_operations ceph_symlink_iops = {
  */
 int ceph_setattr(struct dentry *dentry, struct iattr *attr)
 {
-	struct inode *inode = dentry->d_inode;
+	struct inode *inode = fs_inode(dentry);
 	struct ceph_inode_info *ci = ceph_inode(inode);
 	const unsigned int ia_valid = attr->ia_valid;
 	struct ceph_mds_request *req;
@@ -1987,7 +1987,7 @@ int ceph_permission(struct inode *inode, int mask)
 int ceph_getattr(struct vfsmount *mnt, struct dentry *dentry,
 		 struct kstat *stat)
 {
-	struct inode *inode = dentry->d_inode;
+	struct inode *inode = fs_inode(dentry);
 	struct ceph_inode_info *ci = ceph_inode(inode);
 	int err;
 
