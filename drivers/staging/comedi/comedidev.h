@@ -299,34 +299,25 @@ struct comedi_device {
 
 void comedi_event(struct comedi_device *dev, struct comedi_subdevice *s);
 
-/* we can expand the number of bits used to encode devices/subdevices into
- the minor number soon, after more distros support > 8 bit minor numbers
- (like after Debian Etch gets released) */
-enum comedi_minor_bits {
-	COMEDI_DEVICE_MINOR_MASK = 0xf,
-	COMEDI_SUBDEVICE_MINOR_MASK = 0xf0
-};
-
-static const unsigned COMEDI_SUBDEVICE_MINOR_SHIFT = 4;
-static const unsigned COMEDI_SUBDEVICE_MINOR_OFFSET = 1;
-
 struct comedi_device *comedi_dev_get_from_minor(unsigned minor);
 int comedi_dev_put(struct comedi_device *dev);
 
-void init_polling(void);
-void cleanup_polling(void);
-void start_polling(struct comedi_device *);
-void stop_polling(struct comedi_device *);
+/**
+ * comedi_subdevice "runflags"
+ * @COMEDI_SRF_RT:		DEPRECATED: command is running real-time
+ * @COMEDI_SRF_ERROR:		indicates an COMEDI_CB_ERROR event has occurred
+ *				since the last command was started
+ * @COMEDI_SRF_RUNNING:		command is running
+ * @COMEDI_SRF_FREE_SPRIV:	free s->private on detach
+ *
+ * @COMEDI_SRF_BUSY_MASK:	runflags that indicate the subdevice is "busy"
+ */
+#define COMEDI_SRF_RT		BIT(1)
+#define COMEDI_SRF_ERROR	BIT(2)
+#define COMEDI_SRF_RUNNING	BIT(27)
+#define COMEDI_SRF_FREE_SPRIV	BIT(31)
 
-/* subdevice runflags */
-enum subdevice_runflags {
-	SRF_RT = 0x00000002,
-	/* indicates an COMEDI_CB_ERROR event has occurred since the last
-	 * command was started */
-	SRF_ERROR = 0x00000004,
-	SRF_RUNNING = 0x08000000,
-	SRF_FREE_SPRIV = 0x80000000,	/* free s->private on detach */
-};
+#define COMEDI_SRF_BUSY_MASK	(COMEDI_SRF_ERROR | COMEDI_SRF_RUNNING)
 
 bool comedi_is_subdevice_running(struct comedi_subdevice *s);
 
