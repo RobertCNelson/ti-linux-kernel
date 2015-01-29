@@ -380,12 +380,11 @@ int dsi_vc_generic_read(struct intel_dsi *intel_dsi, int channel,
  *
  * XXX: commands with data in MIPI_DPI_DATA?
  */
-int dpi_send_cmd(struct intel_dsi *intel_dsi, u32 cmd, bool hs)
+int dpi_send_cmd(struct intel_dsi *intel_dsi, u32 cmd, bool hs, enum port port)
 {
 	struct drm_encoder *encoder = &intel_dsi->base.base;
 	struct drm_device *dev = encoder->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	enum port port;
 	u32 mask;
 
 	/* XXX: pipe, hs */
@@ -394,39 +393,18 @@ int dpi_send_cmd(struct intel_dsi *intel_dsi, u32 cmd, bool hs)
 	else
 		cmd |= DPI_LP_MODE;
 
-	for_each_dsi_port(port, intel_dsi->ports) {
-		/* clear bit */
-		I915_WRITE(MIPI_INTR_STAT(port), SPL_PKT_SENT_INTERRUPT);
+	/* clear bit */
+	I915_WRITE(MIPI_INTR_STAT(port), SPL_PKT_SENT_INTERRUPT);
 
-		/* XXX: old code skips write if control unchanged */
-		if (cmd == I915_READ(MIPI_DPI_CONTROL(port)))
-			DRM_ERROR("Same special packet %02x twice in a row.\n",
-									cmd);
+	/* XXX: old code skips write if control unchanged */
+	if (cmd == I915_READ(MIPI_DPI_CONTROL(port)))
+		DRM_ERROR("Same special packet %02x twice in a row.\n", cmd);
 
-		I915_WRITE(MIPI_DPI_CONTROL(port), cmd);
+	I915_WRITE(MIPI_DPI_CONTROL(port), cmd);
 
-		mask = SPL_PKT_SENT_INTERRUPT;
-		if (wait_for((I915_READ(MIPI_INTR_STAT(port)) & mask) == mask,
-									100))
-			DRM_ERROR("Video mode command 0x%08x send failed.\n",
-									cmd);
-	}
+	mask = SPL_PKT_SENT_INTERRUPT;
+	if (wait_for((I915_READ(MIPI_INTR_STAT(port)) & mask) == mask, 100))
+		DRM_ERROR("Video mode command 0x%08x send failed.\n", cmd);
 
 	return 0;
-}
-
-void wait_for_dsi_fifo_empty(struct intel_dsi *intel_dsi)
-{
-	struct drm_encoder *encoder = &intel_dsi->base.base;
-	struct drm_device *dev = encoder->dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
-	enum port port = intel_dsi_pipe_to_port(intel_crtc->pipe);
-	u32 mask;
-
-	mask = LP_CTRL_FIFO_EMPTY | HS_CTRL_FIFO_EMPTY |
-		LP_DATA_FIFO_EMPTY | HS_DATA_FIFO_EMPTY;
-
-	if (wait_for((I915_READ(MIPI_GEN_FIFO_STAT(port)) & mask) == mask, 100))
-		DRM_ERROR("DPI FIFOs are not empty\n");
 }
