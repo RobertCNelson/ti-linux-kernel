@@ -99,7 +99,7 @@ void free_pgd_slow(struct mm_struct *mm, pgd_t *pgd)
 	pte_free(mm, pte);
 	atomic_long_dec(&mm->nr_ptes);
 	pmd_free(mm, pmd);
-	mm_dec_nr_pmds(mm)
+	mm_dec_nr_pmds(mm);
 free:
 	free_pages((unsigned long) pgd, 0);
 }
