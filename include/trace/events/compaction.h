@@ -238,6 +238,7 @@ DEFINE_EVENT(mm_compaction_suitable_template, mm_compaction_suitable,
 	TP_ARGS(zone, order, ret)
 );
 
+#ifdef CONFIG_COMPACTION
 DECLARE_EVENT_CLASS(mm_compaction_defer_template,
 
 	TP_PROTO(struct zone *zone, int order),
@@ -291,6 +292,7 @@ DEFINE_EVENT(mm_compaction_defer_template, mm_compaction_defer_reset,
 
 	TP_ARGS(zone, order)
 );
+#endif
 
 #endif /* _TRACE_COMPACTION_H */
 
