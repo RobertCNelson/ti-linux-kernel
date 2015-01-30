@@ -82,15 +82,13 @@ static unsigned char mincore_page(struct address_space *mapping, pgoff_t pgoff)
 	return present;
 }
 
-static int mincore_unmapped_range(unsigned long addr, unsigned long end,
-				   struct mm_walk *walk)
+static int __mincore_unmapped_range(unsigned long addr, unsigned long end,
+				struct vm_area_struct *vma, unsigned char *vec)
 {
-	struct vm_area_struct *vma = walk->vma;
-	unsigned char *vec = walk->private;
 	unsigned long nr = (end - addr) >> PAGE_SHIFT;
 	int i;
 
-	if (vma && vma->vm_file) {
+	if (vma->vm_file) {
 		pgoff_t pgoff;
 
 		pgoff = linear_page_index(vma, addr);
@@ -100,7 +98,14 @@ static int mincore_unmapped_range(unsigned long addr, unsigned long end,
 		for (i = 0; i < nr; i++)
 			vec[i] = 0;
 	}
-	walk->private += nr;
+	return nr;
+}
+
+static int mincore_unmapped_range(unsigned long addr, unsigned long end,
+				   struct mm_walk *walk)
+{
+	walk->private += __mincore_unmapped_range(addr, end,
+						  walk->vma, walk->private);
 	return 0;
 }
 
@@ -110,29 +115,28 @@ static int mincore_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 	spinlock_t *ptl;
 	struct vm_area_struct *vma = walk->vma;
 	pte_t *ptep;
+	unsigned char *vec = walk->private;
+	int nr = (end - addr) >> PAGE_SHIFT;
 
 	if (pmd_trans_huge_lock(pmd, vma, &ptl) == 1) {
-		memset(walk->private, 1, (end - addr) >> PAGE_SHIFT);
-		walk->private += (end - addr) >> PAGE_SHIFT;
+		memset(vec, 1, nr);
 		spin_unlock(ptl);
-		return 0;
+		goto out;
 	}
 
 	if (pmd_trans_unstable(pmd)) {
-		mincore_unmapped_range(addr, end, walk);
-		return 0;
+		__mincore_unmapped_range(addr, end, vma, vec);
+		goto out;
 	}
 
 	ptep = pte_offset_map_lock(walk->mm, pmd, addr, &ptl);
 	for (; addr != end; ptep++, addr += PAGE_SIZE) {
 		pte_t pte = *ptep;
-		unsigned char *vec = walk->private;
 
-		if (pte_none(pte)) {
-			mincore_unmapped_range(addr, addr + PAGE_SIZE, walk);
-			continue;
-		}
-		if (pte_present(pte))
+		if (pte_none(pte))
+			__mincore_unmapped_range(addr, addr + PAGE_SIZE,
+						 vma, vec);
+		else if (pte_present(pte))
 			*vec = 1;
 		else { /* pte is a swap entry */
 			swp_entry_t entry = pte_to_swp_entry(pte);
@@ -153,9 +157,11 @@ static int mincore_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 #endif
 			}
 		}
-		walk->private++;
+		vec++;
 	}
 	pte_unmap_unlock(ptep - 1, ptl);
+out:
+	walk->private += nr;
 	cond_resched();
 	return 0;
 }
