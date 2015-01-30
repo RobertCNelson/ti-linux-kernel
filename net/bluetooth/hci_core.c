@@ -609,6 +609,7 @@ static void hci_init2_req(struct hci_request *req, unsigned long opt)
 
 		if (test_bit(HCI_SSP_ENABLED, &hdev->dev_flags)) {
 			u8 mode = 0x01;
+
 			hci_req_add(req, HCI_OP_WRITE_SSP_MODE,
 				    sizeof(mode), &mode);
 		} else {
@@ -870,8 +871,10 @@ static void hci_init4_req(struct hci_request *req, unsigned long opt)
 		hci_req_add(req, HCI_OP_READ_SYNC_TRAIN_PARAMS, 0, NULL);
 
 	/* Enable Secure Connections if supported and configured */
-	if (bredr_sc_enabled(hdev)) {
+	if (test_bit(HCI_SSP_ENABLED, &hdev->dev_flags) &&
+	    bredr_sc_enabled(hdev)) {
 		u8 support = 0x01;
+
 		hci_req_add(req, HCI_OP_WRITE_SC_SUPPORT,
 			    sizeof(support), &support);
 	}
@@ -1625,6 +1628,8 @@ static int hci_dev_do_close(struct hci_dev *hdev)
 
 	hci_dev_lock(hdev);
 
+	hci_discovery_set_state(hdev, DISCOVERY_STOPPED);
+
 	if (!test_and_clear_bit(HCI_AUTO_OFF, &hdev->dev_flags)) {
 		if (hdev->dev_type == HCI_BREDR)
 			mgmt_powered(hdev, 0);
@@ -1634,6 +1639,8 @@ static int hci_dev_do_close(struct hci_dev *hdev)
 	hci_pend_le_actions_clear(hdev);
 	hci_conn_hash_flush(hdev);
 	hci_dev_unlock(hdev);
+
+	smp_unregister(hdev);
 
 	hci_notify(hdev, HCI_DEV_DOWN);
 
@@ -1714,31 +1721,13 @@ done:
 	return err;
 }
 
-int hci_dev_reset(__u16 dev)
+static int hci_dev_do_reset(struct hci_dev *hdev)
 {
-	struct hci_dev *hdev;
-	int ret = 0;
+	int ret;
 
-	hdev = hci_dev_get(dev);
-	if (!hdev)
-		return -ENODEV;
+	BT_DBG("%s %p", hdev->name, hdev);
 
 	hci_req_lock(hdev);
-
-	if (!test_bit(HCI_UP, &hdev->flags)) {
-		ret = -ENETDOWN;
-		goto done;
-	}
-
-	if (test_bit(HCI_USER_CHANNEL, &hdev->dev_flags)) {
-		ret = -EBUSY;
-		goto done;
-	}
-
-	if (test_bit(HCI_UNCONFIGURED, &hdev->dev_flags)) {
-		ret = -EOPNOTSUPP;
-		goto done;
-	}
 
 	/* Drop queues */
 	skb_queue_purge(&hdev->rx_q);
@@ -1762,10 +1751,39 @@ int hci_dev_reset(__u16 dev)
 
 	ret = __hci_req_sync(hdev, hci_reset_req, 0, HCI_INIT_TIMEOUT);
 
-done:
 	hci_req_unlock(hdev);
-	hci_dev_put(hdev);
 	return ret;
+}
+
+int hci_dev_reset(__u16 dev)
+{
+	struct hci_dev *hdev;
+	int err;
+
+	hdev = hci_dev_get(dev);
+	if (!hdev)
+		return -ENODEV;
+
+	if (!test_bit(HCI_UP, &hdev->flags)) {
+		err = -ENETDOWN;
+		goto done;
+	}
+
+	if (test_bit(HCI_USER_CHANNEL, &hdev->dev_flags)) {
+		err = -EBUSY;
+		goto done;
+	}
+
+	if (test_bit(HCI_UNCONFIGURED, &hdev->dev_flags)) {
+		err = -EOPNOTSUPP;
+		goto done;
+	}
+
+	err = hci_dev_do_reset(hdev);
+
+done:
+	hci_dev_put(hdev);
+	return err;
 }
 
 int hci_dev_reset_stat(__u16 dev)
@@ -2131,8 +2149,24 @@ static void hci_power_off(struct work_struct *work)
 	BT_DBG("%s", hdev->name);
 
 	hci_dev_do_close(hdev);
+}
 
-	smp_unregister(hdev);
+static void hci_error_reset(struct work_struct *work)
+{
+	struct hci_dev *hdev = container_of(work, struct hci_dev, error_reset);
+
+	BT_DBG("%s", hdev->name);
+
+	if (hdev->hw_error)
+		hdev->hw_error(hdev, hdev->hw_error_code);
+	else
+		BT_ERR("%s hardware error 0x%2.2x", hdev->name,
+		       hdev->hw_error_code);
+
+	if (hci_dev_do_close(hdev))
+		return;
+
+	hci_dev_do_open(hdev);
 }
 
 static void hci_discov_off(struct work_struct *work)
@@ -2927,6 +2961,7 @@ struct hci_dev *hci_alloc_dev(void)
 	INIT_WORK(&hdev->cmd_work, hci_cmd_work);
 	INIT_WORK(&hdev->tx_work, hci_tx_work);
 	INIT_WORK(&hdev->power_on, hci_power_on);
+	INIT_WORK(&hdev->error_reset, hci_error_reset);
 
 	INIT_DELAYED_WORK(&hdev->power_off, hci_power_off);
 	INIT_DELAYED_WORK(&hdev->discov_off, hci_discov_off);
@@ -3099,8 +3134,6 @@ void hci_unregister_dev(struct hci_dev *hdev)
 		rfkill_unregister(hdev->rfkill);
 		rfkill_destroy(hdev->rfkill);
 	}
-
-	smp_unregister(hdev);
 
 	device_del(&hdev->dev);
 
