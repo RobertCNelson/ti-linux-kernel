@@ -3894,6 +3894,12 @@ S:	Supported
 F:	Documentation/fault-injection/
 F:	lib/fault-inject.c
 
+FBTFT Framebuffer drivers
+M:	Thomas Petazzoni <thomas.petazzoni@free-electrons.com>
+M:	Noralf Trønnes <noralf@tronnes.org>
+S:	Maintained
+F:	drivers/staging/fbtft/
+
 FCOE SUBSYSTEM (libfc, libfcoe, fcoe)
 M:	Robert Love <robert.w.love@intel.com>
 L:	fcoe-devel@open-fcoe.org
@@ -9233,6 +9239,14 @@ M:	Jes Sorensen <Jes.Sorensen@redhat.com>
 L:	linux-wireless@vger.kernel.org
 S:	Maintained
 F:	drivers/staging/rtl8723au/
+
+STAGING - SILICON MOTION SM7XX FRAME BUFFER DRIVER
+M:	Sudip Mukherjee <sudipm.mukherjee@gmail.com>
+M:	Teddy Wang <teddy.wang@siliconmotion.com>
+M:	Sudip Mukherjee <sudip@vectorindia.org>
+L:	linux-fbdev@vger.kernel.org
+S:	Maintained
+F:	drivers/staging/sm7xxfb/
 
 STAGING - SLICOSS
 M:	Lior Dotan <liodot@gmail.com>
