@@ -35,7 +35,7 @@ static inline void count_compact_events(enum vm_event_item item, long delta)
 
 #if defined CONFIG_COMPACTION || defined CONFIG_CMA
 #ifdef CONFIG_TRACEPOINTS
-static const char const *compaction_status_string[] = {
+static const char *const compaction_status_string[] = {
 	"deferred",
 	"skipped",
 	"continue",
