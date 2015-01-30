@@ -27,6 +27,7 @@
 #include "drmP.h"
 #include "radeon.h"
 #include "radeon_asic.h"
+#include "radeon_audio.h"
 #include "cikd.h"
 #include "atom.h"
 #include "cik_blit_shaders.h"
@@ -5707,6 +5708,28 @@ void cik_pcie_gart_tlb_flush(struct radeon_device *rdev)
 	WREG32(VM_INVALIDATE_REQUEST, 0x1);
 }
 
+static void cik_pcie_init_compute_vmid(struct radeon_device *rdev)
+{
+	int i;
+	uint32_t sh_mem_bases, sh_mem_config;
+
+	sh_mem_bases = 0x6000 | 0x6000 << 16;
+	sh_mem_config = ALIGNMENT_MODE(SH_MEM_ALIGNMENT_MODE_UNALIGNED);
+	sh_mem_config |= DEFAULT_MTYPE(MTYPE_NONCACHED);
+
+	mutex_lock(&rdev->srbm_mutex);
+	for (i = 8; i < 16; i++) {
+		cik_srbm_select(rdev, 0, 0, 0, i);
+		/* CP and shaders */
+		WREG32(SH_MEM_CONFIG, sh_mem_config);
+		WREG32(SH_MEM_APE1_BASE, 1);
+		WREG32(SH_MEM_APE1_LIMIT, 0);
+		WREG32(SH_MEM_BASES, sh_mem_bases);
+	}
+	cik_srbm_select(rdev, 0, 0, 0, 0);
+	mutex_unlock(&rdev->srbm_mutex);
+}
+
 /**
  * cik_pcie_gart_enable - gart enable
  *
@@ -5819,6 +5842,8 @@ static int cik_pcie_gart_enable(struct radeon_device *rdev)
 	}
 	cik_srbm_select(rdev, 0, 0, 0, 0);
 	mutex_unlock(&rdev->srbm_mutex);
+
+	cik_pcie_init_compute_vmid(rdev);
 
 	cik_pcie_gart_tlb_flush(rdev);
 	DRM_INFO("PCIE GART of %uM enabled (table at 0x%016llX).\n",
@@ -8493,7 +8518,7 @@ static int cik_startup(struct radeon_device *rdev)
 		return r;
 	}
 
-	r = dce6_audio_init(rdev);
+	r = radeon_audio_init(rdev);
 	if (r)
 		return r;
 
@@ -8551,7 +8576,7 @@ int cik_suspend(struct radeon_device *rdev)
 {
 	radeon_kfd_suspend(rdev);
 	radeon_pm_suspend(rdev);
-	dce6_audio_fini(rdev);
+	radeon_audio_fini(rdev);
 	radeon_vm_manager_fini(rdev);
 	cik_cp_enable(rdev, false);
 	cik_sdma_enable(rdev, false);
