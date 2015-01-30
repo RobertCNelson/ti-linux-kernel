@@ -2115,12 +2115,12 @@ static int __collapse_huge_page_isolate(struct vm_area_struct *vma,
 {
 	struct page *page;
 	pte_t *_pte;
-	int referenced = 0, none = 0, ro = 0, writable = 0;
+	int none = 0;
+	bool referenced = false, writable = false;
 	for (_pte = pte; _pte < pte+HPAGE_PMD_NR;
 	     _pte++, address += PAGE_SIZE) {
 		pte_t pteval = *_pte;
 		if (pte_none(pteval)) {
-			ro++;
 			if (++none <= khugepaged_max_ptes_none)
 				continue;
 			else
@@ -2154,22 +2154,17 @@ static int __collapse_huge_page_isolate(struct vm_area_struct *vma,
 			unlock_page(page);
 			goto out;
 		}
-		if (!pte_write(pteval)) {
-			if (++ro > khugepaged_max_ptes_none) {
-				unlock_page(page);
-				goto out;
-			}
+		if (pte_write(pteval)) {
+			writable = true;
+		} else {
 			if (PageSwapCache(page) && !reuse_swap_page(page)) {
 				unlock_page(page);
 				goto out;
 			}
 			/*
-			 * Page is not in the swap cache, and page count is
-			 * one (see above). It can be collapsed into a THP.
+			 * Page is not in the swap cache. It can be collapsed
+			 * into a THP.
 			 */
-			VM_BUG_ON(page_count(page) != 1);
-		} else {
-			writable = 1;
 		}
 
 		/*
@@ -2188,7 +2183,7 @@ static int __collapse_huge_page_isolate(struct vm_area_struct *vma,
 		/* If there is no mapped pte young don't collapse the page */
 		if (pte_young(pteval) || PageReferenced(page) ||
 		    mmu_notifier_test_young(vma->vm_mm, address))
-			referenced = 1;
+			referenced = true;
 	}
 	if (likely(referenced && writable))
 		return 1;
@@ -2543,11 +2538,12 @@ static int khugepaged_scan_pmd(struct mm_struct *mm,
 {
 	pmd_t *pmd;
 	pte_t *pte, *_pte;
-	int ret = 0, referenced = 0, none = 0, ro = 0, writable = 0;
+	int ret = 0, none = 0;
 	struct page *page;
 	unsigned long _address;
 	spinlock_t *ptl;
 	int node = NUMA_NO_NODE;
+	bool writable = false, referenced = false;
 
 	VM_BUG_ON(address & ~HPAGE_PMD_MASK);
 
@@ -2561,7 +2557,6 @@ static int khugepaged_scan_pmd(struct mm_struct *mm,
 	     _pte++, _address += PAGE_SIZE) {
 		pte_t pteval = *_pte;
 		if (pte_none(pteval)) {
-			ro++;
 			if (++none <= khugepaged_max_ptes_none)
 				continue;
 			else
@@ -2569,12 +2564,8 @@ static int khugepaged_scan_pmd(struct mm_struct *mm,
 		}
 		if (!pte_present(pteval))
 			goto out_unmap;
-		if (!pte_write(pteval)) {
-			if (++ro > khugepaged_max_ptes_none)
-				goto out_unmap;
-		} else {
-			writable = 1;
-		}
+		if (pte_write(pteval))
+			writable = true;
 
 		page = vm_normal_page(vma, _address, pteval);
 		if (unlikely(!page))
@@ -2601,7 +2592,7 @@ static int khugepaged_scan_pmd(struct mm_struct *mm,
 			goto out_unmap;
 		if (pte_young(pteval) || PageReferenced(page) ||
 		    mmu_notifier_test_young(vma->vm_mm, address))
-			referenced = 1;
+			referenced = true;
 	}
 	if (referenced && writable)
 		ret = 1;
