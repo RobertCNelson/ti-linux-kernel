@@ -133,9 +133,8 @@ bool sxgbe_eee_init(struct sxgbe_priv_data * const priv)
 			return false;
 
 		priv->eee_active = 1;
-		init_timer(&priv->eee_ctrl_timer);
-		priv->eee_ctrl_timer.function = sxgbe_eee_ctrl_timer;
-		priv->eee_ctrl_timer.data = (unsigned long)priv;
+		setup_timer(&priv->eee_ctrl_timer, sxgbe_eee_ctrl_timer,
+			    (unsigned long)priv);
 		priv->eee_ctrl_timer.expires = SXGBE_LPI_TIMER(eee_timer);
 		add_timer(&priv->eee_ctrl_timer);
 
@@ -1008,10 +1007,9 @@ static void sxgbe_tx_init_coalesce(struct sxgbe_priv_data *priv)
 		struct sxgbe_tx_queue *p = priv->txq[queue_num];
 		p->tx_coal_frames =  SXGBE_TX_FRAMES;
 		p->tx_coal_timer = SXGBE_COAL_TX_TIMER;
-		init_timer(&p->txtimer);
+		setup_timer(&p->txtimer, sxgbe_tx_timer,
+			    (unsigned long)&priv->txq[queue_num]);
 		p->txtimer.expires = SXGBE_COAL_TIMER(p->tx_coal_timer);
-		p->txtimer.data = (unsigned long)&priv->txq[queue_num];
-		p->txtimer.function = sxgbe_tx_timer;
 		add_timer(&p->txtimer);
 	}
 }
@@ -1273,7 +1271,7 @@ static netdev_tx_t sxgbe_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (unlikely(skb_is_gso(skb) && tqueue->prev_mss != cur_mss))
 		ctxt_desc_req = 1;
 
-	if (unlikely(vlan_tx_tag_present(skb) ||
+	if (unlikely(skb_vlan_tag_present(skb) ||
 		     ((skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) &&
 		      tqueue->hwts_tx_en)))
 		ctxt_desc_req = 1;

@@ -79,6 +79,16 @@ config TI_CPTS
 	  the CPSW Ethernet Switch. The unit can time stamp PTP UDP/IPv4
 	  and Layer 2 packets, and the driver offers a PTP Hardware Clock.
 
+config TI_KEYSTONE_NETCP
+	tristate "TI Keystone NETCP Ethernet subsystem Support"
+	depends on OF
+	depends on KEYSTONE_NAVIGATOR_DMA && KEYSTONE_NAVIGATOR_QMSS
+	---help---
+	  This driver supports TI's Keystone NETCP Ethernet subsystem.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called keystone_netcp.
+
 config TLAN
 	tristate "TI ThunderLAN support"
 	depends on (PCI || EISA)

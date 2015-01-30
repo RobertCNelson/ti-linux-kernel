@@ -68,7 +68,6 @@ int mwifiex_process_uap_event(struct mwifiex_private *priv)
 				len = ETH_ALEN;
 
 			if (len != -1) {
-				sinfo.filled = STATION_INFO_ASSOC_REQ_IES;
 				sinfo.assoc_req_ies = &event->data[len];
 				len = (u8 *)sinfo.assoc_req_ies -
 				      (u8 *)&event->frame_control;
@@ -132,6 +131,8 @@ int mwifiex_process_uap_event(struct mwifiex_private *priv)
 		dev_dbg(adapter->dev, "AP EVENT: event id: %#x\n", eventcause);
 		memcpy(priv->netdev->dev_addr, adapter->event_body + 2,
 		       ETH_ALEN);
+		if (priv->hist_data)
+			mwifiex_hist_data_reset(priv);
 		break;
 	case EVENT_UAP_MIC_COUNTERMEASURES:
 		/* For future development */
