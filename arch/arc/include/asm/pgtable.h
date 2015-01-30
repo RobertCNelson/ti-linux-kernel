@@ -347,7 +347,7 @@ static inline void set_pte_at(struct mm_struct *mm, unsigned long addr,
 #endif
 
 extern void paging_init(void);
-xtern pgd_t swapper_pg_dir[] __aligned(PAGE_SIZE);
+extern pgd_t swapper_pg_dir[] __aligned(PAGE_SIZE);
 void update_mmu_cache(struct vm_area_struct *vma, unsigned long address,
 		      pte_t *ptep);
 
