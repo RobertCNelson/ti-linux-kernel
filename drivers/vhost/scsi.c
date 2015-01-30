@@ -963,6 +963,24 @@ vhost_scsi_send_bad_target(struct vhost_scsi *vs,
 		pr_err("Faulted on virtio_scsi_cmd_resp\n");
 }
 
+static void vhost_scsi_queue_desc(struct tcm_vhost_cmd *cmd, int desc)
+{
+	/*
+	 * Save the descriptor from vhost_get_vq_desc() to be used to
+	 * complete the virtio-scsi request in TCM callback context via
+	 * tcm_vhost_queue_data_in() and tcm_vhost_queue_status()
+	 */
+	cmd->tvc_vq_desc = desc;
+	/*
+	 * Dispatch cmd descriptor for cmwq execution in process
+	 * context provided by tcm_vhost_workqueue.  This also ensures
+	 * cmd is executed on the same kworker CPU as this vhost
+	 * thread to gain positive L2 cache locality effects.
+	 */
+	INIT_WORK(&cmd->work, tcm_vhost_submission_work);
+	queue_work(tcm_vhost_workqueue, &cmd->work);
+}
+
 static void
 vhost_scsi_handle_vq(struct vhost_scsi *vs, struct vhost_virtqueue *vq)
 {
@@ -1191,20 +1209,7 @@ vhost_scsi_handle_vq(struct vhost_scsi *vs, struct vhost_virtqueue *vq)
 				continue;
 			}
 		}
-		/*
-		 * Save the descriptor from vhost_get_vq_desc() to be used to
-		 * complete the virtio-scsi request in TCM callback context via
-		 * tcm_vhost_queue_data_in() and tcm_vhost_queue_status()
-		 */
-		cmd->tvc_vq_desc = head;
-		/*
-		 * Dispatch tv_cmd descriptor for cmwq execution in process
-		 * context provided by tcm_vhost_workqueue.  This also ensures
-		 * tv_cmd is executed on the same kworker CPU as this vhost
-		 * thread to gain positive L2 cache locality effects..
-		 */
-		INIT_WORK(&cmd->work, tcm_vhost_submission_work);
-		queue_work(tcm_vhost_workqueue, &cmd->work);
+		vhost_scsi_queue_desc(cmd, head);
 	}
 out:
 	mutex_unlock(&vq->mutex);
