@@ -21,6 +21,7 @@
 #include <asm/msi_bitmap.h>
 #include <asm/pci-bridge.h> /* for struct pci_controller */
 #include <asm/pnv-pci.h>
+#include <asm/io.h>
 
 #include "cxl.h"
 
@@ -348,7 +349,7 @@ static int init_implementation_afu_regs(struct cxl_afu *afu)
 	cxl_p1n_write(afu, CXL_PSL_COALLOC_A, 0xFF000000FEFEFEFEULL);
 	/* for debugging with trace arrays */
 	cxl_p1n_write(afu, CXL_PSL_SLICE_TRACE, 0x0000FFFF00000000ULL);
-	cxl_p1n_write(afu, CXL_PSL_RXCTL_A, 0xF000000000000000ULL);
+	cxl_p1n_write(afu, CXL_PSL_RXCTL_A, CXL_PSL_RXCTL_AFUHP_4S);
 
 	return 0;
 }
@@ -359,6 +360,41 @@ int cxl_setup_irq(struct cxl *adapter, unsigned int hwirq,
 	struct pci_dev *dev = to_pci_dev(adapter->dev.parent);
 
 	return pnv_cxl_ioda_msi_setup(dev, hwirq, virq);
+}
+
+int cxl_update_image_control(struct cxl *adapter)
+{
+	struct pci_dev *dev = to_pci_dev(adapter->dev.parent);
+	int rc;
+	int vsec;
+	u8 image_state;
+
+	if (!(vsec = find_cxl_vsec(dev))) {
+		dev_err(&dev->dev, "ABORTING: CXL VSEC not found!\n");
+		return -ENODEV;
+	}
+
+	if ((rc = CXL_READ_VSEC_IMAGE_STATE(dev, vsec, &image_state))) {
+		dev_err(&dev->dev, "failed to read image state: %i\n", rc);
+		return rc;
+	}
+
+	if (adapter->perst_loads_image)
+		image_state |= CXL_VSEC_PERST_LOADS_IMAGE;
+	else
+		image_state &= ~CXL_VSEC_PERST_LOADS_IMAGE;
+
+	if (adapter->perst_select_user)
+		image_state |= CXL_VSEC_PERST_SELECT_USER;
+	else
+		image_state &= ~CXL_VSEC_PERST_SELECT_USER;
+
+	if ((rc = CXL_WRITE_VSEC_IMAGE_STATE(dev, vsec, image_state))) {
+		dev_err(&dev->dev, "failed to update image control: %i\n", rc);
+		return rc;
+	}
+
+	return 0;
 }
 
 int cxl_alloc_one_irq(struct cxl *adapter)
@@ -706,6 +742,42 @@ static void cxl_remove_afu(struct cxl_afu *afu)
 	device_unregister(&afu->dev);
 }
 
+int cxl_reset(struct cxl *adapter)
+{
+	struct pci_dev *dev = to_pci_dev(adapter->dev.parent);
+	int rc;
+	int i;
+	u32 val;
+
+	dev_info(&dev->dev, "CXL reset\n");
+
+	for (i = 0; i < adapter->slices; i++)
+		cxl_remove_afu(adapter->afu[i]);
+
+	/* pcie_warm_reset requests a fundamental pci reset which includes a
+	 * PERST assert/deassert.  PERST triggers a loading of the image
+	 * if "user" or "factory" is selected in sysfs */
+	if ((rc = pci_set_pcie_reset_state(dev, pcie_warm_reset))) {
+		dev_err(&dev->dev, "cxl: pcie_warm_reset failed\n");
+		return rc;
+	}
+
+	/* the PERST done above fences the PHB.  So, reset depends on EEH
+	 * to unbind the driver, tell Sapphire to reinit the PHB, and rebind
+	 * the driver.  Do an mmio read explictly to ensure EEH notices the
+	 * fenced PHB.  Retry for a few seconds before giving up. */
+	i = 0;
+	while (((val = mmio_read32be(adapter->p1_mmio)) != 0xffffffff) &&
+		(i < 5)) {
+		msleep(500);
+		i++;
+	}
+
+	if (val != 0xffffffff)
+		dev_err(&dev->dev, "cxl: PERST failed to trigger EEH\n");
+
+	return rc;
+}
 
 static int cxl_map_adapter_regs(struct cxl *adapter, struct pci_dev *dev)
 {
@@ -770,8 +842,8 @@ static int cxl_read_vsec(struct cxl *adapter, struct pci_dev *dev)
 	CXL_READ_VSEC_BASE_IMAGE(dev, vsec, &adapter->base_image);
 	CXL_READ_VSEC_IMAGE_STATE(dev, vsec, &image_state);
 	adapter->user_image_loaded = !!(image_state & CXL_VSEC_USER_IMAGE_LOADED);
-	adapter->perst_loads_image = !!(image_state & CXL_VSEC_PERST_LOADS_IMAGE);
-	adapter->perst_select_user = !!(image_state & CXL_VSEC_PERST_SELECT_USER);
+	adapter->perst_loads_image = true;
+	adapter->perst_select_user = !!(image_state & CXL_VSEC_USER_IMAGE_LOADED);
 
 	CXL_READ_VSEC_NAFUS(dev, vsec, &adapter->slices);
 	CXL_READ_VSEC_AFU_DESC_OFF(dev, vsec, &afu_desc_off);
@@ -879,6 +951,9 @@ static struct cxl *cxl_init_adapter(struct pci_dev *dev)
 	if ((rc = cxl_vsec_looks_ok(adapter, dev)))
 		goto err2;
 
+	if ((rc = cxl_update_image_control(adapter)))
+		goto err2;
+
 	if ((rc = cxl_map_adapter_regs(adapter, dev)))
 		goto err2;
 
@@ -888,8 +963,14 @@ static struct cxl *cxl_init_adapter(struct pci_dev *dev)
 	if ((rc = init_implementation_adapter_regs(adapter, dev)))
 		goto err3;
 
-	if ((rc = pnv_phb_to_cxl(dev)))
+	if ((rc = pnv_phb_to_cxl_mode(dev, OPAL_PHB_CAPI_MODE_CAPI)))
 		goto err3;
+
+	/* If recovery happened, the last step is to turn on snooping.
+	 * In the non-recovery case this has no effect */
+	if ((rc = pnv_phb_to_cxl_mode(dev, OPAL_PHB_CAPI_MODE_SNOOP_ON))) {
+		goto err3;
+	}
 
 	if ((rc = cxl_register_psl_err_irq(adapter)))
 		goto err3;
