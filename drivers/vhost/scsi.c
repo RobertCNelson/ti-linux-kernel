@@ -1078,6 +1078,46 @@ vhost_scsi_send_bad_target(struct vhost_scsi *vs,
 		pr_err("Faulted on virtio_scsi_cmd_resp\n");
 }
 
+int vhost_skip_iovec_bytes(size_t bytes, int max_niov,
+			   struct iovec *iov_in, size_t off_in,
+			   struct iovec **iov_out, size_t *off_out)
+{
+	int i = 0;
+
+	*off_out = 0;
+
+	if (!bytes)
+		return 0;
+
+	while (bytes) {
+		size_t iov_len = iov_in[i].iov_len - off_in;
+		size_t len = min(iov_len, bytes);
+
+		if (bytes -= len) {
+			if (++i == max_niov) {
+				pr_err("%s exceeded max_niov: %d\n",
+				       __func__, max_niov);
+				return -EINVAL;
+			}
+			off_in = 0;
+			continue;
+		}
+		if (iov_len > len) {
+			*iov_out = &iov_in[i];
+			*off_out = len;
+		} else if (iov_len == len) {
+			if (++i == max_niov) {
+				pr_err("%s exceeded max_niov: %d\n",
+					__func__, max_niov);
+				return -EINVAL;
+			}
+			*iov_out = &iov_in[i];
+			*off_out = 0;
+		}
+	}
+	return i;
+}
+
 static void
 vhost_scsi_handle_vq(struct vhost_scsi *vs, struct vhost_virtqueue *vq)
 {
