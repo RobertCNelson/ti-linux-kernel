@@ -95,6 +95,8 @@ enum {
 					* Called on the new cpu, just before
 					* enabling interrupts. Must not sleep,
 					* must not fail */
+#define CPU_DYING_IDLE		0x000B /* CPU (unsigned)v dying, reached
+					* idle loop. */
 
 /* Used for CPU hotplug events occurring while tasks are frozen due to a suspend
  * operation in progress
@@ -270,5 +272,7 @@ void arch_cpu_idle_prepare(void);
 void arch_cpu_idle_enter(void);
 void arch_cpu_idle_exit(void);
 void arch_cpu_idle_dead(void);
+
+DECLARE_PER_CPU(bool, cpu_dead_idle);
 
 #endif /* _LINUX_CPU_H_ */

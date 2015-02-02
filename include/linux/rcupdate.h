@@ -195,6 +195,15 @@ void call_rcu_sched(struct rcu_head *head,
 
 void synchronize_sched(void);
 
+/*
+ * Structure allowing asynchronous waiting on RCU.
+ */
+struct rcu_synchronize {
+	struct rcu_head head;
+	struct completion completion;
+};
+void wakeme_after_rcu(struct rcu_head *head);
+
 /**
  * call_rcu_tasks() - Queue an RCU for invocation task-based grace period
  * @head: structure to be used for queueing the RCU updates.
@@ -266,6 +275,8 @@ void rcu_idle_enter(void);
 void rcu_idle_exit(void);
 void rcu_irq_enter(void);
 void rcu_irq_exit(void);
+int rcu_cpu_notify(struct notifier_block *self,
+		   unsigned long action, void *hcpu);
 
 #ifdef CONFIG_RCU_STALL_COMMON
 void rcu_sysrq_start(void);
@@ -933,9 +944,9 @@ static inline void rcu_read_unlock(void)
 {
 	rcu_lockdep_assert(rcu_is_watching(),
 			   "rcu_read_unlock() used illegally while idle");
-	rcu_lock_release(&rcu_lock_map);
 	__release(RCU);
 	__rcu_read_unlock();
+	rcu_lock_release(&rcu_lock_map); /* Keep acq info for rls diags. */
 }
 
 /**
