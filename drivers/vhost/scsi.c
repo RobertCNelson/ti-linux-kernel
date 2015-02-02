@@ -87,8 +87,8 @@ struct tcm_vhost_cmd {
 	struct scatterlist *tvc_sgl;
 	struct scatterlist *tvc_prot_sgl;
 	struct page **tvc_upages;
-	/* Pointer to response */
-	struct virtio_scsi_cmd_resp __user *tvc_resp;
+	/* Pointer to response header iovec */
+	struct iovec *tvc_resp_iov;
 	/* Pointer to vhost_scsi for our device */
 	struct vhost_scsi *tvc_vhost;
 	/* Pointer to vhost_virtqueue for the cmd */
@@ -171,7 +171,9 @@ enum {
 /* Note: can't set VIRTIO_F_VERSION_1 yet, since that implies ANY_LAYOUT. */
 enum {
 	VHOST_SCSI_FEATURES = VHOST_FEATURES | (1ULL << VIRTIO_SCSI_F_HOTPLUG) |
-					       (1ULL << VIRTIO_SCSI_F_T10_PI)
+					       (1ULL << VIRTIO_SCSI_F_T10_PI) |
+					       (1ULL << VIRTIO_F_ANY_LAYOUT) |
+					       (1ULL << VIRTIO_F_VERSION_1)
 };
 
 #define VHOST_SCSI_MAX_TARGET	256
@@ -220,10 +222,10 @@ static struct workqueue_struct *tcm_vhost_workqueue;
 static DEFINE_MUTEX(tcm_vhost_mutex);
 static LIST_HEAD(tcm_vhost_list);
 
-static int iov_num_pages(struct iovec *iov)
+static int iov_num_pages(void __user *iov_base, size_t iov_len)
 {
-	return (PAGE_ALIGN((unsigned long)iov->iov_base + iov->iov_len) -
-	       ((unsigned long)iov->iov_base & PAGE_MASK)) >> PAGE_SHIFT;
+	return (PAGE_ALIGN((unsigned long)iov_base + iov_len) -
+	       ((unsigned long)iov_base & PAGE_MASK)) >> PAGE_SHIFT;
 }
 
 static void tcm_vhost_done_inflight(struct kref *kref)
@@ -460,7 +462,7 @@ static void tcm_vhost_release_cmd(struct se_cmd *se_cmd)
 {
 	struct tcm_vhost_cmd *tv_cmd = container_of(se_cmd,
 				struct tcm_vhost_cmd, tvc_se_cmd);
-	struct se_session *se_sess = se_cmd->se_sess;
+	struct se_session *se_sess = tv_cmd->tvc_nexus->tvn_se_sess;
 	int i;
 
 	if (tv_cmd->tvc_sgl_count) {
@@ -703,7 +705,8 @@ static void vhost_scsi_complete_cmd_work(struct vhost_work *work)
 						 se_cmd->scsi_sense_length);
 		memcpy(v_rsp.sense, cmd->tvc_sense_buf,
 		       se_cmd->scsi_sense_length);
-		ret = copy_to_user(cmd->tvc_resp, &v_rsp, sizeof(v_rsp));
+		ret = memcpy_toiovecend(cmd->tvc_resp_iov, (unsigned char *)&v_rsp,
+					0, sizeof(v_rsp));
 		if (likely(ret == 0)) {
 			struct vhost_scsi_virtqueue *q;
 			vhost_add_used(cmd->tvc_vq, cmd->tvc_vq_desc, 0);
@@ -776,25 +779,18 @@ vhost_scsi_get_tag(struct vhost_virtqueue *vq, struct tcm_vhost_tpg *tpg,
  * Returns the number of scatterlist entries used or -errno on error.
  */
 static int
-vhost_scsi_map_to_sgl(struct tcm_vhost_cmd *tv_cmd,
+vhost_scsi_map_to_sgl(struct tcm_vhost_cmd *cmd,
+		      void __user *ptr,
+		      size_t len,
 		      struct scatterlist *sgl,
-		      unsigned int sgl_count,
-		      struct iovec *iov,
-		      struct page **pages,
 		      bool write)
 {
-	unsigned int npages = 0, pages_nr, offset, nbytes;
+	unsigned int npages = 0, offset, nbytes;
+	unsigned int pages_nr = iov_num_pages(ptr, len);
 	struct scatterlist *sg = sgl;
-	void __user *ptr = iov->iov_base;
-	size_t len = iov->iov_len;
+	struct page **pages = cmd->tvc_upages;
 	int ret, i;
 
-	pages_nr = iov_num_pages(iov);
-	if (pages_nr > sgl_count) {
-		pr_err("vhost_scsi_map_to_sgl() pages_nr: %u greater than"
-		       " sgl_count: %u\n", pages_nr, sgl_count);
-		return -ENOBUFS;
-	}
 	if (pages_nr > TCM_VHOST_PREALLOC_UPAGES) {
 		pr_err("vhost_scsi_map_to_sgl() pages_nr: %u greater than"
 		       " preallocated TCM_VHOST_PREALLOC_UPAGES: %u\n",
@@ -839,7 +835,7 @@ vhost_scsi_map_iov_to_sgl(struct tcm_vhost_cmd *cmd,
 	int ret, i;
 
 	for (i = 0; i < niov; i++)
-		sgl_count += iov_num_pages(&iov[i]);
+		sgl_count += iov_num_pages(iov[i].iov_base, iov[i].iov_len);
 
 	if (sgl_count > TCM_VHOST_PREALLOC_SGLS) {
 		pr_err("vhost_scsi_map_iov_to_sgl() sgl_count: %u greater than"
@@ -855,12 +851,14 @@ vhost_scsi_map_iov_to_sgl(struct tcm_vhost_cmd *cmd,
 	pr_debug("Mapping iovec %p for %u pages\n", &iov[0], sgl_count);
 
 	for (i = 0; i < niov; i++) {
-		ret = vhost_scsi_map_to_sgl(cmd, sg, sgl_count, &iov[i],
-					    cmd->tvc_upages, write);
+		ret = vhost_scsi_map_to_sgl(cmd, iov[i].iov_base, iov[i].iov_len,
+					    sg, write);
 		if (ret < 0) {
-			for (i = 0; i < cmd->tvc_sgl_count; i++)
-				put_page(sg_page(&cmd->tvc_sgl[i]));
-
+			for (i = 0; i < cmd->tvc_sgl_count; i++) {
+				struct page *page = sg_page(&cmd->tvc_sgl[i]);
+				if (page)
+					put_page(page);
+			}
 			cmd->tvc_sgl_count = 0;
 			return ret;
 		}
@@ -881,7 +879,7 @@ vhost_scsi_map_iov_to_prot(struct tcm_vhost_cmd *cmd,
 	int ret, i;
 
 	for (i = 0; i < niov; i++)
-		prot_sgl_count += iov_num_pages(&iov[i]);
+		prot_sgl_count += iov_num_pages(iov[i].iov_base, iov[i].iov_len);
 
 	if (prot_sgl_count > TCM_VHOST_PREALLOC_PROT_SGLS) {
 		pr_err("vhost_scsi_map_iov_to_prot() sgl_count: %u greater than"
@@ -896,12 +894,14 @@ vhost_scsi_map_iov_to_prot(struct tcm_vhost_cmd *cmd,
 	cmd->tvc_prot_sgl_count = prot_sgl_count;
 
 	for (i = 0; i < niov; i++) {
-		ret = vhost_scsi_map_to_sgl(cmd, prot_sg, prot_sgl_count, &iov[i],
-					    cmd->tvc_upages, write);
+		ret = vhost_scsi_map_to_sgl(cmd, iov[i].iov_base, iov[i].iov_len,
+					    prot_sg, write);
 		if (ret < 0) {
-			for (i = 0; i < cmd->tvc_prot_sgl_count; i++)
-				put_page(sg_page(&cmd->tvc_prot_sgl[i]));
-
+			for (i = 0; i < cmd->tvc_prot_sgl_count; i++) {
+				struct page *page = sg_page(&cmd->tvc_prot_sgl[i]);
+				if (page)
+					put_page(page);
+			}
 			cmd->tvc_prot_sgl_count = 0;
 			return ret;
 		}
@@ -926,6 +926,111 @@ static int vhost_scsi_to_tcm_attr(int attr)
 		break;
 	}
 	return TCM_SIMPLE_TAG;
+}
+
+static int
+vhost_scsi_calc_sgls(struct iovec *iov, size_t off, size_t bytes,
+		     int *niov, int max_sgls)
+{
+	size_t tmp = 0;
+	int sgl_count = 0;
+
+	*niov = 0;
+
+	while (tmp < bytes) {
+		void __user *base = iov[*niov].iov_base + off;
+		size_t len = iov[(*niov)++].iov_len - off;
+
+		sgl_count += iov_num_pages(base, len);
+		tmp += min(len, bytes);
+		off = 0;
+	}
+	if (sgl_count > max_sgls) {
+		pr_err("%s: requested sgl_count: %d exceeds pre-allocated"
+		       " max_sgls: %d\n", __func__, sgl_count, max_sgls);
+		return -ENOBUFS;
+	}
+	return sgl_count;
+}
+
+static int
+vhost_scsi_iov_to_sgl(struct tcm_vhost_cmd *cmd, bool write,
+		      struct iovec *iov, size_t iov_off, int niov,
+		      struct scatterlist *sg, int sg_count)
+{
+	int i, ret;
+
+	for (i = 0; i < niov; i++) {
+		void __user *base = iov[i].iov_base + iov_off;
+		size_t len = iov[i].iov_len - iov_off;
+
+		ret = vhost_scsi_map_to_sgl(cmd, base, len, sg, write);
+		if (ret < 0) {
+			for (i = 0; i < sg_count; i++) {
+				struct page *page = sg_page(&sg[i]);
+				if (page)
+					put_page(page);
+			}
+			return ret;
+		}
+		sg += ret;
+		iov_off = 0;
+	}
+	return 0;
+}
+
+static int
+vhost_scsi_mapal(struct tcm_vhost_cmd *cmd,
+		 size_t prot_bytes, struct iovec *prot_iov, size_t prot_off,
+		 size_t data_bytes, struct iovec *data_iov, size_t data_off)
+{
+	int data_sgl_count = 0, niov, ret;
+	bool write = (cmd->tvc_data_direction == DMA_FROM_DEVICE);
+
+	if (prot_bytes) {
+		int prot_sgl_count;
+
+		if (!prot_iov) {
+			pr_err("%s: prot_iov is NULL, but prot_bytes: %zu"
+			       "present\n", __func__, prot_bytes);
+			return -EINVAL;
+		}
+		prot_sgl_count = vhost_scsi_calc_sgls(prot_iov, prot_off,
+						      prot_bytes, &niov,
+						      TCM_VHOST_PREALLOC_PROT_SGLS);
+		if (prot_sgl_count < 0)
+			return prot_sgl_count;
+
+		sg_init_table(cmd->tvc_prot_sgl, prot_sgl_count);
+		cmd->tvc_prot_sgl_count = prot_sgl_count;
+		pr_debug("%s prot_sg %p prot_sgl_count %u\n", __func__,
+			 cmd->tvc_prot_sgl, cmd->tvc_prot_sgl_count);
+
+		ret = vhost_scsi_iov_to_sgl(cmd, write, prot_iov, prot_off,
+					    niov, cmd->tvc_prot_sgl,
+					    prot_sgl_count);
+		if (ret < 0) {
+			cmd->tvc_prot_sgl_count = 0;
+			return ret;
+		}
+	}
+	if (!data_iov) {
+		pr_err("%s: data_iov is NULL, but data_bytes: %zu present\n",
+		       __func__, data_bytes);
+		return -EINVAL;
+	}
+	data_sgl_count = vhost_scsi_calc_sgls(data_iov, data_off, data_bytes,
+					      &niov, TCM_VHOST_PREALLOC_SGLS);
+	if (data_sgl_count < 0)
+		return data_sgl_count;
+
+	sg_init_table(cmd->tvc_sgl, data_sgl_count);
+	cmd->tvc_sgl_count = data_sgl_count;
+	pr_debug("%s data_sg %p data_sgl_count %u\n", __func__,
+		  cmd->tvc_sgl, cmd->tvc_sgl_count);
+
+	return vhost_scsi_iov_to_sgl(cmd, write, data_iov, data_off,
+				     niov, cmd->tvc_sgl, data_sgl_count);
 }
 
 static void tcm_vhost_submission_work(struct work_struct *work)
@@ -981,6 +1086,291 @@ vhost_scsi_send_bad_target(struct vhost_scsi *vs,
 		vhost_add_used_and_signal(&vs->dev, vq, head, 0);
 	else
 		pr_err("Faulted on virtio_scsi_cmd_resp\n");
+}
+
+static void vhost_scsi_queue_desc(struct tcm_vhost_cmd *cmd, int desc)
+{
+	/*
+	 * Save the descriptor from vhost_get_vq_desc() to be used to
+	 * complete the virtio-scsi request in TCM callback context via
+	 * tcm_vhost_queue_data_in() and tcm_vhost_queue_status()
+	 */
+	cmd->tvc_vq_desc = desc;
+	/*
+	 * Dispatch cmd descriptor for cmwq execution in process
+	 * context provided by tcm_vhost_workqueue.  This also ensures
+	 * cmd is executed on the same kworker CPU as this vhost
+	 * thread to gain positive L2 cache locality effects.
+	 */
+	INIT_WORK(&cmd->work, tcm_vhost_submission_work);
+	queue_work(tcm_vhost_workqueue, &cmd->work);
+}
+
+static void
+vhost_scsi_handle_vqal(struct vhost_scsi *vs, struct vhost_virtqueue *vq)
+{
+	struct tcm_vhost_tpg **vs_tpg;
+	struct virtio_scsi_cmd_req v_req;
+	struct virtio_scsi_cmd_req_pi v_req_pi;
+	struct tcm_vhost_tpg *tpg;
+	struct tcm_vhost_cmd *cmd;
+	struct iovec *iov, *iov_out, *prot_iov, *data_iov;
+	u64 tag;
+	u32 exp_data_len, data_direction;
+	unsigned out, in, i;
+	int head, ret, prot_bytes, iov_off, data_off, prot_off;
+	size_t req_size, rsp_size = sizeof(struct virtio_scsi_cmd_resp);
+	size_t out_size, in_size;
+	u16 lun;
+	u8 *target, *lunp, task_attr;
+	bool t10_pi = vhost_has_feature(vq, VIRTIO_SCSI_F_T10_PI);
+	void *req, *cdb;
+
+	mutex_lock(&vq->mutex);
+	/*
+	 * We can handle the vq only after the endpoint is setup by calling the
+	 * VHOST_SCSI_SET_ENDPOINT ioctl.
+	 */
+	vs_tpg = vq->private_data;
+	if (!vs_tpg)
+		goto out;
+
+	vhost_disable_notify(&vs->dev, vq);
+
+	for (;;) {
+		head = vhost_get_vq_desc(vq, vq->iov,
+					 ARRAY_SIZE(vq->iov), &out, &in,
+					 NULL, NULL);
+		pr_debug("vhost_get_vq_desc: head: %d, out: %u in: %u\n",
+			 head, out, in);
+		/* On error, stop handling until the next kick. */
+		if (unlikely(head < 0))
+			break;
+		/* Nothing new?  Wait for eventfd to tell us they refilled. */
+		if (head == vq->num) {
+			if (unlikely(vhost_enable_notify(&vs->dev, vq))) {
+				vhost_disable_notify(&vs->dev, vq);
+				continue;
+			}
+			break;
+		}
+		/*
+		 * Setup pointers and values based upon different virtio-scsi
+		 * request header if T10_PI is enabled in KVM guest.
+		 */
+		if (t10_pi) {
+			req = &v_req_pi;
+			req_size = sizeof(v_req_pi);
+			lunp = &v_req_pi.lun[0];
+			target = &v_req_pi.lun[1];
+		} else {
+			req = &v_req;
+			req_size = sizeof(v_req);
+			lunp = &v_req.lun[0];
+			target = &v_req.lun[1];
+		}
+		/*
+		 * Determine data_direction for ANY_LAYOUT by calculating the
+		 * total outgoing iovec sizes / incoming iovec sizes vs.
+		 * virtio-scsi request / response headers respectively.
+		 *
+		 * FIXME: Not correct for BIDI operation
+		 */
+		out_size = in_size = 0;
+		for (i = 0; i < out; i++)
+			out_size += vq->iov[i].iov_len;
+		for (i = out; i < out + in; i++)
+			in_size += vq->iov[i].iov_len;
+		/*
+		 * Any associated T10_PI bytes for the outgoing / incoming
+		 * payloads are included in calculation of exp_data_len here.
+		 */
+		if (out_size > req_size) {
+			data_direction = DMA_TO_DEVICE;
+			exp_data_len = out_size - req_size;
+		} else if (in_size > rsp_size) {
+			data_direction = DMA_FROM_DEVICE;
+			exp_data_len = in_size - rsp_size;
+		} else {
+			data_direction = DMA_NONE;
+			exp_data_len = 0;
+		}
+		/*
+		 * Copy over the virtio-scsi request header, which when
+		 * ANY_LAYOUT is enabled may span multiple iovecs, or a
+		 * single iovec may contain both the header + incoming
+		 * WRITE payloads.
+		 *
+		 * memcpy_fromiovec_out() is modifying the iovecs as it
+		 * copies over req_size bytes into req, so the returned
+		 * iov_out will contain the correct start + offset of the
+		 * incoming WRITE payload, if DMA_TO_DEVICE is set.
+		 */
+		ret = memcpy_fromiovec_out(req, &vq->iov[0], &iov_out, req_size);
+		if (unlikely(ret)) {
+			vq_err(vq, "Faulted on virtio_scsi_cmd_req\n");
+			vhost_scsi_send_bad_target(vs, vq, head, out);
+			continue;
+		}
+
+		/* virtio-scsi spec requires byte 0 of the lun to be 1 */
+		if (unlikely(*lunp != 1)) {
+			vhost_scsi_send_bad_target(vs, vq, head, out);
+			continue;
+		}
+
+		tpg = ACCESS_ONCE(vs_tpg[*target]);
+		if (unlikely(!tpg)) {
+			/* Target does not exist, fail the request */
+			vhost_scsi_send_bad_target(vs, vq, head, out);
+			continue;
+		}
+		/*
+		 * Determine start of T10_PI or data payload iovec in ANY_LAYOUT
+		 * mode based upon data_direction.
+		 *
+		 * For DMA_TO_DEVICE, this is iov_out from memcpy_fromiovec_out()
+		 * with the already recalculated iov_base + iov_len.
+		 *
+		 * For DMA_FROM_DEVICE, the iovec will be just past the end
+		 * of the virtio-scsi response header in either the same
+		 * or immediately following iovec.
+		 */
+		iov = data_iov = prot_iov = NULL;
+		iov_off = data_off = prot_off = 0;
+
+		if (data_direction == DMA_TO_DEVICE) {
+			iov = iov_out;
+		} else if (data_direction == DMA_FROM_DEVICE) {
+			int tmp_rsp_size = rsp_size;
+
+			for (i = out; i < out + in; i++) {
+				if (vq->iov[i].iov_len > tmp_rsp_size) {
+					iov = &vq->iov[i];
+					iov_off = tmp_rsp_size;
+					break;
+				} else if (vq->iov[i].iov_len == tmp_rsp_size) {
+					iov = &vq->iov[i+1];
+					break;
+				} else {
+					tmp_rsp_size -= vq->iov[i].iov_len;
+				}
+			}
+		}
+		/*
+		 * If T10_PI header is present, setup prot_iov + prot_off values
+		 * then recalculate data_iov + data_off for vhost_scsi_mapal()
+		 * mapping from host scatterlists via get_user_pages_fast().
+		 */
+		prot_bytes = 0;
+
+		if (t10_pi) {
+			int i = 0, tmp_prot_bytes;
+
+			if (v_req_pi.pi_bytesout) {
+				if (data_direction != DMA_TO_DEVICE) {
+					vq_err(vq, "Received non zero do_pi_niov"
+						", but wrong data_direction\n");
+					vhost_scsi_send_bad_target(vs, vq, head, out);
+					continue;
+				}
+				prot_bytes = vhost32_to_cpu(vq, v_req_pi.pi_bytesout);
+			} else if (v_req_pi.pi_bytesin) {
+				if (data_direction != DMA_FROM_DEVICE) {
+					vq_err(vq, "Received non zero di_pi_niov"
+						", but wrong data_direction\n");
+					vhost_scsi_send_bad_target(vs, vq, head, out);
+					continue;
+				}
+				prot_bytes = vhost32_to_cpu(vq, v_req_pi.pi_bytesin);
+			}
+			/*
+			 * Set prot_iov + prot_off values used by the iovec ->
+			 * SGL mapping logic, then calculate the start of data
+			 * payload after T10_PI and save to data_iov + data_off.
+			 */
+			data_iov = prot_iov = iov;
+			data_off = prot_off = iov_off;
+			tmp_prot_bytes = prot_bytes;
+
+			while (tmp_prot_bytes) {
+				int iov_len = prot_iov[i].iov_len - iov_off;
+				int len = min(iov_len, tmp_prot_bytes);
+
+				if (tmp_prot_bytes -= len) {
+					i++;
+					iov_off = 0;
+					continue;
+				}
+				if (iov_len > len) {
+					data_iov = &prot_iov[i];
+					data_off = len;
+				} else if (iov_len == len) {
+					data_iov = &prot_iov[i+1];
+					data_off = 0;
+				}
+			}
+
+			exp_data_len -= prot_bytes;
+			tag = vhost64_to_cpu(vq, v_req_pi.tag);
+			task_attr = v_req_pi.task_attr;
+			cdb = &v_req_pi.cdb[0];
+			lun = ((v_req_pi.lun[2] << 8) | v_req_pi.lun[3]) & 0x3FFF;
+		} else {
+			data_iov = iov;
+			data_off = iov_off;
+
+			tag = vhost64_to_cpu(vq, v_req.tag);
+			task_attr = v_req.task_attr;
+			cdb = &v_req.cdb[0];
+			lun = ((v_req.lun[2] << 8) | v_req.lun[3]) & 0x3FFF;
+		}
+		/*
+		 * Check that the recieved CDB size does not exceeded our
+		 * hardcoded max for vhost-scsi, then get a pre-allocated
+		 * cmd descriptor for the incoming virtio-scsi tag.
+		 *
+		 * TODO what if cdb was too small for varlen cdb header?
+		 */
+		if (unlikely(scsi_command_size(cdb) > TCM_VHOST_MAX_CDB_SIZE)) {
+			vq_err(vq, "Received SCSI CDB with command_size: %d that"
+				" exceeds SCSI_MAX_VARLEN_CDB_SIZE: %d\n",
+				scsi_command_size(cdb), TCM_VHOST_MAX_CDB_SIZE);
+			vhost_scsi_send_bad_target(vs, vq, head, out);
+			continue;
+		}
+		cmd = vhost_scsi_get_tag(vq, tpg, cdb, tag, lun, task_attr,
+					 exp_data_len + prot_bytes,
+					 data_direction);
+		if (IS_ERR(cmd)) {
+			vq_err(vq, "vhost_scsi_get_tag failed %ld\n",
+			       PTR_ERR(cmd));
+			vhost_scsi_send_bad_target(vs, vq, head, out);
+			continue;
+		}
+		cmd->tvc_vhost = vs;
+		cmd->tvc_vq = vq;
+		cmd->tvc_resp_iov = &vq->iov[out];
+
+		pr_debug("vhost_scsi got command opcode: %#02x, lun: %d\n",
+			 cmd->tvc_cdb[0], cmd->tvc_lun);
+		pr_debug("cmd: %p exp_data_len: %d, prot_bytes: %d data_direction:"
+			 " %d\n", cmd, exp_data_len, prot_bytes, data_direction);
+
+		if (data_direction != DMA_NONE) {
+			ret = vhost_scsi_mapal(cmd, prot_bytes, prot_iov, prot_off,
+					       exp_data_len, data_iov, data_off);
+			if (unlikely(ret)) {
+				vq_err(vq, "Failed to map iov to sgl\n");
+				tcm_vhost_release_cmd(&cmd->tvc_se_cmd);
+				vhost_scsi_send_bad_target(vs, vq, head, out);
+				continue;
+			}
+		}
+		vhost_scsi_queue_desc(cmd, head);
+	}
+out:
+	mutex_unlock(&vq->mutex);
 }
 
 static void
@@ -1077,12 +1467,14 @@ vhost_scsi_handle_vq(struct vhost_scsi *vs, struct vhost_virtqueue *vq)
 		if (unlikely(vq->iov[0].iov_len < req_size)) {
 			pr_err("Expecting virtio-scsi header: %zu, got %zu\n",
 			       req_size, vq->iov[0].iov_len);
-			break;
+			vhost_scsi_send_bad_target(vs, vq, head, out);
+			continue;
 		}
 		ret = memcpy_fromiovecend(req, &vq->iov[0], 0, req_size);
 		if (unlikely(ret)) {
 			vq_err(vq, "Faulted on virtio_scsi_cmd_req\n");
-			break;
+			vhost_scsi_send_bad_target(vs, vq, head, out);
+			continue;
 		}
 
 		/* virtio-scsi spec requires byte 0 of the lun to be 1 */
@@ -1113,14 +1505,16 @@ vhost_scsi_handle_vq(struct vhost_scsi *vs, struct vhost_virtqueue *vq)
 				if (data_direction != DMA_TO_DEVICE) {
 					vq_err(vq, "Received non zero do_pi_niov"
 						", but wrong data_direction\n");
-					goto err_cmd;
+					vhost_scsi_send_bad_target(vs, vq, head, out);
+					continue;
 				}
 				prot_bytes = vhost32_to_cpu(vq, v_req_pi.pi_bytesout);
 			} else if (v_req_pi.pi_bytesin) {
 				if (data_direction != DMA_FROM_DEVICE) {
 					vq_err(vq, "Received non zero di_pi_niov"
 						", but wrong data_direction\n");
-					goto err_cmd;
+					vhost_scsi_send_bad_target(vs, vq, head, out);
+					continue;
 				}
 				prot_bytes = vhost32_to_cpu(vq, v_req_pi.pi_bytesin);
 			}
@@ -1160,7 +1554,8 @@ vhost_scsi_handle_vq(struct vhost_scsi *vs, struct vhost_virtqueue *vq)
 			vq_err(vq, "Received SCSI CDB with command_size: %d that"
 				" exceeds SCSI_MAX_VARLEN_CDB_SIZE: %d\n",
 				scsi_command_size(cdb), TCM_VHOST_MAX_CDB_SIZE);
-			goto err_cmd;
+			vhost_scsi_send_bad_target(vs, vq, head, out);
+			continue;
 		}
 
 		cmd = vhost_scsi_get_tag(vq, tpg, cdb, tag, lun, task_attr,
@@ -1169,7 +1564,8 @@ vhost_scsi_handle_vq(struct vhost_scsi *vs, struct vhost_virtqueue *vq)
 		if (IS_ERR(cmd)) {
 			vq_err(vq, "vhost_scsi_get_tag failed %ld\n",
 					PTR_ERR(cmd));
-			goto err_cmd;
+			vhost_scsi_send_bad_target(vs, vq, head, out);
+			continue;
 		}
 
 		pr_debug("Allocated tv_cmd: %p exp_data_len: %d, data_direction"
@@ -1177,7 +1573,7 @@ vhost_scsi_handle_vq(struct vhost_scsi *vs, struct vhost_virtqueue *vq)
 
 		cmd->tvc_vhost = vs;
 		cmd->tvc_vq = vq;
-		cmd->tvc_resp = vq->iov[out].iov_base;
+		cmd->tvc_resp_iov = &vq->iov[out];
 
 		pr_debug("vhost_scsi got command opcode: %#02x, lun: %d\n",
 			cmd->tvc_cdb[0], cmd->tvc_lun);
@@ -1189,7 +1585,9 @@ vhost_scsi_handle_vq(struct vhost_scsi *vs, struct vhost_virtqueue *vq)
 			if (unlikely(ret)) {
 				vq_err(vq, "Failed to map iov to"
 					" prot_sgl\n");
-				goto err_free;
+				tcm_vhost_release_cmd(&cmd->tvc_se_cmd);
+				vhost_scsi_send_bad_target(vs, vq, head, out);
+				continue;
 			}
 		}
 		if (data_direction != DMA_NONE) {
@@ -1198,32 +1596,13 @@ vhost_scsi_handle_vq(struct vhost_scsi *vs, struct vhost_virtqueue *vq)
 					data_direction == DMA_FROM_DEVICE);
 			if (unlikely(ret)) {
 				vq_err(vq, "Failed to map iov to sgl\n");
-				goto err_free;
+				tcm_vhost_release_cmd(&cmd->tvc_se_cmd);
+				vhost_scsi_send_bad_target(vs, vq, head, out);
+				continue;
 			}
 		}
-		/*
-		 * Save the descriptor from vhost_get_vq_desc() to be used to
-		 * complete the virtio-scsi request in TCM callback context via
-		 * tcm_vhost_queue_data_in() and tcm_vhost_queue_status()
-		 */
-		cmd->tvc_vq_desc = head;
-		/*
-		 * Dispatch tv_cmd descriptor for cmwq execution in process
-		 * context provided by tcm_vhost_workqueue.  This also ensures
-		 * tv_cmd is executed on the same kworker CPU as this vhost
-		 * thread to gain positive L2 cache locality effects..
-		 */
-		INIT_WORK(&cmd->work, tcm_vhost_submission_work);
-		queue_work(tcm_vhost_workqueue, &cmd->work);
+		vhost_scsi_queue_desc(cmd, head);
 	}
-
-	mutex_unlock(&vq->mutex);
-	return;
-
-err_free:
-	vhost_scsi_free_cmd(cmd);
-err_cmd:
-	vhost_scsi_send_bad_target(vs, vq, head, out);
 out:
 	mutex_unlock(&vq->mutex);
 }
@@ -1285,7 +1664,10 @@ static void vhost_scsi_handle_kick(struct vhost_work *work)
 						poll.work);
 	struct vhost_scsi *vs = container_of(vq->dev, struct vhost_scsi, dev);
 
-	vhost_scsi_handle_vq(vs, vq);
+	if (vhost_has_feature(vq, VIRTIO_F_ANY_LAYOUT))
+		vhost_scsi_handle_vqal(vs, vq);
+	else
+		vhost_scsi_handle_vq(vs, vq);
 }
 
 static void vhost_scsi_flush_vq(struct vhost_scsi *vs, int index)

@@ -28,6 +28,33 @@ int memcpy_fromiovec(unsigned char *kdata, struct iovec *iov, int len)
 EXPORT_SYMBOL(memcpy_fromiovec);
 
 /*
+ *	Copy iovec to kernel, saving the current iov to *iov_out.
+ *	Returns -EFAULT on error.
+ */
+
+int memcpy_fromiovec_out(unsigned char *kdata, struct iovec *iov,
+			 struct iovec **iov_out, int len)
+{
+	while (len > 0) {
+		if (iov->iov_len) {
+			int copy = min_t(unsigned int, len, iov->iov_len);
+			if (copy_from_user(kdata, iov->iov_base, copy))
+				return -EFAULT;
+			len -= copy;
+			kdata += copy;
+			iov->iov_base += copy;
+			iov->iov_len -= copy;
+		}
+		if (!iov->iov_len)
+			iov++;
+	}
+	*iov_out = iov;
+
+	return 0;
+}
+EXPORT_SYMBOL(memcpy_fromiovec_out);
+
+/*
  *	Copy kernel to iovec. Returns -EFAULT on error.
  */
 
