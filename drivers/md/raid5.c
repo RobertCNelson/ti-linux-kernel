@@ -1860,10 +1860,10 @@ static int resize_stripes(struct r5conf *conf, int newsize)
 	cnt = 0;
 	list_for_each_entry(nsh, &newstripes, lru) {
 		lock_device_hash_lock(conf, hash);
-		wait_event_cmd(conf->wait_for_stripe,
-				    !list_empty(conf->inactive_list + hash),
-				    unlock_device_hash_lock(conf, hash),
-				    lock_device_hash_lock(conf, hash));
+		__wait_event_cmd(conf->wait_for_stripe,
+				 !list_empty(conf->inactive_list + hash),
+				 unlock_device_hash_lock(conf, hash),
+				 lock_device_hash_lock(conf, hash));
 		osh = get_free_stripe(conf, hash);
 		unlock_device_hash_lock(conf, hash);
 		atomic_set(&nsh->count, 1);
@@ -6782,11 +6782,11 @@ static void raid5_quiesce(struct mddev *mddev, int state)
 		 * active stripes can drain
 		 */
 		conf->quiesce = 2;
-		wait_event_cmd(conf->wait_for_stripe,
-				    atomic_read(&conf->active_stripes) == 0 &&
-				    atomic_read(&conf->active_aligned_reads) == 0,
-				    unlock_all_device_hash_locks_irq(conf),
-				    lock_all_device_hash_locks_irq(conf));
+		__wait_event_cmd(conf->wait_for_stripe,
+				 atomic_read(&conf->active_stripes) == 0 &&
+				 atomic_read(&conf->active_aligned_reads) == 0,
+				 unlock_all_device_hash_locks_irq(conf),
+				 lock_all_device_hash_locks_irq(conf));
 		conf->quiesce = 1;
 		unlock_all_device_hash_locks_irq(conf);
 		/* allow reshape to continue */
