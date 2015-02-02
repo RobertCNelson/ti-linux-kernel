@@ -67,29 +67,23 @@ static void __set_inode_rdev(struct inode *inode, struct f2fs_inode *ri)
 	}
 }
 
-static int __recover_inline_status(struct inode *inode, struct page *ipage)
+static void __recover_inline_status(struct inode *inode, struct page *ipage)
 {
 	void *inline_data = inline_data_addr(ipage);
-	struct f2fs_inode *ri;
-	void *zbuf;
+	__le32 *start = inline_data;
+	__le32 *end = start + MAX_INLINE_DATA / sizeof(__le32);
 
-	zbuf = kzalloc(MAX_INLINE_DATA, GFP_NOFS);
-	if (!zbuf)
-		return -ENOMEM;
+	while (start < end) {
+		if (*start++) {
+			f2fs_wait_on_page_writeback(ipage, NODE);
 
-	if (!memcmp(zbuf, inline_data, MAX_INLINE_DATA)) {
-		kfree(zbuf);
-		return 0;
+			set_inode_flag(F2FS_I(inode), FI_DATA_EXIST);
+			set_raw_inline(F2FS_I(inode), F2FS_INODE(ipage));
+			set_page_dirty(ipage);
+			return;
+		}
 	}
-	kfree(zbuf);
-
-	f2fs_wait_on_page_writeback(ipage, NODE);
-	set_inode_flag(F2FS_I(inode), FI_DATA_EXIST);
-
-	ri = F2FS_INODE(ipage);
-	set_raw_inline(F2FS_I(inode), ri);
-	set_page_dirty(ipage);
-	return 0;
+	return;
 }
 
 static int do_read_inode(struct inode *inode)
@@ -98,7 +92,6 @@ static int do_read_inode(struct inode *inode)
 	struct f2fs_inode_info *fi = F2FS_I(inode);
 	struct page *node_page;
 	struct f2fs_inode *ri;
-	int err = 0;
 
 	/* Check if ino is within scope */
 	if (check_nid_range(sbi, inode->i_ino)) {
@@ -137,12 +130,15 @@ static int do_read_inode(struct inode *inode)
 	fi->i_pino = le32_to_cpu(ri->i_pino);
 	fi->i_dir_level = ri->i_dir_level;
 
+	write_lock(&fi->ext_lock);
 	get_extent_info(&fi->ext, ri->i_ext);
+	write_unlock(&fi->ext_lock);
+
 	get_inline_info(fi, ri);
 
 	/* check data exist */
 	if (f2fs_has_inline_data(inode) && !f2fs_exist_data(inode))
-		err = __recover_inline_status(inode, node_page);
+		__recover_inline_status(inode, node_page);
 
 	/* get rdev by using inline_info */
 	__get_inode_rdev(inode, ri);
@@ -152,7 +148,7 @@ static int do_read_inode(struct inode *inode)
 	stat_inc_inline_inode(inode);
 	stat_inc_inline_dir(inode);
 
-	return err;
+	return 0;
 }
 
 struct inode *f2fs_iget(struct super_block *sb, unsigned long ino)
@@ -227,7 +223,11 @@ void update_inode(struct inode *inode, struct page *node_page)
 	ri->i_links = cpu_to_le32(inode->i_nlink);
 	ri->i_size = cpu_to_le64(i_size_read(inode));
 	ri->i_blocks = cpu_to_le64(inode->i_blocks);
+
+	read_lock(&F2FS_I(inode)->ext_lock);
 	set_raw_extent(&F2FS_I(inode)->ext, &ri->i_ext);
+	read_unlock(&F2FS_I(inode)->ext_lock);
+
 	set_raw_inline(F2FS_I(inode), ri);
 
 	ri->i_atime = cpu_to_le64(inode->i_atime.tv_sec);
@@ -304,7 +304,7 @@ void f2fs_evict_inode(struct inode *inode)
 	nid_t xnid = F2FS_I(inode)->i_xattr_nid;
 
 	/* some remained atomic pages should discarded */
-	if (f2fs_is_atomic_file(inode) || f2fs_is_volatile_file(inode))
+	if (f2fs_is_atomic_file(inode))
 		commit_inmem_pages(inode, true);
 
 	trace_f2fs_evict_inode(inode);
