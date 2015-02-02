@@ -1970,6 +1970,7 @@ musb_init_controller(struct device *dev, int nIrq, void __iomem *ctrl)
 
 	pm_runtime_use_autosuspend(musb->controller);
 	pm_runtime_set_autosuspend_delay(musb->controller, 200);
+	pm_runtime_irq_safe(musb->controller);
 	pm_runtime_enable(musb->controller);
 
 	spin_lock_init(&musb->lock);
