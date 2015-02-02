@@ -658,23 +658,32 @@ static struct class regulator_class = {
 
 /* Calculate the new optimum regulator operating mode based on the new total
  * consumer load. All locks held by caller */
-static void drms_uA_update(struct regulator_dev *rdev)
+static int drms_uA_update(struct regulator_dev *rdev)
 {
 	struct regulator *sibling;
 	int current_uA = 0, output_uV, input_uV, err;
 	unsigned int mode;
 
+	/*
+	 * first check to see if we can set modes at all, otherwise just
+	 * tell the consumer everything is OK.
+	 */
 	err = regulator_check_drms(rdev);
-	if (err < 0 || !rdev->desc->ops->get_optimum_mode ||
-	    (!rdev->desc->ops->get_voltage &&
-	     !rdev->desc->ops->get_voltage_sel) ||
-	    !rdev->desc->ops->set_mode)
-		return;
+	if (err < 0)
+		return 0;
+
+	if (!rdev->desc->ops->get_optimum_mode)
+		return 0;
+
+	if (!rdev->desc->ops->set_mode)
+		return -EINVAL;
 
 	/* get output voltage */
 	output_uV = _regulator_get_voltage(rdev);
-	if (output_uV <= 0)
-		return;
+	if (output_uV <= 0) {
+		rdev_err(rdev, "invalid output voltage found\n");
+		return -EINVAL;
+	}
 
 	/* get input voltage */
 	input_uV = 0;
@@ -682,8 +691,10 @@ static void drms_uA_update(struct regulator_dev *rdev)
 		input_uV = regulator_get_voltage(rdev->supply);
 	if (input_uV <= 0)
 		input_uV = rdev->constraints->input_uV;
-	if (input_uV <= 0)
-		return;
+	if (input_uV <= 0) {
+		rdev_err(rdev, "invalid input voltage found\n");
+		return -EINVAL;
+	}
 
 	/* calc total requested load */
 	list_for_each_entry(sibling, &rdev->consumer_list, list)
@@ -695,8 +706,17 @@ static void drms_uA_update(struct regulator_dev *rdev)
 
 	/* check the new mode is allowed */
 	err = regulator_mode_constrain(rdev, &mode);
-	if (err == 0)
-		rdev->desc->ops->set_mode(rdev, mode);
+	if (err < 0) {
+		rdev_err(rdev, "failed to get optimum mode @ %d uA %d -> %d uV\n",
+			 current_uA, input_uV, output_uV);
+		return err;
+	}
+
+	err = rdev->desc->ops->set_mode(rdev, mode);
+	if (err < 0)
+		rdev_err(rdev, "failed to set optimum mode %x\n", mode);
+
+	return err;
 }
 
 static int suspend_set_state(struct regulator_dev *rdev,
@@ -3026,75 +3046,13 @@ EXPORT_SYMBOL_GPL(regulator_get_mode);
 int regulator_set_optimum_mode(struct regulator *regulator, int uA_load)
 {
 	struct regulator_dev *rdev = regulator->rdev;
-	struct regulator *consumer;
-	int ret, output_uV, input_uV = 0, total_uA_load = 0;
-	unsigned int mode;
-
-	if (rdev->supply)
-		input_uV = regulator_get_voltage(rdev->supply);
+	int ret;
 
 	mutex_lock(&rdev->mutex);
-
-	/*
-	 * first check to see if we can set modes at all, otherwise just
-	 * tell the consumer everything is OK.
-	 */
 	regulator->uA_load = uA_load;
-	ret = regulator_check_drms(rdev);
-	if (ret < 0) {
-		ret = 0;
-		goto out;
-	}
-
-	if (!rdev->desc->ops->get_optimum_mode)
-		goto out;
-
-	/*
-	 * we can actually do this so any errors are indicators of
-	 * potential real failure.
-	 */
-	ret = -EINVAL;
-
-	if (!rdev->desc->ops->set_mode)
-		goto out;
-
-	/* get output voltage */
-	output_uV = _regulator_get_voltage(rdev);
-	if (output_uV <= 0) {
-		rdev_err(rdev, "invalid output voltage found\n");
-		goto out;
-	}
-
-	/* No supply? Use constraint voltage */
-	if (input_uV <= 0)
-		input_uV = rdev->constraints->input_uV;
-	if (input_uV <= 0) {
-		rdev_err(rdev, "invalid input voltage found\n");
-		goto out;
-	}
-
-	/* calc total requested load for this regulator */
-	list_for_each_entry(consumer, &rdev->consumer_list, list)
-		total_uA_load += consumer->uA_load;
-
-	mode = rdev->desc->ops->get_optimum_mode(rdev,
-						 input_uV, output_uV,
-						 total_uA_load);
-	ret = regulator_mode_constrain(rdev, &mode);
-	if (ret < 0) {
-		rdev_err(rdev, "failed to get optimum mode @ %d uA %d -> %d uV\n",
-			 total_uA_load, input_uV, output_uV);
-		goto out;
-	}
-
-	ret = rdev->desc->ops->set_mode(rdev, mode);
-	if (ret < 0) {
-		rdev_err(rdev, "failed to set optimum mode %x\n", mode);
-		goto out;
-	}
-	ret = mode;
-out:
+	ret = drms_uA_update(rdev);
 	mutex_unlock(&rdev->mutex);
+
 	return ret;
 }
 EXPORT_SYMBOL_GPL(regulator_set_optimum_mode);
@@ -3575,7 +3533,7 @@ static void rdev_init_debugfs(struct regulator_dev *rdev)
 /**
  * regulator_register - register regulator
  * @regulator_desc: regulator to register
- * @config: runtime configuration for regulator
+ * @cfg: runtime configuration for regulator
  *
  * Called by regulator drivers to register a regulator.
  * Returns a valid pointer to struct regulator_dev on success
@@ -3583,20 +3541,21 @@ static void rdev_init_debugfs(struct regulator_dev *rdev)
  */
 struct regulator_dev *
 regulator_register(const struct regulator_desc *regulator_desc,
-		   const struct regulator_config *config)
+		   const struct regulator_config *cfg)
 {
 	const struct regulation_constraints *constraints = NULL;
 	const struct regulator_init_data *init_data;
-	static atomic_t regulator_no = ATOMIC_INIT(0);
+	struct regulator_config *config = NULL;
+	static atomic_t regulator_no = ATOMIC_INIT(-1);
 	struct regulator_dev *rdev;
 	struct device *dev;
 	int ret, i;
 	const char *supply = NULL;
 
-	if (regulator_desc == NULL || config == NULL)
+	if (regulator_desc == NULL || cfg == NULL)
 		return ERR_PTR(-EINVAL);
 
-	dev = config->dev;
+	dev = cfg->dev;
 	WARN_ON(!dev);
 
 	if (regulator_desc->name == NULL || regulator_desc->ops == NULL)
@@ -3626,7 +3585,17 @@ regulator_register(const struct regulator_desc *regulator_desc,
 	if (rdev == NULL)
 		return ERR_PTR(-ENOMEM);
 
-	init_data = regulator_of_get_init_data(dev, regulator_desc,
+	/*
+	 * Duplicate the config so the driver could override it after
+	 * parsing init data.
+	 */
+	config = kmemdup(cfg, sizeof(*cfg), GFP_KERNEL);
+	if (config == NULL) {
+		kfree(rdev);
+		return ERR_PTR(-ENOMEM);
+	}
+
+	init_data = regulator_of_get_init_data(dev, regulator_desc, config,
 					       &rdev->dev.of_node);
 	if (!init_data) {
 		init_data = config->init_data;
@@ -3660,8 +3629,8 @@ regulator_register(const struct regulator_desc *regulator_desc,
 	/* register with sysfs */
 	rdev->dev.class = &regulator_class;
 	rdev->dev.parent = dev;
-	dev_set_name(&rdev->dev, "regulator.%d",
-		     atomic_inc_return(&regulator_no) - 1);
+	dev_set_name(&rdev->dev, "regulator.%lu",
+		    (unsigned long) atomic_inc_return(&regulator_no));
 	ret = device_register(&rdev->dev);
 	if (ret != 0) {
 		put_device(&rdev->dev);
@@ -3754,6 +3723,7 @@ add_dev:
 	rdev_init_debugfs(rdev);
 out:
 	mutex_unlock(&regulator_list_mutex);
+	kfree(config);
 	return rdev;
 
 unset_supplies:
