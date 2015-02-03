@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2014 Qualcomm Atheros, Inc.
+ * Copyright (c) 2012-2015 Qualcomm Atheros, Inc.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -454,6 +454,7 @@ static int wil_cfg80211_connect(struct wiphy *wiphy,
 
 	rc = wmi_send(wil, WMI_CONNECT_CMDID, &conn, sizeof(conn));
 	if (rc == 0) {
+		netif_carrier_on(ndev);
 		/* Connect can take lots of time */
 		mod_timer(&wil->connect_timer,
 			  jiffies + msecs_to_jiffies(2000));
@@ -757,12 +758,12 @@ static int wil_cfg80211_start_ap(struct wiphy *wiphy,
 
 	wil->secure_pcp = info->privacy;
 
+	netif_carrier_on(ndev);
+
 	rc = wmi_pcp_start(wil, info->beacon_interval, wmi_nettype,
 			   channel->hw_value);
 	if (rc)
-		goto out;
-
-	netif_carrier_on(ndev);
+		netif_carrier_off(ndev);
 
 out:
 	mutex_unlock(&wil->mutex);
@@ -772,23 +773,26 @@ out:
 static int wil_cfg80211_stop_ap(struct wiphy *wiphy,
 				struct net_device *ndev)
 {
-	int rc, rc1;
 	struct wil6210_priv *wil = wiphy_to_wil(wiphy);
 
 	wil_dbg_misc(wil, "%s()\n", __func__);
 
+	netif_carrier_off(ndev);
 	wil_set_recovery_state(wil, fw_recovery_idle);
 
 	mutex_lock(&wil->mutex);
 
-	rc = wmi_pcp_stop(wil);
+	wmi_pcp_stop(wil);
 
 	__wil_down(wil);
-	rc1 = __wil_up(wil);
+	__wil_up(wil);
 
 	mutex_unlock(&wil->mutex);
 
-	return min(rc, rc1);
+	/* some functions above might fail (e.g. __wil_up). Nevertheless, we
+	 * return success because AP has stopped
+	 */
+	return 0;
 }
 
 static int wil_cfg80211_del_station(struct wiphy *wiphy,
@@ -801,6 +805,96 @@ static int wil_cfg80211_del_station(struct wiphy *wiphy,
 	wil6210_disconnect(wil, params->mac, params->reason_code, false);
 	mutex_unlock(&wil->mutex);
 
+	return 0;
+}
+
+/* probe_client handling */
+static void wil_probe_client_handle(struct wil6210_priv *wil,
+				    struct wil_probe_client_req *req)
+{
+	struct net_device *ndev = wil_to_ndev(wil);
+	struct wil_sta_info *sta = &wil->sta[req->cid];
+	/* assume STA is alive if it is still connected,
+	 * else FW will disconnect it
+	 */
+	bool alive = (sta->status == wil_sta_connected);
+
+	cfg80211_probe_status(ndev, sta->addr, req->cookie, alive, GFP_KERNEL);
+}
+
+static struct list_head *next_probe_client(struct wil6210_priv *wil)
+{
+	struct list_head *ret = NULL;
+
+	mutex_lock(&wil->probe_client_mutex);
+
+	if (!list_empty(&wil->probe_client_pending)) {
+		ret = wil->probe_client_pending.next;
+		list_del(ret);
+	}
+
+	mutex_unlock(&wil->probe_client_mutex);
+
+	return ret;
+}
+
+void wil_probe_client_worker(struct work_struct *work)
+{
+	struct wil6210_priv *wil = container_of(work, struct wil6210_priv,
+						probe_client_worker);
+	struct wil_probe_client_req *req;
+	struct list_head *lh;
+
+	while ((lh = next_probe_client(wil)) != NULL) {
+		req = list_entry(lh, struct wil_probe_client_req, list);
+
+		wil_probe_client_handle(wil, req);
+		kfree(req);
+	}
+}
+
+void wil_probe_client_flush(struct wil6210_priv *wil)
+{
+	struct wil_probe_client_req *req, *t;
+
+	wil_dbg_misc(wil, "%s()\n", __func__);
+
+	mutex_lock(&wil->probe_client_mutex);
+
+	list_for_each_entry_safe(req, t, &wil->probe_client_pending, list) {
+		list_del(&req->list);
+		kfree(req);
+	}
+
+	mutex_unlock(&wil->probe_client_mutex);
+}
+
+static int wil_cfg80211_probe_client(struct wiphy *wiphy,
+				     struct net_device *dev,
+				     const u8 *peer, u64 *cookie)
+{
+	struct wil6210_priv *wil = wiphy_to_wil(wiphy);
+	struct wil_probe_client_req *req;
+	int cid = wil_find_cid(wil, peer);
+
+	wil_dbg_misc(wil, "%s(%pM => CID %d)\n", __func__, peer, cid);
+
+	if (cid < 0)
+		return -ENOLINK;
+
+	req = kzalloc(sizeof(*req), GFP_KERNEL);
+	if (!req)
+		return -ENOMEM;
+
+	req->cid = cid;
+	req->cookie = cid;
+
+	mutex_lock(&wil->probe_client_mutex);
+	list_add_tail(&req->list, &wil->probe_client_pending);
+	mutex_unlock(&wil->probe_client_mutex);
+
+	*cookie = req->cookie;
+	queue_work(wil->wq_service, &wil->probe_client_worker);
 	return 0;
 }
 
@@ -823,6 +917,7 @@ static struct cfg80211_ops wil_cfg80211_ops = {
 	.start_ap = wil_cfg80211_start_ap,
 	.stop_ap = wil_cfg80211_stop_ap,
 	.del_station = wil_cfg80211_del_station,
+	.probe_client = wil_cfg80211_probe_client,
 };
 
 static void wil_wiphy_init(struct wiphy *wiphy)
@@ -854,6 +949,7 @@ static void wil_wiphy_init(struct wiphy *wiphy)
 	wiphy->cipher_suites = wil_cipher_suites;
 	wiphy->n_cipher_suites = ARRAY_SIZE(wil_cipher_suites);
 	wiphy->mgmt_stypes = wil_mgmt_stypes;
+	wiphy->features |= NL80211_FEATURE_SK_TX_STATUS;
 }
 
 struct wireless_dev *wil_cfg80211_init(struct device *dev)
