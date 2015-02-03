@@ -351,3 +351,13 @@ ASSERT((__arch_info_end - __arch_info_begin), "no machine record defined")
  * The above comment applies as well.
  */
 ASSERT(((__hyp_idmap_text_end - __hyp_idmap_text_start) <= PAGE_SIZE), "HYP init code too big")
+
+#ifdef CONFIG_XIP_KERNEL
+/*
+ * __data_loc is not only the LMA of the data section, but also the VMA of
+ * the end of the .rodata section.  This must not overlap the VMA of the
+ * data section.  Since the .text section starts in module space, and that
+ * is always below the .data section, this should be sufficient.
+ */
+ASSERT((_data >= __data_loc), "Text section oversize")
+#endif
