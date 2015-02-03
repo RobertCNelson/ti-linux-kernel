@@ -89,7 +89,7 @@ struct dentry *kvm_debugfs_dir;
 
 static long kvm_vcpu_ioctl(struct file *file, unsigned int ioctl,
 			   unsigned long arg);
-#ifdef CONFIG_COMPAT
+#ifdef CONFIG_KVM_COMPAT
 static long kvm_vcpu_compat_ioctl(struct file *file, unsigned int ioctl,
 				  unsigned long arg);
 #endif
@@ -2017,7 +2017,7 @@ static int kvm_vcpu_release(struct inode *inode, struct file *filp)
 static struct file_operations kvm_vcpu_fops = {
 	.release        = kvm_vcpu_release,
 	.unlocked_ioctl = kvm_vcpu_ioctl,
-#ifdef CONFIG_COMPAT
+#ifdef CONFIG_KVM_COMPAT
 	.compat_ioctl   = kvm_vcpu_compat_ioctl,
 #endif
 	.mmap           = kvm_vcpu_mmap,
@@ -2307,7 +2307,7 @@ out:
 	return r;
 }
 
-#ifdef CONFIG_COMPAT
+#ifdef CONFIG_KVM_COMPAT
 static long kvm_vcpu_compat_ioctl(struct file *filp,
 				  unsigned int ioctl, unsigned long arg)
 {
@@ -2399,7 +2399,7 @@ static int kvm_device_release(struct inode *inode, struct file *filp)
 
 static const struct file_operations kvm_device_fops = {
 	.unlocked_ioctl = kvm_device_ioctl,
-#ifdef CONFIG_COMPAT
+#ifdef CONFIG_KVM_COMPAT
 	.compat_ioctl = kvm_device_ioctl,
 #endif
 	.release = kvm_device_release,
@@ -2686,7 +2686,7 @@ out:
 	return r;
 }
 
-#ifdef CONFIG_COMPAT
+#ifdef CONFIG_KVM_COMPAT
 struct compat_kvm_dirty_log {
 	__u32 slot;
 	__u32 padding1;
@@ -2733,7 +2733,7 @@ out:
 static struct file_operations kvm_vm_fops = {
 	.release        = kvm_vm_release,
 	.unlocked_ioctl = kvm_vm_ioctl,
-#ifdef CONFIG_COMPAT
+#ifdef CONFIG_KVM_COMPAT
 	.compat_ioctl   = kvm_vm_compat_ioctl,
 #endif
 	.llseek		= noop_llseek,
