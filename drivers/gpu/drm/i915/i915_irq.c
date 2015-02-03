@@ -45,7 +45,7 @@
  * and related files, but that will be described in separate chapters.
  */
 
-static const u32 hpd_ibx[] = {
+static const u32 hpd_ibx[HPD_NUM_PINS] = {
 	[HPD_CRT] = SDE_CRT_HOTPLUG,
 	[HPD_SDVO_B] = SDE_SDVOB_HOTPLUG,
 	[HPD_PORT_B] = SDE_PORTB_HOTPLUG,
@@ -53,7 +53,7 @@ static const u32 hpd_ibx[] = {
 	[HPD_PORT_D] = SDE_PORTD_HOTPLUG
 };
 
-static const u32 hpd_cpt[] = {
+static const u32 hpd_cpt[HPD_NUM_PINS] = {
 	[HPD_CRT] = SDE_CRT_HOTPLUG_CPT,
 	[HPD_SDVO_B] = SDE_SDVOB_HOTPLUG_CPT,
 	[HPD_PORT_B] = SDE_PORTB_HOTPLUG_CPT,
@@ -61,7 +61,7 @@ static const u32 hpd_cpt[] = {
 	[HPD_PORT_D] = SDE_PORTD_HOTPLUG_CPT
 };
 
-static const u32 hpd_mask_i915[] = {
+static const u32 hpd_mask_i915[HPD_NUM_PINS] = {
 	[HPD_CRT] = CRT_HOTPLUG_INT_EN,
 	[HPD_SDVO_B] = SDVOB_HOTPLUG_INT_EN,
 	[HPD_SDVO_C] = SDVOC_HOTPLUG_INT_EN,
@@ -70,7 +70,7 @@ static const u32 hpd_mask_i915[] = {
 	[HPD_PORT_D] = PORTD_HOTPLUG_INT_EN
 };
 
-static const u32 hpd_status_g4x[] = {
+static const u32 hpd_status_g4x[HPD_NUM_PINS] = {
 	[HPD_CRT] = CRT_HOTPLUG_INT_STATUS,
 	[HPD_SDVO_B] = SDVOB_HOTPLUG_INT_STATUS_G4X,
 	[HPD_SDVO_C] = SDVOC_HOTPLUG_INT_STATUS_G4X,
@@ -79,7 +79,7 @@ static const u32 hpd_status_g4x[] = {
 	[HPD_PORT_D] = PORTD_HOTPLUG_INT_STATUS
 };
 
-static const u32 hpd_status_i915[] = { /* i915 and valleyview are the same */
+static const u32 hpd_status_i915[HPD_NUM_PINS] = { /* i915 and valleyview are the same */
 	[HPD_CRT] = CRT_HOTPLUG_INT_STATUS,
 	[HPD_SDVO_B] = SDVOB_HOTPLUG_INT_STATUS_I915,
 	[HPD_SDVO_C] = SDVOC_HOTPLUG_INT_STATUS_I915,
@@ -183,6 +183,8 @@ static void ilk_update_gt_irq(struct drm_i915_private *dev_priv,
 {
 	assert_spin_locked(&dev_priv->irq_lock);
 
+	WARN_ON(enabled_irq_mask & ~interrupt_mask);
+
 	if (WARN_ON(!intel_irqs_enabled(dev_priv)))
 		return;
 
@@ -228,6 +230,8 @@ static void snb_update_pm_irq(struct drm_i915_private *dev_priv,
 			      uint32_t enabled_irq_mask)
 {
 	uint32_t new_val;
+
+	WARN_ON(enabled_irq_mask & ~interrupt_mask);
 
 	assert_spin_locked(&dev_priv->irq_lock);
 
@@ -347,6 +351,8 @@ void ibx_display_interrupt_update(struct drm_i915_private *dev_priv,
 	uint32_t sdeimr = I915_READ(SDEIMR);
 	sdeimr &= ~interrupt_mask;
 	sdeimr |= (~enabled_irq_mask & interrupt_mask);
+
+	WARN_ON(enabled_irq_mask & ~interrupt_mask);
 
 	assert_spin_locked(&dev_priv->irq_lock);
 
@@ -1033,7 +1039,7 @@ static void notify_ring(struct drm_device *dev,
 	if (!intel_ring_initialized(ring))
 		return;
 
-	trace_i915_gem_request_complete(ring);
+	trace_i915_gem_request_notify(ring);
 
 	wake_up_all(&ring->irq_queue);
 }
@@ -1399,14 +1405,14 @@ static irqreturn_t gen8_gt_irq_handler(struct drm_device *dev,
 			if (rcs & GT_RENDER_USER_INTERRUPT)
 				notify_ring(dev, ring);
 			if (rcs & GT_CONTEXT_SWITCH_INTERRUPT)
-				intel_execlists_handle_ctx_events(ring);
+				intel_lrc_irq_handler(ring);
 
 			bcs = tmp >> GEN8_BCS_IRQ_SHIFT;
 			ring = &dev_priv->ring[BCS];
 			if (bcs & GT_RENDER_USER_INTERRUPT)
 				notify_ring(dev, ring);
 			if (bcs & GT_CONTEXT_SWITCH_INTERRUPT)
-				intel_execlists_handle_ctx_events(ring);
+				intel_lrc_irq_handler(ring);
 		} else
 			DRM_ERROR("The master control interrupt lied (GT0)!\n");
 	}
@@ -1422,14 +1428,14 @@ static irqreturn_t gen8_gt_irq_handler(struct drm_device *dev,
 			if (vcs & GT_RENDER_USER_INTERRUPT)
 				notify_ring(dev, ring);
 			if (vcs & GT_CONTEXT_SWITCH_INTERRUPT)
-				intel_execlists_handle_ctx_events(ring);
+				intel_lrc_irq_handler(ring);
 
 			vcs = tmp >> GEN8_VCS2_IRQ_SHIFT;
 			ring = &dev_priv->ring[VCS2];
 			if (vcs & GT_RENDER_USER_INTERRUPT)
 				notify_ring(dev, ring);
 			if (vcs & GT_CONTEXT_SWITCH_INTERRUPT)
-				intel_execlists_handle_ctx_events(ring);
+				intel_lrc_irq_handler(ring);
 		} else
 			DRM_ERROR("The master control interrupt lied (GT1)!\n");
 	}
@@ -1456,7 +1462,7 @@ static irqreturn_t gen8_gt_irq_handler(struct drm_device *dev,
 			if (vcs & GT_RENDER_USER_INTERRUPT)
 				notify_ring(dev, ring);
 			if (vcs & GT_CONTEXT_SWITCH_INTERRUPT)
-				intel_execlists_handle_ctx_events(ring);
+				intel_lrc_irq_handler(ring);
 		} else
 			DRM_ERROR("The master control interrupt lied (GT3)!\n");
 	}
@@ -1516,7 +1522,7 @@ static inline enum port get_port_from_pin(enum hpd_pin pin)
 static inline void intel_hpd_irq_handler(struct drm_device *dev,
 					 u32 hotplug_trigger,
 					 u32 dig_hotplug_reg,
-					 const u32 *hpd)
+					 const u32 hpd[HPD_NUM_PINS])
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int i;
@@ -2769,18 +2775,18 @@ static void gen8_disable_vblank(struct drm_device *dev, int pipe)
 	spin_unlock_irqrestore(&dev_priv->irq_lock, irqflags);
 }
 
-static u32
-ring_last_seqno(struct intel_engine_cs *ring)
+static struct drm_i915_gem_request *
+ring_last_request(struct intel_engine_cs *ring)
 {
 	return list_entry(ring->request_list.prev,
-			  struct drm_i915_gem_request, list)->seqno;
+			  struct drm_i915_gem_request, list);
 }
 
 static bool
-ring_idle(struct intel_engine_cs *ring, u32 seqno)
+ring_idle(struct intel_engine_cs *ring)
 {
 	return (list_empty(&ring->request_list) ||
-		i915_seqno_passed(seqno, ring_last_seqno(ring)));
+		i915_gem_request_completed(ring_last_request(ring), false));
 }
 
 static bool
@@ -3000,7 +3006,7 @@ static void i915_hangcheck_elapsed(unsigned long data)
 		acthd = intel_ring_get_active_head(ring);
 
 		if (ring->hangcheck.seqno == seqno) {
-			if (ring_idle(ring, seqno)) {
+			if (ring_idle(ring)) {
 				ring->hangcheck.action = HANGCHECK_IDLE;
 
 				if (waitqueue_active(&ring->irq_queue)) {
@@ -4139,26 +4145,24 @@ static void i915_hpd_irq_setup(struct drm_device *dev)
 
 	assert_spin_locked(&dev_priv->irq_lock);
 
-	if (I915_HAS_HOTPLUG(dev)) {
-		hotplug_en = I915_READ(PORT_HOTPLUG_EN);
-		hotplug_en &= ~HOTPLUG_INT_EN_MASK;
-		/* Note HDMI and DP share hotplug bits */
-		/* enable bits are the same for all generations */
-		for_each_intel_encoder(dev, intel_encoder)
-			if (dev_priv->hpd_stats[intel_encoder->hpd_pin].hpd_mark == HPD_ENABLED)
-				hotplug_en |= hpd_mask_i915[intel_encoder->hpd_pin];
-		/* Programming the CRT detection parameters tends
-		   to generate a spurious hotplug event about three
-		   seconds later.  So just do it once.
-		*/
-		if (IS_G4X(dev))
-			hotplug_en |= CRT_HOTPLUG_ACTIVATION_PERIOD_64;
-		hotplug_en &= ~CRT_HOTPLUG_VOLTAGE_COMPARE_MASK;
-		hotplug_en |= CRT_HOTPLUG_VOLTAGE_COMPARE_50;
+	hotplug_en = I915_READ(PORT_HOTPLUG_EN);
+	hotplug_en &= ~HOTPLUG_INT_EN_MASK;
+	/* Note HDMI and DP share hotplug bits */
+	/* enable bits are the same for all generations */
+	for_each_intel_encoder(dev, intel_encoder)
+		if (dev_priv->hpd_stats[intel_encoder->hpd_pin].hpd_mark == HPD_ENABLED)
+			hotplug_en |= hpd_mask_i915[intel_encoder->hpd_pin];
+	/* Programming the CRT detection parameters tends
+	   to generate a spurious hotplug event about three
+	   seconds later.  So just do it once.
+	*/
+	if (IS_G4X(dev))
+		hotplug_en |= CRT_HOTPLUG_ACTIVATION_PERIOD_64;
+	hotplug_en &= ~CRT_HOTPLUG_VOLTAGE_COMPARE_MASK;
+	hotplug_en |= CRT_HOTPLUG_VOLTAGE_COMPARE_50;
 
-		/* Ignore TV since it's buggy */
-		I915_WRITE(PORT_HOTPLUG_EN, hotplug_en);
-	}
+	/* Ignore TV since it's buggy */
+	I915_WRITE(PORT_HOTPLUG_EN, hotplug_en);
 }
 
 static irqreturn_t i965_irq_handler(int irq, void *arg)
@@ -4422,14 +4426,14 @@ void intel_irq_init(struct drm_i915_private *dev_priv)
 			dev->driver->irq_postinstall = i915_irq_postinstall;
 			dev->driver->irq_uninstall = i915_irq_uninstall;
 			dev->driver->irq_handler = i915_irq_handler;
-			dev_priv->display.hpd_irq_setup = i915_hpd_irq_setup;
 		} else {
 			dev->driver->irq_preinstall = i965_irq_preinstall;
 			dev->driver->irq_postinstall = i965_irq_postinstall;
 			dev->driver->irq_uninstall = i965_irq_uninstall;
 			dev->driver->irq_handler = i965_irq_handler;
-			dev_priv->display.hpd_irq_setup = i915_hpd_irq_setup;
 		}
+		if (I915_HAS_HOTPLUG(dev_priv))
+			dev_priv->display.hpd_irq_setup = i915_hpd_irq_setup;
 		dev->driver->enable_vblank = i915_enable_vblank;
 		dev->driver->disable_vblank = i915_disable_vblank;
 	}
