@@ -662,41 +662,22 @@ void be_link_status_update(struct be_adapter *adapter, u8 link_status)
 		netif_carrier_off(netdev);
 }
 
-static void be_tx_stats_update(struct be_tx_obj *txo,
-			       u32 wrb_cnt, u32 copied, u32 gso_segs,
-			       bool stopped)
+static void be_tx_stats_update(struct be_tx_obj *txo, struct sk_buff *skb)
 {
 	struct be_tx_stats *stats = tx_stats(txo);
 
 	u64_stats_update_begin(&stats->sync);
 	stats->tx_reqs++;
-	stats->tx_wrbs += wrb_cnt;
-	stats->tx_bytes += copied;
-	stats->tx_pkts += (gso_segs ? gso_segs : 1);
-	if (stopped)
-		stats->tx_stops++;
+	stats->tx_bytes += skb->len;
+	stats->tx_pkts += (skb_shinfo(skb)->gso_segs ? : 1);
 	u64_stats_update_end(&stats->sync);
 }
 
-/* Determine number of WRB entries needed to xmit data in an skb */
-static u32 wrb_cnt_for_skb(struct be_adapter *adapter, struct sk_buff *skb,
-			   bool *dummy)
+/* Returns number of WRBs needed for the skb */
+static u32 skb_wrb_cnt(struct sk_buff *skb)
 {
-	int cnt = (skb->len > skb->data_len);
-
-	cnt += skb_shinfo(skb)->nr_frags;
-
-	/* to account for hdr wrb */
-	cnt++;
-	if (lancer_chip(adapter) || !(cnt & 1)) {
-		*dummy = false;
-	} else {
-		/* add a dummy to make it an even num */
-		cnt++;
-		*dummy = true;
-	}
-	BUG_ON(cnt > BE_MAX_TX_FRAG_COUNT);
-	return cnt;
+	/* +1 for the header wrb */
+	return 1 + (skb_headlen(skb) ? 1 : 0) + skb_shinfo(skb)->nr_frags;
 }
 
 static inline void wrb_fill(struct be_eth_wrb *wrb, u64 addr, int len)
@@ -713,7 +694,7 @@ static inline u16 be_get_tx_vlan_tag(struct be_adapter *adapter,
 	u8 vlan_prio;
 	u16 vlan_tag;
 
-	vlan_tag = vlan_tx_tag_get(skb);
+	vlan_tag = skb_vlan_tag_get(skb);
 	vlan_prio = (vlan_tag & VLAN_PRIO_MASK) >> VLAN_PRIO_SHIFT;
 	/* If vlan priority provided by OS is NOT in available bmap */
 	if (!(adapter->vlan_prio_bmap & (1 << vlan_prio)))
@@ -764,17 +745,20 @@ static void wrb_fill_hdr(struct be_adapter *adapter, struct be_eth_hdr_wrb *hdr,
 			SET_TX_WRB_HDR_BITS(udpcs, hdr, 1);
 	}
 
-	if (vlan_tx_tag_present(skb)) {
+	if (skb_vlan_tag_present(skb)) {
 		SET_TX_WRB_HDR_BITS(vlan, hdr, 1);
 		vlan_tag = be_get_tx_vlan_tag(adapter, skb);
 		SET_TX_WRB_HDR_BITS(vlan_tag, hdr, vlan_tag);
 	}
 
-	/* To skip HW VLAN tagging: evt = 1, compl = 0 */
-	SET_TX_WRB_HDR_BITS(complete, hdr, !skip_hw_vlan);
-	SET_TX_WRB_HDR_BITS(event, hdr, 1);
 	SET_TX_WRB_HDR_BITS(num_wrb, hdr, wrb_cnt);
 	SET_TX_WRB_HDR_BITS(len, hdr, len);
+
+	/* Hack to skip HW VLAN tagging needs evt = 1, compl = 0
+	 * When this hack is not needed, the evt bit is set while ringing DB
+	 */
+	if (skip_hw_vlan)
+		SET_TX_WRB_HDR_BITS(event, hdr, 1);
 }
 
 static void unmap_tx_frag(struct device *dev, struct be_eth_wrb *wrb,
@@ -794,22 +778,24 @@ static void unmap_tx_frag(struct device *dev, struct be_eth_wrb *wrb,
 	}
 }
 
-static int make_tx_wrbs(struct be_adapter *adapter, struct be_queue_info *txq,
-			struct sk_buff *skb, u32 wrb_cnt, bool dummy_wrb,
-			bool skip_hw_vlan)
+/* Returns the number of WRBs used up by the skb */
+static u32 be_xmit_enqueue(struct be_adapter *adapter, struct be_tx_obj *txo,
+			   struct sk_buff *skb, bool skip_hw_vlan)
 {
-	dma_addr_t busaddr;
-	int i, copied = 0;
+	u32 i, copied = 0, wrb_cnt = skb_wrb_cnt(skb);
 	struct device *dev = &adapter->pdev->dev;
-	struct sk_buff *first_skb = skb;
-	struct be_eth_wrb *wrb;
+	struct be_queue_info *txq = &txo->q;
 	struct be_eth_hdr_wrb *hdr;
 	bool map_single = false;
-	u16 map_head;
+	struct be_eth_wrb *wrb;
+	dma_addr_t busaddr;
+	u16 head = txq->head;
 
 	hdr = queue_head_node(txq);
+	wrb_fill_hdr(adapter, hdr, skb, wrb_cnt, skb->len, skip_hw_vlan);
+	be_dws_cpu_to_le(hdr, sizeof(*hdr));
+
 	queue_head_inc(txq);
-	map_head = txq->head;
 
 	if (skb->len > skb->data_len) {
 		int len = skb_headlen(skb);
@@ -839,19 +825,23 @@ static int make_tx_wrbs(struct be_adapter *adapter, struct be_queue_info *txq,
 		copied += skb_frag_size(frag);
 	}
 
-	if (dummy_wrb) {
-		wrb = queue_head_node(txq);
-		wrb_fill(wrb, 0, 0);
-		be_dws_cpu_to_le(wrb, sizeof(*wrb));
-		queue_head_inc(txq);
-	}
+	BUG_ON(txo->sent_skb_list[head]);
+	txo->sent_skb_list[head] = skb;
+	txo->last_req_hdr = head;
+	atomic_add(wrb_cnt, &txq->used);
+	txo->last_req_wrb_cnt = wrb_cnt;
+	txo->pend_wrb_cnt += wrb_cnt;
 
-	wrb_fill_hdr(adapter, hdr, first_skb, wrb_cnt, copied, skip_hw_vlan);
-	be_dws_cpu_to_le(hdr, sizeof(*hdr));
+	be_tx_stats_update(txo, skb);
+	return wrb_cnt;
 
-	return copied;
 dma_err:
-	txq->head = map_head;
+	/* Bring the queue back to the state it was in before this
+	 * routine was invoked.
+	 */
+	txq->head = head;
+	/* skip the first wrb (hdr); it's not mapped */
+	queue_head_inc(txq);
 	while (copied) {
 		wrb = queue_head_node(txq);
 		unmap_tx_frag(dev, wrb, map_single);
@@ -860,6 +850,7 @@ dma_err:
 		adapter->drv_stats.dma_map_errors++;
 		queue_head_inc(txq);
 	}
+	txq->head = head;
 	return 0;
 }
 
@@ -873,7 +864,7 @@ static struct sk_buff *be_insert_vlan_in_pkt(struct be_adapter *adapter,
 	if (unlikely(!skb))
 		return skb;
 
-	if (vlan_tx_tag_present(skb))
+	if (skb_vlan_tag_present(skb))
 		vlan_tag = be_get_tx_vlan_tag(adapter, skb);
 
 	if (qnq_async_evt_rcvd(adapter) && adapter->pvid) {
@@ -932,7 +923,7 @@ static bool be_ipv6_exthdr_check(struct sk_buff *skb)
 
 static int be_vlan_tag_tx_chk(struct be_adapter *adapter, struct sk_buff *skb)
 {
-	return vlan_tx_tag_present(skb) || adapter->pvid || adapter->qnq_vid;
+	return skb_vlan_tag_present(skb) || adapter->pvid || adapter->qnq_vid;
 }
 
 static int be_ipv6_tx_stall_chk(struct be_adapter *adapter, struct sk_buff *skb)
@@ -955,7 +946,7 @@ static struct sk_buff *be_lancer_xmit_workarounds(struct be_adapter *adapter,
 	eth_hdr_len = ntohs(skb->protocol) == ETH_P_8021Q ?
 						VLAN_ETH_HLEN : ETH_HLEN;
 	if (skb->len <= 60 &&
-	    (lancer_chip(adapter) || vlan_tx_tag_present(skb)) &&
+	    (lancer_chip(adapter) || skb_vlan_tag_present(skb)) &&
 	    is_ipv4_pkt(skb)) {
 		ip = (struct iphdr *)ip_hdr(skb);
 		pskb_trim(skb, eth_hdr_len + ntohs(ip->tot_len));
@@ -973,7 +964,7 @@ static struct sk_buff *be_lancer_xmit_workarounds(struct be_adapter *adapter,
 	 * Manually insert VLAN in pkt.
 	 */
 	if (skb->ip_summed != CHECKSUM_PARTIAL &&
-	    vlan_tx_tag_present(skb)) {
+	    skb_vlan_tag_present(skb)) {
 		skb = be_insert_vlan_in_pkt(adapter, skb, skip_hw_vlan);
 		if (unlikely(!skb))
 			goto err;
@@ -1030,52 +1021,64 @@ static struct sk_buff *be_xmit_workarounds(struct be_adapter *adapter,
 	return skb;
 }
 
+static void be_xmit_flush(struct be_adapter *adapter, struct be_tx_obj *txo)
+{
+	struct be_queue_info *txq = &txo->q;
+	struct be_eth_hdr_wrb *hdr = queue_index_node(txq, txo->last_req_hdr);
+
+	/* Mark the last request eventable if it hasn't been marked already */
+	if (!(hdr->dw[2] & cpu_to_le32(TX_HDR_WRB_EVT)))
+		hdr->dw[2] |= cpu_to_le32(TX_HDR_WRB_EVT | TX_HDR_WRB_COMPL);
+
+	/* compose a dummy wrb if there are odd set of wrbs to notify */
+	if (!lancer_chip(adapter) && (txo->pend_wrb_cnt & 1)) {
+		wrb_fill(queue_head_node(txq), 0, 0);
+		queue_head_inc(txq);
+		atomic_inc(&txq->used);
+		txo->pend_wrb_cnt++;
+		hdr->dw[2] &= ~cpu_to_le32(TX_HDR_WRB_NUM_MASK <<
+					   TX_HDR_WRB_NUM_SHIFT);
+		hdr->dw[2] |= cpu_to_le32((txo->last_req_wrb_cnt + 1) <<
+					  TX_HDR_WRB_NUM_SHIFT);
+	}
+	be_txq_notify(adapter, txo, txo->pend_wrb_cnt);
+	txo->pend_wrb_cnt = 0;
+}
+
 static netdev_tx_t be_xmit(struct sk_buff *skb, struct net_device *netdev)
 {
+	bool skip_hw_vlan = false, flush = !skb->xmit_more;
 	struct be_adapter *adapter = netdev_priv(netdev);
-	struct be_tx_obj *txo = &adapter->tx_obj[skb_get_queue_mapping(skb)];
+	u16 q_idx = skb_get_queue_mapping(skb);
+	struct be_tx_obj *txo = &adapter->tx_obj[q_idx];
 	struct be_queue_info *txq = &txo->q;
-	bool dummy_wrb, stopped = false;
-	u32 wrb_cnt = 0, copied = 0;
-	bool skip_hw_vlan = false;
-	u32 start = txq->head;
+	u16 wrb_cnt;
 
 	skb = be_xmit_workarounds(adapter, skb, &skip_hw_vlan);
-	if (!skb) {
-		tx_stats(txo)->tx_drv_drops++;
-		return NETDEV_TX_OK;
-	}
+	if (unlikely(!skb))
+		goto drop;
 
-	wrb_cnt = wrb_cnt_for_skb(adapter, skb, &dummy_wrb);
-
-	copied = make_tx_wrbs(adapter, txq, skb, wrb_cnt, dummy_wrb,
-			      skip_hw_vlan);
-	if (copied) {
-		int gso_segs = skb_shinfo(skb)->gso_segs;
-
-		/* record the sent skb in the sent_skb table */
-		BUG_ON(txo->sent_skb_list[start]);
-		txo->sent_skb_list[start] = skb;
-
-		/* Ensure txq has space for the next skb; Else stop the queue
-		 * *BEFORE* ringing the tx doorbell, so that we serialze the
-		 * tx compls of the current transmit which'll wake up the queue
-		 */
-		atomic_add(wrb_cnt, &txq->used);
-		if ((BE_MAX_TX_FRAG_COUNT + atomic_read(&txq->used)) >=
-								txq->len) {
-			netif_stop_subqueue(netdev, skb_get_queue_mapping(skb));
-			stopped = true;
-		}
-
-		be_txq_notify(adapter, txo, wrb_cnt);
-
-		be_tx_stats_update(txo, wrb_cnt, copied, gso_segs, stopped);
-	} else {
-		txq->head = start;
-		tx_stats(txo)->tx_drv_drops++;
+	wrb_cnt = be_xmit_enqueue(adapter, txo, skb, skip_hw_vlan);
+	if (unlikely(!wrb_cnt)) {
 		dev_kfree_skb_any(skb);
+		goto drop;
 	}
+
+	if ((atomic_read(&txq->used) + BE_MAX_TX_FRAG_COUNT) >= txq->len) {
+		netif_stop_subqueue(netdev, q_idx);
+		tx_stats(txo)->tx_stops++;
+	}
+
+	if (flush || __netif_subqueue_stopped(netdev, q_idx))
+		be_xmit_flush(adapter, txo);
+
+	return NETDEV_TX_OK;
+drop:
+	tx_stats(txo)->tx_drv_drops++;
+	/* Flush the already enqueued tx requests */
+	if (flush && txo->pend_wrb_cnt)
+		be_xmit_flush(adapter, txo);
+
 	return NETDEV_TX_OK;
 }
 
@@ -1959,32 +1962,34 @@ static struct be_eth_tx_compl *be_tx_compl_get(struct be_queue_info *tx_cq)
 static u16 be_tx_compl_process(struct be_adapter *adapter,
 			       struct be_tx_obj *txo, u16 last_index)
 {
-	struct be_queue_info *txq = &txo->q;
-	struct be_eth_wrb *wrb;
 	struct sk_buff **sent_skbs = txo->sent_skb_list;
-	struct sk_buff *sent_skb;
-	u16 cur_index, num_wrbs = 1; /* account for hdr wrb */
-	bool unmap_skb_hdr = true;
-
-	sent_skb = sent_skbs[txq->tail];
-	BUG_ON(!sent_skb);
-	sent_skbs[txq->tail] = NULL;
-
-	/* skip header wrb */
-	queue_tail_inc(txq);
+	struct be_queue_info *txq = &txo->q;
+	u16 frag_index, num_wrbs = 0;
+	struct sk_buff *skb = NULL;
+	bool unmap_skb_hdr = false;
+	struct be_eth_wrb *wrb;
 
 	do {
-		cur_index = txq->tail;
+		if (sent_skbs[txq->tail]) {
+			/* Free skb from prev req */
+			if (skb)
+				dev_consume_skb_any(skb);
+			skb = sent_skbs[txq->tail];
+			sent_skbs[txq->tail] = NULL;
+			queue_tail_inc(txq);  /* skip hdr wrb */
+			num_wrbs++;
+			unmap_skb_hdr = true;
+		}
 		wrb = queue_tail_node(txq);
+		frag_index = txq->tail;
 		unmap_tx_frag(&adapter->pdev->dev, wrb,
-			      (unmap_skb_hdr && skb_headlen(sent_skb)));
+			      (unmap_skb_hdr && skb_headlen(skb)));
 		unmap_skb_hdr = false;
-
-		num_wrbs++;
 		queue_tail_inc(txq);
-	} while (cur_index != last_index);
+		num_wrbs++;
+	} while (frag_index != last_index);
+	dev_consume_skb_any(skb);
 
-	dev_consume_skb_any(sent_skb);
 	return num_wrbs;
 }
 
@@ -2068,12 +2073,11 @@ static void be_rx_cq_clean(struct be_rx_obj *rxo)
 
 static void be_tx_compl_clean(struct be_adapter *adapter)
 {
+	u16 end_idx, notified_idx, cmpl = 0, timeo = 0, num_wrbs = 0;
+	struct device *dev = &adapter->pdev->dev;
 	struct be_tx_obj *txo;
 	struct be_queue_info *txq;
 	struct be_eth_tx_compl *txcp;
-	u16 end_idx, cmpl = 0, timeo = 0, num_wrbs = 0;
-	struct sk_buff *sent_skb;
-	bool dummy_wrb;
 	int i, pending_txqs;
 
 	/* Stop polling for compls when HW has been silent for 10ms */
@@ -2095,7 +2099,7 @@ static void be_tx_compl_clean(struct be_adapter *adapter)
 				atomic_sub(num_wrbs, &txq->used);
 				timeo = 0;
 			}
-			if (atomic_read(&txq->used) == 0)
+			if (atomic_read(&txq->used) == txo->pend_wrb_cnt)
 				pending_txqs--;
 		}
 
@@ -2105,21 +2109,29 @@ static void be_tx_compl_clean(struct be_adapter *adapter)
 		mdelay(1);
 	} while (true);
 
+	/* Free enqueued TX that was never notified to HW */
 	for_all_tx_queues(adapter, txo, i) {
 		txq = &txo->q;
-		if (atomic_read(&txq->used))
-			dev_err(&adapter->pdev->dev, "%d pending tx-compls\n",
-				atomic_read(&txq->used));
 
-		/* free posted tx for which compls will never arrive */
-		while (atomic_read(&txq->used)) {
-			sent_skb = txo->sent_skb_list[txq->tail];
+		if (atomic_read(&txq->used)) {
+			dev_info(dev, "txq%d: cleaning %d pending tx-wrbs\n",
+				 i, atomic_read(&txq->used));
+			notified_idx = txq->tail;
 			end_idx = txq->tail;
-			num_wrbs = wrb_cnt_for_skb(adapter, sent_skb,
-						   &dummy_wrb);
-			index_adv(&end_idx, num_wrbs - 1, txq->len);
+			index_adv(&end_idx, atomic_read(&txq->used) - 1,
+				  txq->len);
+			/* Use the tx-compl process logic to handle requests
+			 * that were not sent to the HW.
+			 */
 			num_wrbs = be_tx_compl_process(adapter, txo, end_idx);
 			atomic_sub(num_wrbs, &txq->used);
+			BUG_ON(atomic_read(&txq->used));
+			txo->pend_wrb_cnt = 0;
+			/* Since hw was never notified of these requests,
+			 * reset TXQ indices
+			 */
+			txq->head = notified_idx;
+			txq->tail = notified_idx;
 		}
 	}
 }
@@ -3171,13 +3183,32 @@ static int be_clear(struct be_adapter *adapter)
 	return 0;
 }
 
+static int be_if_create(struct be_adapter *adapter, u32 *if_handle,
+			u32 cap_flags, u32 vf)
+{
+	u32 en_flags;
+	int status;
+
+	en_flags = BE_IF_FLAGS_UNTAGGED | BE_IF_FLAGS_BROADCAST |
+		   BE_IF_FLAGS_MULTICAST | BE_IF_FLAGS_PASS_L3L4_ERRORS |
+		   BE_IF_FLAGS_RSS;
+
+	en_flags &= cap_flags;
+
+	status = be_cmd_if_create(adapter, cap_flags, en_flags,
+				  if_handle, vf);
+
+	return status;
+}
+
 static int be_vfs_if_create(struct be_adapter *adapter)
 {
 	struct be_resources res = {0};
 	struct be_vf_cfg *vf_cfg;
-	u32 cap_flags, en_flags, vf;
-	int status = 0;
+	u32 cap_flags, vf;
+	int status;
 
+	/* If a FW profile exists, then cap_flags are updated */
 	cap_flags = BE_IF_FLAGS_UNTAGGED | BE_IF_FLAGS_BROADCAST |
 		    BE_IF_FLAGS_MULTICAST;
 
@@ -3189,18 +3220,13 @@ static int be_vfs_if_create(struct be_adapter *adapter)
 				cap_flags = res.if_cap_flags;
 		}
 
-		/* If a FW profile exists, then cap_flags are updated */
-		en_flags = cap_flags & (BE_IF_FLAGS_UNTAGGED |
-					BE_IF_FLAGS_BROADCAST |
-					BE_IF_FLAGS_MULTICAST);
-		status =
-		    be_cmd_if_create(adapter, cap_flags, en_flags,
-				     &vf_cfg->if_handle, vf + 1);
+		status = be_if_create(adapter, &vf_cfg->if_handle,
+				      cap_flags, vf + 1);
 		if (status)
-			goto err;
+			return status;
 	}
-err:
-	return status;
+
+	return 0;
 }
 
 static int be_vf_setup_init(struct be_adapter *adapter)
@@ -3641,7 +3667,6 @@ int be_update_queues(struct be_adapter *adapter)
 static int be_setup(struct be_adapter *adapter)
 {
 	struct device *dev = &adapter->pdev->dev;
-	u32 tx_fc, rx_fc, en_flags;
 	int status;
 
 	be_setup_init(adapter);
@@ -3657,13 +3682,8 @@ static int be_setup(struct be_adapter *adapter)
 	if (status)
 		goto err;
 
-	en_flags = BE_IF_FLAGS_UNTAGGED | BE_IF_FLAGS_BROADCAST |
-		   BE_IF_FLAGS_MULTICAST | BE_IF_FLAGS_PASS_L3L4_ERRORS;
-	if (adapter->function_caps & BE_FUNCTION_CAPS_RSS)
-		en_flags |= BE_IF_FLAGS_RSS;
-	en_flags = en_flags & be_if_cap_flags(adapter);
-	status = be_cmd_if_create(adapter, be_if_cap_flags(adapter), en_flags,
-				  &adapter->if_handle, 0);
+	status = be_if_create(adapter, &adapter->if_handle,
+			      be_if_cap_flags(adapter), 0);
 	if (status)
 		goto err;
 
@@ -3696,11 +3716,14 @@ static int be_setup(struct be_adapter *adapter)
 
 	be_cmd_get_acpi_wol_cap(adapter);
 
-	be_cmd_get_flow_control(adapter, &tx_fc, &rx_fc);
+	status = be_cmd_set_flow_control(adapter, adapter->tx_fc,
+					 adapter->rx_fc);
+	if (status)
+		be_cmd_get_flow_control(adapter, &adapter->tx_fc,
+					&adapter->rx_fc);
 
-	if (rx_fc != adapter->rx_fc || tx_fc != adapter->tx_fc)
-		be_cmd_set_flow_control(adapter, adapter->tx_fc,
-					adapter->rx_fc);
+	dev_info(&adapter->pdev->dev, "HW Flow control - TX:%d RX:%d\n",
+		 adapter->tx_fc, adapter->rx_fc);
 
 	if (be_physfn(adapter))
 		be_cmd_set_logical_link_config(adapter,
@@ -3739,7 +3762,7 @@ static char flash_cookie[2][16] = {"*** SE FLAS", "H DIRECTORY *** "};
 
 static bool phy_flashing_required(struct be_adapter *adapter)
 {
-	return (adapter->phy.phy_type == TN_8022 &&
+	return (adapter->phy.phy_type == PHY_TYPE_TN_8022 &&
 		adapter->phy.interface_type == PHY_TYPE_BASET_10GB);
 }
 
@@ -4304,7 +4327,8 @@ fw_exit:
 	return status;
 }
 
-static int be_ndo_bridge_setlink(struct net_device *dev, struct nlmsghdr *nlh)
+static int be_ndo_bridge_setlink(struct net_device *dev, struct nlmsghdr *nlh,
+				 u16 flags)
 {
 	struct be_adapter *adapter = netdev_priv(dev);
 	struct nlattr *attr, *br_spec;
@@ -5080,6 +5104,10 @@ static int be_resume(struct pci_dev *pdev)
 	pci_restore_state(pdev);
 
 	status = be_fw_wait_ready(adapter);
+	if (status)
+		return status;
+
+	status = be_cmd_reset_function(adapter);
 	if (status)
 		return status;
 

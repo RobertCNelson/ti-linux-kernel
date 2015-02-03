@@ -1154,13 +1154,15 @@ struct net_device_ops {
 						int idx);
 
 	int			(*ndo_bridge_setlink)(struct net_device *dev,
-						      struct nlmsghdr *nlh);
+						      struct nlmsghdr *nlh,
+						      u16 flags);
 	int			(*ndo_bridge_getlink)(struct sk_buff *skb,
 						      u32 pid, u32 seq,
 						      struct net_device *dev,
 						      u32 filter_mask);
 	int			(*ndo_bridge_dellink)(struct net_device *dev,
-						      struct nlmsghdr *nlh);
+						      struct nlmsghdr *nlh,
+						      u16 flags);
 	int			(*ndo_change_carrier)(struct net_device *dev,
 						      bool new_carrier);
 	int			(*ndo_get_phys_port_id)(struct net_device *dev,
@@ -1514,6 +1516,8 @@ struct net_device {
 	struct list_head	napi_list;
 	struct list_head	unreg_list;
 	struct list_head	close_list;
+	struct list_head	ptype_all;
+	struct list_head	ptype_specific;
 
 	struct {
 		struct list_head upper;
@@ -1969,7 +1973,7 @@ struct offload_callbacks {
 	struct sk_buff		*(*gso_segment)(struct sk_buff *skb,
 						netdev_features_t features);
 	struct sk_buff		**(*gro_receive)(struct sk_buff **head,
-					       struct sk_buff *skb);
+						 struct sk_buff *skb);
 	int			(*gro_complete)(struct sk_buff *skb, int nhoff);
 };
 
@@ -1979,10 +1983,21 @@ struct packet_offload {
 	struct list_head	 list;
 };
 
+struct udp_offload;
+
+struct udp_offload_callbacks {
+	struct sk_buff		**(*gro_receive)(struct sk_buff **head,
+						 struct sk_buff *skb,
+						 struct udp_offload *uoff);
+	int			(*gro_complete)(struct sk_buff *skb,
+						int nhoff,
+						struct udp_offload *uoff);
+};
+
 struct udp_offload {
 	__be16			 port;
 	u8			 ipproto;
-	struct offload_callbacks callbacks;
+	struct udp_offload_callbacks callbacks;
 };
 
 /* often modified stats are per cpu, other are shared (netdev->stats) */

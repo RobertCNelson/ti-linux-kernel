@@ -30,6 +30,8 @@
 #include <net/bluetooth/hci_core.h>
 #include <net/bluetooth/mgmt.h>
 
+#include "hci_request.h"
+#include "hci_debugfs.h"
 #include "a2mp.h"
 #include "amp.h"
 #include "smp.h"
@@ -210,6 +212,40 @@ static void hci_cc_reset(struct hci_dev *hdev, struct sk_buff *skb)
 	hdev->ssp_debug_mode = 0;
 
 	hci_bdaddr_list_clear(&hdev->le_white_list);
+}
+
+static void hci_cc_read_stored_link_key(struct hci_dev *hdev,
+					struct sk_buff *skb)
+{
+	struct hci_rp_read_stored_link_key *rp = (void *)skb->data;
+	struct hci_cp_read_stored_link_key *sent;
+
+	BT_DBG("%s status 0x%2.2x", hdev->name, rp->status);
+
+	sent = hci_sent_cmd_data(hdev, HCI_OP_READ_STORED_LINK_KEY);
+	if (!sent)
+		return;
+
+	if (!rp->status && sent->read_all == 0x01) {
+		hdev->stored_max_keys = rp->max_keys;
+		hdev->stored_num_keys = rp->num_keys;
+	}
+}
+
+static void hci_cc_delete_stored_link_key(struct hci_dev *hdev,
+					  struct sk_buff *skb)
+{
+	struct hci_rp_delete_stored_link_key *rp = (void *)skb->data;
+
+	BT_DBG("%s status 0x%2.2x", hdev->name, rp->status);
+
+	if (rp->status)
+		return;
+
+	if (rp->num_keys <= hdev->stored_num_keys)
+		hdev->stored_num_keys -= rp->num_keys;
+	else
+		hdev->stored_num_keys = 0;
 }
 
 static void hci_cc_write_local_name(struct hci_dev *hdev, struct sk_buff *skb)
@@ -1282,6 +1318,55 @@ static void hci_cc_le_read_supported_states(struct hci_dev *hdev,
 	memcpy(hdev->le_states, rp->le_states, 8);
 }
 
+static void hci_cc_le_read_def_data_len(struct hci_dev *hdev,
+					struct sk_buff *skb)
+{
+	struct hci_rp_le_read_def_data_len *rp = (void *) skb->data;
+
+	BT_DBG("%s status 0x%2.2x", hdev->name, rp->status);
+
+	if (rp->status)
+		return;
+
+	hdev->le_def_tx_len = le16_to_cpu(rp->tx_len);
+	hdev->le_def_tx_time = le16_to_cpu(rp->tx_time);
+}
+
+static void hci_cc_le_write_def_data_len(struct hci_dev *hdev,
+					 struct sk_buff *skb)
+{
+	struct hci_cp_le_write_def_data_len *sent;
+	__u8 status = *((__u8 *) skb->data);
+
+	BT_DBG("%s status 0x%2.2x", hdev->name, status);
+
+	if (status)
+		return;
+
+	sent = hci_sent_cmd_data(hdev, HCI_OP_LE_WRITE_DEF_DATA_LEN);
+	if (!sent)
+		return;
+
+	hdev->le_def_tx_len = le16_to_cpu(sent->tx_len);
+	hdev->le_def_tx_time = le16_to_cpu(sent->tx_time);
+}
+
+static void hci_cc_le_read_max_data_len(struct hci_dev *hdev,
+					struct sk_buff *skb)
+{
+	struct hci_rp_le_read_max_data_len *rp = (void *) skb->data;
+
+	BT_DBG("%s status 0x%2.2x", hdev->name, rp->status);
+
+	if (rp->status)
+		return;
+
+	hdev->le_max_tx_len = le16_to_cpu(rp->tx_len);
+	hdev->le_max_tx_time = le16_to_cpu(rp->tx_time);
+	hdev->le_max_rx_len = le16_to_cpu(rp->rx_len);
+	hdev->le_max_rx_time = le16_to_cpu(rp->rx_time);
+}
+
 static void hci_cc_write_le_host_supported(struct hci_dev *hdev,
 					   struct sk_buff *skb)
 {
@@ -2115,6 +2200,7 @@ static void hci_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 		} else
 			conn->state = BT_CONNECTED;
 
+		hci_debugfs_create_conn(conn);
 		hci_conn_add_sysfs(conn);
 
 		if (test_bit(HCI_AUTH, &hdev->flags))
@@ -2130,7 +2216,7 @@ static void hci_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 			hci_send_cmd(hdev, HCI_OP_READ_REMOTE_FEATURES,
 				     sizeof(cp), &cp);
 
-			hci_update_page_scan(hdev, NULL);
+			hci_update_page_scan(hdev);
 		}
 
 		/* Set packet type for incoming connection */
@@ -2316,7 +2402,7 @@ static void hci_disconn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 		if (test_bit(HCI_CONN_FLUSH_KEY, &conn->flags))
 			hci_remove_link_key(hdev, &conn->dst);
 
-		hci_update_page_scan(hdev, NULL);
+		hci_update_page_scan(hdev);
 	}
 
 	params = hci_conn_params_lookup(hdev, &conn->dst, conn->dst_type);
@@ -2662,6 +2748,14 @@ static void hci_cmd_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 		hci_cc_reset(hdev, skb);
 		break;
 
+	case HCI_OP_READ_STORED_LINK_KEY:
+		hci_cc_read_stored_link_key(hdev, skb);
+		break;
+
+	case HCI_OP_DELETE_STORED_LINK_KEY:
+		hci_cc_delete_stored_link_key(hdev, skb);
+		break;
+
 	case HCI_OP_WRITE_LOCAL_NAME:
 		hci_cc_write_local_name(hdev, skb);
 		break;
@@ -2852,6 +2946,18 @@ static void hci_cmd_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	case HCI_OP_LE_READ_SUPPORTED_STATES:
 		hci_cc_le_read_supported_states(hdev, skb);
+		break;
+
+	case HCI_OP_LE_READ_DEF_DATA_LEN:
+		hci_cc_le_read_def_data_len(hdev, skb);
+		break;
+
+	case HCI_OP_LE_WRITE_DEF_DATA_LEN:
+		hci_cc_le_write_def_data_len(hdev, skb);
+		break;
+
+	case HCI_OP_LE_READ_MAX_DATA_LEN:
+		hci_cc_le_read_max_data_len(hdev, skb);
 		break;
 
 	case HCI_OP_WRITE_LE_HOST_SUPPORTED:
@@ -3584,6 +3690,7 @@ static void hci_sync_conn_complete_evt(struct hci_dev *hdev,
 		conn->handle = __le16_to_cpu(ev->handle);
 		conn->state  = BT_CONNECTED;
 
+		hci_debugfs_create_conn(conn);
 		hci_conn_add_sysfs(conn);
 		break;
 
@@ -4124,6 +4231,7 @@ static void hci_phy_link_complete_evt(struct hci_dev *hdev,
 	hcon->disc_timeout = HCI_DISCONN_TIMEOUT;
 	hci_conn_drop(hcon);
 
+	hci_debugfs_create_conn(hcon);
 	hci_conn_add_sysfs(hcon);
 
 	amp_physical_cfm(bredr_hcon, hcon);
@@ -4330,6 +4438,7 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	conn->le_conn_latency = le16_to_cpu(ev->latency);
 	conn->le_supv_timeout = le16_to_cpu(ev->supervision_timeout);
 
+	hci_debugfs_create_conn(conn);
 	hci_conn_add_sysfs(conn);
 
 	hci_proto_connect_cfm(conn, ev->status);

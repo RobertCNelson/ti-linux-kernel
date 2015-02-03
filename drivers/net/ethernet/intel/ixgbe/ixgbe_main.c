@@ -7217,8 +7217,8 @@ netdev_tx_t ixgbe_xmit_frame_ring(struct sk_buff *skb,
 	first->gso_segs = 1;
 
 	/* if we have a HW VLAN tag being added default to the HW one */
-	if (vlan_tx_tag_present(skb)) {
-		tx_flags |= vlan_tx_tag_get(skb) << IXGBE_TX_FLAGS_VLAN_SHIFT;
+	if (skb_vlan_tag_present(skb)) {
+		tx_flags |= skb_vlan_tag_get(skb) << IXGBE_TX_FLAGS_VLAN_SHIFT;
 		tx_flags |= IXGBE_TX_FLAGS_HW_VLAN;
 	/* else if it is a SW VLAN check the next protocol and store the tag */
 	} else if (protocol == htons(ETH_P_8021Q)) {
@@ -7786,7 +7786,7 @@ static int ixgbe_ndo_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
 }
 
 static int ixgbe_ndo_bridge_setlink(struct net_device *dev,
-				    struct nlmsghdr *nlh)
+				    struct nlmsghdr *nlh, u16 flags)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(dev);
 	struct nlattr *attr, *br_spec;
