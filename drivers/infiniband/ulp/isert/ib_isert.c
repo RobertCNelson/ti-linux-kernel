@@ -38,7 +38,7 @@
 #define ISER_MAX_CQ_LEN		(ISER_MAX_RX_CQ_LEN + ISER_MAX_TX_CQ_LEN + \
 				 ISERT_MAX_CONN)
 
-int isert_debug_level = 0;
+static int isert_debug_level;
 module_param_named(debug_level, isert_debug_level, int, 0644);
 MODULE_PARM_DESC(debug_level, "Enable debug tracing if > 0 (default:0)");
 
@@ -1351,17 +1351,19 @@ isert_handle_text_cmd(struct isert_conn *isert_conn, struct isert_cmd *isert_cmd
 	struct iscsi_conn *conn = isert_conn->conn;
 	u32 payload_length = ntoh24(hdr->dlength);
 	int rc;
-	unsigned char *text_in;
+	unsigned char *text_in = NULL;
 
 	rc = iscsit_setup_text_cmd(conn, cmd, hdr);
 	if (rc < 0)
 		return rc;
 
-	text_in = kzalloc(payload_length, GFP_KERNEL);
-	if (!text_in) {
-		isert_err("Unable to allocate text_in of payload_length: %u\n",
-			  payload_length);
-		return -ENOMEM;
+	if (payload_length) {
+		text_in = kzalloc(payload_length, GFP_KERNEL);
+		if (!text_in) {
+			isert_err("Unable to allocate text_in of payload_length: %u\n",
+				  payload_length);
+			return -ENOMEM;
+		}
 	}
 	cmd->text_in_ptr = text_in;
 
@@ -2275,7 +2277,7 @@ isert_put_text_rsp(struct iscsi_cmd *cmd, struct iscsi_conn *conn)
 	}
 	isert_init_send_wr(isert_conn, isert_cmd, send_wr);
 
-	isert_dbg("conn %p Text Reject\n", isert_conn);
+	isert_dbg("conn %p Text Response\n", isert_conn);
 
 	return isert_post_response(isert_conn, isert_cmd);
 }
@@ -3320,7 +3322,8 @@ static int __init isert_init(void)
 {
 	int ret;
 
-	isert_comp_wq = alloc_workqueue("isert_comp_wq", 0, 0);
+	isert_comp_wq = alloc_workqueue("isert_comp_wq",
+					WQ_UNBOUND | WQ_HIGHPRI, 0);
 	if (!isert_comp_wq) {
 		isert_err("Unable to allocate isert_comp_wq\n");
 		ret = -ENOMEM;
