@@ -26,6 +26,7 @@
 #include <linux/time.h>
 #include <linux/pm_qos.h>
 #include <linux/aio.h>
+#include <linux/io.h>
 #include <linux/dma-mapping.h>
 #include <sound/core.h>
 #include <sound/control.h>
@@ -34,7 +35,6 @@
 #include <sound/pcm_params.h>
 #include <sound/timer.h>
 #include <sound/minors.h>
-#include <asm/io.h>
 
 /*
  *  Compatibility
@@ -420,7 +420,8 @@ int snd_pcm_hw_refine(struct snd_pcm_substream *substream,
 
 	hw = &substream->runtime->hw;
 	if (!params->info) {
-		params->info = hw->info & ~SNDRV_PCM_INFO_FIFO_IN_FRAMES;
+		params->info = hw->info & ~(SNDRV_PCM_INFO_FIFO_IN_FRAMES |
+					    SNDRV_PCM_INFO_DRAIN_TRIGGER);
 		if (!hw_support_mmap(substream))
 			params->info &= ~(SNDRV_PCM_INFO_MMAP |
 					  SNDRV_PCM_INFO_MMAP_VALID);
@@ -1566,6 +1567,13 @@ static int snd_pcm_do_drain_init(struct snd_pcm_substream *substream, int state)
 			snd_pcm_post_stop(substream, new_state);
 		}
 	}
+
+	if (runtime->status->state == SNDRV_PCM_STATE_DRAINING &&
+	    runtime->trigger_master == substream &&
+	    (runtime->hw.info & SNDRV_PCM_INFO_DRAIN_TRIGGER))
+		return substream->ops->trigger(substream,
+					       SNDRV_PCM_TRIGGER_DRAIN);
+
 	return 0;
 }
 

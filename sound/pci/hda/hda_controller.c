@@ -939,7 +939,8 @@ static int azx_attach_pcm_stream(struct hda_bus *bus, struct hda_codec *codec,
 					      chip->card->dev,
 					      size, MAX_PREALLOC_SIZE);
 	/* link to codec */
-	pcm->dev = &codec->dev;
+	for (s = 0; s < 2; s++)
+		pcm->streams[s].dev.parent = &codec->dev;
 	return 0;
 }
 
@@ -1993,4 +1994,4 @@ void azx_notifier_unregister(struct azx *chip)
 EXPORT_SYMBOL_GPL(azx_notifier_unregister);
 
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("Common HDA driver funcitons");
+MODULE_DESCRIPTION("Common HDA driver functions");
