@@ -307,42 +307,55 @@ static inline int valid_io_request(struct zram *zram,
 	return 1;
 }
 
-static void zram_meta_free(struct zram_meta *meta)
+static void zram_meta_free(struct zram_meta *meta, u64 disksize)
 {
+	size_t num_pages = disksize >> PAGE_SHIFT;
+	size_t index;
+
+	/* Free all pages that are still in this zram device */
+	for (index = 0; index < num_pages; index++) {
+		unsigned long handle = meta->table[index].handle;
+
+		if (!handle)
+			continue;
+
+		zs_free(meta->mem_pool, handle);
+	}
+
 	zs_destroy_pool(meta->mem_pool);
 	vfree(meta->table);
 	kfree(meta);
 }
 
-static struct zram_meta *zram_meta_alloc(u64 disksize)
+static struct zram_meta *zram_meta_alloc(int device_id, u64 disksize)
 {
 	size_t num_pages;
+	char pool_name[8];
 	struct zram_meta *meta = kmalloc(sizeof(*meta), GFP_KERNEL);
+
 	if (!meta)
-		goto out;
+		return NULL;
 
 	num_pages = disksize >> PAGE_SHIFT;
 	meta->table = vzalloc(num_pages * sizeof(*meta->table));
 	if (!meta->table) {
 		pr_err("Error allocating zram address table\n");
-		goto free_meta;
+		goto out_error;
 	}
 
-	meta->mem_pool = zs_create_pool(GFP_NOIO | __GFP_HIGHMEM);
+	snprintf(pool_name, sizeof(pool_name), "zram%d", device_id);
+	meta->mem_pool = zs_create_pool(pool_name, GFP_NOIO | __GFP_HIGHMEM);
 	if (!meta->mem_pool) {
 		pr_err("Error creating memory pool\n");
-		goto free_table;
+		goto out_error;
 	}
 
 	return meta;
 
-free_table:
+out_error:
 	vfree(meta->table);
-free_meta:
 	kfree(meta);
-	meta = NULL;
-out:
-	return meta;
+	return NULL;
 }
 
 static void update_position(u32 *index, int *offset, struct bio_vec *bvec)
@@ -704,11 +717,8 @@ static void zram_bio_discard(struct zram *zram, u32 index,
 	}
 }
 
-static void zram_reset_device(struct zram *zram, bool reset_capacity)
+static void zram_reset_device(struct zram *zram)
 {
-	size_t index;
-	struct zram_meta *meta;
-
 	down_write(&zram->init_lock);
 
 	zram->limit_pages = 0;
@@ -718,37 +728,16 @@ static void zram_reset_device(struct zram *zram, bool reset_capacity)
 		return;
 	}
 
-	meta = zram->meta;
-	/* Free all pages that are still in this zram device */
-	for (index = 0; index < zram->disksize >> PAGE_SHIFT; index++) {
-		unsigned long handle = meta->table[index].handle;
-		if (!handle)
-			continue;
-
-		zs_free(meta->mem_pool, handle);
-	}
-
 	zcomp_destroy(zram->comp);
 	zram->max_comp_streams = 1;
-
-	zram_meta_free(zram->meta);
+	zram_meta_free(zram->meta, zram->disksize);
 	zram->meta = NULL;
 	/* Reset stats */
 	memset(&zram->stats, 0, sizeof(zram->stats));
-
 	zram->disksize = 0;
-	if (reset_capacity)
-		set_capacity(zram->disk, 0);
+	set_capacity(zram->disk, 0);
 
 	up_write(&zram->init_lock);
-
-	/*
-	 * Revalidate disk out of the init_lock to avoid lockdep splat.
-	 * It's okay because disk's capacity is protected by init_lock
-	 * so that revalidate_disk always sees up-to-date capacity.
-	 */
-	if (reset_capacity)
-		revalidate_disk(zram->disk);
 }
 
 static ssize_t disksize_store(struct device *dev,
@@ -765,7 +754,7 @@ static ssize_t disksize_store(struct device *dev,
 		return -EINVAL;
 
 	disksize = PAGE_ALIGN(disksize);
-	meta = zram_meta_alloc(disksize);
+	meta = zram_meta_alloc(zram->disk->first_minor, disksize);
 	if (!meta)
 		return -ENOMEM;
 
@@ -803,7 +792,7 @@ out_destroy_comp:
 	up_write(&zram->init_lock);
 	zcomp_destroy(comp);
 out_free_meta:
-	zram_meta_free(meta);
+	zram_meta_free(meta, disksize);
 	return err;
 }
 
@@ -821,8 +810,9 @@ static ssize_t reset_store(struct device *dev,
 	if (!bdev)
 		return -ENOMEM;
 
+	mutex_lock(&bdev->bd_mutex);
 	/* Do not reset an active device! */
-	if (bdev->bd_holders) {
+	if (bdev->bd_openers) {
 		ret = -EBUSY;
 		goto out;
 	}
@@ -838,12 +828,16 @@ static ssize_t reset_store(struct device *dev,
 
 	/* Make sure all pending I/O is finished */
 	fsync_bdev(bdev);
+	zram_reset_device(zram);
+
+	mutex_unlock(&bdev->bd_mutex);
+	revalidate_disk(zram->disk);
 	bdput(bdev);
 
-	zram_reset_device(zram, true);
 	return len;
 
 out:
+	mutex_unlock(&bdev->bd_mutex);
 	bdput(bdev);
 	return ret;
 }
@@ -1120,15 +1114,31 @@ out:
 	return ret;
 }
 
-static void destroy_device(struct zram *zram)
+static void destroy_devices(unsigned int nr)
 {
-	sysfs_remove_group(&disk_to_dev(zram->disk)->kobj,
-			&zram_disk_attr_group);
+	struct zram *zram;
+	unsigned int i;
 
-	del_gendisk(zram->disk);
-	put_disk(zram->disk);
+	for (i = 0; i < nr; i++) {
+		zram = &zram_devices[i];
+		/*
+		 * Remove sysfs first, so no one will perform a disksize
+		 * store while we destroy the devices
+		 */
+		sysfs_remove_group(&disk_to_dev(zram->disk)->kobj,
+				&zram_disk_attr_group);
 
-	blk_cleanup_queue(zram->queue);
+		zram_reset_device(zram);
+
+		del_gendisk(zram->disk);
+		put_disk(zram->disk);
+
+		blk_cleanup_queue(zram->queue);
+	}
+
+	kfree(zram_devices);
+	unregister_blkdev(zram_major, "zram");
+	pr_debug("Destroyed %u device(s)\n", nr);
 }
 
 static int __init zram_init(void)
@@ -1138,64 +1148,39 @@ static int __init zram_init(void)
 	if (num_devices > max_num_devices) {
 		pr_warn("Invalid value for num_devices: %u\n",
 				num_devices);
-		ret = -EINVAL;
-		goto out;
+		return -EINVAL;
 	}
 
 	zram_major = register_blkdev(0, "zram");
 	if (zram_major <= 0) {
 		pr_warn("Unable to get major number\n");
-		ret = -EBUSY;
-		goto out;
+		return -EBUSY;
 	}
 
 	/* Allocate the device array and initialize each one */
 	zram_devices = kzalloc(num_devices * sizeof(struct zram), GFP_KERNEL);
 	if (!zram_devices) {
 		ret = -ENOMEM;
-		goto unregister;
+		goto out_error;
 	}
 
 	for (dev_id = 0; dev_id < num_devices; dev_id++) {
 		ret = create_device(&zram_devices[dev_id], dev_id);
 		if (ret)
-			goto free_devices;
+			goto out_error;
 	}
 
-	pr_info("Created %u device(s) ...\n", num_devices);
-
+	pr_info("Created %u device(s)\n", num_devices);
 	return 0;
 
-free_devices:
-	while (dev_id)
-		destroy_device(&zram_devices[--dev_id]);
-	kfree(zram_devices);
-unregister:
-	unregister_blkdev(zram_major, "zram");
-out:
+out_error:
+	destroy_devices(dev_id);
 	return ret;
 }
 
 static void __exit zram_exit(void)
 {
-	int i;
-	struct zram *zram;
-
-	for (i = 0; i < num_devices; i++) {
-		zram = &zram_devices[i];
-
-		destroy_device(zram);
-		/*
-		 * Shouldn't access zram->disk after destroy_device
-		 * because destroy_device already released zram->disk.
-		 */
-		zram_reset_device(zram, false);
-	}
-
-	unregister_blkdev(zram_major, "zram");
-
-	kfree(zram_devices);
-	pr_debug("Cleanup done!\n");
+	destroy_devices(num_devices);
 }
 
 module_init(zram_init);

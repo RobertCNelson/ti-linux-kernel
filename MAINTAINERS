@@ -4211,6 +4211,11 @@ W:	http://www.icp-vortex.com/
 S:	Supported
 F:	drivers/scsi/gdt*
 
+GDB KERNEL DEBUGGING HELPER SCRIPTS
+M:	Jan Kiszka <jan.kiszka@siemens.com>
+S:	Supported
+F:	scripts/gdb/
+
 GEMTEK FM RADIO RECEIVER DRIVER
 M:	Hans Verkuil <hverkuil@xs4all.nl>
 L:	linux-media@vger.kernel.org
@@ -9340,7 +9345,6 @@ F:	drivers/net/ethernet/dlink/sundance.c
 
 SUPERH
 L:	linux-sh@vger.kernel.org
-W:	http://www.linux-sh.org
 Q:	http://patchwork.kernel.org/project/linux-sh/list/
 S:	Orphan
 F:	Documentation/sh/
