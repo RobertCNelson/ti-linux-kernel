@@ -353,6 +353,10 @@ static int do_dax_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
 		}
 		size = (i_size_read(inode) + PAGE_SIZE - 1) >> PAGE_SHIFT;
 		if (unlikely(vmf->pgoff >= size)) {
+			/*
+			 * We have a struct page covering a hole in the file
+			 * from a read fault and we've raced with a truncate
+			 */
 			error = -EIO;
 			goto unlock_page;
 		}
@@ -360,7 +364,7 @@ static int do_dax_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
 
 	error = get_block(inode, block, &bh, 0);
 	if (!error && (bh.b_size < PAGE_SIZE))
-		error = -EIO;
+		error = -EIO;		/* fs corruption? */
 	if (error)
 		goto unlock_page;
 
