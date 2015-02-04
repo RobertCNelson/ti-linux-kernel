@@ -279,7 +279,7 @@ static int dax_insert_mapping(struct inode *inode, struct buffer_head *bh,
 	pgoff_t size;
 	int error;
 
-	mutex_lock(&mapping->i_mmap_mutex);
+	i_mmap_lock_read(mapping);
 
 	/*
 	 * Check truncate didn't happen while we were allocating a block.
@@ -308,7 +308,7 @@ static int dax_insert_mapping(struct inode *inode, struct buffer_head *bh,
 	error = vm_insert_mixed(vma, vaddr, pfn);
 
  out:
-	mutex_unlock(&mapping->i_mmap_mutex);
+	i_mmap_unlock_read(mapping);
 
 	if (bh->b_end_io)
 		bh->b_end_io(bh, 1);
@@ -389,12 +389,12 @@ static int do_dax_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
 			goto unlock_page;
 		vmf->page = page;
 		if (!page) {
-			mutex_lock(&mapping->i_mmap_mutex);
+			i_mmap_lock_read(mapping);
 			/* Check we didn't race with truncate */
 			size = (i_size_read(inode) + PAGE_SIZE - 1) >>
 								PAGE_SHIFT;
 			if (vmf->pgoff >= size) {
-				mutex_unlock(&mapping->i_mmap_mutex);
+				i_mmap_unlock_read(mapping);
 				error = -EIO;
 				goto out;
 			}
