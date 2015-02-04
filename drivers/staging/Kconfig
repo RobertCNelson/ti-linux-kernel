@@ -56,6 +56,8 @@ source "drivers/staging/vt6656/Kconfig"
 
 source "drivers/staging/iio/Kconfig"
 
+source "drivers/staging/sm7xxfb/Kconfig"
+
 source "drivers/staging/xgifb/Kconfig"
 
 source "drivers/staging/emxx_udc/Kconfig"
@@ -103,5 +105,7 @@ source "drivers/staging/skein/Kconfig"
 source "drivers/staging/unisys/Kconfig"
 
 source "drivers/staging/clocking-wizard/Kconfig"
+
+source "drivers/staging/fbtft/Kconfig"
 
 endif # STAGING
