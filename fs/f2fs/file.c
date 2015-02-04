@@ -26,6 +26,7 @@
 #include "segment.h"
 #include "xattr.h"
 #include "acl.h"
+#include "trace.h"
 #include <trace/events/f2fs.h>
 
 static int f2fs_vm_page_mkwrite(struct vm_area_struct *vma,
@@ -246,6 +247,10 @@ go_write:
 sync_nodes:
 	sync_node_pages(sbi, ino, &wbc);
 
+	/* if cp_error was enabled, we should avoid infinite loop */
+	if (unlikely(f2fs_cp_error(sbi)))
+		goto out;
+
 	if (need_inode_block_update(sbi, ino)) {
 		mark_inode_dirty_sync(inode);
 		f2fs_write_inode(inode, NULL);
@@ -265,6 +270,7 @@ flush_out:
 	ret = f2fs_issue_flush(sbi);
 out:
 	trace_f2fs_sync_file_exit(inode, need_cp, datasync, ret);
+	f2fs_trace_ios(NULL, NULL, 1);
 	return ret;
 }
 
@@ -427,7 +433,8 @@ int truncate_data_blocks_range(struct dnode_of_data *dn, int count)
 		if (blkaddr == NULL_ADDR)
 			continue;
 
-		update_extent_cache(NULL_ADDR, dn);
+		dn->data_blkaddr = NULL_ADDR;
+		update_extent_cache(dn);
 		invalidate_blocks(sbi, blkaddr);
 		nr_free++;
 	}
@@ -836,6 +843,19 @@ static long f2fs_fallocate(struct file *file, int mode,
 	return ret;
 }
 
+static int f2fs_release_file(struct inode *inode, struct file *filp)
+{
+	/* some remained atomic pages should discarded */
+	if (f2fs_is_atomic_file(inode))
+		commit_inmem_pages(inode, true);
+	if (f2fs_is_volatile_file(inode)) {
+		set_inode_flag(F2FS_I(inode), FI_DROP_CACHE);
+		filemap_fdatawrite(inode->i_mapping);
+		clear_inode_flag(F2FS_I(inode), FI_DROP_CACHE);
+	}
+	return 0;
+}
+
 #define F2FS_REG_FLMASK		(~(FS_DIRSYNC_FL | FS_TOPDIR_FL))
 #define F2FS_OTHER_FLMASK	(FS_NODUMP_FL | FS_NOATIME_FL)
 
@@ -906,27 +926,28 @@ out:
 	return ret;
 }
 
+static int f2fs_ioc_getversion(struct file *filp, unsigned long arg)
+{
+	struct inode *inode = file_inode(filp);
+
+	return put_user(inode->i_generation, (int __user *)arg);
+}
+
 static int f2fs_ioc_start_atomic_write(struct file *filp)
 {
 	struct inode *inode = file_inode(filp);
-	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 
 	if (!inode_owner_or_capable(inode))
 		return -EACCES;
 
-	f2fs_balance_fs(sbi);
+	f2fs_balance_fs(F2FS_I_SB(inode));
+
+	if (f2fs_is_atomic_file(inode))
+		return 0;
 
 	set_inode_flag(F2FS_I(inode), FI_ATOMIC_FILE);
 
 	return f2fs_convert_inline_inode(inode);
-}
-
-static int f2fs_release_file(struct inode *inode, struct file *filp)
-{
-	/* some remained atomic pages should discarded */
-	if (f2fs_is_atomic_file(inode) || f2fs_is_volatile_file(inode))
-		commit_inmem_pages(inode, true);
-	return 0;
 }
 
 static int f2fs_ioc_commit_atomic_write(struct file *filp)
@@ -949,6 +970,7 @@ static int f2fs_ioc_commit_atomic_write(struct file *filp)
 
 	ret = f2fs_sync_file(filp, 0, LONG_MAX, 0);
 	mnt_drop_write_file(filp);
+	clear_inode_flag(F2FS_I(inode), FI_ATOMIC_FILE);
 	return ret;
 }
 
@@ -959,9 +981,89 @@ static int f2fs_ioc_start_volatile_write(struct file *filp)
 	if (!inode_owner_or_capable(inode))
 		return -EACCES;
 
+	if (f2fs_is_volatile_file(inode))
+		return 0;
+
 	set_inode_flag(F2FS_I(inode), FI_VOLATILE_FILE);
 
 	return f2fs_convert_inline_inode(inode);
+}
+
+static int f2fs_ioc_release_volatile_write(struct file *filp)
+{
+	struct inode *inode = file_inode(filp);
+
+	if (!inode_owner_or_capable(inode))
+		return -EACCES;
+
+	if (!f2fs_is_volatile_file(inode))
+		return 0;
+
+	punch_hole(inode, 0, F2FS_BLKSIZE);
+	return 0;
+}
+
+static int f2fs_ioc_abort_volatile_write(struct file *filp)
+{
+	struct inode *inode = file_inode(filp);
+	int ret;
+
+	if (!inode_owner_or_capable(inode))
+		return -EACCES;
+
+	ret = mnt_want_write_file(filp);
+	if (ret)
+		return ret;
+
+	f2fs_balance_fs(F2FS_I_SB(inode));
+
+	if (f2fs_is_atomic_file(inode)) {
+		commit_inmem_pages(inode, false);
+		clear_inode_flag(F2FS_I(inode), FI_ATOMIC_FILE);
+	}
+
+	if (f2fs_is_volatile_file(inode)) {
+		clear_inode_flag(F2FS_I(inode), FI_VOLATILE_FILE);
+		filemap_fdatawrite(inode->i_mapping);
+		set_inode_flag(F2FS_I(inode), FI_VOLATILE_FILE);
+	}
+	mnt_drop_write_file(filp);
+	return ret;
+}
+
+static int f2fs_ioc_shutdown(struct file *filp, unsigned long arg)
+{
+	struct inode *inode = file_inode(filp);
+	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
+	struct super_block *sb = sbi->sb;
+	__u32 in;
+
+	if (!capable(CAP_SYS_ADMIN))
+		return -EPERM;
+
+	if (get_user(in, (__u32 __user *)arg))
+		return -EFAULT;
+
+	switch (in) {
+	case FS_GOING_DOWN_FULLSYNC:
+		sb = freeze_bdev(sb->s_bdev);
+		if (sb && !IS_ERR(sb)) {
+			f2fs_stop_checkpoint(sbi);
+			thaw_bdev(sb->s_bdev, sb);
+		}
+		break;
+	case FS_GOING_DOWN_METASYNC:
+		/* do checkpoint only */
+		f2fs_sync_fs(sb, 1);
+		f2fs_stop_checkpoint(sbi);
+		break;
+	case FS_GOING_DOWN_NOSYNC:
+		f2fs_stop_checkpoint(sbi);
+		break;
+	default:
+		return -EINVAL;
+	}
+	return 0;
 }
 
 static int f2fs_ioc_fitrim(struct file *filp, unsigned long arg)
@@ -1001,12 +1103,20 @@ long f2fs_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		return f2fs_ioc_getflags(filp, arg);
 	case F2FS_IOC_SETFLAGS:
 		return f2fs_ioc_setflags(filp, arg);
+	case F2FS_IOC_GETVERSION:
+		return f2fs_ioc_getversion(filp, arg);
 	case F2FS_IOC_START_ATOMIC_WRITE:
 		return f2fs_ioc_start_atomic_write(filp);
 	case F2FS_IOC_COMMIT_ATOMIC_WRITE:
 		return f2fs_ioc_commit_atomic_write(filp);
 	case F2FS_IOC_START_VOLATILE_WRITE:
 		return f2fs_ioc_start_volatile_write(filp);
+	case F2FS_IOC_RELEASE_VOLATILE_WRITE:
+		return f2fs_ioc_release_volatile_write(filp);
+	case F2FS_IOC_ABORT_VOLATILE_WRITE:
+		return f2fs_ioc_abort_volatile_write(filp);
+	case FS_IOC_SHUTDOWN:
+		return f2fs_ioc_shutdown(filp, arg);
 	case FITRIM:
 		return f2fs_ioc_fitrim(filp, arg);
 	default:
