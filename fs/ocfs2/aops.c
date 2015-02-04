@@ -748,8 +748,7 @@ static ssize_t ocfs2_direct_IO_write(struct kiocb *iocb,
 
 		ret = blkdev_issue_zeroout(osb->sb->s_bdev,
 				p_cpos << (osb->s_clustersize_bits - 9),
-				zero_len >> 9,
-				GFP_KERNEL);
+				zero_len >> 9, GFP_KERNEL, false);
 		if (ret < 0)
 			mlog_errno(ret);
 	}
