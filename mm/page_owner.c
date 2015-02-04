@@ -60,19 +60,19 @@ void __reset_page_owner(struct page *page, unsigned int order)
 void __set_page_owner(struct page *page, unsigned int order, gfp_t gfp_mask)
 {
 	struct page_ext *page_ext;
-	struct stack_trace *trace;
+	struct stack_trace trace;
 
 	page_ext = lookup_page_ext(page);
 
-	trace = &page_ext->trace;
-	trace->nr_entries = 0;
-	trace->max_entries = ARRAY_SIZE(page_ext->trace_entries);
-	trace->entries = &page_ext->trace_entries[0];
-	trace->skip = 3;
-	save_stack_trace(&page_ext->trace);
+	trace.nr_entries = 0;
+	trace.max_entries = ARRAY_SIZE(page_ext->trace_entries);
+	trace.entries = &page_ext->trace_entries[0];
+	trace.skip = 3;
+	save_stack_trace(&trace);
 
 	page_ext->order = order;
 	page_ext->gfp_mask = gfp_mask;
+	page_ext->nr_entries = trace.nr_entries;
 
 	__set_bit(PAGE_EXT_OWNER, &page_ext->flags);
 }
@@ -83,6 +83,7 @@ print_page_owner(char __user *buf, size_t count, unsigned long pfn,
 {
 	int ret;
 	int pageblock_mt, page_mt;
+	struct stack_trace trace;
 	char *kbuf;
 
 	kbuf = kmalloc(count, GFP_KERNEL);
@@ -121,8 +122,10 @@ print_page_owner(char __user *buf, size_t count, unsigned long pfn,
 	if (ret >= count)
 		goto err;
 
-	ret += snprint_stack_trace(kbuf + ret, count - ret,
-					&page_ext->trace, 0);
+	trace.nr_entries = page_ext->nr_entries;
+	trace.entries = &page_ext->trace_entries[0];
+
+	ret += snprint_stack_trace(kbuf + ret, count - ret, &trace, 0);
 	if (ret >= count)
 		goto err;
 
