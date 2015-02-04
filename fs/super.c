@@ -91,6 +91,9 @@ static unsigned long super_cache_scan(struct shrinker *shrink,
 	/*
 	 * prune the dcache first as the icache is pinned by it, then
 	 * prune the icache, followed by the filesystem specific caches
+	 *
+	 * Ensure that we always scan at least one object - memcg kmem
+	 * accounting uses this to fully empty the caches.
 	 */
 	sc->nr_to_scan = dentries + 1;
 	freed = prune_dcache_sb(sb, sc);
