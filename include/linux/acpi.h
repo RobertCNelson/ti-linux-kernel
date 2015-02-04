@@ -285,12 +285,17 @@ extern int pnpacpi_disabled;
 
 #define PXM_INVAL	(-1)
 
+struct resource_win {
+	struct resource res;
+	resource_size_t offset;
+};
+
 bool acpi_dev_resource_memory(struct acpi_resource *ares, struct resource *res);
 bool acpi_dev_resource_io(struct acpi_resource *ares, struct resource *res);
 bool acpi_dev_resource_address_space(struct acpi_resource *ares,
-				     struct resource *res);
+				     struct resource_win *win);
 bool acpi_dev_resource_ext_address_space(struct acpi_resource *ares,
-					 struct resource *res);
+					 struct resource_win *win);
 unsigned long acpi_dev_irq_flags(u8 triggering, u8 polarity, u8 shareable);
 bool acpi_dev_resource_interrupt(struct acpi_resource *ares, int index,
 				 struct resource *res);
@@ -298,12 +303,21 @@ bool acpi_dev_resource_interrupt(struct acpi_resource *ares, int index,
 struct resource_list_entry {
 	struct list_head node;
 	struct resource res;
+	resource_size_t offset;
 };
 
 void acpi_dev_free_resource_list(struct list_head *list);
 int acpi_dev_get_resources(struct acpi_device *adev, struct list_head *list,
 			   int (*preproc)(struct acpi_resource *, void *),
 			   void *preproc_data);
+int acpi_dev_filter_resource_type(struct acpi_resource *ares,
+				  unsigned long types);
+
+static inline int acpi_dev_filter_resource_type_cb(struct acpi_resource *ares,
+						   void *arg)
+{
+	return acpi_dev_filter_resource_type(ares, (unsigned long)arg);
+}
 
 int acpi_check_resource_conflict(const struct resource *res);
 
