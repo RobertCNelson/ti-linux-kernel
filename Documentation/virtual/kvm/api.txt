@@ -2716,6 +2716,109 @@ The fields in each entry are defined as follows:
    eax, ebx, ecx, edx: the values returned by the cpuid instruction for
          this function/index combination
 
+4.89 KVM_S390_GET_SKEYS
+
+Capability: KVM_CAP_S390_SKEYS
+Architectures: s390
+Type: vm ioctl
+Parameters: struct kvm_s390_skeys
+Returns: 0 on success, KVM_S390_GET_KEYS_NONE if guest is not using storage
+         keys, negative value on error
+
+This ioctl is used to get guest storage key values on the s390
+architecture. The ioctl takes parameters via the kvm_s390_skeys struct.
+
+struct kvm_s390_skeys {
+	__u64 start_gfn;
+	__u64 count;
+	__u64 skeydata_addr;
+	__u32 flags;
+	__u32 reserved[9];
+};
+
+The start_gfn field is the number of the first guest frame whose storage keys
+you want to get.
+
+The count field is the number of consecutive frames (starting from start_gfn)
+whose storage keys to get. The count field must be at least 1 and the maximum
+allowed value is defined as KVM_S390_SKEYS_ALLOC_MAX. Values outside this range
+will cause the ioctl to return -EINVAL.
+
+The skeydata_addr field is the address to a buffer large enough to hold count
+bytes. This buffer will be filled with storage key data by the ioctl.
+
+4.90 KVM_S390_SET_SKEYS
+
+Capability: KVM_CAP_S390_SKEYS
+Architectures: s390
+Type: vm ioctl
+Parameters: struct kvm_s390_skeys
+Returns: 0 on success, negative value on error
+
+This ioctl is used to set guest storage key values on the s390
+architecture. The ioctl takes parameters via the kvm_s390_skeys struct.
+See section on KVM_S390_GET_SKEYS for struct definition.
+
+The start_gfn field is the number of the first guest frame whose storage keys
+you want to set.
+
+The count field is the number of consecutive frames (starting from start_gfn)
+whose storage keys to get. The count field must be at least 1 and the maximum
+allowed value is defined as KVM_S390_SKEYS_ALLOC_MAX. Values outside this range
+will cause the ioctl to return -EINVAL.
+
+The skeydata_addr field is the address to a buffer containing count bytes of
+storage keys. Each byte in the buffer will be set as the storage key for a
+single frame starting at start_gfn for count frames.
+
+Note: If any architecturally invalid key value is found in the given data then
+the ioctl will return -EINVAL.
+
+4.91 KVM_S390_IRQ
+
+Capability: KVM_CAP_S390_INJECT_IRQ
+Architectures: s390
+Type: vcpu ioctl
+Parameters: struct kvm_s390_irq (in)
+Returns: 0 on success, -1 on error
+
+Allows to inject an interrupt to the guest.
+
+Interrupt parameters are passed via kvm_s390_irq:
+
+struct kvm_s390_irq {
+	__u64 type;
+	union {
+		struct kvm_s390_io_info io;
+		struct kvm_s390_ext_info ext;
+		struct kvm_s390_pgm_info pgm;
+		struct kvm_s390_emerg_info emerg;
+		struct kvm_s390_extcall_info extcall;
+		struct kvm_s390_prefix_info prefix;
+		struct kvm_s390_stop_info stop;
+		struct kvm_s390_mchk_info mchk;
+		char reserved[64];
+	} u;
+};
+
+type can be one of the following:
+
+KVM_S390_SIGP_STOP (vcpu) - sigp stop
+KVM_S390_PROGRAM_INT (vcpu) - program check
+KVM_S390_SIGP_SET_PREFIX (vcpu) - sigp set prefix
+KVM_S390_RESTART (vcpu) - restart
+KVM_S390_INT_VIRTIO (vm) - virtio external interrupt
+KVM_S390_INT_SERVICE (vm) - sclp external interrupt
+KVM_S390_INT_EMERGENCY (vcpu) - sigp emergency; source cpu in parm
+KVM_S390_INT_EXTERNAL_CALL (vcpu) - sigp external call
+KVM_S390_INT_IO(ai,cssid,ssid,schid) (vm) - compound value to indicate an
+    I/O interrupt (ai - adapter interrupt; cssid,ssid,schid - subchannel);
+    I/O interruption parameters in parm (subchannel) and parm64 (intparm,
+    interruption subclass)
+KVM_S390_MCHK (vm, vcpu) - machine check interrupt
+
+Note that the vcpu ioctl is asynchronous to vcpu execution.
+
 5. The kvm_run structure
 ------------------------
 
