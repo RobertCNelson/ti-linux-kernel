@@ -632,12 +632,12 @@ unsigned long long sched_clock(void)
 unsigned long long running_clock(void)
 {
 	/*
-	 * Don't read the VTB as a host since KVM does not switch in host timebase
-	 * into the VTB when it takes a guest off the CPU, reading the VTB would
-	 * result in reading 'last switched out' guest VTB.
+	 * Don't read the VTB as a host since KVM does not switch in host
+	 * timebase into the VTB when it takes a guest off the CPU, reading the
+	 * VTB would result in reading 'last switched out' guest VTB.
 	 *
-	 * Host kernels are often compiled with CONFIG_PSERIES checked, it would be
-	 * unsafe to rely only on the #ifdef above.
+	 * Host kernels are often compiled with CONFIG_PSERIES checked, it would
+	 * be unsafe to rely only on the #ifdef above.
 	 */
 	if (firmware_has_feature(FW_FEATURE_LPAR) &&
 	    cpu_has_feature(CPU_FTR_ARCH_207S))
