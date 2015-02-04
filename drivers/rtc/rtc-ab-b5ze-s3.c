@@ -648,31 +648,35 @@ static struct regmap_config abb5zes3_rtc_regmap_config = {
 static int abb5zes3_probe(struct i2c_client *client,
 			  const struct i2c_device_id *id)
 {
+	struct abb5zes3_rtc_data *data = NULL;
 	struct device *dev = &client->dev;
-	struct abb5zes3_rtc_data *data;
 	struct regmap *regmap;
 	int ret;
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C |
 				     I2C_FUNC_SMBUS_BYTE_DATA |
-				     I2C_FUNC_SMBUS_I2C_BLOCK))
-		return -ENODEV;
+				     I2C_FUNC_SMBUS_I2C_BLOCK)) {
+		ret = -ENODEV;
+		goto err;
+	}
 
 	regmap = devm_regmap_init_i2c(client, &abb5zes3_rtc_regmap_config);
 	if (IS_ERR(regmap)) {
 		ret = PTR_ERR(regmap);
 		dev_err(dev, "%s: regmap allocation failed: %d\n",
 			__func__, ret);
-		return ret;
+		goto err;
 	}
 
 	ret = abb5zes3_i2c_validate_chip(regmap);
 	if (ret)
-		return ret;
+		goto err;
 
 	data = devm_kzalloc(dev, sizeof(*data), GFP_KERNEL);
-	if (!data)
-		return -ENOMEM;
+	if (!data) {
+		ret = -ENOMEM;
+		goto err;
+	}
 
 	mutex_init(&data->lock);
 	data->regmap = regmap;
@@ -680,7 +684,7 @@ static int abb5zes3_probe(struct i2c_client *client,
 
 	ret = abb5zes3_rtc_check_setup(dev);
 	if (ret)
-		return ret;
+		goto err;
 
 	if (client->irq > 0) {
 		ret = devm_request_threaded_irq(dev, client->irq, NULL,
@@ -695,6 +699,7 @@ static int abb5zes3_probe(struct i2c_client *client,
 		} else {
 			dev_err(dev, "%s: irq %d unavailable (%d)\n",
 				__func__, client->irq, ret);
+			goto err;
 		}
 	}
 
@@ -704,7 +709,7 @@ static int abb5zes3_probe(struct i2c_client *client,
 	if (ret) {
 		dev_err(dev, "%s: unable to register RTC device (%d)\n",
 			__func__, ret);
-		device_init_wakeup(dev, false);
+		goto err;
 	}
 
 	/*
@@ -718,11 +723,16 @@ static int abb5zes3_probe(struct i2c_client *client,
 	/* Enable battery low detection interrupt if battery not already low */
 	if (!data->battery_low && data->irq) {
 		ret = _abb5zes3_rtc_battery_low_irq_enable(regmap, true);
-		if (ret)
+		if (ret) {
 			dev_err(dev, "%s: enabling battery low interrupt "
 				"generation failed (%d)\n", __func__, ret);
+			goto err;
+		}
 	}
 
+err:
+	if (ret && data && data->irq)
+		device_init_wakeup(dev, false);
 	return ret;
 }
 
@@ -763,7 +773,7 @@ static SIMPLE_DEV_PM_OPS(abb5zes3_rtc_pm_ops, abb5zes3_rtc_suspend,
 
 #ifdef CONFIG_OF
 static const struct of_device_id abb5zes3_dt_match[] = {
-	{ .compatible = "abcn,abb5zes3" },
+	{ .compatible = "abracon,abb5zes3" },
 	{ },
 };
 #endif
