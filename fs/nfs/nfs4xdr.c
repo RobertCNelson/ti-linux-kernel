@@ -946,7 +946,10 @@ static void encode_uint64(struct xdr_stream *xdr, u64 n)
 static void encode_nfs4_seqid(struct xdr_stream *xdr,
 		const struct nfs_seqid *seqid)
 {
-	encode_uint32(xdr, seqid->sequence->counter);
+	if (seqid != NULL)
+		encode_uint32(xdr, seqid->sequence->counter);
+	else
+		encode_uint32(xdr, 0);
 }
 
 static void encode_compound_hdr(struct xdr_stream *xdr,
@@ -1125,7 +1128,7 @@ static void encode_close(struct xdr_stream *xdr, const struct nfs_closeargs *arg
 {
 	encode_op_hdr(xdr, OP_CLOSE, decode_close_maxsz, hdr);
 	encode_nfs4_seqid(xdr, arg->seqid);
-	encode_nfs4_stateid(xdr, arg->stateid);
+	encode_nfs4_stateid(xdr, &arg->stateid);
 }
 
 static void encode_commit(struct xdr_stream *xdr, const struct nfs_commitargs *args, struct compound_hdr *hdr)
@@ -1301,12 +1304,12 @@ static void encode_lock(struct xdr_stream *xdr, const struct nfs_lock_args *args
 	*p = cpu_to_be32(args->new_lock_owner);
 	if (args->new_lock_owner){
 		encode_nfs4_seqid(xdr, args->open_seqid);
-		encode_nfs4_stateid(xdr, args->open_stateid);
+		encode_nfs4_stateid(xdr, &args->open_stateid);
 		encode_nfs4_seqid(xdr, args->lock_seqid);
 		encode_lockowner(xdr, &args->lock_owner);
 	}
 	else {
-		encode_nfs4_stateid(xdr, args->lock_stateid);
+		encode_nfs4_stateid(xdr, &args->lock_stateid);
 		encode_nfs4_seqid(xdr, args->lock_seqid);
 	}
 }
@@ -1330,7 +1333,7 @@ static void encode_locku(struct xdr_stream *xdr, const struct nfs_locku_args *ar
 	encode_op_hdr(xdr, OP_LOCKU, decode_locku_maxsz, hdr);
 	encode_uint32(xdr, nfs4_lock_type(args->fl, 0));
 	encode_nfs4_seqid(xdr, args->seqid);
-	encode_nfs4_stateid(xdr, args->stateid);
+	encode_nfs4_stateid(xdr, &args->stateid);
 	p = reserve_space(xdr, 16);
 	p = xdr_encode_hyper(p, args->fl->fl_start);
 	xdr_encode_hyper(p, nfs4_lock_length(args->fl));
@@ -1530,7 +1533,7 @@ static void encode_open_confirm(struct xdr_stream *xdr, const struct nfs_open_co
 static void encode_open_downgrade(struct xdr_stream *xdr, const struct nfs_closeargs *arg, struct compound_hdr *hdr)
 {
 	encode_op_hdr(xdr, OP_OPEN_DOWNGRADE, decode_open_downgrade_maxsz, hdr);
-	encode_nfs4_stateid(xdr, arg->stateid);
+	encode_nfs4_stateid(xdr, &arg->stateid);
 	encode_nfs4_seqid(xdr, arg->seqid);
 	encode_share_access(xdr, arg->fmode);
 }
@@ -1801,9 +1804,8 @@ static void encode_create_session(struct xdr_stream *xdr,
 				  struct compound_hdr *hdr)
 {
 	__be32 *p;
-	char machine_name[NFS4_MAX_MACHINE_NAME_LEN];
-	uint32_t len;
 	struct nfs_client *clp = args->client;
+	struct rpc_clnt *clnt = clp->cl_rpcclient;
 	struct nfs_net *nn = net_generic(clp->cl_net, nfs_net_id);
 	u32 max_resp_sz_cached;
 
@@ -1814,11 +1816,8 @@ static void encode_create_session(struct xdr_stream *xdr,
 	max_resp_sz_cached = (NFS4_dec_open_sz + RPC_REPHDRSIZE +
 			      RPC_MAX_AUTH_SIZE + 2) * XDR_UNIT;
 
-	len = scnprintf(machine_name, sizeof(machine_name), "%s",
-			clp->cl_ipaddr);
-
 	encode_op_hdr(xdr, OP_CREATE_SESSION, decode_create_session_maxsz, hdr);
-	p = reserve_space(xdr, 16 + 2*28 + 20 + len + 12);
+	p = reserve_space(xdr, 16 + 2*28 + 20 + clnt->cl_nodelen + 12);
 	p = xdr_encode_hyper(p, clp->cl_clientid);
 	*p++ = cpu_to_be32(clp->cl_seqid);			/*Sequence id */
 	*p++ = cpu_to_be32(args->flags);			/*flags */
@@ -1847,7 +1846,7 @@ static void encode_create_session(struct xdr_stream *xdr,
 
 	/* authsys_parms rfc1831 */
 	*p++ = cpu_to_be32(nn->boot_time.tv_nsec);	/* stamp */
-	p = xdr_encode_opaque(p, machine_name, len);
+	p = xdr_encode_array(p, clnt->cl_nodename, clnt->cl_nodelen);
 	*p++ = cpu_to_be32(0);				/* UID */
 	*p++ = cpu_to_be32(0);				/* GID */
 	*p = cpu_to_be32(0);				/* No more gids */
