@@ -64,6 +64,7 @@ __u32 seccomp_bpf_label(struct bpf_labels *labels, const char *label)
 {
 	struct __bpf_label *begin = labels->labels, *end;
 	int id;
+
 	if (labels->count == BPF_LABELS_MAX) {
 		fprintf(stderr, "Too many labels\n");
 		exit(1);
