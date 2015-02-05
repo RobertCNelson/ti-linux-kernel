@@ -27,6 +27,7 @@
 
 #include <linux/errno.h>
 #include <linux/ioport.h>	/* for struct resource */
+#include <linux/resource_ext.h>
 #include <linux/device.h>
 #include <linux/property.h>
 
@@ -150,6 +151,10 @@ void acpi_numa_arch_fixup(void);
 int acpi_map_cpu(acpi_handle handle, int physid, int *pcpu);
 int acpi_unmap_cpu(int cpu);
 #endif /* CONFIG_ACPI_HOTPLUG_CPU */
+
+#ifdef CONFIG_ACPI_HOTPLUG_IOAPIC
+int acpi_get_ioapic_id(acpi_handle handle, u32 gsi_base, u64 *phys_addr);
+#endif
 
 int acpi_register_ioapic(acpi_handle handle, u64 phys_addr, u32 gsi_base);
 int acpi_unregister_ioapic(acpi_handle handle, u32 gsi_base);
@@ -285,11 +290,6 @@ extern int pnpacpi_disabled;
 
 #define PXM_INVAL	(-1)
 
-struct resource_win {
-	struct resource res;
-	resource_size_t offset;
-};
-
 bool acpi_dev_resource_memory(struct acpi_resource *ares, struct resource *res);
 bool acpi_dev_resource_io(struct acpi_resource *ares, struct resource *res);
 bool acpi_dev_resource_address_space(struct acpi_resource *ares,
@@ -299,12 +299,6 @@ bool acpi_dev_resource_ext_address_space(struct acpi_resource *ares,
 unsigned long acpi_dev_irq_flags(u8 triggering, u8 polarity, u8 shareable);
 bool acpi_dev_resource_interrupt(struct acpi_resource *ares, int index,
 				 struct resource *res);
-
-struct resource_list_entry {
-	struct list_head node;
-	struct resource res;
-	resource_size_t offset;
-};
 
 void acpi_dev_free_resource_list(struct list_head *list);
 int acpi_dev_get_resources(struct acpi_device *adev, struct list_head *list,
