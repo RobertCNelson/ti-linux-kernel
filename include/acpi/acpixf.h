@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2015, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -46,7 +46,7 @@
 
 /* Current ACPICA subsystem version in YYYYMMDD format */
 
-#define ACPI_CA_VERSION                 0x20141107
+#define ACPI_CA_VERSION                 0x20150204
 
 #include <acpi/acconfig.h>
 #include <acpi/actypes.h>
@@ -568,6 +568,14 @@ ACPI_HW_DEPENDENT_RETURN_STATUS(acpi_status
 							  acpi_gpe_handler
 							  address,
 							  void *context))
+ACPI_HW_DEPENDENT_RETURN_STATUS(acpi_status
+				 acpi_install_gpe_raw_handler(acpi_handle
+							      gpe_device,
+							      u32 gpe_number,
+							      u32 type,
+							      acpi_gpe_handler
+							      address,
+							      void *context))
 ACPI_HW_DEPENDENT_RETURN_STATUS(acpi_status
 				 acpi_remove_gpe_handler(acpi_handle gpe_device,
 							 u32 gpe_number,
