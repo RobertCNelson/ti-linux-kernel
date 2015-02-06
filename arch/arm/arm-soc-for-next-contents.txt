@@ -9,6 +9,8 @@ next/fixes-non-critical
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/fixes-not-urgent-pt2
 	patch:
 		ARM: pxa: fix broken isa interrupts for zeus and viper
+	brcm/maintainers2 (1):
+		http://github.com/broadcom/stblinux tags/arm-soc/for-3.20/maintainer
 
 next/cleanup
 	renesas/lager-board-removal (6):
@@ -23,6 +25,15 @@ next/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v3.20/cleanup
 	omap/drop-legacy-3517 (5):
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/drop-legacy-3517-v2
+	samsung/cleanup (2):
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-cleanup
+	patch:
+		arm: realview: specify PMU types
+		arm: pxa: specify PMUs are for XScale CPUs
+		arm: iop: specify PMUs are for XScale CPUs
+		arm: shmobile: specify PMUs are for ARMv7 CPUs
+		arm: omap: specify PMUs are for ARMv7 CPUs
+		ARM: sirf: drop redundant function and marco declaration
 
 next/soc
 	renesas/soc (4):
@@ -73,6 +84,13 @@ next/soc
 	patch:
 		ARM: initial support for Conexant Digicolor CX92755 SoC
 		ARM: digicolor: add low level debug support
+		ARM: digicolor: select syscon and timer
+	samsung/update (3):
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-update
+	zynq/soc (4):
+		https://github.com/Xilinx/linux-xlnx tags/zynq-soc-for-3.20
+	at91/soc4 (11):
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-soc4
 
 next/boards
 
@@ -140,6 +158,22 @@ next/dt
 		Documentation: DT: Add entry for FSL Management Complex
 	rockchip/dt2 (6):
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.20-rockchip-dts2
+	patch:
+		ARM: digicolor: add minimal device tree description
+	samsung/dt2 (6):
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt-2
+	samsung/dt3 (2):
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt-3
+	zynq/dt (6):
+		https://github.com/Xilinx/linux-xlnx tags/zynq-dt-for-3.20
+	rockchip/dt3 (8):
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.20-rockchip-dts3
+	omap/dt3 (17):
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.20/dt-pt3-v2
+	mvebu/dt3 (27):
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-3.20-3
+	samsung/dt4 (14):
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt-4
 
 next/drivers
 	renesas/sh73a0-ccf (6):
@@ -150,6 +184,11 @@ next/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-sh73a0-ccf2-for-v3.20
 	patch:
 		of/platform: teardown DMA mappings on device destruction
+		pcmcia: at91_cf: depend on !ARCH_MULTIPLATFORM
+	keystone/drivers (3):
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/drivers-soc-ti
+	samsung/cpuidle (2):
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-cpuidle
 
 next/defconfig
 	renesas/defconfig (5):
@@ -179,6 +218,14 @@ next/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.20-defconfig
 	sunxi/defconfig (4):
 		https://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-defconfig-for-3.20
+	patch:
+		ARM: multi_v7_defconfig: Enable Exynos5420 Multi-Cluster PM support
+	renesas/defconfig-fixes (1):
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig-fixes-for-v3.20
+	keystone/defconfig (1):
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-soc
+	samsung/defconfig (4):
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-defconfig
 
 next/arm64
 	exynos/dt-64 (5):
@@ -193,8 +240,7 @@ next/arm64
 		https://github.com/mbgg/linux-mediatek tags/v3.20-next-arm64
 	patch:
 		arm64: Fix sort of platform Kconfig entries
+		arm64: Kconfig: clean up two no-op Kconfig options from CONFIG_ARCH_TEGRA*
 
 fixes
-	<no branch> (117a2cc38ffe0b46bcc6f991a3534b345477439c) (4):
-		https://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-fixes-for-3.19
 
