@@ -1,5 +1,5 @@
 /*
- * Line6 Linux USB driver - 0.9.1beta
+ * Line 6 Linux USB driver
  *
  * Copyright (C) 2004-2010 Markus Grabner (grabner@icg.tugraz.at)
  *
@@ -11,14 +11,12 @@
 
 #include <linux/slab.h>
 #include <linux/usb.h>
+#include <linux/export.h>
 #include <sound/core.h>
 #include <sound/rawmidi.h>
 
-#include "audio.h"
 #include "driver.h"
 #include "midi.h"
-#include "pod.h"
-#include "usbdefs.h"
 
 #define line6_rawmidi_substream_midi(substream) \
 	((struct snd_line6_midi *)((substream)->rmidi->private_data))
@@ -46,11 +44,8 @@ static void line6_midi_transmit(struct snd_rawmidi_substream *substream)
 	    line6_rawmidi_substream_midi(substream)->line6;
 	struct snd_line6_midi *line6midi = line6->line6midi;
 	struct midi_buffer *mb = &line6midi->midibuf_out;
-	unsigned long flags;
 	unsigned char chunk[LINE6_FALLBACK_MAXPACKETSIZE];
 	int req, done;
-
-	spin_lock_irqsave(&line6->line6midi->midi_transmit_lock, flags);
 
 	for (;;) {
 		req = min(line6_midibuf_bytes_free(mb), line6->max_packet_size);
@@ -72,8 +67,6 @@ static void line6_midi_transmit(struct snd_rawmidi_substream *substream)
 
 		send_midi_async(line6, chunk, done);
 	}
-
-	spin_unlock_irqrestore(&line6->line6midi->midi_transmit_lock, flags);
 }
 
 /*
@@ -93,7 +86,7 @@ static void midi_sent(struct urb *urb)
 	if (status == -ESHUTDOWN)
 		return;
 
-	spin_lock_irqsave(&line6->line6midi->send_urb_lock, flags);
+	spin_lock_irqsave(&line6->line6midi->lock, flags);
 	num = --line6->line6midi->num_active_send_urbs;
 
 	if (num == 0) {
@@ -104,12 +97,12 @@ static void midi_sent(struct urb *urb)
 	if (num == 0)
 		wake_up(&line6->line6midi->send_wait);
 
-	spin_unlock_irqrestore(&line6->line6midi->send_urb_lock, flags);
+	spin_unlock_irqrestore(&line6->line6midi->lock, flags);
 }
 
 /*
 	Send an asynchronous MIDI message.
-	Assumes that line6->line6midi->send_urb_lock is held
+	Assumes that line6->line6midi->lock is held
 	(i.e., this function is serialized).
 */
 static int send_midi_async(struct usb_line6 *line6, unsigned char *data,
@@ -121,22 +114,19 @@ static int send_midi_async(struct usb_line6 *line6, unsigned char *data,
 
 	urb = usb_alloc_urb(0, GFP_ATOMIC);
 
-	if (urb == NULL) {
-		dev_err(line6->ifcdev, "Out of memory\n");
+	if (urb == NULL)
 		return -ENOMEM;
-	}
 
 	transfer_buffer = kmemdup(data, length, GFP_ATOMIC);
 
 	if (transfer_buffer == NULL) {
 		usb_free_urb(urb);
-		dev_err(line6->ifcdev, "Out of memory\n");
 		return -ENOMEM;
 	}
 
 	usb_fill_int_urb(urb, line6->usbdev,
 			 usb_sndbulkpipe(line6->usbdev,
-					 line6->ep_control_write),
+					 line6->properties->ep_ctrl_w),
 			 transfer_buffer, length, midi_sent, line6,
 			 line6->interval);
 	urb->actual_length = 0;
@@ -170,12 +160,12 @@ static void line6_midi_output_trigger(struct snd_rawmidi_substream *substream,
 	    line6_rawmidi_substream_midi(substream)->line6;
 
 	line6->line6midi->substream_transmit = substream;
-	spin_lock_irqsave(&line6->line6midi->send_urb_lock, flags);
+	spin_lock_irqsave(&line6->line6midi->lock, flags);
 
 	if (line6->line6midi->num_active_send_urbs == 0)
 		line6_midi_transmit(substream);
 
-	spin_unlock_irqrestore(&line6->line6midi->send_urb_lock, flags);
+	spin_unlock_irqrestore(&line6->line6midi->lock, flags);
 }
 
 static void line6_midi_output_drain(struct snd_rawmidi_substream *substream)
@@ -223,28 +213,20 @@ static struct snd_rawmidi_ops line6_midi_input_ops = {
 	.trigger = line6_midi_input_trigger,
 };
 
-/*
-	Cleanup the Line6 MIDI device.
-*/
-static void line6_cleanup_midi(struct snd_rawmidi *rmidi)
-{
-}
-
 /* Create a MIDI device */
-static int snd_line6_new_midi(struct snd_line6_midi *line6midi)
+static int snd_line6_new_midi(struct usb_line6 *line6,
+			      struct snd_rawmidi **rmidi_ret)
 {
 	struct snd_rawmidi *rmidi;
 	int err;
 
-	err = snd_rawmidi_new(line6midi->line6->card, "Line6 MIDI", 0, 1, 1,
-			      &rmidi);
+	err = snd_rawmidi_new(line6->card, "Line 6 MIDI", 0, 1, 1, rmidi_ret);
 	if (err < 0)
 		return err;
 
-	rmidi->private_data = line6midi;
-	rmidi->private_free = line6_cleanup_midi;
-	strcpy(rmidi->id, line6midi->line6->properties->id);
-	strcpy(rmidi->name, line6midi->line6->properties->name);
+	rmidi = *rmidi_ret;
+	strcpy(rmidi->id, line6->properties->id);
+	strcpy(rmidi->name, line6->properties->name);
 
 	rmidi->info_flags =
 	    SNDRV_RAWMIDI_INFO_OUTPUT |
@@ -258,64 +240,53 @@ static int snd_line6_new_midi(struct snd_line6_midi *line6midi)
 }
 
 /* MIDI device destructor */
-static int snd_line6_midi_free(struct snd_device *device)
+static void snd_line6_midi_free(struct snd_rawmidi *rmidi)
 {
-	struct snd_line6_midi *line6midi = device->device_data;
+	struct snd_line6_midi *line6midi = rmidi->private_data;
 
 	line6_midibuf_destroy(&line6midi->midibuf_in);
 	line6_midibuf_destroy(&line6midi->midibuf_out);
-	return 0;
+	kfree(line6midi);
 }
 
 /*
-	Initialize the Line6 MIDI subsystem.
+	Initialize the Line 6 MIDI subsystem.
 */
 int line6_init_midi(struct usb_line6 *line6)
 {
-	static struct snd_device_ops midi_ops = {
-		.dev_free = snd_line6_midi_free,
-	};
-
 	int err;
+	struct snd_rawmidi *rmidi;
 	struct snd_line6_midi *line6midi;
 
-	if (!(line6->properties->capabilities & LINE6_BIT_CONTROL)) {
+	if (!(line6->properties->capabilities & LINE6_CAP_CONTROL)) {
 		/* skip MIDI initialization and report success */
 		return 0;
 	}
 
-	line6midi = kzalloc(sizeof(struct snd_line6_midi), GFP_KERNEL);
+	err = snd_line6_new_midi(line6, &rmidi);
+	if (err < 0)
+		return err;
 
-	if (line6midi == NULL)
+	line6midi = kzalloc(sizeof(struct snd_line6_midi), GFP_KERNEL);
+	if (!line6midi)
 		return -ENOMEM;
 
-	err = line6_midibuf_init(&line6midi->midibuf_in, MIDI_BUFFER_SIZE, 0);
-	if (err < 0) {
-		kfree(line6midi);
-		return err;
-	}
-
-	err = line6_midibuf_init(&line6midi->midibuf_out, MIDI_BUFFER_SIZE, 1);
-	if (err < 0) {
-		kfree(line6midi->midibuf_in.buf);
-		kfree(line6midi);
-		return err;
-	}
-
-	line6midi->line6 = line6;
-	line6->line6midi = line6midi;
-
-	err = snd_device_new(line6->card, SNDRV_DEV_RAWMIDI, line6midi,
-			     &midi_ops);
-	if (err < 0)
-		return err;
-
-	err = snd_line6_new_midi(line6midi);
-	if (err < 0)
-		return err;
+	rmidi->private_data = line6midi;
+	rmidi->private_free = snd_line6_midi_free;
 
 	init_waitqueue_head(&line6midi->send_wait);
-	spin_lock_init(&line6midi->send_urb_lock);
-	spin_lock_init(&line6midi->midi_transmit_lock);
+	spin_lock_init(&line6midi->lock);
+	line6midi->line6 = line6;
+
+	err = line6_midibuf_init(&line6midi->midibuf_in, MIDI_BUFFER_SIZE, 0);
+	if (err < 0)
+		return err;
+
+	err = line6_midibuf_init(&line6midi->midibuf_out, MIDI_BUFFER_SIZE, 1);
+	if (err < 0)
+		return err;
+
+	line6->line6midi = line6midi;
 	return 0;
 }
+EXPORT_SYMBOL_GPL(line6_init_midi);
