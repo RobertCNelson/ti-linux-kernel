@@ -505,6 +505,16 @@ config MESON_WATCHDOG
 	  To compile this driver as a module, choose M here: the
 	  module will be called meson_wdt.
 
+config MEDIATEK_WATCHDOG
+	tristate "Mediatek SoCs watchdog support"
+	depends on ARCH_MEDIATEK
+	select WATCHDOG_CORE
+	help
+	  Say Y here to include support for the watchdog timer
+	  in Mediatek SoCs.
+	  To compile this driver as a module, choose M here: the
+	  module will be called mtk_wdt.
+
 # AVR32 Architecture
 
 config AT32AP700X_WDT
@@ -1005,6 +1015,8 @@ config W83627HF_WDT
 		NCT6775
 		NCT6776
 		NCT6779
+		NCT6791
+		NCT6792
 
 	  This watchdog simply watches your kernel to make sure it doesn't
 	  freeze, and if it does, it reboots your computer after a certain
@@ -1235,6 +1247,17 @@ config BCM_KONA_WDT_DEBUG
 
 	  If in doubt, say 'N'.
 
+config IMGPDC_WDT
+	tristate "Imagination Technologies PDC Watchdog Timer"
+	depends on HAS_IOMEM
+	depends on METAG || MIPS || COMPILE_TEST
+	help
+	  Driver for Imagination Technologies PowerDown Controller
+	  Watchdog Timer.
+
+	  To compile this driver as a loadable module, choose M here.
+	  The module will be called imgpdc_wdt.
+
 config LANTIQ_WDT
 	tristate "Lantiq SoC watchdog"
 	depends on LANTIQ
@@ -1247,6 +1270,13 @@ config RALINK_WDT
 	depends on RALINK
 	help
 	  Hardware driver for the Ralink SoC Watchdog Timer.
+
+config MT7621_WDT
+	tristate "Mediatek SoC watchdog"
+	select WATCHDOG_CORE
+	depends on SOC_MT7620 || SOC_MT7621
+	help
+	  Hardware driver for the Mediatek/Ralink MT7621/8 SoC Watchdog Timer.
 
 # PARISC Architecture
 
