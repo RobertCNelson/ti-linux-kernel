@@ -142,14 +142,14 @@ int wil_cid_fill_sinfo(struct wil6210_priv *wil, int cid,
 
 	sinfo->generation = wil->sinfo_gen;
 
-	sinfo->filled = STATION_INFO_RX_BYTES |
-			STATION_INFO_TX_BYTES |
-			STATION_INFO_RX_PACKETS |
-			STATION_INFO_TX_PACKETS |
-			STATION_INFO_RX_BITRATE |
-			STATION_INFO_TX_BITRATE |
-			STATION_INFO_RX_DROP_MISC |
-			STATION_INFO_TX_FAILED;
+	sinfo->filled = BIT(NL80211_STA_INFO_RX_BYTES) |
+			BIT(NL80211_STA_INFO_TX_BYTES) |
+			BIT(NL80211_STA_INFO_RX_PACKETS) |
+			BIT(NL80211_STA_INFO_TX_PACKETS) |
+			BIT(NL80211_STA_INFO_RX_BITRATE) |
+			BIT(NL80211_STA_INFO_TX_BITRATE) |
+			BIT(NL80211_STA_INFO_RX_DROP_MISC) |
+			BIT(NL80211_STA_INFO_TX_FAILED);
 
 	sinfo->txrate.flags = RATE_INFO_FLAGS_MCS | RATE_INFO_FLAGS_60G;
 	sinfo->txrate.mcs = le16_to_cpu(reply.evt.bf_mcs);
@@ -162,8 +162,8 @@ int wil_cid_fill_sinfo(struct wil6210_priv *wil, int cid,
 	sinfo->tx_packets = stats->tx_packets;
 	sinfo->tx_failed = stats->tx_errors;
 
-	if (test_bit(wil_status_fwconnected, &wil->status)) {
-		sinfo->filled |= STATION_INFO_SIGNAL;
+	if (test_bit(wil_status_fwconnected, wil->status)) {
+		sinfo->filled |= BIT(NL80211_STA_INFO_SIGNAL);
 		sinfo->signal = reply.evt.sqi;
 	}
 
@@ -282,7 +282,7 @@ static int wil_cfg80211_scan(struct wiphy *wiphy,
 	}
 
 	/* FW don't support scan after connection attempt */
-	if (test_bit(wil_status_dontscan, &wil->status)) {
+	if (test_bit(wil_status_dontscan, wil->status)) {
 		wil_err(wil, "Can't scan now\n");
 		return -EBUSY;
 	}
@@ -362,8 +362,8 @@ static int wil_cfg80211_connect(struct wiphy *wiphy,
 	int ch;
 	int rc = 0;
 
-	if (test_bit(wil_status_fwconnecting, &wil->status) ||
-	    test_bit(wil_status_fwconnected, &wil->status))
+	if (test_bit(wil_status_fwconnecting, wil->status) ||
+	    test_bit(wil_status_fwconnected, wil->status))
 		return -EALREADY;
 
 	wil_print_connect_params(wil, sme);
@@ -450,7 +450,7 @@ static int wil_cfg80211_connect(struct wiphy *wiphy,
 	memcpy(conn.bssid, bss->bssid, ETH_ALEN);
 	memcpy(conn.dst_mac, bss->bssid, ETH_ALEN);
 
-	set_bit(wil_status_fwconnecting, &wil->status);
+	set_bit(wil_status_fwconnecting, wil->status);
 
 	rc = wmi_send(wil, WMI_CONNECT_CMDID, &conn, sizeof(conn));
 	if (rc == 0) {
@@ -458,7 +458,7 @@ static int wil_cfg80211_connect(struct wiphy *wiphy,
 		mod_timer(&wil->connect_timer,
 			  jiffies + msecs_to_jiffies(2000));
 	} else {
-		clear_bit(wil_status_fwconnecting, &wil->status);
+		clear_bit(wil_status_fwconnecting, wil->status);
 	}
 
  out:
