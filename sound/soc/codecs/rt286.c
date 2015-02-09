@@ -305,6 +305,8 @@ static int rt286_jack_detect(struct rt286_priv *rt286, bool *hp, bool *mic)
 	*hp = false;
 	*mic = false;
 
+	if (!rt286->codec)
+		return -EINVAL;
 	if (rt286->pdata.cbj_en) {
 		regmap_read(rt286->regmap, RT286_GET_HP_SENSE, &buf);
 		*hp = buf & 0x80000000;
@@ -1189,6 +1191,17 @@ static struct dmi_system_id force_combo_jack_table[] = {
 	{ }
 };
 
+static struct dmi_system_id dmi_dell_dino[] = {
+	{
+		.ident = "Dell Dino",
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Dell Inc."),
+			DMI_MATCH(DMI_BOARD_NAME, "0144P8")
+		}
+	},
+	{ }
+};
+
 static int rt286_i2c_probe(struct i2c_client *i2c,
 			   const struct i2c_device_id *id)
 {
@@ -1224,7 +1237,8 @@ static int rt286_i2c_probe(struct i2c_client *i2c,
 	if (pdata)
 		rt286->pdata = *pdata;
 
-	if (dmi_check_system(force_combo_jack_table))
+	if (dmi_check_system(force_combo_jack_table) ||
+		dmi_check_system(dmi_dell_dino))
 		rt286->pdata.cbj_en = true;
 
 	regmap_write(rt286->regmap, RT286_SET_AUDIO_POWER, AC_PWRST_D3);
@@ -1262,6 +1276,17 @@ static int rt286_i2c_probe(struct i2c_client *i2c,
 	regmap_update_bits(rt286->regmap, RT286_DEPOP_CTRL2, 0x403a, 0x401a);
 	regmap_update_bits(rt286->regmap, RT286_DEPOP_CTRL3, 0xf777, 0x4737);
 	regmap_update_bits(rt286->regmap, RT286_DEPOP_CTRL4, 0x00ff, 0x003f);
+
+	if (dmi_check_system(dmi_dell_dino)) {
+		regmap_update_bits(rt286->regmap,
+			RT286_SET_GPIO_MASK, 0x40, 0x40);
+		regmap_update_bits(rt286->regmap,
+			RT286_SET_GPIO_DIRECTION, 0x40, 0x40);
+		regmap_update_bits(rt286->regmap,
+			RT286_SET_GPIO_DATA, 0x40, 0x40);
+		regmap_update_bits(rt286->regmap,
+			RT286_GPIO_CTRL, 0xc, 0x8);
+	}
 
 	if (rt286->i2c->irq) {
 		ret = request_threaded_irq(rt286->i2c->irq, NULL, rt286_irq,
