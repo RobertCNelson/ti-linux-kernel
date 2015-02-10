@@ -59,38 +59,33 @@ static char __initdata nocb_buf[NR_CPUS * 5];
  */
 static void __init rcu_bootup_announce_oddness(void)
 {
-#ifdef CONFIG_RCU_TRACE
-	pr_info("\tRCU debugfs-based tracing is enabled.\n");
-#endif
-#if (defined(CONFIG_64BIT) && CONFIG_RCU_FANOUT != 64) || (!defined(CONFIG_64BIT) && CONFIG_RCU_FANOUT != 32)
-	pr_info("\tCONFIG_RCU_FANOUT set to non-default value of %d\n",
-	       CONFIG_RCU_FANOUT);
-#endif
-#ifdef CONFIG_RCU_FANOUT_EXACT
-	pr_info("\tHierarchical RCU autobalancing is disabled.\n");
-#endif
-#ifdef CONFIG_RCU_FAST_NO_HZ
-	pr_info("\tRCU dyntick-idle grace-period acceleration is enabled.\n");
-#endif
-#ifdef CONFIG_PROVE_RCU
-	pr_info("\tRCU lockdep checking is enabled.\n");
-#endif
-#ifdef CONFIG_RCU_TORTURE_TEST_RUNNABLE
-	pr_info("\tRCU torture testing starts during boot.\n");
-#endif
-#if defined(CONFIG_RCU_CPU_STALL_INFO)
-	pr_info("\tAdditional per-CPU info printed with stalls.\n");
-#endif
-#if NUM_RCU_LVL_4 != 0
-	pr_info("\tFour-level hierarchy is enabled.\n");
-#endif
+	if (IS_ENABLED(CONFIG_RCU_TRACE))
+		pr_info("\tRCU debugfs-based tracing is enabled.\n");
+	if ((IS_ENABLED(CONFIG_64BIT) && CONFIG_RCU_FANOUT != 64) ||
+	    (!IS_ENABLED(CONFIG_64BIT) && CONFIG_RCU_FANOUT != 32))
+		pr_info("\tCONFIG_RCU_FANOUT set to non-default value of %d\n",
+		       CONFIG_RCU_FANOUT);
+	if (IS_ENABLED(CONFIG_RCU_FANOUT_EXACT))
+		pr_info("\tHierarchical RCU autobalancing is disabled.\n");
+	if (IS_ENABLED(CONFIG_RCU_FAST_NO_HZ))
+		pr_info("\tRCU dyntick-idle grace-period acceleration is enabled.\n");
+	if (IS_ENABLED(CONFIG_PROVE_RCU))
+		pr_info("\tRCU lockdep checking is enabled.\n");
+	if (IS_ENABLED(CONFIG_RCU_TORTURE_TEST_RUNNABLE))
+		pr_info("\tRCU torture testing starts during boot.\n");
+	if (IS_ENABLED(CONFIG_RCU_CPU_STALL_INFO))
+		pr_info("\tAdditional per-CPU info printed with stalls.\n");
+	if (NUM_RCU_LVL_4 != 0)
+		pr_info("\tFour-level hierarchy is enabled.\n");
+	if (CONFIG_RCU_FANOUT_LEAF != 16)
+		pr_info("\tBuild-time adjustment of leaf fanout to %d.\n",
+			CONFIG_RCU_FANOUT_LEAF);
 	if (rcu_fanout_leaf != CONFIG_RCU_FANOUT_LEAF)
 		pr_info("\tBoot-time adjustment of leaf fanout to %d.\n", rcu_fanout_leaf);
 	if (nr_cpu_ids != NR_CPUS)
 		pr_info("\tRCU restricting CPUs from NR_CPUS=%d to nr_cpu_ids=%d.\n", NR_CPUS, nr_cpu_ids);
-#ifdef CONFIG_RCU_BOOST
-	pr_info("\tRCU kthread priority: %d.\n", kthread_prio);
-#endif
+	if (IS_ENABLED(CONFIG_RCU_BOOST))
+		pr_info("\tRCU kthread priority: %d.\n", kthread_prio);
 }
 
 #ifdef CONFIG_PREEMPT_RCU
@@ -181,7 +176,7 @@ static void rcu_preempt_note_context_switch(void)
 		 * But first, note that the current CPU must still be
 		 * on line!
 		 */
-		WARN_ON_ONCE((rdp->grpmask & rnp->qsmaskinit) == 0);
+		WARN_ON_ONCE((rdp->grpmask & rcu_rnp_online_cpus(rnp)) == 0);
 		WARN_ON_ONCE(!list_empty(&t->rcu_node_entry));
 		if ((rnp->qsmask & rdp->grpmask) && rnp->gp_tasks != NULL) {
 			list_add(&t->rcu_node_entry, rnp->gp_tasks->prev);
@@ -301,7 +296,6 @@ static bool rcu_preempt_has_tasks(struct rcu_node *rnp)
  */
 void rcu_read_unlock_special(struct task_struct *t)
 {
-	bool empty;
 	bool empty_exp;
 	bool empty_norm;
 	bool empty_exp_now;
@@ -327,6 +321,7 @@ void rcu_read_unlock_special(struct task_struct *t)
 	special = t->rcu_read_unlock_special;
 	if (special.b.need_qs) {
 		rcu_preempt_qs();
+		t->rcu_read_unlock_special.b.need_qs = false;
 		if (!t->rcu_read_unlock_special.s) {
 			local_irq_restore(flags);
 			return;
@@ -334,7 +329,13 @@ void rcu_read_unlock_special(struct task_struct *t)
 	}
 
 	/* Hardware IRQ handlers cannot block, complain if they get here. */
-	if (WARN_ON_ONCE(in_irq() || in_serving_softirq())) {
+	if (in_irq() || in_serving_softirq()) {
+		lockdep_rcu_suspicious(__FILE__, __LINE__,
+				       "rcu_read_unlock() from irq or softirq with blocking in critical section!!!\n");
+		pr_alert("->rcu_read_unlock_special: %#x (b: %d, nq: %d)\n",
+			 t->rcu_read_unlock_special.s,
+			 t->rcu_read_unlock_special.b.blocked,
+			 t->rcu_read_unlock_special.b.need_qs);
 		local_irq_restore(flags);
 		return;
 	}
@@ -356,7 +357,6 @@ void rcu_read_unlock_special(struct task_struct *t)
 				break;
 			raw_spin_unlock(&rnp->lock); /* irqs remain disabled. */
 		}
-		empty = !rcu_preempt_has_tasks(rnp);
 		empty_norm = !rcu_preempt_blocked_readers_cgp(rnp);
 		empty_exp = !rcu_preempted_readers_exp(rnp);
 		smp_mb(); /* ensure expedited fastpath sees end of RCU c-s. */
@@ -375,14 +375,6 @@ void rcu_read_unlock_special(struct task_struct *t)
 		/* Snapshot ->boost_mtx ownership with rcu_node lock held. */
 		drop_boost_mutex = rt_mutex_owner(&rnp->boost_mtx) == t;
 #endif /* #ifdef CONFIG_RCU_BOOST */
-
-		/*
-		 * If this was the last task on the list, go see if we
-		 * need to propagate ->qsmaskinit bit clearing up the
-		 * rcu_node tree.
-		 */
-		if (!empty && !rcu_preempt_has_tasks(rnp))
-			rcu_cleanup_dead_rnp(rnp);
 
 		/*
 		 * If this was the last task on the current list, and if
@@ -519,10 +511,6 @@ static void rcu_preempt_check_blocked_tasks(struct rcu_node *rnp)
 		rnp->gp_tasks = rnp->blkd_tasks.next;
 	WARN_ON_ONCE(rnp->qsmask);
 }
-
-#ifdef CONFIG_HOTPLUG_CPU
-
-#endif /* #ifdef CONFIG_HOTPLUG_CPU */
 
 /*
  * Check for a quiescent state from the current CPU.  When a task blocks,
@@ -677,19 +665,16 @@ static void
 sync_rcu_preempt_exp_init(struct rcu_state *rsp, struct rcu_node *rnp)
 {
 	unsigned long flags;
-	int must_wait = 0;
 
 	raw_spin_lock_irqsave(&rnp->lock, flags);
 	smp_mb__after_unlock_lock();
 	if (!rcu_preempt_has_tasks(rnp)) {
 		raw_spin_unlock_irqrestore(&rnp->lock, flags);
+		rcu_report_exp_rnp(rsp, rnp, false); /* No tasks, report. */
 	} else {
 		rnp->exp_tasks = rnp->blkd_tasks.next;
 		rcu_initiate_boost(rnp, flags);  /* releases rnp->lock */
-		must_wait = 1;
 	}
-	if (!must_wait)
-		rcu_report_exp_rnp(rsp, rnp, false); /* Don't wake self. */
 }
 
 /**
@@ -761,7 +746,7 @@ void synchronize_rcu_expedited(void)
 	rcu_for_each_nonleaf_node_breadth_first(rsp, rnp) {
 		raw_spin_lock_irqsave(&rnp->lock, flags);
 		smp_mb__after_unlock_lock();
-		rnp->expmask = rnp->qsmaskinit;
+		rnp->expmask = rcu_rnp_online_cpus(rnp);
 		raw_spin_unlock_irqrestore(&rnp->lock, flags);
 	}
 
@@ -859,8 +844,6 @@ static int rcu_preempt_blocked_readers_cgp(struct rcu_node *rnp)
 	return 0;
 }
 
-#ifdef CONFIG_HOTPLUG_CPU
-
 /*
  * Because there is no preemptible RCU, there can be no readers blocked.
  */
@@ -868,8 +851,6 @@ static bool rcu_preempt_has_tasks(struct rcu_node *rnp)
 {
 	return false;
 }
-
-#endif /* #ifdef CONFIG_HOTPLUG_CPU */
 
 /*
  * Because preemptible RCU does not exist, we never have to check for
@@ -1170,7 +1151,7 @@ static void rcu_preempt_boost_start_gp(struct rcu_node *rnp)
  * Returns zero if all is well, a negated errno otherwise.
  */
 static int rcu_spawn_one_boost_kthread(struct rcu_state *rsp,
-						 struct rcu_node *rnp)
+				       struct rcu_node *rnp)
 {
 	int rnp_index = rnp - &rsp->node[0];
 	unsigned long flags;
@@ -1180,7 +1161,7 @@ static int rcu_spawn_one_boost_kthread(struct rcu_state *rsp,
 	if (&rcu_preempt_state != rsp)
 		return 0;
 
-	if (!rcu_scheduler_fully_active || rnp->qsmaskinit == 0)
+	if (!rcu_scheduler_fully_active || rcu_rnp_online_cpus(rnp) == 0)
 		return 0;
 
 	rsp->boost = 1;
@@ -1273,7 +1254,7 @@ static void rcu_cpu_kthread(unsigned int cpu)
 static void rcu_boost_kthread_setaffinity(struct rcu_node *rnp, int outgoingcpu)
 {
 	struct task_struct *t = rnp->boost_kthread_task;
-	unsigned long mask = rnp->qsmaskinit;
+	unsigned long mask = rcu_rnp_online_cpus(rnp);
 	cpumask_var_t cm;
 	int cpu;
 
@@ -1945,7 +1926,8 @@ static bool rcu_nocb_cpu_needs_barrier(struct rcu_state *rsp, int cpu)
 		rhp = ACCESS_ONCE(rdp->nocb_follower_head);
 
 	/* Having no rcuo kthread but CBs after scheduler starts is bad! */
-	if (!ACCESS_ONCE(rdp->nocb_kthread) && rhp) {
+	if (!ACCESS_ONCE(rdp->nocb_kthread) && rhp &&
+	    rcu_scheduler_fully_active) {
 		/* RCU callback enqueued before CPU first came online??? */
 		pr_err("RCU: Never-onlined no-CBs CPU %d has CB %p\n",
 		       cpu, rhp->func);
@@ -2392,18 +2374,8 @@ void __init rcu_init_nohz(void)
 		pr_info("\tPoll for callbacks from no-CBs CPUs.\n");
 
 	for_each_rcu_flavor(rsp) {
-		for_each_cpu(cpu, rcu_nocb_mask) {
-			struct rcu_data *rdp = per_cpu_ptr(rsp->rda, cpu);
-
-			/*
-			 * If there are early callbacks, they will need
-			 * to be moved to the nocb lists.
-			 */
-			WARN_ON_ONCE(rdp->nxttail[RCU_NEXT_TAIL] !=
-				     &rdp->nxtlist &&
-				     rdp->nxttail[RCU_NEXT_TAIL] != NULL);
-			init_nocb_callback_list(rdp);
-		}
+		for_each_cpu(cpu, rcu_nocb_mask)
+			init_nocb_callback_list(per_cpu_ptr(rsp->rda, cpu));
 		rcu_organize_nocb_kthreads(rsp);
 	}
 }
@@ -2540,6 +2512,16 @@ static bool init_nocb_callback_list(struct rcu_data *rdp)
 	if (!rcu_is_nocb_cpu(rdp->cpu))
 		return false;
 
+	/* If there are early-boot callbacks, move them to nocb lists. */
+	if (rdp->nxtlist) {
+		rdp->nocb_head = rdp->nxtlist;
+		rdp->nocb_tail = rdp->nxttail[RCU_NEXT_TAIL];
+		atomic_long_set(&rdp->nocb_q_count, rdp->qlen);
+		atomic_long_set(&rdp->nocb_q_count_lazy, rdp->qlen_lazy);
+		rdp->nxtlist = NULL;
+		rdp->qlen = 0;
+		rdp->qlen_lazy = 0;
+	}
 	rdp->nxttail[RCU_NEXT_TAIL] = NULL;
 	return true;
 }
@@ -3090,4 +3072,30 @@ static void rcu_dynticks_task_exit(void)
 #if defined(CONFIG_TASKS_RCU) && defined(CONFIG_NO_HZ_FULL)
 	ACCESS_ONCE(current->rcu_tasks_idle_cpu) = -1;
 #endif /* #if defined(CONFIG_TASKS_RCU) && defined(CONFIG_NO_HZ_FULL) */
+}
+
+/*
+ * Compute the per-level fanout, either using the exact fanout specified
+ * or balancing the tree, depending on CONFIG_RCU_FANOUT_EXACT.
+ */
+static void __init rcu_init_levelspread(struct rcu_state *rsp)
+{
+#ifdef CONFIG_RCU_FANOUT_EXACT
+	int i;
+
+	rsp->levelspread[rcu_num_lvls - 1] = rcu_fanout_leaf;
+	for (i = rcu_num_lvls - 2; i >= 0; i--)
+		rsp->levelspread[i] = CONFIG_RCU_FANOUT;
+#else /* #ifdef CONFIG_RCU_FANOUT_EXACT */
+	int ccur;
+	int cprv;
+	int i;
+
+	cprv = nr_cpu_ids;
+	for (i = rcu_num_lvls - 1; i >= 0; i--) {
+		ccur = rsp->levelcnt[i];
+		rsp->levelspread[i] = (cprv + ccur - 1) / ccur;
+		cprv = ccur;
+	}
+#endif /* #else #ifdef CONFIG_RCU_FANOUT_EXACT */
 }
