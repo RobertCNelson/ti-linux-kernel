@@ -79,7 +79,7 @@ config I2C_AMD8111
 
 config I2C_HIX5HD2
 	tristate "Hix5hd2 high-speed I2C driver"
-	depends on ARCH_HIX5HD2
+	depends on ARCH_HIX5HD2 || COMPILE_TEST
 	help
 	  Say Y here to include support for high-speed I2C controller in the
 	  Hisilicon based hix5hd2 SoCs.
@@ -464,6 +464,16 @@ config I2C_DESIGNWARE_PCI
 
 	  This driver can also be built as a module.  If so, the module
 	  will be called i2c-designware-pci.
+
+config I2C_DESIGNWARE_BAYTRAIL
+	bool "Intel Baytrail I2C semaphore support"
+	depends on I2C_DESIGNWARE_PLATFORM && IOSF_MBI && ACPI
+	help
+	  This driver enables managed host access to the PMIC I2C bus on select
+	  Intel BayTrail platforms using the X-Powers AXP288 PMIC. It allows
+	  the host to request uninterrupted access to the PMIC's I2C bus from
+	  the platform firmware controlling it. You should say Y if running on
+	  a BayTrail system using the AXP288.
 
 config I2C_EFM32
 	tristate "EFM32 I2C controller"
