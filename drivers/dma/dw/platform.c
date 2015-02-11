@@ -180,8 +180,12 @@ static int dw_probe(struct platform_device *pdev)
 	chip->dev = dev;
 
 	chip->clk = devm_clk_get(chip->dev, "hclk");
-	if (IS_ERR(chip->clk))
-		return PTR_ERR(chip->clk);
+	if (IS_ERR(chip->clk)) {
+		if (PTR_ERR(chip->clk) == -ENOENT)
+			chip->clk = NULL;
+		else
+			return PTR_ERR(chip->clk);
+	}
 	err = clk_prepare_enable(chip->clk);
 	if (err)
 		return err;
