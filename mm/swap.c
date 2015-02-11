@@ -1138,10 +1138,8 @@ void __init swap_setup(void)
 #ifdef CONFIG_SWAP
 	int i;
 
-	for (i = 0; i < MAX_SWAPFILES; i++) {
+	for (i = 0; i < MAX_SWAPFILES; i++)
 		spin_lock_init(&swapper_spaces[i].tree_lock);
-		INIT_LIST_HEAD(&swapper_spaces[i].i_mmap_nonlinear);
-	}
 #endif
 
 	/* Use a smaller cluster for small-memory machines */
