@@ -417,7 +417,7 @@ static DECLARE_COMPLETION(cpu_killed);
 
 int __cpu_die(unsigned int cpu)
 {
-	return wait_for_completion_timeout(&cpu_killed, 5000);
+	return wait_for_completion_timeout(&cpu_killed, msecs_to_jiffies(5000));
 }
 
 void cpu_die(void)
