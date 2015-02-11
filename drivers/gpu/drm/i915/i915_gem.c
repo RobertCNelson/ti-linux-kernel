@@ -1946,26 +1946,6 @@ i915_gem_object_truncate(struct drm_i915_gem_object *obj)
 	obj->madv = __I915_MADV_PURGED;
 }
 
-/* Try to discard unwanted pages */
-static void
-i915_gem_object_invalidate(struct drm_i915_gem_object *obj)
-{
-	struct address_space *mapping;
-
-	switch (obj->madv) {
-	case I915_MADV_DONTNEED:
-		i915_gem_object_truncate(obj);
-	case __I915_MADV_PURGED:
-		return;
-	}
-
-	if (obj->base.filp == NULL)
-		return;
-
-	mapping = file_inode(obj->base.filp)->i_mapping,
-	invalidate_mapping_pages(mapping, 0, (loff_t)-1);
-}
-
 static void
 i915_gem_object_put_pages_gtt(struct drm_i915_gem_object *obj)
 {
@@ -2028,7 +2008,8 @@ i915_gem_object_put_pages(struct drm_i915_gem_object *obj)
 	ops->put_pages(obj);
 	obj->pages = NULL;
 
-	i915_gem_object_invalidate(obj);
+	if (i915_gem_object_is_purgeable(obj))
+		i915_gem_object_truncate(obj);
 
 	return 0;
 }
@@ -4465,30 +4446,6 @@ struct drm_i915_gem_object *i915_gem_alloc_object(struct drm_device *dev,
 	return obj;
 }
 
-static bool discard_backing_storage(struct drm_i915_gem_object *obj)
-{
-	/* If we are the last user of the backing storage (be it shmemfs
-	 * pages or stolen etc), we know that the pages are going to be
-	 * immediately released. In this case, we can then skip copying
-	 * back the contents from the GPU.
-	 */
-
-	if (obj->madv != I915_MADV_WILLNEED)
-		return false;
-
-	if (obj->base.filp == NULL)
-		return true;
-
-	/* At first glance, this looks racy, but then again so would be
-	 * userspace racing mmap against close. However, the first external
-	 * reference to the filp can only be obtained through the
-	 * i915_gem_mmap_ioctl() which safeguards us against the user
-	 * acquiring such a reference whilst we are in the middle of
-	 * freeing the object.
-	 */
-	return atomic_long_read(&obj->base.filp->f_count) == 1;
-}
-
 void i915_gem_free_object(struct drm_gem_object *gem_obj)
 {
 	struct drm_i915_gem_object *obj = to_intel_bo(gem_obj);
@@ -4531,8 +4488,6 @@ void i915_gem_free_object(struct drm_gem_object *gem_obj)
 
 	if (WARN_ON(obj->pages_pin_count))
 		obj->pages_pin_count = 0;
-	if (discard_backing_storage(obj))
-		obj->madv = I915_MADV_DONTNEED;
 	i915_gem_object_put_pages(obj);
 	i915_gem_object_free_mmap_offset(obj);
 
