@@ -588,6 +588,7 @@ static void sh_dmae_shutdown(struct platform_device *pdev)
 	sh_dmae_ctl_stop(shdev);
 }
 
+#ifdef CONFIG_PM
 static int sh_dmae_runtime_suspend(struct device *dev)
 {
 	return 0;
@@ -599,8 +600,9 @@ static int sh_dmae_runtime_resume(struct device *dev)
 
 	return sh_dmae_rst(shdev);
 }
+#endif
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 static int sh_dmae_suspend(struct device *dev)
 {
 	return 0;
@@ -632,16 +634,12 @@ static int sh_dmae_resume(struct device *dev)
 
 	return 0;
 }
-#else
-#define sh_dmae_suspend NULL
-#define sh_dmae_resume NULL
 #endif
 
 static const struct dev_pm_ops sh_dmae_pm = {
-	.suspend		= sh_dmae_suspend,
-	.resume			= sh_dmae_resume,
-	.runtime_suspend	= sh_dmae_runtime_suspend,
-	.runtime_resume		= sh_dmae_runtime_resume,
+	SET_SYSTEM_SLEEP_PM_OPS(sh_dmae_suspend, sh_dmae_resume)
+	SET_RUNTIME_PM_OPS(sh_dmae_runtime_suspend, sh_dmae_runtime_resume,
+			   NULL)
 };
 
 static dma_addr_t sh_dmae_slave_addr(struct shdma_chan *schan)
