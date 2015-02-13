@@ -4,6 +4,7 @@
  * Copyright (C) 2013  Renesas Solutions Corp.
  * Copyright (C) 2013  Magnus Damm
  * Copyright (C) 2014  Ulrich Hecht
+ * Copyright (C) 2015  Nobuhiro Iwamatsu
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,6 +25,8 @@
 #include <linux/memblock.h>
 #include <linux/of.h>
 #include <linux/of_fdt.h>
+#include <linux/of_platform.h>
+#include <asm/system_info.h>
 #include <asm/mach/arch.h>
 #include "common.h"
 #include "rcar-gen2.h"
@@ -200,4 +203,22 @@ void __init rcar_gen2_reserve(void)
 		dma_contiguous_reserve_area(mrc.size, mrc.base, 0,
 					    &rcar_gen2_dma_contiguous, true);
 #endif
+}
+
+#define PRR 0xFF000044
+static unsigned int __init rcar_gen2_get_cut(void)
+{
+	void __iomem *addr = ioremap_nocache(PRR, 4);
+	u32 data = ioread32(addr);
+
+	iounmap(addr);
+
+	return (data & 0xFF) + 0x10;
+}
+
+void __init rcar_gen2_init_machine(void)
+{
+	system_rev = rcar_gen2_get_cut();
+
+	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
 }
