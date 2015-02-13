@@ -99,7 +99,6 @@ void output_thread_info_defines(void)
 	OFFSET(TI_PRE_COUNT, thread_info, preempt_count);
 	OFFSET(TI_R2_EMUL_RET, thread_info, r2_emul_return);
 	OFFSET(TI_ADDR_LIMIT, thread_info, addr_limit);
-	OFFSET(TI_RESTART_BLOCK, thread_info, restart_block);
 	OFFSET(TI_REGS, thread_info, regs);
 	DEFINE(_THREAD_SIZE, THREAD_SIZE);
 	DEFINE(_THREAD_MASK, THREAD_MASK);
