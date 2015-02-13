@@ -110,7 +110,7 @@ struct iv_tcw_private {
  * Crypt: maps a linear range of a block device
  * and encrypts / decrypts at the same time.
  */
-enum flags { DM_CRYPT_SUSPENDED, DM_CRYPT_KEY_VALID };
+enum flags { DM_CRYPT_SUSPENDED, DM_CRYPT_KEY_VALID, DM_CRYPT_NO_OFFLOAD };
 
 /*
  * The fields in here must be read only after initialization.
@@ -1239,6 +1239,11 @@ static void kcryptd_crypt_write_io_submit(struct dm_crypt_io *io, int async)
 
 	clone->bi_iter.bi_sector = cc->start + io->sector;
 
+	if (likely(!async) && test_bit(DM_CRYPT_NO_OFFLOAD, &cc->flags)) {
+		generic_make_request(clone);
+		return;
+	}
+
 	spin_lock_irqsave(&cc->write_thread_wait.lock, flags);
 	list_add_tail(&io->list, &cc->write_thread_list);
 	wake_up_locked(&cc->write_thread_wait);
@@ -1693,7 +1698,7 @@ static int crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	char dummy;
 
 	static struct dm_arg _args[] = {
-		{0, 1, "Invalid number of feature args"},
+		{0, 2, "Invalid number of feature args"},
 	};
 
 	if (argc < 5) {
@@ -1789,15 +1794,23 @@ static int crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 		if (ret)
 			goto bad;
 
-		opt_string = dm_shift_arg(&as);
+		while (opt_params--) {
+			opt_string = dm_shift_arg(&as);
+			if (!opt_string) {
+				ti->error = "Not enough feature arguments";
+				goto bad;
+			}
 
-		if (opt_params == 1 && opt_string &&
-		    !strcasecmp(opt_string, "allow_discards"))
-			ti->num_discard_bios = 1;
-		else if (opt_params) {
-			ret = -EINVAL;
-			ti->error = "Invalid feature arguments";
-			goto bad;
+			if (!strcasecmp(opt_string, "allow_discards"))
+				ti->num_discard_bios = 1;
+
+			else if (!strcasecmp(opt_string, "submit_writes_from_encrypt_threads"))
+				set_bit(DM_CRYPT_NO_OFFLOAD, &cc->flags);
+
+			else {
+				ti->error = "Invalid feature arguments";
+				goto bad;
+			}
 		}
 	}
 
@@ -1873,6 +1886,7 @@ static void crypt_status(struct dm_target *ti, status_type_t type,
 {
 	struct crypt_config *cc = ti->private;
 	unsigned i, sz = 0;
+	int n_feature_args;
 
 	switch (type) {
 	case STATUSTYPE_INFO:
@@ -1891,8 +1905,16 @@ static void crypt_status(struct dm_target *ti, status_type_t type,
 		DMEMIT(" %llu %s %llu", (unsigned long long)cc->iv_offset,
 				cc->dev->name, (unsigned long long)cc->start);
 
-		if (ti->num_discard_bios)
-			DMEMIT(" 1 allow_discards");
+		n_feature_args = 0;
+		n_feature_args += !!ti->num_discard_bios;
+		n_feature_args += test_bit(DM_CRYPT_NO_OFFLOAD, &cc->flags);
+		if (n_feature_args) {
+			DMEMIT(" %d", n_feature_args);
+			if (ti->num_discard_bios)
+				DMEMIT(" allow_discards");
+			if (test_bit(DM_CRYPT_NO_OFFLOAD, &cc->flags))
+				DMEMIT(" submit_writes_from_encrypt_threads");
+		}
 
 		break;
 	}
@@ -1989,7 +2011,7 @@ static int crypt_iterate_devices(struct dm_target *ti,
 
 static struct target_type crypt_target = {
 	.name   = "crypt",
-	.version = {1, 13, 0},
+	.version = {1, 14, 0},
 	.module = THIS_MODULE,
 	.ctr    = crypt_ctr,
 	.dtr    = crypt_dtr,
