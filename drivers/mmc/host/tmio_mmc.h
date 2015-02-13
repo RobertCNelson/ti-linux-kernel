@@ -68,6 +68,7 @@ struct tmio_mmc_host {
 	struct scatterlist      *sg_orig;
 	unsigned int            sg_len;
 	unsigned int            sg_off;
+	struct sg_mapping_iter	sg_miter;
 	unsigned long		bus_shift;
 
 	struct platform_device *pdev;
