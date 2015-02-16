@@ -325,6 +325,8 @@ static void rcar_dmac_chan_start_xfer(struct rcar_dmac_chan *chan)
 		rcar_dmac_chan_write(chan, RCAR_DMARS, chan->mid_rid);
 
 	if (desc->hwdescs.use) {
+		struct rcar_dmac_xfer_chunk *chunk;
+
 		dev_dbg(chan->chan.device->dev,
 			"chan%u: queue desc %p: %u@%pad\n",
 			chan->index, desc, desc->nchunks, &desc->hwdescs.dma);
@@ -339,6 +341,18 @@ static void rcar_dmac_chan_start_xfer(struct rcar_dmac_chan *chan)
 		rcar_dmac_chan_write(chan, RCAR_DMACHCRB,
 				     RCAR_DMACHCRB_DCNT(desc->nchunks - 1) |
 				     RCAR_DMACHCRB_DRST);
+
+		/*
+		 * Errata: When descriptor memory is accessed through an IOMMU
+		 * the DMADAR register isn't initialized automatically from the
+		 * first descriptor at beginning of transfer by the DMAC like it
+		 * should. Initialize it manually with the destination address
+		 * of the first chunk.
+		 */
+		chunk = list_first_entry(&desc->chunks,
+					 struct rcar_dmac_xfer_chunk, node);
+		rcar_dmac_chan_write(chan, RCAR_DMADAR,
+				     chunk->dst_addr & 0xffffffff);
 
 		/*
 		 * Program the descriptor stage interrupt to occur after the end
@@ -487,16 +501,16 @@ static int rcar_dmac_desc_alloc(struct rcar_dmac_chan *chan, gfp_t gfp)
  *
  * The descriptor must have been removed from the channel's lists before calling
  * this function.
- *
- * Locking: Must be called in non-atomic context.
  */
 static void rcar_dmac_desc_put(struct rcar_dmac_chan *chan,
 			       struct rcar_dmac_desc *desc)
 {
-	spin_lock_irq(&chan->lock);
+	unsigned long flags;
+
+	spin_lock_irqsave(&chan->lock, flags);
 	list_splice_tail_init(&desc->chunks, &chan->desc.chunks_free);
 	list_add_tail(&desc->node, &chan->desc.free);
-	spin_unlock_irq(&chan->lock);
+	spin_unlock_irqrestore(&chan->lock, flags);
 }
 
 static void rcar_dmac_desc_recycle_acked(struct rcar_dmac_chan *chan)
@@ -655,8 +669,8 @@ static void rcar_dmac_realloc_hwdesc(struct rcar_dmac_chan *chan,
 		return;
 
 	if (desc->hwdescs.mem) {
-		dma_free_coherent(NULL, desc->hwdescs.size, desc->hwdescs.mem,
-				   desc->hwdescs.dma);
+		dma_free_coherent(chan->chan.device->dev, desc->hwdescs.size,
+				  desc->hwdescs.mem, desc->hwdescs.dma);
 		desc->hwdescs.mem = NULL;
 		desc->hwdescs.size = 0;
 	}
@@ -664,8 +678,8 @@ static void rcar_dmac_realloc_hwdesc(struct rcar_dmac_chan *chan,
 	if (!size)
 		return;
 
-	desc->hwdescs.mem = dma_alloc_coherent(NULL, size, &desc->hwdescs.dma,
-					       GFP_NOWAIT);
+	desc->hwdescs.mem = dma_alloc_coherent(chan->chan.device->dev, size,
+					       &desc->hwdescs.dma, GFP_NOWAIT);
 	if (!desc->hwdescs.mem)
 		return;
 
@@ -929,11 +943,6 @@ static int rcar_dmac_alloc_chan_resources(struct dma_chan *chan)
 	struct rcar_dmac_chan *rchan = to_rcar_dmac_chan(chan);
 	int ret;
 
-	INIT_LIST_HEAD(&rchan->desc.free);
-	INIT_LIST_HEAD(&rchan->desc.pending);
-	INIT_LIST_HEAD(&rchan->desc.active);
-	INIT_LIST_HEAD(&rchan->desc.done);
-	INIT_LIST_HEAD(&rchan->desc.wait);
 	INIT_LIST_HEAD(&rchan->desc.chunks_free);
 	INIT_LIST_HEAD(&rchan->desc.pages);
 
@@ -970,11 +979,11 @@ static void rcar_dmac_free_chan_resources(struct dma_chan *chan)
 		rchan->mid_rid = -EINVAL;
 	}
 
-	list_splice(&rchan->desc.free, &list);
-	list_splice(&rchan->desc.pending, &list);
-	list_splice(&rchan->desc.active, &list);
-	list_splice(&rchan->desc.done, &list);
-	list_splice(&rchan->desc.wait, &list);
+	list_splice_init(&rchan->desc.free, &list);
+	list_splice_init(&rchan->desc.pending, &list);
+	list_splice_init(&rchan->desc.active, &list);
+	list_splice_init(&rchan->desc.done, &list);
+	list_splice_init(&rchan->desc.wait, &list);
 
 	list_for_each_entry(desc, &list, node)
 		rcar_dmac_realloc_hwdesc(rchan, desc, 0);
@@ -1519,6 +1528,12 @@ static int rcar_dmac_chan_probe(struct rcar_dmac *dmac,
 
 	spin_lock_init(&rchan->lock);
 
+	INIT_LIST_HEAD(&rchan->desc.free);
+	INIT_LIST_HEAD(&rchan->desc.pending);
+	INIT_LIST_HEAD(&rchan->desc.active);
+	INIT_LIST_HEAD(&rchan->desc.done);
+	INIT_LIST_HEAD(&rchan->desc.wait);
+
 	/* Request the channel interrupt. */
 	sprintf(pdev_irqname, "ch%u", index);
 	irq = platform_get_irq_byname(pdev, pdev_irqname);
@@ -1578,6 +1593,7 @@ static int rcar_dmac_probe(struct platform_device *pdev)
 		DMA_SLAVE_BUSWIDTH_2_BYTES | DMA_SLAVE_BUSWIDTH_4_BYTES |
 		DMA_SLAVE_BUSWIDTH_8_BYTES | DMA_SLAVE_BUSWIDTH_16_BYTES |
 		DMA_SLAVE_BUSWIDTH_32_BYTES | DMA_SLAVE_BUSWIDTH_64_BYTES;
+	unsigned int channels_offset = 0;
 	struct dma_device *engine;
 	struct rcar_dmac *dmac;
 	struct resource *mem;
@@ -1596,6 +1612,19 @@ static int rcar_dmac_probe(struct platform_device *pdev)
 	ret = rcar_dmac_parse_of(&pdev->dev, dmac);
 	if (ret < 0)
 		return ret;
+
+	/*
+	 * A still unconfirmed hardware bug prevents the IPMMU microTLB 0 to be
+	 * flushed correctly, resulting in memory corruption. DMAC 0 channel 0
+	 * is connected to microTLB 0 on currently supported platforms, so we
+	 * can't use it with the IPMMU. As the IOMMU API operates at the device
+	 * level we can't disable it selectively, so ignore channel 0 for now if
+	 * the device is part of an IOMMU group.
+	 */
+	if (pdev->dev.iommu_group) {
+		dmac->n_channels--;
+		channels_offset = 1;
+	}
 
 	dmac->channels = devm_kcalloc(&pdev->dev, dmac->n_channels,
 				      sizeof(*dmac->channels), GFP_KERNEL);
@@ -1647,7 +1676,8 @@ static int rcar_dmac_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&dmac->engine.channels);
 
 	for (i = 0; i < dmac->n_channels; ++i) {
-		ret = rcar_dmac_chan_probe(dmac, &dmac->channels[i], i);
+		ret = rcar_dmac_chan_probe(dmac, &dmac->channels[i],
+					   i + channels_offset);
 		if (ret < 0)
 			goto error;
 	}

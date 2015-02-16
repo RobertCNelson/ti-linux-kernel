@@ -504,6 +504,9 @@ struct dma_pl330_desc {
 
 	enum desc_status status;
 
+	int bytes_requested;
+	bool last;
+
 	/* The channel which currently holds this desc */
 	struct dma_pl330_chan *pchan;
 
@@ -2152,6 +2155,33 @@ static int pl330_terminate_all(struct dma_chan *chan)
 	return 0;
 }
 
+/*
+ * We don't support DMA_RESUME command because of hardware
+ * limitations, so after pausing the channel we cannot restore
+ * it to active state. We have to terminate channel and setup
+ * DMA transfer again. This pause feature was implemented to
+ * allow safely read residue before channel termination.
+ */
+int pl330_pause(struct dma_chan *chan)
+{
+	struct dma_pl330_chan *pch = to_pchan(chan);
+	struct pl330_dmac *pl330 = pch->dmac;
+	unsigned long flags;
+
+	pm_runtime_get_sync(pl330->ddma.dev);
+	spin_lock_irqsave(&pch->lock, flags);
+
+	spin_lock(&pl330->lock);
+	_stop(pch->thread);
+	spin_unlock(&pl330->lock);
+
+	spin_unlock_irqrestore(&pch->lock, flags);
+	pm_runtime_mark_last_busy(pl330->ddma.dev);
+	pm_runtime_put_autosuspend(pl330->ddma.dev);
+
+	return 0;
+}
+
 static void pl330_free_chan_resources(struct dma_chan *chan)
 {
 	struct dma_pl330_chan *pch = to_pchan(chan);
@@ -2173,11 +2203,74 @@ static void pl330_free_chan_resources(struct dma_chan *chan)
 	pm_runtime_put_autosuspend(pch->dmac->ddma.dev);
 }
 
+int pl330_get_current_xferred_count(struct dma_pl330_chan *pch,
+		struct dma_pl330_desc *desc)
+{
+	struct pl330_thread *thrd = pch->thread;
+	struct pl330_dmac *pl330 = pch->dmac;
+	void __iomem *regs = thrd->dmac->base;
+	u32 val, addr;
+
+	pm_runtime_get_sync(pl330->ddma.dev);
+	val = addr = 0;
+	if (desc->rqcfg.src_inc) {
+		val = readl(regs + SA(thrd->id));
+		addr = desc->px.src_addr;
+	} else {
+		val = readl(regs + DA(thrd->id));
+		addr = desc->px.dst_addr;
+	}
+	pm_runtime_mark_last_busy(pch->dmac->ddma.dev);
+	pm_runtime_put_autosuspend(pl330->ddma.dev);
+	return val - addr;
+}
+
 static enum dma_status
 pl330_tx_status(struct dma_chan *chan, dma_cookie_t cookie,
 		 struct dma_tx_state *txstate)
 {
-	return dma_cookie_status(chan, cookie, txstate);
+	enum dma_status ret;
+	unsigned long flags;
+	struct dma_pl330_desc *desc, *running = NULL;
+	struct dma_pl330_chan *pch = to_pchan(chan);
+	unsigned int transferred, residual = 0;
+
+	ret = dma_cookie_status(chan, cookie, txstate);
+
+	if (!txstate)
+		return ret;
+
+	if (ret == DMA_COMPLETE)
+		goto out;
+
+	spin_lock_irqsave(&pch->lock, flags);
+
+	if (pch->thread->req_running != -1)
+		running = pch->thread->req[pch->thread->req_running].desc;
+
+	/* Check in pending list */
+	list_for_each_entry(desc, &pch->work_list, node) {
+		if (desc->status == DONE)
+			transferred = desc->bytes_requested;
+		else if (running && desc == running)
+			transferred =
+				pl330_get_current_xferred_count(pch, desc);
+		else
+			transferred = 0;
+		residual += desc->bytes_requested - transferred;
+		if (desc->txd.cookie == cookie) {
+			ret = desc->status;
+			break;
+		}
+		if (desc->last)
+			residual = 0;
+	}
+	spin_unlock_irqrestore(&pch->lock, flags);
+
+out:
+	dma_set_residue(txstate, residual);
+
+	return ret;
 }
 
 static void pl330_issue_pending(struct dma_chan *chan)
@@ -2222,12 +2315,14 @@ static dma_cookie_t pl330_tx_submit(struct dma_async_tx_descriptor *tx)
 			desc->txd.callback = last->txd.callback;
 			desc->txd.callback_param = last->txd.callback_param;
 		}
+		last->last = false;
 
 		dma_cookie_assign(&desc->txd);
 
 		list_move_tail(&desc->node, &pch->submitted_list);
 	}
 
+	last->last = true;
 	cookie = dma_cookie_assign(&last->txd);
 	list_add_tail(&last->node, &pch->submitted_list);
 	spin_unlock_irqrestore(&pch->lock, flags);
@@ -2450,6 +2545,7 @@ static struct dma_async_tx_descriptor *pl330_prep_dma_cyclic(
 		desc->rqtype = direction;
 		desc->rqcfg.brst_size = pch->burst_sz;
 		desc->rqcfg.brst_len = 1;
+		desc->bytes_requested = period_len;
 		fill_px(&desc->px, dst, src, period_len);
 
 		if (!first)
@@ -2592,6 +2688,7 @@ pl330_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
 		desc->rqcfg.brst_size = pch->burst_sz;
 		desc->rqcfg.brst_len = 1;
 		desc->rqtype = direction;
+		desc->bytes_requested = sg_dma_len(sg);
 	}
 
 	/* Return the last desc in the chain */
@@ -2772,12 +2869,13 @@ pl330_probe(struct amba_device *adev, const struct amba_id *id)
 	pd->device_tx_status = pl330_tx_status;
 	pd->device_prep_slave_sg = pl330_prep_slave_sg;
 	pd->device_config = pl330_config;
+	pd->device_pause = pl330_pause;
 	pd->device_terminate_all = pl330_terminate_all;
 	pd->device_issue_pending = pl330_issue_pending;
 	pd->src_addr_widths = PL330_DMA_BUSWIDTHS;
 	pd->dst_addr_widths = PL330_DMA_BUSWIDTHS;
 	pd->directions = BIT(DMA_DEV_TO_MEM) | BIT(DMA_MEM_TO_DEV);
-	pd->residue_granularity = DMA_RESIDUE_GRANULARITY_DESCRIPTOR;
+	pd->residue_granularity = DMA_RESIDUE_GRANULARITY_SEGMENT;
 
 	ret = dma_async_device_register(pd);
 	if (ret) {
