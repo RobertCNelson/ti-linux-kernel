@@ -1604,7 +1604,7 @@ static void btrfs_del_delalloc_inode(struct btrfs_root *root,
  * have pending delalloc work to be done.
  */
 static void btrfs_set_bit_hook(struct inode *inode,
-			       struct extent_state *state, unsigned long *bits)
+			       struct extent_state *state, unsigned *bits)
 {
 
 	if ((*bits & EXTENT_DEFRAG) && !(*bits & EXTENT_DELALLOC))
@@ -1645,7 +1645,7 @@ static void btrfs_set_bit_hook(struct inode *inode,
  */
 static void btrfs_clear_bit_hook(struct inode *inode,
 				 struct extent_state *state,
-				 unsigned long *bits)
+				 unsigned *bits)
 {
 	u64 len = state->end + 1 - state->start;
 
@@ -2945,7 +2945,7 @@ static int __readpage_endio_check(struct inode *inode,
 	return 0;
 zeroit:
 	if (__ratelimit(&_rs))
-		btrfs_info(BTRFS_I(inode)->root->fs_info,
+		btrfs_warn(BTRFS_I(inode)->root->fs_info,
 			   "csum failed ino %llu off %llu csum %u expected csum %u",
 			   btrfs_ino(inode), start, csum, csum_expected);
 	memset(kaddr + pgoff, 1, len);
@@ -3407,7 +3407,7 @@ int btrfs_orphan_cleanup(struct btrfs_root *root)
 
 out:
 	if (ret)
-		btrfs_crit(root->fs_info,
+		btrfs_err(root->fs_info,
 			"could not do orphan cleanup %d", ret);
 	btrfs_free_path(path);
 	return ret;
@@ -3490,7 +3490,6 @@ static void btrfs_read_locked_inode(struct inode *inode)
 	struct btrfs_path *path;
 	struct extent_buffer *leaf;
 	struct btrfs_inode_item *inode_item;
-	struct btrfs_timespec *tspec;
 	struct btrfs_root *root = BTRFS_I(inode)->root;
 	struct btrfs_key location;
 	unsigned long ptr;
@@ -3527,17 +3526,19 @@ static void btrfs_read_locked_inode(struct inode *inode)
 	i_gid_write(inode, btrfs_inode_gid(leaf, inode_item));
 	btrfs_i_size_write(inode, btrfs_inode_size(leaf, inode_item));
 
-	tspec = btrfs_inode_atime(inode_item);
-	inode->i_atime.tv_sec = btrfs_timespec_sec(leaf, tspec);
-	inode->i_atime.tv_nsec = btrfs_timespec_nsec(leaf, tspec);
+	inode->i_atime.tv_sec = btrfs_timespec_sec(leaf, &inode_item->atime);
+	inode->i_atime.tv_nsec = btrfs_timespec_nsec(leaf, &inode_item->atime);
 
-	tspec = btrfs_inode_mtime(inode_item);
-	inode->i_mtime.tv_sec = btrfs_timespec_sec(leaf, tspec);
-	inode->i_mtime.tv_nsec = btrfs_timespec_nsec(leaf, tspec);
+	inode->i_mtime.tv_sec = btrfs_timespec_sec(leaf, &inode_item->mtime);
+	inode->i_mtime.tv_nsec = btrfs_timespec_nsec(leaf, &inode_item->mtime);
 
-	tspec = btrfs_inode_ctime(inode_item);
-	inode->i_ctime.tv_sec = btrfs_timespec_sec(leaf, tspec);
-	inode->i_ctime.tv_nsec = btrfs_timespec_nsec(leaf, tspec);
+	inode->i_ctime.tv_sec = btrfs_timespec_sec(leaf, &inode_item->ctime);
+	inode->i_ctime.tv_nsec = btrfs_timespec_nsec(leaf, &inode_item->ctime);
+
+	BTRFS_I(inode)->i_otime.tv_sec =
+		btrfs_timespec_sec(leaf, &inode_item->otime);
+	BTRFS_I(inode)->i_otime.tv_nsec =
+		btrfs_timespec_nsec(leaf, &inode_item->otime);
 
 	inode_set_bytes(inode, btrfs_inode_nbytes(leaf, inode_item));
 	BTRFS_I(inode)->generation = btrfs_inode_generation(leaf, inode_item);
@@ -3656,20 +3657,25 @@ static void fill_inode_item(struct btrfs_trans_handle *trans,
 	btrfs_set_token_inode_mode(leaf, item, inode->i_mode, &token);
 	btrfs_set_token_inode_nlink(leaf, item, inode->i_nlink, &token);
 
-	btrfs_set_token_timespec_sec(leaf, btrfs_inode_atime(item),
+	btrfs_set_token_timespec_sec(leaf, &item->atime,
 				     inode->i_atime.tv_sec, &token);
-	btrfs_set_token_timespec_nsec(leaf, btrfs_inode_atime(item),
+	btrfs_set_token_timespec_nsec(leaf, &item->atime,
 				      inode->i_atime.tv_nsec, &token);
 
-	btrfs_set_token_timespec_sec(leaf, btrfs_inode_mtime(item),
+	btrfs_set_token_timespec_sec(leaf, &item->mtime,
 				     inode->i_mtime.tv_sec, &token);
-	btrfs_set_token_timespec_nsec(leaf, btrfs_inode_mtime(item),
+	btrfs_set_token_timespec_nsec(leaf, &item->mtime,
 				      inode->i_mtime.tv_nsec, &token);
 
-	btrfs_set_token_timespec_sec(leaf, btrfs_inode_ctime(item),
+	btrfs_set_token_timespec_sec(leaf, &item->ctime,
 				     inode->i_ctime.tv_sec, &token);
-	btrfs_set_token_timespec_nsec(leaf, btrfs_inode_ctime(item),
+	btrfs_set_token_timespec_nsec(leaf, &item->ctime,
 				      inode->i_ctime.tv_nsec, &token);
+
+	btrfs_set_token_timespec_sec(leaf, &item->otime,
+				     BTRFS_I(inode)->i_otime.tv_sec, &token);
+	btrfs_set_token_timespec_nsec(leaf, &item->otime,
+				      BTRFS_I(inode)->i_otime.tv_nsec, &token);
 
 	btrfs_set_token_inode_nbytes(leaf, item, inode_get_bytes(inode),
 				     &token);
@@ -5007,6 +5013,7 @@ static int fixup_tree_root_location(struct btrfs_root *root,
 	struct btrfs_root *new_root;
 	struct btrfs_root_ref *ref;
 	struct extent_buffer *leaf;
+	struct btrfs_key key;
 	int ret;
 	int err = 0;
 
@@ -5017,9 +5024,12 @@ static int fixup_tree_root_location(struct btrfs_root *root,
 	}
 
 	err = -ENOENT;
-	ret = btrfs_find_item(root->fs_info->tree_root, path,
-				BTRFS_I(dir)->root->root_key.objectid,
-				location->objectid, BTRFS_ROOT_REF_KEY, NULL);
+	key.objectid = BTRFS_I(dir)->root->root_key.objectid;
+	key.type = BTRFS_ROOT_REF_KEY;
+	key.offset = location->objectid;
+
+	ret = btrfs_search_slot(NULL, root->fs_info->tree_root, &key, path,
+				0, 0);
 	if (ret) {
 		if (ret < 0)
 			err = ret;
@@ -5258,7 +5268,10 @@ static struct inode *new_simple_dir(struct super_block *s,
 	inode->i_op = &btrfs_dir_ro_inode_operations;
 	inode->i_fop = &simple_dir_operations;
 	inode->i_mode = S_IFDIR | S_IRUGO | S_IWUSR | S_IXUGO;
-	inode->i_mtime = inode->i_atime = inode->i_ctime = CURRENT_TIME;
+	inode->i_mtime = CURRENT_TIME;
+	inode->i_atime = inode->i_mtime;
+	inode->i_ctime = inode->i_mtime;
+	BTRFS_I(inode)->i_otime = inode->i_mtime;
 
 	return inode;
 }
@@ -5826,7 +5839,12 @@ static struct inode *btrfs_new_inode(struct btrfs_trans_handle *trans,
 
 	inode_init_owner(inode, dir, mode);
 	inode_set_bytes(inode, 0);
-	inode->i_mtime = inode->i_atime = inode->i_ctime = CURRENT_TIME;
+
+	inode->i_mtime = CURRENT_TIME;
+	inode->i_atime = inode->i_mtime;
+	inode->i_ctime = inode->i_mtime;
+	BTRFS_I(inode)->i_otime = inode->i_mtime;
+
 	inode_item = btrfs_item_ptr(path->nodes[0], path->slots[0],
 				  struct btrfs_inode_item);
 	memset_extent_buffer(path->nodes[0], 0, (unsigned long)inode_item,
@@ -7805,8 +7823,7 @@ static int btrfs_submit_direct_hook(int rw, struct btrfs_dio_private *dip,
 	}
 
 	/* async crcs make it difficult to collect full stripe writes. */
-	if (btrfs_get_alloc_profile(root, 1) &
-	    (BTRFS_BLOCK_GROUP_RAID5 | BTRFS_BLOCK_GROUP_RAID6))
+	if (btrfs_get_alloc_profile(root, 1) & BTRFS_BLOCK_GROUP_RAID56_MASK)
 		async_submit = 0;
 	else
 		async_submit = 1;
@@ -8574,6 +8591,9 @@ struct inode *btrfs_alloc_inode(struct super_block *sb)
 	ei->force_compress = BTRFS_COMPRESS_NONE;
 
 	ei->delayed_node = NULL;
+
+	ei->i_otime.tv_sec = 0;
+	ei->i_otime.tv_nsec = 0;
 
 	inode = &ei->vfs_inode;
 	extent_map_tree_init(&ei->extent_tree);
