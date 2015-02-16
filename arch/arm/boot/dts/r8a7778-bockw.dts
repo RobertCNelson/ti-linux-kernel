@@ -73,6 +73,10 @@
 	};
 };
 
+&extal_clk {
+	clock-frequency = <33333333>;
+};
+
 &mmcif {
 	pinctrl-0 = <&mmc_pins>;
 	pinctrl-names = "default";
