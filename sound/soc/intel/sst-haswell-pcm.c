@@ -998,7 +998,7 @@ static int hsw_pcm_dev_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM_RUNTIME
+#ifdef CONFIG_PM
 
 static int hsw_pcm_runtime_idle(struct device *dev)
 {
@@ -1057,7 +1057,7 @@ static int hsw_pcm_runtime_resume(struct device *dev)
 #define hsw_pcm_runtime_resume		NULL
 #endif
 
-#if defined(CONFIG_PM_SLEEP) && defined(CONFIG_PM_RUNTIME)
+#ifdef CONFIG_PM
 
 static void hsw_pcm_complete(struct device *dev)
 {
@@ -1170,9 +1170,7 @@ static const struct dev_pm_ops hsw_pcm_pm = {
 static struct platform_driver hsw_pcm_driver = {
 	.driver = {
 		.name = "haswell-pcm-audio",
-		.owner = THIS_MODULE,
 		.pm = &hsw_pcm_pm,
-
 	},
 
 	.probe = hsw_pcm_dev_probe,

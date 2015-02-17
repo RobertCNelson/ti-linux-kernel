@@ -1135,7 +1135,7 @@ static inline const struct samsung_i2s_dai_data *samsung_i2s_get_driver_data(
 				platform_get_device_id(pdev)->driver_data;
 }
 
-#ifdef CONFIG_PM_RUNTIME
+#ifdef CONFIG_PM
 static int i2s_runtime_suspend(struct device *dev)
 {
 	struct i2s_dai *i2s = dev_get_drvdata(dev);
@@ -1153,7 +1153,7 @@ static int i2s_runtime_resume(struct device *dev)
 
 	return 0;
 }
-#endif /* CONFIG_PM_RUNTIME */
+#endif /* CONFIG_PM */
 
 static int samsung_i2s_probe(struct platform_device *pdev)
 {
@@ -1261,6 +1261,8 @@ static int samsung_i2s_probe(struct platform_device *pdev)
 			ret = -ENOMEM;
 			goto err;
 		}
+
+		sec_dai->variant_regs = pri_dai->variant_regs;
 		sec_dai->dma_playback.dma_addr = regs_base + I2STXDS;
 		sec_dai->dma_playback.ch_name = "tx-sec";
 
@@ -1470,7 +1472,6 @@ static struct platform_driver samsung_i2s_driver = {
 	.id_table = samsung_i2s_driver_ids,
 	.driver = {
 		.name = "samsung-i2s",
-		.owner = THIS_MODULE,
 		.of_match_table = of_match_ptr(exynos_i2s_match),
 		.pm = &samsung_i2s_pm,
 	},

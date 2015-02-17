@@ -475,7 +475,8 @@ static int mlx4_en_tunnel_steer_add(struct mlx4_en_priv *priv, unsigned char *ad
 {
 	int err;
 
-	if (priv->mdev->dev->caps.tunnel_offload_mode != MLX4_TUNNEL_OFFLOAD_MODE_VXLAN)
+	if (priv->mdev->dev->caps.tunnel_offload_mode != MLX4_TUNNEL_OFFLOAD_MODE_VXLAN ||
+	    priv->mdev->dev->caps.dmfs_high_steer_mode == MLX4_STEERING_DMFS_A0_STATIC)
 		return 0; /* do nothing */
 
 	err = mlx4_tunnel_steer_add(priv->mdev->dev, addr, priv->port, qpn,
@@ -1569,8 +1570,15 @@ int mlx4_en_start_port(struct net_device *dev)
 			mlx4_en_free_affinity_hint(priv, i);
 			goto cq_err;
 		}
-		for (j = 0; j < cq->size; j++)
-			cq->buf[j].owner_sr_opcode = MLX4_CQE_OWNER_MASK;
+
+		for (j = 0; j < cq->size; j++) {
+			struct mlx4_cqe *cqe = NULL;
+
+			cqe = mlx4_en_get_cqe(cq->buf, j, priv->cqe_size) +
+			      priv->cqe_factor;
+			cqe->owner_sr_opcode = MLX4_CQE_OWNER_MASK;
+		}
+
 		err = mlx4_en_set_cq_moder(priv, cq);
 		if (err) {
 			en_err(priv, "Failed setting cq moderation parameters\n");
@@ -2358,9 +2366,11 @@ static void mlx4_en_del_vxlan_port(struct  net_device *dev,
 	queue_work(priv->mdev->workqueue, &priv->vxlan_del_task);
 }
 
-static bool mlx4_en_gso_check(struct sk_buff *skb, struct net_device *dev)
+static netdev_features_t mlx4_en_features_check(struct sk_buff *skb,
+						struct net_device *dev,
+						netdev_features_t features)
 {
-	return vxlan_gso_check(skb);
+	return vxlan_features_check(skb, features);
 }
 #endif
 
@@ -2393,7 +2403,7 @@ static const struct net_device_ops mlx4_netdev_ops = {
 #ifdef CONFIG_MLX4_EN_VXLAN
 	.ndo_add_vxlan_port	= mlx4_en_add_vxlan_port,
 	.ndo_del_vxlan_port	= mlx4_en_del_vxlan_port,
-	.ndo_gso_check		= mlx4_en_gso_check,
+	.ndo_features_check	= mlx4_en_features_check,
 #endif
 };
 
@@ -2427,7 +2437,7 @@ static const struct net_device_ops mlx4_netdev_ops_master = {
 #ifdef CONFIG_MLX4_EN_VXLAN
 	.ndo_add_vxlan_port	= mlx4_en_add_vxlan_port,
 	.ndo_del_vxlan_port	= mlx4_en_del_vxlan_port,
-	.ndo_gso_check		= mlx4_en_gso_check,
+	.ndo_features_check	= mlx4_en_features_check,
 #endif
 };
 

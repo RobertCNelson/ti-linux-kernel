@@ -91,7 +91,8 @@ static struct platform_device_id fec_devtype[] = {
 		.driver_data = 0,
 	}, {
 		.name = "imx28-fec",
-		.driver_data = FEC_QUIRK_ENET_MAC | FEC_QUIRK_SWAP_FRAME,
+		.driver_data = FEC_QUIRK_ENET_MAC | FEC_QUIRK_SWAP_FRAME |
+				FEC_QUIRK_SINGLE_MDIO,
 	}, {
 		.name = "imx6q-fec",
 		.driver_data = FEC_QUIRK_ENET_MAC | FEC_QUIRK_HAS_GBIT |
@@ -1558,20 +1559,21 @@ fec_enet_interrupt(int irq, void *dev_id)
 {
 	struct net_device *ndev = dev_id;
 	struct fec_enet_private *fep = netdev_priv(ndev);
-	const unsigned napi_mask = FEC_ENET_RXF | FEC_ENET_TXF;
 	uint int_events;
 	irqreturn_t ret = IRQ_NONE;
 
 	int_events = readl(fep->hwp + FEC_IEVENT);
-	writel(int_events & ~napi_mask, fep->hwp + FEC_IEVENT);
+	writel(int_events, fep->hwp + FEC_IEVENT);
 	fec_enet_collect_events(fep, int_events);
 
-	if (int_events & napi_mask) {
+	if (fep->work_tx || fep->work_rx) {
 		ret = IRQ_HANDLED;
 
-		/* Disable the NAPI interrupts */
-		writel(FEC_ENET_MII, fep->hwp + FEC_IMASK);
-		napi_schedule(&fep->napi);
+		if (napi_schedule_prep(&fep->napi)) {
+			/* Disable the NAPI interrupts */
+			writel(FEC_ENET_MII, fep->hwp + FEC_IMASK);
+			__napi_schedule(&fep->napi);
+		}
 	}
 
 	if (int_events & FEC_ENET_MII) {
@@ -1590,12 +1592,6 @@ static int fec_enet_rx_napi(struct napi_struct *napi, int budget)
 	struct net_device *ndev = napi->dev;
 	struct fec_enet_private *fep = netdev_priv(ndev);
 	int pkts;
-
-	/*
-	 * Clear any pending transmit or receive interrupts before
-	 * processing the rings to avoid racing with the hardware.
-	 */
-	writel(FEC_ENET_RXF | FEC_ENET_TXF, fep->hwp + FEC_IEVENT);
 
 	pkts = fec_enet_rx(ndev, budget);
 
@@ -1942,7 +1938,7 @@ static int fec_enet_mii_init(struct platform_device *pdev)
 	int err = -ENXIO, i;
 
 	/*
-	 * The dual fec interfaces are not equivalent with enet-mac.
+	 * The i.MX28 dual fec interfaces are not equal.
 	 * Here are the differences:
 	 *
 	 *  - fec0 supports MII & RMII modes while fec1 only supports RMII
@@ -1957,7 +1953,7 @@ static int fec_enet_mii_init(struct platform_device *pdev)
 	 * mdio interface in board design, and need to be configured by
 	 * fec0 mii_bus.
 	 */
-	if ((fep->quirks & FEC_QUIRK_ENET_MAC) && fep->dev_id > 0) {
+	if ((fep->quirks & FEC_QUIRK_SINGLE_MDIO) && fep->dev_id > 0) {
 		/* fec1 uses fec0 mii_bus */
 		if (mii_cnt && fec0_mii_bus) {
 			fep->mii_bus = fec0_mii_bus;
@@ -2020,7 +2016,7 @@ static int fec_enet_mii_init(struct platform_device *pdev)
 	mii_cnt++;
 
 	/* save fec0 mii_bus */
-	if (fep->quirks & FEC_QUIRK_ENET_MAC)
+	if (fep->quirks & FEC_QUIRK_SINGLE_MDIO)
 		fec0_mii_bus = fep->mii_bus;
 
 	return 0;
@@ -3134,6 +3130,7 @@ fec_probe(struct platform_device *pdev)
 		pdev->id_entry = of_id->data;
 	fep->quirks = pdev->id_entry->driver_data;
 
+	fep->netdev = ndev;
 	fep->num_rx_queues = num_rx_qs;
 	fep->num_tx_queues = num_tx_qs;
 
@@ -3386,7 +3383,6 @@ static SIMPLE_DEV_PM_OPS(fec_pm_ops, fec_suspend, fec_resume);
 static struct platform_driver fec_driver = {
 	.driver	= {
 		.name	= DRIVER_NAME,
-		.owner	= THIS_MODULE,
 		.pm	= &fec_pm_ops,
 		.of_match_table = fec_dt_ids,
 	},

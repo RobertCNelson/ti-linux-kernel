@@ -174,6 +174,7 @@ ieee80211_determine_chantype(struct ieee80211_sub_if_data *sdata,
 	if (!(ht_cap->cap_info &
 	      cpu_to_le16(IEEE80211_HT_CAP_SUP_WIDTH_20_40))) {
 		ret = IEEE80211_STA_DISABLE_40MHZ;
+		vht_chandef = *chandef;
 		goto out;
 	}
 
@@ -1642,7 +1643,7 @@ __ieee80211_sta_handle_tspec_ac_params(struct ieee80211_sub_if_data *sdata)
 {
 	struct ieee80211_local *local = sdata->local;
 	struct ieee80211_if_managed *ifmgd = &sdata->u.mgd;
-	bool ret;
+	bool ret = false;
 	int ac;
 
 	if (local->hw.queues < IEEE80211_NUM_ACS)

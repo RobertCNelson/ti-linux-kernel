@@ -113,7 +113,6 @@ unsigned int sysctl_net_busy_read __read_mostly;
 unsigned int sysctl_net_busy_poll __read_mostly;
 #endif
 
-static int sock_no_open(struct inode *irrelevant, struct file *dontcare);
 static ssize_t sock_aio_read(struct kiocb *iocb, const struct iovec *iov,
 			 unsigned long nr_segs, loff_t pos);
 static ssize_t sock_aio_write(struct kiocb *iocb, const struct iovec *iov,
@@ -151,7 +150,6 @@ static const struct file_operations socket_file_ops = {
 	.compat_ioctl = compat_sock_ioctl,
 #endif
 	.mmap =		sock_mmap,
-	.open =		sock_no_open,	/* special open code to disallow open via /proc */
 	.release =	sock_close,
 	.fasync =	sock_fasync,
 	.sendpage =	sock_sendpage,
@@ -374,7 +372,6 @@ struct file *sock_alloc_file(struct socket *sock, int flags, const char *dname)
 	path.mnt = mntget(sock_mnt);
 
 	d_instantiate(path.dentry, SOCK_INODE(sock));
-	SOCK_INODE(sock)->i_fop = &socket_file_ops;
 
 	file = alloc_file(&path, FMODE_READ | FMODE_WRITE,
 		  &socket_file_ops);
@@ -558,23 +555,6 @@ static struct socket *sock_alloc(void)
 	this_cpu_add(sockets_in_use, 1);
 	return sock;
 }
-
-/*
- *	In theory you can't get an open on this inode, but /proc provides
- *	a back door. Remember to keep it shut otherwise you'll let the
- *	creepy crawlies in.
- */
-
-static int sock_no_open(struct inode *irrelevant, struct file *dontcare)
-{
-	return -ENXIO;
-}
-
-const struct file_operations bad_sock_fops = {
-	.owner = THIS_MODULE,
-	.open = sock_no_open,
-	.llseek = noop_llseek,
-};
 
 /**
  *	sock_release	-	close a socket
@@ -889,9 +869,6 @@ static ssize_t sock_splice_read(struct file *file, loff_t *ppos,
 static struct sock_iocb *alloc_sock_iocb(struct kiocb *iocb,
 					 struct sock_iocb *siocb)
 {
-	if (!is_sync_kiocb(iocb))
-		BUG();
-
 	siocb->kiocb = iocb;
 	iocb->private = siocb;
 	return siocb;

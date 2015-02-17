@@ -760,8 +760,9 @@ static int isi_camera_querycap(struct soc_camera_host *ici,
 {
 	strcpy(cap->driver, "atmel-isi");
 	strcpy(cap->card, "Atmel Image Sensor Interface");
-	cap->capabilities = (V4L2_CAP_VIDEO_CAPTURE |
-				V4L2_CAP_STREAMING);
+	cap->device_caps = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING;
+	cap->capabilities = cap->device_caps | V4L2_CAP_DEVICE_CAPS;
+
 	return 0;
 }
 
@@ -1068,7 +1069,6 @@ static struct platform_driver atmel_isi_driver = {
 	.remove		= atmel_isi_remove,
 	.driver		= {
 		.name = "atmel_isi",
-		.owner = THIS_MODULE,
 		.of_match_table = of_match_ptr(atmel_isi_of_match),
 	},
 };

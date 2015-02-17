@@ -2368,6 +2368,11 @@ int ndo_dflt_fdb_add(struct ndmsg *ndm,
 		return err;
 	}
 
+	if (vid) {
+		pr_info("%s: vlans aren't supported yet for dev_uc|mc_add()\n", dev->name);
+		return err;
+	}
+
 	if (is_unicast_ether_addr(addr) || is_link_local_ether_addr(addr))
 		err = dev_uc_add_excl(dev, addr);
 	else if (is_multicast_ether_addr(addr))
@@ -2890,12 +2895,16 @@ static int rtnl_bridge_notify(struct net_device *dev, u16 flags)
 			goto errout;
 	}
 
+	if (!skb->len)
+		goto errout;
+
 	rtnl_notify(skb, net, 0, RTNLGRP_LINK, NULL, GFP_ATOMIC);
 	return 0;
 errout:
 	WARN_ON(err == -EMSGSIZE);
 	kfree_skb(skb);
-	rtnl_set_sk_err(net, RTNLGRP_LINK, err);
+	if (err)
+		rtnl_set_sk_err(net, RTNLGRP_LINK, err);
 	return err;
 }
 

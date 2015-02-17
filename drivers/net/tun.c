@@ -65,7 +65,6 @@
 #include <linux/nsproxy.h>
 #include <linux/virtio_net.h>
 #include <linux/rcupdate.h>
-#include <net/ipv6.h>
 #include <net/net_namespace.h>
 #include <net/netns/generic.h>
 #include <net/rtnetlink.h>
@@ -110,9 +109,11 @@ do {								\
  * overload it to mean fasync when stored there.
  */
 #define TUN_FASYNC	IFF_ATTACH_QUEUE
+/* High bits in flags field are unused. */
+#define TUN_VNET_LE     0x80000000
 
 #define TUN_FEATURES (IFF_NO_PI | IFF_ONE_QUEUE | IFF_VNET_HDR | \
-		      IFF_VNET_LE | IFF_MULTI_QUEUE)
+		      IFF_MULTI_QUEUE)
 #define GOODCOPY_LEN 128
 
 #define FLT_EXACT_COUNT 8
@@ -185,7 +186,7 @@ struct tun_struct {
 	struct net_device	*dev;
 	netdev_features_t	set_features;
 #define TUN_USER_FEATURES (NETIF_F_HW_CSUM|NETIF_F_TSO_ECN|NETIF_F_TSO| \
-			  NETIF_F_TSO6)
+			  NETIF_F_TSO6|NETIF_F_UFO)
 
 	int			vnet_hdr_sz;
 	int			sndbuf;
@@ -208,12 +209,12 @@ struct tun_struct {
 
 static inline u16 tun16_to_cpu(struct tun_struct *tun, __virtio16 val)
 {
-	return __virtio16_to_cpu(tun->flags & IFF_VNET_LE, val);
+	return __virtio16_to_cpu(tun->flags & TUN_VNET_LE, val);
 }
 
 static inline __virtio16 cpu_to_tun16(struct tun_struct *tun, u16 val)
 {
-	return __cpu_to_virtio16(tun->flags & IFF_VNET_LE, val);
+	return __cpu_to_virtio16(tun->flags & TUN_VNET_LE, val);
 }
 
 static inline u32 tun_hashfn(u32 rxhash)
@@ -1165,8 +1166,6 @@ static ssize_t tun_get_user(struct tun_struct *tun, struct tun_file *tfile,
 		break;
 	}
 
-	skb_reset_network_header(skb);
-
 	if (gso.gso_type != VIRTIO_NET_HDR_GSO_NONE) {
 		pr_debug("GSO!\n");
 		switch (gso.gso_type & ~VIRTIO_NET_HDR_GSO_ECN) {
@@ -1177,20 +1176,8 @@ static ssize_t tun_get_user(struct tun_struct *tun, struct tun_file *tfile,
 			skb_shinfo(skb)->gso_type = SKB_GSO_TCPV6;
 			break;
 		case VIRTIO_NET_HDR_GSO_UDP:
-		{
-			static bool warned;
-
-			if (!warned) {
-				warned = true;
-				netdev_warn(tun->dev,
-					    "%s: using disabled UFO feature; please fix this program\n",
-					    current->comm);
-			}
 			skb_shinfo(skb)->gso_type = SKB_GSO_UDP;
-			if (skb->protocol == htons(ETH_P_IPV6))
-				ipv6_proxy_select_ident(skb);
 			break;
-		}
 		default:
 			tun->dev->stats.rx_frame_errors++;
 			kfree_skb(skb);
@@ -1219,6 +1206,7 @@ static ssize_t tun_get_user(struct tun_struct *tun, struct tun_file *tfile,
 		skb_shinfo(skb)->tx_flags |= SKBTX_SHARED_FRAG;
 	}
 
+	skb_reset_network_header(skb);
 	skb_probe_transport_header(skb, 0);
 
 	rxhash = skb_get_hash(skb);
@@ -1296,6 +1284,8 @@ static ssize_t tun_put_user(struct tun_struct *tun,
 				gso.gso_type = VIRTIO_NET_HDR_GSO_TCPV4;
 			else if (sinfo->gso_type & SKB_GSO_TCPV6)
 				gso.gso_type = VIRTIO_NET_HDR_GSO_TCPV6;
+			else if (sinfo->gso_type & SKB_GSO_UDP)
+				gso.gso_type = VIRTIO_NET_HDR_GSO_UDP;
 			else {
 				pr_err("unexpected GSO type: "
 				       "0x%x, gso_size %d, hdr_len %d\n",
@@ -1744,6 +1734,11 @@ static int set_offload(struct tun_struct *tun, unsigned long arg)
 				features |= NETIF_F_TSO6;
 			arg &= ~(TUN_F_TSO4|TUN_F_TSO6);
 		}
+
+		if (arg & TUN_F_UFO) {
+			features |= NETIF_F_UFO;
+			arg &= ~TUN_F_UFO;
+		}
 	}
 
 	/* This gives the user a way to test for new features in future by
@@ -1843,6 +1838,7 @@ static long __tun_chr_ioctl(struct file *file, unsigned int cmd,
 	int sndbuf;
 	int vnet_hdr_sz;
 	unsigned int ifindex;
+	int le;
 	int ret;
 
 	if (cmd == TUNSETIFF || cmd == TUNSETQUEUE || _IOC_TYPE(cmd) == 0x89) {
@@ -2040,6 +2036,23 @@ static long __tun_chr_ioctl(struct file *file, unsigned int cmd,
 		}
 
 		tun->vnet_hdr_sz = vnet_hdr_sz;
+		break;
+
+	case TUNGETVNETLE:
+		le = !!(tun->flags & TUN_VNET_LE);
+		if (put_user(le, (int __user *)argp))
+			ret = -EFAULT;
+		break;
+
+	case TUNSETVNETLE:
+		if (get_user(le, (int __user *)argp)) {
+			ret = -EFAULT;
+			break;
+		}
+		if (le)
+			tun->flags |= TUN_VNET_LE;
+		else
+			tun->flags &= ~TUN_VNET_LE;
 		break;
 
 	case TUNATTACHFILTER:

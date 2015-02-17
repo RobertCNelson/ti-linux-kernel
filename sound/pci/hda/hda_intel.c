@@ -299,6 +299,9 @@ enum {
 	 AZX_DCAPS_PM_RUNTIME | AZX_DCAPS_I915_POWERWELL |\
 	 AZX_DCAPS_SNOOP_TYPE(SCH))
 
+#define AZX_DCAPS_INTEL_SKYLAKE \
+	(AZX_DCAPS_INTEL_PCH | AZX_DCAPS_SEPARATE_STREAM_TAG)
+
 /* quirks for ATI SB / AMD Hudson */
 #define AZX_DCAPS_PRESET_ATI_SB \
 	(AZX_DCAPS_NO_TCSEL | AZX_DCAPS_SYNC_WRITE | AZX_DCAPS_POSFIX_LPIB |\
@@ -872,7 +875,7 @@ static int azx_resume(struct device *dev)
 }
 #endif /* CONFIG_PM_SLEEP || SUPPORT_VGA_SWITCHEROO */
 
-#ifdef CONFIG_PM_RUNTIME
+#ifdef CONFIG_PM
 static int azx_runtime_suspend(struct device *dev)
 {
 	struct snd_card *card = dev_get_drvdata(dev);
@@ -970,9 +973,6 @@ static int azx_runtime_idle(struct device *dev)
 	return 0;
 }
 
-#endif /* CONFIG_PM_RUNTIME */
-
-#ifdef CONFIG_PM
 static const struct dev_pm_ops azx_pm = {
 	SET_SYSTEM_SLEEP_PM_OPS(azx_suspend, azx_resume)
 	SET_RUNTIME_PM_OPS(azx_runtime_suspend, azx_runtime_resume, azx_runtime_idle)
@@ -2030,7 +2030,7 @@ static const struct pci_device_id azx_ids[] = {
 	  .driver_data = AZX_DRIVER_PCH | AZX_DCAPS_INTEL_PCH },
 	/* Sunrise Point-LP */
 	{ PCI_DEVICE(0x8086, 0x9d70),
-	  .driver_data = AZX_DRIVER_PCH | AZX_DCAPS_INTEL_PCH },
+	  .driver_data = AZX_DRIVER_PCH | AZX_DCAPS_INTEL_SKYLAKE },
 	/* Haswell */
 	{ PCI_DEVICE(0x8086, 0x0a0c),
 	  .driver_data = AZX_DRIVER_HDMI | AZX_DCAPS_INTEL_HASWELL },

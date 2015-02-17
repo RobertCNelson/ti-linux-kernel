@@ -784,8 +784,8 @@ static unsigned int bst_tlv[] = {
 static int rt5677_dsp_vad_get(struct snd_kcontrol *kcontrol,
 		struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
-	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
+	struct rt5677_priv *rt5677 = snd_soc_component_get_drvdata(component);
 
 	ucontrol->value.integer.value[0] = rt5677->dsp_vad_en;
 
@@ -795,8 +795,9 @@ static int rt5677_dsp_vad_get(struct snd_kcontrol *kcontrol,
 static int rt5677_dsp_vad_put(struct snd_kcontrol *kcontrol,
 		struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
-	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
+	struct rt5677_priv *rt5677 = snd_soc_component_get_drvdata(component);
+	struct snd_soc_codec *codec = snd_soc_component_to_codec(component);
 
 	rt5677->dsp_vad_en = !!ucontrol->value.integer.value[0];
 
@@ -2082,10 +2083,14 @@ static int rt5677_set_pll1_event(struct snd_soc_dapm_widget *w,
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
 
 	switch (event) {
-	case SND_SOC_DAPM_POST_PMU:
+	case SND_SOC_DAPM_PRE_PMU:
 		regmap_update_bits(rt5677->regmap, RT5677_PLL1_CTRL2, 0x2, 0x2);
+		break;
+
+	case SND_SOC_DAPM_POST_PMU:
 		regmap_update_bits(rt5677->regmap, RT5677_PLL1_CTRL2, 0x2, 0x0);
 		break;
+
 	default:
 		return 0;
 	}
@@ -2100,10 +2105,14 @@ static int rt5677_set_pll2_event(struct snd_soc_dapm_widget *w,
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
 
 	switch (event) {
-	case SND_SOC_DAPM_POST_PMU:
+	case SND_SOC_DAPM_PRE_PMU:
 		regmap_update_bits(rt5677->regmap, RT5677_PLL2_CTRL2, 0x2, 0x2);
+		break;
+
+	case SND_SOC_DAPM_POST_PMU:
 		regmap_update_bits(rt5677->regmap, RT5677_PLL2_CTRL2, 0x2, 0x0);
 		break;
+
 	default:
 		return 0;
 	}
@@ -2211,9 +2220,11 @@ static int rt5677_vref_event(struct snd_soc_dapm_widget *w,
 
 static const struct snd_soc_dapm_widget rt5677_dapm_widgets[] = {
 	SND_SOC_DAPM_SUPPLY("PLL1", RT5677_PWR_ANLG2, RT5677_PWR_PLL1_BIT,
-		0, rt5677_set_pll1_event, SND_SOC_DAPM_POST_PMU),
+		0, rt5677_set_pll1_event, SND_SOC_DAPM_PRE_PMU |
+		SND_SOC_DAPM_POST_PMU),
 	SND_SOC_DAPM_SUPPLY("PLL2", RT5677_PWR_ANLG2, RT5677_PWR_PLL2_BIT,
-		0, rt5677_set_pll2_event, SND_SOC_DAPM_POST_PMU),
+		0, rt5677_set_pll2_event, SND_SOC_DAPM_PRE_PMU |
+		SND_SOC_DAPM_POST_PMU),
 
 	/* Input Side */
 	/* micbias */

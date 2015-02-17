@@ -1635,7 +1635,6 @@ unsigned int atapi_eh_request_sense(struct ata_device *dev,
 
 	DPRINTK("ATAPI request sense\n");
 
-	/* FIXME: is this needed? */
 	memset(sense_buf, 0, SCSI_SENSE_BUFFERSIZE);
 
 	/* initialize sense_buf with the error register,
@@ -2389,6 +2388,7 @@ const char *ata_get_cmd_descript(u8 command)
 
 	return NULL;
 }
+EXPORT_SYMBOL_GPL(ata_get_cmd_descript);
 
 /**
  *	ata_eh_link_report - report error handling to user

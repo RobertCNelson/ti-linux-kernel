@@ -176,7 +176,7 @@ extern int _cond_resched(void);
  */
 # define might_sleep() \
 	do { __might_sleep(__FILE__, __LINE__, 0); might_resched(); } while (0)
-# define sched_annotate_sleep()	__set_current_state(TASK_RUNNING)
+# define sched_annotate_sleep()	(current->task_state_change = 0)
 #else
   static inline void ___might_sleep(const char *file, int line,
 				   int preempt_offset) { }
@@ -415,9 +415,6 @@ extern int core_kernel_data(unsigned long addr);
 extern int __kernel_text_address(unsigned long addr);
 extern int kernel_text_address(unsigned long addr);
 extern int func_ptr_is_kernel_text(void *ptr);
-
-struct pid;
-extern struct pid *session_of_pgrp(struct pid *pgrp);
 
 unsigned long int_sqrt(unsigned long);
 

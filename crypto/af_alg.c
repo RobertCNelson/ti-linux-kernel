@@ -421,6 +421,12 @@ int af_alg_cmsg_send(struct msghdr *msg, struct af_alg_control *con)
 			con->op = *(u32 *)CMSG_DATA(cmsg);
 			break;
 
+		case ALG_SET_AEAD_ASSOCLEN:
+			if (cmsg->cmsg_len < CMSG_LEN(sizeof(u32)))
+				return -EINVAL;
+			con->aead_assoclen = *(u32 *)CMSG_DATA(cmsg);
+			break;
+
 		default:
 			return -EINVAL;
 		}
@@ -448,6 +454,9 @@ EXPORT_SYMBOL_GPL(af_alg_wait_for_completion);
 void af_alg_complete(struct crypto_async_request *req, int err)
 {
 	struct af_alg_completion *completion = req->data;
+
+	if (err == -EINPROGRESS)
+		return;
 
 	completion->err = err;
 	complete(&completion->completion);

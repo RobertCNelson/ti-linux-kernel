@@ -2009,15 +2009,14 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 
 		rx_desc = IXGBE_RX_DESC(rx_ring, rx_ring->next_to_clean);
 
-		if (!ixgbe_test_staterr(rx_desc, IXGBE_RXD_STAT_DD))
+		if (!rx_desc->wb.upper.status_error)
 			break;
 
-		/*
-		 * This memory barrier is needed to keep us from reading
+		/* This memory barrier is needed to keep us from reading
 		 * any other fields out of the rx_desc until we know the
-		 * RXD_STAT_DD bit is set
+		 * descriptor has been written back
 		 */
-		rmb();
+		dma_rmb();
 
 		/* retrieve a buffer from the ring */
 		skb = ixgbe_fetch_rx_buffer(rx_ring, rx_desc);
@@ -7228,11 +7227,11 @@ netdev_tx_t ixgbe_xmit_frame_ring(struct sk_buff *skb,
 		if (!vhdr)
 			goto out_drop;
 
-		protocol = vhdr->h_vlan_encapsulated_proto;
 		tx_flags |= ntohs(vhdr->h_vlan_TCI) <<
 				  IXGBE_TX_FLAGS_VLAN_SHIFT;
 		tx_flags |= IXGBE_TX_FLAGS_SW_VLAN;
 	}
+	protocol = vlan_get_protocol(skb);
 
 	if (unlikely(skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) &&
 	    adapter->ptp_clock &&

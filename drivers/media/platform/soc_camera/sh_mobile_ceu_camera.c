@@ -1652,7 +1652,9 @@ static int sh_mobile_ceu_querycap(struct soc_camera_host *ici,
 				  struct v4l2_capability *cap)
 {
 	strlcpy(cap->card, "SuperH_Mobile_CEU", sizeof(cap->card));
-	cap->capabilities = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING;
+	cap->device_caps = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING;
+	cap->capabilities = cap->device_caps | V4L2_CAP_DEVICE_CAPS;
+
 	return 0;
 }
 
@@ -2009,7 +2011,6 @@ MODULE_DEVICE_TABLE(of, sh_mobile_ceu_of_match);
 static struct platform_driver sh_mobile_ceu_driver = {
 	.driver		= {
 		.name	= "sh_mobile_ceu",
-		.owner	= THIS_MODULE,
 		.pm	= &sh_mobile_ceu_dev_pm_ops,
 		.of_match_table = sh_mobile_ceu_of_match,
 	},

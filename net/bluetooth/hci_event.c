@@ -242,7 +242,8 @@ static void hci_cc_read_local_name(struct hci_dev *hdev, struct sk_buff *skb)
 	if (rp->status)
 		return;
 
-	if (test_bit(HCI_SETUP, &hdev->dev_flags))
+	if (test_bit(HCI_SETUP, &hdev->dev_flags) ||
+	    test_bit(HCI_CONFIG, &hdev->dev_flags))
 		memcpy(hdev->dev_name, rp->name, HCI_MAX_NAME_LENGTH);
 }
 
@@ -257,6 +258,8 @@ static void hci_cc_write_auth_enable(struct hci_dev *hdev, struct sk_buff *skb)
 	if (!sent)
 		return;
 
+	hci_dev_lock(hdev);
+
 	if (!status) {
 		__u8 param = *((__u8 *) sent);
 
@@ -268,6 +271,8 @@ static void hci_cc_write_auth_enable(struct hci_dev *hdev, struct sk_buff *skb)
 
 	if (test_bit(HCI_MGMT, &hdev->dev_flags))
 		mgmt_auth_enable_complete(hdev, status);
+
+	hci_dev_unlock(hdev);
 }
 
 static void hci_cc_write_encrypt_mode(struct hci_dev *hdev, struct sk_buff *skb)
@@ -443,6 +448,8 @@ static void hci_cc_write_ssp_mode(struct hci_dev *hdev, struct sk_buff *skb)
 	if (!sent)
 		return;
 
+	hci_dev_lock(hdev);
+
 	if (!status) {
 		if (sent->mode)
 			hdev->features[1][0] |= LMP_HOST_SSP;
@@ -458,6 +465,8 @@ static void hci_cc_write_ssp_mode(struct hci_dev *hdev, struct sk_buff *skb)
 		else
 			clear_bit(HCI_SSP_ENABLED, &hdev->dev_flags);
 	}
+
+	hci_dev_unlock(hdev);
 }
 
 static void hci_cc_write_sc_support(struct hci_dev *hdev, struct sk_buff *skb)
@@ -470,6 +479,8 @@ static void hci_cc_write_sc_support(struct hci_dev *hdev, struct sk_buff *skb)
 	sent = hci_sent_cmd_data(hdev, HCI_OP_WRITE_SC_SUPPORT);
 	if (!sent)
 		return;
+
+	hci_dev_lock(hdev);
 
 	if (!status) {
 		if (sent->support)
@@ -486,6 +497,8 @@ static void hci_cc_write_sc_support(struct hci_dev *hdev, struct sk_buff *skb)
 		else
 			clear_bit(HCI_SC_ENABLED, &hdev->dev_flags);
 	}
+
+	hci_dev_unlock(hdev);
 }
 
 static void hci_cc_read_local_version(struct hci_dev *hdev, struct sk_buff *skb)
@@ -497,7 +510,8 @@ static void hci_cc_read_local_version(struct hci_dev *hdev, struct sk_buff *skb)
 	if (rp->status)
 		return;
 
-	if (test_bit(HCI_SETUP, &hdev->dev_flags)) {
+	if (test_bit(HCI_SETUP, &hdev->dev_flags) ||
+	    test_bit(HCI_CONFIG, &hdev->dev_flags)) {
 		hdev->hci_ver = rp->hci_ver;
 		hdev->hci_rev = __le16_to_cpu(rp->hci_rev);
 		hdev->lmp_ver = rp->lmp_ver;
@@ -516,7 +530,8 @@ static void hci_cc_read_local_commands(struct hci_dev *hdev,
 	if (rp->status)
 		return;
 
-	if (test_bit(HCI_SETUP, &hdev->dev_flags))
+	if (test_bit(HCI_SETUP, &hdev->dev_flags) ||
+	    test_bit(HCI_CONFIG, &hdev->dev_flags))
 		memcpy(hdev->commands, rp->commands, sizeof(hdev->commands));
 }
 
@@ -1135,6 +1150,8 @@ static void hci_cc_le_set_scan_enable(struct hci_dev *hdev,
 	if (!cp)
 		return;
 
+	hci_dev_lock(hdev);
+
 	switch (cp->enable) {
 	case LE_SCAN_ENABLE:
 		set_bit(HCI_LE_SCAN, &hdev->dev_flags);
@@ -1184,6 +1201,8 @@ static void hci_cc_le_set_scan_enable(struct hci_dev *hdev,
 		BT_ERR("Used reserved LE_Scan_Enable param %d", cp->enable);
 		break;
 	}
+
+	hci_dev_unlock(hdev);
 }
 
 static void hci_cc_le_read_white_list_size(struct hci_dev *hdev,
@@ -1278,6 +1297,8 @@ static void hci_cc_write_le_host_supported(struct hci_dev *hdev,
 	if (!sent)
 		return;
 
+	hci_dev_lock(hdev);
+
 	if (sent->le) {
 		hdev->features[1][0] |= LMP_HOST_LE;
 		set_bit(HCI_LE_ENABLED, &hdev->dev_flags);
@@ -1291,6 +1312,8 @@ static void hci_cc_write_le_host_supported(struct hci_dev *hdev,
 		hdev->features[1][0] |= LMP_HOST_LE_BREDR;
 	else
 		hdev->features[1][0] &= ~LMP_HOST_LE_BREDR;
+
+	hci_dev_unlock(hdev);
 }
 
 static void hci_cc_set_adv_param(struct hci_dev *hdev, struct sk_buff *skb)
@@ -2174,7 +2197,12 @@ static void hci_conn_request_evt(struct hci_dev *hdev, struct sk_buff *skb)
 		return;
 	}
 
-	if (!test_bit(HCI_CONNECTABLE, &hdev->dev_flags) &&
+	/* Require HCI_CONNECTABLE or a whitelist entry to accept the
+	 * connection. These features are only touched through mgmt so
+	 * only do the checks if HCI_MGMT is set.
+	 */
+	if (test_bit(HCI_MGMT, &hdev->dev_flags) &&
+	    !test_bit(HCI_CONNECTABLE, &hdev->dev_flags) &&
 	    !hci_bdaddr_list_lookup(&hdev->whitelist, &ev->bdaddr,
 				    BDADDR_BREDR)) {
 		    hci_reject_conn(hdev, &ev->bdaddr);
