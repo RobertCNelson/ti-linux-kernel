@@ -1460,14 +1460,11 @@ const char *qib_get_unit_name(int unit);
  * Flush write combining store buffers (if present) and perform a write
  * barrier.
  */
-static inline void qib_flush_wc(void)
-{
 #if defined(CONFIG_X86_64)
-	asm volatile("sfence" : : : "memory");
+#define qib_flush_wc() asm volatile("sfence" : : : "memory")
 #else
-	wmb() /* no reorder around wc flush */
+#define qib_flush_wc() wmb() /* no reorder around wc flush */
 #endif
-}
 
 /* global module parameter variables */
 extern unsigned qib_ibmtu;

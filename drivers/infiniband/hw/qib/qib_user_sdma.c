@@ -50,7 +50,7 @@
 /* expected size of headers (for dma_pool) */
 #define QIB_USER_SDMA_EXP_HEADER_LENGTH 64
 /* attempt to drain the queue for 5secs */
-#define QIB_USER_SDMA_DRAIN_TIMEOUT 250
+#define QIB_USER_SDMA_DRAIN_TIMEOUT 500
 
 /*
  * track how many times a process open this driver.
@@ -1144,7 +1144,7 @@ void qib_user_sdma_queue_drain(struct qib_pportdata *ppd,
 		qib_user_sdma_hwqueue_clean(ppd);
 		qib_user_sdma_queue_clean(ppd, pq);
 		mutex_unlock(&pq->lock);
-		msleep(20);
+		msleep(10);
 	}
 
 	if (pq->num_pending || pq->num_sending) {
@@ -1318,6 +1318,8 @@ retry:
 
 	if (nfree && !list_empty(pktlist))
 		goto retry;
+
+	return;
 }
 
 /* pq->lock must be held, get packets on the wire... */
