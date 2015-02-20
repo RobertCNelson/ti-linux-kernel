@@ -277,6 +277,11 @@ int dma_pfn_limit_to_zone(u64 pfn_limit)
 	return -EPERM;
 }
 
+u64 dma_get_zone_limit(int zone)
+{
+	return max_zone_pfns[zone] << PAGE_SHIFT;
+}
+
 /*
  * paging_init() sets up the page tables - in fact we've already done this.
  */
