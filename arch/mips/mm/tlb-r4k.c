@@ -486,12 +486,13 @@ static void r4k_tlb_configure(void)
 		 * address.
 		 */
 		u32 pg = PG_RIE | PG_XIE;
+
+		if (cpu_has_rixiex)
+			pg |= PG_IEC;
 #ifdef CONFIG_64BIT
 		pg |= PG_ELPA;
 #endif
-		if (cpu_has_rixiex)
-			pg |= PG_IEC;
-		write_c0_pagegrain(pg);
+		set_c0_pagegrain(pg);
 	}
 
 	temp_tlb_entry = current_cpu_data.tlbsize - 1;
