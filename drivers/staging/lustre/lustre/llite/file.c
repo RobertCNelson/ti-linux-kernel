@@ -387,7 +387,7 @@ int ll_file_release(struct inode *inode, struct file *file)
 static int ll_intent_file_open(struct dentry *dentry, void *lmm,
 			       int lmmsize, struct lookup_intent *itp)
 {
-	struct inode *inode = dentry->d_inode;
+	struct inode *inode = fs_inode(dentry);
 	struct ll_sb_info *sbi = ll_i2sbi(inode);
 	struct dentry *parent = dentry->d_parent;
 	const char *name = dentry->d_name.name;
@@ -412,7 +412,7 @@ static int ll_intent_file_open(struct dentry *dentry, void *lmm,
 			opc = LUSTRE_OPC_CREATE;
 	}
 
-	op_data  = ll_prep_md_op_data(NULL, parent->d_inode,
+	op_data  = ll_prep_md_op_data(NULL, fs_inode(parent),
 				      inode, name, len,
 				      O_RDWR, opc, NULL);
 	if (IS_ERR(op_data))
@@ -2889,7 +2889,7 @@ static int ll_inode_revalidate_fini(struct inode *inode, int rc)
 
 static int __ll_inode_revalidate(struct dentry *dentry, __u64 ibits)
 {
-	struct inode *inode = dentry->d_inode;
+	struct inode *inode = fs_inode(dentry);
 	struct ptlrpc_request *req = NULL;
 	struct obd_export *exp;
 	int rc = 0;
@@ -2912,8 +2912,8 @@ static int __ll_inode_revalidate(struct dentry *dentry, __u64 ibits)
 			oit.it_op = IT_LOOKUP;
 
 		/* Call getattr by fid, so do not provide name at all. */
-		op_data = ll_prep_md_op_data(NULL, dentry->d_inode,
-					     dentry->d_inode, NULL, 0, 0,
+		op_data = ll_prep_md_op_data(NULL, inode,
+					     inode, NULL, 0, 0,
 					     LUSTRE_OPC_ANY, NULL);
 		if (IS_ERR(op_data))
 			return PTR_ERR(op_data);
@@ -2931,7 +2931,7 @@ static int __ll_inode_revalidate(struct dentry *dentry, __u64 ibits)
 			goto out;
 		}
 
-		rc = ll_revalidate_it_finish(req, &oit, dentry);
+		rc = ll_revalidate_it_finish(req, &oit, inode);
 		if (rc != 0) {
 			ll_intent_release(&oit);
 			goto out;
@@ -2941,12 +2941,12 @@ static int __ll_inode_revalidate(struct dentry *dentry, __u64 ibits)
 		   do_lookup() -> ll_revalidate_it(). We cannot use d_drop
 		   here to preserve get_cwd functionality on 2.6.
 		   Bug 10503 */
-		if (!dentry->d_inode->i_nlink)
+		if (!fs_inode(dentry)->i_nlink)
 			d_lustre_invalidate(dentry, 0);
 
-		ll_lookup_finish_locks(&oit, dentry);
-	} else if (!ll_have_md_lock(dentry->d_inode, &ibits, LCK_MINMODE)) {
-		struct ll_sb_info *sbi = ll_i2sbi(dentry->d_inode);
+		ll_lookup_finish_locks(&oit, inode);
+	} else if (!ll_have_md_lock(fs_inode(dentry), &ibits, LCK_MINMODE)) {
+		struct ll_sb_info *sbi = ll_i2sbi(fs_inode(dentry));
 		u64 valid = OBD_MD_FLGETATTR;
 		struct md_op_data *op_data;
 		int ealen = 0;
@@ -2984,7 +2984,7 @@ out:
 
 static int ll_inode_revalidate(struct dentry *dentry, __u64 ibits)
 {
-	struct inode *inode = dentry->d_inode;
+	struct inode *inode = fs_inode(dentry);
 	int rc;
 
 	rc = __ll_inode_revalidate(dentry, ibits);
@@ -3012,7 +3012,7 @@ static int ll_inode_revalidate(struct dentry *dentry, __u64 ibits)
 
 int ll_getattr(struct vfsmount *mnt, struct dentry *de, struct kstat *stat)
 {
-	struct inode *inode = de->d_inode;
+	struct inode *inode = fs_inode(de);
 	struct ll_sb_info *sbi = ll_i2sbi(inode);
 	struct ll_inode_info *lli = ll_i2info(inode);
 	int res = 0;

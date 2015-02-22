@@ -54,11 +54,11 @@ static int ecryptfs_d_revalidate(struct dentry *dentry, unsigned int flags)
 		return -ECHILD;
 
 	rc = lower_dentry->d_op->d_revalidate(lower_dentry, flags);
-	if (dentry->d_inode) {
+	if (fs_inode(dentry)) {
 		struct inode *lower_inode =
-			ecryptfs_inode_to_lower(dentry->d_inode);
+			ecryptfs_inode_to_lower(fs_inode(dentry));
 
-		fsstack_copy_attr_all(dentry->d_inode, lower_inode);
+		fsstack_copy_attr_all(fs_inode(dentry), lower_inode);
 	}
 	return rc;
 }

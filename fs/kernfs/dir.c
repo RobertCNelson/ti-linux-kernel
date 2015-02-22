@@ -444,7 +444,7 @@ static int kernfs_dop_revalidate(struct dentry *dentry, unsigned int flags)
 		return -ECHILD;
 
 	/* Always perform fresh lookup for negatives */
-	if (!dentry->d_inode)
+	if (!fs_inode(dentry))
 		goto out_bad_unlocked;
 
 	kn = dentry->d_fsdata;

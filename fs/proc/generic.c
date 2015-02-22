@@ -102,7 +102,7 @@ static bool pde_subdir_insert(struct proc_dir_entry *dir,
 
 static int proc_notify_change(struct dentry *dentry, struct iattr *iattr)
 {
-	struct inode *inode = dentry->d_inode;
+	struct inode *inode = fs_inode(dentry);
 	struct proc_dir_entry *de = PDE(inode);
 	int error;
 
@@ -121,7 +121,7 @@ static int proc_notify_change(struct dentry *dentry, struct iattr *iattr)
 static int proc_getattr(struct vfsmount *mnt, struct dentry *dentry,
 			struct kstat *stat)
 {
-	struct inode *inode = dentry->d_inode;
+	struct inode *inode = fs_inode(dentry);
 	struct proc_dir_entry *de = PDE(inode);
 	if (de && de->nlink)
 		set_nlink(inode, de->nlink);
@@ -225,7 +225,7 @@ void proc_free_inum(unsigned int inum)
 
 static void *proc_follow_link(struct dentry *dentry, struct nameidata *nd)
 {
-	nd_set_link(nd, __PDE_DATA(dentry->d_inode));
+	nd_set_link(nd, __PDE_DATA(fs_inode(dentry)));
 	return NULL;
 }
 
