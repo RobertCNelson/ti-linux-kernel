@@ -2725,9 +2725,18 @@ static void skylake_update_primary_plane(struct drm_crtc *crtc,
 	case DRM_FORMAT_XRGB8888:
 		plane_ctl |= PLANE_CTL_FORMAT_XRGB_8888;
 		break;
+	case DRM_FORMAT_ARGB8888:
+		plane_ctl |= PLANE_CTL_FORMAT_XRGB_8888;
+		plane_ctl |= PLANE_CTL_ALPHA_SW_PREMULTIPLY;
+		break;
 	case DRM_FORMAT_XBGR8888:
 		plane_ctl |= PLANE_CTL_ORDER_RGBX;
 		plane_ctl |= PLANE_CTL_FORMAT_XRGB_8888;
+		break;
+	case DRM_FORMAT_ABGR8888:
+		plane_ctl |= PLANE_CTL_ORDER_RGBX;
+		plane_ctl |= PLANE_CTL_FORMAT_XRGB_8888;
+		plane_ctl |= PLANE_CTL_ALPHA_SW_PREMULTIPLY;
 		break;
 	case DRM_FORMAT_XRGB2101010:
 		plane_ctl |= PLANE_CTL_FORMAT_XRGB_2101010;
@@ -13096,6 +13105,9 @@ static struct intel_quirk intel_quirks[] = {
 
 	/* HP Chromebook 14 (Celeron 2955U) */
 	{ 0x0a06, 0x103c, 0x21ed, quirk_backlight_present },
+
+	/* Dell Chromebook 11 */
+	{ 0x0a06, 0x1028, 0x0a35, quirk_backlight_present },
 };
 
 static void intel_init_quirks(struct drm_device *dev)
