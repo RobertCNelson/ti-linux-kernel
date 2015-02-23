@@ -27,6 +27,7 @@ static const char * const r8a7794_boards_compat_dt[] __initconst = {
 DT_MACHINE_START(R8A7794_DT, "Generic R8A7794 (Flattened Device Tree)")
 	.init_early	= shmobile_init_delay,
 	.init_late	= shmobile_init_late,
+	.init_machine	= rcar_gen2_init_machine,
 	.init_time	= rcar_gen2_timer_init,
 	.reserve	= rcar_gen2_reserve,
 	.dt_compat	= r8a7794_boards_compat_dt,

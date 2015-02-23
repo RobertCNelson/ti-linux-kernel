@@ -19,6 +19,7 @@ config ARCH_RCAR_GEN2
 	bool
 	select PM_RCAR if PM || SMP
 	select RENESAS_IRQC
+	select SOC_BUS
 	select SYS_SUPPORTS_SH_CMT
 	select PCI_DOMAINS if PCI
 
