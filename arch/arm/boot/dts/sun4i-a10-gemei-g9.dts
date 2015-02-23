@@ -1,6 +1,7 @@
 /*
- * Copyright 2012 Stefan Roese
- * Stefan Roese <sr@denx.de>
+ * Copyright 2015 Priit Laes
+ *
+ * Priit Laes <plaes@plaes.org>
  *
  * This file is dual-licensed: you can use it either under the terms
  * of the GPL or the X11 license, at your option. Note that this dual
@@ -49,40 +50,23 @@
 /dts-v1/;
 #include "sun4i-a10.dtsi"
 #include "sunxi-common-regulators.dtsi"
-
 #include <dt-bindings/gpio/gpio.h>
-#include <dt-bindings/pinctrl/sun4i-a10.h>
+#include <dt-bindings/input/input.h>
 
 / {
-	model = "Cubietech Cubieboard";
-	compatible = "cubietech,a10-cubieboard", "allwinner,sun4i-a10";
-
-	leds {
-		compatible = "gpio-leds";
-		pinctrl-names = "default";
-		pinctrl-0 = <&led_pins_cubieboard>;
-
-		blue {
-			label = "cubieboard:blue:usr";
-			gpios = <&pio 7 21 GPIO_ACTIVE_HIGH>; /* LED1 */
-		};
-
-		green {
-			label = "cubieboard:green:usr";
-			gpios = <&pio 7 20 GPIO_ACTIVE_HIGH>; /* LED2 */
-			linux,default-trigger = "heartbeat";
-		};
-	};
+	model = "Gemei G9 Tablet";
+	compatible = "gemei,g9", "allwinner,sun4i-a10";
 };
 
-&ahci {
-	target-supply = <&reg_ahci_5v>;
-	status = "okay";
-};
-
-&cpu0 {
-	cpu-supply = <&reg_dcdc2>;
-};
+/*
+ * TODO:
+ *   2x cameras via CSI
+ *   bma250 IRQs
+ *   AXP battery management
+ *   NAND
+ *   OTG
+ *   Touchscreen - gt801_2plus1 @ i2c adapter 2 @ 0x48
+ */
 
 &ehci0 {
 	status = "okay";
@@ -92,21 +76,18 @@
 	status = "okay";
 };
 
-&emac {
-	pinctrl-names = "default";
-	pinctrl-0 = <&emac_pins_a>;
-	phy = <&phy1>;
-	status = "okay";
-};
-
 &i2c0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c0_pins_a>;
 	status = "okay";
 
 	axp209: pmic@34 {
+		compatible = "x-powers,axp209";
 		reg = <0x34>;
 		interrupts = <0>;
+
+		interrupt-controller;
+		#interrupt-cells = <1>;
 	};
 };
 
@@ -114,19 +95,44 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c1_pins_a>;
 	status = "okay";
+
+	/* Accelerometer */
+	bma250@18 {
+		compatible = "bosch,bma250";
+		reg = <0x18>;
+
+		/*
+		 * TODO: interrupt pins:
+		 * int1 - PH00
+		 * int2 - PI10
+		 */
+	};
 };
 
-&ir0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&ir0_pins_a>;
-	status = "okay";
-};
+&lradc {
+	vref-supply = <&reg_vcc3v0>;
 
-&mdio {
 	status = "okay";
 
-	phy1: ethernet-phy@1 {
-		reg = <1>;
+	button@158 {
+		label = "Volume Down";
+		linux,code = <KEY_VOLUMEDOWN>;
+		channel = <0>;
+		voltage = <158730>;
+	};
+
+	button@349 {
+		label = "Volume Up";
+		linux,code = <KEY_VOLUMEUP>;
+		channel = <0>;
+		voltage = <349206>;
+	};
+
+	button@1142 {
+		label = "Esc";
+		linux,code = <KEY_ESC>;
+		channel = <0>;
+		voltage = <1142856>;
 	};
 };
 
@@ -135,57 +141,9 @@
 	pinctrl-0 = <&mmc0_pins_a>, <&mmc0_cd_pin_reference_design>;
 	vmmc-supply = <&reg_vcc3v3>;
 	bus-width = <4>;
-	cd-gpios = <&pio 7 1 GPIO_ACTIVE_HIGH>; /* PH1 */
+	cd-gpios = <&pio 7 1 GPIO_ACTIVE_HIGH>; /* PH01 */
 	cd-inverted;
 	status = "okay";
-};
-
-&ohci0 {
-	status = "okay";
-};
-
-&ohci1 {
-	status = "okay";
-};
-
-&pio {
-	led_pins_cubieboard: led_pins@0 {
-		allwinner,pins = "PH20", "PH21";
-		allwinner,function = "gpio_out";
-		allwinner,drive = <SUN4I_PINCTRL_20_MA>;
-		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
-	};
-};
-
-&reg_ahci_5v {
-	status = "okay";
-};
-
-#include "axp209.dtsi"
-
-&reg_dcdc2 {
-	regulator-always-on;
-	regulator-min-microvolt = <1000000>;
-	regulator-max-microvolt = <1450000>;
-	regulator-name = "vdd-cpu";
-};
-
-&reg_dcdc3 {
-	regulator-always-on;
-	regulator-min-microvolt = <1000000>;
-	regulator-max-microvolt = <1400000>;
-	regulator-name = "vdd-int-dll";
-};
-
-&reg_ldo1 {
-	regulator-name = "vdd-rtc";
-};
-
-&reg_ldo2 {
-	regulator-always-on;
-	regulator-min-microvolt = <3000000>;
-	regulator-max-microvolt = <3000000>;
-	regulator-name = "avcc";
 };
 
 &reg_usb1_vbus {
@@ -196,13 +154,8 @@
 	status = "okay";
 };
 
-&spi0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&spi0_pins_a>;
-	status = "okay";
-};
 
-&uart0 {
+&uart0  {
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart0_pins_a>;
 	status = "okay";
