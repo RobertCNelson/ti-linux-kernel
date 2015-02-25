@@ -1021,10 +1021,13 @@ static void end_clone_bio(struct bio *clone, int error)
  */
 static void rq_completed(struct mapped_device *md, int rw, bool run_queue)
 {
+	int nr_requests_pending;
+
 	atomic_dec(&md->pending[rw]);
 
 	/* nudge anyone waiting on suspend queue */
-	if (!md_in_flight(md))
+	nr_requests_pending = md_in_flight(md);
+	if (!nr_requests_pending)
 		wake_up(&md->wait);
 
 	/*
@@ -1033,8 +1036,11 @@ static void rq_completed(struct mapped_device *md, int rw, bool run_queue)
 	 * back into ->request_fn() could deadlock attempting to grab the
 	 * queue lock again.
 	 */
-	if (run_queue)
-		blk_run_queue_async(md->queue);
+	if (run_queue) {
+		if (!nr_requests_pending ||
+		    (nr_requests_pending >= md->queue->nr_congestion_on))
+			blk_run_queue_async(md->queue);
+	}
 
 	/*
 	 * dm_put() must be at the end of this function. See the comment above
@@ -1690,7 +1696,7 @@ out:
  * The request function that just remaps the bio built up by
  * dm_merge_bvec.
  */
-static void _dm_request(struct request_queue *q, struct bio *bio)
+static void dm_make_request(struct request_queue *q, struct bio *bio)
 {
 	int rw = bio_data_dir(bio);
 	struct mapped_device *md = q->queuedata;
@@ -1720,16 +1726,6 @@ static void _dm_request(struct request_queue *q, struct bio *bio)
 int dm_request_based(struct mapped_device *md)
 {
 	return blk_queue_stackable(md->queue);
-}
-
-static void dm_request(struct request_queue *q, struct bio *bio)
-{
-	struct mapped_device *md = q->queuedata;
-
-	if (dm_request_based(md))
-		blk_queue_bio(q, bio);
-	else
-		_dm_request(q, bio);
 }
 
 static void dm_dispatch_clone_request(struct request *clone, struct request *rq)
@@ -2003,28 +1999,6 @@ out:
 	dm_put_live_table(md, srcu_idx);
 }
 
-int dm_underlying_device_busy(struct request_queue *q)
-{
-	return blk_lld_busy(q);
-}
-EXPORT_SYMBOL_GPL(dm_underlying_device_busy);
-
-static int dm_lld_busy(struct request_queue *q)
-{
-	int r;
-	struct mapped_device *md = q->queuedata;
-	struct dm_table *map = dm_get_live_table_fast(md);
-
-	if (!map || test_bit(DMF_BLOCK_IO_FOR_SUSPEND, &md->flags))
-		r = 1;
-	else
-		r = dm_table_any_busy_target(map);
-
-	dm_put_live_table_fast(md);
-
-	return r;
-}
-
 static int dm_any_congested(void *congested_data, int bdi_bits)
 {
 	int r = bdi_bits;
@@ -2119,9 +2093,8 @@ static void dm_init_md_queue(struct mapped_device *md)
 	md->queue->queuedata = md;
 	md->queue->backing_dev_info.congested_fn = dm_any_congested;
 	md->queue->backing_dev_info.congested_data = md;
-	blk_queue_make_request(md->queue, dm_request);
+
 	blk_queue_bounce_limit(md->queue, BLK_BOUNCE_ANY);
-	blk_queue_merge_bvec(md->queue, dm_merge_bvec);
 }
 
 /*
@@ -2352,7 +2325,7 @@ int dm_queue_merge_is_compulsory(struct request_queue *q)
 	if (!q->merge_bvec_fn)
 		return 0;
 
-	if (q->make_request_fn == dm_request) {
+	if (q->make_request_fn == dm_make_request) {
 		dev_md = q->queuedata;
 		if (test_bit(DMF_MERGE_IS_OPTIONAL, &dev_md->flags))
 			return 0;
@@ -2546,7 +2519,6 @@ static int dm_init_request_based_queue(struct mapped_device *md)
 	dm_init_md_queue(md);
 	blk_queue_softirq_done(md->queue, dm_softirq_done);
 	blk_queue_prep_rq(md->queue, dm_prep_fn);
-	blk_queue_lld_busy(md->queue, dm_lld_busy);
 
 	/* Also initialize the request-based DM worker thread */
 	init_kthread_worker(&md->kworker);
@@ -2563,9 +2535,15 @@ static int dm_init_request_based_queue(struct mapped_device *md)
  */
 int dm_setup_md_queue(struct mapped_device *md)
 {
-	if (dm_md_type_request_based(md) && !dm_init_request_based_queue(md)) {
-		DMWARN("Cannot initialize queue for request-based mapped device");
-		return -EINVAL;
+	if (dm_md_type_request_based(md)) {
+		if (!dm_init_request_based_queue(md)) {
+			DMWARN("Cannot initialize queue for request-based mapped device");
+			return -EINVAL;
+		}
+	} else {
+		/* bio-based specific initialization */
+		blk_queue_make_request(md->queue, dm_make_request);
+		blk_queue_merge_bvec(md->queue, dm_merge_bvec);
 	}
 
 	return 0;
