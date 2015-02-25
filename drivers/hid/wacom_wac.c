@@ -1098,7 +1098,7 @@ static int wacom_24hdt_irq(struct wacom_wac *wacom)
 			}
 		}
 	}
-	input_mt_report_pointer_emulation(input, true);
+	input_mt_sync_frame(input);
 
 	wacom->num_contacts_left -= contacts_to_send;
 	if (wacom->num_contacts_left <= 0)
@@ -1149,7 +1149,7 @@ static int wacom_mt_touch(struct wacom_wac *wacom)
 			input_report_abs(input, ABS_MT_POSITION_Y, y);
 		}
 	}
-	input_mt_report_pointer_emulation(input, true);
+	input_mt_sync_frame(input);
 
 	wacom->num_contacts_left -= contacts_to_send;
 	if (wacom->num_contacts_left < 0)
@@ -1181,7 +1181,7 @@ static int wacom_tpc_mt_touch(struct wacom_wac *wacom)
 			contact_with_no_pen_down_count++;
 		}
 	}
-	input_mt_report_pointer_emulation(input, true);
+	input_mt_sync_frame(input);
 
 	/* keep touch state for pen event */
 	wacom->shared->touch_down = (contact_with_no_pen_down_count > 0);
@@ -1643,7 +1643,7 @@ static int wacom_bpt_touch(struct wacom_wac *wacom)
 		}
 	}
 
-	input_mt_report_pointer_emulation(input, true);
+	input_mt_sync_frame(input);
 
 	input_report_key(pad_input, BTN_LEFT, (data[1] & 0x08) != 0);
 	input_report_key(pad_input, BTN_FORWARD, (data[1] & 0x04) != 0);
@@ -1733,7 +1733,7 @@ static int wacom_bpt3_touch(struct wacom_wac *wacom)
 			wacom_bpt3_button_msg(wacom, data + offset);
 
 	}
-	input_mt_report_pointer_emulation(input, true);
+	input_mt_sync_frame(input);
 
 	return 1;
 }
@@ -2974,6 +2974,10 @@ static const struct wacom_features wacom_features_HID_ANY_ID =
 	HID_DEVICE(BUS_BLUETOOTH, HID_GROUP_WACOM, USB_VENDOR_ID_WACOM, prod),\
 	.driver_data = (kernel_ulong_t)&wacom_features_##prod
 
+#define I2C_DEVICE_WACOM(prod)						\
+	HID_DEVICE(BUS_I2C, HID_GROUP_WACOM, USB_VENDOR_ID_WACOM, prod),\
+	.driver_data = (kernel_ulong_t)&wacom_features_##prod
+
 #define USB_DEVICE_LENOVO(prod)					\
 	HID_USB_DEVICE(USB_VENDOR_ID_LENOVO, prod),			\
 	.driver_data = (kernel_ulong_t)&wacom_features_##prod
@@ -3118,6 +3122,7 @@ const struct hid_device_id wacom_ids[] = {
 	{ USB_DEVICE_LENOVO(0x6004) },
 
 	{ USB_DEVICE_WACOM(HID_ANY_ID) },
+	{ I2C_DEVICE_WACOM(HID_ANY_ID) },
 	{ }
 };
 MODULE_DEVICE_TABLE(hid, wacom_ids);
