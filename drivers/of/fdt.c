@@ -204,6 +204,7 @@ static void * unflatten_dt_node(struct boot_param_header *blob,
 				__alignof__(struct device_node));
 	if (allnextpp) {
 		char *fn;
+		of_node_init(np);
 		np->full_name = fn = ((char *)np) + sizeof(*np);
 		if (new_format) {
 			/* rebuild full path for new format */
@@ -234,7 +235,6 @@ static void * unflatten_dt_node(struct boot_param_header *blob,
 				dad->next->sibling = np;
 			dad->next = np;
 		}
-		kref_init(&np->kref);
 	}
 	/* process properties */
 	while (1) {
