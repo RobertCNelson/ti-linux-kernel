@@ -146,7 +146,8 @@ static int ti_thermal_bind(struct thermal_zone_device *thermal,
 	return thermal_zone_bind_cooling_device(thermal, 0, cdev,
 	/* bind with min and max states defined by cpu_cooling */
 						THERMAL_NO_LIMIT,
-						THERMAL_NO_LIMIT);
+						THERMAL_NO_LIMIT,
+						THERMAL_WEIGHT_DEFAULT);
 }
 
 /* Unbind callback functions for thermal zone */
@@ -429,7 +430,7 @@ int ti_thermal_unregister_cpu_cooling(struct ti_bandgap *bgp, int id)
 
 	data = ti_bandgap_get_sensor_data(bgp, id);
 
-	if (data && data->cool_dev)
+	if (data)
 		cpufreq_cooling_unregister(data->cool_dev);
 
 	return 0;
