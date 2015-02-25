@@ -29,6 +29,7 @@
 
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci_core.h>
+#include <net/bluetooth/hci_sock.h>
 #include <net/bluetooth/l2cap.h>
 #include <net/bluetooth/mgmt.h>
 
@@ -242,7 +243,7 @@ static int mgmt_event(u16 event, struct hci_dev *hdev, void *data, u16 data_len,
 	/* Time stamp */
 	__net_timestamp(skb);
 
-	hci_send_to_control(skb, skip_sk);
+	hci_send_to_channel(HCI_CHANNEL_CONTROL, skb, skip_sk);
 	kfree_skb(skb);
 
 	return 0;
@@ -2116,8 +2117,7 @@ static int set_ssp(struct sock *sk, struct hci_dev *hdev, void *data, u16 len)
 		goto failed;
 	}
 
-	if (mgmt_pending_find(MGMT_OP_SET_SSP, hdev) ||
-	    mgmt_pending_find(MGMT_OP_SET_HS, hdev)) {
+	if (mgmt_pending_find(MGMT_OP_SET_SSP, hdev)) {
 		err = cmd_status(sk, hdev->id, MGMT_OP_SET_SSP,
 				 MGMT_STATUS_BUSY);
 		goto failed;
@@ -2175,6 +2175,12 @@ static int set_hs(struct sock *sk, struct hci_dev *hdev, void *data, u16 len)
 				  MGMT_STATUS_INVALID_PARAMS);
 
 	hci_dev_lock(hdev);
+
+	if (mgmt_pending_find(MGMT_OP_SET_SSP, hdev)) {
+		err = cmd_status(sk, hdev->id, MGMT_OP_SET_HS,
+				 MGMT_STATUS_BUSY);
+		goto unlock;
+	}
 
 	if (cp->val) {
 		changed = !test_and_set_bit(HCI_HS_ENABLED, &hdev->dev_flags);
@@ -3249,6 +3255,10 @@ static int pair_device(struct sock *sk, struct hci_dev *hdev, void *data,
 
 		if (PTR_ERR(conn) == -EBUSY)
 			status = MGMT_STATUS_BUSY;
+		else if (PTR_ERR(conn) == -EOPNOTSUPP)
+			status = MGMT_STATUS_NOT_SUPPORTED;
+		else if (PTR_ERR(conn) == -ECONNREFUSED)
+			status = MGMT_STATUS_REJECTED;
 		else
 			status = MGMT_STATUS_CONNECT_FAILED;
 
