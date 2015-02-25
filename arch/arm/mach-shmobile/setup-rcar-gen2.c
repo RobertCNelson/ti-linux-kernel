@@ -4,6 +4,7 @@
  * Copyright (C) 2013  Renesas Solutions Corp.
  * Copyright (C) 2013  Magnus Damm
  * Copyright (C) 2014  Ulrich Hecht
+ * Copyright (C) 2015  Nobuhiro Iwamatsu
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,8 +22,13 @@
 #include <linux/dma-contiguous.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
+#include <linux/memblock.h>
 #include <linux/of.h>
 #include <linux/of_fdt.h>
+#include <linux/of_platform.h>
+#include <linux/slab.h>
+#include <linux/sys_soc.h>
+#include <asm/system_info.h>
 #include <asm/mach/arch.h>
 #include "common.h"
 #include "rcar-gen2.h"
@@ -50,9 +56,7 @@ u32 rcar_gen2_read_mode_pins(void)
 
 void __init rcar_gen2_timer_init(void)
 {
-#if defined(CONFIG_ARM_ARCH_TIMER) || defined(CONFIG_COMMON_CLK)
 	u32 mode = rcar_gen2_read_mode_pins();
-#endif
 #ifdef CONFIG_ARM_ARCH_TIMER
 	void __iomem *base;
 	int extal_mhz = 0;
@@ -128,9 +132,7 @@ void __init rcar_gen2_timer_init(void)
 	iounmap(base);
 #endif /* CONFIG_ARM_ARCH_TIMER */
 
-#ifdef CONFIG_COMMON_CLK
 	rcar_gen2_clocks_init(mode);
-#endif
 #ifdef CONFIG_ARCH_SHMOBILE_MULTI
 	clocksource_of_init();
 #endif
@@ -199,8 +201,54 @@ void __init rcar_gen2_reserve(void)
 
 	of_scan_flat_dt(rcar_gen2_scan_mem, &mrc);
 #ifdef CONFIG_DMA_CMA
-	if (mrc.size)
+	if (mrc.size && memblock_is_region_memory(mrc.base, mrc.size))
 		dma_contiguous_reserve_area(mrc.size, mrc.base, 0,
 					    &rcar_gen2_dma_contiguous, true);
 #endif
+}
+
+#define PRR 0xFF000044
+static u32 __init rcar_gen2_get_prr(void)
+{
+	void __iomem *addr = ioremap_nocache(PRR, 4);
+	u32 data = ioread32(addr);
+
+	iounmap(addr);
+
+	return data;
+}
+
+void __init rcar_gen2_init_machine(void)
+{
+	struct soc_device_attribute *soc_dev_attr;
+	struct soc_device *soc_dev;
+	struct device *parent = NULL;
+	u32 prr;
+
+	soc_dev_attr = kzalloc(sizeof(*soc_dev_attr), GFP_KERNEL);
+	if (!soc_dev_attr)
+		goto out;
+
+	prr = rcar_gen2_get_prr();
+	system_rev = (prr & 0xFF) + 0x10;
+
+	soc_dev_attr->machine = of_flat_dt_get_machine_name();
+	soc_dev_attr->family = kasprintf(GFP_KERNEL, "Renesas R-Car Gen2");
+	soc_dev_attr->revision = kasprintf(GFP_KERNEL, "%u.%u",
+					   system_rev >> 4, system_rev & 0xF);
+	soc_dev_attr->soc_id = kasprintf(GFP_KERNEL, "%04x",
+					 (prr & 0x7F00) >> 8);
+
+	soc_dev = soc_device_register(soc_dev_attr);
+	if (IS_ERR(soc_dev)) {
+		kfree(soc_dev_attr->family);
+		kfree(soc_dev_attr->revision);
+		kfree(soc_dev_attr->soc_id);
+		kfree(soc_dev_attr);
+		goto out;
+	}
+
+	parent = soc_device_to_device(soc_dev);
+out:
+	of_platform_populate(NULL, of_default_bus_match_table, NULL, parent);
 }
