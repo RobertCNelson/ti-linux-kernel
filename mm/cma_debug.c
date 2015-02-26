@@ -85,10 +85,10 @@ static int cma_free_mem(struct cma *cma, int count)
 
 static int cma_free_write(void *data, u64 val)
 {
-        int pages = val;
+	int pages = val;
 	struct cma *cma = data;
 
-        return cma_free_mem(cma, pages);
+	return cma_free_mem(cma, pages);
 }
 
 DEFINE_SIMPLE_ATTRIBUTE(cma_free_fops, NULL, cma_free_write, "%llu\n");
