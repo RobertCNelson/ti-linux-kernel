@@ -347,7 +347,7 @@ static int o2cb_cluster_connect(struct ocfs2_cluster_connection *conn)
 	priv = kzalloc(sizeof(struct o2dlm_private), GFP_KERNEL);
 	if (!priv) {
 		rc = -ENOMEM;
-		goto out_free;
+		goto out;
 	}
 
 	/* This just fills the structure in.  It is safe to pass conn. */
@@ -376,8 +376,7 @@ static int o2cb_cluster_connect(struct ocfs2_cluster_connection *conn)
 	dlm_register_eviction_cb(dlm, &priv->op_eviction_cb);
 
 out_free:
-	if (rc)
-		kfree(conn->cc_private);
+	kfree(conn->cc_private);
 
 out:
 	return rc;
