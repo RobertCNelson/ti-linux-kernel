@@ -21,6 +21,7 @@
 #include <linux/delay.h>
 #include <linux/wait.h>
 #include <linux/kthread.h>
+#include <linux/ktime.h>
 #include <linux/elevator.h> /* for rq_end_sector() */
 
 #include <trace/events/block.h>
@@ -219,6 +220,8 @@ struct mapped_device {
 	struct task_struct *kworker_task;
 
 	/* for request-based merge heuristic in dm_request_fn() */
+	ktime_t rq_based_queue_deadline;
+	ktime_t last_rq_start_time;
 	sector_t last_rq_pos;
 	int last_rq_rw;
 };
@@ -1934,6 +1937,7 @@ static void dm_start_request(struct mapped_device *md, struct request *orig)
 
 	md->last_rq_pos = rq_end_sector(orig);
 	md->last_rq_rw = rq_data_dir(orig);
+	md->last_rq_start_time = ktime_get();
 
 	/*
 	 * Hold the md reference here for the in-flight I/O.
@@ -1943,6 +1947,47 @@ static void dm_start_request(struct mapped_device *md, struct request *orig)
 	 * See the comment in rq_completed() too.
 	 */
 	dm_get(md);
+}
+
+#define DEF_QUEUE_DEADLINE_USECS 500    /* 0.5 ms */
+#define MAX_QUEUE_DEADLINE_USECS 100000 /* 100 ms */
+
+ssize_t dm_attr_rq_based_queue_deadline_show(struct mapped_device *md, char *buf)
+{
+	return sprintf(buf, "%lu\n",
+		       (unsigned long)ktime_to_us(md->rq_based_queue_deadline));
+}
+
+ssize_t dm_attr_rq_based_queue_deadline_store(struct mapped_device *md,
+					      const char *buf, size_t count)
+{
+	int err;
+	u64 deadline;
+
+	if (!dm_request_based(md))
+		return count;
+
+	err = kstrtou64(buf, 10, &deadline);
+	if (err)
+		return -EINVAL;
+
+	if (!deadline)
+		deadline = DEF_QUEUE_DEADLINE_USECS;
+	else if (deadline > MAX_QUEUE_DEADLINE_USECS)
+		deadline = MAX_QUEUE_DEADLINE_USECS;
+
+	md->rq_based_queue_deadline = ns_to_ktime(deadline * NSEC_PER_USEC);
+
+	return count;
+}
+
+static bool dm_request_dispatched_before_queue_deadline(struct mapped_device *md)
+{
+	ktime_t kt_now = ktime_get();
+	ktime_t kt_deadline = ktime_add_safe(md->last_rq_start_time,
+					     md->rq_based_queue_deadline);
+
+	return !ktime_after(kt_now, kt_deadline);
 }
 
 /*
@@ -1987,7 +2032,8 @@ static void dm_request_fn(struct request_queue *q)
 			continue;
 		}
 
-		if (md_in_flight(md) && rq->bio && rq->bio->bi_vcnt == 1 &&
+		if (dm_request_dispatched_before_queue_deadline(md) &&
+		    md_in_flight(md) && rq->bio && rq->bio->bi_vcnt == 1 &&
 		    md->last_rq_pos == pos && md->last_rq_rw == rq_data_dir(rq))
 			goto delay_and_out;
 
@@ -2526,6 +2572,9 @@ static int dm_init_request_based_queue(struct mapped_device *md)
 	q = blk_init_allocated_queue(md->queue, dm_request_fn, NULL);
 	if (!q)
 		return 0;
+
+	md->rq_based_queue_deadline =
+		ns_to_ktime(DEF_QUEUE_DEADLINE_USECS * NSEC_PER_USEC);
 
 	md->queue = q;
 	dm_init_md_queue(md);
