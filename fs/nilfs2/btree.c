@@ -378,7 +378,7 @@ static int nilfs_btree_node_broken(const struct nilfs_btree_node *node,
  * Return Value: If node is broken, 1 is returned. Otherwise, 0 is returned.
  */
 static int nilfs_btree_root_broken(const struct nilfs_btree_node *node,
-				   ino_t ino)
+				   unsigned long ino)
 {
 	int level, flags, nchildren;
 	int ret = 0;
