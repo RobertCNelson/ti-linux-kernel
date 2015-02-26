@@ -219,8 +219,10 @@ struct mapped_device {
 	struct task_struct *kworker_task;
 
 	/* for request-based merge heuristic in dm_request_fn() */
+	unsigned long last_rq_start_time;
 	sector_t last_rq_pos;
 	int last_rq_rw;
+	atomic_t rq_based_queue_deadline;
 };
 
 /*
@@ -1934,6 +1936,7 @@ static void dm_start_request(struct mapped_device *md, struct request *orig)
 
 	md->last_rq_pos = rq_end_sector(orig);
 	md->last_rq_rw = rq_data_dir(orig);
+	md->last_rq_start_time = jiffies;
 
 	/*
 	 * Hold the md reference here for the in-flight I/O.
@@ -1943,6 +1946,43 @@ static void dm_start_request(struct mapped_device *md, struct request *orig)
 	 * See the comment in rq_completed() too.
 	 */
 	dm_get(md);
+}
+
+#define DEF_QUEUE_DEADLINE 1
+#define MAX_QUEUE_DEADLINE 100
+
+ssize_t dm_attr_rq_based_queue_deadline_show(struct mapped_device *md, char *buf)
+{
+	return sprintf(buf, "%d\n", atomic_read(&md->rq_based_queue_deadline));
+}
+
+ssize_t dm_attr_rq_based_queue_deadline_store(struct mapped_device *md,
+					      const char *buf, size_t count)
+{
+	int err, deadline;
+
+	if (!dm_request_based(md))
+		return count;
+
+	err = kstrtoint(buf, 10, &deadline);
+	if (err || deadline > INT_MAX)
+		return -EINVAL;
+
+	if (!deadline)
+		deadline = DEF_QUEUE_DEADLINE;
+	else if (deadline > MAX_QUEUE_DEADLINE)
+		deadline = MAX_QUEUE_DEADLINE;
+
+	atomic_set(&md->rq_based_queue_deadline, deadline);
+
+	return count;
+}
+
+static bool dm_request_dispatched_before_queue_deadline(struct mapped_device *md)
+{
+	unsigned deadline = atomic_read(&md->rq_based_queue_deadline);
+
+	return !time_after(jiffies, md->last_rq_start_time + msecs_to_jiffies(deadline));
 }
 
 /*
@@ -1987,7 +2027,8 @@ static void dm_request_fn(struct request_queue *q)
 			continue;
 		}
 
-		if (md_in_flight(md) && rq->bio && rq->bio->bi_vcnt == 1 &&
+		if (dm_request_dispatched_before_queue_deadline(md) &&
+		    md_in_flight(md) && rq->bio && rq->bio->bi_vcnt == 1 &&
 		    md->last_rq_pos == pos && md->last_rq_rw == rq_data_dir(rq))
 			goto delay_and_out;
 
@@ -2147,6 +2188,7 @@ static struct mapped_device *alloc_dev(int minor)
 	atomic_set(&md->open_count, 0);
 	atomic_set(&md->event_nr, 0);
 	atomic_set(&md->uevent_seq, 0);
+	atomic_set(&md->rq_based_queue_deadline, 0);
 	INIT_LIST_HEAD(&md->uevent_list);
 	INIT_LIST_HEAD(&md->table_devices);
 	spin_lock_init(&md->uevent_lock);
@@ -2526,6 +2568,8 @@ static int dm_init_request_based_queue(struct mapped_device *md)
 	q = blk_init_allocated_queue(md->queue, dm_request_fn, NULL);
 	if (!q)
 		return 0;
+
+	atomic_set(&md->rq_based_queue_deadline, DEF_QUEUE_DEADLINE);
 
 	md->queue = q;
 	dm_init_md_queue(md);
