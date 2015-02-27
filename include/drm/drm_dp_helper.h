@@ -92,9 +92,6 @@
 # define DP_MSA_TIMING_PAR_IGNORED	    (1 << 6) /* eDP */
 # define DP_OUI_SUPPORT			    (1 << 7)
 
-#define DP_SUPPORTED_LINK_RATES			0x010 /*eDP 1.4*/
-#define DP_MAX_SUPPORTED_RATES			0x8
-
 #define DP_I2C_SPEED_CAP		    0x00c    /* DPI */
 # define DP_I2C_SPEED_1K		    0x01
 # define DP_I2C_SPEED_5K		    0x02
@@ -105,7 +102,11 @@
 
 #define DP_EDP_CONFIGURATION_CAP            0x00d   /* XXX 1.2? */
 # define DP_DPCD_DISPLAY_CONTROL_CAPABLE     (1 << 3) /* edp v1.2 or higher */
+
 #define DP_TRAINING_AUX_RD_INTERVAL         0x00e   /* XXX 1.2? */
+
+#define DP_SUPPORTED_LINK_RATES		    0x010 /* eDP 1.4 */
+# define DP_MAX_SUPPORTED_RATES		     8	    /* 16-bit little-endian */
 
 /* Multiple stream transport */
 #define DP_FAUX_CAP			    0x020   /* 1.2 */
@@ -225,7 +226,7 @@
 # define DP_UP_REQ_EN			    (1 << 1)
 # define DP_UPSTREAM_IS_SRC		    (1 << 2)
 
-#define DP_LINK_RATE_SET			0x115
+#define DP_LINK_RATE_SET		    0x115   /* eDP 1.4 */
 
 #define DP_PSR_EN_CFG			    0x170   /* XXX 1.2? */
 # define DP_PSR_ENABLE			    (1 << 0)
@@ -338,7 +339,39 @@
 # define DP_SET_POWER_D3                    0x2
 # define DP_SET_POWER_MASK                  0x3
 
-#define DP_EDP_DPCD_REV                          0x700
+#define DP_EDP_DPCD_REV			    0x700    /* eDP 1.2 */
+
+#define DP_EDP_GENERAL_CAP_1		    0x701
+
+#define DP_EDP_BACKLIGHT_ADJUSTMENT_CAP     0x702
+
+#define DP_EDP_GENERAL_CAP_2		    0x703
+
+#define DP_EDP_DISPLAY_CONTROL_REGISTER     0x720
+
+#define DP_EDP_BACKLIGHT_MODE_SET_REGISTER  0x721
+
+#define DP_EDP_BACKLIGHT_BRIGHTNESS_MSB     0x722
+#define DP_EDP_BACKLIGHT_BRIGHTNESS_LSB     0x723
+
+#define DP_EDP_PWMGEN_BIT_COUNT             0x724
+#define DP_EDP_PWMGEN_BIT_COUNT_CAP_MIN     0x725
+#define DP_EDP_PWMGEN_BIT_COUNT_CAP_MAX     0x726
+
+#define DP_EDP_BACKLIGHT_CONTROL_STATUS     0x727
+
+#define DP_EDP_BACKLIGHT_FREQ_SET           0x728
+
+#define DP_EDP_BACKLIGHT_FREQ_CAP_MIN_MSB   0x72a
+#define DP_EDP_BACKLIGHT_FREQ_CAP_MIN_MID   0x72b
+#define DP_EDP_BACKLIGHT_FREQ_CAP_MIN_LSB   0x72c
+
+#define DP_EDP_BACKLIGHT_FREQ_CAP_MAX_MSB   0x72d
+#define DP_EDP_BACKLIGHT_FREQ_CAP_MAX_MID   0x72e
+#define DP_EDP_BACKLIGHT_FREQ_CAP_MAX_LSB   0x72f
+
+#define DP_EDP_DBC_MINIMUM_BRIGHTNESS_SET   0x732
+#define DP_EDP_DBC_MAXIMUM_BRIGHTNESS_SET   0x733
 
 #define DP_SIDEBAND_MSG_DOWN_REQ_BASE	    0x1000   /* 1.2 MST */
 #define DP_SIDEBAND_MSG_UP_REP_BASE	    0x1200   /* 1.2 MST */
