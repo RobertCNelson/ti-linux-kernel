@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
  * Intel Ethernet Controller XL710 Family Linux Driver
- * Copyright(c) 2013 - 2014 Intel Corporation.
+ * Copyright(c) 2013 - 2015 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -381,12 +381,11 @@ int i40e_fcoe_vsi_init(struct i40e_vsi *vsi, struct i40e_vsi_context *ctxt)
 	ctxt->pf_num = hw->pf_id;
 	ctxt->vf_num = 0;
 	ctxt->uplink_seid = vsi->uplink_seid;
-	ctxt->connection_type = 0x1;
+	ctxt->connection_type = I40E_AQ_VSI_CONN_TYPE_NORMAL;
 	ctxt->flags = I40E_AQ_VSI_TYPE_PF;
 
 	/* FCoE VSI would need the following sections */
-	info->valid_sections |= cpu_to_le16(I40E_AQ_VSI_PROP_SWITCH_VALID |
-					    I40E_AQ_VSI_PROP_QUEUE_OPT_VALID);
+	info->valid_sections |= cpu_to_le16(I40E_AQ_VSI_PROP_QUEUE_OPT_VALID);
 
 	/* FCoE VSI does not need these sections */
 	info->valid_sections &= cpu_to_le16(~(I40E_AQ_VSI_PROP_SECURITY_VALID |
@@ -395,7 +394,12 @@ int i40e_fcoe_vsi_init(struct i40e_vsi *vsi, struct i40e_vsi_context *ctxt)
 					    I40E_AQ_VSI_PROP_INGRESS_UP_VALID |
 					    I40E_AQ_VSI_PROP_EGRESS_UP_VALID));
 
-	info->switch_id = cpu_to_le16(I40E_AQ_VSI_SW_ID_FLAG_ALLOW_LB);
+	if (i40e_is_vsi_uplink_mode_veb(vsi)) {
+		info->valid_sections |=
+				cpu_to_le16(I40E_AQ_VSI_PROP_SWITCH_VALID);
+		info->switch_id =
+				cpu_to_le16(I40E_AQ_VSI_SW_ID_FLAG_ALLOW_LB);
+	}
 	enabled_tc = i40e_get_fcoe_tc_map(pf);
 	i40e_vsi_setup_queue_map(vsi, ctxt, enabled_tc, true);
 
@@ -1470,6 +1474,11 @@ static const struct net_device_ops i40e_fcoe_netdev_ops = {
 	.ndo_set_features	= i40e_fcoe_set_features,
 };
 
+/* fcoe network device type */
+static struct device_type fcoe_netdev_type = {
+	.name = "fcoe",
+};
+
 /**
  * i40e_fcoe_config_netdev - prepares the VSI context for creating a FCoE VSI
  * @vsi: pointer to the associated VSI struct
@@ -1503,6 +1512,7 @@ void i40e_fcoe_config_netdev(struct net_device *netdev, struct i40e_vsi *vsi)
 	strlcpy(netdev->name, "fcoe%d", IFNAMSIZ-1);
 	netdev->mtu = FCOE_MTU;
 	SET_NETDEV_DEV(netdev, &pf->pdev->dev);
+	SET_NETDEV_DEVTYPE(netdev, &fcoe_netdev_type);
 	/* set different dev_port value 1 for FCoE netdev than the default
 	 * zero dev_port value for PF netdev, this helps biosdevname user
 	 * tool to differentiate them correctly while both attached to the
