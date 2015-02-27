@@ -88,7 +88,7 @@ typedef gen8_gtt_pte_t gen8_ppgtt_pde_t;
 #define GEN8_PDE_MASK			0x1ff
 #define GEN8_PTE_SHIFT			12
 #define GEN8_PTE_MASK			0x1ff
-#define GEN8_LEGACY_PDPS		4
+#define GEN8_LEGACY_PDPES		4
 #define GEN8_PTES_PER_PAGE		(PAGE_SIZE / sizeof(gen8_gtt_pte_t))
 #define GEN8_PDES_PER_PAGE		(PAGE_SIZE / sizeof(gen8_ppgtt_pde_t))
 
@@ -187,6 +187,26 @@ struct i915_vma {
 			 u32 flags);
 };
 
+struct i915_page_table_entry {
+	struct page *page;
+	dma_addr_t daddr;
+};
+
+struct i915_page_directory_entry {
+	struct page *page; /* NULL for GEN6-GEN7 */
+	union {
+		uint32_t pd_offset;
+		dma_addr_t daddr;
+	};
+
+	struct i915_page_table_entry *page_table[GEN6_PPGTT_PD_ENTRIES]; /* PDEs */
+};
+
+struct i915_page_directory_pointer_entry {
+	/* struct page *page; */
+	struct i915_page_directory_entry *page_directory[GEN8_LEGACY_PDPES];
+};
+
 struct i915_address_space {
 	struct drm_mm mm;
 	struct drm_device *dev;
@@ -272,17 +292,8 @@ struct i915_hw_ppgtt {
 	unsigned num_pd_entries;
 	unsigned num_pd_pages; /* gen8+ */
 	union {
-		struct page **pt_pages;
-		struct page **gen8_pt_pages[GEN8_LEGACY_PDPS];
-	};
-	struct page *pd_pages;
-	union {
-		uint32_t pd_offset;
-		dma_addr_t pd_dma_addr[GEN8_LEGACY_PDPS];
-	};
-	union {
-		dma_addr_t *pt_dma_addr;
-		dma_addr_t *gen8_pt_dma_addr[4];
+		struct i915_page_directory_pointer_entry pdp;
+		struct i915_page_directory_entry pd;
 	};
 
 	struct drm_i915_file_private *file_priv;
