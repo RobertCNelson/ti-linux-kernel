@@ -1454,7 +1454,7 @@ static int _nbu2ss_set_feature_device(
 		break;
 
 	case USB_DEVICE_TEST_MODE:
-		wIndex = wIndex >> 8;
+		wIndex >>= 8;
 		if (wIndex <= MAX_TEST_MODE_NUM)
 			result = 0;
 		break;
@@ -1671,7 +1671,7 @@ static int std_req_set_address(struct nbu2ss_udc *udc)
 	if (wValue != (wValue & 0x007F))
 		return -EINVAL;
 
-	wValue = wValue << USB_ADRS_SHIFT;
+	wValue <<= USB_ADRS_SHIFT;
 
 	_nbu2ss_writel(&udc->p_regs->USB_ADDRESS, wValue);
 	_nbu2ss_create_ep0_packet(udc, udc->ep0_buf, 0);
@@ -2794,7 +2794,7 @@ static int nbu2ss_ep_queue(
 		if (ep->virt_buf == NULL)
 			ep->virt_buf = (u8 *)dma_alloc_coherent(
 				NULL, PAGE_SIZE,
-				&ep->phys_buf, GFP_KERNEL | GFP_DMA);
+				&ep->phys_buf, GFP_ATOMIC | GFP_DMA);
 		if (ep->epnum > 0)  {
 			if (ep->direct == USB_DIR_IN)
 				memcpy(ep->virt_buf, req->req.buf,
