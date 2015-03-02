@@ -78,7 +78,8 @@ static void i8xx_fbc_enable(struct drm_crtc *crtc)
 
 	dev_priv->fbc.enabled = true;
 
-	cfb_pitch = dev_priv->fbc.size / FBC_LL_SIZE;
+	/* Note: fbc.threshold == 1 for i8xx */
+	cfb_pitch = dev_priv->fbc.uncompressed_size / FBC_LL_SIZE;
 	if (fb->pitches[0] < cfb_pitch)
 		cfb_pitch = fb->pitches[0];
 
@@ -368,7 +369,7 @@ static void intel_fbc_work_fn(struct work_struct *__work)
 		if (work->crtc->primary->fb == work->fb) {
 			dev_priv->display.enable_fbc(work->crtc);
 
-			dev_priv->fbc.plane = to_intel_crtc(work->crtc)->plane;
+			dev_priv->fbc.crtc = to_intel_crtc(work->crtc);
 			dev_priv->fbc.fb_id = work->crtc->primary->fb->base.id;
 			dev_priv->fbc.y = work->crtc->y;
 		}
@@ -459,7 +460,7 @@ void intel_fbc_disable(struct drm_device *dev)
 		return;
 
 	dev_priv->display.disable_fbc(dev);
-	dev_priv->fbc.plane = -1;
+	dev_priv->fbc.crtc = NULL;
 }
 
 static bool set_no_fbc_reason(struct drm_i915_private *dev_priv,
@@ -470,6 +471,43 @@ static bool set_no_fbc_reason(struct drm_i915_private *dev_priv,
 
 	dev_priv->fbc.no_fbc_reason = reason;
 	return true;
+}
+
+static struct drm_crtc *intel_fbc_find_crtc(struct drm_i915_private *dev_priv)
+{
+	struct drm_crtc *crtc = NULL, *tmp_crtc;
+	enum pipe pipe;
+	bool pipe_a_only = false, one_pipe_only = false;
+
+	if (IS_HASWELL(dev_priv) || INTEL_INFO(dev_priv)->gen >= 8)
+		pipe_a_only = true;
+	else if (INTEL_INFO(dev_priv)->gen <= 4)
+		one_pipe_only = true;
+
+	for_each_pipe(dev_priv, pipe) {
+		tmp_crtc = dev_priv->pipe_to_crtc_mapping[pipe];
+
+		if (intel_crtc_active(tmp_crtc) &&
+		    to_intel_crtc(tmp_crtc)->primary_enabled) {
+			if (one_pipe_only && crtc) {
+				if (set_no_fbc_reason(dev_priv, FBC_MULTIPLE_PIPES))
+					DRM_DEBUG_KMS("more than one pipe active, disabling compression\n");
+				return NULL;
+			}
+			crtc = tmp_crtc;
+		}
+
+		if (pipe_a_only)
+			break;
+	}
+
+	if (!crtc || crtc->primary->fb == NULL) {
+		if (set_no_fbc_reason(dev_priv, FBC_NO_OUTPUT))
+			DRM_DEBUG_KMS("no output, disabling\n");
+		return NULL;
+	}
+
+	return crtc;
 }
 
 /**
@@ -494,22 +532,30 @@ static bool set_no_fbc_reason(struct drm_i915_private *dev_priv,
 void intel_fbc_update(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct drm_crtc *crtc = NULL, *tmp_crtc;
+	struct drm_crtc *crtc = NULL;
 	struct intel_crtc *intel_crtc;
 	struct drm_framebuffer *fb;
 	struct drm_i915_gem_object *obj;
 	const struct drm_display_mode *adjusted_mode;
 	unsigned int max_width, max_height;
 
-	if (!HAS_FBC(dev)) {
-		set_no_fbc_reason(dev_priv, FBC_UNSUPPORTED);
+	if (!HAS_FBC(dev))
 		return;
+
+	/* disable framebuffer compression in vGPU */
+	if (intel_vgpu_active(dev))
+		i915.enable_fbc = 0;
+
+	if (i915.enable_fbc < 0) {
+		if (set_no_fbc_reason(dev_priv, FBC_CHIP_DEFAULT))
+			DRM_DEBUG_KMS("disabled per chip default\n");
+		goto out_disable;
 	}
 
-	if (!i915.powersave) {
+	if (!i915.enable_fbc || !i915.powersave) {
 		if (set_no_fbc_reason(dev_priv, FBC_MODULE_PARAM))
 			DRM_DEBUG_KMS("fbc disabled per module param\n");
-		return;
+		goto out_disable;
 	}
 
 	/*
@@ -521,39 +567,15 @@ void intel_fbc_update(struct drm_device *dev)
 	 *   - new fb is too large to fit in compressed buffer
 	 *   - going to an unsupported config (interlace, pixel multiply, etc.)
 	 */
-	for_each_crtc(dev, tmp_crtc) {
-		if (intel_crtc_active(tmp_crtc) &&
-		    to_intel_crtc(tmp_crtc)->primary_enabled) {
-			if (crtc) {
-				if (set_no_fbc_reason(dev_priv, FBC_MULTIPLE_PIPES))
-					DRM_DEBUG_KMS("more than one pipe active, disabling compression\n");
-				goto out_disable;
-			}
-			crtc = tmp_crtc;
-		}
-	}
-
-	if (!crtc || crtc->primary->fb == NULL) {
-		if (set_no_fbc_reason(dev_priv, FBC_NO_OUTPUT))
-			DRM_DEBUG_KMS("no output, disabling\n");
+	crtc = intel_fbc_find_crtc(dev_priv);
+	if (!crtc)
 		goto out_disable;
-	}
 
 	intel_crtc = to_intel_crtc(crtc);
 	fb = crtc->primary->fb;
 	obj = intel_fb_obj(fb);
 	adjusted_mode = &intel_crtc->config->base.adjusted_mode;
 
-	if (i915.enable_fbc < 0) {
-		if (set_no_fbc_reason(dev_priv, FBC_CHIP_DEFAULT))
-			DRM_DEBUG_KMS("disabled per chip default\n");
-		goto out_disable;
-	}
-	if (!i915.enable_fbc) {
-		if (set_no_fbc_reason(dev_priv, FBC_MODULE_PARAM))
-			DRM_DEBUG_KMS("fbc disabled per module param\n");
-		goto out_disable;
-	}
 	if ((adjusted_mode->flags & DRM_MODE_FLAG_INTERLACE) ||
 	    (adjusted_mode->flags & DRM_MODE_FLAG_DBLSCAN)) {
 		if (set_no_fbc_reason(dev_priv, FBC_UNSUPPORTED_MODE))
@@ -617,7 +639,7 @@ void intel_fbc_update(struct drm_device *dev)
 	 * cannot be unpinned (and have its GTT offset and fence revoked)
 	 * without first being decoupled from the scanout and FBC disabled.
 	 */
-	if (dev_priv->fbc.plane == intel_crtc->plane &&
+	if (dev_priv->fbc.crtc == intel_crtc &&
 	    dev_priv->fbc.fb_id == fb->base.id &&
 	    dev_priv->fbc.y == crtc->y)
 		return;
@@ -673,6 +695,7 @@ void intel_fbc_init(struct drm_i915_private *dev_priv)
 {
 	if (!HAS_FBC(dev_priv)) {
 		dev_priv->fbc.enabled = false;
+		dev_priv->fbc.no_fbc_reason = FBC_UNSUPPORTED;
 		return;
 	}
 
