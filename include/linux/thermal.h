@@ -40,6 +40,9 @@
 /* No upper/lower limit requirement */
 #define THERMAL_NO_LIMIT	((u32)~0)
 
+/* Default weight of a bound cooling device */
+#define THERMAL_WEIGHT_DEFAULT 0
+
 /* Unit conversion macros */
 #define KELVIN_TO_CELSIUS(t)	(long)(((long)t-2732 >= 0) ?	\
 				((long)t-2732+5)/10 : ((long)t-2732-5)/10)
@@ -214,9 +217,12 @@ struct thermal_bind_params {
 
 	/*
 	 * This is a measure of 'how effectively these devices can
-	 * cool 'this' thermal zone. The shall be determined by platform
-	 * characterization. This is on a 'percentage' scale.
-	 * See Documentation/thermal/sysfs-api.txt for more information.
+	 * cool 'this' thermal zone. It shall be determined by
+	 * platform characterization. This value is relative to the
+	 * rest of the weights so a cooling device whose weight is
+	 * double that of another cooling device is twice as
+	 * effective. See Documentation/thermal/sysfs-api.txt for more
+	 * information.
 	 */
 	int weight;
 
@@ -323,7 +329,8 @@ void thermal_zone_device_unregister(struct thermal_zone_device *);
 
 int thermal_zone_bind_cooling_device(struct thermal_zone_device *, int,
 				     struct thermal_cooling_device *,
-				     unsigned long, unsigned long);
+				     unsigned long, unsigned long,
+				     unsigned int);
 int thermal_zone_unbind_cooling_device(struct thermal_zone_device *, int,
 				       struct thermal_cooling_device *);
 void thermal_zone_device_update(struct thermal_zone_device *);

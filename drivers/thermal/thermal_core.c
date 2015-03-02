@@ -218,7 +218,8 @@ static void print_bind_err_msg(struct thermal_zone_device *tz,
 
 static void __bind(struct thermal_zone_device *tz, int mask,
 			struct thermal_cooling_device *cdev,
-			unsigned long *limits)
+			unsigned long *limits,
+			unsigned int weight)
 {
 	int i, ret;
 
@@ -233,7 +234,8 @@ static void __bind(struct thermal_zone_device *tz, int mask,
 				upper = limits[i * 2 + 1];
 			}
 			ret = thermal_zone_bind_cooling_device(tz, i, cdev,
-							       upper, lower);
+							       upper, lower,
+							       weight);
 			if (ret)
 				print_bind_err_msg(tz, cdev, ret);
 		}
@@ -280,7 +282,8 @@ static void bind_cdev(struct thermal_cooling_device *cdev)
 				continue;
 			tzp->tbp[i].cdev = cdev;
 			__bind(pos, tzp->tbp[i].trip_mask, cdev,
-			       tzp->tbp[i].binding_limits);
+			       tzp->tbp[i].binding_limits,
+			       tzp->tbp[i].weight);
 		}
 	}
 
@@ -319,7 +322,8 @@ static void bind_tz(struct thermal_zone_device *tz)
 				continue;
 			tzp->tbp[i].cdev = pos;
 			__bind(tz, tzp->tbp[i].trip_mask, pos,
-			       tzp->tbp[i].binding_limits);
+			       tzp->tbp[i].binding_limits,
+			       tzp->tbp[i].weight);
 		}
 	}
 exit:
@@ -711,7 +715,8 @@ passive_store(struct device *dev, struct device_attribute *attr,
 				thermal_zone_bind_cooling_device(tz,
 						THERMAL_TRIPS_NONE, cdev,
 						THERMAL_NO_LIMIT,
-						THERMAL_NO_LIMIT);
+						THERMAL_NO_LIMIT,
+						THERMAL_WEIGHT_DEFAULT);
 		}
 		mutex_unlock(&thermal_list_lock);
 		if (!tz->passive_delay)
@@ -899,6 +904,34 @@ thermal_cooling_device_trip_point_show(struct device *dev,
 		return sprintf(buf, "%d\n", instance->trip);
 }
 
+static ssize_t
+thermal_cooling_device_weight_show(struct device *dev,
+				   struct device_attribute *attr, char *buf)
+{
+	struct thermal_instance *instance;
+
+	instance = container_of(attr, struct thermal_instance, weight_attr);
+
+	return sprintf(buf, "%d\n", instance->weight);
+}
+
+static ssize_t
+thermal_cooling_device_weight_store(struct device *dev,
+				    struct device_attribute *attr,
+				    const char *buf, size_t count)
+{
+	struct thermal_instance *instance;
+	int ret, weight;
+
+	ret = kstrtoint(buf, 0, &weight);
+	if (ret)
+		return ret;
+
+	instance = container_of(attr, struct thermal_instance, weight_attr);
+	instance->weight = weight;
+
+	return count;
+}
 /* Device management */
 
 /**
@@ -913,6 +946,9 @@ thermal_cooling_device_trip_point_show(struct device *dev,
  * @lower:	the Minimum cooling state can be used for this trip point.
  *		THERMAL_NO_LIMIT means no lower limit,
  *		and the cooling device can be in cooling state 0.
+ * @weight:	The weight of the cooling device to be bound to the
+ *		thermal zone. Use THERMAL_WEIGHT_DEFAULT for the
+ *		default value
  *
  * This interface function bind a thermal cooling device to the certain trip
  * point of a thermal zone device.
@@ -923,7 +959,8 @@ thermal_cooling_device_trip_point_show(struct device *dev,
 int thermal_zone_bind_cooling_device(struct thermal_zone_device *tz,
 				     int trip,
 				     struct thermal_cooling_device *cdev,
-				     unsigned long upper, unsigned long lower)
+				     unsigned long upper, unsigned long lower,
+				     unsigned int weight)
 {
 	struct thermal_instance *dev;
 	struct thermal_instance *pos;
@@ -968,6 +1005,7 @@ int thermal_zone_bind_cooling_device(struct thermal_zone_device *tz,
 	dev->upper = upper;
 	dev->lower = lower;
 	dev->target = THERMAL_NO_TARGET;
+	dev->weight = weight;
 
 	result = get_idr(&tz->idr, &tz->lock, &dev->id);
 	if (result)
@@ -988,6 +1026,16 @@ int thermal_zone_bind_cooling_device(struct thermal_zone_device *tz,
 	if (result)
 		goto remove_symbol_link;
 
+	sprintf(dev->weight_attr_name, "cdev%d_weight", dev->id);
+	sysfs_attr_init(&dev->weight_attr.attr);
+	dev->weight_attr.attr.name = dev->weight_attr_name;
+	dev->weight_attr.attr.mode = S_IWUSR | S_IRUGO;
+	dev->weight_attr.show = thermal_cooling_device_weight_show;
+	dev->weight_attr.store = thermal_cooling_device_weight_store;
+	result = device_create_file(&tz->device, &dev->weight_attr);
+	if (result)
+		goto remove_trip_file;
+
 	mutex_lock(&tz->lock);
 	mutex_lock(&cdev->lock);
 	list_for_each_entry(pos, &tz->thermal_instances, tz_node)
@@ -1005,6 +1053,8 @@ int thermal_zone_bind_cooling_device(struct thermal_zone_device *tz,
 	if (!result)
 		return 0;
 
+	device_remove_file(&tz->device, &dev->weight_attr);
+remove_trip_file:
 	device_remove_file(&tz->device, &dev->attr);
 remove_symbol_link:
 	sysfs_remove_link(&tz->device.kobj, dev->name);
