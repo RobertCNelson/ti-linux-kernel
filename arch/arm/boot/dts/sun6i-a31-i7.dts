@@ -1,7 +1,5 @@
 /*
- * Copyright 2014 Maxime Ripard
- *
- * Maxime Ripard <maxime.ripard@free-electrons.com>
+ * Copyright 2015 Marcus Cooper <codekipper@gmail.com>
  *
  * This file is dual-licensed: you can use it either under the terms
  * of the GPL or the X11 license, at your option. Note that this dual
@@ -55,11 +53,22 @@
 #include <dt-bindings/pinctrl/sun4i-a10.h>
 
 / {
-	model = "Merrii A31 Hummingbird";
-	compatible = "merrii,a31-hummingbird", "allwinner,sun6i-a31";
+	model = "Mele I7 Quad top set box";
+	compatible = "mele,i7", "allwinner,sun6i-a31";
 
 	chosen {
-		bootargs = "earlyprintk console=ttyS0,115200";
+		bootargs = "console=ttyS0,115200";
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&led_pins_i7>;
+
+		blue {
+			label = "i7:blue:usr";
+			gpios = <&pio 7 13 GPIO_ACTIVE_HIGH>;
+		};
 	};
 };
 
@@ -67,42 +76,19 @@
 	status = "okay";
 };
 
+&ehci1 {
+	status = "okay";
+};
+
 &gmac {
 	pinctrl-names = "default";
-	pinctrl-0 = <&gmac_pins_rgmii_a>;
+	pinctrl-0 = <&gmac_pins_mii_a>;
 	phy = <&phy1>;
-	phy-mode = "rgmii";
-	snps,reset-gpio = <&pio 0 21 GPIO_ACTIVE_HIGH>;
-	snps,reset-active-low;
-	snps,reset-delays-us = <0 10000 30000>;
+	phy-mode = "mii";
 	status = "okay";
 
 	phy1: ethernet-phy@1 {
 		reg = <1>;
-	};
-};
-
-&i2c0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c0_pins_a>;
-	/* pull-ups and devices require AXP221 DLDO3 */
-	status = "failed";
-};
-
-&i2c1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c1_pins_a>;
-	status = "okay";
-};
-
-&i2c2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c2_pins_a>;
-	status = "okay";
-
-	pcf8563: rtc@51 {
-		compatible = "nxp,pcf8563";
-		reg = <0x51>;
 	};
 };
 
@@ -114,34 +100,41 @@
 
 &mmc0 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&mmc0_pins_a>, <&mmc0_cd_pin_hummingbird>;
-	vmmc-supply = <&reg_vcc3v0>;
+	pinctrl-0 = <&mmc0_pins_a>, <&mmc0_cd_pin_i7>;
+	vmmc-supply = <&reg_vcc3v3>;
 	bus-width = <4>;
-	cd-gpios = <&pio 0 8 GPIO_ACTIVE_HIGH>; /* PA8 */
+	cd-gpios = <&pio 7 22 GPIO_ACTIVE_HIGH>; /* PH22 */
 	cd-inverted;
 	status = "okay";
 };
 
-&mmc0_pins_a {
-	/* external pull-ups missing for some pins */
-	allwinner,pull = <SUN4I_PINCTRL_PULL_UP>;
-};
-
-&ohci0 {
-	status = "okay";
-};
-
 &pio {
-	mmc0_cd_pin_hummingbird: mmc0_cd_pin@0 {
-		allwinner,pins = "PA8";
+	led_pins_i7: led_pins@0 {
+		allwinner,pins = "PH13";
+		allwinner,function = "gpio_out";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
+	};
+
+	mmc0_cd_pin_i7: mmc0_cd_pin@0 {
+		allwinner,pins = "PH22";
 		allwinner,function = "gpio_in";
 		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
 		allwinner,pull = <SUN4I_PINCTRL_PULL_UP>;
 	};
+
+	usb1_vbus_pin_i7: usb1_vbus_pin@0 {
+		allwinner,pins = "PC27";
+		allwinner,function = "gpio_out";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
+	};
 };
 
 &reg_usb1_vbus {
-	gpio = <&pio 7 24 GPIO_ACTIVE_HIGH>; /* PH24 */
+	pinctrl-names = "default";
+	pinctrl-0 = <&usb1_vbus_pin_i7>;
+	gpio = <&pio 2 27 GPIO_ACTIVE_HIGH>;
 	status = "okay";
 };
 
@@ -149,11 +142,6 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart0_pins_a>;
 	status = "okay";
-};
-
-&usb1_vbus_pin_a {
-	/* different pin from sunxi-common-regulators */
-	allwinner,pins = "PH24";
 };
 
 &usbphy {
