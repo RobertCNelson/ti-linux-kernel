@@ -874,6 +874,7 @@ static int fsl_qspi_probe(struct platform_device *pdev)
 
 		nor = &q->nor[i];
 		mtd = &q->mtd[i];
+		mtd->dev.parent = dev;
 
 		nor->mtd = mtd;
 		nor->dev = dev;
