@@ -146,6 +146,7 @@ static struct lu_context_key echo_thread_key;
 static inline struct echo_thread_info *echo_env_info(const struct lu_env *env)
 {
 	struct echo_thread_info *info;
+
 	info = lu_context_key_get(&env->le_ctx, &echo_thread_key);
 	LASSERT(info != NULL);
 	return info;
@@ -195,22 +196,22 @@ static struct lu_kmem_descr echo_caches[] = {
 	{
 		.ckd_cache = &echo_lock_kmem,
 		.ckd_name  = "echo_lock_kmem",
-		.ckd_size  = sizeof (struct echo_lock)
+		.ckd_size  = sizeof(struct echo_lock)
 	},
 	{
 		.ckd_cache = &echo_object_kmem,
 		.ckd_name  = "echo_object_kmem",
-		.ckd_size  = sizeof (struct echo_object)
+		.ckd_size  = sizeof(struct echo_object)
 	},
 	{
 		.ckd_cache = &echo_thread_kmem,
 		.ckd_name  = "echo_thread_kmem",
-		.ckd_size  = sizeof (struct echo_thread_info)
+		.ckd_size  = sizeof(struct echo_thread_info)
 	},
 	{
 		.ckd_cache = &echo_session_kmem,
 		.ckd_name  = "echo_session_kmem",
-		.ckd_size  = sizeof (struct echo_session_info)
+		.ckd_size  = sizeof(struct echo_session_info)
 	},
 	{
 		.ckd_cache = NULL
@@ -637,6 +638,7 @@ static void echo_thread_key_fini(const struct lu_context *ctx,
 			 struct lu_context_key *key, void *data)
 {
 	struct echo_thread_info *info = data;
+
 	OBD_SLAB_FREE_PTR(info, echo_thread_kmem);
 }
 
@@ -667,6 +669,7 @@ static void echo_session_key_fini(const struct lu_context *ctx,
 				 struct lu_context_key *key, void *data)
 {
 	struct echo_session_info *session = data;
+
 	OBD_SLAB_FREE_PTR(session, echo_session_kmem);
 }
 
@@ -783,6 +786,7 @@ out:
 	switch (cleanup) {
 	case 4: {
 		int rc2;
+
 		rc2 = echo_client_cleanup(obd);
 		if (rc2)
 			CERROR("Cleanup obd device %s error(%d)\n",
@@ -958,11 +962,13 @@ static struct echo_object *cl_echo_object_find(struct echo_device *d,
 	if (d->ed_next) {
 		if (!d->ed_next_islov) {
 			struct lov_oinfo *oinfo = lsm->lsm_oinfo[0];
+
 			LASSERT(oinfo != NULL);
 			oinfo->loi_oi = lsm->lsm_oi;
 			conf->eoc_cl.u.coc_oinfo = oinfo;
 		} else {
 			struct lustre_md *md;
+
 			md = &info->eti_md;
 			memset(md, 0, sizeof(*md));
 			md->lsm = lsm;
@@ -1011,6 +1017,7 @@ static int cl_echo_object_put(struct echo_object *eco)
 	/* an external function to kill an object? */
 	if (eco->eo_deleted) {
 		struct lu_object_header *loh = obj->co_lu.lo_header;
+
 		LASSERT(&eco->eo_hdr == luh2coh(loh));
 		set_bit(LU_OBJECT_HEARD_BANSHEE, &loh->loh_flags);
 	}
@@ -1106,8 +1113,8 @@ static int cl_echo_cancel0(struct lu_env *env, struct echo_device *ed,
 
 	LASSERT(ec != NULL);
 	spin_lock(&ec->ec_lock);
-	list_for_each (el, &ec->ec_locks) {
-		ecl = list_entry (el, struct echo_lock, el_chain);
+	list_for_each(el, &ec->ec_locks) {
+		ecl = list_entry(el, struct echo_lock, el_chain);
 		CDEBUG(D_INFO, "ecl: %p, cookie: %#llx\n", ecl, ecl->el_cookie);
 		found = (ecl->el_cookie == cookie);
 		if (found) {
@@ -1152,6 +1159,7 @@ static int cl_echo_async_brw(const struct lu_env *env, struct cl_io *io,
 
 	cl_page_list_for_each_safe(clp, temp, &queue->c2_qin) {
 		int rc;
+
 		rc = cl_page_cache_add(env, io, clp, CRT_WRITE);
 		if (rc == 0)
 			continue;
@@ -1257,20 +1265,20 @@ out:
 static u64 last_object_id;
 
 static int
-echo_copyout_lsm (struct lov_stripe_md *lsm, void *_ulsm, int ulsm_nob)
+echo_copyout_lsm(struct lov_stripe_md *lsm, void *_ulsm, int ulsm_nob)
 {
 	struct lov_stripe_md *ulsm = _ulsm;
 	int nob, i;
 
-	nob = offsetof (struct lov_stripe_md, lsm_oinfo[lsm->lsm_stripe_count]);
+	nob = offsetof(struct lov_stripe_md, lsm_oinfo[lsm->lsm_stripe_count]);
 	if (nob > ulsm_nob)
 		return -EINVAL;
 
-	if (copy_to_user (ulsm, lsm, sizeof(*ulsm)))
+	if(copy_to_user (ulsm, lsm, sizeof(*ulsm)))
 		return -EFAULT;
 
 	for (i = 0; i < lsm->lsm_stripe_count; i++) {
-		if (copy_to_user (ulsm->lsm_oinfo[i], lsm->lsm_oinfo[i],
+		if(copy_to_user (ulsm->lsm_oinfo[i], lsm->lsm_oinfo[i],
 				      sizeof(lsm->lsm_oinfo[0])))
 			return -EFAULT;
 	}
@@ -1278,16 +1286,16 @@ echo_copyout_lsm (struct lov_stripe_md *lsm, void *_ulsm, int ulsm_nob)
 }
 
 static int
-echo_copyin_lsm (struct echo_device *ed, struct lov_stripe_md *lsm,
+echo_copyin_lsm(struct echo_device *ed, struct lov_stripe_md *lsm,
 		 void *ulsm, int ulsm_nob)
 {
 	struct echo_client_obd *ec = ed->ed_ec;
 	int		     i;
 
-	if (ulsm_nob < sizeof (*lsm))
+	if(ulsm_nob < sizeof (*lsm))
 		return -EINVAL;
 
-	if (copy_from_user (lsm, ulsm, sizeof (*lsm)))
+	if(copy_from_user (lsm, ulsm, sizeof (*lsm)))
 		return -EFAULT;
 
 	if (lsm->lsm_stripe_count > ec->ec_nstripes ||
@@ -1615,6 +1623,7 @@ static int echo_client_kbrw(struct echo_device *ed, int rw, struct obdo *oa,
 
 		if (verify) {
 			int vrc;
+
 			vrc = echo_client_page_debug_check(lsm, pgp->pg,
 							   ostid_id(&oa->o_oi),
 							   pgp->off, pgp->count);
@@ -1911,6 +1920,7 @@ echo_client_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
 		rc = echo_get_object(&eco, ed, oa);
 		if (rc == 0) {
 			struct obd_info oinfo = { { { 0 } } };
+
 			oinfo.oi_md = eco->eo_lsm;
 			oinfo.oi_oa = oa;
 			rc = obd_getattr(env, ec->ec_exp, &oinfo);
@@ -1927,6 +1937,7 @@ echo_client_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
 		rc = echo_get_object(&eco, ed, oa);
 		if (rc == 0) {
 			struct obd_info oinfo = { { { 0 } } };
+
 			oinfo.oi_oa = oa;
 			oinfo.oi_md = eco->eo_lsm;
 
@@ -2158,7 +2169,6 @@ void echo_client_exit(void)
 static int __init obdecho_init(void)
 {
 	struct lprocfs_static_vars lvars;
-	int rc;
 
 	LCONSOLE_INFO("Echo OBD driver; http://www.lustre.org/\n");
 
@@ -2167,9 +2177,7 @@ static int __init obdecho_init(void)
 	lprocfs_echo_init_vars(&lvars);
 
 
-	rc = echo_client_init();
-
-	return rc;
+	return echo_client_init();
 }
 
 static void /*__exit*/ obdecho_exit(void)
