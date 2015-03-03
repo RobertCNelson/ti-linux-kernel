@@ -1064,8 +1064,7 @@ static int tcp_sendmsg_fastopen(struct sock *sk, struct msghdr *msg,
 	return err;
 }
 
-int tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
-		size_t size)
+int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct sk_buff *skb;
@@ -1543,8 +1542,8 @@ EXPORT_SYMBOL(tcp_read_sock);
  *	Probably, code can be easily improved even more.
  */
 
-int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
-		size_t len, int nonblock, int flags, int *addr_len)
+int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
+		int flags, int *addr_len)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	int copied = 0;
@@ -3005,12 +3004,11 @@ static void __init tcp_init_mem(void)
 
 void __init tcp_init(void)
 {
-	struct sk_buff *skb = NULL;
 	unsigned long limit;
 	int max_rshare, max_wshare, cnt;
 	unsigned int i;
 
-	BUILD_BUG_ON(sizeof(struct tcp_skb_cb) > sizeof(skb->cb));
+	sock_skb_cb_check_size(sizeof(struct tcp_skb_cb));
 
 	percpu_counter_init(&tcp_sockets_allocated, 0, GFP_KERNEL);
 	percpu_counter_init(&tcp_orphan_count, 0, GFP_KERNEL);
