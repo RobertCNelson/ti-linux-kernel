@@ -26,6 +26,7 @@ bool bcma_wait_value(struct bcma_device *core, u16 reg, u32 mask, u32 value,
 		     int timeout);
 void bcma_prepare_core(struct bcma_bus *bus, struct bcma_device *core);
 void bcma_init_bus(struct bcma_bus *bus);
+void bcma_unregister_cores(struct bcma_bus *bus);
 int bcma_bus_register(struct bcma_bus *bus);
 void bcma_bus_unregister(struct bcma_bus *bus);
 int __init bcma_bus_early_register(struct bcma_bus *bus);
@@ -101,6 +102,11 @@ static inline void __exit bcma_host_soc_unregister_driver(void)
 
 /* driver_pci.c */
 u32 bcma_pcie_read(struct bcma_drv_pci *pc, u32 address);
+void bcma_core_pci_up(struct bcma_drv_pci *pc);
+void bcma_core_pci_down(struct bcma_drv_pci *pc);
+
+/* driver_pcie2.c */
+void bcma_core_pcie2_up(struct bcma_drv_pcie2 *pcie2);
 
 extern int bcma_chipco_watchdog_register(struct bcma_drv_cc *cc);
 
