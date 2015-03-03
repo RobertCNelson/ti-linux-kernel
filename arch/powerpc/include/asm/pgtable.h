@@ -217,6 +217,7 @@ extern pgd_t swapper_pg_dir[];
 
 void limit_zone_pfn(enum zone_type zone, unsigned long max_pfn);
 int dma_pfn_limit_to_zone(u64 pfn_limit);
+u64 dma_get_zone_limit(int zone);
 extern void paging_init(void);
 
 /*
