@@ -1450,7 +1450,6 @@ static int mxcnd_probe(struct platform_device *pdev)
 	this = &host->nand;
 	mtd = &host->mtd;
 	mtd->priv = this;
-	mtd->owner = THIS_MODULE;
 	mtd->dev.parent = &pdev->dev;
 	mtd->name = DRIVER_NAME;
 
