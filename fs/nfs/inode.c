@@ -556,6 +556,7 @@ EXPORT_SYMBOL_GPL(nfs_setattr);
  * This is a copy of the common vmtruncate, but with the locking
  * corrected to take into account the fact that NFS requires
  * inode->i_size to be updated under the inode->i_lock.
+ * Note: must be called with inode->i_lock held!
  */
 static int nfs_vmtruncate(struct inode * inode, loff_t offset)
 {
@@ -565,14 +566,14 @@ static int nfs_vmtruncate(struct inode * inode, loff_t offset)
 	if (err)
 		goto out;
 
-	spin_lock(&inode->i_lock);
 	i_size_write(inode, offset);
 	/* Optimisation */
 	if (offset == 0)
 		NFS_I(inode)->cache_validity &= ~NFS_INO_INVALID_DATA;
-	spin_unlock(&inode->i_lock);
 
+	spin_unlock(&inode->i_lock);
 	truncate_pagecache(inode, offset);
+	spin_lock(&inode->i_lock);
 out:
 	return err;
 }
@@ -585,10 +586,15 @@ out:
  * Note: we do this in the *proc.c in order to ensure that
  *       it works for things like exclusive creates too.
  */
-void nfs_setattr_update_inode(struct inode *inode, struct iattr *attr)
+void nfs_setattr_update_inode(struct inode *inode, struct iattr *attr,
+		struct nfs_fattr *fattr)
 {
+	/* Barrier: bump the attribute generation count. */
+	nfs_fattr_set_barrier(fattr);
+
+	spin_lock(&inode->i_lock);
+	NFS_I(inode)->attr_gencount = fattr->gencount;
 	if ((attr->ia_valid & (ATTR_MODE|ATTR_UID|ATTR_GID)) != 0) {
-		spin_lock(&inode->i_lock);
 		if ((attr->ia_valid & ATTR_MODE) != 0) {
 			int mode = attr->ia_mode & S_IALLUGO;
 			mode |= inode->i_mode & ~S_IALLUGO;
@@ -600,12 +606,13 @@ void nfs_setattr_update_inode(struct inode *inode, struct iattr *attr)
 			inode->i_gid = attr->ia_gid;
 		nfs_set_cache_invalid(inode, NFS_INO_INVALID_ACCESS
 				| NFS_INO_INVALID_ACL);
-		spin_unlock(&inode->i_lock);
 	}
 	if ((attr->ia_valid & ATTR_SIZE) != 0) {
 		nfs_inc_stats(inode, NFSIOS_SETATTRTRUNC);
 		nfs_vmtruncate(inode, attr->ia_size);
 	}
+	nfs_update_inode(inode, fattr);
+	spin_unlock(&inode->i_lock);
 }
 EXPORT_SYMBOL_GPL(nfs_setattr_update_inode);
 
@@ -1231,13 +1238,6 @@ static int nfs_ctime_need_update(const struct inode *inode, const struct nfs_fat
 	return timespec_compare(&fattr->ctime, &inode->i_ctime) > 0;
 }
 
-static int nfs_size_need_update(const struct inode *inode, const struct nfs_fattr *fattr)
-{
-	if (!(fattr->valid & NFS_ATTR_FATTR_SIZE))
-		return 0;
-	return nfs_size_to_loff_t(fattr->size) > i_size_read(inode);
-}
-
 static atomic_long_t nfs_attr_generation_counter;
 
 static unsigned long nfs_read_attr_generation_counter(void)
@@ -1249,6 +1249,7 @@ unsigned long nfs_inc_attr_generation_counter(void)
 {
 	return atomic_long_inc_return(&nfs_attr_generation_counter);
 }
+EXPORT_SYMBOL_GPL(nfs_inc_attr_generation_counter);
 
 void nfs_fattr_init(struct nfs_fattr *fattr)
 {
@@ -1259,6 +1260,22 @@ void nfs_fattr_init(struct nfs_fattr *fattr)
 	fattr->group_name = NULL;
 }
 EXPORT_SYMBOL_GPL(nfs_fattr_init);
+
+/**
+ * nfs_fattr_set_barrier
+ * @fattr: attributes
+ *
+ * Used to set a barrier after an attribute was updated. This
+ * barrier ensures that older attributes from RPC calls that may
+ * have raced with our update cannot clobber these new values.
+ * Note that you are still responsible for ensuring that other
+ * operations which change the attribute on the server do not
+ * collide.
+ */
+void nfs_fattr_set_barrier(struct nfs_fattr *fattr)
+{
+	fattr->gencount = nfs_inc_attr_generation_counter();
+}
 
 struct nfs_fattr *nfs_alloc_fattr(void)
 {
@@ -1370,7 +1387,6 @@ static int nfs_inode_attrs_need_update(const struct inode *inode, const struct n
 
 	return ((long)fattr->gencount - (long)nfsi->attr_gencount) > 0 ||
 		nfs_ctime_need_update(inode, fattr) ||
-		nfs_size_need_update(inode, fattr) ||
 		((long)nfsi->attr_gencount - (long)nfs_read_attr_generation_counter() > 0);
 }
 
@@ -1460,6 +1476,7 @@ int nfs_post_op_update_inode(struct inode *inode, struct nfs_fattr *fattr)
 	int status;
 
 	spin_lock(&inode->i_lock);
+	nfs_fattr_set_barrier(fattr);
 	status = nfs_post_op_update_inode_locked(inode, fattr);
 	spin_unlock(&inode->i_lock);
 
@@ -1468,7 +1485,7 @@ int nfs_post_op_update_inode(struct inode *inode, struct nfs_fattr *fattr)
 EXPORT_SYMBOL_GPL(nfs_post_op_update_inode);
 
 /**
- * nfs_post_op_update_inode_force_wcc - try to update the inode attribute cache
+ * nfs_post_op_update_inode_force_wcc_locked - update the inode attribute cache
  * @inode - pointer to inode
  * @fattr - updated attributes
  *
@@ -1478,11 +1495,10 @@ EXPORT_SYMBOL_GPL(nfs_post_op_update_inode);
  *
  * This function is mainly designed to be used by the ->write_done() functions.
  */
-int nfs_post_op_update_inode_force_wcc(struct inode *inode, struct nfs_fattr *fattr)
+int nfs_post_op_update_inode_force_wcc_locked(struct inode *inode, struct nfs_fattr *fattr)
 {
 	int status;
 
-	spin_lock(&inode->i_lock);
 	/* Don't do a WCC update if these attributes are already stale */
 	if ((fattr->valid & NFS_ATTR_FATTR) == 0 ||
 			!nfs_inode_attrs_need_update(inode, fattr)) {
@@ -1514,6 +1530,27 @@ int nfs_post_op_update_inode_force_wcc(struct inode *inode, struct nfs_fattr *fa
 	}
 out_noforce:
 	status = nfs_post_op_update_inode_locked(inode, fattr);
+	return status;
+}
+
+/**
+ * nfs_post_op_update_inode_force_wcc - try to update the inode attribute cache
+ * @inode - pointer to inode
+ * @fattr - updated attributes
+ *
+ * After an operation that has changed the inode metadata, mark the
+ * attribute cache as being invalid, then try to update it. Fake up
+ * weak cache consistency data, if none exist.
+ *
+ * This function is mainly designed to be used by the ->write_done() functions.
+ */
+int nfs_post_op_update_inode_force_wcc(struct inode *inode, struct nfs_fattr *fattr)
+{
+	int status;
+
+	spin_lock(&inode->i_lock);
+	nfs_fattr_set_barrier(fattr);
+	status = nfs_post_op_update_inode_force_wcc_locked(inode, fattr);
 	spin_unlock(&inode->i_lock);
 	return status;
 }
@@ -1715,6 +1752,7 @@ static int nfs_update_inode(struct inode *inode, struct nfs_fattr *fattr)
 		nfs_inc_stats(inode, NFSIOS_ATTRINVALIDATE);
 		nfsi->attrtimeo = NFS_MINATTRTIMEO(inode);
 		nfsi->attrtimeo_timestamp = now;
+		/* Set barrier to be more recent than all outstanding updates */
 		nfsi->attr_gencount = nfs_inc_attr_generation_counter();
 	} else {
 		if (!time_in_range_open(now, nfsi->attrtimeo_timestamp, nfsi->attrtimeo_timestamp + nfsi->attrtimeo)) {
@@ -1722,6 +1760,9 @@ static int nfs_update_inode(struct inode *inode, struct nfs_fattr *fattr)
 				nfsi->attrtimeo = NFS_MAXATTRTIMEO(inode);
 			nfsi->attrtimeo_timestamp = now;
 		}
+		/* Set the barrier to be more recent than this fattr */
+		if ((long)fattr->gencount - (long)nfsi->attr_gencount > 0)
+			nfsi->attr_gencount = fattr->gencount;
 	}
 	invalid &= ~NFS_INO_INVALID_ATTR;
 	/* Don't invalidate the data if we were to blame */
