@@ -582,6 +582,13 @@ config CRYPTO_SHA1_PPC
 	  This is the powerpc hardware accelerated implementation of the
 	  SHA-1 secure hash standard (FIPS 180-1/DFIPS 180-2).
 
+config CRYPTO_SHA1_PPC_SPE
+	tristate "SHA1 digest algorithm (PPC SPE)"
+	depends on PPC && SPE
+	help
+	  SHA-1 secure hash standard (DFIPS 180-4) implemented
+	  using powerpc SPE SIMD instruction set.
+
 config CRYPTO_SHA1_MB
 	tristate "SHA1 digest algorithm (x86_64 Multi-Buffer, Experimental)"
 	depends on X86 && 64BIT
@@ -609,6 +616,15 @@ config CRYPTO_SHA256
 
 	  This code also includes SHA-224, a 224 bit hash with 112 bits
 	  of security against collision attacks.
+
+config CRYPTO_SHA256_PPC_SPE
+	tristate "SHA224 and SHA256 digest algorithm (PPC SPE)"
+	depends on PPC && SPE
+	select CRYPTO_SHA256
+	select CRYPTO_HASH
+	help
+	  SHA224 and SHA256 secure hash standard (DFIPS 180-2)
+	  implemented using powerpc SPE SIMD instruction set.
 
 config CRYPTO_SHA256_SPARC64
 	tristate "SHA224 and SHA256 digest algorithm (SPARC64)"
@@ -856,6 +872,19 @@ config CRYPTO_AES_ARM_BS
 	  around 25%. (CBC encryption speed is not affected by this driver.)
 	  This implementation does not rely on any lookup tables so it is
 	  believed to be invulnerable to cache timing attacks.
+
+config CRYPTO_AES_PPC_SPE
+	tristate "AES cipher algorithms (PPC SPE)"
+	depends on PPC && SPE
+	help
+	  AES cipher algorithms (FIPS-197). Additionally the acceleration
+	  for popular block cipher modes ECB, CBC, CTR and XTS is supported.
+	  This module should only be used for low power (router) devices
+	  without hardware AES acceleration (e.g. caam crypto). It reduces the
+	  size of the AES tables from 16KB to 8KB + 256 bytes and mitigates
+	  timining attacks. Nevertheless it might be not as secure as other
+	  architecture specific assembler implementations that work on 1KB
+	  tables or 256 bytes S-boxes.
 
 config CRYPTO_ANUBIS
 	tristate "Anubis cipher algorithm"

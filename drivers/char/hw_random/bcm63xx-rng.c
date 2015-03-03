@@ -13,8 +13,15 @@
 #include <linux/platform_device.h>
 #include <linux/hw_random.h>
 
-#include <bcm63xx_io.h>
-#include <bcm63xx_regs.h>
+#define RNG_CTRL			0x00
+#define RNG_EN				(1 << 0)
+
+#define RNG_STAT			0x04
+#define RNG_AVAIL_MASK			(0xff000000)
+
+#define RNG_DATA			0x08
+#define RNG_THRES			0x0c
+#define RNG_MASK			0x10
 
 struct bcm63xx_rng_priv {
 	struct clk *clk;
@@ -28,9 +35,9 @@ static int bcm63xx_rng_init(struct hwrng *rng)
 	struct bcm63xx_rng_priv *priv = to_rng_priv(rng);
 	u32 val;
 
-	val = bcm_readl(priv->regs + RNG_CTRL);
+	val = __raw_readl(priv->regs + RNG_CTRL);
 	val |= RNG_EN;
-	bcm_writel(val, priv->regs + RNG_CTRL);
+	__raw_writel(val, priv->regs + RNG_CTRL);
 
 	return 0;
 }
@@ -40,23 +47,23 @@ static void bcm63xx_rng_cleanup(struct hwrng *rng)
 	struct bcm63xx_rng_priv *priv = to_rng_priv(rng);
 	u32 val;
 
-	val = bcm_readl(priv->regs + RNG_CTRL);
+	val = __raw_readl(priv->regs + RNG_CTRL);
 	val &= ~RNG_EN;
-	bcm_writel(val, priv->regs + RNG_CTRL);
+	__raw_writel(val, priv->regs + RNG_CTRL);
 }
 
 static int bcm63xx_rng_data_present(struct hwrng *rng, int wait)
 {
 	struct bcm63xx_rng_priv *priv = to_rng_priv(rng);
 
-	return bcm_readl(priv->regs + RNG_STAT) & RNG_AVAIL_MASK;
+	return __raw_readl(priv->regs + RNG_STAT) & RNG_AVAIL_MASK;
 }
 
 static int bcm63xx_rng_data_read(struct hwrng *rng, u32 *data)
 {
 	struct bcm63xx_rng_priv *priv = to_rng_priv(rng);
 
-	*data = bcm_readl(priv->regs + RNG_DATA);
+	*data = __raw_readl(priv->regs + RNG_DATA);
 
 	return 4;
 }
@@ -76,18 +83,16 @@ static int bcm63xx_rng_probe(struct platform_device *pdev)
 		goto out;
 	}
 
-	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
+	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv) {
-		dev_err(&pdev->dev, "no memory for private structure\n");
 		ret = -ENOMEM;
 		goto out;
 	}
 
-	rng = kzalloc(sizeof(*rng), GFP_KERNEL);
+	rng = devm_kzalloc(&pdev->dev, sizeof(*rng), GFP_KERNEL);
 	if (!rng) {
-		dev_err(&pdev->dev, "no memory for rng structure\n");
 		ret = -ENOMEM;
-		goto out_free_priv;
+		goto out;
 	}
 
 	platform_set_drvdata(pdev, rng);
@@ -102,7 +107,7 @@ static int bcm63xx_rng_probe(struct platform_device *pdev)
 	if (IS_ERR(clk)) {
 		dev_err(&pdev->dev, "no clock for device\n");
 		ret = PTR_ERR(clk);
-		goto out_free_rng;
+		goto out;
 	}
 
 	priv->clk = clk;
@@ -111,7 +116,7 @@ static int bcm63xx_rng_probe(struct platform_device *pdev)
 					resource_size(r), pdev->name)) {
 		dev_err(&pdev->dev, "request mem failed");
 		ret = -ENOMEM;
-		goto out_free_rng;
+		goto out;
 	}
 
 	priv->regs = devm_ioremap_nocache(&pdev->dev, r->start,
@@ -119,7 +124,7 @@ static int bcm63xx_rng_probe(struct platform_device *pdev)
 	if (!priv->regs) {
 		dev_err(&pdev->dev, "ioremap failed");
 		ret = -ENOMEM;
-		goto out_free_rng;
+		goto out;
 	}
 
 	clk_enable(clk);
@@ -136,10 +141,6 @@ static int bcm63xx_rng_probe(struct platform_device *pdev)
 
 out_clk_disable:
 	clk_disable(clk);
-out_free_rng:
-	kfree(rng);
-out_free_priv:
-	kfree(priv);
 out:
 	return ret;
 }
@@ -151,8 +152,6 @@ static int bcm63xx_rng_remove(struct platform_device *pdev)
 
 	hwrng_unregister(rng);
 	clk_disable(priv->clk);
-	kfree(priv);
-	kfree(rng);
 
 	return 0;
 }
