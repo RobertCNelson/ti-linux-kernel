@@ -901,6 +901,7 @@ static void update_changeattr(struct inode *dir, struct nfs4_change_info *cinfo)
 	if (!cinfo->atomic || cinfo->before != dir->i_version)
 		nfs_force_lookup_revalidate(dir);
 	dir->i_version = cinfo->after;
+	nfsi->attr_gencount = nfs_inc_attr_generation_counter();
 	nfs_fscache_invalidate(dir);
 	spin_unlock(&dir->i_lock);
 }
@@ -1552,6 +1553,9 @@ static int nfs4_open_recover_helper(struct nfs4_opendata *opendata, fmode_t fmod
 
 	opendata->o_arg.open_flags = 0;
 	opendata->o_arg.fmode = fmode;
+	opendata->o_arg.share_access = nfs4_map_atomic_open_share(
+			NFS_SB(opendata->dentry->d_sb),
+			fmode, 0);
 	memset(&opendata->o_res, 0, sizeof(opendata->o_res));
 	memset(&opendata->c_res, 0, sizeof(opendata->c_res));
 	nfs4_init_opendata_res(opendata);
@@ -2413,8 +2417,8 @@ static int _nfs4_do_open(struct inode *dir,
 				opendata->o_res.f_attr, sattr,
 				state, label, olabel);
 		if (status == 0) {
-			nfs_setattr_update_inode(state->inode, sattr);
-			nfs_post_op_update_inode(state->inode, opendata->o_res.f_attr);
+			nfs_setattr_update_inode(state->inode, sattr,
+					opendata->o_res.f_attr);
 			nfs_setsecurity(state->inode, opendata->o_res.f_attr, olabel);
 		}
 	}
@@ -2651,7 +2655,7 @@ static void nfs4_close_done(struct rpc_task *task, void *data)
 		case -NFS4ERR_BAD_STATEID:
 		case -NFS4ERR_EXPIRED:
 			if (!nfs4_stateid_match(&calldata->arg.stateid,
-						&state->stateid)) {
+						&state->open_stateid)) {
 				rpc_restart_call_prepare(task);
 				goto out_release;
 			}
@@ -2687,7 +2691,7 @@ static void nfs4_close_prepare(struct rpc_task *task, void *data)
 	is_rdwr = test_bit(NFS_O_RDWR_STATE, &state->flags);
 	is_rdonly = test_bit(NFS_O_RDONLY_STATE, &state->flags);
 	is_wronly = test_bit(NFS_O_WRONLY_STATE, &state->flags);
-	nfs4_stateid_copy(&calldata->arg.stateid, &state->stateid);
+	nfs4_stateid_copy(&calldata->arg.stateid, &state->open_stateid);
 	/* Calculate the change in open mode */
 	calldata->arg.fmode = 0;
 	if (state->n_rdwr == 0) {
@@ -3288,7 +3292,7 @@ nfs4_proc_setattr(struct dentry *dentry, struct nfs_fattr *fattr,
 
 	status = nfs4_do_setattr(inode, cred, fattr, sattr, state, NULL, label);
 	if (status == 0) {
-		nfs_setattr_update_inode(inode, sattr);
+		nfs_setattr_update_inode(inode, sattr, fattr);
 		nfs_setsecurity(inode, fattr, label);
 	}
 	nfs4_label_free(label);
@@ -4234,7 +4238,7 @@ static int nfs4_write_done_cb(struct rpc_task *task,
 	}
 	if (task->tk_status >= 0) {
 		renew_lease(NFS_SERVER(inode), hdr->timestamp);
-		nfs_post_op_update_inode_force_wcc(inode, &hdr->fattr);
+		nfs_writeback_update_inode(hdr);
 	}
 	return 0;
 }
