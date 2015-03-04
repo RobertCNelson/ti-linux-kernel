@@ -29,6 +29,7 @@
 #include <drm/drm_vma_manager.h>
 #include <drm/i915_drm.h>
 #include "i915_drv.h"
+#include "i915_vgpu.h"
 #include "i915_trace.h"
 #include "intel_drv.h"
 #include <linux/oom.h>
@@ -2492,6 +2493,8 @@ int __i915_add_request(struct intel_engine_cs *ring,
 		list_add_tail(&request->client_list,
 			      &file_priv->mm.request_list);
 		spin_unlock(&file_priv->mm.lock);
+
+		request->pid = get_pid(task_pid(current));
 	}
 
 	trace_i915_gem_request_add(request);
@@ -2571,6 +2574,8 @@ static void i915_gem_free_request(struct drm_i915_gem_request *request)
 {
 	list_del(&request->list);
 	i915_gem_request_remove_from_client(request);
+
+	put_pid(request->pid);
 
 	i915_gem_request_unreference(request);
 }
@@ -2757,7 +2762,6 @@ i915_gem_retire_requests_ring(struct intel_engine_cs *ring)
 
 	while (!list_empty(&ring->request_list)) {
 		struct drm_i915_gem_request *request;
-		struct intel_ringbuffer *ringbuf;
 
 		request = list_first_entry(&ring->request_list,
 					   struct drm_i915_gem_request,
@@ -2768,23 +2772,12 @@ i915_gem_retire_requests_ring(struct intel_engine_cs *ring)
 
 		trace_i915_gem_request_retire(request);
 
-		/* This is one of the few common intersection points
-		 * between legacy ringbuffer submission and execlists:
-		 * we need to tell them apart in order to find the correct
-		 * ringbuffer to which the request belongs to.
-		 */
-		if (i915.enable_execlists) {
-			struct intel_context *ctx = request->ctx;
-			ringbuf = ctx->engine[ring->id].ringbuf;
-		} else
-			ringbuf = ring->buffer;
-
 		/* We know the GPU must have read the request to have
 		 * sent us the seqno + interrupt, so use the position
 		 * of tail of the request to update the last known position
 		 * of the GPU head.
 		 */
-		ringbuf->last_retired_head = request->postfix;
+		request->ringbuf->last_retired_head = request->postfix;
 
 		i915_gem_free_request(request);
 	}
@@ -4232,7 +4225,7 @@ i915_gem_object_pin_view(struct drm_i915_gem_object *obj,
 		fenceable = (vma->node.size == fence_size &&
 			     (vma->node.start & (fence_alignment - 1)) == 0);
 
-		mappable = (vma->node.start + obj->base.size <=
+		mappable = (vma->node.start + fence_size <=
 			    dev_priv->gtt.mappable_end);
 
 		obj->map_and_fenceable = mappable && fenceable;
@@ -4607,10 +4600,6 @@ i915_gem_suspend(struct drm_device *dev)
 
 	i915_gem_retire_requests(dev);
 
-	/* Under UMS, be paranoid and evict. */
-	if (!drm_core_check_feature(dev, DRIVER_MODESET))
-		i915_gem_evict_everything(dev);
-
 	i915_gem_stop_ringbuffers(dev);
 	mutex_unlock(&dev->struct_mutex);
 
@@ -4967,17 +4956,7 @@ i915_gem_load(struct drm_device *dev)
 			  i915_gem_idle_work_handler);
 	init_waitqueue_head(&dev_priv->gpu_error.reset_queue);
 
-	/* On GEN3 we really need to make sure the ARB C3 LP bit is set */
-	if (!drm_core_check_feature(dev, DRIVER_MODESET) && IS_GEN3(dev)) {
-		I915_WRITE(MI_ARB_STATE,
-			   _MASKED_BIT_ENABLE(MI_ARB_C3_LP_WRITE_ENABLE));
-	}
-
 	dev_priv->relative_constants_mode = I915_EXEC_CONSTANTS_REL_GENERAL;
-
-	/* Old X drivers will take 0-2 for front, back, depth buffers */
-	if (!drm_core_check_feature(dev, DRIVER_MODESET))
-		dev_priv->fence_reg_start = 3;
 
 	if (INTEL_INFO(dev)->gen >= 7 && !IS_VALLEYVIEW(dev))
 		dev_priv->num_fence_regs = 32;
@@ -4985,6 +4964,10 @@ i915_gem_load(struct drm_device *dev)
 		dev_priv->num_fence_regs = 16;
 	else
 		dev_priv->num_fence_regs = 8;
+
+	if (intel_vgpu_active(dev))
+		dev_priv->num_fence_regs =
+				I915_READ(vgtif_reg(avail_rs.fence_num));
 
 	/* Initialize fence registers to zero */
 	INIT_LIST_HEAD(&dev_priv->mm.fence_list);

@@ -139,10 +139,11 @@ describe_obj(struct seq_file *m, struct drm_i915_gem_object *obj)
 		   obj->madv == I915_MADV_DONTNEED ? " purgeable" : "");
 	if (obj->base.name)
 		seq_printf(m, " (name: %d)", obj->base.name);
-	list_for_each_entry(vma, &obj->vma_list, vma_link)
+	list_for_each_entry(vma, &obj->vma_list, vma_link) {
 		if (vma->pin_count > 0)
 			pin_count++;
-		seq_printf(m, " (pinned x %d)", pin_count);
+	}
+	seq_printf(m, " (pinned x %d)", pin_count);
 	if (obj->pin_display)
 		seq_printf(m, " (display)");
 	if (obj->fence_reg != I915_FENCE_REG_NONE)
@@ -580,7 +581,7 @@ static int i915_gem_pageflip_info(struct seq_file *m, void *data)
 			seq_printf(m, "Flip queued on frame %d, (was ready on frame %d), now %d\n",
 				   work->flip_queued_vblank,
 				   work->flip_ready_vblank,
-				   drm_vblank_count(dev, crtc->pipe));
+				   drm_crtc_vblank_count(&crtc->base));
 			if (work->enable_stall_check)
 				seq_puts(m, "Stall check enabled, ");
 			else
@@ -1778,11 +1779,12 @@ static int i915_gem_framebuffer_info(struct seq_file *m, void *data)
 	ifbdev = dev_priv->fbdev;
 	fb = to_intel_framebuffer(ifbdev->helper.fb);
 
-	seq_printf(m, "fbcon size: %d x %d, depth %d, %d bpp, refcount %d, obj ",
+	seq_printf(m, "fbcon size: %d x %d, depth %d, %d bpp, modifier 0x%llx, refcount %d, obj ",
 		   fb->base.width,
 		   fb->base.height,
 		   fb->base.depth,
 		   fb->base.bits_per_pixel,
+		   fb->base.modifier[0],
 		   atomic_read(&fb->base.refcount.refcount));
 	describe_obj(m, fb->obj);
 	seq_putc(m, '\n');
@@ -1793,11 +1795,12 @@ static int i915_gem_framebuffer_info(struct seq_file *m, void *data)
 		if (ifbdev && &fb->base == ifbdev->helper.fb)
 			continue;
 
-		seq_printf(m, "user size: %d x %d, depth %d, %d bpp, refcount %d, obj ",
+		seq_printf(m, "user size: %d x %d, depth %d, %d bpp, modifier 0x%llx, refcount %d, obj ",
 			   fb->base.width,
 			   fb->base.height,
 			   fb->base.depth,
 			   fb->base.bits_per_pixel,
+			   fb->base.modifier[0],
 			   atomic_read(&fb->base.refcount.refcount));
 		describe_obj(m, fb->obj);
 		seq_putc(m, '\n');
@@ -2183,7 +2186,7 @@ static void gen6_ppgtt_info(struct seq_file *m, struct drm_device *dev)
 		struct i915_hw_ppgtt *ppgtt = dev_priv->mm.aliasing_ppgtt;
 
 		seq_puts(m, "aliasing PPGTT:\n");
-		seq_printf(m, "pd gtt offset: 0x%08x\n", ppgtt->pd_offset);
+		seq_printf(m, "pd gtt offset: 0x%08x\n", ppgtt->pd.pd_offset);
 
 		ppgtt->debug_dump(ppgtt, m);
 	}
@@ -2674,7 +2677,8 @@ static int i915_display_info(struct seq_file *m, void *unused)
 			active = cursor_position(dev, crtc->pipe, &x, &y);
 			seq_printf(m, "\tcursor visible? %s, position (%d, %d), size %dx%d, addr 0x%08x, active? %s\n",
 				   yesno(crtc->cursor_base),
-				   x, y, crtc->cursor_width, crtc->cursor_height,
+				   x, y, crtc->base.cursor->state->crtc_w,
+				   crtc->base.cursor->state->crtc_h,
 				   crtc->cursor_addr, yesno(active));
 		}
 
@@ -2850,7 +2854,7 @@ static int i915_ddb_info(struct seq_file *m, void *unused)
 	for_each_pipe(dev_priv, pipe) {
 		seq_printf(m, "Pipe %c\n", pipe_name(pipe));
 
-		for_each_plane(pipe, plane) {
+		for_each_plane(dev_priv, pipe, plane) {
 			entry = &ddb->plane[pipe][plane];
 			seq_printf(m, "  Plane%-8d%8u%8u%8u\n", plane + 1,
 				   entry->start, entry->end,
@@ -4189,7 +4193,7 @@ i915_max_freq_set(void *data, u64 val)
 {
 	struct drm_device *dev = data;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	u32 rp_state_cap, hw_max, hw_min;
+	u32 hw_max, hw_min;
 	int ret;
 
 	if (INTEL_INFO(dev)->gen < 6)
@@ -4206,18 +4210,10 @@ i915_max_freq_set(void *data, u64 val)
 	/*
 	 * Turbo will still be enabled, but won't go above the set value.
 	 */
-	if (IS_VALLEYVIEW(dev)) {
-		val = intel_freq_opcode(dev_priv, val);
+	val = intel_freq_opcode(dev_priv, val);
 
-		hw_max = dev_priv->rps.max_freq;
-		hw_min = dev_priv->rps.min_freq;
-	} else {
-		val = intel_freq_opcode(dev_priv, val);
-
-		rp_state_cap = I915_READ(GEN6_RP_STATE_CAP);
-		hw_max = dev_priv->rps.max_freq;
-		hw_min = (rp_state_cap >> 16) & 0xff;
-	}
+	hw_max = dev_priv->rps.max_freq;
+	hw_min = dev_priv->rps.min_freq;
 
 	if (val < hw_min || val > hw_max || val < dev_priv->rps.min_freq_softlimit) {
 		mutex_unlock(&dev_priv->rps.hw_lock);
@@ -4226,10 +4222,7 @@ i915_max_freq_set(void *data, u64 val)
 
 	dev_priv->rps.max_freq_softlimit = val;
 
-	if (IS_VALLEYVIEW(dev))
-		valleyview_set_rps(dev, val);
-	else
-		gen6_set_rps(dev, val);
+	intel_set_rps(dev, val);
 
 	mutex_unlock(&dev_priv->rps.hw_lock);
 
@@ -4267,7 +4260,7 @@ i915_min_freq_set(void *data, u64 val)
 {
 	struct drm_device *dev = data;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	u32 rp_state_cap, hw_max, hw_min;
+	u32 hw_max, hw_min;
 	int ret;
 
 	if (INTEL_INFO(dev)->gen < 6)
@@ -4284,18 +4277,10 @@ i915_min_freq_set(void *data, u64 val)
 	/*
 	 * Turbo will still be enabled, but won't go below the set value.
 	 */
-	if (IS_VALLEYVIEW(dev)) {
-		val = intel_freq_opcode(dev_priv, val);
+	val = intel_freq_opcode(dev_priv, val);
 
-		hw_max = dev_priv->rps.max_freq;
-		hw_min = dev_priv->rps.min_freq;
-	} else {
-		val = intel_freq_opcode(dev_priv, val);
-
-		rp_state_cap = I915_READ(GEN6_RP_STATE_CAP);
-		hw_max = dev_priv->rps.max_freq;
-		hw_min = (rp_state_cap >> 16) & 0xff;
-	}
+	hw_max = dev_priv->rps.max_freq;
+	hw_min = dev_priv->rps.min_freq;
 
 	if (val < hw_min || val > hw_max || val > dev_priv->rps.max_freq_softlimit) {
 		mutex_unlock(&dev_priv->rps.hw_lock);
@@ -4304,10 +4289,7 @@ i915_min_freq_set(void *data, u64 val)
 
 	dev_priv->rps.min_freq_softlimit = val;
 
-	if (IS_VALLEYVIEW(dev))
-		valleyview_set_rps(dev, val);
-	else
-		gen6_set_rps(dev, val);
+	intel_set_rps(dev, val);
 
 	mutex_unlock(&dev_priv->rps.hw_lock);
 
@@ -4373,6 +4355,85 @@ i915_cache_sharing_set(void *data, u64 val)
 DEFINE_SIMPLE_ATTRIBUTE(i915_cache_sharing_fops,
 			i915_cache_sharing_get, i915_cache_sharing_set,
 			"%llu\n");
+
+static int i915_sseu_status(struct seq_file *m, void *unused)
+{
+	struct drm_info_node *node = (struct drm_info_node *) m->private;
+	struct drm_device *dev = node->minor->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	unsigned int s_tot = 0, ss_tot = 0, ss_per = 0, eu_tot = 0, eu_per = 0;
+
+	if (INTEL_INFO(dev)->gen < 9)
+		return -ENODEV;
+
+	seq_puts(m, "SSEU Device Info\n");
+	seq_printf(m, "  Available Slice Total: %u\n",
+		   INTEL_INFO(dev)->slice_total);
+	seq_printf(m, "  Available Subslice Total: %u\n",
+		   INTEL_INFO(dev)->subslice_total);
+	seq_printf(m, "  Available Subslice Per Slice: %u\n",
+		   INTEL_INFO(dev)->subslice_per_slice);
+	seq_printf(m, "  Available EU Total: %u\n",
+		   INTEL_INFO(dev)->eu_total);
+	seq_printf(m, "  Available EU Per Subslice: %u\n",
+		   INTEL_INFO(dev)->eu_per_subslice);
+	seq_printf(m, "  Has Slice Power Gating: %s\n",
+		   yesno(INTEL_INFO(dev)->has_slice_pg));
+	seq_printf(m, "  Has Subslice Power Gating: %s\n",
+		   yesno(INTEL_INFO(dev)->has_subslice_pg));
+	seq_printf(m, "  Has EU Power Gating: %s\n",
+		   yesno(INTEL_INFO(dev)->has_eu_pg));
+
+	seq_puts(m, "SSEU Device Status\n");
+	if (IS_SKYLAKE(dev)) {
+		const int s_max = 3, ss_max = 4;
+		int s, ss;
+		u32 s_reg[s_max], eu_reg[2*s_max], eu_mask[2];
+
+		s_reg[0] = I915_READ(GEN9_SLICE0_PGCTL_ACK);
+		s_reg[1] = I915_READ(GEN9_SLICE1_PGCTL_ACK);
+		s_reg[2] = I915_READ(GEN9_SLICE2_PGCTL_ACK);
+		eu_reg[0] = I915_READ(GEN9_SLICE0_SS01_EU_PGCTL_ACK);
+		eu_reg[1] = I915_READ(GEN9_SLICE0_SS23_EU_PGCTL_ACK);
+		eu_reg[2] = I915_READ(GEN9_SLICE1_SS01_EU_PGCTL_ACK);
+		eu_reg[3] = I915_READ(GEN9_SLICE1_SS23_EU_PGCTL_ACK);
+		eu_reg[4] = I915_READ(GEN9_SLICE2_SS01_EU_PGCTL_ACK);
+		eu_reg[5] = I915_READ(GEN9_SLICE2_SS23_EU_PGCTL_ACK);
+		eu_mask[0] = GEN9_PGCTL_SSA_EU08_ACK |
+			     GEN9_PGCTL_SSA_EU19_ACK |
+			     GEN9_PGCTL_SSA_EU210_ACK |
+			     GEN9_PGCTL_SSA_EU311_ACK;
+		eu_mask[1] = GEN9_PGCTL_SSB_EU08_ACK |
+			     GEN9_PGCTL_SSB_EU19_ACK |
+			     GEN9_PGCTL_SSB_EU210_ACK |
+			     GEN9_PGCTL_SSB_EU311_ACK;
+
+		for (s = 0; s < s_max; s++) {
+			if ((s_reg[s] & GEN9_PGCTL_SLICE_ACK) == 0)
+				/* skip disabled slice */
+				continue;
+
+			s_tot++;
+			ss_per = INTEL_INFO(dev)->subslice_per_slice;
+			ss_tot += ss_per;
+			for (ss = 0; ss < ss_max; ss++) {
+				unsigned int eu_cnt;
+
+				eu_cnt = 2 * hweight32(eu_reg[2*s + ss/2] &
+						       eu_mask[ss%2]);
+				eu_tot += eu_cnt;
+				eu_per = max(eu_per, eu_cnt);
+			}
+		}
+	}
+	seq_printf(m, "  Enabled Slice Total: %u\n", s_tot);
+	seq_printf(m, "  Enabled Subslice Total: %u\n", ss_tot);
+	seq_printf(m, "  Enabled Subslice Per Slice: %u\n", ss_per);
+	seq_printf(m, "  Enabled EU Total: %u\n", eu_tot);
+	seq_printf(m, "  Enabled EU Per Subslice: %u\n", eu_per);
+
+	return 0;
+}
 
 static int i915_forcewake_open(struct inode *inode, struct file *file)
 {
@@ -4487,6 +4548,7 @@ static const struct drm_info_list i915_debugfs_list[] = {
 	{"i915_dp_mst_info", i915_dp_mst_info, 0},
 	{"i915_wa_registers", i915_wa_registers, 0},
 	{"i915_ddb_info", i915_ddb_info, 0},
+	{"i915_sseu_status", i915_sseu_status, 0},
 };
 #define I915_DEBUGFS_ENTRIES ARRAY_SIZE(i915_debugfs_list)
 
