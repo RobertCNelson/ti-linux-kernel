@@ -75,6 +75,7 @@
 #include <linux/types.h>
 #include <sys/ttydefaults.h>
 #include <api/fs/debugfs.h>
+#include <api/fs/tracefs.h>
 #include <termios.h>
 #include <linux/bitops.h>
 #include <termios.h>
@@ -276,6 +277,7 @@ char *ltrim(char *s);
 char *rtrim(char *s);
 
 void dump_stack(void);
+void sighandler_dump_stack(int sig);
 
 extern unsigned int page_size;
 extern int cacheline_size;
