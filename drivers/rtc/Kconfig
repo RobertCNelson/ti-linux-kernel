@@ -1510,6 +1510,16 @@ config RTC_DRV_MOXART
 	   This driver can also be built as a module. If so, the module
 	   will be called rtc-moxart
 
+config RTC_DRV_MT63XX
+	tristate "Mediatek Real Time Clock driver"
+	depends on MFD_MT6397
+	help
+	  This selects the Mediatek(R) RTC driver, you should add support
+	  for Mediatek MT6397 PMIC before select Mediatek(R) RTC driver.
+
+	  If you want to use Mediatek(R) RTC interface, select Y or M here.
+	  If unsure, Please select N.
+
 config RTC_DRV_XGENE
 	tristate "APM X-Gene RTC"
 	depends on HAS_IOMEM
