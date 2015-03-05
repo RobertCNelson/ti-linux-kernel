@@ -340,6 +340,15 @@ static int balloon(void *_vballoon)
 		s64 diff;
 
 		try_to_freeze();
+
+		/*
+		 * Reading the config on the ccw backend involves an
+		 * allocation, so we may actually sleep and have an
+		 * extra iteration.  It's extremely unlikely, and this
+		 * isn't a fast path in any sense.
+		 */
+		sched_annotate_sleep();
+
 		wait_event_interruptible(vb->config_change,
 					 (diff = towards_target(vb)) != 0
 					 || vb->need_stats_update
