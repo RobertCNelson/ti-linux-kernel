@@ -286,6 +286,8 @@ enum ocfs2_mount_options
 	OCFS2_MOUNT_HB_GLOBAL = 1 << 14, /* Global heartbeat */
 
 	OCFS2_MOUNT_JOURNAL_ASYNC_COMMIT = 1 << 15,  /* Journal Async Commit */
+	OCFS2_MOUNT_ERRORS_CONT = 1 << 16, /* Return EIO to the calling process on error */
+	OCFS2_MOUNT_ERRORS_ROFS = 1 << 17, /* Change filesystem to read-only on error */
 };
 
 #define OCFS2_OSB_SOFT_RO	0x0001
@@ -502,7 +504,7 @@ static inline int ocfs2_writes_unwritten_extents(struct ocfs2_super *osb)
 
 static inline int ocfs2_supports_append_dio(struct ocfs2_super *osb)
 {
-	if (osb->s_feature_ro_compat & OCFS2_FEATURE_RO_COMPAT_APPEND_DIO)
+	if (osb->s_feature_incompat & OCFS2_FEATURE_INCOMPAT_APPEND_DIO)
 		return 1;
 	return 0;
 }

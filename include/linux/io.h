@@ -38,6 +38,13 @@ static inline int ioremap_page_range(unsigned long addr, unsigned long end,
 }
 #endif
 
+void __init ioremap_huge_init(void);
+
+#ifdef CONFIG_HAVE_ARCH_HUGE_VMAP
+int arch_ioremap_pud_supported(void);
+int arch_ioremap_pmd_supported(void);
+#endif
+
 /*
  * Managed iomap interface
  */

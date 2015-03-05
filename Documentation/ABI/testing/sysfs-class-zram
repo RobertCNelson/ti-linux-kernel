@@ -1,0 +1,26 @@
+What:		/sys/class/zram-control/
+Date:		March 2015
+KernelVersion:	4.1
+Contact:	Sergey Senozhatsky <sergey.senozhatsky@gmail.com>
+Description:
+		The zram-control/ class sub-directory belongs to zram
+		device class
+
+What:		/sys/class/zram-control/zram_add
+Date:		March 2015
+KernelVersion:	4.1
+Contact:	Sergey Senozhatsky <sergey.senozhatsky@gmail.com>
+Description:
+		RW attribuite. Write operation adds a specific /dev/zramX
+		device, where X is a device_id provided by user.
+		Read operation will automatically pick up avilable device_id
+		X, add /dev/zramX device and return that device_id X back to
+		user.
+
+		What:		/sys/class/zram-control/zram_add
+Date:		March 2015
+KernelVersion:	4.1
+Contact:	Sergey Senozhatsky <sergey.senozhatsky@gmail.com>
+Description:
+		Remove a specific /dev/zramX device, where X is a device_id
+		provided by user
