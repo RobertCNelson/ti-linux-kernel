@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
  * Intel Ethernet Controller XL710 Family Linux Driver
- * Copyright(c) 2013 - 2014 Intel Corporation.
+ * Copyright(c) 2013 - 2015 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -36,6 +36,7 @@
 #include <linux/aer.h>
 #include <linux/netdevice.h>
 #include <linux/ioport.h>
+#include <linux/iommu.h>
 #include <linux/slab.h>
 #include <linux/list.h>
 #include <linux/string.h>
@@ -49,6 +50,7 @@
 #include <net/ip6_checksum.h>
 #include <linux/ethtool.h>
 #include <linux/if_vlan.h>
+#include <linux/if_bridge.h>
 #include <linux/clocksource.h>
 #include <linux/net_tstamp.h>
 #include <linux/ptp_clock_kernel.h>
@@ -93,6 +95,9 @@
 #define I40E_DEFAULT_MSG_ENABLE       4
 #define I40E_QUEUE_WAIT_RETRY_LIMIT   10
 #define I40E_INT_NAME_STR_LEN        (IFNAMSIZ + 9)
+
+/* Ethtool Private Flags */
+#define I40E_PRIV_FLAGS_NPAR_FLAG	(1 << 0)
 
 #define I40E_NVM_VERSION_LO_SHIFT  0
 #define I40E_NVM_VERSION_LO_MASK   (0xff << I40E_NVM_VERSION_LO_SHIFT)
@@ -140,6 +145,7 @@ enum i40e_state_t {
 	__I40E_CORE_RESET_REQUESTED,
 	__I40E_GLOBAL_RESET_REQUESTED,
 	__I40E_EMP_RESET_REQUESTED,
+	__I40E_EMP_RESET_INTR_RECEIVED,
 	__I40E_FILTER_OVERFLOW_PROMISC,
 	__I40E_SUSPENDED,
 	__I40E_PTP_TX_IN_PROGRESS,
@@ -383,6 +389,9 @@ struct i40e_pf {
 	bool ptp_tx;
 	bool ptp_rx;
 	u16 rss_table_size;
+	/* These are only valid in NPAR modes */
+	u32 npar_max_bw;
+	u32 npar_min_bw;
 };
 
 struct i40e_mac_filter {
@@ -405,6 +414,7 @@ struct i40e_veb {
 	u16 uplink_seid;
 	u16 stats_idx;           /* index of VEB parent */
 	u8  enabled_tc;
+	u16 bridge_mode;	/* Bridge Mode (VEB/VEPA) */
 	u16 flags;
 	u16 bw_limit;
 	u8  bw_max_quanta;
@@ -461,6 +471,9 @@ struct i40e_vsi {
 	u16 rx_itr_setting;
 	u16 tx_itr_setting;
 
+	u16 rss_table_size;
+	u16 rss_size;
+
 	u16 max_frame;
 	u16 rx_hdr_len;
 	u16 rx_buf_len;
@@ -478,6 +491,7 @@ struct i40e_vsi {
 
 	u16 base_queue;      /* vsi's first queue in hw array */
 	u16 alloc_queue_pairs; /* Allocated Tx/Rx queues */
+	u16 req_queue_pairs; /* User requested queue pairs */
 	u16 num_queue_pairs; /* Used tx and rx pairs */
 	u16 num_desc;
 	enum i40e_vsi_type type;  /* VSI type, e.g., LAN, FCoE, etc */
@@ -504,6 +518,9 @@ struct i40e_vsi {
 
 	/* VSI specific handlers */
 	irqreturn_t (*irq_handler)(int irq, void *data);
+
+	/* current rxnfc data */
+	struct ethtool_rxnfc rxnfc; /* current rss hash opts */
 } ____cacheline_internodealigned_in_smp;
 
 struct i40e_netdev_priv {
@@ -544,14 +561,14 @@ static inline char *i40e_fw_version_str(struct i40e_hw *hw)
 	static char buf[32];
 
 	snprintf(buf, sizeof(buf),
-		 "f%d.%d a%d.%d n%02x.%02x e%08x",
-		 hw->aq.fw_maj_ver, hw->aq.fw_min_ver,
+		 "f%d.%d.%05d a%d.%d n%x.%02x e%x",
+		 hw->aq.fw_maj_ver, hw->aq.fw_min_ver, hw->aq.fw_build,
 		 hw->aq.api_maj_ver, hw->aq.api_min_ver,
 		 (hw->nvm.version & I40E_NVM_VERSION_HI_MASK) >>
 			I40E_NVM_VERSION_HI_SHIFT,
 		 (hw->nvm.version & I40E_NVM_VERSION_LO_MASK) >>
 			I40E_NVM_VERSION_LO_SHIFT,
-		 hw->nvm.eetrack);
+		 (hw->nvm.eetrack & 0xffffff));
 
 	return buf;
 }
@@ -680,6 +697,7 @@ int i40e_vlan_rx_add_vid(struct net_device *netdev,
 int i40e_vlan_rx_kill_vid(struct net_device *netdev,
 			  __always_unused __be16 proto, u16 vid);
 #endif
+int i40e_open(struct net_device *netdev);
 int i40e_vsi_open(struct i40e_vsi *vsi);
 void i40e_vlan_stripping_disable(struct i40e_vsi *vsi);
 int i40e_vsi_add_vlan(struct i40e_vsi *vsi, s16 vid);
@@ -690,7 +708,6 @@ bool i40e_is_vsi_in_vlan(struct i40e_vsi *vsi);
 struct i40e_mac_filter *i40e_find_mac(struct i40e_vsi *vsi, u8 *macaddr,
 				      bool is_vf, bool is_netdev);
 #ifdef I40E_FCOE
-int i40e_open(struct net_device *netdev);
 int i40e_close(struct net_device *netdev);
 int i40e_setup_tc(struct net_device *netdev, u8 tc);
 void i40e_netpoll(struct net_device *netdev);
@@ -712,6 +729,7 @@ void i40e_fcoe_handle_status(struct i40e_ring *rx_ring,
 void i40e_vlan_stripping_enable(struct i40e_vsi *vsi);
 #ifdef CONFIG_I40E_DCB
 void i40e_dcbnl_flush_apps(struct i40e_pf *pf,
+			   struct i40e_dcbx_config *old_cfg,
 			   struct i40e_dcbx_config *new_cfg);
 void i40e_dcbnl_set_all(struct i40e_vsi *vsi);
 void i40e_dcbnl_setup(struct i40e_vsi *vsi);
@@ -727,4 +745,12 @@ int i40e_ptp_set_ts_config(struct i40e_pf *pf, struct ifreq *ifr);
 int i40e_ptp_get_ts_config(struct i40e_pf *pf, struct ifreq *ifr);
 void i40e_ptp_init(struct i40e_pf *pf);
 void i40e_ptp_stop(struct i40e_pf *pf);
+int i40e_is_vsi_uplink_mode_veb(struct i40e_vsi *vsi);
+#if IS_ENABLED(CONFIG_I40E_CONFIGFS_FS)
+int i40e_configfs_init(void);
+void i40e_configfs_exit(void);
+#endif /* CONFIG_I40E_CONFIGFS_FS */
+i40e_status i40e_get_npar_bw_setting(struct i40e_pf *pf);
+i40e_status i40e_set_npar_bw_setting(struct i40e_pf *pf);
+i40e_status i40e_commit_npar_bw_setting(struct i40e_pf *pf);
 #endif /* _I40E_H_ */

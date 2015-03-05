@@ -921,9 +921,10 @@ static void i40e_dbg_dump_veb_seid(struct i40e_pf *pf, int seid)
 		return;
 	}
 	dev_info(&pf->pdev->dev,
-		 "veb idx=%d,%d stats_ic=%d  seid=%d uplink=%d\n",
+		 "veb idx=%d,%d stats_ic=%d  seid=%d uplink=%d mode=%s\n",
 		 veb->idx, veb->veb_idx, veb->stats_idx, veb->seid,
-		 veb->uplink_seid);
+		 veb->uplink_seid,
+		 veb->bridge_mode == BRIDGE_MODE_VEPA ? "VEPA" : "VEB");
 	i40e_dbg_dump_eth_stats(pf, &veb->stats);
 }
 
@@ -1487,11 +1488,15 @@ static ssize_t i40e_dbg_command_write(struct file *filp,
 			} else {
 				dev_info(&pf->pdev->dev, "clear_stats vsi [seid]\n");
 			}
-		} else if (strncmp(&cmd_buf[12], "pf", 2) == 0) {
-			i40e_pf_reset_stats(pf);
-			dev_info(&pf->pdev->dev, "pf clear stats called\n");
+		} else if (strncmp(&cmd_buf[12], "port", 4) == 0) {
+			if (pf->hw.partition_id == 1) {
+				i40e_pf_reset_stats(pf);
+				dev_info(&pf->pdev->dev, "port stats cleared\n");
+			} else {
+				dev_info(&pf->pdev->dev, "clear port stats not allowed on this port partition\n");
+			}
 		} else {
-			dev_info(&pf->pdev->dev, "clear_stats vsi [seid] or clear_stats pf\n");
+			dev_info(&pf->pdev->dev, "clear_stats vsi [seid] or clear_stats port\n");
 		}
 	} else if (strncmp(cmd_buf, "send aq_cmd", 11) == 0) {
 		struct i40e_aq_desc *desc;
@@ -1897,7 +1902,7 @@ static ssize_t i40e_dbg_command_write(struct file *filp,
 		dev_info(&pf->pdev->dev, "  read <reg>\n");
 		dev_info(&pf->pdev->dev, "  write <reg> <value>\n");
 		dev_info(&pf->pdev->dev, "  clear_stats vsi [seid]\n");
-		dev_info(&pf->pdev->dev, "  clear_stats pf\n");
+		dev_info(&pf->pdev->dev, "  clear_stats port\n");
 		dev_info(&pf->pdev->dev, "  pfr\n");
 		dev_info(&pf->pdev->dev, "  corer\n");
 		dev_info(&pf->pdev->dev, "  globr\n");
