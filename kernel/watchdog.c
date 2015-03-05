@@ -508,6 +508,12 @@ static void watchdog(unsigned int cpu)
 	 * failure path. Check for failures that can occur asynchronously -
 	 * for example, when CPUs are on-lined - and shut down the hardware
 	 * perf event on each CPU accordingly.
+	 *
+	 * The only non-obvious place this bit can be cleared is through
+	 * watchdog_nmi_enable(), so a pr_info() is placed there.  Placing a
+	 * pr_info here would be too noisy as it would result in a message
+	 * every few seconds if the hardlockup was disabled but the softlockup
+	 * enabled.
 	 */
 	if (!(watchdog_enabled & NMI_WATCHDOG_ENABLED))
 		watchdog_nmi_disable(cpu);
@@ -565,6 +571,9 @@ handle_err:
 	 * Disable the hard lockup detector if _any_ CPU fails to set up
 	 * set up the hardware perf event. The watchdog() function checks
 	 * the NMI_WATCHDOG_ENABLED bit periodically.
+	 *
+	 * The barriers are for syncing up watchdog_enabled across all the
+	 * cpus, as clear_bit() does not use barriers.
 	 */
 	smp_mb__before_atomic();
 	clear_bit(NMI_WATCHDOG_ENABLED_BIT, &watchdog_enabled);
@@ -583,6 +592,9 @@ handle_err:
 	else
 		pr_err("disabled (cpu%i): unable to create perf event: %ld\n",
 			cpu, PTR_ERR(event));
+
+	pr_info("Shutting down hard lockup detector on all cpus\n");
+
 	return PTR_ERR(event);
 
 	/* success path */
