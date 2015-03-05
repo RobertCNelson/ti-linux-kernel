@@ -70,11 +70,6 @@ static struct delayed_work Periodic_controlvm_work;
 static struct workqueue_struct *Periodic_controlvm_workqueue;
 static DEFINE_SEMAPHORE(NotifierLock);
 
-typedef struct {
-	struct controlvm_message message;
-	unsigned int crc;
-} MESSAGE_ENVELOPE;
-
 static struct controlvm_message_header g_DiagMsgHdr;
 static struct controlvm_message_header g_ChipSetMsgHdr;
 static struct controlvm_message_header g_DelDumpMsgHdr;
@@ -103,19 +98,19 @@ static LIST_HEAD(DevInfoList);
 
 static struct visorchannel *ControlVm_channel;
 
-typedef struct {
+struct controlvm_payload_info {
 	u8 __iomem *ptr;	/* pointer to base address of payload pool */
 	u64 offset;		/* offset from beginning of controlvm
 				 * channel to beginning of payload * pool */
 	u32 bytes;		/* number of bytes in payload pool */
-} CONTROLVM_PAYLOAD_INFO;
+};
 
 /* Manages the request payload in the controlvm channel */
-static CONTROLVM_PAYLOAD_INFO ControlVm_payload_info;
+static struct controlvm_payload_info ControlVm_payload_info;
 
 static struct channel_header *Test_Vnic_channel;
 
-typedef struct {
+struct livedump_info {
 	struct controlvm_message_header Dumpcapture_header;
 	struct controlvm_message_header Gettextdump_header;
 	struct controlvm_message_header Dumpcomplete_header;
@@ -124,11 +119,11 @@ typedef struct {
 	ulong length;
 	atomic_t buffers_in_use;
 	ulong destination;
-} LIVEDUMP_INFO;
+};
 /* Manages the info for a CONTROLVM_DUMP_CAPTURESTATE /
  * CONTROLVM_DUMP_GETTEXTDUMP / CONTROLVM_DUMP_COMPLETE conversation.
  */
-static LIVEDUMP_INFO LiveDump_info;
+static struct livedump_info LiveDump_info;
 
 /* The following globals are used to handle the scenario where we are unable to
  * offload the payload from a controlvm message due to memory requirements.  In
@@ -1118,8 +1113,6 @@ bus_create(struct controlvm_message *inmsg)
 	}
 	pBusInfo = kzalloc(sizeof(struct visorchipset_bus_info), GFP_KERNEL);
 	if (pBusInfo == NULL) {
-		LOGERR("CONTROLVM_BUS_CREATE Failed: bus %lu kzalloc failed",
-		       busNo);
 		POSTCODE_LINUX_3(BUS_CREATE_FAILURE_PC, busNo,
 				 POSTCODE_SEVERITY_ERR);
 		rc = -CONTROLVM_RESP_ERROR_KMALLOC_FAILED;
@@ -1268,8 +1261,6 @@ my_device_create(struct controlvm_message *inmsg)
 	}
 	pDevInfo = kzalloc(sizeof(struct visorchipset_device_info), GFP_KERNEL);
 	if (pDevInfo == NULL) {
-		LOGERR("CONTROLVM_DEVICE_CREATE Failed: busNo=%lu, devNo=%lu kmaloc failed",
-		     busNo, devNo);
 		POSTCODE_LINUX_4(DEVICE_CREATE_FAILURE_PC, devNo, busNo,
 				 POSTCODE_SEVERITY_ERR);
 		rc = -CONTROLVM_RESP_ERROR_KMALLOC_FAILED;
@@ -1379,12 +1370,12 @@ Away:
 /* When provided with the physical address of the controlvm channel
  * (phys_addr), the offset to the payload area we need to manage
  * (offset), and the size of this payload area (bytes), fills in the
- * CONTROLVM_PAYLOAD_INFO struct.  Returns TRUE for success or FALSE
+ * controlvm_payload_info struct.  Returns TRUE for success or FALSE
  * for failure.
  */
 static int
 initialize_controlvm_payload_info(HOSTADDRESS phys_addr, u64 offset, u32 bytes,
-				  CONTROLVM_PAYLOAD_INFO *info)
+				  struct controlvm_payload_info *info)
 {
 	u8 __iomem *payload = NULL;
 	int rc = CONTROLVM_RESP_SUCCESS;
@@ -1395,7 +1386,7 @@ initialize_controlvm_payload_info(HOSTADDRESS phys_addr, u64 offset, u32 bytes,
 		rc = -CONTROLVM_RESP_ERROR_PAYLOAD_INVALID;
 		goto Away;
 	}
-	memset(info, 0, sizeof(CONTROLVM_PAYLOAD_INFO));
+	memset(info, 0, sizeof(struct controlvm_payload_info));
 	if ((offset == 0) || (bytes == 0)) {
 		LOGERR("CONTROLVM_PAYLOAD_INIT Failed: request_payload_offset=%llu request_payload_bytes=%llu!",
 		     (u64) offset, (u64) bytes);
@@ -1427,13 +1418,13 @@ Away:
 }
 
 static void
-destroy_controlvm_payload_info(CONTROLVM_PAYLOAD_INFO *info)
+destroy_controlvm_payload_info(struct controlvm_payload_info *info)
 {
 	if (info->ptr != NULL) {
 		iounmap(info->ptr);
 		info->ptr = NULL;
 	}
-	memset(info, 0, sizeof(CONTROLVM_PAYLOAD_INFO));
+	memset(info, 0, sizeof(struct controlvm_payload_info));
 }
 
 static void
@@ -1604,9 +1595,9 @@ parahotplug_next_expiration(void)
 static struct parahotplug_request *
 parahotplug_request_create(struct controlvm_message *msg)
 {
-	struct parahotplug_request *req =
-	    kmalloc(sizeof(struct parahotplug_request),
-		    GFP_KERNEL|__GFP_NORETRY);
+	struct parahotplug_request *req;
+
+	req = kmalloc(sizeof(*req), GFP_KERNEL|__GFP_NORETRY);
 	if (req == NULL)
 		return NULL;
 
