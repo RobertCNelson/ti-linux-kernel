@@ -365,7 +365,7 @@ static void pump_transfers(unsigned long data)
 	u8 bits = 0;
 	u8 imask = 0;
 	u8 cs_change = 0;
-	u16 txint_level = 0;
+	u16 txlevel = 0;
 	u16 clk_div = 0;
 	u32 speed = 0;
 	u32 cr0 = 0;
@@ -416,12 +416,11 @@ static void pump_transfers(unsigned long data)
 	if (transfer->speed_hz) {
 		speed = chip->speed_hz;
 
-		if ((transfer->speed_hz != speed) || (!chip->clk_div)) {
+		if ((transfer->speed_hz != speed) || !chip->clk_div) {
 			speed = transfer->speed_hz;
 
 			/* clk_div doesn't support odd number */
-			clk_div = dws->max_freq / speed;
-			clk_div = (clk_div + 1) & 0xfffe;
+			clk_div = (dws->max_freq / speed + 1) & 0xfffe;
 
 			chip->speed_hz = speed;
 			chip->clk_div = clk_div;
@@ -461,10 +460,7 @@ static void pump_transfers(unsigned long data)
 	 * we only need set the TXEI IRQ, as TX/RX always happen syncronizely
 	 */
 	if (!dws->dma_mapped && !chip->poll_mode) {
-		int templen = dws->len / dws->n_bytes;
-
-		txint_level = dws->fifo_len / 2;
-		txint_level = (templen > txint_level) ? txint_level : templen;
+		txlevel = min_t(u16, dws->fifo_len / 2, dws->len / dws->n_bytes);
 
 		imask |= SPI_INT_TXEI | SPI_INT_TXOI |
 			 SPI_INT_RXUI | SPI_INT_RXOI;
@@ -480,23 +476,23 @@ static void pump_transfers(unsigned long data)
 	if (dw_readw(dws, DW_SPI_CTRL0) != cr0 || cs_change || clk_div || imask) {
 		spi_enable_chip(dws, 0);
 
-		if (dw_readw(dws, DW_SPI_CTRL0) != cr0)
-			dw_writew(dws, DW_SPI_CTRL0, cr0);
+		dw_writew(dws, DW_SPI_CTRL0, cr0);
 
-		spi_set_clk(dws, clk_div ? clk_div : chip->clk_div);
+		spi_set_clk(dws, chip->clk_div);
 		spi_chip_sel(dws, spi, 1);
 
 		/* Set the interrupt mask, for poll mode just disable all int */
 		spi_mask_intr(dws, 0xff);
 		if (imask)
 			spi_umask_intr(dws, imask);
-		if (txint_level)
-			dw_writew(dws, DW_SPI_TXFLTR, txint_level);
+		if (txlevel)
+			dw_writew(dws, DW_SPI_TXFLTR, txlevel);
 
 		spi_enable_chip(dws, 1);
-		if (cs_change)
-			dws->prev_chip = chip;
 	}
+
+	if (cs_change)
+		dws->prev_chip = chip;
 
 	if (dws->dma_mapped)
 		dws->dma_ops->dma_transfer(dws, cs_change);
