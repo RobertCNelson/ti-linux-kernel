@@ -1044,6 +1044,23 @@ thermal_cooling_device_weight_store(struct device *dev,
 
 	return count;
 }
+
+static struct attribute *cooling_device_attrs[] = {
+	&dev_attr_cdev_type.attr,
+	&dev_attr_max_state.attr,
+	&dev_attr_cur_state.attr,
+	NULL,
+};
+
+static const struct attribute_group cooling_device_attr_group = {
+	.attrs = cooling_device_attrs,
+};
+
+static const struct attribute_group *cooling_device_attr_groups[] = {
+	&cooling_device_attr_group,
+	NULL,
+};
+
 /* Device management */
 
 /**
@@ -1292,6 +1309,7 @@ __thermal_cooling_device_register(struct device_node *np,
 	cdev->ops = ops;
 	cdev->updated = false;
 	cdev->device.class = &thermal_class;
+	cdev->device.groups = cooling_device_attr_groups;
 	cdev->devdata = devdata;
 	dev_set_name(&cdev->device, "cooling_device%d", cdev->id);
 	result = device_register(&cdev->device);
@@ -1300,21 +1318,6 @@ __thermal_cooling_device_register(struct device_node *np,
 		kfree(cdev);
 		return ERR_PTR(result);
 	}
-
-	/* sys I/F */
-	if (type) {
-		result = device_create_file(&cdev->device, &dev_attr_cdev_type);
-		if (result)
-			goto unregister;
-	}
-
-	result = device_create_file(&cdev->device, &dev_attr_max_state);
-	if (result)
-		goto unregister;
-
-	result = device_create_file(&cdev->device, &dev_attr_cur_state);
-	if (result)
-		goto unregister;
 
 	/* Add 'this' new cdev to the global cdev list */
 	mutex_lock(&thermal_list_lock);
@@ -1325,11 +1328,6 @@ __thermal_cooling_device_register(struct device_node *np,
 	bind_cdev(cdev);
 
 	return cdev;
-
-unregister:
-	release_idr(&thermal_cdev_idr, &thermal_idr_lock, cdev->id);
-	device_unregister(&cdev->device);
-	return ERR_PTR(result);
 }
 
 /**
