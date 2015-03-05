@@ -1133,14 +1133,14 @@ static int set_filter_wr(struct adapter *adapter, int fidx)
 		/* allocate L2T entry for new filter */
 		f->l2t = t4_l2t_alloc_switching(adapter->l2t);
 		if (f->l2t == NULL) {
-			kfree(skb);
+			kfree_skb(skb);
 			return -EAGAIN;
 		}
 		if (t4_l2t_set_switching(adapter, f->l2t, f->fs.vlan,
 					f->fs.eport, f->fs.dmac)) {
 			cxgb4_l2t_release(f->l2t);
 			f->l2t = NULL;
-			kfree(skb);
+			kfree_skb(skb);
 			return -ENOMEM;
 		}
 	}
