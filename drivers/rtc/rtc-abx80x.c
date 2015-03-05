@@ -190,4 +190,4 @@ module_i2c_driver(abx80x_driver);
 
 MODULE_AUTHOR("Alexandre Belloni <alexandre.belloni@free-electrons.com>");
 MODULE_DESCRIPTION("Abracon ABX80X RTC driver");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL v2");
