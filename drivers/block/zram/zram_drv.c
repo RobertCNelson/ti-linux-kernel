@@ -1220,8 +1220,10 @@ static int zram_control(int cmd, const char *buf)
 			break;
 		}
 
-		/* First, make ->disksize device attr RO, closing
-		 * ZRAM_CTL_REMOVE vs disksize_store() race window */
+		/*
+		 * First, make ->disksize device attr RO, closing
+		 * ZRAM_CTL_REMOVE vs disksize_store() race window
+		 */
 		ret = sysfs_chmod_file(&disk_to_dev(zram->disk)->kobj,
 				&dev_attr_disksize.attr, S_IRUGO);
 		if (ret)
@@ -1234,10 +1236,12 @@ static int zram_control(int cmd, const char *buf)
 			break;
 		}
 
-		/* If there are still device bd_openers, try to make ->disksize
+		/*
+		 * If there are still device bd_openers, try to make ->disksize
 		 * RW again and return. even if we fail to make ->disksize RW,
 		 * user still has RW ->reset attr. so it's possible to destroy
-		 * that device */
+		 * that device.
+		 */
 		err = sysfs_chmod_file(&disk_to_dev(zram->disk)->kobj,
 				&dev_attr_disksize.attr,
 				S_IWUSR | S_IRUGO);
