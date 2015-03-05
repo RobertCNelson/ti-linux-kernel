@@ -240,10 +240,8 @@ struct bcma_drv_pci {
 
 extern void bcma_core_pci_early_init(struct bcma_drv_pci *pc);
 extern void bcma_core_pci_init(struct bcma_drv_pci *pc);
-extern int bcma_core_pci_irq_ctl(struct bcma_drv_pci *pc,
+extern int bcma_core_pci_irq_ctl(struct bcma_bus *bus,
 				 struct bcma_device *core, bool enable);
-extern void bcma_core_pci_up(struct bcma_bus *bus);
-extern void bcma_core_pci_down(struct bcma_bus *bus);
 extern void bcma_core_pci_power_save(struct bcma_bus *bus, bool up);
 
 extern int bcma_core_pci_pcibios_map_irq(const struct pci_dev *dev);
