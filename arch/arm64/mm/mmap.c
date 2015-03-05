@@ -56,7 +56,7 @@ static unsigned long mmap_rnd(void)
 	return rnd << PAGE_SHIFT;
 }
 
-static unsigned long mmap_base(unsigned long base)
+static unsigned long mmap_base(unsigned long rnd)
 {
 	unsigned long gap = rlimit(RLIMIT_STACK);
 
@@ -65,7 +65,7 @@ static unsigned long mmap_base(unsigned long base)
 	else if (gap > MAX_GAP)
 		gap = MAX_GAP;
 
-	return PAGE_ALIGN(STACK_TOP - gap - base);
+	return PAGE_ALIGN(STACK_TOP - gap - rnd);
 }
 
 /*
