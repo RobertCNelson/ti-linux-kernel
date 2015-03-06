@@ -391,7 +391,7 @@ config CRYPTO_DEV_ATMEL_SHA
 
 config CRYPTO_DEV_CCP
 	bool "Support for AMD Cryptographic Coprocessor"
-	depends on (X86 && PCI) || ARM64
+	depends on ((X86 && PCI) || (ARM64 && (OF_ADDRESS || ACPI))) && HAS_IOMEM
 	default n
 	help
 	  The AMD Cryptographic Coprocessor provides hardware support
@@ -435,5 +435,14 @@ config CRYPTO_DEV_QCE
 	  This driver supports Qualcomm crypto engine accelerator
 	  hardware. To compile this driver as a module, choose M here. The
 	  module will be called qcrypto.
+
+config CRYPTO_DEV_VMX
+	bool "Support for VMX cryptographic acceleration instructions"
+	depends on PPC64
+	default n
+	help
+	  Support for VMX cryptographic acceleration instructions.
+
+source "drivers/crypto/vmx/Kconfig"
 
 endif # CRYPTO_HW
