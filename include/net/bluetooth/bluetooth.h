@@ -245,10 +245,10 @@ int  bt_sock_register(int proto, const struct net_proto_family *ops);
 void bt_sock_unregister(int proto);
 void bt_sock_link(struct bt_sock_list *l, struct sock *s);
 void bt_sock_unlink(struct bt_sock_list *l, struct sock *s);
-int  bt_sock_recvmsg(struct kiocb *iocb, struct socket *sock,
-				struct msghdr *msg, size_t len, int flags);
-int  bt_sock_stream_recvmsg(struct kiocb *iocb, struct socket *sock,
-			struct msghdr *msg, size_t len, int flags);
+int  bt_sock_recvmsg(struct socket *sock, struct msghdr *msg, size_t len,
+		     int flags);
+int  bt_sock_stream_recvmsg(struct socket *sock, struct msghdr *msg,
+			    size_t len, int flags);
 uint bt_sock_poll(struct file *file, struct socket *sock, poll_table *wait);
 int  bt_sock_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg);
 int  bt_sock_wait_state(struct sock *sk, int state, unsigned long timeo);
@@ -275,21 +275,17 @@ struct hci_dev;
 
 typedef void (*hci_req_complete_t)(struct hci_dev *hdev, u8 status, u16 opcode);
 
-struct hci_req_ctrl {
-	bool			start;
-	u8			event;
-	hci_req_complete_t	complete;
-};
-
 struct bt_skb_cb {
 	__u8 pkt_type;
-	__u8 incoming;
+	__u8 force_active;
 	__u16 opcode;
 	__u16 expect;
-	__u8 force_active;
+	__u8 incoming:1;
+	__u8 req_start:1;
+	u8 req_event;
+	hci_req_complete_t req_complete;
 	struct l2cap_chan *chan;
 	struct l2cap_ctrl control;
-	struct hci_req_ctrl req;
 	bdaddr_t bdaddr;
 	__le16 psm;
 };
