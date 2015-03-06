@@ -364,6 +364,7 @@ config MFD_KEMPLD
 		* COMe-bIP#
 		* COMe-bPC2 (ETXexpress-PC)
 		* COMe-bSC# (ETXexpress-SC T#)
+		* COMe-cBL6
 		* COMe-cBT6
 		* COMe-cCT6
 		* COMe-cDC2 (microETXexpress-DC)
@@ -455,6 +456,20 @@ config MFD_MAX77693
 	  additional drivers must be enabled in order to use the functionality
 	  of the device.
 
+config MFD_MAX77843
+	bool "Maxim Semiconductor MAX77843 PMIC Support"
+	depends on I2C=y
+	select MFD_CORE
+	select REGMAP_I2C
+	select REGMAP_IRQ
+	help
+	  Say yes here to add support for Maxim Semiconductor MAX77843.
+	  This is companion Power Management IC with LEDs, Haptic, Charger,
+	  Fuel Gauge, MUIC(Micro USB Interface Controller) controls on chip.
+	  This driver provides common support for accessing the device;
+	  additional drivers must be enabled in order to use the functionality
+	  of the device.
+
 config MFD_MAX8907
 	tristate "Maxim Semiconductor MAX8907 PMIC Support"
 	select MFD_CORE
@@ -501,6 +516,16 @@ config MFD_MAX8998
 	  This driver provides common support for accessing the device,
 	  additional drivers must be enabled in order to use the functionality
 	  of the device.
+
+config MFD_MT6397
+	tristate "MediaTek MT6397 PMIC Support"
+	select MFD_CORE
+	select IRQ_DOMAIN
+	help
+	  Say yes here to add support for MediaTek MT6397 PMIC. This is
+	  a Power Management IC. This driver provides common support for
+	  accessing the device; additional drivers must be enabled in order
+	  to use the functionality of the device.
 
 config MFD_MENF21BMC
 	tristate "MEN 14F021P00 Board Management Controller Support"
@@ -1289,10 +1314,11 @@ config MFD_WM5102
 	  Support for Wolfson Microelectronics WM5102 low power audio SoC
 
 config MFD_WM5110
-	bool "Wolfson Microelectronics WM5110"
+	bool "Wolfson Microelectronics WM5110 and WM8280/WM8281"
 	depends on MFD_ARIZONA
 	help
-	  Support for Wolfson Microelectronics WM5110 low power audio SoC
+	  Support for Wolfson Microelectronics WM5110 and WM8280/WM8281
+	  low power audio SoC
 
 config MFD_WM8997
 	bool "Wolfson Microelectronics WM8997"
