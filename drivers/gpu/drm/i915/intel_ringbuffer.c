@@ -317,29 +317,6 @@ gen7_render_ring_cs_stall_wa(struct intel_engine_cs *ring)
 	return 0;
 }
 
-static int gen7_ring_fbc_flush(struct intel_engine_cs *ring, u32 value)
-{
-	int ret;
-
-	if (!ring->fbc_dirty)
-		return 0;
-
-	ret = intel_ring_begin(ring, 6);
-	if (ret)
-		return ret;
-	/* WaFbcNukeOn3DBlt:ivb/hsw */
-	intel_ring_emit(ring, MI_LOAD_REGISTER_IMM(1));
-	intel_ring_emit(ring, MSG_FBC_REND_STATE);
-	intel_ring_emit(ring, value);
-	intel_ring_emit(ring, MI_STORE_REGISTER_MEM(1) | MI_SRM_LRM_GLOBAL_GTT);
-	intel_ring_emit(ring, MSG_FBC_REND_STATE);
-	intel_ring_emit(ring, ring->scratch.gtt_offset + 256);
-	intel_ring_advance(ring);
-
-	ring->fbc_dirty = false;
-	return 0;
-}
-
 static int
 gen7_render_ring_flush(struct intel_engine_cs *ring,
 		       u32 invalidate_domains, u32 flush_domains)
@@ -398,9 +375,6 @@ gen7_render_ring_flush(struct intel_engine_cs *ring,
 	intel_ring_emit(ring, 0);
 	intel_ring_advance(ring);
 
-	if (!invalidate_domains && flush_domains)
-		return gen7_ring_fbc_flush(ring, FBC_REND_NUKE);
-
 	return 0;
 }
 
@@ -458,14 +432,7 @@ gen8_render_ring_flush(struct intel_engine_cs *ring,
 			return ret;
 	}
 
-	ret = gen8_emit_pipe_control(ring, flags, scratch_addr);
-	if (ret)
-		return ret;
-
-	if (!invalidate_domains && flush_domains)
-		return gen7_ring_fbc_flush(ring, FBC_REND_NUKE);
-
-	return 0;
+	return gen8_emit_pipe_control(ring, flags, scratch_addr);
 }
 
 static void ring_write_tail(struct intel_engine_cs *ring,
@@ -1002,11 +969,62 @@ static int gen9_init_workarounds(struct intel_engine_cs *ring)
 	return 0;
 }
 
-static int skl_init_workarounds(struct intel_engine_cs *ring)
+static int skl_tune_iz_hashing(struct intel_engine_cs *ring)
 {
-	gen9_init_workarounds(ring);
+	struct drm_device *dev = ring->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	u8 vals[3] = { 0, 0, 0 };
+	unsigned int i;
+
+	for (i = 0; i < 3; i++) {
+		u8 ss;
+
+		/*
+		 * Only consider slices where one, and only one, subslice has 7
+		 * EUs
+		 */
+		if (hweight8(dev_priv->info.subslice_7eu[i]) != 1)
+			continue;
+
+		/*
+		 * subslice_7eu[i] != 0 (because of the check above) and
+		 * ss_max == 4 (maximum number of subslices possible per slice)
+		 *
+		 * ->    0 <= ss <= 3;
+		 */
+		ss = ffs(dev_priv->info.subslice_7eu[i]) - 1;
+		vals[i] = 3 - ss;
+	}
+
+	if (vals[0] == 0 && vals[1] == 0 && vals[2] == 0)
+		return 0;
+
+	/* Tune IZ hashing. See intel_device_info_runtime_init() */
+	WA_SET_FIELD_MASKED(GEN7_GT_MODE,
+			    GEN9_IZ_HASHING_MASK(2) |
+			    GEN9_IZ_HASHING_MASK(1) |
+			    GEN9_IZ_HASHING_MASK(0),
+			    GEN9_IZ_HASHING(2, vals[2]) |
+			    GEN9_IZ_HASHING(1, vals[1]) |
+			    GEN9_IZ_HASHING(0, vals[0]));
 
 	return 0;
+}
+
+
+static int skl_init_workarounds(struct intel_engine_cs *ring)
+{
+	struct drm_device *dev = ring->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	gen9_init_workarounds(ring);
+
+	/* WaDisablePowerCompilerClockGating:skl */
+	if (INTEL_REVID(dev) == SKL_REVID_B0)
+		WA_SET_BIT_MASKED(HIZ_CHICKEN,
+				  BDW_HIZ_POWER_COMPILER_CLOCK_GATING_DISABLE);
+
+	return skl_tune_iz_hashing(ring);
 }
 
 int init_workarounds_ring(struct intel_engine_cs *ring)
@@ -1690,7 +1708,7 @@ gen8_ring_put_irq(struct intel_engine_cs *ring)
 static int
 i965_dispatch_execbuffer(struct intel_engine_cs *ring,
 			 u64 offset, u32 length,
-			 unsigned flags)
+			 unsigned dispatch_flags)
 {
 	int ret;
 
@@ -1701,7 +1719,8 @@ i965_dispatch_execbuffer(struct intel_engine_cs *ring,
 	intel_ring_emit(ring,
 			MI_BATCH_BUFFER_START |
 			MI_BATCH_GTT |
-			(flags & I915_DISPATCH_SECURE ? 0 : MI_BATCH_NON_SECURE_I965));
+			(dispatch_flags & I915_DISPATCH_SECURE ?
+			 0 : MI_BATCH_NON_SECURE_I965));
 	intel_ring_emit(ring, offset);
 	intel_ring_advance(ring);
 
@@ -1714,8 +1733,8 @@ i965_dispatch_execbuffer(struct intel_engine_cs *ring,
 #define I830_WA_SIZE max(I830_TLB_ENTRIES*4096, I830_BATCH_LIMIT)
 static int
 i830_dispatch_execbuffer(struct intel_engine_cs *ring,
-				u64 offset, u32 len,
-				unsigned flags)
+			 u64 offset, u32 len,
+			 unsigned dispatch_flags)
 {
 	u32 cs_offset = ring->scratch.gtt_offset;
 	int ret;
@@ -1733,7 +1752,7 @@ i830_dispatch_execbuffer(struct intel_engine_cs *ring,
 	intel_ring_emit(ring, MI_NOOP);
 	intel_ring_advance(ring);
 
-	if ((flags & I915_DISPATCH_PINNED) == 0) {
+	if ((dispatch_flags & I915_DISPATCH_PINNED) == 0) {
 		if (len > I830_BATCH_LIMIT)
 			return -ENOSPC;
 
@@ -1765,7 +1784,8 @@ i830_dispatch_execbuffer(struct intel_engine_cs *ring,
 		return ret;
 
 	intel_ring_emit(ring, MI_BATCH_BUFFER);
-	intel_ring_emit(ring, offset | (flags & I915_DISPATCH_SECURE ? 0 : MI_BATCH_NON_SECURE));
+	intel_ring_emit(ring, offset | (dispatch_flags & I915_DISPATCH_SECURE ?
+					0 : MI_BATCH_NON_SECURE));
 	intel_ring_emit(ring, offset + len - 8);
 	intel_ring_emit(ring, MI_NOOP);
 	intel_ring_advance(ring);
@@ -1776,7 +1796,7 @@ i830_dispatch_execbuffer(struct intel_engine_cs *ring,
 static int
 i915_dispatch_execbuffer(struct intel_engine_cs *ring,
 			 u64 offset, u32 len,
-			 unsigned flags)
+			 unsigned dispatch_flags)
 {
 	int ret;
 
@@ -1785,7 +1805,8 @@ i915_dispatch_execbuffer(struct intel_engine_cs *ring,
 		return ret;
 
 	intel_ring_emit(ring, MI_BATCH_BUFFER_START | MI_BATCH_GTT);
-	intel_ring_emit(ring, offset | (flags & I915_DISPATCH_SECURE ? 0 : MI_BATCH_NON_SECURE));
+	intel_ring_emit(ring, offset | (dispatch_flags & I915_DISPATCH_SECURE ?
+					0 : MI_BATCH_NON_SECURE));
 	intel_ring_advance(ring);
 
 	return 0;
@@ -2176,6 +2197,7 @@ intel_ring_alloc_request(struct intel_engine_cs *ring)
 
 	kref_init(&request->ref);
 	request->ring = ring;
+	request->ringbuf = ring->buffer;
 	request->uniq = dev_private->request_uniq++;
 
 	ret = i915_gem_get_seqno(ring->dev, &request->seqno);
@@ -2352,9 +2374,10 @@ static int gen6_bsd_ring_flush(struct intel_engine_cs *ring,
 static int
 gen8_ring_dispatch_execbuffer(struct intel_engine_cs *ring,
 			      u64 offset, u32 len,
-			      unsigned flags)
+			      unsigned dispatch_flags)
 {
-	bool ppgtt = USES_PPGTT(ring->dev) && !(flags & I915_DISPATCH_SECURE);
+	bool ppgtt = USES_PPGTT(ring->dev) &&
+			!(dispatch_flags & I915_DISPATCH_SECURE);
 	int ret;
 
 	ret = intel_ring_begin(ring, 4);
@@ -2373,8 +2396,8 @@ gen8_ring_dispatch_execbuffer(struct intel_engine_cs *ring,
 
 static int
 hsw_ring_dispatch_execbuffer(struct intel_engine_cs *ring,
-			      u64 offset, u32 len,
-			      unsigned flags)
+			     u64 offset, u32 len,
+			     unsigned dispatch_flags)
 {
 	int ret;
 
@@ -2384,7 +2407,7 @@ hsw_ring_dispatch_execbuffer(struct intel_engine_cs *ring,
 
 	intel_ring_emit(ring,
 			MI_BATCH_BUFFER_START |
-			(flags & I915_DISPATCH_SECURE ?
+			(dispatch_flags & I915_DISPATCH_SECURE ?
 			 0 : MI_BATCH_PPGTT_HSW | MI_BATCH_NON_SECURE_HSW));
 	/* bit0-7 is the length on GEN6+ */
 	intel_ring_emit(ring, offset);
@@ -2396,7 +2419,7 @@ hsw_ring_dispatch_execbuffer(struct intel_engine_cs *ring,
 static int
 gen6_ring_dispatch_execbuffer(struct intel_engine_cs *ring,
 			      u64 offset, u32 len,
-			      unsigned flags)
+			      unsigned dispatch_flags)
 {
 	int ret;
 
@@ -2406,7 +2429,8 @@ gen6_ring_dispatch_execbuffer(struct intel_engine_cs *ring,
 
 	intel_ring_emit(ring,
 			MI_BATCH_BUFFER_START |
-			(flags & I915_DISPATCH_SECURE ? 0 : MI_BATCH_NON_SECURE_I965));
+			(dispatch_flags & I915_DISPATCH_SECURE ?
+			 0 : MI_BATCH_NON_SECURE_I965));
 	/* bit0-7 is the length on GEN6+ */
 	intel_ring_emit(ring, offset);
 	intel_ring_advance(ring);
@@ -2420,7 +2444,6 @@ static int gen6_ring_flush(struct intel_engine_cs *ring,
 			   u32 invalidate, u32 flush)
 {
 	struct drm_device *dev = ring->dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
 	uint32_t cmd;
 	int ret;
 
@@ -2429,7 +2452,7 @@ static int gen6_ring_flush(struct intel_engine_cs *ring,
 		return ret;
 
 	cmd = MI_FLUSH_DW;
-	if (INTEL_INFO(ring->dev)->gen >= 8)
+	if (INTEL_INFO(dev)->gen >= 8)
 		cmd += 1;
 
 	/* We always require a command barrier so that subsequent
@@ -2449,7 +2472,7 @@ static int gen6_ring_flush(struct intel_engine_cs *ring,
 		cmd |= MI_INVALIDATE_TLB;
 	intel_ring_emit(ring, cmd);
 	intel_ring_emit(ring, I915_GEM_HWS_SCRATCH_ADDR | MI_FLUSH_DW_USE_GTT);
-	if (INTEL_INFO(ring->dev)->gen >= 8) {
+	if (INTEL_INFO(dev)->gen >= 8) {
 		intel_ring_emit(ring, 0); /* upper addr */
 		intel_ring_emit(ring, 0); /* value */
 	} else  {
@@ -2457,13 +2480,6 @@ static int gen6_ring_flush(struct intel_engine_cs *ring,
 		intel_ring_emit(ring, MI_NOOP);
 	}
 	intel_ring_advance(ring);
-
-	if (!invalidate && flush) {
-		if (IS_GEN7(dev))
-			return gen7_ring_fbc_flush(ring, FBC_REND_CACHE_CLEAN);
-		else if (IS_BROADWELL(dev))
-			dev_priv->fbc.need_sw_cache_clean = true;
-	}
 
 	return 0;
 }

@@ -174,29 +174,10 @@ static bool g4x_fbc_enabled(struct drm_device *dev)
 	return I915_READ(DPFC_CONTROL) & DPFC_CTL_EN;
 }
 
-static void snb_fbc_blit_update(struct drm_device *dev)
+static void intel_fbc_nuke(struct drm_i915_private *dev_priv)
 {
-	struct drm_i915_private *dev_priv = dev->dev_private;
-	u32 blt_ecoskpd;
-
-	/* Make sure blitter notifies FBC of writes */
-
-	/* Blitter is part of Media powerwell on VLV. No impact of
-	 * his param in other platforms for now */
-	intel_uncore_forcewake_get(dev_priv, FORCEWAKE_MEDIA);
-
-	blt_ecoskpd = I915_READ(GEN6_BLITTER_ECOSKPD);
-	blt_ecoskpd |= GEN6_BLITTER_FBC_NOTIFY <<
-		GEN6_BLITTER_LOCK_SHIFT;
-	I915_WRITE(GEN6_BLITTER_ECOSKPD, blt_ecoskpd);
-	blt_ecoskpd |= GEN6_BLITTER_FBC_NOTIFY;
-	I915_WRITE(GEN6_BLITTER_ECOSKPD, blt_ecoskpd);
-	blt_ecoskpd &= ~(GEN6_BLITTER_FBC_NOTIFY <<
-			 GEN6_BLITTER_LOCK_SHIFT);
-	I915_WRITE(GEN6_BLITTER_ECOSKPD, blt_ecoskpd);
-	POSTING_READ(GEN6_BLITTER_ECOSKPD);
-
-	intel_uncore_forcewake_put(dev_priv, FORCEWAKE_MEDIA);
+	I915_WRITE(MSG_FBC_REND_STATE, FBC_REND_NUKE);
+	POSTING_READ(MSG_FBC_REND_STATE);
 }
 
 static void ilk_fbc_enable(struct drm_crtc *crtc)
@@ -239,8 +220,9 @@ static void ilk_fbc_enable(struct drm_crtc *crtc)
 		I915_WRITE(SNB_DPFC_CTL_SA,
 			   SNB_CPU_FENCE_ENABLE | obj->fence_reg);
 		I915_WRITE(DPFC_CPU_FENCE_OFFSET, crtc->y);
-		snb_fbc_blit_update(dev);
 	}
+
+	intel_fbc_nuke(dev_priv);
 
 	DRM_DEBUG_KMS("enabled fbc on plane %c\n", plane_name(intel_crtc->plane));
 }
@@ -320,7 +302,7 @@ static void gen7_fbc_enable(struct drm_crtc *crtc)
 		   SNB_CPU_FENCE_ENABLE | obj->fence_reg);
 	I915_WRITE(DPFC_CPU_FENCE_OFFSET, crtc->y);
 
-	snb_fbc_blit_update(dev);
+	intel_fbc_nuke(dev_priv);
 
 	DRM_DEBUG_KMS("enabled fbc on plane %c\n", plane_name(intel_crtc->plane));
 }
@@ -338,19 +320,6 @@ bool intel_fbc_enabled(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	return dev_priv->fbc.enabled;
-}
-
-void bdw_fbc_sw_flush(struct drm_device *dev, u32 value)
-{
-	struct drm_i915_private *dev_priv = dev->dev_private;
-
-	if (!IS_GEN8(dev))
-		return;
-
-	if (!intel_fbc_enabled(dev))
-		return;
-
-	I915_WRITE(MSG_FBC_REND_STATE, value);
 }
 
 static void intel_fbc_work_fn(struct work_struct *__work)
@@ -473,6 +442,43 @@ static bool set_no_fbc_reason(struct drm_i915_private *dev_priv,
 	return true;
 }
 
+static struct drm_crtc *intel_fbc_find_crtc(struct drm_i915_private *dev_priv)
+{
+	struct drm_crtc *crtc = NULL, *tmp_crtc;
+	enum pipe pipe;
+	bool pipe_a_only = false, one_pipe_only = false;
+
+	if (IS_HASWELL(dev_priv) || INTEL_INFO(dev_priv)->gen >= 8)
+		pipe_a_only = true;
+	else if (INTEL_INFO(dev_priv)->gen <= 4)
+		one_pipe_only = true;
+
+	for_each_pipe(dev_priv, pipe) {
+		tmp_crtc = dev_priv->pipe_to_crtc_mapping[pipe];
+
+		if (intel_crtc_active(tmp_crtc) &&
+		    to_intel_crtc(tmp_crtc)->primary_enabled) {
+			if (one_pipe_only && crtc) {
+				if (set_no_fbc_reason(dev_priv, FBC_MULTIPLE_PIPES))
+					DRM_DEBUG_KMS("more than one pipe active, disabling compression\n");
+				return NULL;
+			}
+			crtc = tmp_crtc;
+		}
+
+		if (pipe_a_only)
+			break;
+	}
+
+	if (!crtc || crtc->primary->fb == NULL) {
+		if (set_no_fbc_reason(dev_priv, FBC_NO_OUTPUT))
+			DRM_DEBUG_KMS("no output, disabling\n");
+		return NULL;
+	}
+
+	return crtc;
+}
+
 /**
  * intel_fbc_update - enable/disable FBC as needed
  * @dev: the drm_device
@@ -495,7 +501,7 @@ static bool set_no_fbc_reason(struct drm_i915_private *dev_priv,
 void intel_fbc_update(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct drm_crtc *crtc = NULL, *tmp_crtc;
+	struct drm_crtc *crtc = NULL;
 	struct intel_crtc *intel_crtc;
 	struct drm_framebuffer *fb;
 	struct drm_i915_gem_object *obj;
@@ -530,23 +536,9 @@ void intel_fbc_update(struct drm_device *dev)
 	 *   - new fb is too large to fit in compressed buffer
 	 *   - going to an unsupported config (interlace, pixel multiply, etc.)
 	 */
-	for_each_crtc(dev, tmp_crtc) {
-		if (intel_crtc_active(tmp_crtc) &&
-		    to_intel_crtc(tmp_crtc)->primary_enabled) {
-			if (crtc) {
-				if (set_no_fbc_reason(dev_priv, FBC_MULTIPLE_PIPES))
-					DRM_DEBUG_KMS("more than one pipe active, disabling compression\n");
-				goto out_disable;
-			}
-			crtc = tmp_crtc;
-		}
-	}
-
-	if (!crtc || crtc->primary->fb == NULL) {
-		if (set_no_fbc_reason(dev_priv, FBC_NO_OUTPUT))
-			DRM_DEBUG_KMS("no output, disabling\n");
+	crtc = intel_fbc_find_crtc(dev_priv);
+	if (!crtc)
 		goto out_disable;
-	}
 
 	intel_crtc = to_intel_crtc(crtc);
 	fb = crtc->primary->fb;
@@ -662,6 +654,44 @@ out_disable:
 	i915_gem_stolen_cleanup_compression(dev);
 }
 
+void intel_fbc_invalidate(struct drm_i915_private *dev_priv,
+			  unsigned int frontbuffer_bits,
+			  enum fb_op_origin origin)
+{
+	struct drm_device *dev = dev_priv->dev;
+	unsigned int fbc_bits;
+
+	if (origin == ORIGIN_GTT)
+		return;
+
+	if (dev_priv->fbc.enabled)
+		fbc_bits = INTEL_FRONTBUFFER_PRIMARY(dev_priv->fbc.crtc->pipe);
+	else if (dev_priv->fbc.fbc_work)
+		fbc_bits = INTEL_FRONTBUFFER_PRIMARY(
+			to_intel_crtc(dev_priv->fbc.fbc_work->crtc)->pipe);
+	else
+		fbc_bits = dev_priv->fbc.possible_framebuffer_bits;
+
+	dev_priv->fbc.busy_bits |= (fbc_bits & frontbuffer_bits);
+
+	if (dev_priv->fbc.busy_bits)
+		intel_fbc_disable(dev);
+}
+
+void intel_fbc_flush(struct drm_i915_private *dev_priv,
+		     unsigned int frontbuffer_bits)
+{
+	struct drm_device *dev = dev_priv->dev;
+
+	if (!dev_priv->fbc.busy_bits)
+		return;
+
+	dev_priv->fbc.busy_bits &= ~frontbuffer_bits;
+
+	if (!dev_priv->fbc.busy_bits)
+		intel_fbc_update(dev);
+}
+
 /**
  * intel_fbc_init - Initialize FBC
  * @dev_priv: the i915 device
@@ -670,10 +700,20 @@ out_disable:
  */
 void intel_fbc_init(struct drm_i915_private *dev_priv)
 {
+	enum pipe pipe;
+
 	if (!HAS_FBC(dev_priv)) {
 		dev_priv->fbc.enabled = false;
 		dev_priv->fbc.no_fbc_reason = FBC_UNSUPPORTED;
 		return;
+	}
+
+	for_each_pipe(dev_priv, pipe) {
+		dev_priv->fbc.possible_framebuffer_bits |=
+				INTEL_FRONTBUFFER_PRIMARY(pipe);
+
+		if (IS_HASWELL(dev_priv) || INTEL_INFO(dev_priv)->gen >= 8)
+			break;
 	}
 
 	if (INTEL_INFO(dev_priv)->gen >= 7) {

@@ -84,6 +84,11 @@ static const struct dp_link_dpll chv_dpll[] = {
 	{ DP_LINK_BW_5_4,	/* m2_int = 27, m2_fraction = 0 */
 		{ .p1 = 2, .p2 = 1, .n = 1, .m1 = 2, .m2 = 0x6c00000 } }
 };
+/* Skylake supports following rates */
+static const uint32_t gen9_rates[] = { 162000, 216000, 270000, 324000,
+					432000, 540000 };
+
+static const uint32_t default_rates[] = { 162000, 270000, 540000 };
 
 /**
  * is_edp - is the given port attached to an eDP panel (either CPU or PCH)
@@ -1075,7 +1080,7 @@ intel_dp_connector_unregister(struct intel_connector *intel_connector)
 }
 
 static void
-skl_edp_set_pll_config(struct intel_crtc_state *pipe_config, int link_bw)
+skl_edp_set_pll_config(struct intel_crtc_state *pipe_config, int link_clock)
 {
 	u32 ctrl1;
 
@@ -1084,19 +1089,35 @@ skl_edp_set_pll_config(struct intel_crtc_state *pipe_config, int link_bw)
 	pipe_config->dpll_hw_state.cfgcr2 = 0;
 
 	ctrl1 = DPLL_CTRL1_OVERRIDE(SKL_DPLL0);
-	switch (link_bw) {
-	case DP_LINK_BW_1_62:
+	switch (link_clock / 2) {
+	case 81000:
 		ctrl1 |= DPLL_CRTL1_LINK_RATE(DPLL_CRTL1_LINK_RATE_810,
 					      SKL_DPLL0);
 		break;
-	case DP_LINK_BW_2_7:
+	case 135000:
 		ctrl1 |= DPLL_CRTL1_LINK_RATE(DPLL_CRTL1_LINK_RATE_1350,
 					      SKL_DPLL0);
 		break;
-	case DP_LINK_BW_5_4:
+	case 270000:
 		ctrl1 |= DPLL_CRTL1_LINK_RATE(DPLL_CRTL1_LINK_RATE_2700,
 					      SKL_DPLL0);
 		break;
+	case 162000:
+		ctrl1 |= DPLL_CRTL1_LINK_RATE(DPLL_CRTL1_LINK_RATE_1620,
+					      SKL_DPLL0);
+		break;
+	/* TBD: For DP link rates 2.16 GHz and 4.32 GHz, VCO is 8640 which
+	results in CDCLK change. Need to handle the change of CDCLK by
+	disabling pipes and re-enabling them */
+	case 108000:
+		ctrl1 |= DPLL_CRTL1_LINK_RATE(DPLL_CRTL1_LINK_RATE_1080,
+					      SKL_DPLL0);
+		break;
+	case 216000:
+		ctrl1 |= DPLL_CRTL1_LINK_RATE(DPLL_CRTL1_LINK_RATE_2160,
+					      SKL_DPLL0);
+		break;
+
 	}
 	pipe_config->dpll_hw_state.ctrl1 = ctrl1;
 }
@@ -1115,6 +1136,52 @@ hsw_dp_set_ddi_pll_sel(struct intel_crtc_state *pipe_config, int link_bw)
 		pipe_config->ddi_pll_sel = PORT_CLK_SEL_LCPLL_2700;
 		break;
 	}
+}
+
+static int
+intel_read_sink_rates(struct intel_dp *intel_dp, uint32_t *sink_rates)
+{
+	struct drm_device *dev = intel_dp_to_dev(intel_dp);
+	int i = 0;
+	uint16_t val;
+
+	if (INTEL_INFO(dev)->gen >= 9 && intel_dp->supported_rates[0]) {
+		/*
+		 * Receiver supports only main-link rate selection by
+		 * link rate table method, so read link rates from
+		 * supported_link_rates
+		 */
+		for (i = 0; i < DP_MAX_SUPPORTED_RATES; ++i) {
+			val = le16_to_cpu(intel_dp->supported_rates[i]);
+			if (val == 0)
+				break;
+
+			sink_rates[i] = val * 200;
+		}
+
+		if (i <= 0)
+			DRM_ERROR("No rates in SUPPORTED_LINK_RATES");
+	}
+	return i;
+}
+
+static int
+intel_read_source_rates(struct intel_dp *intel_dp, uint32_t *source_rates)
+{
+	struct drm_device *dev = intel_dp_to_dev(intel_dp);
+	int i;
+	int max_default_rate;
+
+	if (INTEL_INFO(dev)->gen >= 9 && intel_dp->supported_rates[0]) {
+		for (i = 0; i < ARRAY_SIZE(gen9_rates); ++i)
+			source_rates[i] = gen9_rates[i];
+	} else {
+		/* Index of the max_link_bw supported + 1 */
+		max_default_rate = (intel_dp_max_link_bw(intel_dp) >> 3) + 1;
+		for (i = 0; i < max_default_rate; ++i)
+			source_rates[i] = default_rates[i];
+	}
+	return i;
 }
 
 static void
@@ -1150,6 +1217,45 @@ intel_dp_set_clock(struct intel_encoder *encoder,
 	}
 }
 
+static int intel_supported_rates(const uint32_t *source_rates, int source_len,
+const uint32_t *sink_rates, int sink_len, uint32_t *supported_rates)
+{
+	int i = 0, j = 0, k = 0;
+
+	/* For panels with edp version less than 1.4 */
+	if (sink_len == 0) {
+		for (i = 0; i < source_len; ++i)
+			supported_rates[i] = source_rates[i];
+		return source_len;
+	}
+
+	/* For edp1.4 panels, find the common rates between source and sink */
+	while (i < source_len && j < sink_len) {
+		if (source_rates[i] == sink_rates[j]) {
+			supported_rates[k] = source_rates[i];
+			++k;
+			++i;
+			++j;
+		} else if (source_rates[i] < sink_rates[j]) {
+			++i;
+		} else {
+			++j;
+		}
+	}
+	return k;
+}
+
+static int rate_to_index(uint32_t find, const uint32_t *rates)
+{
+	int i = 0;
+
+	for (i = 0; i < DP_MAX_SUPPORTED_RATES; ++i)
+		if (find == rates[i])
+			break;
+
+	return i;
+}
+
 bool
 intel_dp_compute_config(struct intel_encoder *encoder,
 			struct intel_crtc_state *pipe_config)
@@ -1166,10 +1272,25 @@ intel_dp_compute_config(struct intel_encoder *encoder,
 	int max_lane_count = intel_dp_max_lane_count(intel_dp);
 	/* Conveniently, the link BW constants become indices with a shift...*/
 	int min_clock = 0;
-	int max_clock = intel_dp_max_link_bw(intel_dp) >> 3;
+	int max_clock;
 	int bpp, mode_rate;
-	static int bws[] = { DP_LINK_BW_1_62, DP_LINK_BW_2_7, DP_LINK_BW_5_4 };
 	int link_avail, link_clock;
+	uint32_t sink_rates[8];
+	uint32_t supported_rates[8] = {0};
+	uint32_t source_rates[8];
+	int source_len, sink_len, supported_len;
+
+	sink_len = intel_read_sink_rates(intel_dp, sink_rates);
+
+	source_len = intel_read_source_rates(intel_dp, source_rates);
+
+	supported_len = intel_supported_rates(source_rates, source_len,
+				sink_rates, sink_len, supported_rates);
+
+	/* No common link rates between source and sink */
+	WARN_ON(supported_len <= 0);
+
+	max_clock = supported_len - 1;
 
 	if (HAS_PCH_SPLIT(dev) && !HAS_DDI(dev) && port != PORT_A)
 		pipe_config->has_pch_encoder = true;
@@ -1193,8 +1314,8 @@ intel_dp_compute_config(struct intel_encoder *encoder,
 		return false;
 
 	DRM_DEBUG_KMS("DP link computation with max lane count %i "
-		      "max bw %02x pixel clock %iKHz\n",
-		      max_lane_count, bws[max_clock],
+		      "max bw %d pixel clock %iKHz\n",
+		      max_lane_count, supported_rates[max_clock],
 		      adjusted_mode->crtc_clock);
 
 	/* Walk through all bpp values. Luckily they're all nicely spaced with 2
@@ -1223,8 +1344,11 @@ intel_dp_compute_config(struct intel_encoder *encoder,
 						   bpp);
 
 		for (clock = min_clock; clock <= max_clock; clock++) {
-			for (lane_count = min_lane_count; lane_count <= max_lane_count; lane_count <<= 1) {
-				link_clock = drm_dp_bw_code_to_link_rate(bws[clock]);
+			for (lane_count = min_lane_count;
+				lane_count <= max_lane_count;
+				lane_count <<= 1) {
+
+				link_clock = supported_rates[clock];
 				link_avail = intel_dp_max_data_rate(link_clock,
 								    lane_count);
 
@@ -1253,10 +1377,19 @@ found:
 	if (intel_dp->color_range)
 		pipe_config->limited_color_range = true;
 
-	intel_dp->link_bw = bws[clock];
 	intel_dp->lane_count = lane_count;
+
+	intel_dp->link_bw =
+		drm_dp_link_rate_to_bw_code(supported_rates[clock]);
+
+	if (INTEL_INFO(dev)->gen >= 9 && intel_dp->supported_rates[0]) {
+		intel_dp->rate_select =
+			rate_to_index(supported_rates[clock], sink_rates);
+		intel_dp->link_bw = 0;
+	}
+
 	pipe_config->pipe_bpp = bpp;
-	pipe_config->port_clock = drm_dp_bw_code_to_link_rate(intel_dp->link_bw);
+	pipe_config->port_clock = supported_rates[clock];
 
 	DRM_DEBUG_KMS("DP link bw %02x lane count %d clock %d bpp %d\n",
 		      intel_dp->link_bw, intel_dp->lane_count,
@@ -1279,7 +1412,7 @@ found:
 	}
 
 	if (IS_SKYLAKE(dev) && is_edp(intel_dp))
-		skl_edp_set_pll_config(pipe_config, intel_dp->link_bw);
+		skl_edp_set_pll_config(pipe_config, supported_rates[clock]);
 	else if (IS_HASWELL(dev) || IS_BROADWELL(dev))
 		hsw_dp_set_ddi_pll_sel(pipe_config, intel_dp->link_bw);
 	else
@@ -2691,11 +2824,14 @@ static uint8_t
 intel_dp_voltage_max(struct intel_dp *intel_dp)
 {
 	struct drm_device *dev = intel_dp_to_dev(intel_dp);
+	struct drm_i915_private *dev_priv = dev->dev_private;
 	enum port port = dp_to_dig_port(intel_dp)->port;
 
-	if (INTEL_INFO(dev)->gen >= 9)
+	if (INTEL_INFO(dev)->gen >= 9) {
+		if (dev_priv->vbt.edp_low_vswing && port == PORT_A)
+			return DP_TRAIN_VOLTAGE_SWING_LEVEL_3;
 		return DP_TRAIN_VOLTAGE_SWING_LEVEL_2;
-	else if (IS_VALLEYVIEW(dev))
+	} else if (IS_VALLEYVIEW(dev))
 		return DP_TRAIN_VOLTAGE_SWING_LEVEL_3;
 	else if (IS_GEN7(dev) && port == PORT_A)
 		return DP_TRAIN_VOLTAGE_SWING_LEVEL_2;
@@ -2719,6 +2855,8 @@ intel_dp_pre_emphasis_max(struct intel_dp *intel_dp, uint8_t voltage_swing)
 			return DP_TRAIN_PRE_EMPH_LEVEL_2;
 		case DP_TRAIN_VOLTAGE_SWING_LEVEL_2:
 			return DP_TRAIN_PRE_EMPH_LEVEL_1;
+		case DP_TRAIN_VOLTAGE_SWING_LEVEL_3:
+			return DP_TRAIN_PRE_EMPH_LEVEL_0;
 		default:
 			return DP_TRAIN_PRE_EMPH_LEVEL_0;
 		}
@@ -3201,6 +3339,9 @@ intel_hsw_signal_levels(uint8_t train_set)
 		return DDI_BUF_TRANS_SELECT(7);
 	case DP_TRAIN_VOLTAGE_SWING_LEVEL_2 | DP_TRAIN_PRE_EMPH_LEVEL_1:
 		return DDI_BUF_TRANS_SELECT(8);
+
+	case DP_TRAIN_VOLTAGE_SWING_LEVEL_3 | DP_TRAIN_PRE_EMPH_LEVEL_0:
+		return DDI_BUF_TRANS_SELECT(9);
 	default:
 		DRM_DEBUG_KMS("Unsupported voltage swing/pre-emphasis level:"
 			      "0x%x\n", signal_levels);
@@ -3358,6 +3499,9 @@ intel_dp_start_link_train(struct intel_dp *intel_dp)
 	if (drm_dp_enhanced_frame_cap(intel_dp->dpcd))
 		link_config[1] |= DP_LANE_COUNT_ENHANCED_FRAME_EN;
 	drm_dp_dpcd_write(&intel_dp->aux, DP_LINK_BW_SET, link_config, 2);
+	if (INTEL_INFO(dev)->gen >= 9 && intel_dp->supported_rates[0])
+		drm_dp_dpcd_write(&intel_dp->aux, DP_LINK_RATE_SET,
+				&intel_dp->rate_select, 1);
 
 	link_config[0] = 0;
 	link_config[1] = DP_SET_ANSI_8B10B;
@@ -3570,6 +3714,7 @@ intel_dp_get_dpcd(struct intel_dp *intel_dp)
 	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
 	struct drm_device *dev = dig_port->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
+	uint8_t rev;
 
 	if (intel_dp_dpcd_read_wake(&intel_dp->aux, 0x000, intel_dp->dpcd,
 				    sizeof(intel_dp->dpcd)) < 0)
@@ -3601,6 +3746,16 @@ intel_dp_get_dpcd(struct intel_dp *intel_dp)
 	} else
 		intel_dp->use_tps3 = false;
 
+	/* Intermediate frequency support */
+	if (is_edp(intel_dp) &&
+	    (intel_dp->dpcd[DP_EDP_CONFIGURATION_CAP] &	DP_DPCD_DISPLAY_CONTROL_CAPABLE) &&
+	    (intel_dp_dpcd_read_wake(&intel_dp->aux, DP_EDP_DPCD_REV, &rev, 1) == 1) &&
+	    (rev >= 0x03)) { /* eDp v1.4 or higher */
+		intel_dp_dpcd_read_wake(&intel_dp->aux,
+				DP_SUPPORTED_LINK_RATES,
+				intel_dp->supported_rates,
+				sizeof(intel_dp->supported_rates));
+	}
 	if (!(intel_dp->dpcd[DP_DOWNSTREAMPORT_PRESENT] &
 	      DP_DWN_STRM_PORT_PRESENT))
 		return true; /* native DP sink */
@@ -4736,6 +4891,18 @@ intel_dp_init_panel_power_sequencer_registers(struct drm_device *dev,
 		      I915_READ(pp_div_reg));
 }
 
+/**
+ * intel_dp_set_drrs_state - program registers for RR switch to take effect
+ * @dev: DRM device
+ * @refresh_rate: RR to be programmed
+ *
+ * This function gets called when refresh rate (RR) has to be changed from
+ * one frequency to another. Switches can be between high and low RR
+ * supported by the panel or to any other RR based on media playback (in
+ * this case, RR value needs to be passed from user space).
+ *
+ * The caller of this function needs to take a lock on dev_priv->drrs.
+ */
 static void intel_dp_set_drrs_state(struct drm_device *dev, int refresh_rate)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -4793,14 +4960,32 @@ static void intel_dp_set_drrs_state(struct drm_device *dev, int refresh_rate)
 		return;
 	}
 
-	if (INTEL_INFO(dev)->gen > 6 && INTEL_INFO(dev)->gen < 8) {
+	if (INTEL_INFO(dev)->gen >= 8 && !IS_CHERRYVIEW(dev)) {
+		switch (index) {
+		case DRRS_HIGH_RR:
+			intel_dp_set_m_n(intel_crtc, M1_N1);
+			break;
+		case DRRS_LOW_RR:
+			intel_dp_set_m_n(intel_crtc, M2_N2);
+			break;
+		case DRRS_MAX_RR:
+		default:
+			DRM_ERROR("Unsupported refreshrate type\n");
+		}
+	} else if (INTEL_INFO(dev)->gen > 6) {
 		reg = PIPECONF(intel_crtc->config->cpu_transcoder);
 		val = I915_READ(reg);
+
 		if (index > DRRS_HIGH_RR) {
-			val |= PIPECONF_EDP_RR_MODE_SWITCH;
-			intel_dp_set_m_n(intel_crtc);
+			if (IS_VALLEYVIEW(dev))
+				val |= PIPECONF_EDP_RR_MODE_SWITCH_VLV;
+			else
+				val |= PIPECONF_EDP_RR_MODE_SWITCH;
 		} else {
-			val &= ~PIPECONF_EDP_RR_MODE_SWITCH;
+			if (IS_VALLEYVIEW(dev))
+				val &= ~PIPECONF_EDP_RR_MODE_SWITCH_VLV;
+			else
+				val &= ~PIPECONF_EDP_RR_MODE_SWITCH;
 		}
 		I915_WRITE(reg, val);
 	}
@@ -4810,6 +4995,12 @@ static void intel_dp_set_drrs_state(struct drm_device *dev, int refresh_rate)
 	DRM_DEBUG_KMS("eDP Refresh Rate set to : %dHz\n", refresh_rate);
 }
 
+/**
+ * intel_edp_drrs_enable - init drrs struct if supported
+ * @intel_dp: DP struct
+ *
+ * Initializes frontbuffer_bits and drrs.dp
+ */
 void intel_edp_drrs_enable(struct intel_dp *intel_dp)
 {
 	struct drm_device *dev = intel_dp_to_dev(intel_dp);
@@ -4837,6 +5028,11 @@ unlock:
 	mutex_unlock(&dev_priv->drrs.mutex);
 }
 
+/**
+ * intel_edp_drrs_disable - Disable DRRS
+ * @intel_dp: DP struct
+ *
+ */
 void intel_edp_drrs_disable(struct intel_dp *intel_dp)
 {
 	struct drm_device *dev = intel_dp_to_dev(intel_dp);
@@ -4896,6 +5092,17 @@ unlock:
 	mutex_unlock(&dev_priv->drrs.mutex);
 }
 
+/**
+ * intel_edp_drrs_invalidate - Invalidate DRRS
+ * @dev: DRM device
+ * @frontbuffer_bits: frontbuffer plane tracking bits
+ *
+ * When there is a disturbance on screen (due to cursor movement/time
+ * update etc), DRRS needs to be invalidated, i.e. need to switch to
+ * high RR.
+ *
+ * Dirty frontbuffers relevant to DRRS are tracked in busy_frontbuffer_bits.
+ */
 void intel_edp_drrs_invalidate(struct drm_device *dev,
 		unsigned frontbuffer_bits)
 {
@@ -4906,12 +5113,13 @@ void intel_edp_drrs_invalidate(struct drm_device *dev,
 	if (!dev_priv->drrs.dp)
 		return;
 
+	cancel_delayed_work_sync(&dev_priv->drrs.work);
+
 	mutex_lock(&dev_priv->drrs.mutex);
 	crtc = dp_to_dig_port(dev_priv->drrs.dp)->base.base.crtc;
 	pipe = to_intel_crtc(crtc)->pipe;
 
 	if (dev_priv->drrs.refresh_rate_type == DRRS_LOW_RR) {
-		cancel_delayed_work_sync(&dev_priv->drrs.work);
 		intel_dp_set_drrs_state(dev_priv->dev,
 				dev_priv->drrs.dp->attached_connector->panel.
 				fixed_mode->vrefresh);
@@ -4923,6 +5131,17 @@ void intel_edp_drrs_invalidate(struct drm_device *dev,
 	mutex_unlock(&dev_priv->drrs.mutex);
 }
 
+/**
+ * intel_edp_drrs_flush - Flush DRRS
+ * @dev: DRM device
+ * @frontbuffer_bits: frontbuffer plane tracking bits
+ *
+ * When there is no movement on screen, DRRS work can be scheduled.
+ * This DRRS work is responsible for setting relevant registers after a
+ * timeout of 1 second.
+ *
+ * Dirty frontbuffers relevant to DRRS are tracked in busy_frontbuffer_bits.
+ */
 void intel_edp_drrs_flush(struct drm_device *dev,
 		unsigned frontbuffer_bits)
 {
@@ -4933,12 +5152,12 @@ void intel_edp_drrs_flush(struct drm_device *dev,
 	if (!dev_priv->drrs.dp)
 		return;
 
+	cancel_delayed_work_sync(&dev_priv->drrs.work);
+
 	mutex_lock(&dev_priv->drrs.mutex);
 	crtc = dp_to_dig_port(dev_priv->drrs.dp)->base.base.crtc;
 	pipe = to_intel_crtc(crtc)->pipe;
 	dev_priv->drrs.busy_frontbuffer_bits &= ~frontbuffer_bits;
-
-	cancel_delayed_work_sync(&dev_priv->drrs.work);
 
 	if (dev_priv->drrs.refresh_rate_type != DRRS_LOW_RR &&
 			!dev_priv->drrs.busy_frontbuffer_bits)
@@ -4947,6 +5166,56 @@ void intel_edp_drrs_flush(struct drm_device *dev,
 	mutex_unlock(&dev_priv->drrs.mutex);
 }
 
+/**
+ * DOC: Display Refresh Rate Switching (DRRS)
+ *
+ * Display Refresh Rate Switching (DRRS) is a power conservation feature
+ * which enables swtching between low and high refresh rates,
+ * dynamically, based on the usage scenario. This feature is applicable
+ * for internal panels.
+ *
+ * Indication that the panel supports DRRS is given by the panel EDID, which
+ * would list multiple refresh rates for one resolution.
+ *
+ * DRRS is of 2 types - static and seamless.
+ * Static DRRS involves changing refresh rate (RR) by doing a full modeset
+ * (may appear as a blink on screen) and is used in dock-undock scenario.
+ * Seamless DRRS involves changing RR without any visual effect to the user
+ * and can be used during normal system usage. This is done by programming
+ * certain registers.
+ *
+ * Support for static/seamless DRRS may be indicated in the VBT based on
+ * inputs from the panel spec.
+ *
+ * DRRS saves power by switching to low RR based on usage scenarios.
+ *
+ * eDP DRRS:-
+ *        The implementation is based on frontbuffer tracking implementation.
+ * When there is a disturbance on the screen triggered by user activity or a
+ * periodic system activity, DRRS is disabled (RR is changed to high RR).
+ * When there is no movement on screen, after a timeout of 1 second, a switch
+ * to low RR is made.
+ *        For integration with frontbuffer tracking code,
+ * intel_edp_drrs_invalidate() and intel_edp_drrs_flush() are called.
+ *
+ * DRRS can be further extended to support other internal panels and also
+ * the scenario of video playback wherein RR is set based on the rate
+ * requested by userspace.
+ */
+
+/**
+ * intel_dp_drrs_init - Init basic DRRS work and mutex.
+ * @intel_connector: eDP connector
+ * @fixed_mode: preferred mode of panel
+ *
+ * This function is  called only once at driver load to initialize basic
+ * DRRS stuff.
+ *
+ * Returns:
+ * Downclock mode if panel supports it, else return NULL.
+ * DRRS support is determined by the presence of downclock mode (apart
+ * from VBT setting).
+ */
 static struct drm_display_mode *
 intel_dp_drrs_init(struct intel_connector *intel_connector,
 		struct drm_display_mode *fixed_mode)
@@ -4970,7 +5239,7 @@ intel_dp_drrs_init(struct intel_connector *intel_connector,
 					(dev, fixed_mode, connector);
 
 	if (!downclock_mode) {
-		DRM_DEBUG_KMS("DRRS not supported\n");
+		DRM_DEBUG_KMS("Downclock mode is not found. DRRS not supported\n");
 		return NULL;
 	}
 
