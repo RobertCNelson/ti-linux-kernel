@@ -41,8 +41,9 @@ struct memregion *
 visor_memregion_create(HOSTADDRESS physaddr, ulong nbytes)
 {
 	struct memregion *rc = NULL;
-	struct memregion *memregion = kzalloc(sizeof(*memregion),
-					      GFP_KERNEL | __GFP_NORETRY);
+	struct memregion *memregion;
+
+	memregion = kzalloc(sizeof(*memregion), GFP_KERNEL | __GFP_NORETRY);
 	if (memregion == NULL) {
 		ERRDRV("visor_memregion_create allocation failed");
 		return NULL;
@@ -85,10 +86,8 @@ visor_memregion_create_overlapped(struct memregion *parent, ulong offset,
 		return NULL;
 	}
 	memregion = kzalloc(sizeof(*memregion), GFP_KERNEL|__GFP_NORETRY);
-	if (memregion == NULL) {
-		ERRDRV("%s allocation failed", __func__);
+	if (memregion == NULL)
 		return NULL;
-	}
 
 	memregion->physaddr = parent->physaddr + offset;
 	memregion->nbytes = nbytes;

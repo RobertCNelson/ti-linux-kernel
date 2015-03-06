@@ -49,7 +49,7 @@ extern int fbtft_gamma_parse_str(struct fbtft_par *par, unsigned long *curves,
 						const char *str, int size);
 
 static unsigned long debug;
-module_param(debug, ulong , 0);
+module_param(debug, ulong, 0);
 MODULE_PARM_DESC(debug, "override device debug level");
 
 static bool dma = true;
@@ -1000,7 +1000,7 @@ int fbtft_register_framebuffer(struct fb_info *fb_info)
 	fbtft_sysfs_init(par);
 
 	if (par->txbuf.buf)
-		sprintf(text1, ", %d KiB %sbuffer memory",
+		sprintf(text1, ", %zu KiB %sbuffer memory",
 			par->txbuf.len >> 10, par->txbuf.dma ? "DMA " : "");
 	if (spi)
 		sprintf(text2, ", spi%d.%d at %d MHz", spi->master->bus_num,
@@ -1046,7 +1046,6 @@ int fbtft_unregister_framebuffer(struct fb_info *fb_info)
 {
 	struct fbtft_par *par = fb_info->par;
 	struct spi_device *spi = par->spi;
-	int ret;
 
 	if (spi)
 		spi_set_drvdata(spi, NULL);
@@ -1055,8 +1054,7 @@ int fbtft_unregister_framebuffer(struct fb_info *fb_info)
 	if (par->fbtftops.unregister_backlight)
 		par->fbtftops.unregister_backlight(par);
 	fbtft_sysfs_exit(par);
-	ret = unregister_framebuffer(fb_info);
-	return ret;
+	return unregister_framebuffer(fb_info);
 }
 EXPORT_SYMBOL(fbtft_unregister_framebuffer);
 
