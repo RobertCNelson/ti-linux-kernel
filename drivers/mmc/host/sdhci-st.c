@@ -113,16 +113,6 @@ err_of:
 	return ret;
 }
 
-static int sdhci_st_remove(struct platform_device *pdev)
-{
-	struct sdhci_host *host = platform_get_drvdata(pdev);
-	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-
-	clk_disable_unprepare(pltfm_host->clk);
-
-	return sdhci_pltfm_unregister(pdev);
-}
-
 #ifdef CONFIG_PM_SLEEP
 static int sdhci_st_suspend(struct device *dev)
 {
@@ -160,7 +150,7 @@ MODULE_DEVICE_TABLE(of, st_sdhci_match);
 
 static struct platform_driver sdhci_st_driver = {
 	.probe = sdhci_st_probe,
-	.remove = sdhci_st_remove,
+	.remove = sdhci_pltfm_unregister,
 	.driver = {
 		   .name = "sdhci-st",
 		   .pm = &sdhci_st_pmops,

@@ -70,17 +70,14 @@ static void tmio_mmc_ack_mmc_irqs(struct tmio_mmc_host *host, u32 i)
 
 static void tmio_mmc_init_sg(struct tmio_mmc_host *host, struct mmc_data *data)
 {
-	host->sg_len = data->sg_len;
-	host->sg_ptr = data->sg;
-	host->sg_orig = data->sg;
-	host->sg_off = 0;
-}
+	unsigned int flags = SG_MITER_ATOMIC;
 
-static int tmio_mmc_next_sg(struct tmio_mmc_host *host)
-{
-	host->sg_ptr = sg_next(host->sg_ptr);
-	host->sg_off = 0;
-	return --host->sg_len;
+	if (data->flags & MMC_DATA_READ)
+		flags |= SG_MITER_TO_SG;
+	else
+		flags |= SG_MITER_FROM_SG;
+
+	sg_miter_start(&host->sg_miter, data->sg, data->sg_len, flags);
 }
 
 #ifdef CONFIG_MMC_DEBUG
@@ -418,7 +415,7 @@ static void tmio_mmc_transfer_data(struct tmio_mmc_host *host,
 static void tmio_mmc_pio_irq(struct tmio_mmc_host *host)
 {
 	struct mmc_data *data = host->data;
-	void *sg_virt;
+	struct sg_mapping_iter *sg_miter = &host->sg_miter;
 	unsigned short *buf;
 	unsigned int count;
 	unsigned long flags;
@@ -431,10 +428,12 @@ static void tmio_mmc_pio_irq(struct tmio_mmc_host *host)
 		return;
 	}
 
-	sg_virt = tmio_mmc_kmap_atomic(host->sg_ptr, &flags);
-	buf = (unsigned short *)(sg_virt + host->sg_off);
+	local_irq_save(flags);
 
-	count = host->sg_ptr->length - host->sg_off;
+	if (!sg_miter_next(sg_miter))
+		return;
+	buf = sg_miter->addr;
+	count = sg_miter->length;
 	if (count > data->blksz)
 		count = data->blksz;
 
@@ -444,12 +443,10 @@ static void tmio_mmc_pio_irq(struct tmio_mmc_host *host)
 	/* Transfer the data */
 	tmio_mmc_transfer_data(host, buf, count);
 
-	host->sg_off += count;
+	sg_miter->consumed = count;
+	sg_miter_stop(sg_miter);
 
-	tmio_mmc_kunmap_atomic(host->sg_ptr, &flags, sg_virt);
-
-	if (host->sg_off == host->sg_ptr->length)
-		tmio_mmc_next_sg(host);
+	local_irq_restore(flags);
 
 	return;
 }
@@ -1073,8 +1070,6 @@ EXPORT_SYMBOL(tmio_mmc_host_alloc);
 void tmio_mmc_host_free(struct tmio_mmc_host *host)
 {
 	mmc_free_host(host->mmc);
-
-	host->mmc = NULL;
 }
 EXPORT_SYMBOL(tmio_mmc_host_free);
 
