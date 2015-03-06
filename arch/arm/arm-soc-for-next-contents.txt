@@ -1,0 +1,35 @@
+next/cleanup
+
+next/multiplatform
+	renesas/soc-cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-cleanup-for-v4.1
+	renesas/sh7372-soc-removal
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-sh7372-soc-removal-for-v4.1
+
+next/soc
+	renesas/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-for-v4.1
+	meson/soc
+		https://github.com/carlocaione/linux-meson tags/for-v4.0-rc/meson-soc
+
+next/dt
+	renesas/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-for-v4.1
+	meson/dt
+		https://github.com/carlocaione/linux-meson tags/for-v4.0-rc/meson-dts
+	patch
+		devicetree: Add TI-NSPIRE USB OTG support to device tree
+
+next/drivers
+	drivers/simple-pm-bus
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-simple-pm-bus-for-v4.1
+
+fixes
+	<no branch> (2d2c9a8d0a4f90e298315d2f4a282d8bd5d45e5c)
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-fixes-dt
+	<no branch> (ace283a04a4a6c2e04814c43251191ef8f229b26)
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-fixes-1
+	<no branch> (2141102e045e622cac176891cb66c5bf08e439f5)
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-fixes
+
+
