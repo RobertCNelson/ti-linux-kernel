@@ -162,9 +162,9 @@ static const struct reg_offset_data bam_v1_4_reg_info[] = {
 	[BAM_P_IRQ_STTS]	= { 0x1010, 0x1000, 0x00, 0x00 },
 	[BAM_P_IRQ_CLR]		= { 0x1014, 0x1000, 0x00, 0x00 },
 	[BAM_P_IRQ_EN]		= { 0x1018, 0x1000, 0x00, 0x00 },
-	[BAM_P_EVNT_DEST_ADDR]	= { 0x102C, 0x00, 0x1000, 0x00 },
-	[BAM_P_EVNT_REG]	= { 0x1018, 0x00, 0x1000, 0x00 },
-	[BAM_P_SW_OFSTS]	= { 0x1000, 0x00, 0x1000, 0x00 },
+	[BAM_P_EVNT_DEST_ADDR]	= { 0x182C, 0x00, 0x1000, 0x00 },
+	[BAM_P_EVNT_REG]	= { 0x1818, 0x00, 0x1000, 0x00 },
+	[BAM_P_SW_OFSTS]	= { 0x1800, 0x00, 0x1000, 0x00 },
 	[BAM_P_DATA_FIFO_ADDR]	= { 0x1824, 0x00, 0x1000, 0x00 },
 	[BAM_P_DESC_FIFO_ADDR]	= { 0x181C, 0x00, 0x1000, 0x00 },
 	[BAM_P_EVNT_GEN_TRSHLD]	= { 0x1828, 0x00, 0x1000, 0x00 },
@@ -1113,7 +1113,7 @@ static int bam_dma_probe(struct platform_device *pdev)
 
 	if (!bdev->channels) {
 		ret = -ENOMEM;
-		goto err_disable_clk;
+		goto err_tasklet_kill;
 	}
 
 	/* allocate and initialize channels */
@@ -1125,7 +1125,7 @@ static int bam_dma_probe(struct platform_device *pdev)
 	ret = devm_request_irq(bdev->dev, bdev->irq, bam_dma_irq,
 			IRQF_TRIGGER_HIGH, "bam_dma", bdev);
 	if (ret)
-		goto err_disable_clk;
+		goto err_bam_channel_exit;
 
 	/* set max dma segment size */
 	bdev->common.dev = bdev->dev;
@@ -1133,7 +1133,7 @@ static int bam_dma_probe(struct platform_device *pdev)
 	ret = dma_set_max_seg_size(bdev->common.dev, BAM_MAX_DATA_SIZE);
 	if (ret) {
 		dev_err(bdev->dev, "cannot set maximum segment size\n");
-		goto err_disable_clk;
+		goto err_bam_channel_exit;
 	}
 
 	platform_set_drvdata(pdev, bdev);
@@ -1143,6 +1143,10 @@ static int bam_dma_probe(struct platform_device *pdev)
 	dma_cap_set(DMA_SLAVE, bdev->common.cap_mask);
 
 	/* initialize dmaengine apis */
+	bdev->common.directions = BIT(DMA_DEV_TO_MEM) | BIT(DMA_MEM_TO_DEV);
+	bdev->common.residue_granularity = DMA_RESIDUE_GRANULARITY_SEGMENT;
+	bdev->common.src_addr_widths = DMA_SLAVE_BUSWIDTH_4_BYTES;
+	bdev->common.dst_addr_widths = DMA_SLAVE_BUSWIDTH_4_BYTES;
 	bdev->common.device_alloc_chan_resources = bam_alloc_chan;
 	bdev->common.device_free_chan_resources = bam_free_chan;
 	bdev->common.device_prep_slave_sg = bam_prep_slave_sg;
@@ -1157,7 +1161,7 @@ static int bam_dma_probe(struct platform_device *pdev)
 	ret = dma_async_device_register(&bdev->common);
 	if (ret) {
 		dev_err(bdev->dev, "failed to register dma async device\n");
-		goto err_disable_clk;
+		goto err_bam_channel_exit;
 	}
 
 	ret = of_dma_controller_register(pdev->dev.of_node, bam_dma_xlate,
@@ -1169,8 +1173,14 @@ static int bam_dma_probe(struct platform_device *pdev)
 
 err_unregister_dma:
 	dma_async_device_unregister(&bdev->common);
+err_bam_channel_exit:
+	for (i = 0; i < bdev->num_channels; i++)
+		tasklet_kill(&bdev->channels[i].vc.task);
+err_tasklet_kill:
+	tasklet_kill(&bdev->task);
 err_disable_clk:
 	clk_disable_unprepare(bdev->bamclk);
+
 	return ret;
 }
 
