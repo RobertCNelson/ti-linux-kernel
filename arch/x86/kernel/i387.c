@@ -42,8 +42,8 @@ void kernel_fpu_enable(void)
  * be set (so that the clts/stts pair does nothing that is
  * visible in the interrupted kernel thread).
  *
- * Except for the eagerfpu case when we return 1 unless we've already
- * been eager and saved the state in kernel_fpu_begin().
+ * Except for the eagerfpu case when we return true; in the likely case
+ * the thread has FPU but we are not going to set/clear TS.
  */
 static inline bool interrupted_kernel_fpu_idle(void)
 {
@@ -51,7 +51,7 @@ static inline bool interrupted_kernel_fpu_idle(void)
 		return false;
 
 	if (use_eager_fpu())
-		return __thread_has_fpu(current);
+		return true;
 
 	return !__thread_has_fpu(current) &&
 		(read_cr0() & X86_CR0_TS);
@@ -94,9 +94,10 @@ void __kernel_fpu_begin(void)
 
 	if (__thread_has_fpu(me)) {
 		__save_init_fpu(me);
-	} else if (!use_eager_fpu()) {
+	} else {
 		this_cpu_write(fpu_owner_task, NULL);
-		clts();
+		if (!use_eager_fpu())
+			clts();
 	}
 }
 EXPORT_SYMBOL(__kernel_fpu_begin);
@@ -120,10 +121,13 @@ void unlazy_fpu(struct task_struct *tsk)
 {
 	preempt_disable();
 	if (__thread_has_fpu(tsk)) {
-		__save_init_fpu(tsk);
-		__thread_fpu_end(tsk);
-	} else
-		tsk->thread.fpu_counter = 0;
+		if (use_eager_fpu()) {
+			__save_fpu(tsk);
+		} else {
+			__save_init_fpu(tsk);
+			__thread_fpu_end(tsk);
+		}
+	}
 	preempt_enable();
 }
 EXPORT_SYMBOL(unlazy_fpu);
@@ -247,7 +251,7 @@ int init_fpu(struct task_struct *tsk)
 	if (tsk_used_math(tsk)) {
 		if (cpu_has_fpu && tsk == current)
 			unlazy_fpu(tsk);
-		tsk->thread.fpu.last_cpu = ~0;
+		task_disable_lazy_fpu_restore(tsk);
 		return 0;
 	}
 
