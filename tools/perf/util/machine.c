@@ -14,6 +14,8 @@
 #include "unwind.h"
 #include "linux/hash.h"
 
+static void machine__remove_thread(struct machine *machine, struct thread *th);
+
 static void dsos__init(struct dsos *dsos)
 {
 	INIT_LIST_HEAD(&dsos->head);
@@ -89,16 +91,6 @@ static void dsos__delete(struct dsos *dsos)
 	}
 }
 
-void machine__delete_dead_threads(struct machine *machine)
-{
-	struct thread *n, *t;
-
-	list_for_each_entry_safe(t, n, &machine->dead_threads, node) {
-		list_del(&t->node);
-		thread__delete(t);
-	}
-}
-
 void machine__delete_threads(struct machine *machine)
 {
 	struct rb_node *nd = rb_first(&machine->threads);
@@ -106,9 +98,8 @@ void machine__delete_threads(struct machine *machine)
 	while (nd) {
 		struct thread *t = rb_entry(nd, struct thread, rb_node);
 
-		rb_erase(&t->rb_node, &machine->threads);
 		nd = rb_next(nd);
-		thread__delete(t);
+		machine__remove_thread(machine, t);
 	}
 }
 
@@ -361,9 +352,13 @@ static struct thread *__machine__findnew_thread(struct machine *machine,
 	 * the full rbtree:
 	 */
 	th = machine->last_match;
-	if (th && th->tid == tid) {
-		machine__update_thread_pid(machine, th, pid);
-		return th;
+	if (th != NULL) {
+		if (th->tid == tid) {
+			machine__update_thread_pid(machine, th, pid);
+			return th;
+		}
+
+		thread__zput(machine->last_match);
 	}
 
 	while (*p != NULL) {
@@ -371,7 +366,7 @@ static struct thread *__machine__findnew_thread(struct machine *machine,
 		th = rb_entry(parent, struct thread, rb_node);
 
 		if (th->tid == tid) {
-			machine->last_match = th;
+			machine->last_match = thread__get(th);
 			machine__update_thread_pid(machine, th, pid);
 			return th;
 		}
@@ -403,8 +398,11 @@ static struct thread *__machine__findnew_thread(struct machine *machine,
 			thread__delete(th);
 			return NULL;
 		}
-
-		machine->last_match = th;
+		/*
+		 * It is now in the rbtree, get a ref
+		 */
+		thread__get(th);
+		machine->last_match = thread__get(th);
 	}
 
 	return th;
@@ -1238,13 +1236,17 @@ out_problem:
 
 static void machine__remove_thread(struct machine *machine, struct thread *th)
 {
-	machine->last_match = NULL;
+	if (machine->last_match == th)
+		thread__zput(machine->last_match);
+
 	rb_erase(&th->rb_node, &machine->threads);
 	/*
-	 * We may have references to this thread, for instance in some hist_entry
-	 * instances, so just move them to a separate list.
+	 * Move it first to the dead_threads list, then drop the reference,
+	 * if this is the last reference, then the thread__delete destructor
+	 * will be called and we will remove it from the dead_threads list.
 	 */
 	list_add_tail(&th->node, &machine->dead_threads);
+	thread__put(th);
 }
 
 int machine__process_fork_event(struct machine *machine, union perf_event *event,
@@ -1502,17 +1504,99 @@ static int remove_loops(struct branch_entry *l, int nr)
 	return nr;
 }
 
-static int thread__resolve_callchain_sample(struct thread *thread,
-					     struct ip_callchain *chain,
-					     struct branch_stack *branch,
-					     struct symbol **parent,
-					     struct addr_location *root_al,
-					     int max_stack)
+/*
+ * Recolve LBR callstack chain sample
+ * Return:
+ * 1 on success get LBR callchain information
+ * 0 no available LBR callchain information, should try fp
+ * negative error code on other errors.
+ */
+static int resolve_lbr_callchain_sample(struct thread *thread,
+					struct perf_sample *sample,
+					struct symbol **parent,
+					struct addr_location *root_al,
+					int max_stack)
 {
+	struct ip_callchain *chain = sample->callchain;
+	int chain_nr = min(max_stack, (int)chain->nr);
+	int i, j, err;
+	u64 ip;
+
+	for (i = 0; i < chain_nr; i++) {
+		if (chain->ips[i] == PERF_CONTEXT_USER)
+			break;
+	}
+
+	/* LBR only affects the user callchain */
+	if (i != chain_nr) {
+		struct branch_stack *lbr_stack = sample->branch_stack;
+		int lbr_nr = lbr_stack->nr;
+		/*
+		 * LBR callstack can only get user call chain.
+		 * The mix_chain_nr is kernel call chain
+		 * number plus LBR user call chain number.
+		 * i is kernel call chain number,
+		 * 1 is PERF_CONTEXT_USER,
+		 * lbr_nr + 1 is the user call chain number.
+		 * For details, please refer to the comments
+		 * in callchain__printf
+		 */
+		int mix_chain_nr = i + 1 + lbr_nr + 1;
+
+		if (mix_chain_nr > PERF_MAX_STACK_DEPTH + PERF_MAX_BRANCH_DEPTH) {
+			pr_warning("corrupted callchain. skipping...\n");
+			return 0;
+		}
+
+		for (j = 0; j < mix_chain_nr; j++) {
+			if (callchain_param.order == ORDER_CALLEE) {
+				if (j < i + 1)
+					ip = chain->ips[j];
+				else if (j > i + 1)
+					ip = lbr_stack->entries[j - i - 2].from;
+				else
+					ip = lbr_stack->entries[0].to;
+			} else {
+				if (j < lbr_nr)
+					ip = lbr_stack->entries[lbr_nr - j - 1].from;
+				else if (j > lbr_nr)
+					ip = chain->ips[i + 1 - (j - lbr_nr)];
+				else
+					ip = lbr_stack->entries[0].to;
+			}
+
+			err = add_callchain_ip(thread, parent, root_al, false, ip);
+			if (err)
+				return (err < 0) ? err : 0;
+		}
+		return 1;
+	}
+
+	return 0;
+}
+
+static int thread__resolve_callchain_sample(struct thread *thread,
+					    struct perf_evsel *evsel,
+					    struct perf_sample *sample,
+					    struct symbol **parent,
+					    struct addr_location *root_al,
+					    int max_stack)
+{
+	struct branch_stack *branch = sample->branch_stack;
+	struct ip_callchain *chain = sample->callchain;
 	int chain_nr = min(max_stack, (int)chain->nr);
 	int i, j, err;
 	int skip_idx = -1;
 	int first_call = 0;
+
+	callchain_cursor_reset(&callchain_cursor);
+
+	if (has_branch_callstack(evsel)) {
+		err = resolve_lbr_callchain_sample(thread, sample, parent,
+						   root_al, max_stack);
+		if (err)
+			return (err < 0) ? err : 0;
+	}
 
 	/*
 	 * Based on DWARF debug information, some architectures skip
@@ -1520,8 +1604,6 @@ static int thread__resolve_callchain_sample(struct thread *thread,
 	 */
 	if (chain->nr < PERF_MAX_STACK_DEPTH)
 		skip_idx = arch_skip_callchain_idx(thread, chain);
-
-	callchain_cursor_reset(&callchain_cursor);
 
 	/*
 	 * Add branches to call stack for easier browsing. This gives
@@ -1623,9 +1705,9 @@ int thread__resolve_callchain(struct thread *thread,
 			      struct addr_location *root_al,
 			      int max_stack)
 {
-	int ret = thread__resolve_callchain_sample(thread, sample->callchain,
-						   sample->branch_stack,
-						   parent, root_al, max_stack);
+	int ret = thread__resolve_callchain_sample(thread, evsel,
+						   sample, parent,
+						   root_al, max_stack);
 	if (ret)
 		return ret;
 

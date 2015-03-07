@@ -11,19 +11,27 @@ ifneq ($(obj-perf),)
 obj-perf := $(abspath $(obj-perf))/
 endif
 
+$(shell echo -n > .config-detected)
+detected     = $(shell echo "$(1)=y"       >> .config-detected)
+detected_var = $(shell echo "$(1)=$($(1))" >> .config-detected)
+
 LIB_INCLUDE := $(srctree)/tools/lib/
 CFLAGS := $(EXTRA_CFLAGS) $(EXTRA_WARNINGS)
 
 include $(src-perf)/config/Makefile.arch
 
+$(call detected_var,ARCH)
+
 NO_PERF_REGS := 1
 
 # Additional ARCH settings for x86
 ifeq ($(ARCH),x86)
+  $(call detected,CONFIG_X86)
   ifeq (${IS_64_BIT}, 1)
     CFLAGS += -DHAVE_ARCH_X86_64_SUPPORT
     ARCH_INCLUDE = ../../arch/x86/lib/memcpy_64.S ../../arch/x86/lib/memset_64.S
     LIBUNWIND_LIBS = -lunwind -lunwind-x86_64
+    $(call detected,CONFIG_X86_64)
   else
     LIBUNWIND_LIBS = -lunwind -lunwind-x86
   endif
@@ -38,6 +46,10 @@ endif
 ifeq ($(ARCH),arm64)
   NO_PERF_REGS := 0
   LIBUNWIND_LIBS = -lunwind -lunwind-aarch64
+endif
+
+ifeq ($(NO_PERF_REGS),0)
+  $(call detected,CONFIG_PERF_REGS)
 endif
 
 # So far there's only x86 and arm libdw unwind support merged in perf.
@@ -84,6 +96,17 @@ ifndef NO_LIBELF
   FEATURE_CHECK_LDFLAGS-libdw-dwarf-unwind := $(LIBDW_LDFLAGS) -ldw
 endif
 
+ifndef NO_LIBBABELTRACE
+  # for linking with debug library, run like:
+  # make DEBUG=1 LIBBABELTRACE_DIR=/opt/libbabeltrace/
+  ifdef LIBBABELTRACE_DIR
+    LIBBABELTRACE_CFLAGS  := -I$(LIBBABELTRACE_DIR)/include
+    LIBBABELTRACE_LDFLAGS := -L$(LIBBABELTRACE_DIR)/lib
+  endif
+  FEATURE_CHECK_CFLAGS-libbabeltrace := $(LIBBABELTRACE_CFLAGS)
+  FEATURE_CHECK_LDFLAGS-libbabeltrace := $(LIBBABELTRACE_LDFLAGS) -lbabeltrace-ctf
+endif
+
 # include ARCH specific config
 -include $(src-perf)/arch/$(ARCH)/Makefile
 
@@ -114,6 +137,8 @@ ifdef PARSER_DEBUG
   PARSER_DEBUG_BISON := -t
   PARSER_DEBUG_FLEX  := -d
   CFLAGS             += -DPARSER_DEBUG
+  $(call detected_var,PARSER_DEBUG_BISON)
+  $(call detected_var,PARSER_DEBUG_FLEX)
 endif
 
 ifndef NO_LIBPYTHON
@@ -202,6 +227,7 @@ CORE_FEATURE_TESTS =			\
 	stackprotector-all		\
 	timerfd				\
 	libdw-dwarf-unwind		\
+	libbabeltrace			\
 	zlib
 
 LIB_FEATURE_TESTS =			\
@@ -217,6 +243,7 @@ LIB_FEATURE_TESTS =			\
 	libslang			\
 	libunwind			\
 	libdw-dwarf-unwind		\
+	libbabeltrace			\
 	zlib
 
 VF_FEATURE_TESTS =			\
@@ -361,6 +388,7 @@ endif # NO_LIBELF
 ifndef NO_LIBELF
   CFLAGS += -DHAVE_LIBELF_SUPPORT
   EXTLIBS += -lelf
+  $(call detected,CONFIG_LIBELF)
 
   ifeq ($(feature-libelf-mmap), 1)
     CFLAGS += -DHAVE_LIBELF_MMAP_SUPPORT
@@ -381,6 +409,7 @@ ifndef NO_LIBELF
       CFLAGS += -DHAVE_DWARF_SUPPORT $(LIBDW_CFLAGS)
       LDFLAGS += $(LIBDW_LDFLAGS)
       EXTLIBS += -ldw
+      $(call detected,CONFIG_DWARF)
     endif # PERF_HAVE_DWARF_REGS
   endif # NO_DWARF
 endif # NO_LIBELF
@@ -408,9 +437,11 @@ ifdef NO_LIBUNWIND
     dwarf-post-unwind := 0
   else
     dwarf-post-unwind-text := libdw
+    $(call detected,CONFIG_LIBDW_DWARF_UNWIND)
   endif
 else
   dwarf-post-unwind-text := libunwind
+  $(call detected,CONFIG_LIBUNWIND)
   # Enable libunwind support by default.
   ifndef NO_LIBDW_DWARF_UNWIND
     NO_LIBDW_DWARF_UNWIND := 1
@@ -419,6 +450,7 @@ endif
 
 ifeq ($(dwarf-post-unwind),1)
   CFLAGS += -DHAVE_DWARF_UNWIND_SUPPORT
+  $(call detected,CONFIG_DWARF_UNWIND)
 else
   NO_DWARF_UNWIND := 1
 endif
@@ -447,6 +479,7 @@ ifndef NO_LIBAUDIT
   else
     CFLAGS += -DHAVE_LIBAUDIT_SUPPORT
     EXTLIBS += -laudit
+    $(call detected,CONFIG_AUDIT)
   endif
 endif
 
@@ -463,6 +496,7 @@ ifndef NO_SLANG
     CFLAGS += -I/usr/include/slang
     CFLAGS += -DHAVE_SLANG_SUPPORT
     EXTLIBS += -lslang
+    $(call detected,CONFIG_SLANG)
   endif
 endif
 
@@ -497,10 +531,11 @@ else
   ifneq ($(feature-libperl), 1)
     CFLAGS += -DNO_LIBPERL
     NO_LIBPERL := 1
-    msg := $(warning Missing perl devel files. Disabling perl scripting support, consider installing perl-ExtUtils-Embed);
+    msg := $(warning Missing perl devel files. Disabling perl scripting support, please install perl-ExtUtils-Embed/libperl-dev);
   else
     LDFLAGS += $(PERL_EMBED_LDFLAGS)
     EXTLIBS += $(PERL_EMBED_LIBADD)
+    $(call detected,CONFIG_LIBPERL)
   endif
 endif
 
@@ -513,22 +548,21 @@ endif
 disable-python = $(eval $(disable-python_code))
 define disable-python_code
   CFLAGS += -DNO_LIBPYTHON
-  $(if $(1),$(warning No $(1) was found))
-  $(warning Python support will not be built)
+  $(warning $1)
   NO_LIBPYTHON := 1
 endef
 
 ifdef NO_LIBPYTHON
-  $(call disable-python)
+  $(call disable-python,Python support disabled by user)
 else
 
   ifndef PYTHON
-    $(call disable-python,python interpreter)
+    $(call disable-python,No python interpreter was found: disables Python support - please install python-devel/python-dev)
   else
     PYTHON_WORD := $(call shell-wordify,$(PYTHON))
 
     ifndef PYTHON_CONFIG
-      $(call disable-python,python-config tool)
+      $(call disable-python,No 'python-config' tool was found: disables Python support - please install python-devel/python-dev)
     else
 
       PYTHON_CONFIG_SQ := $(call shell-sq,$(PYTHON_CONFIG))
@@ -540,7 +574,7 @@ else
       FLAGS_PYTHON_EMBED := $(PYTHON_EMBED_CCOPTS) $(PYTHON_EMBED_LDOPTS)
 
       ifneq ($(feature-libpython), 1)
-        $(call disable-python,Python.h (for Python 2.x))
+        $(call disable-python,No 'Python.h' (for Python 2.x support) was found: disables Python support - please install python-devel/python-dev)
       else
 
         ifneq ($(feature-libpython-version), 1)
@@ -560,6 +594,7 @@ else
           LDFLAGS += $(PYTHON_EMBED_LDFLAGS)
           EXTLIBS += $(PYTHON_EMBED_LIBADD)
           LANG_BINDINGS += $(obj-perf)python/perf.so
+          $(call detected,CONFIG_LIBPYTHON)
         endif
       endif
     endif
@@ -600,7 +635,7 @@ else
             EXTLIBS += -liberty
             CFLAGS += -DHAVE_CPLUS_DEMANGLE_SUPPORT
           else
-            msg := $(warning No bfd.h/libbfd found, install binutils-dev[el]/zlib-static to gain symbol demangling)
+            msg := $(warning No bfd.h/libbfd found, please install binutils-dev[el]/zlib-static/libiberty-dev to gain symbol demangling)
             CFLAGS += -DNO_DEMANGLE
           endif
         endif
@@ -617,6 +652,7 @@ ifndef NO_ZLIB
   ifeq ($(feature-zlib), 1)
     CFLAGS += -DHAVE_ZLIB_SUPPORT
     EXTLIBS += -lz
+    $(call detected,CONFIG_ZLIB)
   else
     NO_ZLIB := 1
   endif
@@ -635,6 +671,7 @@ ifndef NO_LIBNUMA
   else
     CFLAGS += -DHAVE_LIBNUMA_SUPPORT
     EXTLIBS += -lnuma
+    $(call detected,CONFIG_NUMA)
   endif
 endif
 
@@ -665,6 +702,18 @@ ifeq (${IS_64_BIT}, 1)
 else
   NO_PERF_READ_VDSO32 := 1
   NO_PERF_READ_VDSOX32 := 1
+endif
+
+ifndef NO_LIBBABELTRACE
+  ifeq ($(feature-libbabeltrace), 0)
+    msg := $(warning No libbabeltrace found, disables 'perf data' CTF format support, please install libbabeltrace-dev[el]/libbabeltrace-ctf-dev);
+    NO_LIBBABELTRACE := 1
+  else
+    CFLAGS += -DHAVE_LIBBABELTRACE_SUPPORT $(LIBBABELTRACE_CFLAGS)
+    LDFLAGS += $(LIBBABELTRACE_LDFLAGS)
+    EXTLIBS += -lbabeltrace-ctf
+    $(call detected,CONFIG_LIBBABELTRACE)
+  endif
 endif
 
 # Among the variables below, these:
@@ -815,3 +864,19 @@ endif
 ifeq ($(display_lib),1)
   $(info )
 endif
+
+$(call detected_var,bindir_SQ)
+$(call detected_var,PYTHON_WORD)
+ifneq ($(OUTPUT),)
+$(call detected_var,OUTPUT)
+endif
+$(call detected_var,htmldir_SQ)
+$(call detected_var,infodir_SQ)
+$(call detected_var,mandir_SQ)
+$(call detected_var,ETC_PERFCONFIG_SQ)
+$(call detected_var,prefix_SQ)
+$(call detected_var,perfexecdir_SQ)
+$(call detected_var,LIBDIR)
+$(call detected_var,GTK_CFLAGS)
+$(call detected_var,PERL_EMBED_CCOPTS)
+$(call detected_var,PYTHON_EMBED_CCOPTS)
