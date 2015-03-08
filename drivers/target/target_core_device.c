@@ -1283,7 +1283,6 @@ struct se_lun_acl *core_dev_init_initiator_node_lun_acl(
 		return NULL;
 	}
 
-	INIT_LIST_HEAD(&lacl->lacl_list);
 	lacl->mapped_lun = mapped_lun;
 	lacl->se_lun_nacl = nacl;
 	snprintf(lacl->initiatorname, TRANSPORT_IQN_LEN, "%s",
@@ -1313,11 +1312,6 @@ int core_dev_add_initiator_node_lun_acl(
 			lun_access, nacl, tpg) < 0)
 		return -EINVAL;
 
-	spin_lock(&lun->lun_acl_lock);
-	list_add_tail(&lacl->lacl_list, &lun->lun_acl_list);
-	atomic_inc_mb(&lun->lun_acl_count);
-	spin_unlock(&lun->lun_acl_lock);
-
 	pr_debug("%s_TPG[%hu]_LUN[%u->%u] - Added %s ACL for "
 		" InitiatorNode: %s\n", tpg->se_tpg_tfo->get_fabric_name(),
 		tpg->se_tpg_tfo->tpg_get_tag(tpg), lun->unpacked_lun, lacl->mapped_lun,
@@ -1346,11 +1340,6 @@ int core_dev_del_initiator_node_lun_acl(
 	nacl = lacl->se_lun_nacl;
 	if (!nacl)
 		return -EINVAL;
-
-	spin_lock(&lun->lun_acl_lock);
-	list_del(&lacl->lacl_list);
-	atomic_dec_mb(&lun->lun_acl_count);
-	spin_unlock(&lun->lun_acl_lock);
 
 	core_disable_device_list_for_node(lun, NULL, lacl->mapped_lun,
 		TRANSPORT_LUNFLAGS_NO_ACCESS, nacl, tpg);
@@ -1486,8 +1475,6 @@ struct se_device *target_alloc_device(struct se_hba *hba, const char *name)
 	xcopy_lun = &dev->xcopy_lun;
 	xcopy_lun->lun_se_dev = dev;
 	init_completion(&xcopy_lun->lun_shutdown_comp);
-	INIT_LIST_HEAD(&xcopy_lun->lun_acl_list);
-	spin_lock_init(&xcopy_lun->lun_acl_lock);
 	spin_lock_init(&xcopy_lun->lun_sep_lock);
 	init_completion(&xcopy_lun->lun_ref_comp);
 
