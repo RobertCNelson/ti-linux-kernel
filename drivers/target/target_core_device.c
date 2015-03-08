@@ -480,9 +480,8 @@ void core_clear_lun_from_tpg(struct se_lun *lun, struct se_portal_group *tpg)
 	struct se_dev_entry *deve;
 	u32 mapped_lun;
 
-	spin_lock_irq(&tpg->acl_node_lock);
+	mutex_lock(&tpg->acl_node_mutex);
 	list_for_each_entry(nacl, &tpg->acl_node_list, acl_list) {
-		spin_unlock_irq(&tpg->acl_node_lock);
 
 		rcu_read_lock();
 		hlist_for_each_entry_rcu(deve, &nacl->lun_entry_hlist, link) {
@@ -497,10 +496,8 @@ void core_clear_lun_from_tpg(struct se_lun *lun, struct se_portal_group *tpg)
 			rcu_read_lock();
 		}
 		rcu_read_unlock();
-
-		spin_lock_irq(&tpg->acl_node_lock);
 	}
-	spin_unlock_irq(&tpg->acl_node_lock);
+	mutex_unlock(&tpg->acl_node_mutex);
 }
 
 static struct se_port *core_alloc_port(struct se_device *dev)
@@ -1234,17 +1231,16 @@ int core_dev_add_lun(
 	 */
 	if (tpg->se_tpg_tfo->tpg_check_demo_mode(tpg)) {
 		struct se_node_acl *acl;
-		spin_lock_irq(&tpg->acl_node_lock);
+
+		mutex_lock(&tpg->acl_node_mutex);
 		list_for_each_entry(acl, &tpg->acl_node_list, acl_list) {
 			if (acl->dynamic_node_acl &&
 			    (!tpg->se_tpg_tfo->tpg_check_demo_mode_login_only ||
 			     !tpg->se_tpg_tfo->tpg_check_demo_mode_login_only(tpg))) {
-				spin_unlock_irq(&tpg->acl_node_lock);
 				core_tpg_add_node_to_devs(acl, tpg);
-				spin_lock_irq(&tpg->acl_node_lock);
 			}
 		}
-		spin_unlock_irq(&tpg->acl_node_lock);
+		mutex_unlock(&tpg->acl_node_mutex);
 	}
 
 	return 0;
