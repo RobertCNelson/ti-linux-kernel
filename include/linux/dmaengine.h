@@ -574,7 +574,6 @@ struct dma_tx_state {
  * @copy_align: alignment shift for memcpy operations
  * @xor_align: alignment shift for xor operations
  * @pq_align: alignment shift for pq operations
- * @fill_align: alignment shift for memset operations
  * @dev_id: unique device ID
  * @dev: struct device reference for dma mapping api
  * @src_addr_widths: bit mask of src addr widths the device supports
@@ -625,7 +624,6 @@ struct dma_device {
 	u8 copy_align;
 	u8 xor_align;
 	u8 pq_align;
-	u8 fill_align;
 	#define DMA_HAS_PQ_CONTINUE (1 << 15)
 
 	int dev_id;
@@ -824,12 +822,6 @@ static inline bool is_dma_pq_aligned(struct dma_device *dev, size_t off1,
 				     size_t off2, size_t len)
 {
 	return dmaengine_check_align(dev->pq_align, off1, off2, len);
-}
-
-static inline bool is_dma_fill_aligned(struct dma_device *dev, size_t off1,
-				       size_t off2, size_t len)
-{
-	return dmaengine_check_align(dev->fill_align, off1, off2, len);
 }
 
 static inline void
@@ -1098,7 +1090,6 @@ void dma_async_device_unregister(struct dma_device *device);
 void dma_run_dependencies(struct dma_async_tx_descriptor *tx);
 struct dma_chan *dma_get_slave_channel(struct dma_chan *chan);
 struct dma_chan *dma_get_any_slave_channel(struct dma_device *device);
-struct dma_chan *net_dma_find_channel(void);
 #define dma_request_channel(mask, x, y) __dma_request_channel(&(mask), x, y)
 #define dma_request_slave_channel_compat(mask, x, y, dev, name) \
 	__dma_request_slave_channel_compat(&(mask), x, y, dev, name)
@@ -1116,27 +1107,4 @@ static inline struct dma_chan
 
 	return __dma_request_channel(mask, fn, fn_param);
 }
-
-/* --- Helper iov-locking functions --- */
-
-struct dma_page_list {
-	char __user *base_address;
-	int nr_pages;
-	struct page **pages;
-};
-
-struct dma_pinned_list {
-	int nr_iovecs;
-	struct dma_page_list page_list[0];
-};
-
-struct dma_pinned_list *dma_pin_iovec_pages(struct iovec *iov, size_t len);
-void dma_unpin_iovec_pages(struct dma_pinned_list* pinned_list);
-
-dma_cookie_t dma_memcpy_to_iovec(struct dma_chan *chan, struct iovec *iov,
-	struct dma_pinned_list *pinned_list, unsigned char *kdata, size_t len);
-dma_cookie_t dma_memcpy_pg_to_iovec(struct dma_chan *chan, struct iovec *iov,
-	struct dma_pinned_list *pinned_list, struct page *page,
-	unsigned int offset, size_t len);
-
 #endif /* DMAENGINE_H */
