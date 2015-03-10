@@ -1,5 +1,8 @@
 /*
- * Copyright 2015 Hans de Goede <hdegoede@redhat.com>
+ * Copyright 2015 Tyler Baker
+ *
+ * Tyler Baker <tyler.baker@linaro.org>
+ * Chen-Yu Tsai <wens@csie.org>
  *
  * This file is dual-licensed: you can use it either under the terms
  * of the GPL or the X11 license, at your option. Note that this dual
@@ -15,11 +18,6 @@
  *     but WITHOUT ANY WARRANTY; without even the implied warranty of
  *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *     GNU General Public License for more details.
- *
- *     You should have received a copy of the GNU General Public
- *     License along with this file; if not, write to the Free
- *     Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston,
- *     MA 02110-1301 USA
  *
  * Or, alternatively,
  *
@@ -46,82 +44,56 @@
  */
 
 /dts-v1/;
-#include "sun4i-a10.dtsi"
+#include "sun9i-a80.dtsi"
 #include "sunxi-common-regulators.dtsi"
+
 #include <dt-bindings/gpio/gpio.h>
-#include <dt-bindings/input/input.h>
+#include <dt-bindings/pinctrl/sun4i-a10.h>
 
 / {
-	model = "Chuwi V7 CW0825";
-	compatible = "chuwi,v7-cw0825", "allwinner,sun4i-a10";
-};
+	model = "Cubietech Cubieboard4";
+	compatible = "cubietech,a80-cubieboard4", "allwinner,sun9i-a80";
 
-&ehci1 {
-	status = "okay";
-};
-
-&i2c0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c0_pins_a>;
-	status = "okay";
-
-	axp209: pmic@34 {
-		compatible = "x-powers,axp209";
-		reg = <0x34>;
-		interrupts = <0>;
-
-		interrupt-controller;
-		#interrupt-cells = <1>;
-	};
-};
-
-&lradc {
-	vref-supply = <&reg_vcc3v0>;
-	status = "okay";
-
-	button@800 {
-		label = "Volume Up";
-		linux,code = <KEY_VOLUMEUP>;
-		channel = <0>;
-		voltage = <800000>;
+	aliases {
+		serial0 = &uart0;
 	};
 
-	button@1000 {
-		label = "Volume Down";
-		linux,code = <KEY_VOLUMEDOWN>;
-		channel = <0>;
-		voltage = <1000000>;
+	chosen {
+		stdout-path = "serial0:115200n8";
 	};
 
-	button@1200 {
-		label = "Back";
-		linux,code = <KEY_BACK>;
-		channel = <0>;
-		voltage = <1200000>;
+};
+
+&pio {
+	mmc0_cd_pin_cubieboard4: mmc0_cd_pin@0 {
+		allwinner,pins = "PH18";
+		allwinner,function = "gpio_in";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_PULL_UP>;
 	};
 };
 
 &mmc0 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&mmc0_pins_a>, <&mmc0_cd_pin_reference_design>;
-	vmmc-supply = <&reg_vcc3v3>;
+	pinctrl-0 = <&mmc0_pins>, <&mmc0_cd_pin_cubieboard4>;
+	vmmc-supply = <&reg_vcc3v0>;
 	bus-width = <4>;
-	cd-gpios = <&pio 7 1 GPIO_ACTIVE_HIGH>; /* PH1 */
+	cd-gpios = <&pio 7 18 GPIO_ACTIVE_HIGH>; /* PH18 */
 	cd-inverted;
 	status = "okay";
 };
 
-&reg_usb2_vbus {
+&mmc2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&mmc2_8bit_pins>;
+	vmmc-supply = <&reg_vcc3v0>;
+	bus-width = <8>;
+	non-removable;
 	status = "okay";
 };
 
 &uart0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart0_pins_a>;
-	status = "okay";
-};
-
-&usbphy {
-	usb2_vbus-supply = <&reg_usb2_vbus>;
 	status = "okay";
 };

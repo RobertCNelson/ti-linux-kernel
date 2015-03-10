@@ -347,6 +347,8 @@
 				      "sample";
 			interrupts = <32>;
 			status = "disabled";
+			#address-cells = <1>;
+			#size-cells = <0>;
 		};
 
 		mmc1: mmc@01c10000 {
@@ -362,6 +364,8 @@
 				      "sample";
 			interrupts = <33>;
 			status = "disabled";
+			#address-cells = <1>;
+			#size-cells = <0>;
 		};
 
 		mmc2: mmc@01c11000 {
@@ -377,6 +381,8 @@
 				      "sample";
 			interrupts = <34>;
 			status = "disabled";
+			#address-cells = <1>;
+			#size-cells = <0>;
 		};
 
 		usbphy: phy@01c13400 {
@@ -392,6 +398,7 @@
 		};
 
 		ehci0: usb@01c14000 {
+			compatible = "allwinner,sun5i-a13-ehci", "generic-ehci";
 			reg = <0x01c14000 0x100>;
 			interrupts = <39>;
 			clocks = <&ahb_gates 1>;
@@ -401,6 +408,7 @@
 		};
 
 		ohci0: usb@01c14400 {
+			compatible = "allwinner,sun5i-a13-ohci", "generic-ohci";
 			reg = <0x01c14400 0x100>;
 			interrupts = <40>;
 			clocks = <&usb_clk 6>, <&ahb_gates 2>;
@@ -467,6 +475,15 @@
 				allwinner,drive = <SUN4I_PINCTRL_30_MA>;
 				allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 			};
+
+			mmc2_pins_a: mmc2@0 {
+				allwinner,pins = "PC6", "PC7", "PC8", "PC9",
+					"PC10", "PC11", "PC12", "PC13",
+					"PC14", "PC15";
+				allwinner,function = "mmc2";
+				allwinner,drive = <SUN4I_PINCTRL_30_MA>;
+				allwinner,pull = <SUN4I_PINCTRL_PULL_UP>;
+			};
 		};
 
 		timer@01c20c00 {
@@ -494,7 +511,7 @@
 		};
 
 		rtp: rtp@01c25000 {
-			compatible = "allwinner,sun4i-a10-ts";
+			compatible = "allwinner,sun5i-a13-ts";
 			reg = <0x01c25000 0x100>;
 			interrupts = <29>;
 			#thermal-sensor-cells = <0>;
