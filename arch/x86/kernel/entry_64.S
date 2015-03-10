@@ -303,7 +303,7 @@ int_ret_from_sys_call_fixup:
 	FIXUP_TOP_OF_STACK %r11
 	jmp int_ret_from_sys_call
 
-	/* Do syscall tracing */
+	/* Do syscall entry tracing */
 tracesys:
 	movq %rsp, %rdi
 	movq $AUDIT_ARCH_X86_64, %rsi
@@ -343,7 +343,7 @@ tracesys_phase2:
 
 /*
  * Syscall return path ending with IRET.
- * Has correct top of stack, but partial stack frame.
+ * Has correct iret frame.
  */
 GLOBAL(int_ret_from_sys_call)
 	DISABLE_INTERRUPTS(CLBR_NONE)
