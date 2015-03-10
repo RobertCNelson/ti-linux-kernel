@@ -390,7 +390,7 @@ static const intel_limit_t intel_limits_chv = {
 	 * them would make no difference.
 	 */
 	.dot = { .min = 25000 * 5, .max = 540000 * 5},
-	.vco = { .min = 4860000, .max = 6480000 },
+	.vco = { .min = 4800000, .max = 6480000 },
 	.n = { .min = 1, .max = 1 },
 	.m1 = { .min = 2, .max = 2 },
 	.m2 = { .min = 24 << 22, .max = 175 << 22 },
@@ -896,8 +896,12 @@ bool intel_crtc_active(struct drm_crtc *crtc)
 	 *
 	 * We can ditch the crtc->primary->fb check as soon as we can
 	 * properly reconstruct framebuffers.
+	 *
+	 * FIXME: The intel_crtc->active here should be switched to
+	 * crtc->state->active once we have proper CRTC states wired up
+	 * for atomic.
 	 */
-	return intel_crtc->active && crtc->primary->fb &&
+	return intel_crtc->active && crtc->primary->state->fb &&
 		intel_crtc->config->base.adjusted_mode.crtc_clock;
 }
 
@@ -1300,14 +1304,14 @@ static void assert_sprites_disabled(struct drm_i915_private *dev_priv,
 	u32 val;
 
 	if (INTEL_INFO(dev)->gen >= 9) {
-		for_each_sprite(pipe, sprite) {
+		for_each_sprite(dev_priv, pipe, sprite) {
 			val = I915_READ(PLANE_CTL(pipe, sprite));
 			I915_STATE_WARN(val & PLANE_CTL_ENABLE,
 			     "plane %d assertion failure, should be off on pipe %c but is still active\n",
 			     sprite, pipe_name(pipe));
 		}
 	} else if (IS_VALLEYVIEW(dev)) {
-		for_each_sprite(pipe, sprite) {
+		for_each_sprite(dev_priv, pipe, sprite) {
 			reg = SPCNTR(pipe, sprite);
 			val = I915_READ(reg);
 			I915_STATE_WARN(val & SP_ENABLE,
@@ -4204,6 +4208,24 @@ static void intel_enable_sprite_planes(struct drm_crtc *crtc)
 	}
 }
 
+/*
+ * Disable a plane internally without actually modifying the plane's state.
+ * This will allow us to easily restore the plane later by just reprogramming
+ * its state.
+ */
+static void disable_plane_internal(struct drm_plane *plane)
+{
+	struct intel_plane *intel_plane = to_intel_plane(plane);
+	struct drm_plane_state *state =
+		plane->funcs->atomic_duplicate_state(plane);
+	struct intel_plane_state *intel_state = to_intel_plane_state(state);
+
+	intel_state->visible = false;
+	intel_plane->commit_plane(plane, intel_state);
+
+	intel_plane_destroy_state(plane, state);
+}
+
 static void intel_disable_sprite_planes(struct drm_crtc *crtc)
 {
 	struct drm_device *dev = crtc->dev;
@@ -4213,8 +4235,8 @@ static void intel_disable_sprite_planes(struct drm_crtc *crtc)
 
 	drm_for_each_legacy_plane(plane, &dev->mode_config.plane_list) {
 		intel_plane = to_intel_plane(plane);
-		if (intel_plane->pipe == pipe)
-			plane->funcs->disable_plane(plane);
+		if (plane->fb && intel_plane->pipe == pipe)
+			disable_plane_internal(plane);
 	}
 }
 
@@ -4983,23 +5005,22 @@ static void cherryview_set_cdclk(struct drm_device *dev, int cdclk)
 	WARN_ON(dev_priv->display.get_display_clock_speed(dev) != dev_priv->vlv_cdclk_freq);
 
 	switch (cdclk) {
-	case 400000:
-		cmd = 3;
-		break;
 	case 333333:
 	case 320000:
-		cmd = 2;
-		break;
 	case 266667:
-		cmd = 1;
-		break;
 	case 200000:
-		cmd = 0;
 		break;
 	default:
 		MISSING_CASE(cdclk);
 		return;
 	}
+
+	/*
+	 * Specs are full of misinformation, but testing on actual
+	 * hardware has shown that we just need to write the desired
+	 * CCK divider into the Punit register.
+	 */
+	cmd = DIV_ROUND_CLOSEST(dev_priv->hpll_freq << 1, cdclk) - 1;
 
 	mutex_lock(&dev_priv->rps.hw_lock);
 	val = vlv_punit_read(dev_priv, PUNIT_REG_DSPFREQ);
@@ -5020,27 +5041,25 @@ static int valleyview_calc_cdclk(struct drm_i915_private *dev_priv,
 				 int max_pixclk)
 {
 	int freq_320 = (dev_priv->hpll_freq <<  1) % 320000 != 0 ? 333333 : 320000;
-
-	/* FIXME: Punit isn't quite ready yet */
-	if (IS_CHERRYVIEW(dev_priv->dev))
-		return 400000;
+	int limit = IS_CHERRYVIEW(dev_priv) ? 95 : 90;
 
 	/*
 	 * Really only a few cases to deal with, as only 4 CDclks are supported:
 	 *   200MHz
 	 *   267MHz
 	 *   320/333MHz (depends on HPLL freq)
-	 *   400MHz
-	 * So we check to see whether we're above 90% of the lower bin and
-	 * adjust if needed.
+	 *   400MHz (VLV only)
+	 * So we check to see whether we're above 90% (VLV) or 95% (CHV)
+	 * of the lower bin and adjust if needed.
 	 *
 	 * We seem to get an unstable or solid color picture at 200MHz.
 	 * Not sure what's wrong. For now use 200MHz only when all pipes
 	 * are off.
 	 */
-	if (max_pixclk > freq_320*9/10)
+	if (!IS_CHERRYVIEW(dev_priv) &&
+	    max_pixclk > freq_320*limit/100)
 		return 400000;
-	else if (max_pixclk > 266667*9/10)
+	else if (max_pixclk > 266667*limit/100)
 		return freq_320;
 	else if (max_pixclk > 0)
 		return 266667;
@@ -5698,10 +5717,6 @@ static int valleyview_get_display_clock_speed(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 val;
 	int divider;
-
-	/* FIXME: Punit isn't quite ready yet */
-	if (IS_CHERRYVIEW(dev))
-		return 400000;
 
 	if (dev_priv->hpll_freq == 0)
 		dev_priv->hpll_freq = valleyview_get_vco(dev_priv);
@@ -8409,8 +8424,8 @@ static void i845_update_cursor(struct drm_crtc *crtc, u32 base)
 	uint32_t cntl = 0, size = 0;
 
 	if (base) {
-		unsigned int width = intel_crtc->cursor_width;
-		unsigned int height = intel_crtc->cursor_height;
+		unsigned int width = intel_crtc->base.cursor->state->crtc_w;
+		unsigned int height = intel_crtc->base.cursor->state->crtc_h;
 		unsigned int stride = roundup_pow_of_two(width) * 4;
 
 		switch (stride) {
@@ -8474,7 +8489,7 @@ static void i9xx_update_cursor(struct drm_crtc *crtc, u32 base)
 	cntl = 0;
 	if (base) {
 		cntl = MCURSOR_GAMMA_ENABLE;
-		switch (intel_crtc->cursor_width) {
+		switch (intel_crtc->base.cursor->state->crtc_w) {
 			case 64:
 				cntl |= CURSOR_MODE_64_ARGB_AX;
 				break;
@@ -8485,7 +8500,7 @@ static void i9xx_update_cursor(struct drm_crtc *crtc, u32 base)
 				cntl |= CURSOR_MODE_256_ARGB_AX;
 				break;
 			default:
-				MISSING_CASE(intel_crtc->cursor_width);
+				MISSING_CASE(intel_crtc->base.cursor->state->crtc_w);
 				return;
 		}
 		cntl |= pipe << 28; /* Connect to correct pipe */
@@ -8532,7 +8547,7 @@ static void intel_crtc_update_cursor(struct drm_crtc *crtc,
 		base = 0;
 
 	if (x < 0) {
-		if (x + intel_crtc->cursor_width <= 0)
+		if (x + intel_crtc->base.cursor->state->crtc_w <= 0)
 			base = 0;
 
 		pos |= CURSOR_POS_SIGN << CURSOR_X_SHIFT;
@@ -8541,7 +8556,7 @@ static void intel_crtc_update_cursor(struct drm_crtc *crtc,
 	pos |= x << CURSOR_X_SHIFT;
 
 	if (y < 0) {
-		if (y + intel_crtc->cursor_height <= 0)
+		if (y + intel_crtc->base.cursor->state->crtc_h <= 0)
 			base = 0;
 
 		pos |= CURSOR_POS_SIGN << CURSOR_Y_SHIFT;
@@ -8557,8 +8572,8 @@ static void intel_crtc_update_cursor(struct drm_crtc *crtc,
 	/* ILK+ do this automagically */
 	if (HAS_GMCH_DISPLAY(dev) &&
 	    crtc->cursor->state->rotation == BIT(DRM_ROTATE_180)) {
-		base += (intel_crtc->cursor_height *
-			intel_crtc->cursor_width - 1) * 4;
+		base += (intel_crtc->base.cursor->state->crtc_h *
+			intel_crtc->base.cursor->state->crtc_w - 1) * 4;
 	}
 
 	if (IS_845G(dev) || IS_I865G(dev))
@@ -10014,8 +10029,7 @@ static void intel_modeset_update_staged_output_state(struct drm_device *dev)
 	struct intel_encoder *encoder;
 	struct intel_connector *connector;
 
-	list_for_each_entry(connector, &dev->mode_config.connector_list,
-			    base.head) {
+	for_each_intel_connector(dev, connector) {
 		connector->new_encoder =
 			to_intel_encoder(connector->base.encoder);
 	}
@@ -10046,8 +10060,7 @@ static void intel_modeset_commit_output_state(struct drm_device *dev)
 	struct intel_encoder *encoder;
 	struct intel_connector *connector;
 
-	list_for_each_entry(connector, &dev->mode_config.connector_list,
-			    base.head) {
+	for_each_intel_connector(dev, connector) {
 		connector->base.encoder = &connector->new_encoder->base;
 	}
 
@@ -10135,8 +10148,7 @@ compute_baseline_pipe_bpp(struct intel_crtc *crtc,
 	pipe_config->pipe_bpp = bpp;
 
 	/* Clamp display bpp to EDID value */
-	list_for_each_entry(connector, &dev->mode_config.connector_list,
-			    base.head) {
+	for_each_intel_connector(dev, connector) {
 		if (!connector->new_encoder ||
 		    connector->new_encoder->new_crtc != crtc)
 			continue;
@@ -10263,8 +10275,7 @@ static bool check_digital_port_conflicts(struct drm_device *dev)
 	 * list to detect the problem on ddi platforms
 	 * where there's just one encoder per digital port.
 	 */
-	list_for_each_entry(connector,
-			    &dev->mode_config.connector_list, base.head) {
+	for_each_intel_connector(dev, connector) {
 		struct intel_encoder *encoder = connector->new_encoder;
 
 		if (!encoder)
@@ -10437,8 +10448,7 @@ intel_modeset_affected_pipes(struct drm_crtc *crtc, unsigned *modeset_pipes,
 	 * to be part of the prepare_pipes mask. We don't (yet) support global
 	 * modeset across multiple crtcs, so modeset_pipes will only have one
 	 * bit set at most. */
-	list_for_each_entry(connector, &dev->mode_config.connector_list,
-			    base.head) {
+	for_each_intel_connector(dev, connector) {
 		if (connector->base.encoder == &connector->new_encoder->base)
 			continue;
 
@@ -10807,7 +10817,7 @@ static void check_wm_state(struct drm_device *dev)
 			continue;
 
 		/* planes */
-		for_each_plane(pipe, plane) {
+		for_each_plane(dev_priv, pipe, plane) {
 			hw_entry = &hw_ddb.plane[pipe][plane];
 			sw_entry = &sw_ddb->plane[pipe][plane];
 
@@ -10841,8 +10851,7 @@ check_connector_state(struct drm_device *dev)
 {
 	struct intel_connector *connector;
 
-	list_for_each_entry(connector, &dev->mode_config.connector_list,
-			    base.head) {
+	for_each_intel_connector(dev, connector) {
 		/* This also checks the encoder/connector hw state with the
 		 * ->get_hw_state callbacks. */
 		intel_connector_check_state(connector);
@@ -10872,8 +10881,7 @@ check_encoder_state(struct drm_device *dev)
 		I915_STATE_WARN(encoder->connectors_active && !encoder->base.crtc,
 		     "encoder's active_connectors set, but no crtc\n");
 
-		list_for_each_entry(connector, &dev->mode_config.connector_list,
-				    base.head) {
+		for_each_intel_connector(dev, connector) {
 			if (connector->base.encoder != &encoder->base)
 				continue;
 			enabled = true;
@@ -11394,7 +11402,7 @@ static void intel_set_config_restore_state(struct drm_device *dev,
 	}
 
 	count = 0;
-	list_for_each_entry(connector, &dev->mode_config.connector_list, base.head) {
+	for_each_intel_connector(dev, connector) {
 		connector->new_encoder =
 			to_intel_encoder(config->save_connector_encoders[count++]);
 	}
@@ -11486,8 +11494,7 @@ intel_modeset_stage_output_state(struct drm_device *dev,
 	WARN_ON(!set->fb && (set->num_connectors != 0));
 	WARN_ON(set->fb && (set->num_connectors == 0));
 
-	list_for_each_entry(connector, &dev->mode_config.connector_list,
-			    base.head) {
+	for_each_intel_connector(dev, connector) {
 		/* Otherwise traverse passed in connector list and get encoders
 		 * for them. */
 		for (ro = 0; ro < set->num_connectors; ro++) {
@@ -11512,15 +11519,16 @@ intel_modeset_stage_output_state(struct drm_device *dev,
 
 
 		if (&connector->new_encoder->base != connector->base.encoder) {
-			DRM_DEBUG_KMS("encoder changed, full mode switch\n");
+			DRM_DEBUG_KMS("[CONNECTOR:%d:%s] encoder changed, full mode switch\n",
+				      connector->base.base.id,
+				      connector->base.name);
 			config->mode_changed = true;
 		}
 	}
 	/* connector->new_encoder is now updated for all connectors. */
 
 	/* Update crtc of enabled connectors. */
-	list_for_each_entry(connector, &dev->mode_config.connector_list,
-			    base.head) {
+	for_each_intel_connector(dev, connector) {
 		struct drm_crtc *new_crtc;
 
 		if (!connector->new_encoder)
@@ -11549,9 +11557,7 @@ intel_modeset_stage_output_state(struct drm_device *dev,
 	/* Check for any encoders that needs to be disabled. */
 	for_each_intel_encoder(dev, encoder) {
 		int num_connectors = 0;
-		list_for_each_entry(connector,
-				    &dev->mode_config.connector_list,
-				    base.head) {
+		for_each_intel_connector(dev, connector) {
 			if (connector->new_encoder == encoder) {
 				WARN_ON(!connector->new_encoder->new_crtc);
 				num_connectors++;
@@ -11566,13 +11572,14 @@ intel_modeset_stage_output_state(struct drm_device *dev,
 		/* Only now check for crtc changes so we don't miss encoders
 		 * that will be disabled. */
 		if (&encoder->new_crtc->base != encoder->base.crtc) {
-			DRM_DEBUG_KMS("crtc changed, full mode switch\n");
+			DRM_DEBUG_KMS("[ENCODER:%d:%s] crtc changed, full mode switch\n",
+				      encoder->base.base.id,
+				      encoder->base.name);
 			config->mode_changed = true;
 		}
 	}
 	/* Now we've also updated encoder->new_crtc for all encoders. */
-	list_for_each_entry(connector, &dev->mode_config.connector_list,
-			    base.head) {
+	for_each_intel_connector(dev, connector) {
 		if (connector->new_encoder)
 			if (connector->new_encoder != connector->encoder)
 				connector->encoder = connector->new_encoder;
@@ -11588,7 +11595,8 @@ intel_modeset_stage_output_state(struct drm_device *dev,
 		}
 
 		if (crtc->new_enabled != crtc->base.state->enable) {
-			DRM_DEBUG_KMS("crtc %sabled, full mode switch\n",
+			DRM_DEBUG_KMS("[CRTC:%d] %sabled, full mode switch\n",
+				      crtc->base.base.id,
 				      crtc->new_enabled ? "en" : "dis");
 			config->mode_changed = true;
 		}
@@ -11611,7 +11619,7 @@ static void disable_crtc_nofb(struct intel_crtc *crtc)
 	DRM_DEBUG_KMS("Trying to restore without FB -> disabling pipe %c\n",
 		      pipe_name(crtc->pipe));
 
-	list_for_each_entry(connector, &dev->mode_config.connector_list, base.head) {
+	for_each_intel_connector(dev, connector) {
 		if (connector->new_encoder &&
 		    connector->new_encoder->new_crtc == crtc)
 			connector->new_encoder = NULL;
@@ -12182,8 +12190,8 @@ void intel_plane_destroy(struct drm_plane *plane)
 }
 
 const struct drm_plane_funcs intel_plane_funcs = {
-	.update_plane = drm_atomic_helper_update_plane,
-	.disable_plane = drm_atomic_helper_disable_plane,
+	.update_plane = drm_plane_helper_update,
+	.disable_plane = drm_plane_helper_disable,
 	.destroy = intel_plane_destroy,
 	.set_property = drm_atomic_helper_plane_set_property,
 	.atomic_get_property = intel_plane_atomic_get_property,
@@ -12302,7 +12310,7 @@ intel_check_cursor_plane(struct drm_plane *plane,
 
 finish:
 	if (intel_crtc->active) {
-		if (intel_crtc->cursor_width != state->base.crtc_w)
+		if (intel_crtc->base.cursor->state->crtc_w != state->base.crtc_w)
 			intel_crtc->atomic.update_wm = true;
 
 		intel_crtc->atomic.fb_bits |=
@@ -12345,8 +12353,6 @@ intel_commit_cursor_plane(struct drm_plane *plane,
 	intel_crtc->cursor_addr = addr;
 	intel_crtc->cursor_bo = obj;
 update:
-	intel_crtc->cursor_width = state->base.crtc_w;
-	intel_crtc->cursor_height = state->base.crtc_h;
 
 	if (intel_crtc->active)
 		intel_crtc_update_cursor(crtc, state->visible);
@@ -12574,10 +12580,15 @@ static void intel_setup_outputs(struct drm_device *dev)
 	if (HAS_DDI(dev)) {
 		int found;
 
-		/* Haswell uses DDI functions to detect digital outputs */
+		/*
+		 * Haswell uses DDI functions to detect digital outputs.
+		 * On SKL pre-D0 the strap isn't connected, so we assume
+		 * it's there.
+		 */
 		found = I915_READ(DDI_BUF_CTL_A) & DDI_INIT_DISPLAY_DETECTED;
-		/* DDI A only supports eDP */
-		if (found)
+		/* WaIgnoreDDIAStrap: skl */
+		if (found ||
+		    (IS_SKYLAKE(dev) && INTEL_REVID(dev) < SKL_REVID_D0))
 			intel_ddi_init(dev, PORT_A);
 
 		/* DDI B, C and D detection is indicated by the SFUSE_STRAP
@@ -13365,7 +13376,7 @@ void intel_modeset_init(struct drm_device *dev)
 
 	for_each_pipe(dev_priv, pipe) {
 		intel_crtc_init(dev, pipe);
-		for_each_sprite(pipe, sprite) {
+		for_each_sprite(dev_priv, pipe, sprite) {
 			ret = intel_plane_init(dev, pipe, sprite);
 			if (ret)
 				DRM_DEBUG_KMS("pipe %c sprite %c init failed: %d\n",
@@ -13421,9 +13432,7 @@ static void intel_enable_pipe_a(struct drm_device *dev)
 	/* We can't just switch on the pipe A, we need to set things up with a
 	 * proper mode and output configuration. As a gross hack, enable pipe A
 	 * by enabling the load detect pipe once. */
-	list_for_each_entry(connector,
-			    &dev->mode_config.connector_list,
-			    base.head) {
+	for_each_intel_connector(dev, connector) {
 		if (connector->encoder->type == INTEL_OUTPUT_ANALOG) {
 			crt = &connector->base;
 			break;
@@ -13494,8 +13503,7 @@ static void intel_sanitize_crtc(struct intel_crtc *crtc)
 		crtc->plane = plane;
 
 		/* ... and break all links. */
-		list_for_each_entry(connector, &dev->mode_config.connector_list,
-				    base.head) {
+		for_each_intel_connector(dev, connector) {
 			if (connector->encoder->base.crtc != &crtc->base)
 				continue;
 
@@ -13504,8 +13512,7 @@ static void intel_sanitize_crtc(struct intel_crtc *crtc)
 		}
 		/* multiple connectors may have the same encoder:
 		 *  handle them and break crtc link separately */
-		list_for_each_entry(connector, &dev->mode_config.connector_list,
-				    base.head)
+		for_each_intel_connector(dev, connector)
 			if (connector->encoder->base.crtc == &crtc->base) {
 				connector->encoder->base.crtc = NULL;
 				connector->encoder->connectors_active = false;
@@ -13609,9 +13616,7 @@ static void intel_sanitize_encoder(struct intel_encoder *encoder)
 		 * a bug in one of the get_hw_state functions. Or someplace else
 		 * in our code, like the register restore mess on resume. Clamp
 		 * things to off as a safer default. */
-		list_for_each_entry(connector,
-				    &dev->mode_config.connector_list,
-				    base.head) {
+		for_each_intel_connector(dev, connector) {
 			if (connector->encoder != encoder)
 				continue;
 			connector->base.dpms = DRM_MODE_DPMS_OFF;
@@ -13726,8 +13731,7 @@ static void intel_modeset_readout_hw_state(struct drm_device *dev)
 			      pipe_name(pipe));
 	}
 
-	list_for_each_entry(connector, &dev->mode_config.connector_list,
-			    base.head) {
+	for_each_intel_connector(dev, connector) {
 		if (connector->get_hw_state(connector)) {
 			connector->base.dpms = DRM_MODE_DPMS_ON;
 			connector->encoder->connectors_active = true;
@@ -13906,8 +13910,6 @@ void intel_modeset_cleanup(struct drm_device *dev)
 	intel_unregister_dsm_handler();
 
 	intel_fbc_disable(dev);
-
-	ironlake_teardown_rc6(dev);
 
 	mutex_unlock(&dev->struct_mutex);
 
