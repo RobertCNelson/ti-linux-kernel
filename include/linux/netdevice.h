@@ -261,7 +261,6 @@ struct header_ops {
 			   unsigned short type, const void *daddr,
 			   const void *saddr, unsigned int len);
 	int	(*parse)(const struct sk_buff *skb, unsigned char *haddr);
-	int	(*rebuild)(struct sk_buff *skb);
 	int	(*cache)(const struct neighbour *neigh, struct hh_cache *hh, __be16 type);
 	void	(*cache_update)(struct hh_cache *hh,
 				const struct net_device *dev,
@@ -769,6 +768,8 @@ struct netdev_phys_item_id {
 typedef u16 (*select_queue_fallback_t)(struct net_device *dev,
 				       struct sk_buff *skb);
 
+struct fib_info;
+
 /*
  * This structure defines the management hooks for network devices.
  * The following hooks can be defined; unless noted otherwise, they are
@@ -1032,6 +1033,14 @@ typedef u16 (*select_queue_fallback_t)(struct net_device *dev,
  * int (*ndo_switch_port_stp_update)(struct net_device *dev, u8 state);
  *	Called to notify switch device port of bridge port STP
  *	state change.
+ * int (*ndo_sw_parent_fib_ipv4_add)(struct net_device *dev, __be32 dst,
+ *				     int dst_len, struct fib_info *fi,
+ *				     u8 tos, u8 type, u32 tb_id);
+ *	Called to add/modify IPv4 route to switch device.
+ * int (*ndo_sw_parent_fib_ipv4_del)(struct net_device *dev, __be32 dst,
+ *				     int dst_len, struct fib_info *fi,
+ *				     u8 tos, u8 type, u32 tb_id);
+ *	Called to delete IPv4 route from switch device.
  */
 struct net_device_ops {
 	int			(*ndo_init)(struct net_device *dev);
@@ -1193,6 +1202,18 @@ struct net_device_ops {
 							    struct netdev_phys_item_id *psid);
 	int			(*ndo_switch_port_stp_update)(struct net_device *dev,
 							      u8 state);
+	int			(*ndo_switch_fib_ipv4_add)(struct net_device *dev,
+							   __be32 dst,
+							   int dst_len,
+							   struct fib_info *fi,
+							   u8 tos, u8 type,
+							   u32 tb_id);
+	int			(*ndo_switch_fib_ipv4_del)(struct net_device *dev,
+							   __be32 dst,
+							   int dst_len,
+							   struct fib_info *fi,
+							   u8 tos, u8 type,
+							   u32 tb_id);
 #endif
 };
 
@@ -1346,7 +1367,7 @@ enum netdev_priv_flags {
  *			if one wants to override the ndo_*() functions
  *	@ethtool_ops:	Management operations
  *	@fwd_ops:	Management operations
- *	@header_ops:	Includes callbacks for creating,parsing,rebuilding,etc
+ *	@header_ops:	Includes callbacks for creating,parsing,caching,etc
  *			of Layer 2 headers.
  *
  *	@flags:		Interface flags (a la BSD)
@@ -2398,15 +2419,6 @@ static inline int dev_parse_header(const struct sk_buff *skb,
 	if (!dev->header_ops || !dev->header_ops->parse)
 		return 0;
 	return dev->header_ops->parse(skb, haddr);
-}
-
-static inline int dev_rebuild_header(struct sk_buff *skb)
-{
-	const struct net_device *dev = skb->dev;
-
-	if (!dev->header_ops || !dev->header_ops->rebuild)
-		return 0;
-	return dev->header_ops->rebuild(skb);
 }
 
 typedef int gifconf_func_t(struct net_device * dev, char __user * bufptr, int len);
