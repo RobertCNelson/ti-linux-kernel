@@ -134,7 +134,6 @@ static inline void spfi_stop(struct img_spfi *spfi)
 static inline void spfi_reset(struct img_spfi *spfi)
 {
 	spfi_writel(spfi, SPFI_CONTROL_SOFT_RESET, SPFI_CONTROL);
-	udelay(1);
 	spfi_writel(spfi, 0, SPFI_CONTROL);
 }
 
@@ -458,6 +457,13 @@ static int img_spfi_transfer_one(struct spi_master *master,
 	bool dma_reset = false;
 	unsigned long flags;
 	int ret;
+
+	if (xfer->len > SPFI_TRANSACTION_TSIZE_MASK) {
+		dev_err(spfi->dev,
+			"Transfer length (%d) is greater than the max supported (%d)",
+			xfer->len, SPFI_TRANSACTION_TSIZE_MASK);
+		return -EINVAL;
+	}
 
 	/*
 	 * Stop all DMA and reset the controller if the previous transaction
