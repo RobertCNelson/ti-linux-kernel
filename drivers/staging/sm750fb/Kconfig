@@ -1,6 +1,7 @@
 config FB_SM750
 	tristate "Silicon Motion SM750 framebuffer support"
 	depends on FB && PCI
+	depends on BROKEN
 	help
 	  Frame buffer driver for the Silicon Motion SM750 chip
 	  with 2D accelearion and dual head support.
