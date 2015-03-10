@@ -1045,7 +1045,7 @@ static sint aes_cipher(u8 *key, uint	hdrlen,
 	uint	frtype  = GetFrameType(pframe);
 	uint	frsubtype  = GetFrameSubType(pframe);
 
-	frsubtype = frsubtype >> 4;
+	frsubtype >>= 4;
 	memset((void *)mic_iv, 0, 16);
 	memset((void *)mic_header1, 0, 16);
 	memset((void *)mic_header2, 0, 16);
@@ -1216,7 +1216,7 @@ static sint aes_decipher(u8 *key, uint	hdrlen,
 	uint frtype  = GetFrameType(pframe);
 	uint frsubtype  = GetFrameSubType(pframe);
 
-	frsubtype = frsubtype >> 4;
+	frsubtype >>= 4;
 	memset((void *)mic_iv, 0, 16);
 	memset((void *)mic_header1, 0, 16);
 	memset((void *)mic_header2, 0, 16);
@@ -1392,9 +1392,9 @@ u32 r8712_aes_decrypt(struct _adapter *padapter, u8 *precvframe)
 	return _SUCCESS;
 }
 
-void r8712_use_tkipkey_handler(void *FunctionContext)
+void r8712_use_tkipkey_handler(unsigned long data)
 {
-	struct _adapter *padapter = (struct _adapter *)FunctionContext;
+	struct _adapter *padapter = (struct _adapter *)data;
 
 	padapter->securitypriv.busetkipkey = true;
 }

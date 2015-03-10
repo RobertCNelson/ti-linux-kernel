@@ -2010,10 +2010,8 @@ static void init_scan_timer(void)
 	if (scan_timer.function != NULL)
 		return;		/* already started */
 
-	init_timer(&scan_timer);
+	setup_timer(&scan_timer, (void *)&panel_scan_timer, 0);
 	scan_timer.expires = jiffies + INPUT_POLL_TIME;
-	scan_timer.data = 0;
-	scan_timer.function = (void *)&panel_scan_timer;
 	add_timer(&scan_timer);
 }
 
@@ -2323,25 +2321,6 @@ static int __init panel_init_module(void)
 		break;
 	}
 
-	/*
-	 * Init lcd struct with load-time values to preserve exact current
-	 * functionality (at least for now).
-	 */
-	lcd.height = lcd_height;
-	lcd.width = lcd_width;
-	lcd.bwidth = lcd_bwidth;
-	lcd.hwidth = lcd_hwidth;
-	lcd.charset = lcd_charset;
-	lcd.proto = lcd_proto;
-	lcd.pins.e = lcd_e_pin;
-	lcd.pins.rs = lcd_rs_pin;
-	lcd.pins.rw = lcd_rw_pin;
-	lcd.pins.cl = lcd_cl_pin;
-	lcd.pins.da = lcd_da_pin;
-	lcd.pins.bl = lcd_bl_pin;
-
-	/* Leave it for now, just in case */
-	lcd.esc_seq.len = -1;
 
 	/*
 	 * Overwrite selection with module param values (both keypad and lcd),
@@ -2361,6 +2340,28 @@ static int __init panel_init_module(void)
 
 	lcd.enabled = (selected_lcd_type > 0);
 
+	if (lcd.enabled) {
+		/*
+		 * Init lcd struct with load-time values to preserve exact
+		 * current functionality (at least for now).
+		 */
+		lcd.height = lcd_height;
+		lcd.width = lcd_width;
+		lcd.bwidth = lcd_bwidth;
+		lcd.hwidth = lcd_hwidth;
+		lcd.charset = lcd_charset;
+		lcd.proto = lcd_proto;
+		lcd.pins.e = lcd_e_pin;
+		lcd.pins.rs = lcd_rs_pin;
+		lcd.pins.rw = lcd_rw_pin;
+		lcd.pins.cl = lcd_cl_pin;
+		lcd.pins.da = lcd_da_pin;
+		lcd.pins.bl = lcd_bl_pin;
+
+		/* Leave it for now, just in case */
+		lcd.esc_seq.len = -1;
+	}
+
 	switch (selected_keypad_type) {
 	case KEYPAD_TYPE_OLD:
 		keypad_profile = old_keypad_profile;
@@ -2379,21 +2380,15 @@ static int __init panel_init_module(void)
 	/* tells various subsystems about the fact that we are initializing */
 	init_in_progress = 1;
 
+	if (!lcd.enabled && !keypad.enabled) {
+		/* no device enabled, let's exit */
+		pr_err("driver version " PANEL_VERSION " disabled.\n");
+		return -ENODEV;
+	}
+
 	if (parport_register_driver(&panel_driver)) {
 		pr_err("could not register with parport. Aborting.\n");
 		return -EIO;
-	}
-
-	if (!lcd.enabled && !keypad.enabled) {
-		/* no device enabled, let's release the parport */
-		if (pprt) {
-			parport_release(pprt);
-			parport_unregister_device(pprt);
-			pprt = NULL;
-		}
-		parport_unregister_driver(&panel_driver);
-		pr_err("driver version " PANEL_VERSION " disabled.\n");
-		return -ENODEV;
 	}
 
 	register_reboot_notifier(&panel_notifier);

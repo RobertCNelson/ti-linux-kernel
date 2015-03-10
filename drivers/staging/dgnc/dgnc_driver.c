@@ -251,9 +251,9 @@ static int dgnc_start(void)
 	 * Register management/dpa devices
 	 */
 	rc = register_chrdev(0, "dgnc", &dgnc_BoardFops);
-	if (rc <= 0) {
+	if (rc < 0) {
 		pr_err(DRVSTR ": Can't register dgnc driver device (%d)\n", rc);
-		return -ENXIO;
+		return rc;
 	}
 	dgnc_Major = rc;
 
@@ -285,9 +285,7 @@ static int dgnc_start(void)
 
 	/* Start the poller */
 	spin_lock_irqsave(&dgnc_poll_lock, flags);
-	init_timer(&dgnc_poll_timer);
-	dgnc_poll_timer.function = dgnc_poll_handler;
-	dgnc_poll_timer.data = 0;
+	setup_timer(&dgnc_poll_timer, dgnc_poll_handler, 0);
 	dgnc_poll_time = jiffies + dgnc_jiffies_from_ms(dgnc_poll_tick);
 	dgnc_poll_timer.expires = dgnc_poll_time;
 	spin_unlock_irqrestore(&dgnc_poll_lock, flags);
@@ -364,7 +362,7 @@ static void dgnc_cleanup_board(struct dgnc_board *brd)
 
 		spin_lock_irqsave(&dgnc_global_lock, flags);
 		brd->msgbuf = NULL;
-		printk("%s", brd->msgbuf_head);
+		dev_dbg(&brd->pdev->dev, "%s\n", brd->msgbuf_head);
 		kfree(brd->msgbuf_head);
 		brd->msgbuf_head = NULL;
 		spin_unlock_irqrestore(&dgnc_global_lock, flags);
@@ -606,11 +604,13 @@ static int dgnc_found_board(struct pci_dev *pdev, int id)
 	dgnc_create_ports_sysfiles(brd);
 
 	/* init our poll helper tasklet */
-	tasklet_init(&brd->helper_tasklet, brd->bd_ops->tasklet, (unsigned long) brd);
+	tasklet_init(&brd->helper_tasklet,
+		     brd->bd_ops->tasklet,
+		     (unsigned long) brd);
 
 	spin_lock_irqsave(&dgnc_global_lock, flags);
 	brd->msgbuf = NULL;
-	printk("%s", brd->msgbuf_head);
+	dev_dbg(&brd->pdev->dev, "%s\n", brd->msgbuf_head);
 	kfree(brd->msgbuf_head);
 	brd->msgbuf_head = NULL;
 	spin_unlock_irqrestore(&dgnc_global_lock, flags);
@@ -731,9 +731,7 @@ static void dgnc_poll_handler(ulong dummy)
 	if ((ulong) new_time >= 2 * dgnc_poll_tick)
 		dgnc_poll_time = jiffies +  dgnc_jiffies_from_ms(dgnc_poll_tick);
 
-	init_timer(&dgnc_poll_timer);
-	dgnc_poll_timer.function = dgnc_poll_handler;
-	dgnc_poll_timer.data = 0;
+	setup_timer(&dgnc_poll_timer, dgnc_poll_handler, 0);
 	dgnc_poll_timer.expires = dgnc_poll_time;
 	spin_unlock_irqrestore(&dgnc_poll_lock, flags);
 

@@ -1371,7 +1371,7 @@ static void ieee80211_associate_complete_wq(struct work_struct *work)
 	else if(ieee->is_silent_reset == 1)
 	{
 		printk("==================>silent reset associate\n");
-		ieee->is_silent_reset = 0;
+		ieee->is_silent_reset = false;
 	}
 
 	if (ieee->data_hard_resume)
@@ -2719,16 +2719,14 @@ void ieee80211_softmac_init(struct ieee80211_device *ieee)
 	ieee->sta_edca_param[2] = 0x005E4342;
 	ieee->sta_edca_param[3] = 0x002F3262;
 	ieee->aggregation = true;
-	ieee->enable_rx_imm_BA = 1;
+	ieee->enable_rx_imm_BA = true;
 	ieee->tx_pending.txb = NULL;
 
-	init_timer(&ieee->associate_timer);
-	ieee->associate_timer.data = (unsigned long)ieee;
-	ieee->associate_timer.function = ieee80211_associate_abort_cb;
+	setup_timer(&ieee->associate_timer, ieee80211_associate_abort_cb,
+		    (unsigned long)ieee);
 
-	init_timer(&ieee->beacon_timer);
-	ieee->beacon_timer.data = (unsigned long) ieee;
-	ieee->beacon_timer.function = ieee80211_send_beacon_cb;
+	setup_timer(&ieee->beacon_timer, ieee80211_send_beacon_cb,
+		    (unsigned long)ieee);
 
 	ieee->wq = create_workqueue(DRV_NAME);
 
@@ -3210,7 +3208,7 @@ void notify_wx_assoc_event(struct ieee80211_device *ieee)
 	if (ieee->state == IEEE80211_LINKED)
 		memcpy(wrqu.ap_addr.sa_data, ieee->current_network.bssid, ETH_ALEN);
 	else
-		memset(wrqu.ap_addr.sa_data, 0, ETH_ALEN);
+		eth_zero_addr(wrqu.ap_addr.sa_data);
 	wireless_send_event(ieee->dev, SIOCGIWAP, &wrqu, NULL);
 }
 EXPORT_SYMBOL(notify_wx_assoc_event);
