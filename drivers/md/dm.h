@@ -70,7 +70,6 @@ void dm_table_presuspend_undo_targets(struct dm_table *t);
 void dm_table_postsuspend_targets(struct dm_table *t);
 int dm_table_resume_targets(struct dm_table *t);
 int dm_table_any_congested(struct dm_table *t, int bdi_bits);
-int dm_table_any_busy_target(struct dm_table *t);
 unsigned dm_table_get_type(struct dm_table *t);
 struct target_type *dm_table_get_immutable_target_type(struct dm_table *t);
 bool dm_table_request_based(struct dm_table *t);
@@ -234,5 +233,9 @@ static inline bool dm_message_test_buffer_overflow(char *result, unsigned maxlen
 {
 	return !maxlen || strlen(result) + 1 >= maxlen;
 }
+
+ssize_t dm_attr_rq_based_seq_io_merge_deadline_show(struct mapped_device *md, char *buf);
+ssize_t dm_attr_rq_based_seq_io_merge_deadline_store(struct mapped_device *md,
+						     const char *buf, size_t count);
 
 #endif
