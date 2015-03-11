@@ -1,0 +1,52 @@
+next/cleanup
+	mvebu/cleanup
+		git://git.infradead.org/linux-mvebu tags/mvebu-cleanup-4.1
+
+next/drivers
+	drivers/simple-pm-bus
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-simple-pm-bus-for-v4.1
+
+next/multiplatform
+	renesas/soc-cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-cleanup-for-v4.1
+	renesas/sh7372-soc-removal
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-sh7372-soc-removal-for-v4.1
+	shmobile/multiplatform-r8a7778
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-r8a7778-ccf-and-multiplatform-for-v4.1
+		contains drivers/simple-pm-bus
+
+next/soc
+	renesas/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-for-v4.1
+	meson/soc
+		https://github.com/carlocaione/linux-meson tags/for-v4.0-rc/meson-soc
+	mvebu/soc
+		git://git.infradead.org/linux-mvebu tags/mvebu-soc-4.1
+
+next/dt
+	renesas/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-for-v4.1
+	meson/dt
+		https://github.com/carlocaione/linux-meson tags/for-v4.0-rc/meson-dts
+	patch
+		devicetree: Add TI-NSPIRE USB OTG support to device tree
+	at91/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-dt
+	broadcom/dt
+		http://github.com/broadcom/stblinux tags/arm-soc/for-4.1/devicetree
+	mvebu/dt
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-4.1
+	<no branch> (90ca409a1e6b9b72d1b6ae716cd7a63335fd0e87)
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt2-for-v4.1
+
+next/arm64
+	patch
+		ARM64: Add new Xilinx ZynqMP SoC
+		arm64: dts: Add support for Spreadtrum SC9836 SoC in dts and Makefile
+		arm64: Add support for Spreadtrum's Sharkl64 Platform in Kconfig and defconfig
+
+next/defconfig
+	mvebu/defconfig
+		git://git.infradead.org/linux-mvebu tags/mvebu-defconfig-4.1
+
+
