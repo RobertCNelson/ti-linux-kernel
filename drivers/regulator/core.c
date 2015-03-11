@@ -648,10 +648,12 @@ static int drms_uA_update(struct regulator_dev *rdev)
 	if (err < 0)
 		return 0;
 
-	if (!rdev->desc->ops->get_optimum_mode)
+	if (!rdev->desc->ops->get_optimum_mode &&
+	    !rdev->desc->ops->set_load)
 		return 0;
 
-	if (!rdev->desc->ops->set_mode)
+	if (!rdev->desc->ops->set_mode &&
+	    !rdev->desc->ops->set_load)
 		return -EINVAL;
 
 	/* get output voltage */
@@ -676,21 +678,28 @@ static int drms_uA_update(struct regulator_dev *rdev)
 	list_for_each_entry(sibling, &rdev->consumer_list, list)
 		current_uA += sibling->uA_load;
 
-	/* now get the optimum mode for our new total regulator load */
-	mode = rdev->desc->ops->get_optimum_mode(rdev, input_uV,
-						  output_uV, current_uA);
+	if (rdev->desc->ops->set_load) {
+		/* set the optimum mode for our new total regulator load */
+		err = rdev->desc->ops->set_load(rdev, current_uA);
+		if (err < 0)
+			rdev_err(rdev, "failed to set load %d\n", current_uA);
+	} else {
+		/* now get the optimum mode for our new total regulator load */
+		mode = rdev->desc->ops->get_optimum_mode(rdev, input_uV,
+							 output_uV, current_uA);
 
-	/* check the new mode is allowed */
-	err = regulator_mode_constrain(rdev, &mode);
-	if (err < 0) {
-		rdev_err(rdev, "failed to get optimum mode @ %d uA %d -> %d uV\n",
-			 current_uA, input_uV, output_uV);
-		return err;
+		/* check the new mode is allowed */
+		err = regulator_mode_constrain(rdev, &mode);
+		if (err < 0) {
+			rdev_err(rdev, "failed to get optimum mode @ %d uA %d -> %d uV\n",
+				 current_uA, input_uV, output_uV);
+			return err;
+		}
+
+		err = rdev->desc->ops->set_mode(rdev, mode);
+		if (err < 0)
+			rdev_err(rdev, "failed to set optimum mode %x\n", mode);
 	}
-
-	err = rdev->desc->ops->set_mode(rdev, mode);
-	if (err < 0)
-		rdev_err(rdev, "failed to set optimum mode %x\n", mode);
 
 	return err;
 }
@@ -1839,10 +1848,12 @@ static int _regulator_do_enable(struct regulator_dev *rdev)
 	}
 
 	if (rdev->ena_pin) {
-		ret = regulator_ena_gpio_ctrl(rdev, true);
-		if (ret < 0)
-			return ret;
-		rdev->ena_gpio_state = 1;
+		if (!rdev->ena_gpio_state) {
+			ret = regulator_ena_gpio_ctrl(rdev, true);
+			if (ret < 0)
+				return ret;
+			rdev->ena_gpio_state = 1;
+		}
 	} else if (rdev->desc->ops->enable) {
 		ret = rdev->desc->ops->enable(rdev);
 		if (ret < 0)
@@ -1939,10 +1950,12 @@ static int _regulator_do_disable(struct regulator_dev *rdev)
 	trace_regulator_disable(rdev_get_name(rdev));
 
 	if (rdev->ena_pin) {
-		ret = regulator_ena_gpio_ctrl(rdev, false);
-		if (ret < 0)
-			return ret;
-		rdev->ena_gpio_state = 0;
+		if (rdev->ena_gpio_state) {
+			ret = regulator_ena_gpio_ctrl(rdev, false);
+			if (ret < 0)
+				return ret;
+			rdev->ena_gpio_state = 0;
+		}
 
 	} else if (rdev->desc->ops->disable) {
 		ret = rdev->desc->ops->disable(rdev);
@@ -2994,7 +3007,7 @@ unsigned int regulator_get_mode(struct regulator *regulator)
 EXPORT_SYMBOL_GPL(regulator_get_mode);
 
 /**
- * regulator_set_optimum_mode - set regulator optimum operating mode
+ * regulator_set_load - set regulator load
  * @regulator: regulator source
  * @uA_load: load current
  *
@@ -3017,9 +3030,9 @@ EXPORT_SYMBOL_GPL(regulator_get_mode);
  * DRMS will sum the total requested load on the regulator and change
  * to the most efficient operating mode if platform constraints allow.
  *
- * Returns the new regulator mode or error.
+ * On error a negative errno is returned.
  */
-int regulator_set_optimum_mode(struct regulator *regulator, int uA_load)
+int regulator_set_load(struct regulator *regulator, int uA_load)
 {
 	struct regulator_dev *rdev = regulator->rdev;
 	int ret;
@@ -3031,7 +3044,7 @@ int regulator_set_optimum_mode(struct regulator *regulator, int uA_load)
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(regulator_set_optimum_mode);
+EXPORT_SYMBOL_GPL(regulator_set_load);
 
 /**
  * regulator_allow_bypass - allow the regulator to go into bypass mode
@@ -3626,12 +3639,6 @@ regulator_register(const struct regulator_desc *regulator_desc,
 				 config->ena_gpio, ret);
 			goto wash;
 		}
-
-		if (config->ena_gpio_flags & GPIOF_OUT_INIT_HIGH)
-			rdev->ena_gpio_state = 1;
-
-		if (config->ena_gpio_invert)
-			rdev->ena_gpio_state = !rdev->ena_gpio_state;
 	}
 
 	/* set regulator constraints */
@@ -3800,9 +3807,11 @@ int regulator_suspend_finish(void)
 	list_for_each_entry(rdev, &regulator_list, list) {
 		mutex_lock(&rdev->mutex);
 		if (rdev->use_count > 0  || rdev->constraints->always_on) {
-			error = _regulator_do_enable(rdev);
-			if (error)
-				ret = error;
+			if (!_regulator_is_enabled(rdev)) {
+				error = _regulator_do_enable(rdev);
+				if (error)
+					ret = error;
+			}
 		} else {
 			if (!have_full_constraints())
 				goto unlock;
