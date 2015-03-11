@@ -228,7 +228,19 @@ struct mapped_device {
 
 	/* for blk-mq request-based DM support */
 	struct blk_mq_tag_set tag_set;
+	bool use_blk_mq;
 };
+
+#ifdef CONFIG_DM_MQ_DEFAULT
+static bool use_blk_mq = true;
+#else
+static bool use_blk_mq = false;
+#endif
+
+bool dm_use_blk_mq(struct mapped_device *md)
+{
+	return md->use_blk_mq;
+}
 
 /*
  * For mempools pre-allocation at the table loading time.
@@ -2031,7 +2043,7 @@ ssize_t dm_attr_rq_based_seq_io_merge_deadline_store(struct mapped_device *md,
 {
 	unsigned deadline;
 
-	if (!dm_request_based(md))
+	if (!dm_request_based(md) || md->use_blk_mq)
 		return count;
 
 	if (kstrtouint(buf, 10, &deadline))
@@ -2219,6 +2231,7 @@ static void dm_init_md_queue(struct mapped_device *md)
 
 static void dm_init_old_md_queue(struct mapped_device *md)
 {
+	md->use_blk_mq = false;
 	dm_init_md_queue(md);
 
 	/*
@@ -2260,6 +2273,7 @@ static struct mapped_device *alloc_dev(int minor)
 	if (r < 0)
 		goto bad_io_barrier;
 
+	md->use_blk_mq = use_blk_mq;
 	md->type = DM_TYPE_NONE;
 	mutex_init(&md->suspend_lock);
 	mutex_init(&md->type_lock);
@@ -2346,7 +2360,6 @@ static void unlock_fs(struct mapped_device *md);
 static void free_dev(struct mapped_device *md)
 {
 	int minor = MINOR(disk_devt(md->disk));
-	bool using_blk_mq = !!md->queue->mq_ops;
 
 	unlock_fs(md);
 	bdput(md->bdev);
@@ -2372,7 +2385,7 @@ static void free_dev(struct mapped_device *md)
 
 	put_disk(md->disk);
 	blk_cleanup_queue(md->queue);
-	if (using_blk_mq)
+	if (md->use_blk_mq)
 		blk_mq_free_tag_set(&md->tag_set);
 	dm_stats_cleanup(&md->stats);
 	module_put(THIS_MODULE);
@@ -2383,7 +2396,7 @@ static void __bind_mempools(struct mapped_device *md, struct dm_table *t)
 {
 	struct dm_md_mempools *p = dm_table_get_md_mempools(t);
 
-	if (md->io_pool && md->bs) {
+	if (md->bs) {
 		/* The md already has necessary mempools. */
 		if (dm_table_get_type(t) == DM_TYPE_BIO_BASED) {
 			/*
@@ -2793,13 +2806,21 @@ out_tag_set:
 	return err;
 }
 
+static unsigned filter_md_type(unsigned type, struct mapped_device *md)
+{
+	if (type == DM_TYPE_BIO_BASED)
+		return type;
+
+	return !md->use_blk_mq ? DM_TYPE_REQUEST_BASED : DM_TYPE_MQ_REQUEST_BASED;
+}
+
 /*
  * Setup the DM device's queue based on md's type
  */
 int dm_setup_md_queue(struct mapped_device *md)
 {
 	int r;
-	unsigned md_type = dm_get_md_type(md);
+	unsigned md_type = filter_md_type(dm_get_md_type(md), md);
 
 	switch (md_type) {
 	case DM_TYPE_REQUEST_BASED:
@@ -3503,15 +3524,18 @@ int dm_noflush_suspending(struct dm_target *ti)
 }
 EXPORT_SYMBOL_GPL(dm_noflush_suspending);
 
-struct dm_md_mempools *dm_alloc_md_mempools(unsigned type, unsigned integrity, unsigned per_bio_data_size)
+struct dm_md_mempools *dm_alloc_md_mempools(struct mapped_device *md, unsigned type,
+					    unsigned integrity, unsigned per_bio_data_size)
 {
 	struct dm_md_mempools *pools = kzalloc(sizeof(*pools), GFP_KERNEL);
-	struct kmem_cache *cachep;
+	struct kmem_cache *cachep = NULL;
 	unsigned int pool_size = 0;
 	unsigned int front_pad;
 
 	if (!pools)
 		return NULL;
+
+	type = filter_md_type(type, md);
 
 	switch (type) {
 	case DM_TYPE_BIO_BASED:
@@ -3520,13 +3544,13 @@ struct dm_md_mempools *dm_alloc_md_mempools(unsigned type, unsigned integrity, u
 		front_pad = roundup(per_bio_data_size, __alignof__(struct dm_target_io)) + offsetof(struct dm_target_io, clone);
 		break;
 	case DM_TYPE_REQUEST_BASED:
+		cachep = _rq_tio_cache;
 		pool_size = dm_get_reserved_rq_based_ios();
 		pools->rq_pool = mempool_create_slab_pool(pool_size, _rq_cache);
 		if (!pools->rq_pool)
 			goto out;
 		/* fall through to setup remaining rq-based pools */
 	case DM_TYPE_MQ_REQUEST_BASED:
-		cachep = _rq_tio_cache;
 		if (!pool_size)
 			pool_size = dm_get_reserved_rq_based_ios();
 		front_pad = offsetof(struct dm_rq_clone_bio_info, clone);
@@ -3534,12 +3558,14 @@ struct dm_md_mempools *dm_alloc_md_mempools(unsigned type, unsigned integrity, u
 		WARN_ON(per_bio_data_size != 0);
 		break;
 	default:
-		goto out;
+		BUG();
 	}
 
-	pools->io_pool = mempool_create_slab_pool(pool_size, cachep);
-	if (!pools->io_pool)
-		goto out;
+	if (cachep) {
+		pools->io_pool = mempool_create_slab_pool(pool_size, cachep);
+		if (!pools->io_pool)
+			goto out;
+	}
 
 	pools->bs = bioset_create_nobvec(pool_size, front_pad);
 	if (!pools->bs)
@@ -3595,6 +3621,9 @@ MODULE_PARM_DESC(reserved_bio_based_ios, "Reserved IOs in bio-based mempools");
 
 module_param(reserved_rq_based_ios, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(reserved_rq_based_ios, "Reserved IOs in request-based mempools");
+
+module_param(use_blk_mq, bool, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(use_blk_mq, "Use block multiqueue for request-based DM devices");
 
 MODULE_DESCRIPTION(DM_NAME " driver");
 MODULE_AUTHOR("Joe Thornber <dm-devel@redhat.com>");
