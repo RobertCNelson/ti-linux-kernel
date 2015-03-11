@@ -76,6 +76,7 @@ struct discovery_state {
 	u8			last_adv_data[HCI_MAX_AD_LENGTH];
 	u8			last_adv_data_len;
 	bool			report_invalid_rssi;
+	bool			result_filtering;
 	s8			rssi;
 	u16			uuid_count;
 	u8			(*uuids)[16];
@@ -525,6 +526,7 @@ static inline void discovery_init(struct hci_dev *hdev)
 
 static inline void hci_discovery_filter_clear(struct hci_dev *hdev)
 {
+	hdev->discovery.result_filtering = false;
 	hdev->discovery.report_invalid_rssi = true;
 	hdev->discovery.rssi = HCI_RSSI_INVALID;
 	hdev->discovery.uuid_count = 0;
@@ -965,6 +967,8 @@ struct smp_irk *hci_add_irk(struct hci_dev *hdev, bdaddr_t *bdaddr,
 void hci_remove_irk(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 addr_type);
 void hci_smp_irks_clear(struct hci_dev *hdev);
 
+bool hci_bdaddr_is_paired(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 type);
+
 void hci_remote_oob_data_clear(struct hci_dev *hdev);
 struct oob_data *hci_find_remote_oob_data(struct hci_dev *hdev,
 					  bdaddr_t *bdaddr, u8 bdaddr_type);
@@ -1271,6 +1275,27 @@ void hci_send_to_monitor(struct hci_dev *hdev, struct sk_buff *skb);
 
 void hci_sock_dev_event(struct hci_dev *hdev, int event);
 
+#define HCI_MGMT_VAR_LEN	(1 << 0)
+#define HCI_MGMT_NO_HDEV	(1 << 1)
+#define HCI_MGMT_UNCONFIGURED	(1 << 2)
+
+struct hci_mgmt_handler {
+	int (*func) (struct sock *sk, struct hci_dev *hdev, void *data,
+		     u16 data_len);
+	size_t data_len;
+	unsigned long flags;
+};
+
+struct hci_mgmt_chan {
+	struct list_head list;
+	unsigned short channel;
+	size_t handler_count;
+	const struct hci_mgmt_handler *handlers;
+};
+
+int hci_mgmt_chan_register(struct hci_mgmt_chan *c);
+void hci_mgmt_chan_unregister(struct hci_mgmt_chan *c);
+
 /* Management interface */
 #define DISCOV_TYPE_BREDR		(BIT(BDADDR_BREDR))
 #define DISCOV_TYPE_LE			(BIT(BDADDR_LE_PUBLIC) | \
@@ -1290,7 +1315,9 @@ void hci_sock_dev_event(struct hci_dev *hdev, int event);
 #define DISCOV_BREDR_INQUIRY_LEN	0x08
 #define DISCOV_LE_RESTART_DELAY		msecs_to_jiffies(200)	/* msec */
 
-int mgmt_control(struct sock *sk, struct msghdr *msg, size_t len);
+int mgmt_control(struct hci_mgmt_chan *chan, struct sock *sk,
+		 struct msghdr *msg, size_t msglen);
+
 int mgmt_new_settings(struct hci_dev *hdev);
 void mgmt_index_added(struct hci_dev *hdev);
 void mgmt_index_removed(struct hci_dev *hdev);
