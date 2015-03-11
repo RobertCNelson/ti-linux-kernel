@@ -109,6 +109,9 @@ struct cpuinfo_x86 {
 	/* in KB - valid for CPUS which support this call: */
 	int			x86_cache_size;
 	int			x86_cache_alignment;	/* In bytes */
+	/* Cache QoS architectural values: */
+	int			x86_cache_max_rmid;	/* max index */
+	int			x86_cache_occ_scale;	/* scale to bytes */
 	int			x86_power;
 	unsigned long		loops_per_jiffy;
 	/* cpuid returned max cores value: */
@@ -282,7 +285,11 @@ struct tss_struct {
 
 } ____cacheline_aligned;
 
-DECLARE_PER_CPU_SHARED_ALIGNED(struct tss_struct, init_tss);
+DECLARE_PER_CPU_SHARED_ALIGNED(struct tss_struct, cpu_tss);
+
+#ifdef CONFIG_X86_32
+DECLARE_PER_CPU(unsigned long, cpu_current_top_of_stack);
+#endif
 
 /*
  * Save the original ist values for checking stack pointers during debugging
@@ -564,6 +571,16 @@ static inline void native_swapgs(void)
 #endif
 }
 
+static inline unsigned long current_top_of_stack(void)
+{
+#ifdef CONFIG_X86_64
+	return this_cpu_read_stable(cpu_tss.x86_tss.sp0);
+#else
+	/* sp0 on x86_32 is special in and around vm86 mode. */
+	return this_cpu_read_stable(cpu_current_top_of_stack);
+#endif
+}
+
 #ifdef CONFIG_PARAVIRT
 #include <asm/paravirt.h>
 #else
@@ -761,10 +778,10 @@ extern char			ignore_fpu_irq;
 #define ARCH_HAS_SPINLOCK_PREFETCH
 
 #ifdef CONFIG_X86_32
-# define BASE_PREFETCH		ASM_NOP4
+# define BASE_PREFETCH		""
 # define ARCH_HAS_PREFETCH
 #else
-# define BASE_PREFETCH		"prefetcht0 (%1)"
+# define BASE_PREFETCH		"prefetcht0 %P1"
 #endif
 
 /*
@@ -775,10 +792,9 @@ extern char			ignore_fpu_irq;
  */
 static inline void prefetch(const void *x)
 {
-	alternative_input(BASE_PREFETCH,
-			  "prefetchnta (%1)",
+	alternative_input(BASE_PREFETCH, "prefetchnta %P1",
 			  X86_FEATURE_XMM,
-			  "r" (x));
+			  "m" (*(const char *)x));
 }
 
 /*
@@ -788,10 +804,9 @@ static inline void prefetch(const void *x)
  */
 static inline void prefetchw(const void *x)
 {
-	alternative_input(BASE_PREFETCH,
-			  "prefetchw (%1)",
-			  X86_FEATURE_3DNOW,
-			  "r" (x));
+	alternative_input(BASE_PREFETCH, "prefetchw %P1",
+			  X86_FEATURE_3DNOWPREFETCH,
+			  "m" (*(const char *)x));
 }
 
 static inline void spin_lock_prefetch(const void *x)
@@ -813,22 +828,6 @@ static inline void spin_lock_prefetch(const void *x)
 	.vm86_info		= NULL,					  \
 	.sysenter_cs		= __KERNEL_CS,				  \
 	.io_bitmap_ptr		= NULL,					  \
-}
-
-/*
- * Note that the .io_bitmap member must be extra-big. This is because
- * the CPU will access an additional byte beyond the end of the IO
- * permission bitmap. The extra byte must be all 1 bits, and must
- * be within the limit.
- */
-#define INIT_TSS  {							  \
-	.x86_tss = {							  \
-		.sp0		= sizeof(init_stack) + (long)&init_stack, \
-		.ss0		= __KERNEL_DS,				  \
-		.ss1		= __KERNEL_CS,				  \
-		.io_bitmap_base	= INVALID_IO_BITMAP_OFFSET,		  \
-	 },								  \
-	.io_bitmap		= { [0 ... IO_BITMAP_LONGS] = ~0 },	  \
 }
 
 extern unsigned long thread_saved_pc(struct task_struct *tsk);
@@ -887,10 +886,6 @@ extern unsigned long thread_saved_pc(struct task_struct *tsk);
 
 #define INIT_THREAD  { \
 	.sp0 = (unsigned long)&init_stack + sizeof(init_stack) \
-}
-
-#define INIT_TSS  { \
-	.x86_tss.sp0 = (unsigned long)&init_stack + sizeof(init_stack) \
 }
 
 /*

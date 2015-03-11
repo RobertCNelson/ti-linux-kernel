@@ -37,7 +37,26 @@
  * section. Since TSS's are completely CPU-local, we want them
  * on exact cacheline boundaries, to eliminate cacheline ping-pong.
  */
-__visible DEFINE_PER_CPU_SHARED_ALIGNED(struct tss_struct, init_tss) = INIT_TSS;
+__visible DEFINE_PER_CPU_SHARED_ALIGNED(struct tss_struct, cpu_tss) = {
+	.x86_tss = {
+		.sp0 = (unsigned long)&init_stack + sizeof(init_stack),
+#ifdef CONFIG_X86_32
+		.ss0 = __KERNEL_DS,
+		.ss1 = __KERNEL_CS,
+		.io_bitmap_base	= INVALID_IO_BITMAP_OFFSET,
+#endif
+	 },
+#ifdef CONFIG_X86_32
+	 /*
+	  * Note that the .io_bitmap member must be extra-big. This is because
+	  * the CPU will access an additional byte beyond the end of the IO
+	  * permission bitmap. The extra byte must be all 1 bits, and must
+	  * be within the limit.
+	  */
+	.io_bitmap		= { [0 ... IO_BITMAP_LONGS] = ~0 },
+#endif
+};
+EXPORT_PER_CPU_SYMBOL_GPL(cpu_tss);
 
 #ifdef CONFIG_X86_64
 static DEFINE_PER_CPU(unsigned char, is_idle);
@@ -69,8 +88,8 @@ int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src)
 
 	dst->thread.fpu_counter = 0;
 	dst->thread.fpu.has_fpu = 0;
-	dst->thread.fpu.last_cpu = ~0;
 	dst->thread.fpu.state = NULL;
+	task_disable_lazy_fpu_restore(dst);
 	if (tsk_used_math(src)) {
 		int err = fpu_alloc(&dst->thread.fpu);
 		if (err)
@@ -109,7 +128,7 @@ void exit_thread(void)
 	unsigned long *bp = t->io_bitmap_ptr;
 
 	if (bp) {
-		struct tss_struct *tss = &per_cpu(init_tss, get_cpu());
+		struct tss_struct *tss = &per_cpu(cpu_tss, get_cpu());
 
 		t->io_bitmap_ptr = NULL;
 		clear_thread_flag(TIF_IO_BITMAP);
@@ -131,6 +150,7 @@ void flush_thread(void)
 
 	flush_ptrace_hw_breakpoint(tsk);
 	memset(tsk->thread.tls_array, 0, sizeof(tsk->thread.tls_array));
+
 	drop_init_fpu(tsk);
 	/*
 	 * Free the FPU state for non xsave platforms. They get reallocated
@@ -138,6 +158,12 @@ void flush_thread(void)
 	 */
 	if (!use_eager_fpu())
 		free_thread_xstate(tsk);
+	else if (!used_math()) {
+		/* kthread execs. TODO: cleanup this horror. */
+		if (WARN_ON(init_fpu(current)))
+			force_sig(SIGKILL, current);
+		math_state_restore();
+	}
 }
 
 static void hard_disable_TSC(void)
