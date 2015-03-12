@@ -131,6 +131,7 @@ config EXYNOS5420_MCPM
 
 config EXYNOS_CPU_SUSPEND
 	bool
+	depends on SMP
 	select ARM_CPU_SUSPEND
 	default PM_SLEEP || ARM_EXYNOS_CPUIDLE
 
