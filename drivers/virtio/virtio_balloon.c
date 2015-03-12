@@ -340,6 +340,15 @@ static int balloon(void *_vballoon)
 		s64 diff;
 
 		try_to_freeze();
+
+		/*
+		 * Reading the config on the ccw backend involves an
+		 * allocation, so we may actually sleep and have an
+		 * extra iteration.  It's extremely unlikely, and this
+		 * isn't a fast path in any sense.
+		 */
+		sched_annotate_sleep();
+
 		wait_event_interruptible(vb->config_change,
 					 (diff = towards_target(vb)) != 0
 					 || vb->need_stats_update
@@ -498,6 +507,8 @@ static int virtballoon_probe(struct virtio_device *vdev)
 	err = register_oom_notifier(&vb->nb);
 	if (err < 0)
 		goto out_oom_notify;
+
+	virtio_device_ready(vdev);
 
 	vb->thread = kthread_run(balloon, vb, "vballoon");
 	if (IS_ERR(vb->thread)) {
