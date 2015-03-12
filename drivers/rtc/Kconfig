@@ -1081,6 +1081,14 @@ config RTC_DRV_AB8500
 	  Select this to enable the ST-Ericsson AB8500 power management IC RTC
 	  support. This chip contains a battery- and capacitor-backed RTC.
 
+config RTC_DRV_ABX805
+	tristate "Abracon AB X805 RTC"
+	depends on I2C
+	help
+	  Select this to enable support for the Abracon AB X805 RTC.
+	  AB X805 is the i2c flavour of the AB 18X5 family of ultra-low-power
+	  battery- and capacitor-backed RTC..
+
 config RTC_DRV_NUC900
 	tristate "NUC910/NUC920 RTC driver"
 	depends on ARCH_W90X900
