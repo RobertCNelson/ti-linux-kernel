@@ -217,21 +217,21 @@ extern bool ns_capable(struct user_namespace *ns, int cap);
 #else
 static inline bool has_capability(struct task_struct *t, int cap)
 {
-        return true;
+	return true;
 }
 static inline bool has_ns_capability(struct task_struct *t,
 			      struct user_namespace *ns, int cap)
 {
-        return true;
+	return true;
 }
 static inline bool has_capability_noaudit(struct task_struct *t, int cap)
 {
-        return true;
+	return true;
 }
 static inline bool has_ns_capability_noaudit(struct task_struct *t,
 				      struct user_namespace *ns, int cap)
 {
-        return true;
+	return true;
 }
 static inline bool capable(int cap)
 {
