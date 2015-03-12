@@ -10,6 +10,7 @@
 #include <linux/list.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
+#include <linux/mm_types.h>
 
 #include "cma.h"
 
