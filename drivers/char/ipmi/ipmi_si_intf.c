@@ -2987,7 +2987,7 @@ static int smi_type_proc_show(struct seq_file *m, void *v)
 
 	seq_printf(m, "%s\n", si_to_str[smi->si_type]);
 
-	return seq_has_overflowed(m);
+	return 0;
 }
 
 static int smi_type_proc_open(struct inode *inode, struct file *file)
@@ -3060,7 +3060,7 @@ static int smi_params_proc_show(struct seq_file *m, void *v)
 		   smi->irq,
 		   smi->slave_addr);
 
-	return seq_has_overflowed(m);
+	return 0;
 }
 
 static int smi_params_proc_open(struct inode *inode, struct file *file)
