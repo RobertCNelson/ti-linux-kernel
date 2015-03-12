@@ -149,9 +149,9 @@ static unsigned long mmap_rnd(void)
 	rnd = (unsigned long)get_random_int();
 	rnd <<= PAGE_SHIFT;
 	if (TASK_IS_32BIT_ADDR)
-		random_factor &= 0xfffffful;
+		rnd &= 0xfffffful;
 	else
-		random_factor &= 0xffffffful;
+		rnd &= 0xffffffful;
 
 	return rnd;
 }
