@@ -112,6 +112,16 @@ To remove the existing /dev/zramX device (where X is a device id)
 execute
 	echo X > /sys/class/zram-control/zram_remove
 
+Additionally, zram also handles automatic device_id generation and assignment.
+
+	cat /sys/class/zram-control/zram_add
+	1
+	cat /sys/class/zram-control/zram_add
+	2
+
+this will pick up available device_id X, add corresponding /dev/zramX
+device and return its device_id X back to user (or error code).
+
 8) Stats:
 	Per-device statistics are exported as various nodes under
 	/sys/block/zram<id>/
