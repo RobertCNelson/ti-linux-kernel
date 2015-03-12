@@ -503,8 +503,9 @@ enum bcmgenet_version {
  */
 struct bcmgenet_hw_params {
 	u8		tx_queues;
+	u8		tx_bds_per_q;
 	u8		rx_queues;
-	u8		bds_cnt;
+	u8		rx_bds_per_q;
 	u8		bp_in_en_shift;
 	u32		bp_in_mask;
 	u8		hfb_filter_cnt;
@@ -525,6 +526,7 @@ struct bcmgenet_tx_ring {
 	unsigned int	queue;		/* queue index */
 	struct enet_cb	*cbs;		/* tx ring buffer control block*/
 	unsigned int	size;		/* size of each tx ring */
+	unsigned int    clean_ptr;      /* Tx ring clean pointer */
 	unsigned int	c_index;	/* last consumer index of each ring*/
 	unsigned int	free_bds;	/* # of free bds for each ring */
 	unsigned int	write_ptr;	/* Tx ring write pointer SW copy */
@@ -536,6 +538,16 @@ struct bcmgenet_tx_ring {
 	void (*int_disable)(struct bcmgenet_priv *priv,
 			    struct bcmgenet_tx_ring *);
 	struct bcmgenet_priv *priv;
+};
+
+struct bcmgenet_rx_ring {
+	unsigned int	index;		/* Rx ring index */
+	struct enet_cb	*cbs;		/* Rx ring buffer control block */
+	unsigned int	size;		/* Rx ring size */
+	unsigned int	c_index;	/* Rx last consumer index */
+	unsigned int	read_ptr;	/* Rx ring read pointer */
+	unsigned int	cb_ptr;		/* Rx ring initial CB ptr */
+	unsigned int	end_ptr;	/* Rx ring end CB ptr */
 };
 
 /* device context */
@@ -558,13 +570,11 @@ struct bcmgenet_priv {
 
 	/* receive variables */
 	void __iomem *rx_bds;
-	void __iomem *rx_bd_assign_ptr;
-	int rx_bd_assign_index;
 	struct enet_cb *rx_cbs;
 	unsigned int num_rx_bds;
 	unsigned int rx_buf_len;
-	unsigned int rx_read_ptr;
-	unsigned int rx_c_index;
+
+	struct bcmgenet_rx_ring rx_rings[DESC_INDEX + 1];
 
 	/* other misc variables */
 	struct bcmgenet_hw_params *hw_params;
