@@ -21,6 +21,8 @@
 #include <linux/delay.h>
 #include <linux/wait.h>
 #include <linux/kthread.h>
+#include <linux/ktime.h>
+#include <linux/elevator.h> /* for rq_end_sector() */
 
 #include <trace/events/block.h>
 
@@ -216,6 +218,12 @@ struct mapped_device {
 
 	struct kthread_worker kworker;
 	struct task_struct *kworker_task;
+
+	/* for request-based merge heuristic in dm_request_fn() */
+	unsigned seq_rq_merge_deadline_usecs;
+	int last_rq_rw;
+	sector_t last_rq_pos;
+	ktime_t last_rq_start_time;
 };
 
 /*
@@ -250,35 +258,35 @@ static unsigned reserved_bio_based_ios = RESERVED_BIO_BASED_IOS;
  */
 static unsigned reserved_rq_based_ios = RESERVED_REQUEST_BASED_IOS;
 
-static unsigned __dm_get_reserved_ios(unsigned *reserved_ios,
+static unsigned __dm_get_module_param(unsigned *module_param,
 				      unsigned def, unsigned max)
 {
-	unsigned ios = ACCESS_ONCE(*reserved_ios);
-	unsigned modified_ios = 0;
+	unsigned param = ACCESS_ONCE(*module_param);
+	unsigned modified_param = 0;
 
-	if (!ios)
-		modified_ios = def;
-	else if (ios > max)
-		modified_ios = max;
+	if (!param)
+		modified_param = def;
+	else if (param > max)
+		modified_param = max;
 
-	if (modified_ios) {
-		(void)cmpxchg(reserved_ios, ios, modified_ios);
-		ios = modified_ios;
+	if (modified_param) {
+		(void)cmpxchg(module_param, param, modified_param);
+		param = modified_param;
 	}
 
-	return ios;
+	return param;
 }
 
 unsigned dm_get_reserved_bio_based_ios(void)
 {
-	return __dm_get_reserved_ios(&reserved_bio_based_ios,
+	return __dm_get_module_param(&reserved_bio_based_ios,
 				     RESERVED_BIO_BASED_IOS, RESERVED_MAX_IOS);
 }
 EXPORT_SYMBOL_GPL(dm_get_reserved_bio_based_ios);
 
 unsigned dm_get_reserved_rq_based_ios(void)
 {
-	return __dm_get_reserved_ios(&reserved_rq_based_ios,
+	return __dm_get_module_param(&reserved_rq_based_ios,
 				     RESERVED_REQUEST_BASED_IOS, RESERVED_MAX_IOS);
 }
 EXPORT_SYMBOL_GPL(dm_get_reserved_rq_based_ios);
@@ -1021,10 +1029,13 @@ static void end_clone_bio(struct bio *clone, int error)
  */
 static void rq_completed(struct mapped_device *md, int rw, bool run_queue)
 {
+	int nr_requests_pending;
+
 	atomic_dec(&md->pending[rw]);
 
 	/* nudge anyone waiting on suspend queue */
-	if (!md_in_flight(md))
+	nr_requests_pending = md_in_flight(md);
+	if (!nr_requests_pending)
 		wake_up(&md->wait);
 
 	/*
@@ -1033,8 +1044,11 @@ static void rq_completed(struct mapped_device *md, int rw, bool run_queue)
 	 * back into ->request_fn() could deadlock attempting to grab the
 	 * queue lock again.
 	 */
-	if (run_queue)
-		blk_run_queue_async(md->queue);
+	if (run_queue) {
+		if (!nr_requests_pending ||
+		    (nr_requests_pending >= md->queue->nr_congestion_on))
+			blk_run_queue_async(md->queue);
+	}
 
 	/*
 	 * dm_put() must be at the end of this function. See the comment above
@@ -1690,7 +1704,7 @@ out:
  * The request function that just remaps the bio built up by
  * dm_merge_bvec.
  */
-static void _dm_request(struct request_queue *q, struct bio *bio)
+static void dm_make_request(struct request_queue *q, struct bio *bio)
 {
 	int rw = bio_data_dir(bio);
 	struct mapped_device *md = q->queuedata;
@@ -1720,16 +1734,6 @@ static void _dm_request(struct request_queue *q, struct bio *bio)
 int dm_request_based(struct mapped_device *md)
 {
 	return blk_queue_stackable(md->queue);
-}
-
-static void dm_request(struct request_queue *q, struct bio *bio)
-{
-	struct mapped_device *md = q->queuedata;
-
-	if (dm_request_based(md))
-		blk_queue_bio(q, bio);
-	else
-		_dm_request(q, bio);
 }
 
 static void dm_dispatch_clone_request(struct request *clone, struct request *rq)
@@ -1931,6 +1935,12 @@ static void dm_start_request(struct mapped_device *md, struct request *orig)
 	blk_start_request(orig);
 	atomic_inc(&md->pending[rq_data_dir(orig)]);
 
+	if (md->seq_rq_merge_deadline_usecs) {
+		md->last_rq_pos = rq_end_sector(orig);
+		md->last_rq_rw = rq_data_dir(orig);
+		md->last_rq_start_time = ktime_get();
+	}
+
 	/*
 	 * Hold the md reference here for the in-flight I/O.
 	 * We can't rely on the reference count by device opener,
@@ -1939,6 +1949,45 @@ static void dm_start_request(struct mapped_device *md, struct request *orig)
 	 * See the comment in rq_completed() too.
 	 */
 	dm_get(md);
+}
+
+#define MAX_SEQ_RQ_MERGE_DEADLINE_USECS 100000
+
+ssize_t dm_attr_rq_based_seq_io_merge_deadline_show(struct mapped_device *md, char *buf)
+{
+	return sprintf(buf, "%u\n", md->seq_rq_merge_deadline_usecs);
+}
+
+ssize_t dm_attr_rq_based_seq_io_merge_deadline_store(struct mapped_device *md,
+						     const char *buf, size_t count)
+{
+	unsigned deadline;
+
+	if (!dm_request_based(md))
+		return count;
+
+	if (kstrtouint(buf, 10, &deadline))
+		return -EINVAL;
+
+	if (deadline > MAX_SEQ_RQ_MERGE_DEADLINE_USECS)
+		deadline = MAX_SEQ_RQ_MERGE_DEADLINE_USECS;
+
+	md->seq_rq_merge_deadline_usecs = deadline;
+
+	return count;
+}
+
+static bool dm_request_peeked_before_merge_deadline(struct mapped_device *md)
+{
+	ktime_t kt_deadline;
+
+	if (!md->seq_rq_merge_deadline_usecs)
+		return false;
+
+	kt_deadline = ns_to_ktime((u64)md->seq_rq_merge_deadline_usecs * NSEC_PER_USEC);
+	kt_deadline = ktime_add_safe(md->last_rq_start_time, kt_deadline);
+
+	return !ktime_after(ktime_get(), kt_deadline);
 }
 
 /*
@@ -1964,7 +2013,7 @@ static void dm_request_fn(struct request_queue *q)
 	while (!blk_queue_stopped(q)) {
 		rq = blk_peek_request(q);
 		if (!rq)
-			goto delay_and_out;
+			goto out;
 
 		/* always use block 0 to find the target for flushes for now */
 		pos = 0;
@@ -1983,6 +2032,11 @@ static void dm_request_fn(struct request_queue *q)
 			continue;
 		}
 
+		if (dm_request_peeked_before_merge_deadline(md) &&
+		    md_in_flight(md) && rq->bio && rq->bio->bi_vcnt == 1 &&
+		    md->last_rq_pos == pos && md->last_rq_rw == rq_data_dir(rq))
+			goto delay_and_out;
+
 		if (ti->type->busy && ti->type->busy(ti))
 			goto delay_and_out;
 
@@ -1998,31 +2052,9 @@ static void dm_request_fn(struct request_queue *q)
 	goto out;
 
 delay_and_out:
-	blk_delay_queue(q, HZ / 10);
+	blk_delay_queue(q, HZ / 100);
 out:
 	dm_put_live_table(md, srcu_idx);
-}
-
-int dm_underlying_device_busy(struct request_queue *q)
-{
-	return blk_lld_busy(q);
-}
-EXPORT_SYMBOL_GPL(dm_underlying_device_busy);
-
-static int dm_lld_busy(struct request_queue *q)
-{
-	int r;
-	struct mapped_device *md = q->queuedata;
-	struct dm_table *map = dm_get_live_table_fast(md);
-
-	if (!map || test_bit(DMF_BLOCK_IO_FOR_SUSPEND, &md->flags))
-		r = 1;
-	else
-		r = dm_table_any_busy_target(map);
-
-	dm_put_live_table_fast(md);
-
-	return r;
 }
 
 static int dm_any_congested(void *congested_data, int bdi_bits)
@@ -2119,9 +2151,8 @@ static void dm_init_md_queue(struct mapped_device *md)
 	md->queue->queuedata = md;
 	md->queue->backing_dev_info.congested_fn = dm_any_congested;
 	md->queue->backing_dev_info.congested_data = md;
-	blk_queue_make_request(md->queue, dm_request);
+
 	blk_queue_bounce_limit(md->queue, BLK_BOUNCE_ANY);
-	blk_queue_merge_bvec(md->queue, dm_merge_bvec);
 }
 
 /*
@@ -2352,7 +2383,7 @@ int dm_queue_merge_is_compulsory(struct request_queue *q)
 	if (!q->merge_bvec_fn)
 		return 0;
 
-	if (q->make_request_fn == dm_request) {
+	if (q->make_request_fn == dm_make_request) {
 		dev_md = q->queuedata;
 		if (test_bit(DMF_MERGE_IS_OPTIONAL, &dev_md->flags))
 			return 0;
@@ -2542,11 +2573,13 @@ static int dm_init_request_based_queue(struct mapped_device *md)
 	if (!q)
 		return 0;
 
+	/* disable dm_request_fn's merge heuristic by default */
+	md->seq_rq_merge_deadline_usecs = 0;
+
 	md->queue = q;
 	dm_init_md_queue(md);
 	blk_queue_softirq_done(md->queue, dm_softirq_done);
 	blk_queue_prep_rq(md->queue, dm_prep_fn);
-	blk_queue_lld_busy(md->queue, dm_lld_busy);
 
 	/* Also initialize the request-based DM worker thread */
 	init_kthread_worker(&md->kworker);
@@ -2563,9 +2596,15 @@ static int dm_init_request_based_queue(struct mapped_device *md)
  */
 int dm_setup_md_queue(struct mapped_device *md)
 {
-	if (dm_md_type_request_based(md) && !dm_init_request_based_queue(md)) {
-		DMWARN("Cannot initialize queue for request-based mapped device");
-		return -EINVAL;
+	if (dm_md_type_request_based(md)) {
+		if (!dm_init_request_based_queue(md)) {
+			DMWARN("Cannot initialize queue for request-based mapped device");
+			return -EINVAL;
+		}
+	} else {
+		/* bio-based specific initialization */
+		blk_queue_make_request(md->queue, dm_make_request);
+		blk_queue_merge_bvec(md->queue, dm_merge_bvec);
 	}
 
 	return 0;
@@ -2616,6 +2655,19 @@ void dm_get(struct mapped_device *md)
 	BUG_ON(test_bit(DMF_FREEING, &md->flags));
 }
 
+int dm_hold(struct mapped_device *md)
+{
+	spin_lock(&_minor_lock);
+	if (test_bit(DMF_FREEING, &md->flags)) {
+		spin_unlock(&_minor_lock);
+		return -EBUSY;
+	}
+	dm_get(md);
+	spin_unlock(&_minor_lock);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(dm_hold);
+
 const char *dm_device_name(struct mapped_device *md)
 {
 	return md->name;
@@ -2638,10 +2690,16 @@ static void __dm_destroy(struct mapped_device *md, bool wait)
 	if (dm_request_based(md))
 		flush_kthread_worker(&md->kworker);
 
+	/*
+	 * Take suspend_lock so that presuspend and postsuspend methods
+	 * do not race with internal suspend.
+	 */
+	mutex_lock(&md->suspend_lock);
 	if (!dm_suspended_md(md)) {
 		dm_table_presuspend_targets(map);
 		dm_table_postsuspend_targets(map);
 	}
+	mutex_unlock(&md->suspend_lock);
 
 	/* dm_put_live_table must be before msleep, otherwise deadlock is possible */
 	dm_put_live_table(md, srcu_idx);
@@ -3115,6 +3173,7 @@ void dm_internal_suspend_fast(struct mapped_device *md)
 	flush_workqueue(md->wq);
 	dm_wait_for_completion(md, TASK_UNINTERRUPTIBLE);
 }
+EXPORT_SYMBOL_GPL(dm_internal_suspend_fast);
 
 void dm_internal_resume_fast(struct mapped_device *md)
 {
@@ -3126,6 +3185,7 @@ void dm_internal_resume_fast(struct mapped_device *md)
 done:
 	mutex_unlock(&md->suspend_lock);
 }
+EXPORT_SYMBOL_GPL(dm_internal_resume_fast);
 
 /*-----------------------------------------------------------------
  * Event notification.
