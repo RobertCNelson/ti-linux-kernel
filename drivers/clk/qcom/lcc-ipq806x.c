@@ -386,13 +386,12 @@ static struct clk_rcg ahbix_clk = {
 	.freq_tbl = clk_tbl_ahbix,
 	.clkr = {
 		.enable_reg = 0x38,
-		.enable_mask = BIT(10), /* toggle the gfmux to select mn/pxo */
+		.enable_mask = BIT(11),
 		.hw.init = &(struct clk_init_data){
 			.name = "ahbix",
 			.parent_names = lcc_pxo_pll4,
 			.num_parents = 2,
-			.ops = &clk_rcg_ops,
-			.flags = CLK_SET_RATE_GATE,
+			.ops = &clk_rcg_lcc_ops,
 		},
 	},
 };
@@ -462,7 +461,6 @@ static struct platform_driver lcc_ipq806x_driver = {
 	.remove		= lcc_ipq806x_remove,
 	.driver		= {
 		.name	= "lcc-ipq806x",
-		.owner	= THIS_MODULE,
 		.of_match_table = lcc_ipq806x_match_table,
 	},
 };
