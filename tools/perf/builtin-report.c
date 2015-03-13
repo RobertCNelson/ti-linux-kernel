@@ -249,6 +249,8 @@ static int report__setup_sample_type(struct report *rep)
 		if ((sample_type & PERF_SAMPLE_REGS_USER) &&
 		    (sample_type & PERF_SAMPLE_STACK_USER))
 			callchain_param.record_mode = CALLCHAIN_DWARF;
+		else if (sample_type & PERF_SAMPLE_BRANCH_STACK)
+			callchain_param.record_mode = CALLCHAIN_LBR;
 		else
 			callchain_param.record_mode = CALLCHAIN_FP;
 	}
@@ -766,7 +768,7 @@ repeat:
 	 * 0/1 means the user chose a mode.
 	 */
 	if (((branch_mode == -1 && has_br_stack) || branch_mode == 1) &&
-	    branch_call_mode == -1) {
+	    !branch_call_mode) {
 		sort__mode = SORT_MODE__BRANCH;
 		symbol_conf.cumulate_callchain = false;
 	}
