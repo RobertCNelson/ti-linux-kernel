@@ -466,7 +466,7 @@ int sock_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 	skb_dst_force(skb);
 
 	spin_lock_irqsave(&list->lock, flags);
-	skb->dropcount = atomic_read(&sk->sk_drops);
+	sock_skb_set_dropcount(sk, skb);
 	__skb_queue_tail(list, skb);
 	spin_unlock_irqrestore(&list->lock, flags);
 
@@ -1455,7 +1455,6 @@ void sk_release_kernel(struct sock *sk)
 
 	sock_hold(sk);
 	sock_release(sk->sk_socket);
-	release_net(sock_net(sk));
 	sock_net_set(sk, get_net(&init_net));
 	sock_put(sk);
 }
@@ -1538,6 +1537,7 @@ struct sock *sk_clone_lock(const struct sock *sk, const gfp_t priority)
 		newsk->sk_err	   = 0;
 		newsk->sk_priority = 0;
 		newsk->sk_incoming_cpu = raw_smp_processor_id();
+		atomic64_set(&newsk->sk_cookie, 0);
 		/*
 		 * Before updating sk_refcnt, we must commit prior changes to memory
 		 * (Documentation/RCU/rculist_nulls.txt for details)
@@ -2167,15 +2167,14 @@ int sock_no_getsockopt(struct socket *sock, int level, int optname,
 }
 EXPORT_SYMBOL(sock_no_getsockopt);
 
-int sock_no_sendmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *m,
-		    size_t len)
+int sock_no_sendmsg(struct socket *sock, struct msghdr *m, size_t len)
 {
 	return -EOPNOTSUPP;
 }
 EXPORT_SYMBOL(sock_no_sendmsg);
 
-int sock_no_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *m,
-		    size_t len, int flags)
+int sock_no_recvmsg(struct socket *sock, struct msghdr *m, size_t len,
+		    int flags)
 {
 	return -EOPNOTSUPP;
 }
@@ -2547,14 +2546,14 @@ int compat_sock_common_getsockopt(struct socket *sock, int level, int optname,
 EXPORT_SYMBOL(compat_sock_common_getsockopt);
 #endif
 
-int sock_common_recvmsg(struct kiocb *iocb, struct socket *sock,
-			struct msghdr *msg, size_t size, int flags)
+int sock_common_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
+			int flags)
 {
 	struct sock *sk = sock->sk;
 	int addr_len = 0;
 	int err;
 
-	err = sk->sk_prot->recvmsg(iocb, sk, msg, size, flags & MSG_DONTWAIT,
+	err = sk->sk_prot->recvmsg(sk, msg, size, flags & MSG_DONTWAIT,
 				   flags & ~MSG_DONTWAIT, &addr_len);
 	if (err >= 0)
 		msg->msg_namelen = addr_len;
