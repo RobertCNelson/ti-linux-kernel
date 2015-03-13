@@ -28,10 +28,11 @@ struct rsnd_src {
 #define RSND_SRC_NAME_SIZE 16
 
 #define rsnd_src_convert_rate(p) ((p)->info->convert_rate)
+#define rsnd_src_of_node(priv) \
+	of_get_child_by_name(rsnd_priv_to_dev(priv)->of_node, "rcar_sound,src")
+
 #define rsnd_mod_to_src(_mod)				\
 	container_of((_mod), struct rsnd_src, mod)
-#define rsnd_src_dma_available(src) \
-	rsnd_dma_available(rsnd_mod_to_dma(&(src)->mod))
 
 #define for_each_rsnd_src(pos, priv, i)				\
 	for ((i) = 0;						\
@@ -113,6 +114,17 @@ struct rsnd_src {
 /*
  *		Gen1/Gen2 common functions
  */
+static struct dma_chan *rsnd_src_dma_req(struct rsnd_mod *mod)
+{
+	struct rsnd_priv *priv = rsnd_mod_to_priv(mod);
+	struct rsnd_dai_stream *io = rsnd_mod_to_io(mod);
+	int is_play = rsnd_io_is_play(io);
+
+	return rsnd_dma_request_channel(rsnd_src_of_node(priv),
+					mod,
+					is_play ? "rx" : "tx");
+}
+
 int rsnd_src_ssiu_start(struct rsnd_mod *ssi_mod,
 			int use_busif)
 {
@@ -505,6 +517,7 @@ static int rsnd_src_stop_gen1(struct rsnd_mod *mod,
 
 static struct rsnd_mod_ops rsnd_src_gen1_ops = {
 	.name	= SRC_NAME,
+	.dma_req = rsnd_src_dma_req,
 	.probe	= rsnd_src_probe_gen1,
 	.init	= rsnd_src_init_gen1,
 	.quit	= rsnd_src_quit,
@@ -713,7 +726,6 @@ static int rsnd_src_probe_gen2(struct rsnd_mod *mod,
 
 	ret = rsnd_dma_init(priv,
 			    rsnd_mod_to_dma(mod),
-			    rsnd_info_is_playback(priv, src),
 			    src->info->dma_id);
 	if (ret)
 		goto rsnd_src_probe_gen2_fail;
@@ -733,7 +745,7 @@ rsnd_src_probe_gen2_fail:
 static int rsnd_src_remove_gen2(struct rsnd_mod *mod,
 				struct rsnd_priv *priv)
 {
-	rsnd_dma_quit(priv, rsnd_mod_to_dma(mod));
+	rsnd_dma_quit(rsnd_mod_to_dma(mod));
 
 	return 0;
 }
@@ -780,6 +792,7 @@ static int rsnd_src_stop_gen2(struct rsnd_mod *mod,
 
 static struct rsnd_mod_ops rsnd_src_gen2_ops = {
 	.name	= SRC_NAME,
+	.dma_req = rsnd_src_dma_req,
 	.probe	= rsnd_src_probe_gen2,
 	.remove	= rsnd_src_remove_gen2,
 	.init	= rsnd_src_init_gen2,
@@ -810,7 +823,7 @@ static void rsnd_of_parse_src(struct platform_device *pdev,
 	if (!of_data)
 		return;
 
-	src_node = of_get_child_by_name(dev->of_node, "rcar_sound,src");
+	src_node = rsnd_src_of_node(priv);
 	if (!src_node)
 		return;
 

@@ -24,6 +24,9 @@ struct rsnd_dvc {
 	struct rsnd_kctrl_cfg_s rdown;	/* Ramp Rate Down */
 };
 
+#define rsnd_dvc_of_node(priv) \
+	of_get_child_by_name(rsnd_priv_to_dev(priv)->of_node, "rcar_sound,dvc")
+
 #define rsnd_mod_to_dvc(_mod)	\
 	container_of((_mod), struct rsnd_dvc, mod)
 
@@ -269,8 +272,17 @@ static int rsnd_dvc_pcm_new(struct rsnd_mod *mod,
 	return 0;
 }
 
+static struct dma_chan *rsnd_dvc_dma_req(struct rsnd_mod *mod)
+{
+	struct rsnd_priv *priv = rsnd_mod_to_priv(mod);
+
+	return rsnd_dma_request_channel(rsnd_dvc_of_node(priv),
+					mod, "tx");
+}
+
 static struct rsnd_mod_ops rsnd_dvc_ops = {
 	.name		= DVC_NAME,
+	.dma_req	= rsnd_dvc_dma_req,
 	.probe		= rsnd_dvc_probe_gen2,
 	.remove		= rsnd_dvc_remove_gen2,
 	.init		= rsnd_dvc_init,
