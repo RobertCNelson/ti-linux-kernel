@@ -30,7 +30,6 @@
 #include <linux/reboot.h>
 #include <sound/core.h>
 #include <sound/initval.h>
-#include "hda_priv.h"
 #include "hda_controller.h"
 
 #define CREATE_TRACE_POINTS
@@ -732,17 +731,32 @@ static snd_pcm_uframes_t azx_pcm_pointer(struct snd_pcm_substream *substream)
 			       azx_get_position(chip, azx_dev));
 }
 
-static int azx_get_wallclock_tstamp(struct snd_pcm_substream *substream,
-				struct timespec *ts)
+static int azx_get_time_info(struct snd_pcm_substream *substream,
+			struct timespec *system_ts, struct timespec *audio_ts,
+			struct snd_pcm_audio_tstamp_config *audio_tstamp_config,
+			struct snd_pcm_audio_tstamp_report *audio_tstamp_report)
 {
 	struct azx_dev *azx_dev = get_azx_dev(substream);
 	u64 nsec;
 
-	nsec = timecounter_read(&azx_dev->azx_tc);
-	nsec = div_u64(nsec, 3); /* can be optimized */
-	nsec = azx_adjust_codec_delay(substream, nsec);
+	if ((substream->runtime->hw.info & SNDRV_PCM_INFO_HAS_LINK_ATIME) &&
+		(audio_tstamp_config->type_requested == SNDRV_PCM_AUDIO_TSTAMP_TYPE_LINK)) {
 
-	*ts = ns_to_timespec(nsec);
+		snd_pcm_gettime(substream->runtime, system_ts);
+
+		nsec = timecounter_read(&azx_dev->azx_tc);
+		nsec = div_u64(nsec, 3); /* can be optimized */
+		if (audio_tstamp_config->report_delay)
+			nsec = azx_adjust_codec_delay(substream, nsec);
+
+		*audio_ts = ns_to_timespec(nsec);
+
+		audio_tstamp_report->actual_type = SNDRV_PCM_AUDIO_TSTAMP_TYPE_LINK;
+		audio_tstamp_report->accuracy_report = 1; /* rest of structure is valid */
+		audio_tstamp_report->accuracy = 42; /* 24 MHz WallClock == 42ns resolution */
+
+	} else
+		audio_tstamp_report->actual_type = SNDRV_PCM_AUDIO_TSTAMP_TYPE_DEFAULT;
 
 	return 0;
 }
@@ -756,7 +770,8 @@ static struct snd_pcm_hardware azx_pcm_hw = {
 				 /* SNDRV_PCM_INFO_RESUME |*/
 				 SNDRV_PCM_INFO_PAUSE |
 				 SNDRV_PCM_INFO_SYNC_START |
-				 SNDRV_PCM_INFO_HAS_WALL_CLOCK |
+				 SNDRV_PCM_INFO_HAS_WALL_CLOCK | /* legacy */
+				 SNDRV_PCM_INFO_HAS_LINK_ATIME |
 				 SNDRV_PCM_INFO_NO_PERIOD_WAKEUP),
 	.formats =		SNDRV_PCM_FMTBIT_S16_LE,
 	.rates =		SNDRV_PCM_RATE_48000,
@@ -842,10 +857,12 @@ static int azx_pcm_open(struct snd_pcm_substream *substream)
 		return -EINVAL;
 	}
 
-	/* disable WALLCLOCK timestamps for capture streams
+	/* disable LINK_ATIME timestamps for capture streams
 	   until we figure out how to handle digital inputs */
-	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
-		runtime->hw.info &= ~SNDRV_PCM_INFO_HAS_WALL_CLOCK;
+	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
+		runtime->hw.info &= ~SNDRV_PCM_INFO_HAS_WALL_CLOCK; /* legacy */
+		runtime->hw.info &= ~SNDRV_PCM_INFO_HAS_LINK_ATIME;
+	}
 
 	spin_lock_irqsave(&chip->reg_lock, flags);
 	azx_dev->substream = substream;
@@ -877,7 +894,7 @@ static struct snd_pcm_ops azx_pcm_ops = {
 	.prepare = azx_pcm_prepare,
 	.trigger = azx_pcm_trigger,
 	.pointer = azx_pcm_pointer,
-	.wall_clock =  azx_get_wallclock_tstamp,
+	.get_time_info =  azx_get_time_info,
 	.mmap = azx_pcm_mmap,
 	.page = snd_pcm_sgbuf_ops_page,
 };
@@ -1676,7 +1693,7 @@ irqreturn_t azx_interrupt(int irq, void *dev_id)
 	int i;
 
 #ifdef CONFIG_PM
-	if (chip->driver_caps & AZX_DCAPS_PM_RUNTIME)
+	if (azx_has_pm_runtime(chip))
 		if (!pm_runtime_active(chip->card->dev))
 			return IRQ_NONE;
 #endif
@@ -1779,7 +1796,7 @@ static void azx_power_notify(struct hda_bus *bus, bool power_up)
 {
 	struct azx *chip = bus->private_data;
 
-	if (!(chip->driver_caps & AZX_DCAPS_PM_RUNTIME))
+	if (!azx_has_pm_runtime(chip))
 		return;
 
 	if (power_up)
@@ -1810,40 +1827,64 @@ static int get_jackpoll_interval(struct azx *chip)
 	return j;
 }
 
-/* Codec initialization */
-int azx_codec_create(struct azx *chip, const char *model,
-		     unsigned int max_slots,
-		     int *power_save_to)
-{
-	struct hda_bus_template bus_temp;
-	int c, codecs, err;
-
-	memset(&bus_temp, 0, sizeof(bus_temp));
-	bus_temp.private_data = chip;
-	bus_temp.modelname = model;
-	bus_temp.pci = chip->pci;
-	bus_temp.ops.command = azx_send_cmd;
-	bus_temp.ops.get_response = azx_get_response;
-	bus_temp.ops.attach_pcm = azx_attach_pcm_stream;
-	bus_temp.ops.bus_reset = azx_bus_reset;
+static struct hda_bus_ops bus_ops = {
+	.command = azx_send_cmd,
+	.get_response = azx_get_response,
+	.attach_pcm = azx_attach_pcm_stream,
+	.bus_reset = azx_bus_reset,
 #ifdef CONFIG_PM
-	bus_temp.power_save = power_save_to;
-	bus_temp.ops.pm_notify = azx_power_notify;
+	.pm_notify = azx_power_notify,
 #endif
 #ifdef CONFIG_SND_HDA_DSP_LOADER
-	bus_temp.ops.load_dsp_prepare = azx_load_dsp_prepare;
-	bus_temp.ops.load_dsp_trigger = azx_load_dsp_trigger;
-	bus_temp.ops.load_dsp_cleanup = azx_load_dsp_cleanup;
+	.load_dsp_prepare = azx_load_dsp_prepare,
+	.load_dsp_trigger = azx_load_dsp_trigger,
+	.load_dsp_cleanup = azx_load_dsp_cleanup,
 #endif
+};
 
-	err = snd_hda_bus_new(chip->card, &bus_temp, &chip->bus);
+/* HD-audio bus initialization */
+int azx_bus_create(struct azx *chip, const char *model, int *power_save_to)
+{
+	struct hda_bus *bus;
+	int err;
+
+	err = snd_hda_bus_new(chip->card, &bus);
 	if (err < 0)
 		return err;
 
+	chip->bus = bus;
+	bus->private_data = chip;
+	bus->pci = chip->pci;
+	bus->modelname = model;
+	bus->ops = bus_ops;
+#ifdef CONFIG_PM
+	bus->power_save = power_save_to;
+#endif
+
 	if (chip->driver_caps & AZX_DCAPS_RIRB_DELAY) {
 		dev_dbg(chip->card->dev, "Enable delay in RIRB handling\n");
-		chip->bus->needs_damn_long_delay = 1;
+		bus->needs_damn_long_delay = 1;
 	}
+
+	/* AMD chipsets often cause the communication stalls upon certain
+	 * sequence like the pin-detection.  It seems that forcing the synced
+	 * access works around the stall.  Grrr...
+	 */
+	if (chip->driver_caps & AZX_DCAPS_SYNC_WRITE) {
+		dev_dbg(chip->card->dev, "Enable sync_write for stable communication\n");
+		bus->sync_write = 1;
+		bus->allow_bus_reset = 1;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(azx_bus_create);
+
+/* Probe codecs */
+int azx_probe_codecs(struct azx *chip, unsigned int max_slots)
+{
+	struct hda_bus *bus = chip->bus;
+	int c, codecs, err;
 
 	codecs = 0;
 	if (!max_slots)
@@ -1872,21 +1913,11 @@ int azx_codec_create(struct azx *chip, const char *model,
 		}
 	}
 
-	/* AMD chipsets often cause the communication stalls upon certain
-	 * sequence like the pin-detection.  It seems that forcing the synced
-	 * access works around the stall.  Grrr...
-	 */
-	if (chip->driver_caps & AZX_DCAPS_SYNC_WRITE) {
-		dev_dbg(chip->card->dev, "Enable sync_write for stable communication\n");
-		chip->bus->sync_write = 1;
-		chip->bus->allow_bus_reset = 1;
-	}
-
 	/* Then create codec instances */
 	for (c = 0; c < max_slots; c++) {
 		if ((chip->codec_mask & (1 << c)) & chip->codec_probe_mask) {
 			struct hda_codec *codec;
-			err = snd_hda_codec_new(chip->bus, c, &codec);
+			err = snd_hda_codec_new(bus, c, &codec);
 			if (err < 0)
 				continue;
 			codec->jackpoll_interval = get_jackpoll_interval(chip);
@@ -1900,7 +1931,7 @@ int azx_codec_create(struct azx *chip, const char *model,
 	}
 	return 0;
 }
-EXPORT_SYMBOL_GPL(azx_codec_create);
+EXPORT_SYMBOL_GPL(azx_probe_codecs);
 
 /* configure each codec instance */
 int azx_codec_configure(struct azx *chip)
@@ -1912,13 +1943,6 @@ int azx_codec_configure(struct azx *chip)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(azx_codec_configure);
-
-/* mixer creation - all stuff is implemented in hda module */
-int azx_mixer_create(struct azx *chip)
-{
-	return snd_hda_build_controls(chip->bus);
-}
-EXPORT_SYMBOL_GPL(azx_mixer_create);
 
 
 static bool is_input_stream(struct azx *chip, unsigned char index)
