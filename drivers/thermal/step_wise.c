@@ -148,7 +148,6 @@ static void thermal_zone_trip_update(struct thermal_zone_device *tz, int trip)
 	dev_dbg(&tz->device, "Trip%d[type=%d,temp=%ld]:trend=%d,throttle=%d\n",
 				trip, trip_type, trip_temp, trend, throttle);
 
-	mutex_lock(&tz->lock);
 
 	list_for_each_entry(instance, &tz->thermal_instances, tz_node) {
 		if (instance->trip != trip)
@@ -175,8 +174,6 @@ static void thermal_zone_trip_update(struct thermal_zone_device *tz, int trip)
 		instance->initialized = true;
 		instance->cdev->updated = false; /* cdev needs update */
 	}
-
-	mutex_unlock(&tz->lock);
 }
 
 /**
@@ -200,12 +197,9 @@ static int step_wise_throttle(struct thermal_zone_device *tz, int trip)
 	if (tz->forced_passive)
 		thermal_zone_trip_update(tz, THERMAL_TRIPS_NONE);
 
-	mutex_lock(&tz->lock);
 
 	list_for_each_entry(instance, &tz->thermal_instances, tz_node)
 		thermal_cdev_update(instance->cdev);
-
-	mutex_unlock(&tz->lock);
 
 	return 0;
 }

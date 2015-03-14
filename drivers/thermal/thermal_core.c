@@ -345,16 +345,12 @@ static void thermal_zone_device_set_polling(struct thermal_zone_device *tz,
 
 static void monitor_thermal_zone(struct thermal_zone_device *tz)
 {
-	mutex_lock(&tz->lock);
-
 	if (tz->passive)
 		thermal_zone_device_set_polling(tz, tz->passive_delay);
 	else if (tz->polling_delay)
 		thermal_zone_device_set_polling(tz, tz->polling_delay);
 	else
 		thermal_zone_device_set_polling(tz, 0);
-
-	mutex_unlock(&tz->lock);
 }
 
 static void handle_non_critical_trips(struct thermal_zone_device *tz,
@@ -427,12 +423,10 @@ int thermal_zone_get_temp(struct thermal_zone_device *tz, unsigned long *temp)
 	if (!tz || IS_ERR(tz) || !tz->ops->get_temp)
 		goto exit;
 
-	mutex_lock(&tz->lock);
-
 	ret = tz->ops->get_temp(tz, temp);
 #ifdef CONFIG_THERMAL_EMULATION
 	if (!tz->emul_temperature)
-		goto skip_emul;
+		goto exit;
 
 	for (count = 0; count < tz->trips; count++) {
 		ret = tz->ops->get_trip_type(tz, count, &type);
@@ -443,13 +437,11 @@ int thermal_zone_get_temp(struct thermal_zone_device *tz, unsigned long *temp)
 	}
 
 	if (ret)
-		goto skip_emul;
+		goto exit;
 
 	if (*temp < crit_temp)
 		*temp = tz->emul_temperature;
-skip_emul:
 #endif
-	mutex_unlock(&tz->lock);
 exit:
 	return ret;
 }
@@ -467,10 +459,8 @@ static void update_temperature(struct thermal_zone_device *tz)
 		return;
 	}
 
-	mutex_lock(&tz->lock);
 	tz->last_temperature = tz->temperature;
 	tz->temperature = temp;
-	mutex_unlock(&tz->lock);
 
 	trace_thermal_temperature(tz);
 	if (tz->last_temperature == THERMAL_TEMP_INVALID)
@@ -501,10 +491,14 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 	if (!tz->ops->get_temp)
 		return;
 
+	mutex_lock(&tz->lock);
+
 	update_temperature(tz);
 
 	for (count = 0; count < tz->trips; count++)
 		handle_thermal_trip(tz, count);
+
+	mutex_unlock(&tz->lock);
 }
 EXPORT_SYMBOL_GPL(thermal_zone_device_update);
 

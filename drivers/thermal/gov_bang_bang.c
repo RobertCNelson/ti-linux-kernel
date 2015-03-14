@@ -36,8 +36,6 @@ static void thermal_zone_trip_update(struct thermal_zone_device *tz, int trip)
 				trip, trip_temp, tz->temperature,
 				trip_hyst);
 
-	mutex_lock(&tz->lock);
-
 	list_for_each_entry(instance, &tz->thermal_instances, tz_node) {
 		if (instance->trip != trip)
 			continue;
@@ -68,8 +66,6 @@ static void thermal_zone_trip_update(struct thermal_zone_device *tz, int trip)
 
 		instance->cdev->updated = false; /* cdev needs update */
 	}
-
-	mutex_unlock(&tz->lock);
 }
 
 /**
@@ -105,12 +101,8 @@ static int bang_bang_control(struct thermal_zone_device *tz, int trip)
 
 	thermal_zone_trip_update(tz, trip);
 
-	mutex_lock(&tz->lock);
-
 	list_for_each_entry(instance, &tz->thermal_instances, tz_node)
 		thermal_cdev_update(instance->cdev);
-
-	mutex_unlock(&tz->lock);
 
 	return 0;
 }
