@@ -1,0 +1,88 @@
+next/fixes-non-critical
+	patch
+		ARM: cns3xxx: don't export static symbol
+
+next/cleanup
+	mvebu/cleanup
+		git://git.infradead.org/linux-mvebu tags/mvebu-cleanup-4.1
+	at91/cleanup2
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-cleanup2
+
+next/drivers
+	drivers/simple-pm-bus
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-simple-pm-bus-for-v4.1
+
+next/multiplatform
+	renesas/soc-cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-cleanup-for-v4.1
+	renesas/sh7372-soc-removal
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-sh7372-soc-removal-for-v4.1
+	shmobile/multiplatform-r8a7778
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-r8a7778-ccf-and-multiplatform-for-v4.1
+		contains drivers/simple-pm-bus
+
+next/soc
+	renesas/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-for-v4.1
+	meson/soc
+		https://github.com/carlocaione/linux-meson tags/for-v4.0-rc/meson-soc
+	mvebu/soc
+		git://git.infradead.org/linux-mvebu tags/mvebu-soc-4.1
+
+next/dt
+	renesas/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-for-v4.1
+	meson/dt
+		https://github.com/carlocaione/linux-meson tags/for-v4.0-rc/meson-dts
+	patch
+		devicetree: Add TI-NSPIRE USB OTG support to device tree
+	at91/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-dt
+	broadcom/dt
+		http://github.com/broadcom/stblinux tags/arm-soc/for-4.1/devicetree
+	mvebu/dt
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-4.1
+	renesas/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt2-for-v4.1
+
+next/arm64
+	patch
+		ARM64: Add new Xilinx ZynqMP SoC
+		arm64: dts: Add support for Spreadtrum SC9836 SoC in dts and Makefile
+		arm64: Add support for Spreadtrum's Sharkl64 Platform in Kconfig and defconfig
+
+next/defconfig
+	mvebu/defconfig
+		git://git.infradead.org/linux-mvebu tags/mvebu-defconfig-4.1
+
+fixes
+	<no branch> (2d2c9a8d0a4f90e298315d2f4a282d8bd5d45e5c)
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-fixes-dt
+	<no branch> (ace283a04a4a6c2e04814c43251191ef8f229b26)
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-fixes-1
+	<no branch> (2141102e045e622cac176891cb66c5bf08e439f5)
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-fixes
+	patch
+		ARM: sunxi_defconfig: increase the number of maximum number of CPUs to 8
+		ARM: multi_v7_defconfig: increase the number of maximum number of CPUs to 16
+		MAINTAINERS: Remove self as ARM mach-bcm co-maintainer
+		MAINTAINERS: add Freescale Vybrid SoC
+	<no branch> (cee9b8d6b8b7d82bfb34e4700d839aec76519f02)
+		git://git.rocketboards.org/linux-socfpga-next tags/socfpga_fixes_for_v4.0
+	<no branch> (5957457a2d96e4c9b2fecd40f29cdb3bb841d75e)
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-fixes2
+	patch
+		ARM: STi: Add STiH410 SoC support
+	<no branch> (5b7610f235627878617648a99dd1442997f1c889)
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/fixes-v4.0-rc2
+	patch
+		ARM: digicolor: add the machine directory to Makefile
+		ARM: vexpress: update CONFIG_USB_ISP1760 option
+	<no branch> (2de9dd0391a74e80922c1bc95a78cedf85bcdc9e)
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-fixes-4.0
+	<no branch> (e7b848d731cdf681e06138a2ae4380220a6baac8)
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-fixes3
+	patch
+		MAINTAINERS: Add myself as co-maintainer to the legacy support of the mvebu SoCs
+
+
