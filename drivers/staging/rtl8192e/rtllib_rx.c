@@ -394,10 +394,9 @@ static int is_duplicate_packet(struct rtllib_device *ieee,
 		}
 		if (p == &ieee->ibss_mac_hash[index]) {
 			entry = kmalloc(sizeof(struct ieee_ibss_seq), GFP_ATOMIC);
-			if (!entry) {
-				printk(KERN_WARNING "Cannot malloc new mac entry\n");
+			if (!entry)
 				return 0;
-			}
+
 			memcpy(entry->mac, mac, ETH_ALEN);
 			entry->seq_num[tid] = seq;
 			entry->frag_num[tid] = frag;
@@ -1226,7 +1225,6 @@ static void rtllib_rx_indicate_pkt_legacy(struct rtllib_device *ieee,
 		}
 	}
 	kfree(rxb);
-	rxb = NULL;
 }
 
 static int rtllib_rx_InfraAdhoc(struct rtllib_device *ieee, struct sk_buff *skb,
@@ -1345,11 +1343,9 @@ static int rtllib_rx_InfraAdhoc(struct rtllib_device *ieee, struct sk_buff *skb,
 	/* skb: hdr + (possible reassembled) full plaintext payload */
 	payload = skb->data + hdrlen;
 	rxb = kmalloc(sizeof(struct rtllib_rxb), GFP_ATOMIC);
-	if (rxb == NULL) {
-		RTLLIB_DEBUG(RTLLIB_DL_ERR,
-			     "%s(): kmalloc rxb error\n", __func__);
+	if (rxb == NULL)
 		goto rx_dropped;
-	}
+
 	/* to parse amsdu packets */
 	/* qos data packets & reserved bit is 1 */
 	if (parse_subframe(ieee, skb, rx_stats, rxb, src, dst) == 0) {
@@ -1908,7 +1904,7 @@ int rtllib_parse_info_param(struct rtllib_device *ieee,
 				   info_element->data[2] == 0x4c &&
 				   info_element->data[3] == 0x033) {
 
-						tmp_htcap_len = min(info_element->len, (u8)MAX_IE_LEN);
+						tmp_htcap_len = min_t(u8, info_element->len, MAX_IE_LEN);
 						if (tmp_htcap_len != 0) {
 							network->bssht.bdHTSpecVer = HT_SPEC_VER_EWC;
 							network->bssht.bdHTCapLen = tmp_htcap_len > sizeof(network->bssht.bdHTCapBuf) ?
@@ -1932,7 +1928,7 @@ int rtllib_parse_info_param(struct rtllib_device *ieee,
 				    info_element->data[1] == 0x90 &&
 				    info_element->data[2] == 0x4c &&
 				    info_element->data[3] == 0x034) {
-					tmp_htinfo_len = min(info_element->len, (u8)MAX_IE_LEN);
+					tmp_htinfo_len = min_t(u8, info_element->len, MAX_IE_LEN);
 					if (tmp_htinfo_len != 0) {
 						network->bssht.bdHTSpecVer = HT_SPEC_VER_EWC;
 						if (tmp_htinfo_len) {
@@ -1953,7 +1949,7 @@ int rtllib_parse_info_param(struct rtllib_device *ieee,
 					    info_element->data[1] == 0xe0 &&
 					    info_element->data[2] == 0x4c &&
 					    info_element->data[3] == 0x02) {
-						ht_realtek_agg_len = min(info_element->len, (u8)MAX_IE_LEN);
+						ht_realtek_agg_len = min_t(u8, info_element->len, MAX_IE_LEN);
 						memcpy(ht_realtek_agg_buf, info_element->data, info_element->len);
 					}
 					if (ht_realtek_agg_len >= 5) {
@@ -2083,7 +2079,7 @@ int rtllib_parse_info_param(struct rtllib_device *ieee,
 		case MFIE_TYPE_HT_CAP:
 			RTLLIB_DEBUG_SCAN("MFIE_TYPE_HT_CAP: %d bytes\n",
 					     info_element->len);
-			tmp_htcap_len = min(info_element->len, (u8)MAX_IE_LEN);
+			tmp_htcap_len = min_t(u8, info_element->len, MAX_IE_LEN);
 			if (tmp_htcap_len != 0) {
 				network->bssht.bdHTSpecVer = HT_SPEC_VER_EWC;
 				network->bssht.bdHTCapLen = tmp_htcap_len > sizeof(network->bssht.bdHTCapBuf) ?
@@ -2110,7 +2106,7 @@ int rtllib_parse_info_param(struct rtllib_device *ieee,
 		case MFIE_TYPE_HT_INFO:
 			RTLLIB_DEBUG_SCAN("MFIE_TYPE_HT_INFO: %d bytes\n",
 					     info_element->len);
-			tmp_htinfo_len = min(info_element->len, (u8)MAX_IE_LEN);
+			tmp_htinfo_len = min_t(u8, info_element->len, MAX_IE_LEN);
 			if (tmp_htinfo_len) {
 				network->bssht.bdHTSpecVer = HT_SPEC_VER_IEEE;
 				network->bssht.bdHTInfoLen = tmp_htinfo_len >

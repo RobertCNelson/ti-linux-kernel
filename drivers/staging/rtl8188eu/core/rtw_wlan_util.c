@@ -88,35 +88,25 @@ int cckratesonly_included(unsigned char *rate, int ratelen)
 
 unsigned char networktype_to_raid(unsigned char network_type)
 {
-	unsigned char raid;
-
 	switch (network_type) {
 	case WIRELESS_11B:
-		raid = RATR_INX_WIRELESS_B;
-		break;
+		return RATR_INX_WIRELESS_B;
 	case WIRELESS_11A:
 	case WIRELESS_11G:
-		raid = RATR_INX_WIRELESS_G;
-		break;
+		return RATR_INX_WIRELESS_G;
 	case WIRELESS_11BG:
-		raid = RATR_INX_WIRELESS_GB;
-		break;
+		return RATR_INX_WIRELESS_GB;
 	case WIRELESS_11_24N:
 	case WIRELESS_11_5N:
-		raid = RATR_INX_WIRELESS_N;
-		break;
+		return RATR_INX_WIRELESS_N;
 	case WIRELESS_11A_5N:
 	case WIRELESS_11G_24N:
-		raid = RATR_INX_WIRELESS_NG;
-		break;
+		return  RATR_INX_WIRELESS_NG;
 	case WIRELESS_11BG_24N:
-		raid = RATR_INX_WIRELESS_NGB;
-		break;
+		return RATR_INX_WIRELESS_NGB;
 	default:
-		raid = RATR_INX_WIRELESS_GB;
-		break;
+		return RATR_INX_WIRELESS_GB;
 	}
-	return raid;
 }
 
 u8 judge_network_type(struct adapter *padapter, unsigned char *rate, int ratelen)
@@ -659,8 +649,6 @@ void WMMOnAssocRsp(struct adapter *padapter)
 		pxmitpriv->wmm_para_seq[i] = inx[i];
 		DBG_88E("wmm_para_seq(%d): %d\n", i, pxmitpriv->wmm_para_seq[i]);
 	}
-
-	return;
 }
 
 static void bwmode_update_check(struct adapter *padapter, struct ndis_802_11_var_ie *pIE)
@@ -1309,7 +1297,7 @@ int support_short_GI(struct adapter *padapter, struct HT_caps_element *pHT_caps)
 	if (!(pmlmeinfo->HT_enable))
 		return _FAIL;
 
-	if ((pmlmeinfo->assoc_AP_vendor == HT_IOT_PEER_RALINK))
+	if (pmlmeinfo->assoc_AP_vendor == HT_IOT_PEER_RALINK)
 		return _FAIL;
 
 	bit_offset = (pmlmeext->cur_bwmode & HT_CHANNEL_WIDTH_40) ? 6 : 5;
