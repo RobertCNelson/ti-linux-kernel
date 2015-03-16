@@ -406,9 +406,6 @@ static int fuse_flush(struct file *file, fl_owner_t id)
 	if (is_bad_inode(inode))
 		return -EIO;
 
-	if (fc->no_flush)
-		return 0;
-
 	err = write_inode_now(inode, 1);
 	if (err)
 		return err;
@@ -416,6 +413,9 @@ static int fuse_flush(struct file *file, fl_owner_t id)
 	mutex_lock(&inode->i_mutex);
 	fuse_sync_writes(inode);
 	mutex_unlock(&inode->i_mutex);
+
+	if (fc->no_flush)
+		return 0;
 
 	req = fuse_get_req_nofail_nopages(fc, file);
 	memset(&inarg, 0, sizeof(inarg));
