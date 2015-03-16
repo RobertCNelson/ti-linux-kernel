@@ -94,7 +94,7 @@ static inline void tegra_irq_write_mask(unsigned int irq, unsigned long reg)
 	base = ictlr_reg_base[(irq - FIRST_LEGACY_IRQ) / 32];
 	mask = BIT((irq - FIRST_LEGACY_IRQ) % 32);
 
-	__raw_writel(mask, base + reg);
+	writel_relaxed(mask, base + reg);
 }
 
 static void tegra_mask(struct irq_data *d)
