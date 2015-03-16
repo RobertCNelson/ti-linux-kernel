@@ -17,6 +17,7 @@
 #include <linux/vfs.h>
 #include <linux/seq_file.h>
 #include <linux/parser.h>
+#include <linux/uio.h>
 #include <linux/blkdev.h>
 #include <asm/unaligned.h>
 #include "fat.h"
