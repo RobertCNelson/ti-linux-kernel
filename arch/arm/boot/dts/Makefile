@@ -1,5 +1,7 @@
 ifeq ($(CONFIG_OF),y)
 
+dtb-$(CONFIG_ARCH_ALPINE) += \
+	alpine_db.dtb
 dtb-$(CONFIG_MACH_ASM9260) += \
 	alphascale-asm9260-devkit.dtb
 # Keep at91 dtb files sorted alphabetically for each SoC
@@ -42,6 +44,7 @@ dtb-$(CONFIG_SOC_SAM_V7) += \
 	sama5d34ek.dtb \
 	sama5d35ek.dtb \
 	sama5d36ek.dtb \
+	at91-sama5d4_xplained.dtb \
 	at91-sama5d4ek.dtb
 dtb-$(CONFIG_ARCH_ATLAS6) += \
 	atlas6-evb.dtb
@@ -59,13 +62,15 @@ dtb-$(CONFIG_ARCH_BCM_5301X) += \
 	bcm4708-netgear-r6300-v2.dtb \
 	bcm47081-asus-rt-n18u.dtb \
 	bcm47081-buffalo-wzr-600dhp2.dtb \
-	bcm47081-buffalo-wzr-900dhp.dtb
+	bcm47081-buffalo-wzr-900dhp.dtb \
+	bcm4709-netgear-r8000.dtb
 dtb-$(CONFIG_ARCH_BCM_63XX) += \
 	bcm963138dvt.dtb
 dtb-$(CONFIG_ARCH_BCM_CYGNUS) += \
 	bcm911360_entphn.dtb \
 	bcm911360k.dtb \
-	bcm958300k.dtb
+	bcm958300k.dtb \
+	bcm958305k.dtb
 dtb-$(CONFIG_ARCH_BCM_MOBILE) += \
 	bcm28155-ap.dtb \
 	bcm21664-garnet.dtb
@@ -199,6 +204,8 @@ dtb-$(CONFIG_ARCH_LPC32XX) += \
 	ea3250.dtb phy3250.dtb
 dtb-$(CONFIG_MACH_MESON6) += \
 	meson6-atv1200.dtb
+dtb-$(CONFIG_MACH_MESON8) += \
+	meson8-minix-neo-x8.dtb
 dtb-$(CONFIG_ARCH_MMP) += \
 	pxa168-aspenite.dtb \
 	pxa910-dkb.dtb \
@@ -470,7 +477,6 @@ dtb-$(CONFIG_ARCH_SHMOBILE_LEGACY) += \
 	r8a7778-bockw.dtb \
 	r8a7778-bockw-reference.dtb \
 	r8a7779-marzen.dtb \
-	sh7372-mackerel.dtb \
 	sh73a0-kzm9g.dtb \
 	sh73a0-kzm9g-reference.dtb
 dtb-$(CONFIG_ARCH_SHMOBILE_MULTI) += \
@@ -478,6 +484,7 @@ dtb-$(CONFIG_ARCH_SHMOBILE_MULTI) += \
 	r7s72100-genmai.dtb \
 	r8a73a4-ape6evm.dtb \
 	r8a7740-armadillo800eva.dtb \
+	r8a7778-bockw.dtb \
 	r8a7779-marzen.dtb \
 	r8a7790-lager.dtb \
 	r8a7791-henninger.dtb \
@@ -624,11 +631,14 @@ dtb-$(CONFIG_MACH_ARMADA_38X) += \
 	armada-388-db.dtb \
 	armada-388-gp.dtb \
 	armada-388-rd.dtb
+dtb-$(CONFIG_MACH_ARMADA_39X) += \
+	armada-398-db.dtb
 dtb-$(CONFIG_MACH_ARMADA_XP) += \
 	armada-xp-axpwifiap.dtb \
 	armada-xp-db.dtb \
 	armada-xp-gp.dtb \
 	armada-xp-lenovo-ix4-300d.dtb \
+	armada-xp-linksys-mamba.dtb \
 	armada-xp-matrix.dtb \
 	armada-xp-netgear-rn2120.dtb \
 	armada-xp-openblocks-ax3-4.dtb \
