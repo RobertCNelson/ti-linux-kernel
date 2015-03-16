@@ -606,12 +606,26 @@ static int sh_msiof_spi_txrx_once(struct sh_msiof_spi_priv *p,
 {
 	int fifo_shift;
 	int ret;
+	int rx_words = min_t(int, words, p->rx_fifo_size);
+	int tx_words = min_t(int, words, p->tx_fifo_size);
 
-	/* limit maximum word transfer to rx/tx fifo size */
-	if (tx_buf)
-		words = min_t(int, words, p->tx_fifo_size);
-	if (rx_buf)
-		words = min_t(int, words, p->rx_fifo_size);
+	/*
+	 * limit maximum word transfer to rx/tx fifo size.
+	 *
+	 * If SPI_MASTER_MUST_TX was enabled in master_flags, words was
+	 * set to small value of FIFO.
+	 */
+	if (p->chipdata->master_flags & SPI_MASTER_MUST_TX) {
+		if (rx_words > tx_words)
+			words = tx_words;
+		else
+			words = rx_words;
+	} else {
+		if (tx_buf)
+			words = tx_words;
+		if (rx_buf)
+			words = rx_words;
+	}
 
 	/* the fifo contents need shifting */
 	fifo_shift = 32 - bits;
