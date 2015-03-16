@@ -47,7 +47,23 @@ struct hci_pinfo {
 	struct hci_filter filter;
 	__u32             cmsg_mask;
 	unsigned short    channel;
+	unsigned long     flags;
 };
+
+void hci_sock_set_flag(struct sock *sk, int nr)
+{
+	set_bit(nr, &hci_pi(sk)->flags);
+}
+
+void hci_sock_clear_flag(struct sock *sk, int nr)
+{
+	clear_bit(nr, &hci_pi(sk)->flags);
+}
+
+int hci_sock_test_flag(struct sock *sk, int nr)
+{
+	return test_bit(nr, &hci_pi(sk)->flags);
+}
 
 static inline int hci_test_bit(int nr, const void *addr)
 {
@@ -188,7 +204,7 @@ void hci_send_to_sock(struct hci_dev *hdev, struct sk_buff *skb)
 
 /* Send frame to sockets with specific channel */
 void hci_send_to_channel(unsigned short channel, struct sk_buff *skb,
-			 struct sock *skip_sk)
+			 int flag, struct sock *skip_sk)
 {
 	struct sock *sk;
 
@@ -198,6 +214,10 @@ void hci_send_to_channel(unsigned short channel, struct sk_buff *skb,
 
 	sk_for_each(sk, &hci_sk_list.head) {
 		struct sk_buff *nskb;
+
+		/* Ignore socket without the flag set */
+		if (!hci_sock_test_flag(sk, flag))
+			continue;
 
 		/* Skip the original socket */
 		if (sk == skip_sk)
@@ -266,7 +286,8 @@ void hci_send_to_monitor(struct hci_dev *hdev, struct sk_buff *skb)
 	hdr->index = cpu_to_le16(hdev->id);
 	hdr->len = cpu_to_le16(skb->len);
 
-	hci_send_to_channel(HCI_CHANNEL_MONITOR, skb_copy, NULL);
+	hci_send_to_channel(HCI_CHANNEL_MONITOR, skb_copy,
+			    HCI_SOCK_TRUSTED, NULL);
 	kfree_skb(skb_copy);
 }
 
@@ -373,7 +394,8 @@ void hci_sock_dev_event(struct hci_dev *hdev, int event)
 
 		skb = create_monitor_event(hdev, event);
 		if (skb) {
-			hci_send_to_channel(HCI_CHANNEL_MONITOR, skb, NULL);
+			hci_send_to_channel(HCI_CHANNEL_MONITOR, skb,
+					    HCI_SOCK_TRUSTED, NULL);
 			kfree_skb(skb);
 		}
 	}
@@ -752,6 +774,11 @@ static int hci_sock_bind(struct socket *sock, struct sockaddr *addr,
 			goto done;
 		}
 
+		/* The monitor interface is restricted to CAP_NET_RAW
+		 * capabilities and with that implicitly trusted.
+		 */
+		hci_sock_set_flag(sk, HCI_SOCK_TRUSTED);
+
 		send_monitor_replay(sk);
 
 		atomic_inc(&monitor_promisc);
@@ -768,11 +795,29 @@ static int hci_sock_bind(struct socket *sock, struct sockaddr *addr,
 			goto done;
 		}
 
-		if (!capable(CAP_NET_ADMIN)) {
-			err = -EPERM;
-			goto done;
-		}
+		/* Users with CAP_NET_ADMIN capabilities are allowed
+		 * access to all management commands and events. For
+		 * untrusted users the interface is restricted and
+		 * also only untrusted events are sent.
+		 */
+		if (capable(CAP_NET_ADMIN))
+			hci_sock_set_flag(sk, HCI_SOCK_TRUSTED);
 
+		/* At the moment the index and unconfigured index events
+		 * are enabled unconditionally. Setting them on each
+		 * socket when binding keeps this functionality. They
+		 * however might be cleared later and then sending of these
+		 * events will be disabled, but that is then intentional.
+		 *
+		 * This also enables generic events that are safe to be
+		 * received by untrusted users. Example for such events
+		 * are changes to settings, class of device, name etc.
+		 */
+		if (haddr.hci_channel == HCI_CHANNEL_CONTROL) {
+			hci_sock_set_flag(sk, HCI_MGMT_INDEX_EVENTS);
+			hci_sock_set_flag(sk, HCI_MGMT_UNCONF_INDEX_EVENTS);
+			hci_sock_set_flag(sk, HCI_MGMT_GENERIC_EVENTS);
+		}
 		break;
 	}
 
