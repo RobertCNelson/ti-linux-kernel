@@ -179,6 +179,15 @@ enum {
 	HCI_RESET,
 };
 
+/* HCI socket flags */
+enum {
+	HCI_SOCK_TRUSTED,
+	HCI_MGMT_INDEX_EVENTS,
+	HCI_MGMT_UNCONF_INDEX_EVENTS,
+	HCI_MGMT_EXT_INDEX_EVENTS,
+	HCI_MGMT_GENERIC_EVENTS,
+};
+
 /*
  * BR/EDR and/or LE controller flags: the flags defined here should represent
  * states from the controller.
@@ -447,6 +456,10 @@ enum {
 #define EIR_SSP_HASH_C		0x0E /* Simple Pairing Hash C */
 #define EIR_SSP_RAND_R		0x0F /* Simple Pairing Randomizer R */
 #define EIR_DEVICE_ID		0x10 /* device ID */
+#define EIR_LE_BDADDR		0x1B /* LE Bluetooth device address */
+#define EIR_LE_ROLE		0x1C /* LE role */
+#define EIR_LE_SC_CONFIRM	0x22 /* LE SC Confirmation Value */
+#define EIR_LE_SC_RANDOM	0x23 /* LE SC Random Value */
 
 /* Low Energy Advertising Flags */
 #define LE_AD_LIMITED		0x01 /* Limited Discoverable */

@@ -96,6 +96,9 @@ static const u16 mgmt_commands[] = {
 	MGMT_OP_SET_EXTERNAL_CONFIG,
 	MGMT_OP_SET_PUBLIC_ADDRESS,
 	MGMT_OP_START_SERVICE_DISCOVERY,
+	MGMT_OP_READ_LOCAL_OOB_EXT_DATA,
+	MGMT_OP_READ_EXT_INDEX_LIST,
+	MGMT_OP_READ_ADV_FEATURES,
 };
 
 static const u16 mgmt_events[] = {
@@ -128,6 +131,8 @@ static const u16 mgmt_events[] = {
 	MGMT_EV_UNCONF_INDEX_ADDED,
 	MGMT_EV_UNCONF_INDEX_REMOVED,
 	MGMT_EV_NEW_CONFIG_OPTIONS,
+	MGMT_EV_EXT_INDEX_ADDED,
+	MGMT_EV_EXT_INDEX_REMOVED,
 };
 
 #define CACHE_TIMEOUT	msecs_to_jiffies(2 * 1000)
@@ -221,7 +226,7 @@ static u8 mgmt_status(u8 hci_status)
 
 static int mgmt_send_event(u16 event, struct hci_dev *hdev,
 			   unsigned short channel, void *data, u16 data_len,
-			   struct sock *skip_sk)
+			   int flag, struct sock *skip_sk)
 {
 	struct sk_buff *skb;
 	struct mgmt_hdr *hdr;
@@ -244,17 +249,31 @@ static int mgmt_send_event(u16 event, struct hci_dev *hdev,
 	/* Time stamp */
 	__net_timestamp(skb);
 
-	hci_send_to_channel(channel, skb, skip_sk);
+	hci_send_to_channel(channel, skb, flag, skip_sk);
 	kfree_skb(skb);
 
 	return 0;
+}
+
+static int mgmt_index_event(u16 event, struct hci_dev *hdev, void *data,
+			    u16 len, int flag)
+{
+	return mgmt_send_event(event, hdev, HCI_CHANNEL_CONTROL, data, len,
+			       flag, NULL);
+}
+
+static int mgmt_generic_event(u16 event, struct hci_dev *hdev, void *data,
+			      u16 len, struct sock *skip_sk)
+{
+	return mgmt_send_event(event, hdev, HCI_CHANNEL_CONTROL, data, len,
+			       HCI_MGMT_GENERIC_EVENTS, skip_sk);
 }
 
 static int mgmt_event(u16 event, struct hci_dev *hdev, void *data, u16 len,
 		      struct sock *skip_sk)
 {
 	return mgmt_send_event(event, hdev, HCI_CHANNEL_CONTROL, data, len,
-			       skip_sk);
+			       HCI_SOCK_TRUSTED, skip_sk);
 }
 
 static int mgmt_cmd_status(struct sock *sk, u16 index, u16 cmd, u8 status)
@@ -489,6 +508,82 @@ static int read_unconf_index_list(struct sock *sk, struct hci_dev *hdev,
 	return err;
 }
 
+static int read_ext_index_list(struct sock *sk, struct hci_dev *hdev,
+			       void *data, u16 data_len)
+{
+	struct mgmt_rp_read_ext_index_list *rp;
+	struct hci_dev *d;
+	size_t rp_len;
+	u16 count;
+	int err;
+
+	BT_DBG("sock %p", sk);
+
+	read_lock(&hci_dev_list_lock);
+
+	count = 0;
+	list_for_each_entry(d, &hci_dev_list, list) {
+		if (d->dev_type == HCI_BREDR || d->dev_type == HCI_AMP)
+			count++;
+	}
+
+	rp_len = sizeof(*rp) + (sizeof(rp->entry[0]) * count);
+	rp = kmalloc(rp_len, GFP_ATOMIC);
+	if (!rp) {
+		read_unlock(&hci_dev_list_lock);
+		return -ENOMEM;
+	}
+
+	count = 0;
+	list_for_each_entry(d, &hci_dev_list, list) {
+		if (hci_dev_test_flag(d, HCI_SETUP) ||
+		    hci_dev_test_flag(d, HCI_CONFIG) ||
+		    hci_dev_test_flag(d, HCI_USER_CHANNEL))
+			continue;
+
+		/* Devices marked as raw-only are neither configured
+		 * nor unconfigured controllers.
+		 */
+		if (test_bit(HCI_QUIRK_RAW_DEVICE, &d->quirks))
+			continue;
+
+		if (d->dev_type == HCI_BREDR) {
+			if (hci_dev_test_flag(d, HCI_UNCONFIGURED))
+				rp->entry[count].type = 0x01;
+			else
+				rp->entry[count].type = 0x00;
+		} else if (d->dev_type == HCI_AMP) {
+			rp->entry[count].type = 0x02;
+		} else {
+			continue;
+		}
+
+		rp->entry[count].bus = d->bus;
+		rp->entry[count++].index = cpu_to_le16(d->id);
+		BT_DBG("Added hci%u", d->id);
+	}
+
+	rp->num_controllers = cpu_to_le16(count);
+	rp_len = sizeof(*rp) + (sizeof(rp->entry[0]) * count);
+
+	read_unlock(&hci_dev_list_lock);
+
+	/* If this command is called at least once, then all the
+	 * default index and unconfigured index events are disabled
+	 * and from now on only extended index events are used.
+	 */
+	hci_sock_set_flag(sk, HCI_MGMT_EXT_INDEX_EVENTS);
+	hci_sock_clear_flag(sk, HCI_MGMT_INDEX_EVENTS);
+	hci_sock_clear_flag(sk, HCI_MGMT_UNCONF_INDEX_EVENTS);
+
+	err = mgmt_cmd_complete(sk, MGMT_INDEX_NONE,
+				MGMT_OP_READ_EXT_INDEX_LIST, 0, rp, rp_len);
+
+	kfree(rp);
+
+	return err;
+}
+
 static bool is_configured(struct hci_dev *hdev)
 {
 	if (test_bit(HCI_QUIRK_EXTERNAL_CONFIG, &hdev->quirks) &&
@@ -521,8 +616,8 @@ static int new_options(struct hci_dev *hdev, struct sock *skip)
 {
 	__le32 options = get_missing_options(hdev);
 
-	return mgmt_event(MGMT_EV_NEW_CONFIG_OPTIONS, hdev, &options,
-			  sizeof(options), skip);
+	return mgmt_generic_event(MGMT_EV_NEW_CONFIG_OPTIONS, hdev, &options,
+				  sizeof(options), skip);
 }
 
 static int send_options_rsp(struct sock *sk, u16 opcode, struct hci_dev *hdev)
@@ -1466,11 +1561,10 @@ failed:
 
 static int new_settings(struct hci_dev *hdev, struct sock *skip)
 {
-	__le32 ev;
+	__le32 ev = cpu_to_le32(get_current_settings(hdev));
 
-	ev = cpu_to_le32(get_current_settings(hdev));
-
-	return mgmt_event(MGMT_EV_NEW_SETTINGS, hdev, &ev, sizeof(ev), skip);
+	return mgmt_generic_event(MGMT_EV_NEW_SETTINGS, hdev, &ev,
+				  sizeof(ev), skip);
 }
 
 int mgmt_new_settings(struct hci_dev *hdev)
@@ -3591,8 +3685,8 @@ static int set_local_name(struct sock *sk, struct hci_dev *hdev, void *data,
 		if (err < 0)
 			goto failed;
 
-		err = mgmt_event(MGMT_EV_LOCAL_NAME_CHANGED, hdev, data, len,
-				 sk);
+		err = mgmt_generic_event(MGMT_EV_LOCAL_NAME_CHANGED, hdev,
+					 data, len, sk);
 
 		goto failed;
 	}
@@ -6162,79 +6256,264 @@ unlock:
 	return err;
 }
 
+static inline u16 eir_append_data(u8 *eir, u16 eir_len, u8 type, u8 *data,
+				  u8 data_len)
+{
+	eir[eir_len++] = sizeof(type) + data_len;
+	eir[eir_len++] = type;
+	memcpy(&eir[eir_len], data, data_len);
+	eir_len += data_len;
+
+	return eir_len;
+}
+
+static int read_local_oob_ext_data(struct sock *sk, struct hci_dev *hdev,
+				   void *data, u16 data_len)
+{
+	struct mgmt_cp_read_local_oob_ext_data *cp = data;
+	struct mgmt_rp_read_local_oob_ext_data *rp;
+	size_t rp_len;
+	u16 eir_len;
+	u8 status, flags, role, addr[7], hash[16], rand[16];
+	int err;
+
+	BT_DBG("%s", hdev->name);
+
+	if (!hdev_is_powered(hdev))
+		return mgmt_cmd_complete(sk, hdev->id,
+					 MGMT_OP_READ_LOCAL_OOB_EXT_DATA,
+					 MGMT_STATUS_NOT_POWERED,
+					 &cp->type, sizeof(cp->type));
+
+	switch (cp->type) {
+	case BIT(BDADDR_BREDR):
+		status = mgmt_bredr_support(hdev);
+		if (status)
+			return mgmt_cmd_complete(sk, hdev->id,
+						 MGMT_OP_READ_LOCAL_OOB_EXT_DATA,
+						 status, &cp->type,
+						 sizeof(cp->type));
+		eir_len = 5;
+		break;
+	case (BIT(BDADDR_LE_PUBLIC) | BIT(BDADDR_LE_RANDOM)):
+		status = mgmt_le_support(hdev);
+		if (status)
+			return mgmt_cmd_complete(sk, hdev->id,
+						 MGMT_OP_READ_LOCAL_OOB_EXT_DATA,
+						 status, &cp->type,
+						 sizeof(cp->type));
+		eir_len = 9 + 3 + 18 + 18 + 3;
+		break;
+	default:
+		return mgmt_cmd_complete(sk, hdev->id,
+					 MGMT_OP_READ_LOCAL_OOB_EXT_DATA,
+					 MGMT_STATUS_INVALID_PARAMS,
+					 &cp->type, sizeof(cp->type));
+	}
+
+	hci_dev_lock(hdev);
+
+	rp_len = sizeof(*rp) + eir_len;
+	rp = kmalloc(rp_len, GFP_ATOMIC);
+	if (!rp) {
+		hci_dev_unlock(hdev);
+		return -ENOMEM;
+	}
+
+	eir_len = 0;
+	switch (cp->type) {
+	case BIT(BDADDR_BREDR):
+		eir_len = eir_append_data(rp->eir, eir_len, EIR_CLASS_OF_DEV,
+					  hdev->dev_class, 3);
+		break;
+	case (BIT(BDADDR_LE_PUBLIC) | BIT(BDADDR_LE_RANDOM)):
+		if (hci_dev_test_flag(hdev, HCI_SC_ENABLED) &&
+		    smp_generate_oob(hdev, hash, rand) < 0) {
+			hci_dev_unlock(hdev);
+			err = mgmt_cmd_complete(sk, hdev->id,
+						MGMT_OP_READ_LOCAL_OOB_EXT_DATA,
+						MGMT_STATUS_FAILED,
+						&cp->type, sizeof(cp->type));
+			goto done;
+		}
+
+		if (hci_dev_test_flag(hdev, HCI_PRIVACY)) {
+			memcpy(addr, &hdev->rpa, 6);
+			addr[6] = 0x01;
+		} else if (hci_dev_test_flag(hdev, HCI_FORCE_STATIC_ADDR) ||
+			   !bacmp(&hdev->bdaddr, BDADDR_ANY) ||
+			   (!hci_dev_test_flag(hdev, HCI_BREDR_ENABLED) &&
+			    bacmp(&hdev->static_addr, BDADDR_ANY))) {
+			memcpy(addr, &hdev->static_addr, 6);
+			addr[6] = 0x01;
+		} else {
+			memcpy(addr, &hdev->bdaddr, 6);
+			addr[6] = 0x00;
+		}
+
+		eir_len = eir_append_data(rp->eir, eir_len, EIR_LE_BDADDR,
+					  addr, sizeof(addr));
+
+		if (hci_dev_test_flag(hdev, HCI_ADVERTISING))
+			role = 0x02;
+		else
+			role = 0x01;
+
+		eir_len = eir_append_data(rp->eir, eir_len, EIR_LE_ROLE,
+					  &role, sizeof(role));
+
+		if (hci_dev_test_flag(hdev, HCI_SC_ENABLED)) {
+			eir_len = eir_append_data(rp->eir, eir_len,
+						  EIR_LE_SC_CONFIRM,
+						  hash, sizeof(hash));
+
+			eir_len = eir_append_data(rp->eir, eir_len,
+						  EIR_LE_SC_RANDOM,
+						  rand, sizeof(rand));
+		}
+
+		flags = get_adv_discov_flags(hdev);
+
+		if (!hci_dev_test_flag(hdev, HCI_BREDR_ENABLED))
+			flags |= LE_AD_NO_BREDR;
+
+		eir_len = eir_append_data(rp->eir, eir_len, EIR_FLAGS,
+					  &flags, sizeof(flags));
+		break;
+	}
+
+	rp->type = cp->type;
+	rp->eir_len = cpu_to_le16(eir_len);
+
+	hci_dev_unlock(hdev);
+
+	err = mgmt_cmd_complete(sk, hdev->id, MGMT_OP_READ_LOCAL_OOB_EXT_DATA,
+				MGMT_STATUS_SUCCESS, rp, rp_len);
+
+done:
+	kfree(rp);
+
+	return err;
+}
+
+static int read_adv_features(struct sock *sk, struct hci_dev *hdev,
+			     void *data, u16 data_len)
+{
+	struct mgmt_rp_read_adv_features *rp;
+	size_t rp_len;
+	int err;
+
+	BT_DBG("%s", hdev->name);
+
+	hci_dev_lock(hdev);
+
+	rp_len = sizeof(*rp);
+	rp = kmalloc(rp_len, GFP_ATOMIC);
+	if (!rp) {
+		hci_dev_unlock(hdev);
+		return -ENOMEM;
+	}
+
+	rp->supported_flags = cpu_to_le32(0);
+	rp->max_adv_data_len = 31;
+	rp->max_scan_rsp_len = 31;
+	rp->max_instances = 0;
+	rp->num_instances = 0;
+
+	hci_dev_unlock(hdev);
+
+	err = mgmt_cmd_complete(sk, hdev->id, MGMT_OP_READ_ADV_FEATURES,
+				MGMT_STATUS_SUCCESS, rp, rp_len);
+
+	kfree(rp);
+
+	return err;
+}
+
 static const struct hci_mgmt_handler mgmt_handlers[] = {
 	{ NULL }, /* 0x0000 (no command) */
 	{ read_version,            MGMT_READ_VERSION_SIZE,
-						HCI_MGMT_NO_HDEV },
+						HCI_MGMT_NO_HDEV |
+						HCI_MGMT_UNTRUSTED },
 	{ read_commands,           MGMT_READ_COMMANDS_SIZE,
-						HCI_MGMT_NO_HDEV },
+						HCI_MGMT_NO_HDEV |
+						HCI_MGMT_UNTRUSTED },
 	{ read_index_list,         MGMT_READ_INDEX_LIST_SIZE,
-						HCI_MGMT_NO_HDEV },
-	{ read_controller_info,    MGMT_READ_INFO_SIZE,                 0 },
-	{ set_powered,             MGMT_SETTING_SIZE,                   0 },
-	{ set_discoverable,        MGMT_SET_DISCOVERABLE_SIZE,          0 },
-	{ set_connectable,         MGMT_SETTING_SIZE,                   0 },
-	{ set_fast_connectable,    MGMT_SETTING_SIZE,                   0 },
-	{ set_bondable,            MGMT_SETTING_SIZE,                   0 },
-	{ set_link_security,       MGMT_SETTING_SIZE,                   0 },
-	{ set_ssp,                 MGMT_SETTING_SIZE,                   0 },
-	{ set_hs,                  MGMT_SETTING_SIZE,                   0 },
-	{ set_le,                  MGMT_SETTING_SIZE,                   0 },
-	{ set_dev_class,           MGMT_SET_DEV_CLASS_SIZE,             0 },
-	{ set_local_name,          MGMT_SET_LOCAL_NAME_SIZE,            0 },
-	{ add_uuid,                MGMT_ADD_UUID_SIZE,                  0 },
-	{ remove_uuid,             MGMT_REMOVE_UUID_SIZE,               0 },
+						HCI_MGMT_NO_HDEV |
+						HCI_MGMT_UNTRUSTED },
+	{ read_controller_info,    MGMT_READ_INFO_SIZE,
+						HCI_MGMT_UNTRUSTED },
+	{ set_powered,             MGMT_SETTING_SIZE },
+	{ set_discoverable,        MGMT_SET_DISCOVERABLE_SIZE },
+	{ set_connectable,         MGMT_SETTING_SIZE },
+	{ set_fast_connectable,    MGMT_SETTING_SIZE },
+	{ set_bondable,            MGMT_SETTING_SIZE },
+	{ set_link_security,       MGMT_SETTING_SIZE },
+	{ set_ssp,                 MGMT_SETTING_SIZE },
+	{ set_hs,                  MGMT_SETTING_SIZE },
+	{ set_le,                  MGMT_SETTING_SIZE },
+	{ set_dev_class,           MGMT_SET_DEV_CLASS_SIZE },
+	{ set_local_name,          MGMT_SET_LOCAL_NAME_SIZE },
+	{ add_uuid,                MGMT_ADD_UUID_SIZE },
+	{ remove_uuid,             MGMT_REMOVE_UUID_SIZE },
 	{ load_link_keys,          MGMT_LOAD_LINK_KEYS_SIZE,
 						HCI_MGMT_VAR_LEN },
 	{ load_long_term_keys,     MGMT_LOAD_LONG_TERM_KEYS_SIZE,
 						HCI_MGMT_VAR_LEN },
-	{ disconnect,              MGMT_DISCONNECT_SIZE,                0 },
-	{ get_connections,         MGMT_GET_CONNECTIONS_SIZE,           0 },
-	{ pin_code_reply,          MGMT_PIN_CODE_REPLY_SIZE,            0 },
-	{ pin_code_neg_reply,      MGMT_PIN_CODE_NEG_REPLY_SIZE,        0 },
-	{ set_io_capability,       MGMT_SET_IO_CAPABILITY_SIZE,         0 },
-	{ pair_device,             MGMT_PAIR_DEVICE_SIZE,               0 },
-	{ cancel_pair_device,      MGMT_CANCEL_PAIR_DEVICE_SIZE,        0 },
-	{ unpair_device,           MGMT_UNPAIR_DEVICE_SIZE,             0 },
-	{ user_confirm_reply,      MGMT_USER_CONFIRM_REPLY_SIZE,        0 },
-	{ user_confirm_neg_reply,  MGMT_USER_CONFIRM_NEG_REPLY_SIZE,    0 },
-	{ user_passkey_reply,      MGMT_USER_PASSKEY_REPLY_SIZE,        0 },
-	{ user_passkey_neg_reply,  MGMT_USER_PASSKEY_NEG_REPLY_SIZE,    0 },
+	{ disconnect,              MGMT_DISCONNECT_SIZE },
+	{ get_connections,         MGMT_GET_CONNECTIONS_SIZE },
+	{ pin_code_reply,          MGMT_PIN_CODE_REPLY_SIZE },
+	{ pin_code_neg_reply,      MGMT_PIN_CODE_NEG_REPLY_SIZE },
+	{ set_io_capability,       MGMT_SET_IO_CAPABILITY_SIZE },
+	{ pair_device,             MGMT_PAIR_DEVICE_SIZE },
+	{ cancel_pair_device,      MGMT_CANCEL_PAIR_DEVICE_SIZE },
+	{ unpair_device,           MGMT_UNPAIR_DEVICE_SIZE },
+	{ user_confirm_reply,      MGMT_USER_CONFIRM_REPLY_SIZE },
+	{ user_confirm_neg_reply,  MGMT_USER_CONFIRM_NEG_REPLY_SIZE },
+	{ user_passkey_reply,      MGMT_USER_PASSKEY_REPLY_SIZE },
+	{ user_passkey_neg_reply,  MGMT_USER_PASSKEY_NEG_REPLY_SIZE },
 	{ read_local_oob_data,     MGMT_READ_LOCAL_OOB_DATA_SIZE },
 	{ add_remote_oob_data,     MGMT_ADD_REMOTE_OOB_DATA_SIZE,
 						HCI_MGMT_VAR_LEN },
-	{ remove_remote_oob_data,  MGMT_REMOVE_REMOTE_OOB_DATA_SIZE,    0 },
-	{ start_discovery,         MGMT_START_DISCOVERY_SIZE,           0 },
-	{ stop_discovery,          MGMT_STOP_DISCOVERY_SIZE,            0 },
-	{ confirm_name,            MGMT_CONFIRM_NAME_SIZE,              0 },
-	{ block_device,            MGMT_BLOCK_DEVICE_SIZE,              0 },
-	{ unblock_device,          MGMT_UNBLOCK_DEVICE_SIZE,            0 },
-	{ set_device_id,           MGMT_SET_DEVICE_ID_SIZE,             0 },
-	{ set_advertising,         MGMT_SETTING_SIZE,                   0 },
-	{ set_bredr,               MGMT_SETTING_SIZE,                   0 },
-	{ set_static_address,      MGMT_SET_STATIC_ADDRESS_SIZE,        0 },
-	{ set_scan_params,         MGMT_SET_SCAN_PARAMS_SIZE,           0 },
-	{ set_secure_conn,         MGMT_SETTING_SIZE,                   0 },
-	{ set_debug_keys,          MGMT_SETTING_SIZE,                   0 },
-	{ set_privacy,             MGMT_SET_PRIVACY_SIZE,               0 },
+	{ remove_remote_oob_data,  MGMT_REMOVE_REMOTE_OOB_DATA_SIZE },
+	{ start_discovery,         MGMT_START_DISCOVERY_SIZE },
+	{ stop_discovery,          MGMT_STOP_DISCOVERY_SIZE },
+	{ confirm_name,            MGMT_CONFIRM_NAME_SIZE },
+	{ block_device,            MGMT_BLOCK_DEVICE_SIZE },
+	{ unblock_device,          MGMT_UNBLOCK_DEVICE_SIZE },
+	{ set_device_id,           MGMT_SET_DEVICE_ID_SIZE },
+	{ set_advertising,         MGMT_SETTING_SIZE },
+	{ set_bredr,               MGMT_SETTING_SIZE },
+	{ set_static_address,      MGMT_SET_STATIC_ADDRESS_SIZE },
+	{ set_scan_params,         MGMT_SET_SCAN_PARAMS_SIZE },
+	{ set_secure_conn,         MGMT_SETTING_SIZE },
+	{ set_debug_keys,          MGMT_SETTING_SIZE },
+	{ set_privacy,             MGMT_SET_PRIVACY_SIZE },
 	{ load_irks,               MGMT_LOAD_IRKS_SIZE,
 						HCI_MGMT_VAR_LEN },
-	{ get_conn_info,           MGMT_GET_CONN_INFO_SIZE,             0 },
-	{ get_clock_info,          MGMT_GET_CLOCK_INFO_SIZE,            0 },
-	{ add_device,              MGMT_ADD_DEVICE_SIZE,                0 },
-	{ remove_device,           MGMT_REMOVE_DEVICE_SIZE,             0 },
+	{ get_conn_info,           MGMT_GET_CONN_INFO_SIZE },
+	{ get_clock_info,          MGMT_GET_CLOCK_INFO_SIZE },
+	{ add_device,              MGMT_ADD_DEVICE_SIZE },
+	{ remove_device,           MGMT_REMOVE_DEVICE_SIZE },
 	{ load_conn_param,         MGMT_LOAD_CONN_PARAM_SIZE,
 						HCI_MGMT_VAR_LEN },
 	{ read_unconf_index_list,  MGMT_READ_UNCONF_INDEX_LIST_SIZE,
-						HCI_MGMT_NO_HDEV },
+						HCI_MGMT_NO_HDEV |
+						HCI_MGMT_UNTRUSTED },
 	{ read_config_info,        MGMT_READ_CONFIG_INFO_SIZE,
-						HCI_MGMT_UNCONFIGURED },
+						HCI_MGMT_UNCONFIGURED |
+						HCI_MGMT_UNTRUSTED },
 	{ set_external_config,     MGMT_SET_EXTERNAL_CONFIG_SIZE,
 						HCI_MGMT_UNCONFIGURED },
 	{ set_public_address,      MGMT_SET_PUBLIC_ADDRESS_SIZE,
 						HCI_MGMT_UNCONFIGURED },
 	{ start_service_discovery, MGMT_START_SERVICE_DISCOVERY_SIZE,
 						HCI_MGMT_VAR_LEN },
+	{ read_local_oob_ext_data, MGMT_READ_LOCAL_OOB_EXT_DATA_SIZE },
+	{ read_ext_index_list,     MGMT_READ_EXT_INDEX_LIST_SIZE,
+						HCI_MGMT_NO_HDEV |
+						HCI_MGMT_UNTRUSTED },
+	{ read_adv_features,       MGMT_READ_ADV_FEATURES_SIZE },
 };
 
 int mgmt_control(struct hci_mgmt_chan *chan, struct sock *sk,
@@ -6282,6 +6561,13 @@ int mgmt_control(struct hci_mgmt_chan *chan, struct sock *sk,
 	}
 
 	handler = &chan->handlers[opcode];
+
+	if (!hci_sock_test_flag(sk, HCI_SOCK_TRUSTED) &&
+	    !(handler->flags & HCI_MGMT_UNTRUSTED)) {
+		err = mgmt_cmd_status(sk, index, opcode,
+				      MGMT_STATUS_PERMISSION_DENIED);
+		goto done;
+	}
 
 	if (index != MGMT_INDEX_NONE) {
 		hdev = hci_dev_get(index);
@@ -6343,34 +6629,69 @@ done:
 
 void mgmt_index_added(struct hci_dev *hdev)
 {
-	if (hdev->dev_type != HCI_BREDR)
-		return;
+	struct mgmt_ev_ext_index ev;
 
 	if (test_bit(HCI_QUIRK_RAW_DEVICE, &hdev->quirks))
 		return;
 
-	if (hci_dev_test_flag(hdev, HCI_UNCONFIGURED))
-		mgmt_event(MGMT_EV_UNCONF_INDEX_ADDED, hdev, NULL, 0, NULL);
-	else
-		mgmt_event(MGMT_EV_INDEX_ADDED, hdev, NULL, 0, NULL);
+	switch (hdev->dev_type) {
+	case HCI_BREDR:
+		if (hci_dev_test_flag(hdev, HCI_UNCONFIGURED)) {
+			mgmt_index_event(MGMT_EV_UNCONF_INDEX_ADDED, hdev,
+					 NULL, 0, HCI_MGMT_UNCONF_INDEX_EVENTS);
+			ev.type = 0x01;
+		} else {
+			mgmt_index_event(MGMT_EV_INDEX_ADDED, hdev, NULL, 0,
+					 HCI_MGMT_INDEX_EVENTS);
+			ev.type = 0x00;
+		}
+		break;
+	case HCI_AMP:
+		ev.type = 0x02;
+		break;
+	default:
+		return;
+	}
+
+	ev.bus = hdev->bus;
+
+	mgmt_index_event(MGMT_EV_EXT_INDEX_ADDED, hdev, &ev, sizeof(ev),
+			 HCI_MGMT_EXT_INDEX_EVENTS);
 }
 
 void mgmt_index_removed(struct hci_dev *hdev)
 {
+	struct mgmt_ev_ext_index ev;
 	u8 status = MGMT_STATUS_INVALID_INDEX;
-
-	if (hdev->dev_type != HCI_BREDR)
-		return;
 
 	if (test_bit(HCI_QUIRK_RAW_DEVICE, &hdev->quirks))
 		return;
 
-	mgmt_pending_foreach(0, hdev, cmd_complete_rsp, &status);
+	switch (hdev->dev_type) {
+	case HCI_BREDR:
+		mgmt_pending_foreach(0, hdev, cmd_complete_rsp, &status);
 
-	if (hci_dev_test_flag(hdev, HCI_UNCONFIGURED))
-		mgmt_event(MGMT_EV_UNCONF_INDEX_REMOVED, hdev, NULL, 0, NULL);
-	else
-		mgmt_event(MGMT_EV_INDEX_REMOVED, hdev, NULL, 0, NULL);
+		if (hci_dev_test_flag(hdev, HCI_UNCONFIGURED)) {
+			mgmt_index_event(MGMT_EV_UNCONF_INDEX_REMOVED, hdev,
+					 NULL, 0, HCI_MGMT_UNCONF_INDEX_EVENTS);
+			ev.type = 0x01;
+		} else {
+			mgmt_index_event(MGMT_EV_INDEX_REMOVED, hdev, NULL, 0,
+					 HCI_MGMT_INDEX_EVENTS);
+			ev.type = 0x00;
+		}
+		break;
+	case HCI_AMP:
+		ev.type = 0x02;
+		break;
+	default:
+		return;
+	}
+
+	ev.bus = hdev->bus;
+
+	mgmt_index_event(MGMT_EV_EXT_INDEX_REMOVED, hdev, &ev, sizeof(ev),
+			 HCI_MGMT_EXT_INDEX_EVENTS);
 }
 
 /* This function requires the caller holds hdev->lock */
@@ -6535,8 +6856,8 @@ int mgmt_powered(struct hci_dev *hdev, u8 powered)
 	mgmt_pending_foreach(0, hdev, cmd_complete_rsp, &status);
 
 	if (memcmp(hdev->dev_class, zero_cod, sizeof(zero_cod)) != 0)
-		mgmt_event(MGMT_EV_CLASS_OF_DEV_CHANGED, hdev,
-			   zero_cod, sizeof(zero_cod), NULL);
+		mgmt_generic_event(MGMT_EV_CLASS_OF_DEV_CHANGED, hdev,
+				   zero_cod, sizeof(zero_cod), NULL);
 
 new_settings:
 	err = new_settings(hdev, match.sk);
@@ -6750,17 +7071,6 @@ void mgmt_new_conn_param(struct hci_dev *hdev, bdaddr_t *bdaddr,
 	ev.timeout = cpu_to_le16(timeout);
 
 	mgmt_event(MGMT_EV_NEW_CONN_PARAM, hdev, &ev, sizeof(ev), NULL);
-}
-
-static inline u16 eir_append_data(u8 *eir, u16 eir_len, u8 type, u8 *data,
-				  u8 data_len)
-{
-	eir[eir_len++] = sizeof(type) + data_len;
-	eir[eir_len++] = type;
-	memcpy(&eir[eir_len], data, data_len);
-	eir_len += data_len;
-
-	return eir_len;
 }
 
 void mgmt_device_connected(struct hci_dev *hdev, struct hci_conn *conn,
@@ -7187,8 +7497,8 @@ void mgmt_set_class_of_dev_complete(struct hci_dev *hdev, u8 *dev_class,
 	mgmt_pending_foreach(MGMT_OP_REMOVE_UUID, hdev, sk_lookup, &match);
 
 	if (!status)
-		mgmt_event(MGMT_EV_CLASS_OF_DEV_CHANGED, hdev, dev_class, 3,
-			   NULL);
+		mgmt_generic_event(MGMT_EV_CLASS_OF_DEV_CHANGED, hdev,
+				   dev_class, 3, NULL);
 
 	if (match.sk)
 		sock_put(match.sk);
@@ -7217,8 +7527,8 @@ void mgmt_set_local_name_complete(struct hci_dev *hdev, u8 *name, u8 status)
 			return;
 	}
 
-	mgmt_event(MGMT_EV_LOCAL_NAME_CHANGED, hdev, &ev, sizeof(ev),
-		   cmd ? cmd->sk : NULL);
+	mgmt_generic_event(MGMT_EV_LOCAL_NAME_CHANGED, hdev, &ev, sizeof(ev),
+			   cmd ? cmd->sk : NULL);
 }
 
 void mgmt_read_local_oob_data_complete(struct hci_dev *hdev, u8 *hash192,
