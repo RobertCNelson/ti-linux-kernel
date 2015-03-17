@@ -379,7 +379,7 @@ int __restore_xstate_sig(void __user *buf, void __user *buf_fx, int size)
 		 * thread's fpu state, reconstruct fxstate from the fsave
 		 * header. Sanitize the copied state etc.
 		 */
-		struct xsave_struct *xsave = &tsk->thread.fpu.state->xsave;
+		struct fpu *fpu = &tsk->thread.fpu;
 		struct user_i387_ia32_struct env;
 		int err = 0;
 
@@ -393,14 +393,15 @@ int __restore_xstate_sig(void __user *buf, void __user *buf_fx, int size)
 		 */
 		drop_fpu(tsk);
 
-		if (__copy_from_user(xsave, buf_fx, state_size) ||
+		if (__copy_from_user(&fpu->state->xsave, buf_fx, state_size) ||
 		    __copy_from_user(&env, buf, sizeof(env))) {
+			fpu_finit(fpu);
 			err = -1;
 		} else {
 			sanitize_restored_xstate(tsk, &env, xstate_bv, fx_only);
-			set_used_math();
 		}
 
+		set_used_math();
 		if (use_eager_fpu()) {
 			preempt_disable();
 			math_state_restore();
@@ -689,7 +690,7 @@ void eager_fpu_init(void)
 {
 	static __refdata void (*boot_func)(void) = eager_fpu_init_bp;
 
-	clear_used_math();
+	WARN_ON(used_math());
 	current_thread_info()->status = 0;
 
 	if (eagerfpu == ENABLE)
@@ -704,17 +705,6 @@ void eager_fpu_init(void)
 		boot_func();
 		boot_func = NULL;
 	}
-
-	/*
-	 * This is same as math_state_restore(). But use_xsave() is
-	 * not yet patched to use math_state_restore().
-	 */
-	init_fpu(current);
-	__thread_fpu_begin(current);
-	if (cpu_has_xsave)
-		xrstor_state(init_xstate_buf, -1);
-	else
-		fxrstor_checking(&init_xstate_buf->i387);
 }
 
 /*
