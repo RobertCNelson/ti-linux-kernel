@@ -3421,12 +3421,11 @@ static int rtllib_wpa_set_encryption(struct rtllib_device *ieee,
 
 		lib80211_crypt_delayed_deinit(&ieee->crypt_info, crypt);
 
-		new_crypt = kmalloc(sizeof(*new_crypt), GFP_KERNEL);
+		new_crypt = kzalloc(sizeof(*new_crypt), GFP_KERNEL);
 		if (new_crypt == NULL) {
 			ret = -ENOMEM;
 			goto done;
 		}
-		memset(new_crypt, 0, sizeof(struct lib80211_crypt_data));
 		new_crypt->ops = ops;
 		if (new_crypt->ops)
 			new_crypt->priv =
@@ -3751,7 +3750,7 @@ void notify_wx_assoc_event(struct rtllib_device *ieee)
 
 		printk(KERN_INFO "%s(): Tell user space disconnected\n",
 		       __func__);
-		memset(wrqu.ap_addr.sa_data, 0, ETH_ALEN);
+		eth_zero_addr(wrqu.ap_addr.sa_data);
 	}
 	wireless_send_event(ieee->dev, SIOCGIWAP, &wrqu, NULL);
 }

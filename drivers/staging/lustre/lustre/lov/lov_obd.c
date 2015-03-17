@@ -553,7 +553,7 @@ static int lov_add_target(struct obd_device *obd, struct obd_uuid *uuidp,
 
 		newsize = max_t(__u32, lov->lov_tgt_size, 2);
 		while (newsize < index + 1)
-			newsize = newsize << 1;
+			newsize <<= 1;
 		OBD_ALLOC(newtgts, sizeof(*newtgts) * newsize);
 		if (newtgts == NULL) {
 			mutex_unlock(&lov->lov_lock);
@@ -1601,9 +1601,9 @@ static int lov_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
  * \param fm_end logical end of mapping
  * \param start_stripe starting stripe will be returned in this
  */
-u64 fiemap_calc_fm_end_offset(struct ll_user_fiemap *fiemap,
-				   struct lov_stripe_md *lsm, u64 fm_start,
-				   u64 fm_end, int *start_stripe)
+static u64 fiemap_calc_fm_end_offset(struct ll_user_fiemap *fiemap,
+				     struct lov_stripe_md *lsm, u64 fm_start,
+				     u64 fm_end, int *start_stripe)
 {
 	u64 local_end = fiemap->fm_extents[0].fe_logical;
 	u64 lun_start, lun_end;
@@ -1658,17 +1658,17 @@ u64 fiemap_calc_fm_end_offset(struct ll_user_fiemap *fiemap,
  *
  * \retval last_stripe return the last stripe of the mapping
  */
-int fiemap_calc_last_stripe(struct lov_stripe_md *lsm, u64 fm_start,
-			    u64 fm_end, int start_stripe,
-			    int *stripe_count)
+static int fiemap_calc_last_stripe(struct lov_stripe_md *lsm, u64 fm_start,
+				   u64 fm_end, int start_stripe,
+				   int *stripe_count)
 {
 	int last_stripe;
 	u64 obd_start, obd_end;
 	int i, j;
 
 	if (fm_end - fm_start > lsm->lsm_stripe_size * lsm->lsm_stripe_count) {
-		last_stripe = (start_stripe < 1 ? lsm->lsm_stripe_count - 1 :
-							      start_stripe - 1);
+		last_stripe = start_stripe < 1 ? lsm->lsm_stripe_count - 1 :
+							      start_stripe - 1;
 		*stripe_count = lsm->lsm_stripe_count;
 	} else {
 		for (j = 0, i = start_stripe; j < lsm->lsm_stripe_count;
@@ -1694,10 +1694,10 @@ int fiemap_calc_last_stripe(struct lov_stripe_md *lsm, u64 fm_start,
  * \param ext_count number of extents to be copied
  * \param current_extent where to start copying in main extent array
  */
-void fiemap_prepare_and_copy_exts(struct ll_user_fiemap *fiemap,
-				  struct ll_fiemap_extent *lcl_fm_ext,
-				  int ost_index, unsigned int ext_count,
-				  int current_extent)
+static void fiemap_prepare_and_copy_exts(struct ll_user_fiemap *fiemap,
+					 struct ll_fiemap_extent *lcl_fm_ext,
+					 int ost_index, unsigned int ext_count,
+					 int current_extent)
 {
 	char *to;
 	int ext;
@@ -2290,7 +2290,7 @@ out:
 	return rc;
 }
 
-struct obd_ops lov_obd_ops = {
+static struct obd_ops lov_obd_ops = {
 	.o_owner	       = THIS_MODULE,
 	.o_setup	       = lov_setup,
 	.o_precleanup	  = lov_precleanup,
@@ -2324,7 +2324,7 @@ struct obd_ops lov_obd_ops = {
 
 struct kmem_cache *lov_oinfo_slab;
 
-int __init lov_init(void)
+static int __init lov_init(void)
 {
 	struct lprocfs_static_vars lvars = { NULL };
 	int rc;
