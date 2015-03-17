@@ -302,7 +302,7 @@ void opal_notifier_disable(void)
  * Opal message notifier based on message type. Allow subscribers to get
  * notified for specific messgae type.
  */
-int opal_message_notifier_register(enum OpalMessageType msg_type,
+int opal_message_notifier_register(enum opal_msg_type msg_type,
 					struct notifier_block *nb)
 {
 	if (!nb) {
@@ -665,6 +665,9 @@ static void __init opal_dump_region_init(void)
 	uint64_t size;
 	int rc;
 
+	if (!opal_check_token(OPAL_REGISTER_DUMP_REGION))
+		return;
+
 	/* Register kernel log buffer */
 	addr = log_buf_addr_get();
 	if (addr == NULL)
@@ -823,7 +826,8 @@ void opal_shutdown(void)
 	}
 
 	/* Unregister memory dump region */
-	opal_unregister_dump_region(OPAL_DUMP_REGION_LOG_BUF);
+	if (opal_check_token(OPAL_UNREGISTER_DUMP_REGION))
+		opal_unregister_dump_region(OPAL_DUMP_REGION_LOG_BUF);
 }
 
 /* Export this so that test modules can use it */
