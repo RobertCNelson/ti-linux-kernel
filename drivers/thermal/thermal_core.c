@@ -1135,6 +1135,7 @@ __thermal_cooling_device_register(struct device_node *np,
 				  const struct thermal_cooling_device_ops *ops)
 {
 	struct thermal_cooling_device *cdev;
+	struct thermal_instance *pos, *next;
 	int result;
 
 	if (type && strlen(type) >= THERMAL_NAME_LENGTH)
@@ -1178,6 +1179,17 @@ __thermal_cooling_device_register(struct device_node *np,
 
 	/* Update binding information for 'this' new cdev */
 	bind_cdev(cdev);
+
+	list_for_each_entry_safe(pos, next, &cdev->thermal_instances, cdev_node) {
+			printk("head 0x%p, head->next 0x%p, pos->cdev_node 0x%p, pos->tz 0x%p, next->tz 0x%p\n", &cdev->thermal_instances, (&cdev->thermal_instances)->next, &pos->cdev_node, pos->tz, next->tz);
+
+			if (next->cdev_node.next == &cdev->thermal_instances) {
+				thermal_zone_device_update(next->tz);
+				break;
+			}
+			if (pos->tz != next->tz)
+				thermal_zone_device_update(pos->tz);
+	}
 
 	return cdev;
 }
