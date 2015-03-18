@@ -370,7 +370,6 @@ static irqreturn_t interrupt_service_icp_multi(int irq, void *d)
 		break;
 	default:
 		break;
-
 	}
 
 	return IRQ_HANDLED;
@@ -445,7 +444,7 @@ static int icp_multi_reset(struct comedi_device *dev)
 }
 
 static int icp_multi_auto_attach(struct comedi_device *dev,
-					   unsigned long context_unused)
+				 unsigned long context_unused)
 {
 	struct pci_dev *pcidev = comedi_to_pci_dev(dev);
 	struct icp_multi_private *devpriv;
