@@ -43,6 +43,7 @@
 #define MGMT_STATUS_CANCELLED		0x10
 #define MGMT_STATUS_INVALID_INDEX	0x11
 #define MGMT_STATUS_RFKILLED		0x12
+#define MGMT_STATUS_ALREADY_PAIRED	0x13
 
 struct mgmt_hdr {
 	__le16	opcode;
@@ -98,6 +99,7 @@ struct mgmt_rp_read_index_list {
 #define MGMT_SETTING_DEBUG_KEYS		0x00001000
 #define MGMT_SETTING_PRIVACY		0x00002000
 #define MGMT_SETTING_CONFIGURATION	0x00004000
+#define MGMT_SETTING_STATIC_ADDRESS	0x00008000
 
 #define MGMT_OP_READ_INFO		0x0004
 #define MGMT_READ_INFO_SIZE		0
@@ -647,9 +649,14 @@ struct mgmt_ev_new_irk {
 	struct mgmt_irk_info irk;
 } __packed;
 
+#define MGMT_CSRK_LOCAL_UNAUTHENTICATED		0x00
+#define MGMT_CSRK_REMOTE_UNAUTHENTICATED	0x01
+#define MGMT_CSRK_LOCAL_AUTHENTICATED		0x02
+#define MGMT_CSRK_REMOTE_AUTHENTICATED		0x03
+
 struct mgmt_csrk_info {
 	struct mgmt_addr_info addr;
-	__u8 master;
+	__u8 type;
 	__u8 val[16];
 } __packed;
 

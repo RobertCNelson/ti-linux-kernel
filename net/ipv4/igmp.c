@@ -97,6 +97,7 @@
 #include <net/route.h>
 #include <net/sock.h>
 #include <net/checksum.h>
+#include <net/inet_common.h>
 #include <linux/netfilter_ipv4.h>
 #ifdef CONFIG_IP_MROUTE
 #include <linux/mroute.h>
@@ -1849,30 +1850,25 @@ static void ip_mc_clear_src(struct ip_mc_list *pmc)
 	pmc->sfcount[MCAST_EXCLUDE] = 1;
 }
 
-
-/*
- * Join a multicast group
- */
-int ip_mc_join_group(struct sock *sk , struct ip_mreqn *imr)
+int __ip_mc_join_group(struct sock *sk, struct ip_mreqn *imr)
 {
-	int err;
 	__be32 addr = imr->imr_multiaddr.s_addr;
-	struct ip_mc_socklist *iml = NULL, *i;
+	struct ip_mc_socklist *iml, *i;
 	struct in_device *in_dev;
 	struct inet_sock *inet = inet_sk(sk);
 	struct net *net = sock_net(sk);
 	int ifindex;
 	int count = 0;
+	int err;
+
+	ASSERT_RTNL();
 
 	if (!ipv4_is_multicast(addr))
 		return -EINVAL;
 
-	rtnl_lock();
-
 	in_dev = ip_mc_find_dev(net, imr);
 
 	if (!in_dev) {
-		iml = NULL;
 		err = -ENODEV;
 		goto done;
 	}
@@ -1900,8 +1896,21 @@ int ip_mc_join_group(struct sock *sk , struct ip_mreqn *imr)
 	ip_mc_inc_group(in_dev, addr);
 	err = 0;
 done:
-	rtnl_unlock();
 	return err;
+}
+EXPORT_SYMBOL(__ip_mc_join_group);
+
+/* Join a multicast group
+ */
+int ip_mc_join_group(struct sock *sk, struct ip_mreqn *imr)
+{
+	int ret;
+
+	rtnl_lock();
+	ret = __ip_mc_join_group(sk, imr);
+	rtnl_unlock();
+
+	return ret;
 }
 EXPORT_SYMBOL(ip_mc_join_group);
 
@@ -1925,11 +1934,7 @@ static int ip_mc_leave_src(struct sock *sk, struct ip_mc_socklist *iml,
 	return err;
 }
 
-/*
- *	Ask a socket to leave a group.
- */
-
-int ip_mc_leave_group(struct sock *sk, struct ip_mreqn *imr)
+int __ip_mc_leave_group(struct sock *sk, struct ip_mreqn *imr)
 {
 	struct inet_sock *inet = inet_sk(sk);
 	struct ip_mc_socklist *iml;
@@ -1940,7 +1945,8 @@ int ip_mc_leave_group(struct sock *sk, struct ip_mreqn *imr)
 	u32 ifindex;
 	int ret = -EADDRNOTAVAIL;
 
-	rtnl_lock();
+	ASSERT_RTNL();
+
 	in_dev = ip_mc_find_dev(net, imr);
 	if (!in_dev) {
 		ret = -ENODEV;
@@ -1964,14 +1970,25 @@ int ip_mc_leave_group(struct sock *sk, struct ip_mreqn *imr)
 		*imlp = iml->next_rcu;
 
 		ip_mc_dec_group(in_dev, group);
-		rtnl_unlock();
+
 		/* decrease mem now to avoid the memleak warning */
 		atomic_sub(sizeof(*iml), &sk->sk_omem_alloc);
 		kfree_rcu(iml, rcu);
 		return 0;
 	}
 out:
+	return ret;
+}
+EXPORT_SYMBOL(__ip_mc_leave_group);
+
+int ip_mc_leave_group(struct sock *sk, struct ip_mreqn *imr)
+{
+	int ret;
+
+	rtnl_lock();
+	ret = __ip_mc_leave_group(sk, imr);
 	rtnl_unlock();
+
 	return ret;
 }
 EXPORT_SYMBOL(ip_mc_leave_group);
@@ -2724,6 +2741,7 @@ static const struct file_operations igmp_mcf_seq_fops = {
 static int __net_init igmp_net_init(struct net *net)
 {
 	struct proc_dir_entry *pde;
+	int err;
 
 	pde = proc_create("igmp", S_IRUGO, net->proc_net, &igmp_mc_seq_fops);
 	if (!pde)
@@ -2732,8 +2750,18 @@ static int __net_init igmp_net_init(struct net *net)
 			  &igmp_mcf_seq_fops);
 	if (!pde)
 		goto out_mcfilter;
+	err = inet_ctl_sock_create(&net->ipv4.mc_autojoin_sk, AF_INET,
+				   SOCK_DGRAM, 0, net);
+	if (err < 0) {
+		pr_err("Failed to initialize the IGMP autojoin socket (err %d)\n",
+		       err);
+		goto out_sock;
+	}
+
 	return 0;
 
+out_sock:
+	remove_proc_entry("mcfilter", net->proc_net);
 out_mcfilter:
 	remove_proc_entry("igmp", net->proc_net);
 out_igmp:
@@ -2744,6 +2772,7 @@ static void __net_exit igmp_net_exit(struct net *net)
 {
 	remove_proc_entry("mcfilter", net->proc_net);
 	remove_proc_entry("igmp", net->proc_net);
+	inet_ctl_sock_destroy(net->ipv4.mc_autojoin_sk);
 }
 
 static struct pernet_operations igmp_net_ops = {

@@ -341,7 +341,7 @@ struct sock *inet_csk_accept(struct sock *sk, int flags, int *err)
 out:
 	release_sock(sk);
 	if (req)
-		__reqsk_free(req);
+		reqsk_put(req);
 	return newsk;
 out_err:
 	newsk = NULL;
@@ -636,7 +636,7 @@ void inet_csk_reqsk_queue_prune(struct sock *parent,
 				/* Drop this request */
 				inet_csk_reqsk_queue_unlink(parent, req, reqp);
 				reqsk_queue_removed(queue, req);
-				reqsk_free(req);
+				reqsk_put(req);
 				continue;
 			}
 			reqp = &req->dl_next;
@@ -679,6 +679,8 @@ struct sock *inet_csk_clone_lock(const struct sock *sk,
 		newsk->sk_write_space = sk_stream_write_space;
 
 		newsk->sk_mark = inet_rsk(req)->ir_mark;
+		atomic64_set(&newsk->sk_cookie,
+			     atomic64_read(&inet_rsk(req)->ir_cookie));
 
 		newicsk->icsk_retransmits = 0;
 		newicsk->icsk_backoff	  = 0;
@@ -836,7 +838,7 @@ void inet_csk_listen_stop(struct sock *sk)
 		sock_put(child);
 
 		sk_acceptq_removed(sk);
-		__reqsk_free(req);
+		reqsk_put(req);
 	}
 	if (queue->fastopenq != NULL) {
 		/* Free all the reqs queued in rskq_rst_head. */
@@ -846,7 +848,7 @@ void inet_csk_listen_stop(struct sock *sk)
 		spin_unlock_bh(&queue->fastopenq->lock);
 		while ((req = acc_req) != NULL) {
 			acc_req = req->dl_next;
-			__reqsk_free(req);
+			reqsk_put(req);
 		}
 	}
 	WARN_ON(sk->sk_ack_backlog);
