@@ -67,8 +67,9 @@
  * i915_ggtt_view_type and struct i915_ggtt_view.
  *
  * A new flavour of core GEM functions which work with GGTT bound objects were
- * added with the _view suffix. They take the struct i915_ggtt_view parameter
- * encapsulating all metadata required to implement a view.
+ * added with the _ggtt_ infix, and sometimes with _view postfix to avoid
+ * renaming  in large amounts of code. They take the struct i915_ggtt_view
+ * parameter encapsulating all metadata required to implement a view.
  *
  * As a helper for callers which are only interested in the normal view,
  * globally const i915_ggtt_view_normal singleton instance exists. All old core
@@ -697,7 +698,7 @@ static int gen8_ppgtt_setup_page_tables(struct i915_hw_ppgtt *ppgtt,
 	return 0;
 }
 
-/**
+/*
  * GEN8 legacy ppgtt programming is accomplished through a max 4 PDP registers
  * with a net effect resembling a 2-level page table in normal x86 terms. Each
  * PDP represents 1GB of memory 4 * 512 * 512 * 4096 = 4GB legacy 32b address
@@ -716,15 +717,19 @@ static int gen8_ppgtt_init(struct i915_hw_ppgtt *ppgtt, uint64_t size)
 	if (size % (1<<30))
 		DRM_INFO("Pages will be wasted unless GTT size (%llu) is divisible by 1GB\n", size);
 
-	/* 1. Do all our allocations for page directories and page tables. */
-	ret = gen8_ppgtt_alloc(ppgtt, max_pdp);
+	/* 1. Do all our allocations for page directories and page tables.
+	 * We allocate more than was asked so that we can point the unused parts
+	 * to valid entries that point to scratch page. Dynamic page tables
+	 * will fix this eventually.
+	 */
+	ret = gen8_ppgtt_alloc(ppgtt, GEN8_LEGACY_PDPES);
 	if (ret)
 		return ret;
 
 	/*
 	 * 2. Create DMA mappings for the page directories and page tables.
 	 */
-	for (i = 0; i < max_pdp; i++) {
+	for (i = 0; i < GEN8_LEGACY_PDPES; i++) {
 		ret = gen8_ppgtt_setup_page_directories(ppgtt, i);
 		if (ret)
 			goto bail;
@@ -744,7 +749,7 @@ static int gen8_ppgtt_init(struct i915_hw_ppgtt *ppgtt, uint64_t size)
 	 * plugged in correctly. So we do that now/here. For aliasing PPGTT, we
 	 * will never need to touch the PDEs again.
 	 */
-	for (i = 0; i < max_pdp; i++) {
+	for (i = 0; i < GEN8_LEGACY_PDPES; i++) {
 		struct i915_page_directory_entry *pd = ppgtt->pdp.page_directory[i];
 		gen8_ppgtt_pde_t *pd_vaddr;
 		pd_vaddr = kmap_atomic(ppgtt->pdp.page_directory[i]->page);
@@ -764,9 +769,14 @@ static int gen8_ppgtt_init(struct i915_hw_ppgtt *ppgtt, uint64_t size)
 	ppgtt->base.insert_entries = gen8_ppgtt_insert_entries;
 	ppgtt->base.cleanup = gen8_ppgtt_cleanup;
 	ppgtt->base.start = 0;
-	ppgtt->base.total = ppgtt->num_pd_entries * GEN8_PTES_PER_PAGE * PAGE_SIZE;
 
-	ppgtt->base.clear_range(&ppgtt->base, 0, ppgtt->base.total, true);
+	/* This is the area that we advertise as usable for the caller */
+	ppgtt->base.total = max_pdp * GEN8_PDES_PER_PAGE * GEN8_PTES_PER_PAGE * PAGE_SIZE;
+
+	/* Set all ptes to a valid scratch page. Also above requested space */
+	ppgtt->base.clear_range(&ppgtt->base, 0,
+				ppgtt->num_pd_pages * GEN8_PTES_PER_PAGE * PAGE_SIZE,
+				true);
 
 	DRM_DEBUG_DRIVER("Allocated %d pages for page directories (%d wasted)\n",
 			 ppgtt->num_pd_pages, ppgtt->num_pd_pages - max_pdp);
@@ -1717,10 +1727,14 @@ static void ggtt_bind_vma(struct i915_vma *vma,
 	struct drm_device *dev = vma->vm->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_i915_gem_object *obj = vma->obj;
+	struct sg_table *pages = obj->pages;
 
 	/* Currently applicable only to VLV */
 	if (obj->gt_ro)
 		flags |= PTE_READ_ONLY;
+
+	if (i915_is_ggtt(vma->vm))
+		pages = vma->ggtt_view.pages;
 
 	/* If there is no aliasing PPGTT, or the caller needs a global mapping,
 	 * or we have a global mapping already but the cacheability flags have
@@ -1736,7 +1750,7 @@ static void ggtt_bind_vma(struct i915_vma *vma,
 	if (!dev_priv->mm.aliasing_ppgtt || flags & GLOBAL_BIND) {
 		if (!(vma->bound & GLOBAL_BIND) ||
 		    (cache_level != obj->cache_level)) {
-			vma->vm->insert_entries(vma->vm, vma->ggtt_view.pages,
+			vma->vm->insert_entries(vma->vm, pages,
 						vma->node.start,
 						cache_level, flags);
 			vma->bound |= GLOBAL_BIND;
@@ -1747,8 +1761,7 @@ static void ggtt_bind_vma(struct i915_vma *vma,
 	    (!(vma->bound & LOCAL_BIND) ||
 	     (cache_level != obj->cache_level))) {
 		struct i915_hw_ppgtt *appgtt = dev_priv->mm.aliasing_ppgtt;
-		appgtt->base.insert_entries(&appgtt->base,
-					    vma->ggtt_view.pages,
+		appgtt->base.insert_entries(&appgtt->base, pages,
 					    vma->node.start,
 					    cache_level, flags);
 		vma->bound |= LOCAL_BIND;
@@ -2322,11 +2335,16 @@ int i915_gem_gtt_init(struct drm_device *dev)
 	return 0;
 }
 
-static struct i915_vma *__i915_gem_vma_create(struct drm_i915_gem_object *obj,
-					      struct i915_address_space *vm,
-					      const struct i915_ggtt_view *view)
+static struct i915_vma *
+__i915_gem_vma_create(struct drm_i915_gem_object *obj,
+		      struct i915_address_space *vm,
+		      const struct i915_ggtt_view *ggtt_view)
 {
-	struct i915_vma *vma = kzalloc(sizeof(*vma), GFP_KERNEL);
+	struct i915_vma *vma;
+
+	if (WARN_ON(i915_is_ggtt(vm) != !!ggtt_view))
+		return ERR_PTR(-EINVAL);
+	vma = kzalloc(sizeof(*vma), GFP_KERNEL);
 	if (vma == NULL)
 		return ERR_PTR(-ENOMEM);
 
@@ -2335,10 +2353,11 @@ static struct i915_vma *__i915_gem_vma_create(struct drm_i915_gem_object *obj,
 	INIT_LIST_HEAD(&vma->exec_list);
 	vma->vm = vm;
 	vma->obj = obj;
-	vma->ggtt_view = *view;
 
 	if (INTEL_INFO(vm->dev)->gen >= 6) {
 		if (i915_is_ggtt(vm)) {
+			vma->ggtt_view = *ggtt_view;
+
 			vma->unbind_vma = ggtt_unbind_vma;
 			vma->bind_vma = ggtt_bind_vma;
 		} else {
@@ -2347,6 +2366,7 @@ static struct i915_vma *__i915_gem_vma_create(struct drm_i915_gem_object *obj,
 		}
 	} else {
 		BUG_ON(!i915_is_ggtt(vm));
+		vma->ggtt_view = *ggtt_view;
 		vma->unbind_vma = i915_ggtt_unbind_vma;
 		vma->bind_vma = i915_ggtt_bind_vma;
 	}
@@ -2359,21 +2379,44 @@ static struct i915_vma *__i915_gem_vma_create(struct drm_i915_gem_object *obj,
 }
 
 struct i915_vma *
-i915_gem_obj_lookup_or_create_vma_view(struct drm_i915_gem_object *obj,
-				       struct i915_address_space *vm,
-				       const struct i915_ggtt_view *view)
+i915_gem_obj_lookup_or_create_vma(struct drm_i915_gem_object *obj,
+				  struct i915_address_space *vm)
 {
 	struct i915_vma *vma;
 
-	vma = i915_gem_obj_to_vma_view(obj, vm, view);
+	vma = i915_gem_obj_to_vma(obj, vm);
 	if (!vma)
-		vma = __i915_gem_vma_create(obj, vm, view);
+		vma = __i915_gem_vma_create(obj, vm,
+					    i915_is_ggtt(vm) ? &i915_ggtt_view_normal : NULL);
 
 	return vma;
 }
 
+struct i915_vma *
+i915_gem_obj_lookup_or_create_ggtt_vma(struct drm_i915_gem_object *obj,
+				       const struct i915_ggtt_view *view)
+{
+	struct i915_address_space *ggtt = i915_obj_to_ggtt(obj);
+	struct i915_vma *vma;
+
+	if (WARN_ON(!view))
+		return ERR_PTR(-EINVAL);
+
+	vma = i915_gem_obj_to_ggtt_view(obj, view);
+
+	if (IS_ERR(vma))
+		return vma;
+
+	if (!vma)
+		vma = __i915_gem_vma_create(obj, ggtt, view);
+
+	return vma;
+
+}
+
+
 static inline
-int i915_get_vma_pages(struct i915_vma *vma)
+int i915_get_ggtt_vma_pages(struct i915_vma *vma)
 {
 	if (vma->ggtt_view.pages)
 		return 0;
@@ -2385,7 +2428,7 @@ int i915_get_vma_pages(struct i915_vma *vma)
 			  vma->ggtt_view.type);
 
 	if (!vma->ggtt_view.pages) {
-		DRM_ERROR("Failed to get pages for VMA view type %u!\n",
+		DRM_ERROR("Failed to get pages for GGTT view type %u!\n",
 			  vma->ggtt_view.type);
 		return -EINVAL;
 	}
@@ -2406,10 +2449,12 @@ int i915_get_vma_pages(struct i915_vma *vma)
 int i915_vma_bind(struct i915_vma *vma, enum i915_cache_level cache_level,
 		  u32 flags)
 {
-	int ret = i915_get_vma_pages(vma);
+	if (i915_is_ggtt(vma->vm)) {
+		int ret = i915_get_ggtt_vma_pages(vma);
 
-	if (ret)
-		return ret;
+		if (ret)
+			return ret;
+	}
 
 	vma->bind_vma(vma, cache_level, flags);
 
