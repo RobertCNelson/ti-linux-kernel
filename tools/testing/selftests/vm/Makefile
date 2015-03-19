@@ -9,8 +9,10 @@ all: $(BINARIES)
 %: %.c
 	$(CC) $(CFLAGS) -o $@ $^ -lrt
 
-run_tests: all
-	@/bin/sh ./run_vmtests || (echo "vmtests: [FAIL]"; exit 1)
+TEST_PROGS := run_vmtests
+TEST_FILES := $(BINARIES)
+
+include ../lib.mk
 
 clean:
 	$(RM) $(BINARIES)
