@@ -355,6 +355,7 @@ static struct hist_entry *hist_entry__new(struct hist_entry *template,
 			callchain_init(he->callchain);
 
 		INIT_LIST_HEAD(&he->pairs.node);
+		thread__get(he->thread);
 	}
 
 	return he;
@@ -941,6 +942,7 @@ hist_entry__collapse(struct hist_entry *left, struct hist_entry *right)
 
 void hist_entry__delete(struct hist_entry *he)
 {
+	thread__zput(he->thread);
 	zfree(&he->branch_info);
 	zfree(&he->mem_info);
 	zfree(&he->stat_acc);
@@ -1169,6 +1171,7 @@ static void hists__remove_entry_filter(struct hists *hists, struct hist_entry *h
 	/* force fold unfiltered entry for simplicity */
 	h->ms.unfolded = false;
 	h->row_offset = 0;
+	h->nr_rows = 0;
 
 	hists->stats.nr_non_filtered_samples += h->stat.nr_events;
 

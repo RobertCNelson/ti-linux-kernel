@@ -48,6 +48,24 @@ static bool hist_browser__has_filter(struct hist_browser *hb)
 	return hists__has_filter(hb->hists) || hb->min_pcnt;
 }
 
+static int hist_browser__get_folding(struct hist_browser *browser)
+{
+	struct rb_node *nd;
+	struct hists *hists = browser->hists;
+	int unfolded_rows = 0;
+
+	for (nd = rb_first(&hists->entries);
+	     (nd = hists__filter_entries(nd, browser->min_pcnt)) != NULL;
+	     nd = rb_next(nd)) {
+		struct hist_entry *he =
+			rb_entry(nd, struct hist_entry, rb_node);
+
+		if (he->ms.unfolded)
+			unfolded_rows += he->nr_rows;
+	}
+	return unfolded_rows;
+}
+
 static u32 hist_browser__nr_entries(struct hist_browser *hb)
 {
 	u32 nr_entries;
@@ -57,6 +75,7 @@ static u32 hist_browser__nr_entries(struct hist_browser *hb)
 	else
 		nr_entries = hb->hists->nr_entries;
 
+	hb->nr_callchain_rows = hist_browser__get_folding(hb);
 	return nr_entries + hb->nr_callchain_rows;
 }
 
@@ -1467,7 +1486,7 @@ static int perf_evsel__hists_browse(struct perf_evsel *evsel, int nr_events,
 		perf_hpp__set_user_width(symbol_conf.col_width_list_str);
 
 	while (1) {
-		const struct thread *thread = NULL;
+		struct thread *thread = NULL;
 		const struct dso *dso = NULL;
 		int choice = 0,
 		    annotate = -2, zoom_dso = -2, zoom_thread = -2,
@@ -1754,13 +1773,13 @@ zoom_thread:
 				pstack__remove(fstack, &browser->hists->thread_filter);
 zoom_out_thread:
 				ui_helpline__pop();
-				browser->hists->thread_filter = NULL;
+				thread__zput(browser->hists->thread_filter);
 				perf_hpp__set_elide(HISTC_THREAD, false);
 			} else {
 				ui_helpline__fpush("To zoom out press <- or -> + \"Zoom out of %s(%d) thread\"",
 						   thread->comm_set ? thread__comm_str(thread) : "",
 						   thread->tid);
-				browser->hists->thread_filter = thread;
+				browser->hists->thread_filter = thread__get(thread);
 				perf_hpp__set_elide(HISTC_THREAD, false);
 				pstack__push(fstack, &browser->hists->thread_filter);
 			}

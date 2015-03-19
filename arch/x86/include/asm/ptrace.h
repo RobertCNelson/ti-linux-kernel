@@ -31,13 +31,17 @@ struct pt_regs {
 #else /* __i386__ */
 
 struct pt_regs {
+/*
+ * C ABI says these regs are callee-preserved. They aren't saved on kernel entry
+ * unless syscall needs a complete, fully filled "struct pt_regs".
+ */
 	unsigned long r15;
 	unsigned long r14;
 	unsigned long r13;
 	unsigned long r12;
 	unsigned long bp;
 	unsigned long bx;
-/* arguments: non interrupts/non tracing syscalls only save up to here*/
+/* These regs are callee-clobbered. Always saved on kernel entry. */
 	unsigned long r11;
 	unsigned long r10;
 	unsigned long r9;
@@ -47,9 +51,12 @@ struct pt_regs {
 	unsigned long dx;
 	unsigned long si;
 	unsigned long di;
+/*
+ * On syscall entry, this is syscall#. On CPU exception, this is error code.
+ * On hw interrupt, it's IRQ number:
+ */
 	unsigned long orig_ax;
-/* end of arguments */
-/* cpu exception frame or undefined */
+/* Return frame for iretq */
 	unsigned long ip;
 	unsigned long cs;
 	unsigned long flags;
@@ -138,12 +145,8 @@ static inline bool user_64bit_mode(struct pt_regs *regs)
 #endif
 }
 
-#define current_user_stack_pointer()	this_cpu_read(old_rsp)
-/* ia32 vs. x32 difference */
-#define compat_user_stack_pointer()	\
-	(test_thread_flag(TIF_IA32) 	\
-	 ? current_pt_regs()->sp 	\
-	 : this_cpu_read(old_rsp))
+#define current_user_stack_pointer()	current_pt_regs()->sp
+#define compat_user_stack_pointer()	current_pt_regs()->sp
 #endif
 
 #ifdef CONFIG_X86_32
