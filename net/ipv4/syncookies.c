@@ -219,19 +219,20 @@ int __cookie_v4_check(const struct iphdr *iph, const struct tcphdr *th,
 }
 EXPORT_SYMBOL_GPL(__cookie_v4_check);
 
-static inline struct sock *get_cookie_sock(struct sock *sk, struct sk_buff *skb,
-					   struct request_sock *req,
-					   struct dst_entry *dst)
+static struct sock *get_cookie_sock(struct sock *sk, struct sk_buff *skb,
+				    struct request_sock *req,
+				    struct dst_entry *dst)
 {
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	struct sock *child;
 
 	child = icsk->icsk_af_ops->syn_recv_sock(sk, skb, req, dst);
-	if (child)
+	if (child) {
+		atomic_set(&req->rsk_refcnt, 1);
 		inet_csk_reqsk_queue_add(sk, req, child);
-	else
+	} else {
 		reqsk_free(req);
-
+	}
 	return child;
 }
 
@@ -325,7 +326,7 @@ struct sock *cookie_v4_check(struct sock *sk, struct sk_buff *skb)
 		goto out;
 
 	ret = NULL;
-	req = inet_reqsk_alloc(&tcp_request_sock_ops); /* for safety */
+	req = inet_reqsk_alloc(&tcp_request_sock_ops, sk); /* for safety */
 	if (!req)
 		goto out;
 
@@ -345,7 +346,10 @@ struct sock *cookie_v4_check(struct sock *sk, struct sk_buff *skb)
 	ireq->tstamp_ok		= tcp_opt.saw_tstamp;
 	req->ts_recent		= tcp_opt.saw_tstamp ? tcp_opt.rcv_tsval : 0;
 	treq->snt_synack	= tcp_opt.saw_tstamp ? tcp_opt.rcv_tsecr : 0;
-	treq->listener		= NULL;
+	treq->tfo_listener	= false;
+	ireq->ireq_family = AF_INET;
+
+	ireq->ir_iif = sk->sk_bound_dev_if;
 
 	/* We throwed the options of the initial SYN away, so we hope
 	 * the ACK carries the same options again (see RFC1122 4.2.3.8)

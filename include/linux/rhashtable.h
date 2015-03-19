@@ -49,14 +49,25 @@ struct rhash_head {
 /**
  * struct bucket_table - Table of hash buckets
  * @size: Number of hash buckets
+ * @rehash: Current bucket being rehashed
+ * @hash_rnd: Random seed to fold into hash
  * @locks_mask: Mask to apply before accessing locks[]
  * @locks: Array of spinlocks protecting individual buckets
+ * @walkers: List of active walkers
+ * @rcu: RCU structure for freeing the table
+ * @future_tbl: Table under construction during rehashing
  * @buckets: size * hash buckets
  */
 struct bucket_table {
-	size_t			size;
+	unsigned int		size;
+	unsigned int		rehash;
+	u32			hash_rnd;
 	unsigned int		locks_mask;
 	spinlock_t		*locks;
+	struct list_head	walkers;
+	struct rcu_head		rcu;
+
+	struct bucket_table __rcu *future_tbl;
 
 	struct rhash_head __rcu	*buckets[] ____cacheline_aligned_in_smp;
 };
@@ -72,9 +83,8 @@ struct rhashtable;
  * @key_len: Length of key
  * @key_offset: Offset of key in struct to be hashed
  * @head_offset: Offset of rhash_head in struct to be hashed
- * @hash_rnd: Seed to use while hashing
- * @max_shift: Maximum number of shifts while expanding
- * @min_shift: Minimum number of shifts while shrinking
+ * @max_size: Maximum size while expanding
+ * @min_size: Minimum size while shrinking
  * @nulls_base: Base value to generate nulls marker
  * @locks_mul: Number of bucket locks to allocate per cpu (default: 128)
  * @hashfn: Function to hash key
@@ -85,9 +95,8 @@ struct rhashtable_params {
 	size_t			key_len;
 	size_t			key_offset;
 	size_t			head_offset;
-	u32			hash_rnd;
-	size_t			max_shift;
-	size_t			min_shift;
+	unsigned int		max_size;
+	unsigned int		min_size;
 	u32			nulls_base;
 	size_t			locks_mul;
 	rht_hashfn_t		hashfn;
@@ -97,35 +106,29 @@ struct rhashtable_params {
 /**
  * struct rhashtable - Hash table handle
  * @tbl: Bucket table
- * @future_tbl: Table under construction during expansion/shrinking
  * @nelems: Number of elements in table
- * @shift: Current size (1 << shift)
  * @p: Configuration parameters
  * @run_work: Deferred worker to expand/shrink asynchronously
  * @mutex: Mutex to protect current/future table swapping
- * @walkers: List of active walkers
  * @being_destroyed: True if table is set up for destruction
  */
 struct rhashtable {
 	struct bucket_table __rcu	*tbl;
-	struct bucket_table __rcu       *future_tbl;
 	atomic_t			nelems;
-	atomic_t			shift;
+	bool                            being_destroyed;
 	struct rhashtable_params	p;
 	struct work_struct		run_work;
 	struct mutex                    mutex;
-	struct list_head		walkers;
-	bool                            being_destroyed;
 };
 
 /**
  * struct rhashtable_walker - Hash table walker
  * @list: List entry on list of walkers
- * @resize: Resize event occured
+ * @tbl: The table that we were walking over
  */
 struct rhashtable_walker {
 	struct list_head list;
-	bool resize;
+	struct bucket_table *tbl;
 };
 
 /**

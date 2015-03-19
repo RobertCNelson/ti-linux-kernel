@@ -261,7 +261,6 @@ struct header_ops {
 			   unsigned short type, const void *daddr,
 			   const void *saddr, unsigned int len);
 	int	(*parse)(const struct sk_buff *skb, unsigned char *haddr);
-	int	(*rebuild)(struct sk_buff *skb);
 	int	(*cache)(const struct neighbour *neigh, struct hh_cache *hh, __be16 type);
 	void	(*cache_update)(struct hh_cache *hh,
 				const struct net_device *dev,
@@ -588,6 +587,7 @@ struct netdev_queue {
 #ifdef CONFIG_BQL
 	struct dql		dql;
 #endif
+	unsigned long		tx_maxrate;
 } ____cacheline_aligned_in_smp;
 
 static inline int netdev_queue_numa_node_read(const struct netdev_queue *q)
@@ -1026,15 +1026,10 @@ typedef u16 (*select_queue_fallback_t)(struct net_device *dev,
  *	be otherwise expressed by feature flags. The check is called with
  *	the set of features that the stack has calculated and it returns
  *	those the driver believes to be appropriate.
- *
- * int (*ndo_switch_parent_id_get)(struct net_device *dev,
- *				   struct netdev_phys_item_id *psid);
- *	Called to get an ID of the switch chip this port is part of.
- *	If driver implements this, it indicates that it represents a port
- *	of a switch chip.
- * int (*ndo_switch_port_stp_update)(struct net_device *dev, u8 state);
- *	Called to notify switch device port of bridge port STP
- *	state change.
+ * int (*ndo_set_tx_maxrate)(struct net_device *dev,
+ *			     int queue_index, u32 maxrate);
+ *	Called when a user wants to set a max-rate limitation of specific
+ *	TX queue.
  */
 struct net_device_ops {
 	int			(*ndo_init)(struct net_device *dev);
@@ -1191,12 +1186,9 @@ struct net_device_ops {
 	netdev_features_t	(*ndo_features_check) (struct sk_buff *skb,
 						       struct net_device *dev,
 						       netdev_features_t features);
-#ifdef CONFIG_NET_SWITCHDEV
-	int			(*ndo_switch_parent_id_get)(struct net_device *dev,
-							    struct netdev_phys_item_id *psid);
-	int			(*ndo_switch_port_stp_update)(struct net_device *dev,
-							      u8 state);
-#endif
+	int			(*ndo_set_tx_maxrate)(struct net_device *dev,
+						      int queue_index,
+						      u32 maxrate);
 };
 
 /**
@@ -1349,7 +1341,7 @@ enum netdev_priv_flags {
  *			if one wants to override the ndo_*() functions
  *	@ethtool_ops:	Management operations
  *	@fwd_ops:	Management operations
- *	@header_ops:	Includes callbacks for creating,parsing,rebuilding,etc
+ *	@header_ops:	Includes callbacks for creating,parsing,caching,etc
  *			of Layer 2 headers.
  *
  *	@flags:		Interface flags (a la BSD)
@@ -1558,6 +1550,9 @@ struct net_device {
 	const struct net_device_ops *netdev_ops;
 	const struct ethtool_ops *ethtool_ops;
 	const struct forwarding_accel_ops *fwd_ops;
+#ifdef CONFIG_NET_SWITCHDEV
+	const struct swdev_ops *swdev_ops;
+#endif
 
 	const struct header_ops *header_ops;
 
@@ -1702,9 +1697,7 @@ struct net_device {
 	struct netpoll_info __rcu	*npinfo;
 #endif
 
-#ifdef CONFIG_NET_NS
-	struct net		*nd_net;
-#endif
+	possible_net_t			nd_net;
 
 	/* mid-layer private */
 	union {
@@ -1844,10 +1837,7 @@ struct net *dev_net(const struct net_device *dev)
 static inline
 void dev_net_set(struct net_device *dev, struct net *net)
 {
-#ifdef CONFIG_NET_NS
-	release_net(dev->nd_net);
-	dev->nd_net = hold_net(net);
-#endif
+	write_pnet(&dev->nd_net, net);
 }
 
 static inline bool netdev_uses_dsa(struct net_device *dev)
@@ -2401,15 +2391,6 @@ static inline int dev_parse_header(const struct sk_buff *skb,
 	if (!dev->header_ops || !dev->header_ops->parse)
 		return 0;
 	return dev->header_ops->parse(skb, haddr);
-}
-
-static inline int dev_rebuild_header(struct sk_buff *skb)
-{
-	const struct net_device *dev = skb->dev;
-
-	if (!dev->header_ops || !dev->header_ops->rebuild)
-		return 0;
-	return dev->header_ops->rebuild(skb);
 }
 
 typedef int gifconf_func_t(struct net_device * dev, char __user * bufptr, int len);
