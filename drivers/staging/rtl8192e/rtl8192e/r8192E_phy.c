@@ -920,7 +920,6 @@ static u8 rtl8192_phy_SwChnlStepByStep(struct net_device *dev, u8 channel,
 			RT_TRACE(COMP_ERR, "Unknown RFChipID: %d\n",
 				 priv->rf_chip);
 			return false;
-			break;
 		}
 
 
@@ -996,7 +995,7 @@ static void rtl8192_phy_FinishSwChnlNow(struct net_device *dev, u8 channel)
 	      &priv->SwChnlStep, &delay)) {
 		if (delay > 0)
 			msleep(delay);
-		if (IS_NIC_DOWN(priv))
+		if (!priv->up)
 			break;
 	}
 }
@@ -1020,7 +1019,7 @@ u8 rtl8192_phy_SwChnl(struct net_device *dev, u8 channel)
 	struct r8192_priv *priv = rtllib_priv(dev);
 
 	RT_TRACE(COMP_PHY, "=====>%s()\n", __func__);
-	if (IS_NIC_DOWN(priv)) {
+	if (!priv->up) {
 		RT_TRACE(COMP_ERR, "%s(): ERR !! driver is not up\n", __func__);
 		return false;
 	}
@@ -1060,7 +1059,7 @@ u8 rtl8192_phy_SwChnl(struct net_device *dev, u8 channel)
 	priv->SwChnlStage = 0;
 	priv->SwChnlStep = 0;
 
-	if (!IS_NIC_DOWN(priv))
+	if (priv->up)
 		rtl8192_SwChnl_WorkItem(dev);
 	priv->SwChnlInProgress = false;
 	return true;
@@ -1186,7 +1185,7 @@ void rtl8192_SetBWModeWorkItem(struct net_device *dev)
 		priv->SetBWModeInProgress = false;
 		return;
 	}
-	if (IS_NIC_DOWN(priv)) {
+	if (!priv->up) {
 		RT_TRACE(COMP_ERR, "%s(): ERR!! driver is not up\n", __func__);
 		return;
 	}
@@ -1309,7 +1308,7 @@ void InitialGain819xPci(struct net_device *dev, u8 Operation)
 	u32 BitMask;
 	u8 initial_gain;
 
-	if (!IS_NIC_DOWN(priv)) {
+	if (priv->up) {
 		switch (Operation) {
 		case IG_Backup:
 			RT_TRACE(COMP_SCAN, "IG_Backup, backup the initial"

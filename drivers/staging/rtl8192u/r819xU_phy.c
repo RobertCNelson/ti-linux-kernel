@@ -106,10 +106,10 @@ void rtl8192_setBBreg(struct net_device *dev, u32 reg_addr, u32 bitmask,
 /******************************************************************************
  * function:  This function reads specific bits from BB register
  * input:     net_device	*dev
- *            u32	 	reg_addr   //target addr to be readback
- *            u32	 	bitmask    //taget bit pos to be readback
+ *            u32		reg_addr   //target addr to be readback
+ *            u32		bitmask    //taget bit pos to be readback
  * output:    none
- * return:    u32	 	data       //the readback register value
+ * return:    u32		data       //the readback register value
  * notice:
  ******************************************************************************/
 u32 rtl8192_QueryBBReg(struct net_device *dev, u32 reg_addr, u32 bitmask)
@@ -352,16 +352,14 @@ u32 rtl8192_phy_QueryRFReg(struct net_device *dev, RF90_RADIO_PATH_E eRFPath,
 		return 0;
 	if (priv->Rf_Mode == RF_OP_By_FW) {
 		reg = phy_FwRFSerialRead(dev, eRFPath, reg_addr);
-		bitshift =  rtl8192_CalculateBitShift(bitmask);
-		reg = (reg & bitmask) >> bitshift;
 		udelay(200);
-		return reg;
 	} else {
 		reg = rtl8192_phy_RFSerialRead(dev, eRFPath, reg_addr);
-		bitshift =  rtl8192_CalculateBitShift(bitmask);
-		reg = (reg & bitmask) >> bitshift;
-		return reg;
 	}
+	bitshift =  rtl8192_CalculateBitShift(bitmask);
+	reg = (reg & bitmask) >> bitshift;
+	return reg;
+
 }
 
 /******************************************************************************
@@ -478,7 +476,7 @@ static void phy_FwRFSerialWrite(struct net_device *dev,
 /******************************************************************************
  * function:  This function reads BB parameters from header file we generate,
  *            and do register read/write
- * input:     net_device 	*dev
+ * input:     net_device	*dev
  * output:    none
  * return:    none
  * notice:    BB parameters may change all the time, so please make
@@ -825,8 +823,8 @@ static void rtl8192_BB_Config_ParaFile(struct net_device *dev)
 	write_nic_byte_E(dev, 0x5e, 0x00);
 	if (priv->card_8192_version == (u8)VERSION_819xU_A) {
 		/* Antenna gain offset from B/C/D to A */
-		reg_u32 = (priv->AntennaTxPwDiff[1]<<4 |
-			   priv->AntennaTxPwDiff[0]);
+		reg_u32 = priv->AntennaTxPwDiff[1]<<4 |
+			   priv->AntennaTxPwDiff[0];
 		rtl8192_setBBreg(dev, rFPGA0_TxGainStage, (bXBTxAGC|bXCTxAGC),
 				 reg_u32);
 
@@ -1101,7 +1099,7 @@ bool rtl8192_SetRFPowerState(struct net_device *dev,
 	if (eRFPowerState == priv->ieee80211->eRFPowerState)
 		return false;
 
-	if (priv->SetRFPowerStateInProgress == true)
+	if (priv->SetRFPowerStateInProgress)
 		return false;
 
 	priv->SetRFPowerStateInProgress = true;
@@ -1187,7 +1185,7 @@ bool rtl8192_SetRFPowerState(struct net_device *dev,
 				/* Turn on RF we are still linked, which might
 				   happen when we quickly turn off and on HW RF.
 				 */
-				if (pMgntInfo->bMediaConnect == TRUE)
+				if (pMgntInfo->bMediaConnect)
 					Adapter->HalFunc.LedControlHandler(Adapter, LED_CTL_LINK);
 				else
 					/* Turn off LED if RF is not ON. */
@@ -1344,7 +1342,6 @@ static u8 rtl8192_phy_SwChnlStepByStep(struct net_device *dev, u8 channel,
 	default:
 		RT_TRACE(COMP_ERR, "Unknown RFChipID: %d\n", priv->rf_chip);
 		return true;
-		break;
 	}
 
 
@@ -1365,11 +1362,10 @@ static u8 rtl8192_phy_SwChnlStepByStep(struct net_device *dev, u8 channel,
 			if ((*stage) == 2) {
 				(*delay) = CurrentCmd->msDelay;
 				return true;
-			} else {
-				(*stage)++;
-				(*step) = 0;
-				continue;
 			}
+			(*stage)++;
+			(*step) = 0;
+			continue;
 		}
 
 		switch (CurrentCmd->CmdID) {
@@ -1579,10 +1575,10 @@ void rtl8192_SetBWModeWorkItem(struct net_device *dev)
 			 priv->cck_present_attentuation);
 
 		if (priv->chan == 14 && !priv->bcck_in_ch14) {
-			priv->bcck_in_ch14 = TRUE;
+			priv->bcck_in_ch14 = true;
 			dm_cck_txpower_adjust(dev, priv->bcck_in_ch14);
 		} else if (priv->chan != 14 && priv->bcck_in_ch14) {
-			priv->bcck_in_ch14 = FALSE;
+			priv->bcck_in_ch14 = false;
 			dm_cck_txpower_adjust(dev, priv->bcck_in_ch14);
 		} else {
 			dm_cck_txpower_adjust(dev, priv->bcck_in_ch14);
