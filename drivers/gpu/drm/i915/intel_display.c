@@ -8713,6 +8713,7 @@ retry:
 			old->release_fb->funcs->destroy(old->release_fb);
 		goto fail;
 	}
+	crtc->primary->crtc = crtc;
 
 	/* let the connector get through one full cycle before testing */
 	intel_wait_for_vblank(dev, intel_crtc->pipe);
@@ -9715,7 +9716,7 @@ void intel_check_page_flip(struct drm_device *dev, int pipe)
 	struct drm_crtc *crtc = dev_priv->pipe_to_crtc_mapping[pipe];
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 
-	WARN_ON(!in_irq());
+	WARN_ON(!in_interrupt());
 
 	if (crtc == NULL)
 		return;
