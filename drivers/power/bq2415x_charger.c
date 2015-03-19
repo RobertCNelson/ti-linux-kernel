@@ -13,12 +13,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
- */
-
-/*
  * Datasheets:
  * http://www.ti.com/product/bq24150
  * http://www.ti.com/product/bq24150a
@@ -26,6 +20,8 @@
  * http://www.ti.com/product/bq24153
  * http://www.ti.com/product/bq24153a
  * http://www.ti.com/product/bq24155
+ * http://www.ti.com/product/bq24157s
+ * http://www.ti.com/product/bq24158
  */
 
 #include <linux/kernel.h>
@@ -147,6 +143,7 @@ enum bq2415x_chip {
 	BQ24155,
 	BQ24156,
 	BQ24156A,
+	BQ24157S,
 	BQ24158,
 };
 
@@ -162,6 +159,7 @@ static char *bq2415x_chip_name[] = {
 	"bq24155",
 	"bq24156",
 	"bq24156a",
+	"bq24157s",
 	"bq24158",
 };
 
@@ -173,7 +171,7 @@ struct bq2415x_device {
 	struct power_supply *notify_psy;
 	struct notifier_block nb;
 	enum bq2415x_mode reported_mode;/* mode reported by hook function */
-	enum bq2415x_mode mode;		/* current configured mode */
+	enum bq2415x_mode mode;		/* currently configured mode */
 	enum bq2415x_chip chip;
 	const char *timer_error;
 	char *model;
@@ -352,8 +350,7 @@ static int bq2415x_exec_command(struct bq2415x_device *bq,
 			BQ2415X_BIT_CE);
 		if (ret < 0)
 			return ret;
-		else
-			return ret > 0 ? 0 : 1;
+		return ret > 0 ? 0 : 1;
 	case BQ2415X_CHARGER_ENABLE:
 		return bq2415x_i2c_write_bit(bq, BQ2415X_REG_CONTROL,
 				0, BQ2415X_BIT_CE);
@@ -426,20 +423,17 @@ static enum bq2415x_chip bq2415x_detect_chip(struct bq2415x_device *bq)
 		case 0:
 			if (bq->chip == BQ24151A)
 				return bq->chip;
-			else
-				return BQ24151;
+			return BQ24151;
 		case 1:
 			if (bq->chip == BQ24150A ||
 				bq->chip == BQ24152 ||
 				bq->chip == BQ24155)
 				return bq->chip;
-			else
-				return BQ24150;
+			return BQ24150;
 		case 2:
 			if (bq->chip == BQ24153A)
 				return bq->chip;
-			else
-				return BQ24153;
+			return BQ24153;
 		default:
 			return BQUNKNOWN;
 		}
@@ -450,9 +444,10 @@ static enum bq2415x_chip bq2415x_detect_chip(struct bq2415x_device *bq)
 		case 0:
 			if (bq->chip == BQ24156A)
 				return bq->chip;
-			else
-				return BQ24156;
+			return BQ24156;
 		case 2:
+			if (bq->chip == BQ24157S)
+				return bq->chip;
 			return BQ24158;
 		default:
 			return BQUNKNOWN;
@@ -480,24 +475,22 @@ static int bq2415x_detect_revision(struct bq2415x_device *bq)
 	case BQ24152:
 		if (ret >= 0 && ret <= 3)
 			return ret;
-		else
-			return -1;
+		return -1;
 	case BQ24153:
 	case BQ24153A:
 	case BQ24156:
 	case BQ24156A:
+	case BQ24157S:
 	case BQ24158:
 		if (ret == 3)
 			return 0;
 		else if (ret == 1)
 			return 1;
-		else
-			return -1;
+		return -1;
 	case BQ24155:
 		if (ret == 3)
 			return 3;
-		else
-			return -1;
+		return -1;
 	case BQUNKNOWN:
 		return -1;
 	}
@@ -1731,6 +1724,7 @@ static const struct i2c_device_id bq2415x_i2c_id_table[] = {
 	{ "bq24155", BQ24155 },
 	{ "bq24156", BQ24156 },
 	{ "bq24156a", BQ24156A },
+	{ "bq24157s", BQ24157S },
 	{ "bq24158", BQ24158 },
 	{},
 };
