@@ -38,6 +38,7 @@ static inline pgd_t *pgd_alloc(struct mm_struct *mm)
 		/* The first pmd entry also is marked with _PAGE_GATEWAY as
 		 * a signal that this pmd may not be freed */
 		__pgd_val_set(*pgd, PxD_FLAG_ATTACHED);
+		mm_inc_nr_pmds(mm);
 #endif
 	}
 	return actual_pgd;
