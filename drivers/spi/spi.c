@@ -129,125 +129,11 @@ static int spi_uevent(struct device *dev, struct kobj_uevent_env *env)
 	return 0;
 }
 
-#ifdef CONFIG_PM_SLEEP
-static int spi_legacy_suspend(struct device *dev, pm_message_t message)
-{
-	int			value = 0;
-	struct spi_driver	*drv = to_spi_driver(dev->driver);
-
-	/* suspend will stop irqs and dma; no more i/o */
-	if (drv) {
-		if (drv->suspend)
-			value = drv->suspend(to_spi_device(dev), message);
-		else
-			dev_dbg(dev, "... can't suspend\n");
-	}
-	return value;
-}
-
-static int spi_legacy_resume(struct device *dev)
-{
-	int			value = 0;
-	struct spi_driver	*drv = to_spi_driver(dev->driver);
-
-	/* resume may restart the i/o queue */
-	if (drv) {
-		if (drv->resume)
-			value = drv->resume(to_spi_device(dev));
-		else
-			dev_dbg(dev, "... can't resume\n");
-	}
-	return value;
-}
-
-static int spi_pm_suspend(struct device *dev)
-{
-	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
-
-	if (pm)
-		return pm_generic_suspend(dev);
-	else
-		return spi_legacy_suspend(dev, PMSG_SUSPEND);
-}
-
-static int spi_pm_resume(struct device *dev)
-{
-	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
-
-	if (pm)
-		return pm_generic_resume(dev);
-	else
-		return spi_legacy_resume(dev);
-}
-
-static int spi_pm_freeze(struct device *dev)
-{
-	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
-
-	if (pm)
-		return pm_generic_freeze(dev);
-	else
-		return spi_legacy_suspend(dev, PMSG_FREEZE);
-}
-
-static int spi_pm_thaw(struct device *dev)
-{
-	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
-
-	if (pm)
-		return pm_generic_thaw(dev);
-	else
-		return spi_legacy_resume(dev);
-}
-
-static int spi_pm_poweroff(struct device *dev)
-{
-	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
-
-	if (pm)
-		return pm_generic_poweroff(dev);
-	else
-		return spi_legacy_suspend(dev, PMSG_HIBERNATE);
-}
-
-static int spi_pm_restore(struct device *dev)
-{
-	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
-
-	if (pm)
-		return pm_generic_restore(dev);
-	else
-		return spi_legacy_resume(dev);
-}
-#else
-#define spi_pm_suspend	NULL
-#define spi_pm_resume	NULL
-#define spi_pm_freeze	NULL
-#define spi_pm_thaw	NULL
-#define spi_pm_poweroff	NULL
-#define spi_pm_restore	NULL
-#endif
-
-static const struct dev_pm_ops spi_pm = {
-	.suspend = spi_pm_suspend,
-	.resume = spi_pm_resume,
-	.freeze = spi_pm_freeze,
-	.thaw = spi_pm_thaw,
-	.poweroff = spi_pm_poweroff,
-	.restore = spi_pm_restore,
-	SET_RUNTIME_PM_OPS(
-		pm_generic_runtime_suspend,
-		pm_generic_runtime_resume,
-		NULL
-	)
-};
-
 struct bus_type spi_bus_type = {
 	.name		= "spi",
 	.dev_groups	= spi_dev_groups,
 	.match		= spi_match_device,
 	.uevent		= spi_uevent,
-	.pm		= &spi_pm,
 };
 EXPORT_SYMBOL_GPL(spi_bus_type);
 
@@ -851,6 +737,9 @@ out:
 	if (msg->status == -EINPROGRESS)
 		msg->status = ret;
 
+	if (msg->status)
+		master->handle_err(master, msg);
+
 	spi_finalize_current_message(master);
 
 	return ret;
@@ -1105,13 +994,14 @@ void spi_finalize_current_message(struct spi_master *master)
 				"failed to unprepare message: %d\n", ret);
 		}
 	}
+
+	trace_spi_message_done(mesg);
+
 	master->cur_msg_prepared = false;
 
 	mesg->state = NULL;
 	if (mesg->complete)
 		mesg->complete(mesg->context);
-
-	trace_spi_message_done(mesg);
 }
 EXPORT_SYMBOL_GPL(spi_finalize_current_message);
 
@@ -1892,6 +1782,8 @@ int spi_setup(struct spi_device *spi)
 
 	if (!spi->max_speed_hz)
 		spi->max_speed_hz = spi->master->max_speed_hz;
+
+	spi_set_cs(spi, false);
 
 	if (spi->master->setup)
 		status = spi->master->setup(spi);
