@@ -26,6 +26,7 @@
 #include <linux/slab.h>
 #include <linux/timer.h>
 #include <linux/vmalloc.h>
+#include <linux/bitmap.h>
 #include <asm/asm-offsets.h>
 #include <asm/lowcore.h>
 #include <asm/etr.h>
@@ -130,6 +131,9 @@ unsigned long kvm_s390_fac_list_mask_size(void)
 	BUILD_BUG_ON(ARRAY_SIZE(kvm_s390_fac_list_mask) > S390_ARCH_FAC_MASK_SIZE_U64);
 	return ARRAY_SIZE(kvm_s390_fac_list_mask);
 }
+
+/* available cpu features supported by kvm */
+static DECLARE_BITMAP(kvm_s390_available_cpu_feat, KVM_S390_VM_CPU_FEAT_NR_BITS);
 
 static struct gmap_notifier gmap_notifier;
 debug_info_t *kvm_s390_dbf;
@@ -676,6 +680,29 @@ out:
 	return ret;
 }
 
+static int kvm_s390_set_processor_feat(struct kvm *kvm,
+				       struct kvm_device_attr *attr)
+{
+	struct kvm_s390_vm_cpu_feat data;
+	int ret = -EBUSY;
+
+	if (copy_from_user(&data, (void __user *)attr->addr, sizeof(data)))
+		return -EFAULT;
+	if (!bitmap_subset((unsigned long *) data.feat,
+			   kvm_s390_available_cpu_feat,
+			   KVM_S390_VM_CPU_FEAT_NR_BITS))
+		return -EINVAL;
+
+	mutex_lock(&kvm->lock);
+	if (!atomic_read(&kvm->online_vcpus)) {
+		bitmap_copy(kvm->arch.cpu_feat, (unsigned long *) data.feat,
+			    KVM_S390_VM_CPU_FEAT_NR_BITS);
+		ret = 0;
+	}
+	mutex_unlock(&kvm->lock);
+	return ret;
+}
+
 static int kvm_s390_set_cpu_model(struct kvm *kvm, struct kvm_device_attr *attr)
 {
 	int ret = -ENXIO;
@@ -683,6 +710,9 @@ static int kvm_s390_set_cpu_model(struct kvm *kvm, struct kvm_device_attr *attr)
 	switch (attr->attr) {
 	case KVM_S390_VM_CPU_PROCESSOR:
 		ret = kvm_s390_set_processor(kvm, attr);
+		break;
+	case KVM_S390_VM_CPU_PROCESSOR_FEAT:
+		ret = kvm_s390_set_processor_feat(kvm, attr);
 		break;
 	}
 	return ret;
@@ -732,6 +762,31 @@ out:
 	return ret;
 }
 
+static int kvm_s390_get_processor_feat(struct kvm *kvm,
+				       struct kvm_device_attr *attr)
+{
+	struct kvm_s390_vm_cpu_feat data;
+
+	bitmap_copy((unsigned long *) data.feat, kvm->arch.cpu_feat,
+		    KVM_S390_VM_CPU_FEAT_NR_BITS);
+	if (copy_to_user((void __user *)attr->addr, &data, sizeof(data)))
+		return -EFAULT;
+	return 0;
+}
+
+static int kvm_s390_get_machine_feat(struct kvm *kvm,
+				     struct kvm_device_attr *attr)
+{
+	struct kvm_s390_vm_cpu_feat data;
+
+	bitmap_copy((unsigned long *) data.feat,
+		    kvm_s390_available_cpu_feat,
+		    KVM_S390_VM_CPU_FEAT_NR_BITS);
+	if (copy_to_user((void __user *)attr->addr, &data, sizeof(data)))
+		return -EFAULT;
+	return 0;
+}
+
 static int kvm_s390_get_cpu_model(struct kvm *kvm, struct kvm_device_attr *attr)
 {
 	int ret = -ENXIO;
@@ -742,6 +797,12 @@ static int kvm_s390_get_cpu_model(struct kvm *kvm, struct kvm_device_attr *attr)
 		break;
 	case KVM_S390_VM_CPU_MACHINE:
 		ret = kvm_s390_get_machine(kvm, attr);
+		break;
+	case KVM_S390_VM_CPU_PROCESSOR_FEAT:
+		ret = kvm_s390_get_processor_feat(kvm, attr);
+		break;
+	case KVM_S390_VM_CPU_MACHINE_FEAT:
+		ret = kvm_s390_get_machine_feat(kvm, attr);
 		break;
 	}
 	return ret;
@@ -826,6 +887,8 @@ static int kvm_s390_vm_has_attr(struct kvm *kvm, struct kvm_device_attr *attr)
 		switch (attr->attr) {
 		case KVM_S390_VM_CPU_PROCESSOR:
 		case KVM_S390_VM_CPU_MACHINE:
+		case KVM_S390_VM_CPU_PROCESSOR_FEAT:
+		case KVM_S390_VM_CPU_MACHINE_FEAT:
 			ret = 0;
 			break;
 		default:
