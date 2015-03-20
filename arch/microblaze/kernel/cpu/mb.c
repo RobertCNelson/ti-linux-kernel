@@ -102,7 +102,7 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 			   cpuinfo.icache_size >> 10,
 			   cpuinfo.icache_line_length);
 	else
-	x	seq_puts(m, "Icache:\t\tno\n");
+		seq_puts(m, "Icache:\t\tno\n");
 
 	if (cpuinfo.use_dcache) {
 		seq_printf(m,
