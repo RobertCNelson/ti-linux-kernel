@@ -85,6 +85,9 @@ struct hugepage_subpool *hugepage_new_subpool(long nr_blocks)
 	spool->count = 1;
 	spool->max_hpages = nr_blocks;
 	spool->used_hpages = 0;
+	spool->hstate = NULL;
+	spool->min_hpages = 0;
+	spool->rsv_hpages = 0;
 
 	return spool;
 }

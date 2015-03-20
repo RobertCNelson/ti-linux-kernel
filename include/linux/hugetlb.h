@@ -23,6 +23,8 @@ struct hugepage_subpool {
 	spinlock_t lock;
 	long count;
 	long max_hpages, used_hpages;
+	struct hstate *hstate;
+	long min_hpages, rsv_hpages;
 };
 
 struct resv_map {
