@@ -50,6 +50,7 @@ struct hugetlbfs_config {
 	long	nr_blocks;
 	long	nr_inodes;
 	struct hstate *hstate;
+	long    min_size;
 };
 
 struct hugetlbfs_inode_info {
@@ -67,7 +68,7 @@ int sysctl_hugetlb_shm_group;
 enum {
 	Opt_size, Opt_nr_inodes,
 	Opt_mode, Opt_uid, Opt_gid,
-	Opt_pagesize,
+	Opt_pagesize, Opt_min_size,
 	Opt_err,
 };
 
@@ -78,6 +79,7 @@ static const match_table_t tokens = {
 	{Opt_uid,	"uid=%u"},
 	{Opt_gid,	"gid=%u"},
 	{Opt_pagesize,	"pagesize=%s"},
+	{Opt_min_size,	"min_size=%s"},
 	{Opt_err,	NULL},
 };
 
@@ -754,14 +756,32 @@ static const struct super_operations hugetlbfs_ops = {
 	.show_options	= generic_show_options,
 };
 
+enum { NO_SIZE, SIZE_STD, SIZE_PERCENT };
+
+static bool
+hugetlbfs_options_setsize(struct hstate *h, long long *size, int setsize)
+{
+	if (setsize == NO_SIZE)
+		return false;
+
+	if (setsize == SIZE_PERCENT) {
+		*size <<= huge_page_shift(h);
+		*size *= h->max_huge_pages;
+		do_div(*size, 100);
+	}
+
+	*size >>= huge_page_shift(h);
+	return true;
+}
+
 static int
 hugetlbfs_parse_options(char *options, struct hugetlbfs_config *pconfig)
 {
 	char *p, *rest;
 	substring_t args[MAX_OPT_ARGS];
 	int option;
-	unsigned long long size = 0;
-	enum { NO_SIZE, SIZE_STD, SIZE_PERCENT } setsize = NO_SIZE;
+	unsigned long long max_size = 0, min_size = 0;
+	int max_setsize = NO_SIZE, min_setsize = NO_SIZE;
 
 	if (!options)
 		return 0;
@@ -799,10 +819,10 @@ hugetlbfs_parse_options(char *options, struct hugetlbfs_config *pconfig)
 			/* memparse() will accept a K/M/G without a digit */
 			if (!isdigit(*args[0].from))
 				goto bad_val;
-			size = memparse(args[0].from, &rest);
-			setsize = SIZE_STD;
+			max_size = memparse(args[0].from, &rest);
+			max_setsize = SIZE_STD;
 			if (*rest == '%')
-				setsize = SIZE_PERCENT;
+				max_setsize = SIZE_PERCENT;
 			break;
 		}
 
@@ -825,6 +845,17 @@ hugetlbfs_parse_options(char *options, struct hugetlbfs_config *pconfig)
 			break;
 		}
 
+		case Opt_min_size: {
+			/* memparse() will accept a K/M/G without a digit */
+			if (!isdigit(*args[0].from))
+				goto bad_val;
+			min_size = memparse(args[0].from, &rest);
+			min_setsize = SIZE_STD;
+			if (*rest == '%')
+				min_setsize = SIZE_PERCENT;
+			break;
+		}
+
 		default:
 			pr_err("Bad mount option: \"%s\"\n", p);
 			return -EINVAL;
@@ -832,15 +863,17 @@ hugetlbfs_parse_options(char *options, struct hugetlbfs_config *pconfig)
 		}
 	}
 
-	/* Do size after hstate is set up */
-	if (setsize > NO_SIZE) {
-		struct hstate *h = pconfig->hstate;
-		if (setsize == SIZE_PERCENT) {
-			size <<= huge_page_shift(h);
-			size *= h->max_huge_pages;
-			do_div(size, 100);
-		}
-		pconfig->nr_blocks = (size >> huge_page_shift(h));
+	/* Calculate number of huge pages based on hstate */
+	if (hugetlbfs_options_setsize(pconfig->hstate, &max_size, max_setsize))
+		pconfig->nr_blocks = max_size;
+	if (hugetlbfs_options_setsize(pconfig->hstate, &min_size, min_setsize))
+		pconfig->min_size = min_size;
+
+	/* If max_size specified, then min_size must be smaller */
+	if (max_setsize > NO_SIZE && min_setsize > NO_SIZE &&
+	    pconfig->min_size > pconfig->nr_blocks) {
+		pr_err("minimum size can not be greater than maximum size\n");
+		return -EINVAL;
 	}
 
 	return 0;
@@ -865,6 +898,7 @@ hugetlbfs_fill_super(struct super_block *sb, void *data, int silent)
 	config.gid = current_fsgid();
 	config.mode = 0755;
 	config.hstate = &default_hstate;
+	config.min_size = 0; /* No default minimum size */
 	ret = hugetlbfs_parse_options(data, &config);
 	if (ret)
 		return ret;
@@ -878,8 +912,15 @@ hugetlbfs_fill_super(struct super_block *sb, void *data, int silent)
 	sbinfo->max_inodes = config.nr_inodes;
 	sbinfo->free_inodes = config.nr_inodes;
 	sbinfo->spool = NULL;
-	if (config.nr_blocks != -1) {
-		sbinfo->spool = hugepage_new_subpool(config.nr_blocks);
+	/*
+	 * Allocate and initialize subpool if maximum or minimum size is
+	 * specified.  Any needed reservations (for minimim size) are taken
+	 * taken when the subpool is created.
+	 */
+	if (config.nr_blocks != -1 || config.min_size != 0) {
+		sbinfo->spool = hugepage_new_subpool(config.hstate,
+							config.nr_blocks,
+							config.min_size);
 		if (!sbinfo->spool)
 			goto out_free;
 	}
