@@ -118,6 +118,117 @@ static inline void tk_update_sleep_time(struct timekeeper *tk, ktime_t delta)
 	tk->offs_boot = ktime_add(tk->offs_boot, delta);
 }
 
+#ifdef CONFIG_DEBUG_TIMEKEEPING
+#define WARNING_FREQ (HZ*300) /* 5 minute rate-limiting */
+/*
+ * These simple flag variables are managed
+ * without locks, which is racy, but ok since
+ * we don't really care about being super
+ * precise about how many events were seen,
+ * just that a problem was observed.
+ */
+static int timekeeping_underflow_seen;
+static int timekeeping_overflow_seen;
+
+/* last_warning is only modified under the timekeeping lock */
+static long timekeeping_last_warning;
+
+static void timekeeping_check_update(struct timekeeper *tk, cycle_t offset)
+{
+
+	cycle_t max_cycles = tk->tkr.clock->max_cycles;
+	const char *name = tk->tkr.clock->name;
+
+	if (offset > max_cycles) {
+		printk_deferred("WARNING: timekeeping: Cycle offset (%lld) is larger than allowed by the '%s' clock's max_cycles value (%lld): time overflow danger\n",
+				offset, name, max_cycles);
+		printk_deferred("         timekeeping: Your kernel is sick, but tries to cope by capping time updates\n");
+	} else {
+		if (offset > (max_cycles >> 1)) {
+			printk_deferred("INFO: timekeeping: Cycle offset (%lld) is larger than the the '%s' clock's 50%% safety margin (%lld)\n",
+					offset, name, max_cycles >> 1);
+			printk_deferred("      timekeeping: Your kernel is still fine, but is feeling a bit nervous\n");
+		}
+	}
+
+	if (timekeeping_underflow_seen) {
+		if (jiffies - timekeeping_last_warning > WARNING_FREQ) {
+			printk_deferred("WARNING: Underflow in clocksource '%s' observed, time update ignored.\n", name);
+			printk_deferred("         Please report this, consider using a different clocksource, if possible.\n");
+			printk_deferred("         Your kernel is probably still fine.\n");
+			timekeeping_last_warning = jiffies;
+		}
+		timekeeping_underflow_seen = 0;
+	}
+
+	if (timekeeping_overflow_seen) {
+		if (jiffies - timekeeping_last_warning > WARNING_FREQ) {
+			printk_deferred("WARNING: Overflow in clocksource '%s' observed, time update capped.\n", name);
+			printk_deferred("         Please report this, consider using a different clocksource, if possible.\n");
+			printk_deferred("         Your kernel is probably still fine.\n");
+			timekeeping_last_warning = jiffies;
+		}
+		timekeeping_overflow_seen = 0;
+	}
+}
+
+static inline cycle_t timekeeping_get_delta(struct tk_read_base *tkr)
+{
+	cycle_t now, last, mask, max, delta;
+	unsigned int seq;
+
+	/*
+	 * Since we're called holding a seqlock, the data may shift
+	 * under us while we're doing the calculation. This can cause
+	 * false positives, since we'd note a problem but throw the
+	 * results away. So nest another seqlock here to atomically
+	 * grab the points we are checking with.
+	 */
+	do {
+		seq = read_seqcount_begin(&tk_core.seq);
+		now = tkr->read(tkr->clock);
+		last = tkr->cycle_last;
+		mask = tkr->mask;
+		max = tkr->clock->max_cycles;
+	} while (read_seqcount_retry(&tk_core.seq, seq));
+
+	delta = clocksource_delta(now, last, mask);
+
+	/*
+	 * Try to catch underflows by checking if we are seeing small
+	 * mask-relative negative values.
+	 */
+	if (unlikely((~delta & mask) < (mask >> 3))) {
+		timekeeping_underflow_seen = 1;
+		delta = 0;
+	}
+
+	/* Cap delta value to the max_cycles values to avoid mult overflows */
+	if (unlikely(delta > max)) {
+		timekeeping_overflow_seen = 1;
+		delta = tkr->clock->max_cycles;
+	}
+
+	return delta;
+}
+#else
+static inline void timekeeping_check_update(struct timekeeper *tk, cycle_t offset)
+{
+}
+static inline cycle_t timekeeping_get_delta(struct tk_read_base *tkr)
+{
+	cycle_t cycle_now, delta;
+
+	/* read clocksource */
+	cycle_now = tkr->read(tkr->clock);
+
+	/* calculate the delta since the last update_wall_time */
+	delta = clocksource_delta(cycle_now, tkr->cycle_last, tkr->mask);
+
+	return delta;
+}
+#endif
+
 /**
  * tk_setup_internals - Set up internals to use clocksource clock.
  *
@@ -193,14 +304,10 @@ static inline u32 arch_gettimeoffset(void) { return 0; }
 
 static inline s64 timekeeping_get_ns(struct tk_read_base *tkr)
 {
-	cycle_t cycle_now, delta;
+	cycle_t delta;
 	s64 nsec;
 
-	/* read clocksource: */
-	cycle_now = tkr->read(tkr->clock);
-
-	/* calculate the delta since the last update_wall_time: */
-	delta = clocksource_delta(cycle_now, tkr->cycle_last, tkr->mask);
+	delta = timekeeping_get_delta(tkr);
 
 	nsec = delta * tkr->mult + tkr->xtime_nsec;
 	nsec >>= tkr->shift;
@@ -212,14 +319,10 @@ static inline s64 timekeeping_get_ns(struct tk_read_base *tkr)
 static inline s64 timekeeping_get_ns_raw(struct timekeeper *tk)
 {
 	struct clocksource *clock = tk->tkr.clock;
-	cycle_t cycle_now, delta;
+	cycle_t delta;
 	s64 nsec;
 
-	/* read clocksource: */
-	cycle_now = tk->tkr.read(clock);
-
-	/* calculate the delta since the last update_wall_time: */
-	delta = clocksource_delta(cycle_now, tk->tkr.cycle_last, tk->tkr.mask);
+	delta = timekeeping_get_delta(&tk->tkr);
 
 	/* convert delta to nanoseconds. */
 	nsec = clocksource_cyc2ns(delta, clock->mult, clock->shift);
@@ -1629,6 +1732,9 @@ void update_wall_time(void)
 	/* Check if there's really nothing to do */
 	if (offset < real_tk->cycle_interval)
 		goto out;
+
+	/* Do some additional sanity checking */
+	timekeeping_check_update(real_tk, offset);
 
 	/*
 	 * With NO_HZ we may have to accumulate many cycle_intervals
