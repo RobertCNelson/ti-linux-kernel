@@ -294,8 +294,8 @@ struct sock *inet_csk_accept(struct sock *sk, int flags, int *err)
 {
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	struct request_sock_queue *queue = &icsk->icsk_accept_queue;
-	struct sock *newsk;
 	struct request_sock *req;
+	struct sock *newsk;
 	int error;
 
 	lock_sock(sk);
@@ -324,9 +324,11 @@ struct sock *inet_csk_accept(struct sock *sk, int flags, int *err)
 	newsk = req->sk;
 
 	sk_acceptq_removed(sk);
-	if (sk->sk_protocol == IPPROTO_TCP && queue->fastopenq != NULL) {
+	if (sk->sk_protocol == IPPROTO_TCP &&
+	    tcp_rsk(req)->tfo_listener &&
+	    queue->fastopenq) {
 		spin_lock_bh(&queue->fastopenq->lock);
-		if (tcp_rsk(req)->listener) {
+		if (tcp_rsk(req)->tfo_listener) {
 			/* We are still waiting for the final ACK from 3WHS
 			 * so can't free req now. Instead, we set req->sk to
 			 * NULL to signify that the child socket is taken
@@ -341,7 +343,7 @@ struct sock *inet_csk_accept(struct sock *sk, int flags, int *err)
 out:
 	release_sock(sk);
 	if (req)
-		__reqsk_free(req);
+		reqsk_put(req);
 	return newsk;
 out_err:
 	newsk = NULL;
@@ -636,7 +638,7 @@ void inet_csk_reqsk_queue_prune(struct sock *parent,
 				/* Drop this request */
 				inet_csk_reqsk_queue_unlink(parent, req, reqp);
 				reqsk_queue_removed(queue, req);
-				reqsk_free(req);
+				reqsk_put(req);
 				continue;
 			}
 			reqp = &req->dl_next;
@@ -679,6 +681,8 @@ struct sock *inet_csk_clone_lock(const struct sock *sk,
 		newsk->sk_write_space = sk_stream_write_space;
 
 		newsk->sk_mark = inet_rsk(req)->ir_mark;
+		atomic64_set(&newsk->sk_cookie,
+			     atomic64_read(&inet_rsk(req)->ir_cookie));
 
 		newicsk->icsk_retransmits = 0;
 		newicsk->icsk_backoff	  = 0;
@@ -816,9 +820,9 @@ void inet_csk_listen_stop(struct sock *sk)
 
 		percpu_counter_inc(sk->sk_prot->orphan_count);
 
-		if (sk->sk_protocol == IPPROTO_TCP && tcp_rsk(req)->listener) {
+		if (sk->sk_protocol == IPPROTO_TCP && tcp_rsk(req)->tfo_listener) {
 			BUG_ON(tcp_sk(child)->fastopen_rsk != req);
-			BUG_ON(sk != tcp_rsk(req)->listener);
+			BUG_ON(sk != req->rsk_listener);
 
 			/* Paranoid, to prevent race condition if
 			 * an inbound pkt destined for child is
@@ -827,7 +831,6 @@ void inet_csk_listen_stop(struct sock *sk)
 			 * tcp_v4_destroy_sock().
 			 */
 			tcp_sk(child)->fastopen_rsk = NULL;
-			sock_put(sk);
 		}
 		inet_csk_destroy_sock(child);
 
@@ -836,7 +839,7 @@ void inet_csk_listen_stop(struct sock *sk)
 		sock_put(child);
 
 		sk_acceptq_removed(sk);
-		__reqsk_free(req);
+		reqsk_put(req);
 	}
 	if (queue->fastopenq != NULL) {
 		/* Free all the reqs queued in rskq_rst_head. */
@@ -846,7 +849,7 @@ void inet_csk_listen_stop(struct sock *sk)
 		spin_unlock_bh(&queue->fastopenq->lock);
 		while ((req = acc_req) != NULL) {
 			acc_req = req->dl_next;
-			__reqsk_free(req);
+			reqsk_put(req);
 		}
 	}
 	WARN_ON(sk->sk_ack_backlog);

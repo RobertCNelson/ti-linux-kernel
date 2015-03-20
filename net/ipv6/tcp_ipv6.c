@@ -104,19 +104,6 @@ static void inet6_sk_rx_dst_set(struct sock *sk, const struct sk_buff *skb)
 	}
 }
 
-static void tcp_v6_hash(struct sock *sk)
-{
-	if (sk->sk_state != TCP_CLOSE) {
-		if (inet_csk(sk)->icsk_af_ops == &ipv6_mapped) {
-			tcp_prot.hash(sk);
-			return;
-		}
-		local_bh_disable();
-		__inet6_hash(sk, NULL);
-		local_bh_enable();
-	}
-}
-
 static __u32 tcp_v6_init_sequence(const struct sk_buff *skb)
 {
 	return secure_tcpv6_sequence_number(ipv6_hdr(skb)->daddr.s6_addr32,
@@ -233,11 +220,8 @@ static int tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr,
 			tp->af_specific = &tcp_sock_ipv6_specific;
 #endif
 			goto failure;
-		} else {
-			ipv6_addr_set_v4mapped(inet->inet_saddr, &np->saddr);
-			ipv6_addr_set_v4mapped(inet->inet_rcv_saddr,
-					       &sk->sk_v6_rcv_saddr);
 		}
+		np->saddr = sk->sk_v6_rcv_saddr;
 
 		return err;
 	}
@@ -734,8 +718,6 @@ static void tcp_v6_init_req(struct request_sock *req, struct sock *sk,
 	ireq->ir_v6_rmt_addr = ipv6_hdr(skb)->saddr;
 	ireq->ir_v6_loc_addr = ipv6_hdr(skb)->daddr;
 
-	ireq->ir_iif = sk->sk_bound_dev_if;
-
 	/* So that link locals have meaning */
 	if (!sk->sk_bound_dev_if &&
 	    ipv6_addr_type(&ireq->ir_v6_rmt_addr) & IPV6_ADDR_LINKLOCAL)
@@ -749,6 +731,7 @@ static void tcp_v6_init_req(struct request_sock *req, struct sock *sk,
 		atomic_inc(&skb->users);
 		ireq->pktopts = skb;
 	}
+	ireq->ireq_family = AF_INET6;
 }
 
 static struct dst_entry *tcp_v6_route_req(struct sock *sk, struct flowi *fl,
@@ -1079,11 +1062,7 @@ static struct sock *tcp_v6_syn_recv_sock(struct sock *sk, struct sk_buff *skb,
 
 		memcpy(newnp, np, sizeof(struct ipv6_pinfo));
 
-		ipv6_addr_set_v4mapped(newinet->inet_daddr, &newsk->sk_v6_daddr);
-
-		ipv6_addr_set_v4mapped(newinet->inet_saddr, &newnp->saddr);
-
-		newsk->sk_v6_rcv_saddr = newnp->saddr;
+		newnp->saddr = newsk->sk_v6_rcv_saddr;
 
 		inet_csk(newsk)->icsk_af_ops = &ipv6_mapped;
 		newsk->sk_backlog_rcv = tcp_v4_do_rcv;
@@ -1232,7 +1211,7 @@ static struct sock *tcp_v6_syn_recv_sock(struct sock *sk, struct sk_buff *skb,
 		tcp_done(newsk);
 		goto out;
 	}
-	__inet6_hash(newsk, NULL);
+	__inet_hash(newsk, NULL);
 
 	return newsk;
 
@@ -1584,7 +1563,7 @@ static void tcp_v6_early_demux(struct sk_buff *skb)
 	if (sk) {
 		skb->sk = sk;
 		skb->destructor = sock_edemux;
-		if (sk->sk_state != TCP_TIME_WAIT) {
+		if (sk_fullsock(sk)) {
 			struct dst_entry *dst = sk->sk_rx_dst;
 
 			if (dst)
@@ -1689,7 +1668,7 @@ static void tcp_v6_destroy_sock(struct sock *sk)
 #ifdef CONFIG_PROC_FS
 /* Proc filesystem TCPv6 sock list dumping. */
 static void get_openreq6(struct seq_file *seq,
-			 const struct sock *sk, struct request_sock *req, int i, kuid_t uid)
+			 struct request_sock *req, int i, kuid_t uid)
 {
 	int ttd = req->expires - jiffies;
 	const struct in6_addr *src = &inet_rsk(req)->ir_v6_loc_addr;
@@ -1827,7 +1806,7 @@ static int tcp6_seq_show(struct seq_file *seq, void *v)
 			get_tcp6_sock(seq, v, st->num);
 		break;
 	case TCP_SEQ_STATE_OPENREQ:
-		get_openreq6(seq, st->syn_wait_sk, v, st->num, st->uid);
+		get_openreq6(seq, v, st->num, st->uid);
 		break;
 	}
 out:
@@ -1891,7 +1870,7 @@ struct proto tcpv6_prot = {
 	.sendpage		= tcp_sendpage,
 	.backlog_rcv		= tcp_v6_do_rcv,
 	.release_cb		= tcp_release_cb,
-	.hash			= tcp_v6_hash,
+	.hash			= inet_hash,
 	.unhash			= inet_unhash,
 	.get_port		= inet_csk_get_port,
 	.enter_memory_pressure	= tcp_enter_memory_pressure,
