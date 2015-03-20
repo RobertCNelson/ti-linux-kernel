@@ -49,19 +49,19 @@ uint8_t default_tx[] = {
 uint8_t default_rx[ARRAY_SIZE(default_tx)] = {0, };
 char *input_tx;
 
-static void hexDump(const void *src, size_t length, size_t bLine, char *prefix)
+static void hex_dump(const void *src, size_t length, size_t line_size, char *prefix)
 {
 	int i = 0;
-	char *address = (char *)src;
-	char *line = (char *)address;
+	const unsigned char *address = src;
+	const unsigned char *line = address;
 	unsigned char c;
 
 	printf("%s | ", prefix);
 	while (length-- > 0) {
-		printf("%02X ", (unsigned char)*address++);
-		if (!(++i % bLine) || (length == 0 && i % bLine)) {
+		printf("%02X ", *address++);
+		if (!(++i % line_size) || (length == 0 && i % line_size)) {
 			if (length == 0) {
-				while (i++ % bLine)
+				while (i++ % line_size)
 					printf("__ ");
 			}
 			printf(" | ");  /* right close */
@@ -74,6 +74,30 @@ static void hexDump(const void *src, size_t length, size_t bLine, char *prefix)
 				printf("%s | ", prefix);
 		}
 	}
+}
+
+/*
+ *  Unescape - process hexadecimal escape character
+ *      converts shell input "\x23" -> 0x23
+ */
+int unespcape(char *_dst, char *_src, size_t len)
+{
+	int ret = 0;
+	char *src = _src;
+	char *dst = _dst;
+	unsigned int ch;
+
+	while (*src) {
+		if (*src == '\\' && *(src+1) == 'x') {
+			sscanf(src + 2, "%2x", &ch);
+			src += 4;
+			*dst++ = (unsigned char)ch;
+		} else {
+			*dst++ = *src++;
+		}
+		ret++;
+	}
+	return ret;
 }
 
 static void transfer(int fd, uint8_t const *tx, uint8_t const *rx, size_t len)
@@ -109,45 +133,17 @@ static void transfer(int fd, uint8_t const *tx, uint8_t const *rx, size_t len)
 		pabort("can't send spi message");
 
 	if (verbose)
-		hexDump(tx, len, 32, "TX");
-	hexDump(rx, len, 32, "RX");
-}
-
-/*
- *  Unescape - process hexadecimal escape character
- *      converts shell input "\x23" -> 0x23
- */
-int unespcape(char *dst, char *src, size_t len)
-{
-	int ret = 0;
-	char *pSrc = src;
-	char *pDst = dst;
-	unsigned int ch;
-
-	while (*pSrc) {
-		if (*pSrc == '\\' && *(pSrc+1) == 'x') {
-			sscanf(pSrc + 2, "%2x", &ch);
-			pSrc += 4;
-			*pDst++ = (unsigned char)ch;
-		} else {
-			*pDst++ = *pSrc++;
-		}
-
-
-		ret++;
-	}
-	return ret;
-
+		hex_dump(tx, len, 32, "TX");
+	hex_dump(rx, len, 32, "RX");
 }
 
 static void print_usage(const char *prog)
 {
-
 	printf("Usage: %s [-DsbdlHOLC3]\n", prog);
 	puts("  -D --device   device to use (default /dev/spidev1.1)\n"
 	     "  -s --speed    max speed (Hz)\n"
 	     "  -d --delay    delay (usec)\n"
-	     "  -b --bpw      bits per word\n"
+	     "  -b --bpw      bits per word \n"
 	     "  -l --loop     loopback\n"
 	     "  -H --cpha     clock phase\n"
 	     "  -O --cpol     clock polarity\n"
@@ -179,8 +175,8 @@ static void parse_opts(int argc, char *argv[])
 			{ "3wire",   0, 0, '3' },
 			{ "no-cs",   0, 0, 'N' },
 			{ "ready",   0, 0, 'R' },
-			{ "verbose", 0, 0, 'v' },
 			{ "dual",    0, 0, '2' },
+			{ "verbose", 0, 0, 'v' },
 			{ "quad",    0, 0, '4' },
 			{ NULL, 0, 0, 0 },
 		};
@@ -225,14 +221,15 @@ static void parse_opts(int argc, char *argv[])
 		case 'N':
 			mode |= SPI_NO_CS;
 			break;
+		case 'v':
+			verbose = 1;
+			break;
 		case 'R':
 			mode |= SPI_READY;
 			break;
 		case 'p':
 			input_tx = optarg;
 			break;
-		case 'v':
-			verbose = 1;
 		case '2':
 			mode |= SPI_TX_DUAL;
 			break;
@@ -256,9 +253,9 @@ int main(int argc, char *argv[])
 {
 	int ret = 0;
 	int fd;
-	int size;
 	uint8_t *tx;
 	uint8_t *rx;
+	int size;
 
 	parse_opts(argc, argv);
 
@@ -305,8 +302,8 @@ int main(int argc, char *argv[])
 
 	if (input_tx) {
 		size = strlen(input_tx+1);
-		tx = (uint8_t *)malloc(size);
-		rx = (uint8_t *)malloc(size);
+		tx = malloc(size);
+		rx = malloc(size);
 		size = unespcape((char *)tx, input_tx, size);
 		transfer(fd, tx, rx, size);
 		free(rx);
