@@ -22,9 +22,11 @@ struct mmu_gather;
 struct hugepage_subpool {
 	spinlock_t lock;
 	long count;
-	long max_hpages, used_hpages;
+	long max_hpages;
+	long used_hpages;
 	struct hstate *hstate;
-	long min_hpages, rsv_hpages;
+	long min_hpages;
+	long rsv_hpages;
 };
 
 struct resv_map {
