@@ -125,8 +125,10 @@ static long hugepage_subpool_get_pages(struct hugepage_subpool *spool,
 
 	if (spool->min_hpages) {		/* minimum size accounting */
 		if (delta > spool->rsv_hpages) {
-			/* asking for more reserves than those already taken
-			 * on behalf of subpool. return difference */
+			/*
+			 * Asking for more reserves than those already taken on
+			 * behalf of subpool.  Return difference.
+			 */
 			ret = delta - spool->rsv_hpages;
 			spool->rsv_hpages = 0;
 		} else {
@@ -141,7 +143,7 @@ unlock_ret:
 }
 
 /*
- * subpool accounting for freeing and unreserving pages
+ * Subpool accounting for freeing and unreserving pages.
  * Return the number of global page reservations that must be dropped.
  * The return value may only be different than the passed value (delta)
  * in the case where a subpool minimum size must be maintained.
@@ -170,8 +172,10 @@ static long hugepage_subpool_put_pages(struct hugepage_subpool *spool,
 			spool->rsv_hpages = spool->min_hpages;
 	}
 
-	/* If hugetlbfs_put_super couldn't free spool due to
-	* an outstanding quota reference, free it now. */
+	/*
+	 * If hugetlbfs_put_super couldn't free spool due to an outstanding
+	 * quota reference, free it now.
+	 */
 	unlock_or_release_subpool(spool);
 
 	return ret;
@@ -923,9 +927,9 @@ void free_huge_page(struct page *page)
 	ClearPagePrivate(page);
 
 	/*
-	 * A return code of zero implies that the subpool will be under
-	 * it's minimum size if the reservation is not restored after
-	 * page is free.  Therefore, force restore_reserve operation.
+	 * A return code of zero implies that the subpool will be under its
+	 * minimum size if the reservation is not restored after page is free.
+	 * Therefore, force restore_reserve operation.
 	 */
 	if (hugepage_subpool_put_pages(spool, 1) == 0)
 		restore_reserve = true;
@@ -2523,8 +2527,8 @@ static void hugetlb_vm_op_close(struct vm_area_struct *vma)
 
 	if (reserve) {
 		/*
-		 * decrement reserve counts.  The global reserve count
-		 * may be adjusted if the subpool has a minimum size.
+		 * Decrement reserve counts.  The global reserve count may be
+		 * adjusted if the subpool has a minimum size.
 		 */
 		gbl_reserve = hugepage_subpool_put_pages(spool, reserve);
 		hugetlb_acct_memory(h, -gbl_reserve);
