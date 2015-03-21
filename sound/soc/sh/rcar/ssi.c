@@ -80,13 +80,13 @@ struct rsnd_ssi {
 #define rsnd_mod_to_ssi(_mod) container_of((_mod), struct rsnd_ssi, mod)
 #define rsnd_dma_to_ssi(dma)  rsnd_mod_to_ssi(rsnd_dma_to_mod(dma))
 #define rsnd_ssi_pio_available(ssi) ((ssi)->info->irq > 0)
-#define rsnd_ssi_dma_available(ssi) \
-	rsnd_dma_available(rsnd_mod_to_dma(&(ssi)->mod))
 #define rsnd_ssi_clk_from_parent(ssi) ((ssi)->parent)
 #define rsnd_ssi_mode_flags(p) ((p)->info->flags)
 #define rsnd_ssi_dai_id(ssi) ((ssi)->info->dai_id)
+#define rsnd_ssi_of_node(priv) \
+	of_get_child_by_name(rsnd_priv_to_dev(priv)->of_node, "rcar_sound,ssi")
 
-static int rsnd_ssi_use_busif(struct rsnd_mod *mod)
+int rsnd_ssi_use_busif(struct rsnd_mod *mod)
 {
 	struct rsnd_ssi *ssi = rsnd_mod_to_ssi(mod);
 	struct rsnd_dai_stream *io = rsnd_mod_to_io(mod);
@@ -478,7 +478,6 @@ static int rsnd_ssi_dma_probe(struct rsnd_mod *mod,
 
 	ret = rsnd_dma_init(
 		priv, rsnd_mod_to_dma(mod),
-		rsnd_info_is_playback(priv, ssi),
 		dma_id);
 	if (ret)
 		goto rsnd_ssi_dma_probe_fail;
@@ -502,7 +501,7 @@ static int rsnd_ssi_dma_remove(struct rsnd_mod *mod,
 	struct device *dev = rsnd_priv_to_dev(priv);
 	int irq = ssi->info->irq;
 
-	rsnd_dma_quit(priv, rsnd_mod_to_dma(mod));
+	rsnd_dma_quit(rsnd_mod_to_dma(mod));
 
 	/* PIO will request IRQ again */
 	devm_free_irq(dev, irq, ssi);
@@ -554,14 +553,25 @@ static int rsnd_ssi_dma_stop(struct rsnd_mod *mod,
 	return 0;
 }
 
-static char *rsnd_ssi_dma_name(struct rsnd_mod *mod)
+static struct dma_chan *rsnd_ssi_dma_req(struct rsnd_mod *mod)
 {
-	return rsnd_ssi_use_busif(mod) ? "ssiu" : SSI_NAME;
+	struct rsnd_priv *priv = rsnd_mod_to_priv(mod);
+	struct rsnd_dai_stream *io = rsnd_mod_to_io(mod);
+	int is_play = rsnd_io_is_play(io);
+	char *name;
+
+	if (rsnd_ssi_use_busif(mod))
+		name = is_play ? "rxu" : "txu";
+	else
+		name = is_play ? "rx" : "tx";
+
+	return rsnd_dma_request_channel(rsnd_ssi_of_node(priv),
+					mod, name);
 }
 
 static struct rsnd_mod_ops rsnd_ssi_dma_ops = {
 	.name	= SSI_NAME,
-	.dma_name = rsnd_ssi_dma_name,
+	.dma_req = rsnd_ssi_dma_req,
 	.probe	= rsnd_ssi_dma_probe,
 	.remove	= rsnd_ssi_dma_remove,
 	.init	= rsnd_ssi_init,
@@ -636,7 +646,7 @@ static void rsnd_of_parse_ssi(struct platform_device *pdev,
 	if (!of_data)
 		return;
 
-	node = of_get_child_by_name(dev->of_node, "rcar_sound,ssi");
+	node = rsnd_ssi_of_node(priv);
 	if (!node)
 		return;
 
