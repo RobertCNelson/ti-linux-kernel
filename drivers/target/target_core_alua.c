@@ -1001,7 +1001,7 @@ static void core_alua_do_transition_tg_pt_work(struct work_struct *work)
 		spin_lock_bh(&port->sep_alua_lock);
 		list_for_each_entry(se_deve, &port->sep_alua_list,
 					alua_port_list) {
-			lacl = se_deve->se_lun_acl;
+			lacl = lockless_dereference(se_deve->se_lun_acl);
 			/*
 			 * se_deve->se_lun_acl pointer may be NULL for a
 			 * entry created without explicit Node+MappedLUN ACLs
