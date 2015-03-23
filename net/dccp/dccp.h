@@ -280,8 +280,7 @@ struct sock *dccp_v4_request_recv_sock(struct sock *sk, struct sk_buff *skb,
 				       struct request_sock *req,
 				       struct dst_entry *dst);
 struct sock *dccp_check_req(struct sock *sk, struct sk_buff *skb,
-			    struct request_sock *req,
-			    struct request_sock **prev);
+			    struct request_sock *req);
 
 int dccp_child_process(struct sock *parent, struct sock *child,
 		       struct sk_buff *skb);
@@ -310,11 +309,9 @@ int compat_dccp_setsockopt(struct sock *sk, int level, int optname,
 			   char __user *optval, unsigned int optlen);
 #endif
 int dccp_ioctl(struct sock *sk, int cmd, unsigned long arg);
-int dccp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
-		 size_t size);
-int dccp_recvmsg(struct kiocb *iocb, struct sock *sk,
-		 struct msghdr *msg, size_t len, int nonblock, int flags,
-		 int *addr_len);
+int dccp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size);
+int dccp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
+		 int flags, int *addr_len);
 void dccp_shutdown(struct sock *sk, int how);
 int inet_dccp_listen(struct socket *sock, int backlog);
 unsigned int dccp_poll(struct file *file, struct socket *sock,
