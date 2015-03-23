@@ -46,7 +46,9 @@ struct nid_path {
 	unsigned char idx[MAX_NID_PATH_DEPTH];
 	unsigned char multi[MAX_NID_PATH_DEPTH];
 	unsigned int ctls[NID_PATH_NUM_CTLS]; /* NID_PATH_XXX_CTL */
-	bool active;
+	bool active:1;		/* activated by driver */
+	bool pin_enabled:1;	/* pins are enabled */
+	bool stream_enabled:1;	/* stream is active */
 };
 
 /* mic/line-in auto switching entry */
@@ -144,7 +146,7 @@ struct hda_gen_spec {
 	int const_channel_count;	/* channel count for all */
 
 	/* PCM information */
-	struct hda_pcm pcm_rec[3];	/* used in build_pcms() */
+	struct hda_pcm *pcm_rec[3];	/* used in build_pcms() */
 
 	/* dynamic controls, init_verbs and input_mux */
 	struct auto_pin_cfg autocfg;
@@ -340,5 +342,6 @@ int snd_hda_gen_check_power_status(struct hda_codec *codec, hda_nid_t nid);
 unsigned int snd_hda_gen_path_power_filter(struct hda_codec *codec,
 					   hda_nid_t nid,
 					   unsigned int power_state);
+void snd_hda_gen_stream_pm(struct hda_codec *codec, hda_nid_t nid, bool on);
 
 #endif /* __SOUND_HDA_GENERIC_H */
