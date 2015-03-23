@@ -401,7 +401,7 @@ static void rtllib_send_beacon(struct rtllib_device *ieee)
 
 	if (ieee->beacon_txing && ieee->ieee_up)
 		mod_timer(&ieee->beacon_timer, jiffies +
-			  (MSECS(ieee->current_network.beacon_interval - 5)));
+			  (msecs_to_jiffies(ieee->current_network.beacon_interval - 5)));
 }
 
 
@@ -639,7 +639,7 @@ static void rtllib_softmac_scan_wq(void *data)
 		rtllib_send_probe_requests(ieee, 0);
 
 	queue_delayed_work_rsl(ieee->wq, &ieee->softmac_scan_wq,
-			       MSECS(RTLLIB_SOFTMAC_SCAN_TIME));
+			       msecs_to_jiffies(RTLLIB_SOFTMAC_SCAN_TIME));
 
 	up(&ieee->scan_sem);
 	return;
@@ -2008,9 +2008,11 @@ static short rtllib_sta_ps_sleep(struct rtllib_device *ieee, u64 *time)
 	if (dtim & (RTLLIB_DTIM_UCAST & ieee->ps))
 		return 2;
 
-	if (!time_after(jiffies, ieee->dev->trans_start + MSECS(timeout)))
+	if (!time_after(jiffies,
+			ieee->dev->trans_start + msecs_to_jiffies(timeout)))
 		return 0;
-	if (!time_after(jiffies, ieee->last_rx_ps_time + MSECS(timeout)))
+	if (!time_after(jiffies,
+			ieee->last_rx_ps_time + msecs_to_jiffies(timeout)))
 		return 0;
 	if ((ieee->softmac_features & IEEE_SOFTMAC_SINGLE_QUEUE) &&
 	    (ieee->mgmt_queue_tail != ieee->mgmt_queue_head))
@@ -2060,7 +2062,7 @@ static short rtllib_sta_ps_sleep(struct rtllib_device *ieee, u64 *time)
 			}
 
 		*time = ieee->current_network.last_dtim_sta_time
-			+ MSECS(ieee->current_network.beacon_interval *
+			+ msecs_to_jiffies(ieee->current_network.beacon_interval *
 			LPSAwakeIntvl_tmp);
 	}
 	}
@@ -2450,7 +2452,6 @@ inline int rtllib_rx_frame_softmac(struct rtllib_device *ieee,
 		break;
 	default:
 		return -1;
-		break;
 	}
 	return 0;
 }
@@ -2808,7 +2809,8 @@ static void rtllib_start_ibss_wq(void *data)
 
 inline void rtllib_start_ibss(struct rtllib_device *ieee)
 {
-	queue_delayed_work_rsl(ieee->wq, &ieee->start_ibss_wq, MSECS(150));
+	queue_delayed_work_rsl(ieee->wq, &ieee->start_ibss_wq,
+			       msecs_to_jiffies(150));
 }
 
 /* this is called only in user context, with wx_sem held */
@@ -3421,12 +3423,11 @@ static int rtllib_wpa_set_encryption(struct rtllib_device *ieee,
 
 		lib80211_crypt_delayed_deinit(&ieee->crypt_info, crypt);
 
-		new_crypt = kmalloc(sizeof(*new_crypt), GFP_KERNEL);
+		new_crypt = kzalloc(sizeof(*new_crypt), GFP_KERNEL);
 		if (new_crypt == NULL) {
 			ret = -ENOMEM;
 			goto done;
 		}
-		memset(new_crypt, 0, sizeof(struct lib80211_crypt_data));
 		new_crypt->ops = ops;
 		if (new_crypt->ops)
 			new_crypt->priv =
@@ -3751,7 +3752,7 @@ void notify_wx_assoc_event(struct rtllib_device *ieee)
 
 		printk(KERN_INFO "%s(): Tell user space disconnected\n",
 		       __func__);
-		memset(wrqu.ap_addr.sa_data, 0, ETH_ALEN);
+		eth_zero_addr(wrqu.ap_addr.sa_data);
 	}
 	wireless_send_event(ieee->dev, SIOCGIWAP, &wrqu, NULL);
 }

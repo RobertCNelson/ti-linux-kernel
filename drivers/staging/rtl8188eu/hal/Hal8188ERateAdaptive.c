@@ -487,7 +487,7 @@ static void odm_PTDecision_8188E(struct odm_ra_info *pRaInfo)
 			break;
 	}
 
-	j = j >> 1;
+	j >>= 1;
 	temp_stage = (pRaInfo->PTStage + 1) >> 1;
 	if (temp_stage > j)
 		stage_id = temp_stage-j;
@@ -538,6 +538,7 @@ int ODM_RAInfo_Init(struct odm_dm_struct *dm_odm, u8 macid)
 	struct odm_ra_info *pRaInfo = &dm_odm->RAInfo[macid];
 	u8 WirelessMode = 0xFF; /* invalid value */
 	u8 max_rate_idx = 0x13; /* MCS7 */
+
 	if (dm_odm->pWirelessMode != NULL)
 		WirelessMode = *(dm_odm->pWirelessMode);
 
@@ -618,7 +619,7 @@ u8 ODM_RA_GetDecisionRate_8188E(struct odm_dm_struct *dm_odm, u8 macid)
 
 	if ((NULL == dm_odm) || (macid >= ASSOCIATE_ENTRY_NUM))
 		return 0;
-	DecisionRate = (dm_odm->RAInfo[macid].DecisionRate);
+	DecisionRate = dm_odm->RAInfo[macid].DecisionRate;
 	ODM_RT_TRACE(dm_odm, ODM_COMP_RATE_ADAPTIVE, ODM_DBG_TRACE,
 		(" macid =%d DecisionRate = 0x%x\n", macid, DecisionRate));
 	return DecisionRate;
@@ -630,7 +631,7 @@ u8 ODM_RA_GetHwPwrStatus_8188E(struct odm_dm_struct *dm_odm, u8 macid)
 
 	if ((NULL == dm_odm) || (macid >= ASSOCIATE_ENTRY_NUM))
 		return 0;
-	PTStage = (dm_odm->RAInfo[macid].PTStage);
+	PTStage = dm_odm->RAInfo[macid].PTStage;
 	ODM_RT_TRACE(dm_odm, ODM_COMP_RATE_ADAPTIVE, ODM_DBG_TRACE,
 		     ("macid =%d PTStage = 0x%x\n", macid, PTStage));
 	return PTStage;

@@ -131,7 +131,7 @@ static bool PlatformIOCheckPageLegalAndGetRegMask(u32 u4bPage, u8 *pu1bPageMask)
 
 void write_nic_io_byte(struct net_device *dev, int x, u8 y)
 {
-	u32 u4bPage = (x >> 8);
+	u32 u4bPage = x >> 8;
 	u8 u1PageMask = 0;
 	bool	bIsLegalPage = false;
 
@@ -154,7 +154,7 @@ void write_nic_io_byte(struct net_device *dev, int x, u8 y)
 
 void write_nic_io_word(struct net_device *dev, int x, u16 y)
 {
-	u32 u4bPage = (x >> 8);
+	u32 u4bPage = x >> 8;
 	u8 u1PageMask = 0;
 	bool	bIsLegalPage = false;
 
@@ -177,7 +177,7 @@ void write_nic_io_word(struct net_device *dev, int x, u16 y)
 
 void write_nic_io_dword(struct net_device *dev, int x, u32 y)
 {
-	u32 u4bPage = (x >> 8);
+	u32 u4bPage = x >> 8;
 	u8 u1PageMask = 0;
 	bool	bIsLegalPage = false;
 
@@ -199,7 +199,7 @@ void write_nic_io_dword(struct net_device *dev, int x, u32 y)
 
 u8 read_nic_io_byte(struct net_device *dev, int x)
 {
-	u32 u4bPage = (x >> 8);
+	u32 u4bPage = x >> 8;
 	u8 u1PageMask = 0;
 	bool	bIsLegalPage = false;
 	u8	Data = 0;
@@ -224,7 +224,7 @@ u8 read_nic_io_byte(struct net_device *dev, int x)
 
 u16 read_nic_io_word(struct net_device *dev, int x)
 {
-	u32 u4bPage = (x >> 8);
+	u32 u4bPage = x >> 8;
 	u8 u1PageMask = 0;
 	bool	bIsLegalPage = false;
 	u16	Data = 0;
@@ -250,7 +250,7 @@ u16 read_nic_io_word(struct net_device *dev, int x)
 
 u32 read_nic_io_dword(struct net_device *dev, int x)
 {
-	u32 u4bPage = (x >> 8);
+	u32 u4bPage = x >> 8;
 	u8 u1PageMask = 0;
 	bool	bIsLegalPage = false;
 	u32	Data = 0;
@@ -1506,7 +1506,7 @@ RESET_START:
 		if (priv->rtllib->state == RTLLIB_LINKED)
 			LeisurePSLeave(dev);
 
-		if (IS_NIC_DOWN(priv)) {
+		if (priv->up) {
 			RT_TRACE(COMP_ERR, "%s():the driver is not up! "
 				 "return\n", __func__);
 			up(&priv->wx_sem);
@@ -1650,7 +1650,7 @@ void	rtl819x_watchdog_wqcallback(void *data)
 	bool	bHigherBusyRxTraffic = false;
 	bool bEnterPS = false;
 
-	if (IS_NIC_DOWN(priv) || priv->bHwRadioOff)
+	if (!priv->up || priv->bHwRadioOff)
 		return;
 
 	if (priv->rtllib->state >= RTLLIB_LINKED) {
@@ -1793,7 +1793,7 @@ void watch_dog_timer_callback(unsigned long data)
 
 	queue_delayed_work_rsl(priv->priv_wq, &priv->watch_dog_wq, 0);
 	mod_timer(&priv->watch_dog_timer, jiffies +
-		  MSECS(RTLLIB_WATCH_DOG_TIME));
+		  msecs_to_jiffies(RTLLIB_WATCH_DOG_TIME));
 }
 
 /****************************************************************************
@@ -1882,7 +1882,7 @@ void rtl8192_hard_data_xmit(struct sk_buff *skb, struct net_device *dev,
 				    MAX_DEV_ADDR_SIZE);
 	u8 queue_index = tcb_desc->queue_index;
 
-	if ((priv->rtllib->eRFPowerState == eRfOff) || IS_NIC_DOWN(priv) ||
+	if ((priv->rtllib->eRFPowerState == eRfOff) || !priv->up ||
 	     priv->bResetInProgress) {
 		kfree_skb(skb);
 		return;
@@ -1916,7 +1916,7 @@ int rtl8192_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	if (queue_index != TXCMD_QUEUE) {
 		if ((priv->rtllib->eRFPowerState == eRfOff) ||
-		     IS_NIC_DOWN(priv) || priv->bResetInProgress) {
+		     !priv->up || priv->bResetInProgress) {
 			kfree_skb(skb);
 			return 0;
 		}
@@ -2567,7 +2567,7 @@ static int r8192_set_mac_adr(struct net_device *dev, void *mac)
 
 	down(&priv->wx_sem);
 
-	memcpy(dev->dev_addr, addr->sa_data, ETH_ALEN);
+	ether_addr_copy(dev->dev_addr, addr->sa_data);
 
 	schedule_work(&priv->reset_wq);
 	up(&priv->wx_sem);
@@ -3032,7 +3032,7 @@ bool NicIFEnableNIC(struct net_device *dev)
 	struct rt_pwr_save_ctrl *pPSC = (struct rt_pwr_save_ctrl *)
 					(&(priv->rtllib->PowerSaveControl));
 
-	if (IS_NIC_DOWN(priv)) {
+	if (!priv->up) {
 		RT_TRACE(COMP_ERR, "ERR!!! %s(): Driver is already down!\n",
 			 __func__);
 		priv->bdisable_nic = false;
@@ -3059,7 +3059,6 @@ bool NicIFEnableNIC(struct net_device *dev)
 }
 bool NicIFDisableNIC(struct net_device *dev)
 {
-	bool	status = true;
 	struct r8192_priv *priv = rtllib_priv(dev);
 	u8 tmp_state = 0;
 
@@ -3074,7 +3073,7 @@ bool NicIFDisableNIC(struct net_device *dev)
 	priv->ops->stop_adapter(dev, false);
 	RT_TRACE(COMP_PS, "<=========%s()\n", __func__);
 
-	return status;
+	return true;
 }
 
 static int __init rtl8192_pci_module_init(void)
@@ -3106,7 +3105,7 @@ void check_rfctrl_gpio_timer(unsigned long data)
 	queue_delayed_work_rsl(priv->priv_wq, &priv->gpio_change_rf_wq, 0);
 
 	mod_timer(&priv->gpio_polling_timer, jiffies +
-		  MSECS(RTLLIB_WATCH_DOG_TIME));
+		  msecs_to_jiffies(RTLLIB_WATCH_DOG_TIME));
 }
 
 /***************************************************************************

@@ -1221,7 +1221,7 @@ int class_connected_export(struct obd_export *exp)
 	if (exp) {
 		int connected;
 		spin_lock(&exp->exp_lock);
-		connected = (exp->exp_conn_cnt > 0);
+		connected = exp->exp_conn_cnt > 0;
 		spin_unlock(&exp->exp_lock);
 		return connected;
 	}
@@ -1559,7 +1559,7 @@ void obd_exports_barrier(struct obd_device *obd)
 EXPORT_SYMBOL(obd_exports_barrier);
 
 /* Total amount of zombies to be destroyed */
-static int zombies_count = 0;
+static int zombies_count;
 
 /**
  * kill zombie imports and exports
