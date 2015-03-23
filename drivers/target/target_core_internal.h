@@ -9,6 +9,7 @@ extern struct mutex g_device_mutex;
 extern struct list_head g_device_list;
 
 struct se_dev_entry *core_get_se_deve_from_rtpi(struct se_node_acl *, u16);
+void	target_pr_kref_release(struct kref *);
 int	core_free_device_list_for_node(struct se_node_acl *,
 		struct se_portal_group *);
 void	core_update_device_list_access(u32, u32, struct se_node_acl *);

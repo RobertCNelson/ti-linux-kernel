@@ -203,7 +203,7 @@ EXPORT_SYMBOL(transport_lookup_tmr_lun);
 
 /*
  * This function is called from core_scsi3_emulate_pro_register_and_move()
- * and core_scsi3_decode_spec_i_port(), and will increment &deve->pr_ref_count
+ * and core_scsi3_decode_spec_i_port(), and will increment &deve->pr_kref
  * when a matching rtpi is found.
  */
 struct se_dev_entry *core_get_se_deve_from_rtpi(
@@ -237,7 +237,7 @@ struct se_dev_entry *core_get_se_deve_from_rtpi(
 		if (port->sep_rtpi != rtpi)
 			continue;
 
-		atomic_inc_mb(&deve->pr_ref_count);
+		kref_get(&deve->pr_kref);
 		rcu_read_unlock();
 
 		return deve;
@@ -323,6 +323,13 @@ struct se_dev_entry *target_nacl_find_deve(struct se_node_acl *nacl, u32 mapped_
 }
 EXPORT_SYMBOL(target_nacl_find_deve);
 
+void target_pr_kref_release(struct kref *kref)
+{
+	struct se_dev_entry *deve = container_of(kref, struct se_dev_entry,
+						 pr_kref);
+	complete(&deve->pr_comp);
+}
+
 /*      core_enable_device_list_for_node():
  *
  *
@@ -353,6 +360,9 @@ int core_enable_device_list_for_node(
 	new->mapped_lun = mapped_lun;
 	new->lun_flags |= TRANSPORT_LUNFLAGS_INITIATOR_ACCESS;
 
+	kref_init(&new->pr_kref);
+	init_completion(&new->pr_comp);
+
 	if (lun_access & TRANSPORT_LUNFLAGS_READ_WRITE)
 		new->lun_flags |= TRANSPORT_LUNFLAGS_READ_WRITE;
 	else
@@ -376,6 +386,9 @@ int core_enable_device_list_for_node(
 		list_del(&orig->alua_port_list);
 		list_add_tail(&new->alua_port_list, &port->sep_alua_list);
 		spin_unlock_bh(&port->sep_alua_lock);
+
+		kref_put(&orig->pr_kref, target_pr_kref_release);
+		wait_for_completion(&orig->pr_comp);
 
 		call_rcu(&orig->rcu_head, target_nacl_deve_callrcu);
 		return 0;
@@ -432,13 +445,6 @@ int core_disable_device_list_for_node(
 	list_del(&orig->alua_port_list);
 	spin_unlock_bh(&port->sep_alua_lock);
 	/*
-	 * Wait for any in process SPEC_I_PT=1 or REGISTER_AND_MOVE
-	 * PR operation to complete.
-	 */
-	while (atomic_read(&orig->pr_ref_count) != 0)
-		cpu_relax();
-
-	/*
 	 * Disable struct se_dev_entry LUN ACL mapping
 	 */
 	core_scsi3_ua_release_all(orig);
@@ -449,6 +455,9 @@ int core_disable_device_list_for_node(
 	orig->attach_count--;
 	hlist_del_rcu(&orig->link);
 	mutex_unlock(&nacl->lun_entry_mutex);
+
+	kref_put(&orig->pr_kref, target_pr_kref_release);
+	wait_for_completion(&orig->pr_comp);
 
 	/*
 	 * Fire off RCU callback to wait for any in process SPEC_I_PT=1
