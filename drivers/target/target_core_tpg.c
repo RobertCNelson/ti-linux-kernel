@@ -55,32 +55,29 @@ static void core_clear_initiator_node_from_tpg(
 	struct se_node_acl *nacl,
 	struct se_portal_group *tpg)
 {
-	int i;
 	struct se_dev_entry *deve;
 	struct se_lun *lun;
+	u32 mapped_lun;
 
-	spin_lock_irq(&nacl->device_list_lock);
-	for (i = 0; i < TRANSPORT_MAX_LUNS_PER_TPG; i++) {
-		deve = nacl->device_list[i];
-
+	rcu_read_lock();
+	hlist_for_each_entry_rcu(deve, &nacl->lun_entry_hlist, link) {
 		if (!(deve->lun_flags & TRANSPORT_LUNFLAGS_INITIATOR_ACCESS))
 			continue;
-
 		if (!deve->se_lun) {
 			pr_err("%s device entries device pointer is"
 				" NULL, but Initiator has access.\n",
 				tpg->se_tpg_tfo->get_fabric_name());
 			continue;
 		}
-
 		lun = deve->se_lun;
-		spin_unlock_irq(&nacl->device_list_lock);
-		core_disable_device_list_for_node(lun, NULL, deve->mapped_lun,
-			TRANSPORT_LUNFLAGS_NO_ACCESS, nacl, tpg);
+		mapped_lun = deve->mapped_lun;
+		rcu_read_unlock();
 
-		spin_lock_irq(&nacl->device_list_lock);
+		core_disable_device_list_for_node(lun, NULL, mapped_lun,
+					TRANSPORT_LUNFLAGS_NO_ACCESS, nacl, tpg);
+		rcu_read_lock();
 	}
-	spin_unlock_irq(&nacl->device_list_lock);
+	rcu_read_unlock();
 }
 
 /*	__core_tpg_get_initiator_node_acl():
@@ -266,10 +263,12 @@ static struct se_node_acl *target_alloc_node_acl(struct se_portal_group *tpg,
 
 	INIT_LIST_HEAD(&acl->acl_list);
 	INIT_LIST_HEAD(&acl->acl_sess_list);
+	INIT_HLIST_HEAD(&acl->lun_entry_hlist);
 	kref_init(&acl->acl_kref);
 	init_completion(&acl->acl_free_comp);
 	spin_lock_init(&acl->device_list_lock);
 	spin_lock_init(&acl->nacl_sess_lock);
+	spin_lock_init(&acl->lun_entry_lock);
 	atomic_set(&acl->acl_pr_ref_count, 0);
 	if (tpg->se_tpg_tfo->tpg_get_default_depth)
 		acl->queue_depth = tpg->se_tpg_tfo->tpg_get_default_depth(tpg);

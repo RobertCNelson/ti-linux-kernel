@@ -584,10 +584,12 @@ struct se_node_acl {
 	char			acl_tag[MAX_ACL_TAG_SIZE];
 	/* Used for PR SPEC_I_PT=1 and REGISTER_AND_MOVE */
 	atomic_t		acl_pr_ref_count;
+	struct hlist_head	lun_entry_hlist;
 	struct se_dev_entry	**device_list;
 	struct se_session	*nacl_sess;
 	struct se_portal_group *se_tpg;
 	spinlock_t		device_list_lock;
+	spinlock_t		lun_entry_lock;
 	spinlock_t		nacl_sess_lock;
 	struct config_group	acl_group;
 	struct config_group	acl_attrib_group;
@@ -653,11 +655,14 @@ struct se_dev_entry {
 	atomic_t		ua_count;
 	/* Used for PR SPEC_I_PT=1 and REGISTER_AND_MOVE */
 	atomic_t		pr_ref_count;
-	struct se_lun_acl	*se_lun_acl;
+	struct se_node_acl	*se_node_acl;
+	struct se_lun_acl __rcu	*se_lun_acl;
 	spinlock_t		ua_lock;
 	struct se_lun		*se_lun;
 	struct list_head	alua_port_list;
 	struct list_head	ua_list;
+	struct hlist_node	link;
+	struct rcu_head		rcu_head;
 };
 
 struct se_dev_attrib {
