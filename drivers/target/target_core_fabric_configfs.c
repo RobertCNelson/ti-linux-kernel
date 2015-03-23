@@ -123,16 +123,16 @@ static int target_fabric_mappedlun_link(
 	 * which be will write protected (READ-ONLY) when
 	 * tpg_1/attrib/demo_mode_write_protect=1
 	 */
-	spin_lock_irq(&lacl->se_lun_nacl->device_list_lock);
-	deve = lacl->se_lun_nacl->device_list[lacl->mapped_lun];
-	if (deve->lun_flags & TRANSPORT_LUNFLAGS_INITIATOR_ACCESS)
+	rcu_read_lock();
+	deve = target_nacl_find_deve(lacl->se_lun_nacl, lacl->mapped_lun);
+	if (deve && deve->lun_flags & TRANSPORT_LUNFLAGS_INITIATOR_ACCESS)
 		lun_access = deve->lun_flags;
 	else
 		lun_access =
 			(se_tpg->se_tpg_tfo->tpg_check_prod_mode_write_protect(
 				se_tpg)) ? TRANSPORT_LUNFLAGS_READ_ONLY :
 					   TRANSPORT_LUNFLAGS_READ_WRITE;
-	spin_unlock_irq(&lacl->se_lun_nacl->device_list_lock);
+	rcu_read_unlock();
 	/*
 	 * Determine the actual mapped LUN value user wants..
 	 *
@@ -153,14 +153,18 @@ static int target_fabric_mappedlun_unlink(
 	struct se_lun_acl *lacl = container_of(to_config_group(lun_acl_ci),
 			struct se_lun_acl, se_lun_group);
 	struct se_node_acl *nacl = lacl->se_lun_nacl;
-	struct se_dev_entry *deve = nacl->device_list[lacl->mapped_lun];
+	struct se_dev_entry *deve;
 	struct se_portal_group *se_tpg;
 	/*
 	 * Determine if the underlying MappedLUN has already been released..
 	 */
-	if (!deve->se_lun)
+	rcu_read_lock();
+	deve = target_nacl_find_deve(nacl, lacl->mapped_lun);
+	if (!deve || !deve->se_lun) {
+		rcu_read_lock();
 		return 0;
-
+	}
+	rcu_read_unlock();
 	lun = container_of(to_config_group(lun_ci), struct se_lun, lun_group);
 	se_tpg = lun->lun_sep->sep_tpg;
 
@@ -181,14 +185,15 @@ static ssize_t target_fabric_mappedlun_show_write_protect(
 {
 	struct se_node_acl *se_nacl = lacl->se_lun_nacl;
 	struct se_dev_entry *deve;
-	ssize_t len;
+	ssize_t len = 0;
 
-	spin_lock_irq(&se_nacl->device_list_lock);
-	deve = se_nacl->device_list[lacl->mapped_lun];
-	len = sprintf(page, "%d\n",
-			(deve->lun_flags & TRANSPORT_LUNFLAGS_READ_ONLY) ?
-			1 : 0);
-	spin_unlock_irq(&se_nacl->device_list_lock);
+	rcu_read_lock();
+	deve = target_nacl_find_deve(se_nacl, lacl->mapped_lun);
+	if (deve) {
+		len = sprintf(page, "%d\n",
+			(deve->lun_flags & TRANSPORT_LUNFLAGS_READ_ONLY) ? 1 : 0);
+	}
+	rcu_read_unlock();
 
 	return len;
 }
