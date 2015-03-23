@@ -41,7 +41,6 @@
 #define NVQUIRK_DISABLE_SDR50		BIT(3)
 #define NVQUIRK_DISABLE_SDR104		BIT(4)
 #define NVQUIRK_DISABLE_DDR50		BIT(5)
-#define NVQUIRK_SHADOW_XFER_MODE_REG	BIT(6)
 
 struct sdhci_tegra_soc_data {
 	const struct sdhci_pltfm_data *pdata;
@@ -71,23 +70,19 @@ static u16 tegra_sdhci_readw(struct sdhci_host *host, int reg)
 static void tegra_sdhci_writew(struct sdhci_host *host, u16 val, int reg)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_tegra *tegra_host = pltfm_host->priv;
-	const struct sdhci_tegra_soc_data *soc_data = tegra_host->soc_data;
 
-	if (soc_data->nvquirks & NVQUIRK_SHADOW_XFER_MODE_REG) {
-		switch (reg) {
-		case SDHCI_TRANSFER_MODE:
-			/*
-			 * Postpone this write, we must do it together with a
-			 * command write that is down below.
-			 */
-			pltfm_host->xfer_mode_shadow = val;
-			return;
-		case SDHCI_COMMAND:
-			writel((val << 16) | pltfm_host->xfer_mode_shadow,
-				host->ioaddr + SDHCI_TRANSFER_MODE);
-			return;
-		}
+	switch (reg) {
+	case SDHCI_TRANSFER_MODE:
+		/*
+		 * Postpone this write, we must do it together with a
+		 * command write that is down below.
+		 */
+		pltfm_host->xfer_mode_shadow = val;
+		return;
+	case SDHCI_COMMAND:
+		writel((val << 16) | pltfm_host->xfer_mode_shadow,
+			host->ioaddr + SDHCI_TRANSFER_MODE);
+		return;
 	}
 
 	writew(val, host->ioaddr + reg);
@@ -173,7 +168,6 @@ static void tegra_sdhci_set_bus_width(struct sdhci_host *host, int bus_width)
 static const struct sdhci_ops tegra_sdhci_ops = {
 	.get_ro     = tegra_sdhci_get_ro,
 	.read_w     = tegra_sdhci_readw,
-	.write_w    = tegra_sdhci_writew,
 	.write_l    = tegra_sdhci_writel,
 	.set_clock  = sdhci_set_clock,
 	.set_bus_width = tegra_sdhci_set_bus_width,
@@ -214,6 +208,18 @@ static struct sdhci_tegra_soc_data soc_data_tegra30 = {
 		    NVQUIRK_DISABLE_SDR104,
 };
 
+static const struct sdhci_ops tegra114_sdhci_ops = {
+	.get_ro     = tegra_sdhci_get_ro,
+	.read_w     = tegra_sdhci_readw,
+	.write_w    = tegra_sdhci_writew,
+	.write_l    = tegra_sdhci_writel,
+	.set_clock  = sdhci_set_clock,
+	.set_bus_width = tegra_sdhci_set_bus_width,
+	.reset      = tegra_sdhci_reset,
+	.set_uhs_signaling = sdhci_set_uhs_signaling,
+	.get_max_clock = sdhci_pltfm_clk_get_max_clock,
+};
+
 static const struct sdhci_pltfm_data sdhci_tegra114_pdata = {
 	.quirks = SDHCI_QUIRK_BROKEN_TIMEOUT_VAL |
 		  SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK |
@@ -221,15 +227,14 @@ static const struct sdhci_pltfm_data sdhci_tegra114_pdata = {
 		  SDHCI_QUIRK_NO_HISPD_BIT |
 		  SDHCI_QUIRK_BROKEN_ADMA_ZEROLEN_DESC |
 		  SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN,
-	.ops  = &tegra_sdhci_ops,
+	.ops  = &tegra114_sdhci_ops,
 };
 
 static struct sdhci_tegra_soc_data soc_data_tegra114 = {
 	.pdata = &sdhci_tegra114_pdata,
 	.nvquirks = NVQUIRK_DISABLE_SDR50 |
 		    NVQUIRK_DISABLE_DDR50 |
-		    NVQUIRK_DISABLE_SDR104 |
-		    NVQUIRK_SHADOW_XFER_MODE_REG,
+		    NVQUIRK_DISABLE_SDR104,
 };
 
 static const struct of_device_id sdhci_tegra_dt_match[] = {
@@ -286,7 +291,8 @@ static int sdhci_tegra_probe(struct platform_device *pdev)
 		goto err_parse_dt;
 
 	if (gpio_is_valid(tegra_host->power_gpio)) {
-		rc = gpio_request(tegra_host->power_gpio, "sdhci_power");
+		rc = devm_gpio_request(&pdev->dev, tegra_host->power_gpio,
+				       "sdhci_power");
 		if (rc) {
 			dev_err(mmc_dev(host->mmc),
 				"failed to allocate power gpio\n");
@@ -295,7 +301,7 @@ static int sdhci_tegra_probe(struct platform_device *pdev)
 		gpio_direction_output(tegra_host->power_gpio, 1);
 	}
 
-	clk = clk_get(mmc_dev(host->mmc), NULL);
+	clk = devm_clk_get(mmc_dev(host->mmc), NULL);
 	if (IS_ERR(clk)) {
 		dev_err(mmc_dev(host->mmc), "clk err\n");
 		rc = PTR_ERR(clk);
@@ -312,35 +318,12 @@ static int sdhci_tegra_probe(struct platform_device *pdev)
 
 err_add_host:
 	clk_disable_unprepare(pltfm_host->clk);
-	clk_put(pltfm_host->clk);
 err_clk_get:
-	if (gpio_is_valid(tegra_host->power_gpio))
-		gpio_free(tegra_host->power_gpio);
 err_power_req:
 err_parse_dt:
 err_alloc_tegra_host:
 	sdhci_pltfm_free(pdev);
 	return rc;
-}
-
-static int sdhci_tegra_remove(struct platform_device *pdev)
-{
-	struct sdhci_host *host = platform_get_drvdata(pdev);
-	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_tegra *tegra_host = pltfm_host->priv;
-	int dead = (readl(host->ioaddr + SDHCI_INT_STATUS) == 0xffffffff);
-
-	sdhci_remove_host(host, dead);
-
-	if (gpio_is_valid(tegra_host->power_gpio))
-		gpio_free(tegra_host->power_gpio);
-
-	clk_disable_unprepare(pltfm_host->clk);
-	clk_put(pltfm_host->clk);
-
-	sdhci_pltfm_free(pdev);
-
-	return 0;
 }
 
 static struct platform_driver sdhci_tegra_driver = {
@@ -350,7 +333,7 @@ static struct platform_driver sdhci_tegra_driver = {
 		.pm	= SDHCI_PLTFM_PMOPS,
 	},
 	.probe		= sdhci_tegra_probe,
-	.remove		= sdhci_tegra_remove,
+	.remove		= sdhci_pltfm_unregister,
 };
 
 module_platform_driver(sdhci_tegra_driver);
