@@ -969,6 +969,8 @@ static int spc_modesense_long_blockdesc(unsigned char *buf, u64 blocks, u32 bloc
 static sense_reason_t spc_emulate_modesense(struct se_cmd *cmd)
 {
 	struct se_device *dev = cmd->se_dev;
+	struct se_dev_entry *deve;
+	struct se_session *sess = cmd->se_sess;
 	char *cdb = cmd->t_task_cdb;
 	unsigned char buf[SE_MODE_PAGE_BUF], *rbuf;
 	int type = dev->transport->get_device_type(dev);
@@ -981,6 +983,7 @@ static sense_reason_t spc_emulate_modesense(struct se_cmd *cmd)
 	int length = 0;
 	int ret;
 	int i;
+	bool read_only = true;
 
 	memset(buf, 0, SE_MODE_PAGE_BUF);
 
@@ -990,10 +993,14 @@ static sense_reason_t spc_emulate_modesense(struct se_cmd *cmd)
 	 */
 	length = ten ? 3 : 2;
 
+	rcu_read_lock();
+	deve = target_nacl_find_deve(sess->se_node_acl, cmd->orig_fe_lun);
+	if (deve)
+		read_only = (deve->lun_flags & TRANSPORT_LUNFLAGS_READ_ONLY);
+	rcu_read_unlock();
+
 	/* DEVICE-SPECIFIC PARAMETER */
-	if ((cmd->se_lun->lun_access & TRANSPORT_LUNFLAGS_READ_ONLY) ||
-	    (cmd->se_deve &&
-	     (cmd->se_deve->lun_flags & TRANSPORT_LUNFLAGS_READ_ONLY)))
+	if ((cmd->se_lun->lun_access & TRANSPORT_LUNFLAGS_READ_ONLY) || read_only)
 		spc_modesense_write_protect(&buf[length], type);
 
 	/*
@@ -1211,8 +1218,9 @@ sense_reason_t spc_emulate_report_luns(struct se_cmd *cmd)
 {
 	struct se_dev_entry *deve;
 	struct se_session *sess = cmd->se_sess;
+	struct se_node_acl *nacl = sess->se_node_acl;
 	unsigned char *buf;
-	u32 lun_count = 0, offset = 8, i;
+	u32 lun_count = 0, offset = 8, mapped_lun;
 
 	if (cmd->data_length < 16) {
 		pr_warn("REPORT LUNS allocation length %u too small\n",
@@ -1235,11 +1243,12 @@ sense_reason_t spc_emulate_report_luns(struct se_cmd *cmd)
 		goto done;
 	}
 
-	spin_lock_irq(&sess->se_node_acl->device_list_lock);
-	for (i = 0; i < TRANSPORT_MAX_LUNS_PER_TPG; i++) {
-		deve = sess->se_node_acl->device_list[i];
+	rcu_read_lock();
+	hlist_for_each_entry_rcu(deve, &nacl->lun_entry_hlist, link) {
 		if (!(deve->lun_flags & TRANSPORT_LUNFLAGS_INITIATOR_ACCESS))
 			continue;
+
+		mapped_lun = deve->mapped_lun;
 		/*
 		 * We determine the correct LUN LIST LENGTH even once we
 		 * have reached the initial allocation length.
@@ -1249,10 +1258,10 @@ sense_reason_t spc_emulate_report_luns(struct se_cmd *cmd)
 		if ((offset + 8) > cmd->data_length)
 			continue;
 
-		int_to_scsilun(deve->mapped_lun, (struct scsi_lun *)&buf[offset]);
+		int_to_scsilun(mapped_lun, (struct scsi_lun *)&buf[offset]);
 		offset += 8;
 	}
-	spin_unlock_irq(&sess->se_node_acl->device_list_lock);
+	rcu_read_unlock();
 
 	/*
 	 * See SPC3 r07, page 159.
