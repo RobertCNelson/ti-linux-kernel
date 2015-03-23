@@ -186,6 +186,18 @@ static inline bool tick_nohz_full_cpu(int cpu)
 	return cpumask_test_cpu(cpu, tick_nohz_full_mask);
 }
 
+static inline void tick_nohz_full_clear_cpus(struct cpumask *mask)
+{
+	if (tick_nohz_full_enabled())
+		cpumask_andnot(mask, mask, tick_nohz_full_mask);
+}
+
+static inline void tick_nohz_full_set_cpus(struct cpumask *mask)
+{
+	if (tick_nohz_full_enabled())
+		cpumask_or(mask, mask, tick_nohz_full_mask);
+}
+
 extern void __tick_nohz_full_check(void);
 extern void tick_nohz_full_kick(void);
 extern void tick_nohz_full_kick_cpu(int cpu);
@@ -194,6 +206,8 @@ extern void __tick_nohz_task_switch(struct task_struct *tsk);
 #else
 static inline bool tick_nohz_full_enabled(void) { return false; }
 static inline bool tick_nohz_full_cpu(int cpu) { return false; }
+static inline void tick_nohz_full_clear_cpus(struct cpumask *mask) { }
+static inline void tick_nohz_full_set_cpus(struct cpumask *mask) { }
 static inline void __tick_nohz_full_check(void) { }
 static inline void tick_nohz_full_kick_cpu(int cpu) { }
 static inline void tick_nohz_full_kick(void) { }
