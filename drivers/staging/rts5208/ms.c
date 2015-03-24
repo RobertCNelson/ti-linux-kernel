@@ -107,7 +107,7 @@ static int ms_transfer_tpc(struct rtsx_chip *chip, u8 trans_mode,
 }
 
 static int ms_transfer_data(struct rtsx_chip *chip, u8 trans_mode,
-			u8 tpc, u16 sec_cnt, u8 cfg, int mode_2k,
+			u8 tpc, u16 sec_cnt, u8 cfg, bool mode_2k,
 			int use_sg, void *buf, int buf_len)
 {
 	int retval;
@@ -1560,7 +1560,8 @@ static int ms_copy_page(struct rtsx_chip *chip, u16 old_blk, u16 new_blk,
 		u16 log_blk, u8 start_page, u8 end_page)
 {
 	struct ms_info *ms_card = &(chip->ms_card);
-	int retval, rty_cnt, uncorrect_flag = 0;
+	bool uncorrect_flag = false;
+	int retval, rty_cnt;
 	u8 extra[MS_EXTRA_SIZE], val, i, j, data[16];
 
 	dev_dbg(rtsx_dev(chip), "Copy page from 0x%x to 0x%x, logical block is 0x%x\n",
@@ -1642,10 +1643,10 @@ static int ms_copy_page(struct rtsx_chip *chip, u16 old_blk, u16 new_blk,
 			if (val & INT_REG_ERR) {
 				retval = ms_read_status_reg(chip);
 				if (retval != STATUS_SUCCESS) {
-					uncorrect_flag = 1;
+					uncorrect_flag = true;
 					dev_dbg(rtsx_dev(chip), "Uncorrectable error\n");
 				} else {
-					uncorrect_flag = 0;
+					uncorrect_flag = false;
 				}
 
 				retval = ms_transfer_tpc(chip,
@@ -2029,6 +2030,8 @@ static int ms_init_l2p_tbl(struct rtsx_chip *chip)
 
 	reg_addr = PPBUF_BASE2;
 	for (i = 0; i < (((ms_card->total_block >> 9) * 10) + 1); i++) {
+		int block_no;
+
 		retval = rtsx_read_register(chip, reg_addr++, &val1);
 		if (retval != STATUS_SUCCESS)
 			TRACE_GOTO(chip, INIT_FAIL);
@@ -2042,7 +2045,9 @@ static int ms_init_l2p_tbl(struct rtsx_chip *chip)
 			break;
 
 		seg_no = defect_block / 512;
-		ms_card->segment[seg_no].defect_list[ms_card->segment[seg_no].disable_count++] = defect_block;
+
+		block_no = ms_card->segment[seg_no].disable_count++;
+		ms_card->segment[seg_no].defect_list[block_no] = defect_block;
 	}
 
 	for (i = 0; i < ms_card->segment_cnt; i++) {
@@ -2187,8 +2192,9 @@ static int ms_build_l2p_tbl(struct rtsx_chip *chip, int seg_no)
 {
 	struct ms_info *ms_card = &(chip->ms_card);
 	struct zone_entry *segment;
-	int retval, table_size, disable_cnt, defect_flag, i;
-	u16 start, end, phy_blk, log_blk, tmp_blk;
+	bool defect_flag;
+	int retval, table_size, disable_cnt, i;
+	u16 start, end, phy_blk, log_blk, tmp_blk, idx;
 	u8 extra[MS_EXTRA_SIZE], us1, us2;
 
 	dev_dbg(rtsx_dev(chip), "ms_build_l2p_tbl: %d\n", seg_no);
@@ -2236,10 +2242,10 @@ static int ms_build_l2p_tbl(struct rtsx_chip *chip, int seg_no)
 
 	for (phy_blk = start; phy_blk < end; phy_blk++) {
 		if (disable_cnt) {
-			defect_flag = 0;
+			defect_flag = false;
 			for (i = 0; i < segment->disable_count; i++) {
 				if (phy_blk == segment->defect_list[i]) {
-					defect_flag = 1;
+					defect_flag = true;
 					break;
 				}
 			}
@@ -2299,13 +2305,15 @@ static int ms_build_l2p_tbl(struct rtsx_chip *chip, int seg_no)
 			continue;
 		}
 
-		if (segment->l2p_table[log_blk - ms_start_idx[seg_no]] == 0xFFFF) {
-			segment->l2p_table[log_blk - ms_start_idx[seg_no]] = phy_blk;
+		idx = log_blk - ms_start_idx[seg_no];
+
+		if (segment->l2p_table[idx] == 0xFFFF) {
+			segment->l2p_table[idx] = phy_blk;
 			continue;
 		}
 
 		us1 = extra[0] & 0x10;
-		tmp_blk = segment->l2p_table[log_blk - ms_start_idx[seg_no]];
+		tmp_blk = segment->l2p_table[idx];
 		retval = ms_read_extra_data(chip, tmp_blk, 0,
 					extra, MS_EXTRA_SIZE);
 		if (retval != STATUS_SUCCESS)
@@ -2336,7 +2344,8 @@ static int ms_build_l2p_tbl(struct rtsx_chip *chip, int seg_no)
 
 	for (log_blk = ms_start_idx[seg_no];
 	     log_blk < ms_start_idx[seg_no + 1]; log_blk++) {
-		if (segment->l2p_table[log_blk-ms_start_idx[seg_no]] == 0xFFFF) {
+		idx = log_blk - ms_start_idx[seg_no];
+		if (segment->l2p_table[idx] == 0xFFFF) {
 			phy_blk = ms_get_unused_block(chip, seg_no);
 			if (phy_blk == 0xFFFF) {
 				chip->card_wp |= MS_CARD;
@@ -2346,7 +2355,7 @@ static int ms_build_l2p_tbl(struct rtsx_chip *chip, int seg_no)
 			if (retval != STATUS_SUCCESS)
 				TRACE_GOTO(chip, BUILD_FAIL);
 
-			segment->l2p_table[log_blk-ms_start_idx[seg_no]] = phy_blk;
+			segment->l2p_table[idx] = phy_blk;
 			if (seg_no == ms_card->segment_cnt - 1) {
 				if (segment->unused_blk_cnt < 2) {
 					chip->card_wp |= MS_CARD;
@@ -2522,7 +2531,8 @@ static int mspro_rw_multi_sector(struct scsi_cmnd *srb,
 				u16 sector_cnt)
 {
 	struct ms_info *ms_card = &(chip->ms_card);
-	int retval, mode_2k = 0;
+	bool mode_2k = false;
+	int retval;
 	u16 count;
 	u8 val, trans_mode, rw_tpc, rw_cmd;
 
@@ -2547,7 +2557,7 @@ static int mspro_rw_multi_sector(struct scsi_cmnd *srb,
 				rw_tpc = PRO_WRITE_QUAD_DATA;
 				rw_cmd = PRO_WRITE_2K_DATA;
 			}
-			mode_2k = 1;
+			mode_2k = true;
 		}
 	} else {
 		if (srb->sc_data_direction == DMA_FROM_DEVICE) {
@@ -2780,7 +2790,7 @@ void mspro_polling_format_status(struct rtsx_chip *chip)
 }
 
 int mspro_format(struct scsi_cmnd *srb, struct rtsx_chip *chip,
-		int short_data_len, int quick_format)
+		int short_data_len, bool quick_format)
 {
 	struct ms_info *ms_card = &(chip->ms_card);
 	int retval, i;
