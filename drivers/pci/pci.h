@@ -146,6 +146,8 @@ static inline void pci_no_msi(void) { }
 static inline void pci_msi_init_pci_dev(struct pci_dev *dev) { }
 #endif
 
+void pci_msi_off(struct pci_dev *dev);
+
 static inline void pci_msi_set_enable(struct pci_dev *dev, int enable)
 {
 	u16 control;

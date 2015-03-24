@@ -3103,6 +3103,7 @@ EXPORT_SYMBOL_GPL(pci_check_and_unmask_intx);
  * If you want to use MSI, see pci_enable_msi() and friends.
  * This is a lower-level primitive that allows us to disable
  * MSI operation at the device level.
+ * Not for use by drivers.
  */
 void pci_msi_off(struct pci_dev *dev)
 {
@@ -3112,7 +3113,6 @@ void pci_msi_off(struct pci_dev *dev)
 	if (dev->msix_cap)
 		pci_msix_clear_and_set_ctrl(dev, PCI_MSIX_FLAGS_ENABLE, 0);
 }
-EXPORT_SYMBOL_GPL(pci_msi_off);
 
 int pci_set_dma_max_seg_size(struct pci_dev *dev, unsigned int size)
 {
