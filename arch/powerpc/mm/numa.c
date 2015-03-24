@@ -1177,6 +1177,9 @@ u64 memory_hotplug_max(void)
 
 /* Virtual Processor Home Node (VPHN) support */
 #ifdef CONFIG_PPC_SPLPAR
+
+#include "vphn.h"
+
 struct topology_update_data {
 	struct topology_update_data *next;
 	unsigned int cpu;
@@ -1248,55 +1251,6 @@ static int update_cpu_associativity_changes_mask(void)
 }
 
 /*
- * 6 64-bit registers unpacked into 12 32-bit associativity values. To form
- * the complete property we have to add the length in the first cell.
- */
-#define VPHN_ASSOC_BUFSIZE (6*sizeof(u64)/sizeof(u32) + 1)
-
-/*
- * Convert the associativity domain numbers returned from the hypervisor
- * to the sequence they would appear in the ibm,associativity property.
- */
-static int vphn_unpack_associativity(const long *packed, __be32 *unpacked)
-{
-	int i, nr_assoc_doms = 0;
-	const __be16 *field = (const __be16 *) packed;
-
-#define VPHN_FIELD_UNUSED	(0xffff)
-#define VPHN_FIELD_MSB		(0x8000)
-#define VPHN_FIELD_MASK		(~VPHN_FIELD_MSB)
-
-	for (i = 1; i < VPHN_ASSOC_BUFSIZE; i++) {
-		if (be16_to_cpup(field) == VPHN_FIELD_UNUSED) {
-			/* All significant fields processed, and remaining
-			 * fields contain the reserved value of all 1's.
-			 * Just store them.
-			 */
-			unpacked[i] = *((__be32 *)field);
-			field += 2;
-		} else if (be16_to_cpup(field) & VPHN_FIELD_MSB) {
-			/* Data is in the lower 15 bits of this field */
-			unpacked[i] = cpu_to_be32(
-				be16_to_cpup(field) & VPHN_FIELD_MASK);
-			field++;
-			nr_assoc_doms++;
-		} else {
-			/* Data is in the lower 15 bits of this field
-			 * concatenated with the next 16 bit field
-			 */
-			unpacked[i] = *((__be32 *)field);
-			field += 2;
-			nr_assoc_doms++;
-		}
-	}
-
-	/* The first cell contains the length of the property */
-	unpacked[0] = cpu_to_be32(nr_assoc_doms);
-
-	return nr_assoc_doms;
-}
-
-/*
  * Retrieve the new associativity information for a virtual processor's
  * home node.
  */
@@ -1306,11 +1260,8 @@ static long hcall_vphn(unsigned long cpu, __be32 *associativity)
 	long retbuf[PLPAR_HCALL9_BUFSIZE] = {0};
 	u64 flags = 1;
 	int hwcpu = get_hard_smp_processor_id(cpu);
-	int i;
 
 	rc = plpar_hcall9(H_HOME_NODE_ASSOCIATIVITY, retbuf, flags, hwcpu);
-	for (i = 0; i < 6; i++)
-		retbuf[i] = cpu_to_be64(retbuf[i]);
 	vphn_unpack_associativity(retbuf, associativity);
 
 	return rc;
