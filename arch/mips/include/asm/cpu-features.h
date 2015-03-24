@@ -139,6 +139,9 @@
 # endif
 #endif
 
+#ifndef cpu_has_xpa
+#define cpu_has_xpa		(cpu_data[0].options & MIPS_CPU_XPA)
+#endif
 #ifndef cpu_has_vtag_icache
 #define cpu_has_vtag_icache	(cpu_data[0].icache.flags & MIPS_CACHE_VTAG)
 #endif
@@ -364,6 +367,10 @@
 
 #ifndef cpu_has_fre
 # define cpu_has_fre		(cpu_data[0].options & MIPS_CPU_FRE)
+#endif
+
+#ifndef cpu_has_cdmm
+# define cpu_has_cdmm		(cpu_data[0].options & MIPS_CPU_CDMM)
 #endif
 
 #endif /* __ASM_CPU_FEATURES_H */
