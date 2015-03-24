@@ -23,8 +23,10 @@
  *            IT8758E  Super I/O chip w/LPC interface
  *            IT8771E  Super I/O chip w/LPC interface
  *            IT8772E  Super I/O chip w/LPC interface
+ *            IT8781F  Super I/O chip w/LPC interface
  *            IT8782F  Super I/O chip w/LPC interface
  *            IT8783E/F Super I/O chip w/LPC interface
+ *            IT8786E  Super I/O chip w/LPC interface
  *            Sis950   A clone of the IT8705F
  *
  *  Copyright (C) 2001 Chris Gauthron
@@ -66,7 +68,7 @@
 #define DRVNAME "it87"
 
 enum chips { it87, it8712, it8716, it8718, it8720, it8721, it8728, it8771,
-	     it8772, it8782, it8783, it8603 };
+	     it8772, it8781, it8782, it8783, it8786, it8603 };
 
 static unsigned short force_id;
 module_param(force_id, ushort, 0);
@@ -146,8 +148,10 @@ static inline void superio_exit(void)
 #define IT8728F_DEVID 0x8728
 #define IT8771E_DEVID 0x8771
 #define IT8772E_DEVID 0x8772
+#define IT8781F_DEVID 0x8781
 #define IT8782F_DEVID 0x8782
 #define IT8783E_DEVID 0x8783
+#define IT8786E_DEVID 0x8786
 #define IT8603E_DEVID 0x8603
 #define IT8623E_DEVID 0x8623
 #define IT87_ACT_REG  0x30
@@ -250,6 +254,9 @@ struct it87_devices {
 #define FEAT_TEMP_OFFSET	(1 << 4)
 #define FEAT_TEMP_PECI		(1 << 5)
 #define FEAT_TEMP_OLD_PECI	(1 << 6)
+#define FEAT_FAN16_CONFIG	(1 << 7)	/* Need to enable 16-bit fans */
+#define FEAT_FIVE_FANS		(1 << 8)	/* Supports five fans */
+#define FEAT_VID		(1 << 9)	/* Set if chip supports VID */
 
 static const struct it87_devices it87_devices[] = {
 	[it87] = {
@@ -258,66 +265,83 @@ static const struct it87_devices it87_devices[] = {
 	},
 	[it8712] = {
 		.name = "it8712",
-		.features = FEAT_OLD_AUTOPWM,	/* may need to overwrite */
+		.features = FEAT_OLD_AUTOPWM | FEAT_VID,
+						/* may need to overwrite */
 	},
 	[it8716] = {
 		.name = "it8716",
-		.features = FEAT_16BIT_FANS | FEAT_TEMP_OFFSET,
+		.features = FEAT_16BIT_FANS | FEAT_TEMP_OFFSET | FEAT_VID
+		  | FEAT_FAN16_CONFIG | FEAT_FIVE_FANS,
 	},
 	[it8718] = {
 		.name = "it8718",
-		.features = FEAT_16BIT_FANS | FEAT_TEMP_OFFSET
-		  | FEAT_TEMP_OLD_PECI,
+		.features = FEAT_16BIT_FANS | FEAT_TEMP_OFFSET | FEAT_VID
+		  | FEAT_TEMP_OLD_PECI | FEAT_FAN16_CONFIG | FEAT_FIVE_FANS,
 		.old_peci_mask = 0x4,
 	},
 	[it8720] = {
 		.name = "it8720",
-		.features = FEAT_16BIT_FANS | FEAT_TEMP_OFFSET
-		  | FEAT_TEMP_OLD_PECI,
+		.features = FEAT_16BIT_FANS | FEAT_TEMP_OFFSET | FEAT_VID
+		  | FEAT_TEMP_OLD_PECI | FEAT_FAN16_CONFIG | FEAT_FIVE_FANS,
 		.old_peci_mask = 0x4,
 	},
 	[it8721] = {
 		.name = "it8721",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
-		  | FEAT_TEMP_OFFSET | FEAT_TEMP_OLD_PECI | FEAT_TEMP_PECI,
+		  | FEAT_TEMP_OFFSET | FEAT_TEMP_OLD_PECI | FEAT_TEMP_PECI
+		  | FEAT_FAN16_CONFIG | FEAT_FIVE_FANS,
 		.peci_mask = 0x05,
 		.old_peci_mask = 0x02,	/* Actually reports PCH */
 	},
 	[it8728] = {
 		.name = "it8728",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
-		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI,
+		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_FIVE_FANS,
 		.peci_mask = 0x07,
 	},
 	[it8771] = {
 		.name = "it8771",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI,
-					/* PECI: guesswork */
-					/* 12mV ADC (OHM) */
-					/* 16 bit fans (OHM) */
+				/* PECI: guesswork */
+				/* 12mV ADC (OHM) */
+				/* 16 bit fans (OHM) */
+				/* three fans, always 16 bit (guesswork) */
 		.peci_mask = 0x07,
 	},
 	[it8772] = {
 		.name = "it8772",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI,
-					/* PECI (coreboot) */
-					/* 12mV ADC (HWSensors4, OHM) */
-					/* 16 bit fans (HWSensors4, OHM) */
+				/* PECI (coreboot) */
+				/* 12mV ADC (HWSensors4, OHM) */
+				/* 16 bit fans (HWSensors4, OHM) */
+				/* three fans, always 16 bit (datasheet) */
 		.peci_mask = 0x07,
+	},
+	[it8781] = {
+		.name = "it8781",
+		.features = FEAT_16BIT_FANS | FEAT_TEMP_OFFSET
+		  | FEAT_TEMP_OLD_PECI | FEAT_FAN16_CONFIG,
+		.old_peci_mask = 0x4,
 	},
 	[it8782] = {
 		.name = "it8782",
 		.features = FEAT_16BIT_FANS | FEAT_TEMP_OFFSET
-		  | FEAT_TEMP_OLD_PECI,
+		  | FEAT_TEMP_OLD_PECI | FEAT_FAN16_CONFIG,
 		.old_peci_mask = 0x4,
 	},
 	[it8783] = {
 		.name = "it8783",
 		.features = FEAT_16BIT_FANS | FEAT_TEMP_OFFSET
-		  | FEAT_TEMP_OLD_PECI,
+		  | FEAT_TEMP_OLD_PECI | FEAT_FAN16_CONFIG,
 		.old_peci_mask = 0x4,
+	},
+	[it8786] = {
+		.name = "it8786",
+		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
+		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI,
+		.peci_mask = 0x07,
 	},
 	[it8603] = {
 		.name = "it8603",
@@ -337,6 +361,9 @@ static const struct it87_devices it87_devices[] = {
 #define has_temp_old_peci(data, nr) \
 				(((data)->features & FEAT_TEMP_OLD_PECI) && \
 				 ((data)->old_peci_mask & (1 << nr)))
+#define has_fan16_config(data)	((data)->features & FEAT_FAN16_CONFIG)
+#define has_five_fans(data)	((data)->features & FEAT_FIVE_FANS)
+#define has_vid(data)		((data)->features & FEAT_VID)
 
 struct it87_sio_data {
 	enum chips type;
@@ -1761,11 +1788,17 @@ static int __init it87_find(unsigned short *address,
 	case IT8772E_DEVID:
 		sio_data->type = it8772;
 		break;
+	case IT8781F_DEVID:
+		sio_data->type = it8781;
+		break;
 	case IT8782F_DEVID:
 		sio_data->type = it8782;
 		break;
 	case IT8783E_DEVID:
 		sio_data->type = it8783;
+		break;
+	case IT8786E_DEVID:
+		sio_data->type = it8786;
 		break;
 	case IT8603E_DEVID:
 	case IT8623E_DEVID:
@@ -1794,8 +1827,8 @@ static int __init it87_find(unsigned short *address,
 	sio_data->revision = superio_inb(DEVREV) & 0x0f;
 	pr_info("Found IT%04x%c chip at 0x%x, revision %d\n", chip_type,
 		chip_type == 0x8771 || chip_type == 0x8772 ||
-		chip_type == 0x8603 ? 'E' : 'F', *address,
-		sio_data->revision);
+		chip_type == 0x8786 || chip_type == 0x8603 ? 'E' : 'F',
+		*address, sio_data->revision);
 
 	/* in8 (Vbat) is always internal */
 	sio_data->internal = (1 << 2);
@@ -1803,18 +1836,16 @@ static int __init it87_find(unsigned short *address,
 	if (sio_data->type != it8603)
 		sio_data->skip_in |= (1 << 9);
 
-	/* Read GPIO config and VID value from LDN 7 (GPIO) */
-	if (sio_data->type == it87) {
-		/* The IT8705F doesn't have VID pins at all */
+	if (!(it87_devices[sio_data->type].features & FEAT_VID))
 		sio_data->skip_vid = 1;
 
+	/* Read GPIO config and VID value from LDN 7 (GPIO) */
+	if (sio_data->type == it87) {
 		/* The IT8705F has a different LD number for GPIO */
 		superio_select(5);
 		sio_data->beep_pin = superio_inb(IT87_SIO_BEEP_PIN_REG) & 0x3f;
 	} else if (sio_data->type == it8783) {
 		int reg25, reg27, reg2a, reg2c, regef;
-
-		sio_data->skip_vid = 1;	/* No VID */
 
 		superio_select(GPIO);
 
@@ -1881,7 +1912,6 @@ static int __init it87_find(unsigned short *address,
 	} else if (sio_data->type == it8603) {
 		int reg27, reg29;
 
-		sio_data->skip_vid = 1;	/* No VID */
 		superio_select(GPIO);
 
 		reg27 = superio_inb(IT87_SIO_GPIO3_REG);
@@ -1902,10 +1932,6 @@ static int __init it87_find(unsigned short *address,
 		sio_data->skip_in |= (1 << 5); /* No VIN5 */
 		sio_data->skip_in |= (1 << 6); /* No VIN6 */
 
-		/* no fan4 */
-		sio_data->skip_pwm |= (1 << 3);
-		sio_data->skip_fan |= (1 << 3);
-
 		sio_data->internal |= (1 << 1); /* in7 is VSB */
 		sio_data->internal |= (1 << 3); /* in9 is AVCC */
 
@@ -1917,15 +1943,7 @@ static int __init it87_find(unsigned short *address,
 		superio_select(GPIO);
 
 		reg = superio_inb(IT87_SIO_GPIO3_REG);
-		if (sio_data->type == it8721 || sio_data->type == it8728 ||
-		    sio_data->type == it8771 || sio_data->type == it8772 ||
-		    sio_data->type == it8782) {
-			/*
-			 * IT8721F/IT8758E, and IT8782F don't have VID pins
-			 * at all, not sure about the IT8728F and compatibles.
-			 */
-			sio_data->skip_vid = 1;
-		} else {
+		if (!sio_data->skip_vid) {
 			/* We need at least 4 VID pins */
 			if (reg & 0x0f) {
 				pr_info("VID is disabled (pins used for GPIO)\n");
@@ -1976,9 +1994,8 @@ static int __init it87_find(unsigned short *address,
 		if (reg & (1 << 0))
 			sio_data->internal |= (1 << 0);
 		if ((reg & (1 << 1)) || sio_data->type == it8721 ||
-		    sio_data->type == it8728 ||
-		    sio_data->type == it8771 ||
-		    sio_data->type == it8772)
+		    sio_data->type == it8728 || sio_data->type == it8771 ||
+		    sio_data->type == it8772 || sio_data->type == it8786)
 			sio_data->internal |= (1 << 1);
 
 		/*
@@ -2112,13 +2129,14 @@ static int it87_probe(struct platform_device *pdev)
 	case it87:
 		if (sio_data->revision >= 0x03) {
 			data->features &= ~FEAT_OLD_AUTOPWM;
-			data->features |= FEAT_16BIT_FANS;
+			data->features |= FEAT_FAN16_CONFIG | FEAT_16BIT_FANS;
 		}
 		break;
 	case it8712:
 		if (sio_data->revision >= 0x08) {
 			data->features &= ~FEAT_OLD_AUTOPWM;
-			data->features |= FEAT_16BIT_FANS;
+			data->features |= FEAT_FAN16_CONFIG | FEAT_16BIT_FANS |
+					  FEAT_FIVE_FANS;
 		}
 		break;
 	default:
@@ -2147,7 +2165,8 @@ static int it87_probe(struct platform_device *pdev)
 			data->in_scaled |= (1 << 8);	/* in8 is Vbat */
 		if (sio_data->internal & (1 << 3))
 			data->in_scaled |= (1 << 9);	/* in9 is AVCC */
-	} else if (sio_data->type == it8782 || sio_data->type == it8783) {
+	} else if (sio_data->type == it8781 || sio_data->type == it8782 ||
+		   sio_data->type == it8783) {
 		if (sio_data->internal & (1 << 0))
 			data->in_scaled |= (1 << 3);	/* in3 is VCC5V */
 		if (sio_data->internal & (1 << 1))
@@ -2450,9 +2469,8 @@ static void it87_init_device(struct platform_device *pdev)
 	}
 	data->has_fan = (data->fan_main_ctrl >> 4) & 0x07;
 
-	/* Set tachometers to 16-bit mode if needed, IT8603E (and IT8728F?)
-	 * has it by default */
-	if (has_16bit_fans(data) && data->type != it8603) {
+	/* Set tachometers to 16-bit mode if needed */
+	if (has_fan16_config(data)) {
 		tmp = it87_read_value(data, IT87_REG_FAN_16BIT);
 		if (~tmp & 0x07 & data->has_fan) {
 			dev_dbg(&pdev->dev,
@@ -2460,14 +2478,15 @@ static void it87_init_device(struct platform_device *pdev)
 			it87_write_value(data, IT87_REG_FAN_16BIT,
 					 tmp | 0x07);
 		}
-		/* IT8705F, IT8782F, and IT8783E/F only support three fans. */
-		if (data->type != it87 && data->type != it8782 &&
-		    data->type != it8783) {
-			if (tmp & (1 << 4))
-				data->has_fan |= (1 << 3); /* fan4 enabled */
-			if (tmp & (1 << 5))
-				data->has_fan |= (1 << 4); /* fan5 enabled */
-		}
+	}
+
+	/* Check for additional fans */
+	if (has_five_fans(data)) {
+		tmp = it87_read_value(data, IT87_REG_FAN_16BIT);
+		if (tmp & (1 << 4))
+			data->has_fan |= (1 << 3); /* fan4 enabled */
+		if (tmp & (1 << 5))
+			data->has_fan |= (1 << 4); /* fan5 enabled */
 	}
 
 	/* Fan input pins may be used for alternative functions */
