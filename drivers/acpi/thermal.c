@@ -91,8 +91,6 @@ static int psv;
 module_param(psv, int, 0644);
 MODULE_PARM_DESC(psv, "Disable or override all passive trip points.");
 
-static struct workqueue_struct *acpi_thermal_pm_queue;
-
 static int acpi_thermal_add(struct acpi_device *device);
 static int acpi_thermal_remove(struct acpi_device *device);
 static void acpi_thermal_notify(struct acpi_device *device, u32 event);
@@ -103,15 +101,6 @@ static const struct acpi_device_id  thermal_device_ids[] = {
 };
 MODULE_DEVICE_TABLE(acpi, thermal_device_ids);
 
-#ifdef CONFIG_PM_SLEEP
-static int acpi_thermal_suspend(struct device *dev);
-static int acpi_thermal_resume(struct device *dev);
-#else
-#define acpi_thermal_suspend NULL
-#define acpi_thermal_resume NULL
-#endif
-static SIMPLE_DEV_PM_OPS(acpi_thermal_pm, acpi_thermal_suspend, acpi_thermal_resume);
-
 static struct acpi_driver acpi_thermal_driver = {
 	.name = "thermal",
 	.class = ACPI_THERMAL_CLASS,
@@ -121,7 +110,6 @@ static struct acpi_driver acpi_thermal_driver = {
 		.remove = acpi_thermal_remove,
 		.notify = acpi_thermal_notify,
 		},
-	.drv.pm = &acpi_thermal_pm,
 };
 
 struct acpi_thermal_state {
@@ -191,7 +179,6 @@ struct acpi_thermal {
 	struct thermal_zone_device *thermal_zone;
 	int tz_enabled;
 	int kelvin_offset;
-	struct work_struct thermal_check_work;
 };
 
 /* --------------------------------------------------------------------------
@@ -1067,13 +1054,6 @@ static void acpi_thermal_guess_offset(struct acpi_thermal *tz)
 		tz->kelvin_offset = 2732;
 }
 
-static void acpi_thermal_check_fn(struct work_struct *work)
-{
-	struct acpi_thermal *tz = container_of(work, struct acpi_thermal,
-					       thermal_check_work);
-	acpi_thermal_check(tz);
-}
-
 static int acpi_thermal_add(struct acpi_device *device)
 {
 	int result = 0;
@@ -1103,8 +1083,6 @@ static int acpi_thermal_add(struct acpi_device *device)
 	if (result)
 		goto free_memory;
 
-	INIT_WORK(&tz->thermal_check_work, acpi_thermal_check_fn);
-
 	pr_info(PREFIX "%s [%s] (%ld C)\n", acpi_device_name(device),
 		acpi_device_bid(device), KELVIN_TO_CELSIUS(tz->temperature));
 	goto end;
@@ -1122,57 +1100,12 @@ static int acpi_thermal_remove(struct acpi_device *device)
 	if (!device || !acpi_driver_data(device))
 		return -EINVAL;
 
-	flush_workqueue(acpi_thermal_pm_queue);
 	tz = acpi_driver_data(device);
 
 	acpi_thermal_unregister_thermal_zone(tz);
 	kfree(tz);
 	return 0;
 }
-
-#ifdef CONFIG_PM_SLEEP
-static int acpi_thermal_suspend(struct device *dev)
-{
-	/* Make sure the previously queued thermal check work has been done */
-	flush_workqueue(acpi_thermal_pm_queue);
-	return 0;
-}
-
-static int acpi_thermal_resume(struct device *dev)
-{
-	struct acpi_thermal *tz;
-	int i, j, power_state, result;
-
-	if (!dev)
-		return -EINVAL;
-
-	tz = acpi_driver_data(to_acpi_device(dev));
-	if (!tz)
-		return -EINVAL;
-
-	for (i = 0; i < ACPI_THERMAL_MAX_ACTIVE; i++) {
-		if (!(&tz->trips.active[i]))
-			break;
-		if (!tz->trips.active[i].flags.valid)
-			break;
-		tz->trips.active[i].flags.enabled = 1;
-		for (j = 0; j < tz->trips.active[i].devices.count; j++) {
-			result = acpi_bus_update_power(
-					tz->trips.active[i].devices.handles[j],
-					&power_state);
-			if (result || (power_state != ACPI_STATE_D0)) {
-				tz->trips.active[i].flags.enabled = 0;
-				break;
-			}
-		}
-		tz->state.active |= tz->trips.active[i].flags.enabled;
-	}
-
-	queue_work(acpi_thermal_pm_queue, &tz->thermal_check_work);
-
-	return AE_OK;
-}
-#endif
 
 static int thermal_act(const struct dmi_system_id *d) {
 
@@ -1260,15 +1193,9 @@ static int __init acpi_thermal_init(void)
 		return -ENODEV;
 	}
 
-	acpi_thermal_pm_queue = create_workqueue("acpi_thermal_pm");
-	if (!acpi_thermal_pm_queue)
-		return -ENODEV;
-
 	result = acpi_bus_register_driver(&acpi_thermal_driver);
-	if (result < 0) {
-		destroy_workqueue(acpi_thermal_pm_queue);
+	if (result < 0)
 		return -ENODEV;
-	}
 
 	return 0;
 }
@@ -1276,9 +1203,6 @@ static int __init acpi_thermal_init(void)
 static void __exit acpi_thermal_exit(void)
 {
 	acpi_bus_unregister_driver(&acpi_thermal_driver);
-	destroy_workqueue(acpi_thermal_pm_queue);
-
-	return;
 }
 
 module_init(acpi_thermal_init);
