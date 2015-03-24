@@ -1,6 +1,6 @@
 /*
- * Copyright 2012 Stefan Roese
- * Stefan Roese <sr@denx.de>
+ * Copyright 2015 Aleksei Mamlin
+ * Aleksei Mamlin <mamlinav@gmail.com>
  *
  * This file is dual-licensed: you can use it either under the terms
  * of the GPL or the X11 license, at your option. Note that this dual
@@ -47,37 +47,16 @@
  */
 
 /dts-v1/;
-#include "sun4i-a10.dtsi"
+#include "sun7i-a20.dtsi"
 #include "sunxi-common-regulators.dtsi"
 
 #include <dt-bindings/gpio/gpio.h>
-#include <dt-bindings/pinctrl/sun4i-a10.h>
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/interrupt-controller/irq.h>
 
 / {
-	model = "Cubietech Cubieboard";
-	compatible = "cubietech,a10-cubieboard", "allwinner,sun4i-a10";
-
-	leds {
-		compatible = "gpio-leds";
-		pinctrl-names = "default";
-		pinctrl-0 = <&led_pins_cubieboard>;
-
-		blue {
-			label = "cubieboard:blue:usr";
-			gpios = <&pio 7 21 GPIO_ACTIVE_HIGH>; /* LED1 */
-		};
-
-		green {
-			label = "cubieboard:green:usr";
-			gpios = <&pio 7 20 GPIO_ACTIVE_HIGH>; /* LED2 */
-			linux,default-trigger = "heartbeat";
-		};
-	};
-};
-
-&ahci {
-	target-supply = <&reg_ahci_5v>;
-	status = "okay";
+	model = "Wexler TAB7200";
+	compatible = "wexler,tab7200", "allwinner,sun7i-a20";
 };
 
 &cpu0 {
@@ -92,13 +71,6 @@
 	status = "okay";
 };
 
-&emac {
-	pinctrl-names = "default";
-	pinctrl-0 = <&emac_pins_a>;
-	phy = <&phy1>;
-	status = "okay";
-};
-
 &i2c0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c0_pins_a>;
@@ -106,7 +78,8 @@
 
 	axp209: pmic@34 {
 		reg = <0x34>;
-		interrupts = <0>;
+		interrupt-parent = <&nmi_intc>;
+		interrupts = <0 IRQ_TYPE_LEVEL_LOW>;
 	};
 };
 
@@ -116,17 +89,28 @@
 	status = "okay";
 };
 
-&ir0 {
+&i2c2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&ir0_pins_a>;
+	pinctrl-0 = <&i2c2_pins_a>;
 	status = "okay";
 };
 
-&mdio {
+&lradc {
+	vref-supply = <&reg_vcc3v0>;
 	status = "okay";
 
-	phy1: ethernet-phy@1 {
-		reg = <1>;
+	button@571 {
+		label = "Volume Up";
+		linux,code = <KEY_VOLUMEUP>;
+		channel = <0>;
+		voltage = <571428>;
+	};
+
+	button@761 {
+		label = "Volume Down";
+		linux,code = <KEY_VOLUMEDOWN>;
+		channel = <0>;
+		voltage = <761904>;
 	};
 };
 
@@ -145,19 +129,6 @@
 };
 
 &ohci1 {
-	status = "okay";
-};
-
-&pio {
-	led_pins_cubieboard: led_pins@0 {
-		allwinner,pins = "PH20", "PH21";
-		allwinner,function = "gpio_out";
-		allwinner,drive = <SUN4I_PINCTRL_20_MA>;
-		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
-	};
-};
-
-&reg_ahci_5v {
 	status = "okay";
 };
 
@@ -193,12 +164,6 @@
 };
 
 &reg_usb2_vbus {
-	status = "okay";
-};
-
-&spi0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&spi0_pins_a>;
 	status = "okay";
 };
 
