@@ -1073,10 +1073,10 @@ void qword_add(char **bpp, int *lp, char *str)
 	if (len < 0) return;
 
 	ret = string_escape_str(str, bp, len, ESCAPE_OCTAL, "\\ \n\t");
-	if (ret >= len)
+	if (ret >= len) {
 		bp += len;
 		len = -1;
-	else {
+	} else {
 		bp += ret;
 		len -= ret;
 		*bp++ = ' ';
