@@ -192,13 +192,12 @@ void ftrace_likely_update(struct ftrace_branch_data *f, int val, int expect);
 
 #include <uapi/linux/types.h>
 
-static __always_inline void data_access_exceeds_word_size(void)
+__weak notrace void data_access_exceeds_word_size(void);
+
 #ifdef __compiletime_warning
 __compiletime_warning("data access exceeds word size and won't be atomic")
 #endif
-;
-
-static __always_inline void data_access_exceeds_word_size(void)
+__weak notrace void data_access_exceeds_word_size(void)
 {
 }
 
