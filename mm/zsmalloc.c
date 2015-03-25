@@ -1538,12 +1538,10 @@ static void zs_object_copy(unsigned long src, unsigned long dst,
 			break;
 
 		if (s_off + size >= PAGE_SIZE) {
-			kunmap_atomic(d_addr);
 			kunmap_atomic(s_addr);
 			s_page = get_next_page(s_page);
 			BUG_ON(!s_page);
 			s_addr = kmap_atomic(s_page);
-			d_addr = kmap_atomic(d_page);
 			s_size = class->size - written;
 			s_off = 0;
 		} else {
