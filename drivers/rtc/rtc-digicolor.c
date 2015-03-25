@@ -42,7 +42,7 @@ struct dc_rtc {
 	void __iomem		*regs;
 };
 
-static int dc_rtc_cmds(struct dc_rtc *rtc, u8 *cmds, int len)
+static int dc_rtc_cmds(struct dc_rtc *rtc, const u8 *cmds, int len)
 {
 	u8 val;
 	int i, ret;
@@ -62,7 +62,7 @@ static int dc_rtc_cmds(struct dc_rtc *rtc, u8 *cmds, int len)
 
 static int dc_rtc_read(struct dc_rtc *rtc, unsigned long *val)
 {
-	u8 read_cmds[] = {CMD_READ, CMD_NOP};
+	static const u8 read_cmds[] = {CMD_READ, CMD_NOP};
 	u32 reference, time1, time2;
 	int ret;
 
@@ -86,7 +86,7 @@ static int dc_rtc_read(struct dc_rtc *rtc, unsigned long *val)
 
 static int dc_rtc_write(struct dc_rtc *rtc, u32 val)
 {
-	u8 write_cmds[] = {CMD_WRITE, CMD_NOP, CMD_RESET, CMD_NOP};
+	static const u8 write_cmds[] = {CMD_WRITE, CMD_NOP, CMD_RESET, CMD_NOP};
 
 	writel_relaxed(val, rtc->regs + DC_RTC_REFERENCE);
 	return dc_rtc_cmds(rtc, write_cmds, ARRAY_SIZE(write_cmds));
