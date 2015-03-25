@@ -567,17 +567,18 @@ void native_set_fixmap(enum fixed_addresses idx, phys_addr_t phys,
  * pud_set_huge - setup kernel PUD mapping
  *
  * MTRR can override PAT memory types with 4KB granularity.  Therefore,
- * it does not set up a huge page when the range is covered by a non-WB
- * type of MTRR.  MTRR_TYPE_INVALID indicates that MTRR are disabled.
+ * it only sets up a huge page when the range is mapped uniformly by MTRR
+ * (i.e. the range is fully covered by a single MTRR entry or the default
+ * type) or the MTRR memory type is WB.
  *
  * Return 1 on success, and 0 when no PUD was set.
  */
 int pud_set_huge(pud_t *pud, phys_addr_t addr, pgprot_t prot)
 {
-	u8 mtrr;
+	u8 mtrr, uniform;
 
-	mtrr = mtrr_type_lookup(addr, addr + PUD_SIZE);
-	if ((mtrr != MTRR_TYPE_WRBACK) && (mtrr != MTRR_TYPE_INVALID))
+	mtrr = mtrr_type_lookup(addr, addr + PUD_SIZE, &uniform);
+	if ((!uniform) && (mtrr != MTRR_TYPE_WRBACK))
 		return 0;
 
 	prot = pgprot_4k_2_large(prot);
@@ -593,18 +594,22 @@ int pud_set_huge(pud_t *pud, phys_addr_t addr, pgprot_t prot)
  * pmd_set_huge - setup kernel PMD mapping
  *
  * MTRR can override PAT memory types with 4KB granularity.  Therefore,
- * it does not set up a huge page when the range is covered by a non-WB
- * type of MTRR.  MTRR_TYPE_INVALID indicates that MTRR are disabled.
+ * it only sets up a huge page when the range is mapped uniformly by MTRR
+ * (i.e. the range is fully covered by a single MTRR entry or the default
+ * type) or the MTRR memory type is WB.
  *
  * Return 1 on success, and 0 when no PMD was set.
  */
 int pmd_set_huge(pmd_t *pmd, phys_addr_t addr, pgprot_t prot)
 {
-	u8 mtrr;
+	u8 mtrr, uniform;
 
-	mtrr = mtrr_type_lookup(addr, addr + PMD_SIZE);
-	if ((mtrr != MTRR_TYPE_WRBACK) && (mtrr != MTRR_TYPE_INVALID))
+	mtrr = mtrr_type_lookup(addr, addr + PMD_SIZE, &uniform);
+	if ((!uniform) && (mtrr != MTRR_TYPE_WRBACK)) {
+		pr_warn("pmd_set_huge: requesting [mem %#010llx-%#010llx], which spans more than a single MTRR entry\n",
+				addr, addr + PMD_SIZE);
 		return 0;
+	}
 
 	prot = pgprot_4k_2_large(prot);
 
