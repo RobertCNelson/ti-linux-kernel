@@ -853,7 +853,7 @@ static struct page_state {
 	{ mlock|dirty,	mlock,		CLEAN_MLOCKED_LRU,	me_pagecache_clean },
 
 	{ unevict|dirty, unevict|dirty,	DIRTY_UNEVICTABLE_LRU,	me_pagecache_dirty },
-	{ unevict|dirty, unevict,	DIRTY_UNEVICTABLE_LRU,	me_pagecache_clean },
+	{ unevict|dirty, unevict,	CLEAN_UNEVICTABLE_LRU,	me_pagecache_clean },
 
 	{ lru|dirty,	lru|dirty,	DIRTY_LRU,	me_pagecache_dirty },
 	{ lru|dirty,	lru,		CLEAN_LRU,	me_pagecache_clean },
