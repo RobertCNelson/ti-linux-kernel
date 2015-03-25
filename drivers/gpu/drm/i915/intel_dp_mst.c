@@ -38,7 +38,7 @@ static bool intel_dp_mst_compute_config(struct intel_encoder *encoder,
 	struct intel_dp *intel_dp = &intel_dig_port->dp;
 	struct drm_device *dev = encoder->base.dev;
 	int bpp;
-	int lane_count, slots;
+	int lane_count, slots, rate;
 	struct drm_display_mode *adjusted_mode = &pipe_config->base.adjusted_mode;
 	struct intel_connector *found = NULL, *intel_connector;
 	int mst_pbn;
@@ -52,13 +52,23 @@ static bool intel_dp_mst_compute_config(struct intel_encoder *encoder,
 	 * seem to suggest we should do otherwise.
 	 */
 	lane_count = drm_dp_max_lane_count(intel_dp->dpcd);
-	intel_dp->link_bw = intel_dp_max_link_bw(intel_dp);
+
+	rate = intel_dp_max_link_rate(intel_dp);
+
+	if (intel_dp->num_sink_rates) {
+		intel_dp->link_bw = 0;
+		intel_dp->rate_select = intel_dp_rate_select(intel_dp, rate);
+	} else {
+		intel_dp->link_bw = drm_dp_link_rate_to_bw_code(rate);
+		intel_dp->rate_select = 0;
+	}
+
 	intel_dp->lane_count = lane_count;
 
 	pipe_config->pipe_bpp = 24;
-	pipe_config->port_clock = drm_dp_bw_code_to_link_rate(intel_dp->link_bw);
+	pipe_config->port_clock = rate;
 
-	list_for_each_entry(intel_connector, &dev->mode_config.connector_list, base.head) {
+	for_each_intel_connector(dev, intel_connector) {
 		if (intel_connector->new_encoder == encoder) {
 			found = intel_connector;
 			break;
@@ -140,7 +150,7 @@ static void intel_mst_pre_enable_dp(struct intel_encoder *encoder)
 	struct drm_crtc *crtc = encoder->base.crtc;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 
-	list_for_each_entry(intel_connector, &dev->mode_config.connector_list, base.head) {
+	for_each_intel_connector(dev, intel_connector) {
 		if (intel_connector->new_encoder == encoder) {
 			found = intel_connector;
 			break;
