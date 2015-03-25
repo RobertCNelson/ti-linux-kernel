@@ -61,12 +61,14 @@ static const struct pll_config pll4_config = {
 	.main_output_mask = BIT(23),
 };
 
-#define P_PXO	0
-#define P_PLL4	1
+enum {
+	P_PXO,
+	P_PLL4,
+};
 
-static const u8 lcc_pxo_pll4_map[] = {
-	[P_PXO]		= 0,
-	[P_PLL4]	= 2,
+static const struct parent_map lcc_pxo_pll4_map[] = {
+	{ P_PXO, 0 },
+	{ P_PLL4, 2 }
 };
 
 static const char *lcc_pxo_pll4[] = {
@@ -386,13 +388,12 @@ static struct clk_rcg ahbix_clk = {
 	.freq_tbl = clk_tbl_ahbix,
 	.clkr = {
 		.enable_reg = 0x38,
-		.enable_mask = BIT(10), /* toggle the gfmux to select mn/pxo */
+		.enable_mask = BIT(11),
 		.hw.init = &(struct clk_init_data){
 			.name = "ahbix",
 			.parent_names = lcc_pxo_pll4,
 			.num_parents = 2,
-			.ops = &clk_rcg_ops,
-			.flags = CLK_SET_RATE_GATE,
+			.ops = &clk_rcg_lcc_ops,
 		},
 	},
 };
