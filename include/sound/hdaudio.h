@@ -9,7 +9,10 @@
 #include <sound/hda_verbs.h>
 
 /* codec node id */
+#ifndef hda_nid_t
 typedef u16 hda_nid_t;
+#define hda_nid_t hda_nid_t
+#endif
 
 struct hdac_bus;
 struct hdac_device;
