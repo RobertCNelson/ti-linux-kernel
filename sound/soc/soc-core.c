@@ -1426,7 +1426,6 @@ static void soc_remove_aux_dev(struct snd_soc_card *card, int num)
 
 	/* unregister the rtd device */
 	if (rtd->dev_registered) {
-		device_remove_file(rtd->dev, &dev_attr_codec_reg);
 		device_unregister(rtd->dev);
 		rtd->dev_registered = 0;
 	}
@@ -1688,6 +1687,8 @@ static int snd_soc_instantiate_card(struct snd_soc_card *card)
 	snd_soc_dapm_sync(&card->dapm);
 	mutex_unlock(&card->mutex);
 	mutex_unlock(&client_mutex);
+
+	soc_init_card_debugfs(card);
 
 	return 0;
 
@@ -2380,8 +2381,6 @@ int snd_soc_register_card(struct snd_soc_card *card)
 
 	snd_soc_initialize_card_lists(card);
 
-	soc_init_card_debugfs(card);
-
 	card->rtd = devm_kzalloc(card->dev,
 				 sizeof(struct snd_soc_pcm_runtime) *
 				 (card->num_links + card->num_aux_devs),
@@ -2412,7 +2411,7 @@ int snd_soc_register_card(struct snd_soc_card *card)
 
 	ret = snd_soc_instantiate_card(card);
 	if (ret != 0)
-		soc_cleanup_card_debugfs(card);
+		return ret;
 
 	/* deactivate pins to sleep state */
 	for (i = 0; i < card->num_rtd; i++) {
