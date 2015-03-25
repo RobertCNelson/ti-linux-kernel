@@ -56,6 +56,30 @@
 	model = "Olimex A10-OLinuXino-LIME";
 	compatible = "olimex,a10-olinuxino-lime", "allwinner,sun4i-a10";
 
+	aliases {
+		serial0 = &uart0;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+
+	cpus {
+		cpu0: cpu@0 {
+			/*
+			 * The A10-Lime is known to be unstable
+			 * when running at 1008 MHz
+			 */
+			operating-points = <
+				/* kHz    uV */
+				912000  1350000
+				864000  1300000
+				624000  1250000
+				>;
+			cooling-max-level = <2>;
+		};
+	};
+
 	leds {
 		compatible = "gpio-leds";
 		pinctrl-names = "default";
