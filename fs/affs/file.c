@@ -699,8 +699,10 @@ static int affs_write_end_ofs(struct file *file, struct address_space *mapping,
 	boff = tmp % bsize;
 	if (boff) {
 		bh = affs_bread_ino(inode, bidx, 0);
-		if (IS_ERR(bh))
-			return PTR_ERR(bh);
+		if (IS_ERR(bh)) {
+			written = PTR_ERR(bh);
+			goto err;
+		}
 		tmp = min(bsize - boff, to - from);
 		BUG_ON(boff + tmp > bsize || tmp > bsize);
 		memcpy(AFFS_DATA(bh) + boff, data + from, tmp);
@@ -712,8 +714,10 @@ static int affs_write_end_ofs(struct file *file, struct address_space *mapping,
 		bidx++;
 	} else if (bidx) {
 		bh = affs_bread_ino(inode, bidx - 1, 0);
-		if (IS_ERR(bh))
-			return PTR_ERR(bh);
+		if (IS_ERR(bh)) {
+			written = PTR_ERR(bh);
+			goto err;
+		}
 	}
 	while (from + bsize <= to) {
 		prev_bh = bh;
@@ -790,6 +794,7 @@ done:
 	if (tmp > inode->i_size)
 		inode->i_size = AFFS_I(inode)->mmu_private = tmp;
 
+err:
 	unlock_page(page);
 	page_cache_release(page);
 
