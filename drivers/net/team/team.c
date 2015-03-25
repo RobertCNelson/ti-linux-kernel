@@ -1935,6 +1935,9 @@ static netdev_features_t team_fix_features(struct net_device *dev,
 						     mask);
 	}
 	rcu_read_unlock();
+
+	features = netdev_add_tso_features(features, mask);
+
 	return features;
 }
 
