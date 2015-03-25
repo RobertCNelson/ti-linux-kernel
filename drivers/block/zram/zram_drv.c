@@ -1285,9 +1285,10 @@ static ssize_t zram_add_show(struct class *class,
 	int ret;
 
 	mutex_lock(&zram_index_mutex);
-	/* read operation on zram_add is - pick up device_id
-	 * automatically, add corresponding device and return
-	 * that device_id back to user */
+	/*
+	 * read operation on zram_add is - pick up device_id automatically, add
+	 * corresponding device and return that device_id back to user
+	 */
 	ret = zram_add(-1);
 	mutex_unlock(&zram_index_mutex);
 
