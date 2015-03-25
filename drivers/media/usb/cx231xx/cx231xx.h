@@ -76,6 +76,7 @@
 #define CX231XX_BOARD_KWORLD_UB445_USB_HYBRID 18
 #define CX231XX_BOARD_HAUPPAUGE_930C_HD_1113xx 19
 #define CX231XX_BOARD_HAUPPAUGE_930C_HD_1114xx 20
+#define CX231XX_BOARD_HAUPPAUGE_955Q 21
 
 /* Limits minimum and default number of buffers */
 #define CX231XX_MIN_BUF                 4
@@ -657,6 +658,11 @@ struct cx231xx {
 	wait_queue_head_t open, wait_frame, wait_stream;
 	struct video_device *vbi_dev;
 	struct video_device *radio_dev;
+
+#if defined(CONFIG_MEDIA_CONTROLLER)
+	struct media_device *media_dev;
+	struct media_pad video_pad, vbi_pad;
+#endif
 
 	unsigned char eedata[256];
 
