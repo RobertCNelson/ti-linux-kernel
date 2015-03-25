@@ -640,7 +640,6 @@ struct se_lun_acl {
 };
 
 struct se_dev_entry {
-	bool			def_pr_registered;
 	/* See transport_lunflags_table */
 	u32			lun_flags;
 	u32			mapped_lun;
@@ -657,7 +656,8 @@ struct se_dev_entry {
 	struct se_node_acl	*se_node_acl;
 	struct se_lun_acl __rcu	*se_lun_acl;
 	spinlock_t		ua_lock;
-	struct se_lun		*se_lun;
+	struct se_lun __rcu	*se_lun;
+	struct t10_pr_registration __rcu *pr_reg;
 	struct list_head	alua_port_list;
 	struct list_head	ua_list;
 	struct hlist_node	link;

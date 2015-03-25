@@ -448,6 +448,7 @@ int core_disable_device_list_for_node(
 	 * Disable struct se_dev_entry LUN ACL mapping
 	 */
 	core_scsi3_ua_release_all(orig);
+	rcu_assign_pointer(orig->pr_reg, NULL);
 	rcu_assign_pointer(orig->se_lun, NULL);
 	rcu_assign_pointer(orig->se_lun_acl, NULL);
 	orig->lun_flags = 0;
