@@ -70,7 +70,10 @@ struct hda_pcm;
 struct hda_pcm_stream;
 
 /* NID type */
+#ifndef hda_nid_t
 typedef u16 hda_nid_t;
+#define hda_nid_t hda_nid_t
+#endif
 
 /* bus operators */
 struct hda_bus_ops {
