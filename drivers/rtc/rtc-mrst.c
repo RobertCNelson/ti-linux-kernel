@@ -531,7 +531,7 @@ static struct platform_driver vrtc_mrst_platform_driver = {
 	.remove		= vrtc_mrst_platform_remove,
 	.shutdown	= vrtc_mrst_platform_shutdown,
 	.driver = {
-		.name	= (char *) driver_name,
+		.name	= driver_name,
 		.pm	= MRST_PM_OPS,
 	}
 };
