@@ -50,6 +50,7 @@
 #include "skeleton.dtsi"
 
 #include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/thermal/thermal.h>
 
 #include <dt-bindings/pinctrl/sun4i-a10.h>
 
@@ -96,10 +97,22 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 
-		cpu@0 {
+		cpu0: cpu@0 {
 			compatible = "arm,cortex-a7";
 			device_type = "cpu";
 			reg = <0>;
+			clocks = <&cpu>;
+			clock-latency = <244144>; /* 8 32k periods */
+			operating-points = <
+				/* kHz    uV */
+				1008000	1200000
+				864000  1200000
+				720000  1100000
+				480000  1000000
+				>;
+			#cooling-cells = <2>;
+			cooling-min-level = <0>;
+			cooling-max-level = <3>;
 		};
 
 		cpu@1 {
@@ -118,6 +131,38 @@
 			compatible = "arm,cortex-a7";
 			device_type = "cpu";
 			reg = <3>;
+		};
+	};
+
+	thermal-zones {
+		cpu_thermal {
+			/* milliseconds */
+			polling-delay-passive = <250>;
+			polling-delay = <1000>;
+			thermal-sensors = <&rtp>;
+
+			cooling-maps {
+				map0 {
+					trip = <&cpu_alert0>;
+					cooling-device = <&cpu0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+				};
+			};
+
+			trips {
+				cpu_alert0: cpu_alert0 {
+					/* milliCelsius */
+					temperature = <70000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				cpu_crit: cpu_crit {
+					/* milliCelsius */
+					temperature = <100000>;
+					hysteresis = <2000>;
+					type = "critical";
+				};
+			};
 		};
 	};
 
@@ -196,6 +241,14 @@
 			reg = <0x01c20054 0x4>;
 			clocks = <&osc32k>, <&osc24M>, <&axi>, <&pll6 0>;
 			clock-output-names = "ahb1";
+
+			/*
+			 * Clock AHB1 from PLL6, instead of CPU/AXI which
+			 * has rate changes due to cpufreq. Also the DMA
+			 * controller requires AHB1 clocked from PLL6.
+			 */
+			assigned-clocks = <&ahb1>;
+			assigned-clock-parents = <&pll6 0>;
 		};
 
 		ahb1_gates: clk@01c20060 {
@@ -381,10 +434,6 @@
 			clocks = <&ahb1_gates 6>;
 			resets = <&ahb1_rst 6>;
 			#dma-cells = <1>;
-
-			/* DMA controller requires AHB1 clocked from PLL6 */
-			assigned-clocks = <&ahb1>;
-			assigned-clock-parents = <&pll6 0>;
 		};
 
 		mmc0: mmc@01c0f000 {
