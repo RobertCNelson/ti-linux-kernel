@@ -1,0 +1,23 @@
+What:		/sys/class/zram-control/
+Date:		March 2015
+KernelVersion:	4.1
+Contact:	Sergey Senozhatsky <sergey.senozhatsky@gmail.com>
+Description:
+		The zram-control/ class sub-directory belongs to zram
+		device class
+
+What:		/sys/class/zram-control/zram_add
+Date:		March 2015
+KernelVersion:	4.1
+Contact:	Sergey Senozhatsky <sergey.senozhatsky@gmail.com>
+Description:
+		Add a specific /dev/zramX device, where X is a device_id
+		provided by user
+
+		What:		/sys/class/zram-control/zram_add
+Date:		March 2015
+KernelVersion:	4.1
+Contact:	Sergey Senozhatsky <sergey.senozhatsky@gmail.com>
+Description:
+		Remove a specific /dev/zramX device, where X is a device_id
+		provided by user

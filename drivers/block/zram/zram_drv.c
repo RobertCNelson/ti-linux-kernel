@@ -33,15 +33,22 @@
 #include <linux/vmalloc.h>
 #include <linux/err.h>
 #include <linux/idr.h>
+#include <linux/sysfs.h>
 
 #include "zram_drv.h"
 
 static DEFINE_IDR(zram_index_idr);
+/* idr index must be protected */
+static DEFINE_MUTEX(zram_index_mutex);
+
 static int zram_major;
 static const char *default_compressor = "lzo";
 
 /* Module params (documentation at end) */
 static unsigned int num_devices = 1;
+
+#define ZRAM_CTL_ADD		1
+#define ZRAM_CTL_REMOVE		2
 
 #define ZRAM_ATTR_RO(name)						\
 static ssize_t name##_show(struct device *d,				\
@@ -1173,6 +1180,109 @@ static void zram_remove(struct zram *zram)
 	kfree(zram);
 }
 
+/* lookup if there is any device pointer that match the given device_id.
+ * return device pointer if so, or ERR_PTR() otherwise. */
+static struct zram *zram_lookup(int dev_id)
+{
+	struct zram *zram;
+
+	zram = idr_find(&zram_index_idr, dev_id);
+	if (zram)
+		return zram;
+	return ERR_PTR(-ENODEV);
+}
+
+/* common zram-control add/remove handler */
+static int zram_control(int cmd, const char *buf)
+{
+	struct zram *zram;
+	int ret = -ENOSYS, err, dev_id;
+
+	/* dev_id is gendisk->first_minor, which is `int' */
+	ret = kstrtoint(buf, 10, &dev_id);
+	if (ret || dev_id < 0)
+		return ret;
+
+	mutex_lock(&zram_index_mutex);
+	zram = zram_lookup(dev_id);
+
+	switch (cmd) {
+	case ZRAM_CTL_ADD:
+		if (!IS_ERR(zram)) {
+			ret = -EEXIST;
+			break;
+		}
+		ret = zram_add(dev_id);
+		break;
+	case ZRAM_CTL_REMOVE:
+		if (IS_ERR(zram)) {
+			ret = PTR_ERR(zram);
+			break;
+		}
+
+		/* First, make ->disksize device attr RO, closing
+		 * ZRAM_CTL_REMOVE vs disksize_store() race window */
+		ret = sysfs_chmod_file(&disk_to_dev(zram->disk)->kobj,
+				&dev_attr_disksize.attr, S_IRUGO);
+		if (ret)
+			break;
+
+		ret = zram_reset_device(zram);
+		if (ret == 0) {
+			/* ->disksize is RO and there are no ->bd_openers */
+			zram_remove(zram);
+			break;
+		}
+
+		/* If there are still device bd_openers, try to make ->disksize
+		 * RW again and return. even if we fail to make ->disksize RW,
+		 * user still has RW ->reset attr. so it's possible to destroy
+		 * that device */
+		err = sysfs_chmod_file(&disk_to_dev(zram->disk)->kobj,
+				&dev_attr_disksize.attr,
+				S_IWUSR | S_IRUGO);
+		if (err)
+			ret = err;
+		break;
+	}
+	mutex_unlock(&zram_index_mutex);
+
+	return ret;
+}
+
+/* zram module control sysfs attributes */
+static ssize_t zram_add_store(struct class *class,
+			struct class_attribute *attr,
+			const char *buf,
+			size_t count)
+{
+	int ret = zram_control(ZRAM_CTL_ADD, buf);
+
+	return ret ? ret : count;
+}
+
+static ssize_t zram_remove_store(struct class *class,
+			struct class_attribute *attr,
+			const char *buf,
+			size_t count)
+{
+	int ret = zram_control(ZRAM_CTL_REMOVE, buf);
+
+	return ret ? ret : count;
+}
+
+static struct class_attribute zram_control_class_attrs[] = {
+	__ATTR_WO(zram_add),
+	__ATTR_WO(zram_remove),
+	__ATTR_NULL,
+};
+
+static struct class zram_control_class = {
+	.name		= "zram-control",
+	.owner		= THIS_MODULE,
+	.class_attrs	= zram_control_class_attrs,
+};
+
 static int zram_exit_cb(int id, void *ptr, void *data)
 {
 	zram_remove(ptr);
@@ -1181,6 +1291,7 @@ static int zram_exit_cb(int id, void *ptr, void *data)
 
 static void destroy_devices(void)
 {
+	class_unregister(&zram_control_class);
 	idr_for_each(&zram_index_idr, &zram_exit_cb, NULL);
 	idr_destroy(&zram_index_idr);
 	unregister_blkdev(zram_major, "zram");
@@ -1197,14 +1308,23 @@ static int __init zram_init(void)
 		return -EINVAL;
 	}
 
+	ret = class_register(&zram_control_class);
+	if (ret) {
+		pr_warn("Unable to register zram-control class\n");
+		return ret;
+	}
+
 	zram_major = register_blkdev(0, "zram");
 	if (zram_major <= 0) {
 		pr_warn("Unable to get major number\n");
+		class_unregister(&zram_control_class);
 		return -EBUSY;
 	}
 
 	for (dev_id = 0; dev_id < num_devices; dev_id++) {
+		mutex_lock(&zram_index_mutex);
 		ret = zram_add(dev_id);
+		mutex_unlock(&zram_index_mutex);
 		if (ret != 0)
 			goto out_error;
 	}
