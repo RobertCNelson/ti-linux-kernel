@@ -296,11 +296,6 @@ void print_header(void)
 		outp += sprintf(outp, " Bzy_MHz");
 	outp += sprintf(outp, " TSC_MHz");
 
-	if (!debug)
-		goto done;
-
-	if (do_smi)
-		outp += sprintf(outp, "     SMI");
 	if (extra_delta_offset32)
 		outp += sprintf(outp, "  count 0x%03X", extra_delta_offset32);
 	if (extra_delta_offset64)
@@ -309,6 +304,13 @@ void print_header(void)
 		outp += sprintf(outp, "   MSR 0x%03X", extra_msr_offset32);
 	if (extra_msr_offset64)
 		outp += sprintf(outp, "           MSR 0x%03X", extra_msr_offset64);
+
+	if (!debug)
+		goto done;
+
+	if (do_smi)
+		outp += sprintf(outp, "     SMI");
+
 	if (do_nhm_cstates)
 		outp += sprintf(outp, "  CPU%%c1");
 	if (do_nhm_cstates && !do_slm_cstates)
@@ -508,13 +510,6 @@ int format_counters(struct thread_data *t, struct core_data *c,
 	/* TSC_MHz */
 	outp += sprintf(outp, "%8.0f", 1.0 * t->tsc/units/interval_float);
 
-	if (!debug)
-		goto done;
-
-	/* SMI */
-	if (do_smi)
-		outp += sprintf(outp, "%8d", t->smi_count);
-
 	/* delta */
 	if (extra_delta_offset32)
 		outp += sprintf(outp, "  %11llu", t->extra_delta32);
@@ -529,6 +524,13 @@ int format_counters(struct thread_data *t, struct core_data *c,
 	/* MSR */
 	if (extra_msr_offset64)
 		outp += sprintf(outp, "  0x%016llx", t->extra_msr64);
+
+	if (!debug)
+		goto done;
+
+	/* SMI */
+	if (do_smi)
+		outp += sprintf(outp, "%8d", t->smi_count);
 
 	if (do_nhm_cstates) {
 		if (!skip_c1)
