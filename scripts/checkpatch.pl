@@ -47,6 +47,8 @@ my $ignore_perl_version = 0;
 my $minimum_perl_version = 5.10.0;
 my $min_conf_desc_length = 4;
 my $spelling_file = "$D/spelling.txt";
+my $codespell = 0;
+my $codespellfile = "/usr/local/share/codespell/dictionary.txt";
 
 sub help {
 	my ($exitcode) = @_;
@@ -88,6 +90,9 @@ Options:
                              file.  It's your fault if there's no backup or git
   --ignore-perl-version      override checking of perl version.  expect
                              runtime errors.
+  --codespell                Use the codespell dictionary for spelling/typos
+                             (default:/usr/local/share/codespell/dictionary.txt)
+  --codespellfile            Use this codespell dictionary
   -h, --help, --version      display this help and exit
 
 When FILE is - read standard input.
@@ -146,6 +151,8 @@ GetOptions(
 	'ignore-perl-version!' => \$ignore_perl_version,
 	'debug=s'	=> \%debug,
 	'test-only=s'	=> \$tst_only,
+	'codespell!'	=> \$codespell,
+	'codespellfile=s'	=> \$codespellfile,
 	'h|help'	=> \$help,
 	'version'	=> \$help
 ) or help(1);
@@ -316,6 +323,7 @@ our $Operators	= qr{
 
 our $c90_Keywords = qr{do|for|while|if|else|return|goto|continue|switch|default|case|break}x;
 
+our $BasicType;
 our $NonptrType;
 our $NonptrTypeMisordered;
 our $NonptrTypeWithAttr;
@@ -436,6 +444,14 @@ foreach my $entry (@mode_permission_funcs) {
 	$mode_perms_search .= $entry->[0];
 }
 
+our $mode_perms_world_writable = qr{
+	S_IWUGO		|
+	S_IWOTH		|
+	S_IRWXUGO	|
+	S_IALLUGO	|
+	0[0-7][0-7][2367]
+}x;
+
 our $allowed_asm_includes = qr{(?x:
 	irq|
 	memory|
@@ -449,7 +465,6 @@ my $misspellings;
 my %spelling_fix;
 
 if (open(my $spelling, '<', $spelling_file)) {
-	my @spelling_list;
 	while (<$spelling>) {
 		my $line = $_;
 
@@ -461,14 +476,38 @@ if (open(my $spelling, '<', $spelling_file)) {
 
 		my ($suspect, $fix) = split(/\|\|/, $line);
 
-		push(@spelling_list, $suspect);
 		$spelling_fix{$suspect} = $fix;
 	}
 	close($spelling);
-	$misspellings = join("|", @spelling_list);
 } else {
 	warn "No typos will be found - file '$spelling_file': $!\n";
 }
+
+if ($codespell) {
+	if (open(my $spelling, '<', $codespellfile)) {
+		while (<$spelling>) {
+			my $line = $_;
+
+			$line =~ s/\s*\n?$//g;
+			$line =~ s/^\s*//g;
+
+			next if ($line =~ m/^\s*#/);
+			next if ($line =~ m/^\s*$/);
+			next if ($line =~ m/, disabled/i);
+
+			$line =~ s/,.*$//;
+
+			my ($suspect, $fix) = split(/->/, $line);
+
+			$spelling_fix{$suspect} = $fix;
+		}
+		close($spelling);
+	} else {
+		warn "No codespell typos will be found - file '$codespellfile': $!\n";
+	}
+}
+
+$misspellings = join("|", sort keys %spelling_fix) if keys %spelling_fix;
 
 sub build_types {
 	my $mods = "(?x:  \n" . join("|\n  ", @modifierList) . "\n)";
@@ -476,6 +515,11 @@ sub build_types {
 	my $Misordered = "(?x:  \n" . join("|\n  ", @typeListMisordered) . "\n)";
 	my $allWithAttr = "(?x:  \n" . join("|\n  ", @typeListWithAttr) . "\n)";
 	$Modifier	= qr{(?:$Attribute|$Sparse|$mods)};
+	$BasicType	= qr{
+				(?:$typeOtherOSTypedefs\b)|
+				(?:$typeTypedefs\b)|
+				(?:${all}\b)
+		}x;
 	$NonptrType	= qr{
 			(?:$Modifier\s+|const\s+)*
 			(?:
@@ -2303,8 +2347,9 @@ sub process {
 		}
 
 # Check for various typo / spelling mistakes
-		if (defined($misspellings) && ($in_commit_log || $line =~ /^\+/)) {
-			while ($rawline =~ /(?:^|[^a-z@])($misspellings)(?:$|[^a-z@])/gi) {
+		if (defined($misspellings) &&
+		    ($in_commit_log || $line =~ /^(?:\+|Subject:)/i)) {
+			while ($rawline =~ /(?:^|[^a-z@])($misspellings)(?:\b|$|[^a-z@])/gi) {
 				my $typo = $1;
 				my $typo_fix = $spelling_fix{lc($typo)};
 				$typo_fix = ucfirst($typo_fix) if ($typo =~ /^[A-Z]/);
@@ -2552,8 +2597,15 @@ sub process {
 			}
 		}
 
-		if ($line =~ /^\+.*(\w+\s*)?\(\s*$Type\s*\)[ \t]+(?!$Assignment|$Arithmetic|[,;:\?\(\{\}\[\<\>]|&&|\|\||\\$)/ &&
-		    (!defined($1) || $1 !~ /sizeof\s*/)) {
+# check for space after cast like "(int) foo" or "(struct foo) bar"
+# avoid checking a few false positives:
+#   "sizeof(<type>)" or "__alignof__(<type>)"
+#   function pointer declarations like "(*foo)(int) = bar;"
+#   structure definitions like "(struct foo) { 0 };"
+#   multiline macros that define functions
+#   known attributes or the __attribute__ keyword
+		if ($line =~ /^\+(.*)\(\s*$Type\s*\)([ \t]++)((?![={]|\\$|$Attribute|__attribute__))/ &&
+		    (!defined($1) || $1 !~ /\b(?:sizeof|__alignof__)\s*$/)) {
 			if (CHK("SPACING",
 				"No space is necessary after a cast\n" . $herecurr) &&
 			    $fix) {
@@ -3145,6 +3197,18 @@ sub process {
 			     "static char array declaration should probably be static const char\n" .
 				$herecurr);
                }
+
+# check for const <foo> const where <foo> is not a pointer or array type
+		if ($sline =~ /\bconst\s+($BasicType)\s+const\b/) {
+			my $found = $1;
+			if ($sline =~ /\bconst\s+\Q$found\E\s+const\b\s*\*/) {
+				WARN("CONST_CONST",
+				     "'const $found const *' should probably be 'const $found * const'\n" . $herecurr);
+			} elsif ($sline !~ /\bconst\s+\Q$found\E\s+const\s+\w+\s*\[/) {
+				WARN("CONST_CONST",
+				     "'const $found const' should probably be 'const $found'\n" . $herecurr);
+			}
+		}
 
 # check for non-global char *foo[] = {"bar", ...} declarations.
 		if ($line =~ /^.\s+(?:static\s+|const\s+)?char\s+\*\s*\w+\s*\[\s*\]\s*=\s*\{/) {
@@ -3963,12 +4027,12 @@ sub process {
 			}
 		}
 
-# Return of what appears to be an errno should normally be -'ve
-		if ($line =~ /^.\s*return\s*(E[A-Z]*)\s*;/) {
+# Return of what appears to be an errno should normally be negative
+		if ($sline =~ /\breturn(?:\s*\(+\s*|\s+)(E[A-Z]+)(?:\s*\)+\s*|\s*)[;:,]/) {
 			my $name = $1;
 			if ($name ne 'EOF' && $name ne 'ERROR') {
 				WARN("USE_NEGATIVE_ERRNO",
-				     "return of an errno should typically be -ve (return -$1)\n" . $herecurr);
+				     "return of an errno should typically be negative (ie: return -$1)\n" . $herecurr);
 			}
 		}
 
@@ -5318,8 +5382,8 @@ sub process {
 			}
 		}
 
-		if ($line =~ /debugfs_create_file.*S_IWUGO/ ||
-		    $line =~ /DEVICE_ATTR.*S_IWUGO/ ) {
+		if ($line =~ /debugfs_create_\w+.*\b$mode_perms_world_writable\b/ ||
+		    $line =~ /DEVICE_ATTR.*\b$mode_perms_world_writable\b/) {
 			WARN("EXPORTED_WORLD_WRITABLE",
 			     "Exporting world writable files is usually an error. Consider more restrictive permissions.\n" . $herecurr);
 		}
