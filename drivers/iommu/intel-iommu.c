@@ -595,12 +595,13 @@ static void domain_update_iommu_coherency(struct dmar_domain *domain)
 {
 	struct dmar_drhd_unit *drhd;
 	struct intel_iommu *iommu;
-	int i, found = 0;
+	bool found = false;
+	int i;
 
 	domain->iommu_coherency = 1;
 
 	for_each_set_bit(i, domain->iommu_bmp, g_num_of_iommus) {
-		found = 1;
+		found = true;
 		if (!ecap_coherent(g_iommus[i]->ecap)) {
 			domain->iommu_coherency = 0;
 			break;
@@ -1267,7 +1268,7 @@ static struct device_domain_info *
 iommu_support_dev_iotlb (struct dmar_domain *domain, struct intel_iommu *iommu,
 			 u8 bus, u8 devfn)
 {
-	int found = 0;
+	bool found = false;
 	unsigned long flags;
 	struct device_domain_info *info;
 	struct pci_dev *pdev;
@@ -1282,7 +1283,7 @@ iommu_support_dev_iotlb (struct dmar_domain *domain, struct intel_iommu *iommu,
 	list_for_each_entry(info, &domain->devices, link)
 		if (info->iommu == iommu && info->bus == bus &&
 		    info->devfn == devfn) {
-			found = 1;
+			found = true;
 			break;
 		}
 	spin_unlock_irqrestore(&device_domain_lock, flags);
@@ -1742,9 +1743,8 @@ static int domain_init(struct dmar_domain *domain, int guest_width)
 
 static void domain_exit(struct dmar_domain *domain)
 {
-	struct dmar_drhd_unit *drhd;
-	struct intel_iommu *iommu;
 	struct page *freelist = NULL;
+	int i;
 
 	/* Domain 0 is reserved, so dont process it */
 	if (!domain)
@@ -1764,8 +1764,8 @@ static void domain_exit(struct dmar_domain *domain)
 
 	/* clear attached or cached domains */
 	rcu_read_lock();
-	for_each_active_iommu(iommu, drhd)
-		iommu_detach_domain(domain, iommu);
+	for_each_set_bit(i, domain->iommu_bmp, g_num_of_iommus)
+		iommu_detach_domain(domain, g_iommus[i]);
 	rcu_read_unlock();
 
 	dma_free_pagelist(freelist);
@@ -4270,7 +4270,7 @@ static void domain_remove_one_dev_info(struct dmar_domain *domain,
 	struct device_domain_info *info, *tmp;
 	struct intel_iommu *iommu;
 	unsigned long flags;
-	int found = 0;
+	bool found = false;
 	u8 bus, devfn;
 
 	iommu = device_to_iommu(dev, &bus, &devfn);
@@ -4302,7 +4302,7 @@ static void domain_remove_one_dev_info(struct dmar_domain *domain,
 		 * update iommu count and coherency
 		 */
 		if (info->iommu == iommu)
-			found = 1;
+			found = true;
 	}
 
 	spin_unlock_irqrestore(&device_domain_lock, flags);
