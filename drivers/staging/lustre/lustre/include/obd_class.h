@@ -72,6 +72,7 @@ extern int lustre_get_jobid(char *jobid);
 struct lu_device_type;
 
 /* genops.c */
+extern struct list_head obd_types;
 struct obd_export *class_conn2export(struct lustre_handle *);
 int class_register_type(struct obd_ops *, struct md_ops *,
 			struct lprocfs_vars *, const char *nm,
@@ -222,20 +223,20 @@ extern void (*class_export_dump_hook)(struct obd_export *);
 
 #endif
 
-#define class_export_rpc_inc(exp)				       \
-({								      \
-	atomic_inc(&(exp)->exp_rpc_count);			  \
-	CDEBUG(D_INFO, "RPC GETting export %p : new rpc_count %d\n",    \
-	       (exp), atomic_read(&(exp)->exp_rpc_count));	  \
-})
+static inline void class_export_rpc_inc(struct obd_export *exp)
+{
+	atomic_inc(&(exp)->exp_rpc_count);
+	CDEBUG(D_INFO, "RPC GETting export %p : new rpc_count %d\n",
+	       (exp), atomic_read(&(exp)->exp_rpc_count));
+}
 
-#define class_export_rpc_dec(exp)				       \
-({								      \
-	LASSERT_ATOMIC_POS(&exp->exp_rpc_count);			\
-	atomic_dec(&(exp)->exp_rpc_count);			  \
-	CDEBUG(D_INFO, "RPC PUTting export %p : new rpc_count %d\n",    \
-	       (exp), atomic_read(&(exp)->exp_rpc_count));	  \
-})
+static inline void class_export_rpc_dec(struct obd_export *exp)
+{
+	LASSERT_ATOMIC_POS(&exp->exp_rpc_count);
+	atomic_dec(&(exp)->exp_rpc_count);
+	CDEBUG(D_INFO, "RPC PUTting export %p : new rpc_count %d\n",
+	       (exp), atomic_read(&(exp)->exp_rpc_count));
+}
 
 #define class_export_lock_get(exp, lock)				\
 ({								      \
@@ -1895,6 +1896,8 @@ void class_exit_uuidlist(void);
 
 /* class_obd.c */
 extern char obd_jobid_node[];
+extern struct miscdevice obd_psdev;
+extern spinlock_t obd_types_lock;
 
 /* prng.c */
 #define ll_generate_random_uuid(uuid_out) cfs_get_random_bytes(uuid_out, sizeof(class_uuid_t))
