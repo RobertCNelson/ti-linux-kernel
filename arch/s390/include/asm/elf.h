@@ -107,11 +107,7 @@
 /*
  * These are used to set parameters in the core dumps.
  */
-#ifndef CONFIG_64BIT
-#define ELF_CLASS	ELFCLASS32
-#else /* CONFIG_64BIT */
 #define ELF_CLASS	ELFCLASS64
-#endif /* CONFIG_64BIT */
 #define ELF_DATA	ELFDATA2MSB
 #define ELF_ARCH	EM_S390
 
@@ -211,7 +207,7 @@ do {								\
 
 extern unsigned long mmap_rnd_mask;
 
-#define STACK_RND_MASK	(mmap_rnd_mask)
+#define STACK_RND_MASK	(test_thread_flag(TIF_31BIT) ? 0x7ff : mmap_rnd_mask)
 
 #define ARCH_DLINFO							    \
 do {									    \
