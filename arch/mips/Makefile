@@ -365,7 +365,11 @@ core-$(CONFIG_BUILTIN_DTB) += arch/mips/boot/dts/
 
 PHONY += dtbs
 dtbs: scripts
-	$(Q)$(MAKE) $(build)=arch/mips/boot/dts dtbs
+	$(Q)$(MAKE) $(build)=arch/mips/boot/dts
+
+PHONY += dtbs_install
+dtbs_install:
+	$(Q)$(MAKE) $(dtbinst)=arch/mips/boot/dts
 
 archprepare:
 ifdef CONFIG_MIPS32_N32
@@ -407,6 +411,7 @@ define archhelp
 	echo '  uImage.lzma          - U-Boot image (lzma)'
 	echo '  uImage.lzo           - U-Boot image (lzo)'
 	echo '  dtbs                 - Device-tree blobs for enabled boards'
+	echo '  dtbs_install         - Install dtbs to $(INSTALL_DTBS_PATH)'
 	echo
 	echo '  These will be default as appropriate for a configured platform.'
 endef

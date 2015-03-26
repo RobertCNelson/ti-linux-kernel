@@ -51,6 +51,9 @@ extern void pci_console_init(const char *arg);
 
 static unsigned long long MAX_MEMORY = 512ull << 20;
 
+DEFINE_SEMAPHORE(octeon_bootbus_sem);
+EXPORT_SYMBOL(octeon_bootbus_sem);
+
 struct octeon_boot_descriptor *octeon_boot_desc_ptr;
 
 struct cvmx_bootinfo *octeon_bootinfo;
@@ -413,7 +416,10 @@ static void octeon_restart(char *command)
 
 	mb();
 	while (1)
-		cvmx_write_csr(CVMX_CIU_SOFT_RST, 1);
+		if (OCTEON_IS_OCTEON3())
+			cvmx_write_csr(CVMX_RST_SOFT_RST, 1);
+		else
+			cvmx_write_csr(CVMX_CIU_SOFT_RST, 1);
 }
 
 
