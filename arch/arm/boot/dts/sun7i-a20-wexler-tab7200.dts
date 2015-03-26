@@ -47,15 +47,16 @@
  */
 
 /dts-v1/;
-#include "sun4i-a10.dtsi"
+#include "sun7i-a20.dtsi"
 #include "sunxi-common-regulators.dtsi"
 
 #include <dt-bindings/gpio/gpio.h>
-#include <dt-bindings/pinctrl/sun4i-a10.h>
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/interrupt-controller/irq.h>
 
 / {
-	model = "HAOYU Electronics Marsboard A10";
-	compatible = "haoyu,a10-marsboard", "allwinner,sun4i-a10";
+	model = "Wexler TAB7200";
+	compatible = "wexler,tab7200", "allwinner,sun7i-a20";
 
 	aliases {
 		serial0 = &uart0;
@@ -64,36 +65,10 @@
 	chosen {
 		stdout-path = "serial0:115200n8";
 	};
-
-	leds {
-		compatible = "gpio-leds";
-		pinctrl-names = "default";
-		pinctrl-0 = <&led_pins_marsboard>;
-
-		red1 {
-			label = "marsboard:red1:usr";
-			gpios = <&pio 1 5 GPIO_ACTIVE_HIGH>;
-		};
-
-		red2 {
-			label = "marsboard:red2:usr";
-			gpios = <&pio 1 6 GPIO_ACTIVE_HIGH>;
-		};
-
-		red3 {
-			label = "marsboard:red3:usr";
-			gpios = <&pio 1 7 GPIO_ACTIVE_HIGH>;
-		};
-
-		red4 {
-			label = "marsboard:red4:usr";
-			gpios = <&pio 1 8 GPIO_ACTIVE_HIGH>;
-		};
-	};
 };
 
-&ahci {
-	status = "okay";
+&cpu0 {
+	cpu-supply = <&reg_dcdc2>;
 };
 
 &ehci0 {
@@ -104,17 +79,16 @@
 	status = "okay";
 };
 
-&emac {
-	pinctrl-names = "default";
-	pinctrl-0 = <&emac_pins_a>;
-	phy = <&phy1>;
-	status = "okay";
-};
-
 &i2c0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c0_pins_a>;
 	status = "okay";
+
+	axp209: pmic@34 {
+		reg = <0x34>;
+		interrupt-parent = <&nmi_intc>;
+		interrupts = <0 IRQ_TYPE_LEVEL_LOW>;
+	};
 };
 
 &i2c1 {
@@ -129,11 +103,22 @@
 	status = "okay";
 };
 
-&mdio {
+&lradc {
+	vref-supply = <&reg_vcc3v0>;
 	status = "okay";
 
-	phy1: ethernet-phy@1 {
-		reg = <1>;
+	button@571 {
+		label = "Volume Up";
+		linux,code = <KEY_VOLUMEUP>;
+		channel = <0>;
+		voltage = <571428>;
+	};
+
+	button@761 {
+		label = "Volume Down";
+		linux,code = <KEY_VOLUMEDOWN>;
+		channel = <0>;
+		voltage = <761904>;
 	};
 };
 
@@ -155,13 +140,31 @@
 	status = "okay";
 };
 
-&pio {
-	led_pins_marsboard: led_pins@0 {
-		allwinner,pins = "PB5", "PB6", "PB7", "PB8";
-		allwinner,function = "gpio_out";
-		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
-		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
-	};
+#include "axp209.dtsi"
+
+&reg_dcdc2 {
+	regulator-always-on;
+	regulator-min-microvolt = <1000000>;
+	regulator-max-microvolt = <1450000>;
+	regulator-name = "vdd-cpu";
+};
+
+&reg_dcdc3 {
+	regulator-always-on;
+	regulator-min-microvolt = <1000000>;
+	regulator-max-microvolt = <1400000>;
+	regulator-name = "vdd-int-dll";
+};
+
+&reg_ldo1 {
+	regulator-name = "vdd-rtc";
+};
+
+&reg_ldo2 {
+	regulator-always-on;
+	regulator-min-microvolt = <3000000>;
+	regulator-max-microvolt = <3000000>;
+	regulator-name = "avcc";
 };
 
 &reg_usb1_vbus {
@@ -169,12 +172,6 @@
 };
 
 &reg_usb2_vbus {
-	status = "okay";
-};
-
-&spi0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&spi0_pins_a>;
 	status = "okay";
 };
 
