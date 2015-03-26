@@ -28,7 +28,6 @@
 
 /* Supported SST DMA Devices */
 #define SST_DMA_TYPE_DW		1
-#define SST_DMA_TYPE_MID	2
 
 /* autosuspend delay 5s*/
 #define SST_RUNTIME_SUSPEND_DELAY	(5 * 1000)
@@ -206,6 +205,7 @@ struct sst_pdata {
 	const struct firmware *fw;
 
 	/* DMA */
+	int resindex_dma_base; /* other fields invalid if equals to -1 */
 	u32 dma_base;
 	u32 dma_size;
 	int dma_engine;
