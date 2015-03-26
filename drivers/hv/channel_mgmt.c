@@ -134,24 +134,55 @@ fw_error:
 
 EXPORT_SYMBOL_GPL(vmbus_prep_negotiate_resp);
 
+static void vmbus_process_device_unregister(struct work_struct *work)
+{
+	struct device *dev;
+	struct vmbus_channel *channel = container_of(work,
+							struct vmbus_channel,
+							work);
+
+	dev = get_device(&channel->device_obj->device);
+	if (dev) {
+		vmbus_device_unregister(channel->device_obj);
+		put_device(dev);
+	}
+}
+
+static void vmbus_sc_creation_cb(struct work_struct *work)
+{
+	struct vmbus_channel *newchannel = container_of(work,
+							struct vmbus_channel,
+							work);
+	struct vmbus_channel *primary_channel = newchannel->primary_channel;
+
+	/*
+	 * On entry sc_creation_callback has been already verified to
+	 * be non-NULL.
+	 */
+	primary_channel->sc_creation_callback(newchannel);
+}
+
 /*
  * alloc_channel - Allocate and initialize a vmbus channel object
  */
 static struct vmbus_channel *alloc_channel(void)
 {
+	static atomic_t chan_num = ATOMIC_INIT(0);
 	struct vmbus_channel *channel;
 
 	channel = kzalloc(sizeof(*channel), GFP_ATOMIC);
 	if (!channel)
 		return NULL;
 
+	channel->id = atomic_inc_return(&chan_num);
 	spin_lock_init(&channel->inbound_lock);
 	spin_lock_init(&channel->lock);
 
 	INIT_LIST_HEAD(&channel->sc_list);
 	INIT_LIST_HEAD(&channel->percpu_list);
 
-	channel->controlwq = create_workqueue("hv_vmbus_ctl");
+	channel->controlwq = alloc_workqueue("hv_vmbus_ctl/%d", WQ_MEM_RECLAIM,
+					     1, channel->id);
 	if (!channel->controlwq) {
 		kfree(channel);
 		return NULL;
@@ -204,32 +235,20 @@ static void percpu_channel_deq(void *arg)
 	list_del(&channel->percpu_list);
 }
 
-/*
- * vmbus_process_rescind_offer -
- * Rescind the offer by initiating a device removal
- */
-static void vmbus_process_rescind_offer(struct work_struct *work)
+
+void hv_process_channel_removal(struct vmbus_channel *channel, u32 relid)
 {
-	struct vmbus_channel *channel = container_of(work,
-						     struct vmbus_channel,
-						     work);
+	struct vmbus_channel_relid_released msg;
 	unsigned long flags;
 	struct vmbus_channel *primary_channel;
-	struct vmbus_channel_relid_released msg;
-	struct device *dev;
-
-	if (channel->device_obj) {
-		dev = get_device(&channel->device_obj->device);
-		if (dev) {
-			vmbus_device_unregister(channel->device_obj);
-			put_device(dev);
-		}
-	}
 
 	memset(&msg, 0, sizeof(struct vmbus_channel_relid_released));
-	msg.child_relid = channel->offermsg.child_relid;
+	msg.child_relid = relid;
 	msg.header.msgtype = CHANNELMSG_RELID_RELEASED;
 	vmbus_post_msg(&msg, sizeof(struct vmbus_channel_relid_released));
+
+	if (channel == NULL)
+		return;
 
 	if (channel->target_cpu != get_cpu()) {
 		put_cpu();
@@ -259,7 +278,6 @@ void vmbus_free_channels(void)
 
 	list_for_each_entry(channel, &vmbus_connection.chn_list, listentry) {
 		vmbus_device_unregister(channel->device_obj);
-		kfree(channel->device_obj);
 		free_channel(channel);
 	}
 }
@@ -268,11 +286,8 @@ void vmbus_free_channels(void)
  * vmbus_process_offer - Process the offer by creating a channel/device
  * associated with this offer
  */
-static void vmbus_process_offer(struct work_struct *work)
+static void vmbus_process_offer(struct vmbus_channel *newchannel)
 {
-	struct vmbus_channel *newchannel = container_of(work,
-							struct vmbus_channel,
-							work);
 	struct vmbus_channel *channel;
 	bool fnew = true;
 	bool enq = false;
@@ -335,10 +350,21 @@ static void vmbus_process_offer(struct work_struct *work)
 			}
 
 			newchannel->state = CHANNEL_OPEN_STATE;
+			channel->num_sc++;
 			if (channel->sc_creation_callback != NULL)
-				channel->sc_creation_callback(newchannel);
+				/*
+				 * We need to invoke the sub-channel creation
+				 * callback; invoke this in a seperate work
+				 * context since we are currently running on
+				 * the global work context in which we handle
+				 * messages from the host.
+				 */
+				INIT_WORK(&newchannel->work,
+					  vmbus_sc_creation_cb);
+				queue_work(newchannel->controlwq,
+					   &newchannel->work);
 
-			goto done_init_rescind;
+			return;
 		}
 
 		goto err_free_chan;
@@ -361,7 +387,7 @@ static void vmbus_process_offer(struct work_struct *work)
 		&newchannel->offermsg.offer.if_instance,
 		newchannel);
 	if (!newchannel->device_obj)
-		goto err_free_chan;
+		goto err_deq_chan;
 
 	/*
 	 * Add the new device to the bus. This will kick off device-driver
@@ -373,21 +399,26 @@ static void vmbus_process_offer(struct work_struct *work)
 		pr_err("unable to add child device object (relid %d)\n",
 			   newchannel->offermsg.child_relid);
 
-		spin_lock_irqsave(&vmbus_connection.channel_lock, flags);
-		list_del(&newchannel->listentry);
-		spin_unlock_irqrestore(&vmbus_connection.channel_lock, flags);
 		kfree(newchannel->device_obj);
-		goto err_free_chan;
+		goto err_deq_chan;
 	}
-done_init_rescind:
-	spin_lock_irqsave(&newchannel->lock, flags);
-	/* The next possible work is rescind handling */
-	INIT_WORK(&newchannel->work, vmbus_process_rescind_offer);
-	/* Check if rescind offer was already received */
-	if (newchannel->rescind)
-		queue_work(newchannel->controlwq, &newchannel->work);
-	spin_unlock_irqrestore(&newchannel->lock, flags);
+
 	return;
+
+err_deq_chan:
+	spin_lock_irqsave(&vmbus_connection.channel_lock, flags);
+	list_del(&newchannel->listentry);
+	spin_unlock_irqrestore(&vmbus_connection.channel_lock, flags);
+
+	if (newchannel->target_cpu != get_cpu()) {
+		put_cpu();
+		smp_call_function_single(newchannel->target_cpu,
+					 percpu_channel_deq, newchannel, true);
+	} else {
+		percpu_channel_deq(newchannel);
+		put_cpu();
+	}
+
 err_free_chan:
 	free_channel(newchannel);
 }
@@ -411,6 +442,8 @@ static const struct hv_vmbus_device_id hp_devs[] = {
 	{ HV_SCSI_GUID, },
 	/* Network */
 	{ HV_NIC_GUID, },
+	/* NetworkDirect Guest RDMA */
+	{ HV_ND_GUID, },
 };
 
 
@@ -511,8 +544,7 @@ static void vmbus_onoffer(struct vmbus_channel_message_header *hdr)
 	newchannel->monitor_grp = (u8)offer->monitorid / 32;
 	newchannel->monitor_bit = (u8)offer->monitorid % 32;
 
-	INIT_WORK(&newchannel->work, vmbus_process_offer);
-	queue_work(newchannel->controlwq, &newchannel->work);
+	vmbus_process_offer(newchannel);
 }
 
 /*
@@ -529,24 +561,28 @@ static void vmbus_onoffer_rescind(struct vmbus_channel_message_header *hdr)
 	rescind = (struct vmbus_channel_rescind_offer *)hdr;
 	channel = relid2channel(rescind->child_relid);
 
-	if (channel == NULL)
-		/* Just return here, no channel found */
+	if (channel == NULL) {
+		hv_process_channel_removal(NULL, rescind->child_relid);
 		return;
+	}
 
 	spin_lock_irqsave(&channel->lock, flags);
 	channel->rescind = true;
-	/*
-	 * channel->work.func != vmbus_process_rescind_offer means we are still
-	 * processing offer request and the rescind offer processing should be
-	 * postponed. It will be done at the very end of vmbus_process_offer()
-	 * as rescind flag is being checked there.
-	 */
-	if (channel->work.func == vmbus_process_rescind_offer)
-		/* work is initialized for vmbus_process_rescind_offer() from
-		 * vmbus_process_offer() where the channel got created */
-		queue_work(channel->controlwq, &channel->work);
-
 	spin_unlock_irqrestore(&channel->lock, flags);
+
+	if (channel->device_obj) {
+		/*
+		 * We will have to unregister this device from the
+		 * driver core. Do this in the per-channel work context.
+		 * Note that we are currently executing on the global
+		 * workq for handling messages from the host.
+		 */
+		INIT_WORK(&channel->work, vmbus_process_device_unregister);
+		queue_work(channel->controlwq, &channel->work);
+	} else {
+		hv_process_channel_removal(channel,
+					   channel->offermsg.child_relid);
+	}
 }
 
 /*
@@ -787,7 +823,8 @@ int vmbus_request_offers(void)
 {
 	struct vmbus_channel_message_header *msg;
 	struct vmbus_channel_msginfo *msginfo;
-	int ret, t;
+	int ret;
+	unsigned long t;
 
 	msginfo = kmalloc(sizeof(*msginfo) +
 			  sizeof(struct vmbus_channel_message_header),
@@ -826,9 +863,8 @@ cleanup:
 
 /*
  * Retrieve the (sub) channel on which to send an outgoing request.
- * When a primary channel has multiple sub-channels, we choose a
- * channel whose VCPU binding is closest to the VCPU on which
- * this call is being made.
+ * When a primary channel has multiple sub-channels, we try to
+ * distribute the load equally amongst all available channels.
  */
 struct vmbus_channel *vmbus_get_outgoing_channel(struct vmbus_channel *primary)
 {
@@ -836,10 +872,18 @@ struct vmbus_channel *vmbus_get_outgoing_channel(struct vmbus_channel *primary)
 	int cur_cpu;
 	struct vmbus_channel *cur_channel;
 	struct vmbus_channel *outgoing_channel = primary;
-	int cpu_distance, new_cpu_distance;
+	int next_channel;
+	int i = 1;
 
 	if (list_empty(&primary->sc_list))
 		return outgoing_channel;
+
+	next_channel = primary->next_oc++;
+
+	if (next_channel > (primary->num_sc)) {
+		primary->next_oc = 0;
+		return outgoing_channel;
+	}
 
 	cur_cpu = hv_context.vp_index[get_cpu()];
 	put_cpu();
@@ -851,18 +895,10 @@ struct vmbus_channel *vmbus_get_outgoing_channel(struct vmbus_channel *primary)
 		if (cur_channel->target_vp == cur_cpu)
 			return cur_channel;
 
-		cpu_distance = ((outgoing_channel->target_vp > cur_cpu) ?
-				(outgoing_channel->target_vp - cur_cpu) :
-				(cur_cpu - outgoing_channel->target_vp));
+		if (i == next_channel)
+			return cur_channel;
 
-		new_cpu_distance = ((cur_channel->target_vp > cur_cpu) ?
-				(cur_channel->target_vp - cur_cpu) :
-				(cur_cpu - cur_channel->target_vp));
-
-		if (cpu_distance < new_cpu_distance)
-			continue;
-
-		outgoing_channel = cur_channel;
+		i++;
 	}
 
 	return outgoing_channel;
