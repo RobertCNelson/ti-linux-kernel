@@ -8,6 +8,10 @@ CFLAGS_REMOVE_early.o = $(CC_FLAGS_FTRACE)
 CFLAGS_REMOVE_ftrace.o = $(CC_FLAGS_FTRACE)
 endif
 
+# ebcdic.o is also used in arch/s390/boot/compressed/ with does not
+# have gcov support
+GCOV_PROFILE_ebcdic.o = n
+
 #
 # Passing null pointers is ok for smp code, since we access the lowcore here.
 #
