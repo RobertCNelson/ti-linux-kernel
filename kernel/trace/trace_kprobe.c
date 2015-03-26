@@ -250,7 +250,7 @@ DEFINE_FETCH_symbol(string_size)
 #define fetch_file_offset_string_size	NULL
 
 /* Fetch type information table */
-const struct fetch_type kprobes_fetch_type_table[] = {
+static const struct fetch_type kprobes_fetch_type_table[] = {
 	/* Special types */
 	[FETCH_TYPE_STRING] = __ASSIGN_FETCH_TYPE("string", string, string,
 					sizeof(u32), 1, "__data_loc char[]"),
@@ -760,7 +760,8 @@ static int create_trace_kprobe(int argc, char **argv)
 
 		/* Parse fetch argument */
 		ret = traceprobe_parse_probe_arg(arg, &tk->tp.size, parg,
-						is_return, true);
+						is_return, true,
+						kprobes_fetch_type_table);
 		if (ret) {
 			pr_info("Parse error at argument[%d]. (%d)\n", i, ret);
 			goto error;
@@ -1310,7 +1311,7 @@ static int unregister_kprobe_event(struct trace_kprobe *tk)
 	return ret;
 }
 
-/* Make a debugfs interface for controlling probe points */
+/* Make a tracefs interface for controlling probe points */
 static __init int init_kprobe_trace(void)
 {
 	struct dentry *d_tracer;
@@ -1323,20 +1324,20 @@ static __init int init_kprobe_trace(void)
 	if (IS_ERR(d_tracer))
 		return 0;
 
-	entry = debugfs_create_file("kprobe_events", 0644, d_tracer,
+	entry = tracefs_create_file("kprobe_events", 0644, d_tracer,
 				    NULL, &kprobe_events_ops);
 
 	/* Event list interface */
 	if (!entry)
-		pr_warning("Could not create debugfs "
+		pr_warning("Could not create tracefs "
 			   "'kprobe_events' entry\n");
 
 	/* Profile interface */
-	entry = debugfs_create_file("kprobe_profile", 0444, d_tracer,
+	entry = tracefs_create_file("kprobe_profile", 0444, d_tracer,
 				    NULL, &kprobe_profile_ops);
 
 	if (!entry)
-		pr_warning("Could not create debugfs "
+		pr_warning("Could not create tracefs "
 			   "'kprobe_profile' entry\n");
 	return 0;
 }
