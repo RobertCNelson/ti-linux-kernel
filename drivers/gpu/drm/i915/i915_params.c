@@ -27,7 +27,6 @@
 struct i915_params i915 __read_mostly = {
 	.modeset = -1,
 	.panel_ignore_lid = 1,
-	.powersave = 1,
 	.semaphores = -1,
 	.lvds_downclock = 0,
 	.lvds_channel_mode = 0,
@@ -64,10 +63,6 @@ module_param_named(panel_ignore_lid, i915.panel_ignore_lid, int, 0600);
 MODULE_PARM_DESC(panel_ignore_lid,
 	"Override lid status (0=autodetect, 1=autodetect disabled [default], "
 	"-1=force lid closed, -2=force lid open)");
-
-module_param_named(powersave, i915.powersave, int, 0600);
-MODULE_PARM_DESC(powersave,
-	"Enable powersavings, fbc, downclocking, etc. (default: true)");
 
 module_param_named_unsafe(semaphores, i915.semaphores, int, 0400);
 MODULE_PARM_DESC(semaphores,
@@ -171,10 +166,10 @@ module_param_named(use_mmio_flip, i915.use_mmio_flip, int, 0600);
 MODULE_PARM_DESC(use_mmio_flip,
 		 "use MMIO flips (-1=never, 0=driver discretion [default], 1=always)");
 
-module_param_named(mmio_debug, i915.mmio_debug, bool, 0600);
+module_param_named(mmio_debug, i915.mmio_debug, int, 0600);
 MODULE_PARM_DESC(mmio_debug,
-	"Enable the MMIO debug code (default: false). This may negatively "
-	"affect performance.");
+	"Enable the MMIO debug code for the first N failures (default: off). "
+	"This may negatively affect performance.");
 
 module_param_named(verbose_state_checks, i915.verbose_state_checks, bool, 0600);
 MODULE_PARM_DESC(verbose_state_checks,

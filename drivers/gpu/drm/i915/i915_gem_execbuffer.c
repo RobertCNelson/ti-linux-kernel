@@ -251,7 +251,6 @@ static inline int use_cpu_reloc(struct drm_i915_gem_object *obj)
 {
 	return (HAS_LLC(obj->base.dev) ||
 		obj->base.write_domain == I915_GEM_DOMAIN_CPU ||
-		!obj->map_and_fenceable ||
 		obj->cache_level != I915_CACHE_NONE);
 }
 
@@ -333,6 +332,51 @@ relocate_entry_gtt(struct drm_i915_gem_object *obj,
 	}
 
 	io_mapping_unmap_atomic(reloc_page);
+
+	return 0;
+}
+
+static void
+clflush_write32(void *addr, uint32_t value)
+{
+	/* This is not a fast path, so KISS. */
+	drm_clflush_virt_range(addr, sizeof(uint32_t));
+	*(uint32_t *)addr = value;
+	drm_clflush_virt_range(addr, sizeof(uint32_t));
+}
+
+static int
+relocate_entry_clflush(struct drm_i915_gem_object *obj,
+		       struct drm_i915_gem_relocation_entry *reloc,
+		       uint64_t target_offset)
+{
+	struct drm_device *dev = obj->base.dev;
+	uint32_t page_offset = offset_in_page(reloc->offset);
+	uint64_t delta = (int)reloc->delta + target_offset;
+	char *vaddr;
+	int ret;
+
+	ret = i915_gem_object_set_to_gtt_domain(obj, true);
+	if (ret)
+		return ret;
+
+	vaddr = kmap_atomic(i915_gem_object_get_page(obj,
+				reloc->offset >> PAGE_SHIFT));
+	clflush_write32(vaddr + page_offset, lower_32_bits(delta));
+
+	if (INTEL_INFO(dev)->gen >= 8) {
+		page_offset = offset_in_page(page_offset + sizeof(uint32_t));
+
+		if (page_offset == 0) {
+			kunmap_atomic(vaddr);
+			vaddr = kmap_atomic(i915_gem_object_get_page(obj,
+			    (reloc->offset + sizeof(uint32_t)) >> PAGE_SHIFT));
+		}
+
+		clflush_write32(vaddr + page_offset, upper_32_bits(delta));
+	}
+
+	kunmap_atomic(vaddr);
 
 	return 0;
 }
@@ -426,8 +470,14 @@ i915_gem_execbuffer_relocate_entry(struct drm_i915_gem_object *obj,
 
 	if (use_cpu_reloc(obj))
 		ret = relocate_entry_cpu(obj, reloc, target_offset);
-	else
+	else if (obj->map_and_fenceable)
 		ret = relocate_entry_gtt(obj, reloc, target_offset);
+	else if (cpu_has_clflush)
+		ret = relocate_entry_clflush(obj, reloc, target_offset);
+	else {
+		WARN_ONCE(1, "Impossible case in relocation handling\n");
+		ret = -ENODEV;
+	}
 
 	if (ret)
 		return ret;
@@ -525,6 +575,12 @@ i915_gem_execbuffer_relocate(struct eb_vmas *eb)
 	return ret;
 }
 
+static bool only_mappable_for_reloc(unsigned int flags)
+{
+	return (flags & (EXEC_OBJECT_NEEDS_FENCE | __EXEC_OBJECT_NEEDS_MAP)) ==
+		__EXEC_OBJECT_NEEDS_MAP;
+}
+
 static int
 i915_gem_execbuffer_reserve_vma(struct i915_vma *vma,
 				struct intel_engine_cs *ring,
@@ -536,14 +592,21 @@ i915_gem_execbuffer_reserve_vma(struct i915_vma *vma,
 	int ret;
 
 	flags = 0;
-	if (entry->flags & __EXEC_OBJECT_NEEDS_MAP)
-		flags |= PIN_GLOBAL | PIN_MAPPABLE;
-	if (entry->flags & EXEC_OBJECT_NEEDS_GTT)
-		flags |= PIN_GLOBAL;
-	if (entry->flags & __EXEC_OBJECT_NEEDS_BIAS)
-		flags |= BATCH_OFFSET_BIAS | PIN_OFFSET_BIAS;
+	if (!drm_mm_node_allocated(&vma->node)) {
+		if (entry->flags & __EXEC_OBJECT_NEEDS_MAP)
+			flags |= PIN_GLOBAL | PIN_MAPPABLE;
+		if (entry->flags & EXEC_OBJECT_NEEDS_GTT)
+			flags |= PIN_GLOBAL;
+		if (entry->flags & __EXEC_OBJECT_NEEDS_BIAS)
+			flags |= BATCH_OFFSET_BIAS | PIN_OFFSET_BIAS;
+	}
 
 	ret = i915_gem_object_pin(obj, vma->vm, entry->alignment, flags);
+	if ((ret == -ENOSPC  || ret == -E2BIG) &&
+	    only_mappable_for_reloc(entry->flags))
+		ret = i915_gem_object_pin(obj, vma->vm,
+					  entry->alignment,
+					  flags & ~(PIN_GLOBAL | PIN_MAPPABLE));
 	if (ret)
 		return ret;
 
@@ -605,12 +668,13 @@ eb_vma_misplaced(struct i915_vma *vma)
 	    vma->node.start & (entry->alignment - 1))
 		return true;
 
-	if (entry->flags & __EXEC_OBJECT_NEEDS_MAP && !obj->map_and_fenceable)
-		return true;
-
 	if (entry->flags & __EXEC_OBJECT_NEEDS_BIAS &&
 	    vma->node.start < BATCH_OFFSET_BIAS)
 		return true;
+
+	/* avoid costly ping-pong once a batch bo ended up non-mappable */
+	if (entry->flags & __EXEC_OBJECT_NEEDS_MAP && !obj->map_and_fenceable)
+		return !only_mappable_for_reloc(entry->flags);
 
 	return false;
 }
@@ -971,7 +1035,7 @@ i915_gem_execbuffer_move_to_active(struct list_head *vmas,
 			obj->dirty = 1;
 			i915_gem_request_assign(&obj->last_write_req, req);
 
-			intel_fb_obj_invalidate(obj, ring);
+			intel_fb_obj_invalidate(obj, ring, ORIGIN_CS);
 
 			/* update for the implicit flush after a batch */
 			obj->base.write_domain &= ~I915_GEM_GPU_DOMAINS;
@@ -1186,6 +1250,13 @@ i915_gem_ringbuffer_submission(struct drm_device *dev, struct drm_file *file,
 	ret = i915_switch_context(ring, ctx);
 	if (ret)
 		goto error;
+
+	if (ctx->ppgtt)
+		WARN(ctx->ppgtt->pd_dirty_rings & (1<<ring->id),
+			"%s didn't clear reload\n", ring->name);
+	else if (dev_priv->mm.aliasing_ppgtt)
+		WARN(dev_priv->mm.aliasing_ppgtt->pd_dirty_rings &
+			(1<<ring->id), "%s didn't clear reload\n", ring->name);
 
 	instp_mode = args->flags & I915_EXEC_CONSTANTS_MASK;
 	instp_mask = I915_EXEC_CONSTANTS_MASK;
@@ -1518,7 +1589,7 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 		 * - The batch is already pinned into the relevant ppgtt, so we
 		 *   already have the backing storage fully allocated.
 		 * - No other BO uses the global gtt (well contexts, but meh),
-		 *   so we don't really have issues with mutliple objects not
+		 *   so we don't really have issues with multiple objects not
 		 *   fitting due to fragmentation.
 		 * So this is actually safe.
 		 */
