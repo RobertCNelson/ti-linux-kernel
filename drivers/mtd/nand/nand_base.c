@@ -386,7 +386,7 @@ static int nand_default_block_markbad(struct mtd_info *mtd, loff_t ofs)
 	uint8_t buf[2] = { 0, 0 };
 	int ret = 0, res, i = 0;
 
-	ops.datbuf = NULL;
+	memset(&ops, 0, sizeof(ops));
 	ops.oobbuf = buf;
 	ops.ooboffs = chip->badblockpos;
 	if (chip->options & NAND_BUSWIDTH_16) {
@@ -968,7 +968,7 @@ int nand_unlock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 			__func__, (unsigned long long)ofs, len);
 
 	if (check_offs_len(mtd, ofs, len))
-		ret = -EINVAL;
+		return -EINVAL;
 
 	/* Align to last block address if size addresses end of the device */
 	if (ofs + len == mtd->size)
@@ -1031,7 +1031,7 @@ int nand_lock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 			__func__, (unsigned long long)ofs, len);
 
 	if (check_offs_len(mtd, ofs, len))
-		ret = -EINVAL;
+		return -EINVAL;
 
 	nand_get_device(mtd, FL_LOCKING);
 
@@ -1716,9 +1716,9 @@ static int nand_read(struct mtd_info *mtd, loff_t from, size_t len,
 	int ret;
 
 	nand_get_device(mtd, FL_READING);
+	memset(&ops, 0, sizeof(ops));
 	ops.len = len;
 	ops.datbuf = buf;
-	ops.oobbuf = NULL;
 	ops.mode = MTD_OPS_PLACE_OOB;
 	ret = nand_do_read_ops(mtd, from, &ops);
 	*retlen = ops.retlen;
@@ -2124,7 +2124,7 @@ static int nand_write_page_hwecc(struct mtd_info *mtd, struct nand_chip *chip,
 
 
 /**
- * nand_write_subpage_hwecc - [REPLACABLE] hardware ECC based subpage write
+ * nand_write_subpage_hwecc - [REPLACEABLE] hardware ECC based subpage write
  * @mtd:	mtd info structure
  * @chip:	nand chip info structure
  * @offset:	column address of subpage within the page
@@ -2508,9 +2508,9 @@ static int panic_nand_write(struct mtd_info *mtd, loff_t to, size_t len,
 	/* Grab the device */
 	panic_nand_get_device(chip, mtd, FL_WRITING);
 
+	memset(&ops, 0, sizeof(ops));
 	ops.len = len;
 	ops.datbuf = (uint8_t *)buf;
-	ops.oobbuf = NULL;
 	ops.mode = MTD_OPS_PLACE_OOB;
 
 	ret = nand_do_write_ops(mtd, to, &ops);
@@ -2536,9 +2536,9 @@ static int nand_write(struct mtd_info *mtd, loff_t to, size_t len,
 	int ret;
 
 	nand_get_device(mtd, FL_WRITING);
+	memset(&ops, 0, sizeof(ops));
 	ops.len = len;
 	ops.datbuf = (uint8_t *)buf;
-	ops.oobbuf = NULL;
 	ops.mode = MTD_OPS_PLACE_OOB;
 	ret = nand_do_write_ops(mtd, to, &ops);
 	*retlen = ops.retlen;
