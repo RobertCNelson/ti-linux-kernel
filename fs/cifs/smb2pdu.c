@@ -1607,12 +1607,17 @@ SMB2_flush(const unsigned int xid, struct cifs_tcon *tcon, u64 persistent_fid,
 {
 	struct smb2_flush_req *req;
 	struct TCP_Server_Info *server;
-	struct cifs_ses *ses = tcon->ses;
+	struct cifs_ses *ses;
 	struct kvec iov[1];
 	int resp_buftype;
 	int rc = 0;
 
 	cifs_dbg(FYI, "Flush\n");
+
+	if (tcon)
+		ses = tcon->ses;
+	else
+		return -EIO;
 
 	if (ses && (ses->server))
 		server = ses->server;
@@ -1632,7 +1637,7 @@ SMB2_flush(const unsigned int xid, struct cifs_tcon *tcon, u64 persistent_fid,
 
 	rc = SendReceive2(xid, ses, iov, 1, &resp_buftype, 0);
 
-	if ((rc != 0) && tcon)
+	if (rc != 0)
 		cifs_stats_fail_inc(tcon, SMB2_FLUSH_HE);
 
 	free_rsp_buf(resp_buftype, iov[0].iov_base);
