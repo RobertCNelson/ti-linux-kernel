@@ -700,7 +700,7 @@ cifs_get_inode_info(struct inode **inode, const char *full_path,
 	struct cifs_sb_info *cifs_sb = CIFS_SB(sb);
 	char *buf = NULL;
 	bool adjust_tz = false;
-	struct cifs_fattr fattr;
+	struct cifs_fattr fattr = {0};
 	struct cifs_search_info *srchinf = NULL;
 	bool symlink = false;
 
