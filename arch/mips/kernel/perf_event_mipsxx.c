@@ -558,8 +558,10 @@ static int mipspmu_get_irq(void)
 	if (mipspmu.irq >= 0) {
 		/* Request my own irq handler. */
 		err = request_irq(mipspmu.irq, mipsxx_pmu_handle_irq,
-			IRQF_PERCPU | IRQF_NOBALANCING | IRQF_NO_THREAD,
-			"mips_perf_pmu", NULL);
+				  IRQF_PERCPU | IRQF_NOBALANCING |
+				  IRQF_NO_THREAD | IRQF_NO_SUSPEND |
+				  IRQF_SHARED,
+				  "mips_perf_pmu", &mipspmu);
 		if (err) {
 			pr_warn("Unable to request IRQ%d for MIPS performance counters!\n",
 				mipspmu.irq);
@@ -582,7 +584,7 @@ static int mipspmu_get_irq(void)
 static void mipspmu_free_irq(void)
 {
 	if (mipspmu.irq >= 0)
-		free_irq(mipspmu.irq, NULL);
+		free_irq(mipspmu.irq, &mipspmu);
 	else if (cp0_perfcount_irq < 0)
 		perf_irq = save_perf_irq;
 }
@@ -1615,8 +1617,7 @@ init_hw_perf_events(void)
 
 	if (get_c0_perfcount_int)
 		irq = get_c0_perfcount_int();
-	else if ((cp0_perfcount_irq >= 0) &&
-		 (cp0_compare_irq != cp0_perfcount_irq))
+	else if (cp0_perfcount_irq >= 0)
 		irq = MIPS_CPU_IRQ_BASE + cp0_perfcount_irq;
 	else
 		irq = -1;

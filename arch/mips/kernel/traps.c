@@ -701,6 +701,13 @@ asmlinkage void do_ov(struct pt_regs *regs)
 
 int process_fpemu_return(int sig, void __user *fault_addr)
 {
+	/*
+	 * We can't allow the emulated instruction to leave any of the cause
+	 * bits set in FCSR. If they were then the kernel would take an FP
+	 * exception when restoring FP context.
+	 */
+	current->thread.fpu.fcr31 &= ~FPU_CSR_ALL_X;
+
 	if (sig == SIGSEGV || sig == SIGBUS) {
 		struct siginfo si = {0};
 		si.si_addr = fault_addr;
@@ -804,17 +811,11 @@ asmlinkage void do_fpe(struct pt_regs *regs, unsigned long fcr31)
 		sig = fpu_emulator_cop1Handler(regs, &current->thread.fpu, 1,
 					       &fault_addr);
 
-		/*
-		 * We can't allow the emulated instruction to leave any of
-		 * the cause bit set in $fcr31.
-		 */
-		current->thread.fpu.fcr31 &= ~FPU_CSR_ALL_X;
+		/* If something went wrong, signal */
+		process_fpemu_return(sig, fault_addr);
 
 		/* Restore the hardware register state */
 		own_fpu(1);	/* Using the FPU again.	 */
-
-		/* If something went wrong, signal */
-		process_fpemu_return(sig, fault_addr);
 
 		goto out;
 	} else if (fcr31 & FPU_CSR_INV_X)
@@ -1969,6 +1970,12 @@ int cp0_compare_irq_shift;
 int cp0_perfcount_irq;
 EXPORT_SYMBOL_GPL(cp0_perfcount_irq);
 
+/*
+ * Fast debug channel IRQ or -1 if not present
+ */
+int cp0_fdc_irq;
+EXPORT_SYMBOL_GPL(cp0_fdc_irq);
+
 static int noulri;
 
 static int __init ulri_disable(char *s)
@@ -2050,17 +2057,21 @@ void per_cpu_trap_init(bool is_boot_cpu)
 	 *
 	 *  o read IntCtl.IPTI to determine the timer interrupt
 	 *  o read IntCtl.IPPCI to determine the performance counter interrupt
+	 *  o read IntCtl.IPFDC to determine the fast debug channel interrupt
 	 */
 	if (cpu_has_mips_r2_r6) {
 		cp0_compare_irq_shift = CAUSEB_TI - CAUSEB_IP;
 		cp0_compare_irq = (read_c0_intctl() >> INTCTLB_IPTI) & 7;
 		cp0_perfcount_irq = (read_c0_intctl() >> INTCTLB_IPPCI) & 7;
-		if (cp0_perfcount_irq == cp0_compare_irq)
-			cp0_perfcount_irq = -1;
+		cp0_fdc_irq = (read_c0_intctl() >> INTCTLB_IPFDC) & 7;
+		if (!cp0_fdc_irq)
+			cp0_fdc_irq = -1;
+
 	} else {
 		cp0_compare_irq = CP0_LEGACY_COMPARE_IRQ;
 		cp0_compare_irq_shift = CP0_LEGACY_PERFCNT_IRQ;
 		cp0_perfcount_irq = -1;
+		cp0_fdc_irq = -1;
 	}
 
 	if (!cpu_data[cpu].asid_cache)

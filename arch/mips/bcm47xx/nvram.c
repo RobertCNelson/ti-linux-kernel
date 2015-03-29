@@ -16,7 +16,7 @@
 #include <linux/kernel.h>
 #include <linux/string.h>
 #include <linux/mtd/mtd.h>
-#include <bcm47xx_nvram.h>
+#include <linux/bcm47xx_nvram.h>
 
 #define NVRAM_MAGIC		0x48534C46	/* 'FLSH' */
 #define NVRAM_SPACE		0x8000
@@ -91,7 +91,6 @@ static int nvram_find_and_copy(void __iomem *iobase, u32 lim)
 	return -ENXIO;
 
 found:
-
 	if (header->len > size)
 		pr_err("The nvram size accoridng to the header seems to be bigger than the partition on flash\n");
 	if (header->len > NVRAM_SPACE)
@@ -101,10 +100,9 @@ found:
 	src = (u32 *) header;
 	dst = (u32 *) nvram_buf;
 	for (i = 0; i < sizeof(struct nvram_header); i += 4)
-		*dst++ = *src++;
+		*dst++ = __raw_readl(src++);
 	for (; i < header->len && i < NVRAM_SPACE && i < size; i += 4)
-		*dst++ = le32_to_cpu(*src++);
-	memset(dst, 0x0, NVRAM_SPACE - i);
+		*dst++ = readl(src++);
 
 	return 0;
 }
@@ -165,7 +163,6 @@ static int nvram_init(void)
 			err = mtd_read(mtd, from, len, &bytes_read, dst);
 			if (err)
 				return err;
-			memset(dst + bytes_read, 0x0, NVRAM_SPACE - bytes_read);
 
 			return 0;
 		}
@@ -178,7 +175,7 @@ static int nvram_init(void)
 int bcm47xx_nvram_getenv(const char *name, char *val, size_t val_len)
 {
 	char *var, *value, *end, *eq;
-	int err;
+	int data_left, err;
 
 	if (!name)
 		return -EINVAL;
@@ -194,7 +191,9 @@ int bcm47xx_nvram_getenv(const char *name, char *val, size_t val_len)
 	end = nvram_buf + sizeof(nvram_buf) - 2;
 	end[0] = end[1] = '\0';
 	for (; *var; var = value + strlen(value) + 1) {
-		eq = strchr(var, '=');
+		data_left = end - var;
+
+		eq = strnchr(var, data_left, '=');
 		if (!eq)
 			break;
 		value = eq + 1;

@@ -428,6 +428,8 @@
  *
  * Refer to your MIPS R4xx0 manual, chapter 5 for explanation.
  */
+#define INTCTLB_IPFDC		23
+#define INTCTLF_IPFDC		(_ULCAST_(7) << INTCTLB_IPFDC)
 #define INTCTLB_IPPCI		26
 #define INTCTLF_IPPCI		(_ULCAST_(7) << INTCTLB_IPPCI)
 #define INTCTLB_IPTI		29
@@ -458,6 +460,8 @@
 #define	 CAUSEF_IP6		(_ULCAST_(1)   << 14)
 #define	 CAUSEB_IP7		15
 #define	 CAUSEF_IP7		(_ULCAST_(1)   << 15)
+#define	 CAUSEB_FDCI		21
+#define	 CAUSEF_FDCI		(_ULCAST_(1)   << 21)
 #define	 CAUSEB_IV		23
 #define	 CAUSEF_IV		(_ULCAST_(1)   << 23)
 #define	 CAUSEB_PCI		26
@@ -750,6 +754,14 @@
 #define MIPS_PWCTL_HUGEPG_MASK	0x00000060
 #define MIPS_PWCTL_PSN_SHIFT	0
 #define MIPS_PWCTL_PSN_MASK	0x0000003f
+
+/* CDMMBase register bit definitions */
+#define MIPS_CDMMBASE_SIZE_SHIFT 0
+#define MIPS_CDMMBASE_SIZE	(_ULCAST_(511) << MIPS_CDMMBASE_SIZE_SHIFT)
+#define MIPS_CDMMBASE_CI	(_ULCAST_(1) << 9)
+#define MIPS_CDMMBASE_EN	(_ULCAST_(1) << 10)
+#define MIPS_CDMMBASE_ADDR_SHIFT 11
+#define MIPS_CDMMBASE_ADDR_START 15
 
 #ifndef __ASSEMBLY__
 
@@ -1281,6 +1293,9 @@ do {									\
 
 #define read_c0_ebase()		__read_32bit_c0_register($15, 1)
 #define write_c0_ebase(val)	__write_32bit_c0_register($15, 1, val)
+
+#define read_c0_cdmmbase()	__read_ulong_c0_register($15, 2)
+#define write_c0_cdmmbase(val)	__write_ulong_c0_register($15, 2, val)
 
 /* MIPSR3 */
 #define read_c0_segctl0()	__read_32bit_c0_register($5, 2)
