@@ -361,9 +361,9 @@ config ARCH_AT91
 	select ARCH_REQUIRE_GPIOLIB
 	select CLKDEV_LOOKUP
 	select IRQ_DOMAIN
-	select NEED_MACH_IO_H if PCCARD
 	select PINCTRL
 	select PINCTRL_AT91
+	select SOC_BUS
 	select USE_OF
 	help
 	  This enables support for systems based on Atmel
@@ -647,7 +647,6 @@ config ARCH_SHMOBILE_LEGACY
 	select GENERIC_CLOCKEVENTS
 	select HAVE_ARM_SCU if SMP
 	select HAVE_ARM_TWD if SMP
-	select HAVE_MACH_CLKDEV
 	select HAVE_SMP
 	select MIGHT_HAVE_CACHE_L2X0
 	select MULTI_IRQ_HANDLER
@@ -844,6 +843,8 @@ config ARCH_VIRT
 # plat- suffix) or along side the corresponding mach-* source.
 #
 source "arch/arm/mach-mvebu/Kconfig"
+
+source "arch/arm/mach-alpine/Kconfig"
 
 source "arch/arm/mach-asm9260/Kconfig"
 
@@ -1848,35 +1849,6 @@ config ZBOOT_ROM
 	help
 	  Say Y here if you intend to execute your compressed kernel image
 	  (zImage) directly from ROM or flash.  If unsure, say N.
-
-choice
-	prompt "Include SD/MMC loader in zImage (EXPERIMENTAL)"
-	depends on ZBOOT_ROM && ARCH_SH7372
-	default ZBOOT_ROM_NONE
-	help
-	  Include experimental SD/MMC loading code in the ROM-able zImage.
-	  With this enabled it is possible to write the ROM-able zImage
-	  kernel image to an MMC or SD card and boot the kernel straight
-	  from the reset vector. At reset the processor Mask ROM will load
-	  the first part of the ROM-able zImage which in turn loads the
-	  rest the kernel image to RAM.
-
-config ZBOOT_ROM_NONE
-	bool "No SD/MMC loader in zImage (EXPERIMENTAL)"
-	help
-	  Do not load image from SD or MMC
-
-config ZBOOT_ROM_MMCIF
-	bool "Include MMCIF loader in zImage (EXPERIMENTAL)"
-	help
-	  Load image from MMCIF hardware block.
-
-config ZBOOT_ROM_SH_MOBILE_SDHI
-	bool "Include SuperH Mobile SDHI loader in zImage (EXPERIMENTAL)"
-	help
-	  Load image from SDHI hardware block
-
-endchoice
 
 config ARM_APPENDED_DTB
 	bool "Use appended device tree blob to zImage (EXPERIMENTAL)"
