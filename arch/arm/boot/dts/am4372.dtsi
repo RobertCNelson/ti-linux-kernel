@@ -787,7 +787,7 @@
 		};
 
 		ocp2scp0: ocp2scp@483a8000 {
-			compatible = "ti,omap-ocp2scp";
+			compatible = "ti,am437x-ocp2scp", "ti,omap-ocp2scp";
 			#address-cells = <1>;
 			#size-cells = <1>;
 			ranges;
@@ -806,7 +806,7 @@
 		};
 
 		ocp2scp1: ocp2scp@483e8000 {
-			compatible = "ti,omap-ocp2scp";
+			compatible = "ti,am437x-ocp2scp", "ti,omap-ocp2scp";
 			#address-cells = <1>;
 			#size-cells = <1>;
 			ranges;
@@ -884,7 +884,7 @@
 		};
 
 		hdq: hdq@48347000 {
-			compatible = "ti,am43xx-hdq";
+			compatible = "ti,am4372-hdq";
 			reg = <0x48347000 0x1000>;
 			interrupts = <GIC_SPI 139 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&func_12m_clk>;
