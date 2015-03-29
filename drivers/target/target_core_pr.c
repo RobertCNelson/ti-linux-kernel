@@ -1066,6 +1066,7 @@ static void __core_scsi3_add_registration(
 				pr_reg_tmp->pr_reg_nacl, pr_reg_tmp,
 				register_type);
 		spin_unlock(&pr_tmpl->registration_lock);
+
 		/*
 		 * Drop configfs group dependency reference from
 		 * __core_scsi3_alloc_registration()

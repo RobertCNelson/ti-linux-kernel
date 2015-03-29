@@ -59,17 +59,24 @@ transport_lookup_cmd_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 {
 	struct se_lun *se_lun = NULL;
 	struct se_session *se_sess = se_cmd->se_sess;
+	struct se_node_acl *nacl = se_sess->se_node_acl;
 	struct se_device *dev;
-	unsigned long flags;
+	struct se_dev_entry *deve;
 
 	if (unpacked_lun >= TRANSPORT_MAX_LUNS_PER_TPG)
 		return TCM_NON_EXISTENT_LUN;
 
-	spin_lock_irqsave(&se_sess->se_node_acl->device_list_lock, flags);
-	se_cmd->se_deve = se_sess->se_node_acl->device_list[unpacked_lun];
-	if (se_cmd->se_deve->lun_flags & TRANSPORT_LUNFLAGS_INITIATOR_ACCESS) {
-		struct se_dev_entry *deve = se_cmd->se_deve;
-
+	rcu_read_lock();
+	deve = target_nacl_find_deve(nacl, unpacked_lun);
+	if (deve && deve->lun_flags & TRANSPORT_LUNFLAGS_INITIATOR_ACCESS) {
+		/*
+		 * Make sure that target_enable_device_list_for_node()
+		 * has not already cleared the RCU protected pointers.
+		 */
+		if (!deve->se_lun) {
+			rcu_read_unlock();
+			goto check_lun;
+		}
 		deve->total_cmds++;
 
 		if ((se_cmd->data_direction == DMA_TO_DEVICE) &&
@@ -78,7 +85,7 @@ transport_lookup_cmd_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 				" Access for 0x%08x\n",
 				se_cmd->se_tfo->get_fabric_name(),
 				unpacked_lun);
-			spin_unlock_irqrestore(&se_sess->se_node_acl->device_list_lock, flags);
+			rcu_read_unlock();
 			return TCM_WRITE_PROTECTED;
 		}
 
@@ -96,8 +103,9 @@ transport_lookup_cmd_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 		percpu_ref_get(&se_lun->lun_ref);
 		se_cmd->lun_ref_active = true;
 	}
-	spin_unlock_irqrestore(&se_sess->se_node_acl->device_list_lock, flags);
+	rcu_read_unlock();
 
+check_lun:
 	if (!se_lun) {
 		/*
 		 * Use the se_portal_group->tpg_virt_lun0 to allow for
@@ -146,25 +154,33 @@ int transport_lookup_tmr_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 	struct se_dev_entry *deve;
 	struct se_lun *se_lun = NULL;
 	struct se_session *se_sess = se_cmd->se_sess;
+	struct se_node_acl *nacl = se_sess->se_node_acl;
 	struct se_tmr_req *se_tmr = se_cmd->se_tmr_req;
 	unsigned long flags;
 
 	if (unpacked_lun >= TRANSPORT_MAX_LUNS_PER_TPG)
 		return -ENODEV;
 
-	spin_lock_irqsave(&se_sess->se_node_acl->device_list_lock, flags);
-	se_cmd->se_deve = se_sess->se_node_acl->device_list[unpacked_lun];
-	deve = se_cmd->se_deve;
-
-	if (deve->lun_flags & TRANSPORT_LUNFLAGS_INITIATOR_ACCESS) {
+	rcu_read_lock();
+	deve = target_nacl_find_deve(nacl, unpacked_lun);
+	if (deve && deve->lun_flags & TRANSPORT_LUNFLAGS_INITIATOR_ACCESS) {
+		/*
+		 * Make sure that target_enable_device_list_for_node()
+		 * has not already cleared the RCU protected pointers.
+		 */
+		if (!deve->se_lun) {
+			rcu_read_unlock();
+			goto check_lun;
+		}
 		se_tmr->tmr_lun = deve->se_lun;
 		se_cmd->se_lun = deve->se_lun;
 		se_lun = deve->se_lun;
 		se_cmd->pr_res_key = deve->pr_res_key;
 		se_cmd->orig_fe_lun = unpacked_lun;
 	}
-	spin_unlock_irqrestore(&se_sess->se_node_acl->device_list_lock, flags);
+	rcu_read_unlock();
 
+check_lun:
 	if (!se_lun) {
 		pr_debug("TARGET_CORE[%s]: Detected NON_EXISTENT_LUN"
 			" Access for 0x%08x\n",
@@ -269,7 +285,7 @@ void core_update_device_list_access(
 {
 	struct se_dev_entry *deve;
 
-	spin_lock_irq(&nacl->lun_entry_lock);
+	mutex_lock(&nacl->lun_entry_mutex);
 	deve = target_nacl_find_deve(nacl, mapped_lun);
 	if (deve) {
 		if (lun_access & TRANSPORT_LUNFLAGS_READ_WRITE) {
@@ -280,7 +296,7 @@ void core_update_device_list_access(
 			deve->lun_flags |= TRANSPORT_LUNFLAGS_READ_ONLY;
 		}
 	}
-	spin_unlock_irq(&nacl->lun_entry_lock);
+	mutex_unlock(&nacl->lun_entry_mutex);
 
 	synchronize_rcu();
 }
@@ -345,7 +361,7 @@ int core_enable_device_list_for_node(
 	new->creation_time = get_jiffies_64();
 	new->attach_count++;
 
-	spin_lock_irq(&nacl->device_list_lock);
+	mutex_lock(&nacl->lun_entry_mutex);
 	orig = target_nacl_find_deve(nacl, mapped_lun);
 	if (orig && orig->lun_flags & TRANSPORT_LUNFLAGS_INITIATOR_ACCESS) {
 		BUG_ON(orig->se_lun_acl != NULL);
@@ -354,7 +370,7 @@ int core_enable_device_list_for_node(
 		rcu_assign_pointer(new->se_lun, lun);
 		rcu_assign_pointer(new->se_lun_acl, lun_acl);
 		hlist_add_head_rcu(&new->link, &nacl->lun_entry_hlist);
-		spin_unlock_irq(&nacl->device_list_lock);
+		mutex_unlock(&nacl->lun_entry_mutex);
 
 		spin_lock_bh(&port->sep_alua_lock);
 		list_del(&orig->alua_port_list);
@@ -368,7 +384,7 @@ int core_enable_device_list_for_node(
 	rcu_assign_pointer(new->se_lun, lun);
 	rcu_assign_pointer(new->se_lun_acl, lun_acl);
 	hlist_add_head_rcu(&new->link, &nacl->lun_entry_hlist);
-	spin_unlock_irq(&nacl->device_list_lock);
+	mutex_unlock(&nacl->lun_entry_mutex);
 
 	spin_lock_bh(&port->sep_alua_lock);
 	list_add_tail(&new->alua_port_list, &port->sep_alua_list);
@@ -393,10 +409,10 @@ int core_disable_device_list_for_node(
 	struct se_port *port = lun->lun_sep;
 	struct se_dev_entry *orig;
 
-	spin_lock_irq(&nacl->device_list_lock);
+	mutex_lock(&nacl->lun_entry_mutex);
 	orig = target_nacl_find_deve(nacl, mapped_lun);
 	if (!orig) {
-		spin_unlock_irq(&nacl->device_list_lock);
+		mutex_unlock(&nacl->lun_entry_mutex);
 		return 0;
 	}
 	/*
@@ -432,7 +448,7 @@ int core_disable_device_list_for_node(
 	orig->creation_time = 0;
 	orig->attach_count--;
 	hlist_del_rcu(&orig->link);
-	spin_unlock_irq(&nacl->device_list_lock);
+	mutex_unlock(&nacl->lun_entry_mutex);
 
 	/*
 	 * Fire off RCU callback to wait for any in process SPEC_I_PT=1

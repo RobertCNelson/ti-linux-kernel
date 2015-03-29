@@ -588,8 +588,7 @@ struct se_node_acl {
 	struct se_dev_entry	**device_list;
 	struct se_session	*nacl_sess;
 	struct se_portal_group *se_tpg;
-	spinlock_t		device_list_lock;
-	spinlock_t		lun_entry_lock;
+	struct mutex		lun_entry_mutex;
 	spinlock_t		nacl_sess_lock;
 	struct config_group	acl_group;
 	struct config_group	acl_attrib_group;
