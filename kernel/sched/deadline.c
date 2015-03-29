@@ -914,6 +914,12 @@ static void yield_task_dl(struct rq *rq)
 	}
 	update_rq_clock(rq);
 	update_curr_dl(rq);
+	/*
+	 * Tell update_rq_clock() that we've just updated,
+	 * so we don't do microscopic update in schedule()
+	 * and double the fastpath cost.
+	 */
+	rq_clock_skip_update(rq, true);
 }
 
 #ifdef CONFIG_SMP
@@ -1658,14 +1664,6 @@ static void switched_from_dl(struct rq *rq, struct task_struct *p)
 static void switched_to_dl(struct rq *rq, struct task_struct *p)
 {
 	int check_resched = 1;
-
-	/*
-	 * If p is throttled, don't consider the possibility
-	 * of preempting rq->curr, the check will be done right
-	 * after its runtime will get replenished.
-	 */
-	if (unlikely(p->dl.dl_throttled))
-		return;
 
 	if (task_on_rq_queued(p) && rq->curr != p) {
 #ifdef CONFIG_SMP
