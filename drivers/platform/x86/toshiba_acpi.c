@@ -49,7 +49,6 @@
 #include <linux/workqueue.h>
 #include <linux/i8042.h>
 #include <linux/acpi.h>
-#include <linux/dmi.h>
 #include <linux/uaccess.h>
 
 MODULE_AUTHOR("John Belmonte");
@@ -116,6 +115,7 @@ MODULE_LICENSE("GPL");
 #define HCI_KBD_ILLUMINATION		0x0095
 #define HCI_ECO_MODE			0x0097
 #define HCI_ACCELEROMETER2		0x00a6
+#define HCI_SYSTEM_INFO			0xc000
 #define SCI_PANEL_POWER_ON		0x010d
 #define SCI_ILLUMINATION		0x014e
 #define SCI_USB_SLEEP_CHARGE		0x0150
@@ -129,10 +129,13 @@ MODULE_LICENSE("GPL");
 #define HCI_ACCEL_MASK			0x7fff
 #define HCI_HOTKEY_DISABLE		0x0b
 #define HCI_HOTKEY_ENABLE		0x09
+#define HCI_HOTKEY_SPECIAL_FUNCTIONS	0x10
 #define HCI_LCD_BRIGHTNESS_BITS		3
 #define HCI_LCD_BRIGHTNESS_SHIFT	(16-HCI_LCD_BRIGHTNESS_BITS)
 #define HCI_LCD_BRIGHTNESS_LEVELS	(1 << HCI_LCD_BRIGHTNESS_BITS)
 #define HCI_MISC_SHIFT			0x10
+#define HCI_SYSTEM_TYPE1		0x10
+#define HCI_SYSTEM_TYPE2		0x11
 #define HCI_VIDEO_OUT_LCD		0x1
 #define HCI_VIDEO_OUT_CRT		0x2
 #define HCI_VIDEO_OUT_TV		0x4
@@ -174,6 +177,7 @@ struct toshiba_acpi_dev {
 	int kbd_mode;
 	int kbd_time;
 	int usbsc_bat_level;
+	int hotkey_event_type;
 
 	unsigned int illumination_supported:1;
 	unsigned int video_supported:1;
@@ -241,29 +245,6 @@ static const struct key_entry toshiba_acpi_keymap[] = {
 	{ KE_IGNORE, 0x1ABE, { KEY_RESERVED } }, /* Protection level set */
 	{ KE_IGNORE, 0x1ABF, { KEY_RESERVED } }, /* Protection level off */
 	{ KE_END, 0 },
-};
-
-/* alternative keymap */
-static const struct dmi_system_id toshiba_alt_keymap_dmi[] = {
-	{
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "TOSHIBA"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "Satellite M840"),
-		},
-	},
-	{
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "TOSHIBA"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "Qosmio X75-A"),
-		},
-	},
-	{
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "TOSHIBA"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "TECRA A50-A"),
-		},
-	},
-	{}
 };
 
 static const struct key_entry toshiba_acpi_alt_keymap[] = {
@@ -1145,6 +1126,28 @@ static int toshiba_usb_three_set(struct toshiba_acpi_dev *dev, u32 state)
 	} else if (result == TOS_INPUT_DATA_ERROR) {
 		return -EIO;
 	}
+
+	return 0;
+}
+
+/* Hotkey Event type */
+static int toshiba_hotkey_event_type_get(struct toshiba_acpi_dev *dev,
+					 u32 *type)
+{
+	u32 val1 = 0x03;
+	u32 val2 = 0;
+	u32 result;
+
+	result = hci_read2(dev, HCI_SYSTEM_INFO, &val1, &val2);
+	if (result == TOS_FAILURE) {
+		pr_err("ACPI call to get System type failed\n");
+		return -EIO;
+	} else if (result == TOS_NOT_SUPPORTED) {
+		pr_info("System type not supported\n");
+		return -ENODEV;
+	}
+
+	*type = val2;
 
 	return 0;
 }
@@ -2333,6 +2336,20 @@ static int toshiba_acpi_enable_hotkeys(struct toshiba_acpi_dev *dev)
 	return 0;
 }
 
+static void toshiba_acpi_enable_special_functions(struct toshiba_acpi_dev *dev)
+{
+	u32 result;
+
+	/*
+	 * Re-activate the hotkeys, but this time, we are using the
+	 * "Special Functions" mode.
+	 */
+	result = hci_write1(dev, HCI_HOTKEY_EVENT,
+			    HCI_HOTKEY_SPECIAL_FUNCTIONS);
+	if (result != TOS_SUCCESS)
+		pr_err("Could not enable the Special Function mode\n");
+}
+
 static bool toshiba_acpi_i8042_filter(unsigned char data, unsigned char str,
 				      struct serio *port)
 {
@@ -2434,10 +2451,22 @@ static void toshiba_acpi_process_hotkeys(struct toshiba_acpi_dev *dev)
 
 static int toshiba_acpi_setup_keyboard(struct toshiba_acpi_dev *dev)
 {
-	acpi_handle ec_handle;
-	int error;
-	u32 hci_result;
 	const struct key_entry *keymap = toshiba_acpi_keymap;
+	acpi_handle ec_handle;
+	u32 events_type;
+	u32 hci_result;
+	int error;
+
+	error = toshiba_acpi_enable_hotkeys(dev);
+	if (error)
+		return error;
+
+	error = toshiba_hotkey_event_type_get(dev, &events_type);
+	if (error) {
+		pr_err("Unable to query Hotkey Event Type\n");
+		return error;
+	}
+	dev->hotkey_event_type = events_type;
 
 	dev->hotkey_dev = input_allocate_device();
 	if (!dev->hotkey_dev)
@@ -2447,8 +2476,14 @@ static int toshiba_acpi_setup_keyboard(struct toshiba_acpi_dev *dev)
 	dev->hotkey_dev->phys = "toshiba_acpi/input0";
 	dev->hotkey_dev->id.bustype = BUS_HOST;
 
-	if (dmi_check_system(toshiba_alt_keymap_dmi))
+	if (events_type == HCI_SYSTEM_TYPE1 ||
+	    !dev->kbd_function_keys_supported)
+		keymap = toshiba_acpi_keymap;
+	else if (events_type == HCI_SYSTEM_TYPE2 ||
+		 dev->kbd_function_keys_supported)
 		keymap = toshiba_acpi_alt_keymap;
+	else
+		pr_info("Unknown event type received %x\n", events_type);
 	error = sparse_keymap_setup(dev->hotkey_dev, keymap, NULL);
 	if (error)
 		goto err_free_dev;
@@ -2487,12 +2522,6 @@ static int toshiba_acpi_setup_keyboard(struct toshiba_acpi_dev *dev)
 
 	if (!dev->info_supported && !dev->system_event_supported) {
 		pr_warn("No hotkey query interface found\n");
-		goto err_remove_filter;
-	}
-
-	error = toshiba_acpi_enable_hotkeys(dev);
-	if (error) {
-		pr_info("Unable to enable hotkeys\n");
 		goto err_remove_filter;
 	}
 
@@ -2624,6 +2653,7 @@ static int toshiba_acpi_add(struct acpi_device *acpi_dev)
 {
 	struct toshiba_acpi_dev *dev;
 	const char *hci_method;
+	u32 special_functions;
 	u32 dummy;
 	bool bt_present;
 	int ret = 0;
@@ -2647,6 +2677,16 @@ static int toshiba_acpi_add(struct acpi_device *acpi_dev)
 	dev->method_hci = hci_method;
 	acpi_dev->driver_data = dev;
 	dev_set_drvdata(&acpi_dev->dev, dev);
+
+	/* Query the BIOS for supported features */
+
+	/*
+	 * The "Special Functions" are always supported by the laptops
+	 * with the new keyboard layout, query for its presence to help
+	 * determine the keymap layout to use.
+	 */
+	ret = toshiba_function_keys_get(dev, &special_functions);
+	dev->kbd_function_keys_supported = !ret;
 
 	if (toshiba_acpi_setup_keyboard(dev))
 		pr_info("Unable to activate hotkeys\n");
@@ -2725,22 +2765,24 @@ static int toshiba_acpi_add(struct acpi_device *acpi_dev)
 	ret = toshiba_usb_sleep_music_get(dev, &dummy);
 	dev->usb_sleep_music_supported = !ret;
 
-	ret = toshiba_function_keys_get(dev, &dummy);
-	dev->kbd_function_keys_supported = !ret;
-
 	ret = toshiba_panel_power_on_get(dev, &dummy);
 	dev->panel_power_on_supported = !ret;
 
 	ret = toshiba_usb_three_get(dev, &dummy);
 	dev->usb_three_supported = !ret;
 
-	/* Determine whether or not BIOS supports fan and video interfaces */
-
 	ret = get_video_status(dev, &dummy);
 	dev->video_supported = !ret;
 
 	ret = get_fan_status(dev, &dummy);
 	dev->fan_supported = !ret;
+
+	/*
+	 * Enable the "Special Functions" mode only if they are
+	 * supported and if they are activated.
+	 */
+	if (dev->kbd_function_keys_supported && special_functions)
+		toshiba_acpi_enable_special_functions(dev);
 
 	ret = sysfs_create_group(&dev->acpi_dev->dev.kobj,
 				 &toshiba_attr_group);
@@ -2770,6 +2812,21 @@ static void toshiba_acpi_notify(struct acpi_device *acpi_dev, u32 event)
 	case 0x80: /* Hotkeys and some system events */
 		toshiba_acpi_process_hotkeys(dev);
 		break;
+	case 0x81: /* Dock events */
+	case 0x82:
+	case 0x83:
+		pr_info("Dock event received %x\n", event);
+		break;
+	case 0x88: /* Thermal events */
+		pr_info("Thermal event received\n");
+		break;
+	case 0x8f: /* LID closed */
+	case 0x90: /* LID is closed and Dock has been ejected */
+		break;
+	case 0x8c: /* SATA power events */
+	case 0x8b:
+		pr_info("SATA power event received %x\n", event);
+		break;
 	case 0x92: /* Keyboard backlight mode changed */
 		/* Update sysfs entries */
 		ret = sysfs_update_group(&acpi_dev->dev.kobj,
@@ -2777,17 +2834,19 @@ static void toshiba_acpi_notify(struct acpi_device *acpi_dev, u32 event)
 		if (ret)
 			pr_err("Unable to update sysfs entries\n");
 		break;
-	case 0x81: /* Unknown */
-	case 0x82: /* Unknown */
-	case 0x83: /* Unknown */
-	case 0x8c: /* Unknown */
+	case 0x85: /* Unknown */
+	case 0x8d: /* Unknown */
 	case 0x8e: /* Unknown */
-	case 0x8f: /* Unknown */
-	case 0x90: /* Unknown */
+	case 0x94: /* Unknown */
+	case 0x95: /* Unknown */
 	default:
 		pr_info("Unknown event received %x\n", event);
 		break;
 	}
+
+	acpi_bus_generate_netlink_event(acpi_dev->pnp.device_class,
+					dev_name(&acpi_dev->dev),
+					event, 0);
 }
 
 #ifdef CONFIG_PM_SLEEP
