@@ -20,6 +20,8 @@
 #define ISCSIT_MIN_TAGS			16
 #define ISCSIT_EXTRA_TAGS		8
 #define ISCSIT_TCP_BACKLOG		256
+#define ISCSI_RX_THREAD_NAME		"iscsi_trx"
+#define ISCSI_TX_THREAD_NAME		"iscsi_ttx"
 
 /* struct iscsi_node_attrib sanity values */
 #define NA_DATAOUT_TIMEOUT		3
@@ -600,8 +602,11 @@ struct iscsi_conn {
 	struct iscsi_tpg_np	*tpg_np;
 	/* Pointer to parent session */
 	struct iscsi_session	*sess;
-	/* Pointer to thread_set in use for this conn's threads */
-	struct iscsi_thread_set	*thread_set;
+	int			bitmap_id;
+	int			rx_thread_active;
+	struct task_struct	*rx_thread;
+	int			tx_thread_active;
+	struct task_struct	*tx_thread;
 	/* list_head for session connection list */
 	struct list_head	conn_list;
 } ____cacheline_aligned;
@@ -871,10 +876,10 @@ struct iscsit_global {
 	/* Unique identifier used for the authentication daemon */
 	u32			auth_id;
 	u32			inactive_ts;
-	/* Thread Set bitmap count */
-	int			ts_bitmap_count;
+#define ISCSIT_BITMAP_BITS	262144
 	/* Thread Set bitmap pointer */
 	unsigned long		*ts_bitmap;
+	spinlock_t		ts_bitmap_lock;
 	/* Used for iSCSI discovery session authentication */
 	struct iscsi_node_acl	discovery_acl;
 	struct iscsi_portal_group	*discovery_tpg;

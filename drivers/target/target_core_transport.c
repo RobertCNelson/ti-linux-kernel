@@ -322,10 +322,18 @@ void __transport_register_session(
 	struct se_session *se_sess,
 	void *fabric_sess_ptr)
 {
+	struct target_core_fabric_ops *tfo = se_tpg->se_tpg_tfo;
 	unsigned char buf[PR_REG_ISID_LEN];
 
 	se_sess->se_tpg = se_tpg;
 	se_sess->fabric_sess_ptr = fabric_sess_ptr;
+	/*
+	 * Determine if fabric allows for T10-PI feature bits to be exposed
+	 * to initiators for device backends with !dev->dev_attrib.pi_prot_type
+	 */
+	if (tfo->tpg_check_prot_fabric_only)
+		se_sess->sess_prot_type = tfo->tpg_check_prot_fabric_only(se_tpg);
+
 	/*
 	 * Used by struct se_node_acl's under ConfigFS to locate active se_session-t
 	 *
@@ -403,6 +411,30 @@ void target_put_session(struct se_session *se_sess)
 	kref_put(&se_sess->sess_kref, target_release_session);
 }
 EXPORT_SYMBOL(target_put_session);
+
+ssize_t target_show_dynamic_sessions(struct se_portal_group *se_tpg, char *page)
+{
+	struct se_session *se_sess;
+	ssize_t len = 0;
+
+	spin_lock_bh(&se_tpg->session_lock);
+	list_for_each_entry(se_sess, &se_tpg->tpg_sess_list, sess_list) {
+		if (!se_sess->se_node_acl)
+			continue;
+		if (!se_sess->se_node_acl->dynamic_node_acl)
+			continue;
+		if (strlen(se_sess->se_node_acl->initiatorname) + 1 + len > PAGE_SIZE)
+			break;
+
+		len += snprintf(page + len, PAGE_SIZE - len, "%s\n",
+				se_sess->se_node_acl->initiatorname);
+		len += 1; /* Include NULL terminator */
+	}
+	spin_unlock_bh(&se_tpg->session_lock);
+
+	return len;
+}
+EXPORT_SYMBOL(target_show_dynamic_sessions);
 
 static void target_complete_nacl(struct kref *kref)
 {
@@ -1706,6 +1738,41 @@ void __target_execute_cmd(struct se_cmd *cmd)
 	}
 }
 
+static int target_check_write_prot(struct se_cmd *cmd)
+{
+	u32 sectors;
+	/*
+	 * Perform WRITE_INSERT of PI using software emulation when backend
+	 * device has PI enabled, if the transport has not already generated
+	 * PI using hardware WRITE_INSERT offload.
+	 */
+	switch (cmd->prot_op) {
+	case TARGET_PROT_DOUT_INSERT:
+		if (!(cmd->se_sess->sup_prot_ops & TARGET_PROT_DOUT_INSERT))
+			sbc_dif_generate(cmd);
+		break;
+	case TARGET_PROT_DOUT_STRIP:
+		if (cmd->se_sess->sup_prot_ops & TARGET_PROT_DOUT_STRIP)
+			break;
+
+		sectors = cmd->data_length / cmd->se_dev->dev_attrib.block_size;
+		cmd->pi_err = sbc_dif_verify_write(cmd, cmd->t_task_lba,
+						   sectors, 0, NULL, 0);
+		if (cmd->pi_err) {
+			spin_lock_irq(&cmd->t_state_lock);
+			cmd->transport_state &= ~CMD_T_BUSY|CMD_T_SENT;
+			spin_unlock_irq(&cmd->t_state_lock);
+			transport_generic_request_failure(cmd, cmd->pi_err);
+			return -1;
+		}
+		break;
+	default:
+		break;
+	}
+
+	return 0;
+}
+
 static bool target_handle_task_attr(struct se_cmd *cmd)
 {
 	struct se_device *dev = cmd->se_dev;
@@ -1785,15 +1852,9 @@ void target_execute_cmd(struct se_cmd *cmd)
 	cmd->t_state = TRANSPORT_PROCESSING;
 	cmd->transport_state |= CMD_T_ACTIVE|CMD_T_BUSY|CMD_T_SENT;
 	spin_unlock_irq(&cmd->t_state_lock);
-	/*
-	 * Perform WRITE_INSERT of PI using software emulation when backend
-	 * device has PI enabled, if the transport has not already generated
-	 * PI using hardware WRITE_INSERT offload.
-	 */
-	if (cmd->prot_op == TARGET_PROT_DOUT_INSERT) {
-		if (!(cmd->se_sess->sup_prot_ops & TARGET_PROT_DOUT_INSERT))
-			sbc_dif_generate(cmd);
-	}
+
+	if (target_check_write_prot(cmd))
+		return;
 
 	if (target_handle_task_attr(cmd)) {
 		spin_lock_irq(&cmd->t_state_lock);
@@ -1919,16 +1980,28 @@ static void transport_handle_queue_full(
 	schedule_work(&cmd->se_dev->qf_work_queue);
 }
 
-static bool target_check_read_strip(struct se_cmd *cmd)
+static bool target_check_read_prot(struct se_cmd *cmd)
 {
 	sense_reason_t rc;
 
-	if (!(cmd->se_sess->sup_prot_ops & TARGET_PROT_DIN_STRIP)) {
-		rc = sbc_dif_read_strip(cmd);
-		if (rc) {
-			cmd->pi_err = rc;
-			return true;
+	switch (cmd->prot_op) {
+	case TARGET_PROT_DIN_STRIP:
+		if (!(cmd->se_sess->sup_prot_ops & TARGET_PROT_DIN_STRIP)) {
+			rc = sbc_dif_read_strip(cmd);
+			if (rc) {
+				cmd->pi_err = rc;
+				return true;
+			}
 		}
+		break;
+	case TARGET_PROT_DIN_INSERT:
+		if (cmd->se_sess->sup_prot_ops & TARGET_PROT_DIN_INSERT)
+			break;
+
+		sbc_dif_generate(cmd);
+		break;
+	default:
+		break;
 	}
 
 	return false;
@@ -2003,8 +2076,7 @@ static void target_complete_ok_work(struct work_struct *work)
 		 * backend had PI enabled, if the transport will not be
 		 * performing hardware READ_STRIP offload.
 		 */
-		if (cmd->prot_op == TARGET_PROT_DIN_STRIP &&
-		    target_check_read_strip(cmd)) {
+		if (target_check_read_prot(cmd)) {
 			ret = transport_send_check_condition_and_sense(cmd,
 						cmd->pi_err, 0);
 			if (ret == -EAGAIN || ret == -ENOMEM)
@@ -2398,6 +2470,7 @@ out:
 EXPORT_SYMBOL(target_get_sess_cmd);
 
 static void target_release_cmd_kref(struct kref *kref)
+		__releases(&se_cmd->se_sess->sess_cmd_lock)
 {
 	struct se_cmd *se_cmd = container_of(kref, struct se_cmd, cmd_kref);
 	struct se_session *se_sess = se_cmd->se_sess;
