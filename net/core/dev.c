@@ -1385,7 +1385,7 @@ static int __dev_close(struct net_device *dev)
 	return retval;
 }
 
-static int dev_close_many(struct list_head *head)
+int dev_close_many(struct list_head *head, bool unlink)
 {
 	struct net_device *dev, *tmp;
 
@@ -1399,11 +1399,13 @@ static int dev_close_many(struct list_head *head)
 	list_for_each_entry_safe(dev, tmp, head, close_list) {
 		rtmsg_ifinfo(RTM_NEWLINK, dev, IFF_UP|IFF_RUNNING, GFP_KERNEL);
 		call_netdevice_notifiers(NETDEV_DOWN, dev);
-		list_del_init(&dev->close_list);
+		if (unlink)
+			list_del_init(&dev->close_list);
 	}
 
 	return 0;
 }
+EXPORT_SYMBOL(dev_close_many);
 
 /**
  *	dev_close - shutdown an interface.
@@ -1420,7 +1422,7 @@ int dev_close(struct net_device *dev)
 		LIST_HEAD(single);
 
 		list_add(&dev->close_list, &single);
-		dev_close_many(&single);
+		dev_close_many(&single, true);
 		list_del(&single);
 	}
 	return 0;
@@ -1694,6 +1696,7 @@ int __dev_forward_skb(struct net_device *dev, struct sk_buff *skb)
 	}
 
 	skb_scrub_packet(skb, true);
+	skb->priority = 0;
 	skb->protocol = eth_type_trans(skb, dev);
 	skb_postpull_rcsum(skb, eth_hdr(skb), ETH_HLEN);
 
@@ -2559,12 +2562,26 @@ static netdev_features_t harmonize_features(struct sk_buff *skb,
 	return features;
 }
 
+netdev_features_t passthru_features_check(struct sk_buff *skb,
+					  struct net_device *dev,
+					  netdev_features_t features)
+{
+	return features;
+}
+EXPORT_SYMBOL(passthru_features_check);
+
+static netdev_features_t dflt_features_check(const struct sk_buff *skb,
+					     struct net_device *dev,
+					     netdev_features_t features)
+{
+	return vlan_features_check(skb, features);
+}
+
 netdev_features_t netif_skb_features(struct sk_buff *skb)
 {
 	struct net_device *dev = skb->dev;
 	netdev_features_t features = dev->features;
 	u16 gso_segs = skb_shinfo(skb)->gso_segs;
-	__be16 protocol = skb->protocol;
 
 	if (gso_segs > dev->gso_max_segs || gso_segs < dev->gso_min_segs)
 		features &= ~NETIF_F_GSO_MASK;
@@ -2576,34 +2593,17 @@ netdev_features_t netif_skb_features(struct sk_buff *skb)
 	if (skb->encapsulation)
 		features &= dev->hw_enc_features;
 
-	if (!skb_vlan_tag_present(skb)) {
-		if (unlikely(protocol == htons(ETH_P_8021Q) ||
-			     protocol == htons(ETH_P_8021AD))) {
-			struct vlan_ethhdr *veh = (struct vlan_ethhdr *)skb->data;
-			protocol = veh->h_vlan_encapsulated_proto;
-		} else {
-			goto finalize;
-		}
-	}
-
-	features = netdev_intersect_features(features,
-					     dev->vlan_features |
-					     NETIF_F_HW_VLAN_CTAG_TX |
-					     NETIF_F_HW_VLAN_STAG_TX);
-
-	if (protocol == htons(ETH_P_8021Q) || protocol == htons(ETH_P_8021AD))
+	if (skb_vlan_tagged(skb))
 		features = netdev_intersect_features(features,
-						     NETIF_F_SG |
-						     NETIF_F_HIGHDMA |
-						     NETIF_F_FRAGLIST |
-						     NETIF_F_GEN_CSUM |
+						     dev->vlan_features |
 						     NETIF_F_HW_VLAN_CTAG_TX |
 						     NETIF_F_HW_VLAN_STAG_TX);
 
-finalize:
 	if (dev->netdev_ops->ndo_features_check)
 		features &= dev->netdev_ops->ndo_features_check(skb, dev,
 								features);
+	else
+		features &= dflt_features_check(skb, dev, features);
 
 	return harmonize_features(skb, features);
 }
@@ -5912,6 +5912,24 @@ int dev_get_phys_port_id(struct net_device *dev,
 EXPORT_SYMBOL(dev_get_phys_port_id);
 
 /**
+ *	dev_get_phys_port_name - Get device physical port name
+ *	@dev: device
+ *	@name: port name
+ *
+ *	Get device physical port name
+ */
+int dev_get_phys_port_name(struct net_device *dev,
+			   char *name, size_t len)
+{
+	const struct net_device_ops *ops = dev->netdev_ops;
+
+	if (!ops->ndo_get_phys_port_name)
+		return -EOPNOTSUPP;
+	return ops->ndo_get_phys_port_name(dev, name, len);
+}
+EXPORT_SYMBOL(dev_get_phys_port_name);
+
+/**
  *	dev_new_index	-	allocate an ifindex
  *	@net: the applicable net namespace
  *
@@ -5968,7 +5986,7 @@ static void rollback_registered_many(struct list_head *head)
 	/* If device is running, close it first. */
 	list_for_each_entry(dev, head, unreg_list)
 		list_add_tail(&dev->close_list, &close_head);
-	dev_close_many(&close_head);
+	dev_close_many(&close_head, true);
 
 	list_for_each_entry(dev, head, unreg_list) {
 		/* And unlink it from device chain. */
@@ -6840,8 +6858,6 @@ EXPORT_SYMBOL(alloc_netdev_mqs);
 void free_netdev(struct net_device *dev)
 {
 	struct napi_struct *p, *n;
-
-	release_net(dev_net(dev));
 
 	netif_free_tx_queues(dev);
 #ifdef CONFIG_SYSFS
