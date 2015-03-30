@@ -468,7 +468,6 @@ void ptlrpc_add_rqs_to_pool(struct ptlrpc_request_pool *pool, int num_rq)
 		list_add_tail(&req->rq_list, &pool->prp_req_list);
 	}
 	spin_unlock(&pool->prp_lock);
-	return;
 }
 EXPORT_SYMBOL(ptlrpc_add_rqs_to_pool);
 
@@ -1439,12 +1438,11 @@ static int ptlrpc_send_new_req(struct ptlrpc_request *req)
 		if (req->rq_err) {
 			req->rq_status = rc;
 			return 1;
-		} else {
-			spin_lock(&req->rq_lock);
-			req->rq_wait_ctx = 1;
-			spin_unlock(&req->rq_lock);
-			return 0;
 		}
+		spin_lock(&req->rq_lock);
+		req->rq_wait_ctx = 1;
+		spin_unlock(&req->rq_lock);
+		return 0;
 	}
 
 	CDEBUG(D_RPCTRACE, "Sending RPC pname:cluuid:pid:xid:nid:opc %s:%s:%d:%llu:%s:%d\n",
@@ -2192,7 +2190,7 @@ int ptlrpc_set_wait(struct ptlrpc_request_set *set)
 	if (set->set_interpret != NULL) {
 		int (*interpreter)(struct ptlrpc_request_set *set, void *, int) =
 			set->set_interpret;
-		rc = interpreter (set, set->set_arg, rc);
+		rc = interpreter(set, set->set_arg, rc);
 	} else {
 		struct ptlrpc_set_cbdata *cbdata, *n;
 		int err;

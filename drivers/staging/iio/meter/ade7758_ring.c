@@ -119,10 +119,8 @@ int ade7758_configure_ring(struct iio_dev *indio_dev)
 	int ret = 0;
 
 	buffer = iio_kfifo_allocate();
-	if (!buffer) {
-		ret = -ENOMEM;
-		return ret;
-	}
+	if (!buffer)
+		return -ENOMEM;
 
 	iio_device_attach_buffer(indio_dev, buffer);
 

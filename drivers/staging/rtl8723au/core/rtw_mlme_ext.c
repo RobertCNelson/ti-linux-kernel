@@ -1614,8 +1614,8 @@ OnAssocReq23a(struct rtw_adapter *padapter, struct recv_frame *precv_frame)
 					else
 						pstat->uapsd_be = 0;
 
+					break;
 				}
-				break;
 			} else {
 				break;
 			}
@@ -3767,7 +3767,6 @@ void issue_action_BA23a(struct rtw_adapter *padapter,
 {
 	u16 start_seq;
 	u16 BA_para_set;
-	u16 BA_timeout_value;
 	u16 BA_starting_seqctrl;
 	u16 BA_para;
 	int max_rx_ampdu_factor;
@@ -3842,16 +3841,14 @@ void issue_action_BA23a(struct rtw_adapter *padapter,
 				IEEE80211_ADDBA_PARAM_BUF_SIZE_MASK;
 		} else {
 			/* immediate ack & 64 buffer size */
-			BA_para_set = (0x1002 | ((status & 0xf) << 2));
+			BA_para_set = 0x1002 | ((status & 0xf) << 2);
 		}
 
 		put_unaligned_le16(BA_para_set,
 				   &mgmt->u.action.u.addba_req.capab);
 
-		BA_timeout_value = 5000;/*  5ms */
-		BA_timeout_value = cpu_to_le16(BA_timeout_value);
-		put_unaligned_le16(BA_timeout_value,
-				   &mgmt->u.action.u.addba_req.timeout);
+		/*  5ms */
+		put_unaligned_le16(5000, &mgmt->u.action.u.addba_req.timeout);
 
 		psta = rtw_get_stainfo23a(pstapriv, raddr);
 		if (psta) {
@@ -4745,7 +4742,7 @@ void report_survey_event23a(struct rtw_adapter *padapter,
 	if (!pcmd_obj)
 		return;
 
-	cmdsz = (sizeof(struct survey_event) + sizeof(struct C2HEvent_Header));
+	cmdsz = sizeof(struct survey_event) + sizeof(struct C2HEvent_Header);
 	pevtcmd = kzalloc(cmdsz, GFP_ATOMIC);
 	if (!pevtcmd) {
 		kfree(pcmd_obj);
@@ -4796,7 +4793,7 @@ void report_surveydone_event23a(struct rtw_adapter *padapter)
 	if (!pcmd_obj)
 		return;
 
-	cmdsz = (sizeof(struct surveydone_event) + sizeof(struct C2HEvent_Header));
+	cmdsz = sizeof(struct surveydone_event) + sizeof(struct C2HEvent_Header);
 	pevtcmd = kzalloc(cmdsz, GFP_ATOMIC);
 	if (!pevtcmd) {
 		kfree(pcmd_obj);
@@ -4840,7 +4837,7 @@ void report_join_res23a(struct rtw_adapter *padapter, int res)
 	if (!pcmd_obj)
 		return;
 
-	cmdsz = (sizeof(struct joinbss_event) + sizeof(struct C2HEvent_Header));
+	cmdsz = sizeof(struct joinbss_event) + sizeof(struct C2HEvent_Header);
 	pevtcmd = kzalloc(cmdsz, GFP_ATOMIC);
 	if (!pevtcmd) {
 		kfree(pcmd_obj);
@@ -4890,7 +4887,7 @@ void report_del_sta_event23a(struct rtw_adapter *padapter,
 	if (!pcmd_obj)
 		return;
 
-	cmdsz = (sizeof(struct stadel_event) + sizeof(struct C2HEvent_Header));
+	cmdsz = sizeof(struct stadel_event) + sizeof(struct C2HEvent_Header);
 	pevtcmd = kzalloc(cmdsz, GFP_ATOMIC);
 	if (!pevtcmd) {
 		kfree(pcmd_obj);
@@ -4918,7 +4915,7 @@ void report_del_sta_event23a(struct rtw_adapter *padapter,
 	if (psta)
 		mac_id = (int)psta->mac_id;
 	else
-		mac_id = (-1);
+		mac_id = -1;
 
 	pdel_sta_evt->mac_id = mac_id;
 
@@ -4944,7 +4941,7 @@ void report_add_sta_event23a(struct rtw_adapter *padapter,
 	if (!pcmd_obj)
 		return;
 
-	cmdsz = (sizeof(struct stassoc_event) + sizeof(struct C2HEvent_Header));
+	cmdsz = sizeof(struct stassoc_event) + sizeof(struct C2HEvent_Header);
 	pevtcmd = kzalloc(cmdsz, GFP_ATOMIC);
 	if (!pevtcmd) {
 		kfree(pcmd_obj);
@@ -5951,7 +5948,7 @@ int set_stakey_hdl23a(struct rtw_adapter *padapter, const u8 *pbuf)
 
 			/* 0~3 for default key, cmd_id = macid + 3,
 			   macid = aid+1; */
-			cam_id = (psta->mac_id + 3);
+			cam_id = psta->mac_id + 3;
 
 			DBG_8723A("Write CAM, mac_addr =%x:%x:%x:%x:%x:%x, "
 				  "cam_entry =%d\n", pparm->addr[0],
