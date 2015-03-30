@@ -164,6 +164,15 @@ config RTC_DRV_ABB5ZES3
 	  This driver can also be built as a module. If so, the module
 	  will be called rtc-ab-b5ze-s3.
 
+config RTC_DRV_ABX80X
+	tristate "Abracon ABx80x"
+	help
+	  If you say yes here you get support for Abracon AB080x and AB180x
+	  real-time clock chips.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called rtc-abx80x.
+
 config RTC_DRV_AS3722
 	tristate "ams AS3722 RTC driver"
 	depends on MFD_AS3722
@@ -1081,6 +1090,14 @@ config RTC_DRV_AB8500
 	  Select this to enable the ST-Ericsson AB8500 power management IC RTC
 	  support. This chip contains a battery- and capacitor-backed RTC.
 
+config RTC_DRV_ABX805
+	tristate "Abracon AB X805 RTC"
+	depends on I2C
+	help
+	  Select this to enable support for the Abracon AB X805 RTC.
+	  AB X805 is the i2c flavour of the AB 18X5 family of ultra-low-power
+	  battery- and capacitor-backed RTC..
+
 config RTC_DRV_NUC900
 	tristate "NUC910/NUC920 RTC driver"
 	depends on ARCH_W90X900
@@ -1110,6 +1127,16 @@ config RTC_DRV_DAVINCI
 
 	  This driver can also be built as a module. If so, the module
 	  will be called rtc-davinci.
+
+config RTC_DRV_DIGICOLOR
+	tristate "Conexant Digicolor RTC"
+	depends on ARCH_DIGICOLOR
+	help
+	  If you say yes here you get support for the RTC on Conexant
+	  Digicolor platforms. This currently includes the CX92755 SoC.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called rtc-digicolor.
 
 config RTC_DRV_IMXDI
 	tristate "Freescale IMX DryIce Real Time Clock"
@@ -1509,6 +1536,16 @@ config RTC_DRV_MOXART
 
 	   This driver can also be built as a module. If so, the module
 	   will be called rtc-moxart
+
+config RTC_DRV_MT63XX
+	tristate "Mediatek Real Time Clock driver"
+	depends on MFD_MT6397
+	help
+	  This selects the Mediatek(R) RTC driver, you should add support
+	  for Mediatek MT6397 PMIC before select Mediatek(R) RTC driver.
+
+	  If you want to use Mediatek(R) RTC interface, select Y or M here.
+	  If unsure, Please select N.
 
 config RTC_DRV_XGENE
 	tristate "APM X-Gene RTC"

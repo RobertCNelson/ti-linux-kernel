@@ -36,7 +36,7 @@
 #include <linux/debugfs.h>
 #include <linux/slab.h>
 #include <linux/bitmap.h>
-
+#include <linux/ktime.h>
 #include "heartbeat.h"
 #include "tcp.h"
 #include "nodemanager.h"
@@ -1061,37 +1061,6 @@ bail:
 	return ret;
 }
 
-/* Subtract b from a, storing the result in a. a *must* have a larger
- * value than b. */
-static void o2hb_tv_subtract(struct timeval *a,
-			     struct timeval *b)
-{
-	/* just return 0 when a is after b */
-	if (a->tv_sec < b->tv_sec ||
-	    (a->tv_sec == b->tv_sec && a->tv_usec < b->tv_usec)) {
-		a->tv_sec = 0;
-		a->tv_usec = 0;
-		return;
-	}
-
-	a->tv_sec -= b->tv_sec;
-	a->tv_usec -= b->tv_usec;
-	while ( a->tv_usec < 0 ) {
-		a->tv_sec--;
-		a->tv_usec += 1000000;
-	}
-}
-
-static unsigned int o2hb_elapsed_msecs(struct timeval *start,
-				       struct timeval *end)
-{
-	struct timeval res = *end;
-
-	o2hb_tv_subtract(&res, start);
-
-	return res.tv_sec * 1000 + res.tv_usec / 1000;
-}
-
 /*
  * we ride the region ref that the region dir holds.  before the region
  * dir is removed and drops it ref it will wait to tear down this
@@ -1102,7 +1071,7 @@ static int o2hb_thread(void *data)
 	int i, ret;
 	struct o2hb_region *reg = data;
 	struct o2hb_bio_wait_ctxt write_wc;
-	struct timeval before_hb, after_hb;
+	ktime_t before_hb, after_hb;
 	unsigned int elapsed_msec;
 
 	mlog(ML_HEARTBEAT|ML_KTHREAD, "hb thread running\n");
@@ -1119,18 +1088,18 @@ static int o2hb_thread(void *data)
 		 * hr_timeout_ms between disk writes. On busy systems
 		 * this should result in a heartbeat which is less
 		 * likely to time itself out. */
-		do_gettimeofday(&before_hb);
+		before_hb = ktime_get_real();
 
 		ret = o2hb_do_disk_heartbeat(reg);
 
-		do_gettimeofday(&after_hb);
-		elapsed_msec = o2hb_elapsed_msecs(&before_hb, &after_hb);
+		after_hb = ktime_get_real();
+
+		elapsed_msec = (unsigned int)
+				ktime_ms_delta(after_hb, before_hb);
 
 		mlog(ML_HEARTBEAT,
-		     "start = %lu.%lu, end = %lu.%lu, msec = %u, ret = %d\n",
-		     before_hb.tv_sec, (unsigned long) before_hb.tv_usec,
-		     after_hb.tv_sec, (unsigned long) after_hb.tv_usec,
-		     elapsed_msec, ret);
+		     "start = %lld, end = %lld, msec = %u, ret = %d\n",
+		     before_hb.tv64, after_hb.tv64, elapsed_msec, ret);
 
 		if (!kthread_should_stop() &&
 		    elapsed_msec < reg->hr_timeout_ms) {
@@ -1312,7 +1281,9 @@ static int o2hb_debug_init(void)
 	int ret = -ENOMEM;
 
 	o2hb_debug_dir = debugfs_create_dir(O2HB_DEBUG_DIR, NULL);
-	if (!o2hb_debug_dir) {
+	if (IS_ERR_OR_NULL(o2hb_debug_dir)) {
+		ret = o2hb_debug_dir ?
+			PTR_ERR(o2hb_debug_dir) : -ENOMEM;
 		mlog_errno(ret);
 		goto bail;
 	}
@@ -1325,7 +1296,9 @@ static int o2hb_debug_init(void)
 						 sizeof(o2hb_live_node_bitmap),
 						 O2NM_MAX_NODES,
 						 o2hb_live_node_bitmap);
-	if (!o2hb_debug_livenodes) {
+	if (IS_ERR_OR_NULL(o2hb_debug_livenodes)) {
+		ret = o2hb_debug_livenodes ?
+			PTR_ERR(o2hb_debug_livenodes) : -ENOMEM;
 		mlog_errno(ret);
 		goto bail;
 	}
@@ -1338,7 +1311,9 @@ static int o2hb_debug_init(void)
 						   sizeof(o2hb_live_region_bitmap),
 						   O2NM_MAX_REGIONS,
 						   o2hb_live_region_bitmap);
-	if (!o2hb_debug_liveregions) {
+	if (IS_ERR_OR_NULL(o2hb_debug_liveregions)) {
+		ret = o2hb_debug_liveregions ?
+			PTR_ERR(o2hb_debug_liveregions) : -ENOMEM;
 		mlog_errno(ret);
 		goto bail;
 	}
@@ -1352,7 +1327,9 @@ static int o2hb_debug_init(void)
 					  sizeof(o2hb_quorum_region_bitmap),
 					  O2NM_MAX_REGIONS,
 					  o2hb_quorum_region_bitmap);
-	if (!o2hb_debug_quorumregions) {
+	if (IS_ERR_OR_NULL(o2hb_debug_quorumregions)) {
+		ret = o2hb_debug_quorumregions ?
+			PTR_ERR(o2hb_debug_quorumregions) : -ENOMEM;
 		mlog_errno(ret);
 		goto bail;
 	}
@@ -1366,7 +1343,9 @@ static int o2hb_debug_init(void)
 					  sizeof(o2hb_failed_region_bitmap),
 					  O2NM_MAX_REGIONS,
 					  o2hb_failed_region_bitmap);
-	if (!o2hb_debug_failedregions) {
+	if (IS_ERR_OR_NULL(o2hb_debug_failedregions)) {
+		ret = o2hb_debug_failedregions ?
+			PTR_ERR(o2hb_debug_failedregions) : -ENOMEM;
 		mlog_errno(ret);
 		goto bail;
 	}
@@ -2000,7 +1979,8 @@ static int o2hb_debug_region_init(struct o2hb_region *reg, struct dentry *dir)
 
 	reg->hr_debug_dir =
 		debugfs_create_dir(config_item_name(&reg->hr_item), dir);
-	if (!reg->hr_debug_dir) {
+	if (IS_ERR_OR_NULL(reg->hr_debug_dir)) {
+		ret = reg->hr_debug_dir ? PTR_ERR(reg->hr_debug_dir) : -ENOMEM;
 		mlog_errno(ret);
 		goto bail;
 	}
@@ -2013,7 +1993,9 @@ static int o2hb_debug_region_init(struct o2hb_region *reg, struct dentry *dir)
 					  O2HB_DB_TYPE_REGION_LIVENODES,
 					  sizeof(reg->hr_live_node_bitmap),
 					  O2NM_MAX_NODES, reg);
-	if (!reg->hr_debug_livenodes) {
+	if (IS_ERR_OR_NULL(reg->hr_debug_livenodes)) {
+		ret = reg->hr_debug_livenodes ?
+			PTR_ERR(reg->hr_debug_livenodes) : -ENOMEM;
 		mlog_errno(ret);
 		goto bail;
 	}
@@ -2025,7 +2007,9 @@ static int o2hb_debug_region_init(struct o2hb_region *reg, struct dentry *dir)
 					  sizeof(*(reg->hr_db_regnum)),
 					  O2HB_DB_TYPE_REGION_NUMBER,
 					  0, O2NM_MAX_NODES, reg);
-	if (!reg->hr_debug_regnum) {
+	if (IS_ERR_OR_NULL(reg->hr_debug_regnum)) {
+		ret = reg->hr_debug_regnum ?
+			PTR_ERR(reg->hr_debug_regnum) : -ENOMEM;
 		mlog_errno(ret);
 		goto bail;
 	}
@@ -2037,7 +2021,9 @@ static int o2hb_debug_region_init(struct o2hb_region *reg, struct dentry *dir)
 					  sizeof(*(reg->hr_db_elapsed_time)),
 					  O2HB_DB_TYPE_REGION_ELAPSED_TIME,
 					  0, 0, reg);
-	if (!reg->hr_debug_elapsed_time) {
+	if (IS_ERR_OR_NULL(reg->hr_debug_elapsed_time)) {
+		ret = reg->hr_debug_elapsed_time ?
+			PTR_ERR(reg->hr_debug_elapsed_time) : -ENOMEM;
 		mlog_errno(ret);
 		goto bail;
 	}
@@ -2049,13 +2035,16 @@ static int o2hb_debug_region_init(struct o2hb_region *reg, struct dentry *dir)
 					  sizeof(*(reg->hr_db_pinned)),
 					  O2HB_DB_TYPE_REGION_PINNED,
 					  0, 0, reg);
-	if (!reg->hr_debug_pinned) {
+	if (IS_ERR_OR_NULL(reg->hr_debug_pinned)) {
+		ret = reg->hr_debug_pinned ?
+			PTR_ERR(reg->hr_debug_pinned) : -ENOMEM;
 		mlog_errno(ret);
 		goto bail;
 	}
 
-	ret = 0;
+	return 0;
 bail:
+	debugfs_remove_recursive(reg->hr_debug_dir);
 	return ret;
 }
 
