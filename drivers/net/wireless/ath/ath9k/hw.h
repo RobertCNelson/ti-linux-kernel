@@ -309,6 +309,12 @@ enum ath9k_hw_hang_checks {
 	HW_MAC_HANG               = BIT(5),
 };
 
+#define AR_PCIE_PLL_PWRSAVE_CONTROL BIT(0)
+#define AR_PCIE_PLL_PWRSAVE_ON_D3   BIT(1)
+#define AR_PCIE_PLL_PWRSAVE_ON_D0   BIT(2)
+#define AR_PCIE_CDR_PWRSAVE_ON_D3   BIT(3)
+#define AR_PCIE_CDR_PWRSAVE_ON_D0   BIT(4)
+
 struct ath9k_ops_config {
 	int dma_beacon_response_time;
 	int sw_beacon_response_time;
@@ -335,7 +341,7 @@ struct ath9k_ops_config {
 	u32 ant_ctrl_comm2g_switch_enable;
 	bool xatten_margin_cfg;
 	bool alt_mingainidx;
-	bool no_pll_pwrsave;
+	u8 pll_pwrsave;
 	bool tx_gain_buffalo;
 	bool led_active_high;
 };
@@ -647,6 +653,10 @@ struct ath_hw_private_ops {
 
 	/* ANI */
 	void (*ani_cache_ini_regs)(struct ath_hw *ah);
+
+#ifdef CONFIG_ATH9K_BTCOEX_SUPPORT
+	bool (*is_aic_enabled)(struct ath_hw *ah);
+#endif /* CONFIG_ATH9K_BTCOEX_SUPPORT */
 };
 
 /**
@@ -1117,6 +1127,7 @@ void ath9k_hw_set_cts_timeout(struct ath_hw *ah, u32 us);
 void ath9k_hw_setslottime(struct ath_hw *ah, u32 us);
 
 #ifdef CONFIG_ATH9K_BTCOEX_SUPPORT
+void ar9003_hw_attach_aic_ops(struct ath_hw *ah);
 static inline bool ath9k_hw_btcoex_is_enabled(struct ath_hw *ah)
 {
 	return ah->btcoex_hw.enabled;
@@ -1134,6 +1145,9 @@ ath9k_hw_get_btcoex_scheme(struct ath_hw *ah)
 	return ah->btcoex_hw.scheme;
 }
 #else
+static inline void ar9003_hw_attach_aic_ops(struct ath_hw *ah)
+{
+}
 static inline bool ath9k_hw_btcoex_is_enabled(struct ath_hw *ah)
 {
 	return false;
