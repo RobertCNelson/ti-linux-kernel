@@ -68,6 +68,9 @@ static int i915_getparam(struct drm_device *dev, void *data,
 	case I915_PARAM_CHIPSET_ID:
 		value = dev->pdev->device;
 		break;
+	case I915_PARAM_REVISION:
+		value = dev->pdev->revision;
+		break;
 	case I915_PARAM_HAS_GEM:
 		value = 1;
 		break;
@@ -149,6 +152,16 @@ static int i915_getparam(struct drm_device *dev, void *data,
 		break;
 	case I915_PARAM_MMAP_VERSION:
 		value = 1;
+		break;
+	case I915_PARAM_SUBSLICE_TOTAL:
+		value = INTEL_INFO(dev)->subslice_total;
+		if (!value)
+			return -ENODEV;
+		break;
+	case I915_PARAM_EU_TOTAL:
+		value = INTEL_INFO(dev)->eu_total;
+		if (!value)
+			return -ENODEV;
 		break;
 	default:
 		DRM_DEBUG("Unknown parameter %d\n", param->param);
@@ -608,14 +621,42 @@ static void intel_device_info_runtime_init(struct drm_device *dev)
 
 	/* Initialize slice/subslice/EU info */
 	if (IS_CHERRYVIEW(dev)) {
-		u32 fuse, mask_eu;
+		u32 fuse, eu_dis;
 
 		fuse = I915_READ(CHV_FUSE_GT);
-		mask_eu = fuse & (CHV_FGT_EU_DIS_SS0_R0_MASK |
-				  CHV_FGT_EU_DIS_SS0_R1_MASK |
-				  CHV_FGT_EU_DIS_SS1_R0_MASK |
-				  CHV_FGT_EU_DIS_SS1_R1_MASK);
-		info->eu_total = 16 - hweight32(mask_eu);
+
+		info->slice_total = 1;
+
+		if (!(fuse & CHV_FGT_DISABLE_SS0)) {
+			info->subslice_per_slice++;
+			eu_dis = fuse & (CHV_FGT_EU_DIS_SS0_R0_MASK |
+					 CHV_FGT_EU_DIS_SS0_R1_MASK);
+			info->eu_total += 8 - hweight32(eu_dis);
+		}
+
+		if (!(fuse & CHV_FGT_DISABLE_SS1)) {
+			info->subslice_per_slice++;
+			eu_dis = fuse & (CHV_FGT_EU_DIS_SS1_R0_MASK |
+					CHV_FGT_EU_DIS_SS1_R1_MASK);
+			info->eu_total += 8 - hweight32(eu_dis);
+		}
+
+		info->subslice_total = info->subslice_per_slice;
+		/*
+		 * CHV expected to always have a uniform distribution of EU
+		 * across subslices.
+		*/
+		info->eu_per_subslice = info->subslice_total ?
+					info->eu_total / info->subslice_total :
+					0;
+		/*
+		 * CHV supports subslice power gating on devices with more than
+		 * one subslice, and supports EU power gating on devices with
+		 * more than one EU pair per subslice.
+		*/
+		info->has_slice_pg = 0;
+		info->has_subslice_pg = (info->subslice_total > 1);
+		info->has_eu_pg = (info->eu_per_subslice > 2);
 	} else if (IS_SKYLAKE(dev)) {
 		const int s_max = 3, ss_max = 4, eu_max = 8;
 		int s, ss;
@@ -1158,7 +1199,7 @@ const struct drm_ioctl_desc i915_ioctls[] = {
 	DRM_IOCTL_DEF_DRV(I915_OVERLAY_PUT_IMAGE, intel_overlay_put_image, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
 	DRM_IOCTL_DEF_DRV(I915_OVERLAY_ATTRS, intel_overlay_attrs, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
 	DRM_IOCTL_DEF_DRV(I915_SET_SPRITE_COLORKEY, intel_sprite_set_colorkey, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
-	DRM_IOCTL_DEF_DRV(I915_GET_SPRITE_COLORKEY, intel_sprite_get_colorkey, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(I915_GET_SPRITE_COLORKEY, drm_noop, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
 	DRM_IOCTL_DEF_DRV(I915_GEM_WAIT, i915_gem_wait_ioctl, DRM_AUTH|DRM_UNLOCKED|DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(I915_GEM_CONTEXT_CREATE, i915_gem_context_create_ioctl, DRM_UNLOCKED|DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(I915_GEM_CONTEXT_DESTROY, i915_gem_context_destroy_ioctl, DRM_UNLOCKED|DRM_RENDER_ALLOW),
