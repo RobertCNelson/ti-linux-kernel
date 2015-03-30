@@ -22,59 +22,6 @@
 #include <net/dsa.h>
 #include "mv88e6xxx.h"
 
-static int mv88e6352_wait(struct dsa_switch *ds, int reg, int offset, u16 mask)
-{
-	unsigned long timeout = jiffies + HZ / 10;
-
-	while (time_before(jiffies, timeout)) {
-		int ret;
-
-		ret = REG_READ(reg, offset);
-		if (!(ret & mask))
-			return 0;
-
-		usleep_range(1000, 2000);
-	}
-	return -ETIMEDOUT;
-}
-
-static inline int mv88e6352_phy_wait(struct dsa_switch *ds)
-{
-	return mv88e6352_wait(ds, REG_GLOBAL2, 0x18, 0x8000);
-}
-
-static inline int mv88e6352_eeprom_load_wait(struct dsa_switch *ds)
-{
-	return mv88e6352_wait(ds, REG_GLOBAL2, 0x14, 0x0800);
-}
-
-static inline int mv88e6352_eeprom_busy_wait(struct dsa_switch *ds)
-{
-	return mv88e6352_wait(ds, REG_GLOBAL2, 0x14, 0x8000);
-}
-
-static int __mv88e6352_phy_read(struct dsa_switch *ds, int addr, int regnum)
-{
-	int ret;
-
-	REG_WRITE(REG_GLOBAL2, 0x18, 0x9800 | (addr << 5) | regnum);
-
-	ret = mv88e6352_phy_wait(ds);
-	if (ret < 0)
-		return ret;
-
-	return REG_READ(REG_GLOBAL2, 0x19);
-}
-
-static int __mv88e6352_phy_write(struct dsa_switch *ds, int addr, int regnum,
-				 u16 val)
-{
-	REG_WRITE(REG_GLOBAL2, 0x19, val);
-	REG_WRITE(REG_GLOBAL2, 0x18, 0x9400 | (addr << 5) | regnum);
-
-	return mv88e6352_phy_wait(ds);
-}
-
 static char *mv88e6352_probe(struct device *host_dev, int sw_addr)
 {
 	struct mii_bus *bus = dsa_host_dev_to_mii_bus(host_dev);
@@ -268,28 +215,6 @@ static int mv88e6352_setup_port(struct dsa_switch *ds, int p)
 		val |= 0x000c;
 	REG_WRITE(addr, 0x04, val);
 
-	/* Port Control 1: disable trunking.  Also, if this is the
-	 * CPU port, enable learn messages to be sent to this port.
-	 */
-	REG_WRITE(addr, 0x05, dsa_is_cpu_port(ds, p) ? 0x8000 : 0x0000);
-
-	/* Port based VLAN map: give each port its own address
-	 * database, allow the CPU port to talk to each of the 'real'
-	 * ports, and allow each of the 'real' ports to only talk to
-	 * the upstream port.
-	 */
-	val = (p & 0xf) << 12;
-	if (dsa_is_cpu_port(ds, p))
-		val |= ds->phys_port_mask;
-	else
-		val |= 1 << dsa_upstream_port(ds);
-	REG_WRITE(addr, 0x06, val);
-
-	/* Default VLAN ID and priority: don't set a default VLAN
-	 * ID, and set the default packet priority to zero.
-	 */
-	REG_WRITE(addr, 0x07, 0x0000);
-
 	/* Port Control 2: don't force a good FCS, set the maximum
 	 * frame size to 10240 bytes, don't let the switch add or
 	 * strip 802.1q tags, don't discard tagged or untagged frames
@@ -334,7 +259,7 @@ static int mv88e6352_setup_port(struct dsa_switch *ds, int p)
 	 */
 	REG_WRITE(addr, 0x19, 0x7654);
 
-	return 0;
+	return mv88e6xxx_setup_port_common(ds, p);
 }
 
 #ifdef CONFIG_NET_DSA_HWMON
@@ -346,12 +271,12 @@ static int mv88e6352_phy_page_read(struct dsa_switch *ds,
 	int ret;
 
 	mutex_lock(&ps->phy_mutex);
-	ret = __mv88e6352_phy_write(ds, port, 0x16, page);
+	ret = mv88e6xxx_phy_write_indirect(ds, port, 0x16, page);
 	if (ret < 0)
 		goto error;
-	ret = __mv88e6352_phy_read(ds, port, reg);
+	ret = mv88e6xxx_phy_read_indirect(ds, port, reg);
 error:
-	__mv88e6352_phy_write(ds, port, 0x16, 0x0);
+	mv88e6xxx_phy_write_indirect(ds, port, 0x16, 0x0);
 	mutex_unlock(&ps->phy_mutex);
 	return ret;
 }
@@ -363,13 +288,13 @@ static int mv88e6352_phy_page_write(struct dsa_switch *ds,
 	int ret;
 
 	mutex_lock(&ps->phy_mutex);
-	ret = __mv88e6352_phy_write(ds, port, 0x16, page);
+	ret = mv88e6xxx_phy_write_indirect(ds, port, 0x16, page);
 	if (ret < 0)
 		goto error;
 
-	ret = __mv88e6352_phy_write(ds, port, reg, val);
+	ret = mv88e6xxx_phy_write_indirect(ds, port, reg, val);
 error:
-	__mv88e6352_phy_write(ds, port, 0x16, 0x0);
+	mv88e6xxx_phy_write_indirect(ds, port, 0x16, 0x0);
 	mutex_unlock(&ps->phy_mutex);
 	return ret;
 }
@@ -438,12 +363,11 @@ static int mv88e6352_setup(struct dsa_switch *ds)
 	int ret;
 	int i;
 
-	mutex_init(&ps->smi_mutex);
-	mutex_init(&ps->stats_mutex);
-	mutex_init(&ps->phy_mutex);
-	mutex_init(&ps->eeprom_mutex);
+	ret = mv88e6xxx_setup_common(ds);
+	if (ret < 0)
+		return ret;
 
-	ps->id = REG_READ(REG_PORT(0), 0x03) & 0xfff0;
+	mutex_init(&ps->eeprom_mutex);
 
 	ret = mv88e6352_switch_reset(ds);
 	if (ret < 0)
@@ -482,7 +406,7 @@ mv88e6352_phy_read(struct dsa_switch *ds, int port, int regnum)
 		return addr;
 
 	mutex_lock(&ps->phy_mutex);
-	ret = __mv88e6352_phy_read(ds, addr, regnum);
+	ret = mv88e6xxx_phy_read_indirect(ds, addr, regnum);
 	mutex_unlock(&ps->phy_mutex);
 
 	return ret;
@@ -499,7 +423,7 @@ mv88e6352_phy_write(struct dsa_switch *ds, int port, int regnum, u16 val)
 		return addr;
 
 	mutex_lock(&ps->phy_mutex);
-	ret = __mv88e6352_phy_write(ds, addr, regnum, val);
+	ret = mv88e6xxx_phy_write_indirect(ds, addr, regnum, val);
 	mutex_unlock(&ps->phy_mutex);
 
 	return ret;
@@ -553,7 +477,7 @@ static int mv88e6352_read_eeprom_word(struct dsa_switch *ds, int addr)
 	if (ret < 0)
 		goto error;
 
-	ret = mv88e6352_eeprom_busy_wait(ds);
+	ret = mv88e6xxx_eeprom_busy_wait(ds);
 	if (ret < 0)
 		goto error;
 
@@ -576,7 +500,7 @@ static int mv88e6352_get_eeprom(struct dsa_switch *ds,
 
 	eeprom->magic = 0xc3ec4951;
 
-	ret = mv88e6352_eeprom_load_wait(ds);
+	ret = mv88e6xxx_eeprom_load_wait(ds);
 	if (ret < 0)
 		return ret;
 
@@ -657,7 +581,7 @@ static int mv88e6352_write_eeprom_word(struct dsa_switch *ds, int addr,
 	if (ret < 0)
 		goto error;
 
-	ret = mv88e6352_eeprom_busy_wait(ds);
+	ret = mv88e6xxx_eeprom_busy_wait(ds);
 error:
 	mutex_unlock(&ps->eeprom_mutex);
 	return ret;
@@ -681,7 +605,7 @@ static int mv88e6352_set_eeprom(struct dsa_switch *ds,
 	len = eeprom->len;
 	eeprom->len = 0;
 
-	ret = mv88e6352_eeprom_load_wait(ds);
+	ret = mv88e6xxx_eeprom_load_wait(ds);
 	if (ret < 0)
 		return ret;
 
@@ -770,6 +694,8 @@ struct dsa_switch_driver mv88e6352_switch_driver = {
 	.get_strings		= mv88e6352_get_strings,
 	.get_ethtool_stats	= mv88e6352_get_ethtool_stats,
 	.get_sset_count		= mv88e6352_get_sset_count,
+	.set_eee		= mv88e6xxx_set_eee,
+	.get_eee		= mv88e6xxx_get_eee,
 #ifdef CONFIG_NET_DSA_HWMON
 	.get_temp		= mv88e6352_get_temp,
 	.get_temp_limit		= mv88e6352_get_temp_limit,
@@ -780,6 +706,12 @@ struct dsa_switch_driver mv88e6352_switch_driver = {
 	.set_eeprom		= mv88e6352_set_eeprom,
 	.get_regs_len		= mv88e6xxx_get_regs_len,
 	.get_regs		= mv88e6xxx_get_regs,
+	.port_join_bridge	= mv88e6xxx_join_bridge,
+	.port_leave_bridge	= mv88e6xxx_leave_bridge,
+	.port_stp_update	= mv88e6xxx_port_stp_update,
+	.fdb_add		= mv88e6xxx_port_fdb_add,
+	.fdb_del		= mv88e6xxx_port_fdb_del,
+	.fdb_getnext		= mv88e6xxx_port_fdb_getnext,
 };
 
 MODULE_ALIAS("platform:mv88e6352");
