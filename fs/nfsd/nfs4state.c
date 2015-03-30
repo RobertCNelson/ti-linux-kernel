@@ -3221,7 +3221,7 @@ alloc_init_open_stateowner(unsigned int strhashval, struct nfsd4_open *open,
 	} else
 		nfs4_free_openowner(&oo->oo_owner);
 	spin_unlock(&clp->cl_lock);
-	return oo;
+	return ret;
 }
 
 static void init_open_stateid(struct nfs4_ol_stateid *stp, struct nfs4_file *fp, struct nfsd4_open *open) {
@@ -4049,7 +4049,6 @@ nfsd4_process_open2(struct svc_rqst *rqstp, struct svc_fh *current_fh, struct nf
 		status = nfserr_bad_stateid;
 		if (nfsd4_is_deleg_cur(open))
 			goto out;
-		status = nfserr_jukebox;
 	}
 
 	/*
@@ -4118,7 +4117,7 @@ out:
 }
 
 void nfsd4_cleanup_open_state(struct nfsd4_compound_state *cstate,
-			      struct nfsd4_open *open, __be32 status)
+			      struct nfsd4_open *open)
 {
 	if (open->op_openowner) {
 		struct nfs4_stateowner *so = &open->op_openowner->oo_owner;
@@ -5062,7 +5061,7 @@ alloc_init_lock_stateowner(unsigned int strhashval, struct nfs4_client *clp,
 	} else
 		nfs4_free_lockowner(&lo->lo_owner);
 	spin_unlock(&clp->cl_lock);
-	return lo;
+	return ret;
 }
 
 static void

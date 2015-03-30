@@ -470,7 +470,7 @@ out:
 		fh_put(resfh);
 		kfree(resfh);
 	}
-	nfsd4_cleanup_open_state(cstate, open, status);
+	nfsd4_cleanup_open_state(cstate, open);
 	nfsd4_bump_seqid(cstate, status);
 	return status;
 }
@@ -1237,8 +1237,8 @@ nfsd4_getdeviceinfo(struct svc_rqst *rqstp,
 		nfserr = ops->proc_getdeviceinfo(exp->ex_path.mnt->mnt_sb, gdp);
 
 	gdp->gd_notify_types &= ops->notify_types;
-	exp_put(exp);
 out:
+	exp_put(exp);
 	return nfserr;
 }
 
@@ -2282,13 +2282,13 @@ static struct nfsd4_operation nfsd4_ops[] = {
 		.op_func = (nfsd4op_func)nfsd4_allocate,
 		.op_flags = OP_MODIFIES_SOMETHING | OP_CACHEME,
 		.op_name = "OP_ALLOCATE",
-		.op_rsize_bop = (nfsd4op_rsize)nfsd4_write_rsize,
+		.op_rsize_bop = (nfsd4op_rsize)nfsd4_only_status_rsize,
 	},
 	[OP_DEALLOCATE] = {
 		.op_func = (nfsd4op_func)nfsd4_deallocate,
 		.op_flags = OP_MODIFIES_SOMETHING | OP_CACHEME,
 		.op_name = "OP_DEALLOCATE",
-		.op_rsize_bop = (nfsd4op_rsize)nfsd4_write_rsize,
+		.op_rsize_bop = (nfsd4op_rsize)nfsd4_only_status_rsize,
 	},
 	[OP_SEEK] = {
 		.op_func = (nfsd4op_func)nfsd4_seek,
