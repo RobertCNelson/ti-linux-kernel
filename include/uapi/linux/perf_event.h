@@ -152,21 +152,42 @@ enum perf_event_sample_format {
  * The branch types can be combined, however BRANCH_ANY covers all types
  * of branches and therefore it supersedes all the other types.
  */
+enum perf_branch_sample_type_shift {
+	PERF_SAMPLE_BRANCH_USER_SHIFT		= 0, /* user branches */
+	PERF_SAMPLE_BRANCH_KERNEL_SHIFT		= 1, /* kernel branches */
+	PERF_SAMPLE_BRANCH_HV_SHIFT		= 2, /* hypervisor branches */
+
+	PERF_SAMPLE_BRANCH_ANY_SHIFT		= 3, /* any branch types */
+	PERF_SAMPLE_BRANCH_ANY_CALL_SHIFT	= 4, /* any call branch */
+	PERF_SAMPLE_BRANCH_ANY_RETURN_SHIFT	= 5, /* any return branch */
+	PERF_SAMPLE_BRANCH_IND_CALL_SHIFT	= 6, /* indirect calls */
+	PERF_SAMPLE_BRANCH_ABORT_TX_SHIFT	= 7, /* transaction aborts */
+	PERF_SAMPLE_BRANCH_IN_TX_SHIFT		= 8, /* in transaction */
+	PERF_SAMPLE_BRANCH_NO_TX_SHIFT		= 9, /* not in transaction */
+	PERF_SAMPLE_BRANCH_COND_SHIFT		= 10, /* conditional branches */
+
+	PERF_SAMPLE_BRANCH_CALL_STACK_SHIFT	= 11, /* call/ret stack */
+
+	PERF_SAMPLE_BRANCH_MAX_SHIFT		/* non-ABI */
+};
+
 enum perf_branch_sample_type {
-	PERF_SAMPLE_BRANCH_USER		= 1U << 0, /* user branches */
-	PERF_SAMPLE_BRANCH_KERNEL	= 1U << 1, /* kernel branches */
-	PERF_SAMPLE_BRANCH_HV		= 1U << 2, /* hypervisor branches */
+	PERF_SAMPLE_BRANCH_USER		= 1U << PERF_SAMPLE_BRANCH_USER_SHIFT,
+	PERF_SAMPLE_BRANCH_KERNEL	= 1U << PERF_SAMPLE_BRANCH_KERNEL_SHIFT,
+	PERF_SAMPLE_BRANCH_HV		= 1U << PERF_SAMPLE_BRANCH_HV_SHIFT,
 
-	PERF_SAMPLE_BRANCH_ANY		= 1U << 3, /* any branch types */
-	PERF_SAMPLE_BRANCH_ANY_CALL	= 1U << 4, /* any call branch */
-	PERF_SAMPLE_BRANCH_ANY_RETURN	= 1U << 5, /* any return branch */
-	PERF_SAMPLE_BRANCH_IND_CALL	= 1U << 6, /* indirect calls */
-	PERF_SAMPLE_BRANCH_ABORT_TX	= 1U << 7, /* transaction aborts */
-	PERF_SAMPLE_BRANCH_IN_TX	= 1U << 8, /* in transaction */
-	PERF_SAMPLE_BRANCH_NO_TX	= 1U << 9, /* not in transaction */
-	PERF_SAMPLE_BRANCH_COND		= 1U << 10, /* conditional branches */
+	PERF_SAMPLE_BRANCH_ANY		= 1U << PERF_SAMPLE_BRANCH_ANY_SHIFT,
+	PERF_SAMPLE_BRANCH_ANY_CALL	= 1U << PERF_SAMPLE_BRANCH_ANY_CALL_SHIFT,
+	PERF_SAMPLE_BRANCH_ANY_RETURN	= 1U << PERF_SAMPLE_BRANCH_ANY_RETURN_SHIFT,
+	PERF_SAMPLE_BRANCH_IND_CALL	= 1U << PERF_SAMPLE_BRANCH_IND_CALL_SHIFT,
+	PERF_SAMPLE_BRANCH_ABORT_TX	= 1U << PERF_SAMPLE_BRANCH_ABORT_TX_SHIFT,
+	PERF_SAMPLE_BRANCH_IN_TX	= 1U << PERF_SAMPLE_BRANCH_IN_TX_SHIFT,
+	PERF_SAMPLE_BRANCH_NO_TX	= 1U << PERF_SAMPLE_BRANCH_NO_TX_SHIFT,
+	PERF_SAMPLE_BRANCH_COND		= 1U << PERF_SAMPLE_BRANCH_COND_SHIFT,
 
-	PERF_SAMPLE_BRANCH_MAX		= 1U << 11, /* non-ABI */
+	PERF_SAMPLE_BRANCH_CALL_STACK	= 1U << PERF_SAMPLE_BRANCH_CALL_STACK_SHIFT,
+
+	PERF_SAMPLE_BRANCH_MAX		= 1U << PERF_SAMPLE_BRANCH_MAX_SHIFT,
 };
 
 #define PERF_SAMPLE_BRANCH_PLM_ALL \
@@ -305,7 +326,8 @@ struct perf_event_attr {
 				exclude_callchain_user   : 1, /* exclude user callchains */
 				mmap2          :  1, /* include mmap with inode data     */
 				comm_exec      :  1, /* flag comm events that are due to an exec */
-				__reserved_1   : 39;
+				use_clockid    :  1, /* use @clockid for time fields */
+				__reserved_1   : 38;
 
 	union {
 		__u32		wakeup_events;	  /* wakeup every n events */
@@ -334,8 +356,7 @@ struct perf_event_attr {
 	 */
 	__u32	sample_stack_user;
 
-	/* Align to u64. */
-	__u32	__reserved_2;
+	__s32	clockid;
 	/*
 	 * Defines set of regs to dump for each sample
 	 * state captured on:

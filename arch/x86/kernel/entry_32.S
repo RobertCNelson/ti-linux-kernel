@@ -398,7 +398,7 @@ sysenter_past_esp:
 	 * A tiny bit of offset fixup is necessary - 4*4 means the 4 words
 	 * pushed above; +8 corresponds to copy_thread's esp0 setting.
 	 */
-	pushl_cfi ((TI_sysenter_return)-THREAD_SIZE+8+4*4)(%esp)
+	pushl_cfi ((TI_sysenter_return)-THREAD_SIZE+TOP_OF_KERNEL_STACK_PADDING+4*4)(%esp)
 	CFI_REL_OFFSET eip, 0
 
 	pushl_cfi %eax
@@ -816,15 +816,9 @@ ENTRY(simd_coprocessor_error)
 	pushl_cfi $0
 #ifdef CONFIG_X86_INVD_BUG
 	/* AMD 486 bug: invd from userspace calls exception 19 instead of #GP */
-661:	pushl_cfi $do_general_protection
-662:
-.section .altinstructions,"a"
-	altinstruction_entry 661b, 663f, X86_FEATURE_XMM, 662b-661b, 664f-663f
-.previous
-.section .altinstr_replacement,"ax"
-663:	pushl $do_simd_coprocessor_error
-664:
-.previous
+	ALTERNATIVE "pushl_cfi $do_general_protection",	\
+		    "pushl $do_simd_coprocessor_error", \
+		    X86_FEATURE_XMM
 #else
 	pushl_cfi $do_simd_coprocessor_error
 #endif
@@ -1240,20 +1234,13 @@ error_code:
 	/*CFI_REL_OFFSET es, 0*/
 	pushl_cfi %ds
 	/*CFI_REL_OFFSET ds, 0*/
-	pushl_cfi %eax
-	CFI_REL_OFFSET eax, 0
-	pushl_cfi %ebp
-	CFI_REL_OFFSET ebp, 0
-	pushl_cfi %edi
-	CFI_REL_OFFSET edi, 0
-	pushl_cfi %esi
-	CFI_REL_OFFSET esi, 0
-	pushl_cfi %edx
-	CFI_REL_OFFSET edx, 0
-	pushl_cfi %ecx
-	CFI_REL_OFFSET ecx, 0
-	pushl_cfi %ebx
-	CFI_REL_OFFSET ebx, 0
+	pushl_cfi_reg eax
+	pushl_cfi_reg ebp
+	pushl_cfi_reg edi
+	pushl_cfi_reg esi
+	pushl_cfi_reg edx
+	pushl_cfi_reg ecx
+	pushl_cfi_reg ebx
 	cld
 	movl $(__KERNEL_PERCPU), %ecx
 	movl %ecx, %fs
