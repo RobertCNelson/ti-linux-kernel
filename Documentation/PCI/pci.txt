@@ -564,12 +564,15 @@ to be handled by platform and generic code, not individual drivers.
 8. Vendor and device identifications
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-One is not required to add new device ids to include/linux/pci_ids.h.
-Please add PCI_VENDOR_ID_xxx for vendors and a hex constant for device ids.
+One is not required to add new device or vendor ids to include/linux/pci_ids.h.
+Please define PCI_VENDOR_ID_xxx for vendor ids and use a hex constant for
+device ids in your driver.
 
-PCI_VENDOR_ID_xxx constants are re-used. The device ids are arbitrary
-hex numbers (vendor controlled) and normally used only in a single
-location, the pci_device_id table.
+Only PCI_VENDOR_ID_xxx constant definitions that are re-used between multiple
+drivers should be added to include/linux/pci_ids.h.
+
+The device ids are arbitrary hex numbers (vendor controlled) and normally used
+only in a single location, the pci_device_id table.
 
 Please DO submit new vendor/device ids to pciids.sourceforge.net project.
 
