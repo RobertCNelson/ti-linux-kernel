@@ -25,6 +25,7 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE. */
+#include <linux/types.h>
 #include <linux/virtio_ids.h>
 #include <linux/virtio_config.h>
 
@@ -38,9 +39,9 @@
 
 struct virtio_balloon_config {
 	/* Number of pages host wants Guest to give up. */
-	__le32 num_pages;
+	__u32 num_pages;
 	/* Number of pages we've actually got in balloon. */
-	__le32 actual;
+	__u32 actual;
 };
 
 #define VIRTIO_BALLOON_S_SWAP_IN  0   /* Amount of memory swapped in */
@@ -55,5 +56,11 @@ struct virtio_balloon_stat {
 	__u16 tag;
 	__u64 val;
 } __attribute__((packed));
+
+struct virtio_balloon_stat_modern {
+	__le16 tag;
+	__u8 reserved[6];
+	__le64 val;
+};
 
 #endif /* _LINUX_VIRTIO_BALLOON_H */
