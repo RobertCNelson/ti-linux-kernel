@@ -1507,6 +1507,54 @@ static void pci_init_capabilities(struct pci_dev *dev)
 	pci_enable_acs(dev);
 }
 
+static bool pci_up_path_over_pcie(struct pci_bus *bus)
+{
+	if (!bus)
+		return true;
+
+	if (bus->self && !pci_is_pcie(bus->self))
+		return false;
+
+	return pci_up_path_over_pcie(bus->parent);
+}
+
+/*
+ * Per the Implementation Note in the PCIe r3.0 spec, sec 7.5.2.1, it is
+ * safe to place a non-prefetchable BAR in a prefetchable window if the
+ * entire path from the host to the adapter is PCIe, because PCIe Memory
+ * Reads always contain an explicit length and PCIe switches never
+ * prefetch.  The note lists some additional requirements we can't verify
+ * but we assume are true.
+ */
+
+static void set_pcie_64bit_pref(struct pci_dev *dev)
+{
+	int i;
+
+	if (!pci_is_pcie(dev))
+		return;
+
+	if (!pci_up_path_over_pcie(dev->bus))
+		return;
+
+	for (i = 0; i < PCI_BRIDGE_RESOURCES; i++) {
+		struct resource *res = &dev->resource[i];
+		enum pci_bar_type type;
+		int reg;
+
+		if (!(res->flags & IORESOURCE_MEM_64))
+			continue;
+
+		if (res->flags & IORESOURCE_PREFETCH)
+			continue;
+
+		reg = pci_resource_bar(dev, i, &type);
+		res->flags |= IORESOURCE_PREFETCH;
+		dev_printk(KERN_DEBUG, &dev->dev, "reg %#x %pR (marked pref because entire path is PCIe)\n",
+			   reg, res);
+	}
+}
+
 void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 {
 	int ret;
@@ -1535,6 +1583,9 @@ void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 
 	/* Initialize various capabilities */
 	pci_init_capabilities(dev);
+
+	/* After pcie_cap is assigned and sriov bar is probed */
+	set_pcie_64bit_pref(dev);
 
 	/*
 	 * Add the device to our list of discovered devices
