@@ -3909,10 +3909,10 @@ int dequeue_hwpoisoned_huge_page(struct page *hpage)
 
 	spin_lock(&hugetlb_lock);
 	/*
-	 * Just checking !PageHugeActive is not enough, because that could be
+	 * Just checking !page_huge_active is not enough, because that could be
 	 * an isolated/hwpoisoned hugepage (which have >0 refcount).
 	 */
-	if (!PageHugeActive(hpage) && !page_count(hpage)) {
+	if (!page_huge_active(hpage) && !page_count(hpage)) {
 		/*
 		 * Hwpoisoned hugepage isn't linked to activelist or freelist,
 		 * but dangling hpage->lru can trigger list-debug warnings
