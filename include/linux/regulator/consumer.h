@@ -238,7 +238,7 @@ int regulator_get_current_limit(struct regulator *regulator);
 
 int regulator_set_mode(struct regulator *regulator, unsigned int mode);
 unsigned int regulator_get_mode(struct regulator *regulator);
-int regulator_set_optimum_mode(struct regulator *regulator, int load_uA);
+int regulator_set_load(struct regulator *regulator, int load_uA);
 
 int regulator_allow_bypass(struct regulator *regulator, bool allow);
 
@@ -479,8 +479,7 @@ static inline unsigned int regulator_get_mode(struct regulator *regulator)
 	return REGULATOR_MODE_NORMAL;
 }
 
-static inline int regulator_set_optimum_mode(struct regulator *regulator,
-					int load_uA)
+static inline int regulator_set_load(struct regulator *regulator, int load_uA)
 {
 	return REGULATOR_MODE_NORMAL;
 }
