@@ -1320,7 +1320,7 @@ static noinline_for_stack
 char *clock(char *buf, char *end, struct clk *clk, struct printf_spec spec,
 	    const char *fmt)
 {
-	if (!clk)
+	if (!IS_ENABLED(CONFIG_HAVE_CLK) || !clk)
 		return string(buf, end, NULL, spec);
 
 	switch (fmt[1]) {
