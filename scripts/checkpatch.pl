@@ -443,7 +443,7 @@ foreach my $entry (@mode_permission_funcs) {
 	$mode_perms_search .= $entry->[0];
 }
 
-$our $mode_perms_world_writable = qr{
+our $mode_perms_world_writable = qr{
 	S_IWUGO		|
 	S_IWOTH		|
 	S_IRWXUGO	|
