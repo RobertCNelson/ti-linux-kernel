@@ -915,6 +915,7 @@ extern struct address_space *page_mapping(struct page *page);
 /* Neutral page->mapping pointer to address_space or anon_vma or other */
 static inline void *page_rmapping(struct page *page)
 {
+	page = compound_head(page);
 	return (void *)((unsigned long)page->mapping & ~PAGE_MAPPING_FLAGS);
 }
 
