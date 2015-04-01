@@ -17,16 +17,77 @@
 #include <linux/writeback.h>
 #include "slab.h"
 
+#if defined(CONFIG_DEBUG_SLAB) || defined(CONFIG_SLUB_DEBUG_ON)
+static void poison_error(mempool_t *pool, void *element, size_t size,
+			 size_t byte)
+{
+	const int nr = pool->curr_nr;
+	const int start = max_t(int, byte - (BITS_PER_LONG / 8), 0);
+	const int end = min_t(int, byte + (BITS_PER_LONG / 8), size);
+	int i;
+
+	pr_err("BUG: mempool element poison mismatch\n");
+	pr_err("Mempool %p size %ld\n", pool, size);
+	pr_err(" nr=%d @ %p: %s0x", nr, element, start > 0 ? "... " : "");
+	for (i = start; i < end; i++)
+		pr_cont("%x ", *(u8 *)(element + i));
+	pr_cont("%s\n", end < size ? "..." : "");
+	dump_stack();
+}
+
+static void check_slab_element(mempool_t *pool, void *element)
+{
+	if (pool->free == mempool_free_slab || pool->free == mempool_kfree) {
+		size_t size = ksize(element);
+		u8 *obj = element;
+		size_t i;
+
+		for (i = 0; i < size; i++) {
+			u8 exp = (i < size - 1) ? POISON_FREE : POISON_END;
+
+			if (obj[i] != exp) {
+				poison_error(pool, element, size, i);
+				return;
+			}
+		}
+		memset(obj, POISON_INUSE, size);
+	}
+}
+
+static void poison_slab_element(mempool_t *pool, void *element)
+{
+	if (pool->alloc == mempool_alloc_slab ||
+	    pool->alloc == mempool_kmalloc) {
+		size_t size = ksize(element);
+		u8 *obj = element;
+
+		memset(obj, POISON_FREE, size - 1);
+		obj[size - 1] = POISON_END;
+	}
+}
+#else /* CONFIG_DEBUG_SLAB || CONFIG_SLUB_DEBUG_ON */
+static inline void check_slab_element(mempool_t *pool, void *element)
+{
+}
+static inline void poison_slab_element(mempool_t *pool, void *element)
+{
+}
+#endif /* CONFIG_DEBUG_SLAB || CONFIG_SLUB_DEBUG_ON */
+
 static void add_element(mempool_t *pool, void *element)
 {
 	BUG_ON(pool->curr_nr >= pool->min_nr);
+	poison_slab_element(pool, element);
 	pool->elements[pool->curr_nr++] = element;
 }
 
 static void *remove_element(mempool_t *pool)
 {
-	BUG_ON(pool->curr_nr <= 0);
-	return pool->elements[--pool->curr_nr];
+	void *element = pool->elements[--pool->curr_nr];
+
+	BUG_ON(pool->curr_nr < 0);
+	check_slab_element(pool, element);
+	return element;
 }
 
 /**
