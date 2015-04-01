@@ -22,6 +22,11 @@ next/multiplatform
 	shmobile/multiplatform-r8a7778
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-r8a7778-ccf-and-multiplatform-for-v4.1
 		contains drivers/simple-pm-bus
+	shmobile/multiplatform-r8a73a4
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-r8a73a4-ccf-and-multiplatform-for-v4.1
+	shmobile/multiplatform-sh73a0
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-sh73a0-multiplatform-for-v4.1
+		contains renesas/dt
 
 next/soc
 	renesas/soc
@@ -38,6 +43,8 @@ next/soc
 		MAINTAINERS: add maintainer for Alpine Arm machine
 	renesas/da9063-da9210-quirk
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-da9063-da9210-quirk-for-v4.1
+
+next/boards
 
 next/dt
 	renesas/dt
@@ -68,3 +75,8 @@ next/arm64
 next/defconfig
 	mvebu/defconfig
 		git://git.infradead.org/linux-mvebu tags/mvebu-defconfig-4.1
+	patch
+		ARM: configs: enable Marvell Armada 39x in multi_v7_defconfig
+
+fixes
+
