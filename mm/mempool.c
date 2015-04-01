@@ -6,6 +6,7 @@
  *  extreme VM load.
  *
  *  started by Ingo Molnar, Copyright (C) 2001
+ *  debugging by David Rientjes, Copyright (C) 2015
  */
 
 #include <linux/mm.h>
@@ -35,41 +36,64 @@ static void poison_error(mempool_t *pool, void *element, size_t size,
 	dump_stack();
 }
 
-static void check_slab_element(mempool_t *pool, void *element)
+static void __check_element(mempool_t *pool, void *element, size_t size)
 {
-	if (pool->free == mempool_free_slab || pool->free == mempool_kfree) {
-		size_t size = ksize(element);
-		u8 *obj = element;
-		size_t i;
+	u8 *obj = element;
+	size_t i;
 
-		for (i = 0; i < size; i++) {
-			u8 exp = (i < size - 1) ? POISON_FREE : POISON_END;
+	for (i = 0; i < size; i++) {
+		u8 exp = (i < size - 1) ? POISON_FREE : POISON_END;
 
-			if (obj[i] != exp) {
-				poison_error(pool, element, size, i);
-				return;
-			}
+		if (obj[i] != exp) {
+			poison_error(pool, element, size, i);
+			return;
 		}
-		memset(obj, POISON_INUSE, size);
+	}
+	memset(obj, POISON_INUSE, size);
+}
+
+static void check_element(mempool_t *pool, void *element)
+{
+	/* Mempools backed by slab allocator */
+	if (pool->free == mempool_free_slab || pool->free == mempool_kfree)
+		__check_element(pool, element, ksize(element));
+
+	/* Mempools backed by page allocator */
+	if (pool->free == mempool_free_pages) {
+		int order = (int)(long)pool->pool_data;
+		void *addr = page_address(element);
+
+		__check_element(pool, addr, 1UL << (PAGE_SHIFT + order));
 	}
 }
 
-static void poison_slab_element(mempool_t *pool, void *element)
+static void __poison_element(void *element, size_t size)
 {
-	if (pool->alloc == mempool_alloc_slab ||
-	    pool->alloc == mempool_kmalloc) {
-		size_t size = ksize(element);
-		u8 *obj = element;
+	u8 *obj = element;
 
-		memset(obj, POISON_FREE, size - 1);
-		obj[size - 1] = POISON_END;
+	memset(obj, POISON_FREE, size - 1);
+	obj[size - 1] = POISON_END;
+}
+
+static void poison_element(mempool_t *pool, void *element)
+{
+	/* Mempools backed by slab allocator */
+	if (pool->alloc == mempool_alloc_slab || pool->alloc == mempool_kmalloc)
+		__poison_element(element, ksize(element));
+
+	/* Mempools backed by page allocator */
+	if (pool->alloc == mempool_alloc_pages) {
+		int order = (int)(long)pool->pool_data;
+		void *addr = page_address(element);
+
+		__poison_element(addr, 1UL << (PAGE_SHIFT + order));
 	}
 }
 #else /* CONFIG_DEBUG_SLAB || CONFIG_SLUB_DEBUG_ON */
-static inline void check_slab_element(mempool_t *pool, void *element)
+static inline void check_element(mempool_t *pool, void *element)
 {
 }
-static inline void poison_slab_element(mempool_t *pool, void *element)
+static inline void poison_element(mempool_t *pool, void *element)
 {
 }
 #endif /* CONFIG_DEBUG_SLAB || CONFIG_SLUB_DEBUG_ON */
@@ -77,7 +101,7 @@ static inline void poison_slab_element(mempool_t *pool, void *element)
 static void add_element(mempool_t *pool, void *element)
 {
 	BUG_ON(pool->curr_nr >= pool->min_nr);
-	poison_slab_element(pool, element);
+	poison_element(pool, element);
 	pool->elements[pool->curr_nr++] = element;
 }
 
@@ -86,7 +110,7 @@ static void *remove_element(mempool_t *pool)
 	void *element = pool->elements[--pool->curr_nr];
 
 	BUG_ON(pool->curr_nr < 0);
-	check_slab_element(pool, element);
+	check_element(pool, element);
 	return element;
 }
 
