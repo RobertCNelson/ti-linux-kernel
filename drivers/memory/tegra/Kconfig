@@ -7,7 +7,7 @@ config TEGRA_MC
 	  NVIDIA Tegra SoCs.
 
 config TEGRA124_EMC
-	bool "Tegra124 External Memory Controller driver"
+	bool "NVIDIA Tegra124 External Memory Controller driver"
 	default y
 	depends on TEGRA_MC && ARCH_TEGRA_124_SOC
 	help
@@ -15,4 +15,3 @@ config TEGRA124_EMC
 	  Tegra124 chips. The EMC controls the external DRAM on the board.
 	  This driver is required to change memory timings / clock rate for
 	  external memory.
-
