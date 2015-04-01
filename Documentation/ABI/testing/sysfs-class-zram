@@ -11,11 +11,9 @@ Date:		March 2015
 KernelVersion:	4.1
 Contact:	Sergey Senozhatsky <sergey.senozhatsky@gmail.com>
 Description:
-		RW attribuite. Write operation adds a specific /dev/zramX
-		device, where X is a device_id provided by user.
-		Read operation will automatically pick up avilable device_id
-		X, add /dev/zramX device and return that device_id X back to
-		user.
+		RO attribute. Read operation will cause zram to add a new
+		device and return its device id back to user (so one can
+		use /dev/zram<id>), or error code.
 
 		What:		/sys/class/zram-control/zram_add
 Date:		March 2015
