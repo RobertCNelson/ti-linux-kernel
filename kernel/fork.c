@@ -709,7 +709,7 @@ EXPORT_SYMBOL_GPL(mmput);
 /**
  * set_mm_exe_file - change a reference to the mm's executable file
  *
- * This changes mm's executale file (shown as symlink /proc/[pid]/exe).
+ * This changes mm's executable file (shown as symlink /proc/[pid]/exe).
  *
  * Main users are mmput(), sys_execve() and sys_prctl(PR_SET_MM_MAP/EXE_FILE).
  * Callers prevent concurrent invocations: in mmput() nobody alive left,
