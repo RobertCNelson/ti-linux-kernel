@@ -686,7 +686,7 @@ static int s5m_rtc_probe(struct platform_device *pdev)
 	default:
 		dev_err(&pdev->dev,
 				"Device type %lu is not supported by RTC driver\n",
-				pdev->id_entry->driver_data);
+				platform_get_device_id(pdev)->driver_data);
 		return -ENODEV;
 	}
 
@@ -706,7 +706,7 @@ static int s5m_rtc_probe(struct platform_device *pdev)
 
 	info->dev = &pdev->dev;
 	info->s5m87xx = s5m87xx;
-	info->device_type = pdev->id_entry->driver_data;
+	info->device_type = platform_get_device_id(pdev)->driver_data;
 
 	if (s5m87xx->irq_data) {
 		info->irq = regmap_irq_get_virq(s5m87xx->irq_data, alarm_irq);
