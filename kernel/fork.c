@@ -280,13 +280,7 @@ static void set_max_threads(void)
 		threads = div64_u64((u64) totalram_pages * (u64) PAGE_SIZE,
 				    (u64) THREAD_SIZE * 8UL);
 
-	if (threads > MAX_THREADS)
-		threads = MAX_THREADS;
-
-	if (threads < MIN_THREADS)
-		threads = MIN_THREADS;
-
-	max_threads = (int) threads;
+	max_threads = clamp(threads, MIN_THREADS, MAX_THREADS);
 }
 
 void __init fork_init(void)
