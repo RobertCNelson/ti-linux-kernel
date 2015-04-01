@@ -525,6 +525,10 @@ affs_remount(struct super_block *sb, int *flags, char *data)
 	char			 volume[32];
 	char			*prefix = NULL;
 
+
+	if (!new_opts)
+		return -ENOMEM;
+
 	pr_debug("%s(flags=0x%x,opts=\"%s\")\n", __func__, *flags, data);
 
 	sync_filesystem(sb);
