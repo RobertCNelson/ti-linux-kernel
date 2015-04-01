@@ -901,10 +901,20 @@ out:
 }
 
 /*
+ * gcc-4.7.3 on arm gets an ICE when inlining unmap_and_move().  Work around
+ * it.
+ */
+#if GCC_VERSION == 40703 && defined(CONFIG_ARM)
+#define ICE_noinline noinline
+#else
+#define ICE_noinline
+#endif
+
+/*
  * Obtain the lock on page, remove all ptes and migrate the page
  * to the newly allocated page in newpage.
  */
-static noinline int unmap_and_move(new_page_t get_new_page,
+static ICE_noinline int unmap_and_move(new_page_t get_new_page,
 				   free_page_t put_new_page,
 				   unsigned long private, struct page *page,
 				   int force, enum migrate_mode mode)
