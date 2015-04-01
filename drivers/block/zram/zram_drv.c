@@ -1078,8 +1078,15 @@ static int zram_add(int device_id)
 	if (!zram)
 		return ret;
 
-	ret = idr_alloc(&zram_index_idr, zram, device_id,
-			device_id + 1, GFP_KERNEL);
+	if (device_id < 0) {
+		/* generate new device_id */
+		ret = idr_alloc(&zram_index_idr, zram, 0, 0, GFP_KERNEL);
+		device_id = ret;
+	} else {
+		/* use provided device_id */
+		ret = idr_alloc(&zram_index_idr, zram, device_id,
+				device_id + 1, GFP_KERNEL);
+	}
 	if (ret < 0)
 		goto out_free_dev;
 
@@ -1271,6 +1278,24 @@ static ssize_t zram_add_store(struct class *class,
 	return ret ? ret : count;
 }
 
+static ssize_t zram_add_show(struct class *class,
+			struct class_attribute *attr,
+			char *buf)
+{
+	int ret;
+
+	mutex_lock(&zram_index_mutex);
+	/* read operation on zram_add is - pick up device_id
+	 * automatically, add corresponding device and return
+	 * that device_id back to user */
+	ret = zram_add(-1);
+	mutex_unlock(&zram_index_mutex);
+
+	if (ret < 0)
+		return ret;
+	return scnprintf(buf, PAGE_SIZE, "%d\n", ret);
+}
+
 static ssize_t zram_remove_store(struct class *class,
 			struct class_attribute *attr,
 			const char *buf,
@@ -1282,7 +1307,7 @@ static ssize_t zram_remove_store(struct class *class,
 }
 
 static struct class_attribute zram_control_class_attrs[] = {
-	__ATTR_WO(zram_add),
+	__ATTR_RW(zram_add),
 	__ATTR_WO(zram_remove),
 	__ATTR_NULL,
 };
