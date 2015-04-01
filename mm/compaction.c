@@ -1180,11 +1180,12 @@ static int __compact_finished(struct zone *zone, struct compact_control *cc,
 		if (!list_empty(&area->free_list[migratetype]))
 			return COMPACT_PARTIAL;
 
+#ifdef CONFIG_CMA
 		/* MIGRATE_MOVABLE can fallback on MIGRATE_CMA */
 		if (migratetype == MIGRATE_MOVABLE &&
 			!list_empty(&area->free_list[MIGRATE_CMA]))
 			return COMPACT_PARTIAL;
-
+#endif
 		/*
 		 * Job done if allocation would steal freepages from
 		 * other migratetype buddy lists.
