@@ -587,7 +587,7 @@ static int __init_memblock memblock_add_region(phys_addr_t base,
 {
 	struct memblock_type *_rgn = &memblock.memory;
 
-	memblock_dbg("memblock_memory: [%#016llx-%#016llx] flags %#02lx %pF\n",
+	memblock_dbg("memblock_add: [%#016llx-%#016llx] flags %#02lx %pF\n",
 		     (unsigned long long)base,
 		     (unsigned long long)base + size - 1,
 		     flags, (void *)_RET_IP_);
