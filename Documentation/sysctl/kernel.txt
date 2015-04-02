@@ -858,6 +858,15 @@ example.  If a system hangs up, try pressing the NMI switch.
 
 ==============================================================
 
+watchdog_exclude:
+
+This value can be used to control on which cpus the watchdog is
+prohibited from running.  The default exclude mask is empty, but if
+NO_HZ_FULL is enabled in the kernel config, and cores are specified
+with the nohz_full= boot argument, those cores are excluded by default.
+
+==============================================================
+
 watchdog_thresh:
 
 This value can be used to control the frequency of hrtimer and NMI

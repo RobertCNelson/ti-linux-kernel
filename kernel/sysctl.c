@@ -860,6 +860,13 @@ static struct ctl_table kern_table[] = {
 		.extra2		= &sixty,
 	},
 	{
+		.procname	= "watchdog_exclude",
+		.data		= &watchdog_exclude_mask_bits,
+		.maxlen		= NR_CPUS,
+		.mode		= 0644,
+		.proc_handler	= proc_dowatchdog_exclude,
+	},
+	{
 		.procname	= "softlockup_panic",
 		.data		= &softlockup_panic,
 		.maxlen		= sizeof(int),
