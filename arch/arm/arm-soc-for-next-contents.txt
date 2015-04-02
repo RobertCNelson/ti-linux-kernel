@@ -9,10 +9,14 @@ next/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-cleanup2
 	renesas/soc-cleanup2
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-cleanup2-for-v4.1
+	davinci/mcasp
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v4.1/mcasp
 
 next/drivers
 	drivers/simple-pm-bus
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-simple-pm-bus-for-v4.1
+	qcom/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-soc-for-4.1
 
 next/multiplatform
 	renesas/soc-cleanup
@@ -27,6 +31,9 @@ next/multiplatform
 	shmobile/multiplatform-sh73a0
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-sh73a0-multiplatform-for-v4.1
 		contains renesas/dt
+	at91/multiplatform
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-multiplatform
+		contains at91/cleanup2
 
 next/soc
 	renesas/soc
@@ -43,6 +50,8 @@ next/soc
 		MAINTAINERS: add maintainer for Alpine Arm machine
 	renesas/da9063-da9210-quirk
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-da9063-da9210-quirk-for-v4.1
+	rk/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.1-rockchip-soc1
 
 next/boards
 
@@ -65,18 +74,30 @@ next/dt
 		ARM: dts: Alpine platform devicetree
 	bcm/dt
 		http://github.com/broadcom/stblinux tags/arm-soc/for-4.1/devicetree-part-2
+	patch
+		ARM: dts: fix typo in makefile for alpine-db
+	rk/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.1-rockchip-dts1
+	renesas/dt3
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt3-for-v4.1
 
 next/arm64
 	patch
 		ARM64: Add new Xilinx ZynqMP SoC
 		arm64: dts: Add support for Spreadtrum SC9836 SoC in dts and Makefile
 		arm64: Add support for Spreadtrum's Sharkl64 Platform in Kconfig and defconfig
+	qcom/arm64
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-arm64-for-4.1
 
 next/defconfig
 	mvebu/defconfig
 		git://git.infradead.org/linux-mvebu tags/mvebu-defconfig-4.1
 	patch
 		ARM: configs: enable Marvell Armada 39x in multi_v7_defconfig
+	qcom/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-defconfig-for-4.1
+	patch
+		ARM: configs: remove all CONFIG_RCAR_AUDMAC_PP from ARM defconfigs
 
 fixes
 
