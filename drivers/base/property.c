@@ -15,6 +15,12 @@
 #include <linux/acpi.h>
 #include <linux/of.h>
 
+static inline struct fwnode_handle *dev_fwnode(struct device *dev)
+{
+	return IS_ENABLED(CONFIG_OF) && dev->of_node ?
+		&dev->of_node->fwnode : dev->fwnode;
+}
+
 /**
  * device_property_present - check if a property of a device is present
  * @dev: Device whose property is being checked
@@ -24,10 +30,7 @@
  */
 bool device_property_present(struct device *dev, const char *propname)
 {
-	if (IS_ENABLED(CONFIG_OF) && dev->of_node)
-		return of_property_read_bool(dev->of_node, propname);
-
-	return !acpi_dev_prop_get(ACPI_COMPANION(dev), propname, NULL);
+	return fwnode_property_present(dev_fwnode(dev), propname);
 }
 EXPORT_SYMBOL_GPL(device_property_present);
 
@@ -47,28 +50,18 @@ bool fwnode_property_present(struct fwnode_handle *fwnode, const char *propname)
 }
 EXPORT_SYMBOL_GPL(fwnode_property_present);
 
-#define OF_DEV_PROP_READ_ARRAY(node, propname, type, val, nval) \
-	(val) ? of_property_read_##type##_array((node), (propname), (val), (nval)) \
-	      : of_property_count_elems_of_size((node), (propname), sizeof(type))
-
-#define DEV_PROP_READ_ARRAY(_dev_, _propname_, _type_, _proptype_, _val_, _nval_) \
-	IS_ENABLED(CONFIG_OF) && _dev_->of_node ? \
-		(OF_DEV_PROP_READ_ARRAY(_dev_->of_node, _propname_, _type_, \
-					_val_, _nval_)) : \
-		acpi_dev_prop_read(ACPI_COMPANION(_dev_), _propname_, \
-				   _proptype_, _val_, _nval_)
-
 /**
  * device_property_read_u8_array - return a u8 array property of a device
  * @dev: Device to get the property of
  * @propname: Name of the property
- * @val: The values are stored here
+ * @val: The values are stored here or %NULL to return the number of values
  * @nval: Size of the @val array
  *
  * Function reads an array of u8 properties with @propname from the device
  * firmware description and stores them to @val if found.
  *
- * Return: %0 if the property was found (success),
+ * Return: number of values if @val was %NULL,
+ *         %0 if the property was found (success),
  *	   %-EINVAL if given arguments are not valid,
  *	   %-ENODATA if the property does not have a value,
  *	   %-EPROTO if the property is not an array of numbers,
@@ -77,7 +70,7 @@ EXPORT_SYMBOL_GPL(fwnode_property_present);
 int device_property_read_u8_array(struct device *dev, const char *propname,
 				  u8 *val, size_t nval)
 {
-	return DEV_PROP_READ_ARRAY(dev, propname, u8, DEV_PROP_U8, val, nval);
+	return fwnode_property_read_u8_array(dev_fwnode(dev), propname, val, nval);
 }
 EXPORT_SYMBOL_GPL(device_property_read_u8_array);
 
@@ -85,13 +78,14 @@ EXPORT_SYMBOL_GPL(device_property_read_u8_array);
  * device_property_read_u16_array - return a u16 array property of a device
  * @dev: Device to get the property of
  * @propname: Name of the property
- * @val: The values are stored here
+ * @val: The values are stored here or %NULL to return the number of values
  * @nval: Size of the @val array
  *
  * Function reads an array of u16 properties with @propname from the device
  * firmware description and stores them to @val if found.
  *
- * Return: %0 if the property was found (success),
+ * Return: number of values if @val was %NULL,
+ *         %0 if the property was found (success),
  *	   %-EINVAL if given arguments are not valid,
  *	   %-ENODATA if the property does not have a value,
  *	   %-EPROTO if the property is not an array of numbers,
@@ -100,7 +94,7 @@ EXPORT_SYMBOL_GPL(device_property_read_u8_array);
 int device_property_read_u16_array(struct device *dev, const char *propname,
 				   u16 *val, size_t nval)
 {
-	return DEV_PROP_READ_ARRAY(dev, propname, u16, DEV_PROP_U16, val, nval);
+	return fwnode_property_read_u16_array(dev_fwnode(dev), propname, val, nval);
 }
 EXPORT_SYMBOL_GPL(device_property_read_u16_array);
 
@@ -108,13 +102,14 @@ EXPORT_SYMBOL_GPL(device_property_read_u16_array);
  * device_property_read_u32_array - return a u32 array property of a device
  * @dev: Device to get the property of
  * @propname: Name of the property
- * @val: The values are stored here
+ * @val: The values are stored here or %NULL to return the number of values
  * @nval: Size of the @val array
  *
  * Function reads an array of u32 properties with @propname from the device
  * firmware description and stores them to @val if found.
  *
- * Return: %0 if the property was found (success),
+ * Return: number of values if @val was %NULL,
+ *         %0 if the property was found (success),
  *	   %-EINVAL if given arguments are not valid,
  *	   %-ENODATA if the property does not have a value,
  *	   %-EPROTO if the property is not an array of numbers,
@@ -123,7 +118,7 @@ EXPORT_SYMBOL_GPL(device_property_read_u16_array);
 int device_property_read_u32_array(struct device *dev, const char *propname,
 				   u32 *val, size_t nval)
 {
-	return DEV_PROP_READ_ARRAY(dev, propname, u32, DEV_PROP_U32, val, nval);
+	return fwnode_property_read_u32_array(dev_fwnode(dev), propname, val, nval);
 }
 EXPORT_SYMBOL_GPL(device_property_read_u32_array);
 
@@ -131,13 +126,14 @@ EXPORT_SYMBOL_GPL(device_property_read_u32_array);
  * device_property_read_u64_array - return a u64 array property of a device
  * @dev: Device to get the property of
  * @propname: Name of the property
- * @val: The values are stored here
+ * @val: The values are stored here or %NULL to return the number of values
  * @nval: Size of the @val array
  *
  * Function reads an array of u64 properties with @propname from the device
  * firmware description and stores them to @val if found.
  *
- * Return: %0 if the property was found (success),
+ * Return: number of values if @val was %NULL,
+ *         %0 if the property was found (success),
  *	   %-EINVAL if given arguments are not valid,
  *	   %-ENODATA if the property does not have a value,
  *	   %-EPROTO if the property is not an array of numbers,
@@ -146,7 +142,7 @@ EXPORT_SYMBOL_GPL(device_property_read_u32_array);
 int device_property_read_u64_array(struct device *dev, const char *propname,
 				   u64 *val, size_t nval)
 {
-	return DEV_PROP_READ_ARRAY(dev, propname, u64, DEV_PROP_U64, val, nval);
+	return fwnode_property_read_u64_array(dev_fwnode(dev), propname, val, nval);
 }
 EXPORT_SYMBOL_GPL(device_property_read_u64_array);
 
@@ -154,13 +150,14 @@ EXPORT_SYMBOL_GPL(device_property_read_u64_array);
  * device_property_read_string_array - return a string array property of device
  * @dev: Device to get the property of
  * @propname: Name of the property
- * @val: The values are stored here
+ * @val: The values are stored here or %NULL to return the number of values
  * @nval: Size of the @val array
  *
  * Function reads an array of string properties with @propname from the device
  * firmware description and stores them to @val if found.
  *
- * Return: %0 if the property was found (success),
+ * Return: number of values if @val was %NULL,
+ *         %0 if the property was found (success),
  *	   %-EINVAL if given arguments are not valid,
  *	   %-ENODATA if the property does not have a value,
  *	   %-EPROTO or %-EILSEQ if the property is not an array of strings,
@@ -169,10 +166,7 @@ EXPORT_SYMBOL_GPL(device_property_read_u64_array);
 int device_property_read_string_array(struct device *dev, const char *propname,
 				      const char **val, size_t nval)
 {
-	return IS_ENABLED(CONFIG_OF) && dev->of_node ?
-		of_property_read_string_array(dev->of_node, propname, val, nval) :
-		acpi_dev_prop_read(ACPI_COMPANION(dev), propname,
-				   DEV_PROP_STRING, val, nval);
+	return fwnode_property_read_string_array(dev_fwnode(dev), propname, val, nval);
 }
 EXPORT_SYMBOL_GPL(device_property_read_string_array);
 
@@ -193,12 +187,13 @@ EXPORT_SYMBOL_GPL(device_property_read_string_array);
 int device_property_read_string(struct device *dev, const char *propname,
 				const char **val)
 {
-	return IS_ENABLED(CONFIG_OF) && dev->of_node ?
-		of_property_read_string(dev->of_node, propname, val) :
-		acpi_dev_prop_read(ACPI_COMPANION(dev), propname,
-				   DEV_PROP_STRING, val, 1);
+	return fwnode_property_read_string(dev_fwnode(dev), propname, val);
 }
 EXPORT_SYMBOL_GPL(device_property_read_string);
+
+#define OF_DEV_PROP_READ_ARRAY(node, propname, type, val, nval) \
+	(val) ? of_property_read_##type##_array((node), (propname), (val), (nval)) \
+	      : of_property_count_elems_of_size((node), (propname), sizeof(type))
 
 #define FWNODE_PROP_READ_ARRAY(_fwnode_, _propname_, _type_, _proptype_, _val_, _nval_) \
 ({ \
@@ -218,13 +213,14 @@ EXPORT_SYMBOL_GPL(device_property_read_string);
  * fwnode_property_read_u8_array - return a u8 array property of firmware node
  * @fwnode: Firmware node to get the property of
  * @propname: Name of the property
- * @val: The values are stored here
+ * @val: The values are stored here or %NULL to return the number of values
  * @nval: Size of the @val array
  *
  * Read an array of u8 properties with @propname from @fwnode and stores them to
  * @val if found.
  *
- * Return: %0 if the property was found (success),
+ * Return: number of values if @val was %NULL,
+ *         %0 if the property was found (success),
  *	   %-EINVAL if given arguments are not valid,
  *	   %-ENODATA if the property does not have a value,
  *	   %-EPROTO if the property is not an array of numbers,
@@ -243,13 +239,14 @@ EXPORT_SYMBOL_GPL(fwnode_property_read_u8_array);
  * fwnode_property_read_u16_array - return a u16 array property of firmware node
  * @fwnode: Firmware node to get the property of
  * @propname: Name of the property
- * @val: The values are stored here
+ * @val: The values are stored here or %NULL to return the number of values
  * @nval: Size of the @val array
  *
  * Read an array of u16 properties with @propname from @fwnode and store them to
  * @val if found.
  *
- * Return: %0 if the property was found (success),
+ * Return: number of values if @val was %NULL,
+ *         %0 if the property was found (success),
  *	   %-EINVAL if given arguments are not valid,
  *	   %-ENODATA if the property does not have a value,
  *	   %-EPROTO if the property is not an array of numbers,
@@ -268,13 +265,14 @@ EXPORT_SYMBOL_GPL(fwnode_property_read_u16_array);
  * fwnode_property_read_u32_array - return a u32 array property of firmware node
  * @fwnode: Firmware node to get the property of
  * @propname: Name of the property
- * @val: The values are stored here
+ * @val: The values are stored here or %NULL to return the number of values
  * @nval: Size of the @val array
  *
  * Read an array of u32 properties with @propname from @fwnode store them to
  * @val if found.
  *
- * Return: %0 if the property was found (success),
+ * Return: number of values if @val was %NULL,
+ *         %0 if the property was found (success),
  *	   %-EINVAL if given arguments are not valid,
  *	   %-ENODATA if the property does not have a value,
  *	   %-EPROTO if the property is not an array of numbers,
@@ -293,13 +291,14 @@ EXPORT_SYMBOL_GPL(fwnode_property_read_u32_array);
  * fwnode_property_read_u64_array - return a u64 array property firmware node
  * @fwnode: Firmware node to get the property of
  * @propname: Name of the property
- * @val: The values are stored here
+ * @val: The values are stored here or %NULL to return the number of values
  * @nval: Size of the @val array
  *
  * Read an array of u64 properties with @propname from @fwnode and store them to
  * @val if found.
  *
- * Return: %0 if the property was found (success),
+ * Return: number of values if @val was %NULL,
+ *         %0 if the property was found (success),
  *	   %-EINVAL if given arguments are not valid,
  *	   %-ENODATA if the property does not have a value,
  *	   %-EPROTO if the property is not an array of numbers,
@@ -318,13 +317,14 @@ EXPORT_SYMBOL_GPL(fwnode_property_read_u64_array);
  * fwnode_property_read_string_array - return string array property of a node
  * @fwnode: Firmware node to get the property of
  * @propname: Name of the property
- * @val: The values are stored here
+ * @val: The values are stored here or %NULL to return the number of values
  * @nval: Size of the @val array
  *
  * Read an string list property @propname from the given firmware node and store
  * them to @val if found.
  *
- * Return: %0 if the property was found (success),
+ * Return: number of values if @val was %NULL,
+ *         %0 if the property was found (success),
  *	   %-EINVAL if given arguments are not valid,
  *	   %-ENODATA if the property does not have a value,
  *	   %-EPROTO if the property is not an array of strings,
@@ -336,8 +336,10 @@ int fwnode_property_read_string_array(struct fwnode_handle *fwnode,
 				      size_t nval)
 {
 	if (is_of_node(fwnode))
-		return of_property_read_string_array(of_node(fwnode), propname,
-						     val, nval);
+		return val ?
+			of_property_read_string_array(of_node(fwnode), propname,
+						      val, nval) :
+			of_property_count_strings(of_node(fwnode), propname);
 	else if (is_acpi_node(fwnode))
 		return acpi_dev_prop_read(acpi_node(fwnode), propname,
 					  DEV_PROP_STRING, val, nval);
