@@ -1417,6 +1417,13 @@ static struct dentry *ext4_lookup(struct inode *dir, struct dentry *dentry, unsi
 			return ERR_PTR(-EIO);
 		}
 	}
+	if (ext4_encrypted_inode(dir) &&
+	    !ext4_is_child_context_consistent_with_parent(dir,
+							  dentry->d_inode)) {
+		printk(KERN_ERR "%s: Security warning: Inconsistent contexts\n",
+		       __func__);
+		return ERR_PTR(-EINVAL);
+	}
 	return d_splice_alias(inode, dentry);
 }
 
