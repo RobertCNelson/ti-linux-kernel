@@ -47,6 +47,8 @@
 #define NAMEI_RA_BLOCKS  4
 #define NAMEI_RA_SIZE	     (NAMEI_RA_CHUNKS * NAMEI_RA_BLOCKS)
 
+static int ext4_unlink(struct inode *dir, struct dentry *dentry);
+
 static struct buffer_head *ext4_append(handle_t *handle,
 					struct inode *inode,
 					ext4_lblk_t *block)
@@ -2251,6 +2253,13 @@ retry:
 		err = ext4_add_nondir(handle, dentry, inode);
 		if (!err && IS_DIRSYNC(dir))
 			ext4_handle_sync(handle);
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+		if (!err && ext4_encrypted_inode(dir)) {
+			err = ext4_inherit_context(dir, inode);
+			if (err)
+				ext4_unlink(dir, dentry);
+		}
+#endif
 	}
 	if (handle)
 		ext4_journal_stop(handle);
@@ -2452,6 +2461,13 @@ out_clear_inode:
 	d_instantiate(dentry, inode);
 	if (IS_DIRSYNC(dir))
 		ext4_handle_sync(handle);
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+	if (ext4_encrypted_inode(dir)) {
+		err = ext4_inherit_context(dir, inode);
+		if (err)
+			ext4_unlink(dir, dentry);
+	}
+#endif
 
 out_stop:
 	if (handle)
