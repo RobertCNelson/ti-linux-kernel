@@ -998,7 +998,9 @@ got:
 
 	/* If the directory encrypted, then we should encrypt the inode. */
 	if ((S_ISDIR(mode) || S_ISREG(mode) || S_ISLNK(mode)) &&
-	    ext4_encrypted_inode(dir))
+	    (ext4_encrypted_inode(dir) ||
+	     unlikely(sbi->s_mount_flags &
+		      EXT4_MF_TEST_DUMMY_ENCRYPTION)))
 		ext4_set_inode_flag(inode, EXT4_INODE_ENCRYPT);
 
 	ext4_set_inode_flags(inode);

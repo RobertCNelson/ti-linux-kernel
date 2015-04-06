@@ -2578,6 +2578,9 @@ static int ext4_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 	handle_t *handle;
 	struct inode *inode;
 	int err, credits, retries = 0;
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+	struct ext4_sb_info *sbi = EXT4_SB(dir->i_sb);
+#endif
 
 	dquot_initialize(dir);
 
@@ -2599,7 +2602,9 @@ retry:
 		if (!err && IS_DIRSYNC(dir))
 			ext4_handle_sync(handle);
 #ifdef CONFIG_EXT4_FS_ENCRYPTION
-		if (!err && ext4_encrypted_inode(dir)) {
+		if (!err && (ext4_encrypted_inode(dir) ||
+			     unlikely(sbi->s_mount_flags &
+				      EXT4_MF_TEST_DUMMY_ENCRYPTION))) {
 			err = ext4_inherit_context(dir, inode);
 			if (err)
 				ext4_unlink(dir, dentry);
@@ -2764,6 +2769,9 @@ static int ext4_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	handle_t *handle;
 	struct inode *inode;
 	int err, credits, retries = 0;
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+	struct ext4_sb_info *sbi = EXT4_SB(dir->i_sb);
+#endif
 
 	if (EXT4_DIR_LINK_MAX(dir))
 		return -EMLINK;
@@ -2807,7 +2815,8 @@ out_clear_inode:
 	if (IS_DIRSYNC(dir))
 		ext4_handle_sync(handle);
 #ifdef CONFIG_EXT4_FS_ENCRYPTION
-	if (ext4_encrypted_inode(dir)) {
+	if (ext4_encrypted_inode(dir) ||
+	    unlikely(sbi->s_mount_flags & EXT4_MF_TEST_DUMMY_ENCRYPTION)) {
 		err = ext4_inherit_context(dir, inode);
 		if (err)
 			ext4_unlink(dir, dentry);
