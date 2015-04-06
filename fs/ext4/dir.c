@@ -109,6 +109,11 @@ static int ext4_readdir(struct file *file, struct dir_context *ctx)
 	struct inode *inode = file_inode(file);
 	struct super_block *sb = inode->i_sb;
 	int dir_has_error = 0;
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+	struct ext4_fname_crypto_ctx *enc_ctx = NULL;
+	struct ext4_str fname_crypto_str = {.name = NULL, .len = 0};
+#endif
+	int res;
 
 	if (is_dx_dir(inode)) {
 		err = ext4_dx_readdir(file, ctx);
@@ -125,11 +130,27 @@ static int ext4_readdir(struct file *file, struct dir_context *ctx)
 
 	if (ext4_has_inline_data(inode)) {
 		int has_inline_data = 1;
-		int ret = ext4_read_inline_dir(file, ctx,
+		res = ext4_read_inline_dir(file, ctx,
 					   &has_inline_data);
 		if (has_inline_data)
-			return ret;
+			return res;
 	}
+
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+	enc_ctx = ext4_get_fname_crypto_ctx(inode, EXT4_NAME_LEN);
+	if (IS_ERR(enc_ctx))
+		return PTR_ERR(enc_ctx);
+	if (enc_ctx) {
+		res = ext4_fname_crypto_alloc_buffer(enc_ctx,
+						     &fname_crypto_str.name,
+						     &fname_crypto_str.len,
+						     EXT4_NAME_LEN);
+		if (res < 0) {
+			ext4_put_fname_crypto_ctx(&enc_ctx);
+			return res;
+		}
+	}
+#endif
 
 	offset = ctx->pos & (sb->s_blocksize - 1);
 
@@ -224,13 +245,53 @@ static int ext4_readdir(struct file *file, struct dir_context *ctx)
 			offset += ext4_rec_len_from_disk(de->rec_len,
 					sb->s_blocksize);
 			if (le32_to_cpu(de->inode)) {
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+				if (enc_ctx == NULL) {
+					/* Directory is not encrypted */
+					if (!dir_emit(ctx, de->name,
+					    de->name_len,
+					    le32_to_cpu(de->inode),
+					    get_dtype(sb, de->file_type))) {
+						ext4_put_fname_crypto_ctx(
+							&enc_ctx);
+						ext4_fname_crypto_free_buffer(
+							(void **)&fname_crypto_str.name);
+						brelse(bh);
+						return 0;
+					}
+				} else {
+					/* Directory is encrypted */
+					err = ext4_fname_disk_to_usr(enc_ctx,
+							de, &fname_crypto_str);
+					if (err < 0) {
+						ext4_put_fname_crypto_ctx(
+							&enc_ctx);
+						ext4_fname_crypto_free_buffer(
+							(void **)&fname_crypto_str.name);
+						brelse(bh);
+						return err;
+					}
+					if (!dir_emit(ctx,
+					    fname_crypto_str.name, err,
+					    le32_to_cpu(de->inode),
+					    get_dtype(sb, de->file_type))) {
+						ext4_put_fname_crypto_ctx(
+							&enc_ctx);
+						ext4_fname_crypto_free_buffer(
+							(void **)&fname_crypto_str.name);
+						brelse(bh);
+						return 0;
+					}
+				}
+#else
 				if (!dir_emit(ctx, de->name,
-						de->name_len,
-						le32_to_cpu(de->inode),
-						get_dtype(sb, de->file_type))) {
+					      de->name_len,
+					      le32_to_cpu(de->inode),
+					      get_dtype(sb, de->file_type))) {
 					brelse(bh);
 					return 0;
 				}
+#endif
 			}
 			ctx->pos += ext4_rec_len_from_disk(de->rec_len,
 						sb->s_blocksize);
@@ -238,10 +299,20 @@ static int ext4_readdir(struct file *file, struct dir_context *ctx)
 		offset = 0;
 		brelse(bh);
 		if (ctx->pos < inode->i_size) {
-			if (!dir_relax(inode))
+			if (!dir_relax(inode)) {
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+				ext4_put_fname_crypto_ctx(&enc_ctx);
+				ext4_fname_crypto_free_buffer(
+						(void **)&fname_crypto_str.name);
+#endif
 				return 0;
+			}
 		}
 	}
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+	ext4_put_fname_crypto_ctx(&enc_ctx);
+	ext4_fname_crypto_free_buffer((void **)&fname_crypto_str.name);
+#endif
 	return 0;
 }
 
