@@ -1608,9 +1608,6 @@ static int nilfs_btree_seek_key(const struct nilfs_bmap *btree, __u64 start,
 	const int minlevel = NILFS_BTREE_LEVEL_NODE_MIN;
 	int ret;
 
-	if (start > NILFS_BTREE_KEY_MAX)
-		return -ENOENT;
-
 	path = nilfs_btree_alloc_path();
 	if (!path)
 		return -ENOMEM;
