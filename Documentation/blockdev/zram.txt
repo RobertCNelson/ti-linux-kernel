@@ -104,23 +104,17 @@ size of the disk when not in use so a huge zram is wasteful.
 zram provides a control interface, which enables dynamic (on-demand) device
 addition and removal.
 
-In order to add a new /dev/zramX device (where X is a unique device id)
-execute
-	echo X > /sys/class/zram-control/zram_add
+In order to add a new /dev/zramX device, perform read operation on zram_add
+attribute. This will return either new device's device id (meaning that you
+can use /dev/zram<id>) or error code.
+
+Example:
+	cat /sys/class/zram-control/zram_add
+	1
 
 To remove the existing /dev/zramX device (where X is a device id)
 execute
 	echo X > /sys/class/zram-control/zram_remove
-
-Additionally, zram also handles automatic device_id generation and assignment.
-
-	cat /sys/class/zram-control/zram_add
-	1
-	cat /sys/class/zram-control/zram_add
-	2
-
-this will pick up available device_id X, add corresponding /dev/zramX
-device and return its device_id X back to user (or error code).
 
 8) Stats:
 	Per-device statistics are exported as various nodes under
