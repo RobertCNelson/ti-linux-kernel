@@ -455,10 +455,11 @@ COMPACTING MLOCKED PAGES
 ------------------------
 
 The unevictable LRU can be scanned for compactable regions and the default
-behavior is to do so.  There is a sysctl to control this behavior (see
-Documentation/sysctl/vm.txt).  Once scanning of the unevictable LRU is
-enabled, the work of compaction is mostly handled by the page migration code
-and the same work flow as described in MIGRATING MLOCKED PAGES will apply.
+behavior is to do so.  /proc/sys/vm/compact_unevictable_allowed controls
+this behavior (see Documentation/sysctl/vm.txt).  Once scanning of the
+unevictable LRU is enabled, the work of compaction is mostly handled by
+the page migration code and the same work flow as described in MIGRATING
+MLOCKED PAGES will apply.
 
 
 mmap(MAP_LOCKED) SYSTEM CALL HANDLING
