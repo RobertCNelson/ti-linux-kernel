@@ -1188,6 +1188,7 @@ static int zram_add(int device_id)
 	if (!queue) {
 		pr_err("Error allocating disk queue for device %d\n",
 			device_id);
+		ret = -ENOMEM;
 		goto out_free_idr;
 	}
 
@@ -1198,6 +1199,7 @@ static int zram_add(int device_id)
 	if (!zram->disk) {
 		pr_warn("Error allocating disk structure for device %d\n",
 			device_id);
+		ret = -ENOMEM;
 		goto out_free_queue;
 	}
 
