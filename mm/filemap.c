@@ -204,7 +204,7 @@ void __delete_from_page_cache(struct page *page, void *shadow)
 
 	/*
 	 * At this point page must be either written or cleaned by truncate.
-	 * Dirty page here signals about bug and loosing unwitten data.
+	 * Dirty page here signals a bug and loss of unwritten data.
 	 *
 	 * This fixes dirty accounting after removing the page entirely but
 	 * leaves PageDirty set: it has no effect for truncated page and
