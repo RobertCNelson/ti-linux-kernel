@@ -50,7 +50,6 @@
  */
 
 #include "ubifs.h"
-#include <linux/aio.h>
 #include <linux/mount.h>
 #include <linux/namei.h>
 #include <linux/slab.h>
@@ -1581,8 +1580,6 @@ const struct inode_operations ubifs_symlink_inode_operations = {
 
 const struct file_operations ubifs_file_operations = {
 	.llseek         = generic_file_llseek,
-	.read           = new_sync_read,
-	.write          = new_sync_write,
 	.read_iter      = generic_file_read_iter,
 	.write_iter     = ubifs_write_iter,
 	.mmap           = ubifs_file_mmap,

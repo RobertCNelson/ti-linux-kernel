@@ -12,12 +12,12 @@
 #include <linux/f2fs_fs.h>
 #include <linux/buffer_head.h>
 #include <linux/mpage.h>
-#include <linux/aio.h>
 #include <linux/writeback.h>
 #include <linux/backing-dev.h>
 #include <linux/blkdev.h>
 #include <linux/bio.h>
 #include <linux/prefetch.h>
+#include <linux/uio.h>
 
 #include "f2fs.h"
 #include "node.h"
@@ -1693,12 +1693,12 @@ static int f2fs_write_end(struct file *file,
 	return copied;
 }
 
-static int check_direct_IO(struct inode *inode, int rw,
-		struct iov_iter *iter, loff_t offset)
+static int check_direct_IO(struct inode *inode, struct iov_iter *iter,
+			   loff_t offset)
 {
 	unsigned blocksize_mask = inode->i_sb->s_blocksize - 1;
 
-	if (rw == READ)
+	if (iov_iter_rw(iter) == READ)
 		return 0;
 
 	if (offset & blocksize_mask)
@@ -1710,8 +1710,8 @@ static int check_direct_IO(struct inode *inode, int rw,
 	return 0;
 }
 
-static ssize_t f2fs_direct_IO(int rw, struct kiocb *iocb,
-		struct iov_iter *iter, loff_t offset)
+static ssize_t f2fs_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
+			      loff_t offset)
 {
 	struct file *file = iocb->ki_filp;
 	struct address_space *mapping = file->f_mapping;
@@ -1726,19 +1726,19 @@ static ssize_t f2fs_direct_IO(int rw, struct kiocb *iocb,
 			return err;
 	}
 
-	if (check_direct_IO(inode, rw, iter, offset))
+	if (check_direct_IO(inode, iter, offset))
 		return 0;
 
-	trace_f2fs_direct_IO_enter(inode, offset, count, rw);
+	trace_f2fs_direct_IO_enter(inode, offset, count, iov_iter_rw(iter));
 
-	if (rw & WRITE)
+	if (iov_iter_rw(iter) == WRITE)
 		__allocate_data_blocks(inode, offset, count);
 
-	err = blockdev_direct_IO(rw, iocb, inode, iter, offset, get_data_block);
-	if (err < 0 && (rw & WRITE))
+	err = blockdev_direct_IO(iocb, inode, iter, offset, get_data_block);
+	if (err < 0 && iov_iter_rw(iter) == WRITE)
 		f2fs_write_failed(mapping, offset + count);
 
-	trace_f2fs_direct_IO_exit(inode, offset, count, rw, err);
+	trace_f2fs_direct_IO_exit(inode, offset, count, iov_iter_rw(iter), err);
 
 	return err;
 }

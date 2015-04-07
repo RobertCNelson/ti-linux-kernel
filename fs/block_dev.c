@@ -27,7 +27,6 @@
 #include <linux/namei.h>
 #include <linux/log2.h>
 #include <linux/cleancache.h>
-#include <linux/aio.h>
 #include <asm/uaccess.h>
 #include "internal.h"
 
@@ -147,15 +146,13 @@ blkdev_get_block(struct inode *inode, sector_t iblock,
 }
 
 static ssize_t
-blkdev_direct_IO(int rw, struct kiocb *iocb, struct iov_iter *iter,
-			loff_t offset)
+blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter, loff_t offset)
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file->f_mapping->host;
 
-	return __blockdev_direct_IO(rw, iocb, inode, I_BDEV(inode), iter,
-				    offset, blkdev_get_block,
-				    NULL, NULL, 0);
+	return __blockdev_direct_IO(iocb, inode, I_BDEV(inode), iter, offset,
+				    blkdev_get_block, NULL, NULL, 0);
 }
 
 int __sync_blockdev(struct block_device *bdev, int wait)
@@ -1660,8 +1657,6 @@ const struct file_operations def_blk_fops = {
 	.open		= blkdev_open,
 	.release	= blkdev_close,
 	.llseek		= block_llseek,
-	.read		= new_sync_read,
-	.write		= new_sync_write,
 	.read_iter	= blkdev_read_iter,
 	.write_iter	= blkdev_write_iter,
 	.mmap		= generic_file_mmap,

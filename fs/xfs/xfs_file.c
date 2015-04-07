@@ -38,7 +38,6 @@
 #include "xfs_icache.h"
 #include "xfs_pnfs.h"
 
-#include <linux/aio.h>
 #include <linux/dcache.h>
 #include <linux/falloc.h>
 #include <linux/pagevec.h>
@@ -1462,8 +1461,6 @@ xfs_filemap_page_mkwrite(
 
 const struct file_operations xfs_file_operations = {
 	.llseek		= xfs_file_llseek,
-	.read		= new_sync_read,
-	.write		= new_sync_write,
 	.read_iter	= xfs_file_read_iter,
 	.write_iter	= xfs_file_write_iter,
 	.splice_read	= xfs_file_splice_read,
