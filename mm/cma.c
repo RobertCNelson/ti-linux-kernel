@@ -416,7 +416,7 @@ struct page *cma_alloc(struct cma *cma, unsigned int count, unsigned int align)
 		start = bitmap_no + mask + 1;
 	}
 
-	trace_cma_alloc(page ? pfn : -1UL, page, count);
+	trace_cma_alloc(page ? pfn : -1UL, page, count, align);
 
 	pr_debug("%s(): returned %p\n", __func__, page);
 	return page;
