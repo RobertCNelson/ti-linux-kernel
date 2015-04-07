@@ -19,6 +19,7 @@
 #include <linux/sysctl.h>
 #include <linux/smpboot.h>
 #include <linux/sched/rt.h>
+#include <linux/tick.h>
 
 #include <asm/irq_regs.h>
 #include <linux/kvm_para.h>
@@ -31,6 +32,8 @@ int __read_mostly sysctl_softlockup_all_cpu_backtrace;
 #else
 #define sysctl_softlockup_all_cpu_backtrace 0
 #endif
+static cpumask_var_t watchdog_exclude_mask;
+unsigned long *watchdog_exclude_mask_bits;
 
 static int __read_mostly watchdog_running;
 static u64 __read_mostly sample_period;
@@ -653,6 +656,8 @@ static void watchdog_disable_all_cpus(void)
 	}
 }
 
+static DEFINE_MUTEX(watchdog_proc_mutex);
+
 /*
  * proc handler for /proc/sys/kernel/nmi_watchdog,watchdog_thresh
  */
@@ -662,7 +667,6 @@ int proc_dowatchdog(struct ctl_table *table, int write,
 {
 	int err, old_thresh, old_enabled;
 	bool old_hardlockup;
-	static DEFINE_MUTEX(watchdog_proc_mutex);
 
 	mutex_lock(&watchdog_proc_mutex);
 	old_thresh = ACCESS_ONCE(watchdog_thresh);
@@ -700,11 +704,41 @@ out:
 	mutex_unlock(&watchdog_proc_mutex);
 	return err;
 }
+
+int proc_dowatchdog_exclude(struct ctl_table *table, int write,
+			    void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	int err;
+
+	mutex_lock(&watchdog_proc_mutex);
+	err = proc_do_large_bitmap(table, write, buffer, lenp, ppos);
+	if (!err && write && watchdog_user_enabled) {
+		watchdog_disable_all_cpus();
+		watchdog_enable_all_cpus(false);
+	}
+	mutex_unlock(&watchdog_proc_mutex);
+	return err;
+}
+
 #endif /* CONFIG_SYSCTL */
 
 void __init lockup_detector_init(void)
 {
 	set_sample_period();
+
+	alloc_bootmem_cpumask_var(&watchdog_exclude_mask);
+	watchdog_threads.exclude_mask = watchdog_exclude_mask;
+
+#ifdef CONFIG_NO_HZ_FULL
+	if (!cpumask_empty(tick_nohz_full_mask))
+		pr_info("Disabling watchdog on nohz_full cores by default\n");
+	cpumask_copy(watchdog_exclude_mask, tick_nohz_full_mask);
+#else
+	cpumask_clear(watchdog_exclude_mask);
+#endif
+
+	/* The sysctl API requires a variable holding a pointer to the mask. */
+	watchdog_exclude_mask_bits = cpumask_bits(watchdog_exclude_mask);
 
 	if (watchdog_user_enabled)
 		watchdog_enable_all_cpus(false);

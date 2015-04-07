@@ -172,6 +172,9 @@ __smpboot_create_thread(struct smp_hotplug_thread *ht, unsigned int cpu)
 	if (tsk)
 		return 0;
 
+	if (ht->exclude_mask && cpumask_test_cpu(cpu, ht->exclude_mask))
+		return 0;
+
 	td = kzalloc_node(sizeof(*td), GFP_KERNEL, cpu_to_node(cpu));
 	if (!td)
 		return -ENOMEM;
@@ -220,9 +223,11 @@ static void smpboot_unpark_thread(struct smp_hotplug_thread *ht, unsigned int cp
 {
 	struct task_struct *tsk = *per_cpu_ptr(ht->store, cpu);
 
-	if (ht->pre_unpark)
-		ht->pre_unpark(cpu);
-	kthread_unpark(tsk);
+	if (tsk) {
+		if (ht->pre_unpark)
+			ht->pre_unpark(cpu);
+		kthread_unpark(tsk);
+	}
 }
 
 void smpboot_unpark_threads(unsigned int cpu)
