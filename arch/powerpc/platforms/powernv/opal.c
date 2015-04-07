@@ -305,7 +305,7 @@ void opal_notifier_disable(void)
  * Opal message notifier based on message type. Allow subscribers to get
  * notified for specific messgae type.
  */
-int opal_message_notifier_register(enum OpalMessageType msg_type,
+int opal_message_notifier_register(enum opal_msg_type msg_type,
 					struct notifier_block *nb)
 {
 	if (!nb || msg_type >= OPAL_MSG_TYPE_MAX) {
@@ -318,7 +318,7 @@ int opal_message_notifier_register(enum OpalMessageType msg_type,
 				&opal_msg_notifier_head[msg_type], nb);
 }
 
-int opal_message_notifier_unregister(enum OpalMessageType msg_type,
+int opal_message_notifier_unregister(enum opal_msg_type msg_type,
 				     struct notifier_block *nb)
 {
 	return atomic_notifier_chain_unregister(
@@ -671,6 +671,9 @@ static void __init opal_dump_region_init(void)
 	uint64_t size;
 	int rc;
 
+	if (!opal_check_token(OPAL_REGISTER_DUMP_REGION))
+		return;
+
 	/* Register kernel log buffer */
 	addr = log_buf_addr_get();
 	if (addr == NULL)
@@ -856,7 +859,8 @@ void opal_shutdown(void)
 	}
 
 	/* Unregister memory dump region */
-	opal_unregister_dump_region(OPAL_DUMP_REGION_LOG_BUF);
+	if (opal_check_token(OPAL_UNREGISTER_DUMP_REGION))
+		opal_unregister_dump_region(OPAL_DUMP_REGION_LOG_BUF);
 }
 
 /* Export this so that test modules can use it */
@@ -924,6 +928,25 @@ void opal_free_sg_list(struct opal_sg_list *sg)
 			sg = __va(next);
 		else
 			sg = NULL;
+	}
+}
+
+int opal_error_code(int rc)
+{
+	switch (rc) {
+	case OPAL_SUCCESS:		return 0;
+
+	case OPAL_PARAMETER:		return -EINVAL;
+	case OPAL_ASYNC_COMPLETION:	return -EINPROGRESS;
+	case OPAL_BUSY_EVENT:		return -EBUSY;
+	case OPAL_NO_MEM:		return -ENOMEM;
+
+	case OPAL_UNSUPPORTED:		return -EIO;
+	case OPAL_HARDWARE:		return -EIO;
+	case OPAL_INTERNAL_ERROR:	return -EIO;
+	default:
+		pr_err("%s: unexpected OPAL error %d\n", __func__, rc);
+		return -EIO;
 	}
 }
 
