@@ -901,10 +901,10 @@ out:
 }
 
 /*
- * gcc-4.7.3 on arm gets an ICE when inlining unmap_and_move().  Work around
+ * gcc 4.7 and 4.8 on arm gets an ICE when inlining unmap_and_move().  Work around
  * it.
  */
-#if GCC_VERSION == 40703 && defined(CONFIG_ARM)
+#if (GCC_VERSION >= 40700 && GCC_VERSION < 40900) && defined(CONFIG_ARM)
 #define ICE_noinline noinline
 #else
 #define ICE_noinline
