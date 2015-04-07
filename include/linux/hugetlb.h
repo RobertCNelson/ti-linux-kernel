@@ -44,8 +44,6 @@ extern int hugetlb_max_hstate __read_mostly;
 #define for_each_hstate(h) \
 	for ((h) = hstates; (h) < &hstates[hugetlb_max_hstate]; (h)++)
 
-int PageHugeActive(struct page *page);
-
 struct hugepage_subpool *hugepage_new_subpool(struct hstate *h, long max_hpages,
 						long min_hpages);
 void hugepage_put_subpool(struct hugepage_subpool *spool);
@@ -114,11 +112,6 @@ unsigned long hugetlb_change_protection(struct vm_area_struct *vma,
 		unsigned long address, unsigned long end, pgprot_t newprot);
 
 #else /* !CONFIG_HUGETLB_PAGE */
-
-static inline int PageHugeActive(struct page *page)
-{
-	return 0;
-}
 
 static inline void reset_vma_resv_huge_pages(struct vm_area_struct *vma)
 {
