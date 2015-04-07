@@ -61,9 +61,10 @@ static void check_element(mempool_t *pool, void *element)
 	/* Mempools backed by page allocator */
 	if (pool->free == mempool_free_pages) {
 		int order = (int)(long)pool->pool_data;
-		void *addr = page_address(element);
+		void *addr = kmap_atomic((struct page *)element);
 
 		__check_element(pool, addr, 1UL << (PAGE_SHIFT + order));
+		kunmap_atomic(addr);
 	}
 }
 
@@ -84,9 +85,10 @@ static void poison_element(mempool_t *pool, void *element)
 	/* Mempools backed by page allocator */
 	if (pool->alloc == mempool_alloc_pages) {
 		int order = (int)(long)pool->pool_data;
-		void *addr = page_address(element);
+		void *addr = kmap_atomic((struct page *)element);
 
 		__poison_element(addr, 1UL << (PAGE_SHIFT + order));
+		kunmap_atomic(addr);
 	}
 }
 #else /* CONFIG_DEBUG_SLAB || CONFIG_SLUB_DEBUG_ON */
