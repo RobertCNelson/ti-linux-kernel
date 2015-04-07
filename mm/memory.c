@@ -1990,11 +1990,11 @@ static int do_page_mkwrite(struct vm_area_struct *vma, struct page *page,
  * case, all we need to do here is to mark the page as writable and update
  * any related book-keeping.
  */
-static int wp_page_reuse(struct mm_struct *mm, struct vm_area_struct *vma,
-			 unsigned long address, pte_t *page_table,
-			 spinlock_t *ptl, pte_t orig_pte,
-			 struct page *page, int page_mkwrite,
-			 int dirty_shared)
+static inline int wp_page_reuse(struct mm_struct *mm,
+			struct vm_area_struct *vma, unsigned long address,
+			pte_t *page_table, spinlock_t *ptl, pte_t orig_pte,
+			struct page *page, int page_mkwrite,
+			int dirty_shared)
 	__releases(ptl)
 {
 	pte_t entry;
