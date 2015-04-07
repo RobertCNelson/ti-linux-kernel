@@ -202,7 +202,7 @@ extern struct mlog_bits mlog_and_bits, mlog_not_bits;
 	    _st != AOP_TRUNCATED_PAGE && _st != -ENOSPC &&		\
 	    _st != -EDQUOT)						\
 		mlog(ML_ERROR, "status = %lld\n", (long long)_st);	\
-	st;								\
+	_st;								\
 })
 
 #define mlog_bug_on_msg(cond, fmt, args...) do {			\
