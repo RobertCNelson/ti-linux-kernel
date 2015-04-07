@@ -253,8 +253,8 @@ int __pci_read_base(struct pci_dev *dev, enum pci_bar_type type,
 	}
 
 	if (res->flags & IORESOURCE_MEM_64) {
-		if ((sizeof(dma_addr_t) < 8 || sizeof(resource_size_t) < 8) &&
-		    sz64 > 0x100000000ULL) {
+		if ((sizeof(pci_bus_addr_t) < 8 || sizeof(resource_size_t) < 8)
+		    && sz64 > 0x100000000ULL) {
 			res->flags |= IORESOURCE_UNSET | IORESOURCE_DISABLED;
 			res->start = 0;
 			res->end = 0;
@@ -263,7 +263,7 @@ int __pci_read_base(struct pci_dev *dev, enum pci_bar_type type,
 			goto out;
 		}
 
-		if ((sizeof(dma_addr_t) < 8) && l) {
+		if ((sizeof(pci_bus_addr_t) < 8) && l) {
 			/* Above 32-bit boundary; try to reallocate */
 			res->flags |= IORESOURCE_UNSET;
 			res->start = 0;
@@ -398,7 +398,7 @@ static void pci_read_bridge_mmio_pref(struct pci_bus *child)
 	struct pci_dev *dev = child->self;
 	u16 mem_base_lo, mem_limit_lo;
 	u64 base64, limit64;
-	dma_addr_t base, limit;
+	pci_bus_addr_t base, limit;
 	struct pci_bus_region region;
 	struct resource *res;
 
@@ -425,8 +425,8 @@ static void pci_read_bridge_mmio_pref(struct pci_bus *child)
 		}
 	}
 
-	base = (dma_addr_t) base64;
-	limit = (dma_addr_t) limit64;
+	base = (pci_bus_addr_t) base64;
+	limit = (pci_bus_addr_t) limit64;
 
 	if (base != base64) {
 		dev_err(&dev->dev, "can't handle bridge window above 4GB (bus address %#010llx)\n",
@@ -1507,6 +1507,54 @@ static void pci_init_capabilities(struct pci_dev *dev)
 	pci_enable_acs(dev);
 }
 
+static bool pci_up_path_over_pcie(struct pci_bus *bus)
+{
+	if (!bus)
+		return true;
+
+	if (bus->self && !pci_is_pcie(bus->self))
+		return false;
+
+	return pci_up_path_over_pcie(bus->parent);
+}
+
+/*
+ * Per the Implementation Note in the PCIe r3.0 spec, sec 7.5.2.1, it is
+ * safe to place a non-prefetchable BAR in a prefetchable window if the
+ * entire path from the host to the adapter is PCIe, because PCIe Memory
+ * Reads always contain an explicit length and PCIe switches never
+ * prefetch.  The note lists some additional requirements we can't verify
+ * but we assume are true.
+ */
+
+static void set_pcie_64bit_pref(struct pci_dev *dev)
+{
+	int i;
+
+	if (!pci_is_pcie(dev))
+		return;
+
+	if (!pci_up_path_over_pcie(dev->bus))
+		return;
+
+	for (i = 0; i < PCI_BRIDGE_RESOURCES; i++) {
+		struct resource *res = &dev->resource[i];
+		enum pci_bar_type type;
+		int reg;
+
+		if (!(res->flags & IORESOURCE_MEM_64))
+			continue;
+
+		if (res->flags & IORESOURCE_PREFETCH)
+			continue;
+
+		reg = pci_resource_bar(dev, i, &type);
+		res->flags |= IORESOURCE_PREFETCH;
+		dev_printk(KERN_DEBUG, &dev->dev, "reg %#x %pR (marked pref because entire path is PCIe)\n",
+			   reg, res);
+	}
+}
+
 void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 {
 	int ret;
@@ -1535,6 +1583,9 @@ void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 
 	/* Initialize various capabilities */
 	pci_init_capabilities(dev);
+
+	/* After pcie_cap is assigned and sriov bar is probed */
+	set_pcie_64bit_pref(dev);
 
 	/*
 	 * Add the device to our list of discovered devices
