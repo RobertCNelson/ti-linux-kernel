@@ -28,7 +28,7 @@ static void poison_error(mempool_t *pool, void *element, size_t size,
 	int i;
 
 	pr_err("BUG: mempool element poison mismatch\n");
-	pr_err("Mempool %p size %ld\n", pool, size);
+	pr_err("Mempool %p size %zu\n", pool, size);
 	pr_err(" nr=%d @ %p: %s0x", nr, element, start > 0 ? "... " : "");
 	for (i = start; i < end; i++)
 		pr_cont("%x ", *(u8 *)(element + i));
