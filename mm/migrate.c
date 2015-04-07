@@ -904,9 +904,10 @@ out:
  * Obtain the lock on page, remove all ptes and migrate the page
  * to the newly allocated page in newpage.
  */
-static int unmap_and_move(new_page_t get_new_page, free_page_t put_new_page,
-			unsigned long private, struct page *page, int force,
-			enum migrate_mode mode)
+static noinline int unmap_and_move(new_page_t get_new_page,
+				   free_page_t put_new_page,
+				   unsigned long private, struct page *page,
+				   int force, enum migrate_mode mode)
 {
 	int rc = 0;
 	int *result = NULL;
