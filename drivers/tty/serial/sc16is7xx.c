@@ -903,9 +903,11 @@ static void sc16is7xx_shutdown(struct uart_port *port)
 	/* Disable all interrupts */
 	sc16is7xx_port_write(port, SC16IS7XX_IER_REG, 0);
 	/* Disable TX/RX */
-	sc16is7xx_port_write(port, SC16IS7XX_EFCR_REG,
-			     SC16IS7XX_EFCR_RXDISABLE_BIT |
-			     SC16IS7XX_EFCR_TXDISABLE_BIT);
+	sc16is7xx_port_update(port, SC16IS7XX_EFCR_REG,
+			      SC16IS7XX_EFCR_RXDISABLE_BIT |
+			      SC16IS7XX_EFCR_TXDISABLE_BIT,
+			      SC16IS7XX_EFCR_RXDISABLE_BIT |
+			      SC16IS7XX_EFCR_TXDISABLE_BIT);
 
 	sc16is7xx_power(port, 0);
 }
@@ -1048,6 +1050,7 @@ static int sc16is7xx_probe(struct device *dev,
 		else
 			return PTR_ERR(s->clk);
 	} else {
+		clk_prepare_enable(s->clk);
 		freq = clk_get_rate(s->clk);
 	}
 
@@ -1119,6 +1122,9 @@ static int sc16is7xx_probe(struct device *dev,
 					IRQF_ONESHOT | flags, dev_name(dev), s);
 	if (!ret)
 		return 0;
+
+	for (i = 0; i < s->uart.nr; i++)
+		uart_remove_one_port(&s->uart, &s->p[i].port);
 
 	mutex_destroy(&s->mutex);
 
