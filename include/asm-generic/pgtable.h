@@ -697,12 +697,6 @@ static inline int pmd_protnone(pmd_t pmd)
 
 #endif /* CONFIG_MMU */
 
-#endif /* !__ASSEMBLY__ */
-
-#ifndef io_remap_pfn_range
-#define io_remap_pfn_range remap_pfn_range
-#endif
-
 #ifdef CONFIG_HAVE_ARCH_HUGE_VMAP
 int pud_set_huge(pud_t *pud, phys_addr_t addr, pgprot_t prot);
 int pmd_set_huge(pmd_t *pmd, phys_addr_t addr, pgprot_t prot);
@@ -716,5 +710,11 @@ static inline int pmd_set_huge(pmd_t *pmd, phys_addr_t addr, pgprot_t prot)
 	return 0;
 }
 #endif	/* CONFIG_HAVE_ARCH_HUGE_VMAP */
+
+#endif /* !__ASSEMBLY__ */
+
+#ifndef io_remap_pfn_range
+#define io_remap_pfn_range remap_pfn_range
+#endif
 
 #endif /* _ASM_GENERIC_PGTABLE_H */
