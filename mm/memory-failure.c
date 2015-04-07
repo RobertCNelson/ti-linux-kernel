@@ -521,7 +521,7 @@ static const char *action_name[] = {
 	[RECOVERED] = "Recovered",
 };
 
-enum page_type {
+enum action_page_type {
 	MSG_KERNEL,
 	MSG_KERNEL_HIGH_ORDER,
 	MSG_SLAB,
@@ -544,7 +544,7 @@ enum page_type {
 	MSG_UNKNOWN,
 };
 
-static const char *action_page_type[] = {
+static const char * const action_page_types[] = {
 	[MSG_KERNEL]			= "reserved kernel page",
 	[MSG_KERNEL_HIGH_ORDER]		= "high-order kernel page",
 	[MSG_SLAB]			= "kernel slab page",
@@ -823,7 +823,7 @@ static int me_huge_page(struct page *p, unsigned long pfn)
 static struct page_state {
 	unsigned long mask;
 	unsigned long res;
-	int type;
+	enum action_page_type type;
 	int (*action)(struct page *p, unsigned long pfn);
 } error_states[] = {
 	{ reserved,	reserved,	MSG_KERNEL,	me_kernel },
@@ -881,10 +881,10 @@ static struct page_state {
  * "Dirty/Clean" indication is not 100% accurate due to the possibility of
  * setting PG_dirty outside page lock. See also comment above set_page_dirty().
  */
-static void action_result(unsigned long pfn, int type, int result)
+static void action_result(unsigned long pfn, enum action_page_type type, int result)
 {
 	pr_err("MCE %#lx: recovery action for %s: %s\n",
-		pfn, action_page_type[type], action_name[result]);
+		pfn, action_page_types[type], action_name[result]);
 }
 
 static int page_action(struct page_state *ps, struct page *p,
@@ -901,7 +901,7 @@ static int page_action(struct page_state *ps, struct page *p,
 	if (count != 0) {
 		printk(KERN_ERR
 		       "MCE %#lx: %s still referenced by %d users\n",
-		       pfn, action_page_type[ps->type], count);
+		       pfn, action_page_types[ps->type], count);
 		result = FAILED;
 	}
 	action_result(pfn, ps->type, result);
