@@ -327,7 +327,10 @@ EXPORT_SYMBOL(kvfree);
 
 struct address_space *page_mapping(struct page *page)
 {
-	struct address_space *mapping = page->mapping;
+	struct address_space *mapping;
+
+	page = compound_head(page);
+	mapping = page->mapping;
 
 	/* This happens if someone calls flush_dcache_page on slab page */
 	if (unlikely(PageSlab(page)))
