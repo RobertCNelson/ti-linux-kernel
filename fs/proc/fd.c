@@ -57,17 +57,15 @@ static int seq_show(struct seq_file *m, void *v)
 		   real_mount(file->f_path.mnt)->mnt_id);
 
 	show_fd_locks(m, file, files);
-	ret = seq_has_overflowed(m);
-	if (ret)
+	if (seq_has_overflowed(m))
 		goto out;
 
 	if (file->f_op->show_fdinfo)
 		file->f_op->show_fdinfo(m, file);
-	ret = seq_has_overflowed(m);
 
 out:
 	fput(file);
-	return ret;
+	return 0;
 }
 
 static int seq_fdinfo_open(struct inode *inode, struct file *file)
