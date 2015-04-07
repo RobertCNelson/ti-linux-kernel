@@ -21,6 +21,7 @@ config ARM
 	select GENERIC_IDLE_POLL_SETUP
 	select GENERIC_IRQ_PROBE
 	select GENERIC_IRQ_SHOW
+	select GENERIC_IRQ_SHOW_LEVEL
 	select GENERIC_PCI_IOMAP
 	select GENERIC_SCHED_CLOCK
 	select GENERIC_SMP_IDLE_THREAD
@@ -1344,7 +1345,7 @@ config SMP
 	  If you don't know what to do here, say N.
 
 config SMP_ON_UP
-	bool "Allow booting SMP kernel on uniprocessor systems (EXPERIMENTAL)"
+	bool "Allow booting SMP kernel on uniprocessor systems"
 	depends on SMP && !XIP_KERNEL && MMU
 	default y
 	help
