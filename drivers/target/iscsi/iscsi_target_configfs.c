@@ -1052,6 +1052,11 @@ TPG_ATTR(default_erl, S_IRUGO | S_IWUSR);
  */
 DEF_TPG_ATTRIB(t10_pi);
 TPG_ATTR(t10_pi, S_IRUGO | S_IWUSR);
+/*
+ * Define iscsi_tpg_attrib_s_fabric_prot_type
+ */
+DEF_TPG_ATTRIB(fabric_prot_type);
+TPG_ATTR(fabric_prot_type, S_IRUGO | S_IWUSR);
 
 static struct configfs_attribute *lio_target_tpg_attrib_attrs[] = {
 	&iscsi_tpg_attrib_authentication.attr,
@@ -1065,6 +1070,7 @@ static struct configfs_attribute *lio_target_tpg_attrib_attrs[] = {
 	&iscsi_tpg_attrib_demo_mode_discovery.attr,
 	&iscsi_tpg_attrib_default_erl.attr,
 	&iscsi_tpg_attrib_t10_pi.attr,
+	&iscsi_tpg_attrib_fabric_prot_type.attr,
 	NULL,
 };
 
@@ -1410,8 +1416,18 @@ out:
 
 TF_TPG_BASE_ATTR(lio_target, enable, S_IRUGO | S_IWUSR);
 
+static ssize_t lio_target_tpg_show_dynamic_sessions(
+	struct se_portal_group *se_tpg,
+	char *page)
+{
+	return target_show_dynamic_sessions(se_tpg, page);
+}
+
+TF_TPG_BASE_ATTR_RO(lio_target, dynamic_sessions);
+
 static struct configfs_attribute *lio_target_tpg_attrs[] = {
 	&lio_target_tpg_enable.attr,
+	&lio_target_tpg_dynamic_sessions.attr,
 	NULL,
 };
 
@@ -1872,6 +1888,20 @@ static int lio_tpg_check_prod_mode_write_protect(
 	return tpg->tpg_attrib.prod_mode_write_protect;
 }
 
+static int lio_tpg_check_prot_fabric_only(
+	struct se_portal_group *se_tpg)
+{
+	struct iscsi_portal_group *tpg = se_tpg->se_tpg_fabric_ptr;
+	/*
+	 * Only report fabric_prot_type if t10_pi has also been enabled
+	 * for incoming ib_isert sessions.
+	 */
+	if (!tpg->tpg_attrib.t10_pi)
+		return 0;
+
+	return tpg->tpg_attrib.fabric_prot_type;
+}
+
 static void lio_tpg_release_fabric_acl(
 	struct se_portal_group *se_tpg,
 	struct se_node_acl *se_acl)
@@ -1987,6 +2017,8 @@ int iscsi_target_register_configfs(void)
 				&lio_tpg_check_demo_mode_write_protect;
 	fabric->tf_ops.tpg_check_prod_mode_write_protect =
 				&lio_tpg_check_prod_mode_write_protect;
+	fabric->tf_ops.tpg_check_prot_fabric_only =
+				&lio_tpg_check_prot_fabric_only;
 	fabric->tf_ops.tpg_alloc_fabric_acl = &lio_tpg_alloc_fabric_acl;
 	fabric->tf_ops.tpg_release_fabric_acl = &lio_tpg_release_fabric_acl;
 	fabric->tf_ops.tpg_get_inst_index = &lio_tpg_get_inst_index;
