@@ -399,38 +399,40 @@ int x86_pmu_hw_config(struct perf_event *event)
 
 		if (event->attr.precise_ip > precise)
 			return -EOPNOTSUPP;
-		/*
-		 * check that PEBS LBR correction does not conflict with
-		 * whatever the user is asking with attr->branch_sample_type
-		 */
-		if (event->attr.precise_ip > 1 &&
-		    x86_pmu.intel_cap.pebs_format < 2) {
-			u64 *br_type = &event->attr.branch_sample_type;
+	}
+	/*
+	 * check that PEBS LBR correction does not conflict with
+	 * whatever the user is asking with attr->branch_sample_type
+	 */
+	if (event->attr.precise_ip > 1 && x86_pmu.intel_cap.pebs_format < 2) {
+		u64 *br_type = &event->attr.branch_sample_type;
 
-			if (has_branch_stack(event)) {
-				if (!precise_br_compat(event))
-					return -EOPNOTSUPP;
+		if (has_branch_stack(event)) {
+			if (!precise_br_compat(event))
+				return -EOPNOTSUPP;
 
-				/* branch_sample_type is compatible */
+			/* branch_sample_type is compatible */
 
-			} else {
-				/*
-				 * user did not specify  branch_sample_type
-				 *
-				 * For PEBS fixups, we capture all
-				 * the branches at the priv level of the
-				 * event.
-				 */
-				*br_type = PERF_SAMPLE_BRANCH_ANY;
+		} else {
+			/*
+			 * user did not specify  branch_sample_type
+			 *
+			 * For PEBS fixups, we capture all
+			 * the branches at the priv level of the
+			 * event.
+			 */
+			*br_type = PERF_SAMPLE_BRANCH_ANY;
 
-				if (!event->attr.exclude_user)
-					*br_type |= PERF_SAMPLE_BRANCH_USER;
+			if (!event->attr.exclude_user)
+				*br_type |= PERF_SAMPLE_BRANCH_USER;
 
-				if (!event->attr.exclude_kernel)
-					*br_type |= PERF_SAMPLE_BRANCH_KERNEL;
-			}
+			if (!event->attr.exclude_kernel)
+				*br_type |= PERF_SAMPLE_BRANCH_KERNEL;
 		}
 	}
+
+	if (event->attr.branch_sample_type & PERF_SAMPLE_BRANCH_CALL_STACK)
+		event->attach_state |= PERF_ATTACH_TASK_DATA;
 
 	/*
 	 * Generate PMC IRQs:
@@ -448,6 +450,12 @@ int x86_pmu_hw_config(struct perf_event *event)
 
 	if (event->attr.type == PERF_TYPE_RAW)
 		event->hw.config |= event->attr.config & X86_RAW_EVENT_MASK;
+
+	if (event->attr.sample_period && x86_pmu.limit_period) {
+		if (x86_pmu.limit_period(event, event->attr.sample_period) >
+				event->attr.sample_period)
+			return -EINVAL;
+	}
 
 	return x86_setup_perfctr(event);
 }
@@ -986,6 +994,9 @@ int x86_perf_event_set_period(struct perf_event *event)
 	if (left > x86_pmu.max_period)
 		left = x86_pmu.max_period;
 
+	if (x86_pmu.limit_period)
+		left = x86_pmu.limit_period(event, left);
+
 	per_cpu(pmc_prev_left[idx], smp_processor_id()) = left;
 
 	/*
@@ -1033,7 +1044,6 @@ static int x86_pmu_add(struct perf_event *event, int flags)
 
 	hwc = &event->hw;
 
-	perf_pmu_disable(event->pmu);
 	n0 = cpuc->n_events;
 	ret = n = collect_events(cpuc, event, false);
 	if (ret < 0)
@@ -1071,7 +1081,6 @@ done_collect:
 
 	ret = 0;
 out:
-	perf_pmu_enable(event->pmu);
 	return ret;
 }
 
@@ -1914,10 +1923,10 @@ static const struct attribute_group *x86_pmu_attr_groups[] = {
 	NULL,
 };
 
-static void x86_pmu_flush_branch_stack(void)
+static void x86_pmu_sched_task(struct perf_event_context *ctx, bool sched_in)
 {
-	if (x86_pmu.flush_branch_stack)
-		x86_pmu.flush_branch_stack();
+	if (x86_pmu.sched_task)
+		x86_pmu.sched_task(ctx, sched_in);
 }
 
 void perf_check_microcode(void)
@@ -1949,7 +1958,8 @@ static struct pmu pmu = {
 	.commit_txn		= x86_pmu_commit_txn,
 
 	.event_idx		= x86_pmu_event_idx,
-	.flush_branch_stack	= x86_pmu_flush_branch_stack,
+	.sched_task		= x86_pmu_sched_task,
+	.task_ctx_size          = sizeof(struct x86_perf_task_context),
 };
 
 void arch_perf_update_userpage(struct perf_event *event,
@@ -1968,13 +1978,23 @@ void arch_perf_update_userpage(struct perf_event *event,
 
 	data = cyc2ns_read_begin();
 
+	/*
+	 * Internal timekeeping for enabled/running/stopped times
+	 * is always in the local_clock domain.
+	 */
 	userpg->cap_user_time = 1;
 	userpg->time_mult = data->cyc2ns_mul;
 	userpg->time_shift = data->cyc2ns_shift;
 	userpg->time_offset = data->cyc2ns_offset - now;
 
-	userpg->cap_user_time_zero = 1;
-	userpg->time_zero = data->cyc2ns_offset;
+	/*
+	 * cap_user_time_zero doesn't make sense when we're using a different
+	 * time base for the records.
+	 */
+	if (event->clock == &local_clock) {
+		userpg->cap_user_time_zero = 1;
+		userpg->time_zero = data->cyc2ns_offset;
+	}
 
 	cyc2ns_read_end(data);
 }
@@ -2147,24 +2167,24 @@ perf_callchain_user(struct perf_callchain_entry *entry, struct pt_regs *regs)
 static unsigned long code_segment_base(struct pt_regs *regs)
 {
 	/*
+	 * For IA32 we look at the GDT/LDT segment base to convert the
+	 * effective IP to a linear address.
+	 */
+
+#ifdef CONFIG_X86_32
+	/*
 	 * If we are in VM86 mode, add the segment offset to convert to a
 	 * linear address.
 	 */
 	if (regs->flags & X86_VM_MASK)
 		return 0x10 * regs->cs;
 
-	/*
-	 * For IA32 we look at the GDT/LDT segment base to convert the
-	 * effective IP to a linear address.
-	 */
-#ifdef CONFIG_X86_32
-	if (user_mode(regs) && regs->cs != __USER_CS)
+	if (user_mode_ignore_vm86(regs) && regs->cs != __USER_CS)
 		return get_segment_base(regs->cs);
 #else
-	if (test_thread_flag(TIF_IA32)) {
-		if (user_mode(regs) && regs->cs != __USER32_CS)
-			return get_segment_base(regs->cs);
-	}
+	if (user_mode(regs) && !user_64bit_mode(regs) &&
+	    regs->cs != __USER32_CS)
+		return get_segment_base(regs->cs);
 #endif
 	return 0;
 }
