@@ -719,7 +719,7 @@ void set_mm_exe_file(struct mm_struct *mm, struct file *new_exe_file)
 {
 	struct file *old_exe_file = rcu_dereference_protected(mm->exe_file,
 			!atomic_read(&mm->mm_users) || current->in_execve ||
-			lock_is_held(&mm->mmap_sem));
+			lockdep_is_held(&mm->mmap_sem));
 
 	if (new_exe_file)
 		get_file(new_exe_file);
