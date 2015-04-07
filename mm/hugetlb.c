@@ -924,6 +924,31 @@ struct hstate *size_to_hstate(unsigned long size)
 	return NULL;
 }
 
+/*
+ * Page flag to show that the hugepage is "active/in-use" (i.e. being linked to
+ * hstate->hugepage_activelist.)
+ *
+ * This function can be called for tail pages, but never returns true for them.
+ */
+int PageHugeActive(struct page *page)
+{
+	VM_BUG_ON_PAGE(!PageHuge(page), page);
+	return PageHead(page) && PagePrivate(&page[1]);
+}
+
+/* never called for tail page */
+void SetPageHugeActive(struct page *page)
+{
+	VM_BUG_ON_PAGE(!PageHeadHuge(page), page);
+	SetPagePrivate(&page[1]);
+}
+
+void ClearPageHugeActive(struct page *page)
+{
+	VM_BUG_ON_PAGE(!PageHeadHuge(page), page);
+	ClearPagePrivate(&page[1]);
+}
+
 void free_huge_page(struct page *page)
 {
 	/*
@@ -952,6 +977,7 @@ void free_huge_page(struct page *page)
 		restore_reserve = true;
 
 	spin_lock(&hugetlb_lock);
+	ClearPageHugeActive(page);
 	hugetlb_cgroup_uncharge_page(hstate_index(h),
 				     pages_per_huge_page(h), page);
 	if (restore_reserve)
@@ -2972,6 +2998,7 @@ retry_avoidcopy:
 	copy_user_huge_page(new_page, old_page, address, vma,
 			    pages_per_huge_page(h));
 	__SetPageUptodate(new_page);
+	SetPageHugeActive(new_page);
 
 	mmun_start = address & huge_page_mask(h);
 	mmun_end = mmun_start + huge_page_size(h);
@@ -3084,6 +3111,7 @@ retry:
 		}
 		clear_huge_page(page, address, pages_per_huge_page(h));
 		__SetPageUptodate(page);
+		SetPageHugeActive(page);
 
 		if (vma->vm_flags & VM_MAYSHARE) {
 			int err;
@@ -3914,19 +3942,26 @@ int dequeue_hwpoisoned_huge_page(struct page *hpage)
 
 bool isolate_huge_page(struct page *page, struct list_head *list)
 {
+	bool ret = true;
+
 	VM_BUG_ON_PAGE(!PageHead(page), page);
-	if (!get_page_unless_zero(page))
-		return false;
 	spin_lock(&hugetlb_lock);
+	if (!PageHugeActive(page) || !get_page_unless_zero(page)) {
+		ret = false;
+		goto unlock;
+	}
+	ClearPageHugeActive(page);
 	list_move_tail(&page->lru, list);
+unlock:
 	spin_unlock(&hugetlb_lock);
-	return true;
+	return ret;
 }
 
 void putback_active_hugepage(struct page *page)
 {
 	VM_BUG_ON_PAGE(!PageHead(page), page);
 	spin_lock(&hugetlb_lock);
+	SetPageHugeActive(page);
 	list_move_tail(&page->lru, &(page_hstate(page))->hugepage_activelist);
 	spin_unlock(&hugetlb_lock);
 	put_page(page);
