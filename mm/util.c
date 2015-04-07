@@ -325,7 +325,7 @@ void kvfree(const void *addr)
 }
 EXPORT_SYMBOL(kvfree);
 
-static inline void * __page_rmapping(struct page *page)
+static inline void *__page_rmapping(struct page *page)
 {
 	unsigned long mapping;
 
