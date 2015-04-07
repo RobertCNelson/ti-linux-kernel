@@ -107,6 +107,7 @@ static inline void put_anon_vma(struct anon_vma *anon_vma)
 
 static inline struct anon_vma *page_anon_vma(struct page *page)
 {
+	page = compound_head(page);
 	if (((unsigned long)page->mapping & PAGE_MAPPING_FLAGS) !=
 					    PAGE_MAPPING_ANON)
 		return NULL;
