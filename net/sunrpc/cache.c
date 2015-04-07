@@ -1068,16 +1068,16 @@ void qword_add(char **bpp, int *lp, char *str)
 {
 	char *bp = *bpp;
 	int len = *lp;
-	int ret, written;
+	int ret;
 
 	if (len < 0) return;
 
 	ret = string_escape_str(str, bp, len, ESCAPE_OCTAL, "\\ \n\t");
-	written = min(ret, len);
-	bp += written;
 	if (ret >= len)
+		bp += len;
 		len = -1;
 	else {
+		bp += ret;
 		len -= ret;
 		*bp++ = ' ';
 		len--;
