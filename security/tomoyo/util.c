@@ -948,19 +948,19 @@ bool tomoyo_path_matches_pattern(const struct tomoyo_path_info *filename,
  */
 const char *tomoyo_get_exe(void)
 {
-       struct file *exe_file;
-       const char *cp;
-       struct mm_struct *mm = current->mm;
+	struct file *exe_file;
+	const char *cp;
+	struct mm_struct *mm = current->mm;
 
-       if (!mm)
-	       return NULL;
-       exe_file = get_mm_exe_file(mm);
-       if (!exe_file)
-	       return NULL;
+	if (!mm)
+		return NULL;
+	exe_file = get_mm_exe_file(mm);
+	if (!exe_file)
+		return NULL;
 
-       cp = tomoyo_realpath_from_path(&exe_file->f_path);
-       fput(exe_file);
-       return cp;
+	cp = tomoyo_realpath_from_path(&exe_file->f_path);
+	fput(exe_file);
+	return cp;
 }
 
 /**
