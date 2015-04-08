@@ -70,14 +70,31 @@ static int ext4_create_encryption_context_from_policy(
 	ctx.format = EXT4_ENCRYPTION_CONTEXT_FORMAT_V0;
 	memcpy(ctx.master_key_descriptor, policy->master_key_descriptor,
 	       EXT4_KEY_DESCRIPTOR_SIZE);
-	ctx.contents_encryption_mode = policy->contents_encryption_mode;
-	ctx.filenames_encryption_mode = policy->filenames_encryption_mode;
+	ctx.contents_encryption_mode = ext4_validate_encryption_mode(
+		policy->contents_encryption_mode);
+	if (ctx.contents_encryption_mode == EXT4_ENCRYPTION_MODE_INVALID) {
+		printk(KERN_WARNING
+		       "%s: Invalid contents encryption mode %d\n", __func__,
+			policy->contents_encryption_mode);
+		res = -EINVAL;
+		goto out;
+	}
+	ctx.filenames_encryption_mode = ext4_validate_encryption_mode(
+		policy->filenames_encryption_mode);
+	if (ctx.filenames_encryption_mode == EXT4_ENCRYPTION_MODE_INVALID) {
+		printk(KERN_WARNING
+		       "%s: Invalid filenames encryption mode %d\n", __func__,
+			policy->filenames_encryption_mode);
+		res = -EINVAL;
+		goto out;
+	}
 	BUILD_BUG_ON(sizeof(ctx.nonce) != EXT4_KEY_DERIVATION_NONCE_SIZE);
 	get_random_bytes(ctx.nonce, EXT4_KEY_DERIVATION_NONCE_SIZE);
 
 	res = ext4_xattr_set(inode, EXT4_XATTR_INDEX_ENCRYPTION,
 			     EXT4_XATTR_NAME_ENCRYPTION_CONTEXT, &ctx,
 			     sizeof(ctx), 0);
+out:
 	if (!res)
 		ext4_set_inode_flag(inode, EXT4_INODE_ENCRYPT);
 	return res;

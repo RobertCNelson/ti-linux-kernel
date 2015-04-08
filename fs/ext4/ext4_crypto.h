@@ -46,4 +46,50 @@ struct ext4_encryption_context {
 	char nonce[EXT4_KEY_DERIVATION_NONCE_SIZE];
 } __attribute__((__packed__));
 
+/* Encryption parameters */
+#define EXT4_AES_256_XTS_KEY_SIZE 64
+#define EXT4_XTS_TWEAK_SIZE 16
+#define EXT4_AES_128_ECB_KEY_SIZE 16
+#define EXT4_AES_256_GCM_KEY_SIZE 32
+#define EXT4_AES_256_CBC_KEY_SIZE 32
+#define EXT4_AES_256_CTS_KEY_SIZE 32
+#define EXT4_MAX_KEY_SIZE 64
+
+struct ext4_encryption_key {
+	uint32_t mode;
+	char raw[EXT4_MAX_KEY_SIZE];
+	uint32_t size;
+};
+
+#define EXT4_CTX_REQUIRES_FREE_ENCRYPT_FL             0x00000001
+#define EXT4_BOUNCE_PAGE_REQUIRES_FREE_ENCRYPT_FL     0x00000002
+
+struct ext4_crypto_ctx {
+	struct crypto_tfm *tfm;         /* Crypto API context */
+	struct page *bounce_page;       /* Ciphertext page on write path */
+	struct page *control_page;      /* Original page on write path */
+	struct bio *bio;                /* The bio for this context */
+	struct work_struct work;        /* Work queue for read complete path */
+	struct list_head free_list;     /* Free list */
+	int flags;                      /* Flags */
+	int mode;                       /* Encryption mode for tfm */
+};
+
+static inline int ext4_encryption_key_size(int mode)
+{
+	switch (mode) {
+	case EXT4_ENCRYPTION_MODE_AES_256_XTS:
+		return EXT4_AES_256_XTS_KEY_SIZE;
+	case EXT4_ENCRYPTION_MODE_AES_256_GCM:
+		return EXT4_AES_256_GCM_KEY_SIZE;
+	case EXT4_ENCRYPTION_MODE_AES_256_CBC:
+		return EXT4_AES_256_CBC_KEY_SIZE;
+	case EXT4_ENCRYPTION_MODE_AES_256_CTS:
+		return EXT4_AES_256_CTS_KEY_SIZE;
+	default:
+		BUG();
+	}
+	return 0;
+}
+
 #endif	/* _EXT4_CRYPTO_H */
