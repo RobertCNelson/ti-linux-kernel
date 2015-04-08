@@ -3200,14 +3200,31 @@ static int ext4_symlink(struct inode *dir,
 	struct inode *inode;
 	int l, err, retries = 0;
 	int credits;
+	bool encryption_required = false;
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+	int l2;
+	struct ext4_fname_crypto_ctx *ctx = NULL;
+	struct qstr istr;
+	struct ext4_str ostr;
+	struct ext4_encrypted_symlink_data *sd = NULL;
+	struct ext4_sb_info *sbi = EXT4_SB(dir->i_sb);
+#endif
 
-	l = strlen(symname)+1;
+	l = strlen(symname) + 1;
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+	l2 = encrypted_symlink_data_len(l - 1);
+	encryption_required = (ext4_encrypted_inode(dir) ||
+			       unlikely(sbi->s_mount_flags &
+					EXT4_MF_TEST_DUMMY_ENCRYPTION));
+	if (encryption_required && l2 > dir->i_sb->s_blocksize)
+#else
 	if (l > dir->i_sb->s_blocksize)
+#endif
 		return -ENAMETOOLONG;
 
 	dquot_initialize(dir);
 
-	if (l > EXT4_N_BLOCKS * 4) {
+	if ((l > EXT4_N_BLOCKS * 4) || encryption_required) {
 		/*
 		 * For non-fast symlinks, we just allocate inode and put it on
 		 * orphan list in the first transaction => we need bitmap,
@@ -3235,7 +3252,7 @@ retry:
 	if (IS_ERR(inode))
 		goto out_stop;
 
-	if (l > EXT4_N_BLOCKS * 4) {
+	if ((l > EXT4_N_BLOCKS * 4) || encryption_required) {
 		inode->i_op = &ext4_symlink_inode_operations;
 		ext4_set_aops(inode);
 		/*
@@ -3253,9 +3270,41 @@ retry:
 		ext4_journal_stop(handle);
 		if (err)
 			goto err_drop_inode;
-		err = __page_symlink(inode, symname, l, 1);
-		if (err)
-			goto err_drop_inode;
+		if (!encryption_required) {
+			err = __page_symlink(inode, symname, l, 1);
+			if (err)
+				goto err_drop_inode;
+		}
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+		else {
+			sd = kmalloc(l2 + 1, GFP_NOFS);
+			if (!sd) {
+				err = -ENOMEM;
+				goto err_drop_inode;
+			}
+			sd->encrypted_path[l2] = '\0';
+			err = ext4_inherit_context(dir, inode);
+			ctx = ext4_get_fname_crypto_ctx(
+				inode, inode->i_sb->s_blocksize);
+			if (IS_ERR_OR_NULL(ctx)) {
+				/* We just set the policy, so ctx should
+				   not be NULL */
+				err = (ctx == NULL) ? -EIO : PTR_ERR(ctx);
+				goto err_drop_inode;
+			}
+			istr.name = (const unsigned char *) symname;
+			istr.len = l - 1;
+			ostr.name = sd->encrypted_path;
+			err = ext4_fname_usr_to_disk(ctx, &istr, &ostr);
+			ext4_put_fname_crypto_ctx(&ctx);
+			if (err < 0)
+				goto err_drop_inode;
+			sd->len = cpu_to_le32(ostr.len);
+			err = __page_symlink(inode, (char *)sd, l2 + 1, 1);
+			kfree(sd);
+			sd = NULL;
+		}
+#endif
 		/*
 		 * Now inode is being linked into dir (EXT4_DATA_TRANS_BLOCKS
 		 * + EXT4_INDEX_EXTRA_TRANS_BLOCKS), inode is also modified
@@ -3295,6 +3344,9 @@ out_stop:
 err_drop_inode:
 	unlock_new_inode(inode);
 	iput(inode);
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+	kfree(sd);
+#endif
 	return err;
 }
 
