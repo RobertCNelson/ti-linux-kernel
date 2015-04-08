@@ -4475,7 +4475,8 @@ mmio:
 	return X86EMUL_CONTINUE;
 }
 
-int emulator_read_write(struct x86_emulate_ctxt *ctxt, unsigned long addr,
+static int emulator_read_write(struct x86_emulate_ctxt *ctxt,
+			unsigned long addr,
 			void *val, unsigned int bytes,
 			struct x86_exception *exception,
 			const struct read_write_emulator_ops *ops)
@@ -4538,7 +4539,7 @@ static int emulator_read_emulated(struct x86_emulate_ctxt *ctxt,
 				   exception, &read_emultor);
 }
 
-int emulator_write_emulated(struct x86_emulate_ctxt *ctxt,
+static int emulator_write_emulated(struct x86_emulate_ctxt *ctxt,
 			    unsigned long addr,
 			    const void *val,
 			    unsigned int bytes,
@@ -4705,7 +4706,7 @@ static void emulator_invlpg(struct x86_emulate_ctxt *ctxt, ulong address)
 	kvm_mmu_invlpg(emul_to_vcpu(ctxt), address);
 }
 
-int kvm_emulate_wbinvd(struct kvm_vcpu *vcpu)
+int kvm_emulate_wbinvd_noskip(struct kvm_vcpu *vcpu)
 {
 	if (!need_emulate_wbinvd(vcpu))
 		return X86EMUL_CONTINUE;
@@ -4722,19 +4723,29 @@ int kvm_emulate_wbinvd(struct kvm_vcpu *vcpu)
 		wbinvd();
 	return X86EMUL_CONTINUE;
 }
+
+int kvm_emulate_wbinvd(struct kvm_vcpu *vcpu)
+{
+	kvm_x86_ops->skip_emulated_instruction(vcpu);
+	return kvm_emulate_wbinvd_noskip(vcpu);
+}
 EXPORT_SYMBOL_GPL(kvm_emulate_wbinvd);
+
+
 
 static void emulator_wbinvd(struct x86_emulate_ctxt *ctxt)
 {
-	kvm_emulate_wbinvd(emul_to_vcpu(ctxt));
+	kvm_emulate_wbinvd_noskip(emul_to_vcpu(ctxt));
 }
 
-int emulator_get_dr(struct x86_emulate_ctxt *ctxt, int dr, unsigned long *dest)
+static int emulator_get_dr(struct x86_emulate_ctxt *ctxt, int dr,
+			   unsigned long *dest)
 {
 	return kvm_get_dr(emul_to_vcpu(ctxt), dr, dest);
 }
 
-int emulator_set_dr(struct x86_emulate_ctxt *ctxt, int dr, unsigned long value)
+static int emulator_set_dr(struct x86_emulate_ctxt *ctxt, int dr,
+			   unsigned long value)
 {
 
 	return __kvm_set_dr(emul_to_vcpu(ctxt), dr, value);
@@ -5816,7 +5827,7 @@ void kvm_arch_exit(void)
 	free_percpu(shared_msrs);
 }
 
-int kvm_emulate_halt(struct kvm_vcpu *vcpu)
+int kvm_vcpu_halt(struct kvm_vcpu *vcpu)
 {
 	++vcpu->stat.halt_exits;
 	if (irqchip_in_kernel(vcpu->kvm)) {
@@ -5826,6 +5837,13 @@ int kvm_emulate_halt(struct kvm_vcpu *vcpu)
 		vcpu->run->exit_reason = KVM_EXIT_HLT;
 		return 0;
 	}
+}
+EXPORT_SYMBOL_GPL(kvm_vcpu_halt);
+
+int kvm_emulate_halt(struct kvm_vcpu *vcpu)
+{
+	kvm_x86_ops->skip_emulated_instruction(vcpu);
+	return kvm_vcpu_halt(vcpu);
 }
 EXPORT_SYMBOL_GPL(kvm_emulate_halt);
 
@@ -5903,13 +5921,15 @@ static void kvm_pv_kick_cpu_op(struct kvm *kvm, unsigned long flags, int apicid)
 	lapic_irq.dest_id = apicid;
 
 	lapic_irq.delivery_mode = APIC_DM_REMRD;
-	kvm_irq_delivery_to_apic(kvm, 0, &lapic_irq, NULL);
+	kvm_irq_delivery_to_apic(kvm, NULL, &lapic_irq, NULL);
 }
 
 int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 {
 	unsigned long nr, a0, a1, a2, a3, ret;
 	int op_64_bit, r = 1;
+
+	kvm_x86_ops->skip_emulated_instruction(vcpu);
 
 	if (kvm_hv_hypercall_enabled(vcpu->kvm))
 		return kvm_hv_hypercall(vcpu);
@@ -7428,7 +7448,7 @@ void kvm_arch_free_memslot(struct kvm *kvm, struct kvm_memory_slot *free,
 
 	for (i = 0; i < KVM_NR_PAGE_SIZES; ++i) {
 		if (!dont || free->arch.rmap[i] != dont->arch.rmap[i]) {
-			kvm_kvfree(free->arch.rmap[i]);
+			kvfree(free->arch.rmap[i]);
 			free->arch.rmap[i] = NULL;
 		}
 		if (i == 0)
@@ -7436,7 +7456,7 @@ void kvm_arch_free_memslot(struct kvm *kvm, struct kvm_memory_slot *free,
 
 		if (!dont || free->arch.lpage_info[i - 1] !=
 			     dont->arch.lpage_info[i - 1]) {
-			kvm_kvfree(free->arch.lpage_info[i - 1]);
+			kvfree(free->arch.lpage_info[i - 1]);
 			free->arch.lpage_info[i - 1] = NULL;
 		}
 	}
@@ -7490,12 +7510,12 @@ int kvm_arch_create_memslot(struct kvm *kvm, struct kvm_memory_slot *slot,
 
 out_free:
 	for (i = 0; i < KVM_NR_PAGE_SIZES; ++i) {
-		kvm_kvfree(slot->arch.rmap[i]);
+		kvfree(slot->arch.rmap[i]);
 		slot->arch.rmap[i] = NULL;
 		if (i == 0)
 			continue;
 
-		kvm_kvfree(slot->arch.lpage_info[i - 1]);
+		kvfree(slot->arch.lpage_info[i - 1]);
 		slot->arch.lpage_info[i - 1] = NULL;
 	}
 	return -ENOMEM;
