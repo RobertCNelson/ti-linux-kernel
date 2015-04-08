@@ -46,6 +46,35 @@
 
 #include "ext4.h"
 
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+/*
+ * Call ext4_decrypt on every single page, reusing the encryption
+ * context.
+ */
+static void completion_pages(struct work_struct *work)
+{
+	struct ext4_crypto_ctx *ctx =
+		container_of(work, struct ext4_crypto_ctx, work);
+	struct bio	*bio	= ctx->bio;
+	struct bio_vec	*bv;
+	int		i;
+
+	bio_for_each_segment_all(bv, bio, i) {
+		struct page *page = bv->bv_page;
+
+		int ret = ext4_decrypt(ctx, page);
+		if (ret) {
+			WARN_ON_ONCE(1);
+			SetPageError(page);
+		} else
+			SetPageUptodate(page);
+		unlock_page(page);
+	}
+	ext4_release_crypto_ctx(ctx);
+	bio_put(bio);
+}
+#endif
+
 /*
  * I/O completion handler for multipage BIOs.
  *
@@ -63,6 +92,20 @@ static void mpage_end_io(struct bio *bio, int err)
 	struct bio_vec *bv;
 	int i;
 
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+	if (bio->bi_private) {
+		struct ext4_crypto_ctx *ctx = bio->bi_private;
+
+		if (err)
+			ext4_release_crypto_ctx(ctx);
+		else {
+			INIT_WORK(&ctx->work, completion_pages);
+			ctx->bio = bio;
+			queue_work(ext4_read_workqueue, &ctx->work);
+			return;
+		}
+	}
+#endif
 	bio_for_each_segment_all(bv, bio, i) {
 		struct page *page = bv->bv_page;
 
@@ -97,8 +140,14 @@ int ext4_mpage_readpages(struct address_space *mapping,
 	unsigned page_block;
 	struct block_device *bdev = inode->i_sb->s_bdev;
 	int length;
+	int do_decryption = 0;
 	unsigned relative_block = 0;
 	struct ext4_map_blocks map;
+
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+	if (ext4_encrypted_inode(inode) && S_ISREG(inode->i_mode))
+		do_decryption = 1;
+#endif
 
 	map.m_pblk = 0;
 	map.m_lblk = 0;
@@ -223,13 +272,24 @@ int ext4_mpage_readpages(struct address_space *mapping,
 			bio = NULL;
 		}
 		if (bio == NULL) {
+			struct ext4_crypto_ctx *ctx = NULL;
+
+			if (do_decryption) {
+				ctx = ext4_get_crypto_ctx(inode);
+				if (IS_ERR(ctx))
+					goto set_error_page;
+			}
 			bio = bio_alloc(GFP_KERNEL,
 				min_t(int, nr_pages, bio_get_nr_vecs(bdev)));
-			if (!bio)
+			if (!bio) {
+				if (ctx)
+					ext4_release_crypto_ctx(ctx);
 				goto set_error_page;
+			}
 			bio->bi_bdev = bdev;
 			bio->bi_iter.bi_sector = blocks[0] << (blkbits - 9);
 			bio->bi_end_io = mpage_end_io;
+			bio->bi_private = ctx;
 		}
 
 		length = first_hole << blkbits;
