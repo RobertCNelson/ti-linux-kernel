@@ -416,7 +416,7 @@ static void esdhc_writew_le(struct sdhci_host *host, u16 val, int reg)
 			new_val |= ESDHC_VENDOR_SPEC_FRC_SDCLK_ON;
 		else
 			new_val &= ~ESDHC_VENDOR_SPEC_FRC_SDCLK_ON;
-			writel(new_val, host->ioaddr + ESDHC_VENDOR_SPEC);
+		writel(new_val, host->ioaddr + ESDHC_VENDOR_SPEC);
 		return;
 	case SDHCI_HOST_CONTROL2:
 		new_val = readl(host->ioaddr + ESDHC_VENDOR_SPEC);
@@ -864,6 +864,7 @@ static const struct sdhci_pltfm_data sdhci_esdhc_imx_pdata = {
 #ifdef CONFIG_OF
 static int
 sdhci_esdhc_imx_probe_dt(struct platform_device *pdev,
+			 struct sdhci_host *host,
 			 struct esdhc_platform_data *boarddata)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -900,11 +901,14 @@ sdhci_esdhc_imx_probe_dt(struct platform_device *pdev,
 	if (of_property_read_u32(np, "fsl,delay-line", &boarddata->delay_line))
 		boarddata->delay_line = 0;
 
+	mmc_of_parse_voltage(np, &host->ocr_mask);
+
 	return 0;
 }
 #else
 static inline int
 sdhci_esdhc_imx_probe_dt(struct platform_device *pdev,
+			 struct sdhci_host *host,
 			 struct esdhc_platform_data *boarddata)
 {
 	return -ENODEV;
@@ -999,7 +1003,7 @@ static int sdhci_esdhc_imx_probe(struct platform_device *pdev)
 			host->ioaddr + ESDHC_TUNING_CTRL);
 
 	boarddata = &imx_data->boarddata;
-	if (sdhci_esdhc_imx_probe_dt(pdev, boarddata) < 0) {
+	if (sdhci_esdhc_imx_probe_dt(pdev, host, boarddata) < 0) {
 		if (!host->mmc->parent->platform_data) {
 			dev_err(mmc_dev(host->mmc), "no board data!\n");
 			err = -EINVAL;
