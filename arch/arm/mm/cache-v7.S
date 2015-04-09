@@ -275,7 +275,7 @@ ENTRY(v7_coherent_user_range)
 	bic	r12, r0, r3
 #ifdef CONFIG_ARM_ERRATA_764369
 	ALT_SMP(W(dsb))
-	ALT_UP(W(nop))
+ALT_UP(	nop)
 #endif
 1:
  USER(	mcr	p15, 0, r12, c7, c11, 1	)	@ clean D line to the point of unification
@@ -328,7 +328,7 @@ ENTRY(v7_flush_kern_dcache_area)
 	bic	r0, r0, r3
 #ifdef CONFIG_ARM_ERRATA_764369
 	ALT_SMP(W(dsb))
-	ALT_UP(W(nop))
+ALT_UP(	nop)
 #endif
 1:
 	mcr	p15, 0, r0, c7, c14, 1		@ clean & invalidate D line / unified line
@@ -356,7 +356,7 @@ v7_dma_inv_range:
 	bic	r0, r0, r3
 #ifdef CONFIG_ARM_ERRATA_764369
 	ALT_SMP(W(dsb))
-	ALT_UP(W(nop))
+ALT_UP(	nop)
 #endif
 	mcrne	p15, 0, r0, c7, c14, 1		@ clean & invalidate D / U line
 
@@ -383,7 +383,7 @@ v7_dma_clean_range:
 	bic	r0, r0, r3
 #ifdef CONFIG_ARM_ERRATA_764369
 	ALT_SMP(W(dsb))
-	ALT_UP(W(nop))
+ALT_UP(	nop)
 #endif
 1:
 	mcr	p15, 0, r0, c7, c10, 1		@ clean D / U line
@@ -405,7 +405,7 @@ ENTRY(v7_dma_flush_range)
 	bic	r0, r0, r3
 #ifdef CONFIG_ARM_ERRATA_764369
 	ALT_SMP(W(dsb))
-	ALT_UP(W(nop))
+ALT_UP(	nop)
 #endif
 1:
 	mcr	p15, 0, r0, c7, c14, 1		@ clean & invalidate D / U line

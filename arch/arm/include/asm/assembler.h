@@ -283,11 +283,7 @@
 #else
 #error Incompatible SMP platform
 #endif
-	.ifeqs "\mode","arm"
 	ALT_UP(nop)
-	.else
-	ALT_UP(W(nop))
-	.endif
 #endif
 	.endm
 
