@@ -1579,7 +1579,7 @@ static void bcm2048_parse_rt_match_d(struct bcm2048_device *bdev, int i,
 		bcm2048_parse_rds_rt_block(bdev, i, index+2, crc);
 }
 
-static int bcm2048_parse_rds_rt(struct bcm2048_device *bdev)
+static void bcm2048_parse_rds_rt(struct bcm2048_device *bdev)
 {
 	int i, index = 0, crc, match_b = 0, match_c = 0, match_d = 0;
 
@@ -1615,8 +1615,6 @@ static int bcm2048_parse_rds_rt(struct bcm2048_device *bdev)
 					match_b = 1;
 		}
 	}
-
-	return 0;
 }
 
 static void bcm2048_parse_rds_ps_block(struct bcm2048_device *bdev, int i,
@@ -2274,7 +2272,7 @@ done:
  */
 static const struct v4l2_file_operations bcm2048_fops = {
 	.owner		= THIS_MODULE,
-	.ioctl		= video_ioctl2,
+	.unlocked_ioctl	= video_ioctl2,
 	/* for RDS read support */
 	.open		= bcm2048_fops_open,
 	.release	= bcm2048_fops_release,
