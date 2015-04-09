@@ -53,7 +53,6 @@ struct fence;
 #define DRM_MODE_OBJECT_FB 0xfbfbfbfb
 #define DRM_MODE_OBJECT_BLOB 0xbbbbbbbb
 #define DRM_MODE_OBJECT_PLANE 0xeeeeeeee
-#define DRM_MODE_OBJECT_BRIDGE 0xbdbdbdbd
 #define DRM_MODE_OBJECT_ANY 0
 
 struct drm_mode_object {
@@ -202,6 +201,7 @@ struct drm_framebuffer {
 	const struct drm_framebuffer_funcs *funcs;
 	unsigned int pitches[4];
 	unsigned int offsets[4];
+	uint64_t modifier[4];
 	unsigned int width;
 	unsigned int height;
 	/* depth can be 15 or 16 */
@@ -829,6 +829,7 @@ enum drm_plane_type {
  * @possible_crtcs: pipes this plane can be bound to
  * @format_types: array of formats supported by this plane
  * @format_count: number of formats supported
+ * @format_default: driver hasn't supplied supported formats for the plane
  * @crtc: currently bound CRTC
  * @fb: currently bound fb
  * @old_fb: Temporary tracking of the old fb while a modeset is ongoing. Used by
@@ -849,6 +850,7 @@ struct drm_plane {
 	uint32_t possible_crtcs;
 	uint32_t *format_types;
 	uint32_t format_count;
+	bool format_default;
 
 	struct drm_crtc *crtc;
 	struct drm_framebuffer *fb;
@@ -912,7 +914,7 @@ struct drm_bridge {
 };
 
 /**
- * struct struct drm_atomic_state - the global state object for atomic updates
+ * struct drm_atomic_state - the global state object for atomic updates
  * @dev: parent DRM device
  * @allow_modeset: allow full modeset
  * @legacy_cursor_update: hint to enforce legacy cursor ioctl semantics
@@ -1155,6 +1157,9 @@ struct drm_mode_config {
 	/* whether async page flip is supported or not */
 	bool async_page_flip;
 
+	/* whether the driver supports fb modifiers */
+	bool allow_fb_modifiers;
+
 	/* cursor size */
 	uint32_t cursor_width, cursor_height;
 };
@@ -1259,6 +1264,8 @@ extern int drm_plane_init(struct drm_device *dev,
 extern void drm_plane_cleanup(struct drm_plane *plane);
 extern unsigned int drm_plane_index(struct drm_plane *plane);
 extern void drm_plane_force_disable(struct drm_plane *plane);
+extern int drm_plane_check_pixel_format(const struct drm_plane *plane,
+					u32 format);
 extern void drm_crtc_get_hv_timing(const struct drm_display_mode *mode,
 				   int *hdisplay, int *vdisplay);
 extern int drm_crtc_check_viewport(const struct drm_crtc *crtc,
