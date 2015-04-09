@@ -1043,7 +1043,7 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			Format: {"off" | "on" | "skip[mbr]"}
 
 	efi=		[EFI]
-			Format: { "old_map", "nochunk", "noruntime" }
+			Format: { "old_map", "nochunk", "noruntime", "debug" }
 			old_map [X86-64]: switch to the old ioremap-based EFI
 			runtime services mapping. 32-bit still uses this one by
 			default.
@@ -1051,6 +1051,7 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			boot stub, as chunking can cause problems with some
 			firmware implementations.
 			noruntime : disable EFI runtime services support
+			debug: enable misc debug output
 
 	efi_no_storage_paranoia [EFI; X86]
 			Using this parameter you can use more than 50% of
@@ -1971,6 +1972,12 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			         memmap=64K$0x18690000
 			         or
 			         memmap=0x10000$0x18690000
+
+	memmap=nn[KMG]!ss[KMG]
+			[KNL,X86] Mark specific memory as protected.
+			Region of memory to be used, from ss to ss+nn.
+			The memory region may be marked as e820 type 12 (0xc)
+			and is NVDIMM or ADR memory.
 
 	memory_corruption_check=0/1 [X86]
 			Some BIOSes seem to corrupt the first 64k of
@@ -2969,6 +2976,12 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			Set maximum number of finished RCU callbacks to
 			process in one batch.
 
+	rcutree.gp_init_delay=	[KNL]
+			Set the number of jiffies to delay each step of
+			RCU grace-period initialization.  This only has
+			effect when CONFIG_RCU_TORTURE_TEST_SLOW_INIT is
+			set.
+
 	rcutree.rcu_fanout_leaf= [KNL]
 			Increase the number of CPUs assigned to each
 			leaf rcu_node structure.  Useful for very large
@@ -2992,11 +3005,15 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			value is one, and maximum value is HZ.
 
 	rcutree.kthread_prio= 	 [KNL,BOOT]
-			Set the SCHED_FIFO priority of the RCU
-			per-CPU kthreads (rcuc/N). This value is also
-			used for the priority of the RCU boost threads
-			(rcub/N). Valid values are 1-99 and the default
-			is 1 (the least-favored priority).
+			Set the SCHED_FIFO priority of the RCU per-CPU
+			kthreads (rcuc/N). This value is also used for
+			the priority of the RCU boost threads (rcub/N)
+			and for the RCU grace-period kthreads (rcu_bh,
+			rcu_preempt, and rcu_sched). If RCU_BOOST is
+			set, valid values are 1-99 and the default is 1
+			(the least-favored priority).  Otherwise, when
+			RCU_BOOST is not set, valid values are 0-99 and
+			the default is zero (non-realtime operation).
 
 	rcutree.rcu_nocb_leader_stride= [KNL]
 			Set the number of NOCB kthread groups, which
