@@ -110,20 +110,16 @@ struct rcu_state sname##_state = { \
 RCU_STATE_INITIALIZER(rcu_sched, 's', call_rcu_sched);
 RCU_STATE_INITIALIZER(rcu_bh, 'b', call_rcu_bh);
 
-static struct rcu_state *rcu_state_p;
+static struct rcu_state *const rcu_state_p;
+static struct rcu_data __percpu *const rcu_data_p;
 LIST_HEAD(rcu_struct_flavors);
 
 /* Increase (but not decrease) the CONFIG_RCU_FANOUT_LEAF at boot time. */
 static int rcu_fanout_leaf = CONFIG_RCU_FANOUT_LEAF;
 module_param(rcu_fanout_leaf, int, 0444);
 int rcu_num_lvls __read_mostly = RCU_NUM_LVLS;
-static int num_rcu_lvl[] = {  /* Number of rcu_nodes at specified level. */
-	NUM_RCU_LVL_0,
-	NUM_RCU_LVL_1,
-	NUM_RCU_LVL_2,
-	NUM_RCU_LVL_3,
-	NUM_RCU_LVL_4,
-};
+/* Number of rcu_nodes at specified level. */
+static int num_rcu_lvl[] = NUM_RCU_LVL_INIT;
 int rcu_num_nodes __read_mostly = NUM_RCU_NODES; /* Total # rcu_nodes in use. */
 
 /*
@@ -162,11 +158,19 @@ static void invoke_rcu_callbacks(struct rcu_state *rsp, struct rcu_data *rdp);
 static int kthread_prio = CONFIG_RCU_KTHREAD_PRIO;
 module_param(kthread_prio, int, 0644);
 
-/* Delay in jiffies for grace-period initialization delays. */
+/* Delay in jiffies for grace-period rcu_node-loop delays. */
+static int gp_preinit_delay = IS_ENABLED(CONFIG_RCU_TORTURE_TEST_SLOW_PREINIT)
+				? CONFIG_RCU_TORTURE_TEST_SLOW_PREINIT_DELAY
+				: 0;
+module_param(gp_preinit_delay, int, 0644);
 static int gp_init_delay = IS_ENABLED(CONFIG_RCU_TORTURE_TEST_SLOW_INIT)
 				? CONFIG_RCU_TORTURE_TEST_SLOW_INIT_DELAY
 				: 0;
 module_param(gp_init_delay, int, 0644);
+static int gp_cleanup_delay = IS_ENABLED(CONFIG_RCU_TORTURE_TEST_SLOW_CLEANUP)
+				? CONFIG_RCU_TORTURE_TEST_SLOW_CLEANUP_DELAY
+				: 0;
+module_param(gp_cleanup_delay, int, 0644);
 
 /*
  * Track the rcutorture test sequence number and the update version
@@ -188,17 +192,17 @@ unsigned long rcutorture_vernum;
  */
 unsigned long rcu_rnp_online_cpus(struct rcu_node *rnp)
 {
-	return ACCESS_ONCE(rnp->qsmaskinitnext);
+	return READ_ONCE(rnp->qsmaskinitnext);
 }
 
 /*
- * Return true if an RCU grace period is in progress.  The ACCESS_ONCE()s
+ * Return true if an RCU grace period is in progress.  The READ_ONCE()s
  * permit this function to be invoked without holding the root rcu_node
  * structure's ->lock, but of course results can be subject to change.
  */
 static int rcu_gp_in_progress(struct rcu_state *rsp)
 {
-	return ACCESS_ONCE(rsp->completed) != ACCESS_ONCE(rsp->gpnum);
+	return READ_ONCE(rsp->completed) != READ_ONCE(rsp->gpnum);
 }
 
 /*
@@ -275,8 +279,8 @@ static void rcu_momentary_dyntick_idle(void)
 		if (!(resched_mask & rsp->flavor_mask))
 			continue;
 		smp_mb(); /* rcu_sched_qs_mask before cond_resched_completed. */
-		if (ACCESS_ONCE(rdp->mynode->completed) !=
-		    ACCESS_ONCE(rdp->cond_resched_completed))
+		if (READ_ONCE(rdp->mynode->completed) !=
+		    READ_ONCE(rdp->cond_resched_completed))
 			continue;
 
 		/*
@@ -488,9 +492,9 @@ void rcutorture_get_gp_data(enum rcutorture_type test_type, int *flags,
 		break;
 	}
 	if (rsp != NULL) {
-		*flags = ACCESS_ONCE(rsp->gp_flags);
-		*gpnum = ACCESS_ONCE(rsp->gpnum);
-		*completed = ACCESS_ONCE(rsp->completed);
+		*flags = READ_ONCE(rsp->gp_flags);
+		*gpnum = READ_ONCE(rsp->gpnum);
+		*completed = READ_ONCE(rsp->completed);
 		return;
 	}
 	*flags = 0;
@@ -536,10 +540,10 @@ static struct rcu_node *rcu_get_root(struct rcu_state *rsp)
 static int rcu_future_needs_gp(struct rcu_state *rsp)
 {
 	struct rcu_node *rnp = rcu_get_root(rsp);
-	int idx = (ACCESS_ONCE(rnp->completed) + 1) & 0x1;
+	int idx = (READ_ONCE(rnp->completed) + 1) & 0x1;
 	int *fp = &rnp->need_future_gp[idx];
 
-	return ACCESS_ONCE(*fp);
+	return READ_ONCE(*fp);
 }
 
 /*
@@ -562,7 +566,7 @@ cpu_needs_another_gp(struct rcu_state *rsp, struct rcu_data *rdp)
 		return 1;  /* Yes, this CPU has newly registered callbacks. */
 	for (i = RCU_WAIT_TAIL; i < RCU_NEXT_TAIL; i++)
 		if (rdp->nxttail[i - 1] != rdp->nxttail[i] &&
-		    ULONG_CMP_LT(ACCESS_ONCE(rsp->completed),
+		    ULONG_CMP_LT(READ_ONCE(rsp->completed),
 				 rdp->nxtcompleted[i]))
 			return 1;  /* Yes, CBs for future grace period. */
 	return 0; /* No grace period needed. */
@@ -1008,9 +1012,9 @@ static int dyntick_save_progress_counter(struct rcu_data *rdp,
 		trace_rcu_fqs(rdp->rsp->name, rdp->gpnum, rdp->cpu, TPS("dti"));
 		return 1;
 	} else {
-		if (ULONG_CMP_LT(ACCESS_ONCE(rdp->gpnum) + ULONG_MAX / 4,
+		if (ULONG_CMP_LT(READ_ONCE(rdp->gpnum) + ULONG_MAX / 4,
 				 rdp->mynode->gpnum))
-			ACCESS_ONCE(rdp->gpwrap) = true;
+			WRITE_ONCE(rdp->gpwrap, true);
 		return 0;
 	}
 }
@@ -1090,12 +1094,12 @@ static int rcu_implicit_dynticks_qs(struct rcu_data *rdp,
 	if (ULONG_CMP_GE(jiffies,
 			 rdp->rsp->gp_start + jiffies_till_sched_qs) ||
 	    ULONG_CMP_GE(jiffies, rdp->rsp->jiffies_resched)) {
-		if (!(ACCESS_ONCE(*rcrmp) & rdp->rsp->flavor_mask)) {
-			ACCESS_ONCE(rdp->cond_resched_completed) =
-				ACCESS_ONCE(rdp->mynode->completed);
+		if (!(READ_ONCE(*rcrmp) & rdp->rsp->flavor_mask)) {
+			WRITE_ONCE(rdp->cond_resched_completed,
+				   READ_ONCE(rdp->mynode->completed));
 			smp_mb(); /* ->cond_resched_completed before *rcrmp. */
-			ACCESS_ONCE(*rcrmp) =
-				ACCESS_ONCE(*rcrmp) + rdp->rsp->flavor_mask;
+			WRITE_ONCE(*rcrmp,
+				   READ_ONCE(*rcrmp) + rdp->rsp->flavor_mask);
 			resched_cpu(rdp->cpu);  /* Force CPU into scheduler. */
 			rdp->rsp->jiffies_resched += 5; /* Enable beating. */
 		} else if (ULONG_CMP_GE(jiffies, rdp->rsp->jiffies_resched)) {
@@ -1116,9 +1120,9 @@ static void record_gp_stall_check_time(struct rcu_state *rsp)
 	rsp->gp_start = j;
 	smp_wmb(); /* Record start time before stall time. */
 	j1 = rcu_jiffies_till_stall_check();
-	ACCESS_ONCE(rsp->jiffies_stall) = j + j1;
+	WRITE_ONCE(rsp->jiffies_stall, j + j1);
 	rsp->jiffies_resched = j + j1 / 2;
-	rsp->n_force_qs_gpstart = ACCESS_ONCE(rsp->n_force_qs);
+	rsp->n_force_qs_gpstart = READ_ONCE(rsp->n_force_qs);
 }
 
 /*
@@ -1130,7 +1134,7 @@ static void rcu_check_gp_kthread_starvation(struct rcu_state *rsp)
 	unsigned long j;
 
 	j = jiffies;
-	gpa = ACCESS_ONCE(rsp->gp_activity);
+	gpa = READ_ONCE(rsp->gp_activity);
 	if (j - gpa > 2 * HZ)
 		pr_err("%s kthread starved for %ld jiffies!\n",
 		       rsp->name, j - gpa);
@@ -1170,12 +1174,13 @@ static void print_other_cpu_stall(struct rcu_state *rsp, unsigned long gpnum)
 	/* Only let one CPU complain about others per time interval. */
 
 	raw_spin_lock_irqsave(&rnp->lock, flags);
-	delta = jiffies - ACCESS_ONCE(rsp->jiffies_stall);
+	delta = jiffies - READ_ONCE(rsp->jiffies_stall);
 	if (delta < RCU_STALL_RAT_DELAY || !rcu_gp_in_progress(rsp)) {
 		raw_spin_unlock_irqrestore(&rnp->lock, flags);
 		return;
 	}
-	ACCESS_ONCE(rsp->jiffies_stall) = jiffies + 3 * rcu_jiffies_till_stall_check() + 3;
+	WRITE_ONCE(rsp->jiffies_stall,
+		   jiffies + 3 * rcu_jiffies_till_stall_check() + 3);
 	raw_spin_unlock_irqrestore(&rnp->lock, flags);
 
 	/*
@@ -1209,12 +1214,12 @@ static void print_other_cpu_stall(struct rcu_state *rsp, unsigned long gpnum)
 	if (ndetected) {
 		rcu_dump_cpu_stacks(rsp);
 	} else {
-		if (ACCESS_ONCE(rsp->gpnum) != gpnum ||
-		    ACCESS_ONCE(rsp->completed) == gpnum) {
+		if (READ_ONCE(rsp->gpnum) != gpnum ||
+		    READ_ONCE(rsp->completed) == gpnum) {
 			pr_err("INFO: Stall ended before state dump start\n");
 		} else {
 			j = jiffies;
-			gpa = ACCESS_ONCE(rsp->gp_activity);
+			gpa = READ_ONCE(rsp->gp_activity);
 			pr_err("All QSes seen, last %s kthread activity %ld (%ld-%ld), jiffies_till_next_fqs=%ld, root ->qsmask %#lx\n",
 			       rsp->name, j - gpa, j, gpa,
 			       jiffies_till_next_fqs,
@@ -1259,9 +1264,9 @@ static void print_cpu_stall(struct rcu_state *rsp)
 	rcu_dump_cpu_stacks(rsp);
 
 	raw_spin_lock_irqsave(&rnp->lock, flags);
-	if (ULONG_CMP_GE(jiffies, ACCESS_ONCE(rsp->jiffies_stall)))
-		ACCESS_ONCE(rsp->jiffies_stall) = jiffies +
-				     3 * rcu_jiffies_till_stall_check() + 3;
+	if (ULONG_CMP_GE(jiffies, READ_ONCE(rsp->jiffies_stall)))
+		WRITE_ONCE(rsp->jiffies_stall,
+			   jiffies + 3 * rcu_jiffies_till_stall_check() + 3);
 	raw_spin_unlock_irqrestore(&rnp->lock, flags);
 
 	/*
@@ -1304,20 +1309,20 @@ static void check_cpu_stall(struct rcu_state *rsp, struct rcu_data *rdp)
 	 * Given this check, comparisons of jiffies, rsp->jiffies_stall,
 	 * and rsp->gp_start suffice to forestall false positives.
 	 */
-	gpnum = ACCESS_ONCE(rsp->gpnum);
+	gpnum = READ_ONCE(rsp->gpnum);
 	smp_rmb(); /* Pick up ->gpnum first... */
-	js = ACCESS_ONCE(rsp->jiffies_stall);
+	js = READ_ONCE(rsp->jiffies_stall);
 	smp_rmb(); /* ...then ->jiffies_stall before the rest... */
-	gps = ACCESS_ONCE(rsp->gp_start);
+	gps = READ_ONCE(rsp->gp_start);
 	smp_rmb(); /* ...and finally ->gp_start before ->completed. */
-	completed = ACCESS_ONCE(rsp->completed);
+	completed = READ_ONCE(rsp->completed);
 	if (ULONG_CMP_GE(completed, gpnum) ||
 	    ULONG_CMP_LT(j, js) ||
 	    ULONG_CMP_GE(gps, js))
 		return; /* No stall or GP completed since entering function. */
 	rnp = rdp->mynode;
 	if (rcu_gp_in_progress(rsp) &&
-	    (ACCESS_ONCE(rnp->qsmask) & rdp->grpmask)) {
+	    (READ_ONCE(rnp->qsmask) & rdp->grpmask)) {
 
 		/* We haven't checked in, so go dump stack. */
 		print_cpu_stall(rsp);
@@ -1344,7 +1349,7 @@ void rcu_cpu_stall_reset(void)
 	struct rcu_state *rsp;
 
 	for_each_rcu_flavor(rsp)
-		ACCESS_ONCE(rsp->jiffies_stall) = jiffies + ULONG_MAX / 2;
+		WRITE_ONCE(rsp->jiffies_stall, jiffies + ULONG_MAX / 2);
 }
 
 /*
@@ -1454,7 +1459,7 @@ rcu_start_future_gp(struct rcu_node *rnp, struct rcu_data *rdp,
 	 * doing some extra useless work.
 	 */
 	if (rnp->gpnum != rnp->completed ||
-	    ACCESS_ONCE(rnp_root->gpnum) != ACCESS_ONCE(rnp_root->completed)) {
+	    READ_ONCE(rnp_root->gpnum) != READ_ONCE(rnp_root->completed)) {
 		rnp->need_future_gp[c & 0x1]++;
 		trace_rcu_future_gp(rnp, rdp, c, TPS("Startedleaf"));
 		goto out;
@@ -1539,7 +1544,7 @@ static int rcu_future_gp_cleanup(struct rcu_state *rsp, struct rcu_node *rnp)
 static void rcu_gp_kthread_wake(struct rcu_state *rsp)
 {
 	if (current == rsp->gp_kthread ||
-	    !ACCESS_ONCE(rsp->gp_flags) ||
+	    !READ_ONCE(rsp->gp_flags) ||
 	    !rsp->gp_kthread)
 		return;
 	wake_up(&rsp->gp_wq);
@@ -1674,7 +1679,7 @@ static bool __note_gp_changes(struct rcu_state *rsp, struct rcu_node *rnp,
 
 	/* Handle the ends of any preceding grace periods first. */
 	if (rdp->completed == rnp->completed &&
-	    !unlikely(ACCESS_ONCE(rdp->gpwrap))) {
+	    !unlikely(READ_ONCE(rdp->gpwrap))) {
 
 		/* No grace period end, so just accelerate recent callbacks. */
 		ret = rcu_accelerate_cbs(rsp, rnp, rdp);
@@ -1689,7 +1694,7 @@ static bool __note_gp_changes(struct rcu_state *rsp, struct rcu_node *rnp,
 		trace_rcu_grace_period(rsp->name, rdp->gpnum, TPS("cpuend"));
 	}
 
-	if (rdp->gpnum != rnp->gpnum || unlikely(ACCESS_ONCE(rdp->gpwrap))) {
+	if (rdp->gpnum != rnp->gpnum || unlikely(READ_ONCE(rdp->gpwrap))) {
 		/*
 		 * If the current grace period is waiting for this CPU,
 		 * set up to detect a quiescent state, otherwise don't
@@ -1701,7 +1706,7 @@ static bool __note_gp_changes(struct rcu_state *rsp, struct rcu_node *rnp,
 		rdp->rcu_qs_ctr_snap = __this_cpu_read(rcu_qs_ctr);
 		rdp->qs_pending = !!(rnp->qsmask & rdp->grpmask);
 		zero_cpu_stall_ticks(rdp);
-		ACCESS_ONCE(rdp->gpwrap) = false;
+		WRITE_ONCE(rdp->gpwrap, false);
 	}
 	return ret;
 }
@@ -1714,9 +1719,9 @@ static void note_gp_changes(struct rcu_state *rsp, struct rcu_data *rdp)
 
 	local_irq_save(flags);
 	rnp = rdp->mynode;
-	if ((rdp->gpnum == ACCESS_ONCE(rnp->gpnum) &&
-	     rdp->completed == ACCESS_ONCE(rnp->completed) &&
-	     !unlikely(ACCESS_ONCE(rdp->gpwrap))) || /* w/out lock. */
+	if ((rdp->gpnum == READ_ONCE(rnp->gpnum) &&
+	     rdp->completed == READ_ONCE(rnp->completed) &&
+	     !unlikely(READ_ONCE(rdp->gpwrap))) || /* w/out lock. */
 	    !raw_spin_trylock(&rnp->lock)) { /* irqs already off, so later. */
 		local_irq_restore(flags);
 		return;
@@ -1728,6 +1733,12 @@ static void note_gp_changes(struct rcu_state *rsp, struct rcu_data *rdp)
 		rcu_gp_kthread_wake(rsp);
 }
 
+static void rcu_gp_slow(int enable, struct rcu_state *rsp, int delay)
+{
+	if (enable && delay > 0 && !(rsp->gpnum % (rcu_num_nodes * 3 * delay)))
+		schedule_timeout_uninterruptible(delay);
+}
+
 /*
  * Initialize a new grace period.  Return 0 if no grace period required.
  */
@@ -1737,15 +1748,15 @@ static int rcu_gp_init(struct rcu_state *rsp)
 	struct rcu_data *rdp;
 	struct rcu_node *rnp = rcu_get_root(rsp);
 
-	ACCESS_ONCE(rsp->gp_activity) = jiffies;
+	WRITE_ONCE(rsp->gp_activity, jiffies);
 	raw_spin_lock_irq(&rnp->lock);
 	smp_mb__after_unlock_lock();
-	if (!ACCESS_ONCE(rsp->gp_flags)) {
+	if (!READ_ONCE(rsp->gp_flags)) {
 		/* Spurious wakeup, tell caller to go back to sleep.  */
 		raw_spin_unlock_irq(&rnp->lock);
 		return 0;
 	}
-	ACCESS_ONCE(rsp->gp_flags) = 0; /* Clear all flags: New grace period. */
+	WRITE_ONCE(rsp->gp_flags, 0); /* Clear all flags: New grace period. */
 
 	if (WARN_ON_ONCE(rcu_gp_in_progress(rsp))) {
 		/*
@@ -1770,6 +1781,8 @@ static int rcu_gp_init(struct rcu_state *rsp)
 	 * will handle subsequent offline CPUs.
 	 */
 	rcu_for_each_leaf_node(rsp, rnp) {
+		rcu_gp_slow(IS_ENABLED(CONFIG_RCU_TORTURE_TEST_SLOW_PREINIT),
+			    rsp, gp_preinit_delay);
 		raw_spin_lock_irq(&rnp->lock);
 		smp_mb__after_unlock_lock();
 		if (rnp->qsmaskinit == rnp->qsmaskinitnext &&
@@ -1826,14 +1839,16 @@ static int rcu_gp_init(struct rcu_state *rsp)
 	 * process finishes, because this kthread handles both.
 	 */
 	rcu_for_each_node_breadth_first(rsp, rnp) {
+		rcu_gp_slow(IS_ENABLED(CONFIG_RCU_TORTURE_TEST_SLOW_INIT),
+			    rsp, gp_init_delay);
 		raw_spin_lock_irq(&rnp->lock);
 		smp_mb__after_unlock_lock();
 		rdp = this_cpu_ptr(rsp->rda);
 		rcu_preempt_check_blocked_tasks(rnp);
 		rnp->qsmask = rnp->qsmaskinit;
-		ACCESS_ONCE(rnp->gpnum) = rsp->gpnum;
+		WRITE_ONCE(rnp->gpnum, rsp->gpnum);
 		if (WARN_ON_ONCE(rnp->completed != rsp->completed))
-			ACCESS_ONCE(rnp->completed) = rsp->completed;
+			WRITE_ONCE(rnp->completed, rsp->completed);
 		if (rnp == rdp->mynode)
 			(void)__note_gp_changes(rsp, rnp, rdp);
 		rcu_preempt_boost_start_gp(rnp);
@@ -1842,11 +1857,7 @@ static int rcu_gp_init(struct rcu_state *rsp)
 					    rnp->grphi, rnp->qsmask);
 		raw_spin_unlock_irq(&rnp->lock);
 		cond_resched_rcu_qs();
-		ACCESS_ONCE(rsp->gp_activity) = jiffies;
-		if (IS_ENABLED(CONFIG_RCU_TORTURE_TEST_SLOW_INIT) &&
-		    gp_init_delay > 0 &&
-		    !(rsp->gpnum % (rcu_num_nodes * 10)))
-			schedule_timeout_uninterruptible(gp_init_delay);
+		WRITE_ONCE(rsp->gp_activity, jiffies);
 	}
 
 	return 1;
@@ -1862,7 +1873,7 @@ static int rcu_gp_fqs(struct rcu_state *rsp, int fqs_state_in)
 	unsigned long maxj;
 	struct rcu_node *rnp = rcu_get_root(rsp);
 
-	ACCESS_ONCE(rsp->gp_activity) = jiffies;
+	WRITE_ONCE(rsp->gp_activity, jiffies);
 	rsp->n_force_qs++;
 	if (fqs_state == RCU_SAVE_DYNTICK) {
 		/* Collect dyntick-idle snapshots. */
@@ -1880,11 +1891,11 @@ static int rcu_gp_fqs(struct rcu_state *rsp, int fqs_state_in)
 		force_qs_rnp(rsp, rcu_implicit_dynticks_qs, &isidle, &maxj);
 	}
 	/* Clear flag to prevent immediate re-entry. */
-	if (ACCESS_ONCE(rsp->gp_flags) & RCU_GP_FLAG_FQS) {
+	if (READ_ONCE(rsp->gp_flags) & RCU_GP_FLAG_FQS) {
 		raw_spin_lock_irq(&rnp->lock);
 		smp_mb__after_unlock_lock();
-		ACCESS_ONCE(rsp->gp_flags) =
-			ACCESS_ONCE(rsp->gp_flags) & ~RCU_GP_FLAG_FQS;
+		WRITE_ONCE(rsp->gp_flags,
+			   READ_ONCE(rsp->gp_flags) & ~RCU_GP_FLAG_FQS);
 		raw_spin_unlock_irq(&rnp->lock);
 	}
 	return fqs_state;
@@ -1901,7 +1912,7 @@ static void rcu_gp_cleanup(struct rcu_state *rsp)
 	struct rcu_data *rdp;
 	struct rcu_node *rnp = rcu_get_root(rsp);
 
-	ACCESS_ONCE(rsp->gp_activity) = jiffies;
+	WRITE_ONCE(rsp->gp_activity, jiffies);
 	raw_spin_lock_irq(&rnp->lock);
 	smp_mb__after_unlock_lock();
 	gp_duration = jiffies - rsp->gp_start;
@@ -1932,7 +1943,7 @@ static void rcu_gp_cleanup(struct rcu_state *rsp)
 		smp_mb__after_unlock_lock();
 		WARN_ON_ONCE(rcu_preempt_blocked_readers_cgp(rnp));
 		WARN_ON_ONCE(rnp->qsmask);
-		ACCESS_ONCE(rnp->completed) = rsp->gpnum;
+		WRITE_ONCE(rnp->completed, rsp->gpnum);
 		rdp = this_cpu_ptr(rsp->rda);
 		if (rnp == rdp->mynode)
 			needgp = __note_gp_changes(rsp, rnp, rdp) || needgp;
@@ -1940,7 +1951,9 @@ static void rcu_gp_cleanup(struct rcu_state *rsp)
 		nocb += rcu_future_gp_cleanup(rsp, rnp);
 		raw_spin_unlock_irq(&rnp->lock);
 		cond_resched_rcu_qs();
-		ACCESS_ONCE(rsp->gp_activity) = jiffies;
+		WRITE_ONCE(rsp->gp_activity, jiffies);
+		rcu_gp_slow(IS_ENABLED(CONFIG_RCU_TORTURE_TEST_SLOW_CLEANUP),
+			    rsp, gp_cleanup_delay);
 	}
 	rnp = rcu_get_root(rsp);
 	raw_spin_lock_irq(&rnp->lock);
@@ -1948,16 +1961,16 @@ static void rcu_gp_cleanup(struct rcu_state *rsp)
 	rcu_nocb_gp_set(rnp, nocb);
 
 	/* Declare grace period done. */
-	ACCESS_ONCE(rsp->completed) = rsp->gpnum;
+	WRITE_ONCE(rsp->completed, rsp->gpnum);
 	trace_rcu_grace_period(rsp->name, rsp->completed, TPS("end"));
 	rsp->fqs_state = RCU_GP_IDLE;
 	rdp = this_cpu_ptr(rsp->rda);
 	/* Advance CBs to reduce false positives below. */
 	needgp = rcu_advance_cbs(rsp, rnp, rdp) || needgp;
 	if (needgp || cpu_needs_another_gp(rsp, rdp)) {
-		ACCESS_ONCE(rsp->gp_flags) = RCU_GP_FLAG_INIT;
+		WRITE_ONCE(rsp->gp_flags, RCU_GP_FLAG_INIT);
 		trace_rcu_grace_period(rsp->name,
-				       ACCESS_ONCE(rsp->gpnum),
+				       READ_ONCE(rsp->gpnum),
 				       TPS("newreq"));
 	}
 	raw_spin_unlock_irq(&rnp->lock);
@@ -1981,20 +1994,20 @@ static int __noreturn rcu_gp_kthread(void *arg)
 		/* Handle grace-period start. */
 		for (;;) {
 			trace_rcu_grace_period(rsp->name,
-					       ACCESS_ONCE(rsp->gpnum),
+					       READ_ONCE(rsp->gpnum),
 					       TPS("reqwait"));
 			rsp->gp_state = RCU_GP_WAIT_GPS;
 			wait_event_interruptible(rsp->gp_wq,
-						 ACCESS_ONCE(rsp->gp_flags) &
+						 READ_ONCE(rsp->gp_flags) &
 						 RCU_GP_FLAG_INIT);
 			/* Locking provides needed memory barrier. */
 			if (rcu_gp_init(rsp))
 				break;
 			cond_resched_rcu_qs();
-			ACCESS_ONCE(rsp->gp_activity) = jiffies;
+			WRITE_ONCE(rsp->gp_activity, jiffies);
 			WARN_ON(signal_pending(current));
 			trace_rcu_grace_period(rsp->name,
-					       ACCESS_ONCE(rsp->gpnum),
+					       READ_ONCE(rsp->gpnum),
 					       TPS("reqwaitsig"));
 		}
 
@@ -2010,39 +2023,39 @@ static int __noreturn rcu_gp_kthread(void *arg)
 			if (!ret)
 				rsp->jiffies_force_qs = jiffies + j;
 			trace_rcu_grace_period(rsp->name,
-					       ACCESS_ONCE(rsp->gpnum),
+					       READ_ONCE(rsp->gpnum),
 					       TPS("fqswait"));
 			rsp->gp_state = RCU_GP_WAIT_FQS;
 			ret = wait_event_interruptible_timeout(rsp->gp_wq,
-					((gf = ACCESS_ONCE(rsp->gp_flags)) &
+					((gf = READ_ONCE(rsp->gp_flags)) &
 					 RCU_GP_FLAG_FQS) ||
-					(!ACCESS_ONCE(rnp->qsmask) &&
+					(!READ_ONCE(rnp->qsmask) &&
 					 !rcu_preempt_blocked_readers_cgp(rnp)),
 					j);
 			/* Locking provides needed memory barriers. */
 			/* If grace period done, leave loop. */
-			if (!ACCESS_ONCE(rnp->qsmask) &&
+			if (!READ_ONCE(rnp->qsmask) &&
 			    !rcu_preempt_blocked_readers_cgp(rnp))
 				break;
 			/* If time for quiescent-state forcing, do it. */
 			if (ULONG_CMP_GE(jiffies, rsp->jiffies_force_qs) ||
 			    (gf & RCU_GP_FLAG_FQS)) {
 				trace_rcu_grace_period(rsp->name,
-						       ACCESS_ONCE(rsp->gpnum),
+						       READ_ONCE(rsp->gpnum),
 						       TPS("fqsstart"));
 				fqs_state = rcu_gp_fqs(rsp, fqs_state);
 				trace_rcu_grace_period(rsp->name,
-						       ACCESS_ONCE(rsp->gpnum),
+						       READ_ONCE(rsp->gpnum),
 						       TPS("fqsend"));
 				cond_resched_rcu_qs();
-				ACCESS_ONCE(rsp->gp_activity) = jiffies;
+				WRITE_ONCE(rsp->gp_activity, jiffies);
 			} else {
 				/* Deal with stray signal. */
 				cond_resched_rcu_qs();
-				ACCESS_ONCE(rsp->gp_activity) = jiffies;
+				WRITE_ONCE(rsp->gp_activity, jiffies);
 				WARN_ON(signal_pending(current));
 				trace_rcu_grace_period(rsp->name,
-						       ACCESS_ONCE(rsp->gpnum),
+						       READ_ONCE(rsp->gpnum),
 						       TPS("fqswaitsig"));
 			}
 			j = jiffies_till_next_fqs;
@@ -2084,8 +2097,8 @@ rcu_start_gp_advanced(struct rcu_state *rsp, struct rcu_node *rnp,
 		 */
 		return false;
 	}
-	ACCESS_ONCE(rsp->gp_flags) = RCU_GP_FLAG_INIT;
-	trace_rcu_grace_period(rsp->name, ACCESS_ONCE(rsp->gpnum),
+	WRITE_ONCE(rsp->gp_flags, RCU_GP_FLAG_INIT);
+	trace_rcu_grace_period(rsp->name, READ_ONCE(rsp->gpnum),
 			       TPS("newreq"));
 
 	/*
@@ -2135,6 +2148,7 @@ static void rcu_report_qs_rsp(struct rcu_state *rsp, unsigned long flags)
 	__releases(rcu_get_root(rsp)->lock)
 {
 	WARN_ON_ONCE(!rcu_gp_in_progress(rsp));
+	WRITE_ONCE(rsp->gp_flags, READ_ONCE(rsp->gp_flags) | RCU_GP_FLAG_FQS);
 	raw_spin_unlock_irqrestore(&rcu_get_root(rsp)->lock, flags);
 	rcu_gp_kthread_wake(rsp);
 }
@@ -2332,8 +2346,6 @@ rcu_check_quiescent_state(struct rcu_state *rsp, struct rcu_data *rdp)
 	rcu_report_qs_rdp(rdp->cpu, rsp, rdp);
 }
 
-#ifdef CONFIG_HOTPLUG_CPU
-
 /*
  * Send the specified CPU's RCU callbacks to the orphanage.  The
  * specified CPU must be offline, and the caller must hold the
@@ -2344,7 +2356,7 @@ rcu_send_cbs_to_orphanage(int cpu, struct rcu_state *rsp,
 			  struct rcu_node *rnp, struct rcu_data *rdp)
 {
 	/* No-CBs CPUs do not have orphanable callbacks. */
-	if (rcu_is_nocb_cpu(rdp->cpu))
+	if (!IS_ENABLED(CONFIG_HOTPLUG_CPU) || rcu_is_nocb_cpu(rdp->cpu))
 		return;
 
 	/*
@@ -2357,7 +2369,7 @@ rcu_send_cbs_to_orphanage(int cpu, struct rcu_state *rsp,
 		rsp->qlen += rdp->qlen;
 		rdp->n_cbs_orphaned += rdp->qlen;
 		rdp->qlen_lazy = 0;
-		ACCESS_ONCE(rdp->qlen) = 0;
+		WRITE_ONCE(rdp->qlen, 0);
 	}
 
 	/*
@@ -2403,7 +2415,8 @@ static void rcu_adopt_orphan_cbs(struct rcu_state *rsp, unsigned long flags)
 	struct rcu_data *rdp = raw_cpu_ptr(rsp->rda);
 
 	/* No-CBs CPUs are handled specially. */
-	if (rcu_nocb_adopt_orphan_cbs(rsp, rdp, flags))
+	if (!IS_ENABLED(CONFIG_HOTPLUG_CPU) ||
+	    rcu_nocb_adopt_orphan_cbs(rsp, rdp, flags))
 		return;
 
 	/* Do the accounting first. */
@@ -2450,6 +2463,9 @@ static void rcu_cleanup_dying_cpu(struct rcu_state *rsp)
 	RCU_TRACE(struct rcu_data *rdp = this_cpu_ptr(rsp->rda));
 	RCU_TRACE(struct rcu_node *rnp = rdp->mynode);
 
+	if (!IS_ENABLED(CONFIG_HOTPLUG_CPU))
+		return;
+
 	RCU_TRACE(mask = rdp->grpmask);
 	trace_rcu_grace_period(rsp->name,
 			       rnp->gpnum + 1 - !!(rnp->qsmask & mask),
@@ -2478,7 +2494,8 @@ static void rcu_cleanup_dead_rnp(struct rcu_node *rnp_leaf)
 	long mask;
 	struct rcu_node *rnp = rnp_leaf;
 
-	if (rnp->qsmaskinit || rcu_preempt_has_tasks(rnp))
+	if (!IS_ENABLED(CONFIG_HOTPLUG_CPU) ||
+	    rnp->qsmaskinit || rcu_preempt_has_tasks(rnp))
 		return;
 	for (;;) {
 		mask = rnp->grpmask;
@@ -2509,6 +2526,9 @@ static void rcu_cleanup_dying_idle_cpu(int cpu, struct rcu_state *rsp)
 	struct rcu_data *rdp = per_cpu_ptr(rsp->rda, cpu);
 	struct rcu_node *rnp = rdp->mynode;  /* Outgoing CPU's rdp & rnp. */
 
+	if (!IS_ENABLED(CONFIG_HOTPLUG_CPU))
+		return;
+
 	/* Remove outgoing CPU from mask in the leaf rcu_node structure. */
 	mask = rdp->grpmask;
 	raw_spin_lock_irqsave(&rnp->lock, flags);
@@ -2530,6 +2550,9 @@ static void rcu_cleanup_dead_cpu(int cpu, struct rcu_state *rsp)
 	struct rcu_data *rdp = per_cpu_ptr(rsp->rda, cpu);
 	struct rcu_node *rnp = rdp->mynode;  /* Outgoing CPU's rdp & rnp. */
 
+	if (!IS_ENABLED(CONFIG_HOTPLUG_CPU))
+		return;
+
 	/* Adjust any no-longer-needed kthreads. */
 	rcu_boost_kthread_setaffinity(rnp, -1);
 
@@ -2543,26 +2566,6 @@ static void rcu_cleanup_dead_cpu(int cpu, struct rcu_state *rsp)
 		  "rcu_cleanup_dead_cpu: Callbacks on offline CPU %d: qlen=%lu, nxtlist=%p\n",
 		  cpu, rdp->qlen, rdp->nxtlist);
 }
-
-#else /* #ifdef CONFIG_HOTPLUG_CPU */
-
-static void rcu_cleanup_dying_cpu(struct rcu_state *rsp)
-{
-}
-
-static void __maybe_unused rcu_cleanup_dead_rnp(struct rcu_node *rnp_leaf)
-{
-}
-
-static void rcu_cleanup_dying_idle_cpu(int cpu, struct rcu_state *rsp)
-{
-}
-
-static void rcu_cleanup_dead_cpu(int cpu, struct rcu_state *rsp)
-{
-}
-
-#endif /* #else #ifdef CONFIG_HOTPLUG_CPU */
 
 /*
  * Invoke any RCU callbacks that have made it to the end of their grace
@@ -2578,7 +2581,7 @@ static void rcu_do_batch(struct rcu_state *rsp, struct rcu_data *rdp)
 	/* If no callbacks are ready, just return. */
 	if (!cpu_has_callbacks_ready_to_invoke(rdp)) {
 		trace_rcu_batch_start(rsp->name, rdp->qlen_lazy, rdp->qlen, 0);
-		trace_rcu_batch_end(rsp->name, 0, !!ACCESS_ONCE(rdp->nxtlist),
+		trace_rcu_batch_end(rsp->name, 0, !!READ_ONCE(rdp->nxtlist),
 				    need_resched(), is_idle_task(current),
 				    rcu_is_callbacks_kthread());
 		return;
@@ -2634,7 +2637,7 @@ static void rcu_do_batch(struct rcu_state *rsp, struct rcu_data *rdp)
 	}
 	smp_mb(); /* List handling before counting for rcu_barrier(). */
 	rdp->qlen_lazy -= count_lazy;
-	ACCESS_ONCE(rdp->qlen) = rdp->qlen - count;
+	WRITE_ONCE(rdp->qlen, rdp->qlen - count);
 	rdp->n_cbs_invoked += count;
 
 	/* Reinstate batch limit if we have worked down the excess. */
@@ -2728,10 +2731,6 @@ static void force_qs_rnp(struct rcu_state *rsp,
 		mask = 0;
 		raw_spin_lock_irqsave(&rnp->lock, flags);
 		smp_mb__after_unlock_lock();
-		if (!rcu_gp_in_progress(rsp)) {
-			raw_spin_unlock_irqrestore(&rnp->lock, flags);
-			return;
-		}
 		if (rnp->qsmask == 0) {
 			if (rcu_state_p == &rcu_sched_state ||
 			    rsp != rcu_state_p ||
@@ -2761,8 +2760,6 @@ static void force_qs_rnp(struct rcu_state *rsp,
 		bit = 1;
 		for (; cpu <= rnp->grphi; cpu++, bit <<= 1) {
 			if ((rnp->qsmask & bit) != 0) {
-				if ((rnp->qsmaskinit & bit) == 0)
-					*isidle = false; /* Pending hotplug. */
 				if (f(per_cpu_ptr(rsp->rda, cpu), isidle, maxj))
 					mask |= bit;
 			}
@@ -2791,7 +2788,7 @@ static void force_quiescent_state(struct rcu_state *rsp)
 	/* Funnel through hierarchy to reduce memory contention. */
 	rnp = __this_cpu_read(rsp->rda->mynode);
 	for (; rnp != NULL; rnp = rnp->parent) {
-		ret = (ACCESS_ONCE(rsp->gp_flags) & RCU_GP_FLAG_FQS) ||
+		ret = (READ_ONCE(rsp->gp_flags) & RCU_GP_FLAG_FQS) ||
 		      !raw_spin_trylock(&rnp->fqslock);
 		if (rnp_old != NULL)
 			raw_spin_unlock(&rnp_old->fqslock);
@@ -2807,13 +2804,12 @@ static void force_quiescent_state(struct rcu_state *rsp)
 	raw_spin_lock_irqsave(&rnp_old->lock, flags);
 	smp_mb__after_unlock_lock();
 	raw_spin_unlock(&rnp_old->fqslock);
-	if (ACCESS_ONCE(rsp->gp_flags) & RCU_GP_FLAG_FQS) {
+	if (READ_ONCE(rsp->gp_flags) & RCU_GP_FLAG_FQS) {
 		rsp->n_force_qs_lh++;
 		raw_spin_unlock_irqrestore(&rnp_old->lock, flags);
 		return;  /* Someone beat us to it. */
 	}
-	ACCESS_ONCE(rsp->gp_flags) =
-		ACCESS_ONCE(rsp->gp_flags) | RCU_GP_FLAG_FQS;
+	WRITE_ONCE(rsp->gp_flags, READ_ONCE(rsp->gp_flags) | RCU_GP_FLAG_FQS);
 	raw_spin_unlock_irqrestore(&rnp_old->lock, flags);
 	rcu_gp_kthread_wake(rsp);
 }
@@ -2879,7 +2875,7 @@ static void rcu_process_callbacks(struct softirq_action *unused)
  */
 static void invoke_rcu_callbacks(struct rcu_state *rsp, struct rcu_data *rdp)
 {
-	if (unlikely(!ACCESS_ONCE(rcu_scheduler_fully_active)))
+	if (unlikely(!READ_ONCE(rcu_scheduler_fully_active)))
 		return;
 	if (likely(!rsp->boost)) {
 		rcu_do_batch(rsp, rdp);
@@ -2970,7 +2966,7 @@ __call_rcu(struct rcu_head *head, void (*func)(struct rcu_head *rcu),
 	WARN_ON_ONCE((unsigned long)head & 0x1); /* Misaligned rcu_head! */
 	if (debug_rcu_head_queue(head)) {
 		/* Probable double call_rcu(), so leak the callback. */
-		ACCESS_ONCE(head->func) = rcu_leak_callback;
+		WRITE_ONCE(head->func, rcu_leak_callback);
 		WARN_ONCE(1, "__call_rcu(): Leaked duplicate callback\n");
 		return;
 	}
@@ -3009,7 +3005,7 @@ __call_rcu(struct rcu_head *head, void (*func)(struct rcu_head *rcu),
 		if (!likely(rdp->nxtlist))
 			init_default_callback_list(rdp);
 	}
-	ACCESS_ONCE(rdp->qlen) = rdp->qlen + 1;
+	WRITE_ONCE(rdp->qlen, rdp->qlen + 1);
 	if (lazy)
 		rdp->qlen_lazy++;
 	else
@@ -3448,14 +3444,14 @@ static int __rcu_pending(struct rcu_state *rsp, struct rcu_data *rdp)
 	}
 
 	/* Has another RCU grace period completed?  */
-	if (ACCESS_ONCE(rnp->completed) != rdp->completed) { /* outside lock */
+	if (READ_ONCE(rnp->completed) != rdp->completed) { /* outside lock */
 		rdp->n_rp_gp_completed++;
 		return 1;
 	}
 
 	/* Has a new RCU grace period started? */
-	if (ACCESS_ONCE(rnp->gpnum) != rdp->gpnum ||
-	    unlikely(ACCESS_ONCE(rdp->gpwrap))) { /* outside lock */
+	if (READ_ONCE(rnp->gpnum) != rdp->gpnum ||
+	    unlikely(READ_ONCE(rdp->gpwrap))) { /* outside lock */
 		rdp->n_rp_gp_started++;
 		return 1;
 	}
@@ -3562,7 +3558,7 @@ static void _rcu_barrier(struct rcu_state *rsp)
 {
 	int cpu;
 	struct rcu_data *rdp;
-	unsigned long snap = ACCESS_ONCE(rsp->n_barrier_done);
+	unsigned long snap = READ_ONCE(rsp->n_barrier_done);
 	unsigned long snap_done;
 
 	_rcu_barrier_trace(rsp, "Begin", -1, snap);
@@ -3604,10 +3600,10 @@ static void _rcu_barrier(struct rcu_state *rsp)
 
 	/*
 	 * Increment ->n_barrier_done to avoid duplicate work.  Use
-	 * ACCESS_ONCE() to prevent the compiler from speculating
+	 * WRITE_ONCE() to prevent the compiler from speculating
 	 * the increment to precede the early-exit check.
 	 */
-	ACCESS_ONCE(rsp->n_barrier_done) = rsp->n_barrier_done + 1;
+	WRITE_ONCE(rsp->n_barrier_done, rsp->n_barrier_done + 1);
 	WARN_ON_ONCE((rsp->n_barrier_done & 0x1) != 1);
 	_rcu_barrier_trace(rsp, "Inc1", -1, rsp->n_barrier_done);
 	smp_mb(); /* Order ->n_barrier_done increment with below mechanism. */
@@ -3643,7 +3639,7 @@ static void _rcu_barrier(struct rcu_state *rsp)
 				__call_rcu(&rdp->barrier_head,
 					   rcu_barrier_callback, rsp, cpu, 0);
 			}
-		} else if (ACCESS_ONCE(rdp->qlen)) {
+		} else if (READ_ONCE(rdp->qlen)) {
 			_rcu_barrier_trace(rsp, "OnlineQ", cpu,
 					   rsp->n_barrier_done);
 			smp_call_function_single(cpu, rcu_barrier_func, rsp, 1);
@@ -3663,7 +3659,7 @@ static void _rcu_barrier(struct rcu_state *rsp)
 
 	/* Increment ->n_barrier_done to prevent duplicate work. */
 	smp_mb(); /* Keep increment after above mechanism. */
-	ACCESS_ONCE(rsp->n_barrier_done) = rsp->n_barrier_done + 1;
+	WRITE_ONCE(rsp->n_barrier_done, rsp->n_barrier_done + 1);
 	WARN_ON_ONCE((rsp->n_barrier_done & 0x1) != 0);
 	_rcu_barrier_trace(rsp, "Inc2", -1, rsp->n_barrier_done);
 	smp_mb(); /* Keep increment before caller's subsequent code. */
@@ -3778,7 +3774,7 @@ rcu_init_percpu_data(int cpu, struct rcu_state *rsp)
 	rdp->gpnum = rnp->completed; /* Make CPU later note any new GP. */
 	rdp->completed = rnp->completed;
 	rdp->passed_quiesce = false;
-	rdp->rcu_qs_ctr_snap = __this_cpu_read(rcu_qs_ctr);
+	rdp->rcu_qs_ctr_snap = per_cpu(rcu_qs_ctr, cpu);
 	rdp->qs_pending = false;
 	trace_rcu_grace_period(rsp->name, rdp->gpnum, TPS("cpuonl"));
 	raw_spin_unlock_irqrestore(&rnp->lock, flags);
@@ -3924,22 +3920,22 @@ void rcu_scheduler_starting(void)
  * Compute the per-level fanout, either using the exact fanout specified
  * or balancing the tree, depending on CONFIG_RCU_FANOUT_EXACT.
  */
-static void __init rcu_init_levelspread(struct rcu_state *rsp)
+static void __init rcu_init_levelspread(int *levelspread, const int *levelcnt)
 {
 	int i;
 
 	if (IS_ENABLED(CONFIG_RCU_FANOUT_EXACT)) {
-		rsp->levelspread[rcu_num_lvls - 1] = rcu_fanout_leaf;
+		levelspread[rcu_num_lvls - 1] = rcu_fanout_leaf;
 		for (i = rcu_num_lvls - 2; i >= 0; i--)
-			rsp->levelspread[i] = CONFIG_RCU_FANOUT;
+			levelspread[i] = CONFIG_RCU_FANOUT;
 	} else {
 		int ccur;
 		int cprv;
 
 		cprv = nr_cpu_ids;
 		for (i = rcu_num_lvls - 1; i >= 0; i--) {
-			ccur = rsp->levelcnt[i];
-			rsp->levelspread[i] = (cprv + ccur - 1) / ccur;
+			ccur = levelcnt[i];
+			levelspread[i] = (cprv + ccur - 1) / ccur;
 			cprv = ccur;
 		}
 	}
@@ -3951,44 +3947,39 @@ static void __init rcu_init_levelspread(struct rcu_state *rsp)
 static void __init rcu_init_one(struct rcu_state *rsp,
 		struct rcu_data __percpu *rda)
 {
-	static const char * const buf[] = {
-		"rcu_node_0",
-		"rcu_node_1",
-		"rcu_node_2",
-		"rcu_node_3" };  /* Match MAX_RCU_LVLS */
-	static const char * const fqs[] = {
-		"rcu_node_fqs_0",
-		"rcu_node_fqs_1",
-		"rcu_node_fqs_2",
-		"rcu_node_fqs_3" };  /* Match MAX_RCU_LVLS */
+	static const char * const buf[] = RCU_NODE_NAME_INIT;
+	static const char * const fqs[] = RCU_FQS_NAME_INIT;
 	static u8 fl_mask = 0x1;
+
+	int levelcnt[RCU_NUM_LVLS];		/* # nodes in each level. */
+	int levelspread[RCU_NUM_LVLS];		/* kids/node in each level. */
 	int cpustride = 1;
 	int i;
 	int j;
 	struct rcu_node *rnp;
 
-	BUILD_BUG_ON(MAX_RCU_LVLS > ARRAY_SIZE(buf));  /* Fix buf[] init! */
+	BUILD_BUG_ON(RCU_NUM_LVLS > ARRAY_SIZE(buf));  /* Fix buf[] init! */
 
-	/* Silence gcc 4.8 warning about array index out of range. */
-	if (rcu_num_lvls > RCU_NUM_LVLS)
-		panic("rcu_init_one: rcu_num_lvls overflow");
+	/* Silence gcc 4.8 false positive about array index out of range. */
+	if (rcu_num_lvls <= 0 || rcu_num_lvls > RCU_NUM_LVLS)
+		panic("rcu_init_one: rcu_num_lvls out of range");
 
 	/* Initialize the level-tracking arrays. */
 
 	for (i = 0; i < rcu_num_lvls; i++)
-		rsp->levelcnt[i] = num_rcu_lvl[i];
+		levelcnt[i] = num_rcu_lvl[i];
 	for (i = 1; i < rcu_num_lvls; i++)
-		rsp->level[i] = rsp->level[i - 1] + rsp->levelcnt[i - 1];
-	rcu_init_levelspread(rsp);
+		rsp->level[i] = rsp->level[i - 1] + levelcnt[i - 1];
+	rcu_init_levelspread(levelspread, levelcnt);
 	rsp->flavor_mask = fl_mask;
 	fl_mask <<= 1;
 
 	/* Initialize the elements themselves, starting from the leaves. */
 
 	for (i = rcu_num_lvls - 1; i >= 0; i--) {
-		cpustride *= rsp->levelspread[i];
+		cpustride *= levelspread[i];
 		rnp = rsp->level[i];
-		for (j = 0; j < rsp->levelcnt[i]; j++, rnp++) {
+		for (j = 0; j < levelcnt[i]; j++, rnp++) {
 			raw_spin_lock_init(&rnp->lock);
 			lockdep_set_class_and_name(&rnp->lock,
 						   &rcu_node_class[i], buf[i]);
@@ -4008,10 +3999,10 @@ static void __init rcu_init_one(struct rcu_state *rsp,
 				rnp->grpmask = 0;
 				rnp->parent = NULL;
 			} else {
-				rnp->grpnum = j % rsp->levelspread[i - 1];
+				rnp->grpnum = j % levelspread[i - 1];
 				rnp->grpmask = 1UL << rnp->grpnum;
 				rnp->parent = rsp->level[i - 1] +
-					      j / rsp->levelspread[i - 1];
+					      j / levelspread[i - 1];
 			}
 			rnp->level = i;
 			INIT_LIST_HEAD(&rnp->blkd_tasks);
@@ -4039,9 +4030,7 @@ static void __init rcu_init_geometry(void)
 {
 	ulong d;
 	int i;
-	int j;
-	int n = nr_cpu_ids;
-	int rcu_capacity[MAX_RCU_LVLS + 1];
+	int rcu_capacity[RCU_NUM_LVLS];
 
 	/*
 	 * Initialize any unspecified boot parameters.
@@ -4065,46 +4054,45 @@ static void __init rcu_init_geometry(void)
 
 	/*
 	 * Compute number of nodes that can be handled an rcu_node tree
-	 * with the given number of levels.  Setting rcu_capacity[0] makes
-	 * some of the arithmetic easier.
+	 * with the given number of levels.
 	 */
-	rcu_capacity[0] = 1;
-	rcu_capacity[1] = rcu_fanout_leaf;
-	for (i = 2; i <= MAX_RCU_LVLS; i++)
+	rcu_capacity[0] = rcu_fanout_leaf;
+	for (i = 1; i < RCU_NUM_LVLS; i++)
 		rcu_capacity[i] = rcu_capacity[i - 1] * CONFIG_RCU_FANOUT;
 
 	/*
+	 * The tree must be able to accommodate the configured number of CPUs.
+	 * If this limit is exceeded than we have a serious problem elsewhere.
+	 *
 	 * The boot-time rcu_fanout_leaf parameter is only permitted
 	 * to increase the leaf-level fanout, not decrease it.  Of course,
 	 * the leaf-level fanout cannot exceed the number of bits in
-	 * the rcu_node masks.  Finally, the tree must be able to accommodate
-	 * the configured number of CPUs.  Complain and fall back to the
-	 * compile-time values if these limits are exceeded.
+	 * the rcu_node masks.  Complain and fall back to the compile-
+	 * time values if these limits are exceeded.
 	 */
-	if (rcu_fanout_leaf < CONFIG_RCU_FANOUT_LEAF ||
-	    rcu_fanout_leaf > sizeof(unsigned long) * 8 ||
-	    n > rcu_capacity[MAX_RCU_LVLS]) {
+	if (nr_cpu_ids > rcu_capacity[RCU_NUM_LVLS - 1])
+		panic("rcu_init_geometry: rcu_capacity[] is too small");
+	else if (rcu_fanout_leaf < CONFIG_RCU_FANOUT_LEAF ||
+		 rcu_fanout_leaf > sizeof(unsigned long) * 8) {
 		WARN_ON(1);
 		return;
 	}
 
+	/* Calculate the number of levels in the tree. */
+	for (i = 0; nr_cpu_ids > rcu_capacity[i]; i++) {
+	}
+	rcu_num_lvls = i + 1;
+
 	/* Calculate the number of rcu_nodes at each level of the tree. */
-	for (i = 1; i <= MAX_RCU_LVLS; i++)
-		if (n <= rcu_capacity[i]) {
-			for (j = 0; j <= i; j++)
-				num_rcu_lvl[j] =
-					DIV_ROUND_UP(n, rcu_capacity[i - j]);
-			rcu_num_lvls = i;
-			for (j = i + 1; j <= MAX_RCU_LVLS; j++)
-				num_rcu_lvl[j] = 0;
-			break;
-		}
+	for (i = 0; i < rcu_num_lvls; i++) {
+		int cap = rcu_capacity[(rcu_num_lvls - 1) - i];
+		num_rcu_lvl[i] = DIV_ROUND_UP(nr_cpu_ids, cap);
+	}
 
 	/* Calculate the total number of rcu_node structures. */
 	rcu_num_nodes = 0;
-	for (i = 0; i <= MAX_RCU_LVLS; i++)
+	for (i = 0; i < rcu_num_lvls; i++)
 		rcu_num_nodes += num_rcu_lvl[i];
-	rcu_num_nodes -= n;
 }
 
 void __init rcu_init(void)
