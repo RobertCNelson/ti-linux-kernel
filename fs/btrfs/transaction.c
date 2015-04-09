@@ -35,7 +35,7 @@
 
 #define BTRFS_ROOT_TRANS_TAG 0
 
-static unsigned int btrfs_blocked_trans_types[TRANS_STATE_MAX] = {
+static const unsigned int btrfs_blocked_trans_types[TRANS_STATE_MAX] = {
 	[TRANS_STATE_RUNNING]		= 0U,
 	[TRANS_STATE_BLOCKED]		= (__TRANS_USERSPACE |
 					   __TRANS_START),
@@ -93,11 +93,8 @@ static void clear_btree_io_tree(struct extent_io_tree *tree)
 		 */
 		ASSERT(!waitqueue_active(&state->wq));
 		free_extent_state(state);
-		if (need_resched()) {
-			spin_unlock(&tree->lock);
-			cond_resched();
-			spin_lock(&tree->lock);
-		}
+
+		cond_resched_lock(&tree->lock);
 	}
 	spin_unlock(&tree->lock);
 }

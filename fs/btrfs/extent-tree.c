@@ -2561,8 +2561,7 @@ static noinline int __btrfs_run_delayed_refs(struct btrfs_trans_handle *trans,
 		 */
 		spin_lock(&delayed_refs->lock);
 		avg = fs_info->avg_delayed_ref_runtime * 3 + runtime;
-		avg = div64_u64(avg, 4);
-		fs_info->avg_delayed_ref_runtime = avg;
+		fs_info->avg_delayed_ref_runtime = avg >> 2;	/* div by 4 */
 		spin_unlock(&delayed_refs->lock);
 	}
 	return 0;
@@ -2624,7 +2623,7 @@ static inline u64 heads_to_leaves(struct btrfs_root *root, u64 heads)
 	 * We don't ever fill up leaves all the way so multiply by 2 just to be
 	 * closer to what we're really going to want to ouse.
 	 */
-	return div64_u64(num_bytes, BTRFS_LEAF_DATA_SIZE(root));
+	return div_u64(num_bytes, BTRFS_LEAF_DATA_SIZE(root));
 }
 
 int btrfs_check_space_for_delayed_refs(struct btrfs_trans_handle *trans,
@@ -3193,7 +3192,7 @@ static int cache_save_setup(struct btrfs_block_group_cache *block_group,
 	struct inode *inode = NULL;
 	u64 alloc_hint = 0;
 	int dcs = BTRFS_DC_ERROR;
-	int num_pages = 0;
+	u64 num_pages = 0;
 	int retries = 0;
 	int ret = 0;
 
@@ -3293,7 +3292,7 @@ again:
 	 * taking up quite a bit since it's not folded into the other space
 	 * cache.
 	 */
-	num_pages = (int)div64_u64(block_group->key.offset, 256 * 1024 * 1024);
+	num_pages = div_u64(block_group->key.offset, 256 * 1024 * 1024);
 	if (!num_pages)
 		num_pages = 1;
 
@@ -3641,7 +3640,7 @@ int btrfs_check_data_free_space(struct inode *inode, u64 bytes)
 	struct btrfs_root *root = BTRFS_I(inode)->root;
 	struct btrfs_fs_info *fs_info = root->fs_info;
 	u64 used;
-	int ret = 0, committed = 0, alloc_chunk = 1;
+	int ret = 0, committed = 0;
 
 	/* make sure bytes are sectorsize aligned */
 	bytes = ALIGN(bytes, root->sectorsize);
@@ -3669,7 +3668,7 @@ again:
 		 * if we don't have enough free bytes in this space then we need
 		 * to alloc a new chunk.
 		 */
-		if (!data_sinfo->full && alloc_chunk) {
+		if (!data_sinfo->full) {
 			u64 alloc_target;
 
 			data_sinfo->force_alloc = CHUNK_ALLOC_FORCE;
@@ -4812,10 +4811,10 @@ static u64 calc_global_metadata_size(struct btrfs_fs_info *fs_info)
 
 	num_bytes = (data_used >> fs_info->sb->s_blocksize_bits) *
 		    csum_size * 2;
-	num_bytes += div64_u64(data_used + meta_used, 50);
+	num_bytes += div_u64(data_used + meta_used, 50);
 
 	if (num_bytes * 3 > meta_used)
-		num_bytes = div64_u64(meta_used, 3);
+		num_bytes = div_u64(meta_used, 3);
 
 	return ALIGN(num_bytes, fs_info->extent_root->nodesize << 10);
 }
@@ -5075,16 +5074,16 @@ static u64 calc_csum_metadata_size(struct inode *inode, u64 num_bytes,
 	    BTRFS_I(inode)->csum_bytes == 0)
 		return 0;
 
-	old_csums = (int)div64_u64(BTRFS_I(inode)->csum_bytes, root->sectorsize);
+	old_csums = (int)div_u64(BTRFS_I(inode)->csum_bytes, root->sectorsize);
 	if (reserve)
 		BTRFS_I(inode)->csum_bytes += num_bytes;
 	else
 		BTRFS_I(inode)->csum_bytes -= num_bytes;
 	csum_size = BTRFS_LEAF_DATA_SIZE(root) - sizeof(struct btrfs_item);
-	num_csums_per_leaf = (int)div64_u64(csum_size,
+	num_csums_per_leaf = (int)div_u64(csum_size,
 					    sizeof(struct btrfs_csum_item) +
 					    sizeof(struct btrfs_disk_key));
-	num_csums = (int)div64_u64(BTRFS_I(inode)->csum_bytes, root->sectorsize);
+	num_csums = (int)div_u64(BTRFS_I(inode)->csum_bytes, root->sectorsize);
 	num_csums = num_csums + num_csums_per_leaf - 1;
 	num_csums = num_csums / num_csums_per_leaf;
 
@@ -6956,12 +6955,11 @@ static int __btrfs_free_reserved_extent(struct btrfs_root *root,
 		return -ENOSPC;
 	}
 
-	if (btrfs_test_opt(root, DISCARD))
-		ret = btrfs_discard_extent(root, start, len, NULL);
-
 	if (pin)
 		pin_down_extent(root, cache, start, len, 1);
 	else {
+		if (btrfs_test_opt(root, DISCARD))
+			ret = btrfs_discard_extent(root, start, len, NULL);
 		btrfs_add_free_space(cache, start, len);
 		btrfs_update_reserved_bytes(cache, len, RESERVE_FREE, delalloc);
 	}
@@ -7095,9 +7093,9 @@ static int alloc_reserved_tree_block(struct btrfs_trans_handle *trans,
 	ret = btrfs_insert_empty_item(trans, fs_info->extent_root, path,
 				      ins, size);
 	if (ret) {
+		btrfs_free_path(path);
 		btrfs_free_and_pin_reserved_extent(root, ins->objectid,
 						   root->nodesize);
-		btrfs_free_path(path);
 		return ret;
 	}
 
@@ -7217,7 +7215,7 @@ btrfs_init_new_buffer(struct btrfs_trans_handle *trans, struct btrfs_root *root,
 	btrfs_set_header_generation(buf, trans->transid);
 	btrfs_set_buffer_lockdep_class(root->root_key.objectid, buf, level);
 	btrfs_tree_lock(buf);
-	clean_tree_block(trans, root, buf);
+	clean_tree_block(trans, root->fs_info, buf);
 	clear_bit(EXTENT_BUFFER_STALE, &buf->bflags);
 
 	btrfs_set_lock_blocking(buf);
@@ -7815,7 +7813,7 @@ static noinline int do_walk_down(struct btrfs_trans_handle *trans,
 	bytenr = btrfs_node_blockptr(path->nodes[level], path->slots[level]);
 	blocksize = root->nodesize;
 
-	next = btrfs_find_tree_block(root, bytenr);
+	next = btrfs_find_tree_block(root->fs_info, bytenr);
 	if (!next) {
 		next = btrfs_find_create_tree_block(root, bytenr);
 		if (!next)
@@ -8016,7 +8014,7 @@ static noinline int walk_up_proc(struct btrfs_trans_handle *trans,
 			btrfs_set_lock_blocking(eb);
 			path->locks[level] = BTRFS_WRITE_LOCK_BLOCKING;
 		}
-		clean_tree_block(trans, root, eb);
+		clean_tree_block(trans, root->fs_info, eb);
 	}
 
 	if (eb == root->node) {
@@ -8720,7 +8718,7 @@ int btrfs_can_relocate(struct btrfs_root *root, u64 bytenr)
 		min_free <<= 1;
 	} else if (index == BTRFS_RAID_RAID0) {
 		dev_min = fs_devices->rw_devices;
-		do_div(min_free, dev_min);
+		min_free = div64_u64(min_free, dev_min);
 	}
 
 	/* We need to do this so that we can look at pending chunks */
