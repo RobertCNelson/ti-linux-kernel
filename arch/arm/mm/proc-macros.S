@@ -332,6 +332,10 @@ ENTRY(\name\()_tlb_fns)
 	.equ	\x, \y
 .endm
 
+.macro	initfn, func, base
+	.long	\func - \base
+.endm
+
 	/*
 	 * Macro to calculate the log2 size for the protection region
 	 * registers. This calculates rd = log2(size) - 1.  tmp must

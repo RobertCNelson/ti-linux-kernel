@@ -41,7 +41,7 @@ ENTRY(v7wbi_flush_user_tlb_range)
 	asid	r3, r3				@ mask ASID
 #ifdef CONFIG_ARM_ERRATA_720789
 	ALT_SMP(W(mov)	r3, #0	)
-	ALT_UP(W(nop)		)
+ALT_UP(	nop)
 #endif
 	orr	r0, r3, r0, lsl #PAGE_SHIFT	@ Create initial MVA
 	mov	r1, r1, lsl #PAGE_SHIFT
