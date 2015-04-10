@@ -1413,7 +1413,7 @@ static int rcu_torture_barrier_cbs(void *arg)
 	do {
 		wait_event(barrier_cbs_wq[myid],
 			   (newphase =
-			    ACCESS_ONCE(barrier_phase)) != lastphase ||
+			    READ_ONCE(barrier_phase)) != lastphase ||
 			   torture_must_stop());
 		lastphase = newphase;
 		smp_mb(); /* ensure barrier_phase load before ->call(). */
@@ -1701,7 +1701,7 @@ rcu_torture_init(void)
 	if (nreaders >= 0) {
 		nrealreaders = nreaders;
 	} else {
-		nrealreaders = num_online_cpus() - 1;
+		nrealreaders = num_online_cpus() - 2 - nreaders;
 		if (nrealreaders <= 0)
 			nrealreaders = 1;
 	}
