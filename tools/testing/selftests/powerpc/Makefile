@@ -8,10 +8,9 @@ ifeq ($(ARCH),powerpc)
 
 GIT_VERSION = $(shell git describe --always --long --dirty || echo "unknown")
 
-CC := $(CROSS_COMPILE)$(CC)
 CFLAGS := -Wall -O2 -flto -Wall -Werror -DGIT_VERSION='"$(GIT_VERSION)"' -I$(CURDIR) $(CFLAGS)
 
-export CC CFLAGS
+export CFLAGS
 
 SUB_DIRS = pmu copyloops mm tm primitives stringloops vphn switch_endian
 
@@ -22,10 +21,25 @@ all: $(SUB_DIRS)
 $(SUB_DIRS):
 	$(MAKE) -k -C $@ all
 
-run_tests: all
+include ../lib.mk
+
+override define RUN_TESTS
 	@for TARGET in $(SUB_DIRS); do \
 		$(MAKE) -C $$TARGET run_tests; \
 	done;
+endef
+
+override define INSTALL_RULE
+	@for TARGET in $(SUB_DIRS); do \
+		$(MAKE) -C $$TARGET install; \
+	done;
+endef
+
+override define EMIT_TESTS
+	@for TARGET in $(SUB_DIRS); do \
+		$(MAKE) -s -C $$TARGET emit_tests; \
+	done;
+endef
 
 clean:
 	@for TARGET in $(SUB_DIRS); do \
@@ -36,4 +50,4 @@ clean:
 tags:
 	find . -name '*.c' -o -name '*.h' | xargs ctags
 
-.PHONY: all run_tests clean tags $(SUB_DIRS)
+.PHONY: tags $(SUB_DIRS)
