@@ -3411,6 +3411,8 @@ ssize_t vb2_fop_write(struct file *file, const char __user *buf,
 	struct mutex *lock = vdev->queue->lock ? vdev->queue->lock : vdev->lock;
 	int err = -EBUSY;
 
+	if (!(vdev->queue->io_modes & VB2_WRITE))
+		return -EINVAL;
 	if (lock && mutex_lock_interruptible(lock))
 		return -ERESTARTSYS;
 	if (vb2_queue_is_busy(vdev, file))
@@ -3433,6 +3435,8 @@ ssize_t vb2_fop_read(struct file *file, char __user *buf,
 	struct mutex *lock = vdev->queue->lock ? vdev->queue->lock : vdev->lock;
 	int err = -EBUSY;
 
+	if (!(vdev->queue->io_modes & VB2_READ))
+		return -EINVAL;
 	if (lock && mutex_lock_interruptible(lock))
 		return -ERESTARTSYS;
 	if (vb2_queue_is_busy(vdev, file))
