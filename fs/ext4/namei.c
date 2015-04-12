@@ -3190,16 +3190,24 @@ static int ext4_symlink(struct inode *dir,
 {
 	handle_t *handle;
 	struct inode *inode;
-	int l, err, retries = 0;
+	int err, len = strlen(symname);
 	int credits;
+	bool encryption_required;
+	struct ext4_str disk_link;
+	struct ext4_encrypted_symlink_data *sd = NULL;
 
-	l = strlen(symname)+1;
-	if (l > dir->i_sb->s_blocksize)
+	disk_link.len = len + 1;
+	disk_link.name = (char *) symname;
+
+	encryption_required = ext4_encrypted_inode(dir);
+	if (encryption_required)
+		disk_link.len = encrypted_symlink_data_len(len) + 1;
+	if (disk_link.len > dir->i_sb->s_blocksize)
 		return -ENAMETOOLONG;
 
 	dquot_initialize(dir);
 
-	if (l > EXT4_N_BLOCKS * 4) {
+	if ((disk_link.len > EXT4_N_BLOCKS * 4) || encryption_required) {
 		/*
 		 * For non-fast symlinks, we just allocate inode and put it on
 		 * orphan list in the first transaction => we need bitmap,
@@ -3218,16 +3226,49 @@ static int ext4_symlink(struct inode *dir,
 		credits = EXT4_DATA_TRANS_BLOCKS(dir->i_sb) +
 			  EXT4_INDEX_EXTRA_TRANS_BLOCKS + 3;
 	}
-retry:
+
 	inode = ext4_new_inode_start_handle(dir, S_IFLNK|S_IRWXUGO,
 					    &dentry->d_name, 0, NULL,
 					    EXT4_HT_DIR, credits);
 	handle = ext4_journal_current_handle();
-	err = PTR_ERR(inode);
-	if (IS_ERR(inode))
-		goto out_stop;
+	if (IS_ERR(inode)) {
+		ext4_journal_stop(handle);
+		return PTR_ERR(inode);
+	}
 
-	if (l > EXT4_N_BLOCKS * 4) {
+	if (encryption_required) {
+		struct ext4_fname_crypto_ctx *ctx = NULL;
+		struct qstr istr;
+		struct ext4_str ostr;
+
+		sd = kmalloc(disk_link.len, GFP_NOFS);
+		if (!sd) {
+			err = -ENOMEM;
+			goto err_drop_inode;
+		}
+		sd->encrypted_path[disk_link.len - 1] = '\0';
+		err = ext4_inherit_context(dir, inode);
+		if (err)
+			goto err_drop_inode;
+		ctx = ext4_get_fname_crypto_ctx(inode,
+						inode->i_sb->s_blocksize);
+		if (IS_ERR_OR_NULL(ctx)) {
+			/* We just set the policy, so ctx should not be NULL */
+			err = (ctx == NULL) ? -EIO : PTR_ERR(ctx);
+			goto err_drop_inode;
+		}
+		istr.name = (const unsigned char *) symname;
+		istr.len = len;
+		ostr.name = sd->encrypted_path;
+		err = ext4_fname_usr_to_disk(ctx, &istr, &ostr);
+		ext4_put_fname_crypto_ctx(&ctx);
+		if (err < 0)
+			goto err_drop_inode;
+		sd->len = cpu_to_le32(ostr.len);
+		disk_link.name = (char *) sd;
+	}
+
+	if ((disk_link.len > EXT4_N_BLOCKS * 4) /* || encryption_required */) {
 		inode->i_op = &ext4_symlink_inode_operations;
 		ext4_set_aops(inode);
 		/*
@@ -3245,7 +3286,7 @@ retry:
 		ext4_journal_stop(handle);
 		if (err)
 			goto err_drop_inode;
-		err = __page_symlink(inode, symname, l, 1);
+		err = __page_symlink(inode, disk_link.name, disk_link.len, 1);
 		if (err)
 			goto err_drop_inode;
 		/*
@@ -3269,22 +3310,24 @@ retry:
 	} else {
 		/* clear the extent format for fast symlink */
 		ext4_clear_inode_flag(inode, EXT4_INODE_EXTENTS);
-		inode->i_op = &ext4_fast_symlink_inode_operations;
-		memcpy((char *)&EXT4_I(inode)->i_data, symname, l);
-		inode->i_size = l-1;
+		inode->i_op = encryption_required ?
+			&ext4_symlink_inode_operations :
+			&ext4_fast_symlink_inode_operations;
+		memcpy((char *)&EXT4_I(inode)->i_data, disk_link.name,
+		       disk_link.len);
+		inode->i_size = disk_link.len - 1;
 	}
 	EXT4_I(inode)->i_disksize = inode->i_size;
 	err = ext4_add_nondir(handle, dentry, inode);
 	if (!err && IS_DIRSYNC(dir))
 		ext4_handle_sync(handle);
 
-out_stop:
 	if (handle)
 		ext4_journal_stop(handle);
-	if (err == -ENOSPC && ext4_should_retry_alloc(dir->i_sb, &retries))
-		goto retry;
+	kfree(sd);
 	return err;
 err_drop_inode:
+	kfree(sd);
 	unlock_new_inode(inode);
 	iput(inode);
 	return err;
