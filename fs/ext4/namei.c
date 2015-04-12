@@ -2581,7 +2581,8 @@ retry:
 		if (!err && IS_DIRSYNC(dir))
 			ext4_handle_sync(handle);
 #ifdef CONFIG_EXT4_FS_ENCRYPTION
-		if (!err && ext4_encrypted_inode(dir)) {
+		if (!err && (ext4_encrypted_inode(dir) ||
+			     DUMMY_ENCRYPTION_ENABLED(EXT4_SB(dir->i_sb)))) {
 			err = ext4_inherit_context(dir, inode);
 			if (err)
 				ext4_unlink(dir, dentry);
@@ -2789,7 +2790,8 @@ out_clear_inode:
 	if (IS_DIRSYNC(dir))
 		ext4_handle_sync(handle);
 #ifdef CONFIG_EXT4_FS_ENCRYPTION
-	if (ext4_encrypted_inode(dir)) {
+	if (ext4_encrypted_inode(dir) ||
+	    DUMMY_ENCRYPTION_ENABLED(EXT4_SB(dir->i_sb))) {
 		err = ext4_inherit_context(dir, inode);
 		if (err)
 			ext4_unlink(dir, dentry);
@@ -3194,7 +3196,8 @@ static int ext4_symlink(struct inode *dir,
 	disk_link.len = len + 1;
 	disk_link.name = (char *) symname;
 
-	encryption_required = ext4_encrypted_inode(dir);
+	encryption_required = (ext4_encrypted_inode(dir) ||
+			       DUMMY_ENCRYPTION_ENABLED(EXT4_SB(dir->i_sb)));
 	if (encryption_required)
 		disk_link.len = encrypted_symlink_data_len(len) + 1;
 	if (disk_link.len > dir->i_sb->s_blocksize)
