@@ -27,17 +27,27 @@ ifeq ($(ARCH),x86)
   else
     LIBUNWIND_LIBS = -lunwind -lunwind-x86
   endif
+  ARCH_SUPPORTS_LIBUNWIND := 1
   NO_PERF_REGS := 0
 endif
 
 ifeq ($(ARCH),arm)
   NO_PERF_REGS := 0
+  ARCH_SUPPORTS_LIBUNWIND := 1
   LIBUNWIND_LIBS = -lunwind -lunwind-arm
 endif
 
 ifeq ($(ARCH),arm64)
   NO_PERF_REGS := 0
+  ARCH_SUPPORTS_LIBUNWIND := 1
   LIBUNWIND_LIBS = -lunwind -lunwind-aarch64
+endif
+
+# Additional ARCH settings for MIPS
+ifeq ($(ARCH),mips)
+  ARCH_SUPPORTS_LIBUNWIND := 1
+  NO_PERF_REGS := 0
+  LIBUNWIND_LIBS = -lunwind -lunwind-mips
 endif
 
 # So far there's only x86 and arm libdw unwind support merged in perf.
