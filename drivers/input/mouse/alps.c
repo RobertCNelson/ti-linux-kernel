@@ -243,6 +243,14 @@ static void alps_process_packet_v1_v2(struct psmouse *psmouse)
 		return;
 	}
 
+	/* Non interleaved V2 dualpoint has separate stick button bits */
+	if (priv->proto_version == ALPS_PROTO_V2 &&
+	    priv->flags == (ALPS_PASS | ALPS_DUALPOINT)) {
+		left |= packet[0] & 1;
+		right |= packet[0] & 2;
+		middle |= packet[0] & 4;
+	}
+
 	alps_report_buttons(dev, dev2, left, right, middle);
 
 	/* Convert hardware tap to a reasonable Z value */
@@ -1159,13 +1167,14 @@ static void alps_report_bare_ps2_packet(struct psmouse *psmouse,
 					bool report_buttons)
 {
 	struct alps_data *priv = psmouse->private;
-	struct input_dev *dev;
+	struct input_dev *dev, *dev2 = NULL;
 
 	/* Figure out which device to use to report the bare packet */
 	if (priv->proto_version == ALPS_PROTO_V2 &&
 	    (priv->flags & ALPS_DUALPOINT)) {
 		/* On V2 devices the DualPoint Stick reports bare packets */
 		dev = priv->dev2;
+		dev2 = psmouse->dev;
 	} else if (unlikely(IS_ERR_OR_NULL(priv->dev3))) {
 		/* Register dev3 mouse if we received PS/2 packet first time */
 		if (!IS_ERR(priv->dev3))
@@ -1177,7 +1186,7 @@ static void alps_report_bare_ps2_packet(struct psmouse *psmouse,
 	}
 
 	if (report_buttons)
-		alps_report_buttons(dev, NULL,
+		alps_report_buttons(dev, dev2,
 				packet[0] & 1, packet[0] & 2, packet[0] & 4);
 
 	input_report_rel(dev, REL_X,
