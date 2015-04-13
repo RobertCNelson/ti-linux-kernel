@@ -31,9 +31,13 @@ static void nft_lookup_eval(const struct nft_expr *expr,
 {
 	const struct nft_lookup *priv = nft_expr_priv(expr);
 	const struct nft_set *set = priv->set;
+	const struct nft_set_ext *ext;
 
-	if (set->ops->lookup(set, &data[priv->sreg], &data[priv->dreg]))
+	if (set->ops->lookup(set, &data[priv->sreg], &ext)) {
+		if (set->flags & NFT_SET_MAP)
+			nft_data_copy(&data[priv->dreg], nft_set_ext_data(ext));
 		return;
+	}
 	data[NFT_REG_VERDICT].verdict = NFT_BREAK;
 }
 
@@ -87,6 +91,8 @@ static int nft_lookup_init(const struct nft_ctx *ctx,
 			return -EINVAL;
 	} else if (set->flags & NFT_SET_MAP)
 		return -EINVAL;
+
+	priv->binding.flags = set->flags & NFT_SET_MAP;
 
 	err = nf_tables_bind_set(ctx, set, &priv->binding);
 	if (err < 0)
