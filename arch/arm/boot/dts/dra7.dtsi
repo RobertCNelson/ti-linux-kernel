@@ -382,7 +382,7 @@
 		};
 
 		uart1: serial@4806a000 {
-			compatible = "ti,omap4-uart";
+			compatible = "ti,am3352-uart", "ti,omap4-uart";
 			reg = <0x4806a000 0x100>;
 			interrupts-extended = <&gic GIC_SPI 67 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "uart1";
@@ -393,7 +393,7 @@
 		};
 
 		uart2: serial@4806c000 {
-			compatible = "ti,omap4-uart";
+			compatible = "ti-am3352-uart", "ti,omap4-uart";
 			reg = <0x4806c000 0x100>;
 			interrupts-extended = <&gic GIC_SPI 68 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "uart2";
@@ -404,7 +404,7 @@
 		};
 
 		uart3: serial@48020000 {
-			compatible = "ti,omap4-uart";
+			compatible = "ti-am3352-uart", "ti,omap4-uart";
 			reg = <0x48020000 0x100>;
 			interrupts-extended = <&gic GIC_SPI 69 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "uart3";
@@ -415,7 +415,7 @@
 		};
 
 		uart4: serial@4806e000 {
-			compatible = "ti,omap4-uart";
+			compatible = "ti-am3352-uart", "ti,omap4-uart";
 			reg = <0x4806e000 0x100>;
 			interrupts-extended = <&gic GIC_SPI 65 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "uart4";
@@ -426,7 +426,7 @@
 		};
 
 		uart5: serial@48066000 {
-			compatible = "ti,omap4-uart";
+			compatible = "ti-am3352-uart", "ti,omap4-uart";
 			reg = <0x48066000 0x100>;
 			interrupts-extended = <&gic GIC_SPI 100 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "uart5";
@@ -437,7 +437,7 @@
 		};
 
 		uart6: serial@48068000 {
-			compatible = "ti,omap4-uart";
+			compatible = "ti-am3352-uart", "ti,omap4-uart";
 			reg = <0x48068000 0x100>;
 			interrupts-extended = <&gic GIC_SPI 101 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "uart6";
@@ -448,7 +448,7 @@
 		};
 
 		uart7: serial@48420000 {
-			compatible = "ti,omap4-uart";
+			compatible = "ti-am3352-uart", "ti,omap4-uart";
 			reg = <0x48420000 0x100>;
 			interrupts-extended = <&gic GIC_SPI 218 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "uart7";
@@ -457,7 +457,7 @@
 		};
 
 		uart8: serial@48422000 {
-			compatible = "ti,omap4-uart";
+			compatible = "ti-am3352-uart", "ti,omap4-uart";
 			reg = <0x48422000 0x100>;
 			interrupts-extended = <&gic GIC_SPI 219 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "uart8";
@@ -466,7 +466,7 @@
 		};
 
 		uart9: serial@48424000 {
-			compatible = "ti,omap4-uart";
+			compatible = "ti-am3352-uart", "ti,omap4-uart";
 			reg = <0x48424000 0x100>;
 			interrupts-extended = <&gic GIC_SPI 220 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "uart9";
@@ -475,7 +475,7 @@
 		};
 
 		uart10: serial@4ae2b000 {
-			compatible = "ti,omap4-uart";
+			compatible = "ti-am3352-uart", "ti,omap4-uart";
 			reg = <0x4ae2b000 0x100>;
 			interrupts-extended = <&gic GIC_SPI 221 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "uart10";
@@ -698,7 +698,6 @@
 			reg = <0x48820000 0x80>;
 			interrupts = <GIC_SPI 36 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer5";
-			ti,timer-dsp;
 		};
 
 		timer6: timer@48822000 {
@@ -706,8 +705,6 @@
 			reg = <0x48822000 0x80>;
 			interrupts = <GIC_SPI 37 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer6";
-			ti,timer-dsp;
-			ti,timer-pwm;
 		};
 
 		timer7: timer@48824000 {
@@ -715,7 +712,6 @@
 			reg = <0x48824000 0x80>;
 			interrupts = <GIC_SPI 38 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer7";
-			ti,timer-dsp;
 		};
 
 		timer8: timer@48826000 {
@@ -723,8 +719,6 @@
 			reg = <0x48826000 0x80>;
 			interrupts = <GIC_SPI 39 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer8";
-			ti,timer-dsp;
-			ti,timer-pwm;
 		};
 
 		timer9: timer@4803e000 {
@@ -746,7 +740,16 @@
 			reg = <0x48088000 0x80>;
 			interrupts = <GIC_SPI 42 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer11";
-			ti,timer-pwm;
+		};
+
+		timer12: timer@4ae20000 {
+			compatible = "ti,omap5430-timer";
+			reg = <0x4ae20000 0x80>;
+			interrupts = <GIC_SPI 90 IRQ_TYPE_LEVEL_HIGH>;
+			ti,hwmods = "timer12";
+			ti,timer-alwon;
+			ti,timer-secure;
+			status = "disabled";
 		};
 
 		timer13: timer@48828000 {
@@ -968,7 +971,7 @@
 			ti,hwmods = "pruss1";
 			reg = <0x4b200000 0x2000>,
 			      <0x4b202000 0x2000>,
-			      <0x4b210000 0x10000>,
+			      <0x4b210000 0x8000>,
 			      <0x4b220000 0x2000>,
 			      <0x4b226000 0x2000>;
 			reg-names = "dram0", "dram1", "shrdram2", "intc", "cfg";
