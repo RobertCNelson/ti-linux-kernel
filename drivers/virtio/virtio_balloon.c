@@ -77,7 +77,10 @@ struct virtio_balloon {
 
 	/* Memory statistics */
 	int need_stats_update;
-	struct virtio_balloon_stat stats[VIRTIO_BALLOON_S_NR];
+	union {
+		struct virtio_balloon_stat_modern stats[VIRTIO_BALLOON_S_NR];
+		struct virtio_balloon_stat legacy_stats[VIRTIO_BALLOON_S_NR];
+	};
 
 	/* To register callback in oom notifier call chain */
 	struct notifier_block nb;
@@ -87,6 +90,14 @@ static struct virtio_device_id id_table[] = {
 	{ VIRTIO_ID_BALLOON, VIRTIO_DEV_ANY_ID },
 	{ 0 },
 };
+
+static void stats_sg_init(struct virtio_balloon *vb, struct scatterlist *sg)
+{
+	if (virtio_has_feature(vb->vdev, VIRTIO_F_VERSION_1))
+		sg_init_one(sg, vb->stats, sizeof(vb->stats));
+	else
+		sg_init_one(sg, vb->legacy_stats, sizeof(vb->legacy_stats));
+}
 
 static u32 page_to_balloon_pfn(struct page *page)
 {
@@ -214,8 +225,13 @@ static inline void update_stat(struct virtio_balloon *vb, int idx,
 			       u16 tag, u64 val)
 {
 	BUG_ON(idx >= VIRTIO_BALLOON_S_NR);
-	vb->stats[idx].tag = tag;
-	vb->stats[idx].val = val;
+	if (virtio_has_feature(vb->vdev, VIRTIO_F_VERSION_1)) {
+		vb->stats[idx].tag = cpu_to_le32(tag);
+		vb->stats[idx].val = cpu_to_le64(val);
+	} else {
+		vb->legacy_stats[idx].tag = tag;
+		vb->legacy_stats[idx].val = val;
+	}
 }
 
 #define pages_to_bytes(x) ((u64)(x) << PAGE_SHIFT)
@@ -269,7 +285,7 @@ static void stats_handle_request(struct virtio_balloon *vb)
 	vq = vb->stats_vq;
 	if (!virtqueue_get_buf(vq, &len))
 		return;
-	sg_init_one(&sg, vb->stats, sizeof(vb->stats));
+	stats_sg_init(vb, &sg);
 	virtqueue_add_outbuf(vq, &sg, 1, vb, GFP_KERNEL);
 	virtqueue_kick(vq);
 }
@@ -283,18 +299,27 @@ static void virtballoon_changed(struct virtio_device *vdev)
 
 static inline s64 towards_target(struct virtio_balloon *vb)
 {
-	__le32 v;
 	s64 target;
+	u32 num_pages;
 
-	virtio_cread(vb->vdev, struct virtio_balloon_config, num_pages, &v);
+	virtio_cread(vb->vdev, struct virtio_balloon_config, num_pages,
+		     &num_pages);
 
-	target = le32_to_cpu(v);
+	/* Legacy balloon config space is LE, unlike all other devices. */
+	if (!virtio_has_feature(vb->vdev, VIRTIO_F_VERSION_1))
+		num_pages = le32_to_cpu((__force __le32)num_pages);
+
+	target = num_pages;
 	return target - vb->num_pages;
 }
 
 static void update_balloon_size(struct virtio_balloon *vb)
 {
-	__le32 actual = cpu_to_le32(vb->num_pages);
+	u32 actual = vb->num_pages;
+
+	/* Legacy balloon config space is LE, unlike all other devices. */
+	if (!virtio_has_feature(vb->vdev, VIRTIO_F_VERSION_1))
+		actual = (__force u32)cpu_to_le32(actual);
 
 	virtio_cwrite(vb->vdev, struct virtio_balloon_config, actual,
 		      &actual);
@@ -397,7 +422,7 @@ static int init_vqs(struct virtio_balloon *vb)
 		 * Prime this virtqueue with one buffer so the hypervisor can
 		 * use it to signal us later (it can't be broken yet!).
 		 */
-		sg_init_one(&sg, vb->stats, sizeof vb->stats);
+		stats_sg_init(vb, &sg);
 		if (virtqueue_add_outbuf(vb->stats_vq, &sg, 1, vb, GFP_KERNEL)
 		    < 0)
 			BUG();
