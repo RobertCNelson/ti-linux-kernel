@@ -50,7 +50,6 @@
  */
 
 #include "ubifs.h"
-#include <linux/aio.h>
 #include <linux/mount.h>
 #include <linux/namei.h>
 #include <linux/slab.h>
@@ -1258,7 +1257,7 @@ static int do_setattr(struct ubifs_info *c, struct inode *inode,
 int ubifs_setattr(struct dentry *dentry, struct iattr *attr)
 {
 	int err;
-	struct inode *inode = dentry->d_inode;
+	struct inode *inode = d_inode(dentry);
 	struct ubifs_info *c = inode->i_sb->s_fs_info;
 
 	dbg_gen("ino %lu, mode %#x, ia_valid %#x",
@@ -1303,7 +1302,7 @@ static void ubifs_invalidatepage(struct page *page, unsigned int offset,
 
 static void *ubifs_follow_link(struct dentry *dentry, struct nameidata *nd)
 {
-	struct ubifs_inode *ui = ubifs_inode(dentry->d_inode);
+	struct ubifs_inode *ui = ubifs_inode(d_inode(dentry));
 
 	nd_set_link(nd, ui->data);
 	return NULL;
@@ -1582,8 +1581,6 @@ const struct inode_operations ubifs_symlink_inode_operations = {
 
 const struct file_operations ubifs_file_operations = {
 	.llseek         = generic_file_llseek,
-	.read           = new_sync_read,
-	.write          = new_sync_write,
 	.read_iter      = generic_file_read_iter,
 	.write_iter     = ubifs_write_iter,
 	.mmap           = ubifs_file_mmap,

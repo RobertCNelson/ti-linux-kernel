@@ -29,7 +29,7 @@ static void *ext4_follow_link(struct dentry *dentry, struct nameidata *nd)
 	struct page *cpage = NULL;
 	char *caddr, *paddr;
 	struct ext4_str cstr, pstr;
-	struct inode *inode = dentry->d_inode;
+	struct inode *inode = d_inode(dentry);
 	struct ext4_fname_crypto_ctx *ctx = NULL;
 	struct ext4_encrypted_symlink_data *sd;
 	loff_t size = min(inode->i_size, (loff_t) PAGE_SIZE-1);
@@ -121,7 +121,7 @@ static void ext4_put_link(struct dentry *dentry, struct nameidata *nd,
 
 static void *ext4_follow_fast_link(struct dentry *dentry, struct nameidata *nd)
 {
-	struct ext4_inode_info *ei = EXT4_I(dentry->d_inode);
+	struct ext4_inode_info *ei = EXT4_I(d_inode(dentry));
 	nd_set_link(nd, (char *) ei->i_data);
 	return NULL;
 }
