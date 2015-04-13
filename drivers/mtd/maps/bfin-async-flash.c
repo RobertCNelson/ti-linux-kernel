@@ -163,6 +163,7 @@ static int bfin_flash_probe(struct platform_device *pdev)
 		kfree(state);
 		return -ENXIO;
 	}
+	state->mtd.dev.parent = &pdev->dev;
 
 	mtd_device_parse_register(state->mtd, part_probe_types, NULL,
 				  pdata->parts, pdata->nr_parts);

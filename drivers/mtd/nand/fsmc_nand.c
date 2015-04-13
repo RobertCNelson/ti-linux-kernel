@@ -873,6 +873,7 @@ static int fsmc_nand_probe_config_dt(struct platform_device *pdev,
 {
 	struct fsmc_nand_platform_data *pdata = dev_get_platdata(&pdev->dev);
 	u32 val;
+	int ret;
 
 	/* Set default NAND width to 8 bits */
 	pdata->width = 8;
@@ -891,8 +892,12 @@ static int fsmc_nand_probe_config_dt(struct platform_device *pdev,
 				sizeof(*pdata->nand_timings), GFP_KERNEL);
 	if (!pdata->nand_timings)
 		return -ENOMEM;
-	of_property_read_u8_array(np, "timings", (u8 *)pdata->nand_timings,
+	ret = of_property_read_u8_array(np, "timings", (u8 *)pdata->nand_timings,
 						sizeof(*pdata->nand_timings));
+	if (ret) {
+		dev_info(&pdev->dev, "No timings in dts specified, using default timings!\n");
+		pdata->nand_timings = NULL;
+	}
 
 	/* Set default NAND bank to 0 */
 	pdata->bank = 0;
@@ -1012,7 +1017,7 @@ static int __init fsmc_nand_probe(struct platform_device *pdev)
 	mtd->priv = nand;
 	nand->priv = host;
 
-	host->mtd.owner = THIS_MODULE;
+	host->mtd.dev.parent = &pdev->dev;
 	nand->IO_ADDR_R = host->data_va;
 	nand->IO_ADDR_W = host->data_va;
 	nand->cmd_ctrl = fsmc_cmd_ctrl;
