@@ -305,7 +305,7 @@ void opal_notifier_disable(void)
  * Opal message notifier based on message type. Allow subscribers to get
  * notified for specific messgae type.
  */
-int opal_message_notifier_register(enum OpalMessageType msg_type,
+int opal_message_notifier_register(enum opal_msg_type msg_type,
 					struct notifier_block *nb)
 {
 	if (!nb || msg_type >= OPAL_MSG_TYPE_MAX) {
@@ -318,7 +318,7 @@ int opal_message_notifier_register(enum OpalMessageType msg_type,
 				&opal_msg_notifier_head[msg_type], nb);
 }
 
-int opal_message_notifier_unregister(enum OpalMessageType msg_type,
+int opal_message_notifier_unregister(enum opal_msg_type msg_type,
 				     struct notifier_block *nb)
 {
 	return atomic_notifier_chain_unregister(
@@ -671,6 +671,9 @@ static void __init opal_dump_region_init(void)
 	uint64_t size;
 	int rc;
 
+	if (!opal_check_token(OPAL_REGISTER_DUMP_REGION))
+		return;
+
 	/* Register kernel log buffer */
 	addr = log_buf_addr_get();
 	if (addr == NULL)
@@ -688,6 +691,15 @@ static void __init opal_dump_region_init(void)
 	if (rc && rc != OPAL_UNSUPPORTED)
 		pr_warn("DUMP: Failed to register kernel log buffer. "
 			"rc = %d\n", rc);
+}
+
+static void opal_flash_init(struct device_node *opal_node)
+{
+	struct device_node *np;
+
+	for_each_child_of_node(opal_node, np)
+		if (of_device_is_compatible(np, "ibm,opal-flash"))
+			of_platform_device_create(np, NULL, NULL);
 }
 
 static void opal_ipmi_init(struct device_node *opal_node)
@@ -814,7 +826,7 @@ static int __init opal_init(void)
 		/* Setup error log interface */
 		rc = opal_elog_init();
 		/* Setup code update interface */
-		opal_flash_init();
+		opal_flash_update_init();
 		/* Setup platform dump extract interface */
 		opal_platform_dump_init();
 		/* Setup system parameters interface */
@@ -825,6 +837,8 @@ static int __init opal_init(void)
 
 	/* Initialize OPAL IPMI backend */
 	opal_ipmi_init(opal_node);
+
+	opal_flash_init(opal_node);
 
 	return 0;
 }
@@ -856,13 +870,17 @@ void opal_shutdown(void)
 	}
 
 	/* Unregister memory dump region */
-	opal_unregister_dump_region(OPAL_DUMP_REGION_LOG_BUF);
+	if (opal_check_token(OPAL_UNREGISTER_DUMP_REGION))
+		opal_unregister_dump_region(OPAL_DUMP_REGION_LOG_BUF);
 }
 
 /* Export this so that test modules can use it */
 EXPORT_SYMBOL_GPL(opal_invalid_call);
 EXPORT_SYMBOL_GPL(opal_ipmi_send);
 EXPORT_SYMBOL_GPL(opal_ipmi_recv);
+EXPORT_SYMBOL_GPL(opal_flash_read);
+EXPORT_SYMBOL_GPL(opal_flash_write);
+EXPORT_SYMBOL_GPL(opal_flash_erase);
 
 /* Convert a region of vmalloc memory to an opal sg list */
 struct opal_sg_list *opal_vmalloc_to_sg_list(void *vmalloc_addr,
@@ -924,6 +942,25 @@ void opal_free_sg_list(struct opal_sg_list *sg)
 			sg = __va(next);
 		else
 			sg = NULL;
+	}
+}
+
+int opal_error_code(int rc)
+{
+	switch (rc) {
+	case OPAL_SUCCESS:		return 0;
+
+	case OPAL_PARAMETER:		return -EINVAL;
+	case OPAL_ASYNC_COMPLETION:	return -EINPROGRESS;
+	case OPAL_BUSY_EVENT:		return -EBUSY;
+	case OPAL_NO_MEM:		return -ENOMEM;
+
+	case OPAL_UNSUPPORTED:		return -EIO;
+	case OPAL_HARDWARE:		return -EIO;
+	case OPAL_INTERNAL_ERROR:	return -EIO;
+	default:
+		pr_err("%s: unexpected OPAL error %d\n", __func__, rc);
+		return -EIO;
 	}
 }
 

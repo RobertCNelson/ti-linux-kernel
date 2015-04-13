@@ -461,6 +461,54 @@ static long pseries_little_endian_exceptions(void)
 }
 #endif
 
+static void __init find_and_init_phbs(void)
+{
+	struct device_node *node;
+	struct pci_controller *phb;
+	struct device_node *root = of_find_node_by_path("/");
+
+	for_each_child_of_node(root, node) {
+		if (node->type == NULL || (strcmp(node->type, "pci") != 0 &&
+					   strcmp(node->type, "pciex") != 0))
+			continue;
+
+		phb = pcibios_alloc_controller(node);
+		if (!phb)
+			continue;
+		rtas_setup_phb(phb);
+		pci_process_bridge_OF_ranges(phb, node, 0);
+		isa_bridge_find_early(phb);
+		phb->controller_ops = pseries_pci_controller_ops;
+	}
+
+	of_node_put(root);
+	pci_devs_phb_init();
+
+	/*
+	 * PCI_PROBE_ONLY and PCI_REASSIGN_ALL_BUS can be set via properties
+	 * in chosen.
+	 */
+	if (of_chosen) {
+		const int *prop;
+
+		prop = of_get_property(of_chosen,
+				"linux,pci-probe-only", NULL);
+		if (prop) {
+			if (*prop)
+				pci_add_flags(PCI_PROBE_ONLY);
+			else
+				pci_clear_flags(PCI_PROBE_ONLY);
+		}
+
+#ifdef CONFIG_PPC32 /* Will be made generic soon */
+		prop = of_get_property(of_chosen,
+				"linux,pci-assign-all-buses", NULL);
+		if (prop && *prop)
+			pci_add_flags(PCI_REASSIGN_ALL_BUS);
+#endif /* CONFIG_PPC32 */
+	}
+}
+
 static void __init pSeries_setup_arch(void)
 {
 	set_arch_panic_timeout(10, ARCH_PANIC_TIMEOUT);
@@ -793,6 +841,10 @@ static int pSeries_pci_probe_mode(struct pci_bus *bus)
 void pSeries_final_fixup(void) { }
 #endif
 
+struct pci_controller_ops pseries_pci_controller_ops = {
+	.probe_mode		= pSeries_pci_probe_mode,
+};
+
 define_machine(pseries) {
 	.name			= "pSeries",
 	.probe			= pSeries_probe,
@@ -801,7 +853,6 @@ define_machine(pseries) {
 	.show_cpuinfo		= pSeries_show_cpuinfo,
 	.log_error		= pSeries_log_error,
 	.pcibios_fixup		= pSeries_final_fixup,
-	.pci_probe_mode		= pSeries_pci_probe_mode,
 	.restart		= rtas_restart,
 	.halt			= rtas_halt,
 	.panic			= rtas_os_term,

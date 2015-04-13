@@ -2615,7 +2615,7 @@ static resource_size_t pnv_pci_iov_resource_alignment(struct pci_dev *pdev,
 /* Prevent enabling devices for which we couldn't properly
  * assign a PE
  */
-static int pnv_pci_enable_device_hook(struct pci_dev *dev)
+static bool pnv_pci_enable_device_hook(struct pci_dev *dev)
 {
 	struct pci_controller *hose = pci_bus_to_host(dev->bus);
 	struct pnv_phb *phb = hose->private_data;
@@ -2627,13 +2627,13 @@ static int pnv_pci_enable_device_hook(struct pci_dev *dev)
 	 * PEs isn't ready.
 	 */
 	if (!phb->initialized)
-		return 0;
+		return true;
 
 	pdn = pci_get_pdn(dev);
 	if (!pdn || pdn->pe_number == IODA_INVALID_PE)
-		return -EINVAL;
+		return false;
 
-	return 0;
+	return true;
 }
 
 static u32 pnv_ioda_bdfn_to_pe(struct pnv_phb *phb, struct pci_bus *bus,
@@ -2693,6 +2693,7 @@ static void __init pnv_pci_init_ioda_phb(struct device_node *np,
 		hose->last_busno = 0xff;
 	}
 	hose->private_data = phb;
+	hose->controller_ops = pnv_pci_controller_ops;
 	phb->hub_id = hub_id;
 	phb->opal_id = phb_id;
 	phb->type = ioda_type;
@@ -2808,9 +2809,9 @@ static void __init pnv_pci_init_ioda_phb(struct device_node *np,
 	 * the child P2P bridges) can form individual PE.
 	 */
 	ppc_md.pcibios_fixup = pnv_pci_ioda_fixup;
-	ppc_md.pcibios_enable_device_hook = pnv_pci_enable_device_hook;
-	ppc_md.pcibios_window_alignment = pnv_pci_window_alignment;
-	ppc_md.pcibios_reset_secondary_bus = pnv_pci_reset_secondary_bus;
+	pnv_pci_controller_ops.enable_device_hook = pnv_pci_enable_device_hook;
+	pnv_pci_controller_ops.window_alignment = pnv_pci_window_alignment;
+	pnv_pci_controller_ops.reset_secondary_bus = pnv_pci_reset_secondary_bus;
 #ifdef CONFIG_PCI_IOV
 	ppc_md.pcibios_fixup_sriov = pnv_pci_ioda_fixup_iov_resources;
 	ppc_md.pcibios_iov_resource_alignment = pnv_pci_iov_resource_alignment;

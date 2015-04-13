@@ -77,6 +77,8 @@ static inline int dlpar_memory(struct pseries_hp_errorlog *hp_elog)
 struct pci_host_bridge;
 int pseries_root_bridge_prepare(struct pci_host_bridge *bridge);
 
+extern struct pci_controller_ops pseries_pci_controller_ops;
+
 unsigned long pseries_memory_block_size(void);
 
 #endif /* _PSERIES_PSERIES_H */

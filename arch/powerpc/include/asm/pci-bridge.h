@@ -15,6 +15,24 @@
 struct device_node;
 
 /*
+ * PCI controller operations
+ */
+struct pci_controller_ops {
+	void		(*dma_dev_setup)(struct pci_dev *dev);
+	void		(*dma_bus_setup)(struct pci_bus *bus);
+
+	int		(*probe_mode)(struct pci_bus *);
+
+	/* Called when pci_enable_device() is called. Returns true to
+	 * allow assignment/enabling of the device. */
+	bool		(*enable_device_hook)(struct pci_dev *);
+
+	/* Called during PCI resource reassignment */
+	resource_size_t (*window_alignment)(struct pci_bus *, unsigned long type);
+	void		(*reset_secondary_bus)(struct pci_dev *dev);
+};
+
+/*
  * Structure of a PCI controller (host bridge)
  */
 struct pci_controller {
@@ -46,6 +64,7 @@ struct pci_controller {
 	resource_size_t	isa_mem_phys;
 	resource_size_t	isa_mem_size;
 
+	struct pci_controller_ops controller_ops;
 	struct pci_ops *ops;
 	unsigned int __iomem *cfg_addr;
 	void __iomem *cfg_data;
