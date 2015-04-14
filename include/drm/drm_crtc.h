@@ -466,7 +466,7 @@ struct drm_crtc {
 	int framedur_ns, linedur_ns, pixeldur_ns;
 
 	/* if you are using the helper */
-	void *helper_private;
+	const void *helper_private;
 
 	struct drm_object_properties properties;
 
@@ -596,7 +596,7 @@ struct drm_encoder {
 	struct drm_crtc *crtc;
 	struct drm_bridge *bridge;
 	const struct drm_encoder_funcs *funcs;
-	void *helper_private;
+	const void *helper_private;
 };
 
 /* should we poll this connector for connects and disconnects */
@@ -700,7 +700,7 @@ struct drm_connector {
 	/* requested DPMS state */
 	int dpms;
 
-	void *helper_private;
+	const void *helper_private;
 
 	/* forced on connector */
 	struct drm_cmdline_mode cmdline_mode;
@@ -863,7 +863,7 @@ struct drm_plane {
 
 	enum drm_plane_type type;
 
-	void *helper_private;
+	const void *helper_private;
 
 	struct drm_plane_state *state;
 };
