@@ -3,6 +3,7 @@
 #include <linux/string.h>
 #include <linux/compiler.h>
 #include <linux/export.h>
+#include <linux/ctype.h>
 #include <linux/err.h>
 #include <linux/sched.h>
 #include <linux/security.h>
@@ -98,6 +99,35 @@ char *kstrndup(const char *s, size_t max, gfp_t gfp)
 	return buf;
 }
 EXPORT_SYMBOL(kstrndup);
+
+/**
+ * kstrimdup - Trim and copy a %NUL terminated string.
+ * @s: the string to trim and duplicate
+ * @gfp: the GFP mask used in the kmalloc() call when allocating memory
+ *
+ * Returns an address, which the caller must kfree, containing
+ * a duplicate of the passed string with leading and/or trailing
+ * whitespace (as defined by isspace) removed.
+ */
+char *kstrimdup(const char *s, gfp_t gfp)
+{
+	char *buf;
+	char *begin = skip_spaces(s);
+	size_t len = strlen(begin);
+
+	while (len && isspace(begin[len - 1]))
+		len--;
+
+	buf = kmalloc_track_caller(len + 1, gfp);
+	if (!buf)
+		return NULL;
+
+	memcpy(buf, begin, len);
+	buf[len] = '\0';
+
+	return buf;
+}
+EXPORT_SYMBOL(kstrimdup);
 
 /**
  * kmemdup - duplicate region of memory
@@ -325,9 +355,39 @@ void kvfree(const void *addr)
 }
 EXPORT_SYMBOL(kvfree);
 
+static inline void *__page_rmapping(struct page *page)
+{
+	unsigned long mapping;
+
+	mapping = (unsigned long)page->mapping;
+	mapping &= ~PAGE_MAPPING_FLAGS;
+
+	return (void *)mapping;
+}
+
+/* Neutral page->mapping pointer to address_space or anon_vma or other */
+void *page_rmapping(struct page *page)
+{
+	page = compound_head(page);
+	return __page_rmapping(page);
+}
+
+struct anon_vma *page_anon_vma(struct page *page)
+{
+	unsigned long mapping;
+
+	page = compound_head(page);
+	mapping = (unsigned long)page->mapping;
+	if ((mapping & PAGE_MAPPING_FLAGS) != PAGE_MAPPING_ANON)
+		return NULL;
+	return __page_rmapping(page);
+}
+
 struct address_space *page_mapping(struct page *page)
 {
-	struct address_space *mapping = page->mapping;
+	unsigned long mapping;
+
+	page = compound_head(page);
 
 	/* This happens if someone calls flush_dcache_page on slab page */
 	if (unlikely(PageSlab(page)))
@@ -337,10 +397,13 @@ struct address_space *page_mapping(struct page *page)
 		swp_entry_t entry;
 
 		entry.val = page_private(page);
-		mapping = swap_address_space(entry);
-	} else if ((unsigned long)mapping & PAGE_MAPPING_ANON)
-		mapping = NULL;
-	return mapping;
+		return swap_address_space(entry);
+	}
+
+	mapping = (unsigned long)page->mapping;
+	if (mapping & PAGE_MAPPING_FLAGS)
+		return NULL;
+	return page->mapping;
 }
 
 int overcommit_ratio_handler(struct ctl_table *table, int write,

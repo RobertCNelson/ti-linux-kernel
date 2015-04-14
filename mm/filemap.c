@@ -202,16 +202,15 @@ void __delete_from_page_cache(struct page *page, void *shadow)
 	BUG_ON(page_mapped(page));
 
 	/*
-	 * Some filesystems seem to re-dirty the page even after
-	 * the VM has canceled the dirty bit (eg ext3 journaling).
+	 * At this point page must be either written or cleaned by truncate.
+	 * Dirty page here signals a bug and loss of unwritten data.
 	 *
-	 * Fix it up by doing a final dirty accounting check after
-	 * having removed the page entirely.
+	 * This fixes dirty accounting after removing the page entirely but
+	 * leaves PageDirty set: it has no effect for truncated page and
+	 * anyway will be cleared before returning page into buddy allocator.
 	 */
-	if (PageDirty(page) && mapping_cap_account_dirty(mapping)) {
-		dec_zone_page_state(page, NR_FILE_DIRTY);
-		dec_bdi_stat(inode_to_bdi(mapping->host), BDI_RECLAIMABLE);
-	}
+	if (WARN_ON_ONCE(PageDirty(page)))
+		account_page_cleaned(page, mapping);
 }
 
 /**
@@ -616,11 +615,11 @@ int add_to_page_cache_lru(struct page *page, struct address_space *mapping,
 	void *shadow = NULL;
 	int ret;
 
-	__set_page_locked(page);
+	__SetPageLocked(page);
 	ret = __add_to_page_cache_locked(page, mapping, offset,
 					 gfp_mask, &shadow);
 	if (unlikely(ret))
-		__clear_page_locked(page);
+		__ClearPageLocked(page);
 	else {
 		/*
 		 * The page might have been evicted from cache only
@@ -743,6 +742,7 @@ EXPORT_SYMBOL_GPL(add_page_wait_queue);
  */
 void unlock_page(struct page *page)
 {
+	page = compound_head(page);
 	VM_BUG_ON_PAGE(!PageLocked(page), page);
 	clear_bit_unlock(PG_locked, &page->flags);
 	smp_mb__after_atomic();
@@ -807,18 +807,20 @@ EXPORT_SYMBOL_GPL(page_endio);
  */
 void __lock_page(struct page *page)
 {
-	DEFINE_WAIT_BIT(wait, &page->flags, PG_locked);
+	struct page *page_head = compound_head(page);
+	DEFINE_WAIT_BIT(wait, &page_head->flags, PG_locked);
 
-	__wait_on_bit_lock(page_waitqueue(page), &wait, bit_wait_io,
+	__wait_on_bit_lock(page_waitqueue(page_head), &wait, bit_wait_io,
 							TASK_UNINTERRUPTIBLE);
 }
 EXPORT_SYMBOL(__lock_page);
 
 int __lock_page_killable(struct page *page)
 {
-	DEFINE_WAIT_BIT(wait, &page->flags, PG_locked);
+	struct page *page_head = compound_head(page);
+	DEFINE_WAIT_BIT(wait, &page_head->flags, PG_locked);
 
-	return __wait_on_bit_lock(page_waitqueue(page), &wait,
+	return __wait_on_bit_lock(page_waitqueue(page_head), &wait,
 					bit_wait_io, TASK_KILLABLE);
 }
 EXPORT_SYMBOL_GPL(__lock_page_killable);
