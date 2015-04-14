@@ -40,6 +40,7 @@
 #include <linux/tcp.h>
 #include <linux/net_tstamp.h>
 #include <linux/ptp_clock_kernel.h>
+#include <linux/tick.h>
 
 #include <asm/checksum.h>
 #include <asm/homecache.h>
@@ -2271,8 +2272,10 @@ static int __init tile_net_init_module(void)
 	for (i = 0; gxio_mpipe_link_enumerate_mac(i, name, mac) >= 0; i++)
 		tile_net_dev_init(name, mac);
 
-	if (!network_cpus_init())
+	if (!network_cpus_init()) {
 		network_cpus_map = *cpu_online_mask;
+		tick_nohz_full_remove_cpus_from(&network_cpus_map);
+	}
 
 	return 0;
 }
