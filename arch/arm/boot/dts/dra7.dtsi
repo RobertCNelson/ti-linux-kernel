@@ -185,6 +185,18 @@
 			};
 		};
 
+		bandgap: bandgap@4a0021e0 {
+			reg = <0x4a0021e0 0xc
+				0x4a00232c 0xc
+				0x4a002380 0x2c
+				0x4a0023C0 0x3c
+				0x4a002564 0x8
+				0x4a002574 0x50>;
+				compatible = "ti,dra752-bandgap";
+				interrupts = <GIC_SPI 121 IRQ_TYPE_LEVEL_HIGH>;
+				#thermal-sensor-cells = <1>;
+		};
+
 		cm_core_aon: cm_core_aon@4a005000 {
 			compatible = "ti,dra7-cm-core-aon";
 			reg = <0x4a005000 0x2000>;
@@ -666,7 +678,6 @@
 			reg = <0x48820000 0x80>;
 			interrupts = <GIC_SPI 36 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer5";
-			ti,timer-dsp;
 		};
 
 		timer6: timer@48822000 {
@@ -674,8 +685,6 @@
 			reg = <0x48822000 0x80>;
 			interrupts = <GIC_SPI 37 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer6";
-			ti,timer-dsp;
-			ti,timer-pwm;
 		};
 
 		timer7: timer@48824000 {
@@ -683,7 +692,6 @@
 			reg = <0x48824000 0x80>;
 			interrupts = <GIC_SPI 38 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer7";
-			ti,timer-dsp;
 		};
 
 		timer8: timer@48826000 {
@@ -691,8 +699,6 @@
 			reg = <0x48826000 0x80>;
 			interrupts = <GIC_SPI 39 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer8";
-			ti,timer-dsp;
-			ti,timer-pwm;
 		};
 
 		timer9: timer@4803e000 {
@@ -714,7 +720,6 @@
 			reg = <0x48088000 0x80>;
 			interrupts = <GIC_SPI 42 IRQ_TYPE_LEVEL_HIGH>;
 			ti,hwmods = "timer11";
-			ti,timer-pwm;
 		};
 
 		timer13: timer@48828000 {
@@ -1435,6 +1440,17 @@
 			status = "disabled";
 		};
 	};
+
+	thermal_zones: thermal-zones {
+		#include "omap4-cpu-thermal.dtsi"
+		#include "omap5-gpu-thermal.dtsi"
+		#include "omap5-core-thermal.dtsi"
+	};
+
+};
+
+&cpu_thermal {
+	polling-delay = <500>; /* milliseconds */
 };
 
 /include/ "dra7xx-clocks.dtsi"
