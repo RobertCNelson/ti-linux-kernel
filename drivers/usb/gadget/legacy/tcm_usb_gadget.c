@@ -560,7 +560,7 @@ static void uasp_prepare_status(struct usbg_cmd *cmd)
 
 	cmd->state = UASP_QUEUE_COMMAND;
 	iu->iu_id = IU_ID_STATUS;
-	iu->tag = cpu_to_be16(cmd->tag);
+	iu->tag = cpu_to_be16(se_cmd->tag);
 
 	/*
 	 * iu->status_qual = cpu_to_be16(STATUS QUALIFIER SAM-4. Where R U?);
@@ -630,7 +630,7 @@ static int uasp_send_status_response(struct usbg_cmd *cmd)
 	struct uas_stream *stream = cmd->stream;
 	struct sense_iu *iu = &cmd->sense_iu;
 
-	iu->tag = cpu_to_be16(cmd->tag);
+	iu->tag = cpu_to_be16(cmd->se_cmd.tag);
 	stream->req_status->complete = uasp_status_data_cmpl;
 	stream->req_status->context = cmd;
 	cmd->fu = fu;
@@ -647,7 +647,7 @@ static int uasp_send_read_response(struct usbg_cmd *cmd)
 
 	cmd->fu = fu;
 
-	iu->tag = cpu_to_be16(cmd->tag);
+	iu->tag = cpu_to_be16(cmd->se_cmd.tag);
 	if (fu->flags & USBG_USE_STREAMS) {
 
 		ret = uasp_prepare_r_request(cmd);
@@ -663,7 +663,7 @@ static int uasp_send_read_response(struct usbg_cmd *cmd)
 	} else {
 
 		iu->iu_id = IU_ID_READ_READY;
-		iu->tag = cpu_to_be16(cmd->tag);
+		iu->tag = cpu_to_be16(cmd->se_cmd.tag);
 
 		stream->req_status->complete = uasp_status_data_cmpl;
 		stream->req_status->context = cmd;
@@ -692,7 +692,7 @@ static int uasp_send_write_request(struct usbg_cmd *cmd)
 	init_completion(&cmd->write_complete);
 	cmd->fu = fu;
 
-	iu->tag = cpu_to_be16(cmd->tag);
+	iu->tag = cpu_to_be16(se_cmd->tag);
 
 	if (fu->flags & USBG_USE_STREAMS) {
 
@@ -706,7 +706,7 @@ static int uasp_send_write_request(struct usbg_cmd *cmd)
 	} else {
 
 		iu->iu_id = IU_ID_WRITE_READY;
-		iu->tag = cpu_to_be16(cmd->tag);
+		iu->tag = cpu_to_be16(se_cmd->tag);
 
 		stream->req_status->complete = uasp_status_data_cmpl;
 		stream->req_status->context = cmd;
@@ -1065,6 +1065,7 @@ static void usbg_cmd_work(struct work_struct *work)
 		goto out;
 	}
 
+	se_cmd->tag = 0;
 	if (target_submit_cmd(se_cmd, tv_nexus->tvn_se_sess,
 			cmd->cmd_buf, cmd->sense_iu.sense, cmd->unpacked_lun,
 			0, cmd->prio_attr, dir, TARGET_SCF_UNKNOWN_SIZE) < 0)
@@ -1098,6 +1099,7 @@ static int usbg_submit_command(struct f_uas *fu,
 	if (!cmd)
 		return -ENOMEM;
 
+	se_cmd = &cmd->se_cmd;
 	cmd->fu = fu;
 
 	/* XXX until I figure out why I can't free in on complete */
@@ -1111,14 +1113,14 @@ static int usbg_submit_command(struct f_uas *fu,
 
 	memcpy(cmd->cmd_buf, cmd_iu->cdb, cmd_len);
 
-	cmd->tag = be16_to_cpup(&cmd_iu->tag);
+	se_cmd->tag = be16_to_cpup(&cmd_iu->tag);
 	if (fu->flags & USBG_USE_STREAMS) {
-		if (cmd->tag > UASP_SS_EP_COMP_NUM_STREAMS)
+		if (se_cmd->tag > UASP_SS_EP_COMP_NUM_STREAMS)
 			goto err;
-		if (!cmd->tag)
+		if (!se_cmd->tag)
 			cmd->stream = &fu->stream[0];
 		else
-			cmd->stream = &fu->stream[cmd->tag - 1];
+			cmd->stream = &fu->stream[se_cmd->tag - 1];
 	} else {
 		cmd->stream = &fu->stream[0];
 	}
@@ -1147,7 +1149,6 @@ static int usbg_submit_command(struct f_uas *fu,
 		break;
 	}
 
-	se_cmd = &cmd->se_cmd;
 	cmd->unpacked_lun = scsilun_to_int(&cmd_iu->lun);
 
 	INIT_WORK(&cmd->work, usbg_cmd_work);
@@ -1338,18 +1339,6 @@ static int usbg_write_pending_status(struct se_cmd *se_cmd)
 static void usbg_set_default_node_attrs(struct se_node_acl *nacl)
 {
 	return;
-}
-
-static u32 usbg_get_task_tag(struct se_cmd *se_cmd)
-{
-	struct usbg_cmd *cmd = container_of(se_cmd, struct usbg_cmd,
-			se_cmd);
-	struct f_uas *fu = cmd->fu;
-
-	if (fu->flags & USBG_IS_BOT)
-		return le32_to_cpu(cmd->bot_tag);
-	else
-		return cmd->tag;
 }
 
 static int usbg_get_cmd_state(struct se_cmd *se_cmd)
@@ -1739,7 +1728,6 @@ static const struct target_core_fabric_ops usbg_ops = {
 	.write_pending			= usbg_send_write_request,
 	.write_pending_status		= usbg_write_pending_status,
 	.set_default_node_attributes	= usbg_set_default_node_attrs,
-	.get_task_tag			= usbg_get_task_tag,
 	.get_cmd_state			= usbg_get_cmd_state,
 	.queue_data_in			= usbg_send_read_response,
 	.queue_status			= usbg_send_status_response,

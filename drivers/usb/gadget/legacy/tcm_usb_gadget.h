@@ -73,7 +73,6 @@ struct usbg_cmd {
 	struct kref ref;
 
 	/* UAS only */
-	u16 tag;
 	u16 prio_attr;
 	struct sense_iu sense_iu;
 	enum uas_state state;
