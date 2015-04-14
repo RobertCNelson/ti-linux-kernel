@@ -140,8 +140,6 @@ static ssize_t sock_splice_read(struct file *file, loff_t *ppos,
 static const struct file_operations socket_file_ops = {
 	.owner =	THIS_MODULE,
 	.llseek =	no_llseek,
-	.read =		new_sync_read,
-	.write =	new_sync_write,
 	.read_iter =	sock_read_iter,
 	.write_iter =	sock_write_iter,
 	.poll =		sock_poll,
@@ -314,7 +312,7 @@ static const struct super_operations sockfs_ops = {
 static char *sockfs_dname(struct dentry *dentry, char *buffer, int buflen)
 {
 	return dynamic_dname(dentry, buffer, buflen, "socket:[%lu]",
-				dentry->d_inode->i_ino);
+				d_inode(dentry)->i_ino);
 }
 
 static const struct dentry_operations sockfs_dentry_operations = {
@@ -377,7 +375,7 @@ struct file *sock_alloc_file(struct socket *sock, int flags, const char *dname)
 		  &socket_file_ops);
 	if (unlikely(IS_ERR(file))) {
 		/* drop dentry, keep inode */
-		ihold(path.dentry->d_inode);
+		ihold(d_inode(path.dentry));
 		path_put(&path);
 		return file;
 	}
@@ -499,7 +497,7 @@ static ssize_t sockfs_listxattr(struct dentry *dentry, char *buffer,
 	ssize_t len;
 	ssize_t used = 0;
 
-	len = security_inode_listsecurity(dentry->d_inode, buffer, size);
+	len = security_inode_listsecurity(d_inode(dentry), buffer, size);
 	if (len < 0)
 		return len;
 	used += len;

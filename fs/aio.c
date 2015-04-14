@@ -692,8 +692,7 @@ static struct kioctx *ioctx_alloc(unsigned nr_events)
 	nr_events *= 2;
 
 	/* Prevent overflows */
-	if ((nr_events > (0x10000000U / sizeof(struct io_event))) ||
-	    (nr_events > (0x10000000U / sizeof(struct kiocb)))) {
+	if (nr_events > (0x10000000U / sizeof(struct io_event))) {
 		pr_debug("ENOMEM: nr_events too high\n");
 		return ERR_PTR(-EINVAL);
 	}
@@ -1356,52 +1355,21 @@ SYSCALL_DEFINE1(io_destroy, aio_context_t, ctx)
 	return -EINVAL;
 }
 
-typedef ssize_t (aio_rw_op)(struct kiocb *, const struct iovec *,
-			    unsigned long, loff_t);
 typedef ssize_t (rw_iter_op)(struct kiocb *, struct iov_iter *);
 
-static ssize_t aio_setup_vectored_rw(struct kiocb *kiocb,
-				     int rw, char __user *buf,
-				     unsigned long *nr_segs,
-				     size_t *len,
-				     struct iovec **iovec,
-				     bool compat)
+static int aio_setup_vectored_rw(int rw, char __user *buf, size_t len,
+				 struct iovec **iovec,
+				 bool compat,
+				 struct iov_iter *iter)
 {
-	ssize_t ret;
-
-	*nr_segs = *len;
-
 #ifdef CONFIG_COMPAT
 	if (compat)
-		ret = compat_rw_copy_check_uvector(rw,
+		return compat_import_iovec(rw,
 				(struct compat_iovec __user *)buf,
-				*nr_segs, UIO_FASTIOV, *iovec, iovec);
-	else
+				len, UIO_FASTIOV, iovec, iter);
 #endif
-		ret = rw_copy_check_uvector(rw,
-				(struct iovec __user *)buf,
-				*nr_segs, UIO_FASTIOV, *iovec, iovec);
-	if (ret < 0)
-		return ret;
-
-	/* len now reflect bytes instead of segs */
-	*len = ret;
-	return 0;
-}
-
-static ssize_t aio_setup_single_vector(struct kiocb *kiocb,
-				       int rw, char __user *buf,
-				       unsigned long *nr_segs,
-				       size_t len,
-				       struct iovec *iovec)
-{
-	if (unlikely(!access_ok(!rw, buf, len)))
-		return -EFAULT;
-
-	iovec->iov_base = buf;
-	iovec->iov_len = len;
-	*nr_segs = 1;
-	return 0;
+	return import_iovec(rw, (struct iovec __user *)buf,
+				len, UIO_FASTIOV, iovec, iter);
 }
 
 /*
@@ -1413,10 +1381,8 @@ static ssize_t aio_run_iocb(struct kiocb *req, unsigned opcode,
 {
 	struct file *file = req->ki_filp;
 	ssize_t ret;
-	unsigned long nr_segs;
 	int rw;
 	fmode_t mode;
-	aio_rw_op *rw_op;
 	rw_iter_op *iter_op;
 	struct iovec inline_vecs[UIO_FASTIOV], *iovec = inline_vecs;
 	struct iov_iter iter;
@@ -1426,7 +1392,6 @@ static ssize_t aio_run_iocb(struct kiocb *req, unsigned opcode,
 	case IOCB_CMD_PREADV:
 		mode	= FMODE_READ;
 		rw	= READ;
-		rw_op	= file->f_op->aio_read;
 		iter_op	= file->f_op->read_iter;
 		goto rw_common;
 
@@ -1434,51 +1399,40 @@ static ssize_t aio_run_iocb(struct kiocb *req, unsigned opcode,
 	case IOCB_CMD_PWRITEV:
 		mode	= FMODE_WRITE;
 		rw	= WRITE;
-		rw_op	= file->f_op->aio_write;
 		iter_op	= file->f_op->write_iter;
 		goto rw_common;
 rw_common:
 		if (unlikely(!(file->f_mode & mode)))
 			return -EBADF;
 
-		if (!rw_op && !iter_op)
+		if (!iter_op)
 			return -EINVAL;
 
 		if (opcode == IOCB_CMD_PREADV || opcode == IOCB_CMD_PWRITEV)
-			ret = aio_setup_vectored_rw(req, rw, buf, &nr_segs,
-						&len, &iovec, compat);
-		else
-			ret = aio_setup_single_vector(req, rw, buf, &nr_segs,
-						  len, iovec);
+			ret = aio_setup_vectored_rw(rw, buf, len,
+						&iovec, compat, &iter);
+		else {
+			ret = import_single_range(rw, buf, len, iovec, &iter);
+			iovec = NULL;
+		}
 		if (!ret)
-			ret = rw_verify_area(rw, file, &req->ki_pos, len);
+			ret = rw_verify_area(rw, file, &req->ki_pos,
+					     iov_iter_count(&iter));
 		if (ret < 0) {
-			if (iovec != inline_vecs)
-				kfree(iovec);
+			kfree(iovec);
 			return ret;
 		}
 
 		len = ret;
 
-		/* XXX: move/kill - rw_verify_area()? */
-		/* This matches the pread()/pwrite() logic */
-		if (req->ki_pos < 0) {
-			ret = -EINVAL;
-			break;
-		}
-
 		if (rw == WRITE)
 			file_start_write(file);
 
-		if (iter_op) {
-			iov_iter_init(&iter, rw, iovec, nr_segs, len);
-			ret = iter_op(req, &iter);
-		} else {
-			ret = rw_op(req, iovec, nr_segs, req->ki_pos);
-		}
+		ret = iter_op(req, &iter);
 
 		if (rw == WRITE)
 			file_end_write(file);
+		kfree(iovec);
 		break;
 
 	case IOCB_CMD_FDSYNC:
@@ -1499,9 +1453,6 @@ rw_common:
 		pr_debug("EINVAL: no operation provided\n");
 		return -EINVAL;
 	}
-
-	if (iovec != inline_vecs)
-		kfree(iovec);
 
 	if (ret != -EIOCBQUEUED) {
 		/*
@@ -1551,7 +1502,7 @@ static int io_submit_one(struct kioctx *ctx, struct iocb __user *user_iocb,
 	}
 	req->common.ki_pos = iocb->aio_offset;
 	req->common.ki_complete = aio_complete;
-	req->common.ki_flags = 0;
+	req->common.ki_flags = iocb_flags(req->common.ki_filp);
 
 	if (iocb->aio_flags & IOCB_FLAG_RESFD) {
 		/*

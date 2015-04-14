@@ -574,7 +574,7 @@ void f2fs_truncate(struct inode *inode)
 int f2fs_getattr(struct vfsmount *mnt,
 			 struct dentry *dentry, struct kstat *stat)
 {
-	struct inode *inode = dentry->d_inode;
+	struct inode *inode = d_inode(dentry);
 	generic_fillattr(inode, stat);
 	stat->blocks <<= 3;
 	return 0;
@@ -613,7 +613,7 @@ static void __setattr_copy(struct inode *inode, const struct iattr *attr)
 
 int f2fs_setattr(struct dentry *dentry, struct iattr *attr)
 {
-	struct inode *inode = dentry->d_inode;
+	struct inode *inode = d_inode(dentry);
 	struct f2fs_inode_info *fi = F2FS_I(inode);
 	int err;
 
@@ -1156,8 +1156,6 @@ long f2fs_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 const struct file_operations f2fs_file_operations = {
 	.llseek		= f2fs_llseek,
-	.read		= new_sync_read,
-	.write		= new_sync_write,
 	.read_iter	= generic_file_read_iter,
 	.write_iter	= generic_file_write_iter,
 	.open		= generic_file_open,
