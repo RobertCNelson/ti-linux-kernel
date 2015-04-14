@@ -35,7 +35,6 @@
 #include <linux/kernel.h>
 #include <linux/printk.h>
 #include <linux/slab.h>
-#include <linux/aio.h>
 #include <linux/bitops.h>
 #include <linux/prefetch.h>
 

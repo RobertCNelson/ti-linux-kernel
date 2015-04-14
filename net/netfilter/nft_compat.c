@@ -20,6 +20,7 @@
 #include <linux/netfilter_ipv4/ip_tables.h>
 #include <linux/netfilter_ipv6/ip6_tables.h>
 #include <linux/netfilter_bridge/ebtables.h>
+#include <linux/netfilter_arp/arp_tables.h>
 #include <net/netfilter/nf_tables.h>
 
 static int nft_compat_chain_validate_dependency(const char *tablename,
@@ -42,6 +43,7 @@ union nft_entry {
 	struct ipt_entry e4;
 	struct ip6t_entry e6;
 	struct ebt_entry ebt;
+	struct arpt_entry arp;
 };
 
 static inline void
@@ -142,6 +144,8 @@ nft_target_set_tgchk_param(struct xt_tgchk_param *par,
 	case NFPROTO_BRIDGE:
 		entry->ebt.ethproto = (__force __be16)proto;
 		entry->ebt.invflags = inv ? EBT_IPROTO : 0;
+		break;
+	case NFPROTO_ARP:
 		break;
 	}
 	par->entryinfo	= entry;
@@ -317,11 +321,11 @@ static void nft_match_eval(const struct nft_expr *expr,
 		return;
 	}
 
-	switch(ret) {
-	case true:
+	switch (ret ? 1 : 0) {
+	case 1:
 		data[NFT_REG_VERDICT].verdict = NFT_CONTINUE;
 		break;
-	case false:
+	case 0:
 		data[NFT_REG_VERDICT].verdict = NFT_BREAK;
 		break;
 	}
@@ -356,6 +360,8 @@ nft_match_set_mtchk_param(struct xt_mtchk_param *par, const struct nft_ctx *ctx,
 	case NFPROTO_BRIDGE:
 		entry->ebt.ethproto = (__force __be16)proto;
 		entry->ebt.invflags = inv ? EBT_IPROTO : 0;
+		break;
+	case NFPROTO_ARP:
 		break;
 	}
 	par->entryinfo	= entry;
@@ -542,6 +548,9 @@ nfnl_compat_get(struct sock *nfnl, struct sk_buff *skb,
 		break;
 	case NFPROTO_BRIDGE:
 		fmt = "ebt_%s";
+		break;
+	case NFPROTO_ARP:
+		fmt = "arpt_%s";
 		break;
 	default:
 		pr_err("nft_compat: unsupported protocol %d\n",
