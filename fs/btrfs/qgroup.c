@@ -982,7 +982,7 @@ int btrfs_quota_disable(struct btrfs_trans_handle *trans,
 	list_del(&quota_root->dirty_list);
 
 	btrfs_tree_lock(quota_root->node);
-	clean_tree_block(trans, tree_root, quota_root->node);
+	clean_tree_block(trans, tree_root->fs_info, quota_root->node);
 	btrfs_tree_unlock(quota_root->node);
 	btrfs_free_tree_block(trans, quota_root, quota_root->node, 0, 1);
 
@@ -1256,13 +1256,13 @@ static int comp_oper(struct btrfs_qgroup_operation *oper1,
 		return -1;
 	if (oper1->bytenr > oper2->bytenr)
 		return 1;
-	if (oper1->seq < oper2->seq)
-		return -1;
-	if (oper1->seq > oper2->seq)
-		return 1;
 	if (oper1->ref_root < oper2->ref_root)
 		return -1;
 	if (oper1->ref_root > oper2->ref_root)
+		return 1;
+	if (oper1->seq < oper2->seq)
+		return -1;
+	if (oper1->seq > oper2->seq)
 		return 1;
 	if (oper1->type < oper2->type)
 		return -1;
@@ -1845,7 +1845,7 @@ static int qgroup_shared_accounting(struct btrfs_trans_handle *trans,
 	struct ulist *roots = NULL;
 	struct ulist *qgroups, *tmp;
 	struct btrfs_qgroup *qgroup;
-	struct seq_list elem = {};
+	struct seq_list elem = SEQ_LIST_INIT(elem);
 	u64 seq;
 	int old_roots = 0;
 	int new_roots = 0;
@@ -1967,7 +1967,7 @@ static int qgroup_subtree_accounting(struct btrfs_trans_handle *trans,
 	int err;
 	struct btrfs_qgroup *qg;
 	u64 root_obj = 0;
-	struct seq_list elem = {};
+	struct seq_list elem = SEQ_LIST_INIT(elem);
 
 	parents = ulist_alloc(GFP_NOFS);
 	if (!parents)
@@ -2522,7 +2522,7 @@ qgroup_rescan_leaf(struct btrfs_fs_info *fs_info, struct btrfs_path *path,
 {
 	struct btrfs_key found;
 	struct ulist *roots = NULL;
-	struct seq_list tree_mod_seq_elem = {};
+	struct seq_list tree_mod_seq_elem = SEQ_LIST_INIT(tree_mod_seq_elem);
 	u64 num_bytes;
 	u64 seq;
 	int new_roots;
