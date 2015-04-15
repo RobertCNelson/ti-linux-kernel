@@ -793,7 +793,7 @@ u64 hw_nmi_get_sample_period(int watchdog_thresh)
  */
 static int __init disable_hardlockup_detector(void)
 {
-	watchdog_enable_hardlockup_detector(false);
+	hardlockup_detector_disable();
 
 	return 0;
 }
