@@ -25,6 +25,7 @@ tracex4-objs := bpf_load.o libbpf.o tracex4_user.o
 always := $(hostprogs-y)
 always += sockex1_kern.o
 always += sockex2_kern.o
+always += tcbpf1_kern.o
 always += tracex1_kern.o
 always += tracex2_kern.o
 always += tracex3_kern.o
