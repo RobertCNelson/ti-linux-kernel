@@ -46,7 +46,7 @@ nfs4_file_open(struct inode *inode, struct file *filp)
 	openflags &= ~(O_CREAT|O_EXCL);
 
 	parent = dget_parent(dentry);
-	dir = parent->d_inode;
+	dir = d_inode(parent);
 
 	ctx = alloc_nfs_open_context(filp->f_path.dentry, filp->f_mode);
 	err = PTR_ERR(ctx);
@@ -74,7 +74,7 @@ nfs4_file_open(struct inode *inode, struct file *filp)
 			goto out_drop;
 		}
 	}
-	if (inode != dentry->d_inode)
+	if (inode != d_inode(dentry))
 		goto out_drop;
 
 	nfs_set_verifier(dentry, nfs_save_change_attribute(dir));
@@ -170,8 +170,6 @@ const struct file_operations nfs4_file_operations = {
 #else
 	.llseek		= nfs_file_llseek,
 #endif
-	.read		= new_sync_read,
-	.write		= new_sync_write,
 	.read_iter	= nfs_file_read,
 	.write_iter	= nfs_file_write,
 	.mmap		= nfs_file_mmap,
