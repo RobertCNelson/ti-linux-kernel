@@ -1313,16 +1313,16 @@ DEF_TPG_PARAM(ErrorRecoveryLevel);
 TPG_PARAM_ATTR(ErrorRecoveryLevel, S_IRUGO | S_IWUSR);
 
 DEF_TPG_PARAM(IFMarker);
-TPG_PARAM_ATTR(IFMarker, S_IRUGO | S_IWUSR);
+TPG_PARAM_ATTR(IFMarker, S_IRUGO);
 
 DEF_TPG_PARAM(OFMarker);
-TPG_PARAM_ATTR(OFMarker, S_IRUGO | S_IWUSR);
+TPG_PARAM_ATTR(OFMarker, S_IRUGO);
 
 DEF_TPG_PARAM(IFMarkInt);
-TPG_PARAM_ATTR(IFMarkInt, S_IRUGO | S_IWUSR);
+TPG_PARAM_ATTR(IFMarkInt, S_IRUGO);
 
 DEF_TPG_PARAM(OFMarkInt);
-TPG_PARAM_ATTR(OFMarkInt, S_IRUGO | S_IWUSR);
+TPG_PARAM_ATTR(OFMarkInt, S_IRUGO);
 
 static struct configfs_attribute *lio_target_tpg_param_attrs[] = {
 	&iscsi_tpg_param_AuthMethod.attr,
