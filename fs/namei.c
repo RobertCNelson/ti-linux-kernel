@@ -1710,11 +1710,10 @@ static int link_path_walk(const char *name, struct nameidata *nd)
 	} stack[MAX_NESTED_LINKS], *last = stack + nd->depth - 1;
 	int err;
 
-start:
 	while (*name=='/')
 		name++;
 	if (!*name)
-		goto OK;
+		return 0;
 
 	/* At this point we know we have a real path component. */
 	for(;;) {
@@ -1813,11 +1812,15 @@ Walked:
 					nd->path = nd->root;
 					path_get(&nd->root);
 					nd->flags |= LOOKUP_JUMPED;
+					while (unlikely(*++s == '/'))
+						;
 				}
 				nd->inode = nd->path.dentry->d_inode;
 				last->name = name;
+				if (!*s)
+					goto OK;
 				name = s;
-				goto start;
+				continue;
 			}
 		}
 		if (!d_can_lookup(nd->path.dentry)) {
