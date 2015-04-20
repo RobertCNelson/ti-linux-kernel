@@ -80,4 +80,10 @@ struct virtio_balloon_stat {
 	__virtio64 val;
 } __attribute__((packed));
 
+struct virtio_balloon_stat_modern {
+	__le16 tag;
+	__u8 reserved[6];
+	__le64 val;
+};
+
 #endif /* _LINUX_VIRTIO_BALLOON_H */
