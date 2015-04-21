@@ -511,7 +511,7 @@ static int uvc_v4l2_open(struct file *file)
 	stream->dev->users++;
 	mutex_unlock(&stream->dev->lock);
 
-	v4l2_fh_init(&handle->vfh, stream->vdev);
+	v4l2_fh_init(&handle->vfh, &stream->vdev);
 	v4l2_fh_add(&handle->vfh);
 	handle->chain = stream->chain;
 	handle->stream = stream;
@@ -1133,6 +1133,9 @@ static int uvc_ioctl_enum_frameintervals(struct file *file, void *fh,
 		uvc_simplify_fraction(&fival->discrete.numerator,
 			&fival->discrete.denominator, 8, 333);
 	} else {
+		if (fival->index)
+			return -EINVAL;
+
 		fival->type = V4L2_FRMIVAL_TYPE_STEPWISE;
 		fival->stepwise.min.numerator = frame->dwFrameInterval[0];
 		fival->stepwise.min.denominator = 10000000;
