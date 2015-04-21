@@ -11,7 +11,6 @@
 
 #include <linux/mm.h>
 #include <linux/slab.h>
-#include <linux/highmem.h>
 #include <linux/kasan.h>
 #include <linux/kmemleak.h>
 #include <linux/export.h>
