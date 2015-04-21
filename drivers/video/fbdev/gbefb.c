@@ -38,6 +38,7 @@ static struct sgi_gbe *gbe;
 struct gbefb_par {
 	struct fb_var_screeninfo var;
 	struct gbe_timing_info timing;
+	int wc_cookie;
 	int valid;
 };
 
@@ -1199,7 +1200,8 @@ static int gbefb_probe(struct platform_device *p_dev)
 	}
 
 #ifdef CONFIG_X86
-	mtrr_add(gbe_mem_phys, gbe_mem_size, MTRR_TYPE_WRCOMB, 1);
+	info->wc_cookie = mtrr_add(gbe_mem_phys, gbe_mem_size,
+				   MTRR_TYPE_WRCOMB, 1);
 #endif
 
 	/* map framebuffer memory into tiles table */
@@ -1240,6 +1242,10 @@ static int gbefb_probe(struct platform_device *p_dev)
 	return 0;
 
 out_gbe_unmap:
+#ifdef CONFIG_MTRR
+	if (info->wc_cookie >= 0)
+		mtrr_del(info->wc_cookie, 0, 0);
+#endif
 	if (gbe_dma_addr)
 		dma_free_coherent(NULL, gbe_mem_size, gbe_mem, gbe_mem_phys);
 out_tiles_free:
@@ -1259,6 +1265,10 @@ static int gbefb_remove(struct platform_device* p_dev)
 
 	unregister_framebuffer(info);
 	gbe_turn_off();
+#ifdef CONFIG_MTRR
+	if (info->wc_cookie >= 0)
+		mtrr_del(info->wc_cookie, 0, 0);
+#endif
 	if (gbe_dma_addr)
 		dma_free_coherent(NULL, gbe_mem_size, gbe_mem, gbe_mem_phys);
 	dma_free_coherent(NULL, GBE_TLB_SIZE * sizeof(uint16_t),
