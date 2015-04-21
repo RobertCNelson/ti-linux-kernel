@@ -165,6 +165,7 @@ dtb-$(CONFIG_MACH_KIRKWOOD) += \
 	kirkwood-lsxhl.dtb \
 	kirkwood-mplcec4.dtb \
 	kirkwood-mv88f6281gtw-ge.dtb \
+	kirkwood-nas2big.dtb \
 	kirkwood-net2big.dtb \
 	kirkwood-net5big.dtb \
 	kirkwood-netgear_readynas_duo_v2.dtb \
@@ -624,11 +625,14 @@ dtb-$(CONFIG_MACH_ARMADA_38X) += \
 	armada-388-db.dtb \
 	armada-388-gp.dtb \
 	armada-388-rd.dtb
+dtb-$(CONFIG_MACH_ARMADA_39X) += \
+	armada-398-db.dtb
 dtb-$(CONFIG_MACH_ARMADA_XP) += \
 	armada-xp-axpwifiap.dtb \
 	armada-xp-db.dtb \
 	armada-xp-gp.dtb \
 	armada-xp-lenovo-ix4-300d.dtb \
+	armada-xp-linksys-mamba.dtb \
 	armada-xp-matrix.dtb \
 	armada-xp-netgear-rn2120.dtb \
 	armada-xp-openblocks-ax3-4.dtb \
