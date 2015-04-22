@@ -19,6 +19,7 @@
 #include <linux/gpio/consumer.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
+#include <linux/of_device.h>
 #include <linux/of_gpio.h>
 #include <linux/pinctrl/pinctrl.h>
 #include <linux/slab.h>
@@ -94,6 +95,8 @@ struct gpio_desc *of_get_named_gpiod_flags(struct device_node *np,
 			__func__, propname, np->full_name, index);
 		return ERR_PTR(ret);
 	}
+
+	of_device_probe(gg_data.gpiospec.np);
 
 	gpiochip_find(&gg_data, of_gpiochip_find_and_xlate);
 
