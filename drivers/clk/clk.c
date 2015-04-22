@@ -62,6 +62,7 @@ struct clk_core {
 	struct clk_core		*new_parent;
 	struct clk_core		*new_child;
 	unsigned long		flags;
+	bool			orphan;
 	unsigned int		enable_count;
 	unsigned int		prepare_count;
 	unsigned long		accuracy;
@@ -1433,18 +1434,40 @@ static int clk_fetch_parent_index(struct clk_core *clk,
 	return -EINVAL;
 }
 
+/*
+ * Update the orphan status of @core and all its children.
+ */
+static void clk_core_update_orphan_status(struct clk_core *core, bool is_orphan)
+{
+	struct clk_core *child;
+
+	core->orphan = is_orphan;
+
+	hlist_for_each_entry(child, &core->children, child_node)
+		clk_core_update_orphan_status(child, is_orphan);
+}
+
 static void clk_reparent(struct clk_core *clk, struct clk_core *new_parent)
 {
+	bool was_orphan = clk->orphan;
+
 	hlist_del(&clk->child_node);
 
 	if (new_parent) {
+		bool becomes_orphan = new_parent->orphan;
+
 		/* avoid duplicate POST_RATE_CHANGE notifications */
 		if (new_parent->new_child == clk)
 			new_parent->new_child = NULL;
 
 		hlist_add_head(&clk->child_node, &new_parent->children);
+
+		if (was_orphan != becomes_orphan)
+			clk_core_update_orphan_status(clk, becomes_orphan);
 	} else {
 		hlist_add_head(&clk->child_node, &clk_orphan_list);
+		if (!was_orphan)
+			clk_core_update_orphan_status(clk, true);
 	}
 
 	clk->parent = new_parent;
@@ -2349,13 +2372,17 @@ static int __clk_init(struct device *dev, struct clk *clk_user)
 	 * clocks and re-parent any that are children of the clock currently
 	 * being clk_init'd.
 	 */
-	if (clk->parent)
+	if (clk->parent) {
 		hlist_add_head(&clk->child_node,
 				&clk->parent->children);
-	else if (clk->flags & CLK_IS_ROOT)
+		clk->orphan = clk->parent->orphan;
+	} else if (clk->flags & CLK_IS_ROOT) {
 		hlist_add_head(&clk->child_node, &clk_root_list);
-	else
+		clk->orphan = false;
+	} else {
 		hlist_add_head(&clk->child_node, &clk_orphan_list);
+		clk->orphan = true;
+	}
 
 	/*
 	 * Set clk's accuracy.  The preferred method is to use
