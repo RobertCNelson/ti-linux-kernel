@@ -552,6 +552,20 @@ wakeup_secondary_cpu_via_nmi(int apicid, unsigned long start_eip)
 	return (send_status | accept_status);
 }
 
+unsigned int x86_init_mdelay = CONFIG_X86_INIT_MDELAY;
+static int __init cpu_init_mdelay(char *str)
+{
+	unsigned int tmp;
+
+	get_option(&str, &tmp);
+	pr_info("x86_init_mdelay set to %d, was %d", tmp, x86_init_mdelay);
+	x86_init_mdelay = tmp;
+	return 0;
+}
+
+early_param("cpu_init_mdelay", cpu_init_mdelay);
+
+
 static int
 wakeup_secondary_cpu_via_init(int phys_apicid, unsigned long start_eip)
 {
@@ -583,7 +597,7 @@ wakeup_secondary_cpu_via_init(int phys_apicid, unsigned long start_eip)
 	pr_debug("Waiting for send to finish...\n");
 	send_status = safe_apic_wait_icr_idle();
 
-	mdelay(10);
+	mdelay(x86_init_mdelay);
 
 	pr_debug("Deasserting INIT\n");
 

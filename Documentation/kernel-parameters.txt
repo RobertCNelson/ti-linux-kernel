@@ -746,6 +746,13 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 	cpuidle.off=1	[CPU_IDLE]
 			disable the cpuidle sub-system
 
+	cpu_init_mdelay=N
+			[X86] Delay for N millisec between assert and de-assert
+			of APIC INIT to start processor.  In most configurations,
+			this occurs once for every CPU upon boot, and online,
+			such as resume from suspend and resume from hibernate.
+			Default: 10
+
 	cpcihp_generic=	[HW,PCI] Generic port I/O CompactPCI driver
 			Format:
 			<first_slot>,<last_slot>,<port>,<enum_bit>[,<debug>]
