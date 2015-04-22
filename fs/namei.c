@@ -3040,8 +3040,7 @@ finish_lookup:
 		goto out;
 	}
 
-	if (should_follow_link(path->dentry,
-			!(open_flag & O_PATH) || (nd->flags & LOOKUP_FOLLOW))) {
+	if (should_follow_link(path->dentry, nd->flags & LOOKUP_FOLLOW)) {
 		if (nd->flags & LOOKUP_RCU) {
 			if (unlikely(nd->path.mnt != path->mnt ||
 				     unlazy_walk(nd, path->dentry))) {
@@ -3050,12 +3049,13 @@ finish_lookup:
 			}
 		}
 		BUG_ON(inode != path->dentry->d_inode);
-		if (!(nd->flags & LOOKUP_FOLLOW)) {
-			path_put_conditional(path, nd);
-			path_put(&nd->path);
-			return -ELOOP;
-		}
 		return 1;
+	}
+
+	if (unlikely(d_is_symlink(path->dentry)) && !(open_flag & O_PATH)) {
+		path_to_nameidata(path, nd);
+		error = -ELOOP;
+		goto out;
 	}
 
 	if ((nd->flags & LOOKUP_RCU) || nd->path.mnt != path->mnt) {
