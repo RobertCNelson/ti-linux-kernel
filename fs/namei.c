@@ -3052,6 +3052,11 @@ finish_lookup:
 			}
 		}
 		BUG_ON(inode != path->dentry->d_inode);
+		if (!(nd->flags & LOOKUP_FOLLOW)) {
+			path_put_conditional(path, nd);
+			path_put(&nd->path);
+			return -ELOOP;
+		}
 		return 1;
 	}
 
@@ -3236,12 +3241,6 @@ static struct file *path_openat(int dfd, struct filename *pathname,
 	while (unlikely(error > 0)) { /* trailing symlink */
 		struct path link = path;
 		void *cookie;
-		if (!(nd->flags & LOOKUP_FOLLOW)) {
-			path_put_conditional(&path, nd);
-			path_put(&nd->path);
-			error = -ELOOP;
-			break;
-		}
 		error = may_follow_link(&link, nd);
 		if (unlikely(error))
 			break;
