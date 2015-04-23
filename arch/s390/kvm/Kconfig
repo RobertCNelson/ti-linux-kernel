@@ -51,6 +51,22 @@ config KVM_S390_UCONTROL
 
 	  If unsure, say N.
 
+config KVM_S390_PGSTE_DEFAULT
+	bool "Allocate page status table extension (PGSTE) by default"
+	depends on KVM
+	---help---
+	  To start a KVM guest the page tables for the process need
+	  to be allocated with the page status table extension.
+
+	  The system control 'vm.allocate_pgste' is queried at process
+	  creation if 4K page tables with the PGSTE are required or if
+	  2K page tables are sufficient.
+
+	  This option sets the default for 'vm.allocate_pgste'. If
+	  you compile a kernel to be used for a KVM host, say Y.
+
+	  If unsure, say N.
+
 # OK, it's a little counter-intuitive to do this, but it puts it neatly under
 # the virtualization menu.
 source drivers/vhost/Kconfig
