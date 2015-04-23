@@ -1639,17 +1639,32 @@ static int need_commit_due_to_time(struct cache *cache)
 			      cache->last_commit_jiffies + COMMIT_PERIOD);
 }
 
+/*
+ * A non-zero return indicates read_only or fail_io mode.
+ */
+static int commit(struct cache *cache, bool clean_shutdown)
+{
+	int r;
+
+	if (get_cache_mode(cache) >= CM_READ_ONLY)
+		return -EINVAL;
+
+	atomic_inc(&cache->stats.commit_count);
+	r = dm_cache_commit(cache->cmd, clean_shutdown);
+	if (r)
+		metadata_operation_failed(cache, "dm_cache_commit", r);
+
+	return r;
+}
+
 static int commit_if_needed(struct cache *cache)
 {
 	int r = 0;
 
 	if ((cache->commit_requested || need_commit_due_to_time(cache)) &&
 	    dm_cache_changed_this_transaction(cache->cmd)) {
-		atomic_inc(&cache->stats.commit_count);
+		r = commit(cache, false);
 		cache->commit_requested = false;
-		r = dm_cache_commit(cache->cmd, false);
-		if (r)
-			metadata_operation_failed(cache, "dm_cache_commit", r);
 		cache->last_commit_jiffies = jiffies;
 	}
 
@@ -1912,11 +1927,6 @@ static void do_worker(struct work_struct *ws)
 		if (commit_if_needed(cache)) {
 			process_deferred_flush_bios(cache, false);
 			process_migrations(cache, &cache->need_commit_migrations, migration_failure);
-
-			/*
-			 * FIXME: rollback metadata or just go into a
-			 * failure mode and error everything
-			 */
 		} else {
 			process_deferred_flush_bios(cache, true);
 			process_migrations(cache, &cache->need_commit_migrations,
@@ -2878,11 +2888,9 @@ static bool sync_metadata(struct cache *cache)
 	 * set the clean shutdown flag.  This will effectively force every
 	 * dirty bit to be set on reload.
 	 */
-	r4 = dm_cache_commit(cache->cmd, !r1 && !r2 && !r3);
-	if (r4) {
+	r4 = commit(cache, !r1 && !r2 && !r3);
+	if (r4)
 		DMERR("could not write cache metadata.  Data loss may occur.");
-		metadata_operation_failed(cache, "dm_cache_commit", r4);
-	}
 
 	return !r1 && !r2 && !r3 && !r4;
 }
@@ -3147,12 +3155,9 @@ static void cache_status(struct dm_target *ti, status_type_t type,
 
 		/* Commit to ensure statistics aren't out-of-date */
 		if (!(status_flags & DM_STATUS_NOFLUSH_FLAG) && !dm_suspended(ti)) {
-			r = dm_cache_commit(cache->cmd, false);
-			if (r) {
-				DMERR("could not commit metadata for accurate status");
-				metadata_operation_failed(cache, "dm_cache_commit", r);
+			r = commit(cache, false);
+			if (r)
 				goto err;
-			}
 		}
 
 		r = dm_cache_get_free_metadata_block_count(cache->cmd,
