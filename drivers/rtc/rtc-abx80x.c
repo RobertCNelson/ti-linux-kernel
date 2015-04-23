@@ -95,23 +95,23 @@ static int abx80x_enable_trickle_charger(struct i2c_client *client,
 static int abx80x_rtc_read_time(struct device *dev, struct rtc_time *tm)
 {
 	struct i2c_client *client = to_i2c_client(dev);
-	unsigned char date[8];
+	unsigned char buf[8];
 	int err;
 
 	err = i2c_smbus_read_i2c_block_data(client, ABX8XX_REG_HTH,
-					    sizeof(date), date);
+					    sizeof(buf), buf);
 	if (err < 0) {
 		dev_err(&client->dev, "Unable to read date\n");
 		return -EIO;
 	}
 
-	tm->tm_sec = bcd2bin(date[ABX8XX_REG_SC] & 0x7F);
-	tm->tm_min = bcd2bin(date[ABX8XX_REG_MN] & 0x7F);
-	tm->tm_hour = bcd2bin(date[ABX8XX_REG_HR] & 0x3F);
-	tm->tm_wday = date[ABX8XX_REG_WD] & 0x7;
-	tm->tm_mday = bcd2bin(date[ABX8XX_REG_DA] & 0x3F);
-	tm->tm_mon = bcd2bin(date[ABX8XX_REG_MO] & 0x1F) - 1;
-	tm->tm_year = bcd2bin(date[ABX8XX_REG_YR]) + 100;
+	tm->tm_sec = bcd2bin(buf[ABX8XX_REG_SC] & 0x7F);
+	tm->tm_min = bcd2bin(buf[ABX8XX_REG_MN] & 0x7F);
+	tm->tm_hour = bcd2bin(buf[ABX8XX_REG_HR] & 0x3F);
+	tm->tm_wday = buf[ABX8XX_REG_WD] & 0x7;
+	tm->tm_mday = bcd2bin(buf[ABX8XX_REG_DA] & 0x3F);
+	tm->tm_mon = bcd2bin(buf[ABX8XX_REG_MO] & 0x1F) - 1;
+	tm->tm_year = bcd2bin(buf[ABX8XX_REG_YR]) + 100;
 
 	err = rtc_valid_tm(tm);
 	if (err < 0)
