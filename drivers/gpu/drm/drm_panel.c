@@ -23,6 +23,7 @@
 
 #include <linux/err.h>
 #include <linux/module.h>
+#include <linux/of_device.h>
 
 #include <drm/drm_crtc.h>
 #include <drm/drm_panel.h>
@@ -79,6 +80,8 @@ EXPORT_SYMBOL(drm_panel_detach);
 struct drm_panel *of_drm_find_panel(struct device_node *np)
 {
 	struct drm_panel *panel;
+
+	of_device_probe(np);
 
 	mutex_lock(&panel_lock);
 
