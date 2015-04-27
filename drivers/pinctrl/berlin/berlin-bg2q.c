@@ -380,11 +380,11 @@ static const struct berlin_pinctrl_desc berlin2q_sysmgr_pinctrl_data = {
 
 static const struct of_device_id berlin2q_pinctrl_match[] = {
 	{
-		.compatible = "marvell,berlin2q-chip-ctrl",
+		.compatible = "marvell,berlin2q-soc-pinctrl",
 		.data = &berlin2q_soc_pinctrl_data,
 	},
 	{
-		.compatible = "marvell,berlin2q-system-ctrl",
+		.compatible = "marvell,berlin2q-system-pinctrl",
 		.data = &berlin2q_sysmgr_pinctrl_data,
 	},
 	{}

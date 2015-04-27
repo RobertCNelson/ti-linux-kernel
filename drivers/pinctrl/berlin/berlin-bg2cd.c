@@ -161,11 +161,11 @@ static const struct berlin_pinctrl_desc berlin2cd_sysmgr_pinctrl_data = {
 
 static const struct of_device_id berlin2cd_pinctrl_match[] = {
 	{
-		.compatible = "marvell,berlin2cd-chip-ctrl",
+		.compatible = "marvell,berlin2cd-soc-pinctrl",
 		.data = &berlin2cd_soc_pinctrl_data
 	},
 	{
-		.compatible = "marvell,berlin2cd-system-ctrl",
+		.compatible = "marvell,berlin2cd-system-pinctrl",
 		.data = &berlin2cd_sysmgr_pinctrl_data
 	},
 	{}
