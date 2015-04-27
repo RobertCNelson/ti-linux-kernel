@@ -155,7 +155,7 @@
 			compatible = "marvell,berlin2-usb-phy";
 			reg = <0xa2f400 0x128>;
 			#phy-cells = <0>;
-			resets = <&chip 0x104 14>;
+			resets = <&chip_rst 0x104 14>;
 			status = "disabled";
 		};
 
@@ -173,7 +173,7 @@
 			compatible = "marvell,berlin2-usb-phy";
 			reg = <0xb74000 0x128>;
 			#phy-cells = <0>;
-			resets = <&chip 0x104 12>;
+			resets = <&chip_rst 0x104 12>;
 			status = "disabled";
 		};
 
@@ -387,22 +387,30 @@
 			};
 		};
 
-		chip: chip-control@ea0000 {
-			compatible = "marvell,berlin2q-chip-ctrl";
-			#clock-cells = <1>;
-			#reset-cells = <2>;
+		chip: chip-controller@ea0000 {
+			compatible = "marvell,berlin2q-chip-ctrl", "simple-mfd", "syscon";
 			reg = <0xea0000 0x400>, <0xdd0170 0x10>;
+			#clock-cells = <1>;
 			clocks = <&refclk>;
 			clock-names = "refclk";
 
-			twsi0_pmux: twsi0-pmux {
-				groups = "G6";
-				function = "twsi0";
+			soc_pinctrl: pin-controller {
+				compatible = "marvell,berlin2q-soc-pinctrl";
+
+				twsi0_pmux: twsi0-pmux {
+					groups = "G6";
+					function = "twsi0";
+				};
+
+				twsi1_pmux: twsi1-pmux {
+					groups = "G7";
+					function = "twsi1";
+				};
 			};
 
-			twsi1_pmux: twsi1-pmux {
-				groups = "G7";
-				function = "twsi1";
+			chip_rst: reset {
+				compatible = "marvell,berlin2-reset";
+				#reset-cells = <2>;
 			};
 		};
 
@@ -553,28 +561,32 @@
 				};
 			};
 
-			sysctrl: pin-controller@d000 {
-				compatible = "marvell,berlin2q-system-ctrl";
+			sysctrl: system-controller@d000 {
+				compatible = "marvell,berlin2q-system-ctrl", "simple-mfd", "syscon";
 				reg = <0xd000 0x100>;
 
-				uart0_pmux: uart0-pmux {
-					groups = "GSM12";
-					function = "uart0";
-				};
+				sys_pinctrl: pin-controller {
+					compatible = "marvell,berlin2q-system-pinctrl";
 
-				uart1_pmux: uart1-pmux {
-					groups = "GSM14";
-					function = "uart1";
-				};
+					uart0_pmux: uart0-pmux {
+						groups = "GSM12";
+						function = "uart0";
+					};
 
-				twsi2_pmux: twsi2-pmux {
-					groups = "GSM13";
-					function = "twsi2";
-				};
+					uart1_pmux: uart1-pmux {
+						groups = "GSM14";
+						function = "uart1";
+					};
 
-				twsi3_pmux: twsi3-pmux {
-					groups = "GSM14";
-					function = "twsi3";
+					twsi2_pmux: twsi2-pmux {
+						groups = "GSM13";
+						function = "twsi2";
+					};
+
+					twsi3_pmux: twsi3-pmux {
+						groups = "GSM14";
+						function = "twsi3";
+					};
 				};
 			};
 
