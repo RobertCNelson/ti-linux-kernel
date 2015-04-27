@@ -112,7 +112,7 @@
 			compatible = "marvell,berlin2cd-usb-phy";
 			reg = <0xb74000 0x128>;
 			#phy-cells = <0>;
-			resets = <&chip 0x178 23>;
+			resets = <&chip_rst 0x178 23>;
 			status = "disabled";
 		};
 
@@ -120,7 +120,7 @@
 			compatible = "marvell,berlin2cd-usb-phy";
 			reg = <0xb78000 0x128>;
 			#phy-cells = <0>;
-			resets = <&chip 0x178 24>;
+			resets = <&chip_rst 0x178 24>;
 			status = "disabled";
 		};
 
@@ -322,17 +322,25 @@
 			};
 		};
 
-		chip: chip-control@ea0000 {
-			compatible = "marvell,berlin2cd-chip-ctrl";
-			#clock-cells = <1>;
-			#reset-cells = <2>;
+		chip: chip-controller@ea0000 {
+			compatible = "marvell,berlin2cd-chip-ctrl", "simple-mfd", "syscon";
 			reg = <0xea0000 0x400>;
+			#clock-cells = <1>;
 			clocks = <&refclk>;
 			clock-names = "refclk";
 
-			uart0_pmux: uart0-pmux {
-				groups = "G6";
-				function = "uart0";
+			soc_pinctrl: pin-controller {
+				compatible = "marvell,berlin2cd-soc-pinctrl";
+
+				uart0_pmux: uart0-pmux {
+					groups = "G6";
+					function = "uart0";
+				};
+			};
+
+			chip_rst: reset {
+				compatible = "marvell,berlin2-reset";
+				#reset-cells = <2>;
 			};
 		};
 
@@ -417,8 +425,12 @@
 			};
 
 			sysctrl: system-controller@d000 {
-				compatible = "marvell,berlin2cd-system-ctrl";
+				compatible = "marvell,berlin2cd-system-ctrl", "simple-mfd", "syscon";
 				reg = <0xd000 0x100>;
+
+				sys_pinctrl: pin-controller {
+					compatible = "marvell,berlin2cd-system-pinctrl";
+				};
 			};
 
 			sic: interrupt-controller@e000 {
