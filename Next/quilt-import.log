@@ -1,0 +1,25 @@
+Importing jdelvare-hwmon based on 3.19-rc6
+Unchanged quilt series jdelvare-hwmon
+Importing dmi based on 4.1-rc1
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard b787f68c36d49bb1d9236f403813641efa74a031
+HEAD is now at b787f68c36d4 Linux 4.1-rc1
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi-03-simplify-displayed-version.patch
+Applying: firmware: dmi_scan: Simplified displayed version
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi-04-fix-product-uuid.patch
+Applying: firmware: dmi_scan: Fix ordering of product_uuid
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi-05-rename-dmi_table-to-dmi_decode_table.patch
+Applying: firmware: dmi_scan: Rename dmi_table to dmi_decode_table
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi-06-trim-DMI-table-length.patch
+Applying: firmware: dmi_scan: Trim DMI table length before exporting it
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi-07-add-sbmios-entry-and-dmi-tables.patch
+Applying: firmware: dmi_scan: add SBMIOS entry and DMI tables
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi-08-abi-sysfs-firmware-dmi-add-entries-suffix-to-file-name.patch
+Applying: Documentation: ABI: sysfs-firmware-dmi: add -entries suffix to file name
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi-09-list-the-quilt-tree.patch
+Applying: firmware: dmi: List my quilt tree
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:dmi/master
+From ../quilt-tmp
+ + a3d5ac9a4dd3...9432bf142f77 master     -> dmi/master  (forced update)
