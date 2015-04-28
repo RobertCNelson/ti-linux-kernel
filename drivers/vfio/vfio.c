@@ -710,6 +710,7 @@ void *vfio_del_group_dev(struct device *dev)
 	void *device_data = device->device_data;
 	struct vfio_unbound_dev *unbound;
 	unsigned int i = 0;
+	long ret;
 
 	/*
 	 * The group exists so long as we have a device reference.  Get
@@ -755,9 +756,15 @@ void *vfio_del_group_dev(struct device *dev)
 
 		vfio_device_put(device);
 
-	} while (wait_event_interruptible_timeout(vfio.release_q,
-						  !vfio_dev_present(group, dev),
-						  HZ * 10) <= 0);
+		ret = wait_event_interruptible_timeout(vfio.release_q,
+					!vfio_dev_present(group, dev), HZ * 10);
+		if (ret == -ERESTARTSYS) {
+			flush_signals(current);
+			dev_warn_ratelimited(dev, "Device is currently in use, task \"%s\" (%d) blocked until device is released",
+					     current->comm,
+					     task_pid_nr(current));
+		}
+	} while (ret <= 0);
 
 	vfio_group_put(group);
 
