@@ -79,6 +79,7 @@ static struct ima_rule_entry default_rules[] = {
 	{.action = DONT_MEASURE, .fsmagic = BINFMTFS_MAGIC, .flags = IMA_FSMAGIC},
 	{.action = DONT_MEASURE, .fsmagic = SECURITYFS_MAGIC, .flags = IMA_FSMAGIC},
 	{.action = DONT_MEASURE, .fsmagic = SELINUX_MAGIC, .flags = IMA_FSMAGIC},
+	{.action = DONT_MEASURE, .fsmagic = NSFS_MAGIC, .flags = IMA_FSMAGIC},
 	{.action = MEASURE, .func = MMAP_CHECK, .mask = MAY_EXEC,
 	 .flags = IMA_FUNC | IMA_MASK},
 	{.action = MEASURE, .func = BPRM_CHECK, .mask = MAY_EXEC,
@@ -99,6 +100,7 @@ static struct ima_rule_entry default_appraise_rules[] = {
 	{.action = DONT_APPRAISE, .fsmagic = BINFMTFS_MAGIC, .flags = IMA_FSMAGIC},
 	{.action = DONT_APPRAISE, .fsmagic = SECURITYFS_MAGIC, .flags = IMA_FSMAGIC},
 	{.action = DONT_APPRAISE, .fsmagic = SELINUX_MAGIC, .flags = IMA_FSMAGIC},
+	{.action = DONT_APPRAISE, .fsmagic = NSFS_MAGIC, .flags = IMA_FSMAGIC},
 	{.action = DONT_APPRAISE, .fsmagic = CGROUP_SUPER_MAGIC, .flags = IMA_FSMAGIC},
 #ifndef CONFIG_IMA_APPRAISE_SIGNED_INIT
 	{.action = APPRAISE, .fowner = GLOBAL_ROOT_UID, .flags = IMA_FOWNER},
@@ -338,16 +340,12 @@ void __init ima_init_policy(void)
 	appraise_entries = ima_use_appraise_tcb ?
 			 ARRAY_SIZE(default_appraise_rules) : 0;
 
-	for (i = 0; i < measure_entries + appraise_entries; i++) {
-		if (i < measure_entries)
-			list_add_tail(&default_rules[i].list,
-				      &ima_default_rules);
-		else {
-			int j = i - measure_entries;
+	for (i = 0; i < measure_entries; i++)
+		list_add_tail(&default_rules[i].list, &ima_default_rules);
 
-			list_add_tail(&default_appraise_rules[j].list,
-				      &ima_default_rules);
-		}
+	for (i = 0; i < appraise_entries; i++) {
+		list_add_tail(&default_appraise_rules[i].list,
+			      &ima_default_rules);
 	}
 
 	ima_rules = &ima_default_rules;
