@@ -108,15 +108,19 @@ static void dmi_decode_table(u8 *buf,
 		if (data - buf < dmi_len - 1)
 			decode(dm, private_data);
 
+		data += 2;
+		i++;
+
 		/*
 		 * 7.45 End-of-Table (Type 127) [SMBIOS reference spec v3.0.0]
 		 */
 		if (dm->type == DMI_ENTRY_END_OF_TABLE)
 			break;
-
-		data += 2;
-		i++;
 	}
+
+	/* Trim DMI table length if needed */
+	if (dmi_len > data - buf)
+		dmi_len = data - buf;
 }
 
 static phys_addr_t dmi_base;
@@ -125,8 +129,9 @@ static int __init dmi_walk_early(void (*decode)(const struct dmi_header *,
 		void *))
 {
 	u8 *buf;
+	u32 orig_dmi_len = dmi_len;
 
-	buf = dmi_early_remap(dmi_base, dmi_len);
+	buf = dmi_early_remap(dmi_base, orig_dmi_len);
 	if (buf == NULL)
 		return -1;
 
@@ -134,7 +139,7 @@ static int __init dmi_walk_early(void (*decode)(const struct dmi_header *,
 
 	add_device_randomness(buf, dmi_len);
 
-	dmi_early_unmap(buf, dmi_len);
+	dmi_early_unmap(buf, orig_dmi_len);
 	return 0;
 }
 
