@@ -592,7 +592,7 @@ static int eld_proc_new(struct hdmi_spec_per_pin *per_pin, int index)
 static void eld_proc_free(struct hdmi_spec_per_pin *per_pin)
 {
 	if (!per_pin->codec->bus->shutdown && per_pin->proc_entry) {
-		snd_device_free(per_pin->codec->card, per_pin->proc_entry);
+		snd_info_free_entry(per_pin->proc_entry);
 		per_pin->proc_entry = NULL;
 	}
 }
@@ -2081,7 +2081,7 @@ static int generic_hdmi_build_jack(struct hda_codec *codec, int pin_idx)
 		strncat(hdmi_str, " Phantom",
 			sizeof(hdmi_str) - strlen(hdmi_str) - 1);
 
-	return snd_hda_jack_add_kctl(codec, per_pin->pin_nid, hdmi_str, 0);
+	return snd_hda_jack_add_kctl(codec, per_pin->pin_nid, hdmi_str);
 }
 
 static int generic_hdmi_build_controls(struct hda_codec *codec)
