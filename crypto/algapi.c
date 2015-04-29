@@ -12,6 +12,7 @@
 
 #include <linux/err.h>
 #include <linux/errno.h>
+#include <linux/fips.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
@@ -43,12 +44,9 @@ static inline int crypto_set_driver_name(struct crypto_alg *alg)
 
 static inline void crypto_check_module_sig(struct module *mod)
 {
-#ifdef CONFIG_CRYPTO_FIPS
-	if (fips_enabled && mod && !mod->sig_ok)
+	if (fips_enabled && mod && !module_sig_ok(mod))
 		panic("Module %s signature verification failed in FIPS mode\n",
-		      mod->name);
-#endif
-	return;
+		      module_name(mod));
 }
 
 static int crypto_check_alg(struct crypto_alg *alg)
@@ -963,6 +961,12 @@ void crypto_xor(u8 *dst, const u8 *src, unsigned int size)
 	crypto_xor_byte((u8 *)a, (u8 *)b, size);
 }
 EXPORT_SYMBOL_GPL(crypto_xor);
+
+unsigned int crypto_alg_extsize(struct crypto_alg *alg)
+{
+	return alg->cra_ctxsize;
+}
+EXPORT_SYMBOL_GPL(crypto_alg_extsize);
 
 static int __init crypto_algapi_init(void)
 {
