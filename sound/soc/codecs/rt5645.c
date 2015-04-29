@@ -18,6 +18,9 @@
 #include <linux/platform_device.h>
 #include <linux/spi/spi.h>
 #include <linux/gpio.h>
+#include <linux/gpio/consumer.h>
+#include <linux/acpi.h>
+#include <linux/dmi.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
@@ -2409,7 +2412,6 @@ static int rt5645_set_bias_level(struct snd_soc_codec *codec,
 	default:
 		break;
 	}
-	codec->dapm.bias_level = level;
 
 	return 0;
 }
@@ -2520,7 +2522,7 @@ static int rt5645_probe(struct snd_soc_codec *codec)
 		break;
 	}
 
-	rt5645_set_bias_level(codec, SND_SOC_BIAS_OFF);
+	snd_soc_codec_force_bias_level(codec, SND_SOC_BIAS_OFF);
 
 	snd_soc_update_bits(codec, RT5645_CHARGE_PUMP, 0x0300, 0x0200);
 
@@ -2656,6 +2658,43 @@ static const struct i2c_device_id rt5645_i2c_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, rt5645_i2c_id);
 
+#ifdef CONFIG_ACPI
+static struct acpi_device_id rt5645_acpi_match[] = {
+	{ "10EC5645", 0 },
+	{ "10EC5650", 0 },
+	{},
+};
+MODULE_DEVICE_TABLE(acpi, rt5645_acpi_match);
+#endif
+
+static struct rt5645_platform_data *rt5645_pdata;
+
+static struct rt5645_platform_data strago_platform_data = {
+	.dmic_en = true,
+	.dmic1_data_pin = -1,
+	.dmic2_data_pin = RT5645_DMIC_DATA_IN2P,
+	.en_jd_func = true,
+	.jd_mode = 3,
+};
+
+static int strago_quirk_cb(const struct dmi_system_id *id)
+{
+	rt5645_pdata = &strago_platform_data;
+
+	return 1;
+}
+
+static struct dmi_system_id dmi_platform_intel_braswell[] __initdata = {
+	{
+		.ident = "Intel Strago",
+		.callback = strago_quirk_cb,
+		.matches = {
+			DMI_MATCH(DMI_PRODUCT_NAME, "Strago"),
+		},
+	},
+	{ }
+};
+
 static int rt5645_i2c_probe(struct i2c_client *i2c,
 		    const struct i2c_device_id *id)
 {
@@ -2663,6 +2702,7 @@ static int rt5645_i2c_probe(struct i2c_client *i2c,
 	struct rt5645_priv *rt5645;
 	int ret;
 	unsigned int val;
+	struct gpio_desc *gpiod;
 
 	rt5645 = devm_kzalloc(&i2c->dev, sizeof(struct rt5645_priv),
 				GFP_KERNEL);
@@ -2672,8 +2712,23 @@ static int rt5645_i2c_probe(struct i2c_client *i2c,
 	rt5645->i2c = i2c;
 	i2c_set_clientdata(i2c, rt5645);
 
-	if (pdata)
+	if (pdata) {
 		rt5645->pdata = *pdata;
+	} else {
+		if (dmi_check_system(dmi_platform_intel_braswell)) {
+			rt5645->pdata = *rt5645_pdata;
+			gpiod = devm_gpiod_get_index(&i2c->dev, "rt5645", 0);
+
+			if (IS_ERR(gpiod) || gpiod_direction_input(gpiod)) {
+				rt5645->pdata.hp_det_gpio = -1;
+				dev_err(&i2c->dev, "failed to initialize gpiod\n");
+			} else {
+				rt5645->pdata.hp_det_gpio = desc_to_gpio(gpiod);
+				rt5645->pdata.gpio_hp_det_active_high
+						= !gpiod_is_active_low(gpiod);
+			}
+		}
+	}
 
 	rt5645->regmap = devm_regmap_init_i2c(i2c, &rt5645_regmap);
 	if (IS_ERR(rt5645->regmap)) {
@@ -2770,7 +2825,7 @@ static int rt5645_i2c_probe(struct i2c_client *i2c,
 
 		case RT5645_DMIC_DATA_GPIO12:
 			regmap_update_bits(rt5645->regmap, RT5645_DMIC_CTRL1,
-				RT5645_DMIC_1_DP_MASK, RT5645_DMIC_2_DP_GPIO12);
+				RT5645_DMIC_2_DP_MASK, RT5645_DMIC_2_DP_GPIO12);
 			regmap_update_bits(rt5645->regmap, RT5645_GPIO_CTRL1,
 				RT5645_GP12_PIN_MASK,
 				RT5645_GP12_PIN_DMIC2_SDA);
@@ -2872,6 +2927,7 @@ static struct i2c_driver rt5645_i2c_driver = {
 	.driver = {
 		.name = "rt5645",
 		.owner = THIS_MODULE,
+		.acpi_match_table = ACPI_PTR(rt5645_acpi_match),
 	},
 	.probe = rt5645_i2c_probe,
 	.remove   = rt5645_i2c_remove,
