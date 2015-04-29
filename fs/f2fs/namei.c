@@ -333,12 +333,102 @@ static void *f2fs_follow_link(struct dentry *dentry, struct nameidata *nd)
 	return page;
 }
 
+#ifdef CONFIG_F2FS_FS_ENCRYPTION
+static void *f2fs_encrypted_follow_link(struct dentry *dentry,
+						struct nameidata *nd)
+{
+	struct page *cpage = NULL;
+	char *caddr, *paddr = NULL;
+	struct f2fs_str cstr, pstr;
+	struct inode *inode = d_inode(dentry);
+	struct f2fs_encrypted_symlink_data *sd;
+	loff_t size = min_t(loff_t, i_size_read(inode), PAGE_SIZE - 1);
+	int res;
+	u32 max_size = inode->i_sb->s_blocksize;
+
+	if (!f2fs_encrypted_inode(inode))
+		return f2fs_follow_link(dentry, nd);
+
+	res = f2fs_setup_fname_crypto(inode);
+	if (res)
+		return ERR_PTR(res);
+
+	cpage = read_mapping_page(inode->i_mapping, 0, NULL);
+	if (IS_ERR(cpage))
+		return cpage;
+	caddr = kmap(cpage);
+	caddr[size] = 0;
+
+	/* Symlink is encrypted */
+	sd = (struct f2fs_encrypted_symlink_data *)caddr;
+	cstr.name = sd->encrypted_path;
+	cstr.len = le16_to_cpu(sd->len);
+
+	/* this is broken symlink case */
+	if (cstr.name[0] == 0 && cstr.len == 0) {
+		res = -ENOENT;
+		goto errout;
+	}
+
+	if ((cstr.len + sizeof(struct f2fs_encrypted_symlink_data) - 1) >
+								max_size) {
+		/* Symlink data on the disk is corrupted */
+		res = -EIO;
+		goto errout;
+	}
+	paddr = kmalloc(cstr.len + 1, GFP_NOFS);
+	if (!paddr) {
+		res = -ENOMEM;
+		goto errout;
+	}
+	pstr.name = paddr;
+	pstr.len = cstr.len;
+	res = f2fs_fname_disk_to_usr(inode, NULL, &cstr, &pstr);
+	if (res < 0)
+		goto errout;
+
+	/* Null-terminate the name */
+	if (res <= cstr.len)
+		paddr[res] = '\0';
+	nd_set_link(nd, paddr);
+	if (cpage) {
+		kunmap(cpage);
+		page_cache_release(cpage);
+	}
+	return NULL;
+errout:
+	if (cpage) {
+		kunmap(cpage);
+		page_cache_release(cpage);
+	}
+	kfree(paddr);
+	return ERR_PTR(res);
+}
+
+static void f2fs_encrypted_put_link(struct dentry *dentry, struct nameidata *nd,
+			  void *cookie)
+{
+	struct page *page = cookie;
+
+	if (!page) {
+		kfree(nd_get_link(nd));
+	} else {
+		kunmap(page);
+		page_cache_release(page);
+	}
+}
+#endif
+
 static int f2fs_symlink(struct inode *dir, struct dentry *dentry,
 					const char *symname)
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(dir);
 	struct inode *inode;
-	size_t symlen = strlen(symname) + 1;
+	size_t len = strlen(symname);
+	size_t p_len;
+	char *p_str;
+	struct f2fs_str disk_link = FSTR_INIT(NULL, 0);
+	struct f2fs_encrypted_symlink_data *sd = NULL;
 	int err;
 
 	f2fs_balance_fs(sbi);
@@ -356,7 +446,40 @@ static int f2fs_symlink(struct inode *dir, struct dentry *dentry,
 		goto out;
 	f2fs_unlock_op(sbi);
 
-	err = page_symlink(inode, symname, symlen);
+	if (f2fs_encrypted_inode(dir)) {
+		struct qstr istr = QSTR_INIT(symname, len);
+
+		err = f2fs_inherit_context(dir, inode, NULL);
+		if (err)
+			goto out;
+
+		err = f2fs_setup_fname_crypto(inode);
+		if (err)
+			goto out;
+
+		err = f2fs_fname_crypto_alloc_buffer(inode, len, &disk_link);
+		if (err)
+			goto out;
+
+		err = f2fs_fname_usr_to_disk(inode, &istr, &disk_link);
+		if (err < 0)
+			goto out;
+
+		p_len = encrypted_symlink_data_len(disk_link.len) + 1;
+		sd = kzalloc(p_len, GFP_NOFS);
+		if (!sd) {
+			err = -ENOMEM;
+			goto out;
+		}
+		memcpy(sd->encrypted_path, disk_link.name, disk_link.len);
+		sd->len = cpu_to_le16(disk_link.len);
+		p_str = (char *)sd;
+	} else {
+		p_len = len + 1;
+		p_str = (char *)symname;
+	}
+
+	err = page_symlink(inode, p_str, p_len);
 	alloc_nid_done(sbi, inode->i_ino);
 
 	d_instantiate(dentry, inode);
@@ -371,12 +494,16 @@ static int f2fs_symlink(struct inode *dir, struct dentry *dentry,
 	 * If the symlink path is stored into inline_data, there is no
 	 * performance regression.
 	 */
-	filemap_write_and_wait_range(inode->i_mapping, 0, symlen - 1);
+	filemap_write_and_wait_range(inode->i_mapping, 0, p_len);
 
 	if (IS_DIRSYNC(dir))
 		f2fs_sync_fs(sbi->sb, 1);
+	kfree(sd);
+	f2fs_fname_crypto_free_buffer(&disk_link);
 	return err;
 out:
+	kfree(sd);
+	f2fs_fname_crypto_free_buffer(&disk_link);
 	handle_failed_inode(inode);
 	return err;
 }
@@ -843,8 +970,13 @@ const struct inode_operations f2fs_dir_inode_operations = {
 
 const struct inode_operations f2fs_symlink_inode_operations = {
 	.readlink       = generic_readlink,
+#ifdef CONFIG_F2FS_FS_ENCRYPTION
+	.follow_link    = f2fs_encrypted_follow_link,
+	.put_link       = f2fs_encrypted_put_link,
+#else
 	.follow_link    = f2fs_follow_link,
 	.put_link       = page_put_link,
+#endif
 	.getattr	= f2fs_getattr,
 	.setattr	= f2fs_setattr,
 #ifdef CONFIG_F2FS_FS_XATTR
