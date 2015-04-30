@@ -77,6 +77,29 @@ repeat:
 	__set_current_state(TASK_RUNNING);
 }
 
+void __dlm_wait_on_lockres_flags_new(struct dlm_ctxt *dlm,
+		struct dlm_lock_resource *res, int flags)
+{
+	DECLARE_WAITQUEUE(wait, current);
+
+	assert_spin_locked(&dlm->spinlock);
+	assert_spin_locked(&res->spinlock);
+
+	add_wait_queue(&res->wq, &wait);
+repeat:
+	set_current_state(TASK_UNINTERRUPTIBLE);
+	if (res->state & flags) {
+		spin_unlock(&res->spinlock);
+		spin_unlock(&dlm->spinlock);
+		schedule();
+		spin_lock(&dlm->spinlock);
+		spin_lock(&res->spinlock);
+		goto repeat;
+	}
+	remove_wait_queue(&res->wq, &wait);
+	__set_current_state(TASK_RUNNING);
+}
+
 int __dlm_lockres_has_locks(struct dlm_lock_resource *res)
 {
 	if (list_empty(&res->granted) &&
