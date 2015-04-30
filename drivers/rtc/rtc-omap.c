@@ -107,6 +107,8 @@
 
 /* OMAP_RTC_OSC_REG bit fields: */
 #define OMAP_RTC_OSC_32KCLK_EN		BIT(6)
+#define OMAP_RTC_OSC_OSC32K_GZ		BIT(4)
+#define OMAP_RTC_OSC_EXT_32K		BIT(3)
 
 /* OMAP_RTC_IRQWAKEEN bit fields: */
 #define OMAP_RTC_IRQWAKEEN_ALARM_WAKEEN	BIT(1)
@@ -122,6 +124,7 @@ struct omap_rtc;
 
 struct omap_rtc_device_type {
 	bool has_32kclk_en;
+	bool has_osc_ext_32k;
 	bool has_irqwakeen;
 	bool has_pmic_mode;
 	bool has_power_up_reset;
@@ -481,6 +484,7 @@ static const struct omap_rtc_device_type omap_rtc_default_type = {
 
 static const struct omap_rtc_device_type omap_rtc_am3352_type = {
 	.has_32kclk_en	= true,
+	.has_osc_ext_32k = true,
 	.has_irqwakeen	= true,
 	.has_pmic_mode	= true,
 	.lock		= am3352_rtc_lock,
@@ -577,7 +581,16 @@ static int omap_rtc_probe(struct platform_device *pdev)
 	if (rtc->type->has_32kclk_en) {
 		reg = rtc_read(rtc, OMAP_RTC_OSC_REG);
 		rtc_writel(rtc, OMAP_RTC_OSC_REG,
-				reg | OMAP_RTC_OSC_32KCLK_EN);
+			   reg | OMAP_RTC_OSC_32KCLK_EN);
+	}
+
+	/* Enable External clock as the source */
+
+	if (rtc->type->has_osc_ext_32k) {
+		rtc_writel(rtc, OMAP_RTC_OSC_REG,
+			   (OMAP_RTC_OSC_EXT_32K |
+			   rtc_read(rtc, OMAP_RTC_OSC_REG)) &
+			   (~OMAP_RTC_OSC_OSC32K_GZ));
 	}
 
 	/* clear old status */
