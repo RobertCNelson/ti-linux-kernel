@@ -568,7 +568,7 @@ void native_set_fixmap(enum fixed_addresses idx, phys_addr_t phys,
  *
  * MTRR can override PAT memory types with 4KB granularity.  Therefore,
  * it does not set up a huge page when the range is covered by a non-WB
- * type of MTRR.  0xFF indicates that MTRR are disabled.
+ * type of MTRR.  MTRR_TYPE_INVALID indicates that MTRR are disabled.
  *
  * Return 1 on success, and 0 when no PUD was set.
  */
@@ -577,7 +577,7 @@ int pud_set_huge(pud_t *pud, phys_addr_t addr, pgprot_t prot)
 	u8 mtrr;
 
 	mtrr = mtrr_type_lookup(addr, addr + PUD_SIZE);
-	if ((mtrr != MTRR_TYPE_WRBACK) && (mtrr != 0xFF))
+	if ((mtrr != MTRR_TYPE_WRBACK) && (mtrr != MTRR_TYPE_INVALID))
 		return 0;
 
 	prot = pgprot_4k_2_large(prot);
@@ -594,7 +594,7 @@ int pud_set_huge(pud_t *pud, phys_addr_t addr, pgprot_t prot)
  *
  * MTRR can override PAT memory types with 4KB granularity.  Therefore,
  * it does not set up a huge page when the range is covered by a non-WB
- * type of MTRR.  0xFF indicates that MTRR are disabled.
+ * type of MTRR.  MTRR_TYPE_INVALID indicates that MTRR are disabled.
  *
  * Return 1 on success, and 0 when no PMD was set.
  */
@@ -603,7 +603,7 @@ int pmd_set_huge(pmd_t *pmd, phys_addr_t addr, pgprot_t prot)
 	u8 mtrr;
 
 	mtrr = mtrr_type_lookup(addr, addr + PMD_SIZE);
-	if ((mtrr != MTRR_TYPE_WRBACK) && (mtrr != 0xFF))
+	if ((mtrr != MTRR_TYPE_WRBACK) && (mtrr != MTRR_TYPE_INVALID))
 		return 0;
 
 	prot = pgprot_4k_2_large(prot);
