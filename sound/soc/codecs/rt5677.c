@@ -62,6 +62,9 @@ static const struct reg_default init_list[] = {
 	{RT5677_PR_BASE + 0x1e,	0x0000},
 	{RT5677_PR_BASE + 0x12,	0x0eaa},
 	{RT5677_PR_BASE + 0x14,	0x018a},
+	{RT5677_PR_BASE + 0x15,	0x0490},
+	{RT5677_PR_BASE + 0x38,	0x0f71},
+	{RT5677_PR_BASE + 0x39,	0x0f71},
 };
 #define RT5677_INIT_REG_LEN ARRAY_SIZE(init_list)
 
@@ -4392,7 +4395,6 @@ static int rt5677_set_bias_level(struct snd_soc_codec *codec,
 	default:
 		break;
 	}
-	codec->dapm.bias_level = level;
 
 	return 0;
 }
@@ -4618,7 +4620,7 @@ static int rt5677_probe(struct snd_soc_codec *codec)
 			ARRAY_SIZE(rt5677_dmic2_clk_1));
 	}
 
-	rt5677_set_bias_level(codec, SND_SOC_BIAS_OFF);
+	snd_soc_codec_force_bias_level(codec, SND_SOC_BIAS_OFF);
 
 	regmap_write(rt5677->regmap, RT5677_DIG_MISC, 0x0020);
 	regmap_write(rt5677->regmap, RT5677_PWR_DSP2, 0x0c00);
