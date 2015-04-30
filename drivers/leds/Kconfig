@@ -42,6 +42,22 @@ config LEDS_88PM860X
 	  This option enables support for on-chip LED drivers found on Marvell
 	  Semiconductor 88PM8606 PMIC.
 
+config LEDS_AAT1290
+	tristate "LED support for the AAT1290"
+	depends on LEDS_CLASS_FLASH
+	depends on GPIOLIB
+	depends on OF
+	help
+	 This option enables support for the LEDs on the AAT1290.
+
+config LEDS_BCM6328
+	tristate "LED Support for Broadcom BCM6328"
+	depends on LEDS_CLASS
+	depends on OF
+	help
+	  This option enables support for LEDs connected to the BCM6328
+	  LED HW controller accessed via MMIO registers.
+
 config LEDS_LM3530
 	tristate "LCD Backlight driver for LM3530"
 	depends on LEDS_CLASS
@@ -466,6 +482,24 @@ config LEDS_TCA6507
 	  This option enables support for LEDs connected to TC6507
 	  LED driver chips accessed via the I2C bus.
 	  Driver support brightness control and hardware-assisted blinking.
+
+config LEDS_TLC591XX
+	tristate "LED driver for TLC59108 and TLC59116 controllers"
+	depends on LEDS_CLASS && I2C
+	select REGMAP_I2C
+	help
+	  This option enables support for Texas Instruments TLC59108
+	  and TLC59116 LED controllers.
+
+config LEDS_MAX77693
+	tristate "LED support for MAX77693 Flash"
+	depends on LEDS_CLASS_FLASH
+	depends on MFD_MAX77693
+	depends on OF
+	help
+	  This option enables support for the flash part of the MAX77693
+	  multifunction device. It has build in control for two leds in flash
+	  and torch mode.
 
 config LEDS_MAX8997
 	tristate "LED support for MAX8997 PMIC"
