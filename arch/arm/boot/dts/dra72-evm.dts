@@ -595,6 +595,22 @@
 		 */
 		lines-initial-states = <0x0f2b>;
 	};
+
+	ov10633@37 {
+		compatible = "ovti,ov10633";
+		reg = <0x37>;
+
+		mux-gpios = <&pcf_hdmi 2	GPIO_ACTIVE_HIGH>, /* VIN2_S0 */
+			    <&pcf_hdmi 6	GPIO_ACTIVE_LOW>; /* VIN2_S2 */
+		port {
+			onboardLI: endpoint {
+				remote-endpoint = <&vin2a>;
+				hsync-active = <1>;
+				vsync-active = <1>;
+				pclk-sample = <1>;
+			};
+		};
+	};
 };
 
 &uart1 {
@@ -858,6 +874,7 @@
 	memory-region = <&ipu1_cma_pool>;
 	mboxes = <&mailbox5 &mbox_ipu1_legacy>;
 	timers = <&timer11>;
+	watchdog-timers = <&timer7>, <&timer8>;
 };
 
 &dsp1 {
@@ -865,6 +882,7 @@
 	memory-region = <&dsp1_cma_pool>;
 	mboxes = <&mailbox5 &mbox_dsp1_legacy>;
 	timers = <&timer5>;
+	watchdog-timers = <&timer10>;
 };
 
 &atl {
@@ -994,4 +1012,15 @@
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&dcan1_pins_default>;
 	pinctrl-1 = <&dcan1_pins_sleep>;
+};
+
+&vip1 {
+	status = "okay";
+};
+
+&vin2a {
+	endpoint@0 {
+		slave-mode;
+		remote-endpoint = <&onboardLI>;
+	};
 };
