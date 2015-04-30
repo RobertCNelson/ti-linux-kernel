@@ -126,11 +126,7 @@ enum {
 	MAX77843_CABLE_FAST_CHARGER,
 	MAX77843_CABLE_SLOW_CHARGER,
 	MAX77843_CABLE_MHL,
-	MAX77843_CABLE_MHL_TA,
-	MAX77843_CABLE_JIG_USB_ON,
-	MAX77843_CABLE_JIG_USB_OFF,
-	MAX77843_CABLE_JIG_UART_ON,
-	MAX77843_CABLE_JIG_UART_OFF,
+	MAX77843_CABLE_JIG,
 
 	MAX77843_CABLE_NUM,
 };
@@ -143,11 +139,7 @@ static const char *max77843_extcon_cable[] = {
 	[MAX77843_CABLE_FAST_CHARGER]		= "FAST-CHARGER",
 	[MAX77843_CABLE_SLOW_CHARGER]		= "SLOW-CHARGER",
 	[MAX77843_CABLE_MHL]			= "MHL",
-	[MAX77843_CABLE_MHL_TA]			= "MHL-TA",
-	[MAX77843_CABLE_JIG_USB_ON]		= "JIG-USB-ON",
-	[MAX77843_CABLE_JIG_USB_OFF]		= "JIG-USB-OFF",
-	[MAX77843_CABLE_JIG_UART_ON]		= "JIG-UART-ON",
-	[MAX77843_CABLE_JIG_UART_OFF]		= "JIG-UART-OFF",
+	[MAX77843_CABLE_JIG]			= "JIG",
 };
 
 struct max77843_muic_irq {
@@ -385,35 +377,30 @@ static int max77843_muic_jig_handler(struct max77843_muic_info *info,
 		int cable_type, bool attached)
 {
 	int ret;
+	u8 path = CONTROL1_SW_OPEN;
 
 	dev_dbg(info->dev, "external connector is %s (adc:0x%02x)\n",
 			attached ? "attached" : "detached", cable_type);
 
 	switch (cable_type) {
 	case MAX77843_MUIC_ADC_FACTORY_MODE_USB_OFF:
-		ret = max77843_muic_set_path(info, CONTROL1_SW_USB, attached);
-		if (ret < 0)
-			return ret;
-		extcon_set_cable_state(info->edev, "JIG-USB-OFF", attached);
-		break;
 	case MAX77843_MUIC_ADC_FACTORY_MODE_USB_ON:
-		ret = max77843_muic_set_path(info, CONTROL1_SW_USB, attached);
-		if (ret < 0)
-			return ret;
-		extcon_set_cable_state(info->edev, "JIG-USB-ON", attached);
+		path = CONTROL1_SW_USB;
 		break;
 	case MAX77843_MUIC_ADC_FACTORY_MODE_UART_OFF:
-		ret = max77843_muic_set_path(info, CONTROL1_SW_UART, attached);
-		if (ret < 0)
-			return ret;
-		extcon_set_cable_state(info->edev, "JIG-UART-OFF", attached);
+		path = CONTROL1_SW_UART;
 		break;
 	default:
-		ret = max77843_muic_set_path(info, CONTROL1_SW_OPEN, attached);
-		if (ret < 0)
-			return ret;
-		break;
+		dev_err(info->dev, "failed to detect %s jig cable\n",
+			attached ? "attached" : "detached");
+		return -EINVAL;
 	}
+
+	ret = max77843_muic_set_path(info, path, attached);
+	if (ret < 0)
+		return ret;
+
+	extcon_set_cable_state(info->edev, "JIG", attached);
 
 	return 0;
 }
@@ -542,9 +529,9 @@ static int max77843_muic_chg_handler(struct max77843_muic_info *info)
 
 		/* Charger cable on MHL accessory is attach or detach */
 		if (gnd_type == MAX77843_MUIC_GND_MHL_VB)
-			extcon_set_cable_state(info->edev, "MHL-TA", true);
+			extcon_set_cable_state(info->edev, "TA", true);
 		else if (gnd_type == MAX77843_MUIC_GND_MHL)
-			extcon_set_cable_state(info->edev, "MHL-TA", false);
+			extcon_set_cable_state(info->edev, "TA", false);
 		break;
 	case MAX77843_MUIC_CHG_NONE:
 		break;
