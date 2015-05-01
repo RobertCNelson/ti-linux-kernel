@@ -1,6 +1,7 @@
 /*
- * Copyright 2015 Aleksei Mamlin
- * Aleksei Mamlin <mamlinav@gmail.com>
+ * Copyright 2015 Gábor Nyers
+ *
+ * Gábor Nyers <gabor.nyers@gmail.com>
  *
  * This file is dual-licensed: you can use it either under the terms
  * of the GPL or the X11 license, at your option. Note that this dual
@@ -54,8 +55,8 @@
 #include <dt-bindings/pinctrl/sun4i-a10.h>
 
 / {
-	model = "HAOYU Electronics Marsboard A10";
-	compatible = "haoyu,a10-marsboard", "allwinner,sun4i-a10";
+	model = "Jesurun Q5";
+	compatible = "jesurun,q5", "allwinner,sun4i-a10";
 
 	aliases {
 		serial0 = &uart0;
@@ -68,27 +69,24 @@
 	leds {
 		compatible = "gpio-leds";
 		pinctrl-names = "default";
-		pinctrl-0 = <&led_pins_marsboard>;
+		pinctrl-0 = <&led_pins_q5>;
 
-		red1 {
-			label = "marsboard:red1:usr";
-			gpios = <&pio 1 5 GPIO_ACTIVE_HIGH>;
+		green {
+			label = "q5:green:usr";
+			gpios = <&pio 7 20 GPIO_ACTIVE_HIGH>;  /* PH20 */
 		};
 
-		red2 {
-			label = "marsboard:red2:usr";
-			gpios = <&pio 1 6 GPIO_ACTIVE_HIGH>;
-		};
+	};
 
-		red3 {
-			label = "marsboard:red3:usr";
-			gpios = <&pio 1 7 GPIO_ACTIVE_HIGH>;
-		};
-
-		red4 {
-			label = "marsboard:red4:usr";
-			gpios = <&pio 1 8 GPIO_ACTIVE_HIGH>;
-		};
+	reg_emac_3v3: emac-3v3 {
+		compatible = "regulator-fixed";
+		pinctrl-names = "default";
+		pinctrl-0 = <&emac_power_pin_q5>;
+		regulator-name = "emac-3v3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		enable-active-high;
+		gpio = <&pio 7 19 GPIO_ACTIVE_HIGH>;   /* PH19 */
 	};
 };
 
@@ -115,21 +113,25 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c0_pins_a>;
 	status = "okay";
+
+	axp209: pmic@34 {
+		compatible = "x-powers,axp209";
+		reg = <0x34>;
+		interrupts = <0>;
+
+		interrupt-controller;
+		#interrupt-cells = <1>;
+	};
 };
 
-&i2c1 {
+&ir0 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&i2c1_pins_a>;
-	status = "okay";
-};
-
-&i2c2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c2_pins_a>;
+	pinctrl-0 = <&ir0_pins_a>;
 	status = "okay";
 };
 
 &mdio {
+	phy-supply = <&reg_emac_3v3>;
 	status = "okay";
 
 	phy1: ethernet-phy@1 {
@@ -156,8 +158,15 @@
 };
 
 &pio {
-	led_pins_marsboard: led_pins@0 {
-		allwinner,pins = "PB5", "PB6", "PB7", "PB8";
+	emac_power_pin_q5: emac_power_pin@0 {
+		allwinner,pins = "PH19";
+		allwinner,function = "gpio_out";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
+	};
+
+	led_pins_q5: led_pins@0 {
+		allwinner,pins = "PH20";
 		allwinner,function = "gpio_out";
 		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
 		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
@@ -169,12 +178,6 @@
 };
 
 &reg_usb2_vbus {
-	status = "okay";
-};
-
-&spi0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&spi0_pins_a>;
 	status = "okay";
 };
 
