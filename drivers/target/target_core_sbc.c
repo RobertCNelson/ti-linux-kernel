@@ -738,14 +738,15 @@ static int
 sbc_check_dpofua(struct se_device *dev, struct se_cmd *cmd, unsigned char *cdb)
 {
 	if (cdb[1] & 0x10) {
-		if (!dev->dev_attrib.emulate_dpo) {
+		/* see explanation in spc_emulate_modesense */
+		if (!target_check_fua(dev)) {
 			pr_err("Got CDB: 0x%02x with DPO bit set, but device"
 			       " does not advertise support for DPO\n", cdb[0]);
 			return -EINVAL;
 		}
 	}
 	if (cdb[1] & 0x8) {
-		if (!dev->dev_attrib.emulate_fua_write || !se_dev_check_wce(dev)) {
+		if (!target_check_fua(dev)) {
 			pr_err("Got CDB: 0x%02x with FUA bit set, but device"
 			       " does not advertise support for FUA write\n",
 			       cdb[0]);
@@ -1266,9 +1267,8 @@ check_ref:
 	return 0;
 }
 
-static void
-sbc_dif_copy_prot(struct se_cmd *cmd, unsigned int sectors, bool read,
-		  struct scatterlist *sg, int sg_off)
+void sbc_dif_copy_prot(struct se_cmd *cmd, unsigned int sectors, bool read,
+		       struct scatterlist *sg, int sg_off)
 {
 	struct se_device *dev = cmd->se_dev;
 	struct scatterlist *psg;
@@ -1309,17 +1309,18 @@ sbc_dif_copy_prot(struct se_cmd *cmd, unsigned int sectors, bool read,
 		kunmap_atomic(paddr);
 	}
 }
+EXPORT_SYMBOL(sbc_dif_copy_prot);
 
 sense_reason_t
-sbc_dif_verify_write(struct se_cmd *cmd, sector_t start, unsigned int sectors,
-		     unsigned int ei_lba, struct scatterlist *sg, int sg_off)
+sbc_dif_verify(struct se_cmd *cmd, sector_t start, unsigned int sectors,
+	       unsigned int ei_lba, struct scatterlist *psg, int psg_off)
 {
 	struct se_device *dev = cmd->se_dev;
 	struct se_dif_v1_tuple *sdt;
-	struct scatterlist *dsg, *psg = cmd->t_prot_sg;
+	struct scatterlist *dsg;
 	sector_t sector = start;
 	void *daddr, *paddr;
-	int i, j, offset = 0;
+	int i, j;
 	sense_reason_t rc;
 
 	for_each_sg(cmd->t_data_sg, dsg, cmd->t_data_nents, i) {
@@ -1328,72 +1329,14 @@ sbc_dif_verify_write(struct se_cmd *cmd, sector_t start, unsigned int sectors,
 
 		for (j = 0; j < dsg->length; j += dev->dev_attrib.block_size) {
 
-			if (offset >= psg->length) {
-				kunmap_atomic(paddr);
+			if (psg_off >= psg->length) {
+				kunmap_atomic(paddr - psg->offset);
 				psg = sg_next(psg);
 				paddr = kmap_atomic(sg_page(psg)) + psg->offset;
-				offset = 0;
+				psg_off = 0;
 			}
 
-			sdt = paddr + offset;
-
-			pr_debug("DIF WRITE sector: %llu guard_tag: 0x%04x"
-				 " app_tag: 0x%04x ref_tag: %u\n",
-				 (unsigned long long)sector, sdt->guard_tag,
-				 sdt->app_tag, be32_to_cpu(sdt->ref_tag));
-
-			rc = sbc_dif_v1_verify(cmd, sdt, daddr + j, sector,
-					       ei_lba);
-			if (rc) {
-				kunmap_atomic(paddr);
-				kunmap_atomic(daddr);
-				cmd->bad_sector = sector;
-				return rc;
-			}
-
-			sector++;
-			ei_lba++;
-			offset += sizeof(struct se_dif_v1_tuple);
-		}
-
-		kunmap_atomic(paddr);
-		kunmap_atomic(daddr);
-	}
-	if (!sg)
-		return 0;
-
-	sbc_dif_copy_prot(cmd, sectors, false, sg, sg_off);
-
-	return 0;
-}
-EXPORT_SYMBOL(sbc_dif_verify_write);
-
-static sense_reason_t
-__sbc_dif_verify_read(struct se_cmd *cmd, sector_t start, unsigned int sectors,
-		      unsigned int ei_lba, struct scatterlist *sg, int sg_off)
-{
-	struct se_device *dev = cmd->se_dev;
-	struct se_dif_v1_tuple *sdt;
-	struct scatterlist *dsg, *psg = sg;
-	sector_t sector = start;
-	void *daddr, *paddr;
-	int i, j, offset = sg_off;
-	sense_reason_t rc;
-
-	for_each_sg(cmd->t_data_sg, dsg, cmd->t_data_nents, i) {
-		daddr = kmap_atomic(sg_page(dsg)) + dsg->offset;
-		paddr = kmap_atomic(sg_page(psg)) + sg->offset;
-
-		for (j = 0; j < dsg->length; j += dev->dev_attrib.block_size) {
-
-			if (offset >= psg->length) {
-				kunmap_atomic(paddr);
-				psg = sg_next(psg);
-				paddr = kmap_atomic(sg_page(psg)) + psg->offset;
-				offset = 0;
-			}
-
-			sdt = paddr + offset;
+			sdt = paddr + psg_off;
 
 			pr_debug("DIF READ sector: %llu guard_tag: 0x%04x"
 				 " app_tag: 0x%04x ref_tag: %u\n",
@@ -1402,52 +1345,28 @@ __sbc_dif_verify_read(struct se_cmd *cmd, sector_t start, unsigned int sectors,
 
 			if (sdt->app_tag == cpu_to_be16(0xffff)) {
 				sector++;
-				offset += sizeof(struct se_dif_v1_tuple);
+				psg_off += sizeof(struct se_dif_v1_tuple);
 				continue;
 			}
 
 			rc = sbc_dif_v1_verify(cmd, sdt, daddr + j, sector,
 					       ei_lba);
 			if (rc) {
-				kunmap_atomic(paddr);
-				kunmap_atomic(daddr);
+				kunmap_atomic(paddr - psg->offset);
+				kunmap_atomic(daddr - dsg->offset);
 				cmd->bad_sector = sector;
 				return rc;
 			}
 
 			sector++;
 			ei_lba++;
-			offset += sizeof(struct se_dif_v1_tuple);
+			psg_off += sizeof(struct se_dif_v1_tuple);
 		}
 
-		kunmap_atomic(paddr);
-		kunmap_atomic(daddr);
+		kunmap_atomic(paddr - psg->offset);
+		kunmap_atomic(daddr - dsg->offset);
 	}
 
 	return 0;
 }
-
-sense_reason_t
-sbc_dif_read_strip(struct se_cmd *cmd)
-{
-	struct se_device *dev = cmd->se_dev;
-	u32 sectors = cmd->prot_length / dev->prot_length;
-
-	return __sbc_dif_verify_read(cmd, cmd->t_task_lba, sectors, 0,
-				     cmd->t_prot_sg, 0);
-}
-
-sense_reason_t
-sbc_dif_verify_read(struct se_cmd *cmd, sector_t start, unsigned int sectors,
-		    unsigned int ei_lba, struct scatterlist *sg, int sg_off)
-{
-	sense_reason_t rc;
-
-	rc = __sbc_dif_verify_read(cmd, start, sectors, ei_lba, sg, sg_off);
-	if (rc)
-		return rc;
-
-	sbc_dif_copy_prot(cmd, sectors, true, sg, sg_off);
-	return 0;
-}
-EXPORT_SYMBOL(sbc_dif_verify_read);
+EXPORT_SYMBOL(sbc_dif_verify);

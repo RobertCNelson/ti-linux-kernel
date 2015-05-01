@@ -1353,11 +1353,9 @@ transport_generic_map_mem_to_cmd(struct se_cmd *cmd, struct scatterlist *sgl,
 
 	cmd->t_data_sg = sgl;
 	cmd->t_data_nents = sgl_count;
+	cmd->t_bidi_data_sg = sgl_bidi;
+	cmd->t_bidi_data_nents = sgl_bidi_count;
 
-	if (sgl_bidi && sgl_bidi_count) {
-		cmd->t_bidi_data_sg = sgl_bidi;
-		cmd->t_bidi_data_nents = sgl_bidi_count;
-	}
 	cmd->se_cmd_flags |= SCF_PASSTHROUGH_SG_TO_MEM_NOALLOC;
 	return 0;
 }
@@ -1419,7 +1417,7 @@ int target_submit_cmd_map_sgls(struct se_cmd *se_cmd, struct se_session *se_sess
 	 * for fabrics using TARGET_SCF_ACK_KREF that expect a second
 	 * kref_put() to happen during fabric packet acknowledgement.
 	 */
-	ret = target_get_sess_cmd(se_sess, se_cmd, (flags & TARGET_SCF_ACK_KREF));
+	ret = target_get_sess_cmd(se_cmd, flags & TARGET_SCF_ACK_KREF);
 	if (ret)
 		return ret;
 	/*
@@ -1433,7 +1431,7 @@ int target_submit_cmd_map_sgls(struct se_cmd *se_cmd, struct se_session *se_sess
 	rc = transport_lookup_cmd_lun(se_cmd, unpacked_lun);
 	if (rc) {
 		transport_send_check_condition_and_sense(se_cmd, rc, 0);
-		target_put_sess_cmd(se_sess, se_cmd);
+		target_put_sess_cmd(se_cmd);
 		return 0;
 	}
 
@@ -1584,7 +1582,7 @@ int target_submit_tmr(struct se_cmd *se_cmd, struct se_session *se_sess,
 		se_cmd->se_tmr_req->ref_task_tag = tag;
 
 	/* See target_submit_cmd for commentary */
-	ret = target_get_sess_cmd(se_sess, se_cmd, (flags & TARGET_SCF_ACK_KREF));
+	ret = target_get_sess_cmd(se_cmd, flags & TARGET_SCF_ACK_KREF);
 	if (ret) {
 		core_tmr_release_req(se_cmd->se_tmr_req);
 		return ret;
@@ -1766,8 +1764,8 @@ static int target_write_prot_action(struct se_cmd *cmd)
 			break;
 
 		sectors = cmd->data_length >> ilog2(cmd->se_dev->dev_attrib.block_size);
-		cmd->pi_err = sbc_dif_verify_write(cmd, cmd->t_task_lba,
-						   sectors, 0, NULL, 0);
+		cmd->pi_err = sbc_dif_verify(cmd, cmd->t_task_lba,
+					     sectors, 0, cmd->t_prot_sg, 0);
 		if (unlikely(cmd->pi_err)) {
 			spin_lock_irq(&cmd->t_state_lock);
 			cmd->transport_state &= ~CMD_T_BUSY|CMD_T_SENT;
@@ -1992,16 +1990,17 @@ static void transport_handle_queue_full(
 
 static bool target_read_prot_action(struct se_cmd *cmd)
 {
-	sense_reason_t rc;
-
 	switch (cmd->prot_op) {
 	case TARGET_PROT_DIN_STRIP:
 		if (!(cmd->se_sess->sup_prot_ops & TARGET_PROT_DIN_STRIP)) {
-			rc = sbc_dif_read_strip(cmd);
-			if (rc) {
-				cmd->pi_err = rc;
+			u32 sectors = cmd->data_length >>
+				  ilog2(cmd->se_dev->dev_attrib.block_size);
+
+			cmd->pi_err = sbc_dif_verify(cmd, cmd->t_task_lba,
+						     sectors, 0, cmd->t_prot_sg,
+						     0);
+			if (cmd->pi_err)
 				return true;
-			}
 		}
 		break;
 	case TARGET_PROT_DIN_INSERT:
@@ -2228,7 +2227,7 @@ static int transport_release_cmd(struct se_cmd *cmd)
 	 * If this cmd has been setup with target_get_sess_cmd(), drop
 	 * the kref and call ->release_cmd() in kref callback.
 	 */
-	return target_put_sess_cmd(cmd->se_sess, cmd);
+	return target_put_sess_cmd(cmd);
 }
 
 /**
@@ -2472,13 +2471,12 @@ int transport_generic_free_cmd(struct se_cmd *cmd, int wait_for_tasks)
 EXPORT_SYMBOL(transport_generic_free_cmd);
 
 /* target_get_sess_cmd - Add command to active ->sess_cmd_list
- * @se_sess:	session to reference
  * @se_cmd:	command descriptor to add
  * @ack_kref:	Signal that fabric will perform an ack target_put_sess_cmd()
  */
-int target_get_sess_cmd(struct se_session *se_sess, struct se_cmd *se_cmd,
-			       bool ack_kref)
+int target_get_sess_cmd(struct se_cmd *se_cmd, bool ack_kref)
 {
+	struct se_session *se_sess = se_cmd->se_sess;
 	unsigned long flags;
 	int ret = 0;
 
@@ -2500,7 +2498,7 @@ out:
 	spin_unlock_irqrestore(&se_sess->sess_cmd_lock, flags);
 
 	if (ret && ack_kref)
-		target_put_sess_cmd(se_sess, se_cmd);
+		target_put_sess_cmd(se_cmd);
 
 	return ret;
 }
@@ -2529,11 +2527,12 @@ static void target_release_cmd_kref(struct kref *kref)
 }
 
 /* target_put_sess_cmd - Check for active I/O shutdown via kref_put
- * @se_sess:	session to reference
  * @se_cmd:	command descriptor to drop
  */
-int target_put_sess_cmd(struct se_session *se_sess, struct se_cmd *se_cmd)
+int target_put_sess_cmd(struct se_cmd *se_cmd)
 {
+	struct se_session *se_sess = se_cmd->se_sess;
+
 	if (!se_sess) {
 		se_cmd->se_tfo->release_cmd(se_cmd);
 		return 1;
@@ -3075,3 +3074,22 @@ int transport_generic_handle_tmr(
 	return 0;
 }
 EXPORT_SYMBOL(transport_generic_handle_tmr);
+
+bool
+target_check_wce(struct se_device *dev)
+{
+	bool wce = false;
+
+	if (dev->transport->get_write_cache)
+		wce = dev->transport->get_write_cache(dev);
+	else if (dev->dev_attrib.emulate_write_cache > 0)
+		wce = true;
+
+	return wce;
+}
+
+bool
+target_check_fua(struct se_device *dev)
+{
+	return target_check_wce(dev) && dev->dev_attrib.emulate_fua_write > 0;
+}
