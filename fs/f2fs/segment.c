@@ -483,10 +483,12 @@ void discard_next_dnode(struct f2fs_sb_info *sbi, block_t blkaddr)
 }
 
 static void __add_discard_entry(struct f2fs_sb_info *sbi,
-		struct cp_control *cpc, unsigned int start, unsigned int end)
+		struct cp_control *cpc, struct seg_entry *se,
+		unsigned int start, unsigned int end)
 {
 	struct list_head *head = &SM_I(sbi)->discard_list;
 	struct discard_entry *new, *last;
+	unsigned int i;
 
 	if (!list_empty(head)) {
 		last = list_last_entry(head, struct discard_entry, list);
@@ -504,6 +506,10 @@ static void __add_discard_entry(struct f2fs_sb_info *sbi,
 	list_add_tail(&new->list, head);
 done:
 	SM_I(sbi)->nr_discards += end - start;
+	for (i = start; i < end; i++) {
+		f2fs_set_bit(i, se->discard_map);
+		sbi->discard_blks--;
+	}
 	cpc->trimmed += end - start;
 }
 
@@ -514,6 +520,7 @@ static void add_discard_addrs(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	struct seg_entry *se = get_seg_entry(sbi, cpc->trim_start);
 	unsigned long *cur_map = (unsigned long *)se->cur_valid_map;
 	unsigned long *ckpt_map = (unsigned long *)se->ckpt_valid_map;
+	unsigned long *discard_map = (unsigned long *)se->discard_map;
 	unsigned long *dmap = SIT_I(sbi)->tmp_map;
 	unsigned int start = 0, end = -1;
 	bool force = (cpc->reason == CP_DISCARD);
@@ -523,8 +530,11 @@ static void add_discard_addrs(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 			SM_I(sbi)->nr_discards >= SM_I(sbi)->max_discards))
 		return;
 
-	if (force && !se->valid_blocks) {
+	if (!se->valid_blocks) {
 		struct dirty_seglist_info *dirty_i = DIRTY_I(sbi);
+
+		if (!force)
+			return;
 		/*
 		 * if this segment is registered in the prefree list, then
 		 * we should skip adding a discard candidate, and let the
@@ -537,18 +547,14 @@ static void add_discard_addrs(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 			return;
 		}
 		mutex_unlock(&dirty_i->seglist_lock);
-
-		__add_discard_entry(sbi, cpc, 0, sbi->blocks_per_seg);
+	} else if (se->valid_blocks == max_blocks) {
+		/* zero block will be discarded through the prefree list */
 		return;
 	}
 
-	/* zero block will be discarded through the prefree list */
-	if (!se->valid_blocks || se->valid_blocks == max_blocks)
-		return;
-
 	/* SIT_VBLOCK_MAP_SIZE should be multiple of sizeof(unsigned long) */
 	for (i = 0; i < entries; i++)
-		dmap[i] = force ? ~ckpt_map[i] :
+		dmap[i] = force ? ~ckpt_map[i] & ~discard_map[i] :
 				(cur_map[i] ^ ckpt_map[i]) & ckpt_map[i];
 
 	while (force || SM_I(sbi)->nr_discards <= SM_I(sbi)->max_discards) {
@@ -561,7 +567,7 @@ static void add_discard_addrs(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 		if (force && end - start < cpc->trim_minlen)
 			continue;
 
-		__add_discard_entry(sbi, cpc, start, end);
+		__add_discard_entry(sbi, cpc, se, start, end);
 	}
 }
 
@@ -675,9 +681,13 @@ static void update_sit_entry(struct f2fs_sb_info *sbi, block_t blkaddr, int del)
 	if (del > 0) {
 		if (f2fs_test_and_set_bit(offset, se->cur_valid_map))
 			f2fs_bug_on(sbi, 1);
+		if (f2fs_test_and_set_bit(offset, se->discard_map))
+			sbi->discard_blks--;
 	} else {
 		if (!f2fs_test_and_clear_bit(offset, se->cur_valid_map))
 			f2fs_bug_on(sbi, 1);
+		if (f2fs_test_and_clear_bit(offset, se->discard_map))
+			sbi->discard_blks++;
 	}
 	if (!f2fs_test_bit(offset, se->ckpt_valid_map))
 		se->ckpt_valid_blocks += del;
@@ -1080,7 +1090,14 @@ int f2fs_trim_fs(struct f2fs_sb_info *sbi, struct fstrim_range *range)
 	/* do checkpoint to issue discard commands safely */
 	for (; start_segno <= end_segno; start_segno = cpc.trim_end + 1) {
 		cpc.trim_start = start_segno;
-		cpc.trim_end = min_t(unsigned int, rounddown(start_segno +
+
+		if (sbi->discard_blks == 0)
+			break;
+		else if (sbi->discard_blks < BATCHED_TRIM_BLOCKS(sbi))
+			cpc.trim_end = end_segno;
+		else
+			cpc.trim_end = min_t(unsigned int,
+				rounddown(start_segno +
 				BATCHED_TRIM_SEGMENTS(sbi),
 				sbi->segs_per_sec) - 1, end_segno);
 
@@ -1859,8 +1876,11 @@ static int build_sit_info(struct f2fs_sb_info *sbi)
 			= kzalloc(SIT_VBLOCK_MAP_SIZE, GFP_KERNEL);
 		sit_i->sentries[start].ckpt_valid_map
 			= kzalloc(SIT_VBLOCK_MAP_SIZE, GFP_KERNEL);
-		if (!sit_i->sentries[start].cur_valid_map
-				|| !sit_i->sentries[start].ckpt_valid_map)
+		sit_i->sentries[start].discard_map
+			= kzalloc(SIT_VBLOCK_MAP_SIZE, GFP_KERNEL);
+		if (!sit_i->sentries[start].cur_valid_map ||
+				!sit_i->sentries[start].ckpt_valid_map ||
+				!sit_i->sentries[start].discard_map)
 			return -ENOMEM;
 	}
 
@@ -1998,6 +2018,11 @@ static void build_sit_entries(struct f2fs_sb_info *sbi)
 got_it:
 			check_block_count(sbi, start, &sit);
 			seg_info_from_raw_sit(se, &sit);
+
+			/* build discard map only one time */
+			memcpy(se->discard_map, se->cur_valid_map, SIT_VBLOCK_MAP_SIZE);
+			sbi->discard_blks += sbi->blocks_per_seg - se->valid_blocks;
+
 			if (sbi->segs_per_sec > 1) {
 				struct sec_entry *e = get_sec_entry(sbi, start);
 				e->valid_blocks += se->valid_blocks;
@@ -2247,6 +2272,7 @@ static void destroy_sit_info(struct f2fs_sb_info *sbi)
 		for (start = 0; start < MAIN_SEGS(sbi); start++) {
 			kfree(sit_i->sentries[start].cur_valid_map);
 			kfree(sit_i->sentries[start].ckpt_valid_map);
+			kfree(sit_i->sentries[start].discard_map);
 		}
 	}
 	kfree(sit_i->tmp_map);
