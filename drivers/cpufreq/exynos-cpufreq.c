@@ -236,4 +236,4 @@ static struct platform_driver exynos_cpufreq_platdrv = {
 	},
 	.probe = exynos_cpufreq_probe,
 };
-module_platform_driver(exynos_cpufreq_platdrv);
+builtin_platform_driver(exynos_cpufreq_platdrv);
