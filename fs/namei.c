@@ -1963,14 +1963,15 @@ static void path_cleanup(struct nameidata *nd)
 		fput(nd->base);
 }
 
-static int trailing_symlink(struct path *link, struct nameidata *nd, void **p)
+static int trailing_symlink(struct nameidata *nd)
 {
 	const char *s;
-	int error = may_follow_link(link, nd);
+	int error = may_follow_link(&nd->link, nd);
 	if (unlikely(error))
 		return error;
 	nd->flags |= LOOKUP_PARENT;
-	s = get_link(link, nd, p);
+	nd->stack[0].link = nd->link;
+	s = get_link(&nd->stack[0].link, nd, &nd->stack[0].cookie);
 	if (unlikely(IS_ERR(s)))
 		return PTR_ERR(s);
 	if (unlikely(!s))
@@ -1986,7 +1987,7 @@ static int trailing_symlink(struct path *link, struct nameidata *nd, void **p)
 	nd->inode = nd->path.dentry->d_inode;
 	error = link_path_walk(s, nd);
 	if (unlikely(error))
-		put_link(nd, link, *p);
+		put_link(nd, &nd->stack[0].link, nd->stack[0].cookie);
 	return error;
 }
 
@@ -2023,9 +2024,7 @@ static int path_lookupat(int dfd, const struct filename *name,
 	if (!err && !(flags & LOOKUP_PARENT)) {
 		err = lookup_last(nd);
 		while (err > 0) {
-			nd->stack[0].link = nd->link;
-			err = trailing_symlink(&nd->stack[0].link,
-						nd, &nd->stack[0].cookie);
+			err = trailing_symlink(nd);
 			if (err)
 				break;
 			err = lookup_last(nd);
@@ -2369,9 +2368,7 @@ path_mountpoint(int dfd, const struct filename *name, struct path *path,
 
 	err = mountpoint_last(nd, path);
 	while (err > 0) {
-		nd->stack[0].link = nd->link;
-		err = trailing_symlink(&nd->stack[0].link,
-					nd, &nd->stack[0].cookie);
+		err = trailing_symlink(nd);
 		if (err)
 			break;
 		err = mountpoint_last(nd, path);
@@ -3255,9 +3252,7 @@ static struct file *path_openat(int dfd, struct filename *pathname,
 	error = do_last(nd, file, op, &opened, pathname);
 	while (unlikely(error > 0)) { /* trailing symlink */
 		nd->flags &= ~(LOOKUP_OPEN|LOOKUP_CREATE|LOOKUP_EXCL);
-		nd->stack[0].link = nd->link;
-		error= trailing_symlink(&nd->stack[0].link,
-					nd, &nd->stack[0].cookie);
+		error = trailing_symlink(nd);
 		if (unlikely(error))
 			break;
 		error = do_last(nd, file, op, &opened, pathname);
