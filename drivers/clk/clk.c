@@ -55,6 +55,7 @@ struct clk_core {
 	struct clk_core		*new_parent;
 	struct clk_core		*new_child;
 	unsigned long		flags;
+	bool			orphan;
 	unsigned int		enable_count;
 	unsigned int		prepare_count;
 	unsigned long		accuracy;
@@ -1055,18 +1056,40 @@ static int clk_fetch_parent_index(struct clk_core *core,
 	return -EINVAL;
 }
 
+/*
+ * Update the orphan status of @core and all its children.
+ */
+static void clk_core_update_orphan_status(struct clk_core *core, bool is_orphan)
+{
+	struct clk_core *child;
+
+	core->orphan = is_orphan;
+
+	hlist_for_each_entry(child, &core->children, child_node)
+		clk_core_update_orphan_status(child, is_orphan);
+}
+
 static void clk_reparent(struct clk_core *core, struct clk_core *new_parent)
 {
+	bool was_orphan = core->orphan;
+
 	hlist_del(&core->child_node);
 
 	if (new_parent) {
+		bool becomes_orphan = new_parent->orphan;
+
 		/* avoid duplicate POST_RATE_CHANGE notifications */
 		if (new_parent->new_child == core)
 			new_parent->new_child = NULL;
 
 		hlist_add_head(&core->child_node, &new_parent->children);
+
+		if (was_orphan != becomes_orphan)
+			clk_core_update_orphan_status(core, becomes_orphan);
 	} else {
 		hlist_add_head(&core->child_node, &clk_orphan_list);
+		if (!was_orphan)
+			clk_core_update_orphan_status(core, true);
 	}
 
 	core->parent = new_parent;
@@ -2296,13 +2319,17 @@ static int __clk_init(struct device *dev, struct clk *clk_user)
 	 * clocks and re-parent any that are children of the clock currently
 	 * being clk_init'd.
 	 */
-	if (core->parent)
+	if (core->parent) {
 		hlist_add_head(&core->child_node,
 				&core->parent->children);
-	else if (core->flags & CLK_IS_ROOT)
+		core->orphan = core->parent->orphan;
+	} else if (core->flags & CLK_IS_ROOT) {
 		hlist_add_head(&core->child_node, &clk_root_list);
-	else
+		core->orphan = false;
+	} else {
 		hlist_add_head(&core->child_node, &clk_orphan_list);
+		core->orphan = true;
+	}
 
 	/*
 	 * Set clk's accuracy.  The preferred method is to use
@@ -2384,14 +2411,10 @@ out:
 	return ret;
 }
 
-struct clk *__clk_create_clk(struct clk_hw *hw, const char *dev_id,
-			     const char *con_id)
+static struct clk *clk_hw_create_clk(struct clk_hw *hw, const char *dev_id,
+				     const char *con_id)
 {
 	struct clk *clk;
-
-	/* This is to allow this function to be chained to others */
-	if (!hw || IS_ERR(hw))
-		return (struct clk *) hw;
 
 	clk = kzalloc(sizeof(*clk), GFP_KERNEL);
 	if (!clk)
@@ -2407,6 +2430,19 @@ struct clk *__clk_create_clk(struct clk_hw *hw, const char *dev_id,
 	clk_prepare_unlock();
 
 	return clk;
+}
+
+struct clk *__clk_create_clk(struct clk_hw *hw, const char *dev_id,
+			     const char *con_id)
+{
+	/* This is to allow this function to be chained to others */
+	if (!hw || IS_ERR(hw))
+		return (struct clk *) hw;
+
+	if (hw->core->orphan)
+		return ERR_PTR(-EPROBE_DEFER);
+
+	return clk_hw_create_clk(hw, dev_id, con_id);
 }
 
 void __clk_free_clk(struct clk *clk)
@@ -2475,7 +2511,7 @@ struct clk *clk_register(struct device *dev, struct clk_hw *hw)
 
 	INIT_HLIST_HEAD(&core->clks);
 
-	hw->clk = __clk_create_clk(hw, NULL, NULL);
+	hw->clk = clk_hw_create_clk(hw, NULL, NULL);
 	if (IS_ERR(hw->clk)) {
 		ret = PTR_ERR(hw->clk);
 		goto fail_parent_names_copy;
