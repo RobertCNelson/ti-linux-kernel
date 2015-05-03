@@ -1,0 +1,243 @@
+next/fixes-non-critical
+	patch
+		ARM: cns3xxx: don't export static symbol
+	omap/fixes-non-critical
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.1/fixes-0
+	samsung/fixes
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-fixes-v4.1
+
+next/cleanup
+	mvebu/cleanup
+		git://git.infradead.org/linux-mvebu tags/mvebu-cleanup-4.1
+	at91/cleanup2
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-cleanup2
+	renesas/soc-cleanup2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-cleanup2-for-v4.1
+	davinci/mcasp
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v4.1/mcasp
+	omap/cleanup-legacy
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/v4.1-legacy
+	renesas/pm
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-pm-for-v4.1
+	renesas/cleanup3
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-cleanup3-for-v4.1
+	qcom/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-cleanup-for-4.1
+	imx/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-cleanup-4.1
+
+next/drivers
+	drivers/simple-pm-bus
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-simple-pm-bus-for-v4.1
+	qcom/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-soc-for-4.1
+	<no branch> (8590ca655a19f9e124b52bfbf28f14eb16a05bec)
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-cleanup3
+		contains at91/cleanup2
+	omap/gpmc
+		git://github.com/rogerq/linux tags/gpmc-omap-for-v4.1
+	arm/perf
+		git://git.kernel.org/pub/scm/linux/kernel/git/will/linux tags/arm-perf-4.1
+		contains to-build
+	mediatek/soc
+		https://github.com/mbgg/linux-mediatek tags/v4.0-next-soc
+	mediatek/next-soc-fix
+		https://github.com/mbgg/linux-mediatek tags/v4.0-next-soc-fix
+	<no branch> (7ab7ef741a467e7af50c9b7446ec992bec9ea6a7)
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-clocksource-driver2
+
+next/multiplatform
+	renesas/soc-cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-cleanup-for-v4.1
+	renesas/sh7372-soc-removal
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-sh7372-soc-removal-for-v4.1
+	shmobile/multiplatform-r8a7778
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-r8a7778-ccf-and-multiplatform-for-v4.1
+		contains drivers/simple-pm-bus
+	shmobile/multiplatform-r8a73a4
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-r8a73a4-ccf-and-multiplatform-for-v4.1
+	shmobile/multiplatform-sh73a0
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-sh73a0-multiplatform-for-v4.1
+		contains renesas/dt
+	at91/multiplatform
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-multiplatform
+		contains at91/cleanup2
+	patch
+		ARM: at91: add a Kconfig dependency on multi-platform
+	at91/cleanup4_bis
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-cleanup4_bis
+
+next/soc
+	renesas/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-for-v4.1
+	meson/soc
+		https://github.com/carlocaione/linux-meson tags/for-v4.0-rc/meson-soc
+	mvebu/soc
+		git://git.infradead.org/linux-mvebu tags/mvebu-soc-4.1
+	patch
+		ARM: Alpine: Initial support for Alpine platform
+		ARM: Alpine: early-debug print support
+		ARM: Alpine: smp support
+		ARM: dts: Alpine platform binding documentation
+		MAINTAINERS: add maintainer for Alpine Arm machine
+	renesas/da9063-da9210-quirk
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-da9063-da9210-quirk-for-v4.1
+	rk/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.1-rockchip-soc1
+	patch
+		ARM: MCPM: move the algorithmic complexity to the core code
+		ARM: vexpress: migrate TC2 to the new MCPM backend abstraction
+		ARM: vexpress: DCSCB: tighten CPU validity assertion
+		ARM: vexpress: migrate DCSCB to the new MCPM backend abstraction
+		ARM: Exynos: migrate DCSCB to the new MCPM backend abstraction
+	omap/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/v4.1-soc
+	imx/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-soc-4.1
+	samsung/updates
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-updates
+	<no branch> (3213e674ca42c95b84ed040eab3d5722f41412ae)
+		http://github.com/broadcom/stblinux tags/arm-soc/for-4.1/soc
+	patch
+		ARM: alpine: add support for generic pci
+
+next/dt
+	renesas/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-for-v4.1
+	meson/dt
+		https://github.com/carlocaione/linux-meson tags/for-v4.0-rc/meson-dts
+	patch
+		devicetree: Add TI-NSPIRE USB OTG support to device tree
+	at91/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-dt
+	broadcom/dt
+		http://github.com/broadcom/stblinux tags/arm-soc/for-4.1/devicetree
+	mvebu/dt
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-4.1
+	renesas/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt2-for-v4.1
+	patch
+		ARM: dts: Alpine platform devicetree
+	bcm/dt
+		http://github.com/broadcom/stblinux tags/arm-soc/for-4.1/devicetree-part-2
+	patch
+		ARM: dts: fix typo in makefile for alpine-db
+	rk/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.1-rockchip-dts1
+	renesas/dt3
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt3-for-v4.1
+	omap/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/v4.1-dt
+	mvebu/dt2
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-4.1-2
+	at91/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-dt2
+	bcm/dt3
+		http://github.com/broadcom/stblinux tags/arm-soc/for-4.1/devicetree-part-3
+	patch
+		ARM: dts: fix typo in bcm7445.dtsi
+	omap/wl12xx-dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.1/wl12xx-dt
+		contains to-build
+	patch
+		arm: qcom: dts: gic: add compatible string for Qualcomm MSM GICs
+		mfd: qcom,tcsr: Add device tree binding for TCSR
+		arm: dts: qcom: Add TCSR support for APQ8064
+		arm: dts: qcom: Add TCSR support for IPQ8064
+		arm: dts: qcom: Add TCSR support for MSM8660
+		arm: dts: qcom: Add TCSR support for MSM8960
+		arm: dts: qcom: Add LCC nodes
+		arm: dts: qcom: Add SPMI PMIC Arbiter nodes for APQ8084 and MSM8974
+		arm: dts: qcom: Add 8x74 chipset SPMI PMIC's nodes
+		arm: dts: qcom: Add APQ8084 chipset SPMI PMIC's nodes
+		arm: dts: qcom: Add LPASS Audio HW to IPQ8064 device tree
+		dt-bindings: Add #defines for MSM8916 clocks and resets
+		devicetree: bindings: Update qcom,saw2 node bindings
+		devicetree: bindings: Document qcom,idle-states
+		ARM: dts: qcom: Add power-controller device node for 8074 Krait CPUs
+		ARM: dts: qcom: Add power-controller device node for 8084 Krait CPUs
+		ARM: dts: qcom: Update power-controller device node for 8064 Krait CPUs
+		ARM: dts: qcom: Add idle states device nodes for 8974/8074
+		ARM: dts: qcom: Add idle states device nodes for 8084
+		ARM: dts: qcom: Add idle state device nodes for 8064
+	<no branch> (03650bd2010b117c5c16a75278b0d01def8e9376)
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-4.1-dt
+	mediatek/dt
+		https://github.com/mbgg/linux-mediatek tags/v4.0-next-dts
+	mvebu/dt3
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-4.1-3
+	samsung/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt
+	patch
+		Revert "ARM: dts: mt8135: Add pinctrl/GPIO/EINT node for mt8135."
+	mvebu/fixes-4.0-2
+		git://git.infradead.org/linux-mvebu tags/mvebu-fixes-4.0-2
+	patch
+		ARM: dts: alpine: add internal pci
+
+next/arm64
+	patch
+		ARM64: Add new Xilinx ZynqMP SoC
+		arm64: dts: Add support for Spreadtrum SC9836 SoC in dts and Makefile
+		arm64: Add support for Spreadtrum's Sharkl64 Platform in Kconfig and defconfig
+	qcom/arm64
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-arm64-for-4.1
+	patch
+		arm64: dts: sprd: adding coresight entries to Spreadtrum SC9836
+		arm64: dts: Add Qualcomm MSM8916 SoC and evaluation board dts
+		arm64: dts: Add Qualcomm APQ8016 SBC evaluation board dts
+		arm64: dts: add interrupt-affinity property to pmu node for juno
+	mediatek/arm64
+		https://github.com/mbgg/linux-mediatek tags/v4.0-next-arm64
+
+next/defconfig
+	mvebu/defconfig
+		git://git.infradead.org/linux-mvebu tags/mvebu-defconfig-4.1
+	patch
+		ARM: configs: enable Marvell Armada 39x in multi_v7_defconfig
+	qcom/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-defconfig-for-4.1
+	patch
+		ARM: configs: remove all CONFIG_RCAR_AUDMAC_PP from ARM defconfigs
+	omap/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/v4.1-defconfig
+	renesas/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig-for-v4.1
+	mvebu/defconfig2
+		git://git.infradead.org/linux-mvebu tags/mvebu-defconfig-4.1-2
+	sunxi/defconfig
+		https://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-defconfig-for-4.1
+	qcom/dwefconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-defconfig-for-4.1-1
+	patch
+		ARM: multi_v7_defconfig: Enable Tegra ACTMON support
+		ARM: multi_v7_defconfig: Enable support for ELAN i2c trackpads
+		ARM: multi_v7_defconfig: Build the Marvell WiFi-Ex driver as a module
+		ARM: multi_v7_defconfig: Add gpio-restart driver
+	imx/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-defconfig-4.1
+	samsung/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-defconfig
+	patch
+		ARM: multi_v7_defconfig: enable alpine platform
+
+fixes
+	patch
+		kbuild: Create directory for target DTB
+	<no branch> (548ae94c1cc7fc120848757249b9a542b1080ffb)
+		git://git.infradead.org/linux-mvebu tags/mvebu-fixes-4.0
+	<no branch> (cfdda3535f87e752780ca18a57d13db58f6a6913)
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-fixes-2
+	patch
+		ARM: at91/dt: sama5d3 xplained: add phy address for macb1
+
+next/late
+	omap/late-prcm-cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.1/prcm-dts
+		contains omap/fixes-non-critical
+	imx/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-dt-4.1
+		contains imx/cleanup
+		contains imx/soc
+
+
