@@ -718,12 +718,13 @@ void nd_jump_link(struct nameidata *nd, struct path *path)
 	nd->flags |= LOOKUP_JUMPED;
 }
 
-static inline void put_link(struct nameidata *nd, struct path *link, void *cookie)
+static inline void put_link(struct nameidata *nd)
 {
-	struct inode *inode = link->dentry->d_inode;
-	if (cookie && inode->i_op->put_link)
-		inode->i_op->put_link(link->dentry, cookie);
-	path_put(link);
+	struct saved *last = nd->stack + nd->depth;
+	struct inode *inode = last->link.dentry->d_inode;
+	if (last->cookie && inode->i_op->put_link)
+		inode->i_op->put_link(last->link.dentry, last->cookie);
+	path_put(&last->link);
 }
 
 int sysctl_protected_symlinks __read_mostly = 0;
@@ -1801,7 +1802,7 @@ Walked:
 			err = 0;
 			if (unlikely(!s)) {
 				/* jumped */
-				put_link(nd, &last->link, last->cookie);
+				put_link(nd);
 				current->link_count--;
 				nd->depth--;
 				last--;
@@ -1832,7 +1833,7 @@ Walked:
 	terminate_walk(nd);
 Err:
 	while (unlikely(nd->depth)) {
-		put_link(nd, &last->link, last->cookie);
+		put_link(nd);
 		current->link_count--;
 		nd->depth--;
 		last--;
@@ -1842,7 +1843,7 @@ OK:
 	if (unlikely(nd->depth)) {
 		name = last->name;
 		err = walk_component(nd, LOOKUP_FOLLOW);
-		put_link(nd, &last->link, last->cookie);
+		put_link(nd);
 		current->link_count--;
 		nd->depth--;
 		last--;
@@ -1987,7 +1988,7 @@ static int trailing_symlink(struct nameidata *nd)
 	nd->inode = nd->path.dentry->d_inode;
 	error = link_path_walk(s, nd);
 	if (unlikely(error))
-		put_link(nd, &nd->stack[0].link, nd->stack[0].cookie);
+		put_link(nd);
 	return error;
 }
 
@@ -2028,7 +2029,7 @@ static int path_lookupat(int dfd, const struct filename *name,
 			if (err)
 				break;
 			err = lookup_last(nd);
-			put_link(nd, &nd->stack[0].link, nd->stack[0].cookie);
+			put_link(nd);
 		}
 	}
 
@@ -2372,7 +2373,7 @@ path_mountpoint(int dfd, const struct filename *name, struct path *path,
 		if (err)
 			break;
 		err = mountpoint_last(nd, path);
-		put_link(nd, &nd->stack[0].link, nd->stack[0].cookie);
+		put_link(nd);
 	}
 out:
 	path_cleanup(nd);
@@ -3256,7 +3257,7 @@ static struct file *path_openat(int dfd, struct filename *pathname,
 		if (unlikely(error))
 			break;
 		error = do_last(nd, file, op, &opened, pathname);
-		put_link(nd, &nd->stack[0].link, nd->stack[0].cookie);
+		put_link(nd);
 	}
 out:
 	path_cleanup(nd);
