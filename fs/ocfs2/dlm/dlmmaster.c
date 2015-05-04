@@ -498,16 +498,6 @@ static void dlm_lockres_release(struct kref *kref)
 	mlog(0, "destroying lockres %.*s\n", res->lockname.len,
 	     res->lockname.name);
 
-	spin_lock(&dlm->track_lock);
-	if (!list_empty(&res->tracking))
-		list_del_init(&res->tracking);
-	else {
-		mlog(ML_ERROR, "Resource %.*s not on the Tracking list\n",
-		     res->lockname.len, res->lockname.name);
-		dlm_print_one_lock_resource(res);
-	}
-	spin_unlock(&dlm->track_lock);
-
 	atomic_dec(&dlm->res_cur_count);
 
 	if (!hlist_unhashed(&res->hash_node) ||
@@ -755,13 +745,16 @@ lookup:
 	spin_lock(&dlm->spinlock);
 	tmpres = __dlm_lookup_lockres_full(dlm, lockid, namelen, hash);
 	if (tmpres) {
-		spin_unlock(&dlm->spinlock);
 		spin_lock(&tmpres->spinlock);
 		/* Wait on the thread that is mastering the resource */
 		if (tmpres->owner == DLM_LOCK_RES_OWNER_UNKNOWN) {
-			__dlm_wait_on_lockres(tmpres);
+			__dlm_wait_on_lockres_flags_new(dlm, tmpres,
+					(DLM_LOCK_RES_IN_PROGRESS|
+					DLM_LOCK_RES_RECOVERING|
+					DLM_LOCK_RES_MIGRATING));
 			BUG_ON(tmpres->owner == DLM_LOCK_RES_OWNER_UNKNOWN);
 			spin_unlock(&tmpres->spinlock);
+			spin_unlock(&dlm->spinlock);
 			dlm_lockres_put(tmpres);
 			tmpres = NULL;
 			goto lookup;
@@ -770,9 +763,10 @@ lookup:
 		/* Wait on the resource purge to complete before continuing */
 		if (tmpres->state & DLM_LOCK_RES_DROPPING_REF) {
 			BUG_ON(tmpres->owner == dlm->node_num);
-			__dlm_wait_on_lockres_flags(tmpres,
-						    DLM_LOCK_RES_DROPPING_REF);
+			__dlm_wait_on_lockres_flags_new(dlm, tmpres,
+				DLM_LOCK_RES_DROPPING_REF);
 			spin_unlock(&tmpres->spinlock);
+			spin_unlock(&dlm->spinlock);
 			dlm_lockres_put(tmpres);
 			tmpres = NULL;
 			goto lookup;
@@ -782,8 +776,20 @@ lookup:
 		dlm_lockres_grab_inflight_ref(dlm, tmpres);
 
 		spin_unlock(&tmpres->spinlock);
-		if (res)
+		spin_unlock(&dlm->spinlock);
+		if (res) {
+			spin_lock(&dlm->track_lock);
+			if (!list_empty(&res->tracking))
+				list_del_init(&res->tracking);
+			else {
+				mlog(ML_ERROR, "Resource %.*s not "
+						"on the Tracking list\n",
+						res->lockname.len,
+						res->lockname.name);
+			}
+			spin_unlock(&dlm->track_lock);
 			dlm_lockres_put(res);
+		}
 		res = tmpres;
 		goto leave;
 	}
