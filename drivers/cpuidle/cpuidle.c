@@ -167,8 +167,10 @@ int cpuidle_enter_state(struct cpuidle_device *dev, struct cpuidle_driver *drv,
 	 * local timer will be shut down.  If a local timer is used from another
 	 * CPU as a broadcast timer, this call may fail if it is not available.
 	 */
-	if (broadcast && tick_broadcast_enter())
+	if (broadcast && tick_broadcast_enter()) {
+		default_idle_call();
 		return -EBUSY;
+	}
 
 	trace_cpu_idle_rcuidle(index, dev->cpu);
 	time_start = ktime_get();
