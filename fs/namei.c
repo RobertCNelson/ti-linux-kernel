@@ -1554,6 +1554,8 @@ static void terminate_walk(struct nameidata *nd)
 			nd->root.mnt = NULL;
 		rcu_read_unlock();
 	}
+	while (unlikely(nd->depth))
+		put_link(nd);
 }
 
 /*
@@ -1848,8 +1850,6 @@ Walked:
 		}
 	}
 	terminate_walk(nd);
-	while (unlikely(nd->depth))
-		put_link(nd);
 	return err;
 OK:
 	if (!nd->depth)		/* called from path_init(), done */
@@ -2366,8 +2366,6 @@ done:
 	error = 0;
 out:
 	terminate_walk(nd);
-	if (nd->depth)
-		put_link(nd);
 	return error;
 }
 
@@ -2970,8 +2968,6 @@ static int do_last(struct nameidata *nd,
 		error = handle_dots(nd, nd->last_type);
 		if (unlikely(error)) {
 			terminate_walk(nd);
-			if (nd->depth)
-				put_link(nd);
 			return error;
 		}
 		goto finish_open;
@@ -3170,8 +3166,6 @@ out:
 		mnt_drop_write(nd->path.mnt);
 	path_put(&save_parent);
 	terminate_walk(nd);
-	if (nd->depth)
-		put_link(nd);
 	return error;
 
 exit_dput:
