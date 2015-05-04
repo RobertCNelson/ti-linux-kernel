@@ -1751,7 +1751,6 @@ static inline u64 hash_name(const char *name)
 static int link_path_walk(const char *name, struct nameidata *nd)
 {
 	int err;
-	int orig_depth = nd->depth;
 
 	while (*name=='/')
 		name++;
@@ -1860,7 +1859,7 @@ Walked:
 	}
 	terminate_walk(nd);
 Err:
-	while (unlikely(nd->depth > orig_depth))
+	while (unlikely(nd->depth))
 		put_link(nd);
 	return err;
 OK:
@@ -2009,10 +2008,7 @@ static int trailing_symlink(struct nameidata *nd)
 	}
 	nd->inode = nd->path.dentry->d_inode;
 	nd->stack[0].name = NULL;
-	error = link_path_walk(s, nd);
-	if (unlikely(error))
-		put_link(nd);
-	return error;
+	return link_path_walk(s, nd);
 }
 
 static inline int lookup_last(struct nameidata *nd)
