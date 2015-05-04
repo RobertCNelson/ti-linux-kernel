@@ -754,7 +754,7 @@ void nd_jump_link(struct nameidata *nd, struct path *path)
 
 static inline void put_link(struct nameidata *nd)
 {
-	struct saved *last = nd->stack + nd->depth;
+	struct saved *last = nd->stack + --nd->depth;
 	struct inode *inode = last->link.dentry->d_inode;
 	if (last->cookie && inode->i_op->put_link)
 		inode->i_op->put_link(last->link.dentry, last->cookie);
@@ -1832,7 +1832,6 @@ Walked:
 			err = 0;
 			if (unlikely(!s)) {
 				/* jumped */
-				nd->depth--;
 				put_link(nd);
 			} else {
 				if (*s == '/') {
@@ -1860,16 +1859,13 @@ Walked:
 	}
 	terminate_walk(nd);
 Err:
-	while (unlikely(nd->depth > 1)) {
-		nd->depth--;
+	while (unlikely(nd->depth > 1))
 		put_link(nd);
-	}
 	return err;
 OK:
 	if (unlikely(nd->depth > 1)) {
 		name = nd->stack[nd->depth - 1].name;
 		err = walk_component(nd, LOOKUP_FOLLOW);
-		nd->depth--;
 		put_link(nd);
 		goto Walked;
 	}
@@ -2013,12 +2009,9 @@ static int trailing_symlink(struct nameidata *nd)
 	}
 	nd->inode = nd->path.dentry->d_inode;
 	error = link_path_walk(s, nd);
-	if (unlikely(error)) {
-		nd->depth--;
+	if (unlikely(error))
 		put_link(nd);
-		return error;
-	}
-	return 0;
+	return error;
 }
 
 static inline int lookup_last(struct nameidata *nd)
@@ -2058,7 +2051,6 @@ static int path_lookupat(int dfd, const struct filename *name,
 			if (err)
 				break;
 			err = lookup_last(nd);
-			nd->depth--;
 			put_link(nd);
 		}
 	}
@@ -2408,7 +2400,6 @@ path_mountpoint(int dfd, const struct filename *name, struct path *path,
 		if (err)
 			break;
 		err = mountpoint_last(nd, path);
-		nd->depth--;
 		put_link(nd);
 	}
 out:
@@ -3295,7 +3286,6 @@ static struct file *path_openat(int dfd, struct filename *pathname,
 		if (unlikely(error))
 			break;
 		error = do_last(nd, file, op, &opened, pathname);
-		nd->depth--;
 		put_link(nd);
 	}
 out:
