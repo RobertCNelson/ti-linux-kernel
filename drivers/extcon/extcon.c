@@ -1,5 +1,5 @@
 /*
- *  drivers/extcon/extcon_class.c
+ *  drivers/extcon/extcon.c - External Connector (extcon) framework.
  *
  *  External connector (extcon) class driver
  *
@@ -19,8 +19,7 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- *
-*/
+ */
 
 #include <linux/module.h>
 #include <linux/types.h>
@@ -163,7 +162,7 @@ static ssize_t name_show(struct device *dev, struct device_attribute *attr,
 			return ret;
 	}
 
-	return sprintf(buf, "%s\n", dev_name(&edev->dev));
+	return sprintf(buf, "%s\n", edev->name);
 }
 static DEVICE_ATTR_RO(name);
 
@@ -469,7 +468,6 @@ int extcon_register_interest(struct extcon_specific_cable_nb *obj,
 		ret = raw_notifier_chain_register(&obj->edev->nh,
 						  &obj->internal_nb);
 		spin_unlock_irqrestore(&obj->edev->lock, flags);
-		return ret;
 	} else {
 		struct class_dev_iter iter;
 		struct extcon_dev *extd;
@@ -489,8 +487,10 @@ int extcon_register_interest(struct extcon_specific_cable_nb *obj,
 						cable_name, nb);
 		}
 
-		return -ENODEV;
+		ret = -ENODEV;
 	}
+
+	return ret;
 }
 EXPORT_SYMBOL_GPL(extcon_register_interest);
 
@@ -701,6 +701,7 @@ EXPORT_SYMBOL_GPL(devm_extcon_dev_free);
 int extcon_dev_register(struct extcon_dev *edev)
 {
 	int ret, index = 0;
+	static atomic_t edev_no = ATOMIC_INIT(-1);
 
 	if (!extcon_class) {
 		ret = create_extcon_class();
@@ -725,13 +726,14 @@ int extcon_dev_register(struct extcon_dev *edev)
 	edev->dev.class = extcon_class;
 	edev->dev.release = extcon_dev_release;
 
-	edev->name = edev->name ? edev->name : dev_name(edev->dev.parent);
+	edev->name = dev_name(edev->dev.parent);
 	if (IS_ERR_OR_NULL(edev->name)) {
 		dev_err(&edev->dev,
 			"extcon device name is null\n");
 		return -EINVAL;
 	}
-	dev_set_name(&edev->dev, "%s", edev->name);
+	dev_set_name(&edev->dev, "extcon%lu",
+			(unsigned long)atomic_inc_return(&edev_no));
 
 	if (edev->max_supported) {
 		char buf[10];
@@ -1043,6 +1045,15 @@ struct extcon_dev *extcon_get_edev_by_phandle(struct device *dev, int index)
 }
 #endif /* CONFIG_OF */
 EXPORT_SYMBOL_GPL(extcon_get_edev_by_phandle);
+
+/**
+ * extcon_get_edev_name() - Get the name of the extcon device.
+ * @edev:	the extcon device
+ */
+const char *extcon_get_edev_name(struct extcon_dev *edev)
+{
+	return !edev ? NULL : edev->name;
+}
 
 static int __init extcon_class_init(void)
 {
