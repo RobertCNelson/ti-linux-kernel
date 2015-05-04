@@ -1,5 +1,9 @@
 /*
+<<<<<<< HEAD
  * Copyright (c) 2014 NVIDIA Corporation. All rights reserved.
+=======
+ * Copyright (C) 2014 NVIDIA Corporation
+>>>>>>> e45edb177253... memory: tegra: Add EMC (external memory controller) driver
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
