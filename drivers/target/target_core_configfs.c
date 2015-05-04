@@ -315,28 +315,12 @@ static int target_fabric_tf_ops_check(const struct target_core_fabric_ops *tfo)
 		pr_err("Missing tfo->get_fabric_name()\n");
 		return -EINVAL;
 	}
-	if (!tfo->get_fabric_proto_ident) {
-		pr_err("Missing tfo->get_fabric_proto_ident()\n");
-		return -EINVAL;
-	}
 	if (!tfo->tpg_get_wwn) {
 		pr_err("Missing tfo->tpg_get_wwn()\n");
 		return -EINVAL;
 	}
 	if (!tfo->tpg_get_tag) {
 		pr_err("Missing tfo->tpg_get_tag()\n");
-		return -EINVAL;
-	}
-	if (!tfo->tpg_get_default_depth) {
-		pr_err("Missing tfo->tpg_get_default_depth()\n");
-		return -EINVAL;
-	}
-	if (!tfo->tpg_get_pr_transport_id) {
-		pr_err("Missing tfo->tpg_get_pr_transport_id()\n");
-		return -EINVAL;
-	}
-	if (!tfo->tpg_get_pr_transport_id_len) {
-		pr_err("Missing tfo->tpg_get_pr_transport_id_len()\n");
 		return -EINVAL;
 	}
 	if (!tfo->tpg_check_demo_mode) {
@@ -353,14 +337,6 @@ static int target_fabric_tf_ops_check(const struct target_core_fabric_ops *tfo)
 	}
 	if (!tfo->tpg_check_prod_mode_write_protect) {
 		pr_err("Missing tfo->tpg_check_prod_mode_write_protect()\n");
-		return -EINVAL;
-	}
-	if (!tfo->tpg_alloc_fabric_acl) {
-		pr_err("Missing tfo->tpg_alloc_fabric_acl()\n");
-		return -EINVAL;
-	}
-	if (!tfo->tpg_release_fabric_acl) {
-		pr_err("Missing tfo->tpg_release_fabric_acl()\n");
 		return -EINVAL;
 	}
 	if (!tfo->tpg_get_inst_index) {
@@ -393,10 +369,6 @@ static int target_fabric_tf_ops_check(const struct target_core_fabric_ops *tfo)
 	}
 	if (!tfo->set_default_node_attributes) {
 		pr_err("Missing tfo->set_default_node_attributes()\n");
-		return -EINVAL;
-	}
-	if (!tfo->get_task_tag) {
-		pr_err("Missing tfo->get_task_tag()\n");
 		return -EINVAL;
 	}
 	if (!tfo->get_cmd_state) {
@@ -1032,8 +1004,8 @@ static ssize_t target_core_dev_pr_store_attr_res_aptpl_metadata(
 	u64 sa_res_key = 0;
 	u32 mapped_lun = 0, target_lun = 0;
 	int ret = -1, res_holder = 0, all_tg_pt = 0, arg, token;
-	u16 port_rpti = 0, tpgt = 0;
-	u8 type = 0, scope;
+	u16 tpgt = 0;
+	u8 type = 0;
 
 	if (dev->transport->transport_type == TRANSPORT_PLUGIN_PHBA_PDEV)
 		return 0;
@@ -1113,7 +1085,6 @@ static ssize_t target_core_dev_pr_store_attr_res_aptpl_metadata(
 			break;
 		case Opt_res_scope:
 			match_int(args, &arg);
-			scope = (u8)arg;
 			break;
 		case Opt_res_all_tg_pt:
 			match_int(args, &arg);
@@ -1153,7 +1124,6 @@ static ssize_t target_core_dev_pr_store_attr_res_aptpl_metadata(
 			break;
 		case Opt_port_rtpi:
 			match_int(args, &arg);
-			port_rpti = (u16)arg;
 			break;
 		case Opt_target_lun:
 			match_int(args, &arg);

@@ -79,12 +79,6 @@
 #define DA_MAX_WRITE_SAME_LEN			0
 /* Use a model alias based on the configfs backend device name */
 #define DA_EMULATE_MODEL_ALIAS			0
-/* Emulation for Direct Page Out */
-#define DA_EMULATE_DPO				0
-/* Emulation for Forced Unit Access WRITEs */
-#define DA_EMULATE_FUA_WRITE			1
-/* Emulation for Forced Unit Access READs */
-#define DA_EMULATE_FUA_READ			0
 /* Emulation for WriteCache and SYNCHRONIZE_CACHE */
 #define DA_EMULATE_WRITE_CACHE			0
 /* Emulation for UNIT ATTENTION Interlock Control */
@@ -131,12 +125,6 @@ enum transport_lun_status_table {
 	TRANSPORT_LUN_STATUS_ACTIVE = 1,
 };
 
-/* struct se_portal_group->se_tpg_type */
-enum transport_tpg_type_table {
-	TRANSPORT_TPG_TYPE_NORMAL = 0,
-	TRANSPORT_TPG_TYPE_DISCOVERY = 1,
-};
-
 /* Special transport agnostic struct se_cmd->t_states */
 enum transport_state_table {
 	TRANSPORT_NO_STATE	= 0,
@@ -167,6 +155,7 @@ enum se_cmd_flags_table {
 	SCF_PASSTHROUGH_SG_TO_MEM_NOALLOC = 0x00020000,
 	SCF_COMPARE_AND_WRITE		= 0x00080000,
 	SCF_COMPARE_AND_WRITE_POST	= 0x00100000,
+	SCF_PASSTHROUGH_PROT_SG_TO_MEM_NOALLOC = 0x00200000,
 };
 
 /* struct se_dev_entry->lun_flags and struct se_lun->lun_access */
@@ -431,7 +420,7 @@ struct se_tmr_req {
 	u8			response;
 	int			call_transport;
 	/* Reference to ITT that Task Mgmt should be performed */
-	u32			ref_task_tag;
+	u64			ref_task_tag;
 	void 			*fabric_tmr_ptr;
 	struct se_cmd		*task_cmd;
 	struct se_device	*tmr_dev;
@@ -484,6 +473,7 @@ struct se_cmd {
 	u8			scsi_asc;
 	u8			scsi_ascq;
 	u16			scsi_sense_length;
+	u64			tag; /* SAM command identifier aka task tag */
 	/* Delay for ALUA Active/NonOptimized state access in milliseconds */
 	int			alua_nonop_delay;
 	/* See include/linux/dma-mapping.h */
@@ -869,8 +859,12 @@ struct se_tpg_np {
 };
 
 struct se_portal_group {
-	/* Type of target portal group, see transport_tpg_type_table */
-	enum transport_tpg_type_table se_tpg_type;
+	/*
+	 * PROTOCOL IDENTIFIER value per SPC4, 7.5.1.
+	 *
+	 * Negative values can be used by fabric drivers for internal use TPGs.
+	 */
+	int			proto_id;
 	/* Number of ACLed Initiator Nodes for this TPG */
 	u32			num_node_acls;
 	/* Used for PR SPEC_I_PT=1 and REGISTER_AND_MOVE */
@@ -880,8 +874,6 @@ struct se_portal_group {
 	/* Spinlock for adding/removing sessions */
 	spinlock_t		session_lock;
 	spinlock_t		tpg_lun_lock;
-	/* Pointer to $FABRIC_MOD portal group */
-	void			*se_tpg_fabric_ptr;
 	struct list_head	se_tpg_node;
 	/* linked list for initiator ACL list */
 	struct list_head	acl_node_list;
