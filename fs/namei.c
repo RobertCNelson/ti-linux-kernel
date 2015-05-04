@@ -2010,6 +2010,8 @@ static inline int lookup_last(struct nameidata *nd)
 
 	nd->flags &= ~LOOKUP_PARENT;
 	err = walk_component(nd, nd->flags & LOOKUP_FOLLOW);
+	if (nd->depth)
+		put_link(nd);
 	if (err < 0)
 		terminate_walk(nd);
 	return err;
@@ -2037,13 +2039,10 @@ static int path_lookupat(int dfd, const struct filename *name,
 	 */
 	err = path_init(dfd, name, flags, nd);
 	if (!err && !(flags & LOOKUP_PARENT)) {
-		err = lookup_last(nd);
-		while (err > 0) {
+		while ((err = lookup_last(nd)) > 0) {
 			err = trailing_symlink(nd);
 			if (err)
 				break;
-			err = lookup_last(nd);
-			put_link(nd);
 		}
 	}
 
@@ -2354,6 +2353,8 @@ done:
 		dput(dentry);
 		goto out;
 	}
+	if (nd->depth)
+		put_link(nd);
 	path->dentry = dentry;
 	path->mnt = nd->path.mnt;
 	if (should_follow_link(dentry, nd->flags & LOOKUP_FOLLOW)) {
@@ -2365,6 +2366,8 @@ done:
 	error = 0;
 out:
 	terminate_walk(nd);
+	if (nd->depth)
+		put_link(nd);
 	return error;
 }
 
@@ -2386,13 +2389,10 @@ path_mountpoint(int dfd, const struct filename *name, struct path *path,
 	if (unlikely(err))
 		goto out;
 
-	err = mountpoint_last(nd, path);
-	while (err > 0) {
+	while ((err = mountpoint_last(nd, path)) > 0) {
 		err = trailing_symlink(nd);
 		if (err)
 			break;
-		err = mountpoint_last(nd, path);
-		put_link(nd);
 	}
 out:
 	path_cleanup(nd);
@@ -2970,6 +2970,8 @@ static int do_last(struct nameidata *nd,
 		error = handle_dots(nd, nd->last_type);
 		if (unlikely(error)) {
 			terminate_walk(nd);
+			if (nd->depth)
+				put_link(nd);
 			return error;
 		}
 		goto finish_open;
@@ -2995,8 +2997,11 @@ static int do_last(struct nameidata *nd,
 		 * about to look up
 		 */
 		error = complete_walk(nd);
-		if (error)
+		if (error) {
+			if (nd->depth)
+				put_link(nd);
 			return error;
+		}
 
 		audit_inode(name, dir, LOOKUP_PARENT);
 		error = -EISDIR;
@@ -3087,6 +3092,8 @@ finish_lookup:
 			}
 		}
 		BUG_ON(inode != path.dentry->d_inode);
+		if (nd->depth)
+			put_link(nd);
 		nd->link = path;
 		return 1;
 	}
@@ -3110,6 +3117,8 @@ finish_lookup:
 finish_open:
 	error = complete_walk(nd);
 	if (error) {
+		if (nd->depth)
+			put_link(nd);
 		path_put(&save_parent);
 		return error;
 	}
@@ -3161,6 +3170,8 @@ out:
 		mnt_drop_write(nd->path.mnt);
 	path_put(&save_parent);
 	terminate_walk(nd);
+	if (nd->depth)
+		put_link(nd);
 	return error;
 
 exit_dput:
@@ -3273,14 +3284,11 @@ static struct file *path_openat(int dfd, struct filename *pathname,
 	if (unlikely(error))
 		goto out;
 
-	error = do_last(nd, file, op, &opened, pathname);
-	while (unlikely(error > 0)) { /* trailing symlink */
+	while ((error = do_last(nd, file, op, &opened, pathname)) > 0) {
 		nd->flags &= ~(LOOKUP_OPEN|LOOKUP_CREATE|LOOKUP_EXCL);
 		error = trailing_symlink(nd);
 		if (unlikely(error))
 			break;
-		error = do_last(nd, file, op, &opened, pathname);
-		put_link(nd);
 	}
 out:
 	path_cleanup(nd);
