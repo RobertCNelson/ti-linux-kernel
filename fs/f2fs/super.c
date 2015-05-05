@@ -520,7 +520,7 @@ int f2fs_sync_fs(struct super_block *sb, int sync)
 	} else {
 		f2fs_balance_fs(sbi);
 	}
-	f2fs_trace_ios(NULL, NULL, 1);
+	f2fs_trace_ios(NULL, 1);
 
 	return 0;
 }
@@ -966,6 +966,30 @@ retry:
 	return 0;
 }
 
+int f2fs_commit_super(struct f2fs_sb_info *sbi)
+{
+	struct buffer_head *sbh = sbi->raw_super_buf;
+	sector_t block = sbh->b_blocknr;
+	int err;
+
+	/* write back-up superblock first */
+	sbh->b_blocknr = block ? 0 : 1;
+	mark_buffer_dirty(sbh);
+	err = sync_dirty_buffer(sbh);
+
+	sbh->b_blocknr = block;
+	if (err)
+		goto out;
+
+	/* write current valid superblock */
+	mark_buffer_dirty(sbh);
+	err = sync_dirty_buffer(sbh);
+out:
+	clear_buffer_write_io_error(sbh);
+	set_buffer_uptodate(sbh);
+	return err;
+}
+
 static int f2fs_fill_super(struct super_block *sb, void *data, int silent)
 {
 	struct f2fs_sb_info *sbi;
@@ -1035,6 +1059,7 @@ try_onemore:
 	sbi->raw_super = raw_super;
 	sbi->raw_super_buf = raw_super_buf;
 	mutex_init(&sbi->gc_mutex);
+	mutex_init(&sbi->writepages);
 	mutex_init(&sbi->cp_mutex);
 	init_rwsem(&sbi->node_write);
 	clear_sbi_flag(sbi, SBI_POR_DOING);

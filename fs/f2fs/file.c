@@ -271,7 +271,7 @@ flush_out:
 	ret = f2fs_issue_flush(sbi);
 out:
 	trace_f2fs_sync_file_exit(inode, need_cp, datasync, ret);
-	f2fs_trace_ios(NULL, NULL, 1);
+	f2fs_trace_ios(NULL, 1);
 	return ret;
 }
 
@@ -461,28 +461,32 @@ void truncate_data_blocks(struct dnode_of_data *dn)
 }
 
 static int truncate_partial_data_page(struct inode *inode, u64 from,
-								bool force)
+								bool cache_only)
 {
 	unsigned offset = from & (PAGE_CACHE_SIZE - 1);
+	pgoff_t index = from >> PAGE_CACHE_SHIFT;
+	struct address_space *mapping = inode->i_mapping;
 	struct page *page;
 
-	if (!offset && !force)
+	if (!offset && !cache_only)
 		return 0;
 
-	page = find_data_page(inode, from >> PAGE_CACHE_SHIFT, force);
+	if (cache_only) {
+		page = grab_cache_page(mapping, index);
+		if (page && PageUptodate(page))
+			goto truncate_out;
+		f2fs_put_page(page, 1);
+		return 0;
+	}
+
+	page = get_lock_data_page(inode, index);
 	if (IS_ERR(page))
 		return 0;
-
-	lock_page(page);
-	if (unlikely(!PageUptodate(page) ||
-			page->mapping != inode->i_mapping))
-		goto out;
-
+truncate_out:
 	f2fs_wait_on_page_writeback(page, DATA);
 	zero_user(page, offset, PAGE_CACHE_SIZE - offset);
-	if (!force)
+	if (!cache_only)
 		set_page_dirty(page);
-out:
 	f2fs_put_page(page, 1);
 	return 0;
 }
@@ -560,7 +564,7 @@ void f2fs_truncate(struct inode *inode)
 	trace_f2fs_truncate(inode);
 
 	/* we should check inline_data size */
-	if (f2fs_has_inline_data(inode) && !f2fs_may_inline(inode)) {
+	if (f2fs_has_inline_data(inode) && !f2fs_may_inline_data(inode)) {
 		if (f2fs_convert_inline_inode(inode))
 			return;
 	}
@@ -718,10 +722,6 @@ static int punch_hole(struct inode *inode, loff_t offset, loff_t len)
 	if (!S_ISREG(inode->i_mode))
 		return -EOPNOTSUPP;
 
-	/* skip punching hole beyond i_size */
-	if (offset >= inode->i_size)
-		return ret;
-
 	if (f2fs_has_inline_data(inode)) {
 		ret = f2fs_convert_inline_inode(inode);
 		if (ret)
@@ -830,15 +830,19 @@ static long f2fs_fallocate(struct file *file, int mode,
 				loff_t offset, loff_t len)
 {
 	struct inode *inode = file_inode(file);
-	long ret;
+	long ret = 0;
 
 	if (mode & ~(FALLOC_FL_KEEP_SIZE | FALLOC_FL_PUNCH_HOLE))
 		return -EOPNOTSUPP;
 
 	mutex_lock(&inode->i_mutex);
 
-	if (mode & FALLOC_FL_PUNCH_HOLE)
+	if (mode & FALLOC_FL_PUNCH_HOLE) {
+		if (offset >= inode->i_size)
+			goto out;
+
 		ret = punch_hole(inode, offset, len);
+	}
 	else
 		ret = expand_inode_data(inode, offset, len, mode);
 
@@ -847,6 +851,7 @@ static long f2fs_fallocate(struct file *file, int mode,
 		mark_inode_dirty(inode);
 	}
 
+out:
 	mutex_unlock(&inode->i_mutex);
 
 	trace_f2fs_fallocate(inode, mode, offset, len, ret);
