@@ -77,6 +77,29 @@ repeat:
 	__set_current_state(TASK_RUNNING);
 }
 
+void __dlm_wait_on_lockres_flags_new(struct dlm_ctxt *dlm,
+		struct dlm_lock_resource *res, int flags)
+{
+	DECLARE_WAITQUEUE(wait, current);
+
+	assert_spin_locked(&dlm->spinlock);
+	assert_spin_locked(&res->spinlock);
+
+	add_wait_queue(&res->wq, &wait);
+repeat:
+	set_current_state(TASK_UNINTERRUPTIBLE);
+	if (res->state & flags) {
+		spin_unlock(&res->spinlock);
+		spin_unlock(&dlm->spinlock);
+		schedule();
+		spin_lock(&dlm->spinlock);
+		spin_lock(&res->spinlock);
+		goto repeat;
+	}
+	remove_wait_queue(&res->wq, &wait);
+	__set_current_state(TASK_RUNNING);
+}
+
 int __dlm_lockres_has_locks(struct dlm_lock_resource *res)
 {
 	if (list_empty(&res->granted) &&
@@ -210,6 +233,16 @@ static void dlm_purge_lockres(struct dlm_ctxt *dlm,
 	}
 
 	__dlm_unhash_lockres(dlm, res);
+
+	spin_lock(&dlm->track_lock);
+	if (!list_empty(&res->tracking))
+		list_del_init(&res->tracking);
+	else {
+		mlog(ML_ERROR, "Resource %.*s not on the Tracking list\n",
+				res->lockname.len, res->lockname.name);
+		__dlm_print_one_lock_resource(res);
+	}
+	spin_unlock(&dlm->track_lock);
 
 	/* lockres is not in the hash now.  drop the flag and wake up
 	 * any processes waiting in dlm_get_lock_resource. */
