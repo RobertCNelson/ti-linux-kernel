@@ -2769,15 +2769,45 @@ bool kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
 		while (size) {
 			void *object = c->freelist;
 
-			if (!object)
-				break;
+			if (unlikely(!object)) {
+				/*
+				 * Check if there remotely freed objects
+				 * availalbe in the page.
+				 */
+				object = get_freelist(s, c->page);
 
-			c->freelist = get_freepointer(s, object);
+				if (!object) {
+					/*
+					 * All objects in use lets check if
+					 * we have other per cpu partial
+					 * pages that have available
+					 * objects.
+					 */
+					c->page = c->partial;
+					if (!c->page) {
+						/* No per cpu objects left */
+						c->freelist = NULL;
+						break;
+					}
+
+					/* Next per cpu partial page */
+					c->partial = c->page->next;
+					c->freelist = get_freelist(s,
+							c->page);
+					continue;
+				}
+
+			}
+
+
 			*p++ = object;
 			size--;
 
 			if (unlikely(flags & __GFP_ZERO))
 				memset(object, 0, s->object_size);
+
+			c->freelist = get_freepointer(s, object);
+
 		}
 		c->tid = next_tid(c->tid);
 
