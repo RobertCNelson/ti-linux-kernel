@@ -19,6 +19,7 @@
 #include <linux/list.h>
 #include <linux/slab.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/device.h>
 #include <linux/init.h>
 #include <linux/sched.h>
@@ -3003,6 +3004,8 @@ struct clk *__of_clk_get_from_provider(struct of_phandle_args *clkspec,
 
 	if (!clkspec)
 		return ERR_PTR(-EINVAL);
+
+	of_device_probe(clkspec->np);
 
 	/* Check if we have such a provider in our array */
 	mutex_lock(&of_clk_mutex);
