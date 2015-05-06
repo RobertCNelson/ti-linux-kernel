@@ -1085,6 +1085,8 @@ static int parse_perf_probe_point(char *arg, struct perf_probe_event *pev)
 	 *
 	 * TODO:Group name support
 	 */
+	if (!arg)
+		return -EINVAL;
 
 	ptr = strpbrk(arg, ";=@+%");
 	if (ptr && *ptr == '=') {	/* Event name */
