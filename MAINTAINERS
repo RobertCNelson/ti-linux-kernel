@@ -2232,7 +2232,7 @@ M:	Ray Jui <rjui@broadcom.com>
 L:	bcm-kernel-feedback-list@broadcom.com
 S:	Supported
 F:	drivers/gpio/gpio-bcm-kona.c
-F:	Documentation/devicetree/bindings/gpio/gpio-bcm-kona.txt
+F:	Documentation/devicetree/bindings/gpio/brcm,kona-gpio.txt
 
 BROADCOM SPECIFIC AMBA DRIVER (BCMA)
 M:	Rafał Miłecki <zajec5@gmail.com>
