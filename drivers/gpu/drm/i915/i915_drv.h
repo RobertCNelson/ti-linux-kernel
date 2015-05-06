@@ -1363,7 +1363,6 @@ struct intel_vbt_data {
 	bool edp_initialized;
 	bool edp_support;
 	int edp_bpp;
-	bool edp_low_vswing;
 	struct edp_power_seq edp_pps;
 
 	struct {
@@ -1844,6 +1843,8 @@ struct drm_i915_private {
 		void (*cleanup_ring)(struct intel_engine_cs *ring);
 		void (*stop_ring)(struct intel_engine_cs *ring);
 	} gt;
+
+	bool edp_low_vswing;
 
 	/*
 	 * NOTE: This is the dri1/ums dungeon, don't add stuff here. Your patch
@@ -2514,6 +2515,7 @@ struct i915_params {
 	int mmio_debug;
 	bool verbose_state_checks;
 	bool nuclear_pageflip;
+	int edp_vswing;
 };
 extern struct i915_params i915 __read_mostly;
 
