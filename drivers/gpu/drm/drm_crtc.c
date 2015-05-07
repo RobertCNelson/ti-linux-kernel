@@ -2158,7 +2158,7 @@ int drm_mode_getconnector(struct drm_device *dev, void *data,
 	connector = drm_connector_find(dev, out_resp->connector_id);
 	if (!connector) {
 		ret = -ENOENT;
-		goto out;
+		goto out_unlock;
 	}
 
 	for (i = 0; i < DRM_CONNECTOR_MAX_ENCODER; i++)
@@ -2238,6 +2238,8 @@ int drm_mode_getconnector(struct drm_device *dev, void *data,
 
 out:
 	drm_modeset_unlock(&dev->mode_config.connection_mutex);
+
+out_unlock:
 	mutex_unlock(&dev->mode_config.mutex);
 
 	return ret;
@@ -2505,6 +2507,17 @@ static int __setplane_internal(struct drm_plane *plane,
 		goto out;
 	}
 
+	/* Give drivers some help against integer overflows */
+	if (crtc_w > INT_MAX ||
+	    crtc_x > INT_MAX - (int32_t) crtc_w ||
+	    crtc_h > INT_MAX ||
+	    crtc_y > INT_MAX - (int32_t) crtc_h) {
+		DRM_DEBUG_KMS("Invalid CRTC coordinates %ux%u+%d+%d\n",
+			      crtc_w, crtc_h, crtc_x, crtc_y);
+		return -ERANGE;
+	}
+
+
 	fb_width = fb->width << 16;
 	fb_height = fb->height << 16;
 
@@ -2588,17 +2601,6 @@ int drm_mode_setplane(struct drm_device *dev, void *data,
 
 	if (!drm_core_check_feature(dev, DRIVER_MODESET))
 		return -EINVAL;
-
-	/* Give drivers some help against integer overflows */
-	if (plane_req->crtc_w > INT_MAX ||
-	    plane_req->crtc_x > INT_MAX - (int32_t) plane_req->crtc_w ||
-	    plane_req->crtc_h > INT_MAX ||
-	    plane_req->crtc_y > INT_MAX - (int32_t) plane_req->crtc_h) {
-		DRM_DEBUG_KMS("Invalid CRTC coordinates %ux%u+%d+%d\n",
-			      plane_req->crtc_w, plane_req->crtc_h,
-			      plane_req->crtc_x, plane_req->crtc_y);
-		return -ERANGE;
-	}
 
 	/*
 	 * First, find the plane, crtc, and fb objects.  If not available,
