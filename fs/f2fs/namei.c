@@ -56,10 +56,13 @@ static struct inode *f2fs_new_inode(struct inode *dir, umode_t mode)
 		goto out;
 	}
 
-	if (f2fs_may_inline(inode))
+	if (f2fs_may_inline_data(inode))
 		set_inode_flag(F2FS_I(inode), FI_INLINE_DATA);
-	if (test_opt(sbi, INLINE_DENTRY) && S_ISDIR(inode->i_mode))
+	if (f2fs_may_inline_dentry(inode))
 		set_inode_flag(F2FS_I(inode), FI_INLINE_DENTRY);
+
+	stat_inc_inline_inode(inode);
+	stat_inc_inline_dir(inode);
 
 	trace_f2fs_new_inode(inode, 0);
 	mark_inode_dirty(inode);
@@ -136,7 +139,6 @@ static int f2fs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 
 	alloc_nid_done(sbi, ino);
 
-	stat_inc_inline_inode(inode);
 	d_instantiate(dentry, inode);
 	unlock_new_inode(inode);
 
@@ -232,31 +234,32 @@ static struct dentry *f2fs_lookup(struct inode *dir, struct dentry *dentry,
 	struct inode *inode = NULL;
 	struct f2fs_dir_entry *de;
 	struct page *page;
+	nid_t ino;
 
 	if (dentry->d_name.len > F2FS_NAME_LEN)
 		return ERR_PTR(-ENAMETOOLONG);
 
 	de = f2fs_find_entry(dir, &dentry->d_name, &page);
-	if (de) {
-		nid_t ino = le32_to_cpu(de->ino);
-		f2fs_dentry_kunmap(dir, page);
-		f2fs_put_page(page, 0);
+	if (!de)
+		return d_splice_alias(inode, dentry);
 
-		inode = f2fs_iget(dir->i_sb, ino);
-		if (IS_ERR(inode))
-			return ERR_CAST(inode);
+	ino = le32_to_cpu(de->ino);
+	f2fs_dentry_kunmap(dir, page);
+	f2fs_put_page(page, 0);
 
-		if (f2fs_has_inline_dots(inode)) {
-			int err;
+	inode = f2fs_iget(dir->i_sb, ino);
+	if (IS_ERR(inode))
+		return ERR_CAST(inode);
 
-			err = __recover_dot_dentries(inode, dir->i_ino);
-			if (err) {
-				iget_failed(inode);
-				return ERR_PTR(err);
-			}
+	if (f2fs_has_inline_dots(inode)) {
+		int err;
+
+		err = __recover_dot_dentries(inode, dir->i_ino);
+		if (err) {
+			iget_failed(inode);
+			return ERR_PTR(err);
 		}
 	}
-
 	return d_splice_alias(inode, dentry);
 }
 
@@ -298,16 +301,14 @@ fail:
 
 static void *f2fs_follow_link(struct dentry *dentry, struct nameidata *nd)
 {
-	struct page *page;
+	struct page *page = page_follow_link_light(dentry, nd);
 
-	page = page_follow_link_light(dentry, nd);
-	if (IS_ERR(page))
+	if (IS_ERR_OR_NULL(page))
 		return page;
 
 	/* this is broken symlink case */
 	if (*nd_get_link(nd) == 0) {
-		kunmap(page);
-		page_cache_release(page);
+		page_put_link(dentry, nd, page);
 		return ERR_PTR(-ENOENT);
 	}
 	return page;
@@ -385,7 +386,6 @@ static int f2fs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 		goto out_fail;
 	f2fs_unlock_op(sbi);
 
-	stat_inc_inline_dir(inode);
 	alloc_nid_done(sbi, inode->i_ino);
 
 	d_instantiate(dentry, inode);
@@ -771,7 +771,6 @@ static int f2fs_tmpfile(struct inode *dir, struct dentry *dentry, umode_t mode)
 
 	alloc_nid_done(sbi, inode->i_ino);
 
-	stat_inc_inline_inode(inode);
 	d_tmpfile(dentry, inode);
 	unlock_new_inode(inode);
 	return 0;
