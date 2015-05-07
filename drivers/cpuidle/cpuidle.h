@@ -18,6 +18,8 @@ extern int cpuidle_enter_state(struct cpuidle_device *dev,
 /* idle loop */
 extern void cpuidle_install_idle_handler(void);
 extern void cpuidle_uninstall_idle_handler(void);
+/* kernel/sched/idle.c */
+extern void default_idle_call(void);
 
 /* governors */
 extern int cpuidle_switch_governor(struct cpuidle_governor *gov);
