@@ -286,8 +286,7 @@ check_t10_vend_desc:
 		 * Get the PROTOCOL IDENTIFIER as defined by spc4r17
 		 * section 7.5.1 Table 362
 		 */
-		buf[off] =
-			(tpg->se_tpg_tfo->get_fabric_proto_ident(tpg) << 4);
+		buf[off] = tpg->proto_id << 4;
 		buf[off++] |= 0x1; /* CODE SET == Binary */
 		buf[off] = 0x80; /* Set PIV=1 */
 		/* Set ASSOCIATION == target port: 01b */
@@ -322,8 +321,7 @@ check_t10_vend_desc:
 		tg_pt_gp_id = tg_pt_gp->tg_pt_gp_id;
 		spin_unlock(&tg_pt_gp_mem->tg_pt_gp_mem_lock);
 
-		buf[off] =
-			(tpg->se_tpg_tfo->get_fabric_proto_ident(tpg) << 4);
+		buf[off] = tpg->proto_id << 4;
 		buf[off++] |= 0x1; /* CODE SET == Binary */
 		buf[off] = 0x80; /* Set PIV=1 */
 		/* Set ASSOCIATION == target port: 01b */
@@ -371,8 +369,7 @@ check_lu_gp:
 		 * section 7.5.1 Table 362
 		 */
 check_scsi_name:
-		buf[off] =
-			(tpg->se_tpg_tfo->get_fabric_proto_ident(tpg) << 4);
+		buf[off] = tpg->proto_id << 4;
 		buf[off++] |= 0x3; /* CODE SET == UTF-8 */
 		buf[off] = 0x80; /* Set PIV=1 */
 		/* Set ASSOCIATION == target port: 01b */
@@ -412,8 +409,7 @@ check_scsi_name:
 		/*
 		 * Target device designator
 		 */
-		buf[off] =
-			(tpg->se_tpg_tfo->get_fabric_proto_ident(tpg) << 4);
+		buf[off] = tpg->proto_id << 4;
 		buf[off++] |= 0x3; /* CODE SET == UTF-8 */
 		buf[off] = 0x80; /* Set PIV=1 */
 		/* Set ASSOCIATION == target device: 10b */
@@ -481,7 +477,7 @@ spc_emulate_evpd_86(struct se_cmd *cmd, unsigned char *buf)
 	buf[5] = 0x07;
 
 	/* If WriteCache emulation is enabled, set V_SUP */
-	if (se_dev_check_wce(dev))
+	if (target_check_wce(dev))
 		buf[6] = 0x01;
 	/* If an LBA map is present set R_SUP */
 	spin_lock(&cmd->se_dev->t10_alua.lba_map_lock);
@@ -888,7 +884,7 @@ static int spc_modesense_caching(struct se_cmd *cmd, u8 pc, u8 *p)
 	if (pc == 1)
 		goto out;
 
-	if (se_dev_check_wce(dev))
+	if (target_check_wce(dev))
 		p[2] = 0x04; /* Write Cache Enable */
 	p[12] = 0x20; /* Disabled Read Ahead */
 
@@ -1000,8 +996,12 @@ static sense_reason_t spc_emulate_modesense(struct se_cmd *cmd)
 	     (cmd->se_deve->lun_flags & TRANSPORT_LUNFLAGS_READ_ONLY)))
 		spc_modesense_write_protect(&buf[length], type);
 
-	if ((se_dev_check_wce(dev)) &&
-	    (dev->dev_attrib.emulate_fua_write > 0))
+	/*
+	 * SBC only allows us to enable FUA and DPO together.  Fortunately
+	 * DPO is explicitly specified as a hint, so a noop is a perfectly
+	 * valid implementation.
+	 */
+	if (target_check_fua(dev))
 		spc_modesense_dpofua(&buf[length], type);
 
 	++length;

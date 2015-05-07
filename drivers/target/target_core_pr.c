@@ -35,7 +35,6 @@
 #include <target/target_core_base.h>
 #include <target/target_core_backend.h>
 #include <target/target_core_fabric.h>
-#include <target/target_core_configfs.h>
 
 #include "target_core_internal.h"
 #include "target_core_pr.h"
@@ -1367,41 +1366,26 @@ void core_scsi3_free_all_registrations(
 
 static int core_scsi3_tpg_depend_item(struct se_portal_group *tpg)
 {
-	return configfs_depend_item(tpg->se_tpg_tfo->tf_subsys,
-			&tpg->tpg_group.cg_item);
+	return target_depend_item(&tpg->tpg_group.cg_item);
 }
 
 static void core_scsi3_tpg_undepend_item(struct se_portal_group *tpg)
 {
-	configfs_undepend_item(tpg->se_tpg_tfo->tf_subsys,
-			&tpg->tpg_group.cg_item);
-
+	target_undepend_item(&tpg->tpg_group.cg_item);
 	atomic_dec_mb(&tpg->tpg_pr_ref_count);
 }
 
 static int core_scsi3_nodeacl_depend_item(struct se_node_acl *nacl)
 {
-	struct se_portal_group *tpg = nacl->se_tpg;
-
 	if (nacl->dynamic_node_acl)
 		return 0;
-
-	return configfs_depend_item(tpg->se_tpg_tfo->tf_subsys,
-			&nacl->acl_group.cg_item);
+	return target_depend_item(&nacl->acl_group.cg_item);
 }
 
 static void core_scsi3_nodeacl_undepend_item(struct se_node_acl *nacl)
 {
-	struct se_portal_group *tpg = nacl->se_tpg;
-
-	if (nacl->dynamic_node_acl) {
-		atomic_dec_mb(&nacl->acl_pr_ref_count);
-		return;
-	}
-
-	configfs_undepend_item(tpg->se_tpg_tfo->tf_subsys,
-			&nacl->acl_group.cg_item);
-
+	if (!nacl->dynamic_node_acl)
+		target_undepend_item(&nacl->acl_group.cg_item);
 	atomic_dec_mb(&nacl->acl_pr_ref_count);
 }
 
@@ -1419,8 +1403,7 @@ static int core_scsi3_lunacl_depend_item(struct se_dev_entry *se_deve)
 	nacl = lun_acl->se_lun_nacl;
 	tpg = nacl->se_tpg;
 
-	return configfs_depend_item(tpg->se_tpg_tfo->tf_subsys,
-			&lun_acl->se_lun_group.cg_item);
+	return target_depend_item(&lun_acl->se_lun_group.cg_item);
 }
 
 static void core_scsi3_lunacl_undepend_item(struct se_dev_entry *se_deve)
@@ -1438,9 +1421,7 @@ static void core_scsi3_lunacl_undepend_item(struct se_dev_entry *se_deve)
 	nacl = lun_acl->se_lun_nacl;
 	tpg = nacl->se_tpg;
 
-	configfs_undepend_item(tpg->se_tpg_tfo->tf_subsys,
-			&lun_acl->se_lun_group.cg_item);
-
+	target_undepend_item(&lun_acl->se_lun_group.cg_item);
 	atomic_dec_mb(&se_deve->pr_ref_count);
 }
 
@@ -1463,9 +1444,8 @@ core_scsi3_decode_spec_i_port(
 	struct t10_pr_registration *pr_reg_tmp, *pr_reg_tmp_safe;
 	LIST_HEAD(tid_dest_list);
 	struct pr_transport_id_holder *tidh_new, *tidh, *tidh_tmp;
-	const struct target_core_fabric_ops *tmp_tf_ops;
-	unsigned char *buf;
-	unsigned char *ptr, *i_str = NULL, proto_ident, tmp_proto_ident;
+	unsigned char *buf, *ptr, proto_ident;
+	const unsigned char *i_str;
 	char *iport_ptr = NULL, i_buf[PR_REG_ISID_ID_LEN];
 	sense_reason_t ret;
 	u32 tpdl, tid_len = 0;
@@ -1551,24 +1531,17 @@ core_scsi3_decode_spec_i_port(
 			tmp_tpg = tmp_port->sep_tpg;
 			if (!tmp_tpg)
 				continue;
-			tmp_tf_ops = tmp_tpg->se_tpg_tfo;
-			if (!tmp_tf_ops)
-				continue;
-			if (!tmp_tf_ops->get_fabric_proto_ident ||
-			    !tmp_tf_ops->tpg_parse_pr_out_transport_id)
-				continue;
+
 			/*
 			 * Look for the matching proto_ident provided by
 			 * the received TransportID
 			 */
-			tmp_proto_ident = tmp_tf_ops->get_fabric_proto_ident(tmp_tpg);
-			if (tmp_proto_ident != proto_ident)
+			if (tmp_tpg->proto_id != proto_ident)
 				continue;
 			dest_rtpi = tmp_port->sep_rtpi;
 
-			i_str = tmp_tf_ops->tpg_parse_pr_out_transport_id(
-					tmp_tpg, (const char *)ptr, &tid_len,
-					&iport_ptr);
+			i_str = target_parse_pr_out_transport_id(tmp_tpg,
+					(const char *)ptr, &tid_len, &iport_ptr);
 			if (!i_str)
 				continue;
 
@@ -3125,7 +3098,7 @@ core_scsi3_emulate_pro_register_and_move(struct se_cmd *cmd, u64 res_key,
 	struct t10_pr_registration *pr_reg, *pr_res_holder, *dest_pr_reg;
 	struct t10_reservation *pr_tmpl = &dev->t10_pr;
 	unsigned char *buf;
-	unsigned char *initiator_str;
+	const unsigned char *initiator_str;
 	char *iport_ptr = NULL, i_buf[PR_REG_ISID_ID_LEN];
 	u32 tid_len, tmp_tid_len;
 	int new_reg = 0, type, scope, matching_iname;
@@ -3248,23 +3221,16 @@ core_scsi3_emulate_pro_register_and_move(struct se_cmd *cmd, u64 res_key,
 	pr_debug("SPC-3 PR REGISTER_AND_MOVE: Extracted Protocol Identifier:"
 			" 0x%02x\n", proto_ident);
 
-	if (proto_ident != dest_tf_ops->get_fabric_proto_ident(dest_se_tpg)) {
+	if (proto_ident != dest_se_tpg->proto_id) {
 		pr_err("SPC-3 PR REGISTER_AND_MOVE: Received"
 			" proto_ident: 0x%02x does not match ident: 0x%02x"
 			" from fabric: %s\n", proto_ident,
-			dest_tf_ops->get_fabric_proto_ident(dest_se_tpg),
+			dest_se_tpg->proto_id,
 			dest_tf_ops->get_fabric_name());
 		ret = TCM_INVALID_PARAMETER_LIST;
 		goto out;
 	}
-	if (dest_tf_ops->tpg_parse_pr_out_transport_id == NULL) {
-		pr_err("SPC-3 PR REGISTER_AND_MOVE: Fabric does not"
-			" containg a valid tpg_parse_pr_out_transport_id"
-			" function pointer\n");
-		ret = TCM_LOGICAL_UNIT_COMMUNICATION_FAILURE;
-		goto out;
-	}
-	initiator_str = dest_tf_ops->tpg_parse_pr_out_transport_id(dest_se_tpg,
+	initiator_str = target_parse_pr_out_transport_id(dest_se_tpg,
 			(const char *)&buf[24], &tmp_tid_len, &iport_ptr);
 	if (!initiator_str) {
 		pr_err("SPC-3 PR REGISTER_AND_MOVE: Unable to locate"
@@ -3901,9 +3867,10 @@ core_scsi3_pri_read_full_status(struct se_cmd *cmd)
 	struct t10_pr_registration *pr_reg, *pr_reg_tmp;
 	struct t10_reservation *pr_tmpl = &dev->t10_pr;
 	unsigned char *buf;
-	u32 add_desc_len = 0, add_len = 0, desc_len, exp_desc_len;
+	u32 add_desc_len = 0, add_len = 0;
 	u32 off = 8; /* off into first Full Status descriptor */
 	int format_code = 0, pr_res_type = 0, pr_res_scope = 0;
+	int exp_desc_len, desc_len;
 	bool all_reg = false;
 
 	if (cmd->data_length < 8) {
@@ -3948,10 +3915,10 @@ core_scsi3_pri_read_full_status(struct se_cmd *cmd)
 		 * Determine expected length of $FABRIC_MOD specific
 		 * TransportID full status descriptor..
 		 */
-		exp_desc_len = se_tpg->se_tpg_tfo->tpg_get_pr_transport_id_len(
-				se_tpg, se_nacl, pr_reg, &format_code);
-
-		if ((exp_desc_len + add_len) > cmd->data_length) {
+		exp_desc_len = target_get_pr_transport_id_len(se_nacl, pr_reg,
+					&format_code);
+		if (exp_desc_len < 0 ||
+		    exp_desc_len + add_len > cmd->data_length) {
 			pr_warn("SPC-3 PRIN READ_FULL_STATUS ran"
 				" out of buffer: %d\n", cmd->data_length);
 			spin_lock(&pr_tmpl->registration_lock);
@@ -4015,14 +3982,19 @@ core_scsi3_pri_read_full_status(struct se_cmd *cmd)
 		} else
 			off += 2; /* Skip over RELATIVE TARGET PORT IDENTIFIER */
 
+		buf[off+4] = se_tpg->proto_id;
+
 		/*
-		 * Now, have the $FABRIC_MOD fill in the protocol identifier
+		 * Now, have the $FABRIC_MOD fill in the transport ID.
 		 */
-		desc_len = se_tpg->se_tpg_tfo->tpg_get_pr_transport_id(se_tpg,
-				se_nacl, pr_reg, &format_code, &buf[off+4]);
+		desc_len = target_get_pr_transport_id(se_nacl, pr_reg,
+				&format_code, &buf[off+4]);
 
 		spin_lock(&pr_tmpl->registration_lock);
 		atomic_dec_mb(&pr_reg->pr_res_holders);
+
+		if (desc_len < 0)
+			break;
 		/*
 		 * Set the ADDITIONAL DESCRIPTOR LENGTH
 		 */

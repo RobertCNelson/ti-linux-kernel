@@ -4,9 +4,6 @@
 /* target_core_alua.c */
 extern struct t10_alua_lu_gp *default_lu_gp;
 
-/* target_core_configfs.c */
-extern struct configfs_subsystem *target_core_subsystem[];
-
 /* target_core_device.c */
 extern struct mutex g_device_mutex;
 extern struct list_head g_device_list;
@@ -41,6 +38,15 @@ struct se_device *target_alloc_device(struct se_hba *hba, const char *name);
 int	target_configure_device(struct se_device *dev);
 void	target_free_device(struct se_device *);
 
+/* target_core_fabric_lib.c */
+int	target_get_pr_transport_id_len(struct se_node_acl *nacl,
+		struct t10_pr_registration *pr_reg, int *format_code);
+int	target_get_pr_transport_id(struct se_node_acl *nacl,
+		struct t10_pr_registration *pr_reg, int *format_code,
+		unsigned char *buf);
+const char *target_parse_pr_out_transport_id(struct se_portal_group *tpg,
+		const char *buf, u32 *out_tid_len, char **port_nexus_ptr);
+
 /* target_core_hba.c */
 struct se_hba *core_alloc_hba(const char *, u32, u32);
 int	core_delete_hba(struct se_hba *);
@@ -62,6 +68,9 @@ struct se_lun *core_tpg_alloc_lun(struct se_portal_group *, u32);
 int	core_tpg_add_lun(struct se_portal_group *, struct se_lun *,
 		u32, struct se_device *);
 void core_tpg_remove_lun(struct se_portal_group *, struct se_lun *);
+struct se_node_acl *core_tpg_add_initiator_node_acl(struct se_portal_group *tpg,
+		const char *initiatorname);
+void core_tpg_del_initiator_node_acl(struct se_node_acl *acl);
 
 /* target_core_transport.c */
 extern struct kmem_cache *se_tmr_req_cache;
@@ -84,6 +93,8 @@ int	transport_clear_lun_ref(struct se_lun *);
 void	transport_send_task_abort(struct se_cmd *);
 sense_reason_t	target_cmd_size_check(struct se_cmd *cmd, unsigned int size);
 void	target_qf_do_work(struct work_struct *work);
+bool	target_check_wce(struct se_device *dev);
+bool	target_check_fua(struct se_device *dev);
 
 /* target_core_stat.c */
 void	target_stat_setup_dev_default_groups(struct se_device *);

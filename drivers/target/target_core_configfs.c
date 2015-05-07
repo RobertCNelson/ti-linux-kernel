@@ -116,7 +116,7 @@ static struct target_fabric_configfs *target_core_get_fabric(
 
 	mutex_lock(&g_tf_lock);
 	list_for_each_entry(tf, &g_tf_list, tf_list) {
-		if (!strcmp(tf->tf_name, name)) {
+		if (!strcmp(tf->tf_ops->name, name)) {
 			atomic_inc(&tf->tf_access_cnt);
 			mutex_unlock(&g_tf_lock);
 			return tf;
@@ -193,33 +193,24 @@ static struct config_group *target_core_register_fabric(
 		return ERR_PTR(-EINVAL);
 	}
 	pr_debug("Target_Core_ConfigFS: REGISTER -> Located fabric:"
-			" %s\n", tf->tf_name);
+			" %s\n", tf->tf_ops->name);
 	/*
 	 * On a successful target_core_get_fabric() look, the returned
 	 * struct target_fabric_configfs *tf will contain a usage reference.
 	 */
 	pr_debug("Target_Core_ConfigFS: REGISTER tfc_wwn_cit -> %p\n",
-			&tf->tf_cit_tmpl.tfc_wwn_cit);
+			&tf->tf_wwn_cit);
 
 	tf->tf_group.default_groups = tf->tf_default_groups;
 	tf->tf_group.default_groups[0] = &tf->tf_disc_group;
 	tf->tf_group.default_groups[1] = NULL;
 
-	config_group_init_type_name(&tf->tf_group, name,
-			&tf->tf_cit_tmpl.tfc_wwn_cit);
+	config_group_init_type_name(&tf->tf_group, name, &tf->tf_wwn_cit);
 	config_group_init_type_name(&tf->tf_disc_group, "discovery_auth",
-			&tf->tf_cit_tmpl.tfc_discovery_cit);
+			&tf->tf_discovery_cit);
 
 	pr_debug("Target_Core_ConfigFS: REGISTER -> Allocated Fabric:"
 			" %s\n", tf->tf_group.cg_item.ci_name);
-	/*
-	 * Setup tf_ops.tf_subsys pointer for usage with configfs_depend_item()
-	 */
-	tf->tf_ops.tf_subsys = tf->tf_subsys;
-	tf->tf_fabric = &tf->tf_group.cg_item;
-	pr_debug("Target_Core_ConfigFS: REGISTER -> Set tf->tf_fabric"
-			" for %s\n", name);
-
 	return &tf->tf_group;
 }
 
@@ -240,12 +231,8 @@ static void target_core_deregister_fabric(
 		" tf list\n", config_item_name(item));
 
 	pr_debug("Target_Core_ConfigFS: DEREGISTER -> located fabric:"
-			" %s\n", tf->tf_name);
+			" %s\n", tf->tf_ops->name);
 	atomic_dec(&tf->tf_access_cnt);
-
-	pr_debug("Target_Core_ConfigFS: DEREGISTER -> Releasing"
-			" tf->tf_fabric for %s\n", tf->tf_name);
-	tf->tf_fabric = NULL;
 
 	pr_debug("Target_Core_ConfigFS: DEREGISTER -> Releasing ci"
 			" %s\n", config_item_name(item));
@@ -291,10 +278,17 @@ static struct configfs_subsystem target_core_fabrics = {
 	},
 };
 
-struct configfs_subsystem *target_core_subsystem[] = {
-	&target_core_fabrics,
-	NULL,
-};
+int target_depend_item(struct config_item *item)
+{
+	return configfs_depend_item(&target_core_fabrics, item);
+}
+EXPORT_SYMBOL(target_depend_item);
+
+void target_undepend_item(struct config_item *item)
+{
+	return configfs_undepend_item(&target_core_fabrics, item);
+}
+EXPORT_SYMBOL(target_undepend_item);
 
 /*##############################################################################
 // Start functions called by external Target Fabrics Modules
@@ -315,28 +309,12 @@ static int target_fabric_tf_ops_check(const struct target_core_fabric_ops *tfo)
 		pr_err("Missing tfo->get_fabric_name()\n");
 		return -EINVAL;
 	}
-	if (!tfo->get_fabric_proto_ident) {
-		pr_err("Missing tfo->get_fabric_proto_ident()\n");
-		return -EINVAL;
-	}
 	if (!tfo->tpg_get_wwn) {
 		pr_err("Missing tfo->tpg_get_wwn()\n");
 		return -EINVAL;
 	}
 	if (!tfo->tpg_get_tag) {
 		pr_err("Missing tfo->tpg_get_tag()\n");
-		return -EINVAL;
-	}
-	if (!tfo->tpg_get_default_depth) {
-		pr_err("Missing tfo->tpg_get_default_depth()\n");
-		return -EINVAL;
-	}
-	if (!tfo->tpg_get_pr_transport_id) {
-		pr_err("Missing tfo->tpg_get_pr_transport_id()\n");
-		return -EINVAL;
-	}
-	if (!tfo->tpg_get_pr_transport_id_len) {
-		pr_err("Missing tfo->tpg_get_pr_transport_id_len()\n");
 		return -EINVAL;
 	}
 	if (!tfo->tpg_check_demo_mode) {
@@ -353,14 +331,6 @@ static int target_fabric_tf_ops_check(const struct target_core_fabric_ops *tfo)
 	}
 	if (!tfo->tpg_check_prod_mode_write_protect) {
 		pr_err("Missing tfo->tpg_check_prod_mode_write_protect()\n");
-		return -EINVAL;
-	}
-	if (!tfo->tpg_alloc_fabric_acl) {
-		pr_err("Missing tfo->tpg_alloc_fabric_acl()\n");
-		return -EINVAL;
-	}
-	if (!tfo->tpg_release_fabric_acl) {
-		pr_err("Missing tfo->tpg_release_fabric_acl()\n");
 		return -EINVAL;
 	}
 	if (!tfo->tpg_get_inst_index) {
@@ -393,10 +363,6 @@ static int target_fabric_tf_ops_check(const struct target_core_fabric_ops *tfo)
 	}
 	if (!tfo->set_default_node_attributes) {
 		pr_err("Missing tfo->set_default_node_attributes()\n");
-		return -EINVAL;
-	}
-	if (!tfo->get_task_tag) {
-		pr_err("Missing tfo->get_task_tag()\n");
 		return -EINVAL;
 	}
 	if (!tfo->get_cmd_state) {
@@ -461,16 +427,7 @@ int target_register_template(const struct target_core_fabric_ops *fo)
 
 	INIT_LIST_HEAD(&tf->tf_list);
 	atomic_set(&tf->tf_access_cnt, 0);
-
-	/*
-	 * Setup the default generic struct config_item_type's (cits) in
-	 * struct target_fabric_configfs->tf_cit_tmpl
-	 */
-	tf->tf_module = fo->module;
-	tf->tf_subsys = target_core_subsystem[0];
-	snprintf(tf->tf_name, TARGET_FABRIC_NAME_SIZE, "%s", fo->name);
-
-	tf->tf_ops = *fo;
+	tf->tf_ops = fo;
 	target_fabric_setup_cits(tf);
 
 	mutex_lock(&g_tf_lock);
@@ -487,7 +444,7 @@ void target_unregister_template(const struct target_core_fabric_ops *fo)
 
 	mutex_lock(&g_tf_lock);
 	list_for_each_entry(t, &g_tf_list, tf_list) {
-		if (!strcmp(t->tf_name, fo->name)) {
+		if (!strcmp(t->tf_ops->name, fo->name)) {
 			BUG_ON(atomic_read(&t->tf_access_cnt));
 			list_del(&t->tf_list);
 			kfree(t);
@@ -1032,8 +989,8 @@ static ssize_t target_core_dev_pr_store_attr_res_aptpl_metadata(
 	u64 sa_res_key = 0;
 	u32 mapped_lun = 0, target_lun = 0;
 	int ret = -1, res_holder = 0, all_tg_pt = 0, arg, token;
-	u16 port_rpti = 0, tpgt = 0;
-	u8 type = 0, scope;
+	u16 tpgt = 0;
+	u8 type = 0;
 
 	if (dev->transport->transport_type == TRANSPORT_PLUGIN_PHBA_PDEV)
 		return 0;
@@ -1113,7 +1070,6 @@ static ssize_t target_core_dev_pr_store_attr_res_aptpl_metadata(
 			break;
 		case Opt_res_scope:
 			match_int(args, &arg);
-			scope = (u8)arg;
 			break;
 		case Opt_res_all_tg_pt:
 			match_int(args, &arg);
@@ -1153,7 +1109,6 @@ static ssize_t target_core_dev_pr_store_attr_res_aptpl_metadata(
 			break;
 		case Opt_port_rtpi:
 			match_int(args, &arg);
-			port_rpti = (u16)arg;
 			break;
 		case Opt_target_lun:
 			match_int(args, &arg);
@@ -2870,7 +2825,7 @@ static int __init target_core_init_configfs(void)
 {
 	struct config_group *target_cg, *hba_cg = NULL, *alua_cg = NULL;
 	struct config_group *lu_gp_cg = NULL;
-	struct configfs_subsystem *subsys;
+	struct configfs_subsystem *subsys = &target_core_fabrics;
 	struct t10_alua_lu_gp *lu_gp;
 	int ret;
 
@@ -2878,7 +2833,6 @@ static int __init target_core_init_configfs(void)
 		" Engine: %s on %s/%s on "UTS_RELEASE"\n",
 		TARGET_CORE_VERSION, utsname()->sysname, utsname()->machine);
 
-	subsys = target_core_subsystem[0];
 	config_group_init(&subsys->su_group);
 	mutex_init(&subsys->su_mutex);
 
@@ -3008,12 +2962,9 @@ out_global:
 
 static void __exit target_core_exit_configfs(void)
 {
-	struct configfs_subsystem *subsys;
 	struct config_group *hba_cg, *alua_cg, *lu_gp_cg;
 	struct config_item *item;
 	int i;
-
-	subsys = target_core_subsystem[0];
 
 	lu_gp_cg = &alua_lu_gps_group;
 	for (i = 0; lu_gp_cg->default_groups[i]; i++) {
@@ -3045,8 +2996,8 @@ static void __exit target_core_exit_configfs(void)
 	 * We expect subsys->su_group.default_groups to be released
 	 * by configfs subsystem provider logic..
 	 */
-	configfs_unregister_subsystem(subsys);
-	kfree(subsys->su_group.default_groups);
+	configfs_unregister_subsystem(&target_core_fabrics);
+	kfree(&target_core_fabrics.su_group.default_groups);
 
 	core_alua_free_lu_gp(default_lu_gp);
 	default_lu_gp = NULL;
