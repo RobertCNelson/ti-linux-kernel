@@ -492,18 +492,69 @@ void path_put(const struct path *path)
 }
 EXPORT_SYMBOL(path_put);
 
+#define EMBEDDED_LEVELS 2
 struct nameidata {
 	struct path	path;
-	struct qstr	last;
+	union {
+		struct qstr	last;
+		struct path	link;
+	};
 	struct path	root;
 	struct inode	*inode; /* path.dentry.d_inode */
 	unsigned int	flags;
 	unsigned	seq, m_seq;
 	int		last_type;
 	unsigned	depth;
+	int		total_link_count;
 	struct file	*base;
-	char *saved_names[MAX_NESTED_LINKS + 1];
+	struct saved {
+		struct path link;
+		void *cookie;
+		const char *name;
+	} *stack, internal[EMBEDDED_LEVELS];
 };
+
+static struct nameidata *set_nameidata(struct nameidata *p)
+{
+	struct nameidata *old = current->nameidata;
+	p->stack = p->internal;
+	p->total_link_count = old ? old->total_link_count : 0;
+	current->nameidata = p;
+	return old;
+}
+
+static void restore_nameidata(struct nameidata *old)
+{
+	struct nameidata *now = current->nameidata;
+
+	current->nameidata = old;
+	if (old)
+		old->total_link_count = now->total_link_count;
+	if (now->stack != now->internal) {
+		kfree(now->stack);
+		now->stack = now->internal;
+	}
+}
+
+static int __nd_alloc_stack(struct nameidata *nd)
+{
+	struct saved *p = kmalloc(MAXSYMLINKS * sizeof(struct saved),
+				  GFP_KERNEL);
+	if (unlikely(!p))
+		return -ENOMEM;
+	memcpy(p, nd->internal, sizeof(nd->internal));
+	nd->stack = p;
+	return 0;
+}
+
+static inline int nd_alloc_stack(struct nameidata *nd)
+{
+	if (likely(nd->depth != EMBEDDED_LEVELS))
+		return 0;
+	if (likely(nd->stack != nd->internal))
+		return 0;
+	return __nd_alloc_stack(nd);
+}
 
 /*
  * Path walking has 2 modes, rcu-walk and ref-walk (see
@@ -666,8 +717,6 @@ static __always_inline void set_root(struct nameidata *nd)
 	get_fs_root(current->fs, &nd->root);
 }
 
-static int link_path_walk(const char *, struct nameidata *);
-
 static __always_inline unsigned set_root_rcu(struct nameidata *nd)
 {
 	struct fs_struct *fs = current->fs;
@@ -704,8 +753,9 @@ static inline void path_to_nameidata(const struct path *path,
  * Helper to directly jump to a known parsed path from ->follow_link,
  * caller must have taken a reference to path beforehand.
  */
-void nd_jump_link(struct nameidata *nd, struct path *path)
+void nd_jump_link(struct path *path)
 {
+	struct nameidata *nd = current->nameidata;
 	path_put(&nd->path);
 
 	nd->path = *path;
@@ -713,24 +763,13 @@ void nd_jump_link(struct nameidata *nd, struct path *path)
 	nd->flags |= LOOKUP_JUMPED;
 }
 
-void nd_set_link(struct nameidata *nd, char *path)
+static inline void put_link(struct nameidata *nd)
 {
-	nd->saved_names[nd->depth] = path;
-}
-EXPORT_SYMBOL(nd_set_link);
-
-char *nd_get_link(struct nameidata *nd)
-{
-	return nd->saved_names[nd->depth];
-}
-EXPORT_SYMBOL(nd_get_link);
-
-static inline void put_link(struct nameidata *nd, struct path *link, void *cookie)
-{
-	struct inode *inode = link->dentry->d_inode;
-	if (inode->i_op->put_link)
-		inode->i_op->put_link(link->dentry, nd, cookie);
-	path_put(link);
+	struct saved *last = nd->stack + --nd->depth;
+	struct inode *inode = last->link.dentry->d_inode;
+	if (last->cookie && inode->i_op->put_link)
+		inode->i_op->put_link(last->link.dentry, last->cookie);
+	path_put(&last->link);
 }
 
 int sysctl_protected_symlinks __read_mostly = 0;
@@ -849,67 +888,44 @@ static int may_linkat(struct path *link)
 	return -EPERM;
 }
 
-static __always_inline int
-follow_link(struct path *link, struct nameidata *nd, void **p)
+static __always_inline
+const char *get_link(struct nameidata *nd)
 {
-	struct dentry *dentry = link->dentry;
+	struct saved *last = nd->stack + nd->depth;
+	struct dentry *dentry = nd->link.dentry;
+	struct inode *inode = dentry->d_inode;
 	int error;
-	char *s;
+	const char *res;
 
 	BUG_ON(nd->flags & LOOKUP_RCU);
 
-	if (link->mnt == nd->path.mnt)
-		mntget(link->mnt);
+	if (nd->link.mnt == nd->path.mnt)
+		mntget(nd->link.mnt);
 
-	error = -ELOOP;
-	if (unlikely(current->total_link_count >= 40))
-		goto out_put_nd_path;
+	last->link = nd->link;
+	last->cookie = NULL;
 
 	cond_resched();
-	current->total_link_count++;
 
-	touch_atime(link);
-	nd_set_link(nd, NULL);
+	touch_atime(&last->link);
 
-	error = security_inode_follow_link(link->dentry, nd);
+	error = security_inode_follow_link(dentry);
+	res = ERR_PTR(error);
 	if (error)
-		goto out_put_nd_path;
+		goto out;
 
 	nd->last_type = LAST_BIND;
-	*p = dentry->d_inode->i_op->follow_link(dentry, nd);
-	error = PTR_ERR(*p);
-	if (IS_ERR(*p))
-		goto out_put_nd_path;
-
-	error = 0;
-	s = nd_get_link(nd);
-	if (s) {
-		if (unlikely(IS_ERR(s))) {
-			path_put(&nd->path);
-			put_link(nd, link, *p);
-			return PTR_ERR(s);
+	res = inode->i_link;
+	if (!res) {
+		res = inode->i_op->follow_link(dentry, &last->cookie);
+		if (IS_ERR(res)) {
+out:
+			path_put(&last->link);
+			return res;
 		}
-		if (*s == '/') {
-			if (!nd->root.mnt)
-				set_root(nd);
-			path_put(&nd->path);
-			nd->path = nd->root;
-			path_get(&nd->root);
-			nd->flags |= LOOKUP_JUMPED;
-		}
-		nd->inode = nd->path.dentry->d_inode;
-		error = link_path_walk(s, nd);
-		if (unlikely(error))
-			put_link(nd, link, *p);
 	}
-
-	return error;
-
-out_put_nd_path:
-	*p = NULL;
-	path_put(&nd->path);
-	path_put(link);
-	return error;
+	nd->depth++;
+	return res;
 }
 
 static int follow_up_rcu(struct path *path)
@@ -965,7 +981,7 @@ EXPORT_SYMBOL(follow_up);
  * - return -EISDIR to tell follow_managed() to stop and return the path we
  *   were called with.
  */
-static int follow_automount(struct path *path, unsigned flags,
+static int follow_automount(struct path *path, struct nameidata *nd,
 			    bool *need_mntput)
 {
 	struct vfsmount *mnt;
@@ -985,13 +1001,13 @@ static int follow_automount(struct path *path, unsigned flags,
 	 * as being automount points.  These will need the attentions
 	 * of the daemon to instantiate them before they can be used.
 	 */
-	if (!(flags & (LOOKUP_PARENT | LOOKUP_DIRECTORY |
-		     LOOKUP_OPEN | LOOKUP_CREATE | LOOKUP_AUTOMOUNT)) &&
+	if (!(nd->flags & (LOOKUP_PARENT | LOOKUP_DIRECTORY |
+			   LOOKUP_OPEN | LOOKUP_CREATE | LOOKUP_AUTOMOUNT)) &&
 	    path->dentry->d_inode)
 		return -EISDIR;
 
-	current->total_link_count++;
-	if (current->total_link_count >= 40)
+	nd->total_link_count++;
+	if (nd->total_link_count >= 40)
 		return -ELOOP;
 
 	mnt = path->dentry->d_op->d_automount(path);
@@ -1005,7 +1021,7 @@ static int follow_automount(struct path *path, unsigned flags,
 		 * the path being looked up; if it wasn't then the remainder of
 		 * the path is inaccessible and we should say so.
 		 */
-		if (PTR_ERR(mnt) == -EISDIR && (flags & LOOKUP_PARENT))
+		if (PTR_ERR(mnt) == -EISDIR && (nd->flags & LOOKUP_PARENT))
 			return -EREMOTE;
 		return PTR_ERR(mnt);
 	}
@@ -1045,7 +1061,7 @@ static int follow_automount(struct path *path, unsigned flags,
  *
  * Serialization is taken care of in namespace.c
  */
-static int follow_managed(struct path *path, unsigned flags)
+static int follow_managed(struct path *path, struct nameidata *nd)
 {
 	struct vfsmount *mnt = path->mnt; /* held by caller, must be left alone */
 	unsigned managed;
@@ -1089,7 +1105,7 @@ static int follow_managed(struct path *path, unsigned flags)
 
 		/* Handle an automount point */
 		if (managed & DCACHE_NEED_AUTOMOUNT) {
-			ret = follow_automount(path, flags, &need_mntput);
+			ret = follow_automount(path, nd, &need_mntput);
 			if (ret < 0)
 				break;
 			continue;
@@ -1103,7 +1119,11 @@ static int follow_managed(struct path *path, unsigned flags)
 		mntput(path->mnt);
 	if (ret == -EISDIR)
 		ret = 0;
-	return ret < 0 ? ret : need_mntput;
+	if (need_mntput)
+		nd->flags |= LOOKUP_JUMPED;
+	if (unlikely(ret < 0))
+		path_put_conditional(path, nd);
+	return ret;
 }
 
 int follow_down_one(struct path *path)
@@ -1217,10 +1237,6 @@ static int follow_dotdot_rcu(struct nameidata *nd)
 	return 0;
 
 failed:
-	nd->flags &= ~LOOKUP_RCU;
-	if (!(nd->flags & LOOKUP_ROOT))
-		nd->root.mnt = NULL;
-	rcu_read_unlock();
 	return -ECHILD;
 }
 
@@ -1474,15 +1490,10 @@ unlazy:
 
 	path->mnt = mnt;
 	path->dentry = dentry;
-	err = follow_managed(path, nd->flags);
-	if (unlikely(err < 0)) {
-		path_put_conditional(path, nd);
-		return err;
-	}
-	if (err)
-		nd->flags |= LOOKUP_JUMPED;
-	*inode = path->dentry->d_inode;
-	return 0;
+	err = follow_managed(path, nd);
+	if (likely(!err))
+		*inode = path->dentry->d_inode;
+	return err;
 
 need_lookup:
 	return 1;
@@ -1492,7 +1503,6 @@ need_lookup:
 static int lookup_slow(struct nameidata *nd, struct path *path)
 {
 	struct dentry *dentry, *parent;
-	int err;
 
 	parent = nd->path.dentry;
 	BUG_ON(nd->inode != parent->d_inode);
@@ -1504,14 +1514,7 @@ static int lookup_slow(struct nameidata *nd, struct path *path)
 		return PTR_ERR(dentry);
 	path->mnt = nd->path.mnt;
 	path->dentry = dentry;
-	err = follow_managed(path, nd->flags);
-	if (unlikely(err < 0)) {
-		path_put_conditional(path, nd);
-		return err;
-	}
-	if (err)
-		nd->flags |= LOOKUP_JUMPED;
-	return 0;
+	return follow_managed(path, nd);
 }
 
 static inline int may_lookup(struct nameidata *nd)
@@ -1530,8 +1533,7 @@ static inline int handle_dots(struct nameidata *nd, int type)
 {
 	if (type == LAST_DOTDOT) {
 		if (nd->flags & LOOKUP_RCU) {
-			if (follow_dotdot_rcu(nd))
-				return -ECHILD;
+			return follow_dotdot_rcu(nd);
 		} else
 			follow_dotdot(nd);
 	}
@@ -1548,6 +1550,31 @@ static void terminate_walk(struct nameidata *nd)
 			nd->root.mnt = NULL;
 		rcu_read_unlock();
 	}
+	while (unlikely(nd->depth))
+		put_link(nd);
+}
+
+static int pick_link(struct nameidata *nd, struct path *link)
+{
+	int error;
+	if (unlikely(nd->total_link_count++ >= MAXSYMLINKS)) {
+		path_to_nameidata(link, nd);
+		return -ELOOP;
+	}
+	if (nd->flags & LOOKUP_RCU) {
+		if (unlikely(nd->path.mnt != link->mnt ||
+			     unlazy_walk(nd, link->dentry))) {
+			return -ECHILD;
+		}
+	}
+	error = nd_alloc_stack(nd);
+	if (unlikely(error)) {
+		path_to_nameidata(link, nd);
+		return error;
+	}
+
+	nd->link = *link;
+	return 1;
 }
 
 /*
@@ -1556,14 +1583,20 @@ static void terminate_walk(struct nameidata *nd)
  * so we keep a cache of "no, this doesn't need follow_link"
  * for the common case.
  */
-static inline int should_follow_link(struct dentry *dentry, int follow)
+static inline int should_follow_link(struct nameidata *nd, struct path *link, int follow)
 {
-	return unlikely(d_is_symlink(dentry)) ? follow : 0;
+	if (likely(!d_is_symlink(link->dentry)))
+		return 0;
+	if (!follow)
+		return 0;
+	return pick_link(nd, link);
 }
 
-static inline int walk_component(struct nameidata *nd, struct path *path,
-		int follow)
+enum {WALK_GET = 1, WALK_PUT = 2};
+
+static int walk_component(struct nameidata *nd, int flags)
 {
+	struct path path;
 	struct inode *inode;
 	int err;
 	/*
@@ -1571,80 +1604,39 @@ static inline int walk_component(struct nameidata *nd, struct path *path,
 	 * to be able to know about the current root directory and
 	 * parent relationships.
 	 */
-	if (unlikely(nd->last_type != LAST_NORM))
-		return handle_dots(nd, nd->last_type);
-	err = lookup_fast(nd, path, &inode);
+	if (unlikely(nd->last_type != LAST_NORM)) {
+		err = handle_dots(nd, nd->last_type);
+		if (flags & WALK_PUT)
+			put_link(nd);
+		return err;
+	}
+	err = lookup_fast(nd, &path, &inode);
 	if (unlikely(err)) {
 		if (err < 0)
-			goto out_err;
+			return err;
 
-		err = lookup_slow(nd, path);
+		err = lookup_slow(nd, &path);
 		if (err < 0)
-			goto out_err;
+			return err;
 
-		inode = path->dentry->d_inode;
+		inode = path.dentry->d_inode;
 	}
 	err = -ENOENT;
-	if (d_is_negative(path->dentry))
+	if (d_is_negative(path.dentry))
 		goto out_path_put;
 
-	if (should_follow_link(path->dentry, follow)) {
-		if (nd->flags & LOOKUP_RCU) {
-			if (unlikely(nd->path.mnt != path->mnt ||
-				     unlazy_walk(nd, path->dentry))) {
-				err = -ECHILD;
-				goto out_err;
-			}
-		}
-		BUG_ON(inode != path->dentry->d_inode);
-		return 1;
-	}
-	path_to_nameidata(path, nd);
+	if (flags & WALK_PUT)
+		put_link(nd);
+	err = should_follow_link(nd, &path, flags & WALK_GET);
+	if (unlikely(err))
+		return err;
+	path_to_nameidata(&path, nd);
 	nd->inode = inode;
 	return 0;
 
 out_path_put:
-	path_to_nameidata(path, nd);
-out_err:
-	terminate_walk(nd);
+	path_to_nameidata(&path, nd);
 	return err;
-}
-
-/*
- * This limits recursive symlink follows to 8, while
- * limiting consecutive symlinks to 40.
- *
- * Without that kind of total limit, nasty chains of consecutive
- * symlinks can cause almost arbitrarily long lookups.
- */
-static inline int nested_symlink(struct path *path, struct nameidata *nd)
-{
-	int res;
-
-	if (unlikely(current->link_count >= MAX_NESTED_LINKS)) {
-		path_put_conditional(path, nd);
-		path_put(&nd->path);
-		return -ELOOP;
-	}
-	BUG_ON(nd->depth >= MAX_NESTED_LINKS);
-
-	nd->depth++;
-	current->link_count++;
-
-	do {
-		struct path link = *path;
-		void *cookie;
-
-		res = follow_link(&link, nd, &cookie);
-		if (res)
-			break;
-		res = walk_component(nd, path, LOOKUP_FOLLOW);
-		put_link(nd, &link, cookie);
-	} while (res > 0);
-
-	current->link_count--;
-	nd->depth--;
-	return res;
 }
 
 /*
@@ -1773,9 +1765,8 @@ static inline u64 hash_name(const char *name)
  */
 static int link_path_walk(const char *name, struct nameidata *nd)
 {
-	struct path next;
 	int err;
-	
+
 	while (*name=='/')
 		name++;
 	if (!*name)
@@ -1822,7 +1813,7 @@ static int link_path_walk(const char *name, struct nameidata *nd)
 
 		name += hashlen_len(hash_len);
 		if (!*name)
-			return 0;
+			goto OK;
 		/*
 		 * If it wasn't NUL, we know it was '/'. Skip that
 		 * slash, and continue until no more slashes.
@@ -1830,20 +1821,55 @@ static int link_path_walk(const char *name, struct nameidata *nd)
 		do {
 			name++;
 		} while (unlikely(*name == '/'));
-		if (!*name)
-			return 0;
-
-		err = walk_component(nd, &next, LOOKUP_FOLLOW);
+		if (unlikely(!*name)) {
+OK:
+			/* called from path_init(), done */
+			if (!nd->depth)
+				return 0;
+			name = nd->stack[nd->depth - 1].name;
+			/* called from trailing_symlink(), done */
+			if (!name)
+				return 0;
+			/* last component of nested symlink */
+			err = walk_component(nd, WALK_GET | WALK_PUT);
+		} else {
+			err = walk_component(nd, WALK_GET);
+		}
 		if (err < 0)
-			return err;
+			break;
 
 		if (err) {
-			err = nested_symlink(&next, nd);
-			if (err)
-				return err;
+			const char *s = get_link(nd);
+
+			if (unlikely(IS_ERR(s))) {
+				err = PTR_ERR(s);
+				break;
+			}
+			err = 0;
+			if (unlikely(!s)) {
+				/* jumped */
+				put_link(nd);
+			} else {
+				if (*s == '/') {
+					if (!nd->root.mnt)
+						set_root(nd);
+					path_put(&nd->path);
+					nd->path = nd->root;
+					path_get(&nd->root);
+					nd->flags |= LOOKUP_JUMPED;
+					while (unlikely(*++s == '/'))
+						;
+				}
+				nd->inode = nd->path.dentry->d_inode;
+				nd->stack[nd->depth - 1].name = name;
+				if (!*s)
+					goto OK;
+				name = s;
+				continue;
+			}
 		}
 		if (!d_can_lookup(nd->path.dentry)) {
-			err = -ENOTDIR; 
+			err = -ENOTDIR;
 			break;
 		}
 	}
@@ -1949,7 +1975,7 @@ static int path_init(int dfd, const struct filename *name, unsigned int flags,
 	rcu_read_unlock();
 	return -ECHILD;
 done:
-	current->total_link_count = 0;
+	nd->total_link_count = 0;
 	return link_path_walk(s, nd);
 }
 
@@ -1963,20 +1989,55 @@ static void path_cleanup(struct nameidata *nd)
 		fput(nd->base);
 }
 
-static inline int lookup_last(struct nameidata *nd, struct path *path)
+static int trailing_symlink(struct nameidata *nd)
 {
+	const char *s;
+	int error = may_follow_link(&nd->link, nd);
+	if (unlikely(error))
+		return error;
+	nd->flags |= LOOKUP_PARENT;
+	s = get_link(nd);
+	if (unlikely(IS_ERR(s))) {
+		terminate_walk(nd);
+		return PTR_ERR(s);
+	}
+	if (unlikely(!s))
+		return 0;
+	if (*s == '/') {
+		if (!nd->root.mnt)
+			set_root(nd);
+		path_put(&nd->path);
+		nd->path = nd->root;
+		path_get(&nd->root);
+		nd->flags |= LOOKUP_JUMPED;
+	}
+	nd->inode = nd->path.dentry->d_inode;
+	nd->stack[0].name = NULL;
+	return link_path_walk(s, nd);
+}
+
+static inline int lookup_last(struct nameidata *nd)
+{
+	int err;
 	if (nd->last_type == LAST_NORM && nd->last.name[nd->last.len])
 		nd->flags |= LOOKUP_FOLLOW | LOOKUP_DIRECTORY;
 
 	nd->flags &= ~LOOKUP_PARENT;
-	return walk_component(nd, path, nd->flags & LOOKUP_FOLLOW);
+	err = walk_component(nd,
+			nd->flags & LOOKUP_FOLLOW
+				? nd->depth
+					? WALK_PUT | WALK_GET
+					: WALK_GET
+				: 0);
+	if (err < 0)
+		terminate_walk(nd);
+	return err;
 }
 
 /* Returns 0 and nd will be valid on success; Retuns error, otherwise. */
 static int path_lookupat(int dfd, const struct filename *name,
 				unsigned int flags, struct nameidata *nd)
 {
-	struct path path;
 	int err;
 
 	/*
@@ -1995,19 +2056,10 @@ static int path_lookupat(int dfd, const struct filename *name,
 	 */
 	err = path_init(dfd, name, flags, nd);
 	if (!err && !(flags & LOOKUP_PARENT)) {
-		err = lookup_last(nd, &path);
-		while (err > 0) {
-			void *cookie;
-			struct path link = path;
-			err = may_follow_link(&link, nd);
-			if (unlikely(err))
-				break;
-			nd->flags |= LOOKUP_PARENT;
-			err = follow_link(&link, nd, &cookie);
+		while ((err = lookup_last(nd)) > 0) {
+			err = trailing_symlink(nd);
 			if (err)
 				break;
-			err = lookup_last(nd, &path);
-			put_link(nd, &link, cookie);
 		}
 	}
 
@@ -2028,7 +2080,10 @@ static int path_lookupat(int dfd, const struct filename *name,
 static int filename_lookup(int dfd, struct filename *name,
 				unsigned int flags, struct nameidata *nd)
 {
-	int retval = path_lookupat(dfd, name, flags | LOOKUP_RCU, nd);
+	int retval;
+	struct nameidata *saved_nd = set_nameidata(nd);
+
+	retval = path_lookupat(dfd, name, flags | LOOKUP_RCU, nd);
 	if (unlikely(retval == -ECHILD))
 		retval = path_lookupat(dfd, name, flags, nd);
 	if (unlikely(retval == -ESTALE))
@@ -2036,6 +2091,7 @@ static int filename_lookup(int dfd, struct filename *name,
 
 	if (likely(!retval))
 		audit_inode(name, nd->path.dentry, flags & LOOKUP_PARENT);
+	restore_nameidata(saved_nd);
 	return retval;
 }
 
@@ -2121,16 +2177,6 @@ int vfs_path_lookup(struct dentry *dentry, struct vfsmount *mnt,
 }
 EXPORT_SYMBOL(vfs_path_lookup);
 
-/*
- * Restricted form of lookup. Doesn't follow links, single-component only,
- * needs parent already locked. Doesn't follow mounts.
- * SMP-safe.
- */
-static struct dentry *lookup_hash(struct nameidata *nd)
-{
-	return __lookup_hash(&nd->last, nd->path.dentry, nd->flags);
-}
-
 /**
  * lookup_one_len - filesystem helper to lookup single pathname component
  * @name:	pathname component to lookup
@@ -2214,9 +2260,13 @@ EXPORT_SYMBOL(user_path_at);
  *     path-walking is complete.
  */
 static struct filename *
-user_path_parent(int dfd, const char __user *path, struct nameidata *nd,
+user_path_parent(int dfd, const char __user *path,
+		 struct path *parent,
+		 struct qstr *last,
+		 int *type,
 		 unsigned int flags)
 {
+	struct nameidata nd;
 	struct filename *s = getname(path);
 	int error;
 
@@ -2226,11 +2276,14 @@ user_path_parent(int dfd, const char __user *path, struct nameidata *nd,
 	if (IS_ERR(s))
 		return s;
 
-	error = filename_lookup(dfd, s, flags | LOOKUP_PARENT, nd);
+	error = filename_lookup(dfd, s, flags | LOOKUP_PARENT, &nd);
 	if (error) {
 		putname(s);
 		return ERR_PTR(error);
 	}
+	*parent = nd.path;
+	*last = nd.last;
+	*type = nd.last_type;
 
 	return s;
 }
@@ -2316,10 +2369,16 @@ done:
 		dput(dentry);
 		goto out;
 	}
+	if (nd->depth)
+		put_link(nd);
 	path->dentry = dentry;
 	path->mnt = nd->path.mnt;
-	if (should_follow_link(dentry, nd->flags & LOOKUP_FOLLOW))
-		return 1;
+	error = should_follow_link(nd, path, nd->flags & LOOKUP_FOLLOW);
+	if (unlikely(error)) {
+		if (error < 0)
+			goto out;
+		return error;
+	}
 	mntget(path->mnt);
 	follow_mount(path);
 	error = 0;
@@ -2340,31 +2399,19 @@ out:
  */
 static int
 path_mountpoint(int dfd, const struct filename *name, struct path *path,
-		unsigned int flags)
+		struct nameidata *nd, unsigned int flags)
 {
-	struct nameidata nd;
-	int err;
-
-	err = path_init(dfd, name, flags, &nd);
+	int err = path_init(dfd, name, flags, nd);
 	if (unlikely(err))
 		goto out;
 
-	err = mountpoint_last(&nd, path);
-	while (err > 0) {
-		void *cookie;
-		struct path link = *path;
-		err = may_follow_link(&link, &nd);
-		if (unlikely(err))
-			break;
-		nd.flags |= LOOKUP_PARENT;
-		err = follow_link(&link, &nd, &cookie);
+	while ((err = mountpoint_last(nd, path)) > 0) {
+		err = trailing_symlink(nd);
 		if (err)
 			break;
-		err = mountpoint_last(&nd, path);
-		put_link(&nd, &link, cookie);
 	}
 out:
-	path_cleanup(&nd);
+	path_cleanup(nd);
 	return err;
 }
 
@@ -2372,16 +2419,19 @@ static int
 filename_mountpoint(int dfd, struct filename *name, struct path *path,
 			unsigned int flags)
 {
+	struct nameidata nd, *saved;
 	int error;
 	if (IS_ERR(name))
 		return PTR_ERR(name);
-	error = path_mountpoint(dfd, name, path, flags | LOOKUP_RCU);
+	saved = set_nameidata(&nd);
+	error = path_mountpoint(dfd, name, path, &nd, flags | LOOKUP_RCU);
 	if (unlikely(error == -ECHILD))
-		error = path_mountpoint(dfd, name, path, flags);
+		error = path_mountpoint(dfd, name, path, &nd, flags);
 	if (unlikely(error == -ESTALE))
-		error = path_mountpoint(dfd, name, path, flags | LOOKUP_REVAL);
+		error = path_mountpoint(dfd, name, path, &nd, flags | LOOKUP_REVAL);
 	if (likely(!error))
 		audit_inode(name, path->dentry, 0);
+	restore_nameidata(saved);
 	putname(name);
 	return error;
 }
@@ -2914,7 +2964,7 @@ out_dput:
 /*
  * Handle the last step of open()
  */
-static int do_last(struct nameidata *nd, struct path *path,
+static int do_last(struct nameidata *nd,
 		   struct file *file, const struct open_flags *op,
 		   int *opened, struct filename *name)
 {
@@ -2924,8 +2974,8 @@ static int do_last(struct nameidata *nd, struct path *path,
 	bool got_write = false;
 	int acc_mode = op->acc_mode;
 	struct inode *inode;
-	bool symlink_ok = false;
 	struct path save_parent = { .dentry = NULL, .mnt = NULL };
+	struct path path;
 	bool retried = false;
 	int error;
 
@@ -2934,18 +2984,18 @@ static int do_last(struct nameidata *nd, struct path *path,
 
 	if (nd->last_type != LAST_NORM) {
 		error = handle_dots(nd, nd->last_type);
-		if (error)
+		if (unlikely(error)) {
+			terminate_walk(nd);
 			return error;
+		}
 		goto finish_open;
 	}
 
 	if (!(open_flag & O_CREAT)) {
 		if (nd->last.name[nd->last.len])
 			nd->flags |= LOOKUP_FOLLOW | LOOKUP_DIRECTORY;
-		if (open_flag & O_PATH && !(nd->flags & LOOKUP_FOLLOW))
-			symlink_ok = true;
 		/* we _can_ be in RCU mode here */
-		error = lookup_fast(nd, path, &inode);
+		error = lookup_fast(nd, &path, &inode);
 		if (likely(!error))
 			goto finish_lookup;
 
@@ -2961,8 +3011,11 @@ static int do_last(struct nameidata *nd, struct path *path,
 		 * about to look up
 		 */
 		error = complete_walk(nd);
-		if (error)
+		if (error) {
+			if (nd->depth)
+				put_link(nd);
 			return error;
+		}
 
 		audit_inode(name, dir, LOOKUP_PARENT);
 		error = -EISDIR;
@@ -2983,7 +3036,7 @@ retry_lookup:
 		 */
 	}
 	mutex_lock(&dir->d_inode->i_mutex);
-	error = lookup_open(nd, path, file, op, got_write, opened);
+	error = lookup_open(nd, &path, file, op, got_write, opened);
 	mutex_unlock(&dir->d_inode->i_mutex);
 
 	if (error <= 0) {
@@ -3003,15 +3056,15 @@ retry_lookup:
 		open_flag &= ~O_TRUNC;
 		will_truncate = false;
 		acc_mode = MAY_OPEN;
-		path_to_nameidata(path, nd);
+		path_to_nameidata(&path, nd);
 		goto finish_open_created;
 	}
 
 	/*
 	 * create/update audit record if it already exists.
 	 */
-	if (d_is_positive(path->dentry))
-		audit_inode(name, path->dentry, 0);
+	if (d_is_positive(path.dentry))
+		audit_inode(name, path.dentry, 0);
 
 	/*
 	 * If atomic_open() acquired write access it is dropped now due to
@@ -3027,41 +3080,42 @@ retry_lookup:
 	if ((open_flag & (O_EXCL | O_CREAT)) == (O_EXCL | O_CREAT))
 		goto exit_dput;
 
-	error = follow_managed(path, nd->flags);
+	error = follow_managed(&path, nd);
 	if (error < 0)
-		goto exit_dput;
-
-	if (error)
-		nd->flags |= LOOKUP_JUMPED;
+		goto out;
 
 	BUG_ON(nd->flags & LOOKUP_RCU);
-	inode = path->dentry->d_inode;
+	inode = path.dentry->d_inode;
 finish_lookup:
 	/* we _can_ be in RCU mode here */
 	error = -ENOENT;
-	if (d_is_negative(path->dentry)) {
-		path_to_nameidata(path, nd);
+	if (d_is_negative(path.dentry)) {
+		path_to_nameidata(&path, nd);
 		goto out;
 	}
 
-	if (should_follow_link(path->dentry, !symlink_ok)) {
-		if (nd->flags & LOOKUP_RCU) {
-			if (unlikely(nd->path.mnt != path->mnt ||
-				     unlazy_walk(nd, path->dentry))) {
-				error = -ECHILD;
-				goto out;
-			}
-		}
-		BUG_ON(inode != path->dentry->d_inode);
-		return 1;
+	if (nd->depth)
+		put_link(nd);
+
+	error = should_follow_link(nd, &path, nd->flags & LOOKUP_FOLLOW);
+	if (unlikely(error)) {
+		if (error < 0)
+			goto out;
+		return error;
 	}
 
-	if ((nd->flags & LOOKUP_RCU) || nd->path.mnt != path->mnt) {
-		path_to_nameidata(path, nd);
+	if (unlikely(d_is_symlink(path.dentry)) && !(open_flag & O_PATH)) {
+		path_to_nameidata(&path, nd);
+		error = -ELOOP;
+		goto out;
+	}
+
+	if ((nd->flags & LOOKUP_RCU) || nd->path.mnt != path.mnt) {
+		path_to_nameidata(&path, nd);
 	} else {
 		save_parent.dentry = nd->path.dentry;
-		save_parent.mnt = mntget(path->mnt);
-		nd->path.dentry = path->dentry;
+		save_parent.mnt = mntget(path.mnt);
+		nd->path.dentry = path.dentry;
 
 	}
 	nd->inode = inode;
@@ -3069,6 +3123,8 @@ finish_lookup:
 finish_open:
 	error = complete_walk(nd);
 	if (error) {
+		if (nd->depth)
+			put_link(nd);
 		path_put(&save_parent);
 		return error;
 	}
@@ -3123,7 +3179,7 @@ out:
 	return error;
 
 exit_dput:
-	path_put_conditional(path, nd);
+	path_put_conditional(&path, nd);
 	goto out;
 exit_fput:
 	fput(file);
@@ -3214,7 +3270,6 @@ static struct file *path_openat(int dfd, struct filename *pathname,
 		struct nameidata *nd, const struct open_flags *op, int flags)
 {
 	struct file *file;
-	struct path path;
 	int opened = 0;
 	int error;
 
@@ -3233,26 +3288,11 @@ static struct file *path_openat(int dfd, struct filename *pathname,
 	if (unlikely(error))
 		goto out;
 
-	error = do_last(nd, &path, file, op, &opened, pathname);
-	while (unlikely(error > 0)) { /* trailing symlink */
-		struct path link = path;
-		void *cookie;
-		if (!(nd->flags & LOOKUP_FOLLOW)) {
-			path_put_conditional(&path, nd);
-			path_put(&nd->path);
-			error = -ELOOP;
-			break;
-		}
-		error = may_follow_link(&link, nd);
-		if (unlikely(error))
-			break;
-		nd->flags |= LOOKUP_PARENT;
+	while ((error = do_last(nd, file, op, &opened, pathname)) > 0) {
 		nd->flags &= ~(LOOKUP_OPEN|LOOKUP_CREATE|LOOKUP_EXCL);
-		error = follow_link(&link, nd, &cookie);
+		error = trailing_symlink(nd);
 		if (unlikely(error))
 			break;
-		error = do_last(nd, &path, file, op, &opened, pathname);
-		put_link(nd, &link, cookie);
 	}
 out:
 	path_cleanup(nd);
@@ -3275,7 +3315,7 @@ out:
 struct file *do_filp_open(int dfd, struct filename *pathname,
 		const struct open_flags *op)
 {
-	struct nameidata nd;
+	struct nameidata nd, *saved_nd = set_nameidata(&nd);
 	int flags = op->lookup_flags;
 	struct file *filp;
 
@@ -3284,13 +3324,14 @@ struct file *do_filp_open(int dfd, struct filename *pathname,
 		filp = path_openat(dfd, pathname, &nd, op, flags);
 	if (unlikely(filp == ERR_PTR(-ESTALE)))
 		filp = path_openat(dfd, pathname, &nd, op, flags | LOOKUP_REVAL);
+	restore_nameidata(saved_nd);
 	return filp;
 }
 
 struct file *do_file_open_root(struct dentry *dentry, struct vfsmount *mnt,
 		const char *name, const struct open_flags *op)
 {
-	struct nameidata nd;
+	struct nameidata nd, *saved_nd;
 	struct file *file;
 	struct filename *filename;
 	int flags = op->lookup_flags | LOOKUP_ROOT;
@@ -3305,11 +3346,13 @@ struct file *do_file_open_root(struct dentry *dentry, struct vfsmount *mnt,
 	if (unlikely(IS_ERR(filename)))
 		return ERR_CAST(filename);
 
+	saved_nd = set_nameidata(&nd);
 	file = path_openat(-1, filename, &nd, op, flags | LOOKUP_RCU);
 	if (unlikely(file == ERR_PTR(-ECHILD)))
 		file = path_openat(-1, filename, &nd, op, flags);
 	if (unlikely(file == ERR_PTR(-ESTALE)))
 		file = path_openat(-1, filename, &nd, op, flags | LOOKUP_REVAL);
+	restore_nameidata(saved_nd);
 	putname(filename);
 	return file;
 }
@@ -3348,7 +3391,7 @@ static struct dentry *filename_create(int dfd, struct filename *name,
 	 * Do the final lookup.
 	 */
 	mutex_lock_nested(&nd.path.dentry->d_inode->i_mutex, I_MUTEX_PARENT);
-	dentry = lookup_hash(&nd);
+	dentry = __lookup_hash(&nd.last, nd.path.dentry, nd.flags);
 	if (IS_ERR(dentry))
 		goto unlock;
 
@@ -3637,14 +3680,17 @@ static long do_rmdir(int dfd, const char __user *pathname)
 	int error = 0;
 	struct filename *name;
 	struct dentry *dentry;
-	struct nameidata nd;
+	struct path path;
+	struct qstr last;
+	int type;
 	unsigned int lookup_flags = 0;
 retry:
-	name = user_path_parent(dfd, pathname, &nd, lookup_flags);
+	name = user_path_parent(dfd, pathname,
+				&path, &last, &type, lookup_flags);
 	if (IS_ERR(name))
 		return PTR_ERR(name);
 
-	switch(nd.last_type) {
+	switch (type) {
 	case LAST_DOTDOT:
 		error = -ENOTEMPTY;
 		goto exit1;
@@ -3656,13 +3702,12 @@ retry:
 		goto exit1;
 	}
 
-	nd.flags &= ~LOOKUP_PARENT;
-	error = mnt_want_write(nd.path.mnt);
+	error = mnt_want_write(path.mnt);
 	if (error)
 		goto exit1;
 
-	mutex_lock_nested(&nd.path.dentry->d_inode->i_mutex, I_MUTEX_PARENT);
-	dentry = lookup_hash(&nd);
+	mutex_lock_nested(&path.dentry->d_inode->i_mutex, I_MUTEX_PARENT);
+	dentry = __lookup_hash(&last, path.dentry, lookup_flags);
 	error = PTR_ERR(dentry);
 	if (IS_ERR(dentry))
 		goto exit2;
@@ -3670,17 +3715,17 @@ retry:
 		error = -ENOENT;
 		goto exit3;
 	}
-	error = security_path_rmdir(&nd.path, dentry);
+	error = security_path_rmdir(&path, dentry);
 	if (error)
 		goto exit3;
-	error = vfs_rmdir(nd.path.dentry->d_inode, dentry);
+	error = vfs_rmdir(path.dentry->d_inode, dentry);
 exit3:
 	dput(dentry);
 exit2:
-	mutex_unlock(&nd.path.dentry->d_inode->i_mutex);
-	mnt_drop_write(nd.path.mnt);
+	mutex_unlock(&path.dentry->d_inode->i_mutex);
+	mnt_drop_write(path.mnt);
 exit1:
-	path_put(&nd.path);
+	path_put(&path);
 	putname(name);
 	if (retry_estale(error, lookup_flags)) {
 		lookup_flags |= LOOKUP_REVAL;
@@ -3763,43 +3808,45 @@ static long do_unlinkat(int dfd, const char __user *pathname)
 	int error;
 	struct filename *name;
 	struct dentry *dentry;
-	struct nameidata nd;
+	struct path path;
+	struct qstr last;
+	int type;
 	struct inode *inode = NULL;
 	struct inode *delegated_inode = NULL;
 	unsigned int lookup_flags = 0;
 retry:
-	name = user_path_parent(dfd, pathname, &nd, lookup_flags);
+	name = user_path_parent(dfd, pathname,
+				&path, &last, &type, lookup_flags);
 	if (IS_ERR(name))
 		return PTR_ERR(name);
 
 	error = -EISDIR;
-	if (nd.last_type != LAST_NORM)
+	if (type != LAST_NORM)
 		goto exit1;
 
-	nd.flags &= ~LOOKUP_PARENT;
-	error = mnt_want_write(nd.path.mnt);
+	error = mnt_want_write(path.mnt);
 	if (error)
 		goto exit1;
 retry_deleg:
-	mutex_lock_nested(&nd.path.dentry->d_inode->i_mutex, I_MUTEX_PARENT);
-	dentry = lookup_hash(&nd);
+	mutex_lock_nested(&path.dentry->d_inode->i_mutex, I_MUTEX_PARENT);
+	dentry = __lookup_hash(&last, path.dentry, lookup_flags);
 	error = PTR_ERR(dentry);
 	if (!IS_ERR(dentry)) {
 		/* Why not before? Because we want correct error value */
-		if (nd.last.name[nd.last.len])
+		if (last.name[last.len])
 			goto slashes;
 		inode = dentry->d_inode;
 		if (d_is_negative(dentry))
 			goto slashes;
 		ihold(inode);
-		error = security_path_unlink(&nd.path, dentry);
+		error = security_path_unlink(&path, dentry);
 		if (error)
 			goto exit2;
-		error = vfs_unlink(nd.path.dentry->d_inode, dentry, &delegated_inode);
+		error = vfs_unlink(path.dentry->d_inode, dentry, &delegated_inode);
 exit2:
 		dput(dentry);
 	}
-	mutex_unlock(&nd.path.dentry->d_inode->i_mutex);
+	mutex_unlock(&path.dentry->d_inode->i_mutex);
 	if (inode)
 		iput(inode);	/* truncate the inode here */
 	inode = NULL;
@@ -3808,9 +3855,9 @@ exit2:
 		if (!error)
 			goto retry_deleg;
 	}
-	mnt_drop_write(nd.path.mnt);
+	mnt_drop_write(path.mnt);
 exit1:
-	path_put(&nd.path);
+	path_put(&path);
 	putname(name);
 	if (retry_estale(error, lookup_flags)) {
 		lookup_flags |= LOOKUP_REVAL;
@@ -4240,14 +4287,15 @@ EXPORT_SYMBOL(vfs_rename);
 SYSCALL_DEFINE5(renameat2, int, olddfd, const char __user *, oldname,
 		int, newdfd, const char __user *, newname, unsigned int, flags)
 {
-	struct dentry *old_dir, *new_dir;
 	struct dentry *old_dentry, *new_dentry;
 	struct dentry *trap;
-	struct nameidata oldnd, newnd;
+	struct path old_path, new_path;
+	struct qstr old_last, new_last;
+	int old_type, new_type;
 	struct inode *delegated_inode = NULL;
 	struct filename *from;
 	struct filename *to;
-	unsigned int lookup_flags = 0;
+	unsigned int lookup_flags = 0, target_flags = LOOKUP_RENAME_TARGET;
 	bool should_retry = false;
 	int error;
 
@@ -4261,47 +4309,45 @@ SYSCALL_DEFINE5(renameat2, int, olddfd, const char __user *, oldname,
 	if ((flags & RENAME_WHITEOUT) && !capable(CAP_MKNOD))
 		return -EPERM;
 
+	if (flags & RENAME_EXCHANGE)
+		target_flags = 0;
+
 retry:
-	from = user_path_parent(olddfd, oldname, &oldnd, lookup_flags);
+	from = user_path_parent(olddfd, oldname,
+				&old_path, &old_last, &old_type, lookup_flags);
 	if (IS_ERR(from)) {
 		error = PTR_ERR(from);
 		goto exit;
 	}
 
-	to = user_path_parent(newdfd, newname, &newnd, lookup_flags);
+	to = user_path_parent(newdfd, newname,
+				&new_path, &new_last, &new_type, lookup_flags);
 	if (IS_ERR(to)) {
 		error = PTR_ERR(to);
 		goto exit1;
 	}
 
 	error = -EXDEV;
-	if (oldnd.path.mnt != newnd.path.mnt)
+	if (old_path.mnt != new_path.mnt)
 		goto exit2;
 
-	old_dir = oldnd.path.dentry;
 	error = -EBUSY;
-	if (oldnd.last_type != LAST_NORM)
+	if (old_type != LAST_NORM)
 		goto exit2;
 
-	new_dir = newnd.path.dentry;
 	if (flags & RENAME_NOREPLACE)
 		error = -EEXIST;
-	if (newnd.last_type != LAST_NORM)
+	if (new_type != LAST_NORM)
 		goto exit2;
 
-	error = mnt_want_write(oldnd.path.mnt);
+	error = mnt_want_write(old_path.mnt);
 	if (error)
 		goto exit2;
 
-	oldnd.flags &= ~LOOKUP_PARENT;
-	newnd.flags &= ~LOOKUP_PARENT;
-	if (!(flags & RENAME_EXCHANGE))
-		newnd.flags |= LOOKUP_RENAME_TARGET;
-
 retry_deleg:
-	trap = lock_rename(new_dir, old_dir);
+	trap = lock_rename(new_path.dentry, old_path.dentry);
 
-	old_dentry = lookup_hash(&oldnd);
+	old_dentry = __lookup_hash(&old_last, old_path.dentry, lookup_flags);
 	error = PTR_ERR(old_dentry);
 	if (IS_ERR(old_dentry))
 		goto exit3;
@@ -4309,7 +4355,7 @@ retry_deleg:
 	error = -ENOENT;
 	if (d_is_negative(old_dentry))
 		goto exit4;
-	new_dentry = lookup_hash(&newnd);
+	new_dentry = __lookup_hash(&new_last, new_path.dentry, lookup_flags | target_flags);
 	error = PTR_ERR(new_dentry);
 	if (IS_ERR(new_dentry))
 		goto exit4;
@@ -4323,16 +4369,16 @@ retry_deleg:
 
 		if (!d_is_dir(new_dentry)) {
 			error = -ENOTDIR;
-			if (newnd.last.name[newnd.last.len])
+			if (new_last.name[new_last.len])
 				goto exit5;
 		}
 	}
 	/* unless the source is a directory trailing slashes give -ENOTDIR */
 	if (!d_is_dir(old_dentry)) {
 		error = -ENOTDIR;
-		if (oldnd.last.name[oldnd.last.len])
+		if (old_last.name[old_last.len])
 			goto exit5;
-		if (!(flags & RENAME_EXCHANGE) && newnd.last.name[newnd.last.len])
+		if (!(flags & RENAME_EXCHANGE) && new_last.name[new_last.len])
 			goto exit5;
 	}
 	/* source should not be ancestor of target */
@@ -4345,32 +4391,32 @@ retry_deleg:
 	if (new_dentry == trap)
 		goto exit5;
 
-	error = security_path_rename(&oldnd.path, old_dentry,
-				     &newnd.path, new_dentry, flags);
+	error = security_path_rename(&old_path, old_dentry,
+				     &new_path, new_dentry, flags);
 	if (error)
 		goto exit5;
-	error = vfs_rename(old_dir->d_inode, old_dentry,
-			   new_dir->d_inode, new_dentry,
+	error = vfs_rename(old_path.dentry->d_inode, old_dentry,
+			   new_path.dentry->d_inode, new_dentry,
 			   &delegated_inode, flags);
 exit5:
 	dput(new_dentry);
 exit4:
 	dput(old_dentry);
 exit3:
-	unlock_rename(new_dir, old_dir);
+	unlock_rename(new_path.dentry, old_path.dentry);
 	if (delegated_inode) {
 		error = break_deleg_wait(&delegated_inode);
 		if (!error)
 			goto retry_deleg;
 	}
-	mnt_drop_write(oldnd.path.mnt);
+	mnt_drop_write(old_path.mnt);
 exit2:
 	if (retry_estale(error, lookup_flags))
 		should_retry = true;
-	path_put(&newnd.path);
+	path_put(&new_path);
 	putname(to);
 exit1:
-	path_put(&oldnd.path);
+	path_put(&old_path);
 	putname(from);
 	if (should_retry) {
 		should_retry = false;
@@ -4429,18 +4475,18 @@ EXPORT_SYMBOL(readlink_copy);
  */
 int generic_readlink(struct dentry *dentry, char __user *buffer, int buflen)
 {
-	struct nameidata nd;
 	void *cookie;
+	const char *link = dentry->d_inode->i_link;
 	int res;
 
-	nd.depth = 0;
-	cookie = dentry->d_inode->i_op->follow_link(dentry, &nd);
-	if (IS_ERR(cookie))
-		return PTR_ERR(cookie);
-
-	res = readlink_copy(buffer, buflen, nd_get_link(&nd));
+	if (!link) {
+		link = dentry->d_inode->i_op->follow_link(dentry, &cookie);
+		if (IS_ERR(link))
+			return PTR_ERR(link);
+	}
+	res = readlink_copy(buffer, buflen, link);
 	if (dentry->d_inode->i_op->put_link)
-		dentry->d_inode->i_op->put_link(dentry, &nd, cookie);
+		dentry->d_inode->i_op->put_link(dentry, cookie);
 	return res;
 }
 EXPORT_SYMBOL(generic_readlink);
@@ -4472,22 +4518,21 @@ int page_readlink(struct dentry *dentry, char __user *buffer, int buflen)
 }
 EXPORT_SYMBOL(page_readlink);
 
-void *page_follow_link_light(struct dentry *dentry, struct nameidata *nd)
+const char *page_follow_link_light(struct dentry *dentry, void **cookie)
 {
 	struct page *page = NULL;
-	nd_set_link(nd, page_getlink(dentry, &page));
-	return page;
+	char *res = page_getlink(dentry, &page);
+	if (!IS_ERR(res))
+		*cookie = page;
+	return res;
 }
 EXPORT_SYMBOL(page_follow_link_light);
 
-void page_put_link(struct dentry *dentry, struct nameidata *nd, void *cookie)
+void page_put_link(struct dentry *dentry, void *cookie)
 {
 	struct page *page = cookie;
-
-	if (page) {
-		kunmap(page);
-		page_cache_release(page);
-	}
+	kunmap(page);
+	page_cache_release(page);
 }
 EXPORT_SYMBOL(page_put_link);
 
