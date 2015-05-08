@@ -1060,6 +1060,7 @@ int rt5677_sel_asrc_clk_src(struct snd_soc_codec *codec,
 	unsigned int asrc5_mask = 0, asrc5_value = 0;
 	unsigned int asrc6_mask = 0, asrc6_value = 0;
 	unsigned int asrc7_mask = 0, asrc7_value = 0;
+	unsigned int asrc8_mask = 0, asrc8_value = 0;
 
 	switch (clk_src) {
 	case RT5677_CLK_SEL_SYS:
@@ -1196,9 +1197,107 @@ int rt5677_sel_asrc_clk_src(struct snd_soc_codec *codec,
 		regmap_update_bits(rt5677->regmap, RT5677_ASRC_7, asrc7_mask,
 			asrc7_value);
 
+	/* ASRC 8 */
+	if (filter_mask & RT5677_I2S1_SOURCE) {
+		asrc8_mask |= RT5677_I2S1_CLK_SEL_MASK;
+		asrc8_value = (asrc8_value & ~RT5677_I2S1_CLK_SEL_MASK)
+			| ((clk_src - 1) << RT5677_I2S1_CLK_SEL_SFT);
+	}
+
+	if (filter_mask & RT5677_I2S2_SOURCE) {
+		asrc8_mask |= RT5677_I2S2_CLK_SEL_MASK;
+		asrc8_value = (asrc8_value & ~RT5677_I2S2_CLK_SEL_MASK)
+			| ((clk_src - 1) << RT5677_I2S2_CLK_SEL_SFT);
+	}
+
+	if (filter_mask & RT5677_I2S3_SOURCE) {
+		asrc8_mask |= RT5677_I2S3_CLK_SEL_MASK;
+		asrc8_value = (asrc8_value & ~RT5677_I2S3_CLK_SEL_MASK)
+			| ((clk_src - 1) << RT5677_I2S3_CLK_SEL_SFT);
+	}
+
+	if (filter_mask & RT5677_I2S4_SOURCE) {
+		asrc8_mask |= RT5677_I2S4_CLK_SEL_MASK;
+		asrc8_value = (asrc8_value & ~RT5677_I2S4_CLK_SEL_MASK)
+			| ((clk_src - 1) << RT5677_I2S4_CLK_SEL_SFT);
+	}
+
+	if (asrc8_mask)
+		regmap_update_bits(rt5677->regmap, RT5677_ASRC_8, asrc8_mask,
+			asrc8_value);
+
 	return 0;
 }
 EXPORT_SYMBOL_GPL(rt5677_sel_asrc_clk_src);
+
+static int rt5677_dmic_use_asrc(struct snd_soc_dapm_widget *source,
+			 struct snd_soc_dapm_widget *sink)
+{
+	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(source->dapm);
+	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
+	unsigned int asrc_setting;
+
+	switch (source->shift) {
+	case 11:
+		regmap_read(rt5677->regmap, RT5677_ASRC_5, &asrc_setting);
+		asrc_setting = (asrc_setting & RT5677_AD_STO1_CLK_SEL_MASK) >>
+				RT5677_AD_STO1_CLK_SEL_SFT;
+		if (asrc_setting >= RT5677_CLK_SEL_I2S1_ASRC &&
+			asrc_setting <= RT5677_CLK_SEL_I2S6_ASRC)
+			return 1;
+		break;
+
+	case 10:
+		regmap_read(rt5677->regmap, RT5677_ASRC_5, &asrc_setting);
+		asrc_setting = (asrc_setting & RT5677_AD_STO2_CLK_SEL_MASK) >>
+				RT5677_AD_STO2_CLK_SEL_SFT;
+		if (asrc_setting >= RT5677_CLK_SEL_I2S1_ASRC &&
+			asrc_setting <= RT5677_CLK_SEL_I2S6_ASRC)
+			return 1;
+		break;
+
+	case 9:
+		regmap_read(rt5677->regmap, RT5677_ASRC_5, &asrc_setting);
+		asrc_setting = (asrc_setting & RT5677_AD_STO3_CLK_SEL_MASK) >>
+				RT5677_AD_STO3_CLK_SEL_SFT;
+		if (asrc_setting >= RT5677_CLK_SEL_I2S1_ASRC &&
+			asrc_setting <= RT5677_CLK_SEL_I2S6_ASRC)
+			return 1;
+		break;
+
+	case 8:
+		regmap_read(rt5677->regmap, RT5677_ASRC_5, &asrc_setting);
+		asrc_setting = (asrc_setting & RT5677_AD_STO4_CLK_SEL_MASK) >>
+			RT5677_AD_STO4_CLK_SEL_SFT;
+		if (asrc_setting >= RT5677_CLK_SEL_I2S1_ASRC &&
+			asrc_setting <= RT5677_CLK_SEL_I2S6_ASRC)
+			return 1;
+		break;
+
+	case 7:
+		regmap_read(rt5677->regmap, RT5677_ASRC_6, &asrc_setting);
+		asrc_setting = (asrc_setting & RT5677_AD_MONOL_CLK_SEL_MASK) >>
+			RT5677_AD_MONOL_CLK_SEL_SFT;
+		if (asrc_setting >= RT5677_CLK_SEL_I2S1_ASRC &&
+			asrc_setting <= RT5677_CLK_SEL_I2S6_ASRC)
+			return 1;
+		break;
+
+	case 6:
+		regmap_read(rt5677->regmap, RT5677_ASRC_6, &asrc_setting);
+		asrc_setting = (asrc_setting & RT5677_AD_MONOR_CLK_SEL_MASK) >>
+			RT5677_AD_MONOR_CLK_SEL_SFT;
+		if (asrc_setting >= RT5677_CLK_SEL_I2S1_ASRC &&
+			asrc_setting <= RT5677_CLK_SEL_I2S6_ASRC)
+			return 1;
+		break;
+
+	default:
+		break;
+	}
+
+	return 0;
+}
 
 /* Digital Mixer */
 static const struct snd_kcontrol_new rt5677_sto1_adc_l_mix[] = {
@@ -3057,12 +3156,12 @@ static const struct snd_soc_dapm_widget rt5677_dapm_widgets[] = {
 };
 
 static const struct snd_soc_dapm_route rt5677_dapm_routes[] = {
-	{ "Stereo1 DMIC Mux", NULL, "DMIC STO1 ASRC", can_use_asrc },
-	{ "Stereo2 DMIC Mux", NULL, "DMIC STO2 ASRC", can_use_asrc },
-	{ "Stereo3 DMIC Mux", NULL, "DMIC STO3 ASRC", can_use_asrc },
-	{ "Stereo4 DMIC Mux", NULL, "DMIC STO4 ASRC", can_use_asrc },
-	{ "Mono DMIC L Mux", NULL, "DMIC MONO L ASRC", can_use_asrc },
-	{ "Mono DMIC R Mux", NULL, "DMIC MONO R ASRC", can_use_asrc },
+	{ "Stereo1 DMIC Mux", NULL, "DMIC STO1 ASRC", rt5677_dmic_use_asrc },
+	{ "Stereo2 DMIC Mux", NULL, "DMIC STO2 ASRC", rt5677_dmic_use_asrc },
+	{ "Stereo3 DMIC Mux", NULL, "DMIC STO3 ASRC", rt5677_dmic_use_asrc },
+	{ "Stereo4 DMIC Mux", NULL, "DMIC STO4 ASRC", rt5677_dmic_use_asrc },
+	{ "Mono DMIC L Mux", NULL, "DMIC MONO L ASRC", rt5677_dmic_use_asrc },
+	{ "Mono DMIC R Mux", NULL, "DMIC MONO R ASRC", rt5677_dmic_use_asrc },
 	{ "I2S1", NULL, "I2S1 ASRC", can_use_asrc},
 	{ "I2S2", NULL, "I2S2 ASRC", can_use_asrc},
 	{ "I2S3", NULL, "I2S3 ASRC", can_use_asrc},
