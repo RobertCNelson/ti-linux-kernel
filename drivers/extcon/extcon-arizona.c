@@ -32,12 +32,9 @@
 #include <linux/mfd/arizona/core.h>
 #include <linux/mfd/arizona/pdata.h>
 #include <linux/mfd/arizona/registers.h>
+#include <dt-bindings/mfd/arizona.h>
 
 #define ARIZONA_MAX_MICD_RANGE 8
-
-#define ARIZONA_ACCDET_MODE_MIC 0
-#define ARIZONA_ACCDET_MODE_HPL 1
-#define ARIZONA_ACCDET_MODE_HPR 2
 
 #define ARIZONA_MICD_CLAMP_MODE_JDL      0x4
 #define ARIZONA_MICD_CLAMP_MODE_JDH      0x5
@@ -94,7 +91,7 @@ struct arizona_extcon_info {
 	bool detecting;
 	int jack_flips;
 
-	int hpdet_ip;
+	int hpdet_ip_version;
 
 	struct extcon_dev *edev;
 };
@@ -145,6 +142,7 @@ static void arizona_extcon_hp_clamp(struct arizona_extcon_info *info,
 
 	switch (arizona->type) {
 	case WM5110:
+	case WM8280:
 		mask = ARIZONA_HP1L_SHRTO | ARIZONA_HP1L_FLWR |
 		       ARIZONA_HP1L_SHRTI;
 		if (clamp)
@@ -380,7 +378,7 @@ static int arizona_hpdet_read(struct arizona_extcon_info *info)
 		return ret;
 	}
 
-	switch (info->hpdet_ip) {
+	switch (info->hpdet_ip_version) {
 	case 0:
 		if (!(val & ARIZONA_HP_DONE)) {
 			dev_err(arizona->dev, "HPDET did not complete: %x\n",
@@ -441,7 +439,7 @@ static int arizona_hpdet_read(struct arizona_extcon_info *info)
 
 	default:
 		dev_warn(arizona->dev, "Unknown HPDET IP revision %d\n",
-			 info->hpdet_ip);
+			 info->hpdet_ip_version);
 	case 2:
 		if (!(val & ARIZONA_HP_DONE_B)) {
 			dev_err(arizona->dev, "HPDET did not complete: %x\n",
@@ -670,9 +668,9 @@ static void arizona_identify_headphone(struct arizona_extcon_info *info)
 	ret = regmap_update_bits(arizona->regmap,
 				 ARIZONA_ACCESSORY_DETECT_MODE_1,
 				 ARIZONA_ACCDET_MODE_MASK,
-				 ARIZONA_ACCDET_MODE_HPL);
+				 arizona->pdata.hpdet_channel);
 	if (ret != 0) {
-		dev_err(arizona->dev, "Failed to set HPDETL mode: %d\n", ret);
+		dev_err(arizona->dev, "Failed to set HPDET mode: %d\n", ret);
 		goto err;
 	}
 
@@ -722,9 +720,9 @@ static void arizona_start_hpdet_acc_id(struct arizona_extcon_info *info)
 				 ARIZONA_ACCESSORY_DETECT_MODE_1,
 				 ARIZONA_ACCDET_SRC | ARIZONA_ACCDET_MODE_MASK,
 				 info->micd_modes[0].src |
-				 ARIZONA_ACCDET_MODE_HPL);
+				 arizona->pdata.hpdet_channel);
 	if (ret != 0) {
-		dev_err(arizona->dev, "Failed to set HPDETL mode: %d\n", ret);
+		dev_err(arizona->dev, "Failed to set HPDET mode: %d\n", ret);
 		goto err;
 	}
 
@@ -1120,6 +1118,26 @@ static void arizona_micd_set_level(struct arizona *arizona, int index,
 	regmap_update_bits(arizona->regmap, reg, mask, level);
 }
 
+static int arizona_extcon_of_get_pdata(struct arizona *arizona)
+{
+	struct arizona_pdata *pdata = &arizona->pdata;
+	unsigned int val = ARIZONA_ACCDET_MODE_HPL;
+
+	of_property_read_u32(arizona->dev->of_node, "wlf,hpdet-channel", &val);
+	switch (val) {
+	case ARIZONA_ACCDET_MODE_HPL:
+	case ARIZONA_ACCDET_MODE_HPR:
+		pdata->hpdet_channel = val;
+		break;
+	default:
+		dev_err(arizona->dev,
+			"Wrong wlf,hpdet-channel DT value %d\n", val);
+		pdata->hpdet_channel = ARIZONA_ACCDET_MODE_HPL;
+	}
+
+	return 0;
+}
+
 static int arizona_extcon_probe(struct platform_device *pdev)
 {
 	struct arizona *arizona = dev_get_drvdata(pdev->dev.parent);
@@ -1136,6 +1154,11 @@ static int arizona_extcon_probe(struct platform_device *pdev)
 	info = devm_kzalloc(&pdev->dev, sizeof(*info), GFP_KERNEL);
 	if (!info)
 		return -ENOMEM;
+
+	if (IS_ENABLED(CONFIG_OF)) {
+		if (!dev_get_platdata(arizona->dev))
+			arizona_extcon_of_get_pdata(arizona);
+	}
 
 	info->micvdd = devm_regulator_get(&pdev->dev, "MICVDD");
 	if (IS_ERR(info->micvdd)) {
@@ -1161,7 +1184,7 @@ static int arizona_extcon_probe(struct platform_device *pdev)
 			break;
 		default:
 			info->micd_clamp = true;
-			info->hpdet_ip = 1;
+			info->hpdet_ip_version = 1;
 			break;
 		}
 		break;
@@ -1172,7 +1195,7 @@ static int arizona_extcon_probe(struct platform_device *pdev)
 			break;
 		default:
 			info->micd_clamp = true;
-			info->hpdet_ip = 2;
+			info->hpdet_ip_version = 2;
 			break;
 		}
 		break;
@@ -1185,7 +1208,6 @@ static int arizona_extcon_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failed to allocate extcon device\n");
 		return -ENOMEM;
 	}
-	info->edev->name = "Headset Jack";
 
 	ret = devm_extcon_dev_register(&pdev->dev, info->edev);
 	if (ret < 0) {
