@@ -518,12 +518,13 @@ static int check_dnode(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,
 	return 1;
 }
 
-static void move_data_page(struct inode *inode, struct page *page, int gc_type)
+static void move_data_page(struct inode *inode, block_t bidx, int gc_type)
 {
-	struct f2fs_io_info fio = {
-		.type = DATA,
-		.rw = WRITE_SYNC,
-	};
+	struct page *page;
+
+	page = get_lock_data_page(inode, bidx);
+	if (IS_ERR(page))
+		return;
 
 	if (gc_type == BG_GC) {
 		if (PageWriteback(page))
@@ -531,12 +532,18 @@ static void move_data_page(struct inode *inode, struct page *page, int gc_type)
 		set_page_dirty(page);
 		set_cold_data(page);
 	} else {
+		struct f2fs_io_info fio = {
+			.sbi = F2FS_I_SB(inode),
+			.type = DATA,
+			.rw = WRITE_SYNC,
+			.page = page,
+		};
 		f2fs_wait_on_page_writeback(page, DATA);
 
 		if (clear_page_dirty_for_io(page))
 			inode_dec_dirty_pages(inode);
 		set_cold_data(page);
-		do_write_data_page(page, &fio);
+		do_write_data_page(&fio);
 		clear_cold_data(page);
 	}
 out:
@@ -600,9 +607,8 @@ next_step:
 				continue;
 
 			start_bidx = start_bidx_of_node(nofs, F2FS_I(inode));
-
-			data_page = find_data_page(inode,
-					start_bidx + ofs_in_node, false);
+			data_page = get_read_data_page(inode,
+					start_bidx + ofs_in_node, READA);
 			if (IS_ERR(data_page)) {
 				iput(inode);
 				continue;
@@ -616,12 +622,9 @@ next_step:
 		/* phase 3 */
 		inode = find_gc_inode(gc_list, dni.ino);
 		if (inode) {
-			start_bidx = start_bidx_of_node(nofs, F2FS_I(inode));
-			data_page = get_lock_data_page(inode,
-						start_bidx + ofs_in_node);
-			if (IS_ERR(data_page))
-				continue;
-			move_data_page(inode, data_page, gc_type);
+			start_bidx = start_bidx_of_node(nofs, F2FS_I(inode))
+								+ ofs_in_node;
+			move_data_page(inode, start_bidx, gc_type);
 			stat_inc_data_blk_count(sbi, 1, gc_type);
 		}
 	}
