@@ -974,11 +974,6 @@ const char *get_link(struct nameidata *nd)
 		touch_atime(&last->link);
 	}
 
-	if (nd->flags & LOOKUP_RCU) {
-		if (unlikely(unlazy_walk(nd, NULL, 0)))
-			return ERR_PTR(-ECHILD);
-	}
-
 	error = security_inode_follow_link(dentry, inode,
 					   nd->flags & LOOKUP_RCU);
 	if (unlikely(error))
@@ -987,6 +982,10 @@ const char *get_link(struct nameidata *nd)
 	nd->last_type = LAST_BIND;
 	res = inode->i_link;
 	if (!res) {
+		if (nd->flags & LOOKUP_RCU) {
+			if (unlikely(unlazy_walk(nd, NULL, 0)))
+				return ERR_PTR(-ECHILD);
+		}
 		res = inode->i_op->follow_link(dentry, &last->cookie);
 		if (IS_ERR_OR_NULL(res)) {
 			last->cookie = NULL;
@@ -994,6 +993,10 @@ const char *get_link(struct nameidata *nd)
 		}
 	}
 	if (*res == '/') {
+		if (nd->flags & LOOKUP_RCU) {
+			if (unlikely(unlazy_walk(nd, NULL, 0)))
+				return ERR_PTR(-ECHILD);
+		}
 		if (!nd->root.mnt)
 			set_root(nd);
 		path_put(&nd->path);
