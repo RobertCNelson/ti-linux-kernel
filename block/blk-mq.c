@@ -194,7 +194,7 @@ static void blk_mq_rq_ctx_init(struct request_queue *q, struct blk_mq_ctx *ctx,
 	rq->resid_len = 0;
 	rq->sense = NULL;
 
-#if CONFIG_PREEMPT_RT_FULL
+#ifdef CONFIG_PREEMPT_RT_FULL
 	INIT_WORK(&rq->work, __blk_mq_complete_request_remote_work);
 #endif
 	INIT_LIST_HEAD(&rq->timeout_list);
@@ -352,7 +352,7 @@ static void blk_mq_ipi_complete_request(struct request *rq)
 		shared = cpus_share_cache(cpu, ctx->cpu);
 
 	if (cpu != ctx->cpu && !shared && cpu_online(ctx->cpu)) {
-#if CONFIG_PREEMPT_RT_FULL
+#ifdef CONFIG_PREEMPT_RT_FULL
 		schedule_work_on(ctx->cpu, &rq->work);
 #else
 		rq->csd.func = __blk_mq_complete_request_remote;
