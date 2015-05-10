@@ -33,9 +33,9 @@ static bool swork_readable(struct sworker *worker)
 	if (kthread_should_stop())
 		return true;
 
-	raw_spin_lock(&worker->lock);
+	raw_spin_lock_irq(&worker->lock);
 	r = !list_empty(&worker->events);
-	raw_spin_unlock(&worker->lock);
+	raw_spin_unlock_irq(&worker->lock);
 
 	return r;
 }
@@ -44,32 +44,28 @@ static int swork_kthread(void *arg)
 {
 	struct sworker *worker = arg;
 
-	pr_info("swork_kthread enter\n");
-
 	for (;;) {
 		swait_event_interruptible(worker->wq,
 					swork_readable(worker));
 		if (kthread_should_stop())
 			break;
 
-		raw_spin_lock(&worker->lock);
+		raw_spin_lock_irq(&worker->lock);
 		while (!list_empty(&worker->events)) {
 			struct swork_event *sev;
 
 			sev = list_first_entry(&worker->events,
 					struct swork_event, item);
 			list_del(&sev->item);
-			raw_spin_unlock(&worker->lock);
+			raw_spin_unlock_irq(&worker->lock);
 
 			WARN_ON_ONCE(!test_and_clear_bit(SWORK_EVENT_PENDING,
 							 &sev->flags));
 			sev->func(sev);
-			raw_spin_lock(&worker->lock);
+			raw_spin_lock_irq(&worker->lock);
 		}
-		raw_spin_unlock(&worker->lock);
+		raw_spin_unlock_irq(&worker->lock);
 	}
-
-	pr_info("swork_kthread exit\n");
 	return 0;
 }
 
@@ -111,14 +107,14 @@ static void swork_destroy(struct sworker *worker)
  */
 bool swork_queue(struct swork_event *sev)
 {
+	unsigned long flags;
+
 	if (test_and_set_bit(SWORK_EVENT_PENDING, &sev->flags))
 		return false;
 
-	WARN_ON(irqs_disabled());
-
-	raw_spin_lock(&glob_worker->lock);
+	raw_spin_lock_irqsave(&glob_worker->lock, flags);
 	list_add_tail(&sev->item, &glob_worker->events);
-	raw_spin_unlock(&glob_worker->lock);
+	raw_spin_unlock_irqrestore(&glob_worker->lock, flags);
 
 	swait_wake(&glob_worker->wq);
 	return true;

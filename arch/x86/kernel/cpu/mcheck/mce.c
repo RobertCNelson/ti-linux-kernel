@@ -18,7 +18,6 @@
 #include <linux/rcupdate.h>
 #include <linux/kobject.h>
 #include <linux/uaccess.h>
-#include <linux/kthread.h>
 #include <linux/kdebug.h>
 #include <linux/kernel.h>
 #include <linux/percpu.h>
@@ -43,6 +42,7 @@
 #include <linux/irq_work.h>
 #include <linux/export.h>
 #include <linux/jiffies.h>
+#include <linux/work-simple.h>
 
 #include <asm/processor.h>
 #include <asm/mce.h>
@@ -1364,7 +1364,7 @@ static void mce_do_trigger(struct work_struct *work)
 
 static DECLARE_WORK(mce_trigger_work, mce_do_trigger);
 
-static void __mce_notify_work(void)
+static void __mce_notify_work(struct swork_event *event)
 {
 	/* Not more than two messages every minute */
 	static DEFINE_RATELIMIT_STATE(ratelimit, 60*HZ, 2);
@@ -1385,43 +1385,31 @@ static void __mce_notify_work(void)
 }
 
 #ifdef CONFIG_PREEMPT_RT_FULL
-struct task_struct *mce_notify_helper;
-
-static int mce_notify_helper_thread(void *unused)
-{
-	while (1) {
-		set_current_state(TASK_INTERRUPTIBLE);
-		schedule();
-		if (kthread_should_stop())
-			break;
-		__mce_notify_work();
-	}
-	return 0;
-}
+static bool notify_work_ready __read_mostly;
+static struct swork_event notify_work;
 
 static int mce_notify_work_init(void)
 {
-	mce_notify_helper = kthread_run(mce_notify_helper_thread, NULL,
-					   "mce-notify");
-	if (!mce_notify_helper)
-		return -ENOMEM;
+	int err;
 
+	err = swork_get();
+	if (err)
+		return err;
+
+	INIT_SWORK(&notify_work, __mce_notify_work);
+	notify_work_ready = true;
 	return 0;
 }
 
 static void mce_notify_work(void)
 {
-	if (WARN_ON_ONCE(!mce_notify_helper)) {
-		pr_info(HW_ERR "Machine check event before MCE init; ignored\n");
-		return;
-	}
-
-	wake_up_process(mce_notify_helper);
+	if (notify_work_ready)
+		swork_queue(&notify_work);
 }
 #else
 static void mce_notify_work(void)
 {
-	__mce_notify_work();
+	__mce_notify_work(NULL);
 }
 static inline int mce_notify_work_init(void) { return 0; }
 #endif
@@ -2497,6 +2485,10 @@ static __init int mcheck_init_device(void)
 		goto err_out;
 	}
 
+	err = mce_notify_work_init();
+	if (err)
+		goto err_out;
+
 	if (!zalloc_cpumask_var(&mce_device_initialized, GFP_KERNEL)) {
 		err = -ENOMEM;
 		goto err_out;
@@ -2533,14 +2525,7 @@ static __init int mcheck_init_device(void)
 	if (err)
 		goto err_register;
 
-	err = mce_notify_work_init();
-	if (err)
-		goto err_notify;
-
 	return 0;
-
-err_notify:
-	misc_deregister(&mce_chrdev_device);
 
 err_register:
 	unregister_syscore_ops(&mce_syscore_ops);
