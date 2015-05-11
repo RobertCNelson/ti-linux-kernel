@@ -299,6 +299,8 @@ static DEFINE_SPINLOCK(wq_mayday_lock);	/* protects wq->maydays list */
 static LIST_HEAD(workqueues);		/* PR: list of all workqueues */
 static bool workqueue_freezing;		/* PL: have wqs started freezing? */
 
+static cpumask_var_t wq_unbound_cpumask; /* PL: low level cpumask for all unbound wqs */
+
 /* the per-cpu worker pools */
 static DEFINE_PER_CPU_SHARED_ALIGNED(struct worker_pool [NR_STD_WORKER_POOLS],
 				     cpu_worker_pools);
@@ -3425,20 +3427,9 @@ static struct pool_workqueue *alloc_unbound_pwq(struct workqueue_struct *wq,
 	return pwq;
 }
 
-/* undo alloc_unbound_pwq(), used only in the error path */
-static void free_unbound_pwq(struct pool_workqueue *pwq)
-{
-	lockdep_assert_held(&wq_pool_mutex);
-
-	if (pwq) {
-		put_unbound_pool(pwq->pool);
-		kmem_cache_free(pwq_cache, pwq);
-	}
-}
-
 /**
  * wq_calc_node_mask - calculate a wq_attrs' cpumask for the specified node
- * @attrs: the wq_attrs of interest
+ * @attrs: the wq_attrs of the default pwq of the target workqueue
  * @node: the target NUMA node
  * @cpu_going_down: if >= 0, the CPU to consider as offline
  * @cpumask: outarg, the resulting cpumask
@@ -3498,6 +3489,125 @@ static struct pool_workqueue *numa_pwq_tbl_install(struct workqueue_struct *wq,
 	return old_pwq;
 }
 
+/* context to store the prepared attrs & pwqs before applying */
+struct apply_wqattrs_ctx {
+	struct workqueue_struct	*wq;		/* target workqueue */
+	struct workqueue_attrs	*attrs;		/* attrs to apply */
+	struct list_head	list;		/* queued for batching commit */
+	struct pool_workqueue	*dfl_pwq;
+	struct pool_workqueue	*pwq_tbl[];
+};
+
+/* free the resources after success or abort */
+static void apply_wqattrs_cleanup(struct apply_wqattrs_ctx *ctx)
+{
+	if (ctx) {
+		int node;
+
+		for_each_node(node)
+			put_pwq_unlocked(ctx->pwq_tbl[node]);
+		put_pwq_unlocked(ctx->dfl_pwq);
+
+		free_workqueue_attrs(ctx->attrs);
+
+		kfree(ctx);
+	}
+}
+
+/* allocate the attrs and pwqs for later installation */
+static struct apply_wqattrs_ctx *
+apply_wqattrs_prepare(struct workqueue_struct *wq,
+		      const struct workqueue_attrs *attrs)
+{
+	struct apply_wqattrs_ctx *ctx;
+	struct workqueue_attrs *new_attrs, *tmp_attrs;
+	int node;
+
+	lockdep_assert_held(&wq_pool_mutex);
+
+	ctx = kzalloc(sizeof(*ctx) + nr_node_ids * sizeof(ctx->pwq_tbl[0]),
+		      GFP_KERNEL);
+
+	new_attrs = alloc_workqueue_attrs(GFP_KERNEL);
+	tmp_attrs = alloc_workqueue_attrs(GFP_KERNEL);
+	if (!ctx || !new_attrs || !tmp_attrs)
+		goto out_free;
+
+	/*
+	 * Calculate the attrs of the default pwq.
+	 * If the user configured cpumask doesn't overlap with the
+	 * wq_unbound_cpumask, we fallback to the wq_unbound_cpumask.
+	 */
+	copy_workqueue_attrs(new_attrs, attrs);
+	cpumask_and(new_attrs->cpumask, new_attrs->cpumask, wq_unbound_cpumask);
+	if (unlikely(cpumask_empty(new_attrs->cpumask)))
+		cpumask_copy(new_attrs->cpumask, wq_unbound_cpumask);
+
+	/*
+	 * We may create multiple pwqs with differing cpumasks.  Make a
+	 * copy of @new_attrs which will be modified and used to obtain
+	 * pools.
+	 */
+	copy_workqueue_attrs(tmp_attrs, new_attrs);
+
+	/*
+	 * If something goes wrong during CPU up/down, we'll fall back to
+	 * the default pwq covering whole @attrs->cpumask.  Always create
+	 * it even if we don't use it immediately.
+	 */
+	ctx->dfl_pwq = alloc_unbound_pwq(wq, new_attrs);
+	if (!ctx->dfl_pwq)
+		goto out_free;
+
+	for_each_node(node) {
+		if (wq_calc_node_cpumask(new_attrs, node, -1, tmp_attrs->cpumask)) {
+			ctx->pwq_tbl[node] = alloc_unbound_pwq(wq, tmp_attrs);
+			if (!ctx->pwq_tbl[node])
+				goto out_free;
+		} else {
+			ctx->dfl_pwq->refcnt++;
+			ctx->pwq_tbl[node] = ctx->dfl_pwq;
+		}
+	}
+
+	/* save the user configured attrs and sanitize it. */
+	copy_workqueue_attrs(new_attrs, attrs);
+	cpumask_and(new_attrs->cpumask, new_attrs->cpumask, cpu_possible_mask);
+	ctx->attrs = new_attrs;
+
+	ctx->wq = wq;
+	free_workqueue_attrs(tmp_attrs);
+	return ctx;
+
+out_free:
+	free_workqueue_attrs(tmp_attrs);
+	free_workqueue_attrs(new_attrs);
+	apply_wqattrs_cleanup(ctx);
+	return NULL;
+}
+
+/* set attrs and install prepared pwqs, @ctx points to old pwqs on return */
+static void apply_wqattrs_commit(struct apply_wqattrs_ctx *ctx)
+{
+	int node;
+
+	/* all pwqs have been created successfully, let's install'em */
+	mutex_lock(&ctx->wq->mutex);
+
+	copy_workqueue_attrs(ctx->wq->unbound_attrs, ctx->attrs);
+
+	/* save the previous pwq and install the new one */
+	for_each_node(node)
+		ctx->pwq_tbl[node] = numa_pwq_tbl_install(ctx->wq, node,
+							  ctx->pwq_tbl[node]);
+
+	/* @dfl_pwq might not have been used, ensure it's linked */
+	link_pwq(ctx->dfl_pwq);
+	swap(ctx->wq->dfl_pwq, ctx->dfl_pwq);
+
+	mutex_unlock(&ctx->wq->mutex);
+}
+
 /**
  * apply_workqueue_attrs - apply new workqueue_attrs to an unbound workqueue
  * @wq: the target workqueue
@@ -3517,9 +3627,8 @@ static struct pool_workqueue *numa_pwq_tbl_install(struct workqueue_struct *wq,
 int apply_workqueue_attrs(struct workqueue_struct *wq,
 			  const struct workqueue_attrs *attrs)
 {
-	struct workqueue_attrs *new_attrs, *tmp_attrs;
-	struct pool_workqueue **pwq_tbl, *dfl_pwq;
-	int node, ret;
+	struct apply_wqattrs_ctx *ctx;
+	int ret = -ENOMEM;
 
 	/* only unbound workqueues can change attributes */
 	if (WARN_ON(!(wq->flags & WQ_UNBOUND)))
@@ -3529,23 +3638,6 @@ int apply_workqueue_attrs(struct workqueue_struct *wq,
 	if (WARN_ON((wq->flags & __WQ_ORDERED) && !list_empty(&wq->pwqs)))
 		return -EINVAL;
 
-	pwq_tbl = kzalloc(nr_node_ids * sizeof(pwq_tbl[0]), GFP_KERNEL);
-	new_attrs = alloc_workqueue_attrs(GFP_KERNEL);
-	tmp_attrs = alloc_workqueue_attrs(GFP_KERNEL);
-	if (!pwq_tbl || !new_attrs || !tmp_attrs)
-		goto enomem;
-
-	/* make a copy of @attrs and sanitize it */
-	copy_workqueue_attrs(new_attrs, attrs);
-	cpumask_and(new_attrs->cpumask, new_attrs->cpumask, cpu_possible_mask);
-
-	/*
-	 * We may create multiple pwqs with differing cpumasks.  Make a
-	 * copy of @new_attrs which will be modified and used to obtain
-	 * pools.
-	 */
-	copy_workqueue_attrs(tmp_attrs, new_attrs);
-
 	/*
 	 * CPUs should stay stable across pwq creations and installations.
 	 * Pin CPUs, determine the target cpumask for each node and create
@@ -3554,68 +3646,20 @@ int apply_workqueue_attrs(struct workqueue_struct *wq,
 	get_online_cpus();
 
 	mutex_lock(&wq_pool_mutex);
+	ctx = apply_wqattrs_prepare(wq, attrs);
+	mutex_unlock(&wq_pool_mutex);
 
-	/*
-	 * If something goes wrong during CPU up/down, we'll fall back to
-	 * the default pwq covering whole @attrs->cpumask.  Always create
-	 * it even if we don't use it immediately.
-	 */
-	dfl_pwq = alloc_unbound_pwq(wq, new_attrs);
-	if (!dfl_pwq)
-		goto enomem_pwq;
-
-	for_each_node(node) {
-		if (wq_calc_node_cpumask(attrs, node, -1, tmp_attrs->cpumask)) {
-			pwq_tbl[node] = alloc_unbound_pwq(wq, tmp_attrs);
-			if (!pwq_tbl[node])
-				goto enomem_pwq;
-		} else {
-			dfl_pwq->refcnt++;
-			pwq_tbl[node] = dfl_pwq;
-		}
+	/* the ctx has been prepared successfully, let's commit it */
+	if (ctx) {
+		apply_wqattrs_commit(ctx);
+		ret = 0;
 	}
 
-	mutex_unlock(&wq_pool_mutex);
-
-	/* all pwqs have been created successfully, let's install'em */
-	mutex_lock(&wq->mutex);
-
-	copy_workqueue_attrs(wq->unbound_attrs, new_attrs);
-
-	/* save the previous pwq and install the new one */
-	for_each_node(node)
-		pwq_tbl[node] = numa_pwq_tbl_install(wq, node, pwq_tbl[node]);
-
-	/* @dfl_pwq might not have been used, ensure it's linked */
-	link_pwq(dfl_pwq);
-	swap(wq->dfl_pwq, dfl_pwq);
-
-	mutex_unlock(&wq->mutex);
-
-	/* put the old pwqs */
-	for_each_node(node)
-		put_pwq_unlocked(pwq_tbl[node]);
-	put_pwq_unlocked(dfl_pwq);
-
 	put_online_cpus();
-	ret = 0;
-	/* fall through */
-out_free:
-	free_workqueue_attrs(tmp_attrs);
-	free_workqueue_attrs(new_attrs);
-	kfree(pwq_tbl);
+
+	apply_wqattrs_cleanup(ctx);
+
 	return ret;
-
-enomem_pwq:
-	free_unbound_pwq(dfl_pwq);
-	for_each_node(node)
-		if (pwq_tbl && pwq_tbl[node] != dfl_pwq)
-			free_unbound_pwq(pwq_tbl[node]);
-	mutex_unlock(&wq_pool_mutex);
-	put_online_cpus();
-enomem:
-	ret = -ENOMEM;
-	goto out_free;
 }
 
 /**
@@ -3671,11 +3715,11 @@ static void wq_update_unbound_numa(struct workqueue_struct *wq, int cpu,
 
 	/*
 	 * Let's determine what needs to be done.  If the target cpumask is
-	 * different from wq's, we need to compare it to @pwq's and create
-	 * a new one if they don't match.  If the target cpumask equals
-	 * wq's, the default pwq should be used.
+	 * different from the default pwq's, we need to compare it to @pwq's
+	 * and create a new one if they don't match.  If the target cpumask
+	 * equals the default pwq's, the default pwq should be used.
 	 */
-	if (wq_calc_node_cpumask(wq->unbound_attrs, node, cpu_off, cpumask)) {
+	if (wq_calc_node_cpumask(wq->dfl_pwq->pool->attrs, node, cpu_off, cpumask)) {
 		if (cpumask_equal(cpumask, pwq->pool->attrs->cpumask))
 			goto out_unlock;
 	} else {
@@ -4698,6 +4742,84 @@ out_unlock:
 }
 #endif /* CONFIG_FREEZER */
 
+static int workqueue_apply_unbound_cpumask(void)
+{
+	LIST_HEAD(ctxs);
+	int ret = 0;
+	struct workqueue_struct *wq;
+	struct apply_wqattrs_ctx *ctx, *n;
+
+	lockdep_assert_held(&wq_pool_mutex);
+
+	list_for_each_entry(wq, &workqueues, list) {
+		if (!(wq->flags & WQ_UNBOUND))
+			continue;
+		/* creating multiple pwqs breaks ordering guarantee */
+		if (wq->flags & __WQ_ORDERED)
+			continue;
+
+		ctx = apply_wqattrs_prepare(wq, wq->unbound_attrs);
+		if (!ctx) {
+			ret = -ENOMEM;
+			break;
+		}
+
+		list_add_tail(&ctx->list, &ctxs);
+	}
+
+	list_for_each_entry_safe(ctx, n, &ctxs, list) {
+		if (!ret)
+			apply_wqattrs_commit(ctx);
+		apply_wqattrs_cleanup(ctx);
+	}
+
+	return ret;
+}
+
+/**
+ *  workqueue_set_unbound_cpumask - Set the low-level unbound cpumask
+ *  @cpumask: the cpumask to set
+ *
+ *  The low-level workqueues cpumask is a global cpumask that limits
+ *  the affinity of all unbound workqueues.  This function check the @cpumask
+ *  and apply it to all unbound workqueues and updates all pwqs of them.
+ *
+ *  Retun:	0	- Success
+ *  		-EINVAL	- Invalid @cpumask
+ *  		-ENOMEM	- Failed to allocate memory for attrs or pwqs.
+ */
+int workqueue_set_unbound_cpumask(cpumask_var_t cpumask)
+{
+	int ret = -EINVAL;
+	cpumask_var_t saved_cpumask;
+
+	if (!zalloc_cpumask_var(&saved_cpumask, GFP_KERNEL))
+		return -ENOMEM;
+
+	get_online_cpus();
+	cpumask_and(cpumask, cpumask, cpu_possible_mask);
+	if (!cpumask_empty(cpumask)) {
+		mutex_lock(&wq_pool_mutex);
+
+		/* save the old wq_unbound_cpumask. */
+		cpumask_copy(saved_cpumask, wq_unbound_cpumask);
+
+		/* update wq_unbound_cpumask at first and apply it to wqs. */
+		cpumask_copy(wq_unbound_cpumask, cpumask);
+		ret = workqueue_apply_unbound_cpumask();
+
+		/* restore the wq_unbound_cpumask when failed. */
+		if (ret < 0)
+			cpumask_copy(wq_unbound_cpumask, saved_cpumask);
+
+		mutex_unlock(&wq_pool_mutex);
+	}
+	put_online_cpus();
+
+	free_cpumask_var(saved_cpumask);
+	return ret;
+}
+
 #ifdef CONFIG_SYSFS
 /*
  * Workqueues with WQ_SYSFS flag set is visible to userland via
@@ -4914,9 +5036,49 @@ static struct bus_type wq_subsys = {
 	.dev_groups			= wq_sysfs_groups,
 };
 
+static ssize_t wq_unbound_cpumask_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	int written;
+
+	mutex_lock(&wq_pool_mutex);
+	written = scnprintf(buf, PAGE_SIZE, "%*pb\n",
+			    cpumask_pr_args(wq_unbound_cpumask));
+	mutex_unlock(&wq_pool_mutex);
+
+	return written;
+}
+
+static ssize_t wq_unbound_cpumask_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	cpumask_var_t cpumask;
+	int ret;
+
+	if (!zalloc_cpumask_var(&cpumask, GFP_KERNEL))
+		return -ENOMEM;
+
+	ret = cpumask_parse(buf, cpumask);
+	if (!ret)
+		ret = workqueue_set_unbound_cpumask(cpumask);
+
+	free_cpumask_var(cpumask);
+	return ret ? ret : count;
+}
+
+static struct device_attribute wq_sysfs_cpumask_attr =
+	__ATTR(cpumask, 0644, wq_unbound_cpumask_show,
+	       wq_unbound_cpumask_store);
+
 static int __init wq_sysfs_init(void)
 {
-	return subsys_virtual_register(&wq_subsys, NULL);
+	int err;
+
+	err = subsys_virtual_register(&wq_subsys, NULL);
+	if (err)
+		return err;
+
+	return device_create_file(wq_subsys.dev_root, &wq_sysfs_cpumask_attr);
 }
 core_initcall(wq_sysfs_init);
 
@@ -5063,6 +5225,9 @@ static int __init init_workqueues(void)
 	int i, cpu;
 
 	WARN_ON(__alignof__(struct pool_workqueue) < __alignof__(long long));
+
+	BUG_ON(!alloc_cpumask_var(&wq_unbound_cpumask, GFP_KERNEL));
+	cpumask_copy(wq_unbound_cpumask, cpu_possible_mask);
 
 	pwq_cache = KMEM_CACHE(pool_workqueue, SLAB_PANIC);
 
