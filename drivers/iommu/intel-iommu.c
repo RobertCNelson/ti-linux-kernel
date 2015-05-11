@@ -396,6 +396,9 @@ static int copy_root_entry_table(struct intel_iommu *iommu);
 
 static int intel_iommu_load_translation_tables(struct intel_iommu *iommu);
 
+static void unmap_device_dma(struct dmar_domain *domain,
+				struct device *dev,
+				struct intel_iommu *iommu);
 static void iommu_check_pre_te_status(struct intel_iommu *iommu);
 static u8 g_translation_pre_enabled;
 
@@ -3115,6 +3118,7 @@ static struct iova *intel_alloc_iova(struct device *dev,
 static struct dmar_domain *__get_valid_domain_for_dev(struct device *dev)
 {
 	struct dmar_domain *domain;
+	struct intel_iommu *iommu;
 	int ret;
 
 	domain = get_domain_for_dev(dev, DEFAULT_DOMAIN_ADDRESS_WIDTH);
@@ -3124,14 +3128,30 @@ static struct dmar_domain *__get_valid_domain_for_dev(struct device *dev)
 		return NULL;
 	}
 
-	/* make sure context mapping is ok */
-	if (unlikely(!domain_context_mapped(dev))) {
-		ret = domain_context_mapping(domain, dev, CONTEXT_TT_MULTI_LEVEL);
-		if (ret) {
-			printk(KERN_ERR "Domain context map for %s failed",
-			       dev_name(dev));
-			return NULL;
-		}
+	/* if in kdump kernel, we need to unmap the mapped dma pages,
+	 * detach this device first.
+	 */
+	if (likely(domain_context_mapped(dev))) {
+		iommu = domain_get_iommu(domain);
+		if (iommu->pre_enabled_trans) {
+			unmap_device_dma(domain, dev, iommu);
+
+			domain = get_domain_for_dev(dev,
+				DEFAULT_DOMAIN_ADDRESS_WIDTH);
+			if (!domain) {
+				pr_err("Allocating domain for %s failed",
+				       dev_name(dev));
+				return NULL;
+			}
+		} else
+			return domain;
+	}
+
+	ret = domain_context_mapping(domain, dev, CONTEXT_TT_MULTI_LEVEL);
+	if (ret) {
+		pr_err("Domain context map for %s failed",
+		       dev_name(dev));
+		return NULL;
 	}
 
 	return domain;
@@ -5156,6 +5176,28 @@ static int intel_iommu_load_translation_tables(struct intel_iommu *iommu)
 	__iommu_free_mapped_mem();
 
 	return ret;
+}
+
+static void unmap_device_dma(struct dmar_domain *domain,
+				struct device *dev,
+				struct intel_iommu *iommu)
+{
+	struct context_entry *ce;
+	struct iova *iova;
+	phys_addr_t phys_addr;
+	dma_addr_t dev_addr;
+	struct pci_dev *pdev;
+
+	pdev = to_pci_dev(dev);
+	ce = iommu_context_addr(iommu, pdev->bus->number, pdev->devfn, 1);
+	phys_addr = context_address_root(ce) << VTD_PAGE_SHIFT;
+	dev_addr = phys_to_dma(dev, phys_addr);
+
+	iova = find_iova(&domain->iovad, IOVA_PFN(dev_addr));
+	if (iova)
+		intel_unmap(dev, dev_addr);
+
+	domain_remove_one_dev_info(domain, dev);
 }
 
 static void iommu_check_pre_te_status(struct intel_iommu *iommu)
