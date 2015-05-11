@@ -437,7 +437,7 @@ static int uda1380_set_dai_fmt_both(struct snd_soc_dai *codec_dai,
 	if ((fmt & SND_SOC_DAIFMT_MASTER_MASK) != SND_SOC_DAIFMT_CBS_CFS)
 		return -EINVAL;
 
-	uda1380_write(codec, UDA1380_IFACE, iface);
+	uda1380_write_reg_cache(codec, UDA1380_IFACE, iface);
 
 	return 0;
 }
@@ -623,7 +623,6 @@ static int uda1380_set_bias_level(struct snd_soc_codec *codec,
 		for (reg = UDA1380_MVOL; reg < UDA1380_CACHEREGNUM; reg++)
 			set_bit(reg - 0x10, &uda1380_cache_dirty);
 	}
-	codec->dapm.bias_level = level;
 	return 0;
 }
 
