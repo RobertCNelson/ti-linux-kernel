@@ -416,6 +416,9 @@ static struct inode *f2fs_alloc_inode(struct super_block *sb)
 	/* Will be used by directory only */
 	fi->i_dir_level = F2FS_SB(sb)->dir_level;
 
+#ifdef CONFIG_F2FS_FS_ENCRYPTION
+	fi->i_crypt_info = NULL;
+#endif
 	return &fi->vfs_inode;
 }
 
@@ -494,6 +497,9 @@ static void f2fs_put_super(struct super_block *sb)
 	destroy_node_manager(sbi);
 	destroy_segment_manager(sbi);
 
+	/* destroy crypto buffers */
+	f2fs_exit_crypto();
+
 	kfree(sbi->ckpt);
 	kobject_put(&sbi->s_kobj);
 	wait_for_completion(&sbi->s_kobj_unregister);
@@ -520,7 +526,7 @@ int f2fs_sync_fs(struct super_block *sb, int sync)
 	} else {
 		f2fs_balance_fs(sbi);
 	}
-	f2fs_trace_ios(NULL, NULL, 1);
+	f2fs_trace_ios(NULL, 1);
 
 	return 0;
 }
@@ -966,6 +972,30 @@ retry:
 	return 0;
 }
 
+int f2fs_commit_super(struct f2fs_sb_info *sbi)
+{
+	struct buffer_head *sbh = sbi->raw_super_buf;
+	sector_t block = sbh->b_blocknr;
+	int err;
+
+	/* write back-up superblock first */
+	sbh->b_blocknr = block ? 0 : 1;
+	mark_buffer_dirty(sbh);
+	err = sync_dirty_buffer(sbh);
+
+	sbh->b_blocknr = block;
+	if (err)
+		goto out;
+
+	/* write current valid superblock */
+	mark_buffer_dirty(sbh);
+	err = sync_dirty_buffer(sbh);
+out:
+	clear_buffer_write_io_error(sbh);
+	set_buffer_uptodate(sbh);
+	return err;
+}
+
 static int f2fs_fill_super(struct super_block *sb, void *data, int silent)
 {
 	struct f2fs_sb_info *sbi;
@@ -1163,6 +1193,11 @@ try_onemore:
 	if (err)
 		goto free_proc;
 
+	/* init crypto buffers */
+	err = f2fs_init_crypto();
+	if (err)
+		goto free_kobj;
+
 	/* recover fsynced data */
 	if (!test_opt(sbi, DISABLE_ROLL_FORWARD)) {
 		/*
@@ -1172,7 +1207,7 @@ try_onemore:
 		if (bdev_read_only(sb->s_bdev) &&
 				!is_set_ckpt_flags(sbi->ckpt, CP_UMOUNT_FLAG)) {
 			err = -EROFS;
-			goto free_kobj;
+			goto free_crypto;
 		}
 
 		if (need_fsck)
@@ -1183,7 +1218,7 @@ try_onemore:
 			need_fsck = true;
 			f2fs_msg(sb, KERN_ERR,
 				"Cannot recover all fsync data errno=%ld", err);
-			goto free_kobj;
+			goto free_crypto;
 		}
 	}
 
@@ -1195,11 +1230,13 @@ try_onemore:
 		/* After POR, we can run background GC thread.*/
 		err = start_gc_thread(sbi);
 		if (err)
-			goto free_kobj;
+			goto free_crypto;
 	}
 	kfree(options);
 	return 0;
 
+free_crypto:
+	f2fs_exit_crypto();
 free_kobj:
 	kobject_del(&sbi->s_kobj);
 free_proc:
