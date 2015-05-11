@@ -197,6 +197,10 @@ static int modify_irte(int irq, struct irte *irte_modified)
 
 	set_64bit(&irte->low, irte_modified->low);
 	set_64bit(&irte->high, irte_modified->high);
+
+	if (iommu->pre_enabled_ir)
+		__iommu_update_old_irte(iommu, index);
+
 	__iommu_flush_cache(iommu, irte, sizeof(*irte));
 
 	rc = qi_flush_iec(iommu, index, 0);
@@ -257,6 +261,9 @@ static int clear_entries(struct irq_2_iommu *irq_iommu)
 	}
 	bitmap_release_region(iommu->ir_table->bitmap, index,
 			      irq_iommu->irte_mask);
+
+	if (iommu->pre_enabled_ir)
+		__iommu_update_old_irte(iommu, -1);
 
 	return qi_flush_iec(iommu, index, irq_iommu->irte_mask);
 }
@@ -657,11 +664,13 @@ static int __init intel_enable_irq_remapping(void)
 		 */
 		dmar_fault(-1, iommu);
 
+		iommu_check_pre_ir_status(iommu);
+
 		/*
-		 * Disable intr remapping and queued invalidation, if already
-		 * enabled prior to OS handover.
+		 * Here we do not disable intr remapping,
+		 * if already enabled prior to OS handover.
 		 */
-		iommu_disable_irq_remapping(iommu);
+		/* iommu_disable_irq_remapping(iommu); */
 
 		dmar_disable_qi(iommu);
 	}
@@ -697,7 +706,18 @@ static int __init intel_enable_irq_remapping(void)
 	 * Setup Interrupt-remapping for all the DRHD's now.
 	 */
 	for_each_iommu(iommu, drhd) {
-		iommu_set_irq_remapping(iommu, eim);
+		if (iommu->pre_enabled_ir) {
+			unsigned long long q;
+
+			q = dmar_readq(iommu->reg + DMAR_IRTA_REG);
+			iommu->ir_table->base_old_phys = q & VTD_PAGE_MASK;
+			iommu->ir_table->base_old_virt = ioremap_cache(
+				iommu->ir_table->base_old_phys,
+				INTR_REMAP_TABLE_ENTRIES*sizeof(struct irte));
+			__iommu_load_old_irte(iommu);
+		} else
+			iommu_set_irq_remapping(iommu, eim);
+
 		setup = true;
 	}
 
