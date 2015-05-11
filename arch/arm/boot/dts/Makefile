@@ -32,12 +32,14 @@ dtb-$(CONFIG_SOC_SAM_V4_V5) += \
 	at91sam9rlek.dtb \
 	at91-ariag25.dtb \
 	at91-cosino_mega2560.dtb \
+	at91-kizboxmini.dtb \
 	at91sam9g15ek.dtb \
 	at91sam9g25ek.dtb \
 	at91sam9g35ek.dtb \
 	at91sam9x25ek.dtb \
 	at91sam9x35ek.dtb
 dtb-$(CONFIG_SOC_SAM_V7) += \
+	at91-kizbox2.dtb \
 	at91-sama5d3_xplained.dtb \
 	sama5d31ek.dtb \
 	sama5d33ek.dtb \
