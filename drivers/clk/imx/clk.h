@@ -6,12 +6,28 @@
 
 extern spinlock_t imx_ccm_lock;
 
+/*
+ * This is a stop-gap solution for clock drivers like imx1/imx21 which call
+ * mxc_timer_init() to initialize timer for non-DT boot.  It can be removed
+ * when these legacy non-DT support is converted or dropped.
+ */
+void mxc_timer_init(unsigned long pbase, int irq);
+
 void imx_check_clocks(struct clk *clks[], unsigned int count);
 
 extern void imx_cscmr1_fixup(u32 *val);
 
-struct clk *imx_clk_pllv1(const char *name, const char *parent,
-		void __iomem *base);
+enum imx_pllv1_type {
+	IMX_PLLV1_IMX1,
+	IMX_PLLV1_IMX21,
+	IMX_PLLV1_IMX25,
+	IMX_PLLV1_IMX27,
+	IMX_PLLV1_IMX31,
+	IMX_PLLV1_IMX35,
+};
+
+struct clk *imx_clk_pllv1(enum imx_pllv1_type type, const char *name,
+		const char *parent, void __iomem *base);
 
 struct clk *imx_clk_pllv2(const char *name, const char *parent,
 		void __iomem *base);
