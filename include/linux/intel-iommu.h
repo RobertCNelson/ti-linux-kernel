@@ -380,4 +380,10 @@ extern int dmar_ir_support(void);
 
 extern const struct attribute_group *intel_iommu_groups[];
 
+extern int __iommu_load_from_oldmem(void *to, unsigned long from,
+					unsigned long size);
+extern int __iommu_save_to_oldmem(unsigned long to, void *from,
+					unsigned long size);
+extern int __iommu_free_mapped_mem(void);
+
 #endif
