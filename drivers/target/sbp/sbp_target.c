@@ -182,13 +182,13 @@ static struct se_lun *sbp_get_lun_from_tpg(struct sbp_tpg *tpg, int lun)
 	if (lun >= TRANSPORT_MAX_LUNS_PER_TPG)
 		return ERR_PTR(-EINVAL);
 
-	spin_lock(&se_tpg->tpg_lun_lock);
+	mutex_lock(&se_tpg->tpg_lun_mutex);
 	se_lun = se_tpg->tpg_lun_list[lun];
 
 	if (se_lun->lun_status != TRANSPORT_LUN_STATUS_ACTIVE)
 		se_lun = ERR_PTR(-ENODEV);
 
-	spin_unlock(&se_tpg->tpg_lun_lock);
+	mutex_unlock(&se_tpg->tpg_lun_mutex);
 
 	return se_lun;
 }
@@ -1828,7 +1828,7 @@ static int sbp_count_se_tpg_luns(struct se_portal_group *tpg)
 {
 	int i, count = 0;
 
-	spin_lock(&tpg->tpg_lun_lock);
+	mutex_lock(&tpg->tpg_lun_mutex);
 	for (i = 0; i < TRANSPORT_MAX_LUNS_PER_TPG; i++) {
 		struct se_lun *se_lun = tpg->tpg_lun_list[i];
 
@@ -1837,7 +1837,7 @@ static int sbp_count_se_tpg_luns(struct se_portal_group *tpg)
 
 		count++;
 	}
-	spin_unlock(&tpg->tpg_lun_lock);
+	mutex_unlock(&tpg->tpg_lun_mutex);
 
 	return count;
 }
@@ -1906,7 +1906,7 @@ static int sbp_update_unit_directory(struct sbp_tport *tport)
 	/* unit unique ID (leaf is just after LUNs) */
 	data[idx++] = 0x8d000000 | (num_luns + 1);
 
-	spin_lock(&tport->tpg->se_tpg.tpg_lun_lock);
+	mutex_lock(&tport->tpg->se_tpg.tpg_lun_mutex);
 	for (i = 0; i < TRANSPORT_MAX_LUNS_PER_TPG; i++) {
 		struct se_lun *se_lun = tport->tpg->se_tpg.tpg_lun_list[i];
 		struct se_device *dev;
@@ -1915,8 +1915,6 @@ static int sbp_update_unit_directory(struct sbp_tport *tport)
 		if (se_lun->lun_status == TRANSPORT_LUN_STATUS_FREE)
 			continue;
 
-		spin_unlock(&tport->tpg->se_tpg.tpg_lun_lock);
-
 		dev = se_lun->lun_se_dev;
 		type = dev->transport->get_device_type(dev);
 
@@ -1924,10 +1922,8 @@ static int sbp_update_unit_directory(struct sbp_tport *tport)
 		data[idx++] = 0x14000000 |
 			((type << 16) & 0x1f0000) |
 			(se_lun->unpacked_lun & 0xffff);
-
-		spin_lock(&tport->tpg->se_tpg.tpg_lun_lock);
 	}
-	spin_unlock(&tport->tpg->se_tpg.tpg_lun_lock);
+	mutex_unlock(&tport->tpg->se_tpg.tpg_lun_mutex);
 
 	/* unit unique ID leaf */
 	data[idx++] = 2 << 16;
