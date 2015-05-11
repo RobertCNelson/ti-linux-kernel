@@ -340,6 +340,9 @@ struct intel_iommu {
 	spinlock_t	lock; /* protect context, domain ids */
 	struct root_entry *root_entry; /* virtual address */
 
+	void __iomem	*root_entry_old_virt; /* mapped from old root entry */
+	unsigned long	root_entry_old_phys; /* root entry in old kernel */
+
 	struct iommu_flush flush;
 #endif
 	struct q_inval  *qi;            /* Queued invalidation info */
