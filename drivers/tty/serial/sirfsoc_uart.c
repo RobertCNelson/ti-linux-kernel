@@ -1032,19 +1032,10 @@ static void sirfsoc_uart_pm(struct uart_port *port, unsigned int state,
 			      unsigned int oldstate)
 {
 	struct sirfsoc_uart_port *sirfport = to_sirfport(port);
-	if (!state) {
-		if (sirfport->is_bt_uart) {
-			clk_prepare_enable(sirfport->clk_noc);
-			clk_prepare_enable(sirfport->clk_general);
-		}
+	if (!state)
 		clk_prepare_enable(sirfport->clk);
-	} else {
+	else
 		clk_disable_unprepare(sirfport->clk);
-		if (sirfport->is_bt_uart) {
-			clk_disable_unprepare(sirfport->clk_general);
-			clk_disable_unprepare(sirfport->clk_noc);
-		}
-	}
 }
 
 static int sirfsoc_uart_startup(struct uart_port *port)
@@ -1393,20 +1384,6 @@ usp_no_flow_control:
 		goto err;
 	}
 	port->uartclk = clk_get_rate(sirfport->clk);
-	if (of_device_is_compatible(pdev->dev.of_node, "sirf,atlas7-bt-uart")) {
-		sirfport->clk_general = devm_clk_get(&pdev->dev, "general");
-		if (IS_ERR(sirfport->clk_general)) {
-			ret = PTR_ERR(sirfport->clk_general);
-			goto err;
-		}
-		sirfport->clk_noc = devm_clk_get(&pdev->dev, "noc");
-		if (IS_ERR(sirfport->clk_noc)) {
-			ret = PTR_ERR(sirfport->clk_noc);
-			goto err;
-		}
-		sirfport->is_bt_uart = true;
-	} else
-		sirfport->is_bt_uart = false;
 
 	port->ops = &sirfsoc_uart_ops;
 	spin_lock_init(&port->lock);
