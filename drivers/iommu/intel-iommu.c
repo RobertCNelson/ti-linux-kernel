@@ -386,6 +386,18 @@ struct iommu_remapped_entry {
 static LIST_HEAD(__iommu_remapped_mem);
 static DEFINE_MUTEX(__iommu_mem_list_lock);
 
+/* ========================================================================
+ * Copy iommu translation tables from old kernel into new  kernel.
+ * Entry to this set of functions is: intel_iommu_load_translation_tables()
+ * ------------------------------------------------------------------------
+ */
+
+static int copy_root_entry_table(struct intel_iommu *iommu);
+
+static int intel_iommu_load_translation_tables(struct intel_iommu *iommu);
+
+static void iommu_check_pre_te_status(struct intel_iommu *iommu);
+
 /*
  * This domain is a statically identity mapping domain.
  *	1. This domain creats a static 1:1 mapping to all usable memory.
@@ -4987,3 +4999,112 @@ static void __iommu_update_old_root_entry(struct intel_iommu *iommu, int index)
 	__iommu_flush_cache(iommu, to + start, size);
 }
 
+/*
+ * Load root entry tables from old kernel.
+ */
+static int copy_root_entry_table(struct intel_iommu *iommu)
+{
+	u32 bus;				/* Index: root-entry-table */
+	struct root_entry  *re;			/* Virt(iterator: new table) */
+	unsigned long context_old_phys;		/* Phys(context table entry) */
+	struct context_entry *context_new_virt;	/* Virt(new context_entry) */
+
+	/*
+	 * A new root entry table has been allocated ,
+	 * we need copy re from old kernel to the new allocated one.
+	 */
+
+	if (!iommu->root_entry_old_phys)
+		return -ENOMEM;
+
+	for (bus = 0, re = iommu->root_entry; bus < 256; bus += 1, re += 1) {
+		if (!root_present(re))
+			continue;
+
+		context_old_phys = get_context_phys_from_root(re);
+
+		if (!context_old_phys)
+			continue;
+
+		context_new_virt =
+			(struct context_entry *)alloc_pgtable_page(iommu->node);
+
+		if (!context_new_virt)
+			return -ENOMEM;
+
+		__iommu_load_from_oldmem(context_new_virt,
+					context_old_phys,
+					VTD_PAGE_SIZE);
+
+		__iommu_flush_cache(iommu, context_new_virt, VTD_PAGE_SIZE);
+
+		set_root_value(re, virt_to_phys(context_new_virt));
+	}
+
+	return 0;
+}
+
+/*
+ * Interface to the "load translation tables" set of functions
+ * from mainline code.
+ */
+static int intel_iommu_load_translation_tables(struct intel_iommu *iommu)
+{
+	unsigned long long q;		/* quadword scratch */
+	int ret = 0;			/* Integer return code */
+	unsigned long flags;
+
+	q = dmar_readq(iommu->reg + DMAR_RTADDR_REG);
+	if (!q)
+		return -1;
+
+	spin_lock_irqsave(&iommu->lock, flags);
+
+	/* Load the root-entry table from the old kernel
+	 * foreach context_entry_table in root_entry
+	 *   Copy each entry table from old kernel
+	 */
+	if (!iommu->root_entry) {
+		iommu->root_entry =
+			(struct root_entry *)alloc_pgtable_page(iommu->node);
+		if (!iommu->root_entry) {
+			spin_unlock_irqrestore(&iommu->lock, flags);
+			return -ENOMEM;
+		}
+	}
+
+	iommu->root_entry_old_phys = q & VTD_PAGE_MASK;
+	if (!iommu->root_entry_old_phys) {
+		pr_err("Could not read old root entry address.");
+		return -1;
+	}
+
+	iommu->root_entry_old_virt = ioremap_cache(iommu->root_entry_old_phys,
+						VTD_PAGE_SIZE);
+	if (!iommu->root_entry_old_virt) {
+		pr_err("Could not map the old root entry.");
+		return -ENOMEM;
+	}
+
+	__iommu_load_old_root_entry(iommu);
+	ret = copy_root_entry_table(iommu);
+	__iommu_flush_cache(iommu, iommu->root_entry, PAGE_SIZE);
+	__iommu_update_old_root_entry(iommu, -1);
+
+	spin_unlock_irqrestore(&iommu->lock, flags);
+
+	__iommu_free_mapped_mem();
+
+	return ret;
+}
+
+static void iommu_check_pre_te_status(struct intel_iommu *iommu)
+{
+	u32 sts;
+
+	sts = readl(iommu->reg + DMAR_GSTS_REG);
+	if (sts & DMA_GSTS_TES) {
+		pr_info("Translation is enabled prior to OS.\n");
+		iommu->pre_enabled_trans = 1;
+	}
+}
