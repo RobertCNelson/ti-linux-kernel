@@ -301,6 +301,8 @@ struct q_inval {
 struct ir_table {
 	struct irte *base;
 	unsigned long *bitmap;
+	void __iomem *base_old_virt;
+	unsigned long base_old_phys;
 };
 #endif
 
@@ -342,6 +344,8 @@ struct intel_iommu {
 
 	/* whether translation is enabled prior to OS*/
 	u8		pre_enabled_trans;
+	/* whether interrupt remapping is enabled prior to OS*/
+	u8		pre_enabled_ir;
 
 	void __iomem	*root_entry_old_virt; /* mapped from old root entry */
 	unsigned long	root_entry_old_phys; /* root entry in old kernel */
