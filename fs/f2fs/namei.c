@@ -308,24 +308,20 @@ fail:
 	return err;
 }
 
-static void *f2fs_follow_link(struct dentry *dentry, struct nameidata *nd)
+static const char *f2fs_follow_link(struct dentry *dentry, void **cookie)
 {
-	struct page *page = page_follow_link_light(dentry, nd);
-
-	if (IS_ERR_OR_NULL(page))
-		return page;
-
-	/* this is broken symlink case */
-	if (*nd_get_link(nd) == 0) {
-		page_put_link(dentry, nd, page);
-		return ERR_PTR(-ENOENT);
+	const char *link = page_follow_link_light(dentry, cookie);
+	if (!IS_ERR(link) && !*link) {
+		/* this is broken symlink case */
+		page_put_link(dentry, *cookie);
+		link = ERR_PTR(-ENOENT);
 	}
-	return page;
+	return link;
 }
 
 #ifdef CONFIG_F2FS_FS_ENCRYPTION
-static void *f2fs_encrypted_follow_link(struct dentry *dentry,
-						struct nameidata *nd)
+static const char *f2fs_encrypted_follow_link(struct dentry *dentry,
+					void **cookie)
 {
 	struct page *cpage = NULL;
 	char *caddr, *paddr = NULL;
@@ -337,7 +333,7 @@ static void *f2fs_encrypted_follow_link(struct dentry *dentry,
 	u32 max_size = inode->i_sb->s_blocksize;
 
 	if (!f2fs_encrypted_inode(inode))
-		return f2fs_follow_link(dentry, nd);
+		return f2fs_follow_link(dentry, cookie);
 
 	res = f2fs_setup_fname_crypto(inode);
 	if (res)
@@ -345,7 +341,7 @@ static void *f2fs_encrypted_follow_link(struct dentry *dentry,
 
 	cpage = read_mapping_page(inode->i_mapping, 0, NULL);
 	if (IS_ERR(cpage))
-		return cpage;
+		return ERR_CAST(cpage);
 	caddr = kmap(cpage);
 	caddr[size] = 0;
 
@@ -380,12 +376,11 @@ static void *f2fs_encrypted_follow_link(struct dentry *dentry,
 	/* Null-terminate the name */
 	if (res <= cstr.len)
 		paddr[res] = '\0';
-	nd_set_link(nd, paddr);
 	if (cpage) {
 		kunmap(cpage);
 		page_cache_release(cpage);
 	}
-	return NULL;
+	return *cookie = paddr;
 errout:
 	if (cpage) {
 		kunmap(cpage);
@@ -395,14 +390,11 @@ errout:
 	return ERR_PTR(res);
 }
 
-static void f2fs_encrypted_put_link(struct dentry *dentry, struct nameidata *nd,
-			  void *cookie)
+static void f2fs_encrypted_put_link(struct dentry *dentry, void *cookie)
 {
 	struct page *page = cookie;
 
-	if (!page) {
-		kfree(nd_get_link(nd));
-	} else {
+	if (page) {
 		kunmap(page);
 		page_cache_release(page);
 	}
