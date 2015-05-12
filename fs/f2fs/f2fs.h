@@ -2004,6 +2004,7 @@ int f2fs_process_policy(const struct f2fs_encryption_policy *, struct inode *);
 int f2fs_get_policy(struct inode *, struct f2fs_encryption_policy *);
 
 /* crypt.c */
+extern struct kmem_cache *f2fs_crypt_info_cachep;
 bool f2fs_valid_contents_enc_mode(uint32_t);
 uint32_t f2fs_validate_encryption_key_size(uint32_t, uint32_t);
 struct f2fs_crypto_ctx *f2fs_get_crypto_ctx(struct inode *);
