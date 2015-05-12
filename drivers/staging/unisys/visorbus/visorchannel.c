@@ -17,23 +17,23 @@
 
 /*
  *  This provides Supervisor channel communication primitives, which are
- *  independent of the mechanism used to access the channel data.  All channel
- *  data is accessed using the memregion abstraction.  (memregion has both
- *  a CM2 implementation and a direct memory implementation.)
+ *  independent of the mechanism used to access the channel data.
  */
 
-#include "globals.h"
-#include "visorchannel.h"
+#include "version.h"
+#include "visorbus.h"
 #include <linux/uuid.h>
 
 #define MYDRVNAME "visorchannel"
 
 struct visorchannel {
-	struct memregion *memregion;	/* from visor_memregion_create() */
+	u64 physaddr;
+	ulong nbytes;
+	void __iomem *mapped;
 	struct channel_header chan_hdr;
 	uuid_le guid;
 	ulong size;
-	BOOL needs_lock;	/* channel creator knows if more than one
+	bool needs_lock;	/* channel creator knows if more than one
 				 * thread will be inserting or removing */
 	spinlock_t insert_lock; /* protect head writes in chan_hdr */
 	spinlock_t remove_lock;	/* protect tail writes in chan_hdr */
@@ -50,120 +50,103 @@ struct visorchannel {
  * but does NOT modify this data area.
  */
 static struct visorchannel *
-visorchannel_create_guts(HOSTADDRESS physaddr, ulong channel_bytes,
-			 struct visorchannel *parent, ulong off, uuid_le guid,
-			 BOOL needs_lock)
+visorchannel_create_guts(u64 physaddr, unsigned long channel_bytes,
+			 gfp_t gfp, unsigned long off,
+			 uuid_le guid, bool needs_lock)
 {
-	struct visorchannel *p = NULL;
-	void *rc = NULL;
+	struct visorchannel *channel;
+	int err;
+	size_t size = sizeof(struct channel_header);
 
-	p = kmalloc(sizeof(*p), GFP_KERNEL|__GFP_NORETRY);
-	if (!p) {
-		rc = NULL;
+	channel = kzalloc(sizeof(*channel), gfp);
+	if (!channel)
 		goto cleanup;
-	}
-	p->memregion = NULL;
-	p->needs_lock = needs_lock;
-	spin_lock_init(&p->insert_lock);
-	spin_lock_init(&p->remove_lock);
 
-	/* prepare chan_hdr (abstraction to read/write channel memory) */
-	if (!parent)
-		p->memregion =
-		    visor_memregion_create(physaddr,
-					   sizeof(struct channel_header));
-	else
-		p->memregion =
-		    visor_memregion_create_overlapped(parent->memregion,
-				off, sizeof(struct channel_header));
-	if (!p->memregion) {
-		rc = NULL;
+	channel->needs_lock = needs_lock;
+	spin_lock_init(&channel->insert_lock);
+	spin_lock_init(&channel->remove_lock);
+
+	if (!request_mem_region(physaddr, size, MYDRVNAME))
+		goto cleanup;
+
+	channel->mapped = ioremap_cache(physaddr, size);
+	if (!channel->mapped) {
+		release_mem_region(physaddr, size);
 		goto cleanup;
 	}
-	if (visor_memregion_read(p->memregion, 0, &p->chan_hdr,
-				 sizeof(struct channel_header)) < 0) {
-		rc = NULL;
+
+	channel->physaddr = physaddr;
+	channel->nbytes = size;
+
+	err = visorchannel_read(channel, 0, &channel->chan_hdr,
+				sizeof(struct channel_header));
+	if (err)
 		goto cleanup;
-	}
+
+	/* we had better be a CLIENT of this channel */
 	if (channel_bytes == 0)
-		/* we had better be a CLIENT of this channel */
-		channel_bytes = (ulong)p->chan_hdr.size;
+		channel_bytes = (ulong)channel->chan_hdr.size;
 	if (uuid_le_cmp(guid, NULL_UUID_LE) == 0)
-		/* we had better be a CLIENT of this channel */
-		guid = p->chan_hdr.chtype;
-	if (visor_memregion_resize(p->memregion, channel_bytes) < 0) {
-		rc = NULL;
+		guid = channel->chan_hdr.chtype;
+
+	iounmap(channel->mapped);
+	release_mem_region(channel->physaddr, channel->nbytes);
+	channel->mapped = NULL;
+	if (!request_mem_region(channel->physaddr, channel_bytes, MYDRVNAME))
+		goto cleanup;
+
+	channel->mapped = ioremap_cache(channel->physaddr, channel_bytes);
+	if (!channel->mapped) {
+		release_mem_region(channel->physaddr, channel_bytes);
 		goto cleanup;
 	}
-	p->size = channel_bytes;
-	p->guid = guid;
 
-	rc = p;
+	channel->nbytes = channel_bytes;
+
+	channel->size = channel_bytes;
+	channel->guid = guid;
+	return channel;
+
 cleanup:
-
-	if (!rc) {
-		if (!p) {
-			visorchannel_destroy(p);
-			p = NULL;
-		}
-	}
-	return rc;
+	visorchannel_destroy(channel);
+	return NULL;
 }
 
 struct visorchannel *
-visorchannel_create(HOSTADDRESS physaddr, ulong channel_bytes, uuid_le guid)
+visorchannel_create(u64 physaddr, unsigned long channel_bytes,
+		    gfp_t gfp, uuid_le guid)
 {
-	return visorchannel_create_guts(physaddr, channel_bytes, NULL, 0, guid,
-					FALSE);
+	return visorchannel_create_guts(physaddr, channel_bytes, gfp, 0, guid,
+					false);
 }
 EXPORT_SYMBOL_GPL(visorchannel_create);
 
 struct visorchannel *
-visorchannel_create_with_lock(HOSTADDRESS physaddr, ulong channel_bytes,
-			      uuid_le guid)
+visorchannel_create_with_lock(u64 physaddr, unsigned long channel_bytes,
+			      gfp_t gfp, uuid_le guid)
 {
-	return visorchannel_create_guts(physaddr, channel_bytes, NULL, 0, guid,
-					TRUE);
+	return visorchannel_create_guts(physaddr, channel_bytes, gfp, 0, guid,
+					true);
 }
 EXPORT_SYMBOL_GPL(visorchannel_create_with_lock);
-
-struct visorchannel *
-visorchannel_create_overlapped(ulong channel_bytes,
-			       struct visorchannel *parent, ulong off,
-			       uuid_le guid)
-{
-	return visorchannel_create_guts(0, channel_bytes, parent, off, guid,
-					FALSE);
-}
-EXPORT_SYMBOL_GPL(visorchannel_create_overlapped);
-
-struct visorchannel *
-visorchannel_create_overlapped_with_lock(ulong channel_bytes,
-					 struct visorchannel *parent, ulong off,
-					 uuid_le guid)
-{
-	return visorchannel_create_guts(0, channel_bytes, parent, off, guid,
-					TRUE);
-}
-EXPORT_SYMBOL_GPL(visorchannel_create_overlapped_with_lock);
 
 void
 visorchannel_destroy(struct visorchannel *channel)
 {
 	if (!channel)
 		return;
-	if (channel->memregion) {
-		visor_memregion_destroy(channel->memregion);
-		channel->memregion = NULL;
+	if (channel->mapped) {
+		iounmap(channel->mapped);
+		release_mem_region(channel->physaddr, channel->nbytes);
 	}
 	kfree(channel);
 }
 EXPORT_SYMBOL_GPL(visorchannel_destroy);
 
-HOSTADDRESS
+u64
 visorchannel_get_physaddr(struct visorchannel *channel)
 {
-	return visor_memregion_get_physaddr(channel->memregion);
+	return channel->physaddr;
 }
 EXPORT_SYMBOL_GPL(visorchannel_get_physaddr);
 
@@ -196,7 +179,7 @@ visorchannel_zoneid(struct visorchannel *channel, char *s)
 }
 EXPORT_SYMBOL_GPL(visorchannel_zoneid);
 
-HOSTADDRESS
+u64
 visorchannel_get_clientpartition(struct visorchannel *channel)
 {
 	return channel->chan_hdr.partition_handle;
@@ -210,25 +193,16 @@ visorchannel_get_uuid(struct visorchannel *channel)
 }
 EXPORT_SYMBOL_GPL(visorchannel_get_uuid);
 
-struct memregion *
-visorchannel_get_memregion(struct visorchannel *channel)
-{
-	return channel->memregion;
-}
-EXPORT_SYMBOL_GPL(visorchannel_get_memregion);
-
 int
 visorchannel_read(struct visorchannel *channel, ulong offset,
 		  void *local, ulong nbytes)
 {
-	int rc = visor_memregion_read(channel->memregion, offset,
-				      local, nbytes);
-	if ((rc >= 0) && (offset == 0) &&
-	    (nbytes >= sizeof(struct channel_header))) {
-		memcpy(&channel->chan_hdr, local,
-		       sizeof(struct channel_header));
-	}
-	return rc;
+	if (offset + nbytes > channel->nbytes)
+		return -EIO;
+
+	memcpy_fromio(local, channel->mapped + offset, nbytes);
+
+	return 0;
 }
 EXPORT_SYMBOL_GPL(visorchannel_read);
 
@@ -236,10 +210,20 @@ int
 visorchannel_write(struct visorchannel *channel, ulong offset,
 		   void *local, ulong nbytes)
 {
-	if (offset == 0 && nbytes >= sizeof(struct channel_header))
-		memcpy(&channel->chan_hdr, local,
-		       sizeof(struct channel_header));
-	return visor_memregion_write(channel->memregion, offset, local, nbytes);
+	size_t chdr_size = sizeof(struct channel_header);
+	size_t copy_size;
+
+	if (offset + nbytes > channel->nbytes)
+		return -EIO;
+
+	if (offset < chdr_size) {
+		copy_size = min(chdr_size, nbytes) - offset;
+		memcpy(&channel->chan_hdr + offset, local, copy_size);
+	}
+
+	memcpy_toio(channel->mapped + offset, local, nbytes);
+
+	return 0;
 }
 EXPORT_SYMBOL_GPL(visorchannel_write);
 
@@ -247,38 +231,35 @@ int
 visorchannel_clear(struct visorchannel *channel, ulong offset, u8 ch,
 		   ulong nbytes)
 {
-	int rc = -1;
-	int bufsize = 65536;
+	int err;
+	int bufsize = PAGE_SIZE;
 	int written = 0;
-	u8 *buf = vmalloc(bufsize);
+	u8 *buf;
 
+	buf = (u8 *) __get_free_page(GFP_KERNEL);
 	if (!buf)
-		goto cleanup;
+		return -ENOMEM;
 
 	memset(buf, ch, bufsize);
+
 	while (nbytes > 0) {
-		ulong thisbytes = bufsize;
-		int x = -1;
+		int thisbytes = bufsize;
 
 		if (nbytes < thisbytes)
 			thisbytes = nbytes;
-		x = visor_memregion_write(channel->memregion, offset + written,
-					  buf, thisbytes);
-		if (x < 0) {
-			rc = x;
+		err = visorchannel_write(channel, offset + written,
+					 buf, thisbytes);
+		if (err)
 			goto cleanup;
-		}
+
 		written += thisbytes;
 		nbytes -= thisbytes;
 	}
-	rc = 0;
+	err = 0;
 
 cleanup:
-	if (buf) {
-		vfree(buf);
-		buf = NULL;
-	}
-	return rc;
+	free_page((unsigned long) buf);
+	return err;
 }
 EXPORT_SYMBOL_GPL(visorchannel_clear);
 
@@ -306,108 +287,77 @@ EXPORT_SYMBOL_GPL(visorchannel_get_header);
 /** Write the contents of a specific field within a SIGNAL_QUEUE_HEADER back
  *  into host memory
  */
-#define SIG_WRITE_FIELD(channel, queue, sig_hdr, FIELD)			\
-	(visor_memregion_write(channel->memregion,			\
-			       SIG_QUEUE_OFFSET(&channel->chan_hdr, queue)+ \
-			       offsetof(struct signal_queue_header, FIELD),\
-			       &((sig_hdr)->FIELD),			\
-			       sizeof((sig_hdr)->FIELD)) >= 0)
+#define SIG_WRITE_FIELD(channel, queue, sig_hdr, FIELD)			 \
+	(visorchannel_write(channel,					 \
+			    SIG_QUEUE_OFFSET(&channel->chan_hdr, queue)+ \
+			    offsetof(struct signal_queue_header, FIELD), \
+			    &((sig_hdr)->FIELD),			 \
+			    sizeof((sig_hdr)->FIELD)) >= 0)
 
-static BOOL
+static bool
 sig_read_header(struct visorchannel *channel, u32 queue,
 		struct signal_queue_header *sig_hdr)
 {
-	BOOL rc = FALSE;
+	int err;
 
 	if (channel->chan_hdr.ch_space_offset < sizeof(struct channel_header))
-		goto cleanup;
+		return false;
 
 	/* Read the appropriate SIGNAL_QUEUE_HEADER into local memory. */
+	err = visorchannel_read(channel,
+				SIG_QUEUE_OFFSET(&channel->chan_hdr, queue),
+				sig_hdr, sizeof(struct signal_queue_header));
+	if (err)
+		return false;
 
-	if (visor_memregion_read(channel->memregion,
-				 SIG_QUEUE_OFFSET(&channel->chan_hdr, queue),
-				 sig_hdr,
-				 sizeof(struct signal_queue_header)) < 0) {
-		goto cleanup;
-	}
-	rc = TRUE;
-cleanup:
-	return rc;
+	return true;
 }
 
-static BOOL
-sig_do_data(struct visorchannel *channel, u32 queue,
-	    struct signal_queue_header *sig_hdr, u32 slot, void *data,
-	    BOOL is_write)
-{
-	BOOL rc = FALSE;
-	int signal_data_offset = SIG_DATA_OFFSET(&channel->chan_hdr, queue,
-						 sig_hdr, slot);
-	if (is_write) {
-		if (visor_memregion_write(channel->memregion,
-					  signal_data_offset,
-					  data, sig_hdr->signal_size) < 0) {
-			goto cleanup;
-		}
-	} else {
-		if (visor_memregion_read(channel->memregion, signal_data_offset,
-					 data, sig_hdr->signal_size) < 0) {
-			goto cleanup;
-		}
-	}
-	rc = TRUE;
-cleanup:
-	return rc;
-}
-
-static inline BOOL
+static inline bool
 sig_read_data(struct visorchannel *channel, u32 queue,
 	      struct signal_queue_header *sig_hdr, u32 slot, void *data)
 {
-	return sig_do_data(channel, queue, sig_hdr, slot, data, FALSE);
+	int err;
+	int signal_data_offset = SIG_DATA_OFFSET(&channel->chan_hdr, queue,
+						 sig_hdr, slot);
+
+	err = visorchannel_read(channel, signal_data_offset,
+				data, sig_hdr->signal_size);
+	if (err)
+		return false;
+
+	return true;
 }
 
-static inline BOOL
+static inline bool
 sig_write_data(struct visorchannel *channel, u32 queue,
 	       struct signal_queue_header *sig_hdr, u32 slot, void *data)
 {
-	return sig_do_data(channel, queue, sig_hdr, slot, data, TRUE);
+	int err;
+	int signal_data_offset = SIG_DATA_OFFSET(&channel->chan_hdr, queue,
+						 sig_hdr, slot);
+
+	err = visorchannel_write(channel, signal_data_offset,
+				 data, sig_hdr->signal_size);
+	if (err)
+		return false;
+
+	return true;
 }
 
-static inline unsigned char
-safe_sig_queue_validate(struct signal_queue_header *psafe_sqh,
-			struct signal_queue_header *punsafe_sqh,
-			u32 *phead, u32 *ptail)
-{
-	if ((*phead >= psafe_sqh->max_slots) ||
-	    (*ptail >= psafe_sqh->max_slots)) {
-		/* Choose 0 or max, maybe based on current tail value */
-		*phead = 0;
-		*ptail = 0;
-
-		/* Sync with client as necessary */
-		punsafe_sqh->head = *phead;
-		punsafe_sqh->tail = *ptail;
-
-		return 0;
-	}
-	return 1;
-}				/* end safe_sig_queue_validate */
-
-static BOOL
+static bool
 signalremove_inner(struct visorchannel *channel, u32 queue, void *msg)
 {
 	struct signal_queue_header sig_hdr;
 
 	if (!sig_read_header(channel, queue, &sig_hdr))
-		return FALSE;
+		return false;
 	if (sig_hdr.head == sig_hdr.tail)
-		return FALSE;	/* no signals to remove */
+		return false;	/* no signals to remove */
 
 	sig_hdr.tail = (sig_hdr.tail + 1) % sig_hdr.max_slots;
-	if (!sig_read_data(channel, queue, &sig_hdr, sig_hdr.tail, msg)) {
-		return FALSE;
-	}
+	if (!sig_read_data(channel, queue, &sig_hdr, sig_hdr.tail, msg))
+		return false;
 	sig_hdr.num_received++;
 
 	/* For each data field in SIGNAL_QUEUE_HEADER that was modified,
@@ -415,16 +365,16 @@ signalremove_inner(struct visorchannel *channel, u32 queue, void *msg)
 	 */
 	mb(); /* required for channel synch */
 	if (!SIG_WRITE_FIELD(channel, queue, &sig_hdr, tail))
-		return FALSE;
+		return false;
 	if (!SIG_WRITE_FIELD(channel, queue, &sig_hdr, num_received))
-		return FALSE;
-	return TRUE;
+		return false;
+	return true;
 }
 
-BOOL
+bool
 visorchannel_signalremove(struct visorchannel *channel, u32 queue, void *msg)
 {
-	BOOL rc;
+	bool rc;
 
 	if (channel->needs_lock) {
 		spin_lock(&channel->remove_lock);
@@ -438,29 +388,28 @@ visorchannel_signalremove(struct visorchannel *channel, u32 queue, void *msg)
 }
 EXPORT_SYMBOL_GPL(visorchannel_signalremove);
 
-static BOOL
+static bool
 signalinsert_inner(struct visorchannel *channel, u32 queue, void *msg)
 {
 	struct signal_queue_header sig_hdr;
 
 	if (!sig_read_header(channel, queue, &sig_hdr))
-		return FALSE;
+		return false;
 
 	sig_hdr.head = ((sig_hdr.head + 1) % sig_hdr.max_slots);
 	if (sig_hdr.head == sig_hdr.tail) {
 		sig_hdr.num_overflows++;
-		visor_memregion_write(channel->memregion,
-				      SIG_QUEUE_OFFSET(&channel->chan_hdr,
-						       queue) +
-				      offsetof(struct signal_queue_header,
-					       num_overflows),
-				      &(sig_hdr.num_overflows),
-				      sizeof(sig_hdr.num_overflows));
-		return FALSE;
+		visorchannel_write(channel,
+				   SIG_QUEUE_OFFSET(&channel->chan_hdr, queue) +
+				   offsetof(struct signal_queue_header,
+					    num_overflows),
+				   &(sig_hdr.num_overflows),
+				   sizeof(sig_hdr.num_overflows));
+		return false;
 	}
 
 	if (!sig_write_data(channel, queue, &sig_hdr, sig_hdr.head, msg))
-		return FALSE;
+		return false;
 
 	sig_hdr.num_sent++;
 
@@ -469,18 +418,17 @@ signalinsert_inner(struct visorchannel *channel, u32 queue, void *msg)
 	 */
 	mb(); /* required for channel synch */
 	if (!SIG_WRITE_FIELD(channel, queue, &sig_hdr, head))
-		return FALSE;
-	if (!SIG_WRITE_FIELD(channel, queue, &sig_hdr, num_sent)) {
-		return FALSE;
-	}
+		return false;
+	if (!SIG_WRITE_FIELD(channel, queue, &sig_hdr, num_sent))
+		return false;
 
-	return TRUE;
+	return true;
 }
 
-BOOL
+bool
 visorchannel_signalinsert(struct visorchannel *channel, u32 queue, void *msg)
 {
-	BOOL rc;
+	bool rc;
 
 	if (channel->needs_lock) {
 		spin_lock(&channel->insert_lock);
@@ -552,9 +500,8 @@ void
 visorchannel_debug(struct visorchannel *channel, int num_queues,
 		   struct seq_file *seq, u32 off)
 {
-	HOSTADDRESS addr = 0;
+	u64 addr = 0;
 	ulong nbytes = 0, nbytes_region = 0;
-	struct memregion *memregion = NULL;
 	struct channel_header hdr;
 	struct channel_header *phdr = &hdr;
 	int i = 0;
@@ -562,12 +509,9 @@ visorchannel_debug(struct visorchannel *channel, int num_queues,
 
 	if (!channel)
 		return;
-	memregion = channel->memregion;
-	if (!memregion)
-		return;
 
-	addr = visor_memregion_get_physaddr(memregion);
-	nbytes_region = visor_memregion_get_nbytes(memregion);
+	addr = visorchannel_get_physaddr(channel);
+	nbytes_region = visorchannel_get_nbytes(channel);
 	errcode = visorchannel_read(channel, off,
 				    phdr, sizeof(struct channel_header));
 	if (errcode < 0) {
@@ -626,40 +570,3 @@ visorchannel_debug(struct visorchannel *channel, int num_queues,
 		   addr + off, nbytes);
 }
 EXPORT_SYMBOL_GPL(visorchannel_debug);
-
-void
-visorchannel_dump_section(struct visorchannel *chan, char *s,
-			  int off, int len, struct seq_file *seq)
-{
-	char *buf, *tbuf, *fmtbuf;
-	int fmtbufsize = 0;
-	int i;
-	int errcode = 0;
-
-	fmtbufsize = 100 * COVQ(len, 16);
-	buf = kmalloc(len, GFP_KERNEL|__GFP_NORETRY);
-	if (!buf)
-		return;
-	fmtbuf = kmalloc(fmtbufsize, GFP_KERNEL|__GFP_NORETRY);
-	if (!fmtbuf)
-		goto fmt_failed;
-
-	errcode = visorchannel_read(chan, off, buf, len);
-	if (errcode < 0)
-		goto read_failed;
-	seq_printf(seq, "channel %s:\n", s);
-	tbuf = buf;
-	while (len > 0) {
-		i = (len < 16) ? len : 16;
-		hex_dump_to_buffer(tbuf, i, 16, 1, fmtbuf, fmtbufsize, TRUE);
-		seq_printf(seq, "%s\n", fmtbuf);
-		tbuf += 16;
-		len -= 16;
-	}
-
-read_failed:
-	kfree(fmtbuf);
-fmt_failed:
-	kfree(buf);
-}
-EXPORT_SYMBOL_GPL(visorchannel_dump_section);
