@@ -216,6 +216,8 @@ struct drm_framebuffer {
 
 struct drm_property_blob {
 	struct drm_mode_object base;
+	struct drm_device *dev;
+	struct kref refcount;
 	struct list_head head;
 	size_t length;
 	unsigned char data[];
@@ -1054,6 +1056,7 @@ struct drm_mode_group {
  * @poll_running: track polling status for this device
  * @output_poll_work: delayed work for polling in process context
  * @property_blob_list: list of all the blob property objects
+ * @blob_lock: mutex for blob property allocation and management
  * @*_property: core property tracking
  * @preferred_depth: preferred RBG pixel depth, used by fb helpers
  * @prefer_shadow: hint to userspace to prefer shadow-fb rendering
@@ -1108,6 +1111,8 @@ struct drm_mode_config {
 	bool poll_running;
 	bool delayed_event;
 	struct delayed_work output_poll_work;
+
+	struct mutex blob_lock;
 
 	/* pointers to standard properties */
 	struct list_head property_blob_list;
@@ -1369,6 +1374,13 @@ struct drm_property *drm_property_create_object(struct drm_device *dev,
 					 int flags, const char *name, uint32_t type);
 struct drm_property *drm_property_create_bool(struct drm_device *dev, int flags,
 					 const char *name);
+struct drm_property_blob *drm_property_create_blob(struct drm_device *dev,
+                                                   size_t length,
+                                                   const void *data);
+struct drm_property_blob *drm_property_lookup_blob(struct drm_device *dev,
+                                                   uint32_t id);
+struct drm_property_blob *drm_property_reference_blob(struct drm_property_blob *blob);
+void drm_property_unreference_blob(struct drm_property_blob *blob);
 extern void drm_property_destroy(struct drm_device *dev, struct drm_property *property);
 extern int drm_property_add_enum(struct drm_property *property, int index,
 				 uint64_t value, const char *name);
@@ -1531,14 +1543,6 @@ static inline struct drm_property *drm_property_find(struct drm_device *dev,
 	struct drm_mode_object *mo;
 	mo = drm_mode_object_find(dev, id, DRM_MODE_OBJECT_PROPERTY);
 	return mo ? obj_to_property(mo) : NULL;
-}
-
-static inline struct drm_property_blob *
-drm_property_blob_find(struct drm_device *dev, uint32_t id)
-{
-	struct drm_mode_object *mo;
-	mo = drm_mode_object_find(dev, id, DRM_MODE_OBJECT_BLOB);
-	return mo ? obj_to_blob(mo) : NULL;
 }
 
 /* Plane list iterator for legacy (overlay only) planes. */
