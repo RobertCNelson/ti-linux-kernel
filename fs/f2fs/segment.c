@@ -64,6 +64,8 @@ static inline unsigned long __reverse_ffs(unsigned long word)
 	return num;
 }
 
+/* FIXME: Do not use this due to a subtle bug */
+#if 0
 /*
  * __find_rev_next(_zero)_bit is copied from lib/find_next_bit.c because
  * f2fs_set_bit makes MSB and LSB reversed in a byte.
@@ -122,6 +124,7 @@ found_first:
 found_middle:
 	return result + __reverse_ffs(tmp);
 }
+#endif
 
 static unsigned long __find_rev_next_zero_bit(const unsigned long *addr,
 			unsigned long size, unsigned long offset)
@@ -542,7 +545,7 @@ static void add_discard_addrs(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	unsigned long *ckpt_map = (unsigned long *)se->ckpt_valid_map;
 	unsigned long *discard_map = (unsigned long *)se->discard_map;
 	unsigned long *dmap = SIT_I(sbi)->tmp_map;
-	unsigned int start = 0, end = -1;
+	unsigned int start = -1, end = 0;
 	bool force = (cpc->reason == CP_DISCARD);
 	int i;
 
@@ -561,12 +564,14 @@ static void add_discard_addrs(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 				(cur_map[i] ^ ckpt_map[i]) & ckpt_map[i];
 
 	while (force || SM_I(sbi)->nr_discards <= SM_I(sbi)->max_discards) {
-		start = __find_rev_next_bit(dmap, max_blocks, end + 1);
-		if (start >= max_blocks)
-			break;
 
 		end = __find_rev_next_zero_bit(dmap, max_blocks, start + 1);
-		__add_discard_entry(sbi, cpc, se, start, end);
+
+		__add_discard_entry(sbi, cpc, se, start + 1, end);
+
+		if (end >= max_blocks)
+			break;
+		start = end;
 	}
 }
 
