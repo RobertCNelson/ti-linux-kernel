@@ -495,7 +495,7 @@
 				status = "disabled";
 			};
 
-			mdio@72004 {
+			mdio: mdio@72004 {
 				#address-cells = <1>;
 				#size-cells = <0>;
 				compatible = "marvell,orion-mdio";
@@ -585,7 +585,7 @@
 		mainpll: mainpll {
 			compatible = "fixed-clock";
 			#clock-cells = <0>;
-			clock-frequency = <2000000000>;
+			clock-frequency = <1000000000>;
 		};
 
 		/* 25 MHz reference crystal */
