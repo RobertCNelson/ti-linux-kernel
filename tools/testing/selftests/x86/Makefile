@@ -1,25 +1,34 @@
 .PHONY: all all_32 all_64 check_build32 clean run_tests
 
-TARGETS_C_BOTHBITS := sigreturn single_step_syscall
+TARGETS_C_BOTHBITS := sigreturn single_step_syscall sysret_ss_attrs
 
 BINARIES_32 := $(TARGETS_C_BOTHBITS:%=%_32)
 BINARIES_64 := $(TARGETS_C_BOTHBITS:%=%_64)
 
 CFLAGS := -O2 -g -std=gnu99 -pthread -Wall
 
-UNAME_P := $(shell uname -p)
+all:
 
+UNAME_M := $(shell uname -m)
+
+ifeq ($(CROSS_COMPILE),)
 # Always build 32-bit tests
 all: all_32
-
+# Install 32-bit tests
+TEST_PROGS += $(BINARIES_32) run_x86_tests.sh
 # If we're on a 64-bit host, build 64-bit tests as well
-ifeq ($(shell uname -p),x86_64)
+ifeq ($(UNAME_M),x86_64)
 all: all_64
+# Install 64-bit tests
+TEST_PROGS += $(BINARIES_64)
+endif
 endif
 
 all_32: check_build32 $(BINARIES_32)
 
 all_64: $(BINARIES_64)
+
+include ../lib.mk
 
 clean:
 	$(RM) $(BINARIES_32) $(BINARIES_64)
@@ -46,3 +55,6 @@ check_build32:
 	  echo "  yum install glibc-devel.*i686";			\
 	  exit 1;							\
 	fi
+
+# Some tests have additional dependencies.
+sysret_ss_attrs_64: thunks.S
