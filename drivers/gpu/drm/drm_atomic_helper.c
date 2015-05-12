@@ -657,6 +657,8 @@ set_routing_links(struct drm_device *dev, struct drm_atomic_state *old_state)
 		crtc->enabled = crtc->state->enable;
 		crtc->x = crtc->primary->state->src_x >> 16;
 		crtc->y = crtc->primary->state->src_y >> 16;
+
+		drm_calc_timestamping_constants(crtc, &crtc->state->adjusted_mode);
 	}
 }
 
