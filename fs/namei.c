@@ -3401,6 +3401,8 @@ static struct dentry *filename_create(int dfd, struct filename *name,
 	int error;
 	bool is_dir = (lookup_flags & LOOKUP_DIRECTORY);
 
+	if (IS_ERR(name))
+		return ERR_CAST(name);
 	/*
 	 * Note that only LOOKUP_REVAL and LOOKUP_DIRECTORY matter here. Any
 	 * other flags passed in are ignored!
@@ -3408,8 +3410,10 @@ static struct dentry *filename_create(int dfd, struct filename *name,
 	lookup_flags &= LOOKUP_REVAL;
 
 	error = filename_parentat(dfd, name, lookup_flags, path, &last, &type);
-	if (error)
+	if (error) {
+		putname(name);
 		return ERR_PTR(error);
+	}
 
 	/*
 	 * Yucky last component or no last component at all?
@@ -3447,6 +3451,7 @@ static struct dentry *filename_create(int dfd, struct filename *name,
 		error = err2;
 		goto fail;
 	}
+	putname(name);
 	return dentry;
 fail:
 	dput(dentry);
@@ -3457,20 +3462,15 @@ unlock:
 		mnt_drop_write(path->mnt);
 out:
 	path_put(path);
+	putname(name);
 	return dentry;
 }
 
 struct dentry *kern_path_create(int dfd, const char *pathname,
 				struct path *path, unsigned int lookup_flags)
 {
-	struct filename *filename = getname_kernel(pathname);
-	struct dentry *res;
-
-	if (IS_ERR(filename))
-		return ERR_CAST(filename);
-	res = filename_create(dfd, filename, path, lookup_flags);
-	putname(filename);
-	return res;
+	return filename_create(dfd, getname_kernel(pathname),
+				path, lookup_flags);
 }
 EXPORT_SYMBOL(kern_path_create);
 
@@ -3486,13 +3486,7 @@ EXPORT_SYMBOL(done_path_create);
 struct dentry *user_path_create(int dfd, const char __user *pathname,
 				struct path *path, unsigned int lookup_flags)
 {
-	struct filename *tmp = getname(pathname);
-	struct dentry *res;
-	if (IS_ERR(tmp))
-		return ERR_CAST(tmp);
-	res = filename_create(dfd, tmp, path, lookup_flags);
-	putname(tmp);
-	return res;
+	return filename_create(dfd, getname(pathname), path, lookup_flags);
 }
 EXPORT_SYMBOL(user_path_create);
 
