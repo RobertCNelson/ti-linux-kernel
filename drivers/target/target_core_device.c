@@ -287,8 +287,6 @@ void core_update_device_list_access(
 		}
 	}
 	mutex_unlock(&nacl->lun_entry_mutex);
-
-	synchronize_rcu();
 }
 
 static void target_nacl_deve_callrcu(struct rcu_head *head)
@@ -393,7 +391,6 @@ int core_enable_device_list_for_node(
 	list_add_tail(&new->alua_port_list, &port->sep_alua_list);
 	spin_unlock_bh(&port->sep_alua_lock);
 
-	synchronize_rcu();
 	return 0;
 }
 
