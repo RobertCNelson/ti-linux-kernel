@@ -431,8 +431,17 @@ static int f2fs_drop_inode(struct inode *inode)
 	 *    - f2fs_gc -> iput -> evict
 	 *       - inode_wait_for_writeback(inode)
 	 */
-	if (!inode_unhashed(inode) && inode->i_state & I_SYNC)
+	if (!inode_unhashed(inode) && inode->i_state & I_SYNC) {
+		if (!inode->i_nlink && !is_bad_inode(inode)) {
+			spin_unlock(&inode->i_lock);
+			i_size_write(inode, 0);
+
+			if (F2FS_HAS_BLOCKS(inode))
+				f2fs_truncate(inode);
+			spin_lock(&inode->i_lock);
+		}
 		return 0;
+	}
 	return generic_drop_inode(inode);
 }
 
