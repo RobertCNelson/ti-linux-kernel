@@ -589,6 +589,17 @@
 /*  EntryHI bit definition */
 #define MIPS_ENTRYHI_EHINV	(_ULCAST_(1) << 10)
 
+/* EntryLo bit definitions */
+#ifdef CONFIG_64BIT
+/* as read by dmfc0 */
+#define MIPS_ENTRYLO_RI		(_ULCAST_(1) << 63)
+#define MIPS_ENTRYLO_XI		(_ULCAST_(1) << 62)
+#else
+/* as read by mfc0 */
+#define MIPS_ENTRYLO_RI		(_ULCAST_(1) << 31)
+#define MIPS_ENTRYLO_XI		(_ULCAST_(1) << 30)
+#endif
+
 /* CMGCRBase bit definitions */
 #define MIPS_CMGCRB_BASE	11
 #define MIPS_CMGCRF_BASE	(~_ULCAST_((1 << MIPS_CMGCRB_BASE) - 1))
