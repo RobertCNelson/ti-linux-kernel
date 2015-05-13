@@ -290,7 +290,7 @@ int gpiochip_add(struct gpio_chip *chip)
 	of_gpiochip_add(chip);
 	acpi_gpiochip_add(chip);
 
-	status = gpiochip_export(chip);
+	status = gpiochip_sysfs_register(chip);
 	if (status)
 		goto err_remove_chip;
 
@@ -327,10 +327,12 @@ EXPORT_SYMBOL_GPL(gpiochip_add);
  */
 void gpiochip_remove(struct gpio_chip *chip)
 {
+	struct gpio_desc *desc;
 	unsigned long	flags;
 	unsigned	id;
+	bool		requested = false;
 
-	gpiochip_unexport(chip);
+	gpiochip_sysfs_unregister(chip);
 
 	gpiochip_irqchip_remove(chip);
 
@@ -341,14 +343,16 @@ void gpiochip_remove(struct gpio_chip *chip)
 
 	spin_lock_irqsave(&gpio_lock, flags);
 	for (id = 0; id < chip->ngpio; id++) {
-		if (test_bit(FLAG_REQUESTED, &chip->desc[id].flags))
-			dev_crit(chip->dev, "REMOVING GPIOCHIP WITH GPIOS STILL REQUESTED\n");
+		desc = &chip->desc[id];
+		desc->chip = NULL;
+		if (test_bit(FLAG_REQUESTED, &desc->flags))
+			requested = true;
 	}
-	for (id = 0; id < chip->ngpio; id++)
-		chip->desc[id].chip = NULL;
-
 	list_del(&chip->list);
 	spin_unlock_irqrestore(&gpio_lock, flags);
+
+	if (requested)
+		dev_crit(chip->dev, "REMOVING GPIOCHIP WITH GPIOS STILL REQUESTED\n");
 
 	kfree(chip->desc);
 	chip->desc = NULL;
@@ -441,6 +445,8 @@ void gpiochip_set_chained_irqchip(struct gpio_chip *gpiochip,
 		 */
 		irq_set_handler_data(parent_irq, gpiochip);
 		irq_set_chained_handler(parent_irq, parent_handler);
+
+		gpiochip->irq_parent = parent_irq;
 	}
 
 	/* Set the parent IRQ for all affected IRQs */
@@ -548,6 +554,11 @@ static void gpiochip_irqchip_remove(struct gpio_chip *gpiochip)
 	unsigned int offset;
 
 	acpi_gpiochip_free_interrupts(gpiochip);
+
+	if (gpiochip->irq_parent) {
+		irq_set_chained_handler(gpiochip->irq_parent, NULL);
+		irq_set_handler_data(gpiochip->irq_parent, NULL);
+	}
 
 	/* Remove all IRQ mappings and delete the domain */
 	if (gpiochip->irqdomain) {
