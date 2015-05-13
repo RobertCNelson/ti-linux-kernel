@@ -247,15 +247,13 @@ struct se_dev_entry *core_get_se_deve_from_rtpi(
 	return NULL;
 }
 
-int core_free_device_list_for_node(
+void core_free_device_list_for_node(
 	struct se_node_acl *nacl,
 	struct se_portal_group *tpg)
 {
 	struct se_dev_entry *deve;
-	struct se_lun *lun;
-	u32 mapped_lun;
 
-	rcu_read_lock();
+	mutex_lock(&nacl->lun_entry_mutex);
 	hlist_for_each_entry_rcu(deve, &nacl->lun_entry_hlist, link) {
 		if (!(deve->lun_flags & TRANSPORT_LUNFLAGS_INITIATOR_ACCESS))
 			continue;
@@ -265,17 +263,10 @@ int core_free_device_list_for_node(
 				tpg->se_tpg_tfo->get_fabric_name());
 			continue;
 		}
-		lun = deve->se_lun;
-		mapped_lun = deve->mapped_lun;
-		rcu_read_unlock();
-
-		core_disable_device_list_for_node(lun, NULL, mapped_lun,
+		core_disable_device_list_for_node(deve->se_lun, NULL, deve->mapped_lun,
 					TRANSPORT_LUNFLAGS_NO_ACCESS, nacl, tpg);
-		rcu_read_lock();
 	}
-	rcu_read_unlock();
-
-	return 0;
+	mutex_unlock(&nacl->lun_entry_mutex);
 }
 
 void core_update_device_list_access(
@@ -478,24 +469,19 @@ void core_clear_lun_from_tpg(struct se_lun *lun, struct se_portal_group *tpg)
 {
 	struct se_node_acl *nacl;
 	struct se_dev_entry *deve;
-	u32 mapped_lun;
 
 	mutex_lock(&tpg->acl_node_mutex);
 	list_for_each_entry(nacl, &tpg->acl_node_list, acl_list) {
 
-		rcu_read_lock();
+		mutex_lock(&nacl->lun_entry_mutex);
 		hlist_for_each_entry_rcu(deve, &nacl->lun_entry_hlist, link) {
 			if (lun != deve->se_lun)
 				continue;
 
-			mapped_lun = deve->mapped_lun;
-			rcu_read_unlock();
-
-			core_disable_device_list_for_node(lun, NULL, mapped_lun,
+			core_disable_device_list_for_node(lun, NULL, deve->mapped_lun,
 					TRANSPORT_LUNFLAGS_NO_ACCESS, nacl, tpg);
-			rcu_read_lock();
 		}
-		rcu_read_unlock();
+		mutex_lock(&nacl->lun_entry_mutex);
 	}
 	mutex_unlock(&tpg->acl_node_mutex);
 }
