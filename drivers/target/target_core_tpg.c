@@ -642,13 +642,6 @@ int core_tpg_add_lun(
 	return 0;
 }
 
-void target_lun_callrcu(struct rcu_head *head)
-{
-	struct se_lun *lun = container_of(head, struct se_lun, rcu_head);
-
-	kfree(lun);
-}
-
 void core_tpg_remove_lun(
 	struct se_portal_group *tpg,
 	struct se_lun *lun)
