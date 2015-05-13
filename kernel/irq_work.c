@@ -17,12 +17,15 @@
 #include <linux/cpu.h>
 #include <linux/notifier.h>
 #include <linux/smp.h>
+#include <linux/interrupt.h>
 #include <asm/processor.h>
 
 
 static DEFINE_PER_CPU(struct llist_head, raised_list);
 static DEFINE_PER_CPU(struct llist_head, lazy_list);
-
+#ifdef CONFIG_PREEMPT_RT_FULL
+static DEFINE_PER_CPU(struct llist_head, hirq_work_list);
+#endif
 /*
  * Claim the entry so that no one else will poke at it.
  */
@@ -65,6 +68,8 @@ void __weak arch_irq_work_raise(void)
  */
 bool irq_work_queue_on(struct irq_work *work, int cpu)
 {
+	bool raise_irqwork;
+
 	/* All work should have been flushed before going offline */
 	WARN_ON_ONCE(cpu_is_offline(cpu));
 
@@ -75,7 +80,19 @@ bool irq_work_queue_on(struct irq_work *work, int cpu)
 	if (!irq_work_claim(work))
 		return false;
 
-	if (llist_add(&work->llnode, &per_cpu(raised_list, cpu)))
+#ifdef CONFIG_PREEMPT_RT_FULL
+	if (work->flags & IRQ_WORK_HARD_IRQ)
+		raise_irqwork = llist_add(&work->llnode,
+					  &per_cpu(hirq_work_list, cpu));
+	else
+		raise_irqwork = llist_add(&work->llnode,
+					  &per_cpu(lazy_list, cpu));
+#else
+		raise_irqwork = llist_add(&work->llnode,
+					  &per_cpu(raised_list, cpu));
+#endif
+
+	if (raise_irqwork)
 		arch_send_call_function_single_ipi(cpu);
 
 	return true;
@@ -93,7 +110,16 @@ bool irq_work_queue(struct irq_work *work)
 	/* Queue the entry and raise the IPI if needed. */
 	preempt_disable();
 
-	/* If the work is "lazy", handle it from next tick if any */
+#ifdef CONFIG_PREEMPT_RT_FULL
+	if (work->flags & IRQ_WORK_HARD_IRQ) {
+		if (llist_add(&work->llnode, this_cpu_ptr(&hirq_work_list)))
+			arch_irq_work_raise();
+	} else {
+		if (llist_add(&work->llnode, this_cpu_ptr(&lazy_list)) &&
+		    tick_nohz_tick_stopped())
+			raise_softirq(TIMER_SOFTIRQ);
+	}
+#else
 	if (work->flags & IRQ_WORK_LAZY) {
 		if (llist_add(&work->llnode, this_cpu_ptr(&lazy_list)) &&
 		    tick_nohz_tick_stopped())
@@ -102,6 +128,7 @@ bool irq_work_queue(struct irq_work *work)
 		if (llist_add(&work->llnode, this_cpu_ptr(&raised_list)))
 			arch_irq_work_raise();
 	}
+#endif
 
 	preempt_enable();
 
@@ -116,9 +143,12 @@ bool irq_work_needs_cpu(void)
 	raised = this_cpu_ptr(&raised_list);
 	lazy = this_cpu_ptr(&lazy_list);
 
-	if (llist_empty(raised) || arch_irq_work_has_interrupt())
+	if (llist_empty(raised))
 		if (llist_empty(lazy))
-			return false;
+#ifdef CONFIG_PREEMPT_RT_FULL
+			if (llist_empty(this_cpu_ptr(&hirq_work_list)))
+#endif
+				return false;
 
 	/* All work should have been flushed before going offline */
 	WARN_ON_ONCE(cpu_is_offline(smp_processor_id()));
@@ -132,7 +162,9 @@ static void irq_work_run_list(struct llist_head *list)
 	struct irq_work *work;
 	struct llist_node *llnode;
 
+#ifndef CONFIG_PREEMPT_RT_FULL
 	BUG_ON(!irqs_disabled());
+#endif
 
 	if (llist_empty(list))
 		return;
@@ -168,18 +200,26 @@ static void irq_work_run_list(struct llist_head *list)
  */
 void irq_work_run(void)
 {
+#ifdef CONFIG_PREEMPT_RT_FULL
+	irq_work_run_list(this_cpu_ptr(&hirq_work_list));
+#else
 	irq_work_run_list(this_cpu_ptr(&raised_list));
 	irq_work_run_list(this_cpu_ptr(&lazy_list));
+#endif
 }
 EXPORT_SYMBOL_GPL(irq_work_run);
 
 void irq_work_tick(void)
 {
+#ifdef CONFIG_PREEMPT_RT_FULL
+	irq_work_run_list(this_cpu_ptr(&lazy_list));
+#else
 	struct llist_head *raised = &__get_cpu_var(raised_list);
 
 	if (!llist_empty(raised) && !arch_irq_work_has_interrupt())
 		irq_work_run_list(raised);
 	irq_work_run_list(&__get_cpu_var(lazy_list));
+#endif
 }
 
 /*
