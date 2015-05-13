@@ -73,7 +73,8 @@ static void dump_tlb(int first, int last)
 		 */
 		if ((entryhi & ~0x1ffffUL) == CKSEG0)
 			continue;
-		if ((entryhi & 0xff) != asid)
+		/* ASID takes effect in absense of global bit */
+		if (!(entrylo0 & 1) && (entryhi & 0xff) != asid)
 			continue;
 
 		/*
