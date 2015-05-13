@@ -28,17 +28,36 @@ static bool use_builtin_keys;
 static struct asymmetric_key_id *ca_keyid;
 
 #ifndef MODULE
+static struct {
+	struct asymmetric_key_id id;
+	unsigned char data[10];
+} cakey;
+
 static int __init ca_keys_setup(char *str)
 {
 	if (!str)		/* default system keyring */
 		return 1;
 
 	if (strncmp(str, "id:", 3) == 0) {
-		struct asymmetric_key_id *p;
-		p = asymmetric_key_hex_to_key_id(str + 3);
-		if (p == ERR_PTR(-EINVAL))
+		struct asymmetric_key_id *p = &cakey.id;
+		size_t hexlen;
+		int ret;
+
+		if (strlen(str) == 3) {
+			pr_err("Missing ca_keys id");
+			return 1;
+		}
+
+		hexlen = (strlen(str) - 3) / 2;
+		if (hexlen == 0 || hexlen > sizeof(cakey.data)) {
+			pr_err("Invalid ca_keys length\n");
+			return 1;
+		}
+
+		ret = __asymmetric_key_hex_to_key_id(str + 3, p, hexlen);
+		if (ret < 0)
 			pr_err("Unparsable hex string in ca_keys\n");
-		else if (!IS_ERR(p))
+		else
 			ca_keyid = p;	/* owner key 'id:xxxxxx' */
 	} else if (strcmp(str, "builtin") == 0) {
 		use_builtin_keys = true;
