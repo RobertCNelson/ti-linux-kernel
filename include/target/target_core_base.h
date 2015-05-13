@@ -704,6 +704,7 @@ struct se_port_stat_grps {
 };
 
 struct se_lun {
+	u16			lun_rtpi;
 #define SE_LUN_LINK_MAGIC			0xffff7771
 	u32			lun_link_magic;
 	/* See transport_lun_status_table */

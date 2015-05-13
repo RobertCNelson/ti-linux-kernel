@@ -212,7 +212,6 @@ struct se_dev_entry *core_get_se_deve_from_rtpi(
 {
 	struct se_dev_entry *deve;
 	struct se_lun *lun;
-	struct se_port *port;
 	struct se_portal_group *tpg = nacl->se_tpg;
 
 	rcu_read_lock();
@@ -224,14 +223,7 @@ struct se_dev_entry *core_get_se_deve_from_rtpi(
 				tpg->se_tpg_tfo->get_fabric_name());
 			continue;
 		}
-		port = lun->lun_sep;
-		if (!port) {
-			pr_err("%s device entries device pointer is"
-				" NULL, but Initiator has access.\n",
-				tpg->se_tpg_tfo->get_fabric_name());
-			continue;
-		}
-		if (port->sep_rtpi != rtpi)
+		if (lun->lun_rtpi != rtpi)
 			continue;
 
 		kref_get(&deve->pr_kref);
@@ -580,6 +572,7 @@ int core_dev_export(
 		return PTR_ERR(port);
 
 	lun->lun_se_dev = dev;
+	lun->lun_rtpi = port->sep_rtpi;
 
 	spin_lock(&hba->device_lock);
 	dev->export_count++;
