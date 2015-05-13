@@ -125,7 +125,7 @@ static int target_fabric_mappedlun_link(
 	 */
 	rcu_read_lock();
 	deve = target_nacl_find_deve(lacl->se_lun_nacl, lacl->mapped_lun);
-	if (deve && deve->lun_flags & TRANSPORT_LUNFLAGS_INITIATOR_ACCESS)
+	if (deve && deve->se_lun)
 		lun_access = deve->lun_flags;
 	else
 		lun_access =

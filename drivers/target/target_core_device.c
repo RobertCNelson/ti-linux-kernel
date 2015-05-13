@@ -68,7 +68,7 @@ transport_lookup_cmd_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, unpacked_lun);
-	if (deve && deve->lun_flags & TRANSPORT_LUNFLAGS_INITIATOR_ACCESS) {
+	if (deve && deve->se_lun) {
 		/*
 		 * Make sure that target_enable_device_list_for_node()
 		 * has not already cleared the RCU protected pointers.
@@ -163,7 +163,7 @@ int transport_lookup_tmr_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, unpacked_lun);
-	if (deve && deve->lun_flags & TRANSPORT_LUNFLAGS_INITIATOR_ACCESS) {
+	if (deve && deve->se_lun) {
 		/*
 		 * Make sure that target_enable_device_list_for_node()
 		 * has not already cleared the RCU protected pointers.
@@ -217,7 +217,7 @@ struct se_dev_entry *core_get_se_deve_from_rtpi(
 
 	rcu_read_lock();
 	hlist_for_each_entry_rcu(deve, &nacl->lun_entry_hlist, link) {
-		if (!(deve->lun_flags & TRANSPORT_LUNFLAGS_INITIATOR_ACCESS))
+		if (!deve->se_lun || !deve->se_lun_acl)
 			continue;
 
 		lun = deve->se_lun;
@@ -255,7 +255,7 @@ void core_free_device_list_for_node(
 
 	mutex_lock(&nacl->lun_entry_mutex);
 	hlist_for_each_entry_rcu(deve, &nacl->lun_entry_hlist, link) {
-		if (!(deve->lun_flags & TRANSPORT_LUNFLAGS_INITIATOR_ACCESS))
+		if (!deve->se_lun || !deve->se_lun_acl)
 			continue;
 		if (!deve->se_lun) {
 			pr_err("%s device entries device pointer is"
@@ -346,8 +346,6 @@ int core_enable_device_list_for_node(
 	INIT_LIST_HEAD(&new->ua_list);
 
 	new->mapped_lun = mapped_lun;
-	new->lun_flags |= TRANSPORT_LUNFLAGS_INITIATOR_ACCESS;
-
 	kref_init(&new->pr_kref);
 	init_completion(&new->pr_comp);
 
@@ -361,7 +359,7 @@ int core_enable_device_list_for_node(
 
 	mutex_lock(&nacl->lun_entry_mutex);
 	orig = target_nacl_find_deve(nacl, mapped_lun);
-	if (orig && orig->lun_flags & TRANSPORT_LUNFLAGS_INITIATOR_ACCESS) {
+	if (orig && orig->se_lun) {
 		BUG_ON(orig->se_lun_acl != NULL);
 		BUG_ON(orig->se_lun != lun);
 

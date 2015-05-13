@@ -160,10 +160,8 @@ enum se_cmd_flags_table {
 
 /* struct se_dev_entry->lun_flags and struct se_lun->lun_access */
 enum transport_lunflags_table {
-	TRANSPORT_LUNFLAGS_NO_ACCESS		= 0x00,
-	TRANSPORT_LUNFLAGS_INITIATOR_ACCESS	= 0x01,
-	TRANSPORT_LUNFLAGS_READ_ONLY		= 0x02,
-	TRANSPORT_LUNFLAGS_READ_WRITE		= 0x04,
+	TRANSPORT_LUNFLAGS_READ_ONLY		= 0x01,
+	TRANSPORT_LUNFLAGS_READ_WRITE		= 0x02,
 };
 
 /*

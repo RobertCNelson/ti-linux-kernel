@@ -1245,7 +1245,7 @@ sense_reason_t spc_emulate_report_luns(struct se_cmd *cmd)
 
 	rcu_read_lock();
 	hlist_for_each_entry_rcu(deve, &nacl->lun_entry_hlist, link) {
-		if (!(deve->lun_flags & TRANSPORT_LUNFLAGS_INITIATOR_ACCESS))
+		if (!deve->se_lun || !deve->se_lun_acl)
 			continue;
 
 		mapped_lun = deve->mapped_lun;
