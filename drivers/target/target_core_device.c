@@ -269,13 +269,6 @@ void core_update_device_list_access(
 	mutex_unlock(&nacl->lun_entry_mutex);
 }
 
-static void target_nacl_deve_callrcu(struct rcu_head *head)
-{
-	struct se_dev_entry *deve = container_of(head, struct se_dev_entry,
-						 rcu_head);
-	kfree(deve);
-}
-
 /*
  * Called with rcu_read_lock or nacl->device_list_lock held.
  */
@@ -356,7 +349,7 @@ int core_enable_device_list_for_node(
 		kref_put(&orig->pr_kref, target_pr_kref_release);
 		wait_for_completion(&orig->pr_comp);
 
-		call_rcu(&orig->rcu_head, target_nacl_deve_callrcu);
+		kfree_rcu(orig, rcu_head);
 		return 0;
 	}
 
@@ -411,13 +404,12 @@ void core_disable_device_list_for_node(
 	orig->creation_time = 0;
 	orig->attach_count--;
 	kref_put(&orig->pr_kref, target_pr_kref_release);
-	wait_for_completion(&orig->pr_comp);
-
 	/*
-	 * Fire off RCU callback to wait for any in process SPEC_I_PT=1
+	 * Before fireing off RCU callback, wait for any in process SPEC_I_PT=1
 	 * or REGISTER_AND_MOVE PR operation to complete.
 	 */
-	call_rcu(&orig->rcu_head, target_nacl_deve_callrcu);
+	wait_for_completion(&orig->pr_comp);
+	kfree_rcu(orig, rcu_head);
 
 	core_scsi3_free_pr_reg_from_nacl(lun->lun_se_dev, nacl);
 }
