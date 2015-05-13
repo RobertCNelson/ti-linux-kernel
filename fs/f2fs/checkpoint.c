@@ -378,6 +378,20 @@ static void __remove_ino_entry(struct f2fs_sb_info *sbi, nid_t ino, int type)
 	spin_unlock(&im->ino_lock);
 }
 
+static bool __exist_ino_entry(struct f2fs_sb_info *sbi, nid_t ino, int type)
+{
+	struct inode_management *im = &sbi->im[type];
+	struct ino_entry *e;
+	bool exist = false;
+
+	spin_lock(&im->ino_lock);
+	e = radix_tree_lookup(&im->ino_root, ino);
+	if (e)
+		exist = true;
+	spin_unlock(&im->ino_lock);
+	return exist;
+}
+
 void add_dirty_inode(struct f2fs_sb_info *sbi, nid_t ino, int type)
 {
 	/* add new dirty ino entry into list */
@@ -456,6 +470,11 @@ void remove_orphan_inode(struct f2fs_sb_info *sbi, nid_t ino)
 {
 	/* remove orphan entry from orphan list */
 	__remove_ino_entry(sbi, ino, ORPHAN_INO);
+}
+
+bool is_orphan_inode(struct f2fs_sb_info *sbi, nid_t ino)
+{
+	return __exist_ino_entry(sbi, ino, ORPHAN_INO);
 }
 
 static void recover_orphan_inode(struct f2fs_sb_info *sbi, nid_t ino)

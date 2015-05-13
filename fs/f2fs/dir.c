@@ -648,6 +648,7 @@ int f2fs_do_tmpfile(struct inode *inode, struct inode *dir)
 	update_inode(inode, page);
 	f2fs_put_page(page, 1);
 
+	set_inode_flag(F2FS_I(inode), FI_TMP_INODE);
 	clear_inode_flag(F2FS_I(inode), FI_NEW_INODE);
 fail:
 	up_write(&F2FS_I(inode)->i_sem);

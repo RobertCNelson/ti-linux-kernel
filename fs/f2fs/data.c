@@ -1752,6 +1752,14 @@ write:
 		goto out;
 	}
 
+	/*
+	 * if orphan inode, we don't need to write its data,
+	 * but, tmpfile is not the case.
+	 */
+	if (is_orphan_inode(sbi, inode->i_ino) &&
+			!is_inode_flag_set(F2FS_I(inode), FI_TMP_INODE))
+		goto out;
+
 	if (!wbc->for_reclaim)
 		need_balance_fs = true;
 	else if (has_not_enough_free_secs(sbi, 0))
