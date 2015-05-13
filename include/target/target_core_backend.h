@@ -95,6 +95,6 @@ int	target_alloc_sgl(struct scatterlist **, unsigned int *, u32, bool);
 sense_reason_t	transport_generic_map_mem_to_cmd(struct se_cmd *,
 		struct scatterlist *, u32, struct scatterlist *, u32);
 
-void	array_free(void *array, int n);
+bool	target_lun_is_rdonly(struct se_cmd *);
 
 #endif /* TARGET_CORE_BACKEND_H */

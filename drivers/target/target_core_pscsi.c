@@ -637,17 +637,7 @@ static void pscsi_transport_complete(struct se_cmd *cmd, struct scatterlist *sg,
 
 	if (((cdb[0] == MODE_SENSE) || (cdb[0] == MODE_SENSE_10)) &&
 	     (status_byte(result) << 1) == SAM_STAT_GOOD) {
-		struct se_session *sess = cmd->se_sess;
-		struct se_node_acl *nacl = sess->se_node_acl;
-		struct se_dev_entry *deve;
-		u32 lun = cmd->orig_fe_lun;
-		bool read_only = true;
-
-		rcu_read_lock();
-		deve = target_nacl_find_deve(nacl, lun);
-		if (deve)
-			read_only = (deve->lun_flags & TRANSPORT_LUNFLAGS_READ_ONLY);
-		rcu_read_unlock();
+		bool read_only = target_lun_is_rdonly(cmd);
 
 		if (read_only) {
 			unsigned char *buf;

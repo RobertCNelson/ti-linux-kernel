@@ -183,6 +183,24 @@ int transport_lookup_tmr_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 }
 EXPORT_SYMBOL(transport_lookup_tmr_lun);
 
+bool target_lun_is_rdonly(struct se_cmd *cmd)
+{
+	struct se_session *se_sess = cmd->se_sess;
+	struct se_dev_entry *deve;
+	bool ret;
+
+	if (cmd->se_lun->lun_access & TRANSPORT_LUNFLAGS_READ_ONLY)
+		return true;
+
+	rcu_read_lock();
+	deve = target_nacl_find_deve(se_sess->se_node_acl, cmd->orig_fe_lun);
+	ret = (deve && deve->lun_flags & TRANSPORT_LUNFLAGS_READ_ONLY);
+	rcu_read_unlock();
+
+	return ret;
+}
+EXPORT_SYMBOL(target_lun_is_rdonly);
+
 /*
  * This function is called from core_scsi3_emulate_pro_register_and_move()
  * and core_scsi3_decode_spec_i_port(), and will increment &deve->pr_kref

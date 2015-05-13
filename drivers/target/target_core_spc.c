@@ -969,8 +969,6 @@ static int spc_modesense_long_blockdesc(unsigned char *buf, u64 blocks, u32 bloc
 static sense_reason_t spc_emulate_modesense(struct se_cmd *cmd)
 {
 	struct se_device *dev = cmd->se_dev;
-	struct se_dev_entry *deve;
-	struct se_session *sess = cmd->se_sess;
 	char *cdb = cmd->t_task_cdb;
 	unsigned char buf[SE_MODE_PAGE_BUF], *rbuf;
 	int type = dev->transport->get_device_type(dev);
@@ -983,7 +981,7 @@ static sense_reason_t spc_emulate_modesense(struct se_cmd *cmd)
 	int length = 0;
 	int ret;
 	int i;
-	bool read_only = true;
+	bool read_only = target_lun_is_rdonly(cmd);;
 
 	memset(buf, 0, SE_MODE_PAGE_BUF);
 
@@ -992,12 +990,6 @@ static sense_reason_t spc_emulate_modesense(struct se_cmd *cmd)
 	 * MODE_SENSE_10 and byte 2 for MODE_SENSE (6).
 	 */
 	length = ten ? 3 : 2;
-
-	rcu_read_lock();
-	deve = target_nacl_find_deve(sess->se_node_acl, cmd->orig_fe_lun);
-	if (deve)
-		read_only = (deve->lun_flags & TRANSPORT_LUNFLAGS_READ_ONLY);
-	rcu_read_unlock();
 
 	/* DEVICE-SPECIFIC PARAMETER */
 	if ((cmd->se_lun->lun_access & TRANSPORT_LUNFLAGS_READ_ONLY) || read_only)
