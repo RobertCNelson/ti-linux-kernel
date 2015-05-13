@@ -68,15 +68,7 @@ transport_lookup_cmd_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, unpacked_lun);
-	if (deve && deve->se_lun) {
-		/*
-		 * Make sure that target_enable_device_list_for_node()
-		 * has not already cleared the RCU protected pointers.
-		 */
-		if (!deve->se_lun) {
-			rcu_read_unlock();
-			goto check_lun;
-		}
+	if (deve) {
 		deve->total_cmds++;
 
 		if ((se_cmd->data_direction == DMA_TO_DEVICE) &&
@@ -105,7 +97,6 @@ transport_lookup_cmd_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 	}
 	rcu_read_unlock();
 
-check_lun:
 	if (!se_lun) {
 		/*
 		 * Use the se_portal_group->tpg_virt_lun0 to allow for
@@ -163,15 +154,7 @@ int transport_lookup_tmr_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, unpacked_lun);
-	if (deve && deve->se_lun) {
-		/*
-		 * Make sure that target_enable_device_list_for_node()
-		 * has not already cleared the RCU protected pointers.
-		 */
-		if (!deve->se_lun) {
-			rcu_read_unlock();
-			goto check_lun;
-		}
+	if (deve) {
 		se_tmr->tmr_lun = deve->se_lun;
 		se_cmd->se_lun = deve->se_lun;
 		se_lun = deve->se_lun;
@@ -180,7 +163,6 @@ int transport_lookup_tmr_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 	}
 	rcu_read_unlock();
 
-check_lun:
 	if (!se_lun) {
 		pr_debug("TARGET_CORE[%s]: Detected NON_EXISTENT_LUN"
 			" Access for 0x%08x\n",
@@ -217,9 +199,6 @@ struct se_dev_entry *core_get_se_deve_from_rtpi(
 
 	rcu_read_lock();
 	hlist_for_each_entry_rcu(deve, &nacl->lun_entry_hlist, link) {
-		if (!deve->se_lun || !deve->se_lun_acl)
-			continue;
-
 		lun = deve->se_lun;
 		if (!lun) {
 			pr_err("%s device entries device pointer is"
@@ -254,17 +233,8 @@ void core_free_device_list_for_node(
 	struct se_dev_entry *deve;
 
 	mutex_lock(&nacl->lun_entry_mutex);
-	hlist_for_each_entry_rcu(deve, &nacl->lun_entry_hlist, link) {
-		if (!deve->se_lun || !deve->se_lun_acl)
-			continue;
-		if (!deve->se_lun) {
-			pr_err("%s device entries device pointer is"
-				" NULL, but Initiator has access.\n",
-				tpg->se_tpg_tfo->get_fabric_name());
-			continue;
-		}
+	hlist_for_each_entry_rcu(deve, &nacl->lun_entry_hlist, link)
 		core_disable_device_list_for_node(deve->se_lun, deve, nacl, tpg);
-	}
 	mutex_unlock(&nacl->lun_entry_mutex);
 }
 
@@ -422,14 +392,14 @@ void core_disable_device_list_for_node(
 	 * Disable struct se_dev_entry LUN ACL mapping
 	 */
 	core_scsi3_ua_release_all(orig);
+
+	hlist_del_rcu(&orig->link);
 	rcu_assign_pointer(orig->pr_reg, NULL);
 	rcu_assign_pointer(orig->se_lun, NULL);
 	rcu_assign_pointer(orig->se_lun_acl, NULL);
 	orig->lun_flags = 0;
 	orig->creation_time = 0;
 	orig->attach_count--;
-	hlist_del_rcu(&orig->link);
-
 	kref_put(&orig->pr_kref, target_pr_kref_release);
 	wait_for_completion(&orig->pr_comp);
 

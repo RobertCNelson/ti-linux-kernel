@@ -1220,7 +1220,7 @@ sense_reason_t spc_emulate_report_luns(struct se_cmd *cmd)
 	struct se_session *sess = cmd->se_sess;
 	struct se_node_acl *nacl = sess->se_node_acl;
 	unsigned char *buf;
-	u32 lun_count = 0, offset = 8, mapped_lun;
+	u32 lun_count = 0, offset = 8;
 
 	if (cmd->data_length < 16) {
 		pr_warn("REPORT LUNS allocation length %u too small\n",
@@ -1245,10 +1245,6 @@ sense_reason_t spc_emulate_report_luns(struct se_cmd *cmd)
 
 	rcu_read_lock();
 	hlist_for_each_entry_rcu(deve, &nacl->lun_entry_hlist, link) {
-		if (!deve->se_lun || !deve->se_lun_acl)
-			continue;
-
-		mapped_lun = deve->mapped_lun;
 		/*
 		 * We determine the correct LUN LIST LENGTH even once we
 		 * have reached the initial allocation length.
@@ -1258,7 +1254,7 @@ sense_reason_t spc_emulate_report_luns(struct se_cmd *cmd)
 		if ((offset + 8) > cmd->data_length)
 			continue;
 
-		int_to_scsilun(mapped_lun, (struct scsi_lun *)&buf[offset]);
+		int_to_scsilun(deve->mapped_lun, (struct scsi_lun *)&buf[offset]);
 		offset += 8;
 	}
 	rcu_read_unlock();

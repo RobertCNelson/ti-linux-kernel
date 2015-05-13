@@ -125,7 +125,7 @@ static int target_fabric_mappedlun_link(
 	 */
 	rcu_read_lock();
 	deve = target_nacl_find_deve(lacl->se_lun_nacl, lacl->mapped_lun);
-	if (deve && deve->se_lun)
+	if (deve)
 		lun_access = deve->lun_flags;
 	else
 		lun_access =
@@ -157,10 +157,11 @@ static int target_fabric_mappedlun_unlink(
 	 */
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, lacl->mapped_lun);
-	if (!deve || !deve->se_lun) {
+	if (!deve) {
 		rcu_read_lock();
 		return 0;
 	}
+#warning FIXME: 
 	rcu_read_unlock();
 	lun = container_of(to_config_group(lun_ci), struct se_lun, lun_group);
 	se_tpg = lun->lun_sep->sep_tpg;

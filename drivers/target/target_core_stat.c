@@ -1086,7 +1086,7 @@ static ssize_t target_stat_scsi_auth_intr_show_attr_inst(
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, lacl->mapped_lun);
-	if (!deve || !deve->se_lun || !deve->se_lun_acl) {
+	if (!deve) {
 		rcu_read_unlock();
 		return -ENODEV;
 	}
@@ -1111,7 +1111,7 @@ static ssize_t target_stat_scsi_auth_intr_show_attr_dev(
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, lacl->mapped_lun);
-	if (!deve || !deve->se_lun || !deve->se_lun_acl) {
+	if (!deve) {
 		rcu_read_unlock();
 		return -ENODEV;
 	}
@@ -1135,7 +1135,7 @@ static ssize_t target_stat_scsi_auth_intr_show_attr_port(
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, lacl->mapped_lun);
-	if (!deve || !deve->se_lun || !deve->se_lun_acl) {
+	if (!deve) {
 		rcu_read_unlock();
 		return -ENODEV;
 	}
@@ -1158,7 +1158,7 @@ static ssize_t target_stat_scsi_auth_intr_show_attr_indx(
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, lacl->mapped_lun);
-	if (!deve || !deve->se_lun || !deve->se_lun_acl) {
+	if (!deve) {
 		rcu_read_unlock();
 		return -ENODEV;
 	}
@@ -1180,7 +1180,7 @@ static ssize_t target_stat_scsi_auth_intr_show_attr_dev_or_port(
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, lacl->mapped_lun);
-	if (!deve || !deve->se_lun || !deve->se_lun_acl) {
+	if (!deve) {
 		rcu_read_unlock();
 		return -ENODEV;
 	}
@@ -1202,7 +1202,7 @@ static ssize_t target_stat_scsi_auth_intr_show_attr_intr_name(
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, lacl->mapped_lun);
-	if (!deve || !deve->se_lun || !deve->se_lun_acl) {
+	if (!deve) {
 		rcu_read_unlock();
 		return -ENODEV;
 	}
@@ -1224,7 +1224,7 @@ static ssize_t target_stat_scsi_auth_intr_show_attr_map_indx(
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, lacl->mapped_lun);
-	if (!deve || !deve->se_lun || !deve->se_lun_acl) {
+	if (!deve) {
 		rcu_read_unlock();
 		return -ENODEV;
 	}
@@ -1246,7 +1246,7 @@ static ssize_t target_stat_scsi_auth_intr_show_attr_att_count(
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, lacl->mapped_lun);
-	if (!deve || !deve->se_lun || !deve->se_lun_acl) {
+	if (!deve) {
 		rcu_read_unlock();
 		return -ENODEV;
 	}
@@ -1268,7 +1268,7 @@ static ssize_t target_stat_scsi_auth_intr_show_attr_num_cmds(
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, lacl->mapped_lun);
-	if (!deve || !deve->se_lun || !deve->se_lun_acl) {
+	if (!deve) {
 		rcu_read_unlock();
 		return -ENODEV;
 	}
@@ -1290,7 +1290,7 @@ static ssize_t target_stat_scsi_auth_intr_show_attr_read_mbytes(
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, lacl->mapped_lun);
-	if (!deve || !deve->se_lun || !deve->se_lun_acl) {
+	if (!deve) {
 		rcu_read_unlock();
 		return -ENODEV;
 	}
@@ -1312,7 +1312,7 @@ static ssize_t target_stat_scsi_auth_intr_show_attr_write_mbytes(
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, lacl->mapped_lun);
-	if (!deve || !deve->se_lun || !deve->se_lun_acl) {
+	if (!deve) {
 		rcu_read_unlock();
 		return -ENODEV;
 	}
@@ -1334,7 +1334,7 @@ static ssize_t target_stat_scsi_auth_intr_show_attr_hs_num_cmds(
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, lacl->mapped_lun);
-	if (!deve || !deve->se_lun || !deve->se_lun_acl) {
+	if (!deve) {
 		rcu_read_unlock();
 		return -ENODEV;
 	}
@@ -1356,7 +1356,7 @@ static ssize_t target_stat_scsi_auth_intr_show_attr_creation_time(
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, lacl->mapped_lun);
-	if (!deve || !deve->se_lun || !deve->se_lun_acl) {
+	if (!deve) {
 		rcu_read_unlock();
 		return -ENODEV;
 	}
@@ -1379,7 +1379,7 @@ static ssize_t target_stat_scsi_auth_intr_show_attr_row_status(
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, lacl->mapped_lun);
-	if (!deve || !deve->se_lun || !deve->se_lun_acl) {
+	if (!deve) {
 		rcu_read_unlock();
 		return -ENODEV;
 	}
@@ -1452,7 +1452,7 @@ static ssize_t target_stat_scsi_att_intr_port_show_attr_inst(
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, lacl->mapped_lun);
-	if (!deve || !deve->se_lun || !deve->se_lun_acl) {
+	if (!deve) {
 		rcu_read_unlock();
 		return -ENODEV;
 	}
@@ -1477,7 +1477,7 @@ static ssize_t target_stat_scsi_att_intr_port_show_attr_dev(
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, lacl->mapped_lun);
-	if (!deve || !deve->se_lun || !deve->se_lun_acl) {
+	if (!deve) {
 		rcu_read_unlock();
 		return -ENODEV;
 	}
@@ -1501,7 +1501,7 @@ static ssize_t target_stat_scsi_att_intr_port_show_attr_port(
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, lacl->mapped_lun);
-	if (!deve || !deve->se_lun || !deve->se_lun_acl) {
+	if (!deve) {
 		rcu_read_unlock();
 		return -ENODEV;
 	}
@@ -1550,7 +1550,7 @@ static ssize_t target_stat_scsi_att_intr_port_show_attr_port_auth_indx(
 
 	rcu_read_lock();
 	deve = target_nacl_find_deve(nacl, lacl->mapped_lun);
-	if (!deve || !deve->se_lun || !deve->se_lun_acl) {
+	if (!deve) {
 		rcu_read_unlock();
 		return -ENODEV;
 	}
