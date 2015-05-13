@@ -263,8 +263,7 @@ void core_free_device_list_for_node(
 				tpg->se_tpg_tfo->get_fabric_name());
 			continue;
 		}
-		core_disable_device_list_for_node(deve->se_lun, NULL, deve->mapped_lun,
-					TRANSPORT_LUNFLAGS_NO_ACCESS, nacl, tpg);
+		core_disable_device_list_for_node(deve->se_lun, deve, nacl, tpg);
 	}
 	mutex_unlock(&nacl->lun_entry_mutex);
 }
@@ -398,27 +397,16 @@ int core_enable_device_list_for_node(
 	return 0;
 }
 
-/*      core_disable_device_list_for_node():
- *
- *
+/*
+ *	Called with se_node_acl->lun_entry_mutex held.
  */
-int core_disable_device_list_for_node(
+void core_disable_device_list_for_node(
 	struct se_lun *lun,
-	struct se_lun_acl *lun_acl,
-	u32 mapped_lun,
-	u32 lun_access,
+	struct se_dev_entry *orig,
 	struct se_node_acl *nacl,
 	struct se_portal_group *tpg)
 {
 	struct se_port *port = lun->lun_sep;
-	struct se_dev_entry *orig;
-
-	mutex_lock(&nacl->lun_entry_mutex);
-	orig = target_nacl_find_deve(nacl, mapped_lun);
-	if (!orig) {
-		mutex_unlock(&nacl->lun_entry_mutex);
-		return 0;
-	}
 	/*
 	 * If the MappedLUN entry is being disabled, the entry in
 	 * port->sep_alua_list must be removed now before clearing the
@@ -446,7 +434,6 @@ int core_disable_device_list_for_node(
 	orig->creation_time = 0;
 	orig->attach_count--;
 	hlist_del_rcu(&orig->link);
-	mutex_unlock(&nacl->lun_entry_mutex);
 
 	kref_put(&orig->pr_kref, target_pr_kref_release);
 	wait_for_completion(&orig->pr_comp);
@@ -458,7 +445,6 @@ int core_disable_device_list_for_node(
 	call_rcu(&orig->rcu_head, target_nacl_deve_callrcu);
 
 	core_scsi3_free_pr_reg_from_nacl(lun->lun_se_dev, nacl);
-	return 0;
 }
 
 /*      core_clear_lun_from_tpg():
@@ -478,8 +464,7 @@ void core_clear_lun_from_tpg(struct se_lun *lun, struct se_portal_group *tpg)
 			if (lun != deve->se_lun)
 				continue;
 
-			core_disable_device_list_for_node(lun, NULL, deve->mapped_lun,
-					TRANSPORT_LUNFLAGS_NO_ACCESS, nacl, tpg);
+			core_disable_device_list_for_node(lun, deve, nacl, tpg);
 		}
 		mutex_lock(&nacl->lun_entry_mutex);
 	}
@@ -808,25 +793,23 @@ int core_dev_add_initiator_node_lun_acl(
 	return 0;
 }
 
-/*      core_dev_del_initiator_node_lun_acl():
- *
- *
- */
 int core_dev_del_initiator_node_lun_acl(
 	struct se_portal_group *tpg,
 	struct se_lun *lun,
 	struct se_lun_acl *lacl)
 {
 	struct se_node_acl *nacl;
+	struct se_dev_entry *deve;
 
 	nacl = lacl->se_lun_nacl;
 	if (!nacl)
 		return -EINVAL;
 
-	core_disable_device_list_for_node(lun, NULL, lacl->mapped_lun,
-		TRANSPORT_LUNFLAGS_NO_ACCESS, nacl, tpg);
-
-	lacl->se_lun = NULL;
+	mutex_lock(&nacl->lun_entry_mutex);
+	deve = target_nacl_find_deve(nacl, lacl->mapped_lun);
+	if (deve)
+		core_disable_device_list_for_node(lun, deve, nacl, tpg);
+	mutex_unlock(&nacl->lun_entry_mutex);
 
 	pr_debug("%s_TPG[%hu]_LUN[%u] - Removed ACL for"
 		" InitiatorNode: %s Mapped LUN: %u\n",

@@ -47,39 +47,6 @@ extern struct se_device *g_lun0_dev;
 static DEFINE_SPINLOCK(tpg_lock);
 static LIST_HEAD(tpg_list);
 
-/*	core_clear_initiator_node_from_tpg():
- *
- *
- */
-static void core_clear_initiator_node_from_tpg(
-	struct se_node_acl *nacl,
-	struct se_portal_group *tpg)
-{
-	struct se_dev_entry *deve;
-	struct se_lun *lun;
-	u32 mapped_lun;
-
-	rcu_read_lock();
-	hlist_for_each_entry_rcu(deve, &nacl->lun_entry_hlist, link) {
-		if (!(deve->lun_flags & TRANSPORT_LUNFLAGS_INITIATOR_ACCESS))
-			continue;
-		if (!deve->se_lun) {
-			pr_err("%s device entries device pointer is"
-				" NULL, but Initiator has access.\n",
-				tpg->se_tpg_tfo->get_fabric_name());
-			continue;
-		}
-		lun = deve->se_lun;
-		mapped_lun = deve->mapped_lun;
-		rcu_read_unlock();
-
-		core_disable_device_list_for_node(lun, NULL, mapped_lun,
-					TRANSPORT_LUNFLAGS_NO_ACCESS, nacl, tpg);
-		rcu_read_lock();
-	}
-	rcu_read_unlock();
-}
-
 /*	__core_tpg_get_initiator_node_acl():
  *
  *	mutex_lock(&tpg->acl_node_mutex); must be held when calling
@@ -365,7 +332,6 @@ void core_tpg_del_initiator_node_acl(struct se_node_acl *acl)
 	wait_for_completion(&acl->acl_free_comp);
 
 	core_tpg_wait_for_nacl_pr_ref(acl);
-	core_clear_initiator_node_from_tpg(acl, tpg);
 	core_free_device_list_for_node(acl, tpg);
 
 	pr_debug("%s_TPG[%hu] - Deleted ACL with TCQ Depth: %d for %s"
