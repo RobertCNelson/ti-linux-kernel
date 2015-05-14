@@ -1188,7 +1188,7 @@ static void dissolve_free_huge_page(struct page *page)
  */
 void dissolve_free_huge_pages(unsigned long start_pfn, unsigned long end_pfn)
 {
-	unsigned int order = 8 * sizeof(void *);
+	unsigned int order = UINT_MAX;
 	unsigned long pfn;
 	struct hstate *h;
 
@@ -1200,6 +1200,7 @@ void dissolve_free_huge_pages(unsigned long start_pfn, unsigned long end_pfn)
 		if (order > huge_page_order(h))
 			order = huge_page_order(h);
 	VM_BUG_ON(!IS_ALIGNED(start_pfn, 1 << order));
+	VM_BUG_ON(order == UINT_MAX);
 	for (pfn = start_pfn; pfn < end_pfn; pfn += 1 << order)
 		dissolve_free_huge_page(pfn_to_page(pfn));
 }
