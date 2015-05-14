@@ -196,7 +196,7 @@ static inline pmd_t pmdp_collapse_flush(struct vm_area_struct *vma,
 					pmd_t *pmdp)
 {
 	/*
-	 * pmd and hugepage pte format are same. So we could
+	 * pmd and hugepage pte format are the same.  So we could
 	 * use the same function.
 	 */
 	return pmdp_huge_clear_flush(vma, address, pmdp);
