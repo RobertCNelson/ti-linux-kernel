@@ -197,6 +197,7 @@ static inline pmd_t pmdp_collapse_flush(struct vm_area_struct *vma,
 {
 	return pmdp_clear_flush(vma, address, pmdp);
 }
+#define pmdp_collapse_flush pmdp_collapse_flush
 #else
 static inline pmd_t pmdp_collapse_flush(struct vm_area_struct *vma,
 					unsigned long address,
@@ -205,6 +206,7 @@ static inline pmd_t pmdp_collapse_flush(struct vm_area_struct *vma,
 	BUILD_BUG();
 	return __pmd(0);
 }
+#define pmdp_collapse_flush pmdp_collapse_flush
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE */
 #endif
 
