@@ -1953,7 +1953,7 @@ S:	Maintained
 F:	drivers/net/wireless/b43legacy/
 
 BACKLIGHT CLASS/SUBSYSTEM
-M:	Jingoo Han <jg1.han@samsung.com>
+M:	Jingoo Han <jingoohan1@gmail.com>
 M:	Lee Jones <lee.jones@linaro.org>
 S:	Maintained
 F:	drivers/video/backlight/
@@ -2162,14 +2162,6 @@ T:	git git://git.kernel.org/pub/scm/linux/kernel/git/rpi/linux-rpi.git
 S:	Maintained
 N:	bcm2835
 
-BROADCOM BCM33XX MIPS ARCHITECTURE
-M:	Kevin Cernekee <cernekee@gmail.com>
-L:	linux-mips@linux-mips.org
-S:	Maintained
-F:	arch/mips/bcm3384/*
-F:	arch/mips/include/asm/mach-bcm3384/*
-F:	arch/mips/kernel/*bmips*
-
 BROADCOM BCM5301X ARM ARCHITECTURE
 M:	Hauke Mehrtens <hauke@hauke-m.de>
 L:	linux-arm-kernel@lists.infradead.org
@@ -2212,7 +2204,7 @@ S:	Maintained
 F:	arch/mips/bmips/*
 F:	arch/mips/include/asm/mach-bmips/*
 F:	arch/mips/kernel/*bmips*
-F:	arch/mips/boot/dts/bcm*.dts*
+F:	arch/mips/boot/dts/brcm/bcm*.dts*
 F:	drivers/irqchip/irq-bcm7*
 F:	drivers/irqchip/irq-brcmstb*
 
@@ -2264,7 +2256,7 @@ M:	Ray Jui <rjui@broadcom.com>
 L:	bcm-kernel-feedback-list@broadcom.com
 S:	Supported
 F:	drivers/gpio/gpio-bcm-kona.c
-F:	Documentation/devicetree/bindings/gpio/gpio-bcm-kona.txt
+F:	Documentation/devicetree/bindings/gpio/brcm,kona-gpio.txt
 
 BROADCOM SPECIFIC AMBA DRIVER (BCMA)
 M:	Rafał Miłecki <zajec5@gmail.com>
@@ -3945,7 +3937,7 @@ F:	drivers/extcon/
 F:	Documentation/extcon/
 
 EXYNOS DP DRIVER
-M:	Jingoo Han <jg1.han@samsung.com>
+M:	Jingoo Han <jingoohan1@gmail.com>
 L:	dri-devel@lists.freedesktop.org
 S:	Maintained
 F:	drivers/gpu/drm/exynos/exynos_dp*
@@ -5136,11 +5128,10 @@ INTEL ASoC BDW/HSW DRIVERS
 M:	Jie Yang <yang.jie@linux.intel.com>
 L:	alsa-devel@alsa-project.org
 S:	Supported
-F:	sound/soc/intel/sst-haswell*
-F:	sound/soc/intel/sst-dsp*
-F:	sound/soc/intel/sst-firmware.c
-F:	sound/soc/intel/broadwell.c
-F:	sound/soc/intel/haswell.c
+F:	sound/soc/intel/common/sst-dsp*
+F:	sound/soc/intel/common/sst-firmware.c
+F:	sound/soc/intel/boards/broadwell.c
+F:	sound/soc/intel/haswell/
 
 INTEL C600 SERIES SAS CONTROLLER DRIVER
 M:	Intel SCU Linux support <intel-linux-scu@intel.com>
@@ -6834,7 +6825,6 @@ L:	nbd-general@lists.sourceforge.net
 T:	git git://git.pengutronix.de/git/mpa/linux-nbd.git
 F:	Documentation/blockdev/nbd.txt
 F:	drivers/block/nbd.c
-F:	include/linux/nbd.h
 F:	include/uapi/linux/nbd.h
 
 NETWORK DROP MONITOR
@@ -7459,7 +7449,6 @@ F:	arch/*/include/asm/paravirt.h
 PARIDE DRIVERS FOR PARALLEL PORT IDE DEVICES
 M:	Tim Waugh <tim@cyberelk.net>
 L:	linux-parport@lists.infradead.org (subscribers-only)
-W:	http://www.torque.net/linux-pp.html
 S:	Maintained
 F:	Documentation/blockdev/paride.txt
 F:	drivers/block/paride/
@@ -7611,7 +7600,7 @@ S:	Maintained
 F:	drivers/pci/host/*rcar*
 
 PCI DRIVER FOR SAMSUNG EXYNOS
-M:	Jingoo Han <jg1.han@samsung.com>
+M:	Jingoo Han <jingoohan1@gmail.com>
 L:	linux-pci@vger.kernel.org
 L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
 L:	linux-samsung-soc@vger.kernel.org (moderated for non-subscribers)
@@ -7619,7 +7608,7 @@ S:	Maintained
 F:	drivers/pci/host/pci-exynos.c
 
 PCI DRIVER FOR SYNOPSIS DESIGNWARE
-M:	Jingoo Han <jg1.han@samsung.com>
+M:	Jingoo Han <jingoohan1@gmail.com>
 L:	linux-pci@vger.kernel.org
 S:	Maintained
 F:	drivers/pci/host/*designware*
@@ -8574,7 +8563,7 @@ S:	Supported
 F:	sound/soc/samsung/
 
 SAMSUNG FRAMEBUFFER DRIVER
-M:	Jingoo Han <jg1.han@samsung.com>
+M:	Jingoo Han <jingoohan1@gmail.com>
 L:	linux-fbdev@vger.kernel.org
 S:	Maintained
 F:	drivers/video/fbdev/s3c-fb.c

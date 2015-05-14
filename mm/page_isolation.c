@@ -101,7 +101,8 @@ void unset_migratetype_isolate(struct page *page, unsigned migratetype)
 			buddy_idx = __find_buddy_index(page_idx, order);
 			buddy = page + (buddy_idx - page_idx);
 
-			if (!is_migrate_isolate_page(buddy)) {
+			if (pfn_valid_within(page_to_pfn(buddy)) &&
+			    !is_migrate_isolate_page(buddy)) {
 				__isolate_free_page(page, order);
 				kernel_map_pages(page, (1 << order), 1);
 				set_page_refcounted(page);
@@ -177,8 +178,11 @@ int start_isolate_page_range(unsigned long start_pfn, unsigned long end_pfn,
 undo:
 	for (pfn = start_pfn;
 	     pfn < undo_pfn;
-	     pfn += pageblock_nr_pages)
-		unset_migratetype_isolate(pfn_to_page(pfn), migratetype);
+	     pfn += pageblock_nr_pages) {
+		page = __first_valid_page(pfn, pageblock_nr_pages);
+		if (page)
+			unset_migratetype_isolate(page, migratetype);
+	}
 
 	return -EBUSY;
 }

@@ -436,46 +436,6 @@ static inline void compound_unlock_irqrestore(struct page *page,
 #endif
 }
 
-static inline struct page *compound_head_by_tail(struct page *tail)
-{
-	struct page *head = tail->first_page;
-
-	/*
-	 * page->first_page may be a dangling pointer to an old
-	 * compound page, so recheck that it is still a tail
-	 * page before returning.
-	 */
-	smp_rmb();
-	if (likely(PageTail(tail)))
-		return head;
-	return tail;
-}
-
-/*
- * Since either compound page could be dismantled asynchronously in THP
- * or we access asynchronously arbitrary positioned struct page, there
- * would be tail flag race. To handle this race, we should call
- * smp_rmb() before checking tail flag. compound_head_by_tail() did it.
- */
-static inline struct page *compound_head(struct page *page)
-{
-	if (unlikely(PageTail(page)))
-		return compound_head_by_tail(page);
-	return page;
-}
-
-/*
- * If we access compound page synchronously such as access to
- * allocated page, there is no need to handle tail flag race, so we can
- * check tail flag directly without any synchronization primitive.
- */
-static inline struct page *compound_head_fast(struct page *page)
-{
-	if (unlikely(PageTail(page)))
-		return page->first_page;
-	return page;
-}
-
 /*
  * The atomic page->_mapcount, starts from -1: so that transitions
  * both from it and to it can be tracked, using atomic_inc_and_test
@@ -499,7 +459,7 @@ static inline int page_count(struct page *page)
 
 static inline bool __compound_tail_refcounted(struct page *page)
 {
-	return !PageSlab(page) && !PageHeadHuge(page);
+	return PageAnon(page) && !PageSlab(page) && !PageHeadHuge(page);
 }
 
 /*
@@ -1631,6 +1591,8 @@ extern void free_highmem_page(struct page *page);
 extern void adjust_managed_page_count(struct page *page, long count);
 extern void mem_init_print_info(const char *str);
 
+extern void reserve_bootmem_region(unsigned long start, unsigned long end);
+
 /* Free the reserved page into the buddy system, so it gets managed. */
 static inline void __free_reserved_page(struct page *page)
 {
@@ -1720,7 +1682,8 @@ extern void sparse_memory_present_with_active_regions(int nid);
 
 #if !defined(CONFIG_HAVE_MEMBLOCK_NODE_MAP) && \
     !defined(CONFIG_HAVE_ARCH_EARLY_PFN_TO_NID)
-static inline int __early_pfn_to_nid(unsigned long pfn)
+static inline int __early_pfn_to_nid(unsigned long pfn,
+					struct mminit_pfnnid_cache *state)
 {
 	return 0;
 }
@@ -1728,7 +1691,8 @@ static inline int __early_pfn_to_nid(unsigned long pfn)
 /* please see mm/page_alloc.c */
 extern int __meminit early_pfn_to_nid(unsigned long pfn);
 /* there is a per-arch backend function. */
-extern int __meminit __early_pfn_to_nid(unsigned long pfn);
+extern int __meminit __early_pfn_to_nid(unsigned long pfn,
+					struct mminit_pfnnid_cache *state);
 #endif
 
 extern void set_dma_reserve(unsigned long new_dma_reserve);
@@ -2146,11 +2110,46 @@ enum mf_flags {
 extern int memory_failure(unsigned long pfn, int trapno, int flags);
 extern void memory_failure_queue(unsigned long pfn, int trapno, int flags);
 extern int unpoison_memory(unsigned long pfn);
+extern int get_hwpoison_page(struct page *page);
 extern int sysctl_memory_failure_early_kill;
 extern int sysctl_memory_failure_recovery;
 extern void shake_page(struct page *p, int access);
 extern atomic_long_t num_poisoned_pages;
 extern int soft_offline_page(struct page *page, int flags);
+
+
+/*
+ * Error handlers for various types of pages.
+ */
+enum mf_result {
+	MF_IGNORED,	/* Error: cannot be handled */
+	MF_FAILED,	/* Error: handling failed */
+	MF_DELAYED,	/* Will be handled later */
+	MF_RECOVERED,	/* Successfully recovered */
+};
+
+enum mf_action_page_type {
+	MF_MSG_KERNEL,
+	MF_MSG_KERNEL_HIGH_ORDER,
+	MF_MSG_SLAB,
+	MF_MSG_DIFFERENT_COMPOUND,
+	MF_MSG_POISONED_HUGE,
+	MF_MSG_HUGE,
+	MF_MSG_FREE_HUGE,
+	MF_MSG_UNMAP_FAILED,
+	MF_MSG_DIRTY_SWAPCACHE,
+	MF_MSG_CLEAN_SWAPCACHE,
+	MF_MSG_DIRTY_MLOCKED_LRU,
+	MF_MSG_CLEAN_MLOCKED_LRU,
+	MF_MSG_DIRTY_UNEVICTABLE_LRU,
+	MF_MSG_CLEAN_UNEVICTABLE_LRU,
+	MF_MSG_DIRTY_LRU,
+	MF_MSG_CLEAN_LRU,
+	MF_MSG_TRUNCATED_LRU,
+	MF_MSG_BUDDY,
+	MF_MSG_BUDDY_2ND,
+	MF_MSG_UNKNOWN,
+};
 
 #if defined(CONFIG_TRANSPARENT_HUGEPAGE) || defined(CONFIG_HUGETLBFS)
 extern void clear_huge_page(struct page *page,
