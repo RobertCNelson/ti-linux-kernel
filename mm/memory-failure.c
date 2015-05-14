@@ -889,7 +889,7 @@ static int page_action(struct page_state *ps, struct page *p,
  * Get refcount for memory error handling:
  * - @page: raw page
  */
-inline int get_hwpoison_page(struct page *page)
+int get_hwpoison_page(struct page *page)
 {
 	struct page *head = compound_head(page);
 
@@ -906,6 +906,7 @@ inline int get_hwpoison_page(struct page *page)
 	else
 		return get_page_unless_zero(page);
 }
+EXPORT_SYMBOL_GPL(get_hwpoison_page);
 
 /*
  * Do all that is necessary to remove user space mappings. Unmap
