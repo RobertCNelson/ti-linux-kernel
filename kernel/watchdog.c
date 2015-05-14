@@ -608,7 +608,7 @@ void watchdog_nmi_enable_all(void)
 {
 	int cpu;
 
-	if (!watchdog_user_enabled)
+	if (!(watchdog_enabled & NMI_WATCHDOG_ENABLED))
 		return;
 
 	get_online_cpus();
