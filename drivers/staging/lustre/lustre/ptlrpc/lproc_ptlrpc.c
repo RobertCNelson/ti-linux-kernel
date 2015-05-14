@@ -507,10 +507,10 @@ static int ptlrpc_lprocfs_nrs_seq_show(struct seq_file *m, void *n)
 	num_pols = svc->srv_parts[0]->scp_nrs_reg.nrs_num_pols;
 	spin_unlock(&nrs->nrs_lock);
 
-	OBD_ALLOC(infos, num_pols * sizeof(*infos));
+	infos = kcalloc(num_pols, sizeof(*infos), GFP_NOFS);
 	if (infos == NULL) {
 		rc = -ENOMEM;
-		goto out;
+		goto unlock;
 	}
 again:
 
@@ -617,10 +617,8 @@ again:
 		goto again;
 	}
 
-out:
-	if (infos)
-		OBD_FREE(infos, num_pols * sizeof(*infos));
-
+	kfree(infos);
+unlock:
 	mutex_unlock(&nrs_core.nrs_mutex);
 
 	return rc;
@@ -650,16 +648,12 @@ static ssize_t ptlrpc_lprocfs_nrs_seq_write(struct file *file,
 	char			       *token;
 	int				rc = 0;
 
-	if (count >= LPROCFS_NRS_WR_MAX_CMD) {
-		rc = -EINVAL;
-		goto out;
-	}
+	if (count >= LPROCFS_NRS_WR_MAX_CMD)
+		return -EINVAL;
 
-	OBD_ALLOC(cmd, LPROCFS_NRS_WR_MAX_CMD);
-	if (cmd == NULL) {
-		rc = -ENOMEM;
-		goto out;
-	}
+	cmd = kzalloc(LPROCFS_NRS_WR_MAX_CMD, GFP_NOFS);
+	if (cmd == NULL)
+		return -ENOMEM;
 	/**
 	 * strsep() modifies its argument, so keep a copy
 	 */
@@ -716,8 +710,7 @@ default_queue:
 
 	mutex_unlock(&nrs_core.nrs_mutex);
 out:
-	if (cmd_copy)
-		OBD_FREE(cmd_copy, LPROCFS_NRS_WR_MAX_CMD);
+	kfree(cmd_copy);
 
 	return rc < 0 ? rc : count;
 }
@@ -825,7 +818,7 @@ ptlrpc_lprocfs_svc_req_history_start(struct seq_file *s, loff_t *pos)
 		return NULL;
 	}
 
-	OBD_ALLOC(srhi, sizeof(*srhi));
+	srhi = kzalloc(sizeof(*srhi), GFP_NOFS);
 	if (srhi == NULL)
 		return NULL;
 
@@ -851,7 +844,7 @@ ptlrpc_lprocfs_svc_req_history_start(struct seq_file *s, loff_t *pos)
 		}
 	}
 
-	OBD_FREE(srhi, sizeof(*srhi));
+	kfree(srhi);
 	return NULL;
 }
 
@@ -860,8 +853,7 @@ ptlrpc_lprocfs_svc_req_history_stop(struct seq_file *s, void *iter)
 {
 	struct ptlrpc_srh_iterator *srhi = iter;
 
-	if (srhi != NULL)
-		OBD_FREE(srhi, sizeof(*srhi));
+	kfree(srhi);
 }
 
 static void *
@@ -895,7 +887,7 @@ ptlrpc_lprocfs_svc_req_history_next(struct seq_file *s,
 		}
 	}
 
-	OBD_FREE(srhi, sizeof(*srhi));
+	kfree(srhi);
 	return NULL;
 }
 
@@ -1191,7 +1183,7 @@ int lprocfs_wr_evict_client(struct file *file, const char __user *buffer,
 	char	      *kbuf;
 	char	      *tmpbuf;
 
-	OBD_ALLOC(kbuf, BUFLEN);
+	kbuf = kzalloc(BUFLEN, GFP_NOFS);
 	if (kbuf == NULL)
 		return -ENOMEM;
 
@@ -1225,7 +1217,7 @@ int lprocfs_wr_evict_client(struct file *file, const char __user *buffer,
 	class_decref(obd, __func__, current);
 
 out:
-	OBD_FREE(kbuf, BUFLEN);
+	kfree(kbuf);
 	return count;
 }
 EXPORT_SYMBOL(lprocfs_wr_evict_client);
@@ -1275,7 +1267,7 @@ int lprocfs_wr_import(struct file *file, const char __user *buffer,
 	if (count > PAGE_CACHE_SIZE - 1 || count <= prefix_len)
 		return -EINVAL;
 
-	OBD_ALLOC(kbuf, count + 1);
+	kbuf = kzalloc(count + 1, GFP_NOFS);
 	if (kbuf == NULL)
 		return -ENOMEM;
 
@@ -1319,7 +1311,7 @@ int lprocfs_wr_import(struct file *file, const char __user *buffer,
 		ptlrpc_recover_import(imp, uuid, 1);
 
 out:
-	OBD_FREE(kbuf, count + 1);
+	kfree(kbuf);
 	return count;
 }
 EXPORT_SYMBOL(lprocfs_wr_import);

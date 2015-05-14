@@ -44,6 +44,7 @@
 #include <linux/uaccess.h>
 #include <linux/pci.h>
 #include <linux/vmalloc.h>
+#include <linux/ieee80211.h>
 #include "rtl_core.h"
 #include "r8192E_phy.h"
 #include "r8192E_phyreg.h"
@@ -391,7 +392,7 @@ bool MgntActSet_RF_State(struct net_device *dev,
 				else
 					priv->blinked_ingpio = false;
 				rtllib_MgntDisconnect(priv->rtllib,
-						      disas_lv_ss);
+						      WLAN_REASON_DISASSOC_STA_HAS_LEFT);
 			}
 		}
 		if ((ChangeSource == RF_CHANGE_BY_HW) && !priv->bHwRadioOff)
@@ -1533,7 +1534,7 @@ RESET_START:
 			SEM_UP_IEEE_WX(&ieee->wx_sem);
 		} else {
 			netdev_info(dev, "ieee->state is NOT LINKED\n");
-			rtllib_softmac_stop_protocol(priv->rtllib, 0 , true);
+			rtllib_softmac_stop_protocol(priv->rtllib, 0, true);
 		}
 
 		dm_backup_dynamic_mechanism_state(dev);
@@ -2102,7 +2103,7 @@ static short rtl8192_alloc_rx_desc_ring(struct net_device *dev)
 			entry->OWN = 1;
 		}
 
-		if(entry)
+		if (entry)
 			entry->EOR = 1;
 	}
 	return 0;
@@ -2310,7 +2311,7 @@ static void rtl8192_rx_normal(struct net_device *dev)
 
 	struct rtllib_rx_stats stats = {
 		.signal = 0,
-		.noise = -98,
+		.noise = (u8) -98,
 		.rate = 0,
 		.freq = RTLLIB_24GHZ_BAND,
 	};
@@ -2519,7 +2520,7 @@ void rtl8192_commit(struct net_device *dev)
 
 	if (priv->up == 0)
 		return;
-	rtllib_softmac_stop_protocol(priv->rtllib, 0 , true);
+	rtllib_softmac_stop_protocol(priv->rtllib, 0, true);
 	rtl8192_irq_disable(dev);
 	priv->ops->stop_adapter(dev, true);
 	_rtl8192_up(dev, false);

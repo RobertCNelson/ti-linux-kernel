@@ -469,7 +469,7 @@ static bool AddReorderEntry(struct rx_ts_record *pTS,
 void rtllib_indicate_packets(struct rtllib_device *ieee, struct rtllib_rxb **prxbIndicateArray, u8 index)
 {
 	struct net_device_stats *stats = &ieee->stats;
-	u8 i = 0 , j = 0;
+	u8 i = 0, j = 0;
 	u16 ethertype;
 
 	for (j = 0; j < index; j++) {
@@ -1924,13 +1924,12 @@ int rtllib_parse_info_param(struct rtllib_device *ieee,
 				   info_element->data[2] == 0x4c &&
 				   info_element->data[3] == 0x033) {
 
-						tmp_htcap_len = min_t(u8, info_element->len, MAX_IE_LEN);
-						if (tmp_htcap_len != 0) {
-							network->bssht.bdHTSpecVer = HT_SPEC_VER_EWC;
-							network->bssht.bdHTCapLen = tmp_htcap_len > sizeof(network->bssht.bdHTCapBuf) ?
-								sizeof(network->bssht.bdHTCapBuf) : tmp_htcap_len;
-							memcpy(network->bssht.bdHTCapBuf, info_element->data, network->bssht.bdHTCapLen);
-						}
+					tmp_htcap_len = min_t(u8, info_element->len, MAX_IE_LEN);
+					if (tmp_htcap_len != 0) {
+						network->bssht.bdHTSpecVer = HT_SPEC_VER_EWC;
+						network->bssht.bdHTCapLen = min_t(u16, tmp_htcap_len, sizeof(network->bssht.bdHTCapBuf));
+						memcpy(network->bssht.bdHTCapBuf, info_element->data, network->bssht.bdHTCapLen);
+					}
 				}
 				if (tmp_htcap_len != 0) {
 					network->bssht.bdSupportHT = true;
@@ -1951,12 +1950,8 @@ int rtllib_parse_info_param(struct rtllib_device *ieee,
 					tmp_htinfo_len = min_t(u8, info_element->len, MAX_IE_LEN);
 					if (tmp_htinfo_len != 0) {
 						network->bssht.bdHTSpecVer = HT_SPEC_VER_EWC;
-						if (tmp_htinfo_len) {
-							network->bssht.bdHTInfoLen = tmp_htinfo_len > sizeof(network->bssht.bdHTInfoBuf) ?
-								sizeof(network->bssht.bdHTInfoBuf) : tmp_htinfo_len;
-							memcpy(network->bssht.bdHTInfoBuf, info_element->data, network->bssht.bdHTInfoLen);
-						}
-
+						network->bssht.bdHTInfoLen = min_t(u16, tmp_htinfo_len, sizeof(network->bssht.bdHTInfoBuf));
+						memcpy(network->bssht.bdHTInfoBuf, info_element->data, network->bssht.bdHTInfoLen);
 					}
 
 				}
