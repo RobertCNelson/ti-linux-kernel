@@ -1,4 +1,5 @@
-/include/ "skeleton.dtsi"
+#include <dt-bindings/pinctrl/bcm2835.h>
+#include "skeleton.dtsi"
 
 / {
 	compatible = "brcm,bcm2835";
@@ -60,6 +61,13 @@
 			reg = <0x7e104000 0x10>;
 		};
 
+		mailbox: mailbox@7e00b800 {
+			compatible = "brcm,bcm2835-mbox";
+			reg = <0x7e00b880 0x40>;
+			interrupts = <0 1>;
+			#mbox-cells = <0>;
+		};
+
 		gpio: gpio@7e200000 {
 			compatible = "brcm,bcm2835-gpio";
 			reg = <0x7e200000 0xb4>;
@@ -112,7 +120,7 @@
 			status = "disabled";
 		};
 
-		i2c0: i2c@20205000 {
+		i2c0: i2c@7e205000 {
 			compatible = "brcm,bcm2835-i2c";
 			reg = <0x7e205000 0x1000>;
 			interrupts = <2 21>;
