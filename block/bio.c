@@ -1809,26 +1809,6 @@ void bio_endio(struct bio *bio, int error)
 EXPORT_SYMBOL(bio_endio);
 
 /**
- * bio_endio_nodec - end I/O on a bio, without decrementing bi_remaining
- * @bio:	bio
- * @error:	error, if any
- *
- * For code that has saved and restored bi_end_io; thing hard before using this
- * function, probably you should've cloned the entire bio.
- **/
-void bio_endio_nodec(struct bio *bio, int error)
-{
-	/*
-	 * If it's not flagged as a chain, we are not going to dec the count
-	 */
-	if (bio_flagged(bio, BIO_CHAIN))
-		bio_inc_remaining(bio);
-
-	bio_endio(bio, error);
-}
-EXPORT_SYMBOL(bio_endio_nodec);
-
-/**
  * bio_split - split a bio
  * @bio:	bio to split
  * @sectors:	number of sectors to split from the front of @bio
