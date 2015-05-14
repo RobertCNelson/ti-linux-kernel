@@ -5462,6 +5462,8 @@ int mem_cgroup_try_charge(struct page *page, struct mm_struct *mm,
 	unsigned int nr_pages = 1;
 	int ret = 0;
 
+	WARN_ON_ONCE(gfp_mask & __GFP_NOACCOUNT);
+
 	if (mem_cgroup_disabled())
 		goto out;
 
