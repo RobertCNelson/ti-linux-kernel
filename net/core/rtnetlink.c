@@ -1004,16 +1004,20 @@ static int rtnl_phys_port_name_fill(struct sk_buff *skb, struct net_device *dev)
 static int rtnl_phys_switch_id_fill(struct sk_buff *skb, struct net_device *dev)
 {
 	int err;
-	struct netdev_phys_item_id psid;
+	struct switchdev_attr attr = {
+		.id = SWITCHDEV_ATTR_PORT_PARENT_ID,
+		.flags = SWITCHDEV_F_NO_RECURSE,
+	};
 
-	err = netdev_switch_parent_id_get(dev, &psid);
+	err = switchdev_port_attr_get(dev, &attr);
 	if (err) {
 		if (err == -EOPNOTSUPP)
 			return 0;
 		return err;
 	}
 
-	if (nla_put(skb, IFLA_PHYS_SWITCH_ID, psid.id_len, psid.id))
+	if (nla_put(skb, IFLA_PHYS_SWITCH_ID, attr.u.ppid.id_len,
+		    attr.u.ppid.id))
 		return -EMSGSIZE;
 
 	return 0;
@@ -1204,7 +1208,7 @@ static int rtnl_fill_ifinfo(struct sk_buff *skb, struct net_device *dev,
 		struct net *link_net = dev->rtnl_link_ops->get_link_net(dev);
 
 		if (!net_eq(dev_net(dev), link_net)) {
-			int id = peernet2id(dev_net(dev), link_net);
+			int id = peernet2id_alloc(dev_net(dev), link_net);
 
 			if (nla_put_s32(skb, IFLA_LINK_NETNSID, id))
 				goto nla_put_failure;
