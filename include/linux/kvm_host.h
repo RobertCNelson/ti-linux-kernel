@@ -230,6 +230,7 @@ struct kvm_vcpu {
 
 	int fpu_active;
 	int guest_fpu_loaded, guest_xcr0_loaded;
+	unsigned char fpu_counter;
 	wait_queue_head_t wq;
 	struct pid *pid;
 	int sigset_active;
@@ -762,16 +763,10 @@ static inline void kvm_iommu_unmap_pages(struct kvm *kvm,
 }
 #endif
 
-static inline void kvm_guest_enter(void)
+/* must be called with irqs disabled */
+static inline void __kvm_guest_enter(void)
 {
-	unsigned long flags;
-
-	BUG_ON(preemptible());
-
-	local_irq_save(flags);
 	guest_enter();
-	local_irq_restore(flags);
-
 	/* KVM does not hold any references to rcu protected data when it
 	 * switches CPU into a guest mode. In fact switching to a guest mode
 	 * is very similar to exiting to userspace from rcu point of view. In
@@ -783,12 +778,27 @@ static inline void kvm_guest_enter(void)
 		rcu_virt_note_context_switch(smp_processor_id());
 }
 
+/* must be called with irqs disabled */
+static inline void __kvm_guest_exit(void)
+{
+	guest_exit();
+}
+
+static inline void kvm_guest_enter(void)
+{
+	unsigned long flags;
+
+	local_irq_save(flags);
+	__kvm_guest_enter();
+	local_irq_restore(flags);
+}
+
 static inline void kvm_guest_exit(void)
 {
 	unsigned long flags;
 
 	local_irq_save(flags);
-	guest_exit();
+	__kvm_guest_exit();
 	local_irq_restore(flags);
 }
 
