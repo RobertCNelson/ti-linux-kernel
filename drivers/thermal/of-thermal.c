@@ -227,7 +227,8 @@ static int of_thermal_bind(struct thermal_zone_device *thermal,
 			ret = thermal_zone_bind_cooling_device(thermal,
 						tbp->trip_id, cdev,
 						tbp->max,
-						tbp->min);
+						tbp->min,
+						tbp->usage);
 			if (ret)
 				return ret;
 		}
@@ -581,7 +582,7 @@ static int thermal_of_populate_bind_params(struct device_node *np,
 	u32 prop;
 
 	/* Default weight. Usage is optional */
-	__tbp->usage = 0;
+	__tbp->usage = THERMAL_WEIGHT_DEFAULT;
 	ret = of_property_read_u32(np, "contribution", &prop);
 	if (ret == 0)
 		__tbp->usage = prop;
@@ -865,6 +866,8 @@ int __init of_parse_thermal_zones(void)
 	for_each_child_of_node(np, child) {
 		struct thermal_zone_device *zone;
 		struct thermal_zone_params *tzp;
+		int i, mask = 0;
+		u32 prop;
 
 		/* Check whether child is enabled or not */
 		if (!of_device_is_available(child))
@@ -891,8 +894,14 @@ int __init of_parse_thermal_zones(void)
 		/* No hwmon because there might be hwmon drivers registering */
 		tzp->no_hwmon = true;
 
+		if (!of_property_read_u32(child, "sustainable-power", &prop))
+			tzp->sustainable_power = prop;
+
+		for (i = 0; i < tz->ntrips; i++)
+			mask |= 1 << i;
+
 		zone = thermal_zone_device_register(child->name, tz->ntrips,
-						    0, tz,
+						    mask, tz,
 						    ops, tzp,
 						    tz->passive_delay,
 						    tz->polling_delay);
