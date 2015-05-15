@@ -26,26 +26,36 @@ static void bio_batch_end_io(struct bio *bio, int err)
 	bio_put(bio);
 }
 
+static void bio_batch_set_completion(struct bio *bio, void *data)
+{
+	struct bio_batch *bb = data;
+
+	bio->bi_end_io = bio_batch_end_io;
+	bio->bi_private = data;
+	atomic_inc(&bb->done);
+}
+
 /**
- * blkdev_issue_discard - queue a discard
+ * blkdev_issue_discard_async - queue a discard with async completion
  * @bdev:	blockdev to issue discard for
  * @sector:	start sector
  * @nr_sects:	number of sectors to discard
  * @gfp_mask:	memory allocation flags (for bio_alloc)
  * @flags:	BLKDEV_IFL_* flags to control behaviour
+ * @set_completion: callback to set completion mechanism for discard bios
+ * @data:       callback data passed to @set_completion
  *
  * Description:
  *    Issue a discard request for the sectors in question.
  */
-int blkdev_issue_discard(struct block_device *bdev, sector_t sector,
-		sector_t nr_sects, gfp_t gfp_mask, unsigned long flags)
+int blkdev_issue_discard_async(struct block_device *bdev, sector_t sector,
+			       sector_t nr_sects, gfp_t gfp_mask, unsigned long flags,
+			       bio_discard_completion_t set_completion, void *data)
 {
-	DECLARE_COMPLETION_ONSTACK(wait);
 	struct request_queue *q = bdev_get_queue(bdev);
 	int type = REQ_WRITE | REQ_DISCARD;
 	unsigned int max_discard_sectors, granularity;
 	int alignment;
-	struct bio_batch bb;
 	struct bio *bio;
 	int ret = 0;
 	struct blk_plug plug;
@@ -77,10 +87,6 @@ int blkdev_issue_discard(struct block_device *bdev, sector_t sector,
 		type |= REQ_SECURE;
 	}
 
-	atomic_set(&bb.done, 1);
-	bb.flags = 1 << BIO_UPTODATE;
-	bb.wait = &wait;
-
 	blk_start_plug(&plug);
 	while (nr_sects) {
 		unsigned int req_sects;
@@ -108,16 +114,15 @@ int blkdev_issue_discard(struct block_device *bdev, sector_t sector,
 			req_sects = end_sect - sector;
 		}
 
+		set_completion(bio, data);
+
 		bio->bi_iter.bi_sector = sector;
-		bio->bi_end_io = bio_batch_end_io;
 		bio->bi_bdev = bdev;
-		bio->bi_private = &bb;
 
 		bio->bi_iter.bi_size = req_sects << 9;
 		nr_sects -= req_sects;
 		sector = end_sect;
 
-		atomic_inc(&bb.done);
 		submit_bio(type, bio);
 
 		/*
@@ -129,6 +134,34 @@ int blkdev_issue_discard(struct block_device *bdev, sector_t sector,
 		cond_resched();
 	}
 	blk_finish_plug(&plug);
+	return ret;
+}
+EXPORT_SYMBOL(blkdev_issue_discard_async);
+
+/**
+ * blkdev_issue_discard - queue a discard
+ * @bdev:	blockdev to issue discard for
+ * @sector:	start sector
+ * @nr_sects:	number of sectors to discard
+ * @gfp_mask:	memory allocation flags (for bio_alloc)
+ * @flags:	BLKDEV_IFL_* flags to control behaviour
+ *
+ * Description:
+ *    Issue a discard request for the sectors in question.
+ */
+int blkdev_issue_discard(struct block_device *bdev, sector_t sector,
+			 sector_t nr_sects, gfp_t gfp_mask, unsigned long flags)
+{
+	int ret;
+	DECLARE_COMPLETION_ONSTACK(wait);
+	struct bio_batch bb;
+
+	atomic_set(&bb.done, 1);
+	bb.flags = 1 << BIO_UPTODATE;
+	bb.wait = &wait;
+
+	ret = blkdev_issue_discard_async(bdev, sector, nr_sects, gfp_mask, flags,
+					 bio_batch_set_completion, &bb);
 
 	/* Wait for bios in-flight */
 	if (!atomic_dec_and_test(&bb.done))

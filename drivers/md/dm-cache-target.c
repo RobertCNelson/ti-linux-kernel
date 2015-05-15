@@ -86,12 +86,6 @@ static void dm_unhook_bio(struct dm_hook_info *h, struct bio *bio)
 {
 	bio->bi_end_io = h->bi_end_io;
 	bio->bi_private = h->bi_private;
-
-	/*
-	 * Must bump bi_remaining to allow bio to complete with
-	 * restored bi_end_io.
-	 */
-	bio_inc_remaining(bio);
 }
 
 /*----------------------------------------------------------------*/
@@ -107,12 +101,10 @@ static void dm_unhook_bio(struct dm_hook_info *h, struct bio *bio)
 #define DATA_DEV_BLOCK_SIZE_MIN_SECTORS (32 * 1024 >> SECTOR_SHIFT)
 #define DATA_DEV_BLOCK_SIZE_MAX_SECTORS (1024 * 1024 * 1024 >> SECTOR_SHIFT)
 
-/*
- * FIXME: the cache is read/write for the time being.
- */
 enum cache_metadata_mode {
 	CM_WRITE,		/* metadata may be changed */
 	CM_READ_ONLY,		/* metadata may not be changed */
+	CM_FAIL
 };
 
 enum cache_io_mode {
@@ -876,6 +868,91 @@ static void remap_to_origin_then_cache(struct cache *cache, struct bio *bio,
 }
 
 /*----------------------------------------------------------------
+ * Failure modes
+ *--------------------------------------------------------------*/
+static enum cache_metadata_mode get_cache_mode(struct cache *cache)
+{
+	return cache->features.mode;
+}
+
+static const char *cache_device_name(struct cache *cache)
+{
+	return dm_device_name(dm_table_get_md(cache->ti->table));
+}
+
+static void notify_mode_switch(struct cache *cache, enum cache_metadata_mode mode)
+{
+	const char *descs[] = {
+		"write",
+		"read-only",
+		"fail"
+	};
+
+	dm_table_event(cache->ti->table);
+	DMINFO("%s: switching cache to %s mode",
+	       cache_device_name(cache), descs[(int)mode]);
+}
+
+static void set_cache_mode(struct cache *cache, enum cache_metadata_mode new_mode)
+{
+	bool needs_check = dm_cache_metadata_needs_check(cache->cmd);
+	enum cache_metadata_mode old_mode = get_cache_mode(cache);
+
+	if (new_mode == CM_WRITE && needs_check) {
+		DMERR("%s: unable to switch cache to write mode until repaired.",
+		      cache_device_name(cache));
+		if (old_mode != new_mode)
+			new_mode = old_mode;
+		else
+			new_mode = CM_READ_ONLY;
+	}
+
+	/* Never move out of fail mode */
+	if (old_mode == CM_FAIL)
+		new_mode = CM_FAIL;
+
+	switch (new_mode) {
+	case CM_FAIL:
+	case CM_READ_ONLY:
+		dm_cache_metadata_set_read_only(cache->cmd);
+		break;
+
+	case CM_WRITE:
+		dm_cache_metadata_set_read_write(cache->cmd);
+		break;
+	}
+
+	cache->features.mode = new_mode;
+
+	if (new_mode != old_mode)
+		notify_mode_switch(cache, new_mode);
+}
+
+static void abort_transaction(struct cache *cache)
+{
+	const char *dev_name = cache_device_name(cache);
+
+	DMERR_LIMIT("%s: aborting current metadata transaction", dev_name);
+	if (dm_cache_metadata_abort(cache->cmd)) {
+		DMERR("%s: failed to abort metadata transaction", dev_name);
+		set_cache_mode(cache, CM_FAIL);
+	}
+
+	if (dm_cache_metadata_set_needs_check(cache->cmd)) {
+		DMERR("%s: failed to set 'needs_check' flag in metadata", dev_name);
+		set_cache_mode(cache, CM_FAIL);
+	}
+}
+
+static void metadata_operation_failed(struct cache *cache, const char *op, int r)
+{
+	DMERR_LIMIT("%s: metadata operation '%s' failed: error = %d",
+		    cache_device_name(cache), op, r);
+	abort_transaction(cache);
+	set_cache_mode(cache, CM_READ_ONLY);
+}
+
+/*----------------------------------------------------------------
  * Migration processing
  *
  * Migration covers moving data from the origin device to the cache, or
@@ -944,6 +1021,7 @@ static void migration_failure(struct dm_cache_migration *mg)
 
 static void migration_success_pre_commit(struct dm_cache_migration *mg)
 {
+	int r;
 	unsigned long flags;
 	struct cache *cache = mg->cache;
 
@@ -954,8 +1032,10 @@ static void migration_success_pre_commit(struct dm_cache_migration *mg)
 		return;
 
 	} else if (mg->demote) {
-		if (dm_cache_remove_mapping(cache->cmd, mg->cblock)) {
+		r = dm_cache_remove_mapping(cache->cmd, mg->cblock);
+		if (r) {
 			DMWARN_LIMIT("demotion failed; couldn't update on disk metadata");
+			metadata_operation_failed(cache, "dm_cache_remove_mapping", r);
 			policy_force_mapping(cache->policy, mg->new_oblock,
 					     mg->old_oblock);
 			if (mg->promote)
@@ -964,8 +1044,10 @@ static void migration_success_pre_commit(struct dm_cache_migration *mg)
 			return;
 		}
 	} else {
-		if (dm_cache_insert_mapping(cache->cmd, mg->cblock, mg->new_oblock)) {
+		r = dm_cache_insert_mapping(cache->cmd, mg->cblock, mg->new_oblock);
+		if (r) {
 			DMWARN_LIMIT("promotion failed; couldn't update on disk metadata");
+			metadata_operation_failed(cache, "dm_cache_insert_mapping", r);
 			policy_remove_mapping(cache->policy, mg->new_oblock);
 			free_io_migration(mg);
 			return;
@@ -1060,7 +1142,7 @@ static void issue_copy(struct dm_cache_migration *mg)
 	}
 
 	if (r < 0) {
-		DMERR_LIMIT("issuing migration failed");
+		DMERR_LIMIT("%s: issuing migration failed", cache_device_name(cache));
 		migration_failure(mg);
 	}
 }
@@ -1552,7 +1634,8 @@ static void process_bio(struct cache *cache, struct prealloc *structs,
 		break;
 
 	default:
-		DMERR_LIMIT("%s: erroring bio, unknown policy op: %u", __func__,
+		DMERR_LIMIT("%s: %s: erroring bio, unknown policy op: %u",
+			    cache_device_name(cache), __func__,
 			    (unsigned) lookup_result.op);
 		bio_io_error(bio);
 	}
@@ -1567,15 +1650,32 @@ static int need_commit_due_to_time(struct cache *cache)
 			      cache->last_commit_jiffies + COMMIT_PERIOD);
 }
 
+/*
+ * A non-zero return indicates read_only or fail_io mode.
+ */
+static int commit(struct cache *cache, bool clean_shutdown)
+{
+	int r;
+
+	if (get_cache_mode(cache) >= CM_READ_ONLY)
+		return -EINVAL;
+
+	atomic_inc(&cache->stats.commit_count);
+	r = dm_cache_commit(cache->cmd, clean_shutdown);
+	if (r)
+		metadata_operation_failed(cache, "dm_cache_commit", r);
+
+	return r;
+}
+
 static int commit_if_needed(struct cache *cache)
 {
 	int r = 0;
 
 	if ((cache->commit_requested || need_commit_due_to_time(cache)) &&
 	    dm_cache_changed_this_transaction(cache->cmd)) {
-		atomic_inc(&cache->stats.commit_count);
+		r = commit(cache, false);
 		cache->commit_requested = false;
-		r = dm_cache_commit(cache->cmd, false);
 		cache->last_commit_jiffies = jiffies;
 	}
 
@@ -1708,15 +1808,17 @@ static void process_invalidation_request(struct cache *cache, struct invalidatio
 		r = policy_remove_cblock(cache->policy, to_cblock(begin));
 		if (!r) {
 			r = dm_cache_remove_mapping(cache->cmd, to_cblock(begin));
-			if (r)
+			if (r) {
+				metadata_operation_failed(cache, "dm_cache_remove_mapping", r);
 				break;
+			}
 
 		} else if (r == -ENODATA) {
 			/* harmless, already unmapped */
 			r = 0;
 
 		} else {
-			DMERR("policy_remove_cblock failed");
+			DMERR("%s: policy_remove_cblock failed", cache_device_name(cache));
 			break;
 		}
 
@@ -1836,11 +1938,6 @@ static void do_worker(struct work_struct *ws)
 		if (commit_if_needed(cache)) {
 			process_deferred_flush_bios(cache, false);
 			process_migrations(cache, &cache->need_commit_migrations, migration_failure);
-
-			/*
-			 * FIXME: rollback metadata or just go into a
-			 * failure mode and error everything
-			 */
 		} else {
 			process_deferred_flush_bios(cache, true);
 			process_migrations(cache, &cache->need_commit_migrations,
@@ -2639,7 +2736,8 @@ static int __cache_map(struct cache *cache, struct bio *bio, struct dm_bio_priso
 		return DM_MAPIO_SUBMITTED;
 
 	} else if (r) {
-		DMERR_LIMIT("Unexpected return from cache replacement policy: %d", r);
+		DMERR_LIMIT("%s: Unexpected return from cache replacement policy: %d",
+			    cache_device_name(cache), r);
 		cell_defer(cache, *cell, false);
 		bio_io_error(bio);
 		return DM_MAPIO_SUBMITTED;
@@ -2689,7 +2787,8 @@ static int __cache_map(struct cache *cache, struct bio *bio, struct dm_bio_priso
 		break;
 
 	default:
-		DMERR_LIMIT("%s: erroring bio: unknown policy op: %u", __func__,
+		DMERR_LIMIT("%s: %s: erroring bio: unknown policy op: %u",
+			    cache_device_name(cache), __func__,
 			    (unsigned) lookup_result.op);
 		cell_defer(cache, *cell, false);
 		bio_io_error(bio);
@@ -2741,8 +2840,10 @@ static int write_dirty_bitset(struct cache *cache)
 	for (i = 0; i < from_cblock(cache->cache_size); i++) {
 		r = dm_cache_set_dirty(cache->cmd, to_cblock(i),
 				       is_dirty(cache, to_cblock(i)));
-		if (r)
+		if (r) {
+			metadata_operation_failed(cache, "dm_cache_set_dirty", r);
 			return r;
+		}
 	}
 
 	return 0;
@@ -2755,15 +2856,18 @@ static int write_discard_bitset(struct cache *cache)
 	r = dm_cache_discard_bitset_resize(cache->cmd, cache->discard_block_size,
 					   cache->discard_nr_blocks);
 	if (r) {
-		DMERR("could not resize on-disk discard bitset");
+		DMERR("%s: could not resize on-disk discard bitset", cache_device_name(cache));
+		metadata_operation_failed(cache, "dm_cache_discard_bitset_resize", r);
 		return r;
 	}
 
 	for (i = 0; i < from_dblock(cache->discard_nr_blocks); i++) {
 		r = dm_cache_set_discard(cache->cmd, to_dblock(i),
 					 is_discarded(cache, to_dblock(i)));
-		if (r)
+		if (r) {
+			metadata_operation_failed(cache, "dm_cache_set_discard", r);
 			return r;
+		}
 	}
 
 	return 0;
@@ -2778,26 +2882,29 @@ static bool sync_metadata(struct cache *cache)
 
 	r1 = write_dirty_bitset(cache);
 	if (r1)
-		DMERR("could not write dirty bitset");
+		DMERR("%s: could not write dirty bitset", cache_device_name(cache));
 
 	r2 = write_discard_bitset(cache);
 	if (r2)
-		DMERR("could not write discard bitset");
+		DMERR("%s: could not write discard bitset", cache_device_name(cache));
 
 	save_stats(cache);
 
 	r3 = dm_cache_write_hints(cache->cmd, cache->policy);
-	if (r3)
-		DMERR("could not write hints");
+	if (r3) {
+		DMERR("%s: could not write hints", cache_device_name(cache));
+		metadata_operation_failed(cache, "dm_cache_write_hints", r3);
+	}
 
 	/*
 	 * If writing the above metadata failed, we still commit, but don't
 	 * set the clean shutdown flag.  This will effectively force every
 	 * dirty bit to be set on reload.
 	 */
-	r4 = dm_cache_commit(cache->cmd, !r1 && !r2 && !r3);
+	r4 = commit(cache, !r1 && !r2 && !r3);
 	if (r4)
-		DMERR("could not write cache metadata.  Data loss may occur.");
+		DMERR("%s: could not write cache metadata.  Data loss may occur.",
+		      cache_device_name(cache));
 
 	return !r1 && !r2 && !r3 && !r4;
 }
@@ -2935,7 +3042,8 @@ static bool can_resize(struct cache *cache, dm_cblock_t new_size)
 	while (from_cblock(new_size) < from_cblock(cache->cache_size)) {
 		new_size = to_cblock(from_cblock(new_size) + 1);
 		if (is_dirty(cache, new_size)) {
-			DMERR("unable to shrink cache; cache block %llu is dirty",
+			DMERR("%s: unable to shrink cache; cache block %llu is dirty",
+			      cache_device_name(cache),
 			      (unsigned long long) from_cblock(new_size));
 			return false;
 		}
@@ -2950,7 +3058,8 @@ static int resize_cache_dev(struct cache *cache, dm_cblock_t new_size)
 
 	r = dm_cache_resize(cache->cmd, new_size);
 	if (r) {
-		DMERR("could not resize cache metadata");
+		DMERR("%s: could not resize cache metadata", cache_device_name(cache));
+		metadata_operation_failed(cache, "dm_cache_resize", r);
 		return r;
 	}
 
@@ -2988,7 +3097,8 @@ static int cache_preresume(struct dm_target *ti)
 		r = dm_cache_load_mappings(cache->cmd, cache->policy,
 					   load_mapping, cache);
 		if (r) {
-			DMERR("could not load cache mappings");
+			DMERR("%s: could not load cache mappings", cache_device_name(cache));
+			metadata_operation_failed(cache, "dm_cache_load_mappings", r);
 			return r;
 		}
 
@@ -3008,7 +3118,8 @@ static int cache_preresume(struct dm_target *ti)
 		discard_load_info_init(cache, &li);
 		r = dm_cache_load_discards(cache->cmd, load_discard, &li);
 		if (r) {
-			DMERR("could not load origin discards");
+			DMERR("%s: could not load origin discards", cache_device_name(cache));
+			metadata_operation_failed(cache, "dm_cache_load_discards", r);
 			return r;
 		}
 		set_discard_range(&li);
@@ -3052,23 +3163,29 @@ static void cache_status(struct dm_target *ti, status_type_t type,
 
 	switch (type) {
 	case STATUSTYPE_INFO:
-		/* Commit to ensure statistics aren't out-of-date */
-		if (!(status_flags & DM_STATUS_NOFLUSH_FLAG) && !dm_suspended(ti)) {
-			r = dm_cache_commit(cache->cmd, false);
-			if (r)
-				DMERR("could not commit metadata for accurate status");
+		if (get_cache_mode(cache) == CM_FAIL) {
+			DMEMIT("Fail");
+			break;
 		}
 
-		r = dm_cache_get_free_metadata_block_count(cache->cmd,
-							   &nr_free_blocks_metadata);
+		/* Commit to ensure statistics aren't out-of-date */
+		if (!(status_flags & DM_STATUS_NOFLUSH_FLAG) && !dm_suspended(ti)) {
+			r = commit(cache, false);
+			if (r)
+				goto err;
+		}
+
+		r = dm_cache_get_free_metadata_block_count(cache->cmd, &nr_free_blocks_metadata);
 		if (r) {
-			DMERR("could not get metadata free block count");
+			DMERR("%s: dm_cache_get_free_metadata_block_count returned %d",
+			      cache_device_name(cache), r);
 			goto err;
 		}
 
 		r = dm_cache_get_metadata_dev_size(cache->cmd, &nr_blocks_metadata);
 		if (r) {
-			DMERR("could not get metadata device size");
+			DMERR("%s: dm_cache_get_metadata_dev_size returned %d",
+			      cache_device_name(cache), r);
 			goto err;
 		}
 
@@ -3099,7 +3216,8 @@ static void cache_status(struct dm_target *ti, status_type_t type,
 			DMEMIT("1 writeback ");
 
 		else {
-			DMERR("internal error: unknown io mode: %d", (int) cache->features.io_mode);
+			DMERR("%s: internal error: unknown io mode: %d",
+			      cache_device_name(cache), (int) cache->features.io_mode);
 			goto err;
 		}
 
@@ -3109,7 +3227,8 @@ static void cache_status(struct dm_target *ti, status_type_t type,
 		if (sz < maxlen) {
 			r = policy_emit_config_values(cache->policy, result + sz, maxlen - sz);
 			if (r)
-				DMERR("policy_emit_config_values returned %d", r);
+				DMERR("%s: policy_emit_config_values returned %d",
+				      cache_device_name(cache), r);
 		}
 
 		break;
@@ -3173,7 +3292,7 @@ static int parse_cblock_range(struct cache *cache, const char *str,
 		return 0;
 	}
 
-	DMERR("invalid cblock range '%s'", str);
+	DMERR("%s: invalid cblock range '%s'", cache_device_name(cache), str);
 	return -EINVAL;
 }
 
@@ -3184,17 +3303,20 @@ static int validate_cblock_range(struct cache *cache, struct cblock_range *range
 	uint64_t n = from_cblock(cache->cache_size);
 
 	if (b >= n) {
-		DMERR("begin cblock out of range: %llu >= %llu", b, n);
+		DMERR("%s: begin cblock out of range: %llu >= %llu",
+		      cache_device_name(cache), b, n);
 		return -EINVAL;
 	}
 
 	if (e > n) {
-		DMERR("end cblock out of range: %llu > %llu", e, n);
+		DMERR("%s: end cblock out of range: %llu > %llu",
+		      cache_device_name(cache), e, n);
 		return -EINVAL;
 	}
 
 	if (b >= e) {
-		DMERR("invalid cblock range: %llu >= %llu", b, e);
+		DMERR("%s: invalid cblock range: %llu >= %llu",
+		      cache_device_name(cache), b, e);
 		return -EINVAL;
 	}
 
@@ -3228,7 +3350,8 @@ static int process_invalidate_cblocks_message(struct cache *cache, unsigned coun
 	struct cblock_range range;
 
 	if (!passthrough_mode(&cache->features)) {
-		DMERR("cache has to be in passthrough mode for invalidation");
+		DMERR("%s: cache has to be in passthrough mode for invalidation",
+		      cache_device_name(cache));
 		return -EPERM;
 	}
 
@@ -3340,7 +3463,7 @@ static void cache_io_hints(struct dm_target *ti, struct queue_limits *limits)
 
 static struct target_type cache_target = {
 	.name = "cache",
-	.version = {1, 6, 0},
+	.version = {1, 7, 0},
 	.module = THIS_MODULE,
 	.ctr = cache_ctr,
 	.dtr = cache_dtr,
