@@ -35,6 +35,8 @@ bits 9,10,11: redirect counter -  redirect TTL. Loop avoidance
  *
  * */
 
+#ifndef __KERNEL__
+/* backwards compat for userspace only */
 #define TC_MUNGED          _TC_MAKEMASK1(0)
 #define SET_TC_MUNGED(v)   ( TC_MUNGED | (v & ~TC_MUNGED))
 #define CLR_TC_MUNGED(v)   ( v & ~TC_MUNGED)
@@ -48,6 +50,7 @@ bits 9,10,11: redirect counter -  redirect TTL. Loop avoidance
 #define G_TC_VERD(x)       _TC_GETVALUE(x,S_TC_VERD,M_TC_VERD)
 #define V_TC_VERD(x)       _TC_MAKEVALUE(x,S_TC_VERD)
 #define SET_TC_VERD(v,n)   ((V_TC_VERD(n)) | (v & ~M_TC_VERD))
+#endif
 
 #define S_TC_FROM          _TC_MAKE32(6)
 #define M_TC_FROM          _TC_MAKEMASK(2,S_TC_FROM)
@@ -62,11 +65,13 @@ bits 9,10,11: redirect counter -  redirect TTL. Loop avoidance
 #define SET_TC_NCLS(v)   ( TC_NCLS | (v & ~TC_NCLS))
 #define CLR_TC_NCLS(v)   ( v & ~TC_NCLS)
 
+#ifndef __KERNEL__
 #define S_TC_RTTL          _TC_MAKE32(9)
 #define M_TC_RTTL          _TC_MAKEMASK(3,S_TC_RTTL)
 #define G_TC_RTTL(x)       _TC_GETVALUE(x,S_TC_RTTL,M_TC_RTTL)
 #define V_TC_RTTL(x)       _TC_MAKEVALUE(x,S_TC_RTTL)
 #define SET_TC_RTTL(v,n)   ((V_TC_RTTL(n)) | (v & ~M_TC_RTTL))
+#endif
 
 #define S_TC_AT          _TC_MAKE32(12)
 #define M_TC_AT          _TC_MAKEMASK(2,S_TC_AT)
@@ -403,6 +408,36 @@ enum {
 };
 
 #define TCA_BPF_MAX (__TCA_BPF_MAX - 1)
+
+/* Flower classifier */
+
+enum {
+	TCA_FLOWER_UNSPEC,
+	TCA_FLOWER_CLASSID,
+	TCA_FLOWER_INDEV,
+	TCA_FLOWER_ACT,
+	TCA_FLOWER_KEY_ETH_DST,		/* ETH_ALEN */
+	TCA_FLOWER_KEY_ETH_DST_MASK,	/* ETH_ALEN */
+	TCA_FLOWER_KEY_ETH_SRC,		/* ETH_ALEN */
+	TCA_FLOWER_KEY_ETH_SRC_MASK,	/* ETH_ALEN */
+	TCA_FLOWER_KEY_ETH_TYPE,	/* be16 */
+	TCA_FLOWER_KEY_IP_PROTO,	/* u8 */
+	TCA_FLOWER_KEY_IPV4_SRC,	/* be32 */
+	TCA_FLOWER_KEY_IPV4_SRC_MASK,	/* be32 */
+	TCA_FLOWER_KEY_IPV4_DST,	/* be32 */
+	TCA_FLOWER_KEY_IPV4_DST_MASK,	/* be32 */
+	TCA_FLOWER_KEY_IPV6_SRC,	/* struct in6_addr */
+	TCA_FLOWER_KEY_IPV6_SRC_MASK,	/* struct in6_addr */
+	TCA_FLOWER_KEY_IPV6_DST,	/* struct in6_addr */
+	TCA_FLOWER_KEY_IPV6_DST_MASK,	/* struct in6_addr */
+	TCA_FLOWER_KEY_TCP_SRC,		/* be16 */
+	TCA_FLOWER_KEY_TCP_DST,		/* be16 */
+	TCA_FLOWER_KEY_UDP_SRC,		/* be16 */
+	TCA_FLOWER_KEY_UDP_DST,		/* be16 */
+	__TCA_FLOWER_MAX,
+};
+
+#define TCA_FLOWER_MAX (__TCA_FLOWER_MAX - 1)
 
 /* Extended Matches */
 
