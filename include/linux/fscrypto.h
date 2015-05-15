@@ -258,6 +258,10 @@ extern int fscrypt_get_policy(struct inode *, struct fscrypt_policy *);
 extern int fscrypt_has_permitted_context(struct inode *, struct inode *);
 extern int fscrypt_inherit_context(struct inode *, struct inode *,
 					void *, bool);
+/* keyinfo.c */
+extern int get_crypt_info(struct inode *);
+extern int fscrypt_get_encryption_info(struct inode *);
+extern void fscrypt_put_encryption_info(struct inode *, struct fscrypt_info *);
 #endif
 
 /* crypto.c */
@@ -327,5 +331,17 @@ static inline int fscrypt_notsupp_inherit_context(struct inode *p,
 				struct inode *i, void *v, bool b)
 {
 	return -EOPNOTSUPP;
+}
+
+/* keyinfo.c */
+static inline int fscrypt_notsupp_get_encryption_info(struct inode *i)
+{
+	return -EOPNOTSUPP;
+}
+
+static inline void fscrypt_notsupp_put_encryption_info(struct inode *i,
+					struct fscrypt_info *f)
+{
+	return;
 }
 #endif	/* _LINUX_FSCRYPTO_H */
