@@ -85,12 +85,9 @@ bool irq_work_queue_on(struct irq_work *work, int cpu)
 		raise_irqwork = llist_add(&work->llnode,
 					  &per_cpu(hirq_work_list, cpu));
 	else
-		raise_irqwork = llist_add(&work->llnode,
-					  &per_cpu(lazy_list, cpu));
-#else
+#endif
 		raise_irqwork = llist_add(&work->llnode,
 					  &per_cpu(raised_list, cpu));
-#endif
 
 	if (raise_irqwork)
 		arch_send_call_function_single_ipi(cpu);
@@ -114,21 +111,20 @@ bool irq_work_queue(struct irq_work *work)
 	if (work->flags & IRQ_WORK_HARD_IRQ) {
 		if (llist_add(&work->llnode, this_cpu_ptr(&hirq_work_list)))
 			arch_irq_work_raise();
-	} else {
-		if (llist_add(&work->llnode, this_cpu_ptr(&lazy_list)) &&
-		    tick_nohz_tick_stopped())
-			raise_softirq(TIMER_SOFTIRQ);
-	}
-#else
+	} else
+#endif
 	if (work->flags & IRQ_WORK_LAZY) {
 		if (llist_add(&work->llnode, this_cpu_ptr(&lazy_list)) &&
 		    tick_nohz_tick_stopped())
+#ifdef CONFIG_PREEMPT_RT_FULL
+			raise_softirq(TIMER_SOFTIRQ);
+#else
 			arch_irq_work_raise();
+#endif
 	} else {
 		if (llist_add(&work->llnode, this_cpu_ptr(&raised_list)))
 			arch_irq_work_raise();
 	}
-#endif
 
 	preempt_enable();
 
@@ -202,6 +198,13 @@ void irq_work_run(void)
 {
 #ifdef CONFIG_PREEMPT_RT_FULL
 	irq_work_run_list(this_cpu_ptr(&hirq_work_list));
+	/*
+	 * NOTE: we raise softirq via IPI for safety (caller may hold locks
+	 * that raise_softirq needs) and execute in irq_work_tick() to move
+	 * the overhead from hard to soft irq context.
+	 */
+	if (!llist_empty(this_cpu_ptr(&raised_list)))
+		raise_softirq(TIMER_SOFTIRQ);
 #else
 	irq_work_run_list(this_cpu_ptr(&raised_list));
 	irq_work_run_list(this_cpu_ptr(&lazy_list));
@@ -211,15 +214,12 @@ EXPORT_SYMBOL_GPL(irq_work_run);
 
 void irq_work_tick(void)
 {
-#ifdef CONFIG_PREEMPT_RT_FULL
-	irq_work_run_list(this_cpu_ptr(&lazy_list));
-#else
-	struct llist_head *raised = &__get_cpu_var(raised_list);
+	struct llist_head *raised = this_cpu_ptr(&raised_list);
 
-	if (!llist_empty(raised) && !arch_irq_work_has_interrupt())
+	if (!llist_empty(raised) && (!arch_irq_work_has_interrupt() ||
+				     IS_ENABLED(CONFIG_PREEMPT_RT_FULL)))
 		irq_work_run_list(raised);
-	irq_work_run_list(&__get_cpu_var(lazy_list));
-#endif
+	irq_work_run_list(this_cpu_ptr(&lazy_list));
 }
 
 /*
