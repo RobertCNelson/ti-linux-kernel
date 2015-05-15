@@ -251,6 +251,13 @@ extern void fscrypt_pullback_bio_page(struct page **, bool);
 extern void fscrypt_restore_control_page(struct page *);
 extern int fscrypt_zeroout_range(struct inode *, pgoff_t, sector_t,
 						unsigned int);
+/* policy.c */
+extern int fscrypt_process_policy(struct inode *,
+					const struct fscrypt_policy *);
+extern int fscrypt_get_policy(struct inode *, struct fscrypt_policy *);
+extern int fscrypt_has_permitted_context(struct inode *, struct inode *);
+extern int fscrypt_inherit_context(struct inode *, struct inode *,
+					void *, bool);
 #endif
 
 /* crypto.c */
@@ -293,6 +300,31 @@ static inline void fscrypt_notsupp_restore_control_page(struct page *p)
 
 static inline int fscrypt_notsupp_zeroout_range(struct inode *i, pgoff_t p,
 					sector_t s, unsigned int f)
+{
+	return -EOPNOTSUPP;
+}
+
+/* policy.c */
+static inline int fscrypt_notsupp_process_policy(struct inode *i,
+				const struct fscrypt_policy *p)
+{
+	return -EOPNOTSUPP;
+}
+
+static inline int fscrypt_notsupp_get_policy(struct inode *i,
+				struct fscrypt_policy *p)
+{
+	return -EOPNOTSUPP;
+}
+
+static inline int fscrypt_notsupp_has_permitted_context(struct inode *p,
+				struct inode *i)
+{
+	return 0;
+}
+
+static inline int fscrypt_notsupp_inherit_context(struct inode *p,
+				struct inode *i, void *v, bool b)
 {
 	return -EOPNOTSUPP;
 }
