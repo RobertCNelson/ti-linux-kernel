@@ -22,6 +22,12 @@
 #define CREATE_TRACE_POINTS
 #include <asm/trace/irq_vectors.h>
 
+DEFINE_PER_CPU_SHARED_ALIGNED(irq_cpustat_t, irq_stat);
+EXPORT_PER_CPU_SYMBOL(irq_stat);
+
+DEFINE_PER_CPU(struct pt_regs *, irq_regs);
+EXPORT_PER_CPU_SYMBOL(irq_regs);
+
 atomic_t irq_err_count;
 
 /* Function pointer for generic interrupt vector handling */
@@ -115,6 +121,12 @@ int arch_show_interrupts(struct seq_file *p, int prec)
 	for_each_online_cpu(j)
 		seq_printf(p, "%10u ", irq_stats(j)->irq_threshold_count);
 	seq_puts(p, "  Threshold APIC interrupts\n");
+#endif
+#ifdef CONFIG_X86_MCE_AMD
+	seq_printf(p, "%*s: ", prec, "DFR");
+	for_each_online_cpu(j)
+		seq_printf(p, "%10u ", irq_stats(j)->irq_deferred_error_count);
+	seq_puts(p, "  Deferred Error APIC interrupts\n");
 #endif
 #ifdef CONFIG_X86_MCE
 	seq_printf(p, "%*s: ", prec, "MCE");
