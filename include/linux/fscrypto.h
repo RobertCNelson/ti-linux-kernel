@@ -236,4 +236,64 @@ static inline int fscrypt_has_encryption_key(struct inode *inode)
 	return 0;
 #endif
 }
+
+#if IS_ENABLED(CONFIG_FS_ENCRYPTION)
+/* crypto.c */
+extern struct kmem_cache *fscrypt_info_cachep;
+int fscrypt_initialize(void);
+
+extern struct fscrypt_ctx *fscrypt_get_ctx(struct inode *);
+extern void fscrypt_release_ctx(struct fscrypt_ctx *);
+extern struct page *fscrypt_encrypt_page(struct inode *, struct page *);
+extern int fscrypt_decrypt_page(struct page *);
+extern void fscrypt_decrypt_bio_pages(struct fscrypt_ctx *, struct bio *);
+extern void fscrypt_pullback_bio_page(struct page **, bool);
+extern void fscrypt_restore_control_page(struct page *);
+extern int fscrypt_zeroout_range(struct inode *, pgoff_t, sector_t,
+						unsigned int);
+#endif
+
+/* crypto.c */
+static inline struct fscrypt_ctx *fscrypt_notsupp_get_ctx(struct inode *i)
+{
+	return ERR_PTR(-EOPNOTSUPP);
+}
+
+static inline void fscrypt_notsupp_release_ctx(struct fscrypt_ctx *c)
+{
+	return;
+}
+
+static inline struct page *fscrypt_notsupp_encrypt_page(struct inode *i,
+						struct page *p)
+{
+	return ERR_PTR(-EOPNOTSUPP);
+}
+
+static inline int fscrypt_notsupp_decrypt_page(struct page *p)
+{
+	return -EOPNOTSUPP;
+}
+
+static inline void fscrypt_notsupp_decrypt_bio_pages(struct fscrypt_ctx *c,
+						struct bio *b)
+{
+	return;
+}
+
+static inline void fscrypt_notsupp_pullback_bio_page(struct page **p, bool b)
+{
+	return;
+}
+
+static inline void fscrypt_notsupp_restore_control_page(struct page *p)
+{
+	return;
+}
+
+static inline int fscrypt_notsupp_zeroout_range(struct inode *i, pgoff_t p,
+					sector_t s, unsigned int f)
+{
+	return -EOPNOTSUPP;
+}
 #endif	/* _LINUX_FSCRYPTO_H */
