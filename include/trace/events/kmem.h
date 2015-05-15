@@ -140,18 +140,22 @@ DEFINE_EVENT(kmem_free, kfree,
 	TP_ARGS(call_site, ptr)
 );
 
-DEFINE_EVENT(kmem_free, kmem_cache_free,
+DEFINE_EVENT_CONDITION(kmem_free, kmem_cache_free,
 
 	TP_PROTO(unsigned long call_site, const void *ptr),
 
-	TP_ARGS(call_site, ptr)
+	TP_ARGS(call_site, ptr),
+
+	TP_CONDITION(cpu_online(smp_processor_id()))
 );
 
-TRACE_EVENT(mm_page_free,
+TRACE_EVENT_CONDITION(mm_page_free,
 
 	TP_PROTO(struct page *page, unsigned int order),
 
 	TP_ARGS(page, order),
+
+	TP_CONDITION(cpu_online(smp_processor_id())),
 
 	TP_STRUCT__entry(
 		__field(	unsigned long,	pfn		)
@@ -253,11 +257,25 @@ DEFINE_EVENT(mm_page, mm_page_alloc_zone_locked,
 	TP_ARGS(page, order, migratetype)
 );
 
-DEFINE_EVENT_PRINT(mm_page, mm_page_pcpu_drain,
+TRACE_EVENT_CONDITION(mm_page_pcpu_drain,
 
 	TP_PROTO(struct page *page, unsigned int order, int migratetype),
 
 	TP_ARGS(page, order, migratetype),
+
+	TP_CONDITION(cpu_online(smp_processor_id())),
+
+	TP_STRUCT__entry(
+		__field(	unsigned long,	pfn		)
+		__field(	unsigned int,	order		)
+		__field(	int,		migratetype	)
+	),
+
+	TP_fast_assign(
+		__entry->pfn		= page ? page_to_pfn(page) : -1UL;
+		__entry->order		= order;
+		__entry->migratetype	= migratetype;
+	),
 
 	TP_printk("page=%p pfn=%lu order=%d migratetype=%d",
 		pfn_to_page(__entry->pfn), __entry->pfn,
