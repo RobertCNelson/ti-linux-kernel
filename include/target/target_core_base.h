@@ -654,7 +654,7 @@ struct se_dev_entry {
 	struct se_lun_acl __rcu	*se_lun_acl;
 	spinlock_t		ua_lock;
 	struct se_lun __rcu	*se_lun;
-	struct t10_pr_registration __rcu *pr_reg;
+	unsigned long		pr_reg;
 	struct list_head	alua_port_list;
 	struct list_head	ua_list;
 	struct hlist_node	link;

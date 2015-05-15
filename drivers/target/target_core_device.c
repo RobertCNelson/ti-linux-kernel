@@ -397,7 +397,7 @@ void core_disable_device_list_for_node(
 	core_scsi3_ua_release_all(orig);
 
 	hlist_del_rcu(&orig->link);
-	rcu_assign_pointer(orig->pr_reg, NULL);
+	clear_bit(1, &orig->pr_reg);
 	rcu_assign_pointer(orig->se_lun, NULL);
 	rcu_assign_pointer(orig->se_lun_acl, NULL);
 	orig->lun_flags = 0;

@@ -333,7 +333,7 @@ static int core_scsi3_pr_seq_non_holder(struct se_cmd *cmd, u32 pr_reg_type,
 		rcu_read_lock();
 		se_deve = target_nacl_find_deve(nacl, cmd->orig_fe_lun);
 		if (se_deve)
-			registered_nexus = (se_deve->pr_reg != NULL);
+			registered_nexus = test_bit(1, &se_deve->pr_reg);
 		rcu_read_unlock();
 	}
 
@@ -1040,14 +1040,8 @@ static void __core_scsi3_add_registration(
 	mutex_lock(&nacl->lun_entry_mutex);
 	deve = target_nacl_find_deve(nacl, pr_reg->pr_res_mapped_lun);
 	if (deve)
-		rcu_assign_pointer(deve->pr_reg, pr_reg);
+		set_bit(1, &deve->pr_reg);
 	mutex_unlock(&nacl->lun_entry_mutex);
-
-	/*
-	 * Wait for read path critical RCU in core_scsi3_pr_seq_non_holder()
-	 * conditional checks for deve->pr_reg pointer access complete.
-	 */
-	synchronize_rcu();
 
 	/*
 	 * Skip extra processing for ALL_TG_PT=0 or REGISTER_AND_MOVE.
@@ -1077,14 +1071,8 @@ static void __core_scsi3_add_registration(
 		mutex_lock(&nacl->lun_entry_mutex);
 		deve = target_nacl_find_deve(nacl_tmp, pr_reg_tmp->pr_res_mapped_lun);
 		if (deve)
-			rcu_assign_pointer(deve->pr_reg, pr_reg_tmp);
+			set_bit(1, &deve->pr_reg);
 		mutex_unlock(&nacl->lun_entry_mutex);
-
-		/*
-		 * Wait for read path critical RCU in core_scsi3_pr_seq_non_holder()
-		 * conditional checks for deve->pr_reg pointer access complete.
-		 */
-		synchronize_rcu();
 
 		/*
 		 * Drop configfs group dependency reference from
@@ -1296,14 +1284,8 @@ static void __core_scsi3_free_registration(
 	mutex_lock(&nacl->lun_entry_mutex);
 	deve = target_nacl_find_deve(nacl, pr_reg->pr_res_mapped_lun);
 	if (deve)
-		rcu_assign_pointer(deve->pr_reg, NULL);
+		clear_bit(1, &deve->pr_reg);
 	mutex_unlock(&nacl->lun_entry_mutex);
-
-	/*
-	 * Wait for read path critical RCU in core_scsi3_pr_seq_non_holder()
-	 * conditional checks for deve->pr_reg pointer access complete.
-	 */
-	synchronize_rcu();
 
 	spin_lock(&pr_tmpl->registration_lock);
 	pr_debug("SPC-3 PR [%s] Service Action: UNREGISTER Initiator"
