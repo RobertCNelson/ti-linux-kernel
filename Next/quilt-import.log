@@ -1,0 +1,13 @@
+Importing jdelvare-hwmon based on 4.1-rc2
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 5ebe6afaf0057ac3eaeb98defd5456894b446d22
+HEAD is now at 5ebe6afaf005 Linux 4.1-rc2
+$ git am --patch-format=mbox ../quilt/jdelvare-hwmon/hwmon-w83792d-01-additional-pwm-outputs.patch
+Applying: hwmon: (w83792d) Additional PWM outputs support
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:jdelvare-hwmon/master
+From ../quilt-tmp
+   26bc420b59a3..3cc49e580f0f  master     -> jdelvare-hwmon/master
+Importing dmi based on 4.1-rc1
+Unchanged quilt series dmi
