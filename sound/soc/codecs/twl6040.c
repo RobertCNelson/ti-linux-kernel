@@ -853,8 +853,6 @@ static int twl6040_set_bias_level(struct snd_soc_codec *codec,
 		break;
 	}
 
-	codec->dapm.bias_level = level;
-
 	return 0;
 }
 
@@ -1123,14 +1121,15 @@ static int twl6040_probe(struct snd_soc_codec *codec)
 	mutex_init(&priv->mutex);
 
 	ret = request_threaded_irq(priv->plug_irq, NULL,
-					twl6040_audio_handler, IRQF_NO_SUSPEND,
+					twl6040_audio_handler,
+					IRQF_NO_SUSPEND | IRQF_ONESHOT,
 					"twl6040_irq_plug", codec);
 	if (ret) {
 		dev_err(codec->dev, "PLUG IRQ request failed: %d\n", ret);
 		return ret;
 	}
 
-	twl6040_set_bias_level(codec, SND_SOC_BIAS_STANDBY);
+	snd_soc_codec_force_bias_level(codec, SND_SOC_BIAS_STANDBY);
 	twl6040_init_chip(codec);
 
 	return 0;
