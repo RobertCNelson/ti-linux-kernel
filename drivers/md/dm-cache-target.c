@@ -1772,6 +1772,7 @@ static void writeback_some_dirty_blocks(struct cache *cache)
 	dm_cblock_t cblock;
 	struct prealloc structs;
 	struct dm_bio_prison_cell *old_ocell;
+	bool busy = !iot_idle_for(&cache->origin_tracker, HZ);
 
 	memset(&structs, 0, sizeof(structs));
 
@@ -1779,7 +1780,7 @@ static void writeback_some_dirty_blocks(struct cache *cache)
 		if (prealloc_data_structs(cache, &structs))
 			break;
 
-		r = policy_writeback_work(cache->policy, &oblock, &cblock);
+		r = policy_writeback_work(cache->policy, &oblock, &cblock, busy);
 		if (r)
 			break;
 
