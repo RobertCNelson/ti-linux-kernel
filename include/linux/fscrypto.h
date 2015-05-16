@@ -262,6 +262,19 @@ extern int fscrypt_inherit_context(struct inode *, struct inode *,
 extern int get_crypt_info(struct inode *);
 extern int fscrypt_get_encryption_info(struct inode *);
 extern void fscrypt_put_encryption_info(struct inode *, struct fscrypt_info *);
+
+/* fname.c */
+extern int fscrypt_setup_filename(struct inode *, const struct qstr *,
+				int lookup, struct fscrypt_name *);
+extern void fscrypt_free_filename(struct fscrypt_name *);
+extern u32 fscrypt_fname_encrypted_size(struct inode *, u32);
+extern int fscrypt_fname_alloc_buffer(struct inode *, u32,
+				struct fscrypt_str *);
+extern void fscrypt_fname_free_buffer(struct fscrypt_str *);
+extern int fscrypt_fname_disk_to_usr(struct inode *, u32, u32,
+			const struct fscrypt_str *, struct fscrypt_str *);
+extern int fscrypt_fname_usr_to_disk(struct inode *, const struct qstr *,
+			struct fscrypt_str *);
 #endif
 
 /* crypto.c */
@@ -343,5 +356,58 @@ static inline void fscrypt_notsupp_put_encryption_info(struct inode *i,
 					struct fscrypt_info *f)
 {
 	return;
+}
+
+ /* fname.c */
+static inline int fscrypt_notsupp_setup_filename(struct inode *dir,
+			const struct qstr *iname,
+			int lookup, struct fscrypt_name *fname)
+{
+	if (dir->i_sb->s_cop->is_encrypted(dir))
+		return -EOPNOTSUPP;
+
+	memset(fname, 0, sizeof(struct fscrypt_name));
+	fname->usr_fname = iname;
+	fname->disk_name.name = (unsigned char *)iname->name;
+	fname->disk_name.len = iname->len;
+	return 0;
+}
+
+static inline void fscrypt_notsupp_free_filename(struct fscrypt_name *fname)
+{
+	return;
+}
+
+static inline u32 fscrypt_notsupp_fname_encrypted_size(struct inode *i, u32 s)
+{
+	/* never happens */
+	WARN_ON(1);
+	return 0;
+}
+
+static inline int fscrypt_notsupp_fname_alloc_buffer(struct inode *inode,
+				u32 ilen, struct fscrypt_str *crypto_str)
+{
+	return -EOPNOTSUPP;
+}
+
+static inline void fscrypt_notsupp_fname_free_buffer(struct fscrypt_str *c)
+{
+	return;
+}
+
+static inline int fscrypt_notsupp_fname_disk_to_usr(struct inode *inode,
+			u32 hash, u32 minor_hash,
+			const struct fscrypt_str *iname,
+			struct fscrypt_str *oname)
+{
+	return -EOPNOTSUPP;
+}
+
+static inline int fscrypt_notsupp_fname_usr_to_disk(struct inode *inode,
+			const struct qstr *iname,
+			struct fscrypt_str *oname)
+{
+	return -EOPNOTSUPP;
 }
 #endif	/* _LINUX_FSCRYPTO_H */
