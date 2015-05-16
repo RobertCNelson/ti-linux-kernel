@@ -347,4 +347,17 @@ static inline void fscrypt_put_encryption_info(struct inode *i,
 	return;
 }
 #endif
+
+/* fname.c */
+int fscrypt_setup_filename(struct inode *, const struct qstr *,
+				int lookup, struct fscrypt_name *);
+void fscrypt_free_filename(struct fscrypt_name *);
+u32 fscrypt_fname_encrypted_size(struct inode *, u32);
+int fscrypt_fname_alloc_buffer(struct inode *, u32, struct fscrypt_str *);
+void fscrypt_fname_free_buffer(struct fscrypt_str *);
+int fscrypt_fname_disk_to_usr(struct inode *, u32, u32,
+			const struct fscrypt_str *, struct fscrypt_str *);
+int fscrypt_fname_usr_to_disk(struct inode *, const struct qstr *,
+			struct fscrypt_str *);
+
 #endif	/* _LINUX_FSCRYPTO_H */
