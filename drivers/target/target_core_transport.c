@@ -1783,7 +1783,7 @@ static bool target_handle_task_attr(struct se_cmd *cmd)
 {
 	struct se_device *dev = cmd->se_dev;
 
-	if (1 || dev->transport->transport_type == TRANSPORT_PLUGIN_PHBA_PDEV)
+	if (dev->transport->transport_type == TRANSPORT_PLUGIN_PHBA_PDEV)
 		return false;
 
 	/*
@@ -1907,7 +1907,7 @@ static void transport_complete_task_attr(struct se_cmd *cmd)
 {
 	struct se_device *dev = cmd->se_dev;
 
-	if (1 || dev->transport->transport_type == TRANSPORT_PLUGIN_PHBA_PDEV)
+	if (dev->transport->transport_type == TRANSPORT_PLUGIN_PHBA_PDEV)
 		return;
 
 	if (cmd->sam_task_attr == TCM_SIMPLE_TAG) {
