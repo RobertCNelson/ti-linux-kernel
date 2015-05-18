@@ -845,7 +845,8 @@ struct se_port {
 	/* Used for ALUA Target Port Groups membership */
 	atomic_t	sep_tg_pt_secondary_offline;
 	/* Used for PR ALL_TG_PT=1 */
-	atomic_t	sep_tg_pt_ref_cnt;
+	struct kref	sep_tg_pt_ref;
+	struct completion sep_tg_pt_comp;
 	spinlock_t	sep_alua_lock;
 	struct mutex	sep_tg_pt_md_mutex;
 	struct t10_alua_tg_pt_gp_member *sep_alua_tg_pt_gp_mem;
@@ -853,6 +854,7 @@ struct se_port {
 	struct se_portal_group *sep_tpg;
 	struct list_head sep_alua_list;
 	struct list_head sep_list;
+	struct rcu_head	sep_rcu;
 };
 
 struct se_tpg_np {

@@ -1213,6 +1213,7 @@ sense_reason_t
 target_setup_cmd_from_cdb(struct se_cmd *cmd, unsigned char *cdb)
 {
 	struct se_device *dev = cmd->se_dev;
+	struct se_port *sep;
 	sense_reason_t ret;
 
 	/*
@@ -1276,10 +1277,12 @@ target_setup_cmd_from_cdb(struct se_cmd *cmd, unsigned char *cdb)
 
 	cmd->se_cmd_flags |= SCF_SUPPORTED_SAM_OPCODE;
 
-	spin_lock(&cmd->se_lun->lun_sep_lock);
-	if (cmd->se_lun->lun_sep)
-		cmd->se_lun->lun_sep->sep_stats.cmd_pdus++;
-	spin_unlock(&cmd->se_lun->lun_sep_lock);
+	rcu_read_lock();
+	sep = cmd->se_lun->lun_sep;
+	if (sep)
+		sep->sep_stats.cmd_pdus++;
+	rcu_read_unlock();
+
 	return 0;
 }
 EXPORT_SYMBOL(target_setup_cmd_from_cdb);
@@ -2016,6 +2019,7 @@ static bool target_read_prot_action(struct se_cmd *cmd)
 static void target_complete_ok_work(struct work_struct *work)
 {
 	struct se_cmd *cmd = container_of(work, struct se_cmd, work);
+	struct se_port *sep;
 	int ret;
 
 	/*
@@ -2076,12 +2080,12 @@ static void target_complete_ok_work(struct work_struct *work)
 queue_rsp:
 	switch (cmd->data_direction) {
 	case DMA_FROM_DEVICE:
-		spin_lock(&cmd->se_lun->lun_sep_lock);
-		if (cmd->se_lun->lun_sep) {
-			cmd->se_lun->lun_sep->sep_stats.tx_data_octets +=
-					cmd->data_length;
-		}
-		spin_unlock(&cmd->se_lun->lun_sep_lock);
+		rcu_read_lock();
+		sep = cmd->se_lun->lun_sep;
+		if (sep)
+			sep->sep_stats.tx_data_octets += cmd->data_length;
+		rcu_read_unlock();
+
 		/*
 		 * Perform READ_STRIP of PI using software emulation when
 		 * backend had PI enabled, if the transport will not be
@@ -2104,22 +2108,22 @@ queue_rsp:
 			goto queue_full;
 		break;
 	case DMA_TO_DEVICE:
-		spin_lock(&cmd->se_lun->lun_sep_lock);
-		if (cmd->se_lun->lun_sep) {
-			cmd->se_lun->lun_sep->sep_stats.rx_data_octets +=
-				cmd->data_length;
-		}
-		spin_unlock(&cmd->se_lun->lun_sep_lock);
+		rcu_read_lock();
+		sep = cmd->se_lun->lun_sep;
+		if (sep)
+			sep->sep_stats.rx_data_octets += cmd->data_length;
+		rcu_read_unlock();
+
 		/*
 		 * Check if we need to send READ payload for BIDI-COMMAND
 		 */
 		if (cmd->se_cmd_flags & SCF_BIDI) {
-			spin_lock(&cmd->se_lun->lun_sep_lock);
-			if (cmd->se_lun->lun_sep) {
-				cmd->se_lun->lun_sep->sep_stats.tx_data_octets +=
-					cmd->data_length;
-			}
-			spin_unlock(&cmd->se_lun->lun_sep_lock);
+			rcu_read_lock();
+			sep = cmd->se_lun->lun_sep;
+			if (sep)
+				sep->sep_stats.tx_data_octets += cmd->data_length;
+			rcu_read_unlock();
+
 			ret = cmd->se_tfo->queue_data_in(cmd);
 			if (ret == -EAGAIN || ret == -ENOMEM)
 				goto queue_full;

@@ -452,6 +452,8 @@ static struct se_port *core_alloc_port(struct se_device *dev)
 	atomic_set(&port->sep_tg_pt_secondary_offline, 0);
 	spin_lock_init(&port->sep_alua_lock);
 	mutex_init(&port->sep_tg_pt_md_mutex);
+	kref_init(&port->sep_tg_pt_ref);
+	init_completion(&port->sep_tg_pt_comp);
 
 	spin_lock(&dev->se_port_lock);
 	if (dev->dev_port_count == 0x0000ffff) {
@@ -502,7 +504,7 @@ static void core_export_port(
 	spin_lock(&lun->lun_sep_lock);
 	port->sep_tpg = tpg;
 	port->sep_lun = lun;
-	lun->lun_sep = port;
+	rcu_assign_pointer(lun->lun_sep, port);
 	spin_unlock(&lun->lun_sep_lock);
 
 	list_add_tail(&port->sep_list, &dev->dev_sep_list);
@@ -529,28 +531,6 @@ static void core_export_port(
 	port->sep_index = port->sep_rtpi; /* RELATIVE TARGET PORT IDENTIFIER */
 }
 
-/*
- *	Called with struct se_device->se_port_lock spinlock held.
- */
-static void core_release_port(struct se_device *dev, struct se_port *port)
-	__releases(&dev->se_port_lock) __acquires(&dev->se_port_lock)
-{
-	/*
-	 * Wait for any port reference for PR ALL_TG_PT=1 operation
-	 * to complete in __core_scsi3_alloc_registration()
-	 */
-	spin_unlock(&dev->se_port_lock);
-	if (atomic_read(&port->sep_tg_pt_ref_cnt))
-		cpu_relax();
-	spin_lock(&dev->se_port_lock);
-
-	core_alua_free_tg_pt_gp_mem(port);
-
-	list_del(&port->sep_list);
-	dev->dev_port_count--;
-	kfree(port);
-}
-
 int core_dev_export(
 	struct se_device *dev,
 	struct se_portal_group *tpg,
@@ -574,31 +554,46 @@ int core_dev_export(
 	return 0;
 }
 
+void target_port_kref_release(struct kref *kref)
+{
+	struct se_port *port = container_of(kref, struct se_port, sep_tg_pt_ref);
+
+	complete(&port->sep_tg_pt_comp);
+}
+
 void core_dev_unexport(
 	struct se_device *dev,
 	struct se_portal_group *tpg,
 	struct se_lun *lun)
 {
 	struct se_hba *hba = dev->se_hba;
-	struct se_port *port = lun->lun_sep;
+	struct se_port *port;
 
 	spin_lock(&lun->lun_sep_lock);
-	if (lun->lun_se_dev == NULL) {
+	port = lun->lun_sep;
+	if (!port) {
 		spin_unlock(&lun->lun_sep_lock);
 		return;
 	}
+	rcu_assign_pointer(lun->lun_sep, NULL);
+	lun->lun_se_dev = NULL;
 	spin_unlock(&lun->lun_sep_lock);
 
+	kref_put(&port->sep_tg_pt_ref, target_port_kref_release);
+	wait_for_completion(&port->sep_tg_pt_comp);
+
+	core_alua_free_tg_pt_gp_mem(port);
+
 	spin_lock(&dev->se_port_lock);
-	core_release_port(dev, port);
+	list_del(&port->sep_list);
+	dev->dev_port_count--;
 	spin_unlock(&dev->se_port_lock);
 
 	spin_lock(&hba->device_lock);
 	dev->export_count--;
 	spin_unlock(&hba->device_lock);
 
-	lun->lun_sep = NULL;
-	lun->lun_se_dev = NULL;
+	kfree_rcu(port, sep_rcu);
 }
 
 static void se_release_vpd_for_dev(struct se_device *dev)
