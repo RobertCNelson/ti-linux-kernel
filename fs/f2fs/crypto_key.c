@@ -87,7 +87,7 @@ out:
 	return res;
 }
 
-void f2fs_free_encryption_info(struct inode *inode)
+static void _f2fs_free_encryption_info(struct inode *inode)
 {
 	struct f2fs_inode_info *fi = F2FS_I(inode);
 	struct f2fs_crypt_info *ci = fi->i_crypt_info;
@@ -101,6 +101,13 @@ void f2fs_free_encryption_info(struct inode *inode)
 	memzero_explicit(&ci->ci_raw, sizeof(ci->ci_raw));
 	kmem_cache_free(f2fs_crypt_info_cachep, ci);
 	fi->i_crypt_info = NULL;
+}
+
+void f2fs_free_encryption_info(struct inode *inode)
+{
+	down_write(&F2FS_I(inode)->crypto_rwsem);
+	_f2fs_free_encryption_info(inode);
+	up_write(&F2FS_I(inode)->crypto_rwsem);
 }
 
 int _f2fs_get_encryption_info(struct inode *inode)
@@ -119,12 +126,13 @@ int _f2fs_get_encryption_info(struct inode *inode)
 	if (res)
 		return res;
 
-	if (fi->i_crypt_info) {
-		if (!fi->i_crypt_info->ci_keyring_key ||
-			key_validate(fi->i_crypt_info->ci_keyring_key) == 0)
-			return 0;
-		f2fs_free_encryption_info(inode);
+	down_read(&fi->crypto_rwsem);
+	if (fi->i_crypt_info && (!fi->i_crypt_info->ci_keyring_key ||
+			key_validate(fi->i_crypt_info->ci_keyring_key) == 0)) {
+		up_read(&fi->crypto_rwsem);
+		return 0;
 	}
+	up_read(&fi->crypto_rwsem);
 
 	res = f2fs_getxattr(inode, F2FS_XATTR_INDEX_ENCRYPTION,
 				F2FS_XATTR_NAME_ENCRYPTION_CONTEXT,
@@ -187,8 +195,11 @@ out:
 			res = 0;
 		kmem_cache_free(f2fs_crypt_info_cachep, crypt_info);
 	} else {
+		down_write(&fi->crypto_rwsem);
+		_f2fs_free_encryption_info(inode);
 		fi->i_crypt_info = crypt_info;
 		crypt_info->ci_keyring_key = keyring_key;
+		up_write(&fi->crypto_rwsem);
 		keyring_key = NULL;
 	}
 	if (keyring_key)
@@ -199,6 +210,10 @@ out:
 int f2fs_has_encryption_key(struct inode *inode)
 {
 	struct f2fs_inode_info *fi = F2FS_I(inode);
+	int ret;
 
-	return (fi->i_crypt_info != NULL);
+	down_read(&fi->crypto_rwsem);
+	ret = (fi->i_crypt_info != NULL);
+	up_read(&fi->crypto_rwsem);
+	return ret;
 }

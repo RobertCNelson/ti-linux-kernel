@@ -418,6 +418,7 @@ static struct inode *f2fs_alloc_inode(struct super_block *sb)
 
 #ifdef CONFIG_F2FS_FS_ENCRYPTION
 	fi->i_crypt_info = NULL;
+	init_rwsem(&fi->crypto_rwsem);
 #endif
 	return &fi->vfs_inode;
 }
