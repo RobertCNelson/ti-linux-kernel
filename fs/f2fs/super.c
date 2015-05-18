@@ -416,6 +416,9 @@ static struct inode *f2fs_alloc_inode(struct super_block *sb)
 	/* Will be used by directory only */
 	fi->i_dir_level = F2FS_SB(sb)->dir_level;
 
+#ifdef CONFIG_F2FS_FS_ENCRYPTION
+	fi->i_crypt_info = NULL;
+#endif
 	return &fi->vfs_inode;
 }
 
@@ -427,9 +430,21 @@ static int f2fs_drop_inode(struct inode *inode)
 	 *  - f2fs_write_data_page
 	 *    - f2fs_gc -> iput -> evict
 	 *       - inode_wait_for_writeback(inode)
+	 * In order to avoid that, f2fs_write_data_page does not write data
+	 * pages for orphan inode except tmpfile.
+	 * Nevertheless, we need to truncate the tmpfile's data to avoid
+	 * needless cleaning.
 	 */
-	if (!inode_unhashed(inode) && inode->i_state & I_SYNC)
+	if (is_inode_flag_set(F2FS_I(inode), FI_TMP_INODE) &&
+						inode->i_state & I_SYNC) {
+		spin_unlock(&inode->i_lock);
+		i_size_write(inode, 0);
+
+		if (F2FS_HAS_BLOCKS(inode))
+			f2fs_truncate(inode);
+		spin_lock(&inode->i_lock);
 		return 0;
+	}
 	return generic_drop_inode(inode);
 }
 
@@ -520,7 +535,7 @@ int f2fs_sync_fs(struct super_block *sb, int sync)
 	} else {
 		f2fs_balance_fs(sbi);
 	}
-	f2fs_trace_ios(NULL, NULL, 1);
+	f2fs_trace_ios(NULL, 1);
 
 	return 0;
 }
@@ -658,6 +673,22 @@ static const struct file_operations f2fs_seq_segment_info_fops = {
 	.release = single_release,
 };
 
+static void default_options(struct f2fs_sb_info *sbi)
+{
+	/* init some FS parameters */
+	sbi->active_logs = NR_CURSEG_TYPE;
+
+	set_opt(sbi, BG_GC);
+	set_opt(sbi, INLINE_DATA);
+
+#ifdef CONFIG_F2FS_FS_XATTR
+	set_opt(sbi, XATTR_USER);
+#endif
+#ifdef CONFIG_F2FS_FS_POSIX_ACL
+	set_opt(sbi, POSIX_ACL);
+#endif
+}
+
 static int f2fs_remount(struct super_block *sb, int *flags, char *data)
 {
 	struct f2fs_sb_info *sbi = F2FS_SB(sb);
@@ -676,7 +707,7 @@ static int f2fs_remount(struct super_block *sb, int *flags, char *data)
 	active_logs = sbi->active_logs;
 
 	sbi->mount_opt.opt = 0;
-	sbi->active_logs = NR_CURSEG_TYPE;
+	default_options(sbi);
 
 	/* parse mount options */
 	err = parse_options(sb, data);
@@ -966,6 +997,30 @@ retry:
 	return 0;
 }
 
+int f2fs_commit_super(struct f2fs_sb_info *sbi)
+{
+	struct buffer_head *sbh = sbi->raw_super_buf;
+	sector_t block = sbh->b_blocknr;
+	int err;
+
+	/* write back-up superblock first */
+	sbh->b_blocknr = block ? 0 : 1;
+	mark_buffer_dirty(sbh);
+	err = sync_dirty_buffer(sbh);
+
+	sbh->b_blocknr = block;
+	if (err)
+		goto out;
+
+	/* write current valid superblock */
+	mark_buffer_dirty(sbh);
+	err = sync_dirty_buffer(sbh);
+out:
+	clear_buffer_write_io_error(sbh);
+	set_buffer_uptodate(sbh);
+	return err;
+}
+
 static int f2fs_fill_super(struct super_block *sb, void *data, int silent)
 {
 	struct f2fs_sb_info *sbi;
@@ -994,18 +1049,7 @@ try_onemore:
 		goto free_sbi;
 
 	sb->s_fs_info = sbi;
-	/* init some FS parameters */
-	sbi->active_logs = NR_CURSEG_TYPE;
-
-	set_opt(sbi, BG_GC);
-	set_opt(sbi, INLINE_DATA);
-
-#ifdef CONFIG_F2FS_FS_XATTR
-	set_opt(sbi, XATTR_USER);
-#endif
-#ifdef CONFIG_F2FS_FS_POSIX_ACL
-	set_opt(sbi, POSIX_ACL);
-#endif
+	default_options(sbi);
 	/* parse mount options */
 	options = kstrdup((const char *)data, GFP_KERNEL);
 	if (data && !options) {
@@ -1154,6 +1198,7 @@ try_onemore:
 			f2fs_msg(sb, KERN_WARNING,
 					"mounting with \"discard\" option, but "
 					"the device does not support discard");
+		clear_opt(sbi, DISCARD);
 	}
 
 	sbi->s_kobj.kset = f2fs_kset;
@@ -1305,13 +1350,18 @@ static int __init init_f2fs_fs(void)
 		err = -ENOMEM;
 		goto free_extent_cache;
 	}
-	err = register_filesystem(&f2fs_fs_type);
+	err = f2fs_init_crypto();
 	if (err)
 		goto free_kset;
+	err = register_filesystem(&f2fs_fs_type);
+	if (err)
+		goto free_crypto;
 	f2fs_create_root_stats();
 	f2fs_proc_root = proc_mkdir("fs/f2fs", NULL);
 	return 0;
 
+free_crypto:
+	f2fs_exit_crypto();
 free_kset:
 	kset_unregister(f2fs_kset);
 free_extent_cache:
@@ -1333,6 +1383,7 @@ static void __exit exit_f2fs_fs(void)
 	remove_proc_entry("fs/f2fs", NULL);
 	f2fs_destroy_root_stats();
 	unregister_filesystem(&f2fs_fs_type);
+	f2fs_exit_crypto();
 	destroy_extent_cache();
 	destroy_checkpoint_caches();
 	destroy_segment_manager_caches();
