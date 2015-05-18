@@ -82,6 +82,10 @@ static u8 esdhc_readb(struct sdhci_host *host, int reg)
 		/* fixup the result */
 		ret &= ~SDHCI_CTRL_DMA_MASK;
 		ret |= dma_bits;
+
+		/* 8BIT is bit 29 in Control register */
+		ret |= ((ret << 3) & SDHCI_CTRL_8BITBUS);
+		ret &= ~(SDHCI_CTRL_8BITBUS >> 3);
 	}
 
 	return ret;
@@ -134,6 +138,10 @@ static void esdhc_writeb(struct sdhci_host *host, u8 val, int reg)
 			dma_bits);
 		val &= ~SDHCI_CTRL_DMA_MASK;
 		val |= in_be32(host->ioaddr + reg) & SDHCI_CTRL_DMA_MASK;
+
+		/* 8BIT is bit 29 in Control register */
+		val |= ((val & SDHCI_CTRL_8BITBUS) >> 3);
+		val = (val & ~SDHCI_CTRL_8BITBUS);
 	}
 
 	/* Prevent SDHCI core from writing reserved bits (e.g. HISPD). */
@@ -199,7 +207,7 @@ static unsigned int esdhc_of_get_min_clock(struct sdhci_host *host)
 
 static void esdhc_of_set_clock(struct sdhci_host *host, unsigned int clock)
 {
-	int pre_div = 2;
+	int pre_div = 1;
 	int div = 1;
 	u32 temp;
 
@@ -229,7 +237,7 @@ static void esdhc_of_set_clock(struct sdhci_host *host, unsigned int clock)
 
 	dev_dbg(mmc_dev(host->mmc), "desired SD clock: %d, actual: %d\n",
 		clock, host->max_clk / pre_div / div);
-
+	host->mmc->actual_clock = host->max_clk / pre_div / div;
 	pre_div >>= 1;
 	div--;
 
@@ -254,28 +262,6 @@ static void esdhc_of_platform_init(struct sdhci_host *host)
 		host->quirks &= ~SDHCI_QUIRK_NO_BUSY_IRQ;
 }
 
-static void esdhc_pltfm_set_bus_width(struct sdhci_host *host, int width)
-{
-	u32 ctrl;
-
-	switch (width) {
-	case MMC_BUS_WIDTH_8:
-		ctrl = ESDHC_CTRL_8BITBUS;
-		break;
-
-	case MMC_BUS_WIDTH_4:
-		ctrl = ESDHC_CTRL_4BITBUS;
-		break;
-
-	default:
-		ctrl = 0;
-		break;
-	}
-
-	clrsetbits_be32(host->ioaddr + SDHCI_HOST_CONTROL,
-			ESDHC_CTRL_BUSWIDTH_MASK, ctrl);
-}
-
 static void esdhc_reset(struct sdhci_host *host, u8 mask)
 {
 	sdhci_reset(host, mask);
@@ -297,7 +283,6 @@ static const struct sdhci_ops sdhci_esdhc_ops = {
 	.get_min_clock = esdhc_of_get_min_clock,
 	.platform_init = esdhc_of_platform_init,
 	.adma_workaround = esdhci_of_adma_workaround,
-	.set_bus_width = esdhc_pltfm_set_bus_width,
 	.reset = esdhc_reset,
 	.set_uhs_signaling = sdhci_set_uhs_signaling,
 };

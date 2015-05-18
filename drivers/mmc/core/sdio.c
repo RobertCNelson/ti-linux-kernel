@@ -934,8 +934,12 @@ static int mmc_sdio_suspend(struct mmc_host *host)
 		mmc_release_host(host);
 	}
 
-	if (!mmc_card_keep_power(host))
+	if (!mmc_card_keep_power(host)) {
 		mmc_power_off(host);
+	} else if (host->retune_period) {
+		mmc_retune_timer_stop(host);
+		mmc_retune_needed(host);
+	}
 
 	return 0;
 }
@@ -1056,6 +1060,12 @@ static int mmc_sdio_runtime_resume(struct mmc_host *host)
 	return mmc_sdio_power_restore(host);
 }
 
+static int mmc_sdio_reset(struct mmc_host *host)
+{
+	mmc_power_cycle(host, host->card->ocr);
+	return mmc_sdio_power_restore(host);
+}
+
 static const struct mmc_bus_ops mmc_sdio_ops = {
 	.remove = mmc_sdio_remove,
 	.detect = mmc_sdio_detect,
@@ -1066,6 +1076,7 @@ static const struct mmc_bus_ops mmc_sdio_ops = {
 	.runtime_resume = mmc_sdio_runtime_resume,
 	.power_restore = mmc_sdio_power_restore,
 	.alive = mmc_sdio_alive,
+	.reset = mmc_sdio_reset,
 };
 
 
