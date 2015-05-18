@@ -114,17 +114,19 @@ int _f2fs_get_encryption_info(struct inode *inode)
 	struct f2fs_encryption_context ctx;
 	struct user_key_payload *ukp;
 	int res;
+	bool drop = false;
 
 	res = f2fs_crypto_initialize();
 	if (res)
 		return res;
 
-	if (fi->i_crypt_info) {
-		if (!fi->i_crypt_info->ci_keyring_key ||
-			key_validate(fi->i_crypt_info->ci_keyring_key) == 0)
-			return 0;
-		f2fs_free_encryption_info(inode);
+	read_lock(&fi->crypto_lock);
+	if (fi->i_crypt_info && (!fi->i_crypt_info->ci_keyring_key ||
+			key_validate(fi->i_crypt_info->ci_keyring_key) == 0)) {
+		read_unlock(&fi->crypto_lock);
+		return 0;
 	}
+	read_unlock(&fi->crypto_lock);
 
 	res = f2fs_getxattr(inode, F2FS_XATTR_INDEX_ENCRYPTION,
 				F2FS_XATTR_NAME_ENCRYPTION_CONTEXT,
@@ -187,18 +189,30 @@ out:
 			res = 0;
 		kmem_cache_free(f2fs_crypt_info_cachep, crypt_info);
 	} else {
-		fi->i_crypt_info = crypt_info;
-		crypt_info->ci_keyring_key = keyring_key;
-		keyring_key = NULL;
+		write_lock(&fi->crypto_lock);
+		if (fi->i_crypt_info) {
+			drop = true;
+		} else {
+			fi->i_crypt_info = crypt_info;
+			crypt_info->ci_keyring_key = keyring_key;
+			keyring_key = NULL;
+		}
+		write_unlock(&fi->crypto_lock);
 	}
 	if (keyring_key)
 		key_put(keyring_key);
+	if (drop)
+		kmem_cache_free(f2fs_crypt_info_cachep, crypt_info);
 	return res;
 }
 
 int f2fs_has_encryption_key(struct inode *inode)
 {
 	struct f2fs_inode_info *fi = F2FS_I(inode);
+	int ret;
 
-	return (fi->i_crypt_info != NULL);
+	read_lock(&fi->crypto_lock);
+	ret = (fi->i_crypt_info != NULL);
+	read_unlock(&fi->crypto_lock);
+	return ret;
 }

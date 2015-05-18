@@ -104,6 +104,7 @@ int f2fs_setup_crypto(struct inode *inode)
 	struct f2fs_inode_info *fi = F2FS_I(inode);
 	struct f2fs_crypt_info *ci;
 	struct crypto_ablkcipher *ctfm;
+	bool free = false;
 	int res;
 
 	res = f2fs_get_encryption_info(inode);
@@ -140,7 +141,15 @@ int f2fs_setup_crypto(struct inode *inode)
 		crypto_free_ablkcipher(ctfm);
 		return -EIO;
 	}
-	ci->ci_ctfm = ctfm;
+
+	spin_lock(&fi->crypto_tfmlock);
+	if (ci->ci_ctfm)
+		free = true;
+	else
+		ci->ci_ctfm = ctfm;
+	spin_unlock(&fi->crypto_tfmlock);
+	if (free)
+		crypto_free_ablkcipher(ctfm);
 	return 0;
 }
 

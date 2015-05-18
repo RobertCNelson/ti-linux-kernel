@@ -431,6 +431,8 @@ struct f2fs_inode_info {
 #ifdef CONFIG_F2FS_FS_ENCRYPTION
 	/* Encryption params */
 	struct f2fs_crypt_info *i_crypt_info;
+	rwlock_t crypto_lock;		/* lock for crypt_info */
+	spinlock_t crypto_tfmlock;	/* lock for crypto tfm allocation */
 #endif
 };
 
