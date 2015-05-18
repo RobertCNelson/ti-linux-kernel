@@ -207,12 +207,29 @@ struct cpufreq_policy *cpufreq_cpu_get_raw(unsigned int cpu)
 	return per_cpu(cpufreq_cpu_data, cpu);
 }
 
+/**
+ * cpufreq_cpu_get: returns policy for a cpu and marks it busy.
+ *
+ * @cpu: cpu to find policy for.
+ *
+ * This returns policy for 'cpu', returns NULL if it doesn't exist.
+ * It also increments the kobject reference count to mark it busy and so would
+ * require a corresponding call to cpufreq_cpu_put() to decrement it back.
+ * If corresponding call cpufreq_cpu_put() isn't made, the policy wouldn't be
+ * freed as that depends on the kobj count.
+ *
+ * It also takes a read-lock of 'cpufreq_rwsem' and doesn't put it back if a
+ * valid policy is found. This is done to make sure the driver doesn't get
+ * unregistered while the policy is being used.
+ *
+ * Return: A valid policy on success, otherwise NULL on failure.
+ */
 struct cpufreq_policy *cpufreq_cpu_get(unsigned int cpu)
 {
 	struct cpufreq_policy *policy = NULL;
 	unsigned long flags;
 
-	if (cpu >= nr_cpu_ids)
+	if (WARN_ON(cpu >= nr_cpu_ids))
 		return NULL;
 
 	if (!down_read_trylock(&cpufreq_rwsem))
@@ -237,6 +254,16 @@ struct cpufreq_policy *cpufreq_cpu_get(unsigned int cpu)
 }
 EXPORT_SYMBOL_GPL(cpufreq_cpu_get);
 
+/**
+ * cpufreq_cpu_put: Decrements the usage count of a policy
+ *
+ * @policy: policy earlier returned by cpufreq_cpu_get().
+ *
+ * This decrements the kobject reference count incremented earlier by calling
+ * cpufreq_cpu_get().
+ *
+ * It also drops the read-lock of 'cpufreq_rwsem' taken at cpufreq_cpu_get().
+ */
 void cpufreq_cpu_put(struct cpufreq_policy *policy)
 {
 	kobject_put(&policy->kobj);
@@ -965,6 +992,10 @@ static int cpufreq_add_policy_cpu(struct cpufreq_policy *policy,
 	int ret = 0;
 	unsigned long flags;
 
+	/* Has this CPU been taken care of already? */
+	if (cpumask_test_cpu(cpu, policy->cpus))
+		return 0;
+
 	if (has_target()) {
 		ret = __cpufreq_governor(policy, CPUFREQ_GOV_STOP);
 		if (ret) {
@@ -1098,7 +1129,16 @@ static int update_policy_cpu(struct cpufreq_policy *policy, unsigned int cpu,
 	return 0;
 }
 
-static int __cpufreq_add_dev(struct device *dev, struct subsys_interface *sif)
+/**
+ * cpufreq_add_dev - add a CPU device
+ *
+ * Adds the cpufreq interface for a CPU device.
+ *
+ * The Oracle says: try running cpufreq registration/unregistration concurrently
+ * with with cpu hotplugging and all hell will break loose. Tried to clean this
+ * mess up, but more thorough testing is needed. - Mathieu
+ */
+static int cpufreq_add_dev(struct device *dev, struct subsys_interface *sif)
 {
 	unsigned int j, cpu = dev->id;
 	int ret = -ENOMEM;
@@ -1111,16 +1151,10 @@ static int __cpufreq_add_dev(struct device *dev, struct subsys_interface *sif)
 
 	pr_debug("adding CPU %u\n", cpu);
 
-	/* check whether a different CPU already registered this
-	 * CPU because it is in the same boat. */
-	policy = cpufreq_cpu_get_raw(cpu);
-	if (unlikely(policy))
-		return 0;
-
 	if (!down_read_trylock(&cpufreq_rwsem))
 		return 0;
 
-	/* Check if this cpu was hot-unplugged earlier and has siblings */
+	/* Check if this CPU already has a policy to manage it */
 	read_lock_irqsave(&cpufreq_driver_lock, flags);
 	for_each_policy(policy) {
 		if (cpumask_test_cpu(cpu, policy->related_cpus)) {
@@ -1309,20 +1343,6 @@ nomem_out:
 	return ret;
 }
 
-/**
- * cpufreq_add_dev - add a CPU device
- *
- * Adds the cpufreq interface for a CPU device.
- *
- * The Oracle says: try running cpufreq registration/unregistration concurrently
- * with with cpu hotplugging and all hell will break loose. Tried to clean this
- * mess up, but more thorough testing is needed. - Mathieu
- */
-static int cpufreq_add_dev(struct device *dev, struct subsys_interface *sif)
-{
-	return __cpufreq_add_dev(dev, sif);
-}
-
 static int __cpufreq_remove_dev_prepare(struct device *dev,
 					struct subsys_interface *sif)
 {
@@ -1410,9 +1430,7 @@ static int __cpufreq_remove_dev_finish(struct device *dev,
 
 	down_write(&policy->rwsem);
 	cpus = cpumask_weight(policy->cpus);
-
-	if (cpus > 1)
-		cpumask_clear_cpu(cpu, policy->cpus);
+	cpumask_clear_cpu(cpu, policy->cpus);
 	up_write(&policy->rwsem);
 
 	/* If cpu is last user of policy, free policy */
@@ -2304,7 +2322,7 @@ static int cpufreq_cpu_callback(struct notifier_block *nfb,
 	if (dev) {
 		switch (action & ~CPU_TASKS_FROZEN) {
 		case CPU_ONLINE:
-			__cpufreq_add_dev(dev, NULL);
+			cpufreq_add_dev(dev, NULL);
 			break;
 
 		case CPU_DOWN_PREPARE:
@@ -2316,7 +2334,7 @@ static int cpufreq_cpu_callback(struct notifier_block *nfb,
 			break;
 
 		case CPU_DOWN_FAILED:
-			__cpufreq_add_dev(dev, NULL);
+			cpufreq_add_dev(dev, NULL);
 			break;
 		}
 	}
