@@ -298,7 +298,7 @@ static int wm8955_configure_clocking(struct snd_soc_codec *codec)
 		snd_soc_update_bits(codec, WM8955_PLL_CONTROL_2,
 				    WM8955_K_17_9_MASK,
 				    (pll.k >> 9) & WM8955_K_17_9_MASK);
-		snd_soc_update_bits(codec, WM8955_PLL_CONTROL_2,
+		snd_soc_update_bits(codec, WM8955_PLL_CONTROL_3,
 				    WM8955_K_8_0_MASK,
 				    pll.k & WM8955_K_8_0_MASK);
 		if (pll.k)
@@ -838,7 +838,6 @@ static int wm8955_set_bias_level(struct snd_soc_codec *codec,
 				       wm8955->supplies);
 		break;
 	}
-	codec->dapm.bias_level = level;
 	return 0;
 }
 
@@ -929,7 +928,7 @@ static int wm8955_probe(struct snd_soc_codec *codec)
 					    WM8955_DMEN, WM8955_DMEN);
 	}
 
-	wm8955_set_bias_level(codec, SND_SOC_BIAS_STANDBY);
+	snd_soc_codec_force_bias_level(codec, SND_SOC_BIAS_STANDBY);
 
 	/* Bias level configuration will have done an extra enable */
 	regulator_bulk_disable(ARRAY_SIZE(wm8955->supplies), wm8955->supplies);
