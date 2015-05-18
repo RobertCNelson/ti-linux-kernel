@@ -79,12 +79,6 @@
 #define DA_MAX_WRITE_SAME_LEN			0
 /* Use a model alias based on the configfs backend device name */
 #define DA_EMULATE_MODEL_ALIAS			0
-/* Emulation for Direct Page Out */
-#define DA_EMULATE_DPO				0
-/* Emulation for Forced Unit Access WRITEs */
-#define DA_EMULATE_FUA_WRITE			1
-/* Emulation for Forced Unit Access READs */
-#define DA_EMULATE_FUA_READ			0
 /* Emulation for WriteCache and SYNCHRONIZE_CACHE */
 #define DA_EMULATE_WRITE_CACHE			0
 /* Emulation for UNIT ATTENTION Interlock Control */
@@ -131,12 +125,6 @@ enum transport_lun_status_table {
 	TRANSPORT_LUN_STATUS_ACTIVE = 1,
 };
 
-/* struct se_portal_group->se_tpg_type */
-enum transport_tpg_type_table {
-	TRANSPORT_TPG_TYPE_NORMAL = 0,
-	TRANSPORT_TPG_TYPE_DISCOVERY = 1,
-};
-
 /* Special transport agnostic struct se_cmd->t_states */
 enum transport_state_table {
 	TRANSPORT_NO_STATE	= 0,
@@ -167,14 +155,13 @@ enum se_cmd_flags_table {
 	SCF_PASSTHROUGH_SG_TO_MEM_NOALLOC = 0x00020000,
 	SCF_COMPARE_AND_WRITE		= 0x00080000,
 	SCF_COMPARE_AND_WRITE_POST	= 0x00100000,
+	SCF_PASSTHROUGH_PROT_SG_TO_MEM_NOALLOC = 0x00200000,
 };
 
 /* struct se_dev_entry->lun_flags and struct se_lun->lun_access */
 enum transport_lunflags_table {
-	TRANSPORT_LUNFLAGS_NO_ACCESS		= 0x00,
-	TRANSPORT_LUNFLAGS_INITIATOR_ACCESS	= 0x01,
-	TRANSPORT_LUNFLAGS_READ_ONLY		= 0x02,
-	TRANSPORT_LUNFLAGS_READ_WRITE		= 0x04,
+	TRANSPORT_LUNFLAGS_READ_ONLY		= 0x01,
+	TRANSPORT_LUNFLAGS_READ_WRITE		= 0x02,
 };
 
 /*
@@ -385,13 +372,14 @@ struct t10_pr_registration {
 	bool isid_present_at_reg;
 	u32 pr_res_mapped_lun;
 	u32 pr_aptpl_target_lun;
+	u16 tg_pt_sep_rtpi;
 	u32 pr_res_generation;
 	u64 pr_reg_bin_isid;
 	u64 pr_res_key;
 	atomic_t pr_res_holders;
 	struct se_node_acl *pr_reg_nacl;
+	/* Used by ALL_TG_PT=1 registration with deve->pr_ref taken */
 	struct se_dev_entry *pr_reg_deve;
-	struct se_lun *pr_reg_tg_pt_lun;
 	struct list_head pr_reg_list;
 	struct list_head pr_reg_abort_list;
 	struct list_head pr_reg_aptpl_list;
@@ -431,7 +419,7 @@ struct se_tmr_req {
 	u8			response;
 	int			call_transport;
 	/* Reference to ITT that Task Mgmt should be performed */
-	u32			ref_task_tag;
+	u64			ref_task_tag;
 	void 			*fabric_tmr_ptr;
 	struct se_cmd		*task_cmd;
 	struct se_device	*tmr_dev;
@@ -484,6 +472,7 @@ struct se_cmd {
 	u8			scsi_asc;
 	u8			scsi_ascq;
 	u16			scsi_sense_length;
+	u64			tag; /* SAM command identifier aka task tag */
 	/* Delay for ALUA Active/NonOptimized state access in milliseconds */
 	int			alua_nonop_delay;
 	/* See include/linux/dma-mapping.h */
@@ -510,7 +499,6 @@ struct se_cmd {
 	struct list_head	se_delayed_node;
 	struct list_head	se_qf_node;
 	struct se_device      *se_dev;
-	struct se_dev_entry   *se_deve;
 	struct se_lun		*se_lun;
 	/* Only used for internal passthrough and legacy TCM fabric modules */
 	struct se_session	*se_sess;
@@ -594,10 +582,10 @@ struct se_node_acl {
 	char			acl_tag[MAX_ACL_TAG_SIZE];
 	/* Used for PR SPEC_I_PT=1 and REGISTER_AND_MOVE */
 	atomic_t		acl_pr_ref_count;
-	struct se_dev_entry	**device_list;
+	struct hlist_head	lun_entry_hlist;
 	struct se_session	*nacl_sess;
 	struct se_portal_group *se_tpg;
-	spinlock_t		device_list_lock;
+	struct mutex		lun_entry_mutex;
 	spinlock_t		nacl_sess_lock;
 	struct config_group	acl_group;
 	struct config_group	acl_attrib_group;
@@ -644,13 +632,11 @@ struct se_lun_acl {
 	u32			mapped_lun;
 	struct se_node_acl	*se_lun_nacl;
 	struct se_lun		*se_lun;
-	struct list_head	lacl_list;
 	struct config_group	se_lun_group;
 	struct se_ml_stat_grps	ml_stat_grps;
 };
 
 struct se_dev_entry {
-	bool			def_pr_registered;
 	/* See transport_lunflags_table */
 	u32			lun_flags;
 	u32			mapped_lun;
@@ -662,12 +648,17 @@ struct se_dev_entry {
 	u64			write_bytes;
 	atomic_t		ua_count;
 	/* Used for PR SPEC_I_PT=1 and REGISTER_AND_MOVE */
-	atomic_t		pr_ref_count;
-	struct se_lun_acl	*se_lun_acl;
+	struct kref		pr_kref;
+	struct completion	pr_comp;
+	struct se_node_acl	*se_node_acl;
+	struct se_lun_acl __rcu	*se_lun_acl;
 	spinlock_t		ua_lock;
-	struct se_lun		*se_lun;
+	struct se_lun __rcu	*se_lun;
+	unsigned long		pr_reg;
 	struct list_head	alua_port_list;
 	struct list_head	ua_list;
+	struct hlist_node	link;
+	struct rcu_head		rcu_head;
 };
 
 struct se_dev_attrib {
@@ -713,6 +704,7 @@ struct se_port_stat_grps {
 };
 
 struct se_lun {
+	u16			lun_rtpi;
 #define SE_LUN_LINK_MAGIC			0xffff7771
 	u32			lun_link_magic;
 	/* See transport_lun_status_table */
@@ -721,16 +713,16 @@ struct se_lun {
 	u32			lun_flags;
 	u32			unpacked_lun;
 	atomic_t		lun_acl_count;
-	spinlock_t		lun_acl_lock;
 	spinlock_t		lun_sep_lock;
 	struct completion	lun_shutdown_comp;
-	struct list_head	lun_acl_list;
 	struct se_device	*lun_se_dev;
 	struct se_port		*lun_sep;
 	struct config_group	lun_group;
 	struct se_port_stat_grps port_stat_grps;
 	struct completion	lun_ref_comp;
 	struct percpu_ref	lun_ref;
+	struct hlist_node	link;
+	struct rcu_head		rcu_head;
 };
 
 struct se_dev_stat_grps {
@@ -812,7 +804,7 @@ struct se_device {
 #define SE_UDEV_PATH_LEN 512		/* must be less than PAGE_SIZE */
 	unsigned char		udev_path[SE_UDEV_PATH_LEN];
 	/* Pointer to template of function pointers for transport */
-	struct se_subsystem_api *transport;
+	const struct target_backend_ops *transport;
 	/* Linked list for struct se_hba struct se_device list */
 	struct list_head	dev_list;
 	struct se_lun		xcopy_lun;
@@ -834,7 +826,7 @@ struct se_hba {
 	spinlock_t		device_lock;
 	struct config_group	hba_group;
 	struct mutex		hba_access_mutex;
-	struct se_subsystem_api *transport;
+	struct target_backend	*backend;
 };
 
 struct scsi_port_stats {
@@ -869,23 +861,25 @@ struct se_tpg_np {
 };
 
 struct se_portal_group {
-	/* Type of target portal group, see transport_tpg_type_table */
-	enum transport_tpg_type_table se_tpg_type;
+	/*
+	 * PROTOCOL IDENTIFIER value per SPC4, 7.5.1.
+	 *
+	 * Negative values can be used by fabric drivers for internal use TPGs.
+	 */
+	int			proto_id;
 	/* Number of ACLed Initiator Nodes for this TPG */
 	u32			num_node_acls;
 	/* Used for PR SPEC_I_PT=1 and REGISTER_AND_MOVE */
 	atomic_t		tpg_pr_ref_count;
 	/* Spinlock for adding/removing ACLed Nodes */
-	spinlock_t		acl_node_lock;
+	struct mutex		acl_node_mutex;
 	/* Spinlock for adding/removing sessions */
 	spinlock_t		session_lock;
-	spinlock_t		tpg_lun_lock;
-	/* Pointer to $FABRIC_MOD portal group */
-	void			*se_tpg_fabric_ptr;
+	struct mutex		tpg_lun_mutex;
 	struct list_head	se_tpg_node;
 	/* linked list for initiator ACL list */
 	struct list_head	acl_node_list;
-	struct se_lun		**tpg_lun_list;
+	struct hlist_head	tpg_lun_hlist;
 	struct se_lun		tpg_virt_lun0;
 	/* List of TCM sessions associated wth this TPG */
 	struct list_head	tpg_sess_list;
