@@ -464,7 +464,6 @@ static inline struct gpio_desc *devm_get_gpiod_from_child(
 int gpiod_export(struct gpio_desc *desc, bool direction_may_change);
 int gpiod_export_link(struct device *dev, const char *name,
 		      struct gpio_desc *desc);
-int gpiod_sysfs_set_active_low(struct gpio_desc *desc, int value);
 void gpiod_unexport(struct gpio_desc *desc);
 
 #else  /* CONFIG_GPIOLIB && CONFIG_GPIO_SYSFS */
@@ -477,11 +476,6 @@ static inline int gpiod_export(struct gpio_desc *desc,
 
 static inline int gpiod_export_link(struct device *dev, const char *name,
 				    struct gpio_desc *desc)
-{
-	return -ENOSYS;
-}
-
-static inline int gpiod_sysfs_set_active_low(struct gpio_desc *desc, int value)
 {
 	return -ENOSYS;
 }
