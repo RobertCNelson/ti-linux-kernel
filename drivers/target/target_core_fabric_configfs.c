@@ -898,8 +898,8 @@ static struct config_group *target_fabric_make_lun(
 		return ERR_PTR(-EINVAL);
 
 	lun = core_tpg_alloc_lun(se_tpg, unpacked_lun);
-	if (!lun)
-		return ERR_PTR(-ENOMEM);
+	if (IS_ERR(lun))
+		return ERR_CAST(lun);
 
 	lun_cg = &lun->lun_group;
 	lun_cg->default_groups = kmalloc(sizeof(struct config_group *) * 2,
