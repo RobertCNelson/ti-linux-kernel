@@ -394,6 +394,12 @@ static void execlists_context_unqueue(struct intel_engine_cs *ring)
 
 	assert_spin_locked(&ring->execlist_lock);
 
+	/*
+	 * If irqs are not active generate a warning as batches that finish
+	 * without the irqs may get lost and a GPU Hang may occur.
+	 */
+	WARN_ON(!intel_irqs_enabled(ring->dev->dev_private));
+
 	if (list_empty(&ring->execlist_queue))
 		return;
 
@@ -1895,10 +1901,9 @@ int intel_lr_context_deferred_create(struct intel_context *ctx,
 	context_size = round_up(get_lr_context_size(ring), 4096);
 
 	ctx_obj = i915_gem_alloc_object(dev, context_size);
-	if (IS_ERR(ctx_obj)) {
-		ret = PTR_ERR(ctx_obj);
-		DRM_DEBUG_DRIVER("Alloc LRC backing obj failed: %d\n", ret);
-		return ret;
+	if (!ctx_obj) {
+		DRM_DEBUG_DRIVER("Alloc LRC backing obj failed.\n");
+		return -ENOMEM;
 	}
 
 	if (is_global_default_ctx) {
