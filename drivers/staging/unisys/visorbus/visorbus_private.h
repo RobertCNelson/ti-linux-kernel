@@ -20,17 +20,13 @@
 
 #include <linux/uuid.h>
 
-#include "timskmod.h"
 #include "channel.h"
 #include "controlvmchannel.h"
-#include "parser.h"
-#include "procobjecttree.h"
 #include "vbusdeviceinfo.h"
 #include "vbushelper.h"
 
-/** Describes the state from the perspective of which controlvm messages have
- *  been received for a bus or device.
- */
+struct visorchannel;
+
 struct visorchipset_state {
 	u32 created:1;
 	u32 attached:1;
@@ -53,21 +49,15 @@ enum visorchipset_addresstype {
 	ADDRTYPE_LOCALTEST,
 };
 
-enum crash_obj_type {
-	CRASH_DEV,
-	CRASH_BUS,
-};
-
 /** Attributes for a particular Supervisor channel.
  */
 struct visorchipset_channel_info {
 	enum visorchipset_addresstype addr_type;
-	HOSTADDRESS channel_addr;
+	u64 channel_addr;
 	struct irq_info intr;
 	u64 n_channel_bytes;
 	uuid_le channel_type_uuid;
 	uuid_le channel_inst_uuid;
-
 };
 
 /** Attributes for a particular Supervisor device.
@@ -89,32 +79,7 @@ struct visorchipset_device_info {
 	struct controlvm_message_header pending_msg_hdr;/* CONTROLVM_MESSAGE */
 	/** For private use by the bus driver */
 	void *bus_driver_context;
-
 };
-
-static inline struct visorchipset_device_info *finddevice(
-		struct list_head *list, u32 bus_no, u32 dev_no)
-{
-	struct visorchipset_device_info *p;
-
-	list_for_each_entry(p, list, entry) {
-		if (p->bus_no == bus_no && p->dev_no == dev_no)
-			return p;
-	}
-	return NULL;
-}
-
-static inline void delbusdevices(struct list_head *list, u32 bus_no)
-{
-	struct visorchipset_device_info *p, *tmp;
-
-	list_for_each_entry_safe(p, tmp, list, entry) {
-		if (p->bus_no == bus_no) {
-			list_del(&p->entry);
-			kfree(p);
-		}
-	}
-}
 
 /** Attributes for a particular Supervisor bus.
  *  (For a service partition acting as the server for buses/devices, there
@@ -141,35 +106,19 @@ struct visorchipset_bus_info {
 	struct controlvm_message_header pending_msg_hdr;/* CONTROLVM MsgHdr */
 	/** For private use by the bus driver */
 	void *bus_driver_context;
-	u64 dev_no;
-
 };
-
-static inline struct visorchipset_bus_info *
-findbus(struct list_head *list, u32 bus_no)
-{
-	struct visorchipset_bus_info *p;
-
-	list_for_each_entry(p, list, entry) {
-		if (p->bus_no == bus_no)
-			return p;
-	}
-	return NULL;
-}
 
 /*  These functions will be called from within visorchipset when certain
  *  events happen.  (The implementation of these functions is outside of
  *  visorchipset.)
  */
 struct visorchipset_busdev_notifiers {
-	void (*bus_create)(ulong bus_no);
-	void (*bus_destroy)(ulong bus_no);
-	void (*device_create)(ulong bus_no, ulong dev_no);
-	void (*device_destroy)(ulong bus_no, ulong dev_no);
-	void (*device_pause)(ulong bus_no, ulong dev_no);
-	void (*device_resume)(ulong bus_no, ulong dev_no);
-	int (*get_channel_info)(uuid_le type_uuid, ulong *min_size,
-				ulong *max_size);
+	void (*bus_create)(u32 bus_no);
+	void (*bus_destroy)(u32 bus_no);
+	void (*device_create)(u32 bus_no, u32 dev_no);
+	void (*device_destroy)(u32 bus_no, u32 dev_no);
+	void (*device_pause)(u32 bus_no, u32 dev_no);
+	void (*device_resume)(u32 bus_no, u32 dev_no);
 };
 
 /*  These functions live inside visorchipset, and will be called to indicate
@@ -179,58 +128,32 @@ struct visorchipset_busdev_notifiers {
  *      -1 = it failed
  */
 struct visorchipset_busdev_responders {
-	void (*bus_create)(ulong bus_no, int response);
-	void (*bus_destroy)(ulong bus_no, int response);
-	void (*device_create)(ulong bus_no, ulong dev_no, int response);
-	void (*device_destroy)(ulong bus_no, ulong dev_no, int response);
-	void (*device_pause)(ulong bus_no, ulong dev_no, int response);
-	void (*device_resume)(ulong bus_no, ulong dev_no, int response);
+	void (*bus_create)(u32 bus_no, int response);
+	void (*bus_destroy)(u32 bus_no, int response);
+	void (*device_create)(u32 bus_no, u32 dev_no, int response);
+	void (*device_destroy)(u32 bus_no, u32 dev_no, int response);
+	void (*device_pause)(u32 bus_no, u32 dev_no, int response);
+	void (*device_resume)(u32 bus_no, u32 dev_no, int response);
 };
 
 /** Register functions (in the bus driver) to get called by visorchipset
- *  whenever a bus or device appears for which this service partition is
- *  to be the server for.  visorchipset will fill in <responders>, to
- *  indicate functions the bus driver should call to indicate message
- *  responses.
+ *  whenever a bus or device appears for which this guest is to be the
+ *  client for.  visorchipset will fill in <responders>, to indicate
+ *  functions the bus driver should call to indicate message responses.
  */
 void
-visorchipset_register_busdev_client(
+visorchipset_register_busdev(
 			struct visorchipset_busdev_notifiers *notifiers,
 			struct visorchipset_busdev_responders *responders,
 			struct ultra_vbus_deviceinfo *driver_info);
 
-/** Register functions (in the bus driver) to get called by visorchipset
- *  whenever a bus or device appears for which this service partition is
- *  to be the client for.  visorchipset will fill in <responders>, to
- *  indicate functions the bus driver should call to indicate message
- *  responses.
- */
-void
-visorchipset_register_busdev_server(
-			struct visorchipset_busdev_notifiers *notifiers,
-			struct visorchipset_busdev_responders *responders,
-			struct ultra_vbus_deviceinfo *driver_info);
-
-typedef void (*SPARREPORTEVENT_COMPLETE_FUNC) (struct controlvm_message *msg,
-					       int status);
-
-void visorchipset_device_pause_response(ulong bus_no, ulong dev_no,
-					int response);
-
-BOOL visorchipset_get_bus_info(ulong bus_no,
+bool visorchipset_get_bus_info(u32 bus_no,
 			       struct visorchipset_bus_info *bus_info);
-BOOL visorchipset_get_device_info(ulong bus_no, ulong dev_no,
+bool visorchipset_get_device_info(u32 bus_no, u32 dev_no,
 				  struct visorchipset_device_info *dev_info);
-BOOL visorchipset_set_bus_context(ulong bus_no, void *context);
-BOOL visorchipset_set_device_context(ulong bus_no, ulong dev_no, void *context);
-int visorchipset_chipset_ready(void);
-int visorchipset_chipset_selftest(void);
-int visorchipset_chipset_notready(void);
-void visorchipset_save_message(struct controlvm_message *msg,
-			       enum crash_obj_type type);
-void *visorchipset_cache_alloc(struct kmem_cache *pool,
-			       BOOL ok_to_block, char *fn, int ln);
-void visorchipset_cache_free(struct kmem_cache *pool, void *p,
-			     char *fn, int ln);
+bool visorchipset_set_bus_context(u32 bus_no, void *context);
 
+/* visorbus init and exit functions */
+int visorbus_init(void);
+void visorbus_exit(void);
 #endif
