@@ -228,8 +228,7 @@ struct sh_mmcif_host {
 	struct mmc_host *mmc;
 	struct mmc_request *mrq;
 	struct platform_device *pd;
-	struct clk *hclk;
-	unsigned int clk;
+	struct clk *clk;
 	int bus_width;
 	unsigned char timing;
 	bool sd_error;
@@ -256,6 +255,12 @@ struct sh_mmcif_host {
 	struct completion	dma_complete;
 	bool			dma_active;
 };
+
+static const struct of_device_id mmcif_of_match[] = {
+	{ .compatible = "renesas,sh-mmcif" },
+	{ }
+};
+MODULE_DEVICE_TABLE(of, mmcif_of_match);
 
 static inline void sh_mmcif_bitset(struct sh_mmcif_host *host,
 					unsigned int reg, u32 val)
@@ -478,17 +483,18 @@ static void sh_mmcif_clock_control(struct sh_mmcif_host *host, unsigned int clk)
 {
 	struct sh_mmcif_plat_data *p = host->pd->dev.platform_data;
 	bool sup_pclk = p ? p->sup_pclk : false;
+	unsigned int current_clk = clk_get_rate(host->clk);
 
 	sh_mmcif_bitclr(host, MMCIF_CE_CLK_CTRL, CLK_ENABLE);
 	sh_mmcif_bitclr(host, MMCIF_CE_CLK_CTRL, CLK_CLEAR);
 
 	if (!clk)
 		return;
-	if (sup_pclk && clk == host->clk)
+	if (sup_pclk && clk == current_clk)
 		sh_mmcif_bitset(host, MMCIF_CE_CLK_CTRL, CLK_SUP_PCLK);
 	else
 		sh_mmcif_bitset(host, MMCIF_CE_CLK_CTRL, CLK_CLEAR &
-				((fls(DIV_ROUND_UP(host->clk,
+				((fls(DIV_ROUND_UP(current_clk,
 						   clk) - 1) - 1) << 16));
 
 	sh_mmcif_bitset(host, MMCIF_CE_CLK_CTRL, CLK_ENABLE);
@@ -972,17 +978,12 @@ static void sh_mmcif_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	sh_mmcif_start_cmd(host, mrq);
 }
 
-static int sh_mmcif_clk_update(struct sh_mmcif_host *host)
+static void sh_mmcif_clk_setup(struct sh_mmcif_host *host)
 {
-	int ret = clk_prepare_enable(host->hclk);
+	unsigned int clk = clk_get_rate(host->clk);
 
-	if (!ret) {
-		host->clk = clk_get_rate(host->hclk);
-		host->mmc->f_max = host->clk / 2;
-		host->mmc->f_min = host->clk / 512;
-	}
-
-	return ret;
+	host->mmc->f_max = clk / 2;
+	host->mmc->f_min = clk / 512;
 }
 
 static void sh_mmcif_set_power(struct sh_mmcif_host *host, struct mmc_ios *ios)
@@ -1028,7 +1029,7 @@ static void sh_mmcif_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		}
 		if (host->power) {
 			pm_runtime_put_sync(&host->pd->dev);
-			clk_disable_unprepare(host->hclk);
+			clk_disable_unprepare(host->clk);
 			host->power = false;
 			if (ios->power_mode == MMC_POWER_OFF)
 				sh_mmcif_set_power(host, ios);
@@ -1039,7 +1040,8 @@ static void sh_mmcif_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 
 	if (ios->clock) {
 		if (!host->power) {
-			sh_mmcif_clk_update(host);
+			clk_prepare_enable(host->clk);
+
 			pm_runtime_get_sync(&host->pd->dev);
 			host->power = true;
 			sh_mmcif_sync_reset(host);
@@ -1380,7 +1382,8 @@ static int sh_mmcif_probe(struct platform_device *pdev)
 	int ret = 0, irq[2];
 	struct mmc_host *mmc;
 	struct sh_mmcif_host *host;
-	struct sh_mmcif_plat_data *pd = pdev->dev.platform_data;
+	struct device *dev = &pdev->dev;
+	struct sh_mmcif_plat_data *pd = dev->platform_data;
 	struct resource *res;
 	void __iomem *reg;
 	const char *name;
@@ -1388,16 +1391,16 @@ static int sh_mmcif_probe(struct platform_device *pdev)
 	irq[0] = platform_get_irq(pdev, 0);
 	irq[1] = platform_get_irq(pdev, 1);
 	if (irq[0] < 0) {
-		dev_err(&pdev->dev, "Get irq error\n");
+		dev_err(dev, "Get irq error\n");
 		return -ENXIO;
 	}
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	reg = devm_ioremap_resource(&pdev->dev, res);
+	reg = devm_ioremap_resource(dev, res);
 	if (IS_ERR(reg))
 		return PTR_ERR(reg);
 
-	mmc = mmc_alloc_host(sizeof(struct sh_mmcif_host), &pdev->dev);
+	mmc = mmc_alloc_host(sizeof(struct sh_mmcif_host), dev);
 	if (!mmc)
 		return -ENOMEM;
 
@@ -1430,20 +1433,23 @@ static int sh_mmcif_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, host);
 
-	pm_runtime_enable(&pdev->dev);
+	pm_runtime_enable(dev);
 	host->power = false;
 
-	host->hclk = devm_clk_get(&pdev->dev, NULL);
-	if (IS_ERR(host->hclk)) {
-		ret = PTR_ERR(host->hclk);
-		dev_err(&pdev->dev, "cannot get clock: %d\n", ret);
+	host->clk = devm_clk_get(dev, NULL);
+	if (IS_ERR(host->clk)) {
+		ret = PTR_ERR(host->clk);
+		dev_err(dev, "cannot get clock: %d\n", ret);
 		goto err_pm;
 	}
-	ret = sh_mmcif_clk_update(host);
+
+	ret = clk_prepare_enable(host->clk);
 	if (ret < 0)
 		goto err_pm;
 
-	ret = pm_runtime_resume(&pdev->dev);
+	sh_mmcif_clk_setup(host);
+
+	ret = pm_runtime_resume(dev);
 	if (ret < 0)
 		goto err_clk;
 
@@ -1452,19 +1458,19 @@ static int sh_mmcif_probe(struct platform_device *pdev)
 	sh_mmcif_sync_reset(host);
 	sh_mmcif_writel(host->addr, MMCIF_CE_INT_MASK, MASK_ALL);
 
-	name = irq[1] < 0 ? dev_name(&pdev->dev) : "sh_mmc:error";
-	ret = devm_request_threaded_irq(&pdev->dev, irq[0], sh_mmcif_intr,
+	name = irq[1] < 0 ? dev_name(dev) : "sh_mmc:error";
+	ret = devm_request_threaded_irq(dev, irq[0], sh_mmcif_intr,
 					sh_mmcif_irqt, 0, name, host);
 	if (ret) {
-		dev_err(&pdev->dev, "request_irq error (%s)\n", name);
+		dev_err(dev, "request_irq error (%s)\n", name);
 		goto err_clk;
 	}
 	if (irq[1] >= 0) {
-		ret = devm_request_threaded_irq(&pdev->dev, irq[1],
+		ret = devm_request_threaded_irq(dev, irq[1],
 						sh_mmcif_intr, sh_mmcif_irqt,
 						0, "sh_mmc:int", host);
 		if (ret) {
-			dev_err(&pdev->dev, "request_irq error (sh_mmc:int)\n");
+			dev_err(dev, "request_irq error (sh_mmc:int)\n");
 			goto err_clk;
 		}
 	}
@@ -1481,19 +1487,19 @@ static int sh_mmcif_probe(struct platform_device *pdev)
 	if (ret < 0)
 		goto err_clk;
 
-	dev_pm_qos_expose_latency_limit(&pdev->dev, 100);
+	dev_pm_qos_expose_latency_limit(dev, 100);
 
-	dev_info(&pdev->dev, "Chip version 0x%04x, clock rate %luMHz\n",
+	dev_info(dev, "Chip version 0x%04x, clock rate %luMHz\n",
 		 sh_mmcif_readl(host->addr, MMCIF_CE_VERSION) & 0xffff,
-		 clk_get_rate(host->hclk) / 1000000UL);
+		 clk_get_rate(host->clk) / 1000000UL);
 
-	clk_disable_unprepare(host->hclk);
+	clk_disable_unprepare(host->clk);
 	return ret;
 
 err_clk:
-	clk_disable_unprepare(host->hclk);
+	clk_disable_unprepare(host->clk);
 err_pm:
-	pm_runtime_disable(&pdev->dev);
+	pm_runtime_disable(dev);
 err_host:
 	mmc_free_host(mmc);
 	return ret;
@@ -1504,7 +1510,7 @@ static int sh_mmcif_remove(struct platform_device *pdev)
 	struct sh_mmcif_host *host = platform_get_drvdata(pdev);
 
 	host->dying = true;
-	clk_prepare_enable(host->hclk);
+	clk_prepare_enable(host->clk);
 	pm_runtime_get_sync(&pdev->dev);
 
 	dev_pm_qos_hide_latency_limit(&pdev->dev);
@@ -1519,7 +1525,7 @@ static int sh_mmcif_remove(struct platform_device *pdev)
 	 */
 	cancel_delayed_work_sync(&host->timeout_work);
 
-	clk_disable_unprepare(host->hclk);
+	clk_disable_unprepare(host->clk);
 	mmc_free_host(host->mmc);
 	pm_runtime_put_sync(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
@@ -1542,12 +1548,6 @@ static int sh_mmcif_resume(struct device *dev)
 	return 0;
 }
 #endif
-
-static const struct of_device_id mmcif_of_match[] = {
-	{ .compatible = "renesas,sh-mmcif" },
-	{ }
-};
-MODULE_DEVICE_TABLE(of, mmcif_of_match);
 
 static const struct dev_pm_ops sh_mmcif_dev_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(sh_mmcif_suspend, sh_mmcif_resume)
