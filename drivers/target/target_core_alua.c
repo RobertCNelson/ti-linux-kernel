@@ -312,16 +312,16 @@ target_emulate_set_target_port_groups(struct se_cmd *cmd)
 		rc = TCM_UNSUPPORTED_SCSI_OPCODE;
 		goto out;
 	}
-	// XXX: keep referencing l_tg_pt_gp without a references
-	spin_unlock(&l_lun->lun_tg_pt_gp_lock);
 
 	if (!(l_tg_pt_gp->tg_pt_gp_alua_access_type & TPGS_EXPLICIT_ALUA)) {
+		spin_unlock(&l_lun->lun_tg_pt_gp_lock);
 		pr_debug("Unable to process SET_TARGET_PORT_GROUPS"
 				" while TPGS_EXPLICIT_ALUA is disabled\n");
 		rc = TCM_UNSUPPORTED_SCSI_OPCODE;
 		goto out;
 	}
 	valid_states = l_tg_pt_gp->tg_pt_gp_alua_supported_states;
+	spin_unlock(&l_lun->lun_tg_pt_gp_lock);
 
 	ptr = &buf[4]; /* Skip over RESERVED area in header */
 
