@@ -433,7 +433,7 @@ void core_clear_lun_from_tpg(struct se_lun *lun, struct se_portal_group *tpg)
 
 			core_disable_device_list_for_node(lun, deve, nacl, tpg);
 		}
-		mutex_lock(&nacl->lun_entry_mutex);
+		mutex_unlock(&nacl->lun_entry_mutex);
 	}
 	mutex_unlock(&tpg->acl_node_mutex);
 }
