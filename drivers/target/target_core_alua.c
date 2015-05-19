@@ -1934,7 +1934,7 @@ ssize_t core_alua_store_tg_pt_gp_info(
 	size_t count)
 {
 	struct se_portal_group *tpg = lun->lun_tpg;
-	struct se_device *dev = lun->lun_se_dev;
+	struct se_device *dev = lockless_dereference(lun->lun_se_dev);
 	struct t10_alua_tg_pt_gp *tg_pt_gp = NULL, *tg_pt_gp_new = NULL;
 	unsigned char buf[TG_PT_GROUP_NAME_BUF];
 	int move = 0;
@@ -2188,7 +2188,7 @@ ssize_t core_alua_store_offline_bit(
 	const char *page,
 	size_t count)
 {
-	struct se_device *dev = lun->lun_se_dev;
+	struct se_device *dev = lockless_dereference(lun->lun_se_dev);
 	unsigned long tmp;
 	int ret;
 
