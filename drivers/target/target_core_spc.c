@@ -1210,7 +1210,7 @@ sense_reason_t spc_emulate_report_luns(struct se_cmd *cmd)
 {
 	struct se_dev_entry *deve;
 	struct se_session *sess = cmd->se_sess;
-	struct se_node_acl *nacl = sess->se_node_acl;
+	struct se_node_acl *nacl;
 	unsigned char *buf;
 	u32 lun_count = 0, offset = 8;
 
@@ -1234,6 +1234,7 @@ sense_reason_t spc_emulate_report_luns(struct se_cmd *cmd)
 		lun_count = 1;
 		goto done;
 	}
+	nacl = sess->se_node_acl;
 
 	rcu_read_lock();
 	hlist_for_each_entry_rcu(deve, &nacl->lun_entry_hlist, link) {
