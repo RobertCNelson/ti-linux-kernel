@@ -695,9 +695,9 @@ struct se_port_stat_grps {
 };
 
 struct scsi_port_stats {
-       u64     cmd_pdus;
-       u64     tx_data_octets;
-       u64     rx_data_octets;
+	atomic_long_t	cmd_pdus;
+	atomic_long_t	tx_data_octets;
+	atomic_long_t	rx_data_octets;
 };
 
 struct se_lun {
@@ -711,8 +711,7 @@ struct se_lun {
 	u32			lun_flags;
 	u32			unpacked_lun;
 	atomic_t		lun_acl_count;
-	spinlock_t		lun_sep_lock;
-	struct se_device	*lun_se_dev;
+	struct se_device __rcu	*lun_se_dev;
 
 	struct list_head	lun_deve_list;
 	spinlock_t		lun_deve_lock;
