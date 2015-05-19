@@ -601,7 +601,6 @@ struct se_lun *core_tpg_alloc_lun(
 	lun->lun_link_magic = SE_LUN_LINK_MAGIC;
 	lun->lun_status = TRANSPORT_LUN_STATUS_FREE;
 	atomic_set(&lun->lun_acl_count, 0);
-	spin_lock_init(&lun->lun_sep_lock);
 	init_completion(&lun->lun_ref_comp);
 	INIT_LIST_HEAD(&lun->lun_deve_list);
 	INIT_LIST_HEAD(&lun->lun_dev_link);
@@ -638,10 +637,7 @@ int core_tpg_add_lun(
 		target_attach_tg_pt_gp(lun, dev->t10_alua.default_tg_pt_gp);
 
 	mutex_lock(&tpg->tpg_lun_mutex);
-
-	spin_lock(&lun->lun_sep_lock);
-	lun->lun_se_dev = dev;
-	spin_unlock(&lun->lun_sep_lock);
+	rcu_assign_pointer(lun->lun_se_dev, dev);
 
 	spin_lock(&dev->se_port_lock);
 	dev->export_count++;
@@ -683,7 +679,7 @@ void core_tpg_remove_lun(
 		dev->export_count--;
 		spin_unlock(&dev->se_port_lock);
 
-		lun->lun_se_dev = NULL;
+		rcu_assign_pointer(lun->lun_se_dev, NULL);
 	}
 
 	lun->lun_status = TRANSPORT_LUN_STATUS_FREE;
