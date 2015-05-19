@@ -712,7 +712,6 @@ struct se_lun {
 	u32			unpacked_lun;
 	atomic_t		lun_acl_count;
 	spinlock_t		lun_sep_lock;
-	struct completion	lun_shutdown_comp;
 	struct se_device	*lun_se_dev;
 
 	struct list_head	lun_deve_list;
