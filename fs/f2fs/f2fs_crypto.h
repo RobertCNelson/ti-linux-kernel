@@ -90,7 +90,6 @@ struct f2fs_crypt_info {
 #define F2FS_WRITE_PATH_FL			      0x00000004
 
 struct f2fs_crypto_ctx {
-	struct crypto_tfm *tfm;         /* Crypto API context */
 	union {
 		struct {
 			struct page *bounce_page;       /* Ciphertext page */
@@ -103,7 +102,6 @@ struct f2fs_crypto_ctx {
 		struct list_head free_list;     /* Free list */
 	};
 	char flags;                      /* Flags */
-	char mode;                       /* Encryption mode for tfm */
 };
 
 struct f2fs_completion_result {

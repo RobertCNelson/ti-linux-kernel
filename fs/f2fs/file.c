@@ -411,7 +411,7 @@ static int f2fs_file_mmap(struct file *file, struct vm_area_struct *vma)
 	struct inode *inode = file_inode(file);
 
 	if (f2fs_encrypted_inode(inode)) {
-		int err = f2fs_get_encryption_info(inode);
+		int err = f2fs_setup_crypto(inode);
 		if (err)
 			return 0;
 	}
@@ -433,7 +433,7 @@ static int f2fs_file_open(struct inode *inode, struct file *filp)
 	int ret = generic_file_open(inode, filp);
 
 	if (!ret && f2fs_encrypted_inode(inode)) {
-		ret = f2fs_get_encryption_info(inode);
+		ret = f2fs_setup_crypto(inode);
 		if (ret)
 			ret = -EACCES;
 	}
@@ -647,9 +647,11 @@ int f2fs_setattr(struct dentry *dentry, struct iattr *attr)
 		return err;
 
 	if (attr->ia_valid & ATTR_SIZE) {
-		if (f2fs_encrypted_inode(inode) &&
-				f2fs_get_encryption_info(inode))
-			return -EACCES;
+		if (f2fs_encrypted_inode(inode)) {
+			err = f2fs_setup_crypto(inode);
+			if (err)
+				return err == -EINVAL ? -EACCES : err;
+		}
 
 		if (attr->ia_size != i_size_read(inode)) {
 			truncate_setsize(inode, attr->ia_size);
@@ -1500,9 +1502,11 @@ static ssize_t f2fs_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	struct inode *inode = file_inode(iocb->ki_filp);
 
 	if (f2fs_encrypted_inode(inode) &&
-				!f2fs_has_encryption_key(inode) &&
-				f2fs_get_encryption_info(inode))
-		return -EACCES;
+				!f2fs_has_encryption_key(inode)) {
+		int err = f2fs_setup_crypto(inode);
+		if (err)
+			return err == -EINVAL ? -EACCES : err;
+	}
 
 	return generic_file_write_iter(iocb, from);
 }

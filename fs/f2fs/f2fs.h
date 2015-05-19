@@ -2008,6 +2008,7 @@ int f2fs_get_policy(struct inode *, struct f2fs_encryption_policy *);
 extern struct kmem_cache *f2fs_crypt_info_cachep;
 bool f2fs_valid_contents_enc_mode(uint32_t);
 uint32_t f2fs_validate_encryption_key_size(uint32_t, uint32_t);
+int f2fs_setup_crypto(struct inode *);
 struct f2fs_crypto_ctx *f2fs_get_crypto_ctx(struct inode *);
 void f2fs_release_crypto_ctx(struct f2fs_crypto_ctx *);
 struct page *f2fs_encrypt(struct inode *, struct page *);

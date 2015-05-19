@@ -797,8 +797,7 @@ struct page *get_sum_page(struct f2fs_sb_info *sbi, unsigned int segno)
 	return get_meta_page(sbi, GET_SUM_BLOCK(sbi, segno));
 }
 
-void update_meta_page(struct f2fs_sb_info *sbi, void *src,
-							block_t blk_addr)
+void update_meta_page(struct f2fs_sb_info *sbi, void *src, block_t blk_addr)
 {
 	struct page *page = grab_meta_page(sbi, blk_addr);
 	void *dst = page_address(page);
