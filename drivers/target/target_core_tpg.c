@@ -610,7 +610,6 @@ struct se_lun *core_tpg_alloc_lun(
 	lun->lun_link_magic = SE_LUN_LINK_MAGIC;
 	lun->lun_status = TRANSPORT_LUN_STATUS_FREE;
 	atomic_set(&lun->lun_acl_count, 0);
-	init_completion(&lun->lun_shutdown_comp);
 	spin_lock_init(&lun->lun_sep_lock);
 	init_completion(&lun->lun_ref_comp);
 
