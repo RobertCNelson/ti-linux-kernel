@@ -531,6 +531,11 @@ static int __f2fs_tmpfile(struct inode *dir, struct dentry *dentry,
 	}
 
 	f2fs_lock_op(sbi);
+
+	err = f2fs_get_encryption_info(dir);
+	if (err)
+		goto out;
+
 	err = acquire_orphan_inode(sbi);
 	if (err)
 		goto out;
