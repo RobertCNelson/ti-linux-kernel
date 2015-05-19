@@ -22,6 +22,12 @@
 #define CREATE_TRACE_POINTS
 #include <asm/trace/irq_vectors.h>
 
+DEFINE_PER_CPU_SHARED_ALIGNED(irq_cpustat_t, irq_stat);
+EXPORT_PER_CPU_SYMBOL(irq_stat);
+
+DEFINE_PER_CPU(struct pt_regs *, irq_regs);
+EXPORT_PER_CPU_SYMBOL(irq_regs);
+
 atomic_t irq_err_count;
 
 /* Function pointer for generic interrupt vector handling */
@@ -116,6 +122,12 @@ int arch_show_interrupts(struct seq_file *p, int prec)
 		seq_printf(p, "%10u ", irq_stats(j)->irq_threshold_count);
 	seq_puts(p, "  Threshold APIC interrupts\n");
 #endif
+#ifdef CONFIG_X86_MCE_AMD
+	seq_printf(p, "%*s: ", prec, "DFR");
+	for_each_online_cpu(j)
+		seq_printf(p, "%10u ", irq_stats(j)->irq_deferred_error_count);
+	seq_puts(p, "  Deferred Error APIC interrupts\n");
+#endif
 #ifdef CONFIG_X86_MCE
 	seq_printf(p, "%*s: ", prec, "MCE");
 	for_each_online_cpu(j)
@@ -192,8 +204,7 @@ __visible unsigned int __irq_entry do_IRQ(struct pt_regs *regs)
 	unsigned vector = ~regs->orig_ax;
 	unsigned irq;
 
-	irq_enter();
-	exit_idle();
+	entering_irq();
 
 	irq = __this_cpu_read(vector_irq[vector]);
 
@@ -209,7 +220,7 @@ __visible unsigned int __irq_entry do_IRQ(struct pt_regs *regs)
 		}
 	}
 
-	irq_exit();
+	exiting_irq();
 
 	set_irq_regs(old_regs);
 	return 1;
@@ -244,16 +255,9 @@ __visible void smp_kvm_posted_intr_ipi(struct pt_regs *regs)
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);
 
-	ack_APIC_irq();
-
-	irq_enter();
-
-	exit_idle();
-
+	entering_ack_irq();
 	inc_irq_stat(kvm_posted_intr_ipis);
-
-	irq_exit();
-
+	exiting_irq();
 	set_irq_regs(old_regs);
 }
 #endif
