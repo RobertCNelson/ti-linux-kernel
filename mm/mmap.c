@@ -1280,7 +1280,7 @@ unsigned long do_mmap_pgoff(struct file *file, unsigned long addr,
 		return -ENOMEM;
 
 	/* offset overflow? */
-	if ((pgoff + (len >> PAGE_SHIFT)) < pgoff)
+	if ((pgoff + (len >> PAGE_SHIFT) - 1) < pgoff)
 		return -EOVERFLOW;
 
 	/* Too many mappings? */
