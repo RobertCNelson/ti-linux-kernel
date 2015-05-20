@@ -670,6 +670,12 @@ enum skl_disp_power_wells {
 #define   FB_FMAX_VMIN_FREQ_LO_SHIFT		27
 #define   FB_FMAX_VMIN_FREQ_LO_MASK		0xf8000000
 
+#define VLV_TURBO_SOC_OVERRIDE	0x04
+#define 	VLV_OVERRIDE_EN	1
+#define 	VLV_SOC_TDP_EN	(1 << 1)
+#define 	VLV_BIAS_CPU_125_SOC_875 (6 << 2)
+#define 	CHV_BIAS_CPU_50_SOC_50 (3 << 2)
+
 #define VLV_CZ_CLOCK_TO_MILLI_SEC		100000
 
 /* vlv2 north clock has */
@@ -955,6 +961,7 @@ enum skl_disp_power_wells {
 
 #define _VLV_PCS_DW11_CH0		0x822c
 #define _VLV_PCS_DW11_CH1		0x842c
+#define   DPIO_TX2_STAGGER_MASK(x)	((x)<<24)
 #define   DPIO_LANEDESKEW_STRAP_OVRD	(1<<3)
 #define   DPIO_LEFT_TXFIFO_RST_MASTER	(1<<1)
 #define   DPIO_RIGHT_TXFIFO_RST_MASTER	(1<<0)
@@ -967,8 +974,20 @@ enum skl_disp_power_wells {
 #define VLV_PCS01_DW11(ch) _PORT(ch, _VLV_PCS01_DW11_CH0, _VLV_PCS01_DW11_CH1)
 #define VLV_PCS23_DW11(ch) _PORT(ch, _VLV_PCS23_DW11_CH0, _VLV_PCS23_DW11_CH1)
 
+#define _VLV_PCS01_DW12_CH0		0x0230
+#define _VLV_PCS23_DW12_CH0		0x0430
+#define _VLV_PCS01_DW12_CH1		0x2630
+#define _VLV_PCS23_DW12_CH1		0x2830
+#define VLV_PCS01_DW12(ch) _PORT(ch, _VLV_PCS01_DW12_CH0, _VLV_PCS01_DW12_CH1)
+#define VLV_PCS23_DW12(ch) _PORT(ch, _VLV_PCS23_DW12_CH0, _VLV_PCS23_DW12_CH1)
+
 #define _VLV_PCS_DW12_CH0		0x8230
 #define _VLV_PCS_DW12_CH1		0x8430
+#define   DPIO_TX2_STAGGER_MULT(x)	((x)<<20)
+#define   DPIO_TX1_STAGGER_MULT(x)	((x)<<16)
+#define   DPIO_TX1_STAGGER_MASK(x)	((x)<<8)
+#define   DPIO_LANESTAGGER_STRAP_OVRD	(1<<6)
+#define   DPIO_LANESTAGGER_STRAP(x)	((x)<<0)
 #define VLV_PCS_DW12(ch) _PORT(ch, _VLV_PCS_DW12_CH0, _VLV_PCS_DW12_CH1)
 
 #define _VLV_PCS_DW14_CH0		0x8238
@@ -1185,6 +1204,12 @@ enum skl_disp_power_wells {
 #define   PORT_PLL_GAIN_CTL(x)		((x)  << 16)
 /* PORT_PLL_8_A */
 #define   PORT_PLL_TARGET_CNT_MASK	0x3FF
+/* PORT_PLL_9_A */
+#define  PORT_PLL_LOCK_THRESHOLD_MASK	0xe
+/* PORT_PLL_10_A */
+#define  PORT_PLL_DCO_AMP_OVR_EN_H	(1<<27)
+#define  PORT_PLL_DCO_AMP_MASK		0x3c00
+#define  PORT_PLL_DCO_AMP(x)		(x<<10)
 #define _PORT_PLL_BASE(port)		_PORT3(port, _PORT_PLL_0_A,	\
 						_PORT_PLL_0_B,		\
 						_PORT_PLL_0_C)
@@ -2118,7 +2143,10 @@ enum skl_disp_power_wells {
 #define DPIO_PHY_STATUS			(VLV_DISPLAY_BASE + 0x6240)
 #define   DPLL_PORTD_READY_MASK		(0xf)
 #define DISPLAY_PHY_CONTROL (VLV_DISPLAY_BASE + 0x60100)
-#define   PHY_COM_LANE_RESET_DEASSERT(phy) (1 << (phy))
+#define   PHY_CH_SU_PSR				0x1
+#define   PHY_CH_DEEP_PSR			0x7
+#define   PHY_CH_POWER_MODE(mode, phy, ch)	((mode) << (6*(phy)+3*(ch)+2))
+#define   PHY_COM_LANE_RESET_DEASSERT(phy)	(1 << (phy))
 #define DISPLAY_PHY_STATUS (VLV_DISPLAY_BASE + 0x60104)
 #define   PHY_POWERGOOD(phy)	(((phy) == DPIO_PHY0) ? (1<<31) : (1<<30))
 
@@ -3479,6 +3507,18 @@ enum skl_disp_power_wells {
 
 #define UTIL_PIN_CTL		0x48400
 #define   UTIL_PIN_ENABLE	(1 << 31)
+
+/* BXT backlight register definition. */
+#define BXT_BLC_PWM_CTL1			0xC8250
+#define   BXT_BLC_PWM_ENABLE			(1 << 31)
+#define   BXT_BLC_PWM_POLARITY			(1 << 29)
+#define BXT_BLC_PWM_FREQ1			0xC8254
+#define BXT_BLC_PWM_DUTY1			0xC8258
+
+#define BXT_BLC_PWM_CTL2			0xC8350
+#define BXT_BLC_PWM_FREQ2			0xC8354
+#define BXT_BLC_PWM_DUTY2			0xC8358
+
 
 #define PCH_GTC_CTL		0xe7000
 #define   PCH_GTC_ENABLE	(1 << 31)
@@ -5133,6 +5173,8 @@ enum skl_disp_power_wells {
 #define _PLANE_KEYMAX_2_A			0x702a0
 #define _PLANE_BUF_CFG_1_A			0x7027c
 #define _PLANE_BUF_CFG_2_A			0x7037c
+#define _PLANE_NV12_BUF_CFG_1_A		0x70278
+#define _PLANE_NV12_BUF_CFG_2_A		0x70378
 
 #define _PLANE_CTL_1_B				0x71180
 #define _PLANE_CTL_2_B				0x71280
@@ -5218,6 +5260,15 @@ enum skl_disp_power_wells {
 	_PIPE(pipe, _PLANE_BUF_CFG_2_A, _PLANE_BUF_CFG_2_B)
 #define PLANE_BUF_CFG(pipe, plane)	\
 	_PLANE(plane, _PLANE_BUF_CFG_1(pipe), _PLANE_BUF_CFG_2(pipe))
+
+#define _PLANE_NV12_BUF_CFG_1_B		0x71278
+#define _PLANE_NV12_BUF_CFG_2_B		0x71378
+#define _PLANE_NV12_BUF_CFG_1(pipe)	\
+	_PIPE(pipe, _PLANE_NV12_BUF_CFG_1_A, _PLANE_NV12_BUF_CFG_1_B)
+#define _PLANE_NV12_BUF_CFG_2(pipe)	\
+	_PIPE(pipe, _PLANE_NV12_BUF_CFG_2_A, _PLANE_NV12_BUF_CFG_2_B)
+#define PLANE_NV12_BUF_CFG(pipe, plane)	\
+	_PLANE(plane, _PLANE_NV12_BUF_CFG_1(pipe), _PLANE_NV12_BUF_CFG_2(pipe))
 
 /* SKL new cursor registers */
 #define _CUR_BUF_CFG_A				0x7017c
@@ -5700,7 +5751,7 @@ enum skl_disp_power_wells {
 #define HSW_NDE_RSTWRN_OPT	0x46408
 #define  RESET_PCH_HANDSHAKE_ENABLE	(1<<4)
 
-#define FF_SLICE_CS_CHICKEN2			0x02e4
+#define FF_SLICE_CS_CHICKEN2			0x20e4
 #define  GEN9_TSG_BARRIER_ACK_DISABLE		(1<<8)
 
 /* GEN7 chicken */
@@ -6638,15 +6689,20 @@ enum skl_disp_power_wells {
 
 #define GEN6_PCODE_MAILBOX			0x138124
 #define   GEN6_PCODE_READY			(1<<31)
-#define   GEN6_READ_OC_PARAMS			0xc
-#define   GEN6_PCODE_WRITE_MIN_FREQ_TABLE	0x8
-#define   GEN6_PCODE_READ_MIN_FREQ_TABLE	0x9
 #define	  GEN6_PCODE_WRITE_RC6VIDS		0x4
 #define	  GEN6_PCODE_READ_RC6VIDS		0x5
+#define     GEN6_ENCODE_RC6_VID(mv)		(((mv) - 245) / 5)
+#define     GEN6_DECODE_RC6_VID(vids)		(((vids) * 5) + 245)
+#define   GEN9_PCODE_READ_MEM_LATENCY		0x6
+#define     GEN9_MEM_LATENCY_LEVEL_MASK		0xFF
+#define     GEN9_MEM_LATENCY_LEVEL_1_5_SHIFT	8
+#define     GEN9_MEM_LATENCY_LEVEL_2_6_SHIFT	16
+#define     GEN9_MEM_LATENCY_LEVEL_3_7_SHIFT	24
+#define   GEN6_PCODE_WRITE_MIN_FREQ_TABLE	0x8
+#define   GEN6_PCODE_READ_MIN_FREQ_TABLE	0x9
+#define   GEN6_READ_OC_PARAMS			0xc
 #define   GEN6_PCODE_READ_D_COMP		0x10
 #define   GEN6_PCODE_WRITE_D_COMP		0x11
-#define   GEN6_ENCODE_RC6_VID(mv)		(((mv) - 245) / 5)
-#define   GEN6_DECODE_RC6_VID(vids)		(((vids) * 5) + 245)
 #define   HSW_PCODE_DE_WRITE_FREQ_REQ		0x17
 #define   DISPLAY_IPS_CONTROL			0x19
 #define	  HSW_PCODE_DYNAMIC_DUTY_CYCLE_CONTROL	0x1A
@@ -6654,12 +6710,6 @@ enum skl_disp_power_wells {
 #define   GEN6_PCODE_FREQ_IA_RATIO_SHIFT	8
 #define   GEN6_PCODE_FREQ_RING_RATIO_SHIFT	16
 #define GEN6_PCODE_DATA1			0x13812C
-
-#define   GEN9_PCODE_READ_MEM_LATENCY		0x6
-#define   GEN9_MEM_LATENCY_LEVEL_MASK		0xFF
-#define   GEN9_MEM_LATENCY_LEVEL_1_5_SHIFT	8
-#define   GEN9_MEM_LATENCY_LEVEL_2_6_SHIFT	16
-#define   GEN9_MEM_LATENCY_LEVEL_3_7_SHIFT	24
 
 #define GEN6_GT_CORE_STATUS		0x138060
 #define   GEN6_CORE_CPD_STATE_MASK	(7<<4)
@@ -6721,6 +6771,7 @@ enum skl_disp_power_wells {
 #define GEN7_HALF_SLICE_CHICKEN1_GT2	0xf100
 #define   GEN7_MAX_PS_THREAD_DEP		(8<<12)
 #define   GEN7_SINGLE_SUBSCAN_DISPATCH_ENABLE	(1<<10)
+#define   GEN7_SBE_SS_CACHE_DISPATCH_PORT_SHARING_DISABLE	(1<<4)
 #define   GEN7_PSD_SINGLE_PORT_DISPATCH_ENABLE	(1<<3)
 
 #define GEN9_HALF_SLICE_CHICKEN5	0xe188
@@ -7135,16 +7186,16 @@ enum skl_disp_power_wells {
 #define DPLL_CTRL1		0x6C058
 #define  DPLL_CTRL1_HDMI_MODE(id)		(1<<((id)*6+5))
 #define  DPLL_CTRL1_SSC(id)			(1<<((id)*6+4))
-#define  DPLL_CRTL1_LINK_RATE_MASK(id)		(7<<((id)*6+1))
-#define  DPLL_CRTL1_LINK_RATE_SHIFT(id)		((id)*6+1)
-#define  DPLL_CRTL1_LINK_RATE(linkrate, id)	((linkrate)<<((id)*6+1))
+#define  DPLL_CTRL1_LINK_RATE_MASK(id)		(7<<((id)*6+1))
+#define  DPLL_CTRL1_LINK_RATE_SHIFT(id)		((id)*6+1)
+#define  DPLL_CTRL1_LINK_RATE(linkrate, id)	((linkrate)<<((id)*6+1))
 #define  DPLL_CTRL1_OVERRIDE(id)		(1<<((id)*6))
-#define  DPLL_CRTL1_LINK_RATE_2700		0
-#define  DPLL_CRTL1_LINK_RATE_1350		1
-#define  DPLL_CRTL1_LINK_RATE_810		2
-#define  DPLL_CRTL1_LINK_RATE_1620		3
-#define  DPLL_CRTL1_LINK_RATE_1080		4
-#define  DPLL_CRTL1_LINK_RATE_2160		5
+#define  DPLL_CTRL1_LINK_RATE_2700		0
+#define  DPLL_CTRL1_LINK_RATE_1350		1
+#define  DPLL_CTRL1_LINK_RATE_810		2
+#define  DPLL_CTRL1_LINK_RATE_1620		3
+#define  DPLL_CTRL1_LINK_RATE_1080		4
+#define  DPLL_CTRL1_LINK_RATE_2160		5
 
 /* DPLL control2 */
 #define DPLL_CTRL2				0x6C05C
@@ -7203,6 +7254,17 @@ enum skl_disp_power_wells {
 #define DC_STATE_EN			0x45504
 #define  DC_STATE_EN_UPTO_DC5		(1<<0)
 #define  DC_STATE_EN_DC9		(1<<3)
+
+/*
+* SKL DC
+*/
+#define  DC_STATE_EN			0x45504
+#define  DC_STATE_EN_UPTO_DC5		(1<<0)
+#define  DC_STATE_EN_UPTO_DC6		(2<<0)
+#define  DC_STATE_EN_UPTO_DC5_DC6_MASK   0x3
+
+#define  DC_STATE_DEBUG                  0x45520
+#define  DC_STATE_DEBUG_MASK_MEMORY_UP	(1<<1)
 
 /* Please see hsw_read_dcomp() and hsw_write_dcomp() before using this register,
  * since on HSW we can't write to it using I915_WRITE. */
