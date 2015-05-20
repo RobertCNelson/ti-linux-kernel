@@ -344,41 +344,41 @@ enum cpu_type_enum {
 /*
  * CPU Option encodings
  */
-#define MIPS_CPU_TLB		0x00000001ull /* CPU has TLB */
-#define MIPS_CPU_4KEX		0x00000002ull /* "R4K" exception model */
-#define MIPS_CPU_3K_CACHE	0x00000004ull /* R3000-style caches */
-#define MIPS_CPU_4K_CACHE	0x00000008ull /* R4000-style caches */
-#define MIPS_CPU_TX39_CACHE	0x00000010ull /* TX3900-style caches */
-#define MIPS_CPU_FPU		0x00000020ull /* CPU has FPU */
-#define MIPS_CPU_32FPR		0x00000040ull /* 32 dbl. prec. FP registers */
-#define MIPS_CPU_COUNTER	0x00000080ull /* Cycle count/compare */
-#define MIPS_CPU_WATCH		0x00000100ull /* watchpoint registers */
-#define MIPS_CPU_DIVEC		0x00000200ull /* dedicated interrupt vector */
-#define MIPS_CPU_VCE		0x00000400ull /* virt. coherence conflict possible */
-#define MIPS_CPU_CACHE_CDEX_P	0x00000800ull /* Create_Dirty_Exclusive CACHE op */
-#define MIPS_CPU_CACHE_CDEX_S	0x00001000ull /* ... same for seconary cache ... */
-#define MIPS_CPU_MCHECK		0x00002000ull /* Machine check exception */
-#define MIPS_CPU_EJTAG		0x00004000ull /* EJTAG exception */
-#define MIPS_CPU_NOFPUEX	0x00008000ull /* no FPU exception */
-#define MIPS_CPU_LLSC		0x00010000ull /* CPU has ll/sc instructions */
-#define MIPS_CPU_INCLUSIVE_CACHES	0x00020000ull /* P-cache subset enforced */
-#define MIPS_CPU_PREFETCH	0x00040000ull /* CPU has usable prefetch */
-#define MIPS_CPU_VINT		0x00080000ull /* CPU supports MIPSR2 vectored interrupts */
-#define MIPS_CPU_VEIC		0x00100000ull /* CPU supports MIPSR2 external interrupt controller mode */
-#define MIPS_CPU_ULRI		0x00200000ull /* CPU has ULRI feature */
-#define MIPS_CPU_PCI		0x00400000ull /* CPU has Perf Ctr Int indicator */
-#define MIPS_CPU_RIXI		0x00800000ull /* CPU has TLB Read/eXec Inhibit */
-#define MIPS_CPU_MICROMIPS	0x01000000ull /* CPU has microMIPS capability */
-#define MIPS_CPU_TLBINV		0x02000000ull /* CPU supports TLBINV/F */
-#define MIPS_CPU_SEGMENTS	0x04000000ull /* CPU supports Segmentation Control registers */
-#define MIPS_CPU_EVA		0x80000000ull /* CPU supports Enhanced Virtual Addressing */
-#define MIPS_CPU_HTW		0x100000000ull /* CPU support Hardware Page Table Walker */
-#define MIPS_CPU_RIXIEX		0x200000000ull /* CPU has unique exception codes for {Read, Execute}-Inhibit exceptions */
-#define MIPS_CPU_MAAR		0x400000000ull /* MAAR(I) registers are present */
-#define MIPS_CPU_FRE		0x800000000ull /* FRE & UFE bits implemented */
-#define MIPS_CPU_RW_LLB		0x1000000000ull /* LLADDR/LLB writes are allowed */
-#define MIPS_CPU_XPA		0x2000000000ull /* CPU supports Extended Physical Addressing */
-#define MIPS_CPU_CDMM		0x4000000000ull	/* CPU has Common Device Memory Map */
+#define MIPS_CPU_TLB		(1ull <<  0) /* CPU has TLB */
+#define MIPS_CPU_4KEX		(1ull <<  1) /* "R4K" exception model */
+#define MIPS_CPU_3K_CACHE	(1ull <<  2) /* R3000-style caches */
+#define MIPS_CPU_4K_CACHE	(1ull <<  3) /* R4000-style caches */
+#define MIPS_CPU_TX39_CACHE	(1ull <<  4) /* TX3900-style caches */
+#define MIPS_CPU_FPU		(1ull <<  5) /* CPU has FPU */
+#define MIPS_CPU_32FPR		(1ull <<  6) /* 32 dbl. prec. FP registers */
+#define MIPS_CPU_COUNTER	(1ull <<  7) /* Cycle count/compare */
+#define MIPS_CPU_WATCH		(1ull <<  8) /* watchpoint registers */
+#define MIPS_CPU_DIVEC		(1ull <<  9) /* dedicated interrupt vector */
+#define MIPS_CPU_VCE		(1ull << 10) /* virt. coherence conflict possible */
+#define MIPS_CPU_CACHE_CDEX_P	(1ull << 11) /* Create_Dirty_Exclusive CACHE op */
+#define MIPS_CPU_CACHE_CDEX_S	(1ull << 12) /* ... same for seconary cache ... */
+#define MIPS_CPU_MCHECK		(1ull << 13) /* Machine check exception */
+#define MIPS_CPU_EJTAG		(1ull << 14) /* EJTAG exception */
+#define MIPS_CPU_NOFPUEX	(1ull << 15) /* no FPU exception */
+#define MIPS_CPU_LLSC		(1ull << 16) /* CPU has ll/sc instructions */
+#define MIPS_CPU_INCLUSIVE_CACHES (1ull << 17) /* P-cache subset enforced */
+#define MIPS_CPU_PREFETCH	(1ull << 18) /* CPU has usable prefetch */
+#define MIPS_CPU_VINT		(1ull << 19) /* CPU supports MIPSR2 vectored interrupts */
+#define MIPS_CPU_VEIC		(1ull << 20) /* CPU supports MIPSR2 external interrupt controller mode */
+#define MIPS_CPU_ULRI		(1ull << 21) /* CPU has ULRI feature */
+#define MIPS_CPU_PCI		(1ull << 22) /* CPU has Perf Ctr Int indicator */
+#define MIPS_CPU_RIXI		(1ull << 23) /* CPU has TLB Read/eXec Inhibit */
+#define MIPS_CPU_MICROMIPS	(1ull << 24) /* CPU has microMIPS capability */
+#define MIPS_CPU_TLBINV		(1ull << 25) /* CPU supports TLBINV/F */
+#define MIPS_CPU_SEGMENTS	(1ull << 26) /* CPU supports Segmentation Control registers */
+#define MIPS_CPU_EVA		(1ull << 27) /* CPU supports Enhanced Virtual Addressing */
+#define MIPS_CPU_HTW		(1ull << 28) /* CPU support Hardware Page Table Walker */
+#define MIPS_CPU_RIXIEX		(1ull << 29) /* CPU has unique exception codes for {Read, Execute}-Inhibit exceptions */
+#define MIPS_CPU_MAAR		(1ull << 30) /* MAAR(I) registers are present */
+#define MIPS_CPU_FRE		(1ull << 31) /* FRE & UFE bits implemented */
+#define MIPS_CPU_RW_LLB		(1ull << 32) /* LLADDR/LLB writes are allowed */
+#define MIPS_CPU_XPA		(1ull << 33) /* CPU supports Extended Physical Addressing */
+#define MIPS_CPU_CDMM		(1ull << 34) /* CPU has Common Device Memory Map */
 
 /*
  * CPU ASE encodings
