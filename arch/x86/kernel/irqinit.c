@@ -86,7 +86,7 @@ void __init init_IRQ(void)
 	int i;
 
 	/*
-	 * On cpu 0, Assign IRQ0_VECTOR..IRQ15_VECTOR's to IRQ 0..15.
+	 * On cpu 0, Assign ISA_IRQ_VECTOR(irq) to IRQ 0..15.
 	 * If these IRQ's are handled by legacy interrupt-controllers like PIC,
 	 * then this configuration will likely be static after the boot. If
 	 * these IRQ's are handled by more mordern controllers like IO-APIC,
@@ -94,7 +94,7 @@ void __init init_IRQ(void)
 	 * irq's migrate etc.
 	 */
 	for (i = 0; i < nr_legacy_irqs(); i++)
-		per_cpu(vector_irq, 0)[IRQ0_VECTOR + i] = i;
+		per_cpu(vector_irq, 0)[ISA_IRQ_VECTOR(i)] = i;
 
 	x86_init.irqs.intr_init();
 }
@@ -133,6 +133,10 @@ static void __init apic_intr_init(void)
 #endif
 #ifdef CONFIG_X86_MCE_THRESHOLD
 	alloc_intr_gate(THRESHOLD_APIC_VECTOR, threshold_interrupt);
+#endif
+
+#ifdef CONFIG_X86_MCE_AMD
+	alloc_intr_gate(DEFERRED_ERROR_VECTOR, deferred_error_interrupt);
 #endif
 
 #ifdef CONFIG_X86_LOCAL_APIC
