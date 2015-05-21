@@ -4,6 +4,7 @@
 struct target_core_fabric_ops {
 	struct module *module;
 	const char *name;
+	bool complete_irq;
 	size_t node_acl_size;
 	char *(*get_fabric_name)(void);
 	char *(*tpg_get_wwn)(struct se_portal_group *);
