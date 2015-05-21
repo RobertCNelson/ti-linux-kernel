@@ -150,6 +150,7 @@ enum se_cmd_flags_table {
 	SCF_COMPARE_AND_WRITE		= 0x00080000,
 	SCF_COMPARE_AND_WRITE_POST	= 0x00100000,
 	SCF_PASSTHROUGH_PROT_SG_TO_MEM_NOALLOC = 0x00200000,
+	SCF_COMPLETE_IRQ		= 0x00400000,
 };
 
 /* struct se_dev_entry->lun_flags and struct se_lun->lun_access */
@@ -481,7 +482,7 @@ struct se_cmd {
 	u64			pr_res_key;
 	/* Used for sense data */
 	void			*sense_buffer;
-	struct list_head	se_delayed_node;
+	struct llist_node	se_delayed_node;
 	struct list_head	se_qf_node;
 	struct se_device      *se_dev;
 	struct se_lun		*se_lun;
@@ -789,7 +790,7 @@ struct se_device {
 	struct list_head	dev_tmr_list;
 	struct workqueue_struct *tmr_wq;
 	struct work_struct	qf_work_queue;
-	struct list_head	delayed_cmd_list;
+	struct llist_head	delayed_cmd_llist;
 	struct list_head	state_list;
 	struct list_head	qf_cmd_list;
 	struct list_head	g_dev_node;

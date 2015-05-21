@@ -749,7 +749,7 @@ struct se_device *target_alloc_device(struct se_hba *hba, const char *name)
 	INIT_LIST_HEAD(&dev->dev_list);
 	INIT_LIST_HEAD(&dev->dev_sep_list);
 	INIT_LIST_HEAD(&dev->dev_tmr_list);
-	INIT_LIST_HEAD(&dev->delayed_cmd_list);
+	init_llist_head(&dev->delayed_cmd_llist);
 	INIT_LIST_HEAD(&dev->state_list);
 	INIT_LIST_HEAD(&dev->qf_cmd_list);
 	INIT_LIST_HEAD(&dev->g_dev_node);
