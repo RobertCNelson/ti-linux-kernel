@@ -48,7 +48,7 @@
 
 /* Encryption added and removed here! (L: */
 
-static unsigned int num_prealloc_crypto_pages = 32;
+static unsigned int num_prealloc_crypto_pages = BIO_MAX_PAGES;
 static unsigned int num_prealloc_crypto_ctxs = 128;
 
 module_param(num_prealloc_crypto_pages, uint, 0444);
