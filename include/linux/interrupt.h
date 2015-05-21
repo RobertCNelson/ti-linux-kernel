@@ -11,8 +11,6 @@
 #include <linux/irqnr.h>
 #include <linux/hardirq.h>
 #include <linux/irqflags.h>
-#include <linux/smp.h>
-#include <linux/percpu.h>
 #include <linux/hrtimer.h>
 #include <linux/kref.h>
 #include <linux/workqueue.h>
@@ -518,17 +516,6 @@ static inline struct task_struct *this_cpu_ksoftirqd(void)
 {
 	return this_cpu_read(ksoftirqd);
 }
-
-/* Try to send a softirq to a remote cpu.  If this cannot be done, the
- * work will be queued to the local cpu.
- */
-extern void send_remote_softirq(struct call_single_data *cp, int cpu, int softirq);
-
-/* Like send_remote_softirq(), but the caller must disable local cpu interrupts
- * and compute the current cpu, passed in as 'this_cpu'.
- */
-extern void __send_remote_softirq(struct call_single_data *cp, int cpu,
-				  int this_cpu, int softirq);
 
 /* Tasklets --- multithreaded analogue of BHs.
 
