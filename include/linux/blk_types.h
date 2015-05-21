@@ -16,6 +16,7 @@ struct io_context;
 struct cgroup_subsys_state;
 typedef void (bio_end_io_t) (struct bio *, int);
 typedef void (bio_destructor_t) (struct bio *);
+typedef void (bio_discard_completion_t) (struct bio *, void *);
 
 /*
  * was unsigned short, but we might as well be ready for > 64kB I/O pages
@@ -192,6 +193,7 @@ enum rq_flag_bits {
 	__REQ_HASHED,		/* on IO scheduler merge hash */
 	__REQ_MQ_INFLIGHT,	/* track inflight for MQ */
 	__REQ_NO_TIMEOUT,	/* requests may never expire */
+	__REQ_CLONE,		/* cloned bios */
 	__REQ_NR_BITS,		/* stops here */
 };
 
@@ -246,5 +248,6 @@ enum rq_flag_bits {
 #define REQ_HASHED		(1ULL << __REQ_HASHED)
 #define REQ_MQ_INFLIGHT		(1ULL << __REQ_MQ_INFLIGHT)
 #define REQ_NO_TIMEOUT		(1ULL << __REQ_NO_TIMEOUT)
+#define REQ_CLONE		(1ULL << __REQ_CLONE)
 
 #endif /* __LINUX_BLK_TYPES_H */
