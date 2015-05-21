@@ -459,8 +459,9 @@ struct intel_pipe_wm {
 };
 
 struct intel_mmio_flip {
-	struct drm_i915_gem_request *req;
 	struct work_struct work;
+	struct drm_i915_gem_request *rq;
+	struct intel_crtc *crtc;
 };
 
 struct skl_pipe_wm {
@@ -544,7 +545,6 @@ struct intel_crtc {
 	} wm;
 
 	int scanline_offset;
-	struct intel_mmio_flip mmio_flip;
 
 	struct intel_crtc_atomic_commit atomic;
 
@@ -555,7 +555,15 @@ struct intel_crtc {
 struct intel_plane_wm_parameters {
 	uint32_t horiz_pixels;
 	uint32_t vert_pixels;
+	/*
+	 *   For packed pixel formats:
+	 *     bytes_per_pixel - holds bytes per pixel
+	 *   For planar pixel formats:
+	 *     bytes_per_pixel - holds bytes per pixel for uv-plane
+	 *     y_bytes_per_pixel - holds bytes per pixel for y-plane
+	 */
 	uint8_t bytes_per_pixel;
+	uint8_t y_bytes_per_pixel;
 	bool enabled;
 	bool scaled;
 	u64 tiling;
@@ -1059,9 +1067,6 @@ intel_rotation_90_or_270(unsigned int rotation)
 	return rotation & (BIT(DRM_ROTATE_90) | BIT(DRM_ROTATE_270));
 }
 
-unsigned int
-intel_tile_height(struct drm_device *dev, uint32_t bits_per_pixel,
-		  uint64_t fb_modifier);
 void intel_create_rotation_property(struct drm_device *dev,
 					struct intel_plane *plane);
 

@@ -79,7 +79,7 @@ static const u32 hpd_status_g4x[HPD_NUM_PINS] = {
 	[HPD_PORT_D] = PORTD_HOTPLUG_INT_STATUS
 };
 
-static const u32 hpd_status_i915[HPD_NUM_PINS] = { /* i915 and valleyview are the same */
+static const u32 hpd_status_i915[HPD_NUM_PINS] = {
 	[HPD_CRT] = CRT_HOTPLUG_INT_STATUS,
 	[HPD_SDVO_B] = SDVOB_HOTPLUG_INT_STATUS_I915,
 	[HPD_SDVO_C] = SDVOC_HOTPLUG_INT_STATUS_I915,
@@ -1386,7 +1386,7 @@ static int i915_port_to_hotplug_shift(enum port port)
 	}
 }
 
-static inline enum port get_port_from_pin(enum hpd_pin pin)
+static enum port get_port_from_pin(enum hpd_pin pin)
 {
 	switch (pin) {
 	case HPD_PORT_B:
@@ -1400,10 +1400,10 @@ static inline enum port get_port_from_pin(enum hpd_pin pin)
 	}
 }
 
-static inline void intel_hpd_irq_handler(struct drm_device *dev,
-					 u32 hotplug_trigger,
-					 u32 dig_hotplug_reg,
-					 const u32 hpd[HPD_NUM_PINS])
+static void intel_hpd_irq_handler(struct drm_device *dev,
+				  u32 hotplug_trigger,
+				  u32 dig_hotplug_reg,
+				  const u32 hpd[HPD_NUM_PINS])
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int i;
@@ -1743,7 +1743,7 @@ static void i9xx_hpd_irq_handler(struct drm_device *dev)
 		 */
 		POSTING_READ(PORT_HOTPLUG_STAT);
 
-		if (IS_G4X(dev)) {
+		if (IS_G4X(dev) || IS_VALLEYVIEW(dev)) {
 			u32 hotplug_trigger = hotplug_status & HOTPLUG_INT_STATUS_G4X;
 
 			intel_hpd_irq_handler(dev, hotplug_trigger, 0, hpd_status_g4x);

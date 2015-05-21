@@ -309,7 +309,7 @@ struct intel_dpll_hw_state {
 	uint32_t cfgcr1, cfgcr2;
 
 	/* bxt */
-	uint32_t ebb0, pll0, pll1, pll2, pll3, pll6, pll8, pcsdw12;
+	uint32_t ebb0, pll0, pll1, pll2, pll3, pll6, pll8, pll10, pcsdw12;
 };
 
 struct intel_shared_dpll_config {
@@ -1468,7 +1468,8 @@ static inline bool skl_ddb_entry_equal(const struct skl_ddb_entry *e1,
 
 struct skl_ddb_allocation {
 	struct skl_ddb_entry pipe[I915_MAX_PIPES];
-	struct skl_ddb_entry plane[I915_MAX_PIPES][I915_MAX_PLANES];
+	struct skl_ddb_entry plane[I915_MAX_PIPES][I915_MAX_PLANES]; /* packed/uv */
+	struct skl_ddb_entry y_plane[I915_MAX_PIPES][I915_MAX_PLANES]; /* y-plane */
 	struct skl_ddb_entry cursor[I915_MAX_PIPES];
 };
 
@@ -2160,10 +2161,12 @@ i915_gem_request_get_ring(struct drm_i915_gem_request *req)
 	return req ? req->ring : NULL;
 }
 
-static inline void
+static inline struct drm_i915_gem_request *
 i915_gem_request_reference(struct drm_i915_gem_request *req)
 {
-	kref_get(&req->ref);
+	if (req)
+		kref_get(&req->ref);
+	return req;
 }
 
 static inline void
@@ -2375,6 +2378,7 @@ struct drm_i915_cmd_table {
 #define SKL_REVID_C0		(0x2)
 #define SKL_REVID_D0		(0x3)
 #define SKL_REVID_E0		(0x4)
+#define SKL_REVID_F0		(0x5)
 
 #define BXT_REVID_A0		(0x0)
 #define BXT_REVID_B0		(0x3)
@@ -2444,6 +2448,9 @@ struct drm_i915_cmd_table {
 #define HAS_FBC(dev) (INTEL_INFO(dev)->has_fbc)
 
 #define HAS_IPS(dev)		(IS_HSW_ULT(dev) || IS_BROADWELL(dev))
+
+#define HAS_DP_MST(dev)		(IS_HASWELL(dev) || IS_BROADWELL(dev) || \
+				 INTEL_INFO(dev)->gen >= 9)
 
 #define HAS_DDI(dev)		(INTEL_INFO(dev)->has_ddi)
 #define HAS_FPGA_DBG_UNCLAIMED(dev)	(INTEL_INFO(dev)->has_fpga_dbg)
@@ -2820,7 +2827,6 @@ static inline bool i915_stop_ring_allow_warn(struct drm_i915_private *dev_priv)
 
 void i915_gem_reset(struct drm_device *dev);
 bool i915_gem_clflush_object(struct drm_i915_gem_object *obj, bool force);
-int __must_check i915_gem_object_finish_gpu(struct drm_i915_gem_object *obj);
 int __must_check i915_gem_init(struct drm_device *dev);
 int i915_gem_init_rings(struct drm_device *dev);
 int __must_check i915_gem_init_hw(struct drm_device *dev);
@@ -2841,6 +2847,9 @@ int __i915_wait_request(struct drm_i915_gem_request *req,
 			struct drm_i915_file_private *file_priv);
 int __must_check i915_wait_request(struct drm_i915_gem_request *req);
 int i915_gem_fault(struct vm_area_struct *vma, struct vm_fault *vmf);
+int __must_check
+i915_gem_object_wait_rendering(struct drm_i915_gem_object *obj,
+			       bool readonly);
 int __must_check
 i915_gem_object_set_to_gtt_domain(struct drm_i915_gem_object *obj,
 				  bool write);
