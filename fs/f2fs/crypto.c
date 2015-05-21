@@ -408,20 +408,12 @@ struct page *f2fs_encrypt(struct inode *inode,
 		return (struct page *)ctx;
 
 	/* The encryption operation will require a bounce page. */
-	ciphertext_page = alloc_page(GFP_NOFS);
+	ciphertext_page = mempool_alloc(f2fs_bounce_page_pool, GFP_NOFS);
 	if (!ciphertext_page) {
-		/*
-		 * This is a potential bottleneck, but at least we'll have
-		 * forward progress.
-		 */
-		ciphertext_page = mempool_alloc(f2fs_bounce_page_pool,
-							GFP_NOFS);
-		if (WARN_ON_ONCE(!ciphertext_page))
-			ciphertext_page = mempool_alloc(f2fs_bounce_page_pool,
-						GFP_NOFS | __GFP_WAIT);
-		ctx->flags &= ~F2FS_BOUNCE_PAGE_REQUIRES_FREE_ENCRYPT_FL;
-	} else {
+		ciphertext_page = alloc_page(GFP_NOFS);
 		ctx->flags |= F2FS_BOUNCE_PAGE_REQUIRES_FREE_ENCRYPT_FL;
+	} else {
+		ctx->flags &= ~F2FS_BOUNCE_PAGE_REQUIRES_FREE_ENCRYPT_FL;
 	}
 	ctx->flags |= F2FS_WRITE_PATH_FL;
 	ctx->w.bounce_page = ciphertext_page;
