@@ -427,8 +427,10 @@ bool driver_allows_async_probing(struct device_driver *drv)
 		return false;
 
 	default:
+#ifdef CONFIG_MODULES
 		if (drv->owner && drv->owner->async_probe_requested)
 			return true;
+#endif
 
 		return false;
 	}
