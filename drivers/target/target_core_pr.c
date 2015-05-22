@@ -1429,12 +1429,6 @@ static void core_scsi3_lunacl_undepend_item(struct se_dev_entry *se_deve)
 	struct se_lun_acl *lun_acl;
 	struct se_node_acl *nacl;
 	struct se_portal_group *tpg;
-
-	if (!se_deve) {
-		pr_err("core_scsi3_lunacl_undepend_item passed NULL se_deve\n");
-		dump_stack();
-		return;
-	}
 	/*
 	 * For nacl->dynamic_node_acl=1
 	 */
