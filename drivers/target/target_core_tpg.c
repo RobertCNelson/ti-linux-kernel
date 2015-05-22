@@ -641,9 +641,9 @@ int core_tpg_add_lun(
 		target_attach_tg_pt_gp(lun, dev->t10_alua.default_tg_pt_gp);
 
 	mutex_lock(&tpg->tpg_lun_mutex);
-	rcu_assign_pointer(lun->lun_se_dev, dev);
 
 	spin_lock(&dev->se_port_lock);
+	rcu_assign_pointer(lun->lun_se_dev, dev);
 	dev->export_count++;
 	list_add_tail(&lun->lun_dev_link, &dev->dev_sep_list);
 	spin_unlock(&dev->se_port_lock);
