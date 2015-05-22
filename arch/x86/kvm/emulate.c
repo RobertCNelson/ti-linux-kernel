@@ -25,6 +25,7 @@
 #include <linux/module.h>
 #include <asm/kvm_emulate.h>
 #include <linux/stringify.h>
+#include <asm/debugreg.h>
 
 #include "x86.h"
 #include "tss.h"
@@ -523,13 +524,9 @@ static void masked_increment(ulong *reg, ulong mask, int inc)
 static inline void
 register_address_increment(struct x86_emulate_ctxt *ctxt, int reg, int inc)
 {
-	ulong mask;
+	ulong *preg = reg_rmw(ctxt, reg);
 
-	if (ctxt->ad_bytes == sizeof(unsigned long))
-		mask = ~0UL;
-	else
-		mask = ad_mask(ctxt);
-	masked_increment(reg_rmw(ctxt, reg), mask, inc);
+	assign_register(preg, *preg + inc, ctxt->ad_bytes);
 }
 
 static void rsp_increment(struct x86_emulate_ctxt *ctxt, int inc)
@@ -2573,6 +2570,30 @@ static bool emulator_io_permited(struct x86_emulate_ctxt *ctxt,
 	return true;
 }
 
+static void string_registers_quirk(struct x86_emulate_ctxt *ctxt)
+{
+	/*
+	 * Intel CPUs mask the counter and pointers in quite strange
+	 * manner when ECX is zero due to REP-string optimizations.
+	 */
+#ifdef CONFIG_X86_64
+	if (ctxt->ad_bytes != 4 || !vendor_intel(ctxt))
+		return;
+
+	*reg_write(ctxt, VCPU_REGS_RCX) = 0;
+
+	switch (ctxt->b) {
+	case 0xa4:	/* movsb */
+	case 0xa5:	/* movsd/w */
+		*reg_rmw(ctxt, VCPU_REGS_RSI) &= (u32)-1;
+		/* fall through */
+	case 0xaa:	/* stosb */
+	case 0xab:	/* stosd/w */
+		*reg_rmw(ctxt, VCPU_REGS_RDI) &= (u32)-1;
+	}
+#endif
+}
+
 static void save_state_to_tss16(struct x86_emulate_ctxt *ctxt,
 				struct tss_segment_16 *tss)
 {
@@ -2849,7 +2870,7 @@ static int emulator_do_task_switch(struct x86_emulate_ctxt *ctxt,
 	ulong old_tss_base =
 		ops->get_cached_segment_base(ctxt, VCPU_SREG_TR);
 	u32 desc_limit;
-	ulong desc_addr;
+	ulong desc_addr, dr7;
 
 	/* FIXME: old_tss_base == ~0 ? */
 
@@ -2933,6 +2954,9 @@ static int emulator_do_task_switch(struct x86_emulate_ctxt *ctxt,
 		ctxt->src.val = (unsigned long) error_code;
 		ret = em_push(ctxt);
 	}
+
+	ops->get_dr(ctxt, 7, &dr7);
+	ops->set_dr(ctxt, 7, dr7 & ~(DR_LOCAL_ENABLE_MASK | DR_LOCAL_SLOWDOWN));
 
 	return ret;
 }
@@ -3840,7 +3864,7 @@ static const struct opcode group5[] = {
 	F(DstMem | SrcNone | Lock,		em_inc),
 	F(DstMem | SrcNone | Lock,		em_dec),
 	I(SrcMem | NearBranch,			em_call_near_abs),
-	I(SrcMemFAddr | ImplicitOps | Stack,	em_call_far),
+	I(SrcMemFAddr | ImplicitOps,		em_call_far),
 	I(SrcMem | NearBranch,			em_jmp_abs),
 	I(SrcMemFAddr | ImplicitOps,		em_jmp_far),
 	I(SrcMem | Stack,			em_push), D(Undefined),
@@ -4910,6 +4934,7 @@ int x86_emulate_insn(struct x86_emulate_ctxt *ctxt)
 		if (ctxt->rep_prefix && (ctxt->d & String)) {
 			/* All REP prefixes have the same first termination condition */
 			if (address_mask(ctxt, reg_read(ctxt, VCPU_REGS_RCX)) == 0) {
+				string_registers_quirk(ctxt);
 				ctxt->eip = ctxt->_eip;
 				ctxt->eflags &= ~X86_EFLAGS_RF;
 				goto done;
