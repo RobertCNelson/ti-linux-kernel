@@ -808,16 +808,28 @@ ssize_t tcp_splice_read(struct socket *sock, loff_t *ppos,
 }
 EXPORT_SYMBOL(tcp_splice_read);
 
-struct sk_buff *sk_stream_alloc_skb(struct sock *sk, int size, gfp_t gfp)
+struct sk_buff *sk_stream_alloc_skb(struct sock *sk, int size, gfp_t gfp,
+				    bool force_schedule)
 {
 	struct sk_buff *skb;
 
 	/* The TCP header must be at least 32-bit aligned.  */
 	size = ALIGN(size, 4);
 
+	if (unlikely(tcp_under_memory_pressure(sk)))
+		sk_mem_reclaim_partial(sk);
+
 	skb = alloc_skb_fclone(size + sk->sk_prot->max_header, gfp);
-	if (skb) {
-		if (sk_wmem_schedule(sk, skb->truesize)) {
+	if (likely(skb)) {
+		bool mem_scheduled;
+
+		if (force_schedule) {
+			mem_scheduled = true;
+			sk_forced_mem_schedule(sk, skb->truesize);
+		} else {
+			mem_scheduled = sk_wmem_schedule(sk, skb->truesize);
+		}
+		if (likely(mem_scheduled)) {
 			skb_reserve(skb, sk->sk_prot->max_header);
 			/*
 			 * Make sure that we have exactly size bytes
@@ -907,7 +919,8 @@ new_segment:
 			if (!sk_stream_memory_free(sk))
 				goto wait_for_sndbuf;
 
-			skb = sk_stream_alloc_skb(sk, 0, sk->sk_allocation);
+			skb = sk_stream_alloc_skb(sk, 0, sk->sk_allocation,
+						  skb_queue_empty(&sk->sk_write_queue));
 			if (!skb)
 				goto wait_for_memory;
 
@@ -986,6 +999,9 @@ do_error:
 	if (copied)
 		goto out;
 out_err:
+	/* make sure we wake any epoll edge trigger waiter */
+	if (unlikely(skb_queue_len(&sk->sk_write_queue) == 0 && err == -EAGAIN))
+		sk->sk_write_space(sk);
 	return sk_stream_error(sk, flags, err);
 }
 
@@ -1143,7 +1159,8 @@ new_segment:
 
 			skb = sk_stream_alloc_skb(sk,
 						  select_size(sk, sg),
-						  sk->sk_allocation);
+						  sk->sk_allocation,
+						  skb_queue_empty(&sk->sk_write_queue));
 			if (!skb)
 				goto wait_for_memory;
 
@@ -1274,6 +1291,9 @@ do_error:
 		goto out;
 out_err:
 	err = sk_stream_error(sk, flags, err);
+	/* make sure we wake any epoll edge trigger waiter */
+	if (unlikely(skb_queue_len(&sk->sk_write_queue) == 0 && err == -EAGAIN))
+		sk->sk_write_space(sk);
 	release_sock(sk);
 	return err;
 }
@@ -2482,6 +2502,13 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 			icsk->icsk_syn_retries = val;
 		break;
 
+	case TCP_SAVE_SYN:
+		if (val < 0 || val > 1)
+			err = -EINVAL;
+		else
+			tp->save_syn = val;
+		break;
+
 	case TCP_LINGER2:
 		if (val < 0)
 			tp->linger2 = -1;
@@ -2818,6 +2845,42 @@ static int do_tcp_getsockopt(struct sock *sk, int level,
 	case TCP_NOTSENT_LOWAT:
 		val = tp->notsent_lowat;
 		break;
+	case TCP_SAVE_SYN:
+		val = tp->save_syn;
+		break;
+	case TCP_SAVED_SYN: {
+		if (get_user(len, optlen))
+			return -EFAULT;
+
+		lock_sock(sk);
+		if (tp->saved_syn) {
+			if (len < tp->saved_syn[0]) {
+				if (put_user(tp->saved_syn[0], optlen)) {
+					release_sock(sk);
+					return -EFAULT;
+				}
+				release_sock(sk);
+				return -EINVAL;
+			}
+			len = tp->saved_syn[0];
+			if (put_user(len, optlen)) {
+				release_sock(sk);
+				return -EFAULT;
+			}
+			if (copy_to_user(optval, tp->saved_syn + 1, len)) {
+				release_sock(sk);
+				return -EFAULT;
+			}
+			tcp_saved_syn_free(tp);
+			release_sock(sk);
+		} else {
+			release_sock(sk);
+			len = 0;
+			if (put_user(len, optlen))
+				return -EFAULT;
+		}
+		return 0;
+	}
 	default:
 		return -ENOPROTOOPT;
 	}
@@ -3022,11 +3085,12 @@ __setup("thash_entries=", set_thash_entries);
 
 static void __init tcp_init_mem(void)
 {
-	unsigned long limit = nr_free_buffer_pages() / 8;
+	unsigned long limit = nr_free_buffer_pages() / 16;
+
 	limit = max(limit, 128UL);
-	sysctl_tcp_mem[0] = limit / 4 * 3;
-	sysctl_tcp_mem[1] = limit;
-	sysctl_tcp_mem[2] = sysctl_tcp_mem[0] * 2;
+	sysctl_tcp_mem[0] = limit / 4 * 3;		/* 4.68 % */
+	sysctl_tcp_mem[1] = limit;			/* 6.25 % */
+	sysctl_tcp_mem[2] = sysctl_tcp_mem[0] * 2;	/* 9.37 % */
 }
 
 void __init tcp_init(void)

@@ -856,23 +856,39 @@ static void free_msix_queue_irqs(struct adapter *adap)
  *
  *	Sets up the portion of the HW RSS table for the port's VI to distribute
  *	packets to the Rx queues in @queues.
+ *	Should never be called before setting up sge eth rx queues
  */
 int cxgb4_write_rss(const struct port_info *pi, const u16 *queues)
 {
 	u16 *rss;
 	int i, err;
-	const struct sge_eth_rxq *q = &pi->adapter->sge.ethrxq[pi->first_qset];
+	struct adapter *adapter = pi->adapter;
+	const struct sge_eth_rxq *rxq;
 
+	rxq = &adapter->sge.ethrxq[pi->first_qset];
 	rss = kmalloc(pi->rss_size * sizeof(u16), GFP_KERNEL);
 	if (!rss)
 		return -ENOMEM;
 
 	/* map the queue indices to queue ids */
 	for (i = 0; i < pi->rss_size; i++, queues++)
-		rss[i] = q[*queues].rspq.abs_id;
+		rss[i] = rxq[*queues].rspq.abs_id;
 
-	err = t4_config_rss_range(pi->adapter, pi->adapter->fn, pi->viid, 0,
+	err = t4_config_rss_range(adapter, adapter->fn, pi->viid, 0,
 				  pi->rss_size, rss, pi->rss_size);
+	/* If Tunnel All Lookup isn't specified in the global RSS
+	 * Configuration, then we need to specify a default Ingress
+	 * Queue for any ingress packets which aren't hashed.  We'll
+	 * use our first ingress queue ...
+	 */
+	if (!err)
+		err = t4_config_vi_rss(adapter, adapter->mbox, pi->viid,
+				       FW_RSS_VI_CONFIG_CMD_IP6FOURTUPEN_F |
+				       FW_RSS_VI_CONFIG_CMD_IP6TWOTUPEN_F |
+				       FW_RSS_VI_CONFIG_CMD_IP4FOURTUPEN_F |
+				       FW_RSS_VI_CONFIG_CMD_IP4TWOTUPEN_F |
+				       FW_RSS_VI_CONFIG_CMD_UDPEN_F,
+				       rss[0]);
 	kfree(rss);
 	return err;
 }
@@ -885,10 +901,14 @@ int cxgb4_write_rss(const struct port_info *pi, const u16 *queues)
  */
 static int setup_rss(struct adapter *adap)
 {
-	int i, err;
+	int i, j, err;
 
 	for_each_port(adap, i) {
 		const struct port_info *pi = adap2pinfo(adap, i);
+
+		/* Fill default values with equal distribution */
+		for (j = 0; j < pi->rss_size; j++)
+			pi->rss[j] = j % pi->nqsets;
 
 		err = cxgb4_write_rss(pi, pi->rss);
 		if (err)
@@ -977,7 +997,7 @@ static int alloc_ofld_rxqs(struct adapter *adap, struct sge_ofld_rxq *q,
 		err = t4_sge_alloc_rxq(adap, &q->rspq, false,
 				       adap->port[i / per_chan],
 				       msi_idx, q->fl.size ? &q->fl : NULL,
-				       uldrx_handler);
+				       uldrx_handler, 0);
 		if (err)
 			return err;
 		memset(&q->stats, 0, sizeof(q->stats));
@@ -1007,7 +1027,7 @@ static int setup_sge_queues(struct adapter *adap)
 		msi_idx = 1;         /* vector 0 is for non-queue interrupts */
 	else {
 		err = t4_sge_alloc_rxq(adap, &s->intrq, false, adap->port[0], 0,
-				       NULL, NULL);
+				       NULL, NULL, -1);
 		if (err)
 			return err;
 		msi_idx = -((int)s->intrq.abs_id + 1);
@@ -1027,7 +1047,7 @@ static int setup_sge_queues(struct adapter *adap)
 	 *    new/deleted queues.
 	 */
 	err = t4_sge_alloc_rxq(adap, &s->fw_evtq, true, adap->port[0],
-			       msi_idx, NULL, fwevtq_handler);
+			       msi_idx, NULL, fwevtq_handler, -1);
 	if (err) {
 freeout:	t4_free_sge_resources(adap);
 		return err;
@@ -1044,7 +1064,9 @@ freeout:	t4_free_sge_resources(adap);
 				msi_idx++;
 			err = t4_sge_alloc_rxq(adap, &q->rspq, false, dev,
 					       msi_idx, &q->fl,
-					       t4_ethrx_handler);
+					       t4_ethrx_handler,
+					       t4_get_mps_bg_map(adap,
+								 pi->tx_chan));
 			if (err)
 				goto freeout;
 			q->rspq.idx = j;
@@ -1398,7 +1420,7 @@ int cxgb4_set_rspq_intr_params(struct sge_rspq *q,
 	}
 
 	us = us == 0 ? 6 : closest_timer(&adap->sge, us);
-	q->intr_params = QINTR_TIMER_IDX(us) | (cnt > 0 ? QINTR_CNT_EN : 0);
+	q->intr_params = QINTR_TIMER_IDX_V(us) | QINTR_CNT_EN_V(cnt > 0);
 	return 0;
 }
 
@@ -2432,6 +2454,7 @@ static void uld_attach(struct adapter *adap, unsigned int uld)
 	lli.max_ordird_qp = adap->params.max_ordird_qp;
 	lli.max_ird_adapter = adap->params.max_ird_adapter;
 	lli.ulptx_memwrite_dsgl = adap->params.ulptx_memwrite_dsgl;
+	lli.nodeid = dev_to_node(adap->pdev_dev);
 
 	handle = ulds[uld].add(&lli);
 	if (IS_ERR(handle)) {
@@ -3034,86 +3057,11 @@ void t4_fatal_err(struct adapter *adap)
 	dev_alert(adap->pdev_dev, "encountered fatal error, adapter stopped\n");
 }
 
-/* Return the specified PCI-E Configuration Space register from our Physical
- * Function.  We try first via a Firmware LDST Command since we prefer to let
- * the firmware own all of these registers, but if that fails we go for it
- * directly ourselves.
- */
-static u32 t4_read_pcie_cfg4(struct adapter *adap, int reg)
-{
-	struct fw_ldst_cmd ldst_cmd;
-	u32 val;
-	int ret;
-
-	/* Construct and send the Firmware LDST Command to retrieve the
-	 * specified PCI-E Configuration Space register.
-	 */
-	memset(&ldst_cmd, 0, sizeof(ldst_cmd));
-	ldst_cmd.op_to_addrspace =
-		htonl(FW_CMD_OP_V(FW_LDST_CMD) |
-		      FW_CMD_REQUEST_F |
-		      FW_CMD_READ_F |
-		      FW_LDST_CMD_ADDRSPACE_V(FW_LDST_ADDRSPC_FUNC_PCIE));
-	ldst_cmd.cycles_to_len16 = htonl(FW_LEN16(ldst_cmd));
-	ldst_cmd.u.pcie.select_naccess = FW_LDST_CMD_NACCESS_V(1);
-	ldst_cmd.u.pcie.ctrl_to_fn =
-		(FW_LDST_CMD_LC_F | FW_LDST_CMD_FN_V(adap->fn));
-	ldst_cmd.u.pcie.r = reg;
-	ret = t4_wr_mbox(adap, adap->mbox, &ldst_cmd, sizeof(ldst_cmd),
-			 &ldst_cmd);
-
-	/* If the LDST Command suucceeded, exctract the returned register
-	 * value.  Otherwise read it directly ourself.
-	 */
-	if (ret == 0)
-		val = ntohl(ldst_cmd.u.pcie.data[0]);
-	else
-		t4_hw_pci_read_cfg4(adap, reg, &val);
-
-	return val;
-}
-
 static void setup_memwin(struct adapter *adap)
 {
-	u32 mem_win0_base, mem_win1_base, mem_win2_base, mem_win2_aperture;
+	u32 nic_win_base = t4_get_util_window(adap);
 
-	if (is_t4(adap->params.chip)) {
-		u32 bar0;
-
-		/* Truncation intentional: we only read the bottom 32-bits of
-		 * the 64-bit BAR0/BAR1 ...  We use the hardware backdoor
-		 * mechanism to read BAR0 instead of using
-		 * pci_resource_start() because we could be operating from
-		 * within a Virtual Machine which is trapping our accesses to
-		 * our Configuration Space and we need to set up the PCI-E
-		 * Memory Window decoders with the actual addresses which will
-		 * be coming across the PCI-E link.
-		 */
-		bar0 = t4_read_pcie_cfg4(adap, PCI_BASE_ADDRESS_0);
-		bar0 &= PCI_BASE_ADDRESS_MEM_MASK;
-		adap->t4_bar0 = bar0;
-
-		mem_win0_base = bar0 + MEMWIN0_BASE;
-		mem_win1_base = bar0 + MEMWIN1_BASE;
-		mem_win2_base = bar0 + MEMWIN2_BASE;
-		mem_win2_aperture = MEMWIN2_APERTURE;
-	} else {
-		/* For T5, only relative offset inside the PCIe BAR is passed */
-		mem_win0_base = MEMWIN0_BASE;
-		mem_win1_base = MEMWIN1_BASE;
-		mem_win2_base = MEMWIN2_BASE_T5;
-		mem_win2_aperture = MEMWIN2_APERTURE_T5;
-	}
-	t4_write_reg(adap, PCIE_MEM_ACCESS_REG(PCIE_MEM_ACCESS_BASE_WIN_A, 0),
-		     mem_win0_base | BIR_V(0) |
-		     WINDOW_V(ilog2(MEMWIN0_APERTURE) - 10));
-	t4_write_reg(adap, PCIE_MEM_ACCESS_REG(PCIE_MEM_ACCESS_BASE_WIN_A, 1),
-		     mem_win1_base | BIR_V(0) |
-		     WINDOW_V(ilog2(MEMWIN1_APERTURE) - 10));
-	t4_write_reg(adap, PCIE_MEM_ACCESS_REG(PCIE_MEM_ACCESS_BASE_WIN_A, 2),
-		     mem_win2_base | BIR_V(0) |
-		     WINDOW_V(ilog2(mem_win2_aperture) - 10));
-	t4_read_reg(adap, PCIE_MEM_ACCESS_REG(PCIE_MEM_ACCESS_BASE_WIN_A, 2));
+	t4_setup_memwin(adap, nic_win_base, MEMWIN_NIC);
 }
 
 static void setup_memwin_rdma(struct adapter *adap)
@@ -4340,7 +4288,12 @@ static int enable_msix(struct adapter *adap)
 
 static int init_rss(struct adapter *adap)
 {
-	unsigned int i, j;
+	unsigned int i;
+	int err;
+
+	err = t4_init_rss_mode(adap, adap->mbox);
+	if (err)
+		return err;
 
 	for_each_port(adap, i) {
 		struct port_info *pi = adap2pinfo(adap, i);
@@ -4348,8 +4301,6 @@ static int init_rss(struct adapter *adap)
 		pi->rss = kcalloc(pi->rss_size, sizeof(u16), GFP_KERNEL);
 		if (!pi->rss)
 			return -ENOMEM;
-		for (j = 0; j < pi->rss_size; j++)
-			pi->rss[j] = ethtool_rxfh_indir_default(j, pi->nqsets);
 	}
 	return 0;
 }
