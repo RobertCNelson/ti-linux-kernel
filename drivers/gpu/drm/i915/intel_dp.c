@@ -1097,6 +1097,9 @@ skl_edp_set_pll_config(struct intel_crtc_state *pipe_config, int link_clock)
 {
 	u32 ctrl1;
 
+	memset(&pipe_config->dpll_hw_state, 0,
+	       sizeof(pipe_config->dpll_hw_state));
+
 	pipe_config->ddi_pll_sel = SKL_DPLL0;
 	pipe_config->dpll_hw_state.cfgcr1 = 0;
 	pipe_config->dpll_hw_state.cfgcr2 = 0;
@@ -1266,7 +1269,7 @@ static void snprintf_int_array(char *str, size_t len,
 	str[0] = '\0';
 
 	for (i = 0; i < nelem; i++) {
-		int r = snprintf(str, len, "%d,", array[i]);
+		int r = snprintf(str, len, "%s%d", i ? ", " : "", array[i]);
 		if (r >= len)
 			return;
 		str += r;
@@ -4142,7 +4145,7 @@ static uint8_t intel_dp_autotest_edid(struct intel_dp *intel_dp)
 		if (!drm_dp_dpcd_write(&intel_dp->aux,
 					DP_TEST_EDID_CHECKSUM,
 					&intel_connector->detect_edid->checksum,
-					1));
+					1))
 			DRM_DEBUG_KMS("Failed to write EDID checksum\n");
 
 		test_result = DP_TEST_ACK | DP_TEST_EDID_CHECKSUM_WRITE;
@@ -5814,12 +5817,10 @@ intel_dp_init_connector(struct intel_digital_port *intel_dig_port,
 	intel_dp_aux_init(intel_dp, intel_connector);
 
 	/* init MST on ports that can support it */
-	if (IS_HASWELL(dev) || IS_BROADWELL(dev) || INTEL_INFO(dev)->gen >= 9) {
-		if (port == PORT_B || port == PORT_C || port == PORT_D) {
-			intel_dp_mst_encoder_init(intel_dig_port,
-						  intel_connector->base.base.id);
-		}
-	}
+	if (HAS_DP_MST(dev) &&
+	    (port == PORT_B || port == PORT_C || port == PORT_D))
+		intel_dp_mst_encoder_init(intel_dig_port,
+					  intel_connector->base.base.id);
 
 	if (!intel_edp_init_connector(intel_dp, intel_connector)) {
 		drm_dp_aux_unregister(&intel_dp->aux);
