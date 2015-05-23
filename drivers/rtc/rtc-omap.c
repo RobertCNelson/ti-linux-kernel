@@ -584,8 +584,7 @@ static int omap_rtc_probe(struct platform_device *pdev)
 			   reg | OMAP_RTC_OSC_32KCLK_EN);
 	}
 
-	/* Enable External clock as the source */
-
+	/* Enable external clock as the source */
 	if (rtc->type->has_osc_ext_32k) {
 		rtc_writel(rtc, OMAP_RTC_OSC_REG,
 			   (OMAP_RTC_OSC_EXT_32K |
