@@ -1475,9 +1475,6 @@ static long vma_commit_reservation(struct hstate *h,
 		return 0;
 }
 
-/* Forward declaration */
-static int hugetlb_acct_memory(struct hstate *h, long delta);
-
 static struct page *alloc_huge_page(struct vm_area_struct *vma,
 				    unsigned long addr, int avoid_reserve)
 {
