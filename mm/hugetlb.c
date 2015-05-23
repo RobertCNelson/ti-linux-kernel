@@ -230,6 +230,7 @@ static long region_add(struct resv_map *resv, long f, long t)
 {
 	struct list_head *head = &resv->regions;
 	struct file_region *rg, *nrg, *trg;
+	long chg = 0;
 
 	spin_lock(&resv->lock);
 	/* Locate the region we are either in or before. */
@@ -255,14 +256,17 @@ static long region_add(struct resv_map *resv, long f, long t)
 		if (rg->to > t)
 			t = rg->to;
 		if (rg != nrg) {
+			chg -= (rg->to - rg->from);
 			list_del(&rg->link);
 			kfree(rg);
 		}
 	}
+	chg += (nrg->from - f);
 	nrg->from = f;
+	chg += t - nrg->to;
 	nrg->to = t;
 	spin_unlock(&resv->lock);
-	return 0;
+	return chg;
 }
 
 static long region_chg(struct resv_map *resv, long f, long t)
@@ -1450,18 +1454,25 @@ static long vma_needs_reservation(struct hstate *h,
 	else
 		return chg < 0 ? chg : 0;
 }
-static void vma_commit_reservation(struct hstate *h,
+
+static long vma_commit_reservation(struct hstate *h,
 			struct vm_area_struct *vma, unsigned long addr)
 {
 	struct resv_map *resv;
 	pgoff_t idx;
+	long add;
 
 	resv = vma_resv_map(vma);
 	if (!resv)
-		return;
+		return 1;
 
 	idx = vma_hugecache_offset(h, vma, addr);
-	region_add(resv, idx, idx + 1);
+	add = region_add(resv, idx, idx + 1);
+
+	if (vma->vm_flags & VM_MAYSHARE)
+		return add;
+	else
+		return 0;
 }
 
 static struct page *alloc_huge_page(struct vm_area_struct *vma,
