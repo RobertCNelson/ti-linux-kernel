@@ -408,7 +408,6 @@ void core_disable_device_list_for_node(
 	orig->lun_flags = 0;
 	orig->creation_time = 0;
 	orig->attach_count--;
-	mutex_unlock(&nacl->lun_entry_mutex);
 
 	kref_put(&orig->pr_kref, target_pr_kref_release);
 	/*
