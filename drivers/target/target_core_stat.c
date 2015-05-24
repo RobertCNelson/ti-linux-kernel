@@ -548,7 +548,7 @@ static ssize_t target_stat_scsi_port_show_attr_inst(
 	rcu_read_lock();
 	dev = lun->lun_se_dev;
 	if (dev)
-		ret = snprintf(page, PAGE_SIZE, "%u\n", dev->se_hba->hba_index);
+		ret = snprintf(page, PAGE_SIZE, "%u\n", dev->hba_index);
 	rcu_read_unlock();
 	return ret;
 }
@@ -667,7 +667,7 @@ static ssize_t target_stat_scsi_tgt_port_show_attr_inst(
 	rcu_read_lock();
 	dev = lun->lun_se_dev;
 	if (dev)
-		ret = snprintf(page, PAGE_SIZE, "%u\n", dev->se_hba->hba_index);
+		ret = snprintf(page, PAGE_SIZE, "%u\n", dev->hba_index);
 	rcu_read_unlock();
 	return ret;
 }
@@ -838,7 +838,7 @@ static ssize_t target_stat_scsi_transport_show_attr_inst(
 	rcu_read_lock();
 	dev = lun->lun_se_dev;
 	if (dev)
-		ret = snprintf(page, PAGE_SIZE, "%u\n", dev->se_hba->hba_index);
+		ret = snprintf(page, PAGE_SIZE, "%u\n", dev->hba_index);
 	rcu_read_unlock();
 	return ret;
 }
