@@ -125,6 +125,14 @@ static struct nf_bridge_info *nf_bridge_info_get(const struct sk_buff *skb)
 	return skb->nf_bridge;
 }
 
+static void nf_bridge_info_free(struct sk_buff *skb)
+{
+	if (skb->nf_bridge) {
+		nf_bridge_put(skb->nf_bridge);
+		skb->nf_bridge = NULL;
+	}
+}
+
 static inline struct rtable *bridge_parent_rtable(const struct net_device *dev)
 {
 	struct net_bridge_port *port;
@@ -832,7 +840,27 @@ static int br_nf_push_frag_xmit(struct sock *sk, struct sk_buff *skb)
 	skb_copy_to_linear_data_offset(skb, -data->size, data->mac, data->size);
 	__skb_push(skb, data->encap_size);
 
+	nf_bridge_info_free(skb);
 	return br_dev_queue_push_xmit(sk, skb);
+}
+
+static int br_nf_ip_fragment(struct sock *sk, struct sk_buff *skb,
+			     int (*output)(struct sock *, struct sk_buff *))
+{
+	unsigned int mtu = ip_skb_dst_mtu(skb);
+	struct iphdr *iph = ip_hdr(skb);
+	struct rtable *rt = skb_rtable(skb);
+	struct net_device *dev = rt->dst.dev;
+
+	if (unlikely(((iph->frag_off & htons(IP_DF)) && !skb->ignore_df) ||
+		     (IPCB(skb)->frag_max_size &&
+		      IPCB(skb)->frag_max_size > mtu))) {
+		IP_INC_STATS(dev_net(dev), IPSTATS_MIB_FRAGFAILS);
+		kfree_skb(skb);
+		return -EMSGSIZE;
+	}
+
+	return ip_do_fragment(sk, skb, output);
 }
 
 static int br_nf_dev_queue_xmit(struct sock *sk, struct sk_buff *skb)
@@ -841,8 +869,10 @@ static int br_nf_dev_queue_xmit(struct sock *sk, struct sk_buff *skb)
 	int frag_max_size;
 	unsigned int mtu_reserved;
 
-	if (skb_is_gso(skb) || skb->protocol != htons(ETH_P_IP))
+	if (skb_is_gso(skb) || skb->protocol != htons(ETH_P_IP)) {
+		nf_bridge_info_free(skb);
 		return br_dev_queue_push_xmit(sk, skb);
+	}
 
 	mtu_reserved = nf_bridge_mtu_reduction(skb);
 	/* This is wrong! We should preserve the original fragment
@@ -866,8 +896,9 @@ static int br_nf_dev_queue_xmit(struct sock *sk, struct sk_buff *skb)
 		skb_copy_from_linear_data_offset(skb, -data->size, data->mac,
 						 data->size);
 
-		ret = ip_fragment(sk, skb, br_nf_push_frag_xmit);
+		ret = br_nf_ip_fragment(sk, skb, br_nf_push_frag_xmit);
 	} else {
+		nf_bridge_info_free(skb);
 		ret = br_dev_queue_push_xmit(sk, skb);
 	}
 
@@ -876,7 +907,8 @@ static int br_nf_dev_queue_xmit(struct sock *sk, struct sk_buff *skb)
 #else
 static int br_nf_dev_queue_xmit(struct sock *sk, struct sk_buff *skb)
 {
-        return br_dev_queue_push_xmit(sk, skb);
+	nf_bridge_info_free(skb);
+	return br_dev_queue_push_xmit(sk, skb);
 }
 #endif
 
@@ -964,6 +996,8 @@ static void br_nf_pre_routing_finish_bridge_slow(struct sk_buff *skb)
 				       nf_bridge->neigh_header,
 				       ETH_HLEN - ETH_ALEN);
 	skb->dev = nf_bridge->physindev;
+
+	nf_bridge->physoutdev = NULL;
 	br_handle_frame_finish(NULL, skb);
 }
 
