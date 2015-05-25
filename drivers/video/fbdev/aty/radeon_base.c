@@ -64,6 +64,7 @@
 #include <linux/slab.h>
 #include <linux/delay.h>
 #include <linux/time.h>
+#include <linux/ktime.h>
 #include <linux/fb.h>
 #include <linux/ioport.h>
 #include <linux/init.h>
@@ -455,8 +456,8 @@ static int radeon_probe_pll_params(struct radeonfb_info *rinfo)
 	int hTotal, vTotal, num, denom, m, n;
 	unsigned long long hz, vclk;
 	long xtal;
-	struct timeval start_tv, stop_tv;
-	long total_secs, total_usecs;
+	ktime_t start, stop;
+	s64 delta;
 	int i;
 
 	/* Ugh, we cut interrupts, bad bad bad, but we want some precision
@@ -472,7 +473,7 @@ static int radeon_probe_pll_params(struct radeonfb_info *rinfo)
 		if (((INREG(CRTC_VLINE_CRNT_VLINE) >> 16) & 0x3ff) == 0)
 			break;
 
-	do_gettimeofday(&start_tv);
+	start = ktime_get();
 
 	for(i=0; i<1000000; i++)
 		if (((INREG(CRTC_VLINE_CRNT_VLINE) >> 16) & 0x3ff) != 0)
@@ -481,20 +482,18 @@ static int radeon_probe_pll_params(struct radeonfb_info *rinfo)
 	for(i=0; i<1000000; i++)
 		if (((INREG(CRTC_VLINE_CRNT_VLINE) >> 16) & 0x3ff) == 0)
 			break;
-	
-	do_gettimeofday(&stop_tv);
-	
+
+	stop = ktime_get();
+
 	local_irq_enable();
 
-	total_secs = stop_tv.tv_sec - start_tv.tv_sec;
-	if (total_secs > 10)
+	delta = ktime_us_delta(stop, start);
+
+	/* Return -1 if more than 10 seconds have elapsed */
+	if (delta > (10*1000000))
 		return -1;
-	total_usecs = stop_tv.tv_usec - start_tv.tv_usec;
-	total_usecs += total_secs * 1000000;
-	if (total_usecs < 0)
-		total_usecs = -total_usecs;
-	hz = 1000000/total_usecs;
- 
+	hz = 1000000/delta;
+
 	hTotal = ((INREG(CRTC_H_TOTAL_DISP) & 0x1ff) + 1) * 8;
 	vTotal = ((INREG(CRTC_V_TOTAL_DISP) & 0x3ff) + 1);
 	vclk = (long long)hTotal * (long long)vTotal * hz;
