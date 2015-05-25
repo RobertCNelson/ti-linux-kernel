@@ -523,6 +523,17 @@ int init_pipelines(struct device_queue_manager *dqm,
 	return 0;
 }
 
+static void init_interrupts(struct device_queue_manager *dqm)
+{
+	unsigned int i;
+
+	BUG_ON(dqm == NULL);
+
+	for (i = 0 ; i < get_pipes_num(dqm) ; i++)
+		dqm->dev->kfd2kgd->init_interrupts(dqm->dev->kgd,
+				i + get_first_pipe(dqm));
+}
+
 static int init_scheduler(struct device_queue_manager *dqm)
 {
 	int retval;
@@ -582,6 +593,7 @@ static void uninitialize_nocpsch(struct device_queue_manager *dqm)
 
 static int start_nocpsch(struct device_queue_manager *dqm)
 {
+	init_interrupts(dqm);
 	return 0;
 }
 
@@ -615,19 +627,6 @@ static void deallocate_sdma_queue(struct device_queue_manager *dqm,
 	set_bit(sdma_queue_id, (unsigned long *)&dqm->sdma_bitmap);
 }
 
-static void init_sdma_vm(struct device_queue_manager *dqm, struct queue *q,
-				struct qcm_process_device *qpd)
-{
-	uint32_t value = SDMA_ATC;
-
-	if (q->process->is_32bit_user_mode)
-		value |= SDMA_VA_PTR32 | get_sh_mem_bases_32(qpd_to_pdd(qpd));
-	else
-		value |= SDMA_VA_SHARED_BASE(get_sh_mem_bases_nybble_64(
-							qpd_to_pdd(qpd)));
-	q->properties.sdma_vm_addr = value;
-}
-
 static int create_sdma_queue_nocpsch(struct device_queue_manager *dqm,
 					struct queue *q,
 					struct qcm_process_device *qpd)
@@ -650,7 +649,7 @@ static int create_sdma_queue_nocpsch(struct device_queue_manager *dqm,
 	pr_debug("     sdma queue id: %d\n", q->properties.sdma_queue_id);
 	pr_debug("     sdma engine id: %d\n", q->properties.sdma_engine_id);
 
-	init_sdma_vm(dqm, q, qpd);
+	dqm->ops_asic_specific.init_sdma_vm(dqm, q, qpd);
 	retval = mqd->init_mqd(mqd, &q->mqd, &q->mqd_mem_obj,
 				&q->gart_mqd_addr, &q->properties);
 	if (retval != 0) {
@@ -751,6 +750,9 @@ static int start_cpsch(struct device_queue_manager *dqm)
 
 	dqm->fence_addr = dqm->fence_mem->cpu_ptr;
 	dqm->fence_gpu_addr = dqm->fence_mem->gpu_addr;
+
+	init_interrupts(dqm);
+
 	list_for_each_entry(node, &dqm->queues, list)
 		if (node->qpd->pqm->process && dqm->dev)
 			kfd_bind_process_to_device(dqm->dev,
@@ -883,8 +885,7 @@ static int create_queue_cpsch(struct device_queue_manager *dqm, struct queue *q,
 		return -ENOMEM;
 	}
 
-	init_sdma_vm(dqm, q, qpd);
-
+	dqm->ops_asic_specific.init_sdma_vm(dqm, q, qpd);
 	retval = mqd->init_mqd(mqd, &q->mqd, &q->mqd_mem_obj,
 				&q->gart_mqd_addr, &q->properties);
 	if (retval != 0)
