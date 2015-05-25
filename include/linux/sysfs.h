@@ -311,7 +311,6 @@ static inline int sysfs_create_mount_point(struct kobject *parent_kobj,
 static inline void sysfs_remove_mount_point(struct kobject *parent_kobj,
 					    const char *name)
 {
-	return 0;
 }
 
 static inline int sysfs_create_file_ns(struct kobject *kobj,
