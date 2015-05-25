@@ -572,8 +572,7 @@ out:
 int kvm_set_cr0(struct kvm_vcpu *vcpu, unsigned long cr0)
 {
 	unsigned long old_cr0 = kvm_read_cr0(vcpu);
-	unsigned long update_bits = X86_CR0_PG | X86_CR0_WP |
-				    X86_CR0_CD | X86_CR0_NW;
+	unsigned long update_bits = X86_CR0_PG | X86_CR0_WP;
 
 	cr0 |= X86_CR0_ET;
 
@@ -1852,6 +1851,63 @@ bool kvm_mtrr_valid(struct kvm_vcpu *vcpu, u32 msr, u64 data)
 }
 EXPORT_SYMBOL_GPL(kvm_mtrr_valid);
 
+static void update_mtrr(struct kvm_vcpu *vcpu, u32 msr)
+{
+	struct mtrr_state_type *mtrr_state = &vcpu->arch.mtrr_state;
+	unsigned char mtrr_enabled = mtrr_state->enabled;
+	gfn_t start, end, mask;
+	int index;
+	bool is_fixed = true;
+
+	if (msr == MSR_IA32_CR_PAT || !tdp_enabled ||
+	      !kvm_arch_has_noncoherent_dma(vcpu->kvm))
+		return;
+
+	if (!(mtrr_enabled & 0x2) && msr != MSR_MTRRdefType)
+		return;
+
+	switch (msr) {
+	case MSR_MTRRfix64K_00000:
+		start = 0x0;
+		end = 0x80000;
+		break;
+	case MSR_MTRRfix16K_80000:
+		start = 0x80000;
+		end = 0xa0000;
+		break;
+	case MSR_MTRRfix16K_A0000:
+		start = 0xa0000;
+		end = 0xc0000;
+		break;
+	case MSR_MTRRfix4K_C0000 ... MSR_MTRRfix4K_F8000:
+		index = msr - MSR_MTRRfix4K_C0000;
+		start = 0xc0000 + index * (32 << 10);
+		end = start + (32 << 10);
+		break;
+	case MSR_MTRRdefType:
+		is_fixed = false;
+		start = 0x0;
+		end = ~0ULL;
+		break;
+	default:
+		/* variable range MTRRs. */
+		is_fixed = false;
+		index = (msr - 0x200) / 2;
+		start = (((u64)mtrr_state->var_ranges[index].base_hi) << 32) +
+		       (mtrr_state->var_ranges[index].base_lo & PAGE_MASK);
+		mask = (((u64)mtrr_state->var_ranges[index].mask_hi) << 32) +
+		       (mtrr_state->var_ranges[index].mask_lo & PAGE_MASK);
+		mask |= ~0ULL << cpuid_maxphyaddr(vcpu);
+
+		end = ((start & mask) | ~mask) + 1;
+	}
+
+	if (is_fixed && !(mtrr_enabled & 0x1))
+		return;
+
+	kvm_zap_gfn_range(vcpu->kvm, gpa_to_gfn(start), gpa_to_gfn(end));
+}
+
 static int set_msr_mtrr(struct kvm_vcpu *vcpu, u32 msr, u64 data)
 {
 	u64 *p = (u64 *)&vcpu->arch.mtrr_state.fixed_ranges;
@@ -1885,7 +1941,7 @@ static int set_msr_mtrr(struct kvm_vcpu *vcpu, u32 msr, u64 data)
 		*pt = data;
 	}
 
-	kvm_mmu_reset_context(vcpu);
+	update_mtrr(vcpu, msr);
 	return 0;
 }
 
@@ -2798,6 +2854,8 @@ int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 	case KVM_CAP_HYPERV_TIME:
 	case KVM_CAP_IOAPIC_POLARITY_IGNORED:
 	case KVM_CAP_TSC_DEADLINE_TIMER:
+	case KVM_CAP_ENABLE_CAP_VM:
+	case KVM_CAP_DISABLE_QUIRKS:
 #ifdef CONFIG_KVM_DEVICE_ASSIGNMENT
 	case KVM_CAP_ASSIGN_DEV_IRQ:
 	case KVM_CAP_PCI_2_3:
@@ -3845,6 +3903,26 @@ int kvm_vm_ioctl_irq_line(struct kvm *kvm, struct kvm_irq_level *irq_event,
 	return 0;
 }
 
+static int kvm_vm_ioctl_enable_cap(struct kvm *kvm,
+				   struct kvm_enable_cap *cap)
+{
+	int r;
+
+	if (cap->flags)
+		return -EINVAL;
+
+	switch (cap->cap) {
+	case KVM_CAP_DISABLE_QUIRKS:
+		kvm->arch.disabled_quirks = cap->args[0];
+		r = 0;
+		break;
+	default:
+		r = -EINVAL;
+		break;
+	}
+	return r;
+}
+
 long kvm_arch_vm_ioctl(struct file *filp,
 		       unsigned int ioctl, unsigned long arg)
 {
@@ -4097,7 +4175,15 @@ long kvm_arch_vm_ioctl(struct file *filp,
 		r = 0;
 		break;
 	}
+	case KVM_ENABLE_CAP: {
+		struct kvm_enable_cap cap;
 
+		r = -EFAULT;
+		if (copy_from_user(&cap, argp, sizeof(cap)))
+			goto out;
+		r = kvm_vm_ioctl_enable_cap(kvm, &cap);
+		break;
+	}
 	default:
 		r = kvm_vm_ioctl_assigned_device(kvm, ioctl, arg);
 	}
@@ -5952,6 +6038,7 @@ static void kvm_pv_kick_cpu_op(struct kvm *kvm, unsigned long flags, int apicid)
 	lapic_irq.shorthand = 0;
 	lapic_irq.dest_mode = 0;
 	lapic_irq.dest_id = apicid;
+	lapic_irq.msi_redir_hint = false;
 
 	lapic_irq.delivery_mode = APIC_DM_REMRD;
 	kvm_irq_delivery_to_apic(kvm, NULL, &lapic_irq, NULL);
@@ -6347,7 +6434,7 @@ static int vcpu_enter_guest(struct kvm_vcpu *vcpu)
 	if (req_immediate_exit)
 		smp_send_reschedule(vcpu->cpu);
 
-	kvm_guest_enter();
+	__kvm_guest_enter();
 
 	if (unlikely(vcpu->arch.switch_db_regs)) {
 		set_debugreg(0, 7);
@@ -7003,7 +7090,7 @@ int kvm_arch_vcpu_ioctl_set_fpu(struct kvm_vcpu *vcpu, struct kvm_fpu *fpu)
 	return 0;
 }
 
-int fx_init(struct kvm_vcpu *vcpu)
+int fx_init(struct kvm_vcpu *vcpu, bool init_event)
 {
 	int err;
 
@@ -7011,7 +7098,9 @@ int fx_init(struct kvm_vcpu *vcpu)
 	if (err)
 		return err;
 
-	fpu_finit(&vcpu->arch.guest_fpu);
+	if (!init_event)
+		fpu_finit(&vcpu->arch.guest_fpu);
+
 	if (cpu_has_xsaves)
 		vcpu->arch.guest_fpu.state->xsave.xsave_hdr.xcomp_bv =
 			host_xcr0 | XSTATE_COMPACTION_ENABLED;
@@ -7053,16 +7142,25 @@ void kvm_put_guest_fpu(struct kvm_vcpu *vcpu)
 {
 	kvm_put_guest_xcr0(vcpu);
 
-	if (!vcpu->guest_fpu_loaded)
+	if (!vcpu->guest_fpu_loaded) {
+		vcpu->fpu_counter = 0;
 		return;
+	}
 
 	vcpu->guest_fpu_loaded = 0;
 	fpu_save_init(&vcpu->arch.guest_fpu);
 	__kernel_fpu_end();
 	++vcpu->stat.fpu_reload;
-	if (!vcpu->arch.eager_fpu)
-		kvm_make_request(KVM_REQ_DEACTIVATE_FPU, vcpu);
-
+	/*
+	 * If using eager FPU mode, or if the guest is a frequent user
+	 * of the FPU, just leave the FPU active for next time.
+	 * Every 255 times fpu_counter rolls over to 0; a guest that uses
+	 * the FPU in bursts will revert to loading it on demand.
+	 */
+	if (!use_eager_fpu()) {
+		if (++vcpu->fpu_counter < 5)
+			kvm_make_request(KVM_REQ_DEACTIVATE_FPU, vcpu);
+	}
 	trace_kvm_fpu(0);
 }
 
@@ -7103,7 +7201,7 @@ int kvm_arch_vcpu_setup(struct kvm_vcpu *vcpu)
 	r = vcpu_load(vcpu);
 	if (r)
 		return r;
-	kvm_vcpu_reset(vcpu);
+	kvm_vcpu_reset(vcpu, false);
 	kvm_mmu_setup(vcpu);
 	vcpu_put(vcpu);
 
@@ -7141,7 +7239,7 @@ void kvm_arch_vcpu_destroy(struct kvm_vcpu *vcpu)
 	kvm_x86_ops->vcpu_free(vcpu);
 }
 
-void kvm_vcpu_reset(struct kvm_vcpu *vcpu)
+void kvm_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 {
 	atomic_set(&vcpu->arch.nmi_queued, 0);
 	vcpu->arch.nmi_pending = 0;
@@ -7168,13 +7266,14 @@ void kvm_vcpu_reset(struct kvm_vcpu *vcpu)
 	kvm_async_pf_hash_reset(vcpu);
 	vcpu->arch.apf.halted = false;
 
-	kvm_pmu_reset(vcpu);
+	if (!init_event)
+		kvm_pmu_reset(vcpu);
 
 	memset(vcpu->arch.regs, 0, sizeof(vcpu->arch.regs));
 	vcpu->arch.regs_avail = ~0;
 	vcpu->arch.regs_dirty = ~0;
 
-	kvm_x86_ops->vcpu_reset(vcpu);
+	kvm_x86_ops->vcpu_reset(vcpu, init_event);
 }
 
 void kvm_vcpu_deliver_sipi_vector(struct kvm_vcpu *vcpu, u8 vector)
@@ -7363,7 +7462,7 @@ int kvm_arch_vcpu_init(struct kvm_vcpu *vcpu)
 		goto fail_free_mce_banks;
 	}
 
-	r = fx_init(vcpu);
+	r = fx_init(vcpu, false);
 	if (r)
 		goto fail_free_wbinvd_dirty_mask;
 
@@ -7374,6 +7473,8 @@ int kvm_arch_vcpu_init(struct kvm_vcpu *vcpu)
 	vcpu->arch.guest_xstate_size = XSAVE_HDR_SIZE + XSAVE_HDR_OFFSET;
 
 	vcpu->arch.maxphyaddr = cpuid_query_maxphyaddr(vcpu);
+
+	vcpu->arch.pat = MSR_IA32_CR_PAT_DEFAULT;
 
 	kvm_async_pf_hash_reset(vcpu);
 	kvm_pmu_init(vcpu);
