@@ -292,6 +292,11 @@ int map__load(struct map *map, symbol_filter_t filter)
 	return 0;
 }
 
+int __weak arch__compare_symbol_names(const char *namea, const char *nameb)
+{
+	return strcmp(namea, nameb);
+}
+
 struct symbol *map__find_symbol(struct map *map, u64 addr,
 				symbol_filter_t filter)
 {
@@ -421,7 +426,7 @@ void map_groups__init(struct map_groups *mg, struct machine *machine)
 		INIT_LIST_HEAD(&mg->removed_maps[i]);
 	}
 	mg->machine = machine;
-	mg->refcnt = 1;
+	atomic_set(&mg->refcnt, 1);
 }
 
 static void maps__delete(struct rb_root *maps)
@@ -489,7 +494,7 @@ void map_groups__delete(struct map_groups *mg)
 
 void map_groups__put(struct map_groups *mg)
 {
-	if (--mg->refcnt == 0)
+	if (mg && atomic_dec_and_test(&mg->refcnt))
 		map_groups__delete(mg);
 }
 

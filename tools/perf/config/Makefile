@@ -268,6 +268,10 @@ else
   endif # libelf support
 endif # NO_LIBELF
 
+ifdef NO_DWARF
+  NO_LIBDW_DWARF_UNWIND := 1
+endif
+
 ifndef NO_LIBELF
   CFLAGS += -DHAVE_LIBELF_SUPPORT
   EXTLIBS += -lelf
@@ -608,6 +612,11 @@ ifdef LIBBABELTRACE
   else
     msg := $(warning No libbabeltrace found, disables 'perf data' CTF format support, please install libbabeltrace-dev[el]/libbabeltrace-ctf-dev);
   endif
+endif
+
+ifndef NO_AUXTRACE
+  $(call detected,CONFIG_AUXTRACE)
+  CFLAGS += -DHAVE_AUXTRACE_SUPPORT
 endif
 
 # Among the variables below, these:
