@@ -97,8 +97,10 @@ static int ieee802154_nl_fill_iface(struct sk_buff *msg, u32 portid,
 	BUG_ON(!phy);
 	get_device(&phy->dev);
 
-	short_addr = ops->get_short_addr(dev);
-	pan_id = ops->get_pan_id(dev);
+	rtnl_lock();
+	short_addr = dev->ieee802154_ptr->short_addr;
+	pan_id = dev->ieee802154_ptr->pan_id;
+	rtnl_unlock();
 
 	if (nla_put_string(msg, IEEE802154_ATTR_DEV_NAME, dev->name) ||
 	    nla_put_string(msg, IEEE802154_ATTR_PHY_NAME, wpan_phy_name(phy)) ||
@@ -117,12 +119,12 @@ static int ieee802154_nl_fill_iface(struct sk_buff *msg, u32 portid,
 		rtnl_unlock();
 
 		if (nla_put_s8(msg, IEEE802154_ATTR_TXPOWER,
-			       params.transmit_power) ||
+			       params.transmit_power / 100) ||
 		    nla_put_u8(msg, IEEE802154_ATTR_LBT_ENABLED, params.lbt) ||
 		    nla_put_u8(msg, IEEE802154_ATTR_CCA_MODE,
 			       params.cca.mode) ||
 		    nla_put_s32(msg, IEEE802154_ATTR_CCA_ED_LEVEL,
-				params.cca_ed_level) ||
+				params.cca_ed_level / 100) ||
 		    nla_put_u8(msg, IEEE802154_ATTR_CSMA_RETRIES,
 			       params.csma_retries) ||
 		    nla_put_u8(msg, IEEE802154_ATTR_CSMA_MIN_BE,
@@ -244,7 +246,9 @@ int ieee802154_associate_resp(struct sk_buff *skb, struct genl_info *info)
 	addr.mode = IEEE802154_ADDR_LONG;
 	addr.extended_addr = nla_get_hwaddr(
 			info->attrs[IEEE802154_ATTR_DEST_HW_ADDR]);
-	addr.pan_id = ieee802154_mlme_ops(dev)->get_pan_id(dev);
+	rtnl_lock();
+	addr.pan_id = dev->ieee802154_ptr->pan_id;
+	rtnl_unlock();
 
 	ret = ieee802154_mlme_ops(dev)->assoc_resp(dev, &addr,
 		nla_get_shortaddr(info->attrs[IEEE802154_ATTR_DEST_SHORT_ADDR]),
@@ -281,7 +285,9 @@ int ieee802154_disassociate_req(struct sk_buff *skb, struct genl_info *info)
 		addr.short_addr = nla_get_shortaddr(
 				info->attrs[IEEE802154_ATTR_DEST_SHORT_ADDR]);
 	}
-	addr.pan_id = ieee802154_mlme_ops(dev)->get_pan_id(dev);
+	rtnl_lock();
+	addr.pan_id = dev->ieee802154_ptr->pan_id;
+	rtnl_unlock();
 
 	ret = ieee802154_mlme_ops(dev)->disassoc_req(dev, &addr,
 			nla_get_u8(info->attrs[IEEE802154_ATTR_REASON]));
@@ -510,7 +516,7 @@ int ieee802154_set_macparams(struct sk_buff *skb, struct genl_info *info)
 	ops->get_mac_params(dev, &params);
 
 	if (info->attrs[IEEE802154_ATTR_TXPOWER])
-		params.transmit_power = nla_get_s8(info->attrs[IEEE802154_ATTR_TXPOWER]);
+		params.transmit_power = nla_get_s8(info->attrs[IEEE802154_ATTR_TXPOWER]) * 100;
 
 	if (info->attrs[IEEE802154_ATTR_LBT_ENABLED])
 		params.lbt = nla_get_u8(info->attrs[IEEE802154_ATTR_LBT_ENABLED]);
@@ -519,7 +525,7 @@ int ieee802154_set_macparams(struct sk_buff *skb, struct genl_info *info)
 		params.cca.mode = nla_get_u8(info->attrs[IEEE802154_ATTR_CCA_MODE]);
 
 	if (info->attrs[IEEE802154_ATTR_CCA_ED_LEVEL])
-		params.cca_ed_level = nla_get_s32(info->attrs[IEEE802154_ATTR_CCA_ED_LEVEL]);
+		params.cca_ed_level = nla_get_s32(info->attrs[IEEE802154_ATTR_CCA_ED_LEVEL]) * 100;
 
 	if (info->attrs[IEEE802154_ATTR_CSMA_RETRIES])
 		params.csma_retries = nla_get_u8(info->attrs[IEEE802154_ATTR_CSMA_RETRIES]);
