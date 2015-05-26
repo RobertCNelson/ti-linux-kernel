@@ -378,13 +378,13 @@ out:
 void *i915_gem_object_alloc(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	return kmem_cache_zalloc(dev_priv->slab, GFP_KERNEL);
+	return kmem_cache_zalloc(dev_priv->objects, GFP_KERNEL);
 }
 
 void i915_gem_object_free(struct drm_i915_gem_object *obj)
 {
 	struct drm_i915_private *dev_priv = obj->base.dev->dev_private;
-	kmem_cache_free(dev_priv->slab, obj);
+	kmem_cache_free(dev_priv->objects, obj);
 }
 
 static int
@@ -1181,12 +1181,27 @@ static bool missed_irq(struct drm_i915_private *dev_priv,
 	return test_bit(ring->id, &dev_priv->gpu_error.missed_irq_rings);
 }
 
-static bool can_wait_boost(struct drm_i915_file_private *file_priv)
+static int __i915_spin_request(struct drm_i915_gem_request *rq)
 {
-	if (file_priv == NULL)
-		return true;
+	unsigned long timeout;
 
-	return !atomic_xchg(&file_priv->rps_wait_boost, true);
+	if (i915_gem_request_get_ring(rq)->irq_refcount)
+		return -EBUSY;
+
+	timeout = jiffies + 1;
+	while (!need_resched()) {
+		if (i915_gem_request_completed(rq, true))
+			return 0;
+
+		if (time_after_eq(jiffies, timeout))
+			break;
+
+		cpu_relax_lowlatency();
+	}
+	if (i915_gem_request_completed(rq, false))
+		return 0;
+
+	return -EAGAIN;
 }
 
 /**
@@ -1230,20 +1245,23 @@ int __i915_wait_request(struct drm_i915_gem_request *req,
 	timeout_expire = timeout ?
 		jiffies + nsecs_to_jiffies_timeout((u64)*timeout) : 0;
 
-	if (INTEL_INFO(dev)->gen >= 6 && ring->id == RCS && can_wait_boost(file_priv)) {
-		gen6_rps_boost(dev_priv);
-		if (file_priv)
-			mod_delayed_work(dev_priv->wq,
-					 &file_priv->mm.idle_work,
-					 msecs_to_jiffies(100));
-	}
-
-	if (!irq_test_in_progress && WARN_ON(!ring->irq_get(ring)))
-		return -ENODEV;
+	if (INTEL_INFO(dev)->gen >= 6)
+		gen6_rps_boost(dev_priv, file_priv);
 
 	/* Record current time in case interrupted by signal, or wedged */
 	trace_i915_gem_request_wait_begin(req);
 	before = ktime_get_raw_ns();
+
+	/* Optimistic spin for the next jiffie before touching IRQs */
+	ret = __i915_spin_request(req);
+	if (ret == 0)
+		goto out;
+
+	if (!irq_test_in_progress && WARN_ON(!ring->irq_get(ring))) {
+		ret = -ENODEV;
+		goto out;
+	}
+
 	for (;;) {
 		struct timer_list timer;
 
@@ -1292,13 +1310,14 @@ int __i915_wait_request(struct drm_i915_gem_request *req,
 			destroy_timer_on_stack(&timer);
 		}
 	}
-	now = ktime_get_raw_ns();
-	trace_i915_gem_request_wait_end(req);
-
 	if (!irq_test_in_progress)
 		ring->irq_put(ring);
 
 	finish_wait(&ring->irq_queue, &wait);
+
+out:
+	now = ktime_get_raw_ns();
+	trace_i915_gem_request_wait_end(req);
 
 	if (timeout) {
 		s64 tres = *timeout - (now - before);
@@ -1616,6 +1635,7 @@ int i915_gem_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	struct drm_i915_gem_object *obj = to_intel_bo(vma->vm_private_data);
 	struct drm_device *dev = obj->base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct i915_ggtt_view view = i915_ggtt_view_normal;
 	pgoff_t page_offset;
 	unsigned long pfn;
 	int ret = 0;
@@ -1648,8 +1668,23 @@ int i915_gem_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 		goto unlock;
 	}
 
-	/* Now bind it into the GTT if needed */
-	ret = i915_gem_obj_ggtt_pin(obj, 0, PIN_MAPPABLE);
+	/* Use a partial view if the object is bigger than the aperture. */
+	if (obj->base.size >= dev_priv->gtt.mappable_end &&
+	    obj->tiling_mode == I915_TILING_NONE) {
+		static const unsigned int chunk_size = 256; // 1 MiB
+
+		memset(&view, 0, sizeof(view));
+		view.type = I915_GGTT_VIEW_PARTIAL;
+		view.params.partial.offset = rounddown(page_offset, chunk_size);
+		view.params.partial.size =
+			min_t(unsigned int,
+			      chunk_size,
+			      (vma->vm_end - vma->vm_start)/PAGE_SIZE -
+			      view.params.partial.offset);
+	}
+
+	/* Now pin it into the GTT if needed */
+	ret = i915_gem_object_ggtt_pin(obj, &view, 0, PIN_MAPPABLE);
 	if (ret)
 		goto unlock;
 
@@ -1662,30 +1697,50 @@ int i915_gem_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 		goto unpin;
 
 	/* Finally, remap it using the new GTT offset */
-	pfn = dev_priv->gtt.mappable_base + i915_gem_obj_ggtt_offset(obj);
+	pfn = dev_priv->gtt.mappable_base +
+		i915_gem_obj_ggtt_offset_view(obj, &view);
 	pfn >>= PAGE_SHIFT;
 
-	if (!obj->fault_mappable) {
-		unsigned long size = min_t(unsigned long,
-					   vma->vm_end - vma->vm_start,
-					   obj->base.size);
-		int i;
+	if (unlikely(view.type == I915_GGTT_VIEW_PARTIAL)) {
+		/* Overriding existing pages in partial view does not cause
+		 * us any trouble as TLBs are still valid because the fault
+		 * is due to userspace losing part of the mapping or never
+		 * having accessed it before (at this partials' range).
+		 */
+		unsigned long base = vma->vm_start +
+				     (view.params.partial.offset << PAGE_SHIFT);
+		unsigned int i;
 
-		for (i = 0; i < size >> PAGE_SHIFT; i++) {
-			ret = vm_insert_pfn(vma,
-					    (unsigned long)vma->vm_start + i * PAGE_SIZE,
-					    pfn + i);
+		for (i = 0; i < view.params.partial.size; i++) {
+			ret = vm_insert_pfn(vma, base + i * PAGE_SIZE, pfn + i);
 			if (ret)
 				break;
 		}
 
 		obj->fault_mappable = true;
-	} else
-		ret = vm_insert_pfn(vma,
-				    (unsigned long)vmf->virtual_address,
-				    pfn + page_offset);
+	} else {
+		if (!obj->fault_mappable) {
+			unsigned long size = min_t(unsigned long,
+						   vma->vm_end - vma->vm_start,
+						   obj->base.size);
+			int i;
+
+			for (i = 0; i < size >> PAGE_SHIFT; i++) {
+				ret = vm_insert_pfn(vma,
+						    (unsigned long)vma->vm_start + i * PAGE_SIZE,
+						    pfn + i);
+				if (ret)
+					break;
+			}
+
+			obj->fault_mappable = true;
+		} else
+			ret = vm_insert_pfn(vma,
+					    (unsigned long)vmf->virtual_address,
+					    pfn + page_offset);
+	}
 unpin:
-	i915_gem_object_ggtt_unpin(obj);
+	i915_gem_object_ggtt_unpin_view(obj, &view);
 unlock:
 	mutex_unlock(&dev->struct_mutex);
 out:
@@ -1876,11 +1931,6 @@ i915_gem_mmap_gtt(struct drm_file *file,
 	if (&obj->base == NULL) {
 		ret = -ENOENT;
 		goto unlock;
-	}
-
-	if (obj->base.size > dev_priv->gtt.mappable_end) {
-		ret = -E2BIG;
-		goto out;
 	}
 
 	if (obj->madv != I915_MADV_WILLNEED) {
@@ -2178,6 +2228,10 @@ i915_gem_object_get_pages(struct drm_i915_gem_object *obj)
 		return ret;
 
 	list_add_tail(&obj->global_list, &dev_priv->mm.unbound_list);
+
+	obj->get_page.sg = obj->pages->sgl;
+	obj->get_page.last = 0;
+
 	return 0;
 }
 
@@ -2421,7 +2475,6 @@ int __i915_add_request(struct intel_engine_cs *ring,
 
 	i915_queue_hangcheck(ring->dev);
 
-	cancel_delayed_work_sync(&dev_priv->mm.idle_work);
 	queue_delayed_work(dev_priv->wq,
 			   &dev_priv->mm.retire_work,
 			   round_jiffies_up_relative(HZ));
@@ -2516,7 +2569,45 @@ void i915_gem_request_free(struct kref *req_ref)
 		i915_gem_context_unreference(ctx);
 	}
 
-	kfree(req);
+	kmem_cache_free(req->i915->requests, req);
+}
+
+int i915_gem_request_alloc(struct intel_engine_cs *ring,
+			   struct intel_context *ctx)
+{
+	struct drm_i915_private *dev_priv = to_i915(ring->dev);
+	struct drm_i915_gem_request *rq;
+	int ret;
+
+	if (ring->outstanding_lazy_request)
+		return 0;
+
+	rq = kmem_cache_zalloc(dev_priv->requests, GFP_KERNEL);
+	if (rq == NULL)
+		return -ENOMEM;
+
+	kref_init(&rq->ref);
+	rq->i915 = dev_priv;
+
+	ret = i915_gem_get_seqno(ring->dev, &rq->seqno);
+	if (ret) {
+		kfree(rq);
+		return ret;
+	}
+
+	rq->ring = ring;
+
+	if (i915.enable_execlists)
+		ret = intel_logical_ring_alloc_request_extras(rq, ctx);
+	else
+		ret = intel_ring_alloc_request_extras(rq);
+	if (ret) {
+		kfree(rq);
+		return ret;
+	}
+
+	ring->outstanding_lazy_request = rq;
+	return 0;
 }
 
 struct drm_i915_gem_request *
@@ -2578,7 +2669,6 @@ static void i915_gem_reset_ring_cleanup(struct drm_i915_private *dev_priv,
 				struct drm_i915_gem_request,
 				execlist_link);
 		list_del(&submit_req->execlist_link);
-		intel_runtime_pm_put(dev_priv);
 
 		if (submit_req->ctx != ring->default_context)
 			intel_lr_context_unpin(ring, submit_req->ctx);
@@ -2768,8 +2858,25 @@ i915_gem_idle_work_handler(struct work_struct *work)
 {
 	struct drm_i915_private *dev_priv =
 		container_of(work, typeof(*dev_priv), mm.idle_work.work);
+	struct drm_device *dev = dev_priv->dev;
+	struct intel_engine_cs *ring;
+	int i;
 
-	intel_mark_idle(dev_priv->dev);
+	for_each_ring(ring, dev_priv, i)
+		if (!list_empty(&ring->request_list))
+			return;
+
+	intel_mark_idle(dev);
+
+	if (mutex_trylock(&dev->struct_mutex)) {
+		struct intel_engine_cs *ring;
+		int i;
+
+		for_each_ring(ring, dev_priv, i)
+			i915_gem_batch_pool_fini(&ring->batch_pool);
+
+		mutex_unlock(&dev->struct_mutex);
+	}
 }
 
 /**
@@ -2867,9 +2974,7 @@ i915_gem_wait_ioctl(struct drm_device *dev, void *data, struct drm_file *file)
 	ret = __i915_wait_request(req, reset_counter, true,
 				  args->timeout_ns > 0 ? &args->timeout_ns : NULL,
 				  file->driver_priv);
-	mutex_lock(&dev->struct_mutex);
-	i915_gem_request_unreference(req);
-	mutex_unlock(&dev->struct_mutex);
+	i915_gem_request_unreference__unlocked(req);
 	return ret;
 
 out:
@@ -2994,7 +3099,8 @@ int i915_vma_unbind(struct i915_vma *vma)
 
 	trace_i915_vma_unbind(vma);
 
-	vma->unbind_vma(vma);
+	vma->vm->unbind_vma(vma);
+	vma->bound = 0;
 
 	list_del_init(&vma->mm_list);
 	if (i915_is_ggtt(vma->vm)) {
@@ -3423,7 +3529,8 @@ static bool i915_gem_valid_gtt_space(struct i915_vma *vma,
 }
 
 /**
- * Finds free space in the GTT aperture and binds the object there.
+ * Finds free space in the GTT aperture and binds the object or a view of it
+ * there.
  */
 static struct i915_vma *
 i915_gem_object_bind_to_vm(struct drm_i915_gem_object *obj,
@@ -3442,36 +3549,60 @@ i915_gem_object_bind_to_vm(struct drm_i915_gem_object *obj,
 	struct i915_vma *vma;
 	int ret;
 
-	if(WARN_ON(i915_is_ggtt(vm) != !!ggtt_view))
-		return ERR_PTR(-EINVAL);
+	if (i915_is_ggtt(vm)) {
+		u32 view_size;
 
-	fence_size = i915_gem_get_gtt_size(dev,
-					   obj->base.size,
-					   obj->tiling_mode);
-	fence_alignment = i915_gem_get_gtt_alignment(dev,
-						     obj->base.size,
-						     obj->tiling_mode, true);
-	unfenced_alignment =
-		i915_gem_get_gtt_alignment(dev,
-					   obj->base.size,
-					   obj->tiling_mode, false);
+		if (WARN_ON(!ggtt_view))
+			return ERR_PTR(-EINVAL);
+
+		view_size = i915_ggtt_view_size(obj, ggtt_view);
+
+		fence_size = i915_gem_get_gtt_size(dev,
+						   view_size,
+						   obj->tiling_mode);
+		fence_alignment = i915_gem_get_gtt_alignment(dev,
+							     view_size,
+							     obj->tiling_mode,
+							     true);
+		unfenced_alignment = i915_gem_get_gtt_alignment(dev,
+								view_size,
+								obj->tiling_mode,
+								false);
+		size = flags & PIN_MAPPABLE ? fence_size : view_size;
+	} else {
+		fence_size = i915_gem_get_gtt_size(dev,
+						   obj->base.size,
+						   obj->tiling_mode);
+		fence_alignment = i915_gem_get_gtt_alignment(dev,
+							     obj->base.size,
+							     obj->tiling_mode,
+							     true);
+		unfenced_alignment =
+			i915_gem_get_gtt_alignment(dev,
+						   obj->base.size,
+						   obj->tiling_mode,
+						   false);
+		size = flags & PIN_MAPPABLE ? fence_size : obj->base.size;
+	}
 
 	if (alignment == 0)
 		alignment = flags & PIN_MAPPABLE ? fence_alignment :
 						unfenced_alignment;
 	if (flags & PIN_MAPPABLE && alignment & (fence_alignment - 1)) {
-		DRM_DEBUG("Invalid object alignment requested %u\n", alignment);
+		DRM_DEBUG("Invalid object (view type=%u) alignment requested %u\n",
+			  ggtt_view ? ggtt_view->type : 0,
+			  alignment);
 		return ERR_PTR(-EINVAL);
 	}
 
-	size = flags & PIN_MAPPABLE ? fence_size : obj->base.size;
-
-	/* If the object is bigger than the entire aperture, reject it early
-	 * before evicting everything in a vain attempt to find space.
+	/* If binding the object/GGTT view requires more space than the entire
+	 * aperture has, reject it early before evicting everything in a vain
+	 * attempt to find space.
 	 */
-	if (obj->base.size > end) {
-		DRM_DEBUG("Attempting to bind an object larger than the aperture: object=%zd > %s aperture=%lu\n",
-			  obj->base.size,
+	if (size > end) {
+		DRM_DEBUG("Attempting to bind an object (view type=%u) larger than the aperture: size=%u > %s aperture=%lu\n",
+			  ggtt_view ? ggtt_view->type : 0,
+			  size,
 			  flags & PIN_MAPPABLE ? "mappable" : "total",
 			  end);
 		return ERR_PTR(-E2BIG);
@@ -3515,20 +3646,8 @@ search_free:
 	if (ret)
 		goto err_remove_node;
 
-	/*  allocate before insert / bind */
-	if (vma->vm->allocate_va_range) {
-		trace_i915_va_alloc(vma->vm, vma->node.start, vma->node.size,
-				VM_TO_TRACE_NAME(vma->vm));
-		ret = vma->vm->allocate_va_range(vma->vm,
-						vma->node.start,
-						vma->node.size);
-		if (ret)
-			goto err_remove_node;
-	}
-
 	trace_i915_vma_bind(vma, flags);
-	ret = i915_vma_bind(vma, obj->cache_level,
-			    flags & PIN_GLOBAL ? GLOBAL_BIND : 0);
+	ret = i915_vma_bind(vma, obj->cache_level, flags);
 	if (ret)
 		goto err_finish_gtt;
 
@@ -3754,7 +3873,7 @@ int i915_gem_object_set_cache_level(struct drm_i915_gem_object *obj,
 		list_for_each_entry(vma, &obj->vma_list, vma_link)
 			if (drm_mm_node_allocated(&vma->node)) {
 				ret = i915_vma_bind(vma, cache_level,
-						    vma->bound & GLOBAL_BIND);
+						    PIN_UPDATE);
 				if (ret)
 					return ret;
 			}
@@ -3779,17 +3898,10 @@ int i915_gem_get_caching_ioctl(struct drm_device *dev, void *data,
 {
 	struct drm_i915_gem_caching *args = data;
 	struct drm_i915_gem_object *obj;
-	int ret;
-
-	ret = i915_mutex_lock_interruptible(dev);
-	if (ret)
-		return ret;
 
 	obj = to_intel_bo(drm_gem_object_lookup(dev, file, args->handle));
-	if (&obj->base == NULL) {
-		ret = -ENOENT;
-		goto unlock;
-	}
+	if (&obj->base == NULL)
+		return -ENOENT;
 
 	switch (obj->cache_level) {
 	case I915_CACHE_LLC:
@@ -3806,10 +3918,8 @@ int i915_gem_get_caching_ioctl(struct drm_device *dev, void *data,
 		break;
 	}
 
-	drm_gem_object_unreference(&obj->base);
-unlock:
-	mutex_unlock(&dev->struct_mutex);
-	return ret;
+	drm_gem_object_unreference_unlocked(&obj->base);
+	return 0;
 }
 
 int i915_gem_set_caching_ioctl(struct drm_device *dev, void *data,
@@ -3852,24 +3962,6 @@ unlock:
 	return ret;
 }
 
-static bool is_pin_display(struct drm_i915_gem_object *obj)
-{
-	struct i915_vma *vma;
-
-	vma = i915_gem_obj_to_ggtt(obj);
-	if (!vma)
-		return false;
-
-	/* There are 2 sources that pin objects:
-	 *   1. The display engine (scanouts, sprites, cursors);
-	 *   2. Reservations for execbuffer;
-	 *
-	 * We can ignore reservations as we hold the struct_mutex and
-	 * are only called outside of the reservation path.
-	 */
-	return vma->pin_count;
-}
-
 /*
  * Prepare buffer for display plane (scanout, cursors, etc).
  * Can be called from an uninterruptible phase (modesetting) and allows
@@ -3882,7 +3974,6 @@ i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
 				     const struct i915_ggtt_view *view)
 {
 	u32 old_read_domains, old_write_domain;
-	bool was_pin_display;
 	int ret;
 
 	if (pipelined != i915_gem_request_get_ring(obj->last_read_req)) {
@@ -3894,8 +3985,7 @@ i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
 	/* Mark the pin_display early so that we account for the
 	 * display coherency whilst setting up the cache domains.
 	 */
-	was_pin_display = obj->pin_display;
-	obj->pin_display = true;
+	obj->pin_display++;
 
 	/* The display engine is not coherent with the LLC cache on gen6.  As
 	 * a result, we make sure that the pinning that is about to occur is
@@ -3939,8 +4029,7 @@ i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
 	return 0;
 
 err_unpin_display:
-	WARN_ON(was_pin_display != is_pin_display(obj));
-	obj->pin_display = was_pin_display;
+	obj->pin_display--;
 	return ret;
 }
 
@@ -3948,9 +4037,12 @@ void
 i915_gem_object_unpin_from_display_plane(struct drm_i915_gem_object *obj,
 					 const struct i915_ggtt_view *view)
 {
+	if (WARN_ON(obj->pin_display == 0))
+		return;
+
 	i915_gem_object_ggtt_unpin_view(obj, view);
 
-	obj->pin_display = is_pin_display(obj);
+	obj->pin_display--;
 }
 
 int
@@ -4072,9 +4164,7 @@ i915_gem_ring_throttle(struct drm_device *dev, struct drm_file *file)
 	if (ret == 0)
 		queue_delayed_work(dev_priv->wq, &dev_priv->mm.retire_work, 0);
 
-	mutex_lock(&dev->struct_mutex);
-	i915_gem_request_unreference(target);
-	mutex_unlock(&dev->struct_mutex);
+	i915_gem_request_unreference__unlocked(target);
 
 	return ret;
 }
@@ -4155,23 +4245,18 @@ i915_gem_object_do_pin(struct drm_i915_gem_object *obj,
 
 	bound = vma ? vma->bound : 0;
 	if (vma == NULL || !drm_mm_node_allocated(&vma->node)) {
-		/* In true PPGTT, bind has possibly changed PDEs, which
-		 * means we must do a context switch before the GPU can
-		 * accurately read some of the VMAs.
-		 */
 		vma = i915_gem_object_bind_to_vm(obj, vm, ggtt_view, alignment,
 						 flags);
 		if (IS_ERR(vma))
 			return PTR_ERR(vma);
-	}
-
-	if (flags & PIN_GLOBAL && !(vma->bound & GLOBAL_BIND)) {
-		ret = i915_vma_bind(vma, obj->cache_level, GLOBAL_BIND);
+	} else {
+		ret = i915_vma_bind(vma, obj->cache_level, flags);
 		if (ret)
 			return ret;
 	}
 
-	if ((bound ^ vma->bound) & GLOBAL_BIND) {
+	if (ggtt_view && ggtt_view->type == I915_GGTT_VIEW_NORMAL &&
+	    (bound ^ vma->bound) & GLOBAL_BIND) {
 		bool mappable, fenceable;
 		u32 fence_size, fence_alignment;
 
@@ -4190,14 +4275,11 @@ i915_gem_object_do_pin(struct drm_i915_gem_object *obj,
 			    dev_priv->gtt.mappable_end);
 
 		obj->map_and_fenceable = mappable && fenceable;
+
+		WARN_ON(flags & PIN_MAPPABLE && !obj->map_and_fenceable);
 	}
 
-	WARN_ON(flags & PIN_MAPPABLE && !obj->map_and_fenceable);
-
 	vma->pin_count++;
-	if (flags & PIN_MAPPABLE)
-		obj->pin_mappable |= true;
-
 	return 0;
 }
 
@@ -4235,8 +4317,7 @@ i915_gem_object_ggtt_unpin_view(struct drm_i915_gem_object *obj,
 	WARN_ON(vma->pin_count == 0);
 	WARN_ON(!i915_gem_obj_ggtt_bound_view(obj, view));
 
-	if (--vma->pin_count == 0 && view->type == I915_GGTT_VIEW_NORMAL)
-		obj->pin_mappable = false;
+	--vma->pin_count;
 }
 
 bool
@@ -4375,7 +4456,7 @@ void i915_gem_object_init(struct drm_i915_gem_object *obj,
 	INIT_LIST_HEAD(&obj->ring_list);
 	INIT_LIST_HEAD(&obj->obj_exec_link);
 	INIT_LIST_HEAD(&obj->vma_list);
-	INIT_LIST_HEAD(&obj->batch_pool_list);
+	INIT_LIST_HEAD(&obj->batch_pool_link);
 
 	obj->ops = ops;
 
@@ -4577,7 +4658,7 @@ void i915_gem_vma_destroy(struct i915_vma *vma)
 
 	list_del(&vma->vma_link);
 
-	kfree(vma);
+	kmem_cache_free(to_i915(vma->obj->base.dev)->vmas, vma);
 }
 
 static void
@@ -4864,12 +4945,12 @@ int i915_gem_init(struct drm_device *dev)
 	}
 
 	if (!i915.enable_execlists) {
-		dev_priv->gt.do_execbuf = i915_gem_ringbuffer_submission;
+		dev_priv->gt.execbuf_submit = i915_gem_ringbuffer_submission;
 		dev_priv->gt.init_rings = i915_gem_init_rings;
 		dev_priv->gt.cleanup_ring = intel_cleanup_ring_buffer;
 		dev_priv->gt.stop_ring = intel_stop_ring_buffer;
 	} else {
-		dev_priv->gt.do_execbuf = intel_execlists_submission;
+		dev_priv->gt.execbuf_submit = intel_execlists_submission;
 		dev_priv->gt.init_rings = intel_logical_rings_init;
 		dev_priv->gt.cleanup_ring = intel_logical_ring_cleanup;
 		dev_priv->gt.stop_ring = intel_logical_ring_stop;
@@ -4951,9 +5032,19 @@ i915_gem_load(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int i;
 
-	dev_priv->slab =
+	dev_priv->objects =
 		kmem_cache_create("i915_gem_object",
 				  sizeof(struct drm_i915_gem_object), 0,
+				  SLAB_HWCACHE_ALIGN,
+				  NULL);
+	dev_priv->vmas =
+		kmem_cache_create("i915_gem_vma",
+				  sizeof(struct i915_vma), 0,
+				  SLAB_HWCACHE_ALIGN,
+				  NULL);
+	dev_priv->requests =
+		kmem_cache_create("i915_gem_request",
+				  sizeof(struct drm_i915_gem_request), 0,
 				  SLAB_HWCACHE_ALIGN,
 				  NULL);
 
@@ -4998,16 +5089,12 @@ i915_gem_load(struct drm_device *dev)
 
 	i915_gem_shrinker_init(dev_priv);
 
-	i915_gem_batch_pool_init(dev, &dev_priv->mm.batch_pool);
-
 	mutex_init(&dev_priv->fb_tracking.lock);
 }
 
 void i915_gem_release(struct drm_device *dev, struct drm_file *file)
 {
 	struct drm_i915_file_private *file_priv = file->driver_priv;
-
-	cancel_delayed_work_sync(&file_priv->mm.idle_work);
 
 	/* Clean up our request list when the client is going away, so that
 	 * later retire_requests won't dereference our soon-to-be-gone
@@ -5024,15 +5111,12 @@ void i915_gem_release(struct drm_device *dev, struct drm_file *file)
 		request->file_priv = NULL;
 	}
 	spin_unlock(&file_priv->mm.lock);
-}
 
-static void
-i915_gem_file_idle_work_handler(struct work_struct *work)
-{
-	struct drm_i915_file_private *file_priv =
-		container_of(work, typeof(*file_priv), mm.idle_work.work);
-
-	atomic_set(&file_priv->rps_wait_boost, false);
+	if (!list_empty(&file_priv->rps_boost)) {
+		mutex_lock(&to_i915(dev)->rps.hw_lock);
+		list_del(&file_priv->rps_boost);
+		mutex_unlock(&to_i915(dev)->rps.hw_lock);
+	}
 }
 
 int i915_gem_open(struct drm_device *dev, struct drm_file *file)
@@ -5049,11 +5133,10 @@ int i915_gem_open(struct drm_device *dev, struct drm_file *file)
 	file->driver_priv = file_priv;
 	file_priv->dev_priv = dev->dev_private;
 	file_priv->file = file;
+	INIT_LIST_HEAD(&file_priv->rps_boost);
 
 	spin_lock_init(&file_priv->mm.lock);
 	INIT_LIST_HEAD(&file_priv->mm.request_list);
-	INIT_DELAYED_WORK(&file_priv->mm.idle_work,
-			  i915_gem_file_idle_work_handler);
 
 	ret = i915_gem_context_open(dev, file);
 	if (ret)
@@ -5123,7 +5206,7 @@ i915_gem_obj_ggtt_offset_view(struct drm_i915_gem_object *o,
 		    i915_ggtt_view_equal(&vma->ggtt_view, view))
 			return vma->node.start;
 
-	WARN(1, "global vma for this object not found.\n");
+	WARN(1, "global vma for this object not found. (view=%u)\n", view->type);
 	return -1;
 }
 
@@ -5192,13 +5275,10 @@ unsigned long i915_gem_obj_size(struct drm_i915_gem_object *o,
 bool i915_gem_obj_is_pinned(struct drm_i915_gem_object *obj)
 {
 	struct i915_vma *vma;
-	list_for_each_entry(vma, &obj->vma_list, vma_link) {
-		if (i915_is_ggtt(vma->vm) &&
-		    vma->ggtt_view.type != I915_GGTT_VIEW_NORMAL)
-			continue;
+	list_for_each_entry(vma, &obj->vma_list, vma_link)
 		if (vma->pin_count > 0)
 			return true;
-	}
+
 	return false;
 }
 
