@@ -59,50 +59,7 @@ static const struct sirfsoc_baudrate_to_regv baudrate_to_regv[] = {
 	{9600, 1114979},
 };
 
-static struct sirfsoc_uart_port sirfsoc_uart_ports[SIRFSOC_UART_NR] = {
-	[0] = {
-		.port = {
-			.iotype		= UPIO_MEM,
-			.flags		= UPF_BOOT_AUTOCONF,
-			.line		= 0,
-		},
-	},
-	[1] = {
-		.port = {
-			.iotype		= UPIO_MEM,
-			.flags		= UPF_BOOT_AUTOCONF,
-			.line		= 1,
-		},
-	},
-	[2] = {
-		.port = {
-			.iotype		= UPIO_MEM,
-			.flags		= UPF_BOOT_AUTOCONF,
-			.line		= 2,
-		},
-	},
-	[3] = {
-		.port = {
-			.iotype		= UPIO_MEM,
-			.flags		= UPF_BOOT_AUTOCONF,
-			.line		= 3,
-		},
-	},
-	[4] = {
-		.port = {
-			.iotype		= UPIO_MEM,
-			.flags		= UPF_BOOT_AUTOCONF,
-			.line		= 4,
-		},
-	},
-	[5] = {
-		.port = {
-			.iotype		= UPIO_MEM,
-			.flags		= UPF_BOOT_AUTOCONF,
-			.line		= 5,
-		},
-	},
-};
+static struct sirfsoc_uart_port *sirf_ports[SIRFSOC_UART_NR];
 
 static inline struct sirfsoc_uart_port *to_sirfport(struct uart_port *port)
 {
@@ -116,8 +73,7 @@ static inline unsigned int sirfsoc_uart_tx_empty(struct uart_port *port)
 	struct sirfsoc_register *ureg = &sirfport->uart_reg->uart_reg;
 	struct sirfsoc_fifo_status *ufifo_st = &sirfport->uart_reg->fifo_status;
 	reg = rd_regl(port, ureg->sirfsoc_tx_fifo_status);
-
-	return (reg & ufifo_st->ff_empty(port->line)) ? TIOCSER_TEMT : 0;
+	return (reg & ufifo_st->ff_empty(port)) ? TIOCSER_TEMT : 0;
 }
 
 static unsigned int sirfsoc_uart_get_mctrl(struct uart_port *port)
@@ -290,8 +246,7 @@ static void sirfsoc_uart_start_tx(struct uart_port *port)
 	if (sirfport->tx_dma_chan)
 		sirfsoc_uart_tx_with_dma(sirfport);
 	else {
-		sirfsoc_uart_pio_tx_chars(sirfport,
-			SIRFSOC_UART_IO_TX_REASONABLE_CNT);
+		sirfsoc_uart_pio_tx_chars(sirfport, port->fifosize);
 		wr_regl(port, ureg->sirfsoc_tx_fifo_op, SIRFUART_FIFO_START);
 		if (!sirfport->is_atlas7)
 			wr_regl(port, ureg->sirfsoc_int_en_reg,
@@ -417,7 +372,7 @@ sirfsoc_uart_pio_rx_chars(struct uart_port *port, unsigned int max_rx_count)
 	if (!tty)
 		return -ENODEV;
 	while (!(rd_regl(port, ureg->sirfsoc_rx_fifo_status) &
-					ufifo_st->ff_empty(port->line))) {
+					ufifo_st->ff_empty(port))) {
 		ch = rd_regl(port, ureg->sirfsoc_rx_fifo_data) |
 			SIRFUART_DUMMY_READ;
 		if (unlikely(uart_handle_sysrq_char(port, ch)))
@@ -444,7 +399,7 @@ sirfsoc_uart_pio_tx_chars(struct sirfsoc_uart_port *sirfport, int count)
 	unsigned int num_tx = 0;
 	while (!uart_circ_empty(xmit) &&
 		!(rd_regl(port, ureg->sirfsoc_tx_fifo_status) &
-					ufifo_st->ff_full(port->line)) &&
+					ufifo_st->ff_full(port)) &&
 		count--) {
 		wr_regl(port, ureg->sirfsoc_tx_fifo_data,
 				xmit->buf[xmit->tail]);
@@ -669,8 +624,7 @@ recv_char:
 			sirfsoc_uart_handle_rx_done(sirfport);
 	} else {
 		if (intr_status & SIRFUART_RX_IO_INT_ST(uint_st))
-			sirfsoc_uart_pio_rx_chars(port,
-					SIRFSOC_UART_IO_RX_MAX_CNT);
+			sirfsoc_uart_pio_rx_chars(port, port->fifosize);
 	}
 	spin_unlock(&port->lock);
 	tty_flip_buffer_push(&state->port);
@@ -684,10 +638,10 @@ recv_char:
 				return IRQ_HANDLED;
 			} else {
 				sirfsoc_uart_pio_tx_chars(sirfport,
-					SIRFSOC_UART_IO_TX_REASONABLE_CNT);
+						port->fifosize);
 				if ((uart_circ_empty(xmit)) &&
 				(rd_regl(port, ureg->sirfsoc_tx_fifo_status) &
-				ufifo_st->ff_empty(port->line)))
+				ufifo_st->ff_empty(port)))
 					sirfsoc_uart_stop_tx(port);
 			}
 		}
@@ -789,7 +743,7 @@ sirfsoc_usp_calc_sample_div(unsigned long set_rate,
 	unsigned long ioclk_div = 0;
 	unsigned long temp_delta;
 
-	for (sample_div = SIRF_MIN_SAMPLE_DIV;
+	for (sample_div = SIRF_USP_MIN_SAMPLE_DIV;
 			sample_div <= SIRF_MAX_SAMPLE_DIV; sample_div++) {
 		temp_delta = ioclk_rate -
 		(ioclk_rate + (set_rate * sample_div) / 2)
@@ -1032,19 +986,10 @@ static void sirfsoc_uart_pm(struct uart_port *port, unsigned int state,
 			      unsigned int oldstate)
 {
 	struct sirfsoc_uart_port *sirfport = to_sirfport(port);
-	if (!state) {
-		if (sirfport->is_bt_uart) {
-			clk_prepare_enable(sirfport->clk_noc);
-			clk_prepare_enable(sirfport->clk_general);
-		}
+	if (!state)
 		clk_prepare_enable(sirfport->clk);
-	} else {
+	else
 		clk_disable_unprepare(sirfport->clk);
-		if (sirfport->is_bt_uart) {
-			clk_disable_unprepare(sirfport->clk_general);
-			clk_disable_unprepare(sirfport->clk_noc);
-		}
-	}
 }
 
 static int sirfsoc_uart_startup(struct uart_port *port)
@@ -1064,7 +1009,6 @@ static int sirfsoc_uart_startup(struct uart_port *port)
 							index, port->irq);
 		goto irq_err;
 	}
-
 	/* initial hardware settings */
 	wr_regl(port, ureg->sirfsoc_tx_dma_io_ctrl,
 		rd_regl(port, ureg->sirfsoc_tx_dma_io_ctrl) |
@@ -1196,27 +1140,29 @@ sirfsoc_uart_console_setup(struct console *co, char *options)
 	unsigned int bits = 8;
 	unsigned int parity = 'n';
 	unsigned int flow = 'n';
-	struct uart_port *port = &sirfsoc_uart_ports[co->index].port;
-	struct sirfsoc_uart_port *sirfport = to_sirfport(port);
-	struct sirfsoc_register *ureg = &sirfport->uart_reg->uart_reg;
+	struct sirfsoc_uart_port *sirfport;
+	struct sirfsoc_register *ureg;
 	if (co->index < 0 || co->index >= SIRFSOC_UART_NR)
 		return -EINVAL;
-
-	if (!port->mapbase)
+	sirfport = sirf_ports[co->index];
+	if (!sirfport)
+		return -ENODEV;
+	ureg = &sirfport->uart_reg->uart_reg;
+	if (!sirfport->port.mapbase)
 		return -ENODEV;
 
 	/* enable usp in mode1 register */
 	if (sirfport->uart_reg->uart_type == SIRF_USP_UART)
-		wr_regl(port, ureg->sirfsoc_mode1, SIRFSOC_USP_EN |
+		wr_regl(&sirfport->port, ureg->sirfsoc_mode1, SIRFSOC_USP_EN |
 				SIRFSOC_USP_ENDIAN_CTRL_LSBF);
 	if (options)
 		uart_parse_options(options, &baud, &parity, &bits, &flow);
-	port->cons = co;
+	sirfport->port.cons = co;
 
 	/* default console tx/rx transfer using io mode */
 	sirfport->rx_dma_chan = NULL;
 	sirfport->tx_dma_chan = NULL;
-	return uart_set_options(port, co, baud, parity, bits, flow);
+	return uart_set_options(&sirfport->port, co, baud, parity, bits, flow);
 }
 
 static void sirfsoc_uart_console_putchar(struct uart_port *port, int ch)
@@ -1224,8 +1170,8 @@ static void sirfsoc_uart_console_putchar(struct uart_port *port, int ch)
 	struct sirfsoc_uart_port *sirfport = to_sirfport(port);
 	struct sirfsoc_register *ureg = &sirfport->uart_reg->uart_reg;
 	struct sirfsoc_fifo_status *ufifo_st = &sirfport->uart_reg->fifo_status;
-	while (rd_regl(port,
-		ureg->sirfsoc_tx_fifo_status) & ufifo_st->ff_full(port->line))
+	while (rd_regl(port, ureg->sirfsoc_tx_fifo_status) &
+		ufifo_st->ff_full(port))
 		cpu_relax();
 	wr_regl(port, ureg->sirfsoc_tx_fifo_data, ch);
 }
@@ -1233,8 +1179,10 @@ static void sirfsoc_uart_console_putchar(struct uart_port *port, int ch)
 static void sirfsoc_uart_console_write(struct console *co, const char *s,
 							unsigned int count)
 {
-	struct uart_port *port = &sirfsoc_uart_ports[co->index].port;
-	uart_console_write(port, s, count, sirfsoc_uart_console_putchar);
+	struct sirfsoc_uart_port *sirfport = sirf_ports[co->index];
+
+	uart_console_write(&sirfport->port, s, count,
+			sirfsoc_uart_console_putchar);
 }
 
 static struct console sirfsoc_uart_console = {
@@ -1293,16 +1241,15 @@ static int sirfsoc_uart_probe(struct platform_device *pdev)
 	const struct of_device_id *match;
 
 	match = of_match_node(sirfsoc_uart_ids, pdev->dev.of_node);
-	if (of_property_read_u32(pdev->dev.of_node, "cell-index", &pdev->id)) {
-		dev_err(&pdev->dev,
-			"Unable to find cell-index in uart node.\n");
-		ret = -EFAULT;
+	sirfport = devm_kzalloc(&pdev->dev, sizeof(*sirfport), GFP_KERNEL);
+	if (!sirfport) {
+		ret = -ENOMEM;
 		goto err;
 	}
-	if (of_device_is_compatible(pdev->dev.of_node, "sirf,prima2-usp-uart"))
-		pdev->id += ((struct sirfsoc_uart_register *)
-				match->data)->uart_param.register_uart_nr;
-	sirfport = &sirfsoc_uart_ports[pdev->id];
+	sirfport->port.line = of_alias_get_id(pdev->dev.of_node, "serial");
+	sirf_ports[sirfport->port.line] = sirfport;
+	sirfport->port.iotype = UPIO_MEM;
+	sirfport->port.flags = UPF_BOOT_AUTOCONF;
 	port = &sirfport->port;
 	port->dev = &pdev->dev;
 	port->private_data = sirfport;
@@ -1393,20 +1340,6 @@ usp_no_flow_control:
 		goto err;
 	}
 	port->uartclk = clk_get_rate(sirfport->clk);
-	if (of_device_is_compatible(pdev->dev.of_node, "sirf,atlas7-bt-uart")) {
-		sirfport->clk_general = devm_clk_get(&pdev->dev, "general");
-		if (IS_ERR(sirfport->clk_general)) {
-			ret = PTR_ERR(sirfport->clk_general);
-			goto err;
-		}
-		sirfport->clk_noc = devm_clk_get(&pdev->dev, "noc");
-		if (IS_ERR(sirfport->clk_noc)) {
-			ret = PTR_ERR(sirfport->clk_noc);
-			goto err;
-		}
-		sirfport->is_bt_uart = true;
-	} else
-		sirfport->is_bt_uart = false;
 
 	port->ops = &sirfsoc_uart_ops;
 	spin_lock_init(&port->lock);
