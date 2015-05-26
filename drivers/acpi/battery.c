@@ -70,6 +70,7 @@ MODULE_AUTHOR("Alexey Starikovskiy <astarikovskiy@suse.de>");
 MODULE_DESCRIPTION("ACPI Battery Driver");
 MODULE_LICENSE("GPL");
 
+static async_cookie_t async_cookie;
 static int battery_bix_broken_package;
 static int battery_notification_delay_ms;
 static unsigned int cache_time = 1000;
@@ -1292,33 +1293,34 @@ static struct acpi_driver acpi_battery_driver = {
 
 static void __init acpi_battery_init_async(void *unused, async_cookie_t cookie)
 {
-	if (acpi_disabled)
-		return;
+	int result;
 
 	dmi_check_system(bat_dmi_table);
-	
+
 #ifdef CONFIG_ACPI_PROCFS_POWER
 	acpi_battery_dir = acpi_lock_battery_dir();
 	if (!acpi_battery_dir)
 		return;
 #endif
-	if (acpi_bus_register_driver(&acpi_battery_driver) < 0) {
+	result = acpi_bus_register_driver(&acpi_battery_driver);
 #ifdef CONFIG_ACPI_PROCFS_POWER
+	if (result < 0)
 		acpi_unlock_battery_dir(acpi_battery_dir);
 #endif
-		return;
-	}
-	return;
 }
 
 static int __init acpi_battery_init(void)
 {
-	async_schedule(acpi_battery_init_async, NULL);
+	if (acpi_disabled)
+		return -ENODEV;
+
+	async_cookie = async_schedule(acpi_battery_init_async, NULL);
 	return 0;
 }
 
 static void __exit acpi_battery_exit(void)
 {
+	async_synchronize_cookie(async_cookie);
 	acpi_bus_unregister_driver(&acpi_battery_driver);
 #ifdef CONFIG_ACPI_PROCFS_POWER
 	acpi_unlock_battery_dir(acpi_battery_dir);
