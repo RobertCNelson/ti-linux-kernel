@@ -79,7 +79,7 @@ static const u32 hpd_status_g4x[HPD_NUM_PINS] = {
 	[HPD_PORT_D] = PORTD_HOTPLUG_INT_STATUS
 };
 
-static const u32 hpd_status_i915[HPD_NUM_PINS] = { /* i915 and valleyview are the same */
+static const u32 hpd_status_i915[HPD_NUM_PINS] = {
 	[HPD_CRT] = CRT_HOTPLUG_INT_STATUS,
 	[HPD_SDVO_B] = SDVOB_HOTPLUG_INT_STATUS_I915,
 	[HPD_SDVO_C] = SDVOC_HOTPLUG_INT_STATUS_I915,
@@ -1070,12 +1070,25 @@ static u32 vlv_wa_c0_ei(struct drm_i915_private *dev_priv, u32 pm_iir)
 	return events;
 }
 
+static bool any_waiters(struct drm_i915_private *dev_priv)
+{
+	struct intel_engine_cs *ring;
+	int i;
+
+	for_each_ring(ring, dev_priv, i)
+		if (ring->irq_refcount)
+			return true;
+
+	return false;
+}
+
 static void gen6_pm_rps_work(struct work_struct *work)
 {
 	struct drm_i915_private *dev_priv =
 		container_of(work, struct drm_i915_private, rps.work);
+	bool client_boost;
+	int new_delay, adj, min, max;
 	u32 pm_iir;
-	int new_delay, adj;
 
 	spin_lock_irq(&dev_priv->irq_lock);
 	/* Speed up work cancelation during disabling rps interrupts. */
@@ -1087,12 +1100,14 @@ static void gen6_pm_rps_work(struct work_struct *work)
 	dev_priv->rps.pm_iir = 0;
 	/* Make sure not to corrupt PMIMR state used by ringbuffer on GEN6 */
 	gen6_enable_pm_irq(dev_priv, dev_priv->pm_rps_events);
+	client_boost = dev_priv->rps.client_boost;
+	dev_priv->rps.client_boost = false;
 	spin_unlock_irq(&dev_priv->irq_lock);
 
 	/* Make sure we didn't queue anything we're not going to process. */
 	WARN_ON(pm_iir & ~dev_priv->pm_rps_events);
 
-	if ((pm_iir & dev_priv->pm_rps_events) == 0)
+	if ((pm_iir & dev_priv->pm_rps_events) == 0 && !client_boost)
 		return;
 
 	mutex_lock(&dev_priv->rps.hw_lock);
@@ -1101,7 +1116,13 @@ static void gen6_pm_rps_work(struct work_struct *work)
 
 	adj = dev_priv->rps.last_adj;
 	new_delay = dev_priv->rps.cur_freq;
-	if (pm_iir & GEN6_PM_RP_UP_THRESHOLD) {
+	min = dev_priv->rps.min_freq_softlimit;
+	max = dev_priv->rps.max_freq_softlimit;
+
+	if (client_boost) {
+		new_delay = dev_priv->rps.max_freq_softlimit;
+		adj = 0;
+	} else if (pm_iir & GEN6_PM_RP_UP_THRESHOLD) {
 		if (adj > 0)
 			adj *= 2;
 		else /* CHV needs even encode values */
@@ -1114,6 +1135,8 @@ static void gen6_pm_rps_work(struct work_struct *work)
 			new_delay = dev_priv->rps.efficient_freq;
 			adj = 0;
 		}
+	} else if (any_waiters(dev_priv)) {
+		adj = 0;
 	} else if (pm_iir & GEN6_PM_RP_DOWN_TIMEOUT) {
 		if (dev_priv->rps.cur_freq > dev_priv->rps.efficient_freq)
 			new_delay = dev_priv->rps.efficient_freq;
@@ -1135,9 +1158,7 @@ static void gen6_pm_rps_work(struct work_struct *work)
 	 * interrupt
 	 */
 	new_delay += adj;
-	new_delay = clamp_t(int, new_delay,
-			    dev_priv->rps.min_freq_softlimit,
-			    dev_priv->rps.max_freq_softlimit);
+	new_delay = clamp_t(int, new_delay, min, max);
 
 	intel_set_rps(dev_priv->dev, new_delay);
 
@@ -1386,7 +1407,7 @@ static int i915_port_to_hotplug_shift(enum port port)
 	}
 }
 
-static inline enum port get_port_from_pin(enum hpd_pin pin)
+static enum port get_port_from_pin(enum hpd_pin pin)
 {
 	switch (pin) {
 	case HPD_PORT_B:
@@ -1400,10 +1421,10 @@ static inline enum port get_port_from_pin(enum hpd_pin pin)
 	}
 }
 
-static inline void intel_hpd_irq_handler(struct drm_device *dev,
-					 u32 hotplug_trigger,
-					 u32 dig_hotplug_reg,
-					 const u32 hpd[HPD_NUM_PINS])
+static void intel_hpd_irq_handler(struct drm_device *dev,
+				  u32 hotplug_trigger,
+				  u32 dig_hotplug_reg,
+				  const u32 hpd[HPD_NUM_PINS])
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int i;
@@ -1743,7 +1764,7 @@ static void i9xx_hpd_irq_handler(struct drm_device *dev)
 		 */
 		POSTING_READ(PORT_HOTPLUG_STAT);
 
-		if (IS_G4X(dev)) {
+		if (IS_G4X(dev) || IS_VALLEYVIEW(dev)) {
 			u32 hotplug_trigger = hotplug_status & HOTPLUG_INT_STATUS_G4X;
 
 			intel_hpd_irq_handler(dev, hotplug_trigger, 0, hpd_status_g4x);
