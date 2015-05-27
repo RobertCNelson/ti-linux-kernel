@@ -45,7 +45,7 @@
 //#define cfg_dbg(fmt...)	printk(fmt)
 
 #ifdef CONFIG_PCI_MSI
-static int pnv_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
+int pnv_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 {
 	struct pci_controller *hose = pci_bus_to_host(pdev->bus);
 	struct pnv_phb *phb = hose->private_data;
@@ -94,7 +94,7 @@ static int pnv_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 	return 0;
 }
 
-static void pnv_teardown_msi_irqs(struct pci_dev *pdev)
+void pnv_teardown_msi_irqs(struct pci_dev *pdev)
 {
 	struct pci_controller *hose = pci_bus_to_host(pdev->bus);
 	struct pnv_phb *phb = hose->private_data;
@@ -662,7 +662,7 @@ void pnv_pci_setup_iommu_table(struct iommu_table *tbl,
 	tbl->it_type = TCE_PCI;
 }
 
-static void pnv_pci_dma_dev_setup(struct pci_dev *pdev)
+void pnv_pci_dma_dev_setup(struct pci_dev *pdev)
 {
 	struct pci_controller *hose = pci_bus_to_host(pdev->bus);
 	struct pnv_phb *phb = hose->private_data;
@@ -687,16 +687,6 @@ static void pnv_pci_dma_dev_setup(struct pci_dev *pdev)
 
 	if (phb && phb->dma_dev_setup)
 		phb->dma_dev_setup(phb, pdev);
-}
-
-int pnv_pci_dma_set_mask(struct pci_dev *pdev, u64 dma_mask)
-{
-	struct pci_controller *hose = pci_bus_to_host(pdev->bus);
-	struct pnv_phb *phb = hose->private_data;
-
-	if (phb && phb->dma_set_mask)
-		return phb->dma_set_mask(phb, pdev, dma_mask);
-	return __dma_set_mask(&pdev->dev, dma_mask);
 }
 
 u64 pnv_pci_dma_get_required_mask(struct pci_dev *pdev)
@@ -768,16 +758,6 @@ void __init pnv_pci_init(void)
 	ppc_md.tce_free_rm = pnv_tce_free_rm;
 	ppc_md.tce_get = pnv_tce_get;
 	set_pci_dma_ops(&dma_iommu_ops);
-
-	/* Configure MSIs */
-#ifdef CONFIG_PCI_MSI
-	ppc_md.setup_msi_irqs = pnv_setup_msi_irqs;
-	ppc_md.teardown_msi_irqs = pnv_teardown_msi_irqs;
-#endif
 }
 
 machine_subsys_initcall_sync(powernv, tce_iommu_bus_notifier_init);
-
-struct pci_controller_ops pnv_pci_controller_ops = {
-	.dma_dev_setup = pnv_pci_dma_dev_setup,
-};
