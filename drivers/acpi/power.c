@@ -684,7 +684,8 @@ int acpi_power_get_inferred_state(struct acpi_device *device, int *state)
 		}
 	}
 
-	*state = ACPI_STATE_D3_COLD;
+	*state = device->power.states[ACPI_STATE_D3_COLD].flags.valid ?
+		ACPI_STATE_D3_COLD : ACPI_STATE_D3_HOT;
 	return 0;
 }
 
@@ -709,8 +710,6 @@ int acpi_power_transition(struct acpi_device *device, int state)
 	if ((device->power.state < ACPI_STATE_D0)
 	    || (device->power.state > ACPI_STATE_D3_COLD))
 		return -ENODEV;
-
-	/* TBD: Resources must be ordered. */
 
 	/*
 	 * First we reference all power resources required in the target list

@@ -138,6 +138,7 @@ struct acpi_ec {
 	struct transaction *curr;
 	spinlock_t lock;
 	struct work_struct work;
+	unsigned long timestamp;
 };
 
 extern struct acpi_ec *first_ec;
@@ -191,6 +192,8 @@ bool acpi_osi_is_win8(void);
 /*--------------------------------------------------------------------------
 				Device properties
   -------------------------------------------------------------------------- */
+#define ACPI_DT_NAMESPACE_HID	"PRP0001"
+
 void acpi_init_properties(struct acpi_device *adev);
 void acpi_free_properties(struct acpi_device *adev);
 
