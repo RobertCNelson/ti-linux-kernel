@@ -1,6 +1,7 @@
 #ifndef __PERF_MAP_H
 #define __PERF_MAP_H
 
+#include <linux/atomic.h>
 #include <linux/compiler.h>
 #include <linux/list.h>
 #include <linux/rbtree.h>
@@ -61,7 +62,7 @@ struct map_groups {
 	struct rb_root	 maps[MAP__NR_TYPES];
 	struct list_head removed_maps[MAP__NR_TYPES];
 	struct machine	 *machine;
-	int		 refcnt;
+	atomic_t	 refcnt;
 };
 
 struct map_groups *map_groups__new(struct machine *machine);
@@ -70,7 +71,8 @@ bool map_groups__empty(struct map_groups *mg);
 
 static inline struct map_groups *map_groups__get(struct map_groups *mg)
 {
-	++mg->refcnt;
+	if (mg)
+		atomic_inc(&mg->refcnt);
 	return mg;
 }
 
@@ -124,7 +126,7 @@ struct thread;
  */
 #define __map__for_each_symbol_by_name(map, sym_name, pos, filter)	\
 	for (pos = map__find_symbol_by_name(map, sym_name, filter);	\
-	     pos && strcmp(pos->name, sym_name) == 0;		\
+	     pos && arch__compare_symbol_names(pos->name, sym_name) == 0;	\
 	     pos = symbol__next_by_name(pos))
 
 #define map__for_each_symbol_by_name(map, sym_name, pos)		\
@@ -132,6 +134,7 @@ struct thread;
 
 typedef int (*symbol_filter_t)(struct map *map, struct symbol *sym);
 
+int arch__compare_symbol_names(const char *namea, const char *nameb);
 void map__init(struct map *map, enum map_type type,
 	       u64 start, u64 end, u64 pgoff, struct dso *dso);
 struct map *map__new(struct machine *machine, u64 start, u64 len,
