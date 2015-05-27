@@ -33,6 +33,7 @@
 #include <linux/regulator/max8973-regulator.h>
 #include <linux/regulator/of_regulator.h>
 #include <linux/gpio.h>
+#include <linux/of_gpio.h>
 #include <linux/i2c.h>
 #include <linux/slab.h>
 #include <linux/regmap.h>
@@ -95,12 +96,12 @@ struct max8973_chip {
 	struct regulator_desc desc;
 	struct regmap *regmap;
 	bool enable_external_control;
+	int enable_gpio;
 	int dvs_gpio;
 	int lru_index[MAX8973_MAX_VOUT_REG];
 	int curr_vout_val[MAX8973_MAX_VOUT_REG];
 	int curr_vout_reg;
 	int curr_gpio_val;
-	bool valid_dvs_gpio;
 	struct regulator_ops ops;
 };
 
@@ -174,7 +175,7 @@ static int max8973_dcdc_set_voltage_sel(struct regulator_dev *rdev,
 	 * If gpios are available to select the VOUT register then least
 	 * recently used register for new configuration.
 	 */
-	if (max->valid_dvs_gpio)
+	if (gpio_is_valid(max->dvs_gpio))
 		found = find_voltage_set_register(max, vsel,
 					&vout_reg, &gpio_val);
 
@@ -191,7 +192,7 @@ static int max8973_dcdc_set_voltage_sel(struct regulator_dev *rdev,
 	}
 
 	/* Select proper VOUT register vio gpios */
-	if (max->valid_dvs_gpio) {
+	if (gpio_is_valid(max->dvs_gpio)) {
 		gpio_set_value_cansleep(max->dvs_gpio, gpio_val & 0x1);
 		max->curr_gpio_val = gpio_val;
 	}
@@ -266,8 +267,12 @@ static int max8973_init_dcdc(struct max8973_chip *max,
 	if (pdata->control_flags & MAX8973_CONTROL_OUTPUT_ACTIVE_DISCH_ENABLE)
 		control1 |= MAX8973_AD_ENABLE;
 
-	if (pdata->control_flags & MAX8973_CONTROL_BIAS_ENABLE)
+	if (pdata->control_flags & MAX8973_CONTROL_BIAS_ENABLE) {
 		control1 |= MAX8973_BIAS_ENABLE;
+		max->desc.enable_time = 20;
+	} else {
+		max->desc.enable_time = 240;
+	}
 
 	if (pdata->control_flags & MAX8973_CONTROL_FREQ_SHIFT_9PER_ENABLE)
 		control1 |= MAX8973_FREQSHIFT_9PER;
@@ -361,21 +366,73 @@ static const struct regmap_config max8973_regmap_config = {
 	.cache_type		= REGCACHE_RBTREE,
 };
 
+static struct max8973_regulator_platform_data *max8973_parse_dt(
+		struct device *dev)
+{
+	struct max8973_regulator_platform_data *pdata;
+	struct device_node *np = dev->of_node;
+	int ret;
+	u32 pval;
+
+	pdata = devm_kzalloc(dev, sizeof(*pdata), GFP_KERNEL);
+	if (!pdata)
+		return NULL;
+
+	pdata->enable_ext_control = of_property_read_bool(np,
+						"maxim,externally-enable");
+	pdata->enable_gpio = of_get_named_gpio(np, "maxim,enable-gpio", 0);
+	pdata->dvs_gpio = of_get_named_gpio(np, "maxim,dvs-gpio", 0);
+
+	ret = of_property_read_u32(np, "maxim,dvs-default-state", &pval);
+	if (!ret)
+		pdata->dvs_def_state = pval;
+
+	if (of_property_read_bool(np, "maxim,enable-remote-sense"))
+		pdata->control_flags  |= MAX8973_CONTROL_REMOTE_SENSE_ENABLE;
+
+	if (of_property_read_bool(np, "maxim,enable-falling-slew-rate"))
+		pdata->control_flags  |=
+				MAX8973_CONTROL_FALLING_SLEW_RATE_ENABLE;
+
+	if (of_property_read_bool(np, "maxim,enable-active-discharge"))
+		pdata->control_flags  |=
+				MAX8973_CONTROL_OUTPUT_ACTIVE_DISCH_ENABLE;
+
+	if (of_property_read_bool(np, "maxim,enable-frequency-shift"))
+		pdata->control_flags  |= MAX8973_CONTROL_FREQ_SHIFT_9PER_ENABLE;
+
+	if (of_property_read_bool(np, "maxim,enable-bias-control"))
+		pdata->control_flags  |= MAX8973_BIAS_ENABLE;
+
+	return pdata;
+}
+
 static int max8973_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
 	struct max8973_regulator_platform_data *pdata;
+	struct regulator_init_data *ridata;
 	struct regulator_config config = { };
 	struct regulator_dev *rdev;
 	struct max8973_chip *max;
+	bool pdata_from_dt = false;
 	int ret;
 
 	pdata = dev_get_platdata(&client->dev);
 
-	if (!pdata && !client->dev.of_node) {
+	if (!pdata && client->dev.of_node) {
+		pdata = max8973_parse_dt(&client->dev);
+		pdata_from_dt = true;
+	}
+
+	if (!pdata) {
 		dev_err(&client->dev, "No Platform data");
 		return -EIO;
 	}
+
+	if ((pdata->dvs_gpio == -EPROBE_DEFER) ||
+		(pdata->enable_gpio == -EPROBE_DEFER))
+		return -EPROBE_DEFER;
 
 	max = devm_kzalloc(&client->dev, sizeof(*max), GFP_KERNEL);
 	if (!max)
@@ -400,22 +457,21 @@ static int max8973_probe(struct i2c_client *client,
 	max->desc.uV_step = MAX8973_VOLATGE_STEP;
 	max->desc.n_voltages = MAX8973_BUCK_N_VOLTAGE;
 
-	if (!pdata || !pdata->enable_ext_control) {
+	max->dvs_gpio = (pdata->dvs_gpio) ? pdata->dvs_gpio : -EINVAL;
+	max->enable_gpio = (pdata->enable_gpio) ? pdata->enable_gpio : -EINVAL;
+	max->enable_external_control = pdata->enable_ext_control;
+	max->curr_gpio_val = pdata->dvs_def_state;
+	max->curr_vout_reg = MAX8973_VOUT + pdata->dvs_def_state;
+
+	if (gpio_is_valid(max->enable_gpio))
+		max->enable_external_control = true;
+
+	if (!pdata->enable_ext_control) {
 		max->desc.enable_reg = MAX8973_VOUT;
 		max->desc.enable_mask = MAX8973_VOUT_ENABLE;
 		max->ops.enable = regulator_enable_regmap;
 		max->ops.disable = regulator_disable_regmap;
 		max->ops.is_enabled = regulator_is_enabled_regmap;
-	}
-
-	if (pdata) {
-		max->dvs_gpio = pdata->dvs_gpio;
-		max->enable_external_control = pdata->enable_ext_control;
-		max->curr_gpio_val = pdata->dvs_def_state;
-		max->curr_vout_reg = MAX8973_VOUT + pdata->dvs_def_state;
-	} else {
-		max->dvs_gpio = -EINVAL;
-		max->curr_vout_reg = MAX8973_VOUT;
 	}
 
 	max->lru_index[0] = max->curr_vout_reg;
@@ -434,7 +490,6 @@ static int max8973_probe(struct i2c_client *client,
 				max->dvs_gpio, ret);
 			return ret;
 		}
-		max->valid_dvs_gpio = true;
 
 		/*
 		 * Initialize the lru index with vout_reg id
@@ -444,25 +499,32 @@ static int max8973_probe(struct i2c_client *client,
 			max->lru_index[i] = i;
 		max->lru_index[0] = max->curr_vout_reg;
 		max->lru_index[max->curr_vout_reg] = 0;
-	} else {
-		max->valid_dvs_gpio = false;
 	}
 
-	if (pdata) {
-		ret = max8973_init_dcdc(max, pdata);
-		if (ret < 0) {
-			dev_err(max->dev, "Max8973 Init failed, err = %d\n", ret);
-			return ret;
-		}
+	if (pdata_from_dt)
+		pdata->reg_init_data = of_get_regulator_init_data(&client->dev,
+					client->dev.of_node, &max->desc);
+
+	ret = max8973_init_dcdc(max, pdata);
+	if (ret < 0) {
+		dev_err(max->dev, "Max8973 Init failed, err = %d\n", ret);
+		return ret;
 	}
 
 	config.dev = &client->dev;
-	config.init_data = pdata ? pdata->reg_init_data :
-		of_get_regulator_init_data(&client->dev, client->dev.of_node,
-					   &max->desc);
+	config.init_data = pdata->reg_init_data;
 	config.driver_data = max;
 	config.of_node = client->dev.of_node;
 	config.regmap = max->regmap;
+
+	if (gpio_is_valid(max->enable_gpio)) {
+		ridata = pdata->reg_init_data;
+		config.ena_gpio_flags = GPIOF_OUT_INIT_LOW;
+		if (ridata && (ridata->constraints.always_on ||
+			ridata->constraints.boot_on))
+			config.ena_gpio_flags = GPIOF_OUT_INIT_HIGH;
+		config.ena_gpio = max->enable_gpio;
+	}
 
 	/* Register the regulators */
 	rdev = devm_regulator_register(&client->dev, &max->desc, &config);
