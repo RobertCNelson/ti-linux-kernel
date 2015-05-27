@@ -71,8 +71,10 @@ static int add_hist_entries(struct hists *hists, struct machine *machine)
 			goto out;
 
 		if (hist_entry_iter__add(&iter, &al, evsel, &sample,
-					 PERF_MAX_STACK_DEPTH, NULL) < 0)
+					 PERF_MAX_STACK_DEPTH, NULL) < 0) {
+			addr_location__put(&al);
 			goto out;
+		}
 
 		fake_samples[i].thread = al.thread;
 		fake_samples[i].map = al.map;
@@ -590,7 +592,7 @@ int test__hists_output(void)
 
 	TEST_ASSERT_VAL("No memory", evlist);
 
-	err = parse_events(evlist, "cpu-clock");
+	err = parse_events(evlist, "cpu-clock", NULL);
 	if (err)
 		goto out;
 
