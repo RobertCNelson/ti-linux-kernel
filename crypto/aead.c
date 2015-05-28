@@ -13,6 +13,7 @@
  */
 
 #include <crypto/internal/aead.h>
+#include <crypto/scatterwalk.h>
 #include <linux/err.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
@@ -26,10 +27,12 @@
 
 #include "internal.h"
 
+static int aead_null_givencrypt(struct aead_givcrypt_request *req);
+static int aead_null_givdecrypt(struct aead_givcrypt_request *req);
+
 static int setkey_unaligned(struct crypto_aead *tfm, const u8 *key,
 			    unsigned int keylen)
 {
-	struct aead_alg *aead = crypto_aead_alg(tfm);
 	unsigned long alignmask = crypto_aead_alignmask(tfm);
 	int ret;
 	u8 *buffer, *alignbuffer;
@@ -42,47 +45,94 @@ static int setkey_unaligned(struct crypto_aead *tfm, const u8 *key,
 
 	alignbuffer = (u8 *)ALIGN((unsigned long)buffer, alignmask + 1);
 	memcpy(alignbuffer, key, keylen);
-	ret = aead->setkey(tfm, alignbuffer, keylen);
+	ret = tfm->setkey(tfm, alignbuffer, keylen);
 	memset(alignbuffer, 0, keylen);
 	kfree(buffer);
 	return ret;
 }
 
-static int setkey(struct crypto_aead *tfm, const u8 *key, unsigned int keylen)
+int crypto_aead_setkey(struct crypto_aead *tfm,
+		       const u8 *key, unsigned int keylen)
 {
-	struct aead_alg *aead = crypto_aead_alg(tfm);
 	unsigned long alignmask = crypto_aead_alignmask(tfm);
+
+	tfm = tfm->child;
 
 	if ((unsigned long)key & alignmask)
 		return setkey_unaligned(tfm, key, keylen);
 
-	return aead->setkey(tfm, key, keylen);
+	return tfm->setkey(tfm, key, keylen);
 }
+EXPORT_SYMBOL_GPL(crypto_aead_setkey);
 
 int crypto_aead_setauthsize(struct crypto_aead *tfm, unsigned int authsize)
 {
-	struct aead_tfm *crt = crypto_aead_crt(tfm);
 	int err;
 
-	if (authsize > crypto_aead_alg(tfm)->maxauthsize)
+	if (authsize > crypto_aead_maxauthsize(tfm))
 		return -EINVAL;
 
-	if (crypto_aead_alg(tfm)->setauthsize) {
-		err = crypto_aead_alg(tfm)->setauthsize(crt->base, authsize);
+	if (tfm->setauthsize) {
+		err = tfm->setauthsize(tfm->child, authsize);
 		if (err)
 			return err;
 	}
 
-	crypto_aead_crt(crt->base)->authsize = authsize;
-	crt->authsize = authsize;
+	tfm->child->authsize = authsize;
+	tfm->authsize = authsize;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(crypto_aead_setauthsize);
 
-static unsigned int crypto_aead_ctxsize(struct crypto_alg *alg, u32 type,
-					u32 mask)
+struct aead_old_request {
+	struct scatterlist srcbuf[2];
+	struct scatterlist dstbuf[2];
+	struct aead_request subreq;
+};
+
+unsigned int crypto_aead_reqsize(struct crypto_aead *tfm)
 {
-	return alg->cra_ctxsize;
+	return tfm->reqsize + sizeof(struct aead_old_request);
+}
+EXPORT_SYMBOL_GPL(crypto_aead_reqsize);
+
+static int old_crypt(struct aead_request *req,
+		     int (*crypt)(struct aead_request *req))
+{
+	struct aead_old_request *nreq = aead_request_ctx(req);
+	struct crypto_aead *aead = crypto_aead_reqtfm(req);
+	struct scatterlist *src, *dst;
+
+	if (req->old)
+		return crypt(req);
+
+	src = scatterwalk_ffwd(nreq->srcbuf, req->src, req->assoclen);
+	dst = scatterwalk_ffwd(nreq->dstbuf, req->dst, req->assoclen);
+
+	aead_request_set_tfm(&nreq->subreq, aead);
+	aead_request_set_callback(&nreq->subreq, aead_request_flags(req),
+				  req->base.complete, req->base.data);
+	aead_request_set_crypt(&nreq->subreq, src, dst, req->cryptlen,
+			       req->iv);
+	aead_request_set_assoc(&nreq->subreq, req->src, req->assoclen);
+
+	return crypt(&nreq->subreq);
+}
+
+static int old_encrypt(struct aead_request *req)
+{
+	struct crypto_aead *aead = crypto_aead_reqtfm(req);
+	struct old_aead_alg *alg = crypto_old_aead_alg(aead);
+
+	return old_crypt(req, alg->encrypt);
+}
+
+static int old_decrypt(struct aead_request *req)
+{
+	struct crypto_aead *aead = crypto_aead_reqtfm(req);
+	struct old_aead_alg *alg = crypto_old_aead_alg(aead);
+
+	return old_crypt(req, alg->decrypt);
 }
 
 static int no_givcrypt(struct aead_givcrypt_request *req)
@@ -90,35 +140,115 @@ static int no_givcrypt(struct aead_givcrypt_request *req)
 	return -ENOSYS;
 }
 
-static int crypto_init_aead_ops(struct crypto_tfm *tfm, u32 type, u32 mask)
+static int crypto_old_aead_init_tfm(struct crypto_tfm *tfm)
 {
-	struct aead_alg *alg = &tfm->__crt_alg->cra_aead;
-	struct aead_tfm *crt = &tfm->crt_aead;
+	struct old_aead_alg *alg = &tfm->__crt_alg->cra_aead;
+	struct crypto_aead *crt = __crypto_aead_cast(tfm);
 
 	if (max(alg->maxauthsize, alg->ivsize) > PAGE_SIZE / 8)
 		return -EINVAL;
 
-	crt->setkey = tfm->__crt_alg->cra_flags & CRYPTO_ALG_GENIV ?
-		      alg->setkey : setkey;
-	crt->encrypt = alg->encrypt;
-	crt->decrypt = alg->decrypt;
-	crt->givencrypt = alg->givencrypt ?: no_givcrypt;
-	crt->givdecrypt = alg->givdecrypt ?: no_givcrypt;
-	crt->base = __crypto_aead_cast(tfm);
-	crt->ivsize = alg->ivsize;
+	crt->setkey = alg->setkey;
+	crt->setauthsize = alg->setauthsize;
+	crt->encrypt = old_encrypt;
+	crt->decrypt = old_decrypt;
+	if (alg->ivsize) {
+		crt->givencrypt = alg->givencrypt ?: no_givcrypt;
+		crt->givdecrypt = alg->givdecrypt ?: no_givcrypt;
+	} else {
+		crt->givencrypt = aead_null_givencrypt;
+		crt->givdecrypt = aead_null_givdecrypt;
+	}
+	crt->child = __crypto_aead_cast(tfm);
 	crt->authsize = alg->maxauthsize;
 
 	return 0;
 }
 
+static int crypto_aead_init_tfm(struct crypto_tfm *tfm)
+{
+	struct crypto_aead *aead = __crypto_aead_cast(tfm);
+	struct aead_alg *alg = crypto_aead_alg(aead);
+
+	if (crypto_old_aead_alg(aead)->encrypt)
+		return crypto_old_aead_init_tfm(tfm);
+
+	aead->setkey = alg->setkey;
+	aead->setauthsize = alg->setauthsize;
+	aead->encrypt = alg->encrypt;
+	aead->decrypt = alg->decrypt;
+	aead->child = __crypto_aead_cast(tfm);
+	aead->authsize = alg->maxauthsize;
+
+	return 0;
+}
+
+#ifdef CONFIG_NET
+static int crypto_old_aead_report(struct sk_buff *skb, struct crypto_alg *alg)
+{
+	struct crypto_report_aead raead;
+	struct old_aead_alg *aead = &alg->cra_aead;
+
+	strncpy(raead.type, "aead", sizeof(raead.type));
+	strncpy(raead.geniv, aead->geniv ?: "<built-in>", sizeof(raead.geniv));
+
+	raead.blocksize = alg->cra_blocksize;
+	raead.maxauthsize = aead->maxauthsize;
+	raead.ivsize = aead->ivsize;
+
+	if (nla_put(skb, CRYPTOCFGA_REPORT_AEAD,
+		    sizeof(struct crypto_report_aead), &raead))
+		goto nla_put_failure;
+	return 0;
+
+nla_put_failure:
+	return -EMSGSIZE;
+}
+#else
+static int crypto_old_aead_report(struct sk_buff *skb, struct crypto_alg *alg)
+{
+	return -ENOSYS;
+}
+#endif
+
+static void crypto_old_aead_show(struct seq_file *m, struct crypto_alg *alg)
+	__attribute__ ((unused));
+static void crypto_old_aead_show(struct seq_file *m, struct crypto_alg *alg)
+{
+	struct old_aead_alg *aead = &alg->cra_aead;
+
+	seq_printf(m, "type         : aead\n");
+	seq_printf(m, "async        : %s\n", alg->cra_flags & CRYPTO_ALG_ASYNC ?
+					     "yes" : "no");
+	seq_printf(m, "blocksize    : %u\n", alg->cra_blocksize);
+	seq_printf(m, "ivsize       : %u\n", aead->ivsize);
+	seq_printf(m, "maxauthsize  : %u\n", aead->maxauthsize);
+	seq_printf(m, "geniv        : %s\n", aead->geniv ?: "<built-in>");
+}
+
+const struct crypto_type crypto_aead_type = {
+	.extsize = crypto_alg_extsize,
+	.init_tfm = crypto_aead_init_tfm,
+#ifdef CONFIG_PROC_FS
+	.show = crypto_old_aead_show,
+#endif
+	.report = crypto_old_aead_report,
+	.lookup = crypto_lookup_aead,
+	.maskclear = ~(CRYPTO_ALG_TYPE_MASK | CRYPTO_ALG_GENIV),
+	.maskset = CRYPTO_ALG_TYPE_MASK,
+	.type = CRYPTO_ALG_TYPE_AEAD,
+	.tfmsize = offsetof(struct crypto_aead, base),
+};
+EXPORT_SYMBOL_GPL(crypto_aead_type);
+
 #ifdef CONFIG_NET
 static int crypto_aead_report(struct sk_buff *skb, struct crypto_alg *alg)
 {
 	struct crypto_report_aead raead;
-	struct aead_alg *aead = &alg->cra_aead;
+	struct aead_alg *aead = container_of(alg, struct aead_alg, base);
 
 	strncpy(raead.type, "aead", sizeof(raead.type));
-	strncpy(raead.geniv, aead->geniv ?: "<built-in>", sizeof(raead.geniv));
+	strncpy(raead.geniv, "<none>", sizeof(raead.geniv));
 
 	raead.blocksize = alg->cra_blocksize;
 	raead.maxauthsize = aead->maxauthsize;
@@ -143,7 +273,7 @@ static void crypto_aead_show(struct seq_file *m, struct crypto_alg *alg)
 	__attribute__ ((unused));
 static void crypto_aead_show(struct seq_file *m, struct crypto_alg *alg)
 {
-	struct aead_alg *aead = &alg->cra_aead;
+	struct aead_alg *aead = container_of(alg, struct aead_alg, base);
 
 	seq_printf(m, "type         : aead\n");
 	seq_printf(m, "async        : %s\n", alg->cra_flags & CRYPTO_ALG_ASYNC ?
@@ -151,18 +281,21 @@ static void crypto_aead_show(struct seq_file *m, struct crypto_alg *alg)
 	seq_printf(m, "blocksize    : %u\n", alg->cra_blocksize);
 	seq_printf(m, "ivsize       : %u\n", aead->ivsize);
 	seq_printf(m, "maxauthsize  : %u\n", aead->maxauthsize);
-	seq_printf(m, "geniv        : %s\n", aead->geniv ?: "<built-in>");
+	seq_printf(m, "geniv        : <none>\n");
 }
 
-const struct crypto_type crypto_aead_type = {
-	.ctxsize = crypto_aead_ctxsize,
-	.init = crypto_init_aead_ops,
+static const struct crypto_type crypto_new_aead_type = {
+	.extsize = crypto_alg_extsize,
+	.init_tfm = crypto_aead_init_tfm,
 #ifdef CONFIG_PROC_FS
 	.show = crypto_aead_show,
 #endif
 	.report = crypto_aead_report,
+	.maskclear = ~CRYPTO_ALG_TYPE_MASK,
+	.maskset = CRYPTO_ALG_TYPE_MASK,
+	.type = CRYPTO_ALG_TYPE_AEAD,
+	.tfmsize = offsetof(struct crypto_aead, base),
 };
-EXPORT_SYMBOL_GPL(crypto_aead_type);
 
 static int aead_null_givencrypt(struct aead_givcrypt_request *req)
 {
@@ -174,33 +307,11 @@ static int aead_null_givdecrypt(struct aead_givcrypt_request *req)
 	return crypto_aead_decrypt(&req->areq);
 }
 
-static int crypto_init_nivaead_ops(struct crypto_tfm *tfm, u32 type, u32 mask)
-{
-	struct aead_alg *alg = &tfm->__crt_alg->cra_aead;
-	struct aead_tfm *crt = &tfm->crt_aead;
-
-	if (max(alg->maxauthsize, alg->ivsize) > PAGE_SIZE / 8)
-		return -EINVAL;
-
-	crt->setkey = setkey;
-	crt->encrypt = alg->encrypt;
-	crt->decrypt = alg->decrypt;
-	if (!alg->ivsize) {
-		crt->givencrypt = aead_null_givencrypt;
-		crt->givdecrypt = aead_null_givdecrypt;
-	}
-	crt->base = __crypto_aead_cast(tfm);
-	crt->ivsize = alg->ivsize;
-	crt->authsize = alg->maxauthsize;
-
-	return 0;
-}
-
 #ifdef CONFIG_NET
 static int crypto_nivaead_report(struct sk_buff *skb, struct crypto_alg *alg)
 {
 	struct crypto_report_aead raead;
-	struct aead_alg *aead = &alg->cra_aead;
+	struct old_aead_alg *aead = &alg->cra_aead;
 
 	strncpy(raead.type, "nivaead", sizeof(raead.type));
 	strncpy(raead.geniv, aead->geniv, sizeof(raead.geniv));
@@ -229,7 +340,7 @@ static void crypto_nivaead_show(struct seq_file *m, struct crypto_alg *alg)
 	__attribute__ ((unused));
 static void crypto_nivaead_show(struct seq_file *m, struct crypto_alg *alg)
 {
-	struct aead_alg *aead = &alg->cra_aead;
+	struct old_aead_alg *aead = &alg->cra_aead;
 
 	seq_printf(m, "type         : nivaead\n");
 	seq_printf(m, "async        : %s\n", alg->cra_flags & CRYPTO_ALG_ASYNC ?
@@ -241,43 +352,36 @@ static void crypto_nivaead_show(struct seq_file *m, struct crypto_alg *alg)
 }
 
 const struct crypto_type crypto_nivaead_type = {
-	.ctxsize = crypto_aead_ctxsize,
-	.init = crypto_init_nivaead_ops,
+	.extsize = crypto_alg_extsize,
+	.init_tfm = crypto_aead_init_tfm,
 #ifdef CONFIG_PROC_FS
 	.show = crypto_nivaead_show,
 #endif
 	.report = crypto_nivaead_report,
+	.maskclear = ~(CRYPTO_ALG_TYPE_MASK | CRYPTO_ALG_GENIV),
+	.maskset = CRYPTO_ALG_TYPE_MASK | CRYPTO_ALG_GENIV,
+	.type = CRYPTO_ALG_TYPE_AEAD,
+	.tfmsize = offsetof(struct crypto_aead, base),
 };
 EXPORT_SYMBOL_GPL(crypto_nivaead_type);
 
 static int crypto_grab_nivaead(struct crypto_aead_spawn *spawn,
 			       const char *name, u32 type, u32 mask)
 {
-	struct crypto_alg *alg;
-	int err;
-
-	type &= ~(CRYPTO_ALG_TYPE_MASK | CRYPTO_ALG_GENIV);
-	type |= CRYPTO_ALG_TYPE_AEAD;
-	mask |= CRYPTO_ALG_TYPE_MASK | CRYPTO_ALG_GENIV;
-
-	alg = crypto_alg_mod_lookup(name, type, mask);
-	if (IS_ERR(alg))
-		return PTR_ERR(alg);
-
-	err = crypto_init_spawn(&spawn->base, alg, spawn->base.inst, mask);
-	crypto_mod_put(alg);
-	return err;
+	spawn->base.frontend = &crypto_nivaead_type;
+	return crypto_grab_spawn(&spawn->base, name, type, mask);
 }
 
-struct crypto_instance *aead_geniv_alloc(struct crypto_template *tmpl,
-					 struct rtattr **tb, u32 type,
-					 u32 mask)
+struct aead_instance *aead_geniv_alloc(struct crypto_template *tmpl,
+				       struct rtattr **tb, u32 type, u32 mask)
 {
 	const char *name;
 	struct crypto_aead_spawn *spawn;
 	struct crypto_attr_type *algt;
-	struct crypto_instance *inst;
-	struct crypto_alg *alg;
+	struct aead_instance *inst;
+	struct aead_alg *alg;
+	unsigned int ivsize;
+	unsigned int maxauthsize;
 	int err;
 
 	algt = crypto_get_attr_type(tb);
@@ -296,20 +400,23 @@ struct crypto_instance *aead_geniv_alloc(struct crypto_template *tmpl,
 	if (!inst)
 		return ERR_PTR(-ENOMEM);
 
-	spawn = crypto_instance_ctx(inst);
+	spawn = aead_instance_ctx(inst);
 
 	/* Ignore async algorithms if necessary. */
 	mask |= crypto_requires_sync(algt->type, algt->mask);
 
-	crypto_set_aead_spawn(spawn, inst);
+	crypto_set_aead_spawn(spawn, aead_crypto_instance(inst));
 	err = crypto_grab_nivaead(spawn, name, type, mask);
 	if (err)
 		goto err_free_inst;
 
-	alg = crypto_aead_spawn_alg(spawn);
+	alg = crypto_spawn_aead_alg(spawn);
+
+	ivsize = crypto_aead_alg_ivsize(alg);
+	maxauthsize = crypto_aead_alg_maxauthsize(alg);
 
 	err = -EINVAL;
-	if (!alg->cra_aead.ivsize)
+	if (!ivsize)
 		goto err_drop_alg;
 
 	/*
@@ -318,39 +425,54 @@ struct crypto_instance *aead_geniv_alloc(struct crypto_template *tmpl,
 	 * template name and double-check the IV generator.
 	 */
 	if (algt->mask & CRYPTO_ALG_GENIV) {
-		if (strcmp(tmpl->name, alg->cra_aead.geniv))
+		if (!alg->base.cra_aead.encrypt)
+			goto err_drop_alg;
+		if (strcmp(tmpl->name, alg->base.cra_aead.geniv))
 			goto err_drop_alg;
 
-		memcpy(inst->alg.cra_name, alg->cra_name, CRYPTO_MAX_ALG_NAME);
-		memcpy(inst->alg.cra_driver_name, alg->cra_driver_name,
+		memcpy(inst->alg.base.cra_name, alg->base.cra_name,
 		       CRYPTO_MAX_ALG_NAME);
-	} else {
-		err = -ENAMETOOLONG;
-		if (snprintf(inst->alg.cra_name, CRYPTO_MAX_ALG_NAME,
-			     "%s(%s)", tmpl->name, alg->cra_name) >=
-		    CRYPTO_MAX_ALG_NAME)
-			goto err_drop_alg;
-		if (snprintf(inst->alg.cra_driver_name, CRYPTO_MAX_ALG_NAME,
-			     "%s(%s)", tmpl->name, alg->cra_driver_name) >=
-		    CRYPTO_MAX_ALG_NAME)
-			goto err_drop_alg;
+		memcpy(inst->alg.base.cra_driver_name,
+		       alg->base.cra_driver_name, CRYPTO_MAX_ALG_NAME);
+
+		inst->alg.base.cra_flags = CRYPTO_ALG_TYPE_AEAD |
+					   CRYPTO_ALG_GENIV;
+		inst->alg.base.cra_flags |= alg->base.cra_flags &
+					    CRYPTO_ALG_ASYNC;
+		inst->alg.base.cra_priority = alg->base.cra_priority;
+		inst->alg.base.cra_blocksize = alg->base.cra_blocksize;
+		inst->alg.base.cra_alignmask = alg->base.cra_alignmask;
+		inst->alg.base.cra_type = &crypto_aead_type;
+
+		inst->alg.base.cra_aead.ivsize = ivsize;
+		inst->alg.base.cra_aead.maxauthsize = maxauthsize;
+
+		inst->alg.base.cra_aead.setkey = alg->base.cra_aead.setkey;
+		inst->alg.base.cra_aead.setauthsize =
+			alg->base.cra_aead.setauthsize;
+		inst->alg.base.cra_aead.encrypt = alg->base.cra_aead.encrypt;
+		inst->alg.base.cra_aead.decrypt = alg->base.cra_aead.decrypt;
+
+		goto out;
 	}
 
-	inst->alg.cra_flags = CRYPTO_ALG_TYPE_AEAD | CRYPTO_ALG_GENIV;
-	inst->alg.cra_flags |= alg->cra_flags & CRYPTO_ALG_ASYNC;
-	inst->alg.cra_priority = alg->cra_priority;
-	inst->alg.cra_blocksize = alg->cra_blocksize;
-	inst->alg.cra_alignmask = alg->cra_alignmask;
-	inst->alg.cra_type = &crypto_aead_type;
+	err = -ENAMETOOLONG;
+	if (snprintf(inst->alg.base.cra_name, CRYPTO_MAX_ALG_NAME,
+		     "%s(%s)", tmpl->name, alg->base.cra_name) >=
+	    CRYPTO_MAX_ALG_NAME)
+		goto err_drop_alg;
+	if (snprintf(inst->alg.base.cra_driver_name, CRYPTO_MAX_ALG_NAME,
+		     "%s(%s)", tmpl->name, alg->base.cra_driver_name) >=
+	    CRYPTO_MAX_ALG_NAME)
+		goto err_drop_alg;
 
-	inst->alg.cra_aead.ivsize = alg->cra_aead.ivsize;
-	inst->alg.cra_aead.maxauthsize = alg->cra_aead.maxauthsize;
-	inst->alg.cra_aead.geniv = alg->cra_aead.geniv;
+	inst->alg.base.cra_flags = alg->base.cra_flags & CRYPTO_ALG_ASYNC;
+	inst->alg.base.cra_priority = alg->base.cra_priority;
+	inst->alg.base.cra_blocksize = alg->base.cra_blocksize;
+	inst->alg.base.cra_alignmask = alg->base.cra_alignmask;
 
-	inst->alg.cra_aead.setkey = alg->cra_aead.setkey;
-	inst->alg.cra_aead.setauthsize = alg->cra_aead.setauthsize;
-	inst->alg.cra_aead.encrypt = alg->cra_aead.encrypt;
-	inst->alg.cra_aead.decrypt = alg->cra_aead.decrypt;
+	inst->alg.ivsize = ivsize;
+	inst->alg.maxauthsize = maxauthsize;
 
 out:
 	return inst;
@@ -364,9 +486,9 @@ err_free_inst:
 }
 EXPORT_SYMBOL_GPL(aead_geniv_alloc);
 
-void aead_geniv_free(struct crypto_instance *inst)
+void aead_geniv_free(struct aead_instance *inst)
 {
-	crypto_drop_aead(crypto_instance_ctx(inst));
+	crypto_drop_aead(aead_instance_ctx(inst));
 	kfree(inst);
 }
 EXPORT_SYMBOL_GPL(aead_geniv_free);
@@ -374,14 +496,17 @@ EXPORT_SYMBOL_GPL(aead_geniv_free);
 int aead_geniv_init(struct crypto_tfm *tfm)
 {
 	struct crypto_instance *inst = (void *)tfm->__crt_alg;
+	struct crypto_aead *child;
 	struct crypto_aead *aead;
 
-	aead = crypto_spawn_aead(crypto_instance_ctx(inst));
-	if (IS_ERR(aead))
-		return PTR_ERR(aead);
+	aead = __crypto_aead_cast(tfm);
 
-	tfm->crt_aead.base = aead;
-	tfm->crt_aead.reqsize += crypto_aead_reqsize(aead);
+	child = crypto_spawn_aead(crypto_instance_ctx(inst));
+	if (IS_ERR(child))
+		return PTR_ERR(child);
+
+	aead->child = child;
+	aead->reqsize += crypto_aead_reqsize(child);
 
 	return 0;
 }
@@ -389,7 +514,7 @@ EXPORT_SYMBOL_GPL(aead_geniv_init);
 
 void aead_geniv_exit(struct crypto_tfm *tfm)
 {
-	crypto_free_aead(tfm->crt_aead.base);
+	crypto_free_aead(__crypto_aead_cast(tfm)->child);
 }
 EXPORT_SYMBOL_GPL(aead_geniv_exit);
 
@@ -443,6 +568,13 @@ static int crypto_nivaead_default(struct crypto_alg *alg, u32 type, u32 mask)
 	if (!tmpl)
 		goto kill_larval;
 
+	if (tmpl->create) {
+		err = tmpl->create(tmpl, tb);
+		if (err)
+			goto put_tmpl;
+		goto ok;
+	}
+
 	inst = tmpl->alloc(tb);
 	err = PTR_ERR(inst);
 	if (IS_ERR(inst))
@@ -454,6 +586,7 @@ static int crypto_nivaead_default(struct crypto_alg *alg, u32 type, u32 mask)
 		goto put_tmpl;
 	}
 
+ok:
 	/* Redo the lookup to use the instance we just registered. */
 	err = -EAGAIN;
 
@@ -489,7 +622,7 @@ struct crypto_alg *crypto_lookup_aead(const char *name, u32 type, u32 mask)
 		return alg;
 
 	if (alg->cra_type == &crypto_aead_type) {
-		if ((alg->cra_flags ^ type ^ ~mask) & CRYPTO_ALG_TESTED) {
+		if (~alg->cra_flags & (type ^ ~mask) & CRYPTO_ALG_TESTED) {
 			crypto_mod_put(alg);
 			alg = ERR_PTR(-ENOENT);
 		}
@@ -505,62 +638,62 @@ EXPORT_SYMBOL_GPL(crypto_lookup_aead);
 int crypto_grab_aead(struct crypto_aead_spawn *spawn, const char *name,
 		     u32 type, u32 mask)
 {
-	struct crypto_alg *alg;
-	int err;
-
-	type &= ~(CRYPTO_ALG_TYPE_MASK | CRYPTO_ALG_GENIV);
-	type |= CRYPTO_ALG_TYPE_AEAD;
-	mask &= ~(CRYPTO_ALG_TYPE_MASK | CRYPTO_ALG_GENIV);
-	mask |= CRYPTO_ALG_TYPE_MASK;
-
-	alg = crypto_lookup_aead(name, type, mask);
-	if (IS_ERR(alg))
-		return PTR_ERR(alg);
-
-	err = crypto_init_spawn(&spawn->base, alg, spawn->base.inst, mask);
-	crypto_mod_put(alg);
-	return err;
+	spawn->base.frontend = &crypto_aead_type;
+	return crypto_grab_spawn(&spawn->base, name, type, mask);
 }
 EXPORT_SYMBOL_GPL(crypto_grab_aead);
 
 struct crypto_aead *crypto_alloc_aead(const char *alg_name, u32 type, u32 mask)
 {
-	struct crypto_tfm *tfm;
-	int err;
-
-	type &= ~(CRYPTO_ALG_TYPE_MASK | CRYPTO_ALG_GENIV);
-	type |= CRYPTO_ALG_TYPE_AEAD;
-	mask &= ~(CRYPTO_ALG_TYPE_MASK | CRYPTO_ALG_GENIV);
-	mask |= CRYPTO_ALG_TYPE_MASK;
-
-	for (;;) {
-		struct crypto_alg *alg;
-
-		alg = crypto_lookup_aead(alg_name, type, mask);
-		if (IS_ERR(alg)) {
-			err = PTR_ERR(alg);
-			goto err;
-		}
-
-		tfm = __crypto_alloc_tfm(alg, type, mask);
-		if (!IS_ERR(tfm))
-			return __crypto_aead_cast(tfm);
-
-		crypto_mod_put(alg);
-		err = PTR_ERR(tfm);
-
-err:
-		if (err != -EAGAIN)
-			break;
-		if (signal_pending(current)) {
-			err = -EINTR;
-			break;
-		}
-	}
-
-	return ERR_PTR(err);
+	return crypto_alloc_tfm(alg_name, &crypto_aead_type, type, mask);
 }
 EXPORT_SYMBOL_GPL(crypto_alloc_aead);
+
+static int aead_prepare_alg(struct aead_alg *alg)
+{
+	struct crypto_alg *base = &alg->base;
+
+	if (max(alg->maxauthsize, alg->ivsize) > PAGE_SIZE / 8)
+		return -EINVAL;
+
+	base->cra_type = &crypto_new_aead_type;
+	base->cra_flags &= ~CRYPTO_ALG_TYPE_MASK;
+	base->cra_flags |= CRYPTO_ALG_TYPE_AEAD;
+
+	return 0;
+}
+
+int crypto_register_aead(struct aead_alg *alg)
+{
+	struct crypto_alg *base = &alg->base;
+	int err;
+
+	err = aead_prepare_alg(alg);
+	if (err)
+		return err;
+
+	return crypto_register_alg(base);
+}
+EXPORT_SYMBOL_GPL(crypto_register_aead);
+
+int crypto_unregister_aead(struct aead_alg *alg)
+{
+	return crypto_unregister_alg(&alg->base);
+}
+EXPORT_SYMBOL_GPL(crypto_unregister_aead);
+
+int aead_register_instance(struct crypto_template *tmpl,
+			   struct aead_instance *inst)
+{
+	int err;
+
+	err = aead_prepare_alg(&inst->alg);
+	if (err)
+		return err;
+
+	return crypto_register_instance(tmpl, aead_crypto_instance(inst));
+}
+EXPORT_SYMBOL_GPL(aead_register_instance);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Authenticated Encryption with Associated Data (AEAD)");

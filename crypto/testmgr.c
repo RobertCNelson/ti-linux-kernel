@@ -20,8 +20,10 @@
  *
  */
 
+#include <crypto/aead.h>
 #include <crypto/hash.h>
 #include <linux/err.h>
+#include <linux/fips.h>
 #include <linux/module.h>
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
@@ -2318,6 +2320,15 @@ static const struct alg_test_desc alg_test_descs[] = {
 		.alg = "compress_null",
 		.test = alg_test_null,
 	}, {
+		.alg = "crc32",
+		.test = alg_test_hash,
+		.suite = {
+			.hash = {
+				.vecs = crc32_tv_template,
+				.count = CRC32_TEST_VECTORS
+			}
+		}
+	}, {
 		.alg = "crc32c",
 		.test = alg_test_crc32c,
 		.fips_allowed = 1,
@@ -3094,6 +3105,10 @@ static const struct alg_test_desc alg_test_descs[] = {
 				.count = HMAC_SHA512_TEST_VECTORS
 			}
 		}
+	}, {
+		.alg = "jitterentropy_rng",
+		.fips_allowed = 1,
+		.test = alg_test_null,
 	}, {
 		.alg = "lrw(aes)",
 		.test = alg_test_skcipher,
