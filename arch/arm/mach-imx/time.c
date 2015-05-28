@@ -38,9 +38,11 @@
 #include "hardware.h"
 
 /*
- * There are 2 versions of the timer hardware on Freescale MXC hardware.
- * Version 1: MX1/MXL, MX21, MX27.
- * Version 2: MX25, MX31, MX35, MX37, MX51
+ * There are 4 versions of the timer hardware on Freescale MXC hardware.
+ *  - MX1/MXL
+ *  - MX21, MX27.
+ *  - MX25, MX31, MX35, MX37, MX51, MX6Q(rev1.0)
+ *  - MX6DL, MX6SX, MX6Q(rev1.1+)
  */
 
 /* defines common for all i.MX */
@@ -344,12 +346,13 @@ static void __init _mxc_timer_init(int irq,
 	setup_irq(irq, &mxc_timer_irq);
 }
 
-void __init mxc_timer_init(void __iomem *base, int irq)
+void __init mxc_timer_init(unsigned long pbase, int irq)
 {
 	struct clk *clk_per = clk_get_sys("imx-gpt.0", "per");
 	struct clk *clk_ipg = clk_get_sys("imx-gpt.0", "ipg");
 
-	timer_base = base;
+	timer_base = ioremap(pbase, SZ_4K);
+	BUG_ON(!timer_base);
 
 	_mxc_timer_init(irq, clk_per, clk_ipg);
 }
