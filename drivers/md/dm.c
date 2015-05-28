@@ -1112,7 +1112,7 @@ static void free_rq_clone(struct request *clone, bool must_be_mapped)
  * Must be called without clone's queue lock held,
  * see end_clone_request() for more details.
  */
-static void dm_end_request(struct request *clone, int error)
+static void dm_end_request(struct request *clone, int error, bool mapped)
 {
 	int rw = rq_data_dir(clone);
 	struct dm_rq_target_io *tio = clone->end_io_data;
@@ -1132,7 +1132,7 @@ static void dm_end_request(struct request *clone, int error)
 			rq->sense_len = clone->sense_len;
 	}
 
-	free_rq_clone(clone, true);
+	free_rq_clone(clone, mapped);
 	if (!rq->q->mq_ops)
 		blk_end_request_all(rq, error);
 	else
@@ -1249,7 +1249,7 @@ static void dm_done(struct request *clone, int error, bool mapped)
 
 	if (r <= 0)
 		/* The target wants to complete the I/O */
-		dm_end_request(clone, r);
+		dm_end_request(clone, r, mapped);
 	else if (r == DM_ENDIO_INCOMPLETE)
 		/* The target will handle the I/O */
 		return;
