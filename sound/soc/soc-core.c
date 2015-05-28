@@ -92,30 +92,21 @@ static int format_register_str(struct snd_soc_codec *codec,
 	int wordsize = min_bytes_needed(codec->driver->reg_cache_size) * 2;
 	int regsize = codec->driver->reg_word_size * 2;
 	int ret;
-	char tmpbuf[len + 1];
-	char regbuf[regsize + 1];
-
-	/* since tmpbuf is allocated on the stack, warn the callers if they
-	 * try to abuse this function */
-	WARN_ON(len > 63);
 
 	/* +2 for ': ' and + 1 for '\n' */
 	if (wordsize + regsize + 2 + 1 != len)
 		return -EINVAL;
 
+	sprintf(buf, "%.*x: ", wordsize, reg);
+	buf += wordsize + 2;
+
 	ret = snd_soc_read(codec, reg);
-	if (ret < 0) {
-		memset(regbuf, 'X', regsize);
-		regbuf[regsize] = '\0';
-	} else {
-		snprintf(regbuf, regsize + 1, "%.*x", regsize, ret);
-	}
-
-	/* prepare the buffer */
-	snprintf(tmpbuf, len + 1, "%.*x: %s\n", wordsize, reg, regbuf);
-	/* copy it back to the caller without the '\0' */
-	memcpy(buf, tmpbuf, len);
-
+	if (ret < 0)
+		memset(buf, 'X', regsize);
+	else
+		sprintf(buf, "%.*x", regsize, ret);
+	buf[regsize] = '\n';
+	/* no NUL-termination needed */
 	return 0;
 }
 
@@ -750,23 +741,10 @@ static void soc_resume_deferred(struct work_struct *work)
 	}
 
 	list_for_each_entry(codec, &card->codec_dev_list, card_list) {
-		/* If the CODEC was idle over suspend then it will have been
-		 * left with bias OFF or STANDBY and suspended so we must now
-		 * resume.  Otherwise the suspend was suppressed.
-		 */
 		if (codec->suspended) {
-			switch (codec->dapm.bias_level) {
-			case SND_SOC_BIAS_STANDBY:
-			case SND_SOC_BIAS_OFF:
-				if (codec->driver->resume)
-					codec->driver->resume(codec);
-				codec->suspended = 0;
-				break;
-			default:
-				dev_dbg(codec->dev,
-					"ASoC: CODEC was on over suspend\n");
-				break;
-			}
+			if (codec->driver->resume)
+				codec->driver->resume(codec);
+			codec->suspended = 0;
 		}
 	}
 
@@ -2599,7 +2577,8 @@ static int snd_soc_register_dais(struct snd_soc_component *component,
 		 * the same naming style even though those DAIs are not
 		 * component-less anymore.
 		 */
-		if (count == 1 && legacy_dai_naming) {
+		if (count == 1 && legacy_dai_naming &&
+			(dai_drv[i].id == 0 || dai_drv[i].name == NULL)) {
 			dai->name = fmt_single_name(dev, &dai->id);
 		} else {
 			dai->name = fmt_multiple_name(dev, &dai_drv[i]);
