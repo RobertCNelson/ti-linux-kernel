@@ -884,6 +884,7 @@ static struct alc_codec_rename_pci_table rename_pci_tbl[] = {
 	{ 0x10ec0275, 0x1028, 0, "ALC3260" },
 	{ 0x10ec0899, 0x1028, 0, "ALC3861" },
 	{ 0x10ec0298, 0x1028, 0, "ALC3266" },
+	{ 0x10ec0256, 0x1028, 0, "ALC3246" },
 	{ 0x10ec0670, 0x1025, 0, "ALC669X" },
 	{ 0x10ec0676, 0x1025, 0, "ALC679X" },
 	{ 0x10ec0282, 0x1043, 0, "ALC3229" },
@@ -5723,7 +5724,6 @@ static int patch_alc269(struct hda_codec *codec)
 		set_beep_amp(spec, spec->gen.mixer_nid, 0x04, HDA_INPUT);
 
 	codec->patch_ops = alc_patch_ops;
-	codec->patch_ops.stream_pm = snd_hda_gen_stream_pm;
 #ifdef CONFIG_PM
 	codec->patch_ops.suspend = alc269_suspend;
 	codec->patch_ops.resume = alc269_resume;
