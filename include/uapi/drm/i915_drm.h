@@ -171,8 +171,12 @@ typedef struct _drm_i915_sarea {
 #define I915_BOX_TEXTURE_LOAD  0x8
 #define I915_BOX_LOST_CONTEXT  0x10
 
-/* I915 specific ioctls
- * The device specific ioctl range is 0x40 to 0x79.
+/*
+ * i915 specific ioctls.
+ *
+ * The device specific ioctl range is [DRM_COMMAND_BASE, DRM_COMMAND_END) ie
+ * [0x40, 0xa0) (a0 is excluded). The numbers below are defined as offset
+ * against DRM_COMMAND_BASE and should be between [0x0, 0x60).
  */
 #define DRM_I915_INIT		0x00
 #define DRM_I915_FLUSH		0x01
@@ -1102,6 +1106,7 @@ struct drm_i915_gem_context_param {
 	__u32 size;
 	__u64 param;
 #define I915_CONTEXT_PARAM_BAN_PERIOD 0x1
+#define I915_CONTEXT_PARAM_NO_ZEROMAP 0x2
 	__u64 value;
 };
 

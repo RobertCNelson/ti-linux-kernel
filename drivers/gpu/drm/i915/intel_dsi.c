@@ -239,7 +239,7 @@ static int dpi_send_cmd(struct intel_dsi *intel_dsi, u32 cmd, bool hs,
 
 static void band_gap_reset(struct drm_i915_private *dev_priv)
 {
-	mutex_lock(&dev_priv->dpio_lock);
+	mutex_lock(&dev_priv->sb_lock);
 
 	vlv_flisdsi_write(dev_priv, 0x08, 0x0001);
 	vlv_flisdsi_write(dev_priv, 0x0F, 0x0005);
@@ -248,7 +248,7 @@ static void band_gap_reset(struct drm_i915_private *dev_priv)
 	vlv_flisdsi_write(dev_priv, 0x0F, 0x0000);
 	vlv_flisdsi_write(dev_priv, 0x08, 0x0000);
 
-	mutex_unlock(&dev_priv->dpio_lock);
+	mutex_unlock(&dev_priv->sb_lock);
 }
 
 static inline bool is_vid_mode(struct intel_dsi *intel_dsi)
@@ -259,11 +259,6 @@ static inline bool is_vid_mode(struct intel_dsi *intel_dsi)
 static inline bool is_cmd_mode(struct intel_dsi *intel_dsi)
 {
 	return intel_dsi->operation_mode == INTEL_DSI_COMMAND_MODE;
-}
-
-static void intel_dsi_hot_plug(struct intel_encoder *encoder)
-{
-	DRM_DEBUG_KMS("\n");
 }
 
 static bool intel_dsi_compute_config(struct intel_encoder *encoder,
@@ -346,11 +341,11 @@ static void intel_dsi_device_ready(struct intel_encoder *encoder)
 
 	DRM_DEBUG_KMS("\n");
 
-	mutex_lock(&dev_priv->dpio_lock);
+	mutex_lock(&dev_priv->sb_lock);
 	/* program rcomp for compliance, reduce from 50 ohms to 45 ohms
 	 * needed everytime after power gate */
 	vlv_flisdsi_write(dev_priv, 0x04, 0x0004);
-	mutex_unlock(&dev_priv->dpio_lock);
+	mutex_unlock(&dev_priv->sb_lock);
 
 	/* bandgap reset is needed after everytime we do power gate */
 	band_gap_reset(dev_priv);
@@ -1022,7 +1017,6 @@ void intel_dsi_init(struct drm_device *dev)
 	drm_encoder_init(dev, encoder, &intel_dsi_funcs, DRM_MODE_ENCODER_DSI);
 
 	/* XXX: very likely not all of these are needed */
-	intel_encoder->hot_plug = intel_dsi_hot_plug;
 	intel_encoder->compute_config = intel_dsi_compute_config;
 	intel_encoder->pre_pll_enable = intel_dsi_pre_pll_enable;
 	intel_encoder->pre_enable = intel_dsi_pre_enable;

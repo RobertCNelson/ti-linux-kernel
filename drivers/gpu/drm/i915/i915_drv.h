@@ -56,7 +56,7 @@
 
 #define DRIVER_NAME		"i915"
 #define DRIVER_DESC		"Intel Graphics"
-#define DRIVER_DATE		"20150508"
+#define DRIVER_DATE		"20150522"
 
 #undef WARN_ON
 /* Many gcc seem to no see through this and fall over :( */
@@ -217,6 +217,36 @@ enum hpd_pin {
 	HPD_NUM_PINS
 };
 
+struct i915_hotplug {
+	struct work_struct hotplug_work;
+
+	struct {
+		unsigned long last_jiffies;
+		int count;
+		enum {
+			HPD_ENABLED = 0,
+			HPD_DISABLED = 1,
+			HPD_MARK_DISABLED = 2
+		} state;
+	} stats[HPD_NUM_PINS];
+	u32 event_bits;
+	struct delayed_work reenable_work;
+
+	struct intel_digital_port *irq_port[I915_MAX_PORTS];
+	u32 long_port_mask;
+	u32 short_port_mask;
+	struct work_struct dig_port_work;
+
+	/*
+	 * if we get a HPD irq from DP and a HPD irq from non-DP
+	 * the non-DP HPD could block the workqueue on a mode config
+	 * mutex getting, that userspace may have taken. However
+	 * userspace is waiting on the DP workqueue to run which is
+	 * blocked behind the non-DP one.
+	 */
+	struct workqueue_struct *dp_wq;
+};
+
 #define I915_GEM_GPU_DOMAINS \
 	(I915_GEM_DOMAIN_RENDER | \
 	 I915_GEM_DOMAIN_SAMPLER | \
@@ -272,6 +302,30 @@ struct drm_i915_private;
 struct i915_mm_struct;
 struct i915_mmu_object;
 
+struct drm_i915_file_private {
+	struct drm_i915_private *dev_priv;
+	struct drm_file *file;
+
+	struct {
+		spinlock_t lock;
+		struct list_head request_list;
+/* 20ms is a fairly arbitrary limit (greater than the average frame time)
+ * chosen to prevent the CPU getting more than a frame ahead of the GPU
+ * (when using lax throttling for the frontbuffer). We also use it to
+ * offer free GPU waitboosts for severely congested workloads.
+ */
+#define DRM_I915_THROTTLE_JIFFIES msecs_to_jiffies(20)
+	} mm;
+	struct idr context_idr;
+
+	struct intel_rps_client {
+		struct list_head link;
+		unsigned boosts;
+	} rps;
+
+	struct intel_engine_cs *bsd_ring;
+};
+
 enum intel_dpll_id {
 	DPLL_ID_PRIVATE = -1, /* non-shared dpll in use */
 	/* real shared dpll ids must be >= 0 */
@@ -309,7 +363,7 @@ struct intel_dpll_hw_state {
 	uint32_t cfgcr1, cfgcr2;
 
 	/* bxt */
-	uint32_t ebb0, pll0, pll1, pll2, pll3, pll6, pll8, pcsdw12;
+	uint32_t ebb0, pll0, pll1, pll2, pll3, pll6, pll8, pll10, pcsdw12;
 };
 
 struct intel_shared_dpll_config {
@@ -508,7 +562,7 @@ struct drm_i915_error_state {
 	struct drm_i915_error_buffer {
 		u32 size;
 		u32 name;
-		u32 rseqno, wseqno;
+		u32 rseqno[I915_NUM_RINGS], wseqno;
 		u32 gtt_offset;
 		u32 read_domains;
 		u32 write_domain;
@@ -781,11 +835,15 @@ struct i915_ctx_hang_stats {
 
 /* This must match up with the value previously used for execbuf2.rsvd1. */
 #define DEFAULT_CONTEXT_HANDLE 0
+
+#define CONTEXT_NO_ZEROMAP (1<<0)
 /**
  * struct intel_context - as the name implies, represents a context.
  * @ref: reference count.
  * @user_handle: userspace tracking identity for this context.
  * @remap_slice: l3 row remapping information.
+ * @flags: context specific flags:
+ *         CONTEXT_NO_ZEROMAP: do not allow mapping things to page 0.
  * @file_priv: filp associated with this context (NULL for global default
  *	       context).
  * @hang_stats: information about the role of this context in possible GPU
@@ -802,6 +860,7 @@ struct intel_context {
 	struct kref ref;
 	int user_handle;
 	uint8_t remap_slice;
+	int flags;
 	struct drm_i915_file_private *file_priv;
 	struct i915_ctx_hang_stats hang_stats;
 	struct i915_hw_ppgtt *ppgtt;
@@ -1065,17 +1124,24 @@ struct intel_gen6_power_mgmt {
 	int last_adj;
 	enum { LOW_POWER, BETWEEN, HIGH_POWER } power;
 
+	spinlock_t client_lock;
+	struct list_head clients;
+	bool client_boost;
+
 	bool enabled;
 	struct delayed_work delayed_resume_work;
-	struct list_head clients;
 	unsigned boosts;
+
+	struct intel_rps_client semaphores, mmioflips;
 
 	/* manual wa residency calculations */
 	struct intel_rps_ei up_ei, down_ei;
 
 	/*
 	 * Protects RPS/RC6 register access and PCU communication.
-	 * Must be taken after struct_mutex if nested.
+	 * Must be taken after struct_mutex if nested. Note that
+	 * this lock may be held for long periods of time when
+	 * talking to hw - so only take it when talking to hw!
 	 */
 	struct mutex hw_lock;
 };
@@ -1468,7 +1534,8 @@ static inline bool skl_ddb_entry_equal(const struct skl_ddb_entry *e1,
 
 struct skl_ddb_allocation {
 	struct skl_ddb_entry pipe[I915_MAX_PIPES];
-	struct skl_ddb_entry plane[I915_MAX_PIPES][I915_MAX_PLANES];
+	struct skl_ddb_entry plane[I915_MAX_PIPES][I915_MAX_PLANES]; /* packed/uv */
+	struct skl_ddb_entry y_plane[I915_MAX_PIPES][I915_MAX_PLANES]; /* y-plane */
 	struct skl_ddb_entry cursor[I915_MAX_PIPES];
 };
 
@@ -1634,8 +1701,8 @@ struct drm_i915_private {
 	/* To control wakeup latency, e.g. for irq-driven dp aux transfers. */
 	struct pm_qos_request pm_qos;
 
-	/* DPIO indirect register protection */
-	struct mutex dpio_lock;
+	/* Sideband mailbox protection */
+	struct mutex sb_lock;
 
 	/** Cached value of IMR to avoid reads in updating the bitfield */
 	union {
@@ -1647,19 +1714,7 @@ struct drm_i915_private {
 	u32 pm_rps_events;
 	u32 pipestat_irq_mask[I915_MAX_PIPES];
 
-	struct work_struct hotplug_work;
-	struct {
-		unsigned long hpd_last_jiffies;
-		int hpd_cnt;
-		enum {
-			HPD_ENABLED = 0,
-			HPD_DISABLED = 1,
-			HPD_MARK_DISABLED = 2
-		} hpd_mark;
-	} hpd_stats[HPD_NUM_PINS];
-	u32 hpd_event_bits;
-	struct delayed_work hotplug_reenable_work;
-
+	struct i915_hotplug hotplug;
 	struct i915_fbc fbc;
 	struct i915_drrs drrs;
 	struct intel_opregion opregion;
@@ -1684,6 +1739,7 @@ struct drm_i915_private {
 	int num_fence_regs; /* 8 on pre-965, 16 otherwise */
 
 	unsigned int fsb_freq, mem_freq, is_ddr3;
+	unsigned int skl_boot_cdclk;
 	unsigned int cdclk_freq;
 	unsigned int hpll_freq;
 
@@ -1824,20 +1880,6 @@ struct drm_i915_private {
 
 	struct i915_runtime_pm pm;
 
-	struct intel_digital_port *hpd_irq_port[I915_MAX_PORTS];
-	u32 long_hpd_port_mask;
-	u32 short_hpd_port_mask;
-	struct work_struct dig_port_work;
-
-	/*
-	 * if we get a HPD irq from DP and a HPD irq from non-DP
-	 * the non-DP HPD could block the workqueue on a mode config
-	 * mutex getting, that userspace may have taken. However
-	 * userspace is waiting on the DP workqueue to run which is
-	 * blocked behind the non-DP one.
-	 */
-	struct workqueue_struct *dp_wq;
-
 	/* Abstract the submission mechanism (legacy ringbuffer or execlists) away */
 	struct {
 		int (*execbuf_submit)(struct drm_device *dev, struct drm_file *file,
@@ -1938,7 +1980,7 @@ struct drm_i915_gem_object {
 	struct drm_mm_node *stolen;
 	struct list_head global_list;
 
-	struct list_head ring_list;
+	struct list_head ring_list[I915_NUM_RINGS];
 	/** Used in execbuf to temporarily hold a ref */
 	struct list_head obj_exec_link;
 
@@ -1949,7 +1991,7 @@ struct drm_i915_gem_object {
 	 * rendering and so a non-zero seqno), and is not set if it i s on
 	 * inactive (ready to be unbound) list.
 	 */
-	unsigned int active:1;
+	unsigned int active:I915_NUM_RINGS;
 
 	/**
 	 * This is set if the object has been written to since last bound
@@ -2020,8 +2062,17 @@ struct drm_i915_gem_object {
 	void *dma_buf_vmapping;
 	int vmapping_count;
 
-	/** Breadcrumb of last rendering to the buffer. */
-	struct drm_i915_gem_request *last_read_req;
+	/** Breadcrumb of last rendering to the buffer.
+	 * There can only be one writer, but we allow for multiple readers.
+	 * If there is a writer that necessarily implies that all other
+	 * read requests are complete - but we may only be lazily clearing
+	 * the read requests. A read request is naturally the most recent
+	 * request on a ring, so we may have two different write and read
+	 * requests on one ring where the write request is older than the
+	 * read request. This allows for the CPU to read from an active
+	 * buffer by only waiting for the write to complete.
+	 * */
+	struct drm_i915_gem_request *last_read_req[I915_NUM_RINGS];
 	struct drm_i915_gem_request *last_write_req;
 	/** Breadcrumb of last fenced GPU access to the buffer. */
 	struct drm_i915_gem_request *last_fenced_req;
@@ -2160,10 +2211,12 @@ i915_gem_request_get_ring(struct drm_i915_gem_request *req)
 	return req ? req->ring : NULL;
 }
 
-static inline void
+static inline struct drm_i915_gem_request *
 i915_gem_request_reference(struct drm_i915_gem_request *req)
 {
-	kref_get(&req->ref);
+	if (req)
+		kref_get(&req->ref);
+	return req;
 }
 
 static inline void
@@ -2203,22 +2256,6 @@ static inline void i915_gem_request_assign(struct drm_i915_gem_request **pdst,
  * definition of i915_seqno_passed() which is below. It will be moved in
  * a later patch when the call to i915_seqno_passed() is obsoleted...
  */
-
-struct drm_i915_file_private {
-	struct drm_i915_private *dev_priv;
-	struct drm_file *file;
-
-	struct {
-		spinlock_t lock;
-		struct list_head request_list;
-	} mm;
-	struct idr context_idr;
-
-	struct list_head rps_boost;
-	struct intel_engine_cs *bsd_ring;
-
-	unsigned rps_boosts;
-};
 
 /*
  * A command that requires special handling by the command parser.
@@ -2375,6 +2412,7 @@ struct drm_i915_cmd_table {
 #define SKL_REVID_C0		(0x2)
 #define SKL_REVID_D0		(0x3)
 #define SKL_REVID_E0		(0x4)
+#define SKL_REVID_F0		(0x5)
 
 #define BXT_REVID_A0		(0x0)
 #define BXT_REVID_B0		(0x3)
@@ -2444,6 +2482,9 @@ struct drm_i915_cmd_table {
 #define HAS_FBC(dev) (INTEL_INFO(dev)->has_fbc)
 
 #define HAS_IPS(dev)		(IS_HSW_ULT(dev) || IS_BROADWELL(dev))
+
+#define HAS_DP_MST(dev)		(IS_HASWELL(dev) || IS_BROADWELL(dev) || \
+				 INTEL_INFO(dev)->gen >= 9)
 
 #define HAS_DDI(dev)		(INTEL_INFO(dev)->has_ddi)
 #define HAS_FPGA_DBG_UNCLAIMED(dev)	(INTEL_INFO(dev)->has_fpga_dbg)
@@ -2820,7 +2861,6 @@ static inline bool i915_stop_ring_allow_warn(struct drm_i915_private *dev_priv)
 
 void i915_gem_reset(struct drm_device *dev);
 bool i915_gem_clflush_object(struct drm_i915_gem_object *obj, bool force);
-int __must_check i915_gem_object_finish_gpu(struct drm_i915_gem_object *obj);
 int __must_check i915_gem_init(struct drm_device *dev);
 int i915_gem_init_rings(struct drm_device *dev);
 int __must_check i915_gem_init_hw(struct drm_device *dev);
@@ -2838,9 +2878,12 @@ int __i915_wait_request(struct drm_i915_gem_request *req,
 			unsigned reset_counter,
 			bool interruptible,
 			s64 *timeout,
-			struct drm_i915_file_private *file_priv);
+			struct intel_rps_client *rps);
 int __must_check i915_wait_request(struct drm_i915_gem_request *req);
 int i915_gem_fault(struct vm_area_struct *vma, struct vm_fault *vmf);
+int __must_check
+i915_gem_object_wait_rendering(struct drm_i915_gem_object *obj,
+			       bool readonly);
 int __must_check
 i915_gem_object_set_to_gtt_domain(struct drm_i915_gem_object *obj,
 				  bool write);

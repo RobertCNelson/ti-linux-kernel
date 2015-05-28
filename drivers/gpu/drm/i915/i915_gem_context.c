@@ -753,8 +753,6 @@ static int do_switch(struct intel_engine_cs *ring,
 		 * swapped, but there is no way to do that yet.
 		 */
 		from->legacy_hw_ctx.rcs_state->dirty = 1;
-		BUG_ON(i915_gem_request_get_ring(
-			from->legacy_hw_ctx.rcs_state->last_read_req) != ring);
 
 		/* obj is kept alive until the next request by its active ref */
 		i915_gem_object_ggtt_unpin(from->legacy_hw_ctx.rcs_state);
@@ -902,6 +900,9 @@ int i915_gem_context_getparam_ioctl(struct drm_device *dev, void *data,
 	case I915_CONTEXT_PARAM_BAN_PERIOD:
 		args->value = ctx->hang_stats.ban_period_seconds;
 		break;
+	case I915_CONTEXT_PARAM_NO_ZEROMAP:
+		args->value = ctx->flags & CONTEXT_NO_ZEROMAP;
+		break;
 	default:
 		ret = -EINVAL;
 		break;
@@ -938,6 +939,14 @@ int i915_gem_context_setparam_ioctl(struct drm_device *dev, void *data,
 			ret = -EPERM;
 		else
 			ctx->hang_stats.ban_period_seconds = args->value;
+		break;
+	case I915_CONTEXT_PARAM_NO_ZEROMAP:
+		if (args->size) {
+			ret = -EINVAL;
+		} else {
+			ctx->flags &= ~CONTEXT_NO_ZEROMAP;
+			ctx->flags |= args->value ? CONTEXT_NO_ZEROMAP : 0;
+		}
 		break;
 	default:
 		ret = -EINVAL;
