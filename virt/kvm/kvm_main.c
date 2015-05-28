@@ -1355,9 +1355,8 @@ exit:
 	return pfn;
 }
 
-static pfn_t
-__gfn_to_pfn_memslot(struct kvm_memory_slot *slot, gfn_t gfn, bool atomic,
-		     bool *async, bool write_fault, bool *writable)
+pfn_t __gfn_to_pfn_memslot(struct kvm_memory_slot *slot, gfn_t gfn, bool atomic,
+			   bool *async, bool write_fault, bool *writable)
 {
 	unsigned long addr = __gfn_to_hva_many(slot, gfn, NULL, write_fault);
 
@@ -1376,44 +1375,35 @@ __gfn_to_pfn_memslot(struct kvm_memory_slot *slot, gfn_t gfn, bool atomic,
 	return hva_to_pfn(addr, atomic, async, write_fault,
 			  writable);
 }
+EXPORT_SYMBOL_GPL(__gfn_to_pfn_memslot);
 
-static pfn_t __gfn_to_pfn(struct kvm *kvm, gfn_t gfn, bool atomic, bool *async,
+static pfn_t __gfn_to_pfn(struct kvm *kvm, gfn_t gfn, bool atomic,
 			  bool write_fault, bool *writable)
 {
 	struct kvm_memory_slot *slot;
 
-	if (async)
-		*async = false;
-
 	slot = gfn_to_memslot(kvm, gfn);
 
-	return __gfn_to_pfn_memslot(slot, gfn, atomic, async, write_fault,
+	return __gfn_to_pfn_memslot(slot, gfn, atomic, NULL, write_fault,
 				    writable);
 }
 
 pfn_t gfn_to_pfn_atomic(struct kvm *kvm, gfn_t gfn)
 {
-	return __gfn_to_pfn(kvm, gfn, true, NULL, true, NULL);
+	return __gfn_to_pfn(kvm, gfn, true, true, NULL);
 }
 EXPORT_SYMBOL_GPL(gfn_to_pfn_atomic);
 
-pfn_t gfn_to_pfn_async(struct kvm *kvm, gfn_t gfn, bool *async,
-		       bool write_fault, bool *writable)
-{
-	return __gfn_to_pfn(kvm, gfn, false, async, write_fault, writable);
-}
-EXPORT_SYMBOL_GPL(gfn_to_pfn_async);
-
 pfn_t gfn_to_pfn(struct kvm *kvm, gfn_t gfn)
 {
-	return __gfn_to_pfn(kvm, gfn, false, NULL, true, NULL);
+	return __gfn_to_pfn(kvm, gfn, false, true, NULL);
 }
 EXPORT_SYMBOL_GPL(gfn_to_pfn);
 
 pfn_t gfn_to_pfn_prot(struct kvm *kvm, gfn_t gfn, bool write_fault,
 		      bool *writable)
 {
-	return __gfn_to_pfn(kvm, gfn, false, NULL, write_fault, writable);
+	return __gfn_to_pfn(kvm, gfn, false, write_fault, writable);
 }
 EXPORT_SYMBOL_GPL(gfn_to_pfn_prot);
 
@@ -1590,15 +1580,17 @@ int kvm_write_guest_page(struct kvm *kvm, gfn_t gfn, const void *data,
 			 int offset, int len)
 {
 	int r;
+	struct kvm_memory_slot *memslot;
 	unsigned long addr;
 
-	addr = gfn_to_hva(kvm, gfn);
+	memslot = gfn_to_memslot(kvm, gfn);
+	addr = gfn_to_hva_memslot(memslot, gfn);
 	if (kvm_is_error_hva(addr))
 		return -EFAULT;
 	r = __copy_to_user((void __user *)addr + offset, data, len);
 	if (r)
 		return -EFAULT;
-	mark_page_dirty(kvm, gfn);
+	mark_page_dirty_in_slot(kvm, memslot, gfn);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(kvm_write_guest_page);
@@ -2882,18 +2874,12 @@ static int hardware_enable_all(void)
 static int kvm_cpu_hotplug(struct notifier_block *notifier, unsigned long val,
 			   void *v)
 {
-	int cpu = (long)v;
-
 	val &= ~CPU_TASKS_FROZEN;
 	switch (val) {
 	case CPU_DYING:
-		pr_info("kvm: disabling virtualization on CPU%d\n",
-		       cpu);
 		hardware_disable();
 		break;
 	case CPU_STARTING:
-		pr_info("kvm: enabling virtualization on CPU%d\n",
-		       cpu);
 		hardware_enable();
 		break;
 	}
