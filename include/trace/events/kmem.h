@@ -158,11 +158,13 @@ DEFINE_EVENT_CONDITION(kmem_free, kmem_cache_free,
 	TP_CONDITION(cpu_online(raw_smp_processor_id()))
 );
 
-TRACE_EVENT(mm_page_free,
+TRACE_EVENT_CONDITION(mm_page_free,
 
 	TP_PROTO(struct page *page, unsigned int order),
 
 	TP_ARGS(page, order),
+
+	TP_CONDITION(cpu_online(smp_processor_id())),
 
 	TP_STRUCT__entry(
 		__field(	unsigned long,	pfn		)
