@@ -92,8 +92,6 @@ struct hw_perf_event_extra {
 	int		idx;	/* index in shared_regs->regs[] */
 };
 
-struct event_constraint;
-
 /**
  * struct hw_perf_event - performance event hardware details:
  */
@@ -112,8 +110,6 @@ struct hw_perf_event {
 
 			struct hw_perf_event_extra extra_reg;
 			struct hw_perf_event_extra branch_reg;
-
-			struct event_constraint *constraint;
 		};
 		struct { /* software */
 			struct hrtimer	hrtimer;
@@ -124,7 +120,7 @@ struct hw_perf_event {
 		};
 		struct { /* intel_cqm */
 			int			cqm_state;
-			int			cqm_rmid;
+			u32			cqm_rmid;
 			struct list_head	cqm_events_entry;
 			struct list_head	cqm_groups_entry;
 			struct list_head	cqm_group_entry;
@@ -571,8 +567,12 @@ struct perf_cpu_context {
 	struct perf_event_context	*task_ctx;
 	int				active_oncpu;
 	int				exclusive;
+
+	raw_spinlock_t			hrtimer_lock;
 	struct hrtimer			hrtimer;
 	ktime_t				hrtimer_interval;
+	unsigned int			hrtimer_active;
+
 	struct pmu			*unique_pmu;
 	struct perf_cgroup		*cgrp;
 };
@@ -803,11 +803,33 @@ perf_sw_event_sched(u32 event_id, u64 nr, u64 addr)
 
 extern struct static_key_deferred perf_sched_events;
 
+static __always_inline bool
+perf_sw_migrate_enabled(void)
+{
+	if (static_key_false(&perf_swevent_enabled[PERF_COUNT_SW_CPU_MIGRATIONS]))
+		return true;
+	return false;
+}
+
+static inline void perf_event_task_migrate(struct task_struct *task)
+{
+	if (perf_sw_migrate_enabled())
+		task->sched_migrated = 1;
+}
+
 static inline void perf_event_task_sched_in(struct task_struct *prev,
 					    struct task_struct *task)
 {
 	if (static_key_false(&perf_sched_events.key))
 		__perf_event_task_sched_in(prev, task);
+
+	if (perf_sw_migrate_enabled() && task->sched_migrated) {
+		struct pt_regs *regs = this_cpu_ptr(&__perf_regs[0]);
+
+		perf_fetch_caller_regs(regs);
+		___perf_sw_event(PERF_COUNT_SW_CPU_MIGRATIONS, 1, regs, 0);
+		task->sched_migrated = 0;
+	}
 }
 
 static inline void perf_event_task_sched_out(struct task_struct *prev,
@@ -929,6 +951,8 @@ perf_aux_output_skip(struct perf_output_handle *handle,
 		     unsigned long size)				{ return -EINVAL; }
 static inline void *
 perf_get_aux(struct perf_output_handle *handle)				{ return NULL; }
+static inline void
+perf_event_task_migrate(struct task_struct *task)			{ }
 static inline void
 perf_event_task_sched_in(struct task_struct *prev,
 			 struct task_struct *task)			{ }

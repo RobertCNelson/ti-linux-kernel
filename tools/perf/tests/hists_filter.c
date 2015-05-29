@@ -82,8 +82,10 @@ static int add_hist_entries(struct perf_evlist *evlist,
 				goto out;
 
 			if (hist_entry_iter__add(&iter, &al, evsel, &sample,
-						 PERF_MAX_STACK_DEPTH, NULL) < 0)
+						 PERF_MAX_STACK_DEPTH, NULL) < 0) {
+				addr_location__put(&al);
 				goto out;
+			}
 
 			fake_samples[i].thread = al.thread;
 			fake_samples[i].map = al.map;
@@ -108,10 +110,10 @@ int test__hists_filter(void)
 
 	TEST_ASSERT_VAL("No memory", evlist);
 
-	err = parse_events(evlist, "cpu-clock");
+	err = parse_events(evlist, "cpu-clock", NULL);
 	if (err)
 		goto out;
-	err = parse_events(evlist, "task-clock");
+	err = parse_events(evlist, "task-clock", NULL);
 	if (err)
 		goto out;
 
