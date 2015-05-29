@@ -637,6 +637,8 @@ struct kvm_arch {
 	#endif
 
 	bool boot_vcpu_runs_old_kvmclock;
+
+	u64 disabled_quirks;
 };
 
 struct kvm_vm_stat {
@@ -689,12 +691,13 @@ struct msr_data {
 
 struct kvm_lapic_irq {
 	u32 vector;
-	u32 delivery_mode;
-	u32 dest_mode;
-	u32 level;
-	u32 trig_mode;
+	u16 delivery_mode;
+	u16 dest_mode;
+	bool level;
+	u16 trig_mode;
 	u32 shorthand;
 	u32 dest_id;
+	bool msi_redir_hint;
 };
 
 struct kvm_x86_ops {
@@ -711,7 +714,7 @@ struct kvm_x86_ops {
 	/* Create, but do not attach this VCPU */
 	struct kvm_vcpu *(*vcpu_create)(struct kvm *kvm, unsigned id);
 	void (*vcpu_free)(struct kvm_vcpu *vcpu);
-	void (*vcpu_reset)(struct kvm_vcpu *vcpu);
+	void (*vcpu_reset)(struct kvm_vcpu *vcpu, bool init_event);
 
 	void (*prepare_guest_switch)(struct kvm_vcpu *vcpu);
 	void (*vcpu_load)(struct kvm_vcpu *vcpu, int cpu);
@@ -871,7 +874,7 @@ void kvm_mmu_reset_context(struct kvm_vcpu *vcpu);
 void kvm_mmu_slot_remove_write_access(struct kvm *kvm,
 				      struct kvm_memory_slot *memslot);
 void kvm_mmu_zap_collapsible_sptes(struct kvm *kvm,
-					struct kvm_memory_slot *memslot);
+				   const struct kvm_memory_slot *memslot);
 void kvm_mmu_slot_leaf_clear_dirty(struct kvm *kvm,
 				   struct kvm_memory_slot *memslot);
 void kvm_mmu_slot_largepage_remove_write_access(struct kvm *kvm,
@@ -1144,7 +1147,7 @@ int kvm_cpu_has_injectable_intr(struct kvm_vcpu *v);
 int kvm_cpu_has_interrupt(struct kvm_vcpu *vcpu);
 int kvm_arch_interrupt_allowed(struct kvm_vcpu *vcpu);
 int kvm_cpu_get_interrupt(struct kvm_vcpu *v);
-void kvm_vcpu_reset(struct kvm_vcpu *vcpu);
+void kvm_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event);
 void kvm_vcpu_reload_apic_access_page(struct kvm_vcpu *vcpu);
 void kvm_arch_mmu_notifier_invalidate_page(struct kvm *kvm,
 					   unsigned long address);
