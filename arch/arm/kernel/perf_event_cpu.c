@@ -33,7 +33,7 @@
 #include <asm/pmu.h>
 
 /* Set at runtime when we know what CPU type we are. */
-static struct arm_pmu *cpu_pmu;
+static struct arm_pmu *__oprofile_cpu_pmu;
 
 /*
  * Despite the names, these two functions are CPU-specific and are used
@@ -41,10 +41,10 @@ static struct arm_pmu *cpu_pmu;
  */
 const char *perf_pmu_name(void)
 {
-	if (!cpu_pmu)
+	if (!__oprofile_cpu_pmu)
 		return NULL;
 
-	return cpu_pmu->name;
+	return __oprofile_cpu_pmu->name;
 }
 EXPORT_SYMBOL_GPL(perf_pmu_name);
 
@@ -52,8 +52,8 @@ int perf_num_counters(void)
 {
 	int max_events = 0;
 
-	if (cpu_pmu != NULL)
-		max_events = cpu_pmu->num_events;
+	if (__oprofile_cpu_pmu != NULL)
+		max_events = __oprofile_cpu_pmu->num_events;
 
 	return max_events;
 }
@@ -179,9 +179,13 @@ static int cpu_pmu_request_irq(struct arm_pmu *cpu_pmu, irq_handler_t handler)
 static int cpu_pmu_notify(struct notifier_block *b, unsigned long action,
 			  void *hcpu)
 {
+	int cpu = (unsigned long)hcpu;
 	struct arm_pmu *pmu = container_of(b, struct arm_pmu, hotplug_nb);
 
 	if ((action & ~CPU_TASKS_FROZEN) != CPU_STARTING)
+		return NOTIFY_DONE;
+
+	if (!cpumask_test_cpu(cpu, &pmu->supported_cpus))
 		return NOTIFY_DONE;
 
 	if (pmu->reset)
@@ -219,7 +223,8 @@ static int cpu_pmu_init(struct arm_pmu *cpu_pmu)
 
 	/* Ensure the PMU has sane values out of reset. */
 	if (cpu_pmu->reset)
-		on_each_cpu(cpu_pmu->reset, cpu_pmu, 1);
+		on_each_cpu_mask(&cpu_pmu->supported_cpus, cpu_pmu->reset,
+			 cpu_pmu, 1);
 
 	/* If no interrupts available, set the corresponding capability flag */
 	if (!platform_get_irq(cpu_pmu->plat_device, 0))
@@ -301,9 +306,10 @@ static int probe_current_pmu(struct arm_pmu *pmu)
 	return ret;
 }
 
-static int of_pmu_irq_cfg(struct platform_device *pdev)
+static int of_pmu_irq_cfg(struct arm_pmu *pmu)
 {
 	int i, irq;
+	struct platform_device *pdev = pmu->plat_device;
 	int *irqs;
 
 	/* Don't bother with PPIs; they're already affine */
@@ -339,12 +345,15 @@ static int of_pmu_irq_cfg(struct platform_device *pdev)
 		}
 
 		irqs[i] = cpu;
+		cpumask_set_cpu(cpu, &pmu->supported_cpus);
 	}
 
-	if (i == pdev->num_resources)
-		cpu_pmu->irq_affinity = irqs;
-	else
+	if (i == pdev->num_resources) {
+		pmu->irq_affinity = irqs;
+	} else {
 		kfree(irqs);
+		cpumask_setall(&pmu->supported_cpus);
+	}
 
 	return 0;
 }
@@ -357,28 +366,26 @@ static int cpu_pmu_device_probe(struct platform_device *pdev)
 	struct arm_pmu *pmu;
 	int ret = -ENODEV;
 
-	if (cpu_pmu) {
-		pr_info("attempt to register multiple PMU devices!\n");
-		return -ENOSPC;
-	}
-
 	pmu = kzalloc(sizeof(struct arm_pmu), GFP_KERNEL);
 	if (!pmu) {
 		pr_info("failed to allocate PMU device!\n");
 		return -ENOMEM;
 	}
 
-	cpu_pmu = pmu;
-	cpu_pmu->plat_device = pdev;
+	if (!__oprofile_cpu_pmu)
+		__oprofile_cpu_pmu = pmu;
+
+	pmu->plat_device = pdev;
 
 	if (node && (of_id = of_match_node(cpu_pmu_of_device_ids, pdev->dev.of_node))) {
 		init_fn = of_id->data;
 
-		ret = of_pmu_irq_cfg(pdev);
+		ret = of_pmu_irq_cfg(pmu);
 		if (!ret)
 			ret = init_fn(pmu);
 	} else {
 		ret = probe_current_pmu(pmu);
+		cpumask_setall(&pmu->supported_cpus);
 	}
 
 	if (ret) {
@@ -386,18 +393,18 @@ static int cpu_pmu_device_probe(struct platform_device *pdev)
 		goto out_free;
 	}
 
-	ret = cpu_pmu_init(cpu_pmu);
+	ret = cpu_pmu_init(pmu);
 	if (ret)
 		goto out_free;
 
-	ret = armpmu_register(cpu_pmu, -1);
+	ret = armpmu_register(pmu, -1);
 	if (ret)
 		goto out_destroy;
 
 	return 0;
 
 out_destroy:
-	cpu_pmu_destroy(cpu_pmu);
+	cpu_pmu_destroy(pmu);
 out_free:
 	pr_info("failed to register PMU devices!\n");
 	kfree(pmu);
