@@ -18,6 +18,8 @@
 #include <asm/ppc-pci.h>
 #include <asm/machdep.h>
 
+#include "pseries.h"
+
 static int query_token, change_token;
 
 #define RTAS_QUERY_FN		0
@@ -516,9 +518,9 @@ static int rtas_msi_init(void)
 
 	pr_debug("rtas_msi: Registering RTAS MSI callbacks.\n");
 
-	WARN_ON(ppc_md.setup_msi_irqs);
-	ppc_md.setup_msi_irqs = rtas_setup_msi_irqs;
-	ppc_md.teardown_msi_irqs = rtas_teardown_msi_irqs;
+	WARN_ON(pseries_pci_controller_ops.setup_msi_irqs);
+	pseries_pci_controller_ops.setup_msi_irqs = rtas_setup_msi_irqs;
+	pseries_pci_controller_ops.teardown_msi_irqs = rtas_teardown_msi_irqs;
 
 	WARN_ON(ppc_md.pci_irq_fixup);
 	ppc_md.pci_irq_fixup = rtas_msi_pci_irq_fixup;

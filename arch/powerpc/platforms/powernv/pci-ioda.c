@@ -1601,9 +1601,10 @@ static void pnv_pci_ioda_dma_dev_setup(struct pnv_phb *phb, struct pci_dev *pdev
 	set_iommu_table_base_and_group(&pdev->dev, pe->tce32_table);
 }
 
-static int pnv_pci_ioda_dma_set_mask(struct pnv_phb *phb,
-				     struct pci_dev *pdev, u64 dma_mask)
+static int pnv_pci_ioda_dma_set_mask(struct pci_dev *pdev, u64 dma_mask)
 {
+	struct pci_controller *hose = pci_bus_to_host(pdev->bus);
+	struct pnv_phb *phb = hose->private_data;
 	struct pci_dn *pdn = pci_get_pdn(pdev);
 	struct pnv_ioda_pe *pe;
 	uint64_t top;
@@ -2648,6 +2649,18 @@ static void pnv_pci_ioda_shutdown(struct pnv_phb *phb)
 		       OPAL_ASSERT_RESET);
 }
 
+static const struct pci_controller_ops pnv_pci_ioda_controller_ops = {
+       .dma_dev_setup = pnv_pci_dma_dev_setup,
+#ifdef CONFIG_PCI_MSI
+       .setup_msi_irqs = pnv_setup_msi_irqs,
+       .teardown_msi_irqs = pnv_teardown_msi_irqs,
+#endif
+       .enable_device_hook = pnv_pci_enable_device_hook,
+       .window_alignment = pnv_pci_window_alignment,
+       .reset_secondary_bus = pnv_pci_reset_secondary_bus,
+       .dma_set_mask = pnv_pci_ioda_dma_set_mask,
+};
+
 static void __init pnv_pci_init_ioda_phb(struct device_node *np,
 					 u64 hub_id, int ioda_type)
 {
@@ -2791,7 +2804,6 @@ static void __init pnv_pci_init_ioda_phb(struct device_node *np,
 
 	/* Setup TCEs */
 	phb->dma_dev_setup = pnv_pci_ioda_dma_dev_setup;
-	phb->dma_set_mask = pnv_pci_ioda_dma_set_mask;
 	phb->dma_get_required_mask = pnv_pci_ioda_dma_get_required_mask;
 
 	/* Setup shutdown function for kexec */
@@ -2808,10 +2820,7 @@ static void __init pnv_pci_init_ioda_phb(struct device_node *np,
 	 * the child P2P bridges) can form individual PE.
 	 */
 	ppc_md.pcibios_fixup = pnv_pci_ioda_fixup;
-	pnv_pci_controller_ops.enable_device_hook = pnv_pci_enable_device_hook;
-	pnv_pci_controller_ops.window_alignment = pnv_pci_window_alignment;
-	pnv_pci_controller_ops.reset_secondary_bus = pnv_pci_reset_secondary_bus;
-	hose->controller_ops = pnv_pci_controller_ops;
+	hose->controller_ops = pnv_pci_ioda_controller_ops;
 
 #ifdef CONFIG_PCI_IOV
 	ppc_md.pcibios_fixup_sriov = pnv_pci_ioda_fixup_iov_resources;
