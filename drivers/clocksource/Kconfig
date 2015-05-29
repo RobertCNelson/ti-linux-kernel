@@ -279,6 +279,7 @@ config CLKSRC_PXA
 config CLKSRC_IMX_GPT
 	bool "Clocksource using i.MX GPT" if COMPILE_TEST
 	depends on OF
+	depends on BROKEN
 	select CLKSRC_MMIO
 
 config H8300_TMR16
