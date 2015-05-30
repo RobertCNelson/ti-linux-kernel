@@ -341,6 +341,11 @@ static const struct adv76xx_video_standards adv76xx_prim_mode_hdmi_gr[] = {
 	{ },
 };
 
+static const struct v4l2_event adv76xx_ev_fmt = {
+	.type = V4L2_EVENT_SOURCE_CHANGE,
+	.u.src_change.changes = V4L2_EVENT_SRC_CH_RESOLUTION,
+};
+
 /* ----------------------------------------------------------------------- */
 
 static inline struct adv76xx_state *to_state(struct v4l2_subdev *sd)
@@ -1744,11 +1749,11 @@ static int adv76xx_s_routing(struct v4l2_subdev *sd,
 	state->selected_input = input;
 
 	disable_input(sd);
-
 	select_input(sd);
-
 	enable_input(sd);
 
+	v4l2_subdev_notify(sd, V4L2_DEVICE_NOTIFY_EVENT,
+			   (void *)&adv76xx_ev_fmt);
 	return 0;
 }
 
@@ -1915,7 +1920,8 @@ static int adv76xx_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
 			"%s: fmt_change = 0x%x, fmt_change_digital = 0x%x\n",
 			__func__, fmt_change, fmt_change_digital);
 
-		v4l2_subdev_notify(sd, ADV76XX_FMT_CHANGE, NULL);
+		v4l2_subdev_notify(sd, V4L2_DEVICE_NOTIFY_EVENT,
+				   (void *)&adv76xx_ev_fmt);
 
 		if (handled)
 			*handled = true;
@@ -2642,14 +2648,14 @@ static const struct adv76xx_chip_info adv76xx_chip_info[] = {
 	},
 };
 
-static struct i2c_device_id adv76xx_i2c_id[] = {
+static const struct i2c_device_id adv76xx_i2c_id[] = {
 	{ "adv7604", (kernel_ulong_t)&adv76xx_chip_info[ADV7604] },
 	{ "adv7611", (kernel_ulong_t)&adv76xx_chip_info[ADV7611] },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, adv76xx_i2c_id);
 
-static struct of_device_id adv76xx_of_id[] __maybe_unused = {
+static const struct of_device_id adv76xx_of_id[] __maybe_unused = {
 	{ .compatible = "adi,adv7611", .data = &adv76xx_chip_info[ADV7611] },
 	{ }
 };

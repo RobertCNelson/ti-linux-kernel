@@ -899,7 +899,7 @@ static irqreturn_t rcar_vin_irq(int irq, void *data)
 
 		priv->queue_buf[slot]->v4l2_buf.field = priv->field;
 		priv->queue_buf[slot]->v4l2_buf.sequence = priv->sequence++;
-		do_gettimeofday(&priv->queue_buf[slot]->v4l2_buf.timestamp);
+		v4l2_get_timestamp(&priv->queue_buf[slot]->v4l2_buf.timestamp);
 		vb2_buffer_done(priv->queue_buf[slot], VB2_BUF_STATE_DONE);
 		priv->queue_buf[slot] = NULL;
 
@@ -1821,7 +1821,7 @@ static struct soc_camera_host_ops rcar_vin_host_ops = {
 };
 
 #ifdef CONFIG_OF
-static struct of_device_id rcar_vin_of_table[] = {
+static const struct of_device_id rcar_vin_of_table[] = {
 	{ .compatible = "renesas,vin-r8a7794", .data = (void *)RCAR_GEN2 },
 	{ .compatible = "renesas,vin-r8a7793", .data = (void *)RCAR_GEN2 },
 	{ .compatible = "renesas,vin-r8a7791", .data = (void *)RCAR_GEN2 },
