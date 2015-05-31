@@ -29,7 +29,6 @@
 #include <linux/bootmem.h>
 #include <linux/interrupt.h>
 #include <linux/ptrace.h>
-#include <linux/kgdb.h>
 #include <linux/kdebug.h>
 #include <linux/kprobes.h>
 #include <linux/notifier.h>
@@ -2184,11 +2183,6 @@ void __init trap_init(void)
 	unsigned long i;
 
 	check_wait();
-
-#if defined(CONFIG_KGDB)
-	if (kgdb_early_setup)
-		return; /* Already done */
-#endif
 
 	if (cpu_has_veic || cpu_has_vint) {
 		unsigned long size = 0x200 + VECTORSPACING*64;
