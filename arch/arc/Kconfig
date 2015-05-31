@@ -81,7 +81,7 @@ menu "ARC Architecture Configuration"
 
 menu "ARC Platform/SoC/Board"
 
-source "arch/arc/plat-arcfpga/Kconfig"
+source "arch/arc/plat-sim/Kconfig"
 source "arch/arc/plat-tb10x/Kconfig"
 #New platform adds here
 
@@ -100,7 +100,7 @@ config ARC_CPU_750D
 
 config ARC_CPU_770
 	bool "ARC770"
-	select ARC_CPU_REL_4_10
+	select ARC_HAS_SWAPE
 	help
 	  Support for ARC770 core introduced with Rel 4.10 (Summer 2011)
 	  This core has a bunch of cool new features:
@@ -116,10 +116,6 @@ config CPU_BIG_ENDIAN
 	default n
 	help
 	  Build kernel for Big Endian Mode of ARC CPU
-
-# If a platform can't work with 0x8000_0000 based dma_addr_t
-config ARC_PLAT_NEEDS_CPU_TO_DMA
-	bool
 
 config SMP
 	bool "Symmetric Multi-Processing (Incomplete)"
@@ -306,13 +302,6 @@ config ARC_FPU_SAVE_RESTORE
 config ARC_CANT_LLSC
 	def_bool n
 
-menuconfig ARC_CPU_REL_4_10
-	bool "Enable support for Rel 4.10 features"
-	default n
-	help
-	  -ARC770 (and dependent features) enabled
-	  -ARC750 also shares some of the new features with 770
-
 config ARC_HAS_LLSC
 	bool "Insn: LLOCK/SCOND (efficient atomic ops)"
 	default y
@@ -321,13 +310,6 @@ config ARC_HAS_LLSC
 config ARC_HAS_SWAPE
 	bool "Insn: SWAPE (endian-swap)"
 	default y
-	depends on ARC_CPU_REL_4_10
-
-config ARC_HAS_RTSC
-	bool "Insn: RTSC (64-bit r/o cycle counter)"
-	default y
-	depends on ARC_CPU_REL_4_10
-	depends on !SMP
 
 endmenu   # "ARC CPU Configuration"
 
@@ -405,6 +387,18 @@ config ARC_DBG_TLB_MISS_COUNT
 	help
 	  Counts number of I and D TLB Misses and exports them via Debugfs
 	  The counters can be cleared via Debugfs as well
+
+config ARC_UBOOT_SUPPORT
+	bool "Support uboot arg Handling"
+	default n
+	help
+	  ARC Linux by default checks for uboot provided args as pointers to
+	  external cmdline or DTB. This however breaks in absence of uboot,
+	  when booting from Metaware debugger directly, as the registers are
+	  not zeroed out on reset by mdb and/or ARCv2 based cores. The bogus
+	  registers look like uboot args to kernel which then chokes.
+	  So only enable the uboot arg checking/processing if users are sure
+	  of uboot being in play.
 
 config ARC_BUILTIN_DTB_NAME
 	string "Built in DTB"
