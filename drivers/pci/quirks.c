@@ -3570,6 +3570,8 @@ static void quirk_dma_func1_alias(struct pci_dev *dev)
  * SKUs this function is not present, making this a ghost requester.
  * https://bugzilla.kernel.org/show_bug.cgi?id=42679
  */
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_MARVELL_EXT, 0x9120,
+			 quirk_dma_func1_alias);
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_MARVELL_EXT, 0x9123,
 			 quirk_dma_func1_alias);
 /* https://bugzilla.kernel.org/show_bug.cgi?id=42679#c14 */
@@ -3738,6 +3740,8 @@ static const u16 pci_quirk_intel_pch_acs_ids[] = {
 	/* Wellsburg (X99) PCH */
 	0x8d10, 0x8d11, 0x8d12, 0x8d13, 0x8d14, 0x8d15, 0x8d16, 0x8d17,
 	0x8d18, 0x8d19, 0x8d1a, 0x8d1b, 0x8d1c, 0x8d1d, 0x8d1e,
+	/* Lynx Point (9 series) PCH */
+	0x8c90, 0x8c92, 0x8c94, 0x8c96, 0x8c98, 0x8c9a, 0x8c9c, 0x8c9e,
 };
 
 static bool pci_quirk_intel_pch_acs_match(struct pci_dev *dev)

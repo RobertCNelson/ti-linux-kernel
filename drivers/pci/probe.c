@@ -973,6 +973,8 @@ void set_pcie_port_type(struct pci_dev *pdev)
 {
 	int pos;
 	u16 reg16;
+	int type;
+	struct pci_dev *parent;
 
 	pos = pci_find_capability(pdev, PCI_CAP_ID_EXP);
 	if (!pos)
@@ -982,6 +984,22 @@ void set_pcie_port_type(struct pci_dev *pdev)
 	pdev->pcie_flags_reg = reg16;
 	pci_read_config_word(pdev, pos + PCI_EXP_DEVCAP, &reg16);
 	pdev->pcie_mpss = reg16 & PCI_EXP_DEVCAP_PAYLOAD;
+
+	/*
+	 * A Root Port is always the upstream end of a Link.  No PCIe
+	 * component has two Links.  Two Links are connected by a Switch
+	 * that has a Port on each Link and internal logic to connect the
+	 * two Ports.
+	 */
+	type = pci_pcie_type(pdev);
+	if (type == PCI_EXP_TYPE_ROOT_PORT)
+		pdev->has_secondary_link = 1;
+	else if (type == PCI_EXP_TYPE_UPSTREAM ||
+		 type == PCI_EXP_TYPE_DOWNSTREAM) {
+		parent = pci_upstream_bridge(pdev);
+		if (!parent->has_secondary_link)
+			pdev->has_secondary_link = 1;
+	}
 }
 
 void set_pcie_hotplug_bridge(struct pci_dev *pdev)
@@ -1629,7 +1647,7 @@ static int only_one_child(struct pci_bus *bus)
 		return 0;
 	if (pci_pcie_type(parent) == PCI_EXP_TYPE_ROOT_PORT)
 		return 1;
-	if (pci_pcie_type(parent) == PCI_EXP_TYPE_DOWNSTREAM &&
+	if (parent->has_secondary_link &&
 	    !pci_has_flag(PCI_SCAN_ALL_PCIE_DEVS))
 		return 1;
 	return 0;
@@ -2111,25 +2129,6 @@ struct pci_bus *pci_scan_root_bus(struct device *parent, int bus,
 	return b;
 }
 EXPORT_SYMBOL(pci_scan_root_bus);
-
-/* Deprecated; use pci_scan_root_bus() instead */
-struct pci_bus *pci_scan_bus_parented(struct device *parent,
-		int bus, struct pci_ops *ops, void *sysdata)
-{
-	LIST_HEAD(resources);
-	struct pci_bus *b;
-
-	pci_add_resource(&resources, &ioport_resource);
-	pci_add_resource(&resources, &iomem_resource);
-	pci_add_resource(&resources, &busn_resource);
-	b = pci_create_root_bus(parent, bus, ops, sysdata, &resources);
-	if (b)
-		pci_scan_child_bus(b);
-	else
-		pci_free_resource_list(&resources);
-	return b;
-}
-EXPORT_SYMBOL(pci_scan_bus_parented);
 
 struct pci_bus *pci_scan_bus(int bus, struct pci_ops *ops,
 					void *sysdata)
