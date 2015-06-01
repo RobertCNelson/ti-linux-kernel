@@ -216,6 +216,8 @@ struct drm_framebuffer {
 
 struct drm_property_blob {
 	struct drm_mode_object base;
+	struct drm_device *dev;
+	struct kref refcount;
 	struct list_head head;
 	size_t length;
 	unsigned char data[];
@@ -647,6 +649,7 @@ struct drm_encoder {
  * @audio_latency: audio latency info from ELD, if found
  * @null_edid_counter: track sinks that give us all zeros for the EDID
  * @bad_edid_counter: track sinks that give us an EDID with invalid checksum
+ * @edid_corrupt: indicates whether the last read EDID was corrupt
  * @debugfs_entry: debugfs directory for this connector
  * @state: current atomic state for this connector
  * @has_tile: is this connector connected to a tiled monitor
@@ -718,6 +721,11 @@ struct drm_connector {
 	int audio_latency[2];
 	int null_edid_counter; /* needed to workaround some HW bugs where we get all 0s */
 	unsigned bad_edid_counter;
+
+	/* Flag for raw EDID header corruption - used in Displayport
+	 * compliance testing - * Displayport Link CTS Core 1.2 rev1.1 4.2.2.6
+	 */
+	bool edid_corrupt;
 
 	struct dentry *debugfs_entry;
 
@@ -977,6 +985,9 @@ struct drm_mode_set {
  * @atomic_check: check whether a given atomic state update is possible
  * @atomic_commit: commit an atomic state update previously verified with
  * 	atomic_check()
+ * @atomic_state_alloc: allocate a new atomic state
+ * @atomic_state_clear: clear the atomic state
+ * @atomic_state_free: free the atomic state
  *
  * Some global (i.e. not per-CRTC, connector, etc) mode setting functions that
  * involve drivers.
@@ -992,6 +1003,9 @@ struct drm_mode_config_funcs {
 	int (*atomic_commit)(struct drm_device *dev,
 			     struct drm_atomic_state *a,
 			     bool async);
+	struct drm_atomic_state *(*atomic_state_alloc)(struct drm_device *dev);
+	void (*atomic_state_clear)(struct drm_atomic_state *state);
+	void (*atomic_state_free)(struct drm_atomic_state *state);
 };
 
 /**
@@ -1048,6 +1062,7 @@ struct drm_mode_group {
  * @poll_running: track polling status for this device
  * @output_poll_work: delayed work for polling in process context
  * @property_blob_list: list of all the blob property objects
+ * @blob_lock: mutex for blob property allocation and management
  * @*_property: core property tracking
  * @preferred_depth: preferred RBG pixel depth, used by fb helpers
  * @prefer_shadow: hint to userspace to prefer shadow-fb rendering
@@ -1102,6 +1117,8 @@ struct drm_mode_config {
 	bool poll_running;
 	bool delayed_event;
 	struct delayed_work output_poll_work;
+
+	struct mutex blob_lock;
 
 	/* pointers to standard properties */
 	struct list_head property_blob_list;
@@ -1263,6 +1280,7 @@ extern int drm_plane_init(struct drm_device *dev,
 			  bool is_primary);
 extern void drm_plane_cleanup(struct drm_plane *plane);
 extern unsigned int drm_plane_index(struct drm_plane *plane);
+extern struct drm_plane * drm_plane_from_index(struct drm_device *dev, int idx);
 extern void drm_plane_force_disable(struct drm_plane *plane);
 extern int drm_plane_check_pixel_format(const struct drm_plane *plane,
 					u32 format);
@@ -1362,6 +1380,13 @@ struct drm_property *drm_property_create_object(struct drm_device *dev,
 					 int flags, const char *name, uint32_t type);
 struct drm_property *drm_property_create_bool(struct drm_device *dev, int flags,
 					 const char *name);
+struct drm_property_blob *drm_property_create_blob(struct drm_device *dev,
+                                                   size_t length,
+                                                   const void *data);
+struct drm_property_blob *drm_property_lookup_blob(struct drm_device *dev,
+                                                   uint32_t id);
+struct drm_property_blob *drm_property_reference_blob(struct drm_property_blob *blob);
+void drm_property_unreference_blob(struct drm_property_blob *blob);
 extern void drm_property_destroy(struct drm_device *dev, struct drm_property *property);
 extern int drm_property_add_enum(struct drm_property *property, int index,
 				 uint64_t value, const char *name);
@@ -1442,7 +1467,8 @@ extern void drm_set_preferred_mode(struct drm_connector *connector,
 				   int hpref, int vpref);
 
 extern int drm_edid_header_is_valid(const u8 *raw_edid);
-extern bool drm_edid_block_valid(u8 *raw_edid, int block, bool print_bad_edid);
+extern bool drm_edid_block_valid(u8 *raw_edid, int block, bool print_bad_edid,
+				 bool *edid_corrupt);
 extern bool drm_edid_is_valid(struct edid *edid);
 
 extern struct drm_tile_group *drm_mode_create_tile_group(struct drm_device *dev,
@@ -1523,14 +1549,6 @@ static inline struct drm_property *drm_property_find(struct drm_device *dev,
 	struct drm_mode_object *mo;
 	mo = drm_mode_object_find(dev, id, DRM_MODE_OBJECT_PROPERTY);
 	return mo ? obj_to_property(mo) : NULL;
-}
-
-static inline struct drm_property_blob *
-drm_property_blob_find(struct drm_device *dev, uint32_t id)
-{
-	struct drm_mode_object *mo;
-	mo = drm_mode_object_find(dev, id, DRM_MODE_OBJECT_BLOB);
-	return mo ? obj_to_blob(mo) : NULL;
 }
 
 /* Plane list iterator for legacy (overlay only) planes. */
