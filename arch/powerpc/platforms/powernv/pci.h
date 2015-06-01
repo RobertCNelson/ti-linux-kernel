@@ -106,8 +106,6 @@ struct pnv_phb {
 			 unsigned int hwirq, unsigned int virq,
 			 unsigned int is_64, struct msi_msg *msg);
 	void (*dma_dev_setup)(struct pnv_phb *phb, struct pci_dev *pdev);
-	int (*dma_set_mask)(struct pnv_phb *phb, struct pci_dev *pdev,
-			    u64 dma_mask);
 	u64 (*dma_get_required_mask)(struct pnv_phb *phb,
 				     struct pci_dev *pdev);
 	void (*fixup_phb)(struct pci_controller *hose);
@@ -217,5 +215,9 @@ extern void pnv_pci_ioda_tce_invalidate(struct iommu_table *tbl,
 					__be64 *startp, __be64 *endp, bool rm);
 extern void pnv_pci_reset_secondary_bus(struct pci_dev *dev);
 extern int pnv_eeh_phb_reset(struct pci_controller *hose, int option);
+
+extern void pnv_pci_dma_dev_setup(struct pci_dev *pdev);
+extern int pnv_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type);
+extern void pnv_teardown_msi_irqs(struct pci_dev *pdev);
 
 #endif /* __POWERNV_PCI_H */
