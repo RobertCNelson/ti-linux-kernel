@@ -355,6 +355,7 @@ struct pci_dev {
 	unsigned int	broken_intx_masking:1;
 	unsigned int	io_window_1k:1;	/* Intel P2P bridge 1K I/O windows */
 	unsigned int	irq_managed:1;
+	unsigned int	has_secondary_link:1;
 	pci_dev_flags_t dev_flags;
 	atomic_t	enable_cnt;	/* pci_enable_device has been called */
 
@@ -773,8 +774,6 @@ void pcibios_bus_to_resource(struct pci_bus *bus, struct resource *res,
 void pcibios_scan_specific_bus(int busn);
 struct pci_bus *pci_find_bus(int domain, int busnr);
 void pci_bus_add_devices(const struct pci_bus *bus);
-struct pci_bus *pci_scan_bus_parented(struct device *parent, int bus,
-				      struct pci_ops *ops, void *sysdata);
 struct pci_bus *pci_scan_bus(int bus, struct pci_ops *ops, void *sysdata);
 struct pci_bus *pci_create_root_bus(struct device *parent, int bus,
 				    struct pci_ops *ops, void *sysdata,
@@ -974,7 +973,6 @@ void pci_intx(struct pci_dev *dev, int enable);
 bool pci_intx_mask_supported(struct pci_dev *dev);
 bool pci_check_and_mask_intx(struct pci_dev *dev);
 bool pci_check_and_unmask_intx(struct pci_dev *dev);
-void pci_msi_off(struct pci_dev *dev);
 int pci_set_dma_max_seg_size(struct pci_dev *dev, unsigned int size);
 int pci_set_dma_seg_boundary(struct pci_dev *dev, unsigned long mask);
 int pci_wait_for_pending(struct pci_dev *dev, int pos, u16 mask);
@@ -1006,6 +1004,7 @@ int __must_check pci_assign_resource(struct pci_dev *dev, int i);
 int __must_check pci_reassign_resource(struct pci_dev *dev, int i, resource_size_t add_size, resource_size_t align);
 int pci_select_bars(struct pci_dev *dev, unsigned long flags);
 bool pci_device_is_present(struct pci_dev *pdev);
+void pci_ignore_hotplug(struct pci_dev *dev);
 
 /* ROM control related routines */
 int pci_enable_rom(struct pci_dev *pdev);
@@ -1042,11 +1041,6 @@ int pci_back_from_sleep(struct pci_dev *dev);
 bool pci_dev_run_wake(struct pci_dev *dev);
 bool pci_check_pme_status(struct pci_dev *dev);
 void pci_pme_wakeup_bus(struct pci_bus *bus);
-
-static inline void pci_ignore_hotplug(struct pci_dev *dev)
-{
-	dev->ignore_hotplug = 1;
-}
 
 static inline int pci_enable_wake(struct pci_dev *dev, pci_power_t state,
 				  bool enable)
@@ -1904,5 +1898,16 @@ static inline void pci_clear_dev_assigned(struct pci_dev *pdev)
 static inline bool pci_is_dev_assigned(struct pci_dev *pdev)
 {
 	return (pdev->dev_flags & PCI_DEV_FLAGS_ASSIGNED) == PCI_DEV_FLAGS_ASSIGNED;
+}
+
+/**
+ * pci_ari_enabled - query ARI forwarding status
+ * @bus: the PCI bus
+ *
+ * Returns true if ARI forwarding is enabled.
+ */
+static inline bool pci_ari_enabled(struct pci_bus *bus)
+{
+	return bus->self && bus->self->ari_enabled;
 }
 #endif /* LINUX_PCI_H */
