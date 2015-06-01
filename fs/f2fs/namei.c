@@ -308,19 +308,15 @@ fail:
 	return err;
 }
 
-static void *f2fs_follow_link(struct dentry *dentry, struct nameidata *nd)
+static const char *f2fs_follow_link(struct dentry *dentry, void **cookie)
 {
-	struct page *page = page_follow_link_light(dentry, nd);
-
-	if (IS_ERR_OR_NULL(page))
-		return page;
-
-	/* this is broken symlink case */
-	if (*nd_get_link(nd) == 0) {
-		page_put_link(dentry, nd, page);
-		return ERR_PTR(-ENOENT);
+	const char *link = page_follow_link_light(dentry, cookie);
+	if (!IS_ERR(link) && !*link) {
+		/* this is broken symlink case */
+		page_put_link(NULL, *cookie);
+		link = ERR_PTR(-ENOENT);
 	}
-	return page;
+	return link;
 }
 
 static int f2fs_symlink(struct inode *dir, struct dentry *dentry,
@@ -920,8 +916,8 @@ static int f2fs_rename2(struct inode *old_dir, struct dentry *old_dentry,
 }
 
 #ifdef CONFIG_F2FS_FS_ENCRYPTION
-static void *f2fs_encrypted_follow_link(struct dentry *dentry,
-						struct nameidata *nd)
+static const char *f2fs_encrypted_follow_link(struct dentry *dentry,
+						void **cookie)
 {
 	struct page *cpage = NULL;
 	char *caddr, *paddr = NULL;
@@ -939,7 +935,7 @@ static void *f2fs_encrypted_follow_link(struct dentry *dentry,
 
 	cpage = read_mapping_page(inode->i_mapping, 0, NULL);
 	if (IS_ERR(cpage))
-		return cpage;
+		return ERR_CAST(cpage);
 	caddr = kmap(cpage);
 	caddr[size] = 0;
 
@@ -972,11 +968,10 @@ static void *f2fs_encrypted_follow_link(struct dentry *dentry,
 
 	/* Null-terminate the name */
 	paddr[res] = '\0';
-	nd_set_link(nd, paddr);
 
 	kunmap(cpage);
 	page_cache_release(cpage);
-	return NULL;
+	return *cookie = paddr;
 errout:
 	f2fs_fname_crypto_free_buffer(&pstr);
 	kunmap(cpage);
