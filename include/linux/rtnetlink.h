@@ -79,17 +79,9 @@ static inline struct netdev_queue *dev_ingress_queue(struct net_device *dev)
 
 struct netdev_queue *dev_ingress_queue_create(struct net_device *dev);
 
-#ifdef CONFIG_NET_CLS_ACT
+#ifdef CONFIG_NET_INGRESS
 void net_inc_ingress_queue(void);
 void net_dec_ingress_queue(void);
-#else
-static inline void net_inc_ingress_queue(void)
-{
-}
-
-static inline void net_dec_ingress_queue(void)
-{
-}
 #endif
 
 extern void rtnetlink_init(void);
