@@ -299,7 +299,8 @@ struct bcr_generic {
  */
 
 struct cpuinfo_arc_mmu {
-	unsigned int ver, pg_sz, sets, ways, u_dtlb, u_itlb, num_tlb;
+	unsigned int ver:4, pg_sz_k:8, pad:8, u_dtlb:6, u_itlb:6;
+	unsigned int num_tlb:16, sets:12, ways:4;
 };
 
 struct cpuinfo_arc_cache {
@@ -322,7 +323,6 @@ struct cpuinfo_arc {
 	struct bcr_isa isa;
 	struct bcr_timer timers;
 	unsigned int vec_base;
-	unsigned int uncached_base;
 	struct cpuinfo_arc_ccm iccm, dccm;
 	struct {
 		unsigned int swap:1, norm:1, minmax:1, barrel:1, crc:1, pad1:3,
