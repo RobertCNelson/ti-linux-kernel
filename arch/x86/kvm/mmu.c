@@ -804,30 +804,32 @@ static struct kvm_lpage_info *lpage_info_slot(gfn_t gfn,
 	return &slot->arch.lpage_info[level - 2][idx];
 }
 
-static void account_shadowed(struct kvm *kvm, gfn_t gfn)
+static void account_shadowed(struct kvm *kvm, struct kvm_mmu_page *sp)
 {
 	struct kvm_memory_slot *slot;
 	struct kvm_lpage_info *linfo;
+	gfn_t gfn;
 	int i;
 
+	gfn = sp->gfn;
 	slot = gfn_to_memslot(kvm, gfn);
-	for (i = PT_DIRECTORY_LEVEL;
-	     i < PT_PAGE_TABLE_LEVEL + KVM_NR_PAGE_SIZES; ++i) {
+	for (i = PT_DIRECTORY_LEVEL; i <= PT_MAX_HUGEPAGE_LEVEL; ++i) {
 		linfo = lpage_info_slot(gfn, slot, i);
 		linfo->write_count += 1;
 	}
 	kvm->arch.indirect_shadow_pages++;
 }
 
-static void unaccount_shadowed(struct kvm *kvm, gfn_t gfn)
+static void unaccount_shadowed(struct kvm *kvm, struct kvm_mmu_page *sp)
 {
 	struct kvm_memory_slot *slot;
 	struct kvm_lpage_info *linfo;
+	gfn_t gfn;
 	int i;
 
+	gfn = sp->gfn;
 	slot = gfn_to_memslot(kvm, gfn);
-	for (i = PT_DIRECTORY_LEVEL;
-	     i < PT_PAGE_TABLE_LEVEL + KVM_NR_PAGE_SIZES; ++i) {
+	for (i = PT_DIRECTORY_LEVEL; i <= PT_MAX_HUGEPAGE_LEVEL; ++i) {
 		linfo = lpage_info_slot(gfn, slot, i);
 		linfo->write_count -= 1;
 		WARN_ON(linfo->write_count < 0);
@@ -858,8 +860,7 @@ static int host_mapping_level(struct kvm *kvm, gfn_t gfn)
 
 	page_size = kvm_host_page_size(kvm, gfn);
 
-	for (i = PT_PAGE_TABLE_LEVEL;
-	     i < (PT_PAGE_TABLE_LEVEL + KVM_NR_PAGE_SIZES); ++i) {
+	for (i = PT_PAGE_TABLE_LEVEL; i <= PT_MAX_HUGEPAGE_LEVEL; ++i) {
 		if (page_size >= KVM_HPAGE_SIZE(i))
 			ret = i;
 		else
@@ -1142,6 +1143,11 @@ static u64 *rmap_get_next(struct rmap_iterator *iter)
 	return NULL;
 }
 
+#define for_each_rmap_spte(_rmap_, _iter_, _spte_)			    \
+	   for (_spte_ = rmap_get_first(*_rmap_, _iter_);		    \
+		_spte_ && ({BUG_ON(!is_shadow_present_pte(*_spte_)); 1;});  \
+			_spte_ = rmap_get_next(_iter_))
+
 static void drop_spte(struct kvm *kvm, u64 *sptep)
 {
 	if (mmu_spte_clear_track_bits(sptep))
@@ -1205,12 +1211,8 @@ static bool __rmap_write_protect(struct kvm *kvm, unsigned long *rmapp,
 	struct rmap_iterator iter;
 	bool flush = false;
 
-	for (sptep = rmap_get_first(*rmapp, &iter); sptep;) {
-		BUG_ON(!(*sptep & PT_PRESENT_MASK));
-
+	for_each_rmap_spte(rmapp, &iter, sptep)
 		flush |= spte_write_protect(kvm, sptep, pt_protect);
-		sptep = rmap_get_next(&iter);
-	}
 
 	return flush;
 }
@@ -1232,12 +1234,8 @@ static bool __rmap_clear_dirty(struct kvm *kvm, unsigned long *rmapp)
 	struct rmap_iterator iter;
 	bool flush = false;
 
-	for (sptep = rmap_get_first(*rmapp, &iter); sptep;) {
-		BUG_ON(!(*sptep & PT_PRESENT_MASK));
-
+	for_each_rmap_spte(rmapp, &iter, sptep)
 		flush |= spte_clear_dirty(kvm, sptep);
-		sptep = rmap_get_next(&iter);
-	}
 
 	return flush;
 }
@@ -1259,12 +1257,8 @@ static bool __rmap_set_dirty(struct kvm *kvm, unsigned long *rmapp)
 	struct rmap_iterator iter;
 	bool flush = false;
 
-	for (sptep = rmap_get_first(*rmapp, &iter); sptep;) {
-		BUG_ON(!(*sptep & PT_PRESENT_MASK));
-
+	for_each_rmap_spte(rmapp, &iter, sptep)
 		flush |= spte_set_dirty(kvm, sptep);
-		sptep = rmap_get_next(&iter);
-	}
 
 	return flush;
 }
@@ -1351,8 +1345,7 @@ static bool rmap_write_protect(struct kvm *kvm, u64 gfn)
 
 	slot = gfn_to_memslot(kvm, gfn);
 
-	for (i = PT_PAGE_TABLE_LEVEL;
-	     i < PT_PAGE_TABLE_LEVEL + KVM_NR_PAGE_SIZES; ++i) {
+	for (i = PT_PAGE_TABLE_LEVEL; i <= PT_MAX_HUGEPAGE_LEVEL; ++i) {
 		rmapp = __gfn_to_rmap(gfn, i, slot);
 		write_protected |= __rmap_write_protect(kvm, rmapp, true);
 	}
@@ -1360,24 +1353,28 @@ static bool rmap_write_protect(struct kvm *kvm, u64 gfn)
 	return write_protected;
 }
 
+static bool kvm_zap_rmapp(struct kvm *kvm, unsigned long *rmapp)
+{
+	u64 *sptep;
+	struct rmap_iterator iter;
+	bool flush = false;
+
+	while ((sptep = rmap_get_first(*rmapp, &iter))) {
+		BUG_ON(!(*sptep & PT_PRESENT_MASK));
+		rmap_printk("%s: spte %p %llx.\n", __func__, sptep, *sptep);
+
+		drop_spte(kvm, sptep);
+		flush = true;
+	}
+
+	return flush;
+}
+
 static int kvm_unmap_rmapp(struct kvm *kvm, unsigned long *rmapp,
 			   struct kvm_memory_slot *slot, gfn_t gfn, int level,
 			   unsigned long data)
 {
-	u64 *sptep;
-	struct rmap_iterator iter;
-	int need_tlb_flush = 0;
-
-	while ((sptep = rmap_get_first(*rmapp, &iter))) {
-		BUG_ON(!(*sptep & PT_PRESENT_MASK));
-		rmap_printk("kvm_rmap_unmap_hva: spte %p %llx gfn %llx (%d)\n",
-			     sptep, *sptep, gfn, level);
-
-		drop_spte(kvm, sptep);
-		need_tlb_flush = 1;
-	}
-
-	return need_tlb_flush;
+	return kvm_zap_rmapp(kvm, rmapp);
 }
 
 static int kvm_set_pte_rmapp(struct kvm *kvm, unsigned long *rmapp,
@@ -1394,8 +1391,8 @@ static int kvm_set_pte_rmapp(struct kvm *kvm, unsigned long *rmapp,
 	WARN_ON(pte_huge(*ptep));
 	new_pfn = pte_pfn(*ptep);
 
-	for (sptep = rmap_get_first(*rmapp, &iter); sptep;) {
-		BUG_ON(!is_shadow_present_pte(*sptep));
+restart:
+	for_each_rmap_spte(rmapp, &iter, sptep) {
 		rmap_printk("kvm_set_pte_rmapp: spte %p %llx gfn %llx (%d)\n",
 			     sptep, *sptep, gfn, level);
 
@@ -1403,7 +1400,7 @@ static int kvm_set_pte_rmapp(struct kvm *kvm, unsigned long *rmapp,
 
 		if (pte_write(*ptep)) {
 			drop_spte(kvm, sptep);
-			sptep = rmap_get_first(*rmapp, &iter);
+			goto restart;
 		} else {
 			new_spte = *sptep & ~PT64_BASE_ADDR_MASK;
 			new_spte |= (u64)new_pfn << PAGE_SHIFT;
@@ -1414,7 +1411,6 @@ static int kvm_set_pte_rmapp(struct kvm *kvm, unsigned long *rmapp,
 
 			mmu_spte_clear_track_bits(sptep);
 			mmu_spte_set(sptep, new_spte);
-			sptep = rmap_get_next(&iter);
 		}
 	}
 
@@ -1423,6 +1419,74 @@ static int kvm_set_pte_rmapp(struct kvm *kvm, unsigned long *rmapp,
 
 	return 0;
 }
+
+struct slot_rmap_walk_iterator {
+	/* input fields. */
+	struct kvm_memory_slot *slot;
+	gfn_t start_gfn;
+	gfn_t end_gfn;
+	int start_level;
+	int end_level;
+
+	/* output fields. */
+	gfn_t gfn;
+	unsigned long *rmap;
+	int level;
+
+	/* private field. */
+	unsigned long *end_rmap;
+};
+
+static void
+rmap_walk_init_level(struct slot_rmap_walk_iterator *iterator, int level)
+{
+	iterator->level = level;
+	iterator->gfn = iterator->start_gfn;
+	iterator->rmap = __gfn_to_rmap(iterator->gfn, level, iterator->slot);
+	iterator->end_rmap = __gfn_to_rmap(iterator->end_gfn, level,
+					   iterator->slot);
+}
+
+static void
+slot_rmap_walk_init(struct slot_rmap_walk_iterator *iterator,
+		    struct kvm_memory_slot *slot, int start_level,
+		    int end_level, gfn_t start_gfn, gfn_t end_gfn)
+{
+	iterator->slot = slot;
+	iterator->start_level = start_level;
+	iterator->end_level = end_level;
+	iterator->start_gfn = start_gfn;
+	iterator->end_gfn = end_gfn;
+
+	rmap_walk_init_level(iterator, iterator->start_level);
+}
+
+static bool slot_rmap_walk_okay(struct slot_rmap_walk_iterator *iterator)
+{
+	return !!iterator->rmap;
+}
+
+static void slot_rmap_walk_next(struct slot_rmap_walk_iterator *iterator)
+{
+	if (++iterator->rmap <= iterator->end_rmap) {
+		iterator->gfn += (1UL << KVM_HPAGE_GFN_SHIFT(iterator->level));
+		return;
+	}
+
+	if (++iterator->level > iterator->end_level) {
+		iterator->rmap = NULL;
+		return;
+	}
+
+	rmap_walk_init_level(iterator, iterator->level);
+}
+
+#define for_each_slot_rmap_range(_slot_, _start_level_, _end_level_,	\
+	   _start_gfn, _end_gfn, _iter_)				\
+	for (slot_rmap_walk_init(_iter_, _slot_, _start_level_,		\
+				 _end_level_, _start_gfn, _end_gfn);	\
+	     slot_rmap_walk_okay(_iter_);				\
+	     slot_rmap_walk_next(_iter_))
 
 static int kvm_handle_hva_range(struct kvm *kvm,
 				unsigned long start,
@@ -1435,10 +1499,10 @@ static int kvm_handle_hva_range(struct kvm *kvm,
 					       int level,
 					       unsigned long data))
 {
-	int j;
-	int ret = 0;
 	struct kvm_memslots *slots;
 	struct kvm_memory_slot *memslot;
+	struct slot_rmap_walk_iterator iterator;
+	int ret = 0;
 
 	slots = kvm_memslots(kvm);
 
@@ -1458,26 +1522,11 @@ static int kvm_handle_hva_range(struct kvm *kvm,
 		gfn_start = hva_to_gfn_memslot(hva_start, memslot);
 		gfn_end = hva_to_gfn_memslot(hva_end + PAGE_SIZE - 1, memslot);
 
-		for (j = PT_PAGE_TABLE_LEVEL;
-		     j < PT_PAGE_TABLE_LEVEL + KVM_NR_PAGE_SIZES; ++j) {
-			unsigned long idx, idx_end;
-			unsigned long *rmapp;
-			gfn_t gfn = gfn_start;
-
-			/*
-			 * {idx(page_j) | page_j intersects with
-			 *  [hva_start, hva_end)} = {idx, idx+1, ..., idx_end}.
-			 */
-			idx = gfn_to_index(gfn_start, memslot->base_gfn, j);
-			idx_end = gfn_to_index(gfn_end - 1, memslot->base_gfn, j);
-
-			rmapp = __gfn_to_rmap(gfn_start, j, memslot);
-
-			for (; idx <= idx_end;
-			       ++idx, gfn += (1UL << KVM_HPAGE_GFN_SHIFT(j)))
-				ret |= handler(kvm, rmapp++, memslot,
-					       gfn, j, data);
-		}
+		for_each_slot_rmap_range(memslot, PT_PAGE_TABLE_LEVEL,
+				PT_MAX_HUGEPAGE_LEVEL, gfn_start, gfn_end - 1,
+				&iterator)
+			ret |= handler(kvm, iterator.rmap, memslot,
+				       iterator.gfn, iterator.level, data);
 	}
 
 	return ret;
@@ -1518,16 +1567,13 @@ static int kvm_age_rmapp(struct kvm *kvm, unsigned long *rmapp,
 
 	BUG_ON(!shadow_accessed_mask);
 
-	for (sptep = rmap_get_first(*rmapp, &iter); sptep;
-	     sptep = rmap_get_next(&iter)) {
-		BUG_ON(!is_shadow_present_pte(*sptep));
-
+	for_each_rmap_spte(rmapp, &iter, sptep)
 		if (*sptep & shadow_accessed_mask) {
 			young = 1;
 			clear_bit((ffs(shadow_accessed_mask) - 1),
 				 (unsigned long *)sptep);
 		}
-	}
+
 	trace_kvm_age_page(gfn, level, slot, young);
 	return young;
 }
@@ -1548,15 +1594,11 @@ static int kvm_test_age_rmapp(struct kvm *kvm, unsigned long *rmapp,
 	if (!shadow_accessed_mask)
 		goto out;
 
-	for (sptep = rmap_get_first(*rmapp, &iter); sptep;
-	     sptep = rmap_get_next(&iter)) {
-		BUG_ON(!is_shadow_present_pte(*sptep));
-
+	for_each_rmap_spte(rmapp, &iter, sptep)
 		if (*sptep & shadow_accessed_mask) {
 			young = 1;
 			break;
 		}
-	}
 out:
 	return young;
 }
@@ -2093,7 +2135,7 @@ static struct kvm_mmu_page *kvm_mmu_get_page(struct kvm_vcpu *vcpu,
 		if (level > PT_PAGE_TABLE_LEVEL && need_sync)
 			kvm_sync_pages(vcpu, gfn);
 
-		account_shadowed(vcpu->kvm, gfn);
+		account_shadowed(vcpu->kvm, sp);
 	}
 	sp->mmu_valid_gen = vcpu->kvm->arch.mmu_valid_gen;
 	init_shadow_page_table(sp);
@@ -2274,7 +2316,7 @@ static int kvm_mmu_prepare_zap_page(struct kvm *kvm, struct kvm_mmu_page *sp,
 	kvm_mmu_unlink_parents(kvm, sp);
 
 	if (!sp->role.invalid && !sp->role.direct)
-		unaccount_shadowed(kvm, sp->gfn);
+		unaccount_shadowed(kvm, sp);
 
 	if (sp->unsync)
 		kvm_unlink_unsync_page(kvm, sp);
@@ -2393,19 +2435,20 @@ EXPORT_SYMBOL_GPL(kvm_mmu_unprotect_page);
 static int get_mtrr_type(struct mtrr_state_type *mtrr_state,
 			 u64 start, u64 end)
 {
-	int i;
 	u64 base, mask;
 	u8 prev_match, curr_match;
-	int num_var_ranges = KVM_NR_VAR_MTRR;
+	int i, num_var_ranges = KVM_NR_VAR_MTRR;
 
-	if (!mtrr_state->enabled)
-		return 0xFF;
+	/* MTRR is completely disabled, use UC for all of physical memory. */
+	if (!(mtrr_state->enabled & 0x2))
+		return MTRR_TYPE_UNCACHABLE;
 
 	/* Make end inclusive end, instead of exclusive */
 	end--;
 
 	/* Look in fixed ranges. Just return the type as per start */
-	if (mtrr_state->have_fixed && (start < 0x100000)) {
+	if (mtrr_state->have_fixed && (mtrr_state->enabled & 0x1) &&
+	      (start < 0x100000)) {
 		int idx;
 
 		if (start < 0x80000) {
@@ -2428,9 +2471,6 @@ static int get_mtrr_type(struct mtrr_state_type *mtrr_state,
 	 * Look of multiple ranges matching this address and pick type
 	 * as per MTRR precedence
 	 */
-	if (!(mtrr_state->enabled & 2))
-		return mtrr_state->def_type;
-
 	prev_match = 0xFF;
 	for (i = 0; i < num_var_ranges; ++i) {
 		unsigned short start_state, end_state;
@@ -2692,15 +2732,17 @@ static int direct_pte_prefetch_many(struct kvm_vcpu *vcpu,
 				    u64 *start, u64 *end)
 {
 	struct page *pages[PTE_PREFETCH_NUM];
+	struct kvm_memory_slot *slot;
 	unsigned access = sp->role.access;
 	int i, ret;
 	gfn_t gfn;
 
 	gfn = kvm_mmu_page_get_gfn(sp, start - sp->spt);
-	if (!gfn_to_memslot_dirty_bitmap(vcpu, gfn, access & ACC_WRITE_MASK))
+	slot = gfn_to_memslot_dirty_bitmap(vcpu, gfn, access & ACC_WRITE_MASK);
+	if (!slot)
 		return -1;
 
-	ret = gfn_to_page_many_atomic(vcpu->kvm, gfn, pages, end - start);
+	ret = gfn_to_page_many_atomic(slot, gfn, pages, end - start);
 	if (ret <= 0)
 		return -1;
 
@@ -3475,10 +3517,12 @@ static bool can_do_async_pf(struct kvm_vcpu *vcpu)
 static bool try_async_pf(struct kvm_vcpu *vcpu, bool prefault, gfn_t gfn,
 			 gva_t gva, pfn_t *pfn, bool write, bool *writable)
 {
+	struct kvm_memory_slot *slot;
 	bool async;
 
-	*pfn = gfn_to_pfn_async(vcpu->kvm, gfn, &async, write, writable);
-
+	slot = gfn_to_memslot(vcpu->kvm, gfn);
+	async = false;
+	*pfn = __gfn_to_pfn_memslot(slot, gfn, false, &async, write, writable);
 	if (!async)
 		return false; /* *pfn has correct page already */
 
@@ -3492,8 +3536,7 @@ static bool try_async_pf(struct kvm_vcpu *vcpu, bool prefault, gfn_t gfn,
 			return true;
 	}
 
-	*pfn = gfn_to_pfn_prot(vcpu->kvm, gfn, write, writable);
-
+	*pfn = __gfn_to_pfn_memslot(slot, gfn, false, NULL, write, writable);
 	return false;
 }
 
@@ -4215,13 +4258,13 @@ void kvm_mmu_pte_write(struct kvm_vcpu *vcpu, gpa_t gpa,
 	u64 entry, gentry, *spte;
 	int npte;
 	bool remote_flush, local_flush, zap_page;
-	union kvm_mmu_page_role mask = (union kvm_mmu_page_role) {
-		.cr0_wp = 1,
-		.cr4_pae = 1,
-		.nxe = 1,
-		.smep_andnot_wp = 1,
-		.smap_andnot_wp = 1,
-	};
+	union kvm_mmu_page_role mask = { };
+
+	mask.cr0_wp = 1;
+	mask.cr4_pae = 1;
+	mask.nxe = 1;
+	mask.smep_andnot_wp = 1;
+	mask.smap_andnot_wp = 1;
 
 	/*
 	 * If we don't have indirect shadow pages, it means no page is
@@ -4420,35 +4463,112 @@ void kvm_mmu_setup(struct kvm_vcpu *vcpu)
 	init_kvm_mmu(vcpu);
 }
 
-void kvm_mmu_slot_remove_write_access(struct kvm *kvm,
-				      struct kvm_memory_slot *memslot)
+/* The return value indicates if tlb flush on all vcpus is needed. */
+typedef bool (*slot_level_handler) (struct kvm *kvm, unsigned long *rmap);
+
+/* The caller should hold mmu-lock before calling this function. */
+static bool
+slot_handle_level_range(struct kvm *kvm, struct kvm_memory_slot *memslot,
+			slot_level_handler fn, int start_level, int end_level,
+			gfn_t start_gfn, gfn_t end_gfn, bool lock_flush_tlb)
 {
-	gfn_t last_gfn;
-	int i;
+	struct slot_rmap_walk_iterator iterator;
 	bool flush = false;
 
-	last_gfn = memslot->base_gfn + memslot->npages - 1;
+	for_each_slot_rmap_range(memslot, start_level, end_level, start_gfn,
+			end_gfn, &iterator) {
+		if (iterator.rmap)
+			flush |= fn(kvm, iterator.rmap);
 
-	spin_lock(&kvm->mmu_lock);
-
-	for (i = PT_PAGE_TABLE_LEVEL;
-	     i < PT_PAGE_TABLE_LEVEL + KVM_NR_PAGE_SIZES; ++i) {
-		unsigned long *rmapp;
-		unsigned long last_index, index;
-
-		rmapp = memslot->arch.rmap[i - PT_PAGE_TABLE_LEVEL];
-		last_index = gfn_to_index(last_gfn, memslot->base_gfn, i);
-
-		for (index = 0; index <= last_index; ++index, ++rmapp) {
-			if (*rmapp)
-				flush |= __rmap_write_protect(kvm, rmapp,
-						false);
-
-			if (need_resched() || spin_needbreak(&kvm->mmu_lock))
-				cond_resched_lock(&kvm->mmu_lock);
+		if (need_resched() || spin_needbreak(&kvm->mmu_lock)) {
+			if (flush && lock_flush_tlb) {
+				kvm_flush_remote_tlbs(kvm);
+				flush = false;
+			}
+			cond_resched_lock(&kvm->mmu_lock);
 		}
 	}
 
+	if (flush && lock_flush_tlb) {
+		kvm_flush_remote_tlbs(kvm);
+		flush = false;
+	}
+
+	return flush;
+}
+
+static bool
+slot_handle_level(struct kvm *kvm, struct kvm_memory_slot *memslot,
+		  slot_level_handler fn, int start_level, int end_level,
+		  bool lock_flush_tlb)
+{
+	return slot_handle_level_range(kvm, memslot, fn, start_level,
+			end_level, memslot->base_gfn,
+			memslot->base_gfn + memslot->npages - 1,
+			lock_flush_tlb);
+}
+
+static bool
+slot_handle_all_level(struct kvm *kvm, struct kvm_memory_slot *memslot,
+		      slot_level_handler fn, bool lock_flush_tlb)
+{
+	return slot_handle_level(kvm, memslot, fn, PT_PAGE_TABLE_LEVEL,
+				 PT_MAX_HUGEPAGE_LEVEL, lock_flush_tlb);
+}
+
+static bool
+slot_handle_large_level(struct kvm *kvm, struct kvm_memory_slot *memslot,
+			slot_level_handler fn, bool lock_flush_tlb)
+{
+	return slot_handle_level(kvm, memslot, fn, PT_PAGE_TABLE_LEVEL + 1,
+				 PT_MAX_HUGEPAGE_LEVEL, lock_flush_tlb);
+}
+
+static bool
+slot_handle_leaf(struct kvm *kvm, struct kvm_memory_slot *memslot,
+		 slot_level_handler fn, bool lock_flush_tlb)
+{
+	return slot_handle_level(kvm, memslot, fn, PT_PAGE_TABLE_LEVEL,
+				 PT_PAGE_TABLE_LEVEL, lock_flush_tlb);
+}
+
+void kvm_zap_gfn_range(struct kvm *kvm, gfn_t gfn_start, gfn_t gfn_end)
+{
+	struct kvm_memslots *slots;
+	struct kvm_memory_slot *memslot;
+
+	slots = kvm_memslots(kvm);
+
+	spin_lock(&kvm->mmu_lock);
+	kvm_for_each_memslot(memslot, slots) {
+		gfn_t start, end;
+
+		start = max(gfn_start, memslot->base_gfn);
+		end = min(gfn_end, memslot->base_gfn + memslot->npages);
+		if (start >= end)
+			continue;
+
+		slot_handle_level_range(kvm, memslot, kvm_zap_rmapp,
+				PT_PAGE_TABLE_LEVEL, PT_MAX_HUGEPAGE_LEVEL,
+				start, end - 1, true);
+	}
+
+	spin_unlock(&kvm->mmu_lock);
+}
+
+static bool slot_rmap_write_protect(struct kvm *kvm, unsigned long *rmapp)
+{
+	return __rmap_write_protect(kvm, rmapp, false);
+}
+
+void kvm_mmu_slot_remove_write_access(struct kvm *kvm,
+				      struct kvm_memory_slot *memslot)
+{
+	bool flush;
+
+	spin_lock(&kvm->mmu_lock);
+	flush = slot_handle_all_level(kvm, memslot, slot_rmap_write_protect,
+				      false);
 	spin_unlock(&kvm->mmu_lock);
 
 	/*
@@ -4482,9 +4602,8 @@ static bool kvm_mmu_zap_collapsible_spte(struct kvm *kvm,
 	pfn_t pfn;
 	struct kvm_mmu_page *sp;
 
-	for (sptep = rmap_get_first(*rmapp, &iter); sptep;) {
-		BUG_ON(!(*sptep & PT_PRESENT_MASK));
-
+restart:
+	for_each_rmap_spte(rmapp, &iter, sptep) {
 		sp = page_header(__pa(sptep));
 		pfn = spte_to_pfn(*sptep);
 
@@ -4499,71 +4618,31 @@ static bool kvm_mmu_zap_collapsible_spte(struct kvm *kvm,
 			!kvm_is_reserved_pfn(pfn) &&
 			PageTransCompound(pfn_to_page(pfn))) {
 			drop_spte(kvm, sptep);
-			sptep = rmap_get_first(*rmapp, &iter);
 			need_tlb_flush = 1;
-		} else
-			sptep = rmap_get_next(&iter);
+			goto restart;
+		}
 	}
 
 	return need_tlb_flush;
 }
 
 void kvm_mmu_zap_collapsible_sptes(struct kvm *kvm,
-			struct kvm_memory_slot *memslot)
+				   const struct kvm_memory_slot *memslot)
 {
-	bool flush = false;
-	unsigned long *rmapp;
-	unsigned long last_index, index;
-
+	/* FIXME: const-ify all uses of struct kvm_memory_slot.  */
 	spin_lock(&kvm->mmu_lock);
-
-	rmapp = memslot->arch.rmap[0];
-	last_index = gfn_to_index(memslot->base_gfn + memslot->npages - 1,
-				memslot->base_gfn, PT_PAGE_TABLE_LEVEL);
-
-	for (index = 0; index <= last_index; ++index, ++rmapp) {
-		if (*rmapp)
-			flush |= kvm_mmu_zap_collapsible_spte(kvm, rmapp);
-
-		if (need_resched() || spin_needbreak(&kvm->mmu_lock)) {
-			if (flush) {
-				kvm_flush_remote_tlbs(kvm);
-				flush = false;
-			}
-			cond_resched_lock(&kvm->mmu_lock);
-		}
-	}
-
-	if (flush)
-		kvm_flush_remote_tlbs(kvm);
-
+	slot_handle_leaf(kvm, (struct kvm_memory_slot *)memslot,
+			 kvm_mmu_zap_collapsible_spte, true);
 	spin_unlock(&kvm->mmu_lock);
 }
 
 void kvm_mmu_slot_leaf_clear_dirty(struct kvm *kvm,
 				   struct kvm_memory_slot *memslot)
 {
-	gfn_t last_gfn;
-	unsigned long *rmapp;
-	unsigned long last_index, index;
-	bool flush = false;
-
-	last_gfn = memslot->base_gfn + memslot->npages - 1;
+	bool flush;
 
 	spin_lock(&kvm->mmu_lock);
-
-	rmapp = memslot->arch.rmap[PT_PAGE_TABLE_LEVEL - 1];
-	last_index = gfn_to_index(last_gfn, memslot->base_gfn,
-			PT_PAGE_TABLE_LEVEL);
-
-	for (index = 0; index <= last_index; ++index, ++rmapp) {
-		if (*rmapp)
-			flush |= __rmap_clear_dirty(kvm, rmapp);
-
-		if (need_resched() || spin_needbreak(&kvm->mmu_lock))
-			cond_resched_lock(&kvm->mmu_lock);
-	}
-
+	flush = slot_handle_leaf(kvm, memslot, __rmap_clear_dirty, false);
 	spin_unlock(&kvm->mmu_lock);
 
 	lockdep_assert_held(&kvm->slots_lock);
@@ -4582,31 +4661,11 @@ EXPORT_SYMBOL_GPL(kvm_mmu_slot_leaf_clear_dirty);
 void kvm_mmu_slot_largepage_remove_write_access(struct kvm *kvm,
 					struct kvm_memory_slot *memslot)
 {
-	gfn_t last_gfn;
-	int i;
-	bool flush = false;
-
-	last_gfn = memslot->base_gfn + memslot->npages - 1;
+	bool flush;
 
 	spin_lock(&kvm->mmu_lock);
-
-	for (i = PT_PAGE_TABLE_LEVEL + 1; /* skip rmap for 4K page */
-	     i < PT_PAGE_TABLE_LEVEL + KVM_NR_PAGE_SIZES; ++i) {
-		unsigned long *rmapp;
-		unsigned long last_index, index;
-
-		rmapp = memslot->arch.rmap[i - PT_PAGE_TABLE_LEVEL];
-		last_index = gfn_to_index(last_gfn, memslot->base_gfn, i);
-
-		for (index = 0; index <= last_index; ++index, ++rmapp) {
-			if (*rmapp)
-				flush |= __rmap_write_protect(kvm, rmapp,
-						false);
-
-			if (need_resched() || spin_needbreak(&kvm->mmu_lock))
-				cond_resched_lock(&kvm->mmu_lock);
-		}
-	}
+	flush = slot_handle_large_level(kvm, memslot, slot_rmap_write_protect,
+					false);
 	spin_unlock(&kvm->mmu_lock);
 
 	/* see kvm_mmu_slot_remove_write_access */
@@ -4620,31 +4679,10 @@ EXPORT_SYMBOL_GPL(kvm_mmu_slot_largepage_remove_write_access);
 void kvm_mmu_slot_set_dirty(struct kvm *kvm,
 			    struct kvm_memory_slot *memslot)
 {
-	gfn_t last_gfn;
-	int i;
-	bool flush = false;
-
-	last_gfn = memslot->base_gfn + memslot->npages - 1;
+	bool flush;
 
 	spin_lock(&kvm->mmu_lock);
-
-	for (i = PT_PAGE_TABLE_LEVEL;
-	     i < PT_PAGE_TABLE_LEVEL + KVM_NR_PAGE_SIZES; ++i) {
-		unsigned long *rmapp;
-		unsigned long last_index, index;
-
-		rmapp = memslot->arch.rmap[i - PT_PAGE_TABLE_LEVEL];
-		last_index = gfn_to_index(last_gfn, memslot->base_gfn, i);
-
-		for (index = 0; index <= last_index; ++index, ++rmapp) {
-			if (*rmapp)
-				flush |= __rmap_set_dirty(kvm, rmapp);
-
-			if (need_resched() || spin_needbreak(&kvm->mmu_lock))
-				cond_resched_lock(&kvm->mmu_lock);
-		}
-	}
-
+	flush = slot_handle_all_level(kvm, memslot, __rmap_set_dirty, false);
 	spin_unlock(&kvm->mmu_lock);
 
 	lockdep_assert_held(&kvm->slots_lock);
