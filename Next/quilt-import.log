@@ -1,0 +1,37 @@
+Importing jdelvare-hwmon based on 4.1-rc5
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard ba155e2d21f6bf05de86a78dbe5bfd8757604a65
+HEAD is now at ba155e2d21f6 Linux 4.1-rc5
+$ git am --patch-format=mbox ../quilt/jdelvare-hwmon/hwmon-w83792d-01-additional-pwm-outputs.patch
+Applying: hwmon: (w83792d) Additional PWM outputs support
+$ git am --patch-format=mbox ../quilt/jdelvare-hwmon/hwmon-document-probable-addresses.patch
+Applying: hwmon: Document which I2C addresses can be probed
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:jdelvare-hwmon/master
+From ../quilt-tmp
+ + 3cc49e580f0f...2b30464a2c87 master     -> jdelvare-hwmon/master  (forced update)
+Importing dmi based on 4.1-rc5
+$ cd ../quilt-tmp
+$ git reset --hard ba155e2d21f6bf05de86a78dbe5bfd8757604a65
+HEAD is now at ba155e2d21f6 Linux 4.1-rc5
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi-05-ignore-eot-on-legacy.patch
+Applying: firmware: dmi_scan: Only honor end-of-table for 64-bit tables
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi-06-list-the-quilt-tree.patch
+Applying: firmware: dmi: List my quilt tree
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi-07-rename-dmi_table-to-dmi_decode_table.patch
+Applying: firmware: dmi_scan: Rename dmi_table to dmi_decode_table
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi-08-trim-DMI-table-length.patch
+Applying: firmware: dmi_scan: Trim DMI table length before exporting it
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi-09-add-sbmios-entry-and-dmi-tables.patch
+Applying: firmware: dmi_scan: add SBMIOS entry and DMI tables
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi-10-abi-sysfs-firmware-dmi-add-entries-suffix-to-file-name.patch
+Applying: Documentation: ABI: sysfs-firmware-dmi: add -entries suffix to file name
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi-11-cleanups.patch
+Applying: firmware: dmi_scan: Coding style cleanups
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi-12-struct-is-packed.patch
+Applying: firmware: dmi: struct dmi_header should be packed
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:dmi/master
+From ../quilt-tmp
+ + 9432bf142f77...bec755ee1080 master     -> dmi/master  (forced update)
