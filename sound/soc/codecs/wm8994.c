@@ -2546,8 +2546,6 @@ static int wm8994_set_bias_level(struct snd_soc_codec *codec,
 		break;
 	}
 
-	codec->dapm.bias_level = level;
-
 	return 0;
 }
 
@@ -3163,7 +3161,7 @@ static int wm8994_codec_suspend(struct snd_soc_codec *codec)
 				 i + 1, ret);
 	}
 
-	wm8994_set_bias_level(codec, SND_SOC_BIAS_OFF);
+	snd_soc_codec_force_bias_level(codec, SND_SOC_BIAS_OFF);
 
 	return 0;
 }
@@ -4086,7 +4084,8 @@ static int wm8994_codec_probe(struct snd_soc_codec *codec)
 		if (wm8994->micdet_irq)
 			ret = request_threaded_irq(wm8994->micdet_irq, NULL,
 						   wm8994_mic_irq,
-						   IRQF_TRIGGER_RISING,
+						   IRQF_TRIGGER_RISING |
+						   IRQF_ONESHOT,
 						   "Mic1 detect",
 						   wm8994);
 		 else
@@ -4134,7 +4133,8 @@ static int wm8994_codec_probe(struct snd_soc_codec *codec)
 		if (wm8994->micdet_irq) {
 			ret = request_threaded_irq(wm8994->micdet_irq, NULL,
 						   wm8958_mic_irq,
-						   IRQF_TRIGGER_RISING,
+						   IRQF_TRIGGER_RISING |
+						   IRQF_ONESHOT,
 						   "Mic detect",
 						   wm8994);
 			if (ret != 0)
