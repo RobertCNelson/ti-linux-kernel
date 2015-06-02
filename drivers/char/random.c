@@ -660,7 +660,7 @@ retry:
 		r->entropy_total = 0;
 		if (r == &nonblocking_pool) {
 			prandom_reseed_late();
-			wake_up_interruptible(&urandom_init_wait);
+			wake_up_all(&urandom_init_wait);
 			pr_notice("random: %s pool is initialized\n", r->name);
 		}
 	}
@@ -1243,6 +1243,18 @@ void get_random_bytes(void *buf, int nbytes)
 	extract_entropy(&nonblocking_pool, buf, nbytes, 0, 0);
 }
 EXPORT_SYMBOL(get_random_bytes);
+
+/*
+ * Equivalent function to get_random_bytes with the difference that this
+ * function blocks the request until the nonblocking_pool is initialized.
+ */
+void get_blocking_random_bytes(void *buf, int nbytes)
+{
+	if (unlikely(nonblocking_pool.initialized == 0))
+		wait_event(urandom_init_wait, nonblocking_pool.initialized);
+	extract_entropy(&nonblocking_pool, buf, nbytes, 0, 0);
+}
+EXPORT_SYMBOL(get_blocking_random_bytes);
 
 /*
  * This function will use the architecture-specific hardware random
