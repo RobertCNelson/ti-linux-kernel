@@ -17,6 +17,8 @@
  *          Fenghua Yu <fenghua.yu@intel.com>
  */
 
+#define pr_fmt(fmt)	"DMAR: " fmt
+
 #include <linux/init.h>
 #include <linux/bitmap.h>
 #include <linux/debugfs.h>
@@ -1207,8 +1209,7 @@ static int iommu_alloc_root_entry(struct intel_iommu *iommu)
 
 	root = (struct root_entry *)alloc_pgtable_page(iommu->node);
 	if (!root) {
-		pr_err("IOMMU: allocating root entry for %s failed\n",
-			iommu->name);
+		pr_err("allocating root entry for %s failed\n", iommu->name);
 		return -ENOMEM;
 	}
 
@@ -1345,9 +1346,9 @@ static void __iommu_flush_iotlb(struct intel_iommu *iommu, u16 did,
 
 	/* check IOTLB invalidation granularity */
 	if (DMA_TLB_IAIG(val) == 0)
-		printk(KERN_ERR"IOMMU: flush IOTLB failed\n");
+		pr_err("flush IOTLB failed\n");
 	if (DMA_TLB_IAIG(val) != DMA_TLB_IIRG(type))
-		pr_debug("IOMMU: tlb flush request %Lx, actual %Lx\n",
+		pr_debug("tlb flush request %Lx, actual %Lx\n",
 			(unsigned long long)DMA_TLB_IIRG(type),
 			(unsigned long long)DMA_TLB_IAIG(val));
 }
@@ -1518,7 +1519,7 @@ static int iommu_init_domains(struct intel_iommu *iommu)
 	unsigned long nlongs;
 
 	ndomains = cap_ndoms(iommu->cap);
-	pr_debug("IOMMU%d: Number of Domains supported <%ld>\n",
+	pr_debug("Number of Domains supported iommu[%d] <%ld>\n",
 		 iommu->seq_id, ndomains);
 	nlongs = BITS_TO_LONGS(ndomains);
 
@@ -1529,14 +1530,14 @@ static int iommu_init_domains(struct intel_iommu *iommu)
 	 */
 	iommu->domain_ids = kcalloc(nlongs, sizeof(unsigned long), GFP_KERNEL);
 	if (!iommu->domain_ids) {
-		pr_err("IOMMU%d: allocating domain id array failed\n",
+		pr_err("Allocating domain id array for iommu[%d] failed\n",
 		       iommu->seq_id);
 		return -ENOMEM;
 	}
 	iommu->domains = kcalloc(ndomains, sizeof(struct dmar_domain *),
 			GFP_KERNEL);
 	if (!iommu->domains) {
-		pr_err("IOMMU%d: allocating domain array failed\n",
+		pr_err("Allocating domain array for iommu[%d] failed\n",
 		       iommu->seq_id);
 		kfree(iommu->domain_ids);
 		iommu->domain_ids = NULL;
@@ -1642,7 +1643,7 @@ static int iommu_attach_domain(struct dmar_domain *domain,
 	num = __iommu_attach_domain(domain, iommu);
 	spin_unlock_irqrestore(&iommu->lock, flags);
 	if (num < 0)
-		pr_err("IOMMU: no free domain ids\n");
+		pr_err("No free domain ids\n");
 
 	return num;
 }
@@ -1807,7 +1808,7 @@ static int domain_init(struct dmar_domain *domain, int guest_width)
 	sagaw = cap_sagaw(iommu->cap);
 	if (!test_bit(agaw, &sagaw)) {
 		/* hardware doesn't support it, choose a bigger one */
-		pr_debug("IOMMU: hardware doesn't support agaw %d\n", agaw);
+		pr_debug("Hardware doesn't support agaw %d\n", agaw);
 		agaw = find_next_bit(&sagaw, 5, agaw);
 		if (agaw >= 5)
 			return -ENODEV;
@@ -1883,7 +1884,7 @@ static int domain_context_mapping_one(struct dmar_domain *domain,
 	struct device_domain_info *info = NULL;
 
 	pr_debug("Set context mapping for %02x:%02x.%d\n",
-		bus, PCI_SLOT(devfn), PCI_FUNC(devfn));
+		 bus, PCI_SLOT(devfn), PCI_FUNC(devfn));
 
 	BUG_ON(!domain->pgd);
 	BUG_ON(translation != CONTEXT_TT_PASS_THROUGH &&
@@ -1908,7 +1909,7 @@ static int domain_context_mapping_one(struct dmar_domain *domain,
 			id = iommu_attach_vm_domain(domain, iommu);
 			if (id < 0) {
 				spin_unlock_irqrestore(&iommu->lock, flags);
-				pr_err("IOMMU: no free domain ids\n");
+				pr_err("No free domain ids\n");
 				return -EFAULT;
 			}
 		}
@@ -2557,7 +2558,7 @@ static int __init si_domain_init(int hw)
 		return -EFAULT;
 	}
 
-	pr_debug("IOMMU: identity mapping domain is domain %d\n",
+	pr_debug("Identity mapping domain is domain %d\n",
 		 si_domain->id);
 
 	if (hw)
@@ -2757,7 +2758,7 @@ static int __init dev_prepare_static_identity_mapping(struct device *dev, int hw
 				  hw ? CONTEXT_TT_PASS_THROUGH :
 				       CONTEXT_TT_MULTI_LEVEL);
 	if (!ret)
-		pr_info("IOMMU: %s identity mapping for device %s\n",
+		pr_info("%s identity mapping for device %s\n",
 			hw ? "hardware" : "software", dev_name(dev));
 	else if (ret == -ENODEV)
 		/* device not associated with an iommu */
@@ -2835,12 +2836,11 @@ static void intel_iommu_init_qi(struct intel_iommu *iommu)
 		 */
 		iommu->flush.flush_context = __iommu_flush_context;
 		iommu->flush.flush_iotlb = __iommu_flush_iotlb;
-		pr_info("IOMMU: %s using Register based invalidation\n",
-			iommu->name);
+		pr_info("%s using Register based invalidation\n", iommu->name);
 	} else {
 		iommu->flush.flush_context = qi_flush_context;
 		iommu->flush.flush_iotlb = qi_flush_iotlb;
-		pr_info("IOMMU: %s using Queued invalidation\n", iommu->name);
+		pr_info("%s using Queued invalidation\n", iommu->name);
 	}
 }
 
@@ -3975,20 +3975,18 @@ static int intel_iommu_add(struct dmar_drhd_unit *dmaru)
 		return 0;
 
 	if (hw_pass_through && !ecap_pass_through(iommu->ecap)) {
-		pr_warn("IOMMU: %s doesn't support hardware pass through.\n",
+		pr_warn("%s doesn't support hardware pass through.\n",
 			iommu->name);
 		return -ENXIO;
 	}
 	if (!ecap_sc_support(iommu->ecap) &&
 	    domain_update_iommu_snooping(iommu)) {
-		pr_warn("IOMMU: %s doesn't support snooping.\n",
-			iommu->name);
+		pr_warn("%s doesn't support snooping.\n", iommu->name);
 		return -ENXIO;
 	}
 	sp = domain_update_iommu_superpage(iommu) - 1;
 	if (sp >= 0 && !(cap_super_page_val(iommu->cap) & (1 << sp))) {
-		pr_warn("IOMMU: %s doesn't support large page.\n",
-			iommu->name);
+		pr_warn("%s doesn't support large page.\n", iommu->name);
 		return -ENXIO;
 	}
 
@@ -4218,7 +4216,7 @@ static int intel_iommu_memory_notifier(struct notifier_block *nb,
 		start = mhp->start_pfn << PAGE_SHIFT;
 		end = ((mhp->start_pfn + mhp->nr_pages) << PAGE_SHIFT) - 1;
 		if (iommu_domain_identity_map(si_domain, start, end)) {
-			pr_warn("dmar: failed to build identity map for [%llx-%llx]\n",
+			pr_warn("Failed to build identity map for [%llx-%llx]\n",
 				start, end);
 			return NOTIFY_BAD;
 		}
@@ -4236,7 +4234,7 @@ static int intel_iommu_memory_notifier(struct notifier_block *nb,
 
 			iova = find_iova(&si_domain->iovad, start_vpfn);
 			if (iova == NULL) {
-				pr_debug("dmar: failed get IOVA for PFN %lx\n",
+				pr_debug("Failed get IOVA for PFN %lx\n",
 					 start_vpfn);
 				break;
 			}
@@ -4244,7 +4242,7 @@ static int intel_iommu_memory_notifier(struct notifier_block *nb,
 			iova = split_and_remove_iova(&si_domain->iovad, iova,
 						     start_vpfn, last_vpfn);
 			if (iova == NULL) {
-				pr_warn("dmar: failed to split IOVA PFN [%lx-%lx]\n",
+				pr_warn("Failed to split IOVA PFN [%lx-%lx]\n",
 					start_vpfn, last_vpfn);
 				return NOTIFY_BAD;
 			}

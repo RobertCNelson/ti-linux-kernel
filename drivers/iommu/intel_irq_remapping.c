@@ -1,3 +1,6 @@
+
+#define pr_fmt(fmt)	"DMAR-IR: " fmt
+
 #include <linux/interrupt.h>
 #include <linux/dmar.h>
 #include <linux/spinlock.h>
@@ -105,8 +108,7 @@ static int alloc_irte(struct intel_iommu *iommu, int irq, u16 count)
 	}
 
 	if (mask > ecap_max_handle_mask(iommu->ecap)) {
-		printk(KERN_ERR
-		       "Requested mask %x exceeds the max invalidation handle"
+		pr_err("Requested mask %x exceeds the max invalidation handle"
 		       " mask value %Lx\n", mask,
 		       ecap_max_handle_mask(iommu->ecap));
 		return -1;
@@ -116,7 +118,7 @@ static int alloc_irte(struct intel_iommu *iommu, int irq, u16 count)
 	index = bitmap_find_free_region(table->bitmap,
 					INTR_REMAP_TABLE_ENTRIES, mask);
 	if (index < 0) {
-		pr_warn("IR%d: can't allocate an IRTE\n", iommu->seq_id);
+		pr_warn("Can't allocate an IRTE for IR[%d]\n", iommu->seq_id);
 	} else {
 		cfg->remapped = 1;
 		irq_iommu->iommu = iommu;
@@ -345,7 +347,7 @@ static int set_ioapic_sid(struct irte *irte, int apic)
 	up_read(&dmar_global_lock);
 
 	if (sid == 0) {
-		pr_warning("Failed to set source-id of IOAPIC (%d)\n", apic);
+		pr_warn("Failed to set source-id of IOAPIC (%d)\n", apic);
 		return -1;
 	}
 
@@ -372,7 +374,7 @@ static int set_hpet_sid(struct irte *irte, u8 id)
 	up_read(&dmar_global_lock);
 
 	if (sid == 0) {
-		pr_warning("Failed to set source-id of HPET block (%d)\n", id);
+		pr_warn("Failed to set source-id of HPET block (%d)\n", id);
 		return -1;
 	}
 
@@ -502,15 +504,15 @@ static int intel_setup_irq_remapping(struct intel_iommu *iommu)
 				 INTR_REMAP_PAGE_ORDER);
 
 	if (!pages) {
-		pr_err("IR%d: failed to allocate pages of order %d\n",
-		       iommu->seq_id, INTR_REMAP_PAGE_ORDER);
+		pr_err("Failed to allocate pages of order %d for IR[%d]\n",
+		       INTR_REMAP_PAGE_ORDER, iommu->seq_id);
 		goto out_free_table;
 	}
 
 	bitmap = kcalloc(BITS_TO_LONGS(INTR_REMAP_TABLE_ENTRIES),
 			 sizeof(long), GFP_ATOMIC);
 	if (bitmap == NULL) {
-		pr_err("IR%d: failed to allocate bitmap\n", iommu->seq_id);
+		pr_err("Failed to allocate bitmap for IR[%d]\n", iommu->seq_id);
 		goto out_free_pages;
 	}
 
@@ -592,7 +594,7 @@ static void __init intel_cleanup_irq_remapping(void)
 	}
 
 	if (x2apic_supported())
-		pr_warn("Failed to enable irq remapping.  You are vulnerable to irq-injection attacks.\n");
+		pr_warn("Failed to enable irq remapping. You are vulnerable to irq-injection attacks.\n");
 }
 
 static int __init intel_prepare_irq_remapping(void)
@@ -1385,7 +1387,7 @@ static void iommu_check_pre_ir_status(struct intel_iommu *iommu)
 
 	sts = readl(iommu->reg + DMAR_GSTS_REG);
 	if (sts & DMA_GSTS_IRES) {
-		pr_info("IR is enabled prior to OS.\n");
+		pr_info("IRQ remapping is enabled prior to OS.\n");
 		iommu->pre_enabled_ir = 1;
 	}
 }
