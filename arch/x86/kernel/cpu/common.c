@@ -31,8 +31,7 @@
 #include <asm/setup.h>
 #include <asm/apic.h>
 #include <asm/desc.h>
-#include <asm/i387.h>
-#include <asm/fpu-internal.h>
+#include <asm/fpu/internal.h>
 #include <asm/mtrr.h>
 #include <linux/numa.h>
 #include <asm/asm.h>
@@ -145,33 +144,6 @@ DEFINE_PER_CPU_PAGE_ALIGNED(struct gdt_page, gdt_page) = { .gdt = {
 } };
 EXPORT_PER_CPU_SYMBOL_GPL(gdt_page);
 
-static int __init x86_xsave_setup(char *s)
-{
-	if (strlen(s))
-		return 0;
-	setup_clear_cpu_cap(X86_FEATURE_XSAVE);
-	setup_clear_cpu_cap(X86_FEATURE_XSAVEOPT);
-	setup_clear_cpu_cap(X86_FEATURE_XSAVES);
-	setup_clear_cpu_cap(X86_FEATURE_AVX);
-	setup_clear_cpu_cap(X86_FEATURE_AVX2);
-	return 1;
-}
-__setup("noxsave", x86_xsave_setup);
-
-static int __init x86_xsaveopt_setup(char *s)
-{
-	setup_clear_cpu_cap(X86_FEATURE_XSAVEOPT);
-	return 1;
-}
-__setup("noxsaveopt", x86_xsaveopt_setup);
-
-static int __init x86_xsaves_setup(char *s)
-{
-	setup_clear_cpu_cap(X86_FEATURE_XSAVES);
-	return 1;
-}
-__setup("noxsaves", x86_xsaves_setup);
-
 #ifdef CONFIG_X86_32
 static int cachesize_override = -1;
 static int disable_x86_serial_nr = 1;
@@ -182,14 +154,6 @@ static int __init cachesize_setup(char *str)
 	return 1;
 }
 __setup("cachesize=", cachesize_setup);
-
-static int __init x86_fxsr_setup(char *s)
-{
-	setup_clear_cpu_cap(X86_FEATURE_FXSR);
-	setup_clear_cpu_cap(X86_FEATURE_XMM);
-	return 1;
-}
-__setup("nofxsr", x86_fxsr_setup);
 
 static int __init x86_sep_setup(char *s)
 {
@@ -750,7 +714,7 @@ static void __init early_identify_cpu(struct cpuinfo_x86 *c)
 	cpu_detect(c);
 	get_cpu_vendor(c);
 	get_cpu_cap(c);
-	fpu_detect(c);
+	fpu__init_system(c);
 
 	if (this_cpu->c_early_init)
 		this_cpu->c_early_init(c);
@@ -1170,8 +1134,6 @@ DEFINE_PER_CPU(unsigned int, irq_count) __visible = -1;
 DEFINE_PER_CPU(int, __preempt_count) = INIT_PREEMPT_COUNT;
 EXPORT_PER_CPU_SYMBOL(__preempt_count);
 
-DEFINE_PER_CPU(struct task_struct *, fpu_owner_task);
-
 /*
  * Special IST stacks which the CPU switches to when it calls
  * an IST-marked descriptor entry. Up to 7 stacks (hardware
@@ -1262,7 +1224,6 @@ DEFINE_PER_CPU(struct task_struct *, current_task) = &init_task;
 EXPORT_PER_CPU_SYMBOL(current_task);
 DEFINE_PER_CPU(int, __preempt_count) = INIT_PREEMPT_COUNT;
 EXPORT_PER_CPU_SYMBOL(__preempt_count);
-DEFINE_PER_CPU(struct task_struct *, fpu_owner_task);
 
 /*
  * On x86_32, vm86 modifies tss.sp0, so sp0 isn't a reliable way to find
@@ -1426,7 +1387,7 @@ void cpu_init(void)
 	clear_all_debug_regs();
 	dbg_restore_debug_regs();
 
-	fpu_init();
+	fpu__init_cpu();
 
 	if (is_uv_system())
 		uv_cpu_init();
@@ -1482,7 +1443,7 @@ void cpu_init(void)
 	clear_all_debug_regs();
 	dbg_restore_debug_regs();
 
-	fpu_init();
+	fpu__init_cpu();
 }
 #endif
 
