@@ -344,8 +344,6 @@ struct intel_iommu {
 
 	/* whether translation is enabled prior to OS*/
 	u8		pre_enabled_trans;
-	/* whether interrupt remapping is enabled prior to OS*/
-	u8		pre_enabled_ir;
 
 	void __iomem	*root_entry_old_virt; /* mapped from old root entry */
 	unsigned long	root_entry_old_phys; /* root entry in old kernel */
@@ -357,6 +355,9 @@ struct intel_iommu {
 
 #ifdef CONFIG_IRQ_REMAP
 	struct ir_table *ir_table;	/* Interrupt remapping info */
+
+	/* whether interrupt remapping is enabled prior to OS*/
+	u8		pre_enabled_ir;
 #endif
 	struct device	*iommu_dev; /* IOMMU-sysfs device */
 	int		node;
