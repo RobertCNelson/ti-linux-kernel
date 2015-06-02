@@ -29,17 +29,21 @@ static struct dentry *dfs_inj;
 
 static u8 n_banks;
 
-#define MAX_FLAG_OPT_SIZE	3
+#define MAX_FLAG_OPT_SIZE	4
 
 enum injection_type {
 	SW_INJ = 0,	/* SW injection, simply decode the error */
 	HW_INJ,		/* Trigger a #MC */
+	DFR_INT_INJ,	/* Trigger Deferred error interrupt */
+	THR_INT_INJ,	/* Trigger threshold interrupt */
 	N_INJ_TYPES,
 };
 
 static const char * const flags_options[] = {
 	[SW_INJ] = "sw",
 	[HW_INJ] = "hw",
+	[DFR_INT_INJ] = "dfr",
+	[THR_INT_INJ] = "thr",
 	NULL
 };
 
@@ -185,6 +189,16 @@ static void trigger_mce(void *info)
 	asm volatile("int $18");
 }
 
+static void trigger_dfr_int(void *info)
+{
+	asm volatile("int %0" :: "i" (DEFERRED_ERROR_VECTOR));
+}
+
+static void trigger_thr_int(void *info)
+{
+	asm volatile("int %0" :: "i" (THRESHOLD_APIC_VECTOR));
+}
+
 static void do_inject(void)
 {
 	u64 mcg_status = 0;
@@ -194,6 +208,20 @@ static void do_inject(void)
 	if (inj_type == SW_INJ) {
 		amd_decode_mce(NULL, 0, &i_mce);
 		return;
+	}
+
+	if (inj_type == DFR_INT_INJ) {
+		/*
+		 * Ensure necessary status bits for deferred errors:
+		 * a. MCx_STATUS[Deferred] is set -
+		 *	This is to ensure the error will be handled by the
+		 *	interrupt handler
+		 * b. unset MCx_STATUS[UC]
+		 *	As deferred errors are _not_ UC
+		 */
+
+		i_mce.status |= MCI_STATUS_DEFERRED;
+		i_mce.status &= ~MCI_STATUS_UC;
 	}
 
 	get_online_cpus();
@@ -222,7 +250,16 @@ static void do_inject(void)
 
 	toggle_hw_mce_inject(cpu, false);
 
-	smp_call_function_single(cpu, trigger_mce, NULL, 0);
+	switch (inj_type) {
+	case DFR_INT_INJ:
+		smp_call_function_single(cpu, trigger_dfr_int, NULL, 0);
+		break;
+	case THR_INT_INJ:
+		smp_call_function_single(cpu, trigger_thr_int, NULL, 0);
+		break;
+	default:
+		smp_call_function_single(cpu, trigger_mce, NULL, 0);
+	}
 
 err:
 	put_online_cpus();
