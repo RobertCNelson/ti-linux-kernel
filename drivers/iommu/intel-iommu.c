@@ -4978,42 +4978,6 @@ int __iommu_load_from_oldmem(void *to, unsigned long from, unsigned long size)
 }
 
 /*
- * Copy memory from a virtually-addressed area into a physically-addressed area
- */
-int __iommu_save_to_oldmem(unsigned long to, void *from, unsigned long size)
-{
-	unsigned long pfn;		/* Page Frame Number */
-	size_t csize = (size_t)size;	/* Num(bytes to copy) */
-	unsigned long offset;		/* Lower 12 bits of to */
-	void __iomem *virt_mem;
-	struct iommu_remapped_entry *mapped;
-
-	pfn = to >> VTD_PAGE_SHIFT;
-	offset = to & (~VTD_PAGE_MASK);
-
-	if (page_is_ram(pfn)) {
-		memcpy(pfn_to_kaddr(pfn) + offset, from, csize);
-	} else{
-		mapped = kzalloc(sizeof(struct iommu_remapped_entry),
-				GFP_KERNEL);
-		if (!mapped)
-			return -ENOMEM;
-
-		virt_mem = ioremap_cache((unsigned long)to, size);
-		if (!virt_mem) {
-			kfree(mapped);
-			return -ENOMEM;
-		}
-		memcpy(virt_mem, from, size);
-		mutex_lock(&__iommu_mem_list_lock);
-		mapped->mem = virt_mem;
-		list_add_tail(&mapped->list, &__iommu_remapped_mem);
-		mutex_unlock(&__iommu_mem_list_lock);
-	}
-	return size;
-}
-
-/*
  * Free the mapped memory for ioremap;
  */
 int __iommu_free_mapped_mem(void)
