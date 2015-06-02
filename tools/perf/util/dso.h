@@ -126,7 +126,10 @@ struct dsos {
 	struct rb_root	 root;	/* rbtree root sorted by long name */
 };
 
+struct auxtrace_cache;
+
 struct dso {
+	pthread_mutex_t	 lock;
 	struct list_head node;
 	struct rb_node	 rb_node;	/* rbtree node sorted by long name */
 	struct rb_root	 symbols[MAP__NR_TYPES];
@@ -156,6 +159,7 @@ struct dso {
 	u16		 long_name_len;
 	u16		 short_name_len;
 	void		*dwfl;			/* DWARF debug info */
+	struct auxtrace_cache *auxtrace_cache;
 
 	/* dso data file */
 	struct {
