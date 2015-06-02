@@ -1004,6 +1004,17 @@ static void nfs4_put_stateowner(struct nfs4_stateowner *sop)
 	sop->so_ops->so_free(sop);
 }
 
+static void list_warn(struct list_head *entry, const char *f, int l)
+{
+	struct list_head *prev = entry->prev;
+	struct list_head *next = entry->next;
+
+	WARN(next == LIST_POISON1, "%s:%d\n", f, l);
+	WARN(prev == LIST_POISON2, "%s:%d\n", f, l);
+	WARN(prev->next != entry,  "%s:%d\n", f, l);
+	WARN(next->prev != entry,  "%s:%d\n", f, l);
+}
+
 static void unhash_ol_stateid(struct nfs4_ol_stateid *stp)
 {
 	struct nfs4_file *fp = stp->st_stid.sc_file;
@@ -1011,8 +1022,10 @@ static void unhash_ol_stateid(struct nfs4_ol_stateid *stp)
 	lockdep_assert_held(&stp->st_stateowner->so_client->cl_lock);
 
 	spin_lock(&fp->fi_lock);
+	list_warn(&stp->st_perfile, __func__, __LINE__);
 	list_del(&stp->st_perfile);
 	spin_unlock(&fp->fi_lock);
+	list_warn(&stp->st_perstateowner, __func__, __LINE__);
 	list_del(&stp->st_perstateowner);
 }
 
