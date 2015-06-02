@@ -109,7 +109,7 @@ static void regmap_irq_sync_unlock(struct irq_data *data)
 		if (!d->chip->init_ack_masked)
 			continue;
 		/*
-		 * Ack all the masked interrupts uncondictionly,
+		 * Ack all the masked interrupts unconditionally,
 		 * OR if there is masked interrupt which hasn't been Acked,
 		 * it'll be ignored in irq handler, then may introduce irq storm
 		 */
@@ -318,7 +318,7 @@ static int regmap_irq_map(struct irq_domain *h, unsigned int virq,
 	return 0;
 }
 
-static struct irq_domain_ops regmap_domain_ops = {
+static const struct irq_domain_ops regmap_domain_ops = {
 	.map	= regmap_irq_map,
 	.xlate	= irq_domain_xlate_twocell,
 };
