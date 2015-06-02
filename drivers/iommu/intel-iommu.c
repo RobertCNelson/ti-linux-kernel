@@ -4942,7 +4942,8 @@ static struct context_entry *device_to_existing_context_entry(
 /*
  * Copy memory from a physically-addressed area into a virtually-addressed area
  */
-int __iommu_load_from_oldmem(void *to, unsigned long from, unsigned long size)
+static int __iommu_load_from_oldmem(void *to, unsigned long from,
+				    unsigned long size)
 {
 	unsigned long pfn;		/* Page Frame Number */
 	size_t csize = (size_t)size;	/* Num(bytes to copy) */
@@ -4980,7 +4981,7 @@ int __iommu_load_from_oldmem(void *to, unsigned long from, unsigned long size)
 /*
  * Free the mapped memory for ioremap;
  */
-int __iommu_free_mapped_mem(void)
+static int __iommu_free_mapped_mem(void)
 {
 	struct iommu_remapped_entry *mem_entry, *tmp;
 
