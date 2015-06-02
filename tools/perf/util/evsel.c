@@ -1121,6 +1121,7 @@ int perf_event_attr__fprintf(FILE *fp, struct perf_event_attr *attr,
 	PRINT_ATTRf(sample_stack_user, p_unsigned);
 	PRINT_ATTRf(clockid, p_signed);
 	PRINT_ATTRf(sample_regs_intr, p_hex);
+	PRINT_ATTRf(aux_watermark, p_unsigned);
 
 	return ret;
 }
@@ -2148,7 +2149,9 @@ int perf_evsel__open_strerror(struct perf_evsel *evsel, struct target *target,
 	case EMFILE:
 		return scnprintf(msg, size, "%s",
 			 "Too many events are opened.\n"
-			 "Try again after reducing the number of events.");
+			 "Probably the maximum number of open file descriptors has been reached.\n"
+			 "Hint: Try again after reducing the number of events.\n"
+			 "Hint: Try increasing the limit with 'ulimit -n <limit>'");
 	case ENODEV:
 		if (target->cpu_list)
 			return scnprintf(msg, size, "%s",

@@ -30,11 +30,11 @@ struct machine {
 	bool		  comm_exec;
 	char		  *root_dir;
 	struct rb_root	  threads;
+	pthread_rwlock_t  threads_lock;
 	struct list_head  dead_threads;
 	struct thread	  *last_match;
 	struct vdso_info  *vdso_info;
-	struct dsos	  user_dsos;
-	struct dsos	  kernel_dsos;
+	struct dsos	  dsos;
 	struct map_groups kmaps;
 	struct map	  *vmlinux_maps[MAP__NR_TYPES];
 	u64		  kernel_start;
@@ -81,6 +81,10 @@ int machine__process_fork_event(struct machine *machine, union perf_event *event
 				struct perf_sample *sample);
 int machine__process_lost_event(struct machine *machine, union perf_event *event,
 				struct perf_sample *sample);
+int machine__process_aux_event(struct machine *machine,
+			       union perf_event *event);
+int machine__process_itrace_start_event(struct machine *machine,
+					union perf_event *event);
 int machine__process_mmap_event(struct machine *machine, union perf_event *event,
 				struct perf_sample *sample);
 int machine__process_mmap2_event(struct machine *machine, union perf_event *event,
@@ -147,8 +151,10 @@ static inline bool machine__is_host(struct machine *machine)
 	return machine ? machine->pid == HOST_KERNEL_ID : false;
 }
 
-struct thread *machine__findnew_thread(struct machine *machine, pid_t pid,
-				       pid_t tid);
+struct thread *__machine__findnew_thread(struct machine *machine, pid_t pid, pid_t tid);
+struct thread *machine__findnew_thread(struct machine *machine, pid_t pid, pid_t tid);
+
+struct dso *machine__findnew_dso(struct machine *machine, const char *filename);
 
 size_t machine__fprintf(struct machine *machine, FILE *fp);
 
