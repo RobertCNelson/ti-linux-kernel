@@ -345,9 +345,6 @@ struct intel_iommu {
 	/* whether translation is enabled prior to OS*/
 	u8		pre_enabled_trans;
 
-	void __iomem	*root_entry_old_virt; /* mapped from old root entry */
-	unsigned long	root_entry_old_phys; /* root entry in old kernel */
-
 	struct iommu_flush flush;
 #endif
 	struct q_inval  *qi;            /* Queued invalidation info */
