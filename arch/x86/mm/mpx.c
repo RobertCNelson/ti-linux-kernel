@@ -10,13 +10,12 @@
 #include <linux/syscalls.h>
 #include <linux/sched/sysctl.h>
 
-#include <asm/i387.h>
 #include <asm/insn.h>
 #include <asm/mman.h>
 #include <asm/mmu_context.h>
 #include <asm/mpx.h>
 #include <asm/processor.h>
-#include <asm/fpu-internal.h>
+#include <asm/fpu/internal.h>
 
 static const char *mpx_mapping_name(struct vm_area_struct *vma)
 {
@@ -273,7 +272,7 @@ bad_opcode:
  * The caller is expected to kfree() the returned siginfo_t.
  */
 siginfo_t *mpx_generate_siginfo(struct pt_regs *regs,
-				struct xsave_struct *xsave_buf)
+				struct xregs_state *xsave_buf)
 {
 	struct bndreg *bndregs, *bndreg;
 	siginfo_t *info = NULL;
@@ -358,8 +357,8 @@ static __user void *task_get_bounds_dir(struct task_struct *tsk)
 	 * The bounds directory pointer is stored in a register
 	 * only accessible if we first do an xsave.
 	 */
-	fpu_save_init(&tsk->thread.fpu);
-	bndcsr = get_xsave_addr(&tsk->thread.fpu.state->xsave, XSTATE_BNDCSR);
+	copy_fpregs_to_fpstate(&tsk->thread.fpu);
+	bndcsr = get_xsave_addr(&tsk->thread.fpu.state.xsave, XSTATE_BNDCSR);
 	if (!bndcsr)
 		return MPX_INVALID_BOUNDS_DIR;
 
@@ -390,7 +389,7 @@ int mpx_enable_management(struct task_struct *tsk)
 	 * directory into XSAVE/XRSTOR Save Area and enable MPX through
 	 * XRSTOR instruction.
 	 *
-	 * fpu_xsave() is expected to be very expensive. Storing the bounds
+	 * copy_xregs_to_kernel() is expected to be very expensive. Storing the bounds
 	 * directory here means that we do not have to do xsave in the unmap
 	 * path; we can just use mm->bd_addr instead.
 	 */
@@ -498,7 +497,7 @@ out_unmap:
  * bound table is 16KB. With 64-bit mode, the size of BD is 2GB,
  * and the size of each bound table is 4MB.
  */
-static int do_mpx_bt_fault(struct xsave_struct *xsave_buf)
+static int do_mpx_bt_fault(struct xregs_state *xsave_buf)
 {
 	unsigned long bd_entry, bd_base;
 	struct bndcsr *bndcsr;
@@ -526,7 +525,7 @@ static int do_mpx_bt_fault(struct xsave_struct *xsave_buf)
 	return allocate_bt((long __user *)bd_entry);
 }
 
-int mpx_handle_bd_fault(struct xsave_struct *xsave_buf)
+int mpx_handle_bd_fault(struct xregs_state *xsave_buf)
 {
 	/*
 	 * Userspace never asked us to manage the bounds tables,
