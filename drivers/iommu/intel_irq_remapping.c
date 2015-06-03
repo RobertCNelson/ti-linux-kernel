@@ -637,10 +637,26 @@ static int __init intel_prepare_irq_remapping(void)
 		goto error;
 	}
 
+	if (x2apic_supported()) {
+		eim_mode = !dmar_x2apic_optout();
+		if (!eim_mode)
+			pr_info("BIOS set x2apic opt out bit. Use "
+				"'intremap=no_x2apic_optout' to enable x2apic\n");
+	}
+
 	/* First make sure all IOMMUs support IRQ remapping */
-	for_each_iommu(iommu, drhd)
+	for_each_iommu(iommu, drhd) {
 		if (!ecap_ir_support(iommu->ecap))
 			goto error;
+		if (eim_mode && !ecap_eim_support(iommu->ecap)) {
+			printk(KERN_INFO "DRHD %Lx: EIM not supported by DRHD, "
+			       " ecap %Lx\n", drhd->reg_base_addr, iommu->ecap);
+			eim_mode = 0;
+		}
+	}
+
+	if (eim_mode)
+		pr_info("Queued invalidation will be enabled to support x2apic and Intr-remapping.\n");
 
 	/* Do the allocations early */
 	for_each_iommu(iommu, drhd)
@@ -659,13 +675,6 @@ static int __init intel_enable_irq_remapping(void)
 	struct dmar_drhd_unit *drhd;
 	struct intel_iommu *iommu;
 	bool setup = false;
-	int eim = 0;
-
-	if (x2apic_supported()) {
-		eim = !dmar_x2apic_optout();
-		if (!eim)
-			pr_info("x2apic is disabled because BIOS sets x2apic opt out bit. You can use 'intremap=no_x2apic_optout' to override the BIOS setting.\n");
-	}
 
 	for_each_iommu(iommu, drhd) {
 		iommu_check_pre_ir_status(iommu);
@@ -677,19 +686,6 @@ static int __init intel_enable_irq_remapping(void)
 				iommu->name);
 		}
 	}
-
-	/*
-	 * check for the Interrupt-remapping support
-	 */
-	for_each_iommu(iommu, drhd)
-		if (eim && !ecap_eim_support(iommu->ecap)) {
-			printk(KERN_INFO "DRHD %Lx: EIM not supported by DRHD, "
-			       " ecap %Lx\n", drhd->reg_base_addr, iommu->ecap);
-			eim = 0;
-		}
-	eim_mode = eim;
-	if (eim)
-		pr_info("Queued invalidation will be enabled to support x2apic and Intr-remapping.\n");
 
 	/*
 	 * Setup Interrupt-remapping for all the DRHD's now.
@@ -705,7 +701,7 @@ static int __init intel_enable_irq_remapping(void)
 				INTR_REMAP_TABLE_ENTRIES*sizeof(struct irte));
 			__iommu_load_old_irte(iommu);
 		} else
-			iommu_set_irq_remapping(iommu, eim);
+			iommu_set_irq_remapping(iommu, eim_mode);
 
 		setup = true;
 	}
@@ -722,9 +718,9 @@ static int __init intel_enable_irq_remapping(void)
 	 */
 	x86_io_apic_ops.print_entries = intel_ir_io_apic_print_entries;
 
-	pr_info("Enabled IRQ remapping in %s mode\n", eim ? "x2apic" : "xapic");
+	pr_info("Enabled IRQ remapping in %s mode\n", eim_mode ? "x2apic" : "xapic");
 
-	return eim ? IRQ_REMAP_X2APIC_MODE : IRQ_REMAP_XAPIC_MODE;
+	return eim_mode ? IRQ_REMAP_X2APIC_MODE : IRQ_REMAP_XAPIC_MODE;
 
 error:
 	intel_cleanup_irq_remapping();
