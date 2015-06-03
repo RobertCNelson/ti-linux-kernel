@@ -1493,7 +1493,7 @@ int rcu_needs_cpu(u64 basemono, u64 *nextevt)
 	unsigned long dj;
 
 	if (IS_ENABLED(CONFIG_RCU_NOCB_CPU_ALL)) {
-		*dj = ULONG_MAX;
+		*nextevt = KTIME_MAX;
 		return 0;
 	}
 
