@@ -1375,9 +1375,9 @@ static void rcu_prepare_kthreads(int cpu)
  * Because we not have RCU_FAST_NO_HZ, just check whether this CPU needs
  * any flavor of RCU.
  */
-int rcu_needs_cpu(unsigned long *delta_jiffies)
+int rcu_needs_cpu(u64 basemono, u64 *nextevt)
 {
-	*delta_jiffies = ULONG_MAX;
+	*nextevt = KTIME_MAX;
 	return IS_ENABLED(CONFIG_RCU_NOCB_CPU_ALL)
 	       ? 0 : rcu_cpu_has_callbacks(NULL);
 }
@@ -1487,9 +1487,10 @@ static bool __maybe_unused rcu_try_advance_all_cbs(void)
  *
  * The caller must have disabled interrupts.
  */
-int rcu_needs_cpu(unsigned long *dj)
+int rcu_needs_cpu(u64 basemono, u64 *nextevt)
 {
 	struct rcu_dynticks *rdtp = this_cpu_ptr(&rcu_dynticks);
+	unsigned long dj;
 
 	if (IS_ENABLED(CONFIG_RCU_NOCB_CPU_ALL)) {
 		*dj = ULONG_MAX;
@@ -1501,7 +1502,7 @@ int rcu_needs_cpu(unsigned long *dj)
 
 	/* If no callbacks, RCU doesn't need the CPU. */
 	if (!rcu_cpu_has_callbacks(&rdtp->all_lazy)) {
-		*dj = ULONG_MAX;
+		*nextevt = KTIME_MAX;
 		return 0;
 	}
 
@@ -1515,11 +1516,12 @@ int rcu_needs_cpu(unsigned long *dj)
 
 	/* Request timer delay depending on laziness, and round. */
 	if (!rdtp->all_lazy) {
-		*dj = round_up(rcu_idle_gp_delay + jiffies,
+		dj = round_up(rcu_idle_gp_delay + jiffies,
 			       rcu_idle_gp_delay) - jiffies;
 	} else {
-		*dj = round_jiffies(rcu_idle_lazy_gp_delay + jiffies) - jiffies;
+		dj = round_jiffies(rcu_idle_lazy_gp_delay + jiffies) - jiffies;
 	}
+	*nextevt = basemono + dj * TICK_NSEC;
 	return 0;
 }
 
