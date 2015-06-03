@@ -440,9 +440,9 @@ static int set_msi_sid(struct irte *irte, struct pci_dev *dev)
 
 static void iommu_set_irq_remapping(struct intel_iommu *iommu, int mode)
 {
+	unsigned long flags;
 	u64 addr;
 	u32 sts;
-	unsigned long flags;
 
 	addr = virt_to_phys((void *)iommu->ir_table->base);
 
@@ -463,6 +463,12 @@ static void iommu_set_irq_remapping(struct intel_iommu *iommu, int mode)
 	 * interrupt-remapping.
 	 */
 	qi_global_iec(iommu);
+}
+
+static void iommu_enable_irq_remapping(struct intel_iommu *iommu)
+{
+	unsigned long flags;
+	u32 sts;
 
 	raw_spin_lock_irqsave(&iommu->register_lock, flags);
 
@@ -700,8 +706,10 @@ static int __init intel_enable_irq_remapping(void)
 				iommu->ir_table->base_old_phys,
 				INTR_REMAP_TABLE_ENTRIES*sizeof(struct irte));
 			__iommu_load_old_irte(iommu);
-		} else
+		} else {
 			iommu_set_irq_remapping(iommu, eim_mode);
+			iommu_enable_irq_remapping(iommu);
+		}
 
 		setup = true;
 	}
@@ -939,6 +947,7 @@ static int reenable_irq_remapping(int eim)
 
 		/* Set up interrupt remapping for iommu.*/
 		iommu_set_irq_remapping(iommu, eim);
+		iommu_enable_irq_remapping(iommu);
 		setup = true;
 	}
 
@@ -1257,6 +1266,7 @@ static int dmar_ir_add(struct dmar_drhd_unit *dmaru, struct intel_iommu *iommu)
 		ir_remove_ioapic_hpet_scope(iommu);
 	} else {
 		iommu_set_irq_remapping(iommu, eim);
+		iommu_enable_irq_remapping(iommu);
 	}
 
 	return ret;
