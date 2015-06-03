@@ -510,7 +510,7 @@ static int intel_setup_irq_remapping(struct intel_iommu *iommu)
 	}
 
 	bitmap = kcalloc(BITS_TO_LONGS(INTR_REMAP_TABLE_ENTRIES),
-			 sizeof(long), GFP_ATOMIC);
+			 sizeof(long), GFP_KERNEL | __GFP_ZERO);
 	if (bitmap == NULL) {
 		pr_err("Failed to allocate bitmap for IR[%d]\n", iommu->seq_id);
 		goto out_free_pages;
