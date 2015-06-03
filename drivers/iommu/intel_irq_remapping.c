@@ -22,7 +22,6 @@
 #include "irq_remapping.h"
 
 static int iommu_load_old_irte(struct intel_iommu *iommu);
-static int __iommu_update_old_irte(struct intel_iommu *iommu, int index);
 static void iommu_check_pre_ir_status(struct intel_iommu *iommu);
 static void iommu_disable_irq_remapping(struct intel_iommu *iommu);
 
@@ -202,9 +201,6 @@ static int modify_irte(int irq, struct irte *irte_modified)
 	set_64bit(&irte->low, irte_modified->low);
 	set_64bit(&irte->high, irte_modified->high);
 
-	if (iommu->pre_enabled_ir)
-		__iommu_update_old_irte(iommu, index);
-
 	__iommu_flush_cache(iommu, irte, sizeof(*irte));
 
 	rc = qi_flush_iec(iommu, index, 0);
@@ -265,9 +261,6 @@ static int clear_entries(struct irq_2_iommu *irq_iommu)
 	}
 	bitmap_release_region(iommu->ir_table->bitmap, index,
 			      irq_iommu->irte_mask);
-
-	if (iommu->pre_enabled_ir)
-		__iommu_update_old_irte(iommu, -1);
 
 	return qi_flush_iec(iommu, index, irq_iommu->irte_mask);
 }
@@ -1327,9 +1320,6 @@ static int iommu_load_old_irte(struct intel_iommu *iommu)
 
 	__iommu_flush_cache(iommu, iommu->ir_table->base, size);
 
-	iommu->ir_table->base_old_phys = irt_phys;
-	iommu->ir_table->base_old_virt = old_ir_table;
-
 	/*
 	 * Now check the table for used entries and mark those as
 	 * allocated in the bitmap
@@ -1338,40 +1328,6 @@ static int iommu_load_old_irte(struct intel_iommu *iommu)
 		if (iommu->ir_table->base[i].present)
 			bitmap_set(iommu->ir_table->bitmap, i, 1);
 	}
-
-	return 0;
-}
-
-static int __iommu_update_old_irte(struct intel_iommu *iommu, int index)
-{
-	int start;
-	unsigned long size;
-	void __iomem *to;
-void *from;
-
-	if ((!iommu)
-		|| (!iommu->ir_table)
-		|| (!iommu->ir_table->base)
-		|| (!iommu->ir_table->base_old_phys)
-		|| (!iommu->ir_table->base_old_virt))
-		return -1;
-
-	if (index < -1 || index >= INTR_REMAP_TABLE_ENTRIES)
-		return -1;
-
-	if (index == -1) {
-		start = 0;
-		size = INTR_REMAP_TABLE_ENTRIES * sizeof(struct irte);
-	} else {
-		start = index * sizeof(struct irte);
-		size = sizeof(struct irte);
-	}
-
-	to = iommu->ir_table->base_old_virt;
-	from = iommu->ir_table->base;
-	memcpy(to + start, from + start, size);
-
-	__iommu_flush_cache(iommu, to + start, size);
 
 	return 0;
 }

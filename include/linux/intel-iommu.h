@@ -302,8 +302,6 @@ struct q_inval {
 struct ir_table {
 	struct irte *base;
 	unsigned long *bitmap;
-	void __iomem *base_old_virt;
-	unsigned long base_old_phys;
 };
 #endif
 
