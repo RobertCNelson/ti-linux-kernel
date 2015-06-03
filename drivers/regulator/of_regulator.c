@@ -108,7 +108,7 @@ static void of_get_regulation_constraints(struct device_node *np,
 		case PM_SUSPEND_STANDBY:
 		default:
 			continue;
-		};
+		}
 
 		suspend_np = of_get_child_by_name(np, regulator_states[i]);
 		if (!suspend_np || !suspend_state)
@@ -292,7 +292,7 @@ struct regulator_init_data *regulator_of_get_init_data(struct device *dev,
 		return NULL;
 	}
 
-	for_each_child_of_node(search, child) {
+	for_each_available_child_of_node(search, child) {
 		name = of_get_property(child, "regulator-compatible", NULL);
 		if (!name)
 			name = child->name;
