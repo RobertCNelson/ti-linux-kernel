@@ -24,6 +24,7 @@
 static int iommu_load_old_irte(struct intel_iommu *iommu);
 static int __iommu_update_old_irte(struct intel_iommu *iommu, int index);
 static void iommu_check_pre_ir_status(struct intel_iommu *iommu);
+static void iommu_disable_irq_remapping(struct intel_iommu *iommu);
 
 struct ioapic_scope {
 	struct intel_iommu *iommu;
@@ -538,6 +539,26 @@ static int intel_setup_irq_remapping(struct intel_iommu *iommu)
 		}
 	}
 
+	iommu_check_pre_ir_status(iommu);
+
+	if (!is_kdump_kernel() && iommu->pre_enabled_ir) {
+		iommu_disable_irq_remapping(iommu);
+		iommu->pre_enabled_ir = 0;
+		pr_warn("IRQ remapping was enabled on %s but we are not in kdump mode\n",
+				iommu->name);
+	}
+
+	if (iommu->pre_enabled_ir) {
+		if (iommu_load_old_irte(iommu))
+			pr_err("Failed to copy IR table for %s from previous kernel\n",
+			       iommu->name);
+		else
+			pr_info("Copied IR table for %s from previous kernel\n",
+				iommu->name);
+	}
+
+	iommu_set_irq_remapping(iommu, eim_mode);
+
 	return 0;
 
 out_free_pages:
@@ -682,28 +703,11 @@ static int __init intel_enable_irq_remapping(void)
 	struct intel_iommu *iommu;
 	bool setup = false;
 
-	for_each_iommu(iommu, drhd) {
-		iommu_check_pre_ir_status(iommu);
-
-		if (!is_kdump_kernel() && iommu->pre_enabled_ir) {
-			iommu_disable_irq_remapping(iommu);
-			iommu->pre_enabled_ir = 0;
-			pr_warn("IRQ remapping was enabled on %s but we are not in kdump mode\n",
-				iommu->name);
-		}
-	}
-
 	/*
 	 * Setup Interrupt-remapping for all the DRHD's now.
 	 */
 	for_each_iommu(iommu, drhd) {
-		if (iommu->pre_enabled_ir) {
-			iommu_load_old_irte(iommu);
-		} else {
-			iommu_set_irq_remapping(iommu, eim_mode);
-			iommu_enable_irq_remapping(iommu);
-		}
-
+		iommu_enable_irq_remapping(iommu);
 		setup = true;
 	}
 
