@@ -519,6 +519,19 @@ static int intel_setup_irq_remapping(struct intel_iommu *iommu)
 	ir_table->base = page_address(pages);
 	ir_table->bitmap = bitmap;
 	iommu->ir_table = ir_table;
+
+	if (!iommu->qi) {
+		/*
+		 * Clear previous faults.
+		 */
+		dmar_fault(-1, iommu);
+		dmar_disable_qi(iommu);
+		if (dmar_enable_qi(iommu)) {
+			pr_err("Failed to enable queued invalidation\n");
+			goto out_free_pages;
+		}
+	}
+
 	return 0;
 
 out_free_pages:
@@ -655,18 +668,6 @@ static int __init intel_enable_irq_remapping(void)
 	}
 
 	for_each_iommu(iommu, drhd) {
-		/*
-		 * If the queued invalidation is already initialized,
-		 * shouldn't disable it.
-		 */
-		if (iommu->qi)
-			continue;
-
-		/*
-		 * Clear previous faults.
-		 */
-		dmar_fault(-1, iommu);
-
 		iommu_check_pre_ir_status(iommu);
 
 		if (!is_kdump_kernel() && iommu->pre_enabled_ir) {
@@ -675,8 +676,6 @@ static int __init intel_enable_irq_remapping(void)
 			pr_warn("IRQ remapping was enabled on %s but we are not in kdump mode\n",
 				iommu->name);
 		}
-
-		dmar_disable_qi(iommu);
 	}
 
 	/*
@@ -691,20 +690,6 @@ static int __init intel_enable_irq_remapping(void)
 	eim_mode = eim;
 	if (eim)
 		pr_info("Queued invalidation will be enabled to support x2apic and Intr-remapping.\n");
-
-	/*
-	 * Enable queued invalidation for all the DRHD's.
-	 */
-	for_each_iommu(iommu, drhd) {
-		int ret = dmar_enable_qi(iommu);
-
-		if (ret) {
-			printk(KERN_ERR "DRHD %Lx: failed to enable queued, "
-			       " invalidation, ecap %Lx, ret %d\n",
-			       drhd->reg_base_addr, iommu->ecap, ret);
-			goto error;
-		}
-	}
 
 	/*
 	 * Setup Interrupt-remapping for all the DRHD's now.
@@ -1270,28 +1255,12 @@ static int dmar_ir_add(struct dmar_drhd_unit *dmaru, struct intel_iommu *iommu)
 	/* Setup Interrupt-remapping now. */
 	ret = intel_setup_irq_remapping(iommu);
 	if (ret) {
-		pr_err("DRHD %Lx: failed to allocate resource\n",
+		pr_err("DRHD %Lx: failed to setup IRQ remapping\n",
 		       iommu->reg_phys);
-		ir_remove_ioapic_hpet_scope(iommu);
-		return ret;
-	}
-
-	if (!iommu->qi) {
-		/* Clear previous faults. */
-		dmar_fault(-1, iommu);
-		iommu_disable_irq_remapping(iommu);
-		dmar_disable_qi(iommu);
-	}
-
-	/* Enable queued invalidation */
-	ret = dmar_enable_qi(iommu);
-	if (!ret) {
-		iommu_set_irq_remapping(iommu, eim);
-	} else {
-		pr_err("DRHD %Lx: failed to enable queued invalidation, ecap %Lx, ret %d\n",
-		       iommu->reg_phys, iommu->ecap, ret);
 		intel_teardown_irq_remapping(iommu);
 		ir_remove_ioapic_hpet_scope(iommu);
+	} else {
+		iommu_set_irq_remapping(iommu, eim);
 	}
 
 	return ret;
