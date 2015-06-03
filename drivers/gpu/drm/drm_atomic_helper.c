@@ -280,6 +280,8 @@ mode_fixup(struct drm_atomic_state *state)
 		 */
 		encoder = conn_state->best_encoder;
 		funcs = encoder->helper_private;
+		if (!funcs)
+			continue;
 
 		if (encoder->bridge && encoder->bridge->funcs->mode_fixup) {
 			ret = encoder->bridge->funcs->mode_fixup(
@@ -317,6 +319,9 @@ mode_fixup(struct drm_atomic_state *state)
 			continue;
 
 		funcs = crtc->helper_private;
+		if (!funcs->mode_fixup)
+			continue;
+
 		ret = funcs->mode_fixup(crtc, &crtc_state->mode,
 					&crtc_state->adjusted_mode);
 		if (!ret) {
@@ -619,8 +624,22 @@ disable_outputs(struct drm_device *dev, struct drm_atomic_state *old_state)
 	}
 }
 
-static void
-set_routing_links(struct drm_device *dev, struct drm_atomic_state *old_state)
+/**
+ * drm_atomic_helper_update_legacy_modeset_state - update legacy modeset state
+ * @dev: DRM device
+ * @old_state: atomic state object with old state structures
+ *
+ * This function updates all the various legacy modeset state pointers in
+ * connectors, encoders and crtcs. It also updates the timestamping constants
+ * used for precise vblank timestamps by calling
+ * drm_calc_timestamping_constants().
+ *
+ * Drivers can use this for building their own atomic commit if they don't have
+ * a pure helper-based modeset implementation.
+ */
+void
+drm_atomic_helper_update_legacy_modeset_state(struct drm_device *dev,
+					      struct drm_atomic_state *old_state)
 {
 	struct drm_connector *connector;
 	struct drm_connector_state *old_conn_state;
@@ -657,8 +676,13 @@ set_routing_links(struct drm_device *dev, struct drm_atomic_state *old_state)
 		crtc->enabled = crtc->state->enable;
 		crtc->x = crtc->primary->state->src_x >> 16;
 		crtc->y = crtc->primary->state->src_y >> 16;
+
+		if (crtc->state->enable)
+			drm_calc_timestamping_constants(crtc,
+							&crtc->state->adjusted_mode);
 	}
 }
+EXPORT_SYMBOL(drm_atomic_helper_update_legacy_modeset_state);
 
 static void
 crtc_set_mode(struct drm_device *dev, struct drm_atomic_state *old_state)
@@ -737,7 +761,9 @@ void drm_atomic_helper_commit_modeset_disables(struct drm_device *dev,
 					       struct drm_atomic_state *old_state)
 {
 	disable_outputs(dev, old_state);
-	set_routing_links(dev, old_state);
+
+	drm_atomic_helper_update_legacy_modeset_state(dev, old_state);
+
 	crtc_set_mode(dev, old_state);
 }
 EXPORT_SYMBOL(drm_atomic_helper_commit_modeset_disables);
@@ -1130,15 +1156,14 @@ void drm_atomic_helper_commit_planes(struct drm_device *dev,
 		if (!funcs)
 			continue;
 
-		old_plane_state = old_state->plane_states[i];
-
 		/*
 		 * Special-case disabling the plane if drivers support it.
 		 */
 		if (drm_atomic_plane_disabling(plane, old_plane_state) &&
 		    funcs->atomic_disable)
 			funcs->atomic_disable(plane, old_plane_state);
-		else
+		else if (plane->state->crtc ||
+			 drm_atomic_plane_disabling(plane, old_plane_state))
 			funcs->atomic_update(plane, old_plane_state);
 	}
 
@@ -1309,12 +1334,12 @@ retry:
 	plane_state->src_h = src_h;
 	plane_state->src_w = src_w;
 
+	if (plane == crtc->cursor)
+		state->legacy_cursor_update = true;
+
 	ret = drm_atomic_commit(state);
 	if (ret != 0)
 		goto fail;
-
-	if (plane == crtc->cursor)
-		state->legacy_cursor_update = true;
 
 	/* Driver takes ownership of state on successful commit. */
 	return 0;
