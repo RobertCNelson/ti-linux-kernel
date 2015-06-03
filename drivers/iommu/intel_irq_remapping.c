@@ -8,6 +8,7 @@
 #include <linux/irq.h>
 #include <linux/intel-iommu.h>
 #include <linux/acpi.h>
+#include <linux/crash_dump.h>
 #include <asm/io_apic.h>
 #include <asm/smp.h>
 #include <asm/cpu.h>
@@ -666,11 +667,12 @@ static int __init intel_enable_irq_remapping(void)
 
 		iommu_check_pre_ir_status(iommu);
 
-		/*
-		 * Here we do not disable intr remapping,
-		 * if already enabled prior to OS handover.
-		 */
-		/* iommu_disable_irq_remapping(iommu); */
+		if (!is_kdump_kernel() && iommu->pre_enabled_ir) {
+			iommu_disable_irq_remapping(iommu);
+			iommu->pre_enabled_ir = 0;
+			pr_warn("IRQ remapping was enabled on %s but we are not in kdump mode\n",
+				iommu->name);
+		}
 
 		dmar_disable_qi(iommu);
 	}

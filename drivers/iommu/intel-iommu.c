@@ -40,6 +40,7 @@
 #include <linux/pci-ats.h>
 #include <linux/memblock.h>
 #include <linux/dma-contiguous.h>
+#include <linux/crash_dump.h>
 #include <asm/irq_remapping.h>
 #include <asm/cacheflush.h>
 #include <asm/iommu.h>
@@ -2943,6 +2944,19 @@ static int __init init_dmars(void)
 			goto free_iommu;
 
 		iommu_check_pre_te_status(iommu);
+
+		/*
+		 * We don't even try to preserve anything when we are not in a
+		 * kdump kernel.
+		 */
+		if (!is_kdump_kernel() && iommu->pre_enabled_trans) {
+			iommu_disable_translation(iommu);
+			iommu->pre_enabled_trans = 0;
+			g_translation_pre_enabled = 0;
+			pr_warn("Translation was enabled for %s but we are not in kdump mode\n",
+					iommu->name);
+		}
+
 		if (iommu->pre_enabled_trans) {
 			pr_info("IOMMU Copying translate tables from panicked kernel\n");
 			ret = intel_iommu_load_translation_tables(iommu);
