@@ -203,6 +203,8 @@ next/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig2-for-v4.2
 	imx/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-defconfig-4.2
+	patch
+		ARM: multi_v7_defconfig: enable usb3503
 
 next/drivers
 	drivers/simple-mfd
