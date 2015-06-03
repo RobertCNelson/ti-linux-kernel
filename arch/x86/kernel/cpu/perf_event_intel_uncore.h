@@ -97,6 +97,7 @@ struct intel_uncore_box {
 	atomic_t refcnt;
 	struct perf_event *events[UNCORE_PMC_IDX_MAX];
 	struct perf_event *event_list[UNCORE_PMC_IDX_MAX];
+	struct event_constraint *event_constraint[UNCORE_PMC_IDX_MAX];
 	unsigned long active_mask[BITS_TO_LONGS(UNCORE_PMC_IDX_MAX)];
 	u64 tags[UNCORE_PMC_IDX_MAX];
 	struct pci_dev *pci_dev;
@@ -326,6 +327,7 @@ extern struct event_constraint uncore_constraint_empty;
 int snb_uncore_pci_init(void);
 int ivb_uncore_pci_init(void);
 int hsw_uncore_pci_init(void);
+int bdw_uncore_pci_init(void);
 void snb_uncore_cpu_init(void);
 void nhm_uncore_cpu_init(void);
 

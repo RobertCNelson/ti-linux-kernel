@@ -134,6 +134,17 @@ static int __clockevents_set_state(struct clock_event_device *dev,
 			return -ENOSYS;
 		return dev->set_state_oneshot(dev);
 
+	case CLOCK_EVT_STATE_ONESHOT_STOPPED:
+		/* Core internal bug */
+		if (WARN_ONCE(dev->state != CLOCK_EVT_STATE_ONESHOT,
+			      "Current state: %d\n", dev->state))
+			return -EINVAL;
+
+		if (dev->set_state_oneshot_stopped)
+			return dev->set_state_oneshot_stopped(dev);
+		else
+			return -ENOSYS;
+
 	default:
 		return -ENOSYS;
 	}
@@ -320,6 +331,10 @@ int clockevents_program_event(struct clock_event_device *dev, ktime_t expires,
 	if (dev->state == CLOCK_EVT_STATE_SHUTDOWN)
 		return 0;
 
+	/* We must be in ONESHOT state here */
+	WARN_ONCE(dev->state != CLOCK_EVT_STATE_ONESHOT, "Current state: %d\n",
+		  dev->state);
+
 	/* Shortcut for clockevent devices that can deal with ktime. */
 	if (dev->features & CLOCK_EVT_FEAT_KTIME)
 		return dev->set_next_ktime(expires, dev);
@@ -445,7 +460,8 @@ static int clockevents_sanity_check(struct clock_event_device *dev)
 	if (dev->set_mode) {
 		/* We shouldn't be supporting new modes now */
 		WARN_ON(dev->set_state_periodic || dev->set_state_oneshot ||
-			dev->set_state_shutdown || dev->tick_resume);
+			dev->set_state_shutdown || dev->tick_resume ||
+			dev->set_state_oneshot_stopped);
 
 		BUG_ON(dev->mode != CLOCK_EVT_MODE_UNUSED);
 		return 0;
@@ -622,7 +638,7 @@ void clockevents_suspend(void)
 	struct clock_event_device *dev;
 
 	list_for_each_entry_reverse(dev, &clockevent_devices, list)
-		if (dev->suspend)
+		if (dev->suspend && dev->mode != CLOCK_EVT_MODE_UNUSED)
 			dev->suspend(dev);
 }
 
@@ -634,7 +650,7 @@ void clockevents_resume(void)
 	struct clock_event_device *dev;
 
 	list_for_each_entry(dev, &clockevent_devices, list)
-		if (dev->resume)
+		if (dev->resume && dev->mode != CLOCK_EVT_MODE_UNUSED)
 			dev->resume(dev);
 }
 
