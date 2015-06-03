@@ -604,7 +604,8 @@ static int rcar_unreg_slave(struct i2c_client *slave)
 static u32 rcar_i2c_func(struct i2c_adapter *adap)
 {
 	/* This HW can't do SMBUS_QUICK and NOSTART */
-	return I2C_FUNC_I2C | (I2C_FUNC_SMBUS_EMUL & ~I2C_FUNC_SMBUS_QUICK);
+	return I2C_FUNC_I2C | I2C_FUNC_SLAVE |
+		(I2C_FUNC_SMBUS_EMUL & ~I2C_FUNC_SMBUS_QUICK);
 }
 
 static const struct i2c_algorithm rcar_i2c_algo = {
@@ -713,7 +714,7 @@ static int rcar_i2c_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct platform_device_id rcar_i2c_id_table[] = {
+static const struct platform_device_id rcar_i2c_id_table[] = {
 	{ "i2c-rcar",		I2C_RCAR_GEN1 },
 	{ "i2c-rcar_gen1",	I2C_RCAR_GEN1 },
 	{ "i2c-rcar_gen2",	I2C_RCAR_GEN2 },
