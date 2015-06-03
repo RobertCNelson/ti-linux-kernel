@@ -49,6 +49,8 @@
 #define DM_CACHE_FEATURE_COMPAT_RO_SUPP	  0UL
 #define DM_CACHE_FEATURE_INCOMPAT_SUPP	  0UL
 
+#define CACHE_METADATA_NEEDS_CHECK_FLAG (1 << 0)
+
 /*
  * Reopens or creates a new, empty metadata volume.
  * Returns an ERR_PTR on failure.
@@ -102,6 +104,10 @@ struct dm_cache_statistics {
 
 void dm_cache_metadata_get_stats(struct dm_cache_metadata *cmd,
 				 struct dm_cache_statistics *stats);
+
+/*
+ * 'void' because it's no big deal if it fails.
+ */
 void dm_cache_metadata_set_stats(struct dm_cache_metadata *cmd,
 				 struct dm_cache_statistics *stats);
 
@@ -132,6 +138,12 @@ int dm_cache_write_hints(struct dm_cache_metadata *cmd, struct dm_cache_policy *
  * Query method.  Are all the blocks in the cache clean?
  */
 int dm_cache_metadata_all_clean(struct dm_cache_metadata *cmd, bool *result);
+
+bool dm_cache_metadata_needs_check(struct dm_cache_metadata *cmd);
+int dm_cache_metadata_set_needs_check(struct dm_cache_metadata *cmd);
+void dm_cache_metadata_set_read_only(struct dm_cache_metadata *cmd);
+void dm_cache_metadata_set_read_write(struct dm_cache_metadata *cmd);
+int dm_cache_metadata_abort(struct dm_cache_metadata *cmd);
 
 /*----------------------------------------------------------------*/
 
