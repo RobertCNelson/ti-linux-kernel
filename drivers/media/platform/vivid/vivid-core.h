@@ -77,7 +77,6 @@ extern const struct v4l2_rect vivid_max_rect;
 extern unsigned vivid_debug;
 
 struct vivid_fmt {
-	const char *name;
 	u32	fourcc;          /* v4l2 format id */
 	bool	is_yuv;
 	bool	can_do_overlay;
@@ -447,6 +446,8 @@ struct vivid_dev {
 	/* SDR capture */
 	struct vb2_queue		vb_sdr_cap_q;
 	struct list_head		sdr_cap_active;
+	u32				sdr_pixelformat; /* v4l2 format id */
+	unsigned			sdr_buffersize;
 	unsigned			sdr_adc_freq;
 	unsigned			sdr_fm_freq;
 	int				sdr_fixp_src_phase;
