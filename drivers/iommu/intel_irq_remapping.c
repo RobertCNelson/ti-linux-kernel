@@ -21,7 +21,7 @@
 
 #include "irq_remapping.h"
 
-static int __iommu_load_old_irte(struct intel_iommu *iommu);
+static int iommu_load_old_irte(struct intel_iommu *iommu);
 static int __iommu_update_old_irte(struct intel_iommu *iommu, int index);
 static void iommu_check_pre_ir_status(struct intel_iommu *iommu);
 
@@ -698,14 +698,7 @@ static int __init intel_enable_irq_remapping(void)
 	 */
 	for_each_iommu(iommu, drhd) {
 		if (iommu->pre_enabled_ir) {
-			unsigned long long q;
-
-			q = dmar_readq(iommu->reg + DMAR_IRTA_REG);
-			iommu->ir_table->base_old_phys = q & VTD_PAGE_MASK;
-			iommu->ir_table->base_old_virt = ioremap_cache(
-				iommu->ir_table->base_old_phys,
-				INTR_REMAP_TABLE_ENTRIES*sizeof(struct irte));
-			__iommu_load_old_irte(iommu);
+			iommu_load_old_irte(iommu);
 		} else {
 			iommu_set_irq_remapping(iommu, eim_mode);
 			iommu_enable_irq_remapping(iommu);
@@ -1303,21 +1296,34 @@ int dmar_ir_hotplug(struct dmar_drhd_unit *dmaru, bool insert)
 	return ret;
 }
 
-static int __iommu_load_old_irte(struct intel_iommu *iommu)
+static int iommu_load_old_irte(struct intel_iommu *iommu)
 {
-	if ((!iommu)
-		|| (!iommu->ir_table)
-		|| (!iommu->ir_table->base)
-		|| (!iommu->ir_table->base_old_phys)
-		|| (!iommu->ir_table->base_old_virt))
-		return -1;
+	struct irte *old_ir_table;
+	phys_addr_t irt_phys;
+	size_t size;
+	u64 irta;
 
-	memcpy(iommu->ir_table->base,
-		iommu->ir_table->base_old_virt,
-		INTR_REMAP_TABLE_ENTRIES*sizeof(struct irte));
+	/* Check whether the old ir-table has the same size as ours */
+	irta = dmar_readq(iommu->reg + DMAR_IRTA_REG);
+	if ((irta & INTR_REMAP_TABLE_REG_SIZE_MASK)
+		 != INTR_REMAP_TABLE_REG_SIZE)
+		return -EINVAL;
 
-	__iommu_flush_cache(iommu, iommu->ir_table->base,
-		INTR_REMAP_TABLE_ENTRIES*sizeof(struct irte));
+	irt_phys = irta & VTD_PAGE_MASK;
+	size     = INTR_REMAP_TABLE_ENTRIES*sizeof(struct irte);
+
+	/* Map the old IR table */
+	old_ir_table = ioremap_cache(irt_phys, size);
+	if (!old_ir_table)
+		return -ENOMEM;
+
+	/* Copy data over */
+	memcpy(iommu->ir_table->base, old_ir_table, size);
+
+	__iommu_flush_cache(iommu, iommu->ir_table->base, size);
+
+	iommu->ir_table->base_old_phys = irt_phys;
+	iommu->ir_table->base_old_virt = old_ir_table;
 
 	return 0;
 }
@@ -1327,7 +1333,7 @@ static int __iommu_update_old_irte(struct intel_iommu *iommu, int index)
 	int start;
 	unsigned long size;
 	void __iomem *to;
-	void *from;
+void *from;
 
 	if ((!iommu)
 		|| (!iommu->ir_table)
