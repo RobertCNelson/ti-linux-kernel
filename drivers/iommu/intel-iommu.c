@@ -367,10 +367,6 @@ static inline int first_pte_in_page(struct dma_pte *pte)
  * do the same thing as crashdump kernel.
  */
 
-static struct context_entry *device_to_existing_context_entry(
-				struct intel_iommu *iommu,
-				u8 bus, u8 devfn);
-
 /*
  * A structure used to store the address allocated by ioremap();
  * The we need to call iounmap() to free them out of spin_lock_irqsave/unlock;
@@ -2330,7 +2326,6 @@ static struct dmar_domain *get_domain_for_dev(struct device *dev, int gaw)
 	unsigned long flags;
 	u8 bus, devfn;
 	int did = -1;   /* Default to "no domain_id supplied" */
-	struct context_entry *ce = NULL;
 
 	domain = find_domain(dev);
 	if (domain)
@@ -2364,19 +2359,6 @@ static struct dmar_domain *get_domain_for_dev(struct device *dev, int gaw)
 	domain = alloc_domain(0);
 	if (!domain)
 		return NULL;
-
-	if (iommu->pre_enabled_trans) {
-		/*
-		 * if this device had a did in the old kernel
-		 * use its values instead of generating new ones
-		 */
-		ce = device_to_existing_context_entry(iommu, bus, devfn);
-
-		if (ce) {
-			did = context_domain_id(ce);
-			gaw = agaw_to_width(context_address_width(ce));
-		}
-	}
 
 	domain->id = iommu_attach_domain_with_id(domain, iommu, did);
 	if (domain->id < 0) {
@@ -4924,49 +4906,37 @@ static void __init check_tylersburg_isoch(void)
 	       vtisochctrl);
 }
 
-static struct context_entry *device_to_existing_context_entry(
-				struct intel_iommu *iommu,
-				u8 bus, u8 devfn)
-{
-	struct root_entry *root;
-	struct context_entry *context;
-	struct context_entry *ret = NULL;
-	unsigned long flags;
-
-	spin_lock_irqsave(&iommu->lock, flags);
-	root = &iommu->root_entry[bus];
-	context = get_context_addr_from_root(root);
-	if (context && context_present(context+devfn))
-		ret = &context[devfn];
-	spin_unlock_irqrestore(&iommu->lock, flags);
-	return ret;
-}
-
 /*
- * Copy memory from a physically-addressed area into a virtually-addressed area
+ * Copy one context table
  */
-static int copy_from_oldmem_phys(void *to, phys_addr_t from, size_t size)
+static int copy_one_context_table(struct intel_iommu *iommu,
+				  struct context_entry *ctxt_tbl,
+				  phys_addr_t old_table_phys)
 {
-	void __iomem *virt_mem;
-	unsigned long offset;
-	unsigned long pfn;
+	struct context_entry __iomem *ctxt_tbl_old, ce;
+	int did, devfn;
 
-	pfn    = from >> VTD_PAGE_SHIFT;
-	offset = from & (~VTD_PAGE_MASK);
+	ctxt_tbl_old = ioremap_cache(old_table_phys, VTD_PAGE_SIZE);
+	if (!ctxt_tbl_old)
+		return -ENOMEM;
 
-	if (page_is_ram(pfn)) {
-		memcpy(to, pfn_to_kaddr(pfn) + offset, size);
-	} else {
-		virt_mem = ioremap_cache((unsigned long)from, size);
-		if (!virt_mem)
-			return -ENOMEM;
+	for (devfn = 0; devfn < 256; devfn++) {
+		memcpy_fromio(&ce, &ctxt_tbl_old[devfn],
+			      sizeof(struct context_entry));
 
-		memcpy(to, virt_mem, size);
+		if (!context_present(&ce))
+			continue;
 
-		iounmap(virt_mem);
+		did = context_domain_id(&ce);
+		if (did >=0 && did < cap_ndoms(iommu->cap))
+			set_bit(did, iommu->domain_ids);
+
+		ctxt_tbl[devfn] = ce;
 	}
 
-	return size;
+	iounmap(ctxt_tbl_old);
+
+	return 0;
 }
 
 /*
@@ -4995,9 +4965,9 @@ static int copy_context_tables(struct intel_iommu *iommu,
 		if (!context_new_virt)
 			goto out_err;
 
-		ret = copy_from_oldmem_phys(context_new_virt, context_old_phys,
-					    VTD_PAGE_SIZE);
-		if (ret != VTD_PAGE_SIZE) {
+		ret = copy_one_context_table(iommu, context_new_virt,
+					     context_old_phys);
+		if (ret) {
 			pr_err("Failed to copy context table for bus %d from physical address 0x%llx\n",
 			       bus, context_old_phys);
 			free_pgtable_page(context_new_virt);
