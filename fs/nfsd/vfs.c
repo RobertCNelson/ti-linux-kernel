@@ -217,10 +217,16 @@ nfsd_lookup_dentry(struct svc_rqst *rqstp, struct svc_fh *fhp,
 		host_err = PTR_ERR(dentry);
 		if (IS_ERR(dentry))
 			goto out_nfserr;
-		/*
-		 * check if we have crossed a mount point ...
-		 */
 		if (nfsd_mountpoint(dentry, exp)) {
+			/*
+			 * We don't need the i_mutex after all.  It's
+			 * still possible we could open this (regular
+			 * files can be mountpoints too), but the
+			 * i_mutex is just there to prevent renames of
+			 * something that we might be about to delegate,
+			 * and a mountpoint won't be renamed:
+			 */
+			fh_unlock(fhp);
 			if ((host_err = nfsd_cross_mnt(rqstp, &dentry, &exp))) {
 				dput(dentry);
 				goto out_nfserr;
@@ -302,42 +308,6 @@ commit_metadata(struct svc_fh *fhp)
 static void
 nfsd_sanitize_attrs(struct inode *inode, struct iattr *iap)
 {
-	/*
-	 * NFSv2 does not differentiate between "set-[ac]time-to-now"
-	 * which only requires access, and "set-[ac]time-to-X" which
-	 * requires ownership.
-	 * So if it looks like it might be "set both to the same time which
-	 * is close to now", and if inode_change_ok fails, then we
-	 * convert to "set to now" instead of "set to explicit time"
-	 *
-	 * We only call inode_change_ok as the last test as technically
-	 * it is not an interface that we should be using.
-	 */
-#define BOTH_TIME_SET (ATTR_ATIME_SET | ATTR_MTIME_SET)
-#define	MAX_TOUCH_TIME_ERROR (30*60)
-	if ((iap->ia_valid & BOTH_TIME_SET) == BOTH_TIME_SET &&
-	    iap->ia_mtime.tv_sec == iap->ia_atime.tv_sec) {
-		/*
-		 * Looks probable.
-		 *
-		 * Now just make sure time is in the right ballpark.
-		 * Solaris, at least, doesn't seem to care what the time
-		 * request is.  We require it be within 30 minutes of now.
-		 */
-		time_t delta = iap->ia_atime.tv_sec - get_seconds();
-		if (delta < 0)
-			delta = -delta;
-		if (delta < MAX_TOUCH_TIME_ERROR &&
-		    inode_change_ok(inode, iap) != 0) {
-			/*
-			 * Turn off ATTR_[AM]TIME_SET but leave ATTR_[AM]TIME.
-			 * This will cause notify_change to set these times
-			 * to "now"
-			 */
-			iap->ia_valid &= ~BOTH_TIME_SET;
-		}
-	}
-
 	/* sanitize the mode change */
 	if (iap->ia_valid & ATTR_MODE) {
 		iap->ia_mode &= S_IALLUGO;
@@ -744,7 +714,7 @@ nfsd_open(struct svc_rqst *rqstp, struct svc_fh *fhp, umode_t type,
 
 	host_err = ima_file_check(file, may_flags, 0);
 	if (host_err) {
-		nfsd_close(file);
+		fput(file);
 		goto out_nfserr;
 	}
 
@@ -759,15 +729,6 @@ out_nfserr:
 out:
 	validate_process_creds();
 	return err;
-}
-
-/*
- * Close a file.
- */
-void
-nfsd_close(struct file *filp)
-{
-	fput(filp);
 }
 
 /*
@@ -1040,7 +1001,7 @@ void nfsd_put_tmp_read_open(struct file *file, struct raparms *ra)
 		ra->p_count--;
 		spin_unlock(&rab->pb_lock);
 	}
-	nfsd_close(file);
+	fput(file);
 }
 
 /*
@@ -1093,7 +1054,7 @@ nfsd_write(struct svc_rqst *rqstp, struct svc_fh *fhp, struct file *file,
 		if (cnt)
 			err = nfsd_vfs_write(rqstp, fhp, file, offset, vec, vlen,
 					     cnt, stablep);
-		nfsd_close(file);
+		fput(file);
 	}
 out:
 	return err;
@@ -1138,7 +1099,7 @@ nfsd_commit(struct svc_rqst *rqstp, struct svc_fh *fhp,
 			err = nfserr_notsupp;
 	}
 
-	nfsd_close(file);
+	fput(file);
 out:
 	return err;
 }
@@ -1885,7 +1846,6 @@ static __be32 nfsd_buffered_readdir(struct file *file, nfsd_filldir_t func,
 	offset = *offsetp;
 
 	while (1) {
-		struct inode *dir_inode = file_inode(file);
 		unsigned int reclen;
 
 		cdp->err = nfserr_eof; /* will be cleared on successful read */
@@ -1904,15 +1864,6 @@ static __be32 nfsd_buffered_readdir(struct file *file, nfsd_filldir_t func,
 		if (!size)
 			break;
 
-		/*
-		 * Various filldir functions may end up calling back into
-		 * lookup_one_len() and the file system's ->lookup() method.
-		 * These expect i_mutex to be held, as it would within readdir.
-		 */
-		host_err = mutex_lock_killable(&dir_inode->i_mutex);
-		if (host_err)
-			break;
-
 		de = (struct buffered_dirent *)buf.dirent;
 		while (size > 0) {
 			offset = de->offset;
@@ -1929,7 +1880,6 @@ static __be32 nfsd_buffered_readdir(struct file *file, nfsd_filldir_t func,
 			size -= reclen;
 			de = (struct buffered_dirent *)((char *)de + reclen);
 		}
-		mutex_unlock(&dir_inode->i_mutex);
 		if (size > 0) /* We bailed out early */
 			break;
 
@@ -1977,7 +1927,7 @@ nfsd_readdir(struct svc_rqst *rqstp, struct svc_fh *fhp, loff_t *offsetp,
 	if (err == nfserr_eof || err == nfserr_toosmall)
 		err = nfs_ok; /* can still be found in ->err */
 out_close:
-	nfsd_close(file);
+	fput(file);
 out:
 	return err;
 }
