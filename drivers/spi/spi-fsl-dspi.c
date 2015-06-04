@@ -341,10 +341,10 @@ static int dspi_transfer_one_message(struct spi_master *master,
 		dspi->cur_msg = message;
 		dspi->cur_chip = spi_get_ctldata(spi);
 		dspi->cs = spi->chip_select;
+		dspi->cs_change = 0;
 		if (dspi->cur_transfer->transfer_list.next
 				== &dspi->cur_msg->transfers)
-			transfer->cs_change = 1;
-		dspi->cs_change = transfer->cs_change;
+			dspi->cs_change = 1;
 		dspi->void_write_data = dspi->cur_chip->void_write_data;
 
 		dspi->dataflags = 0;
@@ -566,7 +566,7 @@ static int dspi_probe(struct platform_device *pdev)
 		goto out_master_put;
 	}
 
-	dspi->regmap = devm_regmap_init_mmio_clk(&pdev->dev, "dspi", base,
+	dspi->regmap = devm_regmap_init_mmio_clk(&pdev->dev, NULL, base,
 						&dspi_regmap_config);
 	if (IS_ERR(dspi->regmap)) {
 		dev_err(&pdev->dev, "failed to init regmap: %ld\n",
