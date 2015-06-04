@@ -301,6 +301,8 @@ struct q_inval {
 struct ir_table {
 	struct irte *base;
 	unsigned long *bitmap;
+	void __iomem *base_old_virt;
+	unsigned long base_old_phys;
 };
 #endif
 
@@ -340,6 +342,12 @@ struct intel_iommu {
 	spinlock_t	lock; /* protect context, domain ids */
 	struct root_entry *root_entry; /* virtual address */
 
+	/* whether translation is enabled prior to OS*/
+	u8		pre_enabled_trans;
+
+	void __iomem	*root_entry_old_virt; /* mapped from old root entry */
+	unsigned long	root_entry_old_phys; /* root entry in old kernel */
+
 	struct iommu_flush flush;
 #endif
 	struct q_inval  *qi;            /* Queued invalidation info */
@@ -347,6 +355,9 @@ struct intel_iommu {
 
 #ifdef CONFIG_IRQ_REMAP
 	struct ir_table *ir_table;	/* Interrupt remapping info */
+
+	/* whether interrupt remapping is enabled prior to OS*/
+	u8		pre_enabled_ir;
 #endif
 	struct device	*iommu_dev; /* IOMMU-sysfs device */
 	int		node;
@@ -379,5 +390,11 @@ extern int qi_submit_sync(struct qi_desc *desc, struct intel_iommu *iommu);
 extern int dmar_ir_support(void);
 
 extern const struct attribute_group *intel_iommu_groups[];
+
+extern int __iommu_load_from_oldmem(void *to, unsigned long from,
+					unsigned long size);
+extern int __iommu_save_to_oldmem(unsigned long to, void *from,
+					unsigned long size);
+extern int __iommu_free_mapped_mem(void);
 
 #endif
