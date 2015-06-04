@@ -955,6 +955,14 @@ sys_call_table:
 	.long sys_process_vm_writev
 	.long sys_kcmp			/* 350 */
 	.long sys_finit_module
+	.long _sys_sched_setattr
+	.long _sys_sched_getattr
+	.long _sys_renameat2
+	.long _sys_seccomp		/* 355 */
+	.long _sys_getrandom
+	.long _sys_memfd_create
+	.long _sys_bpf
+	.long _sys_execveat
 
         /*
          * NOTE!! This doesn't have to be exact - we just have
