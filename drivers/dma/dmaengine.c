@@ -267,6 +267,13 @@ static void dma_chan_put(struct dma_chan *chan)
 	/* This channel is not in use anymore, free it */
 	if (!chan->client_count && chan->device->device_free_chan_resources)
 		chan->device->device_free_chan_resources(chan);
+
+	/* If the channel is used via a DMA request router, free the mapping */
+	if (chan->router && chan->router->route_free) {
+		chan->router->route_free(chan->router->dev, chan->route_data);
+		chan->router = NULL;
+		chan->route_data = NULL;
+	}
 }
 
 enum dma_status dma_sync_wait(struct dma_chan *chan, dma_cookie_t cookie)
@@ -532,7 +539,7 @@ static struct dma_chan *private_candidate(const dma_cap_mask_t *mask,
 }
 
 /**
- * dma_request_slave_channel - try to get specific channel exclusively
+ * dma_get_slave_channel - try to get specific channel exclusively
  * @chan: target channel
  */
 struct dma_chan *dma_get_slave_channel(struct dma_chan *chan)
@@ -644,7 +651,7 @@ struct dma_chan *__dma_request_channel(const dma_cap_mask_t *mask,
 EXPORT_SYMBOL_GPL(__dma_request_channel);
 
 /**
- * dma_request_slave_channel - try to allocate an exclusive slave channel
+ * dma_request_slave_channel_reason - try to allocate an exclusive slave channel
  * @dev:	pointer to client device structure
  * @name:	slave channel name
  *
