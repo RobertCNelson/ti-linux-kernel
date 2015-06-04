@@ -53,9 +53,12 @@
 static DEFINE_MUTEX(mce_chrdev_read_mutex);
 
 #define rcu_dereference_check_mce(p) \
-	rcu_dereference_index_check((p), \
-			      rcu_read_lock_sched_held() || \
-			      lockdep_is_held(&mce_chrdev_read_mutex))
+({ \
+	rcu_lockdep_assert(rcu_read_lock_sched_held() || \
+			   lockdep_is_held(&mce_chrdev_read_mutex), \
+			   "suspicious rcu_dereference_check_mce() usage"); \
+	smp_load_acquire(&(p)); \
+})
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/mce.h>
@@ -1640,10 +1643,16 @@ static void __mcheck_cpu_init_vendor(struct cpuinfo_x86 *c)
 		mce_intel_feature_init(c);
 		mce_adjust_timer = cmci_intel_adjust_timer;
 		break;
-	case X86_VENDOR_AMD:
+
+	case X86_VENDOR_AMD: {
+		u32 ebx = cpuid_ebx(0x80000007);
+
 		mce_amd_feature_init(c);
-		mce_flags.overflow_recov = cpuid_ebx(0x80000007) & 0x1;
+		mce_flags.overflow_recov = !!(ebx & BIT(0));
+		mce_flags.succor	 = !!(ebx & BIT(1));
 		break;
+		}
+
 	default:
 		break;
 	}
@@ -1887,7 +1896,7 @@ out:
 static unsigned int mce_chrdev_poll(struct file *file, poll_table *wait)
 {
 	poll_wait(file, &mce_chrdev_wait, wait);
-	if (rcu_access_index(mcelog.next))
+	if (READ_ONCE(mcelog.next))
 		return POLLIN | POLLRDNORM;
 	if (!mce_apei_read_done && apei_check_mce())
 		return POLLIN | POLLRDNORM;
@@ -1932,8 +1941,8 @@ void register_mce_write_callback(ssize_t (*fn)(struct file *filp,
 }
 EXPORT_SYMBOL_GPL(register_mce_write_callback);
 
-ssize_t mce_chrdev_write(struct file *filp, const char __user *ubuf,
-			 size_t usize, loff_t *off)
+static ssize_t mce_chrdev_write(struct file *filp, const char __user *ubuf,
+				size_t usize, loff_t *off)
 {
 	if (mce_write)
 		return mce_write(filp, ubuf, usize, off);
@@ -2011,11 +2020,8 @@ static int __init mcheck_enable(char *str)
 	else if (!strcmp(str, "bios_cmci_threshold"))
 		cfg->bios_cmci_threshold = true;
 	else if (isdigit(str[0])) {
-		get_option(&str, &(cfg->tolerant));
-		if (*str == ',') {
-			++str;
+		if (get_option(&str, &cfg->tolerant) == 2)
 			get_option(&str, &(cfg->monarch_timeout));
-		}
 	} else {
 		pr_info("mce argument %s ignored. Please use /sys\n", str);
 		return 0;
