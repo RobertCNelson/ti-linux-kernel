@@ -3201,6 +3201,12 @@ static bool fs_fully_visible(struct file_system_type *type, int *new_mnt_flags)
 		if ((mnt->mnt.mnt_flags & MNT_LOCK_NODEV) &&
 		    !(new_flags & MNT_NODEV))
 			continue;
+		if ((mnt->mnt.mnt_flags & MNT_LOCK_NOSUID) &&
+		    !(new_flags & MNT_NOSUID))
+			continue;
+		if ((mnt->mnt.mnt_flags & MNT_LOCK_NOEXEC) &&
+		    !(new_flags & MNT_NOEXEC))
+			continue;
 		if ((mnt->mnt.mnt_flags & MNT_LOCK_ATIME) &&
 		    ((mnt->mnt.mnt_flags & MNT_ATIME_MASK) != (new_flags & MNT_ATIME_MASK)))
 			continue;
@@ -3218,6 +3224,8 @@ static bool fs_fully_visible(struct file_system_type *type, int *new_mnt_flags)
 		/* Preserve the locked attributes */
 		*new_mnt_flags |= mnt->mnt.mnt_flags & (MNT_LOCK_READONLY | \
 							MNT_LOCK_NODEV    | \
+							MNT_LOCK_NOSUID   | \
+							MNT_LOCK_NOEXEC   | \
 							MNT_LOCK_ATIME);
 		visible = true;
 		goto found;
