@@ -20,6 +20,7 @@
 #include <linux/kobject.h>
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
+#include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/io.h>
