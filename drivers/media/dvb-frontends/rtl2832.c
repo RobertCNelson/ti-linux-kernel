@@ -358,6 +358,10 @@ static int rtl2832_init(struct dvb_frontend *fe)
 	dev_dbg(&client->dev, "load settings for tuner=%02x\n",
 		dev->pdata->tuner);
 	switch (dev->pdata->tuner) {
+	case RTL2832_TUNER_FC2580:
+		len = ARRAY_SIZE(rtl2832_tuner_init_fc2580);
+		init = rtl2832_tuner_init_fc2580;
+		break;
 	case RTL2832_TUNER_FC0012:
 	case RTL2832_TUNER_FC0013:
 		len = ARRAY_SIZE(rtl2832_tuner_init_fc0012);
@@ -375,6 +379,10 @@ static int rtl2832_init(struct dvb_frontend *fe)
 	case RTL2832_TUNER_R828D:
 		len = ARRAY_SIZE(rtl2832_tuner_init_r820t);
 		init = rtl2832_tuner_init_r820t;
+		break;
+	case RTL2832_TUNER_SI2157:
+		len = ARRAY_SIZE(rtl2832_tuner_init_si2157);
+		init = rtl2832_tuner_init_si2157;
 		break;
 	default:
 		ret = -EINVAL;
