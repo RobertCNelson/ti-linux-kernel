@@ -198,8 +198,7 @@ static inline bool root_present(struct root_entry *root)
 
 static inline void set_root_value(struct root_entry *root, unsigned long value)
 {
-	root->lo &= ~VTD_PAGE_MASK;
-	root->lo |= value & VTD_PAGE_MASK;
+	root->lo = (value & VTD_PAGE_MASK) | 1;
 }
 
 static inline struct context_entry *
