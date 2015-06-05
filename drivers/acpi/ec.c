@@ -70,8 +70,7 @@ enum ec_command {
 
 #define ACPI_EC_DELAY		500	/* Wait 500ms max. during EC ops */
 #define ACPI_EC_UDELAY_GLK	1000	/* Wait 1ms max. to get global lock */
-#define ACPI_EC_MSI_UDELAY	550	/* Wait 550us for MSI EC */
-#define ACPI_EC_UDELAY_POLL	1000	/* Wait 1ms for EC transaction polling */
+#define ACPI_EC_UDELAY_POLL	550	/* Wait 1ms for EC transaction polling */
 #define ACPI_EC_CLEAR_MAX	100	/* Maximum number of events to query
 					 * when trying to clear the EC */
 
@@ -92,6 +91,14 @@ enum {
 static unsigned int ec_delay __read_mostly = ACPI_EC_DELAY;
 module_param(ec_delay, uint, 0644);
 MODULE_PARM_DESC(ec_delay, "Timeout(ms) waited until an EC command completes");
+
+static bool ec_busy_polling __read_mostly;
+module_param(ec_busy_polling, bool, 0644);
+MODULE_PARM_DESC(ec_busy_polling, "Use busy polling to advance EC transaction");
+
+static unsigned int ec_polling_guard __read_mostly = ACPI_EC_UDELAY_POLL;
+module_param(ec_polling_guard, uint, 0644);
+MODULE_PARM_DESC(ec_polling_guard, "Guard time(us) between EC accesses in polling modes");
 
 /*
  * If the number of false interrupts per one transaction exceeds
@@ -121,7 +128,6 @@ struct transaction {
 	u8 wlen;
 	u8 rlen;
 	u8 flags;
-	unsigned long timestamp;
 };
 
 static int acpi_ec_query(struct acpi_ec *ec, u8 *data);
@@ -130,7 +136,6 @@ static void advance_transaction(struct acpi_ec *ec);
 struct acpi_ec *boot_ec, *first_ec;
 EXPORT_SYMBOL(first_ec);
 
-static int EC_FLAGS_MSI; /* Out-of-spec MSI controller */
 static int EC_FLAGS_VALIDATE_ECDT; /* ASUStec ECDTs need to be validated */
 static int EC_FLAGS_SKIP_DSDT_SCAN; /* Not all BIOS survive early DSDT scan */
 static int EC_FLAGS_CLEAR_ON_RESUME; /* Needs acpi_ec_clear() on boot/resume */
@@ -218,7 +223,7 @@ static inline u8 acpi_ec_read_data(struct acpi_ec *ec)
 {
 	u8 x = inb(ec->data_addr);
 
-	ec->curr->timestamp = jiffies;
+	ec->timestamp = jiffies;
 	ec_dbg_raw("EC_DATA(R) = 0x%2.2x", x);
 	return x;
 }
@@ -227,14 +232,14 @@ static inline void acpi_ec_write_cmd(struct acpi_ec *ec, u8 command)
 {
 	ec_dbg_raw("EC_SC(W) = 0x%2.2x", command);
 	outb(command, ec->command_addr);
-	ec->curr->timestamp = jiffies;
+	ec->timestamp = jiffies;
 }
 
 static inline void acpi_ec_write_data(struct acpi_ec *ec, u8 data)
 {
 	ec_dbg_raw("EC_DATA(W) = 0x%2.2x", data);
 	outb(data, ec->data_addr);
-	ec->curr->timestamp = jiffies;
+	ec->timestamp = jiffies;
 }
 
 #ifdef DEBUG
@@ -267,7 +272,7 @@ static inline bool acpi_ec_is_gpe_raised(struct acpi_ec *ec)
 	acpi_event_status gpe_status = 0;
 
 	(void)acpi_get_gpe_status(NULL, ec->gpe, &gpe_status);
-	return (gpe_status & ACPI_EVENT_FLAG_SET) ? true : false;
+	return (gpe_status & ACPI_EVENT_FLAG_STATUS_SET) ? true : false;
 }
 
 static inline void acpi_ec_enable_gpe(struct acpi_ec *ec, bool open)
@@ -392,6 +397,18 @@ static void acpi_ec_complete_query(struct acpi_ec *ec)
 	}
 }
 
+static int ec_transaction_polled(struct acpi_ec *ec)
+{
+	unsigned long flags;
+	int ret = 0;
+
+	spin_lock_irqsave(&ec->lock, flags);
+	if (ec->curr && (ec->curr->flags & ACPI_EC_COMMAND_POLL))
+		ret = 1;
+	spin_unlock_irqrestore(&ec->lock, flags);
+	return ret;
+}
+
 static int ec_transaction_completed(struct acpi_ec *ec)
 {
 	unsigned long flags;
@@ -490,8 +507,37 @@ static void start_transaction(struct acpi_ec *ec)
 {
 	ec->curr->irq_count = ec->curr->wi = ec->curr->ri = 0;
 	ec->curr->flags = 0;
-	ec->curr->timestamp = jiffies;
-	advance_transaction(ec);
+}
+
+static int ec_guard(struct acpi_ec *ec)
+{
+	unsigned long guard = usecs_to_jiffies(ec_polling_guard);
+	unsigned long timeout = ec->timestamp + guard;
+
+	do {
+		if (ec_busy_polling) {
+			/* Perform busy polling */
+			if (ec_transaction_completed(ec))
+				return 0;
+			udelay(jiffies_to_usecs(guard));
+		} else {
+			/*
+			 * Perform wait polling
+			 *
+			 * The following check is there to keep the old
+			 * logic - no inter-transaction guarding for the
+			 * wait polling mode.
+			 */
+			if (!ec_transaction_polled(ec))
+				break;
+			if (wait_event_timeout(ec->wait,
+					       ec_transaction_completed(ec),
+					       guard))
+				return 0;
+		}
+		/* Guard the register accesses for the polling modes */
+	} while (time_before(jiffies, timeout));
+	return -ETIME;
 }
 
 static int ec_poll(struct acpi_ec *ec)
@@ -502,25 +548,11 @@ static int ec_poll(struct acpi_ec *ec)
 	while (repeat--) {
 		unsigned long delay = jiffies +
 			msecs_to_jiffies(ec_delay);
-		unsigned long usecs = ACPI_EC_UDELAY_POLL;
 		do {
-			/* don't sleep with disabled interrupts */
-			if (EC_FLAGS_MSI || irqs_disabled()) {
-				usecs = ACPI_EC_MSI_UDELAY;
-				udelay(usecs);
-				if (ec_transaction_completed(ec))
-					return 0;
-			} else {
-				if (wait_event_timeout(ec->wait,
-						ec_transaction_completed(ec),
-						usecs_to_jiffies(usecs)))
-					return 0;
-			}
+			if (!ec_guard(ec))
+				return 0;
 			spin_lock_irqsave(&ec->lock, flags);
-			if (time_after(jiffies,
-					ec->curr->timestamp +
-					usecs_to_jiffies(usecs)))
-				advance_transaction(ec);
+			advance_transaction(ec);
 			spin_unlock_irqrestore(&ec->lock, flags);
 		} while (time_before(jiffies, delay));
 		pr_debug("controller reset, restart transaction\n");
@@ -537,8 +569,6 @@ static int acpi_ec_transaction_unlocked(struct acpi_ec *ec,
 	unsigned long tmp;
 	int ret = 0;
 
-	if (EC_FLAGS_MSI)
-		udelay(ACPI_EC_MSI_UDELAY);
 	/* start transaction */
 	spin_lock_irqsave(&ec->lock, tmp);
 	/* Enable GPE for command processing (IBF=0/OBF=1) */
@@ -552,7 +582,9 @@ static int acpi_ec_transaction_unlocked(struct acpi_ec *ec,
 	ec_dbg_req("Command(%s) started", acpi_ec_cmd_string(t->command));
 	start_transaction(ec);
 	spin_unlock_irqrestore(&ec->lock, tmp);
+
 	ret = ec_poll(ec);
+
 	spin_lock_irqsave(&ec->lock, tmp);
 	if (t->irq_count == ec_storm_threshold)
 		acpi_ec_clear_storm(ec, EC_FLAGS_COMMAND_STORM);
@@ -575,6 +607,7 @@ static int acpi_ec_transaction(struct acpi_ec *ec, struct transaction *t)
 		return -EINVAL;
 	if (t->rdata)
 		memset(t->rdata, 0, t->rlen);
+
 	mutex_lock(&ec->mutex);
 	if (ec->global_lock) {
 		status = acpi_acquire_global_lock(ACPI_EC_UDELAY_GLK, &glk);
@@ -586,8 +619,6 @@ static int acpi_ec_transaction(struct acpi_ec *ec, struct transaction *t)
 
 	status = acpi_ec_transaction_unlocked(ec, t);
 
-	if (test_bit(EC_FLAGS_COMMAND_STORM, &ec->flags))
-		msleep(1);
 	if (ec->global_lock)
 		acpi_release_global_lock(glk);
 unlock:
@@ -961,7 +992,7 @@ acpi_ec_space_handler(u32 function, acpi_physical_address address,
 	if (function != ACPI_READ && function != ACPI_WRITE)
 		return AE_BAD_PARAMETER;
 
-	if (EC_FLAGS_MSI || bits > 8)
+	if (ec_busy_polling || bits > 8)
 		acpi_ec_burst_enable(ec);
 
 	for (i = 0; i < bytes; ++i, ++address, ++value)
@@ -969,7 +1000,7 @@ acpi_ec_space_handler(u32 function, acpi_physical_address address,
 			acpi_ec_read(ec, address, value) :
 			acpi_ec_write(ec, address, *value);
 
-	if (EC_FLAGS_MSI || bits > 8)
+	if (ec_busy_polling || bits > 8)
 		acpi_ec_burst_disable(ec);
 
 	switch (result) {
@@ -1003,6 +1034,7 @@ static struct acpi_ec *make_acpi_ec(void)
 	INIT_LIST_HEAD(&ec->list);
 	spin_lock_init(&ec->lock);
 	INIT_WORK(&ec->work, acpi_ec_gpe_poller);
+	ec->timestamp = jiffies;
 	return ec;
 }
 
@@ -1237,26 +1269,6 @@ static int ec_validate_ecdt(const struct dmi_system_id *id)
 	return 0;
 }
 
-/* MSI EC needs special treatment, enable it */
-static int ec_flag_msi(const struct dmi_system_id *id)
-{
-	pr_debug("Detected MSI hardware, enabling workarounds.\n");
-	EC_FLAGS_MSI = 1;
-	EC_FLAGS_VALIDATE_ECDT = 1;
-	return 0;
-}
-
-/*
- * Clevo M720 notebook actually works ok with IRQ mode, if we lifted
- * the GPE storm threshold back to 20
- */
-static int ec_enlarge_storm_threshold(const struct dmi_system_id *id)
-{
-	pr_debug("Setting the EC GPE storm threshold to 20\n");
-	ec_storm_threshold  = 20;
-	return 0;
-}
-
 /*
  * Acer EC firmware refuses to respond QR_EC when SCI_EVT is not set, for
  * which case, we complete the QR_EC without issuing it to the firmware.
@@ -1299,39 +1311,15 @@ static struct dmi_system_id ec_dmi_table[] __initdata = {
 	DMI_MATCH(DMI_BIOS_VENDOR, "COMPAL"),
 	DMI_MATCH(DMI_BOARD_NAME, "JFL92") }, NULL},
 	{
-	ec_flag_msi, "MSI hardware", {
-	DMI_MATCH(DMI_BIOS_VENDOR, "Micro-Star")}, NULL},
-	{
-	ec_flag_msi, "MSI hardware", {
-	DMI_MATCH(DMI_SYS_VENDOR, "Micro-Star")}, NULL},
-	{
-	ec_flag_msi, "MSI hardware", {
-	DMI_MATCH(DMI_CHASSIS_VENDOR, "MICRO-Star")}, NULL},
-	{
-	ec_flag_msi, "MSI hardware", {
-	DMI_MATCH(DMI_CHASSIS_VENDOR, "MICRO-STAR")}, NULL},
-	{
-	ec_flag_msi, "Quanta hardware", {
-	DMI_MATCH(DMI_SYS_VENDOR, "Quanta"),
-	DMI_MATCH(DMI_PRODUCT_NAME, "TW8/SW8/DW8"),}, NULL},
-	{
-	ec_flag_msi, "Quanta hardware", {
-	DMI_MATCH(DMI_SYS_VENDOR, "Quanta"),
-	DMI_MATCH(DMI_PRODUCT_NAME, "TW9/SW9"),}, NULL},
-	{
-	ec_flag_msi, "Clevo W350etq", {
-	DMI_MATCH(DMI_SYS_VENDOR, "CLEVO CO."),
-	DMI_MATCH(DMI_PRODUCT_NAME, "W35_37ET"),}, NULL},
+	ec_validate_ecdt, "MSI MS-171F", {
+	DMI_MATCH(DMI_SYS_VENDOR, "Micro-Star"),
+	DMI_MATCH(DMI_PRODUCT_NAME, "MS-171F"),}, NULL},
 	{
 	ec_validate_ecdt, "ASUS hardware", {
 	DMI_MATCH(DMI_BIOS_VENDOR, "ASUS") }, NULL},
 	{
 	ec_validate_ecdt, "ASUS hardware", {
 	DMI_MATCH(DMI_BOARD_VENDOR, "ASUSTeK Computer Inc.") }, NULL},
-	{
-	ec_enlarge_storm_threshold, "CLEVO hardware", {
-	DMI_MATCH(DMI_SYS_VENDOR, "CLEVO Co."),
-	DMI_MATCH(DMI_PRODUCT_NAME, "M720T/M730T"),}, NULL},
 	{
 	ec_skip_dsdt_scan, "HP Folio 13", {
 	DMI_MATCH(DMI_SYS_VENDOR, "Hewlett-Packard"),
