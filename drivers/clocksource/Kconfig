@@ -270,4 +270,10 @@ config CLKSRC_IMX_GPT
 	depends on ARM && CLKDEV_LOOKUP
 	select CLKSRC_MMIO
 
+config H8300_TMR16
+        bool
+
+config H8300_TPU
+        bool
+
 endmenu
