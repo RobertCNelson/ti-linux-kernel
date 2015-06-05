@@ -667,6 +667,15 @@ bool out_of_memory(struct zonelist *zonelist, gfp_t gfp_mask,
 		goto out;
 
 	/*
+	 * Check if there were limitations on the allocation (only relevant for
+	 * NUMA) that may require different handling.
+	 */
+	constraint = constrained_alloc(zonelist, gfp_mask, nodemask,
+						&totalpages);
+	mpol_mask = (constraint == CONSTRAINT_MEMORY_POLICY) ? nodemask : NULL;
+	check_panic_on_oom(constraint, gfp_mask, order, mpol_mask, NULL);
+
+	/*
 	 * If current has a pending SIGKILL or is exiting, then automatically
 	 * select it.  The goal is to allow it to allocate so that it may
 	 * quickly exit and free its memory.
@@ -679,15 +688,6 @@ bool out_of_memory(struct zonelist *zonelist, gfp_t gfp_mask,
 		mark_oom_victim(current);
 		goto out;
 	}
-
-	/*
-	 * Check if there were limitations on the allocation (only relevant for
-	 * NUMA) that may require different handling.
-	 */
-	constraint = constrained_alloc(zonelist, gfp_mask, nodemask,
-						&totalpages);
-	mpol_mask = (constraint == CONSTRAINT_MEMORY_POLICY) ? nodemask : NULL;
-	check_panic_on_oom(constraint, gfp_mask, order, mpol_mask, NULL);
 
 	if (sysctl_oom_kill_allocating_task && current->mm &&
 	    !oom_unkillable_task(current, NULL, nodemask) &&
