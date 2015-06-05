@@ -75,7 +75,7 @@ struct tas2552_data {
 	struct regulator_bulk_data supplies[TAS2552_NUM_SUPPLIES];
 	struct gpio_desc *enable_gpio;
 	unsigned char regs[TAS2552_VBAT_DATA];
-	unsigned int mclk;
+	unsigned int pll_clkin;
 };
 
 /* Input mux controls */
@@ -118,15 +118,16 @@ static const struct snd_soc_dapm_route tas2552_audio_map[] = {
 #ifdef CONFIG_PM
 static void tas2552_sw_shutdown(struct tas2552_data *tas_data, int sw_shutdown)
 {
-	u8 cfg1_reg;
+	u8 cfg1_reg = 0;
+
+	if (!tas_data->codec)
+		return;
 
 	if (sw_shutdown)
-		cfg1_reg = 0;
-	else
-		cfg1_reg = TAS2552_SWS_MASK;
+		cfg1_reg = TAS2552_SWS;
 
-	snd_soc_update_bits(tas_data->codec, TAS2552_CFG_1,
-						 TAS2552_SWS_MASK, cfg1_reg);
+	snd_soc_update_bits(tas_data->codec, TAS2552_CFG_1, TAS2552_SWS,
+			    cfg1_reg);
 }
 #endif
 
@@ -140,13 +141,13 @@ static int tas2552_hw_params(struct snd_pcm_substream *substream,
 	int d;
 	u8 p, j;
 
-	if (!tas2552->mclk)
+	if (!tas2552->pll_clkin)
 		return -EINVAL;
 
 	snd_soc_update_bits(codec, TAS2552_CFG_2, TAS2552_PLL_ENABLE, 0);
 
-	if (tas2552->mclk == TAS2552_245MHZ_CLK ||
-		tas2552->mclk == TAS2552_225MHZ_CLK) {
+	if (tas2552->pll_clkin == TAS2552_245MHZ_CLK ||
+	    tas2552->pll_clkin == TAS2552_225MHZ_CLK) {
 		/* By pass the PLL configuration */
 		snd_soc_update_bits(codec, TAS2552_PLL_CTRL_2,
 				    TAS2552_PLL_BYPASS_MASK,
@@ -170,8 +171,8 @@ static int tas2552_hw_params(struct snd_pcm_substream *substream,
 			return -EINVAL;
 		}
 
-		j = (pll_clk * 2 * (1 << p)) / tas2552->mclk;
-		d = (pll_clk * 2 * (1 << p)) % tas2552->mclk;
+		j = (pll_clk * 2 * (1 << p)) / tas2552->pll_clkin;
+		d = (pll_clk * 2 * (1 << p)) % tas2552->pll_clkin;
 
 		snd_soc_update_bits(codec, TAS2552_PLL_CTRL_1,
 				TAS2552_PLL_J_MASK, j);
@@ -244,22 +245,20 @@ static int tas2552_set_dai_sysclk(struct snd_soc_dai *dai, int clk_id,
 	struct snd_soc_codec *codec = dai->codec;
 	struct tas2552_data *tas2552 = dev_get_drvdata(codec->dev);
 
-	tas2552->mclk = freq;
+	tas2552->pll_clkin = freq;
 
 	return 0;
 }
 
 static int tas2552_mute(struct snd_soc_dai *dai, int mute)
 {
-	u8 cfg1_reg;
+	u8 cfg1_reg = 0;
 	struct snd_soc_codec *codec = dai->codec;
 
 	if (mute)
-		cfg1_reg = TAS2552_MUTE_MASK;
-	else
-		cfg1_reg = ~TAS2552_MUTE_MASK;
+		cfg1_reg |= TAS2552_MUTE;
 
-	snd_soc_update_bits(codec, TAS2552_CFG_1, TAS2552_MUTE_MASK, cfg1_reg);
+	snd_soc_update_bits(codec, TAS2552_CFG_1, TAS2552_MUTE, cfg1_reg);
 
 	return 0;
 }
@@ -269,7 +268,7 @@ static int tas2552_runtime_suspend(struct device *dev)
 {
 	struct tas2552_data *tas2552 = dev_get_drvdata(dev);
 
-	tas2552_sw_shutdown(tas2552, 0);
+	tas2552_sw_shutdown(tas2552, 1);
 
 	regcache_cache_only(tas2552->regmap, true);
 	regcache_mark_dirty(tas2552->regmap);
@@ -287,7 +286,7 @@ static int tas2552_runtime_resume(struct device *dev)
 	if (tas2552->enable_gpio)
 		gpiod_set_value(tas2552->enable_gpio, 1);
 
-	tas2552_sw_shutdown(tas2552, 1);
+	tas2552_sw_shutdown(tas2552, 0);
 
 	regcache_cache_only(tas2552->regmap, false);
 	regcache_sync(tas2552->regmap);
@@ -335,7 +334,6 @@ static DECLARE_TLV_DB_SCALE(dac_tlv, -7, 100, 24);
 static const struct snd_kcontrol_new tas2552_snd_controls[] = {
 	SOC_SINGLE_TLV("Speaker Driver Playback Volume",
 			 TAS2552_PGA_GAIN, 0, 0x1f, 1, dac_tlv),
-	SOC_DAPM_SINGLE("Playback AMP", SND_SOC_NOPM, 0, 1, 0),
 };
 
 static const struct reg_default tas2552_init_regs[] = {
@@ -368,13 +366,13 @@ static int tas2552_codec_probe(struct snd_soc_codec *codec)
 		goto probe_fail;
 	}
 
-	snd_soc_write(codec, TAS2552_CFG_1, TAS2552_MUTE_MASK |
+	snd_soc_write(codec, TAS2552_CFG_1, TAS2552_MUTE |
 				TAS2552_PLL_SRC_BCLK);
 	snd_soc_write(codec, TAS2552_CFG_3, TAS2552_I2S_OUT_SEL |
 				TAS2552_DIN_SRC_SEL_AVG_L_R | TAS2552_88_96KHZ);
 	snd_soc_write(codec, TAS2552_DOUT, TAS2552_PDM_DATA_I);
 	snd_soc_write(codec, TAS2552_OUTPUT_DATA, TAS2552_PDM_DATA_V_I | 0x8);
-	snd_soc_write(codec, TAS2552_PDM_CFG, TAS2552_PDM_BCLK_SEL);
+	snd_soc_write(codec, TAS2552_PDM_CFG, TAS2552_PDM_CLK_SEL_PLL);
 	snd_soc_write(codec, TAS2552_BOOST_PT_CTRL, TAS2552_APT_DELAY_200 |
 				TAS2552_APT_THRESH_2_1_7);
 
@@ -486,8 +484,12 @@ static int tas2552_probe(struct i2c_client *client,
 		return -ENOMEM;
 
 	data->enable_gpio = devm_gpiod_get(dev, "enable", GPIOD_OUT_LOW);
-	if (IS_ERR(data->enable_gpio))
-		return PTR_ERR(data->enable_gpio);
+	if (IS_ERR(data->enable_gpio)) {
+		if (PTR_ERR(data->enable_gpio) == -EPROBE_DEFER)
+			return -EPROBE_DEFER;
+
+		data->enable_gpio = NULL;;
+	}
 
 	data->tas2552_client = client;
 	data->regmap = devm_regmap_init_i2c(client, &tas2552_regmap_config);
