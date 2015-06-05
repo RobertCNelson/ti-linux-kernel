@@ -70,8 +70,9 @@ extern enum oom_scan_t oom_scan_process_thread(struct task_struct *task,
 		unsigned long totalpages, const nodemask_t *nodemask,
 		bool force_kill);
 
+extern bool force_out_of_memory(void);
 extern bool out_of_memory(struct zonelist *zonelist, gfp_t gfp_mask,
-		int order, nodemask_t *mask, bool force_kill);
+		int order, nodemask_t *mask);
 
 extern void exit_oom_victim(void);
 

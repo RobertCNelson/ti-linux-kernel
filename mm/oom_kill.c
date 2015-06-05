@@ -487,7 +487,7 @@ void oom_killer_enable(void)
  * Must be called while holding a reference to p, which will be released upon
  * returning.
  */
-void oom_kill_process(struct task_struct *p, gfp_t gfp_mask, int order,
+static void __oom_kill_process(struct task_struct *p, gfp_t gfp_mask, int order,
 		      unsigned int points, unsigned long totalpages,
 		      struct mem_cgroup *memcg, nodemask_t *nodemask,
 		      const char *message)
@@ -499,19 +499,6 @@ void oom_kill_process(struct task_struct *p, gfp_t gfp_mask, int order,
 	unsigned int victim_points = 0;
 	static DEFINE_RATELIMIT_STATE(oom_rs, DEFAULT_RATELIMIT_INTERVAL,
 					      DEFAULT_RATELIMIT_BURST);
-
-	/*
-	 * If the task is already exiting, don't alarm the sysadmin or kill
-	 * its children or threads, just set TIF_MEMDIE so it can die quickly
-	 */
-	task_lock(p);
-	if (p->mm && task_will_free_mem(p)) {
-		mark_oom_victim(p);
-		task_unlock(p);
-		put_task_struct(p);
-		return;
-	}
-	task_unlock(p);
 
 	if (__ratelimit(&oom_rs))
 		dump_header(p, gfp_mask, order, memcg, nodemask);
@@ -597,6 +584,28 @@ void oom_kill_process(struct task_struct *p, gfp_t gfp_mask, int order,
 }
 #undef K
 
+void oom_kill_process(struct task_struct *p, gfp_t gfp_mask, int order,
+		      unsigned int points, unsigned long totalpages,
+		      struct mem_cgroup *memcg, nodemask_t *nodemask,
+		      const char *message)
+{
+	/*
+	 * If the task is already exiting, don't alarm the sysadmin or kill
+	 * its children or threads, just set TIF_MEMDIE so it can die quickly
+	 */
+	task_lock(p);
+	if (p->mm && task_will_free_mem(p)) {
+		mark_oom_victim(p);
+		task_unlock(p);
+		put_task_struct(p);
+		return;
+	}
+	task_unlock(p);
+
+	__oom_kill_process(p, gfp_mask, order, points, totalpages, memcg,
+			nodemask, message);
+}
+
 /*
  * Determines whether the kernel must panic because of the panic_on_oom sysctl.
  */
@@ -635,12 +644,38 @@ int unregister_oom_notifier(struct notifier_block *nb)
 EXPORT_SYMBOL_GPL(unregister_oom_notifier);
 
 /**
- * __out_of_memory - kill the "best" process when we run out of memory
+ * force_out_of_memory - forces OOM killer
+ *
+ * External trigger for the OOM killer. The system doesn't have to be under
+ * OOM condition (e.g. sysrq+f).
+ */
+bool force_out_of_memory(void)
+{
+	struct zonelist *zonelist = node_zonelist(first_memory_node, GFP_KERNEL);
+	struct task_struct *p;
+	unsigned long totalpages;
+	unsigned int points;
+
+	if (oom_killer_disabled)
+		return false;
+
+	constrained_alloc(zonelist, GFP_KERNEL, NULL, &totalpages);
+	p = select_bad_process(&points, totalpages, NULL, true);
+	if (p != (void *)-1UL)
+		__oom_kill_process(p, GFP_KERNEL, 0, points, totalpages, NULL,
+				 NULL, "Forced out of memory killer");
+	else
+		pr_warn("Forced out of memory. No killable task found...\n");
+
+	return true;
+}
+
+/**
+ * out_of_memory - kill the "best" process when we run out of memory
  * @zonelist: zonelist pointer
  * @gfp_mask: memory allocation flags
  * @order: amount of memory being requested as a power of 2
  * @nodemask: nodemask passed to page allocator
- * @force_kill: true if a task must be killed, even if others are exiting
  *
  * If we run out of memory, we have the choice between either
  * killing a random task (bad), letting the system crash (worse)
@@ -648,7 +683,7 @@ EXPORT_SYMBOL_GPL(unregister_oom_notifier);
  * don't have to be perfect here, we just have to be good.
  */
 bool out_of_memory(struct zonelist *zonelist, gfp_t gfp_mask,
-		   int order, nodemask_t *nodemask, bool force_kill)
+		   int order, nodemask_t *nodemask)
 {
 	const nodemask_t *mpol_mask;
 	struct task_struct *p;
@@ -699,7 +734,7 @@ bool out_of_memory(struct zonelist *zonelist, gfp_t gfp_mask,
 		goto out;
 	}
 
-	p = select_bad_process(&points, totalpages, mpol_mask, force_kill);
+	p = select_bad_process(&points, totalpages, mpol_mask, false);
 	/* Found nothing?!?! Either we hang forever, or we panic. */
 	if (!p) {
 		dump_header(NULL, gfp_mask, order, NULL, mpol_mask);
@@ -734,7 +769,7 @@ void pagefault_out_of_memory(void)
 	if (!mutex_trylock(&oom_lock))
 		return;
 
-	if (!out_of_memory(NULL, 0, 0, NULL, false)) {
+	if (!out_of_memory(NULL, 0, 0, NULL)) {
 		/*
 		 * There shouldn't be any user tasks runnable while the
 		 * OOM killer is disabled, so the current task has to
