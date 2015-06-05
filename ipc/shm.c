@@ -160,7 +160,7 @@ static inline struct shmid_kernel *shm_lock(struct ipc_namespace *ns, int id)
 		 * We raced in the idr lookup or with RMID,
 		 * either way, the ID is busted.
 		 */
-		BUG_ON(1);
+		BUG();
 		return (struct shmid_kernel *)ipcp;
 	}
 
