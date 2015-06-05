@@ -558,7 +558,7 @@ int pinctrl_get_group_selector(struct pinctrl_dev *pctldev,
 }
 
 /**
- * pinctrl_request_gpio() - request a single pin to be used in as GPIO
+ * pinctrl_request_gpio() - request a single pin to be used as GPIO
  * @gpio: the GPIO pin number from the GPIO subsystem number space
  *
  * This function should *ONLY* be used from gpiolib-based GPIO drivers,
@@ -1115,7 +1115,7 @@ int pinctrl_register_map(struct pinctrl_map const *maps, unsigned num_maps,
 	int i, ret;
 	struct pinctrl_maps *maps_node;
 
-	pr_debug("add %d pinmux maps\n", num_maps);
+	pr_debug("add %u pinctrl maps\n", num_maps);
 
 	/* First sanity check the new mapping */
 	for (i = 0; i < num_maps; i++) {
