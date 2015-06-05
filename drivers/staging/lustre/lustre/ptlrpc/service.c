@@ -75,7 +75,9 @@ ptlrpc_alloc_rqbd(struct ptlrpc_service_part *svcpt)
 	struct ptlrpc_service		  *svc = svcpt->scp_service;
 	struct ptlrpc_request_buffer_desc *rqbd;
 
-	OBD_CPT_ALLOC_PTR(rqbd, svc->srv_cptable, svcpt->scp_cpt);
+	rqbd = kzalloc_node(sizeof(*rqbd), GFP_NOFS,
+			    cfs_cpt_spread_node(svc->srv_cptable,
+						svcpt->scp_cpt));
 	if (rqbd == NULL)
 		return NULL;
 
@@ -87,7 +89,7 @@ ptlrpc_alloc_rqbd(struct ptlrpc_service_part *svcpt)
 	OBD_CPT_ALLOC_LARGE(rqbd->rqbd_buffer, svc->srv_cptable,
 			    svcpt->scp_cpt, svc->srv_buf_size);
 	if (rqbd->rqbd_buffer == NULL) {
-		OBD_FREE_PTR(rqbd);
+		kfree(rqbd);
 		return NULL;
 	}
 
@@ -113,7 +115,7 @@ ptlrpc_free_rqbd(struct ptlrpc_request_buffer_desc *rqbd)
 	spin_unlock(&svcpt->scp_lock);
 
 	OBD_FREE_LARGE(rqbd->rqbd_buffer, svcpt->scp_service->srv_buf_size);
-	OBD_FREE_PTR(rqbd);
+	kfree(rqbd);
 }
 
 int
@@ -630,18 +632,20 @@ ptlrpc_service_part_init(struct ptlrpc_service *svc,
 	array->paa_deadline = -1;
 
 	/* allocate memory for scp_at_array (ptlrpc_at_array) */
-	OBD_CPT_ALLOC(array->paa_reqs_array,
-		      svc->srv_cptable, cpt, sizeof(struct list_head) * size);
+	array->paa_reqs_array =
+		kzalloc_node(sizeof(struct list_head) * size, GFP_NOFS,
+			     cfs_cpt_spread_node(svc->srv_cptable, cpt));
 	if (array->paa_reqs_array == NULL)
 		return -ENOMEM;
 
 	for (index = 0; index < size; index++)
 		INIT_LIST_HEAD(&array->paa_reqs_array[index]);
 
-	OBD_CPT_ALLOC(array->paa_reqs_count,
-		      svc->srv_cptable, cpt, sizeof(__u32) * size);
+	array->paa_reqs_count =
+		kzalloc_node(sizeof(__u32) * size, GFP_NOFS,
+			     cfs_cpt_spread_node(svc->srv_cptable, cpt));
 	if (array->paa_reqs_count == NULL)
-		goto failed;
+		goto free_reqs_array;
 
 	cfs_timer_init(&svcpt->scp_at_timer, ptlrpc_at_timer, svcpt);
 	/* At SOW, service time should be quick; 10s seems generous. If client
@@ -655,21 +659,16 @@ ptlrpc_service_part_init(struct ptlrpc_service *svc,
 	/* We shouldn't be under memory pressure at startup, so
 	 * fail if we can't allocate all our buffers at this time. */
 	if (rc != 0)
-		goto failed;
+		goto free_reqs_count;
 
 	return 0;
 
- failed:
-	if (array->paa_reqs_count != NULL) {
-		OBD_FREE(array->paa_reqs_count, sizeof(__u32) * size);
-		array->paa_reqs_count = NULL;
-	}
-
-	if (array->paa_reqs_array != NULL) {
-		OBD_FREE(array->paa_reqs_array,
-			 sizeof(struct list_head) * array->paa_size);
-		array->paa_reqs_array = NULL;
-	}
+free_reqs_count:
+	kfree(array->paa_reqs_count);
+	array->paa_reqs_count = NULL;
+free_reqs_array:
+	kfree(array->paa_reqs_array);
+	array->paa_reqs_array = NULL;
 
 	return -ENOMEM;
 }
@@ -681,7 +680,8 @@ ptlrpc_service_part_init(struct ptlrpc_service *svc,
  */
 struct ptlrpc_service *
 ptlrpc_register_service(struct ptlrpc_service_conf *conf,
-			struct proc_dir_entry *proc_entry)
+			struct kset *parent,
+			struct dentry *debugfs_entry)
 {
 	struct ptlrpc_service_cpt_conf	*cconf = &conf->psc_cpt;
 	struct ptlrpc_service		*service;
@@ -723,18 +723,17 @@ ptlrpc_register_service(struct ptlrpc_service_conf *conf,
 			if (rc <= 0) {
 				CERROR("%s: failed to parse CPT array %s: %d\n",
 				       conf->psc_name, cconf->cc_pattern, rc);
-				if (cpts != NULL)
-					OBD_FREE(cpts, sizeof(*cpts) * ncpts);
+				kfree(cpts);
 				return ERR_PTR(rc < 0 ? rc : -EINVAL);
 			}
 			ncpts = rc;
 		}
 	}
 
-	OBD_ALLOC(service, offsetof(struct ptlrpc_service, srv_parts[ncpts]));
+	service = kzalloc(offsetof(struct ptlrpc_service, srv_parts[ncpts]),
+			  GFP_NOFS);
 	if (service == NULL) {
-		if (cpts != NULL)
-			OBD_FREE(cpts, sizeof(*cpts) * ncpts);
+		kfree(cpts);
 		return ERR_PTR(-ENOMEM);
 	}
 
@@ -778,7 +777,8 @@ ptlrpc_register_service(struct ptlrpc_service_conf *conf,
 		else
 			cpt = cpts != NULL ? cpts[i] : i;
 
-		OBD_CPT_ALLOC(svcpt, cptable, cpt, sizeof(*svcpt));
+		svcpt = kzalloc_node(sizeof(*svcpt), GFP_NOFS,
+				     cfs_cpt_spread_node(cptable, cpt));
 		if (svcpt == NULL) {
 			rc = -ENOMEM;
 			goto failed;
@@ -799,8 +799,14 @@ ptlrpc_register_service(struct ptlrpc_service_conf *conf,
 	list_add(&service->srv_list, &ptlrpc_all_services);
 	mutex_unlock(&ptlrpc_all_services_mutex);
 
-	if (proc_entry != NULL)
-		ptlrpc_lprocfs_register_service(proc_entry, service);
+	if (parent) {
+		rc = ptlrpc_sysfs_register_service(parent, service);
+		if (rc)
+			goto failed;
+	}
+
+	if (!IS_ERR_OR_NULL(debugfs_entry))
+		ptlrpc_ldebugfs_register_service(debugfs_entry, service);
 
 	rc = ptlrpc_service_nrs_setup(service);
 	if (rc != 0)
@@ -2291,7 +2297,7 @@ static int ptlrpc_main(void *arg)
 			goto out;
 	}
 
-	OBD_ALLOC_PTR(env);
+	env = kzalloc(sizeof(*env), GFP_NOFS);
 	if (env == NULL) {
 		rc = -ENOMEM;
 		goto out_srv_fini;
@@ -2414,7 +2420,7 @@ out_srv_fini:
 
 	if (env != NULL) {
 		lu_context_fini(&env->le_ctx);
-		OBD_FREE_PTR(env);
+		kfree(env);
 	}
 out:
 	CDEBUG(D_RPCTRACE, "service thread [ %p : %u ] %d exiting: rc %d\n",
@@ -2596,7 +2602,7 @@ static void ptlrpc_svcpt_stop_threads(struct ptlrpc_service_part *svcpt)
 		thread = list_entry(zombie.next,
 					struct ptlrpc_thread, t_link);
 		list_del(&thread->t_link);
-		OBD_FREE_PTR(thread);
+		kfree(thread);
 	}
 }
 
@@ -2670,7 +2676,9 @@ int ptlrpc_start_thread(struct ptlrpc_service_part *svcpt, int wait)
 	     svcpt->scp_nthrs_running == svc->srv_nthrs_cpt_init - 1))
 		return -EMFILE;
 
-	OBD_CPT_ALLOC_PTR(thread, svc->srv_cptable, svcpt->scp_cpt);
+	thread = kzalloc_node(sizeof(*thread), GFP_NOFS,
+			      cfs_cpt_spread_node(svc->srv_cptable,
+						  svcpt->scp_cpt));
 	if (thread == NULL)
 		return -ENOMEM;
 	init_waitqueue_head(&thread->t_ctl_waitq);
@@ -2678,7 +2686,7 @@ int ptlrpc_start_thread(struct ptlrpc_service_part *svcpt, int wait)
 	spin_lock(&svcpt->scp_lock);
 	if (!ptlrpc_threads_increasable(svcpt)) {
 		spin_unlock(&svcpt->scp_lock);
-		OBD_FREE_PTR(thread);
+		kfree(thread);
 		return -EMFILE;
 	}
 
@@ -2687,7 +2695,7 @@ int ptlrpc_start_thread(struct ptlrpc_service_part *svcpt, int wait)
 		 * might require unique and contiguous t_id */
 		LASSERT(svcpt->scp_nthrs_starting == 1);
 		spin_unlock(&svcpt->scp_lock);
-		OBD_FREE_PTR(thread);
+		kfree(thread);
 		if (wait) {
 			CDEBUG(D_INFO, "Waiting for creating thread %s #%d\n",
 			       svc->srv_thread_name, svcpt->scp_thr_nextid);
@@ -2733,7 +2741,7 @@ int ptlrpc_start_thread(struct ptlrpc_service_part *svcpt, int wait)
 		} else {
 			list_del(&thread->t_link);
 			spin_unlock(&svcpt->scp_lock);
-			OBD_FREE_PTR(thread);
+			kfree(thread);
 		}
 		return rc;
 	}
@@ -2780,8 +2788,10 @@ int ptlrpc_hr_init(void)
 		hrp->hrp_nthrs /= weight;
 
 		LASSERT(hrp->hrp_nthrs > 0);
-		OBD_CPT_ALLOC(hrp->hrp_thrs, ptlrpc_hr.hr_cpt_table, i,
-			      hrp->hrp_nthrs * sizeof(*hrt));
+		hrp->hrp_thrs =
+			kzalloc_node(hrp->hrp_nthrs * sizeof(*hrt), GFP_NOFS,
+				cfs_cpt_spread_node(ptlrpc_hr.hr_cpt_table,
+						    i));
 		if (hrp->hrp_thrs == NULL) {
 			rc = -ENOMEM;
 			goto out;
@@ -2817,8 +2827,7 @@ void ptlrpc_hr_fini(void)
 
 	cfs_percpt_for_each(hrp, i, ptlrpc_hr.hr_partitions) {
 		if (hrp->hrp_thrs != NULL) {
-			OBD_FREE(hrp->hrp_thrs,
-				 hrp->hrp_nthrs * sizeof(hrp->hrp_thrs[0]));
+			kfree(hrp->hrp_thrs);
 		}
 	}
 
@@ -2998,27 +3007,19 @@ ptlrpc_service_free(struct ptlrpc_service *svc)
 		cfs_timer_disarm(&svcpt->scp_at_timer);
 		array = &svcpt->scp_at_array;
 
-		if (array->paa_reqs_array != NULL) {
-			OBD_FREE(array->paa_reqs_array,
-				 sizeof(struct list_head) * array->paa_size);
-			array->paa_reqs_array = NULL;
-		}
-
-		if (array->paa_reqs_count != NULL) {
-			OBD_FREE(array->paa_reqs_count,
-				 sizeof(__u32) * array->paa_size);
-			array->paa_reqs_count = NULL;
-		}
+		kfree(array->paa_reqs_array);
+		array->paa_reqs_array = NULL;
+		kfree(array->paa_reqs_count);
+		array->paa_reqs_count = NULL;
 	}
 
 	ptlrpc_service_for_each_part(svcpt, i, svc)
-		OBD_FREE_PTR(svcpt);
+		kfree(svcpt);
 
 	if (svc->srv_cpts != NULL)
 		cfs_expr_list_values_free(svc->srv_cpts, svc->srv_ncpts);
 
-	OBD_FREE(svc, offsetof(struct ptlrpc_service,
-			       srv_parts[svc->srv_ncpts]));
+	kfree(svc);
 }
 
 int ptlrpc_unregister_service(struct ptlrpc_service *service)
@@ -3039,6 +3040,7 @@ int ptlrpc_unregister_service(struct ptlrpc_service *service)
 	ptlrpc_service_nrs_cleanup(service);
 
 	ptlrpc_lprocfs_unregister_service(service);
+	ptlrpc_sysfs_unregister_service(service);
 
 	ptlrpc_service_free(service);
 
