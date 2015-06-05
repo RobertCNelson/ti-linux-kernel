@@ -235,7 +235,7 @@ static bool drbg_fips_continuous_test(struct drbg_state *drbg,
 #ifdef CONFIG_CRYPTO_FIPS
 	int ret = 0;
 	/* skip test if we test the overall system */
-	if (drbg->test_data)
+	if (list_empty(&drbg->test_data.list))
 		return true;
 	/* only perform test in FIPS mode */
 	if (0 == fips_enabled)
@@ -487,7 +487,7 @@ static int drbg_ctr_df(struct drbg_state *drbg,
 
 out:
 	memset(iv, 0, drbg_blocklen(drbg));
-	memset(temp, 0, drbg_statelen(drbg));
+	memset(temp, 0, drbg_statelen(drbg) + drbg_blocklen(drbg));
 	memset(pad, 0, drbg_blocklen(drbg));
 	return ret;
 }
@@ -1041,6 +1041,43 @@ static struct drbg_state_ops drbg_hash_ops = {
  * Functions common for DRBG implementations
  ******************************************************************/
 
+static inline int __drbg_seed(struct drbg_state *drbg, struct list_head *seed,
+			      int reseed)
+{
+	int ret = drbg->d_ops->update(drbg, seed, reseed);
+
+	if (ret)
+		return ret;
+
+	drbg->seeded = true;
+	/* 10.1.1.2 / 10.1.1.3 step 5 */
+	drbg->reseed_ctr = 1;
+
+	return ret;
+}
+
+static void drbg_async_seed(struct work_struct *work)
+{
+	struct drbg_string data;
+	LIST_HEAD(seedlist);
+	struct drbg_state *drbg = container_of(work, struct drbg_state,
+					       seed_work);
+	int ret;
+
+	get_blocking_random_bytes(drbg->seed_buf, drbg->seed_buf_len);
+
+	drbg_string_fill(&data, drbg->seed_buf, drbg->seed_buf_len);
+	list_add_tail(&data.list, &seedlist);
+	mutex_lock(&drbg->drbg_mutex);
+	ret = __drbg_seed(drbg, &seedlist, true);
+	if (!ret && drbg->jent) {
+		crypto_free_rng(drbg->jent);
+		drbg->jent = NULL;
+	}
+	memzero_explicit(drbg->seed_buf, drbg->seed_buf_len);
+	mutex_unlock(&drbg->drbg_mutex);
+}
+
 /*
  * Seeding or reseeding of the DRBG
  *
@@ -1056,8 +1093,6 @@ static int drbg_seed(struct drbg_state *drbg, struct drbg_string *pers,
 		     bool reseed)
 {
 	int ret = 0;
-	unsigned char *entropy = NULL;
-	size_t entropylen = 0;
 	struct drbg_string data1;
 	LIST_HEAD(seedlist);
 
@@ -1068,31 +1103,29 @@ static int drbg_seed(struct drbg_state *drbg, struct drbg_string *pers,
 		return -EINVAL;
 	}
 
-	if (drbg->test_data && drbg->test_data->testentropy) {
-		drbg_string_fill(&data1, drbg->test_data->testentropy->buf,
-				 drbg->test_data->testentropy->len);
+	if (list_empty(&drbg->test_data.list)) {
+		drbg_string_fill(&data1, drbg->test_data.buf,
+				 drbg->test_data.len);
 		pr_devel("DRBG: using test entropy\n");
 	} else {
-		/*
-		 * Gather entropy equal to the security strength of the DRBG.
-		 * With a derivation function, a nonce is required in addition
-		 * to the entropy. A nonce must be at least 1/2 of the security
-		 * strength of the DRBG in size. Thus, entropy * nonce is 3/2
-		 * of the strength. The consideration of a nonce is only
-		 * applicable during initial seeding.
-		 */
-		entropylen = drbg_sec_strength(drbg->core->flags);
-		if (!entropylen)
-			return -EFAULT;
-		if (!reseed)
-			entropylen = ((entropylen + 1) / 2) * 3;
-		pr_devel("DRBG: (re)seeding with %zu bytes of entropy\n",
-			 entropylen);
-		entropy = kzalloc(entropylen, GFP_KERNEL);
-		if (!entropy)
-			return -ENOMEM;
-		get_random_bytes(entropy, entropylen);
-		drbg_string_fill(&data1, entropy, entropylen);
+		/* Get seed from in-kernel /dev/urandom */
+		get_random_bytes(drbg->seed_buf, drbg->seed_buf_len);
+
+		/* Get seed from Jitter RNG */
+		if (!drbg->jent ||
+		    crypto_rng_get_bytes(drbg->jent,
+					 drbg->seed_buf + drbg->seed_buf_len,
+					 drbg->seed_buf_len)) {
+			drbg_string_fill(&data1, drbg->seed_buf,
+					 drbg->seed_buf_len);
+			pr_devel("DRBG: (re)seeding with %zu bytes of entropy\n",
+				 drbg->seed_buf_len);
+		} else {
+			drbg_string_fill(&data1, drbg->seed_buf,
+					 drbg->seed_buf_len * 2);
+			pr_devel("DRBG: (re)seeding with %zu bytes of entropy\n",
+				 drbg->seed_buf_len * 2);
+		}
 	}
 	list_add_tail(&data1.list, &seedlist);
 
@@ -1111,16 +1144,28 @@ static int drbg_seed(struct drbg_state *drbg, struct drbg_string *pers,
 		memset(drbg->C, 0, drbg_statelen(drbg));
 	}
 
-	ret = drbg->d_ops->update(drbg, &seedlist, reseed);
+	ret = __drbg_seed(drbg, &seedlist, reseed);
+
+	/*
+	 * Clear the initial entropy buffer as the async call may not overwrite
+	 * that buffer for quite some time.
+	 */
+	memzero_explicit(drbg->seed_buf, drbg->seed_buf_len * 2);
 	if (ret)
 		goto out;
+	/*
+	 * For all subsequent seeding calls, we only need the seed buffer
+	 * equal to the security strength of the DRBG. We undo the calculation
+	 * in drbg_alloc_state.
+	 */
+	if (!reseed)
+		drbg->seed_buf_len = drbg->seed_buf_len / 3 * 2;
 
-	drbg->seeded = true;
-	/* 10.1.1.2 / 10.1.1.3 step 5 */
-	drbg->reseed_ctr = 1;
+	/* Invoke asynchronous seeding unless DRBG is in test mode. */
+	if (!list_empty(&drbg->test_data.list) && !reseed)
+		schedule_work(&drbg->seed_work);
 
 out:
-	kzfree(entropy);
 	return ret;
 }
 
@@ -1136,11 +1181,19 @@ static inline void drbg_dealloc_state(struct drbg_state *drbg)
 	kzfree(drbg->scratchpad);
 	drbg->scratchpad = NULL;
 	drbg->reseed_ctr = 0;
+	drbg->d_ops = NULL;
+	drbg->core = NULL;
 #ifdef CONFIG_CRYPTO_FIPS
 	kzfree(drbg->prev);
 	drbg->prev = NULL;
 	drbg->fips_primed = false;
 #endif
+	kzfree(drbg->seed_buf);
+	drbg->seed_buf = NULL;
+	if (drbg->jent) {
+		crypto_free_rng(drbg->jent);
+		drbg->jent = NULL;
+	}
 }
 
 /*
@@ -1151,6 +1204,27 @@ static inline int drbg_alloc_state(struct drbg_state *drbg)
 {
 	int ret = -ENOMEM;
 	unsigned int sb_size = 0;
+
+	switch (drbg->core->flags & DRBG_TYPE_MASK) {
+#ifdef CONFIG_CRYPTO_DRBG_HMAC
+	case DRBG_HMAC:
+		drbg->d_ops = &drbg_hmac_ops;
+		break;
+#endif /* CONFIG_CRYPTO_DRBG_HMAC */
+#ifdef CONFIG_CRYPTO_DRBG_HASH
+	case DRBG_HASH:
+		drbg->d_ops = &drbg_hash_ops;
+		break;
+#endif /* CONFIG_CRYPTO_DRBG_HASH */
+#ifdef CONFIG_CRYPTO_DRBG_CTR
+	case DRBG_CTR:
+		drbg->d_ops = &drbg_ctr_ops;
+		break;
+#endif /* CONFIG_CRYPTO_DRBG_CTR */
+	default:
+		ret = -EOPNOTSUPP;
+		goto err;
+	}
 
 	drbg->V = kmalloc(drbg_statelen(drbg), GFP_KERNEL);
 	if (!drbg->V)
@@ -1181,85 +1255,48 @@ static inline int drbg_alloc_state(struct drbg_state *drbg)
 		if (!drbg->scratchpad)
 			goto err;
 	}
-	spin_lock_init(&drbg->drbg_lock);
+
+	/*
+	 * Gather entropy equal to the security strength of the DRBG.
+	 * With a derivation function, a nonce is required in addition
+	 * to the entropy. A nonce must be at least 1/2 of the security
+	 * strength of the DRBG in size. Thus, entropy * nonce is 3/2
+	 * of the strength. The consideration of a nonce is only
+	 * applicable during initial seeding.
+	 */
+	drbg->seed_buf_len = drbg_sec_strength(drbg->core->flags);
+	if (!drbg->seed_buf_len) {
+		ret = -EFAULT;
+		goto err;
+	}
+	/*
+	 * Ensure we have sufficient buffer space for initial seed which
+	 * consists of the seed from get_random_bytes and the Jitter RNG.
+	 */
+	drbg->seed_buf_len = ((drbg->seed_buf_len + 1) / 2) * 3;
+	drbg->seed_buf = kzalloc(drbg->seed_buf_len * 2, GFP_KERNEL);
+	if (!drbg->seed_buf)
+		goto err;
+
+	INIT_WORK(&drbg->seed_work, drbg_async_seed);
+
+	drbg->jent = crypto_alloc_rng("jitterentropy_rng", 0, 0);
+	if(IS_ERR(drbg->jent))
+	{
+		pr_info("DRBG: could not allocate Jitter RNG handle for seeding\n");
+		/*
+		 * As the Jitter RNG is a module that may not be present, we
+		 * continue with the operation and do not fully tie the DRBG
+		 * to the Jitter RNG.
+		 */
+		drbg->jent = NULL;
+	}
+
 	return 0;
 
 err:
 	drbg_dealloc_state(drbg);
 	return ret;
-}
-
-/*
- * Strategy to avoid holding long term locks: generate a shadow copy of DRBG
- * and perform all operations on this shadow copy. After finishing, restore
- * the updated state of the shadow copy into original drbg state. This way,
- * only the read and write operations of the original drbg state must be
- * locked
- */
-static inline void drbg_copy_drbg(struct drbg_state *src,
-				  struct drbg_state *dst)
-{
-	if (!src || !dst)
-		return;
-	memcpy(dst->V, src->V, drbg_statelen(src));
-	memcpy(dst->C, src->C, drbg_statelen(src));
-	dst->reseed_ctr = src->reseed_ctr;
-	dst->seeded = src->seeded;
-	dst->pr = src->pr;
-#ifdef CONFIG_CRYPTO_FIPS
-	dst->fips_primed = src->fips_primed;
-	memcpy(dst->prev, src->prev, drbg_blocklen(src));
-#endif
-	/*
-	 * Not copied:
-	 * scratchpad is initialized drbg_alloc_state;
-	 * priv_data is initialized with call to crypto_init;
-	 * d_ops and core are set outside, as these parameters are const;
-	 * test_data is set outside to prevent it being copied back.
-	 */
-}
-
-static int drbg_make_shadow(struct drbg_state *drbg, struct drbg_state **shadow)
-{
-	int ret = -ENOMEM;
-	struct drbg_state *tmp = NULL;
-
-	tmp = kzalloc(sizeof(struct drbg_state), GFP_KERNEL);
-	if (!tmp)
-		return -ENOMEM;
-
-	/* read-only data as they are defined as const, no lock needed */
-	tmp->core = drbg->core;
-	tmp->d_ops = drbg->d_ops;
-
-	ret = drbg_alloc_state(tmp);
-	if (ret)
-		goto err;
-
-	spin_lock_bh(&drbg->drbg_lock);
-	drbg_copy_drbg(drbg, tmp);
-	/* only make a link to the test buffer, as we only read that data */
-	tmp->test_data = drbg->test_data;
-	spin_unlock_bh(&drbg->drbg_lock);
-	*shadow = tmp;
-	return 0;
-
-err:
-	kzfree(tmp);
-	return ret;
-}
-
-static void drbg_restore_shadow(struct drbg_state *drbg,
-				struct drbg_state **shadow)
-{
-	struct drbg_state *tmp = *shadow;
-
-	spin_lock_bh(&drbg->drbg_lock);
-	drbg_copy_drbg(tmp, drbg);
-	spin_unlock_bh(&drbg->drbg_lock);
-	drbg_dealloc_state(tmp);
-	kzfree(tmp);
-	*shadow = NULL;
 }
 
 /*************************************************************************
@@ -1287,14 +1324,12 @@ static int drbg_generate(struct drbg_state *drbg,
 			 struct drbg_string *addtl)
 {
 	int len = 0;
-	struct drbg_state *shadow = NULL;
 	LIST_HEAD(addtllist);
-	struct drbg_string timestamp;
-	union {
-		cycles_t cycles;
-		unsigned char char_cycles[sizeof(cycles_t)];
-	} now;
 
+	if (!drbg->core) {
+		pr_devel("DRBG: not yet seeded\n");
+		return -EINVAL;
+	}
 	if (0 == buflen || !buf) {
 		pr_devel("DRBG: no output buffer provided\n");
 		return -EINVAL;
@@ -1304,15 +1339,9 @@ static int drbg_generate(struct drbg_state *drbg,
 		return -EINVAL;
 	}
 
-	len = drbg_make_shadow(drbg, &shadow);
-	if (len) {
-		pr_devel("DRBG: shadow copy cannot be generated\n");
-		return len;
-	}
-
 	/* 9.3.1 step 2 */
 	len = -EINVAL;
-	if (buflen > (drbg_max_request_bytes(shadow))) {
+	if (buflen > (drbg_max_request_bytes(drbg))) {
 		pr_devel("DRBG: requested random numbers too large %u\n",
 			 buflen);
 		goto err;
@@ -1321,7 +1350,7 @@ static int drbg_generate(struct drbg_state *drbg,
 	/* 9.3.1 step 3 is implicit with the chosen DRBG */
 
 	/* 9.3.1 step 4 */
-	if (addtl && addtl->len > (drbg_max_addtl(shadow))) {
+	if (addtl && addtl->len > (drbg_max_addtl(drbg))) {
 		pr_devel("DRBG: additional information string too long %zu\n",
 			 addtl->len);
 		goto err;
@@ -1332,46 +1361,29 @@ static int drbg_generate(struct drbg_state *drbg,
 	 * 9.3.1 step 6 and 9 supplemented by 9.3.2 step c is implemented
 	 * here. The spec is a bit convoluted here, we make it simpler.
 	 */
-	if ((drbg_max_requests(shadow)) < shadow->reseed_ctr)
-		shadow->seeded = false;
+	if ((drbg_max_requests(drbg)) < drbg->reseed_ctr)
+		drbg->seeded = false;
 
-	/* allocate cipher handle */
-	len = shadow->d_ops->crypto_init(shadow);
-	if (len)
-		goto err;
-
-	if (shadow->pr || !shadow->seeded) {
+	if (drbg->pr || !drbg->seeded) {
 		pr_devel("DRBG: reseeding before generation (prediction "
 			 "resistance: %s, state %s)\n",
 			 drbg->pr ? "true" : "false",
 			 drbg->seeded ? "seeded" : "unseeded");
 		/* 9.3.1 steps 7.1 through 7.3 */
-		len = drbg_seed(shadow, addtl, true);
+		len = drbg_seed(drbg, addtl, true);
 		if (len)
 			goto err;
 		/* 9.3.1 step 7.4 */
 		addtl = NULL;
 	}
 
-	/*
-	 * Mix the time stamp into the DRBG state if the DRBG is not in
-	 * test mode. If there are two callers invoking the DRBG at the same
-	 * time, i.e. before the first caller merges its shadow state back,
-	 * both callers would obtain the same random number stream without
-	 * changing the state here.
-	 */
-	if (!drbg->test_data) {
-		now.cycles = random_get_entropy();
-		drbg_string_fill(&timestamp, now.char_cycles, sizeof(cycles_t));
-		list_add_tail(&timestamp.list, &addtllist);
-	}
 	if (addtl && 0 < addtl->len)
 		list_add_tail(&addtl->list, &addtllist);
 	/* 9.3.1 step 8 and 10 */
-	len = shadow->d_ops->generate(shadow, buf, buflen, &addtllist);
+	len = drbg->d_ops->generate(drbg, buf, buflen, &addtllist);
 
 	/* 10.1.1.4 step 6, 10.1.2.5 step 7, 10.2.1.5.2 step 7 */
-	shadow->reseed_ctr++;
+	drbg->reseed_ctr++;
 	if (0 >= len)
 		goto err;
 
@@ -1391,7 +1403,7 @@ static int drbg_generate(struct drbg_state *drbg,
 	 * case somebody has a need to implement the test of 11.3.3.
 	 */
 #if 0
-	if (shadow->reseed_ctr && !(shadow->reseed_ctr % 4096)) {
+	if (drbg->reseed_ctr && !(drbg->reseed_ctr % 4096)) {
 		int err = 0;
 		pr_devel("DRBG: start to perform self test\n");
 		if (drbg->core->flags & DRBG_HMAC)
@@ -1410,8 +1422,6 @@ static int drbg_generate(struct drbg_state *drbg,
 			 * are returned when reusing this DRBG cipher handle
 			 */
 			drbg_uninstantiate(drbg);
-			drbg_dealloc_state(shadow);
-			kzfree(shadow);
 			return 0;
 		} else {
 			pr_devel("DRBG: self test successful\n");
@@ -1425,8 +1435,6 @@ static int drbg_generate(struct drbg_state *drbg,
 	 */
 	len = 0;
 err:
-	shadow->d_ops->crypto_fini(shadow);
-	drbg_restore_shadow(drbg, &shadow);
 	return len;
 }
 
@@ -1442,19 +1450,21 @@ static int drbg_generate_long(struct drbg_state *drbg,
 			      unsigned char *buf, unsigned int buflen,
 			      struct drbg_string *addtl)
 {
-	int len = 0;
+	unsigned int len = 0;
 	unsigned int slice = 0;
 	do {
-		int tmplen = 0;
+		int err = 0;
 		unsigned int chunk = 0;
 		slice = ((buflen - len) / drbg_max_request_bytes(drbg));
 		chunk = slice ? drbg_max_request_bytes(drbg) : (buflen - len);
-		tmplen = drbg_generate(drbg, buf + len, chunk, addtl);
-		if (0 >= tmplen)
-			return tmplen;
-		len += tmplen;
+		mutex_lock(&drbg->drbg_mutex);
+		err = drbg_generate(drbg, buf + len, chunk, addtl);
+		mutex_unlock(&drbg->drbg_mutex);
+		if (0 > err)
+			return err;
+		len += chunk;
 	} while (slice > 0 && (len < buflen));
-	return len;
+	return 0;
 }
 
 /*
@@ -1477,32 +1487,12 @@ static int drbg_generate_long(struct drbg_state *drbg,
 static int drbg_instantiate(struct drbg_state *drbg, struct drbg_string *pers,
 			    int coreref, bool pr)
 {
-	int ret = -ENOMEM;
+	int ret;
+	bool reseed = true;
 
 	pr_devel("DRBG: Initializing DRBG core %d with prediction resistance "
 		 "%s\n", coreref, pr ? "enabled" : "disabled");
-	drbg->core = &drbg_cores[coreref];
-	drbg->pr = pr;
-	drbg->seeded = false;
-	switch (drbg->core->flags & DRBG_TYPE_MASK) {
-#ifdef CONFIG_CRYPTO_DRBG_HMAC
-	case DRBG_HMAC:
-		drbg->d_ops = &drbg_hmac_ops;
-		break;
-#endif /* CONFIG_CRYPTO_DRBG_HMAC */
-#ifdef CONFIG_CRYPTO_DRBG_HASH
-	case DRBG_HASH:
-		drbg->d_ops = &drbg_hash_ops;
-		break;
-#endif /* CONFIG_CRYPTO_DRBG_HASH */
-#ifdef CONFIG_CRYPTO_DRBG_CTR
-	case DRBG_CTR:
-		drbg->d_ops = &drbg_ctr_ops;
-		break;
-#endif /* CONFIG_CRYPTO_DRBG_CTR */
-	default:
-		return -EOPNOTSUPP;
-	}
+	mutex_lock(&drbg->drbg_mutex);
 
 	/* 9.1 step 1 is implicit with the selected DRBG type */
 
@@ -1514,22 +1504,36 @@ static int drbg_instantiate(struct drbg_state *drbg, struct drbg_string *pers,
 
 	/* 9.1 step 4 is implicit in  drbg_sec_strength */
 
-	ret = drbg_alloc_state(drbg);
-	if (ret)
-		return ret;
+	if (!drbg->core) {
+		drbg->core = &drbg_cores[coreref];
+		drbg->pr = pr;
+		drbg->seeded = false;
 
-	ret = -EFAULT;
-	if (drbg->d_ops->crypto_init(drbg))
-		goto err;
-	ret = drbg_seed(drbg, pers, false);
-	drbg->d_ops->crypto_fini(drbg);
-	if (ret)
-		goto err;
+		ret = drbg_alloc_state(drbg);
+		if (ret)
+			goto unlock;
 
-	return 0;
+		ret = -EFAULT;
+		if (drbg->d_ops->crypto_init(drbg))
+			goto err;
+
+		reseed = false;
+	}
+
+	ret = drbg_seed(drbg, pers, reseed);
+
+	if (ret && !reseed) {
+		drbg->d_ops->crypto_fini(drbg);
+		goto err;
+	}
+
+	mutex_unlock(&drbg->drbg_mutex);
+	return ret;
 
 err:
 	drbg_dealloc_state(drbg);
+unlock:
+	mutex_unlock(&drbg->drbg_mutex);
 	return ret;
 }
 
@@ -1544,10 +1548,11 @@ err:
  */
 static int drbg_uninstantiate(struct drbg_state *drbg)
 {
-	spin_lock_bh(&drbg->drbg_lock);
+	cancel_work_sync(&drbg->seed_work);
+	if (drbg->d_ops)
+		drbg->d_ops->crypto_fini(drbg);
 	drbg_dealloc_state(drbg);
 	/* no scrubbing of test_data -- this shall survive an uninstantiate */
-	spin_unlock_bh(&drbg->drbg_lock);
 	return 0;
 }
 
@@ -1555,16 +1560,17 @@ static int drbg_uninstantiate(struct drbg_state *drbg)
  * Helper function for setting the test data in the DRBG
  *
  * @drbg DRBG state handle
- * @test_data test data to sets
+ * @data test data
+ * @len test data length
  */
-static inline void drbg_set_testdata(struct drbg_state *drbg,
-				     struct drbg_test_data *test_data)
+static void drbg_kcapi_set_entropy(struct crypto_rng *tfm,
+				   const u8 *data, unsigned int len)
 {
-	if (!test_data || !test_data->testentropy)
-		return;
-	spin_lock_bh(&drbg->drbg_lock);
-	drbg->test_data = test_data;
-	spin_unlock_bh(&drbg->drbg_lock);
+	struct drbg_state *drbg = crypto_rng_ctx(tfm);
+
+	mutex_lock(&drbg->drbg_mutex);
+	drbg_string_fill(&drbg->test_data, data, len);
+	mutex_unlock(&drbg->drbg_mutex);
 }
 
 /***************************************************************
@@ -1714,15 +1720,10 @@ static inline void drbg_convert_tfm_core(const char *cra_driver_name,
 static int drbg_kcapi_init(struct crypto_tfm *tfm)
 {
 	struct drbg_state *drbg = crypto_tfm_ctx(tfm);
-	bool pr = false;
-	int coreref = 0;
 
-	drbg_convert_tfm_core(crypto_tfm_alg_driver_name(tfm), &coreref, &pr);
-	/*
-	 * when personalization string is needed, the caller must call reset
-	 * and provide the personalization string as seed information
-	 */
-	return drbg_instantiate(drbg, NULL, coreref, pr);
+	mutex_init(&drbg->drbg_mutex);
+
+	return 0;
 }
 
 static void drbg_kcapi_cleanup(struct crypto_tfm *tfm)
@@ -1734,65 +1735,49 @@ static void drbg_kcapi_cleanup(struct crypto_tfm *tfm)
  * Generate random numbers invoked by the kernel crypto API:
  * The API of the kernel crypto API is extended as follows:
  *
- * If dlen is larger than zero, rdata is interpreted as the output buffer
- * where random data is to be stored.
- *
- * If dlen is zero, rdata is interpreted as a pointer to a struct drbg_gen
- * which holds the additional information string that is used for the
- * DRBG generation process. The output buffer that is to be used to store
- * data is also pointed to by struct drbg_gen.
+ * src is additional input supplied to the RNG.
+ * slen is the length of src.
+ * dst is the output buffer where random data is to be stored.
+ * dlen is the length of dst.
  */
-static int drbg_kcapi_random(struct crypto_rng *tfm, u8 *rdata,
-			     unsigned int dlen)
+static int drbg_kcapi_random(struct crypto_rng *tfm,
+			     const u8 *src, unsigned int slen,
+			     u8 *dst, unsigned int dlen)
 {
 	struct drbg_state *drbg = crypto_rng_ctx(tfm);
-	if (0 < dlen) {
-		return drbg_generate_long(drbg, rdata, dlen, NULL);
-	} else {
-		struct drbg_gen *data = (struct drbg_gen *)rdata;
-		struct drbg_string addtl;
-		/* catch NULL pointer */
-		if (!data)
-			return 0;
-		drbg_set_testdata(drbg, data->test_data);
+	struct drbg_string *addtl = NULL;
+	struct drbg_string string;
+
+	if (slen) {
 		/* linked list variable is now local to allow modification */
-		drbg_string_fill(&addtl, data->addtl->buf, data->addtl->len);
-		return drbg_generate_long(drbg, data->outbuf, data->outlen,
-					  &addtl);
+		drbg_string_fill(&string, src, slen);
+		addtl = &string;
 	}
+
+	return drbg_generate_long(drbg, dst, dlen, addtl);
 }
 
 /*
- * Reset the DRBG invoked by the kernel crypto API
- * The reset implies a full re-initialization of the DRBG. Similar to the
- * generate function of drbg_kcapi_random, this function extends the
- * kernel crypto API interface with struct drbg_gen
+ * Seed the DRBG invoked by the kernel crypto API
  */
-static int drbg_kcapi_reset(struct crypto_rng *tfm, u8 *seed, unsigned int slen)
+static int drbg_kcapi_seed(struct crypto_rng *tfm,
+			   const u8 *seed, unsigned int slen)
 {
 	struct drbg_state *drbg = crypto_rng_ctx(tfm);
 	struct crypto_tfm *tfm_base = crypto_rng_tfm(tfm);
 	bool pr = false;
-	struct drbg_string seed_string;
+	struct drbg_string string;
+	struct drbg_string *seed_string = NULL;
 	int coreref = 0;
 
-	drbg_uninstantiate(drbg);
 	drbg_convert_tfm_core(crypto_tfm_alg_driver_name(tfm_base), &coreref,
 			      &pr);
 	if (0 < slen) {
-		drbg_string_fill(&seed_string, seed, slen);
-		return drbg_instantiate(drbg, &seed_string, coreref, pr);
-	} else {
-		struct drbg_gen *data = (struct drbg_gen *)seed;
-		/* allow invocation of API call with NULL, 0 */
-		if (!data)
-			return drbg_instantiate(drbg, NULL, coreref, pr);
-		drbg_set_testdata(drbg, data->test_data);
-		/* linked list variable is now local to allow modification */
-		drbg_string_fill(&seed_string, data->addtl->buf,
-				 data->addtl->len);
-		return drbg_instantiate(drbg, &seed_string, coreref, pr);
+		drbg_string_fill(&string, seed, slen);
+		seed_string = &string;
 	}
+
+	return drbg_instantiate(drbg, seed_string, coreref, pr);
 }
 
 /***************************************************************
@@ -1811,7 +1796,6 @@ static int drbg_kcapi_reset(struct crypto_rng *tfm, u8 *seed, unsigned int slen)
  */
 static inline int __init drbg_healthcheck_sanity(void)
 {
-#ifdef CONFIG_CRYPTO_FIPS
 	int len = 0;
 #define OUTBUFLEN 16
 	unsigned char buf[OUTBUFLEN];
@@ -1838,6 +1822,8 @@ static inline int __init drbg_healthcheck_sanity(void)
 	drbg = kzalloc(sizeof(struct drbg_state), GFP_KERNEL);
 	if (!drbg)
 		return -ENOMEM;
+
+	mutex_init(&drbg->drbg_mutex);
 
 	/*
 	 * if the following tests fail, it is likely that there is a buffer
@@ -1877,37 +1863,33 @@ static inline int __init drbg_healthcheck_sanity(void)
 outbuf:
 	kzfree(drbg);
 	return rc;
-#else /* CONFIG_CRYPTO_FIPS */
-	return 0;
-#endif /* CONFIG_CRYPTO_FIPS */
 }
 
-static struct crypto_alg drbg_algs[22];
+static struct rng_alg drbg_algs[22];
 
 /*
  * Fill the array drbg_algs used to register the different DRBGs
  * with the kernel crypto API. To fill the array, the information
  * from drbg_cores[] is used.
  */
-static inline void __init drbg_fill_array(struct crypto_alg *alg,
+static inline void __init drbg_fill_array(struct rng_alg *alg,
 					  const struct drbg_core *core, int pr)
 {
 	int pos = 0;
-	static int priority = 100;
+	static int priority = 200;
 
-	memset(alg, 0, sizeof(struct crypto_alg));
-	memcpy(alg->cra_name, "stdrng", 6);
+	memcpy(alg->base.cra_name, "stdrng", 6);
 	if (pr) {
-		memcpy(alg->cra_driver_name, "drbg_pr_", 8);
+		memcpy(alg->base.cra_driver_name, "drbg_pr_", 8);
 		pos = 8;
 	} else {
-		memcpy(alg->cra_driver_name, "drbg_nopr_", 10);
+		memcpy(alg->base.cra_driver_name, "drbg_nopr_", 10);
 		pos = 10;
 	}
-	memcpy(alg->cra_driver_name + pos, core->cra_name,
+	memcpy(alg->base.cra_driver_name + pos, core->cra_name,
 	       strlen(core->cra_name));
 
-	alg->cra_priority = priority;
+	alg->base.cra_priority = priority;
 	priority++;
 	/*
 	 * If FIPS mode enabled, the selected DRBG shall have the
@@ -1915,17 +1897,16 @@ static inline void __init drbg_fill_array(struct crypto_alg *alg,
 	 * it is selected.
 	 */
 	if (fips_enabled)
-		alg->cra_priority += 200;
+		alg->base.cra_priority += 200;
 
-	alg->cra_flags		= CRYPTO_ALG_TYPE_RNG;
-	alg->cra_ctxsize 	= sizeof(struct drbg_state);
-	alg->cra_type		= &crypto_rng_type;
-	alg->cra_module		= THIS_MODULE;
-	alg->cra_init		= drbg_kcapi_init;
-	alg->cra_exit		= drbg_kcapi_cleanup;
-	alg->cra_u.rng.rng_make_random	= drbg_kcapi_random;
-	alg->cra_u.rng.rng_reset	= drbg_kcapi_reset;
-	alg->cra_u.rng.seedsize	= 0;
+	alg->base.cra_ctxsize 	= sizeof(struct drbg_state);
+	alg->base.cra_module	= THIS_MODULE;
+	alg->base.cra_init	= drbg_kcapi_init;
+	alg->base.cra_exit	= drbg_kcapi_cleanup;
+	alg->generate		= drbg_kcapi_random;
+	alg->seed		= drbg_kcapi_seed;
+	alg->set_ent		= drbg_kcapi_set_entropy;
+	alg->seedsize		= 0;
 }
 
 static int __init drbg_init(void)
@@ -1958,12 +1939,12 @@ static int __init drbg_init(void)
 		drbg_fill_array(&drbg_algs[i], &drbg_cores[j], 1);
 	for (j = 0; ARRAY_SIZE(drbg_cores) > j; j++, i++)
 		drbg_fill_array(&drbg_algs[i], &drbg_cores[j], 0);
-	return crypto_register_algs(drbg_algs, (ARRAY_SIZE(drbg_cores) * 2));
+	return crypto_register_rngs(drbg_algs, (ARRAY_SIZE(drbg_cores) * 2));
 }
 
 static void __exit drbg_exit(void)
 {
-	crypto_unregister_algs(drbg_algs, (ARRAY_SIZE(drbg_cores) * 2));
+	crypto_unregister_rngs(drbg_algs, (ARRAY_SIZE(drbg_cores) * 2));
 }
 
 module_init(drbg_init);
@@ -1984,3 +1965,4 @@ MODULE_DESCRIPTION("NIST SP800-90A Deterministic Random Bit Generator (DRBG) "
 		   CRYPTO_DRBG_HASH_STRING
 		   CRYPTO_DRBG_HMAC_STRING
 		   CRYPTO_DRBG_CTR_STRING);
+MODULE_ALIAS_CRYPTO("stdrng");
