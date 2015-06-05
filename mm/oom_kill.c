@@ -651,7 +651,7 @@ EXPORT_SYMBOL_GPL(unregister_oom_notifier);
  */
 bool force_out_of_memory(void)
 {
-	struct zonelist *zonelist = node_zonelist(first_memory_node, GFP_KERNEL);
+	struct zonelist *zonelist;
 	struct task_struct *p;
 	unsigned long totalpages;
 	unsigned int points;
@@ -659,6 +659,7 @@ bool force_out_of_memory(void)
 	if (oom_killer_disabled)
 		return false;
 
+	zonelist = node_zonelist(first_memory_node, GFP_KERNEL);
 	constrained_alloc(zonelist, GFP_KERNEL, NULL, &totalpages);
 	p = select_bad_process(&points, totalpages, NULL, true);
 	if (p != (void *)-1UL)
