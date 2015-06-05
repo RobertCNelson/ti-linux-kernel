@@ -95,8 +95,7 @@ static int pvpanic_add(struct acpi_device *device)
 	acpi_status status;
 	u64 ret;
 
-	status = acpi_evaluate_integer(device->handle, "_STA", NULL,
-				       &ret);
+	status = acpi_bus_get_status_handle(device->handle, &ret);
 
 	if (ACPI_FAILURE(status) || (ret & 0x0B) != 0x0B)
 		return -ENODEV;
