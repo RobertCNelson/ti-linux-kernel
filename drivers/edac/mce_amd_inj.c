@@ -18,6 +18,7 @@
 #include <linux/string.h>
 #include <linux/uaccess.h>
 #include <asm/mce.h>
+#include <asm/irq_vectors.h>
 
 #include "mce_amd.h"
 
