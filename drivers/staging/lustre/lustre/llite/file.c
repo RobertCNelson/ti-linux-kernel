@@ -213,7 +213,7 @@ out:
 		md_clear_open_replay_data(md_exp, och);
 		/* Free @och if it is not waiting for DONE_WRITING. */
 		och->och_fh.cookie = DEAD_HANDLE_MAGIC;
-		OBD_FREE_PTR(och);
+		kfree(och);
 	}
 	if (req) /* This is close request */
 		ptlrpc_req_finished(req);
@@ -693,7 +693,7 @@ restart:
 out_och_free:
 	if (rc) {
 		if (och_p && *och_p) {
-			OBD_FREE(*och_p, sizeof(struct obd_client_handle));
+			kfree(*och_p);
 			*och_p = NULL; /* OBD_FREE writes some magic there */
 			(*och_usecount)--;
 		}
@@ -875,7 +875,7 @@ out_close:
 out_release_it:
 	ll_intent_release(&it);
 out:
-	OBD_FREE_PTR(och);
+	kfree(och);
 	return ERR_PTR(rc);
 }
 
@@ -1779,7 +1779,7 @@ int ll_fid2path(struct inode *inode, void __user *arg)
 		rc = -EFAULT;
 
 gf_free:
-	OBD_FREE(gfout, outsize);
+	kfree(gfout);
 	return rc;
 }
 
@@ -1883,7 +1883,7 @@ int ll_data_version(struct inode *inode, __u64 *data_version,
 			*data_version = obdo->o_data_version;
 	}
 
-	OBD_FREE_PTR(obdo);
+	kfree(obdo);
 out:
 	ccc_inode_lsm_put(inode, lsm);
 	return rc;
@@ -2109,8 +2109,7 @@ putgl:
 	}
 
 free:
-	if (llss != NULL)
-		OBD_FREE_PTR(llss);
+	kfree(llss);
 
 	return rc;
 }
@@ -2152,22 +2151,20 @@ static int ll_hsm_import(struct inode *inode, struct file *file,
 
 	/* set HSM flags */
 	hss = kzalloc(sizeof(*hss), GFP_NOFS);
-	if (!hss) {
-		rc = -ENOMEM;
-		goto out;
-	}
+	if (!hss)
+		return -ENOMEM;
 
 	hss->hss_valid = HSS_SETMASK | HSS_ARCHIVE_ID;
 	hss->hss_archive_id = hui->hui_archive_id;
 	hss->hss_setmask = HS_ARCHIVED | HS_EXISTS | HS_RELEASED;
 	rc = ll_hsm_state_set(inode, hss);
 	if (rc != 0)
-		goto out;
+		goto free_hss;
 
 	attr = kzalloc(sizeof(*attr), GFP_NOFS);
 	if (!attr) {
 		rc = -ENOMEM;
-		goto out;
+		goto free_hss;
 	}
 
 	attr->ia_mode = hui->hui_mode & (S_IRWXU | S_IRWXG | S_IRWXO);
@@ -2193,13 +2190,9 @@ static int ll_hsm_import(struct inode *inode, struct file *file,
 
 	mutex_unlock(&inode->i_mutex);
 
-out:
-	if (hss != NULL)
-		OBD_FREE_PTR(hss);
-
-	if (attr != NULL)
-		OBD_FREE_PTR(attr);
-
+	kfree(attr);
+free_hss:
+	kfree(hss);
 	return rc;
 }
 
@@ -2350,7 +2343,7 @@ ll_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		op_data = ll_prep_md_op_data(NULL, inode, NULL, NULL, 0, 0,
 					     LUSTRE_OPC_ANY, hus);
 		if (IS_ERR(op_data)) {
-			OBD_FREE_PTR(hus);
+			kfree(hus);
 			return PTR_ERR(op_data);
 		}
 
@@ -2361,7 +2354,7 @@ ll_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			rc = -EFAULT;
 
 		ll_finish_md_op_data(op_data);
-		OBD_FREE_PTR(hus);
+		kfree(hus);
 		return rc;
 	}
 	case LL_IOC_HSM_STATE_SET: {
@@ -2373,13 +2366,13 @@ ll_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			return -ENOMEM;
 
 		if (copy_from_user(hss, (char *)arg, sizeof(*hss))) {
-			OBD_FREE_PTR(hss);
+			kfree(hss);
 			return -EFAULT;
 		}
 
 		rc = ll_hsm_state_set(inode, hss);
 
-		OBD_FREE_PTR(hss);
+		kfree(hss);
 		return rc;
 	}
 	case LL_IOC_HSM_ACTION: {
@@ -2394,7 +2387,7 @@ ll_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		op_data = ll_prep_md_op_data(NULL, inode, NULL, NULL, 0, 0,
 					     LUSTRE_OPC_ANY, hca);
 		if (IS_ERR(op_data)) {
-			OBD_FREE_PTR(hca);
+			kfree(hca);
 			return PTR_ERR(op_data);
 		}
 
@@ -2405,7 +2398,7 @@ ll_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			rc = -EFAULT;
 
 		ll_finish_md_op_data(op_data);
-		OBD_FREE_PTR(hca);
+		kfree(hca);
 		return rc;
 	}
 	case LL_IOC_SET_LEASE: {
@@ -2500,13 +2493,13 @@ ll_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			return -ENOMEM;
 
 		if (copy_from_user(hui, (void *)arg, sizeof(*hui))) {
-			OBD_FREE_PTR(hui);
+			kfree(hui);
 			return -EFAULT;
 		}
 
 		rc = ll_hsm_import(inode, file, hui);
 
-		OBD_FREE_PTR(hui);
+		kfree(hui);
 		return rc;
 	}
 	default: {
@@ -3246,12 +3239,10 @@ void ll_iocontrol_unregister(void *magic)
 	down_write(&llioc.ioc_sem);
 	list_for_each_entry(tmp, &llioc.ioc_head, iocd_list) {
 		if (tmp == magic) {
-			unsigned int size = tmp->iocd_size;
-
 			list_del(&tmp->iocd_list);
 			up_write(&llioc.ioc_sem);
 
-			OBD_FREE(tmp, size);
+			kfree(tmp);
 			return;
 		}
 	}
@@ -3619,6 +3610,6 @@ int ll_layout_restore(struct inode *inode)
 	hur->hur_request.hr_itemcount = 1;
 	rc = obd_iocontrol(LL_IOC_HSM_REQUEST, cl_i2sbi(inode)->ll_md_exp,
 			   len, hur, NULL);
-	OBD_FREE(hur, len);
+	kfree(hur);
 	return rc;
 }
