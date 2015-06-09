@@ -142,6 +142,7 @@ const char *v4l2_field_names[] = {
 EXPORT_SYMBOL(v4l2_field_names);
 
 const char *v4l2_type_names[] = {
+	[0]				   = "0",
 	[V4L2_BUF_TYPE_VIDEO_CAPTURE]      = "vid-cap",
 	[V4L2_BUF_TYPE_VIDEO_OVERLAY]      = "vid-overlay",
 	[V4L2_BUF_TYPE_VIDEO_OUTPUT]       = "vid-out",
@@ -257,7 +258,8 @@ static void v4l_print_format(const void *arg, bool write_only)
 		pr_cont(", width=%u, height=%u, "
 			"pixelformat=%c%c%c%c, field=%s, "
 			"bytesperline=%u, sizeimage=%u, colorspace=%d, "
-			"flags=0x%x, ycbcr_enc=%u, quantization=%u\n",
+			"flags=0x%x, ycbcr_enc=%u, quantization=%u, "
+			"xfer_func=%u\n",
 			pix->width, pix->height,
 			(pix->pixelformat & 0xff),
 			(pix->pixelformat >>  8) & 0xff,
@@ -266,7 +268,7 @@ static void v4l_print_format(const void *arg, bool write_only)
 			prt_names(pix->field, v4l2_field_names),
 			pix->bytesperline, pix->sizeimage,
 			pix->colorspace, pix->flags, pix->ycbcr_enc,
-			pix->quantization);
+			pix->quantization, pix->xfer_func);
 		break;
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
 	case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
@@ -274,7 +276,7 @@ static void v4l_print_format(const void *arg, bool write_only)
 		pr_cont(", width=%u, height=%u, "
 			"format=%c%c%c%c, field=%s, "
 			"colorspace=%d, num_planes=%u, flags=0x%x, "
-			"ycbcr_enc=%u, quantization=%u\n",
+			"ycbcr_enc=%u, quantization=%u, xfer_func=%u\n",
 			mp->width, mp->height,
 			(mp->pixelformat & 0xff),
 			(mp->pixelformat >>  8) & 0xff,
@@ -282,7 +284,7 @@ static void v4l_print_format(const void *arg, bool write_only)
 			(mp->pixelformat >> 24) & 0xff,
 			prt_names(mp->field, v4l2_field_names),
 			mp->colorspace, mp->num_planes, mp->flags,
-			mp->ycbcr_enc, mp->quantization);
+			mp->ycbcr_enc, mp->quantization, mp->xfer_func);
 		for (i = 0; i < mp->num_planes; i++)
 			printk(KERN_DEBUG "plane %u: bytesperline=%u sizeimage=%u\n", i,
 					mp->plane_fmt[i].bytesperline,
@@ -1803,6 +1805,8 @@ static int v4l_create_bufs(const struct v4l2_ioctl_ops *ops,
 
 	if (ret)
 		return ret;
+
+	CLEAR_AFTER_FIELD(create, format);
 
 	v4l_sanitize_format(&create->format);
 

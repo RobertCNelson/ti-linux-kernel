@@ -15,7 +15,7 @@
 	<funcdef>int <function>ioctl</function></funcdef>
 	<paramdef>int <parameter>fd</parameter></paramdef>
 	<paramdef>int <parameter>request</parameter></paramdef>
-	<paramdef>&fe-sec-tone-mode; *<parameter>tone</parameter></paramdef>
+	<paramdef>enum fe_sec_tone_mode *<parameter>tone</parameter></paramdef>
       </funcprototype>
     </funcsynopsis>
   </refsynopsisdiv>
@@ -49,7 +49,7 @@
 
 <para>This ioctl is used to set the generation of the continuous 22kHz tone.
     This call requires read/write permissions.</para>
-<para>Usually, satellital antenna subsystems require that the digital TV
+<para>Usually, satellite antenna subsystems require that the digital TV
     device to send a 22kHz tone in order to select between high/low band on
     some dual-band LNBf. It is also used to send signals to DiSEqC equipment,
     but this is done using the DiSEqC ioctls.</para>
@@ -61,8 +61,8 @@
 &return-value-dvb;
 </refsect1>
 
-<section id="fe-sec-tone-mode-t">
-<title>enum fe_sec_voltage</title>
+<refsect1 id="fe-sec-tone-mode-t">
+<title>enum fe_sec_tone_mode</title>
 
 <table pgwide="1" frame="none" id="fe-sec-tone-mode">
     <title>enum fe_sec_tone_mode</title>
@@ -86,6 +86,6 @@
         </tbody>
     </tgroup>
 </table>
-</section>
+</refsect1>
 
 </refentry>

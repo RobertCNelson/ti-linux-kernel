@@ -1,12 +1,12 @@
 <section id="frontend-properties">
 <title>DVB Frontend properties</title>
 <para>Tuning into a Digital TV physical channel and starting decoding it
-    requires to change a set of parameters, in order to control the
+    requires changing a set of parameters, in order to control the
     tuner, the demodulator, the Linear Low-noise Amplifier (LNA) and to set the
-    antena subsystem via Satellite Equipment Control (SEC), on satellital
+    antenna subsystem via Satellite Equipment Control (SEC), on satellite
     systems. The actual parameters are specific to each particular digital
-    TV standards, and may change as the digital TV specs evolutes.</para>
-<para>In the past, the strategy used were to have an union with the parameters
+    TV standards, and may change as the digital TV specs evolves.</para>
+<para>In the past, the strategy used was to have a union with the parameters
     needed to tune for DVB-S, DVB-C, DVB-T and ATSC delivery systems grouped
     there. The problem is that, as the second generation standards appeared,
     those structs were not big enough to contain the additional parameters.
@@ -27,13 +27,13 @@
     rate of 5.217 Mbauds, those properties should be sent to
     <link linkend="FE_GET_PROPERTY"><constant>FE_SET_PROPERTY</constant></link> ioctl:</para>
     <itemizedlist>
-	<listitem>&DTV-DELIVERY-SYSTEM; = SYS_DVBC_ANNEX_A</listitem>
-	<listitem>&DTV-FREQUENCY; = 651000000</listitem>
-	<listitem>&DTV-MODULATION; = QAM_256</listitem>
-	<listitem>&DTV-INVERSION; = INVERSION_AUTO</listitem>
-	<listitem>&DTV-SYMBOL-RATE; = 5217000</listitem>
-	<listitem>&DTV-INNER-FEC; = FEC_3_4</listitem>
-	<listitem>&DTV-TUNE;</listitem>
+	<listitem><para>&DTV-DELIVERY-SYSTEM; = SYS_DVBC_ANNEX_A</para></listitem>
+	<listitem><para>&DTV-FREQUENCY; = 651000000</para></listitem>
+	<listitem><para>&DTV-MODULATION; = QAM_256</para></listitem>
+	<listitem><para>&DTV-INVERSION; = INVERSION_AUTO</para></listitem>
+	<listitem><para>&DTV-SYMBOL-RATE; = 5217000</para></listitem>
+	<listitem><para>&DTV-INNER-FEC; = FEC_3_4</para></listitem>
+	<listitem><para>&DTV-TUNE;</para></listitem>
     </itemizedlist>
 
 <para>The code that would do the above is:</para>
@@ -171,7 +171,7 @@ get/set up to 64 properties. The actual meaning of each property is described on
 		<para>Central frequency of the channel.</para>
 
 		<para>Notes:</para>
-		<para>1)For satellital delivery systems, it is measured in kHz.
+		<para>1)For satellite delivery systems, it is measured in kHz.
 			For the other ones, it is measured in Hz.</para>
 		<para>2)For ISDB-T, the channels are usually transmitted with an offset of 143kHz.
 			E.g. a valid frequency could be 474143 kHz. The stepping is bound to the bandwidth of
@@ -193,7 +193,7 @@ get/set up to 64 properties. The actual meaning of each property is described on
 
 <para>Most of the digital TV standards currently offers more than one possible
     modulation (sometimes called as "constellation" on some standards). This
-    enum contains the values used by the Kernel. Please notice that not all
+    enum contains the values used by the Kernel. Please note that not all
     modulations are supported by a given standard.</para>
 
 <table pgwide="1" frame="none" id="fe-modulation">
@@ -394,7 +394,6 @@ get/set up to 64 properties. The actual meaning of each property is described on
 	</row><row>
 	    <entry>FEC_3_5</entry>
 	    <entry>Forward Error Correction Code 3/5</entry>
-	</row><row>
 	</row>
         </tbody>
     </tgroup>
@@ -916,7 +915,6 @@ typedef enum atscmh_sccc_code_mode {
         </tbody>
     </tgroup>
 </table>
-</section>
 
 		<para>Notes:</para>
 		<para>1) If <constant>DTV_GUARD_INTERVAL</constant> is set the <constant>GUARD_INTERVAL_AUTO</constant> the hardware will
@@ -924,6 +922,7 @@ typedef enum atscmh_sccc_code_mode {
 			in the missing parameters.</para>
 		<para>2) Intervals 1/128, 19/128 and 19/256 are used only for DVB-T2 at present</para>
 		<para>3) DTMB specifies PN420, PN595 and PN945.</para>
+</section>
 	</section>
 	<section id="DTV-TRANSMISSION-MODE">
 		<title><constant>DTV_TRANSMISSION_MODE</constant></title>
@@ -975,12 +974,10 @@ typedef enum atscmh_sccc_code_mode {
 	</row><row>
 	    <entry>TRANSMISSION_MODE_C3780</entry>
 	    <entry>Multi Carrier (C=3780) transmission mode (DTMB)</entry>
-	</row><row>
 	</row>
         </tbody>
     </tgroup>
 </table>
-</section>
 
 
 		<para>Notes:</para>
@@ -993,6 +990,7 @@ typedef enum atscmh_sccc_code_mode {
 		<para>3) DVB-T specifies 2K and 8K as valid sizes.</para>
 		<para>4) DVB-T2 specifies 1K, 2K, 4K, 8K, 16K and 32K.</para>
 		<para>5) DTMB specifies C1 and C3780.</para>
+</section>
 	</section>
 	<section id="DTV-HIERARCHY">
 	<title><constant>DTV_HIERARCHY</constant></title>
@@ -1100,7 +1098,7 @@ enum fe_interleaving {
 	<para>For most delivery systems, <constant>dtv_property.stat.len</constant>
 	      will be 1 if the stats is supported, and the properties will
 	      return a single value for each parameter.</para>
-	<para>It should be noticed, however, that new OFDM delivery systems
+	<para>It should be noted, however, that new OFDM delivery systems
 	      like ISDB can use different modulation types for each group of
 	      carriers. On such standards, up to 3 groups of statistics can be
 	      provided, and <constant>dtv_property.stat.len</constant> is updated
@@ -1164,7 +1162,7 @@ enum fe_interleaving {
 		<title><constant>DTV_STAT_PRE_TOTAL_BIT_COUNT</constant></title>
 		<para>Measures the amount of bits received before the inner code block, during the same period as
 		<link linkend="DTV-STAT-PRE-ERROR-BIT-COUNT"><constant>DTV_STAT_PRE_ERROR_BIT_COUNT</constant></link> measurement was taken.</para>
-		<para>It should be noticed that this measurement can be smaller than the total amount of bits on the transport stream,
+		<para>It should be noted that this measurement can be smaller than the total amount of bits on the transport stream,
 		      as the frontend may need to manually restart the measurement, losing some data between each measurement interval.</para>
 		<para>This measurement is monotonically increased, as the frontend gets more bit count measurements.
 		      The frontend may reset it when a channel/transponder is tuned.</para>
@@ -1193,7 +1191,7 @@ enum fe_interleaving {
 		<title><constant>DTV_STAT_POST_TOTAL_BIT_COUNT</constant></title>
 		<para>Measures the amount of bits received after the inner coding, during the same period as
 		<link linkend="DTV-STAT-POST-ERROR-BIT-COUNT"><constant>DTV_STAT_POST_ERROR_BIT_COUNT</constant></link> measurement was taken.</para>
-		<para>It should be noticed that this measurement can be smaller than the total amount of bits on the transport stream,
+		<para>It should be noted that this measurement can be smaller than the total amount of bits on the transport stream,
 		      as the frontend may need to manually restart the measurement, losing some data between each measurement interval.</para>
 		<para>This measurement is monotonically increased, as the frontend gets more bit count measurements.
 		      The frontend may reset it when a channel/transponder is tuned.</para>
@@ -1434,8 +1432,8 @@ enum fe_interleaving {
 		<para>In addition, the <link linkend="frontend-stat-properties">DTV QoS statistics</link> are also valid.</para>
 	</section>
 	</section>
-	<section id="frontend-property-satellital-systems">
-	<title>Properties used on satellital delivery systems</title>
+	<section id="frontend-property-satellite-systems">
+	<title>Properties used on satellite delivery systems</title>
 	<section id="dvbs-params">
 		<title>DVB-S delivery system</title>
 		<para>The following parameters are valid for DVB-S:</para>

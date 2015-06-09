@@ -170,6 +170,7 @@ static void cobalt_enable_output(struct cobalt_stream *s)
 	}
 
 	sd_fmt.format.colorspace = s->colorspace;
+	sd_fmt.format.xfer_func = s->xfer_func;
 	sd_fmt.format.ycbcr_enc = s->ycbcr_enc;
 	sd_fmt.format.quantization = s->quantization;
 	sd_fmt.format.width = bt->width;
@@ -736,9 +737,6 @@ static int cobalt_g_fmt_vid_cap(struct file *file, void *priv_fh,
 		sd_fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
 		v4l2_subdev_call(s->sd, pad, get_fmt, NULL, &sd_fmt);
 		v4l2_fill_pix_format(pix, &sd_fmt.format);
-		pix->colorspace = sd_fmt.format.colorspace;
-		pix->ycbcr_enc = sd_fmt.format.ycbcr_enc;
-		pix->quantization = sd_fmt.format.quantization;
 	}
 
 	pix->pixelformat = s->pixfmt;
@@ -781,9 +779,6 @@ static int cobalt_try_fmt_vid_cap(struct file *file, void *priv_fh,
 		sd_fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
 		v4l2_subdev_call(s->sd, pad, get_fmt, NULL, &sd_fmt);
 		v4l2_fill_pix_format(pix, &sd_fmt.format);
-		pix->colorspace = sd_fmt.format.colorspace;
-		pix->ycbcr_enc = sd_fmt.format.ycbcr_enc;
-		pix->quantization = sd_fmt.format.quantization;
 	}
 
 	switch (pix->pixelformat) {
@@ -897,6 +892,7 @@ static int cobalt_g_fmt_vid_out(struct file *file, void *priv_fh,
 	pix->field = V4L2_FIELD_NONE;
 	pix->pixelformat = s->pixfmt;
 	pix->colorspace = s->colorspace;
+	pix->xfer_func = s->xfer_func;
 	pix->ycbcr_enc = s->ycbcr_enc;
 	pix->quantization = s->quantization;
 	pix->sizeimage = pix->bytesperline * pix->height;
@@ -929,6 +925,7 @@ static int cobalt_s_fmt_vid_out(struct file *file, void *priv_fh,
 	struct cobalt_stream *s = video_drvdata(file);
 	struct v4l2_pix_format *pix = &f->fmt.pix;
 	struct v4l2_subdev_format sd_fmt = { 0 };
+	u32 code;
 
 	if (cobalt_try_fmt_vid_out(file, priv_fh, f))
 		return -EINVAL;
@@ -941,9 +938,11 @@ static int cobalt_s_fmt_vid_out(struct file *file, void *priv_fh,
 	switch (pix->pixelformat) {
 	case V4L2_PIX_FMT_YUYV:
 		s->bpp = COBALT_BYTES_PER_PIXEL_YUYV;
+		code = MEDIA_BUS_FMT_UYVY8_1X16;
 		break;
 	case V4L2_PIX_FMT_BGR32:
 		s->bpp = COBALT_BYTES_PER_PIXEL_RGB32;
+		code = MEDIA_BUS_FMT_RGB888_1X24;
 		break;
 	default:
 		return -EINVAL;
@@ -953,13 +952,11 @@ static int cobalt_s_fmt_vid_out(struct file *file, void *priv_fh,
 	s->stride = pix->bytesperline;
 	s->pixfmt = pix->pixelformat;
 	s->colorspace = pix->colorspace;
+	s->xfer_func = pix->xfer_func;
 	s->ycbcr_enc = pix->ycbcr_enc;
 	s->quantization = pix->quantization;
 	sd_fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
-	v4l2_subdev_call(s->sd, pad, get_fmt, NULL, &sd_fmt);
-	sd_fmt.format.colorspace = pix->colorspace;
-	sd_fmt.format.ycbcr_enc = pix->ycbcr_enc;
-	sd_fmt.format.quantization = pix->quantization;
+	v4l2_fill_mbus_format(&sd_fmt.format, pix, code);
 	v4l2_subdev_call(s->sd, pad, set_fmt, NULL, &sd_fmt);
 	return 0;
 }
