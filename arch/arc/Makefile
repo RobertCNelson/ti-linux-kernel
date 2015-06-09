@@ -9,7 +9,7 @@
 UTS_MACHINE := arc
 
 ifeq ($(CROSS_COMPILE),)
-CROSS_COMPILE := arc-linux-uclibc-
+CROSS_COMPILE := arc-linux-
 endif
 
 KBUILD_DEFCONFIG := nsim_700_defconfig
@@ -33,7 +33,7 @@ cflags-$(atleast_gcc44)			+= -fsection-anchors
 
 cflags-$(CONFIG_ARC_HAS_LLSC)		+= -mlock
 cflags-$(CONFIG_ARC_HAS_SWAPE)		+= -mswape
-cflags-$(CONFIG_ARC_HAS_RTSC)		+= -mrtsc
+
 cflags-$(CONFIG_ARC_DW2_UNWIND)		+= -fasynchronous-unwind-tables
 
 # By default gcc 4.8 generates dwarf4 which kernel unwinder can't grok
@@ -81,8 +81,9 @@ core-y		+= arch/arc/
 # w/o this dtb won't embed into kernel binary
 core-y		+= arch/arc/boot/dts/
 
-core-$(CONFIG_ARC_PLAT_FPGA_LEGACY)	+= arch/arc/plat-arcfpga/
-core-$(CONFIG_ARC_PLAT_TB10X)		+= arch/arc/plat-tb10x/
+core-$(CONFIG_ARC_PLAT_SIM)	+= arch/arc/plat-sim/
+core-$(CONFIG_ARC_PLAT_TB10X)	+= arch/arc/plat-tb10x/
+core-$(CONFIG_ARC_PLAT_AXS10X)	+= arch/arc/plat-axs10x/
 
 drivers-$(CONFIG_OPROFILE)	+= arch/arc/oprofile/
 

@@ -54,7 +54,7 @@ static void read_arc_build_cfg_regs(void)
 	cpu->vec_base = read_aux_reg(AUX_INTR_VEC_BASE);
 
 	READ_BCR(ARC_REG_D_UNCACH_BCR, uncached_space);
-	cpu->uncached_base = uncached_space.start << 24;
+	BUG_ON((uncached_space.start << 24) != ARC_UNCACHED_ADDR_SPACE);
 
 	READ_BCR(ARC_REG_MUL_BCR, cpu->extn_mpy);
 
@@ -180,10 +180,9 @@ static char *arc_cpu_mumbojumbo(int cpu_id, char *buf, int len)
 		       (unsigned int)(arc_get_core_freq() / 1000000),
 		       (unsigned int)(arc_get_core_freq() / 10000) % 100);
 
-	n += scnprintf(buf + n, len - n, "Timers\t\t: %s%s%s%s\nISA Extn\t: ",
+	n += scnprintf(buf + n, len - n, "Timers\t\t: %s%s\nISA Extn\t: ",
 		       IS_AVAIL1(cpu->timers.t0, "Timer0 "),
-		       IS_AVAIL1(cpu->timers.t1, "Timer1 "),
-		       IS_AVAIL2(cpu->timers.rtsc, "64-bit RTSC ", CONFIG_ARC_HAS_RTSC));
+		       IS_AVAIL1(cpu->timers.t1, "Timer1 "));
 
 	n += i = scnprintf(buf + n, len - n, "%s%s",
 			   IS_AVAIL2(atomic, "atomic ", CONFIG_ARC_HAS_LLSC));
@@ -219,7 +218,7 @@ static char *arc_extn_mumbojumbo(int cpu_id, char *buf, int len)
 
 	n += scnprintf(buf + n, len - n,
 		       "Vector Table\t: %#x\nUncached Base\t: %#x\n",
-		       cpu->vec_base, cpu->uncached_base);
+		       cpu->vec_base, ARC_UNCACHED_ADDR_SPACE);
 
 	if (cpu->extn.fpu_sp || cpu->extn.fpu_dp)
 		n += scnprintf(buf + n, len - n, "FPU\t\t: %s%s\n",
@@ -253,9 +252,6 @@ static void arc_chk_core_config(void)
 
 	if (!cpu->timers.t1)
 		panic("Timer1 is not present!\n");
-
-	if (IS_ENABLED(CONFIG_ARC_HAS_RTSC) && !cpu->timers.rtsc)
-		panic("RTSC is not present\n");
 
 #ifdef CONFIG_ARC_HAS_DCCM
 	/*
@@ -323,13 +319,16 @@ static inline int is_kernel(unsigned long addr)
 
 void __init setup_arch(char **cmdline_p)
 {
+#ifdef CONFIG_ARC_UBOOT_SUPPORT
 	/* make sure that uboot passed pointer to cmdline/dtb is valid */
 	if (uboot_tag && is_kernel((unsigned long)uboot_arg))
 		panic("Invalid uboot arg\n");
 
 	/* See if u-boot passed an external Device Tree blob */
 	machine_desc = setup_machine_fdt(uboot_arg);	/* uboot_tag == 2 */
-	if (!machine_desc) {
+	if (!machine_desc)
+#endif
+	{
 		/* No, so try the embedded one */
 		machine_desc = setup_machine_fdt(__dtb_start);
 		if (!machine_desc)
