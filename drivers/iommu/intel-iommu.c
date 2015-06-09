@@ -17,6 +17,8 @@
  *          Fenghua Yu <fenghua.yu@intel.com>
  */
 
+#define pr_fmt(fmt)	"DMAR: " fmt
+
 #include <linux/init.h>
 #include <linux/bitmap.h>
 #include <linux/debugfs.h>
@@ -40,6 +42,7 @@
 #include <linux/pci-ats.h>
 #include <linux/memblock.h>
 #include <linux/dma-contiguous.h>
+#include <linux/crash_dump.h>
 #include <asm/irq_remapping.h>
 #include <asm/cacheflush.h>
 #include <asm/iommu.h>
@@ -190,6 +193,30 @@ struct root_entry {
 };
 #define ROOT_ENTRY_NR (VTD_PAGE_SIZE/sizeof(struct root_entry))
 
+static inline bool root_present(struct root_entry *root)
+{
+	return (root->lo & 1);
+}
+
+static inline void set_root_value(struct root_entry *root, unsigned long value)
+{
+	root->lo = (value & VTD_PAGE_MASK) | 1;
+}
+
+static inline struct context_entry *
+get_context_addr_from_root(struct root_entry *root)
+{
+	return (struct context_entry *)
+		(root_present(root)?phys_to_virt(
+		root->lo & VTD_PAGE_MASK) :
+		NULL);
+}
+
+static inline unsigned long
+get_context_phys_from_root(struct root_entry *root)
+{
+	return  root_present(root) ? (root->lo & VTD_PAGE_MASK) : 0;
+}
 
 /*
  * low 64 bits:
@@ -211,6 +238,32 @@ static inline bool context_present(struct context_entry *context)
 {
 	return (context->lo & 1);
 }
+
+static inline int context_fault_enable(struct context_entry *c)
+{
+	return((c->lo >> 1) & 0x1);
+}
+
+static inline int context_translation_type(struct context_entry *c)
+{
+	return((c->lo >> 2) & 0x3);
+}
+
+static inline u64 context_address_root(struct context_entry *c)
+{
+	return((c->lo >> VTD_PAGE_SHIFT));
+}
+
+static inline int context_address_width(struct context_entry *c)
+{
+	return((c->hi >> 0) & 0x7);
+}
+
+static inline int context_domain_id(struct context_entry *c)
+{
+	return((c->hi >> 8) & 0xffff);
+}
+
 static inline void context_set_present(struct context_entry *context)
 {
 	context->lo |= 1;
@@ -295,6 +348,48 @@ static inline int first_pte_in_page(struct dma_pte *pte)
 {
 	return !((unsigned long)pte & ~VTD_PAGE_MASK);
 }
+
+
+/*
+ * Fix Crashdump failure caused by leftover DMA through a hardware IOMMU
+ *
+ * Fixes the crashdump kernel to deal with an active iommu and legacy
+ * DMA from the (old) panicked kernel in a manner similar to how legacy
+ * DMA is handled when no hardware iommu was in use by the old kernel --
+ * allow the legacy DMA to continue into its current buffers.
+ *
+ * In the crashdump kernel, this code:
+ * 1. skips disabling the IOMMU's translating.
+ * 2. Do not re-enable IOMMU's translating.
+ * 3. In kdump kernel, use the old root entry table.
+ * 4. Allocate pages for new context entry, copy data from old context entries
+ *    in the old kernel to the new ones.
+ *
+ * In other kinds of kernel, for example, a kernel started by kexec,
+ * do the same thing as crashdump kernel.
+ */
+
+/*
+ * A structure used to store the address allocated by ioremap();
+ * The we need to call iounmap() to free them out of spin_lock_irqsave/unlock;
+ */
+struct iommu_remapped_entry {
+	struct list_head list;
+	void __iomem *mem;
+};
+static LIST_HEAD(__iommu_remapped_mem);
+
+/*
+ * Copy iommu translation tables from old kernel into new  kernel.
+ * Entry to this set of functions is: intel_iommu_load_translation_tables()
+ */
+static int intel_iommu_load_translation_tables(struct intel_iommu *iommu);
+
+static void unmap_device_dma(struct dmar_domain *domain,
+				struct device *dev,
+				struct intel_iommu *iommu);
+static void iommu_check_pre_te_status(struct intel_iommu *iommu);
+static u8 g_translation_pre_enabled;
 
 /*
  * This domain is a statically identity mapping domain.
@@ -793,13 +888,14 @@ static void clear_context_table(struct intel_iommu *iommu, u8 bus, u8 devfn)
 
 static void free_context_table(struct intel_iommu *iommu)
 {
-	int i;
-	unsigned long flags;
 	struct context_entry *context;
+	unsigned long flags;
+	int i;
 
 	spin_lock_irqsave(&iommu->lock, flags);
 	if (!iommu->root_entry) {
-		goto out;
+		spin_unlock_irqrestore(&iommu->lock, flags);
+		return;
 	}
 	for (i = 0; i < ROOT_ENTRY_NR; i++) {
 		context = iommu_context_addr(iommu, i, 0, 0);
@@ -814,9 +910,10 @@ static void free_context_table(struct intel_iommu *iommu)
 			free_pgtable_page(context);
 
 	}
+
 	free_pgtable_page(iommu->root_entry);
 	iommu->root_entry = NULL;
-out:
+
 	spin_unlock_irqrestore(&iommu->lock, flags);
 }
 
@@ -1120,8 +1217,7 @@ static int iommu_alloc_root_entry(struct intel_iommu *iommu)
 
 	root = (struct root_entry *)alloc_pgtable_page(iommu->node);
 	if (!root) {
-		pr_err("IOMMU: allocating root entry for %s failed\n",
-			iommu->name);
+		pr_err("allocating root entry for %s failed\n", iommu->name);
 		return -ENOMEM;
 	}
 
@@ -1258,9 +1354,9 @@ static void __iommu_flush_iotlb(struct intel_iommu *iommu, u16 did,
 
 	/* check IOTLB invalidation granularity */
 	if (DMA_TLB_IAIG(val) == 0)
-		printk(KERN_ERR"IOMMU: flush IOTLB failed\n");
+		pr_err("flush IOTLB failed\n");
 	if (DMA_TLB_IAIG(val) != DMA_TLB_IIRG(type))
-		pr_debug("IOMMU: tlb flush request %Lx, actual %Lx\n",
+		pr_debug("tlb flush request %Lx, actual %Lx\n",
 			(unsigned long long)DMA_TLB_IIRG(type),
 			(unsigned long long)DMA_TLB_IAIG(val));
 }
@@ -1431,7 +1527,7 @@ static int iommu_init_domains(struct intel_iommu *iommu)
 	unsigned long nlongs;
 
 	ndomains = cap_ndoms(iommu->cap);
-	pr_debug("IOMMU%d: Number of Domains supported <%ld>\n",
+	pr_debug("Number of Domains supported iommu[%d] <%ld>\n",
 		 iommu->seq_id, ndomains);
 	nlongs = BITS_TO_LONGS(ndomains);
 
@@ -1442,14 +1538,14 @@ static int iommu_init_domains(struct intel_iommu *iommu)
 	 */
 	iommu->domain_ids = kcalloc(nlongs, sizeof(unsigned long), GFP_KERNEL);
 	if (!iommu->domain_ids) {
-		pr_err("IOMMU%d: allocating domain id array failed\n",
+		pr_err("Allocating domain id array for iommu[%d] failed\n",
 		       iommu->seq_id);
 		return -ENOMEM;
 	}
 	iommu->domains = kcalloc(ndomains, sizeof(struct dmar_domain *),
 			GFP_KERNEL);
 	if (!iommu->domains) {
-		pr_err("IOMMU%d: allocating domain array failed\n",
+		pr_err("Allocating domain array for iommu[%d] failed\n",
 		       iommu->seq_id);
 		kfree(iommu->domain_ids);
 		iommu->domain_ids = NULL;
@@ -1555,9 +1651,19 @@ static int iommu_attach_domain(struct dmar_domain *domain,
 	num = __iommu_attach_domain(domain, iommu);
 	spin_unlock_irqrestore(&iommu->lock, flags);
 	if (num < 0)
-		pr_err("IOMMU: no free domain ids\n");
+		pr_err("No free domain ids\n");
 
 	return num;
+}
+
+static int iommu_attach_domain_with_id(struct dmar_domain *domain,
+			       struct intel_iommu *iommu,
+			       int domain_number)
+{
+	if (domain_number >= 0)
+		return domain_number;
+
+	return iommu_attach_domain(domain, iommu);
 }
 
 static int iommu_attach_vm_domain(struct dmar_domain *domain,
@@ -1710,7 +1816,7 @@ static int domain_init(struct dmar_domain *domain, int guest_width)
 	sagaw = cap_sagaw(iommu->cap);
 	if (!test_bit(agaw, &sagaw)) {
 		/* hardware doesn't support it, choose a bigger one */
-		pr_debug("IOMMU: hardware doesn't support agaw %d\n", agaw);
+		pr_debug("Hardware doesn't support agaw %d\n", agaw);
 		agaw = find_next_bit(&sagaw, 5, agaw);
 		if (agaw >= 5)
 			return -ENODEV;
@@ -1786,7 +1892,7 @@ static int domain_context_mapping_one(struct dmar_domain *domain,
 	struct device_domain_info *info = NULL;
 
 	pr_debug("Set context mapping for %02x:%02x.%d\n",
-		bus, PCI_SLOT(devfn), PCI_FUNC(devfn));
+		 bus, PCI_SLOT(devfn), PCI_FUNC(devfn));
 
 	BUG_ON(!domain->pgd);
 	BUG_ON(translation != CONTEXT_TT_PASS_THROUGH &&
@@ -1811,7 +1917,7 @@ static int domain_context_mapping_one(struct dmar_domain *domain,
 			id = iommu_attach_vm_domain(domain, iommu);
 			if (id < 0) {
 				spin_unlock_irqrestore(&iommu->lock, flags);
-				pr_err("IOMMU: no free domain ids\n");
+				pr_err("No free domain ids\n");
 				return -EFAULT;
 			}
 		}
@@ -2228,6 +2334,7 @@ static struct dmar_domain *get_domain_for_dev(struct device *dev, int gaw)
 	u16 dma_alias;
 	unsigned long flags;
 	u8 bus, devfn;
+	int did = -1;   /* Default to "no domain_id supplied" */
 
 	domain = find_domain(dev);
 	if (domain)
@@ -2261,7 +2368,8 @@ static struct dmar_domain *get_domain_for_dev(struct device *dev, int gaw)
 	domain = alloc_domain(0);
 	if (!domain)
 		return NULL;
-	domain->id = iommu_attach_domain(domain, iommu);
+
+	domain->id = iommu_attach_domain_with_id(domain, iommu, did);
 	if (domain->id < 0) {
 		free_domain_mem(domain);
 		return NULL;
@@ -2458,7 +2566,7 @@ static int __init si_domain_init(int hw)
 		return -EFAULT;
 	}
 
-	pr_debug("IOMMU: identity mapping domain is domain %d\n",
+	pr_debug("Identity mapping domain is domain %d\n",
 		 si_domain->id);
 
 	if (hw)
@@ -2658,7 +2766,7 @@ static int __init dev_prepare_static_identity_mapping(struct device *dev, int hw
 				  hw ? CONTEXT_TT_PASS_THROUGH :
 				       CONTEXT_TT_MULTI_LEVEL);
 	if (!ret)
-		pr_info("IOMMU: %s identity mapping for device %s\n",
+		pr_info("%s identity mapping for device %s\n",
 			hw ? "hardware" : "software", dev_name(dev));
 	else if (ret == -ENODEV)
 		/* device not associated with an iommu */
@@ -2736,12 +2844,11 @@ static void intel_iommu_init_qi(struct intel_iommu *iommu)
 		 */
 		iommu->flush.flush_context = __iommu_flush_context;
 		iommu->flush.flush_iotlb = __iommu_flush_iotlb;
-		pr_info("IOMMU: %s using Register based invalidation\n",
-			iommu->name);
+		pr_info("%s using Register based invalidation\n", iommu->name);
 	} else {
 		iommu->flush.flush_context = qi_flush_context;
 		iommu->flush.flush_iotlb = qi_flush_iotlb;
-		pr_info("IOMMU: %s using Queued invalidation\n", iommu->name);
+		pr_info("%s using Queued invalidation\n", iommu->name);
 	}
 }
 
@@ -2792,6 +2899,7 @@ static int __init init_dmars(void)
 		goto free_g_iommus;
 	}
 
+	g_translation_pre_enabled = 0; /* To know whether to skip RMRR */
 	for_each_active_iommu(iommu, drhd) {
 		g_iommus[iommu->seq_id] = iommu;
 
@@ -2799,20 +2907,71 @@ static int __init init_dmars(void)
 		if (ret)
 			goto free_iommu;
 
+		if (!ecap_pass_through(iommu->ecap))
+			hw_pass_through = 0;
+
+		intel_iommu_init_qi(iommu);
+
 		/*
 		 * TBD:
-		 * we could share the same root & context tables
+		 * We could share the same root & context tables
 		 * among all IOMMU's. Need to Split it later.
 		 */
 		ret = iommu_alloc_root_entry(iommu);
 		if (ret)
 			goto free_iommu;
-		if (!ecap_pass_through(iommu->ecap))
-			hw_pass_through = 0;
-	}
 
-	for_each_active_iommu(iommu, drhd)
-		intel_iommu_init_qi(iommu);
+		iommu_check_pre_te_status(iommu);
+
+		/*
+		 * We don't even try to preserve anything when we are not in a
+		 * kdump kernel.
+		 */
+		if (!is_kdump_kernel() && iommu->pre_enabled_trans) {
+			iommu_disable_translation(iommu);
+			iommu->pre_enabled_trans = 0;
+			g_translation_pre_enabled = 0;
+			pr_warn("Translation was enabled for %s but we are not in kdump mode\n",
+					iommu->name);
+		}
+
+		if (iommu->pre_enabled_trans) {
+			ret = intel_iommu_load_translation_tables(iommu);
+			if (ret) {
+				/*
+				 * We found the IOMMU with translation
+				 * enabled - but failed to copy over the
+				 * old root-entry table. Try to proceed
+				 * by disabling translation now and
+				 * allocating a clean root-entry table.
+				 * This might cause DMAR faults, but
+				 * probably the dump will still succeed.
+				 */
+				pr_err("Failed to copy translation tables from previous kernel for %s\n",
+						iommu->name);
+
+				iommu_disable_translation(iommu);
+				iommu->pre_enabled_trans = 0;
+			} else {
+				pr_info("Copied translation tables from previous kernel for %s\n",
+					iommu->name);
+			}
+		}
+
+		/*
+		 * Make the new root entry visible. If IOMMU was
+		 * disabled before we are safe because translation is
+		 * not enabled yet, so any DMA access to RMRR regions
+		 * still works.
+		 * If we are in a kdump kernel and IOMMU was enabled
+		 * before, we must make sure that the hardware uses the
+		 * new root entry table from now on.
+		 */
+		iommu_flush_write_buffer(iommu);
+		iommu_set_root_entry(iommu);
+		iommu->flush.flush_context(iommu, 0, 0, 0, DMA_CCMD_GLOBAL_INVL);
+		iommu->flush.flush_iotlb(iommu, 0, 0, 0, DMA_TLB_GLOBAL_FLUSH);
+	}
 
 	if (iommu_pass_through)
 		iommu_identity_mapping |= IDENTMAP_ALL;
@@ -2822,6 +2981,14 @@ static int __init init_dmars(void)
 #endif
 
 	check_tylersburg_isoch();
+
+	/*
+	 * In the second kernel: Skip setting-up new domains for
+	 * si, rmrr, and the isa bus on the expectation that these
+	 * translations were copied from the old kernel.
+	 */
+	if (g_translation_pre_enabled)
+		goto skip_new_domains_for_si_rmrr_isa;
 
 	/*
 	 * If pass through is not set or not enabled, setup context entries for
@@ -2863,6 +3030,8 @@ static int __init init_dmars(void)
 
 	iommu_prepare_isa();
 
+skip_new_domains_for_si_rmrr_isa:;
+
 	/*
 	 * for each drhd
 	 *   enable fault log
@@ -2881,17 +3050,16 @@ static int __init init_dmars(void)
 			continue;
 		}
 
-		iommu_flush_write_buffer(iommu);
-
 		ret = dmar_set_interrupt(iommu);
 		if (ret)
 			goto free_iommu;
 
-		iommu_set_root_entry(iommu);
-
 		iommu->flush.flush_context(iommu, 0, 0, 0, DMA_CCMD_GLOBAL_INVL);
 		iommu->flush.flush_iotlb(iommu, 0, 0, 0, DMA_TLB_GLOBAL_FLUSH);
-		iommu_enable_translation(iommu);
+
+		if (!iommu->pre_enabled_trans)
+			iommu_enable_translation(iommu);
+
 		iommu_disable_protect_mem_regions(iommu);
 	}
 
@@ -2943,6 +3111,7 @@ static struct iova *intel_alloc_iova(struct device *dev,
 static struct dmar_domain *__get_valid_domain_for_dev(struct device *dev)
 {
 	struct dmar_domain *domain;
+	struct intel_iommu *iommu;
 	int ret;
 
 	domain = get_domain_for_dev(dev, DEFAULT_DOMAIN_ADDRESS_WIDTH);
@@ -2952,14 +3121,30 @@ static struct dmar_domain *__get_valid_domain_for_dev(struct device *dev)
 		return NULL;
 	}
 
-	/* make sure context mapping is ok */
-	if (unlikely(!domain_context_mapped(dev))) {
-		ret = domain_context_mapping(domain, dev, CONTEXT_TT_MULTI_LEVEL);
-		if (ret) {
-			printk(KERN_ERR "Domain context map for %s failed",
-			       dev_name(dev));
-			return NULL;
-		}
+	/* if in kdump kernel, we need to unmap the mapped dma pages,
+	 * detach this device first.
+	 */
+	if (likely(domain_context_mapped(dev))) {
+		iommu = domain_get_iommu(domain);
+		if (iommu->pre_enabled_trans) {
+			unmap_device_dma(domain, dev, iommu);
+
+			domain = get_domain_for_dev(dev,
+				DEFAULT_DOMAIN_ADDRESS_WIDTH);
+			if (!domain) {
+				pr_err("Allocating domain for %s failed",
+				       dev_name(dev));
+				return NULL;
+			}
+		} else
+			return domain;
+	}
+
+	ret = domain_context_mapping(domain, dev, CONTEXT_TT_MULTI_LEVEL);
+	if (ret) {
+		pr_err("Domain context map for %s failed",
+		       dev_name(dev));
+		return NULL;
 	}
 
 	return domain;
@@ -3793,20 +3978,18 @@ static int intel_iommu_add(struct dmar_drhd_unit *dmaru)
 		return 0;
 
 	if (hw_pass_through && !ecap_pass_through(iommu->ecap)) {
-		pr_warn("IOMMU: %s doesn't support hardware pass through.\n",
+		pr_warn("%s doesn't support hardware pass through.\n",
 			iommu->name);
 		return -ENXIO;
 	}
 	if (!ecap_sc_support(iommu->ecap) &&
 	    domain_update_iommu_snooping(iommu)) {
-		pr_warn("IOMMU: %s doesn't support snooping.\n",
-			iommu->name);
+		pr_warn("%s doesn't support snooping.\n", iommu->name);
 		return -ENXIO;
 	}
 	sp = domain_update_iommu_superpage(iommu) - 1;
 	if (sp >= 0 && !(cap_super_page_val(iommu->cap) & (1 << sp))) {
-		pr_warn("IOMMU: %s doesn't support large page.\n",
-			iommu->name);
+		pr_warn("%s doesn't support large page.\n", iommu->name);
 		return -ENXIO;
 	}
 
@@ -4036,7 +4219,7 @@ static int intel_iommu_memory_notifier(struct notifier_block *nb,
 		start = mhp->start_pfn << PAGE_SHIFT;
 		end = ((mhp->start_pfn + mhp->nr_pages) << PAGE_SHIFT) - 1;
 		if (iommu_domain_identity_map(si_domain, start, end)) {
-			pr_warn("dmar: failed to build identity map for [%llx-%llx]\n",
+			pr_warn("Failed to build identity map for [%llx-%llx]\n",
 				start, end);
 			return NOTIFY_BAD;
 		}
@@ -4054,7 +4237,7 @@ static int intel_iommu_memory_notifier(struct notifier_block *nb,
 
 			iova = find_iova(&si_domain->iovad, start_vpfn);
 			if (iova == NULL) {
-				pr_debug("dmar: failed get IOVA for PFN %lx\n",
+				pr_debug("Failed get IOVA for PFN %lx\n",
 					 start_vpfn);
 				break;
 			}
@@ -4062,7 +4245,7 @@ static int intel_iommu_memory_notifier(struct notifier_block *nb,
 			iova = split_and_remove_iova(&si_domain->iovad, iova,
 						     start_vpfn, last_vpfn);
 			if (iova == NULL) {
-				pr_warn("dmar: failed to split IOVA PFN [%lx-%lx]\n",
+				pr_warn("Failed to split IOVA PFN [%lx-%lx]\n",
 					start_vpfn, last_vpfn);
 				return NOTIFY_BAD;
 			}
@@ -4170,13 +4353,6 @@ int __init intel_iommu_init(void)
 			panic("tboot: Failed to initialize DMAR table\n");
 		goto out_free_dmar;
 	}
-
-	/*
-	 * Disable translation if already enabled prior to OS handover.
-	 */
-	for_each_active_iommu(iommu, drhd)
-		if (iommu->gcmd & DMA_GCMD_TE)
-			iommu_disable_translation(iommu);
 
 	if (dmar_dev_scope_init() < 0) {
 		if (force_on)
@@ -4729,4 +4905,188 @@ static void __init check_tylersburg_isoch(void)
 	
 	printk(KERN_WARNING "DMAR: Recommended TLB entries for ISOCH unit is 16; your BIOS set %d\n",
 	       vtisochctrl);
+}
+
+/*
+ * Copy one context table
+ */
+static int copy_one_context_table(struct intel_iommu *iommu,
+				  struct context_entry *ctxt_tbl,
+				  phys_addr_t old_table_phys)
+{
+	struct context_entry __iomem *ctxt_tbl_old, ce;
+	int did, devfn;
+
+	ctxt_tbl_old = ioremap_cache(old_table_phys, VTD_PAGE_SIZE);
+	if (!ctxt_tbl_old)
+		return -ENOMEM;
+
+	for (devfn = 0; devfn < 256; devfn++) {
+		memcpy_fromio(&ce, &ctxt_tbl_old[devfn],
+			      sizeof(struct context_entry));
+
+		if (!context_present(&ce))
+			continue;
+
+		did = context_domain_id(&ce);
+		if (did >=0 && did < cap_ndoms(iommu->cap))
+			set_bit(did, iommu->domain_ids);
+
+		ctxt_tbl[devfn] = ce;
+	}
+
+	iounmap(ctxt_tbl_old);
+
+	return 0;
+}
+
+/*
+ * Load context entry tables from old kernel.
+ */
+static int copy_context_tables(struct intel_iommu *iommu,
+			       struct context_entry **tbl,
+			       struct root_entry *old_re)
+{
+	struct context_entry *context_new_virt;
+	phys_addr_t context_old_phys;
+	u32 bus;
+	int ret;
+
+	for (bus = 0; bus < 256; bus++, old_re++) {
+		if (!root_present(old_re))
+			continue;
+
+		context_old_phys = get_context_phys_from_root(old_re);
+
+		if (!context_old_phys)
+			continue;
+
+		ret = -ENOMEM;
+		context_new_virt = alloc_pgtable_page(iommu->node);
+		if (!context_new_virt)
+			goto out_err;
+
+		ret = copy_one_context_table(iommu, context_new_virt,
+					     context_old_phys);
+		if (ret) {
+			pr_err("Failed to copy context table for bus %d from physical address 0x%llx\n",
+			       bus, context_old_phys);
+			free_pgtable_page(context_new_virt);
+			continue;
+		}
+
+		__iommu_flush_cache(iommu, context_new_virt, VTD_PAGE_SIZE);
+
+		tbl[bus] = context_new_virt;
+	}
+
+	return 0;
+
+out_err:
+	for (bus = 0; bus < 256; bus++) {
+		free_pgtable_page(tbl[bus]);
+		tbl[bus] = NULL;
+	}
+
+	return ret;
+}
+
+static void update_root_entry_table(struct intel_iommu *iommu,
+				    struct context_entry **tbl)
+{
+	struct root_entry *re = iommu->root_entry;
+	u32 bus;
+
+	for (bus = 0; bus < 256; bus++, re++) {
+		if (!tbl[bus])
+			continue;
+
+		set_root_value(re, virt_to_phys(tbl[bus]));
+	}
+}
+
+/*
+ * Interface to the "load translation tables" set of functions
+ * from mainline code.
+ */
+static int intel_iommu_load_translation_tables(struct intel_iommu *iommu)
+{
+	struct context_entry **ctxt_tbls;
+	struct root_entry *old_re;
+	phys_addr_t old_re_phys;
+	unsigned long flags;
+	int ret = 0;
+	u64 q;
+
+	q = dmar_readq(iommu->reg + DMAR_RTADDR_REG);
+	if (!q)
+		return -1;
+
+	old_re_phys = q & VTD_PAGE_MASK;
+	if (!old_re_phys)
+		return -ENODEV;
+
+	old_re = ioremap_cache(old_re_phys, PAGE_SIZE);
+	if (!old_re) {
+		pr_err("Could not map old root entry\n");
+		return -ENOMEM;
+	}
+
+	ret = -ENOMEM;
+	ctxt_tbls = kzalloc(256 * sizeof(void *), GFP_KERNEL);
+	if (!ctxt_tbls)
+		goto out_unmap;
+
+	ret = copy_context_tables(iommu, ctxt_tbls, old_re);
+	if (ret)
+		goto out_free;
+
+	spin_lock_irqsave(&iommu->lock, flags);
+
+	update_root_entry_table(iommu, ctxt_tbls);
+	__iommu_flush_cache(iommu, iommu->root_entry, PAGE_SIZE);
+
+	spin_unlock_irqrestore(&iommu->lock, flags);
+
+out_free:
+	kfree(ctxt_tbls);
+
+out_unmap:
+	iounmap(old_re);
+
+	return ret;
+}
+
+static void unmap_device_dma(struct dmar_domain *domain,
+				struct device *dev,
+				struct intel_iommu *iommu)
+{
+	struct context_entry *ce;
+	struct iova *iova;
+	phys_addr_t phys_addr;
+	dma_addr_t dev_addr;
+	struct pci_dev *pdev;
+
+	pdev = to_pci_dev(dev);
+	ce = iommu_context_addr(iommu, pdev->bus->number, pdev->devfn, 1);
+	phys_addr = context_address_root(ce) << VTD_PAGE_SHIFT;
+	dev_addr = phys_to_dma(dev, phys_addr);
+
+	iova = find_iova(&domain->iovad, IOVA_PFN(dev_addr));
+	if (iova)
+		intel_unmap(dev, dev_addr);
+
+	domain_remove_one_dev_info(domain, dev);
+}
+
+static void iommu_check_pre_te_status(struct intel_iommu *iommu)
+{
+	u32 sts;
+
+	sts = readl(iommu->reg + DMAR_GSTS_REG);
+	if (sts & DMA_GSTS_TES) {
+		pr_info("Translation is enabled prior to OS.\n");
+		iommu->pre_enabled_trans = 1;
+		g_translation_pre_enabled = 1;
+	}
 }
