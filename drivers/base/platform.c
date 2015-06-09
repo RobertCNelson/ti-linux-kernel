@@ -298,6 +298,25 @@ int platform_device_add_data(struct platform_device *pdev, const void *data,
 }
 EXPORT_SYMBOL_GPL(platform_device_add_data);
 
+static void platform_device_cleanout(struct platform_device *pdev, int n_res)
+{
+	int i;
+
+	if (pdev->id_auto) {
+		ida_simple_remove(&platform_devid_ida, pdev->id);
+		pdev->id = PLATFORM_DEVID_AUTO;
+	}
+
+	for (i = 0; i < n_res; i++) {
+		struct resource *r = &pdev->resource[i];
+		unsigned long type = resource_type(r);
+
+		if ((type == IORESOURCE_MEM || type == IORESOURCE_IO) &&
+				r->parent)
+			release_resource(r);
+	}
+}
+
 /**
  * platform_device_add - add a platform device to device hierarchy
  * @pdev: platform device we're adding
@@ -332,7 +351,7 @@ int platform_device_add(struct platform_device *pdev)
 		 */
 		ret = ida_simple_get(&platform_devid_ida, 0, 0, GFP_KERNEL);
 		if (ret < 0)
-			goto err_out;
+			return ret;
 		pdev->id = ret;
 		pdev->id_auto = true;
 		dev_set_name(&pdev->dev, "%s.%d.auto", pdev->name, pdev->id);
@@ -340,48 +359,40 @@ int platform_device_add(struct platform_device *pdev)
 	}
 
 	for (i = 0; i < pdev->num_resources; i++) {
-		struct resource *p, *r = &pdev->resource[i];
+		struct resource *conflict, *p, *r = &pdev->resource[i];
+		unsigned long type = resource_type(r);
 
 		if (r->name == NULL)
 			r->name = dev_name(&pdev->dev);
 
+		if (!(type == IORESOURCE_MEM || type == IORESOURCE_IO))
+			continue;
+
 		p = r->parent;
 		if (!p) {
-			if (resource_type(r) == IORESOURCE_MEM)
+			if (type == IORESOURCE_MEM)
 				p = &iomem_resource;
-			else if (resource_type(r) == IORESOURCE_IO)
+			else if (type == IORESOURCE_IO)
 				p = &ioport_resource;
 		}
 
-		if (p && insert_resource(p, r)) {
-			dev_err(&pdev->dev, "failed to claim resource %d\n", i);
-			ret = -EBUSY;
-			goto failed;
-		}
+		conflict = insert_resource_conflict(p, r);
+		if (!conflict)
+			continue;
+
+		dev_err(&pdev->dev,
+			"ignoring resource %pR (conflicts with %s %pR)\n",
+			r, conflict->name, conflict);
+		p->parent = NULL;
 	}
 
 	pr_debug("Registering platform device '%s'. Parent at %s\n",
 		 dev_name(&pdev->dev), dev_name(pdev->dev.parent));
 
 	ret = device_add(&pdev->dev);
-	if (ret == 0)
-		return ret;
+	if (ret)
+		platform_device_cleanout(pdev, i);
 
- failed:
-	if (pdev->id_auto) {
-		ida_simple_remove(&platform_devid_ida, pdev->id);
-		pdev->id = PLATFORM_DEVID_AUTO;
-	}
-
-	while (--i >= 0) {
-		struct resource *r = &pdev->resource[i];
-		unsigned long type = resource_type(r);
-
-		if (type == IORESOURCE_MEM || type == IORESOURCE_IO)
-			release_resource(r);
-	}
-
- err_out:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(platform_device_add);
@@ -396,24 +407,11 @@ EXPORT_SYMBOL_GPL(platform_device_add);
  */
 void platform_device_del(struct platform_device *pdev)
 {
-	int i;
+	if (!pdev)
+		return;
 
-	if (pdev) {
-		device_del(&pdev->dev);
-
-		if (pdev->id_auto) {
-			ida_simple_remove(&platform_devid_ida, pdev->id);
-			pdev->id = PLATFORM_DEVID_AUTO;
-		}
-
-		for (i = 0; i < pdev->num_resources; i++) {
-			struct resource *r = &pdev->resource[i];
-			unsigned long type = resource_type(r);
-
-			if (type == IORESOURCE_MEM || type == IORESOURCE_IO)
-				release_resource(r);
-		}
-	}
+	device_del(&pdev->dev);
+	platform_device_cleanout(pdev, pdev->num_resources);
 }
 EXPORT_SYMBOL_GPL(platform_device_del);
 
@@ -612,6 +610,19 @@ int __init_or_module __platform_driver_probe(struct platform_driver *drv,
 		int (*probe)(struct platform_device *), struct module *module)
 {
 	int retval, code;
+
+	if (drv->driver.probe_type == PROBE_PREFER_ASYNCHRONOUS) {
+		pr_err("%s: drivers registered with %s can not be probed asynchronously\n",
+			 drv->driver.name, __func__);
+		return -EINVAL;
+	}
+
+	/*
+	 * We have to run our probes synchronously because we check if
+	 * we find any devices to bind to and exit with error if there
+	 * are any.
+	 */
+	drv->driver.probe_type = PROBE_FORCE_SYNCHRONOUS;
 
 	/*
 	 * Prevent driver from requesting probe deferral to avoid further
