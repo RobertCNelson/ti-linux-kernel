@@ -2439,6 +2439,18 @@ void intel_crt_init(struct drm_device *dev)
 	  <title>Tile group</title>
 !Pdrivers/gpu/drm/drm_crtc.c Tile group
     </sect2>
+    <sect2>
+	<title>Bridges</title>
+      <sect3>
+	 <title>Overview</title>
+!Pdrivers/gpu/drm/drm_bridge.c overview
+      </sect3>
+      <sect3>
+	 <title>Default bridge callback sequence</title>
+!Pdrivers/gpu/drm/drm_bridge.c bridge callbacks
+      </sect3>
+!Edrivers/gpu/drm/drm_bridge.c
+    </sect2>
   </sect1>
 
   <!-- Internals: kms properties -->
@@ -4067,7 +4079,7 @@ int num_ioctls;</synopsis>
         <title>DPIO</title>
 !Pdrivers/gpu/drm/i915/i915_reg.h DPIO
 	<table id="dpiox2">
-	  <title>Dual channel PHY (VLV/CHV)</title>
+	  <title>Dual channel PHY (VLV/CHV/BXT)</title>
 	  <tgroup cols="8">
 	    <colspec colname="c0" />
 	    <colspec colname="c1" />
@@ -4118,7 +4130,7 @@ int num_ioctls;</synopsis>
 	  </tgroup>
 	</table>
 	<table id="dpiox1">
-	  <title>Single channel PHY (CHV)</title>
+	  <title>Single channel PHY (CHV/BXT)</title>
 	  <tgroup cols="4">
 	    <colspec colname="c0" />
 	    <colspec colname="c1" />
@@ -4152,6 +4164,12 @@ int num_ioctls;</synopsis>
 	    </tbody>
 	  </tgroup>
 	</table>
+      </sect2>
+
+      <sect2>
+       <title>CSR firmware support for DMC</title>
+!Pdrivers/gpu/drm/i915/intel_csr.c csr support for dmc
+!Idrivers/gpu/drm/i915/intel_csr.c
       </sect2>
     </sect1>
 
@@ -4204,7 +4222,6 @@ int num_ioctls;</synopsis>
 !Idrivers/gpu/drm/i915/i915_gem_shrinker.c
       </sect2>
     </sect1>
-
     <sect1>
       <title> Tracing </title>
       <para>
