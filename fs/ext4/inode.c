@@ -4640,6 +4640,7 @@ static void ext4_wait_for_tail_page_commit(struct inode *inode)
 int ext4_setattr(struct dentry *dentry, struct iattr *attr)
 {
 	struct inode *inode = d_inode(dentry);
+	loff_t oldsize = inode->i_size;
 	int error, rc = 0;
 	int orphan = 0;
 	const unsigned int ia_valid = attr->ia_valid;
@@ -4727,8 +4728,6 @@ int ext4_setattr(struct dentry *dentry, struct iattr *attr)
 				goto err_out;
 			}
 		} else {
-			loff_t oldsize = inode->i_size;
-
 			i_size_write(inode, attr->ia_size);
 			pagecache_isize_extended(inode, oldsize, inode->i_size);
 		}
@@ -4756,7 +4755,7 @@ int ext4_setattr(struct dentry *dentry, struct iattr *attr)
 	 * We want to call ext4_truncate() even if attr->ia_size ==
 	 * inode->i_size for cases like truncation of fallocated space
 	 */
-	if (attr->ia_valid & ATTR_SIZE)
+	if (attr->ia_valid & ATTR_SIZE && attr->ia_size <= oldsize)
 		ext4_truncate(inode);
 
 	if (!rc) {
