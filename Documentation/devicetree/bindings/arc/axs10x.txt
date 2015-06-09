@@ -1,0 +1,7 @@
+Synopsys DesignWare ARC Software Development Platforms Device Tree Bindings
+---------------------------------------------------------------------------
+
+SDP boards with Synopsys ARC700 core shall have the following properties.
+
+Required root node properties:
+    - compatible = "snps,axs101", "snps,arc-sdp";
