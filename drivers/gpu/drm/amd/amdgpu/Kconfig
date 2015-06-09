@@ -1,6 +1,7 @@
 config DRM_AMDGPU_CIK
 	bool "Enable amdgpu support for CIK parts"
 	depends on DRM_AMDGPU
+	depends on BROKEN
 	help
 	  Choose this option if you want to enable experimental support
 	  for CIK asics.
