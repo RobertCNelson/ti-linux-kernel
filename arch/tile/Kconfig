@@ -31,6 +31,7 @@ config TILE
 	select HAVE_CONTEXT_TRACKING
 	select GENERIC_STRNCPY_FROM_USER
 	select GENERIC_STRNLEN_USER
+	select EDAC_SUPPORT
 
 # FIXME: investigate whether we need/want these options.
 #	select HAVE_IOREMAP_PROT
