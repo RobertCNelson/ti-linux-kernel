@@ -266,10 +266,6 @@ static void do_inject(void)
 		i_mce.status &= ~MCI_STATUS_UC;
 	}
 
-	get_online_cpus();
-	if (!cpu_online(cpu))
-		goto err;
-
 	/* prep MCE global settings for the injection */
 	mcg_status = MCG_STATUS_MCIP | MCG_STATUS_EIPV;
 
@@ -289,6 +285,10 @@ static void do_inject(void)
 		toggle_nb_mca_mst_cpu(amd_get_nb_id(cpu));
 		cpu = get_nbc_for_node(amd_get_nb_id(cpu));
 	}
+
+	get_online_cpus();
+	if (!cpu_online(cpu))
+		goto err;
 
 	toggle_hw_mce_inject(cpu, true);
 
