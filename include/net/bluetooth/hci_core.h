@@ -530,10 +530,22 @@ extern struct mutex hci_cb_list_lock;
 /* ----- HCI interface to upper protocols ----- */
 int l2cap_connect_ind(struct hci_dev *hdev, bdaddr_t *bdaddr);
 int l2cap_disconn_ind(struct hci_conn *hcon);
-int l2cap_recv_acldata(struct hci_conn *hcon, struct sk_buff *skb, u16 flags);
+void l2cap_recv_acldata(struct hci_conn *hcon, struct sk_buff *skb, u16 flags);
 
+#if IS_ENABLED(CONFIG_BT_BREDR)
 int sco_connect_ind(struct hci_dev *hdev, bdaddr_t *bdaddr, __u8 *flags);
-int sco_recv_scodata(struct hci_conn *hcon, struct sk_buff *skb);
+void sco_recv_scodata(struct hci_conn *hcon, struct sk_buff *skb);
+#else
+static inline int sco_connect_ind(struct hci_dev *hdev, bdaddr_t *bdaddr,
+				  __u8 *flags)
+{
+	return 0;
+}
+
+static inline void sco_recv_scodata(struct hci_conn *hcon, struct sk_buff *skb)
+{
+}
+#endif
 
 /* ----- Inquiry cache ----- */
 #define INQUIRY_CACHE_AGE_MAX   (HZ*30)   /* 30 seconds */
@@ -1408,7 +1420,7 @@ void mgmt_smp_complete(struct hci_conn *conn, bool complete);
 u8 hci_le_conn_update(struct hci_conn *conn, u16 min, u16 max, u16 latency,
 		      u16 to_multiplier);
 void hci_le_start_enc(struct hci_conn *conn, __le16 ediv, __le64 rand,
-							__u8 ltk[16]);
+		      __u8 ltk[16], __u8 key_size);
 
 void hci_copy_identity_address(struct hci_dev *hdev, bdaddr_t *bdaddr,
 			       u8 *bdaddr_type);
