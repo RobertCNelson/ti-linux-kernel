@@ -1031,15 +1031,13 @@ EXPORT_SYMBOL_GPL(rpc_call_async);
  * rpc_run_bc_task - Allocate a new RPC task for backchannel use, then run
  * rpc_execute against it
  * @req: RPC request
- * @tk_ops: RPC call ops
  */
-struct rpc_task *rpc_run_bc_task(struct rpc_rqst *req,
-				const struct rpc_call_ops *tk_ops)
+struct rpc_task *rpc_run_bc_task(struct rpc_rqst *req)
 {
 	struct rpc_task *task;
 	struct xdr_buf *xbufp = &req->rq_snd_buf;
 	struct rpc_task_setup task_setup_data = {
-		.callback_ops = tk_ops,
+		.callback_ops = &rpc_default_ops,
 	};
 
 	dprintk("RPC: rpc_run_bc_task req= %p\n", req);
@@ -1951,24 +1949,22 @@ call_bc_transmit(struct rpc_task *task)
 {
 	struct rpc_rqst *req = task->tk_rqstp;
 
-	if (!xprt_prepare_transmit(task)) {
-		/*
-		 * Could not reserve the transport. Try again after the
-		 * transport is released.
-		 */
-		task->tk_status = 0;
-		task->tk_action = call_bc_transmit;
-		return;
-	}
+	if (!xprt_prepare_transmit(task))
+		goto out_retry;
 
-	task->tk_action = rpc_exit_task;
 	if (task->tk_status < 0) {
 		printk(KERN_NOTICE "RPC: Could not send backchannel reply "
 			"error: %d\n", task->tk_status);
-		return;
+		goto out_done;
 	}
+	if (req->rq_connect_cookie != req->rq_xprt->connect_cookie)
+		req->rq_bytes_sent = 0;
 
 	xprt_transmit(task);
+
+	if (task->tk_status == -EAGAIN)
+		goto out_nospace;
+
 	xprt_end_transmit(task);
 	dprint_status(task);
 	switch (task->tk_status) {
@@ -2002,6 +1998,13 @@ call_bc_transmit(struct rpc_task *task)
 		break;
 	}
 	rpc_wake_up_queued_task(&req->rq_xprt->pending, task);
+out_done:
+	task->tk_action = rpc_exit_task;
+	return;
+out_nospace:
+	req->rq_connect_cookie = req->rq_xprt->connect_cookie;
+out_retry:
+	task->tk_status = 0;
 }
 #endif /* CONFIG_SUNRPC_BACKCHANNEL */
 
