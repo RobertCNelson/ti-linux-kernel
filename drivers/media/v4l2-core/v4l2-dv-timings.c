@@ -262,6 +262,8 @@ void v4l2_print_dv_timings(const char *dev_prefix, const char *prefix,
 
 	htot = V4L2_DV_BT_FRAME_WIDTH(bt);
 	vtot = V4L2_DV_BT_FRAME_HEIGHT(bt);
+	if (bt->interlaced)
+		vtot /= 2;
 
 	if (prefix == NULL)
 		prefix = "";
@@ -282,6 +284,11 @@ void v4l2_print_dv_timings(const char *dev_prefix, const char *prefix,
 			dev_prefix, bt->vfrontporch,
 			(bt->polarities & V4L2_DV_VSYNC_POS_POL) ? "+" : "-",
 			bt->vsync, bt->vbackporch);
+	if (bt->interlaced)
+		pr_info("%s: vertical bottom field: fp = %u, %ssync = %u, bp = %u\n",
+			dev_prefix, bt->il_vfrontporch,
+			(bt->polarities & V4L2_DV_VSYNC_POS_POL) ? "+" : "-",
+			bt->il_vsync, bt->il_vbackporch);
 	pr_info("%s: pixelclock: %llu\n", dev_prefix, bt->pixelclock);
 	pr_info("%s: flags (0x%x):%s%s%s%s%s\n", dev_prefix, bt->flags,
 			(bt->flags & V4L2_DV_FL_REDUCED_BLANKING) ?
@@ -339,6 +346,7 @@ EXPORT_SYMBOL_GPL(v4l2_print_dv_timings);
  * @vsync - the height of the vertical sync in lines.
  * @polarities - the horizontal and vertical polarities (same as struct
  *		v4l2_bt_timings polarities).
+ * @interlaced - if this flag is true, it indicates interlaced format
  * @fmt - the resulting timings.
  *
  * This function will attempt to detect if the given values correspond to a
@@ -350,7 +358,7 @@ EXPORT_SYMBOL_GPL(v4l2_print_dv_timings);
  * detection function.
  */
 bool v4l2_detect_cvt(unsigned frame_height, unsigned hfreq, unsigned vsync,
-		u32 polarities, struct v4l2_dv_timings *fmt)
+		u32 polarities, bool interlaced, struct v4l2_dv_timings *fmt)
 {
 	int  v_fp, v_bp, h_fp, h_bp, hsync;
 	int  frame_width, image_height, image_width;
@@ -385,7 +393,11 @@ bool v4l2_detect_cvt(unsigned frame_height, unsigned hfreq, unsigned vsync,
 		if (v_bp < CVT_MIN_V_BPORCH)
 			v_bp = CVT_MIN_V_BPORCH;
 	}
-	image_height = (frame_height - v_fp - vsync - v_bp + 1) & ~0x1;
+
+	if (interlaced)
+		image_height = (frame_height - 2 * v_fp - 2 * vsync - 2 * v_bp) & ~0x1;
+	else
+		image_height = (frame_height - v_fp - vsync - v_bp + 1) & ~0x1;
 
 	if (image_height < 0)
 		return false;
@@ -458,11 +470,27 @@ bool v4l2_detect_cvt(unsigned frame_height, unsigned hfreq, unsigned vsync,
 	fmt->bt.hsync = hsync;
 	fmt->bt.vsync = vsync;
 	fmt->bt.hbackporch = frame_width - image_width - h_fp - hsync;
-	fmt->bt.vbackporch = frame_height - image_height - v_fp - vsync;
+
+	if (!interlaced) {
+		fmt->bt.vbackporch = frame_height - image_height - v_fp - vsync;
+		fmt->bt.interlaced = V4L2_DV_PROGRESSIVE;
+	} else {
+		fmt->bt.vbackporch = (frame_height - image_height - 2 * v_fp -
+				      2 * vsync) / 2;
+		fmt->bt.il_vbackporch = frame_height - image_height - 2 * v_fp -
+					2 * vsync - fmt->bt.vbackporch;
+		fmt->bt.il_vfrontporch = v_fp;
+		fmt->bt.il_vsync = vsync;
+		fmt->bt.flags |= V4L2_DV_FL_HALF_LINE;
+		fmt->bt.interlaced = V4L2_DV_INTERLACED;
+	}
+
 	fmt->bt.pixelclock = pix_clk;
 	fmt->bt.standards = V4L2_DV_BT_STD_CVT;
+
 	if (reduced_blanking)
 		fmt->bt.flags |= V4L2_DV_FL_REDUCED_BLANKING;
+
 	return true;
 }
 EXPORT_SYMBOL_GPL(v4l2_detect_cvt);
@@ -501,6 +529,7 @@ EXPORT_SYMBOL_GPL(v4l2_detect_cvt);
  * @vsync - the height of the vertical sync in lines.
  * @polarities - the horizontal and vertical polarities (same as struct
  *		v4l2_bt_timings polarities).
+ * @interlaced - if this flag is true, it indicates interlaced format
  * @aspect - preferred aspect ratio. GTF has no method of determining the
  *		aspect ratio in order to derive the image width from the
  *		image height, so it has to be passed explicitly. Usually
@@ -516,6 +545,7 @@ bool v4l2_detect_gtf(unsigned frame_height,
 		unsigned hfreq,
 		unsigned vsync,
 		u32 polarities,
+		bool interlaced,
 		struct v4l2_fract aspect,
 		struct v4l2_dv_timings *fmt)
 {
@@ -540,9 +570,11 @@ bool v4l2_detect_gtf(unsigned frame_height,
 
 	/* Vertical */
 	v_fp = GTF_V_FP;
-
 	v_bp = (GTF_MIN_VSYNC_BP * hfreq + 500000) / 1000000 - vsync;
-	image_height = (frame_height - v_fp - vsync - v_bp + 1) & ~0x1;
+	if (interlaced)
+		image_height = (frame_height - 2 * v_fp - 2 * vsync - 2 * v_bp) & ~0x1;
+	else
+		image_height = (frame_height - v_fp - vsync - v_bp + 1) & ~0x1;
 
 	if (image_height < 0)
 		return false;
@@ -561,20 +593,22 @@ bool v4l2_detect_gtf(unsigned frame_height,
 
 		num = ((image_width * GTF_D_C_PRIME * (u64)hfreq) -
 		      ((u64)image_width * GTF_D_M_PRIME * 1000));
-		den = hfreq * (100 - GTF_D_C_PRIME) + GTF_D_M_PRIME * 1000;
+		den = (hfreq * (100 - GTF_D_C_PRIME) + GTF_D_M_PRIME * 1000) *
+		      (2 * GTF_CELL_GRAN);
 		h_blank = div_u64((num + (den >> 1)), den);
+		h_blank *= (2 * GTF_CELL_GRAN);
 	} else {
 		u64 num;
 		u32 den;
 
 		num = ((image_width * GTF_S_C_PRIME * (u64)hfreq) -
 		      ((u64)image_width * GTF_S_M_PRIME * 1000));
-		den = hfreq * (100 - GTF_S_C_PRIME) + GTF_S_M_PRIME * 1000;
+		den = (hfreq * (100 - GTF_S_C_PRIME) + GTF_S_M_PRIME * 1000) *
+		      (2 * GTF_CELL_GRAN);
 		h_blank = div_u64((num + (den >> 1)), den);
+		h_blank *= (2 * GTF_CELL_GRAN);
 	}
 
-	h_blank = ((h_blank + GTF_CELL_GRAN) / (2 * GTF_CELL_GRAN)) *
-		  (2 * GTF_CELL_GRAN);
 	frame_width = image_width + h_blank;
 
 	pix_clk = (image_width + h_blank) * hfreq;
@@ -594,11 +628,27 @@ bool v4l2_detect_gtf(unsigned frame_height,
 	fmt->bt.hsync = hsync;
 	fmt->bt.vsync = vsync;
 	fmt->bt.hbackporch = frame_width - image_width - h_fp - hsync;
-	fmt->bt.vbackporch = frame_height - image_height - v_fp - vsync;
+
+	if (!interlaced) {
+		fmt->bt.vbackporch = frame_height - image_height - v_fp - vsync;
+		fmt->bt.interlaced = V4L2_DV_PROGRESSIVE;
+	} else {
+		fmt->bt.vbackporch = (frame_height - image_height - 2 * v_fp -
+				      2 * vsync) / 2;
+		fmt->bt.il_vbackporch = frame_height - image_height - 2 * v_fp -
+					2 * vsync - fmt->bt.vbackporch;
+		fmt->bt.il_vfrontporch = v_fp;
+		fmt->bt.il_vsync = vsync;
+		fmt->bt.flags |= V4L2_DV_FL_HALF_LINE;
+		fmt->bt.interlaced = V4L2_DV_INTERLACED;
+	}
+
 	fmt->bt.pixelclock = pix_clk;
 	fmt->bt.standards = V4L2_DV_BT_STD_GTF;
+
 	if (!default_gtf)
 		fmt->bt.flags |= V4L2_DV_FL_REDUCED_BLANKING;
+
 	return true;
 }
 EXPORT_SYMBOL_GPL(v4l2_detect_gtf);

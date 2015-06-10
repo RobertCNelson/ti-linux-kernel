@@ -29,6 +29,7 @@
 
 #include <linux/delay.h>
 #include <linux/gpio/consumer.h>
+#include <linux/hdmi.h>
 #include <linux/i2c.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -93,6 +94,13 @@ struct adv76xx_format_info {
 	bool rgb_out;
 	bool swap_cb_cr;
 	u8 op_format_sel;
+};
+
+struct adv76xx_cfg_read_infoframe {
+	const char *desc;
+	u8 present_mask;
+	u8 head_addr;
+	u8 payload_addr;
 };
 
 struct adv76xx_chip_info {
@@ -1323,12 +1331,12 @@ static int stdi2dv_timings(struct v4l2_subdev *sd,
 	if (v4l2_detect_cvt(stdi->lcf + 1, hfreq, stdi->lcvs,
 			(stdi->hs_pol == '+' ? V4L2_DV_HSYNC_POS_POL : 0) |
 			(stdi->vs_pol == '+' ? V4L2_DV_VSYNC_POS_POL : 0),
-			timings))
+			false, timings))
 		return 0;
 	if (v4l2_detect_gtf(stdi->lcf + 1, hfreq, stdi->lcvs,
 			(stdi->hs_pol == '+' ? V4L2_DV_HSYNC_POS_POL : 0) |
 			(stdi->vs_pol == '+' ? V4L2_DV_VSYNC_POS_POL : 0),
-			state->aspect_ratio, timings))
+			false, state->aspect_ratio, timings))
 		return 0;
 
 	v4l2_dbg(2, debug, sd,
@@ -2127,46 +2135,67 @@ static int adv76xx_set_edid(struct v4l2_subdev *sd, struct v4l2_edid *edid)
 
 /*********** avi info frame CEA-861-E **************/
 
-static void print_avi_infoframe(struct v4l2_subdev *sd)
+static const struct adv76xx_cfg_read_infoframe adv76xx_cri[] = {
+	{ "AVI", 0x01, 0xe0, 0x00 },
+	{ "Audio", 0x02, 0xe3, 0x1c },
+	{ "SDP", 0x04, 0xe6, 0x2a },
+	{ "Vendor", 0x10, 0xec, 0x54 }
+};
+
+static int adv76xx_read_infoframe(struct v4l2_subdev *sd, int index,
+				  union hdmi_infoframe *frame)
+{
+	uint8_t buffer[32];
+	u8 len;
+	int i;
+
+	if (!(io_read(sd, 0x60) & adv76xx_cri[index].present_mask)) {
+		v4l2_info(sd, "%s infoframe not received\n",
+			  adv76xx_cri[index].desc);
+		return -ENOENT;
+	}
+
+	for (i = 0; i < 3; i++)
+		buffer[i] = infoframe_read(sd,
+					   adv76xx_cri[index].head_addr + i);
+
+	len = buffer[2] + 1;
+
+	if (len + 3 > sizeof(buffer)) {
+		v4l2_err(sd, "%s: invalid %s infoframe length %d\n", __func__,
+			 adv76xx_cri[index].desc, len);
+		return -ENOENT;
+	}
+
+	for (i = 0; i < len; i++)
+		buffer[i + 3] = infoframe_read(sd,
+				       adv76xx_cri[index].payload_addr + i);
+
+	if (hdmi_infoframe_unpack(frame, buffer) < 0) {
+		v4l2_err(sd, "%s: unpack of %s infoframe failed\n", __func__,
+			 adv76xx_cri[index].desc);
+		return -ENOENT;
+	}
+	return 0;
+}
+
+static void adv76xx_log_infoframes(struct v4l2_subdev *sd)
 {
 	int i;
-	u8 buf[14];
-	u8 avi_len;
-	u8 avi_ver;
 
 	if (!is_hdmi(sd)) {
-		v4l2_info(sd, "receive DVI-D signal (AVI infoframe not supported)\n");
-		return;
-	}
-	if (!(io_read(sd, 0x60) & 0x01)) {
-		v4l2_info(sd, "AVI infoframe not received\n");
+		v4l2_info(sd, "receive DVI-D signal, no infoframes\n");
 		return;
 	}
 
-	if (io_read(sd, 0x83) & 0x01) {
-		v4l2_info(sd, "AVI infoframe checksum error has occurred earlier\n");
-		io_write(sd, 0x85, 0x01); /* clear AVI_INF_CKS_ERR_RAW */
-		if (io_read(sd, 0x83) & 0x01) {
-			v4l2_info(sd, "AVI infoframe checksum error still present\n");
-			io_write(sd, 0x85, 0x01); /* clear AVI_INF_CKS_ERR_RAW */
-		}
+	for (i = 0; i < ARRAY_SIZE(adv76xx_cri); i++) {
+		union hdmi_infoframe frame;
+		struct i2c_client *client = v4l2_get_subdevdata(sd);
+
+		if (adv76xx_read_infoframe(sd, i, &frame))
+			return;
+		hdmi_infoframe_log(KERN_INFO, &client->dev, &frame);
 	}
-
-	avi_len = infoframe_read(sd, 0xe2);
-	avi_ver = infoframe_read(sd, 0xe1);
-	v4l2_info(sd, "AVI infoframe version %d (%d byte)\n",
-			avi_ver, avi_len);
-
-	if (avi_ver != 0x02)
-		return;
-
-	for (i = 0; i < 14; i++)
-		buf[i] = infoframe_read(sd, i);
-
-	v4l2_info(sd,
-		"\t%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
-		buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7],
-		buf[8], buf[9], buf[10], buf[11], buf[12], buf[13]);
 }
 
 static int adv76xx_log_status(struct v4l2_subdev *sd)
@@ -2192,6 +2221,14 @@ static int adv76xx_log_status(struct v4l2_subdev *sd)
 		"YCbCr Bt.601 (0-255)", "YCbCr Bt.709 (0-255)",
 		"invalid", "invalid", "invalid", "invalid", "invalid",
 		"invalid", "invalid", "automatic"
+	};
+	static const char * const hdmi_color_space_txt[16] = {
+		"RGB limited range (16-235)", "RGB full range (0-255)",
+		"YCbCr Bt.601 (16-235)", "YCbCr Bt.709 (16-235)",
+		"xvYCC Bt.601", "xvYCC Bt.709",
+		"YCbCr Bt.601 (0-255)", "YCbCr Bt.709 (0-255)",
+		"sYCC", "Adobe YCC 601", "AdobeRGB", "invalid", "invalid",
+		"invalid", "invalid", "invalid"
 	};
 	static const char * const rgb_quantization_range_txt[] = {
 		"Automatic",
@@ -2260,11 +2297,12 @@ static int adv76xx_log_status(struct v4l2_subdev *sd)
 			rgb_quantization_range_txt[state->rgb_quantization_range]);
 	v4l2_info(sd, "Input color space: %s\n",
 			input_color_space_txt[reg_io_0x02 >> 4]);
-	v4l2_info(sd, "Output color space: %s %s, saturator %s\n",
+	v4l2_info(sd, "Output color space: %s %s, saturator %s, alt-gamma %s\n",
 			(reg_io_0x02 & 0x02) ? "RGB" : "YCbCr",
 			(reg_io_0x02 & 0x04) ? "(16-235)" : "(0-255)",
-			((reg_io_0x02 & 0x04) ^ (reg_io_0x02 & 0x01)) ?
-				"enabled" : "disabled");
+			(((reg_io_0x02 >> 2) & 0x01) ^ (reg_io_0x02 & 0x01)) ?
+				"enabled" : "disabled",
+			(reg_io_0x02 & 0x08) ? "enabled" : "disabled");
 	v4l2_info(sd, "Color space conversion: %s\n",
 			csc_coeff_sel_rb[cp_read(sd, info->cp_csc) >> 4]);
 
@@ -2301,8 +2339,9 @@ static int adv76xx_log_status(struct v4l2_subdev *sd)
 		v4l2_info(sd, "AV Mute: %s\n", (hdmi_read(sd, 0x04) & 0x40) ? "on" : "off");
 
 		v4l2_info(sd, "Deep color mode: %s\n", deep_color_mode_txt[(hdmi_read(sd, 0x0b) & 0x60) >> 5]);
+		v4l2_info(sd, "HDMI colorspace: %s\n", hdmi_color_space_txt[hdmi_read(sd, 0x53) & 0xf]);
 
-		print_avi_infoframe(sd);
+		adv76xx_log_infoframes(sd);
 	}
 
 	return 0;

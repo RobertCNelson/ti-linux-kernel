@@ -36,8 +36,9 @@ config DVB_STV6110x
 	  A Silicon tuner that supports DVB-S and DVB-S2 modes
 
 config DVB_M88DS3103
-	tristate "Montage M88DS3103"
+	tristate "Montage Technology M88DS3103"
 	depends on DVB_CORE && I2C && I2C_MUX
+	select REGMAP_I2C
 	default m if !MEDIA_SUBDRV_AUTOSELECT
 	help
 	  Say Y when you want to support this frontend.
@@ -239,7 +240,8 @@ config DVB_SI21XX
 
 config DVB_TS2020
 	tristate "Montage Tehnology TS2020 based tuners"
-	depends on DVB_CORE && I2C
+	depends on DVB_CORE
+	select REGMAP_I2C
 	default m if !MEDIA_SUBDRV_AUTOSELECT
 	help
 	  A DVB-S/S2 silicon tuner. Say Y when you want to support this tuner.
