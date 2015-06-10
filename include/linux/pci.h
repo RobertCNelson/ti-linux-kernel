@@ -578,9 +578,15 @@ int raw_pci_read(unsigned int domain, unsigned int bus, unsigned int devfn,
 int raw_pci_write(unsigned int domain, unsigned int bus, unsigned int devfn,
 		  int reg, int len, u32 val);
 
+#ifdef CONFIG_PCI_BUS_ADDR_T_64BIT
+typedef u64 pci_bus_addr_t;
+#else
+typedef u32 pci_bus_addr_t;
+#endif
+
 struct pci_bus_region {
-	dma_addr_t start;
-	dma_addr_t end;
+	pci_bus_addr_t start;
+	pci_bus_addr_t end;
 };
 
 struct pci_dynids {
@@ -1122,7 +1128,7 @@ int __must_check pci_bus_alloc_resource(struct pci_bus *bus,
 
 int pci_remap_iospace(const struct resource *res, phys_addr_t phys_addr);
 
-static inline dma_addr_t pci_bus_address(struct pci_dev *pdev, int bar)
+static inline pci_bus_addr_t pci_bus_address(struct pci_dev *pdev, int bar)
 {
 	struct pci_bus_region region;
 
@@ -1190,15 +1196,6 @@ int pci_set_vga_state(struct pci_dev *pdev, bool decode,
 #define	pci_pool_destroy(pool) dma_pool_destroy(pool)
 #define	pci_pool_alloc(pool, flags, handle) dma_pool_alloc(pool, flags, handle)
 #define	pci_pool_free(pool, vaddr, addr) dma_pool_free(pool, vaddr, addr)
-
-enum pci_dma_burst_strategy {
-	PCI_DMA_BURST_INFINITY,	/* make bursts as large as possible,
-				   strategy_parameter is N/A */
-	PCI_DMA_BURST_BOUNDARY, /* disconnect at every strategy_parameter
-				   byte boundaries */
-	PCI_DMA_BURST_MULTIPLE, /* disconnect at some multiple of
-				   strategy_parameter byte boundaries */
-};
 
 struct msix_entry {
 	u32	vector;	/* kernel uses to write allocated vector */
@@ -1423,8 +1420,6 @@ static inline int pci_enable_wake(struct pci_dev *dev, pci_power_t state,
 static inline int pci_request_regions(struct pci_dev *dev, const char *res_name)
 { return -EIO; }
 static inline void pci_release_regions(struct pci_dev *dev) { }
-
-#define pci_dma_burst_advice(pdev, strat, strategy_parameter) do { } while (0)
 
 static inline void pci_block_cfg_access(struct pci_dev *dev) { }
 static inline int pci_block_cfg_access_in_atomic(struct pci_dev *dev)
