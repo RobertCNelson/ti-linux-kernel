@@ -233,9 +233,8 @@ static enum hrtimer_restart uncore_pmu_hrtimer(struct hrtimer *hrtimer)
 
 void uncore_pmu_start_hrtimer(struct intel_uncore_box *box)
 {
-	__hrtimer_start_range_ns(&box->hrtimer,
-			ns_to_ktime(box->hrtimer_duration), 0,
-			HRTIMER_MODE_REL_PINNED, 0);
+	hrtimer_start(&box->hrtimer, ns_to_ktime(box->hrtimer_duration),
+		      HRTIMER_MODE_REL_PINNED);
 }
 
 void uncore_pmu_cancel_hrtimer(struct intel_uncore_box *box)
@@ -839,6 +838,7 @@ static int uncore_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id
 	box->phys_id = phys_id;
 	box->pci_dev = pdev;
 	box->pmu = pmu;
+	uncore_box_init(box);
 	pci_set_drvdata(pdev, box);
 
 	raw_spin_lock(&uncore_box_lock);
@@ -921,6 +921,9 @@ static int __init uncore_pci_init(void)
 	case 69: /* Haswell Celeron */
 		ret = hsw_uncore_pci_init();
 		break;
+	case 61: /* Broadwell */
+		ret = bdw_uncore_pci_init();
+		break;
 	default:
 		return 0;
 	}
@@ -1002,8 +1005,10 @@ static int uncore_cpu_starting(int cpu)
 			pmu = &type->pmus[j];
 			box = *per_cpu_ptr(pmu->box, cpu);
 			/* called by uncore_cpu_init? */
-			if (box && box->phys_id >= 0)
+			if (box && box->phys_id >= 0) {
+				uncore_box_init(box);
 				continue;
+			}
 
 			for_each_online_cpu(k) {
 				exist = *per_cpu_ptr(pmu->box, k);
@@ -1019,8 +1024,10 @@ static int uncore_cpu_starting(int cpu)
 				}
 			}
 
-			if (box)
+			if (box) {
 				box->phys_id = phys_id;
+				uncore_box_init(box);
+			}
 		}
 	}
 	return 0;
