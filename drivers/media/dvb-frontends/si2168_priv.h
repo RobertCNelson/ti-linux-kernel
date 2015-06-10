@@ -30,7 +30,6 @@
 /* state struct */
 struct si2168_dev {
 	struct i2c_adapter *adapter;
-	struct mutex i2c_mutex;
 	struct dvb_frontend fe;
 	fe_delivery_system_t delivery_system;
 	fe_status_t fe_status;
@@ -38,6 +37,7 @@ struct si2168_dev {
 	bool fw_loaded;
 	u8 ts_mode;
 	bool ts_clock_inv;
+	bool ts_clock_gapped;
 };
 
 /* firmware command struct */
