@@ -944,8 +944,7 @@ static int bdisp_s_selection(struct file *file, void *fh,
 	out.width = ALIGN(in->width, frame->fmt->w_align);
 	out.height = ALIGN(in->height, frame->fmt->w_align);
 
-	if ((out.width < 0) || (out.height < 0) ||
-	    ((out.left + out.width) > frame->width) ||
+	if (((out.left + out.width) > frame->width) ||
 	    ((out.top + out.height) > frame->height)) {
 		dev_err(ctx->bdisp_dev->dev,
 			"Invalid crop: %dx%d@(%d,%d) vs frame: %dx%d\n",
@@ -1022,13 +1021,10 @@ static const struct v4l2_ioctl_ops bdisp_ioctl_ops = {
 
 static int bdisp_register_device(struct bdisp_dev *bdisp)
 {
-	struct platform_device *pdev;
 	int ret;
 
 	if (!bdisp)
 		return -ENODEV;
-
-	pdev = bdisp->pdev;
 
 	bdisp->vdev.fops        = &bdisp_fops;
 	bdisp->vdev.ioctl_ops   = &bdisp_ioctl_ops;
