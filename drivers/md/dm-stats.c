@@ -160,10 +160,7 @@ static void dm_kvfree(void *ptr, size_t alloc_size)
 
 	free_shared_memory(alloc_size);
 
-	if (is_vmalloc_addr(ptr))
-		vfree(ptr);
-	else
-		kfree(ptr);
+	kvfree(ptr);
 }
 
 static void dm_stat_free(struct rcu_head *head)
@@ -795,6 +792,8 @@ static int message_stats_create(struct mapped_device *md,
 		return -EINVAL;
 
 	if (sscanf(argv[2], "/%u%c", &divisor, &dummy) == 1) {
+		if (!divisor)
+			return -EINVAL;
 		step = end - start;
 		if (do_div(step, divisor))
 			step++;
