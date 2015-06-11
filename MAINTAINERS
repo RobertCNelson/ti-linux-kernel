@@ -652,7 +652,6 @@ M:	Tom Lendacky <thomas.lendacky@amd.com>
 L:	netdev@vger.kernel.org
 S:	Supported
 F:	drivers/net/ethernet/amd/xgbe/
-F:	drivers/net/phy/amd-xgbe-phy.c
 
 AMS (Apple Motion Sensor) DRIVER
 M:	Michael Hanselmann <linux-kernel@hansmi.ch>
@@ -921,6 +920,13 @@ ARM/CAVIUM NETWORKS CNS3XXX MACHINE SUPPORT
 M:	Krzysztof Halasa <khalasa@piap.pl>
 S:	Maintained
 F:	arch/arm/mach-cns3xxx/
+
+ARM/CAVIUM THUNDER NETWORK DRIVER
+M:	Sunil Goutham <sgoutham@cavium.com>
+M:	Robert Richter <rric@kernel.org>
+L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
+S:	Supported
+F:	drivers/net/ethernet/cavium/
 
 ARM/CIRRUS LOGIC CLPS711X ARM ARCHITECTURE
 M:	Alexander Shiyan <shc_work@mail.ru>
@@ -6465,6 +6471,12 @@ F:	include/uapi/linux/v4l2-*
 F:	include/uapi/linux/meye.h
 F:	include/uapi/linux/ivtv*
 F:	include/uapi/linux/uvcvideo.h
+
+MEDIATEK MT7601U WIRELESS LAN DRIVER
+M:	Jakub Kicinski <kubakici@wp.pl>
+L:	linux-wireless@vger.kernel.org
+S:	Maintained
+F:	drivers/net/wireless/mediatek/mt7601u/
 
 MEGARAID SCSI/SAS DRIVERS
 M:	Kashyap Desai <kashyap.desai@avagotech.com>
