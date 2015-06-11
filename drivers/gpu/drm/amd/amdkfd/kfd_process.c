@@ -31,6 +31,7 @@
 struct mm_struct;
 
 #include "kfd_priv.h"
+#include "kfd_dbgmgr.h"
 
 /*
  * Initial size for the array of queues.
@@ -172,11 +173,16 @@ static void kfd_process_wq_release(struct work_struct *work)
 		pr_debug("Releasing pdd (topology id %d) for process (pasid %d) in workqueue\n",
 				pdd->dev->id, p->pasid);
 
+		if (p->reset_wavefronts)
+			dbgdev_wave_reset_wavefronts(pdd->dev, p);
+
 		amd_iommu_unbind_pasid(pdd->dev->pdev, p->pasid);
 		list_del(&pdd->per_device_list);
 
 		kfree(pdd);
 	}
+
+	kfd_event_free_process(p);
 
 	kfd_pasid_free(p->pasid);
 
@@ -203,8 +209,7 @@ static void kfd_process_destroy_delayed(struct rcu_head *rcu)
 
 	mmdrop(p->mm);
 
-	work = (struct kfd_process_release_work *)
-		kmalloc(sizeof(struct kfd_process_release_work), GFP_ATOMIC);
+	work = kmalloc(sizeof(struct kfd_process_release_work), GFP_ATOMIC);
 
 	if (work) {
 		INIT_WORK((struct work_struct *) work, kfd_process_wq_release);
@@ -289,6 +294,8 @@ static struct kfd_process *create_process(const struct task_struct *thread)
 
 	INIT_LIST_HEAD(&process->per_device_data);
 
+	kfd_event_init_process(process);
+
 	err = pqm_init(&process->pqm, process);
 	if (err != 0)
 		goto err_process_pqm_init;
@@ -297,6 +304,8 @@ static struct kfd_process *create_process(const struct task_struct *thread)
 	process->is_32bit_user_mode = is_compat_task();
 	if (kfd_init_apertures(process) != 0)
 		goto err_init_apretures;
+
+	process->reset_wavefronts = false;
 
 	return process;
 
@@ -396,7 +405,12 @@ void kfd_unbind_process_from_device(struct kfd_dev *dev, unsigned int pasid)
 
 	mutex_lock(&p->mutex);
 
+	if ((dev->dbgmgr) && (dev->dbgmgr->pasid == p->pasid))
+		kfd_dbgmgr_destroy(dev->dbgmgr);
+
 	pqm_uninit(&p->pqm);
+	if (p->reset_wavefronts)
+		dbgdev_wave_reset_wavefronts(dev, p);
 
 	pdd = kfd_get_process_device_data(dev, p);
 
@@ -430,4 +444,24 @@ struct kfd_process_device *kfd_get_next_process_device_data(struct kfd_process *
 bool kfd_has_process_device_data(struct kfd_process *p)
 {
 	return !(list_empty(&p->per_device_data));
+}
+
+/* This returns with process->mutex locked. */
+struct kfd_process *kfd_lookup_process_by_pasid(unsigned int pasid)
+{
+	struct kfd_process *p;
+	unsigned int temp;
+
+	int idx = srcu_read_lock(&kfd_processes_srcu);
+
+	hash_for_each_rcu(kfd_processes_table, temp, p, kfd_processes) {
+		if (p->pasid == pasid) {
+			mutex_lock(&p->mutex);
+			break;
+		}
+	}
+
+	srcu_read_unlock(&kfd_processes_srcu, idx);
+
+	return p;
 }
