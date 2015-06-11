@@ -4483,7 +4483,13 @@ lpfc_sli4_async_fip_evt(struct lpfc_hba *phba,
 			lpfc_destroy_vport_work_array(phba, vports);
 		}
 
-		if (active_vlink_present) {
+		/*
+		 * Don't re-instantiate if vport is marked for deletion.
+		 * If we are here first then vport_delete is going to wait
+		 * for discovery to complete.
+		 */
+		if (!(vport->load_flag & FC_UNLOADING) &&
+					active_vlink_present) {
 			/*
 			 * If there are other active VLinks present,
 			 * re-instantiate the Vlink using FDISC.
@@ -7500,6 +7506,8 @@ lpfc_sli4_queue_setup(struct lpfc_hba *phba)
 			mboxq->u.mqe.un.query_fw_cfg.rsp.function_mode;
 	phba->sli4_hba.ulp0_mode = mboxq->u.mqe.un.query_fw_cfg.rsp.ulp0_mode;
 	phba->sli4_hba.ulp1_mode = mboxq->u.mqe.un.query_fw_cfg.rsp.ulp1_mode;
+	phba->sli4_hba.physical_port =
+			mboxq->u.mqe.un.query_fw_cfg.rsp.physical_port;
 	lpfc_printf_log(phba, KERN_INFO, LOG_INIT,
 			"3251 QUERY_FW_CFG: func_mode:x%x, ulp0_mode:x%x, "
 			"ulp1_mode:x%x\n", phba->sli4_hba.fw_func_mode,
@@ -8367,7 +8375,7 @@ lpfc_sli_enable_msix(struct lpfc_hba *phba)
 
 	/* vector-0 is associated to slow-path handler */
 	rc = request_irq(phba->msix_entries[0].vector,
-			 &lpfc_sli_sp_intr_handler, IRQF_SHARED,
+			 &lpfc_sli_sp_intr_handler, 0,
 			 LPFC_SP_DRIVER_HANDLER_NAME, phba);
 	if (rc) {
 		lpfc_printf_log(phba, KERN_WARNING, LOG_INIT,
@@ -8378,7 +8386,7 @@ lpfc_sli_enable_msix(struct lpfc_hba *phba)
 
 	/* vector-1 is associated to fast-path handler */
 	rc = request_irq(phba->msix_entries[1].vector,
-			 &lpfc_sli_fp_intr_handler, IRQF_SHARED,
+			 &lpfc_sli_fp_intr_handler, 0,
 			 LPFC_FP_DRIVER_HANDLER_NAME, phba);
 
 	if (rc) {
@@ -8487,7 +8495,7 @@ lpfc_sli_enable_msi(struct lpfc_hba *phba)
 	}
 
 	rc = request_irq(phba->pcidev->irq, lpfc_sli_intr_handler,
-			 IRQF_SHARED, LPFC_DRIVER_NAME, phba);
+			 0, LPFC_DRIVER_NAME, phba);
 	if (rc) {
 		pci_disable_msi(phba->pcidev);
 		lpfc_printf_log(phba, KERN_WARNING, LOG_INIT,
@@ -8944,13 +8952,13 @@ lpfc_sli4_enable_msix(struct lpfc_hba *phba)
 		if (phba->cfg_fof && (index == (vectors - 1)))
 			rc = request_irq(
 				phba->sli4_hba.msix_entries[index].vector,
-				 &lpfc_sli4_fof_intr_handler, IRQF_SHARED,
+				 &lpfc_sli4_fof_intr_handler, 0,
 				 (char *)&phba->sli4_hba.handler_name[index],
 				 &phba->sli4_hba.fcp_eq_hdl[index]);
 		else
 			rc = request_irq(
 				phba->sli4_hba.msix_entries[index].vector,
-				 &lpfc_sli4_hba_intr_handler, IRQF_SHARED,
+				 &lpfc_sli4_hba_intr_handler, 0,
 				 (char *)&phba->sli4_hba.handler_name[index],
 				 &phba->sli4_hba.fcp_eq_hdl[index]);
 		if (rc) {
@@ -9050,7 +9058,7 @@ lpfc_sli4_enable_msi(struct lpfc_hba *phba)
 	}
 
 	rc = request_irq(phba->pcidev->irq, lpfc_sli4_intr_handler,
-			 IRQF_SHARED, LPFC_DRIVER_NAME, phba);
+			 0, LPFC_DRIVER_NAME, phba);
 	if (rc) {
 		pci_disable_msi(phba->pcidev);
 		lpfc_printf_log(phba, KERN_WARNING, LOG_INIT,
