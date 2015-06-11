@@ -157,7 +157,8 @@ struct exynos_drm_display {
 /*
  * Exynos drm crtc ops
  *
- * @dpms: control device power.
+ * @enable: enable the device
+ * @disable: disable the device
  * @mode_fixup: fix mode data before applying it
  * @commit: set current hw specific display mode to hw.
  * @enable_vblank: specific driver callback for enabling vblank interrupt.
@@ -175,7 +176,8 @@ struct exynos_drm_display {
  */
 struct exynos_drm_crtc;
 struct exynos_drm_crtc_ops {
-	void (*dpms)(struct exynos_drm_crtc *crtc, int mode);
+	void (*enable)(struct exynos_drm_crtc *crtc);
+	void (*disable)(struct exynos_drm_crtc *crtc);
 	bool (*mode_fixup)(struct exynos_drm_crtc *crtc,
 				const struct drm_display_mode *mode,
 				struct drm_display_mode *adjusted_mode);
@@ -201,7 +203,7 @@ struct exynos_drm_crtc_ops {
  *	drm framework doesn't support multiple irq yet.
  *	we can refer to the crtc to current hardware interrupt occurred through
  *	this pipe value.
- * @dpms: store the crtc dpms value
+ * @enabled: if the crtc is enabled or not
  * @event: vblank event that is currently queued for flip
  * @ops: pointer to callbacks for exynos drm specific functionality
  * @ctx: A pointer to the crtc's implementation specific context
@@ -210,7 +212,7 @@ struct exynos_drm_crtc {
 	struct drm_crtc			base;
 	enum exynos_drm_output_type	type;
 	unsigned int			pipe;
-	unsigned int			dpms;
+	bool				enabled;
 	wait_queue_head_t		pending_flip_queue;
 	struct drm_pending_vblank_event	*event;
 	const struct exynos_drm_crtc_ops	*ops;
