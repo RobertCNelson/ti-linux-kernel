@@ -2983,6 +2983,17 @@ static void target_tmr_work(struct work_struct *work)
 		ret = core_tmr_lun_reset(dev, tmr, NULL, NULL);
 		tmr->response = (!ret) ? TMR_FUNCTION_COMPLETE :
 					 TMR_FUNCTION_REJECTED;
+		if (tmr->response == TMR_FUNCTION_COMPLETE) {
+			struct se_dev_entry *deve;
+
+			rcu_read_lock();
+			deve = target_nacl_find_deve(cmd->se_sess->se_node_acl,
+						     cmd->orig_fe_lun);
+			if (deve)
+				core_scsi3_ua_allocate(deve, 0x29,
+					ASCQ_29H_BUS_DEVICE_RESET_FUNCTION_OCCURRED);
+			rcu_read_unlock();
+		}
 		break;
 	case TMR_TARGET_WARM_RESET:
 		tmr->response = TMR_FUNCTION_REJECTED;
