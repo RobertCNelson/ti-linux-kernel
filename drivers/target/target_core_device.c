@@ -305,7 +305,7 @@ int core_enable_device_list_for_node(
 	struct se_node_acl *nacl,
 	struct se_portal_group *tpg)
 {
-	struct se_dev_entry *orig, *new;
+	struct se_dev_entry *orig, *new, *tmp;
 
 	new = kzalloc(sizeof(*new), GFP_KERNEL);
 	if (!new) {
@@ -360,6 +360,15 @@ int core_enable_device_list_for_node(
 		kref_put(&orig->pr_kref, target_pr_kref_release);
 		wait_for_completion(&orig->pr_comp);
 
+		rcu_read_lock();
+		hlist_for_each_entry_rcu(tmp, &nacl->lun_entry_hlist, link) {
+			if (tmp == new)
+				continue;
+			core_scsi3_ua_allocate(tmp, 0x3F,
+				ASCQ_3FH_REPORTED_LUNS_DATA_HAS_CHANGED);
+		}
+		rcu_read_unlock();
+
 		kfree_rcu(orig, rcu_head);
 		return 0;
 	}
@@ -373,6 +382,14 @@ int core_enable_device_list_for_node(
 	list_add_tail(&new->lun_link, &lun->lun_deve_list);
 	spin_unlock_bh(&lun->lun_deve_lock);
 
+	rcu_read_lock();
+	hlist_for_each_entry_rcu(tmp, &nacl->lun_entry_hlist, link) {
+		if (tmp == new)
+			continue;
+		core_scsi3_ua_allocate(tmp, 0x3F,
+			ASCQ_3FH_REPORTED_LUNS_DATA_HAS_CHANGED);
+	}
+	rcu_read_unlock();
 	return 0;
 }
 
@@ -385,6 +402,7 @@ void core_disable_device_list_for_node(
 	struct se_node_acl *nacl,
 	struct se_portal_group *tpg)
 {
+	struct se_dev_entry *tmp;
 	/*
 	 * rcu_dereference_raw protected by se_lun->lun_group symlink
 	 * reference to se_device->dev_group.
@@ -428,6 +446,12 @@ void core_disable_device_list_for_node(
 	kfree_rcu(orig, rcu_head);
 
 	core_scsi3_free_pr_reg_from_nacl(dev, nacl);
+
+	rcu_read_lock();
+	hlist_for_each_entry_rcu(tmp, &nacl->lun_entry_hlist, link)
+		core_scsi3_ua_allocate(tmp, 0x3F,
+			ASCQ_3FH_REPORTED_LUNS_DATA_HAS_CHANGED);
+	rcu_read_unlock();
 }
 
 /*      core_clear_lun_from_tpg():
