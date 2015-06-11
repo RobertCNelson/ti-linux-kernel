@@ -16,7 +16,6 @@
 
 #include <libaudit.h>
 #include <stdlib.h>
-#include <sys/eventfd.h>
 #include <sys/mman.h>
 #include <linux/futex.h>
 
@@ -39,6 +38,34 @@
 
 #ifndef EFD_SEMAPHORE
 # define EFD_SEMAPHORE		1
+#endif
+
+#ifndef EFD_NONBLOCK
+# define EFD_NONBLOCK		00004000
+#endif
+
+#ifndef EFD_CLOEXEC
+# define EFD_CLOEXEC		02000000
+#endif
+
+#ifndef O_CLOEXEC
+# define O_CLOEXEC		02000000
+#endif
+
+#ifndef SOCK_DCCP
+# define SOCK_DCCP		6
+#endif
+
+#ifndef SOCK_CLOEXEC
+# define SOCK_CLOEXEC		02000000
+#endif
+
+#ifndef SOCK_NONBLOCK
+# define SOCK_NONBLOCK		00004000
+#endif
+
+#ifndef MSG_CMSG_CLOEXEC
+# define MSG_CMSG_CLOEXEC	0x40000000
 #endif
 
 struct tp_field {
@@ -1712,7 +1739,7 @@ static int trace__sys_enter(struct trace *trace, struct perf_evsel *evsel,
 	void *args;
 	size_t printed = 0;
 	struct thread *thread;
-	int id = perf_evsel__sc_tp_uint(evsel, id, sample);
+	int id = perf_evsel__sc_tp_uint(evsel, id, sample), err = -1;
 	struct syscall *sc = trace__syscall_info(trace, evsel, id);
 	struct thread_trace *ttrace;
 
@@ -1725,14 +1752,14 @@ static int trace__sys_enter(struct trace *trace, struct perf_evsel *evsel,
 	thread = machine__findnew_thread(trace->host, sample->pid, sample->tid);
 	ttrace = thread__trace(thread, trace->output);
 	if (ttrace == NULL)
-		return -1;
+		goto out_put;
 
 	args = perf_evsel__sc_tp_ptr(evsel, args, sample);
 
 	if (ttrace->entry_str == NULL) {
 		ttrace->entry_str = malloc(1024);
 		if (!ttrace->entry_str)
-			return -1;
+			goto out_put;
 	}
 
 	if (!trace->summary_only)
@@ -1757,8 +1784,10 @@ static int trace__sys_enter(struct trace *trace, struct perf_evsel *evsel,
 		thread__put(trace->current);
 		trace->current = thread__get(thread);
 	}
-
-	return 0;
+	err = 0;
+out_put:
+	thread__put(thread);
+	return err;
 }
 
 static int trace__sys_exit(struct trace *trace, struct perf_evsel *evsel,
@@ -1768,7 +1797,7 @@ static int trace__sys_exit(struct trace *trace, struct perf_evsel *evsel,
 	long ret;
 	u64 duration = 0;
 	struct thread *thread;
-	int id = perf_evsel__sc_tp_uint(evsel, id, sample);
+	int id = perf_evsel__sc_tp_uint(evsel, id, sample), err = -1;
 	struct syscall *sc = trace__syscall_info(trace, evsel, id);
 	struct thread_trace *ttrace;
 
@@ -1781,7 +1810,7 @@ static int trace__sys_exit(struct trace *trace, struct perf_evsel *evsel,
 	thread = machine__findnew_thread(trace->host, sample->pid, sample->tid);
 	ttrace = thread__trace(thread, trace->output);
 	if (ttrace == NULL)
-		return -1;
+		goto out_put;
 
 	if (trace->summary)
 		thread__update_stats(ttrace, id, sample);
@@ -1835,8 +1864,10 @@ signed_print:
 	fputc('\n', trace->output);
 out:
 	ttrace->entry_pending = false;
-
-	return 0;
+	err = 0;
+out_put:
+	thread__put(thread);
+	return err;
 }
 
 static int trace__vfs_getname(struct trace *trace, struct perf_evsel *evsel,
@@ -1863,6 +1894,7 @@ static int trace__sched_stat_runtime(struct trace *trace, struct perf_evsel *evs
 
 	ttrace->runtime_ms += runtime_ms;
 	trace->runtime_ms += runtime_ms;
+	thread__put(thread);
 	return 0;
 
 out_dump:
@@ -1872,6 +1904,7 @@ out_dump:
 	       (pid_t)perf_evsel__intval(evsel, sample, "pid"),
 	       runtime,
 	       perf_evsel__intval(evsel, sample, "vruntime"));
+	thread__put(thread);
 	return 0;
 }
 
@@ -1924,11 +1957,12 @@ static int trace__pgfault(struct trace *trace,
 	struct addr_location al;
 	char map_type = 'd';
 	struct thread_trace *ttrace;
+	int err = -1;
 
 	thread = machine__findnew_thread(trace->host, sample->pid, sample->tid);
 	ttrace = thread__trace(thread, trace->output);
 	if (ttrace == NULL)
-		return -1;
+		goto out_put;
 
 	if (evsel->attr.config == PERF_COUNT_SW_PAGE_FAULTS_MAJ)
 		ttrace->pfmaj++;
@@ -1936,7 +1970,7 @@ static int trace__pgfault(struct trace *trace,
 		ttrace->pfmin++;
 
 	if (trace->summary_only)
-		return 0;
+		goto out;
 
 	thread__find_addr_location(thread, cpumode, MAP__FUNCTION,
 			      sample->ip, &al);
@@ -1967,8 +2001,11 @@ static int trace__pgfault(struct trace *trace,
 	print_location(trace->output, sample, &al, true, false);
 
 	fprintf(trace->output, " (%c%c)\n", map_type, al.level);
-
-	return 0;
+out:
+	err = 0;
+out_put:
+	thread__put(thread);
+	return err;
 }
 
 static bool skip_sample(struct trace *trace, struct perf_sample *sample)
@@ -2666,16 +2703,15 @@ int cmd_trace(int argc, const char **argv, const char *prefix __maybe_unused)
 	OPT_BOOLEAN(0, "comm", &trace.show_comm,
 		    "show the thread COMM next to its id"),
 	OPT_BOOLEAN(0, "tool_stats", &trace.show_tool_stats, "show tool stats"),
-	OPT_STRING('e', "expr", &ev_qualifier_str, "expr",
-		    "list of events to trace"),
+	OPT_STRING('e', "expr", &ev_qualifier_str, "expr", "list of syscalls to trace"),
 	OPT_STRING('o', "output", &output_name, "file", "output file name"),
 	OPT_STRING('i', "input", &input_name, "file", "Analyze events in file"),
 	OPT_STRING('p', "pid", &trace.opts.target.pid, "pid",
 		    "trace events on existing process id"),
 	OPT_STRING('t', "tid", &trace.opts.target.tid, "tid",
 		    "trace events on existing thread id"),
-	OPT_CALLBACK(0, "filter-pids", &trace, "float",
-		     "show only events with duration > N.M ms", trace__set_filter_pids),
+	OPT_CALLBACK(0, "filter-pids", &trace, "CSV list of pids",
+		     "pids to filter (by the kernel)", trace__set_filter_pids),
 	OPT_BOOLEAN('a', "all-cpus", &trace.opts.target.system_wide,
 		    "system-wide collection from all CPUs"),
 	OPT_STRING('C', "cpu", &trace.opts.target.cpu_list, "cpu",
@@ -2712,11 +2748,10 @@ int cmd_trace(int argc, const char **argv, const char *prefix __maybe_unused)
 	signal(SIGFPE, sighandler_dump_stack);
 
 	trace.evlist = perf_evlist__new();
-	if (trace.evlist == NULL)
-		return -ENOMEM;
 
 	if (trace.evlist == NULL) {
 		pr_err("Not enough memory to run!\n");
+		err = -ENOMEM;
 		goto out;
 	}
 

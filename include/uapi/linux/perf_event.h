@@ -167,6 +167,7 @@ enum perf_branch_sample_type_shift {
 	PERF_SAMPLE_BRANCH_COND_SHIFT		= 10, /* conditional branches */
 
 	PERF_SAMPLE_BRANCH_CALL_STACK_SHIFT	= 11, /* call/ret stack */
+	PERF_SAMPLE_BRANCH_IND_JUMP_SHIFT	= 12, /* indirect jumps */
 
 	PERF_SAMPLE_BRANCH_MAX_SHIFT		/* non-ABI */
 };
@@ -186,6 +187,7 @@ enum perf_branch_sample_type {
 	PERF_SAMPLE_BRANCH_COND		= 1U << PERF_SAMPLE_BRANCH_COND_SHIFT,
 
 	PERF_SAMPLE_BRANCH_CALL_STACK	= 1U << PERF_SAMPLE_BRANCH_CALL_STACK_SHIFT,
+	PERF_SAMPLE_BRANCH_IND_JUMP	= 1U << PERF_SAMPLE_BRANCH_IND_JUMP_SHIFT,
 
 	PERF_SAMPLE_BRANCH_MAX		= 1U << PERF_SAMPLE_BRANCH_MAX_SHIFT,
 };
@@ -799,6 +801,18 @@ enum perf_event_type {
 	 * };
 	 */
 	PERF_RECORD_ITRACE_START		= 12,
+
+	/*
+	 * Records the dropped/lost sample number.
+	 *
+	 * struct {
+	 *	struct perf_event_header	header;
+	 *
+	 *	u64				lost;
+	 *	struct sample_id		sample_id;
+	 * };
+	 */
+	PERF_RECORD_LOST_SAMPLES		= 13,
 
 	PERF_RECORD_MAX,			/* non-ABI */
 };
