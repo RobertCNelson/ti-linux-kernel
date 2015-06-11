@@ -84,7 +84,7 @@
 
 #define RTL_PCI_DEVICE(vend, dev, cfg) \
 	.vendor = (vend), .device = (dev), \
-	.subvendor = PCI_ANY_ID, .subdevice = PCI_ANY_ID , \
+	.subvendor = PCI_ANY_ID, .subdevice = PCI_ANY_ID, \
 	.driver_data = (kernel_ulong_t)&(cfg)
 
 #define RTL_MAX_SCAN_SIZE 128
@@ -303,9 +303,9 @@ enum pci_bridge_vendor {
 	PCI_BRIDGE_VENDOR_INTEL = 0x0,
 	PCI_BRIDGE_VENDOR_ATI,
 	PCI_BRIDGE_VENDOR_AMD,
-	PCI_BRIDGE_VENDOR_SIS ,
+	PCI_BRIDGE_VENDOR_SIS,
 	PCI_BRIDGE_VENDOR_UNKNOWN,
-	PCI_BRIDGE_VENDOR_MAX ,
+	PCI_BRIDGE_VENDOR_MAX,
 };
 
 struct buffer {
@@ -451,15 +451,6 @@ enum two_port_status {
 	TWO_PORT_STATUS__WITHOUT_ANY_ASSOCIATE
 };
 
-struct txbbgain_struct {
-	long	txbb_iq_amplifygain;
-	u32	txbbgain_value;
-};
-
-struct ccktxbbgain {
-	u8	ccktxbb_valuearray[8];
-};
-
 struct init_gain {
 	u8	xaagccore1;
 	u8	xbagccore1;
@@ -567,11 +558,6 @@ struct r8192_priv {
 	struct bb_reg_definition PHYRegDef[4];
 	struct rate_adaptive rate_adaptive;
 
-	struct ccktxbbgain cck_txbbgain_table[CCKTxBBGainTableLength];
-	struct ccktxbbgain cck_txbbgain_ch14_table[CCKTxBBGainTableLength];
-
-	struct txbbgain_struct txbbgain_table[TxBBGainTableLength];
-
 	enum acm_method AcmMethod;
 
 	struct rt_firmware			*pFirmware;
@@ -640,7 +626,6 @@ struct r8192_priv {
 	u8		RegCWinMin;
 	u8		keepAliveLevel;
 
-	bool		sw_radio_on;
 	bool		bHwRadioOff;
 	bool		pwrdown;
 	bool		blinked_ingpio;

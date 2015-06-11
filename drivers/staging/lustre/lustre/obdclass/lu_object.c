@@ -1532,7 +1532,7 @@ static void keys_fini(struct lu_context *ctx)
 	for (i = 0; i < ARRAY_SIZE(lu_keys); ++i)
 		key_fini(ctx, i);
 
-	OBD_FREE(ctx->lc_value, ARRAY_SIZE(lu_keys) * sizeof(ctx->lc_value[0]));
+	kfree(ctx->lc_value);
 	ctx->lc_value = NULL;
 }
 
@@ -1581,8 +1581,8 @@ static int keys_fill(struct lu_context *ctx)
 
 static int keys_init(struct lu_context *ctx)
 {
-	OBD_ALLOC(ctx->lc_value,
-		  ARRAY_SIZE(lu_keys) * sizeof(ctx->lc_value[0]));
+	ctx->lc_value = kcalloc(ARRAY_SIZE(lu_keys), sizeof(ctx->lc_value[0]),
+				GFP_NOFS);
 	if (likely(ctx->lc_value != NULL))
 		return keys_fill(ctx);
 
@@ -1989,14 +1989,10 @@ void lu_global_fini(void)
 
 static __u32 ls_stats_read(struct lprocfs_stats *stats, int idx)
 {
-#if defined (CONFIG_PROC_FS)
 	struct lprocfs_counter ret;
 
 	lprocfs_stats_collect(stats, idx, &ret);
 	return (__u32)ret.lc_count;
-#else
-	return 0;
-#endif
 }
 
 /**
