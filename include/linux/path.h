@@ -3,6 +3,7 @@
 
 struct dentry;
 struct vfsmount;
+struct fs_pin;
 
 struct path {
 	struct vfsmount *mnt;
@@ -11,6 +12,9 @@ struct path {
 
 extern void path_get(const struct path *);
 extern void path_put(const struct path *);
+
+extern void path_get_pin(struct path *, struct fs_pin *);
+extern void path_put_unpin(struct path *, struct fs_pin *);
 
 static inline int path_equal(const struct path *path1, const struct path *path2)
 {
