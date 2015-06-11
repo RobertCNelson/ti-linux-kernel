@@ -126,7 +126,7 @@ static int mac802154_wpan_mac_addr(struct net_device *dev, void *p)
 		return -EBUSY;
 
 	ieee802154_be64_to_le64(&extended_addr, addr->sa_data);
-	if (!ieee802154_is_valid_extended_addr(extended_addr))
+	if (!ieee802154_is_valid_extended_unicast_addr(extended_addr))
 		return -EINVAL;
 
 	memcpy(dev->dev_addr, addr->sa_data, dev->addr_len);
@@ -147,7 +147,6 @@ static int mac802154_slave_open(struct net_device *dev)
 
 	if (!local->open_count) {
 		res = drv_start(local);
-		WARN_ON(res);
 		if (res)
 			goto err;
 	}
@@ -219,8 +218,8 @@ ieee802154_check_concurrent_iface(struct ieee802154_sub_if_data *sdata,
 			 * exist really an use case if we need to support
 			 * multiple node types at the same time.
 			 */
-			if (sdata->vif.type == NL802154_IFTYPE_NODE &&
-			    nsdata->vif.type == NL802154_IFTYPE_NODE)
+			if (wpan_dev->iftype == NL802154_IFTYPE_NODE &&
+			    nsdata->wpan_dev.iftype == NL802154_IFTYPE_NODE)
 				return -EBUSY;
 
 			/* check all phy mac sublayer settings are the same.
@@ -243,7 +242,7 @@ static int mac802154_wpan_open(struct net_device *dev)
 	struct ieee802154_local *local = sdata->local;
 	struct wpan_dev *wpan_dev = &sdata->wpan_dev;
 
-	rc = ieee802154_check_concurrent_iface(sdata, sdata->vif.type);
+	rc = ieee802154_check_concurrent_iface(sdata, wpan_dev->iftype);
 	if (rc < 0)
 		return rc;
 
@@ -467,7 +466,6 @@ ieee802154_setup_sdata(struct ieee802154_sub_if_data *sdata,
 	u8 tmp;
 
 	/* set some type-dependent values */
-	sdata->vif.type = type;
 	sdata->wpan_dev.iftype = type;
 
 	get_random_bytes(&tmp, sizeof(tmp));
@@ -523,7 +521,7 @@ ieee802154_if_add(struct ieee802154_local *local, const char *name,
 
 	ASSERT_RTNL();
 
-	ndev = alloc_netdev(sizeof(*sdata) + local->hw.vif_data_size, name,
+	ndev = alloc_netdev(sizeof(*sdata), name,
 			    name_assign_type, ieee802154_if_setup);
 	if (!ndev)
 		return ERR_PTR(-ENOMEM);
@@ -539,7 +537,7 @@ ieee802154_if_add(struct ieee802154_local *local, const char *name,
 	switch (type) {
 	case NL802154_IFTYPE_NODE:
 		ndev->type = ARPHRD_IEEE802154;
-		if (ieee802154_is_valid_extended_addr(extended_addr))
+		if (ieee802154_is_valid_extended_unicast_addr(extended_addr))
 			ieee802154_le64_to_be64(ndev->dev_addr, &extended_addr);
 		else
 			memcpy(ndev->dev_addr, ndev->perm_addr,
