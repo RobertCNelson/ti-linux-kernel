@@ -695,6 +695,7 @@ static int ufs_sync_fs(struct super_block *sb, int wait)
 	unsigned flags;
 
 	lock_ufs(sb);
+	mutex_lock(&UFS_SB(sb)->s_lock);
 
 	UFSD("ENTER\n");
 
@@ -712,6 +713,7 @@ static int ufs_sync_fs(struct super_block *sb, int wait)
 	ufs_put_cstotal(sb);
 
 	UFSD("EXIT\n");
+	mutex_unlock(&UFS_SB(sb)->s_lock);
 	unlock_ufs(sb);
 
 	return 0;
@@ -1291,6 +1293,7 @@ static int ufs_remount (struct super_block *sb, int *mount_flags, char *data)
 	new_mount_opt = 0;
 	ufs_set_opt (new_mount_opt, ONERROR_LOCK);
 	if (!ufs_parse_options (data, &new_mount_opt)) {
+		mutex_unlock(&UFS_SB(sb)->s_lock);
 		unlock_ufs(sb);
 		return -EINVAL;
 	}
@@ -1298,12 +1301,14 @@ static int ufs_remount (struct super_block *sb, int *mount_flags, char *data)
 		new_mount_opt |= ufstype;
 	} else if ((new_mount_opt & UFS_MOUNT_UFSTYPE) != ufstype) {
 		pr_err("ufstype can't be changed during remount\n");
+		mutex_unlock(&UFS_SB(sb)->s_lock);
 		unlock_ufs(sb);
 		return -EINVAL;
 	}
 
 	if ((*mount_flags & MS_RDONLY) == (sb->s_flags & MS_RDONLY)) {
 		UFS_SB(sb)->s_mount_opt = new_mount_opt;
+		mutex_unlock(&UFS_SB(sb)->s_lock);
 		unlock_ufs(sb);
 		return 0;
 	}
@@ -1327,6 +1332,7 @@ static int ufs_remount (struct super_block *sb, int *mount_flags, char *data)
 	 */
 #ifndef CONFIG_UFS_FS_WRITE
 		pr_err("ufs was compiled with read-only support, can't be mounted as read-write\n");
+		mutex_unlock(&UFS_SB(sb)->s_lock);
 		unlock_ufs(sb);
 		return -EINVAL;
 #else
@@ -1336,11 +1342,13 @@ static int ufs_remount (struct super_block *sb, int *mount_flags, char *data)
 		    ufstype != UFS_MOUNT_UFSTYPE_SUNx86 &&
 		    ufstype != UFS_MOUNT_UFSTYPE_UFS2) {
 			pr_err("this ufstype is read-only supported\n");
+			mutex_unlock(&UFS_SB(sb)->s_lock);
 			unlock_ufs(sb);
 			return -EINVAL;
 		}
 		if (!ufs_read_cylinder_structures(sb)) {
 			pr_err("failed during remounting\n");
+			mutex_unlock(&UFS_SB(sb)->s_lock);
 			unlock_ufs(sb);
 			return -EPERM;
 		}
@@ -1348,6 +1356,7 @@ static int ufs_remount (struct super_block *sb, int *mount_flags, char *data)
 #endif
 	}
 	UFS_SB(sb)->s_mount_opt = new_mount_opt;
+	mutex_unlock(&UFS_SB(sb)->s_lock);
 	unlock_ufs(sb);
 	return 0;
 }
