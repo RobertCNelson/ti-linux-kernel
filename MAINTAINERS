@@ -5021,8 +5021,11 @@ F:	drivers/crypto/nx/
 IBM Power 842 compression accelerator
 M:	Dan Streetman <ddstreet@us.ibm.com>
 S:	Supported
-F:	drivers/crypto/nx/nx-842.c
+F:	drivers/crypto/nx/nx-842*
 F:	include/linux/nx842.h
+F:	include/linux/sw842.h
+F:	crypto/842.c
+F:	lib/842/
 
 IBM Power Linux RAID adapter
 M:	Brian King <brking@us.ibm.com>
