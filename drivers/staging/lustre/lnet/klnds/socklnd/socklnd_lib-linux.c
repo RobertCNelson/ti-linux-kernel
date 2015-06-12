@@ -39,9 +39,8 @@
 int
 ksocknal_lib_get_conn_addrs(ksock_conn_t *conn)
 {
-	int rc = libcfs_sock_getaddr(conn->ksnc_sock, 1,
-				     &conn->ksnc_ipaddr,
-				     &conn->ksnc_port);
+	int rc = lnet_sock_getaddr(conn->ksnc_sock, 1, &conn->ksnc_ipaddr,
+				   &conn->ksnc_port);
 
 	/* Didn't need the {get,put}connsock dance to deref ksnc_sock... */
 	LASSERT(!conn->ksnc_closing);
@@ -51,8 +50,7 @@ ksocknal_lib_get_conn_addrs(ksock_conn_t *conn)
 		return rc;
 	}
 
-	rc = libcfs_sock_getaddr(conn->ksnc_sock, 0,
-				 &conn->ksnc_myipaddr, NULL);
+	rc = lnet_sock_getaddr(conn->ksnc_sock, 0, &conn->ksnc_myipaddr, NULL);
 	if (rc != 0) {
 		CERROR("Error %d getting sock local IP\n", rc);
 		return rc;
@@ -64,7 +62,7 @@ ksocknal_lib_get_conn_addrs(ksock_conn_t *conn)
 int
 ksocknal_lib_zc_capable(ksock_conn_t *conn)
 {
-	int  caps = conn->ksnc_sock->sk->sk_route_caps;
+	int caps = conn->ksnc_sock->sk->sk_route_caps;
 
 	if (conn->ksnc_proto == &ksocknal_protocol_v1x)
 		return 0;
@@ -78,8 +76,8 @@ int
 ksocknal_lib_send_iov(ksock_conn_t *conn, ksock_tx_t *tx)
 {
 	struct socket *sock = conn->ksnc_sock;
-	int	    nob;
-	int	    rc;
+	int nob;
+	int rc;
 
 	if (*ksocknal_tunables.ksnd_enable_csum	&& /* checksum enabled */
 	    conn->ksnc_proto == &ksocknal_protocol_v2x && /* V2.x connection  */
@@ -92,15 +90,15 @@ ksocknal_lib_send_iov(ksock_conn_t *conn, ksock_tx_t *tx)
 
 	{
 #if SOCKNAL_SINGLE_FRAG_TX
-		struct kvec    scratch;
-		struct kvec   *scratchiov = &scratch;
-		unsigned int    niov = 1;
+		struct kvec scratch;
+		struct kvec *scratchiov = &scratch;
+		unsigned int niov = 1;
 #else
-		struct kvec   *scratchiov = conn->ksnc_scheduler->kss_scratch_iov;
-		unsigned int    niov = tx->tx_niov;
+		struct kvec *scratchiov = conn->ksnc_scheduler->kss_scratch_iov;
+		unsigned int niov = tx->tx_niov;
 #endif
 		struct msghdr msg = {.msg_flags = MSG_DONTWAIT};
-		int  i;
+		int i;
 
 		for (nob = i = 0; i < niov; i++) {
 			scratchiov[i] = tx->tx_iov[i];
@@ -120,9 +118,9 @@ int
 ksocknal_lib_send_kiov(ksock_conn_t *conn, ksock_tx_t *tx)
 {
 	struct socket *sock = conn->ksnc_sock;
-	lnet_kiov_t   *kiov = tx->tx_kiov;
-	int	    rc;
-	int	    nob;
+	lnet_kiov_t *kiov = tx->tx_kiov;
+	int rc;
+	int nob;
 
 	/* Not NOOP message */
 	LASSERT(tx->tx_lnetmsg != NULL);
@@ -131,11 +129,11 @@ ksocknal_lib_send_kiov(ksock_conn_t *conn, ksock_tx_t *tx)
 	 * or leave them alone. */
 	if (tx->tx_msg.ksm_zc_cookies[0] != 0) {
 		/* Zero copy is enabled */
-		struct sock   *sk = sock->sk;
-		struct page   *page = kiov->kiov_page;
-		int	    offset = kiov->kiov_offset;
-		int	    fragsize = kiov->kiov_len;
-		int	    msgflg = MSG_DONTWAIT;
+		struct sock *sk = sock->sk;
+		struct page *page = kiov->kiov_page;
+		int offset = kiov->kiov_offset;
+		int fragsize = kiov->kiov_len;
+		int msgflg = MSG_DONTWAIT;
 
 		CDEBUG(D_NET, "page %p + offset %x for %d\n",
 			       page, offset, kiov->kiov_len);
@@ -153,18 +151,18 @@ ksocknal_lib_send_kiov(ksock_conn_t *conn, ksock_tx_t *tx)
 		}
 	} else {
 #if SOCKNAL_SINGLE_FRAG_TX || !SOCKNAL_RISK_KMAP_DEADLOCK
-		struct kvec  scratch;
+		struct kvec scratch;
 		struct kvec *scratchiov = &scratch;
-		unsigned int  niov = 1;
+		unsigned int niov = 1;
 #else
 #ifdef CONFIG_HIGHMEM
 #warning "XXX risk of kmap deadlock on multiple frags..."
 #endif
 		struct kvec *scratchiov = conn->ksnc_scheduler->kss_scratch_iov;
-		unsigned int  niov = tx->tx_nkiov;
+		unsigned int niov = tx->tx_nkiov;
 #endif
 		struct msghdr msg = {.msg_flags = MSG_DONTWAIT};
-		int	   i;
+		int i;
 
 		for (nob = i = 0; i < niov; i++) {
 			scratchiov[i].iov_base = kmap(kiov[i].kiov_page) +
@@ -187,7 +185,7 @@ ksocknal_lib_send_kiov(ksock_conn_t *conn, ksock_tx_t *tx)
 void
 ksocknal_lib_eager_ack(ksock_conn_t *conn)
 {
-	int	    opt = 1;
+	int opt = 1;
 	struct socket *sock = conn->ksnc_sock;
 
 	/* Remind the socket to ACK eagerly.  If I don't, the socket might
@@ -203,23 +201,23 @@ int
 ksocknal_lib_recv_iov(ksock_conn_t *conn)
 {
 #if SOCKNAL_SINGLE_FRAG_RX
-	struct kvec  scratch;
+	struct kvec scratch;
 	struct kvec *scratchiov = &scratch;
-	unsigned int  niov = 1;
+	unsigned int niov = 1;
 #else
 	struct kvec *scratchiov = conn->ksnc_scheduler->kss_scratch_iov;
-	unsigned int  niov = conn->ksnc_rx_niov;
+	unsigned int niov = conn->ksnc_rx_niov;
 #endif
 	struct kvec *iov = conn->ksnc_rx_iov;
 	struct msghdr msg = {
-		.msg_flags      = 0
+		.msg_flags = 0
 	};
-	int	  nob;
-	int	  i;
-	int	  rc;
-	int	  fragnob;
-	int	  sum;
-	__u32	saved_csum;
+	int nob;
+	int i;
+	int rc;
+	int fragnob;
+	int sum;
+	__u32 saved_csum;
 
 	/* NB we can't trust socket ops to either consume our iovs
 	 * or leave them alone. */
@@ -271,9 +269,9 @@ static void *
 ksocknal_lib_kiov_vmap(lnet_kiov_t *kiov, int niov,
 		       struct kvec *iov, struct page **pages)
 {
-	void	     *addr;
-	int	       nob;
-	int	       i;
+	void *addr;
+	int nob;
+	int i;
 
 	if (!*ksocknal_tunables.ksnd_zc_recv || pages == NULL)
 		return NULL;
@@ -307,29 +305,29 @@ int
 ksocknal_lib_recv_kiov(ksock_conn_t *conn)
 {
 #if SOCKNAL_SINGLE_FRAG_RX || !SOCKNAL_RISK_KMAP_DEADLOCK
-	struct kvec   scratch;
-	struct kvec  *scratchiov = &scratch;
-	struct page  **pages      = NULL;
-	unsigned int   niov       = 1;
+	struct kvec scratch;
+	struct kvec *scratchiov = &scratch;
+	struct page **pages = NULL;
+	unsigned int niov = 1;
 #else
 #ifdef CONFIG_HIGHMEM
 #warning "XXX risk of kmap deadlock on multiple frags..."
 #endif
-	struct kvec  *scratchiov = conn->ksnc_scheduler->kss_scratch_iov;
-	struct page  **pages      = conn->ksnc_scheduler->kss_rx_scratch_pgs;
-	unsigned int   niov       = conn->ksnc_rx_nkiov;
+	struct kvec *scratchiov = conn->ksnc_scheduler->kss_scratch_iov;
+	struct page **pages = conn->ksnc_scheduler->kss_rx_scratch_pgs;
+	unsigned int niov = conn->ksnc_rx_nkiov;
 #endif
 	lnet_kiov_t   *kiov = conn->ksnc_rx_kiov;
 	struct msghdr msg = {
-		.msg_flags      = 0
+		.msg_flags = 0
 	};
-	int	  nob;
-	int	  i;
-	int	  rc;
-	void	*base;
-	void	*addr;
-	int	  sum;
-	int	  fragnob;
+	int nob;
+	int i;
+	int rc;
+	void *base;
+	void *addr;
+	int sum;
+	int fragnob;
 	int n;
 
 	/* NB we can't trust socket ops to either consume our iovs
@@ -357,10 +355,10 @@ ksocknal_lib_recv_kiov(ksock_conn_t *conn)
 		for (i = 0, sum = rc; sum > 0; i++, sum -= fragnob) {
 			LASSERT(i < niov);
 
-			/* Dang! have to kmap again because I have nowhere to stash the
-			 * mapped address.  But by doing it while the page is still
-			 * mapped, the kernel just bumps the map count and returns me
-			 * the address it stashed. */
+			/* Dang! have to kmap again because I have nowhere to
+                         * stash the mapped address.  But by doing it while the
+                         * page is still mapped, the kernel just bumps the map
+                         * count and returns me the address it stashed. */
 			base = kmap(kiov[i].kiov_page) + kiov[i].kiov_offset;
 			fragnob = kiov[i].kiov_len;
 			if (fragnob > sum)
@@ -386,9 +384,9 @@ ksocknal_lib_recv_kiov(ksock_conn_t *conn)
 void
 ksocknal_lib_csum_tx(ksock_tx_t *tx)
 {
-	int	  i;
-	__u32	csum;
-	void	*base;
+	int i;
+	__u32 csum;
+	void *base;
 
 	LASSERT(tx->tx_iov[0].iov_base == &tx->tx_msg);
 	LASSERT(tx->tx_conn != NULL);
@@ -426,8 +424,8 @@ int
 ksocknal_lib_get_conn_tunables(ksock_conn_t *conn, int *txmem, int *rxmem, int *nagle)
 {
 	struct socket *sock = conn->ksnc_sock;
-	int	    len;
-	int	    rc;
+	int len;
+	int rc;
 
 	rc = ksocknal_connsock_addref(conn);
 	if (rc != 0) {
@@ -436,7 +434,7 @@ ksocknal_lib_get_conn_tunables(ksock_conn_t *conn, int *txmem, int *rxmem, int *
 		return -ESHUTDOWN;
 	}
 
-	rc = libcfs_sock_getbuf(sock, txmem, rxmem);
+	rc = lnet_sock_getbuf(sock, txmem, rxmem);
 	if (rc == 0) {
 		len = sizeof(*nagle);
 		rc = kernel_getsockopt(sock, SOL_TCP, TCP_NODELAY,
@@ -456,13 +454,13 @@ ksocknal_lib_get_conn_tunables(ksock_conn_t *conn, int *txmem, int *rxmem, int *
 int
 ksocknal_lib_setup_sock(struct socket *sock)
 {
-	int	     rc;
-	int	     option;
-	int	     keep_idle;
-	int	     keep_intvl;
-	int	     keep_count;
-	int	     do_keepalive;
-	struct linger   linger;
+	int rc;
+	int option;
+	int keep_idle;
+	int keep_intvl;
+	int keep_count;
+	int do_keepalive;
+	struct linger linger;
 
 	sock->sk->sk_allocation = GFP_NOFS;
 
@@ -498,9 +496,8 @@ ksocknal_lib_setup_sock(struct socket *sock)
 		}
 	}
 
-	rc = libcfs_sock_setbuf(sock,
-				*ksocknal_tunables.ksnd_tx_buffer_size,
-				*ksocknal_tunables.ksnd_rx_buffer_size);
+	rc = lnet_sock_setbuf(sock, *ksocknal_tunables.ksnd_tx_buffer_size,
+			      *ksocknal_tunables.ksnd_rx_buffer_size);
 	if (rc != 0) {
 		CERROR("Can't set buffer tx %d, rx %d buffers: %d\n",
 			*ksocknal_tunables.ksnd_tx_buffer_size,
@@ -555,11 +552,11 @@ ksocknal_lib_setup_sock(struct socket *sock)
 void
 ksocknal_lib_push_conn(ksock_conn_t *conn)
 {
-	struct sock    *sk;
+	struct sock *sk;
 	struct tcp_sock *tp;
-	int	     nonagle;
-	int	     val = 1;
-	int	     rc;
+	int nonagle;
+	int val = 1;
+	int rc;
 
 	rc = ksocknal_connsock_addref(conn);
 	if (rc != 0)			    /* being shut down */
@@ -592,7 +589,7 @@ extern void ksocknal_write_callback(ksock_conn_t *conn);
 static void
 ksocknal_data_ready(struct sock *sk)
 {
-	ksock_conn_t  *conn;
+	ksock_conn_t *conn;
 
 	/* interleave correctly with closing sockets... */
 	LASSERT(!in_irq());
@@ -611,9 +608,9 @@ ksocknal_data_ready(struct sock *sk)
 static void
 ksocknal_write_space(struct sock *sk)
 {
-	ksock_conn_t  *conn;
-	int	    wspace;
-	int	    min_wpace;
+	ksock_conn_t *conn;
+	int wspace;
+	int min_wpace;
 
 	/* interleave correctly with closing sockets... */
 	LASSERT(!in_irq());
@@ -689,7 +686,7 @@ ksocknal_lib_reset_callback(struct socket *sock, ksock_conn_t *conn)
 int
 ksocknal_lib_memory_pressure(ksock_conn_t *conn)
 {
-	int	    rc = 0;
+	int rc = 0;
 	ksock_sched_t *sched;
 
 	sched = conn->ksnc_scheduler;

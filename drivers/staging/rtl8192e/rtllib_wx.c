@@ -266,7 +266,7 @@ int rtllib_wx_get_scan(struct rtllib_device *ieee,
 	int i = 0;
 	int err = 0;
 
-	RTLLIB_DEBUG_WX("Getting scan\n");
+	netdev_dbg(ieee->dev, "Getting scan\n");
 	down(&ieee->wx_sem);
 	spin_lock_irqsave(&ieee->lock, flags);
 
@@ -281,11 +281,13 @@ int rtllib_wx_get_scan(struct rtllib_device *ieee,
 			ev = rtl819x_translate_scan(ieee, ev, stop, network,
 						    info);
 		else
-			RTLLIB_DEBUG_SCAN("Not showing network '%s ( %pM)' due to age (%lums).\n",
-				escape_essid(network->ssid,
-					     network->ssid_len),
-				network->bssid,
-				(jiffies - network->last_scanned) / (HZ / 100));
+			netdev_dbg(ieee->dev,
+				   "Network '%s ( %pM)' hidden due to age (%lums).\n",
+				   escape_essid(network->ssid,
+						network->ssid_len),
+				   network->bssid,
+				   (jiffies - network->last_scanned) /
+				   (HZ / 100));
 	}
 
 	spin_unlock_irqrestore(&ieee->lock, flags);
@@ -293,7 +295,7 @@ int rtllib_wx_get_scan(struct rtllib_device *ieee,
 	wrqu->data.length = ev -  extra;
 	wrqu->data.flags = 0;
 
-	RTLLIB_DEBUG_WX("exit: %d networks returned.\n", i);
+	netdev_dbg(ieee->dev, "%s(): %d networks returned.\n", __func__, i);
 
 	return err;
 }
@@ -311,7 +313,7 @@ int rtllib_wx_set_encode(struct rtllib_device *ieee,
 	int i, key, key_provided, len;
 	struct lib80211_crypt_data **crypt;
 
-	RTLLIB_DEBUG_WX("SET_ENCODE\n");
+	netdev_dbg(ieee->dev, "%s()\n", __func__);
 
 	key = erq->flags & IW_ENCODE_INDEX;
 	if (key) {
@@ -324,16 +326,16 @@ int rtllib_wx_set_encode(struct rtllib_device *ieee,
 		key = ieee->crypt_info.tx_keyidx;
 	}
 
-	RTLLIB_DEBUG_WX("Key: %d [%s]\n", key, key_provided ?
+	netdev_dbg(ieee->dev, "Key: %d [%s]\n", key, key_provided ?
 			   "provided" : "default");
 	crypt = &ieee->crypt_info.crypt[key];
 	if (erq->flags & IW_ENCODE_DISABLED) {
 		if (key_provided && *crypt) {
-			RTLLIB_DEBUG_WX("Disabling encryption on key %d.\n",
-					   key);
+			netdev_dbg(ieee->dev,
+				   "Disabling encryption on key %d.\n", key);
 			lib80211_crypt_delayed_deinit(&ieee->crypt_info, crypt);
 		} else
-			RTLLIB_DEBUG_WX("Disabling encryption.\n");
+			netdev_dbg(ieee->dev, "Disabling encryption.\n");
 
 		/* Check all the keys to see if any are still configured,
 		 * and if no key index was provided, de-init them all
@@ -405,9 +407,9 @@ int rtllib_wx_set_encode(struct rtllib_device *ieee,
 		if (len > erq->length)
 			memset(sec.keys[key] + erq->length, 0,
 			       len - erq->length);
-		RTLLIB_DEBUG_WX("Setting key %d to '%s' (%d:%d bytes)\n",
-				   key, escape_essid(sec.keys[key], len),
-				   erq->length, len);
+		netdev_dbg(ieee->dev, "Setting key %d to '%s' (%d:%d bytes)\n",
+			   key, escape_essid(sec.keys[key], len), erq->length,
+			   len);
 		sec.key_sizes[key] = len;
 		(*crypt)->ops->set_key(sec.keys[key], len, NULL,
 				       (*crypt)->priv);
@@ -436,8 +438,8 @@ int rtllib_wx_set_encode(struct rtllib_device *ieee,
 
 		/* No key data - just set the default TX key index */
 		if (key_provided) {
-			RTLLIB_DEBUG_WX("Setting key %d to default Tx key.\n",
-					key);
+			netdev_dbg(ieee->dev,
+				   "Setting key %d as default Tx key.\n", key);
 			ieee->crypt_info.tx_keyidx = key;
 			sec.active_key = key;
 			sec.flags |= SEC_ACTIVE_KEY;
@@ -449,7 +451,7 @@ int rtllib_wx_set_encode(struct rtllib_device *ieee,
 			  WLAN_AUTH_SHARED_KEY;
 	sec.auth_mode = ieee->open_wep ? WLAN_AUTH_OPEN : WLAN_AUTH_SHARED_KEY;
 	sec.flags |= SEC_AUTH_MODE;
-	RTLLIB_DEBUG_WX("Auth: %s\n", sec.auth_mode == WLAN_AUTH_OPEN ?
+	netdev_dbg(ieee->dev, "Auth: %s\n", sec.auth_mode == WLAN_AUTH_OPEN ?
 			   "OPEN" : "SHARED KEY");
 
 	/* For now we just support WEP, so only set that security level...
@@ -485,7 +487,7 @@ int rtllib_wx_get_encode(struct rtllib_device *ieee,
 	int len, key;
 	struct lib80211_crypt_data *crypt;
 
-	RTLLIB_DEBUG_WX("GET_ENCODE\n");
+	netdev_dbg(ieee->dev, "%s()\n", __func__);
 
 	if (ieee->iw_mode == IW_MODE_MONITOR)
 		return -1;
@@ -508,7 +510,8 @@ int rtllib_wx_get_encode(struct rtllib_device *ieee,
 		return 0;
 	}
 	len = crypt->ops->get_key(keybuf, SCM_KEY_LEN, NULL, crypt->priv);
-	erq->length = (len >= 0 ? len : 0);
+
+	erq->length = max(len, 0);
 
 	erq->flags |= IW_ENCODE_ENABLED;
 
@@ -592,8 +595,7 @@ int rtllib_wx_set_encode_ext(struct rtllib_device *ieee,
 		module = "rtllib_crypt_ccmp";
 		break;
 	default:
-		RTLLIB_DEBUG_WX("%s: unknown crypto alg %d\n",
-				   dev->name, ext->alg);
+		netdev_dbg(ieee->dev, "Unknown crypto alg %d\n", ext->alg);
 		ret = -EINVAL;
 		goto done;
 	}
@@ -673,7 +675,7 @@ done:
 	 if (ieee->reset_on_keychange &&
 	    ieee->iw_mode != IW_MODE_INFRA &&
 	    ieee->reset_port && ieee->reset_port(dev)) {
-		RTLLIB_DEBUG_WX("%s: reset_port failed\n", dev->name);
+		netdev_dbg(ieee->dev, "Port reset failed\n");
 		return -EINVAL;
 	}
 	return ret;
@@ -850,8 +852,7 @@ int rtllib_wx_set_gen_ie(struct rtllib_device *ieee, u8 *ie, size_t len)
 		if ((eid == MFIE_TYPE_GENERIC) && (!memcmp(&ie[2],
 		     wps_oui, 4))) {
 
-			ieee->wps_ie_len = (len < MAX_WZC_IE_LEN) ? (len) :
-					   (MAX_WZC_IE_LEN);
+			ieee->wps_ie_len = min_t(size_t, len, MAX_WZC_IE_LEN);
 			buf = kmemdup(ie, ieee->wps_ie_len, GFP_KERNEL);
 			if (buf == NULL)
 				return -ENOMEM;

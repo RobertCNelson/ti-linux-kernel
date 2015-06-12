@@ -3803,8 +3803,6 @@ void issue_action_BA23a(struct rtw_adapter *padapter,
 
 	pattrib->pktlen = sizeof(struct ieee80211_hdr_3addr) + 1;
 
-	status = cpu_to_le16(status);
-
 	switch (action) {
 	case WLAN_ACTION_ADDBA_REQ:
 		pattrib->pktlen += sizeof(mgmt->u.action.u.addba_req);
@@ -3908,8 +3906,8 @@ void issue_action_BA23a(struct rtw_adapter *padapter,
 		put_unaligned_le16(BA_para_set,
 				   &mgmt->u.action.u.addba_resp.capab);
 
-		put_unaligned_le16(pmlmeinfo->ADDBA_req.BA_timeout_value,
-				   &mgmt->u.action.u.addba_resp.timeout);
+		mgmt->u.action.u.addba_resp.timeout
+			= pmlmeinfo->ADDBA_req.BA_timeout_value;
 
 		pattrib->pktlen += 8;
 		break;
