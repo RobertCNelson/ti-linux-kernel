@@ -288,7 +288,7 @@ static int nearby_node(int apicid)
  *     Assumption: Number of cores in each internal node is the same.
  * (2) AMD processors supporting compute units
  */
-#ifdef CONFIG_X86_HT
+#ifdef CONFIG_SMP
 static void amd_get_topology(struct cpuinfo_x86 *c)
 {
 	u32 nodes, cores_per_cu = 1;
@@ -341,7 +341,7 @@ static void amd_get_topology(struct cpuinfo_x86 *c)
  */
 static void amd_detect_cmp(struct cpuinfo_x86 *c)
 {
-#ifdef CONFIG_X86_HT
+#ifdef CONFIG_SMP
 	unsigned bits;
 	int cpu = smp_processor_id();
 
@@ -420,7 +420,7 @@ static void srat_detect_node(struct cpuinfo_x86 *c)
 
 static void early_init_amd_mc(struct cpuinfo_x86 *c)
 {
-#ifdef CONFIG_X86_HT
+#ifdef CONFIG_SMP
 	unsigned bits, ecx;
 
 	/* Multi core CPU? */
@@ -520,8 +520,16 @@ static void early_init_amd(struct cpuinfo_x86 *c)
 			set_cpu_cap(c, X86_FEATURE_K6_MTRR);
 #endif
 #if defined(CONFIG_X86_LOCAL_APIC) && defined(CONFIG_PCI)
-	/* check CPU config space for extended APIC ID */
-	if (cpu_has_apic && c->x86 >= 0xf) {
+	/*
+	 * ApicID can always be treated as an 8-bit value for AMD APIC versions
+	 * >= 0x10, but even old K8s came out of reset with version 0x10. So, we
+	 * can safely set X86_FEATURE_EXTD_APICID unconditionally for families
+	 * after 16h.
+	 */
+	if (cpu_has_apic && c->x86 > 0x16) {
+		set_cpu_cap(c, X86_FEATURE_EXTD_APICID);
+	} else if (cpu_has_apic && c->x86 >= 0xf) {
+		/* check CPU config space for extended APIC ID */
 		unsigned int val;
 		val = read_pci_config(0, 24, 0, 0x68);
 		if ((val & ((1 << 17) | (1 << 18))) == ((1 << 17) | (1 << 18)))
