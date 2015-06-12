@@ -606,7 +606,6 @@ static int nes_query_port(struct ib_device *ibdev, u8 port, struct ib_port_attr 
 	return 0;
 }
 
-
 /**
  * nes_query_pkey
  */
@@ -3222,8 +3221,8 @@ static int nes_multicast_detach(struct ib_qp *ibqp, union ib_gid *gid, u16 lid)
  * nes_process_mad
  */
 static int nes_process_mad(struct ib_device *ibdev, int mad_flags,
-		u8 port_num, struct ib_wc *in_wc, struct ib_grh *in_grh,
-		struct ib_mad *in_mad, struct ib_mad *out_mad)
+		u8 port_num, const struct ib_wc *in_wc, const struct ib_grh *in_grh,
+		const struct ib_mad *in_mad, struct ib_mad *out_mad)
 {
 	nes_debug(NES_DBG_INIT, "\n");
 	return -ENOSYS;
@@ -3828,6 +3827,22 @@ static int nes_req_notify_cq(struct ib_cq *ibcq, enum ib_cq_notify_flags notify_
 	return 0;
 }
 
+static int nes_port_immutable(struct ib_device *ibdev, u8 port_num,
+			      struct ib_port_immutable *immutable)
+{
+	struct ib_port_attr attr;
+	int err;
+
+	err = nes_query_port(ibdev, port_num, &attr);
+	if (err)
+		return err;
+
+	immutable->pkey_tbl_len = attr.pkey_tbl_len;
+	immutable->gid_tbl_len = attr.gid_tbl_len;
+	immutable->core_cap_flags = RDMA_CORE_PORT_IWARP;
+
+	return 0;
+}
 
 /**
  * nes_init_ofa_device
@@ -3928,6 +3943,7 @@ struct nes_ib_device *nes_init_ofa_device(struct net_device *netdev)
 	nesibdev->ibdev.iwcm->reject = nes_reject;
 	nesibdev->ibdev.iwcm->create_listen = nes_create_listen;
 	nesibdev->ibdev.iwcm->destroy_listen = nes_destroy_listen;
+	nesibdev->ibdev.get_port_immutable   = nes_port_immutable;
 
 	return nesibdev;
 }
