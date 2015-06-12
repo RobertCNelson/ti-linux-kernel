@@ -208,7 +208,8 @@ struct acpi_device_flags {
 	u32 visited:1;
 	u32 hotplug_notify:1;
 	u32 is_dock_station:1;
-	u32 reserved:23;
+	u32 of_compatible_ok:1;
+	u32 reserved:22;
 };
 
 /* File System */
@@ -271,7 +272,6 @@ struct acpi_device_power_flags {
 struct acpi_device_power_state {
 	struct {
 		u8 valid:1;
-		u8 os_accessible:1;
 		u8 explicit_set:1;	/* _PSx present? */
 		u8 reserved:6;
 	} flags;
@@ -601,7 +601,7 @@ static inline bool acpi_device_can_wakeup(struct acpi_device *adev)
 
 static inline bool acpi_device_can_poweroff(struct acpi_device *adev)
 {
-	return adev->power.states[ACPI_STATE_D3_COLD].flags.os_accessible;
+	return adev->power.states[ACPI_STATE_D3_COLD].flags.valid;
 }
 
 #else	/* CONFIG_ACPI */
