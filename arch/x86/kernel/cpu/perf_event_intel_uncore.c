@@ -838,6 +838,7 @@ static int uncore_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id
 	box->phys_id = phys_id;
 	box->pci_dev = pdev;
 	box->pmu = pmu;
+	uncore_box_init(box);
 	pci_set_drvdata(pdev, box);
 
 	raw_spin_lock(&uncore_box_lock);
@@ -1004,8 +1005,10 @@ static int uncore_cpu_starting(int cpu)
 			pmu = &type->pmus[j];
 			box = *per_cpu_ptr(pmu->box, cpu);
 			/* called by uncore_cpu_init? */
-			if (box && box->phys_id >= 0)
+			if (box && box->phys_id >= 0) {
+				uncore_box_init(box);
 				continue;
+			}
 
 			for_each_online_cpu(k) {
 				exist = *per_cpu_ptr(pmu->box, k);
@@ -1021,8 +1024,10 @@ static int uncore_cpu_starting(int cpu)
 				}
 			}
 
-			if (box)
+			if (box) {
 				box->phys_id = phys_id;
+				uncore_box_init(box);
+			}
 		}
 	}
 	return 0;
