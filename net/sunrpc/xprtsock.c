@@ -3036,7 +3036,7 @@ static int param_set_portnr(const char *val, const struct kernel_param *kp)
 			RPC_MAX_RESVPORT);
 }
 
-static struct kernel_param_ops param_ops_portnr = {
+static const struct kernel_param_ops param_ops_portnr = {
 	.set = param_set_portnr,
 	.get = param_get_uint,
 };
@@ -3055,7 +3055,7 @@ static int param_set_slot_table_size(const char *val,
 			RPC_MAX_SLOT_TABLE);
 }
 
-static struct kernel_param_ops param_ops_slot_table_size = {
+static const struct kernel_param_ops param_ops_slot_table_size = {
 	.set = param_set_slot_table_size,
 	.get = param_get_uint,
 };
@@ -3071,7 +3071,7 @@ static int param_set_max_slot_table_size(const char *val,
 			RPC_MAX_SLOT_TABLE_LIMIT);
 }
 
-static struct kernel_param_ops param_ops_max_slot_table_size = {
+static const struct kernel_param_ops param_ops_max_slot_table_size = {
 	.set = param_set_max_slot_table_size,
 	.get = param_get_uint,
 };
