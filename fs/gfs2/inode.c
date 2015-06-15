@@ -1721,7 +1721,7 @@ static int gfs2_rename2(struct inode *odir, struct dentry *odentry,
  * Returns: 0 on success or error code
  */
 
-static void *gfs2_follow_link(struct dentry *dentry, struct nameidata *nd)
+static const char *gfs2_follow_link(struct dentry *dentry, void **cookie)
 {
 	struct gfs2_inode *ip = GFS2_I(d_inode(dentry));
 	struct gfs2_holder i_gh;
@@ -1734,8 +1734,7 @@ static void *gfs2_follow_link(struct dentry *dentry, struct nameidata *nd)
 	error = gfs2_glock_nq(&i_gh);
 	if (error) {
 		gfs2_holder_uninit(&i_gh);
-		nd_set_link(nd, ERR_PTR(error));
-		return NULL;
+		return ERR_PTR(error);
 	}
 
 	size = (unsigned int)i_size_read(&ip->i_inode);
@@ -1759,8 +1758,9 @@ static void *gfs2_follow_link(struct dentry *dentry, struct nameidata *nd)
 	brelse(dibh);
 out:
 	gfs2_glock_dq_uninit(&i_gh);
-	nd_set_link(nd, buf);
-	return NULL;
+	if (!IS_ERR(buf))
+		*cookie = buf;
+	return buf;
 }
 
 /**
