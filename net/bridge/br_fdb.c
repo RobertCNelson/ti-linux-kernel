@@ -736,6 +736,12 @@ static int fdb_add_entry(struct net_bridge_port *source, const __u8 *addr,
 	struct net_bridge_fdb_entry *fdb;
 	bool modified = false;
 
+	/* If the port cannot learn allow only local and static entries */
+	if (!(state & NUD_PERMANENT) && !(state & NUD_NOARP) &&
+	    !(source->state == BR_STATE_LEARNING ||
+	      source->state == BR_STATE_FORWARDING))
+		return -EPERM;
+
 	fdb = fdb_find(head, addr, vid);
 	if (fdb == NULL) {
 		if (!(flags & NLM_F_CREATE))
@@ -867,13 +873,15 @@ out:
 	return err;
 }
 
-static int fdb_delete_by_addr(struct net_bridge *br, const u8 *addr, u16 vlan)
+static int fdb_delete_by_addr_and_port(struct net_bridge_port *p,
+				       const u8 *addr, u16 vlan)
 {
+	struct net_bridge *br = p->br;
 	struct hlist_head *head = &br->hash[br_mac_hash(addr, vlan)];
 	struct net_bridge_fdb_entry *fdb;
 
 	fdb = fdb_find(head, addr, vlan);
-	if (!fdb)
+	if (!fdb || fdb->dst != p)
 		return -ENOENT;
 
 	fdb_delete(br, fdb);
@@ -886,7 +894,7 @@ static int __br_fdb_delete(struct net_bridge_port *p,
 	int err;
 
 	spin_lock_bh(&p->br->hash_lock);
-	err = fdb_delete_by_addr(p->br, addr, vid);
+	err = fdb_delete_by_addr_and_port(p, addr, vid);
 	spin_unlock_bh(&p->br->hash_lock);
 
 	return err;
