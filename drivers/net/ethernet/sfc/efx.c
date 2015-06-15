@@ -1332,7 +1332,7 @@ static unsigned int efx_wanted_parallelism(struct efx_nic *efx)
 			if (!cpumask_test_cpu(cpu, thread_mask)) {
 				++count;
 				cpumask_or(thread_mask, thread_mask,
-					   topology_thread_cpumask(cpu));
+					   topology_sibling_cpumask(cpu));
 			}
 		}
 
