@@ -738,14 +738,15 @@ static int
 sbc_check_dpofua(struct se_device *dev, struct se_cmd *cmd, unsigned char *cdb)
 {
 	if (cdb[1] & 0x10) {
-		if (!dev->dev_attrib.emulate_dpo) {
+		/* see explanation in spc_emulate_modesense */
+		if (!target_check_fua(dev)) {
 			pr_err("Got CDB: 0x%02x with DPO bit set, but device"
 			       " does not advertise support for DPO\n", cdb[0]);
 			return -EINVAL;
 		}
 	}
 	if (cdb[1] & 0x8) {
-		if (!dev->dev_attrib.emulate_fua_write || !se_dev_check_wce(dev)) {
+		if (!target_check_fua(dev)) {
 			pr_err("Got CDB: 0x%02x with FUA bit set, but device"
 			       " does not advertise support for FUA write\n",
 			       cdb[0]);
@@ -1182,27 +1183,50 @@ sbc_dif_generate(struct se_cmd *cmd)
 {
 	struct se_device *dev = cmd->se_dev;
 	struct se_dif_v1_tuple *sdt;
-	struct scatterlist *dsg, *psg = cmd->t_prot_sg;
+	struct scatterlist *dsg = cmd->t_data_sg, *psg;
 	sector_t sector = cmd->t_task_lba;
 	void *daddr, *paddr;
 	int i, j, offset = 0;
+	unsigned int block_size = dev->dev_attrib.block_size;
 
-	for_each_sg(cmd->t_data_sg, dsg, cmd->t_data_nents, i) {
-		daddr = kmap_atomic(sg_page(dsg)) + dsg->offset;
+	for_each_sg(cmd->t_prot_sg, psg, cmd->t_prot_nents, i) {
 		paddr = kmap_atomic(sg_page(psg)) + psg->offset;
+		daddr = kmap_atomic(sg_page(dsg)) + dsg->offset;
 
-		for (j = 0; j < dsg->length; j += dev->dev_attrib.block_size) {
+		for (j = 0; j < psg->length;
+				j += sizeof(struct se_dif_v1_tuple)) {
+			__u16 crc;
+			unsigned int avail;
 
-			if (offset >= psg->length) {
-				kunmap_atomic(paddr);
-				psg = sg_next(psg);
-				paddr = kmap_atomic(sg_page(psg)) + psg->offset;
-				offset = 0;
+			if (offset >= dsg->length) {
+				offset -= dsg->length;
+				kunmap_atomic(daddr - dsg->offset);
+				dsg = sg_next(dsg);
+				if (!dsg) {
+					kunmap_atomic(paddr - psg->offset);
+					return;
+				}
+				daddr = kmap_atomic(sg_page(dsg)) + dsg->offset;
 			}
 
-			sdt = paddr + offset;
-			sdt->guard_tag = cpu_to_be16(crc_t10dif(daddr + j,
-						dev->dev_attrib.block_size));
+			sdt = paddr + j;
+			avail = min(block_size, dsg->length - offset);
+			crc = crc_t10dif(daddr + offset, avail);
+			if (avail < block_size) {
+				kunmap_atomic(daddr - dsg->offset);
+				dsg = sg_next(dsg);
+				if (!dsg) {
+					kunmap_atomic(paddr - psg->offset);
+					return;
+				}
+				daddr = kmap_atomic(sg_page(dsg)) + dsg->offset;
+				offset = block_size - avail;
+				crc = crc_t10dif_update(crc, daddr, offset);
+			} else {
+				offset += block_size;
+			}
+
+			sdt->guard_tag = cpu_to_be16(crc);
 			if (cmd->prot_type == TARGET_DIF_TYPE1_PROT)
 				sdt->ref_tag = cpu_to_be32(sector & 0xffffffff);
 			sdt->app_tag = 0;
@@ -1215,26 +1239,23 @@ sbc_dif_generate(struct se_cmd *cmd)
 				 be32_to_cpu(sdt->ref_tag));
 
 			sector++;
-			offset += sizeof(struct se_dif_v1_tuple);
 		}
 
-		kunmap_atomic(paddr);
-		kunmap_atomic(daddr);
+		kunmap_atomic(daddr - dsg->offset);
+		kunmap_atomic(paddr - psg->offset);
 	}
 }
 
 static sense_reason_t
 sbc_dif_v1_verify(struct se_cmd *cmd, struct se_dif_v1_tuple *sdt,
-		  const void *p, sector_t sector, unsigned int ei_lba)
+		  __u16 crc, sector_t sector, unsigned int ei_lba)
 {
-	struct se_device *dev = cmd->se_dev;
-	int block_size = dev->dev_attrib.block_size;
 	__be16 csum;
 
 	if (!(cmd->prot_checks & TARGET_DIF_CHECK_GUARD))
 		goto check_ref;
 
-	csum = cpu_to_be16(crc_t10dif(p, block_size));
+	csum = cpu_to_be16(crc);
 
 	if (sdt->guard_tag != csum) {
 		pr_err("DIFv1 checksum failed on sector %llu guard tag 0x%04x"
@@ -1266,9 +1287,8 @@ check_ref:
 	return 0;
 }
 
-static void
-sbc_dif_copy_prot(struct se_cmd *cmd, unsigned int sectors, bool read,
-		  struct scatterlist *sg, int sg_off)
+void sbc_dif_copy_prot(struct se_cmd *cmd, unsigned int sectors, bool read,
+		       struct scatterlist *sg, int sg_off)
 {
 	struct se_device *dev = cmd->se_dev;
 	struct scatterlist *psg;
@@ -1300,100 +1320,54 @@ sbc_dif_copy_prot(struct se_cmd *cmd, unsigned int sectors, bool read,
 			copied += len;
 			psg_len -= len;
 
+			kunmap_atomic(addr - sg->offset - offset);
+
 			if (offset >= sg->length) {
 				sg = sg_next(sg);
 				offset = 0;
 			}
-			kunmap_atomic(addr);
 		}
-		kunmap_atomic(paddr);
+		kunmap_atomic(paddr - psg->offset);
 	}
 }
+EXPORT_SYMBOL(sbc_dif_copy_prot);
 
 sense_reason_t
-sbc_dif_verify_write(struct se_cmd *cmd, sector_t start, unsigned int sectors,
-		     unsigned int ei_lba, struct scatterlist *sg, int sg_off)
+sbc_dif_verify(struct se_cmd *cmd, sector_t start, unsigned int sectors,
+	       unsigned int ei_lba, struct scatterlist *psg, int psg_off)
 {
 	struct se_device *dev = cmd->se_dev;
 	struct se_dif_v1_tuple *sdt;
-	struct scatterlist *dsg, *psg = cmd->t_prot_sg;
+	struct scatterlist *dsg = cmd->t_data_sg;
 	sector_t sector = start;
 	void *daddr, *paddr;
-	int i, j, offset = 0;
+	int i;
 	sense_reason_t rc;
+	int dsg_off = 0;
+	unsigned int block_size = dev->dev_attrib.block_size;
 
-	for_each_sg(cmd->t_data_sg, dsg, cmd->t_data_nents, i) {
-		daddr = kmap_atomic(sg_page(dsg)) + dsg->offset;
+	for (; psg && sector < start + sectors; psg = sg_next(psg)) {
 		paddr = kmap_atomic(sg_page(psg)) + psg->offset;
-
-		for (j = 0; j < dsg->length; j += dev->dev_attrib.block_size) {
-
-			if (offset >= psg->length) {
-				kunmap_atomic(paddr);
-				psg = sg_next(psg);
-				paddr = kmap_atomic(sg_page(psg)) + psg->offset;
-				offset = 0;
-			}
-
-			sdt = paddr + offset;
-
-			pr_debug("DIF WRITE sector: %llu guard_tag: 0x%04x"
-				 " app_tag: 0x%04x ref_tag: %u\n",
-				 (unsigned long long)sector, sdt->guard_tag,
-				 sdt->app_tag, be32_to_cpu(sdt->ref_tag));
-
-			rc = sbc_dif_v1_verify(cmd, sdt, daddr + j, sector,
-					       ei_lba);
-			if (rc) {
-				kunmap_atomic(paddr);
-				kunmap_atomic(daddr);
-				cmd->bad_sector = sector;
-				return rc;
-			}
-
-			sector++;
-			ei_lba++;
-			offset += sizeof(struct se_dif_v1_tuple);
-		}
-
-		kunmap_atomic(paddr);
-		kunmap_atomic(daddr);
-	}
-	if (!sg)
-		return 0;
-
-	sbc_dif_copy_prot(cmd, sectors, false, sg, sg_off);
-
-	return 0;
-}
-EXPORT_SYMBOL(sbc_dif_verify_write);
-
-static sense_reason_t
-__sbc_dif_verify_read(struct se_cmd *cmd, sector_t start, unsigned int sectors,
-		      unsigned int ei_lba, struct scatterlist *sg, int sg_off)
-{
-	struct se_device *dev = cmd->se_dev;
-	struct se_dif_v1_tuple *sdt;
-	struct scatterlist *dsg, *psg = sg;
-	sector_t sector = start;
-	void *daddr, *paddr;
-	int i, j, offset = sg_off;
-	sense_reason_t rc;
-
-	for_each_sg(cmd->t_data_sg, dsg, cmd->t_data_nents, i) {
 		daddr = kmap_atomic(sg_page(dsg)) + dsg->offset;
-		paddr = kmap_atomic(sg_page(psg)) + sg->offset;
 
-		for (j = 0; j < dsg->length; j += dev->dev_attrib.block_size) {
+		for (i = psg_off; i < psg->length &&
+				sector < start + sectors;
+				i += sizeof(struct se_dif_v1_tuple)) {
+			__u16 crc;
+			unsigned int avail;
 
-			if (offset >= psg->length) {
-				kunmap_atomic(paddr);
-				psg = sg_next(psg);
-				paddr = kmap_atomic(sg_page(psg)) + psg->offset;
-				offset = 0;
+			if (dsg_off >= dsg->length) {
+				dsg_off -= dsg->length;
+				kunmap_atomic(daddr - dsg->offset);
+				dsg = sg_next(dsg);
+				if (!dsg) {
+					kunmap_atomic(paddr - psg->offset);
+					return 0;
+				}
+				daddr = kmap_atomic(sg_page(dsg)) + dsg->offset;
 			}
 
-			sdt = paddr + offset;
+			sdt = paddr + i;
 
 			pr_debug("DIF READ sector: %llu guard_tag: 0x%04x"
 				 " app_tag: 0x%04x ref_tag: %u\n",
@@ -1401,53 +1375,43 @@ __sbc_dif_verify_read(struct se_cmd *cmd, sector_t start, unsigned int sectors,
 				 sdt->app_tag, be32_to_cpu(sdt->ref_tag));
 
 			if (sdt->app_tag == cpu_to_be16(0xffff)) {
-				sector++;
-				offset += sizeof(struct se_dif_v1_tuple);
-				continue;
+				dsg_off += block_size;
+				goto next;
 			}
 
-			rc = sbc_dif_v1_verify(cmd, sdt, daddr + j, sector,
-					       ei_lba);
+			avail = min(block_size, dsg->length - dsg_off);
+			crc = crc_t10dif(daddr + dsg_off, avail);
+			if (avail < block_size) {
+				kunmap_atomic(daddr - dsg->offset);
+				dsg = sg_next(dsg);
+				if (!dsg) {
+					kunmap_atomic(paddr - psg->offset);
+					return 0;
+				}
+				daddr = kmap_atomic(sg_page(dsg)) + dsg->offset;
+				dsg_off = block_size - avail;
+				crc = crc_t10dif_update(crc, daddr, dsg_off);
+			} else {
+				dsg_off += block_size;
+			}
+
+			rc = sbc_dif_v1_verify(cmd, sdt, crc, sector, ei_lba);
 			if (rc) {
-				kunmap_atomic(paddr);
-				kunmap_atomic(daddr);
+				kunmap_atomic(daddr - dsg->offset);
+				kunmap_atomic(paddr - psg->offset);
 				cmd->bad_sector = sector;
 				return rc;
 			}
-
+next:
 			sector++;
 			ei_lba++;
-			offset += sizeof(struct se_dif_v1_tuple);
 		}
 
-		kunmap_atomic(paddr);
-		kunmap_atomic(daddr);
+		psg_off = 0;
+		kunmap_atomic(daddr - dsg->offset);
+		kunmap_atomic(paddr - psg->offset);
 	}
 
 	return 0;
 }
-
-sense_reason_t
-sbc_dif_read_strip(struct se_cmd *cmd)
-{
-	struct se_device *dev = cmd->se_dev;
-	u32 sectors = cmd->prot_length / dev->prot_length;
-
-	return __sbc_dif_verify_read(cmd, cmd->t_task_lba, sectors, 0,
-				     cmd->t_prot_sg, 0);
-}
-
-sense_reason_t
-sbc_dif_verify_read(struct se_cmd *cmd, sector_t start, unsigned int sectors,
-		    unsigned int ei_lba, struct scatterlist *sg, int sg_off)
-{
-	sense_reason_t rc;
-
-	rc = __sbc_dif_verify_read(cmd, start, sectors, ei_lba, sg, sg_off);
-	if (rc)
-		return rc;
-
-	sbc_dif_copy_prot(cmd, sectors, true, sg, sg_off);
-	return 0;
-}
-EXPORT_SYMBOL(sbc_dif_verify_read);
+EXPORT_SYMBOL(sbc_dif_verify);
