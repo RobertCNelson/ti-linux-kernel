@@ -296,6 +296,7 @@ struct q_inval {
 /* 1MB - maximum possible interrupt remapping table size */
 #define INTR_REMAP_PAGE_ORDER	8
 #define INTR_REMAP_TABLE_REG_SIZE	0xf
+#define INTR_REMAP_TABLE_REG_SIZE_MASK  0xf
 
 #define INTR_REMAP_TABLE_ENTRIES	65536
 
@@ -341,6 +342,9 @@ struct intel_iommu {
 	spinlock_t	lock; /* protect context, domain ids */
 	struct root_entry *root_entry; /* virtual address */
 
+	/* whether translation is enabled prior to OS*/
+	u8		pre_enabled_trans;
+
 	struct iommu_flush flush;
 #endif
 	struct q_inval  *qi;            /* Queued invalidation info */
@@ -348,6 +352,9 @@ struct intel_iommu {
 
 #ifdef CONFIG_IRQ_REMAP
 	struct ir_table *ir_table;	/* Interrupt remapping info */
+
+	/* whether interrupt remapping is enabled prior to OS*/
+	u8		pre_enabled_ir;
 #endif
 	struct device	*iommu_dev; /* IOMMU-sysfs device */
 	int		node;
