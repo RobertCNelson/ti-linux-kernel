@@ -339,14 +339,6 @@ static enum power_supply_property energy_battery_props[] = {
 	POWER_SUPPLY_PROP_SERIAL_NUMBER,
 };
 
-#ifdef CONFIG_ACPI_PROCFS_POWER
-inline char *acpi_battery_units(struct acpi_battery *battery)
-{
-	return (battery->power_unit == ACPI_BATTERY_POWER_UNIT_MA) ?
-		"mA" : "mW";
-}
-#endif
-
 /* --------------------------------------------------------------------------
                                Battery Management
    -------------------------------------------------------------------------- */
@@ -355,14 +347,14 @@ struct acpi_offsets {
 	u8 mode;		/* int or string? */
 };
 
-static struct acpi_offsets state_offsets[] = {
+static const struct acpi_offsets state_offsets[] = {
 	{offsetof(struct acpi_battery, state), 0},
 	{offsetof(struct acpi_battery, rate_now), 0},
 	{offsetof(struct acpi_battery, capacity_now), 0},
 	{offsetof(struct acpi_battery, voltage_now), 0},
 };
 
-static struct acpi_offsets info_offsets[] = {
+static const struct acpi_offsets info_offsets[] = {
 	{offsetof(struct acpi_battery, power_unit), 0},
 	{offsetof(struct acpi_battery, design_capacity), 0},
 	{offsetof(struct acpi_battery, full_charge_capacity), 0},
@@ -378,7 +370,7 @@ static struct acpi_offsets info_offsets[] = {
 	{offsetof(struct acpi_battery, oem_info), 1},
 };
 
-static struct acpi_offsets extended_info_offsets[] = {
+static const struct acpi_offsets extended_info_offsets[] = {
 	{offsetof(struct acpi_battery, revision), 0},
 	{offsetof(struct acpi_battery, power_unit), 0},
 	{offsetof(struct acpi_battery, design_capacity), 0},
@@ -403,7 +395,7 @@ static struct acpi_offsets extended_info_offsets[] = {
 
 static int extract_package(struct acpi_battery *battery,
 			   union acpi_object *package,
-			   struct acpi_offsets *offsets, int num)
+			   const struct acpi_offsets *offsets, int num)
 {
 	int i;
 	union acpi_object *element;
@@ -793,6 +785,12 @@ static void acpi_battery_refresh(struct acpi_battery *battery)
 #ifdef CONFIG_ACPI_PROCFS_POWER
 static struct proc_dir_entry *acpi_battery_dir;
 
+static const char *acpi_battery_units(const struct acpi_battery *battery)
+{
+	return (battery->power_unit == ACPI_BATTERY_POWER_UNIT_MA) ?
+		"mA" : "mW";
+}
+
 static int acpi_battery_print_info(struct seq_file *seq, int result)
 {
 	struct acpi_battery *battery = seq->private;
@@ -1126,19 +1124,21 @@ static int battery_notify(struct notifier_block *nb,
 	return 0;
 }
 
-static int battery_bix_broken_package_quirk(const struct dmi_system_id *d)
+static int __init
+battery_bix_broken_package_quirk(const struct dmi_system_id *d)
 {
 	battery_bix_broken_package = 1;
 	return 0;
 }
 
-static int battery_notification_delay_quirk(const struct dmi_system_id *d)
+static int __init
+battery_notification_delay_quirk(const struct dmi_system_id *d)
 {
 	battery_notification_delay_ms = 1000;
 	return 0;
 }
 
-static struct dmi_system_id bat_dmi_table[] = {
+static const struct dmi_system_id bat_dmi_table[] __initconst = {
 	{
 		.callback = battery_bix_broken_package_quirk,
 		.ident = "NEC LZ750/LS",
