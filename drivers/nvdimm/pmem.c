@@ -96,6 +96,24 @@ static int pmem_rw_page(struct block_device *bdev, sector_t sector,
 	return 0;
 }
 
+static int pmem_rw_bytes(struct gendisk *disk, resource_size_t offset,
+			void *buf, size_t size, int rw)
+{
+	struct pmem_device *pmem = disk->private_data;
+
+	if (unlikely(offset + size > pmem->size)) {
+		dev_WARN_ONCE(disk_to_dev(disk), 1, "request out of range\n");
+		return -EFAULT;
+	}
+
+	if (rw == READ)
+		memcpy(buf, pmem->virt_addr + offset, size);
+	else
+		memcpy(pmem->virt_addr + offset, buf, size);
+
+	return 0;
+}
+
 static long pmem_direct_access(struct block_device *bdev, sector_t sector,
 			      void **kaddr, unsigned long *pfn, long size)
 {
@@ -114,6 +132,7 @@ static long pmem_direct_access(struct block_device *bdev, sector_t sector,
 static const struct block_device_operations pmem_fops = {
 	.owner =		THIS_MODULE,
 	.rw_page =		pmem_rw_page,
+	.rw_bytes =		pmem_rw_bytes,
 	.direct_access =	pmem_direct_access,
 };
 
