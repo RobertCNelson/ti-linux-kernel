@@ -635,6 +635,8 @@ static struct rcu_torture_ops sched_ops = {
 	.deferred_free	= rcu_sched_torture_deferred_free,
 	.sync		= synchronize_sched,
 	.exp_sync	= synchronize_sched_expedited,
+	.get_state	= get_state_synchronize_sched,
+	.cond_sync	= cond_synchronize_sched,
 	.call		= call_rcu_sched,
 	.cb_barrier	= rcu_barrier_sched,
 	.fqs		= rcu_sched_force_quiescent_state,
@@ -1507,7 +1509,7 @@ static int rcu_torture_barrier_init(void)
 	int i;
 	int ret;
 
-	if (n_barrier_cbs == 0)
+	if (n_barrier_cbs <= 0)
 		return 0;
 	if (cur_ops->call == NULL || cur_ops->cb_barrier == NULL) {
 		pr_alert("%s" TORTURE_FLAG
@@ -1786,12 +1788,15 @@ rcu_torture_init(void)
 					  writer_task);
 	if (firsterr)
 		goto unwind;
-	fakewriter_tasks = kzalloc(nfakewriters * sizeof(fakewriter_tasks[0]),
-				   GFP_KERNEL);
-	if (fakewriter_tasks == NULL) {
-		VERBOSE_TOROUT_ERRSTRING("out of memory");
-		firsterr = -ENOMEM;
-		goto unwind;
+	if (nfakewriters > 0) {
+		fakewriter_tasks = kzalloc(nfakewriters *
+					   sizeof(fakewriter_tasks[0]),
+					   GFP_KERNEL);
+		if (fakewriter_tasks == NULL) {
+			VERBOSE_TOROUT_ERRSTRING("out of memory");
+			firsterr = -ENOMEM;
+			goto unwind;
+		}
 	}
 	for (i = 0; i < nfakewriters; i++) {
 		firsterr = torture_create_kthread(rcu_torture_fakewriter,
@@ -1818,7 +1823,7 @@ rcu_torture_init(void)
 		if (firsterr)
 			goto unwind;
 	}
-	if (test_no_idle_hz) {
+	if (test_no_idle_hz && shuffle_interval > 0) {
 		firsterr = torture_shuffle_init(shuffle_interval * HZ);
 		if (firsterr)
 			goto unwind;
