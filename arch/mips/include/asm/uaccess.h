@@ -118,7 +118,8 @@ static inline bool eva_kernel_access(void)
  * @addr: User space pointer to start of block to check
  * @size: Size of block to check
  *
- * Context: User context only.	This function may sleep.
+ * Context: User context only. This function may sleep if pagefaults are
+ *          enabled.
  *
  * Checks if a pointer to a block of memory in user space is valid.
  *
@@ -153,7 +154,8 @@ static inline bool eva_kernel_access(void)
  * @x:	 Value to copy to user space.
  * @ptr: Destination address, in user space.
  *
- * Context: User context only.	This function may sleep.
+ * Context: User context only. This function may sleep if pagefaults are
+ *          enabled.
  *
  * This macro copies a single simple value from kernel space to user
  * space.  It supports simple types like char and int, but not larger
@@ -172,7 +174,8 @@ static inline bool eva_kernel_access(void)
  * @x:	 Variable to store result.
  * @ptr: Source address, in user space.
  *
- * Context: User context only.	This function may sleep.
+ * Context: User context only. This function may sleep if pagefaults are
+ *          enabled.
  *
  * This macro copies a single simple variable from user space to kernel
  * space.  It supports simple types like char and int, but not larger
@@ -192,7 +195,8 @@ static inline bool eva_kernel_access(void)
  * @x:	 Value to copy to user space.
  * @ptr: Destination address, in user space.
  *
- * Context: User context only.	This function may sleep.
+ * Context: User context only. This function may sleep if pagefaults are
+ *          enabled.
  *
  * This macro copies a single simple value from kernel space to user
  * space.  It supports simple types like char and int, but not larger
@@ -214,7 +218,8 @@ static inline bool eva_kernel_access(void)
  * @x:	 Variable to store result.
  * @ptr: Source address, in user space.
  *
- * Context: User context only.	This function may sleep.
+ * Context: User context only. This function may sleep if pagefaults are
+ *          enabled.
  *
  * This macro copies a single simple variable from user space to kernel
  * space.  It supports simple types like char and int, but not larger
@@ -513,7 +518,8 @@ extern void __put_user_unknown(void);
  * @x:	 Value to copy to user space.
  * @ptr: Destination address, in user space.
  *
- * Context: User context only.	This function may sleep.
+ * Context: User context only. This function may sleep if pagefaults are
+ *          enabled.
  *
  * This macro copies a single simple value from kernel space to user
  * space.  It supports simple types like char and int, but not larger
@@ -532,7 +538,8 @@ extern void __put_user_unknown(void);
  * @x:	 Variable to store result.
  * @ptr: Source address, in user space.
  *
- * Context: User context only.	This function may sleep.
+ * Context: User context only. This function may sleep if pagefaults are
+ *          enabled.
  *
  * This macro copies a single simple variable from user space to kernel
  * space.  It supports simple types like char and int, but not larger
@@ -552,7 +559,8 @@ extern void __put_user_unknown(void);
  * @x:	 Value to copy to user space.
  * @ptr: Destination address, in user space.
  *
- * Context: User context only.	This function may sleep.
+ * Context: User context only. This function may sleep if pagefaults are
+ *          enabled.
  *
  * This macro copies a single simple value from kernel space to user
  * space.  It supports simple types like char and int, but not larger
@@ -574,7 +582,8 @@ extern void __put_user_unknown(void);
  * @x:	 Variable to store result.
  * @ptr: Source address, in user space.
  *
- * Context: User context only.	This function may sleep.
+ * Context: User context only. This function may sleep if pagefaults are
+ *          enabled.
  *
  * This macro copies a single simple variable from user space to kernel
  * space.  It supports simple types like char and int, but not larger
@@ -830,7 +839,8 @@ extern size_t __copy_user(void *__to, const void *__from, size_t __n);
  * @from: Source address, in kernel space.
  * @n:	  Number of bytes to copy.
  *
- * Context: User context only.	This function may sleep.
+ * Context: User context only. This function may sleep if pagefaults are
+ *          enabled.
  *
  * Copy data from kernel space to user space.  Caller must check
  * the specified block with access_ok() before calling this function.
@@ -903,7 +913,8 @@ extern size_t __copy_user_inatomic(void *__to, const void *__from, size_t __n);
  * @from: Source address, in kernel space.
  * @n:	  Number of bytes to copy.
  *
- * Context: User context only.	This function may sleep.
+ * Context: User context only. This function may sleep if pagefaults are
+ *          enabled.
  *
  * Copy data from kernel space to user space.
  *
@@ -1090,7 +1101,8 @@ extern size_t __copy_in_user_eva(void *__to, const void *__from, size_t __n);
  * @from: Source address, in user space.
  * @n:	  Number of bytes to copy.
  *
- * Context: User context only.	This function may sleep.
+ * Context: User context only. This function may sleep if pagefaults are
+ *          enabled.
  *
  * Copy data from user space to kernel space.  Caller must check
  * the specified block with access_ok() before calling this function.
@@ -1122,7 +1134,8 @@ extern size_t __copy_in_user_eva(void *__to, const void *__from, size_t __n);
  * @from: Source address, in user space.
  * @n:	  Number of bytes to copy.
  *
- * Context: User context only.	This function may sleep.
+ * Context: User context only. This function may sleep if pagefaults are
+ *          enabled.
  *
  * Copy data from user space to kernel space.
  *
@@ -1344,7 +1357,8 @@ strncpy_from_user(char *__to, const char __user *__from, long __len)
  * strlen_user: - Get the size of a string in user space.
  * @str: The string to measure.
  *
- * Context: User context only.	This function may sleep.
+ * Context: User context only. This function may sleep if pagefaults are
+ *          enabled.
  *
  * Get the size of a NUL-terminated string in user space.
  *
@@ -1413,7 +1427,8 @@ static inline long __strnlen_user(const char __user *s, long n)
  * strnlen_user: - Get the size of a string in user space.
  * @str: The string to measure.
  *
- * Context: User context only.	This function may sleep.
+ * Context: User context only. This function may sleep if pagefaults are
+ *          enabled.
  *
  * Get the size of a NUL-terminated string in user space.
  *
