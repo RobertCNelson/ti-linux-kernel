@@ -139,7 +139,7 @@ static void __iomem *xgene_pcie_map_bus(struct pci_bus *bus, unsigned int devfn,
 {
 	struct xgene_pcie_port *port = bus->sysdata;
 
-	if ((pci_is_root_bus(bus) && devfn != 0) || !port->link_up ||
+	if ((pci_is_root_bus(bus) && devfn != 0) ||
 	    xgene_pcie_hide_rc_bars(bus, offset))
 		return NULL;
 
