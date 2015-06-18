@@ -1612,6 +1612,10 @@ struct clk *tegra_clk_register_pllxc(const char *name, const char *parent_name,
 
 	pll_params->vco_min = _clip_vco_min(pll_params->vco_min, parent_rate);
 
+	if (pll_params->adjust_vco)
+		pll_params->vco_min = pll_params->adjust_vco(pll_params,
+							     parent_rate);
+
 	err = _setup_dynamic_ramp(pll_params, clk_base, parent_rate);
 	if (err)
 		return ERR_PTR(err);
@@ -1649,6 +1653,10 @@ struct clk *tegra_clk_register_pllre(const char *name, const char *parent_name,
 	struct clk *clk;
 
 	pll_params->vco_min = _clip_vco_min(pll_params->vco_min, parent_rate);
+
+	if (pll_params->adjust_vco)
+		pll_params->vco_min = pll_params->adjust_vco(pll_params,
+							     parent_rate);
 
 	pll = _tegra_init_pll(clk_base, pmc, pll_params, lock);
 	if (IS_ERR(pll))
@@ -1705,6 +1713,10 @@ struct clk *tegra_clk_register_pllm(const char *name, const char *parent_name,
 	parent_rate = clk_get_rate(parent);
 
 	pll_params->vco_min = _clip_vco_min(pll_params->vco_min, parent_rate);
+
+	if (pll_params->adjust_vco)
+		pll_params->vco_min = pll_params->adjust_vco(pll_params,
+							     parent_rate);
 
 	pll_params->flags |= TEGRA_PLL_BYPASS;
 	pll_params->flags |= TEGRA_PLLM;
@@ -2112,6 +2124,10 @@ struct clk *tegra_clk_register_pllc_tegra210(const char *name,
 
 	pll_params->vco_min = _clip_vco_min(pll_params->vco_min, parent_rate);
 
+	if (pll_params->adjust_vco)
+		pll_params->vco_min = pll_params->adjust_vco(pll_params,
+							     parent_rate);
+
 	pll_params->flags |= TEGRA_PLL_BYPASS;
 	pll = _tegra_init_pll(clk_base, pmc, pll_params, lock);
 	if (IS_ERR(pll))
@@ -2148,6 +2164,10 @@ struct clk *tegra_clk_register_pllxc_tegra210(const char *name,
 	parent_rate = clk_get_rate(parent);
 
 	pll_params->vco_min = _clip_vco_min(pll_params->vco_min, parent_rate);
+
+	if (pll_params->adjust_vco)
+		pll_params->vco_min = pll_params->adjust_vco(pll_params,
+							     parent_rate);
 
 	pll = _tegra_init_pll(clk_base, pmc, pll_params, lock);
 	if (IS_ERR(pll))
@@ -2195,6 +2215,10 @@ struct clk *tegra_clk_register_pllss_tegra210(const char *name,
 	parent_rate = clk_get_rate(parent);
 
 	pll_params->vco_min = _clip_vco_min(pll_params->vco_min, parent_rate);
+
+	if (pll_params->adjust_vco)
+		pll_params->vco_min = pll_params->adjust_vco(pll_params,
+							     parent_rate);
 
 	/* initialize PLL to minimum rate */
 
@@ -2259,6 +2283,10 @@ struct clk *tegra_clk_register_pllmb(const char *name, const char *parent_name,
 	parent_rate = clk_get_rate(parent);
 
 	pll_params->vco_min = _clip_vco_min(pll_params->vco_min, parent_rate);
+
+	if (pll_params->adjust_vco)
+		pll_params->vco_min = pll_params->adjust_vco(pll_params,
+							     parent_rate);
 
 	pll_params->flags |= TEGRA_PLL_BYPASS;
 	pll_params->flags |= TEGRA_PLLMB;
