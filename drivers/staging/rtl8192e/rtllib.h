@@ -261,45 +261,6 @@ struct sw_chnl_cmd {
 #define	MGN_MCS14_SG		0x9e
 #define	MGN_MCS15_SG		0x9f
 
-
-enum	_ReasonCode {
-	unspec_reason	= 0x1,
-	auth_not_valid	= 0x2,
-	deauth_lv_ss	= 0x3,
-	inactivity		= 0x4,
-	ap_overload	= 0x5,
-	class2_err		= 0x6,
-	class3_err		= 0x7,
-	disas_lv_ss	= 0x8,
-	asoc_not_auth	= 0x9,
-
-	mic_failure	= 0xe,
-
-	invalid_IE		= 0x0d,
-	four_way_tmout	= 0x0f,
-	two_way_tmout	= 0x10,
-	IE_dismatch	= 0x11,
-	invalid_Gcipher = 0x12,
-	invalid_Pcipher = 0x13,
-	invalid_AKMP	= 0x14,
-	unsup_RSNIEver = 0x15,
-	invalid_RSNIE	= 0x16,
-	auth_802_1x_fail = 0x17,
-	ciper_reject		= 0x18,
-
-	QoS_unspec		= 0x20,
-	QAP_bandwidth	= 0x21,
-	poor_condition	= 0x22,
-	no_facility	= 0x23,
-	req_declined	= 0x25,
-	invalid_param	= 0x26,
-	req_not_honored = 0x27,
-	TS_not_created	= 0x2F,
-	DL_not_allowed	= 0x30,
-	dest_not_exist	= 0x31,
-	dest_not_QSTA	= 0x32,
-};
-
 enum hal_def_variable {
 	HAL_DEF_TPC_ENABLE,
 	HAL_DEF_INIT_GAIN,
@@ -679,81 +640,6 @@ enum wireless_network_type {
 #define OUI_SUBTYPE_WMM_INFO		0
 #define OUI_SUBTYPE_WMM_PARAM	1
 #define OUI_SUBTYPE_QOS_CAPABI	5
-
-/* debug macros */
-extern u32 rtllib_debug_level;
-#define RTLLIB_DEBUG(level, fmt, args...) \
-do {								\
-	if (rtllib_debug_level & (level))			\
-		printk(KERN_DEBUG "rtllib: " fmt, ## args);	\
-} while (0)
-
-#define RTLLIB_DEBUG_DATA(level, data, datalen)	\
-	do {							\
-		if ((rtllib_debug_level & (level)) == (level)) {	\
-			printk(KERN_DEBUG "rtllib: %s()\n", __func__);	\
-			print_hex_dump_bytes(KERN_DEBUG, DUMP_PREFIX_NONE, \
-					     data, datalen); \
-		}					\
-	} while (0)
-
-/* To use the debug system;
- *
- * If you are defining a new debug classification, simply add it to the #define
- * list here in the form of:
- *
- * #define RTLLIB_DL_xxxx VALUE
- *
- * shifting value to the left one bit from the previous entry.  xxxx should be
- * the name of the classification (for example, WEP)
- *
- * You then need to either add a RTLLIB_xxxx_DEBUG() macro definition for your
- * classification, or use RTLLIB_DEBUG(RTLLIB_DL_xxxx, ...) whenever you want
- * to send output to that classification.
- *
- * To add your debug level to the list of levels seen when you perform
- *
- * % cat /proc/net/ipw/debug_level
- *
- * you simply need to add your entry to the ipw_debug_levels array.
- */
-
-#define RTLLIB_DL_INFO	  (1<<0)
-#define RTLLIB_DL_WX	    (1<<1)
-#define RTLLIB_DL_SCAN	  (1<<2)
-#define RTLLIB_DL_STATE	 (1<<3)
-#define RTLLIB_DL_MGMT	  (1<<4)
-#define RTLLIB_DL_FRAG	  (1<<5)
-#define RTLLIB_DL_EAP	   (1<<6)
-#define RTLLIB_DL_DROP	  (1<<7)
-
-#define RTLLIB_DL_TX	    (1<<8)
-#define RTLLIB_DL_RX	    (1<<9)
-
-#define RTLLIB_DL_HT		   (1<<10)
-#define RTLLIB_DL_BA		   (1<<11)
-#define RTLLIB_DL_TS		   (1<<12)
-#define RTLLIB_DL_QOS	   (1<<13)
-#define RTLLIB_DL_REORDER	   (1<<14)
-#define RTLLIB_DL_IOT	   (1<<15)
-#define RTLLIB_DL_IPS	   (1<<16)
-#define RTLLIB_DL_TRACE	   (1<<29)
-#define RTLLIB_DL_DATA	   (1<<30)
-#define RTLLIB_DL_ERR	   (1<<31)
-#define RTLLIB_ERROR(f, a...) pr_err("rtllib: " f, ## a)
-#define RTLLIB_WARNING(f, a...) pr_warn("rtllib: " f, ## a)
-#define RTLLIB_DEBUG_INFO(f, a...)   RTLLIB_DEBUG(RTLLIB_DL_INFO, f, ## a)
-
-#define RTLLIB_DEBUG_WX(f, a...)     RTLLIB_DEBUG(RTLLIB_DL_WX, f, ## a)
-#define RTLLIB_DEBUG_SCAN(f, a...)   RTLLIB_DEBUG(RTLLIB_DL_SCAN, f, ## a)
-#define RTLLIB_DEBUG_STATE(f, a...)  RTLLIB_DEBUG(RTLLIB_DL_STATE, f, ## a)
-#define RTLLIB_DEBUG_MGMT(f, a...)  RTLLIB_DEBUG(RTLLIB_DL_MGMT, f, ## a)
-#define RTLLIB_DEBUG_FRAG(f, a...)  RTLLIB_DEBUG(RTLLIB_DL_FRAG, f, ## a)
-#define RTLLIB_DEBUG_EAP(f, a...)  RTLLIB_DEBUG(RTLLIB_DL_EAP, f, ## a)
-#define RTLLIB_DEBUG_DROP(f, a...)  RTLLIB_DEBUG(RTLLIB_DL_DROP, f, ## a)
-#define RTLLIB_DEBUG_TX(f, a...)  RTLLIB_DEBUG(RTLLIB_DL_TX, f, ## a)
-#define RTLLIB_DEBUG_RX(f, a...)  RTLLIB_DEBUG(RTLLIB_DL_RX, f, ## a)
-#define RTLLIB_DEBUG_QOS(f, a...)  RTLLIB_DEBUG(RTLLIB_DL_QOS, f, ## a)
 
 #ifndef ETH_P_PAE
 #define ETH_P_PAE 0x888E /* Port Access Entity (IEEE 802.1X) */
@@ -1570,7 +1456,7 @@ struct rtllib_network {
 	u16	CcxRmState[2];
 	bool	bMBssidValid;
 	u8	MBssidMask;
-	u8	MBssid[6];
+	u8	MBssid[ETH_ALEN];
 	bool	bWithCcxVerNum;
 	u8	BssCcxVerNumber;
 	/* These are network statistics */
@@ -1905,7 +1791,7 @@ struct rt_link_detect {
 
 struct sw_cam_table {
 
-	u8				macaddr[6];
+	u8				macaddr[ETH_ALEN];
 	bool				bused;
 	u8				key_buf[16];
 	u16				key_type;
@@ -1951,10 +1837,10 @@ enum ratr_table_mode_8192s {
 
 #define	NUM_PMKID_CACHE		16
 struct rt_pmkid_list {
-	u8 bUsed;
-	u8 Bssid[6];
+	u8 Bssid[ETH_ALEN];
 	u8 PMKID[16];
 	u8 SsidBuf[33];
+	u8 bUsed;
 	u8 *ssid_octet;
 	u16 ssid_length;
 };
@@ -2018,7 +1904,6 @@ struct rtllib_device {
 
 	u8 hwsec_active;
 	bool is_silent_reset;
-	bool force_mic_error;
 	bool is_roaming;
 	bool ieee_up;
 	bool cannot_notify;
@@ -2122,7 +2007,7 @@ struct rtllib_device {
 	u8 *wpa_ie;
 	size_t wps_ie_len;
 	u8 *wps_ie;
-	u8 ap_mac_addr[6];
+	u8 ap_mac_addr[ETH_ALEN];
 	u16 pairwise_key_type;
 	u16 group_key_type;
 

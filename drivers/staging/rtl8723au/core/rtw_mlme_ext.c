@@ -51,8 +51,7 @@ static void issue_probereq(struct rtw_adapter *padapter,
 static int issue_probereq_ex(struct rtw_adapter *padapter,
 			     struct cfg80211_ssid *pssid,
 			     u8 *da, int try_cnt, int wait_ms);
-static void issue_probersp(struct rtw_adapter *padapter, unsigned char *da,
-			   u8 is_valid_p2p_probereq);
+static void issue_probersp(struct rtw_adapter *padapter, unsigned char *da);
 static void issue_auth(struct rtw_adapter *padapter, struct sta_info *psta,
 		       unsigned short status);
 static int issue_deauth_ex(struct rtw_adapter *padapter, u8 *da,
@@ -760,7 +759,7 @@ OnProbeReq23a(struct rtw_adapter *padapter, struct recv_frame *precv_frame)
 
 	if (check_fwstate(pmlmepriv, _FW_LINKED) &&
 	    pmlmepriv->cur_network.join_res)
-		issue_probersp(padapter, mgmt->sa, false);
+		issue_probersp(padapter, mgmt->sa);
 
 out:
 	return _SUCCESS;
@@ -2503,8 +2502,7 @@ _issue_bcn:
 		dump_mgntframe23a(padapter, pmgntframe);
 }
 
-static void issue_probersp(struct rtw_adapter *padapter, unsigned char *da,
-			   u8 is_valid_p2p_probereq)
+static void issue_probersp(struct rtw_adapter *padapter, unsigned char *da)
 {
 	struct xmit_frame *pmgntframe;
 	struct pkt_attrib *pattrib;
@@ -3803,8 +3801,6 @@ void issue_action_BA23a(struct rtw_adapter *padapter,
 
 	pattrib->pktlen = sizeof(struct ieee80211_hdr_3addr) + 1;
 
-	status = cpu_to_le16(status);
-
 	switch (action) {
 	case WLAN_ACTION_ADDBA_REQ:
 		pattrib->pktlen += sizeof(mgmt->u.action.u.addba_req);
@@ -3908,8 +3904,8 @@ void issue_action_BA23a(struct rtw_adapter *padapter,
 		put_unaligned_le16(BA_para_set,
 				   &mgmt->u.action.u.addba_resp.capab);
 
-		put_unaligned_le16(pmlmeinfo->ADDBA_req.BA_timeout_value,
-				   &mgmt->u.action.u.addba_resp.timeout);
+		mgmt->u.action.u.addba_resp.timeout
+			= pmlmeinfo->ADDBA_req.BA_timeout_value;
 
 		pattrib->pktlen += 8;
 		break;
