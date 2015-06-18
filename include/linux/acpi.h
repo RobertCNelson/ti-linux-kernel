@@ -158,6 +158,16 @@ typedef u32 phys_cpuid_t;
 #define PHYS_CPUID_INVALID (phys_cpuid_t)(-1)
 #endif
 
+static inline bool invalid_logical_cpuid(u32 cpuid)
+{
+	return (int)cpuid < 0;
+}
+
+static inline bool invalid_phys_cpuid(phys_cpuid_t phys_id)
+{
+	return phys_id == PHYS_CPUID_INVALID;
+}
+
 #ifdef CONFIG_ACPI_HOTPLUG_CPU
 /* Arch dependent functions for cpu hotplug support */
 int acpi_map_cpu(acpi_handle handle, phys_cpuid_t physid, int *pcpu);
@@ -332,6 +342,9 @@ int acpi_check_region(resource_size_t start, resource_size_t n,
 
 int acpi_resources_are_enforced(void);
 
+int acpi_reserve_region(u64 start, unsigned int length, u8 space_id,
+			unsigned long flags, char *desc);
+
 #ifdef CONFIG_HIBERNATION
 void __init acpi_no_s4_hw_signature(void);
 #endif
@@ -440,6 +453,7 @@ extern acpi_status acpi_pci_osc_control_set(acpi_handle handle,
 #define ACPI_OST_SC_INSERT_NOT_SUPPORTED	0x82
 
 extern void acpi_early_init(void);
+extern void acpi_subsystem_init(void);
 
 extern int acpi_nvs_register(__u64 start, __u64 size);
 
@@ -494,6 +508,7 @@ static inline const char *acpi_dev_name(struct acpi_device *adev)
 }
 
 static inline void acpi_early_init(void) { }
+static inline void acpi_subsystem_init(void) { }
 
 static inline int early_acpi_boot_init(void)
 {
@@ -523,6 +538,13 @@ static inline int acpi_check_region(resource_size_t start, resource_size_t n,
 				    const char *name)
 {
 	return 0;
+}
+
+static inline int acpi_reserve_region(u64 start, unsigned int length,
+				      u8 space_id, unsigned long flags,
+				      char *desc)
+{
+	return -ENXIO;
 }
 
 struct acpi_table_header;
@@ -567,6 +589,11 @@ static inline int acpi_device_modalias(struct device *dev,
 				char *buf, int size)
 {
 	return -ENODEV;
+}
+
+static inline bool acpi_check_dma(struct acpi_device *adev, bool *coherent)
+{
+	return false;
 }
 
 #define ACPI_PTR(_ptr)	(NULL)
