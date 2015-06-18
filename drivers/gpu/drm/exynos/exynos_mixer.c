@@ -1027,9 +1027,11 @@ static void mixer_window_resume(struct mixer_context *ctx)
 	}
 }
 
-static void mixer_poweron(struct mixer_context *ctx)
+static void mixer_enable(struct exynos_drm_crtc *crtc)
 {
+	struct mixer_context *ctx = crtc->ctx;
 	struct mixer_resources *res = &ctx->mixer_res;
+	int ret;
 
 	mutex_lock(&ctx->mixer_mutex);
 	if (ctx->powered) {
@@ -1041,12 +1043,32 @@ static void mixer_poweron(struct mixer_context *ctx)
 
 	pm_runtime_get_sync(ctx->dev);
 
-	clk_prepare_enable(res->mixer);
-	clk_prepare_enable(res->hdmi);
+	ret = clk_prepare_enable(res->mixer);
+	if (ret < 0) {
+		DRM_ERROR("Failed to prepare_enable the mixer clk [%d]\n", ret);
+		return;
+	}
+	ret = clk_prepare_enable(res->hdmi);
+	if (ret < 0) {
+		DRM_ERROR("Failed to prepare_enable the hdmi clk [%d]\n", ret);
+		return;
+	}
 	if (ctx->vp_enabled) {
-		clk_prepare_enable(res->vp);
-		if (ctx->has_sclk)
-			clk_prepare_enable(res->sclk_mixer);
+		ret = clk_prepare_enable(res->vp);
+		if (ret < 0) {
+			DRM_ERROR("Failed to prepare_enable the vp clk [%d]\n",
+				  ret);
+			return;
+		}
+		if (ctx->has_sclk) {
+			ret = clk_prepare_enable(res->sclk_mixer);
+			if (ret < 0) {
+				DRM_ERROR("Failed to prepare_enable the " \
+					   "sclk_mixer clk [%d]\n",
+					  ret);
+				return;
+			}
+		}
 	}
 
 	mutex_lock(&ctx->mixer_mutex);
@@ -1061,8 +1083,9 @@ static void mixer_poweron(struct mixer_context *ctx)
 	mixer_window_resume(ctx);
 }
 
-static void mixer_poweroff(struct mixer_context *ctx)
+static void mixer_disable(struct exynos_drm_crtc *crtc)
 {
+	struct mixer_context *ctx = crtc->ctx;
 	struct mixer_resources *res = &ctx->mixer_res;
 
 	mutex_lock(&ctx->mixer_mutex);
@@ -1093,23 +1116,6 @@ static void mixer_poweroff(struct mixer_context *ctx)
 	pm_runtime_put_sync(ctx->dev);
 }
 
-static void mixer_dpms(struct exynos_drm_crtc *crtc, int mode)
-{
-	switch (mode) {
-	case DRM_MODE_DPMS_ON:
-		mixer_poweron(crtc->ctx);
-		break;
-	case DRM_MODE_DPMS_STANDBY:
-	case DRM_MODE_DPMS_SUSPEND:
-	case DRM_MODE_DPMS_OFF:
-		mixer_poweroff(crtc->ctx);
-		break;
-	default:
-		DRM_DEBUG_KMS("unknown dpms mode: %d\n", mode);
-		break;
-	}
-}
-
 /* Only valid for Mixer version 16.0.33.0 */
 int mixer_check_mode(struct drm_display_mode *mode)
 {
@@ -1131,7 +1137,8 @@ int mixer_check_mode(struct drm_display_mode *mode)
 }
 
 static const struct exynos_drm_crtc_ops mixer_crtc_ops = {
-	.dpms			= mixer_dpms,
+	.enable			= mixer_enable,
+	.disable		= mixer_disable,
 	.enable_vblank		= mixer_enable_vblank,
 	.disable_vblank		= mixer_disable_vblank,
 	.wait_for_vblank	= mixer_wait_for_vblank,
@@ -1280,18 +1287,9 @@ static int mixer_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, ctx);
 
-	ret = exynos_drm_component_add(&pdev->dev, EXYNOS_DEVICE_TYPE_CRTC,
-					EXYNOS_DISPLAY_TYPE_HDMI);
-	if (ret)
-		return ret;
-
 	ret = component_add(&pdev->dev, &mixer_component_ops);
-	if (ret) {
-		exynos_drm_component_del(&pdev->dev, EXYNOS_DEVICE_TYPE_CRTC);
-		return ret;
-	}
-
-	pm_runtime_enable(dev);
+	if (!ret)
+		pm_runtime_enable(dev);
 
 	return ret;
 }
@@ -1301,7 +1299,6 @@ static int mixer_remove(struct platform_device *pdev)
 	pm_runtime_disable(&pdev->dev);
 
 	component_del(&pdev->dev, &mixer_component_ops);
-	exynos_drm_component_del(&pdev->dev, EXYNOS_DEVICE_TYPE_CRTC);
 
 	return 0;
 }
