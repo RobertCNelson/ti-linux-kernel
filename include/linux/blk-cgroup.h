@@ -23,11 +23,6 @@
 /* Max limits for throttle policy */
 #define THROTL_IOPS_MAX		UINT_MAX
 
-/* CFQ specific, out here for blkcg->cfq_weight */
-#define CFQ_WEIGHT_MIN		10
-#define CFQ_WEIGHT_MAX		1000
-#define CFQ_WEIGHT_DEFAULT	500
-
 #ifdef CONFIG_BLK_CGROUP
 
 enum blkg_rwstat_type {
@@ -50,9 +45,11 @@ struct blkcg {
 	struct blkcg_gq			*blkg_hint;
 	struct hlist_head		blkg_list;
 
-	/* TODO: per-policy storage in blkcg */
-	unsigned int			cfq_weight;	/* belongs to cfq */
-	unsigned int			cfq_leaf_weight;
+	struct blkcg_policy_data	*pd[BLKCG_MAX_POLS];
+
+#ifdef CONFIG_CGROUP_WRITEBACK
+	struct list_head		cgwb_list;
+#endif
 };
 
 struct blkg_stat {
@@ -87,6 +84,24 @@ struct blkg_policy_data {
 	struct list_head		alloc_node;
 };
 
+/*
+ * Policies that need to keep per-blkcg data which is independent
+ * from any request_queue associated to it must specify its size
+ * with the cpd_size field of the blkcg_policy structure and
+ * embed a blkcg_policy_data in it. blkcg core allocates
+ * policy-specific per-blkcg structures lazily the first time
+ * they are actually needed, so it handles them together with
+ * blkgs. cpd_init() is invoked to let each policy handle
+ * per-blkcg data.
+ */
+struct blkcg_policy_data {
+	/* the policy id this per-policy data belongs to */
+	int				plid;
+
+	/* used during policy activation */
+	struct list_head		alloc_node;
+};
+
 /* association between a blk cgroup and a request queue */
 struct blkcg_gq {
 	/* Pointer to the associated request_queue */
@@ -94,6 +109,12 @@ struct blkcg_gq {
 	struct list_head		q_node;
 	struct hlist_node		blkcg_node;
 	struct blkcg			*blkcg;
+
+	/*
+	 * Each blkg gets congested separately and the congestion state is
+	 * propagated to the matching bdi_writeback_congested.
+	 */
+	struct bdi_writeback_congested	*wb_congested;
 
 	/* all non-root blkcg_gq's are guaranteed to have access to parent */
 	struct blkcg_gq			*parent;
@@ -112,6 +133,7 @@ struct blkcg_gq {
 	struct rcu_head			rcu_head;
 };
 
+typedef void (blkcg_pol_init_cpd_fn)(const struct blkcg *blkcg);
 typedef void (blkcg_pol_init_pd_fn)(struct blkcg_gq *blkg);
 typedef void (blkcg_pol_online_pd_fn)(struct blkcg_gq *blkg);
 typedef void (blkcg_pol_offline_pd_fn)(struct blkcg_gq *blkg);
@@ -122,10 +144,13 @@ struct blkcg_policy {
 	int				plid;
 	/* policy specific private data size */
 	size_t				pd_size;
+	/* policy specific per-blkcg data size */
+	size_t				cpd_size;
 	/* cgroup files for the policy */
 	struct cftype			*cftypes;
 
 	/* operations */
+	blkcg_pol_init_cpd_fn		*cpd_init_fn;
 	blkcg_pol_init_pd_fn		*pd_init_fn;
 	blkcg_pol_online_pd_fn		*pd_online_fn;
 	blkcg_pol_offline_pd_fn		*pd_offline_fn;
@@ -134,6 +159,7 @@ struct blkcg_policy {
 };
 
 extern struct blkcg blkcg_root;
+extern struct cgroup_subsys_state * const blkcg_root_css;
 
 struct blkcg_gq *blkg_lookup(struct blkcg *blkcg, struct request_queue *q);
 struct blkcg_gq *blkg_lookup_create(struct blkcg *blkcg,
@@ -194,6 +220,12 @@ static inline struct blkcg *bio_blkcg(struct bio *bio)
 	return task_blkcg(current);
 }
 
+static inline struct cgroup_subsys_state *
+task_get_blkcg_css(struct task_struct *task)
+{
+	return task_get_css(task, blkio_cgrp_id);
+}
+
 /**
  * blkcg_parent - get the parent of a blkcg
  * @blkcg: blkcg of interest
@@ -216,6 +248,12 @@ static inline struct blkg_policy_data *blkg_to_pd(struct blkcg_gq *blkg,
 						  struct blkcg_policy *pol)
 {
 	return blkg ? blkg->pd[pol->plid] : NULL;
+}
+
+static inline struct blkcg_policy_data *blkcg_to_cpd(struct blkcg *blkcg,
+						     struct blkcg_policy *pol)
+{
+	return blkcg ? blkcg->pd[pol->plid] : NULL;
 }
 
 /**
@@ -558,10 +596,13 @@ static inline void blkg_rwstat_merge(struct blkg_rwstat *to,
 
 #else	/* CONFIG_BLK_CGROUP */
 
-struct cgroup;
-struct blkcg;
+struct blkcg {
+};
 
 struct blkg_policy_data {
+};
+
+struct blkcg_policy_data {
 };
 
 struct blkcg_gq {
@@ -569,6 +610,16 @@ struct blkcg_gq {
 
 struct blkcg_policy {
 };
+
+#define blkcg_root_css	((struct cgroup_subsys_state *)ERR_PTR(-EINVAL))
+
+static inline struct cgroup_subsys_state *
+task_get_blkcg_css(struct task_struct *task)
+{
+	return NULL;
+}
+
+#ifdef CONFIG_BLOCK
 
 static inline struct blkcg_gq *blkg_lookup(struct blkcg *blkcg, void *key) { return NULL; }
 static inline int blkcg_init_queue(struct request_queue *q) { return 0; }
@@ -599,5 +650,6 @@ static inline struct request_list *blk_rq_rl(struct request *rq) { return &rq->q
 #define blk_queue_for_each_rl(rl, q)	\
 	for ((rl) = &(q)->root_rl; (rl); (rl) = NULL)
 
+#endif	/* CONFIG_BLOCK */
 #endif	/* CONFIG_BLK_CGROUP */
 #endif	/* _BLK_CGROUP_H */
