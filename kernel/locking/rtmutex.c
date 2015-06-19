@@ -1365,9 +1365,14 @@ rt_mutex_fastunlock(struct rt_mutex *lock,
 	if (likely(rt_mutex_cmpxchg(lock, current, NULL))) {
 		rt_mutex_deadlock_account_unlock(current);
 
-	} else if (slowfn(lock, &wake_q)) {
+	} else {
+		bool deboost = slowfn(lock, &wake_q);
+
+		wake_up_q(&wake_q);
+
 		/* Undo pi boosting if necessary: */
-		rt_mutex_adjust_prio(current);
+		if (deboost)
+			rt_mutex_adjust_prio(current);
 	}
 }
 
