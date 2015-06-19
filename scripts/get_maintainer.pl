@@ -42,6 +42,7 @@ my $output_multiline = 1;
 my $output_separator = ", ";
 my $output_roles = 0;
 my $output_rolestats = 1;
+my $output_section_maxlen = 50;
 my $scm = 0;
 my $web = 0;
 my $subsystem = 0;
@@ -184,6 +185,27 @@ if (-f $conf) {
     }
     close($conffile);
     unshift(@ARGV, @conf_args) if @conf_args;
+}
+
+my @ignore_emails = ();
+my $ignore_file = which_conf(".get_maintainer.ignore");
+if (-f $ignore_file) {
+    open(my $ignore, '<', "$ignore_file")
+	or warn "$P: Can't find a readable .get_maintainer.ignore file $!\n";
+    while (<$ignore>) {
+	my $line = $_;
+
+	$line =~ s/\s*\n?$//;
+	$line =~ s/^\s*//;
+	$line =~ s/\s+$//;
+	$line =~ s/#.*$//;
+
+	next if ($line =~ m/^\s*$/);
+	if (rfc822_valid($line)) {
+	    push(@ignore_emails, $line);
+	}
+    }
+    close($ignore);
 }
 
 if (!GetOptions(
@@ -512,6 +534,16 @@ if ($web) {
 }
 
 exit($exit);
+
+sub ignore_email_address {
+    my ($address) = @_;
+
+    foreach my $ignore (@ignore_emails) {
+	return 1 if ($ignore eq $address);
+    }
+
+    return 0;
+}
 
 sub range_is_maintained {
     my ($start, $end) = @_;
@@ -947,8 +979,8 @@ sub get_maintainer_role {
 
     my $role = "unknown";
     my $subsystem = $typevalue[$start];
-    if (length($subsystem) > 20) {
-	$subsystem = substr($subsystem, 0, 17);
+    if ($output_section_maxlen && length($subsystem) > $output_section_maxlen) {
+	$subsystem = substr($subsystem, 0, $output_section_maxlen - 3);
 	$subsystem =~ s/\s*$//;
 	$subsystem = $subsystem . "...";
     }
@@ -990,8 +1022,8 @@ sub get_list_role {
     my $end = find_ending_index($index);
 
     my $subsystem = $typevalue[$start];
-    if (length($subsystem) > 20) {
-	$subsystem = substr($subsystem, 0, 17);
+    if ($output_section_maxlen && length($subsystem) > $output_section_maxlen) {
+	$subsystem = substr($subsystem, 0, $output_section_maxlen - 3);
 	$subsystem =~ s/\s*$//;
 	$subsystem = $subsystem . "...";
     }
@@ -1868,6 +1900,7 @@ sub vcs_assign {
 	my $percent = $sign_offs * 100 / $divisor;
 
 	$percent = 100 if ($percent > 100);
+	next if (ignore_email_address($line));
 	$count++;
 	last if ($sign_offs < $email_git_min_signatures ||
 		 $count > $email_git_max_maintainers ||
