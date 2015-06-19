@@ -24,6 +24,7 @@
 #include <linux/atomic.h>
 #include <asm/unaligned.h>
 #include <linux/if_vlan.h>
+#include <net/switchdev.h>
 #include "br_private.h"
 
 static struct kmem_cache *br_fdb_cache __read_mostly;
@@ -130,10 +131,26 @@ static void fdb_del_hw_addr(struct net_bridge *br, const unsigned char *addr)
 	}
 }
 
+static void fdb_del_external_learn(struct net_bridge_fdb_entry *f)
+{
+	struct switchdev_obj obj = {
+		.id = SWITCHDEV_OBJ_PORT_FDB,
+		.u.fdb = {
+			.addr = f->addr.addr,
+			.vid = f->vlan_id,
+		},
+	};
+
+	switchdev_port_obj_del(f->dst->dev, &obj);
+}
+
 static void fdb_delete(struct net_bridge *br, struct net_bridge_fdb_entry *f)
 {
 	if (f->is_static)
 		fdb_del_hw_addr(br, f->addr.addr);
+
+	if (f->added_by_external_learn)
+		fdb_del_external_learn(f);
 
 	hlist_del_rcu(&f->hlist);
 	fdb_notify(br, f, RTM_DELNEIGH);
@@ -736,6 +753,12 @@ static int fdb_add_entry(struct net_bridge_port *source, const __u8 *addr,
 	struct net_bridge_fdb_entry *fdb;
 	bool modified = false;
 
+	/* If the port cannot learn allow only local and static entries */
+	if (!(state & NUD_PERMANENT) && !(state & NUD_NOARP) &&
+	    !(source->state == BR_STATE_LEARNING ||
+	      source->state == BR_STATE_FORWARDING))
+		return -EPERM;
+
 	fdb = fdb_find(head, addr, vid);
 	if (fdb == NULL) {
 		if (!(flags & NLM_F_CREATE))
@@ -867,13 +890,15 @@ out:
 	return err;
 }
 
-static int fdb_delete_by_addr(struct net_bridge *br, const u8 *addr, u16 vlan)
+static int fdb_delete_by_addr_and_port(struct net_bridge_port *p,
+				       const u8 *addr, u16 vlan)
 {
+	struct net_bridge *br = p->br;
 	struct hlist_head *head = &br->hash[br_mac_hash(addr, vlan)];
 	struct net_bridge_fdb_entry *fdb;
 
 	fdb = fdb_find(head, addr, vlan);
-	if (!fdb)
+	if (!fdb || fdb->dst != p)
 		return -ENOENT;
 
 	fdb_delete(br, fdb);
@@ -886,7 +911,7 @@ static int __br_fdb_delete(struct net_bridge_port *p,
 	int err;
 
 	spin_lock_bh(&p->br->hash_lock);
-	err = fdb_delete_by_addr(p->br, addr, vid);
+	err = fdb_delete_by_addr_and_port(p, addr, vid);
 	spin_unlock_bh(&p->br->hash_lock);
 
 	return err;
