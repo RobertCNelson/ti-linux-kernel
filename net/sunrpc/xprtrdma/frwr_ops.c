@@ -252,8 +252,8 @@ frwr_sendcompletion(struct ib_wc *wc)
 
 	/* WARNING: Only wr_id and status are reliable at this point */
 	r = (struct rpcrdma_mw *)(unsigned long)wc->wr_id;
-	pr_warn("RPC:       %s: frmr %p flushed, status %d\n",
-		__func__, r, wc->status);
+	pr_warn("RPC:       %s: frmr %p flushed, status %s (%d)\n",
+		__func__, r, ib_wc_status_msg(wc->status), wc->status);
 	r->r.frmr.fr_state = FRMR_IS_STALE;
 }
 
