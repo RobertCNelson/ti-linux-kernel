@@ -597,7 +597,7 @@ static int bdisp_dbg_perf(struct seq_file *s, void *data)
 	if (bdisp->dbg.min_duration > SECOND)
 		min_fps = 0;
 	else
-		min_fps = SECOND / (s32)bdisp->dbg.min_duration);
+		min_fps = SECOND / (s32)bdisp->dbg.min_duration;
 
 	if (bdisp->dbg.max_duration > SECOND)
 		max_fps = 0;
