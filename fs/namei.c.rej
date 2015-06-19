@@ -1,0 +1,16 @@
+--- fs/namei.c
++++ fs/namei.c
+@@ -909,7 +909,12 @@ follow_link(struct path *link, struct nameidata *nd, void **p)
+ 	cond_resched();
+ 	nd->total_link_count++;
+ 
+-	touch_atime(link);
++	if (nd->flags & LOOKUP_RCU) {
++		error = -ECHILD;
++		if (atime_needs_update(link))
++			goto out_put_nd_path;
++	} else
++		touch_atime(link);
+ 	nd_set_link(NULL);
+ 
+ 	error = security_inode_follow_link(dentry, inode,
