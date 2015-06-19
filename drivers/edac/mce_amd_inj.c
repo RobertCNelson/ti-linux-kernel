@@ -6,7 +6,7 @@
  * This file may be distributed under the terms of the GNU General Public
  * License version 2.
  *
- * Copyright (c) 2010-14:  Borislav Petkov <bp@alien8.de>
+ * Copyright (c) 2010-15:  Borislav Petkov <bp@alien8.de>
  *			Advanced Micro Devices Inc.
  */
 
@@ -15,15 +15,44 @@
 #include <linux/device.h>
 #include <linux/module.h>
 #include <linux/cpu.h>
+#include <linux/string.h>
+#include <linux/uaccess.h>
+#include <linux/pci.h>
 #include <asm/mce.h>
+#include <asm/irq_vectors.h>
+#include <asm/amd_nb.h>
 
 #include "mce_amd.h"
+#include "amd64_edac.h"
 
 /*
  * Collect all the MCi_XXX settings
  */
 static struct mce i_mce;
 static struct dentry *dfs_inj;
+
+static u8 n_banks;
+
+#define MAX_FLAG_OPT_SIZE	4
+
+enum injection_type {
+	SW_INJ = 0,	/* SW injection, simply decode the error */
+	HW_INJ,		/* Trigger a #MC */
+	DFR_INT_INJ,	/* Trigger Deferred error interrupt */
+	THR_INT_INJ,	/* Trigger threshold interrupt */
+	N_INJ_TYPES,
+};
+
+static const char * const flags_options[] = {
+	[SW_INJ] = "sw",
+	[HW_INJ] = "hw",
+	[DFR_INT_INJ] = "dfr",
+	[THR_INT_INJ] = "thr",
+	NULL
+};
+
+/* Set default injection to SW_INJ */
+static enum injection_type inj_type = SW_INJ;
 
 #define MCE_INJECT_SET(reg)						\
 static int inj_##reg##_set(void *data, u64 val)				\
@@ -79,24 +108,66 @@ static int toggle_hw_mce_inject(unsigned int cpu, bool enable)
 	return err;
 }
 
-static int flags_get(void *data, u64 *val)
+static int __set_inj(const char *buf)
 {
-	struct mce *m = (struct mce *)data;
+	int i;
 
-	*val = m->inject_flags;
-
-	return 0;
+	for (i = 0; i < N_INJ_TYPES; i++) {
+		if (!strncmp(flags_options[i], buf, strlen(flags_options[i]))) {
+			inj_type = i;
+			return 0;
+		}
+	}
+	return -EINVAL;
 }
 
-static int flags_set(void *data, u64 val)
+static ssize_t flags_read(struct file *filp, char __user *ubuf,
+			  size_t cnt, loff_t *ppos)
 {
-	struct mce *m = (struct mce *)data;
+	char buf[MAX_FLAG_OPT_SIZE];
+	int n;
 
-	m->inject_flags = (u8)val;
-	return 0;
+	n = sprintf(buf, "%s\n", flags_options[inj_type]);
+
+	return simple_read_from_buffer(ubuf, cnt, ppos, buf, n);
 }
 
-DEFINE_SIMPLE_ATTRIBUTE(flags_fops, flags_get, flags_set, "%llu\n");
+static ssize_t flags_write(struct file *filp, const char __user *ubuf,
+			   size_t cnt, loff_t *ppos)
+{
+	char buf[MAX_FLAG_OPT_SIZE], *__buf;
+	int err;
+	size_t ret;
+
+	if (cnt > MAX_FLAG_OPT_SIZE)
+		cnt = MAX_FLAG_OPT_SIZE;
+
+	ret = cnt;
+
+	if (copy_from_user(&buf, ubuf, cnt))
+		return -EFAULT;
+
+	buf[cnt - 1] = 0;
+
+	/* strip whitespace */
+	__buf = strstrip(buf);
+
+	err = __set_inj(__buf);
+	if (err) {
+		pr_err("%s: Invalid flags value: %s\n", __func__, __buf);
+		return err;
+	}
+
+	*ppos += ret;
+
+	return ret;
+}
+
+static const struct file_operations flags_fops = {
+	.read           = flags_read,
+	.write          = flags_write,
+	.llseek         = generic_file_llseek,
+};
 
 /*
  * On which CPU to inject?
@@ -122,26 +193,105 @@ static void trigger_mce(void *info)
 	asm volatile("int $18");
 }
 
+static void trigger_dfr_int(void *info)
+{
+	asm volatile("int %0" :: "i" (DEFERRED_ERROR_VECTOR));
+}
+
+static void trigger_thr_int(void *info)
+{
+	asm volatile("int %0" :: "i" (THRESHOLD_APIC_VECTOR));
+}
+
+static u32 get_nbc_for_node(int node_id)
+{
+	struct cpuinfo_x86 *c = &boot_cpu_data;
+	u32 cores_per_node;
+
+	cores_per_node = c->x86_max_cores / amd_get_nodes_per_socket();
+
+	return cores_per_node * node_id;
+}
+
+static void toggle_nb_mca_mst_cpu(u16 nid)
+{
+	struct pci_dev *F3 = node_to_amd_nb(nid)->misc;
+	u32 val;
+	int err;
+
+	if (!F3)
+		return;
+
+	err = pci_read_config_dword(F3, NBCFG, &val);
+	if (err) {
+		pr_err("%s: Error reading F%dx%03x.\n",
+			__func__, PCI_FUNC(F3->devfn), NBCFG);
+		return;
+	}
+
+	if (val & BIT(27))
+		return;
+
+	pr_err("%s: Set D18F3x44[NbMcaToMstCpuEn] which BIOS hasn't done.\n",
+		__func__);
+
+	val |= BIT(27);
+	err = pci_write_config_dword(F3, NBCFG, val);
+	if (err)
+		pr_err("%s: Error writing F%dx%03x.\n",
+			__func__, PCI_FUNC(F3->devfn), NBCFG);
+}
+
 static void do_inject(void)
 {
 	u64 mcg_status = 0;
 	unsigned int cpu = i_mce.extcpu;
 	u8 b = i_mce.bank;
 
-	if (!(i_mce.inject_flags & MCJ_EXCEPTION)) {
+	if (i_mce.misc)
+		i_mce.status |= MCI_STATUS_MISCV;
+
+	if (inj_type == SW_INJ) {
 		amd_decode_mce(NULL, 0, &i_mce);
 		return;
 	}
 
-	get_online_cpus();
-	if (!cpu_online(cpu))
-		goto err;
+	if (inj_type == DFR_INT_INJ) {
+		/*
+		 * Ensure necessary status bits for deferred errors:
+		 * a. MCi_STATUS[Deferred] is set -
+		 *	This is to ensure the error will be handled by the
+		 *	interrupt handler
+		 * b. unset MCi_STATUS[UC]
+		 *	As deferred errors are _not_ UC
+		 */
+		i_mce.status |= MCI_STATUS_DEFERRED;
+		i_mce.status &= ~MCI_STATUS_UC;
+	}
 
 	/* prep MCE global settings for the injection */
 	mcg_status = MCG_STATUS_MCIP | MCG_STATUS_EIPV;
 
 	if (!(i_mce.status & MCI_STATUS_PCC))
 		mcg_status |= MCG_STATUS_RIPV;
+
+	/*
+	 * For multi node CPUs, logging and reporting of bank 4 errors happens
+	 * only on the node base core. Refer to D18F3x44[NbMcaToMstCpuEn] for
+	 * Fam10h and later BKDGs.
+	 */
+	if (static_cpu_has(X86_FEATURE_AMD_DCM) && b == 4) {
+		/*
+		 * BIOS sets D18F3x44[NbMcaToMstCpuEn] by default. But make sure
+		 * of it here just in case.
+		 */
+		toggle_nb_mca_mst_cpu(amd_get_nb_id(cpu));
+		cpu = get_nbc_for_node(amd_get_nb_id(cpu));
+	}
+
+	get_online_cpus();
+	if (!cpu_online(cpu))
+		goto err;
 
 	toggle_hw_mce_inject(cpu, true);
 
@@ -159,7 +309,16 @@ static void do_inject(void)
 
 	toggle_hw_mce_inject(cpu, false);
 
-	smp_call_function_single(cpu, trigger_mce, NULL, 0);
+	switch (inj_type) {
+	case DFR_INT_INJ:
+		smp_call_function_single(cpu, trigger_dfr_int, NULL, 0);
+		break;
+	case THR_INT_INJ:
+		smp_call_function_single(cpu, trigger_thr_int, NULL, 0);
+		break;
+	default:
+		smp_call_function_single(cpu, trigger_mce, NULL, 0);
+	}
 
 err:
 	put_online_cpus();
@@ -174,11 +333,9 @@ static int inj_bank_set(void *data, u64 val)
 {
 	struct mce *m = (struct mce *)data;
 
-	if (val > 5) {
-		if (boot_cpu_data.x86 != 0x15 || val > 6) {
-			pr_err("Non-existent MCE bank: %llu\n", val);
-			return -EINVAL;
-		}
+	if (val >= n_banks) {
+		pr_err("Non-existent MCE bank: %llu\n", val);
+		return -EINVAL;
 	}
 
 	m->bank = val;
@@ -187,32 +344,85 @@ static int inj_bank_set(void *data, u64 val)
 	return 0;
 }
 
-static int inj_bank_get(void *data, u64 *val)
-{
-	struct mce *m = (struct mce *)data;
-
-	*val = m->bank;
-	return 0;
-}
+MCE_INJECT_GET(bank);
 
 DEFINE_SIMPLE_ATTRIBUTE(bank_fops, inj_bank_get, inj_bank_set, "%llu\n");
+
+static const char readme_msg[] =
+"Description of the files and their usages:\n"
+"\n"
+"Note1: i refers to the bank number below.\n"
+"Note2: See respective BKDGs for the exact bit definitions of the files below\n"
+"as they mirror the hardware registers.\n"
+"\n"
+"status:\t Set MCi_STATUS: the bits in that MSR control the error type and\n"
+"\t attributes of the error which caused the MCE.\n"
+"\n"
+"misc:\t Set MCi_MISC: provide auxiliary info about the error. It is mostly\n"
+"\t used for error thresholding purposes and its validity is indicated by\n"
+"\t MCi_STATUS[MiscV].\n"
+"\n"
+"addr:\t Error address value to be written to MCi_ADDR. Log address information\n"
+"\t associated with the error.\n"
+"\n"
+"cpu:\t The CPU to inject the error on.\n"
+"\n"
+"bank:\t Specify the bank you want to inject the error into: the number of\n"
+"\t banks in a processor varies and is family/model-specific, therefore, the\n"
+"\t supplied value is sanity-checked. Setting the bank value also triggers the\n"
+"\t injection.\n"
+"\n"
+"flags:\t Injection type to be performed. Writing to this file will trigger a\n"
+"\t real machine check, an APIC interrupt or invoke the error decoder routines\n"
+"\t for AMD processors.\n"
+"\n"
+"\t Allowed error injection types:\n"
+"\t  - \"sw\": Software error injection. Decode error to a human-readable \n"
+"\t    format only. Safe to use.\n"
+"\t  - \"hw\": Hardware error injection. Causes the #MC exception handler to \n"
+"\t    handle the error. Be warned: might cause system panic if MCi_STATUS[PCC] \n"
+"\t    is set. Therefore, consider setting (debugfs_mountpoint)/mce/fake_panic \n"
+"\t    before injecting.\n"
+"\t  - \"dfr\": Trigger Deferred error handled by the deferred error APIC handler \n"
+"\t    if the feature is present in HW.\n"
+"\t  - \"thr\": Trigger Thresholding error handled by the thresholding error \n"
+"\t    APIC handler.\n"
+"\n";
+
+static ssize_t
+inj_readme_read(struct file *filp, char __user *ubuf,
+		       size_t cnt, loff_t *ppos)
+{
+	return simple_read_from_buffer(ubuf, cnt, ppos,
+					readme_msg, strlen(readme_msg));
+}
+
+static const struct file_operations readme_fops = {
+	.read		= inj_readme_read,
+};
 
 static struct dfs_node {
 	char *name;
 	struct dentry *d;
 	const struct file_operations *fops;
+	umode_t perm;
 } dfs_fls[] = {
-	{ .name = "status",	.fops = &status_fops },
-	{ .name = "misc",	.fops = &misc_fops },
-	{ .name = "addr",	.fops = &addr_fops },
-	{ .name = "bank",	.fops = &bank_fops },
-	{ .name = "flags",	.fops = &flags_fops },
-	{ .name = "cpu",	.fops = &extcpu_fops },
+	{ .name = "status",	.fops = &status_fops, .perm = S_IRUSR | S_IWUSR },
+	{ .name = "misc",	.fops = &misc_fops,   .perm = S_IRUSR | S_IWUSR },
+	{ .name = "addr",	.fops = &addr_fops,   .perm = S_IRUSR | S_IWUSR },
+	{ .name = "bank",	.fops = &bank_fops,   .perm = S_IRUSR | S_IWUSR },
+	{ .name = "flags",	.fops = &flags_fops,  .perm = S_IRUSR | S_IWUSR },
+	{ .name = "cpu",	.fops = &extcpu_fops, .perm = S_IRUSR | S_IWUSR },
+	{ .name = "README",	.fops = &readme_fops, .perm = S_IRUSR | S_IRGRP | S_IROTH },
 };
 
 static int __init init_mce_inject(void)
 {
 	int i;
+	u64 cap;
+
+	rdmsrl(MSR_IA32_MCG_CAP, cap);
+	n_banks = cap & MCG_BANKCNT_MASK;
 
 	dfs_inj = debugfs_create_dir("mce-inject", NULL);
 	if (!dfs_inj)
@@ -220,7 +430,7 @@ static int __init init_mce_inject(void)
 
 	for (i = 0; i < ARRAY_SIZE(dfs_fls); i++) {
 		dfs_fls[i].d = debugfs_create_file(dfs_fls[i].name,
-						    S_IRUSR | S_IWUSR,
+						    dfs_fls[i].perm,
 						    dfs_inj,
 						    &i_mce,
 						    dfs_fls[i].fops);
