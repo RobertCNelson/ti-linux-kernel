@@ -14,6 +14,7 @@
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_panel.h>
+#include <drm/drm_atomic_helper.h>
 
 #include <linux/clk.h>
 #include <linux/gpio/consumer.h>
@@ -259,6 +260,7 @@ struct exynos_dsi_transfer {
 #define DSIM_STATE_ENABLED		BIT(0)
 #define DSIM_STATE_INITIALIZED		BIT(1)
 #define DSIM_STATE_CMD_LPM		BIT(2)
+#define DSIM_STATE_VIDOUT_AVAILABLE	BIT(3)
 
 struct exynos_dsi_driver_data {
 	unsigned int plltmr_reg;
@@ -1118,7 +1120,7 @@ static irqreturn_t exynos_dsi_te_irq_handler(int irq, void *dev_id)
 	struct exynos_dsi *dsi = (struct exynos_dsi *)dev_id;
 	struct drm_encoder *encoder = dsi->display.encoder;
 
-	if (dsi->state & DSIM_STATE_ENABLED)
+	if (dsi->state & DSIM_STATE_VIDOUT_AVAILABLE)
 		exynos_drm_crtc_te_handler(encoder->crtc);
 
 	return IRQ_HANDLED;
@@ -1251,6 +1253,9 @@ static ssize_t exynos_dsi_host_transfer(struct mipi_dsi_host *host,
 	struct exynos_dsi_transfer xfer;
 	int ret;
 
+	if (!(dsi->state & DSIM_STATE_ENABLED))
+		return -EINVAL;
+
 	if (!(dsi->state & DSIM_STATE_INITIALIZED)) {
 		ret = exynos_dsi_init(dsi);
 		if (ret)
@@ -1369,16 +1374,17 @@ static int exynos_dsi_enable(struct exynos_dsi *dsi)
 	if (ret < 0)
 		return ret;
 
+	dsi->state |= DSIM_STATE_ENABLED;
+
 	ret = drm_panel_prepare(dsi->panel);
 	if (ret < 0) {
+		dsi->state &= ~DSIM_STATE_ENABLED;
 		exynos_dsi_poweroff(dsi);
 		return ret;
 	}
 
 	exynos_dsi_set_display_mode(dsi);
 	exynos_dsi_set_display_enable(dsi, true);
-
-	dsi->state |= DSIM_STATE_ENABLED;
 
 	ret = drm_panel_enable(dsi->panel);
 	if (ret < 0) {
@@ -1389,6 +1395,8 @@ static int exynos_dsi_enable(struct exynos_dsi *dsi)
 		return ret;
 	}
 
+	dsi->state |= DSIM_STATE_VIDOUT_AVAILABLE;
+
 	return 0;
 }
 
@@ -1397,12 +1405,15 @@ static void exynos_dsi_disable(struct exynos_dsi *dsi)
 	if (!(dsi->state & DSIM_STATE_ENABLED))
 		return;
 
+	dsi->state &= ~DSIM_STATE_VIDOUT_AVAILABLE;
+
 	drm_panel_disable(dsi->panel);
 	exynos_dsi_set_display_enable(dsi, false);
 	drm_panel_unprepare(dsi->panel);
-	exynos_dsi_poweroff(dsi);
 
 	dsi->state &= ~DSIM_STATE_ENABLED;
+
+	exynos_dsi_poweroff(dsi);
 }
 
 static void exynos_dsi_dpms(struct exynos_drm_display *display, int mode)
@@ -1457,10 +1468,13 @@ static void exynos_dsi_connector_destroy(struct drm_connector *connector)
 }
 
 static struct drm_connector_funcs exynos_dsi_connector_funcs = {
-	.dpms = drm_helper_connector_dpms,
+	.dpms = drm_atomic_helper_connector_dpms,
 	.detect = exynos_dsi_detect,
 	.fill_modes = drm_helper_probe_single_connector_modes,
 	.destroy = exynos_dsi_connector_destroy,
+	.reset = drm_atomic_helper_connector_reset,
+	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
+	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
 };
 
 static int exynos_dsi_get_modes(struct drm_connector *connector)
@@ -1682,11 +1696,6 @@ static int exynos_dsi_probe(struct platform_device *pdev)
 	dsi->display.type = EXYNOS_DISPLAY_TYPE_LCD;
 	dsi->display.ops = &exynos_dsi_display_ops;
 
-	ret = exynos_drm_component_add(dev, EXYNOS_DEVICE_TYPE_CONNECTOR,
-				       dsi->display.type);
-	if (ret)
-		return ret;
-
 	/* To be checked as invalid one */
 	dsi->te_gpio = -ENOENT;
 
@@ -1702,7 +1711,7 @@ static int exynos_dsi_probe(struct platform_device *pdev)
 
 	ret = exynos_dsi_parse_dt(dsi);
 	if (ret)
-		goto err_del_component;
+		return ret;
 
 	dsi->supplies[0].supply = "vddcore";
 	dsi->supplies[1].supply = "vddio";
@@ -1716,37 +1725,32 @@ static int exynos_dsi_probe(struct platform_device *pdev)
 	dsi->pll_clk = devm_clk_get(dev, "pll_clk");
 	if (IS_ERR(dsi->pll_clk)) {
 		dev_info(dev, "failed to get dsi pll input clock\n");
-		ret = PTR_ERR(dsi->pll_clk);
-		goto err_del_component;
+		return PTR_ERR(dsi->pll_clk);
 	}
 
 	dsi->bus_clk = devm_clk_get(dev, "bus_clk");
 	if (IS_ERR(dsi->bus_clk)) {
 		dev_info(dev, "failed to get dsi bus clock\n");
-		ret = PTR_ERR(dsi->bus_clk);
-		goto err_del_component;
+		return PTR_ERR(dsi->bus_clk);
 	}
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	dsi->reg_base = devm_ioremap_resource(dev, res);
 	if (IS_ERR(dsi->reg_base)) {
 		dev_err(dev, "failed to remap io region\n");
-		ret = PTR_ERR(dsi->reg_base);
-		goto err_del_component;
+		return PTR_ERR(dsi->reg_base);
 	}
 
 	dsi->phy = devm_phy_get(dev, "dsim");
 	if (IS_ERR(dsi->phy)) {
 		dev_info(dev, "failed to get dsim phy\n");
-		ret = PTR_ERR(dsi->phy);
-		goto err_del_component;
+		return PTR_ERR(dsi->phy);
 	}
 
 	dsi->irq = platform_get_irq(pdev, 0);
 	if (dsi->irq < 0) {
 		dev_err(dev, "failed to request dsi irq resource\n");
-		ret = dsi->irq;
-		goto err_del_component;
+		return dsi->irq;
 	}
 
 	irq_set_status_flags(dsi->irq, IRQ_NOAUTOEN);
@@ -1755,26 +1759,17 @@ static int exynos_dsi_probe(struct platform_device *pdev)
 					dev_name(dev), dsi);
 	if (ret) {
 		dev_err(dev, "failed to request dsi irq\n");
-		goto err_del_component;
+		return ret;
 	}
 
 	platform_set_drvdata(pdev, &dsi->display);
 
-	ret = component_add(dev, &exynos_dsi_component_ops);
-	if (ret)
-		goto err_del_component;
-
-	return ret;
-
-err_del_component:
-	exynos_drm_component_del(dev, EXYNOS_DEVICE_TYPE_CONNECTOR);
-	return ret;
+	return component_add(dev, &exynos_dsi_component_ops);
 }
 
 static int exynos_dsi_remove(struct platform_device *pdev)
 {
 	component_del(&pdev->dev, &exynos_dsi_component_ops);
-	exynos_drm_component_del(&pdev->dev, EXYNOS_DEVICE_TYPE_CONNECTOR);
 
 	return 0;
 }
