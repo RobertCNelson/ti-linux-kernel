@@ -1127,6 +1127,7 @@ out:
 int ocfs2_setattr(struct dentry *dentry, struct iattr *attr)
 {
 	int status = 0, size_change;
+	int inode_locked = 0;
 	struct inode *inode = d_inode(dentry);
 	struct super_block *sb = inode->i_sb;
 	struct ocfs2_super *osb = OCFS2_SB(sb);
@@ -1172,6 +1173,7 @@ int ocfs2_setattr(struct dentry *dentry, struct iattr *attr)
 			mlog_errno(status);
 		goto bail_unlock_rw;
 	}
+	inode_locked = 1;
 
 	if (size_change) {
 		status = inode_newsize_ok(inode, attr->ia_size);
@@ -1252,7 +1254,10 @@ int ocfs2_setattr(struct dentry *dentry, struct iattr *attr)
 bail_commit:
 	ocfs2_commit_trans(osb, handle);
 bail_unlock:
-	ocfs2_inode_unlock(inode, 1);
+	if (status) {
+		ocfs2_inode_unlock(inode, 1);
+		inode_locked = 0;
+	}
 bail_unlock_rw:
 	if (size_change)
 		ocfs2_rw_unlock(inode, 1);
@@ -1268,6 +1273,8 @@ bail:
 		if (status < 0)
 			mlog_errno(status);
 	}
+	if (inode_locked)
+		ocfs2_inode_unlock(inode, 1);
 
 	return status;
 }
@@ -2251,7 +2258,7 @@ out:
 static ssize_t ocfs2_file_write_iter(struct kiocb *iocb,
 				    struct iov_iter *from)
 {
-	int direct_io, appending, rw_level, have_alloc_sem  = 0;
+	int direct_io, appending, rw_level;
 	int can_do_direct, has_refcount = 0;
 	ssize_t written = 0;
 	ssize_t ret;
@@ -2280,16 +2287,7 @@ static ssize_t ocfs2_file_write_iter(struct kiocb *iocb,
 
 	mutex_lock(&inode->i_mutex);
 
-	ocfs2_iocb_clear_sem_locked(iocb);
-
 relock:
-	/* to match setattr's i_mutex -> rw_lock ordering */
-	if (direct_io) {
-		have_alloc_sem = 1;
-		/* communicate with ocfs2_dio_end_io */
-		ocfs2_iocb_set_sem_locked(iocb);
-	}
-
 	/*
 	 * Concurrent O_DIRECT writes are allowed with
 	 * mount_option "coherency=buffered".
@@ -2299,7 +2297,7 @@ relock:
 	ret = ocfs2_rw_lock(inode, rw_level);
 	if (ret < 0) {
 		mlog_errno(ret);
-		goto out_sems;
+		goto out_mutex;
 	}
 
 	/*
@@ -2348,7 +2346,6 @@ relock:
 	if (direct_io && !can_do_direct) {
 		ocfs2_rw_unlock(inode, rw_level);
 
-		have_alloc_sem = 0;
 		rw_level = -1;
 
 		direct_io = 0;
@@ -2417,7 +2414,6 @@ no_sync:
 	 */
 	if ((ret == -EIOCBQUEUED) || (!ocfs2_iocb_is_rw_locked(iocb))) {
 		rw_level = -1;
-		have_alloc_sem = 0;
 		unaligned_dio = 0;
 	}
 
@@ -2430,10 +2426,7 @@ out:
 	if (rw_level != -1)
 		ocfs2_rw_unlock(inode, rw_level);
 
-out_sems:
-	if (have_alloc_sem)
-		ocfs2_iocb_clear_sem_locked(iocb);
-
+out_mutex:
 	mutex_unlock(&inode->i_mutex);
 
 	if (written)
@@ -2474,7 +2467,7 @@ bail:
 static ssize_t ocfs2_file_read_iter(struct kiocb *iocb,
 				   struct iov_iter *to)
 {
-	int ret = 0, rw_level = -1, have_alloc_sem = 0, lock_level = 0;
+	int ret = 0, rw_level = -1, lock_level = 0;
 	struct file *filp = iocb->ki_filp;
 	struct inode *inode = file_inode(filp);
 
@@ -2491,16 +2484,11 @@ static ssize_t ocfs2_file_read_iter(struct kiocb *iocb,
 		goto bail;
 	}
 
-	ocfs2_iocb_clear_sem_locked(iocb);
-
 	/*
 	 * buffered reads protect themselves in ->readpage().  O_DIRECT reads
 	 * need locks to protect pending reads from racing with truncate.
 	 */
 	if (iocb->ki_flags & IOCB_DIRECT) {
-		have_alloc_sem = 1;
-		ocfs2_iocb_set_sem_locked(iocb);
-
 		ret = ocfs2_rw_lock(inode, 0);
 		if (ret < 0) {
 			mlog_errno(ret);
@@ -2536,13 +2524,9 @@ static ssize_t ocfs2_file_read_iter(struct kiocb *iocb,
 	/* see ocfs2_file_write_iter */
 	if (ret == -EIOCBQUEUED || !ocfs2_iocb_is_rw_locked(iocb)) {
 		rw_level = -1;
-		have_alloc_sem = 0;
 	}
 
 bail:
-	if (have_alloc_sem)
-		ocfs2_iocb_clear_sem_locked(iocb);
-
 	if (rw_level != -1)
 		ocfs2_rw_unlock(inode, rw_level);
 
