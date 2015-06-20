@@ -1,64 +1,12 @@
 /*
- * ARC700 VIPT Cache Management
+ * ARC Cache Management
  *
+ * Copyright (C) 2014-15 Synopsys, Inc. (www.synopsys.com)
  * Copyright (C) 2004, 2007-2010, 2011-2012 Synopsys, Inc. (www.synopsys.com)
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
- *
- *  vineetg: May 2011: for Non-aliasing VIPT D-cache following can be NOPs
- *   -flush_cache_dup_mm (fork)
- *   -likewise for flush_cache_mm (exit/execve)
- *   -likewise for flush_cache_range,flush_cache_page (munmap, exit, COW-break)
- *
- * vineetg: Apr 2011
- *  -Now that MMU can support larger pg sz (16K), the determiniation of
- *   aliasing shd not be based on assumption of 8k pg
- *
- * vineetg: Mar 2011
- *  -optimised version of flush_icache_range( ) for making I/D coherent
- *   when vaddr is available (agnostic of num of aliases)
- *
- * vineetg: Mar 2011
- *  -Added documentation about I-cache aliasing on ARC700 and the way it
- *   was handled up until MMU V2.
- *  -Spotted a three year old bug when killing the 4 aliases, which needs
- *   bottom 2 bits, so we need to do paddr | {0x00, 0x01, 0x02, 0x03}
- *                        instead of paddr | {0x00, 0x01, 0x10, 0x11}
- *   (Rajesh you owe me one now)
- *
- * vineetg: Dec 2010
- *  -Off-by-one error when computing num_of_lines to flush
- *   This broke signal handling with bionic which uses synthetic sigret stub
- *
- * vineetg: Mar 2010
- *  -GCC can't generate ZOL for core cache flush loops.
- *   Conv them into iterations based as opposed to while (start < end) types
- *
- * Vineetg: July 2009
- *  -In I-cache flush routine we used to chk for aliasing for every line INV.
- *   Instead now we setup routines per cache geometry and invoke them
- *   via function pointers.
- *
- * Vineetg: Jan 2009
- *  -Cache Line flush routines used to flush an extra line beyond end addr
- *   because check was while (end >= start) instead of (end > start)
- *     =Some call sites had to work around by doing -1, -4 etc to end param
- *     =Some callers didnt care. This was spec bad in case of INV routines
- *      which would discard valid data (cause of the horrible ext2 bug
- *      in ARC IDE driver)
- *
- * vineetg: June 11th 2008: Fixed flush_icache_range( )
- *  -Since ARC700 caches are not coherent (I$ doesnt snoop D$) both need
- *   to be flushed, which it was not doing.
- *  -load_module( ) passes vmalloc addr (Kernel Virtual Addr) to the API,
- *   however ARC cache maintenance OPs require PHY addr. Thus need to do
- *   vmalloc_to_phy.
- *  -Also added optimisation there, that for range > PAGE SIZE we flush the
- *   entire cache in one shot rather than line by line. For e.g. a module
- *   with Code sz 600k, old code flushed 600k worth of cache (line-by-line),
- *   while cache is only 16 or 32k.
  */
 
 #include <linux/module.h>
@@ -142,54 +90,8 @@ dc_chk:
 }
 
 /*
- * 1. Validate the Cache Geomtery (compile time config matches hardware)
- * 2. If I-cache suffers from aliasing, setup work arounds (difft flush rtn)
- *    (aliasing D-cache configurations are not supported YET)
- * 3. Enable the Caches, setup default flush mode for D-Cache
- * 3. Calculate the SHMLBA used by user space
+ * Line Operation on {I,D}-Cache
  */
-void arc_cache_init(void)
-{
-	unsigned int __maybe_unused cpu = smp_processor_id();
-	char str[256];
-
-	printk(arc_cache_mumbojumbo(0, str, sizeof(str)));
-
-	if (IS_ENABLED(CONFIG_ARC_HAS_ICACHE)) {
-		struct cpuinfo_arc_cache *ic = &cpuinfo_arc700[cpu].icache;
-
-		if (!ic->ver)
-			panic("cache support enabled but non-existent cache\n");
-
-		if (ic->line_len != L1_CACHE_BYTES)
-			panic("ICache line [%d] != kernel Config [%d]",
-			      ic->line_len, L1_CACHE_BYTES);
-
-		if (ic->ver != CONFIG_ARC_MMU_VER)
-			panic("Cache ver [%d] doesn't match MMU ver [%d]\n",
-			      ic->ver, CONFIG_ARC_MMU_VER);
-	}
-
-	if (IS_ENABLED(CONFIG_ARC_HAS_DCACHE)) {
-		struct cpuinfo_arc_cache *dc = &cpuinfo_arc700[cpu].dcache;
-		int handled;
-
-		if (!dc->ver)
-			panic("cache support enabled but non-existent cache\n");
-
-		if (dc->line_len != L1_CACHE_BYTES)
-			panic("DCache line [%d] != kernel Config [%d]",
-			      dc->line_len, L1_CACHE_BYTES);
-
-		/* check for D-Cache aliasing */
-		handled = IS_ENABLED(CONFIG_ARC_CACHE_VIPT_ALIASING);
-
-		if (dc->alias && !handled)
-			panic("Enable CONFIG_ARC_CACHE_VIPT_ALIASING\n");
-		else if (!dc->alias && handled)
-			panic("Don't need CONFIG_ARC_CACHE_VIPT_ALIASING\n");
-	}
-}
 
 #define OP_INV		0x1
 #define OP_FLUSH	0x2
@@ -197,162 +99,7 @@ void arc_cache_init(void)
 #define OP_INV_IC	0x4
 
 /*
- * Common Helper for Line Operations on {I,D}-Cache
- */
-static inline void __cache_line_loop(unsigned long paddr, unsigned long vaddr,
-				     unsigned long sz, const int cacheop)
-{
-	unsigned int aux_cmd, aux_tag;
-	int num_lines;
-	const int full_page_op = __builtin_constant_p(sz) && sz == PAGE_SIZE;
-
-	if (cacheop == OP_INV_IC) {
-		aux_cmd = ARC_REG_IC_IVIL;
-#if (CONFIG_ARC_MMU_VER > 2)
-		aux_tag = ARC_REG_IC_PTAG;
-#endif
-	}
-	else {
-		/* d$ cmd: INV (discard or wback-n-discard) OR FLUSH (wback) */
-		aux_cmd = cacheop & OP_INV ? ARC_REG_DC_IVDL : ARC_REG_DC_FLDL;
-#if (CONFIG_ARC_MMU_VER > 2)
-		aux_tag = ARC_REG_DC_PTAG;
-#endif
-	}
-
-	/* Ensure we properly floor/ceil the non-line aligned/sized requests
-	 * and have @paddr - aligned to cache line and integral @num_lines.
-	 * This however can be avoided for page sized since:
-	 *  -@paddr will be cache-line aligned already (being page aligned)
-	 *  -@sz will be integral multiple of line size (being page sized).
-	 */
-	if (!full_page_op) {
-		sz += paddr & ~CACHE_LINE_MASK;
-		paddr &= CACHE_LINE_MASK;
-		vaddr &= CACHE_LINE_MASK;
-	}
-
-	num_lines = DIV_ROUND_UP(sz, L1_CACHE_BYTES);
-
-#if (CONFIG_ARC_MMU_VER <= 2)
-	/* MMUv2 and before: paddr contains stuffed vaddrs bits */
-	paddr |= (vaddr >> PAGE_SHIFT) & 0x1F;
-#else
-	/* if V-P const for loop, PTAG can be written once outside loop */
-	if (full_page_op)
-		write_aux_reg(aux_tag, paddr);
-#endif
-
-	while (num_lines-- > 0) {
-#if (CONFIG_ARC_MMU_VER > 2)
-		/* MMUv3, cache ops require paddr seperately */
-		if (!full_page_op) {
-			write_aux_reg(aux_tag, paddr);
-			paddr += L1_CACHE_BYTES;
-		}
-
-		write_aux_reg(aux_cmd, vaddr);
-		vaddr += L1_CACHE_BYTES;
-#else
-		write_aux_reg(aux_cmd, paddr);
-		paddr += L1_CACHE_BYTES;
-#endif
-	}
-}
-
-#ifdef CONFIG_ARC_HAS_DCACHE
-
-/***************************************************************
- * Machine specific helpers for Entire D-Cache or Per Line ops
- */
-
-static inline unsigned int __before_dc_op(const int op)
-{
-	unsigned int reg = reg;
-
-	if (op == OP_FLUSH_N_INV) {
-		/* Dcache provides 2 cmd: FLUSH or INV
-		 * INV inturn has sub-modes: DISCARD or FLUSH-BEFORE
-		 * flush-n-inv is achieved by INV cmd but with IM=1
-		 * So toggle INV sub-mode depending on op request and default
-		 */
-		reg = read_aux_reg(ARC_REG_DC_CTRL);
-		write_aux_reg(ARC_REG_DC_CTRL, reg | DC_CTRL_INV_MODE_FLUSH)
-			;
-	}
-
-	return reg;
-}
-
-static inline void __after_dc_op(const int op, unsigned int reg)
-{
-	if (op & OP_FLUSH)	/* flush / flush-n-inv both wait */
-		while (read_aux_reg(ARC_REG_DC_CTRL) & DC_CTRL_FLUSH_STATUS);
-
-	/* Switch back to default Invalidate mode */
-	if (op == OP_FLUSH_N_INV)
-		write_aux_reg(ARC_REG_DC_CTRL, reg & ~DC_CTRL_INV_MODE_FLUSH);
-}
-
-/*
- * Operation on Entire D-Cache
- * @cacheop = {OP_INV, OP_FLUSH, OP_FLUSH_N_INV}
- * Note that constant propagation ensures all the checks are gone
- * in generated code
- */
-static inline void __dc_entire_op(const int cacheop)
-{
-	unsigned int ctrl_reg;
-	int aux;
-
-	ctrl_reg = __before_dc_op(cacheop);
-
-	if (cacheop & OP_INV)	/* Inv or flush-n-inv use same cmd reg */
-		aux = ARC_REG_DC_IVDC;
-	else
-		aux = ARC_REG_DC_FLSH;
-
-	write_aux_reg(aux, 0x1);
-
-	__after_dc_op(cacheop, ctrl_reg);
-}
-
-/* For kernel mappings cache operation: index is same as paddr */
-#define __dc_line_op_k(p, sz, op)	__dc_line_op(p, p, sz, op)
-
-/*
- * D-Cache : Per Line INV (discard or wback+discard) or FLUSH (wback)
- */
-static inline void __dc_line_op(unsigned long paddr, unsigned long vaddr,
-				unsigned long sz, const int cacheop)
-{
-	unsigned long flags;
-	unsigned int ctrl_reg;
-
-	local_irq_save(flags);
-
-	ctrl_reg = __before_dc_op(cacheop);
-
-	__cache_line_loop(paddr, vaddr, sz, cacheop);
-
-	__after_dc_op(cacheop, ctrl_reg);
-
-	local_irq_restore(flags);
-}
-
-#else
-
-#define __dc_entire_op(cacheop)
-#define __dc_line_op(paddr, vaddr, sz, cacheop)
-#define __dc_line_op_k(paddr, sz, cacheop)
-
-#endif /* CONFIG_ARC_HAS_DCACHE */
-
-
-#ifdef CONFIG_ARC_HAS_ICACHE
-
-/*
- *		I-Cache Aliasing in ARC700 VIPT caches
+ *		I-Cache Aliasing in ARC700 VIPT caches (MMU v1-v3)
  *
  * ARC VIPT I-cache uses vaddr to index into cache and paddr to match the tag.
  * The orig Cache Management Module "CDU" only required paddr to invalidate a
@@ -393,9 +140,185 @@ static inline void __dc_line_op(unsigned long paddr, unsigned long vaddr,
  * "tag" bits are provided in PTAG, index bits in existing IVIL/IVDL/FLDL regs
  */
 
-/***********************************************************
- * Machine specific helper for per line I-Cache invalidate.
+static inline
+void __cache_line_loop_v2(unsigned long paddr, unsigned long vaddr,
+			  unsigned long sz, const int op)
+{
+	unsigned int aux_cmd;
+	int num_lines;
+	const int full_page = __builtin_constant_p(sz) && sz == PAGE_SIZE;
+
+	if (op == OP_INV_IC) {
+		aux_cmd = ARC_REG_IC_IVIL;
+	} else {
+		/* d$ cmd: INV (discard or wback-n-discard) OR FLUSH (wback) */
+		aux_cmd = op & OP_INV ? ARC_REG_DC_IVDL : ARC_REG_DC_FLDL;
+	}
+
+	/* Ensure we properly floor/ceil the non-line aligned/sized requests
+	 * and have @paddr - aligned to cache line and integral @num_lines.
+	 * This however can be avoided for page sized since:
+	 *  -@paddr will be cache-line aligned already (being page aligned)
+	 *  -@sz will be integral multiple of line size (being page sized).
+	 */
+	if (!full_page) {
+		sz += paddr & ~CACHE_LINE_MASK;
+		paddr &= CACHE_LINE_MASK;
+		vaddr &= CACHE_LINE_MASK;
+	}
+
+	num_lines = DIV_ROUND_UP(sz, L1_CACHE_BYTES);
+
+	/* MMUv2 and before: paddr contains stuffed vaddrs bits */
+	paddr |= (vaddr >> PAGE_SHIFT) & 0x1F;
+
+	while (num_lines-- > 0) {
+		write_aux_reg(aux_cmd, paddr);
+		paddr += L1_CACHE_BYTES;
+	}
+}
+
+static inline
+void __cache_line_loop_v3(unsigned long paddr, unsigned long vaddr,
+			  unsigned long sz, const int op)
+{
+	unsigned int aux_cmd, aux_tag;
+	int num_lines;
+	const int full_page = __builtin_constant_p(sz) && sz == PAGE_SIZE;
+
+	if (op == OP_INV_IC) {
+		aux_cmd = ARC_REG_IC_IVIL;
+		aux_tag = ARC_REG_IC_PTAG;
+	} else {
+		aux_cmd = op & OP_INV ? ARC_REG_DC_IVDL : ARC_REG_DC_FLDL;
+		aux_tag = ARC_REG_DC_PTAG;
+	}
+
+	/* Ensure we properly floor/ceil the non-line aligned/sized requests
+	 * and have @paddr - aligned to cache line and integral @num_lines.
+	 * This however can be avoided for page sized since:
+	 *  -@paddr will be cache-line aligned already (being page aligned)
+	 *  -@sz will be integral multiple of line size (being page sized).
+	 */
+	if (!full_page) {
+		sz += paddr & ~CACHE_LINE_MASK;
+		paddr &= CACHE_LINE_MASK;
+		vaddr &= CACHE_LINE_MASK;
+	}
+	num_lines = DIV_ROUND_UP(sz, L1_CACHE_BYTES);
+
+	/*
+	 * MMUv3, cache ops require paddr in PTAG reg
+	 * if V-P const for loop, PTAG can be written once outside loop
+	 */
+	if (full_page)
+		write_aux_reg(aux_tag, paddr);
+
+	while (num_lines-- > 0) {
+		if (!full_page) {
+			write_aux_reg(aux_tag, paddr);
+			paddr += L1_CACHE_BYTES;
+		}
+
+		write_aux_reg(aux_cmd, vaddr);
+		vaddr += L1_CACHE_BYTES;
+	}
+}
+
+#if (CONFIG_ARC_MMU_VER < 3)
+#define __cache_line_loop	__cache_line_loop_v2
+#elif (CONFIG_ARC_MMU_VER == 3)
+#define __cache_line_loop	__cache_line_loop_v3
+#endif
+
+#ifdef CONFIG_ARC_HAS_DCACHE
+
+/***************************************************************
+ * Machine specific helpers for Entire D-Cache or Per Line ops
  */
+
+static inline void __before_dc_op(const int op)
+{
+	if (op == OP_FLUSH_N_INV) {
+		/* Dcache provides 2 cmd: FLUSH or INV
+		 * INV inturn has sub-modes: DISCARD or FLUSH-BEFORE
+		 * flush-n-inv is achieved by INV cmd but with IM=1
+		 * So toggle INV sub-mode depending on op request and default
+		 */
+		const unsigned int ctl = ARC_REG_DC_CTRL;
+		write_aux_reg(ctl, read_aux_reg(ctl) | DC_CTRL_INV_MODE_FLUSH);
+	}
+}
+
+static inline void __after_dc_op(const int op)
+{
+	if (op & OP_FLUSH) {
+		const unsigned int ctl = ARC_REG_DC_CTRL;
+		unsigned int reg;
+
+		/* flush / flush-n-inv both wait */
+		while ((reg = read_aux_reg(ctl)) & DC_CTRL_FLUSH_STATUS)
+			;
+
+		/* Switch back to default Invalidate mode */
+		if (op == OP_FLUSH_N_INV)
+			write_aux_reg(ctl, reg & ~DC_CTRL_INV_MODE_FLUSH);
+	}
+}
+
+/*
+ * Operation on Entire D-Cache
+ * @op = {OP_INV, OP_FLUSH, OP_FLUSH_N_INV}
+ * Note that constant propagation ensures all the checks are gone
+ * in generated code
+ */
+static inline void __dc_entire_op(const int op)
+{
+	int aux;
+
+	__before_dc_op(op);
+
+	if (op & OP_INV)	/* Inv or flush-n-inv use same cmd reg */
+		aux = ARC_REG_DC_IVDC;
+	else
+		aux = ARC_REG_DC_FLSH;
+
+	write_aux_reg(aux, 0x1);
+
+	__after_dc_op(op);
+}
+
+/* For kernel mappings cache operation: index is same as paddr */
+#define __dc_line_op_k(p, sz, op)	__dc_line_op(p, p, sz, op)
+
+/*
+ * D-Cache Line ops: Per Line INV (discard or wback+discard) or FLUSH (wback)
+ */
+static inline void __dc_line_op(unsigned long paddr, unsigned long vaddr,
+				unsigned long sz, const int op)
+{
+	unsigned long flags;
+
+	local_irq_save(flags);
+
+	__before_dc_op(op);
+
+	__cache_line_loop(paddr, vaddr, sz, op);
+
+	__after_dc_op(op);
+
+	local_irq_restore(flags);
+}
+
+#else
+
+#define __dc_entire_op(op)
+#define __dc_line_op(paddr, vaddr, sz, op)
+#define __dc_line_op_k(paddr, sz, op)
+
+#endif /* CONFIG_ARC_HAS_DCACHE */
+
+#ifdef CONFIG_ARC_HAS_ICACHE
 
 static inline void __ic_entire_inv(void)
 {
@@ -493,7 +416,7 @@ void flush_dcache_page(struct page *page)
 	} else if (page_mapped(page)) {
 
 		/* kernel reading from page with U-mapping */
-		void *paddr = page_address(page);
+		unsigned long paddr = (unsigned long)page_address(page);
 		unsigned long vaddr = page->index << PAGE_CACHE_SHIFT;
 
 		if (addr_not_cache_congruent(paddr, vaddr))
@@ -605,7 +528,7 @@ void __inv_icache_page(unsigned long paddr, unsigned long vaddr)
  * wrapper to clearout kernel or userspace mappings of a page
  * For kernel mappings @vaddr == @paddr
  */
-void ___flush_dcache_page(unsigned long paddr, unsigned long vaddr)
+void __flush_dcache_page(unsigned long paddr, unsigned long vaddr)
 {
 	__dc_line_op(paddr, vaddr & PAGE_MASK, PAGE_SIZE, OP_FLUSH_N_INV);
 }
@@ -637,7 +560,7 @@ void flush_cache_page(struct vm_area_struct *vma, unsigned long u_vaddr,
 
 	u_vaddr &= PAGE_MASK;
 
-	___flush_dcache_page(paddr, u_vaddr);
+	__flush_dcache_page(paddr, u_vaddr);
 
 	if (vma->vm_flags & VM_EXEC)
 		__inv_icache_page(paddr, u_vaddr);
@@ -663,8 +586,8 @@ void flush_anon_page(struct vm_area_struct *vma, struct page *page,
 void copy_user_highpage(struct page *to, struct page *from,
 	unsigned long u_vaddr, struct vm_area_struct *vma)
 {
-	void *kfrom = page_address(from);
-	void *kto = page_address(to);
+	unsigned long kfrom = (unsigned long)page_address(from);
+	unsigned long kto = (unsigned long)page_address(to);
 	int clean_src_k_mappings = 0;
 
 	/*
@@ -680,7 +603,7 @@ void copy_user_highpage(struct page *to, struct page *from,
 		clean_src_k_mappings = 1;
 	}
 
-	copy_page(kto, kfrom);
+	copy_page((void *)kto, (void *)kfrom);
 
 	/*
 	 * Mark DST page K-mapping as dirty for a later finalization by
@@ -720,4 +643,47 @@ SYSCALL_DEFINE3(cacheflush, uint32_t, start, uint32_t, sz, uint32_t, flags)
 	/* TBD: optimize this */
 	flush_cache_all();
 	return 0;
+}
+
+void arc_cache_init(void)
+{
+	unsigned int __maybe_unused cpu = smp_processor_id();
+	char str[256];
+
+	printk(arc_cache_mumbojumbo(0, str, sizeof(str)));
+
+	if (IS_ENABLED(CONFIG_ARC_HAS_ICACHE)) {
+		struct cpuinfo_arc_cache *ic = &cpuinfo_arc700[cpu].icache;
+
+		if (!ic->ver)
+			panic("cache support enabled but non-existent cache\n");
+
+		if (ic->line_len != L1_CACHE_BYTES)
+			panic("ICache line [%d] != kernel Config [%d]",
+			      ic->line_len, L1_CACHE_BYTES);
+
+		if (ic->ver != CONFIG_ARC_MMU_VER)
+			panic("Cache ver [%d] doesn't match MMU ver [%d]\n",
+			      ic->ver, CONFIG_ARC_MMU_VER);
+	}
+
+	if (IS_ENABLED(CONFIG_ARC_HAS_DCACHE)) {
+		struct cpuinfo_arc_cache *dc = &cpuinfo_arc700[cpu].dcache;
+		int handled;
+
+		if (!dc->ver)
+			panic("cache support enabled but non-existent cache\n");
+
+		if (dc->line_len != L1_CACHE_BYTES)
+			panic("DCache line [%d] != kernel Config [%d]",
+			      dc->line_len, L1_CACHE_BYTES);
+
+		/* check for D-Cache aliasing */
+		handled = IS_ENABLED(CONFIG_ARC_CACHE_VIPT_ALIASING);
+
+		if (dc->alias && !handled)
+			panic("Enable CONFIG_ARC_CACHE_VIPT_ALIASING\n");
+		else if (!dc->alias && handled)
+			panic("Disable CONFIG_ARC_CACHE_VIPT_ALIASING\n");
+	}
 }
