@@ -362,7 +362,60 @@ static inline unsigned long msecs_to_jiffies(const unsigned int m)
 	}
 }
 
-extern unsigned long usecs_to_jiffies(const unsigned int u);
+extern unsigned long __usecs_to_jiffies(const unsigned int u);
+#if HZ <= USEC_PER_SEC && !(USEC_PER_SEC % HZ)
+static inline unsigned long _usecs_to_jiffies(const unsigned int u)
+{
+	return (u + (USEC_PER_SEC / HZ) - 1) / (USEC_PER_SEC / HZ);
+}
+#elif HZ > USEC_PER_SEC && !(HZ % USEC_PER_SEC)
+static inline unsigned long _usecs_to_jiffies(const unsigned int u)
+{
+	return u * (HZ / USEC_PER_SEC);
+}
+static inline unsigned long _usecs_to_jiffies(const unsigned int u)
+{
+#else
+static inline unsigned long _usecs_to_jiffies(const unsigned int u)
+{
+	return (USEC_TO_HZ_MUL32 * u + USEC_TO_HZ_ADJ32)
+		>> USEC_TO_HZ_SHR32;
+}
+#endif
+
+/**
+ * usecs_to_jiffies: - convert microseconds to jiffies
+ * @u:	time in microseconds
+ *
+ * conversion is done as follows:
+ *
+ * - 'too large' values [that would result in larger than
+ *   MAX_JIFFY_OFFSET values] mean 'infinite timeout' too.
+ *
+ * - all other values are converted to jiffies by either multiplying
+ *   the input value by a factor or dividing it with a factor and
+ *   handling any 32-bit overflows as for msecs_to_jiffies.
+ *
+ * usecs_to_jiffies() checks for the passed in value being a constant
+ * via __builtin_constant_p() allowing gcc to eliminate most of the
+ * code, __usecs_to_jiffies() is called if the value passed does not
+ * allow constant folding and the actual conversion must be done at
+ * runtime.
+ * the HZ range specific helpers _usecs_to_jiffies() are called both
+ * directly here and from __msecs_to_jiffies() in the case where
+ * constant folding is not possible.
+ */
+static inline unsigned long usecs_to_jiffies(const unsigned int u)
+{
+	if (__builtin_constant_p(u)) {
+		if (u > jiffies_to_usecs(MAX_JIFFY_OFFSET))
+			return MAX_JIFFY_OFFSET;
+		return _usecs_to_jiffies(u);
+	} else {
+		return __usecs_to_jiffies(u);
+	}
+}
+
 extern unsigned long timespec_to_jiffies(const struct timespec *value);
 extern void jiffies_to_timespec(const unsigned long jiffies,
 				struct timespec *value);
