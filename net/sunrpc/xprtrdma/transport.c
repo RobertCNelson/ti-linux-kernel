@@ -48,7 +48,6 @@
  */
 
 #include <linux/module.h>
-#include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/seq_file.h>
 #include <linux/sunrpc/addr.h>
@@ -58,11 +57,6 @@
 #if IS_ENABLED(CONFIG_SUNRPC_DEBUG)
 # define RPCDBG_FACILITY	RPCDBG_TRANS
 #endif
-
-MODULE_LICENSE("Dual BSD/GPL");
-
-MODULE_DESCRIPTION("RPC/RDMA Transport for Linux kernel NFS");
-MODULE_AUTHOR("Network Appliance, Inc.");
 
 /*
  * tunables
@@ -729,7 +723,7 @@ static struct xprt_class xprt_rdma = {
 	.setup			= xprt_setup_rdma,
 };
 
-static void __exit xprt_rdma_cleanup(void)
+void xprt_rdma_cleanup(void)
 {
 	int rc;
 
@@ -748,7 +742,7 @@ static void __exit xprt_rdma_cleanup(void)
 	frwr_destroy_recovery_wq();
 }
 
-static int __init xprt_rdma_init(void)
+int xprt_rdma_init(void)
 {
 	int rc;
 
@@ -778,6 +772,3 @@ static int __init xprt_rdma_init(void)
 #endif
 	return 0;
 }
-
-module_init(xprt_rdma_init);
-module_exit(xprt_rdma_cleanup);
