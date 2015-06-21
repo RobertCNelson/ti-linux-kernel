@@ -21,6 +21,7 @@ config ARCH_RCAR_GEN2
 	select RENESAS_IRQC
 	select SYS_SUPPORTS_SH_CMT
 	select PCI_DOMAINS if PCI
+	select HAVE_ARM_ARCH_TIMER
 
 config ARCH_RMOBILE
 	bool
@@ -56,6 +57,7 @@ config ARCH_R8A73A4
 	bool "R-Mobile APE6 (R8A73A40)"
 	select ARCH_RMOBILE
 	select RENESAS_IRQC
+	select HAVE_ARM_ARCH_TIMER
 
 config ARCH_R8A7740
 	bool "R-Mobile A1 (R8A77400)"
