@@ -179,8 +179,8 @@ static void __init media5200_init_irq(void)
 		goto out;
 	pr_debug("%s: allocated irqhost\n", __func__);
 
-	irq_set_handler_data(cascade_virq, &media5200_irq);
-	irq_set_chained_handler(cascade_virq, media5200_irq_cascade);
+	irq_set_chained_handler_and_data(cascade_virq, media5200_irq_cascade,
+					 &media5200_irq);
 
 	return;
 
