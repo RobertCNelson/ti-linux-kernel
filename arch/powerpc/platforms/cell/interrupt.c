@@ -357,8 +357,8 @@ static int __init setup_iic(void)
 		 * irq_data is a generic pointer that gets passed back
 		 * to us later, so the forced cast is fine.
 		 */
-		irq_set_handler_data(cascade, (void __force *)node_iic);
-		irq_set_chained_handler(cascade, iic_ioexc_cascade);
+		irq_set_chained_handler_and_data(cascade, iic_ioexc_cascade,
+						 (void __force *)node_iic);
 		out_be64(&node_iic->iic_ir,
 			 (1 << 12)		/* priority */ |
 			 (node << 4)		/* dest node */ |
