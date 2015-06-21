@@ -36,8 +36,6 @@
  * Of course, your mileage may vary.
  */
 
-#define MAX_RCU_LVLS 4
-
 #ifdef CONFIG_RCU_FANOUT
 #define RCU_FANOUT CONFIG_RCU_FANOUT
 #else /* #ifdef CONFIG_RCU_FANOUT */
@@ -66,37 +64,40 @@
 #if NR_CPUS <= RCU_FANOUT_1
 #  define RCU_NUM_LVLS	      1
 #  define NUM_RCU_LVL_0	      1
-#  define NUM_RCU_LVL_1	      (NR_CPUS)
-#  define NUM_RCU_LVL_2	      0
-#  define NUM_RCU_LVL_3	      0
-#  define NUM_RCU_LVL_4	      0
+#  define NUM_RCU_NODES	      NUM_RCU_LVL_0
+#  define NUM_RCU_LVL_INIT    { NUM_RCU_LVL_0 }
+#  define RCU_NODE_NAME_INIT  { "rcu_node_0" }
+#  define RCU_FQS_NAME_INIT   { "rcu_node_fqs_0" }
 #elif NR_CPUS <= RCU_FANOUT_2
 #  define RCU_NUM_LVLS	      2
 #  define NUM_RCU_LVL_0	      1
 #  define NUM_RCU_LVL_1	      DIV_ROUND_UP(NR_CPUS, RCU_FANOUT_1)
-#  define NUM_RCU_LVL_2	      (NR_CPUS)
-#  define NUM_RCU_LVL_3	      0
-#  define NUM_RCU_LVL_4	      0
+#  define NUM_RCU_NODES	      (NUM_RCU_LVL_0 + NUM_RCU_LVL_1)
+#  define NUM_RCU_LVL_INIT    { NUM_RCU_LVL_0, NUM_RCU_LVL_1 }
+#  define RCU_NODE_NAME_INIT  { "rcu_node_0", "rcu_node_1" }
+#  define RCU_FQS_NAME_INIT   { "rcu_node_fqs_0", "rcu_node_fqs_1" }
 #elif NR_CPUS <= RCU_FANOUT_3
 #  define RCU_NUM_LVLS	      3
 #  define NUM_RCU_LVL_0	      1
 #  define NUM_RCU_LVL_1	      DIV_ROUND_UP(NR_CPUS, RCU_FANOUT_2)
 #  define NUM_RCU_LVL_2	      DIV_ROUND_UP(NR_CPUS, RCU_FANOUT_1)
-#  define NUM_RCU_LVL_3	      (NR_CPUS)
-#  define NUM_RCU_LVL_4	      0
+#  define NUM_RCU_NODES	      (NUM_RCU_LVL_0 + NUM_RCU_LVL_1 + NUM_RCU_LVL_2)
+#  define NUM_RCU_LVL_INIT    { NUM_RCU_LVL_0, NUM_RCU_LVL_1, NUM_RCU_LVL_2 }
+#  define RCU_NODE_NAME_INIT  { "rcu_node_0", "rcu_node_1", "rcu_node_2" }
+#  define RCU_FQS_NAME_INIT   { "rcu_node_fqs_0", "rcu_node_fqs_1", "rcu_node_fqs_2" }
 #elif NR_CPUS <= RCU_FANOUT_4
 #  define RCU_NUM_LVLS	      4
 #  define NUM_RCU_LVL_0	      1
 #  define NUM_RCU_LVL_1	      DIV_ROUND_UP(NR_CPUS, RCU_FANOUT_3)
 #  define NUM_RCU_LVL_2	      DIV_ROUND_UP(NR_CPUS, RCU_FANOUT_2)
 #  define NUM_RCU_LVL_3	      DIV_ROUND_UP(NR_CPUS, RCU_FANOUT_1)
-#  define NUM_RCU_LVL_4	      (NR_CPUS)
+#  define NUM_RCU_NODES	      (NUM_RCU_LVL_0 + NUM_RCU_LVL_1 + NUM_RCU_LVL_2 + NUM_RCU_LVL_3)
+#  define NUM_RCU_LVL_INIT    { NUM_RCU_LVL_0, NUM_RCU_LVL_1, NUM_RCU_LVL_2, NUM_RCU_LVL_3 }
+#  define RCU_NODE_NAME_INIT  { "rcu_node_0", "rcu_node_1", "rcu_node_2", "rcu_node_3" }
+#  define RCU_FQS_NAME_INIT   { "rcu_node_fqs_0", "rcu_node_fqs_1", "rcu_node_fqs_2", "rcu_node_fqs_3" }
 #else
 # error "CONFIG_RCU_FANOUT insufficient for NR_CPUS"
 #endif /* #if (NR_CPUS) <= RCU_FANOUT_1 */
-
-#define RCU_SUM (NUM_RCU_LVL_0 + NUM_RCU_LVL_1 + NUM_RCU_LVL_2 + NUM_RCU_LVL_3 + NUM_RCU_LVL_4)
-#define NUM_RCU_NODES (RCU_SUM - NR_CPUS)
 
 extern int rcu_num_lvls;
 extern int rcu_num_nodes;
@@ -287,12 +288,10 @@ struct rcu_data {
 	bool		gpwrap;		/* Possible gpnum/completed wrap. */
 	struct rcu_node *mynode;	/* This CPU's leaf of hierarchy */
 	unsigned long grpmask;		/* Mask to apply to leaf qsmask. */
-#ifdef CONFIG_RCU_CPU_STALL_INFO
 	unsigned long	ticks_this_gp;	/* The number of scheduling-clock */
 					/*  ticks this CPU has handled */
 					/*  during and after the last grace */
 					/* period it is aware of. */
-#endif /* #ifdef CONFIG_RCU_CPU_STALL_INFO */
 
 	/* 2) batch handling */
 	/*
@@ -387,9 +386,7 @@ struct rcu_data {
 #endif /* #ifdef CONFIG_RCU_NOCB_CPU */
 
 	/* 8) RCU CPU stall data. */
-#ifdef CONFIG_RCU_CPU_STALL_INFO
 	unsigned int softirq_snap;	/* Snapshot of softirq activity. */
-#endif /* #ifdef CONFIG_RCU_CPU_STALL_INFO */
 
 	int cpu;
 	struct rcu_state *rsp;
@@ -443,8 +440,6 @@ do {									\
 struct rcu_state {
 	struct rcu_node node[NUM_RCU_NODES];	/* Hierarchy. */
 	struct rcu_node *level[RCU_NUM_LVLS];	/* Hierarchy levels. */
-	u32 levelcnt[MAX_RCU_LVLS + 1];		/* # nodes in each level. */
-	u8 levelspread[RCU_NUM_LVLS];		/* kids/node in each level. */
 	u8 flavor_mask;				/* bit in flavor mask. */
 	struct rcu_data __percpu *rda;		/* pointer of percu rcu_data. */
 	void (*call)(struct rcu_head *head,	/* call_rcu() flavor. */
@@ -527,7 +522,11 @@ struct rcu_state {
 /* Values for rcu_state structure's gp_flags field. */
 #define RCU_GP_WAIT_INIT 0	/* Initial state. */
 #define RCU_GP_WAIT_GPS  1	/* Wait for grace-period start. */
-#define RCU_GP_WAIT_FQS  2	/* Wait for force-quiescent-state time. */
+#define RCU_GP_DONE_GPS  2	/* Wait done for grace-period start. */
+#define RCU_GP_WAIT_FQS  3	/* Wait for force-quiescent-state time. */
+#define RCU_GP_DONE_FQS  4	/* Wait done for force-quiescent-state time. */
+#define RCU_GP_CLEANUP   5	/* Grace-period cleanup started. */
+#define RCU_GP_CLEANED   6	/* Grace-period cleanup complete. */
 
 extern struct list_head rcu_struct_flavors;
 
