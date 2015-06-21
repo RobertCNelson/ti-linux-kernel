@@ -32,11 +32,11 @@ static struct task_struct *producer;
 static struct task_struct *consumer;
 static unsigned long read;
 
-static int disable_reader;
+static unsigned int disable_reader;
 module_param(disable_reader, uint, 0644);
 MODULE_PARM_DESC(disable_reader, "only run producer");
 
-static int write_iteration = 50;
+static unsigned int write_iteration = 50;
 module_param(write_iteration, uint, 0644);
 MODULE_PARM_DESC(write_iteration, "# of writes between timestamp readings");
 
@@ -46,16 +46,16 @@ static int consumer_nice = MAX_NICE;
 static int producer_fifo = -1;
 static int consumer_fifo = -1;
 
-module_param(producer_nice, uint, 0644);
+module_param(producer_nice, int, 0644);
 MODULE_PARM_DESC(producer_nice, "nice prio for producer");
 
-module_param(consumer_nice, uint, 0644);
+module_param(consumer_nice, int, 0644);
 MODULE_PARM_DESC(consumer_nice, "nice prio for consumer");
 
-module_param(producer_fifo, uint, 0644);
+module_param(producer_fifo, int, 0644);
 MODULE_PARM_DESC(producer_fifo, "fifo prio for producer");
 
-module_param(consumer_fifo, uint, 0644);
+module_param(consumer_fifo, int, 0644);
 MODULE_PARM_DESC(consumer_fifo, "fifo prio for consumer");
 
 static int read_events;
