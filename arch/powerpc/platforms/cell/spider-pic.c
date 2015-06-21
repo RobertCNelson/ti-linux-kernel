@@ -317,8 +317,7 @@ static void __init spider_init_one(struct device_node *of_node, int chip,
 	virq = spider_find_cascade_and_node(pic);
 	if (virq == NO_IRQ)
 		return;
-	irq_set_handler_data(virq, pic);
-	irq_set_chained_handler(virq, spider_irq_cascade);
+	irq_set_chained_handler_and_data(virq, spider_irq_cascade, pic);
 
 	printk(KERN_INFO "spider_pic: node %d, addr: 0x%lx %s\n",
 	       pic->node_id, addr, of_node->full_name);
