@@ -23,7 +23,7 @@
 #include "xattr.h"
 
 #ifdef CONFIG_EXT4_FS_ENCRYPTION
-static void *ext4_follow_link(struct dentry *dentry, struct nameidata *nd)
+static const char *ext4_follow_link(struct dentry *dentry, void **cookie)
 {
 	struct page *cpage = NULL;
 	char *caddr, *paddr = NULL;
@@ -33,9 +33,6 @@ static void *ext4_follow_link(struct dentry *dentry, struct nameidata *nd)
 	loff_t size = min_t(loff_t, i_size_read(inode), PAGE_SIZE - 1);
 	int res;
 	u32 plen, max_size = inode->i_sb->s_blocksize;
-
-	if (!ext4_encrypted_inode(inode))
-		return page_follow_link_light(dentry, nd);
 
 	res = ext4_get_encryption_info(inode);
 	if (res)
@@ -47,7 +44,7 @@ static void *ext4_follow_link(struct dentry *dentry, struct nameidata *nd)
 	} else {
 		cpage = read_mapping_page(inode->i_mapping, 0, NULL);
 		if (IS_ERR(cpage))
-			return cpage;
+			return ERR_CAST(cpage);
 		caddr = kmap(cpage);
 		caddr[size] = 0;
 	}
@@ -78,12 +75,11 @@ static void *ext4_follow_link(struct dentry *dentry, struct nameidata *nd)
 	/* Null-terminate the name */
 	if (res <= plen)
 		paddr[res] = '\0';
-	nd_set_link(nd, paddr);
 	if (cpage) {
 		kunmap(cpage);
 		page_cache_release(cpage);
 	}
-	return NULL;
+	return *cookie = paddr;
 errout:
 	if (cpage) {
 		kunmap(cpage);
@@ -93,36 +89,22 @@ errout:
 	return ERR_PTR(res);
 }
 
-static void ext4_put_link(struct dentry *dentry, struct nameidata *nd,
-			  void *cookie)
-{
-	struct page *page = cookie;
-
-	if (!page) {
-		kfree(nd_get_link(nd));
-	} else {
-		kunmap(page);
-		page_cache_release(page);
-	}
-}
+const struct inode_operations ext4_encrypted_symlink_inode_operations = {
+	.readlink	= generic_readlink,
+	.follow_link    = ext4_follow_link,
+	.put_link       = kfree_put_link,
+	.setattr	= ext4_setattr,
+	.setxattr	= generic_setxattr,
+	.getxattr	= generic_getxattr,
+	.listxattr	= ext4_listxattr,
+	.removexattr	= generic_removexattr,
+};
 #endif
-
-static void *ext4_follow_fast_link(struct dentry *dentry, struct nameidata *nd)
-{
-	struct ext4_inode_info *ei = EXT4_I(d_inode(dentry));
-	nd_set_link(nd, (char *) ei->i_data);
-	return NULL;
-}
 
 const struct inode_operations ext4_symlink_inode_operations = {
 	.readlink	= generic_readlink,
-#ifdef CONFIG_EXT4_FS_ENCRYPTION
-	.follow_link    = ext4_follow_link,
-	.put_link       = ext4_put_link,
-#else
 	.follow_link	= page_follow_link_light,
 	.put_link	= page_put_link,
-#endif
 	.setattr	= ext4_setattr,
 	.setxattr	= generic_setxattr,
 	.getxattr	= generic_getxattr,
@@ -132,7 +114,7 @@ const struct inode_operations ext4_symlink_inode_operations = {
 
 const struct inode_operations ext4_fast_symlink_inode_operations = {
 	.readlink	= generic_readlink,
-	.follow_link    = ext4_follow_fast_link,
+	.follow_link    = simple_follow_link,
 	.setattr	= ext4_setattr,
 	.setxattr	= generic_setxattr,
 	.getxattr	= generic_getxattr,
