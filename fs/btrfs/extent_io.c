@@ -2772,8 +2772,6 @@ static int __must_check submit_one_bio(int rw, struct bio *bio,
 	else
 		btrfsic_submit_bio(rw, bio);
 
-	if (bio_flagged(bio, BIO_EOPNOTSUPP))
-		ret = -EOPNOTSUPP;
 	bio_put(bio);
 	return ret;
 }
