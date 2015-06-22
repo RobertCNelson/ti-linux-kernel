@@ -1,7 +1,7 @@
 /*
  * Persistent Memory Driver
  *
- * Copyright (c) 2014, Intel Corporation.
+ * Copyright (c) 2014-2015, Intel Corporation.
  * Copyright (c) 2015, Christoph Hellwig <hch@lst.de>.
  * Copyright (c) 2015, Boaz Harrosh <boaz@plexistor.com>.
  *
@@ -23,8 +23,8 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/slab.h>
-
-#define PMEM_MINORS		16
+#include <linux/nd.h>
+#include "nd.h"
 
 struct pmem_device {
 	struct request_queue	*pmem_queue;
@@ -37,7 +37,6 @@ struct pmem_device {
 };
 
 static int pmem_major;
-static atomic_t pmem_index;
 
 static void pmem_do_bvec(struct pmem_device *pmem, struct page *page,
 			unsigned int len, unsigned int off, int rw,
@@ -97,6 +96,24 @@ static int pmem_rw_page(struct block_device *bdev, sector_t sector,
 	return 0;
 }
 
+static int pmem_rw_bytes(struct gendisk *disk, resource_size_t offset,
+			void *buf, size_t size, int rw)
+{
+	struct pmem_device *pmem = disk->private_data;
+
+	if (unlikely(offset + size > pmem->size)) {
+		dev_WARN_ONCE(disk_to_dev(disk), 1, "request out of range\n");
+		return -EFAULT;
+	}
+
+	if (rw == READ)
+		memcpy(buf, pmem->virt_addr + offset, size);
+	else
+		memcpy(pmem->virt_addr + offset, buf, size);
+
+	return 0;
+}
+
 static long pmem_direct_access(struct block_device *bdev, sector_t sector,
 			      void **kaddr, unsigned long *pfn, long size)
 {
@@ -115,14 +132,16 @@ static long pmem_direct_access(struct block_device *bdev, sector_t sector,
 static const struct block_device_operations pmem_fops = {
 	.owner =		THIS_MODULE,
 	.rw_page =		pmem_rw_page,
+	.rw_bytes =		pmem_rw_bytes,
 	.direct_access =	pmem_direct_access,
 };
 
-static struct pmem_device *pmem_alloc(struct device *dev, struct resource *res)
+static struct pmem_device *pmem_alloc(struct device *dev,
+		struct resource *res, int id)
 {
 	struct pmem_device *pmem;
 	struct gendisk *disk;
-	int idx, err;
+	int err;
 
 	err = -ENOMEM;
 	pmem = kzalloc(sizeof(*pmem), GFP_KERNEL);
@@ -134,7 +153,8 @@ static struct pmem_device *pmem_alloc(struct device *dev, struct resource *res)
 
 	err = -EINVAL;
 	if (!request_mem_region(pmem->phys_addr, pmem->size, "pmem")) {
-		dev_warn(dev, "could not reserve region [0x%pa:0x%zx]\n", &pmem->phys_addr, pmem->size);
+		dev_warn(dev, "could not reserve region [0x%pa:0x%zx]\n",
+				&pmem->phys_addr, pmem->size);
 		goto out_free_dev;
 	}
 
@@ -155,19 +175,17 @@ static struct pmem_device *pmem_alloc(struct device *dev, struct resource *res)
 	blk_queue_max_hw_sectors(pmem->pmem_queue, 1024);
 	blk_queue_bounce_limit(pmem->pmem_queue, BLK_BOUNCE_ANY);
 
-	disk = alloc_disk(PMEM_MINORS);
+	disk = alloc_disk(0);
 	if (!disk)
 		goto out_free_queue;
 
-	idx = atomic_inc_return(&pmem_index) - 1;
-
 	disk->major		= pmem_major;
-	disk->first_minor	= PMEM_MINORS * idx;
+	disk->first_minor	= 0;
 	disk->fops		= &pmem_fops;
 	disk->private_data	= pmem;
 	disk->queue		= pmem->pmem_queue;
 	disk->flags		= GENHD_FL_EXT_DEVT;
-	sprintf(disk->disk_name, "pmem%d", idx);
+	sprintf(disk->disk_name, "pmem%d", id);
 	disk->driverfs_dev = dev;
 	set_capacity(disk, pmem->size >> 9);
 	pmem->pmem_disk = disk;
@@ -198,42 +216,56 @@ static void pmem_free(struct pmem_device *pmem)
 	kfree(pmem);
 }
 
-static int pmem_probe(struct platform_device *pdev)
+static int nd_pmem_probe(struct device *dev)
 {
+	struct nd_region *nd_region = to_nd_region(dev->parent);
+	struct nd_namespace_io *nsio = to_nd_namespace_io(dev);
 	struct pmem_device *pmem;
-	struct resource *res;
 
-	if (WARN_ON(pdev->num_resources > 1))
-		return -ENXIO;
+	if (resource_size(&nsio->res) < ND_MIN_NAMESPACE_SIZE) {
+		resource_size_t size = resource_size(&nsio->res);
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res)
-		return -ENXIO;
+		dev_dbg(dev, "%s: size: %pa, too small must be at least %#x\n",
+				__func__, &size, ND_MIN_NAMESPACE_SIZE);
+		return -ENODEV;
+	}
 
-	pmem = pmem_alloc(&pdev->dev, res);
+	if (nd_region_to_nstype(nd_region) == ND_DEVICE_NAMESPACE_PMEM) {
+		struct nd_namespace_pmem *nspm = to_nd_namespace_pmem(dev);
+
+		if (!nspm->uuid) {
+			dev_dbg(dev, "%s: uuid not set\n", __func__);
+			return -ENODEV;
+		}
+	}
+
+	pmem = pmem_alloc(dev, &nsio->res, nd_region->id);
 	if (IS_ERR(pmem))
 		return PTR_ERR(pmem);
 
-	platform_set_drvdata(pdev, pmem);
+	dev_set_drvdata(dev, pmem);
 
 	return 0;
 }
 
-static int pmem_remove(struct platform_device *pdev)
+static int nd_pmem_remove(struct device *dev)
 {
-	struct pmem_device *pmem = platform_get_drvdata(pdev);
+	struct pmem_device *pmem = dev_get_drvdata(dev);
 
 	pmem_free(pmem);
 	return 0;
 }
 
-static struct platform_driver pmem_driver = {
-	.probe		= pmem_probe,
-	.remove		= pmem_remove,
-	.driver		= {
-		.owner	= THIS_MODULE,
-		.name	= "pmem",
+MODULE_ALIAS("pmem");
+MODULE_ALIAS_ND_DEVICE(ND_DEVICE_NAMESPACE_IO);
+MODULE_ALIAS_ND_DEVICE(ND_DEVICE_NAMESPACE_PMEM);
+static struct nd_device_driver nd_pmem_driver = {
+	.probe = nd_pmem_probe,
+	.remove = nd_pmem_remove,
+	.drv = {
+		.name = "nd_pmem",
 	},
+	.type = ND_DRIVER_NAMESPACE_IO | ND_DRIVER_NAMESPACE_PMEM,
 };
 
 static int __init pmem_init(void)
@@ -244,16 +276,19 @@ static int __init pmem_init(void)
 	if (pmem_major < 0)
 		return pmem_major;
 
-	error = platform_driver_register(&pmem_driver);
-	if (error)
+	error = nd_driver_register(&nd_pmem_driver);
+	if (error) {
 		unregister_blkdev(pmem_major, "pmem");
-	return error;
+		return error;
+	}
+
+	return 0;
 }
 module_init(pmem_init);
 
 static void pmem_exit(void)
 {
-	platform_driver_unregister(&pmem_driver);
+	driver_unregister(&nd_pmem_driver.drv);
 	unregister_blkdev(pmem_major, "pmem");
 }
 module_exit(pmem_exit);
