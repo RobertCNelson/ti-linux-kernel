@@ -76,9 +76,6 @@
 #define ECR_C_BIT_DTLB_LD_MISS		8
 #define ECR_C_BIT_DTLB_ST_MISS		9
 
-/* Dummy ECR values for Interrupts */
-#define event_IRQ1		0x0031abcd
-#define event_IRQ2		0x0032abcd
 
 /* Auxiliary registers */
 #define AUX_IDENTITY		4
@@ -299,7 +296,8 @@ struct bcr_generic {
  */
 
 struct cpuinfo_arc_mmu {
-	unsigned int ver, pg_sz, sets, ways, u_dtlb, u_itlb, num_tlb;
+	unsigned int ver:4, pg_sz_k:8, pad:8, u_dtlb:6, u_itlb:6;
+	unsigned int num_tlb:16, sets:12, ways:4;
 };
 
 struct cpuinfo_arc_cache {
