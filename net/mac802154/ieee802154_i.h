@@ -92,8 +92,6 @@ struct ieee802154_sub_if_data {
 	struct mutex sec_mtx;
 
 	struct mac802154_llsec sec;
-	/* must be last, dynamically sized area in this! */
-	struct ieee802154_vif vif;
 };
 
 #define MAC802154_CHAN_NONE		0xff /* No channel is assigned */
@@ -168,6 +166,8 @@ void mac802154_lock_table(struct net_device *dev);
 void mac802154_get_table(struct net_device *dev,
 			 struct ieee802154_llsec_table **t);
 void mac802154_unlock_table(struct net_device *dev);
+
+int mac802154_wpan_update_llsec(struct net_device *dev);
 
 /* interface handling */
 int ieee802154_iface_init(void);
