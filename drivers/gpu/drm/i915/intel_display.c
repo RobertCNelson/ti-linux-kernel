@@ -87,7 +87,8 @@ static void ironlake_pch_clock_get(struct intel_crtc *crtc,
 				   struct intel_crtc_state *pipe_config);
 
 static int intel_set_mode(struct drm_crtc *crtc,
-			  struct drm_atomic_state *state);
+			  struct drm_atomic_state *state,
+			  bool force_restore);
 static int intel_framebuffer_init(struct drm_device *dev,
 				  struct intel_framebuffer *ifb,
 				  struct drm_mode_fb_cmd2 *mode_cmd,
@@ -10096,7 +10097,7 @@ retry:
 
 	drm_mode_copy(&crtc_state->base.mode, mode);
 
-	if (intel_set_mode(crtc, state)) {
+	if (intel_set_mode(crtc, state, true)) {
 		DRM_DEBUG_KMS("failed to set mode on load-detect pipe\n");
 		if (old->release_fb)
 			old->release_fb->funcs->destroy(old->release_fb);
@@ -10170,7 +10171,7 @@ void intel_release_load_detect_pipe(struct drm_connector *connector,
 		if (ret)
 			goto fail;
 
-		ret = intel_set_mode(crtc, state);
+		ret = intel_set_mode(crtc, state, true);
 		if (ret)
 			goto fail;
 
@@ -11385,10 +11386,6 @@ static void intel_modeset_fixup_state(struct drm_atomic_state *state)
 		crtc->base.enabled = crtc->base.state->enable;
 		crtc->config = to_intel_crtc_state(crtc->base.state);
 	}
-
-	/* Copy the new configuration to the staged state, to keep the few
-	 * pieces of code that haven't been converted yet happy */
-	intel_modeset_update_staged_output_state(state->dev);
 }
 
 static void
@@ -11870,15 +11867,15 @@ intel_modeset_update_state(struct drm_atomic_state *state)
 		if (!intel_encoder->base.crtc)
 			continue;
 
-		for_each_crtc_in_state(state, crtc, crtc_state, i)
-			if (crtc == intel_encoder->base.crtc)
-				break;
+		for_each_crtc_in_state(state, crtc, crtc_state, i) {
+			if (crtc != intel_encoder->base.crtc)
+				continue;
 
-		if (crtc != intel_encoder->base.crtc)
-			continue;
+			if (crtc_state->enable && needs_modeset(crtc_state))
+				intel_encoder->connectors_active = false;
 
-		if (crtc_state->enable && needs_modeset(crtc_state))
-			intel_encoder->connectors_active = false;
+			break;
+		}
 	}
 
 	drm_atomic_helper_swap_state(state->dev, state);
@@ -11893,24 +11890,24 @@ intel_modeset_update_state(struct drm_atomic_state *state)
 		if (!connector->encoder || !connector->encoder->crtc)
 			continue;
 
-		for_each_crtc_in_state(state, crtc, crtc_state, i)
-			if (crtc == connector->encoder->crtc)
-				break;
+		for_each_crtc_in_state(state, crtc, crtc_state, i) {
+			if (crtc != connector->encoder->crtc)
+				continue;
 
-		if (crtc != connector->encoder->crtc)
-			continue;
+			if (crtc->state->enable && needs_modeset(crtc->state)) {
+				struct drm_property *dpms_property =
+					dev->mode_config.dpms_property;
 
-		if (crtc->state->enable && needs_modeset(crtc->state)) {
-			struct drm_property *dpms_property =
-				dev->mode_config.dpms_property;
+				connector->dpms = DRM_MODE_DPMS_ON;
+				drm_object_property_set_value(&connector->base,
+								 dpms_property,
+								 DRM_MODE_DPMS_ON);
 
-			connector->dpms = DRM_MODE_DPMS_ON;
-			drm_object_property_set_value(&connector->base,
-							 dpms_property,
-							 DRM_MODE_DPMS_ON);
+				intel_encoder = to_intel_encoder(connector->encoder);
+				intel_encoder->connectors_active = true;
+			}
 
-			intel_encoder = to_intel_encoder(connector->encoder);
-			intel_encoder->connectors_active = true;
+			break;
 		}
 	}
 
@@ -12646,20 +12643,24 @@ static int __intel_set_mode(struct drm_crtc *modeset_crtc,
 }
 
 static int intel_set_mode_with_config(struct drm_crtc *crtc,
-				      struct intel_crtc_state *pipe_config)
+				      struct intel_crtc_state *pipe_config,
+				      bool force_restore)
 {
 	int ret;
 
 	ret = __intel_set_mode(crtc, pipe_config);
 
-	if (ret == 0)
+	if (ret == 0 && force_restore) {
+		intel_modeset_update_staged_output_state(crtc->dev);
 		intel_modeset_check_state(crtc->dev);
+	}
 
 	return ret;
 }
 
 static int intel_set_mode(struct drm_crtc *crtc,
-			  struct drm_atomic_state *state)
+			  struct drm_atomic_state *state,
+			  bool force_restore)
 {
 	struct intel_crtc_state *pipe_config;
 	int ret = 0;
@@ -12670,7 +12671,7 @@ static int intel_set_mode(struct drm_crtc *crtc,
 		goto out;
 	}
 
-	ret = intel_set_mode_with_config(crtc, pipe_config);
+	ret = intel_set_mode_with_config(crtc, pipe_config, force_restore);
 	if (ret)
 		goto out;
 
@@ -12682,7 +12683,6 @@ void intel_crtc_restore_mode(struct drm_crtc *crtc)
 {
 	struct drm_device *dev = crtc->dev;
 	struct drm_atomic_state *state;
-	struct intel_crtc *intel_crtc;
 	struct intel_encoder *encoder;
 	struct intel_connector *connector;
 	struct drm_connector_state *connector_state;
@@ -12725,29 +12725,23 @@ void intel_crtc_restore_mode(struct drm_crtc *crtc)
 		}
 	}
 
-	for_each_intel_crtc(dev, intel_crtc) {
-		if (intel_crtc->new_enabled == intel_crtc->base.enabled)
-			continue;
-
-		crtc_state = intel_atomic_get_crtc_state(state, intel_crtc);
-		if (IS_ERR(crtc_state)) {
-			DRM_DEBUG_KMS("Failed to add [CRTC:%d] to state: %ld\n",
-				      intel_crtc->base.base.id,
-				      PTR_ERR(crtc_state));
-			continue;
-		}
-
-		crtc_state->base.active = crtc_state->base.enable =
-			intel_crtc->new_enabled;
-
-		if (&intel_crtc->base == crtc)
-			drm_mode_copy(&crtc_state->base.mode, &crtc->mode);
+	crtc_state = intel_atomic_get_crtc_state(state, to_intel_crtc(crtc));
+	if (IS_ERR(crtc_state)) {
+		DRM_DEBUG_KMS("Failed to add [CRTC:%d] to state: %ld\n",
+			      crtc->base.id, PTR_ERR(crtc_state));
+		drm_atomic_state_free(state);
+		return;
 	}
+
+	crtc_state->base.active = crtc_state->base.enable =
+		to_intel_crtc(crtc)->new_enabled;
+
+	drm_mode_copy(&crtc_state->base.mode, &crtc->mode);
 
 	intel_modeset_setup_plane_state(state, crtc, &crtc->mode,
 					crtc->primary->fb, crtc->x, crtc->y);
 
-	ret = intel_set_mode(crtc, state);
+	ret = intel_set_mode(crtc, state, false);
 	if (ret)
 		drm_atomic_state_free(state);
 }
@@ -12947,7 +12941,7 @@ static int intel_crtc_set_config(struct drm_mode_set *set)
 
 	primary_plane_was_visible = primary_plane_visible(set->crtc);
 
-	ret = intel_set_mode_with_config(set->crtc, pipe_config);
+	ret = intel_set_mode_with_config(set->crtc, pipe_config, true);
 
 	if (ret == 0 &&
 	    pipe_config->base.enable &&
