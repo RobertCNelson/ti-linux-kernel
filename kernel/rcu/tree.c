@@ -124,13 +124,8 @@ module_param(rcu_fanout_exact, bool, 0444);
 static int rcu_fanout_leaf = RCU_FANOUT_LEAF;
 module_param(rcu_fanout_leaf, int, 0444);
 int rcu_num_lvls __read_mostly = RCU_NUM_LVLS;
-static int num_rcu_lvl[] = {  /* Number of rcu_nodes at specified level. */
-	NUM_RCU_LVL_0,
-	NUM_RCU_LVL_1,
-	NUM_RCU_LVL_2,
-	NUM_RCU_LVL_3,
-	NUM_RCU_LVL_4,
-};
+/* Number of rcu_nodes at specified level. */
+static int num_rcu_lvl[] = NUM_RCU_LVL_INIT;
 int rcu_num_nodes __read_mostly = NUM_RCU_NODES; /* Total # rcu_nodes in use. */
 
 /*
@@ -649,12 +644,12 @@ static void rcu_eqs_enter_common(long long oldval, bool user)
 	 * It is illegal to enter an extended quiescent state while
 	 * in an RCU read-side critical section.
 	 */
-	rcu_lockdep_assert(!lock_is_held(&rcu_lock_map),
-			   "Illegal idle entry in RCU read-side critical section.");
-	rcu_lockdep_assert(!lock_is_held(&rcu_bh_lock_map),
-			   "Illegal idle entry in RCU-bh read-side critical section.");
-	rcu_lockdep_assert(!lock_is_held(&rcu_sched_lock_map),
-			   "Illegal idle entry in RCU-sched read-side critical section.");
+	RCU_LOCKDEP_WARN(lock_is_held(&rcu_lock_map),
+			 "Illegal idle entry in RCU read-side critical section.");
+	RCU_LOCKDEP_WARN(lock_is_held(&rcu_bh_lock_map),
+			 "Illegal idle entry in RCU-bh read-side critical section.");
+	RCU_LOCKDEP_WARN(lock_is_held(&rcu_sched_lock_map),
+			 "Illegal idle entry in RCU-sched read-side critical section.");
 }
 
 /*
@@ -701,7 +696,7 @@ void rcu_idle_enter(void)
 }
 EXPORT_SYMBOL_GPL(rcu_idle_enter);
 
-#ifdef CONFIG_RCU_USER_QS
+#ifdef CONFIG_NO_HZ_FULL
 /**
  * rcu_user_enter - inform RCU that we are resuming userspace.
  *
@@ -714,7 +709,7 @@ void rcu_user_enter(void)
 {
 	rcu_eqs_enter(1);
 }
-#endif /* CONFIG_RCU_USER_QS */
+#endif /* CONFIG_NO_HZ_FULL */
 
 /**
  * rcu_irq_exit - inform RCU that current CPU is exiting irq towards idle
@@ -828,7 +823,7 @@ void rcu_idle_exit(void)
 }
 EXPORT_SYMBOL_GPL(rcu_idle_exit);
 
-#ifdef CONFIG_RCU_USER_QS
+#ifdef CONFIG_NO_HZ_FULL
 /**
  * rcu_user_exit - inform RCU that we are exiting userspace.
  *
@@ -839,7 +834,7 @@ void rcu_user_exit(void)
 {
 	rcu_eqs_exit(1);
 }
-#endif /* CONFIG_RCU_USER_QS */
+#endif /* CONFIG_NO_HZ_FULL */
 
 /**
  * rcu_irq_enter - inform RCU that current CPU is entering irq away from idle
@@ -978,9 +973,9 @@ bool notrace rcu_is_watching(void)
 {
 	bool ret;
 
-	preempt_disable();
+	preempt_disable_notrace();
 	ret = __rcu_is_watching();
-	preempt_enable();
+	preempt_enable_notrace();
 	return ret;
 }
 EXPORT_SYMBOL_GPL(rcu_is_watching);
@@ -1178,9 +1173,11 @@ static void rcu_check_gp_kthread_starvation(struct rcu_state *rsp)
 	j = jiffies;
 	gpa = READ_ONCE(rsp->gp_activity);
 	if (j - gpa > 2 * HZ)
-		pr_err("%s kthread starved for %ld jiffies! g%lu c%lu f%#x\n",
+		pr_err("%s kthread starved for %ld jiffies! g%lu c%lu f%#x s%d ->state=%#lx\n",
 		       rsp->name, j - gpa,
-		       rsp->gpnum, rsp->completed, rsp->gp_flags);
+		       rsp->gpnum, rsp->completed,
+		       rsp->gp_flags, rsp->gp_state,
+		       rsp->gp_kthread ? rsp->gp_kthread->state : 0);
 }
 
 /*
@@ -2041,6 +2038,7 @@ static int __noreturn rcu_gp_kthread(void *arg)
 			wait_event_interruptible(rsp->gp_wq,
 						 READ_ONCE(rsp->gp_flags) &
 						 RCU_GP_FLAG_INIT);
+			rsp->gp_state = RCU_GP_DONE_GPS;
 			/* Locking provides needed memory barrier. */
 			if (rcu_gp_init(rsp))
 				break;
@@ -2073,6 +2071,7 @@ static int __noreturn rcu_gp_kthread(void *arg)
 					(!READ_ONCE(rnp->qsmask) &&
 					 !rcu_preempt_blocked_readers_cgp(rnp)),
 					j);
+			rsp->gp_state = RCU_GP_DONE_FQS;
 			/* Locking provides needed memory barriers. */
 			/* If grace period done, leave loop. */
 			if (!READ_ONCE(rnp->qsmask) &&
@@ -2110,7 +2109,9 @@ static int __noreturn rcu_gp_kthread(void *arg)
 		}
 
 		/* Handle grace-period end. */
+		rsp->gp_state = RCU_GP_CLEANUP;
 		rcu_gp_cleanup(rsp);
+		rsp->gp_state = RCU_GP_CLEANED;
 	}
 }
 
@@ -3161,10 +3162,10 @@ static inline int rcu_blocking_is_gp(void)
  */
 void synchronize_sched(void)
 {
-	rcu_lockdep_assert(!lock_is_held(&rcu_bh_lock_map) &&
-			   !lock_is_held(&rcu_lock_map) &&
-			   !lock_is_held(&rcu_sched_lock_map),
-			   "Illegal synchronize_sched() in RCU-sched read-side critical section");
+	RCU_LOCKDEP_WARN(lock_is_held(&rcu_bh_lock_map) ||
+			 lock_is_held(&rcu_lock_map) ||
+			 lock_is_held(&rcu_sched_lock_map),
+			 "Illegal synchronize_sched() in RCU-sched read-side critical section");
 	if (rcu_blocking_is_gp())
 		return;
 	if (rcu_gp_is_expedited())
@@ -3188,10 +3189,10 @@ EXPORT_SYMBOL_GPL(synchronize_sched);
  */
 void synchronize_rcu_bh(void)
 {
-	rcu_lockdep_assert(!lock_is_held(&rcu_bh_lock_map) &&
-			   !lock_is_held(&rcu_lock_map) &&
-			   !lock_is_held(&rcu_sched_lock_map),
-			   "Illegal synchronize_rcu_bh() in RCU-bh read-side critical section");
+	RCU_LOCKDEP_WARN(lock_is_held(&rcu_bh_lock_map) ||
+			 lock_is_held(&rcu_lock_map) ||
+			 lock_is_held(&rcu_sched_lock_map),
+			 "Illegal synchronize_rcu_bh() in RCU-bh read-side critical section");
 	if (rcu_blocking_is_gp())
 		return;
 	if (rcu_gp_is_expedited())
@@ -3252,6 +3253,58 @@ void cond_synchronize_rcu(unsigned long oldstate)
 		synchronize_rcu();
 }
 EXPORT_SYMBOL_GPL(cond_synchronize_rcu);
+
+/**
+ * get_state_synchronize_sched - Snapshot current RCU-sched state
+ *
+ * Returns a cookie that is used by a later call to cond_synchronize_sched()
+ * to determine whether or not a full grace period has elapsed in the
+ * meantime.
+ */
+unsigned long get_state_synchronize_sched(void)
+{
+	/*
+	 * Any prior manipulation of RCU-protected data must happen
+	 * before the load from ->gpnum.
+	 */
+	smp_mb();  /* ^^^ */
+
+	/*
+	 * Make sure this load happens before the purportedly
+	 * time-consuming work between get_state_synchronize_sched()
+	 * and cond_synchronize_sched().
+	 */
+	return smp_load_acquire(&rcu_sched_state.gpnum);
+}
+EXPORT_SYMBOL_GPL(get_state_synchronize_sched);
+
+/**
+ * cond_synchronize_sched - Conditionally wait for an RCU-sched grace period
+ *
+ * @oldstate: return value from earlier call to get_state_synchronize_sched()
+ *
+ * If a full RCU-sched grace period has elapsed since the earlier call to
+ * get_state_synchronize_sched(), just return.  Otherwise, invoke
+ * synchronize_sched() to wait for a full grace period.
+ *
+ * Yes, this function does not take counter wrap into account.  But
+ * counter wrap is harmless.  If the counter wraps, we have waited for
+ * more than 2 billion grace periods (and way more on a 64-bit system!),
+ * so waiting for one additional grace period should be just fine.
+ */
+void cond_synchronize_sched(unsigned long oldstate)
+{
+	unsigned long newstate;
+
+	/*
+	 * Ensure that this load happens before any RCU-destructive
+	 * actions the caller might carry out after we return.
+	 */
+	newstate = smp_load_acquire(&rcu_sched_state.completed);
+	if (ULONG_CMP_GE(oldstate, newstate))
+		synchronize_sched();
+}
+EXPORT_SYMBOL_GPL(cond_synchronize_sched);
 
 static int synchronize_sched_expedited_cpu_stop(void *data)
 {
@@ -3961,22 +4014,22 @@ void rcu_scheduler_starting(void)
  * Compute the per-level fanout, either using the exact fanout specified
  * or balancing the tree, depending on the rcu_fanout_exact boot parameter.
  */
-static void __init rcu_init_levelspread(struct rcu_state *rsp)
+static void __init rcu_init_levelspread(int *levelspread, const int *levelcnt)
 {
 	int i;
 
 	if (rcu_fanout_exact) {
-		rsp->levelspread[rcu_num_lvls - 1] = rcu_fanout_leaf;
+		levelspread[rcu_num_lvls - 1] = rcu_fanout_leaf;
 		for (i = rcu_num_lvls - 2; i >= 0; i--)
-			rsp->levelspread[i] = RCU_FANOUT;
+			levelspread[i] = RCU_FANOUT;
 	} else {
 		int ccur;
 		int cprv;
 
 		cprv = nr_cpu_ids;
 		for (i = rcu_num_lvls - 1; i >= 0; i--) {
-			ccur = rsp->levelcnt[i];
-			rsp->levelspread[i] = (cprv + ccur - 1) / ccur;
+			ccur = levelcnt[i];
+			levelspread[i] = (cprv + ccur - 1) / ccur;
 			cprv = ccur;
 		}
 	}
@@ -3988,23 +4041,18 @@ static void __init rcu_init_levelspread(struct rcu_state *rsp)
 static void __init rcu_init_one(struct rcu_state *rsp,
 		struct rcu_data __percpu *rda)
 {
-	static const char * const buf[] = {
-		"rcu_node_0",
-		"rcu_node_1",
-		"rcu_node_2",
-		"rcu_node_3" };  /* Match MAX_RCU_LVLS */
-	static const char * const fqs[] = {
-		"rcu_node_fqs_0",
-		"rcu_node_fqs_1",
-		"rcu_node_fqs_2",
-		"rcu_node_fqs_3" };  /* Match MAX_RCU_LVLS */
+	static const char * const buf[] = RCU_NODE_NAME_INIT;
+	static const char * const fqs[] = RCU_FQS_NAME_INIT;
 	static u8 fl_mask = 0x1;
+
+	int levelcnt[RCU_NUM_LVLS];		/* # nodes in each level. */
+	int levelspread[RCU_NUM_LVLS];		/* kids/node in each level. */
 	int cpustride = 1;
 	int i;
 	int j;
 	struct rcu_node *rnp;
 
-	BUILD_BUG_ON(MAX_RCU_LVLS > ARRAY_SIZE(buf));  /* Fix buf[] init! */
+	BUILD_BUG_ON(RCU_NUM_LVLS > ARRAY_SIZE(buf));  /* Fix buf[] init! */
 
 	/* Silence gcc 4.8 false positive about array index out of range. */
 	if (rcu_num_lvls <= 0 || rcu_num_lvls > RCU_NUM_LVLS)
@@ -4013,19 +4061,19 @@ static void __init rcu_init_one(struct rcu_state *rsp,
 	/* Initialize the level-tracking arrays. */
 
 	for (i = 0; i < rcu_num_lvls; i++)
-		rsp->levelcnt[i] = num_rcu_lvl[i];
+		levelcnt[i] = num_rcu_lvl[i];
 	for (i = 1; i < rcu_num_lvls; i++)
-		rsp->level[i] = rsp->level[i - 1] + rsp->levelcnt[i - 1];
-	rcu_init_levelspread(rsp);
+		rsp->level[i] = rsp->level[i - 1] + levelcnt[i - 1];
+	rcu_init_levelspread(levelspread, levelcnt);
 	rsp->flavor_mask = fl_mask;
 	fl_mask <<= 1;
 
 	/* Initialize the elements themselves, starting from the leaves. */
 
 	for (i = rcu_num_lvls - 1; i >= 0; i--) {
-		cpustride *= rsp->levelspread[i];
+		cpustride *= levelspread[i];
 		rnp = rsp->level[i];
-		for (j = 0; j < rsp->levelcnt[i]; j++, rnp++) {
+		for (j = 0; j < levelcnt[i]; j++, rnp++) {
 			raw_spin_lock_init(&rnp->lock);
 			lockdep_set_class_and_name(&rnp->lock,
 						   &rcu_node_class[i], buf[i]);
@@ -4045,10 +4093,10 @@ static void __init rcu_init_one(struct rcu_state *rsp,
 				rnp->grpmask = 0;
 				rnp->parent = NULL;
 			} else {
-				rnp->grpnum = j % rsp->levelspread[i - 1];
+				rnp->grpnum = j % levelspread[i - 1];
 				rnp->grpmask = 1UL << rnp->grpnum;
 				rnp->parent = rsp->level[i - 1] +
-					      j / rsp->levelspread[i - 1];
+					      j / levelspread[i - 1];
 			}
 			rnp->level = i;
 			INIT_LIST_HEAD(&rnp->blkd_tasks);
@@ -4076,9 +4124,7 @@ static void __init rcu_init_geometry(void)
 {
 	ulong d;
 	int i;
-	int j;
-	int n = nr_cpu_ids;
-	int rcu_capacity[MAX_RCU_LVLS + 1];
+	int rcu_capacity[RCU_NUM_LVLS];
 
 	/*
 	 * Initialize any unspecified boot parameters.
@@ -4101,47 +4147,49 @@ static void __init rcu_init_geometry(void)
 		rcu_fanout_leaf, nr_cpu_ids);
 
 	/*
-	 * Compute number of nodes that can be handled an rcu_node tree
-	 * with the given number of levels.  Setting rcu_capacity[0] makes
-	 * some of the arithmetic easier.
-	 */
-	rcu_capacity[0] = 1;
-	rcu_capacity[1] = rcu_fanout_leaf;
-	for (i = 2; i <= MAX_RCU_LVLS; i++)
-		rcu_capacity[i] = rcu_capacity[i - 1] * RCU_FANOUT;
-
-	/*
 	 * The boot-time rcu_fanout_leaf parameter is only permitted
 	 * to increase the leaf-level fanout, not decrease it.  Of course,
 	 * the leaf-level fanout cannot exceed the number of bits in
-	 * the rcu_node masks.  Finally, the tree must be able to accommodate
-	 * the configured number of CPUs.  Complain and fall back to the
-	 * compile-time values if these limits are exceeded.
+	 * the rcu_node masks.  Complain and fall back to the compile-
+	 * time values if these limits are exceeded.
 	 */
 	if (rcu_fanout_leaf < RCU_FANOUT_LEAF ||
-	    rcu_fanout_leaf > sizeof(unsigned long) * 8 ||
-	    n > rcu_capacity[MAX_RCU_LVLS]) {
+	    rcu_fanout_leaf > sizeof(unsigned long) * 8) {
+		rcu_fanout_leaf = RCU_FANOUT_LEAF;
 		WARN_ON(1);
 		return;
 	}
 
+	/*
+	 * Compute number of nodes that can be handled an rcu_node tree
+	 * with the given number of levels.
+	 */
+	rcu_capacity[0] = rcu_fanout_leaf;
+	for (i = 1; i < RCU_NUM_LVLS; i++)
+		rcu_capacity[i] = rcu_capacity[i - 1] * RCU_FANOUT;
+
+	/*
+	 * The tree must be able to accommodate the configured number of CPUs.
+	 * If this limit is exceeded than we have a serious problem elsewhere.
+	 */
+	if (nr_cpu_ids > rcu_capacity[RCU_NUM_LVLS - 1])
+		panic("rcu_init_geometry: rcu_capacity[] is too small");
+
+	/* Calculate the number of levels in the tree. */
+	for (i = 0; nr_cpu_ids > rcu_capacity[i]; i++) {
+	}
+	rcu_num_lvls = i + 1;
+
 	/* Calculate the number of rcu_nodes at each level of the tree. */
-	for (i = 1; i <= MAX_RCU_LVLS; i++)
-		if (n <= rcu_capacity[i]) {
-			for (j = 0; j <= i; j++)
-				num_rcu_lvl[j] =
-					DIV_ROUND_UP(n, rcu_capacity[i - j]);
-			rcu_num_lvls = i;
-			for (j = i + 1; j <= MAX_RCU_LVLS; j++)
-				num_rcu_lvl[j] = 0;
-			break;
-		}
+	for (i = 0; i < rcu_num_lvls; i++) {
+		int cap = rcu_capacity[(rcu_num_lvls - 1) - i];
+		num_rcu_lvl[i] = DIV_ROUND_UP(nr_cpu_ids, cap);
+	}
 
 	/* Calculate the total number of rcu_node structures. */
 	rcu_num_nodes = 0;
-	for (i = 0; i <= MAX_RCU_LVLS; i++)
+	for (i = 0; i < rcu_num_lvls; i++)
 		rcu_num_nodes += num_rcu_lvl[i];
-	rcu_num_nodes -= n;
 }
 
 /*
