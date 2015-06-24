@@ -930,6 +930,11 @@ long vhost_dev_ioctl(struct vhost_dev *d, unsigned int ioctl, void __user *argp)
 	long r;
 	int i, fd;
 
+	if (ioctl == VHOST_GET_MEM_MAX_NREGIONS) {
+		r = VHOST_MEMORY_MAX_NREGIONS;
+		goto done;
+	}
+
 	/* If you are not the owner, you can become one */
 	if (ioctl == VHOST_SET_OWNER) {
 		r = vhost_dev_set_owner(d);
