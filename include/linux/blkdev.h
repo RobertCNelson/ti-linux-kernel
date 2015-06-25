@@ -1549,6 +1549,8 @@ struct block_device_operations {
 	int (*open) (struct block_device *, fmode_t);
 	void (*release) (struct gendisk *, fmode_t);
 	int (*rw_page)(struct block_device *, sector_t, struct page *, int rw);
+	int (*rw_bytes)(struct gendisk *, resource_size_t offset,
+			void *buf, size_t size, int rw);
 	int (*ioctl) (struct block_device *, fmode_t, unsigned, unsigned long);
 	int (*compat_ioctl) (struct block_device *, fmode_t, unsigned, unsigned long);
 	long (*direct_access)(struct block_device *, sector_t,
@@ -1572,6 +1574,48 @@ extern int bdev_write_page(struct block_device *, sector_t, struct page *,
 						struct writeback_control *);
 extern long bdev_direct_access(struct block_device *, sector_t, void **addr,
 						unsigned long *pfn, long size);
+
+/**
+ * bdev_read_bytes() - synchronously read bytes from a memory-backed block dev
+ * @bdev: device to read
+ * @offset: bdev-relative starting offset
+ * @buf: buffer to fill
+ * @size: transfer length
+ *
+ * RAM and PMEM disks do not implement sectors internally.  @buf is
+ * up-to-date upon return from this routine.
+ */
+static inline int bdev_read_bytes(struct block_device *bdev,
+		resource_size_t offset, void *buf, size_t size)
+{
+	struct gendisk *disk = bdev->bd_disk;
+	const struct block_device_operations *ops = disk->fops;
+
+	offset += get_start_sect(bdev) << 9;
+	return ops->rw_bytes(disk, offset, buf, size, READ);
+}
+
+/**
+ * bdev_write_bytes() - synchronously write bytes to a memory-backed block dev
+ * @bdev: device to read
+ * @offset: bdev-relative starting offset
+ * @buf: buffer to drain
+ * @size: transfer length
+ *
+ * RAM and PMEM disks do not implement sectors internally.  Depending on
+ * the @bdev, the contents of @buf may be in cpu cache, platform buffers,
+ * or on backing memory media upon return from this routine.  Flushing
+ * to media is handled internal to the @bdev driver, if at all.
+ */
+static inline int bdev_write_bytes(struct block_device *bdev,
+		resource_size_t offset, void *buf, size_t size)
+{
+	struct gendisk *disk = bdev->bd_disk;
+	const struct block_device_operations *ops = disk->fops;
+
+	offset += get_start_sect(bdev) << 9;
+	return ops->rw_bytes(disk, offset, buf, size, WRITE);
+}
 #else /* CONFIG_BLOCK */
 
 struct block_device;
