@@ -239,17 +239,8 @@ __check_old_set_param(int (*oldset)(const char *, struct kernel_param *))
 	return 0;
 }
 
-#ifdef CONFIG_SYSFS
 extern void kernel_param_lock(struct module *mod);
 extern void kernel_param_unlock(struct module *mod);
-#else
-static inline void kernel_param_lock(struct module *mod)
-{
-}
-static inline void kernel_param_unlock(struct module *mod)
-{
-}
-#endif
 
 #ifndef MODULE
 /**
