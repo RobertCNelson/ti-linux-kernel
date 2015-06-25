@@ -128,8 +128,9 @@ int vcpu_load(struct kvm_vcpu *vcpu)
 
 	if (mutex_lock_killable(&vcpu->mutex))
 		return -EINTR;
-	cpu = get_cpu();
 	preempt_notifier_register(&vcpu->preempt_notifier);
+
+	cpu = get_cpu();
 	kvm_arch_vcpu_load(vcpu, cpu);
 	put_cpu();
 	return 0;
@@ -139,8 +140,8 @@ void vcpu_put(struct kvm_vcpu *vcpu)
 {
 	preempt_disable();
 	kvm_arch_vcpu_put(vcpu);
-	preempt_notifier_unregister(&vcpu->preempt_notifier);
 	preempt_enable();
+	preempt_notifier_unregister(&vcpu->preempt_notifier);
 	mutex_unlock(&vcpu->mutex);
 }
 

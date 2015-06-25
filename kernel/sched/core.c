@@ -2138,7 +2138,12 @@ static struct static_key preempt_notifier_key = STATIC_KEY_INIT_FALSE;
 void preempt_notifier_register(struct preempt_notifier *notifier)
 {
 	static_key_slow_inc(&preempt_notifier_key);
+	/*
+	 * Avoid preemption while changing the preempt notifier list.
+	 */
+	preempt_disable();
 	hlist_add_head(&notifier->link, &current->preempt_notifiers);
+	preempt_enable();
 }
 EXPORT_SYMBOL_GPL(preempt_notifier_register);
 
@@ -2150,7 +2155,13 @@ EXPORT_SYMBOL_GPL(preempt_notifier_register);
  */
 void preempt_notifier_unregister(struct preempt_notifier *notifier)
 {
+	/*
+	 * Avoid preemption while changing the preempt notifier list.
+	 */
+	preempt_disable();
 	hlist_del(&notifier->link);
+	preempt_enable();
+
 	static_key_slow_dec(&preempt_notifier_key);
 }
 EXPORT_SYMBOL_GPL(preempt_notifier_unregister);
