@@ -223,12 +223,59 @@ int msm_dsi_modeset_init(struct msm_dsi *msm_dsi, struct drm_device *dev,
 		msm_dsi->encoders[i] = encoders[i];
 	}
 
-	msm_dsi->connector = msm_dsi_manager_connector_init(msm_dsi->id);
-	if (IS_ERR(msm_dsi->connector)) {
-		ret = PTR_ERR(msm_dsi->connector);
-		dev_err(dev->dev, "failed to create dsi connector: %d\n", ret);
-		msm_dsi->connector = NULL;
-		goto fail;
+	/*
+	 * check if the dsi encoder output is connected to a panel or an
+	 * external bridge. We create a connector only if we're connected to a
+	 * drm_panel device. When we're connected to an external bridge, we
+	 * assume that the drm_bridge driver will create the connector itself.
+	 */
+	msm_dsi->external_bridge = msm_dsi_host_get_bridge(msm_dsi->host,
+					&msm_dsi->device_flags);
+
+	if (msm_dsi->external_bridge) {
+		struct drm_encoder *encoder = msm_dsi_get_encoder(msm_dsi);
+		struct drm_bridge *int_bridge, *ext_bridge;
+		struct drm_connector *connector;
+		struct list_head *connector_list;
+
+		int_bridge = msm_dsi->bridge;
+		ext_bridge = msm_dsi->external_bridge;
+
+		/* link the internal dsi bridge to the external bridge */
+		int_bridge->next = ext_bridge;
+		/* set the external bridge's encoder as dsi's encoder */
+		ext_bridge->encoder = encoder;
+
+		drm_bridge_attach(msm_dsi->dev, ext_bridge);
+
+		/*
+		 * we need the drm_connector created by the external bridge
+		 * driver (or someone else) to feed it to our driver's
+		 * priv->connector[] list
+		 */
+		connector_list = &dev->mode_config.connector_list;
+
+		list_for_each_entry(connector, connector_list, head) {
+			int i;
+
+			for (i = 0; i < DRM_CONNECTOR_MAX_ENCODER; i++) {
+				if (connector->encoder_ids[i] ==
+						encoder->base.id) {
+					msm_dsi->connector = connector;
+					break;
+				}
+			}
+		}
+	} else {
+		msm_dsi->connector =
+			msm_dsi_manager_connector_init(msm_dsi->id);
+		if (IS_ERR(msm_dsi->connector)) {
+			ret = PTR_ERR(msm_dsi->connector);
+			dev_err(dev->dev,
+				"failed to create dsi connector: %d\n", ret);
+			msm_dsi->connector = NULL;
+			goto fail;
+		}
 	}
 
 	priv->bridges[priv->num_bridges++]       = msm_dsi->bridge;
@@ -242,7 +289,8 @@ fail:
 			msm_dsi_manager_bridge_destroy(msm_dsi->bridge);
 			msm_dsi->bridge = NULL;
 		}
-		if (msm_dsi->connector) {
+		/* don't destroy connector if we didn't make it */
+		if (msm_dsi->connector && !msm_dsi->external_bridge) {
 			msm_dsi->connector->funcs->destroy(msm_dsi->connector);
 			msm_dsi->connector = NULL;
 		}

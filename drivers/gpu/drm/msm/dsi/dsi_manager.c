@@ -517,7 +517,7 @@ static const struct drm_bridge_funcs dsi_mgr_bridge_funcs = {
 	.mode_set = dsi_mgr_bridge_mode_set,
 };
 
-/* initialize connector */
+/* initialize connector when we're connected to a drm_panel */
 struct drm_connector *msm_dsi_manager_connector_init(u8 id)
 {
 	struct msm_dsi *msm_dsi = dsi_mgr_get_dsi(id);
