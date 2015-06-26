@@ -25,6 +25,9 @@ Required properties:
 - vddio-supply: phandle to vdd-io regulator device node
 - vdda-supply: phandle to vdda regulator device node
 - qcom,dsi-phy: phandle to DSI PHY device node
+- port: DSI controller output port. This contains one endpoint subnode, with its
+  remote-endpoint set to the phandle of the connected panel's endpoint.
+  See Documentation/devicetree/bindings/graph.txt for device graph info.
 
 Optional properties:
 - panel@0: Node of panel connected to this DSI controller.
@@ -113,6 +116,18 @@ Example:
 
 			power-supply = <...>;
 			backlight = <...>;
+
+			port {
+				panel_in: endpoint {
+					remote-endpoint = <&dsi0_out>;
+				};
+			};
+		};
+
+		port {
+			dsi0_out: endpoint {
+				remote-endpoint = <&panel_in>;
+			};
 		};
 	};
 
