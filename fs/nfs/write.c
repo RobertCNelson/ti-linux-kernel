@@ -1289,6 +1289,7 @@ static void nfs_initiate_write(struct nfs_pgio_header *hdr,
 static void nfs_redirty_request(struct nfs_page *req)
 {
 	nfs_mark_request_dirty(req);
+	set_bit(NFS_CONTEXT_RESEND_WRITES, &req->wb_context->flags);
 	nfs_unlock_request(req);
 	nfs_end_page_writeback(req);
 	nfs_release_request(req);
@@ -1345,11 +1346,6 @@ void nfs_commit_prepare(struct rpc_task *task, void *calldata)
 	struct nfs_commit_data *data = calldata;
 
 	NFS_PROTO(data->inode)->commit_rpc_prepare(task, data);
-}
-
-static void nfs_writeback_release_common(struct nfs_pgio_header *hdr)
-{
-	/* do nothing! */
 }
 
 /*
@@ -2012,7 +2008,6 @@ static const struct nfs_rw_ops nfs_rw_write_ops = {
 	.rw_mode		= FMODE_WRITE,
 	.rw_alloc_header	= nfs_writehdr_alloc,
 	.rw_free_header		= nfs_writehdr_free,
-	.rw_release		= nfs_writeback_release_common,
 	.rw_done		= nfs_writeback_done,
 	.rw_result		= nfs_writeback_result,
 	.rw_initiate		= nfs_initiate_write,
