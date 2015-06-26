@@ -20,6 +20,7 @@
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
 #include <linux/of_irq.h>
+#include <linux/of_graph.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/regulator/consumer.h>
 #include <linux/spinlock.h>
@@ -1402,7 +1403,7 @@ static int dsi_host_attach(struct mipi_dsi_host *host,
 	msm_host->format = dsi->format;
 	msm_host->mode_flags = dsi->mode_flags;
 
-	msm_host->panel_node = dsi->dev.of_node;
+	WARN_ON(dsi->dev.of_node != msm_host->panel_node);
 
 	/* Some gpios defined in panel DT need to be controlled by host */
 	ret = dsi_host_init_panel_gpios(msm_host, &dsi->dev);
@@ -1452,6 +1453,46 @@ static struct mipi_dsi_host_ops dsi_host_ops = {
 	.transfer = dsi_host_transfer,
 };
 
+static int msm_dsi_host_parse_dt(struct msm_dsi_host *msm_host)
+{
+	struct device *dev = &msm_host->pdev->dev;
+	struct device_node *np = dev->of_node;
+	struct device_node *endpoint, *panel_node;
+	int ret;
+
+	ret = of_property_read_u32(np, "qcom,dsi-host-index", &msm_host->id);
+	if (ret) {
+		dev_err(dev, "%s: host index not specified, ret=%d\n",
+			__func__, ret);
+		return ret;
+	}
+
+	/*
+	 * get the first endpoint node. in our case, dsi has one output port
+	 * to which the panel is connected.
+	 */
+	endpoint = of_graph_get_next_endpoint(np, NULL);
+	if (IS_ERR(endpoint)) {
+		dev_err(dev, "%s: no valid endpoint\n", __func__);
+		return PTR_ERR(endpoint);
+	}
+
+	/* get panel node from the output port's endpoint data */
+	panel_node = of_graph_get_remote_port_parent(endpoint);
+	if (IS_ERR(panel_node)) {
+		dev_err(dev, "%s: no valid device\n", __func__);
+		of_node_put(endpoint);
+		return PTR_ERR(panel_node);
+	}
+
+	of_node_put(endpoint);
+	of_node_put(panel_node);
+
+	msm_host->panel_node = panel_node;
+
+	return 0;
+}
+
 int msm_dsi_host_init(struct msm_dsi *msm_dsi)
 {
 	struct msm_dsi_host *msm_host = NULL;
@@ -1466,15 +1507,13 @@ int msm_dsi_host_init(struct msm_dsi *msm_dsi)
 		goto fail;
 	}
 
-	ret = of_property_read_u32(pdev->dev.of_node,
-				"qcom,dsi-host-index", &msm_host->id);
+	msm_host->pdev = pdev;
+
+	ret = msm_dsi_host_parse_dt(msm_host);
 	if (ret) {
-		dev_err(&pdev->dev,
-			"%s: host index not specified, ret=%d\n",
-			__func__, ret);
+		pr_err("%s: failed to parse dt\n", __func__);
 		goto fail;
 	}
-	msm_host->pdev = pdev;
 
 	ret = dsi_clk_init(msm_host);
 	if (ret) {
@@ -1582,7 +1621,6 @@ int msm_dsi_host_modeset_init(struct mipi_dsi_host *host,
 int msm_dsi_host_register(struct mipi_dsi_host *host, bool check_defer)
 {
 	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
-	struct device_node *node;
 	int ret;
 
 	/* Register mipi dsi host */
@@ -1602,16 +1640,8 @@ int msm_dsi_host_register(struct mipi_dsi_host *host, bool check_defer)
 		 * create framebuffer.
 		 */
 		if (check_defer) {
-			node = of_get_child_by_name(msm_host->pdev->dev.of_node,
-							"panel");
-			if (node) {
-				if (!of_drm_find_panel(node)) {
-					of_node_put(node);
-					return -EPROBE_DEFER;
-				}
-
-				of_node_put(node);
-			}
+			if (!of_drm_find_panel(msm_host->panel_node))
+				return -EPROBE_DEFER;
 		}
 	}
 
