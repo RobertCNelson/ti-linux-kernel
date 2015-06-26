@@ -232,8 +232,8 @@ struct msm_dsi_host {
 
 	struct drm_display_mode *mode;
 
-	/* Panel info */
-	struct device_node *panel_node;
+	/* connected device info */
+	struct device_node *device_node;
 	unsigned int channel;
 	unsigned int lanes;
 	enum mipi_dsi_pixel_format format;
@@ -1404,7 +1404,7 @@ static int dsi_host_attach(struct mipi_dsi_host *host,
 	msm_host->format = dsi->format;
 	msm_host->mode_flags = dsi->mode_flags;
 
-	WARN_ON(dsi->dev.of_node != msm_host->panel_node);
+	WARN_ON(dsi->dev.of_node != msm_host->device_node);
 
 	/* Some gpios defined in panel DT need to be controlled by host */
 	ret = dsi_host_init_panel_gpios(msm_host, &dsi->dev);
@@ -1423,7 +1423,7 @@ static int dsi_host_detach(struct mipi_dsi_host *host,
 {
 	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
 
-	msm_host->panel_node = NULL;
+	msm_host->device_node = NULL;
 
 	DBG("id=%d", msm_host->id);
 	if (msm_host->dev)
@@ -1458,7 +1458,7 @@ static int msm_dsi_host_parse_dt(struct msm_dsi_host *msm_host)
 {
 	struct device *dev = &msm_host->pdev->dev;
 	struct device_node *np = dev->of_node;
-	struct device_node *endpoint, *panel_node;
+	struct device_node *endpoint, *device_node;
 	int ret;
 
 	ret = of_property_read_u32(np, "qcom,dsi-host-index", &msm_host->id);
@@ -1470,7 +1470,7 @@ static int msm_dsi_host_parse_dt(struct msm_dsi_host *msm_host)
 
 	/*
 	 * get the first endpoint node. in our case, dsi has one output port
-	 * to which the panel is connected.
+	 * to which the device is connected.
 	 */
 	endpoint = of_graph_get_next_endpoint(np, NULL);
 	if (IS_ERR(endpoint)) {
@@ -1478,18 +1478,21 @@ static int msm_dsi_host_parse_dt(struct msm_dsi_host *msm_host)
 		return PTR_ERR(endpoint);
 	}
 
-	/* get panel node from the output port's endpoint data */
-	panel_node = of_graph_get_remote_port_parent(endpoint);
-	if (IS_ERR(panel_node)) {
+	/*
+	 * get connected device(panel/bridge) node from the output port's
+	 * endpoint data
+	 */
+	device_node = of_graph_get_remote_port_parent(endpoint);
+	if (IS_ERR(device_node)) {
 		dev_err(dev, "%s: no valid device\n", __func__);
 		of_node_put(endpoint);
-		return PTR_ERR(panel_node);
+		return PTR_ERR(device_node);
 	}
 
 	of_node_put(endpoint);
-	of_node_put(panel_node);
+	of_node_put(device_node);
 
-	msm_host->panel_node = panel_node;
+	msm_host->device_node = device_node;
 
 	return 0;
 }
@@ -1641,7 +1644,7 @@ int msm_dsi_host_register(struct mipi_dsi_host *host, bool check_defer)
 		 * create framebuffer.
 		 */
 		if (check_defer) {
-			if (!of_drm_find_panel(msm_host->panel_node))
+			if (!of_drm_find_panel(msm_host->device_node))
 				return -EPROBE_DEFER;
 		}
 	}
@@ -2062,7 +2065,7 @@ struct drm_panel *msm_dsi_host_get_panel(struct mipi_dsi_host *host,
 	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
 	struct drm_panel *panel;
 
-	panel = of_drm_find_panel(msm_host->panel_node);
+	panel = of_drm_find_panel(msm_host->device_node);
 	if (panel_flags)
 			*panel_flags = msm_host->mode_flags;
 
