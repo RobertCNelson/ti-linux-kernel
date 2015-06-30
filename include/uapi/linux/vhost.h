@@ -80,7 +80,7 @@ struct vhost_memory {
  * Allows subsequent call to VHOST_OWNER_SET to succeed. */
 #define VHOST_RESET_OWNER _IO(VHOST_VIRTIO, 0x02)
 
-/* Set up/modify memory layout */
+/* Set up/modify memory layout: see also VHOST_GET_MEM_MAX_NREGIONS below. */
 #define VHOST_SET_MEM_TABLE	_IOW(VHOST_VIRTIO, 0x03, struct vhost_memory)
 
 /* Write logging setup. */
@@ -103,6 +103,20 @@ struct vhost_memory {
 /* Get accessor: reads index, writes value in num */
 #define VHOST_GET_VRING_BASE _IOWR(VHOST_VIRTIO, 0x12, struct vhost_vring_state)
 
+/* Set the vring byte order in num. Valid values are VHOST_VRING_LITTLE_ENDIAN
+ * or VHOST_VRING_BIG_ENDIAN (other values return -EINVAL).
+ * The byte order cannot be changed while the device is active: trying to do so
+ * returns -EBUSY.
+ * This is a legacy only API that is simply ignored when VIRTIO_F_VERSION_1 is
+ * set.
+ * Not all kernel configurations support this ioctl, but all configurations that
+ * support SET also support GET.
+ */
+#define VHOST_VRING_LITTLE_ENDIAN 0
+#define VHOST_VRING_BIG_ENDIAN 1
+#define VHOST_SET_VRING_ENDIAN _IOW(VHOST_VIRTIO, 0x13, struct vhost_vring_state)
+#define VHOST_GET_VRING_ENDIAN _IOW(VHOST_VIRTIO, 0x14, struct vhost_vring_state)
+
 /* The following ioctls use eventfd file descriptors to signal and poll
  * for events. */
 
@@ -112,6 +126,21 @@ struct vhost_memory {
 #define VHOST_SET_VRING_CALL _IOW(VHOST_VIRTIO, 0x21, struct vhost_vring_file)
 /* Set eventfd to signal an error */
 #define VHOST_SET_VRING_ERR _IOW(VHOST_VIRTIO, 0x22, struct vhost_vring_file)
+
+/* Query upper limit on nregions in VHOST_SET_MEM_TABLE arguments.
+ * Returns:
+ * 	0 < value <= MAX_INT - gives the upper limit, higher values will fail
+ * 	0 - there's no static limit: try and see if it works
+ * 	-1 - on failure
+ */
+#define VHOST_GET_MEM_MAX_NREGIONS   _IO(VHOST_VIRTIO, 0x23)
+
+/* Returned by VHOST_GET_MEM_MAX_NREGIONS to mean there's no static limit:
+ * try and it'll work if you are lucky. */
+#define VHOST_MEM_MAX_NREGIONS_NONE 0
+/* We support at least as many nregions in VHOST_SET_MEM_TABLE:
+ * for use on legacy kernels without VHOST_GET_MEM_MAX_NREGIONS support. */
+#define VHOST_MEM_MAX_NREGIONS_DEFAULT 64
 
 /* VHOST_NET specific defines */
 
