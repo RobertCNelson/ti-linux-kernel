@@ -52,6 +52,11 @@ struct mnt_namespace;
 
 #define MNT_INTERNAL	0x4000
 
+/* These warning options should be removed in a few kernel releases
+ * once userspace has been fixed.
+ */
+#define MNT_WARN_NOSUID		0x010000
+#define MNT_WARN_NOEXEC		0x020000
 #define MNT_LOCK_ATIME		0x040000
 #define MNT_LOCK_NOEXEC		0x080000
 #define MNT_LOCK_NOSUID		0x100000
