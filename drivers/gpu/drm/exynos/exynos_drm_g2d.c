@@ -462,8 +462,10 @@ static dma_addr_t *g2d_userptr_get_dma_addr(struct drm_device *drm_dev,
 	end = PAGE_ALIGN(userptr + size);
 	npages = (end - start) >> PAGE_SHIFT;
 	g2d_userptr->vec = frame_vector_create(npages);
-	if (!vec)
+	if (!g2d_userptr->vec) {
+		ret = -ENOMEM;
 		goto err_free;
+	}
 
 	ret = get_vaddr_frames(start, npages, true, true, g2d_userptr->vec);
 	if (ret != npages) {
