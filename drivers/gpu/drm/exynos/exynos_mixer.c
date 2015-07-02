@@ -739,15 +739,14 @@ static irqreturn_t mixer_irq_handler(int irq, void *arg)
 			atomic_set(&ctx->wait_vsync_event, 0);
 			wake_up(&ctx->wait_vsync_queue);
 		}
-	}
 
 out:
-	/* clear interrupts */
-	if (~val & MXR_INT_EN_VSYNC) {
 		/* vsync interrupt use different bit for read and clear */
-		val &= ~MXR_INT_EN_VSYNC;
+		val &= ~MXR_INT_STATUS_VSYNC;
 		val |= MXR_INT_CLEAR_VSYNC;
 	}
+
+	/* clear interrupts */
 	mixer_reg_write(res, MXR_INT_STATUS, val);
 
 	spin_unlock(&res->reg_slock);
@@ -907,6 +906,7 @@ static int mixer_enable_vblank(struct exynos_drm_crtc *crtc)
 	}
 
 	/* enable vsync interrupt */
+	mixer_reg_write(res, MXR_INT_STATUS, MXR_INT_CLEAR_VSYNC);
 	mixer_reg_writemask(res, MXR_INT_EN, MXR_INT_EN_VSYNC,
 			MXR_INT_EN_VSYNC);
 
