@@ -2341,7 +2341,12 @@ void preempt_notifier_register(struct preempt_notifier *notifier)
 	if (!static_key_false(&preempt_notifier_key))
 		WARN(1, "registering preempt_notifier while notifiers disabled\n");
 
+	/*
+	 * Avoid preemption while changing the preempt notifier list.
+	 */
+	preempt_disable();
 	hlist_add_head(&notifier->link, &current->preempt_notifiers);
+	preempt_enable();
 }
 EXPORT_SYMBOL_GPL(preempt_notifier_register);
 
@@ -2353,7 +2358,12 @@ EXPORT_SYMBOL_GPL(preempt_notifier_register);
  */
 void preempt_notifier_unregister(struct preempt_notifier *notifier)
 {
+	/*
+	 * Avoid preemption while changing the preempt notifier list.
+	 */
+	preempt_disable();
 	hlist_del(&notifier->link);
+	preempt_enable();
 }
 EXPORT_SYMBOL_GPL(preempt_notifier_unregister);
 
