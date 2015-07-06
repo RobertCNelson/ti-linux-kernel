@@ -3221,7 +3221,7 @@ static int strago_quirk_cb(const struct dmi_system_id *id)
 	return 1;
 }
 
-static struct dmi_system_id dmi_platform_intel_braswell[] = {
+static const struct dmi_system_id dmi_platform_intel_braswell[] = {
 	{
 		.ident = "Intel Strago",
 		.callback = strago_quirk_cb,
@@ -3296,7 +3296,7 @@ static int rt5645_i2c_probe(struct i2c_client *i2c,
 		break;
 	default:
 		dev_err(&i2c->dev,
-			"Device with ID register %x is not rt5645 or rt5650\n",
+			"Device with ID register %#x is not rt5645 or rt5650\n",
 			val);
 		return -ENODEV;
 	}
