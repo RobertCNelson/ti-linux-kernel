@@ -537,10 +537,11 @@ static int clk_pixel_set_rate(struct clk_hw *hw, unsigned long rate,
 	int index = qcom_find_src_index(hw, rcg->parent_map, f.src);
 	struct clk *parent = clk_get_parent_by_index(hw->clk, index);
 
+	src_rate = parent_rate;
+
 	for (; frac->num; frac++) {
 		request = (rate * frac->den) / frac->num;
 
-		src_rate = __clk_round_rate(parent, request);
 		if ((src_rate < (request - delta)) ||
 			(src_rate > (request + delta)))
 			continue;
