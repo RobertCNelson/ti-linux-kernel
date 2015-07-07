@@ -18,6 +18,7 @@
  */
 
 #include <linux/clk.h>
+#include <linux/iopoll.h>
 #include <linux/mfd/atmel-hlcdc.h>
 #include <linux/mfd/core.h>
 #include <linux/module.h>
@@ -37,11 +38,41 @@ static const struct mfd_cell atmel_hlcdc_cells[] = {
 	},
 };
 
+static int regmap_atmel_hlcdc_reg_write(void *context, unsigned int reg,
+					unsigned int val)
+{
+	void __iomem *regs = context;
+
+	if (reg <= ATMEL_HLCDC_DIS) {
+		u32 status;
+
+		readl_poll_timeout(regs + ATMEL_HLCDC_SR, status,
+				   !(status & ATMEL_HLCDC_SIP), 1, 100);
+	}
+
+	writel(val, regs + reg);
+
+	return 0;
+}
+
+static int regmap_atmel_hlcdc_reg_read(void *context, unsigned int reg,
+				       unsigned int *val)
+{
+	void __iomem *regs = context;
+
+	*val = readl(regs + reg);
+
+	return 0;
+}
+
 static const struct regmap_config atmel_hlcdc_regmap_config = {
 	.reg_bits = 32,
 	.val_bits = 32,
 	.reg_stride = 4,
 	.max_register = ATMEL_HLCDC_REG_MAX,
+	.reg_write = regmap_atmel_hlcdc_reg_write,
+	.reg_read = regmap_atmel_hlcdc_reg_read,
+	.fast_io = true,
 };
 
 static int atmel_hlcdc_probe(struct platform_device *pdev)
@@ -82,8 +113,8 @@ static int atmel_hlcdc_probe(struct platform_device *pdev)
 		return PTR_ERR(hlcdc->slow_clk);
 	}
 
-	hlcdc->regmap = devm_regmap_init_mmio(dev, regs,
-					      &atmel_hlcdc_regmap_config);
+	hlcdc->regmap = devm_regmap_init(dev, NULL, regs,
+					 &atmel_hlcdc_regmap_config);
 	if (IS_ERR(hlcdc->regmap))
 		return PTR_ERR(hlcdc->regmap);
 
