@@ -457,16 +457,16 @@ static int run_complete_job(struct kcopyd_job *job)
 	return 0;
 }
 
-static void complete_io(unsigned long error, void *context)
+static void complete_io(unsigned long error_bits, void *context)
 {
 	struct kcopyd_job *job = (struct kcopyd_job *) context;
 	struct dm_kcopyd_client *kc = job->kc;
 
 	io_job_finish(kc->throttle);
 
-	if (error) {
+	if (error_bits) {
 		if (job->rw & WRITE)
-			job->write_err |= error;
+			job->write_err |= error_bits;
 		else
 			job->read_err = 1;
 
