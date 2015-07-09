@@ -119,6 +119,13 @@ typedef void (*dm_io_hints_fn) (struct dm_target *ti,
  */
 typedef int (*dm_busy_fn) (struct dm_target *ti);
 
+/*
+ * Returns:
+ *    false: The target has no space that may be allocated.
+ *    true:  The target has space that may be allocated.
+ */
+typedef bool (*dm_has_space_fn) (struct dm_target *ti);
+
 void dm_error(const char *message);
 
 struct dm_dev {
@@ -164,6 +171,7 @@ struct target_type {
 	dm_busy_fn busy;
 	dm_iterate_devices_fn iterate_devices;
 	dm_io_hints_fn io_hints;
+	dm_has_space_fn has_space;
 
 	/* For internal device-mapper use. */
 	struct list_head list;

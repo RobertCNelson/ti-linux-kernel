@@ -1059,6 +1059,9 @@ xfs_buf_iodone_callbacks(
 	if (likely(!bp->b_error))
 		goto do_callbacks;
 
+	if (!bdev_has_space(bp->b_target->bt_bdev))
+		xfs_force_shutdown(mp, SHUTDOWN_REMOTE_REQ);
+
 	/*
 	 * If we've already decided to shutdown the filesystem because of
 	 * I/O errors, there's no point in giving this a retry.
