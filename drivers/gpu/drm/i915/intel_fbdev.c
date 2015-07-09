@@ -89,7 +89,7 @@ static int intel_fbdev_blank(int blank, struct fb_info *info)
 		 * now until we solve this for real.
 		 */
 		mutex_lock(&fb_helper->dev->struct_mutex);
-		intel_fb_obj_invalidate(ifbdev->fb->obj, NULL, ORIGIN_GTT);
+		intel_fb_obj_invalidate(ifbdev->fb->obj, ORIGIN_GTT);
 		mutex_unlock(&fb_helper->dev->struct_mutex);
 	}
 
@@ -115,7 +115,7 @@ static int intel_fbdev_pan_display(struct fb_var_screeninfo *var,
 		 * now until we solve this for real.
 		 */
 		mutex_lock(&fb_helper->dev->struct_mutex);
-		intel_fb_obj_invalidate(ifbdev->fb->obj, NULL, ORIGIN_GTT);
+		intel_fb_obj_invalidate(ifbdev->fb->obj, ORIGIN_GTT);
 		mutex_unlock(&fb_helper->dev->struct_mutex);
 	}
 
@@ -177,7 +177,7 @@ static int intelfb_alloc(struct drm_fb_helper *helper,
 	}
 
 	/* Flush everything out, we'll be doing GTT only from now on */
-	ret = intel_pin_and_fence_fb_obj(NULL, fb, NULL, NULL);
+	ret = intel_pin_and_fence_fb_obj(NULL, fb, NULL, NULL, NULL);
 	if (ret) {
 		DRM_ERROR("failed to pin obj: %d\n", ret);
 		goto out_fb;
