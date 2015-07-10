@@ -541,11 +541,11 @@ static void __relink_lru(struct dm_buffer *b, int dirty)
  * dm-io completion routine. It just calls b->bio.bi_end_io, pretending
  * that the request was handled directly with bio interface.
  */
-static void dmio_complete(unsigned long error, void *context)
+static void dmio_complete(unsigned long error_bits, void *context)
 {
 	struct dm_buffer *b = context;
 
-	b->bio.bi_end_io(&b->bio, error ? -EIO : 0);
+	b->bio.bi_end_io(&b->bio, error_bits ? -EIO : 0);
 }
 
 static void use_dmio(struct dm_buffer *b, int rw, sector_t block,
