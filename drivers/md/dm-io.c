@@ -392,11 +392,11 @@ struct sync_io {
 	struct completion wait;
 };
 
-static void sync_io_complete(unsigned long error, void *context)
+static void sync_io_complete(unsigned long error_bits, void *context)
 {
 	struct sync_io *sio = context;
 
-	sio->error_bits = error;
+	sio->error_bits = error_bits;
 	complete(&sio->wait);
 }
 

@@ -506,7 +506,7 @@ static void hold_bio(struct mirror_set *ms, struct bio *bio)
 /*-----------------------------------------------------------------
  * Reads
  *---------------------------------------------------------------*/
-static void read_callback(unsigned long error, void *context)
+static void read_callback(unsigned long error_bits, void *context)
 {
 	struct bio *bio = context;
 	struct mirror *m;
@@ -514,7 +514,7 @@ static void read_callback(unsigned long error, void *context)
 	m = bio_get_m(bio);
 	bio_set_m(bio, NULL);
 
-	if (likely(!error)) {
+	if (likely(!error_bits)) {
 		bio_endio(bio, 0);
 		return;
 	}
@@ -596,7 +596,7 @@ static void do_reads(struct mirror_set *ms, struct bio_list *reads)
  *---------------------------------------------------------------*/
 
 
-static void write_callback(unsigned long error, void *context)
+static void write_callback(unsigned long error_bits, void *context)
 {
 	unsigned i, ret = 0;
 	struct bio *bio = (struct bio *) context;
@@ -613,7 +613,7 @@ static void write_callback(unsigned long error, void *context)
 	 * This way we handle both writes to SYNC and NOSYNC
 	 * regions with the same code.
 	 */
-	if (likely(!error)) {
+	if (likely(!error_bits)) {
 		bio_endio(bio, ret);
 		return;
 	}
@@ -628,7 +628,7 @@ static void write_callback(unsigned long error, void *context)
 	}
 
 	for (i = 0; i < ms->nr_mirrors; i++)
-		if (test_bit(i, &error))
+		if (test_bit(i, &error_bits))
 			fail_mirror(ms->mirror + i, DM_RAID1_WRITE_ERROR);
 
 	/*
