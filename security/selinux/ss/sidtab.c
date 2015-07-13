@@ -98,7 +98,10 @@ static struct context *sidtab_search_core(struct sidtab *s, u32 sid, int force)
 	if (force && cur && sid == cur->sid && cur->context.len)
 		return &cur->context;
 
-	if (cur == NULL || sid != cur->sid || cur->context.len) {
+	if (cur == NULL || sid != cur->sid)
+		return NULL;
+
+	if (cur->context.len) {
 		/* Remap invalid SIDs to the unlabeled SID. */
 		sid = SECINITSID_UNLABELED;
 		hvalue = SIDTAB_HASH(sid);
