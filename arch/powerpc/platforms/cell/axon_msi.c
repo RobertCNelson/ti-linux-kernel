@@ -390,8 +390,7 @@ static int axon_msi_probe(struct platform_device *device)
 		goto out_free_fifo;
 	}
 
-	irq_set_handler_data(virq, msic);
-	irq_set_chained_handler(virq, axon_msi_cascade);
+	irq_set_chained_handler_and_data(virq, axon_msi_cascade, msic);
 	pr_devel("axon_msi: irq 0x%x setup for axon_msi\n", virq);
 
 	/* Enable the MSIC hardware */

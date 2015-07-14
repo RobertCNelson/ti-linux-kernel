@@ -162,8 +162,7 @@ int __init pq2ads_pci_init_irq(void)
 	}
 
 	priv->host = host;
-	irq_set_handler_data(irq, priv);
-	irq_set_chained_handler(irq, pq2ads_pci_irq_demux);
+	irq_set_chained_handler_and_data(irq, pq2ads_pci_irq_demux, priv);
 
 	of_node_put(np);
 	return 0;
