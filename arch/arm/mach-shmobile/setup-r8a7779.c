@@ -675,6 +675,8 @@ void __init r8a7779_add_standard_devices(void)
 
 void __init r8a7779_add_early_devices(void)
 {
+	shmobile_init_delay();
+
 	early_platform_add_devices(r8a7779_early_devices,
 				   ARRAY_SIZE(r8a7779_early_devices));
 
