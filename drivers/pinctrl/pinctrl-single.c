@@ -1684,7 +1684,7 @@ static void pcs_irq_chain_handler(unsigned int irq, struct irq_desc *desc)
 	struct pcs_soc_data *pcs_soc = irq_desc_get_handler_data(desc);
 	struct irq_chip *chip;
 
-	chip = irq_get_chip(irq);
+	chip = irq_desc_get_chip(desc);
 	chained_irq_enter(chip, desc);
 	pcs_irq_handle(pcs_soc);
 	/* REVISIT: export and add handle_bad_irq(irq, desc)? */
@@ -1767,9 +1767,9 @@ static int pcs_irq_init_chained_handler(struct pcs_device *pcs,
 			return res;
 		}
 	} else {
-		irq_set_handler_data(pcs_soc->irq, pcs_soc);
-		irq_set_chained_handler(pcs_soc->irq,
-					pcs_irq_chain_handler);
+		irq_set_chained_handler_and_data(pcs_soc->irq,
+						 pcs_irq_chain_handler,
+						 pcs_soc);
 	}
 
 	/*
