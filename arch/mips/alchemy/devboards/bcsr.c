@@ -89,9 +89,7 @@ static void bcsr_csc_handler(unsigned int irq, struct irq_desc *d)
 {
 	unsigned short bisr = __raw_readw(bcsr_virt + BCSR_REG_INTSTAT);
 
-	disable_irq_nosync(irq);
 	generic_handle_irq(bcsr_csc_base + __ffs(bisr));
-	enable_irq(irq);
 }
 
 static void bcsr_irq_mask(struct irq_data *d)
