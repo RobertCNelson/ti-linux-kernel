@@ -22,7 +22,7 @@
 
 static struct regmap *regmap;
 
-static struct reg_default max9877_regs[] = {
+static const struct reg_default max9877_regs[] = {
 	{ 0, 0x40 },
 	{ 1, 0x00 },
 	{ 2, 0x00 },
@@ -174,7 +174,6 @@ MODULE_DEVICE_TABLE(i2c, max9877_i2c_id);
 static struct i2c_driver max9877_i2c_driver = {
 	.driver = {
 		.name = "max9877",
-		.owner = THIS_MODULE,
 	},
 	.probe = max9877_i2c_probe,
 	.remove = max9877_i2c_remove,

@@ -117,7 +117,7 @@ WM8996_REGULATOR_EVENT(0)
 WM8996_REGULATOR_EVENT(1)
 WM8996_REGULATOR_EVENT(2)
 
-static struct reg_default wm8996_reg[] = {
+static const struct reg_default wm8996_reg[] = {
 	{ WM8996_POWER_MANAGEMENT_1, 0x0 },
 	{ WM8996_POWER_MANAGEMENT_2, 0x0 },
 	{ WM8996_POWER_MANAGEMENT_3, 0x0 },
@@ -3100,7 +3100,6 @@ MODULE_DEVICE_TABLE(i2c, wm8996_i2c_id);
 static struct i2c_driver wm8996_i2c_driver = {
 	.driver = {
 		.name = "wm8996",
-		.owner = THIS_MODULE,
 	},
 	.probe =    wm8996_i2c_probe,
 	.remove =   wm8996_i2c_remove,

@@ -30,7 +30,7 @@
 #include <asm/div64.h>
 #include "lm49453.h"
 
-static struct reg_default lm49453_reg_defs[] = {
+static const struct reg_default lm49453_reg_defs[] = {
 	{ 0, 0x00 },
 	{ 1, 0x00 },
 	{ 2, 0x00 },
@@ -1456,7 +1456,6 @@ MODULE_DEVICE_TABLE(i2c, lm49453_i2c_id);
 static struct i2c_driver lm49453_i2c_driver = {
 	.driver = {
 		.name = "lm49453",
-		.owner = THIS_MODULE,
 	},
 	.probe = lm49453_i2c_probe,
 	.remove = lm49453_i2c_remove,

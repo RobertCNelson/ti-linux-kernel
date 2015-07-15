@@ -43,7 +43,7 @@ struct da732x_priv {
 /*
  * da732x register cache - default settings
  */
-static struct reg_default da732x_reg_cache[] = {
+static const struct reg_default da732x_reg_cache[] = {
 	{ DA732X_REG_REF1		, 0x02 },
 	{ DA732X_REG_BIAS_EN		, 0x80 },
 	{ DA732X_REG_BIAS1		, 0x00 },
@@ -1566,7 +1566,6 @@ MODULE_DEVICE_TABLE(i2c, da732x_i2c_id);
 static struct i2c_driver da732x_i2c_driver = {
 	.driver		= {
 		.name	= "da7320",
-		.owner	= THIS_MODULE,
 	},
 	.probe		= da732x_i2c_probe,
 	.remove		= da732x_i2c_remove,

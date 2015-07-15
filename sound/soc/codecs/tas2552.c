@@ -38,7 +38,7 @@
 
 #include "tas2552.h"
 
-static struct reg_default tas2552_reg_defs[] = {
+static const struct reg_default tas2552_reg_defs[] = {
 	{TAS2552_CFG_1, 0x22},
 	{TAS2552_CFG_3, 0x80},
 	{TAS2552_DOUT, 0x00},
@@ -769,7 +769,6 @@ MODULE_DEVICE_TABLE(of, tas2552_of_match);
 static struct i2c_driver tas2552_i2c_driver = {
 	.driver = {
 		.name = "tas2552",
-		.owner = THIS_MODULE,
 		.of_match_table = of_match_ptr(tas2552_of_match),
 		.pm = &tas2552_pm,
 	},

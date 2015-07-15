@@ -38,7 +38,7 @@
 #define RT288_VENDOR_ID 0x10ec0288
 
 struct rt286_priv {
-	struct reg_default *index_cache;
+	const struct reg_default *index_cache;
 	int index_cache_size;
 	struct regmap *regmap;
 	struct snd_soc_codec *codec;
@@ -50,7 +50,7 @@ struct rt286_priv {
 	int clk_id;
 };
 
-static struct reg_default rt286_index_def[] = {
+static const struct reg_default rt286_index_def[] = {
 	{ 0x01, 0xaaaa },
 	{ 0x02, 0x8aaa },
 	{ 0x03, 0x0002 },
@@ -1259,7 +1259,6 @@ static int rt286_i2c_remove(struct i2c_client *i2c)
 static struct i2c_driver rt286_i2c_driver = {
 	.driver = {
 		   .name = "rt286",
-		   .owner = THIS_MODULE,
 		   .acpi_match_table = ACPI_PTR(rt286_acpi_match),
 		   },
 	.probe = rt286_i2c_probe,
