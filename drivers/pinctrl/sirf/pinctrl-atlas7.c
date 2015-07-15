@@ -4294,6 +4294,7 @@ static void atlas7_gpio_handle_irq(unsigned int __irq, struct irq_desc *desc)
 	u32 status, ctrl;
 	int pin_in_bank = 0, idx;
 	struct irq_chip *chip = irq_desc_get_chip(desc);
+	unsigned int irq = irq_desc_get_irq(desc);
 
 	for (idx = 0; idx < a7gc->nbank; idx++) {
 		bank = &a7gc->banks[idx];
