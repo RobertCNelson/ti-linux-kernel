@@ -733,9 +733,9 @@ static int msm_gpio_irq_set_type(struct irq_data *d, unsigned int type)
 	spin_unlock_irqrestore(&pctrl->lock, flags);
 
 	if (type & (IRQ_TYPE_LEVEL_LOW | IRQ_TYPE_LEVEL_HIGH))
-		__irq_set_handler_locked(d->irq, handle_level_irq);
+		irq_set_handler_locked(d, handle_level_irq);
 	else if (type & (IRQ_TYPE_EDGE_FALLING | IRQ_TYPE_EDGE_RISING))
-		__irq_set_handler_locked(d->irq, handle_edge_irq);
+		irq_set_handler_locked(d, handle_edge_irq);
 
 	return 0;
 }
@@ -764,12 +764,13 @@ static struct irq_chip msm_gpio_irq_chip = {
 	.irq_set_wake   = msm_gpio_irq_set_wake,
 };
 
-static void msm_gpio_irq_handler(unsigned int irq, struct irq_desc *desc)
+static void msm_gpio_irq_handler(unsigned int __irq, struct irq_desc *desc)
 {
+	unsigned int irq = irq_desc_get_irq(desc);
 	struct gpio_chip *gc = irq_desc_get_handler_data(desc);
 	const struct msm_pingroup *g;
 	struct msm_pinctrl *pctrl = to_msm_pinctrl(gc);
-	struct irq_chip *chip = irq_get_chip(irq);
+	struct irq_chip *chip = irq_desc_get_chip(desc);
 	int irq_pin;
 	int handled = 0;
 	u32 val;

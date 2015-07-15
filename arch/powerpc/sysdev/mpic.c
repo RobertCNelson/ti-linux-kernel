@@ -1665,8 +1665,8 @@ void __init mpic_init(struct mpic *mpic)
 		if (virq != NO_IRQ) {
 			printk(KERN_INFO "%s: hooking up to IRQ %d\n",
 					mpic->node->full_name, virq);
-			irq_set_handler_data(virq, mpic);
-			irq_set_chained_handler(virq, &mpic_cascade);
+			irq_set_chained_handler_and_data(virq, &mpic_cascade,
+						         mpic);
 		}
 	}
 

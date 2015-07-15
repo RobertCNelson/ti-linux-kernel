@@ -212,9 +212,9 @@ void hlwd_pic_probe(void)
 			host = hlwd_pic_init(np);
 			BUG_ON(!host);
 			cascade_virq = irq_of_parse_and_map(np, 0);
-			irq_set_handler_data(cascade_virq, host);
-			irq_set_chained_handler(cascade_virq,
-						hlwd_pic_irq_cascade);
+			irq_set_chained_handler_and_data(cascade_virq,
+							 hlwd_pic_irq_cascade,
+							 host);
 			hlwd_irq_host = host;
 			break;
 		}
