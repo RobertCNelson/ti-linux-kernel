@@ -2285,15 +2285,17 @@ static void do_waker(struct work_struct *ws)
 /*
  * We're holding onto IO to allow userland time to react.  After the
  * timeout either the pool will have been resized (and thus back in
- * PM_WRITE mode), or we degrade to PM_READ_ONLY and start erroring IO.
+ * PM_WRITE mode), or we degrade to PM_OUT_OF_DATA_SPACE w/ error_if_no_space.
  */
 static void do_no_space_timeout(struct work_struct *ws)
 {
 	struct pool *pool = container_of(to_delayed_work(ws), struct pool,
 					 no_space_timeout);
 
-	if (get_pool_mode(pool) == PM_OUT_OF_DATA_SPACE && !pool->pf.error_if_no_space)
-		set_pool_mode(pool, PM_READ_ONLY);
+	if (get_pool_mode(pool) == PM_OUT_OF_DATA_SPACE && !pool->pf.error_if_no_space) {
+		pool->pf.error_if_no_space = true;
+		set_pool_mode(pool, PM_OUT_OF_DATA_SPACE);
+	}
 }
 
 /*----------------------------------------------------------------*/
@@ -2454,15 +2456,22 @@ static void set_pool_mode(struct pool *pool, enum pool_mode new_mode)
 		 * alarming rate.  Adjust your low water mark if you're
 		 * frequently seeing this mode.
 		 */
-		if (old_mode != new_mode)
-			notify_of_pool_mode_change(pool, "out-of-data-space");
+		if (old_mode != new_mode ||
+		    pool->pf.error_if_no_space != pt->requested_pf.error_if_no_space) {
+			if (!pool->pf.error_if_no_space)
+				notify_of_pool_mode_change(pool, "out-of-data-space");
+			else
+				notify_of_pool_mode_change(pool, "out-of-data-space (error IOs)");
+		}
 		pool->process_bio = process_bio_read_only;
 		pool->process_discard = process_discard_bio;
 		pool->process_cell = process_cell_read_only;
 		pool->process_prepared_mapping = process_prepared_mapping;
 		set_discard_callbacks(pool);
 
-		if (!pool->pf.error_if_no_space && no_space_timeout)
+		if (pool->pf.error_if_no_space)
+			error_retry_list(pool);
+		else if (no_space_timeout)
 			queue_delayed_work(pool->wq, &pool->no_space_timeout, no_space_timeout);
 		break;
 
