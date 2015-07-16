@@ -122,9 +122,12 @@ u32 fsnotify_recalc_mask(struct hlist_head *head)
 }
 
 /*
- * Any time a mark is getting freed we end up here.
- * The caller had better be holding a reference to this mark so we don't actually
- * do the final put under the mark->lock
+ * Any time a mark is getting freed we end up here. We remove mark from
+ * inode / vfsmount list so that it cannot be found by new events, from the
+ * group list so that functions manipulating group cannot touch it, and queue
+ * it for further processing by notification kthread. We are still holding
+ * initial mark reference which gets dropped by the notification kthread once
+ * it's done destroying the mark.
  */
 void fsnotify_destroy_mark_locked(struct fsnotify_mark *mark,
 				  struct fsnotify_group *group)
@@ -152,31 +155,10 @@ void fsnotify_destroy_mark_locked(struct fsnotify_mark *mark,
 		BUG();
 
 	list_del_init(&mark->g_list);
-
 	spin_unlock(&mark->lock);
 
 	if (inode && (mark->flags & FSNOTIFY_MARK_FLAG_OBJECT_PINNED))
 		iput(inode);
-	/* release lock temporarily */
-	mutex_unlock(&group->mark_mutex);
-
-	spin_lock(&destroy_lock);
-	list_add(&mark->g_list, &destroy_list);
-	spin_unlock(&destroy_lock);
-	wake_up(&destroy_waitq);
-	/*
-	 * We don't necessarily have a ref on mark from caller so the above destroy
-	 * may have actually freed it, unless this group provides a 'freeing_mark'
-	 * function which must be holding a reference.
-	 */
-
-	/*
-	 * Some groups like to know that marks are being freed.  This is a
-	 * callback to the group function to let it know that this mark
-	 * is being freed.
-	 */
-	if (group->ops->freeing_mark)
-		group->ops->freeing_mark(mark, group);
 
 	/*
 	 * __fsnotify_update_child_dentry_flags(inode);
@@ -189,10 +171,13 @@ void fsnotify_destroy_mark_locked(struct fsnotify_mark *mark,
 	 * children and will update all of these flags then.  So really this
 	 * is just a lazy update (and could be a perf win...)
 	 */
-
 	atomic_dec(&group->num_marks);
 
-	mutex_lock_nested(&group->mark_mutex, SINGLE_DEPTH_NESTING);
+	/* Queue for further destruction by kthread */
+	spin_lock(&destroy_lock);
+	list_add(&mark->g_list, &destroy_list);
+	spin_unlock(&destroy_lock);
+	wake_up(&destroy_waitq);
 }
 
 void fsnotify_destroy_mark(struct fsnotify_mark *mark,
@@ -205,7 +190,10 @@ void fsnotify_destroy_mark(struct fsnotify_mark *mark,
 
 /*
  * Destroy all marks in the given list. The marks must be already detached from
- * the original inode / vfsmount.
+ * the original inode / vfsmount. Note that we can race with
+ * fsnotify_clear_marks_by_group_flags(). However we hold a reference to each
+ * mark so they won't get freed from under us and nobody else touches our
+ * free_list list_head.
  */
 void fsnotify_destroy_marks(struct list_head *to_free)
 {
@@ -406,7 +394,7 @@ struct fsnotify_mark *fsnotify_find_mark(struct hlist_head *head,
 }
 
 /*
- * clear any marks in a group in which mark->flags & flags is true
+ * Clear any marks in a group in which mark->flags & flags is true.
  */
 void fsnotify_clear_marks_by_group_flags(struct fsnotify_group *group,
 					 unsigned int flags)
@@ -415,11 +403,8 @@ void fsnotify_clear_marks_by_group_flags(struct fsnotify_group *group,
 
 	mutex_lock_nested(&group->mark_mutex, SINGLE_DEPTH_NESTING);
 	list_for_each_entry_safe(mark, lmark, &group->marks_list, g_list) {
-		if (mark->flags & flags) {
-			fsnotify_get_mark(mark);
+		if (mark->flags & flags)
 			fsnotify_destroy_mark_locked(mark, group);
-			fsnotify_put_mark(mark);
-		}
 	}
 	mutex_unlock(&group->mark_mutex);
 }
@@ -460,6 +445,7 @@ static int fsnotify_mark_destroy(void *ignored)
 {
 	struct fsnotify_mark *mark, *next;
 	struct list_head private_destroy_list;
+	struct fsnotify_group *group;
 
 	for (;;) {
 		spin_lock(&destroy_lock);
@@ -471,6 +457,14 @@ static int fsnotify_mark_destroy(void *ignored)
 
 		list_for_each_entry_safe(mark, next, &private_destroy_list, g_list) {
 			list_del_init(&mark->g_list);
+			group = mark->group;
+			/*
+			 * Some groups like to know that marks are being freed.
+			 * This is a callback to the group function to let it
+			 * know that this mark is being freed.
+			 */
+			if (group && group->ops->freeing_mark)
+				group->ops->freeing_mark(mark, group);
 			fsnotify_put_mark(mark);
 		}
 

@@ -146,7 +146,7 @@ static int hwpoison_filter_task(struct page *p)
 	if (!mem)
 		return -EINVAL;
 
-	css = mem_cgroup_css(mem);
+	css = &mem->css;
 	ino = cgroup_ino(css->cgroup);
 	css_put(css);
 
@@ -1159,7 +1159,7 @@ int memory_failure(unsigned long pfn, int trapno, int flags)
 	/*
 	 * We ignore non-LRU pages for good reasons.
 	 * - PG_locked is only well defined for LRU pages and a few others
-	 * - to avoid races with __set_page_locked()
+	 * - to avoid races with __SetPageLocked()
 	 * - to avoid races with __SetPageSlab*() (and more non-atomic ops)
 	 * The check (unnecessarily) ignores LRU pages being isolated and
 	 * walked by the page reclaim code, however that's not a big loss.
