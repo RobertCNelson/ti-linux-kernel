@@ -8,6 +8,7 @@
 #include <linux/errno.h>
 #include <linux/kernel.h>
 #include <linux/stddef.h>
+#include <linux/module.h>
 
 #define KSYM_NAME_LEN 128
 #define KSYM_SYMBOL_LEN (sizeof("%s+%#lx/%#lx [%s]") + (KSYM_NAME_LEN - 1) + \
@@ -20,9 +21,7 @@ struct module;
 unsigned long kallsyms_lookup_name(const char *name);
 
 /* Call a function on each kallsyms symbol in the core kernel */
-int kallsyms_on_each_symbol(int (*fn)(void *, const char *, struct module *,
-				      unsigned long),
-			    void *data);
+int kallsyms_on_each_symbol(kallsyms_cmp_symbol_t fn, void *data);
 
 extern int kallsyms_lookup_size_offset(unsigned long addr,
 				  unsigned long *symbolsize,
@@ -52,10 +51,7 @@ static inline unsigned long kallsyms_lookup_name(const char *name)
 	return 0;
 }
 
-static inline int kallsyms_on_each_symbol(int (*fn)(void *, const char *,
-						    struct module *,
-						    unsigned long),
-					  void *data)
+static inline int kallsyms_on_each_symbol(kallsyms_cmp_symbol_t fn, void *data)
 {
 	return 0;
 }
