@@ -63,6 +63,7 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_BT_SCO
 	select SND_SOC_ES8328_SPI if SPI_MASTER
 	select SND_SOC_ES8328_I2C if I2C
+	select SND_SOC_GTM601
 	select SND_SOC_ISABELLE if I2C
 	select SND_SOC_JZ4740_CODEC
 	select SND_SOC_LM4857 if I2C
@@ -84,6 +85,7 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_PCM512x_I2C if I2C
 	select SND_SOC_PCM512x_SPI if SPI_MASTER
 	select SND_SOC_RT286 if I2C
+	select SND_SOC_RT298 if I2C
 	select SND_SOC_RT5631 if I2C
 	select SND_SOC_RT5640 if I2C
 	select SND_SOC_RT5645 if I2C
@@ -452,6 +454,9 @@ config SND_SOC_ES8328_SPI
 	tristate
 	select SND_SOC_ES8328
 
+config SND_SOC_GTM601
+	tristate 'GTM601 UMTS modem audio codec'
+
 config SND_SOC_ISABELLE
         tristate
 
@@ -518,9 +523,15 @@ config SND_SOC_RL6231
 config SND_SOC_RL6347A
 	tristate
 	default y if SND_SOC_RT286=y
+	default y if SND_SOC_RT298=y
 	default m if SND_SOC_RT286=m
+	default m if SND_SOC_RT298=m
 
 config SND_SOC_RT286
+	tristate
+	depends on I2C
+
+config SND_SOC_RT298
 	tristate
 	depends on I2C
 
