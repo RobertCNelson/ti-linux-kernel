@@ -100,7 +100,6 @@ struct pm800_regulators {
 		.ops			= &pm800_volt_range_ops,	\
 		.type			= REGULATOR_VOLTAGE,		\
 		.id			= PM800_ID_##vreg,		\
-		.owner			= THIS_MODULE,			\
 		.n_voltages		= n_volt,			\
 		.linear_ranges		= volt_ranges,			\
 		.n_linear_ranges	= ARRAY_SIZE(volt_ranges),	\
@@ -130,7 +129,6 @@ struct pm800_regulators {
 		.ops			= &pm800_volt_table_ops,	\
 		.type			= REGULATOR_VOLTAGE,		\
 		.id			= PM800_ID_##vreg,		\
-		.owner			= THIS_MODULE,			\
 		.n_voltages		= ARRAY_SIZE(ldo_volt_table),	\
 		.vsel_reg		= PM800_##vreg##_VOUT,		\
 		.vsel_mask		= 0x1f,				\
