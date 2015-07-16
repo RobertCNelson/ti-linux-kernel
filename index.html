@@ -1,0 +1,16 @@
+diff --git a/arch/mips/alchemy/devboards/bcsr.c b/arch/mips/alchemy/devboards/bcsr.c
+index 3a24f2d6ecfd..ec47abe580c6 100644
+--- a/arch/mips/alchemy/devboards/bcsr.c
++++ b/arch/mips/alchemy/devboards/bcsr.c
+@@ -88,8 +88,11 @@ EXPORT_SYMBOL_GPL(bcsr_mod);
+ static void bcsr_csc_handler(unsigned int irq, struct irq_desc *d)
+ {
+	unsigned short bisr = __raw_readw(bcsr_virt + BCSR_REG_INTSTAT);
++	struct irq_chip *chip = irq_desc_get_chip(d);
+
++	chained_irq_enter(chip, d);
+	generic_handle_irq(bcsr_csc_base + __ffs(bisr));
++	chained_irq_exit(chip, d);
+ }
+
+ static void bcsr_irq_mask(struct irq_data *d)
