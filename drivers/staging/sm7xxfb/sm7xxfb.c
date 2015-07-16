@@ -1456,6 +1456,14 @@ static int smtcfb_pci_probe(struct pci_dev *pdev,
 #else
 		sfb->lfb = ioremap(mmio_base, 0x00800000);
 #endif
+		if (!sfb->lfb) {
+			dev_err(&pdev->dev,
+				"%s: unable to map memory mapped IO!\n",
+				sfb->fb->fix.id);
+			err = -ENOMEM;
+			goto failed_fb;
+		}
+
 		sfb->mmio = (smtc_regbaseaddress =
 		    sfb->lfb + 0x00700000);
 		sfb->dp_regs = sfb->lfb + 0x00408000;
@@ -1466,13 +1474,6 @@ static int smtcfb_pci_probe(struct pci_dev *pdev,
 			dev_info(&pdev->dev, "sfb->lfb=%p\n", sfb->lfb);
 		}
 #endif
-		if (!smtc_regbaseaddress) {
-			dev_err(&pdev->dev,
-				"%s: unable to map memory mapped IO!\n",
-				sfb->fb->fix.id);
-			err = -ENOMEM;
-			goto failed_fb;
-		}
 
 		/* set MCLK = 14.31818 * (0x16 / 0x2) */
 		smtc_seqw(0x6a, 0x16);
@@ -1659,14 +1660,12 @@ static struct pci_driver smtcfb_driver = {
 
 static int __init sm712fb_init(void)
 {
-#ifndef MODULE
 	char *option = NULL;
 
 	if (fb_get_options("sm712fb", &option))
 		return -ENODEV;
 	if (option && *option)
 		mode_option = option;
-#endif
 	sm7xx_vga_setup(mode_option);
 
 	return pci_register_driver(&smtcfb_driver);

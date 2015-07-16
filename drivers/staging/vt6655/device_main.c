@@ -758,9 +758,7 @@ static void device_free_td0_ring(struct vnt_private *pDevice)
 			dma_unmap_single(&pDevice->pcid->dev, pTDInfo->skb_dma,
 					 pTDInfo->skb->len, DMA_TO_DEVICE);
 
-		if (pTDInfo->skb)
-			dev_kfree_skb(pTDInfo->skb);
-
+		dev_kfree_skb(pTDInfo->skb);
 		kfree(pDesc->pTDInfo);
 	}
 }
@@ -777,9 +775,7 @@ static void device_free_td1_ring(struct vnt_private *pDevice)
 			dma_unmap_single(&pDevice->pcid->dev, pTDInfo->skb_dma,
 					 pTDInfo->skb->len, DMA_TO_DEVICE);
 
-		if (pTDInfo->skb)
-			dev_kfree_skb(pTDInfo->skb);
-
+		dev_kfree_skb(pTDInfo->skb);
 		kfree(pDesc->pTDInfo);
 	}
 }
@@ -1210,9 +1206,6 @@ static int vnt_tx_packet(struct vnt_private *priv, struct sk_buff *skb)
 	spin_unlock_irqrestore(&priv->lock, flags);
 
 	vnt_generate_fifo_header(priv, dma_idx, head_td, skb);
-
-	if (MACbIsRegBitsOn(priv->PortOffset, MAC_REG_PSCTL, PSCTL_PS))
-		MACbPSWakeup(priv->PortOffset);
 
 	spin_lock_irqsave(&priv->lock, flags);
 
@@ -1811,6 +1804,7 @@ vt6655_probe(struct pci_dev *pcid, const struct pci_device_id *ent)
 	ieee80211_hw_set(priv->hw, SIGNAL_DBM);
 	ieee80211_hw_set(priv->hw, RX_INCLUDES_FCS);
 	ieee80211_hw_set(priv->hw, REPORTS_TX_ACK_STATUS);
+	ieee80211_hw_set(priv->hw, SUPPORTS_PS);
 
 	priv->hw->max_signal = 100;
 
