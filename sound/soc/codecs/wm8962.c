@@ -113,7 +113,7 @@ WM8962_REGULATOR_EVENT(5)
 WM8962_REGULATOR_EVENT(6)
 WM8962_REGULATOR_EVENT(7)
 
-static struct reg_default wm8962_reg[] = {
+static const struct reg_default wm8962_reg[] = {
 	{ 0, 0x009F },   /* R0     - Left Input volume */
 	{ 1, 0x049F },   /* R1     - Right Input volume */
 	{ 2, 0x0000 },   /* R2     - HPOUTL volume */
@@ -3878,7 +3878,6 @@ MODULE_DEVICE_TABLE(of, wm8962_of_match);
 static struct i2c_driver wm8962_i2c_driver = {
 	.driver = {
 		.name = "wm8962",
-		.owner = THIS_MODULE,
 		.of_match_table = wm8962_of_match,
 		.pm = &wm8962_pm,
 	},

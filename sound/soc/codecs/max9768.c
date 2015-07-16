@@ -35,7 +35,7 @@ struct max9768 {
 	u32 flags;
 };
 
-static struct reg_default max9768_default_regs[] = {
+static const struct reg_default max9768_default_regs[] = {
 	{ 0, 0 },
 	{ 3,  MAX9768_CTRL_FILTERLESS},
 };
@@ -242,7 +242,6 @@ MODULE_DEVICE_TABLE(i2c, max9768_i2c_id);
 static struct i2c_driver max9768_i2c_driver = {
 	.driver = {
 		.name = "max9768",
-		.owner = THIS_MODULE,
 	},
 	.probe = max9768_i2c_probe,
 	.remove = max9768_i2c_remove,
