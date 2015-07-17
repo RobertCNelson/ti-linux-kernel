@@ -403,14 +403,16 @@ static int imx1_pinconf_set(struct pinctrl_dev *pctldev,
 			     unsigned num_configs)
 {
 	struct imx1_pinctrl *ipctl = pinctrl_dev_get_drvdata(pctldev);
-	const struct imx1_pinctrl_soc_info *info = ipctl->info;
+	struct pin_desc *desc;
 	int i;
+
+	desc = pin_desc_get(pctldev, pin_id);
 
 	for (i = 0; i != num_configs; ++i) {
 		imx1_write_bit(ipctl, pin_id, configs[i] & 0x01, MX1_PUEN);
 
 		dev_dbg(ipctl->dev, "pinconf set pullup pin %s\n",
-			info->pins[pin_id].name);
+			desc->name);
 	}
 
 	return 0;
