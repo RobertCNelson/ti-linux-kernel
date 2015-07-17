@@ -32,8 +32,6 @@
 #include <linux/irqchip.h>
 #include <linux/irqchip/chained_irq.h>
 
-#include "irqchip.h"
-
 /* Register offsets in the L2 interrupt controller */
 #define CPU_STATUS	0x00
 #define CPU_SET		0x04
@@ -172,8 +170,8 @@ int __init brcmstb_l2_intc_of_init(struct device_node *np,
 	}
 
 	/* Set the IRQ chaining logic */
-	irq_set_handler_data(data->parent_irq, data);
-	irq_set_chained_handler(data->parent_irq, brcmstb_l2_intc_irq_handle);
+	irq_set_chained_handler_and_data(data->parent_irq,
+					 brcmstb_l2_intc_irq_handle, data);
 
 	gc = irq_get_domain_generic_chip(data->domain, 0);
 	gc->reg_base = data->base;
