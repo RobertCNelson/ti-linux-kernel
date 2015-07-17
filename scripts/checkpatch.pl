@@ -5020,11 +5020,20 @@ sub process {
 			}
 		}
 
-# check for expedited grace periods that interrupt CPUs.
-# note that synchronize_srcu_expedited() does -not- do this, so no complaints.
+# Check for expedited grace periods that interrupt non-idle non-nohz
+# online CPUs.  These expedited can therefore degrade real-time response
+# if used carelessly, and should be avoided where not absolutely
+# needed.  It is always OK to use synchronize_rcu_expedited() and
+# synchronize_sched_expedited() at boot time (before real-time applications
+# start) and in error situations where real-time response is compromised in
+# any case.  Note that synchronize_srcu_expedited() does -not- interrupt
+# other CPUs, so don't warn on uses of synchronize_srcu_expedited().
+# Of course, nothing comes for free, and srcu_read_lock() and
+# srcu_read_unlock() do contain full memory barriers in payment for
+# synchronize_srcu_expedited() non-interruption properties.
 		if ($line =~ /\b(synchronize_rcu_expedited|synchronize_sched_expedited)\(/) {
 			WARN("EXPEDITED_RCU_GRACE_PERIOD",
-			     "expedited RCU grace periods should be avoided\n" . $herecurr);
+			     "expedited RCU grace periods should be avoided in cases where they can degrade real-time response\n" . $herecurr);
 
 		}
 
