@@ -166,7 +166,7 @@ static const struct wm_adsp_region wm2200_dsp2_regions[] = {
 	{ .type = WMFW_ADSP1_ZM, .base = WM2200_DSP2_ZM_BASE },
 };
 
-static struct reg_default wm2200_reg_defaults[] = {
+static const struct reg_default wm2200_reg_defaults[] = {
 	{ 0x000B, 0x0000 },   /* R11    - Tone Generator 1 */
 	{ 0x0102, 0x0000 },   /* R258   - Clocking 3 */
 	{ 0x0103, 0x0011 },   /* R259   - Clocking 4 */
@@ -2495,7 +2495,6 @@ MODULE_DEVICE_TABLE(i2c, wm2200_i2c_id);
 static struct i2c_driver wm2200_i2c_driver = {
 	.driver = {
 		.name = "wm2200",
-		.owner = THIS_MODULE,
 		.pm = &wm2200_pm,
 	},
 	.probe =    wm2200_i2c_probe,
