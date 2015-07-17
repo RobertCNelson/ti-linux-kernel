@@ -287,6 +287,9 @@ int gpiochip_add(struct gpio_chip *chip)
 	INIT_LIST_HEAD(&chip->pin_ranges);
 #endif
 
+	if (!chip->owner && chip->dev && chip->dev->driver)
+		chip->owner = chip->dev->driver->owner;
+
 	of_gpiochip_add(chip);
 	acpi_gpiochip_add(chip);
 
@@ -522,10 +525,14 @@ static int gpiochip_irq_reqres(struct irq_data *d)
 {
 	struct gpio_chip *chip = irq_data_get_irq_chip_data(d);
 
+	if (!try_module_get(chip->owner))
+		return -ENODEV;
+
 	if (gpiochip_lock_as_irq(chip, d->hwirq)) {
 		chip_err(chip,
 			"unable to lock HW IRQ %lu for IRQ\n",
 			d->hwirq);
+		module_put(chip->owner);
 		return -EINVAL;
 	}
 	return 0;
@@ -536,6 +543,7 @@ static void gpiochip_irq_relres(struct irq_data *d)
 	struct gpio_chip *chip = irq_data_get_irq_chip_data(d);
 
 	gpiochip_unlock_as_irq(chip, d->hwirq);
+	module_put(chip->owner);
 }
 
 static int gpiochip_to_irq(struct gpio_chip *chip, unsigned offset)
@@ -671,7 +679,7 @@ static void gpiochip_irqchip_remove(struct gpio_chip *gpiochip) {}
 /**
  * gpiochip_add_pingroup_range() - add a range for GPIO <-> pin mapping
  * @chip: the gpiochip to add the range for
- * @pinctrl: the dev_name() of the pin controller to map to
+ * @pctldev: the pin controller to map to
  * @gpio_offset: the start offset in the current gpio_chip number space
  * @pin_group: name of the pin group inside the pin controller
  */
