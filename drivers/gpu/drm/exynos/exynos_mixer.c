@@ -718,6 +718,10 @@ static irqreturn_t mixer_irq_handler(int irq, void *arg)
 
 	/* handling VSYNC */
 	if (val & MXR_INT_STATUS_VSYNC) {
+		/* vsync interrupt use different bit for read and clear */
+		val |= MXR_INT_CLEAR_VSYNC;
+		val &= ~MXR_INT_STATUS_VSYNC;
+
 		/* interlace scan need to check shadow register */
 		if (ctx->interlace) {
 			base = mixer_reg_read(res, MXR_GRAPHIC_BASE(0));
