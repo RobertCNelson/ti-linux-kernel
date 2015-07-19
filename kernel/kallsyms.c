@@ -193,9 +193,7 @@ unsigned long kallsyms_lookup_name(const char *name)
 }
 EXPORT_SYMBOL_GPL(kallsyms_lookup_name);
 
-int kallsyms_on_each_symbol(int (*fn)(void *, const char *, struct module *,
-				      unsigned long),
-			    void *data)
+int kallsyms_on_each_symbol(kallsyms_cmp_symbol_t fn, void *data)
 {
 	char namebuf[KSYM_NAME_LEN];
 	unsigned long i;
