@@ -546,14 +546,14 @@ const struct kernel_symbol *find_symbol(const char *name,
 					bool gplok,
 					bool warn);
 
+typedef bool (*find_symbol_in_section_t)(const struct symsearch *arr,
+		struct module *owner, void *data);
 /*
  * Walk the exported symbol table
  *
  * Must be called with module_mutex held or preemption disabled.
  */
-bool each_symbol_section(bool (*fn)(const struct symsearch *arr,
-				    struct module *owner,
-				    void *data), void *data);
+bool each_symbol_section(find_symbol_in_section_t fn, void *data);
 
 /* Returns 0 and fills in value, defined and namebuf, or -ERANGE if
    symnum out of range. */

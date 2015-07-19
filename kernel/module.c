@@ -426,9 +426,7 @@ extern const unsigned long __start___kcrctab_unused_gpl[];
 static bool each_symbol_in_section(const struct symsearch *arr,
 				   unsigned int arrsize,
 				   struct module *owner,
-				   bool (*fn)(const struct symsearch *syms,
-					      struct module *owner,
-					      void *data),
+				   find_symbol_in_section_t fn,
 				   void *data)
 {
 	unsigned int j;
@@ -442,10 +440,7 @@ static bool each_symbol_in_section(const struct symsearch *arr,
 }
 
 /* Returns true as soon as fn returns true, otherwise false. */
-bool each_symbol_section(bool (*fn)(const struct symsearch *arr,
-				    struct module *owner,
-				    void *data),
-			 void *data)
+bool each_symbol_section(find_symbol_in_section_t fn, void *data)
 {
 	struct module *mod;
 	static const struct symsearch arr[] = {
