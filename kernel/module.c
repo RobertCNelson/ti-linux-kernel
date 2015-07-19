@@ -3811,9 +3811,7 @@ unsigned long module_kallsyms_lookup_name(const char *name)
 	return ret;
 }
 
-int module_kallsyms_on_each_symbol(int (*fn)(void *, const char *,
-					     struct module *, unsigned long),
-				   void *data)
+int module_kallsyms_on_each_symbol(kallsyms_cmp_symbol_t fn, void *data)
 {
 	struct module *mod;
 	unsigned int i;
