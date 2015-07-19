@@ -273,6 +273,9 @@ const struct exception_table_entry *search_exception_tables(unsigned long add);
 
 struct notifier_block;
 
+typedef int (*kallsyms_cmp_symbol_t)(void *, const char *,
+		struct module *, unsigned long);
+
 #ifdef CONFIG_MODULES
 
 extern int modules_disabled; /* for sysctl */
@@ -562,9 +565,6 @@ int module_get_kallsym(unsigned int symnum, unsigned long *value, char *type,
 
 /* Look for this name: can be of form module:name. */
 unsigned long module_kallsyms_lookup_name(const char *name);
-
-typedef int (*kallsyms_cmp_symbol_t)(void *, const char *,
-		struct module *, unsigned long);
 
 int module_kallsyms_on_each_symbol(kallsyms_cmp_symbol_t fn, void *data);
 
