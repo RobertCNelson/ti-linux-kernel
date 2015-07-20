@@ -1760,7 +1760,8 @@ static int pcs_irq_init_chained_handler(struct pcs_device *pcs,
 		int res;
 
 		res = request_irq(pcs_soc->irq, pcs_irq_handler,
-				  IRQF_SHARED | IRQF_NO_SUSPEND,
+				  IRQF_SHARED | IRQF_NO_SUSPEND |
+				  IRQF_NO_THREAD,
 				  name, pcs_soc);
 		if (res) {
 			pcs_soc->irq = -1;
@@ -1982,7 +1983,6 @@ static const struct pcs_soc_data pinctrl_single_omap_wkup = {
 };
 
 static const struct pcs_soc_data pinctrl_single_dra7 = {
-	.flags = PCS_QUIRK_SHARED_IRQ,
 	.irq_enable_mask = (1 << 24),	/* WAKEUPENABLE */
 	.irq_status_mask = (1 << 25),	/* WAKEUPEVENT */
 };

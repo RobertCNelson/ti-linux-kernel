@@ -231,10 +231,6 @@
 					 */
 					gpio26 {
 						gpio26_default_mode: gpio26_default {
-							default_mux {
-								function = "gpio";
-								groups = "gpio26_d_1";
-							};
 							default_cfg {
 								pins = "GPIO26_M16";
 								output-low;
