@@ -579,6 +579,8 @@
 
 #define MIPS_CONF7_IAR		(_ULCAST_(1) << 10)
 #define MIPS_CONF7_AR		(_ULCAST_(1) << 16)
+/* FTLB probability bits for R6 */
+#define MIPS_CONF7_FTLBP_SHIFT	(18)
 
 /* MAAR bit definitions */
 #define MIPS_MAAR_ADDR		((BIT_ULL(BITS_PER_LONG - 12) - 1) << 12)
@@ -932,7 +934,7 @@ do {								\
  */
 
 #define __read_32bit_c0_register(source, sel)				\
-({ int __res;								\
+({ unsigned int __res;							\
 	if (sel == 0)							\
 		__asm__ __volatile__(					\
 			"mfc0\t%0, " #source "\n\t"			\
@@ -1014,7 +1016,7 @@ do {									\
  * On RM7000/RM9000 these are uses to access cop0 set 1 registers
  */
 #define __read_32bit_c0_ctrl_register(source)				\
-({ int __res;								\
+({ unsigned int __res;							\
 	__asm__ __volatile__(						\
 		"cfc0\t%0, " #source "\n\t"				\
 		: "=r" (__res));					\
@@ -1471,7 +1473,7 @@ do {									\
  */
 #define _read_32bit_cp1_register(source, gas_hardfloat)			\
 ({									\
-	int __res;							\
+	unsigned int __res;						\
 									\
 	__asm__ __volatile__(						\
 	"	.set	push					\n"	\
