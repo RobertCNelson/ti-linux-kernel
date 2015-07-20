@@ -273,6 +273,9 @@ const struct exception_table_entry *search_exception_tables(unsigned long add);
 
 struct notifier_block;
 
+typedef int (*kallsyms_cmp_symbol_t)(void *, const char *,
+		struct module *, unsigned long);
+
 #ifdef CONFIG_MODULES
 
 extern int modules_disabled; /* for sysctl */
@@ -546,14 +549,14 @@ const struct kernel_symbol *find_symbol(const char *name,
 					bool gplok,
 					bool warn);
 
+typedef bool (*find_symbol_in_section_t)(const struct symsearch *arr,
+		struct module *owner, void *data);
 /*
  * Walk the exported symbol table
  *
  * Must be called with module_mutex held or preemption disabled.
  */
-bool each_symbol_section(bool (*fn)(const struct symsearch *arr,
-				    struct module *owner,
-				    void *data), void *data);
+bool each_symbol_section(find_symbol_in_section_t fn, void *data);
 
 /* Returns 0 and fills in value, defined and namebuf, or -ERANGE if
    symnum out of range. */
@@ -563,9 +566,7 @@ int module_get_kallsym(unsigned int symnum, unsigned long *value, char *type,
 /* Look for this name: can be of form module:name. */
 unsigned long module_kallsyms_lookup_name(const char *name);
 
-int module_kallsyms_on_each_symbol(int (*fn)(void *, const char *,
-					     struct module *, unsigned long),
-				   void *data);
+int module_kallsyms_on_each_symbol(kallsyms_cmp_symbol_t fn, void *data);
 
 extern void __module_put_and_exit(struct module *mod, long code)
 	__attribute__((noreturn));
@@ -721,10 +722,8 @@ static inline unsigned long module_kallsyms_lookup_name(const char *name)
 	return 0;
 }
 
-static inline int module_kallsyms_on_each_symbol(int (*fn)(void *, const char *,
-							   struct module *,
-							   unsigned long),
-						 void *data)
+static inline int module_kallsyms_on_each_symbol(
+		kallsyms_cmp_symbol_t fn, void *data)
 {
 	return 0;
 }
