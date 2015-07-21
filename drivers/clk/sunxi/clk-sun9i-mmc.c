@@ -14,8 +14,9 @@
  * GNU General Public License for more details.
  */
 
+#include <linux/clk.h>
 #include <linux/clk-provider.h>
-#include <linux/clkdev.h>
+#include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
