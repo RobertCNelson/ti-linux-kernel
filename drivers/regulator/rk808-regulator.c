@@ -540,7 +540,7 @@ static int rk808_regulator_dt_parse_pdata(struct device *dev,
 		goto dt_parse_end;
 
 	for (i = 0; i < ARRAY_SIZE(pdata->dvs_gpio); i++) {
-		pdata->dvs_gpio[i] = gpiod_get_index(client_dev, "dvs", i);
+		pdata->dvs_gpio[i] = gpiod_get_index(client_dev, "dvs", i, GPIOD_ASIS);
 		if (IS_ERR(pdata->dvs_gpio[i])) {
 			dev_warn(dev, "there is no dvs%d gpio\n", i);
 			continue;
