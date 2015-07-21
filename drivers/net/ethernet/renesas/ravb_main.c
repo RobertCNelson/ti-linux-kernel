@@ -543,10 +543,9 @@ static bool ravb_rx(struct net_device *ndev, int *quota, int q)
 
 			skb = priv->rx_skb[q][entry];
 			priv->rx_skb[q][entry] = NULL;
-			dma_sync_single_for_cpu(&ndev->dev,
-						le32_to_cpu(desc->dptr),
-						ALIGN(PKT_BUF_SZ, 16),
-						DMA_FROM_DEVICE);
+			dma_unmap_single(&ndev->dev, le32_to_cpu(desc->dptr),
+					 ALIGN(PKT_BUF_SZ, 16),
+					 DMA_FROM_DEVICE);
 			get_ts &= (q == RAVB_NC) ?
 					RAVB_RXTSTAMP_TYPE_V2_L2_EVENT :
 					~RAVB_RXTSTAMP_TYPE_V2_L2_EVENT;
@@ -584,9 +583,6 @@ static bool ravb_rx(struct net_device *ndev, int *quota, int q)
 			if (!skb)
 				break;	/* Better luck next round. */
 			ravb_set_buffer_align(skb);
-			dma_unmap_single(&ndev->dev, le32_to_cpu(desc->dptr),
-					 ALIGN(PKT_BUF_SZ, 16),
-					 DMA_FROM_DEVICE);
 			dma_addr = dma_map_single(&ndev->dev, skb->data,
 						  le16_to_cpu(desc->ds_cc),
 						  DMA_FROM_DEVICE);
@@ -1279,7 +1275,6 @@ static netdev_tx_t ravb_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	u32 dma_addr;
 	void *buffer;
 	u32 entry;
-	u32 tccr;
 
 	spin_lock_irqsave(&priv->lock, flags);
 	if (priv->cur_tx[q] - priv->dirty_tx[q] >= priv->num_tx_ring[q]) {
@@ -1328,9 +1323,7 @@ static netdev_tx_t ravb_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	dma_wmb();
 	desc->die_dt = DT_FSINGLE;
 
-	tccr = ravb_read(ndev, TCCR);
-	if (!(tccr & (TCCR_TSRQ0 << q)))
-		ravb_write(ndev, tccr | (TCCR_TSRQ0 << q), TCCR);
+	ravb_write(ndev, ravb_read(ndev, TCCR) | (TCCR_TSRQ0 << q), TCCR);
 
 	priv->cur_tx[q]++;
 	if (priv->cur_tx[q] - priv->dirty_tx[q] >= priv->num_tx_ring[q] &&
