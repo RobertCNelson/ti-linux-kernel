@@ -148,7 +148,9 @@ static struct i40e_stats i40e_gstrings_stats[] = {
 	I40E_PF_STAT("fdir_flush_cnt", fd_flush_cnt),
 	I40E_PF_STAT("fdir_atr_match", stats.fd_atr_match),
 	I40E_PF_STAT("fdir_atr_tunnel_match", stats.fd_atr_tunnel_match),
+	I40E_PF_STAT("fdir_atr_status", stats.fd_atr_status),
 	I40E_PF_STAT("fdir_sb_match", stats.fd_sb_match),
+	I40E_PF_STAT("fdir_sb_status", stats.fd_sb_status),
 
 	/* LPI stats */
 	I40E_PF_STAT("tx_lpi_status", stats.tx_lpi_status),
@@ -1465,17 +1467,8 @@ static int i40e_get_ts_info(struct net_device *dev,
 	info->tx_types = (1 << HWTSTAMP_TX_OFF) | (1 << HWTSTAMP_TX_ON);
 
 	info->rx_filters = (1 << HWTSTAMP_FILTER_NONE) |
-			   (1 << HWTSTAMP_FILTER_PTP_V1_L4_SYNC) |
-			   (1 << HWTSTAMP_FILTER_PTP_V1_L4_DELAY_REQ) |
-			   (1 << HWTSTAMP_FILTER_PTP_V2_EVENT) |
-			   (1 << HWTSTAMP_FILTER_PTP_V2_L2_EVENT) |
-			   (1 << HWTSTAMP_FILTER_PTP_V2_L4_EVENT) |
-			   (1 << HWTSTAMP_FILTER_PTP_V2_SYNC) |
-			   (1 << HWTSTAMP_FILTER_PTP_V2_L2_SYNC) |
-			   (1 << HWTSTAMP_FILTER_PTP_V2_L4_SYNC) |
-			   (1 << HWTSTAMP_FILTER_PTP_V2_DELAY_REQ) |
-			   (1 << HWTSTAMP_FILTER_PTP_V2_L2_DELAY_REQ) |
-			   (1 << HWTSTAMP_FILTER_PTP_V2_L4_DELAY_REQ);
+			   (1 << HWTSTAMP_FILTER_PTP_V1_L4_EVENT) |
+			   (1 << HWTSTAMP_FILTER_PTP_V2_EVENT);
 
 	return 0;
 }
