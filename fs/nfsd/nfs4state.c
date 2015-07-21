@@ -990,6 +990,12 @@ release_all_access(struct nfs4_ol_stateid *stp)
 	}
 }
 
+static inline void nfs4_free_stateowner(struct nfs4_stateowner *sop)
+{
+	kfree(sop->so_owner.data);
+	sop->so_ops->so_free(sop);
+}
+
 static void nfs4_put_stateowner(struct nfs4_stateowner *sop)
 {
 	struct nfs4_client *clp = sop->so_client;
@@ -1000,8 +1006,7 @@ static void nfs4_put_stateowner(struct nfs4_stateowner *sop)
 		return;
 	sop->so_ops->so_unhash(sop);
 	spin_unlock(&clp->cl_lock);
-	kfree(sop->so_owner.data);
-	sop->so_ops->so_free(sop);
+	nfs4_free_stateowner(sop);
 }
 
 static void unhash_ol_stateid(struct nfs4_ol_stateid *stp)
@@ -1894,7 +1899,7 @@ static void gen_confirm(struct nfs4_client *clp, struct nfsd_net *nn)
 	 * __force to keep sparse happy
 	 */
 	verf[0] = (__force __be32)get_seconds();
-	verf[1] = (__force __be32)nn->clientid_counter;
+	verf[1] = (__force __be32)nn->clverifier_counter++;
 	memcpy(clp->cl_confirm.data, verf, sizeof(clp->cl_confirm.data));
 }
 
@@ -2241,6 +2246,9 @@ static bool client_has_state(struct nfs4_client *clp)
 	 * Also note we should probably be using this in 4.0 case too.
 	 */
 	return !list_empty(&clp->cl_openowners)
+#ifdef CONFIG_NFSD_PNFS
+		|| !list_empty(&clp->cl_lo_states)
+#endif
 		|| !list_empty(&clp->cl_delegations)
 		|| !list_empty(&clp->cl_sessions);
 }
@@ -3315,7 +3323,8 @@ alloc_init_open_stateowner(unsigned int strhashval, struct nfsd4_open *open,
 		hash_openowner(oo, clp, strhashval);
 		ret = oo;
 	} else
-		nfs4_free_openowner(&oo->oo_owner);
+		nfs4_free_stateowner(&oo->oo_owner);
+
 	spin_unlock(&clp->cl_lock);
 	return ret;
 }
@@ -3934,6 +3943,7 @@ static int nfs4_setlease(struct nfs4_delegation *dp)
 	if (!filp) {
 		/* We should always have a readable file here */
 		WARN_ON_ONCE(1);
+		locks_free_lock(fl);
 		return -EBADF;
 	}
 	fl->fl_file = filp;
@@ -5215,7 +5225,8 @@ alloc_init_lock_stateowner(unsigned int strhashval, struct nfs4_client *clp,
 			 &clp->cl_ownerstr_hashtbl[strhashval]);
 		ret = lo;
 	} else
-		nfs4_free_lockowner(&lo->lo_owner);
+		nfs4_free_stateowner(&lo->lo_owner);
+
 	spin_unlock(&clp->cl_lock);
 	return ret;
 }
