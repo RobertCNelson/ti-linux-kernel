@@ -469,6 +469,16 @@ long bdev_direct_access(struct block_device *bdev, sector_t sector,
 }
 EXPORT_SYMBOL_GPL(bdev_direct_access);
 
+bool bdev_has_space(struct block_device *bdev)
+{
+	const struct block_device_operations *ops = bdev->bd_disk->fops;
+
+	if (!ops->has_space)
+		return true;
+	return ops->has_space(bdev);
+}
+EXPORT_SYMBOL_GPL(bdev_has_space);
+
 /*
  * pseudo-fs
  */

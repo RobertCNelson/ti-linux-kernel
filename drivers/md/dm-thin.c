@@ -3948,7 +3948,7 @@ static struct target_type pool_target = {
 	.name = "thin-pool",
 	.features = DM_TARGET_SINGLETON | DM_TARGET_ALWAYS_WRITEABLE |
 		    DM_TARGET_IMMUTABLE,
-	.version = {1, 16, 0},
+	.version = {1, 17, 0},
 	.module = THIS_MODULE,
 	.ctr = pool_ctr,
 	.dtr = pool_dtr,
@@ -4333,9 +4333,31 @@ static void thin_io_hints(struct dm_target *ti, struct queue_limits *limits)
 	limits->max_discard_sectors = 2048 * 1024 * 16; /* 16G */
 }
 
+static bool thin_has_space(struct dm_target *ti)
+{
+	struct thin_c *tc = ti->private;
+	struct pool *pool = tc->pool;
+	enum pool_mode m = get_pool_mode(pool);
+
+	/*
+	 * The thin-pool has space if it is either in write mode _or_
+	 * it is still waiting for space to be added.
+	 *
+	 * If 'error_if_no_space' was configured the pool will not queue
+	 * IO at all, even though the pool will stay in OODS mode, so
+	 * there is no point having upper layers (e.g. XFS) retry IO
+	 * given 'error_if_no_space' is meant to _not_ queue IO.
+	 */
+	if (m == PM_WRITE ||
+	    (m == PM_OUT_OF_DATA_SPACE && !pool->pf.error_if_no_space))
+		return true;
+
+	return false;
+}
+
 static struct target_type thin_target = {
 	.name = "thin",
-	.version = {1, 16, 0},
+	.version = {1, 17, 0},
 	.module	= THIS_MODULE,
 	.ctr = thin_ctr,
 	.dtr = thin_dtr,
@@ -4348,6 +4370,7 @@ static struct target_type thin_target = {
 	.merge = thin_merge,
 	.iterate_devices = thin_iterate_devices,
 	.io_hints = thin_io_hints,
+	.has_space = thin_has_space,
 };
 
 /*----------------------------------------------------------------*/
