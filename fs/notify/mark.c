@@ -122,9 +122,12 @@ u32 fsnotify_recalc_mask(struct hlist_head *head)
 }
 
 /*
- * Any time a mark is getting freed we end up here.
- * The caller had better be holding a reference to this mark so we don't actually
- * do the final put under the mark->lock
+ * Any time a mark is getting freed we end up here. We remove mark from
+ * inode / vfsmount list so that it cannot be found by new events, from the
+ * group list so that functions manipulating group cannot touch it, and queue
+ * it for further processing by notification kthread. We are still holding
+ * initial mark reference which gets dropped by the notification kthread once
+ * it's done destroying the mark.
  */
 void fsnotify_destroy_mark_locked(struct fsnotify_mark *mark,
 				  struct fsnotify_group *group)
@@ -157,11 +160,6 @@ void fsnotify_destroy_mark_locked(struct fsnotify_mark *mark,
 	if (inode && (mark->flags & FSNOTIFY_MARK_FLAG_OBJECT_PINNED))
 		iput(inode);
 
-	spin_lock(&destroy_lock);
-	list_add(&mark->g_list, &destroy_list);
-	spin_unlock(&destroy_lock);
-	wake_up(&destroy_waitq);
-
 	/*
 	 * __fsnotify_update_child_dentry_flags(inode);
 	 *
@@ -173,8 +171,13 @@ void fsnotify_destroy_mark_locked(struct fsnotify_mark *mark,
 	 * children and will update all of these flags then.  So really this
 	 * is just a lazy update (and could be a perf win...)
 	 */
-
 	atomic_dec(&group->num_marks);
+
+	/* Queue for further destruction by kthread */
+	spin_lock(&destroy_lock);
+	list_add(&mark->g_list, &destroy_list);
+	spin_unlock(&destroy_lock);
+	wake_up(&destroy_waitq);
 }
 
 void fsnotify_destroy_mark(struct fsnotify_mark *mark,
@@ -400,11 +403,8 @@ void fsnotify_clear_marks_by_group_flags(struct fsnotify_group *group,
 
 	mutex_lock_nested(&group->mark_mutex, SINGLE_DEPTH_NESTING);
 	list_for_each_entry_safe(mark, lmark, &group->marks_list, g_list) {
-		if (mark->flags & flags) {
-			fsnotify_get_mark(mark);
+		if (mark->flags & flags)
 			fsnotify_destroy_mark_locked(mark, group);
-			fsnotify_put_mark(mark);
-		}
 	}
 	mutex_unlock(&group->mark_mutex);
 }
