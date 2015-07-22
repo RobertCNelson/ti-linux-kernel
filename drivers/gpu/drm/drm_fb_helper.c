@@ -787,6 +787,84 @@ ssize_t drm_fb_helper_sys_write(struct fb_info *info, const char __user *buf,
 }
 EXPORT_SYMBOL(drm_fb_helper_sys_write);
 
+/**
+ * drm_fb_helper_sys_fillrect - wrapper around sys_fillrect
+ * @fb_helper: driver-allocated fbdev helper
+ *
+ * A wrapper around sys_fillrect implemented by fbdev core
+ */
+void drm_fb_helper_sys_fillrect(struct fb_info *info,
+				const struct fb_fillrect *rect)
+{
+	sys_fillrect(info, rect);
+}
+EXPORT_SYMBOL(drm_fb_helper_sys_fillrect);
+
+/**
+ * drm_fb_helper_sys_copyarea - wrapper around sys_copyarea
+ * @fb_helper: driver-allocated fbdev helper
+ *
+ * A wrapper around sys_copyarea implemented by fbdev core
+ */
+void drm_fb_helper_sys_copyarea(struct fb_info *info,
+				const struct fb_copyarea *area)
+{
+	sys_copyarea(info, area);
+}
+EXPORT_SYMBOL(drm_fb_helper_sys_copyarea);
+
+/**
+ * drm_fb_helper_sys_imageblit - wrapper around sys_imageblit
+ * @fb_helper: driver-allocated fbdev helper
+ *
+ * A wrapper around sys_imageblit implemented by fbdev core
+ */
+void drm_fb_helper_sys_imageblit(struct fb_info *info,
+				 const struct fb_image *image)
+{
+	sys_imageblit(info, image);
+}
+EXPORT_SYMBOL(drm_fb_helper_sys_imageblit);
+
+/**
+ * drm_fb_helper_cfb_fillrect - wrapper around cfb_fillrect
+ * @fb_helper: driver-allocated fbdev helper
+ *
+ * A wrapper around cfb_imageblit implemented by fbdev core
+ */
+void drm_fb_helper_cfb_fillrect(struct fb_info *info,
+				const struct fb_fillrect *rect)
+{
+	cfb_fillrect(info, rect);
+}
+EXPORT_SYMBOL(drm_fb_helper_cfb_fillrect);
+
+/**
+ * drm_fb_helper_cfb_copyarea - wrapper around cfb_copyarea
+ * @fb_helper: driver-allocated fbdev helper
+ *
+ * A wrapper around cfb_copyarea implemented by fbdev core
+ */
+void drm_fb_helper_cfb_copyarea(struct fb_info *info,
+				const struct fb_copyarea *area)
+{
+	cfb_copyarea(info, area);
+}
+EXPORT_SYMBOL(drm_fb_helper_cfb_copyarea);
+
+/**
+ * drm_fb_helper_cfb_imageblit - wrapper around cfb_imageblit
+ * @fb_helper: driver-allocated fbdev helper
+ *
+ * A wrapper around cfb_imageblit implemented by fbdev core
+ */
+void drm_fb_helper_cfb_imageblit(struct fb_info *info,
+				 const struct fb_image *image)
+{
+	cfb_imageblit(info, image);
+}
+EXPORT_SYMBOL(drm_fb_helper_cfb_imageblit);
+
 static int setcolreg(struct drm_crtc *crtc, u16 red, u16 green,
 		     u16 blue, u16 regno, struct fb_info *info)
 {
