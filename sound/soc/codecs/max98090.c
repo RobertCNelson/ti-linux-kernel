@@ -1801,10 +1801,13 @@ static int max98090_set_bias_level(struct snd_soc_codec *codec,
 		if (IS_ERR(max98090->mclk))
 			break;
 
-		if (snd_soc_codec_get_bias_level(codec) == SND_SOC_BIAS_ON)
+		if (snd_soc_codec_get_bias_level(codec) == SND_SOC_BIAS_ON) {
 			clk_disable_unprepare(max98090->mclk);
-		else
-			clk_prepare_enable(max98090->mclk);
+		} else {
+			ret = clk_prepare_enable(max98090->mclk);
+			if (ret)
+				return ret;
+		}
 		break;
 
 	case SND_SOC_BIAS_STANDBY:
@@ -2714,7 +2717,6 @@ MODULE_DEVICE_TABLE(acpi, max98090_acpi_match);
 static struct i2c_driver max98090_i2c_driver = {
 	.driver = {
 		.name = "max98090",
-		.owner = THIS_MODULE,
 		.pm = &max98090_pm,
 		.of_match_table = of_match_ptr(max98090_of_match),
 		.acpi_match_table = ACPI_PTR(max98090_acpi_match),
