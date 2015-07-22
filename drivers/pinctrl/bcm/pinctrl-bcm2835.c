@@ -473,6 +473,8 @@ static void bcm2835_gpio_irq_disable(struct irq_data *data)
 
 	spin_lock_irqsave(&pc->irq_lock[bank], flags);
 	bcm2835_gpio_irq_config(pc, gpio, false);
+	/* Clear events that were latched prior to clearing event sources */
+	bcm2835_gpio_set_bit(pc, GPEDS0, gpio);
 	clear_bit(offset, &pc->enabled_irq_map[bank]);
 	spin_unlock_irqrestore(&pc->irq_lock[bank], flags);
 }
@@ -584,9 +586,9 @@ static int bcm2835_gpio_irq_set_type(struct irq_data *data, unsigned int type)
 		ret = __bcm2835_gpio_irq_set_type_disabled(pc, gpio, type);
 
 	if (type & IRQ_TYPE_EDGE_BOTH)
-		__irq_set_handler_locked(data->irq, handle_edge_irq);
+		irq_set_handler_locked(data, handle_edge_irq);
 	else
-		__irq_set_handler_locked(data->irq, handle_level_irq);
+		irq_set_handler_locked(data, handle_level_irq);
 
 	spin_unlock_irqrestore(&pc->irq_lock[bank], flags);
 
