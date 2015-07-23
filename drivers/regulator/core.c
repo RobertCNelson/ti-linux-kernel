@@ -109,6 +109,7 @@ static int _regulator_do_set_voltage(struct regulator_dev *rdev,
 static struct regulator *create_regulator(struct regulator_dev *rdev,
 					  struct device *dev,
 					  const char *supply_name);
+static void _regulator_put(struct regulator *regulator);
 
 static const char *rdev_get_name(struct regulator_dev *rdev)
 {
@@ -640,6 +641,8 @@ static int drms_uA_update(struct regulator_dev *rdev)
 	int current_uA = 0, output_uV, input_uV, err;
 	unsigned int mode;
 
+	lockdep_assert_held_once(&rdev->mutex);
+
 	/*
 	 * first check to see if we can set modes at all, otherwise just
 	 * tell the consumer everything is OK.
@@ -760,6 +763,8 @@ static int suspend_set_state(struct regulator_dev *rdev,
 /* locks held by caller */
 static int suspend_prepare(struct regulator_dev *rdev, suspend_state_t state)
 {
+	lockdep_assert_held_once(&rdev->mutex);
+
 	if (!rdev->constraints)
 		return -EINVAL;
 
@@ -1105,6 +1110,9 @@ static int set_supply(struct regulator_dev *rdev,
 
 	rdev_info(rdev, "supplied by %s\n", rdev_get_name(supply_rdev));
 
+	if (!try_module_get(supply_rdev->owner))
+		return -ENODEV;
+
 	rdev->supply = create_regulator(supply_rdev, &rdev->dev, "SUPPLY");
 	if (rdev->supply == NULL) {
 		err = -ENOMEM;
@@ -1381,9 +1389,13 @@ static int regulator_resolve_supply(struct regulator_dev *rdev)
 	}
 
 	if (!r) {
-		dev_err(dev, "Failed to resolve %s-supply for %s\n",
-			rdev->supply_name, rdev->desc->name);
-		return -EPROBE_DEFER;
+		if (have_full_constraints()) {
+			r = dummy_regulator_rdev;
+		} else {
+			dev_err(dev, "Failed to resolve %s-supply for %s\n",
+				rdev->supply_name, rdev->desc->name);
+			return -EPROBE_DEFER;
+		}
 	}
 
 	/* Recursively resolve the supply of the supply */
@@ -1398,8 +1410,11 @@ static int regulator_resolve_supply(struct regulator_dev *rdev)
 	/* Cascade always-on state to supply */
 	if (_regulator_is_enabled(rdev)) {
 		ret = regulator_enable(rdev->supply);
-		if (ret < 0)
+		if (ret < 0) {
+			if (rdev->supply)
+				_regulator_put(rdev->supply);
 			return ret;
+		}
 	}
 
 	return 0;
@@ -1586,6 +1601,8 @@ static void _regulator_put(struct regulator *regulator)
 
 	if (regulator == NULL || IS_ERR(regulator))
 		return;
+
+	lockdep_assert_held_once(&regulator_list_mutex);
 
 	rdev = regulator->rdev;
 
@@ -1965,6 +1982,8 @@ static int _regulator_enable(struct regulator_dev *rdev)
 {
 	int ret;
 
+	lockdep_assert_held_once(&rdev->mutex);
+
 	/* check voltage and requested load before enabling */
 	if (rdev->constraints &&
 	    (rdev->constraints->valid_ops_mask & REGULATOR_CHANGE_DRMS))
@@ -2065,6 +2084,8 @@ static int _regulator_disable(struct regulator_dev *rdev)
 {
 	int ret = 0;
 
+	lockdep_assert_held_once(&rdev->mutex);
+
 	if (WARN(rdev->use_count <= 0,
 		 "unbalanced disables for %s\n", rdev_get_name(rdev)))
 		return -EIO;
@@ -2142,6 +2163,8 @@ EXPORT_SYMBOL_GPL(regulator_disable);
 static int _regulator_force_disable(struct regulator_dev *rdev)
 {
 	int ret = 0;
+
+	lockdep_assert_held_once(&rdev->mutex);
 
 	ret = _notifier_call_chain(rdev, REGULATOR_EVENT_FORCE_DISABLE |
 			REGULATOR_EVENT_PRE_DISABLE, NULL);
@@ -3439,6 +3462,8 @@ EXPORT_SYMBOL_GPL(regulator_bulk_free);
 int regulator_notifier_call_chain(struct regulator_dev *rdev,
 				  unsigned long event, void *data)
 {
+	lockdep_assert_held_once(&rdev->mutex);
+
 	_notifier_call_chain(rdev, event, data);
 	return NOTIFY_DONE;
 
