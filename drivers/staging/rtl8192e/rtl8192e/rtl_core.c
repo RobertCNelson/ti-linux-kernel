@@ -22,25 +22,6 @@
  * Contact Information:
  * wlanfae <wlanfae@realtek.com>
 ******************************************************************************/
-#undef RX_DONT_PASS_UL
-#undef DEBUG_EPROM
-#undef DEBUG_RX_VERBOSE
-#undef DUMMY_RX
-#undef DEBUG_ZERO_RX
-#undef DEBUG_RX_SKB
-#undef DEBUG_TX_FRAG
-#undef DEBUG_RX_FRAG
-#undef DEBUG_TX_FILLDESC
-#undef DEBUG_TX
-#undef DEBUG_IRQ
-#undef DEBUG_RX
-#undef DEBUG_RXALLOC
-#undef DEBUG_REGISTERS
-#undef DEBUG_RING
-#undef DEBUG_IRQ_TASKLET
-#undef DEBUG_TX_ALLOC
-#undef DEBUG_TX_DESC
-
 #include <linux/uaccess.h>
 #include <linux/pci.h>
 #include <linux/vmalloc.h>
@@ -106,167 +87,28 @@ static struct pci_driver rtl8192_pci_driver = {
 	.resume = rtl8192E_resume,                 /* PM resume fn  */
 };
 
+static short rtl8192_is_tx_queue_empty(struct net_device *dev);
+static void rtl819x_watchdog_wqcallback(void *data);
+static void watch_dog_timer_callback(unsigned long data);
+static void rtl8192_data_hard_stop(struct net_device *dev);
+static void rtl8192_data_hard_resume(struct net_device *dev);
+static void rtl8192_hard_data_xmit(struct sk_buff *skb, struct net_device *dev,
+				   int rate);
+static int rtl8192_hard_start_xmit(struct sk_buff *skb, struct net_device *dev);
+static void rtl8192_tx_cmd(struct net_device *dev, struct sk_buff *skb);
+static short rtl8192_tx(struct net_device *dev, struct sk_buff *skb);
+static short rtl8192_pci_initdescring(struct net_device *dev);
+static void rtl8192_irq_tx_tasklet(struct r8192_priv *priv);
+static void rtl8192_irq_rx_tasklet(struct r8192_priv *priv);
+static void rtl8192_cancel_deferred_work(struct r8192_priv *priv);
+static int _rtl8192_up(struct net_device *dev, bool is_silent_reset);
+static int rtl8192_up(struct net_device *dev);
+static int rtl8192_down(struct net_device *dev, bool shutdownrf);
+static void rtl8192_restart(void *data);
+
 /****************************************************************************
    -----------------------------IO STUFF-------------------------
 *****************************************************************************/
-static bool PlatformIOCheckPageLegalAndGetRegMask(u32 u4bPage, u8 *pu1bPageMask)
-{
-	bool		bReturn = false;
-
-	*pu1bPageMask = 0xfe;
-
-	switch (u4bPage) {
-	case 1: case 2: case 3: case 4:
-	case 8: case 9: case 10: case 12: case 13:
-		bReturn = true;
-		*pu1bPageMask = 0xf0;
-		break;
-
-	default:
-		bReturn = false;
-		break;
-	}
-
-	return bReturn;
-}
-
-void write_nic_io_byte(struct net_device *dev, int x, u8 y)
-{
-	u32 u4bPage = x >> 8;
-	u8 u1PageMask = 0;
-	bool	bIsLegalPage = false;
-
-	if (u4bPage == 0) {
-		outb(y&0xff, dev->base_addr + x);
-
-	} else {
-		bIsLegalPage = PlatformIOCheckPageLegalAndGetRegMask(u4bPage,
-			       &u1PageMask);
-		if (bIsLegalPage) {
-			u8 u1bPsr = read_nic_io_byte(dev, PSR);
-
-			write_nic_io_byte(dev, PSR, ((u1bPsr & u1PageMask) |
-					  (u8)u4bPage));
-			write_nic_io_byte(dev, (x & 0xff), y);
-			write_nic_io_byte(dev, PSR, (u1bPsr & u1PageMask));
-		}
-	}
-}
-
-void write_nic_io_word(struct net_device *dev, int x, u16 y)
-{
-	u32 u4bPage = x >> 8;
-	u8 u1PageMask = 0;
-	bool	bIsLegalPage = false;
-
-	if (u4bPage == 0) {
-		outw(y, dev->base_addr + x);
-	} else {
-		bIsLegalPage = PlatformIOCheckPageLegalAndGetRegMask(u4bPage,
-							 &u1PageMask);
-		if (bIsLegalPage) {
-			u8 u1bPsr = read_nic_io_byte(dev, PSR);
-
-			write_nic_io_byte(dev, PSR, ((u1bPsr & u1PageMask) |
-					  (u8)u4bPage));
-			write_nic_io_word(dev, (x & 0xff), y);
-			write_nic_io_byte(dev, PSR, (u1bPsr & u1PageMask));
-
-		}
-	}
-}
-
-void write_nic_io_dword(struct net_device *dev, int x, u32 y)
-{
-	u32 u4bPage = x >> 8;
-	u8 u1PageMask = 0;
-	bool	bIsLegalPage = false;
-
-	if (u4bPage == 0) {
-		outl(y, dev->base_addr + x);
-	} else {
-		bIsLegalPage = PlatformIOCheckPageLegalAndGetRegMask(u4bPage,
-						 &u1PageMask);
-		if (bIsLegalPage) {
-			u8 u1bPsr = read_nic_io_byte(dev, PSR);
-
-			write_nic_io_byte(dev, PSR, ((u1bPsr & u1PageMask) |
-					  (u8)u4bPage));
-			write_nic_io_dword(dev, (x & 0xff), y);
-			write_nic_io_byte(dev, PSR, (u1bPsr & u1PageMask));
-		}
-	}
-}
-
-u8 read_nic_io_byte(struct net_device *dev, int x)
-{
-	u32 u4bPage = x >> 8;
-	u8 u1PageMask = 0;
-	bool	bIsLegalPage = false;
-	u8	Data = 0;
-
-	if (u4bPage == 0)
-		return 0xff&inb(dev->base_addr + x);
-
-	bIsLegalPage = PlatformIOCheckPageLegalAndGetRegMask(u4bPage,
-							     &u1PageMask);
-	if (bIsLegalPage) {
-		u8 u1bPsr = read_nic_io_byte(dev, PSR);
-
-		write_nic_io_byte(dev, PSR, ((u1bPsr & u1PageMask) |
-				  (u8)u4bPage));
-		Data = read_nic_io_byte(dev, (x & 0xff));
-		write_nic_io_byte(dev, PSR, (u1bPsr & u1PageMask));
-	}
-
-	return Data;
-}
-
-u16 read_nic_io_word(struct net_device *dev, int x)
-{
-	u32 u4bPage = x >> 8;
-	u8 u1PageMask = 0;
-	bool	bIsLegalPage = false;
-	u16	Data = 0;
-
-	if (u4bPage == 0)
-		return inw(dev->base_addr + x);
-	bIsLegalPage = PlatformIOCheckPageLegalAndGetRegMask(u4bPage,
-							     &u1PageMask);
-	if (bIsLegalPage) {
-		u8 u1bPsr = read_nic_io_byte(dev, PSR);
-
-		write_nic_io_byte(dev, PSR, ((u1bPsr & u1PageMask) |
-				  (u8)u4bPage));
-		Data = read_nic_io_word(dev, (x & 0xff));
-		write_nic_io_byte(dev, PSR, (u1bPsr & u1PageMask));
-	}
-
-	return Data;
-}
-
-u32 read_nic_io_dword(struct net_device *dev, int x)
-{
-	u32 u4bPage = x >> 8;
-	u8 u1PageMask = 0;
-	bool	bIsLegalPage = false;
-	u32	Data = 0;
-
-	if (u4bPage == 0)
-		return inl(dev->base_addr + x);
-	bIsLegalPage = PlatformIOCheckPageLegalAndGetRegMask(u4bPage,
-		       &u1PageMask);
-	if (bIsLegalPage) {
-		u8 u1bPsr = read_nic_io_byte(dev, PSR);
-
-		write_nic_io_byte(dev, PSR, ((u1bPsr & u1PageMask) |
-				  (u8)u4bPage));
-		Data = read_nic_io_dword(dev, (x & 0xff));
-		write_nic_io_byte(dev, PSR, (u1bPsr & u1PageMask));
-	}
-
-	return Data;
-}
 
 u8 read_nic_byte(struct net_device *dev, int x)
 {
@@ -450,7 +292,7 @@ static short rtl8192_check_nic_enough_desc(struct net_device *dev, int prio)
 	return 0;
 }
 
-void rtl8192_tx_timeout(struct net_device *dev)
+static void rtl8192_tx_timeout(struct net_device *dev)
 {
 	struct r8192_priv *priv = rtllib_priv(dev);
 
@@ -476,7 +318,7 @@ void rtl8192_irq_disable(struct net_device *dev)
 	priv->irq_enabled = 0;
 }
 
-void rtl8192_set_chan(struct net_device *dev, short ch)
+static void rtl8192_set_chan(struct net_device *dev, short ch)
 {
 	struct r8192_priv *priv = (struct r8192_priv *)rtllib_priv(dev);
 
@@ -490,7 +332,7 @@ void rtl8192_set_chan(struct net_device *dev, short ch)
 		priv->rf_set_chan(dev, priv->chan);
 }
 
-void rtl8192_update_cap(struct net_device *dev, u16 cap)
+static void rtl8192_update_cap(struct net_device *dev, u16 cap)
 {
 	struct r8192_priv *priv = rtllib_priv(dev);
 	struct rtllib_network *net = &priv->rtllib->current_network;
@@ -1282,7 +1124,7 @@ static short rtl8192_init(struct net_device *dev)
 /***************************************************************************
 	-------------------------------WATCHDOG STUFF---------------------------
 ***************************************************************************/
-short rtl8192_is_tx_queue_empty(struct net_device *dev)
+static short rtl8192_is_tx_queue_empty(struct net_device *dev)
 {
 	int i = 0;
 	struct r8192_priv *priv = rtllib_priv(dev);
@@ -1570,8 +1412,7 @@ static void rtl819x_update_rxcounts(struct r8192_priv *priv, u32 *TotalRxBcnNum,
 	}
 }
 
-
-void	rtl819x_watchdog_wqcallback(void *data)
+static void rtl819x_watchdog_wqcallback(void *data)
 {
 	struct r8192_priv *priv = container_of_dwork_rsl(data,
 				  struct r8192_priv, watch_dog_wq);
@@ -1725,7 +1566,7 @@ void	rtl819x_watchdog_wqcallback(void *data)
 	RT_TRACE(COMP_TRACE, " <==RtUsbCheckForHangWorkItemCallback()\n");
 }
 
-void watch_dog_timer_callback(unsigned long data)
+static void watch_dog_timer_callback(unsigned long data)
 {
 	struct r8192_priv *priv = rtllib_priv((struct net_device *)data);
 
@@ -1802,16 +1643,15 @@ static void rtl8192_free_tx_ring(struct net_device *dev, unsigned int prio)
 	ring->desc = NULL;
 }
 
-void rtl8192_data_hard_stop(struct net_device *dev)
+static void rtl8192_data_hard_stop(struct net_device *dev)
 {
 }
 
-
-void rtl8192_data_hard_resume(struct net_device *dev)
+static void rtl8192_data_hard_resume(struct net_device *dev)
 {
 }
 
-void rtl8192_hard_data_xmit(struct sk_buff *skb, struct net_device *dev,
+static void rtl8192_hard_data_xmit(struct sk_buff *skb, struct net_device *dev,
 			    int rate)
 {
 	struct r8192_priv *priv = (struct r8192_priv *)rtllib_priv(dev);
@@ -1843,7 +1683,7 @@ void rtl8192_hard_data_xmit(struct sk_buff *skb, struct net_device *dev,
 	}
 }
 
-int rtl8192_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
+static int rtl8192_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct r8192_priv *priv = (struct r8192_priv *)rtllib_priv(dev);
 	int ret;
@@ -1902,7 +1742,7 @@ static void rtl8192_tx_isr(struct net_device *dev, int prio)
 		tasklet_schedule(&priv->irq_tx_tasklet);
 }
 
-void rtl8192_tx_cmd(struct net_device *dev, struct sk_buff *skb)
+static void rtl8192_tx_cmd(struct net_device *dev, struct sk_buff *skb)
 {
 	struct r8192_priv *priv = rtllib_priv(dev);
 	struct rtl8192_tx_ring *ring;
@@ -1925,7 +1765,7 @@ void rtl8192_tx_cmd(struct net_device *dev, struct sk_buff *skb)
 	spin_unlock_irqrestore(&priv->irq_th_lock, flags);
 }
 
-short rtl8192_tx(struct net_device *dev, struct sk_buff *skb)
+static short rtl8192_tx(struct net_device *dev, struct sk_buff *skb)
 {
 	struct r8192_priv *priv = rtllib_priv(dev);
 	struct rtl8192_tx_ring  *ring;
@@ -2077,8 +1917,7 @@ static int rtl8192_alloc_tx_desc_ring(struct net_device *dev,
 	return 0;
 }
 
-
-short rtl8192_pci_initdescring(struct net_device *dev)
+static short rtl8192_pci_initdescring(struct net_device *dev)
 {
 	u32 ret;
 	int i;
@@ -2188,12 +2027,6 @@ rtl819x_update_rxsignalstatistics8190pci(
 					pprevious_stats->RecvSignalPower +
 					weighting) / 6;
 }
-
-void rtl819x_process_cck_rxpathsel(struct r8192_priv *priv,
-				   struct rtllib_rx_stats *pprevious_stats)
-{
-}
-
 
 u8 rtl819x_query_rxpwrpercentage(char antpower)
 {
@@ -2344,11 +2177,6 @@ done:
 
 }
 
-static void rtl8192_rx_cmd(struct net_device *dev)
-{
-}
-
-
 static void rtl8192_tx_resume(struct net_device *dev)
 {
 	struct r8192_priv *priv = (struct r8192_priv *)rtllib_priv(dev);
@@ -2366,17 +2194,14 @@ static void rtl8192_tx_resume(struct net_device *dev)
 	}
 }
 
-void rtl8192_irq_tx_tasklet(struct r8192_priv *priv)
+static void rtl8192_irq_tx_tasklet(struct r8192_priv *priv)
 {
 	rtl8192_tx_resume(priv->rtllib->dev);
 }
 
-void rtl8192_irq_rx_tasklet(struct r8192_priv *priv)
+static void rtl8192_irq_rx_tasklet(struct r8192_priv *priv)
 {
 	rtl8192_rx_normal(priv->rtllib->dev);
-
-	if (MAX_RX_QUEUE > 1)
-		rtl8192_rx_cmd(priv->rtllib->dev);
 
 	write_nic_dword(priv->rtllib->dev, INTA_MASK,
 			read_nic_dword(priv->rtllib->dev, INTA_MASK) | IMR_RDU);
@@ -2385,7 +2210,7 @@ void rtl8192_irq_rx_tasklet(struct r8192_priv *priv)
 /****************************************************************************
  ---------------------------- NIC START/CLOSE STUFF---------------------------
 *****************************************************************************/
-void rtl8192_cancel_deferred_work(struct r8192_priv *priv)
+static void rtl8192_cancel_deferred_work(struct r8192_priv *priv)
 {
 	cancel_delayed_work(&priv->watch_dog_wq);
 	cancel_delayed_work(&priv->update_beacon_wq);
@@ -2394,13 +2219,12 @@ void rtl8192_cancel_deferred_work(struct r8192_priv *priv)
 	cancel_work_sync(&priv->qos_activate);
 }
 
-int _rtl8192_up(struct net_device *dev, bool is_silent_reset)
+static int _rtl8192_up(struct net_device *dev, bool is_silent_reset)
 {
 	if (_rtl8192_sta_up(dev, is_silent_reset) == -1)
 		return -1;
 	return 0;
 }
-
 
 static int rtl8192_open(struct net_device *dev)
 {
@@ -2414,8 +2238,7 @@ static int rtl8192_open(struct net_device *dev)
 
 }
 
-
-int rtl8192_up(struct net_device *dev)
+static int rtl8192_up(struct net_device *dev)
 {
 	struct r8192_priv *priv = rtllib_priv(dev);
 
@@ -2445,7 +2268,7 @@ static int rtl8192_close(struct net_device *dev)
 
 }
 
-int rtl8192_down(struct net_device *dev, bool shutdownrf)
+static int rtl8192_down(struct net_device *dev, bool shutdownrf)
 {
 	if (rtl8192_sta_down(dev, shutdownrf) == -1)
 		return -1;
@@ -2465,7 +2288,7 @@ void rtl8192_commit(struct net_device *dev)
 	_rtl8192_up(dev, false);
 }
 
-void rtl8192_restart(void *data)
+static void rtl8192_restart(void *data)
 {
 	struct r8192_priv *priv = container_of_work_rsl(data, struct r8192_priv,
 				  reset_wq);
@@ -2782,7 +2605,6 @@ static int rtl8192_pci_probe(struct pci_dev *pdev,
 	struct rtl819x_ops *ops = (struct rtl819x_ops *)(id->driver_data);
 	unsigned long pmem_start, pmem_len, pmem_flags;
 	int err = -ENOMEM;
-	bool bdma64 = false;
 	u8 revision_id;
 
 	RT_TRACE(COMP_INIT, "Configuring chip resources");
@@ -2806,8 +2628,6 @@ static int rtl8192_pci_probe(struct pci_dev *pdev,
 		goto err_pci_disable;
 
 	err = -ENODEV;
-	if (bdma64)
-		dev->features |= NETIF_F_HIGHDMA;
 
 	pci_set_drvdata(pdev, dev);
 	SET_NETDEV_DEV(dev, &pdev->dev);
@@ -2900,8 +2720,6 @@ err_rel_mem:
 	release_mem_region(pmem_start, pmem_len);
 err_rel_rtllib:
 	free_rtllib(dev);
-
-	DMESG("wlan driver load failed\n");
 err_pci_disable:
 	pci_disable_device(pdev);
 	return err;
@@ -3007,7 +2825,6 @@ static int __init rtl8192_pci_module_init(void)
 	pr_info("Copyright (c) 2007-2008, Realsil Wlan Driver\n");
 
 	if (0 != pci_register_driver(&rtl8192_pci_driver)) {
-		DMESG("No device found");
 		/*pci_unregister_driver (&rtl8192_pci_driver);*/
 		return -ENODEV;
 	}
