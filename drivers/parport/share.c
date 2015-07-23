@@ -816,6 +816,7 @@ static void free_pardevice(struct device *dev)
 	struct pardevice *par_dev = to_pardevice(dev);
 
 	kfree(par_dev->name);
+	kfree(par_dev->state);
 	kfree(par_dev);
 }
 
@@ -891,8 +892,10 @@ parport_register_dev_model(struct parport *port, const char *name,
 	par_dev->dev.release = free_pardevice;
 	par_dev->devmodel = true;
 	ret = device_register(&par_dev->dev);
-	if (ret)
-		goto err_put_dev;
+	if (ret) {
+		put_device(&par_dev->dev);
+		goto err_put_port;
+	}
 
 	/* Chain this onto the list */
 	par_dev->prev = NULL;
@@ -907,7 +910,8 @@ parport_register_dev_model(struct parport *port, const char *name,
 			spin_unlock(&port->physport->pardevice_lock);
 			pr_debug("%s: cannot grant exclusive access for device %s\n",
 				 port->name, name);
-			goto err_put_dev;
+			device_unregister(&par_dev->dev);
+			goto err_put_port;
 		}
 		port->flags |= PARPORT_FLAG_EXCL;
 	}
@@ -938,8 +942,6 @@ parport_register_dev_model(struct parport *port, const char *name,
 
 	return par_dev;
 
-err_put_dev:
-	put_device(&par_dev->dev);
 err_free_devname:
 	kfree(devname);
 err_free_par_dev:
