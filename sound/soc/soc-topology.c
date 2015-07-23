@@ -144,7 +144,7 @@ static const struct snd_soc_tplg_kcontrol_ops io_ops[] = {
 	{SND_SOC_TPLG_CTL_STROBE, snd_soc_get_strobe,
 		snd_soc_put_strobe, NULL},
 	{SND_SOC_TPLG_DAPM_CTL_VOLSW, snd_soc_dapm_get_volsw,
-		snd_soc_dapm_put_volsw, NULL},
+		snd_soc_dapm_put_volsw, snd_soc_info_volsw},
 	{SND_SOC_TPLG_DAPM_CTL_ENUM_DOUBLE, snd_soc_dapm_get_enum_double,
 		snd_soc_dapm_put_enum_double, snd_soc_info_enum_double},
 	{SND_SOC_TPLG_DAPM_CTL_ENUM_VIRT, snd_soc_dapm_get_enum_double,
@@ -580,27 +580,26 @@ static int soc_tplg_init_kcontrol(struct soc_tplg *tplg,
 }
 
 static int soc_tplg_create_tlv(struct soc_tplg *tplg,
-	struct snd_kcontrol_new *kc, u32 tlv_size)
+	struct snd_kcontrol_new *kc, struct snd_soc_tplg_ctl_tlv *tplg_tlv)
 {
-	struct snd_soc_tplg_ctl_tlv *tplg_tlv;
 	struct snd_ctl_tlv *tlv;
+	int size;
 
-	if (tlv_size == 0)
+	if (tplg_tlv->count == 0)
 		return 0;
 
-	tplg_tlv = (struct snd_soc_tplg_ctl_tlv *) tplg->pos;
-	tplg->pos += tlv_size;
-
-	tlv = kzalloc(sizeof(*tlv) + tlv_size, GFP_KERNEL);
+	size = ((tplg_tlv->count + (sizeof(unsigned int) - 1)) &
+		~(sizeof(unsigned int) - 1));
+	tlv = kzalloc(sizeof(*tlv) + size, GFP_KERNEL);
 	if (tlv == NULL)
 		return -ENOMEM;
 
 	dev_dbg(tplg->dev, " created TLV type %d size %d bytes\n",
-		tplg_tlv->numid, tplg_tlv->size);
+		tplg_tlv->numid, size);
 
 	tlv->numid = tplg_tlv->numid;
-	tlv->length = tplg_tlv->size;
-	memcpy(tlv->tlv, tplg_tlv + 1, tplg_tlv->size);
+	tlv->length = size;
+	memcpy(&tlv->tlv[0], tplg_tlv->data, size);
 	kc->tlv.p = (void *)tlv;
 
 	return 0;
@@ -773,7 +772,7 @@ static int soc_tplg_dmixer_create(struct soc_tplg *tplg, unsigned int count,
 		}
 
 		/* create any TLV data */
-		soc_tplg_create_tlv(tplg, &kc, mc->hdr.tlv_size);
+		soc_tplg_create_tlv(tplg, &kc, &mc->tlv);
 
 		/* register control here */
 		err = soc_tplg_add_kcontrol(tplg, &kc,
@@ -1351,6 +1350,7 @@ static int soc_tplg_dapm_widget_create(struct soc_tplg *tplg,
 	template.reg = w->reg;
 	template.shift = w->shift;
 	template.mask = w->mask;
+	template.subseq = w->subseq;
 	template.on_val = w->invert ? 0 : 1;
 	template.off_val = w->invert ? 1 : 0;
 	template.ignore_suspend = w->ignore_suspend;
@@ -1734,7 +1734,6 @@ void snd_soc_tplg_widget_remove_all(struct snd_soc_dapm_context *dapm,
 	u32 index)
 {
 	struct snd_soc_dapm_widget *w, *next_w;
-	struct snd_soc_dapm_path *p, *next_p;
 
 	list_for_each_entry_safe(w, next_w, &dapm->card->widgets, list) {
 
@@ -1746,31 +1745,9 @@ void snd_soc_tplg_widget_remove_all(struct snd_soc_dapm_context *dapm,
 		if (w->dobj.index != index &&
 			w->dobj.index != SND_SOC_TPLG_INDEX_ALL)
 			continue;
-
-		list_del(&w->list);
-
-		/*
-		 * remove source and sink paths associated to this widget.
-		 * While removing the path, remove reference to it from both
-		 * source and sink widgets so that path is removed only once.
-		 */
-		list_for_each_entry_safe(p, next_p, &w->sources, list_sink) {
-			list_del(&p->list_sink);
-			list_del(&p->list_source);
-			list_del(&p->list);
-			kfree(p);
-		}
-		list_for_each_entry_safe(p, next_p, &w->sinks, list_source) {
-			list_del(&p->list_sink);
-			list_del(&p->list_source);
-			list_del(&p->list);
-			kfree(p);
-		}
 		/* check and free and dynamic widget kcontrols */
 		snd_soc_tplg_widget_remove(w);
-		kfree(w->kcontrols);
-		kfree(w->name);
-		kfree(w);
+		snd_soc_dapm_free_widget(w);
 	}
 }
 EXPORT_SYMBOL_GPL(snd_soc_tplg_widget_remove_all);
