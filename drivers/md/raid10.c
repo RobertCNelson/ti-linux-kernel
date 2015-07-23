@@ -3556,6 +3556,7 @@ static struct r10conf *setup_conf(struct mddev *mddev)
 			/* far_copies must be 1 */
 			conf->prev.stride = conf->dev_sectors;
 	}
+	conf->reshape_safe = conf->reshape_progress;
 	spin_lock_init(&conf->device_lock);
 	INIT_LIST_HEAD(&conf->retry_list);
 
@@ -3760,7 +3761,6 @@ static int run(struct mddev *mddev)
 		}
 		conf->offset_diff = min_offset_diff;
 
-		conf->reshape_safe = conf->reshape_progress;
 		clear_bit(MD_RECOVERY_SYNC, &mddev->recovery);
 		clear_bit(MD_RECOVERY_CHECK, &mddev->recovery);
 		set_bit(MD_RECOVERY_RESHAPE, &mddev->recovery);
@@ -4103,6 +4103,7 @@ static int raid10_start_reshape(struct mddev *mddev)
 		conf->reshape_progress = size;
 	} else
 		conf->reshape_progress = 0;
+	conf->reshape_safe = conf->reshape_progress;
 	spin_unlock_irq(&conf->device_lock);
 
 	if (mddev->delta_disks && mddev->bitmap) {
@@ -4170,6 +4171,7 @@ abort:
 		rdev->new_data_offset = rdev->data_offset;
 	smp_wmb();
 	conf->reshape_progress = MaxSector;
+	conf->reshape_safe = MaxSector;
 	mddev->reshape_position = MaxSector;
 	spin_unlock_irq(&conf->device_lock);
 	return ret;
@@ -4213,7 +4215,7 @@ static sector_t reshape_request(struct mddev *mddev, sector_t sector_nr,
 	 * at a time, possibly less if that exceeds RESYNC_PAGES,
 	 * or we hit a bad block or something.
 	 * This might mean we pause for normal IO in the middle of
-	 * a chunk, but that is not a problem was mddev->reshape_position
+	 * a chunk, but that is not a problem as mddev->reshape_position
 	 * can record any location.
 	 *
 	 * If we will want to write to a location that isn't
@@ -4237,7 +4239,7 @@ static sector_t reshape_request(struct mddev *mddev, sector_t sector_nr,
 	 *
 	 * In all this the minimum difference in data offsets
 	 * (conf->offset_diff - always positive) allows a bit of slack,
-	 * so next can be after 'safe', but not by more than offset_disk
+	 * so next can be after 'safe', but not by more than offset_diff
 	 *
 	 * We need to prepare all the bios here before we start any IO
 	 * to ensure the size we choose is acceptable to all devices.
@@ -4524,6 +4526,7 @@ static void end_reshape(struct r10conf *conf)
 	md_finish_reshape(conf->mddev);
 	smp_wmb();
 	conf->reshape_progress = MaxSector;
+	conf->reshape_safe = MaxSector;
 	spin_unlock_irq(&conf->device_lock);
 
 	/* read-ahead size must cover two whole stripes, which is
