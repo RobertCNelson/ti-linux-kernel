@@ -1,10 +1,9 @@
 /* Copyright (c) 2012 - 2015 UNISYS CORPORATION
  * All rights reserved.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or (at
- * your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful, but
  * WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -119,7 +118,6 @@ struct visornic_devdata {
 	struct visor_device *dev;
 	char name[99];
 	struct list_head list_all;   /* < link within list_all_devices list */
-	struct kref kref;
 	struct net_device *netdev;
 	struct net_device_stats net_stats;
 	atomic_t interrupt_rcvd;
@@ -151,6 +149,7 @@ struct visornic_devdata {
 					  * sent to the IOPART end
 					  */
 	struct work_struct serverdown_completion;
+	visorbus_state_complete_func server_down_complete_func;
 	struct work_struct timeout_reset;
 	struct uiscmdrsp *cmdrsp_rcv;	 /* cmdrsp_rcv is used for
 					  * posting/unposting rcv buffers
@@ -161,6 +160,7 @@ struct visornic_devdata {
 					  */
 	bool server_down;		 /* IOPART is down */
 	bool server_change_state;	 /* Processing SERVER_CHANGESTATE msg */
+	bool going_away;		 /* device is being torn down */
 	struct dentry *eth_debugfs_dir;
 	struct visor_thread_info threadinfo;
 	u64 interrupts_rcvd;
@@ -298,6 +298,8 @@ static int visor_thread_start(struct visor_thread_info *thrinfo,
 	init_completion(&thrinfo->has_stopped);
 	thrinfo->task = kthread_run(threadfn, thrcontext, name);
 	if (IS_ERR(thrinfo->task)) {
+		pr_debug("%s failed (%ld)\n",
+			 __func__, PTR_ERR(thrinfo->task));
 		thrinfo->id = 0;
 		return -EINVAL;
 	}
@@ -545,8 +547,12 @@ visornic_serverdown_complete(struct work_struct *work)
 	atomic_set(&devdata->num_rcvbuf_in_iovm, 0);
 	spin_unlock_irqrestore(&devdata->priv_lock, flags);
 
+	if (devdata->server_down_complete_func)
+		(*devdata->server_down_complete_func)(devdata->dev, 0);
+
 	devdata->server_down = true;
 	devdata->server_change_state = false;
+	devdata->server_down_complete_func = NULL;
 }
 
 /**
@@ -558,15 +564,31 @@ visornic_serverdown_complete(struct work_struct *work)
  *	Returns 0 if we scheduled the work, -EINVAL on error.
  */
 static int
-visornic_serverdown(struct visornic_devdata *devdata)
+visornic_serverdown(struct visornic_devdata *devdata,
+		    visorbus_state_complete_func complete_func)
 {
+	unsigned long flags;
+
+	spin_lock_irqsave(&devdata->priv_lock, flags);
 	if (!devdata->server_down && !devdata->server_change_state) {
+		if (devdata->going_away) {
+			spin_unlock_irqrestore(&devdata->priv_lock, flags);
+			dev_dbg(&devdata->dev->device,
+				"%s aborting because device removal pending\n",
+				__func__);
+			return -ENODEV;
+		}
 		devdata->server_change_state = true;
+		devdata->server_down_complete_func = complete_func;
 		queue_work(visornic_serverdown_workqueue,
 			   &devdata->serverdown_completion);
 	} else if (devdata->server_change_state) {
+		dev_dbg(&devdata->dev->device, "%s changing state\n",
+			__func__);
+		spin_unlock_irqrestore(&devdata->priv_lock, flags);
 		return -EINVAL;
 	}
+	spin_unlock_irqrestore(&devdata->priv_lock, flags);
 	return 0;
 }
 
@@ -701,6 +723,8 @@ visornic_disable_with_timeout(struct net_device *netdev, const int timeout)
 			break;
 		if (devdata->server_down || devdata->server_change_state) {
 			spin_unlock_irqrestore(&devdata->priv_lock, flags);
+			dev_dbg(&netdev->dev, "%s server went away\n",
+				__func__);
 			return -EIO;
 		}
 		set_current_state(TASK_INTERRUPTIBLE);
@@ -814,8 +838,11 @@ visornic_enable_with_timeout(struct net_device *netdev, const int timeout)
 	 * gets a disable.
 	 */
 	i = init_rcv_bufs(netdev, devdata);
-	if (i < 0)
+	if (i < 0) {
+		dev_err(&netdev->dev,
+			"%s failed to init rcv bufs (%d)\n", __func__, i);
 		return i;
+	}
 
 	spin_lock_irqsave(&devdata->priv_lock, flags);
 	devdata->enabled = 1;
@@ -838,6 +865,8 @@ visornic_enable_with_timeout(struct net_device *netdev, const int timeout)
 			break;
 		if (devdata->server_down || devdata->server_change_state) {
 			spin_unlock_irqrestore(&devdata->priv_lock, flags);
+			dev_dbg(&netdev->dev, "%s server went away\n",
+				__func__);
 			return -EIO;
 		}
 		set_current_state(TASK_INTERRUPTIBLE);
@@ -848,8 +877,10 @@ visornic_enable_with_timeout(struct net_device *netdev, const int timeout)
 
 	spin_unlock_irqrestore(&devdata->priv_lock, flags);
 
-	if (!devdata->enab_dis_acked)
+	if (!devdata->enab_dis_acked) {
+		dev_err(&netdev->dev, "%s missing ACK\n", __func__);
 		return -EIO;
+	}
 
 	/* find an open slot in the array to save off VisorNic references
 	 * for debug
@@ -895,7 +926,7 @@ visornic_timeout_reset(struct work_struct *work)
 	return;
 
 call_serverdown:
-	visornic_serverdown(devdata);
+	visornic_serverdown(devdata, NULL);
 }
 
 /**
@@ -961,6 +992,8 @@ visornic_xmit(struct sk_buff *skb, struct net_device *netdev)
 	    devdata->server_change_state) {
 		spin_unlock_irqrestore(&devdata->priv_lock, flags);
 		devdata->busy_cnt++;
+		dev_dbg(&netdev->dev,
+			"%s busy - queue stopped\n", __func__);
 		return NETDEV_TX_BUSY;
 	}
 
@@ -979,6 +1012,9 @@ visornic_xmit(struct sk_buff *skb, struct net_device *netdev)
 	if (firstfraglen < ETH_HEADER_SIZE) {
 		spin_unlock_irqrestore(&devdata->priv_lock, flags);
 		devdata->busy_cnt++;
+		dev_err(&netdev->dev,
+			"%s busy - first frag too small (%d)\n",
+			__func__, firstfraglen);
 		return NETDEV_TX_BUSY;
 	}
 
@@ -1018,6 +1054,9 @@ visornic_xmit(struct sk_buff *skb, struct net_device *netdev)
 		netif_stop_queue(netdev);
 		spin_unlock_irqrestore(&devdata->priv_lock, flags);
 		devdata->busy_cnt++;
+		dev_dbg(&netdev->dev,
+			"%s busy - waiting for iovm to catch up\n",
+			__func__);
 		return NETDEV_TX_BUSY;
 	}
 	if (devdata->queuefullmsg_logged)
@@ -1058,6 +1097,8 @@ visornic_xmit(struct sk_buff *skb, struct net_device *netdev)
 	if (cmdrsp->net.xmt.num_frags == -1) {
 		spin_unlock_irqrestore(&devdata->priv_lock, flags);
 		devdata->busy_cnt++;
+		dev_err(&netdev->dev,
+			"%s busy - copy frags failed\n", __func__);
 		return NETDEV_TX_BUSY;
 	}
 
@@ -1066,6 +1107,8 @@ visornic_xmit(struct sk_buff *skb, struct net_device *netdev)
 		netif_stop_queue(netdev);
 		spin_unlock_irqrestore(&devdata->priv_lock, flags);
 		devdata->busy_cnt++;
+		dev_dbg(&netdev->dev,
+			"%s busy - signalinsert failed\n", __func__);
 		return NETDEV_TX_BUSY;
 	}
 
@@ -1098,6 +1141,9 @@ visornic_xmit(struct sk_buff *skb, struct net_device *netdev)
 					   * netif_wake_queue() after lower
 					   * threshold
 					   */
+		dev_dbg(&netdev->dev,
+			"%s busy - invoking iovm flow control\n",
+			__func__);
 		devdata->flow_control_upper_hits++;
 	}
 	spin_unlock_irqrestore(&devdata->priv_lock, flags);
@@ -1201,15 +1247,24 @@ visornic_xmit_timeout(struct net_device *netdev)
 	unsigned long flags;
 
 	spin_lock_irqsave(&devdata->priv_lock, flags);
+	if (devdata->going_away) {
+		spin_unlock_irqrestore(&devdata->priv_lock, flags);
+		dev_dbg(&devdata->dev->device,
+			"%s aborting because device removal pending\n",
+			__func__);
+		return;
+	}
+
 	/* Ensure that a ServerDown message hasn't been received */
 	if (!devdata->enabled ||
 	    (devdata->server_down && !devdata->server_change_state)) {
+		dev_dbg(&netdev->dev, "%s no processing\n",
+			__func__);
 		spin_unlock_irqrestore(&devdata->priv_lock, flags);
 		return;
 	}
-	spin_unlock_irqrestore(&devdata->priv_lock, flags);
-
 	queue_work(visornic_timeout_reset_workqueue, &devdata->timeout_reset);
+	spin_unlock_irqrestore(&devdata->priv_lock, flags);
 }
 
 /**
@@ -1545,14 +1600,11 @@ devdata_initialize(struct visornic_devdata *devdata, struct visor_device *dev)
 	spin_unlock(&dev_num_pool_lock);
 	if (devnum == MAXDEVICES)
 		devnum = -1;
-	if (devnum < 0) {
-		kfree(devdata);
+	if (devnum < 0)
 		return NULL;
-	}
 	devdata->devnum = devnum;
 	devdata->dev = dev;
 	strncpy(devdata->name, dev_name(&dev->device), sizeof(devdata->name));
-	kref_init(&devdata->kref);
 	spin_lock(&lock_all_devices);
 	list_add_tail(&devdata->list_all, &list_all_devices);
 	spin_unlock(&lock_all_devices);
@@ -1560,24 +1612,23 @@ devdata_initialize(struct visornic_devdata *devdata, struct visor_device *dev)
 }
 
 /**
- *	devdata_release	- Frees up a devdata
- *	@mykref: kref to the devdata
+ *	devdata_release	- Frees up references in devdata
+ *	@devdata: struct to clean up
  *
- *	Frees up a devdata.
+ *	Frees up references in devdata.
  *	Returns void
  */
-static void devdata_release(struct kref *mykref)
+static void devdata_release(struct visornic_devdata *devdata)
 {
-	struct visornic_devdata *devdata =
-		container_of(mykref, struct visornic_devdata, kref);
-
 	spin_lock(&dev_num_pool_lock);
 	clear_bit(devdata->devnum, dev_num_pool);
 	spin_unlock(&dev_num_pool_lock);
 	spin_lock(&lock_all_devices);
 	list_del(&devdata->list_all);
 	spin_unlock(&lock_all_devices);
-	kfree(devdata);
+	kfree(devdata->rcvbuf);
+	kfree(devdata->cmdrsp_rcv);
+	kfree(devdata->xmit_cmdrsp);
 }
 
 static const struct net_device_ops visornic_dev_ops = {
@@ -1801,12 +1852,15 @@ static int visornic_probe(struct visor_device *dev)
 	u64 features;
 
 	netdev = alloc_etherdev(sizeof(struct visornic_devdata));
-	if (!netdev)
+	if (!netdev) {
+		dev_err(&dev->device,
+			"%s alloc_etherdev failed\n", __func__);
 		return -ENOMEM;
+	}
 
 	netdev->netdev_ops = &visornic_dev_ops;
 	netdev->watchdog_timeo = (5 * HZ);
-	netdev->dev.parent = &dev->device;
+	SET_NETDEV_DEV(netdev, &dev->device);
 
 	/* Get MAC adddress from channel and read it into the device. */
 	netdev->addr_len = ETH_ALEN;
@@ -1814,16 +1868,23 @@ static int visornic_probe(struct visor_device *dev)
 				  vnic.macaddr);
 	err = visorbus_read_channel(dev, channel_offset, netdev->dev_addr,
 				    ETH_ALEN);
-	if (err < 0)
+	if (err < 0) {
+		dev_err(&dev->device,
+			"%s failed to get mac addr from chan (%d)\n",
+			__func__, err);
 		goto cleanup_netdev;
+	}
 
 	devdata = devdata_initialize(netdev_priv(netdev), dev);
 	if (!devdata) {
+		dev_err(&dev->device,
+			"%s devdata_initialize failed\n", __func__);
 		err = -ENOMEM;
 		goto cleanup_netdev;
 	}
 
 	devdata->netdev = netdev;
+	dev_set_drvdata(&dev->device, devdata);
 	init_waitqueue_head(&devdata->rsp_queue);
 	spin_lock_init(&devdata->priv_lock);
 	devdata->enabled = 0; /* not yet */
@@ -1834,10 +1895,14 @@ static int visornic_probe(struct visor_device *dev)
 				  vnic.num_rcv_bufs);
 	err = visorbus_read_channel(dev, channel_offset,
 				    &devdata->num_rcv_bufs, 4);
-	if (err)
+	if (err) {
+		dev_err(&dev->device,
+			"%s failed to get #rcv bufs from chan (%d)\n",
+			__func__, err);
 		goto cleanup_netdev;
+	}
 
-	devdata->rcvbuf = kmalloc(sizeof(struct sk_buff *) *
+	devdata->rcvbuf = kzalloc(sizeof(struct sk_buff *) *
 				  devdata->num_rcv_bufs, GFP_KERNEL);
 	if (!devdata->rcvbuf) {
 		err = -ENOMEM;
@@ -1876,42 +1941,59 @@ static int visornic_probe(struct visor_device *dev)
 	channel_offset = offsetof(struct spar_io_channel_protocol,
 				  vnic.mtu);
 	err = visorbus_read_channel(dev, channel_offset, &netdev->mtu, 4);
-	if (err)
+	if (err) {
+		dev_err(&dev->device,
+			"%s failed to get mtu from chan (%d)\n",
+			__func__, err);
 		goto cleanup_xmit_cmdrsp;
+	}
 
 	/* TODO: Setup Interrupt information */
 	/* Let's start our threads to get responses */
 	channel_offset = offsetof(struct spar_io_channel_protocol,
 				  channel_header.features);
 	err = visorbus_read_channel(dev, channel_offset, &features, 8);
-	if (err)
+	if (err) {
+		dev_err(&dev->device,
+			"%s failed to get features from chan (%d)\n",
+			__func__, err);
 		goto cleanup_xmit_cmdrsp;
+	}
 
 	features |= ULTRA_IO_CHANNEL_IS_POLLING;
 	err = visorbus_write_channel(dev, channel_offset, &features, 8);
-	if (err)
+	if (err) {
+		dev_err(&dev->device,
+			"%s failed to set features in chan (%d)\n",
+			__func__, err);
 		goto cleanup_xmit_cmdrsp;
-
-	devdata->thread_wait_ms = 2;
-	visor_thread_start(&devdata->threadinfo, process_incoming_rsps,
-			   devdata, "vnic_incoming");
+	}
 
 	err = register_netdev(netdev);
-	if (err)
-		goto cleanup_thread_stop;
+	if (err) {
+		dev_err(&dev->device,
+			"%s register_netdev failed (%d)\n", __func__, err);
+		goto cleanup_xmit_cmdrsp;
+	}
 
 	/* create debgug/sysfs directories */
 	devdata->eth_debugfs_dir = debugfs_create_dir(netdev->name,
 						      visornic_debugfs_dir);
 	if (!devdata->eth_debugfs_dir) {
+		dev_err(&dev->device,
+			"%s debugfs_create_dir %s failed\n",
+			__func__, netdev->name);
 		err = -ENOMEM;
-		goto cleanup_thread_stop;
+		goto cleanup_xmit_cmdrsp;
 	}
 
-	return 0;
+	devdata->thread_wait_ms = 2;
+	visor_thread_start(&devdata->threadinfo, process_incoming_rsps,
+			   devdata, "vnic_incoming");
 
-cleanup_thread_stop:
-	visor_thread_stop(&devdata->threadinfo);
+	dev_info(&dev->device, "%s success netdev=%s\n",
+		 __func__, netdev->name);
+	return 0;
 
 cleanup_xmit_cmdrsp:
 	kfree(devdata->xmit_cmdrsp);
@@ -1954,12 +2036,52 @@ static void host_side_disappeared(struct visornic_devdata *devdata)
 static void visornic_remove(struct visor_device *dev)
 {
 	struct visornic_devdata *devdata = dev_get_drvdata(&dev->device);
+	struct net_device *netdev;
+	unsigned long flags;
 
-	if (!devdata)
+	if (!devdata) {
+		dev_err(&dev->device, "%s no devdata\n", __func__);
 		return;
+	}
+	spin_lock_irqsave(&devdata->priv_lock, flags);
+	if (devdata->going_away) {
+		spin_unlock_irqrestore(&devdata->priv_lock, flags);
+		dev_err(&dev->device, "%s already being removed\n", __func__);
+		return;
+	}
+	devdata->going_away = true;
+	spin_unlock_irqrestore(&devdata->priv_lock, flags);
+	netdev = devdata->netdev;
+	if (!netdev) {
+		dev_err(&dev->device, "%s not net device\n", __func__);
+		return;
+	}
+
+	/* going_away prevents new items being added to the workqueues */
+	flush_workqueue(visornic_serverdown_workqueue);
+	flush_workqueue(visornic_timeout_reset_workqueue);
+
+	debugfs_remove_recursive(devdata->eth_debugfs_dir);
+
+	unregister_netdev(netdev);  /* this will call visornic_close() */
+
+	/* this had to wait until last because visornic_close() /
+	 * visornic_disable_with_timeout() polls waiting for state that is
+	 * only updated by the thread
+	 */
+	if (devdata->threadinfo.id) {
+		visor_thread_stop(&devdata->threadinfo);
+		if (devdata->threadinfo.id) {
+			dev_err(&dev->device, "%s cannot stop worker thread\n",
+				__func__);
+			return;
+		}
+	}
+
 	dev_set_drvdata(&dev->device, NULL);
 	host_side_disappeared(devdata);
-	kref_put(&devdata->kref, devdata_release);
+	devdata_release(devdata);
+	free_netdev(netdev);
 }
 
 /**
@@ -1980,8 +2102,7 @@ static int visornic_pause(struct visor_device *dev,
 {
 	struct visornic_devdata *devdata = dev_get_drvdata(&dev->device);
 
-	visornic_serverdown(devdata);
-	complete_func(dev, 0);
+	visornic_serverdown(devdata, complete_func);
 	return 0;
 }
 
@@ -2003,8 +2124,10 @@ static int visornic_resume(struct visor_device *dev,
 	unsigned long flags;
 
 	devdata = dev_get_drvdata(&dev->device);
-	if (!devdata)
+	if (!devdata) {
+		dev_err(&dev->device, "%s no devdata\n", __func__);
 		return -EINVAL;
+	}
 
 	netdev = devdata->netdev;
 
@@ -2032,6 +2155,8 @@ static int visornic_resume(struct visor_device *dev,
 		 */
 		send_enbdis(netdev, 1, devdata);
 	} else if (devdata->server_change_state) {
+		dev_err(&dev->device, "%s server_change_state\n",
+			__func__);
 		return -EIO;
 	}
 
@@ -2050,18 +2175,6 @@ static int visornic_init(void)
 {
 	struct dentry *ret;
 	int err = -ENOMEM;
-
-	/* create workqueue for serverdown completion */
-	visornic_serverdown_workqueue =
-		create_singlethread_workqueue("visornic_serverdown");
-	if (!visornic_serverdown_workqueue)
-		return -ENOMEM;
-
-	/* create workqueue for tx timeout reset */
-	visornic_timeout_reset_workqueue =
-		create_singlethread_workqueue("visornic_timeout_reset");
-	if (!visornic_timeout_reset_workqueue)
-		return -ENOMEM;
 
 	visornic_debugfs_dir = debugfs_create_dir("visornic", NULL);
 	if (!visornic_debugfs_dir)
@@ -2116,6 +2229,8 @@ cleanup_debugfs:
  */
 static void visornic_cleanup(void)
 {
+	visorbus_unregister_visor_driver(&visornic_driver);
+
 	if (visornic_serverdown_workqueue) {
 		flush_workqueue(visornic_serverdown_workqueue);
 		destroy_workqueue(visornic_serverdown_workqueue);
@@ -2126,7 +2241,6 @@ static void visornic_cleanup(void)
 	}
 	debugfs_remove_recursive(visornic_debugfs_dir);
 
-	visorbus_unregister_visor_driver(&visornic_driver);
 	kfree(dev_num_pool);
 	dev_num_pool = NULL;
 }
