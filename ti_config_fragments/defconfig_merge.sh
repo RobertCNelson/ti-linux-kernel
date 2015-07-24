@@ -12,9 +12,8 @@
 export unix_user=`whoami`
 export user_home_directory=`getent passwd $unix_user |cut -d: -f6`
 
-BUILD_THREADS=`grep "^processor" /proc/cpuinfo | wc -l`
+BUILD_THREADS=`grep -c "^processor" /proc/cpuinfo`
 DEFCONFIG="omap2plus_defconfig"
-NEW_DEFCONFIG="appended_omap2plus_defconfig"
 CROSS_COMPILE=
 WORKING_PATH="linux-kernel"
 LOAD_ADDR=0x80008000
@@ -29,10 +28,10 @@ prepare_for_exit()
 check_for_compiler()
 {
 	COMPILER_COMMAND=`which $CROSS_COMPILE"gcc"`
-	if [ -f "$COMPILER_COMMAND" ]; then
+	if [ -x "$COMPILER_COMMAND" ]; then
 		return 0
 	else
-		echo "Compiler $COMPILER_COMMAND does not exist on this host" > build_failure.txt
+		echo "Invalid or non-existent compiler $COMPILER_COMMAND" > build_failure.txt
 		return 1
 	fi
 }
@@ -200,7 +199,7 @@ build_the_modules()
 
 clean_the_build()
 {
-	make -j$BUILD_THREADS mrproper
+	make ARCH=arm -j$BUILD_THREADS mrproper
 }
 
 set_working_directory()
@@ -311,7 +310,7 @@ do
      esac
 done
 
-if [ "$BUILD_ALL" != 1 -a "$NO_CLEAN_DEFCONFIG" != 1 ]; then
+if [ "$BUILD_ALL" == 1 -o "$NO_CLEAN_DEFCONFIG" != 1 ]; then
 	if [ "$CROSS_COMPILE" == "" ]; then
 		echo "Missing cross compile"
 		usage
@@ -332,15 +331,15 @@ if [ "$OUT_LOG" == "" ]; then
 	exit 1
 fi
 
+NEW_DEFCONFIG="appended_$DEFCONFIG"
+
 set_working_directory
 
-LOGGING_DIRECTORY="$WORKING_PATH""ti_config_fragments/""$LOGGING_DIRECTORY"
+LOGGING_DIRECTORY="$WORKING_PATH""/ti_config_fragments/""$LOGGING_DIRECTORY"
 if [ ! -d "$LOGGING_DIRETORY" ];then
 	echo -e "\n\tRemoving $LOGGING_DIRECTORY"
 	rm -rf $LOGGING_DIRECTORY
 fi
-
-DEFCONFIG_EXTRAS="$LOGGING_DIRECTORY/merged_omap2plus_defconfig"
 
 echo -e "\n\tCreating $LOGGING_DIRECTORY for final configuration files\n"
 mkdir -p $LOGGING_DIRECTORY
@@ -353,14 +352,16 @@ if [ $? -ne 0 ]; then
 fi
 
 if [ "$DEFCONFIG_EXTRAS_FILE" != '' ]; then
-	FILE_DEFCONFIG=`cat $DEFCONFIG_EXTRAS_FILE | grep "use-kernel-config=" | cut -d= -f2`
-	if [ "$FILE_DEFCONFIG" == '' ]; then
+	DEFCONFIG=`cat $DEFCONFIG_EXTRAS_FILE | grep "use-kernel-config=" | cut -d= -f2`
+	if [ "$DEFCONFIG" == '' ]; then
 		echo -e "\n\tMissing base defconfig in the file\n"
 		usage
 		exit 1
 	fi
 	echo "Using base config $DEFCONFIG from the file $DEFCONFIG_EXTRAS_FILE"
 fi
+
+DEFCONFIG_EXTRAS="$LOGGING_DIRECTORY/merged_$DEFCONFIG"
 
 if [ "$NO_CLEAN_DEFCONFIG" != 1 ]; then
 	clean_the_build
@@ -379,7 +380,9 @@ else
 	fi
 fi
 
-cp -v .config $LOGGING_DIRECTORY/base_config
+if [ -a .config ]; then
+	cp -v .config $LOGGING_DIRECTORY/base_config
+fi
 
 # There is only one file passed in via command line
 if [ "$DEFCONFIG_EXTRAS_FILE" == '' ]; then
@@ -424,7 +427,10 @@ echo -e "\n\t Copying $LOGGING_DIRECTORY/.config to $WORKING_DIRECTORY/.config"
 cp -v $LOGGING_DIRECTORY/.config .config
 echo -e "\n\t Copying $LOGGING_DIRECTORY/.config to arch/arm/configs/$NEW_DEFCONFIG"
 cp -v $LOGGING_DIRECTORY/.config arch/arm/configs/$NEW_DEFCONFIG
-rm $LOGGING_DIRECTORY/temp_config
+
+if [ -a $LOGGING_DIRECTORY/temp_config ]; then
+	rm $LOGGING_DIRECTORY/temp_config
+fi
 
 if [ "$BUILD_ALL" == 1 ]; then
 	build_the_new_defconfig
