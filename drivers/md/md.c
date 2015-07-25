@@ -5765,22 +5765,22 @@ static int get_bitmap_file(struct mddev *mddev, void __user * arg)
 	char *ptr;
 	int err;
 
-	file = kmalloc(sizeof(*file), GFP_NOIO);
+	file = kzalloc(sizeof(*file), GFP_NOIO);
 	if (!file)
 		return -ENOMEM;
 
 	err = 0;
 	spin_lock(&mddev->lock);
-	/* bitmap disabled, zero the first byte and copy out */
-	if (!mddev->bitmap_info.file)
-		file->pathname[0] = '\0';
-	else if ((ptr = file_path(mddev->bitmap_info.file,
-			       file->pathname, sizeof(file->pathname))),
-		 IS_ERR(ptr))
-		err = PTR_ERR(ptr);
-	else
-		memmove(file->pathname, ptr,
-			sizeof(file->pathname)-(ptr-file->pathname));
+	/* bitmap enabled */
+	if (mddev->bitmap_info.file) {
+		ptr = file_path(mddev->bitmap_info.file, file->pathname,
+				sizeof(file->pathname));
+		if (IS_ERR(ptr))
+			err = PTR_ERR(ptr);
+		else
+			memmove(file->pathname, ptr,
+				sizeof(file->pathname)-(ptr-file->pathname));
+	}
 	spin_unlock(&mddev->lock);
 
 	if (err == 0 &&
