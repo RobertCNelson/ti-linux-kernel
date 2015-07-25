@@ -33,6 +33,7 @@ mm-slub-move-slab-initialization-into-irq-enabled-region.patch
 ############################################################
 # Stuff broken upstream, patches submitted
 ############################################################
+cpufreq-Remove-cpufreq_rwsem.patch
 
 ############################################################
 # Stuff which needs addressing upstream, but requires more
@@ -329,6 +330,8 @@ futex-requeue-pi-fix.patch
 0005-futex-Ensure-lock-unlock-symetry-versus-pi_lock-and-.patch
 
 # RTMUTEX
+pid.h-include-atomic.h.patch
+locking-locktorture-Do-NOT-include-rwlock.h-directly.patch
 rtmutex-lock-killable.patch
 spinlock-types-separate-raw.patch
 rtmutex-avoid-include-hell.patch

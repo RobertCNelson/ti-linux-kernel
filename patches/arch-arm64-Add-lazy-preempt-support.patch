@@ -93,7 +93,7 @@ Signed-off-by: Anders Roxell <anders.roxell@linaro.org>
  	ret	x24
  #endif
  
-@@ -621,6 +627,7 @@ ENDPROC(cpu_switch_to)
+@@ -622,6 +628,7 @@ ENDPROC(cpu_switch_to)
  	str	x0, [sp, #S_X0]			// returned x0
  work_pending:
  	tbnz	x1, #TIF_NEED_RESCHED, work_resched
