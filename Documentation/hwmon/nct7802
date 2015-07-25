@@ -5,7 +5,7 @@ Supported chips:
   * Nuvoton NCT7802Y
     Prefix: 'nct7802'
     Addresses scanned: I2C 0x28..0x2f
-    Datasheet: Available from Nuvoton web site
+    Datasheet: http://www.nuvoton.com/hq/products/cloud-computing/hardware-monitors/desktop-server-series/nct7802y/
 
 Authors:
         Guenter Roeck <linux@roeck-us.net>
@@ -17,8 +17,7 @@ This driver implements support for the Nuvoton NCT7802Y hardware monitoring
 chip. NCT7802Y supports 6 temperature sensors, 5 voltage sensors, and 3 fan
 speed sensors.
 
-The chip also supports intelligent fan speed control. This functionality is
-not currently supported by the driver.
+Smart Fan™ speed control is avilabel via pwmX_auto_temp attributes.
 
 Tested Boards and BIOS Versions
 -------------------------------
