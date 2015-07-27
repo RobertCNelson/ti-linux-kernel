@@ -402,13 +402,11 @@ struct thread_struct {
 	unsigned long		error_code;
 #ifdef CONFIG_X86_32
 	/* Virtual 86 mode info */
-	struct vm86_struct __user *vm86_info;
+	struct vm86plus_struct __user *vm86_info;
 	unsigned long		screen_bitmap;
 	unsigned long		v86flags;
 	unsigned long		v86mask;
 	unsigned long		saved_sp0;
-	unsigned int		saved_fs;
-	unsigned int		saved_gs;
 #endif
 	/* IO permissions: */
 	unsigned long		*io_bitmap_ptr;
