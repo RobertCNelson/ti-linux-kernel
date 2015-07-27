@@ -29,6 +29,8 @@ next/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.3/soc-signed
 	pxa/soc
 		https://github.com/rjarzmik/linux tags/pxa-for-4.3-v2
+	patch
+		MAINTAINERS: add entries for UniPhier device trees and drivers
 
 next/boards
 
@@ -62,6 +64,9 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt2-for-v4.3
 	omap/dt-dm814x
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.3/dt-dm814x
+	patch
+		ARM: dts: UniPhier: add pinctrl device nodes
+		ARM: dts: UniPhier: add UART and USB pinmux nodes
 
 next/drivers
 	patch
@@ -83,6 +88,8 @@ next/defconfig
 		https://git.kernel.org/pub/scm/linux/kernel/git/mcoquelin/sti tags/sti-defconfig-for-v4.3-1
 	renesas/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig-for-v4.3
+	prima2/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/baohua/linux tags/prima2-defconfig-for-4.2
 
 fixes
 	<no branch> (300bde79f3d86b1af6fcde7b7b2439ecffccbff4)
