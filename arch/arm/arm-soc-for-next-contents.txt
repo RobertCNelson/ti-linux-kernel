@@ -1,0 +1,103 @@
+next/fixes-non-critical
+
+next/cleanup
+	renesas/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-cleanup-for-v4.3
+	renesas/pm-domain
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-pm-domain-for-v4.3
+	clkevt/set-state
+		git://git.kernel.org/pub/scm/linux/kernel/git/vireshk/linux ARM/clkevt/set-state-4.3
+	mvebu/cleanup
+		git://git.infradead.org/linux-mvebu tags/mvebu-cleanup-4.3-1
+	brcm/soc
+		http://github.com/broadcom/stblinux tags/arm-soc/for-4.3/soc
+	ep93xx/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/ep93xx-cleanup
+	omap/legacy-removal
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.3/legacy-v2-signed
+	renesas/cleanup2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-cleanup2-for-v4.3
+
+next/soc
+	rockchip/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.3-rockchip32-soc1
+	sti/soc
+		https://git.kernel.org/pub/scm/linux/kernel/git/mcoquelin/sti tags/sti-soc-for-v4.3-1
+	reneass/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-for-v4.3
+	omap/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.3/soc-signed
+	pxa/soc
+		https://github.com/rjarzmik/linux tags/pxa-for-4.3-v2
+	patch
+		MAINTAINERS: add entries for UniPhier device trees and drivers
+
+next/boards
+
+next/dt
+	patch
+		ARM: digicolor: enable watchdog device
+		ARM: digicolor: dts: use stdout-path for console configuration
+		ARM: dts: UniPhier: add on-chip UART device nodes
+		ARM: dts: UniPhier: add USB EHCI device nodes
+	renesas/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-for-v4.3
+	omap/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.3/dt-pt1
+	lpc18xx/dt
+		https://github.com/manabian/linux-lpc lpc18xx_43xx_dts_4.3
+	mvebu/dt
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-4.3-1
+	brcm/dts
+		http://github.com/broadcom/stblinux tags/arm-soc/for-4.3/dts
+	rockchip/dts
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.3-rockchip32-dts1
+	pxa/dt
+		https://github.com/rjarzmik/linux tags/tags/pxa-dt-4.3
+	omap/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.3/dt-pt2
+	sti/dt
+		https://git.kernel.org/pub/scm/linux/kernel/git/mcoquelin/sti tags/sti-dt-for-v4.3-1
+	stm32/dt
+		https://git.kernel.org/pub/scm/linux/kernel/git/mcoquelin/stm32 tags/stm32-dt-for-v4.3-1b
+	renesas/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt2-for-v4.3
+	omap/dt-dm814x
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.3/dt-dm814x
+	patch
+		ARM: dts: UniPhier: add pinctrl device nodes
+		ARM: dts: UniPhier: add UART and USB pinmux nodes
+
+next/drivers
+	patch
+		memory: add ARM PL172 MultiPort Memory Controller driver
+		doc: dt: add documentation for pl172 memory bindings
+		memory: pl172: fix modular build
+
+next/defconfig
+	patch
+		ARM: multi_v7_defconfig: enable Conexant Digicolor watchdog
+		ARM: multi_v7_defconfig: enable UniPhier UART driver
+	mvebu/config
+		git://git.infradead.org/linux-mvebu tags/mvebu-config-4.3-1
+	ep93xx/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/ep93xx-defconfig
+	omap/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.3/defconfig-signed
+	sti/defconfig
+		https://git.kernel.org/pub/scm/linux/kernel/git/mcoquelin/sti tags/sti-defconfig-for-v4.3-1
+	renesas/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig-for-v4.3
+	prima2/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/baohua/linux tags/prima2-defconfig-for-4.2
+	patch
+		ARM: multi_v7_defconfig: Select MX6UL and MX7D
+
+fixes
+	<no branch> (300bde79f3d86b1af6fcde7b7b2439ecffccbff4)
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-fixes-1
+	<no branch> (9a258afa928b45e6dd2efcac46ccf7eea705d35a)
+		git://git.kernel.org/pub/scm/linux/kernel/git/pjw/omap-pending tags/for-v4.2-rc/omap-fixes-a
+	patch
+		ARM: nomadik: disable UART0 on Nomadik boards
+
