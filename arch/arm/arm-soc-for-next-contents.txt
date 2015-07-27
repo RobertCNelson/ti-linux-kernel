@@ -90,6 +90,8 @@ next/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig-for-v4.3
 	prima2/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/baohua/linux tags/prima2-defconfig-for-4.2
+	patch
+		ARM: multi_v7_defconfig: Select MX6UL and MX7D
 
 fixes
 	<no branch> (300bde79f3d86b1af6fcde7b7b2439ecffccbff4)
