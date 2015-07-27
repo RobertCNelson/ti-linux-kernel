@@ -15,10 +15,20 @@ next/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/ep93xx-cleanup
 	omap/legacy-removal
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.3/legacy-v2-signed
+	renesas/cleanup2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-cleanup2-for-v4.3
 
 next/soc
 	rockchip/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.3-rockchip32-soc1
+	sti/soc
+		https://git.kernel.org/pub/scm/linux/kernel/git/mcoquelin/sti tags/sti-soc-for-v4.3-1
+	reneass/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-for-v4.3
+	omap/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.3/soc-signed
+	pxa/soc
+		https://github.com/rjarzmik/linux tags/pxa-for-4.3-v2
 
 next/boards
 
@@ -44,6 +54,14 @@ next/dt
 		https://github.com/rjarzmik/linux tags/tags/pxa-dt-4.3
 	omap/dt2
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.3/dt-pt2
+	sti/dt
+		https://git.kernel.org/pub/scm/linux/kernel/git/mcoquelin/sti tags/sti-dt-for-v4.3-1
+	stm32/dt
+		https://git.kernel.org/pub/scm/linux/kernel/git/mcoquelin/stm32 tags/stm32-dt-for-v4.3-1b
+	renesas/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt2-for-v4.3
+	omap/dt-dm814x
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.3/dt-dm814x
 
 next/drivers
 	patch
@@ -61,8 +79,16 @@ next/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/ep93xx-defconfig
 	omap/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.3/defconfig-signed
+	sti/defconfig
+		https://git.kernel.org/pub/scm/linux/kernel/git/mcoquelin/sti tags/sti-defconfig-for-v4.3-1
+	renesas/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig-for-v4.3
 
 fixes
-	foo2
+	<no branch> (300bde79f3d86b1af6fcde7b7b2439ecffccbff4)
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-fixes-1
+	<no branch> (9a258afa928b45e6dd2efcac46ccf7eea705d35a)
+		git://git.kernel.org/pub/scm/linux/kernel/git/pjw/omap-pending tags/for-v4.2-rc/omap-fixes-a
+	patch
+		ARM: nomadik: disable UART0 on Nomadik boards
 
