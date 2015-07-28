@@ -380,8 +380,8 @@ static struct hdmi_platform_config hdmi_tx_8x94_config = {
 
 static const struct of_device_id dt_match[] = {
 	{ .compatible = "qcom,hdmi-tx-8994", .data = &hdmi_tx_8x94_config },
-	{ .compatible = "qcom,hdmi-tx-8084", .data = &hdmi_tx_8084_config },
-	{ .compatible = "qcom,hdmi-tx-8074", .data = &hdmi_tx_8074_config },
+	{ .compatible = "qcom,hdmi-tx-8984", .data = &hdmi_tx_8084_config },
+	{ .compatible = "qcom,hdmi-tx-8974", .data = &hdmi_tx_8074_config },
 	{ .compatible = "qcom,hdmi-tx-8960", .data = &hdmi_tx_8960_config },
 	{ .compatible = "qcom,hdmi-tx-8660", .data = &hdmi_tx_8660_config },
 	{}
