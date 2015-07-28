@@ -184,6 +184,7 @@ struct atyfb_par {
 	spinlock_t int_lock;
 #ifdef CONFIG_MTRR
 	int mtrr_aper;
+	int mtrr_reg;
 #endif
 	u32 mem_cntl;
 	struct crtc saved_crtc;
