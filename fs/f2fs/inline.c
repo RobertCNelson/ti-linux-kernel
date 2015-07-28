@@ -141,6 +141,8 @@ int f2fs_convert_inline_page(struct dnode_of_data *dn, struct page *page)
 	kunmap_atomic(dst_addr);
 	SetPageUptodate(page);
 no_update:
+	set_page_dirty(page);
+
 	/* clear dirty state */
 	dirty = clear_page_dirty_for_io(page);
 
@@ -373,7 +375,7 @@ static int f2fs_convert_inline_dir(struct inode *dir, struct page *ipage,
 	set_new_dnode(&dn, dir, ipage, NULL, 0);
 	err = f2fs_reserve_block(&dn, 0);
 	if (err)
-		goto out;
+		return err;
 
 	f2fs_wait_on_page_writeback(page, DATA);
 	zero_user_segment(page, 0, PAGE_CACHE_SIZE);
@@ -404,7 +406,6 @@ static int f2fs_convert_inline_dir(struct inode *dir, struct page *ipage,
 	}
 
 	sync_inode_page(&dn);
-out:
 	f2fs_put_page(page, 1);
 	return err;
 }
