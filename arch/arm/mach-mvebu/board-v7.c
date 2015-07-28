@@ -131,13 +131,6 @@ static int armada_375_external_abort_wa(unsigned long addr, unsigned int fsr,
 
 static void __init mvebu_init_irq(void)
 {
-	struct device_node *np;
-
-	np = of_find_compatible_node(NULL, NULL, "arm,cortex-a9-gic");
-	if (np)
-		gic_set_irqchip_flags(IRQCHIP_SKIP_SET_WAKE |
-				      IRQCHIP_MASK_ON_SUSPEND);
-	of_node_put(np);
 	irqchip_init();
 	mvebu_scu_enable();
 	coherency_init();
