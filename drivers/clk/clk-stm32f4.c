@@ -293,7 +293,7 @@ stm32f4_rcc_lookup_clk(struct of_phandle_args *clkspec, void *data)
 	return clks[i];
 }
 
-static const char *sys_parents[] __initdata =   { "hsi", NULL, "pll" };
+static const char *const sys_parents[] __initconst =   { "hsi", NULL, "pll" };
 
 static const struct clk_div_table ahb_div_table[] = {
 	{ 0x0,   1 }, { 0x1,   1 }, { 0x2,   1 }, { 0x3,   1 },
