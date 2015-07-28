@@ -228,7 +228,7 @@ int mdp5_smp_request(struct mdp5_smp *smp, enum mdp5_pipe pipe,
 	 * U and V components (splits them from Y if necessary) and packs
 	 * them together, writes to SMP using a single client.
 	 */
-	if ((rev > 0) && (format->chroma_sample > CHROMA_FULL)) {
+	if ((rev > 0) && MDP_FORMAT_IS_YUV(format)) {
 		fmt = DRM_FORMAT_NV24;
 		nplanes = 2;
 
