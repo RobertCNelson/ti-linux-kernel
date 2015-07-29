@@ -501,7 +501,7 @@ static ssize_t ocfs2_filecheck_store(struct kobject *kobj,
 				const char *buf, size_t count)
 {
 	struct ocfs2_filecheck_args args;
-	struct ocfs2_filecheck_entry *entry = NULL;
+	struct ocfs2_filecheck_entry *entry;
 	struct ocfs2_filecheck_sysfs_entry *ent;
 	ssize_t ret = 0;
 
@@ -527,12 +527,19 @@ static ssize_t ocfs2_filecheck_store(struct kobject *kobj,
 		return (!ret ? count : ret);
 	}
 
+	entry = kmalloc(sizeof(*entry), GFP_NOFS);
+	if (!entry) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
 	spin_lock(&ent->fs_fcheck->fc_lock);
 	if ((ent->fs_fcheck->fc_size >= ent->fs_fcheck->fc_max) &&
-		(ent->fs_fcheck->fc_done == 0)) {
-		mlog(ML_ERROR,
-		"Online file check queue(%u) is full\n",
-		ent->fs_fcheck->fc_max);
+			(ent->fs_fcheck->fc_done == 0)) {
+		mlog(ML_ERROR, "Online file check queue(%u) is full\n",
+				ent->fs_fcheck->fc_max);
+		kfree(entry);
+		entry = NULL;
 		ret = -EBUSY;
 	} else {
 		if ((ent->fs_fcheck->fc_size >= ent->fs_fcheck->fc_max) &&
@@ -544,26 +551,21 @@ static ssize_t ocfs2_filecheck_store(struct kobject *kobj,
 			BUG_ON(!ocfs2_filecheck_erase_entry(ent));
 		}
 
-		entry = kmalloc(sizeof(struct ocfs2_filecheck_entry), GFP_NOFS);
-		if (entry) {
-			entry->fe_ino = args.fa_ino;
-			entry->fe_type = args.fa_type;
-			entry->fe_done = 0;
-			entry->fe_status = OCFS2_FILECHECK_ERR_INPROGRESS;
-			list_add_tail(&entry->fe_list,
-					&ent->fs_fcheck->fc_head);
+		entry->fe_ino = args.fa_ino;
+		entry->fe_type = args.fa_type;
+		entry->fe_done = 0;
+		entry->fe_status = OCFS2_FILECHECK_ERR_INPROGRESS;
+		list_add_tail(&entry->fe_list, &ent->fs_fcheck->fc_head);
 
-			ent->fs_fcheck->fc_size++;
-			ret = count;
-		} else {
-			ret = -ENOMEM;
-		}
+		ent->fs_fcheck->fc_size++;
+		ret = count;
 	}
 	spin_unlock(&ent->fs_fcheck->fc_lock);
 
 	if (entry)
 		ocfs2_filecheck_handle_entry(ent, entry);
 
+out:
 	ocfs2_filecheck_sysfs_put(ent);
 	return ret;
 }
