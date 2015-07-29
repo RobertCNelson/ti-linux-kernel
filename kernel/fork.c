@@ -75,6 +75,7 @@
 #include <linux/aio.h>
 #include <linux/compiler.h>
 #include <linux/sysctl.h>
+#include <linux/sched.h>
 
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
@@ -1876,8 +1877,7 @@ static int check_unshare_flags(unsigned long unshare_flags)
 	 * needs to unshare vm.
 	 */
 	if (unshare_flags & (CLONE_THREAD | CLONE_SIGHAND | CLONE_VM)) {
-		/* FIXME: get_task_mm() increments ->mm_users */
-		if (atomic_read(&current->mm->mm_users) > 1)
+		if (!current_is_single_threaded())
 			return -EINVAL;
 	}
 
