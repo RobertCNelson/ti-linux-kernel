@@ -380,3 +380,7 @@
 371	i386	recvfrom		sys_recvfrom			compat_sys_recvfrom
 372	i386	recvmsg			sys_recvmsg			compat_sys_recvmsg
 373	i386	shutdown		sys_shutdown
+374	i386	userfaultfd		sys_userfaultfd
+375	i386	mlock2			sys_mlock2
+376	i386	munlock2		sys_munlock2
+377	i386	munlockall2		sys_munlockall2
