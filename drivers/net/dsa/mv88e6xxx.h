@@ -89,7 +89,12 @@
 #define PORT_SWITCH_ID_6182	0x1a60
 #define PORT_SWITCH_ID_6185	0x1a70
 #define PORT_SWITCH_ID_6240	0x2400
-#define PORT_SWITCH_ID_6320	0x1250
+#define PORT_SWITCH_ID_6320	0x1150
+#define PORT_SWITCH_ID_6320_A1	0x1151
+#define PORT_SWITCH_ID_6320_A2	0x1152
+#define PORT_SWITCH_ID_6321	0x3100
+#define PORT_SWITCH_ID_6321_A1	0x3101
+#define PORT_SWITCH_ID_6321_A2	0x3102
 #define PORT_SWITCH_ID_6350	0x3710
 #define PORT_SWITCH_ID_6351	0x3750
 #define PORT_SWITCH_ID_6352	0x3520
@@ -389,7 +394,10 @@ int mv88e6xxx_get_sset_count_basic(struct dsa_switch *ds);
 int mv88e6xxx_get_regs_len(struct dsa_switch *ds, int port);
 void mv88e6xxx_get_regs(struct dsa_switch *ds, int port,
 			struct ethtool_regs *regs, void *_p);
-int  mv88e6xxx_get_temp(struct dsa_switch *ds, int *temp);
+int mv88e6xxx_get_temp(struct dsa_switch *ds, int *temp);
+int mv88e6xxx_get_temp_limit(struct dsa_switch *ds, int *temp);
+int mv88e6xxx_set_temp_limit(struct dsa_switch *ds, int temp);
+int mv88e6xxx_get_temp_alarm(struct dsa_switch *ds, bool *alarm);
 int mv88e6xxx_eeprom_load_wait(struct dsa_switch *ds);
 int mv88e6xxx_eeprom_busy_wait(struct dsa_switch *ds);
 int mv88e6xxx_phy_read_indirect(struct dsa_switch *ds, int addr, int regnum);
@@ -410,6 +418,7 @@ int mv88e6xxx_port_fdb_getnext(struct dsa_switch *ds, int port,
 int mv88e6xxx_phy_page_read(struct dsa_switch *ds, int port, int page, int reg);
 int mv88e6xxx_phy_page_write(struct dsa_switch *ds, int port, int page,
 			     int reg, int val);
+
 extern struct dsa_switch_driver mv88e6131_switch_driver;
 extern struct dsa_switch_driver mv88e6123_61_65_switch_driver;
 extern struct dsa_switch_driver mv88e6352_switch_driver;
