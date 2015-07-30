@@ -17,6 +17,7 @@
 #include <linux/lockd/bind.h>
 #include <linux/nfsacl.h>
 #include <linux/seq_file.h>
+#include <linux/workqueue.h>
 #include <net/net_namespace.h>
 #include "nfsd.h"
 #include "cache.h"
@@ -27,6 +28,9 @@
 
 extern struct svc_program	nfsd_program;
 static int			nfsd(void *vrqstp);
+
+/* A workqueue for nfsd-related cleanup tasks */
+struct workqueue_struct		*nfsd_laundry_wq;
 
 /*
  * nfsd_mutex protects nn->nfsd_serv -- both the pointer itself and the members
@@ -224,11 +228,19 @@ static int nfsd_startup_generic(int nrservs)
 	if (ret)
 		goto dec_users;
 
+	ret = -ENOMEM;
+	nfsd_laundry_wq = alloc_workqueue("%s", WQ_UNBOUND, 0, "nfsd-laundry");
+	if (!nfsd_laundry_wq)
+		goto out_racache;
+
 	ret = nfs4_state_start();
 	if (ret)
-		goto out_racache;
+		goto out_wq;
 	return 0;
 
+out_wq:
+	destroy_workqueue(nfsd_laundry_wq);
+	nfsd_laundry_wq = NULL;
 out_racache:
 	nfsd_racache_shutdown();
 dec_users:

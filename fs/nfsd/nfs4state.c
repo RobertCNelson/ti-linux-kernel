@@ -4366,7 +4366,6 @@ nfs4_laundromat(struct nfsd_net *nn)
 	return new_timeo;
 }
 
-static struct workqueue_struct *laundry_wq;
 static void laundromat_main(struct work_struct *);
 
 static void
@@ -4380,7 +4379,7 @@ laundromat_main(struct work_struct *laundry)
 
 	t = nfs4_laundromat(nn);
 	dprintk("NFSD: laundromat_main - sleeping for %ld seconds\n", t);
-	queue_delayed_work(laundry_wq, &nn->laundromat_work, t*HZ);
+	queue_delayed_work(nfsd_laundry_wq, &nn->laundromat_work, t*HZ);
 }
 
 static inline __be32 nfs4_check_fh(struct svc_fh *fhp, struct nfs4_stid *stp)
@@ -6569,7 +6568,8 @@ nfs4_state_start_net(struct net *net)
 	nfsd4_client_tracking_init(net);
 	printk(KERN_INFO "NFSD: starting %ld-second grace period (net %p)\n",
 	       nn->nfsd4_grace, net);
-	queue_delayed_work(laundry_wq, &nn->laundromat_work, nn->nfsd4_grace * HZ);
+	queue_delayed_work(nfsd_laundry_wq, &nn->laundromat_work,
+				nn->nfsd4_grace * HZ);
 	return 0;
 }
 
@@ -6583,22 +6583,10 @@ nfs4_state_start(void)
 	ret = set_callback_cred();
 	if (ret)
 		return -ENOMEM;
-	laundry_wq = create_singlethread_workqueue("nfsd4");
-	if (laundry_wq == NULL) {
-		ret = -ENOMEM;
-		goto out_recovery;
-	}
 	ret = nfsd4_create_callback_queue();
-	if (ret)
-		goto out_free_laundry;
+	if (!ret)
+		set_max_delegations();
 
-	set_max_delegations();
-
-	return 0;
-
-out_free_laundry:
-	destroy_workqueue(laundry_wq);
-out_recovery:
 	return ret;
 }
 
@@ -6635,7 +6623,6 @@ nfs4_state_shutdown_net(struct net *net)
 void
 nfs4_state_shutdown(void)
 {
-	destroy_workqueue(laundry_wq);
 	nfsd4_destroy_callback_queue();
 }
 
