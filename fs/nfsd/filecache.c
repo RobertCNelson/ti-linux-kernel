@@ -8,6 +8,7 @@
 #include <linux/hash.h>
 #include <linux/file.h>
 #include <linux/sched.h>
+#include <linux/module.h>
 
 #include "vfs.h"
 #include "nfsd.h"
@@ -16,8 +17,10 @@
 
 #define NFSDDBG_FACILITY	NFSDDBG_VFS
 
-/* Min time we should keep around a file cache entry */
-#define NFSD_FILE_EXPIRE	(HZ)
+/* Min time we should keep around a file cache entry (in jiffies) */
+static unsigned int			nfsd_file_cache_expiry = HZ;
+module_param(nfsd_file_cache_expiry, uint, 0644);
+MODULE_PARM_DESC(nfsd_file_cache_expiry, "Expire time for open file cache (in jiffies)");
 
 /* We only care about NFSD_MAY_READ/WRITE for this cache */
 #define NFSD_FILE_MAY_MASK	(NFSD_MAY_READ|NFSD_MAY_WRITE)
@@ -40,7 +43,7 @@ nfsd_file_count_inc(void)
 {
 	if (atomic_inc_return(&nfsd_file_count) == 1)
 		queue_delayed_work(nfsd_laundry_wq, &nfsd_file_cache_clean_work,
-					NFSD_FILE_EXPIRE);
+					nfsd_file_cache_expiry);
 }
 
 static void
@@ -169,7 +172,8 @@ nfsd_file_cache_prune(void)
 				continue;
 
 			/* Was this file touched recently? */
-			if (time_before(nf->nf_time + NFSD_FILE_EXPIRE, jiffies))
+			if (time_before(nf->nf_time + nfsd_file_cache_expiry,
+					jiffies))
 				continue;
 
 			/* Ok, it's expired...unhash it */
@@ -193,7 +197,7 @@ nfsd_file_cache_cleaner(struct work_struct *work)
 
 	if (atomic_read(&nfsd_file_count))
 		queue_delayed_work(nfsd_laundry_wq, &nfsd_file_cache_clean_work,
-					NFSD_FILE_EXPIRE);
+					nfsd_file_cache_expiry);
 }
 
 int
