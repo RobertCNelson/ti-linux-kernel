@@ -39,6 +39,7 @@ struct nfsd_file {
 };
 
 int nfsd_file_cache_init(void);
+void nfsd_file_cache_purge(void);
 void nfsd_file_cache_shutdown(void);
 void nfsd_file_put(struct nfsd_file *nf);
 __be32 nfsd_file_acquire(struct svc_rqst *rqstp, struct svc_fh *fhp,

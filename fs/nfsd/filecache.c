@@ -124,6 +124,30 @@ nfsd_file_dispose_list(struct list_head *dispose)
 	}
 }
 
+void
+nfsd_file_cache_purge(void)
+{
+	unsigned int		i;
+	struct nfsd_file	*nf;
+	LIST_HEAD(dispose);
+
+	if (!atomic_read(&nfsd_file_count))
+		return;
+
+	for (i = 0; i < NFSD_FILE_HASH_SIZE; i++) {
+		spin_lock(&nfsd_file_hashtbl[i].nfb_lock);
+		while(!hlist_empty(&nfsd_file_hashtbl[i].nfb_head)) {
+			nf = hlist_entry(nfsd_file_hashtbl[i].nfb_head.first,
+					 struct nfsd_file, nf_node);
+			nfsd_file_unhash(nf);
+			/* put the hash reference */
+			nfsd_file_put_locked(nf, &dispose);
+		}
+		spin_unlock(&nfsd_file_hashtbl[i].nfb_lock);
+		nfsd_file_dispose_list(&dispose);
+	}
+}
+
 static void
 nfsd_file_cache_prune(void)
 {
@@ -200,23 +224,10 @@ out_nomem:
 void
 nfsd_file_cache_shutdown(void)
 {
-	unsigned int		i;
-	struct nfsd_file	*nf;
 	LIST_HEAD(dispose);
 
 	cancel_delayed_work_sync(&nfsd_file_cache_clean_work);
-	for (i = 0; i < NFSD_FILE_HASH_SIZE; i++) {
-		spin_lock(&nfsd_file_hashtbl[i].nfb_lock);
-		while(!hlist_empty(&nfsd_file_hashtbl[i].nfb_head)) {
-			nf = hlist_entry(nfsd_file_hashtbl[i].nfb_head.first,
-					 struct nfsd_file, nf_node);
-			nfsd_file_unhash(nf);
-			/* put the hash reference */
-			nfsd_file_put_locked(nf, &dispose);
-		}
-		spin_unlock(&nfsd_file_hashtbl[i].nfb_lock);
-		nfsd_file_dispose_list(&dispose);
-	}
+	nfsd_file_cache_purge();
 	kfree(nfsd_file_hashtbl);
 	nfsd_file_hashtbl = NULL;
 }
