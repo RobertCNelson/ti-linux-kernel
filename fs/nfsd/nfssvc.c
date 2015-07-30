@@ -23,6 +23,7 @@
 #include "cache.h"
 #include "vfs.h"
 #include "netns.h"
+#include "filecache.h"
 
 #define NFSDDBG_FACILITY	NFSDDBG_SVC
 
@@ -233,11 +234,17 @@ static int nfsd_startup_generic(int nrservs)
 	if (!nfsd_laundry_wq)
 		goto out_racache;
 
-	ret = nfs4_state_start();
+	ret = nfsd_file_cache_init();
 	if (ret)
 		goto out_wq;
+
+	ret = nfs4_state_start();
+	if (ret)
+		goto out_nfsd_file;
 	return 0;
 
+out_nfsd_file:
+	nfsd_file_cache_shutdown();
 out_wq:
 	destroy_workqueue(nfsd_laundry_wq);
 	nfsd_laundry_wq = NULL;
@@ -254,6 +261,7 @@ static void nfsd_shutdown_generic(void)
 		return;
 
 	nfs4_state_shutdown();
+	nfsd_file_cache_shutdown();
 	nfsd_racache_shutdown();
 }
 
