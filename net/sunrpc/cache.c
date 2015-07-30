@@ -1451,6 +1451,9 @@ static ssize_t write_flush(struct file *file, const char __user *buf,
 	cd->nextcheck = seconds_since_boot();
 	cache_flush();
 
+	if (cd->flush)
+		cd->flush();
+
 	*ppos += count;
 	return count;
 }
