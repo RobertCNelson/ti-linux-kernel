@@ -179,8 +179,8 @@ static char *translate_scan(struct adapter *padapter,
 
 	cap = le16_to_cpu(le_tmp);
 
-	if (cap & (WLAN_CAPABILITY_IBSS | WLAN_CAPABILITY_BSS)) {
-		if (cap & WLAN_CAPABILITY_BSS)
+	if (!WLAN_CAPABILITY_IS_STA_BSS(cap)) {
+		if (cap & WLAN_CAPABILITY_ESS)
 			iwe.u.mode = IW_MODE_MASTER;
 		else
 			iwe.u.mode = IW_MODE_ADHOC;
@@ -1871,7 +1871,7 @@ static int rtw_wx_set_auth(struct net_device *dev,
 			rtw_disassoc_cmd(padapter, 500, false);
 			DBG_88E("%s...call rtw_indicate_disconnect\n ", __func__);
 			rtw_indicate_disconnect(padapter);
-			rtw_free_assoc_resources(padapter, 1);
+			rtw_free_assoc_resources(padapter);
 		}
 		ret = wpa_set_auth_algs(dev, (u32)param->value);
 		break;
