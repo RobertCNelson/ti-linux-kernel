@@ -54,7 +54,7 @@
  * following fields:
  *
  *	nluns		Number of LUNs function have (anywhere from 1
- *				to FSG_MAX_LUNS which is 8).
+ *				to FSG_MAX_LUNS).
  *	luns		An array of LUN configuration values.  This
  *				should be filled for each LUN that
  *				function will include (ie. for "nluns"
@@ -2761,12 +2761,12 @@ static void _fsg_common_remove_luns(struct fsg_common *common, int n)
 			common->luns[i] = NULL;
 		}
 }
-EXPORT_SYMBOL_GPL(fsg_common_remove_luns);
 
 void fsg_common_remove_luns(struct fsg_common *common)
 {
 	_fsg_common_remove_luns(common, common->nluns);
 }
+EXPORT_SYMBOL_GPL(fsg_common_remove_luns);
 
 void fsg_common_free_luns(struct fsg_common *common)
 {
@@ -3524,6 +3524,9 @@ static struct usb_function_instance *fsg_alloc_inst(void)
 	config.removable = true;
 	rc = fsg_common_create_lun(opts->common, &config, 0, "lun.0",
 			(const char **)&opts->func_inst.group.cg_item.ci_name);
+	if (rc)
+		goto release_buffers;
+
 	opts->lun0.lun = opts->common->luns[0];
 	opts->lun0.lun_id = 0;
 	config_group_init_type_name(&opts->lun0.group, "lun.0", &fsg_lun_type);
@@ -3534,6 +3537,8 @@ static struct usb_function_instance *fsg_alloc_inst(void)
 
 	return &opts->func_inst;
 
+release_buffers:
+	fsg_common_free_buffers(opts->common);
 release_luns:
 	kfree(opts->common->luns);
 release_opts:
