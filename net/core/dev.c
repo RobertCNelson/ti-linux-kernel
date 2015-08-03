@@ -3061,6 +3061,16 @@ static int __dev_queue_xmit(struct sk_buff *skb, void *accel_priv)
 	else
 		skb_dst_force(skb);
 
+#ifdef CONFIG_NET_SWITCHDEV
+	/* Don't forward if offload device already forwarded */
+	if (skb->offload_fwd_mark &&
+	    skb->offload_fwd_mark == dev->offload_fwd_mark) {
+		consume_skb(skb);
+		rc = NET_XMIT_SUCCESS;
+		goto out;
+	}
+#endif
+
 	txq = netdev_pick_tx(dev, skb, accel_priv);
 	q = rcu_dereference_bh(txq->qdisc);
 
@@ -3645,7 +3655,7 @@ static inline struct sk_buff *handle_ing(struct sk_buff *skb,
 
 	qdisc_skb_cb(skb)->pkt_len = skb->len;
 	skb->tc_verd = SET_TC_AT(skb->tc_verd, AT_INGRESS);
-	qdisc_bstats_update_cpu(cl->q, skb);
+	qdisc_bstats_cpu_update(cl->q, skb);
 
 	switch (tc_classify(skb, cl, &cl_res)) {
 	case TC_ACT_OK:
@@ -3653,7 +3663,7 @@ static inline struct sk_buff *handle_ing(struct sk_buff *skb,
 		skb->tc_index = TC_H_MIN(cl_res.classid);
 		break;
 	case TC_ACT_SHOT:
-		qdisc_qstats_drop_cpu(cl->q);
+		qdisc_qstats_cpu_drop(cl->q);
 	case TC_ACT_STOLEN:
 	case TC_ACT_QUEUED:
 		kfree_skb(skb);
@@ -4985,7 +4995,7 @@ EXPORT_SYMBOL(netdev_all_upper_get_next_dev_rcu);
  * Gets the next netdev_adjacent->private from the dev's lower neighbour
  * list, starting from iter position. The caller must hold either hold the
  * RTNL lock or its own locking that guarantees that the neighbour lower
- * list will remain unchainged.
+ * list will remain unchanged.
  */
 void *netdev_lower_get_next_private(struct net_device *dev,
 				    struct list_head **iter)
@@ -5040,7 +5050,7 @@ EXPORT_SYMBOL(netdev_lower_get_next_private_rcu);
  * Gets the next netdev_adjacent from the dev's lower neighbour
  * list, starting from iter position. The caller must hold RTNL lock or
  * its own locking that guarantees that the neighbour lower
- * list will remain unchainged.
+ * list will remain unchanged.
  */
 void *netdev_lower_get_next(struct net_device *dev, struct list_head **iter)
 {
@@ -6073,6 +6083,26 @@ int dev_get_phys_port_name(struct net_device *dev,
 	return ops->ndo_get_phys_port_name(dev, name, len);
 }
 EXPORT_SYMBOL(dev_get_phys_port_name);
+
+/**
+ *	dev_change_proto_down - update protocol port state information
+ *	@dev: device
+ *	@proto_down: new value
+ *
+ *	This info can be used by switch drivers to set the phys state of the
+ *	port.
+ */
+int dev_change_proto_down(struct net_device *dev, bool proto_down)
+{
+	const struct net_device_ops *ops = dev->netdev_ops;
+
+	if (!ops->ndo_change_proto_down)
+		return -EOPNOTSUPP;
+	if (!netif_device_present(dev))
+		return -ENODEV;
+	return ops->ndo_change_proto_down(dev, proto_down);
+}
+EXPORT_SYMBOL(dev_change_proto_down);
 
 /**
  *	dev_new_index	-	allocate an ifindex
@@ -7639,7 +7669,7 @@ static int __init net_dev_init(void)
 	open_softirq(NET_RX_SOFTIRQ, net_rx_action);
 
 	hotcpu_notifier(dev_cpu_callback, 0);
-	dst_init();
+	dst_subsys_init();
 	rc = 0;
 out:
 	return rc;
