@@ -2200,7 +2200,7 @@ static unsigned long get_segment_base(unsigned int segment)
 	return get_desc_base(desc);
 }
 
-#ifdef CONFIG_COMPAT
+#ifdef CONFIG_IA32_EMULATION
 
 #include <asm/compat.h>
 

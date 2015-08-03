@@ -402,13 +402,11 @@ struct thread_struct {
 	unsigned long		error_code;
 #ifdef CONFIG_X86_32
 	/* Virtual 86 mode info */
-	struct vm86_struct __user *vm86_info;
+	struct vm86plus_struct __user *vm86_info;
 	unsigned long		screen_bitmap;
 	unsigned long		v86flags;
 	unsigned long		v86mask;
 	unsigned long		saved_sp0;
-	unsigned int		saved_fs;
-	unsigned int		saved_gs;
 #endif
 	/* IO permissions: */
 	unsigned long		*io_bitmap_ptr;
@@ -650,14 +648,6 @@ static inline void update_debugctlmsr(unsigned long debugctlmsr)
 }
 
 extern void set_task_blockstep(struct task_struct *task, bool on);
-
-/*
- * from system description table in BIOS. Mostly for MCA use, but
- * others may find it useful:
- */
-extern unsigned int		machine_id;
-extern unsigned int		machine_submodel_id;
-extern unsigned int		BIOS_revision;
 
 /* Boot loader type from the setup header: */
 extern int			bootloader_type;
