@@ -54,7 +54,7 @@
  * following fields:
  *
  *	nluns		Number of LUNs function have (anywhere from 1
- *				to FSG_MAX_LUNS which is 8).
+ *				to FSG_MAX_LUNS).
  *	luns		An array of LUN configuration values.  This
  *				should be filled for each LUN that
  *				function will include (ie. for "nluns"
@@ -2761,12 +2761,12 @@ static void _fsg_common_remove_luns(struct fsg_common *common, int n)
 			common->luns[i] = NULL;
 		}
 }
-EXPORT_SYMBOL_GPL(fsg_common_remove_luns);
 
 void fsg_common_remove_luns(struct fsg_common *common)
 {
 	_fsg_common_remove_luns(common, common->nluns);
 }
+EXPORT_SYMBOL_GPL(fsg_common_remove_luns);
 
 void fsg_common_free_luns(struct fsg_common *common)
 {
@@ -2836,7 +2836,8 @@ int fsg_common_set_cdev(struct fsg_common *common,
 	 * halt bulk endpoints correctly.  If one of them is present,
 	 * disable stalls.
 	 */
-	common->can_stall = can_stall && !(gadget_is_at91(common->gadget));
+	common->can_stall = can_stall &&
+			gadget_is_stall_supported(common->gadget);
 
 	return 0;
 }
@@ -3080,7 +3081,7 @@ static int fsg_bind(struct usb_configuration *c, struct usb_function *f)
 	/* New interface */
 	i = usb_interface_id(c, f);
 	if (i < 0)
-		return i;
+		goto fail;
 	fsg_intf_desc.bInterfaceNumber = i;
 	fsg->interface_number = i;
 
@@ -3123,7 +3124,14 @@ static int fsg_bind(struct usb_configuration *c, struct usb_function *f)
 
 autoconf_fail:
 	ERROR(fsg, "unable to autoconfigure all endpoints\n");
-	return -ENOTSUPP;
+	i = -ENOTSUPP;
+fail:
+	/* terminate the thread */
+	if (fsg->common->state != FSG_STATE_TERMINATED) {
+		raise_exception(fsg->common, FSG_STATE_EXIT);
+		wait_for_completion(&fsg->common->thread_notifier);
+	}
+	return i;
 }
 
 /****************************** ALLOCATE FUNCTION *************************/
@@ -3524,6 +3532,9 @@ static struct usb_function_instance *fsg_alloc_inst(void)
 	config.removable = true;
 	rc = fsg_common_create_lun(opts->common, &config, 0, "lun.0",
 			(const char **)&opts->func_inst.group.cg_item.ci_name);
+	if (rc)
+		goto release_buffers;
+
 	opts->lun0.lun = opts->common->luns[0];
 	opts->lun0.lun_id = 0;
 	config_group_init_type_name(&opts->lun0.group, "lun.0", &fsg_lun_type);
@@ -3534,6 +3545,8 @@ static struct usb_function_instance *fsg_alloc_inst(void)
 
 	return &opts->func_inst;
 
+release_buffers:
+	fsg_common_free_buffers(opts->common);
 release_luns:
 	kfree(opts->common->luns);
 release_opts:

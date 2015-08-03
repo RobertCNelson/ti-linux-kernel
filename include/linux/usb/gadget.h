@@ -511,6 +511,7 @@ struct usb_gadget_ops {
  * @dev: Driver model state for this abstract device.
  * @out_epnum: last used out ep number
  * @in_epnum: last used in ep number
+ * @otg_caps: OTG capabilities of this gadget.
  * @sg_supported: true if we can handle scatter-gather
  * @is_otg: True if the USB device port uses a Mini-AB jack, so that the
  *	gadget driver must provide a USB OTG descriptor.
@@ -526,6 +527,9 @@ struct usb_gadget_ops {
  * @quirk_ep_out_aligned_size: epout requires buffer size to be aligned to
  *	MaxPacketSize.
  * @is_selfpowered: if the gadget is self-powered.
+ * @deactivated: True if gadget is deactivated - in deactivated state it cannot
+ *	be connected.
+ * @connected: True if gadget is connected.
  *
  * Gadgets have a mostly-portable "gadget driver" implementing device
  * functions, handling all usb configurations and interfaces.  Gadget
@@ -559,6 +563,7 @@ struct usb_gadget {
 	struct device			dev;
 	unsigned			out_epnum;
 	unsigned			in_epnum;
+	struct usb_otg_caps		*otg_caps;
 
 	unsigned			sg_supported:1;
 	unsigned			is_otg:1;
@@ -567,7 +572,12 @@ struct usb_gadget {
 	unsigned			a_hnp_support:1;
 	unsigned			a_alt_hnp_support:1;
 	unsigned			quirk_ep_out_aligned_size:1;
+	unsigned			quirk_altset_not_supp:1;
+	unsigned			quirk_stall_not_supp:1;
+	unsigned			quirk_zlp_not_supp:1;
 	unsigned			is_selfpowered:1;
+	unsigned			deactivated:1;
+	unsigned			connected:1;
 };
 #define work_to_gadget(w)	(container_of((w), struct usb_gadget, work))
 
@@ -600,6 +610,34 @@ usb_ep_align_maybe(struct usb_gadget *g, struct usb_ep *ep, size_t len)
 {
 	return !g->quirk_ep_out_aligned_size ? len :
 			round_up(len, (size_t)ep->desc->wMaxPacketSize);
+}
+
+/**
+ * gadget_is_altset_supported - return true iff the hardware supports
+ *	altsettings
+ * @g: controller to check for quirk
+ */
+static inline int gadget_is_altset_supported(struct usb_gadget *g)
+{
+	return !g->quirk_altset_not_supp;
+}
+
+/**
+ * gadget_is_stall_supported - return true iff the hardware supports stalling
+ * @g: controller to check for quirk
+ */
+static inline int gadget_is_stall_supported(struct usb_gadget *g)
+{
+	return !g->quirk_stall_not_supp;
+}
+
+/**
+ * gadget_is_zlp_supported - return true iff the hardware supports zlp
+ * @g: controller to check for quirk
+ */
+static inline int gadget_is_zlp_supported(struct usb_gadget *g)
+{
+	return !g->quirk_zlp_not_supp;
 }
 
 /**
@@ -771,9 +809,24 @@ static inline int usb_gadget_vbus_disconnect(struct usb_gadget *gadget)
  */
 static inline int usb_gadget_connect(struct usb_gadget *gadget)
 {
+	int ret;
+
 	if (!gadget->ops->pullup)
 		return -EOPNOTSUPP;
-	return gadget->ops->pullup(gadget, 1);
+
+	if (gadget->deactivated) {
+		/*
+		 * If gadget is deactivated we only save new state.
+		 * Gadget will be connected automatically after activation.
+		 */
+		gadget->connected = true;
+		return 0;
+	}
+
+	ret = gadget->ops->pullup(gadget, 1);
+	if (!ret)
+		gadget->connected = 1;
+	return ret;
 }
 
 /**
@@ -784,20 +837,88 @@ static inline int usb_gadget_connect(struct usb_gadget *gadget)
  * as a disconnect (when a VBUS session is active).  Not all systems
  * support software pullup controls.
  *
- * This routine may be used during the gadget driver bind() call to prevent
- * the peripheral from ever being visible to the USB host, unless later
- * usb_gadget_connect() is called.  For example, user mode components may
- * need to be activated before the system can talk to hosts.
- *
  * Returns zero on success, else negative errno.
  */
 static inline int usb_gadget_disconnect(struct usb_gadget *gadget)
 {
+	int ret;
+
 	if (!gadget->ops->pullup)
 		return -EOPNOTSUPP;
-	return gadget->ops->pullup(gadget, 0);
+
+	if (gadget->deactivated) {
+		/*
+		 * If gadget is deactivated we only save new state.
+		 * Gadget will stay disconnected after activation.
+		 */
+		gadget->connected = false;
+		return 0;
+	}
+
+	ret = gadget->ops->pullup(gadget, 0);
+	if (!ret)
+		gadget->connected = 0;
+	return ret;
 }
 
+/**
+ * usb_gadget_deactivate - deactivate function which is not ready to work
+ * @gadget: the peripheral being deactivated
+ *
+ * This routine may be used during the gadget driver bind() call to prevent
+ * the peripheral from ever being visible to the USB host, unless later
+ * usb_gadget_activate() is called.  For example, user mode components may
+ * need to be activated before the system can talk to hosts.
+ *
+ * Returns zero on success, else negative errno.
+ */
+static inline int usb_gadget_deactivate(struct usb_gadget *gadget)
+{
+	int ret;
+
+	if (gadget->deactivated)
+		return 0;
+
+	if (gadget->connected) {
+		ret = usb_gadget_disconnect(gadget);
+		if (ret)
+			return ret;
+		/*
+		 * If gadget was being connected before deactivation, we want
+		 * to reconnect it in usb_gadget_activate().
+		 */
+		gadget->connected = true;
+	}
+	gadget->deactivated = true;
+
+	return 0;
+}
+
+/**
+ * usb_gadget_activate - activate function which is not ready to work
+ * @gadget: the peripheral being activated
+ *
+ * This routine activates gadget which was previously deactivated with
+ * usb_gadget_deactivate() call. It calls usb_gadget_connect() if needed.
+ *
+ * Returns zero on success, else negative errno.
+ */
+static inline int usb_gadget_activate(struct usb_gadget *gadget)
+{
+	if (!gadget->deactivated)
+		return 0;
+
+	gadget->deactivated = false;
+
+	/*
+	 * If gadget has been connected before deactivation, or became connected
+	 * while it was being deactivated, we call usb_gadget_connect().
+	 */
+	if (gadget->connected)
+		return usb_gadget_connect(gadget);
+
+	return 0;
+}
 
 /*-------------------------------------------------------------------------*/
 
@@ -1002,6 +1123,10 @@ int usb_assign_descriptors(struct usb_function *f,
 		struct usb_descriptor_header **ss);
 void usb_free_all_descriptors(struct usb_function *f);
 
+struct usb_descriptor_header *usb_otg_descriptor_alloc(
+				struct usb_gadget *gadget);
+int usb_otg_descriptor_init(struct usb_gadget *gadget,
+		struct usb_descriptor_header *otg_desc);
 /*-------------------------------------------------------------------------*/
 
 /* utility to simplify map/unmap of usb_requests to/from DMA */
