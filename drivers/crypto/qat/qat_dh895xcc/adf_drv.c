@@ -100,7 +100,7 @@ static void adf_cleanup_accel(struct adf_accel_dev *accel_dev)
 	}
 
 	if (accel_dev->hw_device) {
-		switch (accel_dev->hw_device->pci_dev_id) {
+		switch (accel_pci_dev->pci_dev->device) {
 		case ADF_DH895XCC_PCI_DEVICE_ID:
 			adf_clean_hw_data_dh895xcc(accel_dev->hw_device);
 			break;
@@ -167,12 +167,6 @@ static int adf_dev_configure(struct adf_accel_dev *accel_dev)
 						key, (void *)&val, ADF_DEC))
 			goto err;
 
-		val = 4;
-		snprintf(key, sizeof(key), ADF_CY "%d" ADF_RING_RND_TX, i);
-		if (adf_cfg_add_key_value_param(accel_dev, ADF_KERNEL_SEC,
-						key, (void *)&val, ADF_DEC))
-			goto err;
-
 		val = 8;
 		snprintf(key, sizeof(key), ADF_CY "%d" ADF_RING_ASYM_RX, i);
 		if (adf_cfg_add_key_value_param(accel_dev, ADF_KERNEL_SEC,
@@ -181,12 +175,6 @@ static int adf_dev_configure(struct adf_accel_dev *accel_dev)
 
 		val = 10;
 		snprintf(key, sizeof(key), ADF_CY "%d" ADF_RING_SYM_RX, i);
-		if (adf_cfg_add_key_value_param(accel_dev, ADF_KERNEL_SEC,
-						key, (void *)&val, ADF_DEC))
-			goto err;
-
-		val = 12;
-		snprintf(key, sizeof(key), ADF_CY "%d" ADF_RING_RND_RX, i);
 		if (adf_cfg_add_key_value_param(accel_dev, ADF_KERNEL_SEC,
 						key, (void *)&val, ADF_DEC))
 			goto err;
