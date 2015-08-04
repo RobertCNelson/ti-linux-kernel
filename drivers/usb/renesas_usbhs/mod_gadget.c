@@ -52,7 +52,7 @@ struct usbhsg_gpriv {
 
 	struct usb_gadget_driver	*driver;
 	struct usb_phy		*transceiver;
-	bool 			 vbus_active;
+	bool			 vbus_active;
 
 	u32	status;
 #define USBHSG_STATUS_STARTED		(1 << 0)
