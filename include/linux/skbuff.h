@@ -37,6 +37,7 @@
 #include <net/flow_dissector.h>
 #include <linux/splice.h>
 #include <linux/in6.h>
+#include <net/flow.h>
 
 /* A. Checksumming of received packets by device.
  *
@@ -506,6 +507,7 @@ static inline u32 skb_mstamp_us_delta(const struct skb_mstamp *t1,
  *	@no_fcs:  Request NIC to treat last 4 bytes as Ethernet FCS
   *	@napi_id: id of the NAPI struct this skb came from
  *	@secmark: security marking
+ *	@offload_fwd_mark: fwding offload mark
  *	@mark: Generic packet mark
  *	@vlan_proto: vlan encapsulation protocol
  *	@vlan_tci: vlan tag control information
@@ -650,9 +652,15 @@ struct sk_buff {
 		unsigned int	sender_cpu;
 	};
 #endif
+	union {
 #ifdef CONFIG_NETWORK_SECMARK
-	__u32			secmark;
+		__u32		secmark;
 #endif
+#ifdef CONFIG_NET_SWITCHDEV
+		__u32		offload_fwd_mark;
+#endif
+	};
+
 	union {
 		__u32		mark;
 		__u32		reserved_tailroom;
@@ -934,6 +942,26 @@ static inline __u32 skb_get_hash(struct sk_buff *skb)
 {
 	if (!skb->l4_hash && !skb->sw_hash)
 		__skb_get_hash(skb);
+
+	return skb->hash;
+}
+
+__u32 __skb_get_hash_flowi6(struct sk_buff *skb, struct flowi6 *fl6);
+
+static inline __u32 skb_get_hash_flowi6(struct sk_buff *skb, struct flowi6 *fl6)
+{
+	if (!skb->l4_hash && !skb->sw_hash)
+		__skb_get_hash_flowi6(skb, fl6);
+
+	return skb->hash;
+}
+
+__u32 __skb_get_hash_flowi4(struct sk_buff *skb, struct flowi4 *fl);
+
+static inline __u32 skb_get_hash_flowi4(struct sk_buff *skb, struct flowi4 *fl4)
+{
+	if (!skb->l4_hash && !skb->sw_hash)
+		__skb_get_hash_flowi4(skb, fl4);
 
 	return skb->hash;
 }
@@ -2671,12 +2699,6 @@ static inline void skb_frag_list_init(struct sk_buff *skb)
 	skb_shinfo(skb)->frag_list = NULL;
 }
 
-static inline void skb_frag_add_head(struct sk_buff *skb, struct sk_buff *frag)
-{
-	frag->next = skb_shinfo(skb)->frag_list;
-	skb_shinfo(skb)->frag_list = frag;
-}
-
 #define skb_walk_frags(skb, iter)	\
 	for (iter = skb_shinfo(skb)->frag_list; iter; iter = iter->next)
 
@@ -3468,5 +3490,6 @@ static inline unsigned int skb_gso_network_seglen(const struct sk_buff *skb)
 			       skb_network_header(skb);
 	return hdr_len + skb_gso_transport_seglen(skb);
 }
+
 #endif	/* __KERNEL__ */
 #endif	/* _LINUX_SKBUFF_H */
