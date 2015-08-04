@@ -11,9 +11,9 @@ menuconfig INPUT_TOUCHSCREEN
 
 if INPUT_TOUCHSCREEN
 
-config OF_TOUCHSCREEN
+config TOUCHSCREEN_PROPERTIES
 	def_tristate INPUT
-	depends on INPUT && OF
+	depends on INPUT
 
 config TOUCHSCREEN_88PM860X
 	tristate "Marvell 88PM860x touchscreen"
@@ -915,10 +915,11 @@ config TOUCHSCREEN_TSC_SERIO
 	  module will be called tsc40.
 
 config TOUCHSCREEN_TSC2005
-        tristate "TSC2005 based touchscreens"
-        depends on SPI_MASTER
-        help
-          Say Y here if you have a TSC2005 based touchscreen.
+	tristate "TSC2005 based touchscreens"
+	depends on SPI_MASTER
+	select REGMAP_SPI
+	help
+	  Say Y here if you have a TSC2005 based touchscreen.
 
 	  If unsure, say N.
 
