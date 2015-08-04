@@ -1118,8 +1118,8 @@ mtk_eint_debounce_process(struct mtk_pinctrl *pctl, int index)
 
 static void mtk_eint_irq_handler(unsigned irq, struct irq_desc *desc)
 {
-	struct irq_chip *chip = irq_get_chip(irq);
-	struct mtk_pinctrl *pctl = irq_get_handler_data(irq);
+	struct irq_chip *chip = irq_desc_get_chip(desc);
+	struct mtk_pinctrl *pctl = irq_desc_get_handler_data(desc);
 	unsigned int status, eint_num;
 	int offset, index, virq;
 	const struct mtk_eint_offsets *eint_offsets =
@@ -1348,11 +1348,9 @@ int mtk_pctrl_init(struct platform_device *pdev,
 		irq_set_chip_and_handler(virq, &mtk_pinctrl_irq_chip,
 			handle_level_irq);
 		irq_set_chip_data(virq, pctl);
-		set_irq_flags(virq, IRQF_VALID);
 	};
 
 	irq_set_chained_handler_and_data(irq, mtk_eint_irq_handler, pctl);
-	set_irq_flags(irq, IRQF_VALID);
 	return 0;
 
 chip_error:
