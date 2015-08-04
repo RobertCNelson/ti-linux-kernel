@@ -68,7 +68,7 @@ static unsigned long kvm_psci_vcpu_on(struct kvm_vcpu *source_vcpu)
 {
 	struct kvm *kvm = source_vcpu->kvm;
 	struct kvm_vcpu *vcpu = NULL;
-	wait_queue_head_t *wq;
+	struct swait_head *wq;
 	unsigned long cpu_id;
 	unsigned long context_id;
 	phys_addr_t target_pc;
@@ -117,7 +117,7 @@ static unsigned long kvm_psci_vcpu_on(struct kvm_vcpu *source_vcpu)
 	smp_mb();		/* Make sure the above is visible */
 
 	wq = kvm_arch_vcpu_wq(vcpu);
-	wake_up_interruptible(wq);
+	swait_wake_interruptible(wq);
 
 	return PSCI_RET_SUCCESS;
 }
@@ -230,10 +230,6 @@ static int kvm_psci_0_2_call(struct kvm_vcpu *vcpu)
 	case PSCI_0_2_FN64_AFFINITY_INFO:
 		val = kvm_psci_vcpu_affinity_info(vcpu);
 		break;
-	case PSCI_0_2_FN_MIGRATE:
-	case PSCI_0_2_FN64_MIGRATE:
-		val = PSCI_RET_NOT_SUPPORTED;
-		break;
 	case PSCI_0_2_FN_MIGRATE_INFO_TYPE:
 		/*
 		 * Trusted OS is MP hence does not require migration
@@ -241,10 +237,6 @@ static int kvm_psci_0_2_call(struct kvm_vcpu *vcpu)
 		 * Trusted OS is not present
 		 */
 		val = PSCI_0_2_TOS_MP;
-		break;
-	case PSCI_0_2_FN_MIGRATE_INFO_UP_CPU:
-	case PSCI_0_2_FN64_MIGRATE_INFO_UP_CPU:
-		val = PSCI_RET_NOT_SUPPORTED;
 		break;
 	case PSCI_0_2_FN_SYSTEM_OFF:
 		kvm_psci_system_off(vcpu);
@@ -271,7 +263,8 @@ static int kvm_psci_0_2_call(struct kvm_vcpu *vcpu)
 		ret = 0;
 		break;
 	default:
-		return -EINVAL;
+		val = PSCI_RET_NOT_SUPPORTED;
+		break;
 	}
 
 	*vcpu_reg(vcpu, 0) = val;
@@ -291,12 +284,9 @@ static int kvm_psci_0_1_call(struct kvm_vcpu *vcpu)
 	case KVM_PSCI_FN_CPU_ON:
 		val = kvm_psci_vcpu_on(vcpu);
 		break;
-	case KVM_PSCI_FN_CPU_SUSPEND:
-	case KVM_PSCI_FN_MIGRATE:
+	default:
 		val = PSCI_RET_NOT_SUPPORTED;
 		break;
-	default:
-		return -EINVAL;
 	}
 
 	*vcpu_reg(vcpu, 0) = val;
