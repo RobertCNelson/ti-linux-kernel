@@ -151,6 +151,45 @@ static int cim_la_show_3in1(struct seq_file *seq, void *v, int idx)
 	return 0;
 }
 
+static int cim_la_show_t6(struct seq_file *seq, void *v, int idx)
+{
+	if (v == SEQ_START_TOKEN) {
+		seq_puts(seq, "Status   Inst    Data      PC     LS0Stat  "
+			 "LS0Addr  LS0Data  LS1Stat  LS1Addr  LS1Data\n");
+	} else {
+		const u32 *p = v;
+
+		seq_printf(seq, "  %02x   %04x%04x %04x%04x %04x%04x %08x %08x %08x %08x %08x %08x\n",
+			   (p[9] >> 16) & 0xff,       /* Status */
+			   p[9] & 0xffff, p[8] >> 16, /* Inst */
+			   p[8] & 0xffff, p[7] >> 16, /* Data */
+			   p[7] & 0xffff, p[6] >> 16, /* PC */
+			   p[2], p[1], p[0],      /* LS0 Stat, Addr and Data */
+			   p[5], p[4], p[3]);     /* LS1 Stat, Addr and Data */
+	}
+	return 0;
+}
+
+static int cim_la_show_pc_t6(struct seq_file *seq, void *v, int idx)
+{
+	if (v == SEQ_START_TOKEN) {
+		seq_puts(seq, "Status   Inst    Data      PC\n");
+	} else {
+		const u32 *p = v;
+
+		seq_printf(seq, "  %02x   %08x %08x %08x\n",
+			   p[3] & 0xff, p[2], p[1], p[0]);
+		seq_printf(seq, "  %02x   %02x%06x %02x%06x %02x%06x\n",
+			   (p[6] >> 8) & 0xff, p[6] & 0xff, p[5] >> 8,
+			   p[5] & 0xff, p[4] >> 8, p[4] & 0xff, p[3] >> 8);
+		seq_printf(seq, "  %02x   %04x%04x %04x%04x %04x%04x\n",
+			   (p[9] >> 16) & 0xff, p[9] & 0xffff, p[8] >> 16,
+			   p[8] & 0xffff, p[7] >> 16, p[7] & 0xffff,
+			   p[6] >> 16);
+	}
+	return 0;
+}
+
 static int cim_la_open(struct inode *inode, struct file *file)
 {
 	int ret;
@@ -162,9 +201,18 @@ static int cim_la_open(struct inode *inode, struct file *file)
 	if (ret)
 		return ret;
 
-	p = seq_open_tab(file, adap->params.cim_la_size / 8, 8 * sizeof(u32), 1,
-			 cfg & UPDBGLACAPTPCONLY_F ?
-			 cim_la_show_3in1 : cim_la_show);
+	if (is_t6(adap->params.chip)) {
+		/* +1 to account for integer division of CIMLA_SIZE/10 */
+		p = seq_open_tab(file, (adap->params.cim_la_size / 10) + 1,
+				 10 * sizeof(u32), 1,
+				 cfg & UPDBGLACAPTPCONLY_F ?
+					cim_la_show_pc_t6 : cim_la_show_t6);
+	} else {
+		p = seq_open_tab(file, adap->params.cim_la_size / 8,
+				 8 * sizeof(u32), 1,
+				 cfg & UPDBGLACAPTPCONLY_F ? cim_la_show_3in1 :
+							     cim_la_show);
+	}
 	if (!p)
 		return -ENOMEM;
 
@@ -2227,6 +2275,290 @@ static const struct file_operations blocked_fl_fops = {
 	.llseek  = generic_file_llseek,
 };
 
+struct mem_desc {
+	unsigned int base;
+	unsigned int limit;
+	unsigned int idx;
+};
+
+static int mem_desc_cmp(const void *a, const void *b)
+{
+	return ((const struct mem_desc *)a)->base -
+	       ((const struct mem_desc *)b)->base;
+}
+
+static void mem_region_show(struct seq_file *seq, const char *name,
+			    unsigned int from, unsigned int to)
+{
+	char buf[40];
+
+	string_get_size((u64)to - from + 1, 1, STRING_UNITS_2, buf,
+			sizeof(buf));
+	seq_printf(seq, "%-15s %#x-%#x [%s]\n", name, from, to, buf);
+}
+
+static int meminfo_show(struct seq_file *seq, void *v)
+{
+	static const char * const memory[] = { "EDC0:", "EDC1:", "MC:",
+					"MC0:", "MC1:"};
+	static const char * const region[] = {
+		"DBQ contexts:", "IMSG contexts:", "FLM cache:", "TCBs:",
+		"Pstructs:", "Timers:", "Rx FL:", "Tx FL:", "Pstruct FL:",
+		"Tx payload:", "Rx payload:", "LE hash:", "iSCSI region:",
+		"TDDP region:", "TPT region:", "STAG region:", "RQ region:",
+		"RQUDP region:", "PBL region:", "TXPBL region:",
+		"DBVFIFO region:", "ULPRX state:", "ULPTX state:",
+		"On-chip queues:"
+	};
+
+	int i, n;
+	u32 lo, hi, used, alloc;
+	struct mem_desc avail[4];
+	struct mem_desc mem[ARRAY_SIZE(region) + 3];      /* up to 3 holes */
+	struct mem_desc *md = mem;
+	struct adapter *adap = seq->private;
+
+	for (i = 0; i < ARRAY_SIZE(mem); i++) {
+		mem[i].limit = 0;
+		mem[i].idx = i;
+	}
+
+	/* Find and sort the populated memory ranges */
+	i = 0;
+	lo = t4_read_reg(adap, MA_TARGET_MEM_ENABLE_A);
+	if (lo & EDRAM0_ENABLE_F) {
+		hi = t4_read_reg(adap, MA_EDRAM0_BAR_A);
+		avail[i].base = EDRAM0_BASE_G(hi) << 20;
+		avail[i].limit = avail[i].base + (EDRAM0_SIZE_G(hi) << 20);
+		avail[i].idx = 0;
+		i++;
+	}
+	if (lo & EDRAM1_ENABLE_F) {
+		hi = t4_read_reg(adap, MA_EDRAM1_BAR_A);
+		avail[i].base = EDRAM1_BASE_G(hi) << 20;
+		avail[i].limit = avail[i].base + (EDRAM1_SIZE_G(hi) << 20);
+		avail[i].idx = 1;
+		i++;
+	}
+
+	if (is_t5(adap->params.chip)) {
+		if (lo & EXT_MEM0_ENABLE_F) {
+			hi = t4_read_reg(adap, MA_EXT_MEMORY0_BAR_A);
+			avail[i].base = EXT_MEM0_BASE_G(hi) << 20;
+			avail[i].limit =
+				avail[i].base + (EXT_MEM0_SIZE_G(hi) << 20);
+			avail[i].idx = 3;
+			i++;
+		}
+		if (lo & EXT_MEM1_ENABLE_F) {
+			hi = t4_read_reg(adap, MA_EXT_MEMORY1_BAR_A);
+			avail[i].base = EXT_MEM1_BASE_G(hi) << 20;
+			avail[i].limit =
+				avail[i].base + (EXT_MEM1_SIZE_G(hi) << 20);
+			avail[i].idx = 4;
+			i++;
+		}
+	} else {
+		if (lo & EXT_MEM_ENABLE_F) {
+			hi = t4_read_reg(adap, MA_EXT_MEMORY_BAR_A);
+			avail[i].base = EXT_MEM_BASE_G(hi) << 20;
+			avail[i].limit =
+				avail[i].base + (EXT_MEM_SIZE_G(hi) << 20);
+			avail[i].idx = 2;
+			i++;
+		}
+	}
+	if (!i)                                    /* no memory available */
+		return 0;
+	sort(avail, i, sizeof(struct mem_desc), mem_desc_cmp, NULL);
+
+	(md++)->base = t4_read_reg(adap, SGE_DBQ_CTXT_BADDR_A);
+	(md++)->base = t4_read_reg(adap, SGE_IMSG_CTXT_BADDR_A);
+	(md++)->base = t4_read_reg(adap, SGE_FLM_CACHE_BADDR_A);
+	(md++)->base = t4_read_reg(adap, TP_CMM_TCB_BASE_A);
+	(md++)->base = t4_read_reg(adap, TP_CMM_MM_BASE_A);
+	(md++)->base = t4_read_reg(adap, TP_CMM_TIMER_BASE_A);
+	(md++)->base = t4_read_reg(adap, TP_CMM_MM_RX_FLST_BASE_A);
+	(md++)->base = t4_read_reg(adap, TP_CMM_MM_TX_FLST_BASE_A);
+	(md++)->base = t4_read_reg(adap, TP_CMM_MM_PS_FLST_BASE_A);
+
+	/* the next few have explicit upper bounds */
+	md->base = t4_read_reg(adap, TP_PMM_TX_BASE_A);
+	md->limit = md->base - 1 +
+		    t4_read_reg(adap, TP_PMM_TX_PAGE_SIZE_A) *
+		    PMTXMAXPAGE_G(t4_read_reg(adap, TP_PMM_TX_MAX_PAGE_A));
+	md++;
+
+	md->base = t4_read_reg(adap, TP_PMM_RX_BASE_A);
+	md->limit = md->base - 1 +
+		    t4_read_reg(adap, TP_PMM_RX_PAGE_SIZE_A) *
+		    PMRXMAXPAGE_G(t4_read_reg(adap, TP_PMM_RX_MAX_PAGE_A));
+	md++;
+
+	if (t4_read_reg(adap, LE_DB_CONFIG_A) & HASHEN_F) {
+		if (CHELSIO_CHIP_VERSION(adap->params.chip) <= CHELSIO_T5) {
+			hi = t4_read_reg(adap, LE_DB_TID_HASHBASE_A) / 4;
+			md->base = t4_read_reg(adap, LE_DB_HASH_TID_BASE_A);
+		 } else {
+			hi = t4_read_reg(adap, LE_DB_HASH_TID_BASE_A);
+			md->base = t4_read_reg(adap,
+					       LE_DB_HASH_TBL_BASE_ADDR_A);
+		}
+		md->limit = 0;
+	} else {
+		md->base = 0;
+		md->idx = ARRAY_SIZE(region);  /* hide it */
+	}
+	md++;
+
+#define ulp_region(reg) do { \
+	md->base = t4_read_reg(adap, ULP_ ## reg ## _LLIMIT_A);\
+	(md++)->limit = t4_read_reg(adap, ULP_ ## reg ## _ULIMIT_A); \
+} while (0)
+
+	ulp_region(RX_ISCSI);
+	ulp_region(RX_TDDP);
+	ulp_region(TX_TPT);
+	ulp_region(RX_STAG);
+	ulp_region(RX_RQ);
+	ulp_region(RX_RQUDP);
+	ulp_region(RX_PBL);
+	ulp_region(TX_PBL);
+#undef ulp_region
+	md->base = 0;
+	md->idx = ARRAY_SIZE(region);
+	if (!is_t4(adap->params.chip)) {
+		u32 size = 0;
+		u32 sge_ctrl = t4_read_reg(adap, SGE_CONTROL2_A);
+		u32 fifo_size = t4_read_reg(adap, SGE_DBVFIFO_SIZE_A);
+
+		if (is_t5(adap->params.chip)) {
+			if (sge_ctrl & VFIFO_ENABLE_F)
+				size = DBVFIFO_SIZE_G(fifo_size);
+		} else {
+			size = T6_DBVFIFO_SIZE_G(fifo_size);
+		}
+
+		if (size) {
+			md->base = BASEADDR_G(t4_read_reg(adap,
+					SGE_DBVFIFO_BADDR_A));
+			md->limit = md->base + (size << 2) - 1;
+		}
+	}
+
+	md++;
+
+	md->base = t4_read_reg(adap, ULP_RX_CTX_BASE_A);
+	md->limit = 0;
+	md++;
+	md->base = t4_read_reg(adap, ULP_TX_ERR_TABLE_BASE_A);
+	md->limit = 0;
+	md++;
+
+	md->base = adap->vres.ocq.start;
+	if (adap->vres.ocq.size)
+		md->limit = md->base + adap->vres.ocq.size - 1;
+	else
+		md->idx = ARRAY_SIZE(region);  /* hide it */
+	md++;
+
+	/* add any address-space holes, there can be up to 3 */
+	for (n = 0; n < i - 1; n++)
+		if (avail[n].limit < avail[n + 1].base)
+			(md++)->base = avail[n].limit;
+	if (avail[n].limit)
+		(md++)->base = avail[n].limit;
+
+	n = md - mem;
+	sort(mem, n, sizeof(struct mem_desc), mem_desc_cmp, NULL);
+
+	for (lo = 0; lo < i; lo++)
+		mem_region_show(seq, memory[avail[lo].idx], avail[lo].base,
+				avail[lo].limit - 1);
+
+	seq_putc(seq, '\n');
+	for (i = 0; i < n; i++) {
+		if (mem[i].idx >= ARRAY_SIZE(region))
+			continue;                        /* skip holes */
+		if (!mem[i].limit)
+			mem[i].limit = i < n - 1 ? mem[i + 1].base - 1 : ~0;
+		mem_region_show(seq, region[mem[i].idx], mem[i].base,
+				mem[i].limit);
+	}
+
+	seq_putc(seq, '\n');
+	lo = t4_read_reg(adap, CIM_SDRAM_BASE_ADDR_A);
+	hi = t4_read_reg(adap, CIM_SDRAM_ADDR_SIZE_A) + lo - 1;
+	mem_region_show(seq, "uP RAM:", lo, hi);
+
+	lo = t4_read_reg(adap, CIM_EXTMEM2_BASE_ADDR_A);
+	hi = t4_read_reg(adap, CIM_EXTMEM2_ADDR_SIZE_A) + lo - 1;
+	mem_region_show(seq, "uP Extmem2:", lo, hi);
+
+	lo = t4_read_reg(adap, TP_PMM_RX_MAX_PAGE_A);
+	seq_printf(seq, "\n%u Rx pages of size %uKiB for %u channels\n",
+		   PMRXMAXPAGE_G(lo),
+		   t4_read_reg(adap, TP_PMM_RX_PAGE_SIZE_A) >> 10,
+		   (lo & PMRXNUMCHN_F) ? 2 : 1);
+
+	lo = t4_read_reg(adap, TP_PMM_TX_MAX_PAGE_A);
+	hi = t4_read_reg(adap, TP_PMM_TX_PAGE_SIZE_A);
+	seq_printf(seq, "%u Tx pages of size %u%ciB for %u channels\n",
+		   PMTXMAXPAGE_G(lo),
+		   hi >= (1 << 20) ? (hi >> 20) : (hi >> 10),
+		   hi >= (1 << 20) ? 'M' : 'K', 1 << PMTXNUMCHN_G(lo));
+	seq_printf(seq, "%u p-structs\n\n",
+		   t4_read_reg(adap, TP_CMM_MM_MAX_PSTRUCT_A));
+
+	for (i = 0; i < 4; i++) {
+		if (CHELSIO_CHIP_VERSION(adap->params.chip) > CHELSIO_T5)
+			lo = t4_read_reg(adap, MPS_RX_MAC_BG_PG_CNT0_A + i * 4);
+		else
+			lo = t4_read_reg(adap, MPS_RX_PG_RSV0_A + i * 4);
+		if (is_t5(adap->params.chip)) {
+			used = T5_USED_G(lo);
+			alloc = T5_ALLOC_G(lo);
+		} else {
+			used = USED_G(lo);
+			alloc = ALLOC_G(lo);
+		}
+		/* For T6 these are MAC buffer groups */
+		seq_printf(seq, "Port %d using %u pages out of %u allocated\n",
+			   i, used, alloc);
+	}
+	for (i = 0; i < adap->params.arch.nchan; i++) {
+		if (CHELSIO_CHIP_VERSION(adap->params.chip) > CHELSIO_T5)
+			lo = t4_read_reg(adap,
+					 MPS_RX_LPBK_BG_PG_CNT0_A + i * 4);
+		else
+			lo = t4_read_reg(adap, MPS_RX_PG_RSV4_A + i * 4);
+		if (is_t5(adap->params.chip)) {
+			used = T5_USED_G(lo);
+			alloc = T5_ALLOC_G(lo);
+		} else {
+			used = USED_G(lo);
+			alloc = ALLOC_G(lo);
+		}
+		/* For T6 these are MAC buffer groups */
+		seq_printf(seq,
+			   "Loopback %d using %u pages out of %u allocated\n",
+			   i, used, alloc);
+	}
+	return 0;
+}
+
+static int meminfo_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, meminfo_show, inode->i_private);
+}
+
+static const struct file_operations meminfo_fops = {
+	.owner   = THIS_MODULE,
+	.open    = meminfo_open,
+	.read    = seq_read,
+	.llseek  = seq_lseek,
+	.release = single_release,
+};
 /* Add an array of Debug FS files.
  */
 void add_debugfs_files(struct adapter *adap,
@@ -2294,6 +2626,7 @@ int t4_setup_debugfs(struct adapter *adap)
 		{ "clip_tbl", &clip_tbl_debugfs_fops, S_IRUSR, 0 },
 #endif
 		{ "blocked_fl", &blocked_fl_fops, S_IRUSR | S_IWUSR, 0 },
+		{ "meminfo", &meminfo_fops, S_IRUSR, 0 },
 	};
 
 	/* Debug FS nodes common to all T5 and later adapters.
@@ -2340,6 +2673,8 @@ int t4_setup_debugfs(struct adapter *adap)
 
 	de = debugfs_create_file_size("flash", S_IRUSR, adap->debugfs_root, adap,
 				      &flash_debugfs_fops, adap->params.sf_size);
+	debugfs_create_bool("use_backdoor", S_IWUSR | S_IRUSR,
+			    adap->debugfs_root, &adap->use_bd);
 
 	return 0;
 }
