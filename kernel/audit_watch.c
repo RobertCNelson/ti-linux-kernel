@@ -203,7 +203,6 @@ int audit_to_watch(struct audit_krule *krule, char *path, int len, u32 op)
 	if (IS_ERR(watch))
 		return PTR_ERR(watch);
 
-	audit_get_watch(watch);
 	krule->watch = watch;
 
 	return 0;
@@ -387,19 +386,20 @@ static void audit_add_to_parent(struct audit_krule *krule,
 
 		watch_found = 1;
 
-		/* put krule's and initial refs to temporary watch */
-		audit_put_watch(watch);
+		/* put krule's ref to temporary watch */
 		audit_put_watch(watch);
 
 		audit_get_watch(w);
 		krule->watch = watch = w;
+
+		audit_put_parent(parent);
 		break;
 	}
 
 	if (!watch_found) {
-		audit_get_parent(parent);
 		watch->parent = parent;
 
+		audit_get_watch(watch);
 		list_add(&watch->wlist, &parent->watches);
 	}
 	list_add(&krule->rlist, &watch->rules);
@@ -436,9 +436,6 @@ int audit_add_watch(struct audit_krule *krule, struct list_head **list)
 	}
 
 	audit_add_to_parent(krule, parent);
-
-	/* match get in audit_find_parent or audit_init_parent */
-	audit_put_parent(parent);
 
 	h = audit_hash_ino((u32)watch->ino);
 	*list = &audit_inode_hash[h];
