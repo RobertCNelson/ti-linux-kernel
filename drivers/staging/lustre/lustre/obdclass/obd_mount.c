@@ -85,7 +85,7 @@ int lustre_process_log(struct super_block *sb, char *logname,
 	LASSERT(cfg);
 
 	bufs = kzalloc(sizeof(*bufs), GFP_NOFS);
-	if (bufs == NULL)
+	if (!bufs)
 		return -ENOMEM;
 
 	/* mgc_process_config */
@@ -258,7 +258,7 @@ int lustre_start_mgc(struct super_block *sb)
 	mgssec = lsi->lsi_lmd->lmd_mgssec ? lsi->lsi_lmd->lmd_mgssec : "";
 
 	data = kzalloc(sizeof(*data), GFP_NOFS);
-	if (data == NULL) {
+	if (!data) {
 		rc = -ENOMEM;
 		goto out_free;
 	}
@@ -885,7 +885,7 @@ static int lmd_parse_mgssec(struct lustre_mount_data *lmd, char *ptr)
 		length = tail - ptr;
 
 	lmd->lmd_mgssec = kzalloc(length + 1, GFP_NOFS);
-	if (lmd->lmd_mgssec == NULL)
+	if (!lmd->lmd_mgssec)
 		return -ENOMEM;
 
 	memcpy(lmd->lmd_mgssec, ptr, length);
@@ -911,7 +911,7 @@ static int lmd_parse_string(char **handle, char *ptr)
 		length = tail - ptr;
 
 	*handle = kzalloc(length + 1, GFP_NOFS);
-	if (*handle == NULL)
+	if (!*handle)
 		return -ENOMEM;
 
 	memcpy(*handle, ptr, length);
@@ -941,7 +941,7 @@ static int lmd_parse_mgs(struct lustre_mount_data *lmd, char **ptr)
 		oldlen = strlen(lmd->lmd_mgs) + 1;
 
 	mgsnid = kzalloc(oldlen + length + 1, GFP_NOFS);
-	if (mgsnid == NULL)
+	if (!mgsnid)
 		return -ENOMEM;
 
 	if (lmd->lmd_mgs != NULL) {
@@ -983,7 +983,7 @@ static int lmd_parse(char *options, struct lustre_mount_data *lmd)
 	lmd->lmd_magic = LMD_MAGIC;
 
 	lmd->lmd_params = kzalloc(4096, GFP_NOFS);
-	if (lmd->lmd_params == NULL)
+	if (!lmd->lmd_params)
 		return -ENOMEM;
 	lmd->lmd_params[0] = '\0';
 
@@ -1281,7 +1281,7 @@ struct file_system_type lustre_fs_type = {
 	.mount	= lustre_mount,
 	.kill_sb      = lustre_kill_super,
 	.fs_flags     = FS_BINARY_MOUNTDATA | FS_REQUIRES_DEV |
-			FS_HAS_FIEMAP | FS_RENAME_DOES_D_MOVE,
+			FS_RENAME_DOES_D_MOVE,
 };
 MODULE_ALIAS_FS("lustre");
 

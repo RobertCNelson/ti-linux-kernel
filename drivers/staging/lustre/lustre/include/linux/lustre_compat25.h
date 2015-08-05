@@ -69,34 +69,6 @@
 # define inode_dio_read(i)		atomic_inc(&(i)->i_dio_count)
 /* inode_dio_done(i) use as-is for read unlock */
 
-
-#ifndef FS_HAS_FIEMAP
-#define FS_HAS_FIEMAP			(0)
-#endif
-
-#define ll_vfs_rmdir(dir, entry, mnt)	     vfs_rmdir(dir, entry)
-#define ll_vfs_mkdir(inode, dir, mnt, mode)	vfs_mkdir(inode, dir, mode)
-#define ll_vfs_link(old, mnt, dir, new, mnt1)       vfs_link(old, dir, new)
-#define ll_vfs_unlink(inode, entry, mnt)	  vfs_unlink(inode, entry)
-#define ll_vfs_mknod(dir, entry, mnt, mode, dev) \
-		     vfs_mknod(dir, entry, mode, dev)
-#define ll_security_inode_unlink(dir, entry, mnt) \
-				 security_inode_unlink(dir, entry)
-#define ll_vfs_rename(old, old_dir, mnt, new, new_dir, mnt1) \
-		vfs_rename(old, old_dir, new, new_dir, NULL, 0)
-
-#define cfs_bio_io_error(a, b)   bio_io_error((a))
-#define cfs_bio_endio(a, b, c)    bio_endio((a))
-
-#define cfs_path_put(nd)     path_put(&(nd)->path)
-
-
-#ifndef SLAB_DESTROY_BY_RCU
-#define SLAB_DESTROY_BY_RCU 0
-#endif
-
-
-
 static inline int
 ll_quota_on(struct super_block *sb, int off, int ver, char *name, int remount)
 {
@@ -127,18 +99,6 @@ static inline int ll_quota_off(struct super_block *sb, int off, int remount)
 }
 
 
-# define ll_vfs_dq_init	     dquot_initialize
-# define ll_vfs_dq_drop	     dquot_drop
-# define ll_vfs_dq_transfer	 dquot_transfer
-# define ll_vfs_dq_off(sb, remount) dquot_suspend(sb, -1)
-
-
-
-
-
-#define queue_max_phys_segments(rq)       queue_max_segments(rq)
-#define queue_max_hw_segments(rq)	 queue_max_segments(rq)
-
 
 #define ll_d_hlist_node hlist_node
 #define ll_d_hlist_empty(list) hlist_empty(list)
@@ -147,8 +107,6 @@ static inline int ll_quota_off(struct super_block *sb, int off, int remount)
 #define ll_d_hlist_for_each_entry(dentry, p, i_dentry, alias) \
 	p = NULL; hlist_for_each_entry(dentry, i_dentry, alias)
 
-
-#define bio_hw_segments(q, bio) 0
 
 
 #define ll_pagevec_init(pv, cold)       do {} while (0)
@@ -181,21 +139,5 @@ static inline int ll_quota_off(struct super_block *sb, int off, int remount)
 # define ext2_find_first_zero_bit find_first_zero_bit_le
 # define ext2_find_next_zero_bit  find_next_zero_bit_le
 #endif
-
-#ifdef ATTR_TIMES_SET
-# define TIMES_SET_FLAGS (ATTR_MTIME_SET | ATTR_ATIME_SET | ATTR_TIMES_SET)
-#else
-# define TIMES_SET_FLAGS (ATTR_MTIME_SET | ATTR_ATIME_SET)
-#endif
-
-
-#include <linux/version.h>
-#include <linux/fs.h>
-
-# define ll_umode_t	umode_t
-
-#include <linux/dcache.h>
-
-# define ll_dirty_inode(inode, flag)	(inode)->i_sb->s_op->dirty_inode((inode), flag)
 
 #endif /* _COMPAT25_H */
