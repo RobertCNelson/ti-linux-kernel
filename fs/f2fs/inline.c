@@ -375,7 +375,7 @@ static int f2fs_convert_inline_dir(struct inode *dir, struct page *ipage,
 	set_new_dnode(&dn, dir, ipage, NULL, 0);
 	err = f2fs_reserve_block(&dn, 0);
 	if (err)
-		goto out;
+		return err;
 
 	f2fs_wait_on_page_writeback(page, DATA);
 	zero_user_segment(page, 0, PAGE_CACHE_SIZE);
@@ -406,7 +406,6 @@ static int f2fs_convert_inline_dir(struct inode *dir, struct page *ipage,
 	}
 
 	sync_inode_page(&dn);
-out:
 	f2fs_put_page(page, 1);
 	return err;
 }
