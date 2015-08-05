@@ -20,6 +20,8 @@ next/cleanup
 	patch
 		ARM: appropriate __init annotation for const data
 		ARM: kill off set_irq_flags usage
+	generic/cleanup-irq
+		git://git.kernel.org/pub/scm/linux/kernel/git/tip/tip queue/irq/arm
 
 next/soc
 	rockchip/soc
