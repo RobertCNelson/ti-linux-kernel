@@ -36,6 +36,18 @@ static char *mv88e6352_probe(struct device *host_dev, int sw_addr)
 			return "Marvell 88E6172";
 		if ((ret & 0xfff0) == PORT_SWITCH_ID_6176)
 			return "Marvell 88E6176";
+		if (ret == PORT_SWITCH_ID_6320_A1)
+			return "Marvell 88E6320 (A1)";
+		if (ret == PORT_SWITCH_ID_6320_A2)
+			return "Marvell 88e6320 (A2)";
+		if ((ret & 0xfff0) == PORT_SWITCH_ID_6320)
+			return "Marvell 88E6320";
+		if (ret == PORT_SWITCH_ID_6321_A1)
+			return "Marvell 88E6321 (A1)";
+		if (ret == PORT_SWITCH_ID_6321_A2)
+			return "Marvell 88e6321 (A2)";
+		if ((ret & 0xfff0) == PORT_SWITCH_ID_6321)
+			return "Marvell 88E6321";
 		if (ret == PORT_SWITCH_ID_6352_A0)
 			return "Marvell 88E6352 (A0)";
 		if (ret == PORT_SWITCH_ID_6352_A1)
@@ -79,66 +91,6 @@ static int mv88e6352_setup_global(struct dsa_switch *ds)
 
 	return 0;
 }
-
-#ifdef CONFIG_NET_DSA_HWMON
-
-static int mv88e6352_get_temp(struct dsa_switch *ds, int *temp)
-{
-	int ret;
-
-	*temp = 0;
-
-	ret = mv88e6xxx_phy_page_read(ds, 0, 6, 27);
-	if (ret < 0)
-		return ret;
-
-	*temp = (ret & 0xff) - 25;
-
-	return 0;
-}
-
-static int mv88e6352_get_temp_limit(struct dsa_switch *ds, int *temp)
-{
-	int ret;
-
-	*temp = 0;
-
-	ret = mv88e6xxx_phy_page_read(ds, 0, 6, 26);
-	if (ret < 0)
-		return ret;
-
-	*temp = (((ret >> 8) & 0x1f) * 5) - 25;
-
-	return 0;
-}
-
-static int mv88e6352_set_temp_limit(struct dsa_switch *ds, int temp)
-{
-	int ret;
-
-	ret = mv88e6xxx_phy_page_read(ds, 0, 6, 26);
-	if (ret < 0)
-		return ret;
-	temp = clamp_val(DIV_ROUND_CLOSEST(temp, 5) + 5, 0, 0x1f);
-	return mv88e6xxx_phy_page_write(ds, 0, 6, 26,
-					(ret & 0xe0ff) | (temp << 8));
-}
-
-static int mv88e6352_get_temp_alarm(struct dsa_switch *ds, bool *alarm)
-{
-	int ret;
-
-	*alarm = false;
-
-	ret = mv88e6xxx_phy_page_read(ds, 0, 6, 26);
-	if (ret < 0)
-		return ret;
-
-	*alarm = !!(ret & 0x40);
-
-	return 0;
-}
-#endif /* CONFIG_NET_DSA_HWMON */
 
 static int mv88e6352_setup(struct dsa_switch *ds)
 {
@@ -377,10 +329,10 @@ struct dsa_switch_driver mv88e6352_switch_driver = {
 	.set_eee		= mv88e6xxx_set_eee,
 	.get_eee		= mv88e6xxx_get_eee,
 #ifdef CONFIG_NET_DSA_HWMON
-	.get_temp		= mv88e6352_get_temp,
-	.get_temp_limit		= mv88e6352_get_temp_limit,
-	.set_temp_limit		= mv88e6352_set_temp_limit,
-	.get_temp_alarm		= mv88e6352_get_temp_alarm,
+	.get_temp		= mv88e6xxx_get_temp,
+	.get_temp_limit		= mv88e6xxx_get_temp_limit,
+	.set_temp_limit		= mv88e6xxx_set_temp_limit,
+	.get_temp_alarm		= mv88e6xxx_get_temp_alarm,
 #endif
 	.get_eeprom		= mv88e6352_get_eeprom,
 	.set_eeprom		= mv88e6352_set_eeprom,
@@ -394,5 +346,8 @@ struct dsa_switch_driver mv88e6352_switch_driver = {
 	.fdb_getnext		= mv88e6xxx_port_fdb_getnext,
 };
 
-MODULE_ALIAS("platform:mv88e6352");
 MODULE_ALIAS("platform:mv88e6172");
+MODULE_ALIAS("platform:mv88e6176");
+MODULE_ALIAS("platform:mv88e6320");
+MODULE_ALIAS("platform:mv88e6321");
+MODULE_ALIAS("platform:mv88e6352");
