@@ -1114,7 +1114,7 @@ void ll_clear_inode(struct inode *inode)
 	if (lli->lli_mds_read_och)
 		ll_md_real_close(inode, FMODE_READ);
 
-	if (S_ISLNK(inode->i_mode) && lli->lli_symlink_name) {
+	if (S_ISLNK(inode->i_mode)) {
 		kfree(lli->lli_symlink_name);
 		lli->lli_symlink_name = NULL;
 	}
@@ -1149,6 +1149,8 @@ void ll_clear_inode(struct inode *inode)
 	cl_inode_fini(inode);
 	lli->lli_has_smd = false;
 }
+
+#define TIMES_SET_FLAGS (ATTR_MTIME_SET | ATTR_ATIME_SET | ATTR_TIMES_SET)
 
 static int ll_md_setattr(struct dentry *dentry, struct md_op_data *op_data,
 		  struct md_open_data **mod)
@@ -1354,11 +1356,8 @@ int ll_setattr_raw(struct dentry *dentry, struct iattr *attr, bool hsm_import)
 	if (!op_data)
 		return -ENOMEM;
 
-	if (!S_ISDIR(inode->i_mode)) {
-		if (attr->ia_valid & ATTR_SIZE)
-			inode_dio_write_done(inode);
+	if (!S_ISDIR(inode->i_mode))
 		mutex_unlock(&inode->i_mutex);
-	}
 
 	memcpy(&op_data->op_attr, attr, sizeof(*attr));
 

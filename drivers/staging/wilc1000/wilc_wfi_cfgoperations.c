@@ -144,9 +144,7 @@ bool g_wep_keys_saved = false;
 
 void clear_shadow_scan(void *pUserVoid)
 {
-	struct WILC_WFI_priv *priv;
 	int i;
-	priv = (struct WILC_WFI_priv *)pUserVoid;
 	if (op_ifcs == 0) {
 		WILC_TimerDestroy(&hAgingTimer, NULL);
 		PRINT_INFO(CORECONFIG_DBG, "destroy aging timer\n");
@@ -219,9 +217,7 @@ void refresh_scan(void *pUserVoid, uint8_t all, bool bDirectScan)
 
 void reset_shadow_found(void *pUserVoid)
 {
-	struct WILC_WFI_priv *priv;
 	int i;
-	priv = (struct WILC_WFI_priv *)pUserVoid;
 	for (i = 0; i < u32LastScannedNtwrksCountShadow; i++) {
 		astrLastScannedNtwrksShadow[i].u8Found = 0;
 
@@ -230,9 +226,7 @@ void reset_shadow_found(void *pUserVoid)
 
 void update_scan_time(void *pUserVoid)
 {
-	struct WILC_WFI_priv *priv;
 	int i;
-	priv = (struct WILC_WFI_priv *)pUserVoid;
 	for (i = 0; i < u32LastScannedNtwrksCountShadow; i++) {
 		astrLastScannedNtwrksShadow[i].u32TimeRcvdInScan = jiffies;
 	}
@@ -240,11 +234,9 @@ void update_scan_time(void *pUserVoid)
 
 void remove_network_from_shadow(void *pUserVoid)
 {
-	struct WILC_WFI_priv *priv;
 	unsigned long now = jiffies;
 	int i, j;
 
-	priv = (struct WILC_WFI_priv *)pUserVoid;
 
 	for (i = 0; i < u32LastScannedNtwrksCountShadow; i++) {
 		if (time_after(now, astrLastScannedNtwrksShadow[i].u32TimeRcvdInScan + (unsigned long)(SCAN_RESULT_EXPIRE))) {
@@ -281,11 +273,9 @@ void clear_duringIP(void *pUserVoid)
 
 int8_t is_network_in_shadow(tstrNetworkInfo *pstrNetworkInfo, void *pUserVoid)
 {
-	struct WILC_WFI_priv *priv;
 	int8_t state = -1;
 	int i;
 
-	priv = (struct WILC_WFI_priv *)pUserVoid;
 	if (u32LastScannedNtwrksCountShadow == 0) {
 		PRINT_D(CFG80211_DBG, "Starting Aging timer\n");
 		WILC_TimerStart(&(hAgingTimer), AGING_TIME, pUserVoid, NULL);
@@ -305,11 +295,9 @@ int8_t is_network_in_shadow(tstrNetworkInfo *pstrNetworkInfo, void *pUserVoid)
 
 void add_network_to_shadow(tstrNetworkInfo *pstrNetworkInfo, void *pUserVoid, void *pJoinParams)
 {
-	struct WILC_WFI_priv *priv;
 	int8_t ap_found = is_network_in_shadow(pstrNetworkInfo, pUserVoid);
 	uint32_t ap_index = 0;
 	uint8_t rssi_index = 0;
-	priv = (struct WILC_WFI_priv *)pUserVoid;
 
 	if (u32LastScannedNtwrksCountShadow >= MAX_NUM_SCANNED_NETWORKS_SHADOW) {
 		PRINT_D(CFG80211_DBG, "Shadow network reached its maximum limit\n");
@@ -675,7 +663,8 @@ static void CfgConnectResult(tenuConnDisconnEvent enuConnDisconnEvent,
 			pstrDisconnectNotifInfo->u16reason = 1;
 		}
 		cfg80211_disconnected(dev, pstrDisconnectNotifInfo->u16reason, pstrDisconnectNotifInfo->ie,
-				      pstrDisconnectNotifInfo->ie_len, GFP_KERNEL);
+				      pstrDisconnectNotifInfo->ie_len, false,
+				      GFP_KERNEL);
 
 	}
 
@@ -2886,7 +2875,6 @@ static int WILC_WFI_change_virt_intf(struct wiphy *wiphy, struct net_device *dev
 
 		/*Remove the enteries of the previously connected clients*/
 		memset(priv->assoc_stainfo.au8Sta_AssociatedBss, 0, MAX_NUM_STA * ETH_ALEN);
-		#ifndef SIMULATION
 		#ifdef WILC_P2P
 		interface_type = nic->iftype;
 		nic->iftype = STATION_MODE;
@@ -2964,7 +2952,6 @@ static int WILC_WFI_change_virt_intf(struct wiphy *wiphy, struct net_device *dev
 			host_int_set_power_mgmt(priv->hWILCWFIDrv, 1, 0);
 		}
 		#endif
-		#endif
 		break;
 
 	case NL80211_IFTYPE_P2P_CLIENT:
@@ -2979,7 +2966,6 @@ static int WILC_WFI_change_virt_intf(struct wiphy *wiphy, struct net_device *dev
 		priv->wdev->iftype = type;
 		nic->monitor_flag = 0;
 
-		#ifndef SIMULATION
 		#ifdef WILC_P2P
 
 		PRINT_D(HOSTAPD_DBG, "Downloading P2P_CONCURRENCY_FIRMWARE\n");
@@ -3053,7 +3039,6 @@ static int WILC_WFI_change_virt_intf(struct wiphy *wiphy, struct net_device *dev
 			}
 		}
 		#endif
-		#endif
 		break;
 
 	case NL80211_IFTYPE_AP:
@@ -3064,7 +3049,6 @@ static int WILC_WFI_change_virt_intf(struct wiphy *wiphy, struct net_device *dev
 		nic->iftype = AP_MODE;
 		PRINT_D(CORECONFIG_DBG, "priv->hWILCWFIDrv[%p]\n", priv->hWILCWFIDrv);
 
-		#ifndef SIMULATION
 		PRINT_D(HOSTAPD_DBG, "Downloading AP firmware\n");
 		linux_wlan_get_firmware(nic);
 		#ifdef WILC_P2P
@@ -3085,7 +3069,6 @@ static int WILC_WFI_change_virt_intf(struct wiphy *wiphy, struct net_device *dev
 							nic->g_struct_frame_reg[i].reg);
 			}
 		}
-		#endif
 		#endif
 		break;
 
@@ -3110,7 +3093,6 @@ static int WILC_WFI_change_virt_intf(struct wiphy *wiphy, struct net_device *dev
 
 		PRINT_D(CORECONFIG_DBG, "priv->hWILCWFIDrv[%p]\n", priv->hWILCWFIDrv);
 
-		#ifndef SIMULATION
 		#ifdef WILC_P2P
 		PRINT_D(HOSTAPD_DBG, "Downloading P2P_CONCURRENCY_FIRMWARE\n");
 
@@ -3184,7 +3166,6 @@ static int WILC_WFI_change_virt_intf(struct wiphy *wiphy, struct net_device *dev
 							nic->g_struct_frame_reg[i].reg);
 			}
 		}
-		#endif
 		#endif
 		break;
 
@@ -3581,13 +3562,8 @@ struct wireless_dev *WILC_WFI_add_virt_intf(struct wiphy *wiphy, const char *nam
 		new_ifc = WILC_WFI_init_mon_interface(name, nic->wilc_netdev);
 		if (new_ifc != NULL) {
 			PRINT_D(HOSTAPD_DBG, "Setting monitor flag in private structure\n");
-			#ifdef SIMULATION
-			priv = netdev_priv(priv->wdev->netdev);
-			priv->monitor_flag = 1;
-			#else
 			nic = netdev_priv(priv->wdev->netdev);
 			nic->monitor_flag = 1;
-			#endif
 		} else
 			PRINT_ER("Error in initializing monitor interface\n ");
 	}
