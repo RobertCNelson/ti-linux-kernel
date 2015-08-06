@@ -25,6 +25,8 @@ menuconfig ARCH_EXYNOS
 	select S5P_DEV_MFC
 	select SRAM
 	select MFD_SYSCON
+	select THERMAL
+	select EXYNOS_THERMAL
 	help
 	  Support for SAMSUNG EXYNOS SoCs (EXYNOS4/5)
 
