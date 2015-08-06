@@ -69,6 +69,19 @@ static int __init test_user_copy_init(void)
 	ret |= test(put_user(value, (unsigned long __user *)usermem),
 		    "legitimate put_user failed");
 
+	ret |= test(!access_ok(VERIFY_READ, usermem, PAGE_SIZE * 2),
+		    "legitimate access_ok VERIFY_READ failed");
+	ret |= test(!access_ok(VERIFY_WRITE, usermem, PAGE_SIZE * 2),
+		    "legitimate access_ok VERIFY_WRITE failed");
+	ret |= test(__copy_from_user(kmem, usermem, PAGE_SIZE),
+		    "legitimate __copy_from_user failed");
+	ret |= test(__copy_to_user(usermem, kmem, PAGE_SIZE),
+		    "legitimate __copy_to_user failed");
+	ret |= test(__get_user(value, (unsigned long __user *)usermem),
+		    "legitimate __get_user failed");
+	ret |= test(__put_user(value, (unsigned long __user *)usermem),
+		    "legitimate __put_user failed");
+
 	/* Invalid usage: none of these should succeed. */
 	ret |= test(!copy_from_user(kmem, (char __user *)(kmem + PAGE_SIZE),
 				    PAGE_SIZE),
@@ -88,6 +101,36 @@ static int __init test_user_copy_init(void)
 		    "illegal put_user passed");
 
 	/*
+	 * If unchecked user accesses (__*) on this architecture cannot access
+	 * kernel mode (i.e. access_ok() is redundant), and usually faults when
+	 * attempted, check this behaviour.
+	 *
+	 * These tests are enabled for:
+	 * - MIPS with Enhanced Virtual Addressing (EVA): user accesses use EVA
+	 *   instructions which can only access user mode accessible memory. It
+	 *   is assumed to be unlikely that user address space mappings will
+	 *   intersect the kernel buffer address.
+	 */
+#if defined(CONFIG_MIPS) && defined(CONFIG_EVA)
+	ret |= test(!__copy_from_user(kmem, (char __user *)(kmem + PAGE_SIZE),
+				      PAGE_SIZE),
+		    "illegal all-kernel __copy_from_user passed");
+	ret |= test(!__copy_from_user(bad_usermem, (char __user *)kmem,
+				      PAGE_SIZE),
+		    "illegal reversed __copy_from_user passed");
+	ret |= test(!__copy_to_user((char __user *)kmem, kmem + PAGE_SIZE,
+				    PAGE_SIZE),
+		    "illegal all-kernel __copy_to_user passed");
+	ret |= test(!__copy_to_user((char __user *)kmem, bad_usermem,
+				    PAGE_SIZE),
+		    "illegal reversed __copy_to_user passed");
+	ret |= test(!__get_user(value, (unsigned long __user *)kmem),
+		    "illegal __get_user passed");
+	ret |= test(!__put_user(value, (unsigned long __user *)kmem),
+		    "illegal __put_user passed");
+#endif
+
+	/*
 	 * Test access to kernel memory by adjusting address limit.
 	 * This is used by the kernel to invoke system calls with kernel
 	 * pointers.
@@ -105,6 +148,22 @@ static int __init test_user_copy_init(void)
 		    "legitimate kernel get_user failed");
 	ret |= test(put_user(value, (unsigned long __user *)kmem),
 		    "legitimate kernel put_user failed");
+
+	ret |= test(!access_ok(VERIFY_READ, (char __user *)kmem, PAGE_SIZE * 2),
+		    "legitimate kernel access_ok VERIFY_READ failed");
+	ret |= test(!access_ok(VERIFY_WRITE, (char __user *)kmem,
+			       PAGE_SIZE * 2),
+		    "legitimate kernel access_ok VERIFY_WRITE failed");
+	ret |= test(__copy_from_user(kmem, (char __user *)(kmem + PAGE_SIZE),
+				     PAGE_SIZE),
+		    "legitimate all-kernel __copy_from_user failed");
+	ret |= test(__copy_to_user((char __user *)kmem, kmem + PAGE_SIZE,
+				   PAGE_SIZE),
+		    "legitimate all-kernel __copy_to_user failed");
+	ret |= test(__get_user(value, (unsigned long __user *)kmem),
+		    "legitimate kernel __get_user failed");
+	ret |= test(__put_user(value, (unsigned long __user *)kmem),
+		    "legitimate kernel __put_user failed");
 
 	/* Restore previous address limit. */
 	set_fs(fs);
