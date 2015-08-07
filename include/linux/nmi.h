@@ -27,9 +27,7 @@ static inline void touch_nmi_watchdog(void)
 #if defined(CONFIG_HARDLOCKUP_DETECTOR)
 extern void hardlockup_detector_disable(void);
 #else
-static inline void hardlockup_detector_disable(void)
-{
-}
+static inline void hardlockup_detector_disable(void) {}
 #endif
 
 /*
@@ -86,6 +84,17 @@ extern int proc_watchdog_thresh(struct ctl_table *, int ,
 				void __user *, size_t *, loff_t *);
 extern int proc_watchdog_cpumask(struct ctl_table *, int,
 				 void __user *, size_t *, loff_t *);
+extern int watchdog_suspend(void);
+extern void watchdog_resume(void);
+#else
+static inline int watchdog_suspend(void)
+{
+	return 0;
+}
+
+static inline void watchdog_resume(void)
+{
+}
 #endif
 
 #ifdef CONFIG_HAVE_ACPI_APEI_NMI
