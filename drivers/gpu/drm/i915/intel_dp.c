@@ -1409,7 +1409,10 @@ intel_dp_compute_config(struct intel_encoder *encoder,
 	 * bpc in between. */
 	bpp = pipe_config->pipe_bpp;
 	if (is_edp(intel_dp)) {
-		if (dev_priv->vbt.edp_bpp && dev_priv->vbt.edp_bpp < bpp) {
+
+		/* Get bpp from vbt only for panels that dont have bpp in edid */
+		if (intel_connector->base.display_info.bpc == 0 &&
+			(dev_priv->vbt.edp_bpp && dev_priv->vbt.edp_bpp < bpp)) {
 			DRM_DEBUG_KMS("clamping bpp for eDP panel to BIOS-provided %i\n",
 				      dev_priv->vbt.edp_bpp);
 			bpp = dev_priv->vbt.edp_bpp;
@@ -3958,78 +3961,125 @@ intel_dp_probe_mst(struct intel_dp *intel_dp)
 	return intel_dp->is_mst;
 }
 
-int intel_dp_sink_crc(struct intel_dp *intel_dp, u8 *crc)
+static int intel_dp_sink_crc_stop(struct intel_dp *intel_dp)
 {
-	struct intel_digital_port *intel_dig_port = dp_to_dig_port(intel_dp);
-	struct drm_device *dev = intel_dig_port->base.base.dev;
-	struct intel_crtc *intel_crtc =
-		to_intel_crtc(intel_dig_port->base.base.crtc);
+	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
+	struct intel_crtc *intel_crtc = to_intel_crtc(dig_port->base.base.crtc);
 	u8 buf;
-	int test_crc_count;
-	int attempts = 6;
 	int ret = 0;
+
+	if (drm_dp_dpcd_readb(&intel_dp->aux, DP_TEST_SINK, &buf) < 0) {
+		DRM_DEBUG_KMS("Sink CRC couldn't be stopped properly\n");
+		ret = -EIO;
+		goto out;
+	}
+
+	if (drm_dp_dpcd_writeb(&intel_dp->aux, DP_TEST_SINK,
+			       buf & ~DP_TEST_SINK_START) < 0) {
+		DRM_DEBUG_KMS("Sink CRC couldn't be stopped properly\n");
+		ret = -EIO;
+		goto out;
+	}
+
+	intel_dp->sink_crc.started = false;
+ out:
+	hsw_enable_ips(intel_crtc);
+	return ret;
+}
+
+static int intel_dp_sink_crc_start(struct intel_dp *intel_dp)
+{
+	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
+	struct intel_crtc *intel_crtc = to_intel_crtc(dig_port->base.base.crtc);
+	u8 buf;
+	int ret;
+
+	if (intel_dp->sink_crc.started) {
+		ret = intel_dp_sink_crc_stop(intel_dp);
+		if (ret)
+			return ret;
+	}
+
+	if (drm_dp_dpcd_readb(&intel_dp->aux, DP_TEST_SINK_MISC, &buf) < 0)
+		return -EIO;
+
+	if (!(buf & DP_TEST_CRC_SUPPORTED))
+		return -ENOTTY;
+
+	intel_dp->sink_crc.last_count = buf & DP_TEST_COUNT_MASK;
+
+	if (drm_dp_dpcd_readb(&intel_dp->aux, DP_TEST_SINK, &buf) < 0)
+		return -EIO;
 
 	hsw_disable_ips(intel_crtc);
 
-	if (drm_dp_dpcd_readb(&intel_dp->aux, DP_TEST_SINK_MISC, &buf) < 0) {
-		ret = -EIO;
-		goto out;
-	}
-
-	if (!(buf & DP_TEST_CRC_SUPPORTED)) {
-		ret = -ENOTTY;
-		goto out;
-	}
-
-	if (drm_dp_dpcd_readb(&intel_dp->aux, DP_TEST_SINK, &buf) < 0) {
-		ret = -EIO;
-		goto out;
-	}
-
 	if (drm_dp_dpcd_writeb(&intel_dp->aux, DP_TEST_SINK,
-				buf | DP_TEST_SINK_START) < 0) {
-		ret = -EIO;
-		goto out;
+			       buf | DP_TEST_SINK_START) < 0) {
+		hsw_enable_ips(intel_crtc);
+		return -EIO;
 	}
 
-	if (drm_dp_dpcd_readb(&intel_dp->aux, DP_TEST_SINK_MISC, &buf) < 0) {
-		ret = -EIO;
-		goto out;
-	}
+	intel_dp->sink_crc.started = true;
+	return 0;
+}
 
-	test_crc_count = buf & DP_TEST_COUNT_MASK;
+int intel_dp_sink_crc(struct intel_dp *intel_dp, u8 *crc)
+{
+	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
+	struct drm_device *dev = dig_port->base.base.dev;
+	struct intel_crtc *intel_crtc = to_intel_crtc(dig_port->base.base.crtc);
+	u8 buf;
+	int count, ret;
+	int attempts = 6;
+	bool old_equal_new;
+
+	ret = intel_dp_sink_crc_start(intel_dp);
+	if (ret)
+		return ret;
 
 	do {
+		intel_wait_for_vblank(dev, intel_crtc->pipe);
+
 		if (drm_dp_dpcd_readb(&intel_dp->aux,
 				      DP_TEST_SINK_MISC, &buf) < 0) {
 			ret = -EIO;
-			goto out;
+			goto stop;
 		}
-		intel_wait_for_vblank(dev, intel_crtc->pipe);
-	} while (--attempts && (buf & DP_TEST_COUNT_MASK) == test_crc_count);
+		count = buf & DP_TEST_COUNT_MASK;
+
+		/*
+		 * Count might be reset during the loop. In this case
+		 * last known count needs to be reset as well.
+		 */
+		if (count == 0)
+			intel_dp->sink_crc.last_count = 0;
+
+		if (drm_dp_dpcd_read(&intel_dp->aux, DP_TEST_CRC_R_CR, crc, 6) < 0) {
+			ret = -EIO;
+			goto stop;
+		}
+
+		old_equal_new = (count == intel_dp->sink_crc.last_count &&
+				 !memcmp(intel_dp->sink_crc.last_crc, crc,
+					 6 * sizeof(u8)));
+
+	} while (--attempts && (count == 0 || old_equal_new));
+
+	intel_dp->sink_crc.last_count = buf & DP_TEST_COUNT_MASK;
+	memcpy(intel_dp->sink_crc.last_crc, crc, 6 * sizeof(u8));
 
 	if (attempts == 0) {
-		DRM_DEBUG_KMS("Panel is unable to calculate CRC after 6 vblanks\n");
-		ret = -ETIMEDOUT;
-		goto out;
+		if (old_equal_new) {
+			DRM_DEBUG_KMS("Unreliable Sink CRC counter: Current returned CRC is identical to the previous one\n");
+		} else {
+			DRM_ERROR("Panel is unable to calculate any CRC after 6 vblanks\n");
+			ret = -ETIMEDOUT;
+			goto stop;
+		}
 	}
 
-	if (drm_dp_dpcd_read(&intel_dp->aux, DP_TEST_CRC_R_CR, crc, 6) < 0) {
-		ret = -EIO;
-		goto out;
-	}
-
-	if (drm_dp_dpcd_readb(&intel_dp->aux, DP_TEST_SINK, &buf) < 0) {
-		ret = -EIO;
-		goto out;
-	}
-	if (drm_dp_dpcd_writeb(&intel_dp->aux, DP_TEST_SINK,
-			       buf & ~DP_TEST_SINK_START) < 0) {
-		ret = -EIO;
-		goto out;
-	}
-out:
-	hsw_enable_ips(intel_crtc);
+stop:
+	intel_dp_sink_crc_stop(intel_dp);
 	return ret;
 }
 

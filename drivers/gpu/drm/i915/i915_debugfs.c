@@ -2250,7 +2250,6 @@ static void gen6_ppgtt_info(struct seq_file *m, struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_engine_cs *ring;
-	struct drm_file *file;
 	int i;
 
 	if (INTEL_INFO(dev)->gen == 6)
@@ -2273,13 +2272,6 @@ static void gen6_ppgtt_info(struct seq_file *m, struct drm_device *dev)
 		ppgtt->debug_dump(ppgtt, m);
 	}
 
-	list_for_each_entry_reverse(file, &dev->filelist, lhead) {
-		struct drm_i915_file_private *file_priv = file->driver_priv;
-
-		seq_printf(m, "proc: %s\n",
-			   get_pid_task(file->pid, PIDTYPE_PID)->comm);
-		idr_for_each(&file_priv->context_idr, per_file_ctx, m);
-	}
 	seq_printf(m, "ECOCHK: 0x%08x\n", I915_READ(GAM_ECOCHK));
 }
 
@@ -2288,6 +2280,7 @@ static int i915_ppgtt_info(struct seq_file *m, void *data)
 	struct drm_info_node *node = m->private;
 	struct drm_device *dev = node->minor->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_file *file;
 
 	int ret = mutex_lock_interruptible(&dev->struct_mutex);
 	if (ret)
@@ -2298,6 +2291,15 @@ static int i915_ppgtt_info(struct seq_file *m, void *data)
 		gen8_ppgtt_info(m, dev);
 	else if (INTEL_INFO(dev)->gen >= 6)
 		gen6_ppgtt_info(m, dev);
+
+	list_for_each_entry_reverse(file, &dev->filelist, lhead) {
+		struct drm_i915_file_private *file_priv = file->driver_priv;
+
+		seq_printf(m, "\nproc: %s\n",
+			   get_pid_task(file->pid, PIDTYPE_PID)->comm);
+		idr_for_each(&file_priv->context_idr, per_file_ctx,
+			     (void *)(unsigned long)m);
+	}
 
 	intel_runtime_pm_put(dev_priv);
 	mutex_unlock(&dev->struct_mutex);
@@ -4030,24 +4032,14 @@ static ssize_t i915_displayport_test_active_write(struct file *file,
 {
 	char *input_buffer;
 	int status = 0;
-	struct seq_file *m;
 	struct drm_device *dev;
 	struct drm_connector *connector;
 	struct list_head *connector_list;
 	struct intel_dp *intel_dp;
 	int val = 0;
 
-	m = file->private_data;
-	if (!m) {
-		status = -ENODEV;
-		return status;
-	}
-	dev = m->private;
+	dev = ((struct seq_file *)file->private_data)->private;
 
-	if (!dev) {
-		status = -ENODEV;
-		return status;
-	}
 	connector_list = &dev->mode_config.connector_list;
 
 	if (len == 0)
@@ -4071,9 +4063,7 @@ static ssize_t i915_displayport_test_active_write(struct file *file,
 		    DRM_MODE_CONNECTOR_DisplayPort)
 			continue;
 
-		if (connector->connector_type ==
-		    DRM_MODE_CONNECTOR_DisplayPort &&
-		    connector->status == connector_status_connected &&
+		if (connector->status == connector_status_connected &&
 		    connector->encoder != NULL) {
 			intel_dp = enc_to_intel_dp(connector->encoder);
 			status = kstrtoint(input_buffer, 10, &val);
@@ -4104,9 +4094,6 @@ static int i915_displayport_test_active_show(struct seq_file *m, void *data)
 	struct drm_connector *connector;
 	struct list_head *connector_list = &dev->mode_config.connector_list;
 	struct intel_dp *intel_dp;
-
-	if (!dev)
-		return -ENODEV;
 
 	list_for_each_entry(connector, connector_list, head) {
 
@@ -4152,9 +4139,6 @@ static int i915_displayport_test_data_show(struct seq_file *m, void *data)
 	struct list_head *connector_list = &dev->mode_config.connector_list;
 	struct intel_dp *intel_dp;
 
-	if (!dev)
-		return -ENODEV;
-
 	list_for_each_entry(connector, connector_list, head) {
 
 		if (connector->connector_type !=
@@ -4193,9 +4177,6 @@ static int i915_displayport_test_type_show(struct seq_file *m, void *data)
 	struct drm_connector *connector;
 	struct list_head *connector_list = &dev->mode_config.connector_list;
 	struct intel_dp *intel_dp;
-
-	if (!dev)
-		return -ENODEV;
 
 	list_for_each_entry(connector, connector_list, head) {
 

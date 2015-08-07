@@ -102,8 +102,8 @@ static void vlv_prepare_pll(struct intel_crtc *crtc,
 			    const struct intel_crtc_state *pipe_config);
 static void chv_prepare_pll(struct intel_crtc *crtc,
 			    const struct intel_crtc_state *pipe_config);
-static void intel_begin_crtc_commit(struct drm_crtc *crtc);
-static void intel_finish_crtc_commit(struct drm_crtc *crtc);
+static void intel_begin_crtc_commit(struct drm_crtc *, struct drm_crtc_state *);
+static void intel_finish_crtc_commit(struct drm_crtc *, struct drm_crtc_state *);
 static void skl_init_scalers(struct drm_device *dev, struct intel_crtc *intel_crtc,
 	struct intel_crtc_state *crtc_state);
 static int i9xx_get_refclk(const struct intel_crtc_state *crtc_state,
@@ -413,7 +413,7 @@ static const intel_limit_t intel_limits_bxt = {
 static bool
 needs_modeset(struct drm_crtc_state *state)
 {
-	return state->mode_changed || state->active_changed;
+	return drm_atomic_crtc_needs_modeset(state);
 }
 
 /**
@@ -1936,7 +1936,9 @@ static void intel_disable_shared_dpll(struct intel_crtc *crtc)
 	struct intel_shared_dpll *pll = intel_crtc_to_shared_dpll(crtc);
 
 	/* PCH only available on ILK+ */
-	BUG_ON(INTEL_INFO(dev)->gen < 5);
+	if (INTEL_INFO(dev)->gen < 5)
+		return;
+
 	if (pll == NULL)
 		return;
 
@@ -6429,14 +6431,14 @@ struct intel_connector *intel_connector_alloc(void)
 
 /* Even simpler default implementation, if there's really no special case to
  * consider. */
-void intel_connector_dpms(struct drm_connector *connector, int mode)
+int intel_connector_dpms(struct drm_connector *connector, int mode)
 {
 	/* All the simple cases only support two dpms states. */
 	if (mode != DRM_MODE_DPMS_ON)
 		mode = DRM_MODE_DPMS_OFF;
 
 	if (mode == connector->dpms)
-		return;
+		return 0;
 
 	connector->dpms = mode;
 
@@ -6445,6 +6447,8 @@ void intel_connector_dpms(struct drm_connector *connector, int mode)
 		intel_encoder_dpms(to_intel_encoder(connector->encoder), mode);
 
 	intel_modeset_check_state(connector->dev);
+
+	return 0;
 }
 
 /* Simple connector->get_hw_state implementation for encoders that support only
@@ -10762,14 +10766,11 @@ static void intel_unpin_work_fn(struct work_struct *__work)
 		container_of(__work, struct intel_unpin_work, work);
 	struct intel_crtc *crtc = to_intel_crtc(work->crtc);
 	struct drm_device *dev = crtc->base.dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_plane *primary = crtc->base.primary;
 
 	mutex_lock(&dev->struct_mutex);
 	intel_unpin_fb_obj(work->old_fb, primary->state);
 	drm_gem_object_unreference(&work->pending_flip_obj->base);
-
-	intel_fbc_update(dev_priv);
 
 	if (work->flip_queued_req)
 		i915_gem_request_assign(&work->flip_queued_req, NULL);
@@ -11542,7 +11543,7 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
 			  to_intel_plane(primary)->frontbuffer_bit);
 	mutex_unlock(&dev->struct_mutex);
 
-	intel_fbc_disable(dev_priv);
+	intel_fbc_disable_crtc(intel_crtc);
 	intel_frontbuffer_flip_prepare(dev,
 				       to_intel_plane(primary)->frontbuffer_bit);
 
@@ -12347,16 +12348,9 @@ intel_modeset_update_state(struct drm_atomic_state *state)
 			continue;
 
 		if (crtc->state->active) {
-			struct drm_property *dpms_property =
-				dev->mode_config.dpms_property;
-
-			connector->dpms = DRM_MODE_DPMS_ON;
-			drm_object_property_set_value(&connector->base, dpms_property, DRM_MODE_DPMS_ON);
-
 			intel_encoder = to_intel_encoder(connector->encoder);
 			intel_encoder->connectors_active = true;
-		} else
-			connector->dpms = DRM_MODE_DPMS_OFF;
+		}
 	}
 }
 
@@ -13628,7 +13622,8 @@ intel_disable_primary_plane(struct drm_plane *plane,
 	dev_priv->display.update_primary_plane(crtc, NULL, 0, 0);
 }
 
-static void intel_begin_crtc_commit(struct drm_crtc *crtc)
+static void intel_begin_crtc_commit(struct drm_crtc *crtc,
+				    struct drm_crtc_state *old_crtc_state)
 {
 	struct drm_device *dev = crtc->dev;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
@@ -13644,7 +13639,8 @@ static void intel_begin_crtc_commit(struct drm_crtc *crtc)
 		skl_detach_scalers(intel_crtc);
 }
 
-static void intel_finish_crtc_commit(struct drm_crtc *crtc)
+static void intel_finish_crtc_commit(struct drm_crtc *crtc,
+				     struct drm_crtc_state *old_crtc_state)
 {
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 
@@ -14274,7 +14270,7 @@ static int intel_user_framebuffer_dirty(struct drm_framebuffer *fb,
 	struct drm_i915_gem_object *obj = intel_fb->obj;
 
 	mutex_lock(&dev->struct_mutex);
-	intel_fb_obj_flush(obj, false, ORIGIN_GTT);
+	intel_fb_obj_flush(obj, false, ORIGIN_DIRTYFB);
 	mutex_unlock(&dev->struct_mutex);
 
 	return 0;
