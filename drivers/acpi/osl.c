@@ -79,6 +79,7 @@ static void *acpi_irq_context;
 static struct workqueue_struct *kacpid_wq;
 static struct workqueue_struct *kacpi_notify_wq;
 static struct workqueue_struct *kacpi_hotplug_wq;
+static bool acpi_os_initialized;
 
 /*
  * This list of permanent mappings is for memory that may be accessed from
@@ -1312,6 +1313,9 @@ acpi_status acpi_os_wait_semaphore(acpi_handle handle, u32 units, u16 timeout)
 	long jiffies;
 	int ret = 0;
 
+	if (!acpi_os_initialized)
+		return AE_OK;
+
 	if (!sem || (units < 1))
 		return AE_BAD_PARAMETER;
 
@@ -1350,6 +1354,9 @@ acpi_status acpi_os_wait_semaphore(acpi_handle handle, u32 units, u16 timeout)
 acpi_status acpi_os_signal_semaphore(acpi_handle handle, u32 units)
 {
 	struct semaphore *sem = (struct semaphore *)handle;
+
+	if (!acpi_os_initialized)
+		return AE_OK;
 
 	if (!sem || (units < 1))
 		return AE_BAD_PARAMETER;
@@ -1859,6 +1866,7 @@ acpi_status __init acpi_os_initialize(void)
 		rv = acpi_os_map_generic_address(&acpi_gbl_FADT.reset_register);
 		pr_debug(PREFIX "%s: map reset_reg status %d\n", __func__, rv);
 	}
+	acpi_os_initialized = true;
 
 	return AE_OK;
 }
