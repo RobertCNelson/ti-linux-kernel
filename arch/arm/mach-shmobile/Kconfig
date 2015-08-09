@@ -4,6 +4,7 @@ config ARCH_SHMOBILE
 
 config PM_RCAR
 	bool
+	select PM_GENERIC_DOMAINS if PM
 
 config PM_RMOBILE
 	bool
@@ -50,6 +51,7 @@ config ARCH_EMEV2
 
 config ARCH_R7S72100
 	bool "RZ/A1H (R7S72100)"
+	select PM_GENERIC_DOMAINS if PM
 	select SYS_SUPPORTS_SH_MTU2
 
 config ARCH_R8A73A4
@@ -94,13 +96,6 @@ config ARCH_SH73A0
 	select ARCH_RMOBILE
 	select RENESAS_INTC_IRQPIN
 
-comment "Renesas ARM SoCs Board Type"
-
-config MACH_MARZEN
-	bool "MARZEN board"
-	depends on ARCH_R8A7779
-	select REGULATOR_FIXED_VOLTAGE if REGULATOR
-
 comment "Renesas ARM SoCs System Configuration"
 endif
 
@@ -143,13 +138,6 @@ config MACH_BOCKW_REFERENCE
 	   of not supporting a number of devices.
 
 	   This is intended to aid developers
-
-config MACH_MARZEN
-	bool "MARZEN board"
-	depends on ARCH_R8A7779
-	select ARCH_REQUIRE_GPIOLIB
-	select REGULATOR_FIXED_VOLTAGE if REGULATOR
-	select USE_OF
 
 comment "Renesas ARM SoCs System Configuration"
 
