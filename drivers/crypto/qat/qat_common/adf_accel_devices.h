@@ -135,6 +135,7 @@ struct adf_hw_device_data {
 	struct adf_hw_device_class *dev_class;
 	uint32_t (*get_accel_mask)(uint32_t fuse);
 	uint32_t (*get_ae_mask)(uint32_t fuse);
+	uint32_t (*get_sram_bar_id)(struct adf_hw_device_data *self);
 	uint32_t (*get_misc_bar_id)(struct adf_hw_device_data *self);
 	uint32_t (*get_etr_bar_id)(struct adf_hw_device_data *self);
 	uint32_t (*get_num_aes)(struct adf_hw_device_data *self);
@@ -151,7 +152,7 @@ struct adf_hw_device_data {
 	void (*exit_arb)(struct adf_accel_dev *accel_dev);
 	void (*enable_ints)(struct adf_accel_dev *accel_dev);
 	const char *fw_name;
-	uint32_t pci_dev_id;
+	const char *fw_mmp_name;
 	uint32_t fuses;
 	uint32_t accel_capabilities_mask;
 	uint16_t accel_mask;
@@ -184,6 +185,7 @@ struct icp_qat_fw_loader_handle;
 struct adf_fw_loader_data {
 	struct icp_qat_fw_loader_handle *fw_loader;
 	const struct firmware *uof_fw;
+	const struct firmware *mmp_fw;
 };
 
 struct adf_accel_dev {

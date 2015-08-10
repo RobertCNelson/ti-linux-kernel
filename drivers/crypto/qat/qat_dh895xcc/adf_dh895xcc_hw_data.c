@@ -117,6 +117,11 @@ static uint32_t get_etr_bar_id(struct adf_hw_device_data *self)
 	return ADF_DH895XCC_ETR_BAR;
 }
 
+static uint32_t get_sram_bar_id(struct adf_hw_device_data *self)
+{
+	return ADF_DH895XCC_SRAM_BAR;
+}
+
 static enum dev_sku_info get_sku(struct adf_hw_device_data *self)
 {
 	int sku = (self->fuses & ADF_DH895XCC_FUSECTL_SKU_MASK)
@@ -203,7 +208,6 @@ void adf_init_hw_data_dh895xcc(struct adf_hw_device_data *hw_data)
 	hw_data->instance_id = dh895xcc_class.instances++;
 	hw_data->num_banks = ADF_DH895XCC_ETR_MAX_BANKS;
 	hw_data->num_accel = ADF_DH895XCC_MAX_ACCELERATORS;
-	hw_data->pci_dev_id = ADF_DH895XCC_PCI_DEVICE_ID;
 	hw_data->num_logical_accel = 1;
 	hw_data->num_engines = ADF_DH895XCC_MAX_ACCELENGINES;
 	hw_data->tx_rx_gap = ADF_DH895XCC_RX_RINGS_OFFSET;
@@ -219,8 +223,10 @@ void adf_init_hw_data_dh895xcc(struct adf_hw_device_data *hw_data)
 	hw_data->get_num_aes = get_num_aes;
 	hw_data->get_etr_bar_id = get_etr_bar_id;
 	hw_data->get_misc_bar_id = get_misc_bar_id;
+	hw_data->get_sram_bar_id = get_sram_bar_id;
 	hw_data->get_sku = get_sku;
 	hw_data->fw_name = ADF_DH895XCC_FW;
+	hw_data->fw_mmp_name = ADF_DH895XCC_MMP;
 	hw_data->init_admin_comms = adf_init_admin_comms;
 	hw_data->exit_admin_comms = adf_exit_admin_comms;
 	hw_data->init_arb = adf_init_arb;
