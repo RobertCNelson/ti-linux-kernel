@@ -90,12 +90,26 @@ struct mdp_format {
 	uint8_t cpp, unpack_count;
 	enum mdp_fetch_type fetch_type;
 	enum mdp_chroma_samp_type chroma_sample;
+	bool is_yuv;
 };
 #define to_mdp_format(x) container_of(x, struct mdp_format, base)
-#define MDP_FORMAT_IS_YUV(mdp_format) ((mdp_format)->chroma_sample > CHROMA_RGB)
+#define MDP_FORMAT_IS_YUV(mdp_format) ((mdp_format)->is_yuv)
 
 uint32_t mdp_get_formats(uint32_t *formats, uint32_t max_formats, bool rgb_only);
 const struct msm_format *mdp_get_format(struct msm_kms *kms, uint32_t format);
+
+/* MDP pipe capabilities */
+#define MDP_PIPE_CAP_HFLIP			BIT(0)
+#define MDP_PIPE_CAP_VFLIP			BIT(1)
+#define MDP_PIPE_CAP_SCALE			BIT(2)
+#define MDP_PIPE_CAP_CSC			BIT(3)
+#define MDP_PIPE_CAP_DECIMATION			BIT(4)
+
+static inline bool pipe_supports_yuv(uint32_t pipe_caps)
+{
+	return (pipe_caps & MDP_PIPE_CAP_SCALE) &&
+		(pipe_caps & MDP_PIPE_CAP_CSC);
+}
 
 enum csc_type {
 	CSC_RGB2RGB = 0,

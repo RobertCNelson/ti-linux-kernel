@@ -8,13 +8,13 @@ http://github.com/freedreno/envytools/
 git clone https://github.com/freedreno/envytools.git
 
 The rules-ng-ng source files this header was generated from are:
-- /home/robclark/src/freedreno/envytools/rnndb/adreno.xml               (    364 bytes, from 2013-11-30 14:47:15)
-- /home/robclark/src/freedreno/envytools/rnndb/freedreno_copyright.xml  (   1453 bytes, from 2013-03-31 16:51:27)
-- /home/robclark/src/freedreno/envytools/rnndb/adreno/a2xx.xml          (  32901 bytes, from 2014-06-02 15:21:30)
-- /home/robclark/src/freedreno/envytools/rnndb/adreno/adreno_common.xml (  10551 bytes, from 2014-11-13 22:44:30)
-- /home/robclark/src/freedreno/envytools/rnndb/adreno/adreno_pm4.xml    (  14895 bytes, from 2015-04-19 15:23:28)
-- /home/robclark/src/freedreno/envytools/rnndb/adreno/a3xx.xml          (  66709 bytes, from 2015-04-12 18:16:35)
-- /home/robclark/src/freedreno/envytools/rnndb/adreno/a4xx.xml          (  60633 bytes, from 2015-05-20 14:48:19)
+- /home/robclark/src/freedreno/envytools/rnndb/adreno.xml               (    364 bytes, from 2015-05-20 20:03:07)
+- /home/robclark/src/freedreno/envytools/rnndb/freedreno_copyright.xml  (   1453 bytes, from 2015-05-20 20:03:07)
+- /home/robclark/src/freedreno/envytools/rnndb/adreno/a2xx.xml          (  32901 bytes, from 2015-05-20 20:03:14)
+- /home/robclark/src/freedreno/envytools/rnndb/adreno/adreno_common.xml (  10551 bytes, from 2015-05-20 20:03:14)
+- /home/robclark/src/freedreno/envytools/rnndb/adreno/adreno_pm4.xml    (  14968 bytes, from 2015-05-20 20:12:27)
+- /home/robclark/src/freedreno/envytools/rnndb/adreno/a3xx.xml          (  66709 bytes, from 2015-05-20 20:03:14)
+- /home/robclark/src/freedreno/envytools/rnndb/adreno/a4xx.xml          (  60800 bytes, from 2015-07-10 14:00:13)
 
 Copyright (C) 2013-2015 by the following authors:
 - Rob Clark <robdclark@gmail.com> (robclark)
@@ -568,6 +568,15 @@ static inline uint32_t A4XX_RB_FS_OUTPUT_ENABLE_BLEND(uint32_t val)
 static inline uint32_t A4XX_RB_FS_OUTPUT_SAMPLE_MASK(uint32_t val)
 {
 	return ((val) << A4XX_RB_FS_OUTPUT_SAMPLE_MASK__SHIFT) & A4XX_RB_FS_OUTPUT_SAMPLE_MASK__MASK;
+}
+
+#define REG_A4XX_RB_SAMPLE_COUNT_CONTROL			0x000020fa
+#define A4XX_RB_SAMPLE_COUNT_CONTROL_COPY			0x00000002
+#define A4XX_RB_SAMPLE_COUNT_CONTROL_ADDR__MASK			0xfffffffc
+#define A4XX_RB_SAMPLE_COUNT_CONTROL_ADDR__SHIFT		2
+static inline uint32_t A4XX_RB_SAMPLE_COUNT_CONTROL_ADDR(uint32_t val)
+{
+	return ((val >> 2) << A4XX_RB_SAMPLE_COUNT_CONTROL_ADDR__SHIFT) & A4XX_RB_SAMPLE_COUNT_CONTROL_ADDR__MASK;
 }
 
 #define REG_A4XX_RB_RENDER_COMPONENTS				0x000020fb
