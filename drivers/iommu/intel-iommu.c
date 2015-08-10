@@ -1590,6 +1590,10 @@ static void free_dmar_iommu(struct intel_iommu *iommu)
 
 	/* free context mapping */
 	free_context_table(iommu);
+
+#ifdef CONFIG_INTEL_IOMMU_SVM
+	intel_svm_free_pasid_tables(iommu);
+#endif
 }
 
 static struct dmar_domain *alloc_domain(int flags)
@@ -3116,6 +3120,9 @@ static int __init init_dmars(void)
 
 		if (!ecap_pass_through(iommu->ecap))
 			hw_pass_through = 0;
+#ifdef CONFIG_INTEL_IOMMU_SVM
+		intel_svm_alloc_pasid_tables(iommu);
+#endif
 	}
 
 	if (iommu_pass_through)
@@ -3236,6 +3243,8 @@ static struct iova *intel_alloc_iova(struct device *dev,
 
 	/* Restrict dma_mask to the width that the iommu can handle */
 	dma_mask = min_t(uint64_t, DOMAIN_MAX_ADDR(domain->gaw), dma_mask);
+	/* Ensure we reserve the whole size-aligned region */
+	nrpages = __roundup_pow_of_two(nrpages);
 
 	if (!dmar_forcedac && dma_mask > DMA_BIT_MASK(32)) {
 		/*
@@ -3744,7 +3753,7 @@ static inline int iommu_devinfo_cache_init(void)
 static int __init iommu_init_mempool(void)
 {
 	int ret;
-	ret = iommu_iova_cache_init();
+	ret = iova_cache_get();
 	if (ret)
 		return ret;
 
@@ -3758,7 +3767,7 @@ static int __init iommu_init_mempool(void)
 
 	kmem_cache_destroy(iommu_domain_cache);
 domain_error:
-	iommu_iova_cache_destroy();
+	iova_cache_put();
 
 	return -ENOMEM;
 }
@@ -3767,7 +3776,7 @@ static void __init iommu_exit_mempool(void)
 {
 	kmem_cache_destroy(iommu_devinfo_cache);
 	kmem_cache_destroy(iommu_domain_cache);
-	iommu_iova_cache_destroy();
+	iova_cache_put();
 }
 
 static void quirk_ioat_snb_local_iommu(struct pci_dev *pdev)
@@ -4140,6 +4149,10 @@ static int intel_iommu_add(struct dmar_drhd_unit *dmaru)
 		ret = iommu_alloc_root_entry(iommu);
 	if (ret)
 		goto out;
+
+#ifdef CONFIG_INTEL_IOMMU_SVM
+	intel_svm_alloc_pasid_tables(iommu);
+#endif
 
 	if (dmaru->ignored) {
 		/*
