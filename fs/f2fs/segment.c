@@ -227,7 +227,7 @@ retry:
 	trace_f2fs_register_inmem_page(page, INMEM);
 }
 
-void commit_inmem_pages(struct inode *inode, bool abort)
+int commit_inmem_pages(struct inode *inode, bool abort)
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 	struct f2fs_inode_info *fi = F2FS_I(inode);
@@ -239,6 +239,7 @@ void commit_inmem_pages(struct inode *inode, bool abort)
 		.rw = WRITE_SYNC | REQ_PRIO,
 		.encrypted_page = NULL,
 	};
+	int err = 0;
 
 	/*
 	 * The abort is true only when f2fs_evict_inode is called.
@@ -263,8 +264,12 @@ void commit_inmem_pages(struct inode *inode, bool abort)
 					inode_dec_dirty_pages(inode);
 				trace_f2fs_commit_inmem_page(cur->page, INMEM);
 				fio.page = cur->page;
-				do_write_data_page(&fio);
+				err = do_write_data_page(&fio);
 				submit_bio = true;
+				if (err) {
+					unlock_page(cur->page);
+					break;
+				}
 			}
 			f2fs_put_page(cur->page, 1);
 		} else {
@@ -283,6 +288,7 @@ void commit_inmem_pages(struct inode *inode, bool abort)
 		if (submit_bio)
 			f2fs_submit_merged_bio(sbi, DATA, WRITE);
 	}
+	return err;
 }
 
 /*
@@ -304,10 +310,15 @@ void f2fs_balance_fs(struct f2fs_sb_info *sbi)
 void f2fs_balance_fs_bg(struct f2fs_sb_info *sbi)
 {
 	/* try to shrink extent cache when there is no enough memory */
-	f2fs_shrink_extent_tree(sbi, EXTENT_CACHE_SHRINK_NUMBER);
+	if (!available_free_memory(sbi, EXTENT_CACHE))
+		f2fs_shrink_extent_tree(sbi, EXTENT_CACHE_SHRINK_NUMBER);
 
-	/* check the # of cached NAT entries and prefree segments */
-	if (try_to_free_nats(sbi, NAT_ENTRY_PER_BLOCK) ||
+	/* check the # of cached NAT entries */
+	if (!available_free_memory(sbi, NAT_ENTRIES))
+		try_to_free_nats(sbi, NAT_ENTRY_PER_BLOCK);
+
+	/* checkpoint is the only way to shrink partial cached entries */
+	if (!available_free_memory(sbi, NAT_ENTRIES) ||
 			excess_prefree_segs(sbi) ||
 			!available_free_memory(sbi, INO_ENTRIES))
 		f2fs_sync_fs(sbi->sb, true);
