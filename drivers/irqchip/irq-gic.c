@@ -38,6 +38,7 @@
 #include <linux/interrupt.h>
 #include <linux/percpu.h>
 #include <linux/slab.h>
+#include <linux/irqchip.h>
 #include <linux/irqchip/chained_irq.h>
 #include <linux/irqchip/arm-gic.h>
 #include <linux/irqchip/arm-gic-acpi.h>
@@ -48,7 +49,6 @@
 #include <asm/smp_plat.h>
 
 #include "irq-gic-common.h"
-#include "irqchip.h"
 
 union gic_base {
 	void __iomem *common_base;
@@ -288,8 +288,8 @@ static void __exception_irq_entry gic_handle_irq(struct pt_regs *regs)
 
 static void gic_handle_cascade_irq(unsigned int irq, struct irq_desc *desc)
 {
-	struct gic_chip_data *chip_data = irq_get_handler_data(irq);
-	struct irq_chip *chip = irq_get_chip(irq);
+	struct gic_chip_data *chip_data = irq_desc_get_handler_data(desc);
+	struct irq_chip *chip = irq_desc_get_chip(desc);
 	unsigned int cascade_irq, gic_irq;
 	unsigned long status;
 
@@ -324,16 +324,17 @@ static struct irq_chip gic_chip = {
 #endif
 	.irq_get_irqchip_state	= gic_irq_get_irqchip_state,
 	.irq_set_irqchip_state	= gic_irq_set_irqchip_state,
-	.flags			= IRQCHIP_SET_TYPE_MASKED,
+	.flags			= IRQCHIP_SET_TYPE_MASKED |
+				  IRQCHIP_SKIP_SET_WAKE |
+				  IRQCHIP_MASK_ON_SUSPEND,
 };
 
 void __init gic_cascade_irq(unsigned int gic_nr, unsigned int irq)
 {
 	if (gic_nr >= MAX_GIC_NR)
 		BUG();
-	if (irq_set_handler_data(irq, &gic_data[gic_nr]) != 0)
-		BUG();
-	irq_set_chained_handler(irq, gic_handle_cascade_irq);
+	irq_set_chained_handler_and_data(irq, gic_handle_cascade_irq,
+					 &gic_data[gic_nr]);
 }
 
 static u8 gic_get_cpumask(struct gic_chip_data *gic)
@@ -879,11 +880,6 @@ static const struct irq_domain_ops gic_irq_domain_ops = {
 	.unmap = gic_irq_domain_unmap,
 	.xlate = gic_irq_domain_xlate,
 };
-
-void gic_set_irqchip_flags(unsigned long flags)
-{
-	gic_chip.flags |= flags;
-}
 
 void __init gic_init_bases(unsigned int gic_nr, int irq_start,
 			   void __iomem *dist_base, void __iomem *cpu_base,
