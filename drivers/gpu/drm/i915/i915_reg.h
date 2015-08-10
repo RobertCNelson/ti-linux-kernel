@@ -1670,6 +1670,7 @@ enum skl_disp_power_wells {
 #define   GFX_REPLAY_MODE		(1<<11)
 #define   GFX_PSMI_GRANULARITY		(1<<10)
 #define   GFX_PPGTT_ENABLE		(1<<9)
+#define   GEN8_GFX_PPGTT_48B		(1<<7)
 
 #define VLV_DISPLAY_BASE 0x180000
 #define VLV_MIPI_BASE VLV_DISPLAY_BASE
@@ -5985,6 +5986,11 @@ enum skl_disp_power_wells {
 
 /* digital port hotplug */
 #define PCH_PORT_HOTPLUG        0xc4030		/* SHOTPLUG_CTL */
+#define BXT_PORTA_HOTPLUG_ENABLE	(1 << 28)
+#define BXT_PORTA_HOTPLUG_STATUS_MASK	(0x3 << 24)
+#define  BXT_PORTA_HOTPLUG_NO_DETECT	(0 << 24)
+#define  BXT_PORTA_HOTPLUG_SHORT_DETECT	(1 << 24)
+#define  BXT_PORTA_HOTPLUG_LONG_DETECT	(2 << 24)
 #define PORTD_HOTPLUG_ENABLE            (1 << 20)
 #define PORTD_PULSE_DURATION_2ms        (0)
 #define PORTD_PULSE_DURATION_4_5ms      (1 << 18)
@@ -6845,6 +6851,9 @@ enum skl_disp_power_wells {
 
 #define GEN7_MISCCPCTL			(0x9424)
 #define   GEN7_DOP_CLOCK_GATE_ENABLE	(1<<0)
+
+#define GEN8_GARBCNTL                   0xB004
+#define   GEN9_GAPS_TSV_CREDIT_DISABLE  (1<<7)
 
 /* IVYBRIDGE DPF */
 #define GEN7_L3CDERRST1			0xB008 /* L3CD Error Status 1 */
