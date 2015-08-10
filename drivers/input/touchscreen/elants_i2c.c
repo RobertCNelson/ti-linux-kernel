@@ -1173,7 +1173,7 @@ static int elants_i2c_probe(struct i2c_client *client,
 		return error;
 	}
 
-	ts->reset_gpio = devm_gpiod_get(&client->dev, "reset");
+	ts->reset_gpio = devm_gpiod_get(&client->dev, "reset", GPIOD_ASIS);
 	if (IS_ERR(ts->reset_gpio)) {
 		error = PTR_ERR(ts->reset_gpio);
 
