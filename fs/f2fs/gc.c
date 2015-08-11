@@ -809,13 +809,14 @@ gc_more:
 	if (unlikely(f2fs_cp_error(sbi)))
 		goto stop;
 
+	if (!__get_victim(sbi, &segno, gc_type))
+		goto stop;
+
 	if (gc_type == BG_GC && has_not_enough_free_secs(sbi, nfree)) {
 		gc_type = FG_GC;
 		write_checkpoint(sbi, &cpc);
 	}
 
-	if (!__get_victim(sbi, &segno, gc_type))
-		goto stop;
 	ret = 0;
 
 	/* readahead multi ssa blocks those have contiguous address */
