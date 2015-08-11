@@ -31,6 +31,7 @@
 #include <linux/bug.h>
 #include <linux/compiler.h>
 #include <linux/sort.h>
+#include <linux/psci.h>
 
 #include <asm/unified.h>
 #include <asm/cp15.h>
@@ -972,7 +973,7 @@ void __init setup_arch(char **cmdline_p)
 	unflatten_device_tree();
 
 	arm_dt_init_cpu_maps();
-	psci_init();
+	psci_dt_init();
 	xen_early_init();
 #ifdef CONFIG_SMP
 	if (is_smp()) {
@@ -1015,7 +1016,7 @@ static int __init topology_init(void)
 
 	for_each_possible_cpu(cpu) {
 		struct cpuinfo_arm *cpuinfo = &per_cpu(cpu_data, cpu);
-		cpuinfo->cpu.hotpluggable = 1;
+		cpuinfo->cpu.hotpluggable = platform_can_hotplug_cpu(cpu);
 		register_cpu(&cpuinfo->cpu, cpu);
 	}
 
