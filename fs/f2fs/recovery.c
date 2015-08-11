@@ -545,9 +545,6 @@ int recover_fsync_data(struct f2fs_sb_info *sbi)
 
 	INIT_LIST_HEAD(&inode_list);
 
-	/* step #1: find fsynced inode numbers */
-	set_sbi_flag(sbi, SBI_POR_DOING);
-
 	/* prevent checkpoint */
 	mutex_lock(&sbi->cp_mutex);
 
