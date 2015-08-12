@@ -811,7 +811,8 @@ gc_more:
 
 	if (gc_type == BG_GC && has_not_enough_free_secs(sbi, nfree)) {
 		gc_type = FG_GC;
-		write_checkpoint(sbi, &cpc);
+		if (dirty_segments(sbi) || prefree_segments(sbi))
+			write_checkpoint(sbi, &cpc);
 	}
 
 	if (!__get_victim(sbi, &segno, gc_type))
