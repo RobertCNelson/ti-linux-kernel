@@ -178,13 +178,22 @@
 #define GAB_CTL				0x24000
 #define   GAB_CTL_CONT_AFTER_PAGEFAULT	(1<<8)
 
-#define GEN7_BIOS_RESERVED		0x1082C0
-#define GEN7_BIOS_RESERVED_1M		(0 << 5)
-#define GEN7_BIOS_RESERVED_256K		(1 << 5)
-#define GEN8_BIOS_RESERVED_SHIFT       7
-#define GEN7_BIOS_RESERVED_MASK        0x1
-#define GEN8_BIOS_RESERVED_MASK        0x3
-
+#define GEN6_STOLEN_RESERVED		0x1082C0
+#define GEN6_STOLEN_RESERVED_ADDR_MASK	(0xFFF << 20)
+#define GEN7_STOLEN_RESERVED_ADDR_MASK	(0x3FFF << 18)
+#define GEN6_STOLEN_RESERVED_SIZE_MASK	(3 << 4)
+#define GEN6_STOLEN_RESERVED_1M		(0 << 4)
+#define GEN6_STOLEN_RESERVED_512K	(1 << 4)
+#define GEN6_STOLEN_RESERVED_256K	(2 << 4)
+#define GEN6_STOLEN_RESERVED_128K	(3 << 4)
+#define GEN7_STOLEN_RESERVED_SIZE_MASK	(1 << 5)
+#define GEN7_STOLEN_RESERVED_1M		(0 << 5)
+#define GEN7_STOLEN_RESERVED_256K	(1 << 5)
+#define GEN8_STOLEN_RESERVED_SIZE_MASK	(3 << 7)
+#define GEN8_STOLEN_RESERVED_1M		(0 << 7)
+#define GEN8_STOLEN_RESERVED_2M		(1 << 7)
+#define GEN8_STOLEN_RESERVED_4M		(2 << 7)
+#define GEN8_STOLEN_RESERVED_8M		(3 << 7)
 
 /* VGA stuff */
 
@@ -1670,6 +1679,7 @@ enum skl_disp_power_wells {
 #define   GFX_REPLAY_MODE		(1<<11)
 #define   GFX_PSMI_GRANULARITY		(1<<10)
 #define   GFX_PPGTT_ENABLE		(1<<9)
+#define   GEN8_GFX_PPGTT_48B		(1<<7)
 
 #define VLV_DISPLAY_BASE 0x180000
 #define VLV_MIPI_BASE VLV_DISPLAY_BASE
@@ -5940,6 +5950,7 @@ enum skl_disp_power_wells {
 #define SDE_AUXC_CPT		(1 << 26)
 #define SDE_AUXB_CPT		(1 << 25)
 #define SDE_AUX_MASK_CPT	(7 << 25)
+#define SDE_PORTE_HOTPLUG_SPT	(1 << 25)
 #define SDE_PORTD_HOTPLUG_CPT	(1 << 23)
 #define SDE_PORTC_HOTPLUG_CPT	(1 << 22)
 #define SDE_PORTB_HOTPLUG_CPT	(1 << 21)
@@ -5947,6 +5958,10 @@ enum skl_disp_power_wells {
 #define SDE_SDVOB_HOTPLUG_CPT	(1 << 18)
 #define SDE_HOTPLUG_MASK_CPT	(SDE_CRT_HOTPLUG_CPT |		\
 				 SDE_SDVOB_HOTPLUG_CPT |	\
+				 SDE_PORTD_HOTPLUG_CPT |	\
+				 SDE_PORTC_HOTPLUG_CPT |	\
+				 SDE_PORTB_HOTPLUG_CPT)
+#define SDE_HOTPLUG_MASK_SPT	(SDE_PORTE_HOTPLUG_SPT |	\
 				 SDE_PORTD_HOTPLUG_CPT |	\
 				 SDE_PORTC_HOTPLUG_CPT |	\
 				 SDE_PORTB_HOTPLUG_CPT)
@@ -5985,6 +6000,11 @@ enum skl_disp_power_wells {
 
 /* digital port hotplug */
 #define PCH_PORT_HOTPLUG        0xc4030		/* SHOTPLUG_CTL */
+#define BXT_PORTA_HOTPLUG_ENABLE	(1 << 28)
+#define BXT_PORTA_HOTPLUG_STATUS_MASK	(0x3 << 24)
+#define  BXT_PORTA_HOTPLUG_NO_DETECT	(0 << 24)
+#define  BXT_PORTA_HOTPLUG_SHORT_DETECT	(1 << 24)
+#define  BXT_PORTA_HOTPLUG_LONG_DETECT	(2 << 24)
 #define PORTD_HOTPLUG_ENABLE            (1 << 20)
 #define PORTD_PULSE_DURATION_2ms        (0)
 #define PORTD_PULSE_DURATION_4_5ms      (1 << 18)
@@ -6015,6 +6035,13 @@ enum skl_disp_power_wells {
 #define  PORTB_HOTPLUG_NO_DETECT	(0 << 0)
 #define  PORTB_HOTPLUG_SHORT_DETECT	(1 << 0)
 #define  PORTB_HOTPLUG_LONG_DETECT	(2 << 0)
+
+#define PCH_PORT_HOTPLUG2        0xc403C		/* SHOTPLUG_CTL2 */
+#define PORTE_HOTPLUG_ENABLE            (1 << 4)
+#define PORTE_HOTPLUG_STATUS_MASK	(0x3 << 0)
+#define  PORTE_HOTPLUG_NO_DETECT	(0 << 0)
+#define  PORTE_HOTPLUG_SHORT_DETECT	(1 << 0)
+#define  PORTE_HOTPLUG_LONG_DETECT	(2 << 0)
 
 #define PCH_GPIOA               0xc5010
 #define PCH_GPIOB               0xc5014
@@ -6845,6 +6872,9 @@ enum skl_disp_power_wells {
 
 #define GEN7_MISCCPCTL			(0x9424)
 #define   GEN7_DOP_CLOCK_GATE_ENABLE	(1<<0)
+
+#define GEN8_GARBCNTL                   0xB004
+#define   GEN9_GAPS_TSV_CREDIT_DISABLE  (1<<7)
 
 /* IVYBRIDGE DPF */
 #define GEN7_L3CDERRST1			0xB008 /* L3CD Error Status 1 */

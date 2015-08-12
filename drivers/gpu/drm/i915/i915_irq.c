@@ -61,6 +61,13 @@ static const u32 hpd_cpt[HPD_NUM_PINS] = {
 	[HPD_PORT_D] = SDE_PORTD_HOTPLUG_CPT
 };
 
+static const u32 hpd_spt[HPD_NUM_PINS] = {
+	[HPD_PORT_B] = SDE_PORTB_HOTPLUG_CPT,
+	[HPD_PORT_C] = SDE_PORTC_HOTPLUG_CPT,
+	[HPD_PORT_D] = SDE_PORTD_HOTPLUG_CPT,
+	[HPD_PORT_E] = SDE_PORTE_HOTPLUG_SPT
+};
+
 static const u32 hpd_mask_i915[HPD_NUM_PINS] = {
 	[HPD_CRT] = CRT_HOTPLUG_INT_EN,
 	[HPD_SDVO_B] = SDVOB_HOTPLUG_INT_EN,
@@ -1227,6 +1234,22 @@ static irqreturn_t gen8_gt_irq_handler(struct drm_i915_private *dev_priv,
 	return ret;
 }
 
+static bool bxt_port_hotplug_long_detect(enum port port, u32 val)
+{
+	switch (port) {
+	case PORT_A:
+		return val & BXT_PORTA_HOTPLUG_LONG_DETECT;
+	case PORT_B:
+		return val & PORTB_HOTPLUG_LONG_DETECT;
+	case PORT_C:
+		return val & PORTC_HOTPLUG_LONG_DETECT;
+	case PORT_D:
+		return val & PORTD_HOTPLUG_LONG_DETECT;
+	default:
+		return false;
+	}
+}
+
 static bool pch_port_hotplug_long_detect(enum port port, u32 val)
 {
 	switch (port) {
@@ -1236,6 +1259,8 @@ static bool pch_port_hotplug_long_detect(enum port port, u32 val)
 		return val & PORTC_HOTPLUG_LONG_DETECT;
 	case PORT_D:
 		return val & PORTD_HOTPLUG_LONG_DETECT;
+	case PORT_E:
+		return val & PORTE_HOTPLUG_LONG_DETECT;
 	default:
 		return false;
 	}
@@ -1256,9 +1281,10 @@ static bool i9xx_port_hotplug_long_detect(enum port port, u32 val)
 }
 
 /* Get a bit mask of pins that have triggered, and which ones may be long. */
-static void pch_get_hpd_pins(u32 *pin_mask, u32 *long_mask,
+static void intel_get_hpd_pins(u32 *pin_mask, u32 *long_mask,
 			     u32 hotplug_trigger, u32 dig_hotplug_reg,
-			     const u32 hpd[HPD_NUM_PINS])
+			     const u32 hpd[HPD_NUM_PINS],
+			     bool long_pulse_detect(enum port port, u32 val))
 {
 	enum port port;
 	int i;
@@ -1272,42 +1298,16 @@ static void pch_get_hpd_pins(u32 *pin_mask, u32 *long_mask,
 
 		*pin_mask |= BIT(i);
 
-		port = intel_hpd_pin_to_port(i);
-		if (pch_port_hotplug_long_detect(port, dig_hotplug_reg))
+		if (!intel_hpd_pin_to_port(i, &port))
+			continue;
+
+		if (long_pulse_detect(port, dig_hotplug_reg))
 			*long_mask |= BIT(i);
 	}
 
 	DRM_DEBUG_DRIVER("hotplug event received, stat 0x%08x, dig 0x%08x, pins 0x%08x\n",
 			 hotplug_trigger, dig_hotplug_reg, *pin_mask);
 
-}
-
-/* Get a bit mask of pins that have triggered, and which ones may be long. */
-static void i9xx_get_hpd_pins(u32 *pin_mask, u32 *long_mask,
-			      u32 hotplug_trigger, const u32 hpd[HPD_NUM_PINS])
-{
-	enum port port;
-	int i;
-
-	*pin_mask = 0;
-	*long_mask = 0;
-
-	if (!hotplug_trigger)
-		return;
-
-	for_each_hpd_pin(i) {
-		if ((hpd[i] & hotplug_trigger) == 0)
-			continue;
-
-		*pin_mask |= BIT(i);
-
-		port = intel_hpd_pin_to_port(i);
-		if (i9xx_port_hotplug_long_detect(port, hotplug_trigger))
-			*long_mask |= BIT(i);
-	}
-
-	DRM_DEBUG_DRIVER("hotplug event received, stat 0x%08x, pins 0x%08x\n",
-			 hotplug_trigger, *pin_mask);
 }
 
 static void gmbus_irq_handler(struct drm_device *dev)
@@ -1547,7 +1547,9 @@ static void i9xx_hpd_irq_handler(struct drm_device *dev)
 	if (IS_G4X(dev) || IS_VALLEYVIEW(dev)) {
 		u32 hotplug_trigger = hotplug_status & HOTPLUG_INT_STATUS_G4X;
 
-		i9xx_get_hpd_pins(&pin_mask, &long_mask, hotplug_trigger, hpd_status_g4x);
+		intel_get_hpd_pins(&pin_mask, &long_mask, hotplug_trigger,
+				   hotplug_trigger, hpd_status_g4x,
+				   i9xx_port_hotplug_long_detect);
 		intel_hpd_irq_handler(dev, pin_mask, long_mask);
 
 		if (hotplug_status & DP_AUX_CHANNEL_MASK_INT_STATUS_G4X)
@@ -1555,7 +1557,9 @@ static void i9xx_hpd_irq_handler(struct drm_device *dev)
 	} else {
 		u32 hotplug_trigger = hotplug_status & HOTPLUG_INT_STATUS_I915;
 
-		i9xx_get_hpd_pins(&pin_mask, &long_mask, hotplug_trigger, hpd_status_i915);
+		intel_get_hpd_pins(&pin_mask, &long_mask, hotplug_trigger,
+				   hotplug_trigger, hpd_status_g4x,
+				   i9xx_port_hotplug_long_detect);
 		intel_hpd_irq_handler(dev, pin_mask, long_mask);
 	}
 }
@@ -1662,8 +1666,9 @@ static void ibx_irq_handler(struct drm_device *dev, u32 pch_iir)
 		dig_hotplug_reg = I915_READ(PCH_PORT_HOTPLUG);
 		I915_WRITE(PCH_PORT_HOTPLUG, dig_hotplug_reg);
 
-		pch_get_hpd_pins(&pin_mask, &long_mask, hotplug_trigger,
-				 dig_hotplug_reg, hpd_ibx);
+		intel_get_hpd_pins(&pin_mask, &long_mask, hotplug_trigger,
+				   dig_hotplug_reg, hpd_ibx,
+				   pch_port_hotplug_long_detect);
 		intel_hpd_irq_handler(dev, pin_mask, long_mask);
 	}
 
@@ -1756,15 +1761,36 @@ static void cpt_irq_handler(struct drm_device *dev, u32 pch_iir)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int pipe;
-	u32 hotplug_trigger = pch_iir & SDE_HOTPLUG_MASK_CPT;
+	u32 hotplug_trigger;
+
+	if (HAS_PCH_SPT(dev))
+		hotplug_trigger = pch_iir & SDE_HOTPLUG_MASK_SPT;
+	else
+		hotplug_trigger = pch_iir & SDE_HOTPLUG_MASK_CPT;
 
 	if (hotplug_trigger) {
 		u32 dig_hotplug_reg, pin_mask, long_mask;
 
 		dig_hotplug_reg = I915_READ(PCH_PORT_HOTPLUG);
 		I915_WRITE(PCH_PORT_HOTPLUG, dig_hotplug_reg);
-		pch_get_hpd_pins(&pin_mask, &long_mask, hotplug_trigger,
-				 dig_hotplug_reg, hpd_cpt);
+
+		if (HAS_PCH_SPT(dev)) {
+			intel_get_hpd_pins(&pin_mask, &long_mask,
+					   hotplug_trigger,
+					   dig_hotplug_reg, hpd_spt,
+					   pch_port_hotplug_long_detect);
+
+			/* detect PORTE HP event */
+			dig_hotplug_reg = I915_READ(PCH_PORT_HOTPLUG2);
+			if (pch_port_hotplug_long_detect(PORT_E,
+							 dig_hotplug_reg))
+				long_mask |= 1 << HPD_PORT_E;
+		} else
+			intel_get_hpd_pins(&pin_mask, &long_mask,
+					   hotplug_trigger,
+					   dig_hotplug_reg, hpd_cpt,
+					   pch_port_hotplug_long_detect);
+
 		intel_hpd_irq_handler(dev, pin_mask, long_mask);
 	}
 
@@ -1981,7 +2007,8 @@ static void bxt_hpd_handler(struct drm_device *dev, uint32_t iir_status)
 	/* Clear sticky bits in hpd status */
 	I915_WRITE(BXT_HOTPLUG_CTL, hp_control);
 
-	pch_get_hpd_pins(&pin_mask, &long_mask, hp_trigger, hp_control, hpd_bxt);
+	intel_get_hpd_pins(&pin_mask, &long_mask, hp_trigger, hp_control,
+			   hpd_bxt, bxt_port_hotplug_long_detect);
 	intel_hpd_irq_handler(dev, pin_mask, long_mask);
 }
 
@@ -2985,6 +3012,11 @@ static void ibx_hpd_irq_setup(struct drm_device *dev)
 		for_each_intel_encoder(dev, intel_encoder)
 			if (dev_priv->hotplug.stats[intel_encoder->hpd_pin].state == HPD_ENABLED)
 				enabled_irqs |= hpd_ibx[intel_encoder->hpd_pin];
+	} else if (HAS_PCH_SPT(dev)) {
+		hotplug_irqs = SDE_HOTPLUG_MASK_SPT;
+		for_each_intel_encoder(dev, intel_encoder)
+			if (dev_priv->hotplug.stats[intel_encoder->hpd_pin].state == HPD_ENABLED)
+				enabled_irqs |= hpd_spt[intel_encoder->hpd_pin];
 	} else {
 		hotplug_irqs = SDE_HOTPLUG_MASK_CPT;
 		for_each_intel_encoder(dev, intel_encoder)
@@ -3006,6 +3038,13 @@ static void ibx_hpd_irq_setup(struct drm_device *dev)
 	hotplug |= PORTC_HOTPLUG_ENABLE | PORTC_PULSE_DURATION_2ms;
 	hotplug |= PORTB_HOTPLUG_ENABLE | PORTB_PULSE_DURATION_2ms;
 	I915_WRITE(PCH_PORT_HOTPLUG, hotplug);
+
+	/* enable SPT PORTE hot plug */
+	if (HAS_PCH_SPT(dev)) {
+		hotplug = I915_READ(PCH_PORT_HOTPLUG2);
+		hotplug |= PORTE_HOTPLUG_ENABLE;
+		I915_WRITE(PCH_PORT_HOTPLUG2, hotplug);
+	}
 }
 
 static void bxt_hpd_irq_setup(struct drm_device *dev)

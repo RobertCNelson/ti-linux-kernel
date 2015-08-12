@@ -196,13 +196,21 @@
 	reg_state[CTX_PDP ## n ## _LDW+1] = lower_32_bits(_addr); \
 }
 
+#define ASSIGN_CTX_PML4(ppgtt, reg_state) { \
+	reg_state[CTX_PDP0_UDW + 1] = upper_32_bits(px_dma(&ppgtt->pml4)); \
+	reg_state[CTX_PDP0_LDW + 1] = lower_32_bits(px_dma(&ppgtt->pml4)); \
+}
+
 enum {
 	ADVANCED_CONTEXT = 0,
-	LEGACY_CONTEXT,
+	LEGACY_32B_CONTEXT,
 	ADVANCED_AD_CONTEXT,
 	LEGACY_64B_CONTEXT
 };
-#define GEN8_CTX_MODE_SHIFT 3
+#define GEN8_CTX_ADDRESSING_MODE_SHIFT 3
+#define GEN8_CTX_ADDRESSING_MODE(dev)  (USES_FULL_48BIT_PPGTT(dev) ?\
+		LEGACY_64B_CONTEXT :\
+		LEGACY_32B_CONTEXT)
 enum {
 	FAULT_AND_HANG = 0,
 	FAULT_AND_HALT, /* Debug only */
@@ -273,7 +281,7 @@ static uint64_t execlists_ctx_descriptor(struct drm_i915_gem_request *rq)
 	WARN_ON(lrca & 0xFFFFFFFF00000FFFULL);
 
 	desc = GEN8_CTX_VALID;
-	desc |= LEGACY_CONTEXT << GEN8_CTX_MODE_SHIFT;
+	desc |= GEN8_CTX_ADDRESSING_MODE(dev) << GEN8_CTX_ADDRESSING_MODE_SHIFT;
 	if (IS_GEN8(ctx_obj->base.dev))
 		desc |= GEN8_CTX_L3LLC_COHERENT;
 	desc |= GEN8_CTX_PRIVILEGE;
@@ -348,10 +356,12 @@ static int execlists_update_context(struct drm_i915_gem_request *rq)
 	reg_state[CTX_RING_TAIL+1] = rq->tail;
 	reg_state[CTX_RING_BUFFER_START+1] = i915_gem_obj_ggtt_offset(rb_obj);
 
-	/* True PPGTT with dynamic page allocation: update PDP registers and
-	 * point the unallocated PDPs to the scratch page
-	 */
-	if (ppgtt) {
+	if (ppgtt && !USES_FULL_48BIT_PPGTT(ppgtt->base.dev)) {
+		/* True 32b PPGTT with dynamic page allocation: update PDP
+		 * registers and point the unallocated PDPs to scratch page.
+		 * PML4 is allocated during ppgtt init, so this is not needed
+		 * in 48-bit mode.
+		 */
 		ASSIGN_CTX_PDP(ppgtt, reg_state, 3);
 		ASSIGN_CTX_PDP(ppgtt, reg_state, 2);
 		ASSIGN_CTX_PDP(ppgtt, reg_state, 1);
@@ -497,6 +507,9 @@ void intel_lrc_irq_handler(struct intel_engine_cs *ring)
 		status_id = I915_READ(RING_CONTEXT_STATUS_BUF(ring) +
 				(read_pointer % 6) * 8 + 4);
 
+		if (status & GEN8_CTX_STATUS_IDLE_ACTIVE)
+			continue;
+
 		if (status & GEN8_CTX_STATUS_PREEMPTED) {
 			if (status & GEN8_CTX_STATUS_LITE_RESTORE) {
 				if (execlists_check_remove_request(ring, status_id))
@@ -521,7 +534,7 @@ void intel_lrc_irq_handler(struct intel_engine_cs *ring)
 	ring->next_context_status_buffer = write_pointer % 6;
 
 	I915_WRITE(RING_CONTEXT_STATUS_PTR(ring),
-		   ((u32)ring->next_context_status_buffer & 0x07) << 8);
+		   _MASKED_FIELD(0x07 << 8, ((u32)ring->next_context_status_buffer & 0x07) << 8));
 }
 
 static int execlists_context_queue(struct drm_i915_gem_request *request)
@@ -1512,12 +1525,15 @@ static int gen8_emit_bb_start(struct drm_i915_gem_request *req,
 	 * Ideally, we should set Force PD Restore in ctx descriptor,
 	 * but we can't. Force Restore would be a second option, but
 	 * it is unsafe in case of lite-restore (because the ctx is
-	 * not idle). */
+	 * not idle). PML4 is allocated during ppgtt init so this is
+	 * not needed in 48-bit.*/
 	if (req->ctx->ppgtt &&
 	    (intel_ring_flag(req->ring) & req->ctx->ppgtt->pd_dirty_rings)) {
-		ret = intel_logical_ring_emit_pdps(req);
-		if (ret)
-			return ret;
+		if (!USES_FULL_48BIT_PPGTT(req->i915)) {
+			ret = intel_logical_ring_emit_pdps(req);
+			if (ret)
+				return ret;
+		}
 
 		req->ctx->ppgtt->pd_dirty_rings &= ~intel_ring_flag(req->ring);
 	}
@@ -1736,6 +1752,12 @@ static int intel_lr_context_render_state_init(struct drm_i915_gem_request *req)
 		return 0;
 
 	ret = req->ring->emit_bb_start(req, so.ggtt_offset,
+				       I915_DISPATCH_SECURE);
+	if (ret)
+		goto out;
+
+	ret = req->ring->emit_bb_start(req,
+				       (so.ggtt_offset + so.aux_batch_offset),
 				       I915_DISPATCH_SECURE);
 	if (ret)
 		goto out;
@@ -2192,13 +2214,24 @@ populate_lr_context(struct intel_context *ctx, struct drm_i915_gem_object *ctx_o
 	reg_state[CTX_PDP0_UDW] = GEN8_RING_PDP_UDW(ring, 0);
 	reg_state[CTX_PDP0_LDW] = GEN8_RING_PDP_LDW(ring, 0);
 
-	/* With dynamic page allocation, PDPs may not be allocated at this point,
-	 * Point the unallocated PDPs to the scratch page
-	 */
-	ASSIGN_CTX_PDP(ppgtt, reg_state, 3);
-	ASSIGN_CTX_PDP(ppgtt, reg_state, 2);
-	ASSIGN_CTX_PDP(ppgtt, reg_state, 1);
-	ASSIGN_CTX_PDP(ppgtt, reg_state, 0);
+	if (USES_FULL_48BIT_PPGTT(ppgtt->base.dev)) {
+		/* 64b PPGTT (48bit canonical)
+		 * PDP0_DESCRIPTOR contains the base address to PML4 and
+		 * other PDP Descriptors are ignored.
+		 */
+		ASSIGN_CTX_PML4(ppgtt, reg_state);
+	} else {
+		/* 32b PPGTT
+		 * PDP*_DESCRIPTOR contains the base address of space supported.
+		 * With dynamic page allocation, PDPs may not be allocated at
+		 * this point. Point the unallocated PDPs to the scratch page
+		 */
+		ASSIGN_CTX_PDP(ppgtt, reg_state, 3);
+		ASSIGN_CTX_PDP(ppgtt, reg_state, 2);
+		ASSIGN_CTX_PDP(ppgtt, reg_state, 1);
+		ASSIGN_CTX_PDP(ppgtt, reg_state, 0);
+	}
+
 	if (ring->id == RCS) {
 		reg_state[CTX_LRI_HEADER_2] = MI_LOAD_REGISTER_IMM(1);
 		reg_state[CTX_R_PWR_CLK_STATE] = GEN8_R_PWR_CLK_STATE;
