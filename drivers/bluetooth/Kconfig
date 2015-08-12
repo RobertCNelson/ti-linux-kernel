@@ -147,6 +147,7 @@ config BT_HCIUART_INTEL
 config BT_HCIUART_BCM
 	bool "Broadcom protocol support"
 	depends on BT_HCIUART
+	depends on ACPI
 	select BT_HCIUART_H4
 	select BT_BCM
 	help
