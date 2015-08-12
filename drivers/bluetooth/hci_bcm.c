@@ -426,7 +426,7 @@ static int bcm_acpi_probe(struct bcm_device *dev)
 
 	dev->clk = devm_clk_get(&pdev->dev, NULL);
 
-	gpio = devm_gpiod_get(&pdev->dev, "device-wakeup");
+	gpio = devm_gpiod_get(&pdev->dev, "device-wakeup", GPIOD_ASIS);
 	if (!IS_ERR(gpio)) {
 		ret = gpiod_direction_output(gpio, 0);
 		if (ret)
@@ -434,7 +434,7 @@ static int bcm_acpi_probe(struct bcm_device *dev)
 		dev->device_wakeup = gpio;
 	}
 
-	gpio = devm_gpiod_get(&pdev->dev, "shutdown");
+	gpio = devm_gpiod_get(&pdev->dev, "shutdown", GPIOD_ASIS);
 	if (!IS_ERR(gpio)) {
 		ret = gpiod_direction_output(gpio, 0);
 		if (ret)
