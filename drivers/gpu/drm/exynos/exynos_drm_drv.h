@@ -44,23 +44,14 @@ enum exynos_drm_output_type {
  *	- the unit is screen coordinates.
  * @src_y: offset y on a framebuffer to be displayed.
  *	- the unit is screen coordinates.
- * @src_width: width of a partial image to be displayed from framebuffer.
- * @src_height: height of a partial image to be displayed from framebuffer.
- * @fb_width: width of a framebuffer.
- * @fb_height: height of a framebuffer.
+ * @src_w: width of a partial image to be displayed from framebuffer.
+ * @src_h: height of a partial image to be displayed from framebuffer.
  * @crtc_x: offset x on hardware screen.
  * @crtc_y: offset y on hardware screen.
- * @crtc_width: window width to be displayed (hardware screen).
- * @crtc_height: window height to be displayed (hardware screen).
- * @mode_width: width of screen mode.
- * @mode_height: height of screen mode.
+ * @crtc_w: window width to be displayed (hardware screen).
+ * @crtc_h: window height to be displayed (hardware screen).
  * @h_ratio: horizontal scaling ratio, 16.16 fixed point
  * @v_ratio: vertical scaling ratio, 16.16 fixed point
- * @refresh: refresh rate.
- * @scan_flag: interlace or progressive way.
- *	(it could be DRM_MODE_FLAG_*)
- * @bpp: pixel size.(in bit)
- * @pixel_format: fourcc pixel format of this overlay
  * @dma_addr: array of bus(accessed by dma) address to the memory region
  *	      allocated for a overlay.
  * @zpos: order of overlay layer(z position).
@@ -73,23 +64,14 @@ struct exynos_drm_plane {
 	struct drm_plane base;
 	unsigned int src_x;
 	unsigned int src_y;
-	unsigned int src_width;
-	unsigned int src_height;
-	unsigned int fb_width;
-	unsigned int fb_height;
+	unsigned int src_w;
+	unsigned int src_h;
 	unsigned int crtc_x;
 	unsigned int crtc_y;
-	unsigned int crtc_width;
-	unsigned int crtc_height;
-	unsigned int mode_width;
-	unsigned int mode_height;
+	unsigned int crtc_w;
+	unsigned int crtc_h;
 	unsigned int h_ratio;
 	unsigned int v_ratio;
-	unsigned int refresh;
-	unsigned int scan_flag;
-	unsigned int bpp;
-	unsigned int pitch;
-	uint32_t pixel_format;
 	dma_addr_t dma_addr[MAX_FB_BUFFER];
 	unsigned int zpos;
 };
@@ -153,8 +135,8 @@ struct exynos_drm_display {
  * @disable_vblank: specific driver callback for disabling vblank interrupt.
  * @wait_for_vblank: wait for vblank interrupt to make sure that
  *	hardware overlay is updated.
- * @win_commit: apply hardware specific overlay data to registers.
- * @win_disable: disable hardware specific overlay.
+ * @update_plane: apply hardware specific overlay data to registers.
+ * @disable_plane: disable hardware specific overlay.
  * @te_handler: trigger to transfer video image at the tearing effect
  *	synchronization signal if there is a page flip request.
  * @clock_enable: optional function enabling/disabling display domain clock,
@@ -173,11 +155,12 @@ struct exynos_drm_crtc_ops {
 	int (*enable_vblank)(struct exynos_drm_crtc *crtc);
 	void (*disable_vblank)(struct exynos_drm_crtc *crtc);
 	void (*wait_for_vblank)(struct exynos_drm_crtc *crtc);
-	void (*win_commit)(struct exynos_drm_crtc *crtc, unsigned int zpos);
-	void (*win_disable)(struct exynos_drm_crtc *crtc, unsigned int zpos);
+	void (*update_plane)(struct exynos_drm_crtc *crtc,
+			     struct exynos_drm_plane *plane);
+	void (*disable_plane)(struct exynos_drm_crtc *crtc,
+			      struct exynos_drm_plane *plane);
 	void (*te_handler)(struct exynos_drm_crtc *crtc);
 	void (*clock_enable)(struct exynos_drm_crtc *crtc, bool enable);
-	void (*clear_channels)(struct exynos_drm_crtc *crtc);
 };
 
 /*
