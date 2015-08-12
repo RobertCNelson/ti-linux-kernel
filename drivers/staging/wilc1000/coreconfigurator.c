@@ -605,7 +605,7 @@ INLINE u16 get_cap_info(u8 *data)
 {
 	u16 cap_info = 0;
 	u16 index    = MAC_HDR_LEN;
-	tenuFrmSubtype st = BEACON;
+	tenuFrmSubtype st;
 
 	st = get_sub_type(data);
 
@@ -681,9 +681,9 @@ s32 CoreConfiguratorInit(void)
 		goto _fail_;
 	}
 
-	WILC_memset((void *)gps8ConfigPacket, 0, MAX_PACKET_BUFF_SIZE);
+	memset((void *)gps8ConfigPacket, 0, MAX_PACKET_BUFF_SIZE);
 
-	WILC_memset((void *)(&gstrConfigPktInfo), 0, sizeof(tstrConfigPktInfo));
+	memset((void *)(&gstrConfigPktInfo), 0, sizeof(tstrConfigPktInfo));
 _fail_:
 	return s32Error;
 }
@@ -706,11 +706,10 @@ u8 *get_tim_elm(u8 *pu8msa, u16 u16RxLen, u16 u16TagParamOffset)
 
 	/* Search for the TIM Element Field and return if the element is found */
 	while (u16index < (u16RxLen - FCS_LEN)) {
-		if (pu8msa[u16index] == ITIM) {
+		if (pu8msa[u16index] == ITIM)
 			return &pu8msa[u16index];
-		} else {
+		else
 			u16index += (IE_HDR_LEN + pu8msa[u16index + 1]);
-		}
 	}
 
 	return 0;
@@ -812,7 +811,7 @@ s32 ParseNetworkInfo(u8 *pu8MsgBuffer, tstrNetworkInfo **ppstrNetworkInfo)
 		u32 u32Tsf_Hi;
 
 		pstrNetworkInfo = (tstrNetworkInfo *)WILC_MALLOC(sizeof(tstrNetworkInfo));
-		WILC_memset((void *)(pstrNetworkInfo), 0, sizeof(tstrNetworkInfo));
+		memset((void *)(pstrNetworkInfo), 0, sizeof(tstrNetworkInfo));
 
 		pstrNetworkInfo->s8rssi = pu8WidVal[0];
 
@@ -855,15 +854,14 @@ s32 ParseNetworkInfo(u8 *pu8MsgBuffer, tstrNetworkInfo **ppstrNetworkInfo)
 
 		/* Get DTIM Period */
 		pu8TimElm = get_tim_elm(pu8msa, (u16RxLen + FCS_LEN), u8index);
-		if (pu8TimElm != 0) {
+		if (pu8TimElm != 0)
 			pstrNetworkInfo->u8DtimPeriod = pu8TimElm[3];
-		}
 		pu8IEs = &pu8msa[MAC_HDR_LEN + TIME_STAMP_LEN + BEACON_INTERVAL_LEN + CAP_INFO_LEN];
 		u16IEsLen = u16RxLen - (MAC_HDR_LEN + TIME_STAMP_LEN + BEACON_INTERVAL_LEN + CAP_INFO_LEN);
 
 		if (u16IEsLen > 0) {
 			pstrNetworkInfo->pu8IEs = (u8 *)WILC_MALLOC(u16IEsLen);
-			WILC_memset((void *)(pstrNetworkInfo->pu8IEs), 0, u16IEsLen);
+			memset((void *)(pstrNetworkInfo->pu8IEs), 0, u16IEsLen);
 
 			WILC_memcpy(pstrNetworkInfo->pu8IEs, pu8IEs, u16IEsLen);
 		}
@@ -930,7 +928,7 @@ s32 ParseAssocRespInfo(u8 *pu8Buffer, u32 u32BufferLen,
 	u16 u16IEsLen = 0;
 
 	pstrConnectRespInfo = (tstrConnectRespInfo *)WILC_MALLOC(sizeof(tstrConnectRespInfo));
-	WILC_memset((void *)(pstrConnectRespInfo), 0, sizeof(tstrConnectRespInfo));
+	memset((void *)(pstrConnectRespInfo), 0, sizeof(tstrConnectRespInfo));
 
 	/* u16AssocRespLen = pu8Buffer[0]; */
 	u16AssocRespLen = (u16)u32BufferLen;
@@ -950,7 +948,7 @@ s32 ParseAssocRespInfo(u8 *pu8Buffer, u32 u32BufferLen,
 		u16IEsLen = u16AssocRespLen - (CAP_INFO_LEN + STATUS_CODE_LEN + AID_LEN);
 
 		pstrConnectRespInfo->pu8RespIEs = (u8 *)WILC_MALLOC(u16IEsLen);
-		WILC_memset((void *)(pstrConnectRespInfo->pu8RespIEs), 0, u16IEsLen);
+		memset((void *)(pstrConnectRespInfo->pu8RespIEs), 0, u16IEsLen);
 
 		WILC_memcpy(pstrConnectRespInfo->pu8RespIEs, pu8IEs, u16IEsLen);
 		pstrConnectRespInfo->u16RespIEsLen = u16IEsLen;
@@ -1024,7 +1022,7 @@ s32 ParseSurveyResults(u8 ppu8RcvdSiteSurveyResults[][MAX_SURVEY_RESULT_FRAG_SIZ
 		WILC_ERRORREPORT(s32Error, WILC_NO_MEM);
 	}
 
-	WILC_memset((void *)(pstrSurveyResults), 0, u32SurveyResultsCount * sizeof(wid_site_survey_reslts_s));
+	memset((void *)(pstrSurveyResults), 0, u32SurveyResultsCount * sizeof(wid_site_survey_reslts_s));
 
 	u32SurveyResultsCount = 0;
 
@@ -1528,11 +1526,10 @@ s32 further_process_response(u8 *resp,
 	u8 cfg_str[256] = {0};
 	tenuWIDtype enuWIDtype = WID_UNDEF;
 
-	if (process_wid_num) {
+	if (process_wid_num)
 		enuWIDtype = get_wid_type(g_wid_num);
-	} else {
+	else
 		enuWIDtype = gastrWIDs[cnt].enuWIDtype;
-	}
 
 
 	switch (enuWIDtype) {
@@ -1568,14 +1565,6 @@ s32 further_process_response(u8 *resp,
 	case WID_STR:
 		WILC_memcpy(cfg_str, resp + idx, cfg_len);
 		/* cfg_str[cfg_len] = '\0'; //mostafa: no need currently for NULL termination */
-		if (process_wid_num) {
-			/*fprintf(out_file,"0x%4.4x = %s\n",g_wid_num,
-			 *                              cfg_str);*/
-		} else {
-			/*fprintf(out_file,"%s = %s\n",gastrWIDs[cnt].cfg_switch,
-			 *                           cfg_str);*/
-		}
-
 		if (pstrWIDresult->s32ValueSize >= cfg_len) {
 			WILC_memcpy(pstrWIDresult->ps8WidVal, cfg_str, cfg_len); /* mostafa: no need currently for the extra NULL byte */
 			pstrWIDresult->s32ValueSize = cfg_len;
@@ -1591,13 +1580,6 @@ s32 further_process_response(u8 *resp,
 
 		WILC_strncpy(pstrWIDresult->ps8WidVal, cfg_str, WILC_strlen(cfg_str));
 		pstrWIDresult->ps8WidVal[WILC_strlen(cfg_str)] = '\0';
-		if (process_wid_num) {
-			/*fprintf(out_file,"0x%4.4x = %s\n",g_wid_num,
-			 *                              cfg_str);*/
-		} else {
-			/*fprintf(out_file,"%s = %s\n",gastrWIDs[cnt].cfg_switch,
-			 *                           cfg_str);*/
-		}
 		break;
 
 	case WID_IP:
@@ -1606,13 +1588,6 @@ s32 further_process_response(u8 *resp,
 				MAKE_WORD16(resp[idx + 2], resp[idx + 3])
 				);
 		conv_int_to_ip(cfg_str, cfg_int);
-		if (process_wid_num) {
-			/*fprintf(out_file,"0x%4.4x = %s\n",g_wid_num,
-			 *                              cfg_str);*/
-		} else {
-			/*fprintf(out_file,"%s = %s\n",gastrWIDs[cnt].cfg_switch,
-			 *                           cfg_str);*/
-		}
 		break;
 
 	case WID_BIN_DATA:
@@ -1739,7 +1714,6 @@ s32 ParseResponse(u8 *resp, tstrWID *pstrWIDcfgResult)
 s32 ParseWriteResponse(u8 *pu8RespBuffer)
 {
 	s32 s32Error = WILC_FAIL;
-	u16 u16RespLen   = 0;
 	u16 u16WIDtype = (u16)WID_NIL;
 
 	/* Check whether the received frame is a valid response */
@@ -1747,9 +1721,6 @@ s32 ParseWriteResponse(u8 *pu8RespBuffer)
 		PRINT_ER("Received Message format incorrect.\n");
 		return WILC_FAIL;
 	}
-
-	/* Extract Response Length */
-	u16RespLen = MAKE_WORD16(pu8RespBuffer[2], pu8RespBuffer[3]);
 
 	u16WIDtype = MAKE_WORD16(pu8RespBuffer[4], pu8RespBuffer[5]);
 
@@ -1898,94 +1869,11 @@ s32 ConfigWaitResponse(char *pcRespBuffer, s32 s32MaxRespBuffLen, s32 *ps32Bytes
 		*ps32BytesRead = gstrConfigPktInfo.s32BytesRead;
 	}
 
-	WILC_memset((void *)(&gstrConfigPktInfo), 0, sizeof(tstrConfigPktInfo));
+	memset((void *)(&gstrConfigPktInfo), 0, sizeof(tstrConfigPktInfo));
 
 	return s32Error;
 }
 
-/**
- *  @brief              sends certain Configuration Packet based on the input WIDs pstrWIDs
- *                      and retrieves the packet response pu8RxResp
- *  @details
- *  @param[in]  pstrWIDs WIDs to be sent in the configuration packet
- *  @param[in]  u32WIDsCount number of WIDs to be sent in the configuration packet
- *  @param[out]         pu8RxResp The received Packet Response
- *  @param[out]         ps32RxRespLen Length of the received Packet Response
- *  @return     Error code indicating success/failure
- *  @note
- *  @author	mabubakr
- *  @date		1 Mar 2012
- *  @version	1.0
- */
-#ifdef SIMULATION
-s32 SendConfigPkt(u8 u8Mode, tstrWID *pstrWIDs,
-			  u32 u32WIDsCount, bool bRespRequired, u32 drvHandler)
-{
-	s32 s32Error = WILC_SUCCESS;
-	s32 err = WILC_SUCCESS;
-	s32 s32ConfigPacketLen = 0;
-	s32 s32RcvdRespLen = 0;
-
-	down(&SemHandleSendPkt);
-
-	/*set the packet mode*/
-	g_oper_mode = u8Mode;
-
-	WILC_memset((void *)gps8ConfigPacket, 0, MAX_PACKET_BUFF_SIZE);
-
-	if (CreateConfigPacket(gps8ConfigPacket, &s32ConfigPacketLen, pstrWIDs, u32WIDsCount) != WILC_SUCCESS) {
-		s32Error = WILC_FAIL;
-		goto End_ConfigPkt;
-	}
-	/*bug 3878*/
-	gstrConfigPktInfo.pcRespBuffer = gps8ConfigPacket;
-	gstrConfigPktInfo.s32MaxRespBuffLen = MAX_PACKET_BUFF_SIZE;
-	PRINT_INFO(CORECONFIG_DBG, "GLOBAL =bRespRequired =%d\n", bRespRequired);
-	gstrConfigPktInfo.bRespRequired = bRespRequired;
-
-	s32Error = SendRawPacket(gps8ConfigPacket, s32ConfigPacketLen);
-	if (s32Error != WILC_SUCCESS) {
-		goto End_ConfigPkt;
-	}
-
-	WILC_memset((void *)gps8ConfigPacket, 0, MAX_PACKET_BUFF_SIZE);
-
-	ConfigWaitResponse(gps8ConfigPacket, MAX_PACKET_BUFF_SIZE, &s32RcvdRespLen, bRespRequired);
-
-
-	if (bRespRequired)	{
-		/* If the operating Mode is GET, then we expect a response frame from */
-		/* the driver. Hence start listening to the port for response         */
-		if (g_oper_mode == GET_CFG) {
-			#if 1
-			err = ParseResponse(gps8ConfigPacket, pstrWIDs);
-			if (err != 0) {
-				s32Error = WILC_FAIL;
-				goto End_ConfigPkt;
-			} else {
-				s32Error = WILC_SUCCESS;
-			}
-			#endif
-		} else {
-			err = ParseWriteResponse(gps8ConfigPacket);
-			if (err != WRITE_RESP_SUCCESS) {
-				s32Error = WILC_FAIL;
-				goto End_ConfigPkt;
-			} else {
-				s32Error = WILC_SUCCESS;
-			}
-		}
-
-
-	}
-
-
-End_ConfigPkt:
-	up(&SemHandleSendPkt);
-
-	return s32Error;
-}
-#endif
 s32 ConfigProvideResponse(char *pcRespBuffer, s32 s32RespLen)
 {
 	s32 s32Error = WILC_SUCCESS;
@@ -2078,8 +1966,6 @@ s32 CoreConfiguratorDeInit(void)
 	return s32Error;
 }
 
-
-#ifndef SIMULATION
 /*Using the global handle of the driver*/
 extern wilc_wlan_oup_t *gpstrWlanOps;
 /**
@@ -2153,4 +2039,3 @@ s32 SendConfigPkt(u8 u8Mode, tstrWID *pstrWIDs,
 
 	return ret;
 }
-#endif
