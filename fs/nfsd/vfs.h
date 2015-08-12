@@ -78,7 +78,7 @@ __be32		nfsd_readv(struct file *, loff_t, struct kvec *, int,
 				unsigned long *);
 __be32 		nfsd_read(struct svc_rqst *, struct svc_fh *,
 				loff_t, struct kvec *, int, unsigned long *);
-__be32 		nfsd_write(struct svc_rqst *, struct svc_fh *,struct file *,
+__be32 		nfsd_write(struct svc_rqst *, struct svc_fh *,
 				loff_t, struct kvec *,int, unsigned long *, int *);
 __be32		nfsd_vfs_write(struct svc_rqst *rqstp, struct svc_fh *fhp,
 				struct file *file, loff_t offset,
@@ -129,6 +129,12 @@ static inline __be32 fh_getattr(struct svc_fh *fh, struct kstat *stat)
 	struct path p = {.mnt = fh->fh_export->ex_path.mnt,
 			 .dentry = fh->fh_dentry};
 	return nfserrno(vfs_getattr(&p, stat));
+}
+
+static inline int nfsd_create_is_exclusive(int createmode)
+{
+	return createmode == NFS3_CREATE_EXCLUSIVE
+	       || createmode == NFS4_CREATE_EXCLUSIVE4_1;
 }
 
 #endif /* LINUX_NFSD_VFS_H */

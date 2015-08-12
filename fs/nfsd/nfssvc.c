@@ -17,16 +17,21 @@
 #include <linux/lockd/bind.h>
 #include <linux/nfsacl.h>
 #include <linux/seq_file.h>
+#include <linux/workqueue.h>
 #include <net/net_namespace.h>
 #include "nfsd.h"
 #include "cache.h"
 #include "vfs.h"
 #include "netns.h"
+#include "filecache.h"
 
 #define NFSDDBG_FACILITY	NFSDDBG_SVC
 
 extern struct svc_program	nfsd_program;
 static int			nfsd(void *vrqstp);
+
+/* A workqueue for nfsd-related cleanup tasks */
+struct workqueue_struct		*nfsd_laundry_wq;
 
 /*
  * nfsd_mutex protects nn->nfsd_serv -- both the pointer itself and the members
@@ -224,11 +229,25 @@ static int nfsd_startup_generic(int nrservs)
 	if (ret)
 		goto dec_users;
 
+	ret = -ENOMEM;
+	nfsd_laundry_wq = alloc_workqueue("%s", WQ_UNBOUND, 0, "nfsd-laundry");
+	if (!nfsd_laundry_wq)
+		goto out_racache;
+
+	ret = nfsd_file_cache_init();
+	if (ret)
+		goto out_wq;
+
 	ret = nfs4_state_start();
 	if (ret)
-		goto out_racache;
+		goto out_nfsd_file;
 	return 0;
 
+out_nfsd_file:
+	nfsd_file_cache_shutdown();
+out_wq:
+	destroy_workqueue(nfsd_laundry_wq);
+	nfsd_laundry_wq = NULL;
 out_racache:
 	nfsd_racache_shutdown();
 dec_users:
@@ -242,6 +261,7 @@ static void nfsd_shutdown_generic(void)
 		return;
 
 	nfs4_state_shutdown();
+	nfsd_file_cache_shutdown();
 	nfsd_racache_shutdown();
 }
 
@@ -391,6 +411,14 @@ static int nfsd_get_default_max_blksize(void)
 	return ret;
 }
 
+static struct svc_serv_ops nfsd_thread_sv_ops = {
+	.svo_shutdown		= nfsd_last_thread,
+	.svo_function		= nfsd,
+	.svo_enqueue_xprt	= svc_xprt_do_enqueue,
+	.svo_setup		= svc_set_num_threads,
+	.svo_module		= THIS_MODULE,
+};
+
 int nfsd_create_serv(struct net *net)
 {
 	int error;
@@ -405,7 +433,7 @@ int nfsd_create_serv(struct net *net)
 		nfsd_max_blksize = nfsd_get_default_max_blksize();
 	nfsd_reset_versions();
 	nn->nfsd_serv = svc_create_pooled(&nfsd_program, nfsd_max_blksize,
-				      nfsd_last_thread, nfsd, THIS_MODULE);
+						&nfsd_thread_sv_ops);
 	if (nn->nfsd_serv == NULL)
 		return -ENOMEM;
 
@@ -500,8 +528,8 @@ int nfsd_set_nrthreads(int n, int *nthreads, struct net *net)
 	/* apply the new numbers */
 	svc_get(nn->nfsd_serv);
 	for (i = 0; i < n; i++) {
-		err = svc_set_num_threads(nn->nfsd_serv, &nn->nfsd_serv->sv_pools[i],
-				    	  nthreads[i]);
+		err = nn->nfsd_serv->sv_ops->svo_setup(nn->nfsd_serv,
+				&nn->nfsd_serv->sv_pools[i], nthreads[i]);
 		if (err)
 			break;
 	}
@@ -540,7 +568,8 @@ nfsd_svc(int nrservs, struct net *net)
 	error = nfsd_startup_net(nrservs, net);
 	if (error)
 		goto out_destroy;
-	error = svc_set_num_threads(nn->nfsd_serv, NULL, nrservs);
+	error = nn->nfsd_serv->sv_ops->svo_setup(nn->nfsd_serv,
+			NULL, nrservs);
 	if (error)
 		goto out_shutdown;
 	/* We are holding a reference to nn->nfsd_serv which
