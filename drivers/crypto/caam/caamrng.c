@@ -108,6 +108,10 @@ static void rng_done(struct device *jrdev, u32 *desc, u32 err, void *context)
 
 	atomic_set(&bd->empty, BUF_NOT_EMPTY);
 	complete(&bd->filled);
+
+	/* Buffer refilled, invalidate cache */
+	dma_sync_single_for_cpu(jrdev, bd->addr, RN_BUF_SIZE, DMA_FROM_DEVICE);
+
 #ifdef DEBUG
 	print_hex_dump(KERN_ERR, "rng refreshed buf@: ",
 		       DUMP_PREFIX_ADDRESS, 16, 4, bd->buf, RN_BUF_SIZE, 1);
@@ -311,7 +315,7 @@ static int __init caam_rng_init(void)
 	struct device_node *dev_node;
 	struct platform_device *pdev;
 	struct device *ctrldev;
-	void *priv;
+	struct caam_drv_private *priv;
 	int err;
 
 	dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec-v4.0");
@@ -336,6 +340,10 @@ static int __init caam_rng_init(void)
 	 * properly initialized (e.g. RNG4 init failed). Thus, bail out here.
 	 */
 	if (!priv)
+		return -ENODEV;
+
+	/* Check for an instantiated RNG before registration */
+	if (!(rd_reg32(&priv->ctrl->perfmon.cha_num_ls) & CHA_ID_LS_RNG_MASK))
 		return -ENODEV;
 
 	dev = caam_jr_alloc();
