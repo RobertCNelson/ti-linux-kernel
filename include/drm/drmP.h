@@ -923,7 +923,7 @@ extern int drm_irq_uninstall(struct drm_device *dev);
 extern int drm_vblank_init(struct drm_device *dev, unsigned int num_crtcs);
 extern int drm_wait_vblank(struct drm_device *dev, void *data,
 			   struct drm_file *filp);
-extern u32 drm_vblank_count(struct drm_device *dev, int pipe);
+extern u32 drm_vblank_count(struct drm_device *dev, unsigned int pipe);
 extern u32 drm_crtc_vblank_count(struct drm_crtc *crtc);
 extern u32 drm_vblank_count_and_time(struct drm_device *dev, unsigned int pipe,
 				     struct timeval *vblanktime);

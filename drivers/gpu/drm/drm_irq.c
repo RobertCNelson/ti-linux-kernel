@@ -74,11 +74,11 @@ module_param_named(vblankoffdelay, drm_vblank_offdelay, int, 0600);
 module_param_named(timestamp_precision_usec, drm_timestamp_precision, int, 0600);
 module_param_named(timestamp_monotonic, drm_timestamp_monotonic, int, 0600);
 
-static void store_vblank(struct drm_device *dev, int crtc,
+static void store_vblank(struct drm_device *dev, unsigned int pipe,
 			 unsigned vblank_count_inc,
 			 struct timeval *t_vblank)
 {
-	struct drm_vblank_crtc *vblank = &dev->vblank[crtc];
+	struct drm_vblank_crtc *vblank = &dev->vblank[pipe];
 	u32 tslot;
 
 	assert_spin_locked(&dev->vblank_time_lock);
@@ -88,7 +88,7 @@ static void store_vblank(struct drm_device *dev, int crtc,
 		 * the latching of vblank->count below.
 		 */
 		tslot = vblank->count + vblank_count_inc;
-		vblanktimestamp(dev, crtc, tslot) = *t_vblank;
+		vblanktimestamp(dev, pipe, tslot) = *t_vblank;
 	}
 
 	/*
@@ -873,7 +873,7 @@ drm_get_last_vbltimestamp(struct drm_device *dev, unsigned int pipe,
  * Returns:
  * The software vblank counter.
  */
-u32 drm_vblank_count(struct drm_device *dev, int pipe)
+u32 drm_vblank_count(struct drm_device *dev, unsigned int pipe)
 {
 	struct drm_vblank_crtc *vblank = &dev->vblank[pipe];
 
@@ -1276,7 +1276,7 @@ EXPORT_SYMBOL(drm_crtc_vblank_off);
 
 /**
  * drm_crtc_vblank_reset - reset vblank state to off on a CRTC
- * @drm_crtc: CRTC in question
+ * @crtc: CRTC in question
  *
  * Drivers can use this function to reset the vblank state to off at load time.
  * Drivers should use this together with the drm_crtc_vblank_off() and
@@ -1284,12 +1284,12 @@ EXPORT_SYMBOL(drm_crtc_vblank_off);
  * drm_crtc_vblank_off() is that this function doesn't save the vblank counter
  * and hence doesn't need to call any driver hooks.
  */
-void drm_crtc_vblank_reset(struct drm_crtc *drm_crtc)
+void drm_crtc_vblank_reset(struct drm_crtc *crtc)
 {
-	struct drm_device *dev = drm_crtc->dev;
+	struct drm_device *dev = crtc->dev;
 	unsigned long irqflags;
-	int crtc = drm_crtc_index(drm_crtc);
-	struct drm_vblank_crtc *vblank = &dev->vblank[crtc];
+	unsigned int pipe = drm_crtc_index(crtc);
+	struct drm_vblank_crtc *vblank = &dev->vblank[pipe];
 
 	spin_lock_irqsave(&dev->vbl_lock, irqflags);
 	/*
