@@ -253,11 +253,10 @@ static bool cs42l73_readable_register(struct device *dev, unsigned int reg)
 	}
 }
 
-static const unsigned int hpaloa_tlv[] = {
-	TLV_DB_RANGE_HEAD(2),
+static const DECLARE_TLV_DB_RANGE(hpaloa_tlv,
 	0, 13, TLV_DB_SCALE_ITEM(-7600, 200, 0),
-	14, 75, TLV_DB_SCALE_ITEM(-4900, 100, 0),
-};
+	14, 75, TLV_DB_SCALE_ITEM(-4900, 100, 0)
+);
 
 static DECLARE_TLV_DB_SCALE(adc_boost_tlv, 0, 2500, 0);
 
@@ -267,11 +266,10 @@ static DECLARE_TLV_DB_SCALE(ipd_tlv, -9600, 100, 0);
 
 static DECLARE_TLV_DB_SCALE(micpga_tlv, -600, 50, 0);
 
-static const unsigned int limiter_tlv[] = {
-	TLV_DB_RANGE_HEAD(2),
+static const DECLARE_TLV_DB_RANGE(limiter_tlv,
 	0, 2, TLV_DB_SCALE_ITEM(-3000, 600, 0),
-	3, 7, TLV_DB_SCALE_ITEM(-1200, 300, 0),
-};
+	3, 7, TLV_DB_SCALE_ITEM(-1200, 300, 0)
+);
 
 static const DECLARE_TLV_DB_SCALE(attn_tlv, -6300, 100, 1);
 
@@ -1236,8 +1234,8 @@ static int cs42l73_set_tristate(struct snd_soc_dai *dai, int tristate)
 	struct snd_soc_codec *codec = dai->codec;
 	int id = dai->id;
 
-	return snd_soc_update_bits(codec, CS42L73_SPC(id),
-					0x7F, tristate << 7);
+	return snd_soc_update_bits(codec, CS42L73_SPC(id), CS42L73_SP_3ST,
+				   tristate << 7);
 }
 
 static const struct snd_pcm_hw_constraint_list constraints_12_24 = {
@@ -1491,7 +1489,6 @@ MODULE_DEVICE_TABLE(i2c, cs42l73_id);
 static struct i2c_driver cs42l73_i2c_driver = {
 	.driver = {
 		   .name = "cs42l73",
-		   .owner = THIS_MODULE,
 		   .of_match_table = cs42l73_of_match,
 		   },
 	.id_table = cs42l73_id,

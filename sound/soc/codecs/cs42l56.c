@@ -185,21 +185,18 @@ static DECLARE_TLV_DB_SCALE(tone_tlv, -1050, 150, 0);
 static DECLARE_TLV_DB_SCALE(preamp_tlv, 0, 1000, 0);
 static DECLARE_TLV_DB_SCALE(pga_tlv, -600, 50, 0);
 
-static const unsigned int ngnb_tlv[] = {
-	TLV_DB_RANGE_HEAD(2),
+static const DECLARE_TLV_DB_RANGE(ngnb_tlv,
 	0, 1, TLV_DB_SCALE_ITEM(-8200, 600, 0),
-	2, 5, TLV_DB_SCALE_ITEM(-7600, 300, 0),
-};
-static const unsigned int ngb_tlv[] = {
-	TLV_DB_RANGE_HEAD(2),
+	2, 5, TLV_DB_SCALE_ITEM(-7600, 300, 0)
+);
+static const DECLARE_TLV_DB_RANGE(ngb_tlv,
 	0, 2, TLV_DB_SCALE_ITEM(-6400, 600, 0),
-	3, 7, TLV_DB_SCALE_ITEM(-4600, 300, 0),
-};
-static const unsigned int alc_tlv[] = {
-	TLV_DB_RANGE_HEAD(2),
+	3, 7, TLV_DB_SCALE_ITEM(-4600, 300, 0)
+);
+static const DECLARE_TLV_DB_RANGE(alc_tlv,
 	0, 2, TLV_DB_SCALE_ITEM(-3000, 600, 0),
-	3, 7, TLV_DB_SCALE_ITEM(-1200, 300, 0),
-};
+	3, 7, TLV_DB_SCALE_ITEM(-1200, 300, 0)
+);
 
 static const char * const beep_config_text[] = {
 	"Off", "Single", "Multiple", "Continuous"
@@ -989,7 +986,7 @@ static int cs42l56_set_bias_level(struct snd_soc_codec *codec,
 			SNDRV_PCM_FMTBIT_S32_LE)
 
 
-static struct snd_soc_dai_ops cs42l56_ops = {
+static const struct snd_soc_dai_ops cs42l56_ops = {
 	.hw_params	= cs42l56_pcm_hw_params,
 	.digital_mute	= cs42l56_digital_mute,
 	.set_fmt	= cs42l56_set_dai_fmt,
@@ -1408,7 +1405,6 @@ MODULE_DEVICE_TABLE(i2c, cs42l56_id);
 static struct i2c_driver cs42l56_i2c_driver = {
 	.driver = {
 		.name = "cs42l56",
-		.owner = THIS_MODULE,
 		.of_match_table = cs42l56_of_match,
 	},
 	.id_table = cs42l56_id,
