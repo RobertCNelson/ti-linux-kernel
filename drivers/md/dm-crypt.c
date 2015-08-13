@@ -1076,7 +1076,8 @@ static void crypt_dec_pending(struct dm_crypt_io *io)
 	if (io->ctx.req)
 		crypt_free_req(cc, io->ctx.req, base_bio);
 
-	bio_endio(base_bio, error);
+	base_bio->bi_error = error;
+	bio_endio(base_bio);
 }
 
 /*
@@ -1096,14 +1097,12 @@ static void crypt_dec_pending(struct dm_crypt_io *io)
  * The work is done per CPU global for all dm-crypt instances.
  * They should not depend on each other and do not block.
  */
-static void crypt_endio(struct bio *clone, int error)
+static void crypt_endio(struct bio *clone)
 {
 	struct dm_crypt_io *io = clone->bi_private;
 	struct crypt_config *cc = io->cc;
 	unsigned rw = bio_data_dir(clone);
-
-	if (unlikely(!bio_flagged(clone, BIO_UPTODATE) && !error))
-		error = -EIO;
+	int error;
 
 	/*
 	 * free the processed pages
@@ -1111,6 +1110,7 @@ static void crypt_endio(struct bio *clone, int error)
 	if (rw == WRITE)
 		crypt_free_buffer_pages(cc, clone);
 
+	error = clone->bi_error;
 	bio_put(clone);
 
 	if (rw == READ && !error) {
