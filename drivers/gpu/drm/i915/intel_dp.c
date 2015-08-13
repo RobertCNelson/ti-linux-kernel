@@ -849,8 +849,15 @@ intel_dp_aux_ch(struct intel_dp *intel_dp,
 	}
 
 	if (try == 3) {
-		WARN(1, "dp_aux_ch not started status 0x%08x\n",
-		     I915_READ(ch_ctl));
+		static u32 last_status = -1;
+		const u32 status = I915_READ(ch_ctl);
+
+		if (status != last_status) {
+			WARN(1, "dp_aux_ch not started status 0x%08x\n",
+			     status);
+			last_status = status;
+		}
+
 		ret = -EBUSY;
 		goto out;
 	}
@@ -1026,10 +1033,33 @@ static void
 intel_dp_aux_init(struct intel_dp *intel_dp, struct intel_connector *connector)
 {
 	struct drm_device *dev = intel_dp_to_dev(intel_dp);
+	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_digital_port *intel_dig_port = dp_to_dig_port(intel_dp);
 	enum port port = intel_dig_port->port;
+	struct ddi_vbt_port_info *info = &dev_priv->vbt.ddi_port_info[port];
 	const char *name = NULL;
+	uint32_t porte_aux_ctl_reg = DPA_AUX_CH_CTL;
 	int ret;
+
+	/* On SKL we don't have Aux for port E so we rely on VBT to set
+	 * a proper alternate aux channel.
+	 */
+	if (IS_SKYLAKE(dev) && port == PORT_E) {
+		switch (info->alternate_aux_channel) {
+		case DP_AUX_B:
+			porte_aux_ctl_reg = DPB_AUX_CH_CTL;
+			break;
+		case DP_AUX_C:
+			porte_aux_ctl_reg = DPC_AUX_CH_CTL;
+			break;
+		case DP_AUX_D:
+			porte_aux_ctl_reg = DPD_AUX_CH_CTL;
+			break;
+		case DP_AUX_A:
+		default:
+			porte_aux_ctl_reg = DPA_AUX_CH_CTL;
+		}
+	}
 
 	switch (port) {
 	case PORT_A:
@@ -1048,6 +1078,10 @@ intel_dp_aux_init(struct intel_dp *intel_dp, struct intel_connector *connector)
 		intel_dp->aux_ch_ctl_reg = PCH_DPD_AUX_CH_CTL;
 		name = "DPDDC-D";
 		break;
+	case PORT_E:
+		intel_dp->aux_ch_ctl_reg = porte_aux_ctl_reg;
+		name = "DPDDC-E";
+		break;
 	default:
 		BUG();
 	}
@@ -1061,7 +1095,7 @@ intel_dp_aux_init(struct intel_dp *intel_dp, struct intel_connector *connector)
 	 *
 	 * Skylake moves AUX_CTL back next to DDI_BUF_CTL, on the CPU.
 	 */
-	if (!IS_HASWELL(dev) && !IS_BROADWELL(dev))
+	if (!IS_HASWELL(dev) && !IS_BROADWELL(dev) && port != PORT_E)
 		intel_dp->aux_ch_ctl_reg = intel_dp->output_reg + 0x10;
 
 	intel_dp->aux.name = name;
@@ -1409,7 +1443,10 @@ intel_dp_compute_config(struct intel_encoder *encoder,
 	 * bpc in between. */
 	bpp = pipe_config->pipe_bpp;
 	if (is_edp(intel_dp)) {
-		if (dev_priv->vbt.edp_bpp && dev_priv->vbt.edp_bpp < bpp) {
+
+		/* Get bpp from vbt only for panels that dont have bpp in edid */
+		if (intel_connector->base.display_info.bpc == 0 &&
+			(dev_priv->vbt.edp_bpp && dev_priv->vbt.edp_bpp < bpp)) {
 			DRM_DEBUG_KMS("clamping bpp for eDP panel to BIOS-provided %i\n",
 				      dev_priv->vbt.edp_bpp);
 			bpp = dev_priv->vbt.edp_bpp;
@@ -2624,7 +2661,7 @@ static void vlv_steal_power_sequencer(struct drm_device *dev,
 		DRM_DEBUG_KMS("stealing pipe %c power sequencer from port %c\n",
 			      pipe_name(pipe), port_name(port));
 
-		WARN(encoder->connectors_active,
+		WARN(encoder->base.crtc,
 		     "stealing pipe %c power sequencer from active eDP port %c\n",
 		     pipe_name(pipe), port_name(port));
 
@@ -3958,78 +3995,125 @@ intel_dp_probe_mst(struct intel_dp *intel_dp)
 	return intel_dp->is_mst;
 }
 
-int intel_dp_sink_crc(struct intel_dp *intel_dp, u8 *crc)
+static int intel_dp_sink_crc_stop(struct intel_dp *intel_dp)
 {
-	struct intel_digital_port *intel_dig_port = dp_to_dig_port(intel_dp);
-	struct drm_device *dev = intel_dig_port->base.base.dev;
-	struct intel_crtc *intel_crtc =
-		to_intel_crtc(intel_dig_port->base.base.crtc);
+	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
+	struct intel_crtc *intel_crtc = to_intel_crtc(dig_port->base.base.crtc);
 	u8 buf;
-	int test_crc_count;
-	int attempts = 6;
 	int ret = 0;
+
+	if (drm_dp_dpcd_readb(&intel_dp->aux, DP_TEST_SINK, &buf) < 0) {
+		DRM_DEBUG_KMS("Sink CRC couldn't be stopped properly\n");
+		ret = -EIO;
+		goto out;
+	}
+
+	if (drm_dp_dpcd_writeb(&intel_dp->aux, DP_TEST_SINK,
+			       buf & ~DP_TEST_SINK_START) < 0) {
+		DRM_DEBUG_KMS("Sink CRC couldn't be stopped properly\n");
+		ret = -EIO;
+		goto out;
+	}
+
+	intel_dp->sink_crc.started = false;
+ out:
+	hsw_enable_ips(intel_crtc);
+	return ret;
+}
+
+static int intel_dp_sink_crc_start(struct intel_dp *intel_dp)
+{
+	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
+	struct intel_crtc *intel_crtc = to_intel_crtc(dig_port->base.base.crtc);
+	u8 buf;
+	int ret;
+
+	if (intel_dp->sink_crc.started) {
+		ret = intel_dp_sink_crc_stop(intel_dp);
+		if (ret)
+			return ret;
+	}
+
+	if (drm_dp_dpcd_readb(&intel_dp->aux, DP_TEST_SINK_MISC, &buf) < 0)
+		return -EIO;
+
+	if (!(buf & DP_TEST_CRC_SUPPORTED))
+		return -ENOTTY;
+
+	intel_dp->sink_crc.last_count = buf & DP_TEST_COUNT_MASK;
+
+	if (drm_dp_dpcd_readb(&intel_dp->aux, DP_TEST_SINK, &buf) < 0)
+		return -EIO;
 
 	hsw_disable_ips(intel_crtc);
 
-	if (drm_dp_dpcd_readb(&intel_dp->aux, DP_TEST_SINK_MISC, &buf) < 0) {
-		ret = -EIO;
-		goto out;
-	}
-
-	if (!(buf & DP_TEST_CRC_SUPPORTED)) {
-		ret = -ENOTTY;
-		goto out;
-	}
-
-	if (drm_dp_dpcd_readb(&intel_dp->aux, DP_TEST_SINK, &buf) < 0) {
-		ret = -EIO;
-		goto out;
-	}
-
 	if (drm_dp_dpcd_writeb(&intel_dp->aux, DP_TEST_SINK,
-				buf | DP_TEST_SINK_START) < 0) {
-		ret = -EIO;
-		goto out;
+			       buf | DP_TEST_SINK_START) < 0) {
+		hsw_enable_ips(intel_crtc);
+		return -EIO;
 	}
 
-	if (drm_dp_dpcd_readb(&intel_dp->aux, DP_TEST_SINK_MISC, &buf) < 0) {
-		ret = -EIO;
-		goto out;
-	}
+	intel_dp->sink_crc.started = true;
+	return 0;
+}
 
-	test_crc_count = buf & DP_TEST_COUNT_MASK;
+int intel_dp_sink_crc(struct intel_dp *intel_dp, u8 *crc)
+{
+	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
+	struct drm_device *dev = dig_port->base.base.dev;
+	struct intel_crtc *intel_crtc = to_intel_crtc(dig_port->base.base.crtc);
+	u8 buf;
+	int count, ret;
+	int attempts = 6;
+	bool old_equal_new;
+
+	ret = intel_dp_sink_crc_start(intel_dp);
+	if (ret)
+		return ret;
 
 	do {
+		intel_wait_for_vblank(dev, intel_crtc->pipe);
+
 		if (drm_dp_dpcd_readb(&intel_dp->aux,
 				      DP_TEST_SINK_MISC, &buf) < 0) {
 			ret = -EIO;
-			goto out;
+			goto stop;
 		}
-		intel_wait_for_vblank(dev, intel_crtc->pipe);
-	} while (--attempts && (buf & DP_TEST_COUNT_MASK) == test_crc_count);
+		count = buf & DP_TEST_COUNT_MASK;
+
+		/*
+		 * Count might be reset during the loop. In this case
+		 * last known count needs to be reset as well.
+		 */
+		if (count == 0)
+			intel_dp->sink_crc.last_count = 0;
+
+		if (drm_dp_dpcd_read(&intel_dp->aux, DP_TEST_CRC_R_CR, crc, 6) < 0) {
+			ret = -EIO;
+			goto stop;
+		}
+
+		old_equal_new = (count == intel_dp->sink_crc.last_count &&
+				 !memcmp(intel_dp->sink_crc.last_crc, crc,
+					 6 * sizeof(u8)));
+
+	} while (--attempts && (count == 0 || old_equal_new));
+
+	intel_dp->sink_crc.last_count = buf & DP_TEST_COUNT_MASK;
+	memcpy(intel_dp->sink_crc.last_crc, crc, 6 * sizeof(u8));
 
 	if (attempts == 0) {
-		DRM_DEBUG_KMS("Panel is unable to calculate CRC after 6 vblanks\n");
-		ret = -ETIMEDOUT;
-		goto out;
+		if (old_equal_new) {
+			DRM_DEBUG_KMS("Unreliable Sink CRC counter: Current returned CRC is identical to the previous one\n");
+		} else {
+			DRM_ERROR("Panel is unable to calculate any CRC after 6 vblanks\n");
+			ret = -ETIMEDOUT;
+			goto stop;
+		}
 	}
 
-	if (drm_dp_dpcd_read(&intel_dp->aux, DP_TEST_CRC_R_CR, crc, 6) < 0) {
-		ret = -EIO;
-		goto out;
-	}
-
-	if (drm_dp_dpcd_readb(&intel_dp->aux, DP_TEST_SINK, &buf) < 0) {
-		ret = -EIO;
-		goto out;
-	}
-	if (drm_dp_dpcd_writeb(&intel_dp->aux, DP_TEST_SINK,
-			       buf & ~DP_TEST_SINK_START) < 0) {
-		ret = -EIO;
-		goto out;
-	}
-out:
-	hsw_enable_ips(intel_crtc);
+stop:
+	intel_dp_sink_crc_stop(intel_dp);
 	return ret;
 }
 
@@ -4240,10 +4324,7 @@ intel_dp_check_link_status(struct intel_dp *intel_dp)
 
 	WARN_ON(!drm_modeset_is_locked(&dev->mode_config.connection_mutex));
 
-	if (!intel_encoder->connectors_active)
-		return;
-
-	if (WARN_ON(!intel_encoder->base.crtc))
+	if (!intel_encoder->base.crtc)
 		return;
 
 	if (!to_intel_crtc(intel_encoder->base.crtc)->active)
@@ -4824,7 +4905,7 @@ static void intel_dp_encoder_reset(struct drm_encoder *encoder)
 }
 
 static const struct drm_connector_funcs intel_dp_connector_funcs = {
-	.dpms = intel_connector_dpms,
+	.dpms = drm_atomic_helper_connector_dpms,
 	.detect = intel_dp_detect,
 	.force = intel_dp_force,
 	.fill_modes = drm_helper_probe_single_connector_modes,
@@ -5788,12 +5869,17 @@ intel_dp_init_connector(struct intel_digital_port *intel_dig_port,
 		break;
 	case PORT_B:
 		intel_encoder->hpd_pin = HPD_PORT_B;
+		if (IS_BROXTON(dev_priv) && (INTEL_REVID(dev) < BXT_REVID_B0))
+			intel_encoder->hpd_pin = HPD_PORT_A;
 		break;
 	case PORT_C:
 		intel_encoder->hpd_pin = HPD_PORT_C;
 		break;
 	case PORT_D:
 		intel_encoder->hpd_pin = HPD_PORT_D;
+		break;
+	case PORT_E:
+		intel_encoder->hpd_pin = HPD_PORT_E;
 		break;
 	default:
 		BUG();

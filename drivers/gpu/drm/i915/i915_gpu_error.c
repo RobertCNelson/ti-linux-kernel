@@ -197,8 +197,9 @@ static void print_error_buffers(struct drm_i915_error_state_buf *m,
 	err_printf(m, "  %s [%d]:\n", name, count);
 
 	while (count--) {
-		err_printf(m, "    %08x %8u %02x %02x [ ",
-			   err->gtt_offset,
+		err_printf(m, "    %08x_%08x %8u %02x %02x [ ",
+			   upper_32_bits(err->gtt_offset),
+			   lower_32_bits(err->gtt_offset),
 			   err->size,
 			   err->read_domains,
 			   err->write_domain);
@@ -369,6 +370,7 @@ int i915_error_state_to_str(struct drm_i915_error_state_buf *m,
 	err_printf(m, "Reset count: %u\n", error->reset_count);
 	err_printf(m, "Suspend count: %u\n", error->suspend_count);
 	err_printf(m, "PCI ID: 0x%04x\n", dev->pdev->device);
+	err_printf(m, "IOMMU enabled?: %d\n", error->iommu);
 	err_printf(m, "EIR: 0x%08x\n", error->eir);
 	err_printf(m, "IER: 0x%08x\n", error->ier);
 	if (INTEL_INFO(dev)->gen >= 8) {
@@ -426,15 +428,17 @@ int i915_error_state_to_str(struct drm_i915_error_state_buf *m,
 				err_printf(m, " (submitted by %s [%d])",
 					   error->ring[i].comm,
 					   error->ring[i].pid);
-			err_printf(m, " --- gtt_offset = 0x%08x\n",
-				   obj->gtt_offset);
+			err_printf(m, " --- gtt_offset = 0x%08x %08x\n",
+				   upper_32_bits(obj->gtt_offset),
+				   lower_32_bits(obj->gtt_offset));
 			print_error_obj(m, obj);
 		}
 
 		obj = error->ring[i].wa_batchbuffer;
 		if (obj) {
 			err_printf(m, "%s (w/a) --- gtt_offset = 0x%08x\n",
-				   dev_priv->ring[i].name, obj->gtt_offset);
+				   dev_priv->ring[i].name,
+				   lower_32_bits(obj->gtt_offset));
 			print_error_obj(m, obj);
 		}
 
@@ -453,14 +457,14 @@ int i915_error_state_to_str(struct drm_i915_error_state_buf *m,
 		if ((obj = error->ring[i].ringbuffer)) {
 			err_printf(m, "%s --- ringbuffer = 0x%08x\n",
 				   dev_priv->ring[i].name,
-				   obj->gtt_offset);
+				   lower_32_bits(obj->gtt_offset));
 			print_error_obj(m, obj);
 		}
 
 		if ((obj = error->ring[i].hws_page)) {
 			err_printf(m, "%s --- HW Status = 0x%08x\n",
 				   dev_priv->ring[i].name,
-				   obj->gtt_offset);
+				   lower_32_bits(obj->gtt_offset));
 			offset = 0;
 			for (elt = 0; elt < PAGE_SIZE/16; elt += 4) {
 				err_printf(m, "[%04x] %08x %08x %08x %08x\n",
@@ -476,13 +480,14 @@ int i915_error_state_to_str(struct drm_i915_error_state_buf *m,
 		if ((obj = error->ring[i].ctx)) {
 			err_printf(m, "%s --- HW Context = 0x%08x\n",
 				   dev_priv->ring[i].name,
-				   obj->gtt_offset);
+				   lower_32_bits(obj->gtt_offset));
 			print_error_obj(m, obj);
 		}
 	}
 
 	if ((obj = error->semaphore_obj)) {
-		err_printf(m, "Semaphore page = 0x%08x\n", obj->gtt_offset);
+		err_printf(m, "Semaphore page = 0x%08x\n",
+			   lower_32_bits(obj->gtt_offset));
 		for (elt = 0; elt < PAGE_SIZE/16; elt += 4) {
 			err_printf(m, "[%04x] %08x %08x %08x %08x\n",
 				   elt * 4,
@@ -590,7 +595,7 @@ i915_error_object_create(struct drm_i915_private *dev_priv,
 	int num_pages;
 	bool use_ggtt;
 	int i = 0;
-	u32 reloc_offset;
+	u64 reloc_offset;
 
 	if (src == NULL || src->pages == NULL)
 		return NULL;
@@ -1266,6 +1271,10 @@ static void i915_error_capture_msg(struct drm_device *dev,
 static void i915_capture_gen_state(struct drm_i915_private *dev_priv,
 				   struct drm_i915_error_state *error)
 {
+	error->iommu = -1;
+#ifdef CONFIG_INTEL_IOMMU
+	error->iommu = intel_iommu_gfx_mapped;
+#endif
 	error->reset_count = i915_reset_count(&dev_priv->gpu_error);
 	error->suspend_count = dev_priv->suspend_count;
 }
