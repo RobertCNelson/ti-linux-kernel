@@ -2075,10 +2075,12 @@ void exit_sem(struct task_struct *tsk)
 		un = list_entry_rcu(ulp->list_proc.next,
 				    struct sem_undo, list_proc);
 		if (&un->list_proc == &ulp->list_proc) {
-			/* we must wait for freeary() before freeing this ulp,
+			/*
+			 * We must wait for freeary() before freeing this ulp,
 			 * in case we raced with last sem_undo. There is a small
 			 * possibility where we exit while freeary() didn't
-			 * finish unlocking sem_undo_list */
+			 * finish unlocking sem_undo_list.
+			 */
 			spin_unlock_wait(&ulp->lock);
 			rcu_read_unlock();
 			break;
