@@ -81,6 +81,8 @@ OPTIONS
 	- cpu: cpu number the task ran at the time of sample
 	- srcline: filename and line number executed at the time of sample.  The
 	DWARF debugging info must be provided.
+	- srcfile: file name of the source file of the same. Requires dwarf
+	information.
 	- weight: Event specific weight, e.g. memory latency or transaction
 	abort cost. This is the global weight.
 	- local_weight: Local weight version of the weight above.
@@ -109,6 +111,7 @@ OPTIONS
 	- mispredict: "N" for predicted branch, "Y" for mispredicted branch
 	- in_tx: branch in TSX transaction
 	- abort: TSX transaction abort.
+	- cycles: Cycles in basic block
 
 	And default sort keys are changed to comm, dso_from, symbol_from, dso_to
 	and symbol_to, see '--branch-stack'.
@@ -353,6 +356,8 @@ OPTIONS
 
 	To disable decoding entirely, use --no-itrace.
 
+--full-source-path::
+	Show the full path for source files for srcline output.
 
 include::callchain-overhead-calculation.txt[]
 
