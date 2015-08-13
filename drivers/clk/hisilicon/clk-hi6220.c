@@ -91,23 +91,23 @@ CLK_OF_DECLARE(hi6220_clk_ao, "hisilicon,hi6220-aoctrl", hi6220_clk_ao_init);
 
 
 /* clocks in sysctrl */
-static const char *mmc0_mux0_p[] __initdata = { "pll_ddr_gate", "syspll", };
-static const char *mmc0_mux1_p[] __initdata = { "mmc0_mux0", "pll_media_gate", };
-static const char *mmc0_src_p[] __initdata = { "mmc0srcsel", "mmc0_div", };
-static const char *mmc1_mux0_p[] __initdata = { "pll_ddr_gate", "syspll", };
-static const char *mmc1_mux1_p[] __initdata = { "mmc1_mux0", "pll_media_gate", };
-static const char *mmc1_src_p[]  __initdata = { "mmc1srcsel", "mmc1_div", };
-static const char *mmc2_mux0_p[] __initdata = { "pll_ddr_gate", "syspll", };
-static const char *mmc2_mux1_p[] __initdata = { "mmc2_mux0", "pll_media_gate", };
-static const char *mmc2_src_p[]  __initdata = { "mmc2srcsel", "mmc2_div", };
-static const char *mmc0_sample_in[] __initdata = { "mmc0_sample", "mmc0_pad", };
-static const char *mmc1_sample_in[] __initdata = { "mmc1_sample", "mmc1_pad", };
-static const char *mmc2_sample_in[] __initdata = { "mmc2_sample", "mmc2_pad", };
-static const char *uart1_src[] __initdata = { "clk_tcxo", "clk_150m", };
-static const char *uart2_src[] __initdata = { "clk_tcxo", "clk_150m", };
-static const char *uart3_src[] __initdata = { "clk_tcxo", "clk_150m", };
-static const char *uart4_src[] __initdata = { "clk_tcxo", "clk_150m", };
-static const char *hifi_src[] __initdata = { "syspll", "pll_media_gate", };
+static const char *const mmc0_mux0_p[] __initconst = { "pll_ddr_gate", "syspll", };
+static const char *const mmc0_mux1_p[] __initconst = { "mmc0_mux0", "pll_media_gate", };
+static const char *const mmc0_src_p[] __initconst = { "mmc0srcsel", "mmc0_div", };
+static const char *const mmc1_mux0_p[] __initconst = { "pll_ddr_gate", "syspll", };
+static const char *const mmc1_mux1_p[] __initconst = { "mmc1_mux0", "pll_media_gate", };
+static const char *const mmc1_src_p[]  __initconst = { "mmc1srcsel", "mmc1_div", };
+static const char *const mmc2_mux0_p[] __initconst = { "pll_ddr_gate", "syspll", };
+static const char *const mmc2_mux1_p[] __initconst = { "mmc2_mux0", "pll_media_gate", };
+static const char *const mmc2_src_p[]  __initconst = { "mmc2srcsel", "mmc2_div", };
+static const char *const mmc0_sample_in[] __initconst = { "mmc0_sample", "mmc0_pad", };
+static const char *const mmc1_sample_in[] __initconst = { "mmc1_sample", "mmc1_pad", };
+static const char *const mmc2_sample_in[] __initconst = { "mmc2_sample", "mmc2_pad", };
+static const char *const uart1_src[] __initconst = { "clk_tcxo", "clk_150m", };
+static const char *const uart2_src[] __initconst = { "clk_tcxo", "clk_150m", };
+static const char *const uart3_src[] __initconst = { "clk_tcxo", "clk_150m", };
+static const char *const uart4_src[] __initconst = { "clk_tcxo", "clk_150m", };
+static const char *const hifi_src[] __initconst = { "syspll", "pll_media_gate", };
 
 static struct hisi_gate_clock hi6220_separated_gate_clks_sys[] __initdata = {
 	{ HI6220_MMC0_CLK,      "mmc0_clk",      "mmc0_src",       CLK_SET_RATE_PARENT|CLK_IGNORE_UNUSED, 0x200, 0,  0, },
@@ -197,9 +197,9 @@ CLK_OF_DECLARE(hi6220_clk_sys, "hisilicon,hi6220-sysctrl", hi6220_clk_sys_init);
 
 
 /* clocks in media controller */
-static const char *clk_1000_1200_src[] __initdata = { "pll_gpu_gate", "media_syspll_src", };
-static const char *clk_1440_1200_src[] __initdata = { "media_syspll_src", "media_pll_src", };
-static const char *clk_1000_1440_src[] __initdata = { "pll_gpu_gate", "media_pll_src", };
+static const char *const clk_1000_1200_src[] __initconst = { "pll_gpu_gate", "media_syspll_src", };
+static const char *const clk_1440_1200_src[] __initconst = { "media_syspll_src", "media_pll_src", };
+static const char *const clk_1000_1440_src[] __initconst = { "pll_gpu_gate", "media_pll_src", };
 
 static struct hisi_gate_clock hi6220_separated_gate_clks_media[] __initdata = {
 	{ HI6220_DSI_PCLK,       "dsi_pclk",         "vpucodec",      CLK_SET_RATE_PARENT|CLK_IGNORE_UNUSED, 0x520, 0,  0, },
