@@ -850,7 +850,7 @@ static void __zram_make_request(struct zram *zram, struct bio *bio)
 
 	if (unlikely(bio->bi_rw & REQ_DISCARD)) {
 		zram_bio_discard(zram, index, offset, bio);
-		bio_endio(bio, 0);
+		bio_endio(bio);
 		return;
 	}
 
@@ -883,8 +883,7 @@ static void __zram_make_request(struct zram *zram, struct bio *bio)
 		update_position(&index, &offset, &bvec);
 	}
 
-	set_bit(BIO_UPTODATE, &bio->bi_flags);
-	bio_endio(bio, 0);
+	bio_endio(bio);
 	return;
 
 out:
@@ -1244,7 +1243,7 @@ static int zram_add(void)
 	blk_queue_io_min(zram->disk->queue, PAGE_SIZE);
 	blk_queue_io_opt(zram->disk->queue, PAGE_SIZE);
 	zram->disk->queue->limits.discard_granularity = PAGE_SIZE;
-	zram->disk->queue->limits.max_discard_sectors = UINT_MAX;
+	blk_queue_max_discard_sectors(zram->disk->queue, UINT_MAX);
 	/*
 	 * zram_bio_discard() will clear all logical blocks if logical block
 	 * size is identical with physical block size(PAGE_SIZE). But if it is
