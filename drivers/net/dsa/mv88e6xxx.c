@@ -517,6 +517,18 @@ static bool mv88e6xxx_6185_family(struct dsa_switch *ds)
 	return false;
 }
 
+static bool mv88e6xxx_6320_family(struct dsa_switch *ds)
+{
+	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
+
+	switch (ps->id) {
+	case PORT_SWITCH_ID_6320:
+	case PORT_SWITCH_ID_6321:
+		return true;
+	}
+	return false;
+}
+
 static bool mv88e6xxx_6351_family(struct dsa_switch *ds)
 {
 	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
@@ -565,7 +577,7 @@ static int _mv88e6xxx_stats_snapshot(struct dsa_switch *ds, int port)
 {
 	int ret;
 
-	if (mv88e6xxx_6352_family(ds))
+	if (mv88e6xxx_6320_family(ds) || mv88e6xxx_6352_family(ds))
 		port = (port + 1) << 5;
 
 	/* Snapshot the hardware statistics counters for this port. */
@@ -796,54 +808,6 @@ void mv88e6xxx_get_regs(struct dsa_switch *ds, int port,
 	}
 }
 
-#ifdef CONFIG_NET_DSA_HWMON
-
-int  mv88e6xxx_get_temp(struct dsa_switch *ds, int *temp)
-{
-	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
-	int ret;
-	int val;
-
-	*temp = 0;
-
-	mutex_lock(&ps->smi_mutex);
-
-	ret = _mv88e6xxx_phy_write(ds, 0x0, 0x16, 0x6);
-	if (ret < 0)
-		goto error;
-
-	/* Enable temperature sensor */
-	ret = _mv88e6xxx_phy_read(ds, 0x0, 0x1a);
-	if (ret < 0)
-		goto error;
-
-	ret = _mv88e6xxx_phy_write(ds, 0x0, 0x1a, ret | (1 << 5));
-	if (ret < 0)
-		goto error;
-
-	/* Wait for temperature to stabilize */
-	usleep_range(10000, 12000);
-
-	val = _mv88e6xxx_phy_read(ds, 0x0, 0x1a);
-	if (val < 0) {
-		ret = val;
-		goto error;
-	}
-
-	/* Disable temperature sensor */
-	ret = _mv88e6xxx_phy_write(ds, 0x0, 0x1a, ret & ~(1 << 5));
-	if (ret < 0)
-		goto error;
-
-	*temp = ((val & 0x1f) - 5) * 5;
-
-error:
-	_mv88e6xxx_phy_write(ds, 0x0, 0x16, 0x0);
-	mutex_unlock(&ps->smi_mutex);
-	return ret;
-}
-#endif /* CONFIG_NET_DSA_HWMON */
-
 /* Must be called with SMI lock held */
 static int _mv88e6xxx_wait(struct dsa_switch *ds, int reg, int offset,
 			   u16 mask)
@@ -1000,7 +964,7 @@ static int _mv88e6xxx_atu_cmd(struct dsa_switch *ds, int fid, u16 cmd)
 {
 	int ret;
 
-	ret = _mv88e6xxx_reg_write(ds, REG_GLOBAL, 0x01, fid);
+	ret = _mv88e6xxx_reg_write(ds, REG_GLOBAL, GLOBAL_ATU_FID, fid);
 	if (ret < 0)
 		return ret;
 
@@ -1127,7 +1091,7 @@ int mv88e6xxx_join_bridge(struct dsa_switch *ds, int port, u32 br_port_mask)
 	ps->bridge_mask[fid] = br_port_mask;
 
 	if (fid != ps->fid[port]) {
-		ps->fid_mask |= 1 << ps->fid[port];
+		clear_bit(ps->fid[port], ps->fid_bitmap);
 		ps->fid[port] = fid;
 		ret = _mv88e6xxx_update_bridge_config(ds, fid);
 	}
@@ -1161,9 +1125,16 @@ int mv88e6xxx_leave_bridge(struct dsa_switch *ds, int port, u32 br_port_mask)
 
 	mutex_lock(&ps->smi_mutex);
 
-	newfid = __ffs(ps->fid_mask);
+	newfid = find_next_zero_bit(ps->fid_bitmap, VLAN_N_VID, 1);
+	if (unlikely(newfid > ps->num_ports)) {
+		netdev_err(ds->ports[port], "all first %d FIDs are used\n",
+			   ps->num_ports);
+		ret = -ENOSPC;
+		goto unlock;
+	}
+
 	ps->fid[port] = newfid;
-	ps->fid_mask &= ~(1 << newfid);
+	set_bit(newfid, ps->fid_bitmap);
 	ps->bridge_mask[fid] &= ~(1 << port);
 	ps->bridge_mask[newfid] = 1 << port;
 
@@ -1171,6 +1142,7 @@ int mv88e6xxx_leave_bridge(struct dsa_switch *ds, int port, u32 br_port_mask)
 	if (!ret)
 		ret = _mv88e6xxx_update_bridge_config(ds, newfid);
 
+unlock:
 	mutex_unlock(&ps->smi_mutex);
 
 	return ret;
@@ -1210,8 +1182,8 @@ int mv88e6xxx_port_stp_update(struct dsa_switch *ds, int port, u8 state)
 	return 0;
 }
 
-static int __mv88e6xxx_write_addr(struct dsa_switch *ds,
-				  const unsigned char *addr)
+static int _mv88e6xxx_atu_mac_write(struct dsa_switch *ds,
+				    const unsigned char *addr)
 {
 	int i, ret;
 
@@ -1226,7 +1198,7 @@ static int __mv88e6xxx_write_addr(struct dsa_switch *ds,
 	return 0;
 }
 
-static int __mv88e6xxx_read_addr(struct dsa_switch *ds, unsigned char *addr)
+static int _mv88e6xxx_atu_mac_read(struct dsa_switch *ds, unsigned char *addr)
 {
 	int i, ret;
 
@@ -1242,29 +1214,74 @@ static int __mv88e6xxx_read_addr(struct dsa_switch *ds, unsigned char *addr)
 	return 0;
 }
 
-static int __mv88e6xxx_port_fdb_cmd(struct dsa_switch *ds, int port,
-				    const unsigned char *addr, int state)
+static int _mv88e6xxx_atu_load(struct dsa_switch *ds,
+			       struct mv88e6xxx_atu_entry *entry)
 {
-	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
-	u8 fid = ps->fid[port];
+	u16 reg = 0;
 	int ret;
 
 	ret = _mv88e6xxx_atu_wait(ds);
 	if (ret < 0)
 		return ret;
 
-	ret = __mv88e6xxx_write_addr(ds, addr);
+	ret = _mv88e6xxx_atu_mac_write(ds, entry->mac);
 	if (ret < 0)
 		return ret;
 
-	ret = _mv88e6xxx_reg_write(ds, REG_GLOBAL, GLOBAL_ATU_DATA,
-				   (0x10 << port) | state);
-	if (ret)
+	if (entry->state != GLOBAL_ATU_DATA_STATE_UNUSED) {
+		unsigned int mask, shift;
+
+		if (entry->trunk) {
+			reg |= GLOBAL_ATU_DATA_TRUNK;
+			mask = GLOBAL_ATU_DATA_TRUNK_ID_MASK;
+			shift = GLOBAL_ATU_DATA_TRUNK_ID_SHIFT;
+		} else {
+			mask = GLOBAL_ATU_DATA_PORT_VECTOR_MASK;
+			shift = GLOBAL_ATU_DATA_PORT_VECTOR_SHIFT;
+		}
+
+		reg |= (entry->portv_trunkid << shift) & mask;
+	}
+
+	reg |= entry->state & GLOBAL_ATU_DATA_STATE_MASK;
+
+	ret = _mv88e6xxx_reg_write(ds, REG_GLOBAL, GLOBAL_ATU_DATA, reg);
+	if (ret < 0)
 		return ret;
 
-	ret = _mv88e6xxx_atu_cmd(ds, fid, GLOBAL_ATU_OP_LOAD_DB);
+	return _mv88e6xxx_atu_cmd(ds, entry->fid, GLOBAL_ATU_OP_LOAD_DB);
+}
 
-	return ret;
+static int _mv88e6xxx_port_vid_to_fid(struct dsa_switch *ds, int port, u16 vid)
+{
+	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
+
+	if (vid == 0)
+		return ps->fid[port];
+
+	return -ENOENT;
+}
+
+static int _mv88e6xxx_port_fdb_load(struct dsa_switch *ds, int port,
+				    const unsigned char *addr, u16 vid,
+				    u8 state)
+{
+	struct mv88e6xxx_atu_entry entry = { 0 };
+	int ret;
+
+	ret = _mv88e6xxx_port_vid_to_fid(ds, port, vid);
+	if (ret < 0)
+		return ret;
+
+	entry.fid = ret;
+	entry.state = state;
+	ether_addr_copy(entry.mac, addr);
+	if (state != GLOBAL_ATU_DATA_STATE_UNUSED) {
+		entry.trunk = false;
+		entry.portv_trunkid = BIT(port);
+	}
+
+	return _mv88e6xxx_atu_load(ds, &entry);
 }
 
 int mv88e6xxx_port_fdb_add(struct dsa_switch *ds, int port,
@@ -1277,7 +1294,7 @@ int mv88e6xxx_port_fdb_add(struct dsa_switch *ds, int port,
 	int ret;
 
 	mutex_lock(&ps->smi_mutex);
-	ret = __mv88e6xxx_port_fdb_cmd(ds, port, addr, state);
+	ret = _mv88e6xxx_port_fdb_load(ds, port, addr, vid, state);
 	mutex_unlock(&ps->smi_mutex);
 
 	return ret;
@@ -1290,61 +1307,99 @@ int mv88e6xxx_port_fdb_del(struct dsa_switch *ds, int port,
 	int ret;
 
 	mutex_lock(&ps->smi_mutex);
-	ret = __mv88e6xxx_port_fdb_cmd(ds, port, addr,
+	ret = _mv88e6xxx_port_fdb_load(ds, port, addr, vid,
 				       GLOBAL_ATU_DATA_STATE_UNUSED);
 	mutex_unlock(&ps->smi_mutex);
 
 	return ret;
 }
 
-static int __mv88e6xxx_port_getnext(struct dsa_switch *ds, int port,
-				    unsigned char *addr, bool *is_static)
+static int _mv88e6xxx_atu_getnext(struct dsa_switch *ds, u16 fid,
+				  const unsigned char *addr,
+				  struct mv88e6xxx_atu_entry *entry)
 {
-	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
-	u8 fid = ps->fid[port];
-	int ret, state;
+	struct mv88e6xxx_atu_entry next = { 0 };
+	int ret;
+
+	next.fid = fid;
 
 	ret = _mv88e6xxx_atu_wait(ds);
 	if (ret < 0)
 		return ret;
 
-	ret = __mv88e6xxx_write_addr(ds, addr);
+	ret = _mv88e6xxx_atu_mac_write(ds, addr);
 	if (ret < 0)
 		return ret;
 
-	do {
-		ret = _mv88e6xxx_atu_cmd(ds, fid,  GLOBAL_ATU_OP_GET_NEXT_DB);
-		if (ret < 0)
-			return ret;
-
-		ret = _mv88e6xxx_reg_read(ds, REG_GLOBAL, GLOBAL_ATU_DATA);
-		if (ret < 0)
-			return ret;
-		state = ret & GLOBAL_ATU_DATA_STATE_MASK;
-		if (state == GLOBAL_ATU_DATA_STATE_UNUSED)
-			return -ENOENT;
-	} while (!(((ret >> 4) & 0xff) & (1 << port)));
-
-	ret = __mv88e6xxx_read_addr(ds, addr);
+	ret = _mv88e6xxx_atu_cmd(ds, fid, GLOBAL_ATU_OP_GET_NEXT_DB);
 	if (ret < 0)
 		return ret;
 
-	*is_static = state == (is_multicast_ether_addr(addr) ?
-			       GLOBAL_ATU_DATA_STATE_MC_STATIC :
-			       GLOBAL_ATU_DATA_STATE_UC_STATIC);
+	ret = _mv88e6xxx_atu_mac_read(ds, next.mac);
+	if (ret < 0)
+		return ret;
 
+	ret = _mv88e6xxx_reg_read(ds, REG_GLOBAL, GLOBAL_ATU_DATA);
+	if (ret < 0)
+		return ret;
+
+	next.state = ret & GLOBAL_ATU_DATA_STATE_MASK;
+	if (next.state != GLOBAL_ATU_DATA_STATE_UNUSED) {
+		unsigned int mask, shift;
+
+		if (ret & GLOBAL_ATU_DATA_TRUNK) {
+			next.trunk = true;
+			mask = GLOBAL_ATU_DATA_TRUNK_ID_MASK;
+			shift = GLOBAL_ATU_DATA_TRUNK_ID_SHIFT;
+		} else {
+			next.trunk = false;
+			mask = GLOBAL_ATU_DATA_PORT_VECTOR_MASK;
+			shift = GLOBAL_ATU_DATA_PORT_VECTOR_SHIFT;
+		}
+
+		next.portv_trunkid = (ret & mask) >> shift;
+	}
+
+	*entry = next;
 	return 0;
 }
 
 /* get next entry for port */
 int mv88e6xxx_port_fdb_getnext(struct dsa_switch *ds, int port,
-			       unsigned char *addr, bool *is_static)
+			       unsigned char *addr, u16 *vid, bool *is_static)
 {
 	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
+	struct mv88e6xxx_atu_entry next;
+	u16 fid;
 	int ret;
 
 	mutex_lock(&ps->smi_mutex);
-	ret = __mv88e6xxx_port_getnext(ds, port, addr, is_static);
+
+	ret = _mv88e6xxx_port_vid_to_fid(ds, port, *vid);
+	if (ret < 0)
+		goto unlock;
+	fid = ret;
+
+	do {
+		if (is_broadcast_ether_addr(addr)) {
+			ret = -ENOENT;
+			goto unlock;
+		}
+
+		ret = _mv88e6xxx_atu_getnext(ds, fid, addr, &next);
+		if (ret < 0)
+			goto unlock;
+
+		ether_addr_copy(addr, next.mac);
+
+		if (next.state == GLOBAL_ATU_DATA_STATE_UNUSED)
+			continue;
+	} while (next.trunk || (next.portv_trunkid & BIT(port)) == 0);
+
+	*is_static = next.state == (is_multicast_ether_addr(addr) ?
+				    GLOBAL_ATU_DATA_STATE_MC_STATIC :
+				    GLOBAL_ATU_DATA_STATE_UC_STATIC);
+unlock:
 	mutex_unlock(&ps->smi_mutex);
 
 	return ret;
@@ -1377,7 +1432,7 @@ static int mv88e6xxx_setup_port(struct dsa_switch *ds, int port)
 	if (mv88e6xxx_6352_family(ds) || mv88e6xxx_6351_family(ds) ||
 	    mv88e6xxx_6165_family(ds) || mv88e6xxx_6097_family(ds) ||
 	    mv88e6xxx_6185_family(ds) || mv88e6xxx_6095_family(ds) ||
-	    mv88e6xxx_6065_family(ds)) {
+	    mv88e6xxx_6065_family(ds) || mv88e6xxx_6320_family(ds)) {
 		/* MAC Forcing register: don't force link, speed,
 		 * duplex or flow control state to any particular
 		 * values on physical ports, but force the CPU port
@@ -1423,7 +1478,7 @@ static int mv88e6xxx_setup_port(struct dsa_switch *ds, int port)
 	if (mv88e6xxx_6352_family(ds) || mv88e6xxx_6351_family(ds) ||
 	    mv88e6xxx_6165_family(ds) || mv88e6xxx_6097_family(ds) ||
 	    mv88e6xxx_6095_family(ds) || mv88e6xxx_6065_family(ds) ||
-	    mv88e6xxx_6185_family(ds))
+	    mv88e6xxx_6185_family(ds) || mv88e6xxx_6320_family(ds))
 		reg = PORT_CONTROL_IGMP_MLD_SNOOP |
 		PORT_CONTROL_USE_TAG | PORT_CONTROL_USE_IP |
 		PORT_CONTROL_STATE_FORWARDING;
@@ -1431,7 +1486,8 @@ static int mv88e6xxx_setup_port(struct dsa_switch *ds, int port)
 		if (mv88e6xxx_6095_family(ds) || mv88e6xxx_6185_family(ds))
 			reg |= PORT_CONTROL_DSA_TAG;
 		if (mv88e6xxx_6352_family(ds) || mv88e6xxx_6351_family(ds) ||
-		    mv88e6xxx_6165_family(ds) || mv88e6xxx_6097_family(ds)) {
+		    mv88e6xxx_6165_family(ds) || mv88e6xxx_6097_family(ds) ||
+		    mv88e6xxx_6320_family(ds)) {
 			if (ds->dst->tag_protocol == DSA_TAG_PROTO_EDSA)
 				reg |= PORT_CONTROL_FRAME_ETHER_TYPE_DSA;
 			else
@@ -1441,14 +1497,15 @@ static int mv88e6xxx_setup_port(struct dsa_switch *ds, int port)
 		if (mv88e6xxx_6352_family(ds) || mv88e6xxx_6351_family(ds) ||
 		    mv88e6xxx_6165_family(ds) || mv88e6xxx_6097_family(ds) ||
 		    mv88e6xxx_6095_family(ds) || mv88e6xxx_6065_family(ds) ||
-		    mv88e6xxx_6185_family(ds)) {
+		    mv88e6xxx_6185_family(ds) || mv88e6xxx_6320_family(ds)) {
 			if (ds->dst->tag_protocol == DSA_TAG_PROTO_EDSA)
 				reg |= PORT_CONTROL_EGRESS_ADD_TAG;
 		}
 	}
 	if (mv88e6xxx_6352_family(ds) || mv88e6xxx_6351_family(ds) ||
 	    mv88e6xxx_6165_family(ds) || mv88e6xxx_6097_family(ds) ||
-	    mv88e6xxx_6095_family(ds) || mv88e6xxx_6065_family(ds)) {
+	    mv88e6xxx_6095_family(ds) || mv88e6xxx_6065_family(ds) ||
+	    mv88e6xxx_6320_family(ds)) {
 		if (ds->dsa_port_mask & (1 << port))
 			reg |= PORT_CONTROL_FRAME_MODE_DSA;
 		if (port == dsa_upstream_port(ds))
@@ -1473,11 +1530,11 @@ static int mv88e6xxx_setup_port(struct dsa_switch *ds, int port)
 	reg = 0;
 	if (mv88e6xxx_6352_family(ds) || mv88e6xxx_6351_family(ds) ||
 	    mv88e6xxx_6165_family(ds) || mv88e6xxx_6097_family(ds) ||
-	    mv88e6xxx_6095_family(ds))
+	    mv88e6xxx_6095_family(ds) || mv88e6xxx_6320_family(ds))
 		reg = PORT_CONTROL_2_MAP_DA;
 
 	if (mv88e6xxx_6352_family(ds) || mv88e6xxx_6351_family(ds) ||
-	    mv88e6xxx_6165_family(ds))
+	    mv88e6xxx_6165_family(ds) || mv88e6xxx_6320_family(ds))
 		reg |= PORT_CONTROL_2_JUMBO_10240;
 
 	if (mv88e6xxx_6095_family(ds) || mv88e6xxx_6185_family(ds)) {
@@ -1514,7 +1571,8 @@ static int mv88e6xxx_setup_port(struct dsa_switch *ds, int port)
 		goto abort;
 
 	if (mv88e6xxx_6352_family(ds) || mv88e6xxx_6351_family(ds) ||
-	    mv88e6xxx_6165_family(ds) || mv88e6xxx_6097_family(ds)) {
+	    mv88e6xxx_6165_family(ds) || mv88e6xxx_6097_family(ds) ||
+	    mv88e6xxx_6320_family(ds)) {
 		/* Do not limit the period of time that this port can
 		 * be paused for by the remote end or the period of
 		 * time that this port can pause the remote end.
@@ -1564,7 +1622,8 @@ static int mv88e6xxx_setup_port(struct dsa_switch *ds, int port)
 
 	if (mv88e6xxx_6352_family(ds) || mv88e6xxx_6351_family(ds) ||
 	    mv88e6xxx_6165_family(ds) || mv88e6xxx_6097_family(ds) ||
-	    mv88e6xxx_6185_family(ds) || mv88e6xxx_6095_family(ds)) {
+	    mv88e6xxx_6185_family(ds) || mv88e6xxx_6095_family(ds) ||
+	    mv88e6xxx_6320_family(ds)) {
 		/* Rate Control: disable ingress rate limiting. */
 		ret = _mv88e6xxx_reg_write(ds, REG_PORT(port),
 					   PORT_RATE_CONTROL, 0x0001);
@@ -1584,9 +1643,9 @@ static int mv88e6xxx_setup_port(struct dsa_switch *ds, int port)
 	 * ports, and allow each of the 'real' ports to only talk to
 	 * the upstream port.
 	 */
-	fid = __ffs(ps->fid_mask);
+	fid = port + 1;
 	ps->fid[port] = fid;
-	ps->fid_mask &= ~(1 << fid);
+	set_bit(fid, ps->fid_bitmap);
 
 	if (!dsa_is_cpu_port(ds, port))
 		ps->bridge_mask[fid] = 1 << port;
@@ -1683,7 +1742,7 @@ static int mv88e6xxx_atu_show_db(struct seq_file *s, struct dsa_switch *ds,
 	unsigned char addr[6];
 	int ret, data, state;
 
-	ret = __mv88e6xxx_write_addr(ds, bcast);
+	ret = _mv88e6xxx_atu_mac_write(ds, bcast);
 	if (ret < 0)
 		return ret;
 
@@ -1698,7 +1757,7 @@ static int mv88e6xxx_atu_show_db(struct seq_file *s, struct dsa_switch *ds,
 		state = data & GLOBAL_ATU_DATA_STATE_MASK;
 		if (state == GLOBAL_ATU_DATA_STATE_UNUSED)
 			break;
-		ret = __mv88e6xxx_read_addr(ds, addr);
+		ret = _mv88e6xxx_atu_mac_read(ds, addr);
 		if (ret < 0)
 			return ret;
 		mv88e6xxx_atu_show_entry(s, dbnum, addr, data);
@@ -1885,8 +1944,6 @@ int mv88e6xxx_setup_common(struct dsa_switch *ds)
 
 	ps->id = REG_READ(REG_PORT(0), PORT_SWITCH_ID) & 0xfff0;
 
-	ps->fid_mask = (1 << DSA_MAX_PORTS) - 1;
-
 	INIT_WORK(&ps->bridge_work, mv88e6xxx_bridge_work);
 
 	name = kasprintf(GFP_KERNEL, "dsa%d", ds->index);
@@ -1913,6 +1970,7 @@ int mv88e6xxx_setup_common(struct dsa_switch *ds)
 int mv88e6xxx_setup_global(struct dsa_switch *ds)
 {
 	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
+	int ret;
 	int i;
 
 	/* Set the default address aging time to 5 minutes, and
@@ -1976,7 +2034,8 @@ int mv88e6xxx_setup_global(struct dsa_switch *ds)
 			  (i << GLOBAL2_TRUNK_MAPPING_ID_SHIFT));
 
 	if (mv88e6xxx_6352_family(ds) || mv88e6xxx_6351_family(ds) ||
-	    mv88e6xxx_6165_family(ds) || mv88e6xxx_6097_family(ds)) {
+	    mv88e6xxx_6165_family(ds) || mv88e6xxx_6097_family(ds) ||
+	    mv88e6xxx_6320_family(ds)) {
 		/* Send all frames with destination addresses matching
 		 * 01:80:c2:00:00:2x to the CPU port.
 		 */
@@ -1995,7 +2054,8 @@ int mv88e6xxx_setup_global(struct dsa_switch *ds)
 
 	if (mv88e6xxx_6352_family(ds) || mv88e6xxx_6351_family(ds) ||
 	    mv88e6xxx_6165_family(ds) || mv88e6xxx_6097_family(ds) ||
-	    mv88e6xxx_6185_family(ds) || mv88e6xxx_6095_family(ds)) {
+	    mv88e6xxx_6185_family(ds) || mv88e6xxx_6095_family(ds) ||
+	    mv88e6xxx_6320_family(ds)) {
 		/* Disable ingress rate limiting by resetting all
 		 * ingress rate limit registers to their initial
 		 * state.
@@ -2009,9 +2069,11 @@ int mv88e6xxx_setup_global(struct dsa_switch *ds)
 	REG_WRITE(REG_GLOBAL, GLOBAL_STATS_OP, GLOBAL_STATS_OP_FLUSH_ALL);
 
 	/* Wait for the flush to complete. */
-	_mv88e6xxx_stats_wait(ds);
+	mutex_lock(&ps->smi_mutex);
+	ret = _mv88e6xxx_stats_wait(ds);
+	mutex_unlock(&ps->smi_mutex);
 
-	return 0;
+	return ret;
 }
 
 int mv88e6xxx_switch_reset(struct dsa_switch *ds, bool ppu_active)
@@ -2161,6 +2223,132 @@ mv88e6xxx_phy_write_indirect(struct dsa_switch *ds, int port, int regnum,
 	mutex_unlock(&ps->smi_mutex);
 	return ret;
 }
+
+#ifdef CONFIG_NET_DSA_HWMON
+
+static int mv88e61xx_get_temp(struct dsa_switch *ds, int *temp)
+{
+	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
+	int ret;
+	int val;
+
+	*temp = 0;
+
+	mutex_lock(&ps->smi_mutex);
+
+	ret = _mv88e6xxx_phy_write(ds, 0x0, 0x16, 0x6);
+	if (ret < 0)
+		goto error;
+
+	/* Enable temperature sensor */
+	ret = _mv88e6xxx_phy_read(ds, 0x0, 0x1a);
+	if (ret < 0)
+		goto error;
+
+	ret = _mv88e6xxx_phy_write(ds, 0x0, 0x1a, ret | (1 << 5));
+	if (ret < 0)
+		goto error;
+
+	/* Wait for temperature to stabilize */
+	usleep_range(10000, 12000);
+
+	val = _mv88e6xxx_phy_read(ds, 0x0, 0x1a);
+	if (val < 0) {
+		ret = val;
+		goto error;
+	}
+
+	/* Disable temperature sensor */
+	ret = _mv88e6xxx_phy_write(ds, 0x0, 0x1a, ret & ~(1 << 5));
+	if (ret < 0)
+		goto error;
+
+	*temp = ((val & 0x1f) - 5) * 5;
+
+error:
+	_mv88e6xxx_phy_write(ds, 0x0, 0x16, 0x0);
+	mutex_unlock(&ps->smi_mutex);
+	return ret;
+}
+
+static int mv88e63xx_get_temp(struct dsa_switch *ds, int *temp)
+{
+	int phy = mv88e6xxx_6320_family(ds) ? 3 : 0;
+	int ret;
+
+	*temp = 0;
+
+	ret = mv88e6xxx_phy_page_read(ds, phy, 6, 27);
+	if (ret < 0)
+		return ret;
+
+	*temp = (ret & 0xff) - 25;
+
+	return 0;
+}
+
+int mv88e6xxx_get_temp(struct dsa_switch *ds, int *temp)
+{
+	if (mv88e6xxx_6320_family(ds) || mv88e6xxx_6352_family(ds))
+		return mv88e63xx_get_temp(ds, temp);
+
+	return mv88e61xx_get_temp(ds, temp);
+}
+
+int mv88e6xxx_get_temp_limit(struct dsa_switch *ds, int *temp)
+{
+	int phy = mv88e6xxx_6320_family(ds) ? 3 : 0;
+	int ret;
+
+	if (!mv88e6xxx_6320_family(ds) && !mv88e6xxx_6352_family(ds))
+		return -EOPNOTSUPP;
+
+	*temp = 0;
+
+	ret = mv88e6xxx_phy_page_read(ds, phy, 6, 26);
+	if (ret < 0)
+		return ret;
+
+	*temp = (((ret >> 8) & 0x1f) * 5) - 25;
+
+	return 0;
+}
+
+int mv88e6xxx_set_temp_limit(struct dsa_switch *ds, int temp)
+{
+	int phy = mv88e6xxx_6320_family(ds) ? 3 : 0;
+	int ret;
+
+	if (!mv88e6xxx_6320_family(ds) && !mv88e6xxx_6352_family(ds))
+		return -EOPNOTSUPP;
+
+	ret = mv88e6xxx_phy_page_read(ds, phy, 6, 26);
+	if (ret < 0)
+		return ret;
+	temp = clamp_val(DIV_ROUND_CLOSEST(temp, 5) + 5, 0, 0x1f);
+	return mv88e6xxx_phy_page_write(ds, phy, 6, 26,
+					(ret & 0xe0ff) | (temp << 8));
+}
+
+int mv88e6xxx_get_temp_alarm(struct dsa_switch *ds, bool *alarm)
+{
+	int phy = mv88e6xxx_6320_family(ds) ? 3 : 0;
+	int ret;
+
+	if (!mv88e6xxx_6320_family(ds) && !mv88e6xxx_6352_family(ds))
+		return -EOPNOTSUPP;
+
+	*alarm = false;
+
+	ret = mv88e6xxx_phy_page_read(ds, phy, 6, 26);
+	if (ret < 0)
+		return ret;
+
+	*alarm = !!(ret & 0x40);
+
+	return 0;
+}
+#endif /* CONFIG_NET_DSA_HWMON */
 
 static int __init mv88e6xxx_init(void)
 {
