@@ -1073,16 +1073,6 @@ int __ref online_pages(unsigned long pfn, unsigned long nr_pages, int online_typ
 }
 #endif /* CONFIG_MEMORY_HOTPLUG_SPARSE */
 
-static void reset_node_present_pages(pg_data_t *pgdat)
-{
-	struct zone *z;
-
-	for (z = pgdat->node_zones; z < pgdat->node_zones + MAX_NR_ZONES; z++)
-		z->present_pages = 0;
-
-	pgdat->node_present_pages = 0;
-}
-
 /* we are OK calling __meminit stuff here - we have CONFIG_MEMORY_HOTPLUG */
 static pg_data_t __ref *hotadd_new_pgdat(int nid, u64 start)
 {
@@ -1116,21 +1106,6 @@ static pg_data_t __ref *hotadd_new_pgdat(int nid, u64 start)
 	mutex_lock(&zonelists_mutex);
 	build_all_zonelists(pgdat, NULL);
 	mutex_unlock(&zonelists_mutex);
-
-	/*
-	 * zone->managed_pages is set to an approximate value in
-	 * free_area_init_core(), which will cause
-	 * /sys/device/system/node/nodeX/meminfo has wrong data.
-	 * So reset it to 0 before any memory is onlined.
-	 */
-	reset_node_managed_pages(pgdat);
-
-	/*
-	 * When memory is hot-added, all the memory is in offline state. So
-	 * clear all zones' present_pages because they will be updated in
-	 * online_pages() and offline_pages().
-	 */
-	reset_node_present_pages(pgdat);
 
 	return pgdat;
 }
@@ -1277,6 +1252,7 @@ int __ref add_memory(int nid, u64 start, u64 size)
 
 	/* create new memmap entry */
 	firmware_map_add_hotplug(start, start + size, "System RAM");
+	memblock_add_node(start, size, nid);
 
 	goto out;
 
@@ -1341,7 +1317,7 @@ int is_mem_section_removable(unsigned long start_pfn, unsigned long nr_pages)
 }
 
 /*
- * Confirm all pages in a range [start, end) is belongs to the same zone.
+ * Confirm all pages in a range [start, end) belong to the same zone.
  */
 int test_pages_in_a_zone(unsigned long start_pfn, unsigned long end_pfn)
 {
@@ -1352,10 +1328,11 @@ int test_pages_in_a_zone(unsigned long start_pfn, unsigned long end_pfn)
 	for (pfn = start_pfn;
 	     pfn < end_pfn;
 	     pfn += MAX_ORDER_NR_PAGES) {
-		i = 0;
-		/* This is just a CONFIG_HOLES_IN_ZONE check.*/
-		while ((i < MAX_ORDER_NR_PAGES) && !pfn_valid_within(pfn + i))
-			i++;
+		/* Find the first valid pfn in this pageblock */
+		for (i = 0; i < MAX_ORDER_NR_PAGES; i++) {
+			if (pfn_valid(pfn + i))
+				break;
+		}
 		if (i == MAX_ORDER_NR_PAGES)
 			continue;
 		page = pfn_to_page(pfn + i);
@@ -2013,6 +1990,8 @@ void __ref remove_memory(int nid, u64 start, u64 size)
 
 	/* remove memmap entry */
 	firmware_map_remove(start, start + size, "System RAM");
+	memblock_free(start, size);
+	memblock_remove(start, size);
 
 	arch_remove_memory(start, size);
 

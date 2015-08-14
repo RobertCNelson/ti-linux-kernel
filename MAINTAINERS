@@ -3614,6 +3614,15 @@ S:	Maintained
 F:	drivers/gpu/drm/rockchip/
 F:	Documentation/devicetree/bindings/video/rockchip*
 
+DRM DRIVERS FOR STI
+M:	Benjamin Gaignard <benjamin.gaignard@linaro.org>
+M:	Vincent Abriou <vincent.abriou@st.com>
+L:	dri-devel@lists.freedesktop.org
+T:	git http://git.linaro.org/people/benjamin.gaignard/kernel.git
+S:	Maintained
+F:	drivers/gpu/drm/sti
+F:	Documentation/devicetree/bindings/gpu/st,stih4xx.txt
+
 DSBR100 USB FM RADIO DRIVER
 M:	Alexey Klimov <klimov.linux@gmail.com>
 L:	linux-media@vger.kernel.org
@@ -8113,10 +8122,9 @@ F:	drivers/hwmon/pmbus/
 F:	include/linux/i2c/pmbus.h
 
 PMC SIERRA MaxRAID DRIVER
-M:	Anil Ravindranath <anil_ravindranath@pmc-sierra.com>
 L:	linux-scsi@vger.kernel.org
 W:	http://www.pmc-sierra.com/
-S:	Supported
+S:	Orphan
 F:	drivers/scsi/pmcraid.*
 
 PMC SIERRA PM8001 DRIVER

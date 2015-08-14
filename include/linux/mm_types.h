@@ -63,15 +63,6 @@ struct page {
 		union {
 			pgoff_t index;		/* Our offset within mapping. */
 			void *freelist;		/* sl[aou]b first free object */
-			bool pfmemalloc;	/* If set by the page allocator,
-						 * ALLOC_NO_WATERMARKS was set
-						 * and the low watermark was not
-						 * met implying that the system
-						 * is under some pressure. The
-						 * caller should try ensure
-						 * this page is only used to
-						 * free other pages.
-						 */
 		};
 
 		union {
@@ -244,7 +235,7 @@ struct page_frag_cache {
 	bool pfmemalloc;
 };
 
-typedef unsigned long __nocast vm_flags_t;
+typedef unsigned long vm_flags_t;
 
 /*
  * A region containing a mapping of a non-memory backed file under NOMMU
@@ -264,6 +255,16 @@ struct vm_region {
 	bool		vm_icache_flushed : 1; /* true if the icache has been flushed for
 						* this region */
 };
+
+#ifdef CONFIG_USERFAULTFD
+#define NULL_VM_UFFD_CTX ((struct vm_userfaultfd_ctx) { NULL, })
+struct vm_userfaultfd_ctx {
+	struct userfaultfd_ctx *ctx;
+};
+#else /* CONFIG_USERFAULTFD */
+#define NULL_VM_UFFD_CTX ((struct vm_userfaultfd_ctx) {})
+struct vm_userfaultfd_ctx {};
+#endif /* CONFIG_USERFAULTFD */
 
 /*
  * This struct defines a memory VMM memory area. There is one of these
@@ -331,6 +332,7 @@ struct vm_area_struct {
 #ifdef CONFIG_NUMA
 	struct mempolicy *vm_policy;	/* NUMA policy for the VMA */
 #endif
+	struct vm_userfaultfd_ctx vm_userfaultfd_ctx;
 };
 
 struct core_thread {
@@ -363,6 +365,12 @@ struct task_rss_stat {
 struct mm_rss_stat {
 	atomic_long_t count[NR_MM_COUNTERS];
 };
+
+#ifdef CONFIG_HUGETLB_PAGE
+struct hugetlb_usage {
+	atomic_long_t count[HUGE_MAX_HSTATE];
+};
+#endif
 
 struct kioctx_table;
 struct mm_struct {
@@ -484,6 +492,10 @@ struct mm_struct {
 	/* address of the bounds directory */
 	void __user *bd_addr;
 #endif
+
+#ifdef CONFIG_HUGETLB_PAGE
+	struct hugetlb_usage hugetlb_usage;
+#endif
 };
 
 static inline void mm_init_cpumask(struct mm_struct *mm)
@@ -552,6 +564,7 @@ enum tlb_flush_reason {
 	TLB_REMOTE_SHOOTDOWN,
 	TLB_LOCAL_SHOOTDOWN,
 	TLB_LOCAL_MM_SHOOTDOWN,
+	TLB_REMOTE_SEND_IPI,
 	NR_TLB_FLUSH_REASONS,
 };
 
