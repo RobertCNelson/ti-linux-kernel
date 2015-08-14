@@ -1909,7 +1909,7 @@ static void intel_hdmi_destroy(struct drm_connector *connector)
 }
 
 static const struct drm_connector_funcs intel_hdmi_connector_funcs = {
-	.dpms = intel_connector_dpms,
+	.dpms = drm_atomic_helper_connector_dpms,
 	.detect = intel_hdmi_detect,
 	.force = intel_hdmi_force,
 	.fill_modes = drm_helper_probe_single_connector_modes,
@@ -1973,7 +1973,14 @@ void intel_hdmi_init_connector(struct intel_digital_port *intel_dig_port,
 			intel_hdmi->ddc_bus = GMBUS_PIN_1_BXT;
 		else
 			intel_hdmi->ddc_bus = GMBUS_PIN_DPB;
-		intel_encoder->hpd_pin = HPD_PORT_B;
+		/*
+		 * On BXT A0/A1, sw needs to activate DDIA HPD logic and
+		 * interrupts to check the external panel connection.
+		 */
+		if (IS_BROXTON(dev_priv) && (INTEL_REVID(dev) < BXT_REVID_B0))
+			intel_encoder->hpd_pin = HPD_PORT_A;
+		else
+			intel_encoder->hpd_pin = HPD_PORT_B;
 		break;
 	case PORT_C:
 		if (IS_BROXTON(dev_priv))

@@ -3184,10 +3184,9 @@ void intel_ddi_init(struct drm_device *dev, enum port port)
 		     dev_priv->vbt.ddi_port_info[port].supports_hdmi);
 	init_dp = dev_priv->vbt.ddi_port_info[port].supports_dp;
 	if (!init_dp && !init_hdmi) {
-		DRM_DEBUG_KMS("VBT says port %c is not DVI/HDMI/DP compatible, assuming it is\n",
+		DRM_DEBUG_KMS("VBT says port %c is not DVI/HDMI/DP compatible, respect it\n",
 			      port_name(port));
-		init_hdmi = true;
-		init_dp = true;
+		return;
 	}
 
 	intel_dig_port = kzalloc(sizeof(*intel_dig_port), GFP_KERNEL);
@@ -3222,7 +3221,15 @@ void intel_ddi_init(struct drm_device *dev, enum port port)
 			goto err;
 
 		intel_dig_port->hpd_pulse = intel_dp_hpd_pulse;
-		dev_priv->hotplug.irq_port[port] = intel_dig_port;
+		/*
+		 * On BXT A0/A1, sw needs to activate DDIA HPD logic and
+		 * interrupts to check the external panel connection.
+		 */
+		if (IS_BROXTON(dev_priv) && (INTEL_REVID(dev) < BXT_REVID_B0)
+					 && port == PORT_B)
+			dev_priv->hotplug.irq_port[PORT_A] = intel_dig_port;
+		else
+			dev_priv->hotplug.irq_port[port] = intel_dig_port;
 	}
 
 	/* In theory we don't need the encoder->type check, but leave it just in
