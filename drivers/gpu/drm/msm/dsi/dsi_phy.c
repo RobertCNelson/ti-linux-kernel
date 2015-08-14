@@ -21,7 +21,7 @@
 #define dsi_phy_write(offset, data) msm_writel((data), (offset))
 
 struct dsi_phy_ops {
-	int (*enable)(struct msm_dsi_phy *phy, bool is_dual_panel,
+	int (*enable)(struct msm_dsi_phy *phy, int src_pll_id,
 		const unsigned long bit_rate, const unsigned long esc_rate);
 	int (*disable)(struct msm_dsi_phy *phy);
 };
@@ -30,6 +30,12 @@ struct dsi_phy_cfg {
 	enum msm_dsi_phy_type type;
 	struct dsi_reg_config reg_cfg;
 	struct dsi_phy_ops ops;
+
+	/* Each cell {phy_id, pll_id} of the truth table indicates
+	 * if the source PLL is on the right side of the PHY.
+	 * Fill default H/W values in illegal cells, eg. cell {0, 1}.
+	 */
+	bool src_pll_truthtable[DSI_MAX][DSI_MAX];
 };
 
 struct dsi_dphy_timing {
@@ -59,6 +65,8 @@ struct msm_dsi_phy {
 
 	struct dsi_dphy_timing timing;
 	const struct dsi_phy_cfg *cfg;
+
+	bool regulator_ldo_mode;
 
 	struct msm_dsi_pll *pll;
 };
@@ -147,6 +155,19 @@ fail:
 	for (i--; i >= 0; i--)
 		regulator_set_load(s[i].consumer, regs[i].disable_load);
 	return ret;
+}
+
+static void dsi_phy_set_src_pll(struct msm_dsi_phy *phy, int pll_id, u32 reg)
+{
+	int phy_id = phy->id;
+
+	if ((phy_id >= DSI_MAX) || (pll_id >= DSI_MAX))
+		return;
+
+	if (phy->cfg->src_pll_truthtable[phy_id][pll_id])
+		dsi_phy_write(phy->base + reg, 0x01);
+	else
+		dsi_phy_write(phy->base + reg, 0x00);
 }
 
 #define S_DIV_ROUND_UP(n, d)	\
@@ -295,7 +316,7 @@ static void dsi_28nm_phy_regulator_ctrl(struct msm_dsi_phy *phy, bool enable)
 	dsi_phy_write(base + REG_DSI_28nm_PHY_REGULATOR_CTRL_4, 0x20);
 }
 
-static int dsi_28nm_phy_enable(struct msm_dsi_phy *phy, bool is_dual_panel,
+static int dsi_28nm_phy_enable(struct msm_dsi_phy *phy, int src_pll_id,
 		const unsigned long bit_rate, const unsigned long esc_rate)
 {
 	struct dsi_dphy_timing *timing = &phy->timing;
@@ -368,10 +389,7 @@ static int dsi_28nm_phy_enable(struct msm_dsi_phy *phy, bool is_dual_panel,
 
 	dsi_phy_write(base + REG_DSI_28nm_PHY_CTRL_0, 0x5f);
 
-	if (is_dual_panel && (phy->id != DSI_CLOCK_MASTER))
-		dsi_phy_write(base + REG_DSI_28nm_PHY_GLBL_TEST_CTRL, 0x00);
-	else
-		dsi_phy_write(base + REG_DSI_28nm_PHY_GLBL_TEST_CTRL, 0x01);
+	dsi_phy_set_src_pll(phy, src_pll_id, REG_DSI_28nm_PHY_GLBL_TEST_CTRL);
 
 	return 0;
 }
@@ -386,6 +404,115 @@ static int dsi_28nm_phy_disable(struct msm_dsi_phy *phy)
 	 * ensure that the phy is completely disabled
 	 */
 	wmb();
+
+	return 0;
+}
+
+static void dsi_20nm_phy_regulator_ctrl(struct msm_dsi_phy *phy, bool enable)
+{
+	void __iomem *base = phy->reg_base;
+
+	if (!enable) {
+		dsi_phy_write(base + REG_DSI_20nm_PHY_REGULATOR_CAL_PWR_CFG, 0);
+		return;
+	}
+
+	if (phy->regulator_ldo_mode) {
+		dsi_phy_write(phy->base + REG_DSI_20nm_PHY_LDO_CNTRL, 0x1d);
+		return;
+	}
+
+	/* non LDO mode */
+	dsi_phy_write(base + REG_DSI_20nm_PHY_REGULATOR_CTRL_1, 0x03);
+	dsi_phy_write(base + REG_DSI_20nm_PHY_REGULATOR_CTRL_2, 0x03);
+	dsi_phy_write(base + REG_DSI_20nm_PHY_REGULATOR_CTRL_3, 0x00);
+	dsi_phy_write(base + REG_DSI_20nm_PHY_REGULATOR_CTRL_4, 0x20);
+	dsi_phy_write(base + REG_DSI_20nm_PHY_REGULATOR_CAL_PWR_CFG, 0x01);
+	dsi_phy_write(phy->base + REG_DSI_20nm_PHY_LDO_CNTRL, 0x00);
+	dsi_phy_write(base + REG_DSI_20nm_PHY_REGULATOR_CTRL_0, 0x03);
+}
+
+static int dsi_20nm_phy_enable(struct msm_dsi_phy *phy, int src_pll_id,
+		const unsigned long bit_rate, const unsigned long esc_rate)
+{
+	struct dsi_dphy_timing *timing = &phy->timing;
+	int i;
+	void __iomem *base = phy->base;
+	u32 cfg_4[4] = {0x20, 0x40, 0x20, 0x00};
+
+	DBG("");
+
+	if (dsi_dphy_timing_calc(timing, bit_rate, esc_rate)) {
+		pr_err("%s: D-PHY timing calculation failed\n", __func__);
+		return -EINVAL;
+	}
+
+	dsi_20nm_phy_regulator_ctrl(phy, true);
+
+	dsi_phy_write(base + REG_DSI_20nm_PHY_STRENGTH_0, 0xff);
+
+	dsi_phy_set_src_pll(phy, src_pll_id, REG_DSI_20nm_PHY_GLBL_TEST_CTRL);
+
+	for (i = 0; i < 4; i++) {
+		dsi_phy_write(base + REG_DSI_20nm_PHY_LN_CFG_3(i),
+							(i >> 1) * 0x40);
+		dsi_phy_write(base + REG_DSI_20nm_PHY_LN_TEST_STR_0(i), 0x01);
+		dsi_phy_write(base + REG_DSI_20nm_PHY_LN_TEST_STR_1(i), 0x46);
+		dsi_phy_write(base + REG_DSI_20nm_PHY_LN_CFG_0(i), 0x02);
+		dsi_phy_write(base + REG_DSI_20nm_PHY_LN_CFG_1(i), 0xa0);
+		dsi_phy_write(base + REG_DSI_20nm_PHY_LN_CFG_4(i), cfg_4[i]);
+	}
+
+	dsi_phy_write(base + REG_DSI_20nm_PHY_LNCK_CFG_3, 0x80);
+	dsi_phy_write(base + REG_DSI_20nm_PHY_LNCK_TEST_STR0, 0x01);
+	dsi_phy_write(base + REG_DSI_20nm_PHY_LNCK_TEST_STR1, 0x46);
+	dsi_phy_write(base + REG_DSI_20nm_PHY_LNCK_CFG_0, 0x00);
+	dsi_phy_write(base + REG_DSI_20nm_PHY_LNCK_CFG_1, 0xa0);
+	dsi_phy_write(base + REG_DSI_20nm_PHY_LNCK_CFG_2, 0x00);
+	dsi_phy_write(base + REG_DSI_20nm_PHY_LNCK_CFG_4, 0x00);
+
+	dsi_phy_write(base + REG_DSI_20nm_PHY_TIMING_CTRL_0,
+		DSI_20nm_PHY_TIMING_CTRL_0_CLK_ZERO(timing->clk_zero));
+	dsi_phy_write(base + REG_DSI_20nm_PHY_TIMING_CTRL_1,
+		DSI_20nm_PHY_TIMING_CTRL_1_CLK_TRAIL(timing->clk_trail));
+	dsi_phy_write(base + REG_DSI_20nm_PHY_TIMING_CTRL_2,
+		DSI_20nm_PHY_TIMING_CTRL_2_CLK_PREPARE(timing->clk_prepare));
+	if (timing->clk_zero & BIT(8))
+		dsi_phy_write(base + REG_DSI_20nm_PHY_TIMING_CTRL_3,
+			DSI_20nm_PHY_TIMING_CTRL_3_CLK_ZERO_8);
+	dsi_phy_write(base + REG_DSI_20nm_PHY_TIMING_CTRL_4,
+		DSI_20nm_PHY_TIMING_CTRL_4_HS_EXIT(timing->hs_exit));
+	dsi_phy_write(base + REG_DSI_20nm_PHY_TIMING_CTRL_5,
+		DSI_20nm_PHY_TIMING_CTRL_5_HS_ZERO(timing->hs_zero));
+	dsi_phy_write(base + REG_DSI_20nm_PHY_TIMING_CTRL_6,
+		DSI_20nm_PHY_TIMING_CTRL_6_HS_PREPARE(timing->hs_prepare));
+	dsi_phy_write(base + REG_DSI_20nm_PHY_TIMING_CTRL_7,
+		DSI_20nm_PHY_TIMING_CTRL_7_HS_TRAIL(timing->hs_trail));
+	dsi_phy_write(base + REG_DSI_20nm_PHY_TIMING_CTRL_8,
+		DSI_20nm_PHY_TIMING_CTRL_8_HS_RQST(timing->hs_rqst));
+	dsi_phy_write(base + REG_DSI_20nm_PHY_TIMING_CTRL_9,
+		DSI_20nm_PHY_TIMING_CTRL_9_TA_GO(timing->ta_go) |
+		DSI_20nm_PHY_TIMING_CTRL_9_TA_SURE(timing->ta_sure));
+	dsi_phy_write(base + REG_DSI_20nm_PHY_TIMING_CTRL_10,
+		DSI_20nm_PHY_TIMING_CTRL_10_TA_GET(timing->ta_get));
+	dsi_phy_write(base + REG_DSI_20nm_PHY_TIMING_CTRL_11,
+		DSI_20nm_PHY_TIMING_CTRL_11_TRIG3_CMD(0));
+
+	dsi_phy_write(base + REG_DSI_20nm_PHY_CTRL_1, 0x00);
+
+	dsi_phy_write(base + REG_DSI_20nm_PHY_STRENGTH_1, 0x06);
+
+	/* make sure everything is written before enable */
+	wmb();
+	dsi_phy_write(base + REG_DSI_20nm_PHY_CTRL_0, 0x7f);
+
+	return 0;
+}
+
+static int dsi_20nm_phy_disable(struct msm_dsi_phy *phy)
+{
+	dsi_phy_write(phy->base + REG_DSI_20nm_PHY_CTRL_0, 0);
+	dsi_20nm_phy_regulator_ctrl(phy, false);
 
 	return 0;
 }
@@ -414,6 +541,7 @@ static void dsi_phy_disable_resource(struct msm_dsi_phy *phy)
 static const struct dsi_phy_cfg dsi_phy_cfgs[MSM_DSI_PHY_MAX] = {
 	[MSM_DSI_PHY_28NM_HPM] = {
 		.type = MSM_DSI_PHY_28NM_HPM,
+		.src_pll_truthtable = { {true, true}, {false, true} },
 		.reg_cfg = {
 			.num = 1,
 			.regs = {
@@ -427,6 +555,7 @@ static const struct dsi_phy_cfg dsi_phy_cfgs[MSM_DSI_PHY_MAX] = {
 	},
 	[MSM_DSI_PHY_28NM_LP] = {
 		.type = MSM_DSI_PHY_28NM_LP,
+		.src_pll_truthtable = { {true, true}, {true, true} },
 		.reg_cfg = {
 			.num = 1,
 			.regs = {
@@ -438,6 +567,21 @@ static const struct dsi_phy_cfg dsi_phy_cfgs[MSM_DSI_PHY_MAX] = {
 			.disable = dsi_28nm_phy_disable,
 		}
 	},
+	[MSM_DSI_PHY_20NM] = {
+		.type = MSM_DSI_PHY_20NM,
+		.src_pll_truthtable = { {false, true}, {false, true} },
+		.reg_cfg = {
+			.num = 2,
+			.regs = {
+				{"vddio", 1800000, 1800000, 100000, 100},
+				{"vcca", 1000000, 1000000, 10000, 100},
+			},
+		},
+		.ops = {
+			.enable = dsi_20nm_phy_enable,
+			.disable = dsi_20nm_phy_disable,
+		}
+	},
 };
 
 static const struct of_device_id dsi_phy_dt_match[] = {
@@ -445,6 +589,8 @@ static const struct of_device_id dsi_phy_dt_match[] = {
 	  .data = &dsi_phy_cfgs[MSM_DSI_PHY_28NM_HPM],},
 	{ .compatible = "qcom,dsi-phy-28nm-lp",
 	  .data = &dsi_phy_cfgs[MSM_DSI_PHY_28NM_LP],},
+	{ .compatible = "qcom,dsi-phy-20nm",
+	  .data = &dsi_phy_cfgs[MSM_DSI_PHY_20NM],},
 	{}
 };
 
@@ -473,6 +619,9 @@ static int dsi_phy_driver_probe(struct platform_device *pdev)
 			__func__, ret);
 		goto fail;
 	}
+
+	phy->regulator_ldo_mode = of_property_read_bool(pdev->dev.of_node,
+				"qcom,dsi-phy-regulator-ldo-mode");
 
 	phy->base = msm_ioremap(pdev, "dsi_phy", "DSI_PHY");
 	if (IS_ERR(phy->base)) {
@@ -557,7 +706,7 @@ void __exit msm_dsi_phy_driver_unregister(void)
 	platform_driver_unregister(&dsi_phy_platform_driver);
 }
 
-int msm_dsi_phy_enable(struct msm_dsi_phy *phy, bool is_dual_panel,
+int msm_dsi_phy_enable(struct msm_dsi_phy *phy, int src_pll_id,
 	const unsigned long bit_rate, const unsigned long esc_rate)
 {
 	int ret;
@@ -572,7 +721,7 @@ int msm_dsi_phy_enable(struct msm_dsi_phy *phy, bool is_dual_panel,
 		return ret;
 	}
 
-	return phy->cfg->ops.enable(phy, is_dual_panel, bit_rate, esc_rate);
+	return phy->cfg->ops.enable(phy, src_pll_id, bit_rate, esc_rate);
 }
 
 int msm_dsi_phy_disable(struct msm_dsi_phy *phy)

@@ -20,6 +20,8 @@
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
 #include <linux/of_irq.h>
+#include <linux/pinctrl/consumer.h>
+#include <linux/of_graph.h>
 #include <linux/regulator/consumer.h>
 #include <linux/spinlock.h>
 #include <video/mipi_display.h>
@@ -33,6 +35,7 @@
 #define MSM_DSI_6G_VER_MINOR_V1_1	0x10010000
 #define MSM_DSI_6G_VER_MINOR_V1_1_1	0x10010001
 #define MSM_DSI_6G_VER_MINOR_V1_2	0x10020000
+#define MSM_DSI_6G_VER_MINOR_V1_3	0x10030000
 #define MSM_DSI_6G_VER_MINOR_V1_3_1	0x10030001
 
 #define DSI_6G_REG_SHIFT	4
@@ -115,6 +118,23 @@ static const struct dsi_config dsi_cfgs[] = {
 				{"vddio", 1800000, 1800000, 100000, 100},
 			},
 		},
+	},
+	{ /* 8x94 */
+		.major = MSM_DSI_VER_MAJOR_6G,
+		.minor = MSM_DSI_6G_VER_MINOR_V1_3,
+		.io_offset = DSI_6G_REG_SHIFT,
+		.reg_cfg = {
+			.num = 7,
+			.regs = {
+				{"gdsc", -1, -1, -1, -1},
+				{"vdda", 1250000, 1250000, 100000, 100},
+				{"vddio", 1800000, 1800000, 100000, 100},
+				{"vcca", 1000000, 1000000, 10000, 100},
+				{"vdd", 1800000, 1800000, 100000, 100},
+				{"lab_reg", -1, -1, -1, -1},
+				{"ibb_reg", -1, -1, -1, -1},
+			},
+		}
 	},
 };
 
@@ -212,8 +232,8 @@ struct msm_dsi_host {
 
 	struct drm_display_mode *mode;
 
-	/* Panel info */
-	struct device_node *panel_node;
+	/* connected device info */
+	struct device_node *device_node;
 	unsigned int channel;
 	unsigned int lanes;
 	enum mipi_dsi_pixel_format format;
@@ -1257,7 +1277,11 @@ static void dsi_dln0_phy_err(struct msm_dsi_host *msm_host)
 
 	status = dsi_read(msm_host, REG_DSI_DLN0_PHY_ERR);
 
-	if (status) {
+	if (status & (DSI_DLN0_PHY_ERR_DLN0_ERR_ESC |
+			DSI_DLN0_PHY_ERR_DLN0_ERR_SYNC_ESC |
+			DSI_DLN0_PHY_ERR_DLN0_ERR_CONTROL |
+			DSI_DLN0_PHY_ERR_DLN0_ERR_CONTENTION_LP0 |
+			DSI_DLN0_PHY_ERR_DLN0_ERR_CONTENTION_LP1)) {
 		dsi_write(msm_host, REG_DSI_DLN0_PHY_ERR, status);
 		msm_host->err_work_state |= DSI_ERR_STATE_DLN0_PHY;
 	}
@@ -1359,7 +1383,8 @@ static int dsi_host_init_panel_gpios(struct msm_dsi_host *msm_host,
 		return PTR_ERR(msm_host->disp_en_gpio);
 	}
 
-	msm_host->te_gpio = devm_gpiod_get(panel_device, "disp-te", GPIOD_IN);
+	msm_host->te_gpio = devm_gpiod_get_optional(panel_device, "disp-te",
+								GPIOD_IN);
 	if (IS_ERR(msm_host->te_gpio)) {
 		DBG("cannot get disp-te-gpios %ld", PTR_ERR(msm_host->te_gpio));
 		return PTR_ERR(msm_host->te_gpio);
@@ -1379,7 +1404,7 @@ static int dsi_host_attach(struct mipi_dsi_host *host,
 	msm_host->format = dsi->format;
 	msm_host->mode_flags = dsi->mode_flags;
 
-	msm_host->panel_node = dsi->dev.of_node;
+	WARN_ON(dsi->dev.of_node != msm_host->device_node);
 
 	/* Some gpios defined in panel DT need to be controlled by host */
 	ret = dsi_host_init_panel_gpios(msm_host, &dsi->dev);
@@ -1398,7 +1423,7 @@ static int dsi_host_detach(struct mipi_dsi_host *host,
 {
 	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
 
-	msm_host->panel_node = NULL;
+	msm_host->device_node = NULL;
 
 	DBG("id=%d", msm_host->id);
 	if (msm_host->dev)
@@ -1429,6 +1454,48 @@ static struct mipi_dsi_host_ops dsi_host_ops = {
 	.transfer = dsi_host_transfer,
 };
 
+static int dsi_host_parse_dt(struct msm_dsi_host *msm_host)
+{
+	struct device *dev = &msm_host->pdev->dev;
+	struct device_node *np = dev->of_node;
+	struct device_node *endpoint, *device_node;
+	int ret;
+
+	ret = of_property_read_u32(np, "qcom,dsi-host-index", &msm_host->id);
+	if (ret) {
+		dev_err(dev, "%s: host index not specified, ret=%d\n",
+			__func__, ret);
+		return ret;
+	}
+
+	/*
+	 * Get the first endpoint node. In our case, dsi has one output port
+	 * to which the panel is connected. Don't return an error if a port
+	 * isn't defined. It's possible that there is nothing connected to
+	 * the dsi output.
+	 */
+	endpoint = of_graph_get_next_endpoint(np, NULL);
+	if (!endpoint) {
+		dev_dbg(dev, "%s: no endpoint\n", __func__);
+		return 0;
+	}
+
+	/* Get panel node from the output port's endpoint data */
+	device_node = of_graph_get_remote_port_parent(endpoint);
+	if (!device_node) {
+		dev_err(dev, "%s: no valid device\n", __func__);
+		of_node_put(endpoint);
+		return -ENODEV;
+	}
+
+	of_node_put(endpoint);
+	of_node_put(device_node);
+
+	msm_host->device_node = device_node;
+
+	return 0;
+}
+
 int msm_dsi_host_init(struct msm_dsi *msm_dsi)
 {
 	struct msm_dsi_host *msm_host = NULL;
@@ -1443,15 +1510,13 @@ int msm_dsi_host_init(struct msm_dsi *msm_dsi)
 		goto fail;
 	}
 
-	ret = of_property_read_u32(pdev->dev.of_node,
-				"qcom,dsi-host-index", &msm_host->id);
+	msm_host->pdev = pdev;
+
+	ret = dsi_host_parse_dt(msm_host);
 	if (ret) {
-		dev_err(&pdev->dev,
-			"%s: host index not specified, ret=%d\n",
-			__func__, ret);
+		pr_err("%s: failed to parse dt\n", __func__);
 		goto fail;
 	}
-	msm_host->pdev = pdev;
 
 	ret = dsi_clk_init(msm_host);
 	if (ret) {
@@ -1559,7 +1624,6 @@ int msm_dsi_host_modeset_init(struct mipi_dsi_host *host,
 int msm_dsi_host_register(struct mipi_dsi_host *host, bool check_defer)
 {
 	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
-	struct device_node *node;
 	int ret;
 
 	/* Register mipi dsi host */
@@ -1577,14 +1641,13 @@ int msm_dsi_host_register(struct mipi_dsi_host *host, bool check_defer)
 		 * It makes sure panel is connected when fbcon detects
 		 * connector status and gets the proper display mode to
 		 * create framebuffer.
+		 * Don't try to defer if there is nothing connected to the dsi
+		 * output
 		 */
-		if (check_defer) {
-			node = of_get_child_by_name(msm_host->pdev->dev.of_node,
-							"panel");
-			if (node) {
-				if (!of_drm_find_panel(node))
+		if (check_defer && msm_host->device_node) {
+			if (!of_drm_find_panel(msm_host->device_node))
+				if (!of_drm_find_bridge(msm_host->device_node))
 					return -EPROBE_DEFER;
-			}
 		}
 	}
 
@@ -1919,6 +1982,13 @@ int msm_dsi_host_power_on(struct mipi_dsi_host *host)
 		goto fail_disable_reg;
 	}
 
+	ret = pinctrl_pm_select_default_state(&msm_host->pdev->dev);
+	if (ret) {
+		pr_err("%s: failed to set pinctrl default state, %d\n",
+			__func__, ret);
+		goto fail_disable_clk;
+	}
+
 	dsi_timing_setup(msm_host);
 	dsi_sw_reset(msm_host);
 	dsi_ctrl_config(msm_host, true, clk_pre, clk_post);
@@ -1931,6 +2001,8 @@ int msm_dsi_host_power_on(struct mipi_dsi_host *host)
 
 	return 0;
 
+fail_disable_clk:
+	dsi_clk_ctrl(msm_host, 0);
 fail_disable_reg:
 	dsi_host_regulator_disable(msm_host);
 unlock_ret:
@@ -1952,6 +2024,8 @@ int msm_dsi_host_power_off(struct mipi_dsi_host *host)
 
 	if (msm_host->disp_en_gpio)
 		gpiod_set_value(msm_host->disp_en_gpio, 0);
+
+	pinctrl_pm_select_sleep_state(&msm_host->pdev->dev);
 
 	msm_dsi_manager_phy_disable(msm_host->id);
 
@@ -1993,10 +2067,16 @@ struct drm_panel *msm_dsi_host_get_panel(struct mipi_dsi_host *host,
 	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
 	struct drm_panel *panel;
 
-	panel = of_drm_find_panel(msm_host->panel_node);
+	panel = of_drm_find_panel(msm_host->device_node);
 	if (panel_flags)
 			*panel_flags = msm_host->mode_flags;
 
 	return panel;
 }
 
+struct drm_bridge *msm_dsi_host_get_bridge(struct mipi_dsi_host *host)
+{
+	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
+
+	return of_drm_find_bridge(msm_host->device_node);
+}
