@@ -341,6 +341,24 @@ struct sigcontext {
 	__u64				rip;
 	__u64				eflags;		/* RFLAGS */
 	__u16				cs;
+
+	/*
+	 * Prior to 2.5.64 ("[PATCH] x86-64 updates for 2.5.64-bk3"),
+	 * Linux saved and restored fs and gs in these slots.  This
+	 * was counterproductive, as fsbase and gsbase were never
+	 * saved, so arch_prctl was presumably unreliable.
+	 *
+	 * If these slots are ever needed for any other purpose, there
+	 * is some risk that very old 64-bit binaries could get
+	 * confused.  I doubt that many such binaries still work,
+	 * though, since the same patch in 2.5.64 also removed the
+	 * 64-bit set_thread_area syscall, so it appears that there is
+	 * no TLS API that works in both pre- and post-2.5.64 kernels.
+	 *
+	 * There is at least one additional concern if these slots are
+	 * recycled for another purpose: some DOSEMU versions stash fs
+	 * and gs in these slots manually.
+	 */
 	__u16				gs;
 	__u16				fs;
 	__u16				__pad0;
