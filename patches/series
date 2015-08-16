@@ -391,6 +391,7 @@ mm-vmalloc-use-get-cpu-light.patch
 block-mq-use-cpu_light.patch
 block-mq-drop-preempt-disable.patch
 block-mq-don-t-complete-requests-via-IPI.patch
+dump-stack-don-t-disable-preemption-during-trace.patch
 
 # CPU CHILL
 rt-introduce-cpu-chill.patch
@@ -555,7 +556,6 @@ cpufreq-drop-K8-s-driver-from-beeing-selected.patch
 i915_compile_fix.patch
 drm-i915-drop-trace_i915_gem_ring_dispatch-onrt.patch
 i915-bogus-warning-from-i915-when-running-on-PREEMPT.patch
-
 
 cgroups-use-simple-wait-in-css_release.patch
 cgroups-scheduling-while-atomic-in-cgroup-code.patch
