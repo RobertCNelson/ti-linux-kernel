@@ -487,7 +487,7 @@ block_t start_bidx_of_node(unsigned int node_ofs, struct f2fs_inode_info *fi)
 	return bidx * ADDRS_PER_BLOCK + ADDRS_PER_INODE(fi);
 }
 
-static int check_dnode(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,
+static bool is_alive(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,
 		struct node_info *dni, block_t blkaddr, unsigned int *nofs)
 {
 	struct page *node_page;
@@ -500,13 +500,13 @@ static int check_dnode(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,
 
 	node_page = get_node_page(sbi, nid);
 	if (IS_ERR(node_page))
-		return 0;
+		return false;
 
 	get_node_info(sbi, nid, dni);
 
 	if (sum->version != dni->version) {
 		f2fs_put_page(node_page, 1);
-		return 0;
+		return false;
 	}
 
 	*nofs = ofs_of_node(node_page);
@@ -514,8 +514,8 @@ static int check_dnode(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,
 	f2fs_put_page(node_page, 1);
 
 	if (source_blkaddr != blkaddr)
-		return 0;
-	return 1;
+		return false;
+	return true;
 }
 
 static void move_encrypted_block(struct inode *inode, block_t bidx)
@@ -552,7 +552,10 @@ static void move_encrypted_block(struct inode *inode, block_t bidx)
 	fio.page = page;
 	fio.blk_addr = dn.data_blkaddr;
 
-	fio.encrypted_page = grab_cache_page(META_MAPPING(fio.sbi), fio.blk_addr);
+	fio.encrypted_page = pagecache_get_page(META_MAPPING(fio.sbi),
+					fio.blk_addr,
+					FGP_LOCK|FGP_CREAT,
+					GFP_NOFS);
 	if (!fio.encrypted_page)
 		goto put_out;
 
@@ -670,7 +673,7 @@ next_step:
 		}
 
 		/* Get an inode by ino with checking validity */
-		if (check_dnode(sbi, entry, &dni, start_addr + off, &nofs) == 0)
+		if (!is_alive(sbi, entry, &dni, start_addr + off, &nofs))
 			continue;
 
 		if (phase == 1) {
@@ -789,7 +792,8 @@ static void do_garbage_collect(struct f2fs_sb_info *sbi, unsigned int segno,
 
 int f2fs_gc(struct f2fs_sb_info *sbi)
 {
-	unsigned int segno, i;
+	unsigned int segno = NULL_SEGNO;
+	unsigned int i;
 	int gc_type = BG_GC;
 	int nfree = 0;
 	int ret = -1;
@@ -808,10 +812,11 @@ gc_more:
 
 	if (gc_type == BG_GC && has_not_enough_free_secs(sbi, nfree)) {
 		gc_type = FG_GC;
-		write_checkpoint(sbi, &cpc);
+		if (__get_victim(sbi, &segno, gc_type) || prefree_segments(sbi))
+			write_checkpoint(sbi, &cpc);
 	}
 
-	if (!__get_victim(sbi, &segno, gc_type))
+	if (segno == NULL_SEGNO && !__get_victim(sbi, &segno, gc_type))
 		goto stop;
 	ret = 0;
 
