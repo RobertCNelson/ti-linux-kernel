@@ -367,6 +367,10 @@ struct mm_rss_stat {
 };
 
 #ifdef CONFIG_HUGETLB_PAGE
+
+#ifndef HUGE_MAX_HSTATE
+#define HUGE_MAX_HSTATE	1
+#endif
 struct hugetlb_usage {
 	atomic_long_t count[HUGE_MAX_HSTATE];
 };

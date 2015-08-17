@@ -344,10 +344,6 @@ int __init alloc_bootmem_huge_page(struct hstate *h);
 void __init hugetlb_add_hstate(unsigned order);
 struct hstate *size_to_hstate(unsigned long size);
 
-#ifndef HUGE_MAX_HSTATE
-#define HUGE_MAX_HSTATE 1
-#endif
-
 extern struct hstate hstates[HUGE_MAX_HSTATE];
 extern unsigned int default_hstate_idx;
 
