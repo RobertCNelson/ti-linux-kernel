@@ -34,7 +34,9 @@ i915-y += i915_cmd_parser.o \
 	  i915_gpu_error.o \
 	  i915_irq.o \
 	  i915_trace_points.o \
+	  intel_hotplug.o \
 	  intel_lrc.o \
+	  intel_mocs.o \
 	  intel_ringbuffer.o \
 	  intel_uncore.o
 
@@ -57,7 +59,7 @@ i915-y += intel_audio.o \
 	  intel_sideband.o \
 	  intel_sprite.o
 i915-$(CONFIG_ACPI)		+= intel_acpi.o intel_opregion.o
-i915-$(CONFIG_DRM_I915_FBDEV)	+= intel_fbdev.o
+i915-$(CONFIG_DRM_FBDEV_EMULATION)	+= intel_fbdev.o
 
 # modesetting output/encoder code
 i915-y += dvo_ch7017.o \
