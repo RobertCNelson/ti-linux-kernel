@@ -1496,6 +1496,7 @@ config HOTPLUG_CPU
 config ARM_PSCI
 	bool "Support for the ARM Power State Coordination Interface (PSCI)"
 	depends on CPU_V7
+	select ARM_PSCI_FW
 	help
 	  Say Y here if you want Linux to communicate with system firmware
 	  implementing the PSCI specification for CPU-centric power
@@ -1701,12 +1702,8 @@ config HIGHPTE
 	  user-space 2nd level page tables to reside in high memory.
 
 config HW_PERF_EVENTS
-	bool "Enable hardware performance counter support for perf events"
-	depends on PERF_EVENTS
-	default y
-	help
-	  Enable hardware performance counter support for perf events. If
-	  disabled, perf events will use software events only.
+	def_bool y
+	depends on ARM_PMU
 
 config SYS_SUPPORTS_HUGETLBFS
        def_bool y
