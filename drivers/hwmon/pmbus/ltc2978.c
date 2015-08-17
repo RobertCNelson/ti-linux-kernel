@@ -1,6 +1,6 @@
 /*
  * Hardware monitoring driver for LTC2974, LTC2977, LTC2978, LTC3880,
- * LTC3883, and LTM4676
+ * LTC3883, LTC3887. and LTM4676
  *
  * Copyright (c) 2011 Ericsson AB.
  * Copyright (c) 2013, 2014 Guenter Roeck
@@ -25,13 +25,14 @@
 #include <linux/regulator/driver.h>
 #include "pmbus.h"
 
-enum chips { ltc2974, ltc2977, ltc2978, ltc3880, ltc3883, ltm4676 };
+enum chips { ltc2974, ltc2977, ltc2978, ltc3880, ltc3882, ltc3883, ltc3887,
+	     ltm4676 };
 
 /* Common for all chips */
 #define LTC2978_MFR_VOUT_PEAK		0xdd
 #define LTC2978_MFR_VIN_PEAK		0xde
 #define LTC2978_MFR_TEMPERATURE_PEAK	0xdf
-#define LTC2978_MFR_SPECIAL_ID		0xe7
+#define LTC2978_MFR_SPECIAL_ID		0xe7	/* Not on LTC3882 */
 
 /* LTC2974, LCT2977, and LTC2978 */
 #define LTC2978_MFR_VOUT_MIN		0xfb
@@ -42,7 +43,7 @@ enum chips { ltc2974, ltc2977, ltc2978, ltc3880, ltc3883, ltm4676 };
 #define LTC2974_MFR_IOUT_PEAK		0xd7
 #define LTC2974_MFR_IOUT_MIN		0xd8
 
-/* LTC3880, LTC3883, and LTM4676 */
+/* LTC3880, LTC3882, LTC3883, LTC3887, and LTM4676 */
 #define LTC3880_MFR_IOUT_PEAK		0xd7
 #define LTC3880_MFR_CLEAR_PEAKS		0xe3
 #define LTC3880_MFR_TEMPERATURE2_PEAK	0xf4
@@ -60,7 +61,11 @@ enum chips { ltc2974, ltc2977, ltc2978, ltc3880, ltc3883, ltm4676 };
 #define LTC3880_ID_MASK			0xff00
 #define LTC3883_ID			0x4300
 #define LTC3883_ID_MASK			0xff00
-#define LTM4676_ID			0x4480	/* datasheet claims 0x440X */
+#define LTC3887_ID			0x4700
+#define LTC3887_ID_MASK			0xff00
+#define LTM4676_ID			0x4400
+#define LTM4676_ID_2			0x4480
+#define LTM4676A_ID			0x47e0
 #define LTM4676_ID_MASK			0xfff0
 
 #define LTC2974_NUM_PAGES		4
@@ -313,7 +318,8 @@ static int ltc2978_clear_peaks(struct i2c_client *client, int page,
 {
 	int ret;
 
-	if (id == ltc3880 || id == ltc3883)
+	if (id == ltc3880 || id == ltc3882 || id == ltc3883 || id == ltc3887 ||
+	    id == ltm4676)
 		ret = pmbus_write_byte(client, 0, LTC3880_MFR_CLEAR_PEAKS);
 	else
 		ret = pmbus_write_byte(client, page, PMBUS_CLEAR_FAULTS);
@@ -369,7 +375,9 @@ static const struct i2c_device_id ltc2978_id[] = {
 	{"ltc2977", ltc2977},
 	{"ltc2978", ltc2978},
 	{"ltc3880", ltc3880},
+	{"ltc3882", ltc3882},
 	{"ltc3883", ltc3883},
+	{"ltc3887", ltc3887},
 	{"ltm4676", ltm4676},
 	{}
 };
@@ -388,10 +396,62 @@ static const struct regulator_desc ltc2978_reg_desc[] = {
 };
 #endif /* CONFIG_SENSORS_LTC2978_REGULATOR */
 
+static int ltc2978_get_id(struct i2c_client *client)
+{
+	int chip_id;
+
+	chip_id = i2c_smbus_read_word_data(client, LTC2978_MFR_SPECIAL_ID);
+	if (chip_id < 0) {
+		const struct i2c_device_id *id;
+		u8 buf[I2C_SMBUS_BLOCK_MAX];
+		int ret;
+
+		if (!i2c_check_functionality(client->adapter,
+					     I2C_FUNC_SMBUS_READ_BLOCK_DATA))
+			return -ENODEV;
+
+		ret = i2c_smbus_read_block_data(client, PMBUS_MFR_ID, buf);
+		if (ret < 0)
+			return ret;
+		if (ret < 3 || strncmp(buf, "LTC", 3))
+			return -ENODEV;
+
+		ret = i2c_smbus_read_block_data(client, PMBUS_MFR_MODEL, buf);
+		if (ret < 0)
+			return ret;
+		for (id = &ltc2978_id[0]; strlen(id->name); id++) {
+			if (!strncasecmp(id->name, buf, strlen(id->name)))
+				return (int)id->driver_data;
+		}
+		return -ENODEV;
+	}
+
+	if (chip_id == LTC2974_ID_REV1 || chip_id == LTC2974_ID_REV2)
+		return ltc2974;
+	else if (chip_id == LTC2977_ID)
+		return ltc2977;
+	else if (chip_id == LTC2978_ID_REV1 || chip_id == LTC2978_ID_REV2 ||
+		 chip_id == LTC2978A_ID)
+		return ltc2978;
+	else if ((chip_id & LTC3880_ID_MASK) == LTC3880_ID)
+		return ltc3880;
+	else if ((chip_id & LTC3883_ID_MASK) == LTC3883_ID)
+		return ltc3883;
+	else if ((chip_id & LTC3887_ID_MASK) == LTC3887_ID)
+		return ltc3887;
+	else if ((chip_id & LTM4676_ID_MASK) == LTM4676_ID ||
+		 (chip_id & LTM4676_ID_MASK) == LTM4676_ID_2 ||
+		 (chip_id & LTM4676_ID_MASK) == LTM4676A_ID)
+		return ltm4676;
+
+	dev_err(&client->dev, "Unsupported chip ID 0x%x\n", chip_id);
+	return -ENODEV;
+}
+
 static int ltc2978_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
-	int chip_id, i;
+	int i, chip_id;
 	struct ltc2978_data *data;
 	struct pmbus_driver_info *info;
 
@@ -404,27 +464,11 @@ static int ltc2978_probe(struct i2c_client *client,
 	if (!data)
 		return -ENOMEM;
 
-	chip_id = i2c_smbus_read_word_data(client, LTC2978_MFR_SPECIAL_ID);
+	chip_id = ltc2978_get_id(client);
 	if (chip_id < 0)
 		return chip_id;
 
-	if (chip_id == LTC2974_ID_REV1 || chip_id == LTC2974_ID_REV2) {
-		data->id = ltc2974;
-	} else if (chip_id == LTC2977_ID) {
-		data->id = ltc2977;
-	} else if (chip_id == LTC2978_ID_REV1 || chip_id == LTC2978_ID_REV2 ||
-		   chip_id == LTC2978A_ID) {
-		data->id = ltc2978;
-	} else if ((chip_id & LTC3880_ID_MASK) == LTC3880_ID) {
-		data->id = ltc3880;
-	} else if ((chip_id & LTC3883_ID_MASK) == LTC3883_ID) {
-		data->id = ltc3883;
-	} else if ((chip_id & LTM4676_ID_MASK) == LTM4676_ID) {
-		data->id = ltm4676;
-	} else {
-		dev_err(&client->dev, "Unsupported chip ID 0x%x\n", chip_id);
-		return -ENODEV;
-	}
+	data->id = chip_id;
 	if (data->id != id->driver_data)
 		dev_warn(&client->dev,
 			 "Device mismatch: Configured %s, detected %s\n",
@@ -474,10 +518,25 @@ static int ltc2978_probe(struct i2c_client *client,
 		}
 		break;
 	case ltc3880:
+	case ltc3887:
 	case ltm4676:
 		info->read_word_data = ltc3880_read_word_data;
 		info->pages = LTC3880_NUM_PAGES;
 		info->func[0] = PMBUS_HAVE_VIN | PMBUS_HAVE_IIN
+		  | PMBUS_HAVE_STATUS_INPUT
+		  | PMBUS_HAVE_VOUT | PMBUS_HAVE_STATUS_VOUT
+		  | PMBUS_HAVE_IOUT | PMBUS_HAVE_STATUS_IOUT
+		  | PMBUS_HAVE_POUT | PMBUS_HAVE_TEMP
+		  | PMBUS_HAVE_TEMP2 | PMBUS_HAVE_STATUS_TEMP;
+		info->func[1] = PMBUS_HAVE_VOUT | PMBUS_HAVE_STATUS_VOUT
+		  | PMBUS_HAVE_IOUT | PMBUS_HAVE_STATUS_IOUT
+		  | PMBUS_HAVE_POUT
+		  | PMBUS_HAVE_TEMP | PMBUS_HAVE_STATUS_TEMP;
+		break;
+	case ltc3882:
+		info->read_word_data = ltc3880_read_word_data;
+		info->pages = LTC3880_NUM_PAGES;
+		info->func[0] = PMBUS_HAVE_VIN
 		  | PMBUS_HAVE_STATUS_INPUT
 		  | PMBUS_HAVE_VOUT | PMBUS_HAVE_STATUS_VOUT
 		  | PMBUS_HAVE_IOUT | PMBUS_HAVE_STATUS_IOUT
@@ -520,7 +579,9 @@ static const struct of_device_id ltc2978_of_match[] = {
 	{ .compatible = "lltc,ltc2977" },
 	{ .compatible = "lltc,ltc2978" },
 	{ .compatible = "lltc,ltc3880" },
+	{ .compatible = "lltc,ltc3882" },
 	{ .compatible = "lltc,ltc3883" },
+	{ .compatible = "lltc,ltc3887" },
 	{ .compatible = "lltc,ltm4676" },
 	{ }
 };
