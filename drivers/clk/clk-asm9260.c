@@ -244,10 +244,10 @@ static const struct asm9260_gate_data asm9260_ahb_gates[] __initconst = {
 		HW_AHBCLKCTRL1,	16 },
 };
 
-static const char __initdata *main_mux_p[] =   { NULL, NULL };
-static const char __initdata *i2s0_mux_p[] =   { NULL, NULL, "i2s0m_div"};
-static const char __initdata *i2s1_mux_p[] =   { NULL, NULL, "i2s1m_div"};
-static const char __initdata *clkout_mux_p[] = { NULL, NULL, "rtc"};
+static const char *const main_mux_p[] __initconst =   { NULL, NULL };
+static const char *const i2s0_mux_p[] __initconst =   { NULL, NULL, "i2s0m_div"};
+static const char *const i2s1_mux_p[] __initconst =   { NULL, NULL, "i2s1m_div"};
+static const char *const clkout_mux_p[] __initconst = { NULL, NULL, "rtc"};
 static u32 three_mux_table[] = {0, 1, 3};
 
 static struct asm9260_mux_clock asm9260_mux_clks[] __initdata = {
