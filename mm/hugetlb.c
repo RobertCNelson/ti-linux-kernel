@@ -2807,7 +2807,7 @@ void hugetlb_report_usage(struct seq_file *m, struct mm_struct *mm)
 		if (i > 0)
 			seq_puts(m, " ");
 
-		seq_printf(m, "%ld*%dkB",
+		seq_printf(m, "%ld*%lukB",
 			atomic_long_read(&mm->hugetlb_usage.count[i]),
 			huge_page_size(&hstates[i]) >> 10);
 	}
