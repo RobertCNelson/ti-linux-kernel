@@ -23,17 +23,12 @@
 /* Error reporting and handling support */
 #include "wilc_errorsupport.h"
 
-/* Sleep support */
-#include "wilc_sleep.h"
-
 /* Timer support */
 #include "wilc_timer.h"
 
 /* Memory support */
 #include "wilc_memory.h"
 
-/* String Utilities */
-#include "wilc_strutils.h"
 
 /* Message Queue */
 #include "wilc_msgqueue.h"
