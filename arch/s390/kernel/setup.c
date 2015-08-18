@@ -62,6 +62,7 @@
 #include <asm/os_info.h>
 #include <asm/sclp.h>
 #include <asm/sysinfo.h>
+#include <asm/numa.h>
 #include "entry.h"
 
 /*
@@ -76,7 +77,7 @@ EXPORT_SYMBOL(console_devno);
 unsigned int console_irq = -1;
 EXPORT_SYMBOL(console_irq);
 
-unsigned long elf_hwcap = 0;
+unsigned long elf_hwcap __read_mostly = 0;
 char elf_platform[ELF_PLATFORM_SIZE];
 
 int __initdata memory_end_set;
@@ -879,6 +880,7 @@ void __init setup_arch(char **cmdline_p)
 	setup_lowcore();
 	smp_fill_possible_mask();
         cpu_init();
+	numa_setup();
 
 	/*
 	 * Setup capabilities (ELF_HWCAP & ELF_PLATFORM).
