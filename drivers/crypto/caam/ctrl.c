@@ -16,6 +16,24 @@
 #include "error.h"
 
 /*
+ * ARM targets tend to have clock control subsystems that can
+ * enable/disable clocking to our device.
+ */
+#ifdef CONFIG_ARM
+static inline struct clk *caam_drv_identify_clk(struct device *dev,
+						char *clk_name)
+{
+	return devm_clk_get(dev, clk_name);
+}
+#else
+static inline struct clk *caam_drv_identify_clk(struct device *dev,
+						char *clk_name)
+{
+	return NULL;
+}
+#endif
+
+/*
  * Descriptor to instantiate RNG State Handle 0 in normal mode and
  * load the JDKEK, TDKEK and TDSK registers
  */
@@ -175,7 +193,7 @@ static int instantiate_rng(struct device *ctrldev, int state_handle_mask,
 {
 	struct caam_drv_private *ctrlpriv = dev_get_drvdata(ctrldev);
 	struct caam_ctrl __iomem *ctrl;
-	u32 *desc, status, rdsta_val;
+	u32 *desc, status = 0, rdsta_val;
 	int ret = 0, sh_idx;
 
 	ctrl = (struct caam_ctrl __iomem *)ctrlpriv->ctrl;
@@ -207,7 +225,8 @@ static int instantiate_rng(struct device *ctrldev, int state_handle_mask,
 		 * CAAM eras), then try again.
 		 */
 		rdsta_val = rd_reg32(&ctrl->r4tst[0].rdsta) & RDSTA_IFMASK;
-		if (status || !(rdsta_val & (1 << sh_idx)))
+		if ((status && status != JRSTA_SSRC_JUMP_HALT_CC) ||
+		    !(rdsta_val & (1 << sh_idx)))
 			ret = -EAGAIN;
 		if (ret)
 			break;
@@ -279,7 +298,7 @@ static int caam_remove(struct platform_device *pdev)
 	struct device *ctrldev;
 	struct caam_drv_private *ctrlpriv;
 	struct caam_ctrl __iomem *ctrl;
-	int ring, ret = 0;
+	int ring;
 
 	ctrldev = &pdev->dev;
 	ctrlpriv = dev_get_drvdata(ctrldev);
@@ -303,7 +322,13 @@ static int caam_remove(struct platform_device *pdev)
 	/* Unmap controller region */
 	iounmap(ctrl);
 
-	return ret;
+	/* shut clocks off before finalizing shutdown */
+	clk_disable_unprepare(ctrlpriv->caam_ipg);
+	clk_disable_unprepare(ctrlpriv->caam_mem);
+	clk_disable_unprepare(ctrlpriv->caam_aclk);
+	clk_disable_unprepare(ctrlpriv->caam_emi_slow);
+
+	return 0;
 }
 
 /*
@@ -370,14 +395,14 @@ static void kick_trng(struct platform_device *pdev, int ent_delay)
 int caam_get_era(void)
 {
 	struct device_node *caam_node;
-	for_each_compatible_node(caam_node, NULL, "fsl,sec-v4.0") {
-		const uint32_t *prop = (uint32_t *)of_get_property(caam_node,
-				"fsl,sec-era",
-				NULL);
-		return prop ? *prop : -ENOTSUPP;
-	}
+	int ret;
+	u32 prop;
 
-	return -ENOTSUPP;
+	caam_node = of_find_compatible_node(NULL, NULL, "fsl,sec-v4.0");
+	ret = of_property_read_u32(caam_node, "fsl,sec-era", &prop);
+	of_node_put(caam_node);
+
+	return IS_ERR_VALUE(ret) ? -ENOTSUPP : prop;
 }
 EXPORT_SYMBOL(caam_get_era);
 
@@ -390,6 +415,7 @@ static int caam_probe(struct platform_device *pdev)
 	struct device_node *nprop, *np;
 	struct caam_ctrl __iomem *ctrl;
 	struct caam_drv_private *ctrlpriv;
+	struct clk *clk;
 #ifdef CONFIG_DEBUG_FS
 	struct caam_perfmon *perfmon;
 #endif
@@ -407,6 +433,69 @@ static int caam_probe(struct platform_device *pdev)
 	dev_set_drvdata(dev, ctrlpriv);
 	ctrlpriv->pdev = pdev;
 	nprop = pdev->dev.of_node;
+
+	/* Enable clocking */
+	clk = caam_drv_identify_clk(&pdev->dev, "ipg");
+	if (IS_ERR(clk)) {
+		ret = PTR_ERR(clk);
+		dev_err(&pdev->dev,
+			"can't identify CAAM ipg clk: %d\n", ret);
+		return -ENODEV;
+	}
+	ctrlpriv->caam_ipg = clk;
+
+	clk = caam_drv_identify_clk(&pdev->dev, "mem");
+	if (IS_ERR(clk)) {
+		ret = PTR_ERR(clk);
+		dev_err(&pdev->dev,
+			"can't identify CAAM mem clk: %d\n", ret);
+		return -ENODEV;
+	}
+	ctrlpriv->caam_mem = clk;
+
+	clk = caam_drv_identify_clk(&pdev->dev, "aclk");
+	if (IS_ERR(clk)) {
+		ret = PTR_ERR(clk);
+		dev_err(&pdev->dev,
+			"can't identify CAAM aclk clk: %d\n", ret);
+		return -ENODEV;
+	}
+	ctrlpriv->caam_aclk = clk;
+
+	clk = caam_drv_identify_clk(&pdev->dev, "emi_slow");
+	if (IS_ERR(clk)) {
+		ret = PTR_ERR(clk);
+		dev_err(&pdev->dev,
+			"can't identify CAAM emi_slow clk: %d\n", ret);
+		return -ENODEV;
+	}
+	ctrlpriv->caam_emi_slow = clk;
+
+	ret = clk_prepare_enable(ctrlpriv->caam_ipg);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "can't enable CAAM ipg clock: %d\n", ret);
+		return -ENODEV;
+	}
+
+	ret = clk_prepare_enable(ctrlpriv->caam_mem);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "can't enable CAAM secure mem clock: %d\n",
+			ret);
+		return -ENODEV;
+	}
+
+	ret = clk_prepare_enable(ctrlpriv->caam_aclk);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "can't enable CAAM aclk clock: %d\n", ret);
+		return -ENODEV;
+	}
+
+	ret = clk_prepare_enable(ctrlpriv->caam_emi_slow);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "can't enable CAAM emi slow clock: %d\n",
+			ret);
+		return -ENODEV;
+	}
 
 	/* Get configuration properties from device tree */
 	/* First, get register page */
@@ -444,8 +533,9 @@ static int caam_probe(struct platform_device *pdev)
 	 * Enable DECO watchdogs and, if this is a PHYS_ADDR_T_64BIT kernel,
 	 * long pointers in master configuration register
 	 */
-	setbits32(&ctrl->mcr, MCFGR_WDENABLE |
-		  (sizeof(dma_addr_t) == sizeof(u64) ? MCFGR_LONG_PTR : 0));
+	clrsetbits_32(&ctrl->mcr, MCFGR_AWCACHE_MASK, MCFGR_AWCACHE_CACH |
+		      MCFGR_WDENABLE | (sizeof(dma_addr_t) == sizeof(u64) ?
+					MCFGR_LONG_PTR : 0));
 
 	/*
 	 *  Read the Compile Time paramters and SCFGR to determine

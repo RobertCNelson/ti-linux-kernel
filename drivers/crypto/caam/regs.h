@@ -65,9 +65,31 @@
  *
  */
 
+#ifdef CONFIG_ARM
+/* These are common macros for Power, put here for ARM */
+#define setbits32(_addr, _v) writel((readl(_addr) | (_v)), (_addr))
+#define clrbits32(_addr, _v) writel((readl(_addr) & ~(_v)), (_addr))
+
+#define out_arch(type, endian, a, v)	__raw_write##type(cpu_to_##endian(v), a)
+#define in_arch(type, endian, a)	endian##_to_cpu(__raw_read##type(a))
+
+#define out_le32(a, v)	out_arch(l, le32, a, v)
+#define in_le32(a)	in_arch(l, le32, a)
+
+#define out_be32(a, v)	out_arch(l, be32, a, v)
+#define in_be32(a)	in_arch(l, be32, a)
+
+#define clrsetbits(type, addr, clear, set) \
+	out_##type((addr), (in_##type(addr) & ~(clear)) | (set))
+
+#define clrsetbits_be32(addr, clear, set) clrsetbits(be32, addr, clear, set)
+#define clrsetbits_le32(addr, clear, set) clrsetbits(le32, addr, clear, set)
+#endif
+
 #ifdef __BIG_ENDIAN
 #define wr_reg32(reg, data) out_be32(reg, data)
 #define rd_reg32(reg) in_be32(reg)
+#define clrsetbits_32(addr, clear, set) clrsetbits_be32(addr, clear, set)
 #ifdef CONFIG_64BIT
 #define wr_reg64(reg, data) out_be64(reg, data)
 #define rd_reg64(reg) in_be64(reg)
@@ -76,6 +98,7 @@
 #ifdef __LITTLE_ENDIAN
 #define wr_reg32(reg, data) __raw_writel(data, reg)
 #define rd_reg32(reg) __raw_readl(reg)
+#define clrsetbits_32(addr, clear, set) clrsetbits_le32(addr, clear, set)
 #ifdef CONFIG_64BIT
 #define wr_reg64(reg, data) __raw_writeq(data, reg)
 #define rd_reg64(reg) __raw_readq(reg)
@@ -133,18 +156,28 @@ struct jr_outentry {
 #define CHA_NUM_MS_DECONUM_SHIFT	24
 #define CHA_NUM_MS_DECONUM_MASK	(0xfull << CHA_NUM_MS_DECONUM_SHIFT)
 
-/* CHA Version IDs */
+/*
+ * CHA version IDs / instantiation bitfields
+ * Defined for use with the cha_id fields in perfmon, but the same shift/mask
+ * selectors can be used to pull out the number of instantiated blocks within
+ * cha_num fields in perfmon because the locations are the same.
+ */
 #define CHA_ID_LS_AES_SHIFT	0
-#define CHA_ID_LS_AES_MASK		(0xfull << CHA_ID_LS_AES_SHIFT)
+#define CHA_ID_LS_AES_MASK	(0xfull << CHA_ID_LS_AES_SHIFT)
+#define CHA_ID_LS_AES_LP	(0x3ull << CHA_ID_LS_AES_SHIFT)
+#define CHA_ID_LS_AES_HP	(0x4ull << CHA_ID_LS_AES_SHIFT)
 
 #define CHA_ID_LS_DES_SHIFT	4
-#define CHA_ID_LS_DES_MASK		(0xfull << CHA_ID_LS_DES_SHIFT)
+#define CHA_ID_LS_DES_MASK	(0xfull << CHA_ID_LS_DES_SHIFT)
 
 #define CHA_ID_LS_ARC4_SHIFT	8
 #define CHA_ID_LS_ARC4_MASK	(0xfull << CHA_ID_LS_ARC4_SHIFT)
 
 #define CHA_ID_LS_MD_SHIFT	12
 #define CHA_ID_LS_MD_MASK	(0xfull << CHA_ID_LS_MD_SHIFT)
+#define CHA_ID_LS_MD_LP256	(0x0ull << CHA_ID_LS_MD_SHIFT)
+#define CHA_ID_LS_MD_LP512	(0x1ull << CHA_ID_LS_MD_SHIFT)
+#define CHA_ID_LS_MD_HP		(0x2ull << CHA_ID_LS_MD_SHIFT)
 
 #define CHA_ID_LS_RNG_SHIFT	16
 #define CHA_ID_LS_RNG_MASK	(0xfull << CHA_ID_LS_RNG_SHIFT)
@@ -395,10 +428,16 @@ struct caam_ctrl {
 /* AXI read cache control */
 #define MCFGR_ARCACHE_SHIFT	12
 #define MCFGR_ARCACHE_MASK	(0xf << MCFGR_ARCACHE_SHIFT)
+#define MCFGR_ARCACHE_BUFF	(0x1 << MCFGR_ARCACHE_SHIFT)
+#define MCFGR_ARCACHE_CACH	(0x2 << MCFGR_ARCACHE_SHIFT)
+#define MCFGR_ARCACHE_RALL	(0x4 << MCFGR_ARCACHE_SHIFT)
 
 /* AXI write cache control */
 #define MCFGR_AWCACHE_SHIFT	8
 #define MCFGR_AWCACHE_MASK	(0xf << MCFGR_AWCACHE_SHIFT)
+#define MCFGR_AWCACHE_BUFF	(0x1 << MCFGR_AWCACHE_SHIFT)
+#define MCFGR_AWCACHE_CACH	(0x2 << MCFGR_AWCACHE_SHIFT)
+#define MCFGR_AWCACHE_WALL	(0x8 << MCFGR_AWCACHE_SHIFT)
 
 /* AXI pipeline depth */
 #define MCFGR_AXIPIPE_SHIFT	4
