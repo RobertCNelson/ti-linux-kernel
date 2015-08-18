@@ -635,8 +635,6 @@ struct vnic_devcmd {
 	u64 args[VNIC_DEVCMD_NARGS];	/* RW cmd args (little-endian) */
 };
 
-#define DEVCMD2_FNORESULT	0x1	/* Don't copy result to host */
-
 #define VNIC_DEVCMD2_NARGS	VNIC_DEVCMD_NARGS
 struct vnic_devcmd2 {
 	u16 pad;
@@ -653,8 +651,5 @@ struct devcmd2_result {
 	u8  error;
 	u8  color;
 };
-
-#define DEVCMD2_RING_SIZE	32
-#define DEVCMD2_DESC_SIZE	128
 
 #endif /* _VNIC_DEVCMD_H_ */
