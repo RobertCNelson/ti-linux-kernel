@@ -53,28 +53,6 @@ void blk_queue_unprep_rq(struct request_queue *q, unprep_rq_fn *ufn)
 }
 EXPORT_SYMBOL(blk_queue_unprep_rq);
 
-/**
- * blk_queue_merge_bvec - set a merge_bvec function for queue
- * @q:		queue
- * @mbfn:	merge_bvec_fn
- *
- * Usually queues have static limitations on the max sectors or segments that
- * we can put in a request. Stacking drivers may have some settings that
- * are dynamic, and thus we have to query the queue whether it is ok to
- * add a new bio_vec to a bio at a given offset or not. If the block device
- * has such limitations, it needs to register a merge_bvec_fn to control
- * the size of bio's sent to it. Note that a block device *must* allow a
- * single page to be added to an empty bio. The block device driver may want
- * to use the bio_split() function to deal with these bio's. By default
- * no merge_bvec_fn is defined for a queue, and only the fixed limits are
- * honored.
- */
-void blk_queue_merge_bvec(struct request_queue *q, merge_bvec_fn *mbfn)
-{
-	q->merge_bvec_fn = mbfn;
-}
-EXPORT_SYMBOL(blk_queue_merge_bvec);
-
 void blk_queue_softirq_done(struct request_queue *q, softirq_done_fn *fn)
 {
 	q->softirq_done_fn = fn;
@@ -116,6 +94,7 @@ void blk_set_default_limits(struct queue_limits *lim)
 	lim->chunk_sectors = 0;
 	lim->max_write_same_sectors = 0;
 	lim->max_discard_sectors = 0;
+	lim->max_hw_discard_sectors = 0;
 	lim->discard_granularity = 0;
 	lim->discard_alignment = 0;
 	lim->discard_misaligned = 0;
@@ -303,6 +282,7 @@ EXPORT_SYMBOL(blk_queue_chunk_sectors);
 void blk_queue_max_discard_sectors(struct request_queue *q,
 		unsigned int max_discard_sectors)
 {
+	q->limits.max_hw_discard_sectors = max_discard_sectors;
 	q->limits.max_discard_sectors = max_discard_sectors;
 }
 EXPORT_SYMBOL(blk_queue_max_discard_sectors);
@@ -641,6 +621,8 @@ int blk_stack_limits(struct queue_limits *t, struct queue_limits *b,
 
 		t->max_discard_sectors = min_not_zero(t->max_discard_sectors,
 						      b->max_discard_sectors);
+		t->max_hw_discard_sectors = min_not_zero(t->max_hw_discard_sectors,
+							 b->max_hw_discard_sectors);
 		t->discard_granularity = max(t->discard_granularity,
 					     b->discard_granularity);
 		t->discard_alignment = lcm_not_zero(t->discard_alignment, alignment) %
