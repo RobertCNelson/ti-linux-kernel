@@ -328,11 +328,11 @@ static void set_node_addr(struct f2fs_sb_info *sbi, struct node_info *ni,
 int try_to_free_nats(struct f2fs_sb_info *sbi, int nr_shrink)
 {
 	struct f2fs_nm_info *nm_i = NM_I(sbi);
+	int nr = nr_shrink;
 
-	if (available_free_memory(sbi, NAT_ENTRIES))
+	if (!down_write_trylock(&nm_i->nat_tree_lock))
 		return 0;
 
-	down_write(&nm_i->nat_tree_lock);
 	while (nr_shrink && !list_empty(&nm_i->nat_entries)) {
 		struct nat_entry *ne;
 		ne = list_first_entry(&nm_i->nat_entries,
@@ -341,7 +341,7 @@ int try_to_free_nats(struct f2fs_sb_info *sbi, int nr_shrink)
 		nr_shrink--;
 	}
 	up_write(&nm_i->nat_tree_lock);
-	return nr_shrink;
+	return nr - nr_shrink;
 }
 
 /*
@@ -991,8 +991,7 @@ fail:
 /*
  * Caller should do after getting the following values.
  * 0: f2fs_put_page(page, 0)
- * LOCKED_PAGE: f2fs_put_page(page, 1)
- * error: nothing
+ * LOCKED_PAGE or error: f2fs_put_page(page, 1)
  */
 static int read_node_page(struct page *page, int rw)
 {
@@ -1010,7 +1009,6 @@ static int read_node_page(struct page *page, int rw)
 
 	if (unlikely(ni.blk_addr == NULL_ADDR)) {
 		ClearPageUptodate(page);
-		f2fs_put_page(page, 1);
 		return -ENOENT;
 	}
 
@@ -1041,10 +1039,7 @@ void ra_node_page(struct f2fs_sb_info *sbi, nid_t nid)
 		return;
 
 	err = read_node_page(apage, READA);
-	if (err == 0)
-		f2fs_put_page(apage, 0);
-	else if (err == LOCKED_PAGE)
-		f2fs_put_page(apage, 1);
+	f2fs_put_page(apage, err ? 1 : 0);
 }
 
 struct page *get_node_page(struct f2fs_sb_info *sbi, pgoff_t nid)
@@ -1057,10 +1052,12 @@ repeat:
 		return ERR_PTR(-ENOMEM);
 
 	err = read_node_page(page, READ_SYNC);
-	if (err < 0)
+	if (err < 0) {
+		f2fs_put_page(page, 1);
 		return ERR_PTR(err);
-	else if (err != LOCKED_PAGE)
+	} else if (err != LOCKED_PAGE) {
 		lock_page(page);
+	}
 
 	if (unlikely(!PageUptodate(page) || nid != nid_of_node(page))) {
 		ClearPageUptodate(page);
@@ -1096,10 +1093,12 @@ repeat:
 		return ERR_PTR(-ENOMEM);
 
 	err = read_node_page(page, READ_SYNC);
-	if (err < 0)
+	if (err < 0) {
+		f2fs_put_page(page, 1);
 		return ERR_PTR(err);
-	else if (err == LOCKED_PAGE)
+	} else if (err == LOCKED_PAGE) {
 		goto page_hit;
+	}
 
 	blk_start_plug(&plug);
 
@@ -1533,7 +1532,7 @@ static void build_free_nids(struct f2fs_sb_info *sbi)
 		if (unlikely(nid >= nm_i->max_nid))
 			nid = 0;
 
-		if (i++ == FREE_NID_PAGES)
+		if (++i >= FREE_NID_PAGES)
 			break;
 	}
 
@@ -1634,6 +1633,34 @@ void alloc_nid_failed(struct f2fs_sb_info *sbi, nid_t nid)
 
 	if (need_free)
 		kmem_cache_free(free_nid_slab, i);
+}
+
+int try_to_free_nids(struct f2fs_sb_info *sbi, int nr_shrink)
+{
+	struct f2fs_nm_info *nm_i = NM_I(sbi);
+	struct free_nid *i, *next;
+	int nr = nr_shrink;
+
+	if (!mutex_trylock(&nm_i->build_lock))
+		return 0;
+
+	spin_lock(&nm_i->free_nid_list_lock);
+	list_for_each_entry_safe(i, next, &nm_i->free_nid_list, list) {
+		if (nr_shrink <= 0 || nm_i->fcnt <= NAT_ENTRY_PER_BLOCK)
+			break;
+		if (i->state == NID_ALLOC)
+			continue;
+		__del_from_free_nid_list(nm_i, i);
+		nm_i->fcnt--;
+		spin_unlock(&nm_i->free_nid_list_lock);
+		kmem_cache_free(free_nid_slab, i);
+		nr_shrink--;
+		spin_lock(&nm_i->free_nid_list_lock);
+	}
+	spin_unlock(&nm_i->free_nid_list_lock);
+	mutex_unlock(&nm_i->build_lock);
+
+	return nr - nr_shrink;
 }
 
 void recover_inline_xattr(struct inode *inode, struct page *page)
