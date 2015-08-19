@@ -826,6 +826,9 @@ int pci_scan_bridge(struct pci_bus *bus, struct pci_dev *dev, int max, int pass)
 			child->bridge_ctl = bctl;
 		}
 
+		/* Read and initialize bridge resources */
+		pci_read_bridge_bases(child);
+
 		cmax = pci_scan_child_bus(child);
 		if (cmax > subordinate)
 			dev_warn(&dev->dev, "bridge has subordinate %02x but max busn %02x\n",
@@ -886,6 +889,9 @@ int pci_scan_bridge(struct pci_bus *bus, struct pci_dev *dev, int max, int pass)
 
 		if (!is_cardbus) {
 			child->bridge_ctl = bctl;
+
+			/* Read and initialize bridge resources */
+			pci_read_bridge_bases(child);
 			max = pci_scan_child_bus(child);
 		} else {
 			/*
@@ -1133,7 +1139,6 @@ int pci_setup_device(struct pci_dev *dev)
 {
 	u32 class;
 	u8 hdr_type;
-	struct pci_slot *slot;
 	int pos = 0;
 	struct pci_bus_region region;
 	struct resource *res;
@@ -1149,10 +1154,7 @@ int pci_setup_device(struct pci_dev *dev)
 	dev->error_state = pci_channel_io_normal;
 	set_pcie_port_type(dev);
 
-	list_for_each_entry(slot, &dev->bus->slots, list)
-		if (PCI_SLOT(dev->devfn) == slot->number)
-			dev->slot = slot;
-
+	pci_dev_assign_slot(dev);
 	/* Assume 32-bit PCI; let 64-bit PCI cards (which are far rarer)
 	   set this higher, assuming the system even supports it.  */
 	dev->dma_mask = 0xffffffff;
@@ -1268,7 +1270,7 @@ int pci_setup_device(struct pci_dev *dev)
 	bad:
 		dev_err(&dev->dev, "ignoring class %#08x (doesn't match header type %02x)\n",
 			dev->class, dev->hdr_type);
-		dev->class = PCI_CLASS_NOT_DEFINED;
+		dev->class = PCI_CLASS_NOT_DEFINED << 8;
 	}
 
 	/* We found a fine healthy device, go go go... */
@@ -1539,6 +1541,9 @@ static void pci_init_capabilities(struct pci_dev *dev)
 
 	/* Single Root I/O Virtualization */
 	pci_iov_init(dev);
+
+	/* Address Translation Services */
+	pci_ats_init(dev);
 
 	/* Enable ACS P2P upstream forwarding */
 	pci_enable_acs(dev);
