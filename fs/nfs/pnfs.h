@@ -267,7 +267,7 @@ int pnfs_mark_matching_lsegs_invalid(struct pnfs_layout_hdr *lo,
 bool pnfs_roc(struct inode *ino);
 void pnfs_roc_release(struct inode *ino);
 void pnfs_roc_set_barrier(struct inode *ino, u32 barrier);
-bool pnfs_roc_drain(struct inode *ino, u32 *barrier, struct rpc_task *task);
+void pnfs_roc_get_barrier(struct inode *ino, u32 *barrier);
 void pnfs_set_layoutcommit(struct inode *, struct pnfs_layout_segment *, loff_t);
 void pnfs_cleanup_layoutcommit(struct nfs4_layoutcommit_data *data);
 int pnfs_layoutcommit_inode(struct inode *inode, bool sync);
@@ -605,10 +605,9 @@ pnfs_roc_set_barrier(struct inode *ino, u32 barrier)
 {
 }
 
-static inline bool
-pnfs_roc_drain(struct inode *ino, u32 *barrier, struct rpc_task *task)
+static inline void
+pnfs_roc_get_barrier(struct inode *ino, u32 *barrier)
 {
-	return false;
 }
 
 static inline void set_pnfs_layoutdriver(struct nfs_server *s,
@@ -691,10 +690,10 @@ static inline void nfs4_pnfs_v3_ds_connect_unload(void)
 #endif /* CONFIG_NFS_V4_1 */
 
 #if IS_ENABLED(CONFIG_NFS_V4_2)
-int pnfs_report_layoutstat(struct inode *inode);
+int pnfs_report_layoutstat(struct inode *inode, gfp_t gfp_flags);
 #else
 static inline int
-pnfs_report_layoutstat(struct inode *inode)
+pnfs_report_layoutstat(struct inode *inode, gfp_t gfp_flags)
 {
 	return 0;
 }
