@@ -175,11 +175,10 @@ static long clk_apb_mul_round_rate(struct clk_hw *hw, unsigned long rate,
 	if (readl(base + STM32F4_RCC_CFGR) & BIT(am->bit_idx))
 		mult = 2;
 
-	if (__clk_get_flags(hw->clk) & CLK_SET_RATE_PARENT) {
+	if (clk_hw_get_flags(hw) & CLK_SET_RATE_PARENT) {
 		unsigned long best_parent = rate / mult;
 
-		*prate =
-		    __clk_round_rate(__clk_get_parent(hw->clk), best_parent);
+		*prate = clk_hw_round_rate(clk_hw_get_parent(hw), best_parent);
 	}
 
 	return *prate * mult;
@@ -293,7 +292,7 @@ stm32f4_rcc_lookup_clk(struct of_phandle_args *clkspec, void *data)
 	return clks[i];
 }
 
-static const char *sys_parents[] __initdata =   { "hsi", NULL, "pll" };
+static const char *const sys_parents[] __initconst =   { "hsi", NULL, "pll" };
 
 static const struct clk_div_table ahb_div_table[] = {
 	{ 0x0,   1 }, { 0x1,   1 }, { 0x2,   1 }, { 0x3,   1 },
