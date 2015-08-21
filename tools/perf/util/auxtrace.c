@@ -47,6 +47,8 @@
 #include "debug.h"
 #include "parse-options.h"
 
+#include "intel-pt.h"
+
 int auxtrace_mmap__mmap(struct auxtrace_mmap *mm,
 			struct auxtrace_mmap_params *mp,
 			void *userpg, int fd)
@@ -876,7 +878,7 @@ static bool auxtrace__dont_decode(struct perf_session *session)
 
 int perf_event__process_auxtrace_info(struct perf_tool *tool __maybe_unused,
 				      union perf_event *event,
-				      struct perf_session *session __maybe_unused)
+				      struct perf_session *session)
 {
 	enum auxtrace_type type = event->auxtrace_info.type;
 
@@ -884,6 +886,8 @@ int perf_event__process_auxtrace_info(struct perf_tool *tool __maybe_unused,
 		fprintf(stdout, " type: %u\n", type);
 
 	switch (type) {
+	case PERF_AUXTRACE_INTEL_PT:
+		return intel_pt_process_auxtrace_info(event, session);
 	case PERF_AUXTRACE_UNKNOWN:
 	default:
 		return -EINVAL;
@@ -942,6 +946,7 @@ int itrace_parse_synth_opts(const struct option *opt, const char *str,
 	struct itrace_synth_opts *synth_opts = opt->value;
 	const char *p;
 	char *endptr;
+	bool period_type_set = false;
 
 	synth_opts->set = true;
 
@@ -970,10 +975,12 @@ int itrace_parse_synth_opts(const struct option *opt, const char *str,
 				case 'i':
 					synth_opts->period_type =
 						PERF_ITRACE_PERIOD_INSTRUCTIONS;
+					period_type_set = true;
 					break;
 				case 't':
 					synth_opts->period_type =
 						PERF_ITRACE_PERIOD_TICKS;
+					period_type_set = true;
 					break;
 				case 'm':
 					synth_opts->period *= 1000;
@@ -986,6 +993,7 @@ int itrace_parse_synth_opts(const struct option *opt, const char *str,
 						goto out_err;
 					synth_opts->period_type =
 						PERF_ITRACE_PERIOD_NANOSECS;
+					period_type_set = true;
 					break;
 				case '\0':
 					goto out;
@@ -1039,7 +1047,7 @@ int itrace_parse_synth_opts(const struct option *opt, const char *str,
 	}
 out:
 	if (synth_opts->instructions) {
-		if (!synth_opts->period_type)
+		if (!period_type_set)
 			synth_opts->period_type =
 					PERF_ITRACE_DEFAULT_PERIOD_TYPE;
 		if (!synth_opts->period)
