@@ -1371,7 +1371,7 @@ static int acpi_nfit_blk_region_enable(struct nvdimm_bus *nvdimm_bus,
 			return -ENOMEM;
 	}
 
-	if (!arch_has_pmem_api() && !nfit_blk->nvdimm_flush)
+	if (!arch_has_wmb_pmem() && !nfit_blk->nvdimm_flush)
 		dev_warn(dev, "unable to guarantee persistence of writes\n");
 
 	if (mmio->line_size == 0)
