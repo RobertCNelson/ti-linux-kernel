@@ -575,7 +575,7 @@ qla2x00_async_event(scsi_qla_host_t *vha, struct rsp_que *rsp, uint16_t *mb)
 	struct device_reg_2xxx __iomem *reg = &ha->iobase->isp;
 	struct device_reg_24xx __iomem *reg24 = &ha->iobase->isp24;
 	struct device_reg_82xx __iomem *reg82 = &ha->iobase->isp82;
-	uint32_t	rscn_entry, host_pid, tmp_pid;
+	uint32_t	rscn_entry, host_pid;
 	unsigned long	flags;
 	fc_port_t	*fcport = NULL;
 
@@ -998,7 +998,6 @@ skip_rio:
 		list_for_each_entry(fcport, &vha->vp_fcports, list) {
 			if (atomic_read(&fcport->state) != FCS_ONLINE)
 				continue;
-			tmp_pid = fcport->d_id.b24;
 			if (fcport->d_id.b24 == rscn_entry) {
 				qla2x00_mark_device_lost(vha, fcport, 0, 0);
 				break;
@@ -1565,7 +1564,7 @@ qla24xx_tm_iocb_entry(scsi_qla_host_t *vha, struct req_que *req, void *tsk)
 		    "Async-%s error - hdl=%x entry-status(%x).\n",
 		    type, sp->handle, sts->entry_status);
 		iocb->u.tmf.data = QLA_FUNCTION_FAILED;
-	} else if (sts->comp_status != __constant_cpu_to_le16(CS_COMPLETE)) {
+	} else if (sts->comp_status != cpu_to_le16(CS_COMPLETE)) {
 		ql_log(ql_log_warn, fcport->vha, 0x5039,
 		    "Async-%s error - hdl=%x completion status(%x).\n",
 		    type, sp->handle, sts->comp_status);
