@@ -1906,13 +1906,13 @@ static int nand_read(struct mtd_info *mtd, loff_t from, size_t len,
  * @chip: nand chip info structure
  * @page: page number to read
  */
-static int nand_read_oob_std(struct mtd_info *mtd, struct nand_chip *chip,
-			     int page)
+int nand_read_oob_std(struct mtd_info *mtd, struct nand_chip *chip, int page)
 {
 	chip->cmdfunc(mtd, NAND_CMD_READOOB, 0, page);
 	chip->read_buf(mtd, chip->oob_poi, mtd->oobsize);
 	return 0;
 }
+EXPORT_SYMBOL(nand_read_oob_std);
 
 /**
  * nand_read_oob_syndrome - [REPLACEABLE] OOB data read function for HW ECC
@@ -1921,8 +1921,8 @@ static int nand_read_oob_std(struct mtd_info *mtd, struct nand_chip *chip,
  * @chip: nand chip info structure
  * @page: page number to read
  */
-static int nand_read_oob_syndrome(struct mtd_info *mtd, struct nand_chip *chip,
-				  int page)
+int nand_read_oob_syndrome(struct mtd_info *mtd, struct nand_chip *chip,
+			   int page)
 {
 	int length = mtd->oobsize;
 	int chunk = chip->ecc.bytes + chip->ecc.prepad + chip->ecc.postpad;
@@ -1950,6 +1950,7 @@ static int nand_read_oob_syndrome(struct mtd_info *mtd, struct nand_chip *chip,
 
 	return 0;
 }
+EXPORT_SYMBOL(nand_read_oob_syndrome);
 
 /**
  * nand_write_oob_std - [REPLACEABLE] the most common OOB data write function
@@ -1957,8 +1958,7 @@ static int nand_read_oob_syndrome(struct mtd_info *mtd, struct nand_chip *chip,
  * @chip: nand chip info structure
  * @page: page number to write
  */
-static int nand_write_oob_std(struct mtd_info *mtd, struct nand_chip *chip,
-			      int page)
+int nand_write_oob_std(struct mtd_info *mtd, struct nand_chip *chip, int page)
 {
 	int status = 0;
 	const uint8_t *buf = chip->oob_poi;
@@ -1973,6 +1973,7 @@ static int nand_write_oob_std(struct mtd_info *mtd, struct nand_chip *chip,
 
 	return status & NAND_STATUS_FAIL ? -EIO : 0;
 }
+EXPORT_SYMBOL(nand_write_oob_std);
 
 /**
  * nand_write_oob_syndrome - [REPLACEABLE] OOB data write function for HW ECC
@@ -1981,8 +1982,8 @@ static int nand_write_oob_std(struct mtd_info *mtd, struct nand_chip *chip,
  * @chip: nand chip info structure
  * @page: page number to write
  */
-static int nand_write_oob_syndrome(struct mtd_info *mtd,
-				   struct nand_chip *chip, int page)
+int nand_write_oob_syndrome(struct mtd_info *mtd, struct nand_chip *chip,
+			    int page)
 {
 	int chunk = chip->ecc.bytes + chip->ecc.prepad + chip->ecc.postpad;
 	int eccsize = chip->ecc.size, length = mtd->oobsize;
@@ -2032,6 +2033,7 @@ static int nand_write_oob_syndrome(struct mtd_info *mtd,
 
 	return status & NAND_STATUS_FAIL ? -EIO : 0;
 }
+EXPORT_SYMBOL(nand_write_oob_syndrome);
 
 /**
  * nand_do_read_oob - [INTERN] NAND read out-of-band
