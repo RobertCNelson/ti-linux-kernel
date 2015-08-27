@@ -46,7 +46,7 @@
 
 /* Current ACPICA subsystem version in YYYYMMDD format */
 
-#define ACPI_CA_VERSION                 0x20150717
+#define ACPI_CA_VERSION                 0x20150818
 
 #include <acpi/acconfig.h>
 #include <acpi/actypes.h>
@@ -917,6 +917,9 @@ ACPI_DBG_DEPENDENT_RETURN_VOID(void
 ACPI_APP_DEPENDENT_RETURN_VOID(ACPI_PRINTF_LIKE(1)
 				void ACPI_INTERNAL_VAR_XFACE
 				acpi_log_error(const char *format, ...))
+ acpi_status acpi_initialize_debugger(void);
+
+void acpi_terminate_debugger(void);
 
 /*
  * Divergences

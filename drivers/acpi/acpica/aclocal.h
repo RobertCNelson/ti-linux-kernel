@@ -213,11 +213,9 @@ struct acpi_table_list {
 #define ACPI_ROOT_ORIGIN_ALLOCATED      (1)
 #define ACPI_ROOT_ALLOW_RESIZE          (2)
 
-/* Predefined (fixed) table indexes */
+/* Predefined table indexes */
 
-#define ACPI_TABLE_INDEX_DSDT           (0)
-#define ACPI_TABLE_INDEX_FACS           (1)
-#define ACPI_TABLE_INDEX_X_FACS         (2)
+#define ACPI_INVALID_TABLE_INDEX        (0xFFFFFFFF)
 
 struct acpi_find_context {
 	char *search_for;
@@ -407,6 +405,13 @@ struct acpi_simple_repair_info {
 #define ACPI_RTYPE_ALL                  0x3F
 
 #define ACPI_NUM_RTYPES                 5	/* Number of actual object types */
+
+/* Info for running the _REG methods */
+
+struct acpi_reg_walk_info {
+	acpi_adr_space_type space_id;
+	u32 reg_run_count;
+};
 
 /*****************************************************************************
  *
@@ -1125,6 +1130,10 @@ struct acpi_integrity_info {
 #define ACPI_DB_REDIRECTABLE_OUTPUT     0x01
 #define ACPI_DB_CONSOLE_OUTPUT          0x02
 #define ACPI_DB_DUPLICATE_OUTPUT        0x03
+
+struct acpi_object_info {
+	u32 types[ACPI_TOTAL_TYPES];
+};
 
 /*****************************************************************************
  *

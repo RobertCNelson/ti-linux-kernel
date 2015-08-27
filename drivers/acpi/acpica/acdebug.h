@@ -67,9 +67,6 @@ struct acpi_db_execute_walk {
 };
 
 #define PARAM_LIST(pl)                  pl
-#define DBTEST_OUTPUT_LEVEL(lvl)        if (acpi_gbl_db_opt_verbose)
-#define VERBOSE_PRINT(fp)               DBTEST_OUTPUT_LEVEL(lvl) {\
-			  acpi_os_printf PARAM_LIST(fp);}
 
 #define EX_NO_SINGLE_STEP               1
 #define EX_SINGLE_STEP                  2
@@ -77,10 +74,6 @@ struct acpi_db_execute_walk {
 /*
  * dbxface - external debugger interfaces
  */
-acpi_status acpi_db_initialize(void);
-
-void acpi_db_terminate(void);
-
 acpi_status
 acpi_db_single_step(struct acpi_walk_state *walk_state,
 		    union acpi_parse_object *op, u32 op_type);
