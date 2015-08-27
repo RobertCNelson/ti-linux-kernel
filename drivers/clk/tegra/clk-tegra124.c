@@ -15,7 +15,6 @@
  */
 
 #include <linux/io.h>
-#include <linux/clk.h>
 #include <linux/clk-provider.h>
 #include <linux/clkdev.h>
 #include <linux/of.h>
@@ -1448,7 +1447,7 @@ static void tegra124_car_barrier(void)
  *
  * Assert the reset line of the DFLL's DVCO.  No return value.
  */
-void tegra124_clock_assert_dfll_dvco_reset(void)
+static void tegra124_clock_assert_dfll_dvco_reset(void)
 {
 	u32 v;
 
@@ -1464,7 +1463,7 @@ void tegra124_clock_assert_dfll_dvco_reset(void)
  * Deassert the reset line of the DFLL's DVCO, allowing the DVCO to
  * operate.  No return value.
  */
-void tegra124_clock_deassert_dfll_dvco_reset(void)
+static void tegra124_clock_deassert_dfll_dvco_reset(void)
 {
 	u32 v;
 
@@ -1474,7 +1473,7 @@ void tegra124_clock_deassert_dfll_dvco_reset(void)
 	tegra124_car_barrier();
 }
 
-int tegra124_reset_assert(unsigned long id)
+static int tegra124_reset_assert(unsigned long id)
 {
 	if (id == TEGRA124_RST_DFLL_DVCO)
 		tegra124_clock_assert_dfll_dvco_reset();
@@ -1484,7 +1483,7 @@ int tegra124_reset_assert(unsigned long id)
 	return 0;
 }
 
-int tegra124_reset_deassert(unsigned long id)
+static int tegra124_reset_deassert(unsigned long id)
 {
 	if (id == TEGRA124_RST_DFLL_DVCO)
 		tegra124_clock_deassert_dfll_dvco_reset();
