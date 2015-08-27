@@ -555,7 +555,9 @@ qla2x00_get_fw_version(scsi_qla_host_t *vha)
 	if (IS_FWI2_CAPABLE(ha))
 		mcp->in_mb |= MBX_17|MBX_16|MBX_15;
 	if (IS_QLA27XX(ha))
-		mcp->in_mb |= MBX_21|MBX_20|MBX_19|MBX_18;
+		mcp->in_mb |= MBX_23 | MBX_22 | MBX_21 | MBX_20 | MBX_19 |
+		    MBX_18 | MBX_14 | MBX_13 | MBX_11 | MBX_10 | MBX_9 | MBX_8;
+
 	mcp->flags = 0;
 	mcp->tov = MBX_TOV_SECONDS;
 	rval = qla2x00_mailbox_command(vha, mcp);
@@ -571,6 +573,7 @@ qla2x00_get_fw_version(scsi_qla_host_t *vha)
 		ha->fw_memory_size = 0x1FFFF;		/* Defaults to 128KB. */
 	else
 		ha->fw_memory_size = (mcp->mb[5] << 16) | mcp->mb[4];
+
 	if (IS_QLA81XX(vha->hw) || IS_QLA8031(vha->hw) || IS_QLA8044(ha)) {
 		ha->mpi_version[0] = mcp->mb[10] & 0xff;
 		ha->mpi_version[1] = mcp->mb[11] >> 8;
@@ -580,6 +583,7 @@ qla2x00_get_fw_version(scsi_qla_host_t *vha)
 		ha->phy_version[1] = mcp->mb[9] >> 8;
 		ha->phy_version[2] = mcp->mb[9] & 0xff;
 	}
+
 	if (IS_FWI2_CAPABLE(ha)) {
 		ha->fw_attributes_h = mcp->mb[15];
 		ha->fw_attributes_ext[0] = mcp->mb[16];
@@ -591,7 +595,14 @@ qla2x00_get_fw_version(scsi_qla_host_t *vha)
 		    "%s: Ext_FwAttributes Upper: 0x%x, Lower: 0x%x.\n",
 		    __func__, mcp->mb[17], mcp->mb[16]);
 	}
+
 	if (IS_QLA27XX(ha)) {
+		ha->mpi_version[0] = mcp->mb[10] & 0xff;
+		ha->mpi_version[1] = mcp->mb[11] >> 8;
+		ha->mpi_version[2] = mcp->mb[11] & 0xff;
+		ha->pep_version[0] = mcp->mb[13] & 0xff;
+		ha->pep_version[1] = mcp->mb[14] >> 8;
+		ha->pep_version[2] = mcp->mb[14] & 0xff;
 		ha->fw_shared_ram_start = (mcp->mb[19] << 16) | mcp->mb[18];
 		ha->fw_shared_ram_end = (mcp->mb[21] << 16) | mcp->mb[20];
 	}
@@ -1135,20 +1146,22 @@ qla2x00_get_adapter_id(scsi_qla_host_t *vha, uint16_t *id, uint8_t *al_pa,
 			vha->fcoe_vn_port_mac[0] = mcp->mb[13] & 0xff;
 		}
 		/* If FA-WWN supported */
-		if (mcp->mb[7] & BIT_14) {
-			vha->port_name[0] = MSB(mcp->mb[16]);
-			vha->port_name[1] = LSB(mcp->mb[16]);
-			vha->port_name[2] = MSB(mcp->mb[17]);
-			vha->port_name[3] = LSB(mcp->mb[17]);
-			vha->port_name[4] = MSB(mcp->mb[18]);
-			vha->port_name[5] = LSB(mcp->mb[18]);
-			vha->port_name[6] = MSB(mcp->mb[19]);
-			vha->port_name[7] = LSB(mcp->mb[19]);
-			fc_host_port_name(vha->host) =
-			    wwn_to_u64(vha->port_name);
-			ql_dbg(ql_dbg_mbx, vha, 0x10ca,
-			    "FA-WWN acquired %016llx\n",
-			    wwn_to_u64(vha->port_name));
+		if (IS_FAWWN_CAPABLE(vha->hw)) {
+			if (mcp->mb[7] & BIT_14) {
+				vha->port_name[0] = MSB(mcp->mb[16]);
+				vha->port_name[1] = LSB(mcp->mb[16]);
+				vha->port_name[2] = MSB(mcp->mb[17]);
+				vha->port_name[3] = LSB(mcp->mb[17]);
+				vha->port_name[4] = MSB(mcp->mb[18]);
+				vha->port_name[5] = LSB(mcp->mb[18]);
+				vha->port_name[6] = MSB(mcp->mb[19]);
+				vha->port_name[7] = LSB(mcp->mb[19]);
+				fc_host_port_name(vha->host) =
+				    wwn_to_u64(vha->port_name);
+				ql_dbg(ql_dbg_mbx, vha, 0x10ca,
+				    "FA-WWN acquired %016llx\n",
+				    wwn_to_u64(vha->port_name));
+			}
 		}
 	}
 
@@ -2847,7 +2860,8 @@ qla2x00_write_serdes_word(scsi_qla_host_t *vha, uint16_t addr, uint16_t data)
 	mbx_cmd_t mc;
 	mbx_cmd_t *mcp = &mc;
 
-	if (!IS_QLA2031(vha->hw) && !IS_QLA27XX(vha->hw))
+	if (!IS_QLA25XX(vha->hw) && !IS_QLA2031(vha->hw) &&
+	    !IS_QLA27XX(vha->hw))
 		return QLA_FUNCTION_FAILED;
 
 	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1182,
@@ -2885,7 +2899,8 @@ qla2x00_read_serdes_word(scsi_qla_host_t *vha, uint16_t addr, uint16_t *data)
 	mbx_cmd_t mc;
 	mbx_cmd_t *mcp = &mc;
 
-	if (!IS_QLA2031(vha->hw) && !IS_QLA27XX(vha->hw))
+	if (!IS_QLA25XX(vha->hw) && !IS_QLA2031(vha->hw) &&
+	    !IS_QLA27XX(vha->hw))
 		return QLA_FUNCTION_FAILED;
 
 	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1185,

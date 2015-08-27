@@ -19,14 +19,14 @@
  * | Device Discovery             |       0x2016       | 0x2020-0x2022, |
  * |                              |                    | 0x2011-0x2012, |
  * |                              |                    | 0x2099-0x20a4  |
- * | Queue Command and IO tracing |       0x3059       | 0x300b         |
+ * | Queue Command and IO tracing |       0x3075       | 0x300b         |
  * |                              |                    | 0x3027-0x3028  |
  * |                              |                    | 0x303d-0x3041  |
  * |                              |                    | 0x302d,0x3033  |
  * |                              |                    | 0x3036,0x3038  |
  * |                              |                    | 0x303a		|
  * | DPC Thread                   |       0x4023       | 0x4002,0x4013  |
- * | Async Events                 |       0x5087       | 0x502b-0x502f  |
+ * | Async Events                 |       0x508a       | 0x502b-0x502f  |
  * |                              |                    | 0x5047		|
  * |                              |                    | 0x5084,0x5075	|
  * |                              |                    | 0x503d,0x5044  |
