@@ -215,6 +215,16 @@ static int intelfb_create(struct drm_fb_helper *helper,
 	obj = intel_fb->obj;
 	size = obj->base.size;
 
+	/* The fb constructor will have already pinned us (or inherited a
+	 * GGTT region from the BIOS) suitable for a scanout, so
+	 * this should just be a no-op and increment the pin count for the
+	 * fbdev mmapping. It does have a useful side-effect of validating
+	 * the pin for fbdev's use via a GGTT mmapping.
+	 */
+	ret = i915_gem_object_ggtt_pin(obj, NULL, 0, PIN_MAPPABLE);
+	if (ret)
+		goto out_unlock;
+
 	info = drm_fb_helper_alloc_fbi(helper);
 	if (IS_ERR(info)) {
 		ret = PTR_ERR(info);
@@ -274,6 +284,9 @@ static int intelfb_create(struct drm_fb_helper *helper,
 out_destroy_fbi:
 	drm_fb_helper_release_fbi(helper);
 out_unpin:
+	/* Once for info->screen_base mmaping... */
+	i915_gem_object_ggtt_unpin(obj);
+	/* ...and once for the intel_fb */
 	i915_gem_object_ggtt_unpin(obj);
 	drm_gem_object_unreference(&obj->base);
 out_unlock:
@@ -514,6 +527,8 @@ static const struct drm_fb_helper_funcs intel_fb_helper_funcs = {
 static void intel_fbdev_destroy(struct drm_device *dev,
 				struct intel_fbdev *ifbdev)
 {
+	/* Release the pinning for the info->screen_base mmaping. */
+	i915_gem_object_ggtt_unpin(ifbdev->fb->obj);
 
 	drm_fb_helper_unregister_fbi(&ifbdev->helper);
 	drm_fb_helper_release_fbi(&ifbdev->helper);

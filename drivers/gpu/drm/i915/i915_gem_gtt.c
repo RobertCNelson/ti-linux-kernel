@@ -2135,6 +2135,7 @@ static int i915_gem_setup_global_gtt(struct drm_device *dev,
 			return ret;
 		}
 		vma->bound |= GLOBAL_BIND;
+		__i915_vma_set_map_and_fenceable(vma);
 	}
 
 	/* Clear any non-preallocated blocks */
