@@ -5330,6 +5330,7 @@ static int __netdev_upper_dev_link(struct net_device *dev,
 	if (master && netdev_master_upper_dev_get(dev))
 		return -EBUSY;
 
+	changeupper_info.event = NETDEV_CHANGEUPPER_LINK;
 	changeupper_info.upper_dev = upper_dev;
 	changeupper_info.master = master;
 	changeupper_info.linking = true;
@@ -5472,6 +5473,7 @@ void netdev_upper_dev_unlink(struct net_device *dev,
 	struct netdev_adjacent *i, *j;
 	ASSERT_RTNL();
 
+	changeupper_info.event = NETDEV_CHANGEUPPER_UNLINK;
 	changeupper_info.upper_dev = upper_dev;
 	changeupper_info.master = netdev_master_upper_dev_get(dev) == upper_dev;
 	changeupper_info.linking = false;

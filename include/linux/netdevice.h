@@ -2115,12 +2115,21 @@ struct netdev_notifier_change_info {
 	unsigned int flags_changed;
 };
 
+enum netdev_changeupper_event {
+	NETDEV_CHANGEUPPER_LINK,
+	NETDEV_CHANGEUPPER_UNLINK,
+};
+
 struct netdev_notifier_changeupper_info {
 	struct netdev_notifier_info info; /* must be first */
+	enum netdev_changeupper_event event;
 	struct net_device *upper_dev; /* new upper dev */
 	bool master; /* is upper dev master */
 	bool linking; /* is the nofication for link or unlink */
 };
+
+void netdev_changeupper_info_change(struct net_device *dev,
+				    struct netdev_notifier_changeupper_info *info);
 
 static inline void netdev_notifier_info_init(struct netdev_notifier_info *info,
 					     struct net_device *dev)
