@@ -918,6 +918,7 @@ static int _opp_add_static_v2(struct device *dev, struct device_node *np)
 	struct device_opp *dev_opp;
 	struct dev_pm_opp *new_opp;
 	u64 rate;
+	u32 val;
 	int ret;
 
 	/* Hold our list modification lock here */
@@ -946,14 +947,16 @@ static int _opp_add_static_v2(struct device *dev, struct device_node *np)
 	new_opp->np = np;
 	new_opp->dynamic = false;
 	new_opp->available = true;
-	of_property_read_u32(np, "clock-latency-ns",
-			     (u32 *)&new_opp->clock_latency_ns);
+
+	if (!of_property_read_u32(np, "clock-latency-ns", &val))
+		new_opp->clock_latency_ns = val;
 
 	ret = opp_get_microvolt(new_opp, dev);
 	if (ret)
 		goto free_opp;
 
-	of_property_read_u32(np, "opp-microamp", (u32 *)&new_opp->u_amp);
+	if (!of_property_read_u32(new_opp->np, "opp-microamp", &val))
+		new_opp->u_amp = val;
 
 	ret = _opp_add(dev, new_opp, dev_opp);
 	if (ret)
@@ -1323,28 +1326,30 @@ static int _of_init_opp_table_v2(struct device *dev,
 		if (ret) {
 			dev_err(dev, "%s: Failed to add OPP, %d\n", __func__,
 				ret);
-			break;
+			goto free_table;
 		}
 	}
 
 	/* There should be one of more OPP defined */
-	if (WARN_ON(!count))
+	if (WARN_ON(!count)) {
+		ret = -ENOENT;
 		goto put_opp_np;
-
-	if (!ret) {
-		if (!dev_opp) {
-			dev_opp = _find_device_opp(dev);
-			if (WARN_ON(!dev_opp))
-				goto put_opp_np;
-		}
-
-		dev_opp->np = opp_np;
-		dev_opp->shared_opp = of_property_read_bool(opp_np,
-							    "opp-shared");
-	} else {
-		of_free_opp_table(dev);
 	}
 
+	dev_opp = _find_device_opp(dev);
+	if (WARN_ON(IS_ERR(dev_opp))) {
+		ret = PTR_ERR(dev_opp);
+		goto free_table;
+	}
+
+	dev_opp->np = opp_np;
+	dev_opp->shared_opp = of_property_read_bool(opp_np, "opp-shared");
+
+	of_node_put(opp_np);
+	return 0;
+
+free_table:
+	of_free_opp_table(dev);
 put_opp_np:
 	of_node_put(opp_np);
 
