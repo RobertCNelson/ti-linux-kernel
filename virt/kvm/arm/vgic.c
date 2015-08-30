@@ -1427,34 +1427,48 @@ static bool vgic_process_maintenance(struct kvm_vcpu *vcpu)
 /*
  * Save the physical active state, and reset it to inactive.
  *
- * Return 1 if HW interrupt went from active to inactive, and 0 otherwise.
+ * Return true if there's a pending level triggered interrupt line to queue.
  */
-static int vgic_sync_hwirq(struct kvm_vcpu *vcpu, struct vgic_lr vlr)
+static bool vgic_sync_hwirq(struct kvm_vcpu *vcpu, int lr, struct vgic_lr vlr)
 {
+	struct vgic_dist *dist = &vcpu->kvm->arch.vgic;
 	struct irq_phys_map *map;
+	bool phys_active;
+	bool level_pending;
 	int ret;
 
 	if (!(vlr.state & LR_HW))
-		return 0;
+		return false;
 
 	map = vgic_irq_map_search(vcpu, vlr.irq);
-	BUG_ON(!map || !map->active);
+	BUG_ON(!map);
 
 	ret = irq_get_irqchip_state(map->irq,
 				    IRQCHIP_STATE_ACTIVE,
-				    &map->active);
+				    &phys_active);
 
 	WARN_ON(ret);
 
-	if (map->active) {
+	if (phys_active) {
+		/*
+		 * Interrupt still marked as active on the physical
+		 * distributor, so guest did not EOI it yet.  Reset to
+		 * non-active so that other VMs can see interrupts from this
+		 * device.
+		 */
 		ret = irq_set_irqchip_state(map->irq,
 					    IRQCHIP_STATE_ACTIVE,
 					    false);
 		WARN_ON(ret);
-		return 0;
+		return false;
 	}
 
-	return 1;
+	/* Mapped edge-triggered interrupts not yet supported. */
+	WARN_ON(vgic_irq_is_edge(vcpu, vlr.irq));
+	spin_lock(&dist->lock);
+	level_pending = process_level_irq(vcpu, lr, vlr);
+	spin_unlock(&dist->lock);
+	return level_pending;
 }
 
 /* Sync back the VGIC state after a guest run */
@@ -1479,18 +1493,8 @@ static void __kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu)
 			continue;
 
 		vlr = vgic_get_lr(vcpu, lr);
-		if (vgic_sync_hwirq(vcpu, vlr)) {
-			/*
-			 * So this is a HW interrupt that the guest
-			 * EOI-ed. Clean the LR state and allow the
-			 * interrupt to be sampled again.
-			 */
-			vlr.state = 0;
-			vlr.hwirq = 0;
-			vgic_set_lr(vcpu, lr, vlr);
-			vgic_irq_clear_queued(vcpu, vlr.irq);
-			set_bit(lr, elrsr_ptr);
-		}
+		if (vgic_sync_hwirq(vcpu, lr, vlr))
+			level_pending = true;
 
 		if (!test_bit(lr, elrsr_ptr))
 			continue;
@@ -1866,30 +1870,6 @@ static void vgic_free_phys_irq_map_rcu(struct rcu_head *rcu)
 }
 
 /**
- * kvm_vgic_get_phys_irq_active - Return the active state of a mapped IRQ
- *
- * Return the logical active state of a mapped interrupt. This doesn't
- * necessarily reflects the current HW state.
- */
-bool kvm_vgic_get_phys_irq_active(struct irq_phys_map *map)
-{
-	BUG_ON(!map);
-	return map->active;
-}
-
-/**
- * kvm_vgic_set_phys_irq_active - Set the active state of a mapped IRQ
- *
- * Set the logical active state of a mapped interrupt. This doesn't
- * immediately affects the HW state.
- */
-void kvm_vgic_set_phys_irq_active(struct irq_phys_map *map, bool active)
-{
-	BUG_ON(!map);
-	map->active = active;
-}
-
-/**
  * kvm_vgic_unmap_phys_irq - Remove a virtual to physical IRQ mapping
  * @vcpu: The VCPU pointer
  * @map: The pointer to a mapping obtained through kvm_vgic_map_phys_irq
@@ -2114,17 +2094,23 @@ int vgic_init(struct kvm *kvm)
 		}
 
 		/*
-		 * Enable all SGIs and configure all private IRQs as
-		 * edge-triggered.
+		 * Enable and configure all SGIs to be edge-triggere and
+		 * configure all PPIs as level-triggered.
 		 */
 		for (i = 0; i < VGIC_NR_PRIVATE_IRQS; i++) {
-			if (i < VGIC_NR_SGIS)
+			if (i < VGIC_NR_SGIS) {
+				/* SGIs */
 				vgic_bitmap_set_irq_val(&dist->irq_enabled,
 							vcpu->vcpu_id, i, 1);
-			if (i < VGIC_NR_PRIVATE_IRQS)
 				vgic_bitmap_set_irq_val(&dist->irq_cfg,
 							vcpu->vcpu_id, i,
 							VGIC_CFG_EDGE);
+			} else if (i < VGIC_NR_PRIVATE_IRQS) {
+				/* PPIs */
+				vgic_bitmap_set_irq_val(&dist->irq_cfg,
+							vcpu->vcpu_id, i,
+							VGIC_CFG_LEVEL);
+			}
 		}
 
 		vgic_enable(vcpu);
