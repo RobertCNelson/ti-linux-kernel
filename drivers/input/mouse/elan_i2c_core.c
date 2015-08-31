@@ -84,7 +84,7 @@ struct elan_tp_data {
 	int			pressure_adjustment;
 	u8			mode;
 	u8			ic_type;
-	u16			fw_vaildpage_count;
+	u16			fw_validpage_count;
 	u16			fw_signature_address;
 
 	bool			irq_wake;
@@ -94,25 +94,28 @@ struct elan_tp_data {
 	bool			baseline_ready;
 };
 
-static int elan_get_fwinfo(u8 ic_type, u16 *vaildpage_count,
+static int elan_get_fwinfo(u8 ic_type, u16 *validpage_count,
 			   u16 *signature_address)
 {
 	switch(ic_type) {
+	case 0x08:
+		*validpage_count = 512;
+		break;
 	case 0x09:
-		*vaildpage_count = 768;
+		*validpage_count = 768;
 		break;
 	case 0x0D:
-		*vaildpage_count = 896;
+		*validpage_count = 896;
 		break;
 	default:
 		/* unknown ic type clear value */
-		*vaildpage_count = 0;
+		*validpage_count = 0;
 		*signature_address = 0;
 		return -ENXIO;
 	}
 
 	*signature_address =
-		(*vaildpage_count * ETP_FW_PAGE_SIZE) - ETP_FW_SIGNATURE_SIZE;
+		(*validpage_count * ETP_FW_PAGE_SIZE) - ETP_FW_SIGNATURE_SIZE;
 
 	return 0;
 }
@@ -261,7 +264,7 @@ static int elan_query_device_info(struct elan_tp_data *data)
 	if (error)
 		return error;
 
-	error = elan_get_fwinfo(data->ic_type, &data->fw_vaildpage_count,
+	error = elan_get_fwinfo(data->ic_type, &data->fw_validpage_count,
 				&data->fw_signature_address);
 	if (error) {
 		dev_err(&data->client->dev,
@@ -353,7 +356,7 @@ static int __elan_update_firmware(struct elan_tp_data *data,
 	iap_start_addr = get_unaligned_le16(&fw->data[ETP_IAP_START_ADDR * 2]);
 
 	boot_page_count = (iap_start_addr * 2) / ETP_FW_PAGE_SIZE;
-	for (i = boot_page_count; i < data->fw_vaildpage_count; i++) {
+	for (i = boot_page_count; i < data->fw_validpage_count; i++) {
 		u16 checksum = 0;
 		const u8 *page = &fw->data[i * ETP_FW_PAGE_SIZE];
 
@@ -1165,6 +1168,8 @@ MODULE_DEVICE_TABLE(i2c, elan_id);
 #ifdef CONFIG_ACPI
 static const struct acpi_device_id elan_acpi_id[] = {
 	{ "ELAN0000", 0 },
+	{ "ELAN0100", 0 },
+	{ "ELAN0600", 0 },
 	{ }
 };
 MODULE_DEVICE_TABLE(acpi, elan_acpi_id);
@@ -1181,10 +1186,10 @@ MODULE_DEVICE_TABLE(of, elan_of_match);
 static struct i2c_driver elan_driver = {
 	.driver = {
 		.name	= DRIVER_NAME,
-		.owner	= THIS_MODULE,
 		.pm	= &elan_pm_ops,
 		.acpi_match_table = ACPI_PTR(elan_acpi_id),
 		.of_match_table = of_match_ptr(elan_of_match),
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 	},
 	.probe		= elan_probe,
 	.id_table	= elan_id,
