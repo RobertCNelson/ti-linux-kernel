@@ -370,22 +370,6 @@ static inline void iph_to_flow_copy_v4addrs(struct flow_keys *flow,
 	flow->control.addr_type = FLOW_DISSECTOR_KEY_IPV4_ADDRS;
 }
 
-static inline void inet_set_txhash(struct sock *sk)
-{
-	struct inet_sock *inet = inet_sk(sk);
-	struct flow_keys keys;
-
-	memset(&keys, 0, sizeof(keys));
-
-	keys.addrs.v4addrs.src = inet->inet_saddr;
-	keys.addrs.v4addrs.dst = inet->inet_daddr;
-	keys.control.addr_type = FLOW_DISSECTOR_KEY_IPV4_ADDRS;
-	keys.ports.src = inet->inet_sport;
-	keys.ports.dst = inet->inet_dport;
-
-	sk->sk_txhash = flow_hash_from_keys(&keys);
-}
-
 static inline __wsum inet_gro_compute_pseudo(struct sk_buff *skb, int proto)
 {
 	const struct iphdr *iph = skb_gro_network_header(skb);
@@ -473,6 +457,11 @@ static __inline__ void inet_reset_saddr(struct sock *sk)
 }
 
 #endif
+
+static inline unsigned int ipv4_addr_hash(__be32 ip)
+{
+	return (__force unsigned int) ip;
+}
 
 bool ip_call_ra_chain(struct sk_buff *skb);
 
