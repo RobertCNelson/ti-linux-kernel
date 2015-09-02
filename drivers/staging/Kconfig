@@ -108,6 +108,12 @@ source "drivers/staging/fsl-mc/Kconfig"
 
 source "drivers/staging/wilc1000/Kconfig"
 
+source "drivers/staging/amso1100/Kconfig"
+
+source "drivers/staging/ipath/Kconfig"
+
+source "drivers/staging/hfi1/Kconfig"
+
 source "drivers/staging/most/Kconfig"
 
 endif # STAGING
