@@ -66,7 +66,7 @@ struct bcm_data {
 };
 
 /* List of BCM BT UART devices */
-static DEFINE_SPINLOCK(bcm_device_lock);
+static DEFINE_MUTEX(bcm_device_lock);
 static LIST_HEAD(bcm_device_list);
 
 static int bcm_set_baudrate(struct hci_uart *hu, unsigned int speed)
@@ -80,7 +80,7 @@ static int bcm_set_baudrate(struct hci_uart *hu, unsigned int speed)
 
 		clock.type = BCM_UART_CLOCK_48MHZ;
 
-		BT_DBG("%s: Set Controller clock (%d)", hdev->name, clock.type);
+		bt_dev_dbg(hdev, "Set Controller clock (%d)", clock.type);
 
 		/* This Broadcom specific command changes the UART's controller
 		 * clock for baud rate > 3000000.
@@ -88,15 +88,15 @@ static int bcm_set_baudrate(struct hci_uart *hu, unsigned int speed)
 		skb = __hci_cmd_sync(hdev, 0xfc45, 1, &clock, HCI_INIT_TIMEOUT);
 		if (IS_ERR(skb)) {
 			int err = PTR_ERR(skb);
-			BT_ERR("%s: BCM: failed to write clock command (%d)",
-			       hdev->name, err);
+			bt_dev_err(hdev, "BCM: failed to write clock (%d)",
+				   err);
 			return err;
 		}
 
 		kfree_skb(skb);
 	}
 
-	BT_DBG("%s: Set Controller UART speed to %d bit/s", hdev->name, speed);
+	bt_dev_dbg(hdev, "Set Controller UART speed to %d bit/s", speed);
 
 	param.zero = cpu_to_le16(0);
 	param.baud_rate = cpu_to_le32(speed);
@@ -108,8 +108,8 @@ static int bcm_set_baudrate(struct hci_uart *hu, unsigned int speed)
 			     HCI_INIT_TIMEOUT);
 	if (IS_ERR(skb)) {
 		int err = PTR_ERR(skb);
-		BT_ERR("%s: BCM: failed to write update baudrate command (%d)",
-		       hdev->name, err);
+		bt_dev_err(hdev, "BCM: failed to write update baudrate (%d)",
+			   err);
 		return err;
 	}
 
@@ -154,7 +154,7 @@ static int bcm_open(struct hci_uart *hu)
 	struct bcm_data *bcm;
 	struct list_head *p;
 
-	BT_DBG("hu %p", hu);
+	bt_dev_dbg(hu->hdev, "hu %p", hu);
 
 	bcm = kzalloc(sizeof(*bcm), GFP_KERNEL);
 	if (!bcm)
@@ -164,7 +164,7 @@ static int bcm_open(struct hci_uart *hu)
 
 	hu->priv = bcm;
 
-	spin_lock(&bcm_device_lock);
+	mutex_lock(&bcm_device_lock);
 	list_for_each(p, &bcm_device_list) {
 		struct bcm_device *dev = list_entry(p, struct bcm_device, list);
 
@@ -185,7 +185,7 @@ static int bcm_open(struct hci_uart *hu)
 	if (bcm->dev)
 		bcm_gpio_set_power(bcm->dev, true);
 
-	spin_unlock(&bcm_device_lock);
+	mutex_unlock(&bcm_device_lock);
 
 	return 0;
 }
@@ -194,17 +194,17 @@ static int bcm_close(struct hci_uart *hu)
 {
 	struct bcm_data *bcm = hu->priv;
 
-	BT_DBG("hu %p", hu);
+	bt_dev_dbg(hu->hdev, "hu %p", hu);
 
 	/* Protect bcm->dev against removal of the device or driver */
-	spin_lock(&bcm_device_lock);
+	mutex_lock(&bcm_device_lock);
 	if (bcm_device_exists(bcm->dev)) {
 		bcm_gpio_set_power(bcm->dev, false);
 #ifdef CONFIG_PM_SLEEP
 		bcm->dev->hu = NULL;
 #endif
 	}
-	spin_unlock(&bcm_device_lock);
+	mutex_unlock(&bcm_device_lock);
 
 	skb_queue_purge(&bcm->txq);
 	kfree_skb(bcm->rx_skb);
@@ -218,7 +218,7 @@ static int bcm_flush(struct hci_uart *hu)
 {
 	struct bcm_data *bcm = hu->priv;
 
-	BT_DBG("hu %p", hu);
+	bt_dev_dbg(hu->hdev, "hu %p", hu);
 
 	skb_queue_purge(&bcm->txq);
 
@@ -232,7 +232,7 @@ static int bcm_setup(struct hci_uart *hu)
 	unsigned int speed;
 	int err;
 
-	BT_DBG("hu %p", hu);
+	bt_dev_dbg(hu->hdev, "hu %p", hu);
 
 	hu->hdev->set_bdaddr = btbcm_set_bdaddr;
 
@@ -242,13 +242,13 @@ static int bcm_setup(struct hci_uart *hu)
 
 	err = request_firmware(&fw, fw_name, &hu->hdev->dev);
 	if (err < 0) {
-		BT_INFO("%s: BCM: Patch %s not found", hu->hdev->name, fw_name);
+		bt_dev_info(hu->hdev, "BCM: Patch %s not found", fw_name);
 		return 0;
 	}
 
 	err = btbcm_patchram(hu->hdev, fw);
 	if (err) {
-		BT_INFO("%s: BCM: Patch failed (%d)", hu->hdev->name, err);
+		bt_dev_info(hu->hdev, "BCM: Patch failed (%d)", err);
 		goto finalize;
 	}
 
@@ -302,7 +302,7 @@ static int bcm_recv(struct hci_uart *hu, const void *data, int count)
 				  bcm_recv_pkts, ARRAY_SIZE(bcm_recv_pkts));
 	if (IS_ERR(bcm->rx_skb)) {
 		int err = PTR_ERR(bcm->rx_skb);
-		BT_ERR("%s: Frame reassembly failed (%d)", hu->hdev->name, err);
+		bt_dev_err(hu->hdev, "Frame reassembly failed (%d)", err);
 		bcm->rx_skb = NULL;
 		return err;
 	}
@@ -314,7 +314,7 @@ static int bcm_enqueue(struct hci_uart *hu, struct sk_buff *skb)
 {
 	struct bcm_data *bcm = hu->priv;
 
-	BT_DBG("hu %p skb %p", hu, skb);
+	bt_dev_dbg(hu->hdev, "hu %p skb %p", hu, skb);
 
 	/* Prepend skb with frame type */
 	memcpy(skb_push(skb, 1), &bt_cb(skb)->pkt_type, 1);
@@ -336,9 +336,9 @@ static int bcm_suspend(struct device *dev)
 {
 	struct bcm_device *bdev = platform_get_drvdata(to_platform_device(dev));
 
-	BT_DBG("suspend (%p): is_suspended %d", bdev, bdev->is_suspended);
+	bt_dev_dbg(bdev, "suspend: is_suspended %d", bdev->is_suspended);
 
-	spin_lock(&bcm_device_lock);
+	mutex_lock(&bcm_device_lock);
 
 	if (!bdev->hu)
 		goto unlock;
@@ -353,12 +353,12 @@ static int bcm_suspend(struct device *dev)
 	/* Suspend the device */
 	if (bdev->device_wakeup) {
 		gpiod_set_value(bdev->device_wakeup, false);
-		BT_DBG("suspend, delaying 15 ms");
+		bt_dev_dbg(bdev, "suspend, delaying 15 ms");
 		mdelay(15);
 	}
 
 unlock:
-	spin_unlock(&bcm_device_lock);
+	mutex_unlock(&bcm_device_lock);
 
 	return 0;
 }
@@ -368,16 +368,16 @@ static int bcm_resume(struct device *dev)
 {
 	struct bcm_device *bdev = platform_get_drvdata(to_platform_device(dev));
 
-	BT_DBG("resume (%p): is_suspended %d", bdev, bdev->is_suspended);
+	bt_dev_dbg(bdev, "resume: is_suspended %d", bdev->is_suspended);
 
-	spin_lock(&bcm_device_lock);
+	mutex_lock(&bcm_device_lock);
 
 	if (!bdev->hu)
 		goto unlock;
 
 	if (bdev->device_wakeup) {
 		gpiod_set_value(bdev->device_wakeup, true);
-		BT_DBG("resume, delaying 15 ms");
+		bt_dev_dbg(bdev, "resume, delaying 15 ms");
 		mdelay(15);
 	}
 
@@ -389,7 +389,7 @@ static int bcm_resume(struct device *dev)
 	}
 
 unlock:
-	spin_unlock(&bcm_device_lock);
+	mutex_unlock(&bcm_device_lock);
 
 	return 0;
 }
@@ -504,9 +504,9 @@ static int bcm_probe(struct platform_device *pdev)
 	dev_info(&pdev->dev, "%s device registered.\n", dev->name);
 
 	/* Place this instance on the device list */
-	spin_lock(&bcm_device_lock);
+	mutex_lock(&bcm_device_lock);
 	list_add_tail(&dev->list, &bcm_device_list);
-	spin_unlock(&bcm_device_lock);
+	mutex_unlock(&bcm_device_lock);
 
 	bcm_gpio_set_power(dev, false);
 
@@ -517,9 +517,9 @@ static int bcm_remove(struct platform_device *pdev)
 {
 	struct bcm_device *dev = platform_get_drvdata(pdev);
 
-	spin_lock(&bcm_device_lock);
+	mutex_lock(&bcm_device_lock);
 	list_del(&dev->list);
-	spin_unlock(&bcm_device_lock);
+	mutex_unlock(&bcm_device_lock);
 
 	acpi_dev_remove_driver_gpios(ACPI_COMPANION(&pdev->dev));
 
