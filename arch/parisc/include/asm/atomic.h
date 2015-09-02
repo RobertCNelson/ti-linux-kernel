@@ -19,14 +19,14 @@
 
 #ifdef CONFIG_SMP
 #include <asm/spinlock.h>
-#include <asm/cache.h>		/* we use L1_CACHE_BYTES */
+#include <asm/cache.h>		/* we use L1_CACHE_SHIFT */
 
 /* Use an array of spinlocks for our atomic_ts.
  * Hash function to index into a different SPINLOCK.
  * Since "a" is usually an address, use one spinlock per cacheline.
  */
 #  define ATOMIC_HASH_SIZE 4
-#  define ATOMIC_HASH(a) (&(__atomic_hash[ (((unsigned long) (a))/L1_CACHE_BYTES) & (ATOMIC_HASH_SIZE-1) ]))
+#  define ATOMIC_HASH(a) (&(__atomic_hash[ (((unsigned long) (a)) >> L1_CACHE_SHIFT) & (ATOMIC_HASH_SIZE-1) ]))
 
 extern arch_spinlock_t __atomic_hash[ATOMIC_HASH_SIZE] __lock_aligned;
 

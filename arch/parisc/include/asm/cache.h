@@ -7,17 +7,19 @@
 
 
 /*
- * PA 2.0 processors have 64-byte cachelines; PA 1.1 processors have
- * 32-byte cachelines.  The default configuration is not for SMP anyway,
- * so if you're building for SMP, you should select the appropriate
- * processor type.  There is a potential livelock danger when running
- * a machine with this value set too small, but it's more probable you'll
- * just ruin performance.
+ * Most PA 2.0 processors have 64-byte cachelines, but PA8800 and PA8900
+ * processors have a cache line length of 128 bytes.
+ * PA 1.1 processors have 32-byte cachelines.
+ * There is a potential livelock danger when running a machine with this value
+ * set too small, but it's more probable you'll just ruin performance.
  */
-#ifdef CONFIG_PA20
+#if defined(CONFIG_PA8X00)
+#define L1_CACHE_BYTES 128
+#define L1_CACHE_SHIFT 7
+#elif defined(CONFIG_PA20)
 #define L1_CACHE_BYTES 64
 #define L1_CACHE_SHIFT 6
-#else
+#else /* PA7XXX */
 #define L1_CACHE_BYTES 32
 #define L1_CACHE_SHIFT 5
 #endif
