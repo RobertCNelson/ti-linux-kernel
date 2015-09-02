@@ -349,13 +349,12 @@ xfs_imap_valid(
  */
 STATIC void
 xfs_end_bio(
-	struct bio		*bio,
-	int			error)
+	struct bio		*bio)
 {
 	xfs_ioend_t		*ioend = bio->bi_private;
 
-	if (!ioend->io_error && !test_bit(BIO_UPTODATE, &bio->bi_flags))
-		ioend->io_error = error;
+	if (!ioend->io_error)
+		ioend->io_error = bio->bi_error;
 
 	/* Toss bio and pass work off to an xfsdatad thread */
 	bio->bi_private = NULL;
@@ -381,8 +380,7 @@ STATIC struct bio *
 xfs_alloc_ioend_bio(
 	struct buffer_head	*bh)
 {
-	int			nvecs = bio_get_nr_vecs(bh->b_bdev);
-	struct bio		*bio = bio_alloc(GFP_NOIO, nvecs);
+	struct bio		*bio = bio_alloc(GFP_NOIO, BIO_MAX_PAGES);
 
 	ASSERT(bio->bi_private == NULL);
 	bio->bi_iter.bi_sector = bh->b_blocknr * (bh->b_size >> 9);
