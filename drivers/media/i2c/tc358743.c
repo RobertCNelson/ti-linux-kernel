@@ -870,7 +870,8 @@ static void tc358743_format_change(struct v4l2_subdev *sd)
 				&timings, false);
 	}
 
-	v4l2_subdev_notify_event(sd, &tc358743_ev_fmt);
+	if (sd->devnode)
+		v4l2_subdev_notify_event(sd, &tc358743_ev_fmt);
 }
 
 static void tc358743_init_interrupts(struct v4l2_subdev *sd)
@@ -1681,7 +1682,6 @@ static const struct v4l2_ctrl_config tc358743_ctrl_audio_present = {
 #ifdef CONFIG_OF
 static void tc358743_gpio_reset(struct tc358743_state *state)
 {
-	gpiod_set_value(state->reset_gpio, 0);
 	usleep_range(5000, 10000);
 	gpiod_set_value(state->reset_gpio, 1);
 	usleep_range(1000, 2000);
@@ -1783,14 +1783,16 @@ static int tc358743_probe_of(struct tc358743_state *state)
 	state->pdata.ths_trailcnt = 0x2;
 	state->pdata.hstxvregcnt = 0;
 
-	state->reset_gpio = devm_gpiod_get(dev, "reset");
+	state->reset_gpio = devm_gpiod_get_optional(dev, "reset",
+						    GPIOD_OUT_LOW);
 	if (IS_ERR(state->reset_gpio)) {
 		dev_err(dev, "failed to get reset gpio\n");
 		ret = PTR_ERR(state->reset_gpio);
 		goto disable_clk;
 	}
 
-	tc358743_gpio_reset(state);
+	if (state->reset_gpio)
+		tc358743_gpio_reset(state);
 
 	ret = 0;
 	goto free_endpoint;
@@ -1967,7 +1969,6 @@ MODULE_DEVICE_TABLE(i2c, tc358743_id);
 
 static struct i2c_driver tc358743_driver = {
 	.driver = {
-		.owner = THIS_MODULE,
 		.name = "tc358743",
 	},
 	.probe = tc358743_probe,
