@@ -1642,7 +1642,7 @@ struct dm_bufio_client *dm_bufio_client_create(struct block_device *bdev, unsign
 		if (!DM_BUFIO_CACHE(c)) {
 			DM_BUFIO_CACHE(c) = kmem_cache_create(DM_BUFIO_CACHE_NAME(c),
 							      c->block_size,
-							      c->block_size, 0, NULL);
+							      c->block_size, SLAB_NO_MERGE, NULL);
 			if (!DM_BUFIO_CACHE(c)) {
 				r = -ENOMEM;
 				mutex_unlock(&dm_bufio_clients_lock);

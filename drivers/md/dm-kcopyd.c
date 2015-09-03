@@ -364,9 +364,9 @@ static struct kmem_cache *_job_cache;
 
 int __init dm_kcopyd_init(void)
 {
-	_job_cache = kmem_cache_create("kcopyd_job",
+	_job_cache = kmem_cache_create("dm_kcopyd_job",
 				sizeof(struct kcopyd_job) * (SPLIT_COUNT + 1),
-				__alignof__(struct kcopyd_job), 0, NULL);
+				__alignof__(struct kcopyd_job), SLAB_NO_MERGE, NULL);
 	if (!_job_cache)
 		return -ENOMEM;
 

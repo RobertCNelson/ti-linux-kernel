@@ -313,17 +313,17 @@ static int __init local_init(void)
 {
 	int r = -ENOMEM;
 
-	/* allocate a slab for the dm_ios */
-	_io_cache = KMEM_CACHE(dm_io, 0);
+	_io_cache = kmem_cache_create("dm_target_io", sizeof(struct dm_io),
+				      __alignof__(struct dm_io), SLAB_NO_MERGE, NULL);
 	if (!_io_cache)
 		return r;
 
-	_rq_tio_cache = KMEM_CACHE(dm_rq_target_io, 0);
+	_rq_tio_cache = KMEM_CACHE(dm_rq_target_io, SLAB_NO_MERGE);
 	if (!_rq_tio_cache)
 		goto out_free_io_cache;
 
 	_rq_cache = kmem_cache_create("dm_clone_request", sizeof(struct request),
-				      __alignof__(struct request), 0, NULL);
+				      __alignof__(struct request), SLAB_NO_MERGE, NULL);
 	if (!_rq_cache)
 		goto out_free_rq_tio_cache;
 
@@ -1464,7 +1464,7 @@ static void __map_bio(struct dm_target_io *tio)
 		md = tio->io->md;
 		dec_pending(tio->io, r);
 		free_tio(md, tio);
-	} else if (r) {
+	} else if (r != DM_MAPIO_SUBMITTED) {
 		DMWARN("unimplemented target map return value: %d", r);
 		BUG();
 	}

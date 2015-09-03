@@ -1727,8 +1727,7 @@ static int __init dm_multipath_init(void)
 {
 	int r;
 
-	/* allocate a slab for the dm_ios */
-	_mpio_cache = KMEM_CACHE(dm_mpath_io, 0);
+	_mpio_cache = KMEM_CACHE(dm_mpath_io, SLAB_NO_MERGE);
 	if (!_mpio_cache)
 		return -ENOMEM;
 

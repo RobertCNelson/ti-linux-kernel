@@ -204,7 +204,7 @@ EXPORT_SYMBOL_GPL(dm_path_uevent);
 
 int dm_uevent_init(void)
 {
-	_dm_event_cache = KMEM_CACHE(dm_uevent, 0);
+	_dm_event_cache = KMEM_CACHE(dm_uevent, SLAB_NO_MERGE);
 	if (!_dm_event_cache)
 		return -ENOMEM;
 
