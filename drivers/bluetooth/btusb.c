@@ -1348,7 +1348,9 @@ static int btusb_setup_csr(struct hci_dev *hdev)
 
 	rp = (struct hci_rp_read_local_version *)skb->data;
 
-	if (le16_to_cpu(rp->manufacturer) != 10) {
+	/* Detect controllers which aren't real CSR ones. */
+	if (le16_to_cpu(rp->manufacturer) != 10 ||
+	    le16_to_cpu(rp->lmp_subver) == 0x0c5c) {
 		/* Clear the reset quirk since this is not an actual
 		 * early Bluetooth 1.1 device from CSR.
 		 */
@@ -2217,36 +2219,7 @@ done:
 	 * The device can work without DDC parameters, so even if it fails
 	 * to load the file, no need to fail the setup.
 	 */
-	err = request_firmware_direct(&fw, fwname, &hdev->dev);
-	if (err < 0)
-		return 0;
-
-	BT_INFO("%s: Found Intel DDC parameters: %s", hdev->name, fwname);
-
-	fw_ptr = fw->data;
-
-	/* DDC file contains one or more DDC structure which has
-	 * Length (1 byte), DDC ID (2 bytes), and DDC value (Length - 2).
-	 */
-	while (fw->size > fw_ptr - fw->data) {
-		u8 cmd_plen = fw_ptr[0] + sizeof(u8);
-
-		skb = __hci_cmd_sync(hdev, 0xfc8b, cmd_plen, fw_ptr,
-				     HCI_INIT_TIMEOUT);
-		if (IS_ERR(skb)) {
-			BT_ERR("%s: Failed to send Intel_Write_DDC (%ld)",
-			       hdev->name, PTR_ERR(skb));
-			release_firmware(fw);
-			return PTR_ERR(skb);
-		}
-
-		fw_ptr += cmd_plen;
-		kfree_skb(skb);
-	}
-
-	release_firmware(fw);
-
-	BT_INFO("%s: Applying Intel DDC parameters completed", hdev->name);
+	btintel_load_ddc_config(hdev, fwname);
 
 	return 0;
 }
@@ -2782,7 +2755,7 @@ static int btusb_probe(struct usb_interface *intf,
 			set_bit(HCI_QUIRK_RESET_ON_CLOSE, &hdev->quirks);
 
 		/* Fake CSR devices with broken commands */
-		if (bcdDevice <= 0x100)
+		if (bcdDevice <= 0x100 || bcdDevice == 0x134)
 			hdev->setup = btusb_setup_csr;
 
 		set_bit(HCI_QUIRK_SIMULTANEOUS_DISCOVERY, &hdev->quirks);
