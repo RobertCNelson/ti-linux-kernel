@@ -396,12 +396,12 @@ void intel_audio_codec_enable(struct intel_encoder *intel_encoder)
 {
 	struct drm_encoder *encoder = &intel_encoder->base;
 	struct intel_crtc *crtc = to_intel_crtc(encoder->crtc);
-	struct drm_display_mode *mode = &crtc->config->base.adjusted_mode;
+	struct drm_display_mode *adjusted_mode = &crtc->config->base.adjusted_mode;
 	struct drm_connector *connector;
 	struct drm_device *dev = encoder->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	connector = drm_select_eld(encoder, mode);
+	connector = drm_select_eld(encoder, adjusted_mode);
 	if (!connector)
 		return;
 
@@ -416,10 +416,11 @@ void intel_audio_codec_enable(struct intel_encoder *intel_encoder)
 	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT))
 		connector->eld[5] |= (1 << 2);
 
-	connector->eld[6] = drm_av_sync_delay(connector, mode) / 2;
+	connector->eld[6] = drm_av_sync_delay(connector, adjusted_mode) / 2;
 
 	if (dev_priv->display.audio_codec_enable)
-		dev_priv->display.audio_codec_enable(connector, intel_encoder, mode);
+		dev_priv->display.audio_codec_enable(connector, intel_encoder,
+						     adjusted_mode);
 }
 
 /**
