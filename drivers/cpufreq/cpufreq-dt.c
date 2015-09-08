@@ -239,6 +239,17 @@ static int cpufreq_init(struct cpufreq_policy *policy)
 	 */
 	of_cpumask_init_opp_table(policy->cpus);
 
+	/*
+	 * But we need OPP table to function so if it is not there let's
+	 * give platform code chance to provide it for us.
+	 */
+	ret = dev_pm_opp_get_opp_count(cpu_dev);
+	if (ret <= 0) {
+		pr_debug("OPP table is not ready, deferring probe\n");
+		ret = -EPROBE_DEFER;
+		goto out_free_opp;
+	}
+
 	if (need_update) {
 		struct cpufreq_dt_platform_data *pd = cpufreq_get_driver_data();
 
@@ -249,22 +260,14 @@ static int cpufreq_init(struct cpufreq_policy *policy)
 		 * OPP tables are initialized only for policy->cpu, do it for
 		 * others as well.
 		 */
-		set_cpus_sharing_opps(cpu_dev, policy->cpus);
+		ret = set_cpus_sharing_opps(cpu_dev, policy->cpus);
+		if (ret)
+			dev_err(cpu_dev, "%s: failed to mark OPPs as shared: %d\n",
+				__func__, ret);
 
 		of_property_read_u32(np, "clock-latency", &transition_latency);
 	} else {
 		transition_latency = dev_pm_opp_get_max_clock_latency(cpu_dev);
-	}
-
-	/*
-	 * But we need OPP table to function so if it is not there let's
-	 * give platform code chance to provide it for us.
-	 */
-	ret = dev_pm_opp_get_opp_count(cpu_dev);
-	if (ret <= 0) {
-		pr_debug("OPP table is not ready, deferring probe\n");
-		ret = -EPROBE_DEFER;
-		goto out_free_opp;
 	}
 
 	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
@@ -300,7 +303,8 @@ static int cpufreq_init(struct cpufreq_policy *policy)
 			rcu_read_unlock();
 
 			tol_uV = opp_uV * priv->voltage_tolerance / 100;
-			if (regulator_is_supported_voltage(cpu_reg, opp_uV,
+			if (regulator_is_supported_voltage(cpu_reg,
+							   opp_uV - tol_uV,
 							   opp_uV + tol_uV)) {
 				if (opp_uV < min_uV)
 					min_uV = opp_uV;
