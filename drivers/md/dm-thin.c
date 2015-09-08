@@ -4288,7 +4288,7 @@ static int __init dm_thin_init(void)
 
 	r = -ENOMEM;
 
-	_new_mapping_cache = KMEM_CACHE(dm_thin_new_mapping, 0);
+	_new_mapping_cache = KMEM_CACHE(dm_thin_new_mapping, SLAB_NO_MERGE);
 	if (!_new_mapping_cache)
 		goto bad_new_mapping_cache;
 

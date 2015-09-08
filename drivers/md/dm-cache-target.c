@@ -394,7 +394,6 @@ static void wake_worker(struct cache *cache)
 
 static struct dm_bio_prison_cell *alloc_prison_cell(struct cache *cache)
 {
-	/* FIXME: change to use a local slab. */
 	return dm_bio_prison_alloc_cell(cache->prison, GFP_NOWAIT);
 }
 
@@ -3835,7 +3834,7 @@ static int __init dm_cache_init(void)
 		return r;
 	}
 
-	migration_cache = KMEM_CACHE(dm_cache_migration, 0);
+	migration_cache = KMEM_CACHE(dm_cache_migration, SLAB_NO_MERGE);
 	if (!migration_cache) {
 		dm_unregister_target(&cache_target);
 		return -ENOMEM;

@@ -893,7 +893,7 @@ static int __init userspace_dirty_log_init(void)
 {
 	int r = 0;
 
-	_flush_entry_cache = KMEM_CACHE(dm_dirty_log_flush_entry, 0);
+	_flush_entry_cache = KMEM_CACHE(dm_dirty_log_flush_entry, SLAB_NO_MERGE);
 	if (!_flush_entry_cache) {
 		DMWARN("Unable to create flush_entry_cache: No memory.");
 		return -ENOMEM;

@@ -400,7 +400,7 @@ EXPORT_SYMBOL_GPL(dm_deferred_set_add_work);
 
 static int __init dm_bio_prison_init(void)
 {
-	_cell_cache = KMEM_CACHE(dm_bio_prison_cell, 0);
+	_cell_cache = KMEM_CACHE(dm_bio_prison_cell, SLAB_NO_MERGE);
 	if (!_cell_cache)
 		return -ENOMEM;
 

@@ -528,7 +528,8 @@ EXPORT_SYMBOL(dm_io);
 
 int __init dm_io_init(void)
 {
-	_dm_io_cache = KMEM_CACHE(io, 0);
+	_dm_io_cache = kmem_cache_create("dm_io", sizeof(struct io),
+					 __alignof__(struct io), SLAB_NO_MERGE, NULL);
 	if (!_dm_io_cache)
 		return -ENOMEM;
 

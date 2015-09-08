@@ -1444,7 +1444,7 @@ static int __init mq_init(void)
 	mq_entry_cache = kmem_cache_create("dm_mq_policy_cache_entry",
 					   sizeof(struct entry),
 					   __alignof__(struct entry),
-					   0, NULL);
+					   SLAB_NO_MERGE, NULL);
 	if (!mq_entry_cache)
 		return -ENOMEM;
 

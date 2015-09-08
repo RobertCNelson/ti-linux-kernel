@@ -2426,14 +2426,14 @@ static int __init dm_snapshot_init(void)
 		goto bad_origin_hash;
 	}
 
-	exception_cache = KMEM_CACHE(dm_exception, 0);
+	exception_cache = KMEM_CACHE(dm_exception, SLAB_NO_MERGE);
 	if (!exception_cache) {
 		DMERR("Couldn't create exception cache.");
 		r = -ENOMEM;
 		goto bad_exception_cache;
 	}
 
-	pending_cache = KMEM_CACHE(dm_snap_pending_exception, 0);
+	pending_cache = KMEM_CACHE(dm_snap_pending_exception, SLAB_NO_MERGE);
 	if (!pending_cache) {
 		DMERR("Couldn't create pending cache.");
 		r = -ENOMEM;
