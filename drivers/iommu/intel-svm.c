@@ -14,6 +14,14 @@
  */
 
 #include <linux/intel-iommu.h>
+#include <linux/mmu_notifier.h>
+#include <linux/sched.h>
+#include <linux/slab.h>
+#include <linux/intel-svm.h>
+
+struct pasid_entry {
+	u64 val;
+};
 
 int intel_svm_alloc_pasid_tables(struct intel_iommu *iommu)
 {
@@ -40,6 +48,8 @@ int intel_svm_alloc_pasid_tables(struct intel_iommu *iommu)
 		return -ENOMEM;
 	}
 	iommu->pasid_state_table = page_address(pages);
+	idr_init(&iommu->pasid_idr);
+
 	pr_info("%s: Allocated order %d PASID table.\n", iommu->name, order);
 
 	return 0;
@@ -61,5 +71,224 @@ int intel_svm_free_pasid_tables(struct intel_iommu *iommu)
 		free_pages((unsigned long)iommu->pasid_state_table, order);
 		iommu->pasid_state_table = NULL;
 	}
+	idr_destroy(&iommu->pasid_idr);
 	return 0;
 }
+
+static void intel_flush_svm_range(struct intel_svm *svm,
+				  unsigned long address, int pages, int ih)
+{
+	struct qi_desc desc;
+	int mask = ilog2(__roundup_pow_of_two(pages));
+
+	if (pages == -1 || !cap_pgsel_inv(svm->iommu->cap) ||
+	    mask > cap_max_amask_val(svm->iommu->cap)) {
+		desc.low = QI_EIOTLB_PASID(svm->pasid) | QI_EIOTLB_DID(svm->did) |
+			QI_EIOTLB_GRAN(QI_GRAN_NONG_PASID) | QI_EIOTLB_TYPE;
+		desc.high = 0;
+	} else {
+		desc.low = QI_EIOTLB_PASID(svm->pasid) | QI_EIOTLB_DID(svm->did) |
+			QI_EIOTLB_GRAN(QI_GRAN_PSI_PASID) | QI_EIOTLB_TYPE;
+		desc.high = QI_EIOTLB_ADDR(address) | QI_EIOTLB_GL(1) |
+			QI_EIOTLB_IH(ih) | QI_EIOTLB_AM(mask);
+	}
+
+	qi_submit_sync(&desc, svm->iommu);
+
+	if (svm->dev_iotlb) {
+		desc.low = QI_DEV_EIOTLB_PASID(svm->pasid) | QI_DEV_EIOTLB_SID(svm->sid) |
+			QI_DEV_EIOTLB_QDEP(svm->qdep) | QI_DEIOTLB_TYPE;
+		if (mask) {
+			unsigned long adr, delta;
+
+			/* Least significant zero bits in the address indicate the
+			 * range of the request. So mask them out according to the
+			 * size. */
+			adr = address & ((1<<(VTD_PAGE_SHIFT + mask)) - 1);
+
+			/* Now ensure that we round down further if the original
+			 * request was not aligned w.r.t. its size */
+			delta = address - adr;
+			if (delta + (pages << VTD_PAGE_SHIFT) >= (1 << (VTD_PAGE_SHIFT + mask)))
+				adr &= ~(1 << (VTD_PAGE_SHIFT + mask));
+			desc.high = QI_DEV_EIOTLB_ADDR(adr) | QI_DEV_EIOTLB_SIZE;
+		} else {
+			desc.high = QI_DEV_EIOTLB_ADDR(address);
+		}
+		qi_submit_sync(&desc, svm->iommu);
+	}
+}
+
+
+static void intel_change_pte(struct mmu_notifier *mn, struct mm_struct *mm,
+			     unsigned long address, pte_t pte)
+{
+	struct intel_svm *svm = container_of(mn, struct intel_svm, notifier);
+
+	intel_flush_svm_range(svm, address, 1, 1);
+}
+
+static void intel_invalidate_page(struct mmu_notifier *mn, struct mm_struct *mm,
+				  unsigned long address)
+{
+	struct intel_svm *svm = container_of(mn, struct intel_svm, notifier);
+
+	intel_flush_svm_range(svm, address, 1, 1);
+}
+
+/* Pages have been freed at this point */
+static void intel_invalidate_range_end(struct mmu_notifier *mn,
+				       struct mm_struct *mm,
+				       unsigned long start, unsigned long end)
+{
+	struct intel_svm *svm = container_of(mn, struct intel_svm, notifier);
+
+	intel_flush_svm_range(svm, start,
+			      (end - start + PAGE_SIZE - 1) >> VTD_PAGE_SHIFT , 0);
+}
+
+static void intel_flush_pasid(struct intel_svm *svm)
+{
+	struct qi_desc desc;
+
+	desc.high = 0;
+	desc.low = QI_PC_TYPE | QI_PC_DID(svm->did) | QI_PC_PASID_SEL | QI_PC_PASID(svm->pasid);
+
+	qi_submit_sync(&desc, svm->iommu);
+}
+
+static void intel_mm_release(struct mmu_notifier *mn, struct mm_struct *mm)
+{
+	struct intel_svm *svm = container_of(mn, struct intel_svm, notifier);
+
+	/* Called either when the process exits, or on the last unbind */
+	svm->iommu->pasid_table[svm->pasid].val = 0;
+
+	intel_flush_pasid(svm);
+	intel_flush_svm_range(svm, 0, -1, 0);
+
+	/* XXX: Callback to device driver to let it know? */
+}
+
+static const struct mmu_notifier_ops intel_mmuops = {
+	.release = intel_mm_release,
+	.change_pte = intel_change_pte,
+	.invalidate_page = intel_invalidate_page,
+	.invalidate_range_end = intel_invalidate_range_end,
+};
+
+static DEFINE_MUTEX(pasid_mutex);
+
+int intel_svm_bind_mm(struct device *dev, int *pasid)
+{
+	struct intel_svm *svm;
+	int pasid_max;
+	int ret;
+
+	BUG_ON(pasid && !current->mm);
+
+	mutex_lock(&pasid_mutex);
+	if (pasid) {
+		struct intel_iommu *iommu = intel_iommu_device_to_iommu(dev);
+		int pasid;
+
+		if (!iommu || !iommu->pasid_table) {
+			ret = -EINVAL;
+			goto out;
+		}
+
+		idr_for_each_entry(&iommu->pasid_idr, svm, pasid) {
+			if (svm->mm != current->mm)
+				continue;
+
+			if (dev != svm->dev) {
+				ret = -EBUSY;
+				goto out;
+			}
+
+			kref_get(&svm->kref);
+			goto success;
+		}
+	}
+
+	svm = kzalloc(sizeof(*svm), GFP_KERNEL);
+	if (!svm) {
+		ret = -ENOMEM;
+		goto out;
+	}
+	kref_init(&svm->kref);
+	svm->dev = dev;
+	ret = intel_iommu_enable_pasid(svm);
+	if (ret) {
+		kfree(svm);
+		goto out;
+	}
+	if (!pasid) {
+		/* If they don't actually want to assign a PASID, this is
+		 * just an enabling check/preparation. */
+		kfree(svm);
+		goto out;
+	}
+
+	pasid_max = 2 << ecap_pss(svm->iommu->ecap);
+	/* FIXME: Factor in device max too. */
+	ret = idr_alloc(&svm->iommu->pasid_idr, svm, 0, pasid_max - 1,
+			GFP_KERNEL);
+	if (ret < 0) {
+		kfree(svm);
+		goto out;
+	}
+	svm->pasid = ret;
+	svm->notifier.ops = &intel_mmuops;
+	svm->mm = get_task_mm(current);
+	ret = -ENOMEM;
+	if (!svm->mm || (ret = mmu_notifier_register(&svm->notifier, svm->mm))) {
+		idr_remove(&svm->iommu->pasid_idr, svm->pasid);
+		kfree(svm);
+		goto out;
+	}
+	svm->iommu->pasid_table[svm->pasid].val = (u64)__pa(current->mm->pgd) | 1;
+
+ success:
+	*pasid = svm->pasid;
+	ret = 0;
+ out:
+	mutex_unlock(&pasid_mutex);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(intel_svm_bind_mm);
+
+static void intel_mm_free(struct kref *svm_ref)
+{
+	struct intel_svm *svm = container_of(svm_ref, struct intel_svm, kref);
+
+	mmu_notifier_unregister(&svm->notifier, svm->mm);
+
+	idr_remove(&svm->iommu->pasid_idr, svm->pasid);
+	mmput(svm->mm);
+	kfree(svm);
+}
+
+int intel_svm_unbind_mm(struct device *dev, int pasid)
+{
+	struct intel_svm *svm;
+	struct intel_iommu *iommu;
+	int ret = -EINVAL;
+
+	mutex_lock(&pasid_mutex);
+	iommu = intel_iommu_device_to_iommu(dev);
+	if (!iommu || !iommu->pasid_table)
+		goto out;
+
+	svm = idr_find(&iommu->pasid_idr, pasid);
+	if (!svm)
+		goto out;
+
+	kref_put(&svm->kref, intel_mm_free);
+	ret = 0;
+ out:
+	mutex_unlock(&pasid_mutex);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(intel_svm_unbind_mm);

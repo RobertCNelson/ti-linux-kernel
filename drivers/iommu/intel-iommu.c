@@ -4882,6 +4882,106 @@ static void intel_iommu_remove_device(struct device *dev)
 	iommu_device_unlink(iommu->iommu_dev, dev);
 }
 
+#ifdef CONFIG_INTEL_IOMMU_SVM
+int intel_iommu_enable_pasid(struct intel_svm *svm)
+{
+	struct device_domain_info *info = NULL;
+	struct context_entry *context;
+	struct dmar_domain *domain;
+	unsigned long flags;
+	u8 bus, devfn;
+	u64 ctx_lo;
+
+	if (iommu_dummy(svm->dev)) {
+		dev_warn(svm->dev,
+			 "No IOMMU translation for device; cannot enable SVM\n");
+		return -EINVAL;
+	}
+
+	domain = get_valid_domain_for_dev(svm->dev);
+	if (!domain) {
+		dev_warn(svm->dev, "Cannot get IOMMU domain to enable SVM\n");
+		return -EINVAL;
+	}
+
+	svm->iommu = device_to_iommu(svm->dev, &bus, &devfn);
+	if (!ecs_enabled(svm->iommu)) {
+		dev_dbg(svm->dev, "No ECS support on IOMMU; cannot enable SVM\n");
+		return -EINVAL;
+	}
+	svm->did = domain->iommu_did[svm->iommu->seq_id];
+
+	spin_lock_irqsave(&device_domain_lock, flags);
+	spin_lock(&svm->iommu->lock);
+	context = iommu_context_addr(svm->iommu, bus, devfn, 0);
+	if (WARN_ON(!context)) {
+		spin_unlock(&svm->iommu->lock);
+		spin_unlock_irqrestore(&device_domain_lock, flags);
+		return -EINVAL;
+	}
+
+	ctx_lo = context[0].lo;
+	/* Modes in which the device IOTLB is enabled are 1 and 5. Modes
+	 * 3 and 7 are invalid. so we only need to test the low bit of TT */
+	svm->dev_iotlb = (ctx_lo >> 2) & 1;
+
+	if (!(ctx_lo & CONTEXT_PASIDE)) {
+		context[1].hi = (u64)virt_to_phys(svm->iommu->pasid_state_table);
+		context[1].lo = (u64)virt_to_phys(svm->iommu->pasid_table) | ecap_pss(svm->iommu->ecap);
+		wmb();
+		/* CONTEXT_TT_MULTI_LEVEL and CONTEXT_TT_DEV_IOTLB are both
+		 * extended to permit requests-with-PASID if the PASIDE bit
+		 * is set. which makes sense. For CONTEXT_TT_PASS_THROUGH,
+		 * however, the PASIDE bit is ignored and requests-with-PASID
+		 * are unconditionally blocked. Which makes less sense.
+		 * So convert from CONTEXT_TT_PASS_THROUGH to one of the new
+		 * "guest mode" translation types depending on whether ATS
+		 * is available or not. */
+		if ((ctx_lo & CONTEXT_TT_MASK) == (CONTEXT_TT_PASS_THROUGH << 2)) {
+			ctx_lo &= ~CONTEXT_TT_MASK;
+			info = iommu_support_dev_iotlb(domain, svm->iommu, bus, devfn);
+			if (info) {
+				ctx_lo |= CONTEXT_TT_PT_PASID_DEV_IOTLB << 2;
+				svm->dev_iotlb = 1;
+			} else
+				ctx_lo |= CONTEXT_TT_PT_PASID << 2;
+		}
+		ctx_lo |= CONTEXT_PASIDE;
+		context[0].lo = ctx_lo;
+		wmb();
+		svm->iommu->flush.flush_context(svm->iommu, svm->did,
+						(((u16)bus) << 8) | devfn,
+						DMA_CCMD_MASK_NOBIT,
+						DMA_CCMD_DEVICE_INVL);
+	}
+	spin_unlock(&svm->iommu->lock);
+	spin_unlock_irqrestore(&device_domain_lock, flags);
+
+	/* This only happens if we just switched from CONTEXT_TT_PASS_THROUGH */
+	if (info)
+		iommu_enable_dev_iotlb(info);
+
+	/* This can also happen when we were already in a dev-iotlb mode */
+	if (svm->dev_iotlb) {
+		svm->qdep = pci_ats_queue_depth(to_pci_dev(svm->dev));
+		if (svm->qdep >= QI_DEV_EIOTLB_MAX_INVS)
+			svm->qdep = 0;
+		svm->sid = (((u16)bus) << 8) | devfn;
+	}
+
+	return 0;
+}
+
+/* Helper function for SVM code, so that we can look up a given PASID
+ * in its IOMMU's pasid_idr for unbinding */
+struct intel_iommu *intel_iommu_device_to_iommu(struct device *dev)
+{
+	u8 bus, devfn;
+
+	return device_to_iommu(dev, &bus, &devfn);
+}
+#endif /* CONFIG_INTEL_IOMMU_SVM */
+
 static const struct iommu_ops intel_iommu_ops = {
 	.capable	= intel_iommu_capable,
 	.domain_alloc	= intel_iommu_domain_alloc,

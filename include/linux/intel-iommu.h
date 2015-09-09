@@ -1,5 +1,9 @@
 /*
- * Copyright (c) 2006, Intel Corporation.
+ * Copyright © 2006-2015, Intel Corporation.
+ *
+ * Authors: Ashok Raj <ashok.raj@intel.com>
+ *          Anil S Keshavamurthy <anil.s.keshavamurthy@intel.com>
+ *          David Woodhouse <David.Woodhouse@intel.com>
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -13,10 +17,6 @@
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc., 59 Temple
  * Place - Suite 330, Boston, MA 02111-1307 USA.
- *
- * Copyright (C) 2006-2008 Intel Corporation
- * Author: Ashok Raj <ashok.raj@intel.com>
- * Author: Anil S Keshavamurthy <anil.s.keshavamurthy@intel.com>
  */
 
 #ifndef _INTEL_IOMMU_H_
@@ -25,7 +25,9 @@
 #include <linux/types.h>
 #include <linux/iova.h>
 #include <linux/io.h>
+#include <linux/idr.h>
 #include <linux/dma_remapping.h>
+#include <linux/mmu_notifier.h>
 #include <asm/cacheflush.h>
 #include <asm/iommu.h>
 
@@ -253,6 +255,9 @@ enum {
 #define QI_DIOTLB_TYPE		0x3
 #define QI_IEC_TYPE		0x4
 #define QI_IWD_TYPE		0x5
+#define QI_EIOTLB_TYPE		0x6
+#define QI_PC_TYPE		0x7
+#define QI_DEIOTLB_TYPE		0x8
 
 #define QI_IEC_SELECTIVE	(((u64)1) << 4)
 #define QI_IEC_IIDEX(idx)	(((u64)(idx & 0xffff) << 32))
@@ -279,6 +284,34 @@ enum {
 #define QI_DEV_IOTLB_ADDR(addr)	((u64)(addr) & VTD_PAGE_MASK)
 #define QI_DEV_IOTLB_SIZE	1
 #define QI_DEV_IOTLB_MAX_INVS	32
+
+#define QI_PC_PASID(pasid)	(((u64)pasid) << 32)
+#define QI_PC_DID(did)		(((u64)did) << 16)
+#define QI_PC_GRAN(gran)	(((u64)gran) << 4)
+
+#define QI_PC_ALL_PASIDS	(QI_PC_TYPE | QI_PC_GRAN(0))
+#define QI_PC_PASID_SEL		(QI_PC_TYPE | QI_PC_GRAN(1))
+
+#define QI_EIOTLB_ADDR(addr)	((u64)(addr) & VTD_PAGE_MASK)
+#define QI_EIOTLB_GL(gl)	(((u64)gl) << 7)
+#define QI_EIOTLB_IH(ih)	(((u64)ih) << 6)
+#define QI_EIOTLB_AM(am)	(((u64)am))
+#define QI_EIOTLB_PASID(pasid) 	(((u64)pasid) << 32)
+#define QI_EIOTLB_DID(did)	(((u64)did) << 16)
+#define QI_EIOTLB_GRAN(gran) 	(((u64)gran) << 4)
+
+#define QI_DEV_EIOTLB_ADDR(a)	((u64)(a) & VTD_PAGE_MASK)
+#define QI_DEV_EIOTLB_SIZE	(((u64)1) << 11)
+#define QI_DEV_EIOTLB_GLOB(g)	((u64)g)
+#define QI_DEV_EIOTLB_PASID(p)	(((u64)p) << 32)
+#define QI_DEV_EIOTLB_SID(sid)	((u64)((sid) & 0xffff) << 32)
+#define QI_DEV_EIOTLB_QDEP(qd)	(((qd) & 0x1f) << 16)
+#define QI_DEV_EIOTLB_MAX_INVS	32
+
+#define QI_GRAN_ALL_ALL			0
+#define QI_GRAN_NONG_ALL		1
+#define QI_GRAN_NONG_PASID		2
+#define QI_GRAN_PSI_PASID		3
 
 struct qi_desc {
 	u64 low, high;
@@ -361,6 +394,7 @@ struct intel_iommu {
 	 * told to. But while it's all driver-arbitrated, we're fine. */
 	struct pasid_entry *pasid_table;
 	struct pasid_state_entry *pasid_state_table;
+	struct idr pasid_idr;
 #endif
 	struct q_inval  *qi;            /* Queued invalidation info */
 	u32 *iommu_state; /* Store iommu states between suspend and resume.*/
@@ -403,6 +437,21 @@ extern int dmar_ir_support(void);
 
 extern int intel_svm_alloc_pasid_tables(struct intel_iommu *iommu);
 extern int intel_svm_free_pasid_tables(struct intel_iommu *iommu);
+
+struct intel_svm {
+	struct kref kref;
+	struct mmu_notifier notifier;
+	struct mm_struct *mm;
+	struct intel_iommu *iommu;
+	struct device *dev;
+	int pasid;
+	u16 did;
+	u16 dev_iotlb:1;
+	u16 sid, qdep;
+};
+
+extern int intel_iommu_enable_pasid(struct intel_svm *svm);
+extern struct intel_iommu *intel_iommu_device_to_iommu(struct device *dev);
 
 extern const struct attribute_group *intel_iommu_groups[];
 
