@@ -1664,7 +1664,7 @@ out:
 					vma == get_gate_vma(current->mm)))
 			mm->locked_vm += (len >> PAGE_SHIFT);
 		else
-			vma->vm_flags &= ~VM_LOCKED;
+			vma->vm_flags &= ~(VM_LOCKED | VM_LOCKONFAULT);
 	}
 
 	if (file)
@@ -2859,6 +2859,7 @@ void exit_mmap(struct mm_struct *mm)
 			nr_accounted += vma_pages(vma);
 		vma = remove_vma(vma);
 	}
+	exit_hugetlb_mmap(mm);
 	vm_unacct_memory(nr_accounted);
 }
 

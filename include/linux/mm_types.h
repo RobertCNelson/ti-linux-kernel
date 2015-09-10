@@ -366,6 +366,10 @@ struct mm_rss_stat {
 	atomic_long_t count[NR_MM_COUNTERS];
 };
 
+#ifdef CONFIG_HUGETLB_PAGE
+struct hugetlb_usage;
+#endif
+
 struct kioctx_table;
 struct mm_struct {
 	struct vm_area_struct *mmap;		/* list of VMAs */
@@ -485,6 +489,9 @@ struct mm_struct {
 #ifdef CONFIG_X86_INTEL_MPX
 	/* address of the bounds directory */
 	void __user *bd_addr;
+#endif
+#ifdef CONFIG_HUGETLB_PAGE
+	struct hugetlb_usage *hugetlb_usage;
 #endif
 };
 

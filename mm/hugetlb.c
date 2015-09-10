@@ -2790,6 +2790,49 @@ void hugetlb_show_meminfo(void)
 				1UL << (huge_page_order(h) + PAGE_SHIFT - 10));
 }
 
+static unsigned long mm_hstate_usage(struct mm_struct *mm, int hs_idx)
+{
+	if (!mm->hugetlb_usage)
+		return 0;
+	return atomic_long_read(&mm->hugetlb_usage->count[hs_idx]);
+}
+
+void hugetlb_report_usage(struct seq_file *m, struct mm_struct *mm)
+{
+	int i;
+	unsigned long total_usage = 0;
+
+	for (i = 0; i < HUGE_MAX_HSTATE; i++) {
+		total_usage += mm_hstate_usage(mm, i) *
+			(huge_page_size(&hstates[i]) >> 10);
+	}
+
+	seq_printf(m, "HugetlbPages:\t%8lu kB (", total_usage);
+	for (i = 0; i < HUGE_MAX_HSTATE; i++) {
+		if (huge_page_order(&hstates[i]) == 0)
+			break;
+		if (i > 0)
+			seq_puts(m, " ");
+
+		seq_printf(m, "%ld*%lukB", mm_hstate_usage(mm, i),
+			huge_page_size(&hstates[i]) >> 10);
+	}
+	seq_puts(m, ")\n");
+}
+
+int hugetlb_fork(struct mm_struct *new, struct mm_struct *old)
+{
+	if (old->hugetlb_usage) {
+		new->hugetlb_usage = kmalloc(sizeof(struct hugetlb_usage),
+							GFP_KERNEL);
+		if (!new->hugetlb_usage)
+			return -ENOMEM;
+		memcpy(new->hugetlb_usage, old->hugetlb_usage,
+			sizeof(struct hugetlb_usage));
+	}
+	return 0;
+}
+
 /* Return the number pages of memory we physically have, in PAGE_SIZE units. */
 unsigned long hugetlb_total_pages(void)
 {
@@ -3025,6 +3068,7 @@ int copy_hugetlb_page_range(struct mm_struct *dst, struct mm_struct *src,
 			get_page(ptepage);
 			page_dup_rmap(ptepage);
 			set_huge_pte_at(dst, addr, dst_pte, entry);
+			inc_hugetlb_count(dst, h);
 		}
 		spin_unlock(src_ptl);
 		spin_unlock(dst_ptl);
@@ -3105,6 +3149,7 @@ again:
 		if (huge_pte_dirty(pte))
 			set_page_dirty(page);
 
+		dec_hugetlb_count(mm, h);
 		page_remove_rmap(page);
 		force_flush = !__tlb_remove_page(tlb, page);
 		if (force_flush) {
@@ -3501,6 +3546,7 @@ retry:
 				&& (vma->vm_flags & VM_SHARED)));
 	set_huge_pte_at(mm, address, ptep, new_pte);
 
+	inc_hugetlb_count(mm, h);
 	if ((flags & FAULT_FLAG_WRITE) && !(vma->vm_flags & VM_SHARED)) {
 		/* Optimization, do the COW without a second fault */
 		ret = hugetlb_cow(mm, vma, address, ptep, new_pte, page, ptl);
@@ -4020,8 +4066,8 @@ static unsigned long page_table_shareable(struct vm_area_struct *svma,
 	unsigned long s_end = sbase + PUD_SIZE;
 
 	/* Allow segments to share if only one is marked locked */
-	unsigned long vm_flags = vma->vm_flags & ~VM_LOCKED;
-	unsigned long svm_flags = svma->vm_flags & ~VM_LOCKED;
+	unsigned long vm_flags = vma->vm_flags & ~(VM_LOCKED|VM_LOCKONFAULT);
+	unsigned long svm_flags = svma->vm_flags & ~(VM_LOCKED|VM_LOCKONFAULT);
 
 	/*
 	 * match the virtual addresses, permission and the alignment of the

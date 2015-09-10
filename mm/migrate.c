@@ -37,6 +37,7 @@
 #include <linux/gfp.h>
 #include <linux/balloon_compaction.h>
 #include <linux/mmu_notifier.h>
+#include <linux/page_idle.h>
 
 #include <asm/tlbflush.h>
 
@@ -523,6 +524,11 @@ void migrate_page_copy(struct page *newpage, struct page *page)
 		else
 			__set_page_dirty_nobuffers(newpage);
  	}
+
+	if (page_is_young(page))
+		set_page_young(newpage);
+	if (page_is_idle(page))
+		set_page_idle(newpage);
 
 	/*
 	 * Copy NUMA information to the new page, to prevent over-eager
@@ -1748,7 +1754,7 @@ int migrate_misplaced_transhuge_page(struct mm_struct *mm,
 		flush_tlb_range(vma, mmun_start, mmun_end);
 
 	/* Prepare a page as a migration target */
-	__set_page_locked(new_page);
+	__SetPageLocked(new_page);
 	SetPageSwapBacked(new_page);
 
 	/* anon mapping, we can simply copy page->mapping to the new page: */
