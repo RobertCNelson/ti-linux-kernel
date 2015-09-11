@@ -76,7 +76,7 @@ void string_get_size(u64 size, u64 blk_size, const enum string_size_units units,
 		i++;
 	}
 
-	sf_cap = size;
+	sf_cap = size ? size : 1;
 	for (j = 0; sf_cap*10 < 1000; j++)
 		sf_cap *= 10;
 
