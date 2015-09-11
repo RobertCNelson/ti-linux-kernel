@@ -1645,15 +1645,14 @@ static struct dentry *at86rf230_debugfs_root;
 static int at86rf230_stats_show(struct seq_file *file, void *offset)
 {
 	struct at86rf230_local *lp = file->private;
-	int ret;
 
 	seq_printf(file, "SUCCESS:\t\t%8llu\n", lp->trac.success);
 	seq_printf(file, "SUCCESS_DATA_PENDING:\t%8llu\n",
-			 lp->trac.success_data_pending);
+		   lp->trac.success_data_pending);
 	seq_printf(file, "SUCCESS_WAIT_FOR_ACK:\t%8llu\n",
-			 lp->trac.success_wait_for_ack);
+		   lp->trac.success_wait_for_ack);
 	seq_printf(file, "CHANNEL_ACCESS_FAILURE:\t%8llu\n",
-			 lp->trac.channel_access_failure);
+		   lp->trac.channel_access_failure);
 	seq_printf(file, "NO_ACK:\t\t\t%8llu\n", lp->trac.no_ack);
 	seq_printf(file, "INVALID:\t\t%8llu\n", lp->trac.invalid);
 	return 0;
