@@ -80,9 +80,7 @@ struct WILC_WFI_stats {
  * LPC3131 which is important to get the MAC start status when you are blocked
  * inside linux_wlan_firmware_download() which blocks mac_open().
  */
-#if defined(NM73131_0_BOARD)
- #define RX_BH_TYPE  RX_BH_KTHREAD
-#elif defined(PANDA_BOARD)
+#if defined(PANDA_BOARD)
  #define RX_BH_TYPE  RX_BH_THREADED_IRQ
 #else
  #define RX_BH_TYPE  RX_BH_KTHREAD
@@ -172,7 +170,6 @@ typedef struct {
 
 } struct_frame_reg;
 
-#define NUM_CONCURRENT_IFC 2
 typedef struct {
 	uint8_t aSrcAddress[ETH_ALEN];
 	uint8_t aBSSID[ETH_ALEN];
@@ -193,19 +190,16 @@ typedef struct {
 	struct mutex txq_cs;
 
 	/*Added by Amr - BugID_4720*/
-	struct mutex txq_add_to_head_cs;
+	struct semaphore txq_add_to_head_cs;
 	spinlock_t txq_spinlock;
 
 	struct mutex rxq_cs;
 	struct mutex hif_cs;
 
-	/* struct mutex txq_event; */
 	struct semaphore rxq_event;
 	struct semaphore cfg_event;
 	struct semaphore sync_event;
-
 	struct semaphore txq_event;
-	/* struct completion txq_event; */
 
 #if (RX_BH_TYPE == RX_BH_WORK_QUEUE)
 	struct work_struct rx_work_queue;

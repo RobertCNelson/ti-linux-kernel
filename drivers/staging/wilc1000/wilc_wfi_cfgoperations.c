@@ -23,7 +23,6 @@
 #define GET_PKT_OFFSET(a) (((a) >> 22) & 0x1ff)
 
 extern int linux_wlan_get_firmware(perInterface_wlan_t *p_nic);
-extern void linux_wlan_unlock(void *vp);
 extern u16 Set_machw_change_vir_if(bool bValue);
 
 extern int mac_open(struct net_device *ndev);
@@ -144,6 +143,7 @@ bool g_wep_keys_saved;
 void clear_shadow_scan(void *pUserVoid)
 {
 	int i;
+
 	if (op_ifcs == 0) {
 		del_timer_sync(&hAgingTimer);
 		PRINT_INFO(CORECONFIG_DBG, "destroy aging timer\n");
@@ -188,6 +188,7 @@ void refresh_scan(void *pUserVoid, uint8_t all, bool bDirectScan)
 
 	for (i = 0; i < u32LastScannedNtwrksCountShadow; i++) {
 		tstrNetworkInfo *pstrNetworkInfo;
+
 		pstrNetworkInfo = &(astrLastScannedNtwrksShadow[i]);
 
 
@@ -217,6 +218,7 @@ void refresh_scan(void *pUserVoid, uint8_t all, bool bDirectScan)
 void reset_shadow_found(void *pUserVoid)
 {
 	int i;
+
 	for (i = 0; i < u32LastScannedNtwrksCountShadow; i++) {
 		astrLastScannedNtwrksShadow[i].u8Found = 0;
 
@@ -226,6 +228,7 @@ void reset_shadow_found(void *pUserVoid)
 void update_scan_time(void *pUserVoid)
 {
 	int i;
+
 	for (i = 0; i < u32LastScannedNtwrksCountShadow; i++) {
 		astrLastScannedNtwrksShadow[i].u32TimeRcvdInScan = jiffies;
 	}
@@ -339,7 +342,7 @@ void add_network_to_shadow(tstrNetworkInfo *pstrNetworkInfo, void *pUserVoid, vo
 	if (ap_found != -1)
 		kfree(astrLastScannedNtwrksShadow[ap_index].pu8IEs);
 	astrLastScannedNtwrksShadow[ap_index].pu8IEs =
-		WILC_MALLOC(pstrNetworkInfo->u16IEsLen);        /* will be deallocated by the WILC_WFI_CfgScan() function */
+		kmalloc(pstrNetworkInfo->u16IEsLen, GFP_KERNEL);        /* will be deallocated by the WILC_WFI_CfgScan() function */
 	memcpy(astrLastScannedNtwrksShadow[ap_index].pu8IEs,
 		    pstrNetworkInfo->pu8IEs, pstrNetworkInfo->u16IEsLen);
 
@@ -553,6 +556,7 @@ static void CfgConnectResult(tenuConnDisconnEvent enuConnDisconnEvent,
 	tstrWILC_WFIDrv *pstrWFIDrv;
 	#endif
 	u8 NullBssid[ETH_ALEN] = {0};
+
 	connecting = 0;
 
 	priv = (struct WILC_WFI_priv *)pUserVoid;
@@ -692,6 +696,7 @@ static int WILC_WFI_CfgSetChannel(struct wiphy *wiphy,
 	u32 channelnum = 0;
 	struct WILC_WFI_priv *priv;
 	s32 s32Error = WILC_SUCCESS;
+
 	priv = wiphy_priv(wiphy);
 
 	channelnum = ieee80211_frequency_to_channel(chandef->chan->center_freq);
@@ -758,7 +763,7 @@ static int WILC_WFI_CfgScan(struct wiphy *wiphy, struct cfg80211_scan_request *r
 		if (request->n_ssids >= 1) {
 
 
-			strHiddenNetwork.pstrHiddenNetworkInfo = WILC_MALLOC(request->n_ssids * sizeof(tstrHiddenNetwork));
+			strHiddenNetwork.pstrHiddenNetworkInfo = kmalloc(request->n_ssids * sizeof(tstrHiddenNetwork), GFP_KERNEL);
 			strHiddenNetwork.u8ssidnum = request->n_ssids;
 
 
@@ -766,7 +771,7 @@ static int WILC_WFI_CfgScan(struct wiphy *wiphy, struct cfg80211_scan_request *r
 			for (i = 0; i < request->n_ssids; i++) {
 
 				if (request->ssids[i].ssid != NULL && request->ssids[i].ssid_len != 0) {
-					strHiddenNetwork.pstrHiddenNetworkInfo[i].pu8ssid = WILC_MALLOC(request->ssids[i].ssid_len);
+					strHiddenNetwork.pstrHiddenNetworkInfo[i].pu8ssid = kmalloc(request->ssids[i].ssid_len, GFP_KERNEL);
 					memcpy(strHiddenNetwork.pstrHiddenNetworkInfo[i].pu8ssid, request->ssids[i].ssid, request->ssids[i].ssid_len);
 					strHiddenNetwork.pstrHiddenNetworkInfo[i].u8ssidlen = request->ssids[i].ssid_len;
 				} else {
@@ -922,7 +927,7 @@ static int WILC_WFI_CfgConnect(struct wiphy *wiphy, struct net_device *dev,
 
 			/*BugID_5137*/
 			g_key_wep_params.key_len = sme->key_len;
-			g_key_wep_params.key = WILC_MALLOC(sme->key_len);
+			g_key_wep_params.key = kmalloc(sme->key_len, GFP_KERNEL);
 			memcpy(g_key_wep_params.key, sme->key, sme->key_len);
 			g_key_wep_params.key_idx = sme->key_idx;
 			g_wep_keys_saved = true;
@@ -940,7 +945,7 @@ static int WILC_WFI_CfgConnect(struct wiphy *wiphy, struct net_device *dev,
 
 			/*BugID_5137*/
 			g_key_wep_params.key_len = sme->key_len;
-			g_key_wep_params.key = WILC_MALLOC(sme->key_len);
+			g_key_wep_params.key = kmalloc(sme->key_len, GFP_KERNEL);
 			memcpy(g_key_wep_params.key, sme->key, sme->key_len);
 			g_key_wep_params.key_idx = sme->key_idx;
 			g_wep_keys_saved = true;
@@ -1075,6 +1080,7 @@ static int WILC_WFI_disconnect(struct wiphy *wiphy, struct net_device *dev, u16 
 	tstrWILC_WFIDrv *pstrWFIDrv;
 	#endif
 	uint8_t NullBssid[ETH_ALEN] = {0};
+
 	connecting = 0;
 	priv = wiphy_priv(wiphy);
 
@@ -1193,13 +1199,13 @@ static int WILC_WFI_add_key(struct wiphy *wiphy, struct net_device *netdev, u8 k
 		if (priv->wdev->iftype == NL80211_IFTYPE_AP || priv->wdev->iftype == NL80211_IFTYPE_P2P_GO) {
 
 			if (priv->wilc_gtk[key_index] == NULL) {
-				priv->wilc_gtk[key_index] = WILC_MALLOC(sizeof(struct wilc_wfi_key));
+				priv->wilc_gtk[key_index] = kmalloc(sizeof(struct wilc_wfi_key), GFP_KERNEL);
 				priv->wilc_gtk[key_index]->key = NULL;
 				priv->wilc_gtk[key_index]->seq = NULL;
 
 			}
 			if (priv->wilc_ptk[key_index] == NULL) {
-				priv->wilc_ptk[key_index] = WILC_MALLOC(sizeof(struct wilc_wfi_key));
+				priv->wilc_ptk[key_index] = kmalloc(sizeof(struct wilc_wfi_key), GFP_KERNEL);
 				priv->wilc_ptk[key_index]->key = NULL;
 				priv->wilc_ptk[key_index]->seq = NULL;
 			}
@@ -1224,7 +1230,7 @@ static int WILC_WFI_add_key(struct wiphy *wiphy, struct net_device *netdev, u8 k
 				if (priv->wilc_gtk[key_index]->key)
 					kfree(priv->wilc_gtk[key_index]->key);
 
-				priv->wilc_gtk[key_index]->key = WILC_MALLOC(params->key_len);
+				priv->wilc_gtk[key_index]->key = kmalloc(params->key_len, GFP_KERNEL);
 				memcpy(priv->wilc_gtk[key_index]->key, params->key, params->key_len);
 
 				/* if there has been previous allocation for the same index through its seq, free that memory and allocate again*/
@@ -1232,7 +1238,7 @@ static int WILC_WFI_add_key(struct wiphy *wiphy, struct net_device *netdev, u8 k
 					kfree(priv->wilc_gtk[key_index]->seq);
 
 				if ((params->seq_len) > 0) {
-					priv->wilc_gtk[key_index]->seq = WILC_MALLOC(params->seq_len);
+					priv->wilc_gtk[key_index]->seq = kmalloc(params->seq_len, GFP_KERNEL);
 					memcpy(priv->wilc_gtk[key_index]->seq, params->seq, params->seq_len);
 				}
 
@@ -1270,13 +1276,13 @@ static int WILC_WFI_add_key(struct wiphy *wiphy, struct net_device *netdev, u8 k
 				if (priv->wilc_ptk[key_index]->key)
 					kfree(priv->wilc_ptk[key_index]->key);
 
-				priv->wilc_ptk[key_index]->key = WILC_MALLOC(params->key_len);
+				priv->wilc_ptk[key_index]->key = kmalloc(params->key_len, GFP_KERNEL);
 
 				if (priv->wilc_ptk[key_index]->seq)
 					kfree(priv->wilc_ptk[key_index]->seq);
 
 				if ((params->seq_len) > 0)
-					priv->wilc_ptk[key_index]->seq = WILC_MALLOC(params->seq_len);
+					priv->wilc_ptk[key_index]->seq = kmalloc(params->seq_len, GFP_KERNEL);
 
 				if (INFO) {
 					for (i = 0; i < params->key_len; i++)
@@ -1320,15 +1326,15 @@ static int WILC_WFI_add_key(struct wiphy *wiphy, struct net_device *netdev, u8 k
 					if (!mac_addr) {
 						g_add_gtk_key_params.mac_addr = NULL;
 					} else {
-						g_add_gtk_key_params.mac_addr = WILC_MALLOC(ETH_ALEN);
+						g_add_gtk_key_params.mac_addr = kmalloc(ETH_ALEN, GFP_KERNEL);
 						memcpy(g_add_gtk_key_params.mac_addr, mac_addr, ETH_ALEN);
 					}
 					g_key_gtk_params.key_len = params->key_len;
 					g_key_gtk_params.seq_len = params->seq_len;
-					g_key_gtk_params.key =  WILC_MALLOC(params->key_len);
+					g_key_gtk_params.key =  kmalloc(params->key_len, GFP_KERNEL);
 					memcpy(g_key_gtk_params.key, params->key, params->key_len);
 					if (params->seq_len > 0) {
-						g_key_gtk_params.seq =  WILC_MALLOC(params->seq_len);
+						g_key_gtk_params.seq =  kmalloc(params->seq_len, GFP_KERNEL);
 						memcpy(g_key_gtk_params.seq, params->seq, params->seq_len);
 					}
 					g_key_gtk_params.cipher = params->cipher;
@@ -1357,15 +1363,15 @@ static int WILC_WFI_add_key(struct wiphy *wiphy, struct net_device *netdev, u8 k
 					if (!mac_addr) {
 						g_add_ptk_key_params.mac_addr = NULL;
 					} else {
-						g_add_ptk_key_params.mac_addr = WILC_MALLOC(ETH_ALEN);
+						g_add_ptk_key_params.mac_addr = kmalloc(ETH_ALEN, GFP_KERNEL);
 						memcpy(g_add_ptk_key_params.mac_addr, mac_addr, ETH_ALEN);
 					}
 					g_key_ptk_params.key_len = params->key_len;
 					g_key_ptk_params.seq_len = params->seq_len;
-					g_key_ptk_params.key =  WILC_MALLOC(params->key_len);
+					g_key_ptk_params.key =  kmalloc(params->key_len, GFP_KERNEL);
 					memcpy(g_key_ptk_params.key, params->key, params->key_len);
 					if (params->seq_len > 0) {
-						g_key_ptk_params.seq =  WILC_MALLOC(params->seq_len);
+						g_key_ptk_params.seq =  kmalloc(params->seq_len, GFP_KERNEL);
 						memcpy(g_key_ptk_params.seq, params->seq, params->seq_len);
 					}
 					g_key_ptk_params.cipher = params->cipher;
@@ -1527,6 +1533,7 @@ static int WILC_WFI_get_key(struct wiphy *wiphy, struct net_device *netdev, u8 k
 	struct WILC_WFI_priv *priv;
 	struct  key_params key_params;
 	u32 i;
+
 	priv = wiphy_priv(wiphy);
 
 
@@ -1668,6 +1675,7 @@ static int WILC_WFI_get_station(struct wiphy *wiphy, struct net_device *dev,
 
 	if (nic->iftype == STATION_MODE) {
 		tstrStatistics strStatistics;
+
 		host_int_get_statistics(priv->hWILCWFIDrv, &strStatistics);
 
 		/*
@@ -2198,6 +2206,7 @@ void WILC_WFI_p2p_rx (struct net_device *dev, uint8_t *buff, uint32_t size)
 	tstrWILC_WFIDrv *pstrWFIDrv;
 	u32 i = 0;
 	s32 s32Freq;
+
 	priv = wiphy_priv(dev->ieee80211_ptr->wiphy);
 	pstrWFIDrv = (tstrWILC_WFIDrv *)priv->hWILCWFIDrv;
 
@@ -2333,6 +2342,7 @@ static void WILC_WFI_mgmt_tx_complete(void *priv, int status)
 static void WILC_WFI_RemainOnChannelReady(void *pUserVoid)
 {
 	struct WILC_WFI_priv *priv;
+
 	priv = (struct WILC_WFI_priv *)pUserVoid;
 
 	PRINT_D(HOSTINF_DBG, "Remain on channel ready\n");
@@ -2359,6 +2369,7 @@ static void WILC_WFI_RemainOnChannelReady(void *pUserVoid)
 static void WILC_WFI_RemainOnChannelExpired(void *pUserVoid, u32 u32SessionID)
 {
 	struct WILC_WFI_priv *priv;
+
 	priv = (struct WILC_WFI_priv *)pUserVoid;
 
 	/*BugID_5477*/
@@ -2399,6 +2410,7 @@ static int  WILC_WFI_remain_on_channel(struct wiphy *wiphy,
 {
 	s32 s32Error = WILC_SUCCESS;
 	struct WILC_WFI_priv *priv;
+
 	priv = wiphy_priv(wiphy);
 
 	PRINT_D(GENERIC_DBG, "Remaining on channel %d\n", chan->hw_value);
@@ -2450,6 +2462,7 @@ static int   WILC_WFI_cancel_remain_on_channel(struct wiphy *wiphy,
 {
 	s32 s32Error = WILC_SUCCESS;
 	struct WILC_WFI_priv *priv;
+
 	priv = wiphy_priv(wiphy);
 
 	PRINT_D(CFG80211_DBG, "Cancel remain on channel\n");
@@ -2512,14 +2525,15 @@ int WILC_WFI_mgmt_tx(struct wiphy *wiphy,
 	if (ieee80211_is_mgmt(mgmt->frame_control)) {
 
 		/*mgmt frame allocation*/
-		mgmt_tx = WILC_MALLOC(sizeof(struct p2p_mgmt_data));
+		mgmt_tx = kmalloc(sizeof(struct p2p_mgmt_data), GFP_KERNEL);
 		if (mgmt_tx == NULL) {
 			PRINT_ER("Failed to allocate memory for mgmt_tx structure\n");
 			return WILC_FAIL;
 		}
-		mgmt_tx->buff = WILC_MALLOC(buf_len);
+		mgmt_tx->buff = kmalloc(buf_len, GFP_KERNEL);
 		if (mgmt_tx->buff == NULL) {
 			PRINT_ER("Failed to allocate memory for mgmt_tx buff\n");
+			kfree(mgmt_tx);
 			return WILC_FAIL;
 		}
 		memcpy(mgmt_tx->buff, buf, len);
@@ -2644,6 +2658,7 @@ int   WILC_WFI_mgmt_tx_cancel_wait(struct wiphy *wiphy,
 {
 	struct WILC_WFI_priv *priv;
 	tstrWILC_WFIDrv *pstrWFIDrv;
+
 	priv = wiphy_priv(wiphy);
 	pstrWFIDrv = (tstrWILC_WFIDrv *)priv->hWILCWFIDrv;
 
@@ -2761,6 +2776,7 @@ static int WILC_WFI_dump_station(struct wiphy *wiphy, struct net_device *dev,
 				 int idx, u8 *mac, struct station_info *sinfo)
 {
 	struct WILC_WFI_priv *priv;
+
 	PRINT_D(CFG80211_DBG, "Dumping station information\n");
 
 	if (idx != 0)
@@ -2790,6 +2806,7 @@ int WILC_WFI_set_power_mgmt(struct wiphy *wiphy, struct net_device *dev,
 			    bool enabled, int timeout)
 {
 	struct WILC_WFI_priv *priv;
+
 	PRINT_D(CFG80211_DBG, " Power save Enabled= %d , TimeOut = %d\n", enabled, timeout);
 
 	if (wiphy == NULL)
@@ -2881,7 +2898,7 @@ static int WILC_WFI_change_virt_intf(struct wiphy *wiphy, struct net_device *dev
 
 			/*BugID_5213*/
 			/*Eliminate host interface blocking state*/
-			linux_wlan_unlock((void *)&g_linux_wlan->cfg_event);
+			up(&g_linux_wlan->cfg_event);
 
 			wilc1000_wlan_deinit(g_linux_wlan);
 			wilc1000_wlan_init(dev, nic);
@@ -3220,19 +3237,11 @@ static int WILC_WFI_start_ap(struct wiphy *wiphy, struct net_device *dev,
 
 	linux_wlan_set_bssid(dev, g_linux_wlan->strInterfaceInfo[0].aSrcAddress);
 
-	#ifndef WILC_FULLY_HOSTING_AP
 	s32Error = host_int_add_beacon(priv->hWILCWFIDrv,
 					settings->beacon_interval,
 					settings->dtim_period,
 					beacon->head_len, (u8 *)beacon->head,
 					beacon->tail_len, (u8 *)beacon->tail);
-	#else
-	s32Error = host_add_beacon(priv->hWILCWFIDrv,
-					settings->beacon_interval,
-					settings->dtim_period,
-					beacon->head_len, (u8 *)beacon->head,
-					beacon->tail_len, (u8 *)beacon->tail);
-	#endif
 
 	return s32Error;
 }
@@ -3259,19 +3268,11 @@ static int  WILC_WFI_change_beacon(struct wiphy *wiphy, struct net_device *dev,
 	PRINT_D(HOSTAPD_DBG, "Setting beacon\n");
 
 
-#ifndef WILC_FULLY_HOSTING_AP
 	s32Error = host_int_add_beacon(priv->hWILCWFIDrv,
 					0,
 					0,
 					beacon->head_len, (u8 *)beacon->head,
 					beacon->tail_len, (u8 *)beacon->tail);
-#else
-	s32Error = host_add_beacon(priv->hWILCWFIDrv,
-					0,
-					0,
-					beacon->head_len, (u8 *)beacon->head,
-					beacon->tail_len, (u8 *)beacon->tail);
-#endif
 
 	return s32Error;
 }
@@ -3301,11 +3302,7 @@ static int  WILC_WFI_stop_ap(struct wiphy *wiphy, struct net_device *dev)
 	/*BugID_5188*/
 	linux_wlan_set_bssid(dev, NullBssid);
 
-	#ifndef WILC_FULLY_HOSTING_AP
 	s32Error = host_int_del_beacon(priv->hWILCWFIDrv);
-	#else
-	s32Error = host_del_beacon(priv->hWILCWFIDrv);
-	#endif
 
 	WILC_ERRORCHECK(s32Error);
 
@@ -3339,8 +3336,6 @@ static int  WILC_WFI_add_station(struct wiphy *wiphy, struct net_device *dev,
 	nic = netdev_priv(dev);
 
 	if (nic->iftype == AP_MODE || nic->iftype == GO_MODE) {
-		#ifndef WILC_FULLY_HOSTING_AP
-
 		memcpy(strStaParams.au8BSSID, mac, ETH_ALEN);
 		memcpy(priv->assoc_stainfo.au8Sta_AssociatedBss[params->aid], mac, ETH_ALEN);
 		strStaParams.u16AssocID = params->aid;
@@ -3380,18 +3375,6 @@ static int  WILC_WFI_add_station(struct wiphy *wiphy, struct net_device *dev,
 
 		s32Error = host_int_add_station(priv->hWILCWFIDrv, &strStaParams);
 		WILC_ERRORCHECK(s32Error);
-
-		#else
-		PRINT_D(CFG80211_DBG, "Adding station parameters %d\n", params->aid);
-		memcpy(priv->assoc_stainfo.au8Sta_AssociatedBss[params->aid], mac, ETH_ALEN);
-
-		PRINT_D(CFG80211_DBG, "BSSID = %x%x%x%x%x%x\n", priv->assoc_stainfo.au8Sta_AssociatedBss[params->aid][0], priv->assoc_stainfo.au8Sta_AssociatedBss[params->aid][1], priv->assoc_stainfo.au8Sta_AssociatedBss[params->aid][2], priv->assoc_stainfo.au8Sta_AssociatedBss[params->aid][3], priv->assoc_stainfo.au8Sta_AssociatedBss[params->aid][4],
-			priv->assoc_stainfo.au8Sta_AssociatedBss[params->aid][5]);
-
-		WILC_AP_AddSta(mac, params);
-		WILC_ERRORCHECK(s32Error);
-		#endif /* WILC_FULLY_HOSTING_AP */
-
 	}
 
 	WILC_CATCH(s32Error)
@@ -3416,6 +3399,7 @@ static int WILC_WFI_del_station(struct wiphy *wiphy, struct net_device *dev,
 	s32 s32Error = WILC_SUCCESS;
 	struct WILC_WFI_priv *priv;
 	perInterface_wlan_t *nic;
+
 	WILC_NULLCHECK(s32Error, wiphy);
 
 	priv = wiphy_priv(wiphy);
@@ -3432,11 +3416,7 @@ static int WILC_WFI_del_station(struct wiphy *wiphy, struct net_device *dev,
 			PRINT_D(HOSTAPD_DBG, "With mac address: %x%x%x%x%x%x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 		}
 
-		#ifndef WILC_FULLY_HOSTING_AP
 		s32Error = host_int_del_station(priv->hWILCWFIDrv, mac);
-		#else
-		WILC_AP_RemoveSta(mac);
-		#endif /* WILC_FULLY_HOSTING_AP */
 
 		WILC_ERRORCHECK(s32Error);
 	}
@@ -3472,8 +3452,6 @@ static int WILC_WFI_change_station(struct wiphy *wiphy, struct net_device *dev,
 	nic = netdev_priv(dev);
 
 	if (nic->iftype == AP_MODE || nic->iftype == GO_MODE) {
-		#ifndef WILC_FULLY_HOSTING_AP
-
 		memcpy(strStaParams.au8BSSID, mac, ETH_ALEN);
 		strStaParams.u16AssocID = params->aid;
 		strStaParams.u8NumRates = params->supported_rates_len;
@@ -3511,12 +3489,6 @@ static int WILC_WFI_change_station(struct wiphy *wiphy, struct net_device *dev,
 
 		s32Error = host_int_edit_station(priv->hWILCWFIDrv, &strStaParams);
 		WILC_ERRORCHECK(s32Error);
-
-		#else
-		WILC_AP_EditSta(mac, params);
-		WILC_ERRORCHECK(s32Error);
-		#endif /* WILC_FULLY_HOSTING_AP */
-
 	}
 	WILC_CATCH(s32Error)
 	{
@@ -3542,6 +3514,7 @@ struct wireless_dev *WILC_WFI_add_virt_intf(struct wiphy *wiphy, const char *nam
 	perInterface_wlan_t *nic;
 	struct WILC_WFI_priv *priv;
 	struct net_device *new_ifc = NULL;
+
 	priv = wiphy_priv(wiphy);
 
 
@@ -3605,9 +3578,7 @@ static struct cfg80211_ops WILC_WFI_cfg80211_ops = {
 	.del_station = WILC_WFI_del_station,
 	.change_station = WILC_WFI_change_station,
 	#endif /* WILC_AP_EXTERNAL_MLME*/
-	#ifndef WILC_FULLY_HOSTING_AP
 	.get_station = WILC_WFI_get_station,
-	#endif
 	.dump_station = WILC_WFI_dump_station,
 	.change_bss = WILC_WFI_change_bss,
 	.set_wiphy_params = WILC_WFI_set_wiphy_params,
@@ -3864,6 +3835,7 @@ int WILC_WFI_DeInitHostInt(struct net_device *net)
 	s32 s32Error = WILC_SUCCESS;
 
 	struct WILC_WFI_priv *priv;
+
 	priv = wdev_priv(net->ieee80211_ptr);
 
 	priv->gbAutoRateAdjusted = false;

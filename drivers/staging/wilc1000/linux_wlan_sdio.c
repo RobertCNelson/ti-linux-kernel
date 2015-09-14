@@ -8,15 +8,9 @@
 
 
 
-#if defined (NM73131_0_BOARD)
-#define SDIO_MODALIAS "wilc_sdio"
-#else
 #define SDIO_MODALIAS "wilc1000_sdio"
-#endif
 
-#if defined (NM73131_0_BOARD)
- #define MAX_SPEED 50000000
-#elif defined(CUSTOMER_PLATFORM)
+#if defined(CUSTOMER_PLATFORM)
 /* TODO : User have to stable bus clock as user's environment. */
  #ifdef MAX_BUS_SPEED
  #define MAX_SPEED MAX_BUS_SPEED
@@ -194,6 +188,7 @@ void disable_sdio_interrupt(void)
 static int linux_sdio_set_speed(int speed)
 {
 	struct mmc_ios ios;
+
 	sdio_claim_host(local_sdio_func);
 
 	memcpy((void *)&ios, (void *)&local_sdio_func->card->host->ios, sizeof(struct mmc_ios));

@@ -32,7 +32,7 @@ int ieee80211_wx_set_freq(struct ieee80211_device *ieee, struct iw_request_info 
 			     union iwreq_data *wrqu, char *b)
 {
 	int ret;
-	struct iw_freq *fwrq = & wrqu->freq;
+	struct iw_freq *fwrq = &wrqu->freq;
 
 	down(&ieee->wx_sem);
 
@@ -57,11 +57,11 @@ int ieee80211_wx_set_freq(struct ieee80211_device *ieee, struct iw_request_info 
 		}
 	}
 
-	if (fwrq->e > 0 || fwrq->m > 14 || fwrq->m < 1 ){
+	if (fwrq->e > 0 || fwrq->m > 14 || fwrq->m < 1) {
 		ret = -EOPNOTSUPP;
 		goto out;
 
-	}else { /* Set the channel */
+	} else { /* Set the channel */
 
 		if (!(GET_DOT11D_INFO(ieee)->channel_map)[fwrq->m]) {
 			ret = -EINVAL;
@@ -71,7 +71,7 @@ int ieee80211_wx_set_freq(struct ieee80211_device *ieee, struct iw_request_info 
 		ieee->set_chan(ieee->dev, ieee->current_network.channel);
 
 		if(ieee->iw_mode == IW_MODE_ADHOC || ieee->iw_mode == IW_MODE_MASTER)
-			if(ieee->state == IEEE80211_LINKED){
+			if(ieee->state == IEEE80211_LINKED) {
 
 			ieee80211_stop_send_beacons(ieee);
 			ieee80211_start_send_beacons(ieee);
@@ -89,7 +89,7 @@ int ieee80211_wx_get_freq(struct ieee80211_device *ieee,
 			     struct iw_request_info *a,
 			     union iwreq_data *wrqu, char *b)
 {
-	struct iw_freq *fwrq = & wrqu->freq;
+	struct iw_freq *fwrq = &wrqu->freq;
 
 	if (ieee->current_network.channel == 0)
 		return -1;
@@ -191,14 +191,14 @@ EXPORT_SYMBOL(ieee80211_wx_set_wap);
 	spin_lock_irqsave(&ieee->lock, flags);
 
 	if (ieee->current_network.ssid[0] == '\0' ||
-		ieee->current_network.ssid_len == 0){
+		ieee->current_network.ssid_len == 0) {
 		ret = -1;
 		goto out;
 	}
 
 	if (ieee->state != IEEE80211_LINKED &&
 		ieee->state != IEEE80211_LINKED_SCANNING &&
-		ieee->ssid_set == 0){
+		ieee->ssid_set == 0) {
 		ret = -1;
 		goto out;
 	}
@@ -280,16 +280,16 @@ int ieee80211_wx_set_mode(struct ieee80211_device *ieee, struct iw_request_info 
 	if (wrqu->mode == ieee->iw_mode)
 		goto out;
 
-	if (wrqu->mode == IW_MODE_MONITOR){
+	if (wrqu->mode == IW_MODE_MONITOR) {
 
 		ieee->dev->type = ARPHRD_IEEE80211;
-	}else{
+	} else {
 		ieee->dev->type = ARPHRD_ETHER;
 	}
 
-	if (!ieee->proto_started){
+	if (!ieee->proto_started) {
 		ieee->iw_mode = wrqu->mode;
-	}else{
+	} else {
 		ieee80211_stop_protocol(ieee);
 		ieee->iw_mode = wrqu->mode;
 		ieee80211_start_protocol(ieee);
@@ -308,7 +308,6 @@ void ieee80211_wx_sync_scan_wq(struct work_struct *work)
 	HT_EXTCHNL_OFFSET chan_offset=0;
 	HT_CHANNEL_WIDTH bandwidth=0;
 	int b40M = 0;
-	static int count;
 	chan = ieee->current_network.channel;
 	netif_carrier_off(ieee->dev);
 
@@ -345,7 +344,7 @@ void ieee80211_wx_sync_scan_wq(struct work_struct *work)
 	ieee->state = IEEE80211_LINKED;
 	ieee->link_change(ieee->dev);
 	// To prevent the immediately calling watch_dog after scan.
-	if (ieee->LinkDetectInfo.NumRecvBcnInPeriod==0||ieee->LinkDetectInfo.NumRecvDataInPeriod==0 )
+	if (ieee->LinkDetectInfo.NumRecvBcnInPeriod==0||ieee->LinkDetectInfo.NumRecvDataInPeriod==0)
 	{
 		ieee->LinkDetectInfo.NumRecvBcnInPeriod = 1;
 		ieee->LinkDetectInfo.NumRecvDataInPeriod= 1;
@@ -357,7 +356,6 @@ void ieee80211_wx_sync_scan_wq(struct work_struct *work)
 		ieee80211_start_send_beacons(ieee);
 
 	netif_carrier_on(ieee->dev);
-	count = 0;
 	up(&ieee->wx_sem);
 
 }
@@ -426,7 +424,7 @@ int ieee80211_wx_set_essid(struct ieee80211_device *ieee,
 		ieee->current_network.ssid_len = len+1;
 		ieee->ssid_set = 1;
 	}
-	else{
+	else {
 		ieee->ssid_set = 0;
 		ieee->current_network.ssid[0] = '\0';
 		ieee->current_network.ssid_len = 0;
