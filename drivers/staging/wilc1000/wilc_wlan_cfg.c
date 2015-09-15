@@ -12,11 +12,6 @@
 #include "wilc_wlan_cfg.h"
 #include "coreconfigurator.h"
 
-#ifdef WILC_FULLY_HOSTING_AP
-#include "wilc_host_ap.h"
-void WILC_mgm_HOSTAPD_ACK(void *priv, bool bStatus);
-#endif
-
 /********************************************
  *
  *      Global Data
@@ -342,6 +337,7 @@ static void wilc_wlan_parse_response_frame(uint8_t *info, int size)
 				if (g_cfg_str[i].id == wid) {
 					if (wid == WID_SITE_SURVEY_RESULTS) {
 						static int toggle;
+
 						PRINT_INFO(GENERIC_DBG, "Site survey results received[%d]\n",
 							   size);
 
@@ -483,9 +479,11 @@ static int wilc_wlan_cfg_get_wid_value(uint16_t wid, uint8_t *buffer, uint32_t b
 
 			if (g_cfg_str[i].id == wid) {
 				uint32_t size =  g_cfg_str[i].str[0];
+
 				if (buffer_size >= size) {
 					if (g_cfg_str[i].id == WID_SITE_SURVEY_RESULTS)	{
 						static int toggle;
+
 						PRINT_INFO(GENERIC_DBG, "Site survey results value[%d]\n",
 							   size);
 						i += toggle;
@@ -511,17 +509,6 @@ static int wilc_wlan_cfg_indicate_rx(uint8_t *frame, int size, wilc_cfg_rsp_t *r
 	int ret = 1;
 	uint8_t msg_type;
 	uint8_t msg_id;
-	#ifdef WILC_FULLY_HOSTING_AP
-	u32 *ptru32Frame;
-	bool bStatus = frame[2];
-
-	#ifdef BIG_ENDIAN
-	ptru32Frame = (frame[4] << 24) | (frame[5] << 16) | (frame[6] << 8) | frame[7];
-	#else
-	ptru32Frame = (frame[7] << 24) | (frame[6] << 16) | (frame[5] << 8) | frame[4];
-	#endif  /* BIG_ENDIAN */
-
-	#endif  /* WILC_FULLY_HOSTING_AP */
 
 	msg_type = frame[0];
 	msg_id = frame[1];      /* seq no */
@@ -547,14 +534,6 @@ static int wilc_wlan_cfg_indicate_rx(uint8_t *frame, int size, wilc_cfg_rsp_t *r
 		GnrlAsyncInfoReceived(frame - 4, size + 4);
 		break;
 
-	case 'L':
-#ifndef SWITCH_LOG_TERMINAL
-		PRINT_ER("Unexpected firmware log message received\n");
-#else
-		PRINT_D(FIRM_DBG, "\nFIRMWARE LOGS :\n<<\n%s\n>>\n", frame);
-		break;
-
-#endif
 #if 1
 	case 'N':
 		NetworkInfoReceived(frame - 4, size + 4);
@@ -567,18 +546,6 @@ static int wilc_wlan_cfg_indicate_rx(uint8_t *frame, int size, wilc_cfg_rsp_t *r
 		PRINT_INFO(RX_DBG, "Scan Notification Received\n");
 		host_int_ScanCompleteReceived(frame - 4, size + 4);
 		break;
-
-#ifdef WILC_FULLY_HOSTING_AP
-	case 'T':
-		PRINT_INFO(RX_DBG, "TBTT Notification Received\n");
-		process_tbtt_isr();
-		break;
-
-	case 'A':
-		PRINT_INFO(RX_DBG, "HOSTAPD ACK Notification Received\n");
-		WILC_mgm_HOSTAPD_ACK(ptru32Frame, bStatus);
-		break;
-#endif
 
 	default:
 		PRINT_INFO(RX_DBG, "Receive unknown message type[%d-%d-%d-%d-%d-%d-%d-%d]\n",

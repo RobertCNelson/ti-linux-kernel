@@ -16,7 +16,6 @@
 #define WILC_P2P
 #define TCP_ENHANCEMENTS
 /* #define MEMORY_STATIC */
-/* #define WILC_FULLY_HOSTING_AP */
 /* #define USE_OLD_SPI_SW */
 
 
@@ -84,23 +83,8 @@ typedef struct {
 } sdio_cmd53_t;
 
 typedef struct {
-	void (*os_sleep)(uint32_t);
-	void (*os_atomic_sleep)(uint32_t);
 	void (*os_debug)(uint8_t *);
-	void *(*os_malloc)(uint32_t);
-	void *(*os_malloc_atomic)(uint32_t);
-	void (*os_free)(void *);
-	void (*os_lock)(void *);
-	void (*os_unlock)(void *);
 	int (*os_wait)(void *, u32);
-	void (*os_signal)(void *);
-	void (*os_enter_cs)(void *);
-	void (*os_leave_cs)(void *);
-
-	/*Added by Amr - BugID_4720*/
-	void (*os_spin_lock)(void *, unsigned long *);
-	void (*os_spin_unlock)(void *, unsigned long *);
-
 } wilc_wlan_os_func_t;
 
 typedef struct {
@@ -141,7 +125,7 @@ typedef struct {
 typedef struct {
 	void *os_private;
 
-	void *hif_critical_section;
+	struct mutex *hif_critical_section;
 
 	uint32_t tx_buffer_size;
 	void *txq_critical_section;
@@ -158,7 +142,7 @@ typedef struct {
 	void *rxq_critical_section;
 	void *rxq_wait_event;
 
-	void *cfg_wait_event;
+	struct semaphore *cfg_wait_event;
 } wilc_wlan_os_context_t;
 
 typedef struct {
@@ -170,9 +154,6 @@ typedef struct {
 } wilc_wlan_inp_t;
 
 struct tx_complete_data {
-	#ifdef WILC_FULLY_HOSTING_AP
-	struct tx_complete_data *next;
-	#endif
 	int size;
 	void *buff;
 	uint8_t *pBssid;
@@ -199,11 +180,6 @@ typedef struct {
 	/*Bug3959: transmitting mgmt frames received from host*/
 	#if defined(WILC_AP_EXTERNAL_MLME) || defined(WILC_P2P)
 	int (*wlan_add_mgmt_to_tx_que)(void *, uint8_t *, uint32_t, wilc_tx_complete_func_t);
-
-	#ifdef WILC_FULLY_HOSTING_AP
-	int (*wlan_add_data_to_tx_que)(void *, uint8_t *, uint32_t, wilc_tx_complete_func_t);
-	#endif
-
 	#endif
 } wilc_wlan_oup_t;
 

@@ -23,6 +23,7 @@
 #define BIT1                    ((u32)(1 << 1))
 #define BIT0                    ((u32)(1 << 0))
 
+#define IDLE_MODE	0x00
 #define AP_MODE		0x01
 #define STATION_MODE	0x02
 #define GO_MODE	0x03
@@ -63,6 +64,7 @@
 #define WILC_SUPP_MCS_SET_SIZE	16
 #define WILC_ADD_STA_LENGTH	40 /* Not including the rates field cause it has variable length*/
 #define SCAN_EVENT_DONE_ABORTED
+#define NUM_CONCURRENT_IFC 2
 /*****************************************************************************/
 /* Data Types                                                                */
 /*****************************************************************************/

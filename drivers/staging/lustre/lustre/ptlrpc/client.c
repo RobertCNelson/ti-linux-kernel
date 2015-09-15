@@ -1164,12 +1164,11 @@ static int ptlrpc_check_status(struct ptlrpc_request *req)
 		return err < 0 ? err : -EINVAL;
 	}
 
-	if (err < 0) {
+	if (err < 0)
 		DEBUG_REQ(D_INFO, req, "status is %d", err);
-	} else if (err > 0) {
+	else if (err > 0)
 		/* XXX: translate this error from net to host */
 		DEBUG_REQ(D_INFO, req, "status is %d", err);
-	}
 
 	return err;
 }
@@ -2954,7 +2953,7 @@ void ptlrpc_init_xid(void)
 	}
 
 	/* Always need to be aligned to a power-of-two for multi-bulk BRW */
-	CLASSERT((PTLRPC_BULK_OPS_COUNT & (PTLRPC_BULK_OPS_COUNT - 1)) == 0);
+	CLASSERT(((PTLRPC_BULK_OPS_COUNT - 1) & PTLRPC_BULK_OPS_COUNT) == 0);
 	ptlrpc_last_xid &= PTLRPC_BULK_OPS_MASK;
 }
 
