@@ -244,15 +244,15 @@ static int iproc_pcie_setup_ob(struct iproc_pcie *pcie, u64 axi_addr,
 
 	if (size > max_size) {
 		dev_err(pcie->dev,
-			"res size 0x%llx exceeds max supported size 0x%llx\n",
-			(u64)size, max_size);
+			"res size 0x%pap exceeds max supported size 0x%llx\n",
+			&size, max_size);
 		return -EINVAL;
 	}
 
 	if (size % ob->window_size) {
 		dev_err(pcie->dev,
-			"res size 0x%llx needs to be multiple of "
-			"window size 0x%llx\n", (u64)size, ob->window_size);
+			"res size %pap needs to be multiple of window size %pap\n",
+			&size, &ob->window_size);
 		return -EINVAL;
 	}
 
