@@ -585,7 +585,7 @@ do {									      \
 		   (!HAS_FAIL_ALLOC_FLAG || obd_alloc_fail_rate == 0 ||       \
 		    !obd_alloc_fail(ptr, #ptr, "km", size,		    \
 				    __FILE__, __LINE__) ||		    \
-		    OBD_FREE_RTN0(ptr)))){				    \
+		    OBD_FREE_RTN0(ptr)))) {				    \
 		OBD_ALLOC_POST(ptr, size, "kmalloced");		       \
 	}								     \
 } while (0)
@@ -655,8 +655,10 @@ do {									  \
 #endif
 
 #ifdef POISON_BULK
-#define POISON_PAGE(page, val) do { memset(kmap(page), val, PAGE_CACHE_SIZE);   \
-				    kunmap(page); } while (0)
+#define POISON_PAGE(page, val) do {		  \
+	memset(kmap(page), val, PAGE_CACHE_SIZE); \
+	kunmap(page);				  \
+} while (0)
 #else
 #define POISON_PAGE(page, val) do { } while (0)
 #endif
