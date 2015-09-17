@@ -1849,7 +1849,7 @@ static int lmv_early_cancel(struct obd_export *exp, struct md_op_data *op_data,
 	struct obd_device      *obd = exp->exp_obd;
 	struct lmv_obd	 *lmv = &obd->u.lmv;
 	struct lmv_tgt_desc    *tgt;
-	ldlm_policy_data_t      policy = {{0}};
+	ldlm_policy_data_t      policy = { {0} };
 	int		     rc = 0;
 
 	if (!fid_is_sane(fid))
@@ -2099,7 +2099,8 @@ static void lmv_adjust_dirpages(struct page **pages, int ncfspgs, int nlupgs)
 		while (--nlupgs > 0) {
 			ent = lu_dirent_start(dp);
 			for (end_dirent = ent; ent != NULL;
-			     end_dirent = ent, ent = lu_dirent_next(ent));
+			     end_dirent = ent, ent = lu_dirent_next(ent))
+				;
 
 			/* Advance dp to next lu_dirpage. */
 			dp = (struct lu_dirpage *)((char *)dp + LU_PAGE_SIZE);

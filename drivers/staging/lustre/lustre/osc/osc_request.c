@@ -433,7 +433,7 @@ int osc_setattr_async_base(struct obd_export *exp, struct obd_info *oinfo,
 		req->rq_interpret_reply =
 			(ptlrpc_interpterer_t)osc_setattr_interpret;
 
-		CLASSERT (sizeof(*sa) <= sizeof(req->rq_async_args));
+		CLASSERT(sizeof(*sa) <= sizeof(req->rq_async_args));
 		sa = ptlrpc_req_async_args(req);
 		sa->sa_oa = oinfo->oi_oa;
 		sa->sa_upcall = upcall;
@@ -575,7 +575,7 @@ int osc_punch_base(struct obd_export *exp, struct obd_info *oinfo,
 	ptlrpc_request_set_replen(req);
 
 	req->rq_interpret_reply = (ptlrpc_interpterer_t)osc_setattr_interpret;
-	CLASSERT (sizeof(*sa) <= sizeof(req->rq_async_args));
+	CLASSERT(sizeof(*sa) <= sizeof(req->rq_async_args));
 	sa = ptlrpc_req_async_args(req);
 	sa->sa_oa = oinfo->oi_oa;
 	sa->sa_upcall = upcall;
@@ -600,7 +600,7 @@ static int osc_sync_interpret(const struct lu_env *env,
 
 	body = req_capsule_server_get(&req->rq_pill, &RMF_OST_BODY);
 	if (body == NULL) {
-		CERROR ("can't unpack ost_body\n");
+		CERROR("can't unpack ost_body\n");
 		rc = -EPROTO;
 		goto out;
 	}
@@ -1100,7 +1100,7 @@ static void handle_short_read(int nob_read, u32 page_count,
 
 	/* skip bytes read OK */
 	while (nob_read > 0) {
-		LASSERT (page_count > 0);
+		LASSERT(page_count > 0);
 
 		if (pga[i]->count > nob_read) {
 			/* EOF inside this page */
@@ -1571,7 +1571,7 @@ static int osc_brw_fini_request(struct ptlrpc_request *req, int rc)
 	}
 
 	if (rc != req->rq_bulk->bd_nob_transferred) {
-		CERROR ("Unexpected rc %d (%d transferred)\n",
+		CERROR("Unexpected rc %d (%d transferred)\n",
 			rc, req->rq_bulk->bd_nob_transferred);
 		return -EPROTO;
 	}
@@ -1586,7 +1586,7 @@ static int osc_brw_fini_request(struct ptlrpc_request *req, int rc)
 		char *router;
 		cksum_type_t cksum_type;
 
-		cksum_type = cksum_type_unpack(body->oa.o_valid &OBD_MD_FLFLAGS?
+		cksum_type = cksum_type_unpack(body->oa.o_valid&OBD_MD_FLFLAGS ?
 					       body->oa.o_flags : 0);
 		client_cksum = osc_checksum_bulk(rc, aa->aa_page_count,
 						 aa->aa_ppga, OST_READ,
@@ -1654,7 +1654,7 @@ static int osc_brw_redo_request(struct ptlrpc_request *request,
 		  "redo for recoverable error %d", rc);
 
 	rc = osc_brw_prep_request(lustre_msg_get_opc(request->rq_reqmsg) ==
-					OST_WRITE ? OBD_BRW_WRITE :OBD_BRW_READ,
+					OST_WRITE ? OBD_BRW_WRITE : OBD_BRW_READ,
 				  aa->aa_cli, aa->aa_oa,
 				  NULL /* lsm unused by osc currently */,
 				  aa->aa_page_count, aa->aa_ppga,
@@ -3101,7 +3101,7 @@ static int osc_import_event(struct obd_device *obd,
 
 		/* See bug 7198 */
 		if (ocd->ocd_connect_flags & OBD_CONNECT_REQPORTAL)
-			imp->imp_client->cli_request_portal =OST_REQUEST_PORTAL;
+			imp->imp_client->cli_request_portal = OST_REQUEST_PORTAL;
 
 		rc = obd_notify_observer(obd, obd, OBD_NOTIFY_OCD, NULL);
 		break;
