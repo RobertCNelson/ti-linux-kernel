@@ -6452,7 +6452,7 @@ F:	drivers/hwmon/ltc4261.c
 LTP (Linux Test Project)
 M:	Mike Frysinger <vapier@gentoo.org>
 M:	Cyril Hrubis <chrubis@suse.cz>
-M:	Wanlong Gao <gaowanlong@cn.fujitsu.com>
+M:	Wanlong Gao <wanlong.gao@gmail.com>
 M:	Jan Stancek <jstancek@redhat.com>
 M:	Stanislav Kholmanskikh <stanislav.kholmanskikh@oracle.com>
 M:	Alexey Kodanev <alexey.kodanev@oracle.com>
