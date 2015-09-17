@@ -283,6 +283,9 @@ config FHANDLE
 	  get renamed. Enables open_by_handle_at(2) and name_to_handle_at(2)
 	  syscalls.
 
+	  Some distributions (such as Fedora) will not boot without this
+	  system call, so if unsure, say Y.
+
 config USELIB
 	bool "uselib syscall"
 	default y
