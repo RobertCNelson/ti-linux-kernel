@@ -1498,7 +1498,8 @@ int vma_wants_writenotify(struct vm_area_struct *vma)
 		return 0;
 
 	/* The backer wishes to know when pages are first written to? */
-	if (vma->vm_ops && vma->vm_ops->page_mkwrite)
+	if (vma->vm_ops &&
+			(vma->vm_ops->page_mkwrite || vma->vm_ops->pfn_mkwrite))
 		return 1;
 
 	/* The open routine did something to the protections that pgprot_modify
