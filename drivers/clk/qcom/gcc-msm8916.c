@@ -31,6 +31,7 @@
 #include "clk-rcg.h"
 #include "clk-branch.h"
 #include "reset.h"
+#include "gdsc.h"
 
 enum {
 	P_XO,
@@ -906,21 +907,15 @@ static struct clk_rcg2 gp3_clk_src = {
 	},
 };
 
-static struct freq_tbl ftbl_gcc_mdss_byte0_clk[] = {
-	{ .src = P_DSI0_PHYPLL_BYTE },
-	{ }
-};
-
 static struct clk_rcg2 byte0_clk_src = {
 	.cmd_rcgr = 0x4d044,
 	.hid_width = 5,
 	.parent_map = gcc_xo_gpll0a_dsibyte_map,
-	.freq_tbl = ftbl_gcc_mdss_byte0_clk,
 	.clkr.hw.init = &(struct clk_init_data){
 		.name = "byte0_clk_src",
 		.parent_names = gcc_xo_gpll0a_dsibyte,
 		.num_parents = 3,
-		.ops = &clk_byte_ops,
+		.ops = &clk_byte2_ops,
 		.flags = CLK_SET_RATE_PARENT,
 	},
 };
@@ -968,17 +963,11 @@ static struct clk_rcg2 mdp_clk_src = {
 	},
 };
 
-static struct freq_tbl ftbl_gcc_mdss_pclk[] = {
-	{ .src = P_DSI0_PHYPLL_DSI },
-	{ }
-};
-
 static struct clk_rcg2 pclk0_clk_src = {
 	.cmd_rcgr = 0x4d000,
 	.mnd_width = 8,
 	.hid_width = 5,
 	.parent_map = gcc_xo_gpll0a_dsiphy_map,
-	.freq_tbl = ftbl_gcc_mdss_pclk,
 	.clkr.hw.init = &(struct clk_init_data){
 		.name = "pclk0_clk_src",
 		.parent_names = gcc_xo_gpll0a_dsiphy,
@@ -2562,6 +2551,46 @@ static struct clk_branch gcc_venus0_vcodec0_clk = {
 	},
 };
 
+static struct gdsc venus_gdsc = {
+	.gdscr = 0x4c018,
+	.pd = {
+		.name = "venus",
+	},
+	.pwrsts = PWRSTS_OFF_ON,
+};
+
+static struct gdsc mdss_gdsc = {
+	.gdscr = 0x4d078,
+	.pd = {
+		.name = "mdss",
+	},
+	.pwrsts = PWRSTS_OFF_ON,
+};
+
+static struct gdsc jpeg_gdsc = {
+	.gdscr = 0x5701c,
+	.pd = {
+		.name = "jpeg",
+	},
+	.pwrsts = PWRSTS_OFF_ON,
+};
+
+static struct gdsc vfe_gdsc = {
+	.gdscr = 0x58034,
+	.pd = {
+		.name = "vfe",
+	},
+	.pwrsts = PWRSTS_OFF_ON,
+};
+
+static struct gdsc oxili_gdsc = {
+	.gdscr = 0x5901c,
+	.pd = {
+		.name = "oxili",
+	},
+	.pwrsts = PWRSTS_OFF_ON,
+};
+
 static struct clk_regmap *gcc_msm8916_clocks[] = {
 	[GPLL0] = &gpll0.clkr,
 	[GPLL0_VOTE] = &gpll0_vote,
@@ -2703,6 +2732,14 @@ static struct clk_regmap *gcc_msm8916_clocks[] = {
 	[GCC_VENUS0_VCODEC0_CLK] = &gcc_venus0_vcodec0_clk.clkr,
 };
 
+static struct gdsc *gcc_msm8916_gdscs[] = {
+	[VENUS_GDSC] = &venus_gdsc,
+	[MDSS_GDSC] = &mdss_gdsc,
+	[JPEG_GDSC] = &jpeg_gdsc,
+	[VFE_GDSC] = &vfe_gdsc,
+	[OXILI_GDSC] = &oxili_gdsc,
+};
+
 static const struct qcom_reset_map gcc_msm8916_resets[] = {
 	[GCC_BLSP1_BCR] = { 0x01000 },
 	[GCC_BLSP1_QUP1_BCR] = { 0x02000 },
@@ -2810,6 +2847,8 @@ static const struct qcom_cc_desc gcc_msm8916_desc = {
 	.num_clks = ARRAY_SIZE(gcc_msm8916_clocks),
 	.resets = gcc_msm8916_resets,
 	.num_resets = ARRAY_SIZE(gcc_msm8916_resets),
+	.gdscs = gcc_msm8916_gdscs,
+	.num_gdscs = ARRAY_SIZE(gcc_msm8916_gdscs),
 };
 
 static const struct of_device_id gcc_msm8916_match_table[] = {
