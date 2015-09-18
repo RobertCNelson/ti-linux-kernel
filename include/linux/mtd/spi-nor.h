@@ -127,11 +127,14 @@ enum spi_nor_option_flags {
 	SNOR_F_USE_FSR		= BIT(0),
 };
 
+struct mtd_info;
+
 /**
  * struct spi_nor - Structure for defining a the SPI NOR layer
  * @mtd:		point to a mtd_info structure
  * @lock:		the lock for the read/write/erase/lock/unlock operations
  * @dev:		point to a spi device, or a spi nor controller device.
+ * @flash_node:		point to a device node describing this flash instance.
  * @page_size:		the page size of the SPI NOR
  * @addr_width:		number of address bytes
  * @erase_opcode:	the opcode for erasing a sector
@@ -160,9 +163,10 @@ enum spi_nor_option_flags {
  * @priv:		the private data
  */
 struct spi_nor {
-	struct mtd_info		*mtd;
+	struct mtd_info		mtd;
 	struct mutex		lock;
 	struct device		*dev;
+	struct device_node	*flash_node;
 	u32			page_size;
 	u8			addr_width;
 	u8			erase_opcode;
@@ -182,8 +186,7 @@ struct spi_nor {
 	int (*write_xfer)(struct spi_nor *nor, struct spi_nor_xfer_cfg *cfg,
 			  u8 *buf, size_t len);
 	int (*read_reg)(struct spi_nor *nor, u8 opcode, u8 *buf, int len);
-	int (*write_reg)(struct spi_nor *nor, u8 opcode, u8 *buf, int len,
-			int write_enable);
+	int (*write_reg)(struct spi_nor *nor, u8 opcode, u8 *buf, int len);
 
 	int (*read)(struct spi_nor *nor, loff_t from,
 			size_t len, size_t *retlen, u_char *read_buf);
