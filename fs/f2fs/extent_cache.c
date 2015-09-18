@@ -394,7 +394,7 @@ do_insert:
 	return en;
 }
 
-unsigned int f2fs_update_extent_tree_range(struct inode *inode,
+static unsigned int f2fs_update_extent_tree_range(struct inode *inode,
 				pgoff_t fofs, block_t blkaddr, unsigned int len)
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
@@ -408,6 +408,8 @@ unsigned int f2fs_update_extent_tree_range(struct inode *inode,
 
 	if (!et)
 		return false;
+
+	trace_f2fs_update_extent_tree_range(inode, fofs, blkaddr, len);
 
 	write_lock(&et->lock);
 
@@ -649,6 +651,11 @@ unsigned int f2fs_shrink_extent_tree(struct f2fs_sb_info *sbi, int nr_shrink)
 		list_del_init(&en->list);
 	}
 	spin_unlock(&sbi->extent_lock);
+
+	/*
+	 * reset ino for searching victims from beginning of global extent tree.
+	 */
+	ino = F2FS_ROOT_INO(sbi);
 
 	while ((found = radix_tree_gang_lookup(root,
 				(void **)treevec, ino, EXT_TREE_VEC_SIZE))) {
