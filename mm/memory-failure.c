@@ -775,8 +775,6 @@ static int me_huge_page(struct page *p, unsigned long pfn)
 #define lru		(1UL << PG_lru)
 #define swapbacked	(1UL << PG_swapbacked)
 #define head		(1UL << PG_head)
-#define tail		(1UL << PG_tail)
-#define compound	(1UL << PG_compound)
 #define slab		(1UL << PG_slab)
 #define reserved	(1UL << PG_reserved)
 
@@ -799,12 +797,7 @@ static struct page_state {
 	 */
 	{ slab,		slab,		MF_MSG_SLAB,	me_kernel },
 
-#ifdef CONFIG_PAGEFLAGS_EXTENDED
 	{ head,		head,		MF_MSG_HUGE,		me_huge_page },
-	{ tail,		tail,		MF_MSG_HUGE,		me_huge_page },
-#else
-	{ compound,	compound,	MF_MSG_HUGE,		me_huge_page },
-#endif
 
 	{ sc|dirty,	sc|dirty,	MF_MSG_DIRTY_SWAPCACHE,	me_swapcache_dirty },
 	{ sc|dirty,	sc,		MF_MSG_CLEAN_SWAPCACHE,	me_swapcache_clean },
@@ -1172,7 +1165,7 @@ int memory_failure(unsigned long pfn, int trapno, int flags)
 	/*
 	 * We ignore non-LRU pages for good reasons.
 	 * - PG_locked is only well defined for LRU pages and a few others
-	 * - to avoid races with __set_page_locked()
+	 * - to avoid races with __SetPageLocked()
 	 * - to avoid races with __SetPageSlab*() (and more non-atomic ops)
 	 * The check (unnecessarily) ignores LRU pages being isolated and
 	 * walked by the page reclaim code, however that's not a big loss.
