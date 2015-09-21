@@ -12,11 +12,7 @@
 #define WILC_WLAN_IF_H
 
 /*bug 3887: [AP] Allow Management frames to be passed to the host*/
-#define WILC_AP_EXTERNAL_MLME
-#define WILC_P2P
-#define TCP_ENHANCEMENTS
 /* #define MEMORY_STATIC */
-/* #define WILC_FULLY_HOSTING_AP */
 /* #define USE_OLD_SPI_SW */
 
 
@@ -63,44 +59,29 @@
  ********************************************/
 
 typedef struct {
-	uint32_t read_write: 1;
-	uint32_t function: 3;
-	uint32_t raw: 1;
-	uint32_t address: 17;
-	uint32_t data: 8;
+	u32 read_write: 1;
+	u32 function: 3;
+	u32 raw: 1;
+	u32 address: 17;
+	u32 data: 8;
 } sdio_cmd52_t;
 
 typedef struct {
 	/* struct { */
-	uint32_t read_write: 1;
-	uint32_t function: 3;
-	uint32_t block_mode: 1;
-	uint32_t increment: 1;
-	uint32_t address: 17;
-	uint32_t count: 9;
+	u32 read_write: 1;
+	u32 function: 3;
+	u32 block_mode: 1;
+	u32 increment: 1;
+	u32 address: 17;
+	u32 count: 9;
 	/* } bit; */
-	uint8_t *buffer;
-	uint32_t block_size;
+	u8 *buffer;
+	u32 block_size;
 } sdio_cmd53_t;
 
 typedef struct {
-	void (*os_sleep)(uint32_t);
-	void (*os_atomic_sleep)(uint32_t);
-	void (*os_debug)(uint8_t *);
-	void *(*os_malloc)(uint32_t);
-	void *(*os_malloc_atomic)(uint32_t);
-	void (*os_free)(void *);
-	void (*os_lock)(void *);
-	void (*os_unlock)(void *);
+	void (*os_debug)(u8 *);
 	int (*os_wait)(void *, u32);
-	void (*os_signal)(void *);
-	void (*os_enter_cs)(void *);
-	void (*os_leave_cs)(void *);
-
-	/*Added by Amr - BugID_4720*/
-	void (*os_spin_lock)(void *, unsigned long *);
-	void (*os_spin_unlock)(void *, unsigned long *);
-
 } wilc_wlan_os_func_t;
 
 typedef struct {
@@ -116,15 +97,15 @@ typedef struct {
 		} sdio;
 		struct {
 			int (*spi_max_speed)(void);
-			int (*spi_tx)(uint8_t *, uint32_t);
-			int (*spi_rx)(uint8_t *, uint32_t);
-			int (*spi_trx)(uint8_t *, uint8_t *, uint32_t);
+			int (*spi_tx)(u8 *, u32);
+			int (*spi_rx)(u8 *, u32);
+			int (*spi_trx)(u8 *, u8 *, u32);
 		} spi;
 	} u;
 } wilc_wlan_io_func_t;
 
 typedef struct {
-	void (*rx_indicate)(uint8_t *, uint32_t, uint32_t);
+	void (*rx_indicate)(u8 *, u32, u32);
 	void (*rx_complete)(void);
 } wilc_wlan_net_func_t;
 
@@ -141,9 +122,9 @@ typedef struct {
 typedef struct {
 	void *os_private;
 
-	void *hif_critical_section;
+	struct mutex *hif_critical_section;
 
-	uint32_t tx_buffer_size;
+	u32 tx_buffer_size;
 	void *txq_critical_section;
 
 	/*Added by Amr - BugID_4720*/
@@ -153,12 +134,11 @@ typedef struct {
 	void *txq_wait_event;
 
 #if defined(MEMORY_STATIC)
-	uint32_t rx_buffer_size;
+	u32 rx_buffer_size;
 #endif
 	void *rxq_critical_section;
-	void *rxq_wait_event;
 
-	void *cfg_wait_event;
+	struct semaphore *cfg_wait_event;
 } wilc_wlan_os_context_t;
 
 typedef struct {
@@ -170,12 +150,9 @@ typedef struct {
 } wilc_wlan_inp_t;
 
 struct tx_complete_data {
-	#ifdef WILC_FULLY_HOSTING_AP
-	struct tx_complete_data *next;
-	#endif
 	int size;
 	void *buff;
-	uint8_t *pBssid;
+	u8 *pBssid;
 	struct sk_buff *skb;
 };
 
@@ -185,26 +162,18 @@ typedef void (*wilc_tx_complete_func_t)(void *, int);
 #define WILC_TX_ERR_NO_BUF (-2)
 
 typedef struct {
-	int (*wlan_firmware_download)(const uint8_t *, uint32_t);
+	int (*wlan_firmware_download)(const u8 *, u32);
 	int (*wlan_start)(void);
 	int (*wlan_stop)(void);
-	int (*wlan_add_to_tx_que)(void *, uint8_t *, uint32_t, wilc_tx_complete_func_t);
-	int (*wlan_handle_tx_que)(uint32_t *);
-	void (*wlan_handle_rx_que)(void);
+	int (*wlan_add_to_tx_que)(void *, u8 *, u32, wilc_tx_complete_func_t);
+	int (*wlan_handle_tx_que)(u32 *);
 	void (*wlan_handle_rx_isr)(void);
 	void (*wlan_cleanup)(void);
-	int (*wlan_cfg_set)(int, uint32_t, uint8_t *, uint32_t, int, uint32_t);
-	int (*wlan_cfg_get)(int, uint32_t, int, uint32_t);
-	int (*wlan_cfg_get_value)(uint32_t, uint8_t *, uint32_t);
+	int (*wlan_cfg_set)(int, u32, u8 *, u32, int, u32);
+	int (*wlan_cfg_get)(int, u32, int, u32);
+	int (*wlan_cfg_get_value)(u32, u8 *, u32);
 	/*Bug3959: transmitting mgmt frames received from host*/
-	#if defined(WILC_AP_EXTERNAL_MLME) || defined(WILC_P2P)
-	int (*wlan_add_mgmt_to_tx_que)(void *, uint8_t *, uint32_t, wilc_tx_complete_func_t);
-
-	#ifdef WILC_FULLY_HOSTING_AP
-	int (*wlan_add_data_to_tx_que)(void *, uint8_t *, uint32_t, wilc_tx_complete_func_t);
-	#endif
-
-	#endif
+	int (*wlan_add_mgmt_to_tx_que)(void *, u8 *, u32, wilc_tx_complete_func_t);
 } wilc_wlan_oup_t;
 
 /********************************************
@@ -226,9 +195,7 @@ typedef enum {
 	RSN_IE = 48,
 	WPA_IE = 221,
 	WMM_IE = 221,
-	#ifdef WILC_P2P
 	P2P_IE = 221,
-	#endif
 } BEACON_IE;
 #endif
 typedef enum {
@@ -795,9 +762,7 @@ typedef enum {
 	/* SCAN Complete notification WID*/
 	WID_SCAN_COMPLETE		= 0x00C9,
 
-#ifdef WILC_AP_EXTERNAL_MLME
 	WID_DEL_BEACON					= 0x00CA,
-#endif
 
 	WID_LOGTerminal_Switch					= 0x00CD,
 	/* EMAC Short WID list */
@@ -907,13 +872,9 @@ typedef enum {
 	WID_HUT_TEST_ID                    = 0x3081,
 	WID_PMKID_INFO                     = 0x3082,
 	WID_FIRMWARE_INFO                  = 0x3083,
-	#ifdef WILC_P2P
 	WID_REGISTER_FRAME                = 0x3084,
-	#endif
 	WID_DEL_ALL_STA          = 0x3085,
-	 #ifdef WILC_P2P
 	WID_REMAIN_ON_CHAN  = 0x3996,
-	#endif
 	/*BugID_4156*/
 	WID_SSID_PROBE_REQ = 0x3997,
 	/*BugID_4124 WID to trigger modified Join Request using SSID and BSSID instead of bssListIdx (used by WID_JOIN_REQ)*/
@@ -963,7 +924,7 @@ int wilc_wlan_init(wilc_wlan_inp_t *inp, wilc_wlan_oup_t *oup);
 
 void wilc_bus_set_max_speed(void);
 void wilc_bus_set_default_speed(void);
-uint32_t wilc_get_chipid(uint8_t update);
+u32 wilc_get_chipid(u8 update);
 
 
 #endif
