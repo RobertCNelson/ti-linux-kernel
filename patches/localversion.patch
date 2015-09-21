@@ -1,4 +1,4 @@
-Subject: v4.1.7-rt7
+Subject: v4.1.7-rt8
 From: Thomas Gleixner <tglx@linutronix.de>
 Date: Fri, 08 Jul 2011 20:25:16 +0200
 
@@ -7,7 +7,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  localversion-rt |    1 +
  1 file changed, 1 insertion(+)
 
+Index: linux-rt-devel/localversion-rt
+===================================================================
 --- /dev/null
-+++ b/localversion-rt
++++ linux-rt-devel/localversion-rt
 @@ -0,0 +1 @@
-+-rt7
++-rt8

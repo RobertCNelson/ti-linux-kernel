@@ -5,6 +5,7 @@
 ############################################################
 # UPSTREAM changes queued
 ############################################################
+xfs--clean-up-inode-lockdep-annotations
 
 ############################################################
 # UPSTREAM FIXES, patches pending
@@ -34,11 +35,13 @@ mm-slub-move-slab-initialization-into-irq-enabled-region.patch
 # Stuff broken upstream, patches submitted
 ############################################################
 cpufreq-Remove-cpufreq_rwsem.patch
+genirq--Handle-interrupts-with-primary-and-threaded-handler-gracefully
 
 ############################################################
 # Stuff which needs addressing upstream, but requires more
 # information
 ############################################################
+rfc-arm-smp-__cpu_disable-fix-sleeping-function-called-from-invalid-context.patch
 
 ############################################################
 # Stuff broken upstream, need to be sent
@@ -155,6 +158,7 @@ futex-avoid-double-wake-up-in-PI-futex-wait-wake-on-.patch
 
 # TRACING
 latency-hist.patch
+tracing-fix-rcu-splat-from-idle-cpu-on-boot.patch
 
 # HW LATENCY DETECTOR - this really wants a rewrite
 hwlatdetect.patch
@@ -466,6 +470,7 @@ sysfs-realtime-entry.patch
 power-disable-highmem-on-rt.patch
 mips-disable-highmem-on-rt.patch
 mm-rt-kmap-atomic-scheduling.patch
+mm--rt--Fix-generic-kmap_atomic-for-RT
 x86-highmem-add-a-already-used-pte-check.patch
 arm-highmem-flush-tlb-on-unmap.patch
 arm-enable-highmem-for-rt.patch
@@ -549,7 +554,6 @@ leds-trigger-disable-CPU-trigger-on-RT.patch
 # DRIVERS
 i2c-omap-drop-the-lock-hard-irq-context.patch
 mmci-remove-bogus-irq-save.patch
-mmc-sdhci-don-t-provide-hard-irq-handler.patch
 cpufreq-drop-K8-s-driver-from-beeing-selected.patch
 
 # I915
