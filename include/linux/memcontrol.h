@@ -400,24 +400,26 @@ static inline int mem_cgroup_inactive_anon_is_low(struct lruvec *lruvec)
 	return inactive * inactive_ratio < active;
 }
 
+void mem_cgroup_handle_over_high(void);
+
 void mem_cgroup_print_oom_info(struct mem_cgroup *memcg,
 				struct task_struct *p);
 
 static inline void mem_cgroup_oom_enable(void)
 {
-	WARN_ON(current->memcg_oom.may_oom);
-	current->memcg_oom.may_oom = 1;
+	WARN_ON(current->memcg_may_oom);
+	current->memcg_may_oom = 1;
 }
 
 static inline void mem_cgroup_oom_disable(void)
 {
-	WARN_ON(!current->memcg_oom.may_oom);
-	current->memcg_oom.may_oom = 0;
+	WARN_ON(!current->memcg_may_oom);
+	current->memcg_may_oom = 0;
 }
 
 static inline bool task_in_memcg_oom(struct task_struct *p)
 {
-	return p->memcg_oom.memcg;
+	return p->memcg_in_oom;
 }
 
 bool mem_cgroup_oom_synchronize(bool wait);
@@ -619,6 +621,10 @@ static inline void mem_cgroup_end_page_stat(struct mem_cgroup *memcg)
 {
 }
 
+static inline void mem_cgroup_handle_over_high(void)
+{
+}
+
 static inline void mem_cgroup_oom_enable(void)
 {
 }
@@ -768,6 +774,17 @@ int memcg_charge_kmem(struct mem_cgroup *memcg, gfp_t gfp,
 		      unsigned long nr_pages);
 void memcg_uncharge_kmem(struct mem_cgroup *memcg, unsigned long nr_pages);
 
+static inline bool __memcg_kmem_bypass(gfp_t gfp)
+{
+	if (!memcg_kmem_enabled())
+		return true;
+	if (gfp & __GFP_NOACCOUNT)
+		return true;
+	if (in_interrupt() || (!current->mm) || (current->flags & PF_KTHREAD))
+		return true;
+	return false;
+}
+
 /**
  * memcg_kmem_newpage_charge: verify if a new kmem allocation is allowed.
  * @gfp: the gfp allocation flags.
@@ -783,26 +800,8 @@ void memcg_uncharge_kmem(struct mem_cgroup *memcg, unsigned long nr_pages);
 static inline bool
 memcg_kmem_newpage_charge(gfp_t gfp, struct mem_cgroup **memcg, int order)
 {
-	if (!memcg_kmem_enabled())
+	if (__memcg_kmem_bypass(gfp))
 		return true;
-
-	if (gfp & __GFP_NOACCOUNT)
-		return true;
-	/*
-	 * __GFP_NOFAIL allocations will move on even if charging is not
-	 * possible. Therefore we don't even try, and have this allocation
-	 * unaccounted. We could in theory charge it forcibly, but we hope
-	 * those allocations are rare, and won't be worth the trouble.
-	 */
-	if (gfp & __GFP_NOFAIL)
-		return true;
-	if (in_interrupt() || (!current->mm) || (current->flags & PF_KTHREAD))
-		return true;
-
-	/* If the test is dying, just let it go. */
-	if (unlikely(fatal_signal_pending(current)))
-		return true;
-
 	return __memcg_kmem_newpage_charge(gfp, memcg, order);
 }
 
@@ -845,17 +844,8 @@ memcg_kmem_commit_charge(struct page *page, struct mem_cgroup *memcg, int order)
 static __always_inline struct kmem_cache *
 memcg_kmem_get_cache(struct kmem_cache *cachep, gfp_t gfp)
 {
-	if (!memcg_kmem_enabled())
+	if (__memcg_kmem_bypass(gfp))
 		return cachep;
-	if (gfp & __GFP_NOACCOUNT)
-		return cachep;
-	if (gfp & __GFP_NOFAIL)
-		return cachep;
-	if (in_interrupt() || (!current->mm) || (current->flags & PF_KTHREAD))
-		return cachep;
-	if (unlikely(fatal_signal_pending(current)))
-		return cachep;
-
 	return __memcg_kmem_get_cache(cachep);
 }
 
