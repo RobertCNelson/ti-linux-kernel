@@ -51,6 +51,7 @@
 #define CP0_WIRED $6
 #define CP0_INFO $7
 #define CP0_BADVADDR $8
+#define CP0_BADINSTR $8, 1
 #define CP0_COUNT $9
 #define CP0_ENTRYHI $10
 #define CP0_COMPARE $11
@@ -58,6 +59,8 @@
 #define CP0_CAUSE $13
 #define CP0_EPC $14
 #define CP0_PRID $15
+#define CP0_EBASE $15, 1
+#define CP0_CMGCRBASE $15, 3
 #define CP0_CONFIG $16
 #define CP0_LLADDR $17
 #define CP0_WATCHLO $18
