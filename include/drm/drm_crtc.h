@@ -210,8 +210,6 @@ struct drm_framebuffer {
 	int flags;
 	uint32_t pixel_format; /* fourcc format */
 	struct list_head filp_head;
-	/* if you are using the helper */
-	void *helper_private;
 };
 
 struct drm_property_blob {
@@ -1390,7 +1388,7 @@ extern int drm_property_add_enum(struct drm_property *property, int index,
 extern int drm_mode_create_dvi_i_properties(struct drm_device *dev);
 extern int drm_mode_create_tv_properties(struct drm_device *dev,
 					 unsigned int num_modes,
-					 char *modes[]);
+					 const char * const modes[]);
 extern int drm_mode_create_scaling_mode_property(struct drm_device *dev);
 extern int drm_mode_create_aspect_ratio_property(struct drm_device *dev);
 extern int drm_mode_create_dirty_info_property(struct drm_device *dev);
