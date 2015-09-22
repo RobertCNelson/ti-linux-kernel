@@ -40,7 +40,6 @@ struct i915_params i915 __read_mostly = {
 	.preliminary_hw_support = IS_ENABLED(CONFIG_DRM_I915_PRELIMINARY_HW_SUPPORT),
 	.disable_power_well = 1,
 	.enable_ips = 1,
-	.fastboot = 0,
 	.prefault_disable = 0,
 	.load_detect_test = 0,
 	.reset = true,
@@ -51,6 +50,7 @@ struct i915_params i915 __read_mostly = {
 	.use_mmio_flip = 0,
 	.mmio_debug = 0,
 	.verbose_state_checks = 1,
+	.nuclear_pageflip = 0,
 	.edp_vswing = 0,
 	.enable_guc_submission = false,
 	.guc_log_level = -1,
@@ -132,10 +132,6 @@ MODULE_PARM_DESC(disable_power_well,
 module_param_named(enable_ips, i915.enable_ips, int, 0600);
 MODULE_PARM_DESC(enable_ips, "Enable IPS (default: true)");
 
-module_param_named(fastboot, i915.fastboot, bool, 0600);
-MODULE_PARM_DESC(fastboot,
-	"Try to skip unnecessary mode sets at boot time (default: false)");
-
 module_param_named_unsafe(prefault_disable, i915.prefault_disable, bool, 0600);
 MODULE_PARM_DESC(prefault_disable,
 	"Disable page prefaulting for pread/pwrite/reloc (default:false). "
@@ -176,6 +172,10 @@ MODULE_PARM_DESC(mmio_debug,
 module_param_named(verbose_state_checks, i915.verbose_state_checks, bool, 0600);
 MODULE_PARM_DESC(verbose_state_checks,
 	"Enable verbose logs (ie. WARN_ON()) in case of unexpected hw state conditions.");
+
+module_param_named_unsafe(nuclear_pageflip, i915.nuclear_pageflip, bool, 0600);
+MODULE_PARM_DESC(nuclear_pageflip,
+		 "Force atomic modeset functionality; asynchronous mode is not yet supported. (default: false).");
 
 /* WA to get away with the default setting in VBT for early platforms.Will be removed */
 module_param_named_unsafe(edp_vswing, i915.edp_vswing, int, 0400);
