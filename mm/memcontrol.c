@@ -434,7 +434,7 @@ struct cgroup_subsys_state *mem_cgroup_css_from_page(struct page *page)
 
 	memcg = page->mem_cgroup;
 
-	if (!memcg || !cgroup_on_dfl(memcg->css.cgroup))
+	if (!memcg || !cgroup_subsys_on_dfl(memory_cgrp_subsys))
 		memcg = root_mem_cgroup;
 
 	rcu_read_unlock();
@@ -4060,8 +4060,7 @@ static struct cftype mem_cgroup_legacy_files[] = {
 	{
 		.name = "cgroup.event_control",		/* XXX: for compat */
 		.write = memcg_write_event_control,
-		.flags = CFTYPE_NO_PREFIX,
-		.mode = S_IWUGO,
+		.flags = CFTYPE_NO_PREFIX | CFTYPE_WORLD_WRITABLE,
 	},
 	{
 		.name = "swappiness",
@@ -5059,7 +5058,7 @@ static void mem_cgroup_bind(struct cgroup_subsys_state *root_css)
 	 * guarantees that @root doesn't have any children, so turning it
 	 * on for the root memcg is enough.
 	 */
-	if (cgroup_on_dfl(root_css->cgroup))
+	if (cgroup_subsys_on_dfl(memory_cgrp_subsys))
 		root_mem_cgroup->use_hierarchy = true;
 	else
 		root_mem_cgroup->use_hierarchy = false;
@@ -5203,6 +5202,7 @@ static struct cftype memory_files[] = {
 	{
 		.name = "events",
 		.flags = CFTYPE_NOT_ON_ROOT,
+		.file_offset = offsetof(struct mem_cgroup, events_file),
 		.seq_show = memory_events_show,
 	},
 	{ }	/* terminate */
