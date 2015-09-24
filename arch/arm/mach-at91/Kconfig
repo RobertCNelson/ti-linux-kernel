@@ -5,6 +5,7 @@ menuconfig ARCH_AT91
 	select COMMON_CLK_AT91
 	select PINCTRL
 	select PINCTRL_AT91
+	select PINCTRL_AT91PIO4
 	select SOC_BUS
 
 if ARCH_AT91
