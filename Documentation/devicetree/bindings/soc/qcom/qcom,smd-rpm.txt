@@ -19,6 +19,8 @@ resources.
 	Usage: required
 	Value type: <string>
 	Definition: must be one of:
+		    "qcom,rpm-apq8084"
+		    "qcom,rpm-msm8916"
 		    "qcom,rpm-msm8974"
 
 - qcom,smd-channels:
