@@ -15333,6 +15333,54 @@ static void intel_modeset_readout_hw_state(struct drm_device *dev)
 	}
 }
 
+/*
+ * Calculate what we think the watermarks should be for the state we've read
+ * out of the hardware and then immediately program those watermarks so that
+ * we ensure the hardware settings match our internal state.
+ */
+static void sanitize_watermarks(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = to_i915(dev);
+	struct drm_atomic_state *state;
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *cstate;
+	int ret;
+	int i;
+
+	/* Only supported on platforms that use atomic watermark design */
+	if (!dev_priv->display.program_watermarks)
+		return;
+
+	/*
+	 * Calculate what we think WM's should be by creating a dummy state and
+	 * running it through the atomic check code.
+	 */
+	state = drm_atomic_helper_duplicate_state(dev,
+						  dev->mode_config.acquire_ctx);
+	if (WARN_ON(IS_ERR(state)))
+		return;
+
+	ret = intel_atomic_check(dev, state);
+	if (ret) {
+		/*
+		 * Just give up and leave watermarks untouched if we get an
+		 * error back from 'check'
+		 */
+		DRM_DEBUG_KMS("Could not determine valid watermarks for inherited state\n");
+		return;
+	}
+
+	/* Write calculated watermark values back */
+	to_i915(dev)->wm.config = to_intel_atomic_state(state)->wm_config;
+	for_each_crtc_in_state(state, crtc, cstate, i) {
+		struct intel_crtc_state *cs = to_intel_crtc_state(cstate);
+
+		dev_priv->display.program_watermarks(cs);
+	}
+
+	drm_atomic_state_free(state);
+}
+
 /* Scan out the current hw modeset state,
  * and sanitizes it to the current state
  */
@@ -15388,6 +15436,9 @@ intel_modeset_setup_hw_state(struct drm_device *dev)
 			modeset_put_power_domains(dev_priv, put_domains);
 	}
 	intel_display_set_init_power(dev_priv, false);
+
+	/* Make sure hardware watermarks really match the state we read out */
+	sanitize_watermarks(dev);
 }
 
 void intel_display_resume(struct drm_device *dev)
