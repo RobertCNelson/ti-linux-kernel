@@ -362,6 +362,7 @@ static const struct intel_device_info intel_skylake_info = {
 	.ring_mask = RENDER_RING | BSD_RING | BLT_RING | VEBOX_RING,
 	.has_llc = 1,
 	.has_ddi = 1,
+	.has_fpga_dbg = 1,
 	.has_fbc = 1,
 	GEN_DEFAULT_PIPEOFFSETS,
 	IVB_CURSOR_OFFSETS,
@@ -374,6 +375,7 @@ static const struct intel_device_info intel_skylake_gt3_info = {
 	.ring_mask = RENDER_RING | BSD_RING | BLT_RING | VEBOX_RING | BSD2_RING,
 	.has_llc = 1,
 	.has_ddi = 1,
+	.has_fpga_dbg = 1,
 	.has_fbc = 1,
 	GEN_DEFAULT_PIPEOFFSETS,
 	IVB_CURSOR_OFFSETS,
@@ -386,6 +388,7 @@ static const struct intel_device_info intel_broxton_info = {
 	.ring_mask = RENDER_RING | BSD_RING | BLT_RING | VEBOX_RING,
 	.num_pipes = 3,
 	.has_ddi = 1,
+	.has_fpga_dbg = 1,
 	.has_fbc = 1,
 	GEN_DEFAULT_PIPEOFFSETS,
 	IVB_CURSOR_OFFSETS,
@@ -679,7 +682,7 @@ static int i915_drm_suspend_late(struct drm_device *drm_dev, bool hibernation)
 	return 0;
 }
 
-int i915_suspend_legacy(struct drm_device *dev, pm_message_t state)
+int i915_suspend_switcheroo(struct drm_device *dev, pm_message_t state)
 {
 	int error;
 
@@ -812,7 +815,7 @@ static int i915_drm_resume_early(struct drm_device *dev)
 	return ret;
 }
 
-int i915_resume_legacy(struct drm_device *dev)
+int i915_resume_switcheroo(struct drm_device *dev)
 {
 	int ret;
 
@@ -1117,7 +1120,7 @@ static void vlv_save_gunit_s0ix_state(struct drm_i915_private *dev_priv)
 	s->gfx_pend_tlb1	= I915_READ(GEN7_GFX_PEND_TLB1);
 
 	for (i = 0; i < ARRAY_SIZE(s->lra_limits); i++)
-		s->lra_limits[i] = I915_READ(GEN7_LRA_LIMITS_BASE + i * 4);
+		s->lra_limits[i] = I915_READ(GEN7_LRA_LIMITS(i));
 
 	s->media_max_req_count	= I915_READ(GEN7_MEDIA_MAX_REQ_COUNT);
 	s->gfx_max_req_count	= I915_READ(GEN7_GFX_MAX_REQ_COUNT);
@@ -1161,7 +1164,7 @@ static void vlv_save_gunit_s0ix_state(struct drm_i915_private *dev_priv)
 	s->pm_ier		= I915_READ(GEN6_PMIER);
 
 	for (i = 0; i < ARRAY_SIZE(s->gt_scratch); i++)
-		s->gt_scratch[i] = I915_READ(GEN7_GT_SCRATCH_BASE + i * 4);
+		s->gt_scratch[i] = I915_READ(GEN7_GT_SCRATCH(i));
 
 	/* GT SA CZ domain, 0x100000-0x138124 */
 	s->tilectl		= I915_READ(TILECTL);
@@ -1199,7 +1202,7 @@ static void vlv_restore_gunit_s0ix_state(struct drm_i915_private *dev_priv)
 	I915_WRITE(GEN7_GFX_PEND_TLB1,	s->gfx_pend_tlb1);
 
 	for (i = 0; i < ARRAY_SIZE(s->lra_limits); i++)
-		I915_WRITE(GEN7_LRA_LIMITS_BASE + i * 4, s->lra_limits[i]);
+		I915_WRITE(GEN7_LRA_LIMITS(i), s->lra_limits[i]);
 
 	I915_WRITE(GEN7_MEDIA_MAX_REQ_COUNT, s->media_max_req_count);
 	I915_WRITE(GEN7_GFX_MAX_REQ_COUNT, s->gfx_max_req_count);
@@ -1243,7 +1246,7 @@ static void vlv_restore_gunit_s0ix_state(struct drm_i915_private *dev_priv)
 	I915_WRITE(GEN6_PMIER,		s->pm_ier);
 
 	for (i = 0; i < ARRAY_SIZE(s->gt_scratch); i++)
-		I915_WRITE(GEN7_GT_SCRATCH_BASE + i * 4, s->gt_scratch[i]);
+		I915_WRITE(GEN7_GT_SCRATCH(i), s->gt_scratch[i]);
 
 	/* GT SA CZ domain, 0x100000-0x138124 */
 	I915_WRITE(TILECTL,			s->tilectl);
@@ -1552,6 +1555,15 @@ static int intel_runtime_resume(struct device *device)
 	gen6_update_ring_freq(dev);
 
 	intel_runtime_pm_enable_interrupts(dev_priv);
+
+	/*
+	 * On VLV/CHV display interrupts are part of the display
+	 * power well, so hpd is reinitialized from there. For
+	 * everyone else do it here.
+	 */
+	if (!IS_VALLEYVIEW(dev_priv))
+		intel_hpd_init(dev_priv);
+
 	intel_enable_gt_powersave(dev);
 
 	if (ret)
@@ -1649,7 +1661,7 @@ static struct drm_driver driver = {
 	 */
 	.driver_features =
 	    DRIVER_HAVE_IRQ | DRIVER_IRQ_SHARED | DRIVER_GEM | DRIVER_PRIME |
-	    DRIVER_RENDER,
+	    DRIVER_RENDER | DRIVER_MODESET,
 	.load = i915_driver_load,
 	.unload = i915_driver_unload,
 	.open = i915_driver_open,
@@ -1657,10 +1669,6 @@ static struct drm_driver driver = {
 	.preclose = i915_driver_preclose,
 	.postclose = i915_driver_postclose,
 	.set_busid = drm_pci_set_busid,
-
-	/* Used in place of i915_pm_ops for non-DRIVER_MODESET */
-	.suspend = i915_suspend_legacy,
-	.resume = i915_resume_legacy,
 
 #if defined(CONFIG_DEBUG_FS)
 	.debugfs_init = i915_debugfs_init,
@@ -1704,7 +1712,6 @@ static int __init i915_init(void)
 	 * either the i915.modeset prarameter or by the
 	 * vga_text_mode_force boot option.
 	 */
-	driver.driver_features |= DRIVER_MODESET;
 
 	if (i915.modeset == 0)
 		driver.driver_features &= ~DRIVER_MODESET;
@@ -1715,18 +1722,12 @@ static int __init i915_init(void)
 #endif
 
 	if (!(driver.driver_features & DRIVER_MODESET)) {
-		driver.get_vblank_timestamp = NULL;
 		/* Silently fail loading to not upset userspace. */
 		DRM_DEBUG_DRIVER("KMS and UMS disabled.\n");
 		return 0;
 	}
 
-	/*
-	 * FIXME: Note that we're lying to the DRM core here so that we can get access
-	 * to the atomic ioctl and the atomic properties.  Only plane operations on
-	 * a single CRTC will actually work.
-	 */
-	if (driver.driver_features & DRIVER_MODESET)
+	if (i915.nuclear_pageflip)
 		driver.driver_features |= DRIVER_ATOMIC;
 
 	return drm_pci_init(&driver, &i915_pci_driver);

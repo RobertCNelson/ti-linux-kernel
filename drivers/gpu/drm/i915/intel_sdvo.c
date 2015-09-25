@@ -53,7 +53,7 @@
 #define IS_DIGITAL(c) (c->output_flag & (SDVO_TMDS_MASK | SDVO_LVDS_MASK))
 
 
-static const char *tv_format_names[] = {
+static const char * const tv_format_names[] = {
 	"NTSC_M"   , "NTSC_J"  , "NTSC_443",
 	"PAL_B"    , "PAL_D"   , "PAL_G"   ,
 	"PAL_H"    , "PAL_I"   , "PAL_M"   ,
@@ -63,7 +63,7 @@ static const char *tv_format_names[] = {
 	"SECAM_60"
 };
 
-#define TV_FORMAT_NUM  (sizeof(tv_format_names) / sizeof(*tv_format_names))
+#define TV_FORMAT_NUM  ARRAY_SIZE(tv_format_names)
 
 struct intel_sdvo {
 	struct intel_encoder base;
@@ -452,7 +452,7 @@ static void intel_sdvo_debug_write(struct intel_sdvo *intel_sdvo, u8 cmd,
 	DRM_DEBUG_KMS("%s: W: %02X %s\n", SDVO_NAME(intel_sdvo), cmd, buffer);
 }
 
-static const char *cmd_status_names[] = {
+static const char * const cmd_status_names[] = {
 	"Power on",
 	"Success",
 	"Not supported",
@@ -2222,7 +2222,7 @@ intel_sdvo_guess_ddc_bus(struct intel_sdvo *sdvo)
  */
 static void
 intel_sdvo_select_ddc_bus(struct drm_i915_private *dev_priv,
-			  struct intel_sdvo *sdvo, u32 reg)
+			  struct intel_sdvo *sdvo)
 {
 	struct sdvo_device_mapping *mapping;
 
@@ -2239,7 +2239,7 @@ intel_sdvo_select_ddc_bus(struct drm_i915_private *dev_priv,
 
 static void
 intel_sdvo_select_i2c_bus(struct drm_i915_private *dev_priv,
-			  struct intel_sdvo *sdvo, u32 reg)
+			  struct intel_sdvo *sdvo)
 {
 	struct sdvo_device_mapping *mapping;
 	u8 pin;
@@ -2925,7 +2925,7 @@ bool intel_sdvo_init(struct drm_device *dev, uint32_t sdvo_reg, bool is_sdvob)
 	intel_sdvo->sdvo_reg = sdvo_reg;
 	intel_sdvo->is_sdvob = is_sdvob;
 	intel_sdvo->slave_addr = intel_sdvo_get_slave_addr(dev, intel_sdvo) >> 1;
-	intel_sdvo_select_i2c_bus(dev_priv, intel_sdvo, sdvo_reg);
+	intel_sdvo_select_i2c_bus(dev_priv, intel_sdvo);
 	if (!intel_sdvo_init_ddc_proxy(intel_sdvo, dev))
 		goto err_i2c_bus;
 
@@ -2987,7 +2987,7 @@ bool intel_sdvo_init(struct drm_device *dev, uint32_t sdvo_reg, bool is_sdvob)
 	 */
 	intel_sdvo->base.cloneable = 0;
 
-	intel_sdvo_select_ddc_bus(dev_priv, intel_sdvo, sdvo_reg);
+	intel_sdvo_select_ddc_bus(dev_priv, intel_sdvo);
 
 	/* Set the input timing to the screen. Assume always input 0. */
 	if (!intel_sdvo_set_target_input(intel_sdvo))
