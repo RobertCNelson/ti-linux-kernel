@@ -774,9 +774,26 @@ err:
 	return ret;
 }
 
+static void resync_bitmap(struct mddev *mddev)
+{
+	struct md_cluster_info *cinfo = mddev->cluster_info;
+	struct cluster_msg cmsg = {0};
+	int err;
+
+	cmsg.type = cpu_to_le32(BITMAP_NEEDS_SYNC);
+	err = sendmsg(cinfo, &cmsg);
+	if (err)
+		pr_err("%s:%d: failed to send BITMAP_NEEDS_SYNC message (%d)\n",
+			__func__, __LINE__, err);
+}
+
 static int leave(struct mddev *mddev)
 {
 	struct md_cluster_info *cinfo = mddev->cluster_info;
+
+	/* BITMAP_NEEDS_SYNC message should be sent when node
+	 * is leaving the cluster */
+	resync_bitmap(mddev);
 
 	if (!cinfo)
 		return 0;
