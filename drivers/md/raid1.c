@@ -90,6 +90,8 @@ static void r1bio_pool_free(void *r1_bio, void *data)
 #define RESYNC_PAGES ((RESYNC_BLOCK_SIZE + PAGE_SIZE-1) / PAGE_SIZE)
 #define RESYNC_WINDOW (RESYNC_BLOCK_SIZE * RESYNC_DEPTH)
 #define RESYNC_WINDOW_SECTORS (RESYNC_WINDOW >> 9)
+#define CLUSTER_RESYNC_WINDOW (16 * RESYNC_WINDOW)
+#define CLUSTER_RESYNC_WINDOW_SECTORS (CLUSTER_RESYNC_WINDOW >> 9)
 #define NEXT_NORMALIO_DISTANCE (3 * RESYNC_WINDOW_SECTORS)
 
 static void * r1buf_pool_alloc(gfp_t gfp_flags, void *data)
@@ -881,8 +883,7 @@ static sector_t wait_barrier(struct r1conf *conf, struct bio *bio)
 	}
 
 	if (bio && bio_data_dir(bio) == WRITE) {
-		if (bio->bi_iter.bi_sector >=
-		    conf->mddev->curr_resync_completed) {
+		if (bio->bi_iter.bi_sector >= conf->next_resync) {
 			if (conf->start_next_window == MaxSector)
 				conf->start_next_window =
 					conf->next_resync +
@@ -1516,7 +1517,7 @@ static void close_sync(struct r1conf *conf)
 	conf->r1buf_pool = NULL;
 
 	spin_lock_irq(&conf->resync_lock);
-	conf->next_resync = 0;
+	conf->next_resync = MaxSector - 2 * NEXT_NORMALIO_DISTANCE;
 	conf->start_next_window = MaxSector;
 	conf->current_window_requests +=
 		conf->next_window_requests;
@@ -2489,6 +2490,13 @@ static sector_t sync_request(struct mddev *mddev, sector_t sector_nr, int *skipp
 
 		bitmap_close_sync(mddev->bitmap);
 		close_sync(conf);
+
+		if (mddev_is_clustered(mddev)) {
+			conf->cluster_sync_low = 0;
+			conf->cluster_sync_high = 0;
+			/* Send zeros to mark end of resync */
+			md_cluster_ops->resync_info_update(mddev, 0, 0);
+		}
 		return 0;
 	}
 
@@ -2509,7 +2517,12 @@ static sector_t sync_request(struct mddev *mddev, sector_t sector_nr, int *skipp
 		return sync_blocks;
 	}
 
-	bitmap_cond_end_sync(mddev->bitmap, sector_nr);
+	/* we are incrementing sector_nr below. To be safe, we check against
+	 * sector_nr + two times RESYNC_SECTORS
+	 */
+
+	bitmap_cond_end_sync(mddev->bitmap, sector_nr,
+		mddev_is_clustered(mddev) && (sector_nr + 2 * RESYNC_SECTORS > conf->cluster_sync_high));
 	r1_bio = mempool_alloc(conf->r1buf_pool, GFP_NOIO);
 
 	raise_barrier(conf, sector_nr);
@@ -2700,6 +2713,16 @@ static sector_t sync_request(struct mddev *mddev, sector_t sector_nr, int *skipp
  bio_full:
 	r1_bio->sectors = nr_sectors;
 
+	if (mddev_is_clustered(mddev) &&
+			conf->cluster_sync_high < sector_nr + nr_sectors) {
+		conf->cluster_sync_low = mddev->curr_resync_completed;
+		conf->cluster_sync_high = conf->cluster_sync_low + CLUSTER_RESYNC_WINDOW_SECTORS;
+		/* Send resync message */
+		md_cluster_ops->resync_info_update(mddev,
+				conf->cluster_sync_low,
+				conf->cluster_sync_high);
+	}
+
 	/* For a user-requested sync, we read all readable devices and do a
 	 * compare
 	 */
@@ -2843,8 +2866,7 @@ static struct r1conf *setup_conf(struct mddev *mddev)
 
  abort:
 	if (conf) {
-		if (conf->r1bio_pool)
-			mempool_destroy(conf->r1bio_pool);
+		mempool_destroy(conf->r1bio_pool);
 		kfree(conf->mirrors);
 		safe_put_page(conf->tmppage);
 		kfree(conf->poolinfo);
@@ -2946,8 +2968,7 @@ static void raid1_free(struct mddev *mddev, void *priv)
 {
 	struct r1conf *conf = priv;
 
-	if (conf->r1bio_pool)
-		mempool_destroy(conf->r1bio_pool);
+	mempool_destroy(conf->r1bio_pool);
 	kfree(conf->mirrors);
 	safe_put_page(conf->tmppage);
 	kfree(conf->poolinfo);
