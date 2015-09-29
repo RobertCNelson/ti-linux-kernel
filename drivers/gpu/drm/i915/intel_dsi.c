@@ -557,7 +557,7 @@ static void intel_dsi_clear_device_ready(struct intel_encoder *encoder)
 		usleep_range(2000, 2500);
 	}
 
-	vlv_disable_dsi_pll(encoder);
+	intel_disable_dsi_pll(encoder);
 }
 
 static void intel_dsi_post_disable(struct intel_encoder *encoder)
@@ -654,6 +654,7 @@ intel_dsi_mode_valid(struct drm_connector *connector,
 {
 	struct intel_connector *intel_connector = to_intel_connector(connector);
 	struct drm_display_mode *fixed_mode = intel_connector->panel.fixed_mode;
+	int max_dotclk = to_i915(connector->dev)->max_dotclk_freq;
 
 	DRM_DEBUG_KMS("\n");
 
@@ -667,6 +668,8 @@ intel_dsi_mode_valid(struct drm_connector *connector,
 			return MODE_PANEL;
 		if (mode->vdisplay > fixed_mode->vdisplay)
 			return MODE_PANEL;
+		if (fixed_mode->clock > max_dotclk)
+			return MODE_CLOCK_HIGH;
 	}
 
 	return MODE_OK;
@@ -695,7 +698,7 @@ static u16 txbyteclkhs(u16 pixels, int bpp, int lane_count,
 }
 
 static void set_dsi_timings(struct drm_encoder *encoder,
-			    const struct drm_display_mode *mode)
+			    const struct drm_display_mode *adjusted_mode)
 {
 	struct drm_device *dev = encoder->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -707,10 +710,10 @@ static void set_dsi_timings(struct drm_encoder *encoder,
 
 	u16 hactive, hfp, hsync, hbp, vfp, vsync, vbp;
 
-	hactive = mode->hdisplay;
-	hfp = mode->hsync_start - mode->hdisplay;
-	hsync = mode->hsync_end - mode->hsync_start;
-	hbp = mode->htotal - mode->hsync_end;
+	hactive = adjusted_mode->crtc_hdisplay;
+	hfp = adjusted_mode->crtc_hsync_start - adjusted_mode->crtc_hdisplay;
+	hsync = adjusted_mode->crtc_hsync_end - adjusted_mode->crtc_hsync_start;
+	hbp = adjusted_mode->crtc_htotal - adjusted_mode->crtc_hsync_end;
 
 	if (intel_dsi->dual_link) {
 		hactive /= 2;
@@ -721,9 +724,9 @@ static void set_dsi_timings(struct drm_encoder *encoder,
 		hbp /= 2;
 	}
 
-	vfp = mode->vsync_start - mode->vdisplay;
-	vsync = mode->vsync_end - mode->vsync_start;
-	vbp = mode->vtotal - mode->vsync_end;
+	vfp = adjusted_mode->crtc_vsync_start - adjusted_mode->crtc_vdisplay;
+	vsync = adjusted_mode->crtc_vsync_end - adjusted_mode->crtc_vsync_start;
+	vbp = adjusted_mode->crtc_vtotal - adjusted_mode->crtc_vsync_end;
 
 	/* horizontal values are in terms of high speed byte clock */
 	hactive = txbyteclkhs(hactive, bpp, lane_count,
@@ -734,6 +737,21 @@ static void set_dsi_timings(struct drm_encoder *encoder,
 	hbp = txbyteclkhs(hbp, bpp, lane_count, intel_dsi->burst_mode_ratio);
 
 	for_each_dsi_port(port, intel_dsi->ports) {
+		if (IS_BROXTON(dev)) {
+			/*
+			 * Program hdisplay and vdisplay on MIPI transcoder.
+			 * This is different from calculated hactive and
+			 * vactive, as they are calculated per channel basis,
+			 * whereas these values should be based on resolution.
+			 */
+			I915_WRITE(BXT_MIPI_TRANS_HACTIVE(port),
+				   adjusted_mode->crtc_hdisplay);
+			I915_WRITE(BXT_MIPI_TRANS_VACTIVE(port),
+				   adjusted_mode->crtc_vdisplay);
+			I915_WRITE(BXT_MIPI_TRANS_VTOTAL(port),
+				   adjusted_mode->crtc_vtotal);
+		}
+
 		I915_WRITE(MIPI_HACTIVE_AREA_COUNT(port), hactive);
 		I915_WRITE(MIPI_HFP_COUNT(port), hfp);
 
@@ -756,8 +774,7 @@ static void intel_dsi_prepare(struct intel_encoder *intel_encoder)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(encoder);
-	struct drm_display_mode *adjusted_mode =
-		&intel_crtc->config->base.adjusted_mode;
+	const struct drm_display_mode *adjusted_mode = &intel_crtc->config->base.adjusted_mode;
 	enum port port;
 	unsigned int bpp = intel_crtc->config->pipe_bpp;
 	u32 val, tmp;
@@ -765,7 +782,7 @@ static void intel_dsi_prepare(struct intel_encoder *intel_encoder)
 
 	DRM_DEBUG_KMS("pipe %c\n", pipe_name(intel_crtc->pipe));
 
-	mode_hdisplay = adjusted_mode->hdisplay;
+	mode_hdisplay = adjusted_mode->crtc_hdisplay;
 
 	if (intel_dsi->dual_link) {
 		mode_hdisplay /= 2;
@@ -774,16 +791,39 @@ static void intel_dsi_prepare(struct intel_encoder *intel_encoder)
 	}
 
 	for_each_dsi_port(port, intel_dsi->ports) {
-		/* escape clock divider, 20MHz, shared for A and C.
-		 * device ready must be off when doing this! txclkesc? */
-		tmp = I915_READ(MIPI_CTRL(PORT_A));
-		tmp &= ~ESCAPE_CLOCK_DIVIDER_MASK;
-		I915_WRITE(MIPI_CTRL(PORT_A), tmp | ESCAPE_CLOCK_DIVIDER_1);
+		if (IS_VALLEYVIEW(dev)) {
+			/*
+			 * escape clock divider, 20MHz, shared for A and C.
+			 * device ready must be off when doing this! txclkesc?
+			 */
+			tmp = I915_READ(MIPI_CTRL(PORT_A));
+			tmp &= ~ESCAPE_CLOCK_DIVIDER_MASK;
+			I915_WRITE(MIPI_CTRL(PORT_A), tmp |
+					ESCAPE_CLOCK_DIVIDER_1);
 
-		/* read request priority is per pipe */
-		tmp = I915_READ(MIPI_CTRL(port));
-		tmp &= ~READ_REQUEST_PRIORITY_MASK;
-		I915_WRITE(MIPI_CTRL(port), tmp | READ_REQUEST_PRIORITY_HIGH);
+			/* read request priority is per pipe */
+			tmp = I915_READ(MIPI_CTRL(port));
+			tmp &= ~READ_REQUEST_PRIORITY_MASK;
+			I915_WRITE(MIPI_CTRL(port), tmp |
+					READ_REQUEST_PRIORITY_HIGH);
+		} else if (IS_BROXTON(dev)) {
+			/*
+			 * FIXME:
+			 * BXT can connect any PIPE to any MIPI port.
+			 * Select the pipe based on the MIPI port read from
+			 * VBT for now. Pick PIPE A for MIPI port A and C
+			 * for port C.
+			 */
+			tmp = I915_READ(MIPI_CTRL(port));
+			tmp &= ~BXT_PIPE_SELECT_MASK;
+
+			if (port == PORT_A)
+				tmp |= BXT_PIPE_SELECT_A;
+			else if (port == PORT_C)
+				tmp |= BXT_PIPE_SELECT_C;
+
+			I915_WRITE(MIPI_CTRL(port), tmp);
+		}
 
 		/* XXX: why here, why like this? handling in irq handler?! */
 		I915_WRITE(MIPI_INTR_STAT(port), 0xffffffff);
@@ -792,7 +832,7 @@ static void intel_dsi_prepare(struct intel_encoder *intel_encoder)
 		I915_WRITE(MIPI_DPHY_PARAM(port), intel_dsi->dphy_reg);
 
 		I915_WRITE(MIPI_DPI_RESOLUTION(port),
-			adjusted_mode->vdisplay << VERTICAL_ADDRESS_SHIFT |
+			adjusted_mode->crtc_vdisplay << VERTICAL_ADDRESS_SHIFT |
 			mode_hdisplay << HORIZONTAL_ADDRESS_SHIFT);
 	}
 
@@ -838,15 +878,15 @@ static void intel_dsi_prepare(struct intel_encoder *intel_encoder)
 		if (is_vid_mode(intel_dsi) &&
 			intel_dsi->video_mode_format == VIDEO_MODE_BURST) {
 			I915_WRITE(MIPI_HS_TX_TIMEOUT(port),
-				txbyteclkhs(adjusted_mode->htotal, bpp,
-					intel_dsi->lane_count,
-					intel_dsi->burst_mode_ratio) + 1);
+				txbyteclkhs(adjusted_mode->crtc_htotal, bpp,
+					    intel_dsi->lane_count,
+					    intel_dsi->burst_mode_ratio) + 1);
 		} else {
 			I915_WRITE(MIPI_HS_TX_TIMEOUT(port),
-				txbyteclkhs(adjusted_mode->vtotal *
-					adjusted_mode->htotal,
-					bpp, intel_dsi->lane_count,
-					intel_dsi->burst_mode_ratio) + 1);
+				txbyteclkhs(adjusted_mode->crtc_vtotal *
+					    adjusted_mode->crtc_htotal,
+					    bpp, intel_dsi->lane_count,
+					    intel_dsi->burst_mode_ratio) + 1);
 		}
 		I915_WRITE(MIPI_LP_RX_TIMEOUT(port), intel_dsi->lp_rx_timeout);
 		I915_WRITE(MIPI_TURN_AROUND_TIMEOUT(port),
@@ -860,6 +900,17 @@ static void intel_dsi_prepare(struct intel_encoder *intel_encoder)
 		I915_WRITE(MIPI_INIT_COUNT(port),
 				txclkesc(intel_dsi->escape_clk_div, 100));
 
+		if (IS_BROXTON(dev) && (!intel_dsi->dual_link)) {
+			/*
+			 * BXT spec says write MIPI_INIT_COUNT for
+			 * both the ports, even if only one is
+			 * getting used. So write the other port
+			 * if not in dual link mode.
+			 */
+			I915_WRITE(MIPI_INIT_COUNT(port ==
+						PORT_A ? PORT_C : PORT_A),
+					intel_dsi->init_count);
+		}
 
 		/* recovery disables */
 		I915_WRITE(MIPI_EOT_DISABLE(port), tmp);
@@ -911,8 +962,8 @@ static void intel_dsi_pre_pll_enable(struct intel_encoder *encoder)
 	DRM_DEBUG_KMS("\n");
 
 	intel_dsi_prepare(encoder);
+	intel_enable_dsi_pll(encoder);
 
-	vlv_enable_dsi_pll(encoder);
 }
 
 static enum drm_connector_status
