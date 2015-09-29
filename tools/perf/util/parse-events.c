@@ -1,4 +1,5 @@
 #include <linux/hw_breakpoint.h>
+#include <linux/err.h>
 #include "util.h"
 #include "../perf.h"
 #include "evlist.h"
@@ -11,7 +12,7 @@
 #include "cache.h"
 #include "header.h"
 #include "debug.h"
-#include <api/fs/debugfs.h>
+#include <api/fs/tracing_path.h>
 #include "parse-events-bison.h"
 #define YY_EXTRA_TYPE int
 #include "parse-events-flex.h"
@@ -386,22 +387,52 @@ int parse_events_add_cache(struct list_head *list, int *idx,
 	return add_event(list, idx, &attr, name, NULL);
 }
 
+static void tracepoint_error(struct parse_events_error *error, int err,
+			     char *sys, char *name)
+{
+	char help[BUFSIZ];
+
+	/*
+	 * We get error directly from syscall errno ( > 0),
+	 * or from encoded pointer's error ( < 0).
+	 */
+	err = abs(err);
+
+	switch (err) {
+	case EACCES:
+		error->str = strdup("can't access trace events");
+		break;
+	case ENOENT:
+		error->str = strdup("unknown tracepoint");
+		break;
+	default:
+		error->str = strdup("failed to add tracepoint");
+		break;
+	}
+
+	tracing_path__strerror_open_tp(err, help, sizeof(help), sys, name);
+	error->help = strdup(help);
+}
+
 static int add_tracepoint(struct list_head *list, int *idx,
-			  char *sys_name, char *evt_name)
+			  char *sys_name, char *evt_name,
+			  struct parse_events_error *error __maybe_unused)
 {
 	struct perf_evsel *evsel;
 
 	evsel = perf_evsel__newtp_idx(sys_name, evt_name, (*idx)++);
-	if (!evsel)
-		return -ENOMEM;
+	if (IS_ERR(evsel)) {
+		tracepoint_error(error, PTR_ERR(evsel), sys_name, evt_name);
+		return PTR_ERR(evsel);
+	}
 
 	list_add_tail(&evsel->node, list);
-
 	return 0;
 }
 
 static int add_tracepoint_multi_event(struct list_head *list, int *idx,
-				      char *sys_name, char *evt_name)
+				      char *sys_name, char *evt_name,
+				      struct parse_events_error *error)
 {
 	char evt_path[MAXPATHLEN];
 	struct dirent *evt_ent;
@@ -411,7 +442,7 @@ static int add_tracepoint_multi_event(struct list_head *list, int *idx,
 	snprintf(evt_path, MAXPATHLEN, "%s/%s", tracing_events_path, sys_name);
 	evt_dir = opendir(evt_path);
 	if (!evt_dir) {
-		perror("Can't open event dir");
+		tracepoint_error(error, errno, sys_name, evt_name);
 		return -1;
 	}
 
@@ -425,7 +456,7 @@ static int add_tracepoint_multi_event(struct list_head *list, int *idx,
 		if (!strglobmatch(evt_ent->d_name, evt_name))
 			continue;
 
-		ret = add_tracepoint(list, idx, sys_name, evt_ent->d_name);
+		ret = add_tracepoint(list, idx, sys_name, evt_ent->d_name, error);
 	}
 
 	closedir(evt_dir);
@@ -433,15 +464,17 @@ static int add_tracepoint_multi_event(struct list_head *list, int *idx,
 }
 
 static int add_tracepoint_event(struct list_head *list, int *idx,
-				char *sys_name, char *evt_name)
+				char *sys_name, char *evt_name,
+				struct parse_events_error *error)
 {
 	return strpbrk(evt_name, "*?") ?
-	       add_tracepoint_multi_event(list, idx, sys_name, evt_name) :
-	       add_tracepoint(list, idx, sys_name, evt_name);
+	       add_tracepoint_multi_event(list, idx, sys_name, evt_name, error) :
+	       add_tracepoint(list, idx, sys_name, evt_name, error);
 }
 
 static int add_tracepoint_multi_sys(struct list_head *list, int *idx,
-				    char *sys_name, char *evt_name)
+				    char *sys_name, char *evt_name,
+				    struct parse_events_error *error)
 {
 	struct dirent *events_ent;
 	DIR *events_dir;
@@ -449,7 +482,7 @@ static int add_tracepoint_multi_sys(struct list_head *list, int *idx,
 
 	events_dir = opendir(tracing_events_path);
 	if (!events_dir) {
-		perror("Can't open event dir");
+		tracepoint_error(error, errno, sys_name, evt_name);
 		return -1;
 	}
 
@@ -465,7 +498,7 @@ static int add_tracepoint_multi_sys(struct list_head *list, int *idx,
 			continue;
 
 		ret = add_tracepoint_event(list, idx, events_ent->d_name,
-					   evt_name);
+					   evt_name, error);
 	}
 
 	closedir(events_dir);
@@ -473,12 +506,13 @@ static int add_tracepoint_multi_sys(struct list_head *list, int *idx,
 }
 
 int parse_events_add_tracepoint(struct list_head *list, int *idx,
-				char *sys, char *event)
+				char *sys, char *event,
+				struct parse_events_error *error)
 {
 	if (strpbrk(sys, "*?"))
-		return add_tracepoint_multi_sys(list, idx, sys, event);
+		return add_tracepoint_multi_sys(list, idx, sys, event, error);
 	else
-		return add_tracepoint_event(list, idx, sys, event);
+		return add_tracepoint_event(list, idx, sys, event, error);
 }
 
 static int
@@ -792,6 +826,11 @@ int parse_events__modifier_group(struct list_head *list,
 void parse_events__set_leader(char *name, struct list_head *list)
 {
 	struct perf_evsel *leader;
+
+	if (list_empty(list)) {
+		WARN_ONCE(true, "WARNING: failed to set leader: empty list");
+		return;
+	}
 
 	__perf_evlist__set_leader(list);
 	leader = list_entry(list->next, struct perf_evsel, node);
@@ -1142,6 +1181,11 @@ int parse_events(struct perf_evlist *evlist, const char *str,
 	if (!ret) {
 		struct perf_evsel *last;
 
+		if (list_empty(&data.list)) {
+			WARN_ONCE(true, "WARNING: event parser found nothing");
+			return -1;
+		}
+
 		perf_evlist__splice_list_tail(evlist, &data.list);
 		evlist->nr_groups += data.nr_groups;
 		last = perf_evlist__last(evlist);
@@ -1251,6 +1295,12 @@ foreach_evsel_in_last_glob(struct perf_evlist *evlist,
 	struct perf_evsel *last = NULL;
 	int err;
 
+	/*
+	 * Don't return when list_empty, give func a chance to report
+	 * error when it found last == NULL.
+	 *
+	 * So no need to WARN here, let *func do this.
+	 */
 	if (evlist->nr_entries > 0)
 		last = perf_evlist__last(evlist);
 
