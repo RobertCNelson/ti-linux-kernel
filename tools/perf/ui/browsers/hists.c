@@ -1261,6 +1261,7 @@ static int hists__browser_title(struct hists *hists,
 	int printed;
 	const struct dso *dso = hists->dso_filter;
 	const struct thread *thread = hists->thread_filter;
+	int socket_id = hists->socket_filter;
 	unsigned long nr_samples = hists->stats.nr_events[PERF_RECORD_SAMPLE];
 	u64 nr_events = hists->stats.total_period;
 	struct perf_evsel *evsel = hists_to_evsel(hists);
@@ -1314,6 +1315,9 @@ static int hists__browser_title(struct hists *hists,
 	if (dso)
 		printed += scnprintf(bf + printed, size - printed,
 				    ", DSO: %s", dso->short_name);
+	if (socket_id > -1)
+		printed += scnprintf(bf + printed, size - printed,
+				    ", Processor Socket: %d", socket_id);
 	if (!is_report_browser(hbt)) {
 		struct perf_top *top = hbt->arg;
 
@@ -1425,6 +1429,7 @@ struct popup_action {
 	struct thread 		*thread;
 	struct dso		*dso;
 	struct map_symbol 	ms;
+	int			socket;
 
 	int (*fn)(struct hist_browser *browser, struct popup_action *act);
 };
@@ -1437,7 +1442,7 @@ do_annotate(struct hist_browser *browser, struct popup_action *act)
 	struct hist_entry *he;
 	int err;
 
-	if (!objdump_path && perf_session_env__lookup_objdump(browser->env))
+	if (!objdump_path && perf_env__lookup_objdump(browser->env))
 		return 0;
 
 	notes = symbol__annotation(act->ms.sym);
@@ -1522,7 +1527,7 @@ add_thread_opt(struct hist_browser *browser, struct popup_action *act,
 static int
 do_zoom_dso(struct hist_browser *browser, struct popup_action *act)
 {
-	struct dso *dso = act->dso;
+	struct map *map = act->ms.map;
 
 	if (browser->hists->dso_filter) {
 		pstack__remove(browser->pstack, &browser->hists->dso_filter);
@@ -1530,11 +1535,11 @@ do_zoom_dso(struct hist_browser *browser, struct popup_action *act)
 		browser->hists->dso_filter = NULL;
 		ui_helpline__pop();
 	} else {
-		if (dso == NULL)
+		if (map == NULL)
 			return 0;
 		ui_helpline__fpush("To zoom out press <- or -> + \"Zoom out of %s DSO\"",
-				   dso->kernel ? "the Kernel" : dso->short_name);
-		browser->hists->dso_filter = dso;
+				   __map__is_kernel(map) ? "the Kernel" : map->dso->short_name);
+		browser->hists->dso_filter = map->dso;
 		perf_hpp__set_elide(HISTC_DSO, true);
 		pstack__push(browser->pstack, &browser->hists->dso_filter);
 	}
@@ -1546,17 +1551,18 @@ do_zoom_dso(struct hist_browser *browser, struct popup_action *act)
 
 static int
 add_dso_opt(struct hist_browser *browser, struct popup_action *act,
-	    char **optstr, struct dso *dso)
+	    char **optstr, struct map *map)
 {
-	if (dso == NULL)
+	if (map == NULL)
 		return 0;
 
 	if (asprintf(optstr, "Zoom %s %s DSO",
 		     browser->hists->dso_filter ? "out of" : "into",
-		     dso->kernel ? "the Kernel" : dso->short_name) < 0)
+		     __map__is_kernel(map) ? "the Kernel" : map->dso->short_name) < 0)
 		return 0;
 
-	act->dso = dso;
+	act->ms.map = map;
+	act->dso = map->dso;
 	act->fn = do_zoom_dso;
 	return 1;
 }
@@ -1672,6 +1678,41 @@ add_exit_opt(struct hist_browser *browser __maybe_unused,
 	return 1;
 }
 
+static int
+do_zoom_socket(struct hist_browser *browser, struct popup_action *act)
+{
+	if (browser->hists->socket_filter > -1) {
+		pstack__remove(browser->pstack, &browser->hists->socket_filter);
+		browser->hists->socket_filter = -1;
+		perf_hpp__set_elide(HISTC_SOCKET, false);
+	} else {
+		browser->hists->socket_filter = act->socket;
+		perf_hpp__set_elide(HISTC_SOCKET, true);
+		pstack__push(browser->pstack, &browser->hists->socket_filter);
+	}
+
+	hists__filter_by_socket(browser->hists);
+	hist_browser__reset(browser);
+	return 0;
+}
+
+static int
+add_socket_opt(struct hist_browser *browser, struct popup_action *act,
+	       char **optstr, int socket_id)
+{
+	if (socket_id < 0)
+		return 0;
+
+	if (asprintf(optstr, "Zoom %s Processor Socket %d",
+		     (browser->hists->socket_filter > -1) ? "out of" : "into",
+		     socket_id) < 0)
+		return 0;
+
+	act->socket = socket_id;
+	act->fn = do_zoom_socket;
+	return 1;
+}
+
 static void hist_browser__update_nr_entries(struct hist_browser *hb)
 {
 	u64 nr_entries = 0;
@@ -1725,6 +1766,7 @@ static int perf_evsel__hists_browse(struct perf_evsel *evsel, int nr_events,
 	"E             Expand all callchains\n"				\
 	"F             Toggle percentage of filtered entries\n"		\
 	"H             Display column headers\n"			\
+	"S             Zoom into current Processor Socket\n"		\
 
 	/* help messages are sorted by lexical order of the hotkey */
 	const char report_help[] = HIST_BROWSER_HELP_COMMON
@@ -1755,7 +1797,7 @@ static int perf_evsel__hists_browse(struct perf_evsel *evsel, int nr_events,
 		hist_browser__update_nr_entries(browser);
 	}
 
-	browser->pstack = pstack__new(2);
+	browser->pstack = pstack__new(3);
 	if (browser->pstack == NULL)
 		goto out;
 
@@ -1773,7 +1815,9 @@ static int perf_evsel__hists_browse(struct perf_evsel *evsel, int nr_events,
 	while (1) {
 		struct thread *thread = NULL;
 		struct dso *dso = NULL;
+		struct map *map = NULL;
 		int choice = 0;
+		int socked_id = -1;
 
 		nr_options = 0;
 
@@ -1781,7 +1825,10 @@ static int perf_evsel__hists_browse(struct perf_evsel *evsel, int nr_events,
 
 		if (browser->he_selection != NULL) {
 			thread = hist_browser__selected_thread(browser);
-			dso = browser->selection->map ? browser->selection->map->dso : NULL;
+			map = browser->selection->map;
+			if (map)
+				dso = map->dso;
+			socked_id = browser->he_selection->socket;
 		}
 		switch (key) {
 		case K_TAB:
@@ -1823,6 +1870,10 @@ static int perf_evsel__hists_browse(struct perf_evsel *evsel, int nr_events,
 		case 't':
 			actions->thread = thread;
 			do_zoom_thread(browser, actions);
+			continue;
+		case 'S':
+			actions->socket = socked_id;
+			do_zoom_socket(browser, actions);
 			continue;
 		case '/':
 			if (ui_browser__input_window("Symbol to show",
@@ -1899,9 +1950,11 @@ static int perf_evsel__hists_browse(struct perf_evsel *evsel, int nr_events,
 				 * Ditto for thread below.
 				 */
 				do_zoom_dso(browser, actions);
-			}
-			if (top == &browser->hists->thread_filter)
+			} else if (top == &browser->hists->thread_filter) {
 				do_zoom_thread(browser, actions);
+			} else if (top == &browser->hists->socket_filter) {
+				do_zoom_socket(browser, actions);
+			}
 			continue;
 		}
 		case 'q':
@@ -1965,12 +2018,14 @@ skip_annotation:
 		nr_options += add_thread_opt(browser, &actions[nr_options],
 					     &options[nr_options], thread);
 		nr_options += add_dso_opt(browser, &actions[nr_options],
-					  &options[nr_options], dso);
+					  &options[nr_options], map);
 		nr_options += add_map_opt(browser, &actions[nr_options],
 					  &options[nr_options],
 					  browser->selection ?
 						browser->selection->map : NULL);
-
+		nr_options += add_socket_opt(browser, &actions[nr_options],
+					     &options[nr_options],
+					     socked_id);
 		/* perf script support */
 		if (browser->he_selection) {
 			nr_options += add_script_opt(browser,

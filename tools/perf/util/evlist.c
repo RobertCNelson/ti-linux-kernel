@@ -25,6 +25,7 @@
 #include <linux/bitops.h>
 #include <linux/hash.h>
 #include <linux/log2.h>
+#include <linux/err.h>
 
 static void perf_evlist__mmap_put(struct perf_evlist *evlist, int idx);
 static void __perf_evlist__munmap(struct perf_evlist *evlist, int idx);
@@ -164,6 +165,13 @@ void perf_evlist__add(struct perf_evlist *evlist, struct perf_evsel *entry)
 	__perf_evlist__propagate_maps(evlist, entry);
 }
 
+void perf_evlist__remove(struct perf_evlist *evlist, struct perf_evsel *evsel)
+{
+	evsel->evlist = NULL;
+	list_del_init(&evsel->node);
+	evlist->nr_entries -= 1;
+}
+
 void perf_evlist__splice_list_tail(struct perf_evlist *evlist,
 				   struct list_head *list)
 {
@@ -293,7 +301,7 @@ int perf_evlist__add_newtp(struct perf_evlist *evlist,
 {
 	struct perf_evsel *evsel = perf_evsel__newtp(sys, name);
 
-	if (evsel == NULL)
+	if (IS_ERR(evsel))
 		return -1;
 
 	evsel->handler = handler;
@@ -612,6 +620,21 @@ struct perf_evsel *perf_evlist__id2evsel(struct perf_evlist *evlist, u64 id)
 
 	if (!perf_evlist__sample_id_all(evlist))
 		return perf_evlist__first(evlist);
+
+	return NULL;
+}
+
+struct perf_evsel *perf_evlist__id2evsel_strict(struct perf_evlist *evlist,
+						u64 id)
+{
+	struct perf_sample_id *sid;
+
+	if (!id)
+		return NULL;
+
+	sid = perf_evlist__id2sid(evlist, id);
+	if (sid)
+		return sid->evsel;
 
 	return NULL;
 }
