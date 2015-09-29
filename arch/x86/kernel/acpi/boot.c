@@ -194,9 +194,6 @@ acpi_parse_x2apic(struct acpi_subtable_header *header, const unsigned long end)
 
 	processor = (struct acpi_madt_local_x2apic *)header;
 
-	if (BAD_MADT_ENTRY(processor, end))
-		return -EINVAL;
-
 	acpi_table_print_madt_entry(header);
 
 	apic_id = processor->local_apic_id;
@@ -227,9 +224,6 @@ acpi_parse_lapic(struct acpi_subtable_header * header, const unsigned long end)
 
 	processor = (struct acpi_madt_local_apic *)header;
 
-	if (BAD_MADT_ENTRY(processor, end))
-		return -EINVAL;
-
 	acpi_table_print_madt_entry(header);
 
 	/*
@@ -252,9 +246,6 @@ acpi_parse_sapic(struct acpi_subtable_header *header, const unsigned long end)
 
 	processor = (struct acpi_madt_local_sapic *)header;
 
-	if (BAD_MADT_ENTRY(processor, end))
-		return -EINVAL;
-
 	acpi_table_print_madt_entry(header);
 
 	acpi_register_lapic((processor->id << 8) | processor->eid,/* APIC ID */
@@ -271,9 +262,6 @@ acpi_parse_lapic_addr_ovr(struct acpi_subtable_header * header,
 
 	lapic_addr_ovr = (struct acpi_madt_local_apic_override *)header;
 
-	if (BAD_MADT_ENTRY(lapic_addr_ovr, end))
-		return -EINVAL;
-
 	acpi_lapic_addr = lapic_addr_ovr->address;
 
 	return 0;
@@ -286,9 +274,6 @@ acpi_parse_x2apic_nmi(struct acpi_subtable_header *header,
 	struct acpi_madt_local_x2apic_nmi *x2apic_nmi = NULL;
 
 	x2apic_nmi = (struct acpi_madt_local_x2apic_nmi *)header;
-
-	if (BAD_MADT_ENTRY(x2apic_nmi, end))
-		return -EINVAL;
 
 	acpi_table_print_madt_entry(header);
 
@@ -304,9 +289,6 @@ acpi_parse_lapic_nmi(struct acpi_subtable_header * header, const unsigned long e
 	struct acpi_madt_local_apic_nmi *lapic_nmi = NULL;
 
 	lapic_nmi = (struct acpi_madt_local_apic_nmi *)header;
-
-	if (BAD_MADT_ENTRY(lapic_nmi, end))
-		return -EINVAL;
 
 	acpi_table_print_madt_entry(header);
 
@@ -411,9 +393,6 @@ acpi_parse_ioapic(struct acpi_subtable_header * header, const unsigned long end)
 
 	ioapic = (struct acpi_madt_io_apic *)header;
 
-	if (BAD_MADT_ENTRY(ioapic, end))
-		return -EINVAL;
-
 	acpi_table_print_madt_entry(header);
 
 	/* Statically assign IRQ numbers for IOAPICs hosting legacy IRQs */
@@ -463,9 +442,6 @@ acpi_parse_int_src_ovr(struct acpi_subtable_header * header,
 
 	intsrc = (struct acpi_madt_interrupt_override *)header;
 
-	if (BAD_MADT_ENTRY(intsrc, end))
-		return -EINVAL;
-
 	acpi_table_print_madt_entry(header);
 
 	if (intsrc->source_irq == acpi_gbl_FADT.sci_interrupt) {
@@ -503,9 +479,6 @@ acpi_parse_nmi_src(struct acpi_subtable_header * header, const unsigned long end
 	struct acpi_madt_nmi_source *nmi_src = NULL;
 
 	nmi_src = (struct acpi_madt_nmi_source *)header;
-
-	if (BAD_MADT_ENTRY(nmi_src, end))
-		return -EINVAL;
 
 	acpi_table_print_madt_entry(header);
 
