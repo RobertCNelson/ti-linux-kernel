@@ -405,7 +405,8 @@ int __dax_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
 			if (error)
 				goto unlock;
 		} else {
-			i_mmap_unlock_write(mapping);
+			if (!page)
+				i_mmap_unlock_write(mapping);
 			return dax_load_hole(mapping, page, vmf);
 		}
 	}
