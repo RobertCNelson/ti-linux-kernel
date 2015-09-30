@@ -69,17 +69,18 @@ static const struct {
 };
 
 /* get AUD_CONFIG_PIXEL_CLOCK_HDMI_* value for mode */
-static u32 audio_config_hdmi_pixel_clock(struct drm_display_mode *mode)
+static u32 audio_config_hdmi_pixel_clock(const struct drm_display_mode *adjusted_mode)
 {
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(hdmi_audio_clock); i++) {
-		if (mode->clock == hdmi_audio_clock[i].clock)
+		if (adjusted_mode->crtc_clock == hdmi_audio_clock[i].clock)
 			break;
 	}
 
 	if (i == ARRAY_SIZE(hdmi_audio_clock)) {
-		DRM_DEBUG_KMS("HDMI audio pixel clock setting for %d not found, falling back to defaults\n", mode->clock);
+		DRM_DEBUG_KMS("HDMI audio pixel clock setting for %d not found, falling back to defaults\n",
+			      adjusted_mode->crtc_clock);
 		i = 1;
 	}
 
@@ -138,7 +139,7 @@ static void g4x_audio_codec_disable(struct intel_encoder *encoder)
 
 static void g4x_audio_codec_enable(struct drm_connector *connector,
 				   struct intel_encoder *encoder,
-				   struct drm_display_mode *mode)
+				   const struct drm_display_mode *adjusted_mode)
 {
 	struct drm_i915_private *dev_priv = connector->dev->dev_private;
 	uint8_t *eld = connector->eld;
@@ -203,7 +204,7 @@ static void hsw_audio_codec_disable(struct intel_encoder *encoder)
 
 static void hsw_audio_codec_enable(struct drm_connector *connector,
 				   struct intel_encoder *encoder,
-				   struct drm_display_mode *mode)
+				   const struct drm_display_mode *adjusted_mode)
 {
 	struct drm_i915_private *dev_priv = connector->dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
@@ -251,7 +252,7 @@ static void hsw_audio_codec_enable(struct drm_connector *connector,
 	if (intel_pipe_has_type(intel_crtc, INTEL_OUTPUT_DISPLAYPORT))
 		tmp |= AUD_CONFIG_N_VALUE_INDEX;
 	else
-		tmp |= audio_config_hdmi_pixel_clock(mode);
+		tmp |= audio_config_hdmi_pixel_clock(adjusted_mode);
 	I915_WRITE(HSW_AUD_CFG(pipe), tmp);
 }
 
@@ -304,7 +305,7 @@ static void ilk_audio_codec_disable(struct intel_encoder *encoder)
 
 static void ilk_audio_codec_enable(struct drm_connector *connector,
 				   struct intel_encoder *encoder,
-				   struct drm_display_mode *mode)
+				   const struct drm_display_mode *adjusted_mode)
 {
 	struct drm_i915_private *dev_priv = connector->dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
@@ -381,7 +382,7 @@ static void ilk_audio_codec_enable(struct drm_connector *connector,
 	if (intel_pipe_has_type(intel_crtc, INTEL_OUTPUT_DISPLAYPORT))
 		tmp |= AUD_CONFIG_N_VALUE_INDEX;
 	else
-		tmp |= audio_config_hdmi_pixel_clock(mode);
+		tmp |= audio_config_hdmi_pixel_clock(adjusted_mode);
 	I915_WRITE(aud_config, tmp);
 }
 
@@ -396,7 +397,7 @@ void intel_audio_codec_enable(struct intel_encoder *intel_encoder)
 {
 	struct drm_encoder *encoder = &intel_encoder->base;
 	struct intel_crtc *crtc = to_intel_crtc(encoder->crtc);
-	struct drm_display_mode *mode = &crtc->config->base.adjusted_mode;
+	const struct drm_display_mode *adjusted_mode = &crtc->config->base.adjusted_mode;
 	struct drm_connector *connector;
 	struct drm_device *dev = encoder->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -419,10 +420,11 @@ void intel_audio_codec_enable(struct intel_encoder *intel_encoder)
 	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT))
 		connector->eld[5] |= (1 << 2);
 
-	connector->eld[6] = drm_av_sync_delay(connector, mode) / 2;
+	connector->eld[6] = drm_av_sync_delay(connector, adjusted_mode) / 2;
 
 	if (dev_priv->display.audio_codec_enable)
-		dev_priv->display.audio_codec_enable(connector, intel_encoder, mode);
+		dev_priv->display.audio_codec_enable(connector, intel_encoder,
+						     adjusted_mode);
 
 	if (acomp && acomp->audio_ops && acomp->audio_ops->pin_eld_notify)
 		acomp->audio_ops->pin_eld_notify(acomp->audio_ops->audio_ptr, (int) port);
