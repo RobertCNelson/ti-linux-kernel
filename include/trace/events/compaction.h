@@ -30,7 +30,7 @@
 #define IFDEF_ZONE_DMA32(X)
 #endif
 
-#ifdef CONFIG_ZONE_HIGHMEM_
+#ifdef CONFIG_HIGHMEM
 #define IFDEF_ZONE_HIGHMEM(X) X
 #else
 #define IFDEF_ZONE_HIGHMEM(X)
