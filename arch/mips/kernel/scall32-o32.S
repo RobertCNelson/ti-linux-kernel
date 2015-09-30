@@ -600,3 +600,4 @@ EXPORT(sys_call_table)
 	PTR	sys_bpf				/* 4355 */
 	PTR	sys_execveat
 	PTR	sys_mlock2
+	PTR	sys_membarrier
