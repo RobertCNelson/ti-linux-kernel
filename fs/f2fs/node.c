@@ -52,11 +52,6 @@ bool available_free_memory(struct f2fs_sb_info *sbi, int type)
 		mem_size = (nm_i->nat_cnt * sizeof(struct nat_entry)) >>
 							PAGE_CACHE_SHIFT;
 		res = mem_size < ((avail_ram * nm_i->ram_thresh / 100) >> 2);
-	} else if (type == DIRTY_DENTS) {
-		if (sbi->sb->s_bdi->wb.dirty_exceeded)
-			return false;
-		mem_size = get_pages(sbi, F2FS_DIRTY_DENTS);
-		res = mem_size < ((avail_ram * nm_i->ram_thresh / 100) >> 1);
 	} else if (type == INO_ENTRIES) {
 		int i;
 
@@ -1323,21 +1318,22 @@ static int f2fs_write_node_page(struct page *page,
 	nid = nid_of_node(page);
 	f2fs_bug_on(sbi, page->index != nid);
 
+	if (wbc->for_reclaim) {
+		if (!down_read_trylock(&sbi->node_write))
+			goto redirty_out;
+	} else {
+		down_read(&sbi->node_write);
+	}
+
 	get_node_info(sbi, nid, &ni);
 
 	/* This page is already truncated */
 	if (unlikely(ni.blk_addr == NULL_ADDR)) {
 		ClearPageUptodate(page);
 		dec_page_count(sbi, F2FS_DIRTY_NODES);
+		up_read(&sbi->node_write);
 		unlock_page(page);
 		return 0;
-	}
-
-	if (wbc->for_reclaim) {
-		if (!down_read_trylock(&sbi->node_write))
-			goto redirty_out;
-	} else {
-		down_read(&sbi->node_write);
 	}
 
 	set_page_writeback(page);
