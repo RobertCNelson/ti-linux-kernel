@@ -3137,7 +3137,7 @@ static sector_t sync_request(struct mddev *mddev, sector_t sector_nr,
 		/* resync. Schedule a read for every block at this virt offset */
 		int count = 0;
 
-		bitmap_cond_end_sync(mddev->bitmap, sector_nr);
+		bitmap_cond_end_sync(mddev->bitmap, sector_nr, 0);
 
 		if (!bitmap_start_sync(mddev->bitmap, sector_nr,
 				       &sync_blocks, mddev->degraded) &&
@@ -3486,8 +3486,7 @@ static struct r10conf *setup_conf(struct mddev *mddev)
 		printk(KERN_ERR "md/raid10:%s: couldn't allocate memory.\n",
 		       mdname(mddev));
 	if (conf) {
-		if (conf->r10bio_pool)
-			mempool_destroy(conf->r10bio_pool);
+		mempool_destroy(conf->r10bio_pool);
 		kfree(conf->mirrors);
 		safe_put_page(conf->tmppage);
 		kfree(conf);
@@ -3682,8 +3681,7 @@ static int run(struct mddev *mddev)
 
 out_free_conf:
 	md_unregister_thread(&mddev->thread);
-	if (conf->r10bio_pool)
-		mempool_destroy(conf->r10bio_pool);
+	mempool_destroy(conf->r10bio_pool);
 	safe_put_page(conf->tmppage);
 	kfree(conf->mirrors);
 	kfree(conf);
@@ -3696,8 +3694,7 @@ static void raid10_free(struct mddev *mddev, void *priv)
 {
 	struct r10conf *conf = priv;
 
-	if (conf->r10bio_pool)
-		mempool_destroy(conf->r10bio_pool);
+	mempool_destroy(conf->r10bio_pool);
 	safe_put_page(conf->tmppage);
 	kfree(conf->mirrors);
 	kfree(conf->mirrors_old);

@@ -1735,6 +1735,9 @@ static void super_1_sync(struct mddev *mddev, struct md_rdev *rdev)
 		}
 	}
 
+	if (mddev_is_clustered(mddev))
+		sb->feature_map |= cpu_to_le32(MD_FEATURE_CLUSTERED);
+
 	if (rdev->badblocks.count == 0)
 		/* Nothing to do for bad blocks*/ ;
 	else if (sb->bblog_offset == 0)
@@ -5409,9 +5412,13 @@ static int md_set_readonly(struct mddev *mddev, struct block_device *bdev)
 		 * which will now never happen */
 		wake_up_process(mddev->sync_thread->tsk);
 
+	if (mddev->external && test_bit(MD_CHANGE_PENDING, &mddev->flags))
+		return -EBUSY;
 	mddev_unlock(mddev);
 	wait_event(resync_wait, !test_bit(MD_RECOVERY_RUNNING,
 					  &mddev->recovery));
+	wait_event(mddev->sb_wait,
+		   !test_bit(MD_CHANGE_PENDING, &mddev->flags));
 	mddev_lock_nointr(mddev);
 
 	mutex_lock(&mddev->open_mutex);
@@ -7798,9 +7805,6 @@ void md_do_sync(struct md_thread *thread)
 	md_new_event(mddev);
 	update_time = jiffies;
 
-	if (mddev_is_clustered(mddev))
-		md_cluster_ops->resync_start(mddev, j, max_sectors);
-
 	blk_start_plug(&plug);
 	while (j < max_sectors) {
 		sector_t sectors;
@@ -7864,8 +7868,6 @@ void md_do_sync(struct md_thread *thread)
 			j = max_sectors;
 		if (j > 2)
 			mddev->curr_resync = j;
-		if (mddev_is_clustered(mddev))
-			md_cluster_ops->resync_info_update(mddev, j, max_sectors);
 		mddev->curr_mark_cnt = io_sectors;
 		if (last_check == 0)
 			/* this is the earliest that rebuild will be
@@ -7972,9 +7974,6 @@ void md_do_sync(struct md_thread *thread)
 		}
 	}
  skip:
-	if (mddev_is_clustered(mddev))
-		md_cluster_ops->resync_finish(mddev);
-
 	set_bit(MD_CHANGE_DEVS, &mddev->flags);
 
 	spin_lock(&mddev->lock);
@@ -8160,6 +8159,7 @@ void md_check_recovery(struct mddev *mddev)
 			md_reap_sync_thread(mddev);
 			clear_bit(MD_RECOVERY_RECOVER, &mddev->recovery);
 			clear_bit(MD_RECOVERY_NEEDED, &mddev->recovery);
+			clear_bit(MD_CHANGE_PENDING, &mddev->flags);
 			goto unlock;
 		}
 
