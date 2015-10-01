@@ -167,7 +167,7 @@ static int perf_event__prepare_comm(union perf_event *event, pid_t pid,
 	return 0;
 }
 
-static pid_t perf_event__synthesize_comm(struct perf_tool *tool,
+pid_t perf_event__synthesize_comm(struct perf_tool *tool,
 					 union perf_event *event, pid_t pid,
 					 perf_event__handler_t process,
 					 struct machine *machine)
@@ -378,7 +378,7 @@ int perf_event__synthesize_modules(struct perf_tool *tool,
 	for (pos = maps__first(maps); pos; pos = map__next(pos)) {
 		size_t size;
 
-		if (pos->dso->kernel)
+		if (__map__is_kernel(pos))
 			continue;
 
 		size = PERF_ALIGN(pos->dso->long_name_len + 1, sizeof(u64));
@@ -1021,6 +1021,14 @@ int perf_event__preprocess_sample(const union perf_event *event,
 
 	al->sym = NULL;
 	al->cpu = sample->cpu;
+	al->socket = -1;
+
+	if (al->cpu >= 0) {
+		struct perf_env *env = machine->env;
+
+		if (env && env->cpu)
+			al->socket = env->cpu[al->cpu].socket_id;
+	}
 
 	if (al->map) {
 		struct dso *dso = al->map->dso;

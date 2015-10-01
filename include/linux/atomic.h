@@ -4,6 +4,15 @@
 #include <asm/atomic.h>
 #include <asm/barrier.h>
 
+#ifndef atomic_read_ctrl
+static inline int atomic_read_ctrl(const atomic_t *v)
+{
+	int val = atomic_read(v);
+	smp_read_barrier_depends(); /* Enforce control dependency. */
+	return val;
+}
+#endif
+
 /*
  * Relaxed variants of xchg, cmpxchg and some atomic operations.
  *
@@ -451,9 +460,17 @@ static inline int atomic_dec_if_positive(atomic_t *v)
 }
 #endif
 
-#include <asm-generic/atomic-long.h>
 #ifdef CONFIG_GENERIC_ATOMIC64
 #include <asm-generic/atomic64.h>
+#endif
+
+#ifndef atomic64_read_ctrl
+static inline long long atomic64_read_ctrl(const atomic64_t *v)
+{
+	long long val = atomic64_read(v);
+	smp_read_barrier_depends(); /* Enforce control dependency. */
+	return val;
+}
 #endif
 
 #ifndef atomic64_andnot
@@ -462,5 +479,7 @@ static inline void atomic64_andnot(long long i, atomic64_t *v)
 	atomic64_and(~i, v);
 }
 #endif
+
+#include <asm-generic/atomic-long.h>
 
 #endif /* _LINUX_ATOMIC_H */
