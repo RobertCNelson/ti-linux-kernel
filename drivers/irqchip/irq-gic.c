@@ -41,7 +41,6 @@
 #include <linux/irqchip.h>
 #include <linux/irqchip/chained_irq.h>
 #include <linux/irqchip/arm-gic.h>
-#include <linux/irqchip/arm-gic-acpi.h>
 
 #include <asm/cputype.h>
 #include <asm/irq.h>
@@ -145,29 +144,10 @@ static inline bool cascading_gic_irq(struct irq_data *d)
 	void *data = irq_data_get_irq_handler_data(d);
 
 	/*
-	 * If handler_data pointing to one of the secondary GICs, then
-	 * this is a cascading interrupt, and it cannot possibly be
-	 * forwarded.
+	 * If handler_data is set, this is a cascading interrupt, and
+	 * it cannot possibly be forwarded.
 	 */
-	if (data >= (void *)(gic_data + 1) &&
-	    data <  (void *)(gic_data + MAX_GIC_NR))
-		return true;
-
-	return false;
-}
-
-static inline bool forwarded_irq(struct irq_data *d)
-{
-	/*
-	 * A forwarded interrupt:
-	 * - is on the primary GIC
-	 * - has its handler_data set to a value
-	 * - that isn't a secondary GIC
-	 */
-	if (d->handler_data && !cascading_gic_irq(d))
-		return true;
-
-	return false;
+	return data != NULL;
 }
 
 /*
@@ -201,7 +181,7 @@ static void gic_eoimode1_mask_irq(struct irq_data *d)
 	 * disabled/masked will not get "stuck", because there is
 	 * noone to deactivate it (guest is being terminated).
 	 */
-	if (forwarded_irq(d))
+	if (irqd_is_forwarded_to_vcpu(d))
 		gic_poke_irq(d, GIC_DIST_ACTIVE_CLEAR);
 }
 
@@ -218,7 +198,7 @@ static void gic_eoi_irq(struct irq_data *d)
 static void gic_eoimode1_eoi_irq(struct irq_data *d)
 {
 	/* Do not deactivate an IRQ forwarded to a vcpu. */
-	if (forwarded_irq(d))
+	if (irqd_is_forwarded_to_vcpu(d))
 		return;
 
 	writel_relaxed(gic_irq(d), gic_cpu_base(d) + GIC_CPU_DEACTIVATE);
@@ -296,7 +276,10 @@ static int gic_irq_set_vcpu_affinity(struct irq_data *d, void *vcpu)
 	if (cascading_gic_irq(d))
 		return -EINVAL;
 
-	d->handler_data = vcpu;
+	if (vcpu)
+		irqd_set_forwarded_to_vcpu(d);
+	else
+		irqd_clr_forwarded_to_vcpu(d);
 	return 0;
 }
 
@@ -357,7 +340,7 @@ static void __exception_irq_entry gic_handle_irq(struct pt_regs *regs)
 	} while (1);
 }
 
-static void gic_handle_cascade_irq(unsigned int irq, struct irq_desc *desc)
+static void gic_handle_cascade_irq(struct irq_desc *desc)
 {
 	struct gic_chip_data *chip_data = irq_desc_get_handler_data(desc);
 	struct irq_chip *chip = irq_desc_get_chip(desc);
@@ -376,7 +359,7 @@ static void gic_handle_cascade_irq(unsigned int irq, struct irq_desc *desc)
 
 	cascade_irq = irq_find_mapping(chip_data->domain, gic_irq);
 	if (unlikely(gic_irq < 32 || gic_irq > 1020))
-		handle_bad_irq(cascade_irq, desc);
+		handle_bad_irq(desc);
 	else
 		generic_handle_irq(cascade_irq);
 
@@ -906,11 +889,11 @@ static int gic_irq_domain_map(struct irq_domain *d, unsigned int irq,
 		irq_set_percpu_devid(irq);
 		irq_domain_set_info(d, irq, hw, chip, d->host_data,
 				    handle_percpu_devid_irq, NULL, NULL);
-		set_irq_flags(irq, IRQF_VALID | IRQF_NOAUTOEN);
+		irq_set_status_flags(irq, IRQ_NOAUTOEN);
 	} else {
 		irq_domain_set_info(d, irq, hw, chip, d->host_data,
 				    handle_fasteoi_irq, NULL, NULL);
-		set_irq_flags(irq, IRQF_VALID | IRQF_PROBE);
+		irq_set_probe(irq);
 	}
 	return 0;
 }
@@ -1119,12 +1102,49 @@ void __init gic_init_bases(unsigned int gic_nr, int irq_start,
 #ifdef CONFIG_OF
 static int gic_cnt __initdata;
 
+static bool gic_check_eoimode(struct device_node *node, void __iomem **base)
+{
+	struct resource cpuif_res;
+
+	of_address_to_resource(node, 1, &cpuif_res);
+
+	if (!is_hyp_mode_available())
+		return false;
+	if (resource_size(&cpuif_res) < SZ_8K)
+		return false;
+	if (resource_size(&cpuif_res) == SZ_128K) {
+		u32 val_low, val_high;
+
+		/*
+		 * Verify that we have the first 4kB of a GIC400
+		 * aliased over the first 64kB by checking the
+		 * GICC_IIDR register on both ends.
+		 */
+		val_low = readl_relaxed(*base + GIC_CPU_IDENT);
+		val_high = readl_relaxed(*base + GIC_CPU_IDENT + 0xf000);
+		if ((val_low & 0xffff0fff) != 0x0202043B ||
+		    val_low != val_high)
+			return false;
+
+		/*
+		 * Move the base up by 60kB, so that we have a 8kB
+		 * contiguous region, which allows us to use GICC_DIR
+		 * at its normal offset. Please pass me that bucket.
+		 */
+		*base += 0xf000;
+		cpuif_res.start += 0xf000;
+		pr_warn("GIC: Adjusting CPU interface base to %pa",
+			&cpuif_res.start);
+	}
+
+	return true;
+}
+
 static int __init
 gic_of_init(struct device_node *node, struct device_node *parent)
 {
 	void __iomem *cpu_base;
 	void __iomem *dist_base;
-	struct resource cpu_res;
 	u32 percpu_offset;
 	int irq;
 
@@ -1137,14 +1157,11 @@ gic_of_init(struct device_node *node, struct device_node *parent)
 	cpu_base = of_iomap(node, 1);
 	WARN(!cpu_base, "unable to map gic cpu registers\n");
 
-	of_address_to_resource(node, 1, &cpu_res);
-
 	/*
 	 * Disable split EOI/Deactivate if either HYP is not available
 	 * or the CPU interface is too small.
 	 */
-	if (gic_cnt == 0 && (!is_hyp_mode_available() ||
-			     resource_size(&cpu_res) < SZ_8K))
+	if (gic_cnt == 0 && !gic_check_eoimode(node, &cpu_base))
 		static_key_slow_dec(&supports_deactivate);
 
 	if (of_property_read_u32(node, "cpu-offset", &percpu_offset))
@@ -1177,7 +1194,7 @@ IRQCHIP_DECLARE(msm_qgic2, "qcom,msm-qgic2", gic_of_init);
 #endif
 
 #ifdef CONFIG_ACPI
-static phys_addr_t dist_phy_base, cpu_phy_base __initdata;
+static phys_addr_t cpu_phy_base __initdata;
 
 static int __init
 gic_acpi_parse_madt_cpu(struct acpi_subtable_header *header,
@@ -1205,50 +1222,45 @@ gic_acpi_parse_madt_cpu(struct acpi_subtable_header *header,
 	return 0;
 }
 
-static int __init
-gic_acpi_parse_madt_distributor(struct acpi_subtable_header *header,
-				const unsigned long end)
+/* The things you have to do to just *count* something... */
+static int __init acpi_dummy_func(struct acpi_subtable_header *header,
+				  const unsigned long end)
 {
-	struct acpi_madt_generic_distributor *dist;
-
-	dist = (struct acpi_madt_generic_distributor *)header;
-
-	if (BAD_MADT_ENTRY(dist, end))
-		return -EINVAL;
-
-	dist_phy_base = dist->base_address;
 	return 0;
 }
 
-int __init
-gic_v2_acpi_init(struct acpi_table_header *table)
+static bool __init acpi_gic_redist_is_present(void)
 {
+	return acpi_table_parse_madt(ACPI_MADT_TYPE_GENERIC_REDISTRIBUTOR,
+				     acpi_dummy_func, 0) > 0;
+}
+
+static bool __init gic_validate_dist(struct acpi_subtable_header *header,
+				     struct acpi_probe_entry *ape)
+{
+	struct acpi_madt_generic_distributor *dist;
+	dist = (struct acpi_madt_generic_distributor *)header;
+
+	return (dist->version == ape->driver_data &&
+		(dist->version != ACPI_MADT_GIC_VERSION_NONE ||
+		 !acpi_gic_redist_is_present()));
+}
+
+#define ACPI_GICV2_DIST_MEM_SIZE	(SZ_4K)
+#define ACPI_GIC_CPU_IF_MEM_SIZE	(SZ_8K)
+
+static int __init gic_v2_acpi_init(struct acpi_subtable_header *header,
+				   const unsigned long end)
+{
+	struct acpi_madt_generic_distributor *dist;
 	void __iomem *cpu_base, *dist_base;
 	int count;
 
 	/* Collect CPU base addresses */
-	count = acpi_parse_entries(ACPI_SIG_MADT,
-				   sizeof(struct acpi_table_madt),
-				   gic_acpi_parse_madt_cpu, table,
-				   ACPI_MADT_TYPE_GENERIC_INTERRUPT, 0);
+	count = acpi_table_parse_madt(ACPI_MADT_TYPE_GENERIC_INTERRUPT,
+				      gic_acpi_parse_madt_cpu, 0);
 	if (count <= 0) {
 		pr_err("No valid GICC entries exist\n");
-		return -EINVAL;
-	}
-
-	/*
-	 * Find distributor base address. We expect one distributor entry since
-	 * ACPI 5.1 spec neither support multi-GIC instances nor GIC cascade.
-	 */
-	count = acpi_parse_entries(ACPI_SIG_MADT,
-				   sizeof(struct acpi_table_madt),
-				   gic_acpi_parse_madt_distributor, table,
-				   ACPI_MADT_TYPE_GENERIC_DISTRIBUTOR, 0);
-	if (count <= 0) {
-		pr_err("No valid GICD entries exist\n");
-		return -EINVAL;
-	} else if (count > 1) {
-		pr_err("More than one GICD entry detected\n");
 		return -EINVAL;
 	}
 
@@ -1258,7 +1270,8 @@ gic_v2_acpi_init(struct acpi_table_header *table)
 		return -ENOMEM;
 	}
 
-	dist_base = ioremap(dist_phy_base, ACPI_GICV2_DIST_MEM_SIZE);
+	dist = (struct acpi_madt_generic_distributor *)header;
+	dist_base = ioremap(dist->base_address, ACPI_GICV2_DIST_MEM_SIZE);
 	if (!dist_base) {
 		pr_err("Unable to map GICD registers\n");
 		iounmap(cpu_base);
@@ -1284,4 +1297,10 @@ gic_v2_acpi_init(struct acpi_table_header *table)
 	acpi_irq_model = ACPI_IRQ_MODEL_GIC;
 	return 0;
 }
+IRQCHIP_ACPI_DECLARE(gic_v2, ACPI_MADT_TYPE_GENERIC_DISTRIBUTOR,
+		     gic_validate_dist, ACPI_MADT_GIC_VERSION_V2,
+		     gic_v2_acpi_init);
+IRQCHIP_ACPI_DECLARE(gic_v2_maybe, ACPI_MADT_TYPE_GENERIC_DISTRIBUTOR,
+		     gic_validate_dist, ACPI_MADT_GIC_VERSION_NONE,
+		     gic_v2_acpi_init);
 #endif
