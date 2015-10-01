@@ -287,28 +287,6 @@ static struct toklist dgap_tlist[] = {
 	{ 0,		NULL }
 };
 
-
-/*
- * dgap_sindex: much like index(), but it looks for a match of any character in
- * the group, and returns that position.
- */
-static char *dgap_sindex(char *string, char *group)
-{
-	char *ptr;
-
-	if (!string || !group)
-		return NULL;
-
-	for (; *string; string++) {
-		for (ptr = group; *ptr; ptr++) {
-			if (*ptr == *string)
-				return string;
-		}
-	}
-
-	return NULL;
-}
-
 /*
  * get a word from the input stream, also keep track of current line number.
  * words are separated by whitespace.
@@ -317,7 +295,7 @@ static char *dgap_getword(char **in)
 {
 	char *ret_ptr = *in;
 
-	char *ptr = dgap_sindex(*in, " \t\n");
+	char *ptr = strpbrk(*in, " \t\n");
 
 	/* If no word found, return null */
 	if (!ptr)
@@ -349,6 +327,8 @@ static int dgap_gettok(char **in)
 
 	if (strstr(dgap_cword, "board")) {
 		w = dgap_getword(in);
+		if (!w)
+			return 0;
 		snprintf(dgap_cword, MAXCWORD, "%s", w);
 		for (t = dgap_brdtype; t->token != 0; t++) {
 			if (!strcmp(w, t->string))
@@ -662,7 +642,7 @@ static int dgap_parsefile(char **in)
 
 			p->next = kzalloc(sizeof(struct cnode), GFP_KERNEL);
 			if (!p->next)
-				return -1;
+				return -ENOMEM;
 
 			p = p->next;
 
@@ -881,7 +861,7 @@ static int dgap_parsefile(char **in)
 
 			p->next = kzalloc(sizeof(struct cnode), GFP_KERNEL);
 			if (!p->next)
-				return -1;
+				return -ENOMEM;
 
 			p = p->next;
 			p->type = TNODE;
@@ -903,7 +883,7 @@ static int dgap_parsefile(char **in)
 
 			p->next = kzalloc(sizeof(struct cnode), GFP_KERNEL);
 			if (!p->next)
-				return -1;
+				return -ENOMEM;
 
 			p = p->next;
 			p->type = CUNODE;
@@ -934,7 +914,7 @@ static int dgap_parsefile(char **in)
 
 			p->next = kzalloc(sizeof(struct cnode), GFP_KERNEL);
 			if (!p->next)
-				return -1;
+				return -ENOMEM;
 
 			p = p->next;
 			p->type = LNODE;
@@ -953,7 +933,7 @@ static int dgap_parsefile(char **in)
 
 			p->next = kzalloc(sizeof(struct cnode), GFP_KERNEL);
 			if (!p->next)
-				return -1;
+				return -ENOMEM;
 
 			p = p->next;
 			p->type = CNODE;
@@ -995,7 +975,7 @@ static int dgap_parsefile(char **in)
 
 			p->next = kzalloc(sizeof(struct cnode), GFP_KERNEL);
 			if (!p->next)
-				return -1;
+				return -ENOMEM;
 
 			p = p->next;
 			p->type = MNODE;
@@ -1074,7 +1054,7 @@ static int dgap_parsefile(char **in)
 
 			p->next = kzalloc(sizeof(struct cnode), GFP_KERNEL);
 			if (!p->next)
-				return -1;
+				return -ENOMEM;
 
 			p = p->next;
 			p->type = PNODE;
@@ -1096,7 +1076,7 @@ static int dgap_parsefile(char **in)
 
 			p->next = kzalloc(sizeof(struct cnode), GFP_KERNEL);
 			if (!p->next)
-				return -1;
+				return -ENOMEM;
 
 			p = p->next;
 			p->type = JNODE;
@@ -1118,7 +1098,7 @@ static int dgap_parsefile(char **in)
 
 			p->next = kzalloc(sizeof(struct cnode), GFP_KERNEL);
 			if (!p->next)
-				return -1;
+				return -ENOMEM;
 
 			p = p->next;
 			p->type = ANODE;
@@ -1140,7 +1120,7 @@ static int dgap_parsefile(char **in)
 
 			p->next = kzalloc(sizeof(struct cnode), GFP_KERNEL);
 			if (!p->next)
-				return -1;
+				return -ENOMEM;
 
 			p = p->next;
 			p->type = INTRNODE;
@@ -1161,7 +1141,7 @@ static int dgap_parsefile(char **in)
 
 			p->next = kzalloc(sizeof(struct cnode), GFP_KERNEL);
 			if (!p->next)
-				return -1;
+				return -ENOMEM;
 
 			p = p->next;
 			p->type = TSNODE;
@@ -1183,7 +1163,7 @@ static int dgap_parsefile(char **in)
 
 			p->next = kzalloc(sizeof(struct cnode), GFP_KERNEL);
 			if (!p->next)
-				return -1;
+				return -ENOMEM;
 
 			p = p->next;
 			p->type = CSNODE;
@@ -1205,7 +1185,7 @@ static int dgap_parsefile(char **in)
 
 			p->next = kzalloc(sizeof(struct cnode), GFP_KERNEL);
 			if (!p->next)
-				return -1;
+				return -ENOMEM;
 
 			p = p->next;
 			p->type = BSNODE;
@@ -1227,7 +1207,7 @@ static int dgap_parsefile(char **in)
 
 			p->next = kzalloc(sizeof(struct cnode), GFP_KERNEL);
 			if (!p->next)
-				return -1;
+				return -ENOMEM;
 
 			p = p->next;
 			p->type = USNODE;
@@ -1249,7 +1229,7 @@ static int dgap_parsefile(char **in)
 
 			p->next = kzalloc(sizeof(struct cnode), GFP_KERNEL);
 			if (!p->next)
-				return -1;
+				return -ENOMEM;
 
 			p = p->next;
 			p->type = FSNODE;
@@ -1271,7 +1251,7 @@ static int dgap_parsefile(char **in)
 
 			p->next = kzalloc(sizeof(struct cnode), GFP_KERNEL);
 			if (!p->next)
-				return -1;
+				return -ENOMEM;
 
 			p = p->next;
 			p->type = VSNODE;
@@ -1864,7 +1844,6 @@ static int dgap_event(struct board_t *bd)
 	int port;
 	int reason;
 	int modem;
-	int b1;
 
 	if (!bd || bd->magic != DGAP_BOARD_MAGIC)
 		return -EIO;
@@ -1909,7 +1888,7 @@ static int dgap_event(struct board_t *bd)
 		port   = ioread8(event);
 		reason = ioread8(event + 1);
 		modem  = ioread8(event + 2);
-		b1     = ioread8(event + 3);
+		ioread8(event + 3);
 
 		/*
 		 * Make sure the interrupt is valid.
@@ -4568,7 +4547,6 @@ static int dgap_tty_open(struct tty_struct *tty, struct file *file)
  */
 static void dgap_tty_close(struct tty_struct *tty, struct file *file)
 {
-	struct ktermios *ts;
 	struct board_t *bd;
 	struct channel_t *ch;
 	struct un_t *un;
@@ -4588,8 +4566,6 @@ static void dgap_tty_close(struct tty_struct *tty, struct file *file)
 	bd = ch->ch_bd;
 	if (!bd || bd->magic != DGAP_BOARD_MAGIC)
 		return;
-
-	ts = &tty->termios;
 
 	spin_lock_irqsave(&ch->ch_lock, lock_flags);
 
