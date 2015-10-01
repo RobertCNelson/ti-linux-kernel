@@ -430,13 +430,8 @@ static int proc_pid_wchan(struct seq_file *m, struct pid_namespace *ns,
 
 	wchan = get_wchan(task);
 
-	if (lookup_symbol_name(wchan, symname) < 0) {
-		if (!ptrace_may_access(task, PTRACE_MODE_READ))
-			return 0;
-		seq_printf(m, "%lu", wchan);
-	} else {
+	if (!lookup_symbol_name(wchan, symname))
 		seq_printf(m, "%s", symname);
-	}
 
 	return 0;
 }

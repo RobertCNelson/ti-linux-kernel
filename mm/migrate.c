@@ -740,6 +740,15 @@ static int move_to_new_page(struct page *newpage, struct page *page,
 	if (PageSwapBacked(page))
 		SetPageSwapBacked(newpage);
 
+	/*
+	 * Indirectly called below, migrate_page_copy() copies PG_dirty and thus
+	 * needs newpage's memcg set to transfer memcg dirty page accounting.
+	 * So perform memcg migration in two steps:
+	 * 1. set newpage->mem_cgroup (here)
+	 * 2. clear page->mem_cgroup (below)
+	 */
+	set_page_memcg(newpage, page_memcg(page));
+
 	mapping = page_mapping(page);
 	if (!mapping)
 		rc = migrate_page(mapping, newpage, page, mode);
@@ -756,9 +765,10 @@ static int move_to_new_page(struct page *newpage, struct page *page,
 		rc = fallback_migrate_page(mapping, newpage, page, mode);
 
 	if (rc != MIGRATEPAGE_SUCCESS) {
+		set_page_memcg(newpage, NULL);
 		newpage->mapping = NULL;
 	} else {
-		mem_cgroup_migrate(page, newpage, false);
+		set_page_memcg(page, NULL);
 		if (page_was_mapped)
 			remove_migration_ptes(page, newpage);
 		page->mapping = NULL;
@@ -1159,7 +1169,8 @@ int migrate_pages(struct list_head *from, new_page_t get_new_page,
 			}
 		}
 	}
-	rc = nr_failed + retry;
+	nr_failed += retry;
+	rc = nr_failed;
 out:
 	if (nr_succeeded)
 		count_vm_events(PGMIGRATE_SUCCESS, nr_succeeded);
@@ -1565,7 +1576,7 @@ static struct page *alloc_misplaced_dst_page(struct page *page,
 					 (GFP_HIGHUSER_MOVABLE |
 					  __GFP_THISNODE | __GFP_NOMEMALLOC |
 					  __GFP_NORETRY | __GFP_NOWARN) &
-					 ~GFP_IOFS, 0);
+					 ~(__GFP_IO | __GFP_FS), 0);
 
 	return newpage;
 }
@@ -1739,7 +1750,7 @@ int migrate_misplaced_transhuge_page(struct mm_struct *mm,
 		goto out_dropref;
 
 	new_page = alloc_pages_node(node,
-		(GFP_TRANSHUGE | __GFP_THISNODE) & ~__GFP_WAIT,
+		(GFP_TRANSHUGE | __GFP_THISNODE) & ~__GFP_RECLAIM,
 		HPAGE_PMD_ORDER);
 	if (!new_page)
 		goto out_fail;
@@ -1754,7 +1765,7 @@ int migrate_misplaced_transhuge_page(struct mm_struct *mm,
 		flush_tlb_range(vma, mmun_start, mmun_end);
 
 	/* Prepare a page as a migration target */
-	__set_page_locked(new_page);
+	__SetPageLocked(new_page);
 	SetPageSwapBacked(new_page);
 
 	/* anon mapping, we can simply copy page->mapping to the new page: */

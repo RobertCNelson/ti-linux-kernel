@@ -30,6 +30,7 @@
 #include <linux/sched.h>
 #include <linux/ctype.h>
 #include <linux/list.h>
+#include <linux/poison.h>
 #include <linux/slab.h>
 
 #include <asm/sections.h>
@@ -1249,6 +1250,14 @@ static void check_sync(struct device *dev,
 				dir2name[entry->direction],
 				dir2name[ref->direction]);
 
+	if (ref->sg_call_ents && ref->type == dma_debug_sg &&
+	    ref->sg_call_ents != entry->sg_call_ents) {
+		err_printk(ref->dev, entry, "DMA-API: device driver syncs "
+			   "DMA sg list with different entry count "
+			   "[map count=%d] [sync count=%d]\n",
+			   entry->sg_call_ents, ref->sg_call_ents);
+	}
+
 out:
 	put_hash_bucket(bucket, &flags);
 }
@@ -1439,7 +1448,7 @@ void debug_dma_unmap_sg(struct device *dev, struct scatterlist *sglist,
 EXPORT_SYMBOL(debug_dma_unmap_sg);
 
 void debug_dma_alloc_coherent(struct device *dev, size_t size,
-			      dma_addr_t dma_addr, void *virt)
+			      dma_addr_t dma_addr, void *virt, gfp_t flags)
 {
 	struct dma_debug_entry *entry;
 
@@ -1448,6 +1457,9 @@ void debug_dma_alloc_coherent(struct device *dev, size_t size,
 
 	if (unlikely(virt == NULL))
 		return;
+
+	if (IS_ENABLED(CONFIG_DMA_API_DEBUG_POISON) && !(flags & __GFP_ZERO))
+		memset(virt, DMA_ALLOC_POISON, size);
 
 	entry = dma_entry_alloc();
 	if (!entry)
