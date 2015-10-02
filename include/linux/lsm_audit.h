@@ -24,7 +24,7 @@
 
 struct lsm_network_audit {
 	int netif;
-	struct sock *sk;
+	const struct sock *sk;
 	u16 family;
 	__be16 dport;
 	__be16 sport;
@@ -55,7 +55,7 @@ struct common_audit_data {
 #define LSM_AUDIT_DATA_DENTRY	10
 	union 	{
 		struct path path;
-		struct dentry *dentry;
+		const struct dentry *dentry;
 		struct inode *inode;
 		struct lsm_network_audit *net;
 		int cap;
@@ -64,10 +64,10 @@ struct common_audit_data {
 #ifdef CONFIG_KEYS
 		struct {
 			key_serial_t key;
-			char *key_desc;
+			const char *key_desc;
 		} key_struct;
 #endif
-		char *kmod_name;
+		const char *kmod_name;
 	} u;
 	/* this union contains LSM specific data */
 	union {
