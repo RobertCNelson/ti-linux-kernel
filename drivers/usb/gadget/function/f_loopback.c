@@ -195,12 +195,10 @@ autoconf_fail:
 			f->name, cdev->gadget->name);
 		return -ENODEV;
 	}
-	loop->in_ep->driver_data = cdev;	/* claim */
 
 	loop->out_ep = usb_ep_autoconfig(cdev->gadget, &fs_loop_sink_desc);
 	if (!loop->out_ep)
 		goto autoconf_fail;
-	loop->out_ep->driver_data = cdev;	/* claim */
 
 	/* support high speed hardware */
 	hs_loop_source_desc.bEndpointAddress =
@@ -364,8 +362,7 @@ static int loopback_set_alt(struct usb_function *f,
 	struct usb_composite_dev *cdev = f->config->cdev;
 
 	/* we know alt is zero */
-	if (loop->in_ep->driver_data)
-		disable_loopback(loop);
+	disable_loopback(loop);
 	return enable_loopback(cdev, loop);
 }
 
@@ -434,7 +431,7 @@ static ssize_t f_lb_opts_qlen_show(struct f_lb_opts *opts, char *page)
 	int result;
 
 	mutex_lock(&opts->lock);
-	result = sprintf(page, "%d", opts->qlen);
+	result = sprintf(page, "%d\n", opts->qlen);
 	mutex_unlock(&opts->lock);
 
 	return result;
@@ -473,7 +470,7 @@ static ssize_t f_lb_opts_bulk_buflen_show(struct f_lb_opts *opts, char *page)
 	int result;
 
 	mutex_lock(&opts->lock);
-	result = sprintf(page, "%d", opts->bulk_buflen);
+	result = sprintf(page, "%d\n", opts->bulk_buflen);
 	mutex_unlock(&opts->lock);
 
 	return result;
