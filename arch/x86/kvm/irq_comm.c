@@ -91,8 +91,8 @@ int kvm_irq_delivery_to_apic(struct kvm *kvm, struct kvm_lapic *src,
 	return r;
 }
 
-static inline void kvm_set_msi_irq(struct kvm_kernel_irq_routing_entry *e,
-				   struct kvm_lapic_irq *irq)
+void kvm_set_msi_irq(struct kvm_kernel_irq_routing_entry *e,
+		     struct kvm_lapic_irq *irq)
 {
 	trace_kvm_msi_set_irq(e->msi.address_lo, e->msi.data);
 
@@ -108,6 +108,7 @@ static inline void kvm_set_msi_irq(struct kvm_kernel_irq_routing_entry *e,
 	irq->level = 1;
 	irq->shorthand = 0;
 }
+EXPORT_SYMBOL_GPL(kvm_set_msi_irq);
 
 int kvm_set_msi(struct kvm_kernel_irq_routing_entry *e,
 		struct kvm *kvm, int irq_source_id, int level, bool line_status)
@@ -208,7 +209,7 @@ void kvm_free_irq_source_id(struct kvm *kvm, int irq_source_id)
 		goto unlock;
 	}
 	clear_bit(irq_source_id, &kvm->arch.irq_sources_bitmap);
-	if (!irqchip_in_kernel(kvm))
+	if (!ioapic_in_kernel(kvm))
 		goto unlock;
 
 	kvm_ioapic_clear_all(kvm->arch.vioapic, irq_source_id);
@@ -297,6 +298,33 @@ out:
 	return r;
 }
 
+bool kvm_intr_is_single_vcpu(struct kvm *kvm, struct kvm_lapic_irq *irq,
+			     struct kvm_vcpu **dest_vcpu)
+{
+	int i, r = 0;
+	struct kvm_vcpu *vcpu;
+
+	if (kvm_intr_is_single_vcpu_fast(kvm, irq, dest_vcpu))
+		return true;
+
+	kvm_for_each_vcpu(i, vcpu, kvm) {
+		if (!kvm_apic_present(vcpu))
+			continue;
+
+		if (!kvm_apic_match_dest(vcpu, NULL, irq->shorthand,
+					irq->dest_id, irq->dest_mode))
+			continue;
+
+		if (++r == 2)
+			return false;
+
+		*dest_vcpu = vcpu;
+	}
+
+	return r == 1;
+}
+EXPORT_SYMBOL_GPL(kvm_intr_is_single_vcpu);
+
 #define IOAPIC_ROUTING_ENTRY(irq) \
 	{ .gsi = irq, .type = KVM_IRQ_ROUTING_IRQCHIP,	\
 	  .u.irqchip = { .irqchip = KVM_IRQCHIP_IOAPIC, .pin = (irq) } }
@@ -327,4 +355,53 @@ int kvm_setup_default_irq_routing(struct kvm *kvm)
 {
 	return kvm_set_irq_routing(kvm, default_routing,
 				   ARRAY_SIZE(default_routing), 0);
+}
+
+static const struct kvm_irq_routing_entry empty_routing[] = {};
+
+int kvm_setup_empty_irq_routing(struct kvm *kvm)
+{
+	return kvm_set_irq_routing(kvm, empty_routing, 0, 0);
+}
+
+void kvm_arch_irq_routing_update(struct kvm *kvm)
+{
+	if (ioapic_in_kernel(kvm) || !irqchip_in_kernel(kvm))
+		return;
+	kvm_make_scan_ioapic_request(kvm);
+}
+
+void kvm_scan_ioapic_routes(struct kvm_vcpu *vcpu, u64 *eoi_exit_bitmap)
+{
+	struct kvm *kvm = vcpu->kvm;
+	struct kvm_kernel_irq_routing_entry *entry;
+	struct kvm_irq_routing_table *table;
+	u32 i, nr_ioapic_pins;
+	int idx;
+
+	/* kvm->irq_routing must be read after clearing
+	 * KVM_SCAN_IOAPIC. */
+	smp_mb();
+	idx = srcu_read_lock(&kvm->irq_srcu);
+	table = srcu_dereference(kvm->irq_routing, &kvm->irq_srcu);
+	nr_ioapic_pins = min_t(u32, table->nr_rt_entries,
+			       kvm->arch.nr_reserved_ioapic_pins);
+	for (i = 0; i < nr_ioapic_pins; ++i) {
+		hlist_for_each_entry(entry, &table->map[i], link) {
+			u32 dest_id, dest_mode;
+
+			if (entry->type != KVM_IRQ_ROUTING_MSI)
+				continue;
+			dest_id = (entry->msi.address_lo >> 12) & 0xff;
+			dest_mode = (entry->msi.address_lo >> 2) & 0x1;
+			if (kvm_apic_match_dest(vcpu, NULL, 0, dest_id,
+						dest_mode)) {
+				u32 vector = entry->msi.data & 0xff;
+
+				__set_bit(vector,
+					  (unsigned long *) eoi_exit_bitmap);
+			}
+		}
+	}
+	srcu_read_unlock(&kvm->irq_srcu, idx);
 }
