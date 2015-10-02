@@ -97,15 +97,14 @@ int ldlm_expired_completion_wait(void *data)
 	if (lock->l_conn_export == NULL) {
 		static unsigned long next_dump, last_dump;
 
-		LCONSOLE_WARN("lock timed out (enqueued at "CFS_TIME_T", "
-			      CFS_DURATION_T"s ago)\n",
-			      lock->l_last_activity,
-			      cfs_time_sub(get_seconds(),
-					   lock->l_last_activity));
-		LDLM_DEBUG(lock, "lock timed out (enqueued at " CFS_TIME_T ", " CFS_DURATION_T "s ago); not entering recovery in server code, just going back to sleep",
-			   lock->l_last_activity,
-			   cfs_time_sub(get_seconds(),
-					lock->l_last_activity));
+		LCONSOLE_WARN("lock timed out (enqueued at %lld, %llds ago)\n",
+			      (s64)lock->l_last_activity,
+			      (s64)(ktime_get_real_seconds() -
+				    lock->l_last_activity));
+		LDLM_DEBUG(lock, "lock timed out (enqueued at %lld, %llds ago); not entering recovery in server code, just going back to sleep",
+			   (s64)lock->l_last_activity,
+			   (s64)(ktime_get_real_seconds() -
+				 lock->l_last_activity));
 		if (cfs_time_after(cfs_time_current(), next_dump)) {
 			last_dump = next_dump;
 			next_dump = cfs_time_shift(300);
@@ -120,11 +119,10 @@ int ldlm_expired_completion_wait(void *data)
 	obd = lock->l_conn_export->exp_obd;
 	imp = obd->u.cli.cl_import;
 	ptlrpc_fail_import(imp, lwd->lwd_conn_cnt);
-	LDLM_ERROR(lock, "lock timed out (enqueued at "CFS_TIME_T", "
-		  CFS_DURATION_T"s ago), entering recovery for %s@%s",
-		  lock->l_last_activity,
-		  cfs_time_sub(get_seconds(), lock->l_last_activity),
-		  obd2cli_tgt(obd), imp->imp_connection->c_remote_uuid.uuid);
+	LDLM_ERROR(lock, "lock timed out (enqueued at %lld, %llds ago), entering recovery for %s@%s",
+		   (s64)lock->l_last_activity,
+		   (s64)(ktime_get_real_seconds() - lock->l_last_activity),
+		   obd2cli_tgt(obd), imp->imp_connection->c_remote_uuid.uuid);
 
 	return 0;
 }
@@ -159,10 +157,9 @@ static int ldlm_completion_tail(struct ldlm_lock *lock)
 		LDLM_DEBUG(lock, "client-side enqueue: destroyed");
 		result = -EIO;
 	} else {
-		delay = cfs_time_sub(get_seconds(),
-				     lock->l_last_activity);
-		LDLM_DEBUG(lock, "client-side enqueue: granted after "
-			   CFS_DURATION_T"s", delay);
+		delay = ktime_get_real_seconds() - lock->l_last_activity;
+		LDLM_DEBUG(lock, "client-side enqueue: granted after %lds",
+			   delay);
 
 		/* Update our time estimate */
 		at_measured(ldlm_lock_to_ns_at(lock),
@@ -1212,12 +1209,12 @@ int ldlm_cli_cancel_req(struct obd_export *exp, struct list_head *cancels,
 
 		ptlrpc_request_set_replen(req);
 		if (flags & LCF_ASYNC) {
-			ptlrpcd_add_req(req, PDL_POLICY_LOCAL, -1);
+			ptlrpcd_add_req(req);
 			sent = count;
 			goto out;
-		} else {
-			rc = ptlrpc_queue_wait(req);
 		}
+
+		rc = ptlrpc_queue_wait(req);
 		if (rc == LUSTRE_ESTALE) {
 			CDEBUG(D_DLMTRACE, "client/server (nid %s) out of sync -- not fatal\n",
 			       libcfs_nid2str(req->rq_import->
@@ -2223,7 +2220,7 @@ static int replay_one_lock(struct obd_import *imp, struct ldlm_lock *lock)
 	aa = ptlrpc_req_async_args(req);
 	aa->lock_handle = body->lock_handle[0];
 	req->rq_interpret_reply = (ptlrpc_interpterer_t)replay_lock_interpret;
-	ptlrpcd_add_req(req, PDL_POLICY_LOCAL, -1);
+	ptlrpcd_add_req(req);
 
 	return 0;
 }

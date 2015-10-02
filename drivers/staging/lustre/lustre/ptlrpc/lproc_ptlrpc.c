@@ -54,7 +54,7 @@ static struct ll_rpc_opcode {
 	{ OST_SETATTR,      "ost_setattr" },
 	{ OST_READ,	 "ost_read" },
 	{ OST_WRITE,	"ost_write" },
-	{ OST_CREATE ,      "ost_create" },
+	{ OST_CREATE,       "ost_create" },
 	{ OST_DESTROY,      "ost_destroy" },
 	{ OST_GET_INFO,     "ost_get_info" },
 	{ OST_CONNECT,      "ost_connect" },
@@ -420,7 +420,6 @@ LUSTRE_RW_ATTR(threads_max);
  * \addtogoup nrs
  * @{
  */
-extern struct nrs_core nrs_core;
 
 /**
  * Translates \e ptlrpc_nrs_pol_state values to human-readable strings.
@@ -891,36 +890,6 @@ ptlrpc_lprocfs_svc_req_history_next(struct seq_file *s,
 	return NULL;
 }
 
-/* common ost/mdt so_req_printer */
-void target_print_req(void *seq_file, struct ptlrpc_request *req)
-{
-	/* Called holding srv_lock with irqs disabled.
-	 * Print specific req contents and a newline.
-	 * CAVEAT EMPTOR: check request message length before printing!!!
-	 * You might have received any old crap so you must be just as
-	 * careful here as the service's request parser!!! */
-	struct seq_file *sf = seq_file;
-
-	switch (req->rq_phase) {
-	case RQ_PHASE_NEW:
-		/* still awaiting a service thread's attention, or rejected
-		 * because the generic request message didn't unpack */
-		seq_printf(sf, "<not swabbed>\n");
-		break;
-	case RQ_PHASE_INTERPRET:
-		/* being handled, so basic msg swabbed, and opc is valid
-		 * but racing with mds_handle() */
-	case RQ_PHASE_COMPLETE:
-		/* been handled by mds_handle() reply state possibly still
-		 * volatile */
-		seq_printf(sf, "opc %d\n", lustre_msg_get_opc(req->rq_reqmsg));
-		break;
-	default:
-		DEBUG_REQ(D_ERROR, req, "bad phase %d", req->rq_phase);
-	}
-}
-EXPORT_SYMBOL(target_print_req);
-
 static int ptlrpc_lprocfs_svc_req_history_show(struct seq_file *s, void *iter)
 {
 	struct ptlrpc_service *svc = s->private;
@@ -946,13 +915,13 @@ static int ptlrpc_lprocfs_svc_req_history_show(struct seq_file *s, void *iter)
 		 * must be just as careful as the service's request
 		 * parser. Currently I only print stuff here I know is OK
 		 * to look at coz it was set up in request_in_callback()!!! */
-		seq_printf(s, "%lld:%s:%s:x%llu:%d:%s:%ld:%lds(%+lds) ",
+		seq_printf(s, "%lld:%s:%s:x%llu:%d:%s:%lld:%lds(%+lds) ",
 			   req->rq_history_seq, libcfs_nid2str(req->rq_self),
 			   libcfs_id2str(req->rq_peer), req->rq_xid,
 			   req->rq_reqlen, ptlrpc_rqphase2str(req),
-			   req->rq_arrival_time.tv_sec,
-			   req->rq_sent - req->rq_arrival_time.tv_sec,
-			   req->rq_sent - req->rq_deadline);
+			   (s64)req->rq_arrival_time.tv_sec,
+			   (long)(req->rq_sent - req->rq_arrival_time.tv_sec),
+			   (long)(req->rq_sent - req->rq_deadline));
 		if (svc->srv_ops.so_req_printer == NULL)
 			seq_printf(s, "\n");
 		else
@@ -990,7 +959,7 @@ static int ptlrpc_lprocfs_timeouts_seq_show(struct seq_file *m, void *n)
 	struct ptlrpc_service *svc = m->private;
 	struct ptlrpc_service_part *svcpt;
 	struct dhms ts;
-	time_t worstt;
+	time64_t worstt;
 	unsigned int cur;
 	unsigned int worst;
 	int i;
@@ -1005,11 +974,11 @@ static int ptlrpc_lprocfs_timeouts_seq_show(struct seq_file *m, void *n)
 		cur	= at_get(&svcpt->scp_at_estimate);
 		worst	= svcpt->scp_at_estimate.at_worst_ever;
 		worstt	= svcpt->scp_at_estimate.at_worst_time;
-		s2dhms(&ts, get_seconds() - worstt);
+		s2dhms(&ts, ktime_get_real_seconds() - worstt);
 
-		seq_printf(m, "%10s : cur %3u  worst %3u (at %ld, "
+		seq_printf(m, "%10s : cur %3u  worst %3u (at %lld, "
 			      DHMS_FMT" ago) ", "service",
-			      cur, worst, worstt, DHMS_VARS(&ts));
+			      cur, worst, (s64)worstt, DHMS_VARS(&ts));
 
 		lprocfs_at_hist_helper(m, &svcpt->scp_at_estimate);
 	}
@@ -1207,55 +1176,6 @@ void ptlrpc_lprocfs_unregister_obd(struct obd_device *obd)
 		lprocfs_free_stats(&obd->obd_svc_stats);
 }
 EXPORT_SYMBOL(ptlrpc_lprocfs_unregister_obd);
-
-
-#define BUFLEN (UUID_MAX + 5)
-
-int lprocfs_wr_evict_client(struct file *file, const char __user *buffer,
-			    size_t count, loff_t *off)
-{
-	struct obd_device *obd = ((struct seq_file *)file->private_data)->private;
-	char *kbuf;
-	char *tmpbuf;
-
-	kbuf = kzalloc(BUFLEN, GFP_NOFS);
-	if (!kbuf)
-		return -ENOMEM;
-
-	/*
-	 * OBD_ALLOC() will zero kbuf, but we only copy BUFLEN - 1
-	 * bytes into kbuf, to ensure that the string is NUL-terminated.
-	 * UUID_MAX should include a trailing NUL already.
-	 */
-	if (copy_from_user(kbuf, buffer,
-			       min_t(unsigned long, BUFLEN - 1, count))) {
-		count = -EFAULT;
-		goto out;
-	}
-	tmpbuf = cfs_firststr(kbuf, min_t(unsigned long, BUFLEN - 1, count));
-	/* Kludge code(deadlock situation): the lprocfs lock has been held
-	 * since the client is evicted by writing client's
-	 * uuid/nid to procfs "evict_client" entry. However,
-	 * obd_export_evict_by_uuid() will call ldebugfs_remove() to destroy
-	 * the proc entries under the being destroyed export{}, so I have
-	 * to drop the lock at first here.
-	 * - jay, jxiong@clusterfs.com */
-	class_incref(obd, __func__, current);
-
-	if (strncmp(tmpbuf, "nid:", 4) == 0)
-		obd_export_evict_by_nid(obd, tmpbuf + 4);
-	else if (strncmp(tmpbuf, "uuid:", 5) == 0)
-		obd_export_evict_by_uuid(obd, tmpbuf + 5);
-	else
-		obd_export_evict_by_uuid(obd, tmpbuf);
-
-	class_decref(obd, __func__, current);
-
-out:
-	kfree(kbuf);
-	return count;
-}
-EXPORT_SYMBOL(lprocfs_wr_evict_client);
 
 #undef BUFLEN
 

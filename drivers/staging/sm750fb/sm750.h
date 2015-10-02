@@ -7,7 +7,6 @@
 /* please use revision id to distinguish sm750le and sm750*/
 #define SPC_SM750 0
 
-#define MB(x) ((x)<<20)
 #define MHZ(x) ((x) * 1000000)
 /* align should be 2,4,8,16 */
 #define PADDING(align, data) (((data)+(align)-1)&(~((align) - 1)))
@@ -162,13 +161,6 @@ struct lynxfb_par {
 #ifndef offsetof
 #define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
 #endif
-
-
-#define PS_TO_HZ(ps)	\
-			({ \
-			unsigned long long hz = 1000*1000*1000*1000ULL;	\
-			do_div(hz, ps);	\
-			(unsigned long)hz; })
 
 static inline unsigned long ps_to_hz(unsigned int psvalue)
 {

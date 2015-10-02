@@ -256,9 +256,9 @@ struct ldlm_pool {
 	 *  server_slv * lock_volume_factor. */
 	atomic_t		pl_lock_volume_factor;
 	/** Time when last SLV from server was obtained. */
-	time_t			pl_recalc_time;
+	time64_t		pl_recalc_time;
 	/** Recalculation period for pool. */
-	time_t			pl_recalc_period;
+	time64_t		pl_recalc_period;
 	/** Recalculation and shrink operations. */
 	const struct ldlm_pool_ops	*pl_ops;
 	/** Number of planned locks for next period. */
@@ -749,7 +749,7 @@ struct ldlm_lock {
 	 * Seconds. It will be updated if there is any activity related to
 	 * the lock, e.g. enqueue the lock or send blocking AST.
 	 */
-	unsigned long		l_last_activity;
+	time64_t		l_last_activity;
 
 	/**
 	 * Time last used by e.g. being matched by lock match.
@@ -1025,7 +1025,7 @@ char *ldlm_it2str(int it);
  * with a debugging message that is ldlm-related
  */
 #define LDLM_DEBUG_NOLOCK(format, a...)			\
-	CDEBUG(D_DLMTRACE, "### " format "\n" , ##a)
+	CDEBUG(D_DLMTRACE, "### " format "\n", ##a)
 
 /**
  * Support function for lock information printing into debug logs.
@@ -1051,7 +1051,7 @@ void _ldlm_lock_debug(struct ldlm_lock *lock,
 #define LDLM_DEBUG_LIMIT(mask, lock, fmt, a...) do {			 \
 	static struct cfs_debug_limit_state _ldlm_cdls;			   \
 	LIBCFS_DEBUG_MSG_DATA_DECL(msgdata, mask, &_ldlm_cdls);	      \
-	ldlm_lock_debug(&msgdata, mask, &_ldlm_cdls, lock, "### " fmt , ##a);\
+	ldlm_lock_debug(&msgdata, mask, &_ldlm_cdls, lock, "### " fmt, ##a);\
 } while (0)
 
 #define LDLM_ERROR(lock, fmt, a...) LDLM_DEBUG_LIMIT(D_ERROR, lock, fmt, ## a)
@@ -1062,7 +1062,7 @@ void _ldlm_lock_debug(struct ldlm_lock *lock,
 	if (likely(lock != NULL)) {					    \
 		LIBCFS_DEBUG_MSG_DATA_DECL(msgdata, D_DLMTRACE, NULL);      \
 		ldlm_lock_debug(&msgdata, D_DLMTRACE, NULL, lock,	    \
-				"### " fmt , ##a);			    \
+				"### " fmt, ##a);			    \
 	} else {							    \
 		LDLM_DEBUG_NOLOCK("no dlm lock: " fmt, ##a);		    \
 	}								    \

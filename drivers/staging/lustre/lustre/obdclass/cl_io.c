@@ -307,7 +307,7 @@ static void cl_io_locks_sort(struct cl_io *io)
 					 */
 				default:
 					LBUG();
-				case +1:
+				case 1:
 					list_move_tail(&curr->cill_linkage,
 							   &prev->cill_linkage);
 					done = 0;
@@ -335,7 +335,7 @@ int cl_queue_match(const struct list_head *queue,
 
        list_for_each_entry(scan, queue, cill_linkage) {
 	       if (cl_lock_descr_match(&scan->cill_descr, need))
-		       return +1;
+		       return 1;
        }
        return 0;
 }
@@ -353,7 +353,7 @@ static int cl_queue_merge(const struct list_head *queue,
 	       CDEBUG(D_VFSTRACE, "lock: %d: [%lu, %lu]\n",
 		      scan->cill_descr.cld_mode, scan->cill_descr.cld_start,
 		      scan->cill_descr.cld_end);
-	       return +1;
+	       return 1;
        }
        return 0;
 
@@ -600,7 +600,7 @@ int cl_io_lock_add(const struct lu_env *env, struct cl_io *io,
 	int result;
 
 	if (cl_lockset_merge(&io->ci_lockset, &link->cill_descr))
-		result = +1;
+		result = 1;
 	else {
 		list_add(&link->cill_linkage, &io->ci_lockset.cls_todo);
 		result = 0;
@@ -918,7 +918,7 @@ int cl_io_submit_sync(const struct lu_env *env, struct cl_io *io,
 		 */
 		 cl_page_list_for_each(pg, &queue->c2_qin) {
 			pg->cp_sync_io = NULL;
-			cl_sync_io_note(anchor, +1);
+			cl_sync_io_note(anchor, 1);
 		 }
 
 		 /* wait for the IO to be finished. */
@@ -1181,32 +1181,6 @@ void cl_page_list_fini(const struct lu_env *env, struct cl_page_list *plist)
 EXPORT_SYMBOL(cl_page_list_fini);
 
 /**
- * Owns all pages in a queue.
- */
-int cl_page_list_own(const struct lu_env *env,
-		     struct cl_io *io, struct cl_page_list *plist)
-{
-	struct cl_page *page;
-	struct cl_page *temp;
-	pgoff_t index = 0;
-	int result;
-
-	LINVRNT(plist->pl_owner == current);
-
-	result = 0;
-	cl_page_list_for_each_safe(page, temp, plist) {
-		LASSERT(index <= page->cp_index);
-		index = page->cp_index;
-		if (cl_page_own(env, io, page) == 0)
-			result = result ?: page->cp_error;
-		else
-			cl_page_list_del(env, plist, page);
-	}
-	return result;
-}
-EXPORT_SYMBOL(cl_page_list_own);
-
-/**
  * Assumes all pages in a queue.
  */
 void cl_page_list_assume(const struct lu_env *env,
@@ -1234,26 +1208,6 @@ void cl_page_list_discard(const struct lu_env *env, struct cl_io *io,
 		cl_page_discard(env, io, page);
 }
 EXPORT_SYMBOL(cl_page_list_discard);
-
-/**
- * Unmaps all pages in a queue from user virtual memory.
- */
-int cl_page_list_unmap(const struct lu_env *env, struct cl_io *io,
-			struct cl_page_list *plist)
-{
-	struct cl_page *page;
-	int result;
-
-	LINVRNT(plist->pl_owner == current);
-	result = 0;
-	cl_page_list_for_each(page, plist) {
-		result = cl_page_unmap(env, io, page);
-		if (result != 0)
-			break;
-	}
-	return result;
-}
-EXPORT_SYMBOL(cl_page_list_unmap);
 
 /**
  * Initialize dual page queue.
@@ -1297,17 +1251,6 @@ void cl_2queue_discard(const struct lu_env *env,
 EXPORT_SYMBOL(cl_2queue_discard);
 
 /**
- * Assume to own the pages in cl_2queue
- */
-void cl_2queue_assume(const struct lu_env *env,
-		      struct cl_io *io, struct cl_2queue *queue)
-{
-	cl_page_list_assume(env, io, &queue->c2_qin);
-	cl_page_list_assume(env, io, &queue->c2_qout);
-}
-EXPORT_SYMBOL(cl_2queue_assume);
-
-/**
  * Finalize both page lists of a 2-queue.
  */
 void cl_2queue_fini(const struct lu_env *env, struct cl_2queue *queue)
@@ -1339,14 +1282,6 @@ struct cl_io *cl_io_top(struct cl_io *io)
 	return io;
 }
 EXPORT_SYMBOL(cl_io_top);
-
-/**
- * Prints human readable representation of \a io to the \a f.
- */
-void cl_io_print(const struct lu_env *env, void *cookie,
-		 lu_printer_t printer, const struct cl_io *io)
-{
-}
 
 /**
  * Adds request slice to the compound request.

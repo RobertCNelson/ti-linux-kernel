@@ -16,33 +16,13 @@
  *      OS specific types
  *******************************************************************/
 
-/* Message Queue type is a structure */
-typedef struct __Message_struct {
-	void *pvBuffer;
-	u32 u32Length;
-	struct __Message_struct *pstrNext;
-} Message;
-
-typedef struct __MessageQueue_struct {
-	struct semaphore hSem;
-	spinlock_t strCriticalSection;
-	bool bExiting;
-	u32 u32ReceiversCount;
-	Message *pstrMessageList;
-} WILC_MsgQueueHandle;
 
 
 
-/*Time represented in 64 bit format*/
-typedef time_t WILC_Time;
 
 
 /*******************************************************************
  *      others
  ********************************************************************/
 
-/* Generic printf function */
-#define __WILC_FILE__		__FILE__
-#define __WILC_FUNCTION__	__func__
-#define __WILC_LINE__		__LINE__
 #endif

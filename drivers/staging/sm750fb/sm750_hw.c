@@ -1,23 +1,24 @@
 #include <linux/version.h>
-#include<linux/module.h>
-#include<linux/kernel.h>
-#include<linux/errno.h>
-#include<linux/string.h>
-#include<linux/mm.h>
-#include<linux/slab.h>
-#include<linux/delay.h>
-#include<linux/fb.h>
-#include<linux/ioport.h>
-#include<linux/init.h>
-#include<linux/pci.h>
-#include<linux/vmalloc.h>
-#include<linux/pagemap.h>
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/errno.h>
+#include <linux/string.h>
+#include <linux/mm.h>
+#include <linux/slab.h>
+#include <linux/delay.h>
+#include <linux/fb.h>
+#include <linux/ioport.h>
+#include <linux/init.h>
+#include <linux/pci.h>
+#include <linux/vmalloc.h>
+#include <linux/pagemap.h>
 #include <linux/console.h>
 #ifdef CONFIG_MTRR
 #include <asm/mtrr.h>
 #endif
-#include<linux/platform_device.h>
-#include<linux/screen_info.h>
+#include <linux/platform_device.h>
+#include <linux/screen_info.h>
+#include <linux/sizes.h>
 
 #include "sm750.h"
 #include "sm750_hw.h"
@@ -34,7 +35,7 @@ int hw_sm750_map(struct lynx_share *share, struct pci_dev *pdev)
 	ret = 0;
 
 	share->vidreg_start  = pci_resource_start(pdev, 1);
-	share->vidreg_size = MB(2);
+	share->vidreg_size = SZ_2M;
 
 	pr_info("mmio phyAddr = %lx\n", share->vidreg_start);
 
@@ -76,14 +77,6 @@ int hw_sm750_map(struct lynx_share *share, struct pci_dev *pdev)
 	share->vidmem_start, share->vidmem_size);
 
 	/* reserve the vidmem space of smi adaptor */
-#if 0
-	ret = pci_request_region(pdev, 0, _moduleName_);
-	if (ret) {
-		pr_err("Can not request PCI regions.\n");
-		goto exit;
-	}
-#endif
-
 	share->pvMem = ioremap_wc(share->vidmem_start, share->vidmem_size);
 
 	if (!share->pvMem) {
@@ -122,12 +115,6 @@ int hw_sm750_inithw(struct lynx_share *share, struct pci_dev *pdev)
 		POKE32(SYSTEM_CTRL,
 				FIELD_SET(PEEK32(SYSTEM_CTRL), SYSTEM_CTRL, PCI_BURST, ON));
 	}
-
-	/* sm750 use sii164, it can be setup with default value
-	 * by on power, so initDVIDisp can be skipped */
-#if 0
-	ddk750_initDVIDisp();
-#endif
 
 	if (getChipType() != SM750LE) {
 		/* does user need CRT ?*/
@@ -169,20 +156,20 @@ int hw_sm750_inithw(struct lynx_share *share, struct pci_dev *pdev)
 		/* Set up GPIO for software I2C to program DVI chip in the
 		   Xilinx SP605 board, in order to have video signal.
 		 */
-	swI2CInit(0, 1);
+	sm750_sw_i2c_init(0, 1);
 
 
 	/* Customer may NOT use CH7301 DVI chip, which has to be
 	   initialized differently.
 	*/
-	if (swI2CReadReg(0xec, 0x4a) == 0x95) {
+	if (sm750_sw_i2c_read_reg(0xec, 0x4a) == 0x95) {
 		/* The following register values for CH7301 are from
 		   Chrontel app note and our experiment.
 		*/
 			pr_info("yes,CH7301 DVI chip found\n");
-		swI2CWriteReg(0xec, 0x1d, 0x16);
-		swI2CWriteReg(0xec, 0x21, 0x9);
-		swI2CWriteReg(0xec, 0x49, 0xC0);
+		sm750_sw_i2c_write_reg(0xec, 0x1d, 0x16);
+		sm750_sw_i2c_write_reg(0xec, 0x21, 0x9);
+		sm750_sw_i2c_write_reg(0xec, 0x49, 0xC0);
 			pr_info("okay,CH7301 DVI chip setup done\n");
 	}
 	}
