@@ -70,8 +70,8 @@
 #include <linux/crypto.h>
 #include <linux/scatterlist.h>
 
-static void	tcp_v6_send_reset(struct sock *sk, struct sk_buff *skb);
-static void	tcp_v6_reqsk_send_ack(struct sock *sk, struct sk_buff *skb,
+static void	tcp_v6_send_reset(const struct sock *sk, struct sk_buff *skb);
+static void	tcp_v6_reqsk_send_ack(const struct sock *sk, struct sk_buff *skb,
 				      struct request_sock *req);
 
 static int	tcp_v6_do_rcv(struct sock *sk, struct sk_buff *skb);
@@ -82,7 +82,7 @@ static const struct inet_connection_sock_af_ops ipv6_specific;
 static const struct tcp_sock_af_ops tcp_sock_ipv6_specific;
 static const struct tcp_sock_af_ops tcp_sock_ipv6_mapped_specific;
 #else
-static struct tcp_md5sig_key *tcp_v6_md5_do_lookup(struct sock *sk,
+static struct tcp_md5sig_key *tcp_v6_md5_do_lookup(const struct sock *sk,
 						   const struct in6_addr *addr)
 {
 	return NULL;
@@ -434,7 +434,7 @@ out:
 }
 
 
-static int tcp_v6_send_synack(struct sock *sk, struct dst_entry *dst,
+static int tcp_v6_send_synack(const struct sock *sk, struct dst_entry *dst,
 			      struct flowi *fl,
 			      struct request_sock *req,
 			      u16 queue_mapping,
@@ -447,7 +447,8 @@ static int tcp_v6_send_synack(struct sock *sk, struct dst_entry *dst,
 	int err = -ENOMEM;
 
 	/* First, grab a route. */
-	if (!dst && (dst = inet6_csk_route_req(sk, fl6, req)) == NULL)
+	if (!dst && (dst = inet6_csk_route_req(sk, fl6, req,
+					       IPPROTO_TCP)) == NULL)
 		goto done;
 
 	skb = tcp_make_synack(sk, dst, req, foc);
@@ -476,13 +477,13 @@ static void tcp_v6_reqsk_destructor(struct request_sock *req)
 }
 
 #ifdef CONFIG_TCP_MD5SIG
-static struct tcp_md5sig_key *tcp_v6_md5_do_lookup(struct sock *sk,
+static struct tcp_md5sig_key *tcp_v6_md5_do_lookup(const struct sock *sk,
 						   const struct in6_addr *addr)
 {
 	return tcp_md5_do_lookup(sk, (union tcp_md5_addr *)addr, AF_INET6);
 }
 
-static struct tcp_md5sig_key *tcp_v6_md5_lookup(struct sock *sk,
+static struct tcp_md5sig_key *tcp_v6_md5_lookup(const struct sock *sk,
 						const struct sock *addr_sk)
 {
 	return tcp_v6_md5_do_lookup(sk, &addr_sk->sk_v6_daddr);
@@ -663,22 +664,23 @@ static bool tcp_v6_inbound_md5_hash(struct sock *sk, const struct sk_buff *skb)
 }
 #endif
 
-static void tcp_v6_init_req(struct request_sock *req, struct sock *sk,
+static void tcp_v6_init_req(struct request_sock *req,
+			    const struct sock *sk_listener,
 			    struct sk_buff *skb)
 {
 	struct inet_request_sock *ireq = inet_rsk(req);
-	struct ipv6_pinfo *np = inet6_sk(sk);
+	const struct ipv6_pinfo *np = inet6_sk(sk_listener);
 
 	ireq->ir_v6_rmt_addr = ipv6_hdr(skb)->saddr;
 	ireq->ir_v6_loc_addr = ipv6_hdr(skb)->daddr;
 
 	/* So that link locals have meaning */
-	if (!sk->sk_bound_dev_if &&
+	if (!sk_listener->sk_bound_dev_if &&
 	    ipv6_addr_type(&ireq->ir_v6_rmt_addr) & IPV6_ADDR_LINKLOCAL)
 		ireq->ir_iif = tcp_v6_iif(skb);
 
 	if (!TCP_SKB_CB(skb)->tcp_tw_isn &&
-	    (ipv6_opt_accepted(sk, skb, &TCP_SKB_CB(skb)->header.h6) ||
+	    (ipv6_opt_accepted(sk_listener, skb, &TCP_SKB_CB(skb)->header.h6) ||
 	     np->rxopt.bits.rxinfo ||
 	     np->rxopt.bits.rxoinfo || np->rxopt.bits.rxhlim ||
 	     np->rxopt.bits.rxohlim || np->repflow)) {
@@ -687,13 +689,14 @@ static void tcp_v6_init_req(struct request_sock *req, struct sock *sk,
 	}
 }
 
-static struct dst_entry *tcp_v6_route_req(struct sock *sk, struct flowi *fl,
+static struct dst_entry *tcp_v6_route_req(const struct sock *sk,
+					  struct flowi *fl,
 					  const struct request_sock *req,
 					  bool *strict)
 {
 	if (strict)
 		*strict = true;
-	return inet6_csk_route_req(sk, &fl->u.ip6, req);
+	return inet6_csk_route_req(sk, &fl->u.ip6, req, IPPROTO_TCP);
 }
 
 struct request_sock_ops tcp6_request_sock_ops __read_mostly = {
@@ -723,7 +726,7 @@ static const struct tcp_request_sock_ops tcp_request_sock_ipv6_ops = {
 	.queue_hash_add =	inet6_csk_reqsk_queue_hash_add,
 };
 
-static void tcp_v6_send_response(struct sock *sk, struct sk_buff *skb, u32 seq,
+static void tcp_v6_send_response(const struct sock *sk, struct sk_buff *skb, u32 seq,
 				 u32 ack, u32 win, u32 tsval, u32 tsecr,
 				 int oif, struct tcp_md5sig_key *key, int rst,
 				 u8 tclass, u32 label)
@@ -822,7 +825,7 @@ static void tcp_v6_send_response(struct sock *sk, struct sk_buff *skb, u32 seq,
 	kfree_skb(buff);
 }
 
-static void tcp_v6_send_reset(struct sock *sk, struct sk_buff *skb)
+static void tcp_v6_send_reset(const struct sock *sk, struct sk_buff *skb)
 {
 	const struct tcphdr *th = tcp_hdr(skb);
 	u32 seq = 0, ack_seq = 0;
@@ -893,7 +896,7 @@ release_sk1:
 #endif
 }
 
-static void tcp_v6_send_ack(struct sock *sk, struct sk_buff *skb, u32 seq,
+static void tcp_v6_send_ack(const struct sock *sk, struct sk_buff *skb, u32 seq,
 			    u32 ack, u32 win, u32 tsval, u32 tsecr, int oif,
 			    struct tcp_md5sig_key *key, u8 tclass,
 			    u32 label)
@@ -916,7 +919,7 @@ static void tcp_v6_timewait_ack(struct sock *sk, struct sk_buff *skb)
 	inet_twsk_put(tw);
 }
 
-static void tcp_v6_reqsk_send_ack(struct sock *sk, struct sk_buff *skb,
+static void tcp_v6_reqsk_send_ack(const struct sock *sk, struct sk_buff *skb,
 				  struct request_sock *req)
 {
 	/* sk->sk_state == TCP_LISTEN -> for regular TCP_SYN_RECV
@@ -984,12 +987,13 @@ drop:
 	return 0; /* don't send reset */
 }
 
-static struct sock *tcp_v6_syn_recv_sock(struct sock *sk, struct sk_buff *skb,
+static struct sock *tcp_v6_syn_recv_sock(const struct sock *sk, struct sk_buff *skb,
 					 struct request_sock *req,
 					 struct dst_entry *dst)
 {
 	struct inet_request_sock *ireq;
-	struct ipv6_pinfo *newnp, *np = inet6_sk(sk);
+	struct ipv6_pinfo *newnp;
+	const struct ipv6_pinfo *np = inet6_sk(sk);
 	struct tcp6_sock *newtcp6sk;
 	struct inet_sock *newinet;
 	struct tcp_sock *newtp;
@@ -1057,7 +1061,7 @@ static struct sock *tcp_v6_syn_recv_sock(struct sock *sk, struct sk_buff *skb,
 		goto out_overflow;
 
 	if (!dst) {
-		dst = inet6_csk_route_req(sk, &fl6, req);
+		dst = inet6_csk_route_req(sk, &fl6, req, IPPROTO_TCP);
 		if (!dst)
 			goto out;
 	}
@@ -1089,8 +1093,6 @@ static struct sock *tcp_v6_syn_recv_sock(struct sock *sk, struct sk_buff *skb,
 	newnp->saddr = ireq->ir_v6_loc_addr;
 	newsk->sk_v6_rcv_saddr = ireq->ir_v6_loc_addr;
 	newsk->sk_bound_dev_if = ireq->ir_iif;
-
-	sk_set_txhash(newsk);
 
 	/* Now IPv6 options...
 
@@ -1273,7 +1275,7 @@ static int tcp_v6_do_rcv(struct sock *sk, struct sk_buff *skb)
 	} else
 		sock_rps_save_rxhash(sk, skb);
 
-	if (tcp_rcv_state_process(sk, skb, tcp_hdr(skb), skb->len))
+	if (tcp_rcv_state_process(sk, skb))
 		goto reset;
 	if (opt_skb)
 		goto ipv6_pktoptions;
@@ -1670,7 +1672,7 @@ static void get_tcp6_sock(struct seq_file *seq, struct sock *sp, int i)
 	const struct inet_sock *inet = inet_sk(sp);
 	const struct tcp_sock *tp = tcp_sk(sp);
 	const struct inet_connection_sock *icsk = inet_csk(sp);
-	struct fastopen_queue *fastopenq = icsk->icsk_accept_queue.fastopenq;
+	const struct fastopen_queue *fastopenq = &icsk->icsk_accept_queue.fastopenq;
 
 	dest  = &sp->sk_v6_daddr;
 	src   = &sp->sk_v6_rcv_saddr;
@@ -1714,7 +1716,7 @@ static void get_tcp6_sock(struct seq_file *seq, struct sock *sp, int i)
 		   (icsk->icsk_ack.quick << 1) | icsk->icsk_ack.pingpong,
 		   tp->snd_cwnd,
 		   sp->sk_state == TCP_LISTEN ?
-			(fastopenq ? fastopenq->max_qlen : 0) :
+			fastopenq->max_qlen :
 			(tcp_in_initial_slowstart(tp) ? -1 : tp->snd_ssthresh)
 		   );
 }

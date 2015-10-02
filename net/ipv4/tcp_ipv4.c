@@ -576,7 +576,7 @@ EXPORT_SYMBOL(tcp_v4_send_check);
  *	Exception: precedence violation. We do not implement it in any case.
  */
 
-static void tcp_v4_send_reset(struct sock *sk, struct sk_buff *skb)
+static void tcp_v4_send_reset(const struct sock *sk, struct sk_buff *skb)
 {
 	const struct tcphdr *th = tcp_hdr(skb);
 	struct {
@@ -795,7 +795,7 @@ static void tcp_v4_timewait_ack(struct sock *sk, struct sk_buff *skb)
 	inet_twsk_put(tw);
 }
 
-static void tcp_v4_reqsk_send_ack(struct sock *sk, struct sk_buff *skb,
+static void tcp_v4_reqsk_send_ack(const struct sock *sk, struct sk_buff *skb,
 				  struct request_sock *req)
 {
 	/* sk->sk_state == TCP_LISTEN -> for regular TCP_SYN_RECV
@@ -818,7 +818,7 @@ static void tcp_v4_reqsk_send_ack(struct sock *sk, struct sk_buff *skb,
  *	This still operates on a request_sock only, not on a big
  *	socket.
  */
-static int tcp_v4_send_synack(struct sock *sk, struct dst_entry *dst,
+static int tcp_v4_send_synack(const struct sock *sk, struct dst_entry *dst,
 			      struct flowi *fl,
 			      struct request_sock *req,
 			      u16 queue_mapping,
@@ -865,7 +865,7 @@ static void tcp_v4_reqsk_destructor(struct request_sock *req)
  */
 
 /* Find the Key structure for an address.  */
-struct tcp_md5sig_key *tcp_md5_do_lookup(struct sock *sk,
+struct tcp_md5sig_key *tcp_md5_do_lookup(const struct sock *sk,
 					 const union tcp_md5_addr *addr,
 					 int family)
 {
@@ -877,7 +877,7 @@ struct tcp_md5sig_key *tcp_md5_do_lookup(struct sock *sk,
 	/* caller either holds rcu_read_lock() or socket lock */
 	md5sig = rcu_dereference_check(tp->md5sig_info,
 				       sock_owned_by_user(sk) ||
-				       lockdep_is_held(&sk->sk_lock.slock));
+				       lockdep_is_held((spinlock_t *)&sk->sk_lock.slock));
 	if (!md5sig)
 		return NULL;
 #if IS_ENABLED(CONFIG_IPV6)
@@ -894,7 +894,7 @@ struct tcp_md5sig_key *tcp_md5_do_lookup(struct sock *sk,
 }
 EXPORT_SYMBOL(tcp_md5_do_lookup);
 
-struct tcp_md5sig_key *tcp_v4_md5_lookup(struct sock *sk,
+struct tcp_md5sig_key *tcp_v4_md5_lookup(const struct sock *sk,
 					 const struct sock *addr_sk)
 {
 	const union tcp_md5_addr *addr;
@@ -1168,7 +1168,8 @@ static bool tcp_v4_inbound_md5_hash(struct sock *sk,
 }
 #endif
 
-static void tcp_v4_init_req(struct request_sock *req, struct sock *sk_listener,
+static void tcp_v4_init_req(struct request_sock *req,
+			    const struct sock *sk_listener,
 			    struct sk_buff *skb)
 {
 	struct inet_request_sock *ireq = inet_rsk(req);
@@ -1179,7 +1180,8 @@ static void tcp_v4_init_req(struct request_sock *req, struct sock *sk_listener,
 	ireq->opt = tcp_v4_save_options(skb);
 }
 
-static struct dst_entry *tcp_v4_route_req(struct sock *sk, struct flowi *fl,
+static struct dst_entry *tcp_v4_route_req(const struct sock *sk,
+					  struct flowi *fl,
 					  const struct request_sock *req,
 					  bool *strict)
 {
@@ -1241,7 +1243,7 @@ EXPORT_SYMBOL(tcp_v4_conn_request);
  * The three way handshake has completed - we got a valid synack -
  * now create the new socket.
  */
-struct sock *tcp_v4_syn_recv_sock(struct sock *sk, struct sk_buff *skb,
+struct sock *tcp_v4_syn_recv_sock(const struct sock *sk, struct sk_buff *skb,
 				  struct request_sock *req,
 				  struct dst_entry *dst)
 {
@@ -1277,7 +1279,6 @@ struct sock *tcp_v4_syn_recv_sock(struct sock *sk, struct sk_buff *skb,
 	newinet->mc_ttl	      = ip_hdr(skb)->ttl;
 	newinet->rcv_tos      = ip_hdr(skb)->tos;
 	inet_csk(newsk)->icsk_ext_hdr_len = 0;
-	sk_set_txhash(newsk);
 	if (inet_opt)
 		inet_csk(newsk)->icsk_ext_hdr_len = inet_opt->opt.optlen;
 	newinet->inet_id = newtp->write_seq ^ jiffies;
@@ -1420,7 +1421,7 @@ int tcp_v4_do_rcv(struct sock *sk, struct sk_buff *skb)
 	} else
 		sock_rps_save_rxhash(sk, skb);
 
-	if (tcp_rcv_state_process(sk, skb, tcp_hdr(skb), skb->len)) {
+	if (tcp_rcv_state_process(sk, skb)) {
 		rsk = sk;
 		goto reset;
 	}
@@ -2185,7 +2186,7 @@ static void get_tcp4_sock(struct sock *sk, struct seq_file *f, int i)
 	const struct tcp_sock *tp = tcp_sk(sk);
 	const struct inet_connection_sock *icsk = inet_csk(sk);
 	const struct inet_sock *inet = inet_sk(sk);
-	struct fastopen_queue *fastopenq = icsk->icsk_accept_queue.fastopenq;
+	const struct fastopen_queue *fastopenq = &icsk->icsk_accept_queue.fastopenq;
 	__be32 dest = inet->inet_daddr;
 	__be32 src = inet->inet_rcv_saddr;
 	__u16 destp = ntohs(inet->inet_dport);

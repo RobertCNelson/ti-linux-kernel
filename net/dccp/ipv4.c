@@ -390,7 +390,8 @@ static inline u64 dccp_v4_init_sequence(const struct sk_buff *skb)
  *
  * This is the equivalent of TCP's tcp_v4_syn_recv_sock
  */
-struct sock *dccp_v4_request_recv_sock(struct sock *sk, struct sk_buff *skb,
+struct sock *dccp_v4_request_recv_sock(const struct sock *sk,
+				       struct sk_buff *skb,
 				       struct request_sock *req,
 				       struct dst_entry *dst)
 {
@@ -498,7 +499,7 @@ static struct dst_entry* dccp_v4_route_skb(struct net *net, struct sock *sk,
 	return &rt->dst;
 }
 
-static int dccp_v4_send_response(struct sock *sk, struct request_sock *req)
+static int dccp_v4_send_response(const struct sock *sk, struct request_sock *req)
 {
 	int err = -1;
 	struct sk_buff *skb;
@@ -527,7 +528,7 @@ out:
 	return err;
 }
 
-static void dccp_v4_ctl_send_reset(struct sock *sk, struct sk_buff *rxskb)
+static void dccp_v4_ctl_send_reset(const struct sock *sk, struct sk_buff *rxskb)
 {
 	int err;
 	const struct iphdr *rxiph;
