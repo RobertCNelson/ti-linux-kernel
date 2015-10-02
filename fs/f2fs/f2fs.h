@@ -19,6 +19,7 @@
 #include <linux/magic.h>
 #include <linux/kobject.h>
 #include <linux/sched.h>
+#include <linux/vmalloc.h>
 #include <linux/bio.h>
 
 #ifdef CONFIG_F2FS_CHECK_FS
@@ -490,6 +491,13 @@ static inline bool __is_front_mergeable(struct extent_info *cur,
 						struct extent_info *front)
 {
 	return __is_extent_mergeable(cur, front);
+}
+
+static inline void __try_update_largest_extent(struct extent_tree *et,
+						struct extent_node *en)
+{
+	if (en->ei.len > et->largest.len)
+		et->largest = en->ei;
 }
 
 struct f2fs_nm_info {
@@ -1579,6 +1587,26 @@ static inline bool f2fs_may_extent_tree(struct inode *inode)
 	return S_ISREG(mode);
 }
 
+static inline void *f2fs_kvmalloc(size_t size, gfp_t flags)
+{
+	void *ret;
+
+	ret = kmalloc(size, flags | __GFP_NOWARN);
+	if (!ret)
+		ret = __vmalloc(size, flags, PAGE_KERNEL);
+	return ret;
+}
+
+static inline void *f2fs_kvzalloc(size_t size, gfp_t flags)
+{
+	void *ret;
+
+	ret = kzalloc(size, flags | __GFP_NOWARN);
+	if (!ret)
+		ret = __vmalloc(size, flags | __GFP_ZERO, PAGE_KERNEL);
+	return ret;
+}
+
 #define get_inode_mode(i) \
 	((is_inode_flag_set(F2FS_I(i), FI_ACL_MODE)) ? \
 	 (F2FS_I(i)->i_acl_mode) : ((i)->i_mode))
@@ -1844,7 +1872,7 @@ struct f2fs_stat_info {
 	unsigned int segment_count[2];
 	unsigned int block_count[2];
 	unsigned int inplace_count;
-	unsigned base_mem, cache_mem, page_mem;
+	unsigned long long base_mem, cache_mem, page_mem;
 };
 
 static inline struct f2fs_stat_info *F2FS_STAT(struct f2fs_sb_info *sbi)
