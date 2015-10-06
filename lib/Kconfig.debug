@@ -1685,6 +1685,9 @@ config TEST_STRING_HELPERS
 config TEST_KSTRTOX
 	tristate "Test kstrto*() family of functions at runtime"
 
+config TEST_PRINTF
+	tristate "Test printf() family of functions at runtime"
+
 config TEST_RHASHTABLE
 	tristate "Perform selftest on resizable hash table"
 	default n
@@ -1751,6 +1754,16 @@ config DMA_API_DEBUG
 	  debug device drivers and dma interactions.
 
 	  If unsure, say N.
+
+config DMA_API_DEBUG_POISON
+	bool "Poison coherent DMA buffers"
+	depends on DMA_API_DEBUG && EXPERT
+	help
+	  Poison DMA buffers returned by dma_alloc_coherent unless __GFP_ZERO
+	  is explicitly specified, to catch drivers depending on zeroed buffers
+	  without passing the correct flags.
+
+	  Only say Y if you're prepared for almost everything to break.
 
 config TEST_LKM
 	tristate "Test module loading with 'hello world' module"

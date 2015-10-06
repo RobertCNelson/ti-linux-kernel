@@ -3380,6 +3380,7 @@ readpages_get_pages(struct address_space *mapping, struct list_head *page_list,
 	struct page *page, *tpage;
 	unsigned int expected_index;
 	int rc;
+	gfp_t gfp = GFP_KERNEL & mapping_gfp_mask(mapping);
 
 	INIT_LIST_HEAD(tmplist);
 
@@ -3390,13 +3391,13 @@ readpages_get_pages(struct address_space *mapping, struct list_head *page_list,
 	 * should have access to this page, we're safe to simply set
 	 * PG_locked without checking it first.
 	 */
-	__set_page_locked(page);
+	__SetPageLocked(page);
 	rc = add_to_page_cache_locked(page, mapping,
-				      page->index, GFP_KERNEL);
+				      page->index, gfp);
 
 	/* give up if we can't stick it in the cache */
 	if (rc) {
-		__clear_page_locked(page);
+		__ClearPageLocked(page);
 		return rc;
 	}
 
@@ -3417,10 +3418,9 @@ readpages_get_pages(struct address_space *mapping, struct list_head *page_list,
 		if (*bytes + PAGE_CACHE_SIZE > rsize)
 			break;
 
-		__set_page_locked(page);
-		if (add_to_page_cache_locked(page, mapping, page->index,
-								GFP_KERNEL)) {
-			__clear_page_locked(page);
+		__SetPageLocked(page);
+		if (add_to_page_cache_locked(page, mapping, page->index, gfp)) {
+			__ClearPageLocked(page);
 			break;
 		}
 		list_move_tail(&page->lru, tmplist);
