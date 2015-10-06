@@ -88,6 +88,7 @@ enum {
 	Opt_fsc, Opt_mfsymlinks,
 	Opt_multiuser, Opt_sloppy, Opt_nosharesock,
 	Opt_persistent, Opt_nopersistent,
+	Opt_resilient, Opt_noresilient,
 
 	/* Mount options which take numeric value */
 	Opt_backupuid, Opt_backupgid, Opt_uid,
@@ -172,6 +173,8 @@ static const match_table_t cifs_mount_option_tokens = {
 	{ Opt_nosharesock, "nosharesock" },
 	{ Opt_persistent, "persistenthandles"},
 	{ Opt_nopersistent, "nopersistenthandles"},
+	{ Opt_resilient, "resilienthandles"},
+	{ Opt_noresilient, "noresilienthandles"},
 
 	{ Opt_backupuid, "backupuid=%s" },
 	{ Opt_backupgid, "backupgid=%s" },
@@ -1510,11 +1513,22 @@ cifs_parse_mount_options(const char *mountdata, const char *devname,
 			break;
 		case Opt_persistent:
 			vol->persistent = true;
-			if (vol->nopersistent) {
+			if ((vol->nopersistent) || (vol->resilient)) {
 				cifs_dbg(VFS,
 				  "persistenthandles mount options conflict\n");
 				goto cifs_parse_mount_err;
 			}
+			break;
+		case Opt_resilient:
+			vol->resilient = true;
+			if (vol->persistent) {
+				cifs_dbg(VFS,
+				  "persistenthandles mount options conflict\n");
+				goto cifs_parse_mount_err;
+			}
+			break;
+		case Opt_noresilient:
+			vol->resilient = false; /* this is already the default */
 			break;
 
 		/* Numeric Values */
@@ -2695,6 +2709,14 @@ cifs_get_tcon(struct cifs_ses *ses, struct smb_vol *volume_info)
 	     && (volume_info->nopersistent == false)) {
 		cifs_dbg(FYI, "enabling persistent handles\n");
 		tcon->use_persistent = true;
+	} else if (volume_info->resilient) {
+		if (ses->server->vals->protocol_id == 0) {
+			cifs_dbg(VFS,
+			     "SMB2.1 or later required for resilient handles\n");
+			rc = -EOPNOTSUPP;
+			goto out_fail;
+		}
+		tcon->use_resilient = true;
 	}
 
 	/*
