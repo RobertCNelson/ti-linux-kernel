@@ -2220,10 +2220,8 @@ static void cleanup_mapped_device(struct mapped_device *md)
 		destroy_workqueue(md->wq);
 	if (md->kworker_task)
 		kthread_stop(md->kworker_task);
-	if (md->io_pool)
-		mempool_destroy(md->io_pool);
-	if (md->rq_pool)
-		mempool_destroy(md->rq_pool);
+	mempool_destroy(md->io_pool);
+	mempool_destroy(md->rq_pool);
 	if (md->bs)
 		bioset_free(md->bs);
 
@@ -2837,8 +2835,6 @@ static void __dm_destroy(struct mapped_device *md, bool wait)
 
 	might_sleep();
 
-	map = dm_get_live_table(md, &srcu_idx);
-
 	spin_lock(&_minor_lock);
 	idr_replace(&_minor_idr, MINOR_ALLOCED, MINOR(disk_devt(dm_disk(md))));
 	set_bit(DMF_FREEING, &md->flags);
@@ -2852,14 +2848,14 @@ static void __dm_destroy(struct mapped_device *md, bool wait)
 	 * do not race with internal suspend.
 	 */
 	mutex_lock(&md->suspend_lock);
+	map = dm_get_live_table(md, &srcu_idx);
 	if (!dm_suspended_md(md)) {
 		dm_table_presuspend_targets(map);
 		dm_table_postsuspend_targets(map);
 	}
-	mutex_unlock(&md->suspend_lock);
-
 	/* dm_put_live_table must be before msleep, otherwise deadlock is possible */
 	dm_put_live_table(md, srcu_idx);
+	mutex_unlock(&md->suspend_lock);
 
 	/*
 	 * Rare, but there may be I/O requests still going to complete,
@@ -3508,11 +3504,8 @@ void dm_free_md_mempools(struct dm_md_mempools *pools)
 	if (!pools)
 		return;
 
-	if (pools->io_pool)
-		mempool_destroy(pools->io_pool);
-
-	if (pools->rq_pool)
-		mempool_destroy(pools->rq_pool);
+	mempool_destroy(pools->io_pool);
+	mempool_destroy(pools->rq_pool);
 
 	if (pools->bs)
 		bioset_free(pools->bs);
