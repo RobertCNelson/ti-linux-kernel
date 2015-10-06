@@ -329,6 +329,22 @@ static struct sk_buff *create_monitor_event(struct hci_dev *hdev, int event)
 		opcode = cpu_to_le16(HCI_MON_DEL_INDEX);
 		break;
 
+	case HCI_DEV_OPEN:
+		skb = bt_skb_alloc(0, GFP_ATOMIC);
+		if (!skb)
+			return NULL;
+
+		opcode = cpu_to_le16(HCI_MON_OPEN_INDEX);
+		break;
+
+	case HCI_DEV_CLOSE:
+		skb = bt_skb_alloc(0, GFP_ATOMIC);
+		if (!skb)
+			return NULL;
+
+		opcode = cpu_to_le16(HCI_MON_CLOSE_INDEX);
+		break;
+
 	default:
 		return NULL;
 	}
@@ -353,6 +369,16 @@ static void send_monitor_replay(struct sock *sk)
 		struct sk_buff *skb;
 
 		skb = create_monitor_event(hdev, HCI_DEV_REG);
+		if (!skb)
+			continue;
+
+		if (sock_queue_rcv_skb(sk, skb))
+			kfree_skb(skb);
+
+		if (!test_bit(HCI_RUNNING, &hdev->flags))
+			continue;
+
+		skb = create_monitor_event(hdev, HCI_DEV_OPEN);
 		if (!skb)
 			continue;
 
@@ -392,14 +418,12 @@ static void hci_si_event(struct hci_dev *hdev, int type, int dlen, void *data)
 
 void hci_sock_dev_event(struct hci_dev *hdev, int event)
 {
-	struct hci_ev_si_device ev;
-
 	BT_DBG("hdev %s event %d", hdev->name, event);
 
-	/* Send event to monitor */
 	if (atomic_read(&monitor_promisc)) {
 		struct sk_buff *skb;
 
+		/* Send event to monitor */
 		skb = create_monitor_event(hdev, event);
 		if (skb) {
 			hci_send_to_channel(HCI_CHANNEL_MONITOR, skb,
@@ -408,10 +432,14 @@ void hci_sock_dev_event(struct hci_dev *hdev, int event)
 		}
 	}
 
-	/* Send event to sockets */
-	ev.event  = event;
-	ev.dev_id = hdev->id;
-	hci_si_event(NULL, HCI_EV_SI_DEVICE, sizeof(ev), &ev);
+	if (event <= HCI_DEV_DOWN) {
+		struct hci_ev_si_device ev;
+
+		/* Send event to sockets */
+		ev.event  = event;
+		ev.dev_id = hdev->id;
+		hci_si_event(NULL, HCI_EV_SI_DEVICE, sizeof(ev), &ev);
+	}
 
 	if (event == HCI_DEV_UNREG) {
 		struct sock *sk;
