@@ -242,16 +242,15 @@ static int dsa_bridge_check_vlan_range(struct dsa_switch *ds,
 }
 
 static int dsa_slave_port_vlan_add(struct net_device *dev,
-				   struct switchdev_obj *obj)
+				   const struct switchdev_obj_port_vlan *vlan,
+				   struct switchdev_trans *trans)
 {
-	struct switchdev_obj_vlan *vlan = &obj->u.vlan;
 	struct dsa_slave_priv *p = netdev_priv(dev);
 	struct dsa_switch *ds = p->parent;
 	u16 vid;
 	int err;
 
-	switch (obj->trans) {
-	case SWITCHDEV_TRANS_PREPARE:
+	if (switchdev_trans_ph_prepare(trans)) {
 		if (!ds->drv->port_vlan_add || !ds->drv->port_pvid_set)
 			return -EOPNOTSUPP;
 
@@ -263,8 +262,7 @@ static int dsa_slave_port_vlan_add(struct net_device *dev,
 						  vlan->vid_end);
 		if (err)
 			return err;
-		break;
-	case SWITCHDEV_TRANS_COMMIT:
+	} else {
 		for (vid = vlan->vid_begin; vid <= vlan->vid_end; ++vid) {
 			err = ds->drv->port_vlan_add(ds, p->port, vid,
 						     vlan->flags &
@@ -274,18 +272,14 @@ static int dsa_slave_port_vlan_add(struct net_device *dev,
 			if (err)
 				return err;
 		}
-		break;
-	default:
-		return -EOPNOTSUPP;
 	}
 
 	return 0;
 }
 
 static int dsa_slave_port_vlan_del(struct net_device *dev,
-				   struct switchdev_obj *obj)
+				   const struct switchdev_obj_port_vlan *vlan)
 {
-	struct switchdev_obj_vlan *vlan = &obj->u.vlan;
 	struct dsa_slave_priv *p = netdev_priv(dev);
 	struct dsa_switch *ds = p->parent;
 	u16 vid;
@@ -304,9 +298,9 @@ static int dsa_slave_port_vlan_del(struct net_device *dev,
 }
 
 static int dsa_slave_port_vlan_dump(struct net_device *dev,
-				    struct switchdev_obj *obj)
+				    struct switchdev_obj_port_vlan *vlan,
+				    switchdev_obj_dump_cb_t *cb)
 {
-	struct switchdev_obj_vlan *vlan = &obj->u.vlan;
 	struct dsa_slave_priv *p = netdev_priv(dev);
 	struct dsa_switch *ds = p->parent;
 	DECLARE_BITMAP(members, DSA_MAX_PORTS);
@@ -338,7 +332,7 @@ static int dsa_slave_port_vlan_dump(struct net_device *dev,
 		if (test_bit(p->port, untagged))
 			vlan->flags |= BRIDGE_VLAN_INFO_UNTAGGED;
 
-		err = obj->cb(dev, obj);
+		err = cb(&vlan->obj);
 		if (err)
 			break;
 	}
@@ -347,25 +341,24 @@ static int dsa_slave_port_vlan_dump(struct net_device *dev,
 }
 
 static int dsa_slave_port_fdb_add(struct net_device *dev,
-				  struct switchdev_obj *obj)
+				  const struct switchdev_obj_port_fdb *fdb,
+				  struct switchdev_trans *trans)
 {
-	struct switchdev_obj_fdb *fdb = &obj->u.fdb;
 	struct dsa_slave_priv *p = netdev_priv(dev);
 	struct dsa_switch *ds = p->parent;
 	int ret = -EOPNOTSUPP;
 
-	if (obj->trans == SWITCHDEV_TRANS_PREPARE)
+	if (switchdev_trans_ph_prepare(trans))
 		ret = ds->drv->port_fdb_add ? 0 : -EOPNOTSUPP;
-	else if (obj->trans == SWITCHDEV_TRANS_COMMIT)
+	else
 		ret = ds->drv->port_fdb_add(ds, p->port, fdb->addr, fdb->vid);
 
 	return ret;
 }
 
 static int dsa_slave_port_fdb_del(struct net_device *dev,
-				  struct switchdev_obj *obj)
+				  const struct switchdev_obj_port_fdb *fdb)
 {
-	struct switchdev_obj_fdb *fdb = &obj->u.fdb;
 	struct dsa_slave_priv *p = netdev_priv(dev);
 	struct dsa_switch *ds = p->parent;
 	int ret = -EOPNOTSUPP;
@@ -377,7 +370,8 @@ static int dsa_slave_port_fdb_del(struct net_device *dev,
 }
 
 static int dsa_slave_port_fdb_dump(struct net_device *dev,
-				   struct switchdev_obj *obj)
+				   struct switchdev_obj_port_fdb *fdb,
+				   switchdev_obj_dump_cb_t *cb)
 {
 	struct dsa_slave_priv *p = netdev_priv(dev);
 	struct dsa_switch *ds = p->parent;
@@ -396,11 +390,11 @@ static int dsa_slave_port_fdb_dump(struct net_device *dev,
 		if (ret < 0)
 			break;
 
-		obj->u.fdb.addr = addr;
-		obj->u.fdb.vid = vid;
-		obj->u.fdb.ndm_state = is_static ? NUD_NOARP : NUD_REACHABLE;
+		fdb->addr = addr;
+		fdb->vid = vid;
+		fdb->ndm_state = is_static ? NUD_NOARP : NUD_REACHABLE;
 
-		ret = obj->cb(dev, obj);
+		ret = cb(&fdb->obj);
 		if (ret < 0)
 			break;
 	}
@@ -456,15 +450,16 @@ static int dsa_slave_stp_update(struct net_device *dev, u8 state)
 }
 
 static int dsa_slave_port_attr_set(struct net_device *dev,
-				   struct switchdev_attr *attr)
+				   struct switchdev_attr *attr,
+				   struct switchdev_trans *trans)
 {
 	struct dsa_slave_priv *p = netdev_priv(dev);
 	struct dsa_switch *ds = p->parent;
 	int ret;
 
 	switch (attr->id) {
-	case SWITCHDEV_ATTR_PORT_STP_STATE:
-		if (attr->trans == SWITCHDEV_TRANS_PREPARE)
+	case SWITCHDEV_ATTR_ID_PORT_STP_STATE:
+		if (switchdev_trans_ph_prepare(trans))
 			ret = ds->drv->port_stp_update ? 0 : -EOPNOTSUPP;
 		else
 			ret = ds->drv->port_stp_update(ds, p->port,
@@ -479,7 +474,8 @@ static int dsa_slave_port_attr_set(struct net_device *dev,
 }
 
 static int dsa_slave_port_obj_add(struct net_device *dev,
-				  struct switchdev_obj *obj)
+				  const struct switchdev_obj *obj,
+				  struct switchdev_trans *trans)
 {
 	int err;
 
@@ -489,11 +485,15 @@ static int dsa_slave_port_obj_add(struct net_device *dev,
 	 */
 
 	switch (obj->id) {
-	case SWITCHDEV_OBJ_PORT_FDB:
-		err = dsa_slave_port_fdb_add(dev, obj);
+	case SWITCHDEV_OBJ_ID_PORT_FDB:
+		err = dsa_slave_port_fdb_add(dev,
+					     SWITCHDEV_OBJ_PORT_FDB(obj),
+					     trans);
 		break;
-	case SWITCHDEV_OBJ_PORT_VLAN:
-		err = dsa_slave_port_vlan_add(dev, obj);
+	case SWITCHDEV_OBJ_ID_PORT_VLAN:
+		err = dsa_slave_port_vlan_add(dev,
+					      SWITCHDEV_OBJ_PORT_VLAN(obj),
+					      trans);
 		break;
 	default:
 		err = -EOPNOTSUPP;
@@ -504,16 +504,18 @@ static int dsa_slave_port_obj_add(struct net_device *dev,
 }
 
 static int dsa_slave_port_obj_del(struct net_device *dev,
-				  struct switchdev_obj *obj)
+				  const struct switchdev_obj *obj)
 {
 	int err;
 
 	switch (obj->id) {
-	case SWITCHDEV_OBJ_PORT_FDB:
-		err = dsa_slave_port_fdb_del(dev, obj);
+	case SWITCHDEV_OBJ_ID_PORT_FDB:
+		err = dsa_slave_port_fdb_del(dev,
+					     SWITCHDEV_OBJ_PORT_FDB(obj));
 		break;
-	case SWITCHDEV_OBJ_PORT_VLAN:
-		err = dsa_slave_port_vlan_del(dev, obj);
+	case SWITCHDEV_OBJ_ID_PORT_VLAN:
+		err = dsa_slave_port_vlan_del(dev,
+					      SWITCHDEV_OBJ_PORT_VLAN(obj));
 		break;
 	default:
 		err = -EOPNOTSUPP;
@@ -524,16 +526,21 @@ static int dsa_slave_port_obj_del(struct net_device *dev,
 }
 
 static int dsa_slave_port_obj_dump(struct net_device *dev,
-				   struct switchdev_obj *obj)
+				   struct switchdev_obj *obj,
+				   switchdev_obj_dump_cb_t *cb)
 {
 	int err;
 
 	switch (obj->id) {
-	case SWITCHDEV_OBJ_PORT_FDB:
-		err = dsa_slave_port_fdb_dump(dev, obj);
+	case SWITCHDEV_OBJ_ID_PORT_FDB:
+		err = dsa_slave_port_fdb_dump(dev,
+					      SWITCHDEV_OBJ_PORT_FDB(obj),
+					      cb);
 		break;
-	case SWITCHDEV_OBJ_PORT_VLAN:
-		err = dsa_slave_port_vlan_dump(dev, obj);
+	case SWITCHDEV_OBJ_ID_PORT_VLAN:
+		err = dsa_slave_port_vlan_dump(dev,
+					       SWITCHDEV_OBJ_PORT_VLAN(obj),
+					       cb);
 		break;
 	default:
 		err = -EOPNOTSUPP;
@@ -587,7 +594,7 @@ static int dsa_slave_port_attr_get(struct net_device *dev,
 	struct dsa_switch *ds = p->parent;
 
 	switch (attr->id) {
-	case SWITCHDEV_ATTR_PORT_PARENT_ID:
+	case SWITCHDEV_ATTR_ID_PORT_PARENT_ID:
 		attr->u.ppid.id_len = sizeof(ds->index);
 		memcpy(&attr->u.ppid.id, &ds->index, attr->u.ppid.id_len);
 		break;
@@ -967,6 +974,10 @@ static const struct switchdev_ops dsa_slave_switchdev_ops = {
 	.switchdev_port_obj_dump	= dsa_slave_port_obj_dump,
 };
 
+static struct device_type dsa_type = {
+	.name	= "dsa",
+};
+
 static void dsa_slave_adjust_link(struct net_device *dev)
 {
 	struct dsa_slave_priv *p = netdev_priv(dev);
@@ -1155,6 +1166,7 @@ int dsa_slave_create(struct dsa_switch *ds, struct device *parent,
 	slave_dev->priv_flags |= IFF_NO_QUEUE;
 	slave_dev->netdev_ops = &dsa_slave_netdev_ops;
 	slave_dev->switchdev_ops = &dsa_slave_switchdev_ops;
+	SET_NETDEV_DEVTYPE(slave_dev, &dsa_type);
 
 	netdev_for_each_tx_queue(slave_dev, dsa_slave_set_lockdep_class_one,
 				 NULL);
