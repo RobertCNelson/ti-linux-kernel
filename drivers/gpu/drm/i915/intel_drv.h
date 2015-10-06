@@ -179,12 +179,22 @@ struct intel_panel {
 		bool active_low_pwm;
 
 		/* PWM chip */
+		bool util_pin_active_low;	/* bxt+ */
+		u8 controller;		/* bxt+ only */
 		struct pwm_device *pwm;
 
 		struct backlight_device *device;
-	} backlight;
 
-	void (*backlight_power)(struct intel_connector *, bool enable);
+		/* Connector and platform specific backlight functions */
+		int (*setup)(struct intel_connector *connector, enum pipe pipe);
+		uint32_t (*get)(struct intel_connector *connector);
+		void (*set)(struct intel_connector *connector, uint32_t level);
+		void (*disable)(struct intel_connector *connector);
+		void (*enable)(struct intel_connector *connector);
+		uint32_t (*hz_to_pwm)(struct intel_connector *connector,
+				      uint32_t hz);
+		void (*power)(struct intel_connector *, bool enable);
+	} backlight;
 };
 
 struct intel_connector {
@@ -240,6 +250,7 @@ struct intel_atomic_state {
 	unsigned int cdclk;
 	bool dpll_set;
 	struct intel_shared_dpll_config shared_dpll[I915_NUM_PLLS];
+	struct intel_wm_config wm_config;
 };
 
 struct intel_plane_state {
@@ -324,6 +335,21 @@ struct intel_crtc_scaler_state {
 /* drm_mode->private_flags */
 #define I915_MODE_FLAG_INHERITED 1
 
+struct intel_pipe_wm {
+	struct intel_wm_level wm[5];
+	uint32_t linetime;
+	bool fbc_wm_enabled;
+	bool pipe_enabled;
+	bool sprites_enabled;
+	bool sprites_scaled;
+};
+
+struct skl_pipe_wm {
+	struct skl_wm_level wm[8];
+	struct skl_wm_level trans_wm;
+	uint32_t linetime;
+};
+
 struct intel_crtc_state {
 	struct drm_crtc_state base;
 
@@ -337,6 +363,8 @@ struct intel_crtc_state {
 	 */
 #define PIPE_CONFIG_QUIRK_MODE_SYNC_FLAGS	(1<<0) /* unreliable sync mode.flags */
 	unsigned long quirks;
+
+	bool update_pipe;
 
 	/* Pipe source size (ie. panel fitter input size)
 	 * All planes will be positioned inside this space,
@@ -456,6 +484,20 @@ struct intel_crtc_state {
 
 	/* w/a for waiting 2 vblanks during crtc enable */
 	enum pipe hsw_workaround_pipe;
+
+	/* IVB sprite scaling w/a (WaCxSRDisabledForSpriteScaling:ivb) */
+	bool disable_lp_wm;
+
+	struct {
+		/*
+		 * optimal watermarks, programmed post-vblank when this state
+		 * is committed
+		 */
+		union {
+			struct intel_pipe_wm ilk;
+			struct skl_pipe_wm skl;
+		} optimal;
+	} wm;
 };
 
 struct vlv_wm_state {
@@ -467,26 +509,11 @@ struct vlv_wm_state {
 	bool cxsr;
 };
 
-struct intel_pipe_wm {
-	struct intel_wm_level wm[5];
-	uint32_t linetime;
-	bool fbc_wm_enabled;
-	bool pipe_enabled;
-	bool sprites_enabled;
-	bool sprites_scaled;
-};
-
 struct intel_mmio_flip {
 	struct work_struct work;
 	struct drm_i915_private *i915;
 	struct drm_i915_gem_request *req;
 	struct intel_crtc *crtc;
-};
-
-struct skl_pipe_wm {
-	struct skl_wm_level wm[8];
-	struct skl_wm_level trans_wm;
-	uint32_t linetime;
 };
 
 /*
@@ -535,6 +562,8 @@ struct intel_crtc {
 	 * gen4+ this only adjusts up to a tile, offsets within a tile are
 	 * handled in the hw itself (with the TILEOFF register). */
 	unsigned long dspaddr_offset;
+	int adjusted_x;
+	int adjusted_y;
 
 	struct drm_i915_gem_object *cursor_bo;
 	uint32_t cursor_addr;
@@ -554,17 +583,22 @@ struct intel_crtc {
 	/* per-pipe watermark state */
 	struct {
 		/* watermarks currently being used  */
-		struct intel_pipe_wm active;
-		/* SKL wm values currently in use */
-		struct skl_pipe_wm skl_active;
+		union {
+			struct intel_pipe_wm ilk;
+			struct skl_pipe_wm skl;
+		} active;
 		/* allow CxSR on this pipe */
 		bool cxsr_allowed;
 	} wm;
 
 	int scanline_offset;
 
-	unsigned start_vbl_count;
-	ktime_t start_vbl_time;
+	struct {
+		unsigned start_vbl_count;
+		ktime_t start_vbl_time;
+		int min_vbl, max_vbl;
+		int scanline_start;
+	} debug;
 
 	struct intel_crtc_atomic_commit atomic;
 
@@ -675,7 +709,7 @@ struct intel_hdmi {
 				const void *frame, ssize_t len);
 	void (*set_infoframes)(struct drm_encoder *encoder,
 			       bool enable,
-			       struct drm_display_mode *adjusted_mode);
+			       const struct drm_display_mode *adjusted_mode);
 	bool (*infoframe_enabled)(struct drm_encoder *encoder);
 };
 
@@ -1079,7 +1113,7 @@ int intel_plane_atomic_calc_changes(struct drm_crtc_state *crtc_state,
 
 unsigned int
 intel_tile_height(struct drm_device *dev, uint32_t pixel_format,
-		  uint64_t fb_format_modifier);
+		  uint64_t fb_format_modifier, unsigned int plane);
 
 static inline bool
 intel_rotation_90_or_270(unsigned int rotation)
@@ -1160,7 +1194,9 @@ int skl_update_scaler_crtc(struct intel_crtc_state *crtc_state);
 int skl_max_scale(struct intel_crtc *crtc, struct intel_crtc_state *crtc_state);
 
 unsigned long intel_plane_obj_offset(struct intel_plane *intel_plane,
-				     struct drm_i915_gem_object *obj);
+				     struct drm_i915_gem_object *obj,
+				     unsigned int plane);
+
 u32 skl_plane_ctl_format(uint32_t pixel_format);
 u32 skl_plane_ctl_tiling(uint64_t fb_modifier);
 u32 skl_plane_ctl_rotation(unsigned int rotation);
@@ -1210,6 +1246,8 @@ void intel_edp_drrs_disable(struct intel_dp *intel_dp);
 void intel_edp_drrs_invalidate(struct drm_device *dev,
 		unsigned frontbuffer_bits);
 void intel_edp_drrs_flush(struct drm_device *dev, unsigned frontbuffer_bits);
+bool intel_digital_port_connected(struct drm_i915_private *dev_priv,
+					 struct intel_digital_port *port);
 void hsw_dp_set_ddi_pll_sel(struct intel_crtc_state *pipe_config);
 
 /* intel_dp_mst.c */
@@ -1288,6 +1326,7 @@ int intel_connector_update_modes(struct drm_connector *connector,
 int intel_ddc_get_modes(struct drm_connector *c, struct i2c_adapter *adapter);
 void intel_attach_force_audio_property(struct drm_connector *connector);
 void intel_attach_broadcast_rgb_property(struct drm_connector *connector);
+void intel_attach_aspect_ratio_property(struct drm_connector *connector);
 
 
 /* intel_overlay.c */
@@ -1320,7 +1359,6 @@ int intel_panel_setup_backlight(struct drm_connector *connector, enum pipe pipe)
 void intel_panel_enable_backlight(struct intel_connector *connector);
 void intel_panel_disable_backlight(struct intel_connector *connector);
 void intel_panel_destroy_backlight(struct drm_connector *connector);
-void intel_panel_init_backlight_funcs(struct drm_device *dev);
 enum drm_connector_status intel_panel_detect(struct drm_device *dev);
 extern struct drm_display_mode *intel_find_panel_downclock(
 				struct drm_device *dev,
@@ -1375,12 +1413,6 @@ void intel_init_clock_gating(struct drm_device *dev);
 void intel_suspend_hw(struct drm_device *dev);
 int ilk_wm_max_level(const struct drm_device *dev);
 void intel_update_watermarks(struct drm_crtc *crtc);
-void intel_update_sprite_watermarks(struct drm_plane *plane,
-				    struct drm_crtc *crtc,
-				    uint32_t sprite_width,
-				    uint32_t sprite_height,
-				    int pixel_size,
-				    bool enabled, bool scaled);
 void intel_init_pm(struct drm_device *dev);
 void intel_pm_setup(struct drm_device *dev);
 void intel_gpu_ips_init(struct drm_i915_private *dev_priv);

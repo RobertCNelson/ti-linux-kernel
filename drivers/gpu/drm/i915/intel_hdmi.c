@@ -447,15 +447,12 @@ static void intel_write_infoframe(struct drm_encoder *encoder,
 }
 
 static void intel_hdmi_set_avi_infoframe(struct drm_encoder *encoder,
-					 struct drm_display_mode *adjusted_mode)
+					 const struct drm_display_mode *adjusted_mode)
 {
 	struct intel_hdmi *intel_hdmi = enc_to_intel_hdmi(encoder);
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
 	union hdmi_infoframe frame;
 	int ret;
-
-	/* Set user selected PAR to incoming mode's member */
-	adjusted_mode->picture_aspect_ratio = intel_hdmi->aspect_ratio;
 
 	ret = drm_hdmi_avi_infoframe_from_display_mode(&frame.avi,
 						       adjusted_mode);
@@ -494,7 +491,7 @@ static void intel_hdmi_set_spd_infoframe(struct drm_encoder *encoder)
 
 static void
 intel_hdmi_set_hdmi_infoframe(struct drm_encoder *encoder,
-			      struct drm_display_mode *adjusted_mode)
+			      const struct drm_display_mode *adjusted_mode)
 {
 	union hdmi_infoframe frame;
 	int ret;
@@ -509,7 +506,7 @@ intel_hdmi_set_hdmi_infoframe(struct drm_encoder *encoder,
 
 static void g4x_set_infoframes(struct drm_encoder *encoder,
 			       bool enable,
-			       struct drm_display_mode *adjusted_mode)
+			       const struct drm_display_mode *adjusted_mode)
 {
 	struct drm_i915_private *dev_priv = encoder->dev->dev_private;
 	struct intel_digital_port *intel_dig_port = enc_to_dig_port(encoder);
@@ -661,7 +658,7 @@ static bool intel_hdmi_set_gcp_infoframe(struct drm_encoder *encoder)
 
 static void ibx_set_infoframes(struct drm_encoder *encoder,
 			       bool enable,
-			       struct drm_display_mode *adjusted_mode)
+			       const struct drm_display_mode *adjusted_mode)
 {
 	struct drm_i915_private *dev_priv = encoder->dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
@@ -713,7 +710,7 @@ static void ibx_set_infoframes(struct drm_encoder *encoder,
 
 static void cpt_set_infoframes(struct drm_encoder *encoder,
 			       bool enable,
-			       struct drm_display_mode *adjusted_mode)
+			       const struct drm_display_mode *adjusted_mode)
 {
 	struct drm_i915_private *dev_priv = encoder->dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
@@ -755,7 +752,7 @@ static void cpt_set_infoframes(struct drm_encoder *encoder,
 
 static void vlv_set_infoframes(struct drm_encoder *encoder,
 			       bool enable,
-			       struct drm_display_mode *adjusted_mode)
+			       const struct drm_display_mode *adjusted_mode)
 {
 	struct drm_i915_private *dev_priv = encoder->dev->dev_private;
 	struct intel_digital_port *intel_dig_port = enc_to_dig_port(encoder);
@@ -807,7 +804,7 @@ static void vlv_set_infoframes(struct drm_encoder *encoder,
 
 static void hsw_set_infoframes(struct drm_encoder *encoder,
 			       bool enable,
-			       struct drm_display_mode *adjusted_mode)
+			       const struct drm_display_mode *adjusted_mode)
 {
 	struct drm_i915_private *dev_priv = encoder->dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
@@ -844,7 +841,7 @@ static void intel_hdmi_prepare(struct intel_encoder *encoder)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_crtc *crtc = to_intel_crtc(encoder->base.crtc);
 	struct intel_hdmi *intel_hdmi = enc_to_intel_hdmi(&encoder->base);
-	struct drm_display_mode *adjusted_mode = &crtc->config->base.adjusted_mode;
+	const struct drm_display_mode *adjusted_mode = &crtc->config->base.adjusted_mode;
 	u32 hdmi_val;
 
 	hdmi_val = SDVO_ENCODING_HDMI;
@@ -1312,6 +1309,9 @@ bool intel_hdmi_compute_config(struct intel_encoder *encoder,
 		return false;
 	}
 
+	/* Set user selected PAR to incoming mode's member */
+	adjusted_mode->picture_aspect_ratio = intel_hdmi->aspect_ratio;
+
 	return true;
 }
 
@@ -1329,22 +1329,23 @@ intel_hdmi_unset_edid(struct drm_connector *connector)
 }
 
 static bool
-intel_hdmi_set_edid(struct drm_connector *connector)
+intel_hdmi_set_edid(struct drm_connector *connector, bool force)
 {
 	struct drm_i915_private *dev_priv = to_i915(connector->dev);
 	struct intel_hdmi *intel_hdmi = intel_attached_hdmi(connector);
 	struct intel_encoder *intel_encoder =
 		&hdmi_to_dig_port(intel_hdmi)->base;
 	enum intel_display_power_domain power_domain;
-	struct edid *edid;
+	struct edid *edid = NULL;
 	bool connected = false;
 
 	power_domain = intel_display_port_power_domain(intel_encoder);
 	intel_display_power_get(dev_priv, power_domain);
 
-	edid = drm_get_edid(connector,
-			    intel_gmbus_get_adapter(dev_priv,
-						    intel_hdmi->ddc_bus));
+	if (force)
+		edid = drm_get_edid(connector,
+				    intel_gmbus_get_adapter(dev_priv,
+				    intel_hdmi->ddc_bus));
 
 	intel_display_power_put(dev_priv, power_domain);
 
@@ -1372,13 +1373,26 @@ static enum drm_connector_status
 intel_hdmi_detect(struct drm_connector *connector, bool force)
 {
 	enum drm_connector_status status;
+	struct intel_hdmi *intel_hdmi = intel_attached_hdmi(connector);
+	struct drm_i915_private *dev_priv = to_i915(connector->dev);
+	bool live_status = false;
+	unsigned int retry = 3;
 
 	DRM_DEBUG_KMS("[CONNECTOR:%d:%s]\n",
 		      connector->base.id, connector->name);
 
+	while (!live_status && --retry) {
+		live_status = intel_digital_port_connected(dev_priv,
+				hdmi_to_dig_port(intel_hdmi));
+		mdelay(10);
+	}
+
+	if (!live_status)
+		DRM_DEBUG_KMS("Live status not up!");
+
 	intel_hdmi_unset_edid(connector);
 
-	if (intel_hdmi_set_edid(connector)) {
+	if (intel_hdmi_set_edid(connector, live_status)) {
 		struct intel_hdmi *intel_hdmi = intel_attached_hdmi(connector);
 
 		hdmi_to_dig_port(intel_hdmi)->base.type = INTEL_OUTPUT_HDMI;
@@ -1402,7 +1416,7 @@ intel_hdmi_force(struct drm_connector *connector)
 	if (connector->status != connector_status_connected)
 		return;
 
-	intel_hdmi_set_edid(connector);
+	intel_hdmi_set_edid(connector, true);
 	hdmi_to_dig_port(intel_hdmi)->base.type = INTEL_OUTPUT_HDMI;
 }
 
@@ -1523,8 +1537,7 @@ static void intel_hdmi_pre_enable(struct intel_encoder *encoder)
 {
 	struct intel_hdmi *intel_hdmi = enc_to_intel_hdmi(&encoder->base);
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
-	struct drm_display_mode *adjusted_mode =
-		&intel_crtc->config->base.adjusted_mode;
+	const struct drm_display_mode *adjusted_mode = &intel_crtc->config->base.adjusted_mode;
 
 	intel_hdmi_prepare(encoder);
 
@@ -1541,8 +1554,7 @@ static void vlv_hdmi_pre_enable(struct intel_encoder *encoder)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc =
 		to_intel_crtc(encoder->base.crtc);
-	struct drm_display_mode *adjusted_mode =
-		&intel_crtc->config->base.adjusted_mode;
+	const struct drm_display_mode *adjusted_mode = &intel_crtc->config->base.adjusted_mode;
 	enum dpio_channel port = vlv_dport_to_channel(dport);
 	int pipe = intel_crtc->pipe;
 	u32 val;
@@ -1808,8 +1820,7 @@ static void chv_hdmi_pre_enable(struct intel_encoder *encoder)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc =
 		to_intel_crtc(encoder->base.crtc);
-	struct drm_display_mode *adjusted_mode =
-		&intel_crtc->config->base.adjusted_mode;
+	const struct drm_display_mode *adjusted_mode = &intel_crtc->config->base.adjusted_mode;
 	enum dpio_channel ch = vlv_dport_to_channel(dport);
 	int pipe = intel_crtc->pipe;
 	int data, i, stagger;
@@ -1991,15 +2002,6 @@ static const struct drm_connector_helper_funcs intel_hdmi_connector_helper_funcs
 static const struct drm_encoder_funcs intel_hdmi_enc_funcs = {
 	.destroy = intel_encoder_destroy,
 };
-
-static void
-intel_attach_aspect_ratio_property(struct drm_connector *connector)
-{
-	if (!drm_mode_create_aspect_ratio_property(connector->dev))
-		drm_object_attach_property(&connector->base,
-			connector->dev->mode_config.aspect_ratio_property,
-			DRM_MODE_PICTURE_ASPECT_NONE);
-}
 
 static void
 intel_hdmi_add_properties(struct intel_hdmi *intel_hdmi, struct drm_connector *connector)
