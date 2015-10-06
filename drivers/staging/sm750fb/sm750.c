@@ -1,20 +1,20 @@
-#include<linux/kernel.h>
-#include<linux/module.h>
-#include<linux/errno.h>
-#include<linux/string.h>
-#include<linux/mm.h>
-#include<linux/slab.h>
-#include<linux/delay.h>
-#include<linux/fb.h>
-#include<linux/ioport.h>
-#include<linux/init.h>
-#include<linux/pci.h>
-#include<linux/mm_types.h>
-#include<linux/vmalloc.h>
-#include<linux/pagemap.h>
-#include<linux/screen_info.h>
-#include<linux/vmalloc.h>
-#include<linux/pagemap.h>
+#include <linux/kernel.h>
+#include <linux/module.h>
+#include <linux/errno.h>
+#include <linux/string.h>
+#include <linux/mm.h>
+#include <linux/slab.h>
+#include <linux/delay.h>
+#include <linux/fb.h>
+#include <linux/ioport.h>
+#include <linux/init.h>
+#include <linux/pci.h>
+#include <linux/mm_types.h>
+#include <linux/vmalloc.h>
+#include <linux/pagemap.h>
+#include <linux/screen_info.h>
+#include <linux/vmalloc.h>
+#include <linux/pagemap.h>
 #include <linux/console.h>
 #include <asm/fb.h>
 #include "sm750.h"
@@ -539,18 +539,6 @@ static int lynxfb_ops_check_var(struct fb_var_screeninfo *var,
 
 	switch (var->bits_per_pixel) {
 	case 8:
-	case 16:
-	case 24: /* support 24 bpp for only lynx712/722/720 */
-	case 32:
-		break;
-	default:
-		pr_err("bpp %d not supported\n", var->bits_per_pixel);
-		ret = -EINVAL;
-		goto exit;
-	}
-
-	switch (var->bits_per_pixel) {
-	case 8:
 		info->fix.visual = FB_VISUAL_PSEUDOCOLOR;
 		var->red.offset = 0;
 		var->red.length = 8;
@@ -583,8 +571,8 @@ static int lynxfb_ops_check_var(struct fb_var_screeninfo *var,
 		info->fix.visual = FB_VISUAL_TRUECOLOR;
 		break;
 	default:
-		ret = -EINVAL;
-		break;
+		pr_err("bpp %d not supported\n", var->bits_per_pixel);
+		return -EINVAL;
 	}
 	var->height = var->width = -1;
 	var->accel_flags = 0;/* FB_ACCELF_TEXT; */
@@ -600,11 +588,7 @@ static int lynxfb_ops_check_var(struct fb_var_screeninfo *var,
 		return -ENOMEM;
 	}
 
-	ret = output->proc_checkMode(output, var);
-	if (!ret)
-		ret = crtc->proc_checkMode(crtc, var);
-exit:
-	return ret;
+	return crtc->proc_checkMode(crtc, var);
 }
 
 static int lynxfb_ops_setcolreg(unsigned regno,
@@ -696,18 +680,15 @@ static int sm750fb_set_drv(struct lynxfb_par *par)
 	crtc->proc_checkMode = hw_sm750_crtc_checkMode;
 	crtc->proc_setColReg = hw_sm750_setColReg;
 	crtc->proc_panDisplay = hw_sm750_pan_display;
-	crtc->clear = hw_sm750_crtc_clear;
 	crtc->line_pad = 16;
 	crtc->xpanstep = 8;
 	crtc->ypanstep = 1;
 	crtc->ywrapstep = 0;
 
 	output->proc_setMode = hw_sm750_output_setMode;
-	output->proc_checkMode = hw_sm750_output_checkMode;
 
 	output->proc_setBLANK = (share->revid == SM750LE_REVISION_ID) ?
 				 hw_sm750le_setBLANK : hw_sm750_setBLANK;
-	output->clear = hw_sm750_output_clear;
 	/* chip specific phase */
 	share->accel.de_wait = (share->revid == SM750LE_REVISION_ID) ?
 				hw_sm750le_deWait : hw_sm750_deWait;
@@ -1236,9 +1217,6 @@ static void lynxfb_pci_remove(struct pci_dev *pdev)
 		par = info->par;
 
 		unregister_framebuffer(info);
-		/* clean crtc & output allocations */
-		par->crtc.clear(&par->crtc);
-		par->output.clear(&par->output);
 		/* release frame buffer */
 		framebuffer_release(info);
 	}

@@ -1400,7 +1400,7 @@ static int echo_create_object(const struct lu_env *env, struct echo_device *ed,
 
  failed:
 	if (created && rc)
-		obd_destroy(env, ec->ec_exp, oa, lsm, oti, NULL, NULL);
+		obd_destroy(env, ec->ec_exp, oa, lsm, oti, NULL);
 	if (lsm)
 		echo_free_memmd(ed, &lsm);
 	if (rc)
@@ -1691,7 +1691,7 @@ static int echo_client_prep_commit(const struct lu_env *env,
 
 		lpages = npages;
 		ret = obd_preprw(env, rw, exp, oa, 1, &ioo, rnb, &lpages,
-				 lnb, oti, NULL);
+				 lnb, oti);
 		if (ret != 0)
 			goto out;
 		LASSERT(lpages == npages);
@@ -1907,7 +1907,7 @@ echo_client_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
 		rc = echo_get_object(&eco, ed, oa);
 		if (rc == 0) {
 			rc = obd_destroy(env, ec->ec_exp, oa, eco->eo_lsm,
-					 &dummy_oti, NULL, NULL);
+					 &dummy_oti, NULL);
 			if (rc == 0)
 				eco->eo_deleted = 1;
 			echo_put_object(eco);
@@ -1917,7 +1917,7 @@ echo_client_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
 	case OBD_IOC_GETATTR:
 		rc = echo_get_object(&eco, ed, oa);
 		if (rc == 0) {
-			struct obd_info oinfo = { { { 0 } } };
+			struct obd_info oinfo = { };
 
 			oinfo.oi_md = eco->eo_lsm;
 			oinfo.oi_oa = oa;
@@ -1934,7 +1934,7 @@ echo_client_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
 
 		rc = echo_get_object(&eco, ed, oa);
 		if (rc == 0) {
-			struct obd_info oinfo = { { { 0 } } };
+			struct obd_info oinfo = { };
 
 			oinfo.oi_oa = oa;
 			oinfo.oi_md = eco->eo_lsm;
@@ -2065,12 +2065,6 @@ static int echo_client_setup(const struct lu_env *env,
 	ocd->ocd_group = FID_SEQ_ECHO;
 
 	rc = obd_connect(env, &ec->ec_exp, tgt, &echo_uuid, ocd, NULL);
-	if (rc == 0) {
-		/* Turn off pinger because it connects to tgt obd directly. */
-		spin_lock(&tgt->obd_dev_lock);
-		list_del_init(&ec->ec_exp->exp_obd_chain_timed);
-		spin_unlock(&tgt->obd_dev_lock);
-	}
 
 	kfree(ocd);
 

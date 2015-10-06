@@ -1276,32 +1276,6 @@ static int cl_enqueue_locked(const struct lu_env *env, struct cl_lock *lock,
 }
 
 /**
- * Enqueues a lock.
- *
- * \pre current thread or io owns a hold on lock.
- *
- * \post ergo(result == 0, lock->users increased)
- * \post ergo(result == 0, lock->cll_state == CLS_ENQUEUED ||
- *			 lock->cll_state == CLS_HELD)
- */
-int cl_enqueue(const struct lu_env *env, struct cl_lock *lock,
-	       struct cl_io *io, __u32 enqflags)
-{
-	int result;
-
-	cl_lock_lockdep_acquire(env, lock, enqflags);
-	cl_lock_mutex_get(env, lock);
-	result = cl_enqueue_locked(env, lock, io, enqflags);
-	cl_lock_mutex_put(env, lock);
-	if (result != 0)
-		cl_lock_lockdep_release(env, lock);
-	LASSERT(ergo(result == 0, lock->cll_state == CLS_ENQUEUED ||
-		     lock->cll_state == CLS_HELD));
-	return result;
-}
-EXPORT_SYMBOL(cl_enqueue);
-
-/**
  * Tries to unlock a lock.
  *
  * This function is called to release underlying resource:
@@ -2027,7 +2001,7 @@ static struct cl_lock *cl_lock_hold_mutex(const struct lu_env *env,
 		cl_lock_mutex_get(env, lock);
 		if (lock->cll_state < CLS_FREEING &&
 		    !(lock->cll_flags & CLF_CANCELLED)) {
-			cl_lock_hold_mod(env, lock, +1);
+			cl_lock_hold_mod(env, lock, 1);
 			lu_ref_add(&lock->cll_holders, scope, source);
 			lu_ref_add(&lock->cll_reference, scope, source);
 			break;
@@ -2115,7 +2089,7 @@ void cl_lock_hold_add(const struct lu_env *env, struct cl_lock *lock,
 	LINVRNT(cl_lock_invariant(env, lock));
 	LASSERT(lock->cll_state != CLS_FREEING);
 
-	cl_lock_hold_mod(env, lock, +1);
+	cl_lock_hold_mod(env, lock, 1);
 	cl_lock_get(lock);
 	lu_ref_add(&lock->cll_holders, scope, source);
 	lu_ref_add(&lock->cll_reference, scope, source);
@@ -2157,7 +2131,7 @@ void cl_lock_user_add(const struct lu_env *env, struct cl_lock *lock)
 	LINVRNT(cl_lock_is_mutexed(lock));
 	LINVRNT(cl_lock_invariant(env, lock));
 
-	cl_lock_used_mod(env, lock, +1);
+	cl_lock_used_mod(env, lock, 1);
 }
 EXPORT_SYMBOL(cl_lock_user_add);
 
