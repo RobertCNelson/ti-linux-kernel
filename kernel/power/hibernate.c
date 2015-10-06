@@ -1087,7 +1087,7 @@ static int __init pm_disk_init(void)
 	return sysfs_create_group(power_kobj, &attr_group);
 }
 
-core_initcall(pm_disk_init);
+late_initcall_sync(pm_disk_init);
 
 
 static int __init resume_setup(char *str)
