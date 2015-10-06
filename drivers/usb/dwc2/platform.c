@@ -130,7 +130,7 @@ static int dwc2_driver_remove(struct platform_device *dev)
 	if (hsotg->hcd_enabled)
 		dwc2_hcd_remove(hsotg);
 	if (hsotg->gadget_enabled)
-		s3c_hsotg_remove(hsotg);
+		dwc2_hsotg_remove(hsotg);
 
 	return 0;
 }
@@ -220,7 +220,18 @@ static int dwc2_driver_probe(struct platform_device *dev)
 	dev_dbg(&dev->dev, "mapped PA %08lx to VA %p\n",
 		(unsigned long)res->start, hsotg->regs);
 
-	hsotg->dr_mode = of_usb_get_dr_mode(dev->dev.of_node);
+	hsotg->dr_mode = usb_get_dr_mode(&dev->dev);
+	if (IS_ENABLED(CONFIG_USB_DWC2_HOST) &&
+			hsotg->dr_mode != USB_DR_MODE_HOST) {
+		hsotg->dr_mode = USB_DR_MODE_HOST;
+		dev_warn(hsotg->dev,
+			"Configuration mismatch. Forcing host mode\n");
+	} else if (IS_ENABLED(CONFIG_USB_DWC2_PERIPHERAL) &&
+			hsotg->dr_mode != USB_DR_MODE_PERIPHERAL) {
+		hsotg->dr_mode = USB_DR_MODE_PERIPHERAL;
+		dev_warn(hsotg->dev,
+			"Configuration mismatch. Forcing peripheral mode\n");
+	}
 
 	/*
 	 * Attempt to find a generic PHY, then look for an old style
@@ -269,7 +280,7 @@ static int dwc2_driver_probe(struct platform_device *dev)
 		retval = dwc2_hcd_init(hsotg, irq);
 		if (retval) {
 			if (hsotg->gadget_enabled)
-				s3c_hsotg_remove(hsotg);
+				dwc2_hsotg_remove(hsotg);
 			return retval;
 		}
 		hsotg->hcd_enabled = 1;
@@ -288,7 +299,7 @@ static int __maybe_unused dwc2_suspend(struct device *dev)
 	int ret = 0;
 
 	if (dwc2_is_device_mode(dwc2)) {
-		ret = s3c_hsotg_suspend(dwc2);
+		ret = dwc2_hsotg_suspend(dwc2);
 	} else {
 		if (dwc2->lx_state == DWC2_L0)
 			return 0;
@@ -305,7 +316,7 @@ static int __maybe_unused dwc2_resume(struct device *dev)
 	int ret = 0;
 
 	if (dwc2_is_device_mode(dwc2)) {
-		ret = s3c_hsotg_resume(dwc2);
+		ret = dwc2_hsotg_resume(dwc2);
 	} else {
 		phy_power_on(dwc2->phy);
 		phy_init(dwc2->phy);
