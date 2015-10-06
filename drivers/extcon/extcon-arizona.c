@@ -1,7 +1,7 @@
 /*
  * extcon-arizona.c - Extcon driver Wolfson Arizona devices
  *
- *  Copyright (C) 2012 Wolfson Microelectronics plc
+ *  Copyright (C) 2012-2014 Wolfson Microelectronics plc
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -154,6 +154,10 @@ static void arizona_extcon_hp_clamp(struct arizona_extcon_info *info,
 	int ret;
 
 	switch (arizona->type) {
+	case WM8998:
+	case WM1814:
+		mask = 0;
+		break;
 	case WM5110:
 	case WM8280:
 		mask = ARIZONA_HP1L_SHRTO | ARIZONA_HP1L_FLWR |
@@ -197,17 +201,19 @@ static void arizona_extcon_hp_clamp(struct arizona_extcon_info *info,
 				 ret);
 	}
 
-	ret = regmap_update_bits(arizona->regmap, ARIZONA_HP_CTRL_1L,
-				 mask, val);
-	if (ret != 0)
-		dev_warn(arizona->dev, "Failed to do clamp: %d\n",
+	if (mask) {
+		ret = regmap_update_bits(arizona->regmap, ARIZONA_HP_CTRL_1L,
+					 mask, val);
+		if (ret != 0)
+			dev_warn(arizona->dev, "Failed to do clamp: %d\n",
 				 ret);
 
-	ret = regmap_update_bits(arizona->regmap, ARIZONA_HP_CTRL_1R,
-				 mask, val);
-	if (ret != 0)
-		dev_warn(arizona->dev, "Failed to do clamp: %d\n",
-			 ret);
+		ret = regmap_update_bits(arizona->regmap, ARIZONA_HP_CTRL_1R,
+					 mask, val);
+		if (ret != 0)
+			dev_warn(arizona->dev, "Failed to do clamp: %d\n",
+				 ret);
+	}
 
 	/* Restore the desired state while not doing the clamp */
 	if (!clamp) {
@@ -471,9 +477,6 @@ static int arizona_hpdet_read(struct arizona_extcon_info *info)
 			   arizona_hpdet_b_ranges[range].factor_a);
 		break;
 
-	default:
-		dev_warn(arizona->dev, "Unknown HPDET IP revision %d\n",
-			 info->hpdet_ip_version);
 	case 2:
 		if (!(val & ARIZONA_HP_DONE_B)) {
 			dev_err(arizona->dev, "HPDET did not complete: %x\n",
@@ -510,6 +513,12 @@ static int arizona_hpdet_read(struct arizona_extcon_info *info)
 				arizona_hpdet_c_ranges[range].min);
 			val = arizona_hpdet_c_ranges[range].min;
 		}
+		break;
+
+	default:
+		dev_warn(arizona->dev, "Unknown HPDET IP revision %d\n",
+			 info->hpdet_ip_version);
+		return -EINVAL;
 	}
 
 	dev_dbg(arizona->dev, "HP impedance %d ohms\n", val);
@@ -1288,6 +1297,11 @@ static int arizona_extcon_probe(struct platform_device *pdev)
 			info->hpdet_ip_version = 2;
 			break;
 		}
+		break;
+	case WM8998:
+	case WM1814:
+		info->micd_clamp = true;
+		info->hpdet_ip_version = 2;
 		break;
 	default:
 		break;
