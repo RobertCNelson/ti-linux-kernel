@@ -350,11 +350,14 @@ nouveau_ttm_init(struct nouveau_drm *drm)
 
 	bits = nvxx_mmu(&drm->device)->dma_bits;
 	if (nvxx_device(&drm->device)->func->pci) {
-		if (drm->agp.bridge ||
-		     !pci_dma_supported(dev->pdev, DMA_BIT_MASK(bits)))
+		if (drm->agp.bridge)
 			bits = 32;
 
 		ret = pci_set_dma_mask(dev->pdev, DMA_BIT_MASK(bits));
+		if (ret && bits != 32) {
+			bits = 32;
+			ret = pci_set_dma_mask(dev->pdev, DMA_BIT_MASK(bits));
+		}
 		if (ret)
 			return ret;
 
