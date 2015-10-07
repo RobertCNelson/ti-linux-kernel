@@ -628,13 +628,13 @@ static void cls_param(struct tty_struct *tty)
 	 * we are in hardware flow control mode, or CLOCAL/FORCEDCD is not set.
 	 */
 	if ((ch->ch_digi.digi_flags & CTSPACE) ||
-		(ch->ch_digi.digi_flags & RTSPACE) ||
-		(ch->ch_c_cflag & CRTSCTS) ||
-		!(ch->ch_digi.digi_flags & DIGI_FORCEDCD) ||
-		!(ch->ch_c_cflag & CLOCAL))
-			ier |= UART_IER_MSI;
+	    (ch->ch_digi.digi_flags & RTSPACE) ||
+	    (ch->ch_c_cflag & CRTSCTS) ||
+	    !(ch->ch_digi.digi_flags & DIGI_FORCEDCD) ||
+	    !(ch->ch_c_cflag & CLOCAL))
+		ier |= UART_IER_MSI;
 	else
-			ier &= ~UART_IER_MSI;
+		ier &= ~UART_IER_MSI;
 
 	ier |= UART_IER_THRI;
 
@@ -854,10 +854,8 @@ static void cls_copy_data_from_uart_to_queue(struct channel_t *ch)
 		 * Discard character if we are ignoring the error mask.
 		*/
 		if (linestatus & error_mask)  {
-			unsigned char discard;
-
 			linestatus = 0;
-			discard = readb(&ch->ch_cls_uart->txrx);
+			readb(&ch->ch_cls_uart->txrx);
 			continue;
 		}
 
@@ -1309,6 +1307,5 @@ static void cls_vpd(struct dgnc_board *brd)
 	}
 	pr_info("\n");
 
-	if (re_map_vpdbase)
-		iounmap(re_map_vpdbase);
+	iounmap(re_map_vpdbase);
 }

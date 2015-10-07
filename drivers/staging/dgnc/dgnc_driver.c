@@ -39,7 +39,6 @@ MODULE_SUPPORTED_DEVICE("dgnc");
  */
 static int		dgnc_start(void);
 static int		dgnc_finalize_board_init(struct dgnc_board *brd);
-static void		dgnc_init_globals(void);
 static int		dgnc_found_board(struct pci_dev *pdev, int id);
 static void		dgnc_cleanup_board(struct dgnc_board *brd);
 static void		dgnc_poll_handler(ulong dummy);
@@ -64,6 +63,7 @@ static const struct file_operations dgnc_BoardFops = {
 uint			dgnc_NumBoards;
 struct dgnc_board		*dgnc_Board[MAXBOARDS];
 DEFINE_SPINLOCK(dgnc_global_lock);
+DEFINE_SPINLOCK(dgnc_poll_lock); /* Poll scheduling lock */
 uint			dgnc_Major;
 int			dgnc_poll_tick = 20;	/* Poll interval - 20 ms */
 
@@ -75,7 +75,6 @@ static struct class *dgnc_class;
 /*
  * Poller stuff
  */
-static DEFINE_SPINLOCK(dgnc_poll_lock); /* Poll scheduling lock */
 static ulong		dgnc_poll_time; /* Time of next poll */
 static uint		dgnc_poll_stop; /* Used to tell poller to stop */
 static struct timer_list dgnc_poll_timer;
@@ -216,8 +215,8 @@ static int dgnc_start(void)
 	unsigned long flags;
 	struct device *dev;
 
-	/* make sure that the globals are init'd before we do anything else */
-	dgnc_init_globals();
+	/* make sure timer is initialized before we do anything else */
+	init_timer(&dgnc_poll_timer);
 
 	/*
 	 * Register our base character device into the kernel.
@@ -698,23 +697,3 @@ static void dgnc_poll_handler(ulong dummy)
 	if (!dgnc_poll_stop)
 		add_timer(&dgnc_poll_timer);
 }
-
-/*
- * dgnc_init_globals()
- *
- * This is where we initialize the globals from the static insmod
- * configuration variables.  These are declared near the head of
- * this file.
- */
-static void dgnc_init_globals(void)
-{
-	int i = 0;
-
-	dgnc_NumBoards		= 0;
-
-	for (i = 0; i < MAXBOARDS; i++)
-		dgnc_Board[i] = NULL;
-
-	init_timer(&dgnc_poll_timer);
-}
-
