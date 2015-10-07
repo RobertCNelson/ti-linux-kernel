@@ -56,6 +56,7 @@
  * @hcc_params:		HCCPARAMS - Capability Parameters
  * @db_off:		DBOFF - Doorbell array offset
  * @run_regs_off:	RTSOFF - Runtime register space offset
+ * @hcc_params2:	HCCPARAMS2 Capability Parameters 2, xhci 1.1 only
  */
 struct xhci_cap_regs {
 	__le32	hc_capbase;
@@ -65,6 +66,7 @@ struct xhci_cap_regs {
 	__le32	hcc_params;
 	__le32	db_off;
 	__le32	run_regs_off;
+	__le32	hcc_params2; /* xhci 1.1 */
 	/* Reserved up to (CAPLENGTH - 0x1C) */
 };
 
@@ -134,6 +136,21 @@ struct xhci_cap_regs {
 /* run_regs_off bitmask - bits 0:4 reserved */
 #define	RTSOFF_MASK	(~0x1f)
 
+/* HCCPARAMS2 - hcc_params2 - bitmasks */
+/* true: HC supports U3 entry Capability */
+#define	HCC2_U3C(p)		((p) & (1 << 0))
+/* true: HC supports Configure endpoint command Max exit latency too large */
+#define	HCC2_CMC(p)		((p) & (1 << 1))
+/* true: HC supports Force Save context Capability */
+#define	HCC2_FSC(p)		((p) & (1 << 2))
+/* true: HC supports Compliance Transition Capability */
+#define	HCC2_CTC(p)		((p) & (1 << 3))
+/* true: HC support Large ESIT payload Capability > 48k */
+#define	HCC2_LEC(p)		((p) & (1 << 4))
+/* true: HC support Configuration Information Capability */
+#define	HCC2_CIC(p)		((p) & (1 << 5))
+/* true: HC support Extended TBC Capability, Isoc burst count > 65535 */
+#define	HCC2_ETC(p)		((p) & (1 << 6))
 
 /* Number of registers per port */
 #define	NUM_PORT_REGS	4
@@ -269,7 +286,11 @@ struct xhci_op_regs {
 /* CONFIG - Configure Register - config_reg bitmasks */
 /* bits 0:7 - maximum number of device slots enabled (NumSlotsEn) */
 #define MAX_DEVS(p)	((p) & 0xff)
-/* bits 8:31 - reserved and should be preserved */
+/* bit 8: U3 Entry Enabled, assert PLC when root port enters U3, xhci 1.1 */
+#define CONFIG_U3E		(1 << 8)
+/* bit 9: Configuration Information Enable, xhci 1.1 */
+#define CONFIG_CIE		(1 << 9)
+/* bits 10:31 - reserved and should be preserved */
 
 /* PORTSC - Port Status and Control Register - port_status_base bitmasks */
 /* true: device connected */
@@ -306,11 +327,16 @@ struct xhci_op_regs {
 #define	XDEV_LS			(0x2 << 10)
 #define	XDEV_HS			(0x3 << 10)
 #define	XDEV_SS			(0x4 << 10)
+#define	XDEV_SSP		(0x5 << 10)
 #define DEV_UNDEFSPEED(p)	(((p) & DEV_SPEED_MASK) == (0x0<<10))
 #define DEV_FULLSPEED(p)	(((p) & DEV_SPEED_MASK) == XDEV_FS)
 #define DEV_LOWSPEED(p)		(((p) & DEV_SPEED_MASK) == XDEV_LS)
 #define DEV_HIGHSPEED(p)	(((p) & DEV_SPEED_MASK) == XDEV_HS)
 #define DEV_SUPERSPEED(p)	(((p) & DEV_SPEED_MASK) == XDEV_SS)
+#define DEV_SUPERSPEEDPLUS(p)	(((p) & DEV_SPEED_MASK) == XDEV_SSP)
+#define DEV_SUPERSPEED_ANY(p)	(((p) & DEV_SPEED_MASK) >= XDEV_SS)
+#define DEV_PORT_SPEED(p)	(((p) >> 10) & 0x0f)
+
 /* Bits 20:23 in the Slot Context are the speed for the device */
 #define	SLOT_SPEED_FS		(XDEV_FS << 10)
 #define	SLOT_SPEED_LS		(XDEV_LS << 10)
@@ -394,6 +420,9 @@ struct xhci_op_regs {
 #define	PORT_L1DS(p)		(((p) & 0xff) << 8)
 #define	PORT_HLE		(1 << 16)
 
+/* USB3 Protocol PORTLI  Port Link Information */
+#define PORT_RX_LANES(p)	(((p) >> 16) & 0xf)
+#define PORT_TX_LANES(p)	(((p) >> 20) & 0xf)
 
 /* USB2 Protocol PORTHLPMC */
 #define PORT_HIRDM(p)((p) & 3)
@@ -519,8 +548,22 @@ struct xhci_protocol_caps {
 };
 
 #define	XHCI_EXT_PORT_MAJOR(x)	(((x) >> 24) & 0xff)
+#define	XHCI_EXT_PORT_MINOR(x)	(((x) >> 16) & 0xff)
+#define	XHCI_EXT_PORT_PSIC(x)	(((x) >> 28) & 0x0f)
 #define	XHCI_EXT_PORT_OFF(x)	((x) & 0xff)
 #define	XHCI_EXT_PORT_COUNT(x)	(((x) >> 8) & 0xff)
+
+#define	XHCI_EXT_PORT_PSIV(x)	(((x) >> 0) & 0x0f)
+#define	XHCI_EXT_PORT_PSIE(x)	(((x) >> 4) & 0x03)
+#define	XHCI_EXT_PORT_PLT(x)	(((x) >> 6) & 0x03)
+#define	XHCI_EXT_PORT_PFD(x)	(((x) >> 8) & 0x01)
+#define	XHCI_EXT_PORT_LP(x)	(((x) >> 14) & 0x03)
+#define	XHCI_EXT_PORT_PSIM(x)	(((x) >> 16) & 0xffff)
+
+#define PLT_MASK        (0x03 << 6)
+#define PLT_SYM         (0x00 << 6)
+#define PLT_ASYM_RX     (0x02 << 6)
+#define PLT_ASYM_TX     (0x03 << 6)
 
 /**
  * struct xhci_container_ctx
@@ -1448,6 +1491,14 @@ static inline unsigned int hcd_index(struct usb_hcd *hcd)
 		return 1;
 }
 
+struct xhci_hub {
+	u8	maj_rev;
+	u8	min_rev;
+	u32	*psi;		/* array of protocol speed ID entries */
+	u8	psi_count;
+	u8	psi_uid_count;
+};
+
 /* There is one xhci_hcd structure per controller */
 struct xhci_hcd {
 	struct usb_hcd *main_hcd;
@@ -1465,6 +1516,7 @@ struct xhci_hcd {
 	__u32		hcs_params2;
 	__u32		hcs_params3;
 	__u32		hcc_params;
+	__u32		hcc_params2;
 
 	spinlock_t	lock;
 
@@ -1586,6 +1638,8 @@ struct xhci_hcd {
 	unsigned int		num_usb3_ports;
 	/* Array of pointers to USB 2.0 PORTSC registers */
 	__le32 __iomem		**usb2_ports;
+	struct xhci_hub		usb2_rhub;
+	struct xhci_hub		usb3_rhub;
 	unsigned int		num_usb2_ports;
 	/* support xHCI 0.96 spec USB2 software LPM */
 	unsigned		sw_lpm_support:1;
