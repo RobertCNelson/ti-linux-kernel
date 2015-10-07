@@ -107,6 +107,11 @@ struct intel_sdvo {
 	bool color_range_auto;
 
 	/**
+	 * HDMI user specified aspect ratio
+	 */
+	enum hdmi_picture_aspect aspect_ratio;
+
+	/**
 	 * This is set if we're going to treat the device as TV-out.
 	 *
 	 * While we have these nice friendly flags for output types that ought
@@ -603,11 +608,11 @@ log_fail:
 	return false;
 }
 
-static int intel_sdvo_get_pixel_multiplier(struct drm_display_mode *mode)
+static int intel_sdvo_get_pixel_multiplier(const struct drm_display_mode *adjusted_mode)
 {
-	if (mode->clock >= 100000)
+	if (adjusted_mode->crtc_clock >= 100000)
 		return 1;
-	else if (mode->clock >= 50000)
+	else if (adjusted_mode->crtc_clock >= 50000)
 		return 2;
 	else
 		return 4;
@@ -1181,6 +1186,10 @@ static bool intel_sdvo_compute_config(struct intel_encoder *encoder,
 	if (intel_sdvo->is_tv)
 		i9xx_adjust_sdvo_tv_clock(pipe_config);
 
+	/* Set user selected PAR to incoming mode's member */
+	if (intel_sdvo->is_hdmi)
+		adjusted_mode->picture_aspect_ratio = intel_sdvo->aspect_ratio;
+
 	return true;
 }
 
@@ -1189,8 +1198,7 @@ static void intel_sdvo_pre_enable(struct intel_encoder *intel_encoder)
 	struct drm_device *dev = intel_encoder->base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_crtc *crtc = to_intel_crtc(intel_encoder->base.crtc);
-	struct drm_display_mode *adjusted_mode =
-		&crtc->config->base.adjusted_mode;
+	const struct drm_display_mode *adjusted_mode = &crtc->config->base.adjusted_mode;
 	struct drm_display_mode *mode = &crtc->config->base.mode;
 	struct intel_sdvo *intel_sdvo = to_sdvo(intel_encoder);
 	u32 sdvox;
@@ -2044,6 +2052,23 @@ intel_sdvo_set_property(struct drm_connector *connector,
 		goto done;
 	}
 
+	if (property == connector->dev->mode_config.aspect_ratio_property) {
+		switch (val) {
+		case DRM_MODE_PICTURE_ASPECT_NONE:
+			intel_sdvo->aspect_ratio = HDMI_PICTURE_ASPECT_NONE;
+			break;
+		case DRM_MODE_PICTURE_ASPECT_4_3:
+			intel_sdvo->aspect_ratio = HDMI_PICTURE_ASPECT_4_3;
+			break;
+		case DRM_MODE_PICTURE_ASPECT_16_9:
+			intel_sdvo->aspect_ratio = HDMI_PICTURE_ASPECT_16_9;
+			break;
+		default:
+			return -EINVAL;
+		}
+		goto done;
+	}
+
 #define CHECK_PROPERTY(name, NAME) \
 	if (intel_sdvo_connector->name == property) { \
 		if (intel_sdvo_connector->cur_##name == temp_value) return 0; \
@@ -2222,7 +2247,7 @@ intel_sdvo_guess_ddc_bus(struct intel_sdvo *sdvo)
  */
 static void
 intel_sdvo_select_ddc_bus(struct drm_i915_private *dev_priv,
-			  struct intel_sdvo *sdvo, u32 reg)
+			  struct intel_sdvo *sdvo)
 {
 	struct sdvo_device_mapping *mapping;
 
@@ -2239,7 +2264,7 @@ intel_sdvo_select_ddc_bus(struct drm_i915_private *dev_priv,
 
 static void
 intel_sdvo_select_i2c_bus(struct drm_i915_private *dev_priv,
-			  struct intel_sdvo *sdvo, u32 reg)
+			  struct intel_sdvo *sdvo)
 {
 	struct sdvo_device_mapping *mapping;
 	u8 pin;
@@ -2383,6 +2408,8 @@ intel_sdvo_add_hdmi_properties(struct intel_sdvo *intel_sdvo,
 		intel_attach_broadcast_rgb_property(&connector->base.base);
 		intel_sdvo->color_range_auto = true;
 	}
+	intel_attach_aspect_ratio_property(&connector->base.base);
+	intel_sdvo->aspect_ratio = HDMI_PICTURE_ASPECT_NONE;
 }
 
 static struct intel_sdvo_connector *intel_sdvo_connector_alloc(void)
@@ -2433,7 +2460,6 @@ intel_sdvo_dvi_init(struct intel_sdvo *intel_sdvo, int device)
 		 * Ensure that they get re-enabled when an interrupt happens.
 		 */
 		intel_encoder->hot_plug = intel_sdvo_enable_hotplug;
-		intel_sdvo_enable_hotplug(intel_encoder);
 	} else {
 		intel_connector->polled = DRM_CONNECTOR_POLL_CONNECT | DRM_CONNECTOR_POLL_DISCONNECT;
 	}
@@ -2925,7 +2951,7 @@ bool intel_sdvo_init(struct drm_device *dev, uint32_t sdvo_reg, bool is_sdvob)
 	intel_sdvo->sdvo_reg = sdvo_reg;
 	intel_sdvo->is_sdvob = is_sdvob;
 	intel_sdvo->slave_addr = intel_sdvo_get_slave_addr(dev, intel_sdvo) >> 1;
-	intel_sdvo_select_i2c_bus(dev_priv, intel_sdvo, sdvo_reg);
+	intel_sdvo_select_i2c_bus(dev_priv, intel_sdvo);
 	if (!intel_sdvo_init_ddc_proxy(intel_sdvo, dev))
 		goto err_i2c_bus;
 
@@ -2987,7 +3013,7 @@ bool intel_sdvo_init(struct drm_device *dev, uint32_t sdvo_reg, bool is_sdvob)
 	 */
 	intel_sdvo->base.cloneable = 0;
 
-	intel_sdvo_select_ddc_bus(dev_priv, intel_sdvo, sdvo_reg);
+	intel_sdvo_select_ddc_bus(dev_priv, intel_sdvo);
 
 	/* Set the input timing to the screen. Assume always input 0. */
 	if (!intel_sdvo_set_target_input(intel_sdvo))
