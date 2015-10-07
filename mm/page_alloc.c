@@ -2160,11 +2160,11 @@ static struct {
 	struct fault_attr attr;
 
 	u32 ignore_gfp_highmem;
-	u32 ignore_gfp_wait;
+	u32 ignore_gfp_reclaim;
 	u32 min_order;
 } fail_page_alloc = {
 	.attr = FAULT_ATTR_INITIALIZER,
-	.ignore_gfp_wait = 1,
+	.ignore_gfp_reclaim = 1,
 	.ignore_gfp_highmem = 1,
 	.min_order = 1,
 };
@@ -2202,7 +2202,7 @@ static int __init fail_page_alloc_debugfs(void)
 		return PTR_ERR(dir);
 
 	if (!debugfs_create_bool("ignore-gfp-wait", mode, dir,
-				&fail_page_alloc.ignore_gfp_wait))
+				&fail_page_alloc.ignore_gfp_reclaim))
 		goto fail;
 	if (!debugfs_create_bool("ignore-gfp-highmem", mode, dir,
 				&fail_page_alloc.ignore_gfp_highmem))
