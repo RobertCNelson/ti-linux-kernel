@@ -111,17 +111,18 @@ struct vm_area_struct;
  *
  * __GFP_IO can start physical IO.
  *
- * __GFP_FS can call down to the low-level FS. Avoids the allocator
- *   recursing into the filesystem which might already be holding locks.
+ * __GFP_FS can call down to the low-level FS. Clearing the flag avoids the
+ *   allocator recursing into the filesystem which might already be holding
+ *   locks.
  *
  * __GFP_DIRECT_RECLAIM indicates that the caller may enter direct reclaim.
  *   This flag can be cleared to avoid unnecessary delays when a fallback
  *   option is available.
  *
- * __GFP_KSWAPD_RECLAIM indicates that the caller wants kswapd when the low
- *   watermark is reached and have it reclaim pages until the high watermark
- *   is reached. A caller may wish to clear this flag when fallback options
- *   are available and the reclaim is likely to disrupt the system. The
+ * __GFP_KSWAPD_RECLAIM indicates that the caller wants to wake kswapd when
+ *   the low watermark is reached and have it reclaim pages until the high
+ *   watermark is reached. A caller may wish to clear this flag when fallback
+ *   options are available and the reclaim is likely to disrupt the system. The
  *   canonical example is THP allocation where a fallback is cheap but
  *   reclaim/compaction may cause indirect stalls.
  *
@@ -209,11 +210,6 @@ struct vm_area_struct;
  *   for buffers that are mapped to userspace (e.g. graphics) that hardware
  *   still must DMA to. cpuset limits are enforced for these allocations.
  *
- * GFP_HIGHUSER is for userspace allocations that may be mapped to userspace,
- *   do not need to be directly accessible by the kernel but that cannot
- *   move once in use. An example may be a hardware allocation that maps
- *   data directly into userspace but has no addressing limitations.
- *
  * GFP_DMA exists for historical reasons and should be avoided where possible.
  *   The flags indicates that the caller requires that the lowest zone be
  *   used (ZONE_DMA or 16M on x86-64). Ideally, this would be removed but
@@ -223,6 +219,11 @@ struct vm_area_struct;
  *
  * GFP_DMA32 is similar to GFP_DMA except that the caller requires a 32-bit
  *   address.
+ *
+ * GFP_HIGHUSER is for userspace allocations that may be mapped to userspace,
+ *   do not need to be directly accessible by the kernel but that cannot
+ *   move once in use. An example may be a hardware allocation that maps
+ *   data directly into userspace but has no addressing limitations.
  *
  * GFP_HIGHUSER_MOVABLE is for userspace allocations that the kernel does not
  *   need direct access to but can use kmap() when access is required. They
