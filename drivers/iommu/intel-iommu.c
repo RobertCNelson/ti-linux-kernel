@@ -1667,6 +1667,10 @@ static void free_dmar_iommu(struct intel_iommu *iommu)
 
 	/* free context mapping */
 	free_context_table(iommu);
+
+#ifdef CONFIG_INTEL_IOMMU_SVM
+	intel_svm_free_pasid_tables(iommu);
+#endif
 }
 
 static struct dmar_domain *alloc_domain(int flags)
@@ -3098,6 +3102,9 @@ static int __init init_dmars(void)
 
 		if (!ecap_pass_through(iommu->ecap))
 			hw_pass_through = 0;
+#ifdef CONFIG_INTEL_IOMMU_SVM
+		intel_svm_alloc_pasid_tables(iommu);
+#endif
 	}
 
 	if (iommu_pass_through)
@@ -4132,6 +4139,10 @@ static int intel_iommu_add(struct dmar_drhd_unit *dmaru)
 		ret = iommu_alloc_root_entry(iommu);
 	if (ret)
 		goto out;
+
+#ifdef CONFIG_INTEL_IOMMU_SVM
+	intel_svm_alloc_pasid_tables(iommu);
+#endif
 
 	if (dmaru->ignored) {
 		/*
