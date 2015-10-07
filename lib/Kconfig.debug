@@ -1763,6 +1763,16 @@ config DMA_API_DEBUG
 
 	  If unsure, say N.
 
+config DMA_API_DEBUG_POISON
+	bool "Poison coherent DMA buffers"
+	depends on DMA_API_DEBUG && EXPERT
+	help
+	  Poison DMA buffers returned by dma_alloc_coherent unless __GFP_ZERO
+	  is explicitly specified, to catch drivers depending on zeroed buffers
+	  without passing the correct flags.
+
+	  Only say Y if you're prepared for almost everything to break.
+
 config TEST_LKM
 	tristate "Test module loading with 'hello world' module"
 	default n
