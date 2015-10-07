@@ -18,6 +18,10 @@
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/intel-svm.h>
+#include <linux/dmar.h>
+#include <linux/interrupt.h>
+
+static irqreturn_t prq_event_thread(int irq, void *d);
 
 struct pasid_entry {
 	u64 val;
@@ -72,6 +76,65 @@ int intel_svm_free_pasid_tables(struct intel_iommu *iommu)
 		iommu->pasid_state_table = NULL;
 	}
 	idr_destroy(&iommu->pasid_idr);
+	return 0;
+}
+
+#define PRQ_ORDER 0
+int intel_svm_enable_prq(struct intel_iommu *iommu)
+{
+	struct page *pages;
+	int irq, ret;
+
+	pages = alloc_pages(GFP_KERNEL | __GFP_ZERO, PRQ_ORDER);
+	if (!pages) {
+		pr_warn("IOMMU: %s: Failed to allocate page request queue\n",
+			iommu->name);
+		return -ENOMEM;
+	}
+	iommu->prq = page_address(pages);
+
+	irq = dmar_alloc_hwirq(DMAR_UNITS_SUPPORTED + iommu->seq_id, iommu->node, iommu);
+	if (irq <= 0) {
+		pr_err("IOMMU: %s: Failed to create IRQ vector for page request queue\n",
+		       iommu->name);
+		ret = -EINVAL;
+	err:
+		free_pages((unsigned long)iommu->prq, PRQ_ORDER);
+		iommu->prq = NULL;
+		return ret;
+	}
+	iommu->pr_irq = irq;
+
+	snprintf(iommu->prq_name, sizeof(iommu->prq_name), "dmar%d-prq", iommu->seq_id);
+
+	ret = request_threaded_irq(irq, NULL, prq_event_thread, IRQF_ONESHOT,
+				   iommu->prq_name, iommu);
+	if (ret) {
+		pr_err("IOMMU: %s: Failed to request IRQ for page request queue\n",
+		       iommu->name);
+		dmar_free_hwirq(irq);
+		goto err;
+	}
+	dmar_writeq(iommu->reg + DMAR_PQH_REG, 0ULL);
+	dmar_writeq(iommu->reg + DMAR_PQT_REG, 0ULL);
+	dmar_writeq(iommu->reg + DMAR_PQA_REG, virt_to_phys(iommu->prq) | PRQ_ORDER);
+
+	return 0;
+}
+
+int intel_svm_finish_prq(struct intel_iommu *iommu)
+{
+	dmar_writeq(iommu->reg + DMAR_PQH_REG, 0ULL);
+	dmar_writeq(iommu->reg + DMAR_PQT_REG, 0ULL);
+	dmar_writeq(iommu->reg + DMAR_PQA_REG, 0ULL);
+
+	free_irq(iommu->pr_irq, iommu);
+	dmar_free_hwirq(iommu->pr_irq);
+	iommu->pr_irq = 0;
+
+	free_pages((unsigned long)iommu->prq, PRQ_ORDER);
+	iommu->prq = NULL;
+
 	return 0;
 }
 
@@ -292,3 +355,11 @@ int intel_svm_unbind_mm(struct device *dev, int pasid)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(intel_svm_unbind_mm);
+
+
+static irqreturn_t prq_event_thread(int irq, void *d)
+{
+	struct intel_iommu *iommu = d;
+	printk("PRQ event on %s\n", iommu->name);
+	return IRQ_HANDLED;
+}

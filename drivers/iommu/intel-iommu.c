@@ -1687,8 +1687,11 @@ static void free_dmar_iommu(struct intel_iommu *iommu)
 	free_context_table(iommu);
 
 #ifdef CONFIG_INTEL_IOMMU_SVM
-	if (pasid_enabled(iommu))
+	if (pasid_enabled(iommu)) {
+		if (ecap_prs(iommu->ecap))
+			intel_svm_finish_prq(iommu);
 		intel_svm_free_pasid_tables(iommu);
+	}
 #endif
 }
 
@@ -3204,6 +3207,13 @@ domains_done:
 
 		iommu_flush_write_buffer(iommu);
 
+#ifdef CONFIG_INTEL_IOMMU_SVM
+		if (pasid_enabled(iommu) && ecap_prs(iommu->ecap)) {
+			ret = intel_svm_enable_prq(iommu);
+			if (ret)
+				goto free_iommu;
+		}
+#endif
 		ret = dmar_set_interrupt(iommu);
 		if (ret)
 			goto free_iommu;
@@ -4148,6 +4158,14 @@ static int intel_iommu_add(struct dmar_drhd_unit *dmaru)
 
 	intel_iommu_init_qi(iommu);
 	iommu_flush_write_buffer(iommu);
+
+#ifdef CONFIG_INTEL_IOMMU_SVM
+	if (pasid_enabled(iommu) && ecap_prs(iommu->ecap)) {
+		ret = intel_svm_enable_prq(iommu);
+		if (ret)
+			goto disable_iommu;
+	}
+#endif
 	ret = dmar_set_interrupt(iommu);
 	if (ret)
 		goto disable_iommu;
@@ -4952,6 +4970,8 @@ int intel_iommu_enable_pasid(struct intel_svm *svm)
 				ctx_lo |= CONTEXT_TT_PT_PASID << 2;
 		}
 		ctx_lo |= CONTEXT_PASIDE;
+		if (svm->dev_iotlb && ecap_prs(svm->iommu->ecap))
+			ctx_lo |= CONTEXT_PRS;
 		context[0].lo = ctx_lo;
 		wmb();
 		svm->iommu->flush.flush_context(svm->iommu, svm->did,

@@ -370,6 +370,7 @@ enum {
 
 struct pasid_entry;
 struct pasid_state_entry;
+struct page_req_dsc;
 
 struct intel_iommu {
 	void __iomem	*reg; /* Pointer to hardware regs, virtual addr */
@@ -402,6 +403,8 @@ struct intel_iommu {
 	 * told to. But while it's all driver-arbitrated, we're fine. */
 	struct pasid_entry *pasid_table;
 	struct pasid_state_entry *pasid_state_table;
+	struct page_req_dsc *prq;
+	unsigned char prq_name[16];    /* Name for PRQ interrupt */
 	struct idr pasid_idr;
 #endif
 	struct q_inval  *qi;            /* Queued invalidation info */
@@ -445,6 +448,8 @@ extern int dmar_ir_support(void);
 
 extern int intel_svm_alloc_pasid_tables(struct intel_iommu *iommu);
 extern int intel_svm_free_pasid_tables(struct intel_iommu *iommu);
+extern int intel_svm_enable_prq(struct intel_iommu *iommu);
+extern int intel_svm_finish_prq(struct intel_iommu *iommu);
 
 struct intel_svm {
 	struct kref kref;
