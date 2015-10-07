@@ -109,9 +109,9 @@ static inline void rb_link_node_rcu(struct rb_node *node, struct rb_node *parent
  * @root:	'rb_root *' of the rbtree.
  * @field:	the name of the rb_node field within 'type'.
  *
- * This function provides a similar guarantee as list_for_each_entry_safe() and
- * allows the iteration to continue independent of changes to @pos by the body
- * of the loop.
+ * rbtree_postorder_for_each_entry_safe() provides a similar guarantee as
+ * list_for_each_entry_safe() and allows the iteration to continue independent
+ * of changes to @pos by the body of the loop.
  *
  * Note, however, that it cannot handle other modifications that re-order the
  * rbtree it is iterating over. This includes calling rb_erase() on @pos, as
