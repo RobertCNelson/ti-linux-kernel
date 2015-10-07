@@ -14,6 +14,7 @@ config COMMON_CLK
 	select HAVE_CLK_PREPARE
 	select CLKDEV_LOOKUP
 	select SRCU
+	select RATIONAL
 	---help---
 	  The common clock framework is a single definition of struct
 	  clk, useful across many platforms, as well as an
@@ -67,6 +68,16 @@ config COMMON_CLK_SI5351
 	---help---
 	  This driver supports Silicon Labs 5351A/B/C programmable clock
 	  generators.
+
+config COMMON_CLK_SI514
+	tristate "Clock driver for SiLabs 514 devices"
+	depends on I2C
+	depends on OF
+	select REGMAP_I2C
+	help
+	---help---
+	  This driver supports the Silicon Labs 514 programmable clock
+	  generator.
 
 config COMMON_CLK_SI570
 	tristate "Clock driver for SiLabs 570 and compatible devices"
