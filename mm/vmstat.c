@@ -593,9 +593,7 @@ void zone_statistics(struct zone *preferred_zone, struct zone *z, gfp_t flags)
 }
 
 /*
- * Determine the per node value of a stat item. This function
- * is called frequently in a NUMA machine, so try to be as
- * frugal as possible.
+ * Determine the per node value of a stat item.
  */
 unsigned long node_page_state(int node, enum zone_stat_item item)
 {
