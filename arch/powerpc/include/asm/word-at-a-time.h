@@ -40,6 +40,8 @@ static inline bool has_zero(unsigned long val, unsigned long *data, const struct
 	return (val + c->high_bits) & ~rhs;
 }
 
+#define zero_bytemask(mask) (~1ul << __fls(mask))
+
 #else
 
 #ifdef CONFIG_64BIT
