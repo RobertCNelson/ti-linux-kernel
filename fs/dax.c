@@ -534,6 +534,13 @@ int __dax_pmd_fault(struct vm_area_struct *vma, unsigned long address,
 	unsigned long pfn;
 	int result = 0;
 
+	/*
+	 * There is currently a deadlock in the DAX PMD fault path.  Disable
+	 * this path and fall back to the normal dax_fault() path for now
+	 * while we rework locking.
+	 */
+	return VM_FAULT_FALLBACK;
+
 	/* Fall back to PTEs if we're going to COW */
 	if (write && !(vma->vm_flags & VM_SHARED))
 		return VM_FAULT_FALLBACK;
