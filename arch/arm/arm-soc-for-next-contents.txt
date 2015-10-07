@@ -1,0 +1,56 @@
+fixes
+	<no branch> (0af822110871400908d5b6f83a8908c45f881d8f)
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-fixes-4.3
+	patch
+		arm-cci500: Don't enable PMU driver by default
+	<no branch> (4776dbb3583d10969f991cc89da781884c15979d)
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-fixes
+	<no branch> (f594297830b29c8204c421fafe66001178ac0f9a)
+		https://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-fixes-for-4.3
+	<no branch> (56e86dd4bbeb66a7ad67e20fa045c6f51b4da571)
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-fixes-for-v4.3
+
+next/cleanup
+	renesas/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-cleanup-for-v4.4
+	efm32/cleanup
+		git://git.pengutronix.de/git/ukl/linux tags/efm32-for-4.4-rc1
+
+next/soc
+	renesas/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-for-v4.4
+		contains renesas/clk
+	at91/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-soc
+
+next/dt
+	hisi/dt
+		git://github.com/hisilicon/linux-hisi tags/hip05-dt-for-4.3
+	st/dt
+		https://git.kernel.org/pub/scm/linux/kernel/git/mcoquelin/sti tags/sti-dt-for-v4.4-1
+	at91/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-dt
+	xgene/dt
+		https://github.com/AppliedMicro/xgene-next tags/xgene-dts-for-v4.4-1
+	socfpga/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/dinguyen/linux tags/socfpga_dts_for_v4.4
+	patch
+		arm64: dts: add all hi6220 uart nodes
+
+next/defconfig
+	renesas/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig-for-v4.4
+	broadcom/defconfig
+		http://github.com/Broadcom/stblinux tags/arm-soc/for-4.4/defconfig
+	patch
+		ARM: multi_v7_defconfig: Add missing QCOM APQ8064 configs
+		ARM: multi_v7_defconfig: Enable common Rockchip devices/busses
+		ARM: multi_v7_defconfig: Enable common regulators for rockchip boards
+		ARM: multi_v7_defconfig: Enable Rockchip display support
+		ARM: multi_v7_defconfig: Enable the Rockchip USB 2.0 phy
+		ARM: multi_v7_defconfig: Support RTC devices commonly used on Rockchip boards
+
+next/drivers
+	renesas/clk
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-clk-for-v4.4
+
