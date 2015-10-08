@@ -130,7 +130,7 @@ ENDPROC(cpu_do_resume)
  *	- pgd_phys - physical address of new TTB
  */
 ENTRY(cpu_do_switch_mm)
-	mmid	w1, x1				// get mm->context.id
+	mmid	x1, x1				// get mm->context.id
 	bfi	x0, x1, #48, #16		// set the ASID
 	msr	ttbr0_el1, x0			// set TTBR0
 	isb
@@ -146,8 +146,8 @@ ENDPROC(cpu_do_switch_mm)
  *	value of the SCTLR_EL1 register.
  */
 ENTRY(__cpu_setup)
-	tlbi	vmalle1is			// invalidate I + D TLBs
-	dsb	ish
+	tlbi	vmalle1				// Invalidate local TLB
+	dsb	nsh
 
 	mov	x0, #3 << 20
 	msr	cpacr_el1, x0			// Enable FP/ASIMD

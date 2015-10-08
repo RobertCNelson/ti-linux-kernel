@@ -41,7 +41,7 @@
  *	fixed mappings and modules
  */
 #define VMEMMAP_SIZE		ALIGN((1UL << (VA_BITS - PAGE_SHIFT)) * sizeof(struct page), PUD_SIZE)
-#define VMALLOC_START		(UL(0xffffffffffffffff) << VA_BITS)
+#define VMALLOC_START		(VA_START)
 #define VMALLOC_END		(PAGE_OFFSET - PUD_SIZE - VMEMMAP_SIZE - SZ_64K)
 
 #define vmemmap			((struct page *)(VMALLOC_END + SZ_64K))
@@ -646,10 +646,10 @@ static inline void update_mmu_cache(struct vm_area_struct *vma,
 				    unsigned long addr, pte_t *ptep)
 {
 	/*
-	 * set_pte() does not have a DSB for user mappings, so make sure that
-	 * the page table write is visible.
+	 * We don't do anything here, so there's a very small chance of
+	 * us retaking a user fault which we just fixed up. The alternative
+	 * is doing a dsb(ishst), but that penalises the fastpath.
 	 */
-	dsb(ishst);
 }
 
 #define update_mmu_cache_pmd(vma, address, pmd) do { } while (0)
