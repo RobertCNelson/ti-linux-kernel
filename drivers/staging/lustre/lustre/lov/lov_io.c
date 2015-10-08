@@ -90,7 +90,6 @@ static void lov_io_sub_inherit(struct cl_io *io, struct lov_io *lio,
 	case CIT_SETATTR: {
 		io->u.ci_setattr.sa_attr = parent->u.ci_setattr.sa_attr;
 		io->u.ci_setattr.sa_valid = parent->u.ci_setattr.sa_valid;
-		io->u.ci_setattr.sa_capa = parent->u.ci_setattr.sa_capa;
 		if (cl_io_is_trunc(io)) {
 			loff_t new_size = parent->u.ci_setattr.sa_attr.lvb_size;
 
@@ -111,7 +110,6 @@ static void lov_io_sub_inherit(struct cl_io *io, struct lov_io *lio,
 	case CIT_FSYNC: {
 		io->u.ci_fsync.fi_start = start;
 		io->u.ci_fsync.fi_end = end;
-		io->u.ci_fsync.fi_capa = parent->u.ci_fsync.fi_capa;
 		io->u.ci_fsync.fi_fid = parent->u.ci_fsync.fi_fid;
 		io->u.ci_fsync.fi_mode = parent->u.ci_fsync.fi_mode;
 		break;
@@ -729,6 +727,8 @@ static int lov_io_fault_start(const struct lu_env *env,
 	fio = &ios->cis_io->u.ci_fault;
 	lio = cl2lov_io(env, ios);
 	sub = lov_sub_get(env, lio, lov_page_stripe(fio->ft_page));
+	if (IS_ERR(sub))
+		return PTR_ERR(sub);
 	sub->sub_io->u.ci_fault.ft_nob = fio->ft_nob;
 	lov_sub_put(sub);
 	return lov_io_start(env, ios);
