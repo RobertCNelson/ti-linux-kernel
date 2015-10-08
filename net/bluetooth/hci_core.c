@@ -1385,6 +1385,9 @@ static int hci_dev_do_open(struct hci_dev *hdev)
 		goto done;
 	}
 
+	set_bit(HCI_RUNNING, &hdev->flags);
+	hci_notify(hdev, HCI_DEV_OPEN);
+
 	atomic_set(&hdev->cmd_cnt, 1);
 	set_bit(HCI_INIT, &hdev->flags);
 
@@ -1465,6 +1468,9 @@ static int hci_dev_do_open(struct hci_dev *hdev)
 			kfree_skb(hdev->sent_cmd);
 			hdev->sent_cmd = NULL;
 		}
+
+		clear_bit(HCI_RUNNING, &hdev->flags);
+		hci_notify(hdev, HCI_DEV_CLOSE);
 
 		hdev->close(hdev);
 		hdev->flags &= BIT(HCI_RAW);
@@ -1648,6 +1654,9 @@ int hci_dev_do_close(struct hci_dev *hdev)
 		kfree_skb(hdev->sent_cmd);
 		hdev->sent_cmd = NULL;
 	}
+
+	clear_bit(HCI_RUNNING, &hdev->flags);
+	hci_notify(hdev, HCI_DEV_CLOSE);
 
 	/* After this point our queues are empty
 	 * and no tasks are scheduled. */
@@ -3530,6 +3539,11 @@ static void hci_send_frame(struct hci_dev *hdev, struct sk_buff *skb)
 	/* Get rid of skb owner, prior to sending to the driver. */
 	skb_orphan(skb);
 
+	if (!test_bit(HCI_RUNNING, &hdev->flags)) {
+		kfree_skb(skb);
+		return;
+	}
+
 	err = hdev->send(hdev, skb);
 	if (err < 0) {
 		BT_ERR("%s sending frame failed (%d)", hdev->name, err);
@@ -3579,6 +3593,25 @@ void *hci_sent_cmd_data(struct hci_dev *hdev, __u16 opcode)
 
 	return hdev->sent_cmd->data + HCI_COMMAND_HDR_SIZE;
 }
+
+/* Send HCI command and wait for command commplete event */
+struct sk_buff *hci_cmd_sync(struct hci_dev *hdev, u16 opcode, u32 plen,
+			     const void *param, u32 timeout)
+{
+	struct sk_buff *skb;
+
+	if (!test_bit(HCI_UP, &hdev->flags))
+		return ERR_PTR(-ENETDOWN);
+
+	bt_dev_dbg(hdev, "opcode 0x%4.4x plen %d", opcode, plen);
+
+	hci_req_lock(hdev);
+	skb = __hci_cmd_sync(hdev, opcode, plen, param, timeout);
+	hci_req_unlock(hdev);
+
+	return skb;
+}
+EXPORT_SYMBOL(hci_cmd_sync);
 
 /* Send ACL data */
 static void hci_add_acl_hdr(struct sk_buff *skb, __u16 handle, __u16 flags)
