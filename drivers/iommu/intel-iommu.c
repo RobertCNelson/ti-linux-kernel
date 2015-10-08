@@ -1447,9 +1447,14 @@ iommu_support_dev_iotlb (struct dmar_domain *domain, struct intel_iommu *iommu,
 	if (!pci_find_ext_capability(pdev, PCI_EXT_CAP_ID_ATS))
 		return NULL;
 
-	if (!dmar_find_matched_atsr_unit(pdev))
-		return NULL;
-
+	if (!dmar_find_matched_atsr_unit(pdev)) {
+		if (intel_iommu_pasid28 && IS_GFX_DEVICE(pdev) &&
+		    pdev->vendor == 0x8086) {
+			pr_warn("BIOS denies ATSR capability for %s; assuming it lies\n",
+				dev_name(info->dev));
+		} else
+			return NULL;
+	}
 	return info;
 }
 
