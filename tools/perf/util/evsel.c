@@ -9,10 +9,11 @@
 
 #include <byteswap.h>
 #include <linux/bitops.h>
-#include <api/fs/debugfs.h>
+#include <api/fs/tracing_path.h>
 #include <traceevent/event-parse.h>
 #include <linux/hw_breakpoint.h>
 #include <linux/perf_event.h>
+#include <linux/err.h>
 #include <sys/resource.h>
 #include "asm/bug.h"
 #include "callchain.h"
@@ -225,11 +226,17 @@ struct perf_evsel *perf_evsel__new_idx(struct perf_event_attr *attr, int idx)
 	return evsel;
 }
 
+/*
+ * Returns pointer with encoded error via <linux/err.h> interface.
+ */
 struct perf_evsel *perf_evsel__newtp_idx(const char *sys, const char *name, int idx)
 {
 	struct perf_evsel *evsel = zalloc(perf_evsel__object.size);
+	int err = -ENOMEM;
 
-	if (evsel != NULL) {
+	if (evsel == NULL) {
+		goto out_err;
+	} else {
 		struct perf_event_attr attr = {
 			.type	       = PERF_TYPE_TRACEPOINT,
 			.sample_type   = (PERF_SAMPLE_RAW | PERF_SAMPLE_TIME |
@@ -240,8 +247,10 @@ struct perf_evsel *perf_evsel__newtp_idx(const char *sys, const char *name, int 
 			goto out_free;
 
 		evsel->tp_format = trace_event__tp_format(sys, name);
-		if (evsel->tp_format == NULL)
+		if (IS_ERR(evsel->tp_format)) {
+			err = PTR_ERR(evsel->tp_format);
 			goto out_free;
+		}
 
 		event_attr_init(&attr);
 		attr.config = evsel->tp_format->id;
@@ -254,7 +263,8 @@ struct perf_evsel *perf_evsel__newtp_idx(const char *sys, const char *name, int 
 out_free:
 	zfree(&evsel->name);
 	free(evsel);
-	return NULL;
+out_err:
+	return ERR_PTR(err);
 }
 
 const char *perf_evsel__hw_names[PERF_COUNT_HW_MAX] = {
@@ -872,6 +882,9 @@ void perf_evsel__config(struct perf_evsel *evsel, struct record_opts *opts)
 		attr->clockid = opts->clockid;
 	}
 
+	if (evsel->precise_max)
+		perf_event_attr__set_max_precise_ip(attr);
+
 	/*
 	 * Apply event specific term settings,
 	 * it overloads any global configuration.
@@ -1168,7 +1181,7 @@ static void __p_sample_type(char *buf, size_t size, u64 value)
 		bit_name(READ), bit_name(CALLCHAIN), bit_name(ID), bit_name(CPU),
 		bit_name(PERIOD), bit_name(STREAM_ID), bit_name(RAW),
 		bit_name(BRANCH_STACK), bit_name(REGS_USER), bit_name(STACK_USER),
-		bit_name(IDENTIFIER), bit_name(REGS_INTR),
+		bit_name(IDENTIFIER), bit_name(REGS_INTR), bit_name(DATA_SRC),
 		{ .name = NULL, }
 	};
 #undef bit_name
