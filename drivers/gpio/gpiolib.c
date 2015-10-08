@@ -47,8 +47,6 @@
  */
 DEFINE_SPINLOCK(gpio_lock);
 
-#define GPIO_OFFSET_VALID(chip, offset) (offset >= 0 && offset < chip->ngpio)
-
 static DEFINE_MUTEX(gpio_lookup_lock);
 static LIST_HEAD(gpio_lookup_list);
 LIST_HEAD(gpio_chips);
@@ -219,6 +217,68 @@ static int gpiochip_add_to_list(struct gpio_chip *chip)
 }
 
 /**
+ * Convert a GPIO name to its descriptor
+ */
+static struct gpio_desc *gpio_name_to_desc(const char * const name)
+{
+	struct gpio_chip *chip;
+	unsigned long flags;
+
+	spin_lock_irqsave(&gpio_lock, flags);
+
+	list_for_each_entry(chip, &gpio_chips, list) {
+		int i;
+
+		for (i = 0; i != chip->ngpio; ++i) {
+			struct gpio_desc *gpio = &chip->desc[i];
+
+			if (!gpio->name)
+				continue;
+
+			if (!strcmp(gpio->name, name)) {
+				spin_unlock_irqrestore(&gpio_lock, flags);
+				return gpio;
+			}
+		}
+	}
+
+	spin_unlock_irqrestore(&gpio_lock, flags);
+
+	return NULL;
+}
+
+/*
+ * Takes the names from gc->names and checks if they are all unique. If they
+ * are, they are assigned to their gpio descriptors.
+ *
+ * Returns -EEXIST if one of the names is already used for a different GPIO.
+ */
+static int gpiochip_set_desc_names(struct gpio_chip *gc)
+{
+	int i;
+
+	if (!gc->names)
+		return 0;
+
+	/* First check all names if they are unique */
+	for (i = 0; i != gc->ngpio; ++i) {
+		struct gpio_desc *gpio;
+
+		gpio = gpio_name_to_desc(gc->names[i]);
+		if (gpio)
+			dev_warn(gc->dev, "Detected name collision for "
+				 "GPIO name '%s'\n",
+				 gc->names[i]);
+	}
+
+	/* Then add all names to the GPIO descriptors */
+	for (i = 0; i != gc->ngpio; ++i)
+		gc->desc[i].name = gc->names[i];
+
+	return 0;
+}
+
+/**
  * gpiochip_add() - register a gpio_chip
  * @chip: the chip to register, with chip->base initialized
  * Context: potentially before irqs will work
@@ -290,6 +350,10 @@ int gpiochip_add(struct gpio_chip *chip)
 	if (!chip->owner && chip->dev && chip->dev->driver)
 		chip->owner = chip->dev->driver->owner;
 
+	status = gpiochip_set_desc_names(chip);
+	if (status)
+		goto err_remove_from_list;
+
 	status = of_gpiochip_add(chip);
 	if (status)
 		goto err_remove_chip;
@@ -310,6 +374,7 @@ err_remove_chip:
 	acpi_gpiochip_remove(chip);
 	gpiochip_free_hogs(chip);
 	of_gpiochip_remove(chip);
+err_remove_from_list:
 	spin_lock_irqsave(&gpio_lock, flags);
 	list_del(&chip->list);
 	spin_unlock_irqrestore(&gpio_lock, flags);
@@ -928,7 +993,7 @@ const char *gpiochip_is_requested(struct gpio_chip *chip, unsigned offset)
 {
 	struct gpio_desc *desc;
 
-	if (!GPIO_OFFSET_VALID(chip, offset))
+	if (offset >= chip->ngpio)
 		return NULL;
 
 	desc = &chip->desc[offset];
@@ -2308,14 +2373,19 @@ static void gpiolib_dbg_show(struct seq_file *s, struct gpio_chip *chip)
 	int			is_irq;
 
 	for (i = 0; i < chip->ngpio; i++, gpio++, gdesc++) {
-		if (!test_bit(FLAG_REQUESTED, &gdesc->flags))
+		if (!test_bit(FLAG_REQUESTED, &gdesc->flags)) {
+			if (gdesc->name) {
+				seq_printf(s, " gpio-%-3d (%-20.20s)\n",
+					   gpio, gdesc->name);
+			}
 			continue;
+		}
 
 		gpiod_get_direction(gdesc);
 		is_out = test_bit(FLAG_IS_OUT, &gdesc->flags);
 		is_irq = test_bit(FLAG_USED_AS_IRQ, &gdesc->flags);
-		seq_printf(s, " gpio-%-3d (%-20.20s) %s %s %s",
-			gpio, gdesc->label,
+		seq_printf(s, " gpio-%-3d (%-20.20s|%-20.20s) %s %s %s",
+			gpio, gdesc->name ? gdesc->name : "", gdesc->label,
 			is_out ? "out" : "in ",
 			chip->get
 				? (chip->get(chip, i) ? "hi" : "lo")
