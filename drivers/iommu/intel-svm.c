@@ -356,10 +356,121 @@ int intel_svm_unbind_mm(struct device *dev, int pasid)
 }
 EXPORT_SYMBOL_GPL(intel_svm_unbind_mm);
 
+/* Page request queue descriptor */
+struct page_req_dsc {
+	u64 srr:1;
+	u64 bof:1;
+	u64 pasid_present:1;
+	u64 lpig:1;
+	u64 pasid:20;
+	u64 bus:8;
+	u64 private:23;
+	u64 prg_index:9;
+	u64 rd_req:1;
+	u64 wr_req:1;
+	u64 exe_req:1;
+	u64 priv_req:1;
+	u64 devfn:8;
+	u64 addr:52;
+};
 
+#define PRQ_RING_MASK ((0x1000 << PRQ_ORDER) - 0x10)
 static irqreturn_t prq_event_thread(int irq, void *d)
 {
 	struct intel_iommu *iommu = d;
-	printk("PRQ event on %s\n", iommu->name);
-	return IRQ_HANDLED;
+	struct intel_svm *svm = NULL;
+	int head, tail, handled = 0;
+
+	tail = dmar_readq(iommu->reg + DMAR_PQT_REG) & PRQ_RING_MASK;
+	head = dmar_readq(iommu->reg + DMAR_PQH_REG) & PRQ_RING_MASK;
+	while (head != tail) {
+		struct vm_area_struct *vma;
+		struct page_req_dsc *req;
+		struct qi_desc resp;
+		int ret, result;
+		u64 address;
+
+		handled = 1;
+
+		req = &iommu->prq[head / sizeof(*req)];
+
+		result = QI_RESP_INVALID;
+		address = req->addr << PAGE_SHIFT;
+		if (!req->pasid_present) {
+			pr_err("%s: Page request without PASID: %08llx %08llx\n",
+			       iommu->name, ((unsigned long long *)req)[0],
+			       ((unsigned long long *)req)[1]);
+			goto inval_req;
+		}
+
+		if (!svm || svm->pasid != req->pasid) {
+			mutex_lock(&pasid_mutex);
+			if (svm)
+				kref_put(&svm->kref, &intel_mm_free);
+
+			svm = idr_find(&iommu->pasid_idr, req->pasid);
+			if (!svm) {
+				pr_err("%s: Page request for invalid PASID %d: %08llx %08llx\n",
+				       iommu->name, req->pasid, ((unsigned long long *)req)[0],
+				       ((unsigned long long *)req)[1]);
+				mutex_unlock(&pasid_mutex);
+				goto inval_req;
+			}
+			/* Strictly speaking, we shouldn't need this. It is forbidden
+			   to unbind the PASID while there may still be requests in
+			   flight. But let's do it anyway. */
+			kref_get(&svm->kref);
+			mutex_unlock(&pasid_mutex);
+		}
+
+		result = QI_RESP_FAILURE;
+		down_read(&svm->mm->mmap_sem);
+		vma = find_extend_vma(svm->mm, address);
+		if (!vma || address < vma->vm_start)
+			goto hard_fault;
+
+		ret = handle_mm_fault(svm->mm, vma, address,
+				      req->wr_req ? FAULT_FLAG_WRITE : 0);
+		if (ret & VM_FAULT_ERROR)
+			goto hard_fault;
+
+		result = QI_RESP_SUCCESS;
+	hard_fault:
+		up_read(&svm->mm->mmap_sem);
+	inval_req:
+		/* Accounting for major/minor faults? */
+
+		if (req->lpig) {
+			/* Page Group Response */
+			resp.low = QI_PGRP_PASID(req->pasid) |
+				QI_PGRP_DID((req->bus << 8) | req->devfn) |
+				QI_PGRP_PASID_P(req->pasid_present) |
+				QI_PGRP_RESP_TYPE;
+			resp.high = QI_PGRP_IDX(req->prg_index) |
+				QI_PGRP_PRIV(req->private) | QI_PGRP_RESP_CODE(result);
+
+			qi_submit_sync(&resp, svm->iommu);
+		} else if (req->srr) {
+			/* Page Stream Response */
+			resp.low = QI_PSTRM_IDX(req->prg_index) |
+				QI_PSTRM_PRIV(req->private) | QI_PSTRM_BUS(req->bus) |
+				QI_PSTRM_PASID(req->pasid) | QI_PSTRM_RESP_TYPE;
+			resp.high = QI_PSTRM_ADDR(address) | QI_PSTRM_DEVFN(req->devfn) |
+				QI_PSTRM_RESP_CODE(result);
+
+			qi_submit_sync(&resp, svm->iommu);
+		}
+
+		head = (head + sizeof(*req)) & PRQ_RING_MASK;
+	}
+
+	if (svm) {
+		mutex_lock(&pasid_mutex);
+		kref_put(&svm->kref, &intel_mm_free);
+		mutex_unlock(&pasid_mutex);
+	}
+
+	dmar_writeq(iommu->reg + DMAR_PQH_REG, tail);
+
+	return IRQ_RETVAL(handled);
 }
