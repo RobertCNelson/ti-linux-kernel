@@ -70,7 +70,7 @@ static inline void hlist_bl_set_first(struct hlist_bl_head *h,
 
 static inline int hlist_bl_empty(const struct hlist_bl_head *h)
 {
-	return !((unsigned long)h->first & ~LIST_BL_LOCKMASK);
+	return !((unsigned long)READ_ONCE(h->first) & ~LIST_BL_LOCKMASK);
 }
 
 static inline void hlist_bl_add_head(struct hlist_bl_node *n,
@@ -93,9 +93,10 @@ static inline void __hlist_bl_del(struct hlist_bl_node *n)
 	LIST_BL_BUG_ON((unsigned long)n & LIST_BL_LOCKMASK);
 
 	/* pprev may be `first`, so be careful not to lose the lock bit */
-	*pprev = (struct hlist_bl_node *)
+	WRITE_ONCE(*pprev,
+		   (struct hlist_bl_node *)
 			((unsigned long)next |
-			 ((unsigned long)*pprev & LIST_BL_LOCKMASK));
+			 ((unsigned long)*pprev & LIST_BL_LOCKMASK)));
 	if (next)
 		next->pprev = pprev;
 }
