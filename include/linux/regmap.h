@@ -296,6 +296,8 @@ typedef int (*regmap_hw_reg_read)(void *context, unsigned int reg,
 				  unsigned int *val);
 typedef int (*regmap_hw_reg_write)(void *context, unsigned int reg,
 				   unsigned int val);
+typedef int (*regmap_hw_reg_update_bits)(void *context, unsigned int reg,
+					 unsigned int mask, unsigned int val);
 typedef struct regmap_async *(*regmap_hw_async_alloc)(void);
 typedef void (*regmap_hw_free_context)(void *context);
 
@@ -335,6 +337,7 @@ struct regmap_bus {
 	regmap_hw_gather_write gather_write;
 	regmap_hw_async_write async_write;
 	regmap_hw_reg_write reg_write;
+	regmap_hw_reg_update_bits reg_update_bits;
 	regmap_hw_read read;
 	regmap_hw_reg_read reg_read;
 	regmap_hw_free_context free_context;
@@ -803,6 +806,8 @@ struct regmap_irq {
  *
  * @status_base: Base status register address.
  * @mask_base:   Base mask register address.
+ * @unmask_base:  Base unmask register address. for chips who have
+ *                separate mask and unmask registers
  * @ack_base:    Base ack address. If zero then the chip is clear on read.
  *               Using zero value is possible with @use_ack bit.
  * @wake_base:   Base address for wake enables.  If zero unsupported.
@@ -810,6 +815,7 @@ struct regmap_irq {
  * @init_ack_masked: Ack all masked interrupts once during initalization.
  * @mask_invert: Inverted mask register: cleared bits are masked out.
  * @use_ack:     Use @ack register even if it is zero.
+ * @ack_invert:  Inverted ack register: cleared bits for ack.
  * @wake_invert: Inverted wake register: cleared bits are wake enabled.
  * @runtime_pm:  Hold a runtime PM lock on the device when accessing it.
  *
@@ -823,12 +829,14 @@ struct regmap_irq_chip {
 
 	unsigned int status_base;
 	unsigned int mask_base;
+	unsigned int unmask_base;
 	unsigned int ack_base;
 	unsigned int wake_base;
 	unsigned int irq_reg_stride;
 	bool init_ack_masked:1;
 	bool mask_invert:1;
 	bool use_ack:1;
+	bool ack_invert:1;
 	bool wake_invert:1;
 	bool runtime_pm:1;
 
