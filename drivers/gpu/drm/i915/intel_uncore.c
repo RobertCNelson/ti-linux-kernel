@@ -27,7 +27,7 @@
 
 #include <linux/pm_runtime.h>
 
-#define FORCEWAKE_ACK_TIMEOUT_MS 2
+#define FORCEWAKE_ACK_TIMEOUT_MS 50
 
 #define __raw_i915_read8(dev_priv__, reg__) readb((dev_priv__)->regs + (reg__))
 #define __raw_i915_write8(dev_priv__, reg__, val__) writeb(val__, (dev_priv__)->regs + (reg__))
@@ -1429,21 +1429,21 @@ static int ironlake_do_reset(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int ret;
 
-	I915_WRITE(MCHBAR_MIRROR_BASE + ILK_GDSR,
+	I915_WRITE(ILK_GDSR,
 		   ILK_GRDOM_RENDER | ILK_GRDOM_RESET_ENABLE);
-	ret = wait_for((I915_READ(MCHBAR_MIRROR_BASE + ILK_GDSR) &
+	ret = wait_for((I915_READ(ILK_GDSR) &
 			ILK_GRDOM_RESET_ENABLE) == 0, 500);
 	if (ret)
 		return ret;
 
-	I915_WRITE(MCHBAR_MIRROR_BASE + ILK_GDSR,
+	I915_WRITE(ILK_GDSR,
 		   ILK_GRDOM_MEDIA | ILK_GRDOM_RESET_ENABLE);
-	ret = wait_for((I915_READ(MCHBAR_MIRROR_BASE + ILK_GDSR) &
+	ret = wait_for((I915_READ(ILK_GDSR) &
 			ILK_GRDOM_RESET_ENABLE) == 0, 500);
 	if (ret)
 		return ret;
 
-	I915_WRITE(MCHBAR_MIRROR_BASE + ILK_GDSR, 0);
+	I915_WRITE(ILK_GDSR, 0);
 
 	return 0;
 }

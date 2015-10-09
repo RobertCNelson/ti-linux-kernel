@@ -253,7 +253,11 @@ static int obj_rank_by_stolen(void *priv,
 	struct drm_i915_gem_object *b =
 		container_of(B, struct drm_i915_gem_object, obj_exec_link);
 
-	return a->stolen->start - b->stolen->start;
+	if (a->stolen->start < b->stolen->start)
+		return -1;
+	if (a->stolen->start > b->stolen->start)
+		return 1;
+	return 0;
 }
 
 static int i915_gem_stolen_list_info(struct seq_file *m, void *data)
@@ -1309,6 +1313,10 @@ static int i915_frequency_info(struct seq_file *m, void *unused)
 		seq_puts(m, "no P-state info available\n");
 	}
 
+	seq_printf(m, "Current CD clock frequency: %d kHz\n", dev_priv->cdclk_freq);
+	seq_printf(m, "Max CD clock frequency: %d kHz\n", dev_priv->max_cdclk_freq);
+	seq_printf(m, "Max pixel clock frequency: %d kHz\n", dev_priv->max_dotclk_freq);
+
 out:
 	intel_runtime_pm_put(dev_priv);
 	return ret;
@@ -2069,8 +2077,8 @@ static int i915_execlists(struct seq_file *m, void *data)
 
 		seq_printf(m, "%s\n", ring->name);
 
-		status = I915_READ(RING_EXECLIST_STATUS(ring));
-		ctx_id = I915_READ(RING_EXECLIST_STATUS(ring) + 4);
+		status = I915_READ(RING_EXECLIST_STATUS_LO(ring));
+		ctx_id = I915_READ(RING_EXECLIST_STATUS_HI(ring));
 		seq_printf(m, "\tExeclist status: 0x%08X, context: %u\n",
 			   status, ctx_id);
 
@@ -2085,8 +2093,8 @@ static int i915_execlists(struct seq_file *m, void *data)
 			   read_pointer, write_pointer);
 
 		for (i = 0; i < 6; i++) {
-			status = I915_READ(RING_CONTEXT_STATUS_BUF(ring) + 8*i);
-			ctx_id = I915_READ(RING_CONTEXT_STATUS_BUF(ring) + 8*i + 4);
+			status = I915_READ(RING_CONTEXT_STATUS_BUF_LO(ring, i));
+			ctx_id = I915_READ(RING_CONTEXT_STATUS_BUF_HI(ring, i));
 
 			seq_printf(m, "\tStatus buffer %d: 0x%08X, context: %u\n",
 				   i, status, ctx_id);
@@ -2231,10 +2239,9 @@ static void gen8_ppgtt_info(struct seq_file *m, struct drm_device *dev)
 	for_each_ring(ring, dev_priv, unused) {
 		seq_printf(m, "%s\n", ring->name);
 		for (i = 0; i < 4; i++) {
-			u32 offset = 0x270 + i * 8;
-			u64 pdp = I915_READ(ring->mmio_base + offset + 4);
+			u64 pdp = I915_READ(GEN8_RING_PDP_UDW(ring, i));
 			pdp <<= 32;
-			pdp |= I915_READ(ring->mmio_base + offset);
+			pdp |= I915_READ(GEN8_RING_PDP_LDW(ring, i));
 			seq_printf(m, "\tPDP%d 0x%016llx\n", i, pdp);
 		}
 	}
@@ -2288,17 +2295,24 @@ static int i915_ppgtt_info(struct seq_file *m, void *data)
 
 	list_for_each_entry_reverse(file, &dev->filelist, lhead) {
 		struct drm_i915_file_private *file_priv = file->driver_priv;
+		struct task_struct *task;
 
-		seq_printf(m, "\nproc: %s\n",
-			   get_pid_task(file->pid, PIDTYPE_PID)->comm);
+		task = get_pid_task(file->pid, PIDTYPE_PID);
+		if (!task) {
+			ret = -ESRCH;
+			goto out_put;
+		}
+		seq_printf(m, "\nproc: %s\n", task->comm);
+		put_task_struct(task);
 		idr_for_each(&file_priv->context_idr, per_file_ctx,
 			     (void *)(unsigned long)m);
 	}
 
+out_put:
 	intel_runtime_pm_put(dev_priv);
 	mutex_unlock(&dev->struct_mutex);
 
-	return 0;
+	return ret;
 }
 
 static int count_irq_waiters(struct drm_i915_private *i915)
@@ -2906,7 +2920,7 @@ static bool cursor_active(struct drm_device *dev, int pipe)
 	u32 state;
 
 	if (IS_845G(dev) || IS_I865G(dev))
-		state = I915_READ(_CURACNTR) & CURSOR_ENABLE;
+		state = I915_READ(CURCNTR(PIPE_A)) & CURSOR_ENABLE;
 	else
 		state = I915_READ(CURCNTR(pipe)) & CURSOR_MODE;
 
@@ -3144,7 +3158,7 @@ static int i915_ddb_info(struct seq_file *m, void *unused)
 				   skl_ddb_entry_size(entry));
 		}
 
-		entry = &ddb->cursor[pipe];
+		entry = &ddb->plane[pipe][PLANE_CURSOR];
 		seq_printf(m, "  %-13s%8u%8u%8u\n", "Cursor", entry->start,
 			   entry->end, skl_ddb_entry_size(entry));
 	}
@@ -5037,13 +5051,38 @@ static void gen9_sseu_device_status(struct drm_device *dev,
 	}
 }
 
+static void broadwell_sseu_device_status(struct drm_device *dev,
+					 struct sseu_dev_status *stat)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	int s;
+	u32 slice_info = I915_READ(GEN8_GT_SLICE_INFO);
+
+	stat->slice_total = hweight32(slice_info & GEN8_LSLICESTAT_MASK);
+
+	if (stat->slice_total) {
+		stat->subslice_per_slice = INTEL_INFO(dev)->subslice_per_slice;
+		stat->subslice_total = stat->slice_total *
+				       stat->subslice_per_slice;
+		stat->eu_per_subslice = INTEL_INFO(dev)->eu_per_subslice;
+		stat->eu_total = stat->eu_per_subslice * stat->subslice_total;
+
+		/* subtract fused off EU(s) from enabled slice(s) */
+		for (s = 0; s < stat->slice_total; s++) {
+			u8 subslice_7eu = INTEL_INFO(dev)->subslice_7eu[s];
+
+			stat->eu_total -= hweight8(subslice_7eu);
+		}
+	}
+}
+
 static int i915_sseu_status(struct seq_file *m, void *unused)
 {
 	struct drm_info_node *node = (struct drm_info_node *) m->private;
 	struct drm_device *dev = node->minor->dev;
 	struct sseu_dev_status stat;
 
-	if ((INTEL_INFO(dev)->gen < 8) || IS_BROADWELL(dev))
+	if (INTEL_INFO(dev)->gen < 8)
 		return -ENODEV;
 
 	seq_puts(m, "SSEU Device Info\n");
@@ -5068,6 +5107,8 @@ static int i915_sseu_status(struct seq_file *m, void *unused)
 	memset(&stat, 0, sizeof(stat));
 	if (IS_CHERRYVIEW(dev)) {
 		cherryview_sseu_device_status(dev, &stat);
+	} else if (IS_BROADWELL(dev)) {
+		broadwell_sseu_device_status(dev, &stat);
 	} else if (INTEL_INFO(dev)->gen >= 9) {
 		gen9_sseu_device_status(dev, &stat);
 	}
