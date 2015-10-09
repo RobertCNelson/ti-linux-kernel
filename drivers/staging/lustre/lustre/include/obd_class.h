@@ -64,7 +64,6 @@ extern struct obd_device *obd_devs[MAX_OBD_DEVICES];
 extern rwlock_t obd_dev_lock;
 
 /* OBD Operations Declarations */
-struct obd_device *class_conn2obd(struct lustre_handle *);
 struct obd_device *class_exp2obd(struct obd_export *);
 int class_handle_ioctl(unsigned int cmd, unsigned long arg);
 int lustre_get_jobid(char *jobid);
@@ -84,58 +83,36 @@ void class_release_dev(struct obd_device *obd);
 int class_name2dev(const char *name);
 struct obd_device *class_name2obd(const char *name);
 int class_uuid2dev(struct obd_uuid *uuid);
-struct obd_device *class_uuid2obd(struct obd_uuid *uuid);
-void class_obd_list(void);
 struct obd_device *class_find_client_obd(struct obd_uuid *tgt_uuid,
 					  const char *typ_name,
 					  struct obd_uuid *grp_uuid);
 struct obd_device *class_devices_in_group(struct obd_uuid *grp_uuid,
 					   int *next);
 struct obd_device *class_num2obd(int num);
-int get_devices_count(void);
 
 int class_notify_sptlrpc_conf(const char *fsname, int namelen);
 
-char *obd_export_nid2str(struct obd_export *exp);
-
-int obd_export_evict_by_nid(struct obd_device *obd, const char *nid);
-int obd_export_evict_by_uuid(struct obd_device *obd, const char *uuid);
 int obd_connect_flags2str(char *page, int count, __u64 flags, char *sep);
 
 int obd_zombie_impexp_init(void);
 void obd_zombie_impexp_stop(void);
-void obd_zombie_impexp_cull(void);
 void obd_zombie_barrier(void);
-void obd_exports_barrier(struct obd_device *obd);
-int kuc_len(int payload_len);
-struct kuc_hdr *kuc_ptr(void *p);
-int kuc_ispayload(void *p);
-void *kuc_alloc(int payload_len, int transport, int type);
-void kuc_free(void *p, int payload_len);
 
 struct llog_handle;
 struct llog_rec_hdr;
 typedef int (*llog_cb_t)(const struct lu_env *, struct llog_handle *,
 			 struct llog_rec_hdr *, void *);
 /* obd_config.c */
-struct lustre_cfg *lustre_cfg_rename(struct lustre_cfg *cfg,
-				     const char *new_name);
 int class_process_config(struct lustre_cfg *lcfg);
 int class_process_proc_param(char *prefix, struct lprocfs_vars *lvars,
 			     struct lustre_cfg *lcfg, void *data);
-int class_attach(struct lustre_cfg *lcfg);
-int class_setup(struct obd_device *obd, struct lustre_cfg *lcfg);
-int class_cleanup(struct obd_device *obd, struct lustre_cfg *lcfg);
-int class_detach(struct obd_device *obd, struct lustre_cfg *lcfg);
 struct obd_device *class_incref(struct obd_device *obd,
 				const char *scope, const void *source);
 void class_decref(struct obd_device *obd,
 		  const char *scope, const void *source);
-void dump_exports(struct obd_device *obd, int locks);
 int class_config_llog_handler(const struct lu_env *env,
 			      struct llog_handle *handle,
 			      struct llog_rec_hdr *rec, void *data);
-int class_add_conn(struct obd_device *obd, struct lustre_cfg *lcfg);
 int class_add_uuid(const char *uuid, __u64 nid);
 
 /*obdecho*/
@@ -159,9 +136,6 @@ struct config_llog_instance {
 };
 int class_config_parse_llog(const struct lu_env *env, struct llog_ctxt *ctxt,
 			    char *name, struct config_llog_instance *cfg);
-int class_config_dump_llog(const struct lu_env *env, struct llog_ctxt *ctxt,
-			   char *name, struct config_llog_instance *cfg);
-
 enum {
 	CONFIG_T_CONFIG  = 0,
 	CONFIG_T_SPTLRPC = 1,
@@ -278,45 +252,27 @@ void class_import_put(struct obd_import *);
 struct obd_import *class_new_import(struct obd_device *obd);
 void class_destroy_import(struct obd_import *exp);
 
-struct obd_type *class_search_type(const char *name);
-struct obd_type *class_get_type(const char *name);
 void class_put_type(struct obd_type *type);
 int class_connect(struct lustre_handle *conn, struct obd_device *obd,
 		  struct obd_uuid *cluuid);
 int class_disconnect(struct obd_export *exp);
 void class_fail_export(struct obd_export *exp);
-int class_connected_export(struct obd_export *exp);
-void class_disconnect_exports(struct obd_device *obddev);
 int class_manual_cleanup(struct obd_device *obd);
-void class_disconnect_stale_exports(struct obd_device *,
-				    int (*test_export)(struct obd_export *));
 static inline enum obd_option exp_flags_from_obd(struct obd_device *obd)
 {
 	return ((obd->obd_fail ? OBD_OPT_FAILOVER : 0) |
 		(obd->obd_force ? OBD_OPT_FORCE : 0) |
-		(obd->obd_abort_recovery ? OBD_OPT_ABORT_RECOV : 0) |
 		0);
 }
 
 struct inode;
 struct lu_attr;
 struct obdo;
-void obdo_from_la(struct obdo *dst, struct lu_attr *la, __u64 valid);
-void la_from_obdo(struct lu_attr *la, struct obdo *dst, u32 valid);
 void obdo_refresh_inode(struct inode *dst, struct obdo *src, u32 valid);
-void obdo_to_inode(struct inode *dst, struct obdo *src, u32 valid);
 
-void obdo_cpy_md(struct obdo *dst, struct obdo *src, u32 valid);
 void obdo_to_ioobj(struct obdo *oa, struct obd_ioobj *ioobj);
-void obdo_from_iattr(struct obdo *oa, struct iattr *attr,
-		     unsigned int ia_valid);
 void iattr_from_obdo(struct iattr *attr, struct obdo *oa, u32 valid);
 void md_from_obdo(struct md_op_data *op_data, struct obdo *oa, u32 valid);
-void obdo_from_md(struct obdo *oa, struct md_op_data *op_data,
-		  unsigned int valid);
-
-void obdo_cpu_to_le(struct obdo *dobdo, struct obdo *sobdo);
-void obdo_le_to_cpu(struct obdo *dobdo, struct obdo *sobdo);
 
 #define OBT(dev)	(dev)->obd_type
 #define OBP(dev, op)    (dev)->obd_type->typ_dt_ops->o_ ## op
@@ -626,10 +582,6 @@ static inline void obd_cleanup_client_import(struct obd_device *obd)
 		CDEBUG(D_CONFIG, "%s: client import never connected\n",
 		       obd->obd_name);
 		ptlrpc_invalidate_import(imp);
-		if (imp->imp_rq_pool) {
-			ptlrpc_free_rq_pool(imp->imp_rq_pool);
-			imp->imp_rq_pool = NULL;
-		}
 		client_destroy_import(imp);
 		obd->u.cli.cl_import = NULL;
 	}
@@ -769,14 +721,14 @@ static inline int obd_create(const struct lu_env *env, struct obd_export *exp,
 static inline int obd_destroy(const struct lu_env *env, struct obd_export *exp,
 			      struct obdo *obdo, struct lov_stripe_md *ea,
 			      struct obd_trans_info *oti,
-			      struct obd_export *md_exp, void *capa)
+			      struct obd_export *md_exp)
 {
 	int rc;
 
 	EXP_CHECK_DT_OP(exp, destroy);
 	EXP_COUNTER_INCREMENT(exp, destroy);
 
-	rc = OBP(exp->exp_obd, destroy)(env, exp, obdo, ea, oti, md_exp, capa);
+	rc = OBP(exp->exp_obd, destroy)(env, exp, obdo, ea, oti, md_exp);
 	return rc;
 }
 
@@ -1118,7 +1070,7 @@ static inline int obd_statfs_rqset(struct obd_export *exp,
 				   __u32 flags)
 {
 	struct ptlrpc_request_set *set = NULL;
-	struct obd_info oinfo = { { { 0 } } };
+	struct obd_info oinfo = { };
 	int rc = 0;
 
 	set =  ptlrpc_prep_set();
@@ -1177,8 +1129,7 @@ static inline int obd_preprw(const struct lu_env *env, int cmd,
 			     int objcount, struct obd_ioobj *obj,
 			     struct niobuf_remote *remote, int *pages,
 			     struct niobuf_local *local,
-			     struct obd_trans_info *oti,
-			     struct lustre_capa *capa)
+			     struct obd_trans_info *oti)
 {
 	int rc;
 
@@ -1186,7 +1137,7 @@ static inline int obd_preprw(const struct lu_env *env, int cmd,
 	EXP_COUNTER_INCREMENT(exp, preprw);
 
 	rc = OBP(exp->exp_obd, preprw)(env, cmd, exp, oa, objcount, obj, remote,
-				       pages, local, oti, capa);
+				       pages, local, oti);
 	return rc;
 }
 
@@ -1434,14 +1385,13 @@ static inline int obd_unregister_lock_cancel_cb(struct obd_export *exp,
 #endif
 
 /* metadata helpers */
-static inline int md_getstatus(struct obd_export *exp,
-			       struct lu_fid *fid, struct obd_capa **pc)
+static inline int md_getstatus(struct obd_export *exp, struct lu_fid *fid)
 {
 	int rc;
 
 	EXP_CHECK_MD_OP(exp, getstatus);
 	EXP_MD_COUNTER_INCREMENT(exp, getstatus);
-	rc = MDP(exp->exp_obd, getstatus)(exp, fid, pc);
+	rc = MDP(exp->exp_obd, getstatus)(exp, fid);
 	return rc;
 }
 
@@ -1616,13 +1566,13 @@ static inline int md_setattr(struct obd_export *exp, struct md_op_data *op_data,
 }
 
 static inline int md_sync(struct obd_export *exp, const struct lu_fid *fid,
-			  struct obd_capa *oc, struct ptlrpc_request **request)
+			  struct ptlrpc_request **request)
 {
 	int rc;
 
 	EXP_CHECK_MD_OP(exp, sync);
 	EXP_MD_COUNTER_INCREMENT(exp, sync);
-	rc = MDP(exp->exp_obd, sync)(exp, fid, oc, request);
+	rc = MDP(exp->exp_obd, sync)(exp, fid, request);
 	return rc;
 }
 
@@ -1668,8 +1618,7 @@ static inline int md_free_lustre_md(struct obd_export *exp,
 	return MDP(exp->exp_obd, free_lustre_md)(exp, md);
 }
 
-static inline int md_setxattr(struct obd_export *exp,
-			      const struct lu_fid *fid, struct obd_capa *oc,
+static inline int md_setxattr(struct obd_export *exp, const struct lu_fid *fid,
 			      u64 valid, const char *name,
 			      const char *input, int input_size,
 			      int output_size, int flags, __u32 suppgid,
@@ -1677,13 +1626,12 @@ static inline int md_setxattr(struct obd_export *exp,
 {
 	EXP_CHECK_MD_OP(exp, setxattr);
 	EXP_MD_COUNTER_INCREMENT(exp, setxattr);
-	return MDP(exp->exp_obd, setxattr)(exp, fid, oc, valid, name, input,
+	return MDP(exp->exp_obd, setxattr)(exp, fid, valid, name, input,
 					   input_size, output_size, flags,
 					   suppgid, request);
 }
 
-static inline int md_getxattr(struct obd_export *exp,
-			      const struct lu_fid *fid, struct obd_capa *oc,
+static inline int md_getxattr(struct obd_export *exp, const struct lu_fid *fid,
 			      u64 valid, const char *name,
 			      const char *input, int input_size,
 			      int output_size, int flags,
@@ -1691,7 +1639,7 @@ static inline int md_getxattr(struct obd_export *exp,
 {
 	EXP_CHECK_MD_OP(exp, getxattr);
 	EXP_MD_COUNTER_INCREMENT(exp, getxattr);
-	return MDP(exp->exp_obd, getxattr)(exp, fid, oc, valid, name, input,
+	return MDP(exp->exp_obd, getxattr)(exp, fid, valid, name, input,
 					   input_size, output_size, flags,
 					   request);
 }
@@ -1762,38 +1710,13 @@ static inline int md_init_ea_size(struct obd_export *exp, int easize,
 }
 
 static inline int md_get_remote_perm(struct obd_export *exp,
-				     const struct lu_fid *fid,
-				     struct obd_capa *oc, __u32 suppgid,
+				     const struct lu_fid *fid, __u32 suppgid,
 				     struct ptlrpc_request **request)
 {
 	EXP_CHECK_MD_OP(exp, get_remote_perm);
 	EXP_MD_COUNTER_INCREMENT(exp, get_remote_perm);
-	return MDP(exp->exp_obd, get_remote_perm)(exp, fid, oc, suppgid,
+	return MDP(exp->exp_obd, get_remote_perm)(exp, fid, suppgid,
 						  request);
-}
-
-static inline int md_renew_capa(struct obd_export *exp, struct obd_capa *ocapa,
-				renew_capa_cb_t cb)
-{
-	int rc;
-
-	EXP_CHECK_MD_OP(exp, renew_capa);
-	EXP_MD_COUNTER_INCREMENT(exp, renew_capa);
-	rc = MDP(exp->exp_obd, renew_capa)(exp, ocapa, cb);
-	return rc;
-}
-
-static inline int md_unpack_capa(struct obd_export *exp,
-				 struct ptlrpc_request *req,
-				 const struct req_msg_field *field,
-				 struct obd_capa **oc)
-{
-	int rc;
-
-	EXP_CHECK_MD_OP(exp, unpack_capa);
-	EXP_MD_COUNTER_INCREMENT(exp, unpack_capa);
-	rc = MDP(exp->exp_obd, unpack_capa)(exp, req, field, oc);
-	return rc;
 }
 
 static inline int md_intent_getattr_async(struct obd_export *exp,

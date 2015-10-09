@@ -406,12 +406,6 @@ int ccc_lock_init(const struct lu_env *env,
 	return result;
 }
 
-int ccc_attr_set(const struct lu_env *env, struct cl_object *obj,
-		 const struct cl_attr *attr, unsigned valid)
-{
-	return 0;
-}
-
 int ccc_object_glimpse(const struct lu_env *env,
 		       const struct cl_object *obj, struct ost_lvb *lvb)
 {
@@ -427,15 +421,6 @@ int ccc_object_glimpse(const struct lu_env *env,
 	 */
 	if (lvb->lvb_size > 0 && lvb->lvb_blocks == 0)
 		lvb->lvb_blocks = dirty_cnt(inode);
-	return 0;
-}
-
-
-
-int ccc_conf_set(const struct lu_env *env, struct cl_object *obj,
-			const struct cl_object_conf *conf)
-{
-	/* TODO: destroy all pages attached to this object. */
 	return 0;
 }
 
@@ -501,54 +486,6 @@ int ccc_fail(const struct lu_env *env, const struct cl_page_slice *slice)
 	 */
 	LBUG();
 	return 0;
-}
-
-void ccc_transient_page_verify(const struct cl_page *page)
-{
-}
-
-int ccc_transient_page_own(const struct lu_env *env,
-				   const struct cl_page_slice *slice,
-				   struct cl_io *unused,
-				   int nonblock)
-{
-	ccc_transient_page_verify(slice->cpl_page);
-	return 0;
-}
-
-void ccc_transient_page_assume(const struct lu_env *env,
-				      const struct cl_page_slice *slice,
-				      struct cl_io *unused)
-{
-	ccc_transient_page_verify(slice->cpl_page);
-}
-
-void ccc_transient_page_unassume(const struct lu_env *env,
-					const struct cl_page_slice *slice,
-					struct cl_io *unused)
-{
-	ccc_transient_page_verify(slice->cpl_page);
-}
-
-void ccc_transient_page_disown(const struct lu_env *env,
-				      const struct cl_page_slice *slice,
-				      struct cl_io *unused)
-{
-	ccc_transient_page_verify(slice->cpl_page);
-}
-
-void ccc_transient_page_discard(const struct lu_env *env,
-				       const struct cl_page_slice *slice,
-				       struct cl_io *unused)
-{
-	struct cl_page *page = slice->cpl_page;
-
-	ccc_transient_page_verify(slice->cpl_page);
-
-	/*
-	 * For transient pages, remove it from the radix tree.
-	 */
-	cl_page_delete(env, page);
 }
 
 int ccc_transient_page_prep(const struct lu_env *env,
@@ -689,13 +626,6 @@ void ccc_lock_state(const struct lu_env *env,
  * io operations.
  *
  */
-
-void ccc_io_fini(const struct lu_env *env, const struct cl_io_slice *ios)
-{
-	struct cl_io *io = ios->cis_io;
-
-	CLOBINVRNT(env, io->ci_obj, ccc_object_invariant(io->ci_obj));
-}
 
 int ccc_io_one_lock_index(const struct lu_env *env, struct cl_io *io,
 			  __u32 enqflags, enum cl_lock_mode mode,
@@ -896,7 +826,6 @@ void ccc_req_completion(const struct lu_env *env,
  *
  *    - o_ioepoch,
  *
- *  and capability.
  */
 void ccc_req_attr_set(const struct lu_env *env,
 		      const struct cl_req_slice *slice,
@@ -910,12 +839,6 @@ void ccc_req_attr_set(const struct lu_env *env,
 	oa = attr->cra_oa;
 	inode = ccc_object_inode(obj);
 	valid_flags = OBD_MD_FLTYPE;
-
-	if ((flags & OBD_MD_FLOSSCAPA) != 0) {
-		LASSERT(attr->cra_capa == NULL);
-		attr->cra_capa = cl_capa_lookup(inode,
-						slice->crs_req->crq_type);
-	}
 
 	if (slice->crs_req->crq_type == CRT_WRITE) {
 		if (flags & OBD_MD_FLEPOCH) {
@@ -936,8 +859,7 @@ static const struct cl_req_operations ccc_req_ops = {
 	.cro_completion = ccc_req_completion
 };
 
-int cl_setattr_ost(struct inode *inode, const struct iattr *attr,
-		   struct obd_capa *capa)
+int cl_setattr_ost(struct inode *inode, const struct iattr *attr)
 {
 	struct lu_env *env;
 	struct cl_io  *io;
@@ -956,7 +878,6 @@ int cl_setattr_ost(struct inode *inode, const struct iattr *attr,
 	io->u.ci_setattr.sa_attr.lvb_ctime = LTIME_S(attr->ia_ctime);
 	io->u.ci_setattr.sa_attr.lvb_size = attr->ia_size;
 	io->u.ci_setattr.sa_valid = attr->ia_valid;
-	io->u.ci_setattr.sa_capa = capa;
 
 again:
 	if (cl_io_init(env, io, CIT_SETATTR, io->ci_obj) == 0) {
