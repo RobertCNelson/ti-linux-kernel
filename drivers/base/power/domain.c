@@ -53,24 +53,6 @@
 static LIST_HEAD(gpd_list);
 static DEFINE_MUTEX(gpd_list_lock);
 
-static struct generic_pm_domain *pm_genpd_lookup_name(const char *domain_name)
-{
-	struct generic_pm_domain *genpd = NULL, *gpd;
-
-	if (IS_ERR_OR_NULL(domain_name))
-		return NULL;
-
-	mutex_lock(&gpd_list_lock);
-	list_for_each_entry(gpd, &gpd_list, gpd_list_node) {
-		if (!strcmp(gpd->name, domain_name)) {
-			genpd = gpd;
-			break;
-		}
-	}
-	mutex_unlock(&gpd_list_lock);
-	return genpd;
-}
-
 /*
  * Get the generic PM domain for a particular struct device.
  * This validates the struct device pointer, the PM domain pointer,
@@ -140,19 +122,6 @@ static void genpd_sd_counter_inc(struct generic_pm_domain *genpd)
 	smp_mb__after_atomic();
 }
 
-static void genpd_recalc_cpu_exit_latency(struct generic_pm_domain *genpd)
-{
-	s64 usecs64;
-
-	if (!genpd->cpuidle_data)
-		return;
-
-	usecs64 = genpd->power_on_latency_ns;
-	do_div(usecs64, NSEC_PER_USEC);
-	usecs64 += genpd->cpuidle_data->saved_exit_latency;
-	genpd->cpuidle_data->idle_state->exit_latency = usecs64;
-}
-
 static int genpd_power_on(struct generic_pm_domain *genpd, bool timed)
 {
 	ktime_t time_start;
@@ -176,7 +145,6 @@ static int genpd_power_on(struct generic_pm_domain *genpd, bool timed)
 
 	genpd->power_on_latency_ns = elapsed_ns;
 	genpd->max_off_time_changed = true;
-	genpd_recalc_cpu_exit_latency(genpd);
 	pr_debug("%s: Power-%s latency exceeded, new value %lld ns\n",
 		 genpd->name, "on", elapsed_ns);
 
@@ -240,13 +208,6 @@ static int __pm_genpd_poweron(struct generic_pm_domain *genpd)
 	    || (genpd->prepared_count > 0 && genpd->suspend_power_off))
 		return 0;
 
-	if (genpd->cpuidle_data) {
-		cpuidle_pause_and_lock();
-		genpd->cpuidle_data->idle_state->disabled = true;
-		cpuidle_resume_and_unlock();
-		goto out;
-	}
-
 	/*
 	 * The list is guaranteed not to change while the loop below is being
 	 * executed, unless one of the masters' .power_on() callbacks fiddles
@@ -266,7 +227,6 @@ static int __pm_genpd_poweron(struct generic_pm_domain *genpd)
 	if (ret)
 		goto err;
 
- out:
 	genpd->status = GPD_STATE_ACTIVE;
 	return 0;
 
@@ -293,18 +253,6 @@ int pm_genpd_poweron(struct generic_pm_domain *genpd)
 	ret = __pm_genpd_poweron(genpd);
 	mutex_unlock(&genpd->lock);
 	return ret;
-}
-
-/**
- * pm_genpd_name_poweron - Restore power to a given PM domain and its masters.
- * @domain_name: Name of the PM domain to power up.
- */
-int pm_genpd_name_poweron(const char *domain_name)
-{
-	struct generic_pm_domain *genpd;
-
-	genpd = pm_genpd_lookup_name(domain_name);
-	return genpd ? pm_genpd_poweron(genpd) : -EINVAL;
 }
 
 static int genpd_save_dev(struct generic_pm_domain *genpd, struct device *dev)
@@ -409,21 +357,6 @@ static int pm_genpd_poweroff(struct generic_pm_domain *genpd)
 	if (genpd->gov && genpd->gov->power_down_ok) {
 		if (!genpd->gov->power_down_ok(&genpd->domain))
 			return -EAGAIN;
-	}
-
-	if (genpd->cpuidle_data) {
-		/*
-		 * If cpuidle_data is set, cpuidle should turn the domain off
-		 * when the CPU in it is idle.  In that case we don't decrement
-		 * the subdomain counts of the master domains, so that power is
-		 * not removed from the current domain prematurely as a result
-		 * of cutting off the masters' power.
-		 */
-		genpd->status = GPD_STATE_POWER_OFF;
-		cpuidle_pause_and_lock();
-		genpd->cpuidle_data->idle_state->disabled = false;
-		cpuidle_resume_and_unlock();
-		return 0;
 	}
 
 	if (genpd->power_off) {
@@ -1317,18 +1250,6 @@ int __pm_genpd_add_device(struct generic_pm_domain *genpd, struct device *dev,
 }
 
 /**
- * __pm_genpd_name_add_device - Find I/O PM domain and add a device to it.
- * @domain_name: Name of the PM domain to add the device to.
- * @dev: Device to be added.
- * @td: Set of PM QoS timing parameters to attach to the device.
- */
-int __pm_genpd_name_add_device(const char *domain_name, struct device *dev,
-			       struct gpd_timing_data *td)
-{
-	return __pm_genpd_add_device(pm_genpd_lookup_name(domain_name), dev, td);
-}
-
-/**
  * pm_genpd_remove_device - Remove a device from an I/O PM domain.
  * @genpd: PM domain to remove the device from.
  * @dev: Device to be removed.
@@ -1429,35 +1350,6 @@ int pm_genpd_add_subdomain(struct generic_pm_domain *genpd,
 }
 
 /**
- * pm_genpd_add_subdomain_names - Add a subdomain to an I/O PM domain.
- * @master_name: Name of the master PM domain to add the subdomain to.
- * @subdomain_name: Name of the subdomain to be added.
- */
-int pm_genpd_add_subdomain_names(const char *master_name,
-				 const char *subdomain_name)
-{
-	struct generic_pm_domain *master = NULL, *subdomain = NULL, *gpd;
-
-	if (IS_ERR_OR_NULL(master_name) || IS_ERR_OR_NULL(subdomain_name))
-		return -EINVAL;
-
-	mutex_lock(&gpd_list_lock);
-	list_for_each_entry(gpd, &gpd_list, gpd_list_node) {
-		if (!master && !strcmp(gpd->name, master_name))
-			master = gpd;
-
-		if (!subdomain && !strcmp(gpd->name, subdomain_name))
-			subdomain = gpd;
-
-		if (master && subdomain)
-			break;
-	}
-	mutex_unlock(&gpd_list_lock);
-
-	return pm_genpd_add_subdomain(master, subdomain);
-}
-
-/**
  * pm_genpd_remove_subdomain - Remove a subdomain from an I/O PM domain.
  * @genpd: Master PM domain to remove the subdomain from.
  * @subdomain: Subdomain to be removed.
@@ -1502,124 +1394,6 @@ out:
 	mutex_unlock(&genpd->lock);
 
 	return ret;
-}
-
-/**
- * pm_genpd_attach_cpuidle - Connect the given PM domain with cpuidle.
- * @genpd: PM domain to be connected with cpuidle.
- * @state: cpuidle state this domain can disable/enable.
- *
- * Make a PM domain behave as though it contained a CPU core, that is, instead
- * of calling its power down routine it will enable the given cpuidle state so
- * that the cpuidle subsystem can power it down (if possible and desirable).
- */
-int pm_genpd_attach_cpuidle(struct generic_pm_domain *genpd, int state)
-{
-	struct cpuidle_driver *cpuidle_drv;
-	struct gpd_cpuidle_data *cpuidle_data;
-	struct cpuidle_state *idle_state;
-	int ret = 0;
-
-	if (IS_ERR_OR_NULL(genpd) || state < 0)
-		return -EINVAL;
-
-	mutex_lock(&genpd->lock);
-
-	if (genpd->cpuidle_data) {
-		ret = -EEXIST;
-		goto out;
-	}
-	cpuidle_data = kzalloc(sizeof(*cpuidle_data), GFP_KERNEL);
-	if (!cpuidle_data) {
-		ret = -ENOMEM;
-		goto out;
-	}
-	cpuidle_drv = cpuidle_driver_ref();
-	if (!cpuidle_drv) {
-		ret = -ENODEV;
-		goto err_drv;
-	}
-	if (cpuidle_drv->state_count <= state) {
-		ret = -EINVAL;
-		goto err;
-	}
-	idle_state = &cpuidle_drv->states[state];
-	if (!idle_state->disabled) {
-		ret = -EAGAIN;
-		goto err;
-	}
-	cpuidle_data->idle_state = idle_state;
-	cpuidle_data->saved_exit_latency = idle_state->exit_latency;
-	genpd->cpuidle_data = cpuidle_data;
-	genpd_recalc_cpu_exit_latency(genpd);
-
- out:
-	mutex_unlock(&genpd->lock);
-	return ret;
-
- err:
-	cpuidle_driver_unref();
-
- err_drv:
-	kfree(cpuidle_data);
-	goto out;
-}
-
-/**
- * pm_genpd_name_attach_cpuidle - Find PM domain and connect cpuidle to it.
- * @name: Name of the domain to connect to cpuidle.
- * @state: cpuidle state this domain can manipulate.
- */
-int pm_genpd_name_attach_cpuidle(const char *name, int state)
-{
-	return pm_genpd_attach_cpuidle(pm_genpd_lookup_name(name), state);
-}
-
-/**
- * pm_genpd_detach_cpuidle - Remove the cpuidle connection from a PM domain.
- * @genpd: PM domain to remove the cpuidle connection from.
- *
- * Remove the cpuidle connection set up by pm_genpd_attach_cpuidle() from the
- * given PM domain.
- */
-int pm_genpd_detach_cpuidle(struct generic_pm_domain *genpd)
-{
-	struct gpd_cpuidle_data *cpuidle_data;
-	struct cpuidle_state *idle_state;
-	int ret = 0;
-
-	if (IS_ERR_OR_NULL(genpd))
-		return -EINVAL;
-
-	mutex_lock(&genpd->lock);
-
-	cpuidle_data = genpd->cpuidle_data;
-	if (!cpuidle_data) {
-		ret = -ENODEV;
-		goto out;
-	}
-	idle_state = cpuidle_data->idle_state;
-	if (!idle_state->disabled) {
-		ret = -EAGAIN;
-		goto out;
-	}
-	idle_state->exit_latency = cpuidle_data->saved_exit_latency;
-	cpuidle_driver_unref();
-	genpd->cpuidle_data = NULL;
-	kfree(cpuidle_data);
-
- out:
-	mutex_unlock(&genpd->lock);
-	return ret;
-}
-
-/**
- * pm_genpd_name_detach_cpuidle - Find PM domain and disconnect cpuidle from it.
- * @name: Name of the domain to disconnect cpuidle from.
- */
-int pm_genpd_name_detach_cpuidle(const char *name)
-{
-	return pm_genpd_detach_cpuidle(pm_genpd_lookup_name(name));
 }
 
 /* Default device callbacks for generic PM domains. */
