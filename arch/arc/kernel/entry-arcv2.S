@@ -24,7 +24,7 @@
 	.align 4
 
 # Initial 16 slots are Exception Vectors
-VECTOR	stext			; Restart Vector (jump to entry point)
+VECTOR	res_service		; Reset Vector
 VECTOR	mem_service		; Mem exception
 VECTOR	instr_service		; Instrn Error
 VECTOR	EV_MachineCheck		; Fatal Machine check
@@ -56,6 +56,18 @@ VECTOR	handle_interrupt	; (23) End of fixed IRQs
 .endr
 
 	.section .text, "ax",@progbits
+
+ENTRY(res_service)
+#ifdef CONFIG_SMP
+	; Don't clobber r0, r1, r2 as they might have u-boot provided args
+	GET_CPU_ID  r5
+	cmp	r5, 0
+	jz	stext
+	j	first_lines_of_secondary
+#else
+	j	stext
+#endif
+END(res_service)
 
 reserved:
 	flag 1		; Unexpected event, halt

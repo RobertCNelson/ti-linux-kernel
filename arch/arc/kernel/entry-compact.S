@@ -86,7 +86,7 @@
  */
 
 ; ********* Critical System Events **********************
-VECTOR   res_service             ; 0x0, Restart Vector  (0x0)
+VECTOR   res_service             ; 0x0, Reset Vector	(0x0)
 VECTOR   mem_service             ; 0x8, Mem exception   (0x1)
 VECTOR   instr_service           ; 0x10, Instrn Error   (0x2)
 
@@ -155,13 +155,20 @@ int2_saved_reg:
 ; ---------------------------------------------
 	.section .text, "ax",@progbits
 
-res_service:		; processor restart
-	flag    0x1     ; not implemented
-	nop
-	nop
+ENTRY(res_service)
+#ifdef CONFIG_SMP
+	; Don't clobber r0, r1, r2 as they might have u-boot provided args
+	GET_CPU_ID  r5
+	cmp	r5, 0
+	jz	stext
+	j	first_lines_of_secondary
+#else
+	j	stext
+#endif
+END(res_service)
 
-reserved:		; processor restart
-	rtie            ; jump to processor initializations
+reserved:
+	flag 1		; Unexpected event, halt
 
 ;##################### Interrupt Handling ##############################
 
