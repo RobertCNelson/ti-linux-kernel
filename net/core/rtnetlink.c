@@ -1025,7 +1025,7 @@ static int rtnl_phys_switch_id_fill(struct sk_buff *skb, struct net_device *dev)
 {
 	int err;
 	struct switchdev_attr attr = {
-		.id = SWITCHDEV_ATTR_PORT_PARENT_ID,
+		.id = SWITCHDEV_ATTR_ID_PORT_PARENT_ID,
 		.flags = SWITCHDEV_F_NO_RECURSE,
 	};
 
@@ -1272,7 +1272,7 @@ static int rtnl_fill_ifinfo(struct sk_buff *skb, struct net_device *dev,
 			if (!(af = nla_nest_start(skb, af_ops->family)))
 				goto nla_put_failure;
 
-			err = af_ops->fill_link_af(skb, dev);
+			err = af_ops->fill_link_af(skb, dev, ext_filter_mask);
 
 			/*
 			 * Caller may return ENODATA to indicate that there

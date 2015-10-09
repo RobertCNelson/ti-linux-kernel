@@ -86,9 +86,9 @@ static void		ip6_dst_ifdown(struct dst_entry *,
 static int		 ip6_dst_gc(struct dst_ops *ops);
 
 static int		ip6_pkt_discard(struct sk_buff *skb);
-static int		ip6_pkt_discard_out(struct sock *sk, struct sk_buff *skb);
+static int		ip6_pkt_discard_out(struct net *net, struct sock *sk, struct sk_buff *skb);
 static int		ip6_pkt_prohibit(struct sk_buff *skb);
-static int		ip6_pkt_prohibit_out(struct sock *sk, struct sk_buff *skb);
+static int		ip6_pkt_prohibit_out(struct net *net, struct sock *sk, struct sk_buff *skb);
 static void		ip6_link_failure(struct sk_buff *skb);
 static void		ip6_rt_update_pmtu(struct dst_entry *dst, struct sock *sk,
 					   struct sk_buff *skb, u32 mtu);
@@ -308,7 +308,7 @@ static const struct rt6_info ip6_blk_hole_entry_template = {
 		.obsolete	= DST_OBSOLETE_FORCE_CHK,
 		.error		= -EINVAL,
 		.input		= dst_discard,
-		.output		= dst_discard_sk,
+		.output		= dst_discard_out,
 	},
 	.rt6i_flags	= (RTF_REJECT | RTF_NONEXTHOP),
 	.rt6i_protocol  = RTPROT_KERNEL,
@@ -421,31 +421,7 @@ static bool rt6_check_expired(const struct rt6_info *rt)
 static int rt6_info_hash_nhsfn(unsigned int candidate_count,
 			       const struct flowi6 *fl6)
 {
-	unsigned int val = fl6->flowi6_proto;
-
-	val ^= ipv6_addr_hash(&fl6->daddr);
-	val ^= ipv6_addr_hash(&fl6->saddr);
-
-	/* Work only if this not encapsulated */
-	switch (fl6->flowi6_proto) {
-	case IPPROTO_UDP:
-	case IPPROTO_TCP:
-	case IPPROTO_SCTP:
-		val ^= (__force u16)fl6->fl6_sport;
-		val ^= (__force u16)fl6->fl6_dport;
-		break;
-
-	case IPPROTO_ICMPV6:
-		val ^= (__force u16)fl6->fl6_icmp_type;
-		val ^= (__force u16)fl6->fl6_icmp_code;
-		break;
-	}
-	/* RFC6438 recommands to use flowlabel */
-	val ^= (__force u32)fl6->flowlabel;
-
-	/* Perhaps, we need to tune, this function? */
-	val = val ^ (val >> 7) ^ (val >> 12);
-	return val % candidate_count;
+	return get_hash_from_flowi6(fl6) % candidate_count;
 }
 
 static struct rt6_info *rt6_multipath_select(struct rt6_info *match,
@@ -498,10 +474,10 @@ static inline struct rt6_info *rt6_device_match(struct net *net,
 			if (dev->flags & IFF_LOOPBACK) {
 				if (!sprt->rt6i_idev ||
 				    sprt->rt6i_idev->dev->ifindex != oif) {
-					if (flags & RT6_LOOKUP_F_IFACE && oif)
+					if (flags & RT6_LOOKUP_F_IFACE)
 						continue;
-					if (local && (!oif ||
-						      local->rt6i_idev->dev->ifindex == oif))
+					if (local &&
+					    local->rt6i_idev->dev->ifindex == oif)
 						continue;
 				}
 				local = sprt;
@@ -538,7 +514,7 @@ static void rt6_probe_deferred(struct work_struct *w)
 		container_of(w, struct __rt6_probe_work, work);
 
 	addrconf_addr_solict_mult(&work->target, &mcaddr);
-	ndisc_send_ns(work->dev, NULL, &work->target, &mcaddr, NULL, NULL);
+	ndisc_send_ns(work->dev, &work->target, &mcaddr, NULL, NULL);
 	dev_put(work->dev);
 	kfree(work);
 }
@@ -1219,7 +1195,7 @@ struct dst_entry *ip6_blackhole_route(struct net *net, struct dst_entry *dst_ori
 
 		new->__use = 1;
 		new->input = dst_discard;
-		new->output = dst_discard_sk;
+		new->output = dst_discard_out;
 
 		if (dst_metrics_read_only(&ort->dst))
 			new->_metrics = ort->dst._metrics;
@@ -1877,7 +1853,7 @@ int ip6_route_info_create(struct fib6_config *cfg, struct rt6_info **rt_ret)
 		switch (cfg->fc_type) {
 		case RTN_BLACKHOLE:
 			rt->dst.error = -EINVAL;
-			rt->dst.output = dst_discard_sk;
+			rt->dst.output = dst_discard_out;
 			rt->dst.input = dst_discard;
 			break;
 		case RTN_PROHIBIT:
@@ -2470,7 +2446,7 @@ static int ip6_pkt_discard(struct sk_buff *skb)
 	return ip6_pkt_drop(skb, ICMPV6_NOROUTE, IPSTATS_MIB_INNOROUTES);
 }
 
-static int ip6_pkt_discard_out(struct sock *sk, struct sk_buff *skb)
+static int ip6_pkt_discard_out(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	skb->dev = skb_dst(skb)->dev;
 	return ip6_pkt_drop(skb, ICMPV6_NOROUTE, IPSTATS_MIB_OUTNOROUTES);
@@ -2481,7 +2457,7 @@ static int ip6_pkt_prohibit(struct sk_buff *skb)
 	return ip6_pkt_drop(skb, ICMPV6_ADM_PROHIBITED, IPSTATS_MIB_INNOROUTES);
 }
 
-static int ip6_pkt_prohibit_out(struct sock *sk, struct sk_buff *skb)
+static int ip6_pkt_prohibit_out(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	skb->dev = skb_dst(skb)->dev;
 	return ip6_pkt_drop(skb, ICMPV6_ADM_PROHIBITED, IPSTATS_MIB_OUTNOROUTES);
