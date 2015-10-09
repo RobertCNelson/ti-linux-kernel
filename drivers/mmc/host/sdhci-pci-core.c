@@ -444,11 +444,7 @@ static int jmicron_pmos(struct sdhci_pci_chip *chip, int on)
 	else
 		scratch &= ~0x47;
 
-	ret = pci_write_config_byte(chip->pdev, 0xAE, scratch);
-	if (ret)
-		return ret;
-
-	return 0;
+	return pci_write_config_byte(chip->pdev, 0xAE, scratch);
 }
 
 static int jmicron_probe(struct sdhci_pci_chip *chip)
@@ -1110,6 +1106,14 @@ static const struct pci_device_id pci_ids[] = {
 		.subvendor	= PCI_ANY_ID,
 		.subdevice	= PCI_ANY_ID,
 		.driver_data	= (kernel_ulong_t)&sdhci_intel_byt_sd,
+	},
+
+	{
+		.vendor		= PCI_VENDOR_ID_INTEL,
+		.device		= PCI_DEVICE_ID_INTEL_DNV_EMMC,
+		.subvendor	= PCI_ANY_ID,
+		.subdevice	= PCI_ANY_ID,
+		.driver_data	= (kernel_ulong_t)&sdhci_intel_byt_emmc,
 	},
 
 	{
