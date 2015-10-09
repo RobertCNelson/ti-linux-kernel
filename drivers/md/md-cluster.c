@@ -55,6 +55,7 @@ struct md_cluster_info {
 	struct completion completion;
 	struct mutex sb_mutex;
 	struct dlm_lock_resource *bitmap_lockres;
+	struct dlm_lock_resource *resync_lockres;
 	struct list_head suspend_list;
 	spinlock_t suspend_lock;
 	struct md_thread *recovery_thread;
@@ -374,13 +375,21 @@ static void remove_suspend_info(struct md_cluster_info *cinfo, int slot)
 }
 
 
-static void process_suspend_info(struct md_cluster_info *cinfo,
+static void process_suspend_info(struct mddev *mddev,
 		int slot, sector_t lo, sector_t hi)
 {
+	struct md_cluster_info *cinfo = mddev->cluster_info;
 	struct suspend_info *s;
 
 	if (!hi) {
 		remove_suspend_info(cinfo, slot);
+		/* Set the RECOVERY flags and wake up the threads
+		 * so they may update the status in the conf
+		 * structure
+		 */
+		set_bit(MD_RECOVERY_NEEDED, &mddev->recovery);
+		md_wakeup_thread(mddev->sync_thread);
+		md_wakeup_thread(mddev->thread);
 		return;
 	}
 	s = kzalloc(sizeof(struct suspend_info), GFP_KERNEL);
@@ -389,6 +398,8 @@ static void process_suspend_info(struct md_cluster_info *cinfo,
 	s->slot = slot;
 	s->lo = lo;
 	s->hi = hi;
+	mddev->pers->quiesce(mddev, 1);
+	mddev->pers->quiesce(mddev, 0);
 	spin_lock_irq(&cinfo->suspend_lock);
 	/* Remove existing entry (if exists) before adding */
 	__remove_suspend_info(cinfo, slot);
@@ -421,8 +432,7 @@ static void process_add_new_disk(struct mddev *mddev, struct cluster_msg *cmsg)
 static void process_metadata_update(struct mddev *mddev, struct cluster_msg *msg)
 {
 	struct md_cluster_info *cinfo = mddev->cluster_info;
-
-	md_reload_sb(mddev);
+	md_reload_sb(mddev, le32_to_cpu(msg->raid_slot));
 	dlm_lock_sync(cinfo->no_new_dev_lockres, DLM_LOCK_CR);
 }
 
@@ -457,7 +467,7 @@ static void process_recvd_msg(struct mddev *mddev, struct cluster_msg *msg)
 	case RESYNCING:
 		pr_info("%s: %d Received message: RESYNCING from %d\n",
 			__func__, __LINE__, msg->slot);
-		process_suspend_info(mddev->cluster_info, msg->slot,
+		process_suspend_info(mddev, msg->slot,
 				msg->low, msg->high);
 		break;
 	case NEWDISK:
@@ -753,6 +763,10 @@ static int join(struct mddev *mddev, int nodes)
 		goto err;
 	}
 
+	cinfo->resync_lockres = lockres_init(mddev, "resync", NULL, 0);
+	if (!cinfo->resync_lockres)
+		goto err;
+
 	ret = gather_all_resync_info(mddev, nodes);
 	if (ret)
 		goto err;
@@ -763,6 +777,7 @@ err:
 	lockres_free(cinfo->token_lockres);
 	lockres_free(cinfo->ack_lockres);
 	lockres_free(cinfo->no_new_dev_lockres);
+	lockres_free(cinfo->resync_lockres);
 	lockres_free(cinfo->bitmap_lockres);
 	if (cinfo->lockspace)
 		dlm_release_lockspace(cinfo->lockspace, 2);
@@ -771,12 +786,32 @@ err:
 	return ret;
 }
 
+static void resync_bitmap(struct mddev *mddev)
+{
+	struct md_cluster_info *cinfo = mddev->cluster_info;
+	struct cluster_msg cmsg = {0};
+	int err;
+
+	cmsg.type = cpu_to_le32(BITMAP_NEEDS_SYNC);
+	err = sendmsg(cinfo, &cmsg);
+	if (err)
+		pr_err("%s:%d: failed to send BITMAP_NEEDS_SYNC message (%d)\n",
+			__func__, __LINE__, err);
+}
+
 static int leave(struct mddev *mddev)
 {
 	struct md_cluster_info *cinfo = mddev->cluster_info;
 
 	if (!cinfo)
 		return 0;
+
+	/* BITMAP_NEEDS_SYNC message should be sent when node
+	 * is leaving the cluster with dirty bitmap, also we
+	 * can only deliver it when dlm connection is available */
+	if (cinfo->slot_number > 0 && mddev->recovery_cp != MaxSector)
+		resync_bitmap(mddev);
+
 	md_unregister_thread(&cinfo->recovery_thread);
 	md_unregister_thread(&cinfo->recv_thread);
 	lockres_free(cinfo->message_lockres);
@@ -799,15 +834,6 @@ static int slot_number(struct mddev *mddev)
 	return cinfo->slot_number - 1;
 }
 
-static void resync_info_update(struct mddev *mddev, sector_t lo, sector_t hi)
-{
-	struct md_cluster_info *cinfo = mddev->cluster_info;
-
-	add_resync_info(mddev, cinfo->bitmap_lockres, lo, hi);
-	/* Re-acquire the lock to refresh LVB */
-	dlm_lock_sync(cinfo->bitmap_lockres, DLM_LOCK_PW);
-}
-
 static int metadata_update_start(struct mddev *mddev)
 {
 	return lock_comm(mddev->cluster_info);
@@ -817,11 +843,23 @@ static int metadata_update_finish(struct mddev *mddev)
 {
 	struct md_cluster_info *cinfo = mddev->cluster_info;
 	struct cluster_msg cmsg;
-	int ret;
+	struct md_rdev *rdev;
+	int ret = 0;
 
 	memset(&cmsg, 0, sizeof(cmsg));
 	cmsg.type = cpu_to_le32(METADATA_UPDATED);
-	ret = __sendmsg(cinfo, &cmsg);
+	cmsg.raid_slot = -1;
+	/* Pick up a good active device number to send.
+	 */
+	rdev_for_each(rdev, mddev)
+		if (rdev->raid_disk > -1 && !test_bit(Faulty, &rdev->flags)) {
+			cmsg.raid_slot = cpu_to_le32(rdev->desc_nr);
+			break;
+		}
+	if (cmsg.raid_slot >= 0)
+		ret = __sendmsg(cinfo, &cmsg);
+	else
+		pr_warn("md-cluster: No good device id found to send\n");
 	unlock_comm(cinfo);
 	return ret;
 }
@@ -833,43 +871,34 @@ static int metadata_update_cancel(struct mddev *mddev)
 	return dlm_unlock_sync(cinfo->token_lockres);
 }
 
-static int resync_send(struct mddev *mddev, enum msg_type type,
-		sector_t lo, sector_t hi)
+static int resync_start(struct mddev *mddev)
+{
+	struct md_cluster_info *cinfo = mddev->cluster_info;
+	cinfo->resync_lockres->flags |= DLM_LKF_NOQUEUE;
+	return dlm_lock_sync(cinfo->resync_lockres, DLM_LOCK_EX);
+}
+
+static int resync_info_update(struct mddev *mddev, sector_t lo, sector_t hi)
 {
 	struct md_cluster_info *cinfo = mddev->cluster_info;
 	struct cluster_msg cmsg;
 	int slot = cinfo->slot_number - 1;
 
+	add_resync_info(mddev, cinfo->bitmap_lockres, lo, hi);
+	/* Re-acquire the lock to refresh LVB */
+	dlm_lock_sync(cinfo->bitmap_lockres, DLM_LOCK_PW);
 	pr_info("%s:%d lo: %llu hi: %llu\n", __func__, __LINE__,
 			(unsigned long long)lo,
 			(unsigned long long)hi);
-	resync_info_update(mddev, lo, hi);
-	cmsg.type = cpu_to_le32(type);
+	cmsg.type = cpu_to_le32(RESYNCING);
 	cmsg.slot = cpu_to_le32(slot);
 	cmsg.low = cpu_to_le64(lo);
 	cmsg.high = cpu_to_le64(hi);
+
+	/* Resync is finished */
+	if (hi == 0)
+		dlm_unlock_sync(cinfo->resync_lockres);
 	return sendmsg(cinfo, &cmsg);
-}
-
-static int resync_start(struct mddev *mddev, sector_t lo, sector_t hi)
-{
-	pr_info("%s:%d\n", __func__, __LINE__);
-	return resync_send(mddev, RESYNCING, lo, hi);
-}
-
-static void resync_finish(struct mddev *mddev)
-{
-	struct md_cluster_info *cinfo = mddev->cluster_info;
-	struct cluster_msg cmsg;
-	int slot = cinfo->slot_number - 1;
-
-	pr_info("%s:%d\n", __func__, __LINE__);
-	resync_send(mddev, RESYNCING, 0, 0);
-	if (test_bit(MD_RECOVERY_INTR, &mddev->recovery)) {
-		cmsg.type = cpu_to_le32(BITMAP_NEEDS_SYNC);
-		cmsg.slot = cpu_to_le32(slot);
-		sendmsg(cinfo, &cmsg);
-	}
 }
 
 static int area_resyncing(struct mddev *mddev, int direction,
@@ -925,15 +954,9 @@ static int add_new_disk_start(struct mddev *mddev, struct md_rdev *rdev)
 
 static int add_new_disk_finish(struct mddev *mddev)
 {
-	struct cluster_msg cmsg;
-	struct md_cluster_info *cinfo = mddev->cluster_info;
-	int ret;
 	/* Write sb and inform others */
 	md_update_sb(mddev, 1);
-	cmsg.type = METADATA_UPDATED;
-	ret = __sendmsg(cinfo, &cmsg);
-	unlock_comm(cinfo);
-	return ret;
+	return metadata_update_finish(mddev);
 }
 
 static int new_disk_ack(struct mddev *mddev, bool ack)
@@ -993,9 +1016,8 @@ static struct md_cluster_operations cluster_ops = {
 	.join   = join,
 	.leave  = leave,
 	.slot_number = slot_number,
-	.resync_info_update = resync_info_update,
 	.resync_start = resync_start,
-	.resync_finish = resync_finish,
+	.resync_info_update = resync_info_update,
 	.metadata_update_start = metadata_update_start,
 	.metadata_update_finish = metadata_update_finish,
 	.metadata_update_cancel = metadata_update_cancel,
