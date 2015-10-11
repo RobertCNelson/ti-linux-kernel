@@ -240,9 +240,10 @@ static void tlb_entry_insert(unsigned int pd0, unsigned int pd1)
 
 noinline void local_flush_tlb_all(void)
 {
+	struct cpuinfo_arc_mmu *mmu = &cpuinfo_arc700[smp_processor_id()].mmu;
 	unsigned long flags;
 	unsigned int entry;
-	struct cpuinfo_arc_mmu *mmu = &cpuinfo_arc700[smp_processor_id()].mmu;
+	int num_tlb = mmu->sets * mmu->ways;
 
 	local_irq_save(flags);
 
@@ -250,7 +251,7 @@ noinline void local_flush_tlb_all(void)
 	write_aux_reg(ARC_REG_TLBPD1, 0);
 	write_aux_reg(ARC_REG_TLBPD0, 0);
 
-	for (entry = 0; entry < mmu->num_tlb; entry++) {
+	for (entry = 0; entry < num_tlb; entry++) {
 		/* write this entry to the TLB */
 		write_aux_reg(ARC_REG_TLBINDEX, entry);
 		write_aux_reg(ARC_REG_TLBCOMMAND, TLBWrite);
@@ -580,6 +581,74 @@ void update_mmu_cache(struct vm_area_struct *vma, unsigned long vaddr_unaligned,
 	}
 }
 
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+
+void update_mmu_cache_pmd(struct vm_area_struct *vma, unsigned long addr,
+				 pmd_t *pmd)
+{
+	pte_t pte = __pte(pmd_val(*pmd));
+	update_mmu_cache(vma, addr, &pte);
+}
+
+void pgtable_trans_huge_deposit(struct mm_struct *mm, pmd_t *pmdp,
+				pgtable_t pgtable)
+{
+	struct list_head *lh = (struct list_head *) pgtable;
+
+	assert_spin_locked(&mm->page_table_lock);
+
+	/* FIFO */
+	if (!pmd_huge_pte(mm, pmdp))
+		INIT_LIST_HEAD(lh);
+	else
+		list_add(lh, (struct list_head *) pmd_huge_pte(mm, pmdp));
+	pmd_huge_pte(mm, pmdp) = pgtable;
+}
+
+pgtable_t pgtable_trans_huge_withdraw(struct mm_struct *mm, pmd_t *pmdp)
+{
+	struct list_head *lh;
+	pgtable_t pgtable;
+
+	assert_spin_locked(&mm->page_table_lock);
+
+	pgtable = pmd_huge_pte(mm, pmdp);
+	lh = (struct list_head *) pgtable;
+	if (list_empty(lh))
+		pmd_huge_pte(mm, pmdp) = NULL;
+	else {
+		pmd_huge_pte(mm, pmdp) = (pgtable_t) lh->next;
+		list_del(lh);
+	}
+
+	pte_val(pgtable[0]) = 0;
+	pte_val(pgtable[1]) = 0;
+
+	return pgtable;
+}
+
+void flush_pmd_tlb_range(struct vm_area_struct *vma, unsigned long start,
+			 unsigned long end)
+{
+	unsigned int cpu;
+	unsigned long flags;
+
+	local_irq_save(flags);
+
+	cpu = smp_processor_id();
+
+	if (likely(asid_mm(vma->vm_mm, cpu) != MM_CTXT_NO_ASID)) {
+		unsigned int asid = hw_pid(vma->vm_mm, cpu);
+
+		/* No need to loop here: this will always be for 1 Huge Page */
+		tlb_entry_erase(start | _PAGE_HW_SZ | asid);
+	}
+
+	local_irq_restore(flags);
+}
+
+#endif
+
 /* Read the Cache Build Confuration Registers, Decode them and save into
  * the cpuinfo structure for later use.
  * No Validation is done here, simply read/convert the BCRs
@@ -598,10 +667,10 @@ void read_decode_mmu_bcr(void)
 
 	struct bcr_mmu_3 {
 #ifdef CONFIG_CPU_BIG_ENDIAN
-	unsigned int ver:8, ways:4, sets:4, osm:1, reserv:3, pg_sz:4,
+	unsigned int ver:8, ways:4, sets:4, res:3, sasid:1, pg_sz:4,
 		     u_itlb:4, u_dtlb:4;
 #else
-	unsigned int u_dtlb:4, u_itlb:4, pg_sz:4, reserv:3, osm:1, sets:4,
+	unsigned int u_dtlb:4, u_itlb:4, pg_sz:4, sasid:1, res:3, sets:4,
 		     ways:4, ver:8;
 #endif
 	} *mmu3;
@@ -622,7 +691,7 @@ void read_decode_mmu_bcr(void)
 
 	if (mmu->ver <= 2) {
 		mmu2 = (struct bcr_mmu_1_2 *)&tmp;
-		mmu->pg_sz_k = TO_KB(PAGE_SIZE);
+		mmu->pg_sz_k = TO_KB(0x2000);
 		mmu->sets = 1 << mmu2->sets;
 		mmu->ways = 1 << mmu2->ways;
 		mmu->u_dtlb = mmu2->u_dtlb;
@@ -634,6 +703,7 @@ void read_decode_mmu_bcr(void)
 		mmu->ways = 1 << mmu3->ways;
 		mmu->u_dtlb = mmu3->u_dtlb;
 		mmu->u_itlb = mmu3->u_itlb;
+		mmu->sasid = mmu3->sasid;
 	} else {
 		mmu4 = (struct bcr_mmu_4 *)&tmp;
 		mmu->pg_sz_k = 1 << (mmu4->sz0 - 1);
@@ -642,9 +712,9 @@ void read_decode_mmu_bcr(void)
 		mmu->ways = mmu4->n_ways * 2;
 		mmu->u_dtlb = mmu4->u_dtlb * 4;
 		mmu->u_itlb = mmu4->u_itlb * 4;
+		mmu->sasid = mmu4->sasid;
+		mmu->pae = mmu4->pae;
 	}
-
-	mmu->num_tlb = mmu->sets * mmu->ways;
 }
 
 char *arc_mmu_mumbojumbo(int cpu_id, char *buf, int len)
@@ -655,14 +725,14 @@ char *arc_mmu_mumbojumbo(int cpu_id, char *buf, int len)
 
 	if (p_mmu->s_pg_sz_m)
 		scnprintf(super_pg, 64, "%dM Super Page%s, ",
-			  p_mmu->s_pg_sz_m, " (not used)");
+			  p_mmu->s_pg_sz_m,
+			  IS_USED_CFG(CONFIG_TRANSPARENT_HUGEPAGE));
 
 	n += scnprintf(buf + n, len - n,
-		      "MMU [v%x]\t: %dk PAGE, %sJTLB %d (%dx%d), uDTLB %d, uITLB %d %s\n",
+		      "MMU [v%x]\t: %dK PAGE, %sJTLB %d (%dx%d), uDTLB %d, uITLB %d\n",
 		       p_mmu->ver, p_mmu->pg_sz_k, super_pg,
-		       p_mmu->num_tlb, p_mmu->sets, p_mmu->ways,
-		       p_mmu->u_dtlb, p_mmu->u_itlb,
-		       IS_ENABLED(CONFIG_ARC_MMU_SASID) ? ",SASID" : "");
+		       p_mmu->sets * p_mmu->ways, p_mmu->sets, p_mmu->ways,
+		       p_mmu->u_dtlb, p_mmu->u_itlb);
 
 	return buf;
 }
@@ -689,6 +759,11 @@ void arc_mmu_init(void)
 
 	if (mmu->pg_sz_k != TO_KB(PAGE_SIZE))
 		panic("MMU pg size != PAGE_SIZE (%luk)\n", TO_KB(PAGE_SIZE));
+
+	if (IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE) &&
+	    mmu->s_pg_sz_m != TO_MB(HPAGE_PMD_SIZE))
+		panic("MMU Super pg size != Linux HPAGE_PMD_SIZE (%luM)\n",
+		      (unsigned long)TO_MB(HPAGE_PMD_SIZE));
 
 	/* Enable the MMU */
 	write_aux_reg(ARC_REG_PID, MMU_ENABLE);
