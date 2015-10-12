@@ -497,13 +497,21 @@ static int dmar_forcedac;
 static int intel_iommu_strict;
 static int intel_iommu_superpage = 1;
 static int intel_iommu_ecs = 1;
+static int intel_iommu_pasid28;
+static int iommu_identity_mapping;
+
+#define IDENTMAP_ALL		1
+#define IDENTMAP_GFX		2
+#define IDENTMAP_AZALIA		4
 
 /* We only actually use ECS when PASID support (on the new bit 40)
  * is also advertised. Some early implementations — the ones with
  * PASID support on bit 28 — have issues even when we *only* use
  * extended root/context tables. */
+#define pasid_enabled(iommu) (ecap_pasid(iommu->ecap) || \
+			      (intel_iommu_pasid28 && ecap_broken_pasid(iommu->ecap)))
 #define ecs_enabled(iommu) (intel_iommu_ecs && ecap_ecs(iommu->ecap) && \
-			    ecap_pasid(iommu->ecap))
+			    pasid_enabled(iommu))
 
 int intel_iommu_gfx_mapped;
 EXPORT_SYMBOL_GPL(intel_iommu_gfx_mapped);
@@ -566,6 +574,11 @@ static int __init intel_iommu_setup(char *str)
 			printk(KERN_INFO
 				"Intel-IOMMU: disable extended context table support\n");
 			intel_iommu_ecs = 0;
+		} else if (!strncmp(str, "pasid28", 7)) {
+			printk(KERN_INFO
+				"Intel-IOMMU: enable pre-production PASID support\n");
+			intel_iommu_pasid28 = 1;
+			iommu_identity_mapping |= IDENTMAP_GFX;
 		}
 
 		str += strcspn(str, ",");
@@ -1434,9 +1447,14 @@ iommu_support_dev_iotlb (struct dmar_domain *domain, struct intel_iommu *iommu,
 	if (!pci_find_ext_capability(pdev, PCI_EXT_CAP_ID_ATS))
 		return NULL;
 
-	if (!dmar_find_matched_atsr_unit(pdev))
-		return NULL;
-
+	if (!dmar_find_matched_atsr_unit(pdev)) {
+		if (intel_iommu_pasid28 && IS_GFX_DEVICE(pdev) &&
+		    pdev->vendor == 0x8086) {
+			pr_warn("BIOS denies ATSR capability for %s; assuming it lies\n",
+				dev_name(info->dev));
+		} else
+			return NULL;
+	}
 	return info;
 }
 
@@ -1667,6 +1685,14 @@ static void free_dmar_iommu(struct intel_iommu *iommu)
 
 	/* free context mapping */
 	free_context_table(iommu);
+
+#ifdef CONFIG_INTEL_IOMMU_SVM
+	if (pasid_enabled(iommu)) {
+		if (ecap_prs(iommu->ecap))
+			intel_svm_finish_prq(iommu);
+		intel_svm_free_pasid_tables(iommu);
+	}
+#endif
 }
 
 static struct dmar_domain *alloc_domain(int flags)
@@ -2400,11 +2426,6 @@ found_domain:
 	return domain;
 }
 
-static int iommu_identity_mapping;
-#define IDENTMAP_ALL		1
-#define IDENTMAP_GFX		2
-#define IDENTMAP_AZALIA		4
-
 static int iommu_domain_identity_map(struct dmar_domain *domain,
 				     unsigned long long start,
 				     unsigned long long end)
@@ -3098,6 +3119,10 @@ static int __init init_dmars(void)
 
 		if (!ecap_pass_through(iommu->ecap))
 			hw_pass_through = 0;
+#ifdef CONFIG_INTEL_IOMMU_SVM
+		if (pasid_enabled(iommu))
+			intel_svm_alloc_pasid_tables(iommu);
+#endif
 	}
 
 	if (iommu_pass_through)
@@ -3185,6 +3210,13 @@ domains_done:
 
 		iommu_flush_write_buffer(iommu);
 
+#ifdef CONFIG_INTEL_IOMMU_SVM
+		if (pasid_enabled(iommu) && ecap_prs(iommu->ecap)) {
+			ret = intel_svm_enable_prq(iommu);
+			if (ret)
+				goto free_iommu;
+		}
+#endif
 		ret = dmar_set_interrupt(iommu);
 		if (ret)
 			goto free_iommu;
@@ -4133,6 +4165,11 @@ static int intel_iommu_add(struct dmar_drhd_unit *dmaru)
 	if (ret)
 		goto out;
 
+#ifdef CONFIG_INTEL_IOMMU_SVM
+	if (pasid_enabled(iommu))
+		intel_svm_alloc_pasid_tables(iommu);
+#endif
+
 	if (dmaru->ignored) {
 		/*
 		 * we always have to disable PMRs or DMA may fail on this device
@@ -4144,6 +4181,14 @@ static int intel_iommu_add(struct dmar_drhd_unit *dmaru)
 
 	intel_iommu_init_qi(iommu);
 	iommu_flush_write_buffer(iommu);
+
+#ifdef CONFIG_INTEL_IOMMU_SVM
+	if (pasid_enabled(iommu) && ecap_prs(iommu->ecap)) {
+		ret = intel_svm_enable_prq(iommu);
+		if (ret)
+			goto disable_iommu;
+	}
+#endif
 	ret = dmar_set_interrupt(iommu);
 	if (ret)
 		goto disable_iommu;
@@ -4882,6 +4927,108 @@ static void intel_iommu_remove_device(struct device *dev)
 
 	iommu_device_unlink(iommu->iommu_dev, dev);
 }
+
+#ifdef CONFIG_INTEL_IOMMU_SVM
+int intel_iommu_enable_pasid(struct intel_svm *svm)
+{
+	struct device_domain_info *info = NULL;
+	struct context_entry *context;
+	struct dmar_domain *domain;
+	unsigned long flags;
+	u8 bus, devfn;
+	u64 ctx_lo;
+
+	if (iommu_dummy(svm->dev)) {
+		dev_warn(svm->dev,
+			 "No IOMMU translation for device; cannot enable SVM\n");
+		return -EINVAL;
+	}
+
+	domain = get_valid_domain_for_dev(svm->dev);
+	if (!domain) {
+		dev_warn(svm->dev, "Cannot get IOMMU domain to enable SVM\n");
+		return -EINVAL;
+	}
+
+	svm->iommu = device_to_iommu(svm->dev, &bus, &devfn);
+	if (!ecs_enabled(svm->iommu)) {
+		dev_dbg(svm->dev, "No ECS support on IOMMU; cannot enable SVM\n");
+		return -EINVAL;
+	}
+	svm->did = domain->iommu_did[svm->iommu->seq_id];
+
+	spin_lock_irqsave(&device_domain_lock, flags);
+	spin_lock(&svm->iommu->lock);
+	context = iommu_context_addr(svm->iommu, bus, devfn, 0);
+	if (WARN_ON(!context)) {
+		spin_unlock(&svm->iommu->lock);
+		spin_unlock_irqrestore(&device_domain_lock, flags);
+		return -EINVAL;
+	}
+
+	ctx_lo = context[0].lo;
+	/* Modes in which the device IOTLB is enabled are 1 and 5. Modes
+	 * 3 and 7 are invalid. so we only need to test the low bit of TT */
+	svm->dev_iotlb = (ctx_lo >> 2) & 1;
+
+	if (!(ctx_lo & CONTEXT_PASIDE)) {
+		context[1].hi = (u64)virt_to_phys(svm->iommu->pasid_state_table);
+		context[1].lo = (u64)virt_to_phys(svm->iommu->pasid_table) | ecap_pss(svm->iommu->ecap);
+		wmb();
+		/* CONTEXT_TT_MULTI_LEVEL and CONTEXT_TT_DEV_IOTLB are both
+		 * extended to permit requests-with-PASID if the PASIDE bit
+		 * is set. which makes sense. For CONTEXT_TT_PASS_THROUGH,
+		 * however, the PASIDE bit is ignored and requests-with-PASID
+		 * are unconditionally blocked. Which makes less sense.
+		 * So convert from CONTEXT_TT_PASS_THROUGH to one of the new
+		 * "guest mode" translation types depending on whether ATS
+		 * is available or not. */
+		if ((ctx_lo & CONTEXT_TT_MASK) == (CONTEXT_TT_PASS_THROUGH << 2)) {
+			ctx_lo &= ~CONTEXT_TT_MASK;
+			info = iommu_support_dev_iotlb(domain, svm->iommu, bus, devfn);
+			if (info) {
+				ctx_lo |= CONTEXT_TT_PT_PASID_DEV_IOTLB << 2;
+				svm->dev_iotlb = 1;
+			} else
+				ctx_lo |= CONTEXT_TT_PT_PASID << 2;
+		}
+		ctx_lo |= CONTEXT_PASIDE;
+		if (svm->dev_iotlb && ecap_prs(svm->iommu->ecap))
+			ctx_lo |= CONTEXT_PRS;
+		context[0].lo = ctx_lo;
+		wmb();
+		svm->iommu->flush.flush_context(svm->iommu, svm->did,
+						(((u16)bus) << 8) | devfn,
+						DMA_CCMD_MASK_NOBIT,
+						DMA_CCMD_DEVICE_INVL);
+	}
+	spin_unlock(&svm->iommu->lock);
+	spin_unlock_irqrestore(&device_domain_lock, flags);
+
+	/* This only happens if we just switched from CONTEXT_TT_PASS_THROUGH */
+	if (info)
+		iommu_enable_dev_iotlb(info);
+
+	/* This can also happen when we were already in a dev-iotlb mode */
+	if (svm->dev_iotlb) {
+		svm->qdep = pci_ats_queue_depth(to_pci_dev(svm->dev));
+		if (svm->qdep >= QI_DEV_EIOTLB_MAX_INVS)
+			svm->qdep = 0;
+		svm->sid = (((u16)bus) << 8) | devfn;
+	}
+
+	return 0;
+}
+
+/* Helper function for SVM code, so that we can look up a given PASID
+ * in its IOMMU's pasid_idr for unbinding */
+struct intel_iommu *intel_iommu_device_to_iommu(struct device *dev)
+{
+	u8 bus, devfn;
+
+	return device_to_iommu(dev, &bus, &devfn);
+}
+#endif /* CONFIG_INTEL_IOMMU_SVM */
 
 static const struct iommu_ops intel_iommu_ops = {
 	.capable	= intel_iommu_capable,
