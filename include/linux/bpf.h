@@ -10,7 +10,6 @@
 #include <uapi/linux/bpf.h>
 #include <linux/workqueue.h>
 #include <linux/file.h>
-#include <linux/perf_event.h>
 
 struct bpf_map;
 
@@ -101,6 +100,8 @@ enum bpf_access_type {
 	BPF_WRITE = 2
 };
 
+struct bpf_prog;
+
 struct bpf_verifier_ops {
 	/* return eBPF function prototype for verification */
 	const struct bpf_func_proto *(*get_func_proto)(enum bpf_func_id func_id);
@@ -112,7 +113,7 @@ struct bpf_verifier_ops {
 
 	u32 (*convert_ctx_access)(enum bpf_access_type type, int dst_reg,
 				  int src_reg, int ctx_off,
-				  struct bpf_insn *insn);
+				  struct bpf_insn *insn, struct bpf_prog *prog);
 };
 
 struct bpf_prog_type_list {
@@ -120,8 +121,6 @@ struct bpf_prog_type_list {
 	const struct bpf_verifier_ops *ops;
 	enum bpf_prog_type type;
 };
-
-struct bpf_prog;
 
 struct bpf_prog_aux {
 	atomic_t refcnt;
@@ -200,5 +199,9 @@ extern const struct bpf_func_proto bpf_get_current_uid_gid_proto;
 extern const struct bpf_func_proto bpf_get_current_comm_proto;
 extern const struct bpf_func_proto bpf_skb_vlan_push_proto;
 extern const struct bpf_func_proto bpf_skb_vlan_pop_proto;
+
+/* Shared helpers among cBPF and eBPF. */
+void bpf_user_rnd_init_once(void);
+u64 bpf_user_rnd_u32(u64 r1, u64 r2, u64 r3, u64 r4, u64 r5);
 
 #endif /* _LINUX_BPF_H */
