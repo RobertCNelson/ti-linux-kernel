@@ -1,7 +1,5 @@
 /*
- * Copyright 2015 Chen-Yu Tsai
- *
- * Chen-Yu Tsai <wens@csie.org>
+ * Copyright 2015 Siarhei Siamashka <siarhei.siamashka@gmail.com>
  *
  * This file is dual-licensed: you can use it either under the terms
  * of the GPL or the X11 license, at your option. Note that this dual
@@ -43,55 +41,38 @@
  */
 
 /*
- * AXP202/209 Integrated Power Management Chip
- * http://www.x-powers.com/product/AXP20X.php
- * http://dl.linux-sunxi.org/AXP/AXP209%20Datasheet%20v1.0_cn.pdf
+ * The LinkSprite pcDuino2 board is almost identical to the older
+ * LinkSprite pcDuino1 board. The only software visible difference
+ * is that the pcDuino2 board got a USB VBUS voltage regulator, which
+ * is controlled by the PD2 pin (pulled-up by default). Also one of
+ * the USB host ports has been replaced with a USB WIFI chip.
  */
 
-&axp209 {
-	compatible = "x-powers,axp209";
-	interrupt-controller;
-	#interrupt-cells = <1>;
+#include "sun4i-a10-pcduino.dts"
 
-	regulators {
-		/* Default work frequency for buck regulators */
-		x-powers,dcdc-freq = <1500>;
+/ {
+	model = "LinkSprite pcDuino2";
+	compatible = "linksprite,a10-pcduino2", "allwinner,sun4i-a10";
+};
 
-		reg_dcdc2: dcdc2 {
-			regulator-name = "dcdc2";
-		};
-
-		reg_dcdc3: dcdc3 {
-			regulator-name = "dcdc3";
-		};
-
-		reg_ldo1: ldo1 {
-			/* LDO1 is a fixed output regulator */
-			regulator-always-on;
-			regulator-min-microvolt = <1300000>;
-			regulator-max-microvolt = <1300000>;
-			regulator-name = "ldo1";
-		};
-
-		reg_ldo2: ldo2 {
-			regulator-name = "ldo2";
-		};
-
-		reg_ldo3: ldo3 {
-			regulator-name = "ldo3";
-		};
-
-		reg_ldo4: ldo4 {
-			regulator-name = "ldo4";
-		};
-
-		reg_ldo5: ldo5 {
-			regulator-name = "ldo5";
-		};
+&pio {
+	usb2_vbus_pin_pcduino2: usb2_vbus_pin@0 {
+		allwinner,pins = "PD2";
+		allwinner,function = "gpio_out";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 	};
+};
 
-	usb_power_supply: usb_power_supply {
-		compatible = "x-powers,axp202-usb-power-supply";
-		status = "disabled";
-	};
+&reg_usb2_vbus {
+	pinctrl-names = "default";
+	pinctrl-0 = <&usb2_vbus_pin_pcduino2>;
+	gpio = <&pio 3 2 GPIO_ACTIVE_HIGH>;
+	status = "okay";
+};
+
+&usbphy {
+	usb1_vbus-supply = <&reg_vcc3v3>; /* USB WIFI is always on */
+	usb2_vbus-supply = <&reg_usb2_vbus>;
+	status = "okay";
 };
