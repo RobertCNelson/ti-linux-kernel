@@ -474,7 +474,9 @@ extern int intel_svm_finish_prq(struct intel_iommu *iommu);
 
 struct intel_svm {
 	struct kref kref;
+#ifdef CONFIG_MMU_NOTIFIER
 	struct mmu_notifier notifier;
+#endif
 	struct mm_struct *mm;
 	struct intel_iommu *iommu;
 	struct device *dev;
