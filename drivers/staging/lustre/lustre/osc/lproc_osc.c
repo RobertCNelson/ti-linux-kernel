@@ -96,9 +96,9 @@ static ssize_t max_rpcs_in_flight_store(struct kobject *kobj,
 	struct obd_device *dev = container_of(kobj, struct obd_device,
 					      obd_kobj);
 	struct client_obd *cli = &dev->u.cli;
-	struct ptlrpc_request_pool *pool = cli->cl_import->imp_rq_pool;
 	int rc;
 	unsigned long val;
+	int adding, added, req_count;
 
 	rc = kstrtoul(buffer, 10, &val);
 	if (rc)
@@ -107,8 +107,19 @@ static ssize_t max_rpcs_in_flight_store(struct kobject *kobj,
 	if (val < 1 || val > OSC_MAX_RIF_MAX)
 		return -ERANGE;
 
-	if (pool && val > cli->cl_max_rpcs_in_flight)
-		pool->prp_populate(pool, val-cli->cl_max_rpcs_in_flight);
+	adding = val - cli->cl_max_rpcs_in_flight;
+	req_count = atomic_read(&osc_pool_req_count);
+	if (adding > 0 && req_count < osc_reqpool_maxreqcount) {
+		/*
+		 * There might be some race which will cause over-limit
+		 * allocation, but it is fine.
+		 */
+		if (req_count + adding > osc_reqpool_maxreqcount)
+			adding = osc_reqpool_maxreqcount - req_count;
+
+		added = osc_rq_pool->prp_populate(osc_rq_pool, adding);
+		atomic_add(added, &osc_pool_req_count);
+	}
 
 	client_obd_list_lock(&cli->cl_loi_list_lock);
 	cli->cl_max_rpcs_in_flight = val;
@@ -440,9 +451,6 @@ static ssize_t resend_count_store(struct kobject *kobj,
 	if (rc)
 		return rc;
 
-	if (val < 0)
-	       return -EINVAL;
-
 	atomic_set(&obd->u.cli.cl_resends, val);
 
 	return count;
@@ -586,18 +594,18 @@ static struct lprocfs_vars lprocfs_osc_obd_vars[] = {
 
 static int osc_rpc_stats_seq_show(struct seq_file *seq, void *v)
 {
-	struct timeval now;
+	struct timespec64 now;
 	struct obd_device *dev = seq->private;
 	struct client_obd *cli = &dev->u.cli;
 	unsigned long read_tot = 0, write_tot = 0, read_cum, write_cum;
 	int i;
 
-	do_gettimeofday(&now);
+	ktime_get_real_ts64(&now);
 
 	client_obd_list_lock(&cli->cl_loi_list_lock);
 
-	seq_printf(seq, "snapshot_time:	 %lu.%lu (secs.usecs)\n",
-		   now.tv_sec, (unsigned long)now.tv_usec);
+	seq_printf(seq, "snapshot_time:	 %llu.%9lu (secs.usecs)\n",
+		   (s64)now.tv_sec, (unsigned long)now.tv_nsec);
 	seq_printf(seq, "read RPCs in flight:  %d\n",
 		   cli->cl_r_in_flight);
 	seq_printf(seq, "write RPCs in flight: %d\n",
@@ -703,14 +711,14 @@ LPROC_SEQ_FOPS(osc_rpc_stats);
 
 static int osc_stats_seq_show(struct seq_file *seq, void *v)
 {
-	struct timeval now;
+	struct timespec64 now;
 	struct obd_device *dev = seq->private;
 	struct osc_stats *stats = &obd2osc_dev(dev)->od_stats;
 
-	do_gettimeofday(&now);
+	ktime_get_real_ts64(&now);
 
-	seq_printf(seq, "snapshot_time:	 %lu.%lu (secs.usecs)\n",
-		   now.tv_sec, (unsigned long)now.tv_usec);
+	seq_printf(seq, "snapshot_time:	 %llu.%9lu (secs.usecs)\n",
+		   (s64)now.tv_sec, (unsigned long)now.tv_nsec);
 	seq_printf(seq, "lockless_write_bytes\t\t%llu\n",
 		   stats->os_lockless_writes);
 	seq_printf(seq, "lockless_read_bytes\t\t%llu\n",
