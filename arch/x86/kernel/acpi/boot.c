@@ -194,9 +194,6 @@ acpi_parse_x2apic(struct acpi_subtable_header *header, const unsigned long end)
 
 	processor = (struct acpi_madt_local_x2apic *)header;
 
-	if (BAD_MADT_ENTRY(processor, end))
-		return -EINVAL;
-
 	acpi_table_print_madt_entry(header);
 
 	apic_id = processor->local_apic_id;
@@ -227,9 +224,6 @@ acpi_parse_lapic(struct acpi_subtable_header * header, const unsigned long end)
 
 	processor = (struct acpi_madt_local_apic *)header;
 
-	if (BAD_MADT_ENTRY(processor, end))
-		return -EINVAL;
-
 	acpi_table_print_madt_entry(header);
 
 	/*
@@ -252,9 +246,6 @@ acpi_parse_sapic(struct acpi_subtable_header *header, const unsigned long end)
 
 	processor = (struct acpi_madt_local_sapic *)header;
 
-	if (BAD_MADT_ENTRY(processor, end))
-		return -EINVAL;
-
 	acpi_table_print_madt_entry(header);
 
 	acpi_register_lapic((processor->id << 8) | processor->eid,/* APIC ID */
@@ -271,9 +262,6 @@ acpi_parse_lapic_addr_ovr(struct acpi_subtable_header * header,
 
 	lapic_addr_ovr = (struct acpi_madt_local_apic_override *)header;
 
-	if (BAD_MADT_ENTRY(lapic_addr_ovr, end))
-		return -EINVAL;
-
 	acpi_lapic_addr = lapic_addr_ovr->address;
 
 	return 0;
@@ -286,9 +274,6 @@ acpi_parse_x2apic_nmi(struct acpi_subtable_header *header,
 	struct acpi_madt_local_x2apic_nmi *x2apic_nmi = NULL;
 
 	x2apic_nmi = (struct acpi_madt_local_x2apic_nmi *)header;
-
-	if (BAD_MADT_ENTRY(x2apic_nmi, end))
-		return -EINVAL;
 
 	acpi_table_print_madt_entry(header);
 
@@ -304,9 +289,6 @@ acpi_parse_lapic_nmi(struct acpi_subtable_header * header, const unsigned long e
 	struct acpi_madt_local_apic_nmi *lapic_nmi = NULL;
 
 	lapic_nmi = (struct acpi_madt_local_apic_nmi *)header;
-
-	if (BAD_MADT_ENTRY(lapic_nmi, end))
-		return -EINVAL;
 
 	acpi_table_print_madt_entry(header);
 
@@ -411,9 +393,6 @@ acpi_parse_ioapic(struct acpi_subtable_header * header, const unsigned long end)
 
 	ioapic = (struct acpi_madt_io_apic *)header;
 
-	if (BAD_MADT_ENTRY(ioapic, end))
-		return -EINVAL;
-
 	acpi_table_print_madt_entry(header);
 
 	/* Statically assign IRQ numbers for IOAPICs hosting legacy IRQs */
@@ -463,9 +442,6 @@ acpi_parse_int_src_ovr(struct acpi_subtable_header * header,
 
 	intsrc = (struct acpi_madt_interrupt_override *)header;
 
-	if (BAD_MADT_ENTRY(intsrc, end))
-		return -EINVAL;
-
 	acpi_table_print_madt_entry(header);
 
 	if (intsrc->source_irq == acpi_gbl_FADT.sci_interrupt) {
@@ -503,9 +479,6 @@ acpi_parse_nmi_src(struct acpi_subtable_header * header, const unsigned long end
 	struct acpi_madt_nmi_source *nmi_src = NULL;
 
 	nmi_src = (struct acpi_madt_nmi_source *)header;
-
-	if (BAD_MADT_ENTRY(nmi_src, end))
-		return -EINVAL;
 
 	acpi_table_print_madt_entry(header);
 
@@ -976,6 +949,8 @@ static int __init acpi_parse_madt_lapic_entries(void)
 {
 	int count;
 	int x2count = 0;
+	int ret;
+	struct acpi_subtable_proc madt_proc[2];
 
 	if (!cpu_has_apic)
 		return -ENODEV;
@@ -999,10 +974,22 @@ static int __init acpi_parse_madt_lapic_entries(void)
 				      acpi_parse_sapic, MAX_LOCAL_APIC);
 
 	if (!count) {
-		x2count = acpi_table_parse_madt(ACPI_MADT_TYPE_LOCAL_X2APIC,
-					acpi_parse_x2apic, MAX_LOCAL_APIC);
-		count = acpi_table_parse_madt(ACPI_MADT_TYPE_LOCAL_APIC,
-					acpi_parse_lapic, MAX_LOCAL_APIC);
+		memset(madt_proc, 0, sizeof(madt_proc));
+		madt_proc[0].id = ACPI_MADT_TYPE_LOCAL_APIC;
+		madt_proc[0].handler = acpi_parse_lapic;
+		madt_proc[1].id = ACPI_MADT_TYPE_LOCAL_X2APIC;
+		madt_proc[1].handler = acpi_parse_x2apic;
+		ret = acpi_table_parse_entries_array(ACPI_SIG_MADT,
+				sizeof(struct acpi_table_madt),
+				madt_proc, ARRAY_SIZE(madt_proc), MAX_LOCAL_APIC);
+		if (ret < 0) {
+			printk(KERN_ERR PREFIX
+					"Error parsing LAPIC/X2APIC entries\n");
+			return ret;
+		}
+
+		x2count = madt_proc[0].count;
+		count = madt_proc[1].count;
 	}
 	if (!count && !x2count) {
 		printk(KERN_ERR PREFIX "No LAPIC entries present\n");
