@@ -418,10 +418,13 @@ struct device_domain_info {
 	struct list_head global; /* link to global list */
 	u8 bus;			/* PCI bus number */
 	u8 devfn;		/* PCI devfn number */
-	struct {
-		u8 enabled:1;
-		u8 qdep;
-	} ats;			/* ATS state */
+	u8 pasid_supported:3;
+	u8 pasid_enabled:1;
+	u8 pri_supported:1;
+	u8 pri_enabled:1;
+	u8 ats_supported:1;
+	u8 ats_enabled:1;
+	u8 ats_qdep;
 	struct device *dev; /* it's NULL for PCIe-to-PCI bridge */
 	struct intel_iommu *iommu; /* IOMMU used by this device */
 	struct dmar_domain *domain; /* pointer to domain */
@@ -1426,9 +1429,6 @@ iommu_support_dev_iotlb (struct dmar_domain *domain, struct intel_iommu *iommu,
 
 	assert_spin_locked(&device_domain_lock);
 
-	if (!ecap_dev_iotlb_support(iommu->ecap))
-		return NULL;
-
 	if (!iommu->qi)
 		return NULL;
 
@@ -1444,16 +1444,27 @@ iommu_support_dev_iotlb (struct dmar_domain *domain, struct intel_iommu *iommu,
 
 	pdev = to_pci_dev(info->dev);
 
-	if (!pci_find_ext_capability(pdev, PCI_EXT_CAP_ID_ATS))
-		return NULL;
+	if (ecs_enabled(iommu)) {
+		if (pasid_enabled(iommu)) {
+			int features = pci_pasid_features(pdev);
+			if (features >= 0)
+				info->pasid_supported = features | 1;
+		}
 
-	if (!dmar_find_matched_atsr_unit(pdev)) {
-		if (intel_iommu_pasid28 && IS_GFX_DEVICE(pdev) &&
-		    pdev->vendor == 0x8086) {
+		if (ecap_prs(iommu->ecap) && pci_find_ext_capability(pdev, PCI_EXT_CAP_ID_PRI))
+			info->pri_supported = 1;
+	}
+
+	if (ecap_dev_iotlb_support(iommu->ecap) &&
+	    pci_find_ext_capability(pdev, PCI_EXT_CAP_ID_ATS)) {
+		if (dmar_find_matched_atsr_unit(pdev))
+			info->ats_supported = 1;
+		else if (intel_iommu_pasid28 && IS_GFX_DEVICE(pdev) &&
+			 pdev->vendor == 0x8086) {
 			pr_warn("BIOS denies ATSR capability for %s; assuming it lies\n",
 				dev_name(info->dev));
-		} else
-			return NULL;
+			info->ats_supported = 1;
+		}
 	}
 	return info;
 }
@@ -1466,20 +1477,48 @@ static void iommu_enable_dev_iotlb(struct device_domain_info *info)
 		return;
 
 	pdev = to_pci_dev(info->dev);
-	if (pci_enable_ats(pdev, VTD_PAGE_SHIFT))
-		return;
 
-	info->ats.enabled = 1;
-	info->ats.qdep = pci_ats_queue_depth(pdev);
+#ifdef CONFIG_INTEL_IOMMU_SVM
+	/* The PCIe spec, in its wisdom, declares that the behaviour of
+	   the device if you enable PASID support after ATS support is
+	   undefined. So always enable PASID support on devices which
+	   have it, even if we can't yet know if we're ever going to
+	   use it. */
+	if (info->pasid_supported && !pci_enable_pasid(pdev, info->pasid_supported & ~1))
+		info->pasid_enabled = 1;
+
+	if (info->pri_supported && !pci_reset_pri(pdev) && !pci_enable_pri(pdev, 32))
+		info->pri_enabled = 1;
+#endif
+	if (info->ats_supported && !pci_enable_ats(pdev, VTD_PAGE_SHIFT)) {
+		info->ats_enabled = 1;
+		info->ats_qdep = pci_ats_queue_depth(pdev);
+	}
 }
 
 static void iommu_disable_dev_iotlb(struct device_domain_info *info)
 {
-	if (!info->ats.enabled)
+	struct pci_dev *pdev;
+
+	if (dev_is_pci(info->dev))
 		return;
 
-	pci_disable_ats(to_pci_dev(info->dev));
-	info->ats.enabled = 0;
+	pdev = to_pci_dev(info->dev);
+
+	if (info->ats_enabled) {
+		pci_disable_ats(pdev);
+		info->ats_enabled = 0;
+	}
+#ifdef CONFIG_INTEL_IOMMU_SVM
+	if (info->pri_enabled) {
+		pci_disable_pri(pdev);
+		info->pri_enabled = 0;
+	}
+	if (info->pasid_enabled) {
+		pci_disable_pasid(pdev);
+		info->pasid_enabled = 0;
+	}
+#endif
 }
 
 static void iommu_flush_dev_iotlb(struct dmar_domain *domain,
@@ -1491,11 +1530,11 @@ static void iommu_flush_dev_iotlb(struct dmar_domain *domain,
 
 	spin_lock_irqsave(&device_domain_lock, flags);
 	list_for_each_entry(info, &domain->devices, link) {
-		if (!info->ats.enabled)
+		if (!info->ats_enabled)
 			continue;
 
 		sid = info->bus << 8 | info->devfn;
-		qdep = info->ats.qdep;
+		qdep = info->ats_qdep;
 		qi_flush_dev_iotlb(info->iommu, sid, qdep, addr, mask);
 	}
 	spin_unlock_irqrestore(&device_domain_lock, flags);
@@ -1957,8 +1996,10 @@ static int domain_context_mapping_one(struct dmar_domain *domain,
 		}
 
 		info = iommu_support_dev_iotlb(domain, iommu, bus, devfn);
-		translation = info ? CONTEXT_TT_DEV_IOTLB :
-				     CONTEXT_TT_MULTI_LEVEL;
+		if (info && info->ats_supported)
+			translation = CONTEXT_TT_DEV_IOTLB;
+		else
+			translation = CONTEXT_TT_MULTI_LEVEL;
 
 		context_set_address_root(context, virt_to_phys(pgd));
 		context_set_address_width(context, iommu->agaw);
@@ -2296,8 +2337,9 @@ static struct dmar_domain *dmar_insert_one_dev_info(struct intel_iommu *iommu,
 
 	info->bus = bus;
 	info->devfn = devfn;
-	info->ats.enabled = 0;
-	info->ats.qdep = 0;
+	info->ats_supported = info->pasid_supported = info->pri_supported = 0;
+	info->ats_enabled = info->pasid_enabled = info->pri_enabled = 0;
+	info->ats_qdep = 0;
 	info->dev = dev;
 	info->domain = domain;
 	info->iommu = iommu;
