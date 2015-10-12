@@ -1,5 +1,5 @@
 # Objects to go into the VDSO.
-obj-vdso-y := elf.o sigreturn.o
+obj-vdso-y := elf.o gettimeofday.o sigreturn.o
 
 # Common compiler flags between ABIs.
 ccflags-vdso := \
