@@ -155,7 +155,10 @@ static int start_stream(struct snd_oxfw *oxfw, struct amdtp_stream *stream,
 		err = -EINVAL;
 		goto end;
 	}
-	amdtp_stream_set_parameters(stream, rate, pcm_channels, midi_ports);
+	err = amdtp_am824_set_parameters(stream, rate, pcm_channels, midi_ports,
+					 false);
+	if (err < 0)
+		goto end;
 
 	err = cmp_connection_establish(conn,
 				       amdtp_stream_get_max_payload(stream));
@@ -225,7 +228,7 @@ int snd_oxfw_stream_init_simplex(struct snd_oxfw *oxfw,
 	if (err < 0)
 		goto end;
 
-	err = amdtp_stream_init(stream, oxfw->unit, s_dir, CIP_NONBLOCKING);
+	err = amdtp_am824_init(stream, oxfw->unit, s_dir, CIP_NONBLOCKING);
 	if (err < 0) {
 		amdtp_stream_destroy(stream);
 		cmp_connection_destroy(conn);
@@ -238,9 +241,12 @@ int snd_oxfw_stream_init_simplex(struct snd_oxfw *oxfw,
 	 * packets. As a result, next isochronous packet includes more data
 	 * blocks than IEC 61883-6 defines.
 	 */
-	if (stream == &oxfw->tx_stream)
+	if (stream == &oxfw->tx_stream) {
 		oxfw->tx_stream.flags |= CIP_SKIP_INIT_DBC_CHECK |
 					 CIP_JUMBO_PAYLOAD;
+		if (oxfw->wrong_dbs)
+			oxfw->tx_stream.flags |= CIP_WRONG_DBS;
+	}
 end:
 	return err;
 }
@@ -480,8 +486,8 @@ int snd_oxfw_stream_parse_format(u8 *format,
 		}
 	}
 
-	if (formation->pcm  > AMDTP_MAX_CHANNELS_FOR_PCM ||
-	    formation->midi > AMDTP_MAX_CHANNELS_FOR_MIDI)
+	if (formation->pcm  > AM824_MAX_CHANNELS_FOR_PCM ||
+	    formation->midi > AM824_MAX_CHANNELS_FOR_MIDI)
 		return -ENOSYS;
 
 	return 0;
