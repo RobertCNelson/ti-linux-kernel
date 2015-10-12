@@ -108,7 +108,7 @@ static void hv_machine_crash_shutdown(struct pt_regs *regs)
 {
 	if (hv_crash_handler)
 		hv_crash_handler(regs);
-	native_machine_crash_shutdown(regs);
+//	native_machine_crash_shutdown(regs);
 }
 #endif /* CONFIG_KEXEC_CORE */
 #endif /* CONFIG_HYPERV */
