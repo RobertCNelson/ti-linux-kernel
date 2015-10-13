@@ -5029,12 +5029,13 @@ int intel_iommu_enable_pasid(struct intel_iommu *iommu, struct intel_svm_dev *sd
 	if (!info->pasid_enabled)
 		iommu_enable_dev_iotlb(info);
 
+	sdev->sid = (((u16)bus) << 8) | devfn;
+
 	if (info->ats_enabled) {
 		sdev->dev_iotlb = 1;
 		sdev->qdep = info->ats_qdep;
 		if (sdev->qdep >= QI_DEV_EIOTLB_MAX_INVS)
 			sdev->qdep = 0;
-		sdev->sid = (((u16)bus) << 8) | devfn;
 	}
 
 	return 0;
