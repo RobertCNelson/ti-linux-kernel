@@ -1453,7 +1453,7 @@ static unsigned int find_faked_portnum_from_hw_portnum(struct usb_hcd *hcd,
 		 * 1.1 ports are under the USB 2.0 hub.  If the port speed
 		 * matches the device speed, it's a similar speed port.
 		 */
-		if ((port_speed == 0x03) == (hcd->speed == HCD_USB3))
+		if ((port_speed == 0x03) == (hcd->speed >= HCD_USB3))
 			num_similar_speed_ports++;
 	}
 	return num_similar_speed_ports;
@@ -1515,7 +1515,7 @@ static void handle_port_status(struct xhci_hcd *xhci,
 
 	/* Find the right roothub. */
 	hcd = xhci_to_hcd(xhci);
-	if ((major_revision == 0x03) != (hcd->speed == HCD_USB3))
+	if ((major_revision == 0x03) != (hcd->speed >= HCD_USB3))
 		hcd = xhci->shared_hcd;
 
 	if (major_revision == 0) {
@@ -1541,7 +1541,7 @@ static void handle_port_status(struct xhci_hcd *xhci,
 	 * correct bus_state structure.
 	 */
 	bus_state = &xhci->bus_state[hcd_index(hcd)];
-	if (hcd->speed == HCD_USB3)
+	if (hcd->speed >= HCD_USB3)
 		port_array = xhci->usb3_ports;
 	else
 		port_array = xhci->usb2_ports;
@@ -1555,7 +1555,7 @@ static void handle_port_status(struct xhci_hcd *xhci,
 		usb_hcd_resume_root_hub(hcd);
 	}
 
-	if (hcd->speed == HCD_USB3 && (temp & PORT_PLS_MASK) == XDEV_INACTIVE)
+	if (hcd->speed >= HCD_USB3 && (temp & PORT_PLS_MASK) == XDEV_INACTIVE)
 		bus_state->port_remote_wakeup &= ~(1 << faked_port_index);
 
 	if ((temp & PORT_PLC) && (temp & PORT_PLS_MASK) == XDEV_RESUME) {
@@ -1567,7 +1567,7 @@ static void handle_port_status(struct xhci_hcd *xhci,
 			goto cleanup;
 		}
 
-		if (DEV_SUPERSPEED(temp)) {
+		if (DEV_SUPERSPEED_ANY(temp)) {
 			xhci_dbg(xhci, "remote wake SS port %d\n", port_id);
 			/* Set a flag to say the port signaled remote wakeup,
 			 * so we can tell the difference between the end of
@@ -1595,7 +1595,7 @@ static void handle_port_status(struct xhci_hcd *xhci,
 	}
 
 	if ((temp & PORT_PLC) && (temp & PORT_PLS_MASK) == XDEV_U0 &&
-			DEV_SUPERSPEED(temp)) {
+			DEV_SUPERSPEED_ANY(temp)) {
 		xhci_dbg(xhci, "resume SS port %d finished\n", port_id);
 		/* We've just brought the device into U0 through either the
 		 * Resume state after a device remote wakeup, or through the
@@ -1625,7 +1625,7 @@ static void handle_port_status(struct xhci_hcd *xhci,
 	 * RExit to a disconnect state).  If so, let the the driver know it's
 	 * out of the RExit state.
 	 */
-	if (!DEV_SUPERSPEED(temp) &&
+	if (!DEV_SUPERSPEED_ANY(temp) &&
 			test_and_clear_bit(faked_port_index,
 				&bus_state->rexit_ports)) {
 		complete(&bus_state->rexit_done[faked_port_index]);
@@ -1633,7 +1633,7 @@ static void handle_port_status(struct xhci_hcd *xhci,
 		goto cleanup;
 	}
 
-	if (hcd->speed != HCD_USB3)
+	if (hcd->speed < HCD_USB3)
 		xhci_test_and_clear_bit(xhci, port_array, faked_port_index,
 					PORT_PLC);
 

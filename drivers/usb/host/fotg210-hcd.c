@@ -1976,17 +1976,13 @@ static void fotg210_mem_cleanup(struct fotg210_hcd *fotg210)
 	fotg210->dummy = NULL;
 
 	/* DMA consistent memory and pools */
-	if (fotg210->qtd_pool)
-		dma_pool_destroy(fotg210->qtd_pool);
+	dma_pool_destroy(fotg210->qtd_pool);
 	fotg210->qtd_pool = NULL;
 
-	if (fotg210->qh_pool) {
-		dma_pool_destroy(fotg210->qh_pool);
-		fotg210->qh_pool = NULL;
-	}
+	dma_pool_destroy(fotg210->qh_pool);
+	fotg210->qh_pool = NULL;
 
-	if (fotg210->itd_pool)
-		dma_pool_destroy(fotg210->itd_pool);
+	dma_pool_destroy(fotg210->itd_pool);
 	fotg210->itd_pool = NULL;
 
 	if (fotg210->periodic)
@@ -5932,7 +5928,6 @@ static int __init fotg210_hcd_init(void)
 		goto clean;
 	return retval;
 
-	platform_driver_unregister(&fotg210_hcd_driver);
 clean:
 	debugfs_remove(fotg210_debug_root);
 	fotg210_debug_root = NULL;
