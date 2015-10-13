@@ -593,6 +593,20 @@ static __u8 *sensor_hub_report_fixup(struct hid_device *hdev, __u8 *rdesc,
 		}
 	}
 
+	/* Checks if the report descriptor of Thinkpad Helix 2 has a logical
+	 * minimum for magnetic flux axis greater than the maximum */
+	if (hdev->product == USB_DEVICE_ID_TEXAS_INSTRUMENTS_LENOVO_YOGA &&
+		*rsize == 2558 && rdesc[913] == 0x17 && rdesc[914] == 0x40 &&
+		rdesc[915] == 0x81 && rdesc[916] == 0x08 &&
+		rdesc[917] == 0x00 && rdesc[918] == 0x27 &&
+		rdesc[921] == 0x07 && rdesc[922] == 0x00) {
+		/* Sets negative logical minimum for mag x, y and z */
+		rdesc[914] = rdesc[935] = rdesc[956] = 0xc0;
+		rdesc[915] = rdesc[936] = rdesc[957] = 0x7e;
+		rdesc[916] = rdesc[937] = rdesc[958] = 0xf7;
+		rdesc[917] = rdesc[938] = rdesc[959] = 0xff;
+	}
+
 	return rdesc;
 }
 
@@ -776,6 +790,9 @@ static const struct hid_device_id sensor_hub_devices[] = {
 			.driver_data = HID_SENSOR_HUB_ENUM_QUIRK},
 	{ HID_DEVICE(HID_BUS_ANY, HID_GROUP_SENSOR_HUB, USB_VENDOR_ID_ITE,
 			USB_DEVICE_ID_ITE_LENOVO_YOGA),
+			.driver_data = HID_SENSOR_HUB_ENUM_QUIRK},
+	{ HID_DEVICE(HID_BUS_ANY, HID_GROUP_SENSOR_HUB, USB_VENDOR_ID_ITE,
+			USB_DEVICE_ID_ITE_LENOVO_YOGA2),
 			.driver_data = HID_SENSOR_HUB_ENUM_QUIRK},
 	{ HID_DEVICE(HID_BUS_ANY, HID_GROUP_SENSOR_HUB, HID_ANY_ID,
 		     HID_ANY_ID) },
