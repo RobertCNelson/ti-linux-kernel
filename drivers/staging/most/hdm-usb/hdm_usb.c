@@ -59,6 +59,8 @@
 #define DRCI_REG_HW_ADDR_HI	0x0145
 #define DRCI_REG_HW_ADDR_MI	0x0146
 #define DRCI_REG_HW_ADDR_LO	0x0147
+#define DRCI_REG_BASE		0x1100
+#define DRCI_COMMAND		0x02
 #define DRCI_READ_REQ		0xA0
 #define DRCI_WRITE_REQ		0xA1
 
@@ -137,36 +139,6 @@ static void wq_clear_halt(struct work_struct *wq_obj);
 static void wq_netinfo(struct work_struct *wq_obj);
 
 /**
- * trigger_resync_vr - Vendor request to trigger HW re-sync mechanism
- * @dev: usb device
- *
- */
-static void trigger_resync_vr(struct usb_device *dev)
-{
-	int retval;
-	u8 request_type = USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_ENDPOINT;
-	int *data = kzalloc(sizeof(*data), GFP_KERNEL);
-
-	if (!data)
-		goto error;
-	*data = HW_RESYNC;
-	retval = usb_control_msg(dev,
-				 usb_sndctrlpipe(dev, 0),
-				 0,
-				 request_type,
-				 0,
-				 0,
-				 data,
-				 0,
-				 5 * HZ);
-	kfree(data);
-	if (retval >= 0)
-		return;
-error:
-	dev_err(&dev->dev, "Vendor request \"stall\" failed\n");
-}
-
-/**
  * drci_rd_reg - read a DCI register
  * @dev: usb device
  * @reg: register address
@@ -174,17 +146,23 @@ error:
  *
  * This is reads data from INIC's direct register communication interface
  */
-static inline int drci_rd_reg(struct usb_device *dev, u16 reg, void *buf)
+static inline int drci_rd_reg(struct usb_device *dev, u16 reg, u16 *buf)
 {
-	return usb_control_msg(dev,
-			       usb_rcvctrlpipe(dev, 0),
-			       DRCI_READ_REQ,
-			       USB_DIR_IN | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
-			       0x0000,
-			       reg,
-			       buf,
-			       2,
-			       5 * HZ);
+	int retval;
+	u16 *dma_buf = kzalloc(sizeof(u16), GFP_KERNEL);
+	u8 req_type = USB_DIR_IN | USB_TYPE_VENDOR | USB_RECIP_DEVICE;
+
+	if (!dma_buf)
+		return -ENOMEM;
+
+	retval = usb_control_msg(dev, usb_rcvctrlpipe(dev, 0),
+				 DRCI_READ_REQ, req_type,
+				 0x0000,
+				 reg, dma_buf, sizeof(u16), 5 * HZ);
+	*buf = le16_to_cpu(*dma_buf);
+	kfree(dma_buf);
+
+	return retval;
 }
 
 /**
@@ -308,7 +286,7 @@ static int hdm_poison_channel(struct most_interface *iface, int channel)
 
 	mutex_lock(&mdev->io_mutex);
 	free_anchored_buffers(mdev, channel);
-	if (mdev->padding_active[channel] == true)
+	if (mdev->padding_active[channel])
 		mdev->padding_active[channel] = false;
 
 	if (mdev->conf[channel].data_type == MOST_CH_ASYNC) {
@@ -411,7 +389,7 @@ static void hdm_write_completion(struct urb *urb)
 	dev = &mdev->usb_device->dev;
 
 	if ((urb->status == -ENOENT) || (urb->status == -ECONNRESET) ||
-	    (mdev->is_channel_healthy[channel] == false)) {
+	    (!mdev->is_channel_healthy[channel])) {
 		complete(&anchor->urb_compl);
 		return;
 	}
@@ -568,7 +546,6 @@ static void hdm_read_completion(struct urb *urb)
 	struct device *dev;
 	unsigned long flags;
 	unsigned int channel;
-	struct most_channel_config *conf;
 
 	mbo = urb->context;
 	anchor = mbo->priv;
@@ -577,12 +554,10 @@ static void hdm_read_completion(struct urb *urb)
 	dev = &mdev->usb_device->dev;
 
 	if ((urb->status == -ENOENT) || (urb->status == -ECONNRESET) ||
-	    (mdev->is_channel_healthy[channel] == false)) {
+	    (!mdev->is_channel_healthy[channel])) {
 		complete(&anchor->urb_compl);
 		return;
 	}
-
-	conf = &mdev->conf[channel];
 
 	if (unlikely(urb->status && !(urb->status == -ENOENT ||
 				      urb->status == -ECONNRESET ||
@@ -608,7 +583,7 @@ static void hdm_read_completion(struct urb *urb)
 		}
 	} else {
 		mbo->processed_length = urb->actual_length;
-		if (mdev->padding_active[channel] == false) {
+		if (!mdev->padding_active[channel]) {
 			mbo->status = MBO_SUCCESS;
 		} else {
 			if (hdm_remove_padding(mdev, channel, mbo)) {
@@ -688,7 +663,7 @@ static int hdm_enqueue(struct most_interface *iface, int channel, struct mbo *mb
 	list_add_tail(&anchor->list, &mdev->anchor_list[channel]);
 	spin_unlock_irqrestore(&mdev->anchor_list_lock[channel], flags);
 
-	if ((mdev->padding_active[channel] == true) &&
+	if ((mdev->padding_active[channel]) &&
 	    (conf->direction & MOST_CH_TX))
 		if (hdm_add_padding(mdev, channel, mbo)) {
 			retval = -EIO;
@@ -714,7 +689,7 @@ static int hdm_enqueue(struct most_interface *iface, int channel, struct mbo *mb
 				  usb_rcvbulkpipe(mdev->usb_device,
 						  mdev->ep_address[channel]),
 				  virt_address,
-				  length,
+				  length + conf->extra_len,
 				  hdm_read_completion,
 				  mbo);
 	}
@@ -780,12 +755,6 @@ static int hdm_configure_channel(struct most_interface *iface, int channel,
 	mdev->padding_active[channel] = true;
 	temp_size = conf->buffer_size;
 
-	if ((conf->data_type != MOST_CH_SYNC) &&
-	    (conf->data_type != MOST_CH_ISOC_AVP)) {
-		dev_warn(dev, "Unsupported data type\n");
-		return -EINVAL;
-	}
-
 	frame_size = get_stream_frame_size(conf);
 	if ((frame_size == 0) || (frame_size > USB_MTU)) {
 		dev_warn(dev, "Misconfig: frame size wrong\n");
@@ -826,38 +795,41 @@ exit:
  */
 static int hdm_update_netinfo(struct most_dev *mdev)
 {
-	struct device *dev = &mdev->usb_device->dev;
-	int i;
-	u16 link;
-	u8 addr[6];
+	struct usb_device *usb_device = mdev->usb_device;
+	struct device *dev = &usb_device->dev;
+	u16 hi, mi, lo, link;
 
 	if (!is_valid_ether_addr(mdev->hw_addr)) {
-		if (0 > drci_rd_reg(mdev->usb_device,
-				    DRCI_REG_HW_ADDR_HI, addr)) {
+		if (drci_rd_reg(usb_device, DRCI_REG_HW_ADDR_HI, &hi) < 0) {
 			dev_err(dev, "Vendor request \"hw_addr_hi\" failed\n");
 			return -1;
 		}
-		if (0 > drci_rd_reg(mdev->usb_device,
-				    DRCI_REG_HW_ADDR_MI, addr + 2)) {
+
+		if (drci_rd_reg(usb_device, DRCI_REG_HW_ADDR_MI, &mi) < 0) {
 			dev_err(dev, "Vendor request \"hw_addr_mid\" failed\n");
 			return -1;
 		}
-		if (0 > drci_rd_reg(mdev->usb_device,
-				    DRCI_REG_HW_ADDR_LO, addr + 4)) {
+
+		if (drci_rd_reg(usb_device, DRCI_REG_HW_ADDR_LO, &lo) < 0) {
 			dev_err(dev, "Vendor request \"hw_addr_low\" failed\n");
 			return -1;
 		}
-		mutex_lock(&mdev->io_mutex);
-		for (i = 0; i < 6; i++)
-			mdev->hw_addr[i] = addr[i];
-		mutex_unlock(&mdev->io_mutex);
 
+		mutex_lock(&mdev->io_mutex);
+		mdev->hw_addr[0] = hi >> 8;
+		mdev->hw_addr[1] = hi;
+		mdev->hw_addr[2] = mi >> 8;
+		mdev->hw_addr[3] = mi;
+		mdev->hw_addr[4] = lo >> 8;
+		mdev->hw_addr[5] = lo;
+		mutex_unlock(&mdev->io_mutex);
 	}
-	if (0 > drci_rd_reg(mdev->usb_device, DRCI_REG_NI_STATE, &link)) {
+
+	if (drci_rd_reg(usb_device, DRCI_REG_NI_STATE, &link) < 0) {
 		dev_err(dev, "Vendor request \"link status\" failed\n");
 		return -1;
 	}
-	le16_to_cpus(&link);
+
 	mutex_lock(&mdev->io_mutex);
 	mdev->link_stat = link;
 	mutex_unlock(&mdev->io_mutex);
@@ -1107,14 +1079,14 @@ static ssize_t show_value(struct most_dci_obj *dci_obj,
 	if (err < 0)
 		return err;
 
-	return snprintf(buf, PAGE_SIZE, "%04x\n", le16_to_cpu(tmp_val));
+	return snprintf(buf, PAGE_SIZE, "%04x\n", tmp_val);
 }
 
 static ssize_t store_value(struct most_dci_obj *dci_obj,
 			   struct most_dci_attribute *attr,
 			   const char *buf, size_t count)
 {
-	u16 v16;
+	u16 val;
 	u16 reg_addr;
 	int err;
 
@@ -1137,11 +1109,11 @@ static ssize_t store_value(struct most_dci_obj *dci_obj,
 	else
 		return -EIO;
 
-	err = kstrtou16(buf, 16, &v16);
+	err = kstrtou16(buf, 16, &val);
 	if (err)
 		return err;
 
-	err = drci_wr_reg(dci_obj->usb_device, reg_addr, cpu_to_le16(v16));
+	err = drci_wr_reg(dci_obj->usb_device, reg_addr, val);
 	if (err < 0)
 		return err;
 
@@ -1248,6 +1220,7 @@ hdm_probe(struct usb_interface *interface, const struct usb_device_id *id)
 	struct usb_host_interface *usb_iface_desc;
 	struct usb_endpoint_descriptor *ep_desc;
 	int ret = 0;
+	int err;
 
 	usb_iface_desc = interface->cur_altsetting;
 	usb_dev = interface_to_usbdev(interface);
@@ -1328,6 +1301,13 @@ hdm_probe(struct usb_interface *interface, const struct usb_device_id *id)
 		tmp_cap++;
 		INIT_LIST_HEAD(&mdev->anchor_list[i]);
 		spin_lock_init(&mdev->anchor_list_lock[i]);
+		err = drci_wr_reg(usb_dev,
+				  DRCI_REG_BASE + DRCI_COMMAND +
+				  ep_desc->bEndpointAddress * 16,
+				  1);
+		if (err < 0)
+			pr_warn("DCI Sync for EP %02x failed",
+				ep_desc->bEndpointAddress);
 	}
 	dev_notice(dev, "claimed gadget: Vendor=%4.4x ProdID=%4.4x Bus=%02x Device=%02x\n",
 		   le16_to_cpu(usb_dev->descriptor.idVendor),
@@ -1362,7 +1342,6 @@ hdm_probe(struct usb_interface *interface, const struct usb_device_id *id)
 
 		kobject_uevent(&mdev->dci->kobj, KOBJ_ADD);
 		mdev->dci->usb_device = mdev->usb_device;
-		trigger_resync_vr(usb_dev);
 	}
 	mutex_unlock(&mdev->io_mutex);
 	return 0;
