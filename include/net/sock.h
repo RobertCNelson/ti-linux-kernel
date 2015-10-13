@@ -759,7 +759,7 @@ static inline int sk_memalloc_socks(void)
 
 #endif
 
-static inline gfp_t sk_gfp_atomic(struct sock *sk, gfp_t gfp_mask)
+static inline gfp_t sk_gfp_atomic(const struct sock *sk, gfp_t gfp_mask)
 {
 	return GFP_ATOMIC | (sk->sk_allocation & __GFP_MEMALLOC);
 }
@@ -1654,12 +1654,16 @@ static inline void sock_graft(struct sock *sk, struct socket *parent)
 kuid_t sock_i_uid(struct sock *sk);
 unsigned long sock_i_ino(struct sock *sk);
 
+static inline u32 net_tx_rndhash(void)
+{
+	u32 v = prandom_u32();
+
+	return v ?: 1;
+}
+
 static inline void sk_set_txhash(struct sock *sk)
 {
-	sk->sk_txhash = prandom_u32();
-
-	if (unlikely(!sk->sk_txhash))
-		sk->sk_txhash = 1;
+	sk->sk_txhash = net_tx_rndhash();
 }
 
 static inline void sk_rethink_txhash(struct sock *sk)
@@ -2195,6 +2199,14 @@ static inline struct sock *skb_steal_sock(struct sk_buff *skb)
 static inline bool sk_fullsock(const struct sock *sk)
 {
 	return (1 << sk->sk_state) & ~(TCPF_TIME_WAIT | TCPF_NEW_SYN_RECV);
+}
+
+/* This helper checks if a socket is a LISTEN or NEW_SYN_RECV
+ * SYNACK messages can be attached to either ones (depending on SYNCOOKIE)
+ */
+static inline bool sk_listener(const struct sock *sk)
+{
+	return (1 << sk->sk_state) & (TCPF_LISTEN | TCPF_NEW_SYN_RECV);
 }
 
 void sock_enable_timestamp(struct sock *sk, int flag);
