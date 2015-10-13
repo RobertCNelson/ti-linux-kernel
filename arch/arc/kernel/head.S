@@ -50,9 +50,7 @@
 .endm
 
 	.section .init.text, "ax",@progbits
-	.type stext, @function
-	.globl stext
-stext:
+ENTRY(stext)
 	;-------------------------------------------------------------------
 	; Don't clobber r0-r2 yet. It might have bootloader provided info
 	;-------------------------------------------------------------------
@@ -102,17 +100,15 @@ stext:
 	GET_TSK_STACK_BASE r9, sp	; r9 = tsk, sp = stack base(output)
 
 	j	start_kernel	; "C" entry point
+END(stext)
 
 #ifdef CONFIG_SMP
 ;----------------------------------------------------------------
 ;     First lines of code run by secondary before jumping to 'C'
 ;----------------------------------------------------------------
 	.section .text, "ax",@progbits
-	.type first_lines_of_secondary, @function
-	.globl first_lines_of_secondary
 
-first_lines_of_secondary:
-
+ENTRY(first_lines_of_secondary)
 	CPU_EARLY_SETUP
 
 	; setup per-cpu idle task as "current" on this CPU
@@ -126,5 +122,6 @@ first_lines_of_secondary:
 	GET_TSK_STACK_BASE r0, sp
 
 	j	start_kernel_secondary
+END(first_lines_of_secondary)
 
 #endif
