@@ -348,7 +348,7 @@ static void fsmc_select_chip(struct mtd_info *mtd, int chipnr)
 		break;
 
 	default:
-		BUG();
+		dev_err(host->dev, "unsupported chip-select %d\n", chipnr);
 	}
 }
 
@@ -960,7 +960,7 @@ static int __init fsmc_nand_probe(struct platform_device *pdev)
 	host->data_va = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(host->data_va))
 		return PTR_ERR(host->data_va);
-	
+
 	host->data_pa = (dma_addr_t)res->start;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "nand_addr");
@@ -1111,7 +1111,8 @@ static int __init fsmc_nand_probe(struct platform_device *pdev)
 		default:
 			dev_warn(&pdev->dev, "No oob scheme defined for oobsize %d\n",
 				 mtd->oobsize);
-			BUG();
+			ret = -EINVAL;
+			goto err_probe;
 		}
 	} else {
 		switch (host->mtd.oobsize) {
@@ -1127,7 +1128,8 @@ static int __init fsmc_nand_probe(struct platform_device *pdev)
 		default:
 			dev_warn(&pdev->dev, "No oob scheme defined for oobsize %d\n",
 				 mtd->oobsize);
-			BUG();
+			ret = -EINVAL;
+			goto err_probe;
 		}
 	}
 
