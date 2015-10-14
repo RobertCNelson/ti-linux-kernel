@@ -425,6 +425,8 @@ struct kvm {
 #endif
 	long tlbs_dirty;
 	struct list_head devices;
+	struct dentry *debugfs_dentry;
+	struct kvm_stat_data **debugfs_data;
 };
 
 #define kvm_err(fmt, ...) \
@@ -1003,6 +1005,11 @@ static inline void kvm_migrate_timers(struct kvm_vcpu *vcpu)
 enum kvm_stat_kind {
 	KVM_STAT_VM,
 	KVM_STAT_VCPU,
+};
+
+struct kvm_stat_data {
+	int offset;
+	struct kvm *kvm;
 };
 
 struct kvm_stats_debugfs_item {
