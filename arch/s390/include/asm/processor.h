@@ -11,15 +11,19 @@
 #ifndef __ASM_S390_PROCESSOR_H
 #define __ASM_S390_PROCESSOR_H
 
+#include <linux/const.h>
+
 #define CIF_MCCK_PENDING	0	/* machine check handling is pending */
 #define CIF_ASCE		1	/* user asce needs fixup / uaccess */
 #define CIF_NOHZ_DELAY		2	/* delay HZ disable for a tick */
 #define CIF_FPU			3	/* restore vector registers */
+#define CIF_IGNORE_IRQ		4	/* ignore interrupt (for udelay) */
 
-#define _CIF_MCCK_PENDING	(1<<CIF_MCCK_PENDING)
-#define _CIF_ASCE		(1<<CIF_ASCE)
-#define _CIF_NOHZ_DELAY		(1<<CIF_NOHZ_DELAY)
-#define _CIF_FPU		(1<<CIF_FPU)
+#define _CIF_MCCK_PENDING	_BITUL(CIF_MCCK_PENDING)
+#define _CIF_ASCE		_BITUL(CIF_ASCE)
+#define _CIF_NOHZ_DELAY		_BITUL(CIF_NOHZ_DELAY)
+#define _CIF_FPU		_BITUL(CIF_FPU)
+#define _CIF_IGNORE_IRQ		_BITUL(CIF_IGNORE_IRQ)
 
 #ifndef __ASSEMBLY__
 
@@ -34,17 +38,17 @@
 
 static inline void set_cpu_flag(int flag)
 {
-	S390_lowcore.cpu_flags |= (1U << flag);
+	S390_lowcore.cpu_flags |= (1UL << flag);
 }
 
 static inline void clear_cpu_flag(int flag)
 {
-	S390_lowcore.cpu_flags &= ~(1U << flag);
+	S390_lowcore.cpu_flags &= ~(1UL << flag);
 }
 
 static inline int test_cpu_flag(int flag)
 {
-	return !!(S390_lowcore.cpu_flags & (1U << flag));
+	return !!(S390_lowcore.cpu_flags & (1UL << flag));
 }
 
 #define arch_needs_cpu() test_cpu_flag(CIF_NOHZ_DELAY)
@@ -139,8 +143,10 @@ struct stack_frame {
 
 #define ARCH_MIN_TASKALIGN	8
 
+extern __vector128 init_task_fpu_regs[__NUM_VXRS];
 #define INIT_THREAD {							\
 	.ksp = sizeof(init_stack) + (unsigned long) &init_stack,	\
+	.fpu.regs = (void *)&init_task_fpu_regs,			\
 }
 
 /*
