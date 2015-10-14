@@ -47,7 +47,6 @@ struct generic_pm_domain {
 	struct dev_power_governor *gov;
 	struct work_struct power_off_work;
 	const char *name;
-	unsigned int in_progress;	/* Number of devices being suspended now */
 	atomic_t sd_count;	/* Number of subdomains with power "on" */
 	enum gpd_status status;	/* Current state of the domain */
 	unsigned int device_count;	/* Number of devices */
@@ -127,9 +126,6 @@ extern int pm_genpd_remove_subdomain(struct generic_pm_domain *genpd,
 extern void pm_genpd_init(struct generic_pm_domain *genpd,
 			  struct dev_power_governor *gov, bool is_off);
 
-extern int pm_genpd_poweron(struct generic_pm_domain *genpd);
-extern void pm_genpd_poweroff_unused(void);
-
 extern struct dev_power_governor simple_qos_governor;
 extern struct dev_power_governor pm_domain_always_on_gov;
 #else
@@ -167,11 +163,6 @@ static inline void pm_genpd_init(struct generic_pm_domain *genpd,
 				 struct dev_power_governor *gov, bool is_off)
 {
 }
-static inline int pm_genpd_poweron(struct generic_pm_domain *genpd)
-{
-	return -ENOSYS;
-}
-static inline void pm_genpd_poweroff_unused(void) {}
 #endif
 
 static inline int pm_genpd_add_device(struct generic_pm_domain *genpd,
