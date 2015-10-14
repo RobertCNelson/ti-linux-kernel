@@ -660,4 +660,4 @@ static int __init pm_init(void)
 	return pm_autosleep_init();
 }
 
-core_initcall(pm_init);
+late_initcall_sync(pm_init);
