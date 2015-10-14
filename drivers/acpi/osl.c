@@ -40,10 +40,10 @@
 #include <linux/list.h>
 #include <linux/jiffies.h>
 #include <linux/semaphore.h>
+#include <linux/io-64-nonatomic-lo-hi.h>
 
 #include <asm/io.h>
 #include <asm/uaccess.h>
-#include <asm-generic/io-64-nonatomic-lo-hi.h>
 
 #include "internal.h"
 
