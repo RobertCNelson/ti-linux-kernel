@@ -1633,9 +1633,13 @@ static void reserve_highatomic_pageblock(struct page *page, struct zone *zone,
 	if (zone->nr_reserved_highatomic >= max_managed)
 		return;
 
-	/* Yoink! */
 	spin_lock_irqsave(&zone->lock, flags);
 
+	/* Recheck the nr_reserved_highatomic limit under the lock */
+	if (zone->nr_reserved_highatomic >= max_managed)
+		goto out_unlock;
+
+	/* Yoink! */
 	mt = get_pageblock_migratetype(page);
 	if (mt != MIGRATE_HIGHATOMIC &&
 			!is_migrate_isolate(mt) && !is_migrate_cma(mt)) {
@@ -1643,6 +1647,8 @@ static void reserve_highatomic_pageblock(struct page *page, struct zone *zone,
 		set_pageblock_migratetype(page, MIGRATE_HIGHATOMIC);
 		move_freepages_block(zone, page, MIGRATE_HIGHATOMIC);
 	}
+
+out_unlock:
 	spin_unlock_irqrestore(&zone->lock, flags);
 }
 
@@ -1677,7 +1683,14 @@ static void unreserve_highatomic_pageblock(const struct alloc_context *ac)
 			page = list_entry(area->free_list[MIGRATE_HIGHATOMIC].next,
 						struct page, lru);
 
-			zone->nr_reserved_highatomic -= pageblock_nr_pages;
+			/*
+			 * It should never happen but changes to locking could
+			 * inadvertently allow a per-cpu drain to add pages
+			 * to MIGRATE_HIGHATOMIC while unreserving so be safe
+			 * and watch for underflows.
+			 */
+			zone->nr_reserved_highatomic -= min(pageblock_nr_pages,
+				zone->nr_reserved_highatomic);
 
 			/*
 			 * Convert to ac->migratetype and avoid the normal
