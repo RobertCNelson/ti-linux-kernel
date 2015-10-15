@@ -432,9 +432,7 @@ static int nbd_thread_recv(struct nbd_device *nbd)
 	nbd->task_recv = NULL;
 
 	if (signal_pending(current)) {
-		siginfo_t info;
-
-		ret = dequeue_signal_lock(current, &current->blocked, &info);
+		ret = kernel_dequeue_signal(NULL);
 		dev_warn(nbd_to_dev(nbd), "pid %d, %s, got signal %d\n",
 			 task_pid_nr(current), current->comm, ret);
 		mutex_lock(&nbd->tx_lock);
@@ -545,11 +543,8 @@ static int nbd_thread_send(void *data)
 					 !list_empty(&nbd->waiting_queue));
 
 		if (signal_pending(current)) {
-			siginfo_t info;
-			int ret;
+			int ret = kernel_dequeue_signal(NULL);
 
-			ret = dequeue_signal_lock(current, &current->blocked,
-						  &info);
 			dev_warn(nbd_to_dev(nbd), "pid %d, %s, got signal %d\n",
 				 task_pid_nr(current), current->comm, ret);
 			mutex_lock(&nbd->tx_lock);
