@@ -307,9 +307,11 @@ Command from struct task_struct
 
 Ignored argument:
 
-	%pn
+	%n	%n
 
-	The argument passed will be ignored.
+	The argument passed will be ignored.  In other words, literal "%n" will
+	be in the output and the argument will be considered for next format
+	specifier.
 
 Thank you for your cooperation and attention.
 
