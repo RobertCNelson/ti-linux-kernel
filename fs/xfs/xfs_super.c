@@ -922,7 +922,7 @@ xfs_fs_destroy_inode(
 
 	trace_xfs_destroy_inode(ip);
 
-	XFS_STATS_INC(vn_reclaim);
+	XFS_STATS_INC(ip->i_mount, vn_reclaim);
 
 	ASSERT(XFS_FORCED_SHUTDOWN(ip->i_mount) || ip->i_delayed_blks == 0);
 
@@ -983,8 +983,8 @@ xfs_fs_evict_inode(
 
 	truncate_inode_pages_final(&inode->i_data);
 	clear_inode(inode);
-	XFS_STATS_INC(vn_rele);
-	XFS_STATS_INC(vn_remove);
+	XFS_STATS_INC(ip->i_mount, vn_rele);
+	XFS_STATS_INC(ip->i_mount, vn_remove);
 
 	xfs_inactive(ip);
 }
@@ -1474,9 +1474,16 @@ xfs_fs_fill_super(
 	if (error)
 		goto out_destroy_workqueues;
 
+	/* Allocate stats memory before we do operations that might use it */
+	mp->m_stats.xs_stats = alloc_percpu(struct xfsstats);
+	if (!mp->m_stats.xs_stats) {
+		error = PTR_ERR(mp->m_stats.xs_stats);
+		goto out_destroy_counters;
+	}
+
 	error = xfs_readsb(mp, flags);
 	if (error)
-		goto out_destroy_counters;
+		goto out_free_stats;
 
 	error = xfs_finish_flags(mp);
 	if (error)
@@ -1545,9 +1552,11 @@ xfs_fs_fill_super(
 	xfs_filestream_unmount(mp);
  out_free_sb:
 	xfs_freesb(mp);
+ out_free_stats:
+	free_percpu(mp->m_stats.xs_stats);
  out_destroy_counters:
 	xfs_destroy_percpu_counters(mp);
-out_destroy_workqueues:
+ out_destroy_workqueues:
 	xfs_destroy_mount_workqueues(mp);
  out_close_devices:
 	xfs_close_devices(mp);
@@ -1574,6 +1583,7 @@ xfs_fs_put_super(
 	xfs_unmountfs(mp);
 
 	xfs_freesb(mp);
+	free_percpu(mp->m_stats.xs_stats);
 	xfs_destroy_percpu_counters(mp);
 	xfs_destroy_mount_workqueues(mp);
 	xfs_close_devices(mp);
@@ -1838,19 +1848,32 @@ init_xfs_fs(void)
 	xfs_kset = kset_create_and_add("xfs", NULL, fs_kobj);
 	if (!xfs_kset) {
 		error = -ENOMEM;
-		goto out_sysctl_unregister;;
+		goto out_sysctl_unregister;
 	}
+
+	xfsstats.xs_kobj.kobject.kset = xfs_kset;
+
+	xfsstats.xs_stats = alloc_percpu(struct xfsstats);
+	if (!xfsstats.xs_stats) {
+		error = -ENOMEM;
+		goto out_kset_unregister;
+	}
+
+	error = xfs_sysfs_init(&xfsstats.xs_kobj, &xfs_stats_ktype, NULL,
+			       "stats");
+	if (error)
+		goto out_free_stats;
 
 #ifdef DEBUG
 	xfs_dbg_kobj.kobject.kset = xfs_kset;
 	error = xfs_sysfs_init(&xfs_dbg_kobj, &xfs_dbg_ktype, NULL, "debug");
 	if (error)
-		goto out_kset_unregister;
+		goto out_remove_stats_kobj;
 #endif
 
 	error = xfs_qm_init();
 	if (error)
-		goto out_remove_kobj;
+		goto out_remove_dbg_kobj;
 
 	error = register_filesystem(&xfs_fs_type);
 	if (error)
@@ -1859,11 +1882,15 @@ init_xfs_fs(void)
 
  out_qm_exit:
 	xfs_qm_exit();
- out_remove_kobj:
+ out_remove_dbg_kobj:
 #ifdef DEBUG
 	xfs_sysfs_del(&xfs_dbg_kobj);
- out_kset_unregister:
+ out_remove_stats_kobj:
 #endif
+	xfs_sysfs_del(&xfsstats.xs_kobj);
+ out_free_stats:
+	free_percpu(xfsstats.xs_stats);
+ out_kset_unregister:
 	kset_unregister(xfs_kset);
  out_sysctl_unregister:
 	xfs_sysctl_unregister();
@@ -1889,6 +1916,8 @@ exit_xfs_fs(void)
 #ifdef DEBUG
 	xfs_sysfs_del(&xfs_dbg_kobj);
 #endif
+	xfs_sysfs_del(&xfsstats.xs_kobj);
+	free_percpu(xfsstats.xs_stats);
 	kset_unregister(xfs_kset);
 	xfs_sysctl_unregister();
 	xfs_cleanup_procfs();
