@@ -263,7 +263,7 @@ static int intelfb_create(struct drm_fb_helper *helper,
 
 	/* Use default scratch pixmap (info->pixmap.flags = FB_PIXMAP_SYSTEM) */
 
-	DRM_DEBUG_KMS("allocated %dx%d fb: 0x%08lx, bo %p\n",
+	DRM_DEBUG_KMS("allocated %dx%d fb: 0x%08llx, bo %p\n",
 		      fb->width, fb->height,
 		      i915_gem_obj_ggtt_offset(obj), obj);
 
@@ -688,6 +688,8 @@ int intel_fbdev_init(struct drm_device *dev)
 		kfree(ifbdev);
 		return ret;
 	}
+
+	ifbdev->helper.atomic = true;
 
 	dev_priv->fbdev = ifbdev;
 	INIT_WORK(&dev_priv->fbdev_suspend_work, intel_fbdev_suspend_worker);
