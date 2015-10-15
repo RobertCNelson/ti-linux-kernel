@@ -23,6 +23,7 @@
 #include <linux/sysrq.h>
 #include <linux/init.h>
 #include <linux/nmi.h>
+#include <linux/console.h>
 
 #define PANIC_TIMER_STEP 100
 #define PANIC_BLINK_SPD 18
@@ -146,6 +147,15 @@ void panic(const char *fmt, ...)
 		crash_kexec(NULL);
 
 	bust_spinlocks(0);
+
+	/*
+	 * We may have ended up killing the CPU holding the lock and still have
+	 * some valuable data in console buffer. Try to acquire the lock and
+	 * release it regardless of the result. The release will also print the
+	 * buffers out.
+	 */
+	console_trylock();
+	console_unlock();
 
 	if (!panic_blink)
 		panic_blink = no_blink;
