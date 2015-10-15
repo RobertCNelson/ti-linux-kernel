@@ -5486,6 +5486,7 @@ static void __init find_zone_movable_pfns_for_nodes(void)
 		 */
 		required_movablecore =
 			roundup(required_movablecore, MAX_ORDER_NR_PAGES);
+		required_movablecore = min(totalpages, required_movablecore);
 		corepages = totalpages - required_movablecore;
 
 		required_kernelcore = max(required_kernelcore, corepages);
