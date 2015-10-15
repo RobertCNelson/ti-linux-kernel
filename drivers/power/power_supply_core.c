@@ -19,6 +19,7 @@
 #include <linux/err.h>
 #include <linux/power_supply.h>
 #include <linux/thermal.h>
+#include <linux/of_device.h>
 #include "power_supply.h"
 
 /* exported for the APM Power driver, APM emulation */
@@ -205,6 +206,8 @@ static int  __power_supply_find_supply_from_node(struct device *dev,
 static int power_supply_find_supply_from_node(struct device_node *supply_node)
 {
 	int error;
+
+	of_device_probe(supply_node);
 
 	/*
 	 * class_for_each_device() either returns its own errors or values

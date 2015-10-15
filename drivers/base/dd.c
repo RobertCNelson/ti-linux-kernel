@@ -417,6 +417,12 @@ int driver_probe_device(struct device_driver *drv, struct device *dev)
 	if (!device_is_registered(dev))
 		return -ENODEV;
 
+	if (IS_ENABLED(CONFIG_DELAY_DEVICE_PROBES) &&
+	    !driver_deferred_probe_enable && dev->probe_late) {
+		driver_deferred_probe_add(dev);
+		return 0;
+	}
+
 	pr_debug("bus: '%s': %s: matched device %s with driver %s\n",
 		 drv->bus->name, __func__, dev_name(dev), drv->name);
 
@@ -488,6 +494,7 @@ static int __device_attach_driver(struct device_driver *drv, void *_data)
 	struct device_attach_data *data = _data;
 	struct device *dev = data->dev;
 	bool async_allowed;
+	int ret;
 
 	/*
 	 * Check if device has already been claimed. This may
@@ -498,8 +505,17 @@ static int __device_attach_driver(struct device_driver *drv, void *_data)
 	if (dev->driver)
 		return -EBUSY;
 
-	if (!driver_match_device(drv, dev))
+	ret = driver_match_device(drv, dev);
+	if (!ret)
 		return 0;
+	else if (ret < 0) {
+		if (ret == -EPROBE_DEFER) {
+			dev_dbg(dev, "Device match requests probe deferral\n");
+			driver_deferred_probe_add(dev);
+		} else
+			dev_warn(dev, "Bus failed to match device: %d", ret);
+		return ret;
+	}
 
 	async_allowed = driver_allows_async_probing(drv);
 
@@ -619,6 +635,7 @@ void device_initial_probe(struct device *dev)
 static int __driver_attach(struct device *dev, void *data)
 {
 	struct device_driver *drv = data;
+	int ret;
 
 	/*
 	 * Lock device and try to bind to it. We drop the error
@@ -630,8 +647,17 @@ static int __driver_attach(struct device *dev, void *data)
 	 * is an error.
 	 */
 
-	if (!driver_match_device(drv, dev))
+	ret = driver_match_device(drv, dev);
+	if (!ret)
 		return 0;
+	else if (ret < 0) {
+		if (ret == -EPROBE_DEFER) {
+			dev_dbg(dev, "Device match requests probe deferral\n");
+			driver_deferred_probe_add(dev);
+		} else
+			dev_warn(dev, "Bus failed to match device: %d", ret);
+		return 0;
+	}
 
 	if (dev->parent)	/* Needed for USB */
 		device_lock(dev->parent);
