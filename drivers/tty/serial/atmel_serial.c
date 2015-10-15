@@ -112,6 +112,12 @@ struct atmel_uart_char {
 #define ATMEL_SERIAL_RINGSIZE 1024
 
 /*
+ * at91: 6 USARTs and one DBGU port (SAM9260)
+ * avr32: 4
+ */
+#define ATMEL_MAX_UART		7
+
+/*
  * We wrap our port structure around the generic uart_port.
  */
 struct atmel_uart_port {
@@ -921,7 +927,7 @@ static int atmel_prepare_tx_dma(struct uart_port *port)
 	sg_set_page(&atmel_port->sg_tx,
 			virt_to_page(port->state->xmit.buf),
 			UART_XMIT_SIZE,
-			(int)port->state->xmit.buf & ~PAGE_MASK);
+			(unsigned long)port->state->xmit.buf & ~PAGE_MASK);
 	nent = dma_map_sg(port->dev,
 				&atmel_port->sg_tx,
 				1,
@@ -931,10 +937,10 @@ static int atmel_prepare_tx_dma(struct uart_port *port)
 		dev_dbg(port->dev, "need to release resource of dma\n");
 		goto chan_err;
 	} else {
-		dev_dbg(port->dev, "%s: mapped %d@%p to %x\n", __func__,
+		dev_dbg(port->dev, "%s: mapped %d@%p to %pad\n", __func__,
 			sg_dma_len(&atmel_port->sg_tx),
 			port->state->xmit.buf,
-			sg_dma_address(&atmel_port->sg_tx));
+			&sg_dma_address(&atmel_port->sg_tx));
 	}
 
 	/* Configure the slave DMA */
@@ -1103,7 +1109,7 @@ static int atmel_prepare_rx_dma(struct uart_port *port)
 	sg_set_page(&atmel_port->sg_rx,
 		    virt_to_page(ring->buf),
 		    sizeof(struct atmel_uart_char) * ATMEL_SERIAL_RINGSIZE,
-		    (int)ring->buf & ~PAGE_MASK);
+		    (unsigned long)ring->buf & ~PAGE_MASK);
 	nent = dma_map_sg(port->dev,
 			  &atmel_port->sg_rx,
 			  1,
@@ -1113,10 +1119,10 @@ static int atmel_prepare_rx_dma(struct uart_port *port)
 		dev_dbg(port->dev, "need to release resource of dma\n");
 		goto chan_err;
 	} else {
-		dev_dbg(port->dev, "%s: mapped %d@%p to %x\n", __func__,
+		dev_dbg(port->dev, "%s: mapped %d@%p to %pad\n", __func__,
 			sg_dma_len(&atmel_port->sg_rx),
 			ring->buf,
-			sg_dma_address(&atmel_port->sg_rx));
+			&sg_dma_address(&atmel_port->sg_rx));
 	}
 
 	/* Configure the slave DMA */
@@ -2686,7 +2692,7 @@ static int atmel_init_gpios(struct atmel_uart_port *p, struct device *dev)
 	enum mctrl_gpio_idx i;
 	struct gpio_desc *gpiod;
 
-	p->gpios = mctrl_gpio_init(dev, 0);
+	p->gpios = mctrl_gpio_init_noauto(dev, 0);
 	if (IS_ERR(p->gpios))
 		return PTR_ERR(p->gpios);
 
