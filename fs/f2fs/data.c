@@ -771,6 +771,13 @@ int f2fs_fiemap(struct inode *inode, struct fiemap_extent_info *fieinfo,
 	if (ret)
 		return ret;
 
+	/* we don't need to use inline_data strictly */
+	if (f2fs_has_inline_data(inode)) {
+		ret = f2fs_convert_inline_inode(inode);
+		if (ret)
+			return ret;
+	}
+
 	mutex_lock(&inode->i_mutex);
 
 	if (len >= isize) {
