@@ -418,6 +418,15 @@ int add_mtd_device(struct mtd_info *mtd)
 	mtd->erasesize_mask = (1 << mtd->erasesize_shift) - 1;
 	mtd->writesize_mask = (1 << mtd->writesize_shift) - 1;
 
+	if (mtd->dev.parent) {
+		if (!mtd->owner && mtd->dev.parent->driver)
+			mtd->owner = mtd->dev.parent->driver->owner;
+		if (!mtd->name)
+			mtd->name = dev_name(mtd->dev.parent);
+	} else {
+		pr_debug("mtd device won't show a device symlink in sysfs\n");
+	}
+
 	/* Some chips always power up locked. Unlock them now */
 	if ((mtd->flags & MTD_WRITEABLE) && (mtd->flags & MTD_POWERUP_LOCK)) {
 		error = mtd_unlock(mtd, 0, mtd->size);
@@ -430,7 +439,7 @@ int add_mtd_device(struct mtd_info *mtd)
 	}
 
 	/* Caller should have set dev.parent to match the
-	 * physical device.
+	 * physical device, if appropriate.
 	 */
 	mtd->dev.type = &mtd_devtype;
 	mtd->dev.class = &mtd_class;
@@ -1301,6 +1310,7 @@ static void __exit cleanup_mtd(void)
 		remove_proc_entry("mtd", NULL);
 	class_unregister(&mtd_class);
 	bdi_destroy(&mtd_bdi);
+	idr_destroy(&mtd_idr);
 }
 
 module_init(init_mtd);
