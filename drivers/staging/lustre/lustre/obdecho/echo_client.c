@@ -98,7 +98,6 @@ static int echo_client_setup(const struct lu_env *env,
 			     struct lustre_cfg *lcfg);
 static int echo_client_cleanup(struct obd_device *obddev);
 
-
 /** \defgroup echo_helpers Helper functions
  * @{
  */
@@ -323,6 +322,7 @@ static const struct cl_page_operations echo_page_ops = {
 		}
 	}
 };
+
 /** @} echo_page */
 
 /** \defgroup echo_lock Locking
@@ -418,6 +418,7 @@ static const struct cl_object_operations echo_cl_obj_ops = {
 	.coo_io_init   = echo_io_init,
 	.coo_conf_set  = echo_conf_set
 };
+
 /** @} echo_cl_ops */
 
 /** \defgroup echo_lu_ops lu_object operations
@@ -548,6 +549,7 @@ static const struct lu_object_operations echo_lu_obj_ops = {
 	.loo_object_print     = echo_object_print,
 	.loo_object_invariant = NULL
 };
+
 /** @} echo_lu_ops */
 
 /** \defgroup echo_lu_dev_ops  lu_device operations
@@ -919,6 +921,7 @@ static struct lu_device_type echo_device_type = {
 	.ldt_ops      = &echo_device_type_ops,
 	.ldt_ctx_tags = LCT_CL_THREAD,
 };
+
 /** @} echo_init */
 
 /** \defgroup echo_exports Exported operations
@@ -1202,7 +1205,6 @@ static int cl_echo_object_brw(struct echo_object *eco, int rw, u64 offset,
 		goto out;
 	LASSERT(rc == 0);
 
-
 	rc = cl_echo_enqueue0(env, eco, offset,
 			      offset + npages * PAGE_CACHE_SIZE - 1,
 			      rw == READ ? LCK_PR : LCK_PW, &lh.cookie,
@@ -1259,8 +1261,8 @@ out:
 	cl_env_put(env, &refcheck);
 	return rc;
 }
-/** @} echo_exports */
 
+/** @} echo_exports */
 
 static u64 last_object_id;
 
@@ -1303,7 +1305,6 @@ echo_copyin_lsm(struct echo_device *ed, struct lov_stripe_md *lsm,
 	    (lsm->lsm_stripe_size & (~CFS_PAGE_MASK)) != 0 ||
 	    ((__u64)lsm->lsm_stripe_size * lsm->lsm_stripe_count > ~0UL))
 		return -EINVAL;
-
 
 	for (i = 0; i < lsm->lsm_stripe_count; i++) {
 		if (copy_from_user(lsm->lsm_oinfo[i],
@@ -1400,7 +1401,7 @@ static int echo_create_object(const struct lu_env *env, struct echo_device *ed,
 
  failed:
 	if (created && rc)
-		obd_destroy(env, ec->ec_exp, oa, lsm, oti, NULL, NULL);
+		obd_destroy(env, ec->ec_exp, oa, lsm, oti, NULL);
 	if (lsm)
 		echo_free_memmd(ed, &lsm);
 	if (rc)
@@ -1691,7 +1692,7 @@ static int echo_client_prep_commit(const struct lu_env *env,
 
 		lpages = npages;
 		ret = obd_preprw(env, rw, exp, oa, 1, &ioo, rnb, &lpages,
-				 lnb, oti, NULL);
+				 lnb, oti);
 		if (ret != 0)
 			goto out;
 		LASSERT(lpages == npages);
@@ -1907,7 +1908,7 @@ echo_client_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
 		rc = echo_get_object(&eco, ed, oa);
 		if (rc == 0) {
 			rc = obd_destroy(env, ec->ec_exp, oa, eco->eo_lsm,
-					 &dummy_oti, NULL, NULL);
+					 &dummy_oti, NULL);
 			if (rc == 0)
 				eco->eo_deleted = 1;
 			echo_put_object(eco);
@@ -1917,7 +1918,7 @@ echo_client_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
 	case OBD_IOC_GETATTR:
 		rc = echo_get_object(&eco, ed, oa);
 		if (rc == 0) {
-			struct obd_info oinfo = { { { 0 } } };
+			struct obd_info oinfo = { };
 
 			oinfo.oi_md = eco->eo_lsm;
 			oinfo.oi_oa = oa;
@@ -1934,7 +1935,7 @@ echo_client_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
 
 		rc = echo_get_object(&eco, ed, oa);
 		if (rc == 0) {
-			struct obd_info oinfo = { { { 0 } } };
+			struct obd_info oinfo = { };
 
 			oinfo.oi_oa = oa;
 			oinfo.oi_md = eco->eo_lsm;
@@ -2065,12 +2066,6 @@ static int echo_client_setup(const struct lu_env *env,
 	ocd->ocd_group = FID_SEQ_ECHO;
 
 	rc = obd_connect(env, &ec->ec_exp, tgt, &echo_uuid, ocd, NULL);
-	if (rc == 0) {
-		/* Turn off pinger because it connects to tgt obd directly. */
-		spin_lock(&tgt->obd_dev_lock);
-		list_del_init(&ec->ec_exp->exp_obd_chain_timed);
-		spin_unlock(&tgt->obd_dev_lock);
-	}
 
 	kfree(ocd);
 
