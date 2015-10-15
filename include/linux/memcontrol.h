@@ -767,8 +767,6 @@ static inline int memcg_cache_id(struct mem_cgroup *memcg)
 struct kmem_cache *__memcg_kmem_get_cache(struct kmem_cache *cachep);
 void __memcg_kmem_put_cache(struct kmem_cache *cachep);
 
-struct mem_cgroup *__mem_cgroup_from_kmem(void *ptr);
-
 static inline bool __memcg_kmem_bypass(gfp_t gfp)
 {
 	if (!memcg_kmem_enabled())
@@ -830,9 +828,12 @@ static __always_inline void memcg_kmem_put_cache(struct kmem_cache *cachep)
 
 static __always_inline struct mem_cgroup *mem_cgroup_from_kmem(void *ptr)
 {
+	struct page *page;
+
 	if (!memcg_kmem_enabled())
 		return NULL;
-	return __mem_cgroup_from_kmem(ptr);
+	page = virt_to_head_page(ptr);
+	return page->mem_cgroup;
 }
 #else
 #define for_each_memcg_cache_index(_idx)	\
