@@ -2212,13 +2212,13 @@ struct page *buffered_rmqueue(struct zone *preferred_zone,
 		spin_lock_irqsave(&zone->lock, flags);
 
 		page = NULL;
-		if (unlikely(order) && (alloc_flags & ALLOC_HARDER)) {
+		if (alloc_flags & ALLOC_HARDER) {
 			page = __rmqueue_smallest(zone, order, MIGRATE_HIGHATOMIC);
 			if (page)
 				trace_mm_page_alloc_zone_locked(page, order, migratetype);
 		}
-
-		page = __rmqueue(zone, order, migratetype, gfp_flags);
+		if (!page)
+			page = __rmqueue(zone, order, migratetype, gfp_flags);
 		spin_unlock(&zone->lock);
 		if (!page)
 			goto failed;
