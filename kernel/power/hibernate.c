@@ -733,7 +733,7 @@ int hibernate(void)
  * contents of memory is restored from the saved image.
  *
  * If this is successful, control reappears in the restored target kernel in
- * hibernation_snaphot() which returns to hibernate().  Otherwise, the routine
+ * hibernation_snapshot() which returns to hibernate().  Otherwise, the routine
  * attempts to recover gracefully and make the kernel return to the normal mode
  * of operation.
  */
@@ -1087,7 +1087,7 @@ static int __init pm_disk_init(void)
 	return sysfs_create_group(power_kobj, &attr_group);
 }
 
-core_initcall(pm_disk_init);
+late_initcall_sync(pm_disk_init);
 
 
 static int __init resume_setup(char *str)

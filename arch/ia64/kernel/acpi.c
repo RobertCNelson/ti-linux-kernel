@@ -184,9 +184,6 @@ acpi_parse_lapic_addr_ovr(struct acpi_subtable_header * header,
 
 	lapic = (struct acpi_madt_local_apic_override *)header;
 
-	if (BAD_MADT_ENTRY(lapic, end))
-		return -EINVAL;
-
 	if (lapic->address) {
 		iounmap(ipi_base_addr);
 		ipi_base_addr = ioremap(lapic->address, 0);
@@ -200,8 +197,6 @@ acpi_parse_lsapic(struct acpi_subtable_header * header, const unsigned long end)
 	struct acpi_madt_local_sapic *lsapic;
 
 	lsapic = (struct acpi_madt_local_sapic *)header;
-
-	/*Skip BAD_MADT_ENTRY check, as lsapic size could vary */
 
 	if (lsapic->lapic_flags & ACPI_MADT_ENABLED) {
 #ifdef CONFIG_SMP
@@ -222,9 +217,6 @@ acpi_parse_lapic_nmi(struct acpi_subtable_header * header, const unsigned long e
 
 	lacpi_nmi = (struct acpi_madt_local_apic_nmi *)header;
 
-	if (BAD_MADT_ENTRY(lacpi_nmi, end))
-		return -EINVAL;
-
 	/* TBD: Support lapic_nmi entries */
 	return 0;
 }
@@ -235,9 +227,6 @@ acpi_parse_iosapic(struct acpi_subtable_header * header, const unsigned long end
 	struct acpi_madt_io_sapic *iosapic;
 
 	iosapic = (struct acpi_madt_io_sapic *)header;
-
-	if (BAD_MADT_ENTRY(iosapic, end))
-		return -EINVAL;
 
 	return iosapic_init(iosapic->address, iosapic->global_irq_base);
 }
@@ -252,9 +241,6 @@ acpi_parse_plat_int_src(struct acpi_subtable_header * header,
 	int vector;
 
 	plintsrc = (struct acpi_madt_interrupt_source *)header;
-
-	if (BAD_MADT_ENTRY(plintsrc, end))
-		return -EINVAL;
 
 	/*
 	 * Get vector assignment for this interrupt, set attributes,
@@ -336,9 +322,6 @@ acpi_parse_int_src_ovr(struct acpi_subtable_header * header,
 
 	p = (struct acpi_madt_interrupt_override *)header;
 
-	if (BAD_MADT_ENTRY(p, end))
-		return -EINVAL;
-
 	iosapic_override_isa_irq(p->source_irq, p->global_irq,
 				 ((p->inti_flags & ACPI_MADT_POLARITY_MASK) ==
 				  ACPI_MADT_POLARITY_ACTIVE_LOW) ?
@@ -355,9 +338,6 @@ acpi_parse_nmi_src(struct acpi_subtable_header * header, const unsigned long end
 	struct acpi_madt_nmi_source *nmi_src;
 
 	nmi_src = (struct acpi_madt_nmi_source *)header;
-
-	if (BAD_MADT_ENTRY(nmi_src, end))
-		return -EINVAL;
 
 	/* TBD: Support nimsrc entries */
 	return 0;
