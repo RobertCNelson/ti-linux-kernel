@@ -230,7 +230,7 @@ static int sriov_enable(struct pci_dev *dev, int nr_virtfn)
 	int rc;
 	int i, j;
 	int nres;
-	u16 offset, stride, initial;
+	u16 initial;
 	struct resource *res;
 	struct pci_dev *pdev;
 	struct pci_sriov *iov = dev->sriov;
@@ -253,9 +253,7 @@ static int sriov_enable(struct pci_dev *dev, int nr_virtfn)
 	    (!(iov->cap & PCI_SRIOV_CAP_VFM) && (nr_virtfn > initial)))
 		return -EINVAL;
 
-	pci_read_config_word(dev, iov->pos + PCI_SRIOV_VF_OFFSET, &offset);
-	pci_read_config_word(dev, iov->pos + PCI_SRIOV_VF_STRIDE, &stride);
-	if (!offset || (nr_virtfn > 1 && !stride))
+	if (!iov->offset || (nr_virtfn > 1 && !iov->stride))
 		return -EIO;
 
 	nres = 0;
@@ -269,9 +267,6 @@ static int sriov_enable(struct pci_dev *dev, int nr_virtfn)
 		dev_err(&dev->dev, "not enough MMIO resources for SR-IOV\n");
 		return -ENOMEM;
 	}
-
-	iov->offset = offset;
-	iov->stride = stride;
 
 	bus = pci_iov_virtfn_bus(dev, nr_virtfn - 1);
 	if (bus > dev->bus->busn_res.end) {
