@@ -60,11 +60,12 @@ int of_device_add(struct platform_device *ofdev)
 	ofdev->name = dev_name(&ofdev->dev);
 	ofdev->id = -1;
 
-	/* device_add will assume that this device is on the same node as
-	 * the parent. If there is no parent defined, set the node
-	 * explicitly */
-	if (!ofdev->dev.parent)
-		set_dev_node(&ofdev->dev, of_node_to_nid(ofdev->dev.of_node));
+	/*
+	 * If this device has not binding numa node in devicetree, that is
+	 * of_node_to_nid returns NUMA_NO_NODE. device_add will assume that this
+	 * device is on the same node as the parent.
+	 */
+	set_dev_node(&ofdev->dev, of_node_to_nid(ofdev->dev.of_node));
 
 	return device_add(&ofdev->dev);
 }
@@ -286,3 +287,64 @@ int of_device_uevent_modalias(struct device *dev, struct kobj_uevent_env *env)
 
 	return 0;
 }
+
+/**
+ * of_device_probe() - Probe device associated with OF node
+ * @np: node to probe
+ *
+ * Probe the device associated with the passed device node.
+ */
+void of_device_probe(struct device_node *np)
+{
+	struct device_node *target;
+	struct device *dev = NULL;
+
+	if (!of_root || !of_node_check_flag(of_root, OF_POPULATED_BUS))
+		return;
+
+	if (!np)
+		return;
+
+	of_node_get(np);
+
+	/* Find the closest ancestor that has a device associated */
+	for (target = np;
+	     !of_node_is_root(target);
+	     target = of_get_next_parent(target))
+		if (get_device(target->device)) {
+			dev = target->device;
+			break;
+		}
+
+	of_node_put(target);
+
+	if (!dev) {
+		pr_warn("Couldn't find a device for node '%s'\n",
+			of_node_full_name(np));
+		return;
+	}
+
+	/*
+	 * Device is bound or is being probed right now. If we have bad luck
+	 * and the dependency isn't ready when it's needed, deferred probe
+	 * will save us.
+	 */
+	if (dev->driver)
+		goto out;
+
+	/*
+	 * Probing a device should cause its descendants to be probed as
+	 * well, which includes the passed device node.
+	 */
+	if (device_attach(dev) != 1)
+		/*
+		 * This cannot be a warning for now because clock nodes have a
+		 * compatible string but the clock framework doesn't follow
+		 * the device/driver model yet.
+		 */
+		dev_dbg(dev, "Probe failed for %s\n", of_node_full_name(np));
+
+out:
+	put_device(dev);
+}
+EXPORT_SYMBOL_GPL(of_device_probe);

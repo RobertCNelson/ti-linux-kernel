@@ -52,6 +52,7 @@ struct device_node {
 	phandle phandle;
 	const char *full_name;
 	struct fwnode_handle fwnode;
+	struct device *device;
 
 	struct	property *properties;
 	struct	property *deadprops;	/* removed properties */

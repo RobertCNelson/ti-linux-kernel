@@ -70,7 +70,7 @@ extern void bus_remove_file(struct bus_type *, struct bus_attribute *);
  * @dev_groups:	Default attributes of the devices on the bus.
  * @drv_groups: Default attributes of the device drivers on the bus.
  * @match:	Called, perhaps multiple times, whenever a new device or driver
- *		is added for this bus. It should return a nonzero value if the
+ *		is added for this bus. It should return a positive value if the
  *		given device can be handled by the given driver.
  * @uevent:	Called when a device is added, removed, or a few other things
  *		that generate uevents to add the environment variables.
@@ -744,6 +744,7 @@ struct device_dma_parameters {
  *
  * @offline_disabled: If set, the device is permanently online.
  * @offline:	Set after successful invocation of bus type's .offline().
+ * @probe_late:	If set, device will be probed in the late initcall level.
  *
  * At the lowest level, every device in a Linux system is represented by an
  * instance of struct device. The device structure contains the information
@@ -828,6 +829,7 @@ struct device {
 
 	bool			offline_disabled:1;
 	bool			offline:1;
+	bool			probe_late:1;
 };
 
 static inline struct device *kobj_to_dev(struct kobject *kobj)

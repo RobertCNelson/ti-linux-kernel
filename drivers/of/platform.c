@@ -32,11 +32,6 @@ const struct of_device_id of_default_bus_match_table[] = {
 	{} /* Empty terminated list */
 };
 
-static int of_dev_node_match(struct device *dev, void *data)
-{
-	return dev->of_node == data;
-}
-
 /**
  * of_find_device_by_node - Find the platform_device associated with a node
  * @np: Pointer to device tree node
@@ -45,10 +40,10 @@ static int of_dev_node_match(struct device *dev, void *data)
  */
 struct platform_device *of_find_device_by_node(struct device_node *np)
 {
-	struct device *dev;
-
-	dev = bus_find_device(&platform_bus_type, NULL, np, of_dev_node_match);
-	return dev ? to_platform_device(dev) : NULL;
+	if (np->device && np->device->bus == &platform_bus_type &&
+	    get_device(np->device))
+		return to_platform_device(np->device);
+	return NULL;
 }
 EXPORT_SYMBOL(of_find_device_by_node);
 
@@ -169,7 +164,8 @@ static struct platform_device *of_platform_device_create_pdata(
 					struct device_node *np,
 					const char *bus_id,
 					void *platform_data,
-					struct device *parent)
+					struct device *parent,
+					bool probe_late)
 {
 	struct platform_device *dev;
 
@@ -183,6 +179,7 @@ static struct platform_device *of_platform_device_create_pdata(
 
 	dev->dev.bus = &platform_bus_type;
 	dev->dev.platform_data = platform_data;
+	dev->dev.probe_late = probe_late;
 	of_dma_configure(&dev->dev, dev->dev.of_node);
 	of_msi_configure(&dev->dev, dev->dev.of_node);
 
@@ -191,6 +188,8 @@ static struct platform_device *of_platform_device_create_pdata(
 		platform_device_put(dev);
 		goto err_clear_flag;
 	}
+
+	np->device = &dev->dev;
 
 	return dev;
 
@@ -212,7 +211,8 @@ struct platform_device *of_platform_device_create(struct device_node *np,
 					    const char *bus_id,
 					    struct device *parent)
 {
-	return of_platform_device_create_pdata(np, bus_id, NULL, parent);
+	return of_platform_device_create_pdata(np, bus_id, NULL, parent,
+					       false);
 }
 EXPORT_SYMBOL(of_platform_device_create);
 
@@ -243,6 +243,7 @@ static struct amba_device *of_amba_device_create(struct device_node *node,
 	dev->dev.of_node = of_node_get(node);
 	dev->dev.parent = parent ? : &platform_bus;
 	dev->dev.platform_data = platform_data;
+	dev->dev.probe_late = true;
 	if (bus_id)
 		dev_set_name(&dev->dev, "%s", bus_id);
 	else
@@ -271,6 +272,8 @@ static struct amba_device *of_amba_device_create(struct device_node *node,
 		       __func__, ret, node->full_name);
 		goto err_free;
 	}
+
+	node->device = &dev->dev;
 
 	return dev;
 
@@ -359,7 +362,8 @@ static int of_platform_bus_create(struct device_node *bus,
 		return 0;
 	}
 
-	dev = of_platform_device_create_pdata(bus, bus_id, platform_data, parent);
+	dev = of_platform_device_create_pdata(bus, bus_id, platform_data,
+					      parent, true);
 	if (!dev || !of_match_node(matches, bus))
 		return 0;
 
@@ -475,6 +479,8 @@ static int of_platform_device_destroy(struct device *dev, void *data)
 	/* Recurse for any nodes that were treated as busses */
 	if (of_node_check_flag(dev->of_node, OF_POPULATED_BUS))
 		device_for_each_child(dev, NULL, of_platform_device_destroy);
+
+	dev->of_node->device = NULL;
 
 	if (dev->bus == &platform_bus_type)
 		platform_device_unregister(to_platform_device(dev));

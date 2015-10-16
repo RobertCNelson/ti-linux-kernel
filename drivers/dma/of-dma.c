@@ -16,6 +16,7 @@
 #include <linux/mutex.h>
 #include <linux/slab.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/of_dma.h>
 
 static LIST_HEAD(of_dma_list);
@@ -262,6 +263,8 @@ struct dma_chan *of_dma_request_slave_channel(struct device_node *np,
 	for (i = 0; i < count; i++) {
 		if (of_dma_match_channel(np, name, i, &dma_spec))
 			continue;
+
+		of_device_probe(dma_spec.np);
 
 		mutex_lock(&of_dma_lock);
 		ofdma = of_dma_find_controller(&dma_spec);
