@@ -795,6 +795,63 @@ static int mv_cesa_ahash_finup(struct ahash_request *req)
 	return ret;
 }
 
+static int mv_cesa_ahash_export(struct ahash_request *req, void *hash,
+				u64 *len, void *cache)
+{
+	struct crypto_ahash *ahash = crypto_ahash_reqtfm(req);
+	struct mv_cesa_ahash_req *creq = ahash_request_ctx(req);
+	unsigned int digsize = crypto_ahash_digestsize(ahash);
+	unsigned int blocksize;
+
+	blocksize = crypto_tfm_alg_blocksize(crypto_ahash_tfm(ahash));
+
+	*len = creq->len;
+	memcpy(hash, creq->state, digsize);
+	memset(cache, 0, blocksize);
+	if (creq->cache)
+		memcpy(cache, creq->cache, creq->cache_ptr);
+
+	return 0;
+}
+
+static int mv_cesa_ahash_import(struct ahash_request *req, const void *hash,
+				u64 len, const void *cache)
+{
+	struct crypto_ahash *ahash = crypto_ahash_reqtfm(req);
+	struct mv_cesa_ahash_req *creq = ahash_request_ctx(req);
+	unsigned int digsize = crypto_ahash_digestsize(ahash);
+	unsigned int blocksize;
+	unsigned int cache_ptr;
+	int ret;
+
+	ret = crypto_ahash_init(req);
+	if (ret)
+		return ret;
+
+	blocksize = crypto_tfm_alg_blocksize(crypto_ahash_tfm(ahash));
+	if (len >= blocksize)
+		mv_cesa_update_op_cfg(&creq->op_tmpl,
+				      CESA_SA_DESC_CFG_MID_FRAG,
+				      CESA_SA_DESC_CFG_FRAG_MSK);
+
+	creq->len = len;
+	memcpy(creq->state, hash, digsize);
+	creq->cache_ptr = 0;
+
+	cache_ptr = do_div(len, blocksize);
+	if (!cache_ptr)
+		return 0;
+
+	ret = mv_cesa_ahash_alloc_cache(req);
+	if (ret)
+		return ret;
+
+	memcpy(creq->cache, cache, cache_ptr);
+	creq->cache_ptr = cache_ptr;
+
+	return 0;
+}
+
 static int mv_cesa_md5_init(struct ahash_request *req)
 {
 	struct mv_cesa_op_ctx tmpl;
@@ -809,44 +866,17 @@ static int mv_cesa_md5_init(struct ahash_request *req)
 static int mv_cesa_md5_export(struct ahash_request *req, void *out)
 {
 	struct md5_state *out_state = out;
-	struct crypto_ahash *ahash = crypto_ahash_reqtfm(req);
-	struct mv_cesa_ahash_req *creq = ahash_request_ctx(req);
-	unsigned int digsize = crypto_ahash_digestsize(ahash);
 
-	out_state->byte_count = creq->len;
-	memcpy(out_state->hash, creq->state, digsize);
-	memset(out_state->block, 0, sizeof(out_state->block));
-	if (creq->cache)
-		memcpy(out_state->block, creq->cache, creq->cache_ptr);
-
-	return 0;
+	return mv_cesa_ahash_export(req, out_state->hash,
+				    &out_state->byte_count, out_state->block);
 }
 
 static int mv_cesa_md5_import(struct ahash_request *req, const void *in)
 {
 	const struct md5_state *in_state = in;
-	struct crypto_ahash *ahash = crypto_ahash_reqtfm(req);
-	struct mv_cesa_ahash_req *creq = ahash_request_ctx(req);
-	unsigned int digsize = crypto_ahash_digestsize(ahash);
-	unsigned int cache_ptr;
-	int ret;
 
-	creq->len = in_state->byte_count;
-	memcpy(creq->state, in_state->hash, digsize);
-	creq->cache_ptr = 0;
-
-	cache_ptr = creq->len % sizeof(in_state->block);
-	if (!cache_ptr)
-		return 0;
-
-	ret = mv_cesa_ahash_alloc_cache(req);
-	if (ret)
-		return ret;
-
-	memcpy(creq->cache, in_state->block, cache_ptr);
-	creq->cache_ptr = cache_ptr;
-
-	return 0;
+	return mv_cesa_ahash_import(req, in_state->hash, in_state->byte_count,
+				    in_state->block);
 }
 
 static int mv_cesa_md5_digest(struct ahash_request *req)
@@ -870,6 +900,7 @@ struct ahash_alg mv_md5_alg = {
 	.import = mv_cesa_md5_import,
 	.halg = {
 		.digestsize = MD5_DIGEST_SIZE,
+		.statesize = sizeof(struct md5_state),
 		.base = {
 			.cra_name = "md5",
 			.cra_driver_name = "mv-md5",
@@ -898,44 +929,17 @@ static int mv_cesa_sha1_init(struct ahash_request *req)
 static int mv_cesa_sha1_export(struct ahash_request *req, void *out)
 {
 	struct sha1_state *out_state = out;
-	struct crypto_ahash *ahash = crypto_ahash_reqtfm(req);
-	struct mv_cesa_ahash_req *creq = ahash_request_ctx(req);
-	unsigned int digsize = crypto_ahash_digestsize(ahash);
 
-	out_state->count = creq->len;
-	memcpy(out_state->state, creq->state, digsize);
-	memset(out_state->buffer, 0, sizeof(out_state->buffer));
-	if (creq->cache)
-		memcpy(out_state->buffer, creq->cache, creq->cache_ptr);
-
-	return 0;
+	return mv_cesa_ahash_export(req, out_state->state, &out_state->count,
+				    out_state->buffer);
 }
 
 static int mv_cesa_sha1_import(struct ahash_request *req, const void *in)
 {
 	const struct sha1_state *in_state = in;
-	struct crypto_ahash *ahash = crypto_ahash_reqtfm(req);
-	struct mv_cesa_ahash_req *creq = ahash_request_ctx(req);
-	unsigned int digsize = crypto_ahash_digestsize(ahash);
-	unsigned int cache_ptr;
-	int ret;
 
-	creq->len = in_state->count;
-	memcpy(creq->state, in_state->state, digsize);
-	creq->cache_ptr = 0;
-
-	cache_ptr = creq->len % SHA1_BLOCK_SIZE;
-	if (!cache_ptr)
-		return 0;
-
-	ret = mv_cesa_ahash_alloc_cache(req);
-	if (ret)
-		return ret;
-
-	memcpy(creq->cache, in_state->buffer, cache_ptr);
-	creq->cache_ptr = cache_ptr;
-
-	return 0;
+	return mv_cesa_ahash_import(req, in_state->state, in_state->count,
+				    in_state->buffer);
 }
 
 static int mv_cesa_sha1_digest(struct ahash_request *req)
@@ -959,6 +963,7 @@ struct ahash_alg mv_sha1_alg = {
 	.import = mv_cesa_sha1_import,
 	.halg = {
 		.digestsize = SHA1_DIGEST_SIZE,
+		.statesize = sizeof(struct sha1_state),
 		.base = {
 			.cra_name = "sha1",
 			.cra_driver_name = "mv-sha1",
@@ -998,44 +1003,17 @@ static int mv_cesa_sha256_digest(struct ahash_request *req)
 static int mv_cesa_sha256_export(struct ahash_request *req, void *out)
 {
 	struct sha256_state *out_state = out;
-	struct crypto_ahash *ahash = crypto_ahash_reqtfm(req);
-	struct mv_cesa_ahash_req *creq = ahash_request_ctx(req);
-	unsigned int ds = crypto_ahash_digestsize(ahash);
 
-	out_state->count = creq->len;
-	memcpy(out_state->state, creq->state, ds);
-	memset(out_state->buf, 0, sizeof(out_state->buf));
-	if (creq->cache)
-		memcpy(out_state->buf, creq->cache, creq->cache_ptr);
-
-	return 0;
+	return mv_cesa_ahash_export(req, out_state->state, &out_state->count,
+				    out_state->buf);
 }
 
 static int mv_cesa_sha256_import(struct ahash_request *req, const void *in)
 {
 	const struct sha256_state *in_state = in;
-	struct crypto_ahash *ahash = crypto_ahash_reqtfm(req);
-	struct mv_cesa_ahash_req *creq = ahash_request_ctx(req);
-	unsigned int digsize = crypto_ahash_digestsize(ahash);
-	unsigned int cache_ptr;
-	int ret;
 
-	creq->len = in_state->count;
-	memcpy(creq->state, in_state->state, digsize);
-	creq->cache_ptr = 0;
-
-	cache_ptr = creq->len % SHA256_BLOCK_SIZE;
-	if (!cache_ptr)
-		return 0;
-
-	ret = mv_cesa_ahash_alloc_cache(req);
-	if (ret)
-		return ret;
-
-	memcpy(creq->cache, in_state->buf, cache_ptr);
-	creq->cache_ptr = cache_ptr;
-
-	return 0;
+	return mv_cesa_ahash_import(req, in_state->state, in_state->count,
+				    in_state->buf);
 }
 
 struct ahash_alg mv_sha256_alg = {
@@ -1048,6 +1026,7 @@ struct ahash_alg mv_sha256_alg = {
 	.import = mv_cesa_sha256_import,
 	.halg = {
 		.digestsize = SHA256_DIGEST_SIZE,
+		.statesize = sizeof(struct sha256_state),
 		.base = {
 			.cra_name = "sha256",
 			.cra_driver_name = "mv-sha256",
