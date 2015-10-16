@@ -138,10 +138,14 @@ enum i915_ggtt_view_type {
 struct intel_rotation_info {
 	unsigned int height;
 	unsigned int pitch;
+	unsigned int uv_offset;
 	uint32_t pixel_format;
 	uint64_t fb_modifier;
 	unsigned int width_pages, height_pages;
 	uint64_t size;
+	unsigned int width_pages_uv, height_pages_uv;
+	uint64_t size_uv;
+	unsigned int uv_start_page;
 };
 
 struct i915_ggtt_view {
@@ -341,6 +345,7 @@ struct i915_gtt {
 	struct i915_address_space base;
 
 	size_t stolen_size;		/* Total size of stolen memory */
+	size_t stolen_usable_size;	/* Total size minus BIOS reserved */
 	u64 mappable_end;		/* End offset that we can CPU map */
 	struct io_mapping *mappable;	/* Mapping to our CPU mappable region */
 	phys_addr_t mappable_base;	/* PA of our GMADR */
@@ -389,7 +394,8 @@ struct i915_hw_ppgtt {
  */
 #define gen6_for_each_pde(pt, pd, start, length, temp, iter) \
 	for (iter = gen6_pde_index(start); \
-	     pt = (pd)->page_table[iter], length > 0 && iter < I915_PDES; \
+	     length > 0 && iter < I915_PDES ? \
+			(pt = (pd)->page_table[iter]), 1 : 0; \
 	     iter++, \
 	     temp = ALIGN(start+1, 1 << GEN6_PDE_SHIFT) - start, \
 	     temp = min_t(unsigned, temp, length), \
@@ -454,7 +460,8 @@ static inline uint32_t gen6_pde_index(uint32_t addr)
  */
 #define gen8_for_each_pde(pt, pd, start, length, temp, iter)		\
 	for (iter = gen8_pde_index(start); \
-	     pt = (pd)->page_table[iter], length > 0 && iter < I915_PDES;	\
+	     length > 0 && iter < I915_PDES ? \
+			(pt = (pd)->page_table[iter]), 1 : 0; \
 	     iter++,				\
 	     temp = ALIGN(start+1, 1 << GEN8_PDE_SHIFT) - start,	\
 	     temp = min(temp, length),					\
@@ -462,8 +469,8 @@ static inline uint32_t gen6_pde_index(uint32_t addr)
 
 #define gen8_for_each_pdpe(pd, pdp, start, length, temp, iter)	\
 	for (iter = gen8_pdpe_index(start); \
-	     pd = (pdp)->page_directory[iter], \
-	     length > 0 && (iter < I915_PDPES_PER_PDP(dev)); \
+	     length > 0 && (iter < I915_PDPES_PER_PDP(dev)) ? \
+			(pd = (pdp)->page_directory[iter]), 1 : 0; \
 	     iter++,				\
 	     temp = ALIGN(start+1, 1 << GEN8_PDPE_SHIFT) - start,	\
 	     temp = min(temp, length),					\
@@ -471,8 +478,8 @@ static inline uint32_t gen6_pde_index(uint32_t addr)
 
 #define gen8_for_each_pml4e(pdp, pml4, start, length, temp, iter)	\
 	for (iter = gen8_pml4e_index(start);	\
-	     pdp = (pml4)->pdps[iter], \
-	     length > 0 && iter < GEN8_PML4ES_PER_PML4; \
+	     length > 0 && iter < GEN8_PML4ES_PER_PML4 ? \
+			(pdp = (pml4)->pdps[iter]), 1 : 0; \
 	     iter++,				\
 	     temp = ALIGN(start+1, 1ULL << GEN8_PML4E_SHIFT) - start,	\
 	     temp = min(temp, length),					\
