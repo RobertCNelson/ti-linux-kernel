@@ -48,10 +48,6 @@
 
 #define DEFAULT_DEBUG_LEVEL_SHIFT 3
 #define PFX "i40evf: "
-#define DPRINTK(nlevel, klevel, fmt, args...) \
-	((void)((NETIF_MSG_##nlevel & adapter->msg_enable) && \
-	printk(KERN_##klevel PFX "%s: %s: " fmt, adapter->netdev->name, \
-		__func__ , ## args)))
 
 /* dummy struct to make common code less painful */
 struct i40e_vsi {
@@ -70,6 +66,7 @@ struct i40e_vsi {
 	 */
 	u16 rx_itr_setting;
 	u16 tx_itr_setting;
+	u16 qs_handle;
 };
 
 /* How many Rx Buffers do we bundle into one write to the hardware ? */
@@ -223,6 +220,7 @@ struct i40evf_adapter {
 #define I40EVF_FLAG_RESET_NEEDED                 BIT(10)
 #define I40EVF_FLAG_WB_ON_ITR_CAPABLE		BIT(11)
 #define I40EVF_FLAG_OUTER_UDP_CSUM_CAPABLE	BIT(12)
+#define I40EVF_FLAG_ADDR_SET_BY_PF		BIT(13)
 /* duplicates for common code */
 #define I40E_FLAG_FDIR_ATR_ENABLED		 0
 #define I40E_FLAG_DCB_ENABLED			 0
