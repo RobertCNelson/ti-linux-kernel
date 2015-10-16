@@ -495,7 +495,8 @@ static int lpc32xx_read_page(struct mtd_info *mtd, struct nand_chip *chip,
 
 static int lpc32xx_write_page_lowlevel(struct mtd_info *mtd,
 				       struct nand_chip *chip,
-				       const uint8_t *buf, int oob_required)
+				       const uint8_t *buf, int oob_required,
+				       int page)
 {
 	struct lpc32xx_nand_host *host = chip->priv;
 	const uint8_t *oobbuf = chip->oob_poi;
@@ -682,7 +683,6 @@ static int lpc32xx_nand_probe(struct platform_device *pdev)
 
 	nand_chip->priv = host;		/* link the private data structures */
 	mtd->priv = nand_chip;
-	mtd->owner = THIS_MODULE;
 	mtd->dev.parent = &pdev->dev;
 
 	/* Get NAND clock */
