@@ -62,6 +62,7 @@
 #include <linux/oom.h>
 #include <linux/lockdep.h>
 #include <linux/file.h>
+#include <linux/tracehook.h>
 #include "internal.h"
 #include <net/sock.h>
 #include <net/ip.h>
@@ -695,7 +696,7 @@ static unsigned long mem_cgroup_read_events(struct mem_cgroup *memcg,
 
 static void mem_cgroup_charge_statistics(struct mem_cgroup *memcg,
 					 struct page *page,
-					 int nr_pages)
+					 bool compound, int nr_pages)
 {
 	/*
 	 * Here, RSS means 'mapped anon' and anon's SwapCache. Shmem/tmpfs is
@@ -708,9 +709,11 @@ static void mem_cgroup_charge_statistics(struct mem_cgroup *memcg,
 		__this_cpu_add(memcg->stat->count[MEM_CGROUP_STAT_CACHE],
 				nr_pages);
 
-	if (PageTransHuge(page))
+	if (compound) {
+		VM_BUG_ON_PAGE(!PageTransHuge(page), page);
 		__this_cpu_add(memcg->stat->count[MEM_CGROUP_STAT_RSS_HUGE],
 				nr_pages);
+	}
 
 	/* pagein of a big page is an event. So, ignore page size */
 	if (nr_pages > 0)
@@ -1661,7 +1664,7 @@ static void memcg_oom_recover(struct mem_cgroup *memcg)
 
 static void mem_cgroup_oom(struct mem_cgroup *memcg, gfp_t mask, int order)
 {
-	if (!current->memcg_oom.may_oom)
+	if (!current->memcg_may_oom)
 		return;
 	/*
 	 * We are in the middle of the charge context here, so we
@@ -1678,9 +1681,9 @@ static void mem_cgroup_oom(struct mem_cgroup *memcg, gfp_t mask, int order)
 	 * and when we know whether the fault was overall successful.
 	 */
 	css_get(&memcg->css);
-	current->memcg_oom.memcg = memcg;
-	current->memcg_oom.gfp_mask = mask;
-	current->memcg_oom.order = order;
+	current->memcg_in_oom = memcg;
+	current->memcg_oom_gfp_mask = mask;
+	current->memcg_oom_order = order;
 }
 
 /**
@@ -1702,7 +1705,7 @@ static void mem_cgroup_oom(struct mem_cgroup *memcg, gfp_t mask, int order)
  */
 bool mem_cgroup_oom_synchronize(bool handle)
 {
-	struct mem_cgroup *memcg = current->memcg_oom.memcg;
+	struct mem_cgroup *memcg = current->memcg_in_oom;
 	struct oom_wait_info owait;
 	bool locked;
 
@@ -1730,8 +1733,8 @@ bool mem_cgroup_oom_synchronize(bool handle)
 	if (locked && !memcg->oom_kill_disable) {
 		mem_cgroup_unmark_under_oom(memcg);
 		finish_wait(&memcg_oom_waitq, &owait.wait);
-		mem_cgroup_out_of_memory(memcg, current->memcg_oom.gfp_mask,
-					 current->memcg_oom.order);
+		mem_cgroup_out_of_memory(memcg, current->memcg_oom_gfp_mask,
+					 current->memcg_oom_order);
 	} else {
 		schedule();
 		mem_cgroup_unmark_under_oom(memcg);
@@ -1748,7 +1751,7 @@ bool mem_cgroup_oom_synchronize(bool handle)
 		memcg_oom_recover(memcg);
 	}
 cleanup:
-	current->memcg_oom.memcg = NULL;
+	current->memcg_in_oom = NULL;
 	css_put(&memcg->css);
 	return true;
 }
@@ -1972,6 +1975,31 @@ static int memcg_cpu_hotplug_callback(struct notifier_block *nb,
 	return NOTIFY_OK;
 }
 
+/*
+ * Scheduled by try_charge() to be executed from the userland return path
+ * and reclaims memory over the high limit.
+ */
+void mem_cgroup_handle_over_high(void)
+{
+	unsigned int nr_pages = current->memcg_nr_pages_over_high;
+	struct mem_cgroup *memcg, *pos;
+
+	if (likely(!nr_pages))
+		return;
+
+	pos = memcg = get_mem_cgroup_from_mm(current->mm);
+
+	do {
+		if (page_counter_read(&pos->memory) <= pos->high)
+			continue;
+		mem_cgroup_events(pos, MEMCG_HIGH, 1);
+		try_to_free_mem_cgroup_pages(pos, nr_pages, GFP_KERNEL, true);
+	} while ((pos = parent_mem_cgroup(pos)));
+
+	css_put(&memcg->css);
+	current->memcg_nr_pages_over_high = 0;
+}
+
 static int try_charge(struct mem_cgroup *memcg, gfp_t gfp_mask,
 		      unsigned int nr_pages)
 {
@@ -1982,13 +2010,12 @@ static int try_charge(struct mem_cgroup *memcg, gfp_t gfp_mask,
 	unsigned long nr_reclaimed;
 	bool may_swap = true;
 	bool drained = false;
-	int ret = 0;
 
 	if (mem_cgroup_is_root(memcg))
-		goto done;
+		return 0;
 retry:
 	if (consume_stock(memcg, nr_pages))
-		goto done;
+		return 0;
 
 	if (!do_swap_account ||
 	    !page_counter_try_charge(&memcg->memsw, batch, &counter)) {
@@ -2016,12 +2043,12 @@ retry:
 	if (unlikely(test_thread_flag(TIF_MEMDIE) ||
 		     fatal_signal_pending(current) ||
 		     current->flags & PF_EXITING))
-		goto bypass;
+		goto force;
 
 	if (unlikely(task_in_memcg_oom(current)))
 		goto nomem;
 
-	if (!(gfp_mask & __GFP_WAIT))
+	if (!gfpflags_allow_blocking(gfp_mask))
 		goto nomem;
 
 	mem_cgroup_events(mem_over_limit, MEMCG_MAX, 1);
@@ -2062,38 +2089,54 @@ retry:
 		goto retry;
 
 	if (gfp_mask & __GFP_NOFAIL)
-		goto bypass;
+		goto force;
 
 	if (fatal_signal_pending(current))
-		goto bypass;
+		goto force;
 
 	mem_cgroup_events(mem_over_limit, MEMCG_OOM, 1);
 
-	mem_cgroup_oom(mem_over_limit, gfp_mask, get_order(nr_pages));
+	mem_cgroup_oom(mem_over_limit, gfp_mask,
+		       get_order(nr_pages * PAGE_SIZE));
 nomem:
 	if (!(gfp_mask & __GFP_NOFAIL))
 		return -ENOMEM;
-bypass:
-	return -EINTR;
+force:
+	/*
+	 * The allocation either can't fail or will lead to more memory
+	 * being freed very soon.  Allow memory usage go over the limit
+	 * temporarily by force charging it.
+	 */
+	page_counter_charge(&memcg->memory, nr_pages);
+	if (do_swap_account)
+		page_counter_charge(&memcg->memsw, nr_pages);
+	css_get_many(&memcg->css, nr_pages);
+
+	return 0;
 
 done_restock:
 	css_get_many(&memcg->css, batch);
 	if (batch > nr_pages)
 		refill_stock(memcg, batch - nr_pages);
-	if (!(gfp_mask & __GFP_WAIT))
-		goto done;
+
 	/*
-	 * If the hierarchy is above the normal consumption range,
-	 * make the charging task trim their excess contribution.
+	 * If the hierarchy is above the normal consumption range, schedule
+	 * reclaim on returning to userland.  We can perform reclaim here
+	 * if __GFP_WAIT but let's always punt for simplicity and so that
+	 * GFP_KERNEL can consistently be used during reclaim.  @memcg is
+	 * not recorded as it most likely matches current's and won't
+	 * change in the meantime.  As high limit is checked again before
+	 * reclaim, the cost of mismatch is negligible.
 	 */
 	do {
-		if (page_counter_read(&memcg->memory) <= memcg->high)
-			continue;
-		mem_cgroup_events(memcg, MEMCG_HIGH, 1);
-		try_to_free_mem_cgroup_pages(memcg, nr_pages, gfp_mask, true);
+		if (page_counter_read(&memcg->memory) > memcg->high) {
+			current->memcg_nr_pages_over_high += nr_pages;
+			set_notify_resume(current);
+			break;
+		}
 	} while ((memcg = parent_mem_cgroup(memcg)));
-done:
-	return ret;
+
+	return 0;
 }
 
 static void cancel_charge(struct mem_cgroup *memcg, unsigned int nr_pages)
@@ -2174,55 +2217,6 @@ static void commit_charge(struct page *page, struct mem_cgroup *memcg,
 }
 
 #ifdef CONFIG_MEMCG_KMEM
-int memcg_charge_kmem(struct mem_cgroup *memcg, gfp_t gfp,
-		      unsigned long nr_pages)
-{
-	struct page_counter *counter;
-	int ret = 0;
-
-	ret = page_counter_try_charge(&memcg->kmem, nr_pages, &counter);
-	if (ret < 0)
-		return ret;
-
-	ret = try_charge(memcg, gfp, nr_pages);
-	if (ret == -EINTR)  {
-		/*
-		 * try_charge() chose to bypass to root due to OOM kill or
-		 * fatal signal.  Since our only options are to either fail
-		 * the allocation or charge it to this cgroup, do it as a
-		 * temporary condition. But we can't fail. From a kmem/slab
-		 * perspective, the cache has already been selected, by
-		 * mem_cgroup_kmem_get_cache(), so it is too late to change
-		 * our minds.
-		 *
-		 * This condition will only trigger if the task entered
-		 * memcg_charge_kmem in a sane state, but was OOM-killed
-		 * during try_charge() above. Tasks that were already dying
-		 * when the allocation triggers should have been already
-		 * directed to the root cgroup in memcontrol.h
-		 */
-		page_counter_charge(&memcg->memory, nr_pages);
-		if (do_swap_account)
-			page_counter_charge(&memcg->memsw, nr_pages);
-		css_get_many(&memcg->css, nr_pages);
-		ret = 0;
-	} else if (ret)
-		page_counter_uncharge(&memcg->kmem, nr_pages);
-
-	return ret;
-}
-
-void memcg_uncharge_kmem(struct mem_cgroup *memcg, unsigned long nr_pages)
-{
-	page_counter_uncharge(&memcg->memory, nr_pages);
-	if (do_swap_account)
-		page_counter_uncharge(&memcg->memsw, nr_pages);
-
-	page_counter_uncharge(&memcg->kmem, nr_pages);
-
-	css_put_many(&memcg->css, nr_pages);
-}
-
 static int memcg_alloc_cache_id(void)
 {
 	int id, size;
@@ -2385,84 +2379,58 @@ void __memcg_kmem_put_cache(struct kmem_cache *cachep)
 }
 
 /*
- * We need to verify if the allocation against current->mm->owner's memcg is
- * possible for the given order. But the page is not allocated yet, so we'll
- * need a further commit step to do the final arrangements.
- *
- * It is possible for the task to switch cgroups in this mean time, so at
- * commit time, we can't rely on task conversion any longer.  We'll then use
- * the handle argument to return to the caller which cgroup we should commit
- * against. We could also return the memcg directly and avoid the pointer
- * passing, but a boolean return value gives better semantics considering
- * the compiled-out case as well.
- *
- * Returning true means the allocation is possible.
+ * If @memcg != NULL, charge to @memcg, otherwise charge to the memcg the
+ * current task belongs to.
  */
-bool
-__memcg_kmem_newpage_charge(gfp_t gfp, struct mem_cgroup **_memcg, int order)
+int __memcg_kmem_charge(struct page *page, gfp_t gfp, int order,
+			struct mem_cgroup *memcg)
 {
-	struct mem_cgroup *memcg;
-	int ret;
+	struct page_counter *counter;
+	unsigned int nr_pages = 1 << order;
+	bool put = false;
+	int ret = 0;
 
-	*_memcg = NULL;
+	if (!memcg) {
+		memcg = get_mem_cgroup_from_mm(current->mm);
+		put = true;
+	}
+	if (!memcg_kmem_is_active(memcg))
+		goto out;
 
-	memcg = get_mem_cgroup_from_mm(current->mm);
+	ret = page_counter_try_charge(&memcg->kmem, nr_pages, &counter);
+	if (ret)
+		goto out;
 
-	if (!memcg_kmem_is_active(memcg)) {
-		css_put(&memcg->css);
-		return true;
+	ret = try_charge(memcg, gfp, nr_pages);
+	if (ret) {
+		page_counter_uncharge(&memcg->kmem, nr_pages);
+		goto out;
 	}
 
-	ret = memcg_charge_kmem(memcg, gfp, 1 << order);
-	if (!ret)
-		*_memcg = memcg;
-
-	css_put(&memcg->css);
-	return (ret == 0);
-}
-
-void __memcg_kmem_commit_charge(struct page *page, struct mem_cgroup *memcg,
-			      int order)
-{
-	VM_BUG_ON(mem_cgroup_is_root(memcg));
-
-	/* The page allocation failed. Revert */
-	if (!page) {
-		memcg_uncharge_kmem(memcg, 1 << order);
-		return;
-	}
 	page->mem_cgroup = memcg;
+out:
+	if (put)
+		css_put(&memcg->css);
+	return ret;
 }
 
-void __memcg_kmem_uncharge_pages(struct page *page, int order)
+void __memcg_kmem_uncharge(struct page *page, int order)
 {
 	struct mem_cgroup *memcg = page->mem_cgroup;
+	unsigned int nr_pages = 1 << order;
 
 	if (!memcg)
 		return;
 
 	VM_BUG_ON_PAGE(mem_cgroup_is_root(memcg), page);
 
-	memcg_uncharge_kmem(memcg, 1 << order);
+	page_counter_uncharge(&memcg->kmem, nr_pages);
+	page_counter_uncharge(&memcg->memory, nr_pages);
+	if (do_swap_account)
+		page_counter_uncharge(&memcg->memsw, nr_pages);
+
 	page->mem_cgroup = NULL;
-}
-
-struct mem_cgroup *__mem_cgroup_from_kmem(void *ptr)
-{
-	struct mem_cgroup *memcg = NULL;
-	struct kmem_cache *cachep;
-	struct page *page;
-
-	page = virt_to_head_page(ptr);
-	if (PageSlab(page)) {
-		cachep = page->slab_cache;
-		if (!is_root_cache(cachep))
-			memcg = cachep->memcg_params.memcg;
-	} else
-		/* page allocated by alloc_kmem_pages */
-		memcg = page->mem_cgroup;
-
-	return memcg;
+	css_put_many(&memcg->css, nr_pages);
 }
 #endif /* CONFIG_MEMCG_KMEM */
 
@@ -2470,9 +2438,7 @@ struct mem_cgroup *__mem_cgroup_from_kmem(void *ptr)
 
 /*
  * Because tail pages are not marked as "used", set it. We're under
- * zone->lru_lock, 'splitting on pmd' and compound_lock.
- * charge/uncharge will be never happen and move_account() is done under
- * compound_lock(), so we don't have to take care of races.
+ * zone->lru_lock and migration entries setup in all page mappings.
  */
 void mem_cgroup_split_huge_fixup(struct page *head)
 {
@@ -3387,6 +3353,7 @@ static int __mem_cgroup_usage_register_event(struct mem_cgroup *memcg,
 	ret = page_counter_memparse(args, "-1", &threshold);
 	if (ret)
 		return ret;
+	threshold <<= PAGE_SHIFT;
 
 	mutex_lock(&memcg->thresholds_lock);
 
@@ -4400,28 +4367,16 @@ static int mem_cgroup_do_precharge(unsigned long count)
 {
 	int ret;
 
-	/* Try a single bulk charge without reclaim first */
-	ret = try_charge(mc.to, GFP_KERNEL & ~__GFP_WAIT, count);
+	/* Try a single bulk charge without reclaim first, kswapd may wake */
+	ret = try_charge(mc.to, GFP_KERNEL & ~__GFP_DIRECT_RECLAIM, count);
 	if (!ret) {
 		mc.precharge += count;
-		return ret;
-	}
-	if (ret == -EINTR) {
-		cancel_charge(root_mem_cgroup, count);
 		return ret;
 	}
 
 	/* Try charges one by one with reclaim */
 	while (count--) {
 		ret = try_charge(mc.to, GFP_KERNEL & ~__GFP_NORETRY, 1);
-		/*
-		 * In case of failure, any residual charges against
-		 * mc.to will be dropped by mem_cgroup_clear_mc()
-		 * later on.  However, cancel any charges that are
-		 * bypassed to root right away or they'll be lost.
-		 */
-		if (ret == -EINTR)
-			cancel_charge(root_mem_cgroup, 1);
 		if (ret)
 			return ret;
 		mc.precharge++;
@@ -4547,39 +4502,31 @@ static struct page *mc_handle_file_pte(struct vm_area_struct *vma,
  * @from: mem_cgroup which the page is moved from.
  * @to:	mem_cgroup which the page is moved to. @from != @to.
  *
- * The caller must confirm following.
- * - page is not on LRU (isolate_page() is useful.)
- * - compound_lock is held when nr_pages > 1
+ * The caller must make sure the page is not on LRU (isolate_page() is useful.)
  *
  * This function doesn't do "charge" to new cgroup and doesn't do "uncharge"
  * from old cgroup.
  */
 static int mem_cgroup_move_account(struct page *page,
-				   unsigned int nr_pages,
+				   bool compound,
 				   struct mem_cgroup *from,
 				   struct mem_cgroup *to)
 {
 	unsigned long flags;
+	unsigned int nr_pages = compound ? hpage_nr_pages(page) : 1;
 	int ret;
 	bool anon;
 
 	VM_BUG_ON(from == to);
 	VM_BUG_ON_PAGE(PageLRU(page), page);
-	/*
-	 * The page is isolated from LRU. So, collapse function
-	 * will not handle this page. But page splitting can happen.
-	 * Do this check under compound_page_lock(). The caller should
-	 * hold it.
-	 */
-	ret = -EBUSY;
-	if (nr_pages > 1 && !PageTransHuge(page))
-		goto out;
+	VM_BUG_ON(compound && !PageTransHuge(page));
 
 	/*
 	 * Prevent mem_cgroup_migrate() from looking at page->mem_cgroup
 	 * of its source page while we change it: page migration takes
 	 * both pages off the LRU, but page cache replacement doesn't.
 	 */
+	ret = -EBUSY;
 	if (!trylock_page(page))
 		goto out;
 
@@ -4634,9 +4581,9 @@ static int mem_cgroup_move_account(struct page *page,
 	ret = 0;
 
 	local_irq_disable();
-	mem_cgroup_charge_statistics(to, page, nr_pages);
+	mem_cgroup_charge_statistics(to, page, compound, nr_pages);
 	memcg_check_events(to, page);
-	mem_cgroup_charge_statistics(from, page, -nr_pages);
+	mem_cgroup_charge_statistics(from, page, compound, -nr_pages);
 	memcg_check_events(from, page);
 	local_irq_enable();
 out_unlock:
@@ -4726,7 +4673,7 @@ static int mem_cgroup_count_precharge_pte_range(pmd_t *pmd,
 	pte_t *pte;
 	spinlock_t *ptl;
 
-	if (pmd_trans_huge_lock(pmd, vma, &ptl) == 1) {
+	if (pmd_trans_huge_lock(pmd, vma, &ptl)) {
 		if (get_mctgt_type_thp(vma, addr, *pmd, NULL) == MC_TARGET_PAGE)
 			mc.precharge += HPAGE_PMD_NR;
 		spin_unlock(ptl);
@@ -4910,17 +4857,7 @@ static int mem_cgroup_move_charge_pte_range(pmd_t *pmd,
 	union mc_target target;
 	struct page *page;
 
-	/*
-	 * We don't take compound_lock() here but no race with splitting thp
-	 * happens because:
-	 *  - if pmd_trans_huge_lock() returns 1, the relevant thp is not
-	 *    under splitting, which means there's no concurrent thp split,
-	 *  - if another thread runs into split_huge_page() just after we
-	 *    entered this if-block, the thread must wait for page table lock
-	 *    to be unlocked in __split_huge_page_splitting(), where the main
-	 *    part of thp split is not executed yet.
-	 */
-	if (pmd_trans_huge_lock(pmd, vma, &ptl) == 1) {
+	if (pmd_trans_huge_lock(pmd, vma, &ptl)) {
 		if (mc.precharge < HPAGE_PMD_NR) {
 			spin_unlock(ptl);
 			return 0;
@@ -4929,7 +4866,7 @@ static int mem_cgroup_move_charge_pte_range(pmd_t *pmd,
 		if (target_type == MC_TARGET_PAGE) {
 			page = target.page;
 			if (!isolate_lru_page(page)) {
-				if (!mem_cgroup_move_account(page, HPAGE_PMD_NR,
+				if (!mem_cgroup_move_account(page, true,
 							     mc.from, mc.to)) {
 					mc.precharge -= HPAGE_PMD_NR;
 					mc.moved_charge += HPAGE_PMD_NR;
@@ -4958,7 +4895,8 @@ retry:
 			page = target.page;
 			if (isolate_lru_page(page))
 				goto put;
-			if (!mem_cgroup_move_account(page, 1, mc.from, mc.to)) {
+			if (!mem_cgroup_move_account(page, false,
+						mc.from, mc.to)) {
 				mc.precharge--;
 				/* we uncharge from mc.from later. */
 				mc.moved_charge++;
@@ -5296,10 +5234,11 @@ bool mem_cgroup_low(struct mem_cgroup *root, struct mem_cgroup *memcg)
  * with mem_cgroup_cancel_charge() in case page instantiation fails.
  */
 int mem_cgroup_try_charge(struct page *page, struct mm_struct *mm,
-			  gfp_t gfp_mask, struct mem_cgroup **memcgp)
+			  gfp_t gfp_mask, struct mem_cgroup **memcgp,
+			  bool compound)
 {
 	struct mem_cgroup *memcg = NULL;
-	unsigned int nr_pages = 1;
+	unsigned int nr_pages = compound ? hpage_nr_pages(page) : 1;
 	int ret = 0;
 
 	if (mem_cgroup_disabled())
@@ -5329,22 +5268,12 @@ int mem_cgroup_try_charge(struct page *page, struct mm_struct *mm,
 		}
 	}
 
-	if (PageTransHuge(page)) {
-		nr_pages <<= compound_order(page);
-		VM_BUG_ON_PAGE(!PageTransHuge(page), page);
-	}
-
 	if (!memcg)
 		memcg = get_mem_cgroup_from_mm(mm);
 
 	ret = try_charge(memcg, gfp_mask, nr_pages);
 
 	css_put(&memcg->css);
-
-	if (ret == -EINTR) {
-		memcg = root_mem_cgroup;
-		ret = 0;
-	}
 out:
 	*memcgp = memcg;
 	return ret;
@@ -5367,9 +5296,9 @@ out:
  * Use mem_cgroup_cancel_charge() to cancel the transaction instead.
  */
 void mem_cgroup_commit_charge(struct page *page, struct mem_cgroup *memcg,
-			      bool lrucare)
+			      bool lrucare, bool compound)
 {
-	unsigned int nr_pages = 1;
+	unsigned int nr_pages = compound ? hpage_nr_pages(page) : 1;
 
 	VM_BUG_ON_PAGE(!page->mapping, page);
 	VM_BUG_ON_PAGE(PageLRU(page) && !lrucare, page);
@@ -5386,13 +5315,8 @@ void mem_cgroup_commit_charge(struct page *page, struct mem_cgroup *memcg,
 
 	commit_charge(page, memcg, lrucare);
 
-	if (PageTransHuge(page)) {
-		nr_pages <<= compound_order(page);
-		VM_BUG_ON_PAGE(!PageTransHuge(page), page);
-	}
-
 	local_irq_disable();
-	mem_cgroup_charge_statistics(memcg, page, nr_pages);
+	mem_cgroup_charge_statistics(memcg, page, compound, nr_pages);
 	memcg_check_events(memcg, page);
 	local_irq_enable();
 
@@ -5414,9 +5338,10 @@ void mem_cgroup_commit_charge(struct page *page, struct mem_cgroup *memcg,
  *
  * Cancel a charge transaction started by mem_cgroup_try_charge().
  */
-void mem_cgroup_cancel_charge(struct page *page, struct mem_cgroup *memcg)
+void mem_cgroup_cancel_charge(struct page *page, struct mem_cgroup *memcg,
+		bool compound)
 {
-	unsigned int nr_pages = 1;
+	unsigned int nr_pages = compound ? hpage_nr_pages(page) : 1;
 
 	if (mem_cgroup_disabled())
 		return;
@@ -5427,11 +5352,6 @@ void mem_cgroup_cancel_charge(struct page *page, struct mem_cgroup *memcg)
 	 */
 	if (!memcg)
 		return;
-
-	if (PageTransHuge(page)) {
-		nr_pages <<= compound_order(page);
-		VM_BUG_ON_PAGE(!PageTransHuge(page), page);
-	}
 
 	cancel_charge(memcg, nr_pages);
 }
@@ -5690,7 +5610,7 @@ void mem_cgroup_swapout(struct page *page, swp_entry_t entry)
 	 * only synchronisation we have for udpating the per-CPU variables.
 	 */
 	VM_BUG_ON(!irqs_disabled());
-	mem_cgroup_charge_statistics(memcg, page, -1);
+	mem_cgroup_charge_statistics(memcg, page, false, -1);
 	memcg_check_events(memcg, page);
 }
 
