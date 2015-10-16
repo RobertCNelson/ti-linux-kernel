@@ -261,7 +261,6 @@ struct ost_id {
 #define LL_IOC_OBD_STATFS       IOC_OBD_STATFS
 #define IOC_MDC_GETSTRIPE       IOC_MDC_GETFILESTRIPE
 
-
 #define MAX_OBD_NAME 128 /* If this changes, a NEW ioctl must be added */
 
 /* Define O_LOV_DELAY_CREATE to be a mask that is not useful for regular
@@ -406,8 +405,6 @@ static inline int lmv_user_md_size(int stripes, int lmm_magic)
 		      stripes * sizeof(struct lmv_user_mds_data);
 }
 
-void lustre_swab_lmv_user_md(struct lmv_user_md *lum);
-
 struct ll_recreate_obj {
 	__u64 lrc_id;
 	__u32 lrc_ost_idx;
@@ -449,6 +446,7 @@ static inline char *obd_uuid2str(const struct obd_uuid *uuid)
 		/* Obviously not safe, but for printfs, no real harm done...
 		   we're always null-terminated, even in a race. */
 		static char temp[sizeof(*uuid)];
+
 		memcpy(temp, uuid->uuid, sizeof(*uuid) - 1);
 		temp[sizeof(*uuid) - 1] = '\0';
 		return temp;
@@ -488,7 +486,6 @@ static inline void obd_uuid2fsname(char *buf, char *uuid, int buflen)
 	&((fid)->f_seq), \
 	&((fid)->f_oid), \
 	&((fid)->f_ver)
-
 
 /********* Quotas **********/
 
@@ -631,7 +628,6 @@ struct lustre_swap_layouts {
 	__u64	sl_dv2;
 };
 
-
 /********* Changelogs **********/
 /** Changelog record types */
 enum changelog_rec_type {
@@ -658,7 +654,8 @@ enum changelog_rec_type {
 	CL_LAST
 };
 
-static inline const char *changelog_type2str(int type) {
+static inline const char *changelog_type2str(int type)
+{
 	static const char *changelog_str[] = {
 		"MARK",  "CREAT", "MKDIR", "HLINK", "SLINK", "MKNOD", "UNLNK",
 		"RMDIR", "RENME", "RNMTO", "OPEN",  "CLOSE", "LYOUT", "TRUNC",
@@ -798,14 +795,14 @@ struct changelog_ext_rec {
 
 static inline int changelog_rec_size(struct changelog_rec *rec)
 {
-	return CHANGELOG_REC_EXTENDED(rec) ? sizeof(struct changelog_ext_rec):
+	return CHANGELOG_REC_EXTENDED(rec) ? sizeof(struct changelog_ext_rec) :
 					     sizeof(*rec);
 }
 
 static inline char *changelog_rec_name(struct changelog_rec *rec)
 {
 	return CHANGELOG_REC_EXTENDED(rec) ?
-		((struct changelog_ext_rec *)rec)->cr_name: rec->cr_name;
+		((struct changelog_ext_rec *)rec)->cr_name : rec->cr_name;
 }
 
 static inline int changelog_rec_snamelen(struct changelog_ext_rec *rec)
@@ -836,6 +833,7 @@ struct ioc_data_version {
 	__u64 idv_version;
 	__u64 idv_flags;     /* See LL_DV_xxx */
 };
+
 #define LL_DV_NOFLUSH 0x01   /* Do not take READ EXTENT LOCK before sampling
 				version. Dirty caches are left unchanged. */
 
@@ -844,7 +842,6 @@ struct ioc_data_version {
 #endif
 
 #define dot_lustre_name ".lustre"
-
 
 /********* HSM **********/
 
@@ -881,6 +878,7 @@ enum hsm_progress_states {
 	HPS_RUNNING	= 2,
 	HPS_DONE	= 3,
 };
+
 #define HPS_NONE	0
 
 static inline char *hsm_progress_state2name(enum hsm_progress_states s)
@@ -1105,6 +1103,7 @@ static inline int cfs_size_round (int val)
 {
 	return (val + 7) & (~0x7);
 }
+
 #define HAVE_CFS_SIZE_ROUND
 #endif
 
@@ -1116,6 +1115,7 @@ static inline struct hsm_action_item *hai_zero(struct hsm_action_list *hal)
 								hal_fsname)
 							 + 1));
 }
+
 /* Return pointer to next hai */
 static inline struct hsm_action_item *hai_next(struct hsm_action_item *hai)
 {
