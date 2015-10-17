@@ -12,8 +12,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  mm/swap.c |   34 ++++++++++++++++++++--------------
  1 file changed, 20 insertions(+), 14 deletions(-)
 
---- a/mm/swap.c
-+++ b/mm/swap.c
+Index: linux-rt-devel/mm/swap.c
+===================================================================
+--- linux-rt-devel.orig/mm/swap.c
++++ linux-rt-devel/mm/swap.c
 @@ -32,6 +32,7 @@
  #include <linux/gfp.h>
  #include <linux/uio.h>

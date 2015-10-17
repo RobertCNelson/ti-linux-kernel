@@ -41,8 +41,10 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  kernel/workqueue.c  |   61 ++++++++++++++++++++++++++++++++++++++++------------
  2 files changed, 53 insertions(+), 15 deletions(-)
 
---- a/kernel/sched/core.c
-+++ b/kernel/sched/core.c
+Index: linux-rt-devel/kernel/sched/core.c
+===================================================================
+--- linux-rt-devel.orig/kernel/sched/core.c
++++ linux-rt-devel/kernel/sched/core.c
 @@ -3022,9 +3022,8 @@ static void __sched __schedule(void)
  
  static inline void sched_submit_work(struct task_struct *tsk)
@@ -65,8 +67,10 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  	/*
  	 * If we are going to sleep and we have plugged IO queued,
  	 * make sure to submit it to avoid deadlocks.
---- a/kernel/workqueue.c
-+++ b/kernel/workqueue.c
+Index: linux-rt-devel/kernel/workqueue.c
+===================================================================
+--- linux-rt-devel.orig/kernel/workqueue.c
++++ linux-rt-devel/kernel/workqueue.c
 @@ -123,6 +123,11 @@ enum {
   *    cpu or grabbing pool->lock is enough for read access.  If
   *    POOL_DISASSOCIATED is set, it's identical to L.

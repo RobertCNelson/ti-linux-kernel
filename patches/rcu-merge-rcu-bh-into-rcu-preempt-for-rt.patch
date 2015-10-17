@@ -30,8 +30,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/rcu/update.c      |    2 ++
  4 files changed, 59 insertions(+), 2 deletions(-)
 
---- a/include/linux/rcupdate.h
-+++ b/include/linux/rcupdate.h
+Index: linux-rt-devel/include/linux/rcupdate.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/rcupdate.h
++++ linux-rt-devel/include/linux/rcupdate.h
 @@ -167,6 +167,9 @@ void call_rcu(struct rcu_head *head,
  
  #endif /* #else #ifdef CONFIG_PREEMPT_RCU */
@@ -109,8 +111,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	local_bh_enable();
  }
  
---- a/include/linux/rcutree.h
-+++ b/include/linux/rcutree.h
+Index: linux-rt-devel/include/linux/rcutree.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/rcutree.h
++++ linux-rt-devel/include/linux/rcutree.h
 @@ -46,7 +46,11 @@ static inline void rcu_virt_note_context
  	rcu_note_context_switch();
  }
@@ -163,8 +167,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  void rcu_all_qs(void);
  
  #endif /* __LINUX_RCUTREE_H */
---- a/kernel/rcu/tree.c
-+++ b/kernel/rcu/tree.c
+Index: linux-rt-devel/kernel/rcu/tree.c
+===================================================================
+--- linux-rt-devel.orig/kernel/rcu/tree.c
++++ linux-rt-devel/kernel/rcu/tree.c
 @@ -220,6 +220,7 @@ void rcu_sched_qs(void)
  	}
  }
@@ -251,8 +257,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  /**
   * rcu_barrier_sched - Wait for in-flight call_rcu_sched() callbacks.
---- a/kernel/rcu/update.c
-+++ b/kernel/rcu/update.c
+Index: linux-rt-devel/kernel/rcu/update.c
+===================================================================
+--- linux-rt-devel.orig/kernel/rcu/update.c
++++ linux-rt-devel/kernel/rcu/update.c
 @@ -227,6 +227,7 @@ int rcu_read_lock_held(void)
  }
  EXPORT_SYMBOL_GPL(rcu_read_lock_held);

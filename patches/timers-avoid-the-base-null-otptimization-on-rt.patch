@@ -10,8 +10,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/time/timer.c |   40 ++++++++++++++++++++++++++++++++--------
  1 file changed, 32 insertions(+), 8 deletions(-)
 
---- a/kernel/time/timer.c
-+++ b/kernel/time/timer.c
+Index: linux-rt-devel/kernel/time/timer.c
+===================================================================
+--- linux-rt-devel.orig/kernel/time/timer.c
++++ linux-rt-devel/kernel/time/timer.c
 @@ -771,6 +771,36 @@ static struct tvec_base *lock_timer_base
  	}
  }
@@ -49,7 +51,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  static inline int
  __mod_timer(struct timer_list *timer, unsigned long expires,
  						bool pending_only, int pinned)
-@@ -801,14 +831,8 @@ static inline int
+@@ -801,14 +831,8 @@ __mod_timer(struct timer_list *timer, un
  		 * handler yet has not finished. This also guarantees that
  		 * the timer is serialized wrt itself.
  		 */

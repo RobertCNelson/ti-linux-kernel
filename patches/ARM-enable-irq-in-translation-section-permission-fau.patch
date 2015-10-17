@@ -61,8 +61,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  arch/arm/mm/fault.c |    6 ++++++
  1 file changed, 6 insertions(+)
 
---- a/arch/arm/mm/fault.c
-+++ b/arch/arm/mm/fault.c
+Index: linux-rt-devel/arch/arm/mm/fault.c
+===================================================================
+--- linux-rt-devel.orig/arch/arm/mm/fault.c
++++ linux-rt-devel/arch/arm/mm/fault.c
 @@ -430,6 +430,9 @@ do_translation_fault(unsigned long addr,
  	if (addr < TASK_SIZE)
  		return do_page_fault(addr, fsr, regs);

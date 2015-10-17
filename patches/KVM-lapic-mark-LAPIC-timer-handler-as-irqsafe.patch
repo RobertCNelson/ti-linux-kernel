@@ -16,8 +16,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  arch/x86/kvm/lapic.c |   40 +++++++++++++++++++++++++++++++++++++---
  1 file changed, 37 insertions(+), 3 deletions(-)
 
---- a/arch/x86/kvm/lapic.c
-+++ b/arch/x86/kvm/lapic.c
+Index: linux-rt-devel/arch/x86/kvm/lapic.c
+===================================================================
+--- linux-rt-devel.orig/arch/x86/kvm/lapic.c
++++ linux-rt-devel/arch/x86/kvm/lapic.c
 @@ -1167,8 +1167,36 @@ void wait_lapic_expire(struct kvm_vcpu *
  		__delay(tsc_deadline - guest_tsc);
  }

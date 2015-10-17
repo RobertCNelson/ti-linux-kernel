@@ -19,8 +19,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  drivers/md/bcache/Kconfig |    1 +
  1 file changed, 1 insertion(+)
 
---- a/drivers/md/bcache/Kconfig
-+++ b/drivers/md/bcache/Kconfig
+Index: linux-rt-devel/drivers/md/bcache/Kconfig
+===================================================================
+--- linux-rt-devel.orig/drivers/md/bcache/Kconfig
++++ linux-rt-devel/drivers/md/bcache/Kconfig
 @@ -1,6 +1,7 @@
  
  config BCACHE

@@ -23,8 +23,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  arch/x86/kernel/traps.c |   28 +++++++++++++++++++++-------
  1 file changed, 21 insertions(+), 7 deletions(-)
 
---- a/arch/x86/kernel/traps.c
-+++ b/arch/x86/kernel/traps.c
+Index: linux-rt-devel/arch/x86/kernel/traps.c
+===================================================================
+--- linux-rt-devel.orig/arch/x86/kernel/traps.c
++++ linux-rt-devel/arch/x86/kernel/traps.c
 @@ -88,9 +88,21 @@ static inline void conditional_sti(struc
  		local_irq_enable();
  }

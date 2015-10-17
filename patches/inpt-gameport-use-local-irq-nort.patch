@@ -11,8 +11,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  drivers/input/gameport/gameport.c |    8 ++++----
  1 file changed, 4 insertions(+), 4 deletions(-)
 
---- a/drivers/input/gameport/gameport.c
-+++ b/drivers/input/gameport/gameport.c
+Index: linux-rt-devel/drivers/input/gameport/gameport.c
+===================================================================
+--- linux-rt-devel.orig/drivers/input/gameport/gameport.c
++++ linux-rt-devel/drivers/input/gameport/gameport.c
 @@ -124,12 +124,12 @@ static int old_gameport_measure_speed(st
  	tx = 1 << 30;
  

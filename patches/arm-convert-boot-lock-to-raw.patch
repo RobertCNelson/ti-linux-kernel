@@ -30,8 +30,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  arch/arm/plat-versatile/platsmp.c |   10 +++++-----
  9 files changed, 54 insertions(+), 54 deletions(-)
 
---- a/arch/arm/mach-exynos/platsmp.c
-+++ b/arch/arm/mach-exynos/platsmp.c
+Index: linux-rt-devel/arch/arm/mach-exynos/platsmp.c
+===================================================================
+--- linux-rt-devel.orig/arch/arm/mach-exynos/platsmp.c
++++ linux-rt-devel/arch/arm/mach-exynos/platsmp.c
 @@ -231,7 +231,7 @@ static void __iomem *scu_base_addr(void)
  	return (void __iomem *)(S5P_VA_SCU);
  }
@@ -79,8 +81,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	return pen_release != -1 ? ret : 0;
  }
---- a/arch/arm/mach-hisi/platmcpm.c
-+++ b/arch/arm/mach-hisi/platmcpm.c
+Index: linux-rt-devel/arch/arm/mach-hisi/platmcpm.c
+===================================================================
+--- linux-rt-devel.orig/arch/arm/mach-hisi/platmcpm.c
++++ linux-rt-devel/arch/arm/mach-hisi/platmcpm.c
 @@ -57,7 +57,7 @@
  
  static void __iomem *sysctrl, *fabric;
@@ -183,8 +187,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  static void __naked hip04_mcpm_power_up_setup(unsigned int affinity_level)
---- a/arch/arm/mach-omap2/omap-smp.c
-+++ b/arch/arm/mach-omap2/omap-smp.c
+Index: linux-rt-devel/arch/arm/mach-omap2/omap-smp.c
+===================================================================
+--- linux-rt-devel.orig/arch/arm/mach-omap2/omap-smp.c
++++ linux-rt-devel/arch/arm/mach-omap2/omap-smp.c
 @@ -43,7 +43,7 @@
  /* SCU base address */
  static void __iomem *scu_base;
@@ -223,8 +229,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	return 0;
  }
---- a/arch/arm/mach-prima2/platsmp.c
-+++ b/arch/arm/mach-prima2/platsmp.c
+Index: linux-rt-devel/arch/arm/mach-prima2/platsmp.c
+===================================================================
+--- linux-rt-devel.orig/arch/arm/mach-prima2/platsmp.c
++++ linux-rt-devel/arch/arm/mach-prima2/platsmp.c
 @@ -22,7 +22,7 @@
  
  static void __iomem *clk_base;
@@ -263,8 +271,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	return pen_release != -1 ? -ENOSYS : 0;
  }
---- a/arch/arm/mach-qcom/platsmp.c
-+++ b/arch/arm/mach-qcom/platsmp.c
+Index: linux-rt-devel/arch/arm/mach-qcom/platsmp.c
+===================================================================
+--- linux-rt-devel.orig/arch/arm/mach-qcom/platsmp.c
++++ linux-rt-devel/arch/arm/mach-qcom/platsmp.c
 @@ -46,7 +46,7 @@
  
  extern void secondary_startup_arm(void);
@@ -303,8 +313,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	return ret;
  }
---- a/arch/arm/mach-spear/platsmp.c
-+++ b/arch/arm/mach-spear/platsmp.c
+Index: linux-rt-devel/arch/arm/mach-spear/platsmp.c
+===================================================================
+--- linux-rt-devel.orig/arch/arm/mach-spear/platsmp.c
++++ linux-rt-devel/arch/arm/mach-spear/platsmp.c
 @@ -32,7 +32,7 @@ static void write_pen_release(int val)
  	sync_cache_w(&pen_release);
  }
@@ -343,8 +355,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	return pen_release != -1 ? -ENOSYS : 0;
  }
---- a/arch/arm/mach-sti/platsmp.c
-+++ b/arch/arm/mach-sti/platsmp.c
+Index: linux-rt-devel/arch/arm/mach-sti/platsmp.c
+===================================================================
+--- linux-rt-devel.orig/arch/arm/mach-sti/platsmp.c
++++ linux-rt-devel/arch/arm/mach-sti/platsmp.c
 @@ -34,7 +34,7 @@ static void write_pen_release(int val)
  	sync_cache_w(&pen_release);
  }
@@ -383,8 +397,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	return pen_release != -1 ? -ENOSYS : 0;
  }
---- a/arch/arm/mach-ux500/platsmp.c
-+++ b/arch/arm/mach-ux500/platsmp.c
+Index: linux-rt-devel/arch/arm/mach-ux500/platsmp.c
+===================================================================
+--- linux-rt-devel.orig/arch/arm/mach-ux500/platsmp.c
++++ linux-rt-devel/arch/arm/mach-ux500/platsmp.c
 @@ -51,7 +51,7 @@ static void __iomem *scu_base_addr(void)
  	return NULL;
  }
@@ -423,8 +439,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	return pen_release != -1 ? -ENOSYS : 0;
  }
---- a/arch/arm/plat-versatile/platsmp.c
-+++ b/arch/arm/plat-versatile/platsmp.c
+Index: linux-rt-devel/arch/arm/plat-versatile/platsmp.c
+===================================================================
+--- linux-rt-devel.orig/arch/arm/plat-versatile/platsmp.c
++++ linux-rt-devel/arch/arm/plat-versatile/platsmp.c
 @@ -30,7 +30,7 @@ static void write_pen_release(int val)
  	sync_cache_w(&pen_release);
  }

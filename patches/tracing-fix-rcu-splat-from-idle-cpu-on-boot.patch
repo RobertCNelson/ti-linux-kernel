@@ -54,14 +54,14 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 Cc: Steven Rostedt <rostedt@goodmis.org>
 Cc: stable-rt@vger.kernel.org
 ---
- kernel/trace/trace_irqsoff.c | 4 ++--
+ kernel/trace/trace_irqsoff.c |    4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
 
-diff --git a/kernel/trace/trace_irqsoff.c b/kernel/trace/trace_irqsoff.c
-index aaade2e..d0e1d0e 100644
---- a/kernel/trace/trace_irqsoff.c
-+++ b/kernel/trace/trace_irqsoff.c
-@@ -450,7 +450,7 @@ EXPORT_SYMBOL_GPL(stop_critical_timings);
+Index: linux-rt-devel/kernel/trace/trace_irqsoff.c
+===================================================================
+--- linux-rt-devel.orig/kernel/trace/trace_irqsoff.c
++++ linux-rt-devel/kernel/trace/trace_irqsoff.c
+@@ -450,7 +450,7 @@ EXPORT_SYMBOL_GPL(stop_critical_timings)
  #ifdef CONFIG_PROVE_LOCKING
  void time_hardirqs_on(unsigned long a0, unsigned long a1)
  {
@@ -70,7 +70,7 @@ index aaade2e..d0e1d0e 100644
  	if (!preempt_trace() && irq_trace())
  		stop_critical_timing(a0, a1);
  }
-@@ -459,7 +459,7 @@ void time_hardirqs_off(unsigned long a0, unsigned long a1)
+@@ -459,7 +459,7 @@ void time_hardirqs_off(unsigned long a0,
  {
  	if (!preempt_trace() && irq_trace())
  		start_critical_timing(a0, a1);
@@ -79,8 +79,3 @@ index aaade2e..d0e1d0e 100644
  }
  
  #else /* !CONFIG_PROVE_LOCKING */
--- 
-2.1.4
-
-
-

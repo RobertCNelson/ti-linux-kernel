@@ -10,8 +10,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  lib/idr.c           |   36 +++++++++++++++++++++++++++++++++---
  2 files changed, 37 insertions(+), 3 deletions(-)
 
---- a/include/linux/idr.h
-+++ b/include/linux/idr.h
+Index: linux-rt-devel/include/linux/idr.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/idr.h
++++ linux-rt-devel/include/linux/idr.h
 @@ -95,10 +95,14 @@ bool idr_is_empty(struct idr *idp);
   * Each idr_preload() should be matched with an invocation of this
   * function.  See idr_preload() for details.
@@ -27,8 +29,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  /**
   * idr_find - return pointer for given id
---- a/lib/idr.c
-+++ b/lib/idr.c
+Index: linux-rt-devel/lib/idr.c
+===================================================================
+--- linux-rt-devel.orig/lib/idr.c
++++ linux-rt-devel/lib/idr.c
 @@ -30,6 +30,7 @@
  #include <linux/idr.h>
  #include <linux/spinlock.h>

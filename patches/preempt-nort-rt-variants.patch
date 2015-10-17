@@ -11,8 +11,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  include/linux/preempt.h |   18 +++++++++++++++++-
  1 file changed, 17 insertions(+), 1 deletion(-)
 
---- a/include/linux/preempt.h
-+++ b/include/linux/preempt.h
+Index: linux-rt-devel/include/linux/preempt.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/preempt.h
++++ linux-rt-devel/include/linux/preempt.h
 @@ -47,7 +47,11 @@ do { \
  	preempt_count_dec(); \
  } while (0)

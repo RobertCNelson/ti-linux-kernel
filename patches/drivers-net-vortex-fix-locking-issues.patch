@@ -17,8 +17,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 Signed-off-by: Ingo Molnar <mingo@elte.hu>
 
---- a/drivers/net/ethernet/3com/3c59x.c
-+++ b/drivers/net/ethernet/3com/3c59x.c
+Index: linux-rt-devel/drivers/net/ethernet/3com/3c59x.c
+===================================================================
+--- linux-rt-devel.orig/drivers/net/ethernet/3com/3c59x.c
++++ linux-rt-devel/drivers/net/ethernet/3com/3c59x.c
 @@ -842,9 +842,9 @@ static void poll_vortex(struct net_devic
  {
  	struct vortex_private *vp = netdev_priv(dev);

@@ -34,8 +34,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  net/core/dev.c               |    6 
  8 files changed, 485 insertions(+), 94 deletions(-)
 
---- a/include/linux/bottom_half.h
-+++ b/include/linux/bottom_half.h
+Index: linux-rt-devel/include/linux/bottom_half.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/bottom_half.h
++++ linux-rt-devel/include/linux/bottom_half.h
 @@ -4,6 +4,17 @@
  #include <linux/preempt.h>
  #include <linux/preempt_mask.h>
@@ -61,9 +63,11 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +#endif
  
  #endif /* _LINUX_BH_H */
---- a/include/linux/interrupt.h
-+++ b/include/linux/interrupt.h
-@@ -440,10 +440,11 @@ struct softirq_action
+Index: linux-rt-devel/include/linux/interrupt.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/interrupt.h
++++ linux-rt-devel/include/linux/interrupt.h
+@@ -442,10 +442,11 @@ struct softirq_action
  	void	(*action)(struct softirq_action *);
  };
  
@@ -77,7 +81,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  void do_softirq_own_stack(void);
  #else
  static inline void do_softirq_own_stack(void)
-@@ -451,6 +452,9 @@ static inline void do_softirq_own_stack(
+@@ -453,6 +454,9 @@ static inline void do_softirq_own_stack(
  	__do_softirq();
  }
  #endif
@@ -87,7 +91,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  extern void open_softirq(int nr, void (*action)(struct softirq_action *));
  extern void softirq_init(void);
-@@ -458,6 +462,7 @@ extern void __raise_softirq_irqoff(unsig
+@@ -460,6 +464,7 @@ extern void __raise_softirq_irqoff(unsig
  
  extern void raise_softirq_irqoff(unsigned int nr);
  extern void raise_softirq(unsigned int nr);
@@ -95,7 +99,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  DECLARE_PER_CPU(struct task_struct *, ksoftirqd);
  
-@@ -615,6 +620,12 @@ void tasklet_hrtimer_cancel(struct taskl
+@@ -617,6 +622,12 @@ void tasklet_hrtimer_cancel(struct taskl
  	tasklet_kill(&ttimer->tasklet);
  }
  
@@ -108,8 +112,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
   * Autoprobing for irqs:
   *
---- a/include/linux/preempt_mask.h
-+++ b/include/linux/preempt_mask.h
+Index: linux-rt-devel/include/linux/preempt_mask.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/preempt_mask.h
++++ linux-rt-devel/include/linux/preempt_mask.h
 @@ -44,16 +44,26 @@
  #define HARDIRQ_OFFSET	(1UL << HARDIRQ_SHIFT)
  #define NMI_OFFSET	(1UL << NMI_SHIFT)
@@ -147,8 +153,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  /*
   * Are we in NMI context?
---- a/include/linux/sched.h
-+++ b/include/linux/sched.h
+Index: linux-rt-devel/include/linux/sched.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/sched.h
++++ linux-rt-devel/include/linux/sched.h
 @@ -1791,6 +1791,8 @@ struct task_struct {
  #endif
  #ifdef CONFIG_PREEMPT_RT_BASE
@@ -166,8 +174,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #define PF_EXITING	0x00000004	/* getting shut down */
  #define PF_EXITPIDONE	0x00000008	/* pi exit done on shut down */
  #define PF_VCPU		0x00000010	/* I'm a virtual CPU */
---- a/init/main.c
-+++ b/init/main.c
+Index: linux-rt-devel/init/main.c
+===================================================================
+--- linux-rt-devel.orig/init/main.c
++++ linux-rt-devel/init/main.c
 @@ -525,6 +525,7 @@ asmlinkage __visible void __init start_k
  	setup_command_line(command_line);
  	setup_nr_cpu_ids();
@@ -176,8 +186,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	smp_prepare_boot_cpu();	/* arch-specific boot-cpu hooks */
  
  	build_all_zonelists(NULL, NULL);
---- a/kernel/softirq.c
-+++ b/kernel/softirq.c
+Index: linux-rt-devel/kernel/softirq.c
+===================================================================
+--- linux-rt-devel.orig/kernel/softirq.c
++++ linux-rt-devel/kernel/softirq.c
 @@ -26,6 +26,7 @@
  #include <linux/smp.h>
  #include <linux/smpboot.h>
@@ -365,7 +377,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	/*
  	 * Mask out PF_MEMALLOC s current task context is borrowed for the
-@@ -255,36 +408,7 @@ asmlinkage __visible void __do_softirq(v
+@@ -255,36 +408,7 @@ restart:
  	/* Reset the pending bitmask before enabling irqs */
  	set_softirq_pending(0);
  
@@ -790,8 +802,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	.thread_should_run	= ksoftirqd_should_run,
  	.thread_fn		= run_ksoftirqd,
  	.thread_comm		= "ksoftirqd/%u",
---- a/kernel/time/tick-sched.c
-+++ b/kernel/time/tick-sched.c
+Index: linux-rt-devel/kernel/time/tick-sched.c
+===================================================================
+--- linux-rt-devel.orig/kernel/time/tick-sched.c
++++ linux-rt-devel/kernel/time/tick-sched.c
 @@ -764,14 +764,7 @@ static bool can_stop_idle_tick(int cpu,
  		return false;
  
@@ -808,9 +822,11 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		return false;
  	}
  
---- a/net/core/dev.c
-+++ b/net/core/dev.c
-@@ -3437,11 +3437,9 @@ int netif_rx_ni(struct sk_buff *skb)
+Index: linux-rt-devel/net/core/dev.c
+===================================================================
+--- linux-rt-devel.orig/net/core/dev.c
++++ linux-rt-devel/net/core/dev.c
+@@ -3436,11 +3436,9 @@ int netif_rx_ni(struct sk_buff *skb)
  
  	trace_netif_rx_ni_entry(skb);
  

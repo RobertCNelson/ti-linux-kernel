@@ -45,8 +45,10 @@ Link: http://lkml.kernel.org/r/20110622174919.025446432@linutronix.de
  block/blk-core.c |   12 ++----------
  1 file changed, 2 insertions(+), 10 deletions(-)
 
---- a/block/blk-core.c
-+++ b/block/blk-core.c
+Index: linux-rt-devel/block/blk-core.c
+===================================================================
+--- linux-rt-devel.orig/block/blk-core.c
++++ linux-rt-devel/block/blk-core.c
 @@ -3077,7 +3077,7 @@ static void queue_unplugged(struct reque
  		blk_run_queue_async(q);
  	else

@@ -13,8 +13,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  net/rds/ib_rdma.c      |    3 ++-
  2 files changed, 5 insertions(+), 3 deletions(-)
 
---- a/net/packet/af_packet.c
-+++ b/net/packet/af_packet.c
+Index: linux-rt-devel/net/packet/af_packet.c
+===================================================================
+--- linux-rt-devel.orig/net/packet/af_packet.c
++++ linux-rt-devel/net/packet/af_packet.c
 @@ -63,6 +63,7 @@
  #include <linux/if_packet.h>
  #include <linux/wireless.h>
@@ -41,8 +43,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  			}
  		}
  		prb_close_block(pkc, pbd, po, status);
---- a/net/rds/ib_rdma.c
-+++ b/net/rds/ib_rdma.c
+Index: linux-rt-devel/net/rds/ib_rdma.c
+===================================================================
+--- linux-rt-devel.orig/net/rds/ib_rdma.c
++++ linux-rt-devel/net/rds/ib_rdma.c
 @@ -34,6 +34,7 @@
  #include <linux/slab.h>
  #include <linux/rculist.h>

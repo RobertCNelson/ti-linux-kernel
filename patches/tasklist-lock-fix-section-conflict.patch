@@ -31,8 +31,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/fork.c                |    2 +-
  2 files changed, 3 insertions(+), 2 deletions(-)
 
---- a/include/linux/rwlock_types.h
-+++ b/include/linux/rwlock_types.h
+Index: linux-rt-devel/include/linux/rwlock_types.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/rwlock_types.h
++++ linux-rt-devel/include/linux/rwlock_types.h
 @@ -47,6 +47,7 @@ typedef struct {
  				RW_DEP_MAP_INIT(lockname) }
  #endif
@@ -42,8 +44,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +	rwlock_t name __cacheline_aligned_in_smp = __RW_LOCK_UNLOCKED(name)
  
  #endif /* __LINUX_RWLOCK_TYPES_H */
---- a/kernel/fork.c
-+++ b/kernel/fork.c
+Index: linux-rt-devel/kernel/fork.c
+===================================================================
+--- linux-rt-devel.orig/kernel/fork.c
++++ linux-rt-devel/kernel/fork.c
 @@ -108,7 +108,7 @@ int max_threads;		/* tunable limit on nr
  
  DEFINE_PER_CPU(unsigned long, process_counts) = 0;

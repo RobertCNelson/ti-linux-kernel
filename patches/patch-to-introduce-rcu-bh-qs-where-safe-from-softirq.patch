@@ -28,8 +28,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/rcu/tree_plugin.h |    9 +++++++--
  3 files changed, 15 insertions(+), 9 deletions(-)
 
---- a/include/linux/rcupdate.h
-+++ b/include/linux/rcupdate.h
+Index: linux-rt-devel/include/linux/rcupdate.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/rcupdate.h
++++ linux-rt-devel/include/linux/rcupdate.h
 @@ -300,13 +300,7 @@ static inline int rcu_preempt_depth(void
  void rcu_init(void);
  void rcu_end_inkernel_boot(void);
@@ -44,8 +46,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  void rcu_check_callbacks(int user);
  struct notifier_block;
  void rcu_idle_enter(void);
---- a/kernel/rcu/tree.c
-+++ b/kernel/rcu/tree.c
+Index: linux-rt-devel/kernel/rcu/tree.c
+===================================================================
+--- linux-rt-devel.orig/kernel/rcu/tree.c
++++ linux-rt-devel/kernel/rcu/tree.c
 @@ -220,7 +220,14 @@ void rcu_sched_qs(void)
  	}
  }
@@ -62,8 +66,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  void rcu_bh_qs(void)
  {
  	if (!__this_cpu_read(rcu_bh_data.passed_quiesce)) {
---- a/kernel/rcu/tree_plugin.h
-+++ b/kernel/rcu/tree_plugin.h
+Index: linux-rt-devel/kernel/rcu/tree_plugin.h
+===================================================================
+--- linux-rt-devel.orig/kernel/rcu/tree_plugin.h
++++ linux-rt-devel/kernel/rcu/tree_plugin.h
 @@ -28,6 +28,7 @@
  #include <linux/gfp.h>
  #include <linux/oom.h>

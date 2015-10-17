@@ -11,8 +11,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  init/Kconfig |    2 ++
  1 file changed, 2 insertions(+)
 
---- a/init/Kconfig
-+++ b/init/Kconfig
+Index: linux-rt-devel/init/Kconfig
+===================================================================
+--- linux-rt-devel.orig/init/Kconfig
++++ linux-rt-devel/init/Kconfig
 @@ -1688,6 +1688,7 @@ choice
  
  config SLAB

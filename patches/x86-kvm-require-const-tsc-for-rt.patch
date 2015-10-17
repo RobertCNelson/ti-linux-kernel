@@ -12,8 +12,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  arch/x86/kvm/x86.c |    7 +++++++
  1 file changed, 7 insertions(+)
 
---- a/arch/x86/kvm/x86.c
-+++ b/arch/x86/kvm/x86.c
+Index: linux-rt-devel/arch/x86/kvm/x86.c
+===================================================================
+--- linux-rt-devel.orig/arch/x86/kvm/x86.c
++++ linux-rt-devel/arch/x86/kvm/x86.c
 @@ -5813,6 +5813,13 @@ int kvm_arch_init(void *opaque)
  		goto out;
  	}

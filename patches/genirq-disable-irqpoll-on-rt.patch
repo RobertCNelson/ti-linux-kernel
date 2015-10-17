@@ -11,8 +11,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/irq/spurious.c |    8 ++++++++
  1 file changed, 8 insertions(+)
 
---- a/kernel/irq/spurious.c
-+++ b/kernel/irq/spurious.c
+Index: linux-rt-devel/kernel/irq/spurious.c
+===================================================================
+--- linux-rt-devel.orig/kernel/irq/spurious.c
++++ linux-rt-devel/kernel/irq/spurious.c
 @@ -444,6 +444,10 @@ MODULE_PARM_DESC(noirqdebug, "Disable ir
  
  static int __init irqfixup_setup(char *str)

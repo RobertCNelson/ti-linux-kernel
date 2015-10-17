@@ -39,8 +39,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  fs/ntfs/aops.c |    4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
 
---- a/fs/ntfs/aops.c
-+++ b/fs/ntfs/aops.c
+Index: linux-rt-devel/fs/ntfs/aops.c
+===================================================================
+--- linux-rt-devel.orig/fs/ntfs/aops.c
++++ linux-rt-devel/fs/ntfs/aops.c
 @@ -143,13 +143,13 @@ static void ntfs_end_buffer_async_read(s
  		recs = PAGE_CACHE_SIZE / rec_size;
  		/* Should have been verified before we got here... */

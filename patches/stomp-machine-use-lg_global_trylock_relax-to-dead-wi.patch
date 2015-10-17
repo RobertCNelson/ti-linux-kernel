@@ -15,8 +15,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  kernel/stop_machine.c |   24 ++++++++++++++----------
  1 file changed, 14 insertions(+), 10 deletions(-)
 
---- a/kernel/stop_machine.c
-+++ b/kernel/stop_machine.c
+Index: linux-rt-devel/kernel/stop_machine.c
+===================================================================
+--- linux-rt-devel.orig/kernel/stop_machine.c
++++ linux-rt-devel/kernel/stop_machine.c
 @@ -266,7 +266,7 @@ int stop_two_cpus(unsigned int cpu1, uns
  	struct irq_cpu_stop_queue_work_info call_args;
  	struct multi_stop_data msdata;

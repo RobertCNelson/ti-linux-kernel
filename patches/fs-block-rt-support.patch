@@ -9,8 +9,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  block/blk-core.c |    2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
---- a/block/blk-core.c
-+++ b/block/blk-core.c
+Index: linux-rt-devel/block/blk-core.c
+===================================================================
+--- linux-rt-devel.orig/block/blk-core.c
++++ linux-rt-devel/block/blk-core.c
 @@ -194,7 +194,7 @@ EXPORT_SYMBOL(blk_delay_queue);
   **/
  void blk_start_queue(struct request_queue *q)

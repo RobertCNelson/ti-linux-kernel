@@ -23,8 +23,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/power/suspend.c   |    4 ++++
  3 files changed, 12 insertions(+)
 
---- a/include/linux/kernel.h
-+++ b/include/linux/kernel.h
+Index: linux-rt-devel/include/linux/kernel.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/kernel.h
++++ linux-rt-devel/include/linux/kernel.h
 @@ -467,6 +467,7 @@ extern enum system_states {
  	SYSTEM_HALT,
  	SYSTEM_POWER_OFF,
@@ -33,8 +35,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  } system_state;
  
  #define TAINT_PROPRIETARY_MODULE	0
---- a/kernel/power/hibernate.c
-+++ b/kernel/power/hibernate.c
+Index: linux-rt-devel/kernel/power/hibernate.c
+===================================================================
+--- linux-rt-devel.orig/kernel/power/hibernate.c
++++ linux-rt-devel/kernel/power/hibernate.c
 @@ -285,6 +285,8 @@ static int create_image(int platform_mod
  
  	local_irq_disable();
@@ -84,8 +88,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	local_irq_enable();
  	enable_nonboot_cpus();
  
---- a/kernel/power/suspend.c
-+++ b/kernel/power/suspend.c
+Index: linux-rt-devel/kernel/power/suspend.c
+===================================================================
+--- linux-rt-devel.orig/kernel/power/suspend.c
++++ linux-rt-devel/kernel/power/suspend.c
 @@ -356,6 +356,8 @@ static int suspend_enter(suspend_state_t
  	arch_suspend_disable_irqs();
  	BUG_ON(!irqs_disabled());

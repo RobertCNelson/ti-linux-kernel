@@ -15,8 +15,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/sched/sched.h  |    1 +
  3 files changed, 33 insertions(+), 1 deletion(-)
 
---- a/include/linux/sched.h
-+++ b/include/linux/sched.h
+Index: linux-rt-devel/include/linux/sched.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/sched.h
++++ linux-rt-devel/include/linux/sched.h
 @@ -1335,6 +1335,7 @@ enum perf_event_task_context {
  
  struct task_struct {
@@ -33,8 +35,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  extern void wake_up_new_task(struct task_struct *tsk);
  #ifdef CONFIG_SMP
   extern void kick_process(struct task_struct *tsk);
---- a/kernel/sched/core.c
-+++ b/kernel/sched/core.c
+Index: linux-rt-devel/kernel/sched/core.c
+===================================================================
+--- linux-rt-devel.orig/kernel/sched/core.c
++++ linux-rt-devel/kernel/sched/core.c
 @@ -1721,8 +1721,25 @@ try_to_wake_up(struct task_struct *p, un
  	 */
  	smp_mb__before_spinlock();
@@ -81,8 +85,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  int wake_up_state(struct task_struct *p, unsigned int state)
  {
  	return try_to_wake_up(p, state, 0);
---- a/kernel/sched/sched.h
-+++ b/kernel/sched/sched.h
+Index: linux-rt-devel/kernel/sched/sched.h
+===================================================================
+--- linux-rt-devel.orig/kernel/sched/sched.h
++++ linux-rt-devel/kernel/sched/sched.h
 @@ -1092,6 +1092,7 @@ static inline void finish_lock_switch(st
  #define WF_SYNC		0x01		/* waker goes to sleep after wakeup */
  #define WF_FORK		0x02		/* child wakeup after fork */

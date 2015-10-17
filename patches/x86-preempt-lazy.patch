@@ -13,8 +13,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  arch/x86/kernel/entry_64.S         |   24 ++++++++++++++++++++----
  5 files changed, 47 insertions(+), 6 deletions(-)
 
---- a/arch/x86/Kconfig
-+++ b/arch/x86/Kconfig
+Index: linux-rt-devel/arch/x86/Kconfig
+===================================================================
+--- linux-rt-devel.orig/arch/x86/Kconfig
++++ linux-rt-devel/arch/x86/Kconfig
 @@ -22,6 +22,7 @@ config X86_64
  ### Arch settings
  config X86
@@ -23,8 +25,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	select ACPI_SYSTEM_POWER_STATES_SUPPORT if ACPI
  	select ARCH_MIGHT_HAVE_ACPI_PDC if ACPI
  	select ARCH_HAS_DEBUG_STRICT_USER_COPY_CHECKS
---- a/arch/x86/include/asm/thread_info.h
-+++ b/arch/x86/include/asm/thread_info.h
+Index: linux-rt-devel/arch/x86/include/asm/thread_info.h
+===================================================================
+--- linux-rt-devel.orig/arch/x86/include/asm/thread_info.h
++++ linux-rt-devel/arch/x86/include/asm/thread_info.h
 @@ -55,6 +55,8 @@ struct thread_info {
  	__u32			status;		/* thread synchronous flags */
  	__u32			cpu;		/* current CPU */
@@ -59,8 +63,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #define STACK_WARN		(THREAD_SIZE/8)
  
  /*
---- a/arch/x86/kernel/asm-offsets.c
-+++ b/arch/x86/kernel/asm-offsets.c
+Index: linux-rt-devel/arch/x86/kernel/asm-offsets.c
+===================================================================
+--- linux-rt-devel.orig/arch/x86/kernel/asm-offsets.c
++++ linux-rt-devel/arch/x86/kernel/asm-offsets.c
 @@ -32,6 +32,7 @@ void common(void) {
  	OFFSET(TI_flags, thread_info, flags);
  	OFFSET(TI_status, thread_info, status);
@@ -75,8 +81,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	DEFINE(PTREGS_SIZE, sizeof(struct pt_regs));
 +	DEFINE(_PREEMPT_ENABLED, PREEMPT_ENABLED);
  }
---- a/arch/x86/kernel/entry_32.S
-+++ b/arch/x86/kernel/entry_32.S
+Index: linux-rt-devel/arch/x86/kernel/entry_32.S
+===================================================================
+--- linux-rt-devel.orig/arch/x86/kernel/entry_32.S
++++ linux-rt-devel/arch/x86/kernel/entry_32.S
 @@ -359,8 +359,24 @@ END(ret_from_exception)
  ENTRY(resume_kernel)
  	DISABLE_INTERRUPTS(CLBR_ANY)
@@ -111,7 +119,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	jz work_notifysig
  work_resched:
  	call schedule
-@@ -607,7 +623,7 @@ ENDPROC(system_call)
+@@ -607,7 +623,7 @@ work_resched:
  	andl $_TIF_WORK_MASK, %ecx	# is there any work to be done other
  					# than syscall tracing?
  	jz restore_all
@@ -120,8 +128,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	jnz work_resched
  
  work_notifysig:				# deal with pending signals and
---- a/arch/x86/kernel/entry_64.S
-+++ b/arch/x86/kernel/entry_64.S
+Index: linux-rt-devel/arch/x86/kernel/entry_64.S
+===================================================================
+--- linux-rt-devel.orig/arch/x86/kernel/entry_64.S
++++ linux-rt-devel/arch/x86/kernel/entry_64.S
 @@ -370,8 +370,8 @@ GLOBAL(int_with_check)
  	/* First do a reschedule test. */
  	/* edx:	work, edi: workmask */
@@ -133,7 +143,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	TRACE_IRQS_ON
  	ENABLE_INTERRUPTS(CLBR_NONE)
  	pushq_cfi %rdi
-@@ -776,7 +776,23 @@ retint_swapgs:		/* return to user-space
+@@ -776,7 +776,23 @@ retint_kernel:
  	bt	$9,EFLAGS(%rsp)	/* interrupts were off? */
  	jnc	1f
  0:	cmpl	$0,PER_CPU_VAR(__preempt_count)
@@ -157,7 +167,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	call	preempt_schedule_irq
  	jmp	0b
  1:
-@@ -846,8 +862,8 @@ ENTRY(native_iret)
+@@ -844,8 +860,8 @@ native_irq_return_ldt:
  	/* edi: workmask, edx: work */
  retint_careful:
  	CFI_RESTORE_STATE

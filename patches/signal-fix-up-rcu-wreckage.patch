@@ -10,8 +10,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/signal.c |    6 +++---
  1 file changed, 3 insertions(+), 3 deletions(-)
 
---- a/kernel/signal.c
-+++ b/kernel/signal.c
+Index: linux-rt-devel/kernel/signal.c
+===================================================================
+--- linux-rt-devel.orig/kernel/signal.c
++++ linux-rt-devel/kernel/signal.c
 @@ -1342,12 +1342,12 @@ struct sighand_struct *__lock_task_sigha
  		 * Disable interrupts early to avoid deadlocks.
  		 * See rcu_read_unlock() comment header for details.

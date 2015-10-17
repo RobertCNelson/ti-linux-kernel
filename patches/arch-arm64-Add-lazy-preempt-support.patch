@@ -17,8 +17,10 @@ Signed-off-by: Anders Roxell <anders.roxell@linaro.org>
  arch/arm64/kernel/entry.S            |   13 ++++++++++---
  4 files changed, 15 insertions(+), 3 deletions(-)
 
---- a/arch/arm64/Kconfig
-+++ b/arch/arm64/Kconfig
+Index: linux-rt-devel/arch/arm64/Kconfig
+===================================================================
+--- linux-rt-devel.orig/arch/arm64/Kconfig
++++ linux-rt-devel/arch/arm64/Kconfig
 @@ -69,6 +69,7 @@ config ARM64
  	select HAVE_PERF_REGS
  	select HAVE_PERF_USER_STACK_DUMP
@@ -27,8 +29,10 @@ Signed-off-by: Anders Roxell <anders.roxell@linaro.org>
  	select HAVE_SYSCALL_TRACEPOINTS
  	select IRQ_DOMAIN
  	select IRQ_FORCED_THREADING
---- a/arch/arm64/include/asm/thread_info.h
-+++ b/arch/arm64/include/asm/thread_info.h
+Index: linux-rt-devel/arch/arm64/include/asm/thread_info.h
+===================================================================
+--- linux-rt-devel.orig/arch/arm64/include/asm/thread_info.h
++++ linux-rt-devel/arch/arm64/include/asm/thread_info.h
 @@ -47,6 +47,7 @@ struct thread_info {
  	mm_segment_t		addr_limit;	/* address limit */
  	struct task_struct	*task;		/* main task structure */
@@ -53,8 +57,10 @@ Signed-off-by: Anders Roxell <anders.roxell@linaro.org>
  #define _TIF_NOHZ		(1 << TIF_NOHZ)
  #define _TIF_SYSCALL_TRACE	(1 << TIF_SYSCALL_TRACE)
  #define _TIF_SYSCALL_AUDIT	(1 << TIF_SYSCALL_AUDIT)
---- a/arch/arm64/kernel/asm-offsets.c
-+++ b/arch/arm64/kernel/asm-offsets.c
+Index: linux-rt-devel/arch/arm64/kernel/asm-offsets.c
+===================================================================
+--- linux-rt-devel.orig/arch/arm64/kernel/asm-offsets.c
++++ linux-rt-devel/arch/arm64/kernel/asm-offsets.c
 @@ -35,6 +35,7 @@ int main(void)
    BLANK();
    DEFINE(TI_FLAGS,		offsetof(struct thread_info, flags));
@@ -63,9 +69,11 @@ Signed-off-by: Anders Roxell <anders.roxell@linaro.org>
    DEFINE(TI_ADDR_LIMIT,		offsetof(struct thread_info, addr_limit));
    DEFINE(TI_TASK,		offsetof(struct thread_info, task));
    DEFINE(TI_CPU,		offsetof(struct thread_info, cpu));
---- a/arch/arm64/kernel/entry.S
-+++ b/arch/arm64/kernel/entry.S
-@@ -367,11 +367,16 @@ ENDPROC(el1_sync)
+Index: linux-rt-devel/arch/arm64/kernel/entry.S
+===================================================================
+--- linux-rt-devel.orig/arch/arm64/kernel/entry.S
++++ linux-rt-devel/arch/arm64/kernel/entry.S
+@@ -367,11 +367,16 @@ el1_irq:
  #ifdef CONFIG_PREEMPT
  	get_thread_info tsk
  	ldr	w24, [tsk, #TI_PREEMPT]		// get preempt count
@@ -85,7 +93,7 @@ Signed-off-by: Anders Roxell <anders.roxell@linaro.org>
  #endif
  #ifdef CONFIG_TRACE_IRQFLAGS
  	bl	trace_hardirqs_on
-@@ -385,6 +390,7 @@ ENDPROC(el1_irq)
+@@ -385,6 +390,7 @@ el1_preempt:
  1:	bl	preempt_schedule_irq		// irq en/disable is done inside
  	ldr	x0, [tsk, #TI_FLAGS]		// get new tasks TI_FLAGS
  	tbnz	x0, #TIF_NEED_RESCHED, 1b	// needs rescheduling?
@@ -93,7 +101,7 @@ Signed-off-by: Anders Roxell <anders.roxell@linaro.org>
  	ret	x24
  #endif
  
-@@ -622,6 +628,7 @@ ENDPROC(cpu_switch_to)
+@@ -622,6 +628,7 @@ fast_work_pending:
  	str	x0, [sp, #S_X0]			// returned x0
  work_pending:
  	tbnz	x1, #TIF_NEED_RESCHED, work_resched

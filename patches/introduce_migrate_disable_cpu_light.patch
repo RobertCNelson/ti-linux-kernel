@@ -39,8 +39,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  lib/smp_processor_id.c  |    5 +
  7 files changed, 178 insertions(+), 9 deletions(-)
 
---- a/include/linux/cpu.h
-+++ b/include/linux/cpu.h
+Index: linux-rt-devel/include/linux/cpu.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/cpu.h
++++ linux-rt-devel/include/linux/cpu.h
 @@ -221,6 +221,9 @@ static inline void smpboot_thread_init(v
  #endif /* CONFIG_SMP */
  extern struct bus_type cpu_subsys;
@@ -51,8 +53,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #ifdef CONFIG_HOTPLUG_CPU
  /* Stop CPUs going up and down. */
  
---- a/include/linux/preempt.h
-+++ b/include/linux/preempt.h
+Index: linux-rt-devel/include/linux/preempt.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/preempt.h
++++ linux-rt-devel/include/linux/preempt.h
 @@ -153,11 +153,20 @@ do { \
  # define preempt_enable_rt()		preempt_enable()
  # define preempt_disable_nort()		barrier()
@@ -74,8 +78,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #endif
  
  #ifdef CONFIG_PREEMPT_NOTIFIERS
---- a/include/linux/sched.h
-+++ b/include/linux/sched.h
+Index: linux-rt-devel/include/linux/sched.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/sched.h
++++ linux-rt-devel/include/linux/sched.h
 @@ -1371,6 +1371,12 @@ struct task_struct {
  #endif
  
@@ -126,8 +132,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  extern long sched_setaffinity(pid_t pid, const struct cpumask *new_mask);
  extern long sched_getaffinity(pid_t pid, struct cpumask *mask);
  
---- a/include/linux/smp.h
-+++ b/include/linux/smp.h
+Index: linux-rt-devel/include/linux/smp.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/smp.h
++++ linux-rt-devel/include/linux/smp.h
 @@ -185,6 +185,9 @@ static inline void smp_init(void) { }
  #define get_cpu()		({ preempt_disable(); smp_processor_id(); })
  #define put_cpu()		preempt_enable()
@@ -138,8 +146,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
   * Callback to arch code if there's nosmp or maxcpus=0 on the
   * boot command line:
---- a/kernel/sched/core.c
-+++ b/kernel/sched/core.c
+Index: linux-rt-devel/kernel/sched/core.c
+===================================================================
+--- linux-rt-devel.orig/kernel/sched/core.c
++++ linux-rt-devel/kernel/sched/core.c
 @@ -2696,6 +2696,125 @@ static inline void schedule_debug(struct
  	schedstat_inc(this_rq(), sched_count);
  }
@@ -301,8 +311,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		goto out;
  
  	dest_cpu = cpumask_any_and(cpu_active_mask, new_mask);
---- a/kernel/sched/debug.c
-+++ b/kernel/sched/debug.c
+Index: linux-rt-devel/kernel/sched/debug.c
+===================================================================
+--- linux-rt-devel.orig/kernel/sched/debug.c
++++ linux-rt-devel/kernel/sched/debug.c
 @@ -260,6 +260,9 @@ void print_rt_rq(struct seq_file *m, int
  	P(rt_throttled);
  	PN(rt_time);
@@ -324,8 +336,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #undef PN
  #undef __PN
  #undef P
---- a/lib/smp_processor_id.c
-+++ b/lib/smp_processor_id.c
+Index: linux-rt-devel/lib/smp_processor_id.c
+===================================================================
+--- linux-rt-devel.orig/lib/smp_processor_id.c
++++ linux-rt-devel/lib/smp_processor_id.c
 @@ -39,8 +39,9 @@ notrace static unsigned int check_preemp
  	if (!printk_ratelimit())
  		goto out_enable;

@@ -10,8 +10,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  mm/vmalloc.c |   13 ++++++++-----
  1 file changed, 8 insertions(+), 5 deletions(-)
 
---- a/mm/vmalloc.c
-+++ b/mm/vmalloc.c
+Index: linux-rt-devel/mm/vmalloc.c
+===================================================================
+--- linux-rt-devel.orig/mm/vmalloc.c
++++ linux-rt-devel/mm/vmalloc.c
 @@ -819,7 +819,7 @@ static void *new_vmap_block(unsigned int
  	struct vmap_block *vb;
  	struct vmap_area *va;

@@ -12,9 +12,11 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  drivers/pci/access.c |    2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
---- a/drivers/pci/access.c
-+++ b/drivers/pci/access.c
-@@ -521,7 +521,7 @@ void pci_cfg_access_unlock(struct pci_de
+Index: linux-rt-devel/drivers/pci/access.c
+===================================================================
+--- linux-rt-devel.orig/drivers/pci/access.c
++++ linux-rt-devel/drivers/pci/access.c
+@@ -580,7 +580,7 @@ void pci_cfg_access_unlock(struct pci_de
  	WARN_ON(!dev->block_cfg_access);
  
  	dev->block_cfg_access = 0;

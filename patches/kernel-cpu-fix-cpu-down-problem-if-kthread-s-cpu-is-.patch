@@ -24,8 +24,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  kernel/cpu.c |   15 +++++++++++++--
  1 file changed, 13 insertions(+), 2 deletions(-)
 
---- a/kernel/cpu.c
-+++ b/kernel/cpu.c
+Index: linux-rt-devel/kernel/cpu.c
+===================================================================
+--- linux-rt-devel.orig/kernel/cpu.c
++++ linux-rt-devel/kernel/cpu.c
 @@ -108,6 +108,7 @@ struct hotplug_pcp {
  	int refcount;
  	int grab_lock;

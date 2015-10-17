@@ -14,8 +14,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  drivers/misc/Kconfig             |   12 ++++++++++--
  2 files changed, 32 insertions(+), 17 deletions(-)
 
---- a/drivers/clocksource/tcb_clksrc.c
-+++ b/drivers/clocksource/tcb_clksrc.c
+Index: linux-rt-devel/drivers/clocksource/tcb_clksrc.c
+===================================================================
+--- linux-rt-devel.orig/drivers/clocksource/tcb_clksrc.c
++++ linux-rt-devel/drivers/clocksource/tcb_clksrc.c
 @@ -23,8 +23,7 @@
   *     this 32 bit free-running counter. the second channel is not used.
   *
@@ -130,8 +132,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	if (ret)
  		goto err_unregister_clksrc;
  
---- a/drivers/misc/Kconfig
-+++ b/drivers/misc/Kconfig
+Index: linux-rt-devel/drivers/misc/Kconfig
+===================================================================
+--- linux-rt-devel.orig/drivers/misc/Kconfig
++++ linux-rt-devel/drivers/misc/Kconfig
 @@ -69,8 +69,7 @@ config ATMEL_TCB_CLKSRC
  	  are combined to make a single 32-bit timer.
  

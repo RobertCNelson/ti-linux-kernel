@@ -15,8 +15,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  arch/x86/platform/uv/uv_time.c     |   21 +++++++++++++--------
  5 files changed, 35 insertions(+), 30 deletions(-)
 
---- a/arch/x86/include/asm/uv/uv_bau.h
-+++ b/arch/x86/include/asm/uv/uv_bau.h
+Index: linux-rt-devel/arch/x86/include/asm/uv/uv_bau.h
+===================================================================
+--- linux-rt-devel.orig/arch/x86/include/asm/uv/uv_bau.h
++++ linux-rt-devel/arch/x86/include/asm/uv/uv_bau.h
 @@ -615,9 +615,9 @@ struct bau_control {
  	cycles_t		send_message;
  	cycles_t		period_end;
@@ -50,8 +52,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	return 1;
  }
  
---- a/arch/x86/include/asm/uv/uv_hub.h
-+++ b/arch/x86/include/asm/uv/uv_hub.h
+Index: linux-rt-devel/arch/x86/include/asm/uv/uv_hub.h
+===================================================================
+--- linux-rt-devel.orig/arch/x86/include/asm/uv/uv_hub.h
++++ linux-rt-devel/arch/x86/include/asm/uv/uv_hub.h
 @@ -492,7 +492,7 @@ struct uv_blade_info {
  	unsigned short	nr_online_cpus;
  	unsigned short	pnode;
@@ -61,8 +65,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	unsigned long	nmi_count;	/* obsolete, see uv_hub_nmi */
  };
  extern struct uv_blade_info *uv_blade_info;
---- a/arch/x86/kernel/apic/x2apic_uv_x.c
-+++ b/arch/x86/kernel/apic/x2apic_uv_x.c
+Index: linux-rt-devel/arch/x86/kernel/apic/x2apic_uv_x.c
+===================================================================
+--- linux-rt-devel.orig/arch/x86/kernel/apic/x2apic_uv_x.c
++++ linux-rt-devel/arch/x86/kernel/apic/x2apic_uv_x.c
 @@ -949,7 +949,7 @@ void __init uv_system_init(void)
  			uv_blade_info[blade].pnode = pnode;
  			uv_blade_info[blade].nr_possible_cpus = 0;
@@ -72,8 +78,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  			min_pnode = min(pnode, min_pnode);
  			max_pnode = max(pnode, max_pnode);
  			blade++;
---- a/arch/x86/platform/uv/tlb_uv.c
-+++ b/arch/x86/platform/uv/tlb_uv.c
+Index: linux-rt-devel/arch/x86/platform/uv/tlb_uv.c
+===================================================================
+--- linux-rt-devel.orig/arch/x86/platform/uv/tlb_uv.c
++++ linux-rt-devel/arch/x86/platform/uv/tlb_uv.c
 @@ -714,9 +714,9 @@ static void destination_plugged(struct b
  
  		quiesce_local_uvhub(hmaster);
@@ -160,8 +168,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	}
  }
  
---- a/arch/x86/platform/uv/uv_time.c
-+++ b/arch/x86/platform/uv/uv_time.c
+Index: linux-rt-devel/arch/x86/platform/uv/uv_time.c
+===================================================================
+--- linux-rt-devel.orig/arch/x86/platform/uv/uv_time.c
++++ linux-rt-devel/arch/x86/platform/uv/uv_time.c
 @@ -58,7 +58,7 @@ static DEFINE_PER_CPU(struct clock_event
  
  /* There is one of these allocated per node */

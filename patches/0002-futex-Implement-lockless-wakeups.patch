@@ -52,8 +52,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  kernel/futex.c |   33 +++++++++++++++++----------------
  1 file changed, 17 insertions(+), 16 deletions(-)
 
---- a/kernel/futex.c
-+++ b/kernel/futex.c
+Index: linux-rt-devel/kernel/futex.c
+===================================================================
+--- linux-rt-devel.orig/kernel/futex.c
++++ linux-rt-devel/kernel/futex.c
 @@ -1090,9 +1090,11 @@ static void __unqueue_futex(struct futex
  
  /*
@@ -128,7 +130,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  retry:
  	ret = get_futex_key(uaddr1, flags & FLAGS_SHARED, &key1, VERIFY_READ);
-@@ -1320,7 +1318,7 @@ futex_wake_op(u32 __user *uaddr1, unsign
+@@ -1320,7 +1318,7 @@ retry_private:
  				ret = -EINVAL;
  				goto out_unlock;
  			}
@@ -137,7 +139,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  			if (++ret >= nr_wake)
  				break;
  		}
-@@ -1334,7 +1332,7 @@ futex_wake_op(u32 __user *uaddr1, unsign
+@@ -1334,7 +1332,7 @@ retry_private:
  					ret = -EINVAL;
  					goto out_unlock;
  				}
@@ -146,7 +148,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  				if (++op_ret >= nr_wake2)
  					break;
  			}
-@@ -1344,6 +1342,7 @@ futex_wake_op(u32 __user *uaddr1, unsign
+@@ -1344,6 +1342,7 @@ retry_private:
  
  out_unlock:
  	double_unlock_hb(hb1, hb2);
@@ -162,7 +164,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	if (requeue_pi) {
  		/*
-@@ -1679,7 +1679,7 @@ static int futex_requeue(u32 __user *uad
+@@ -1679,7 +1679,7 @@ retry_private:
  		 * woken by futex_unlock_pi().
  		 */
  		if (++task_count <= nr_wake && !requeue_pi) {
@@ -171,7 +173,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  			continue;
  		}
  
-@@ -1719,6 +1719,7 @@ static int futex_requeue(u32 __user *uad
+@@ -1719,6 +1719,7 @@ retry_private:
  out_unlock:
  	free_pi_state(pi_state);
  	double_unlock_hb(hb1, hb2);

@@ -10,8 +10,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/cpu.c |    6 +++---
  1 file changed, 3 insertions(+), 3 deletions(-)
 
---- a/kernel/cpu.c
-+++ b/kernel/cpu.c
+Index: linux-rt-devel/kernel/cpu.c
+===================================================================
+--- linux-rt-devel.orig/kernel/cpu.c
++++ linux-rt-devel/kernel/cpu.c
 @@ -466,14 +466,13 @@ static int __ref _cpu_down(unsigned int
  	cpumask_andnot(cpumask, cpu_online_mask, cpumask_of(cpu));
  	set_cpus_allowed_ptr(current, cpumask);

@@ -28,8 +28,10 @@ Link: http://lkml.kernel.org/r/1311842631.5890.208.camel@twins
  mm/highmem.c                 |    6 ++++--
  7 files changed, 86 insertions(+), 10 deletions(-)
 
---- a/arch/x86/kernel/process_32.c
-+++ b/arch/x86/kernel/process_32.c
+Index: linux-rt-devel/arch/x86/kernel/process_32.c
+===================================================================
+--- linux-rt-devel.orig/arch/x86/kernel/process_32.c
++++ linux-rt-devel/arch/x86/kernel/process_32.c
 @@ -35,6 +35,7 @@
  #include <linux/uaccess.h>
  #include <linux/io.h>
@@ -74,7 +76,7 @@ Link: http://lkml.kernel.org/r/1311842631.5890.208.camel@twins
  
  /*
   *	switch_to(x,y) should switch tasks from x to y.
-@@ -292,6 +322,8 @@ EXPORT_SYMBOL_GPL(start_thread);
+@@ -292,6 +322,8 @@ __switch_to(struct task_struct *prev_p,
  		     task_thread_info(next_p)->flags & _TIF_WORK_CTXSW_NEXT))
  		__switch_to_xtra(prev_p, next_p, tss);
  
@@ -83,8 +85,10 @@ Link: http://lkml.kernel.org/r/1311842631.5890.208.camel@twins
  	/*
  	 * Leave lazy mode, flushing any hypercalls made here.
  	 * This must be done before restoring TLS segments so
---- a/arch/x86/mm/highmem_32.c
-+++ b/arch/x86/mm/highmem_32.c
+Index: linux-rt-devel/arch/x86/mm/highmem_32.c
+===================================================================
+--- linux-rt-devel.orig/arch/x86/mm/highmem_32.c
++++ linux-rt-devel/arch/x86/mm/highmem_32.c
 @@ -32,10 +32,11 @@ EXPORT_SYMBOL(kunmap);
   */
  void *kmap_atomic_prot(struct page *page, pgprot_t prot)
@@ -129,8 +133,10 @@ Link: http://lkml.kernel.org/r/1311842631.5890.208.camel@twins
  }
  EXPORT_SYMBOL(__kunmap_atomic);
  
---- a/arch/x86/mm/iomap_32.c
-+++ b/arch/x86/mm/iomap_32.c
+Index: linux-rt-devel/arch/x86/mm/iomap_32.c
+===================================================================
+--- linux-rt-devel.orig/arch/x86/mm/iomap_32.c
++++ linux-rt-devel/arch/x86/mm/iomap_32.c
 @@ -56,6 +56,7 @@ EXPORT_SYMBOL_GPL(iomap_free);
  
  void *kmap_atomic_prot_pfn(unsigned long pfn, pgprot_t prot)
@@ -161,8 +167,10 @@ Link: http://lkml.kernel.org/r/1311842631.5890.208.camel@twins
  		kpte_clear_flush(kmap_pte-idx, vaddr);
  		kmap_atomic_idx_pop();
  	}
---- a/include/linux/highmem.h
-+++ b/include/linux/highmem.h
+Index: linux-rt-devel/include/linux/highmem.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/highmem.h
++++ linux-rt-devel/include/linux/highmem.h
 @@ -87,32 +87,51 @@ static inline void __kunmap_atomic(void
  
  #if defined(CONFIG_HIGHMEM) || defined(CONFIG_X86_32)
@@ -219,8 +227,10 @@ Link: http://lkml.kernel.org/r/1311842631.5890.208.camel@twins
  #endif
  }
  
---- a/include/linux/sched.h
-+++ b/include/linux/sched.h
+Index: linux-rt-devel/include/linux/sched.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/sched.h
++++ linux-rt-devel/include/linux/sched.h
 @@ -26,6 +26,7 @@ struct sched_param {
  #include <linux/nodemask.h>
  #include <linux/mm_types.h>
@@ -242,8 +252,10 @@ Link: http://lkml.kernel.org/r/1311842631.5890.208.camel@twins
  #ifdef CONFIG_DEBUG_ATOMIC_SLEEP
  	unsigned long	task_state_change;
  #endif
---- a/include/linux/uaccess.h
-+++ b/include/linux/uaccess.h
+Index: linux-rt-devel/include/linux/uaccess.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/uaccess.h
++++ linux-rt-devel/include/linux/uaccess.h
 @@ -24,6 +24,7 @@ static __always_inline void pagefault_di
   */
  static inline void pagefault_disable(void)
@@ -260,8 +272,10 @@ Link: http://lkml.kernel.org/r/1311842631.5890.208.camel@twins
  }
  
  /*
---- a/mm/highmem.c
-+++ b/mm/highmem.c
+Index: linux-rt-devel/mm/highmem.c
+===================================================================
+--- linux-rt-devel.orig/mm/highmem.c
++++ linux-rt-devel/mm/highmem.c
 @@ -29,10 +29,11 @@
  #include <linux/kgdb.h>
  #include <asm/tlbflush.h>

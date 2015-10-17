@@ -11,8 +11,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  drivers/char/random.c |    3 ---
  1 file changed, 3 deletions(-)
 
---- a/drivers/char/random.c
-+++ b/drivers/char/random.c
+Index: linux-rt-devel/drivers/char/random.c
+===================================================================
+--- linux-rt-devel.orig/drivers/char/random.c
++++ linux-rt-devel/drivers/char/random.c
 @@ -776,8 +776,6 @@ static void add_timer_randomness(struct
  	} sample;
  	long delta, delta2, delta3;

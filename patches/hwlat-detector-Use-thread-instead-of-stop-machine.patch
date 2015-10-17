@@ -16,8 +16,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  drivers/misc/hwlat_detector.c |   60 ++++++++++++++++++------------------------
  1 file changed, 26 insertions(+), 34 deletions(-)
 
---- a/drivers/misc/hwlat_detector.c
-+++ b/drivers/misc/hwlat_detector.c
+Index: linux-rt-devel/drivers/misc/hwlat_detector.c
+===================================================================
+--- linux-rt-devel.orig/drivers/misc/hwlat_detector.c
++++ linux-rt-devel/drivers/misc/hwlat_detector.c
 @@ -41,7 +41,6 @@
  #include <linux/module.h>
  #include <linux/init.h>
@@ -98,7 +100,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  out:
  	return ret;
  }
-@@ -305,32 +306,30 @@ static int get_sample(void *unused)
+@@ -305,32 +306,30 @@ out:
   * @unused: A required part of the kthread API.
   *
   * Used to periodically sample the CPU TSC via a call to get_sample. We
@@ -161,7 +163,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  }
  
  /**
-@@ -442,8 +436,7 @@ static int init_stats(void)
+@@ -442,8 +436,7 @@ out:
   * This function provides a generic read implementation for the global state
   * "data" structure debugfs filesystem entries. It would be nice to use
   * simple_attr_read directly, but we need to make sure that the data.lock

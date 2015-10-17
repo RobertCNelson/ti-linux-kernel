@@ -53,8 +53,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/locking/rtmutex_common.h |    1 +
  2 files changed, 32 insertions(+), 1 deletion(-)
 
---- a/kernel/locking/rtmutex.c
-+++ b/kernel/locking/rtmutex.c
+Index: linux-rt-devel/kernel/locking/rtmutex.c
+===================================================================
+--- linux-rt-devel.orig/kernel/locking/rtmutex.c
++++ linux-rt-devel/kernel/locking/rtmutex.c
 @@ -71,7 +71,8 @@ static void fixup_rt_mutex_waiters(struc
  
  static int rt_mutex_real_waiter(struct rt_mutex_waiter *waiter)
@@ -101,8 +103,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	/* We enforce deadlock detection for futexes */
  	ret = task_blocks_on_rt_mutex(lock, waiter, task,
  				      RT_MUTEX_FULL_CHAINWALK);
---- a/kernel/locking/rtmutex_common.h
-+++ b/kernel/locking/rtmutex_common.h
+Index: linux-rt-devel/kernel/locking/rtmutex_common.h
+===================================================================
+--- linux-rt-devel.orig/kernel/locking/rtmutex_common.h
++++ linux-rt-devel/kernel/locking/rtmutex_common.h
 @@ -120,6 +120,7 @@ enum rtmutex_chainwalk {
   * PI-futex support (proxy locking functions, etc.):
   */

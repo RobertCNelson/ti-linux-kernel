@@ -23,8 +23,10 @@ Signed-off-by: Steven Rostedt <rostedt@goodmis.org>
  kernel/time/ntp.c |   43 +++++++++++++++++++++++++++++++++++++++++++
  1 file changed, 43 insertions(+)
 
---- a/kernel/time/ntp.c
-+++ b/kernel/time/ntp.c
+Index: linux-rt-devel/kernel/time/ntp.c
+===================================================================
+--- linux-rt-devel.orig/kernel/time/ntp.c
++++ linux-rt-devel/kernel/time/ntp.c
 @@ -10,6 +10,7 @@
  #include <linux/workqueue.h>
  #include <linux/hrtimer.h>

@@ -44,8 +44,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  drivers/misc/hwlat_detector.c |   32 ++++++++++++++++++++++++++------
  1 file changed, 26 insertions(+), 6 deletions(-)
 
---- a/drivers/misc/hwlat_detector.c
-+++ b/drivers/misc/hwlat_detector.c
+Index: linux-rt-devel/drivers/misc/hwlat_detector.c
+===================================================================
+--- linux-rt-devel.orig/drivers/misc/hwlat_detector.c
++++ linux-rt-devel/drivers/misc/hwlat_detector.c
 @@ -143,6 +143,7 @@ static void detector_exit(void);
  struct sample {
  	u64		seqnum;		/* unique sequence */

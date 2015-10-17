@@ -12,8 +12,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  drivers/misc/hwlat_detector.c |    2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
---- a/drivers/misc/hwlat_detector.c
-+++ b/drivers/misc/hwlat_detector.c
+Index: linux-rt-devel/drivers/misc/hwlat_detector.c
+===================================================================
+--- linux-rt-devel.orig/drivers/misc/hwlat_detector.c
++++ linux-rt-devel/drivers/misc/hwlat_detector.c
 @@ -414,7 +414,7 @@ static int init_stats(void)
  		goto out;
  

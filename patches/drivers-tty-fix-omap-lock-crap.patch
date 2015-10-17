@@ -11,8 +11,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  drivers/tty/serial/omap-serial.c |   12 ++++--------
  1 file changed, 4 insertions(+), 8 deletions(-)
 
---- a/drivers/tty/serial/omap-serial.c
-+++ b/drivers/tty/serial/omap-serial.c
+Index: linux-rt-devel/drivers/tty/serial/omap-serial.c
+===================================================================
+--- linux-rt-devel.orig/drivers/tty/serial/omap-serial.c
++++ linux-rt-devel/drivers/tty/serial/omap-serial.c
 @@ -1282,13 +1282,10 @@ serial_omap_console_write(struct console
  
  	pm_runtime_get_sync(up->dev);

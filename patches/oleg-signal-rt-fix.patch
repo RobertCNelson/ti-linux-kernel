@@ -36,8 +36,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/signal.c               |   37 +++++++++++++++++++++++++++++++++++--
  4 files changed, 60 insertions(+), 2 deletions(-)
 
---- a/arch/x86/include/asm/signal.h
-+++ b/arch/x86/include/asm/signal.h
+Index: linux-rt-devel/arch/x86/include/asm/signal.h
+===================================================================
+--- linux-rt-devel.orig/arch/x86/include/asm/signal.h
++++ linux-rt-devel/arch/x86/include/asm/signal.h
 @@ -23,6 +23,19 @@ typedef struct {
  	unsigned long sig[_NSIG_WORDS];
  } sigset_t;
@@ -58,9 +60,11 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #ifndef CONFIG_COMPAT
  typedef sigset_t compat_sigset_t;
  #endif
---- a/arch/x86/kernel/signal.c
-+++ b/arch/x86/kernel/signal.c
-@@ -727,6 +727,14 @@ do_notify_resume(struct pt_regs *regs, v
+Index: linux-rt-devel/arch/x86/kernel/signal.c
+===================================================================
+--- linux-rt-devel.orig/arch/x86/kernel/signal.c
++++ linux-rt-devel/arch/x86/kernel/signal.c
+@@ -723,6 +723,14 @@ do_notify_resume(struct pt_regs *regs, v
  {
  	user_exit();
  
@@ -75,8 +79,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	if (thread_info_flags & _TIF_UPROBE)
  		uprobe_notify_resume(regs);
  
---- a/include/linux/sched.h
-+++ b/include/linux/sched.h
+Index: linux-rt-devel/include/linux/sched.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/sched.h
++++ linux-rt-devel/include/linux/sched.h
 @@ -1538,6 +1538,10 @@ struct task_struct {
  	sigset_t blocked, real_blocked;
  	sigset_t saved_sigmask;	/* restored if set_restore_sigmask() was used */
@@ -88,8 +94,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	unsigned long sas_ss_sp;
  	size_t sas_ss_size;
---- a/kernel/signal.c
-+++ b/kernel/signal.c
+Index: linux-rt-devel/kernel/signal.c
+===================================================================
+--- linux-rt-devel.orig/kernel/signal.c
++++ linux-rt-devel/kernel/signal.c
 @@ -1282,8 +1282,8 @@ int do_send_sig_info(int sig, struct sig
   * We don't want to have recursive SIGSEGV's etc, for example,
   * that is why we also clear SIGNAL_UNKILLABLE.

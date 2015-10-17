@@ -16,8 +16,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  include/linux/uaccess.h |   16 ++--------------
  1 file changed, 2 insertions(+), 14 deletions(-)
 
---- a/include/linux/uaccess.h
-+++ b/include/linux/uaccess.h
+Index: linux-rt-devel/include/linux/uaccess.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/uaccess.h
++++ linux-rt-devel/include/linux/uaccess.h
 @@ -1,7 +1,6 @@
  #ifndef __LINUX_UACCESS_H__
  #define __LINUX_UACCESS_H__

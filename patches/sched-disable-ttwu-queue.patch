@@ -10,8 +10,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/sched/features.h |    5 +++++
  1 file changed, 5 insertions(+)
 
---- a/kernel/sched/features.h
-+++ b/kernel/sched/features.h
+Index: linux-rt-devel/kernel/sched/features.h
+===================================================================
+--- linux-rt-devel.orig/kernel/sched/features.h
++++ linux-rt-devel/kernel/sched/features.h
 @@ -50,11 +50,16 @@ SCHED_FEAT(LB_BIAS, true)
   */
  SCHED_FEAT(NONTASK_CAPACITY, true)

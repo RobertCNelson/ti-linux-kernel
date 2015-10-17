@@ -14,8 +14,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  kernel/locking/rtmutex.c    |    5 +++++
  4 files changed, 37 insertions(+)
 
---- a/include/linux/lglock.h
-+++ b/include/linux/lglock.h
+Index: linux-rt-devel/include/linux/lglock.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/lglock.h
++++ linux-rt-devel/include/linux/lglock.h
 @@ -76,6 +76,12 @@ void lg_local_unlock_cpu(struct lglock *
  void lg_global_lock(struct lglock *lg);
  void lg_global_unlock(struct lglock *lg);
@@ -29,8 +31,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  #else
  /* When !CONFIG_SMP, map lglock to spinlock */
  #define lglock spinlock
---- a/include/linux/spinlock_rt.h
-+++ b/include/linux/spinlock_rt.h
+Index: linux-rt-devel/include/linux/spinlock_rt.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/spinlock_rt.h
++++ linux-rt-devel/include/linux/spinlock_rt.h
 @@ -34,6 +34,7 @@ extern int atomic_dec_and_spin_lock(atom
   */
  extern void __lockfunc __rt_spin_lock(struct rt_mutex *lock);
@@ -39,8 +43,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  #define spin_lock(lock)				\
  	do {					\
---- a/kernel/locking/lglock.c
-+++ b/kernel/locking/lglock.c
+Index: linux-rt-devel/kernel/locking/lglock.c
+===================================================================
+--- linux-rt-devel.orig/kernel/locking/lglock.c
++++ linux-rt-devel/kernel/locking/lglock.c
 @@ -105,3 +105,28 @@ void lg_global_unlock(struct lglock *lg)
  	preempt_enable_nort();
  }
@@ -70,8 +76,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 +	}
 +}
 +#endif
---- a/kernel/locking/rtmutex.c
-+++ b/kernel/locking/rtmutex.c
+Index: linux-rt-devel/kernel/locking/rtmutex.c
+===================================================================
+--- linux-rt-devel.orig/kernel/locking/rtmutex.c
++++ linux-rt-devel/kernel/locking/rtmutex.c
 @@ -1133,6 +1133,11 @@ void __lockfunc rt_spin_unlock_wait(spin
  }
  EXPORT_SYMBOL(rt_spin_unlock_wait);

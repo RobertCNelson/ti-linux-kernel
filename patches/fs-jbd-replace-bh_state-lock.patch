@@ -13,8 +13,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  include/linux/jbd_common.h  |   24 ++++++++++++++++++++++++
  2 files changed, 34 insertions(+)
 
---- a/include/linux/buffer_head.h
-+++ b/include/linux/buffer_head.h
+Index: linux-rt-devel/include/linux/buffer_head.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/buffer_head.h
++++ linux-rt-devel/include/linux/buffer_head.h
 @@ -77,6 +77,11 @@ struct buffer_head {
  	atomic_t b_count;		/* users using this buffer_head */
  #ifdef CONFIG_PREEMPT_RT_BASE
@@ -39,8 +41,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #endif
  }
  
---- a/include/linux/jbd_common.h
-+++ b/include/linux/jbd_common.h
+Index: linux-rt-devel/include/linux/jbd_common.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/jbd_common.h
++++ linux-rt-devel/include/linux/jbd_common.h
 @@ -15,32 +15,56 @@ static inline struct journal_head *bh2jh
  
  static inline void jbd_lock_bh_state(struct buffer_head *bh)

@@ -25,8 +25,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/trace/trace_irqsoff.c        |   11 
  10 files changed, 1614 insertions(+)
 
+Index: linux-rt-devel/Documentation/trace/histograms.txt
+===================================================================
 --- /dev/null
-+++ b/Documentation/trace/histograms.txt
++++ linux-rt-devel/Documentation/trace/histograms.txt
 @@ -0,0 +1,186 @@
 +		Using the Linux Kernel Latency Histograms
 +
@@ -214,8 +216,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +is provided.
 +
 +These data are also reset when the wakeup histogram is reset.
---- a/include/linux/hrtimer.h
-+++ b/include/linux/hrtimer.h
+Index: linux-rt-devel/include/linux/hrtimer.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/hrtimer.h
++++ linux-rt-devel/include/linux/hrtimer.h
 @@ -111,6 +111,9 @@ struct hrtimer {
  	enum hrtimer_restart		(*function)(struct hrtimer *);
  	struct hrtimer_clock_base	*base;
@@ -226,8 +230,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #ifdef CONFIG_TIMER_STATS
  	int				start_pid;
  	void				*start_site;
---- a/include/linux/sched.h
-+++ b/include/linux/sched.h
+Index: linux-rt-devel/include/linux/sched.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/sched.h
++++ linux-rt-devel/include/linux/sched.h
 @@ -1753,6 +1753,12 @@ struct task_struct {
  	unsigned long trace;
  	/* bitmask and counter of trace recursion */
@@ -241,8 +247,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #endif /* CONFIG_TRACING */
  #ifdef CONFIG_MEMCG
  	struct memcg_oom_info {
+Index: linux-rt-devel/include/trace/events/hist.h
+===================================================================
 --- /dev/null
-+++ b/include/trace/events/hist.h
++++ linux-rt-devel/include/trace/events/hist.h
 @@ -0,0 +1,72 @@
 +#undef TRACE_SYSTEM
 +#define TRACE_SYSTEM hist
@@ -316,8 +324,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +
 +/* This part must be outside protection */
 +#include <trace/define_trace.h>
+Index: linux-rt-devel/include/trace/events/latency_hist.h
+===================================================================
 --- /dev/null
-+++ b/include/trace/events/latency_hist.h
++++ linux-rt-devel/include/trace/events/latency_hist.h
 @@ -0,0 +1,29 @@
 +#ifndef _LATENCY_HIST_H
 +#define _LATENCY_HIST_H
@@ -348,8 +358,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +}
 +
 +#endif /* _LATENCY_HIST_H */
---- a/kernel/time/hrtimer.c
-+++ b/kernel/time/hrtimer.c
+Index: linux-rt-devel/kernel/time/hrtimer.c
+===================================================================
+--- linux-rt-devel.orig/kernel/time/hrtimer.c
++++ linux-rt-devel/kernel/time/hrtimer.c
 @@ -53,6 +53,7 @@
  #include <asm/uaccess.h>
  
@@ -384,7 +396,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
   * High resolution timer interrupt
   * Called with interrupts disabled
-@@ -1281,6 +1293,15 @@ void hrtimer_interrupt(struct clock_even
+@@ -1281,6 +1293,15 @@ retry:
  
  			timer = container_of(node, struct hrtimer, node);
  
@@ -400,8 +412,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  			/*
  			 * The immediate goal for using the softexpires is
  			 * minimizing wakeups, not running timers at the
---- a/kernel/trace/Kconfig
-+++ b/kernel/trace/Kconfig
+Index: linux-rt-devel/kernel/trace/Kconfig
+===================================================================
+--- linux-rt-devel.orig/kernel/trace/Kconfig
++++ linux-rt-devel/kernel/trace/Kconfig
 @@ -187,6 +187,24 @@ config IRQSOFF_TRACER
  	  enabled. This option and the preempt-off timing option can be
  	  used together or separately.)
@@ -527,8 +541,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  config ENABLE_DEFAULT_TRACERS
  	bool "Trace process context switches and events"
  	depends on !GENERIC_TRACER
---- a/kernel/trace/Makefile
-+++ b/kernel/trace/Makefile
+Index: linux-rt-devel/kernel/trace/Makefile
+===================================================================
+--- linux-rt-devel.orig/kernel/trace/Makefile
++++ linux-rt-devel/kernel/trace/Makefile
 @@ -36,6 +36,10 @@ obj-$(CONFIG_FUNCTION_TRACER) += trace_f
  obj-$(CONFIG_IRQSOFF_TRACER) += trace_irqsoff.o
  obj-$(CONFIG_PREEMPT_TRACER) += trace_irqsoff.o
@@ -540,8 +556,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  obj-$(CONFIG_NOP_TRACER) += trace_nop.o
  obj-$(CONFIG_STACK_TRACER) += trace_stack.o
  obj-$(CONFIG_MMIOTRACE) += trace_mmiotrace.o
+Index: linux-rt-devel/kernel/trace/latency_hist.c
+===================================================================
 --- /dev/null
-+++ b/kernel/trace/latency_hist.c
++++ linux-rt-devel/kernel/trace/latency_hist.c
 @@ -0,0 +1,1178 @@
 +/*
 + * kernel/trace/latency_hist.c
@@ -1721,8 +1739,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +}
 +
 +device_initcall(latency_hist_init);
---- a/kernel/trace/trace_irqsoff.c
-+++ b/kernel/trace/trace_irqsoff.c
+Index: linux-rt-devel/kernel/trace/trace_irqsoff.c
+===================================================================
+--- linux-rt-devel.orig/kernel/trace/trace_irqsoff.c
++++ linux-rt-devel/kernel/trace/trace_irqsoff.c
 @@ -13,6 +13,7 @@
  #include <linux/uaccess.h>
  #include <linux/module.h>
@@ -1783,7 +1803,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	if (!preempt_trace() && irq_trace())
  		stop_critical_timing(CALLER_ADDR0, caller_addr);
  }
-@@ -503,6 +511,7 @@ EXPORT_SYMBOL(trace_hardirqs_on_caller);
+@@ -503,6 +511,7 @@ __visible void trace_hardirqs_off_caller
  {
  	if (!preempt_trace() && irq_trace())
  		start_critical_timing(CALLER_ADDR0, caller_addr);

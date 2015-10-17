@@ -29,8 +29,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/workqueue_internal.h |    5 +--
  3 files changed, 41 insertions(+), 89 deletions(-)
 
---- a/kernel/sched/core.c
-+++ b/kernel/sched/core.c
+Index: linux-rt-devel/kernel/sched/core.c
+===================================================================
+--- linux-rt-devel.orig/kernel/sched/core.c
++++ linux-rt-devel/kernel/sched/core.c
 @@ -1517,10 +1517,6 @@ static void ttwu_activate(struct rq *rq,
  {
  	activate_task(rq, p, en_flags);
@@ -42,7 +44,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /*
-@@ -1797,42 +1793,6 @@ try_to_wake_up(struct task_struct *p, un
+@@ -1797,42 +1793,6 @@ out:
  }
  
  /**
@@ -143,8 +145,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  EXPORT_SYMBOL(schedule);
  
---- a/kernel/workqueue.c
-+++ b/kernel/workqueue.c
+Index: linux-rt-devel/kernel/workqueue.c
+===================================================================
+--- linux-rt-devel.orig/kernel/workqueue.c
++++ linux-rt-devel/kernel/workqueue.c
 @@ -804,44 +804,31 @@ static void wake_up_worker(struct worker
  }
  
@@ -238,8 +242,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /**
---- a/kernel/workqueue_internal.h
-+++ b/kernel/workqueue_internal.h
+Index: linux-rt-devel/kernel/workqueue_internal.h
+===================================================================
+--- linux-rt-devel.orig/kernel/workqueue_internal.h
++++ linux-rt-devel/kernel/workqueue_internal.h
 @@ -43,6 +43,7 @@ struct worker {
  	unsigned long		last_active;	/* L: last active timestamp */
  	unsigned int		flags;		/* X: flags */

@@ -10,8 +10,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/workqueue.c |   31 +++++++++++++++++--------------
  1 file changed, 17 insertions(+), 14 deletions(-)
 
---- a/kernel/workqueue.c
-+++ b/kernel/workqueue.c
+Index: linux-rt-devel/kernel/workqueue.c
+===================================================================
+--- linux-rt-devel.orig/kernel/workqueue.c
++++ linux-rt-devel/kernel/workqueue.c
 @@ -48,6 +48,7 @@
  #include <linux/nodemask.h>
  #include <linux/moduleparam.h>

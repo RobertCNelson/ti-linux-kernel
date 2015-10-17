@@ -13,9 +13,11 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/locking/rtmutex_common.h |    2 +
  3 files changed, 94 insertions(+), 21 deletions(-)
 
---- a/kernel/futex.c
-+++ b/kernel/futex.c
-@@ -1717,6 +1717,16 @@ static int futex_requeue(u32 __user *uad
+Index: linux-rt-devel/kernel/futex.c
+===================================================================
+--- linux-rt-devel.orig/kernel/futex.c
++++ linux-rt-devel/kernel/futex.c
+@@ -1717,6 +1717,16 @@ retry_private:
  				requeue_pi_wake_futex(this, &key2, hb2);
  				drop_count++;
  				continue;
@@ -131,8 +133,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		/*
  		 * Fixup the pi_state owner and possibly acquire the lock if we
  		 * haven't already.
---- a/kernel/locking/rtmutex.c
-+++ b/kernel/locking/rtmutex.c
+Index: linux-rt-devel/kernel/locking/rtmutex.c
+===================================================================
+--- linux-rt-devel.orig/kernel/locking/rtmutex.c
++++ linux-rt-devel/kernel/locking/rtmutex.c
 @@ -69,6 +69,11 @@ static void fixup_rt_mutex_waiters(struc
  		clear_rt_mutex_waiters(lock);
  }
@@ -225,8 +229,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  			!dl_prio(task->prio))) {
  		raw_spin_unlock_irqrestore(&task->pi_lock, flags);
  		return;
---- a/kernel/locking/rtmutex_common.h
-+++ b/kernel/locking/rtmutex_common.h
+Index: linux-rt-devel/kernel/locking/rtmutex_common.h
+===================================================================
+--- linux-rt-devel.orig/kernel/locking/rtmutex_common.h
++++ linux-rt-devel/kernel/locking/rtmutex_common.h
 @@ -119,6 +119,8 @@ enum rtmutex_chainwalk {
  /*
   * PI-futex support (proxy locking functions, etc.):

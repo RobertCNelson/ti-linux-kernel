@@ -1,4 +1,4 @@
-Subject: v4.1.7-rt8
+Subject: v4.1.10-rt10
 From: Thomas Gleixner <tglx@linutronix.de>
 Date: Fri, 08 Jul 2011 20:25:16 +0200
 
@@ -12,4 +12,4 @@ Index: linux-rt-devel/localversion-rt
 --- /dev/null
 +++ linux-rt-devel/localversion-rt
 @@ -0,0 +1 @@
-+-rt8
++-rt10

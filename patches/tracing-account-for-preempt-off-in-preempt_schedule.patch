@@ -25,8 +25,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/sched/core.c |    9 +++++++++
  1 file changed, 9 insertions(+)
 
---- a/kernel/sched/core.c
-+++ b/kernel/sched/core.c
+Index: linux-rt-devel/kernel/sched/core.c
+===================================================================
+--- linux-rt-devel.orig/kernel/sched/core.c
++++ linux-rt-devel/kernel/sched/core.c
 @@ -2970,7 +2970,16 @@ asmlinkage __visible void __sched notrac
  		 * an infinite recursion.
  		 */

@@ -58,8 +58,10 @@ Signed-off-by: Daniel Wagner <daniel.wagner@bmw-carit.de>
  arch/x86/kernel/cpu/mcheck/mce.c |   68 ++++++++++++++++++++++++++++++++-------
  1 file changed, 56 insertions(+), 12 deletions(-)
 
---- a/arch/x86/kernel/cpu/mcheck/mce.c
-+++ b/arch/x86/kernel/cpu/mcheck/mce.c
+Index: linux-rt-devel/arch/x86/kernel/cpu/mcheck/mce.c
+===================================================================
+--- linux-rt-devel.orig/arch/x86/kernel/cpu/mcheck/mce.c
++++ linux-rt-devel/arch/x86/kernel/cpu/mcheck/mce.c
 @@ -42,6 +42,7 @@
  #include <linux/irq_work.h>
  #include <linux/export.h>

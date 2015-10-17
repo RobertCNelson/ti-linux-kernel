@@ -18,8 +18,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  drivers/infiniband/ulp/ipoib/ipoib_multicast.c |    4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
 
---- a/drivers/infiniband/ulp/ipoib/ipoib_multicast.c
-+++ b/drivers/infiniband/ulp/ipoib/ipoib_multicast.c
+Index: linux-rt-devel/drivers/infiniband/ulp/ipoib/ipoib_multicast.c
+===================================================================
+--- linux-rt-devel.orig/drivers/infiniband/ulp/ipoib/ipoib_multicast.c
++++ linux-rt-devel/drivers/infiniband/ulp/ipoib/ipoib_multicast.c
 @@ -821,7 +821,7 @@ void ipoib_mcast_restart_task(struct wor
  
  	ipoib_dbg_mcast(priv, "restarting multicast task\n");

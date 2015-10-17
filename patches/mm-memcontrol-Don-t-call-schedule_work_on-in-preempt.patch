@@ -46,8 +46,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  mm/memcontrol.c |    4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
 
---- a/mm/memcontrol.c
-+++ b/mm/memcontrol.c
+Index: linux-rt-devel/mm/memcontrol.c
+===================================================================
+--- linux-rt-devel.orig/mm/memcontrol.c
++++ linux-rt-devel/mm/memcontrol.c
 @@ -2147,7 +2147,7 @@ static void drain_all_stock(struct mem_c
  		return;
  	/* Notify other cpus that system-wide "drain" is running */

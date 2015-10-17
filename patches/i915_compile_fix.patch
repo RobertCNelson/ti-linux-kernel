@@ -10,8 +10,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  drivers/gpu/drm/i915/i915_gem_shrinker.c |    2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
---- a/drivers/gpu/drm/i915/i915_gem_shrinker.c
-+++ b/drivers/gpu/drm/i915/i915_gem_shrinker.c
+Index: linux-rt-devel/drivers/gpu/drm/i915/i915_gem_shrinker.c
+===================================================================
+--- linux-rt-devel.orig/drivers/gpu/drm/i915/i915_gem_shrinker.c
++++ linux-rt-devel/drivers/gpu/drm/i915/i915_gem_shrinker.c
 @@ -39,7 +39,7 @@ static bool mutex_is_locked_by(struct mu
  	if (!mutex_is_locked(mutex))
  		return false;

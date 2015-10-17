@@ -55,8 +55,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  drivers/cpufreq/cpufreq.c |   35 +++--------------------------------
  1 file changed, 3 insertions(+), 32 deletions(-)
 
---- a/drivers/cpufreq/cpufreq.c
-+++ b/drivers/cpufreq/cpufreq.c
+Index: linux-rt-devel/drivers/cpufreq/cpufreq.c
+===================================================================
+--- linux-rt-devel.orig/drivers/cpufreq/cpufreq.c
++++ linux-rt-devel/drivers/cpufreq/cpufreq.c
 @@ -64,12 +64,6 @@ static inline bool has_target(void)
  	return cpufreq_driver->target_index || cpufreq_driver->target;
  }
@@ -161,7 +163,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	/* Callback for handling stuff after policy is ready */
  	if (cpufreq_driver->ready)
  		cpufreq_driver->ready(policy);
-@@ -1304,8 +1276,6 @@ static int __cpufreq_add_dev(struct devi
+@@ -1304,8 +1276,6 @@ err_set_policy_cpu:
  	cpufreq_policy_free(policy);
  
  nomem_out:

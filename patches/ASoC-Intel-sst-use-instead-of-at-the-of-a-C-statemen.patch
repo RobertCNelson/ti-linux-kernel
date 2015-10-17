@@ -11,8 +11,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  sound/soc/intel/atom/sst/sst.c |    4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
 
---- a/sound/soc/intel/atom/sst/sst.c
-+++ b/sound/soc/intel/atom/sst/sst.c
+Index: linux-rt-devel/sound/soc/intel/atom/sst/sst.c
+===================================================================
+--- linux-rt-devel.orig/sound/soc/intel/atom/sst/sst.c
++++ linux-rt-devel/sound/soc/intel/atom/sst/sst.c
 @@ -368,8 +368,8 @@ static inline void sst_restore_shim64(st
  	 * initialize by FW or driver when firmware is loaded
  	 */

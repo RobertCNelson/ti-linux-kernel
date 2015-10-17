@@ -11,8 +11,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  mm/slub.c |  118 +++++++++++++++++++++++++++++++++++++++++++++++---------------
  2 files changed, 95 insertions(+), 27 deletions(-)
 
---- a/mm/slab.h
-+++ b/mm/slab.h
+Index: linux-rt-devel/mm/slab.h
+===================================================================
+--- linux-rt-devel.orig/mm/slab.h
++++ linux-rt-devel/mm/slab.h
 @@ -330,7 +330,11 @@ static inline struct kmem_cache *cache_f
   * The slab lists for all objects.
   */
@@ -25,8 +27,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  #ifdef CONFIG_SLAB
  	struct list_head slabs_partial;	/* partial list first, better asm code */
---- a/mm/slub.c
-+++ b/mm/slub.c
+Index: linux-rt-devel/mm/slub.c
+===================================================================
+--- linux-rt-devel.orig/mm/slub.c
++++ linux-rt-devel/mm/slub.c
 @@ -1069,7 +1069,7 @@ static noinline struct kmem_cache_node *
  {
  	struct kmem_cache_node *n = get_node(s, page_to_nid(page));
@@ -36,7 +40,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	slab_lock(page);
  
  	if (!check_slab(s, page))
-@@ -1116,7 +1116,7 @@ static noinline struct kmem_cache_node *
+@@ -1116,7 +1116,7 @@ out:
  
  fail:
  	slab_unlock(page);
@@ -130,7 +134,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	return object;
  }
  
-@@ -1896,7 +1926,7 @@ static void deactivate_slab(struct kmem_
+@@ -1896,7 +1926,7 @@ redo:
  			 * that acquire_slab() will see a slab page that
  			 * is frozen
  			 */
@@ -139,7 +143,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		}
  	} else {
  		m = M_FULL;
-@@ -1907,7 +1937,7 @@ static void deactivate_slab(struct kmem_
+@@ -1907,7 +1937,7 @@ redo:
  			 * slabs from diagnostic functions will not see
  			 * any frozen slabs.
  			 */
@@ -148,7 +152,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		}
  	}
  
-@@ -1942,7 +1972,7 @@ static void deactivate_slab(struct kmem_
+@@ -1942,7 +1972,7 @@ redo:
  		goto redo;
  
  	if (lock)
@@ -249,7 +253,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	local_irq_save(flags);
  #ifdef CONFIG_PREEMPT
-@@ -2370,7 +2424,13 @@ static void *__slab_alloc(struct kmem_ca
+@@ -2370,7 +2424,13 @@ load_freelist:
  	VM_BUG_ON(!c->page->frozen);
  	c->freelist = get_freepointer(s, freelist);
  	c->tid = next_tid(c->tid);
@@ -263,7 +267,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	return freelist;
  
  new_slab:
-@@ -2387,8 +2447,7 @@ static void *__slab_alloc(struct kmem_ca
+@@ -2387,8 +2447,7 @@ new_slab:
  
  	if (unlikely(!freelist)) {
  		slab_out_of_memory(s, gfpflags, node);
@@ -273,7 +277,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	}
  
  	page = c->page;
-@@ -2403,8 +2462,7 @@ static void *__slab_alloc(struct kmem_ca
+@@ -2403,8 +2462,7 @@ new_slab:
  	deactivate_slab(s, page, get_freepointer(s, freelist));
  	c->page = NULL;
  	c->freelist = NULL;
@@ -310,7 +314,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	return;
  
  slab_empty:
-@@ -2677,7 +2735,7 @@ static void __slab_free(struct kmem_cach
+@@ -2677,7 +2735,7 @@ slab_empty:
  		remove_full(s, n, page);
  	}
  

@@ -42,9 +42,11 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  net/core/dev.c |   32 +++++++++++++++++++++++++++++++-
  1 file changed, 31 insertions(+), 1 deletion(-)
 
---- a/net/core/dev.c
-+++ b/net/core/dev.c
-@@ -3445,6 +3445,36 @@ int netif_rx_ni(struct sk_buff *skb)
+Index: linux-rt-devel/net/core/dev.c
+===================================================================
+--- linux-rt-devel.orig/net/core/dev.c
++++ linux-rt-devel/net/core/dev.c
+@@ -3444,6 +3444,36 @@ int netif_rx_ni(struct sk_buff *skb)
  }
  EXPORT_SYMBOL(netif_rx_ni);
  
@@ -81,7 +83,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  static void net_tx_action(struct softirq_action *h)
  {
  	struct softnet_data *sd = this_cpu_ptr(&softnet_data);
-@@ -3486,7 +3516,7 @@ static void net_tx_action(struct softirq
+@@ -3485,7 +3515,7 @@ static void net_tx_action(struct softirq
  			head = head->next_sched;
  
  			root_lock = qdisc_lock(q);

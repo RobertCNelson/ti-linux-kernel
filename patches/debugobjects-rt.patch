@@ -9,9 +9,11 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  lib/debugobjects.c |    5 ++++-
  1 file changed, 4 insertions(+), 1 deletion(-)
 
---- a/lib/debugobjects.c
-+++ b/lib/debugobjects.c
-@@ -309,7 +309,10 @@ static void
+Index: linux-rt-devel/lib/debugobjects.c
+===================================================================
+--- linux-rt-devel.orig/lib/debugobjects.c
++++ linux-rt-devel/lib/debugobjects.c
+@@ -309,7 +309,10 @@ __debug_object_init(void *addr, struct d
  	struct debug_obj *obj;
  	unsigned long flags;
  

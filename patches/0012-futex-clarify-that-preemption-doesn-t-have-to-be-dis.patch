@@ -16,8 +16,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  arch/arm64/include/asm/futex.h |    4 ++--
  2 files changed, 7 insertions(+), 7 deletions(-)
 
---- a/arch/arc/include/asm/futex.h
-+++ b/arch/arc/include/asm/futex.h
+Index: linux-rt-devel/arch/arc/include/asm/futex.h
+===================================================================
+--- linux-rt-devel.orig/arch/arc/include/asm/futex.h
++++ linux-rt-devel/arch/arc/include/asm/futex.h
 @@ -53,7 +53,7 @@ static inline int futex_atomic_op_inuser
  	if (!access_ok(VERIFY_WRITE, uaddr, sizeof(int)))
  		return -EFAULT;
@@ -63,8 +65,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  
  	*uval = val;
  	return val;
---- a/arch/arm64/include/asm/futex.h
-+++ b/arch/arm64/include/asm/futex.h
+Index: linux-rt-devel/arch/arm64/include/asm/futex.h
+===================================================================
+--- linux-rt-devel.orig/arch/arm64/include/asm/futex.h
++++ linux-rt-devel/arch/arm64/include/asm/futex.h
 @@ -58,7 +58,7 @@ futex_atomic_op_inuser (int encoded_op,
  	if (!access_ok(VERIFY_WRITE, uaddr, sizeof(u32)))
  		return -EFAULT;

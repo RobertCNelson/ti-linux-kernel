@@ -11,9 +11,11 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/irq/manage.c       |    2 ++
  2 files changed, 7 insertions(+), 1 deletion(-)
 
---- a/include/linux/interrupt.h
-+++ b/include/linux/interrupt.h
-@@ -377,9 +377,13 @@ extern int irq_set_irqchip_state(unsigne
+Index: linux-rt-devel/include/linux/interrupt.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/interrupt.h
++++ linux-rt-devel/include/linux/interrupt.h
+@@ -379,9 +379,13 @@ extern int irq_set_irqchip_state(unsigne
  				 bool state);
  
  #ifdef CONFIG_IRQ_FORCED_THREADING
@@ -28,8 +30,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #endif
  
  #ifndef __ARCH_SET_SOFTIRQ_PENDING
---- a/kernel/irq/manage.c
-+++ b/kernel/irq/manage.c
+Index: linux-rt-devel/kernel/irq/manage.c
+===================================================================
+--- linux-rt-devel.orig/kernel/irq/manage.c
++++ linux-rt-devel/kernel/irq/manage.c
 @@ -22,6 +22,7 @@
  #include "internals.h"
  

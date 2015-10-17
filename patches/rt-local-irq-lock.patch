@@ -16,8 +16,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  include/linux/percpu.h    |   29 +++++
  2 files changed, 293 insertions(+)
 
+Index: linux-rt-devel/include/linux/locallock.h
+===================================================================
 --- /dev/null
-+++ b/include/linux/locallock.h
++++ linux-rt-devel/include/linux/locallock.h
 @@ -0,0 +1,264 @@
 +#ifndef _LINUX_LOCALLOCK_H
 +#define _LINUX_LOCALLOCK_H
@@ -283,8 +285,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +#endif
 +
 +#endif
---- a/include/linux/percpu.h
-+++ b/include/linux/percpu.h
+Index: linux-rt-devel/include/linux/percpu.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/percpu.h
++++ linux-rt-devel/include/linux/percpu.h
 @@ -24,6 +24,35 @@
  	 PERCPU_MODULE_RESERVE)
  #endif

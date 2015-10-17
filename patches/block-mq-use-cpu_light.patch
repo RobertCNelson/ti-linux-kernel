@@ -15,8 +15,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  block/blk-mq.h |   17 ++++++++++++++---
  2 files changed, 18 insertions(+), 3 deletions(-)
 
---- a/block/blk-mq.c
-+++ b/block/blk-mq.c
+Index: linux-rt-devel/block/blk-mq.c
+===================================================================
+--- linux-rt-devel.orig/block/blk-mq.c
++++ linux-rt-devel/block/blk-mq.c
 @@ -1366,7 +1366,9 @@ static void blk_sq_make_request(struct r
  			if (list_empty(&plug->mq_list))
  				trace_block_plug(q);
@@ -43,8 +45,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  		INIT_LIST_HEAD(&__ctx->rq_list);
  		__ctx->queue = q;
  
---- a/block/blk-mq.h
-+++ b/block/blk-mq.h
+Index: linux-rt-devel/block/blk-mq.h
+===================================================================
+--- linux-rt-devel.orig/block/blk-mq.h
++++ linux-rt-devel/block/blk-mq.h
 @@ -9,6 +9,7 @@ struct blk_mq_ctx {
  		struct list_head	rq_list;
  	}  ____cacheline_aligned_in_smp;

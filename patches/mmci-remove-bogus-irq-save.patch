@@ -10,8 +10,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  drivers/mmc/host/mmci.c |    5 -----
  1 file changed, 5 deletions(-)
 
---- a/drivers/mmc/host/mmci.c
-+++ b/drivers/mmc/host/mmci.c
+Index: linux-rt-devel/drivers/mmc/host/mmci.c
+===================================================================
+--- linux-rt-devel.orig/drivers/mmc/host/mmci.c
++++ linux-rt-devel/drivers/mmc/host/mmci.c
 @@ -1155,15 +1155,12 @@ static irqreturn_t mmci_pio_irq(int irq,
  	struct sg_mapping_iter *sg_miter = &host->sg_miter;
  	struct variant_data *variant = host->variant;

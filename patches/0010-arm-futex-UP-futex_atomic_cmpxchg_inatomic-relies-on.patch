@@ -15,8 +15,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  arch/arm/include/asm/futex.h |    3 +++
  1 file changed, 3 insertions(+)
 
---- a/arch/arm/include/asm/futex.h
-+++ b/arch/arm/include/asm/futex.h
+Index: linux-rt-devel/arch/arm/include/asm/futex.h
+===================================================================
+--- linux-rt-devel.orig/arch/arm/include/asm/futex.h
++++ linux-rt-devel/arch/arm/include/asm/futex.h
 @@ -93,6 +93,7 @@ futex_atomic_cmpxchg_inatomic(u32 *uval,
  	if (!access_ok(VERIFY_WRITE, uaddr, sizeof(u32)))
  		return -EFAULT;

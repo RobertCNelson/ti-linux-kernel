@@ -10,8 +10,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/sched/core.c |    4 ++++
  1 file changed, 4 insertions(+)
 
---- a/kernel/sched/core.c
-+++ b/kernel/sched/core.c
+Index: linux-rt-devel/kernel/sched/core.c
+===================================================================
+--- linux-rt-devel.orig/kernel/sched/core.c
++++ linux-rt-devel/kernel/sched/core.c
 @@ -282,7 +282,11 @@ late_initcall(sched_init_debug);
   * Number of tasks to iterate in a single balance run.
   * Limited because this is done with IRQs disabled.

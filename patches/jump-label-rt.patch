@@ -22,8 +22,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  arch/arm/Kconfig |    2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
---- a/arch/arm/Kconfig
-+++ b/arch/arm/Kconfig
+Index: linux-rt-devel/arch/arm/Kconfig
+===================================================================
+--- linux-rt-devel.orig/arch/arm/Kconfig
++++ linux-rt-devel/arch/arm/Kconfig
 @@ -31,7 +31,7 @@ config ARM
  	select HARDIRQS_SW_RESEND
  	select HAVE_ARCH_AUDITSYSCALL if (AEABI && !OABI_COMPAT)

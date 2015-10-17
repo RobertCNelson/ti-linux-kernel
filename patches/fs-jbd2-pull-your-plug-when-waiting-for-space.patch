@@ -18,8 +18,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  fs/jbd2/checkpoint.c |    2 ++
  1 file changed, 2 insertions(+)
 
---- a/fs/jbd2/checkpoint.c
-+++ b/fs/jbd2/checkpoint.c
+Index: linux-rt-devel/fs/jbd2/checkpoint.c
+===================================================================
+--- linux-rt-devel.orig/fs/jbd2/checkpoint.c
++++ linux-rt-devel/fs/jbd2/checkpoint.c
 @@ -116,6 +116,8 @@ void __jbd2_log_wait_for_space(journal_t
  	nblocks = jbd2_space_needed(journal);
  	while (jbd2_log_space_left(journal) < nblocks) {

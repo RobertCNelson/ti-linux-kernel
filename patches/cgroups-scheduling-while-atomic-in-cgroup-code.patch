@@ -40,8 +40,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  mm/memcontrol.c |    7 +++++--
  1 file changed, 5 insertions(+), 2 deletions(-)
 
---- a/mm/memcontrol.c
-+++ b/mm/memcontrol.c
+Index: linux-rt-devel/mm/memcontrol.c
+===================================================================
+--- linux-rt-devel.orig/mm/memcontrol.c
++++ linux-rt-devel/mm/memcontrol.c
 @@ -2127,14 +2127,17 @@ static void drain_local_stock(struct wor
   */
  static void refill_stock(struct mem_cgroup *memcg, unsigned int nr_pages)

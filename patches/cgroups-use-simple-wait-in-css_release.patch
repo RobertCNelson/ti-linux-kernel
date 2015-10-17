@@ -32,8 +32,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  kernel/cgroup.c        |    9 +++++----
  2 files changed, 7 insertions(+), 4 deletions(-)
 
---- a/include/linux/cgroup.h
-+++ b/include/linux/cgroup.h
+Index: linux-rt-devel/include/linux/cgroup.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/cgroup.h
++++ linux-rt-devel/include/linux/cgroup.h
 @@ -22,6 +22,7 @@
  #include <linux/seq_file.h>
  #include <linux/kernfs.h>
@@ -50,9 +52,11 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  };
  
  /* bits in struct cgroup_subsys_state flags field */
---- a/kernel/cgroup.c
-+++ b/kernel/cgroup.c
-@@ -4421,10 +4421,10 @@ static void css_free_rcu_fn(struct rcu_h
+Index: linux-rt-devel/kernel/cgroup.c
+===================================================================
+--- linux-rt-devel.orig/kernel/cgroup.c
++++ linux-rt-devel/kernel/cgroup.c
+@@ -4422,10 +4422,10 @@ static void css_free_rcu_fn(struct rcu_h
  	queue_work(cgroup_destroy_wq, &css->destroy_work);
  }
  
@@ -65,7 +69,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	struct cgroup_subsys *ss = css->ss;
  	struct cgroup *cgrp = css->cgroup;
  
-@@ -4463,8 +4463,8 @@ static void css_release(struct percpu_re
+@@ -4464,8 +4464,8 @@ static void css_release(struct percpu_re
  	struct cgroup_subsys_state *css =
  		container_of(ref, struct cgroup_subsys_state, refcnt);
  
@@ -76,7 +80,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  }
  
  static void init_and_link_css(struct cgroup_subsys_state *css,
-@@ -5068,6 +5068,7 @@ static int __init cgroup_wq_init(void)
+@@ -5069,6 +5069,7 @@ static int __init cgroup_wq_init(void)
  	 */
  	cgroup_destroy_wq = alloc_workqueue("cgroup_destroy", 0, 1);
  	BUG_ON(!cgroup_destroy_wq);

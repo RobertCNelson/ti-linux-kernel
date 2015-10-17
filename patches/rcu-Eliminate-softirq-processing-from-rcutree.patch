@@ -21,8 +21,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  kernel/rcu/tree_plugin.h |  141 +++++------------------------------------------
  3 files changed, 116 insertions(+), 140 deletions(-)
 
---- a/kernel/rcu/tree.c
-+++ b/kernel/rcu/tree.c
+Index: linux-rt-devel/kernel/rcu/tree.c
+===================================================================
+--- linux-rt-devel.orig/kernel/rcu/tree.c
++++ linux-rt-devel/kernel/rcu/tree.c
 @@ -56,6 +56,11 @@
  #include <linux/random.h>
  #include <linux/ftrace_event.h>
@@ -35,7 +37,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  #include "tree.h"
  #include "rcu.h"
-@@ -2882,18 +2887,17 @@ static void
+@@ -2882,18 +2887,17 @@ __rcu_process_callbacks(struct rcu_state
  /*
   * Do RCU core processing for the current CPU.
   */
@@ -176,8 +178,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	/*
  	 * We don't need protection against CPU-hotplug here because
---- a/kernel/rcu/tree.h
-+++ b/kernel/rcu/tree.h
+Index: linux-rt-devel/kernel/rcu/tree.h
+===================================================================
+--- linux-rt-devel.orig/kernel/rcu/tree.h
++++ linux-rt-devel/kernel/rcu/tree.h
 @@ -530,12 +530,10 @@ extern struct rcu_state rcu_preempt_stat
  DECLARE_PER_CPU(struct rcu_data, rcu_preempt_data);
  #endif /* #ifdef CONFIG_PREEMPT_RCU */
@@ -203,8 +207,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  static int rcu_spawn_one_boost_kthread(struct rcu_state *rsp,
  						 struct rcu_node *rnp);
  #endif /* #ifdef CONFIG_RCU_BOOST */
---- a/kernel/rcu/tree_plugin.h
-+++ b/kernel/rcu/tree_plugin.h
+Index: linux-rt-devel/kernel/rcu/tree_plugin.h
+===================================================================
+--- linux-rt-devel.orig/kernel/rcu/tree_plugin.h
++++ linux-rt-devel/kernel/rcu/tree_plugin.h
 @@ -24,28 +24,20 @@
   *	   Paul E. McKenney <paulmck@linux.vnet.ibm.com>
   */

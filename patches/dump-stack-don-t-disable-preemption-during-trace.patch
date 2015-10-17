@@ -13,16 +13,16 @@ the same CPU by another task.
 
 Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 ---
- arch/x86/kernel/dumpstack_32.c | 4 ++--
- arch/x86/kernel/dumpstack_64.c | 8 ++++----
- lib/dump_stack.c               | 4 ++--
+ arch/x86/kernel/dumpstack_32.c |    4 ++--
+ arch/x86/kernel/dumpstack_64.c |    8 ++++----
+ lib/dump_stack.c               |    4 ++--
  3 files changed, 8 insertions(+), 8 deletions(-)
 
-diff --git a/arch/x86/kernel/dumpstack_32.c b/arch/x86/kernel/dumpstack_32.c
-index 464ffd69b92e..00db1aad1548 100644
---- a/arch/x86/kernel/dumpstack_32.c
-+++ b/arch/x86/kernel/dumpstack_32.c
-@@ -42,7 +42,7 @@ void dump_trace(struct task_struct *task, struct pt_regs *regs,
+Index: linux-rt-devel/arch/x86/kernel/dumpstack_32.c
+===================================================================
+--- linux-rt-devel.orig/arch/x86/kernel/dumpstack_32.c
++++ linux-rt-devel/arch/x86/kernel/dumpstack_32.c
+@@ -42,7 +42,7 @@ void dump_trace(struct task_struct *task
  		unsigned long *stack, unsigned long bp,
  		const struct stacktrace_ops *ops, void *data)
  {
@@ -31,7 +31,7 @@ index 464ffd69b92e..00db1aad1548 100644
  	int graph = 0;
  	u32 *prev_esp;
  
-@@ -86,7 +86,7 @@ void dump_trace(struct task_struct *task, struct pt_regs *regs,
+@@ -86,7 +86,7 @@ void dump_trace(struct task_struct *task
  			break;
  		touch_nmi_watchdog();
  	}
@@ -40,11 +40,11 @@ index 464ffd69b92e..00db1aad1548 100644
  }
  EXPORT_SYMBOL(dump_trace);
  
-diff --git a/arch/x86/kernel/dumpstack_64.c b/arch/x86/kernel/dumpstack_64.c
-index 5f1c6266eb30..c331e3fef465 100644
---- a/arch/x86/kernel/dumpstack_64.c
-+++ b/arch/x86/kernel/dumpstack_64.c
-@@ -152,7 +152,7 @@ void dump_trace(struct task_struct *task, struct pt_regs *regs,
+Index: linux-rt-devel/arch/x86/kernel/dumpstack_64.c
+===================================================================
+--- linux-rt-devel.orig/arch/x86/kernel/dumpstack_64.c
++++ linux-rt-devel/arch/x86/kernel/dumpstack_64.c
+@@ -152,7 +152,7 @@ void dump_trace(struct task_struct *task
  		unsigned long *stack, unsigned long bp,
  		const struct stacktrace_ops *ops, void *data)
  {
@@ -53,7 +53,7 @@ index 5f1c6266eb30..c331e3fef465 100644
  	struct thread_info *tinfo;
  	unsigned long *irq_stack = (unsigned long *)per_cpu(irq_stack_ptr, cpu);
  	unsigned long dummy;
-@@ -241,7 +241,7 @@ void dump_trace(struct task_struct *task, struct pt_regs *regs,
+@@ -241,7 +241,7 @@ void dump_trace(struct task_struct *task
  	 * This handles the process stack:
  	 */
  	bp = ops->walk_stack(tinfo, stack, bp, ops, data, NULL, &graph);
@@ -62,7 +62,7 @@ index 5f1c6266eb30..c331e3fef465 100644
  }
  EXPORT_SYMBOL(dump_trace);
  
-@@ -255,7 +255,7 @@ show_stack_log_lvl(struct task_struct *task, struct pt_regs *regs,
+@@ -255,7 +255,7 @@ show_stack_log_lvl(struct task_struct *t
  	int cpu;
  	int i;
  
@@ -71,7 +71,7 @@ index 5f1c6266eb30..c331e3fef465 100644
  	cpu = smp_processor_id();
  
  	irq_stack_end	= (unsigned long *)(per_cpu(irq_stack_ptr, cpu));
-@@ -291,7 +291,7 @@ show_stack_log_lvl(struct task_struct *task, struct pt_regs *regs,
+@@ -291,7 +291,7 @@ show_stack_log_lvl(struct task_struct *t
  			pr_cont(" %016lx", *stack++);
  		touch_nmi_watchdog();
  	}
@@ -80,11 +80,11 @@ index 5f1c6266eb30..c331e3fef465 100644
  
  	pr_cont("\n");
  	show_trace_log_lvl(task, regs, sp, bp, log_lvl);
-diff --git a/lib/dump_stack.c b/lib/dump_stack.c
-index 6745c6230db3..7ccbc6ff80ea 100644
---- a/lib/dump_stack.c
-+++ b/lib/dump_stack.c
-@@ -33,7 +33,7 @@ asmlinkage __visible void dump_stack(void)
+Index: linux-rt-devel/lib/dump_stack.c
+===================================================================
+--- linux-rt-devel.orig/lib/dump_stack.c
++++ linux-rt-devel/lib/dump_stack.c
+@@ -33,7 +33,7 @@ asmlinkage __visible void dump_stack(voi
  	 * Permit this cpu to perform nested stack dumps while serialising
  	 * against other CPUs
  	 */
@@ -93,7 +93,7 @@ index 6745c6230db3..7ccbc6ff80ea 100644
  
  retry:
  	cpu = smp_processor_id();
-@@ -52,7 +52,7 @@ asmlinkage __visible void dump_stack(void)
+@@ -52,7 +52,7 @@ retry:
  	if (!was_locked)
  		atomic_set(&dump_lock, -1);
  
@@ -102,6 +102,3 @@ index 6745c6230db3..7ccbc6ff80ea 100644
  }
  #else
  asmlinkage __visible void dump_stack(void)
--- 
-2.5.0
-

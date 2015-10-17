@@ -28,8 +28,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  kernel/sched/core.c   |   19 ++++++++++++++++---
  3 files changed, 67 insertions(+), 7 deletions(-)
 
---- a/include/linux/sched.h
-+++ b/include/linux/sched.h
+Index: linux-rt-devel/include/linux/sched.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/sched.h
++++ linux-rt-devel/include/linux/sched.h
 @@ -234,10 +234,7 @@ extern char ___assert_task_state[1 - 2*!
  				 TASK_UNINTERRUPTIBLE | __TASK_STOPPED | \
  				 __TASK_TRACED | EXIT_ZOMBIE | EXIT_DEAD)
@@ -93,8 +95,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  /*
   * cond_resched() and cond_resched_lock(): latency reduction via
   * explicit rescheduling in places that are safe. The return
---- a/kernel/ptrace.c
-+++ b/kernel/ptrace.c
+Index: linux-rt-devel/kernel/ptrace.c
+===================================================================
+--- linux-rt-devel.orig/kernel/ptrace.c
++++ linux-rt-devel/kernel/ptrace.c
 @@ -129,7 +129,12 @@ static bool ptrace_freeze_traced(struct
  
  	spin_lock_irq(&task->sighand->siglock);
@@ -109,8 +113,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  		ret = true;
  	}
  	spin_unlock_irq(&task->sighand->siglock);
---- a/kernel/sched/core.c
-+++ b/kernel/sched/core.c
+Index: linux-rt-devel/kernel/sched/core.c
+===================================================================
+--- linux-rt-devel.orig/kernel/sched/core.c
++++ linux-rt-devel/kernel/sched/core.c
 @@ -1219,6 +1219,18 @@ struct migration_arg {
  
  static int migration_cpu_stop(void *data);
@@ -149,7 +155,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  			ncsw = p->nvcsw | LONG_MIN; /* sets MSB */
  		task_rq_unlock(rq, p, &flags);
  
-@@ -1833,7 +1846,7 @@ static void try_to_wake_up_local(struct
+@@ -1833,7 +1846,7 @@ out:
   */
  int wake_up_process(struct task_struct *p)
  {

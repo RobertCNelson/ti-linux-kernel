@@ -10,8 +10,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/Kconfig.locks |    4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
 
---- a/kernel/Kconfig.locks
-+++ b/kernel/Kconfig.locks
+Index: linux-rt-devel/kernel/Kconfig.locks
+===================================================================
+--- linux-rt-devel.orig/kernel/Kconfig.locks
++++ linux-rt-devel/kernel/Kconfig.locks
 @@ -225,11 +225,11 @@ config ARCH_SUPPORTS_ATOMIC_RMW
  
  config MUTEX_SPIN_ON_OWNER

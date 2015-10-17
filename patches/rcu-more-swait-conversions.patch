@@ -21,8 +21,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  kernel/rcu/tree_plugin.h |   18 +++++++++---------
  3 files changed, 17 insertions(+), 16 deletions(-)
 
---- a/kernel/rcu/tree.c
-+++ b/kernel/rcu/tree.c
+Index: linux-rt-devel/kernel/rcu/tree.c
+===================================================================
+--- linux-rt-devel.orig/kernel/rcu/tree.c
++++ linux-rt-devel/kernel/rcu/tree.c
 @@ -1567,7 +1567,7 @@ static void rcu_gp_kthread_wake(struct r
  	    !ACCESS_ONCE(rsp->gp_flags) ||
  	    !rsp->gp_kthread)
@@ -59,8 +61,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	rnp = rsp->level[rcu_num_lvls - 1];
  	for_each_possible_cpu(i) {
  		while (i > rnp->grphi)
---- a/kernel/rcu/tree.h
-+++ b/kernel/rcu/tree.h
+Index: linux-rt-devel/kernel/rcu/tree.h
+===================================================================
+--- linux-rt-devel.orig/kernel/rcu/tree.h
++++ linux-rt-devel/kernel/rcu/tree.h
 @@ -27,6 +27,7 @@
  #include <linux/threads.h>
  #include <linux/cpumask.h>
@@ -96,8 +100,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	short gp_flags;				/* Commands for GP task. */
  	short gp_state;				/* GP kthread sleep state. */
  
---- a/kernel/rcu/tree_plugin.h
-+++ b/kernel/rcu/tree_plugin.h
+Index: linux-rt-devel/kernel/rcu/tree_plugin.h
+===================================================================
+--- linux-rt-devel.orig/kernel/rcu/tree_plugin.h
++++ linux-rt-devel/kernel/rcu/tree_plugin.h
 @@ -1864,7 +1864,7 @@ early_param("rcu_nocb_poll", parse_rcu_n
   */
  static void rcu_nocb_gp_cleanup(struct rcu_state *rsp, struct rcu_node *rnp)
@@ -136,7 +142,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  			rnp->nocb_gp_wq[c & 0x1],
  			(d = ULONG_CMP_GE(ACCESS_ONCE(rnp->completed), c)));
  		if (likely(d))
-@@ -2149,7 +2149,7 @@ static void nocb_leader_wait(struct rcu_
+@@ -2149,7 +2149,7 @@ wait_again:
  	/* Wait for callbacks to appear. */
  	if (!rcu_nocb_poll) {
  		trace_rcu_nocb_wake(my_rdp->rsp->name, my_rdp->cpu, "Sleep");
@@ -145,7 +151,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  				!ACCESS_ONCE(my_rdp->nocb_leader_sleep));
  		/* Memory barrier handled by smp_mb() calls below and repoll. */
  	} else if (firsttime) {
-@@ -2224,7 +2224,7 @@ static void nocb_leader_wait(struct rcu_
+@@ -2224,7 +2224,7 @@ wait_again:
  			 * List was empty, wake up the follower.
  			 * Memory barriers supplied by atomic_long_add().
  			 */

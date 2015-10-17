@@ -48,8 +48,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  mm/memory.c            |   18 ++++++------------
  2 files changed, 8 insertions(+), 13 deletions(-)
 
---- a/include/linux/kernel.h
-+++ b/include/linux/kernel.h
+Index: linux-rt-devel/include/linux/kernel.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/kernel.h
++++ linux-rt-devel/include/linux/kernel.h
 @@ -244,7 +244,8 @@ static inline u32 reciprocal_scale(u32 v
  
  #if defined(CONFIG_MMU) && \
@@ -60,9 +62,11 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  #else
  static inline void might_fault(void) { }
  #endif
---- a/mm/memory.c
-+++ b/mm/memory.c
-@@ -3737,7 +3737,7 @@ void print_vma_addr(char *prefix, unsign
+Index: linux-rt-devel/mm/memory.c
+===================================================================
+--- linux-rt-devel.orig/mm/memory.c
++++ linux-rt-devel/mm/memory.c
+@@ -3743,7 +3743,7 @@ void print_vma_addr(char *prefix, unsign
  }
  
  #if defined(CONFIG_PROVE_LOCKING) || defined(CONFIG_DEBUG_ATOMIC_SLEEP)
@@ -71,7 +75,7 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  {
  	/*
  	 * Some code (nfs/sunrpc) uses socket ops on kernel memory while
-@@ -3747,21 +3747,15 @@ void might_fault(void)
+@@ -3753,21 +3753,15 @@ void might_fault(void)
  	 */
  	if (segment_eq(get_fs(), KERNEL_DS))
  		return;

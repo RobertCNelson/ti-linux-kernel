@@ -32,8 +32,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  drivers/gpio/gpio-omap.c |   78 +++++++++++++++++++++++------------------------
  1 file changed, 39 insertions(+), 39 deletions(-)
 
---- a/drivers/gpio/gpio-omap.c
-+++ b/drivers/gpio/gpio-omap.c
+Index: linux-rt-devel/drivers/gpio/gpio-omap.c
+===================================================================
+--- linux-rt-devel.orig/drivers/gpio/gpio-omap.c
++++ linux-rt-devel/drivers/gpio/gpio-omap.c
 @@ -57,7 +57,7 @@ struct gpio_bank {
  	u32 saved_datain;
  	u32 level_mask;
@@ -270,7 +272,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	/*
  	 * Only edges can generate a wakeup event to the PRCM.
-@@ -1299,7 +1299,7 @@ static int omap_gpio_runtime_suspend(str
+@@ -1299,7 +1299,7 @@ update_gpio_context_count:
  				bank->get_context_loss_count(bank->dev);
  
  	omap_gpio_dbck_disable(bank);

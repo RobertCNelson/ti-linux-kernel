@@ -17,8 +17,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/time/posix-cpu-timers.c |  198 +++++++++++++++++++++++++++++++++++++++--
  4 files changed, 205 insertions(+), 6 deletions(-)
 
---- a/include/linux/init_task.h
-+++ b/include/linux/init_task.h
+Index: linux-rt-devel/include/linux/init_task.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/init_task.h
++++ linux-rt-devel/include/linux/init_task.h
 @@ -147,6 +147,12 @@ extern struct task_group root_task_group
  # define INIT_PERF_EVENTS(tsk)
  #endif
@@ -40,8 +42,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	.pids = {							\
  		[PIDTYPE_PID]  = INIT_PID_LINK(PIDTYPE_PID),		\
  		[PIDTYPE_PGID] = INIT_PID_LINK(PIDTYPE_PGID),		\
---- a/include/linux/sched.h
-+++ b/include/linux/sched.h
+Index: linux-rt-devel/include/linux/sched.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/sched.h
++++ linux-rt-devel/include/linux/sched.h
 @@ -1501,6 +1501,9 @@ struct task_struct {
  
  	struct task_cputime cputime_expires;
@@ -52,8 +56,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  /* process credentials */
  	const struct cred __rcu *real_cred; /* objective and real subjective task
---- a/kernel/fork.c
-+++ b/kernel/fork.c
+Index: linux-rt-devel/kernel/fork.c
+===================================================================
+--- linux-rt-devel.orig/kernel/fork.c
++++ linux-rt-devel/kernel/fork.c
 @@ -1214,6 +1214,9 @@ static void rt_mutex_init_task(struct ta
   */
  static void posix_cpu_timers_init(struct task_struct *tsk)
@@ -64,8 +70,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	tsk->cputime_expires.prof_exp = 0;
  	tsk->cputime_expires.virt_exp = 0;
  	tsk->cputime_expires.sched_exp = 0;
---- a/kernel/time/posix-cpu-timers.c
-+++ b/kernel/time/posix-cpu-timers.c
+Index: linux-rt-devel/kernel/time/posix-cpu-timers.c
+===================================================================
+--- linux-rt-devel.orig/kernel/time/posix-cpu-timers.c
++++ linux-rt-devel/kernel/time/posix-cpu-timers.c
 @@ -3,6 +3,7 @@
   */
  

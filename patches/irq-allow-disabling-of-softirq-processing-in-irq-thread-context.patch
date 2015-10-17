@@ -18,8 +18,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/softirq.c          |    9 +++++++++
  5 files changed, 38 insertions(+), 2 deletions(-)
 
---- a/include/linux/interrupt.h
-+++ b/include/linux/interrupt.h
+Index: linux-rt-devel/include/linux/interrupt.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/interrupt.h
++++ linux-rt-devel/include/linux/interrupt.h
 @@ -61,6 +61,7 @@
   *                interrupt handler after suspending interrupts. For system
   *                wakeup devices users need to implement wakeup detection in
@@ -36,8 +38,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  #define IRQF_TIMER		(__IRQF_TIMER | IRQF_NO_SUSPEND | IRQF_NO_THREAD)
  
---- a/include/linux/irq.h
-+++ b/include/linux/irq.h
+Index: linux-rt-devel/include/linux/irq.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/irq.h
++++ linux-rt-devel/include/linux/irq.h
 @@ -72,6 +72,7 @@ enum irqchip_irq_state;
   * IRQ_IS_POLLED		- Always polled by another interrupt. Exclude
   *				  it from the spurious interrupt detection
@@ -62,9 +66,11 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  #define IRQ_NO_BALANCING_MASK	(IRQ_PER_CPU | IRQ_NO_BALANCING)
  
---- a/kernel/irq/manage.c
-+++ b/kernel/irq/manage.c
-@@ -900,7 +900,15 @@ irq_forced_thread_fn(struct irq_desc *de
+Index: linux-rt-devel/kernel/irq/manage.c
+===================================================================
+--- linux-rt-devel.orig/kernel/irq/manage.c
++++ linux-rt-devel/kernel/irq/manage.c
+@@ -907,7 +907,15 @@ irq_forced_thread_fn(struct irq_desc *de
  	local_bh_disable();
  	ret = action->thread_fn(action->irq, action->dev_id);
  	irq_finalize_oneshot(desc, action);
@@ -81,7 +87,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	return ret;
  }
  
-@@ -1296,6 +1304,9 @@ static int
+@@ -1357,6 +1365,9 @@ __setup_irq(unsigned int irq, struct irq
  			irqd_set(&desc->irq_data, IRQD_NO_BALANCING);
  		}
  
@@ -91,8 +97,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		/* Set default affinity mask once everything is setup */
  		setup_affinity(irq, desc, mask);
  
---- a/kernel/irq/settings.h
-+++ b/kernel/irq/settings.h
+Index: linux-rt-devel/kernel/irq/settings.h
+===================================================================
+--- linux-rt-devel.orig/kernel/irq/settings.h
++++ linux-rt-devel/kernel/irq/settings.h
 @@ -15,6 +15,7 @@ enum {
  	_IRQ_NESTED_THREAD	= IRQ_NESTED_THREAD,
  	_IRQ_PER_CPU_DEVID	= IRQ_PER_CPU_DEVID,
@@ -126,8 +134,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  static inline bool irq_settings_is_per_cpu(struct irq_desc *desc)
  {
  	return desc->status_use_accessors & _IRQ_PER_CPU;
---- a/kernel/softirq.c
-+++ b/kernel/softirq.c
+Index: linux-rt-devel/kernel/softirq.c
+===================================================================
+--- linux-rt-devel.orig/kernel/softirq.c
++++ linux-rt-devel/kernel/softirq.c
 @@ -606,6 +606,15 @@ void local_bh_enable_ip(unsigned long ip
  }
  EXPORT_SYMBOL(local_bh_enable_ip);

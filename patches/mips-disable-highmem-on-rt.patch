@@ -9,9 +9,11 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  arch/mips/Kconfig |    2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
---- a/arch/mips/Kconfig
-+++ b/arch/mips/Kconfig
-@@ -2365,7 +2365,7 @@ config CPU_R4400_WORKAROUNDS
+Index: linux-rt-devel/arch/mips/Kconfig
+===================================================================
+--- linux-rt-devel.orig/arch/mips/Kconfig
++++ linux-rt-devel/arch/mips/Kconfig
+@@ -2366,7 +2366,7 @@ config CPU_R4400_WORKAROUNDS
  #
  config HIGHMEM
  	bool "High Memory Support"

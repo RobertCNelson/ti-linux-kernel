@@ -11,8 +11,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  arch/arm/mm/highmem.c |    2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
---- a/arch/arm/mm/highmem.c
-+++ b/arch/arm/mm/highmem.c
+Index: linux-rt-devel/arch/arm/mm/highmem.c
+===================================================================
+--- linux-rt-devel.orig/arch/arm/mm/highmem.c
++++ linux-rt-devel/arch/arm/mm/highmem.c
 @@ -112,10 +112,10 @@ void __kunmap_atomic(void *kvaddr)
  			__cpuc_flush_dcache_area((void *)vaddr, PAGE_SIZE);
  #ifdef CONFIG_DEBUG_HIGHMEM

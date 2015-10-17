@@ -14,8 +14,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  kernel/locking/locktorture.c |    1 -
  1 file changed, 1 deletion(-)
 
---- a/kernel/locking/locktorture.c
-+++ b/kernel/locking/locktorture.c
+Index: linux-rt-devel/kernel/locking/locktorture.c
+===================================================================
+--- linux-rt-devel.orig/kernel/locking/locktorture.c
++++ linux-rt-devel/kernel/locking/locktorture.c
 @@ -24,7 +24,6 @@
  #include <linux/module.h>
  #include <linux/kthread.h>

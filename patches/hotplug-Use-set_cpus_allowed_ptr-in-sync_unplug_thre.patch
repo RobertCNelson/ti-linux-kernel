@@ -33,8 +33,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  kernel/cpu.c |    2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
---- a/kernel/cpu.c
-+++ b/kernel/cpu.c
+Index: linux-rt-devel/kernel/cpu.c
+===================================================================
+--- linux-rt-devel.orig/kernel/cpu.c
++++ linux-rt-devel/kernel/cpu.c
 @@ -267,7 +267,7 @@ static int sync_unplug_thread(void *data
  	 * we don't want any more work on this CPU.
  	 */

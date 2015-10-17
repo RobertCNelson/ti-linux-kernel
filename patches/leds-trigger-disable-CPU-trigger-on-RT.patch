@@ -22,8 +22,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  drivers/leds/trigger/Kconfig |    2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
---- a/drivers/leds/trigger/Kconfig
-+++ b/drivers/leds/trigger/Kconfig
+Index: linux-rt-devel/drivers/leds/trigger/Kconfig
+===================================================================
+--- linux-rt-devel.orig/drivers/leds/trigger/Kconfig
++++ linux-rt-devel/drivers/leds/trigger/Kconfig
 @@ -61,7 +61,7 @@ config LEDS_TRIGGER_BACKLIGHT
  
  config LEDS_TRIGGER_CPU

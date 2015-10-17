@@ -9,8 +9,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  lib/percpu_ida.c |   20 ++++++++++++--------
  1 file changed, 12 insertions(+), 8 deletions(-)
 
---- a/lib/percpu_ida.c
-+++ b/lib/percpu_ida.c
+Index: linux-rt-devel/lib/percpu_ida.c
+===================================================================
+--- linux-rt-devel.orig/lib/percpu_ida.c
++++ linux-rt-devel/lib/percpu_ida.c
 @@ -26,6 +26,9 @@
  #include <linux/string.h>
  #include <linux/spinlock.h>

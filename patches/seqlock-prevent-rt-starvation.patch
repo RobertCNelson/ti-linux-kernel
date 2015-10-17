@@ -26,8 +26,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  include/net/neighbour.h |    4 +--
  3 files changed, 47 insertions(+), 15 deletions(-)
 
---- a/include/linux/seqlock.h
-+++ b/include/linux/seqlock.h
+Index: linux-rt-devel/include/linux/seqlock.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/seqlock.h
++++ linux-rt-devel/include/linux/seqlock.h
 @@ -219,20 +219,30 @@ static inline int read_seqcount_retry(co
  	return __read_seqcount_retry(s, start);
  }
@@ -157,8 +159,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	spin_unlock_irqrestore(&sl->lock, flags);
  }
  
---- a/include/net/dst.h
-+++ b/include/net/dst.h
+Index: linux-rt-devel/include/net/dst.h
+===================================================================
+--- linux-rt-devel.orig/include/net/dst.h
++++ linux-rt-devel/include/net/dst.h
 @@ -403,7 +403,7 @@ static inline void dst_confirm(struct ds
  static inline int dst_neigh_output(struct dst_entry *dst, struct neighbour *n,
  				   struct sk_buff *skb)
@@ -168,8 +172,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	if (dst->pending_confirm) {
  		unsigned long now = jiffies;
---- a/include/net/neighbour.h
-+++ b/include/net/neighbour.h
+Index: linux-rt-devel/include/net/neighbour.h
+===================================================================
+--- linux-rt-devel.orig/include/net/neighbour.h
++++ linux-rt-devel/include/net/neighbour.h
 @@ -445,7 +445,7 @@ static inline int neigh_hh_bridge(struct
  }
  #endif

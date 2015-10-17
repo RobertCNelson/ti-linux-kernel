@@ -14,8 +14,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  ipc/msg.c |   16 +++++++++++++++-
  1 file changed, 15 insertions(+), 1 deletion(-)
 
---- a/ipc/msg.c
-+++ b/ipc/msg.c
+Index: linux-rt-devel/ipc/msg.c
+===================================================================
+--- linux-rt-devel.orig/ipc/msg.c
++++ linux-rt-devel/ipc/msg.c
 @@ -188,6 +188,12 @@ static void expunge_all(struct msg_queue
  	struct msg_receiver *msr, *t;
  

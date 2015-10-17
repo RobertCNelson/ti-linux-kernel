@@ -41,9 +41,11 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  drivers/usb/core/hcd.c |    4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
 
---- a/drivers/usb/core/hcd.c
-+++ b/drivers/usb/core/hcd.c
-@@ -1681,9 +1681,9 @@ static void __usb_hcd_giveback_urb(struc
+Index: linux-rt-devel/drivers/usb/core/hcd.c
+===================================================================
+--- linux-rt-devel.orig/drivers/usb/core/hcd.c
++++ linux-rt-devel/drivers/usb/core/hcd.c
+@@ -1684,9 +1684,9 @@ static void __usb_hcd_giveback_urb(struc
  	 * and no one may trigger the above deadlock situation when
  	 * running complete() in tasklet.
  	 */

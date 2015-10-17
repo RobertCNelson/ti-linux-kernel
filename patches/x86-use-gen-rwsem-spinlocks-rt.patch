@@ -11,8 +11,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  arch/x86/Kconfig |    5 ++++-
  1 file changed, 4 insertions(+), 1 deletion(-)
 
---- a/arch/x86/Kconfig
-+++ b/arch/x86/Kconfig
+Index: linux-rt-devel/arch/x86/Kconfig
+===================================================================
+--- linux-rt-devel.orig/arch/x86/Kconfig
++++ linux-rt-devel/arch/x86/Kconfig
 @@ -203,8 +203,11 @@ config ARCH_MAY_HAVE_PC_FDC
  	def_bool y
  	depends on ISA_DMA_API

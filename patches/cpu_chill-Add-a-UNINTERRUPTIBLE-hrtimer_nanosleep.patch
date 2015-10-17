@@ -31,8 +31,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  kernel/time/hrtimer.c |   25 ++++++++++++++++++-------
  1 file changed, 18 insertions(+), 7 deletions(-)
 
---- a/kernel/time/hrtimer.c
-+++ b/kernel/time/hrtimer.c
+Index: linux-rt-devel/kernel/time/hrtimer.c
+===================================================================
+--- linux-rt-devel.orig/kernel/time/hrtimer.c
++++ linux-rt-devel/kernel/time/hrtimer.c
 @@ -1746,12 +1746,13 @@ void hrtimer_init_sleeper(struct hrtimer
  }
  EXPORT_SYMBOL_GPL(hrtimer_init_sleeper);
@@ -59,7 +61,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  		goto out;
  
  	rmtp = restart->nanosleep.rmtp;
-@@ -1812,8 +1814,10 @@ long __sched hrtimer_nanosleep_restart(s
+@@ -1812,8 +1814,10 @@ out:
  	return ret;
  }
  
@@ -81,7 +83,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  		goto out;
  
  	/* Absolute timers do not update the rmtp value and restart: */
-@@ -1853,6 +1857,12 @@ long hrtimer_nanosleep(struct timespec *
+@@ -1853,6 +1857,12 @@ out:
  	return ret;
  }
  

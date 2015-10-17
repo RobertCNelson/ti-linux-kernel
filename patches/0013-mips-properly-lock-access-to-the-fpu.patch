@@ -14,8 +14,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  arch/mips/kernel/signal-common.h |    9 ++-------
  1 file changed, 2 insertions(+), 7 deletions(-)
 
---- a/arch/mips/kernel/signal-common.h
-+++ b/arch/mips/kernel/signal-common.h
+Index: linux-rt-devel/arch/mips/kernel/signal-common.h
+===================================================================
+--- linux-rt-devel.orig/arch/mips/kernel/signal-common.h
++++ linux-rt-devel/arch/mips/kernel/signal-common.h
 @@ -28,12 +28,7 @@ extern void __user *get_sigframe(struct
  extern int fpcsr_pending(unsigned int __user *fpcsr);
  

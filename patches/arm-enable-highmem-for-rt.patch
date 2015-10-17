@@ -11,8 +11,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  include/linux/highmem.h          |    1 
  3 files changed, 50 insertions(+), 5 deletions(-)
 
---- a/arch/arm/include/asm/switch_to.h
-+++ b/arch/arm/include/asm/switch_to.h
+Index: linux-rt-devel/arch/arm/include/asm/switch_to.h
+===================================================================
+--- linux-rt-devel.orig/arch/arm/include/asm/switch_to.h
++++ linux-rt-devel/arch/arm/include/asm/switch_to.h
 @@ -3,6 +3,13 @@
  
  #include <linux/thread_info.h>
@@ -35,8 +37,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	last = __switch_to(prev,task_thread_info(prev), task_thread_info(next));	\
  } while (0)
  
---- a/arch/arm/mm/highmem.c
-+++ b/arch/arm/mm/highmem.c
+Index: linux-rt-devel/arch/arm/mm/highmem.c
+===================================================================
+--- linux-rt-devel.orig/arch/arm/mm/highmem.c
++++ linux-rt-devel/arch/arm/mm/highmem.c
 @@ -54,12 +54,13 @@ EXPORT_SYMBOL(kunmap);
  
  void *kmap_atomic(struct page *page)
@@ -136,8 +140,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +	}
 +}
 +#endif
---- a/include/linux/highmem.h
-+++ b/include/linux/highmem.h
+Index: linux-rt-devel/include/linux/highmem.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/highmem.h
++++ linux-rt-devel/include/linux/highmem.h
 @@ -7,6 +7,7 @@
  #include <linux/mm.h>
  #include <linux/uaccess.h>

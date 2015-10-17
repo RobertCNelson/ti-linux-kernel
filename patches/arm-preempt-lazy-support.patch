@@ -13,8 +13,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  arch/arm/kernel/signal.c           |    3 ++-
  5 files changed, 18 insertions(+), 3 deletions(-)
 
---- a/arch/arm/Kconfig
-+++ b/arch/arm/Kconfig
+Index: linux-rt-devel/arch/arm/Kconfig
+===================================================================
+--- linux-rt-devel.orig/arch/arm/Kconfig
++++ linux-rt-devel/arch/arm/Kconfig
 @@ -66,6 +66,7 @@ config ARM
  	select HAVE_PERF_EVENTS
  	select HAVE_PERF_REGS
@@ -23,8 +25,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	select HAVE_RCU_TABLE_FREE if (SMP && ARM_LPAE)
  	select HAVE_REGS_AND_STACK_ACCESS_API
  	select HAVE_SYSCALL_TRACEPOINTS
---- a/arch/arm/include/asm/thread_info.h
-+++ b/arch/arm/include/asm/thread_info.h
+Index: linux-rt-devel/arch/arm/include/asm/thread_info.h
+===================================================================
+--- linux-rt-devel.orig/arch/arm/include/asm/thread_info.h
++++ linux-rt-devel/arch/arm/include/asm/thread_info.h
 @@ -50,6 +50,7 @@ struct cpu_context_save {
  struct thread_info {
  	unsigned long		flags;		/* low level flags */
@@ -49,8 +53,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #define _TIF_UPROBE		(1 << TIF_UPROBE)
  #define _TIF_SYSCALL_TRACE	(1 << TIF_SYSCALL_TRACE)
  #define _TIF_SYSCALL_AUDIT	(1 << TIF_SYSCALL_AUDIT)
---- a/arch/arm/kernel/asm-offsets.c
-+++ b/arch/arm/kernel/asm-offsets.c
+Index: linux-rt-devel/arch/arm/kernel/asm-offsets.c
+===================================================================
+--- linux-rt-devel.orig/arch/arm/kernel/asm-offsets.c
++++ linux-rt-devel/arch/arm/kernel/asm-offsets.c
 @@ -65,6 +65,7 @@ int main(void)
    BLANK();
    DEFINE(TI_FLAGS,		offsetof(struct thread_info, flags));
@@ -59,9 +65,11 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
    DEFINE(TI_ADDR_LIMIT,		offsetof(struct thread_info, addr_limit));
    DEFINE(TI_TASK,		offsetof(struct thread_info, task));
    DEFINE(TI_CPU,		offsetof(struct thread_info, cpu));
---- a/arch/arm/kernel/entry-armv.S
-+++ b/arch/arm/kernel/entry-armv.S
-@@ -208,11 +208,18 @@ ENDPROC(__dabt_svc)
+Index: linux-rt-devel/arch/arm/kernel/entry-armv.S
+===================================================================
+--- linux-rt-devel.orig/arch/arm/kernel/entry-armv.S
++++ linux-rt-devel/arch/arm/kernel/entry-armv.S
+@@ -208,11 +208,18 @@ __irq_svc:
  #ifdef CONFIG_PREEMPT
  	get_thread_info tsk
  	ldr	r8, [tsk, #TI_PREEMPT]		@ get preempt count
@@ -82,7 +90,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #endif
  
  	svc_exit r5, irq = 1			@ return from exception
-@@ -227,6 +234,8 @@ ENDPROC(__irq_svc)
+@@ -227,6 +234,8 @@ svc_preempt:
  1:	bl	preempt_schedule_irq		@ irq en/disable is done inside
  	ldr	r0, [tsk, #TI_FLAGS]		@ get new tasks TI_FLAGS
  	tst	r0, #_TIF_NEED_RESCHED
@@ -91,8 +99,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	reteq	r8				@ go again
  	b	1b
  #endif
---- a/arch/arm/kernel/signal.c
-+++ b/arch/arm/kernel/signal.c
+Index: linux-rt-devel/arch/arm/kernel/signal.c
+===================================================================
+--- linux-rt-devel.orig/arch/arm/kernel/signal.c
++++ linux-rt-devel/arch/arm/kernel/signal.c
 @@ -563,7 +563,8 @@ asmlinkage int
  do_work_pending(struct pt_regs *regs, unsigned int thread_flags, int syscall)
  {

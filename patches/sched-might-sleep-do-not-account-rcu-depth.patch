@@ -11,8 +11,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/sched/core.c      |    3 ++-
  2 files changed, 9 insertions(+), 1 deletion(-)
 
---- a/include/linux/rcupdate.h
-+++ b/include/linux/rcupdate.h
+Index: linux-rt-devel/include/linux/rcupdate.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/rcupdate.h
++++ linux-rt-devel/include/linux/rcupdate.h
 @@ -260,6 +260,11 @@ void synchronize_rcu(void);
   * types of kernel builds, the rcu_read_lock() nesting depth is unknowable.
   */
@@ -34,9 +36,11 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #endif /* #else #ifdef CONFIG_PREEMPT_RCU */
  
  /* Internal to kernel */
---- a/kernel/sched/core.c
-+++ b/kernel/sched/core.c
-@@ -7496,7 +7496,8 @@ void __init sched_init(void)
+Index: linux-rt-devel/kernel/sched/core.c
+===================================================================
+--- linux-rt-devel.orig/kernel/sched/core.c
++++ linux-rt-devel/kernel/sched/core.c
+@@ -7504,7 +7504,8 @@ void __init sched_init(void)
  #ifdef CONFIG_DEBUG_ATOMIC_SLEEP
  static inline int preempt_count_equals(int preempt_offset)
  {

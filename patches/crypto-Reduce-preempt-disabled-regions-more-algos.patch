@@ -41,8 +41,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  arch/x86/crypto/glue_helper.c    |   31 +++++++++++++++----------------
  2 files changed, 24 insertions(+), 28 deletions(-)
 
---- a/arch/x86/crypto/cast5_avx_glue.c
-+++ b/arch/x86/crypto/cast5_avx_glue.c
+Index: linux-rt-devel/arch/x86/crypto/cast5_avx_glue.c
+===================================================================
+--- linux-rt-devel.orig/arch/x86/crypto/cast5_avx_glue.c
++++ linux-rt-devel/arch/x86/crypto/cast5_avx_glue.c
 @@ -60,7 +60,7 @@ static inline void cast5_fpu_end(bool fp
  static int ecb_crypt(struct blkcipher_desc *desc, struct blkcipher_walk *walk,
  		     bool enc)
@@ -73,7 +75,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	return err;
  }
  
-@@ -228,7 +227,7 @@ static unsigned int __cbc_decrypt(struct
+@@ -228,7 +227,7 @@ done:
  static int cbc_decrypt(struct blkcipher_desc *desc, struct scatterlist *dst,
  		       struct scatterlist *src, unsigned int nbytes)
  {
@@ -97,7 +99,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	return err;
  }
  
-@@ -312,7 +310,7 @@ static unsigned int __ctr_crypt(struct b
+@@ -312,7 +310,7 @@ done:
  static int ctr_crypt(struct blkcipher_desc *desc, struct scatterlist *dst,
  		     struct scatterlist *src, unsigned int nbytes)
  {
@@ -122,8 +124,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	if (walk.nbytes) {
  		ctr_crypt_final(desc, &walk);
  		err = blkcipher_walk_done(desc, &walk, 0);
---- a/arch/x86/crypto/glue_helper.c
-+++ b/arch/x86/crypto/glue_helper.c
+Index: linux-rt-devel/arch/x86/crypto/glue_helper.c
+===================================================================
+--- linux-rt-devel.orig/arch/x86/crypto/glue_helper.c
++++ linux-rt-devel/arch/x86/crypto/glue_helper.c
 @@ -39,7 +39,7 @@ static int __glue_ecb_crypt_128bit(const
  	void *ctx = crypto_blkcipher_ctx(desc->tfm);
  	const unsigned int bsize = 128 / 8;

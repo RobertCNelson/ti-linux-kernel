@@ -21,8 +21,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  drivers/net/rionet.c                                 |    6 +-----
  7 files changed, 9 insertions(+), 31 deletions(-)
 
---- a/drivers/net/ethernet/atheros/atl1c/atl1c_main.c
-+++ b/drivers/net/ethernet/atheros/atl1c/atl1c_main.c
+Index: linux-rt-devel/drivers/net/ethernet/atheros/atl1c/atl1c_main.c
+===================================================================
+--- linux-rt-devel.orig/drivers/net/ethernet/atheros/atl1c/atl1c_main.c
++++ linux-rt-devel/drivers/net/ethernet/atheros/atl1c/atl1c_main.c
 @@ -2213,11 +2213,7 @@ static netdev_tx_t atl1c_xmit_frame(stru
  	}
  
@@ -36,8 +38,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	if (atl1c_tpd_avail(adapter, type) < tpd_req) {
  		/* no enough descriptor, just stop queue */
---- a/drivers/net/ethernet/atheros/atl1e/atl1e_main.c
-+++ b/drivers/net/ethernet/atheros/atl1e/atl1e_main.c
+Index: linux-rt-devel/drivers/net/ethernet/atheros/atl1e/atl1e_main.c
+===================================================================
+--- linux-rt-devel.orig/drivers/net/ethernet/atheros/atl1e/atl1e_main.c
++++ linux-rt-devel/drivers/net/ethernet/atheros/atl1e/atl1e_main.c
 @@ -1880,8 +1880,7 @@ static netdev_tx_t atl1e_xmit_frame(stru
  		return NETDEV_TX_OK;
  	}
@@ -48,8 +52,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	if (atl1e_tpd_avail(adapter) < tpd_req) {
  		/* no enough descriptor, just stop queue */
---- a/drivers/net/ethernet/chelsio/cxgb/sge.c
-+++ b/drivers/net/ethernet/chelsio/cxgb/sge.c
+Index: linux-rt-devel/drivers/net/ethernet/chelsio/cxgb/sge.c
+===================================================================
+--- linux-rt-devel.orig/drivers/net/ethernet/chelsio/cxgb/sge.c
++++ linux-rt-devel/drivers/net/ethernet/chelsio/cxgb/sge.c
 @@ -1664,8 +1664,7 @@ static int t1_sge_tx(struct sk_buff *skb
  	struct cmdQ *q = &sge->cmdQ[qid];
  	unsigned int credits, pidx, genbit, count, use_sched_skb = 0;
@@ -60,8 +66,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	reclaim_completed_tx(sge, q);
  
---- a/drivers/net/ethernet/neterion/s2io.c
-+++ b/drivers/net/ethernet/neterion/s2io.c
+Index: linux-rt-devel/drivers/net/ethernet/neterion/s2io.c
+===================================================================
+--- linux-rt-devel.orig/drivers/net/ethernet/neterion/s2io.c
++++ linux-rt-devel/drivers/net/ethernet/neterion/s2io.c
 @@ -4084,12 +4084,7 @@ static netdev_tx_t s2io_xmit(struct sk_b
  			[skb->priority & (MAX_TX_FIFOS - 1)];
  	fifo = &mac_control->fifos[queue];
@@ -76,8 +84,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	if (sp->config.multiq) {
  		if (__netif_subqueue_stopped(dev, fifo->fifo_no)) {
---- a/drivers/net/ethernet/oki-semi/pch_gbe/pch_gbe_main.c
-+++ b/drivers/net/ethernet/oki-semi/pch_gbe/pch_gbe_main.c
+Index: linux-rt-devel/drivers/net/ethernet/oki-semi/pch_gbe/pch_gbe_main.c
+===================================================================
+--- linux-rt-devel.orig/drivers/net/ethernet/oki-semi/pch_gbe/pch_gbe_main.c
++++ linux-rt-devel/drivers/net/ethernet/oki-semi/pch_gbe/pch_gbe_main.c
 @@ -2137,10 +2137,8 @@ static int pch_gbe_xmit_frame(struct sk_
  	struct pch_gbe_tx_ring *tx_ring = adapter->tx_ring;
  	unsigned long flags;
@@ -91,8 +101,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	if (unlikely(!PCH_GBE_DESC_UNUSED(tx_ring))) {
  		netif_stop_queue(netdev);
  		spin_unlock_irqrestore(&tx_ring->tx_lock, flags);
---- a/drivers/net/ethernet/tehuti/tehuti.c
-+++ b/drivers/net/ethernet/tehuti/tehuti.c
+Index: linux-rt-devel/drivers/net/ethernet/tehuti/tehuti.c
+===================================================================
+--- linux-rt-devel.orig/drivers/net/ethernet/tehuti/tehuti.c
++++ linux-rt-devel/drivers/net/ethernet/tehuti/tehuti.c
 @@ -1629,13 +1629,8 @@ static netdev_tx_t bdx_tx_transmit(struc
  	unsigned long flags;
  
@@ -109,8 +121,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	/* build tx descriptor */
  	BDX_ASSERT(f->m.wptr >= f->m.memsz);	/* started with valid wptr */
---- a/drivers/net/rionet.c
-+++ b/drivers/net/rionet.c
+Index: linux-rt-devel/drivers/net/rionet.c
+===================================================================
+--- linux-rt-devel.orig/drivers/net/rionet.c
++++ linux-rt-devel/drivers/net/rionet.c
 @@ -174,11 +174,7 @@ static int rionet_start_xmit(struct sk_b
  	unsigned long flags;
  	int add_num = 1;

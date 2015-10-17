@@ -10,8 +10,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  kernel/sched/deadline.c |    1 +
  1 file changed, 1 insertion(+)
 
---- a/kernel/sched/deadline.c
-+++ b/kernel/sched/deadline.c
+Index: linux-rt-devel/kernel/sched/deadline.c
+===================================================================
+--- linux-rt-devel.orig/kernel/sched/deadline.c
++++ linux-rt-devel/kernel/sched/deadline.c
 @@ -637,6 +637,7 @@ void init_dl_task_timer(struct sched_dl_
  
  	hrtimer_init(timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);

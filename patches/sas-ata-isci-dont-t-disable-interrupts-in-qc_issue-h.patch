@@ -56,8 +56,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  drivers/scsi/libsas/sas_ata.c |    4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
 
---- a/drivers/scsi/libsas/sas_ata.c
-+++ b/drivers/scsi/libsas/sas_ata.c
+Index: linux-rt-devel/drivers/scsi/libsas/sas_ata.c
+===================================================================
+--- linux-rt-devel.orig/drivers/scsi/libsas/sas_ata.c
++++ linux-rt-devel/drivers/scsi/libsas/sas_ata.c
 @@ -190,7 +190,7 @@ static unsigned int sas_ata_qc_issue(str
  	/* TODO: audit callers to ensure they are ready for qc_issue to
  	 * unconditionally re-enable interrupts

@@ -10,8 +10,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  mm/slub.c |   13 +++++--------
  1 file changed, 5 insertions(+), 8 deletions(-)
 
---- a/mm/slub.c
-+++ b/mm/slub.c
+Index: linux-rt-devel/mm/slub.c
+===================================================================
+--- linux-rt-devel.orig/mm/slub.c
++++ linux-rt-devel/mm/slub.c
 @@ -1355,14 +1355,15 @@ static struct page *allocate_slab(struct
  	gfp_t alloc_gfp;
  	void *start, *p;

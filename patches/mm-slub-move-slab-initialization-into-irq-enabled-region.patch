@@ -25,8 +25,10 @@ Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
  mm/slub.c |   89 +++++++++++++++++++++++++++++---------------------------------
  1 file changed, 42 insertions(+), 47 deletions(-)
 
---- a/mm/slub.c
-+++ b/mm/slub.c
+Index: linux-rt-devel/mm/slub.c
+===================================================================
+--- linux-rt-devel.orig/mm/slub.c
++++ linux-rt-devel/mm/slub.c
 @@ -1306,6 +1306,17 @@ static inline void slab_free_hook(struct
  	kasan_slab_free(s, x);
  }
@@ -124,7 +126,7 @@ Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
 -	inc_slabs_node(s, page_to_nid(page), page->objects);
  	page->slab_cache = s;
  	__SetPageSlab(page);
- 	if (page->pfmemalloc)
+ 	if (page_is_pfmemalloc(page))
 @@ -1448,10 +1419,34 @@ static struct page *new_slab(struct kmem
  	page->freelist = start;
  	page->inuse = page->objects;

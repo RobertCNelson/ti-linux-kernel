@@ -11,8 +11,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  drivers/gpu/drm/i915/i915_gem_execbuffer.c |    3 ++-
  1 file changed, 2 insertions(+), 1 deletion(-)
 
---- a/drivers/gpu/drm/i915/i915_gem_execbuffer.c
-+++ b/drivers/gpu/drm/i915/i915_gem_execbuffer.c
+Index: linux-rt-devel/drivers/gpu/drm/i915/i915_gem_execbuffer.c
+===================================================================
+--- linux-rt-devel.orig/drivers/gpu/drm/i915/i915_gem_execbuffer.c
++++ linux-rt-devel/drivers/gpu/drm/i915/i915_gem_execbuffer.c
 @@ -32,6 +32,7 @@
  #include "i915_trace.h"
  #include "intel_drv.h"

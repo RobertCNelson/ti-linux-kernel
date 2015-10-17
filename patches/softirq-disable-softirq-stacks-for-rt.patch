@@ -17,8 +17,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  include/linux/interrupt.h     |    2 +-
  8 files changed, 15 insertions(+), 1 deletion(-)
 
---- a/arch/powerpc/kernel/irq.c
-+++ b/arch/powerpc/kernel/irq.c
+Index: linux-rt-devel/arch/powerpc/kernel/irq.c
+===================================================================
+--- linux-rt-devel.orig/arch/powerpc/kernel/irq.c
++++ linux-rt-devel/arch/powerpc/kernel/irq.c
 @@ -614,6 +614,7 @@ void irq_ctx_init(void)
  	}
  }
@@ -35,8 +37,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  irq_hw_number_t virq_to_hw(unsigned int virq)
  {
---- a/arch/powerpc/kernel/misc_32.S
-+++ b/arch/powerpc/kernel/misc_32.S
+Index: linux-rt-devel/arch/powerpc/kernel/misc_32.S
+===================================================================
+--- linux-rt-devel.orig/arch/powerpc/kernel/misc_32.S
++++ linux-rt-devel/arch/powerpc/kernel/misc_32.S
 @@ -40,6 +40,7 @@
   * We store the saved ksp_limit in the unused part
   * of the STACK_FRAME_OVERHEAD
@@ -45,7 +49,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  _GLOBAL(call_do_softirq)
  	mflr	r0
  	stw	r0,4(r1)
-@@ -56,6 +57,7 @@
+@@ -56,6 +57,7 @@ _GLOBAL(call_do_softirq)
  	stw	r10,THREAD+KSP_LIMIT(r2)
  	mtlr	r0
  	blr
@@ -53,8 +57,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  /*
   * void call_do_irq(struct pt_regs *regs, struct thread_info *irqtp);
---- a/arch/powerpc/kernel/misc_64.S
-+++ b/arch/powerpc/kernel/misc_64.S
+Index: linux-rt-devel/arch/powerpc/kernel/misc_64.S
+===================================================================
+--- linux-rt-devel.orig/arch/powerpc/kernel/misc_64.S
++++ linux-rt-devel/arch/powerpc/kernel/misc_64.S
 @@ -29,6 +29,7 @@
  
  	.text
@@ -63,7 +69,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  _GLOBAL(call_do_softirq)
  	mflr	r0
  	std	r0,16(r1)
-@@ -39,6 +40,7 @@
+@@ -39,6 +40,7 @@ _GLOBAL(call_do_softirq)
  	ld	r0,16(r1)
  	mtlr	r0
  	blr
@@ -71,8 +77,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  _GLOBAL(call_do_irq)
  	mflr	r0
---- a/arch/sh/kernel/irq.c
-+++ b/arch/sh/kernel/irq.c
+Index: linux-rt-devel/arch/sh/kernel/irq.c
+===================================================================
+--- linux-rt-devel.orig/arch/sh/kernel/irq.c
++++ linux-rt-devel/arch/sh/kernel/irq.c
 @@ -147,6 +147,7 @@ void irq_ctx_exit(int cpu)
  	hardirq_ctx[cpu] = NULL;
  }
@@ -89,8 +97,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #else
  static inline void handle_one_irq(unsigned int irq)
  {
---- a/arch/sparc/kernel/irq_64.c
-+++ b/arch/sparc/kernel/irq_64.c
+Index: linux-rt-devel/arch/sparc/kernel/irq_64.c
+===================================================================
+--- linux-rt-devel.orig/arch/sparc/kernel/irq_64.c
++++ linux-rt-devel/arch/sparc/kernel/irq_64.c
 @@ -849,6 +849,7 @@ void __irq_entry handler_irq(int pil, st
  	set_irq_regs(old_regs);
  }
@@ -107,9 +117,11 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  #ifdef CONFIG_HOTPLUG_CPU
  void fixup_irqs(void)
---- a/arch/x86/kernel/entry_64.S
-+++ b/arch/x86/kernel/entry_64.S
-@@ -1120,6 +1120,7 @@ END(native_load_gs_index)
+Index: linux-rt-devel/arch/x86/kernel/entry_64.S
+===================================================================
+--- linux-rt-devel.orig/arch/x86/kernel/entry_64.S
++++ linux-rt-devel/arch/x86/kernel/entry_64.S
+@@ -1118,6 +1118,7 @@ bad_gs:
  	jmp  2b
  	.previous
  
@@ -117,7 +129,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /* Call softirq on interrupt stack. Interrupts are off. */
  ENTRY(do_softirq_own_stack)
  	CFI_STARTPROC
-@@ -1139,6 +1140,7 @@ ENTRY(do_softirq_own_stack)
+@@ -1137,6 +1138,7 @@ ENTRY(do_softirq_own_stack)
  	ret
  	CFI_ENDPROC
  END(do_softirq_own_stack)
@@ -125,8 +137,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  #ifdef CONFIG_XEN
  idtentry xen_hypervisor_callback xen_do_hypervisor_callback has_error_code=0
---- a/arch/x86/kernel/irq_32.c
-+++ b/arch/x86/kernel/irq_32.c
+Index: linux-rt-devel/arch/x86/kernel/irq_32.c
+===================================================================
+--- linux-rt-devel.orig/arch/x86/kernel/irq_32.c
++++ linux-rt-devel/arch/x86/kernel/irq_32.c
 @@ -135,6 +135,7 @@ void irq_ctx_init(int cpu)
  	       cpu, per_cpu(hardirq_stack, cpu),  per_cpu(softirq_stack, cpu));
  }
@@ -143,9 +157,11 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  bool handle_irq(unsigned irq, struct pt_regs *regs)
  {
---- a/include/linux/interrupt.h
-+++ b/include/linux/interrupt.h
-@@ -443,7 +443,7 @@ struct softirq_action
+Index: linux-rt-devel/include/linux/interrupt.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/interrupt.h
++++ linux-rt-devel/include/linux/interrupt.h
+@@ -445,7 +445,7 @@ struct softirq_action
  asmlinkage void do_softirq(void);
  asmlinkage void __do_softirq(void);
  

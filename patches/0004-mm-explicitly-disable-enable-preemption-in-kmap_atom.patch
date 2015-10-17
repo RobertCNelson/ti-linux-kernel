@@ -29,8 +29,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  include/linux/io-mapping.h           |    2 ++
  15 files changed, 38 insertions(+), 7 deletions(-)
 
---- a/arch/arm/mm/highmem.c
-+++ b/arch/arm/mm/highmem.c
+Index: linux-rt-devel/arch/arm/mm/highmem.c
+===================================================================
+--- linux-rt-devel.orig/arch/arm/mm/highmem.c
++++ linux-rt-devel/arch/arm/mm/highmem.c
 @@ -59,6 +59,7 @@ void *kmap_atomic(struct page *page)
  	void *kmap;
  	int type;
@@ -55,8 +57,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  	pagefault_disable();
  	if (!PageHighMem(page))
  		return page_address(page);
---- a/arch/frv/mm/highmem.c
-+++ b/arch/frv/mm/highmem.c
+Index: linux-rt-devel/arch/frv/mm/highmem.c
+===================================================================
+--- linux-rt-devel.orig/arch/frv/mm/highmem.c
++++ linux-rt-devel/arch/frv/mm/highmem.c
 @@ -42,6 +42,7 @@ void *kmap_atomic(struct page *page)
  	unsigned long paddr;
  	int type;
@@ -72,8 +76,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
 +	preempt_enable();
  }
  EXPORT_SYMBOL(__kunmap_atomic);
---- a/arch/metag/mm/highmem.c
-+++ b/arch/metag/mm/highmem.c
+Index: linux-rt-devel/arch/metag/mm/highmem.c
+===================================================================
+--- linux-rt-devel.orig/arch/metag/mm/highmem.c
++++ linux-rt-devel/arch/metag/mm/highmem.c
 @@ -43,7 +43,7 @@ void *kmap_atomic(struct page *page)
  	unsigned long vaddr;
  	int type;
@@ -99,8 +105,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  	pagefault_disable();
  
  	type = kmap_atomic_idx_push();
---- a/arch/microblaze/mm/highmem.c
-+++ b/arch/microblaze/mm/highmem.c
+Index: linux-rt-devel/arch/microblaze/mm/highmem.c
+===================================================================
+--- linux-rt-devel.orig/arch/microblaze/mm/highmem.c
++++ linux-rt-devel/arch/microblaze/mm/highmem.c
 @@ -37,7 +37,7 @@ void *kmap_atomic_prot(struct page *page
  	unsigned long vaddr;
  	int idx, type;
@@ -125,8 +133,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
 +	preempt_enable();
  }
  EXPORT_SYMBOL(__kunmap_atomic);
---- a/arch/mips/mm/highmem.c
-+++ b/arch/mips/mm/highmem.c
+Index: linux-rt-devel/arch/mips/mm/highmem.c
+===================================================================
+--- linux-rt-devel.orig/arch/mips/mm/highmem.c
++++ linux-rt-devel/arch/mips/mm/highmem.c
 @@ -47,7 +47,7 @@ void *kmap_atomic(struct page *page)
  	unsigned long vaddr;
  	int idx, type;
@@ -160,8 +170,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  	pagefault_disable();
  
  	type = kmap_atomic_idx_push();
---- a/arch/mn10300/include/asm/highmem.h
-+++ b/arch/mn10300/include/asm/highmem.h
+Index: linux-rt-devel/arch/mn10300/include/asm/highmem.h
+===================================================================
+--- linux-rt-devel.orig/arch/mn10300/include/asm/highmem.h
++++ linux-rt-devel/arch/mn10300/include/asm/highmem.h
 @@ -75,6 +75,7 @@ static inline void *kmap_atomic(struct p
  	unsigned long vaddr;
  	int idx, type;
@@ -186,8 +198,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  }
  #endif /* __KERNEL__ */
  
---- a/arch/parisc/include/asm/cacheflush.h
-+++ b/arch/parisc/include/asm/cacheflush.h
+Index: linux-rt-devel/arch/parisc/include/asm/cacheflush.h
+===================================================================
+--- linux-rt-devel.orig/arch/parisc/include/asm/cacheflush.h
++++ linux-rt-devel/arch/parisc/include/asm/cacheflush.h
 @@ -142,6 +142,7 @@ static inline void kunmap(struct page *p
  
  static inline void *kmap_atomic(struct page *page)
@@ -204,8 +218,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  }
  
  #define kmap_atomic_prot(page, prot)	kmap_atomic(page)
---- a/arch/powerpc/mm/highmem.c
-+++ b/arch/powerpc/mm/highmem.c
+Index: linux-rt-devel/arch/powerpc/mm/highmem.c
+===================================================================
+--- linux-rt-devel.orig/arch/powerpc/mm/highmem.c
++++ linux-rt-devel/arch/powerpc/mm/highmem.c
 @@ -34,7 +34,7 @@ void *kmap_atomic_prot(struct page *page
  	unsigned long vaddr;
  	int idx, type;
@@ -230,8 +246,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
 +	preempt_enable();
  }
  EXPORT_SYMBOL(__kunmap_atomic);
---- a/arch/sparc/mm/highmem.c
-+++ b/arch/sparc/mm/highmem.c
+Index: linux-rt-devel/arch/sparc/mm/highmem.c
+===================================================================
+--- linux-rt-devel.orig/arch/sparc/mm/highmem.c
++++ linux-rt-devel/arch/sparc/mm/highmem.c
 @@ -53,7 +53,7 @@ void *kmap_atomic(struct page *page)
  	unsigned long vaddr;
  	long idx, type;
@@ -256,8 +274,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
 +	preempt_enable();
  }
  EXPORT_SYMBOL(__kunmap_atomic);
---- a/arch/tile/mm/highmem.c
-+++ b/arch/tile/mm/highmem.c
+Index: linux-rt-devel/arch/tile/mm/highmem.c
+===================================================================
+--- linux-rt-devel.orig/arch/tile/mm/highmem.c
++++ linux-rt-devel/arch/tile/mm/highmem.c
 @@ -201,7 +201,7 @@ void *kmap_atomic_prot(struct page *page
  	int idx, type;
  	pte_t *pte;
@@ -275,8 +295,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  }
  EXPORT_SYMBOL(__kunmap_atomic);
  
---- a/arch/x86/mm/highmem_32.c
-+++ b/arch/x86/mm/highmem_32.c
+Index: linux-rt-devel/arch/x86/mm/highmem_32.c
+===================================================================
+--- linux-rt-devel.orig/arch/x86/mm/highmem_32.c
++++ linux-rt-devel/arch/x86/mm/highmem_32.c
 @@ -35,7 +35,7 @@ void *kmap_atomic_prot(struct page *page
  	unsigned long vaddr;
  	int idx, type;
@@ -294,8 +316,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  }
  EXPORT_SYMBOL(__kunmap_atomic);
  
---- a/arch/x86/mm/iomap_32.c
-+++ b/arch/x86/mm/iomap_32.c
+Index: linux-rt-devel/arch/x86/mm/iomap_32.c
+===================================================================
+--- linux-rt-devel.orig/arch/x86/mm/iomap_32.c
++++ linux-rt-devel/arch/x86/mm/iomap_32.c
 @@ -59,6 +59,7 @@ void *kmap_atomic_prot_pfn(unsigned long
  	unsigned long vaddr;
  	int idx, type;
@@ -311,8 +335,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
 +	preempt_enable();
  }
  EXPORT_SYMBOL_GPL(iounmap_atomic);
---- a/arch/xtensa/mm/highmem.c
-+++ b/arch/xtensa/mm/highmem.c
+Index: linux-rt-devel/arch/xtensa/mm/highmem.c
+===================================================================
+--- linux-rt-devel.orig/arch/xtensa/mm/highmem.c
++++ linux-rt-devel/arch/xtensa/mm/highmem.c
 @@ -42,6 +42,7 @@ void *kmap_atomic(struct page *page)
  	enum fixed_addresses idx;
  	unsigned long vaddr;
@@ -329,8 +355,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  }
  EXPORT_SYMBOL(__kunmap_atomic);
  
---- a/include/linux/highmem.h
-+++ b/include/linux/highmem.h
+Index: linux-rt-devel/include/linux/highmem.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/highmem.h
++++ linux-rt-devel/include/linux/highmem.h
 @@ -65,6 +65,7 @@ static inline void kunmap(struct page *p
  
  static inline void *kmap_atomic(struct page *page)
@@ -347,8 +375,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  }
  
  #define kmap_atomic_pfn(pfn)	kmap_atomic(pfn_to_page(pfn))
---- a/include/linux/io-mapping.h
-+++ b/include/linux/io-mapping.h
+Index: linux-rt-devel/include/linux/io-mapping.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/io-mapping.h
++++ linux-rt-devel/include/linux/io-mapping.h
 @@ -141,6 +141,7 @@ static inline void __iomem *
  io_mapping_map_atomic_wc(struct io_mapping *mapping,
  			 unsigned long offset)

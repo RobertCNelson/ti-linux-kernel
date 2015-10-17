@@ -11,8 +11,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/time/posix-timers.c |    4 +++-
  1 file changed, 3 insertions(+), 1 deletion(-)
 
---- a/kernel/time/posix-timers.c
-+++ b/kernel/time/posix-timers.c
+Index: linux-rt-devel/kernel/time/posix-timers.c
+===================================================================
+--- linux-rt-devel.orig/kernel/time/posix-timers.c
++++ linux-rt-devel/kernel/time/posix-timers.c
 @@ -499,6 +499,7 @@ static enum hrtimer_restart posix_timer_
  static struct pid *good_sigevent(sigevent_t * event)
  {

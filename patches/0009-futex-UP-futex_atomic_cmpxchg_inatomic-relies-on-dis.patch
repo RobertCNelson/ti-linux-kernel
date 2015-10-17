@@ -16,8 +16,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  include/asm-generic/futex.h |    2 ++
  1 file changed, 2 insertions(+)
 
---- a/include/asm-generic/futex.h
-+++ b/include/asm-generic/futex.h
+Index: linux-rt-devel/include/asm-generic/futex.h
+===================================================================
+--- linux-rt-devel.orig/include/asm-generic/futex.h
++++ linux-rt-devel/include/asm-generic/futex.h
 @@ -107,6 +107,7 @@ futex_atomic_cmpxchg_inatomic(u32 *uval,
  {
  	u32 val;

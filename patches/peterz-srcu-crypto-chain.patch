@@ -118,8 +118,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  crypto/internal.h |    4 ++--
  3 files changed, 7 insertions(+), 7 deletions(-)
 
---- a/crypto/algapi.c
-+++ b/crypto/algapi.c
+Index: linux-rt-devel/crypto/algapi.c
+===================================================================
+--- linux-rt-devel.orig/crypto/algapi.c
++++ linux-rt-devel/crypto/algapi.c
 @@ -695,13 +695,13 @@ EXPORT_SYMBOL_GPL(crypto_spawn_tfm2);
  
  int crypto_register_notifier(struct notifier_block *nb)
@@ -136,8 +138,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  EXPORT_SYMBOL_GPL(crypto_unregister_notifier);
  
---- a/crypto/api.c
-+++ b/crypto/api.c
+Index: linux-rt-devel/crypto/api.c
+===================================================================
+--- linux-rt-devel.orig/crypto/api.c
++++ linux-rt-devel/crypto/api.c
 @@ -31,7 +31,7 @@ EXPORT_SYMBOL_GPL(crypto_alg_list);
  DECLARE_RWSEM(crypto_alg_sem);
  EXPORT_SYMBOL_GPL(crypto_alg_sem);
@@ -160,8 +164,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	}
  
  	return ok;
---- a/crypto/internal.h
-+++ b/crypto/internal.h
+Index: linux-rt-devel/crypto/internal.h
+===================================================================
+--- linux-rt-devel.orig/crypto/internal.h
++++ linux-rt-devel/crypto/internal.h
 @@ -48,7 +48,7 @@ struct crypto_larval {
  
  extern struct list_head crypto_alg_list;

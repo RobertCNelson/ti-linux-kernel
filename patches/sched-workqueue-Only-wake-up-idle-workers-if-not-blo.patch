@@ -21,8 +21,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  kernel/sched/core.c |    4 +++-
  1 file changed, 3 insertions(+), 1 deletion(-)
 
---- a/kernel/sched/core.c
-+++ b/kernel/sched/core.c
+Index: linux-rt-devel/kernel/sched/core.c
+===================================================================
+--- linux-rt-devel.orig/kernel/sched/core.c
++++ linux-rt-devel/kernel/sched/core.c
 @@ -2981,8 +2981,10 @@ static void __sched __schedule(void)
  			 * If a worker went to sleep, notify and ask workqueue
  			 * whether it wants to wake up a task to maintain

@@ -13,8 +13,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/relay.c |   14 +++++---------
  1 file changed, 5 insertions(+), 9 deletions(-)
 
---- a/kernel/relay.c
-+++ b/kernel/relay.c
+Index: linux-rt-devel/kernel/relay.c
+===================================================================
+--- linux-rt-devel.orig/kernel/relay.c
++++ linux-rt-devel/kernel/relay.c
 @@ -339,6 +339,10 @@ static void wakeup_readers(unsigned long
  {
  	struct rchan_buf *buf = (struct rchan_buf *)data;

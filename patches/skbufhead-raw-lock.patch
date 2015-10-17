@@ -13,8 +13,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  net/core/dev.c            |   19 +++++++++++++------
  3 files changed, 21 insertions(+), 6 deletions(-)
 
---- a/include/linux/netdevice.h
-+++ b/include/linux/netdevice.h
+Index: linux-rt-devel/include/linux/netdevice.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/netdevice.h
++++ linux-rt-devel/include/linux/netdevice.h
 @@ -2469,6 +2469,7 @@ struct softnet_data {
  	unsigned int		dropped;
  	struct sk_buff_head	input_pkt_queue;
@@ -23,8 +25,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  };
  
---- a/include/linux/skbuff.h
-+++ b/include/linux/skbuff.h
+Index: linux-rt-devel/include/linux/skbuff.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/skbuff.h
++++ linux-rt-devel/include/linux/skbuff.h
 @@ -187,6 +187,7 @@ struct sk_buff_head {
  
  	__u32		qlen;
@@ -46,8 +50,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  static inline void skb_queue_head_init_class(struct sk_buff_head *list,
  		struct lock_class_key *class)
  {
---- a/net/core/dev.c
-+++ b/net/core/dev.c
+Index: linux-rt-devel/net/core/dev.c
+===================================================================
+--- linux-rt-devel.orig/net/core/dev.c
++++ linux-rt-devel/net/core/dev.c
 @@ -205,14 +205,14 @@ static inline struct hlist_head *dev_ind
  static inline void rps_lock(struct softnet_data *sd)
  {
@@ -65,7 +71,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #endif
  }
  
-@@ -3885,7 +3885,7 @@ static void flush_backlog(void *arg)
+@@ -3882,7 +3882,7 @@ static void flush_backlog(void *arg)
  	skb_queue_walk_safe(&sd->input_pkt_queue, skb, tmp) {
  		if (skb->dev == dev) {
  			__skb_unlink(skb, &sd->input_pkt_queue);
@@ -74,7 +80,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  			input_queue_head_incr(sd);
  		}
  	}
-@@ -3894,10 +3894,13 @@ static void flush_backlog(void *arg)
+@@ -3891,10 +3891,13 @@ static void flush_backlog(void *arg)
  	skb_queue_walk_safe(&sd->process_queue, skb, tmp) {
  		if (skb->dev == dev) {
  			__skb_unlink(skb, &sd->process_queue);
@@ -89,7 +95,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  static int napi_gro_complete(struct sk_buff *skb)
-@@ -7183,6 +7186,9 @@ static int dev_cpu_callback(struct notif
+@@ -7182,6 +7185,9 @@ static int dev_cpu_callback(struct notif
  		netif_rx_ni(skb);
  		input_queue_head_incr(oldsd);
  	}
@@ -99,7 +105,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	return NOTIFY_OK;
  }
-@@ -7484,8 +7490,9 @@ static int __init net_dev_init(void)
+@@ -7483,8 +7489,9 @@ static int __init net_dev_init(void)
  	for_each_possible_cpu(i) {
  		struct softnet_data *sd = &per_cpu(softnet_data, i);
  

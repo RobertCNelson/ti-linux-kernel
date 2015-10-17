@@ -11,8 +11,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/user.c |    4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
 
---- a/kernel/user.c
-+++ b/kernel/user.c
+Index: linux-rt-devel/kernel/user.c
+===================================================================
+--- linux-rt-devel.orig/kernel/user.c
++++ linux-rt-devel/kernel/user.c
 @@ -161,11 +161,11 @@ void free_uid(struct user_struct *up)
  	if (!up)
  		return;

@@ -28,8 +28,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  kernel/futex.c |    2 ++
  1 file changed, 2 insertions(+)
 
---- a/kernel/futex.c
-+++ b/kernel/futex.c
+Index: linux-rt-devel/kernel/futex.c
+===================================================================
+--- linux-rt-devel.orig/kernel/futex.c
++++ linux-rt-devel/kernel/futex.c
 @@ -738,7 +738,9 @@ void exit_pi_state_list(struct task_stru
  		 * task still owns the PI-state:
  		 */

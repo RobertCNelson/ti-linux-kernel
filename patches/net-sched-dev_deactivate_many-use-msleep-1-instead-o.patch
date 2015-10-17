@@ -44,8 +44,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  net/sched/sch_generic.c |    2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
---- a/net/sched/sch_generic.c
-+++ b/net/sched/sch_generic.c
+Index: linux-rt-devel/net/sched/sch_generic.c
+===================================================================
+--- linux-rt-devel.orig/net/sched/sch_generic.c
++++ linux-rt-devel/net/sched/sch_generic.c
 @@ -894,7 +894,7 @@ void dev_deactivate_many(struct list_hea
  	/* Wait for outstanding qdisc_run calls. */
  	list_for_each_entry(dev, head, close_list)

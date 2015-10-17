@@ -16,8 +16,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  init/Kconfig |    1 +
  1 file changed, 1 insertion(+)
 
---- a/init/Kconfig
-+++ b/init/Kconfig
+Index: linux-rt-devel/init/Kconfig
+===================================================================
+--- linux-rt-devel.orig/init/Kconfig
++++ linux-rt-devel/init/Kconfig
 @@ -1101,6 +1101,7 @@ config CFS_BANDWIDTH
  config RT_GROUP_SCHED
  	bool "Group scheduling for SCHED_RR/FIFO"

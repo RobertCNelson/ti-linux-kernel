@@ -12,8 +12,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  lib/radix-tree.c           |    5 ++++-
  2 files changed, 10 insertions(+), 2 deletions(-)
 
---- a/include/linux/radix-tree.h
-+++ b/include/linux/radix-tree.h
+Index: linux-rt-devel/include/linux/radix-tree.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/radix-tree.h
++++ linux-rt-devel/include/linux/radix-tree.h
 @@ -277,8 +277,13 @@ radix_tree_gang_lookup(struct radix_tree
  unsigned int radix_tree_gang_lookup_slot(struct radix_tree_root *root,
  			void ***results, unsigned long *indices,
@@ -37,8 +39,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /**
---- a/lib/radix-tree.c
-+++ b/lib/radix-tree.c
+Index: linux-rt-devel/lib/radix-tree.c
+===================================================================
+--- linux-rt-devel.orig/lib/radix-tree.c
++++ linux-rt-devel/lib/radix-tree.c
 @@ -195,12 +195,13 @@ radix_tree_node_alloc(struct radix_tree_
  		 * succeed in getting a node here (and never reach
  		 * kmem_cache_alloc)

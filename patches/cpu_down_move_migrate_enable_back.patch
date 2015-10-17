@@ -32,8 +32,10 @@ Signed-off-by: Tiejun Chen <tiejun.chen@windriver.com>
  kernel/cpu.c |    2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
---- a/kernel/cpu.c
-+++ b/kernel/cpu.c
+Index: linux-rt-devel/kernel/cpu.c
+===================================================================
+--- linux-rt-devel.orig/kernel/cpu.c
++++ linux-rt-devel/kernel/cpu.c
 @@ -668,6 +668,7 @@ static int __ref _cpu_down(unsigned int
  		err = -EBUSY;
  		goto restore_cpus;

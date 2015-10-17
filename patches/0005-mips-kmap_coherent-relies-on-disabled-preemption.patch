@@ -20,8 +20,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  arch/mips/mm/init.c |    2 ++
  1 file changed, 2 insertions(+)
 
---- a/arch/mips/mm/init.c
-+++ b/arch/mips/mm/init.c
+Index: linux-rt-devel/arch/mips/mm/init.c
+===================================================================
+--- linux-rt-devel.orig/arch/mips/mm/init.c
++++ linux-rt-devel/arch/mips/mm/init.c
 @@ -90,6 +90,7 @@ static void *__kmap_pgprot(struct page *
  
  	BUG_ON(Page_dcache_dirty(page));

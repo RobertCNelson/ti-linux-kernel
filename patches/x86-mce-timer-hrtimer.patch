@@ -24,8 +24,10 @@ fold in:
  arch/x86/kernel/cpu/mcheck/mce.c |   52 +++++++++++++++------------------------
  1 file changed, 20 insertions(+), 32 deletions(-)
 
---- a/arch/x86/kernel/cpu/mcheck/mce.c
-+++ b/arch/x86/kernel/cpu/mcheck/mce.c
+Index: linux-rt-devel/arch/x86/kernel/cpu/mcheck/mce.c
+===================================================================
+--- linux-rt-devel.orig/arch/x86/kernel/cpu/mcheck/mce.c
++++ linux-rt-devel/arch/x86/kernel/cpu/mcheck/mce.c
 @@ -41,6 +41,7 @@
  #include <linux/debugfs.h>
  #include <linux/irq_work.h>
@@ -91,7 +93,7 @@ fold in:
  }
  
  /*
-@@ -1332,7 +1319,7 @@ static void mce_timer_fn(unsigned long d
+@@ -1332,7 +1319,7 @@ done:
   */
  void mce_timer_kick(unsigned long interval)
  {

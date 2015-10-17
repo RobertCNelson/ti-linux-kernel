@@ -11,8 +11,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  block/blk-mq.c |   10 +++++-----
  1 file changed, 5 insertions(+), 5 deletions(-)
 
---- a/block/blk-mq.c
-+++ b/block/blk-mq.c
+Index: linux-rt-devel/block/blk-mq.c
+===================================================================
+--- linux-rt-devel.orig/block/blk-mq.c
++++ linux-rt-devel/block/blk-mq.c
 @@ -364,7 +364,7 @@ static void blk_mq_ipi_complete_request(
  		return;
  	}

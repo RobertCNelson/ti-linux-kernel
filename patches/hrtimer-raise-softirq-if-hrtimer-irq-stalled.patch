@@ -10,9 +10,11 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/time/hrtimer.c |    9 ++++-----
  1 file changed, 4 insertions(+), 5 deletions(-)
 
---- a/kernel/time/hrtimer.c
-+++ b/kernel/time/hrtimer.c
-@@ -1519,11 +1519,7 @@ void hrtimer_interrupt(struct clock_even
+Index: linux-rt-devel/kernel/time/hrtimer.c
+===================================================================
+--- linux-rt-devel.orig/kernel/time/hrtimer.c
++++ linux-rt-devel/kernel/time/hrtimer.c
+@@ -1519,11 +1519,7 @@ retry:
  	if (expires_next.tv64 == KTIME_MAX ||
  	    !tick_program_event(expires_next, 0)) {
  		cpu_base->hang_detected = 0;
@@ -25,7 +27,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	}
  
  	/*
-@@ -1567,6 +1563,9 @@ void hrtimer_interrupt(struct clock_even
+@@ -1567,6 +1563,9 @@ retry:
  	tick_program_event(expires_next, 1);
  	printk_once(KERN_WARNING "hrtimer: interrupt took %llu ns\n",
  		    ktime_to_ns(delta));

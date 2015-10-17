@@ -9,8 +9,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  arch/sparc/Kconfig |    6 ++----
  1 file changed, 2 insertions(+), 4 deletions(-)
 
---- a/arch/sparc/Kconfig
-+++ b/arch/sparc/Kconfig
+Index: linux-rt-devel/arch/sparc/Kconfig
+===================================================================
+--- linux-rt-devel.orig/arch/sparc/Kconfig
++++ linux-rt-devel/arch/sparc/Kconfig
 @@ -189,12 +189,10 @@ config NR_CPUS
  source kernel/Kconfig.hz
  

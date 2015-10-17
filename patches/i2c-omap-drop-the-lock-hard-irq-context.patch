@@ -12,8 +12,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  drivers/i2c/busses/i2c-omap.c |    5 +----
  1 file changed, 1 insertion(+), 4 deletions(-)
 
---- a/drivers/i2c/busses/i2c-omap.c
-+++ b/drivers/i2c/busses/i2c-omap.c
+Index: linux-rt-devel/drivers/i2c/busses/i2c-omap.c
+===================================================================
+--- linux-rt-devel.orig/drivers/i2c/busses/i2c-omap.c
++++ linux-rt-devel/drivers/i2c/busses/i2c-omap.c
 @@ -996,15 +996,12 @@ omap_i2c_isr(int irq, void *dev_id)
  	u16 mask;
  	u16 stat;

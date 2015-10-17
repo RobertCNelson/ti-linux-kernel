@@ -10,8 +10,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  include/linux/rtmutex.h |    2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
---- a/include/linux/rtmutex.h
-+++ b/include/linux/rtmutex.h
+Index: linux-rt-devel/include/linux/rtmutex.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/rtmutex.h
++++ linux-rt-devel/include/linux/rtmutex.h
 @@ -14,7 +14,7 @@
  
  #include <linux/linkage.h>

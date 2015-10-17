@@ -15,8 +15,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/locking/lglock.c |   54 ++++++++++++++++++++++++++++++++----------------
  2 files changed, 55 insertions(+), 20 deletions(-)
 
---- a/include/linux/lglock.h
-+++ b/include/linux/lglock.h
+Index: linux-rt-devel/include/linux/lglock.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/lglock.h
++++ linux-rt-devel/include/linux/lglock.h
 @@ -34,22 +34,39 @@
  #endif
  
@@ -59,8 +61,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  void lg_lock_init(struct lglock *lg, char *name);
  void lg_local_lock(struct lglock *lg);
---- a/kernel/locking/lglock.c
-+++ b/kernel/locking/lglock.c
+Index: linux-rt-devel/kernel/locking/lglock.c
+===================================================================
+--- linux-rt-devel.orig/kernel/locking/lglock.c
++++ linux-rt-devel/kernel/locking/lglock.c
 @@ -4,6 +4,15 @@
  #include <linux/cpu.h>
  #include <linux/string.h>

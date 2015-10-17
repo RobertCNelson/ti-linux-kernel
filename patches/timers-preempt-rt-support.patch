@@ -17,8 +17,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/time/timer.c |   12 ++++++++++--
  1 file changed, 10 insertions(+), 2 deletions(-)
 
---- a/kernel/time/timer.c
-+++ b/kernel/time/timer.c
+Index: linux-rt-devel/kernel/time/timer.c
+===================================================================
+--- linux-rt-devel.orig/kernel/time/timer.c
++++ linux-rt-devel/kernel/time/timer.c
 @@ -1395,6 +1395,14 @@ unsigned long get_next_timer_interrupt(u
  	if (cpu_is_offline(smp_processor_id()))
  		return expires;

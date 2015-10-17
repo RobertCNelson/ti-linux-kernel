@@ -12,13 +12,15 @@ Cc: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 ---
  include/linux/work-simple.h |   24 ++++++
  kernel/sched/Makefile       |    2 
- kernel/sched/work-simple.c  |  172 ++++++++++++++++++++++++++++++++++++++++++++
- 3 files changed, 197 insertions(+), 1 deletion(-)
+ kernel/sched/work-simple.c  |  173 ++++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 198 insertions(+), 1 deletion(-)
  create mode 100644 include/linux/work-simple.h
  create mode 100644 kernel/sched/work-simple.c
 
+Index: linux-rt-devel/include/linux/work-simple.h
+===================================================================
 --- /dev/null
-+++ b/include/linux/work-simple.h
++++ linux-rt-devel/include/linux/work-simple.h
 @@ -0,0 +1,24 @@
 +#ifndef _LINUX_SWORK_H
 +#define _LINUX_SWORK_H
@@ -44,8 +46,10 @@ Cc: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 +void swork_put(void);
 +
 +#endif /* _LINUX_SWORK_H */
---- a/kernel/sched/Makefile
-+++ b/kernel/sched/Makefile
+Index: linux-rt-devel/kernel/sched/Makefile
+===================================================================
+--- linux-rt-devel.orig/kernel/sched/Makefile
++++ linux-rt-devel/kernel/sched/Makefile
 @@ -13,7 +13,7 @@ endif
  
  obj-y += core.o proc.o clock.o cputime.o
@@ -55,9 +59,11 @@ Cc: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  obj-$(CONFIG_SMP) += cpupri.o cpudeadline.o
  obj-$(CONFIG_SCHED_AUTOGROUP) += auto_group.o
  obj-$(CONFIG_SCHEDSTATS) += stats.o
+Index: linux-rt-devel/kernel/sched/work-simple.c
+===================================================================
 --- /dev/null
-+++ b/kernel/sched/work-simple.c
-@@ -0,0 +1,172 @@
++++ linux-rt-devel/kernel/sched/work-simple.c
+@@ -0,0 +1,173 @@
 +/*
 + * Copyright (C) 2014 BMW Car IT GmbH, Daniel Wagner daniel.wagner@bmw-carit.de
 + *
@@ -70,6 +76,7 @@ Cc: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 +#include <linux/kthread.h>
 +#include <linux/slab.h>
 +#include <linux/spinlock.h>
++#include <linux/export.h>
 +
 +#define SWORK_EVENT_PENDING     (1 << 0)
 +

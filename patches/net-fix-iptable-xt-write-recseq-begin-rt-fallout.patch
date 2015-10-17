@@ -14,8 +14,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  net/netfilter/core.c               |    6 ++++++
  2 files changed, 13 insertions(+)
 
---- a/include/linux/netfilter/x_tables.h
-+++ b/include/linux/netfilter/x_tables.h
+Index: linux-rt-devel/include/linux/netfilter/x_tables.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/netfilter/x_tables.h
++++ linux-rt-devel/include/linux/netfilter/x_tables.h
 @@ -3,6 +3,7 @@
  
  
@@ -51,8 +53,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /*
---- a/net/netfilter/core.c
-+++ b/net/netfilter/core.c
+Index: linux-rt-devel/net/netfilter/core.c
+===================================================================
+--- linux-rt-devel.orig/net/netfilter/core.c
++++ linux-rt-devel/net/netfilter/core.c
 @@ -22,11 +22,17 @@
  #include <linux/proc_fs.h>
  #include <linux/mutex.h>

@@ -17,8 +17,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/sched/core.c                        |   10 +++++++--
  7 files changed, 33 insertions(+), 27 deletions(-)
 
---- a/drivers/net/wireless/orinoco/orinoco_usb.c
-+++ b/drivers/net/wireless/orinoco/orinoco_usb.c
+Index: linux-rt-devel/drivers/net/wireless/orinoco/orinoco_usb.c
+===================================================================
+--- linux-rt-devel.orig/drivers/net/wireless/orinoco/orinoco_usb.c
++++ linux-rt-devel/drivers/net/wireless/orinoco/orinoco_usb.c
 @@ -697,7 +697,7 @@ static void ezusb_req_ctx_wait(struct ez
  			while (!ctx->done.done && msecs--)
  				udelay(1000);
@@ -28,9 +30,11 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  						 ctx->done.done);
  		}
  		break;
---- a/drivers/usb/gadget/function/f_fs.c
-+++ b/drivers/usb/gadget/function/f_fs.c
-@@ -1403,7 +1403,7 @@ static void ffs_data_put(struct ffs_data
+Index: linux-rt-devel/drivers/usb/gadget/function/f_fs.c
+===================================================================
+--- linux-rt-devel.orig/drivers/usb/gadget/function/f_fs.c
++++ linux-rt-devel/drivers/usb/gadget/function/f_fs.c
+@@ -1405,7 +1405,7 @@ static void ffs_data_put(struct ffs_data
  		pr_info("%s(): freeing\n", __func__);
  		ffs_data_clear(ffs);
  		BUG_ON(waitqueue_active(&ffs->ev.waitq) ||
@@ -39,8 +43,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		kfree(ffs->dev_name);
  		kfree(ffs);
  	}
---- a/drivers/usb/gadget/legacy/inode.c
-+++ b/drivers/usb/gadget/legacy/inode.c
+Index: linux-rt-devel/drivers/usb/gadget/legacy/inode.c
+===================================================================
+--- linux-rt-devel.orig/drivers/usb/gadget/legacy/inode.c
++++ linux-rt-devel/drivers/usb/gadget/legacy/inode.c
 @@ -345,7 +345,7 @@ ep_io (struct ep_data *epdata, void *buf
  	spin_unlock_irq (&epdata->dev->lock);
  
@@ -59,8 +65,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  				if (epdata->status == -ECONNRESET)
  					epdata->status = -EINTR;
  			} else {
---- a/include/linux/completion.h
-+++ b/include/linux/completion.h
+Index: linux-rt-devel/include/linux/completion.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/completion.h
++++ linux-rt-devel/include/linux/completion.h
 @@ -7,8 +7,7 @@
   * Atomic wait-for-completion handler data structures.
   * See kernel/sched/completion.c for details.
@@ -94,8 +102,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /**
---- a/include/linux/uprobes.h
-+++ b/include/linux/uprobes.h
+Index: linux-rt-devel/include/linux/uprobes.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/uprobes.h
++++ linux-rt-devel/include/linux/uprobes.h
 @@ -27,6 +27,7 @@
  #include <linux/errno.h>
  #include <linux/rbtree.h>
@@ -104,8 +114,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  struct vm_area_struct;
  struct mm_struct;
---- a/kernel/sched/completion.c
-+++ b/kernel/sched/completion.c
+Index: linux-rt-devel/kernel/sched/completion.c
+===================================================================
+--- linux-rt-devel.orig/kernel/sched/completion.c
++++ linux-rt-devel/kernel/sched/completion.c
 @@ -30,10 +30,10 @@ void complete(struct completion *x)
  {
  	unsigned long flags;
@@ -160,7 +172,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		if (!x->done)
  			return timeout;
  	}
-@@ -89,9 +89,9 @@ static inline long __sched
+@@ -89,9 +89,9 @@ __wait_for_common(struct completion *x,
  {
  	might_sleep();
  
@@ -196,8 +208,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	return true;
  }
  EXPORT_SYMBOL(completion_done);
---- a/kernel/sched/core.c
-+++ b/kernel/sched/core.c
+Index: linux-rt-devel/kernel/sched/core.c
+===================================================================
+--- linux-rt-devel.orig/kernel/sched/core.c
++++ linux-rt-devel/kernel/sched/core.c
 @@ -2802,7 +2802,10 @@ void migrate_disable(void)
  	}
  

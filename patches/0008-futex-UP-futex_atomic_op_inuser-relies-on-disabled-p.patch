@@ -15,8 +15,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  include/asm-generic/futex.h |    5 +++--
  1 file changed, 3 insertions(+), 2 deletions(-)
 
---- a/include/asm-generic/futex.h
-+++ b/include/asm-generic/futex.h
+Index: linux-rt-devel/include/asm-generic/futex.h
+===================================================================
+--- linux-rt-devel.orig/include/asm-generic/futex.h
++++ linux-rt-devel/include/asm-generic/futex.h
 @@ -8,8 +8,7 @@
  #ifndef CONFIG_SMP
  /*

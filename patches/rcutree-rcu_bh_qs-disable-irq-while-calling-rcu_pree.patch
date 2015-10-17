@@ -31,8 +31,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  kernel/rcu/tree.c |    5 +++++
  1 file changed, 5 insertions(+)
 
---- a/kernel/rcu/tree.c
-+++ b/kernel/rcu/tree.c
+Index: linux-rt-devel/kernel/rcu/tree.c
+===================================================================
+--- linux-rt-devel.orig/kernel/rcu/tree.c
++++ linux-rt-devel/kernel/rcu/tree.c
 @@ -225,7 +225,12 @@ static void rcu_preempt_qs(void);
  
  void rcu_bh_qs(void)

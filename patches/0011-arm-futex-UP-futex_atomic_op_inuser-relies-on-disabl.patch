@@ -19,8 +19,10 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  arch/arm/include/asm/futex.h |   10 ++++++++--
  1 file changed, 8 insertions(+), 2 deletions(-)
 
---- a/arch/arm/include/asm/futex.h
-+++ b/arch/arm/include/asm/futex.h
+Index: linux-rt-devel/arch/arm/include/asm/futex.h
+===================================================================
+--- linux-rt-devel.orig/arch/arm/include/asm/futex.h
++++ linux-rt-devel/arch/arm/include/asm/futex.h
 @@ -127,7 +127,10 @@ futex_atomic_op_inuser (int encoded_op,
  	if (!access_ok(VERIFY_WRITE, uaddr, sizeof(u32)))
  		return -EFAULT;

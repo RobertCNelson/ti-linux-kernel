@@ -17,8 +17,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  drivers/ide/ide-taskfile.c |    6 +++---
  7 files changed, 16 insertions(+), 16 deletions(-)
 
---- a/drivers/ide/alim15x3.c
-+++ b/drivers/ide/alim15x3.c
+Index: linux-rt-devel/drivers/ide/alim15x3.c
+===================================================================
+--- linux-rt-devel.orig/drivers/ide/alim15x3.c
++++ linux-rt-devel/drivers/ide/alim15x3.c
 @@ -234,7 +234,7 @@ static int init_chipset_ali15x3(struct p
  
  	isa_dev = pci_get_device(PCI_VENDOR_ID_AL, PCI_DEVICE_ID_AL_M1533, NULL);
@@ -28,7 +30,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	if (m5229_revision < 0xC2) {
  		/*
-@@ -325,7 +325,7 @@ static int init_chipset_ali15x3(struct p
+@@ -325,7 +325,7 @@ out:
  	}
  	pci_dev_put(north);
  	pci_dev_put(isa_dev);
@@ -37,8 +39,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	return 0;
  }
  
---- a/drivers/ide/hpt366.c
-+++ b/drivers/ide/hpt366.c
+Index: linux-rt-devel/drivers/ide/hpt366.c
+===================================================================
+--- linux-rt-devel.orig/drivers/ide/hpt366.c
++++ linux-rt-devel/drivers/ide/hpt366.c
 @@ -1241,7 +1241,7 @@ static int init_dma_hpt366(ide_hwif_t *h
  
  	dma_old = inb(base + 2);
@@ -57,8 +61,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	printk(KERN_INFO "    %s: BM-DMA at 0x%04lx-0x%04lx\n",
  			 hwif->name, base, base + 7);
---- a/drivers/ide/ide-io-std.c
-+++ b/drivers/ide/ide-io-std.c
+Index: linux-rt-devel/drivers/ide/ide-io-std.c
+===================================================================
+--- linux-rt-devel.orig/drivers/ide/ide-io-std.c
++++ linux-rt-devel/drivers/ide/ide-io-std.c
 @@ -175,7 +175,7 @@ void ide_input_data(ide_drive_t *drive,
  		unsigned long uninitialized_var(flags);
  
@@ -95,8 +101,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  		if (((len + 1) & 3) < 2)
  			return;
---- a/drivers/ide/ide-io.c
-+++ b/drivers/ide/ide-io.c
+Index: linux-rt-devel/drivers/ide/ide-io.c
+===================================================================
+--- linux-rt-devel.orig/drivers/ide/ide-io.c
++++ linux-rt-devel/drivers/ide/ide-io.c
 @@ -659,7 +659,7 @@ void ide_timer_expiry (unsigned long dat
  		/* disable_irq_nosync ?? */
  		disable_irq(hwif->irq);
@@ -106,8 +114,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		if (hwif->polling) {
  			startstop = handler(drive);
  		} else if (drive_is_ready(drive)) {
---- a/drivers/ide/ide-iops.c
-+++ b/drivers/ide/ide-iops.c
+Index: linux-rt-devel/drivers/ide/ide-iops.c
+===================================================================
+--- linux-rt-devel.orig/drivers/ide/ide-iops.c
++++ linux-rt-devel/drivers/ide/ide-iops.c
 @@ -129,12 +129,12 @@ int __ide_wait_stat(ide_drive_t *drive,
  				if ((stat & ATA_BUSY) == 0)
  					break;
@@ -123,8 +133,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	}
  	/*
  	 * Allow status to settle, then read it again.
---- a/drivers/ide/ide-probe.c
-+++ b/drivers/ide/ide-probe.c
+Index: linux-rt-devel/drivers/ide/ide-probe.c
+===================================================================
+--- linux-rt-devel.orig/drivers/ide/ide-probe.c
++++ linux-rt-devel/drivers/ide/ide-probe.c
 @@ -196,10 +196,10 @@ static void do_identify(ide_drive_t *dri
  	int bswap = 1;
  
@@ -138,8 +150,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	drive->dev_flags |= IDE_DFLAG_ID_READ;
  #ifdef DEBUG
---- a/drivers/ide/ide-taskfile.c
-+++ b/drivers/ide/ide-taskfile.c
+Index: linux-rt-devel/drivers/ide/ide-taskfile.c
+===================================================================
+--- linux-rt-devel.orig/drivers/ide/ide-taskfile.c
++++ linux-rt-devel/drivers/ide/ide-taskfile.c
 @@ -250,7 +250,7 @@ void ide_pio_bytes(ide_drive_t *drive, s
  
  		page_is_high = PageHighMem(page);

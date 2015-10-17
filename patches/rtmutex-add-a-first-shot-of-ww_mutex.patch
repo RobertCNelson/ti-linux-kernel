@@ -25,8 +25,10 @@ Signed-off-by: Sebastian Andrzej Siewior <sebastian@breakpoint.cc>
  kernel/locking/rtmutex.c |  251 ++++++++++++++++++++++++++++++++++++++++++-----
  1 file changed, 226 insertions(+), 25 deletions(-)
 
---- a/kernel/locking/rtmutex.c
-+++ b/kernel/locking/rtmutex.c
+Index: linux-rt-devel/kernel/locking/rtmutex.c
+===================================================================
+--- linux-rt-devel.orig/kernel/locking/rtmutex.c
++++ linux-rt-devel/kernel/locking/rtmutex.c
 @@ -21,6 +21,7 @@
  #include <linux/sched/rt.h>
  #include <linux/sched/deadline.h>
@@ -86,7 +88,7 @@ Signed-off-by: Sebastian Andrzej Siewior <sebastian@breakpoint.cc>
  {
  	int ret = 0;
  
-@@ -1484,6 +1520,12 @@ static int __sched
+@@ -1484,6 +1520,12 @@ __rt_mutex_slowlock(struct rt_mutex *loc
  				break;
  		}
  

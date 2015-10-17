@@ -18,8 +18,10 @@ Signed-off-by: Carsten Emde <C.Emde@osadl.org>
  net/ipv4/sysctl_net_ipv4.c |    7 +++++++
  4 files changed, 47 insertions(+), 2 deletions(-)
 
---- a/Documentation/sysrq.txt
-+++ b/Documentation/sysrq.txt
+Index: linux-rt-devel/Documentation/sysrq.txt
+===================================================================
+--- linux-rt-devel.orig/Documentation/sysrq.txt
++++ linux-rt-devel/Documentation/sysrq.txt
 @@ -59,10 +59,17 @@ On PowerPC - Press 'ALT - Print Screen (
  On other - If you know of the key combos for other architectures, please
             let me know so I can add them to this section.
@@ -40,8 +42,10 @@ Signed-off-by: Carsten Emde <C.Emde@osadl.org>
  *  What are the 'command' keys?
  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  'b'     - Will immediately reboot the system without syncing or unmounting
---- a/include/net/netns/ipv4.h
-+++ b/include/net/netns/ipv4.h
+Index: linux-rt-devel/include/net/netns/ipv4.h
+===================================================================
+--- linux-rt-devel.orig/include/net/netns/ipv4.h
++++ linux-rt-devel/include/net/netns/ipv4.h
 @@ -69,6 +69,7 @@ struct netns_ipv4 {
  
  	int sysctl_icmp_echo_ignore_all;
@@ -50,8 +54,10 @@ Signed-off-by: Carsten Emde <C.Emde@osadl.org>
  	int sysctl_icmp_ignore_bogus_error_responses;
  	int sysctl_icmp_ratelimit;
  	int sysctl_icmp_ratemask;
---- a/net/ipv4/icmp.c
-+++ b/net/ipv4/icmp.c
+Index: linux-rt-devel/net/ipv4/icmp.c
+===================================================================
+--- linux-rt-devel.orig/net/ipv4/icmp.c
++++ linux-rt-devel/net/ipv4/icmp.c
 @@ -69,6 +69,7 @@
  #include <linux/jiffies.h>
  #include <linux/kernel.h>
@@ -103,8 +109,10 @@ Signed-off-by: Carsten Emde <C.Emde@osadl.org>
  	}
  	/* should there be an ICMP stat for ignored echos? */
  	return true;
---- a/net/ipv4/sysctl_net_ipv4.c
-+++ b/net/ipv4/sysctl_net_ipv4.c
+Index: linux-rt-devel/net/ipv4/sysctl_net_ipv4.c
+===================================================================
+--- linux-rt-devel.orig/net/ipv4/sysctl_net_ipv4.c
++++ linux-rt-devel/net/ipv4/sysctl_net_ipv4.c
 @@ -779,6 +779,13 @@ static struct ctl_table ipv4_net_table[]
  		.proc_handler	= proc_dointvec
  	},

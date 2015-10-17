@@ -47,8 +47,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  kernel/sched/core.c   |   46 ++++++++++++++++++++++++++++++++++++++++++++++
  2 files changed, 92 insertions(+)
 
---- a/include/linux/sched.h
-+++ b/include/linux/sched.h
+Index: linux-rt-devel/include/linux/sched.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/sched.h
++++ linux-rt-devel/include/linux/sched.h
 @@ -900,6 +900,50 @@ enum cpu_idle_type {
  #define SCHED_CAPACITY_SCALE	(1L << SCHED_CAPACITY_SHIFT)
  
@@ -109,8 +111,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  #ifdef CONFIG_RT_MUTEXES
  	/* PI waiters blocked on a rt_mutex held by this task */
  	struct rb_root pi_waiters;
---- a/kernel/sched/core.c
-+++ b/kernel/sched/core.c
+Index: linux-rt-devel/kernel/sched/core.c
+===================================================================
+--- linux-rt-devel.orig/kernel/sched/core.c
++++ linux-rt-devel/kernel/sched/core.c
 @@ -541,6 +541,52 @@ static bool set_nr_if_polling(struct tas
  #endif
  #endif

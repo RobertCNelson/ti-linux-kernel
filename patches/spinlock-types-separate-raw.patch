@@ -14,8 +14,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  include/linux/spinlock_types_raw.h  |   56 +++++++++++++++++++++++++++
  4 files changed, 95 insertions(+), 72 deletions(-)
 
---- a/include/linux/rwlock_types.h
-+++ b/include/linux/rwlock_types.h
+Index: linux-rt-devel/include/linux/rwlock_types.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/rwlock_types.h
++++ linux-rt-devel/include/linux/rwlock_types.h
 @@ -1,6 +1,10 @@
  #ifndef __LINUX_RWLOCK_TYPES_H
  #define __LINUX_RWLOCK_TYPES_H
@@ -27,8 +29,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
   * include/linux/rwlock_types.h - generic rwlock type definitions
   *				  and initializers
---- a/include/linux/spinlock_types.h
-+++ b/include/linux/spinlock_types.h
+Index: linux-rt-devel/include/linux/spinlock_types.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/spinlock_types.h
++++ linux-rt-devel/include/linux/spinlock_types.h
 @@ -9,79 +9,9 @@
   * Released under the General Public License (GPL).
   */
@@ -111,8 +115,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  #include <linux/rwlock_types.h>
  
+Index: linux-rt-devel/include/linux/spinlock_types_nort.h
+===================================================================
 --- /dev/null
-+++ b/include/linux/spinlock_types_nort.h
++++ linux-rt-devel/include/linux/spinlock_types_nort.h
 @@ -0,0 +1,33 @@
 +#ifndef __LINUX_SPINLOCK_TYPES_NORT_H
 +#define __LINUX_SPINLOCK_TYPES_NORT_H
@@ -147,8 +153,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +#define DEFINE_SPINLOCK(x)	spinlock_t x = __SPIN_LOCK_UNLOCKED(x)
 +
 +#endif
+Index: linux-rt-devel/include/linux/spinlock_types_raw.h
+===================================================================
 --- /dev/null
-+++ b/include/linux/spinlock_types_raw.h
++++ linux-rt-devel/include/linux/spinlock_types_raw.h
 @@ -0,0 +1,56 @@
 +#ifndef __LINUX_SPINLOCK_TYPES_RAW_H
 +#define __LINUX_SPINLOCK_TYPES_RAW_H

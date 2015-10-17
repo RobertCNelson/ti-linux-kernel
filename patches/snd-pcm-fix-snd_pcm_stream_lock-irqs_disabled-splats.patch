@@ -29,8 +29,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  sound/core/pcm_native.c |    8 ++++----
  1 file changed, 4 insertions(+), 4 deletions(-)
 
---- a/sound/core/pcm_native.c
-+++ b/sound/core/pcm_native.c
+Index: linux-rt-devel/sound/core/pcm_native.c
+===================================================================
+--- linux-rt-devel.orig/sound/core/pcm_native.c
++++ linux-rt-devel/sound/core/pcm_native.c
 @@ -123,7 +123,7 @@ EXPORT_SYMBOL_GPL(snd_pcm_stream_unlock)
  void snd_pcm_stream_lock_irq(struct snd_pcm_substream *substream)
  {

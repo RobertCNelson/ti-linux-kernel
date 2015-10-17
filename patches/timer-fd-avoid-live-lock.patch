@@ -14,8 +14,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  fs/timerfd.c |    5 ++++-
  1 file changed, 4 insertions(+), 1 deletion(-)
 
---- a/fs/timerfd.c
-+++ b/fs/timerfd.c
+Index: linux-rt-devel/fs/timerfd.c
+===================================================================
+--- linux-rt-devel.orig/fs/timerfd.c
++++ linux-rt-devel/fs/timerfd.c
 @@ -450,7 +450,10 @@ static int do_timerfd_settime(int ufd, i
  				break;
  		}

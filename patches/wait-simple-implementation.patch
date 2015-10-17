@@ -21,8 +21,10 @@ wakeups vs adding items to the list.
  kernel/sched/wait-simple.c  |  115 ++++++++++++++++++++++++
  3 files changed, 323 insertions(+), 1 deletion(-)
 
+Index: linux-rt-devel/include/linux/wait-simple.h
+===================================================================
 --- /dev/null
-+++ b/include/linux/wait-simple.h
++++ linux-rt-devel/include/linux/wait-simple.h
 @@ -0,0 +1,207 @@
 +#ifndef _LINUX_WAIT_SIMPLE_H
 +#define _LINUX_WAIT_SIMPLE_H
@@ -231,8 +233,10 @@ wakeups vs adding items to the list.
 +})
 +
 +#endif
---- a/kernel/sched/Makefile
-+++ b/kernel/sched/Makefile
+Index: linux-rt-devel/kernel/sched/Makefile
+===================================================================
+--- linux-rt-devel.orig/kernel/sched/Makefile
++++ linux-rt-devel/kernel/sched/Makefile
 @@ -13,7 +13,7 @@ endif
  
  obj-y += core.o proc.o clock.o cputime.o
@@ -242,8 +246,10 @@ wakeups vs adding items to the list.
  obj-$(CONFIG_SMP) += cpupri.o cpudeadline.o
  obj-$(CONFIG_SCHED_AUTOGROUP) += auto_group.o
  obj-$(CONFIG_SCHEDSTATS) += stats.o
+Index: linux-rt-devel/kernel/sched/wait-simple.c
+===================================================================
 --- /dev/null
-+++ b/kernel/sched/wait-simple.c
++++ linux-rt-devel/kernel/sched/wait-simple.c
 @@ -0,0 +1,115 @@
 +/*
 + * Simple waitqueues without fancy flags and callbacks

@@ -11,8 +11,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/signal.c |    8 --------
  1 file changed, 8 deletions(-)
 
---- a/kernel/signal.c
-+++ b/kernel/signal.c
+Index: linux-rt-devel/kernel/signal.c
+===================================================================
+--- linux-rt-devel.orig/kernel/signal.c
++++ linux-rt-devel/kernel/signal.c
 @@ -1897,15 +1897,7 @@ static void ptrace_stop(int exit_code, i
  		if (gstop_done && ptrace_reparented(current))
  			do_notify_parent_cldstop(current, false, why);

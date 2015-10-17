@@ -13,8 +13,10 @@ Signed-off-by: Anders Roxell <anders.roxell@linaro.org>
  arch/arm64/kernel/perf_event.c |    2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
---- a/arch/arm64/kernel/perf_event.c
-+++ b/arch/arm64/kernel/perf_event.c
+Index: linux-rt-devel/arch/arm64/kernel/perf_event.c
+===================================================================
+--- linux-rt-devel.orig/arch/arm64/kernel/perf_event.c
++++ linux-rt-devel/arch/arm64/kernel/perf_event.c
 @@ -488,7 +488,7 @@ armpmu_reserve_hardware(struct arm_pmu *
  			}
  

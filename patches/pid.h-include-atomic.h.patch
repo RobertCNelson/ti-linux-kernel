@@ -24,8 +24,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  include/linux/pid.h |    1 +
  1 file changed, 1 insertion(+)
 
---- a/include/linux/pid.h
-+++ b/include/linux/pid.h
+Index: linux-rt-devel/include/linux/pid.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/pid.h
++++ linux-rt-devel/include/linux/pid.h
 @@ -2,6 +2,7 @@
  #define _LINUX_PID_H
  

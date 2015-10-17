@@ -14,8 +14,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  drivers/misc/hwlat_detector.c |   34 +++++++++++++++++++++++++---------
  1 file changed, 25 insertions(+), 9 deletions(-)
 
---- a/drivers/misc/hwlat_detector.c
-+++ b/drivers/misc/hwlat_detector.c
+Index: linux-rt-devel/drivers/misc/hwlat_detector.c
+===================================================================
+--- linux-rt-devel.orig/drivers/misc/hwlat_detector.c
++++ linux-rt-devel/drivers/misc/hwlat_detector.c
 @@ -51,6 +51,7 @@
  #include <linux/version.h>
  #include <linux/delay.h>

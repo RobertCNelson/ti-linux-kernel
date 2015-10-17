@@ -15,8 +15,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  block/blk-ioc.c |    5 +++--
  1 file changed, 3 insertions(+), 2 deletions(-)
 
---- a/block/blk-ioc.c
-+++ b/block/blk-ioc.c
+Index: linux-rt-devel/block/blk-ioc.c
+===================================================================
+--- linux-rt-devel.orig/block/blk-ioc.c
++++ linux-rt-devel/block/blk-ioc.c
 @@ -7,6 +7,7 @@
  #include <linux/bio.h>
  #include <linux/blkdev.h>
@@ -34,7 +36,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  			spin_lock_irqsave_nested(&ioc->lock, flags, 1);
  		}
  	}
-@@ -187,7 +188,7 @@ void put_io_context_active(struct io_con
+@@ -187,7 +188,7 @@ retry:
  			spin_unlock(icq->q->queue_lock);
  		} else {
  			spin_unlock_irqrestore(&ioc->lock, flags);

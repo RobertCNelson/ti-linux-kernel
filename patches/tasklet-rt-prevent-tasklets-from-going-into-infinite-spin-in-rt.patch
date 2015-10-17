@@ -41,9 +41,11 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/softirq.c          |  201 ++++++++++++++++++++++++++++++++--------------
  2 files changed, 162 insertions(+), 72 deletions(-)
 
---- a/include/linux/interrupt.h
-+++ b/include/linux/interrupt.h
-@@ -479,8 +479,9 @@ static inline struct task_struct *this_c
+Index: linux-rt-devel/include/linux/interrupt.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/interrupt.h
++++ linux-rt-devel/include/linux/interrupt.h
+@@ -481,8 +481,9 @@ static inline struct task_struct *this_c
       to be executed on some cpu at least once after this.
     * If the tasklet is already scheduled, but its execution is still not
       started, it will be executed only once.
@@ -55,7 +57,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
     * Tasklet is strictly serialized wrt itself, but not
       wrt another tasklets. If client needs some intertask synchronization,
       he makes it with spinlocks.
-@@ -505,27 +506,36 @@ struct tasklet_struct name = { NULL, 0,
+@@ -507,27 +508,36 @@ struct tasklet_struct name = { NULL, 0,
  enum
  {
  	TASKLET_STATE_SCHED,	/* Tasklet is scheduled for execution */
@@ -98,7 +100,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #define tasklet_unlock_wait(t) do { } while (0)
  #define tasklet_unlock(t) do { } while (0)
  #endif
-@@ -574,12 +584,7 @@ static inline void tasklet_disable(struc
+@@ -576,12 +586,7 @@ static inline void tasklet_disable(struc
  	smp_mb();
  }
  
@@ -112,8 +114,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  extern void tasklet_kill(struct tasklet_struct *t);
  extern void tasklet_kill_immediate(struct tasklet_struct *t, unsigned int cpu);
  extern void tasklet_init(struct tasklet_struct *t,
---- a/kernel/softirq.c
-+++ b/kernel/softirq.c
+Index: linux-rt-devel/kernel/softirq.c
+===================================================================
+--- linux-rt-devel.orig/kernel/softirq.c
++++ linux-rt-devel/kernel/softirq.c
 @@ -21,6 +21,7 @@
  #include <linux/freezer.h>
  #include <linux/kthread.h>

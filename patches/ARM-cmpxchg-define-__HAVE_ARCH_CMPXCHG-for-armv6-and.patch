@@ -26,8 +26,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  arch/arm/include/asm/cmpxchg.h |    2 ++
  1 file changed, 2 insertions(+)
 
---- a/arch/arm/include/asm/cmpxchg.h
-+++ b/arch/arm/include/asm/cmpxchg.h
+Index: linux-rt-devel/arch/arm/include/asm/cmpxchg.h
+===================================================================
+--- linux-rt-devel.orig/arch/arm/include/asm/cmpxchg.h
++++ linux-rt-devel/arch/arm/include/asm/cmpxchg.h
 @@ -129,6 +129,8 @@ static inline unsigned long __xchg(unsig
  
  #else	/* min ARCH >= ARMv6 */

@@ -9,8 +9,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  arch/powerpc/Kconfig |    3 ++-
  1 file changed, 2 insertions(+), 1 deletion(-)
 
---- a/arch/powerpc/Kconfig
-+++ b/arch/powerpc/Kconfig
+Index: linux-rt-devel/arch/powerpc/Kconfig
+===================================================================
+--- linux-rt-devel.orig/arch/powerpc/Kconfig
++++ linux-rt-devel/arch/powerpc/Kconfig
 @@ -60,10 +60,11 @@ config LOCKDEP_SUPPORT
  
  config RWSEM_GENERIC_SPINLOCK

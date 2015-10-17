@@ -11,8 +11,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  mm/page_alloc.c |    4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
 
---- a/mm/page_alloc.c
-+++ b/mm/page_alloc.c
+Index: linux-rt-devel/mm/page_alloc.c
+===================================================================
+--- linux-rt-devel.orig/mm/page_alloc.c
++++ linux-rt-devel/mm/page_alloc.c
 @@ -238,9 +238,9 @@ static DEFINE_LOCAL_IRQ_LOCK(pa_lock);
  
  #ifdef CONFIG_PREEMPT_RT_BASE

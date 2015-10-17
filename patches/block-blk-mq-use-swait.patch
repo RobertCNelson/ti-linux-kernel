@@ -43,8 +43,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  include/linux/blkdev.h |    2 +-
  3 files changed, 7 insertions(+), 7 deletions(-)
 
---- a/block/blk-core.c
-+++ b/block/blk-core.c
+Index: linux-rt-devel/block/blk-core.c
+===================================================================
+--- linux-rt-devel.orig/block/blk-core.c
++++ linux-rt-devel/block/blk-core.c
 @@ -664,7 +664,7 @@ struct request_queue *blk_alloc_queue_no
  	q->bypass_depth = 1;
  	__set_bit(QUEUE_FLAG_BYPASS, &q->queue_flags);
@@ -54,8 +56,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	if (blkcg_init_queue(q))
  		goto fail_bdi;
---- a/block/blk-mq.c
-+++ b/block/blk-mq.c
+Index: linux-rt-devel/block/blk-mq.c
+===================================================================
+--- linux-rt-devel.orig/block/blk-mq.c
++++ linux-rt-devel/block/blk-mq.c
 @@ -88,7 +88,7 @@ static int blk_mq_queue_enter(struct req
  		if (!(gfp & __GFP_WAIT))
  			return -EBUSY;
@@ -101,8 +105,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  }
  
  bool blk_mq_can_queue(struct blk_mq_hw_ctx *hctx)
---- a/include/linux/blkdev.h
-+++ b/include/linux/blkdev.h
+Index: linux-rt-devel/include/linux/blkdev.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/blkdev.h
++++ linux-rt-devel/include/linux/blkdev.h
 @@ -483,7 +483,7 @@ struct request_queue {
  	struct throtl_data *td;
  #endif

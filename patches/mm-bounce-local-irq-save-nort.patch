@@ -9,8 +9,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  block/bounce.c |    4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
 
---- a/block/bounce.c
-+++ b/block/bounce.c
+Index: linux-rt-devel/block/bounce.c
+===================================================================
+--- linux-rt-devel.orig/block/bounce.c
++++ linux-rt-devel/block/bounce.c
 @@ -54,11 +54,11 @@ static void bounce_copy_vec(struct bio_v
  	unsigned long flags;
  	unsigned char *vto;

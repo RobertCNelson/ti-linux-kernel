@@ -9,8 +9,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/stop_machine.c |   64 ++++++++++++++++++++++++++++++++++----------------
  1 file changed, 44 insertions(+), 20 deletions(-)
 
---- a/kernel/stop_machine.c
-+++ b/kernel/stop_machine.c
+Index: linux-rt-devel/kernel/stop_machine.c
+===================================================================
+--- linux-rt-devel.orig/kernel/stop_machine.c
++++ linux-rt-devel/kernel/stop_machine.c
 @@ -30,12 +30,12 @@ struct cpu_stop_done {
  	atomic_t		nr_todo;	/* nr left to execute */
  	bool			executed;	/* actually executed? */
@@ -137,7 +139,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	if (work) {
  		cpu_stop_fn_t fn = work->fn;
-@@ -491,7 +509,13 @@ static void cpu_stopper_thread(unsigned
+@@ -491,7 +509,13 @@ repeat:
  			  kallsyms_lookup((unsigned long)fn, NULL, NULL, NULL,
  					  ksym_buf), arg);
  

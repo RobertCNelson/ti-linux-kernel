@@ -9,8 +9,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  net/core/skbuff.c |    6 ++++--
  1 file changed, 4 insertions(+), 2 deletions(-)
 
---- a/net/core/skbuff.c
-+++ b/net/core/skbuff.c
+Index: linux-rt-devel/net/core/skbuff.c
+===================================================================
+--- linux-rt-devel.orig/net/core/skbuff.c
++++ linux-rt-devel/net/core/skbuff.c
 @@ -63,6 +63,7 @@
  #include <linux/errqueue.h>
  #include <linux/prefetch.h>

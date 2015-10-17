@@ -13,8 +13,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  fs/namespace.c |    5 ++++-
  1 file changed, 4 insertions(+), 1 deletion(-)
 
---- a/fs/namespace.c
-+++ b/fs/namespace.c
+Index: linux-rt-devel/fs/namespace.c
+===================================================================
+--- linux-rt-devel.orig/fs/namespace.c
++++ linux-rt-devel/fs/namespace.c
 @@ -353,8 +353,11 @@ int __mnt_want_write(struct vfsmount *m)
  	 * incremented count after it has set MNT_WRITE_HOLD.
  	 */

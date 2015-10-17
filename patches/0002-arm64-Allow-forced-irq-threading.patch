@@ -14,8 +14,10 @@ Signed-off-by: Anders Roxell <anders.roxell@linaro.org>
  arch/arm64/Kconfig |    1 +
  1 file changed, 1 insertion(+)
 
---- a/arch/arm64/Kconfig
-+++ b/arch/arm64/Kconfig
+Index: linux-rt-devel/arch/arm64/Kconfig
+===================================================================
+--- linux-rt-devel.orig/arch/arm64/Kconfig
++++ linux-rt-devel/arch/arm64/Kconfig
 @@ -71,6 +71,7 @@ config ARM64
  	select HAVE_RCU_TABLE_FREE
  	select HAVE_SYSCALL_TRACEPOINTS

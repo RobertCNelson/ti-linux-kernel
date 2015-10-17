@@ -39,8 +39,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  ipc/mqueue.c |   54 +++++++++++++++++++++++++++++++++---------------------
  1 file changed, 33 insertions(+), 21 deletions(-)
 
---- a/ipc/mqueue.c
-+++ b/ipc/mqueue.c
+Index: linux-rt-devel/ipc/mqueue.c
+===================================================================
+--- linux-rt-devel.orig/ipc/mqueue.c
++++ linux-rt-devel/ipc/mqueue.c
 @@ -47,8 +47,7 @@
  #define RECV		1
  
@@ -51,7 +53,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  struct posix_msg_tree_node {
  	struct rb_node		rb_node;
-@@ -571,15 +570,12 @@ static int wq_sleep(struct mqueue_inode_
+@@ -568,15 +567,12 @@ static int wq_sleep(struct mqueue_inode_
  	wq_add(info, sr, ewp);
  
  	for (;;) {
@@ -68,7 +70,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  		if (ewp->state == STATE_READY) {
  			retval = 0;
  			goto out;
-@@ -907,11 +903,15 @@ SYSCALL_DEFINE1(mq_unlink, const char __
+@@ -904,11 +900,15 @@ out_name:
   * list of waiting receivers. A sender checks that list before adding the new
   * message into the message array. If there is a waiting receiver, then it
   * bypasses the message array and directly hands the message over to the
@@ -89,7 +91,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
   *
   * The same algorithm is used for senders.
   */
-@@ -919,21 +919,29 @@ SYSCALL_DEFINE1(mq_unlink, const char __
+@@ -916,21 +916,29 @@ out_name:
  /* pipelined_send() - send a message directly to the task waiting in
   * sys_mq_timedreceive() (without inserting message into a queue).
   */
@@ -124,7 +126,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  {
  	struct ext_wait_queue *sender = wq_get_first_waiter(info, SEND);
  
-@@ -944,10 +952,9 @@ static inline void pipelined_receive(str
+@@ -941,10 +949,9 @@ static inline void pipelined_receive(str
  	}
  	if (msg_insert(sender->msg, info))
  		return;
@@ -137,7 +139,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	sender->state = STATE_READY;
  }
  
-@@ -965,6 +972,7 @@ SYSCALL_DEFINE5(mq_timedsend, mqd_t, mqd
+@@ -962,6 +969,7 @@ SYSCALL_DEFINE5(mq_timedsend, mqd_t, mqd
  	struct timespec ts;
  	struct posix_msg_tree_node *new_leaf = NULL;
  	int ret = 0;
@@ -145,7 +147,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	if (u_abs_timeout) {
  		int res = prepare_timeout(u_abs_timeout, &expires, &ts);
-@@ -1049,7 +1057,7 @@ SYSCALL_DEFINE5(mq_timedsend, mqd_t, mqd
+@@ -1045,7 +1053,7 @@ SYSCALL_DEFINE5(mq_timedsend, mqd_t, mqd
  	} else {
  		receiver = wq_get_first_waiter(info, RECV);
  		if (receiver) {
@@ -154,7 +156,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  		} else {
  			/* adds message to the queue */
  			ret = msg_insert(msg_ptr, info);
-@@ -1062,6 +1070,7 @@ SYSCALL_DEFINE5(mq_timedsend, mqd_t, mqd
+@@ -1058,6 +1066,7 @@ SYSCALL_DEFINE5(mq_timedsend, mqd_t, mqd
  	}
  out_unlock:
  	spin_unlock(&info->lock);
@@ -162,7 +164,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  out_free:
  	if (ret)
  		free_msg(msg_ptr);
-@@ -1149,14 +1158,17 @@ SYSCALL_DEFINE5(mq_timedreceive, mqd_t,
+@@ -1144,14 +1153,17 @@ SYSCALL_DEFINE5(mq_timedreceive, mqd_t,
  			msg_ptr = wait.msg;
  		}
  	} else {

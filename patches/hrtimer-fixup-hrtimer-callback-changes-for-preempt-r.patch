@@ -20,8 +20,10 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  kernel/watchdog.c        |    1 
  6 files changed, 200 insertions(+), 26 deletions(-)
 
---- a/include/linux/hrtimer.h
-+++ b/include/linux/hrtimer.h
+Index: linux-rt-devel/include/linux/hrtimer.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/hrtimer.h
++++ linux-rt-devel/include/linux/hrtimer.h
 @@ -111,6 +111,8 @@ struct hrtimer {
  	enum hrtimer_restart		(*function)(struct hrtimer *);
  	struct hrtimer_clock_base	*base;
@@ -39,8 +41,10 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  	ktime_t			resolution;
  	ktime_t			(*get_time)(void);
  	ktime_t			softirq_time;
---- a/kernel/sched/core.c
-+++ b/kernel/sched/core.c
+Index: linux-rt-devel/kernel/sched/core.c
+===================================================================
+--- linux-rt-devel.orig/kernel/sched/core.c
++++ linux-rt-devel/kernel/sched/core.c
 @@ -461,6 +461,7 @@ static void init_rq_hrtick(struct rq *rq
  
  	hrtimer_init(&rq->hrtick_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
@@ -49,8 +53,10 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  }
  #else	/* CONFIG_SCHED_HRTICK */
  static inline void hrtick_clear(struct rq *rq)
---- a/kernel/sched/rt.c
-+++ b/kernel/sched/rt.c
+Index: linux-rt-devel/kernel/sched/rt.c
+===================================================================
+--- linux-rt-devel.orig/kernel/sched/rt.c
++++ linux-rt-devel/kernel/sched/rt.c
 @@ -44,6 +44,7 @@ void init_rt_bandwidth(struct rt_bandwid
  
  	hrtimer_init(&rt_b->rt_period_timer,
@@ -59,8 +65,10 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  	rt_b->rt_period_timer.function = sched_rt_period_timer;
  }
  
---- a/kernel/time/hrtimer.c
-+++ b/kernel/time/hrtimer.c
+Index: linux-rt-devel/kernel/time/hrtimer.c
+===================================================================
+--- linux-rt-devel.orig/kernel/time/hrtimer.c
++++ linux-rt-devel/kernel/time/hrtimer.c
 @@ -577,8 +577,7 @@ static int hrtimer_reprogram(struct hrti
  	 * When the callback is running, we do not reprogram the clock event
  	 * device. The timer callback is either running on a different CPU or
@@ -338,7 +346,7 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  
  	BUG_ON(!cpu_base->hres_active);
  	cpu_base->nr_events++;
-@@ -1343,7 +1499,10 @@ void hrtimer_interrupt(struct clock_even
+@@ -1343,7 +1499,10 @@ retry:
  			if (basenow.tv64 < hrtimer_get_softexpires_tv64(timer))
  				break;
  
@@ -350,7 +358,7 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  		}
  	}
  	/* Reevaluate the clock bases for the next expiry */
-@@ -1360,6 +1519,10 @@ void hrtimer_interrupt(struct clock_even
+@@ -1360,6 +1519,10 @@ retry:
  	if (expires_next.tv64 == KTIME_MAX ||
  	    !tick_program_event(expires_next, 0)) {
  		cpu_base->hang_detected = 0;
@@ -440,8 +448,10 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  }
  
  /**
---- a/kernel/time/tick-sched.c
-+++ b/kernel/time/tick-sched.c
+Index: linux-rt-devel/kernel/time/tick-sched.c
+===================================================================
+--- linux-rt-devel.orig/kernel/time/tick-sched.c
++++ linux-rt-devel/kernel/time/tick-sched.c
 @@ -1159,6 +1159,7 @@ void tick_setup_sched_timer(void)
  	 * Emulate tick processing via per-CPU hrtimers:
  	 */
@@ -450,8 +460,10 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  	ts->sched_timer.function = tick_sched_timer;
  
  	/* Get the next period (per cpu) */
---- a/kernel/watchdog.c
-+++ b/kernel/watchdog.c
+Index: linux-rt-devel/kernel/watchdog.c
+===================================================================
+--- linux-rt-devel.orig/kernel/watchdog.c
++++ linux-rt-devel/kernel/watchdog.c
 @@ -454,6 +454,7 @@ static void watchdog_enable(unsigned int
  	/* kick off the timer for the hardlockup detector */
  	hrtimer_init(hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);

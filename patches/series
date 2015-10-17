@@ -30,6 +30,8 @@ xfs--clean-up-inode-lockdep-annotations
 0002-futex-Implement-lockless-wakeups.patch
 0004-ipc-mqueue-Implement-lockless-pipelined-wakeups.patch
 mm-slub-move-slab-initialization-into-irq-enabled-region.patch
+arm64-convert-patch_lock-to-raw-lock.patch
+arm64-replace-read_lock-to-rcu-lock-in-call_break_hook.patch
 
 ############################################################
 # Stuff broken upstream, patches submitted
@@ -266,8 +268,6 @@ relay-fix-timer-madness.patch
 
 # NETWORKING
 
-# WORKQUEUE SIGH
-
 # TIMERS
 timers-prepare-for-full-preemption.patch
 timers-preempt-rt-support.patch
@@ -431,6 +431,7 @@ jump-label-rt.patch
 
 # NET
 skbufhead-raw-lock.patch
+net-core-cpuhotplug-drain-input_pkt_queue-lockless.patch
 
 # irqwork
 irqwork-push_most_work_into_softirq_context.patch
@@ -453,6 +454,9 @@ arm-at91-tclib-default-to-tclib-timer-for-rt.patch
 arm-unwind-use_raw_lock.patch
 ARM-enable-irq-in-translation-section-permission-fau.patch
 ARM-cmpxchg-define-__HAVE_ARCH_CMPXCHG-for-armv6-and.patch
+
+# ARM64
+arm64-xen--Make-XEN-depend-on-non-rt.patch
 
 # NETWORK livelock fix
 net-tx-action-avoid-livelock-on-rt.patch
@@ -561,6 +565,7 @@ i915_compile_fix.patch
 drm-i915-drop-trace_i915_gem_ring_dispatch-onrt.patch
 i915-bogus-warning-from-i915-when-running-on-PREEMPT.patch
 
+# CGROUPS
 cgroups-use-simple-wait-in-css_release.patch
 cgroups-scheduling-while-atomic-in-cgroup-code.patch
 
@@ -568,10 +573,10 @@ cgroups-scheduling-while-atomic-in-cgroup-code.patch
 # Revisit: We need this in other places as well
 move_sched_delayed_work_to_helper.patch
 
-# bcache disabled
+# MD
 md-disable-bcache.patch
 
-# Latest fixes
+# WORKQUEUE SIGH
 workqueue-prevent-deadlock-stall.patch
 
 # Add RT to version

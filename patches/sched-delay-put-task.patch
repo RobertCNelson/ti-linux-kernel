@@ -11,8 +11,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/fork.c         |   15 ++++++++++++++-
  2 files changed, 27 insertions(+), 1 deletion(-)
 
---- a/include/linux/sched.h
-+++ b/include/linux/sched.h
+Index: linux-rt-devel/include/linux/sched.h
+===================================================================
+--- linux-rt-devel.orig/include/linux/sched.h
++++ linux-rt-devel/include/linux/sched.h
 @@ -1788,6 +1788,9 @@ struct task_struct {
  	unsigned int	sequential_io;
  	unsigned int	sequential_io_avg;
@@ -47,8 +49,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  #ifdef CONFIG_VIRT_CPU_ACCOUNTING_GEN
  extern void task_cputime(struct task_struct *t,
---- a/kernel/fork.c
-+++ b/kernel/fork.c
+Index: linux-rt-devel/kernel/fork.c
+===================================================================
+--- linux-rt-devel.orig/kernel/fork.c
++++ linux-rt-devel/kernel/fork.c
 @@ -244,7 +244,9 @@ static inline void put_signal_struct(str
  	if (atomic_dec_and_test(&sig->sigcnt))
  		free_signal_struct(sig);

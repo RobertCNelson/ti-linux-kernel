@@ -12,8 +12,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  drivers/scsi/libfc/fc_exch.c  |    4 ++--
  3 files changed, 13 insertions(+), 13 deletions(-)
 
---- a/drivers/scsi/fcoe/fcoe.c
-+++ b/drivers/scsi/fcoe/fcoe.c
+Index: linux-rt-devel/drivers/scsi/fcoe/fcoe.c
+===================================================================
+--- linux-rt-devel.orig/drivers/scsi/fcoe/fcoe.c
++++ linux-rt-devel/drivers/scsi/fcoe/fcoe.c
 @@ -1287,7 +1287,7 @@ static void fcoe_percpu_thread_destroy(u
  	struct sk_buff *skb;
  #ifdef CONFIG_SMP
@@ -32,7 +34,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #else
  	/*
  	 * This a non-SMP scenario where the singular Rx thread is
-@@ -1567,11 +1567,11 @@ static int fcoe_rcv(struct sk_buff *skb,
+@@ -1567,11 +1567,11 @@ err2:
  static int fcoe_alloc_paged_crc_eof(struct sk_buff *skb, int tlen)
  {
  	struct fcoe_percpu_s *fps;
@@ -77,8 +79,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	kfree_skb(skb);
  }
  
---- a/drivers/scsi/fcoe/fcoe_ctlr.c
-+++ b/drivers/scsi/fcoe/fcoe_ctlr.c
+Index: linux-rt-devel/drivers/scsi/fcoe/fcoe_ctlr.c
+===================================================================
+--- linux-rt-devel.orig/drivers/scsi/fcoe/fcoe_ctlr.c
++++ linux-rt-devel/drivers/scsi/fcoe/fcoe_ctlr.c
 @@ -831,7 +831,7 @@ static unsigned long fcoe_ctlr_age_fcfs(
  
  	INIT_LIST_HEAD(&del_list);
@@ -97,9 +101,11 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	list_for_each_entry_safe(fcf, next, &del_list, list) {
  		/* Removes fcf from current list */
---- a/drivers/scsi/libfc/fc_exch.c
-+++ b/drivers/scsi/libfc/fc_exch.c
-@@ -816,10 +816,10 @@ static struct fc_exch *fc_exch_em_alloc(
+Index: linux-rt-devel/drivers/scsi/libfc/fc_exch.c
+===================================================================
+--- linux-rt-devel.orig/drivers/scsi/libfc/fc_exch.c
++++ linux-rt-devel/drivers/scsi/libfc/fc_exch.c
+@@ -814,10 +814,10 @@ static struct fc_exch *fc_exch_em_alloc(
  	}
  	memset(ep, 0, sizeof(*ep));
  

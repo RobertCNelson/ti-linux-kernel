@@ -26,8 +26,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  lib/locking-selftest.c |   27 +++++++++++++++++++++++++++
  1 file changed, 27 insertions(+)
 
---- a/lib/locking-selftest.c
-+++ b/lib/locking-selftest.c
+Index: linux-rt-devel/lib/locking-selftest.c
+===================================================================
+--- linux-rt-devel.orig/lib/locking-selftest.c
++++ linux-rt-devel/lib/locking-selftest.c
 @@ -590,6 +590,8 @@ GENERATE_TESTCASE(init_held_rsem)
  #include "locking-selftest-spin-hardirq.h"
  GENERATE_PERMUTATIONS_2_EVENTS(irqsafe1_hard_spin)

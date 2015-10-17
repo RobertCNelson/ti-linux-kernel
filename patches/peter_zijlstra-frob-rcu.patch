@@ -153,8 +153,10 @@ Signed-off-by: Peter Zijlstra <a.p.zijlstra@chello.nl>
  kernel/rcu/tree_plugin.h |    2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
---- a/kernel/rcu/tree_plugin.h
-+++ b/kernel/rcu/tree_plugin.h
+Index: linux-rt-devel/kernel/rcu/tree_plugin.h
+===================================================================
+--- linux-rt-devel.orig/kernel/rcu/tree_plugin.h
++++ linux-rt-devel/kernel/rcu/tree_plugin.h
 @@ -291,7 +291,7 @@ void rcu_read_unlock_special(struct task
  	}
  

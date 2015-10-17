@@ -52,8 +52,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  kernel/time/hrtimer.c |   40 ++++++++++++++++++++++++++++++++++++++++
  1 file changed, 40 insertions(+)
 
---- a/kernel/time/hrtimer.c
-+++ b/kernel/time/hrtimer.c
+Index: linux-rt-devel/kernel/time/hrtimer.c
+===================================================================
+--- linux-rt-devel.orig/kernel/time/hrtimer.c
++++ linux-rt-devel/kernel/time/hrtimer.c
 @@ -48,6 +48,7 @@
  #include <linux/sched/rt.h>
  #include <linux/sched/deadline.h>

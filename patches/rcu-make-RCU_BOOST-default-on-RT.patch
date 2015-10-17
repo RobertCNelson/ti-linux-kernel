@@ -13,8 +13,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  init/Kconfig |    2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
---- a/init/Kconfig
-+++ b/init/Kconfig
+Index: linux-rt-devel/init/Kconfig
+===================================================================
+--- linux-rt-devel.orig/init/Kconfig
++++ linux-rt-devel/init/Kconfig
 @@ -664,7 +664,7 @@ config TREE_RCU_TRACE
  config RCU_BOOST
  	bool "Enable RCU priority boosting"
