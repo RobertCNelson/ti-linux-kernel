@@ -1,6 +1,16 @@
 #
 # Allwinner sunXi SoC drivers
 #
+config SUNXI_RSB
+	bool
+	default MACH_SUN8I || MACH_SUN9I
+	select REGMAP
+	help
+	  Say y here to enable Reduced Serial Bus (RSB) support. This
+	  controller is responsible for communicating with various RSB
+	  based devices, such as AXP223, AXP8XX PMICs, and AC100/AC200
+	  ICs.
+
 config SUNXI_SRAM
 	bool
 	default ARCH_SUNXI
