@@ -139,27 +139,30 @@ static const u32 hpd_bxt[HPD_NUM_PINS] = {
 /*
  * We should clear IMR at preinstall/uninstall, and just check at postinstall.
  */
-#define GEN5_ASSERT_IIR_IS_ZERO(reg) do { \
-	u32 val = I915_READ(reg); \
-	if (val) { \
-		WARN(1, "Interrupt register 0x%x is not zero: 0x%08x\n", \
-		     (reg), val); \
-		I915_WRITE((reg), 0xffffffff); \
-		POSTING_READ(reg); \
-		I915_WRITE((reg), 0xffffffff); \
-		POSTING_READ(reg); \
-	} \
-} while (0)
+static void gen5_assert_iir_is_zero(struct drm_i915_private *dev_priv, u32 reg)
+{
+	u32 val = I915_READ(reg);
+
+	if (val == 0)
+		return;
+
+	WARN(1, "Interrupt register 0x%x is not zero: 0x%08x\n",
+	     reg, val);
+	I915_WRITE(reg, 0xffffffff);
+	POSTING_READ(reg);
+	I915_WRITE(reg, 0xffffffff);
+	POSTING_READ(reg);
+}
 
 #define GEN8_IRQ_INIT_NDX(type, which, imr_val, ier_val) do { \
-	GEN5_ASSERT_IIR_IS_ZERO(GEN8_##type##_IIR(which)); \
+	gen5_assert_iir_is_zero(dev_priv, GEN8_##type##_IIR(which)); \
 	I915_WRITE(GEN8_##type##_IER(which), (ier_val)); \
 	I915_WRITE(GEN8_##type##_IMR(which), (imr_val)); \
 	POSTING_READ(GEN8_##type##_IMR(which)); \
 } while (0)
 
 #define GEN5_IRQ_INIT(type, imr_val, ier_val) do { \
-	GEN5_ASSERT_IIR_IS_ZERO(type##IIR); \
+	gen5_assert_iir_is_zero(dev_priv, type##IIR); \
 	I915_WRITE(type##IER, (ier_val)); \
 	I915_WRITE(type##IMR, (imr_val)); \
 	POSTING_READ(type##IMR); \
@@ -581,6 +584,7 @@ i915_disable_pipestat(struct drm_i915_private *dev_priv, enum pipe pipe,
 
 /**
  * i915_enable_asle_pipestat - enable ASLE pipestat for OpRegion
+ * @dev: drm device
  */
 static void i915_enable_asle_pipestat(struct drm_device *dev)
 {
@@ -706,12 +710,11 @@ static u32 i915_get_vblank_counter(struct drm_device *dev, unsigned int pipe)
 	return (((high1 << 8) | low) + (pixel >= vbl_start)) & 0xffffff;
 }
 
-static u32 gm45_get_vblank_counter(struct drm_device *dev, unsigned int pipe)
+static u32 g4x_get_vblank_counter(struct drm_device *dev, unsigned int pipe)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	int reg = PIPE_FRMCOUNT_GM45(pipe);
 
-	return I915_READ(reg);
+	return I915_READ(PIPE_FRMCOUNT_G4X(pipe));
 }
 
 /* raw reads, only for fast reads of display block, no need for forcewake etc. */
@@ -997,12 +1000,16 @@ static bool vlv_c0_above(struct drm_i915_private *dev_priv,
 			 int threshold)
 {
 	u64 time, c0;
+	unsigned int mul = 100;
 
 	if (old->cz_clock == 0)
 		return false;
 
+	if (I915_READ(VLV_COUNTER_CONTROL) & VLV_COUNT_RANGE_HIGH)
+		mul <<= 8;
+
 	time = now->cz_clock - old->cz_clock;
-	time *= threshold * dev_priv->mem_freq;
+	time *= threshold * dev_priv->czclk_freq;
 
 	/* Workload can be split between render + media, e.g. SwapBuffers
 	 * being blitted in X after being rendered in mesa. To account for
@@ -1010,7 +1017,7 @@ static bool vlv_c0_above(struct drm_i915_private *dev_priv,
 	 */
 	c0 = now->render_c0 - old->render_c0;
 	c0 += now->media_c0 - old->media_c0;
-	c0 *= 100 * VLV_CZ_CLOCK_TO_MILLI_SEC * 4 / 1000;
+	c0 *= mul * VLV_CZ_CLOCK_TO_MILLI_SEC;
 
 	return c0 >= time;
 }
@@ -2388,6 +2395,7 @@ static void i915_error_wake_up(struct drm_i915_private *dev_priv,
 
 /**
  * i915_reset_and_wakeup - do process context error handling work
+ * @dev: drm device
  *
  * Fire an error uevent so userspace can see that a hang or error
  * was detected.
@@ -2565,7 +2573,7 @@ static void i915_report_and_clear_eir(struct drm_device *dev)
  * i915_handle_error - handle a gpu error
  * @dev: drm device
  *
- * Do some basic checking of regsiter state at error time and
+ * Do some basic checking of register state at error time and
  * dump it to the syslog.  Also call i915_capture_error_state() to make
  * sure we get a record and make it available in debugfs.  Fire a uevent
  * so userspace knows something bad happened (should trigger collection
@@ -2777,6 +2785,26 @@ semaphore_waits_for(struct intel_engine_cs *ring, u32 *seqno)
 	u32 cmd, ipehr, head;
 	u64 offset = 0;
 	int i, backwards;
+
+	/*
+	 * This function does not support execlist mode - any attempt to
+	 * proceed further into this function will result in a kernel panic
+	 * when dereferencing ring->buffer, which is not set up in execlist
+	 * mode.
+	 *
+	 * The correct way of doing it would be to derive the currently
+	 * executing ring buffer from the current context, which is derived
+	 * from the currently running request. Unfortunately, to get the
+	 * current request we would have to grab the struct_mutex before doing
+	 * anything else, which would be ill-advised since some other thread
+	 * might have grabbed it already and managed to hang itself, causing
+	 * the hang checker to deadlock.
+	 *
+	 * Therefore, this function does not support execlist mode in its
+	 * current form. Just return NULL and move on.
+	 */
+	if (ring->buffer == NULL)
+		return NULL;
 
 	ipehr = I915_READ(RING_IPEHR(ring->mmio_base));
 	if (!ipehr_is_semaphore_wait(ring->dev, ipehr))
@@ -3339,7 +3367,7 @@ static void ibx_irq_postinstall(struct drm_device *dev)
 	else
 		mask = SDE_GMBUS_CPT | SDE_AUX_MASK_CPT;
 
-	GEN5_ASSERT_IIR_IS_ZERO(SDEIIR);
+	gen5_assert_iir_is_zero(dev_priv, SDEIIR);
 	I915_WRITE(SDEIMR, ~mask);
 }
 
@@ -4371,7 +4399,7 @@ void intel_irq_init(struct drm_i915_private *dev_priv)
 		dev->driver->get_vblank_counter = i8xx_get_vblank_counter;
 	} else if (IS_G4X(dev_priv) || INTEL_INFO(dev_priv)->gen >= 5) {
 		dev->max_vblank_count = 0xffffffff; /* full 32 bit counter */
-		dev->driver->get_vblank_counter = gm45_get_vblank_counter;
+		dev->driver->get_vblank_counter = g4x_get_vblank_counter;
 	} else {
 		dev->driver->get_vblank_counter = i915_get_vblank_counter;
 		dev->max_vblank_count = 0xffffff; /* only 24 bits of frame count */
