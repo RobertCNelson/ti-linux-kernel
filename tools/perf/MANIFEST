@@ -41,6 +41,7 @@ tools/include/asm-generic/bitops.h
 tools/include/linux/atomic.h
 tools/include/linux/bitops.h
 tools/include/linux/compiler.h
+tools/include/linux/filter.h
 tools/include/linux/hash.h
 tools/include/linux/kernel.h
 tools/include/linux/list.h
@@ -49,6 +50,7 @@ tools/include/linux/poison.h
 tools/include/linux/rbtree.h
 tools/include/linux/rbtree_augmented.h
 tools/include/linux/types.h
+tools/include/linux/err.h
 include/asm-generic/bitops/arch_hweight.h
 include/asm-generic/bitops/const_hweight.h
 include/asm-generic/bitops/fls64.h
