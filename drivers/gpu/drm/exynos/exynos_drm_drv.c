@@ -105,7 +105,7 @@ static void exynos_atomic_commit_complete(struct exynos_atomic_commit *commit)
 		atomic_inc(&exynos_crtc->pending_update);
 	}
 
-	drm_atomic_helper_commit_planes(dev, state);
+	drm_atomic_helper_commit_planes(dev, state, false);
 
 	exynos_atomic_wait_for_commit(state);
 
@@ -449,7 +449,7 @@ static struct drm_driver exynos_drm_driver = {
 	.lastclose		= exynos_drm_lastclose,
 	.postclose		= exynos_drm_postclose,
 	.set_busid		= drm_platform_set_busid,
-	.get_vblank_counter	= drm_vblank_count,
+	.get_vblank_counter	= drm_vblank_no_hw_counter,
 	.enable_vblank		= exynos_drm_crtc_enable_vblank,
 	.disable_vblank		= exynos_drm_crtc_disable_vblank,
 	.gem_free_object	= exynos_drm_gem_free_object,
