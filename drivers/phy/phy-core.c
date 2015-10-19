@@ -18,6 +18,7 @@
 #include <linux/device.h>
 #include <linux/slab.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/phy/phy.h>
 #include <linux/idr.h>
 #include <linux/pm_runtime.h>
@@ -362,6 +363,8 @@ static struct phy *_of_phy_get(struct device_node *np, int index)
 		index, &args);
 	if (ret)
 		return ERR_PTR(-ENODEV);
+
+	of_device_probe(args.np);
 
 	mutex_lock(&phy_provider_mutex);
 	phy_provider = of_phy_provider_lookup(args.np);
