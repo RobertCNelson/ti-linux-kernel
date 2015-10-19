@@ -333,7 +333,7 @@ u8 r8712_init_drv_sw(struct _adapter *padapter)
 
 u8 r8712_free_drv_sw(struct _adapter *padapter)
 {
-	struct net_device *pnetdev = (struct net_device *)padapter->pnetdev;
+	struct net_device *pnetdev = padapter->pnetdev;
 
 	r8712_free_cmd_priv(&padapter->cmdpriv);
 	r8712_free_evt_priv(&padapter->evtpriv);
@@ -366,7 +366,8 @@ static void enable_video_mode(struct _adapter *padapter, int cbw40_value)
 
 	if (cbw40_value) {
 		/* if the driver supports the 40M bandwidth,
-		 * we can enable the bit 9.*/
+		 * we can enable the bit 9.
+		 */
 		intcmd |= 0x200;
 	}
 	r8712_fw_cmd(padapter, intcmd);

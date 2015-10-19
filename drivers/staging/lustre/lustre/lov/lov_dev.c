@@ -46,7 +46,6 @@
 #include "lov_cl_internal.h"
 #include "lov_internal.h"
 
-
 struct kmem_cache *lov_lock_kmem;
 struct kmem_cache *lov_object_kmem;
 struct kmem_cache *lov_thread_kmem;
@@ -155,6 +154,7 @@ static void lov_key_fini(const struct lu_context *ctx,
 			 struct lu_context_key *key, void *data)
 {
 	struct lov_thread_info *info = data;
+
 	LINVRNT(list_empty(&info->lti_closure.clc_list));
 	OBD_SLAB_FREE_PTR(info, lov_thread_kmem);
 }
@@ -180,6 +180,7 @@ static void lov_session_key_fini(const struct lu_context *ctx,
 				 struct lu_context_key *key, void *data)
 {
 	struct lov_session *info = data;
+
 	OBD_SLAB_FREE_PTR(info, lov_session_kmem);
 }
 
