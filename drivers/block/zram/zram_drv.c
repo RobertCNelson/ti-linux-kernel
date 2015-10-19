@@ -365,6 +365,9 @@ static ssize_t comp_algorithm_store(struct device *dev,
 	struct zram *zram = dev_to_zram(dev);
 	size_t sz;
 
+	if (!zcomp_available_algorithm(buf))
+		return -EINVAL;
+
 	down_write(&zram->init_lock);
 	if (init_done(zram)) {
 		up_write(&zram->init_lock);
@@ -377,9 +380,6 @@ static ssize_t comp_algorithm_store(struct device *dev,
 	sz = strlen(zram->compressor);
 	if (sz > 0 && zram->compressor[sz - 1] == '\n')
 		zram->compressor[sz - 1] = 0x00;
-
-	if (!zcomp_available_algorithm(zram->compressor))
-		len = -EINVAL;
 
 	up_write(&zram->init_lock);
 	return len;
@@ -726,13 +726,13 @@ static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec, u32 index,
 	}
 
 	alloced_pages = zs_get_total_pages(meta->mem_pool);
+	update_used_max(zram, alloced_pages);
+
 	if (zram->limit_pages && alloced_pages > zram->limit_pages) {
 		zs_free(meta->mem_pool, handle);
 		ret = -ENOMEM;
 		goto out;
 	}
-
-	update_used_max(zram, alloced_pages);
 
 	cmem = zs_map_object(meta->mem_pool, handle, ZS_MM_WO);
 
