@@ -117,6 +117,7 @@ int snd_hdac_device_init(struct hdac_device *dev, struct hdac_bus *bus,
 void snd_hdac_device_exit(struct hdac_device *dev);
 int snd_hdac_device_register(struct hdac_device *codec);
 void snd_hdac_device_unregister(struct hdac_device *codec);
+int snd_hdac_device_set_chip_name(struct hdac_device *codec, const char *name);
 
 int snd_hdac_refresh_widgets(struct hdac_device *codec);
 int snd_hdac_refresh_widget_sysfs(struct hdac_device *codec);
@@ -147,6 +148,12 @@ int snd_hdac_query_supported_pcm(struct hdac_device *codec, hda_nid_t nid,
 bool snd_hdac_is_supported_format(struct hdac_device *codec, hda_nid_t nid,
 				  unsigned int format);
 
+int snd_hdac_codec_read(struct hdac_device *hdac, hda_nid_t nid,
+			int flags, unsigned int verb, unsigned int parm);
+int snd_hdac_codec_write(struct hdac_device *hdac, hda_nid_t nid,
+			int flags, unsigned int verb, unsigned int parm);
+bool snd_hdac_check_power_state(struct hdac_device *hdac,
+		hda_nid_t nid, unsigned int target_state);
 /**
  * snd_hdac_read_parm - read a codec parameter
  * @codec: the codec object
