@@ -111,6 +111,7 @@ struct perf_evsel {
 	bool			system_wide;
 	bool			tracking;
 	bool			per_pkg;
+	bool			precise_max;
 	/* parse modifier helper */
 	int			exclude_GH;
 	int			nr_members;
@@ -130,7 +131,6 @@ union u64_swap {
 struct cpu_map;
 struct target;
 struct thread_map;
-struct perf_evlist;
 struct record_opts;
 
 static inline struct cpu_map *perf_evsel__cpus(struct perf_evsel *evsel)
@@ -162,6 +162,9 @@ static inline struct perf_evsel *perf_evsel__new(struct perf_event_attr *attr)
 
 struct perf_evsel *perf_evsel__newtp_idx(const char *sys, const char *name, int idx);
 
+/*
+ * Returns pointer with encoded error via <linux/err.h> interface.
+ */
 static inline struct perf_evsel *perf_evsel__newtp(const char *sys, const char *name)
 {
 	return perf_evsel__newtp_idx(sys, name, 0);
