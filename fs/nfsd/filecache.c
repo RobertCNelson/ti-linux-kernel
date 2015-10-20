@@ -670,7 +670,8 @@ open_file:
 	}
 	/* FIXME: should we abort opening if the link count goes to 0? */
 	if (status == nfs_ok)
-		status = nfsd_open(rqstp, fhp, S_IFREG, may_flags, &nf->nf_file);
+		status = nfsd_open_verified(rqstp, fhp, S_IFREG, may_flags,
+						&nf->nf_file);
 	clear_bit_unlock(NFSD_FILE_PENDING, &nf->nf_flags);
 	smp_mb__after_atomic();
 	wake_up_bit(&nf->nf_flags, NFSD_FILE_PENDING);
