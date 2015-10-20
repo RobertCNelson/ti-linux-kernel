@@ -128,7 +128,7 @@ static void i915_write_fence_reg(struct drm_device *dev, int reg,
 		WARN((i915_gem_obj_ggtt_offset(obj) & ~I915_FENCE_START_MASK) ||
 		     (size & -size) != size ||
 		     (i915_gem_obj_ggtt_offset(obj) & (size - 1)),
-		     "object 0x%08lx [fenceable? %d] not 1M or pot-size (0x%08x) aligned\n",
+		     "object 0x%08llx [fenceable? %d] not 1M or pot-size (0x%08x) aligned\n",
 		     i915_gem_obj_ggtt_offset(obj), obj->map_and_fenceable, size);
 
 		if (obj->tiling_mode == I915_TILING_Y && HAS_128_BYTE_Y_TILING(dev))
@@ -171,7 +171,7 @@ static void i830_write_fence_reg(struct drm_device *dev, int reg,
 		WARN((i915_gem_obj_ggtt_offset(obj) & ~I830_FENCE_START_MASK) ||
 		     (size & -size) != size ||
 		     (i915_gem_obj_ggtt_offset(obj) & (size - 1)),
-		     "object 0x%08lx not 512K or pot-size 0x%08x aligned\n",
+		     "object 0x%08llx not 512K or pot-size 0x%08x aligned\n",
 		     i915_gem_obj_ggtt_offset(obj), size);
 
 		pitch_val = obj->stride / 128;
@@ -322,7 +322,7 @@ i915_find_fence_reg(struct drm_device *dev)
 
 	/* First try to find a free reg */
 	avail = NULL;
-	for (i = dev_priv->fence_reg_start; i < dev_priv->num_fence_regs; i++) {
+	for (i = 0; i < dev_priv->num_fence_regs; i++) {
 		reg = &dev_priv->fence_regs[i];
 		if (!reg->obj)
 			return reg;
