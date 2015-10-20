@@ -69,6 +69,7 @@ struct hda_bus {
 	unsigned int no_response_fallback:1; /* don't fallback at RIRB error */
 
 	int primary_dig_out_type;	/* primary digital out PCM type */
+	unsigned int mixer_assigned;	/* codec addr for mixer name */
 };
 
 /* from hdac_bus to hda_bus */
@@ -297,10 +298,6 @@ struct hda_codec {
 /*
  * constructors
  */
-int snd_hda_bus_new(struct snd_card *card,
-		    const struct hdac_bus_ops *ops,
-		    const struct hdac_io_ops *io_ops,
-		    struct hda_bus **busp);
 int snd_hda_codec_new(struct hda_bus *bus, struct snd_card *card,
 		      unsigned int codec_addr, struct hda_codec **codecp);
 int snd_hda_codec_configure(struct hda_codec *codec);
@@ -309,11 +306,21 @@ int snd_hda_codec_update_widgets(struct hda_codec *codec);
 /*
  * low level functions
  */
-unsigned int snd_hda_codec_read(struct hda_codec *codec, hda_nid_t nid,
+static inline unsigned int
+snd_hda_codec_read(struct hda_codec *codec, hda_nid_t nid,
 				int flags,
-				unsigned int verb, unsigned int parm);
-int snd_hda_codec_write(struct hda_codec *codec, hda_nid_t nid, int flags,
-			unsigned int verb, unsigned int parm);
+				unsigned int verb, unsigned int parm)
+{
+	return snd_hdac_codec_read(&codec->core, nid, flags, verb, parm);
+}
+
+static inline int
+snd_hda_codec_write(struct hda_codec *codec, hda_nid_t nid, int flags,
+			unsigned int verb, unsigned int parm)
+{
+	return snd_hdac_codec_write(&codec->core, nid, flags, verb, parm);
+}
+
 #define snd_hda_param_read(codec, nid, param) \
 	snd_hdac_read_parm(&(codec)->core, nid, param)
 #define snd_hda_get_sub_nodes(codec, nid, start_nid) \
@@ -452,6 +459,8 @@ int snd_hda_lock_devices(struct hda_bus *bus);
 void snd_hda_unlock_devices(struct hda_bus *bus);
 void snd_hda_bus_reset(struct hda_bus *bus);
 void snd_hda_bus_reset_codecs(struct hda_bus *bus);
+
+int snd_hda_codec_set_name(struct hda_codec *codec, const char *name);
 
 /*
  * power management
