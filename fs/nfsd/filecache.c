@@ -11,6 +11,7 @@
 #include <linux/sched.h>
 #include <linux/list_lru.h>
 #include <linux/fsnotify_backend.h>
+#include <linux/seq_file.h>
 
 #include "vfs.h"
 #include "nfsd.h"
@@ -30,6 +31,8 @@
 struct nfsd_fcache_bucket {
 	struct hlist_head	nfb_head;
 	spinlock_t		nfb_lock;
+	unsigned int		nfb_count;
+	unsigned int		nfb_maxcount;
 };
 
 static struct kmem_cache		*nfsd_file_slab;
@@ -171,6 +174,7 @@ nfsd_file_unhash(struct nfsd_file *nf)
 
 	trace_nfsd_file_unhash(nf);
 	if (test_bit(NFSD_FILE_HASHED, &nf->nf_flags)) {
+		--nfsd_file_hashtbl[nf->nf_hashval].nfb_count;
 		clear_bit(NFSD_FILE_HASHED, &nf->nf_flags);
 		hlist_del_rcu(&nf->nf_node);
 		list_lru_del(&nfsd_file_lru, &nf->nf_lru);
@@ -587,6 +591,9 @@ retry:
 		list_lru_add(&nfsd_file_lru, &new->nf_lru);
 		hlist_add_head_rcu(&new->nf_node,
 				&nfsd_file_hashtbl[hashval].nfb_head);
+		++nfsd_file_hashtbl[hashval].nfb_count;
+		nfsd_file_hashtbl[hashval].nfb_maxcount = max(nfsd_file_hashtbl[hashval].nfb_maxcount,
+				nfsd_file_hashtbl[hashval].nfb_count);
 		spin_unlock(&nfsd_file_hashtbl[hashval].nfb_lock);
 		nf = new;
 		new = NULL;
@@ -668,4 +675,37 @@ open_file:
 	smp_mb__after_atomic();
 	wake_up_bit(&nf->nf_flags, NFSD_FILE_PENDING);
 	goto out;
+}
+
+/*
+ * Note that fields may be added, removed or reordered in the future. Programs
+ * scraping this file for info should test the labels to ensure they're
+ * getting the correct field.
+ */
+static int nfsd_file_cache_stats_show(struct seq_file *m, void *v)
+{
+	unsigned int i, count = 0, longest = 0;
+
+	/*
+	 * No need for spinlocks here since we're not terribly interested in
+	 * accuracy. We do take the nfsd_mutex simply to ensure that we
+	 * don't end up racing with server shutdown
+	 */
+	mutex_lock(&nfsd_mutex);
+	if (nfsd_file_hashtbl) {
+		for (i = 0; i < NFSD_FILE_HASH_SIZE; i++) {
+			count += nfsd_file_hashtbl[i].nfb_count;
+			longest = max(longest, nfsd_file_hashtbl[i].nfb_count);
+		}
+	}
+	mutex_unlock(&nfsd_mutex);
+
+	seq_printf(m, "total entries: %u\n", count);
+	seq_printf(m, "longest chain: %u\n", longest);
+	return 0;
+}
+
+int nfsd_file_cache_stats_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, nfsd_file_cache_stats_show, NULL);
 }

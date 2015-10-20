@@ -22,6 +22,7 @@
 #include "state.h"
 #include "netns.h"
 #include "pnfs.h"
+#include "filecache.h"
 
 /*
  *	We have a single directory with several nodes in it.
@@ -36,6 +37,7 @@ enum {
 	NFSD_Threads,
 	NFSD_Pool_Threads,
 	NFSD_Pool_Stats,
+	NFSD_File_Cache_Stats,
 	NFSD_Reply_Cache_Stats,
 	NFSD_Versions,
 	NFSD_Ports,
@@ -218,6 +220,13 @@ static const struct file_operations pool_stats_operations = {
 	.llseek		= seq_lseek,
 	.release	= nfsd_pool_stats_release,
 	.owner		= THIS_MODULE,
+};
+
+static struct file_operations file_cache_stats_operations = {
+	.open		= nfsd_file_cache_stats_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
 };
 
 static struct file_operations reply_cache_stats_operations = {
@@ -1138,6 +1147,7 @@ static int nfsd_fill_super(struct super_block * sb, void * data, int silent)
 		[NFSD_Threads] = {"threads", &transaction_ops, S_IWUSR|S_IRUSR},
 		[NFSD_Pool_Threads] = {"pool_threads", &transaction_ops, S_IWUSR|S_IRUSR},
 		[NFSD_Pool_Stats] = {"pool_stats", &pool_stats_operations, S_IRUGO},
+		[NFSD_File_Cache_Stats] = {"file_cache_stats", &file_cache_stats_operations, S_IRUGO},
 		[NFSD_Reply_Cache_Stats] = {"reply_cache_stats", &reply_cache_stats_operations, S_IRUGO},
 		[NFSD_Versions] = {"versions", &transaction_ops, S_IWUSR|S_IRUSR},
 		[NFSD_Ports] = {"portlist", &transaction_ops, S_IWUSR|S_IRUGO},
