@@ -324,4 +324,22 @@ config CMA_ALIGNMENT
 
 endif
 
+config DELAY_DEVICE_PROBES
+	bool "Allow delaying the probe of some devices" if EXPERT
+	default y
+	help
+	  Devices can be matched to a driver and probed from the moment they
+	  are registered, but early during boot their probes are likely to be
+	  deferred because some dependency isn't available yet because most
+	  drivers haven't been registered yet.
+
+	  Enabling this option allows the device registration code to delay the
+	  probing of a specific device until late_initcall, when all built-in
+	  drivers have been registered already.
+
+	  In some platforms there may be implicit assumptions about when some
+	  devices are probed, so enabling this option could cause problems there.
+
+	  If unsure, say Y here.
+
 endmenu
