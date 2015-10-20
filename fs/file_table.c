@@ -261,6 +261,25 @@ void flush_delayed_fput(void)
 	flush_delayed_work(&delayed_fput_work);
 }
 
+/**
+ * fput - put a struct file reference
+ * @file: file of which to put the reference
+ *
+ * This function decrements the reference count for the struct file reference,
+ * and queues it up for destruction if the count goes to zero. In the case of
+ * most tasks we queue it to the task_work infrastructure, which will be run
+ * just before the task returns back to userspace. kthreads however never
+ * return to userspace, so for those we add them to a global list and schedule
+ * a delayed workqueue job to do the final cleanup work.
+ *
+ * Why not just do it synchronously? __fput can involve taking locks of all
+ * sorts, and doing it synchronously means that the callers must take extra care
+ * not to deadlock. That can be very difficult to ensure, so by deferring it
+ * until just before return to userland or to the workqueue, we sidestep that
+ * nastiness. Also, __fput can be quite stack intensive, so doing a final fput
+ * has the possibility of blowing up if we don't take steps to ensure that we
+ * have enough stack space to make it work.
+ */
 void fput(struct file *file)
 {
 	if (atomic_long_dec_and_test(&file->f_count)) {
@@ -281,6 +300,7 @@ void fput(struct file *file)
 			schedule_delayed_work(&delayed_fput_work, 1);
 	}
 }
+EXPORT_SYMBOL(fput);
 
 /*
  * synchronous analog of fput(); for kernel threads that might be needed
@@ -299,7 +319,6 @@ void __fput_sync(struct file *file)
 	}
 }
 
-EXPORT_SYMBOL(fput);
 
 void put_filp(struct file *file)
 {
