@@ -12,6 +12,7 @@
 struct file;
 
 extern void fput(struct file *);
+extern bool fput_global(struct file *);
 
 struct file_operations;
 struct vfsmount;

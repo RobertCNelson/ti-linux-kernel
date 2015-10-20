@@ -262,6 +262,7 @@ void fput_global_flush(void)
 {
 	flush_delayed_work(&global_fput_work);
 }
+EXPORT_SYMBOL(fput_global_flush);
 
 /**
  * fput - put a struct file reference
@@ -303,6 +304,38 @@ void fput(struct file *file)
 	}
 }
 EXPORT_SYMBOL(fput);
+
+/**
+ * fput_global - do an fput without using task_work
+ * @file: file of which to put the reference
+ *
+ * When fput is called in the context of a userland process, it'll queue the
+ * actual work (__fput()) to be done just before returning to userland. In some
+ * cases however, we need to ensure that the __fput runs before that point.
+ *
+ * There is no safe way to flush work that has been queued via task_work_add
+ * however, so to do this we borrow the global_fput infrastructure that
+ * kthreads use. The userland process can use fput_global() on one or more
+ * struct files and then call fput_global_flush() to ensure that they are
+ * completely closed before proceeding.
+ *
+ * The main user is nfsd, which uses this to ensure that all cached but
+ * otherwise unused files are closed to allow a userland request for a lease
+ * to proceed.
+ *
+ * Returns true if the final fput was done, false otherwise. The caller can
+ * use this to determine whether to fput_global_flush afterward.
+ */
+bool fput_global(struct file *file)
+{
+	if (atomic_long_dec_and_test(&file->f_count)) {
+		if (llist_add(&file->f_u.fu_llist, &global_fput_list))
+			schedule_delayed_work(&global_fput_work, 1);
+		return true;
+	}
+	return false;
+}
+EXPORT_SYMBOL(fput_global);
 
 /*
  * synchronous analog of fput(); for kernel threads that might be needed
