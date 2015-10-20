@@ -2502,6 +2502,36 @@ static int ggtt_bind_vma(struct i915_vma *vma,
 			 enum i915_cache_level cache_level,
 			 u32 flags)
 {
+	struct drm_i915_gem_object *obj = vma->obj;
+	u32 pte_flags = 0;
+	int ret;
+
+	ret = i915_get_ggtt_vma_pages(vma);
+	if (ret)
+		return ret;
+
+	/* Currently applicable only to VLV */
+	if (obj->gt_ro)
+		pte_flags |= PTE_READ_ONLY;
+
+	vma->vm->insert_entries(vma->vm, vma->ggtt_view.pages,
+				vma->node.start,
+				cache_level, pte_flags);
+
+	/*
+	 * Without aliasing PPGTT there's no difference between
+	 * GLOBAL/LOCAL_BIND, it's all the same ptes. Hence unconditionally
+	 * upgrade to both bound if we bind either to avoid double-binding.
+	 */
+	vma->bound |= GLOBAL_BIND | LOCAL_BIND;
+
+	return 0;
+}
+
+static int aliasing_gtt_bind_vma(struct i915_vma *vma,
+				 enum i915_cache_level cache_level,
+				 u32 flags)
+{
 	struct drm_device *dev = vma->vm->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_i915_gem_object *obj = vma->obj;
@@ -2519,23 +2549,13 @@ static int ggtt_bind_vma(struct i915_vma *vma,
 		pte_flags |= PTE_READ_ONLY;
 
 
-	if (!dev_priv->mm.aliasing_ppgtt || flags & GLOBAL_BIND) {
+	if (flags & GLOBAL_BIND) {
 		vma->vm->insert_entries(vma->vm, pages,
 					vma->node.start,
 					cache_level, pte_flags);
-
-		/* Note the inconsistency here is due to absence of the
-		 * aliasing ppgtt on gen4 and earlier. Though we always
-		 * request PIN_USER for execbuffer (translated to LOCAL_BIND),
-		 * without the appgtt, we cannot honour that request and so
-		 * must substitute it with a global binding. Since we do this
-		 * behind the upper layers back, we need to explicitly set
-		 * the bound flag ourselves.
-		 */
-		vma->bound |= GLOBAL_BIND;
 	}
 
-	if (dev_priv->mm.aliasing_ppgtt && flags & LOCAL_BIND) {
+	if (flags & LOCAL_BIND) {
 		struct i915_hw_ppgtt *appgtt = dev_priv->mm.aliasing_ppgtt;
 		appgtt->base.insert_entries(&appgtt->base, pages,
 					    vma->node.start,
@@ -2699,6 +2719,8 @@ static int i915_gem_setup_global_gtt(struct drm_device *dev,
 					true);
 
 		dev_priv->mm.aliasing_ppgtt = ppgtt;
+		WARN_ON(dev_priv->gtt.base.bind_vma != ggtt_bind_vma);
+		dev_priv->gtt.base.bind_vma = aliasing_gtt_bind_vma;
 	}
 
 	return 0;
@@ -2889,8 +2911,8 @@ static void bdw_setup_private_ppat(struct drm_i915_private *dev_priv)
 
 	/* XXX: spec defines this as 2 distinct registers. It's unclear if a 64b
 	 * write would work. */
-	I915_WRITE(GEN8_PRIVATE_PAT, pat);
-	I915_WRITE(GEN8_PRIVATE_PAT + 4, pat >> 32);
+	I915_WRITE(GEN8_PRIVATE_PAT_LO, pat);
+	I915_WRITE(GEN8_PRIVATE_PAT_HI, pat >> 32);
 }
 
 static void chv_setup_private_ppat(struct drm_i915_private *dev_priv)
@@ -2924,8 +2946,8 @@ static void chv_setup_private_ppat(struct drm_i915_private *dev_priv)
 	      GEN8_PPAT(6, CHV_PPAT_SNOOP) |
 	      GEN8_PPAT(7, CHV_PPAT_SNOOP);
 
-	I915_WRITE(GEN8_PRIVATE_PAT, pat);
-	I915_WRITE(GEN8_PRIVATE_PAT + 4, pat >> 32);
+	I915_WRITE(GEN8_PRIVATE_PAT_LO, pat);
+	I915_WRITE(GEN8_PRIVATE_PAT_HI, pat >> 32);
 }
 
 static int gen8_gmch_probe(struct drm_device *dev,
