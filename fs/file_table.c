@@ -227,10 +227,10 @@ static void __fput(struct file *file)
 	mntput(mnt);
 }
 
-static LLIST_HEAD(delayed_fput_list);
-static void delayed_fput(struct work_struct *unused)
+static LLIST_HEAD(global_fput_list);
+static void global_fput(struct work_struct *unused)
 {
-	struct llist_node *node = llist_del_all(&delayed_fput_list);
+	struct llist_node *node = llist_del_all(&global_fput_list);
 	struct llist_node *next;
 
 	for (; node; node = next) {
@@ -244,21 +244,23 @@ static void ____fput(struct callback_head *work)
 	__fput(container_of(work, struct file, f_u.fu_rcuhead));
 }
 
-static DECLARE_DELAYED_WORK(delayed_fput_work, delayed_fput);
+static DECLARE_DELAYED_WORK(global_fput_work, global_fput);
 
-/*
- * If kernel thread really needs to have the final fput() it has done
- * to complete, call this.  The only user right now is the boot - we
- * *do* need to make sure our writes to binaries on initramfs has
- * not left us with opened struct file waiting for __fput() - execve()
- * won't work without that.  Please, don't add more callers without
- * very good reasons; in particular, never call that with locks
- * held and never call that from a thread that might need to do
- * some work on any kind of umount.
+/**
+ * fput_global_flush - ensure that all global_fput work is complete
+ *
+ * If a kernel thread really needs to have the final fput() it has done to
+ * complete, call this. One of the main users is the boot - we *do* need to
+ * make sure our writes to binaries on initramfs has not left us with opened
+ * struct file waiting for __fput() - execve() won't work without that.
+ *
+ * Please, don't add more callers without very good reasons; in particular,
+ * never call that with locks held and never from a thread that might need to
+ * do some work on any kind of umount.
  */
-void flush_delayed_fput(void)
+void fput_global_flush(void)
 {
-	flush_delayed_work(&delayed_fput_work);
+	flush_delayed_work(&global_fput_work);
 }
 
 /**
@@ -296,15 +298,15 @@ void fput(struct file *file)
 			 */
 		}
 
-		if (llist_add(&file->f_u.fu_llist, &delayed_fput_list))
-			schedule_delayed_work(&delayed_fput_work, 1);
+		if (llist_add(&file->f_u.fu_llist, &global_fput_list))
+			schedule_delayed_work(&global_fput_work, 1);
 	}
 }
 EXPORT_SYMBOL(fput);
 
 /*
  * synchronous analog of fput(); for kernel threads that might be needed
- * in some umount() (and thus can't use flush_delayed_fput() without
+ * in some umount() (and thus can't use fput_global_flush() without
  * risking deadlocks), need to wait for completion of __fput() and know
  * for this specific struct file it won't involve anything that would
  * need them.  Use only if you really need it - at the very least,

@@ -70,7 +70,7 @@ extern void put_unused_fd(unsigned int fd);
 
 extern void fd_install(unsigned int fd, struct file *file);
 
-extern void flush_delayed_fput(void);
+extern void fput_global_flush(void);
 extern void __fput_sync(struct file *);
 
 #endif /* __LINUX_FILE_H */
