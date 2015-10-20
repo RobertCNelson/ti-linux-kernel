@@ -181,7 +181,7 @@ int svc_send_common(struct socket *sock, struct xdr_buf *xdr,
 	struct page	**ppage = xdr->pages;
 	size_t		base = xdr->page_base;
 	unsigned int	pglen = xdr->page_len;
-	unsigned int	flags = MSG_MORE;
+	unsigned int	flags = MSG_MORE | MSG_SENDPAGE_NOTLAST;
 	int		slen;
 	int		len = 0;
 
@@ -399,6 +399,28 @@ static int svc_sock_secure_port(struct svc_rqst *rqstp)
 	return svc_port_is_privileged(svc_addr(rqstp));
 }
 
+static bool sunrpc_waitqueue_active(wait_queue_head_t *wq)
+{
+	if (!wq)
+		return false;
+	/*
+	 * Kosuke Tatsukawa points out there should normally be an
+	 * smp_mb() here.  (Either that or we could just drop the
+	 * waitqueue_active() checks.)
+	 *
+	 * It appears they aren't currently necessary, though, basically
+	 * because nfsd does non-blocking reads from these sockets, so
+	 * the only places we wait on this waitqueue is in sendpage and
+	 * sendmsg, which won't be waiting for wakeups on newly arrived
+	 * data.
+	 *
+	 * Maybe we should add the memory barriers anyway, but these are
+	 * hot paths so we'd need to be convinced there's no sigificant
+	 * penalty.
+	 */
+	return waitqueue_active(wq);
+}
+
 /*
  * INET callback when data has been received on the socket.
  */
@@ -414,7 +436,7 @@ static void svc_udp_data_ready(struct sock *sk)
 		set_bit(XPT_DATA, &svsk->sk_xprt.xpt_flags);
 		svc_xprt_enqueue(&svsk->sk_xprt);
 	}
-	if (wq && waitqueue_active(wq))
+	if (sunrpc_waitqueue_active(wq))
 		wake_up_interruptible(wq);
 }
 
@@ -432,7 +454,7 @@ static void svc_write_space(struct sock *sk)
 		svc_xprt_enqueue(&svsk->sk_xprt);
 	}
 
-	if (wq && waitqueue_active(wq)) {
+	if (sunrpc_waitqueue_active(wq)) {
 		dprintk("RPC svc_write_space: someone sleeping on %p\n",
 		       svsk);
 		wake_up_interruptible(wq);
@@ -787,7 +809,7 @@ static void svc_tcp_listen_data_ready(struct sock *sk)
 	}
 
 	wq = sk_sleep(sk);
-	if (wq && waitqueue_active(wq))
+	if (sunrpc_waitqueue_active(wq))
 		wake_up_interruptible_all(wq);
 }
 
@@ -808,7 +830,7 @@ static void svc_tcp_state_change(struct sock *sk)
 		set_bit(XPT_CLOSE, &svsk->sk_xprt.xpt_flags);
 		svc_xprt_enqueue(&svsk->sk_xprt);
 	}
-	if (wq && waitqueue_active(wq))
+	if (sunrpc_waitqueue_active(wq))
 		wake_up_interruptible_all(wq);
 }
 
@@ -823,7 +845,7 @@ static void svc_tcp_data_ready(struct sock *sk)
 		set_bit(XPT_DATA, &svsk->sk_xprt.xpt_flags);
 		svc_xprt_enqueue(&svsk->sk_xprt);
 	}
-	if (wq && waitqueue_active(wq))
+	if (sunrpc_waitqueue_active(wq))
 		wake_up_interruptible(wq);
 }
 
@@ -1594,7 +1616,7 @@ static void svc_sock_detach(struct svc_xprt *xprt)
 	sk->sk_write_space = svsk->sk_owspace;
 
 	wq = sk_sleep(sk);
-	if (wq && waitqueue_active(wq))
+	if (sunrpc_waitqueue_active(wq))
 		wake_up_interruptible(wq);
 }
 
