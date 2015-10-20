@@ -268,15 +268,14 @@ struct nfsd4_open_downgrade {
 
 
 struct nfsd4_read {
-	stateid_t	rd_stateid;         /* request */
-	u64		rd_offset;          /* request */
-	u32		rd_length;          /* request */
-	int		rd_vlen;
-	struct file     *rd_filp;
-	bool		rd_tmp_file;
+	stateid_t		rd_stateid;         /* request */
+	u64			rd_offset;          /* request */
+	u32			rd_length;          /* request */
+	int			rd_vlen;
+	struct nfsd_file	*rd_nf;
 	
-	struct svc_rqst *rd_rqstp;          /* response */
-	struct svc_fh * rd_fhp;             /* response */
+	struct svc_rqst		*rd_rqstp;          /* response */
+	struct svc_fh		*rd_fhp;             /* response */
 };
 
 struct nfsd4_readdir {
