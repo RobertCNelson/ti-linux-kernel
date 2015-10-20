@@ -273,7 +273,7 @@ late_initcall_sync(clk_disable_unused);
 
 /***    helper functions   ***/
 
-const char *__clk_get_name(struct clk *clk)
+const char *__clk_get_name(const struct clk *clk)
 {
 	return !clk ? NULL : clk->core->name;
 }
@@ -1686,7 +1686,7 @@ static struct clk_core *__clk_init_parent(struct clk_core *core)
 			"%s: multi-parent clocks must implement .get_parent\n",
 			__func__);
 		goto out;
-	};
+	}
 
 	/*
 	 * Do our best to cache parent clocks in core->parents.  This prevents
@@ -2933,7 +2933,7 @@ struct clk *of_clk_src_onecell_get(struct of_phandle_args *clkspec, void *data)
 	unsigned int idx = clkspec->args[0];
 
 	if (idx >= clk_data->clk_num) {
-		pr_err("%s: invalid clock index %d\n", __func__, idx);
+		pr_err("%s: invalid clock index %u\n", __func__, idx);
 		return ERR_PTR(-EINVAL);
 	}
 
@@ -3058,6 +3058,7 @@ const char *of_clk_get_parent_name(struct device_node *np, int index)
 	u32 pv;
 	int rc;
 	int count;
+	struct clk *clk;
 
 	if (index < 0)
 		return NULL;
@@ -3083,8 +3084,25 @@ const char *of_clk_get_parent_name(struct device_node *np, int index)
 
 	if (of_property_read_string_index(clkspec.np, "clock-output-names",
 					  index,
-					  &clk_name) < 0)
-		clk_name = clkspec.np->name;
+					  &clk_name) < 0) {
+		/*
+		 * Best effort to get the name if the clock has been
+		 * registered with the framework. If the clock isn't
+		 * registered, we return the node name as the name of
+		 * the clock as long as #clock-cells = 0.
+		 */
+		clk = of_clk_get_from_provider(&clkspec);
+		if (IS_ERR(clk)) {
+			if (clkspec.args_count == 0)
+				clk_name = clkspec.np->name;
+			else
+				clk_name = NULL;
+		} else {
+			clk_name = __clk_get_name(clk);
+			clk_put(clk);
+		}
+	}
+
 
 	of_node_put(clkspec.np);
 	return clk_name;
