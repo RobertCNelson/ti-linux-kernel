@@ -2215,34 +2215,6 @@ static void commit_charge(struct page *page, struct mem_cgroup *memcg,
 }
 
 #ifdef CONFIG_MEMCG_KMEM
-int memcg_charge_kmem(struct mem_cgroup *memcg, gfp_t gfp,
-		      unsigned long nr_pages)
-{
-	struct page_counter *counter;
-	int ret = 0;
-
-	ret = page_counter_try_charge(&memcg->kmem, nr_pages, &counter);
-	if (ret < 0)
-		return ret;
-
-	ret = try_charge(memcg, gfp, nr_pages);
-	if (ret)
-		page_counter_uncharge(&memcg->kmem, nr_pages);
-
-	return ret;
-}
-
-void memcg_uncharge_kmem(struct mem_cgroup *memcg, unsigned long nr_pages)
-{
-	page_counter_uncharge(&memcg->memory, nr_pages);
-	if (do_swap_account)
-		page_counter_uncharge(&memcg->memsw, nr_pages);
-
-	page_counter_uncharge(&memcg->kmem, nr_pages);
-
-	css_put_many(&memcg->css, nr_pages);
-}
-
 static int memcg_alloc_cache_id(void)
 {
 	int id, size;
@@ -2404,36 +2376,59 @@ void __memcg_kmem_put_cache(struct kmem_cache *cachep)
 		css_put(&cachep->memcg_params.memcg->css);
 }
 
-int __memcg_kmem_charge(struct page *page, gfp_t gfp, int order)
+/*
+ * If @memcg != NULL, charge to @memcg, otherwise charge to the memcg the
+ * current task belongs to.
+ */
+int __memcg_kmem_charge(struct page *page, gfp_t gfp, int order,
+			struct mem_cgroup *memcg)
 {
-	struct mem_cgroup *memcg;
-	int ret;
+	struct page_counter *counter;
+	unsigned int nr_pages = 1 << order;
+	bool put = false;
+	int ret = 0;
 
-	memcg = get_mem_cgroup_from_mm(current->mm);
+	if (!memcg) {
+		memcg = get_mem_cgroup_from_mm(current->mm);
+		put = true;
+	}
+	if (!memcg_kmem_is_active(memcg))
+		goto out;
 
-	if (!memcg_kmem_is_active(memcg)) {
-		css_put(&memcg->css);
-		return 0;
+	ret = page_counter_try_charge(&memcg->kmem, nr_pages, &counter);
+	if (ret)
+		goto out;
+
+	ret = try_charge(memcg, gfp, nr_pages);
+	if (ret) {
+		page_counter_uncharge(&memcg->kmem, nr_pages);
+		goto out;
 	}
 
-	ret = memcg_charge_kmem(memcg, gfp, 1 << order);
-
-	css_put(&memcg->css);
 	page->mem_cgroup = memcg;
+out:
+	if (put)
+		css_put(&memcg->css);
 	return ret;
 }
 
 void __memcg_kmem_uncharge(struct page *page, int order)
 {
 	struct mem_cgroup *memcg = page->mem_cgroup;
+	unsigned int nr_pages = 1 << order;
 
 	if (!memcg)
 		return;
 
 	VM_BUG_ON_PAGE(mem_cgroup_is_root(memcg), page);
 
-	memcg_uncharge_kmem(memcg, 1 << order);
+	page_counter_uncharge(&memcg->kmem, nr_pages);
+	page_counter_uncharge(&memcg->memory, nr_pages);
+	if (do_swap_account)
+		page_counter_uncharge(&memcg->memsw, nr_pages);
+
 	page->mem_cgroup = NULL;
+	css_put_many(&memcg->css, nr_pages);
 }
 
 struct mem_cgroup *__mem_cgroup_from_kmem(void *ptr)
