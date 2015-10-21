@@ -1455,9 +1455,14 @@ static struct page *__hugetlb_alloc_buddy_huge_page(struct hstate *h,
 
 	/*
 	 * We need a VMA to get a memory policy.  If we do not
-	 * have one, we use the 'nid' argument
+	 * have one, we use the 'nid' argument.
+	 *
+	 * The mempolicy stuff below has some non-inlined bits
+	 * and calls ->vm_ops.  That makes it hard to optimize at
+	 * compile-time, even when NUMA is off and it does
+	 * nothing.  This helps the compiler optimize it out.
 	 */
-	if (!vma) {
+	if (!IS_ENABLED(CONFIG_NUMA) || !vma) {
 		/*
 		 * If a specific node is requested, make sure to
 		 * get memory from there, but only when a node
@@ -1474,7 +1479,8 @@ static struct page *__hugetlb_alloc_buddy_huge_page(struct hstate *h,
 
 	/*
 	 * OK, so we have a VMA.  Fetch the mempolicy and try to
-	 * allocate a huge page with it.
+	 * allocate a huge page with it.  We will only reach this
+	 * when CONFIG_NUMA=y.
 	 */
 	do {
 		struct page *page;
@@ -1515,8 +1521,8 @@ static struct page *__alloc_buddy_huge_page(struct hstate *h,
 		return NULL;
 
 	if (vma || addr) {
-		WARN_ON_ONCE(!addr || addr == -1);
-		WARN_ON_ONCE(nid != NUMA_NO_NODE);
+		VM_WARN_ON_ONCE(!addr || addr == -1);
+		VM_WARN_ON_ONCE(nid != NUMA_NO_NODE);
 	}
 	/*
 	 * Assume we will successfully allocate the surplus page to
@@ -1580,6 +1586,7 @@ static struct page *__alloc_buddy_huge_page(struct hstate *h,
  * NUMA_NO_NODE, which means that it may be allocated
  * anywhere.
  */
+static
 struct page *__alloc_buddy_huge_page_no_mpol(struct hstate *h, int nid)
 {
 	unsigned long addr = -1;
@@ -1590,6 +1597,7 @@ struct page *__alloc_buddy_huge_page_no_mpol(struct hstate *h, int nid)
 /*
  * Use the VMA's mpolicy to allocate a huge page from the buddy.
  */
+static
 struct page *__alloc_buddy_huge_page_with_mpol(struct hstate *h,
 		struct vm_area_struct *vma, unsigned long addr)
 {
