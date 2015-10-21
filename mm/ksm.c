@@ -350,6 +350,24 @@ static inline bool ksm_test_exit(struct mm_struct *mm)
 }
 
 /*
+ * If the mm isn't the one associated with the current
+ * ksm_scan.mm_slot ksm_exit() will not down_write();up_write() and in
+ * turn the ksm_test_exit() check run inside a mm->mmap_sem critical
+ * section, will not prevent exit_mmap() to run from under us. In
+ * turn, in those cases where we could work with an "mm" that isn't
+ * guaranteed to be associated with the current ksm_scan.mm_slot,
+ * ksm_get_mm() is needed instead of the ksm_test_exit() run inside
+ * the mmap_sem. Return true if the mm_users was incremented or false
+ * if it we failed at taking the mm because it was freed from under
+ * us. If it returns 1, the caller must take care of calling mmput()
+ * after it finishes using the mm.
+ */
+static __always_inline bool ksm_get_mm(struct mm_struct *mm)
+{
+	return likely(atomic_inc_not_zero(&mm->mm_users));
+}
+
+/*
  * We use break_ksm to break COW on a ksm page: it's a stripped down
  *
  *	if (get_user_pages(current, mm, addr, 1, 1, 1, &page, NULL) == 1)
@@ -412,8 +430,6 @@ static struct vm_area_struct *find_mergeable_vma(struct mm_struct *mm,
 		unsigned long addr)
 {
 	struct vm_area_struct *vma;
-	if (ksm_test_exit(mm))
-		return NULL;
 	vma = find_vma(mm, addr);
 	if (!vma || vma->vm_start > addr)
 		return NULL;
@@ -434,11 +450,21 @@ static void break_cow(struct rmap_item *rmap_item)
 	 */
 	put_anon_vma(rmap_item->anon_vma);
 
+	/*
+	 * The "mm" of the unstable tree rmap_item isn't necessairly
+	 * associated with the current ksm_scan.mm_slot, it could be
+	 * any random mm. So we need ksm_get_mm here to prevent the
+	 * exit_mmap to run from under us in mmput().
+	 */
+	if (!ksm_get_mm(mm))
+		return;
+
 	down_read(&mm->mmap_sem);
 	vma = find_mergeable_vma(mm, addr);
 	if (vma)
 		break_ksm(vma, addr);
 	up_read(&mm->mmap_sem);
+	mmput(mm);
 }
 
 static struct page *page_trans_compound_anon(struct page *page)
@@ -462,6 +488,15 @@ static struct page *get_mergeable_page(struct rmap_item *rmap_item)
 	struct vm_area_struct *vma;
 	struct page *page;
 
+	/*
+	 * The "mm" of the unstable tree rmap_item isn't necessairly
+	 * associated with the current ksm_scan.mm_slot, it could be
+	 * any random mm. So we need ksm_get_mm here to prevent the
+	 * exit_mmap to run from under us in mmput().
+	 */
+	if (!ksm_get_mm(mm))
+		return NULL;
+
 	down_read(&mm->mmap_sem);
 	vma = find_mergeable_vma(mm, addr);
 	if (!vma)
@@ -478,6 +513,7 @@ static struct page *get_mergeable_page(struct rmap_item *rmap_item)
 out:		page = NULL;
 	}
 	up_read(&mm->mmap_sem);
+	mmput(mm);
 	return page;
 }
 
@@ -1086,9 +1122,19 @@ static int try_to_merge_with_ksm_page(struct rmap_item *rmap_item,
 	struct vm_area_struct *vma;
 	int err = -EFAULT;
 
+	/*
+	 * The "mm" of the unstable tree rmap_item isn't necessairly
+	 * associated with the current ksm_scan.mm_slot, it could be
+	 * any random mm. So we need ksm_get_mm() here to prevent the
+	 * exit_mmap to run from under us in mmput(). Otherwise
+	 * rmap_item->anon_vma could point to an anon_vma that has
+	 * already been freed (i.e. get_anon_vma() below would run too
+	 * late).
+	 */
+	if (!ksm_get_mm(mm))
+		return err;
+
 	down_read(&mm->mmap_sem);
-	if (ksm_test_exit(mm))
-		goto out;
 	vma = find_vma(mm, rmap_item->address);
 	if (!vma || vma->vm_start > rmap_item->address)
 		goto out;
@@ -1105,6 +1151,7 @@ static int try_to_merge_with_ksm_page(struct rmap_item *rmap_item,
 	get_anon_vma(vma->anon_vma);
 out:
 	up_read(&mm->mmap_sem);
+	mmput(mm);
 	return err;
 }
 
