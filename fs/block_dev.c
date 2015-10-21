@@ -464,7 +464,7 @@ long bdev_direct_access(struct block_device *bdev, sector_t sector,
 	if (sector % (PAGE_SIZE / 512))
 		return -EINVAL;
 	avail = ops->direct_access(bdev, sector, addr, pfn);
-	if (!avail)
+	if (!avail || avail < PAGE_SIZE)
 		return -ERANGE;
 	return min(avail, size);
 }
