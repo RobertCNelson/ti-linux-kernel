@@ -2377,11 +2377,8 @@ static bool __zone_watermark_ok(struct zone *z, unsigned int order,
 		if (!area->nr_free)
 			continue;
 
-		if (alloc_harder) {
-			if (area->nr_free)
-				return true;
-			continue;
-		}
+		if (alloc_harder)
+			return true;
 
 		for (mt = 0; mt < MIGRATE_PCPTYPES; mt++) {
 			if (!list_empty(&area->free_list[mt]))
