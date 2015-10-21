@@ -149,10 +149,10 @@ void panic(const char *fmt, ...)
 	bust_spinlocks(0);
 
 	/*
-	 * We may have ended up killing the CPU holding the lock and still have
-	 * some valuable data in console buffer. Try to acquire the lock and
-	 * release it regardless of the result. The release will also print the
-	 * buffers out.
+	 * We may have ended up stopping the CPU holding the lock (in
+	 * smp_send_stop()) while still having some valuable data in the console
+	 * buffer.  Try to acquire the lock then release it regardless of the
+	 * result.  The release will also print the buffers out.
 	 */
 	console_trylock();
 	console_unlock();
