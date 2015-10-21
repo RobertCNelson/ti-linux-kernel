@@ -270,7 +270,7 @@ int rmap_walk(struct page *page, struct rmap_walk_control *rwc);
 
 static inline int page_referenced(struct page *page, int is_locked,
 				  struct mem_cgroup *memcg,
-				  unsigned long *vm_flags,
+				  unsigned long *vm_flags)
 {
 	*vm_flags = 0;
 	return 0;
