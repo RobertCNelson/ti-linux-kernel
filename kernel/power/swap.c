@@ -975,7 +975,7 @@ static int get_swap_reader(struct swap_map_handle *handle,
 		last = tmp;
 
 		tmp->map = (struct swap_map_page *)
-		           __get_free_page(__GFP_RECLAIM | __GFP_HIGH);
+			   __get_free_page(__GFP_RECLAIM | __GFP_HIGH);
 		if (!tmp->map) {
 			release_swap_reader(handle);
 			return -ENOMEM;
@@ -1242,9 +1242,9 @@ static int load_image_lzo(struct swap_map_handle *handle,
 
 	for (i = 0; i < read_pages; i++) {
 		page[i] = (void *)__get_free_page(i < LZO_CMP_PAGES ?
-		                                  __GFP_RECLAIM | __GFP_HIGH :
-		                                  __GFP_RECLAIM | __GFP_NOWARN |
-		                                  __GFP_NORETRY);
+						  __GFP_RECLAIM | __GFP_HIGH :
+						  __GFP_RECLAIM | __GFP_NOWARN |
+						  __GFP_NORETRY);
 
 		if (!page[i]) {
 			if (i < LZO_CMP_PAGES) {
