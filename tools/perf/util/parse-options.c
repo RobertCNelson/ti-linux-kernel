@@ -496,7 +496,7 @@ int parse_options_subcommand(int argc, const char **argv, const struct option *o
 {
 	struct parse_opt_ctx_t ctx;
 
-	perf_header__set_cmdline(argc, argv);
+	perf_env__set_cmdline(&perf_env, argc, argv);
 
 	/* build usage string if it's not provided */
 	if (subcommands && !usagestr[0]) {
@@ -648,7 +648,7 @@ int usage_with_options_internal(const char * const *usagestr,
 	if (!usagestr)
 		return PARSE_OPT_HELP;
 
-	fprintf(stderr, "\n usage: %s\n", *usagestr++);
+	fprintf(stderr, "\n Usage: %s\n", *usagestr++);
 	while (*usagestr && **usagestr)
 		fprintf(stderr, "    or: %s\n", *usagestr++);
 	while (*usagestr) {
@@ -684,7 +684,7 @@ int parse_options_usage(const char * const *usagestr,
 	if (!usagestr)
 		goto opt;
 
-	fprintf(stderr, "\n usage: %s\n", *usagestr++);
+	fprintf(stderr, "\n Usage: %s\n", *usagestr++);
 	while (*usagestr && **usagestr)
 		fprintf(stderr, "    or: %s\n", *usagestr++);
 	while (*usagestr) {
