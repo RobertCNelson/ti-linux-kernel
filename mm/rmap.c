@@ -1376,7 +1376,6 @@ static int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 	spinlock_t *ptl;
 	int ret = SWAP_AGAIN;
 	enum ttu_flags flags = (enum ttu_flags)arg;
-	int dirty = 0;
 
 	/* munlock has nothing to gain from examining un-locked vmas */
 	if ((flags & TTU_MUNLOCK) && !(vma->vm_flags & VM_LOCKED))
@@ -1426,8 +1425,7 @@ static int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 	}
 
 	/* Move the dirty bit to the physical page now the pte is gone. */
-	dirty = pte_dirty(pteval);
-	if (dirty)
+	if (pte_dirty(pteval))
 		set_page_dirty(page);
 
 	/* Update high watermark before we lower rss */
@@ -1473,7 +1471,7 @@ static int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 
 		if (flags & TTU_FREE) {
 			VM_BUG_ON_PAGE(PageSwapCache(page), page);
-			if (!dirty && !PageDirty(page)) {
+			if (!PageDirty(page)) {
 				/* It's a freeable page by MADV_FREE */
 				dec_mm_counter(mm, MM_ANONPAGES);
 				goto discard;

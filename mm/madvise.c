@@ -24,11 +24,6 @@
 
 #include <asm/tlb.h>
 
-struct madvise_free_private {
-	struct vm_area_struct *vma;
-	struct mmu_gather *tlb;
-};
-
 /*
  * Any behaviour which results in changes to the vma->vm_flags needs to
  * take mmap_sem for writing. Others, which simply traverse vmas, need
@@ -269,10 +264,9 @@ static int madvise_free_pte_range(pmd_t *pmd, unsigned long addr,
 				unsigned long end, struct mm_walk *walk)
 
 {
-	struct madvise_free_private *fp = walk->private;
-	struct mmu_gather *tlb = fp->tlb;
+	struct mmu_gather *tlb = walk->private;
 	struct mm_struct *mm = tlb->mm;
-	struct vm_area_struct *vma = fp->vma;
+	struct vm_area_struct *vma = walk->vma;
 	spinlock_t *ptl;
 	pte_t *pte, ptent;
 	struct page *page;
@@ -329,15 +323,10 @@ static void madvise_free_page_range(struct mmu_gather *tlb,
 			     struct vm_area_struct *vma,
 			     unsigned long addr, unsigned long end)
 {
-	struct madvise_free_private fp = {
-		.vma = vma,
-		.tlb = tlb,
-	};
-
 	struct mm_walk free_walk = {
 		.pmd_entry = madvise_free_pte_range,
 		.mm = vma->vm_mm,
-		.private = &fp,
+		.private = tlb,
 	};
 
 	BUG_ON(addr >= end);
