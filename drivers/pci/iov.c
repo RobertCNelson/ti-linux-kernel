@@ -230,7 +230,7 @@ static int sriov_enable(struct pci_dev *dev, int nr_virtfn)
 	int rc;
 	int i, j;
 	int nres;
-	u16 offset, stride, initial;
+	u16 initial;
 	struct resource *res;
 	struct pci_dev *pdev;
 	struct pci_sriov *iov = dev->sriov;
@@ -253,9 +253,7 @@ static int sriov_enable(struct pci_dev *dev, int nr_virtfn)
 	    (!(iov->cap & PCI_SRIOV_CAP_VFM) && (nr_virtfn > initial)))
 		return -EINVAL;
 
-	pci_read_config_word(dev, iov->pos + PCI_SRIOV_VF_OFFSET, &offset);
-	pci_read_config_word(dev, iov->pos + PCI_SRIOV_VF_STRIDE, &stride);
-	if (!offset || (nr_virtfn > 1 && !stride))
+	if (!iov->offset || (nr_virtfn > 1 && !iov->stride))
 		return -EIO;
 
 	nres = 0;
@@ -269,9 +267,6 @@ static int sriov_enable(struct pci_dev *dev, int nr_virtfn)
 		dev_err(&dev->dev, "not enough MMIO resources for SR-IOV\n");
 		return -ENOMEM;
 	}
-
-	iov->offset = offset;
-	iov->stride = stride;
 
 	bus = pci_iov_virtfn_bus(dev, nr_virtfn - 1);
 	if (bus > dev->bus->busn_res.end) {
@@ -384,7 +379,7 @@ static int sriov_init(struct pci_dev *dev, int pos)
 	int rc;
 	int nres;
 	u32 pgsz;
-	u16 ctrl, total, offset, stride;
+	u16 ctrl, total;
 	struct pci_sriov *iov;
 	struct resource *res;
 	struct pci_dev *pdev;
@@ -414,11 +409,6 @@ static int sriov_init(struct pci_dev *dev, int pos)
 
 found:
 	pci_write_config_word(dev, pos + PCI_SRIOV_CTRL, ctrl);
-	pci_write_config_word(dev, pos + PCI_SRIOV_NUM_VF, 0);
-	pci_read_config_word(dev, pos + PCI_SRIOV_VF_OFFSET, &offset);
-	pci_read_config_word(dev, pos + PCI_SRIOV_VF_STRIDE, &stride);
-	if (!offset || (total > 1 && !stride))
-		return -EIO;
 
 	pci_read_config_dword(dev, pos + PCI_SRIOV_SUP_PGSIZE, &pgsz);
 	i = PAGE_SHIFT > 12 ? PAGE_SHIFT - 12 : 0;
@@ -456,8 +446,6 @@ found:
 	iov->nres = nres;
 	iov->ctrl = ctrl;
 	iov->total_VFs = total;
-	iov->offset = offset;
-	iov->stride = stride;
 	iov->pgsz = pgsz;
 	iov->self = dev;
 	pci_read_config_dword(dev, pos + PCI_SRIOV_CAP, &iov->cap);
@@ -475,6 +463,11 @@ found:
 	dev->sriov = iov;
 	dev->is_physfn = 1;
 	iov->max_VF_buses = virtfn_max_buses(dev);
+	pci_iov_set_numvfs(dev, 0);
+	if (!iov->offset || (total > 1 && !iov->stride)) {
+		rc = -EIO;
+		goto failed;
+	}
 
 	return 0;
 
@@ -484,6 +477,7 @@ failed:
 		res->flags = 0;
 	}
 
+	dev->sriov = NULL;
 	kfree(iov);
 	return rc;
 }

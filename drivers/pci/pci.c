@@ -27,6 +27,7 @@
 #include <linux/pci_hotplug.h>
 #include <asm-generic/pci-bridge.h>
 #include <asm/setup.h>
+#include <linux/aer.h>
 #include "pci.h"
 
 const char *pci_power_names[] = {
@@ -484,7 +485,7 @@ int pci_wait_for_pending(struct pci_dev *dev, int pos, u16 mask)
 }
 
 /**
- * pci_restore_bars - restore a devices BAR values (e.g. after wake-up)
+ * pci_restore_bars - restore a device's BAR values (e.g. after wake-up)
  * @dev: PCI device to have its BARs restored
  *
  * Restore the BAR values for a given device, so as to make it
@@ -493,6 +494,10 @@ int pci_wait_for_pending(struct pci_dev *dev, int pos, u16 mask)
 static void pci_restore_bars(struct pci_dev *dev)
 {
 	int i;
+
+	/* Per SR-IOV spec 3.4.1.11, VF BARs are RO zero */
+	if (dev->is_virtfn)
+		return;
 
 	for (i = 0; i < PCI_BRIDGE_RESOURCES; i++)
 		pci_update_resource(dev, i);
@@ -1098,6 +1103,8 @@ void pci_restore_state(struct pci_dev *dev)
 	pci_restore_pcie_state(dev);
 	pci_restore_ats_state(dev);
 	pci_restore_vc_state(dev);
+
+	pci_cleanup_aer_error_status_regs(dev);
 
 	pci_restore_config_space(dev);
 
