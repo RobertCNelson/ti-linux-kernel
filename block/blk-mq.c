@@ -990,18 +990,25 @@ void blk_mq_delay_queue(struct blk_mq_hw_ctx *hctx, unsigned long msecs)
 }
 EXPORT_SYMBOL(blk_mq_delay_queue);
 
-static void __blk_mq_insert_request(struct blk_mq_hw_ctx *hctx,
-				    struct request *rq, bool at_head)
+static inline void __blk_mq_insert_req_list(struct blk_mq_hw_ctx *hctx,
+					    struct blk_mq_ctx *ctx,
+					    struct request *rq,
+					    bool at_head)
 {
-	struct blk_mq_ctx *ctx = rq->mq_ctx;
-
 	trace_block_rq_insert(hctx->queue, rq);
 
 	if (at_head)
 		list_add(&rq->queuelist, &ctx->rq_list);
 	else
 		list_add_tail(&rq->queuelist, &ctx->rq_list);
+}
 
+static void __blk_mq_insert_request(struct blk_mq_hw_ctx *hctx,
+				    struct request *rq, bool at_head)
+{
+	struct blk_mq_ctx *ctx = rq->mq_ctx;
+
+	__blk_mq_insert_req_list(hctx, ctx, rq, at_head);
 	blk_mq_hctx_mark_pending(hctx, ctx);
 }
 
@@ -1057,8 +1064,9 @@ static void blk_mq_insert_requests(struct request_queue *q,
 		rq = list_first_entry(list, struct request, queuelist);
 		list_del_init(&rq->queuelist);
 		rq->mq_ctx = ctx;
-		__blk_mq_insert_request(hctx, rq, false);
+		__blk_mq_insert_req_list(hctx, ctx, rq, false);
 	}
+	blk_mq_hctx_mark_pending(hctx, ctx);
 	spin_unlock(&ctx->lock);
 
 	blk_mq_run_hw_queue(hctx, from_schedule);
@@ -1140,7 +1148,7 @@ static inline bool blk_mq_merge_queue_io(struct blk_mq_hw_ctx *hctx,
 					 struct blk_mq_ctx *ctx,
 					 struct request *rq, struct bio *bio)
 {
-	if (!hctx_allow_merges(hctx)) {
+	if (!hctx_allow_merges(hctx) || !bio_mergeable(bio)) {
 		blk_mq_bio_to_request(rq, bio);
 		spin_lock(&ctx->lock);
 insert_rq:
@@ -1268,9 +1276,12 @@ static void blk_mq_make_request(struct request_queue *q, struct bio *bio)
 
 	blk_queue_split(q, &bio, q->bio_split);
 
-	if (!is_flush_fua && !blk_queue_nomerges(q) &&
-	    blk_attempt_plug_merge(q, bio, &request_count, &same_queue_rq))
-		return;
+	if (!is_flush_fua && !blk_queue_nomerges(q)) {
+		if (blk_attempt_plug_merge(q, bio, &request_count,
+					   &same_queue_rq))
+			return;
+	} else
+		request_count = blk_plug_queued_count(q);
 
 	rq = blk_mq_map_request(q, bio, &data);
 	if (unlikely(!rq))
@@ -1377,7 +1388,7 @@ static void blk_sq_make_request(struct request_queue *q, struct bio *bio)
 	plug = current->plug;
 	if (plug) {
 		blk_mq_bio_to_request(rq, bio);
-		if (list_empty(&plug->mq_list))
+		if (!request_count)
 			trace_block_plug(q);
 		else if (request_count >= BLK_MAX_REQUEST_COUNT) {
 			blk_flush_plug_list(plug, false);
