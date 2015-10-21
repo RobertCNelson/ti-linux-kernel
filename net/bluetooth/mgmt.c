@@ -3090,6 +3090,11 @@ static int unpair_device(struct sock *sk, struct hci_dev *hdev, void *data,
 	} else {
 		u8 addr_type;
 
+		if (cp->addr.type == BDADDR_LE_PUBLIC)
+			addr_type = ADDR_LE_DEV_PUBLIC;
+		else
+			addr_type = ADDR_LE_DEV_RANDOM;
+
 		conn = hci_conn_hash_lookup_ba(hdev, LE_LINK,
 					       &cp->addr.bdaddr);
 		if (conn) {
@@ -3105,12 +3110,9 @@ static int unpair_device(struct sock *sk, struct hci_dev *hdev, void *data,
 			 */
 			if (!cp->disconnect)
 				conn = NULL;
+		} else {
+			hci_conn_params_del(hdev, &cp->addr.bdaddr, addr_type);
 		}
-
-		if (cp->addr.type == BDADDR_LE_PUBLIC)
-			addr_type = ADDR_LE_DEV_PUBLIC;
-		else
-			addr_type = ADDR_LE_DEV_RANDOM;
 
 		hci_remove_irk(hdev, &cp->addr.bdaddr, addr_type);
 
@@ -7873,27 +7875,13 @@ void mgmt_new_ltk(struct hci_dev *hdev, struct smp_ltk *key, bool persistent)
 	mgmt_event(MGMT_EV_NEW_LONG_TERM_KEY, hdev, &ev, sizeof(ev), NULL);
 }
 
-void mgmt_new_irk(struct hci_dev *hdev, struct smp_irk *irk)
+void mgmt_new_irk(struct hci_dev *hdev, struct smp_irk *irk, bool persistent)
 {
 	struct mgmt_ev_new_irk ev;
 
 	memset(&ev, 0, sizeof(ev));
 
-	/* For identity resolving keys from devices that are already
-	 * using a public address or static random address, do not
-	 * ask for storing this key. The identity resolving key really
-	 * is only mandatory for devices using resolvable random
-	 * addresses.
-	 *
-	 * Storing all identity resolving keys has the downside that
-	 * they will be also loaded on next boot of they system. More
-	 * identity resolving keys, means more time during scanning is
-	 * needed to actually resolve these addresses.
-	 */
-	if (bacmp(&irk->rpa, BDADDR_ANY))
-		ev.store_hint = 0x01;
-	else
-		ev.store_hint = 0x00;
+	ev.store_hint = persistent;
 
 	bacpy(&ev.rpa, &irk->rpa);
 	bacpy(&ev.irk.addr.bdaddr, &irk->bdaddr);
