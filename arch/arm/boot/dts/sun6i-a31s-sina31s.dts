@@ -1,6 +1,5 @@
 /*
- * Copyright 2014 Zoltan HERPAI
- * Zoltan HERPAI <wigyori@uid0.hu>
+ * Copyright 2015 Chen-Yu Tsai <wens@csie.org>
  *
  * This file is dual-licensed: you can use it either under the terms
  * of the GPL or the X11 license, at your option. Note that this dual
@@ -41,21 +40,14 @@
  *     OTHER DEALINGS IN THE SOFTWARE.
  */
 
-/dts-v1/;
-#include "sun4i-a10.dtsi"
-#include "sunxi-common-regulators.dtsi"
+/* The SinA31s development board has the SinA31s core board soldered on */
+#include "sun6i-a31s-sina31s-core.dtsi"
 
-#include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/input.h>
-#include <dt-bindings/pinctrl/sun4i-a10.h>
 
 / {
-	model = "LinkSprite pcDuino";
-	compatible = "linksprite,a10-pcduino", "allwinner,sun4i-a10";
-
-	aliases {
-		serial0 = &uart0;
-	};
+	model = "Sinlinx SinA31s Development Board";
+	compatible = "sinlinx,sina31s-sdk", "allwinner,sun6i-a31s";
 
 	chosen {
 		stdout-path = "serial0:115200n8";
@@ -64,51 +56,17 @@
 	leds {
 		compatible = "gpio-leds";
 		pinctrl-names = "default";
-		pinctrl-0 = <&led_pins_pcduino>;
+		pinctrl-0 = <&led_pin_sina31s>;
 
-		tx {
-			label = "pcduino:green:tx";
-			gpios = <&pio 7 15 GPIO_ACTIVE_LOW>;
-		};
-
-		rx {
-			label = "pcduino:green:rx";
-			gpios = <&pio 7 16 GPIO_ACTIVE_LOW>;
+		status {
+			label = "sina31s:status:usr";
+			gpios = <&pio 7 13 GPIO_ACTIVE_HIGH>; /* PH13 */
 		};
 	};
-
-	gpio_keys {
-		compatible = "gpio-keys";
-		pinctrl-names = "default";
-		pinctrl-0 = <&key_pins_pcduino>;
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		button@0 {
-			label = "Key Back";
-			linux,code = <KEY_BACK>;
-			gpios = <&pio 7 17 GPIO_ACTIVE_LOW>;
-		};
-
-		button@1 {
-			label = "Key Home";
-			linux,code = <KEY_HOME>;
-			gpios = <&pio 7 18 GPIO_ACTIVE_LOW>;
-		};
-
-		button@2 {
-			label = "Key Menu";
-			linux,code = <KEY_MENU>;
-			gpios = <&pio 7 19 GPIO_ACTIVE_LOW>;
-		};
-	};
-};
-
-&cpu0 {
-	cpu-supply = <&reg_dcdc2>;
 };
 
 &ehci0 {
+	/* USB 2.0 4 port hub IC */
 	status = "okay";
 };
 
@@ -116,29 +74,12 @@
 	status = "okay";
 };
 
-&emac {
+&gmac {
 	pinctrl-names = "default";
-	pinctrl-0 = <&emac_pins_a>;
+	pinctrl-0 = <&gmac_pins_mii_a>;
 	phy = <&phy1>;
-	status = "okay";
-};
-
-&emac_sram {
-	status = "okay";
-};
-
-&i2c0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c0_pins_a>;
-	status = "okay";
-
-	axp209: pmic@34 {
-		reg = <0x34>;
-		interrupts = <0>;
-	};
-};
-
-&mdio {
+	phy-mode = "mii";
+	phy-supply = <&reg_dldo1>;
 	status = "okay";
 
 	phy1: ethernet-phy@1 {
@@ -146,17 +87,38 @@
 	};
 };
 
-&mmc0 {
+&ir {
 	pinctrl-names = "default";
-	pinctrl-0 = <&mmc0_pins_a>, <&mmc0_cd_pin_reference_design>;
-	vmmc-supply = <&reg_vcc3v3>;
-	bus-width = <4>;
-	cd-gpios = <&pio 7 1 GPIO_ACTIVE_HIGH>; /* PH1 */
-	cd-inverted;
+	pinctrl-0 = <&ir_pins_a>;
 	status = "okay";
 };
 
-&ohci0 {
+&lradc {
+	vref-supply = <&reg_aldo3>;
+	status = "okay";
+
+	button@158 {
+		label = "Volume Up";
+		linux,code = <KEY_VOLUMEUP>;
+		channel = <0>;
+		voltage = <158730>;
+	};
+
+	button@349 {
+		label = "Volume Down";
+		linux,code = <KEY_VOLUMEDOWN>;
+		channel = <0>;
+		voltage = <349206>;
+	};
+};
+
+&mmc0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&mmc0_pins_a>, <&mmc0_cd_pin_sina31s>;
+	vmmc-supply = <&reg_dcdc1>;
+	bus-width = <4>;
+	cd-gpios = <&pio 0 4 GPIO_ACTIVE_HIGH>; /* PA4 */
+	cd-inverted;
 	status = "okay";
 };
 
@@ -164,76 +126,28 @@
 	status = "okay";
 };
 
-&otg_sram {
-	status = "okay";
-};
-
 &pio {
-	led_pins_pcduino: led_pins@0 {
-		allwinner,pins = "PH15", "PH16";
+	led_pin_sina31s: led_pin@0 {
+		allwinner,pins = "PH13";
 		allwinner,function = "gpio_out";
 		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
 		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 	};
 
-	key_pins_pcduino: key_pins@0 {
-		allwinner,pins = "PH17", "PH18", "PH19";
-		allwinner,function = "gpio_in";
-		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
-		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
-	};
-
-	usb0_id_detect_pin: usb0_id_detect_pin@0 {
-		allwinner,pins = "PH4";
+	mmc0_cd_pin_sina31s: mmc0_cd_pin@0 {
+		allwinner,pins = "PA4";
 		allwinner,function = "gpio_in";
 		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
 		allwinner,pull = <SUN4I_PINCTRL_PULL_UP>;
 	};
 };
 
-#include "axp209.dtsi"
-
-&reg_dcdc2 {
-	regulator-always-on;
-	regulator-min-microvolt = <1000000>;
-	regulator-max-microvolt = <1400000>;
-	regulator-name = "vdd-cpu";
-};
-
-&reg_dcdc3 {
-	regulator-always-on;
-	regulator-min-microvolt = <1000000>;
-	regulator-max-microvolt = <1400000>;
-	regulator-name = "vdd-int-dll";
-};
-
-&reg_ldo1 {
-	regulator-name = "vdd-rtc";
-};
-
-&reg_ldo2 {
-	regulator-always-on;
-	regulator-min-microvolt = <3000000>;
-	regulator-max-microvolt = <3000000>;
-	regulator-name = "avcc";
-};
-
-&uart0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&uart0_pins_a>;
-	status = "okay";
-};
-
-&usb_otg {
-	dr_mode = "otg";
-	status = "okay";
+&reg_dldo1 {
+	regulator-min-microvolt = <3300000>;
+	regulator-max-microvolt = <3300000>;
+	regulator-name = "vcc-gmac-phy";
 };
 
 &usbphy {
-	pinctrl-names = "default";
-	pinctrl-0 = <&usb0_id_detect_pin>;
-	usb0_id_det-gpio = <&pio 7 4 GPIO_ACTIVE_HIGH>; /* PH4 */
-	usb1_vbus-supply = <&reg_vcc5v0>; /* USB1 VBUS is always on */
-	usb2_vbus-supply = <&reg_vcc5v0>; /* USB2 VBUS is always on */
 	status = "okay";
 };

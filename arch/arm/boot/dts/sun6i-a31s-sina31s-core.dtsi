@@ -1,7 +1,5 @@
 /*
- * Copyright 2014 Maxime Ripard
- *
- * Maxime Ripard <maxime.ripard@free-electrons.com>
+ * Copyright 2015 Chen-Yu Tsai <wens@csie.org>
  *
  * This file is dual-licensed: you can use it either under the terms
  * of the GPL or the X11 license, at your option. Note that this dual
@@ -43,29 +41,18 @@
  */
 
 /dts-v1/;
-#include "sun6i-a31.dtsi"
+#include "sun6i-a31s.dtsi"
 #include "sunxi-common-regulators.dtsi"
 
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/pinctrl/sun4i-a10.h>
 
 / {
-	model = "Merrii A31 Hummingbird";
-	compatible = "merrii,a31-hummingbird", "allwinner,sun6i-a31";
+	model = "Sinlinx SinA31s Core Board";
+	compatible = "sinlinx,sina31s", "allwinner,sun6i-a31s";
 
 	aliases {
-		rtc0 = &pcf8563;
-		rtc1 = &rtc;
 		serial0 = &uart0;
-	};
-
-	chosen {
-		stdout-path = "serial0:115200n8";
-	};
-
-	wifi_pwrseq: wifi_pwrseq {
-		compatible = "mmc-pwrseq-simple";
-		reset-gpios = <&pio 6 10 GPIO_ACTIVE_LOW>; /* PG10 */
 	};
 };
 
@@ -73,107 +60,17 @@
 	cpu-supply = <&reg_dcdc3>;
 };
 
-&ehci0 {
-	status = "okay";
-};
-
-&gmac {
+/* eMMC on core board */
+&mmc2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&gmac_pins_rgmii_a>, <&gmac_phy_reset_pin_hummingbird>;
-	phy = <&phy1>;
-	phy-mode = "rgmii";
-	snps,reset-gpio = <&pio 0 21 GPIO_ACTIVE_HIGH>;
-	snps,reset-active-low;
-	snps,reset-delays-us = <0 10000 30000>;
-	status = "okay";
-
-	phy1: ethernet-phy@1 {
-		reg = <1>;
-	};
-};
-
-&i2c0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c0_pins_a>;
-	/* pull-ups and devices require AXP221 DLDO3 */
-	status = "failed";
-};
-
-&i2c1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c1_pins_a>;
-	status = "okay";
-};
-
-&i2c2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c2_pins_a>;
-	status = "okay";
-
-	pcf8563: rtc@51 {
-		compatible = "nxp,pcf8563";
-		reg = <0x51>;
-	};
-};
-
-&ir {
-	pinctrl-names = "default";
-	pinctrl-0 = <&ir_pins_a>;
-	status = "okay";
-};
-
-&mmc0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&mmc0_pins_a>, <&mmc0_cd_pin_hummingbird>;
+	pinctrl-0 = <&mmc2_8bit_emmc_pins>;
 	vmmc-supply = <&reg_dcdc1>;
-	bus-width = <4>;
-	cd-gpios = <&pio 0 8 GPIO_ACTIVE_HIGH>; /* PA8 */
-	cd-inverted;
-	status = "okay";
-};
-
-&mmc0_pins_a {
-	/* external pull-ups missing for some pins */
-	allwinner,pull = <SUN4I_PINCTRL_PULL_UP>;
-};
-
-&mmc1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&mmc1_pins_a>, <&wifi_reset_pin_hummingbird>;
-	vmmc-supply = <&reg_aldo1>;
-	mmc-pwrseq = <&wifi_pwrseq>;
-	bus-width = <4>;
+	bus-width = <8>;
 	non-removable;
 	status = "okay";
 };
 
-&ohci0 {
-	status = "okay";
-};
-
-&pio {
-	gmac_phy_reset_pin_hummingbird: gmac_phy_reset_pin@0 {
-		allwinner,pins = "PA21";
-		allwinner,function = "gpio_out";
-		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
-		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
-	};
-
-	mmc0_cd_pin_hummingbird: mmc0_cd_pin@0 {
-		allwinner,pins = "PA8";
-		allwinner,function = "gpio_in";
-		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
-		allwinner,pull = <SUN4I_PINCTRL_PULL_UP>;
-	};
-
-	wifi_reset_pin_hummingbird: wifi_reset_pin@0 {
-		allwinner,pins = "PG10";
-		allwinner,function = "gpio_out";
-		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
-		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
-	};
-};
-
+/* AXP221s PMIC on core board */
 &p2wi {
 	status = "okay";
 
@@ -186,12 +83,6 @@
 };
 
 #include "axp22x.dtsi"
-
-&reg_aldo1 {
-	regulator-min-microvolt = <3300000>;
-	regulator-max-microvolt = <3300000>;
-	regulator-name = "vcc-wifi";
-};
 
 &reg_aldo3 {
 	regulator-always-on;
@@ -240,23 +131,10 @@
 	regulator-name = "vcc-dram";
 };
 
-&reg_usb1_vbus {
-	gpio = <&pio 7 24 GPIO_ACTIVE_HIGH>; /* PH24 */
-	status = "okay";
-};
-
+/* UART0 pads available on core board */
 &uart0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart0_pins_a>;
 	status = "okay";
 };
 
-&usb1_vbus_pin_a {
-	/* different pin from sunxi-common-regulators */
-	allwinner,pins = "PH24";
-};
-
-&usbphy {
-	usb1_vbus-supply = <&reg_usb1_vbus>;
-	status = "okay";
-};
