@@ -2333,7 +2333,7 @@ static bool __zone_watermark_ok(struct zone *z, unsigned int order,
 {
 	long min = mark;
 	int o;
-	const bool alloc_harder = (alloc_flags & ALLOC_HARDER);
+	const int alloc_harder = (alloc_flags & ALLOC_HARDER);
 
 	/* free_pages may go negative - that's OK */
 	free_pages -= (1 << order) - 1;
@@ -2357,14 +2357,19 @@ static bool __zone_watermark_ok(struct zone *z, unsigned int order,
 		free_pages -= zone_page_state(z, NR_FREE_CMA_PAGES);
 #endif
 
+	/*
+	 * Check watermarks for an order-0 allocation request. If these
+	 * are not met, then a high-order request also cannot go ahead
+	 * even if a suitable page happened to be free.
+	 */
 	if (free_pages <= min + z->lowmem_reserve[classzone_idx])
 		return false;
 
-	/* order-0 watermarks are ok */
+	/* If this is an order-0 request then the watermark is fine */
 	if (!order)
 		return true;
 
-	/* Check at least one high-order page is free */
+	/* For a high-order request, check at least one suitable page is free */
 	for (o = order; o < MAX_ORDER; o++) {
 		struct free_area *area = &z->free_area[o];
 		int mt;
