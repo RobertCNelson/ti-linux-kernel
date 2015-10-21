@@ -1753,11 +1753,6 @@ unlock:
 	return NULL;
 }
 
-int pmd_freeable(pmd_t pmd)
-{
-	return !pmd_dirty(pmd);
-}
-
 #define VM_NO_THP (VM_SPECIAL | VM_HUGETLB | VM_SHARED | VM_MAYSHARE)
 
 int hugepage_madvise(struct vm_area_struct *vma,

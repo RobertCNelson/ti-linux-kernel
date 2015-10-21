@@ -791,17 +791,15 @@ enum page_references {
 };
 
 static enum page_references page_check_references(struct page *page,
-						  struct scan_control *sc,
-						  bool *freeable)
+						  struct scan_control *sc)
 {
 	int referenced_ptes, referenced_page;
 	unsigned long vm_flags;
-	int pte_dirty;
 
 	VM_BUG_ON_PAGE(!PageLocked(page), page);
 
 	referenced_ptes = page_referenced(page, 1, sc->target_mem_cgroup,
-					  &vm_flags, &pte_dirty);
+					  &vm_flags);
 	referenced_page = TestClearPageReferenced(page);
 
 	/*
@@ -841,10 +839,6 @@ static enum page_references page_check_references(struct page *page,
 
 		return PAGEREF_KEEP;
 	}
-
-	if (PageAnon(page) && !pte_dirty && !PageSwapCache(page) &&
-			!PageDirty(page))
-		*freeable = true;
 
 	/* Reclaim if clean, defer dirty pages to writeback */
 	if (referenced_page && !PageSwapBacked(page))
@@ -1037,8 +1031,7 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		}
 
 		if (!force_reclaim)
-			references = page_check_references(page, sc,
-							&freeable);
+			references = page_check_references(page, sc);
 
 		switch (references) {
 		case PAGEREF_ACTIVATE:
@@ -1055,31 +1048,24 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		 * Try to allocate it some swap space here.
 		 */
 		if (PageAnon(page) && !PageSwapCache(page)) {
-			if (!freeable) {
-				if (!(sc->gfp_mask & __GFP_IO))
-					goto keep_locked;
-				if (!add_to_swap(page, page_list))
-					goto activate_locked;
-				may_enter_fs = 1;
-				/* Adding to swap updated mapping */
-				mapping = page_mapping(page);
-			} else {
-				if (likely(!PageTransHuge(page)))
-					goto unmap;
-				/* try_to_unmap isn't aware of THP page */
-				if (unlikely(split_huge_page_to_list(page,
-								page_list)))
-					goto keep_locked;
-			}
+			if (!(sc->gfp_mask & __GFP_IO))
+				goto keep_locked;
+			if (!add_to_swap(page, page_list))
+				goto activate_locked;
+			freeable = true;
+			may_enter_fs = 1;
+			/* Adding to swap updated mapping */
+			mapping = page_mapping(page);
 		}
-unmap:
+
 		/*
 		 * The page is mapped into the page tables of one or more
 		 * processes. Try to unmap it here.
 		 */
-		if (page_mapped(page) && (mapping || freeable)) {
+		if (page_mapped(page) && mapping) {
 			switch (try_to_unmap(page, freeable ?
-					TTU_FREE : ttu_flags|TTU_BATCH_FLUSH)) {
+					ttu_flags | TTU_BATCH_FLUSH | TTU_FREE :
+					ttu_flags | TTU_BATCH_FLUSH)) {
 			case SWAP_FAIL:
 				goto activate_locked;
 			case SWAP_AGAIN:
@@ -1087,20 +1073,7 @@ unmap:
 			case SWAP_MLOCK:
 				goto cull_mlocked;
 			case SWAP_SUCCESS:
-				/* try to free the page below */
-				if (!freeable)
-					break;
-				/*
-				 * Freeable anon page doesn't have mapping
-				 * due to skipping of swapcache so we free
-				 * page in here rather than __remove_mapping.
-				 */
-				VM_BUG_ON_PAGE(PageSwapCache(page), page);
-				if (!page_freeze_refs(page, 1))
-					goto keep_locked;
-				__ClearPageLocked(page);
-				count_vm_event(PGLAZYFREED);
-				goto free_it;
+				; /* try to free the page below */
 			}
 		}
 
@@ -1217,6 +1190,9 @@ unmap:
 		 */
 		__ClearPageLocked(page);
 free_it:
+		if (freeable && !PageDirty(page))
+			count_vm_event(PGLAZYFREED);
+
 		nr_reclaimed++;
 
 		/*
@@ -1847,7 +1823,7 @@ static void shrink_active_list(unsigned long nr_to_scan,
 		}
 
 		if (page_referenced(page, 0, sc->target_mem_cgroup,
-				    &vm_flags, NULL)) {
+				    &vm_flags)) {
 			nr_rotated += hpage_nr_pages(page);
 			/*
 			 * Identify referenced, file-backed active pages and
