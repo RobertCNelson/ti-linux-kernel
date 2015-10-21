@@ -675,7 +675,7 @@ static inline void __free_one_page(struct page *page,
 		 * pageblock. Without this, pageblock isolation
 		 * could cause incorrect freepage accounting.
 		 */
-		max_order = min(MAX_ORDER, pageblock_order + 1);
+		max_order = min_t(unsigned int, MAX_ORDER, pageblock_order + 1);
 	} else {
 		__mod_zone_freepage_state(zone, 1 << order, migratetype);
 	}
