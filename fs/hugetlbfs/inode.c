@@ -509,7 +509,6 @@ static long hugetlbfs_punch_hole(struct inode *inode, loff_t offset, loff_t len)
 	loff_t hpage_size = huge_page_size(h);
 	unsigned long hpage_shift = huge_page_shift(h);
 	loff_t hole_start, hole_end;
-	struct hugetlb_falloc hugetlb_falloc;
 
 	/*
 	 * For hole punch round up the beginning offset of the hole and
@@ -521,15 +520,16 @@ static long hugetlbfs_punch_hole(struct inode *inode, loff_t offset, loff_t len)
 	if (hole_end > hole_start) {
 		struct address_space *mapping = inode->i_mapping;
 		DECLARE_WAIT_QUEUE_HEAD_ONSTACK(hugetlb_falloc_waitq);
-
 		/*
-		 * Page faults on the area to be hole punched must be
-		 * stopped during the operation.  Initialize struct and
-		 * have inode->i_private point to it.
+		 * Page faults on the area to be hole punched must be stopped
+		 * during the operation.  Initialize struct and have
+		 * inode->i_private point to it.
 		 */
-		hugetlb_falloc.waitq = &hugetlb_falloc_waitq;
-		hugetlb_falloc.start = hole_start >> hpage_shift;
-		hugetlb_falloc.end = hole_end >> hpage_shift;
+		struct hugetlb_falloc hugetlb_falloc = {
+			.waitq = &hugetlb_falloc_waitq,
+			.start = hole_start >> hpage_shift,
+			.end = hole_end >> hpage_shift
+		};
 
 		mutex_lock(&inode->i_mutex);
 
