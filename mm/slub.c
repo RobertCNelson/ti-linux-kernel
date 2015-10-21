@@ -2885,7 +2885,8 @@ static int build_detached_freelist(struct kmem_cache *s, size_t size,
 /* Note that interrupts must be enabled when calling this function. */
 void kmem_cache_free_bulk(struct kmem_cache *s, size_t size, void **p)
 {
-	BUG_ON(!size);
+	if (WARN_ON(!size))
+		return;
 
 	do {
 		struct detached_freelist df;
