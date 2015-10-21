@@ -3156,6 +3156,7 @@ static void __split_huge_page(struct page *page, struct list_head *list)
 	atomic_sub(tail_mapcount, &head->_count);
 
 	ClearPageCompound(head);
+	SetPageDirty(head);
 	spin_unlock_irq(&zone->lru_lock);
 
 	unfreeze_page(page_anon_vma(head), head);
