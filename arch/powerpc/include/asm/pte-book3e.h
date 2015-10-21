@@ -57,6 +57,7 @@
 
 #define _PAGE_HASHPTE	0
 #define _PAGE_BUSY	0
+#define _PAGE_SOFT_DIRTY	0
 
 #define _PAGE_SPECIAL	_PAGE_SW0
 

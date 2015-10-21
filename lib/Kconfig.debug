@@ -197,6 +197,7 @@ config ENABLE_MUST_CHECK
 config FRAME_WARN
 	int "Warn for stack frames larger than (needs gcc 4.4)"
 	range 0 8192
+	default 0 if KASAN
 	default 1024 if !64BIT
 	default 2048 if 64BIT
 	help
@@ -567,6 +568,14 @@ config DEBUG_VM_RB
 	depends on DEBUG_VM
 	help
 	  Enable VM red-black tree debugging information and extra validations.
+
+	  If unsure, say N.
+
+config DEBUG_VM_PGFLAGS
+	bool "Debug page-flags operations"
+	depends on DEBUG_VM
+	help
+	  Enables extra validation on page flags operations.
 
 	  If unsure, say N.
 
@@ -1685,6 +1694,9 @@ config TEST_STRING_HELPERS
 config TEST_KSTRTOX
 	tristate "Test kstrto*() family of functions at runtime"
 
+config TEST_PRINTF
+	tristate "Test printf() family of functions at runtime"
+
 config TEST_RHASHTABLE
 	tristate "Perform selftest on resizable hash table"
 	default n
@@ -1751,6 +1763,16 @@ config DMA_API_DEBUG
 	  debug device drivers and dma interactions.
 
 	  If unsure, say N.
+
+config DMA_API_DEBUG_POISON
+	bool "Poison coherent DMA buffers"
+	depends on DMA_API_DEBUG && EXPERT
+	help
+	  Poison DMA buffers returned by dma_alloc_coherent unless __GFP_ZERO
+	  is explicitly specified, to catch drivers depending on zeroed buffers
+	  without passing the correct flags.
+
+	  Only say Y if you're prepared for almost everything to break.
 
 config TEST_LKM
 	tristate "Test module loading with 'hello world' module"
