@@ -38,44 +38,6 @@ static inline int pte_special(pte_t pte)	{ return pte_val(pte) & _PAGE_SPECIAL; 
 static inline int pte_none(pte_t pte)		{ return (pte_val(pte) & ~_PTE_NONE_MASK) == 0; }
 static inline pgprot_t pte_pgprot(pte_t pte)	{ return __pgprot(pte_val(pte) & PAGE_PROT_BITS); }
 
-#ifdef CONFIG_HAVE_ARCH_SOFT_DIRTY
-static inline int pte_soft_dirty(pte_t pte)
-{
-	return pte_val(pte) & _PAGE_SOFT_DIRTY;
-}
-static inline pte_t pte_mksoft_dirty(pte_t pte)
-{
-	pte_val(pte) |= _PAGE_SOFT_DIRTY;
-	return pte;
-}
-
-static inline pte_t pte_swp_mksoft_dirty(pte_t pte)
-{
-	pte_val(pte) |= _PAGE_SWP_SOFT_DIRTY;
-	return pte;
-}
-static inline int pte_swp_soft_dirty(pte_t pte)
-{
-	return pte_val(pte) & _PAGE_SWP_SOFT_DIRTY;
-}
-static inline pte_t pte_swp_clear_soft_dirty(pte_t pte)
-{
-	pte_val(pte) &= ~_PAGE_SWP_SOFT_DIRTY;
-	return pte;
-}
-
-static inline pte_t pte_clear_flags(pte_t pte, pte_basic_t clear)
-{
-	pte_val(pte) &= ~clear;
-	return pte;
-}
-static inline pmd_t pmd_clear_flags(pmd_t pmd, unsigned long clear)
-{
-	pmd_val(pmd) &= ~clear;
-	return pmd;
-}
-#endif /* CONFIG_HAVE_ARCH_SOFT_DIRTY */
-
 #ifdef CONFIG_NUMA_BALANCING
 /*
  * These work without NUMA balancing but the kernel does not care. See the
@@ -127,7 +89,7 @@ static inline pte_t pte_mkwrite(pte_t pte) {
 	pte_val(pte) &= ~_PAGE_RO;
 	pte_val(pte) |= _PAGE_RW; return pte; }
 static inline pte_t pte_mkdirty(pte_t pte) {
-	pte_val(pte) |= _PAGE_DIRTY | _PAGE_SOFT_DIRTY; return pte; }
+	pte_val(pte) |= _PAGE_DIRTY; return pte; }
 static inline pte_t pte_mkyoung(pte_t pte) {
 	pte_val(pte) |= _PAGE_ACCESSED; return pte; }
 static inline pte_t pte_mkspecial(pte_t pte) {

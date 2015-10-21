@@ -94,14 +94,13 @@ extern unsigned long bad_call_to_PMD_PAGE_SIZE(void);
  * pgprot changes
  */
 #define _PAGE_CHG_MASK	(PTE_RPN_MASK | _PAGE_HPTEFLAGS | _PAGE_DIRTY | \
-			 _PAGE_ACCESSED | _PAGE_SPECIAL | _PAGE_SOFT_DIRTY)
+                         _PAGE_ACCESSED | _PAGE_SPECIAL)
 
 /* Mask of bits returned by pte_pgprot() */
 #define PAGE_PROT_BITS	(_PAGE_GUARDED | _PAGE_COHERENT | _PAGE_NO_CACHE | \
 			 _PAGE_WRITETHRU | _PAGE_ENDIAN | _PAGE_4K_PFN | \
 			 _PAGE_USER | _PAGE_ACCESSED | _PAGE_RO | \
-			 _PAGE_RW | _PAGE_HWWRITE | _PAGE_DIRTY | \
-			 _PAGE_EXEC | _PAGE_SOFT_DIRTY)
+			 _PAGE_RW | _PAGE_HWWRITE | _PAGE_DIRTY | _PAGE_EXEC)
 
 /*
  * We define 2 sets of base prot bits, one for basic pages (ie,
