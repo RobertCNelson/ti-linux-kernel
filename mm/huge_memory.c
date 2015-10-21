@@ -1542,6 +1542,9 @@ int madvise_free_huge_pmd(struct mmu_gather *tlb, struct vm_area_struct *vma,
 		struct page *page;
 		pmd_t orig_pmd;
 
+		if (is_huge_zero_pmd(*pmd))
+			goto out;
+
 		orig_pmd = pmdp_huge_get_and_clear(mm, addr, pmd);
 
 		/* No hugepage in swapcache */
@@ -1553,6 +1556,7 @@ int madvise_free_huge_pmd(struct mmu_gather *tlb, struct vm_area_struct *vma,
 
 		set_pmd_at(mm, addr, pmd, orig_pmd);
 		tlb_remove_pmd_tlb_entry(tlb, pmd, addr);
+out:
 		spin_unlock(ptl);
 		ret = 0;
 	}
