@@ -1,6 +1,7 @@
 #ifndef _LINUX_DMA_MAPPING_H
 #define _LINUX_DMA_MAPPING_H
 
+#include <linux/sizes.h>
 #include <linux/string.h>
 #include <linux/device.h>
 #include <linux/err.h>
