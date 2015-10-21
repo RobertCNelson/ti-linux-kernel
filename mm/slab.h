@@ -244,8 +244,8 @@ static __always_inline int memcg_charge_slab(struct page *page,
 		return 0;
 	if (is_root_cache(s))
 		return 0;
-	return __memcg_kmem_charge(page, gfp, order,
-				   s->memcg_params.memcg);
+	return __memcg_kmem_charge_memcg(page, gfp, order,
+					 s->memcg_params.memcg);
 }
 
 extern void slab_init_memcg_params(struct kmem_cache *);
