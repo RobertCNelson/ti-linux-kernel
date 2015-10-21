@@ -750,8 +750,9 @@ static inline bool memcg_kmem_is_active(struct mem_cgroup *memcg)
  * conditions, but because they are pretty simple, they are expected to be
  * fast.
  */
-int __memcg_kmem_charge(struct page *page, gfp_t gfp, int order,
-			struct mem_cgroup *memcg);
+int __memcg_kmem_charge_memcg(struct page *page, gfp_t gfp, int order,
+			      struct mem_cgroup *memcg);
+int __memcg_kmem_charge(struct page *page, gfp_t gfp, int order);
 void __memcg_kmem_uncharge(struct page *page, int order);
 
 /*
@@ -793,7 +794,7 @@ static __always_inline int memcg_kmem_charge(struct page *page,
 {
 	if (__memcg_kmem_bypass(gfp))
 		return 0;
-	return __memcg_kmem_charge(page, gfp, order, NULL);
+	return __memcg_kmem_charge(page, gfp, order);
 }
 
 /**

@@ -2376,39 +2376,39 @@ void __memcg_kmem_put_cache(struct kmem_cache *cachep)
 		css_put(&cachep->memcg_params.memcg->css);
 }
 
-/*
- * If @memcg != NULL, charge to @memcg, otherwise charge to the memcg the
- * current task belongs to.
- */
-int __memcg_kmem_charge(struct page *page, gfp_t gfp, int order,
-			struct mem_cgroup *memcg)
+int __memcg_kmem_charge_memcg(struct page *page, gfp_t gfp, int order,
+			      struct mem_cgroup *memcg)
 {
-	struct page_counter *counter;
 	unsigned int nr_pages = 1 << order;
-	bool put = false;
+	struct page_counter *counter;
 	int ret = 0;
 
-	if (!memcg) {
-		memcg = get_mem_cgroup_from_mm(current->mm);
-		put = true;
-	}
 	if (!memcg_kmem_is_active(memcg))
-		goto out;
+		return 0;
 
 	ret = page_counter_try_charge(&memcg->kmem, nr_pages, &counter);
 	if (ret)
-		goto out;
+		return ret;
 
 	ret = try_charge(memcg, gfp, nr_pages);
 	if (ret) {
 		page_counter_uncharge(&memcg->kmem, nr_pages);
-		goto out;
+		return ret;
 	}
 
 	page->mem_cgroup = memcg;
-out:
-	if (put)
-		css_put(&memcg->css);
+
+	return 0;
+}
+
+int __memcg_kmem_charge(struct page *page, gfp_t gfp, int order)
+{
+	struct mem_cgroup *memcg;
+	int ret;
+
+	memcg = get_mem_cgroup_from_mm(current->mm);
+	ret = __memcg_kmem_charge_memcg(page, gfp, order, memcg);
+	css_put(&memcg->css);
 	return ret;
 }
 
