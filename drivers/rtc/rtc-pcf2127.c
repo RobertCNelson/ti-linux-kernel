@@ -145,6 +145,7 @@ static int pcf2127_rtc_ioctl(struct device *dev,
 	struct i2c_client *client = to_i2c_client(dev);
 	unsigned char buf = PCF2127_REG_CTRL3;
 	int ret;
+	int foo;
 
 	switch (cmd) {
 	case RTC_VL_READ:
@@ -162,7 +163,8 @@ static int pcf2127_rtc_ioctl(struct device *dev,
 
 		buf = buf & PCF2127_REG_CTRL3_BLF ? 1 : 0;
 
-		if (copy_to_user((void __user *)arg, &buf, sizeof(int)))
+		foo = buf;	// ytf is an unsigned char called "buf"?
+		if (copy_to_user((void __user *)arg, &foo, sizeof(int)))
 			return -EFAULT;
 		return 0;
 	default:
