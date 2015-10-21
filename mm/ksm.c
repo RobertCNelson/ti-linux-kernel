@@ -1050,6 +1050,18 @@ static int try_to_merge_one_page(struct vm_area_struct *vma,
 			 */
 			set_page_stable_node(page, NULL);
 			mark_page_accessed(page);
+			/*
+			 * Stable page could be shared by several processes
+			 * and last process could own the page among them after
+			 * CoW or zapping for every process except last process
+			 * happens. Then, page table entry of the page
+			 * in last process can have no dirty bit.
+			 * In this case, MADV_FREE could discard the page
+			 * wrongly.
+			 * For preventing it, we mark stable page dirty.
+			 */
+			if (!PageDirty(page))
+				SetPageDirty(page);
 			err = 0;
 		} else if (pages_identical(page, kpage))
 			err = replace_page(vma, page, kpage, orig_pte);
