@@ -1450,7 +1450,7 @@ int kptr_restrict __read_mostly;
  * - 'Cr' For a clock, it prints the current rate of the clock
  * - 'n' For ignored argument
  *
- * ** Please update Documentation/printk-formats.txt when making changes **
+ * ** Please update also Documentation/printk-formats.txt when making changes **
  *
  * Note: The difference between 'S' and 'F' is that on ia64 and ppc64
  * function pointers are really function descriptors, which contain a
@@ -1814,11 +1814,14 @@ qualifier:
  * @fmt: The format string to use
  * @args: Arguments for the format string
  *
- * This function follows C99 vsnprintf, but has some extensions.  See
- * pointer() or Documentation/printk-formats.txt for all format
- * specifiers.
+ * This function follows C99 vsnprintf, but has some extensions:
+ * %n is ignored
+ * %p* is handled by pointer()
  *
- * ** Please update the documentation when making changes **
+ * See pointer() or Documentation/printk-formats.txt for more
+ * extensive description.
+ *
+ * ** Please update the documentation on both places when making changes **
  *
  * The return value is the number of characters which would
  * be generated for the given input, excluding the trailing
