@@ -16,6 +16,7 @@
 #include <linux/err.h>
 #include <linux/fb.h>
 #include <linux/slab.h>
+#include <linux/of_device.h>
 
 #ifdef CONFIG_PMAC_BACKLIGHT
 #include <asm/backlight.h>
@@ -558,6 +559,8 @@ static int of_parent_match(struct device *dev, const void *data)
 struct backlight_device *of_find_backlight_by_node(struct device_node *node)
 {
 	struct device *dev;
+
+	of_device_probe(node);
 
 	dev = class_find_device(backlight_class, NULL, node, of_parent_match);
 

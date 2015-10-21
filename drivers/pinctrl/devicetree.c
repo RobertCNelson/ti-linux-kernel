@@ -18,6 +18,7 @@
 
 #include <linux/device.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/pinctrl/pinctrl.h>
 #include <linux/slab.h>
 
@@ -109,6 +110,8 @@ static int dt_to_map_one_config(struct pinctrl *p, const char *statename,
 	int ret;
 	struct pinctrl_map *map;
 	unsigned num_maps;
+
+	of_device_probe(np_config);
 
 	/* Find the pin controller containing np_config */
 	np_pctldev = of_node_get(np_config);

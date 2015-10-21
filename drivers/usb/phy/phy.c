@@ -15,6 +15,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
 
 #include <linux/usb/phy.h>
 
@@ -195,6 +196,8 @@ struct  usb_phy *devm_usb_get_phy_by_node(struct device *dev,
 		dev_dbg(dev, "failed to allocate memory for devres\n");
 		goto err0;
 	}
+
+	of_device_probe(node);
 
 	spin_lock_irqsave(&phy_lock, flags);
 
