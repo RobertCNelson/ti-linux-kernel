@@ -4448,9 +4448,6 @@ int iscsit_close_connection(
 
 		return 0;
 	}
-	spin_unlock_bh(&sess->conn_lock);
-
-	return 0;
 }
 
 int iscsit_close_session(struct iscsi_session *sess)
