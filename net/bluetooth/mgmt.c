@@ -268,6 +268,14 @@ static int mgmt_event(u16 event, struct hci_dev *hdev, void *data, u16 len,
 			       HCI_SOCK_TRUSTED, skip_sk);
 }
 
+static u8 le_addr_type(u8 mgmt_addr_type)
+{
+	if (mgmt_addr_type == BDADDR_LE_PUBLIC)
+		return ADDR_LE_DEV_PUBLIC;
+	else
+		return ADDR_LE_DEV_RANDOM;
+}
+
 static int read_version(struct sock *sk, struct hci_dev *hdev, void *data,
 			u16 data_len)
 {
@@ -3047,6 +3055,7 @@ static int unpair_device(struct sock *sk, struct hci_dev *hdev, void *data,
 	struct hci_cp_disconnect dc;
 	struct mgmt_pending_cmd *cmd;
 	struct hci_conn *conn;
+	u8 addr_type;
 	int err;
 
 	memset(&rp, 0, sizeof(rp));
@@ -3087,36 +3096,23 @@ static int unpair_device(struct sock *sk, struct hci_dev *hdev, void *data,
 			conn = NULL;
 
 		err = hci_remove_link_key(hdev, &cp->addr.bdaddr);
-	} else {
-		u8 addr_type;
-
-		conn = hci_conn_hash_lookup_ba(hdev, LE_LINK,
-					       &cp->addr.bdaddr);
-		if (conn) {
-			/* Defer clearing up the connection parameters
-			 * until closing to give a chance of keeping
-			 * them if a repairing happens.
-			 */
-			set_bit(HCI_CONN_PARAM_REMOVAL_PEND, &conn->flags);
-
-			/* If disconnection is not requested, then
-			 * clear the connection variable so that the
-			 * link is not terminated.
-			 */
-			if (!cp->disconnect)
-				conn = NULL;
+		if (err < 0) {
+			err = mgmt_cmd_complete(sk, hdev->id,
+						MGMT_OP_UNPAIR_DEVICE,
+						MGMT_STATUS_NOT_PAIRED, &rp,
+						sizeof(rp));
+			goto unlock;
 		}
 
-		if (cp->addr.type == BDADDR_LE_PUBLIC)
-			addr_type = ADDR_LE_DEV_PUBLIC;
-		else
-			addr_type = ADDR_LE_DEV_RANDOM;
-
-		hci_remove_irk(hdev, &cp->addr.bdaddr, addr_type);
-
-		err = hci_remove_ltk(hdev, &cp->addr.bdaddr, addr_type);
+		goto done;
 	}
 
+	/* LE address type */
+	addr_type = le_addr_type(cp->addr.type);
+
+	hci_remove_irk(hdev, &cp->addr.bdaddr, addr_type);
+
+	err = hci_remove_ltk(hdev, &cp->addr.bdaddr, addr_type);
 	if (err < 0) {
 		err = mgmt_cmd_complete(sk, hdev->id, MGMT_OP_UNPAIR_DEVICE,
 					MGMT_STATUS_NOT_PAIRED, &rp,
@@ -3124,6 +3120,24 @@ static int unpair_device(struct sock *sk, struct hci_dev *hdev, void *data,
 		goto unlock;
 	}
 
+	conn = hci_conn_hash_lookup_le(hdev, &cp->addr.bdaddr, addr_type);
+	if (!conn) {
+		hci_conn_params_del(hdev, &cp->addr.bdaddr, addr_type);
+		goto done;
+	}
+
+	/* Defer clearing up the connection parameters until closing to
+	 * give a chance of keeping them if a repairing happens.
+	 */
+	set_bit(HCI_CONN_PARAM_REMOVAL_PEND, &conn->flags);
+
+	/* If disconnection is not requested, then clear the connection
+	 * variable so that the link is not terminated.
+	 */
+	if (!cp->disconnect)
+		conn = NULL;
+
+done:
 	/* If the connection variable is set, then termination of the
 	 * link is requested.
 	 */
@@ -3193,7 +3207,8 @@ static int disconnect(struct sock *sk, struct hci_dev *hdev, void *data,
 		conn = hci_conn_hash_lookup_ba(hdev, ACL_LINK,
 					       &cp->addr.bdaddr);
 	else
-		conn = hci_conn_hash_lookup_ba(hdev, LE_LINK, &cp->addr.bdaddr);
+		conn = hci_conn_hash_lookup_le(hdev, &cp->addr.bdaddr,
+					       le_addr_type(cp->addr.type));
 
 	if (!conn || conn->state == BT_OPEN || conn->state == BT_CLOSED) {
 		err = mgmt_cmd_complete(sk, hdev->id, MGMT_OP_DISCONNECT,
@@ -3544,15 +3559,8 @@ static int pair_device(struct sock *sk, struct hci_dev *hdev, void *data,
 		conn = hci_connect_acl(hdev, &cp->addr.bdaddr, sec_level,
 				       auth_type);
 	} else {
-		u8 addr_type;
+		u8 addr_type = le_addr_type(cp->addr.type);
 		struct hci_conn_params *p;
-
-		/* Convert from L2CAP channel address type to HCI address type
-		 */
-		if (cp->addr.type == BDADDR_LE_PUBLIC)
-			addr_type = ADDR_LE_DEV_PUBLIC;
-		else
-			addr_type = ADDR_LE_DEV_RANDOM;
 
 		/* When pairing a new device, it is expected to remember
 		 * this device for future connections. Adding the connection
@@ -3697,7 +3705,8 @@ static int user_pairing_resp(struct sock *sk, struct hci_dev *hdev,
 	if (addr->type == BDADDR_BREDR)
 		conn = hci_conn_hash_lookup_ba(hdev, ACL_LINK, &addr->bdaddr);
 	else
-		conn = hci_conn_hash_lookup_ba(hdev, LE_LINK, &addr->bdaddr);
+		conn = hci_conn_hash_lookup_le(hdev, &addr->bdaddr,
+					       le_addr_type(addr->type));
 
 	if (!conn) {
 		err = mgmt_cmd_complete(sk, hdev->id, mgmt_op,
@@ -5600,14 +5609,9 @@ static int load_irks(struct sock *sk, struct hci_dev *hdev, void *cp_data,
 
 	for (i = 0; i < irk_count; i++) {
 		struct mgmt_irk_info *irk = &cp->irks[i];
-		u8 addr_type;
 
-		if (irk->addr.type == BDADDR_LE_PUBLIC)
-			addr_type = ADDR_LE_DEV_PUBLIC;
-		else
-			addr_type = ADDR_LE_DEV_RANDOM;
-
-		hci_add_irk(hdev, &irk->addr.bdaddr, addr_type, irk->val,
+		hci_add_irk(hdev, &irk->addr.bdaddr,
+			    le_addr_type(irk->addr.type), irk->val,
 			    BDADDR_ANY);
 	}
 
@@ -5687,12 +5691,7 @@ static int load_long_term_keys(struct sock *sk, struct hci_dev *hdev,
 
 	for (i = 0; i < key_count; i++) {
 		struct mgmt_ltk_info *key = &cp->keys[i];
-		u8 type, addr_type, authenticated;
-
-		if (key->addr.type == BDADDR_LE_PUBLIC)
-			addr_type = ADDR_LE_DEV_PUBLIC;
-		else
-			addr_type = ADDR_LE_DEV_RANDOM;
+		u8 type, authenticated;
 
 		switch (key->type) {
 		case MGMT_LTK_UNAUTHENTICATED:
@@ -5718,9 +5717,9 @@ static int load_long_term_keys(struct sock *sk, struct hci_dev *hdev,
 			continue;
 		}
 
-		hci_add_ltk(hdev, &key->addr.bdaddr, addr_type, type,
-			    authenticated, key->val, key->enc_size, key->ediv,
-			    key->rand);
+		hci_add_ltk(hdev, &key->addr.bdaddr,
+			    le_addr_type(key->addr.type), type, authenticated,
+			    key->val, key->enc_size, key->ediv, key->rand);
 	}
 
 	err = mgmt_cmd_complete(sk, hdev->id, MGMT_OP_LOAD_LONG_TERM_KEYS, 0,
@@ -6232,10 +6231,7 @@ static int add_device(struct sock *sk, struct hci_dev *hdev,
 		goto added;
 	}
 
-	if (cp->addr.type == BDADDR_LE_PUBLIC)
-		addr_type = ADDR_LE_DEV_PUBLIC;
-	else
-		addr_type = ADDR_LE_DEV_RANDOM;
+	addr_type = le_addr_type(cp->addr.type);
 
 	if (cp->action == 0x02)
 		auto_conn = HCI_AUTO_CONN_ALWAYS;
@@ -6364,10 +6360,7 @@ static int remove_device(struct sock *sk, struct hci_dev *hdev,
 			goto complete;
 		}
 
-		if (cp->addr.type == BDADDR_LE_PUBLIC)
-			addr_type = ADDR_LE_DEV_PUBLIC;
-		else
-			addr_type = ADDR_LE_DEV_RANDOM;
+		addr_type = le_addr_type(cp->addr.type);
 
 		/* Kernel internally uses conn_params with resolvable private
 		 * address, but Remove Device allows only identity addresses.
@@ -7873,27 +7866,13 @@ void mgmt_new_ltk(struct hci_dev *hdev, struct smp_ltk *key, bool persistent)
 	mgmt_event(MGMT_EV_NEW_LONG_TERM_KEY, hdev, &ev, sizeof(ev), NULL);
 }
 
-void mgmt_new_irk(struct hci_dev *hdev, struct smp_irk *irk)
+void mgmt_new_irk(struct hci_dev *hdev, struct smp_irk *irk, bool persistent)
 {
 	struct mgmt_ev_new_irk ev;
 
 	memset(&ev, 0, sizeof(ev));
 
-	/* For identity resolving keys from devices that are already
-	 * using a public address or static random address, do not
-	 * ask for storing this key. The identity resolving key really
-	 * is only mandatory for devices using resolvable random
-	 * addresses.
-	 *
-	 * Storing all identity resolving keys has the downside that
-	 * they will be also loaded on next boot of they system. More
-	 * identity resolving keys, means more time during scanning is
-	 * needed to actually resolve these addresses.
-	 */
-	if (bacmp(&irk->rpa, BDADDR_ANY))
-		ev.store_hint = 0x01;
-	else
-		ev.store_hint = 0x00;
+	ev.store_hint = persistent;
 
 	bacpy(&ev.rpa, &irk->rpa);
 	bacpy(&ev.irk.addr.bdaddr, &irk->bdaddr);

@@ -68,6 +68,7 @@ static void hci_le_create_connection_cancel(struct hci_conn *conn)
 static void hci_connect_le_scan_cleanup(struct hci_conn *conn)
 {
 	struct hci_conn_params *params;
+	struct hci_dev *hdev = conn->hdev;
 	struct smp_irk *irk;
 	bdaddr_t *bdaddr;
 	u8 bdaddr_type;
@@ -76,14 +77,15 @@ static void hci_connect_le_scan_cleanup(struct hci_conn *conn)
 	bdaddr_type = conn->dst_type;
 
 	/* Check if we need to convert to identity address */
-	irk = hci_get_irk(conn->hdev, bdaddr, bdaddr_type);
+	irk = hci_get_irk(hdev, bdaddr, bdaddr_type);
 	if (irk) {
 		bdaddr = &irk->bdaddr;
 		bdaddr_type = irk->addr_type;
 	}
 
-	params = hci_explicit_connect_lookup(conn->hdev, bdaddr, bdaddr_type);
-	if (!params)
+	params = hci_pend_le_action_lookup(&hdev->pend_le_conns, bdaddr,
+					   bdaddr_type);
+	if (!params || !params->explicit_connect)
 		return;
 
 	/* The connection attempt was doing scan for new RPA, and is
@@ -97,21 +99,21 @@ static void hci_connect_le_scan_cleanup(struct hci_conn *conn)
 
 	switch (params->auto_connect) {
 	case HCI_AUTO_CONN_EXPLICIT:
-		hci_conn_params_del(conn->hdev, bdaddr, bdaddr_type);
+		hci_conn_params_del(hdev, bdaddr, bdaddr_type);
 		/* return instead of break to avoid duplicate scan update */
 		return;
 	case HCI_AUTO_CONN_DIRECT:
 	case HCI_AUTO_CONN_ALWAYS:
-		list_add(&params->action, &conn->hdev->pend_le_conns);
+		list_add(&params->action, &hdev->pend_le_conns);
 		break;
 	case HCI_AUTO_CONN_REPORT:
-		list_add(&params->action, &conn->hdev->pend_le_reports);
+		list_add(&params->action, &hdev->pend_le_reports);
 		break;
 	default:
 		break;
 	}
 
-	hci_update_background_scan(conn->hdev);
+	hci_update_background_scan(hdev);
 }
 
 static void hci_conn_cleanup(struct hci_conn *conn)
@@ -137,18 +139,51 @@ static void hci_conn_cleanup(struct hci_conn *conn)
 	hci_conn_put(conn);
 }
 
-/* This function requires the caller holds hdev->lock */
+static void le_scan_cleanup(struct work_struct *work)
+{
+	struct hci_conn *conn = container_of(work, struct hci_conn,
+					     le_scan_cleanup);
+	struct hci_dev *hdev = conn->hdev;
+	struct hci_conn *c = NULL;
+
+	BT_DBG("%s hcon %p", hdev->name, conn);
+
+	hci_dev_lock(hdev);
+
+	/* Check that the hci_conn is still around */
+	rcu_read_lock();
+	list_for_each_entry_rcu(c, &hdev->conn_hash.list, list) {
+		if (c == conn)
+			break;
+	}
+	rcu_read_unlock();
+
+	if (c == conn) {
+		hci_connect_le_scan_cleanup(conn);
+		hci_conn_cleanup(conn);
+	}
+
+	hci_dev_unlock(hdev);
+	hci_dev_put(hdev);
+	hci_conn_put(conn);
+}
+
 static void hci_connect_le_scan_remove(struct hci_conn *conn)
 {
-	hci_connect_le_scan_cleanup(conn);
+	BT_DBG("%s hcon %p", conn->hdev->name, conn);
 
-	/* We can't call hci_conn_del here since that would deadlock
-	 * with trying to call cancel_delayed_work_sync(&conn->disc_work).
-	 * Instead, call just hci_conn_cleanup() which contains the bare
-	 * minimum cleanup operations needed for a connection in this
-	 * state.
+	/* We can't call hci_conn_del/hci_conn_cleanup here since that
+	 * could deadlock with another hci_conn_del() call that's holding
+	 * hci_dev_lock and doing cancel_delayed_work_sync(&conn->disc_work).
+	 * Instead, grab temporary extra references to the hci_dev and
+	 * hci_conn and perform the necessary cleanup in a separate work
+	 * callback.
 	 */
-	hci_conn_cleanup(conn);
+
+	hci_dev_hold(conn->hdev);
+	hci_conn_get(conn);
+
+	schedule_work(&conn->le_scan_cleanup);
 }
 
 static void hci_acl_create_connection(struct hci_conn *conn)
@@ -580,6 +615,7 @@ struct hci_conn *hci_conn_add(struct hci_dev *hdev, int type, bdaddr_t *dst,
 	INIT_DELAYED_WORK(&conn->auto_accept_work, hci_conn_auto_accept);
 	INIT_DELAYED_WORK(&conn->idle_work, hci_conn_idle);
 	INIT_DELAYED_WORK(&conn->le_conn_timeout, le_conn_timeout);
+	INIT_WORK(&conn->le_scan_cleanup, le_scan_cleanup);
 
 	atomic_set(&conn->refcnt, 0);
 
@@ -835,7 +871,7 @@ struct hci_conn *hci_connect_le(struct hci_dev *hdev, bdaddr_t *dst,
 	 * attempt, we simply update pending_sec_level and auth_type fields
 	 * and return the object found.
 	 */
-	conn = hci_conn_hash_lookup_ba(hdev, LE_LINK, dst);
+	conn = hci_conn_hash_lookup_le(hdev, dst, dst_type);
 	conn_unfinished = NULL;
 	if (conn) {
 		if (conn->state == BT_CONNECT &&
@@ -985,11 +1021,8 @@ static bool is_connected(struct hci_dev *hdev, bdaddr_t *addr, u8 type)
 {
 	struct hci_conn *conn;
 
-	conn = hci_conn_hash_lookup_ba(hdev, LE_LINK, addr);
+	conn = hci_conn_hash_lookup_le(hdev, addr, type);
 	if (!conn)
-		return false;
-
-	if (conn->dst_type != type)
 		return false;
 
 	if (conn->state != BT_CONNECTED)
@@ -1064,7 +1097,7 @@ struct hci_conn *hci_connect_le_scan(struct hci_dev *hdev, bdaddr_t *dst,
 	 * attempt, we simply update pending_sec_level and auth_type fields
 	 * and return the object found.
 	 */
-	conn = hci_conn_hash_lookup_ba(hdev, LE_LINK, dst);
+	conn = hci_conn_hash_lookup_le(hdev, dst, dst_type);
 	if (conn) {
 		if (conn->pending_sec_level < sec_level)
 			conn->pending_sec_level = sec_level;
