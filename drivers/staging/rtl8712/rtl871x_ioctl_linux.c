@@ -72,32 +72,6 @@ static const char * const iw_operation_mode[] = {
 	 "Monitor"
 };
 
-/**
- * hwaddr_aton - Convert ASCII string to MAC address
- * @txt: MAC address as a string (e.g., "00:11:22:33:44:55")
- * @addr: Buffer for the MAC address (ETH_ALEN = 6 bytes)
- * Returns: 0 on success, -1 on failure (e.g., string not a MAC address)
- */
-static int hwaddr_aton_i(const char *txt, u8 *addr)
-{
-	int i;
-
-	for (i = 0; i < 6; i++) {
-		int a, b;
-
-		a = hex_to_bin(*txt++);
-		if (a < 0)
-			return -1;
-		b = hex_to_bin(*txt++);
-		if (b < 0)
-			return -1;
-		*addr++ = (a << 4) | b;
-		if (i < 5 && *txt++ != ':')
-			return -1;
-	}
-	return 0;
-}
-
 void r8712_indicate_wx_assoc_event(struct _adapter *padapter)
 {
 	union iwreq_data wrqu;
@@ -140,7 +114,7 @@ static inline void handle_pairwise_key(struct sta_info *psta,
 static inline void handle_group_key(struct ieee_param *param,
 				    struct _adapter *padapter)
 {
-	if (0 < param->u.crypt.idx &&
+	if (param->u.crypt.idx > 0 &&
 	    param->u.crypt.idx < 3) {
 		/* group key idx is 1 or 2 */
 		memcpy(padapter->securitypriv.XGrpKey[param->u.crypt.
@@ -797,13 +771,13 @@ static int r871x_wx_set_pmkid(struct net_device *dev,
 	int intReturn = false;
 
 /*
-	There are the BSSID information in the bssid.sa_data array.
-	If cmd is IW_PMKSA_FLUSH, it means the wpa_supplicant wants to clear
-	all the PMKID information. If cmd is IW_PMKSA_ADD, it means the
-	wpa_supplicant wants to add a PMKID/BSSID to driver.
-	If cmd is IW_PMKSA_REMOVE, it means the wpa_supplicant wants to
-	remove a PMKID/BSSID from driver.
-*/
+ *	There are the BSSID information in the bssid.sa_data array.
+ *	If cmd is IW_PMKSA_FLUSH, it means the wpa_supplicant wants to clear
+ *	all the PMKID information. If cmd is IW_PMKSA_ADD, it means the
+ *	wpa_supplicant wants to add a PMKID/BSSID to driver.
+ *	If cmd is IW_PMKSA_REMOVE, it means the wpa_supplicant wants to
+ *	remove a PMKID/BSSID from driver.
+ */
 	if (pPMK == NULL)
 		return -EINVAL;
 	memcpy(strIssueBssid, pPMK->bssid.sa_data, ETH_ALEN);
@@ -818,7 +792,8 @@ static int r871x_wx_set_pmkid(struct net_device *dev,
 			if (!memcmp(psecuritypriv->PMKIDList[j].Bssid,
 			    strIssueBssid, ETH_ALEN)) {
 				/* BSSID is matched, the same AP => rewrite
-				 * with new PMKID. */
+				 * with new PMKID.
+				 */
 				netdev_info(dev, "r8712u: %s: BSSID exists in the PMKList.\n",
 					    __func__);
 				memcpy(psecuritypriv->PMKIDList[j].PMKID,
@@ -850,7 +825,8 @@ static int r871x_wx_set_pmkid(struct net_device *dev,
 			if (!memcmp(psecuritypriv->PMKIDList[j].Bssid,
 			    strIssueBssid, ETH_ALEN)) {
 				/* BSSID is matched, the same AP => Remove
-				 * this PMKID information and reset it. */
+				 * this PMKID information and reset it.
+				 */
 				eth_zero_addr(psecuritypriv->PMKIDList[j].Bssid);
 				psecuritypriv->PMKIDList[j].bUsed = false;
 				break;
@@ -909,7 +885,7 @@ static int r8711_wx_get_range(struct net_device *dev,
 	range->max_qual.updated = 7; /* Updated all three */
 	range->avg_qual.qual = 92; /* > 8% missed beacons is 'bad' */
 	/* TODO: Find real 'good' to 'bad' threshold value for RSSI */
-	range->avg_qual.level = 20 + -98;
+	range->avg_qual.level = 0x100 - 78;
 	range->avg_qual.noise = 0;
 	range->avg_qual.updated = 7; /* Updated all three */
 	range->num_bitrates = RATE_COUNT;
@@ -957,7 +933,7 @@ static int r871x_wx_set_priv(struct net_device *dev,
 	if (IS_ERR(ext))
 		return PTR_ERR(ext);
 
-	if (0 == strcasecmp(ext, "RSSI")) {
+	if (!strcasecmp(ext, "RSSI")) {
 		/*Return received signal strength indicator in -db for */
 		/* current AP */
 		/*<ssid> Rssi xx */
@@ -974,7 +950,7 @@ static int r871x_wx_set_priv(struct net_device *dev,
 		} else {
 			sprintf(ext, "OK");
 		}
-	} else if (0 == strcasecmp(ext, "LINKSPEED")) {
+	} else if (!strcasecmp(ext, "LINKSPEED")) {
 		/*Return link speed in MBPS */
 		/*LinkSpeed xx */
 		union iwreq_data wrqd;
@@ -982,30 +958,30 @@ static int r871x_wx_set_priv(struct net_device *dev,
 		int mbps;
 
 		ret_inner = r8711_wx_get_rate(dev, info, &wrqd, extra);
-		if (0 != ret_inner)
+		if (ret_inner != 0)
 			mbps = 0;
 		else
 			mbps = wrqd.bitrate.value / 1000000;
 		sprintf(ext, "LINKSPEED %d", mbps);
-	} else if (0 == strcasecmp(ext, "MACADDR")) {
+	} else if (!strcasecmp(ext, "MACADDR")) {
 		/*Return mac address of the station */
 		/* Macaddr = xx:xx:xx:xx:xx:xx */
 		sprintf(ext, "MACADDR = %pM", dev->dev_addr);
-	} else if (0 == strcasecmp(ext, "SCAN-ACTIVE")) {
+	} else if (!strcasecmp(ext, "SCAN-ACTIVE")) {
 		/*Set scan type to active */
 		/*OK if successful */
 		struct mlme_priv *pmlmepriv = &padapter->mlmepriv;
 
 		pmlmepriv->passive_mode = 1;
 		sprintf(ext, "OK");
-	} else if (0 == strcasecmp(ext, "SCAN-PASSIVE")) {
+	} else if (!strcasecmp(ext, "SCAN-PASSIVE")) {
 		/*Set scan type to passive */
 		/*OK if successful */
 		struct mlme_priv *pmlmepriv = &padapter->mlmepriv;
 
 		pmlmepriv->passive_mode = 0;
 		sprintf(ext, "OK");
-	} else if (0 == strncmp(ext, "DCE-E", 5)) {
+	} else if (!strncmp(ext, "DCE-E", 5)) {
 		/*Set scan type to passive */
 		/*OK if successful */
 		r8712_disconnectCtrlEx_cmd(padapter
@@ -1015,7 +991,7 @@ static int r871x_wx_set_priv(struct net_device *dev,
 			, 5000 /*u32 firstStageTO */
 		);
 		sprintf(ext, "OK");
-	} else if (0 == strncmp(ext, "DCE-D", 5)) {
+	} else if (!strncmp(ext, "DCE-D", 5)) {
 		/*Set scan type to passive */
 		/*OK if successfu */
 		r8712_disconnectCtrlEx_cmd(padapter
@@ -1454,7 +1430,7 @@ static int r8711_wx_get_rate(struct net_device *dev,
 		if (ht_cap == true) {
 			if (mcs_rate & 0x8000 /* MCS15 */
 				&&
-				RTL8712_RF_2T2R == rf_type)
+				rf_type == RTL8712_RF_2T2R)
 				max_rate = (bw_40MHz) ? ((short_GI) ? 300 :
 					    270) : ((short_GI) ? 144 : 130);
 			else /* default MCS7 */
@@ -1587,7 +1563,8 @@ static int r8711_wx_set_enc(struct net_device *dev,
 	} else {
 		wep.KeyLength = 0;
 		if (keyindex_provided == 1) { /* set key_id only, no given
-					       * KeyMaterial(erq->length==0).*/
+					       * KeyMaterial(erq->length==0).
+					       */
 			padapter->securitypriv.PrivacyKeyIndex = key;
 			switch (padapter->securitypriv.DefKeylen[key]) {
 			case 5:
@@ -1811,8 +1788,7 @@ static int r871x_wx_set_enc_ext(struct net_device *dev,
 	if (param == NULL)
 		return -ENOMEM;
 	param->cmd = IEEE_CMD_SET_ENCRYPTION;
-	memset(param->sta_addr, 0xff, ETH_ALEN);
-
+	eth_broadcast_addr(param->sta_addr);
 	strncpy((char *)param->u.crypt.alg, alg_name, IEEE_CRYPT_ALG_NAME_LEN);
 	if (pext->ext_flags & IW_ENCODE_EXT_GROUP_KEY)
 		param->u.crypt.set_tx = 0;
@@ -2000,7 +1976,7 @@ static int r871x_get_ap_info(struct net_device *dev,
 		if (end_of_queue_search(phead, plist) == true)
 			break;
 		pnetwork = LIST_CONTAINOR(plist, struct wlan_network, list);
-		if (hwaddr_aton_i(data, bssid)) {
+		if (!mac_pton(data, bssid)) {
 			netdev_info(dev, "r8712u: Invalid BSSID '%s'.\n",
 				    (u8 *)data);
 			spin_unlock_irqrestore(&(pmlmepriv->scanned_queue.lock),
@@ -2008,7 +1984,7 @@ static int r871x_get_ap_info(struct net_device *dev,
 			return -EINVAL;
 		}
 		netdev_info(dev, "r8712u: BSSID:%pM\n", bssid);
-		if (!memcmp(bssid, pnetwork->network.MacAddress, ETH_ALEN)) {
+		if (ether_addr_equal(bssid, pnetwork->network.MacAddress)) {
 			/* BSSID match, then check if supporting wpa/wpa2 */
 			pbuf = r8712_get_wpa_ie(&pnetwork->network.IEs[12],
 			       &wpa_ielen, pnetwork->network.IELength-12);
@@ -2241,7 +2217,8 @@ static iw_handler r8711_handlers[] = {
 	r8711_wx_set_wap,		/* SIOCSIWAP */
 	r8711_wx_get_wap,		/* SIOCGIWAP */
 	r871x_wx_set_mlme,		/* request MLME operation;
-					 *  uses struct iw_mlme */
+					 *  uses struct iw_mlme
+					 */
 	dummy,				/* SIOCGIWAPLIST -- deprecated */
 	r8711_wx_set_scan,		/* SIOCSIWSCAN */
 	r8711_wx_get_scan,		/* SIOCGIWSCAN */

@@ -594,7 +594,7 @@ static int spinand_erase_block(struct spi_device *spi_nand, u16 block_id)
 		if (retval < 0) {
 			dev_err(&spi_nand->dev,
 					"error %d reading status register\n",
-					(int) retval);
+					(int)retval);
 			return retval;
 		}
 
@@ -941,6 +941,7 @@ static const struct of_device_id spinand_dt[] = {
 	{ .compatible = "spinand,mt29f", },
 	{}
 };
+MODULE_DEVICE_TABLE(of, spinand_dt);
 
 /*
  * Device name structure description
