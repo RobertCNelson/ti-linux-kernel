@@ -581,7 +581,7 @@ void flush_dcache_page(struct page *page)
 	 */
 	if (!mapping_mapped(mapping)) {
 		clear_bit(PG_dc_clean, &page->flags);
-	} else if (page_mapped(page)) {
+	} else if (page_mapcount(page)) {
 
 		/* kernel reading from page with U-mapping */
 		unsigned long paddr = (unsigned long)page_address(page);
@@ -818,7 +818,7 @@ void copy_user_highpage(struct page *to, struct page *from,
 	 * Note that while @u_vaddr refers to DST page's userspace vaddr, it is
 	 * equally valid for SRC page as well
 	 */
-	if (page_mapped(from) && addr_not_cache_congruent(kfrom, u_vaddr)) {
+	if (page_mapcount(from) && addr_not_cache_congruent(kfrom, u_vaddr)) {
 		__flush_dcache_page(kfrom, u_vaddr);
 		clean_src_k_mappings = 1;
 	}
