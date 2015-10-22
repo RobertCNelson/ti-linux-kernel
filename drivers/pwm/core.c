@@ -29,6 +29,7 @@
 #include <linux/device.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
+#include <linux/of_device.h>
 
 #include <dt-bindings/pwm/pwm.h>
 
@@ -515,6 +516,8 @@ EXPORT_SYMBOL_GPL(pwm_disable);
 static struct pwm_chip *of_node_to_pwmchip(struct device_node *np)
 {
 	struct pwm_chip *chip;
+
+	of_device_probe(np);
 
 	mutex_lock(&pwm_lock);
 
