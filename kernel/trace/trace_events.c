@@ -38,21 +38,19 @@ static LIST_HEAD(ftrace_common_fields);
 static struct kmem_cache *field_cachep;
 static struct kmem_cache *file_cachep;
 
-#define SYSTEM_FL_FREE_NAME		(1 << 31)
-
 static inline int system_refcount(struct event_subsystem *system)
 {
-	return system->ref_count & ~SYSTEM_FL_FREE_NAME;
+	return system->ref_count;
 }
 
 static int system_refcount_inc(struct event_subsystem *system)
 {
-	return (system->ref_count++) & ~SYSTEM_FL_FREE_NAME;
+	return system->ref_count++;
 }
 
 static int system_refcount_dec(struct event_subsystem *system)
 {
-	return (--system->ref_count) & ~SYSTEM_FL_FREE_NAME;
+	return --system->ref_count;
 }
 
 /* Double loops, do not use break, only goto's work */
@@ -338,6 +336,7 @@ static int __ftrace_event_enable_disable(struct trace_event_file *file,
 					 int enable, int soft_disable)
 {
 	struct trace_event_call *call = file->event_call;
+	struct trace_array *tr = file->tr;
 	int ret = 0;
 	int disable;
 
@@ -401,7 +400,7 @@ static int __ftrace_event_enable_disable(struct trace_event_file *file,
 			if (soft_disable)
 				set_bit(EVENT_FILE_FL_SOFT_DISABLED_BIT, &file->flags);
 
-			if (trace_flags & TRACE_ITER_RECORD_CMD) {
+			if (tr->trace_flags & TRACE_ITER_RECORD_CMD) {
 				tracing_start_cmdline_record();
 				set_bit(EVENT_FILE_FL_RECORDED_CMD_BIT, &file->flags);
 			}
@@ -460,8 +459,7 @@ static void __put_system(struct event_subsystem *system)
 		kfree(filter->filter_string);
 		kfree(filter);
 	}
-	if (system->ref_count & SYSTEM_FL_FREE_NAME)
-		kfree(system->name);
+	kfree_const(system->name);
 	kfree(system);
 }
 
@@ -1492,13 +1490,9 @@ create_new_subsystem(const char *name)
 	system->ref_count = 1;
 
 	/* Only allocate if dynamic (kprobes and modules) */
-	if (!core_kernel_data((unsigned long)name)) {
-		system->ref_count |= SYSTEM_FL_FREE_NAME;
-		system->name = kstrdup(name, GFP_KERNEL);
-		if (!system->name)
-			goto out_free;
-	} else
-		system->name = name;
+	system->name = kstrdup_const(name, GFP_KERNEL);
+	if (!system->name)
+		goto out_free;
 
 	system->filter = NULL;
 
@@ -1511,8 +1505,7 @@ create_new_subsystem(const char *name)
 	return system;
 
  out_free:
-	if (system->ref_count & SYSTEM_FL_FREE_NAME)
-		kfree(system->name);
+	kfree_const(system->name);
 	kfree(system);
 	return NULL;
 }
@@ -2891,7 +2884,9 @@ static __init void event_trace_self_tests(void)
 
 static DEFINE_PER_CPU(atomic_t, ftrace_test_event_disable);
 
-static void
+static struct trace_array *event_tr;
+
+static void __init
 function_test_events_call(unsigned long ip, unsigned long parent_ip,
 			  struct ftrace_ops *op, struct pt_regs *pt_regs)
 {
@@ -2922,7 +2917,7 @@ function_test_events_call(unsigned long ip, unsigned long parent_ip,
 	entry->ip			= ip;
 	entry->parent_ip		= parent_ip;
 
-	trace_buffer_unlock_commit(buffer, event, flags, pc);
+	trace_buffer_unlock_commit(event_tr, buffer, event, flags, pc);
 
  out:
 	atomic_dec(&per_cpu(ftrace_test_event_disable, cpu));
@@ -2938,6 +2933,9 @@ static struct ftrace_ops trace_ops __initdata  =
 static __init void event_trace_self_test_with_function(void)
 {
 	int ret;
+	event_tr = top_trace_array();
+	if (WARN_ON(!event_tr))
+		return;
 	ret = register_ftrace_function(&trace_ops);
 	if (WARN_ON(ret < 0)) {
 		pr_info("Failed to enable function tracer for event tests\n");
