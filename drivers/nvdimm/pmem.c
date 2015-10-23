@@ -24,11 +24,14 @@
 #include <linux/memory_hotplug.h>
 #include <linux/moduleparam.h>
 #include <linux/vmalloc.h>
+#include <linux/async.h>
 #include <linux/slab.h>
 #include <linux/pmem.h>
 #include <linux/nd.h>
 #include "pfn.h"
 #include "nd.h"
+
+static ASYNC_DOMAIN_EXCLUSIVE(async_pmem);
 
 struct pmem_device {
 	struct request_queue	*pmem_queue;
@@ -147,7 +150,8 @@ static struct pmem_device *pmem_alloc(struct device *dev,
 
 	pmem->pfn_flags = PFN_DEV;
 	if (pmem_should_map_pages(dev)) {
-		pmem->virt_addr = (void __pmem *) devm_memremap_pages(dev, res);
+		pmem->virt_addr = (void __pmem *) devm_memremap_pages(dev, res,
+				&q->q_usage_counter);
 		pmem->pfn_flags |= PFN_MAP;
 	} else
 		pmem->virt_addr = (void __pmem *) devm_memremap(dev,
@@ -163,14 +167,43 @@ static struct pmem_device *pmem_alloc(struct device *dev,
 	return pmem;
 }
 
-static void pmem_detach_disk(struct pmem_device *pmem)
+
+static void async_blk_cleanup_queue(void *data, async_cookie_t cookie)
 {
+	struct pmem_device *pmem = data;
+
+	blk_cleanup_queue(pmem->pmem_queue);
+}
+
+static void pmem_detach_disk(struct device *dev)
+{
+	struct pmem_device *pmem = dev_get_drvdata(dev);
+	struct request_queue *q = pmem->pmem_queue;
+
 	if (!pmem->pmem_disk)
 		return;
 
 	del_gendisk(pmem->pmem_disk);
 	put_disk(pmem->pmem_disk);
-	blk_cleanup_queue(pmem->pmem_queue);
+	async_schedule_domain(async_blk_cleanup_queue, pmem, &async_pmem);
+
+	if (pmem_should_map_pages(dev)) {
+		/*
+		 * Wait for queue to go dead so that we know no new
+		 * references will be taken against the pages allocated
+		 * by devm_memremap_pages().
+		 */
+		blk_wait_queue_dead(q);
+
+		/*
+		 * Manually release the page mapping so that
+		 * blk_cleanup_queue() can complete queue draining.
+		 */
+		devm_memunmap_pages(dev, (void __force *) pmem->virt_addr);
+	}
+
+	/* Wait for blk_cleanup_queue() to finish */
+	async_synchronize_full_domain(&async_pmem);
 }
 
 static int pmem_attach_disk(struct device *dev,
@@ -299,11 +332,9 @@ static int nd_pfn_init(struct nd_pfn *nd_pfn)
 static int nvdimm_namespace_detach_pfn(struct nd_namespace_common *ndns)
 {
 	struct nd_pfn *nd_pfn = to_nd_pfn(ndns->claim);
-	struct pmem_device *pmem;
 
 	/* free pmem disk */
-	pmem = dev_get_drvdata(&nd_pfn->dev);
-	pmem_detach_disk(pmem);
+	pmem_detach_disk(&nd_pfn->dev);
 
 	/* release nd_pfn resources */
 	kfree(nd_pfn->pfn_sb);
@@ -321,6 +352,7 @@ static int nvdimm_namespace_attach_pfn(struct nd_namespace_common *ndns)
 	struct nd_region *nd_region;
 	struct nd_pfn_sb *pfn_sb;
 	struct pmem_device *pmem;
+	struct request_queue *q;
 	phys_addr_t offset;
 	int rc;
 
@@ -357,8 +389,10 @@ static int nvdimm_namespace_attach_pfn(struct nd_namespace_common *ndns)
 
 	/* establish pfn range for lookup, and switch to direct map */
 	pmem = dev_get_drvdata(dev);
+	q = pmem->pmem_queue;
 	devm_memunmap(dev, (void __force *) pmem->virt_addr);
-	pmem->virt_addr = (void __pmem *) devm_memremap_pages(dev, &nsio->res);
+	pmem->virt_addr = (void __pmem *) devm_memremap_pages(dev, &nsio->res,
+			&q->q_usage_counter);
 	pmem->pfn_flags |= PFN_MAP;
 	if (IS_ERR(pmem->virt_addr)) {
 		rc = PTR_ERR(pmem->virt_addr);
@@ -428,7 +462,7 @@ static int nd_pmem_remove(struct device *dev)
 	else if (is_nd_pfn(dev))
 		nvdimm_namespace_detach_pfn(pmem->ndns);
 	else
-		pmem_detach_disk(pmem);
+		pmem_detach_disk(dev);
 
 	return 0;
 }

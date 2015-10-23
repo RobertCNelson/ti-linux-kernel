@@ -327,6 +327,23 @@ static int copy_user_bh(struct page *to, struct inode *inode,
 	return 0;
 }
 
+/* must be called within a dax_map_atomic / dax_unmap_atomic section */
+static void dax_account_mapping(struct block_device *bdev, pfn_t pfn,
+		struct address_space *mapping)
+{
+	/*
+	 * If we are establishing a mapping for a page mapped pfn, take an
+	 * extra reference against the request_queue.  See zone_device_revoke
+	 * for the paired decrement.
+	 */
+	if (pfn_t_has_page(pfn)) {
+		struct page *page = pfn_t_to_page(pfn);
+
+		page->mapping = mapping;
+		percpu_ref_get(&bdev->bd_queue->q_usage_counter);
+	}
+}
+
 static int dax_insert_mapping(struct inode *inode, struct buffer_head *bh,
 			struct vm_area_struct *vma, struct vm_fault *vmf)
 {
@@ -364,6 +381,8 @@ static int dax_insert_mapping(struct inode *inode, struct buffer_head *bh,
 		clear_pmem(addr, PAGE_SIZE);
 		wmb_pmem();
 	}
+
+	dax_account_mapping(bdev, pfn, mapping);
 	dax_unmap_atomic(bdev, addr);
 
 	error = vm_insert_mixed(vma, vaddr, pfn_t_to_pfn(pfn));
@@ -677,6 +696,7 @@ int __dax_pmd_fault(struct vm_area_struct *vma, unsigned long address,
 			mem_cgroup_count_vm_event(vma->vm_mm, PGMAJFAULT);
 			result |= VM_FAULT_MAJOR;
 		}
+		dax_account_mapping(bdev, pfn, mapping);
 		dax_unmap_atomic(bdev, kaddr);
 
 		result |= vmf_insert_pfn_pmd(vma, address, pmd,
