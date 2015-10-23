@@ -1438,6 +1438,7 @@ F:	arch/arm/mach-exynos*/
 F:	drivers/*/*s3c2410*
 F:	drivers/*/*/*s3c2410*
 F:	drivers/spi/spi-s3c*
+F:	drivers/soc/samsung/*
 F:	sound/soc/samsung/*
 N:	exynos
 
