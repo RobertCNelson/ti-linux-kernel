@@ -31,7 +31,7 @@
 #include <linux/sizes.h>
 
 static void __pmem *__dax_map_atomic(struct block_device *bdev, sector_t sector,
-		long size, unsigned long *pfn, long *len)
+		long size, pfn_t *pfn, long *len)
 {
 	long rc;
 	void __pmem *addr;
@@ -52,7 +52,7 @@ static void __pmem *__dax_map_atomic(struct block_device *bdev, sector_t sector,
 static void __pmem *dax_map_atomic(struct block_device *bdev, sector_t sector,
 		long size)
 {
-	unsigned long pfn;
+	pfn_t pfn;
 
 	return __dax_map_atomic(bdev, sector, size, &pfn, NULL);
 }
@@ -72,8 +72,8 @@ int dax_clear_blocks(struct inode *inode, sector_t block, long size)
 	might_sleep();
 	do {
 		void __pmem *addr;
-		unsigned long pfn;
 		long count, sz;
+		pfn_t pfn;
 
 		sz = min_t(long, size, SZ_1M);
 		addr = __dax_map_atomic(bdev, sector, size, &pfn, &count);
@@ -141,7 +141,7 @@ static ssize_t dax_io(struct inode *inode, struct iov_iter *iter,
 	struct block_device *bdev = NULL;
 	int rw = iov_iter_rw(iter), rc;
 	long map_len = 0;
-	unsigned long pfn;
+	pfn_t pfn;
 	void __pmem *addr = NULL;
 	void __pmem *kmap = (void __pmem *) ERR_PTR(-EIO);
 	bool hole = false;
@@ -333,9 +333,9 @@ static int dax_insert_mapping(struct inode *inode, struct buffer_head *bh,
 	unsigned long vaddr = (unsigned long)vmf->virtual_address;
 	struct address_space *mapping = inode->i_mapping;
 	struct block_device *bdev = bh->b_bdev;
-	unsigned long pfn;
 	void __pmem *addr;
 	pgoff_t size;
+	pfn_t pfn;
 	int error;
 
 	i_mmap_lock_read(mapping);
@@ -366,7 +366,7 @@ static int dax_insert_mapping(struct inode *inode, struct buffer_head *bh,
 	}
 	dax_unmap_atomic(bdev, addr);
 
-	error = vm_insert_mixed(vma, vaddr, pfn);
+	error = vm_insert_mixed(vma, vaddr, pfn_t_to_pfn(pfn));
 
  out:
 	i_mmap_unlock_read(mapping);
@@ -655,8 +655,8 @@ int __dax_pmd_fault(struct vm_area_struct *vma, unsigned long address,
 		result = VM_FAULT_NOPAGE;
 		spin_unlock(ptl);
 	} else {
+		pfn_t pfn;
 		long length;
-		unsigned long pfn;
 		void __pmem *kaddr = __dax_map_atomic(bdev,
 				to_sector(&bh, inode), HPAGE_SIZE, &pfn,
 				&length);
@@ -665,7 +665,7 @@ int __dax_pmd_fault(struct vm_area_struct *vma, unsigned long address,
 			result = VM_FAULT_SIGBUS;
 			goto out;
 		}
-		if ((length < HPAGE_SIZE) || (pfn & PG_PMD_COLOUR)) {
+		if ((length < HPAGE_SIZE) || (pfn_t_to_pfn(pfn) & PG_PMD_COLOUR)) {
 			dax_unmap_atomic(bdev, kaddr);
 			goto fallback;
 		}
@@ -679,7 +679,8 @@ int __dax_pmd_fault(struct vm_area_struct *vma, unsigned long address,
 		}
 		dax_unmap_atomic(bdev, kaddr);
 
-		result |= vmf_insert_pfn_pmd(vma, address, pmd, pfn, write);
+		result |= vmf_insert_pfn_pmd(vma, address, pmd,
+				pfn_t_to_pfn(pfn), write);
 	}
 
  out:
