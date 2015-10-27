@@ -21,11 +21,9 @@
 #include <target/target_core_fabric.h>
 #include <asm/unaligned.h>
 
-USB_GADGET_COMPOSITE_OPTIONS();
+#include "u_tcm.h"
 
-/* #include to be removed when new function registration interface is used  */
-#define USBF_TCM_INCLUDED
-#include "../function/f_tcm.c"
+USB_GADGET_COMPOSITE_OPTIONS();
 
 #define UAS_VENDOR_ID	0x0525	/* NetChip */
 #define UAS_PRODUCT_ID	0xa4a5	/* Linux-USB File-backed Storage Gadget */
@@ -60,8 +58,31 @@ static struct usb_gadget_strings *usbg_strings[] = {
 	NULL,
 };
 
+static struct usb_function_instance *fi_tcm;
+static struct usb_function *f_tcm;
+
 static int guas_unbind(struct usb_composite_dev *cdev)
 {
+	if (!IS_ERR_OR_NULL(f_tcm))
+		usb_put_function(f_tcm);
+
+	return 0;
+}
+
+static int tcm_do_config(struct usb_configuration *c)
+{
+	int status;
+
+	f_tcm = usb_get_function(fi_tcm);
+	if (IS_ERR(f_tcm))
+		return PTR_ERR(f_tcm);
+
+	status = usb_add_function(c, f_tcm);
+	if (status < 0) {
+		usb_put_function(f_tcm);
+		return status;
+	}
+
 	return 0;
 }
 
@@ -71,182 +92,8 @@ static struct usb_configuration usbg_config_driver = {
 	.bmAttributes           = USB_CONFIG_ATT_SELFPOWER,
 };
 
-static void give_back_ep(struct usb_ep **pep)
-{
-	struct usb_ep *ep = *pep;
-	if (!ep)
-		return;
-	ep->driver_data = NULL;
-}
-
-static int tcm_bind(struct usb_configuration *c, struct usb_function *f)
-{
-	struct f_uas		*fu = to_f_uas(f);
-	struct usb_gadget	*gadget = c->cdev->gadget;
-	struct usb_ep		*ep;
-	int			iface;
-	int			ret;
-
-	iface = usb_interface_id(c, f);
-	if (iface < 0)
-		return iface;
-
-	bot_intf_desc.bInterfaceNumber = iface;
-	uasp_intf_desc.bInterfaceNumber = iface;
-	fu->iface = iface;
-	ep = usb_ep_autoconfig_ss(gadget, &uasp_ss_bi_desc,
-			&uasp_bi_ep_comp_desc);
-	if (!ep)
-		goto ep_fail;
-	fu->ep_in = ep;
-
-	ep = usb_ep_autoconfig_ss(gadget, &uasp_ss_bo_desc,
-			&uasp_bo_ep_comp_desc);
-	if (!ep)
-		goto ep_fail;
-	fu->ep_out = ep;
-
-	ep = usb_ep_autoconfig_ss(gadget, &uasp_ss_status_desc,
-			&uasp_status_in_ep_comp_desc);
-	if (!ep)
-		goto ep_fail;
-	fu->ep_status = ep;
-
-	ep = usb_ep_autoconfig_ss(gadget, &uasp_ss_cmd_desc,
-			&uasp_cmd_comp_desc);
-	if (!ep)
-		goto ep_fail;
-	fu->ep_cmd = ep;
-
-	/* Assume endpoint addresses are the same for both speeds */
-	uasp_bi_desc.bEndpointAddress =	uasp_ss_bi_desc.bEndpointAddress;
-	uasp_bo_desc.bEndpointAddress = uasp_ss_bo_desc.bEndpointAddress;
-	uasp_status_desc.bEndpointAddress =
-		uasp_ss_status_desc.bEndpointAddress;
-	uasp_cmd_desc.bEndpointAddress = uasp_ss_cmd_desc.bEndpointAddress;
-
-	uasp_fs_bi_desc.bEndpointAddress = uasp_ss_bi_desc.bEndpointAddress;
-	uasp_fs_bo_desc.bEndpointAddress = uasp_ss_bo_desc.bEndpointAddress;
-	uasp_fs_status_desc.bEndpointAddress =
-		uasp_ss_status_desc.bEndpointAddress;
-	uasp_fs_cmd_desc.bEndpointAddress = uasp_ss_cmd_desc.bEndpointAddress;
-
-	ret = usb_assign_descriptors(f, uasp_fs_function_desc,
-			uasp_hs_function_desc, uasp_ss_function_desc);
-	if (ret)
-		goto ep_fail;
-
-	return 0;
-ep_fail:
-	pr_err("Can't claim all required eps\n");
-	return -ENOTSUPP;
-}
-
-static void tcm_unbind(struct usb_configuration *c, struct usb_function *f)
-{
-	struct f_uas *fu = to_f_uas(f);
-
-	usb_free_all_descriptors(f);
-	kfree(fu);
-}
-
-struct guas_setup_wq {
-	struct work_struct work;
-	struct f_uas *fu;
-	unsigned int alt;
-};
-
-static void tcm_delayed_set_alt(struct work_struct *wq)
-{
-	struct guas_setup_wq *work = container_of(wq, struct guas_setup_wq,
-			work);
-	struct f_uas *fu = work->fu;
-	int alt = work->alt;
-
-	kfree(work);
-
-	if (fu->flags & USBG_IS_BOT)
-		bot_cleanup_old_alt(fu);
-	if (fu->flags & USBG_IS_UAS)
-		uasp_cleanup_old_alt(fu);
-
-	if (alt == USB_G_ALT_INT_BBB)
-		bot_set_alt(fu);
-	else if (alt == USB_G_ALT_INT_UAS)
-		uasp_set_alt(fu);
-	usb_composite_setup_continue(fu->function.config->cdev);
-}
-
-static int tcm_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
-{
-	struct f_uas *fu = to_f_uas(f);
-
-	if ((alt == USB_G_ALT_INT_BBB) || (alt == USB_G_ALT_INT_UAS)) {
-		struct guas_setup_wq *work;
-
-		work = kmalloc(sizeof(*work), GFP_ATOMIC);
-		if (!work)
-			return -ENOMEM;
-		INIT_WORK(&work->work, tcm_delayed_set_alt);
-		work->fu = fu;
-		work->alt = alt;
-		schedule_work(&work->work);
-		return USB_GADGET_DELAYED_STATUS;
-	}
-	return -EOPNOTSUPP;
-}
-
-static void tcm_disable(struct usb_function *f)
-{
-	struct f_uas *fu = to_f_uas(f);
-
-	if (fu->flags & USBG_IS_UAS)
-		uasp_cleanup_old_alt(fu);
-	else if (fu->flags & USBG_IS_BOT)
-		bot_cleanup_old_alt(fu);
-	fu->flags = 0;
-}
-
-static int tcm_setup(struct usb_function *f,
-		const struct usb_ctrlrequest *ctrl)
-{
-	struct f_uas *fu = to_f_uas(f);
-
-	if (!(fu->flags & USBG_IS_BOT))
-		return -EOPNOTSUPP;
-
-	return usbg_bot_setup(f, ctrl);
-}
-
-static int tcm_bind_config(struct usb_configuration *c)
-{
-	struct f_uas *fu;
-	int ret;
-
-	fu = kzalloc(sizeof(*fu), GFP_KERNEL);
-	if (!fu)
-		return -ENOMEM;
-	fu->function.name = "Target Function";
-	fu->function.bind = tcm_bind;
-	fu->function.unbind = tcm_unbind;
-	fu->function.set_alt = tcm_set_alt;
-	fu->function.setup = tcm_setup;
-	fu->function.disable = tcm_disable;
-	fu->function.strings = tcm_strings;
-	fu->tpg = the_only_tpg_I_currently_have;
-
-	bot_intf_desc.iInterface = tcm_us_strings[USB_G_STR_INT_BBB].id;
-	uasp_intf_desc.iInterface = tcm_us_strings[USB_G_STR_INT_UAS].id;
-
-	ret = usb_add_function(c, &fu->function);
-	if (ret)
-		goto err;
-
-	return 0;
-err:
-	kfree(fu);
-	return ret;
-}
+static int usbg_attach(struct usb_function_instance *f);
+static void usbg_detach(struct usb_function_instance *f);
 
 static int usb_target_bind(struct usb_composite_dev *cdev)
 {
@@ -264,8 +111,7 @@ static int usb_target_bind(struct usb_composite_dev *cdev)
 	usbg_config_driver.iConfiguration =
 		usbg_us_strings[USB_G_STR_CONFIG].id;
 
-	ret = usb_add_config(cdev, &usbg_config_driver,
-			tcm_bind_config);
+	ret = usb_add_config(cdev, &usbg_config_driver, tcm_do_config);
 	if (ret)
 		return ret;
 	usb_composite_overwrite_options(cdev, &coverwrite);
@@ -281,25 +127,44 @@ static struct usb_composite_driver usbg_driver = {
 	.unbind         = guas_unbind,
 };
 
-static int usbg_attach(struct usbg_tpg *tpg)
+static int usbg_attach(struct usb_function_instance *f)
 {
 	return usb_composite_probe(&usbg_driver);
 }
 
-static void usbg_detach(struct usbg_tpg *tpg)
+static void usbg_detach(struct usb_function_instance *f)
 {
 	usb_composite_unregister(&usbg_driver);
 }
 
 static int __init usb_target_gadget_init(void)
 {
-	return target_register_template(&usbg_ops);
+	struct f_tcm_opts *tcm_opts;
+
+	fi_tcm = usb_get_function_instance("tcm");
+	if (IS_ERR(fi_tcm))
+		return PTR_ERR(fi_tcm);
+
+	tcm_opts = container_of(fi_tcm, struct f_tcm_opts, func_inst);
+	mutex_lock(&tcm_opts->dep_lock);
+	tcm_opts->tcm_register_callback = usbg_attach;
+	tcm_opts->tcm_unregister_callback = usbg_detach;
+	tcm_opts->dependent = THIS_MODULE;
+	tcm_opts->can_attach = true;
+	tcm_opts->has_dep = true;
+	mutex_unlock(&tcm_opts->dep_lock);
+
+	fi_tcm->set_inst_name(fi_tcm, "tcm-legacy");
+
+	return 0;
 }
 module_init(usb_target_gadget_init);
 
 static void __exit usb_target_gadget_exit(void)
 {
-	target_unregister_template(&usbg_ops);
+	if (!IS_ERR_OR_NULL(fi_tcm))
+		usb_put_function_instance(fi_tcm);
+
 }
 module_exit(usb_target_gadget_exit);
 
