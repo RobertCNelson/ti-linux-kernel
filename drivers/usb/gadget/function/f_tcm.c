@@ -2043,6 +2043,7 @@ static void give_back_ep(struct usb_ep **pep)
 static int tcm_bind(struct usb_configuration *c, struct usb_function *f)
 {
 	struct f_uas		*fu = to_f_uas(f);
+	struct usb_string	*us;
 	struct usb_gadget	*gadget = c->cdev->gadget;
 	struct usb_ep		*ep;
 	struct f_tcm_opts	*opts;
@@ -2057,16 +2058,12 @@ static int tcm_bind(struct usb_configuration *c, struct usb_function *f)
 		return -ENODEV;
 	}
 	mutex_unlock(&opts->dep_lock);
-
-	if (tcm_us_strings[0].id == 0) {
-		ret = usb_string_ids_tab(c->cdev, tcm_us_strings);
-		if (ret < 0)
-			return ret;
-
-		bot_intf_desc.iInterface = tcm_us_strings[USB_G_STR_INT_BBB].id;
-		uasp_intf_desc.iInterface =
-			tcm_us_strings[USB_G_STR_INT_UAS].id;
-	}
+	us = usb_gstrings_attach(c->cdev, tcm_strings,
+		ARRAY_SIZE(tcm_us_strings));
+	if (IS_ERR(us))
+		return PTR_ERR(us);
+	bot_intf_desc.iInterface = us[USB_G_STR_INT_BBB].id;
+	uasp_intf_desc.iInterface = us[USB_G_STR_INT_UAS].id;
 
 	iface = usb_interface_id(c, f);
 	if (iface < 0)
@@ -2324,7 +2321,6 @@ static struct usb_function *tcm_alloc(struct usb_function_instance *fi)
 	fu->function.set_alt = tcm_set_alt;
 	fu->function.setup = tcm_setup;
 	fu->function.disable = tcm_disable;
-	fu->function.strings = tcm_strings;
 	fu->function.free_func = tcm_free;
 	fu->tpg = tpg_instances[i].tpg;
 	mutex_unlock(&tpg_instances_lock);
