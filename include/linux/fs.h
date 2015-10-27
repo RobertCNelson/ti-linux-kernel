@@ -482,6 +482,9 @@ struct block_device {
 	int			bd_fsfreeze_count;
 	/* Mutex for freeze */
 	struct mutex		bd_fsfreeze_mutex;
+#ifdef CONFIG_FS_DAX
+	int			bd_map_count;
+#endif
 };
 
 /*
