@@ -302,7 +302,7 @@ err_ret:
 }
 EXPORT_SYMBOL_GPL(acpi_get_psd_map);
 
-static int register_pcc_channel(unsigned pcc_subspace_idx)
+static int register_pcc_channel(int pcc_subspace_idx)
 {
 	struct acpi_pcct_subspace *cppc_ss;
 	unsigned int len;
@@ -524,7 +524,6 @@ int acpi_cppc_processor_probe(struct acpi_processor *pr)
 	return 0;
 
 out_free:
-	cpc_ptr = per_cpu(cpc_desc_ptr, pr->id);
 	kfree(cpc_ptr);
 
 out_buf_free:
