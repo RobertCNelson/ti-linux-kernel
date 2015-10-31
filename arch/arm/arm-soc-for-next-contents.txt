@@ -194,6 +194,8 @@ next/dt
 		https://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-dt-for-4.4-3
 	patch
 		ARM: dts: uniphier: add outer cache controller nodes
+		ARM64: juno: disable NOR flash node by default
+		ARM: dts: uniphier: add system-bus-controller nodes
 
 next/defconfig
 	renesas/defconfig
@@ -232,6 +234,8 @@ next/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-4.4-defconfig
 	samsung/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-defconfig
+	patch
+		ARM: multi_v7_defconfig: enable UniPhier I2C drivers
 
 next/drivers
 	renesas/clk
@@ -262,6 +266,8 @@ next/drivers
 		bus: sunxi-rsb: Add driver for Allwinner Reduced Serial Bus
 	broadcom/rpi-drivers
 		https://github.com/Broadcom/stblinux tags/arm/soc/for-4.4/rpi-drivers
+	patch
+		soc: qcom: smd-rpm: Correct size of outgoing message
 
 next/arm64
 	mediatek/arm64
@@ -274,31 +280,8 @@ next/arm64
 next/late
 
 fixes
-	<no branch> (d836ace65ee98d7079bc3c5afdbcc0e27dca20a3)
-		git://git.infradead.org/linux-mvebu tags/mvebu-fixes-4.3-1
-	<no branch> (1f744fd317dc55cadd7132c57c499e3117aea01d)
-		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-fixes-for-4.3-1
-	<no branch> (178b2d09afc05a46f68b190c6594f3a429bc2385)
-		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-fixes-4.3-2
-	patch
-		ARM: pxa: fix pxa3xx DFI lockup hack
-		ARM: ux500: modify initial levelshifter status
-		MAINTAINERS: Update Allwinner entry and add new maintainer
-		ARM: meson6: DTS: Fix wrong reg mapping and IRQ numbers
-		bus: arm-ccn: Handle correctly no-more-cpus case
-		bus: arm-ccn: Fix irq affinity setting on CPU migration
-		drivers/perf: arm_pmu: avoid CPU device_node reference leak
-		ARM: dts: uniphier: fix IRQ number for devices on PH1-LD6b ref board
-	<no branch> (d8e1f5ed11a39a68da00f05000466c4f6db4456e)
-		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.3/fixes-rc5
-	patch
-		ARM: tegra: Comment out gpio-ranges properties
-	<no branch> (57df5380853460bc66b59a46273ce113c923d39c)
-		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.3/fixes-rc6
-	<no branch> (b28fec1324bf8f5010d2c3c5d57db4115bda66d4)
-		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-fixes-2
-	<no branch> (db347f1a5304d68c68c52f19971924b1e5842f3c)
-		git://git.infradead.org/linux-mvebu tags/mvebu-fixes-4.3-2
 	patch
 		ARM: dts: fix gpio-keys wakeup-source property
+	<no branch> (8f2279d5d908119a08e906be1c6b69c744d0c379)
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.3/fixes-rc7
 
