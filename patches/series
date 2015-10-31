@@ -6,6 +6,7 @@
 # UPSTREAM changes queued
 ############################################################
 xfs--clean-up-inode-lockdep-annotations
+inet-fix-potential-deadlock-in-reqsk-queue-unlink
 
 ############################################################
 # UPSTREAM FIXES, patches pending
@@ -160,7 +161,6 @@ futex-avoid-double-wake-up-in-PI-futex-wait-wake-on-.patch
 
 # TRACING
 latency-hist.patch
-tracing-fix-rcu-splat-from-idle-cpu-on-boot.patch
 
 # HW LATENCY DETECTOR - this really wants a rewrite
 hwlatdetect.patch
@@ -266,8 +266,6 @@ ipc-make-rt-aware.patch
 # RELAY
 relay-fix-timer-madness.patch
 
-# NETWORKING
-
 # TIMERS
 timers-prepare-for-full-preemption.patch
 timers-preempt-rt-support.patch
@@ -308,9 +306,6 @@ hotplug-sync_unplug-no-27-5cn-27-in-task-name.patch
 re-migrate_disable-race-with-cpu-hotplug-3f.patch
 ftrace-migrate-disable-tracing.patch
 hotplug-use-migrate-disable.patch
-
-# NETWORKING
-sunrpc-make-svc_xprt_do_enqueue-use-get_cpu_light.patch
 
 # NOHZ
 
@@ -429,7 +424,9 @@ debugobjects-rt.patch
 # JUMPLABEL
 jump-label-rt.patch
 
-# NET
+# NETWORKING
+sunrpc-make-svc_xprt_do_enqueue-use-get_cpu_light.patch
+net__Make_synchronize-rcu_expedited_conditional-on-non-rt
 skbufhead-raw-lock.patch
 net-core-cpuhotplug-drain-input_pkt_queue-lockless.patch
 
@@ -578,6 +575,10 @@ md-disable-bcache.patch
 
 # WORKQUEUE SIGH
 workqueue-prevent-deadlock-stall.patch
+
+# TRACING
+sched-introduce-the-27trace_sched_waking-27-tracepoint.patch
+latency_hist-update-sched_wakeup-probe.patch
 
 # Add RT to version
 localversion.patch

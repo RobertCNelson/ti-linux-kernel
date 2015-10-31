@@ -16,14 +16,14 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  Documentation/trace/histograms.txt  |  186 +++++
  include/linux/hrtimer.h             |    3 
  include/linux/sched.h               |    6 
- include/trace/events/hist.h         |   72 ++
+ include/trace/events/hist.h         |   74 ++
  include/trace/events/latency_hist.h |   29 
  kernel/time/hrtimer.c               |   21 
  kernel/trace/Kconfig                |  104 +++
  kernel/trace/Makefile               |    4 
  kernel/trace/latency_hist.c         | 1178 ++++++++++++++++++++++++++++++++++++
  kernel/trace/trace_irqsoff.c        |   11 
- 10 files changed, 1614 insertions(+)
+ 10 files changed, 1616 insertions(+)
 
 Index: linux-rt-devel/Documentation/trace/histograms.txt
 ===================================================================
@@ -251,7 +251,7 @@ Index: linux-rt-devel/include/trace/events/hist.h
 ===================================================================
 --- /dev/null
 +++ linux-rt-devel/include/trace/events/hist.h
-@@ -0,0 +1,72 @@
+@@ -0,0 +1,74 @@
 +#undef TRACE_SYSTEM
 +#define TRACE_SYSTEM hist
 +
@@ -263,6 +263,7 @@ Index: linux-rt-devel/include/trace/events/hist.h
 +
 +#if !defined(CONFIG_PREEMPT_OFF_HIST) && !defined(CONFIG_INTERRUPT_OFF_HIST)
 +#define trace_preemptirqsoff_hist(a, b)
++#define trace_preemptirqsoff_hist_rcuidle(a, b)
 +#else
 +TRACE_EVENT(preemptirqsoff_hist,
 +
@@ -287,6 +288,7 @@ Index: linux-rt-devel/include/trace/events/hist.h
 +
 +#ifndef CONFIG_MISSED_TIMER_OFFSETS_HIST
 +#define trace_hrtimer_interrupt(a, b, c, d)
++#define trace_hrtimer_interrupt_rcuidle(a, b, c, d)
 +#else
 +TRACE_EVENT(hrtimer_interrupt,
 +
@@ -1769,7 +1771,7 @@ Index: linux-rt-devel/kernel/trace/trace_irqsoff.c
  #ifdef CONFIG_PROVE_LOCKING
  void time_hardirqs_on(unsigned long a0, unsigned long a1)
  {
-+	trace_preemptirqsoff_hist(IRQS_ON, 0);
++	trace_preemptirqsoff_hist_rcuidle(IRQS_ON, 0);
  	if (!preempt_trace() && irq_trace())
  		stop_critical_timing(a0, a1);
  }
@@ -1777,7 +1779,7 @@ Index: linux-rt-devel/kernel/trace/trace_irqsoff.c
  {
  	if (!preempt_trace() && irq_trace())
  		start_critical_timing(a0, a1);
-+	trace_preemptirqsoff_hist(IRQS_OFF, 1);
++	trace_preemptirqsoff_hist_rcuidle(IRQS_OFF, 1);
  }
  
  #else /* !CONFIG_PROVE_LOCKING */

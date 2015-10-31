@@ -138,9 +138,9 @@ Index: linux-rt-devel/kernel/softirq.c
 ===================================================================
 --- linux-rt-devel.orig/kernel/softirq.c
 +++ linux-rt-devel/kernel/softirq.c
-@@ -606,6 +606,15 @@ void local_bh_enable_ip(unsigned long ip
+@@ -576,6 +576,15 @@ void __local_bh_enable(void)
  }
- EXPORT_SYMBOL(local_bh_enable_ip);
+ EXPORT_SYMBOL(__local_bh_enable);
  
 +void _local_bh_enable(void)
 +{

@@ -24,39 +24,61 @@ threads.
 
 Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 ---
- include/linux/bottom_half.h  |   12 
+ include/linux/bottom_half.h  |   34 ++
  include/linux/interrupt.h    |   15 +
- include/linux/preempt_mask.h |   15 -
+ include/linux/preempt_mask.h |   15 +
  include/linux/sched.h        |    3 
  init/main.c                  |    1 
- kernel/softirq.c             |  518 ++++++++++++++++++++++++++++++++++++-------
+ kernel/softirq.c             |  488 ++++++++++++++++++++++++++++++++++++-------
  kernel/time/tick-sched.c     |    9 
  net/core/dev.c               |    6 
- 8 files changed, 485 insertions(+), 94 deletions(-)
+ 8 files changed, 477 insertions(+), 94 deletions(-)
 
 Index: linux-rt-devel/include/linux/bottom_half.h
 ===================================================================
 --- linux-rt-devel.orig/include/linux/bottom_half.h
 +++ linux-rt-devel/include/linux/bottom_half.h
-@@ -4,6 +4,17 @@
+@@ -4,6 +4,39 @@
  #include <linux/preempt.h>
  #include <linux/preempt_mask.h>
  
 +#ifdef CONFIG_PREEMPT_RT_FULL
 +
-+extern void local_bh_disable(void);
++extern void __local_bh_disable(void);
 +extern void _local_bh_enable(void);
-+extern void local_bh_enable(void);
-+extern void local_bh_enable_ip(unsigned long ip);
-+extern void __local_bh_disable_ip(unsigned long ip, unsigned int cnt);
-+extern void __local_bh_enable_ip(unsigned long ip, unsigned int cnt);
++extern void __local_bh_enable(void);
++
++static inline void local_bh_disable(void)
++{
++	__local_bh_disable();
++}
++
++static inline void __local_bh_disable_ip(unsigned long ip, unsigned int cnt)
++{
++	__local_bh_disable();
++}
++
++static inline void local_bh_enable(void)
++{
++	__local_bh_enable();
++}
++
++static inline void __local_bh_enable_ip(unsigned long ip, unsigned int cnt)
++{
++	__local_bh_enable();
++}
++
++static inline void local_bh_enable_ip(unsigned long ip)
++{
++	__local_bh_enable();
++}
 +
 +#else
 +
  #ifdef CONFIG_TRACE_IRQFLAGS
  extern void __local_bh_disable_ip(unsigned long ip, unsigned int cnt);
  #else
-@@ -31,5 +42,6 @@ static inline void local_bh_enable(void)
+@@ -31,5 +64,6 @@ static inline void local_bh_enable(void)
  {
  	__local_bh_enable_ip(_THIS_IP_, SOFTIRQ_DISABLE_OFFSET);
  }
@@ -415,7 +437,7 @@ Index: linux-rt-devel/kernel/softirq.c
  
  	pending = local_softirq_pending();
  	if (pending) {
-@@ -321,6 +445,276 @@ asmlinkage __visible void do_softirq(voi
+@@ -321,6 +445,246 @@ asmlinkage __visible void do_softirq(voi
  }
  
  /*
@@ -528,26 +550,14 @@ Index: linux-rt-devel/kernel/softirq.c
 +	}
 +}
 +
-+static void __local_bh_disable(void)
++void __local_bh_disable(void)
 +{
 +	if (++current->softirq_nestcnt == 1)
 +		migrate_disable();
 +}
++EXPORT_SYMBOL(__local_bh_disable);
 +
-+void local_bh_disable(void)
-+{
-+	__local_bh_disable();
-+}
-+EXPORT_SYMBOL(local_bh_disable);
-+
-+void __local_bh_disable_ip(unsigned long ip, unsigned int cnt)
-+{
-+	__local_bh_disable();
-+	if (cnt & PREEMPT_CHECK_OFFSET)
-+		preempt_disable();
-+}
-+
-+static void __local_bh_enable(void)
++void __local_bh_enable(void)
 +{
 +	if (WARN_ON(current->softirq_nestcnt == 0))
 +		return;
@@ -560,25 +570,7 @@ Index: linux-rt-devel/kernel/softirq.c
 +	if (--current->softirq_nestcnt == 0)
 +		migrate_enable();
 +}
-+
-+void local_bh_enable(void)
-+{
-+	__local_bh_enable();
-+}
-+EXPORT_SYMBOL(local_bh_enable);
-+
-+extern void __local_bh_enable_ip(unsigned long ip, unsigned int cnt)
-+{
-+	__local_bh_enable();
-+	if (cnt & PREEMPT_CHECK_OFFSET)
-+		preempt_enable();
-+}
-+
-+void local_bh_enable_ip(unsigned long ip)
-+{
-+	local_bh_enable();
-+}
-+EXPORT_SYMBOL(local_bh_enable_ip);
++EXPORT_SYMBOL(__local_bh_enable);
 +
 +int in_serving_softirq(void)
 +{
@@ -692,7 +684,7 @@ Index: linux-rt-devel/kernel/softirq.c
   * Enter an interrupt context.
   */
  void irq_enter(void)
-@@ -331,9 +725,9 @@ void irq_enter(void)
+@@ -331,9 +695,9 @@ void irq_enter(void)
  		 * Prevent raise_softirq from needlessly waking up ksoftirqd
  		 * here, as softirq will be serviced on return from interrupt.
  		 */
@@ -704,7 +696,7 @@ Index: linux-rt-devel/kernel/softirq.c
  	}
  
  	__irq_enter();
-@@ -341,6 +735,7 @@ void irq_enter(void)
+@@ -341,6 +705,7 @@ void irq_enter(void)
  
  static inline void invoke_softirq(void)
  {
@@ -712,7 +704,7 @@ Index: linux-rt-devel/kernel/softirq.c
  	if (!force_irqthreads) {
  #ifdef CONFIG_HAVE_IRQ_EXIT_ON_IRQ_STACK
  		/*
-@@ -360,6 +755,15 @@ static inline void invoke_softirq(void)
+@@ -360,6 +725,15 @@ static inline void invoke_softirq(void)
  	} else {
  		wakeup_softirqd();
  	}
@@ -728,7 +720,7 @@ Index: linux-rt-devel/kernel/softirq.c
  }
  
  static inline void tick_irq_exit(void)
-@@ -396,26 +800,6 @@ void irq_exit(void)
+@@ -396,26 +770,6 @@ void irq_exit(void)
  	trace_hardirq_exit(); /* must be last! */
  }
  
@@ -755,7 +747,7 @@ Index: linux-rt-devel/kernel/softirq.c
  void raise_softirq(unsigned int nr)
  {
  	unsigned long flags;
-@@ -425,12 +809,6 @@ void raise_softirq(unsigned int nr)
+@@ -425,12 +779,6 @@ void raise_softirq(unsigned int nr)
  	local_irq_restore(flags);
  }
  
@@ -768,7 +760,7 @@ Index: linux-rt-devel/kernel/softirq.c
  void open_softirq(int nr, void (*action)(struct softirq_action *))
  {
  	softirq_vec[nr].action = action;
-@@ -733,23 +1111,7 @@ EXPORT_SYMBOL(tasklet_unlock_wait);
+@@ -733,23 +1081,7 @@ EXPORT_SYMBOL(tasklet_unlock_wait);
  
  static int ksoftirqd_should_run(unsigned int cpu)
  {
@@ -793,7 +785,7 @@ Index: linux-rt-devel/kernel/softirq.c
  }
  
  #ifdef CONFIG_HOTPLUG_CPU
-@@ -831,6 +1193,8 @@ static struct notifier_block cpu_nfb = {
+@@ -831,6 +1163,8 @@ static struct notifier_block cpu_nfb = {
  
  static struct smp_hotplug_thread softirq_threads = {
  	.store			= &ksoftirqd,
