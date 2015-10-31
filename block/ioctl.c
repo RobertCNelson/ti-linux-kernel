@@ -296,7 +296,7 @@ static inline int is_unrecognized_ioctl(int ret)
 }
 
 #ifdef CONFIG_FS_DAX
-static bool blkdev_dax_capable(struct block_device *bdev)
+bool blkdev_dax_capable(struct block_device *bdev)
 {
 	struct gendisk *disk = bdev->bd_disk;
 

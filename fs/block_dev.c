@@ -1185,7 +1185,8 @@ static int __blkdev_get(struct block_device *bdev, fmode_t mode, int for_part)
 		bdev->bd_disk = disk;
 		bdev->bd_queue = disk->queue;
 		bdev->bd_contains = bdev;
-		bdev->bd_inode->i_flags = disk->fops->direct_access ? S_DAX : 0;
+		if (IS_ENABLED(CONFIG_BLK_DEV_DAX) && disk->fops->direct_access)
+			bdev->bd_inode->i_flags = S_DAX;
 		if (!partno) {
 			ret = -ENXIO;
 			bdev->bd_part = disk_get_part(disk, partno);
@@ -1212,8 +1213,11 @@ static int __blkdev_get(struct block_device *bdev, fmode_t mode, int for_part)
 				}
 			}
 
-			if (!ret)
+			if (!ret) {
 				bd_set_size(bdev,(loff_t)get_capacity(disk)<<9);
+				if (!blkdev_dax_capable(bdev))
+					bdev->bd_inode->i_flags &= ~S_DAX;
+			}
 
 			/*
 			 * If the device is invalidated, rescan partition
@@ -1227,6 +1231,7 @@ static int __blkdev_get(struct block_device *bdev, fmode_t mode, int for_part)
 				else if (ret == -ENOMEDIUM)
 					invalidate_partitions(disk, bdev);
 			}
+
 			if (ret)
 				goto out_clear;
 		} else {
@@ -1247,12 +1252,7 @@ static int __blkdev_get(struct block_device *bdev, fmode_t mode, int for_part)
 				goto out_clear;
 			}
 			bd_set_size(bdev, (loff_t)bdev->bd_part->nr_sects << 9);
-			/*
-			 * If the partition is not aligned on a page
-			 * boundary, we can't do dax I/O to it.
-			 */
-			if ((bdev->bd_part->start_sect % (PAGE_SIZE / 512)) ||
-			    (bdev->bd_part->nr_sects % (PAGE_SIZE / 512)))
+			if (!blkdev_dax_capable(bdev))
 				bdev->bd_inode->i_flags &= ~S_DAX;
 		}
 	} else {
