@@ -40,7 +40,7 @@ static void __init mediatek_timer_init(void)
 	}
 
 	of_clk_init(NULL);
-	clocksource_of_init();
+	clocksource_probe();
 };
 
 static const char * const mediatek_board_dt_compat[] = {
