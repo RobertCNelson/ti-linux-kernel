@@ -624,7 +624,7 @@ static int map__process_kallsym_symbol(void *arg, const char *name,
 	 * symbols, setting length to 0, and rely on
 	 * symbols__fixup_end() to fix it up.
 	 */
-	sym = symbol__new(start, 0, kallsyms2elf_type(type), name);
+	sym = symbol__new(start, 0, kallsyms2elf_binding(type), name);
 	if (sym == NULL)
 		return -ENOMEM;
 	/*
@@ -1607,6 +1607,15 @@ int dso__load_vmlinux_path(struct dso *dso, struct map *map,
 	int i, err = 0;
 	char *filename = NULL;
 
+	pr_debug("Looking at the vmlinux_path (%d entries long)\n",
+		 vmlinux_path__nr_entries + 1);
+
+	for (i = 0; i < vmlinux_path__nr_entries; ++i) {
+		err = dso__load_vmlinux(dso, map, vmlinux_path[i], false, filter);
+		if (err > 0)
+			goto out;
+	}
+
 	if (!symbol_conf.ignore_vmlinux_buildid)
 		filename = dso__build_id_filename(dso, NULL, 0);
 	if (filename != NULL) {
@@ -1614,15 +1623,6 @@ int dso__load_vmlinux_path(struct dso *dso, struct map *map,
 		if (err > 0)
 			goto out;
 		free(filename);
-	}
-
-	pr_debug("Looking at the vmlinux_path (%d entries long)\n",
-		 vmlinux_path__nr_entries + 1);
-
-	for (i = 0; i < vmlinux_path__nr_entries; ++i) {
-		err = dso__load_vmlinux(dso, map, vmlinux_path[i], false, filter);
-		if (err > 0)
-			break;
 	}
 out:
 	return err;
