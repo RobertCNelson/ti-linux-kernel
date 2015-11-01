@@ -213,7 +213,7 @@ nfsd_proc_write(struct svc_rqst *rqstp, struct nfsd_writeargs *argp,
 		SVCFH_fmt(&argp->fh),
 		argp->len, argp->offset);
 
-	nfserr = nfsd_write(rqstp, fh_copy(&resp->fh, &argp->fh), NULL,
+	nfserr = nfsd_write(rqstp, fh_copy(&resp->fh, &argp->fh),
 				   argp->offset,
 				   rqstp->rq_vec, argp->vlen,
 			           &cnt,

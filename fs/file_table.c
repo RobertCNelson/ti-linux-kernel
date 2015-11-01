@@ -227,10 +227,10 @@ static void __fput(struct file *file)
 	mntput(mnt);
 }
 
-static LLIST_HEAD(delayed_fput_list);
-static void delayed_fput(struct work_struct *unused)
+static LLIST_HEAD(global_fput_list);
+static void global_fput(struct work_struct *unused)
 {
-	struct llist_node *node = llist_del_all(&delayed_fput_list);
+	struct llist_node *node = llist_del_all(&global_fput_list);
 	struct llist_node *next;
 
 	for (; node; node = next) {
@@ -244,23 +244,45 @@ static void ____fput(struct callback_head *work)
 	__fput(container_of(work, struct file, f_u.fu_rcuhead));
 }
 
-/*
- * If kernel thread really needs to have the final fput() it has done
- * to complete, call this.  The only user right now is the boot - we
- * *do* need to make sure our writes to binaries on initramfs has
- * not left us with opened struct file waiting for __fput() - execve()
- * won't work without that.  Please, don't add more callers without
- * very good reasons; in particular, never call that with locks
- * held and never call that from a thread that might need to do
- * some work on any kind of umount.
+static DECLARE_DELAYED_WORK(global_fput_work, global_fput);
+
+/**
+ * fput_global_flush - ensure that all global_fput work is complete
+ *
+ * If a kernel thread really needs to have the final fput() it has done to
+ * complete, call this. One of the main users is the boot - we *do* need to
+ * make sure our writes to binaries on initramfs has not left us with opened
+ * struct file waiting for __fput() - execve() won't work without that.
+ *
+ * Please, don't add more callers without very good reasons; in particular,
+ * never call that with locks held and never from a thread that might need to
+ * do some work on any kind of umount.
  */
-void flush_delayed_fput(void)
+void fput_global_flush(void)
 {
-	delayed_fput(NULL);
+	flush_delayed_work(&global_fput_work);
 }
+EXPORT_SYMBOL(fput_global_flush);
 
-static DECLARE_DELAYED_WORK(delayed_fput_work, delayed_fput);
-
+/**
+ * fput - put a struct file reference
+ * @file: file of which to put the reference
+ *
+ * This function decrements the reference count for the struct file reference,
+ * and queues it up for destruction if the count goes to zero. In the case of
+ * most tasks we queue it to the task_work infrastructure, which will be run
+ * just before the task returns back to userspace. kthreads however never
+ * return to userspace, so for those we add them to a global list and schedule
+ * a delayed workqueue job to do the final cleanup work.
+ *
+ * Why not just do it synchronously? __fput can involve taking locks of all
+ * sorts, and doing it synchronously means that the callers must take extra care
+ * not to deadlock. That can be very difficult to ensure, so by deferring it
+ * until just before return to userland or to the workqueue, we sidestep that
+ * nastiness. Also, __fput can be quite stack intensive, so doing a final fput
+ * has the possibility of blowing up if we don't take steps to ensure that we
+ * have enough stack space to make it work.
+ */
 void fput(struct file *file)
 {
 	if (atomic_long_dec_and_test(&file->f_count)) {
@@ -277,14 +299,47 @@ void fput(struct file *file)
 			 */
 		}
 
-		if (llist_add(&file->f_u.fu_llist, &delayed_fput_list))
-			schedule_delayed_work(&delayed_fput_work, 1);
+		if (llist_add(&file->f_u.fu_llist, &global_fput_list))
+			schedule_delayed_work(&global_fput_work, 1);
 	}
 }
+EXPORT_SYMBOL(fput);
+
+/**
+ * fput_global - do an fput without using task_work
+ * @file: file of which to put the reference
+ *
+ * When fput is called in the context of a userland process, it'll queue the
+ * actual work (__fput()) to be done just before returning to userland. In some
+ * cases however, we need to ensure that the __fput runs before that point.
+ *
+ * There is no safe way to flush work that has been queued via task_work_add
+ * however, so to do this we borrow the global_fput infrastructure that
+ * kthreads use. The userland process can use fput_global() on one or more
+ * struct files and then call fput_global_flush() to ensure that they are
+ * completely closed before proceeding.
+ *
+ * The main user is nfsd, which uses this to ensure that all cached but
+ * otherwise unused files are closed to allow a userland request for a lease
+ * to proceed.
+ *
+ * Returns true if the final fput was done, false otherwise. The caller can
+ * use this to determine whether to fput_global_flush afterward.
+ */
+bool fput_global(struct file *file)
+{
+	if (atomic_long_dec_and_test(&file->f_count)) {
+		if (llist_add(&file->f_u.fu_llist, &global_fput_list))
+			schedule_delayed_work(&global_fput_work, 1);
+		return true;
+	}
+	return false;
+}
+EXPORT_SYMBOL(fput_global);
 
 /*
  * synchronous analog of fput(); for kernel threads that might be needed
- * in some umount() (and thus can't use flush_delayed_fput() without
+ * in some umount() (and thus can't use fput_global_flush() without
  * risking deadlocks), need to wait for completion of __fput() and know
  * for this specific struct file it won't involve anything that would
  * need them.  Use only if you really need it - at the very least,
@@ -299,7 +354,6 @@ void __fput_sync(struct file *file)
 	}
 }
 
-EXPORT_SYMBOL(fput);
 
 void put_filp(struct file *file)
 {

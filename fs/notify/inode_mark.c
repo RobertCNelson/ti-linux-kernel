@@ -87,6 +87,7 @@ struct fsnotify_mark *fsnotify_find_inode_mark(struct fsnotify_group *group,
 
 	return mark;
 }
+EXPORT_SYMBOL_GPL(fsnotify_find_inode_mark);
 
 /*
  * If we are setting a mark mask on an inode mark we should pin the inode
