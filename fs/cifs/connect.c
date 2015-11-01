@@ -2695,6 +2695,7 @@ cifs_get_tcon(struct cifs_ses *ses, struct smb_vol *volume_info)
 			     "SMB3 or later required for persistent handles\n");
 			rc = -EOPNOTSUPP;
 			goto out_fail;
+#ifdef CONFIG_CIFS_SMB2
 		} else if (ses->server->capabilities &
 			   SMB2_GLOBAL_CAP_PERSISTENT_HANDLES)
 			tcon->use_persistent = true;
@@ -2703,12 +2704,15 @@ cifs_get_tcon(struct cifs_ses *ses, struct smb_vol *volume_info)
 				"Persistent handles not supported on share\n");
 			rc = -EOPNOTSUPP;
 			goto out_fail;
+#endif /* CONFIG_CIFS_SMB2 */
 		}
+#ifdef CONFIG_CIFS_SMB2
 	} else if ((tcon->capabilities & SMB2_SHARE_CAP_CONTINUOUS_AVAILABILITY)
 	     && (ses->server->capabilities & SMB2_GLOBAL_CAP_PERSISTENT_HANDLES)
 	     && (volume_info->nopersistent == false)) {
 		cifs_dbg(FYI, "enabling persistent handles\n");
 		tcon->use_persistent = true;
+#endif /* CONFIG_CIFS_SMB2 */
 	} else if (volume_info->resilient) {
 		if (ses->server->vals->protocol_id == 0) {
 			cifs_dbg(VFS,
@@ -3567,12 +3571,15 @@ try_mount_again:
 		goto mount_fail_check;
 	}
 
+#ifdef CONFIG_CIFS_SMB2
 	if ((volume_info->persistent == true) && ((ses->server->capabilities &
 		SMB2_GLOBAL_CAP_PERSISTENT_HANDLES) == 0)) {
 		cifs_dbg(VFS, "persistent handles not supported by server\n");
 		rc = -EOPNOTSUPP;
 		goto mount_fail_check;
 	}
+#endif /* CONFIG_CIFS_SMB2 */
+
 	/* search for existing tcon to this server share */
 	tcon = cifs_get_tcon(ses, volume_info);
 	if (IS_ERR(tcon)) {
