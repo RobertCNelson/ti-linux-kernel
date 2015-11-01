@@ -42,6 +42,16 @@ struct resv_map {
 extern struct resv_map *resv_map_alloc(void);
 void resv_map_release(struct kref *ref);
 
+/*
+ * hugetlb_falloc is used to prevent page faults during falloc hole punch
+ * operations.  During hole punch, inode->i_private points to this struct.
+ */
+struct hugetlb_falloc {
+	wait_queue_head_t *waitq;	/* Page faults waiting on hole punch */
+	pgoff_t start;			/* Start of fallocate hole */
+	pgoff_t end;			/* End of fallocate hole */
+};
+
 extern spinlock_t hugetlb_lock;
 extern int hugetlb_max_hstate __read_mostly;
 #define for_each_hstate(h) \
@@ -483,6 +493,17 @@ static inline spinlock_t *huge_pte_lockptr(struct hstate *h,
 #define hugepages_supported() (HPAGE_SHIFT != 0)
 #endif
 
+void hugetlb_report_usage(struct seq_file *m, struct mm_struct *mm);
+
+static inline void hugetlb_count_add(long l, struct mm_struct *mm)
+{
+	atomic_long_add(l, &mm->hugetlb_usage);
+}
+
+static inline void hugetlb_count_sub(long l, struct mm_struct *mm)
+{
+	atomic_long_sub(l, &mm->hugetlb_usage);
+}
 #else	/* CONFIG_HUGETLB_PAGE */
 struct hstate {};
 #define alloc_huge_page(v, a, r) NULL
@@ -518,6 +539,14 @@ static inline spinlock_t *huge_pte_lockptr(struct hstate *h,
 					   struct mm_struct *mm, pte_t *pte)
 {
 	return &mm->page_table_lock;
+}
+
+static inline void hugetlb_report_usage(struct seq_file *f, struct mm_struct *m)
+{
+}
+
+static inline void hugetlb_count_sub(long l, struct mm_struct *mm)
+{
 }
 #endif	/* CONFIG_HUGETLB_PAGE */
 
