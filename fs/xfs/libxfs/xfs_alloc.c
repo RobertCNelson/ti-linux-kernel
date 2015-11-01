@@ -482,7 +482,9 @@ xfs_agfl_verify(
 		    be32_to_cpu(agfl->agfl_bno[i]) >= mp->m_sb.sb_agblocks)
 			return false;
 	}
-	return true;
+
+	return xfs_log_check_lsn(mp,
+				 be64_to_cpu(XFS_BUF_TO_AGFL(bp)->agfl_lsn));
 }
 
 static void
@@ -651,8 +653,8 @@ xfs_alloc_ag_vextent(
 				 -((long)(args->len)));
 	}
 
-	XFS_STATS_INC(xs_allocx);
-	XFS_STATS_ADD(xs_allocb, args->len);
+	XFS_STATS_INC(args->mp, xs_allocx);
+	XFS_STATS_ADD(args->mp, xs_allocb, args->len);
 	return error;
 }
 
@@ -1808,8 +1810,8 @@ xfs_free_ag_extent(
 
 	if (!isfl)
 		xfs_trans_mod_sb(tp, XFS_TRANS_SB_FDBLOCKS, (long)len);
-	XFS_STATS_INC(xs_freex);
-	XFS_STATS_ADD(xs_freeb, len);
+	XFS_STATS_INC(mp, xs_freex);
+	XFS_STATS_ADD(mp, xs_freeb, len);
 
 	trace_xfs_free_extent(mp, agno, bno, len, isfl, haveleft, haveright);
 
@@ -2259,9 +2261,13 @@ xfs_agf_verify(
  {
 	struct xfs_agf	*agf = XFS_BUF_TO_AGF(bp);
 
-	if (xfs_sb_version_hascrc(&mp->m_sb) &&
-	    !uuid_equal(&agf->agf_uuid, &mp->m_sb.sb_meta_uuid))
+	if (xfs_sb_version_hascrc(&mp->m_sb)) {
+		if (!uuid_equal(&agf->agf_uuid, &mp->m_sb.sb_meta_uuid))
 			return false;
+		if (!xfs_log_check_lsn(mp,
+				be64_to_cpu(XFS_BUF_TO_AGF(bp)->agf_lsn)))
+			return false;
+	}
 
 	if (!(agf->agf_magicnum == cpu_to_be32(XFS_AGF_MAGIC) &&
 	      XFS_AGF_GOOD_VERSION(be32_to_cpu(agf->agf_versionnum)) &&
