@@ -12,6 +12,7 @@
 
 #ifndef __ASSEMBLY__
 #include <linux/types.h>
+#include <linux/kernel.h>
 #else
 #include <asm/types.h>
 #endif
@@ -127,9 +128,10 @@ extern long long virt_phys_offset;
 #define pfn_valid(pfn)		((pfn) >= ARCH_PFN_OFFSET && (pfn) < max_mapnr)
 #endif
 
-#define virt_to_page(kaddr)	pfn_to_page(__pa(kaddr) >> PAGE_SHIFT)
+#define virt_to_pfn(kaddr)	(__pa(kaddr) >> PAGE_SHIFT)
+#define virt_to_page(kaddr)	pfn_to_page(virt_to_pfn(kaddr))
 #define pfn_to_kaddr(pfn)	__va((pfn) << PAGE_SHIFT)
-#define virt_addr_valid(kaddr)	pfn_valid(__pa(kaddr) >> PAGE_SHIFT)
+#define virt_addr_valid(kaddr)	pfn_valid(virt_to_pfn(kaddr))
 
 /*
  * On Book-E parts we need __va to parse the device tree and we can't
@@ -240,8 +242,8 @@ extern long long virt_phys_offset;
 #endif
 
 /* align addr on a size boundary - adjust address up/down if needed */
-#define _ALIGN_UP(addr,size)	(((addr)+((size)-1))&(~((size)-1)))
-#define _ALIGN_DOWN(addr,size)	((addr)&(~((size)-1)))
+#define _ALIGN_UP(addr, size)   __ALIGN_KERNEL(addr, size)
+#define _ALIGN_DOWN(addr, size)	((addr)&(~((typeof(addr))(size)-1)))
 
 /* align addr on a size boundary - adjust address up if needed */
 #define _ALIGN(addr,size)     _ALIGN_UP(addr,size)
@@ -362,6 +364,20 @@ typedef struct { signed long pd; } hugepd_t;
 
 #ifdef CONFIG_HUGETLB_PAGE
 #ifdef CONFIG_PPC_BOOK3S_64
+#ifdef CONFIG_PPC_64K_PAGES
+/*
+ * With 64k page size, we have hugepage ptes in the pgd and pmd entries. We don't
+ * need to setup hugepage directory for them. Our pte and page directory format
+ * enable us to have this enabled. But to avoid errors when implementing new
+ * features disable hugepd for 64K. We enable a debug version here, So we catch
+ * wrong usage.
+ */
+#ifdef CONFIG_DEBUG_VM
+extern int hugepd_ok(hugepd_t hpd);
+#else
+#define hugepd_ok(x)	(0)
+#endif
+#else
 static inline int hugepd_ok(hugepd_t hpd)
 {
 	/*
@@ -370,6 +386,7 @@ static inline int hugepd_ok(hugepd_t hpd)
 	 */
 	return (((hpd.pd & 0x3) == 0x0) && ((hpd.pd & HUGEPD_SHIFT_MASK) != 0));
 }
+#endif
 #else
 static inline int hugepd_ok(hugepd_t hpd)
 {
