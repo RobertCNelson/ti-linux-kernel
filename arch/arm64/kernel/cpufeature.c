@@ -578,6 +578,8 @@ u64 read_system_reg(u32 id)
 	return regp->sys_val;
 }
 
+#include <linux/irqchip/arm-gic-v3.h>
+
 static bool
 feature_matches(u64 reg, const struct arm64_cpu_capabilities *entry)
 {
@@ -595,11 +597,25 @@ has_cpuid_feature(const struct arm64_cpu_capabilities *entry)
 	return feature_matches(val, entry);
 }
 
+static bool has_useable_gicv3_cpuif(const struct arm64_cpu_capabilities *entry)
+{
+	bool has_sre;
+
+	if (!has_cpuid_feature(entry))
+		return false;
+	has_sre = gic_enable_sre();
+	if (!has_sre)
+		pr_warn_once("%s present but disabled by higher exception level\n",
+				entry->desc);
+
+	return has_sre;
+}
+
 static const struct arm64_cpu_capabilities arm64_features[] = {
 	{
 		.desc = "GIC system register CPU interface",
 		.capability = ARM64_HAS_SYSREG_GIC_CPUIF,
-		.matches = has_cpuid_feature,
+		.matches = has_useable_gicv3_cpuif,
 		.sys_reg = SYS_ID_AA64PFR0_EL1,
 		.field_pos = ID_AA64PFR0_GIC_SHIFT,
 		.min_field_value = 1,
