@@ -57,6 +57,9 @@ struct ocfs2_inode_info
 	u32				ip_flags; /* see below */
 	u32				ip_attr; /* inode attributes */
 
+	/* Record unwritten extents during direct io. */
+	struct list_head		ip_unwritten_list;
+
 	/* protected by recovery_lock. */
 	struct inode			*ip_next_orphan;
 
@@ -112,6 +115,8 @@ struct ocfs2_inode_info
 #define OCFS2_INODE_OPEN_DIRECT		0x00000020
 /* Tell the inode wipe code it's not in orphan dir */
 #define OCFS2_INODE_SKIP_ORPHAN_DIR     0x00000040
+/* Entry in orphan dir with 'dio-' prefix */
+#define OCFS2_INODE_DIO_ORPHAN_ENTRY	0x00000080
 
 static inline struct ocfs2_inode_info *OCFS2_I(struct inode *inode)
 {
