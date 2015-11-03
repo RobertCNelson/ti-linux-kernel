@@ -100,11 +100,12 @@ static void timer8_set_next(struct timer8_priv *p, unsigned long delta)
 		dev_warn(&p->pdev->dev, "delta out of range\n");
 	now = timer8_get_counter(p);
 	p->tcora = delta;
-	ctrl_outb(ctrl_inb(p->mapbase + _8TCR) | 0x40, p->mapbase + _8TCR);
+	ctrl_outb(ctrl_inb(p->mapbase + _8TCR) & ~0x40, p->mapbase + _8TCR);
 	if (delta > now)
 		ctrl_outw(delta, p->mapbase + TCORA);
 	else
 		ctrl_outw(now + 1, p->mapbase + TCORA);
+	ctrl_outb(ctrl_inb(p->mapbase + _8TCR) | 0x40, p->mapbase + _8TCR);
 
 	raw_spin_unlock_irqrestore(&p->lock, flags);
 }
@@ -146,6 +147,7 @@ static void timer8_stop(struct timer8_priv *p)
 	raw_spin_lock_irqsave(&p->lock, flags);
 
 	ctrl_outw(0x0000, p->mapbase + _8TCR);
+	ctrl_outw(0x0000, p->mapbase + _8TCNT);
 
 	raw_spin_unlock_irqrestore(&p->lock, flags);
 }
@@ -165,7 +167,6 @@ static void timer8_clock_event_start(struct timer8_priv *p, int periodic)
 	ced->mult = div_sc(p->rate, NSEC_PER_SEC, ced->shift);
 	ced->max_delta_ns = clockevent_delta2ns(0xffff, ced);
 	ced->min_delta_ns = clockevent_delta2ns(0x0001, ced);
-
 	timer8_set_next(p, periodic?(p->rate + HZ/2) / HZ:0x10000);
 }
 
