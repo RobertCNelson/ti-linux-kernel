@@ -52,6 +52,7 @@ cirrus	Cirrus Logic, Inc.
 cloudengines	Cloud Engines, Inc.
 cnm	Chips&Media, Inc.
 cnxt	Conexant Systems, Inc.
+compulab	CompuLab Ltd.
 cortina	Cortina Systems, Inc.
 cosmic	Cosmic Circuits
 crystalfontz	Crystalfontz America, Inc.
@@ -195,6 +196,7 @@ schindler	Schindler
 seagate	Seagate Technology PLC
 semtech	Semtech Corporation
 sharp	Sharp Corporation
+sigma	Sigma Designs, Inc.
 sil	Silicon Image
 silabs	Silicon Laboratories
 siliconmitus	Silicon Mitus, Inc.
