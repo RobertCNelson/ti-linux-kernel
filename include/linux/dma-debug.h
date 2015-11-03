@@ -51,7 +51,8 @@ extern void debug_dma_unmap_sg(struct device *dev, struct scatterlist *sglist,
 			       int nelems, int dir);
 
 extern void debug_dma_alloc_coherent(struct device *dev, size_t size,
-				     dma_addr_t dma_addr, void *virt);
+				     dma_addr_t dma_addr, void *virt,
+				     gfp_t flags);
 
 extern void debug_dma_free_coherent(struct device *dev, size_t size,
 				    void *virt, dma_addr_t addr);
@@ -132,7 +133,8 @@ static inline void debug_dma_unmap_sg(struct device *dev,
 }
 
 static inline void debug_dma_alloc_coherent(struct device *dev, size_t size,
-					    dma_addr_t dma_addr, void *virt)
+					    dma_addr_t dma_addr, void *virt,
+					    gfp_t flags)
 {
 }
 
