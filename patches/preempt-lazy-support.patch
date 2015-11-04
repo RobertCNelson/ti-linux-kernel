@@ -95,13 +95,13 @@ Index: linux-rt-devel/arch/x86/include/asm/preempt.h
  /*
   * Returns true when we need to resched and can (barring IRQ state).
   */
- static __always_inline bool should_resched(void)
+ static __always_inline bool should_resched(int preempt_offset)
  {
 +#ifdef CONFIG_PREEMPT_LAZY
-+	return unlikely(!raw_cpu_read_4(__preempt_count) || \
++	return unlikely(raw_cpu_read_4(__preempt_count) == preempt_offset ||
 +			test_thread_flag(TIF_NEED_RESCHED_LAZY));
 +#else
- 	return unlikely(!raw_cpu_read_4(__preempt_count));
+ 	return unlikely(raw_cpu_read_4(__preempt_count) == preempt_offset);
 +#endif
  }
  
@@ -122,7 +122,7 @@ Index: linux-rt-devel/include/linux/preempt.h
 ===================================================================
 --- linux-rt-devel.orig/include/linux/preempt.h
 +++ linux-rt-devel/include/linux/preempt.h
-@@ -33,6 +33,20 @@ extern void preempt_count_sub(int val);
+@@ -34,6 +34,20 @@ extern void preempt_count_sub(int val);
  #define preempt_count_inc() preempt_count_add(1)
  #define preempt_count_dec() preempt_count_sub(1)
  
@@ -143,7 +143,7 @@ Index: linux-rt-devel/include/linux/preempt.h
  #ifdef CONFIG_PREEMPT_COUNT
  
  #define preempt_disable() \
-@@ -41,6 +55,12 @@ do { \
+@@ -42,6 +56,12 @@ do { \
  	barrier(); \
  } while (0)
  
@@ -156,7 +156,7 @@ Index: linux-rt-devel/include/linux/preempt.h
  #define sched_preempt_enable_no_resched() \
  do { \
  	barrier(); \
-@@ -69,6 +89,13 @@ do { \
+@@ -70,6 +90,13 @@ do { \
  		__preempt_schedule(); \
  } while (0)
  
@@ -170,7 +170,7 @@ Index: linux-rt-devel/include/linux/preempt.h
  #else
  #define preempt_enable() \
  do { \
-@@ -147,7 +174,7 @@ do { \
+@@ -148,7 +175,7 @@ do { \
  } while (0)
  #define preempt_fold_need_resched() \
  do { \
@@ -320,7 +320,7 @@ Index: linux-rt-devel/kernel/sched/core.c
  #ifdef CONFIG_SMP
  	plist_node_init(&p->pushable_tasks, MAX_PRIO);
  	RB_CLEAR_NODE(&p->pushable_dl_tasks);
-@@ -2774,6 +2809,7 @@ void migrate_disable(void)
+@@ -2781,6 +2816,7 @@ void migrate_disable(void)
  	}
  
  	preempt_disable();
@@ -328,7 +328,7 @@ Index: linux-rt-devel/kernel/sched/core.c
  	pin_current_cpu();
  	p->migrate_disable = 1;
  	preempt_enable();
-@@ -2831,6 +2867,7 @@ void migrate_enable(void)
+@@ -2838,6 +2874,7 @@ void migrate_enable(void)
  
  	unpin_current_cpu();
  	preempt_enable();
@@ -336,7 +336,7 @@ Index: linux-rt-devel/kernel/sched/core.c
  }
  EXPORT_SYMBOL(migrate_enable);
  #else
-@@ -2964,6 +3001,7 @@ static void __sched __schedule(void)
+@@ -2971,6 +3008,7 @@ static void __sched __schedule(void)
  
  	next = pick_next_task(rq, prev);
  	clear_tsk_need_resched(prev);
@@ -344,7 +344,7 @@ Index: linux-rt-devel/kernel/sched/core.c
  	clear_preempt_need_resched();
  	rq->clock_skip_update = 0;
  
-@@ -3108,6 +3146,14 @@ asmlinkage __visible void __sched notrac
+@@ -3115,6 +3153,14 @@ asmlinkage __visible void __sched notrac
  	if (likely(!preemptible()))
  		return;
  
@@ -359,7 +359,7 @@ Index: linux-rt-devel/kernel/sched/core.c
  	do {
  		__preempt_count_add(PREEMPT_ACTIVE);
  		/*
-@@ -4831,7 +4877,9 @@ void init_idle(struct task_struct *idle,
+@@ -4838,7 +4884,9 @@ void init_idle(struct task_struct *idle,
  
  	/* Set the preempt count _outside_ the spinlocks! */
  	init_idle_preempt_count(idle, cpu);
@@ -428,7 +428,7 @@ Index: linux-rt-devel/kernel/sched/fair.c
  	/*
  	 * Only set the backward buddy when the current task is still
  	 * on the rq. This can happen when a wakeup gets interleaved
-@@ -7866,7 +7866,7 @@ static void task_fork_fair(struct task_s
+@@ -7869,7 +7869,7 @@ static void task_fork_fair(struct task_s
  		 * 'current' within the tree based on its new key value.
  		 */
  		swap(curr->vruntime, se->vruntime);
@@ -437,7 +437,7 @@ Index: linux-rt-devel/kernel/sched/fair.c
  	}
  
  	se->vruntime -= cfs_rq->min_vruntime;
-@@ -7891,7 +7891,7 @@ prio_changed_fair(struct rq *rq, struct
+@@ -7894,7 +7894,7 @@ prio_changed_fair(struct rq *rq, struct
  	 */
  	if (rq->curr == p) {
  		if (p->prio > oldprio)
@@ -464,7 +464,7 @@ Index: linux-rt-devel/kernel/sched/sched.h
 ===================================================================
 --- linux-rt-devel.orig/kernel/sched/sched.h
 +++ linux-rt-devel/kernel/sched/sched.h
-@@ -1290,6 +1290,15 @@ extern void init_sched_dl_class(void);
+@@ -1291,6 +1291,15 @@ extern void init_sched_dl_class(void);
  extern void resched_curr(struct rq *rq);
  extern void resched_cpu(int cpu);
  

@@ -6,7 +6,6 @@
 # UPSTREAM changes queued
 ############################################################
 xfs--clean-up-inode-lockdep-annotations
-inet-fix-potential-deadlock-in-reqsk-queue-unlink
 
 ############################################################
 # UPSTREAM FIXES, patches pending
