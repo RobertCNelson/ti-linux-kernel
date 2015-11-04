@@ -511,7 +511,7 @@ EXPORT_SYMBOL_GPL(dax_fault);
  * The 'colour' (ie low bits) within a PMD of a page offset.  This comes up
  * more often than one might expect in the below function.
  */
-#define PG_PMD_COLOUR	((PMD_SIZE >> PAGE_SHIFT) - 1)
+#define PG_PMD_COLOUR	((HPAGE_SIZE >> PAGE_SHIFT) - 1)
 
 int __dax_pmd_fault(struct vm_area_struct *vma, unsigned long address,
 		pmd_t *pmd, unsigned int flags, get_block_t get_block,
@@ -537,7 +537,7 @@ int __dax_pmd_fault(struct vm_area_struct *vma, unsigned long address,
 	/* If the PMD would extend outside the VMA */
 	if (pmd_addr < vma->vm_start)
 		return VM_FAULT_FALLBACK;
-	if ((pmd_addr + PMD_SIZE) > vma->vm_end)
+	if ((pmd_addr + HPAGE_SIZE) > vma->vm_end)
 		return VM_FAULT_FALLBACK;
 
 	pgoff = linear_page_index(vma, pmd_addr);
@@ -551,7 +551,7 @@ int __dax_pmd_fault(struct vm_area_struct *vma, unsigned long address,
 	memset(&bh, 0, sizeof(bh));
 	block = (sector_t)pgoff << (PAGE_SHIFT - blkbits);
 
-	bh.b_size = PMD_SIZE;
+	bh.b_size = HPAGE_SIZE;
 	length = get_block(inode, block, &bh, write);
 	if (length)
 		return VM_FAULT_SIGBUS;
@@ -562,7 +562,7 @@ int __dax_pmd_fault(struct vm_area_struct *vma, unsigned long address,
 	 * just fall back to PTEs.  Calling get_block 512 times in a loop
 	 * would be silly.
 	 */
-	if (!buffer_size_valid(&bh) || bh.b_size < PMD_SIZE)
+	if (!buffer_size_valid(&bh) || bh.b_size < HPAGE_SIZE)
 		goto fallback;
 
 	/*
@@ -571,7 +571,7 @@ int __dax_pmd_fault(struct vm_area_struct *vma, unsigned long address,
 	 */
 	if (buffer_new(&bh)) {
 		i_mmap_unlock_read(mapping);
-		unmap_mapping_range(mapping, pgoff << PAGE_SHIFT, PMD_SIZE, 0);
+		unmap_mapping_range(mapping, pgoff << PAGE_SHIFT, HPAGE_SIZE, 0);
 		i_mmap_lock_read(mapping);
 	}
 
@@ -616,7 +616,7 @@ int __dax_pmd_fault(struct vm_area_struct *vma, unsigned long address,
 			result = VM_FAULT_SIGBUS;
 			goto out;
 		}
-		if ((length < PMD_SIZE) || (pfn & PG_PMD_COLOUR))
+		if ((length < HPAGE_SIZE) || (pfn & PG_PMD_COLOUR))
 			goto fallback;
 
 		if (buffer_unwritten(&bh) || buffer_new(&bh)) {
