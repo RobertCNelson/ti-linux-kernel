@@ -541,7 +541,10 @@ struct kvm_s390_pgm_info {
 	__u8 exc_access_id;
 	__u8 per_access_id;
 	__u8 op_access_id;
-	__u8 pad[3];
+#define KVM_S390_PGM_FLAGS_ILC_VALID	0x01
+#define KVM_S390_PGM_FLAGS_ILC_MASK	0x06
+	__u8 flags;
+	__u8 pad[2];
 };
 
 struct kvm_s390_prefix_info {
