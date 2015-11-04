@@ -34,6 +34,9 @@
 #include <asm/kvm.h>
 #include <kvm/iodev.h>
 
+#define CREATE_TRACE_POINTS
+#include "trace.h"
+
 /*
  * How the whole thing works (courtesy of Christoffer Dall):
  *
@@ -107,6 +110,7 @@ static struct vgic_lr vgic_get_lr(const struct kvm_vcpu *vcpu, int lr);
 static void vgic_set_lr(struct kvm_vcpu *vcpu, int lr, struct vgic_lr lr_desc);
 static struct irq_phys_map *vgic_irq_map_search(struct kvm_vcpu *vcpu,
 						int virt_irq);
+static int compute_pending_for_cpu(struct kvm_vcpu *vcpu);
 
 static const struct vgic_ops *vgic_ops;
 static const struct vgic_params *vgic;
@@ -357,6 +361,11 @@ static void vgic_dist_irq_clear_soft_pend(struct kvm_vcpu *vcpu, int irq)
 	struct vgic_dist *dist = &vcpu->kvm->arch.vgic;
 
 	vgic_bitmap_set_irq_val(&dist->irq_soft_pend, vcpu->vcpu_id, irq, 0);
+	if (!vgic_dist_irq_get_level(vcpu, irq)) {
+		vgic_dist_irq_clear_pending(vcpu, irq);
+		if (!compute_pending_for_cpu(vcpu))
+			clear_bit(vcpu->vcpu_id, dist->irq_pending_on_cpu);
+	}
 }
 
 static int vgic_dist_irq_is_pending(struct kvm_vcpu *vcpu, int irq)
@@ -531,34 +540,6 @@ bool vgic_handle_set_pending_reg(struct kvm *kvm,
 	return false;
 }
 
-/*
- * If a mapped interrupt's state has been modified by the guest such that it
- * is no longer active or pending, without it have gone through the sync path,
- * then the map->active field must be cleared so the interrupt can be taken
- * again.
- */
-static void vgic_handle_clear_mapped_irq(struct kvm_vcpu *vcpu)
-{
-	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
-	struct list_head *root;
-	struct irq_phys_map_entry *entry;
-	struct irq_phys_map *map;
-
-	rcu_read_lock();
-
-	/* Check for PPIs */
-	root = &vgic_cpu->irq_phys_map_list;
-	list_for_each_entry_rcu(entry, root, entry) {
-		map = &entry->map;
-
-		if (!vgic_dist_irq_is_pending(vcpu, map->virt_irq) &&
-		    !vgic_irq_is_active(vcpu, map->virt_irq))
-			map->active = false;
-	}
-
-	rcu_read_unlock();
-}
-
 bool vgic_handle_clear_pending_reg(struct kvm *kvm,
 				   struct kvm_exit_mmio *mmio,
 				   phys_addr_t offset, int vcpu_id)
@@ -589,7 +570,6 @@ bool vgic_handle_clear_pending_reg(struct kvm *kvm,
 					  vcpu_id, offset);
 		vgic_reg_access(mmio, reg, offset, mode);
 
-		vgic_handle_clear_mapped_irq(kvm_get_vcpu(kvm, vcpu_id));
 		vgic_update_state(kvm);
 		return true;
 	}
@@ -627,7 +607,6 @@ bool vgic_handle_clear_active_reg(struct kvm *kvm,
 			ACCESS_READ_VALUE | ACCESS_WRITE_CLEARBIT);
 
 	if (mmio->is_write) {
-		vgic_handle_clear_mapped_irq(kvm_get_vcpu(kvm, vcpu_id));
 		vgic_update_state(kvm);
 		return true;
 	}
@@ -684,10 +663,9 @@ bool vgic_handle_cfg_reg(u32 *reg, struct kvm_exit_mmio *mmio,
 	vgic_reg_access(mmio, &val, offset,
 			ACCESS_READ_VALUE | ACCESS_WRITE_VALUE);
 	if (mmio->is_write) {
-		if (offset < 8) {
-			*reg = ~0U; /* Force PPIs/SGIs to 1 */
+		/* Ignore writes to read-only SGI and PPI bits */
+		if (offset < 8)
 			return false;
-		}
 
 		val = vgic_cfg_compress(val);
 		if (offset & 4) {
@@ -1338,12 +1316,62 @@ epilog:
 	}
 }
 
+static int process_queued_irq(struct kvm_vcpu *vcpu,
+				   int lr, struct vgic_lr vlr)
+{
+	int pending = 0;
+
+	/*
+	 * If the IRQ was EOIed (called from vgic_process_maintenance) or it
+	 * went from active to non-active (called from vgic_sync_hwirq) it was
+	 * also ACKed and we we therefore assume we can clear the soft pending
+	 * state (should it had been set) for this interrupt.
+	 *
+	 * Note: if the IRQ soft pending state was set after the IRQ was
+	 * acked, it actually shouldn't be cleared, but we have no way of
+	 * knowing that unless we start trapping ACKs when the soft-pending
+	 * state is set.
+	 */
+	vgic_dist_irq_clear_soft_pend(vcpu, vlr.irq);
+
+	/*
+	 * Tell the gic to start sampling this interrupt again.
+	 */
+	vgic_irq_clear_queued(vcpu, vlr.irq);
+
+	/* Any additional pending interrupt? */
+	if (vgic_irq_is_edge(vcpu, vlr.irq)) {
+		BUG_ON(!(vlr.state & LR_HW));
+		pending = vgic_dist_irq_is_pending(vcpu, vlr.irq);
+	} else {
+		if (vgic_dist_irq_get_level(vcpu, vlr.irq)) {
+			vgic_cpu_irq_set(vcpu, vlr.irq);
+			pending = 1;
+		} else {
+			vgic_dist_irq_clear_pending(vcpu, vlr.irq);
+			vgic_cpu_irq_clear(vcpu, vlr.irq);
+		}
+	}
+
+	/*
+	 * Despite being EOIed, the LR may not have
+	 * been marked as empty.
+	 */
+	vlr.state = 0;
+	vlr.hwirq = 0;
+	vgic_set_lr(vcpu, lr, vlr);
+
+	vgic_sync_lr_elrsr(vcpu, lr, vlr);
+
+	return pending;
+}
+
 static bool vgic_process_maintenance(struct kvm_vcpu *vcpu)
 {
 	u32 status = vgic_get_interrupt_status(vcpu);
 	struct vgic_dist *dist = &vcpu->kvm->arch.vgic;
-	bool level_pending = false;
 	struct kvm *kvm = vcpu->kvm;
+	int level_pending = 0;
 
 	kvm_debug("STATUS = %08x\n", status);
 
@@ -1358,54 +1386,22 @@ static bool vgic_process_maintenance(struct kvm_vcpu *vcpu)
 
 		for_each_set_bit(lr, eisr_ptr, vgic->nr_lr) {
 			struct vgic_lr vlr = vgic_get_lr(vcpu, lr);
+
 			WARN_ON(vgic_irq_is_edge(vcpu, vlr.irq));
-
-			spin_lock(&dist->lock);
-			vgic_irq_clear_queued(vcpu, vlr.irq);
 			WARN_ON(vlr.state & LR_STATE_MASK);
-			vlr.state = 0;
-			vgic_set_lr(vcpu, lr, vlr);
 
-			/*
-			 * If the IRQ was EOIed it was also ACKed and we we
-			 * therefore assume we can clear the soft pending
-			 * state (should it had been set) for this interrupt.
-			 *
-			 * Note: if the IRQ soft pending state was set after
-			 * the IRQ was acked, it actually shouldn't be
-			 * cleared, but we have no way of knowing that unless
-			 * we start trapping ACKs when the soft-pending state
-			 * is set.
-			 */
-			vgic_dist_irq_clear_soft_pend(vcpu, vlr.irq);
 
 			/*
 			 * kvm_notify_acked_irq calls kvm_set_irq()
-			 * to reset the IRQ level. Need to release the
-			 * lock for kvm_set_irq to grab it.
+			 * to reset the IRQ level, which grabs the dist->lock
+			 * so we call this before taking the dist->lock.
 			 */
-			spin_unlock(&dist->lock);
-
 			kvm_notify_acked_irq(kvm, 0,
 					     vlr.irq - VGIC_NR_PRIVATE_IRQS);
+
 			spin_lock(&dist->lock);
-
-			/* Any additional pending interrupt? */
-			if (vgic_dist_irq_get_level(vcpu, vlr.irq)) {
-				vgic_cpu_irq_set(vcpu, vlr.irq);
-				level_pending = true;
-			} else {
-				vgic_dist_irq_clear_pending(vcpu, vlr.irq);
-				vgic_cpu_irq_clear(vcpu, vlr.irq);
-			}
-
+			level_pending |= process_queued_irq(vcpu, lr, vlr);
 			spin_unlock(&dist->lock);
-
-			/*
-			 * Despite being EOIed, the LR may not have
-			 * been marked as empty.
-			 */
-			vgic_sync_lr_elrsr(vcpu, lr, vlr);
 		}
 	}
 
@@ -1426,29 +1422,35 @@ static bool vgic_process_maintenance(struct kvm_vcpu *vcpu)
 /*
  * Save the physical active state, and reset it to inactive.
  *
- * Return 1 if HW interrupt went from active to inactive, and 0 otherwise.
+ * Return true if there's a pending forwarded interrupt to queue.
  */
-static int vgic_sync_hwirq(struct kvm_vcpu *vcpu, struct vgic_lr vlr)
+static bool vgic_sync_hwirq(struct kvm_vcpu *vcpu, int lr, struct vgic_lr vlr)
 {
+	struct vgic_dist *dist = &vcpu->kvm->arch.vgic;
 	struct irq_phys_map *map;
+	bool phys_active;
+	bool level_pending;
 	int ret;
 
 	if (!(vlr.state & LR_HW))
-		return 0;
+		return false;
 
 	map = vgic_irq_map_search(vcpu, vlr.irq);
 	BUG_ON(!map);
 
 	ret = irq_get_irqchip_state(map->irq,
 				    IRQCHIP_STATE_ACTIVE,
-				    &map->active);
+				    &phys_active);
 
 	WARN_ON(ret);
 
-	if (map->active)
+	if (phys_active)
 		return 0;
 
-	return 1;
+	spin_lock(&dist->lock);
+	level_pending = process_queued_irq(vcpu, lr, vlr);
+	spin_unlock(&dist->lock);
+	return level_pending;
 }
 
 /* Sync back the VGIC state after a guest run */
@@ -1473,18 +1475,8 @@ static void __kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu)
 			continue;
 
 		vlr = vgic_get_lr(vcpu, lr);
-		if (vgic_sync_hwirq(vcpu, vlr)) {
-			/*
-			 * So this is a HW interrupt that the guest
-			 * EOI-ed. Clean the LR state and allow the
-			 * interrupt to be sampled again.
-			 */
-			vlr.state = 0;
-			vlr.hwirq = 0;
-			vgic_set_lr(vcpu, lr, vlr);
-			vgic_irq_clear_queued(vcpu, vlr.irq);
-			set_bit(lr, elrsr_ptr);
-		}
+		if (vgic_sync_hwirq(vcpu, lr, vlr))
+			level_pending = true;
 
 		if (!test_bit(lr, elrsr_ptr))
 			continue;
@@ -1584,6 +1576,8 @@ static int vgic_update_irq_pending(struct kvm *kvm, int cpuid,
 	int edge_triggered, level_triggered;
 	int enabled;
 	bool ret = true, can_inject = true;
+
+	trace_vgic_update_irq_pending(cpuid, irq_num, level);
 
 	if (irq_num >= min(kvm->arch.vgic.nr_irqs, 1020))
 		return -EINVAL;
@@ -1864,30 +1858,6 @@ static void vgic_free_phys_irq_map_rcu(struct rcu_head *rcu)
 }
 
 /**
- * kvm_vgic_get_phys_irq_active - Return the active state of a mapped IRQ
- *
- * Return the logical active state of a mapped interrupt. This doesn't
- * necessarily reflects the current HW state.
- */
-bool kvm_vgic_get_phys_irq_active(struct irq_phys_map *map)
-{
-	BUG_ON(!map);
-	return map->active;
-}
-
-/**
- * kvm_vgic_set_phys_irq_active - Set the active state of a mapped IRQ
- *
- * Set the logical active state of a mapped interrupt. This doesn't
- * immediately affects the HW state.
- */
-void kvm_vgic_set_phys_irq_active(struct irq_phys_map *map, bool active)
-{
-	BUG_ON(!map);
-	map->active = active;
-}
-
-/**
  * kvm_vgic_unmap_phys_irq - Remove a virtual to physical IRQ mapping
  * @vcpu: The VCPU pointer
  * @map: The pointer to a mapping obtained through kvm_vgic_map_phys_irq
@@ -2111,14 +2081,24 @@ int vgic_init(struct kvm *kvm)
 			break;
 		}
 
-		for (i = 0; i < dist->nr_irqs; i++) {
-			if (i < VGIC_NR_PPIS)
+		/*
+		 * Enable and configure all SGIs to be edge-triggere and
+		 * configure all PPIs as level-triggered.
+		 */
+		for (i = 0; i < VGIC_NR_PRIVATE_IRQS; i++) {
+			if (i < VGIC_NR_SGIS) {
+				/* SGIs */
 				vgic_bitmap_set_irq_val(&dist->irq_enabled,
 							vcpu->vcpu_id, i, 1);
-			if (i < VGIC_NR_PRIVATE_IRQS)
 				vgic_bitmap_set_irq_val(&dist->irq_cfg,
 							vcpu->vcpu_id, i,
 							VGIC_CFG_EDGE);
+			} else if (i < VGIC_NR_PRIVATE_IRQS) {
+				/* PPIs */
+				vgic_bitmap_set_irq_val(&dist->irq_cfg,
+							vcpu->vcpu_id, i,
+							VGIC_CFG_LEVEL);
+			}
 		}
 
 		vgic_enable(vcpu);
