@@ -79,6 +79,8 @@ extern int amdgpu_bapm;
 extern int amdgpu_deep_color;
 extern int amdgpu_vm_size;
 extern int amdgpu_vm_block_size;
+extern int amdgpu_vm_fault_stop;
+extern int amdgpu_vm_debug;
 extern int amdgpu_enable_scheduler;
 extern int amdgpu_sched_jobs;
 extern int amdgpu_sched_hw_submission;
@@ -343,7 +345,6 @@ struct amdgpu_ring_funcs {
 	/* testing functions */
 	int (*test_ring)(struct amdgpu_ring *ring);
 	int (*test_ib)(struct amdgpu_ring *ring);
-	bool (*is_lockup)(struct amdgpu_ring *ring);
 	/* insert NOP packets */
 	void (*insert_nop)(struct amdgpu_ring *ring, uint32_t count);
 };
@@ -446,8 +447,7 @@ int amdgpu_fence_wait_next(struct amdgpu_ring *ring);
 int amdgpu_fence_wait_empty(struct amdgpu_ring *ring);
 unsigned amdgpu_fence_count_emitted(struct amdgpu_ring *ring);
 
-signed long amdgpu_fence_wait_any(struct amdgpu_device *adev,
-				  struct fence **array,
+signed long amdgpu_fence_wait_any(struct fence **array,
 				  uint32_t count,
 				  bool intr,
 				  signed long t);
@@ -905,8 +905,6 @@ struct amdgpu_ring {
 	unsigned		ring_size;
 	unsigned		ring_free_dw;
 	int			count_dw;
-	atomic_t		last_rptr;
-	atomic64_t		last_activity;
 	uint64_t		gpu_addr;
 	uint32_t		align_mask;
 	uint32_t		ptr_mask;
@@ -959,6 +957,11 @@ struct amdgpu_ring {
 #define AMDGPU_PTE_FRAG_4KB	(0 << 7)
 #define AMDGPU_PTE_FRAG_64KB	(4 << 7)
 #define AMDGPU_LOG2_PAGES_PER_FRAG 4
+
+/* How to programm VM fault handling */
+#define AMDGPU_VM_FAULT_STOP_NEVER	0
+#define AMDGPU_VM_FAULT_STOP_FIRST	1
+#define AMDGPU_VM_FAULT_STOP_ALWAYS	2
 
 struct amdgpu_vm_pt {
 	struct amdgpu_bo		*bo;
@@ -1223,8 +1226,6 @@ void amdgpu_ring_commit(struct amdgpu_ring *ring);
 void amdgpu_ring_unlock_commit(struct amdgpu_ring *ring);
 void amdgpu_ring_undo(struct amdgpu_ring *ring);
 void amdgpu_ring_unlock_undo(struct amdgpu_ring *ring);
-void amdgpu_ring_lockup_update(struct amdgpu_ring *ring);
-bool amdgpu_ring_test_lockup(struct amdgpu_ring *ring);
 unsigned amdgpu_ring_backup(struct amdgpu_ring *ring,
 			    uint32_t **data);
 int amdgpu_ring_restore(struct amdgpu_ring *ring,
@@ -1709,7 +1710,7 @@ struct amdgpu_vce {
 /*
  * SDMA
  */
-struct amdgpu_sdma {
+struct amdgpu_sdma_instance {
 	/* SDMA firmware */
 	const struct firmware	*fw;
 	uint32_t		fw_version;
@@ -1717,6 +1718,13 @@ struct amdgpu_sdma {
 
 	struct amdgpu_ring	ring;
 	bool			burst_nop;
+};
+
+struct amdgpu_sdma {
+	struct amdgpu_sdma_instance instance[AMDGPU_MAX_SDMA_INSTANCES];
+	struct amdgpu_irq_src	trap_irq;
+	struct amdgpu_irq_src	illegal_inst_irq;
+	int 			num_instances;
 };
 
 /*
@@ -1947,7 +1955,6 @@ struct amdgpu_device {
 	struct device			*dev;
 	struct drm_device		*ddev;
 	struct pci_dev			*pdev;
-	struct rw_semaphore		exclusive_lock;
 
 	/* ASIC */
 	enum amd_asic_type		asic_type;
@@ -1961,7 +1968,6 @@ struct amdgpu_device {
 	bool				suspend;
 	bool				need_dma32;
 	bool				accel_working;
-	bool				needs_reset;
 	struct work_struct 		reset_work;
 	struct notifier_block		acpi_nb;
 	struct amdgpu_i2c_chan		*i2c_bus[AMDGPU_MAX_I2C_BUS];
@@ -2065,9 +2071,7 @@ struct amdgpu_device {
 	struct amdgpu_gfx		gfx;
 
 	/* sdma */
-	struct amdgpu_sdma		sdma[AMDGPU_MAX_SDMA_INSTANCES];
-	struct amdgpu_irq_src		sdma_trap_irq;
-	struct amdgpu_irq_src		sdma_illegal_inst_irq;
+	struct amdgpu_sdma		sdma;
 
 	/* uvd */
 	bool				has_uvd;
@@ -2204,17 +2208,18 @@ static inline void amdgpu_ring_write(struct amdgpu_ring *ring, uint32_t v)
 	ring->ring_free_dw--;
 }
 
-static inline struct amdgpu_sdma * amdgpu_get_sdma_instance(struct amdgpu_ring *ring)
+static inline struct amdgpu_sdma_instance *
+amdgpu_get_sdma_instance(struct amdgpu_ring *ring)
 {
 	struct amdgpu_device *adev = ring->adev;
 	int i;
 
-	for (i = 0; i < AMDGPU_MAX_SDMA_INSTANCES; i++)
-		if (&adev->sdma[i].ring == ring)
+	for (i = 0; i < adev->sdma.num_instances; i++)
+		if (&adev->sdma.instance[i].ring == ring)
 			break;
 
 	if (i < AMDGPU_MAX_SDMA_INSTANCES)
-		return &adev->sdma[i];
+		return &adev->sdma.instance[i];
 	else
 		return NULL;
 }
@@ -2241,7 +2246,6 @@ static inline struct amdgpu_sdma * amdgpu_get_sdma_instance(struct amdgpu_ring *
 #define amdgpu_ring_parse_cs(r, p, ib) ((r)->funcs->parse_cs((p), (ib)))
 #define amdgpu_ring_test_ring(r) (r)->funcs->test_ring((r))
 #define amdgpu_ring_test_ib(r) (r)->funcs->test_ib((r))
-#define amdgpu_ring_is_lockup(r) (r)->funcs->is_lockup((r))
 #define amdgpu_ring_get_rptr(r) (r)->funcs->get_rptr((r))
 #define amdgpu_ring_get_wptr(r) (r)->funcs->get_wptr((r))
 #define amdgpu_ring_set_wptr(r) (r)->funcs->set_wptr((r))
@@ -2350,10 +2354,10 @@ void amdgpu_driver_preclose_kms(struct drm_device *dev,
 				struct drm_file *file_priv);
 int amdgpu_suspend_kms(struct drm_device *dev, bool suspend, bool fbcon);
 int amdgpu_resume_kms(struct drm_device *dev, bool resume, bool fbcon);
-u32 amdgpu_get_vblank_counter_kms(struct drm_device *dev, int crtc);
-int amdgpu_enable_vblank_kms(struct drm_device *dev, int crtc);
-void amdgpu_disable_vblank_kms(struct drm_device *dev, int crtc);
-int amdgpu_get_vblank_timestamp_kms(struct drm_device *dev, int crtc,
+u32 amdgpu_get_vblank_counter_kms(struct drm_device *dev, unsigned int pipe);
+int amdgpu_enable_vblank_kms(struct drm_device *dev, unsigned int pipe);
+void amdgpu_disable_vblank_kms(struct drm_device *dev, unsigned int pipe);
+int amdgpu_get_vblank_timestamp_kms(struct drm_device *dev, unsigned int pipe,
 				    int *max_error,
 				    struct timeval *vblank_time,
 				    unsigned flags);
