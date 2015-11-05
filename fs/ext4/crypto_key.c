@@ -120,7 +120,7 @@ int _ext4_get_encryption_info(struct inode *inode)
 	struct key *keyring_key = NULL;
 	struct ext4_encryption_key *master_key;
 	struct ext4_encryption_context ctx;
-	struct user_key_payload *ukp;
+	const struct user_key_payload *ukp;
 	struct ext4_sb_info *sbi = EXT4_SB(inode->i_sb);
 	struct crypto_ablkcipher *ctfm;
 	const char *cipher_str;
@@ -213,7 +213,7 @@ retry:
 		res = -ENOKEY;
 		goto out;
 	}
-	ukp = ((struct user_key_payload *)keyring_key->payload.data);
+	ukp = user_key_payload(keyring_key);
 	if (ukp->datalen != sizeof(struct ext4_encryption_key)) {
 		res = -EINVAL;
 		goto out;
