@@ -758,7 +758,7 @@ nfsd4_read(struct svc_rqst *rqstp, struct nfsd4_compound_state *cstate,
 {
 	__be32 status;
 
-	read->rd_filp = NULL;
+	read->rd_nf = NULL;
 	if (read->rd_offset >= OFFSET_MAX)
 		return nfserr_inval;
 
@@ -775,7 +775,7 @@ nfsd4_read(struct svc_rqst *rqstp, struct nfsd4_compound_state *cstate,
 
 	/* check stateid */
 	status = nfs4_preprocess_stateid_op(rqstp, cstate, &read->rd_stateid,
-			RD_STATE, &read->rd_filp, &read->rd_tmp_file);
+			RD_STATE, &read->rd_nf);
 	if (status) {
 		dprintk("NFSD: nfsd4_read: couldn't process stateid!\n");
 		goto out;
@@ -921,7 +921,7 @@ nfsd4_setattr(struct svc_rqst *rqstp, struct nfsd4_compound_state *cstate,
 
 	if (setattr->sa_iattr.ia_valid & ATTR_SIZE) {
 		status = nfs4_preprocess_stateid_op(rqstp, cstate,
-			&setattr->sa_stateid, WR_STATE, NULL, NULL);
+			&setattr->sa_stateid, WR_STATE, NULL);
 		if (status) {
 			dprintk("NFSD: nfsd4_setattr: couldn't process stateid!\n");
 			return status;
@@ -977,7 +977,7 @@ nfsd4_write(struct svc_rqst *rqstp, struct nfsd4_compound_state *cstate,
 	    struct nfsd4_write *write)
 {
 	stateid_t *stateid = &write->wr_stateid;
-	struct file *filp = NULL;
+	struct nfsd_file *nf = NULL;
 	__be32 status = nfs_ok;
 	unsigned long cnt;
 	int nvecs;
@@ -986,7 +986,7 @@ nfsd4_write(struct svc_rqst *rqstp, struct nfsd4_compound_state *cstate,
 		return nfserr_inval;
 
 	status = nfs4_preprocess_stateid_op(rqstp, cstate, stateid, WR_STATE,
-			&filp, NULL);
+			&nf);
 	if (status) {
 		dprintk("NFSD: nfsd4_write: couldn't process stateid!\n");
 		return status;
@@ -999,10 +999,10 @@ nfsd4_write(struct svc_rqst *rqstp, struct nfsd4_compound_state *cstate,
 	nvecs = fill_in_write_vector(rqstp->rq_vec, write);
 	WARN_ON_ONCE(nvecs > ARRAY_SIZE(rqstp->rq_vec));
 
-	status = nfsd_vfs_write(rqstp, &cstate->current_fh, filp,
+	status = nfsd_vfs_write(rqstp, &cstate->current_fh, nf->nf_file,
 				write->wr_offset, rqstp->rq_vec, nvecs, &cnt,
 				&write->wr_how_written);
-	fput(filp);
+	nfsd_file_put(nf);
 
 	write->wr_bytes_written = cnt;
 
@@ -1014,21 +1014,21 @@ nfsd4_fallocate(struct svc_rqst *rqstp, struct nfsd4_compound_state *cstate,
 		struct nfsd4_fallocate *fallocate, int flags)
 {
 	__be32 status = nfserr_notsupp;
-	struct file *file;
+	struct nfsd_file *nf;
 
 	status = nfs4_preprocess_stateid_op(rqstp, cstate,
 					    &fallocate->falloc_stateid,
-					    WR_STATE, &file, NULL);
+					    WR_STATE, &nf);
 	if (status != nfs_ok) {
 		dprintk("NFSD: nfsd4_fallocate: couldn't process stateid!\n");
 		return status;
 	}
 
-	status = nfsd4_vfs_fallocate(rqstp, &cstate->current_fh, file,
+	status = nfsd4_vfs_fallocate(rqstp, &cstate->current_fh, nf->nf_file,
 				     fallocate->falloc_offset,
 				     fallocate->falloc_length,
 				     flags);
-	fput(file);
+	nfsd_file_put(nf);
 	return status;
 }
 
@@ -1053,11 +1053,11 @@ nfsd4_seek(struct svc_rqst *rqstp, struct nfsd4_compound_state *cstate,
 {
 	int whence;
 	__be32 status;
-	struct file *file;
+	struct nfsd_file *nf;
 
 	status = nfs4_preprocess_stateid_op(rqstp, cstate,
 					    &seek->seek_stateid,
-					    RD_STATE, &file, NULL);
+					    RD_STATE, &nf);
 	if (status) {
 		dprintk("NFSD: nfsd4_seek: couldn't process stateid!\n");
 		return status;
@@ -1079,14 +1079,14 @@ nfsd4_seek(struct svc_rqst *rqstp, struct nfsd4_compound_state *cstate,
 	 * Note:  This call does change file->f_pos, but nothing in NFSD
 	 *        should ever file->f_pos.
 	 */
-	seek->seek_pos = vfs_llseek(file, seek->seek_offset, whence);
+	seek->seek_pos = vfs_llseek(nf->nf_file, seek->seek_offset, whence);
 	if (seek->seek_pos < 0)
 		status = nfserrno(seek->seek_pos);
-	else if (seek->seek_pos >= i_size_read(file_inode(file)))
+	else if (seek->seek_pos >= i_size_read(file_inode(nf->nf_file)))
 		seek->seek_eof = true;
 
 out:
-	fput(file);
+	nfsd_file_put(nf);
 	return status;
 }
 
@@ -1309,6 +1309,7 @@ nfsd4_layoutget(struct svc_rqst *rqstp,
 	nfserr = nfsd4_insert_layout(lgp, ls);
 
 out_put_stid:
+	mutex_unlock(&ls->ls_mutex);
 	nfs4_put_stid(&ls->ls_stid);
 out:
 	return nfserr;
@@ -1361,6 +1362,9 @@ nfsd4_layoutcommit(struct svc_rqst *rqstp,
 			nfserr = nfserr_badlayout;
 		goto out;
 	}
+
+	/* LAYOUTCOMMIT does not require any serialization */
+	mutex_unlock(&ls->ls_mutex);
 
 	if (new_size > i_size_read(inode)) {
 		lcp->lc_size_chg = 1;

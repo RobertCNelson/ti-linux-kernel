@@ -92,9 +92,6 @@
 #include "fsnotify.h"
 
 struct srcu_struct fsnotify_mark_srcu;
-static DEFINE_SPINLOCK(destroy_lock);
-static LIST_HEAD(destroy_list);
-static DECLARE_WAIT_QUEUE_HEAD(destroy_waitq);
 
 void fsnotify_get_mark(struct fsnotify_mark *mark)
 {
@@ -109,6 +106,7 @@ void fsnotify_put_mark(struct fsnotify_mark *mark)
 		mark->free_mark(mark);
 	}
 }
+EXPORT_SYMBOL_GPL(fsnotify_put_mark);
 
 /* Calculate mask of events for a list of marks */
 u32 fsnotify_recalc_mask(struct hlist_head *head)
@@ -168,10 +166,19 @@ void fsnotify_detach_mark(struct fsnotify_mark *mark)
 	atomic_dec(&group->num_marks);
 }
 
+static void
+fsnotify_mark_free_rcu(struct rcu_head *rcu)
+{
+	struct fsnotify_mark	*mark;
+
+	mark = container_of(rcu, struct fsnotify_mark, g_rcu);
+	fsnotify_put_mark(mark);
+}
+
 /*
- * Free fsnotify mark. The freeing is actually happening from a kthread which
- * first waits for srcu period end. Caller must have a reference to the mark
- * or be protected by fsnotify_mark_srcu.
+ * Free fsnotify mark. The freeing is actually happening from a call_srcu
+ * callback. Caller must have a reference to the mark or be protected by
+ * fsnotify_mark_srcu.
  */
 void fsnotify_free_mark(struct fsnotify_mark *mark)
 {
@@ -186,10 +193,7 @@ void fsnotify_free_mark(struct fsnotify_mark *mark)
 	mark->flags &= ~FSNOTIFY_MARK_FLAG_ALIVE;
 	spin_unlock(&mark->lock);
 
-	spin_lock(&destroy_lock);
-	list_add(&mark->g_list, &destroy_list);
-	spin_unlock(&destroy_lock);
-	wake_up(&destroy_waitq);
+	call_srcu(&fsnotify_mark_srcu, &mark->g_rcu, fsnotify_mark_free_rcu);
 
 	/*
 	 * Some groups like to know that marks are being freed.  This is a
@@ -208,6 +212,7 @@ void fsnotify_destroy_mark(struct fsnotify_mark *mark,
 	mutex_unlock(&group->mark_mutex);
 	fsnotify_free_mark(mark);
 }
+EXPORT_SYMBOL_GPL(fsnotify_destroy_mark);
 
 void fsnotify_destroy_marks(struct hlist_head *head, spinlock_t *lock)
 {
@@ -385,11 +390,7 @@ err:
 
 	spin_unlock(&mark->lock);
 
-	spin_lock(&destroy_lock);
-	list_add(&mark->g_list, &destroy_list);
-	spin_unlock(&destroy_lock);
-	wake_up(&destroy_waitq);
-
+	call_srcu(&fsnotify_mark_srcu, &mark->g_rcu, fsnotify_mark_free_rcu);
 	return ret;
 }
 
@@ -402,6 +403,7 @@ int fsnotify_add_mark(struct fsnotify_mark *mark, struct fsnotify_group *group,
 	mutex_unlock(&group->mark_mutex);
 	return ret;
 }
+EXPORT_SYMBOL_GPL(fsnotify_add_mark);
 
 /*
  * Given a list of marks, find the mark associated with given group. If found
@@ -492,40 +494,4 @@ void fsnotify_init_mark(struct fsnotify_mark *mark,
 	atomic_set(&mark->refcnt, 1);
 	mark->free_mark = free_mark;
 }
-
-static int fsnotify_mark_destroy(void *ignored)
-{
-	struct fsnotify_mark *mark, *next;
-	struct list_head private_destroy_list;
-
-	for (;;) {
-		spin_lock(&destroy_lock);
-		/* exchange the list head */
-		list_replace_init(&destroy_list, &private_destroy_list);
-		spin_unlock(&destroy_lock);
-
-		synchronize_srcu(&fsnotify_mark_srcu);
-
-		list_for_each_entry_safe(mark, next, &private_destroy_list, g_list) {
-			list_del_init(&mark->g_list);
-			fsnotify_put_mark(mark);
-		}
-
-		wait_event_interruptible(destroy_waitq, !list_empty(&destroy_list));
-	}
-
-	return 0;
-}
-
-static int __init fsnotify_mark_init(void)
-{
-	struct task_struct *thread;
-
-	thread = kthread_run(fsnotify_mark_destroy, NULL,
-			     "fsnotify_mark");
-	if (IS_ERR(thread))
-		panic("unable to start fsnotify mark destruction thread.");
-
-	return 0;
-}
-device_initcall(fsnotify_mark_init);
+EXPORT_SYMBOL_GPL(fsnotify_init_mark);
