@@ -491,7 +491,7 @@ void __init omap_init_time(void)
 			2, "timer_sys_ck", NULL, false);
 
 	if (of_have_populated_dt())
-		clocksource_of_init();
+		clocksource_probe();
 }
 
 #if defined(CONFIG_ARCH_OMAP3) || defined(CONFIG_SOC_AM43XX)
@@ -521,7 +521,7 @@ static void __init omap4_sync32k_timer_init(void)
 void __init omap4_local_timer_init(void)
 {
 	omap4_sync32k_timer_init();
-	clocksource_of_init();
+	clocksource_probe();
 }
 #endif
 
@@ -645,7 +645,7 @@ void __init omap5_realtime_timer_init(void)
 	omap4_sync32k_timer_init();
 	realtime_counter_init();
 
-	clocksource_of_init();
+	clocksource_probe();
 }
 #endif /* CONFIG_SOC_OMAP5 || CONFIG_SOC_DRA7XX */
 
