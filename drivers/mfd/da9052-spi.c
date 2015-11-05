@@ -82,7 +82,6 @@ static struct spi_driver da9052_spi_driver = {
 	.id_table = da9052_spi_id,
 	.driver = {
 		.name = "da9052",
-		.owner = THIS_MODULE,
 	},
 };
 
