@@ -1030,8 +1030,7 @@ static int __inject_extcall(struct kvm_vcpu *vcpu, struct kvm_s390_irq *irq)
 				   src_id, 0);
 
 	/* sending vcpu invalid */
-	if (src_id >= KVM_MAX_VCPUS ||
-	    kvm_get_vcpu(vcpu->kvm, src_id) == NULL)
+	if (kvm_lookup_vcpu(vcpu->kvm, src_id) == NULL)
 		return -EINVAL;
 
 	if (sclp.has_sigpif)
@@ -1111,7 +1110,7 @@ static int __inject_sigp_emergency(struct kvm_vcpu *vcpu,
 				   irq->u.emerg.code, 0);
 
 	/* sending vcpu invalid */
-	if (irq->u.emerg.code >= KVM_MAX_VCPUS)
+	if (kvm_lookup_vcpu(vcpu->kvm, irq->u.emerg.code) == NULL)
 		return -EINVAL;
 
 	set_bit(irq->u.emerg.code, li->sigp_emerg_pending);
