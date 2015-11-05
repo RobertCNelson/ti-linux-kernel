@@ -3561,7 +3561,7 @@ int hci_reset_dev(struct hci_dev *hdev)
 	if (!skb)
 		return -ENOMEM;
 
-	bt_cb(skb)->pkt_type = HCI_EVENT_PKT;
+	hci_skb_pkt_type(skb) = HCI_EVENT_PKT;
 	memcpy(skb_put(skb, 3), hw_err, 3);
 
 	/* Send Hardware Error to upper stack */
@@ -3578,9 +3578,9 @@ int hci_recv_frame(struct hci_dev *hdev, struct sk_buff *skb)
 		return -ENXIO;
 	}
 
-	if (bt_cb(skb)->pkt_type != HCI_EVENT_PKT &&
-	    bt_cb(skb)->pkt_type != HCI_ACLDATA_PKT &&
-	    bt_cb(skb)->pkt_type != HCI_SCODATA_PKT) {
+	if (hci_skb_pkt_type(skb) != HCI_EVENT_PKT &&
+	    hci_skb_pkt_type(skb) != HCI_ACLDATA_PKT &&
+	    hci_skb_pkt_type(skb) != HCI_SCODATA_PKT) {
 		kfree_skb(skb);
 		return -EINVAL;
 	}
@@ -3602,7 +3602,7 @@ EXPORT_SYMBOL(hci_recv_frame);
 int hci_recv_diag(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	/* Mark as diagnostic packet */
-	bt_cb(skb)->pkt_type = HCI_DIAG_PKT;
+	hci_skb_pkt_type(skb) = HCI_DIAG_PKT;
 
 	/* Time stamp */
 	__net_timestamp(skb);
@@ -3644,7 +3644,8 @@ static void hci_send_frame(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	int err;
 
-	BT_DBG("%s type %d len %d", hdev->name, bt_cb(skb)->pkt_type, skb->len);
+	BT_DBG("%s type %d len %d", hdev->name, hci_skb_pkt_type(skb),
+	       skb->len);
 
 	/* Time stamp */
 	__net_timestamp(skb);
@@ -3757,7 +3758,7 @@ static void hci_queue_acl(struct hci_chan *chan, struct sk_buff_head *queue,
 	skb->len = skb_headlen(skb);
 	skb->data_len = 0;
 
-	bt_cb(skb)->pkt_type = HCI_ACLDATA_PKT;
+	hci_skb_pkt_type(skb) = HCI_ACLDATA_PKT;
 
 	switch (hdev->dev_type) {
 	case HCI_BREDR:
@@ -3797,7 +3798,7 @@ static void hci_queue_acl(struct hci_chan *chan, struct sk_buff_head *queue,
 		do {
 			skb = list; list = list->next;
 
-			bt_cb(skb)->pkt_type = HCI_ACLDATA_PKT;
+			hci_skb_pkt_type(skb) = HCI_ACLDATA_PKT;
 			hci_add_acl_hdr(skb, conn->handle, flags);
 
 			BT_DBG("%s frag %p len %d", hdev->name, skb, skb->len);
@@ -3835,7 +3836,7 @@ void hci_send_sco(struct hci_conn *conn, struct sk_buff *skb)
 	skb_reset_transport_header(skb);
 	memcpy(skb_transport_header(skb), &hdr, HCI_SCO_HDR_SIZE);
 
-	bt_cb(skb)->pkt_type = HCI_SCODATA_PKT;
+	hci_skb_pkt_type(skb) = HCI_SCODATA_PKT;
 
 	skb_queue_tail(&conn->data_q, skb);
 	queue_work(hdev->workqueue, &hdev->tx_work);
@@ -4494,7 +4495,7 @@ static void hci_rx_work(struct work_struct *work)
 
 		if (test_bit(HCI_INIT, &hdev->flags)) {
 			/* Don't process data packets in this states. */
-			switch (bt_cb(skb)->pkt_type) {
+			switch (hci_skb_pkt_type(skb)) {
 			case HCI_ACLDATA_PKT:
 			case HCI_SCODATA_PKT:
 				kfree_skb(skb);
@@ -4503,7 +4504,7 @@ static void hci_rx_work(struct work_struct *work)
 		}
 
 		/* Process frame */
-		switch (bt_cb(skb)->pkt_type) {
+		switch (hci_skb_pkt_type(skb)) {
 		case HCI_EVENT_PKT:
 			BT_DBG("%s Event packet", hdev->name);
 			hci_event_packet(hdev, skb);
