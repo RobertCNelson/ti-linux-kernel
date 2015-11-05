@@ -508,12 +508,6 @@ static void le_setup(struct hci_request *req)
 	/* Read LE Supported States */
 	hci_req_add(req, HCI_OP_LE_READ_SUPPORTED_STATES, 0, NULL);
 
-	/* Read LE White List Size */
-	hci_req_add(req, HCI_OP_LE_READ_WHITE_LIST_SIZE, 0, NULL);
-
-	/* Clear LE White List */
-	hci_req_add(req, HCI_OP_LE_CLEAR_WHITE_LIST, 0, NULL);
-
 	/* LE-only controllers have LE implicitly enabled */
 	if (!lmp_bredr_capable(hdev))
 		hci_dev_set_flag(hdev, HCI_LE_ENABLED);
@@ -537,20 +531,30 @@ static void hci_setup_event_mask(struct hci_request *req)
 
 	if (lmp_bredr_capable(hdev)) {
 		events[4] |= 0x01; /* Flow Specification Complete */
-		events[4] |= 0x02; /* Inquiry Result with RSSI */
-		events[4] |= 0x04; /* Read Remote Extended Features Complete */
-		events[5] |= 0x08; /* Synchronous Connection Complete */
-		events[5] |= 0x10; /* Synchronous Connection Changed */
 	} else {
 		/* Use a different default for LE-only devices */
 		memset(events, 0, sizeof(events));
-		events[0] |= 0x10; /* Disconnection Complete */
-		events[1] |= 0x08; /* Read Remote Version Information Complete */
 		events[1] |= 0x20; /* Command Complete */
 		events[1] |= 0x40; /* Command Status */
 		events[1] |= 0x80; /* Hardware Error */
-		events[2] |= 0x04; /* Number of Completed Packets */
-		events[3] |= 0x02; /* Data Buffer Overflow */
+
+		/* If the controller supports the Disconnect command, enable
+		 * the corresponding event. In addition enable packet flow
+		 * control related events.
+		 */
+		if (hdev->commands[0] & 0x20) {
+			events[0] |= 0x10; /* Disconnection Complete */
+			events[2] |= 0x04; /* Number of Completed Packets */
+			events[3] |= 0x02; /* Data Buffer Overflow */
+		}
+
+		/* If the controller supports the Read Remote Version
+		 * Information command, enable the corresponding event.
+		 */
+		if (hdev->commands[2] & 0x80)
+			events[1] |= 0x08; /* Read Remote Version Information
+					    * Complete
+					    */
 
 		if (hdev->le_features[0] & HCI_LE_ENCRYPTION) {
 			events[0] |= 0x80; /* Encryption Change */
@@ -558,8 +562,17 @@ static void hci_setup_event_mask(struct hci_request *req)
 		}
 	}
 
-	if (lmp_inq_rssi_capable(hdev))
+	if (lmp_inq_rssi_capable(hdev) ||
+	    test_bit(HCI_QUIRK_FIXUP_INQUIRY_MODE, &hdev->quirks))
 		events[4] |= 0x02; /* Inquiry Result with RSSI */
+
+	if (lmp_ext_feat_capable(hdev))
+		events[4] |= 0x04; /* Read Remote Extended Features Complete */
+
+	if (lmp_esco_capable(hdev)) {
+		events[5] |= 0x08; /* Synchronous Connection Complete */
+		events[5] |= 0x10; /* Synchronous Connection Changed */
+	}
 
 	if (lmp_sniffsubr_capable(hdev))
 		events[5] |= 0x20; /* Sniff Subrating */
@@ -783,7 +796,6 @@ static void hci_init3_req(struct hci_request *req, unsigned long opt)
 		u8 events[8];
 
 		memset(events, 0, sizeof(events));
-		events[0] = 0x0f;
 
 		if (hdev->le_features[0] & HCI_LE_ENCRYPTION)
 			events[0] |= 0x10;	/* LE Long Term Key Request */
@@ -810,6 +822,34 @@ static void hci_init3_req(struct hci_request *req, unsigned long opt)
 						 * Report
 						 */
 
+		/* If the controller supports the LE Set Scan Enable command,
+		 * enable the corresponding advertising report event.
+		 */
+		if (hdev->commands[26] & 0x08)
+			events[0] |= 0x02;	/* LE Advertising Report */
+
+		/* If the controller supports the LE Create Connection
+		 * command, enable the corresponding event.
+		 */
+		if (hdev->commands[26] & 0x10)
+			events[0] |= 0x01;	/* LE Connection Complete */
+
+		/* If the controller supports the LE Connection Update
+		 * command, enable the corresponding event.
+		 */
+		if (hdev->commands[27] & 0x04)
+			events[0] |= 0x04;	/* LE Connection Update
+						 * Complete
+						 */
+
+		/* If the controller supports the LE Read Remote Used Features
+		 * command, enable the corresponding event.
+		 */
+		if (hdev->commands[27] & 0x20)
+			events[0] |= 0x08;	/* LE Read Remote Used
+						 * Features Complete
+						 */
+
 		/* If the controller supports the LE Read Local P-256
 		 * Public Key command, enable the corresponding event.
 		 */
@@ -830,6 +870,17 @@ static void hci_init3_req(struct hci_request *req, unsigned long opt)
 		if (hdev->commands[25] & 0x40) {
 			/* Read LE Advertising Channel TX Power */
 			hci_req_add(req, HCI_OP_LE_READ_ADV_TX_POWER, 0, NULL);
+		}
+
+		if (hdev->commands[26] & 0x40) {
+			/* Read LE White List Size */
+			hci_req_add(req, HCI_OP_LE_READ_WHITE_LIST_SIZE,
+				    0, NULL);
+		}
+
+		if (hdev->commands[26] & 0x80) {
+			/* Clear LE White List */
+			hci_req_add(req, HCI_OP_LE_CLEAR_WHITE_LIST, 0, NULL);
 		}
 
 		if (hdev->le_features[0] & HCI_LE_DATA_LEN_EXT) {
