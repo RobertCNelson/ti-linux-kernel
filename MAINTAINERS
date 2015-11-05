@@ -6317,6 +6317,14 @@ F:	drivers/nvdimm/pmem.c
 F:	include/linux/pmem.h
 F:	arch/*/include/asm/pmem.h
 
+LIGHTNVM PLATFORM SUPPORT
+M:	Matias Bjorling <mb@lightnvm.io>
+W:	http://github/OpenChannelSSD
+S:	Maintained
+F:	drivers/lightnvm/
+F:	include/linux/lightnvm.h
+F:	include/uapi/linux/lightnvm.h
+
 LINUX FOR IBM pSERIES (RS/6000)
 M:	Paul Mackerras <paulus@au.ibm.com>
 W:	http://www.ibm.com/linux/ltc/projects/ppc
@@ -7524,11 +7532,13 @@ F:	drivers/video/fbdev/riva/
 F:	drivers/video/fbdev/nvidia/
 
 NVM EXPRESS DRIVER
-M:	Matthew Wilcox <willy@linux.intel.com>
+M:	Keith Busch <keith.busch@intel.com>
+M:	Jens Axboe <axboe@fb.com>
 L:	linux-nvme@lists.infradead.org
-T:	git git://git.infradead.org/users/willy/linux-nvme.git
+T:	git git://git.kernel.org/pub/scm/linux/kernel/git/axboe/linux-block.git
+W:	https://kernel.googlesource.com/pub/scm/linux/kernel/git/axboe/linux-block/
 S:	Supported
-F:	drivers/block/nvme*
+F:	drivers/nvme/host/
 F:	include/linux/nvme.h
 
 NVMEM FRAMEWORK
