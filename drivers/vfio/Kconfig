@@ -48,3 +48,4 @@ menuconfig VFIO_NOIOMMU
 
 source "drivers/vfio/pci/Kconfig"
 source "drivers/vfio/platform/Kconfig"
+source "virt/lib/Kconfig"
