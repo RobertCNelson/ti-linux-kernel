@@ -500,13 +500,14 @@ struct clk *clk_register_fixed_factor(struct device *dev, const char *name,
  *
  * Clock with adjustable fractional divider affecting its output frequency.
  */
-
 struct clk_fractional_divider {
 	struct clk_hw	hw;
 	void __iomem	*reg;
 	u8		mshift;
+	u8		mwidth;
 	u32		mmask;
 	u8		nshift;
+	u8		nwidth;
 	u32		nmask;
 	u8		flags;
 	spinlock_t	*lock;
@@ -552,13 +553,6 @@ struct clk_multiplier {
 #define CLK_MULTIPLIER_ROUND_CLOSEST	BIT(1)
 
 extern const struct clk_ops clk_multiplier_ops;
-
-struct clk *clk_register_multiplier(struct device *dev, const char *name,
-				    const char *parent_name,
-				    unsigned long flags,
-				    void __iomem *reg, u8 shift, u8 width,
-				    u8 clk_mult_flags, spinlock_t *lock);
-void clk_unregister_multiplier(struct clk *clk);
 
 /***
  * struct clk_composite - aggregate clock of mux, divider and gate clocks
@@ -648,7 +642,7 @@ void clk_unregister(struct clk *clk);
 void devm_clk_unregister(struct device *dev, struct clk *clk);
 
 /* helper functions */
-const char *__clk_get_name(struct clk *clk);
+const char *__clk_get_name(const struct clk *clk);
 const char *clk_hw_get_name(const struct clk_hw *hw);
 struct clk_hw *__clk_get_hw(struct clk *clk);
 unsigned int clk_hw_get_num_parents(const struct clk_hw *hw);
@@ -660,6 +654,7 @@ unsigned long clk_hw_get_rate(const struct clk_hw *hw);
 unsigned long __clk_get_flags(struct clk *clk);
 unsigned long clk_hw_get_flags(const struct clk_hw *hw);
 bool clk_hw_is_prepared(const struct clk_hw *hw);
+bool clk_hw_is_enabled(const struct clk_hw *hw);
 bool __clk_is_enabled(struct clk *clk);
 struct clk *__clk_lookup(const char *name);
 int __clk_mux_determine_rate(struct clk_hw *hw,
@@ -731,6 +726,15 @@ static inline struct clk *of_clk_src_onecell_get(
 	struct of_phandle_args *clkspec, void *data)
 {
 	return ERR_PTR(-ENOENT);
+}
+static inline int of_clk_get_parent_count(struct device_node *np)
+{
+	return 0;
+}
+static inline int of_clk_parent_fill(struct device_node *np,
+				     const char **parents, unsigned int size)
+{
+	return 0;
 }
 static inline const char *of_clk_get_parent_name(struct device_node *np,
 						 int index)
