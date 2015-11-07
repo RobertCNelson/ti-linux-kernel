@@ -32,6 +32,7 @@ xfs--clean-up-inode-lockdep-annotations
 mm-slub-move-slab-initialization-into-irq-enabled-region.patch
 arm64-convert-patch_lock-to-raw-lock.patch
 arm64-replace-read_lock-to-rcu-lock-in-call_break_hook.patch
+bpf-convert-hashtab-lock-to-raw-lock.patch
 
 ############################################################
 # Stuff broken upstream, patches submitted
@@ -48,6 +49,8 @@ rfc-arm-smp-__cpu_disable-fix-sleeping-function-called-from-invalid-context.patc
 ############################################################
 # Stuff broken upstream, need to be sent
 ############################################################
+
+rtmutex--Handle-non-enqueued-waiters-gracefully
 
 ############################################################
 # Submitted on LKML
