@@ -39,4 +39,6 @@ static inline void richacl_fix_xattr_to_user(void *value, size_t size)
 }
 #endif
 
+extern struct xattr_handler richacl_xattr_handler;
+
 #endif /* __RICHACL_XATTR_H */
