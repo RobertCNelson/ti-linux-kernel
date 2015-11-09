@@ -254,3 +254,73 @@ richacl_chmod(struct inode *inode, umode_t mode)
 	return retval;
 }
 EXPORT_SYMBOL(richacl_chmod);
+
+/*
+ * richacl_inherit_inode  -  compute inherited acl and file mode
+ * @dir_acl:	acl of the containing directory
+ * @mode_p:	mode of the new inode
+ *
+ * The file permission bits in @mode_p must be set to the create mode by the
+ * caller.
+ *
+ * If there is an inheritable acl, the maximum permissions that the acl grants
+ * are computed and the file masks of the new acl are set accordingly.
+ */
+static struct richacl *
+richacl_inherit_inode(const struct richacl *dir_acl, umode_t *mode_p)
+{
+	struct richacl *acl;
+	umode_t mode = *mode_p;
+
+	acl = richacl_inherit(dir_acl, S_ISDIR(mode));
+	if (acl) {
+		if (richacl_equiv_mode(acl, &mode) == 0) {
+			*mode_p &= mode;
+			richacl_put(acl);
+			acl = NULL;
+		} else {
+			richacl_compute_max_masks(acl);
+			/*
+			 * Ensure that the acl will not grant any permissions
+			 * beyond the create mode.
+			 */
+			acl->a_flags |= RICHACL_MASKED;
+			acl->a_owner_mask &=
+				richacl_mode_to_mask(mode >> 6);
+			acl->a_group_mask &=
+				richacl_mode_to_mask(mode >> 3);
+			acl->a_other_mask &=
+				richacl_mode_to_mask(mode);
+		}
+	} else
+		*mode_p &= ~current_umask();
+
+	return acl;
+}
+
+/**
+ * richacl_create  -  filesystem create helper
+ * @mode_p:	mode of the new inode
+ * @dir:	containing directory
+ *
+ * Compute the inherited acl for a new inode.  If there is no acl to inherit,
+ * apply the umask.  Use when creating a new inode on a richacl enabled file
+ * system.
+ */
+struct richacl *richacl_create(umode_t *mode_p, struct inode *dir)
+{
+	struct richacl *dir_acl, *acl = NULL;
+
+	if (S_ISLNK(*mode_p))
+		return NULL;
+	dir_acl = get_richacl(dir);
+	if (dir_acl) {
+		if (IS_ERR(dir_acl))
+			return dir_acl;
+		acl = richacl_inherit_inode(dir_acl, mode_p);
+		richacl_put(dir_acl);
+	} else
+		*mode_p &= ~current_umask();
+	return acl;
+}
+EXPORT_SYMBOL_GPL(richacl_create);
