@@ -96,4 +96,48 @@
 	RICHACE_WRITE_OWNER |					\
 	RICHACE_SYNCHRONIZE )
 
+/*
+ * The POSIX permissions are supersets of the following richacl permissions:
+ *
+ *  - MAY_READ maps to READ_DATA or LIST_DIRECTORY, depending on the type
+ *    of the file system object.
+ *
+ *  - MAY_WRITE maps to WRITE_DATA or RICHACE_APPEND_DATA for files, and to
+ *    ADD_FILE, RICHACE_ADD_SUBDIRECTORY, or RICHACE_DELETE_CHILD for directories.
+ *
+ *  - MAY_EXECUTE maps to RICHACE_EXECUTE.
+ *
+ *  (Some of these richacl permissions have the same bit values.)
+ */
+#define RICHACE_POSIX_MODE_READ (			\
+		RICHACE_READ_DATA |			\
+		RICHACE_LIST_DIRECTORY)
+#define RICHACE_POSIX_MODE_WRITE (			\
+		RICHACE_WRITE_DATA |			\
+		RICHACE_ADD_FILE |			\
+		RICHACE_APPEND_DATA |			\
+		RICHACE_ADD_SUBDIRECTORY |		\
+		RICHACE_DELETE_CHILD)
+#define RICHACE_POSIX_MODE_EXEC RICHACE_EXECUTE
+#define RICHACE_POSIX_MODE_ALL (			\
+		RICHACE_POSIX_MODE_READ |		\
+		RICHACE_POSIX_MODE_WRITE |		\
+		RICHACE_POSIX_MODE_EXEC)
+
+/*
+ * These permissions are always allowed no matter what the acl says.
+ */
+#define RICHACE_POSIX_ALWAYS_ALLOWED (			\
+		RICHACE_SYNCHRONIZE |			\
+		RICHACE_READ_ATTRIBUTES |		\
+		RICHACE_READ_ACL)
+
+/*
+ * The owner is implicitly granted these permissions under POSIX.
+ */
+#define RICHACE_POSIX_OWNER_ALLOWED (			\
+		RICHACE_WRITE_ATTRIBUTES |		\
+		RICHACE_WRITE_OWNER |			\
+		RICHACE_WRITE_ACL)
+
 #endif /* __UAPI_RICHACL_H */
