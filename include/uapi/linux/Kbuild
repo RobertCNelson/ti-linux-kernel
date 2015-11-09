@@ -350,6 +350,7 @@ header-y += reboot.h
 header-y += reiserfs_fs.h
 header-y += reiserfs_xattr.h
 header-y += resource.h
+header-y += richacl.h
 header-y += rfkill.h
 header-y += romfs_fs.h
 header-y += rose.h
