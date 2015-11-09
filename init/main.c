@@ -941,7 +941,7 @@ static int __ref kernel_init(void *unused)
 	system_state = SYSTEM_RUNNING;
 	numa_default_policy();
 
-	flush_delayed_fput();
+	fput_global_flush();
 
 	if (ramdisk_execute_command) {
 		ret = run_init_process(ramdisk_execute_command);
