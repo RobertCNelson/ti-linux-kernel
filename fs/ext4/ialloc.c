@@ -27,6 +27,7 @@
 #include "ext4_jbd2.h"
 #include "xattr.h"
 #include "acl.h"
+#include "richacl.h"
 
 #include <trace/events/ext4.h>
 
@@ -727,6 +728,14 @@ out:
 	return ret;
 }
 
+static inline int
+ext4_new_acl(handle_t *handle, struct inode *inode, struct inode *dir)
+{
+	if (IS_RICHACL(dir))
+		return ext4_init_richacl(handle, inode, dir);
+	return ext4_init_acl(handle, inode, dir);
+}
+
 /*
  * There are two policies for allocating an inode.  If the new inode is
  * a directory, then a forward search is made for a block group with both
@@ -1084,7 +1093,7 @@ got:
 	if (err)
 		goto fail_drop;
 
-	err = ext4_init_acl(handle, inode, dir);
+	err = ext4_new_acl(handle, inode, dir);
 	if (err)
 		goto fail_free_drop;
 
