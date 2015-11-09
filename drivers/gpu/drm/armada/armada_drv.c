@@ -11,6 +11,7 @@
 #include <linux/of_graph.h>
 #include <drm/drmP.h>
 #include <drm/drm_crtc_helper.h>
+#include <drm/drm_of.h>
 #include "armada_crtc.h"
 #include "armada_drm.h"
 #include "armada_gem.h"
@@ -149,26 +150,23 @@ static int armada_drm_unload(struct drm_device *dev)
 }
 
 /* These are called under the vbl_lock. */
-static int armada_drm_enable_vblank(struct drm_device *dev, int crtc)
+static int armada_drm_enable_vblank(struct drm_device *dev, unsigned int pipe)
 {
 	struct armada_private *priv = dev->dev_private;
-	armada_drm_crtc_enable_irq(priv->dcrtc[crtc], VSYNC_IRQ_ENA);
+	armada_drm_crtc_enable_irq(priv->dcrtc[pipe], VSYNC_IRQ_ENA);
 	return 0;
 }
 
-static void armada_drm_disable_vblank(struct drm_device *dev, int crtc)
+static void armada_drm_disable_vblank(struct drm_device *dev, unsigned int pipe)
 {
 	struct armada_private *priv = dev->dev_private;
-	armada_drm_crtc_disable_irq(priv->dcrtc[crtc], VSYNC_IRQ_ENA);
+	armada_drm_crtc_disable_irq(priv->dcrtc[pipe], VSYNC_IRQ_ENA);
 }
 
 static struct drm_ioctl_desc armada_ioctls[] = {
-	DRM_IOCTL_DEF_DRV(ARMADA_GEM_CREATE, armada_gem_create_ioctl,
-		DRM_UNLOCKED),
-	DRM_IOCTL_DEF_DRV(ARMADA_GEM_MMAP, armada_gem_mmap_ioctl,
-		DRM_UNLOCKED),
-	DRM_IOCTL_DEF_DRV(ARMADA_GEM_PWRITE, armada_gem_pwrite_ioctl,
-		DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(ARMADA_GEM_CREATE, armada_gem_create_ioctl,0),
+	DRM_IOCTL_DEF_DRV(ARMADA_GEM_MMAP, armada_gem_mmap_ioctl, 0),
+	DRM_IOCTL_DEF_DRV(ARMADA_GEM_PWRITE, armada_gem_pwrite_ioctl, 0),
 };
 
 static void armada_drm_lastclose(struct drm_device *dev)
@@ -195,7 +193,7 @@ static struct drm_driver armada_drm_driver = {
 	.lastclose		= armada_drm_lastclose,
 	.unload			= armada_drm_unload,
 	.set_busid		= drm_platform_set_busid,
-	.get_vblank_counter	= drm_vblank_count,
+	.get_vblank_counter	= drm_vblank_no_hw_counter,
 	.enable_vblank		= armada_drm_enable_vblank,
 	.disable_vblank		= armada_drm_disable_vblank,
 #ifdef CONFIG_DEBUG_FS
@@ -265,43 +263,29 @@ static void armada_add_endpoints(struct device *dev,
 	}
 }
 
-static int armada_drm_find_components(struct device *dev,
-	struct component_match **match)
+static const struct component_master_ops armada_master_ops = {
+	.bind = armada_drm_bind,
+	.unbind = armada_drm_unbind,
+};
+
+static int armada_drm_probe(struct platform_device *pdev)
 {
-	struct device_node *port;
-	int i;
+	struct component_match *match = NULL;
+	struct device *dev = &pdev->dev;
+	int ret;
 
-	if (dev->of_node) {
-		struct device_node *np = dev->of_node;
+	ret = drm_of_component_probe(dev, compare_dev_name, &armada_master_ops);
+	if (ret != -EINVAL)
+		return ret;
 
-		for (i = 0; ; i++) {
-			port = of_parse_phandle(np, "ports", i);
-			if (!port)
-				break;
-
-			component_match_add(dev, match, compare_of, port);
-			of_node_put(port);
-		}
-
-		if (i == 0) {
-			dev_err(dev, "missing 'ports' property\n");
-			return -ENODEV;
-		}
-
-		for (i = 0; ; i++) {
-			port = of_parse_phandle(np, "ports", i);
-			if (!port)
-				break;
-
-			armada_add_endpoints(dev, match, port);
-			of_node_put(port);
-		}
-	} else if (dev->platform_data) {
+	if (dev->platform_data) {
 		char **devices = dev->platform_data;
+		struct device_node *port;
 		struct device *d;
+		int i;
 
 		for (i = 0; devices[i]; i++)
-			component_match_add(dev, match, compare_dev_name,
+			component_match_add(dev, &match, compare_dev_name,
 					    devices[i]);
 
 		if (i == 0) {
@@ -311,31 +295,14 @@ static int armada_drm_find_components(struct device *dev,
 
 		for (i = 0; devices[i]; i++) {
 			d = bus_find_device_by_name(&platform_bus_type, NULL,
-					devices[i]);
+						    devices[i]);
 			if (d && d->of_node) {
 				for_each_child_of_node(d->of_node, port)
-					armada_add_endpoints(dev, match, port);
+					armada_add_endpoints(dev, &match, port);
 			}
 			put_device(d);
 		}
 	}
-
-	return 0;
-}
-
-static const struct component_master_ops armada_master_ops = {
-	.bind = armada_drm_bind,
-	.unbind = armada_drm_unbind,
-};
-
-static int armada_drm_probe(struct platform_device *pdev)
-{
-	struct component_match *match = NULL;
-	int ret;
-
-	ret = armada_drm_find_components(&pdev->dev, &match);
-	if (ret < 0)
-		return ret;
 
 	return component_master_add_with_match(&pdev->dev, &armada_master_ops,
 					       match);
