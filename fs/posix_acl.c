@@ -37,7 +37,7 @@ struct posix_acl *get_cached_acl(struct inode *inode, int type)
 {
 	struct base_acl **p = acl_by_type(inode, type);
 	struct base_acl *acl = ACCESS_ONCE(*p);
-	if (acl) {
+	if (acl && IS_POSIXACL(inode)) {
 		spin_lock(&inode->i_lock);
 		acl = *p;
 		if (acl != ACL_NOT_CACHED)
