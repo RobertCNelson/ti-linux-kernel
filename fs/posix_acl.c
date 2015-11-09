@@ -100,12 +100,12 @@ struct posix_acl *get_acl(struct inode *inode, int type)
 {
 	struct posix_acl *acl;
 
+	if (!IS_POSIXACL(inode))
+		return NULL;
+
 	acl = get_cached_acl(inode, type);
 	if (acl != ACL_NOT_CACHED)
 		return acl;
-
-	if (!IS_POSIXACL(inode))
-		return NULL;
 
 	/*
 	 * A filesystem can force a ACL callback by just never filling the
