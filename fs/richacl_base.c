@@ -366,7 +366,8 @@ __richacl_chmod(struct richacl *acl, umode_t mode)
 	    acl->a_group_mask == group_mask &&
 	    acl->a_other_mask == other_mask &&
 	    (acl->a_flags & RICHACL_MASKED) &&
-	    (acl->a_flags & RICHACL_WRITE_THROUGH))
+	    (acl->a_flags & RICHACL_WRITE_THROUGH) &&
+	    (!richacl_is_auto_inherit(acl) || richacl_is_protected(acl)))
 		return acl;
 
 	clone = richacl_clone(acl, GFP_KERNEL);
@@ -378,6 +379,8 @@ __richacl_chmod(struct richacl *acl, umode_t mode)
 	clone->a_owner_mask = owner_mask;
 	clone->a_group_mask = group_mask;
 	clone->a_other_mask = other_mask;
+	if (richacl_is_auto_inherit(clone))
+		clone->a_flags |= RICHACL_PROTECTED;
 
 	return clone;
 }
@@ -550,6 +553,11 @@ richacl_inherit(const struct richacl *dir_acl, int isdir)
 			ace->e_mask &= ~RICHACE_DELETE_CHILD;
 			ace++;
 		}
+	}
+	if (richacl_is_auto_inherit(dir_acl)) {
+		acl->a_flags = RICHACL_AUTO_INHERIT;
+		richacl_for_each_entry(ace, acl)
+			ace->e_flags |= RICHACE_INHERITED_ACE;
 	}
 
 	return acl;

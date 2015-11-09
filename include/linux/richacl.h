@@ -76,6 +76,18 @@ extern void set_cached_richacl(struct inode *, struct richacl *);
 extern void forget_cached_richacl(struct inode *);
 extern struct richacl *get_richacl(struct inode *);
 
+static inline int
+richacl_is_auto_inherit(const struct richacl *acl)
+{
+	return acl->a_flags & RICHACL_AUTO_INHERIT;
+}
+
+static inline int
+richacl_is_protected(const struct richacl *acl)
+{
+	return acl->a_flags & RICHACL_PROTECTED;
+}
+
 /**
  * richace_is_owner  -  check if @ace is an OWNER@ entry
  */
