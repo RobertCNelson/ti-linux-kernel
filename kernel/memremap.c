@@ -12,9 +12,11 @@
  */
 #include <linux/device.h>
 #include <linux/types.h>
+#include <linux/fs.h>
 #include <linux/io.h>
 #include <linux/mm.h>
 #include <linux/memory_hotplug.h>
+#include <linux/percpu-refcount.h>
 
 #ifndef ioremap_cache
 /* temporary while we convert existing ioremap_cache users to memremap */
@@ -124,9 +126,10 @@ void *devm_memremap(struct device *dev, resource_size_t offset,
 {
 	void **ptr, *addr;
 
-	ptr = devres_alloc(devm_memremap_release, sizeof(*ptr), GFP_KERNEL);
+	ptr = devres_alloc_node(devm_memremap_release, sizeof(*ptr), GFP_KERNEL,
+			dev_to_node(dev));
 	if (!ptr)
-		return NULL;
+		return ERR_PTR(-ENOMEM);
 
 	addr = memremap(offset, size, flags);
 	if (addr) {
@@ -141,26 +144,96 @@ EXPORT_SYMBOL(devm_memremap);
 
 void devm_memunmap(struct device *dev, void *addr)
 {
-	WARN_ON(devres_destroy(dev, devm_memremap_release, devm_memremap_match,
-			       addr));
-	memunmap(addr);
+	WARN_ON(devres_release(dev, devm_memremap_release,
+				devm_memremap_match, addr));
 }
 EXPORT_SYMBOL(devm_memunmap);
 
 #ifdef CONFIG_ZONE_DEVICE
 struct page_map {
 	struct resource res;
+	struct percpu_ref *ref;
 };
 
-static void devm_memremap_pages_release(struct device *dev, void *res)
+static unsigned long pfn_first(struct page_map *page_map)
 {
-	struct page_map *page_map = res;
+	const struct resource *res = &page_map->res;
+
+	return res->start >> PAGE_SHIFT;
+}
+
+static unsigned long pfn_end(struct page_map *page_map)
+{
+	const struct resource *res = &page_map->res;
+
+	return (res->start + resource_size(res)) >> PAGE_SHIFT;
+}
+
+#define for_each_device_pfn(pfn, map) \
+	for (pfn = pfn_first(map); pfn < pfn_end(map); pfn++)
+
+static void zone_device_revoke(struct device *dev, struct page_map *page_map)
+{
+	unsigned long pfn;
+	int retry = 3;
+	struct percpu_ref *ref = page_map->ref;
+	struct address_space *mapping_prev;
+
+	if (percpu_ref_tryget_live(ref)) {
+		dev_WARN(dev, "%s: page mapping is still live!\n", __func__);
+		percpu_ref_put(ref);
+	}
+
+ retry:
+	mapping_prev = NULL;
+	for_each_device_pfn(pfn, page_map) {
+		struct page *page = pfn_to_page(pfn);
+		struct address_space *mapping = page->mapping;
+		struct inode *inode = mapping ? mapping->host : NULL;
+
+		dev_WARN_ONCE(dev, atomic_read(&page->_count) < 1,
+				"%s: ZONE_DEVICE page was freed!\n", __func__);
+
+		/* See dax_account_mapping */
+		if (mapping) {
+			percpu_ref_put(ref);
+			page->mapping = NULL;
+		}
+
+		if (!mapping || !inode || mapping == mapping_prev) {
+			dev_WARN_ONCE(dev, atomic_read(&page->_count) > 1,
+					"%s: unexpected elevated page count pfn: %lx\n",
+					__func__, pfn);
+			continue;
+		}
+
+		unmap_mapping_range(mapping, 0, 0, 1);
+		mapping_prev = mapping;
+	}
+
+	/*
+	 * Straggling mappings may have been established immediately
+	 * after the percpu_ref was killed.
+	 */
+	if (!percpu_ref_is_zero(ref) && retry--)
+		goto retry;
+
+	if (!percpu_ref_is_zero(ref))
+		dev_warn(dev, "%s: not all references released\n", __func__);
+}
+
+static void devm_memremap_pages_release(struct device *dev, void *data)
+{
+	struct page_map *page_map = data;
+
+	zone_device_revoke(dev, page_map);
 
 	/* pages are dead and unused, undo the arch mapping */
 	arch_remove_memory(page_map->res.start, resource_size(&page_map->res));
 }
 
-void *devm_memremap_pages(struct device *dev, struct resource *res)
+void *devm_memremap_pages(struct device *dev, struct resource *res,
+		struct percpu_ref *ref)
 {
 	int is_ram = region_intersects(res->start, resource_size(res),
 			"System RAM");
@@ -176,16 +249,17 @@ void *devm_memremap_pages(struct device *dev, struct resource *res)
 	if (is_ram == REGION_INTERSECTS)
 		return __va(res->start);
 
-	page_map = devres_alloc(devm_memremap_pages_release,
-			sizeof(*page_map), GFP_KERNEL);
+	page_map = devres_alloc_node(devm_memremap_pages_release,
+			sizeof(*page_map), GFP_KERNEL, dev_to_node(dev));
 	if (!page_map)
 		return ERR_PTR(-ENOMEM);
 
 	memcpy(&page_map->res, res, sizeof(*res));
+	page_map->ref = ref;
 
 	nid = dev_to_node(dev);
 	if (nid < 0)
-		nid = 0;
+		nid = numa_mem_id();
 
 	error = arch_add_memory(nid, res->start, resource_size(res), true);
 	if (error) {
@@ -197,4 +271,22 @@ void *devm_memremap_pages(struct device *dev, struct resource *res)
 	return __va(res->start);
 }
 EXPORT_SYMBOL(devm_memremap_pages);
+
+static int page_map_match(struct device *dev, void *res, void *match_data)
+{
+	struct page_map *page_map = res;
+	resource_size_t phys = *(resource_size_t *) match_data;
+
+	return page_map->res.start == phys;
+}
+
+void devm_memunmap_pages(struct device *dev, void *addr)
+{
+	resource_size_t start = __pa(addr);
+
+	if (devres_release(dev, devm_memremap_pages_release, page_map_match,
+				&start) != 0)
+		dev_WARN(dev, "failed to find page map to release\n");
+}
+EXPORT_SYMBOL(devm_memunmap_pages);
 #endif /* CONFIG_ZONE_DEVICE */

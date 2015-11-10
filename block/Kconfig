@@ -111,6 +111,21 @@ config BLK_CMDLINE_PARSER
 
 	See Documentation/block/cmdline-partition.txt for more information.
 
+config BLK_DEV_DAX
+	bool "Block layer DAX support default"
+	depends on FS_DAX
+	help
+	  When DAX support is available (CONFIG_FS_DAX) raw block devices
+	  can also support direct userspace access to the storage capacity
+	  via MMAP(2) similar to a file on a DAX-enabled filesystem.
+	  However, the DAX I/O-path disables some standard I/O-statistics,
+	  and the MMAP(2) path has some functional differences due to
+	  bypassing the page cache.  The choice here can be overridden at
+	  run time via the BLKDAXSET ioctl.  If you are unsure if the DAX
+	  behavior is compatible with your environment, say N.  Otherwise
+	  DAX is a significantly faster way to access persistent memory
+	  from NVDIMM devices.
+
 menu "Partition Types"
 
 source "block/partitions/Kconfig"

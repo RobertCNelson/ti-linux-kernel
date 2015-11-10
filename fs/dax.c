@@ -28,6 +28,41 @@
 #include <linux/sched.h>
 #include <linux/uio.h>
 #include <linux/vmstat.h>
+#include <linux/sizes.h>
+
+static void __pmem *__dax_map_atomic(struct block_device *bdev, sector_t sector,
+		long size, pfn_t *pfn, long *len)
+{
+	long rc;
+	void __pmem *addr;
+	struct request_queue *q = bdev->bd_queue;
+
+	if (blk_queue_enter(q, GFP_NOWAIT) != 0)
+		return (void __pmem *) ERR_PTR(-EIO);
+	rc = bdev_direct_access(bdev, sector, &addr, pfn, size);
+	if (len)
+		*len = rc;
+	if (rc < 0) {
+		blk_queue_exit(q);
+		return (void __pmem *) ERR_PTR(rc);
+	}
+	return addr;
+}
+
+static void __pmem *dax_map_atomic(struct block_device *bdev, sector_t sector,
+		long size)
+{
+	pfn_t pfn;
+
+	return __dax_map_atomic(bdev, sector, size, &pfn, NULL);
+}
+
+static void dax_unmap_atomic(struct block_device *bdev, void __pmem *addr)
+{
+	if (IS_ERR(addr))
+		return;
+	blk_queue_exit(bdev->bd_queue);
+}
 
 /*
  * dax_clear_blocks() is called from within transaction context from XFS,
@@ -42,39 +77,28 @@ int dax_clear_blocks(struct inode *inode, sector_t block, long size)
 	might_sleep();
 	do {
 		void __pmem *addr;
-		unsigned long pfn;
-		long count;
+		long count, sz;
+		pfn_t pfn;
 
-		count = bdev_direct_access(bdev, sector, &addr, &pfn, size);
-		if (count < 0)
-			return count;
-		BUG_ON(size < count);
-		while (count > 0) {
-			unsigned pgsz = PAGE_SIZE - offset_in_page(addr);
-			if (pgsz > count)
-				pgsz = count;
-			clear_pmem(addr, pgsz);
-			addr += pgsz;
-			size -= pgsz;
-			count -= pgsz;
-			BUG_ON(pgsz & 511);
-			sector += pgsz / 512;
-			cond_resched();
-		}
+		sz = min_t(long, size, SZ_1M);
+		addr = __dax_map_atomic(bdev, sector, size, &pfn, &count);
+		if (IS_ERR(addr))
+			return PTR_ERR(addr);
+		if (count < sz)
+			sz = count;
+		clear_pmem(addr, sz);
+		addr += sz;
+		size -= sz;
+		BUG_ON(sz & 511);
+		sector += sz / 512;
+		dax_unmap_atomic(bdev, addr);
+		cond_resched();
 	} while (size);
 
 	wmb_pmem();
 	return 0;
 }
 EXPORT_SYMBOL_GPL(dax_clear_blocks);
-
-static long dax_get_addr(struct buffer_head *bh, void __pmem **addr,
-		unsigned blkbits)
-{
-	unsigned long pfn;
-	sector_t sector = bh->b_blocknr << (blkbits - 9);
-	return bdev_direct_access(bh->b_bdev, sector, addr, &pfn, bh->b_size);
-}
 
 /* the clear_pmem() calls are ordered by a wmb_pmem() in the caller */
 static void dax_new_buf(void __pmem *addr, unsigned size, unsigned first,
@@ -105,19 +129,30 @@ static bool buffer_size_valid(struct buffer_head *bh)
 	return bh->b_state != 0;
 }
 
+
+static sector_t to_sector(const struct buffer_head *bh,
+		const struct inode *inode)
+{
+	sector_t sector = bh->b_blocknr << (inode->i_blkbits - 9);
+
+	return sector;
+}
+
 static ssize_t dax_io(struct inode *inode, struct iov_iter *iter,
 		      loff_t start, loff_t end, get_block_t get_block,
 		      struct buffer_head *bh)
 {
-	ssize_t retval = 0;
-	loff_t pos = start;
-	loff_t max = start;
-	loff_t bh_max = start;
-	void __pmem *addr;
+	loff_t pos = start, max = start, bh_max = start;
+	struct block_device *bdev = NULL;
+	int rw = iov_iter_rw(iter), rc;
+	long map_len = 0;
+	pfn_t pfn;
+	void __pmem *addr = NULL;
+	void __pmem *kmap = (void __pmem *) ERR_PTR(-EIO);
 	bool hole = false;
 	bool need_wmb = false;
 
-	if (iov_iter_rw(iter) != WRITE)
+	if (rw == READ)
 		end = min(end, i_size_read(inode));
 
 	while (pos < end) {
@@ -132,13 +167,13 @@ static ssize_t dax_io(struct inode *inode, struct iov_iter *iter,
 			if (pos == bh_max) {
 				bh->b_size = PAGE_ALIGN(end - pos);
 				bh->b_state = 0;
-				retval = get_block(inode, block, bh,
-						   iov_iter_rw(iter) == WRITE);
-				if (retval)
+				rc = get_block(inode, block, bh, rw == WRITE);
+				if (rc)
 					break;
 				if (!buffer_size_valid(bh))
 					bh->b_size = 1 << blkbits;
 				bh_max = pos - first + bh->b_size;
+				bdev = bh->b_bdev;
 			} else {
 				unsigned done = bh->b_size -
 						(bh_max - (pos - first));
@@ -146,21 +181,27 @@ static ssize_t dax_io(struct inode *inode, struct iov_iter *iter,
 				bh->b_size -= done;
 			}
 
-			hole = iov_iter_rw(iter) != WRITE && !buffer_written(bh);
+			hole = rw == READ && !buffer_written(bh);
 			if (hole) {
 				addr = NULL;
 				size = bh->b_size - first;
 			} else {
-				retval = dax_get_addr(bh, &addr, blkbits);
-				if (retval < 0)
+				dax_unmap_atomic(bdev, kmap);
+				kmap = __dax_map_atomic(bdev,
+						to_sector(bh, inode),
+						bh->b_size, &pfn, &map_len);
+				if (IS_ERR(kmap)) {
+					rc = PTR_ERR(kmap);
 					break;
+				}
+				addr = kmap;
 				if (buffer_unwritten(bh) || buffer_new(bh)) {
-					dax_new_buf(addr, retval, first, pos,
-									end);
+					dax_new_buf(addr, map_len, first, pos,
+							end);
 					need_wmb = true;
 				}
 				addr += first;
-				size = retval - first;
+				size = map_len - first;
 			}
 			max = min(pos + size, end);
 		}
@@ -183,8 +224,9 @@ static ssize_t dax_io(struct inode *inode, struct iov_iter *iter,
 
 	if (need_wmb)
 		wmb_pmem();
+	dax_unmap_atomic(bdev, kmap);
 
-	return (pos == start) ? retval : pos - start;
+	return (pos == start) ? rc : pos - start;
 }
 
 /**
@@ -273,29 +315,49 @@ static int dax_load_hole(struct address_space *mapping, struct page *page,
 	return VM_FAULT_LOCKED;
 }
 
-static int copy_user_bh(struct page *to, struct buffer_head *bh,
-			unsigned blkbits, unsigned long vaddr)
+static int copy_user_bh(struct page *to, struct inode *inode,
+		struct buffer_head *bh, unsigned long vaddr)
 {
+	struct block_device *bdev = bh->b_bdev;
 	void __pmem *vfrom;
 	void *vto;
 
-	if (dax_get_addr(bh, &vfrom, blkbits) < 0)
-		return -EIO;
+	vfrom = dax_map_atomic(bdev, to_sector(bh, inode), bh->b_size);
+	if (IS_ERR(vfrom))
+		return PTR_ERR(vfrom);
 	vto = kmap_atomic(to);
 	copy_user_page(vto, (void __force *)vfrom, vaddr, to);
 	kunmap_atomic(vto);
+	dax_unmap_atomic(bdev, vfrom);
 	return 0;
+}
+
+/* must be called within a dax_map_atomic / dax_unmap_atomic section */
+static void dax_account_mapping(struct block_device *bdev, pfn_t pfn,
+		struct address_space *mapping)
+{
+	/*
+	 * If we are establishing a mapping for a page mapped pfn, take an
+	 * extra reference against the request_queue.  See zone_device_revoke
+	 * for the paired decrement.
+	 */
+	if (pfn_t_has_page(pfn)) {
+		struct page *page = pfn_t_to_page(pfn);
+
+		page->mapping = mapping;
+		percpu_ref_get(&bdev->bd_queue->q_usage_counter);
+	}
 }
 
 static int dax_insert_mapping(struct inode *inode, struct buffer_head *bh,
 			struct vm_area_struct *vma, struct vm_fault *vmf)
 {
-	struct address_space *mapping = inode->i_mapping;
-	sector_t sector = bh->b_blocknr << (inode->i_blkbits - 9);
 	unsigned long vaddr = (unsigned long)vmf->virtual_address;
+	struct address_space *mapping = inode->i_mapping;
+	struct block_device *bdev = bh->b_bdev;
 	void __pmem *addr;
-	unsigned long pfn;
 	pgoff_t size;
+	pfn_t pfn;
 	int error;
 
 	i_mmap_lock_read(mapping);
@@ -313,11 +375,10 @@ static int dax_insert_mapping(struct inode *inode, struct buffer_head *bh,
 		goto out;
 	}
 
-	error = bdev_direct_access(bh->b_bdev, sector, &addr, &pfn, bh->b_size);
-	if (error < 0)
-		goto out;
-	if (error < PAGE_SIZE) {
-		error = -EIO;
+	addr = __dax_map_atomic(bdev, to_sector(bh, inode), bh->b_size,
+			&pfn, NULL);
+	if (IS_ERR(addr)) {
+		error = PTR_ERR(addr);
 		goto out;
 	}
 
@@ -326,7 +387,10 @@ static int dax_insert_mapping(struct inode *inode, struct buffer_head *bh,
 		wmb_pmem();
 	}
 
-	error = vm_insert_mixed(vma, vaddr, pfn);
+	dax_account_mapping(bdev, pfn, mapping);
+	dax_unmap_atomic(bdev, addr);
+
+	error = vm_insert_mixed(vma, vaddr, pfn_t_to_pfn(pfn));
 
  out:
 	i_mmap_unlock_read(mapping);
@@ -420,7 +484,7 @@ int __dax_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
 	if (vmf->cow_page) {
 		struct page *new_page = vmf->cow_page;
 		if (buffer_written(&bh))
-			error = copy_user_bh(new_page, &bh, blkbits, vaddr);
+			error = copy_user_bh(new_page, inode, &bh, vaddr);
 		else
 			clear_user_highpage(new_page, vaddr);
 		if (error)
@@ -519,7 +583,7 @@ EXPORT_SYMBOL_GPL(dax_fault);
  * The 'colour' (ie low bits) within a PMD of a page offset.  This comes up
  * more often than one might expect in the below function.
  */
-#define PG_PMD_COLOUR	((PMD_SIZE >> PAGE_SHIFT) - 1)
+#define PG_PMD_COLOUR	((HPAGE_SIZE >> PAGE_SHIFT) - 1)
 
 int __dax_pmd_fault(struct vm_area_struct *vma, unsigned long address,
 		pmd_t *pmd, unsigned int flags, get_block_t get_block,
@@ -532,11 +596,9 @@ int __dax_pmd_fault(struct vm_area_struct *vma, unsigned long address,
 	unsigned blkbits = inode->i_blkbits;
 	unsigned long pmd_addr = address & PMD_MASK;
 	bool write = flags & FAULT_FLAG_WRITE;
-	long length;
-	void __pmem *kaddr;
+	struct block_device *bdev;
 	pgoff_t size, pgoff;
-	sector_t block, sector;
-	unsigned long pfn;
+	sector_t block;
 	int result = 0;
 
 	/* Fall back to PTEs if we're going to COW */
@@ -545,7 +607,7 @@ int __dax_pmd_fault(struct vm_area_struct *vma, unsigned long address,
 	/* If the PMD would extend outside the VMA */
 	if (pmd_addr < vma->vm_start)
 		return VM_FAULT_FALLBACK;
-	if ((pmd_addr + PMD_SIZE) > vma->vm_end)
+	if ((pmd_addr + HPAGE_SIZE) > vma->vm_end)
 		return VM_FAULT_FALLBACK;
 
 	pgoff = linear_page_index(vma, pmd_addr);
@@ -559,10 +621,10 @@ int __dax_pmd_fault(struct vm_area_struct *vma, unsigned long address,
 	memset(&bh, 0, sizeof(bh));
 	block = (sector_t)pgoff << (PAGE_SHIFT - blkbits);
 
-	bh.b_size = PMD_SIZE;
-	length = get_block(inode, block, &bh, write);
-	if (length)
+	bh.b_size = HPAGE_SIZE;
+	if (get_block(inode, block, &bh, write) != 0)
 		return VM_FAULT_SIGBUS;
+	bdev = bh.b_bdev;
 	i_mmap_lock_read(mapping);
 
 	/*
@@ -570,7 +632,7 @@ int __dax_pmd_fault(struct vm_area_struct *vma, unsigned long address,
 	 * just fall back to PTEs.  Calling get_block 512 times in a loop
 	 * would be silly.
 	 */
-	if (!buffer_size_valid(&bh) || bh.b_size < PMD_SIZE)
+	if (!buffer_size_valid(&bh) || bh.b_size < HPAGE_SIZE)
 		goto fallback;
 
 	/*
@@ -579,7 +641,7 @@ int __dax_pmd_fault(struct vm_area_struct *vma, unsigned long address,
 	 */
 	if (buffer_new(&bh)) {
 		i_mmap_unlock_read(mapping);
-		unmap_mapping_range(mapping, pgoff << PAGE_SHIFT, PMD_SIZE, 0);
+		unmap_mapping_range(mapping, pgoff << PAGE_SHIFT, HPAGE_SIZE, 0);
 		i_mmap_lock_read(mapping);
 	}
 
@@ -617,27 +679,33 @@ int __dax_pmd_fault(struct vm_area_struct *vma, unsigned long address,
 		result = VM_FAULT_NOPAGE;
 		spin_unlock(ptl);
 	} else {
-		sector = bh.b_blocknr << (blkbits - 9);
-		length = bdev_direct_access(bh.b_bdev, sector, &kaddr, &pfn,
-						bh.b_size);
-		if (length < 0) {
+		pfn_t pfn;
+		long length;
+		void __pmem *kaddr = __dax_map_atomic(bdev,
+				to_sector(&bh, inode), HPAGE_SIZE, &pfn,
+				&length);
+
+		if (IS_ERR(kaddr)) {
 			result = VM_FAULT_SIGBUS;
 			goto out;
 		}
-		if ((length < PMD_SIZE) || (pfn & PG_PMD_COLOUR))
+		if ((length < HPAGE_SIZE) || (pfn_t_to_pfn(pfn) & PG_PMD_COLOUR)) {
+			dax_unmap_atomic(bdev, kaddr);
 			goto fallback;
+		}
 
 		if (buffer_unwritten(&bh) || buffer_new(&bh)) {
-			int i;
-			for (i = 0; i < PTRS_PER_PMD; i++)
-				clear_pmem(kaddr + i * PAGE_SIZE, PAGE_SIZE);
+			clear_pmem(kaddr, HPAGE_SIZE);
 			wmb_pmem();
 			count_vm_event(PGMAJFAULT);
 			mem_cgroup_count_vm_event(vma->vm_mm, PGMAJFAULT);
 			result |= VM_FAULT_MAJOR;
 		}
+		dax_account_mapping(bdev, pfn, mapping);
+		dax_unmap_atomic(bdev, kaddr);
 
-		result |= vmf_insert_pfn_pmd(vma, address, pmd, pfn, write);
+		result |= vmf_insert_pfn_pmd(vma, address, pmd,
+				pfn_t_to_pfn(pfn), write);
 	}
 
  out:
@@ -739,12 +807,15 @@ int dax_zero_page_range(struct inode *inode, loff_t from, unsigned length,
 	if (err < 0)
 		return err;
 	if (buffer_written(&bh)) {
-		void __pmem *addr;
-		err = dax_get_addr(&bh, &addr, inode->i_blkbits);
-		if (err < 0)
-			return err;
+		struct block_device *bdev = bh.b_bdev;
+		void __pmem *addr = dax_map_atomic(bdev, to_sector(&bh, inode),
+				PAGE_CACHE_SIZE);
+
+		if (IS_ERR(addr))
+			return PTR_ERR(addr);
 		clear_pmem(addr + offset, length);
 		wmb_pmem();
+		dax_unmap_atomic(bdev, addr);
 	}
 
 	return 0;
