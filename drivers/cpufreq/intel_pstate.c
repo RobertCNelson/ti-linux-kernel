@@ -312,7 +312,7 @@ static int intel_pstate_init_perf_limits(struct cpufreq_policy *policy)
 		 * Also need to convert to MHz as _PSS freq is in MHz.
 		 */
 		cpu->acpi_perf_data.states[0].core_frequency =
-						turbo_pss_ctl * 100;
+				turbo_pss_ctl * cpu->pstate.scaling / 1000;
 	}
 
 	pr_debug("intel_pstate: Updated limits using _PSS 0x%x 0x%x 0x%x\n",
