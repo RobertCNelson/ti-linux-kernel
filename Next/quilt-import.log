@@ -1,0 +1,13 @@
+Importing jdelvare-hwmon based on 4.3
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 6a13feb9c82803e2b815eca72fa7a9f5561d7861
+HEAD is now at 6a13feb9c828 Linux 4.3
+$ git am --patch-format=mbox ../quilt/jdelvare-hwmon/hwmon-k10temp-remove-duplicate-pci-id-define.patch
+Applying: hwmon: (k10temp) Remove duplicate pci-id define
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:jdelvare-hwmon/master
+From ../quilt-tmp
+ + 902fd32b7711...69bb8a38c5a9 master     -> jdelvare-hwmon/master  (forced update)
+Importing dmi based on 1dc51b8288007753ad7cd7d08bb8fa930fc8bb10
+Unchanged quilt series dmi
