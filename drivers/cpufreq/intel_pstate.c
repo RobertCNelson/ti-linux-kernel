@@ -1555,9 +1555,12 @@ static int __init intel_pstate_init(void)
 	if (!all_cpu_data)
 		return -ENOMEM;
 
-	if (static_cpu_has_safe(X86_FEATURE_HWP) && !no_hwp) {
-		pr_info("intel_pstate: HWP enabled\n");
-		hwp_active++;
+	if (static_cpu_has_safe(X86_FEATURE_HWP)) {
+		if (!no_hwp) {
+			pr_info("intel_pstate: HWP enabled\n");
+			hwp_active++;
+		}
+		no_acpi_perf = 1;
 	}
 
 	if (!hwp_active && hwp_only)
