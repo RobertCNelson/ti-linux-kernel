@@ -55,6 +55,7 @@
 #include <linux/slab.h>
 #include <linux/mbcache.h>
 #include <linux/quotaops.h>
+#include <linux/richacl_xattr.h>
 #include "ext4_jbd2.h"
 #include "ext4.h"
 #include "xattr.h"
@@ -99,6 +100,9 @@ static const struct xattr_handler *ext4_xattr_handler_map[] = {
 #ifdef CONFIG_EXT4_FS_SECURITY
 	[EXT4_XATTR_INDEX_SECURITY]	     = &ext4_xattr_security_handler,
 #endif
+#ifdef CONFIG_EXT4_FS_RICHACL
+	[EXT4_XATTR_INDEX_RICHACL]           = &richacl_xattr_handler,
+#endif
 };
 
 const struct xattr_handler *ext4_xattr_handlers[] = {
@@ -110,6 +114,9 @@ const struct xattr_handler *ext4_xattr_handlers[] = {
 #endif
 #ifdef CONFIG_EXT4_FS_SECURITY
 	&ext4_xattr_security_handler,
+#endif
+#ifdef CONFIG_EXT4_FS_RICHACL
+	&richacl_xattr_handler,
 #endif
 	NULL
 };
@@ -405,10 +412,9 @@ ext4_xattr_list_entries(struct dentry *dentry, struct ext4_xattr_entry *entry,
 			ext4_xattr_handler(entry->e_name_index);
 
 		if (handler) {
-			size_t size = handler->list(dentry, buffer, rest,
-						    entry->e_name,
-						    entry->e_name_len,
-						    handler->flags);
+			size_t size = handler->list(handler, dentry, buffer,
+						    rest, entry->e_name,
+						    entry->e_name_len);
 			if (buffer) {
 				if (size > rest)
 					return -ERANGE;

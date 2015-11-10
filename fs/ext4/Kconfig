@@ -22,6 +22,17 @@ config EXT3_FS_POSIX_ACL
 	  This config option is here only for backward compatibility. ext3
 	  filesystem is now handled by the ext4 driver.
 
+config EXT4_FS_RICHACL
+	bool "Ext4 Rich Access Control Lists (EXPERIMENTAL)"
+	depends on EXT4_FS
+	select FS_RICHACL
+	help
+	  Richacls are an implementation of NFSv4 ACLs, extended by file masks
+	  to cleanly integrate into the POSIX file permission model.  To learn
+	  more about them, see http://www.bestbits.at/richacl/.
+
+	  If you don't know what Richacls are, say N.
+
 config EXT3_FS_SECURITY
 	bool "Ext3 Security Labels"
 	depends on EXT3_FS

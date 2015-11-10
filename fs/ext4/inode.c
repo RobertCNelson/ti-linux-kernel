@@ -42,6 +42,7 @@
 #include "xattr.h"
 #include "acl.h"
 #include "truncate.h"
+#include "richacl.h"
 
 #include <trace/events/ext4.h>
 
@@ -4677,6 +4678,14 @@ static void ext4_wait_for_tail_page_commit(struct inode *inode)
 	}
 }
 
+static inline int
+ext4_acl_chmod(struct inode *inode, umode_t mode)
+{
+	if (IS_RICHACL(inode))
+		return richacl_chmod(inode, inode->i_mode);
+	return posix_acl_chmod(inode, inode->i_mode);
+}
+
 /*
  * ext4_setattr()
  *
@@ -4845,8 +4854,7 @@ int ext4_setattr(struct dentry *dentry, struct iattr *attr)
 		ext4_orphan_del(NULL, inode);
 
 	if (!rc && (ia_valid & ATTR_MODE))
-		rc = posix_acl_chmod(inode, inode->i_mode);
-
+		rc = ext4_acl_chmod(inode, inode->i_mode);
 err_out:
 	ext4_std_error(inode->i_sb, error);
 	if (!error)
@@ -5283,7 +5291,7 @@ int ext4_page_mkwrite(struct vm_area_struct *vma, struct vm_fault *vmf)
 	    !ext4_should_journal_data(inode) &&
 	    !ext4_nonda_switch(inode->i_sb)) {
 		do {
-			ret = __block_page_mkwrite(vma, vmf,
+			ret = block_page_mkwrite(vma, vmf,
 						   ext4_da_get_block_prep);
 		} while (ret == -ENOSPC &&
 		       ext4_should_retry_alloc(inode->i_sb, &retries));
@@ -5330,7 +5338,7 @@ retry_alloc:
 		ret = VM_FAULT_SIGBUS;
 		goto out;
 	}
-	ret = __block_page_mkwrite(vma, vmf, get_block);
+	ret = block_page_mkwrite(vma, vmf, get_block);
 	if (!ret && ext4_should_journal_data(inode)) {
 		if (ext4_walk_page_buffers(handle, page_buffers(page), 0,
 			  PAGE_CACHE_SIZE, NULL, do_journal_get_write_access)) {
