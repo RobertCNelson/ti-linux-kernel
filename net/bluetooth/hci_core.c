@@ -189,13 +189,14 @@ static void hci_debugfs_create_basic(struct hci_dev *hdev)
 				    &vendor_diag_fops);
 }
 
-static void hci_reset_req(struct hci_request *req, unsigned long opt)
+static int hci_reset_req(struct hci_request *req, unsigned long opt)
 {
 	BT_DBG("%s %ld", req->hdev->name, opt);
 
 	/* Reset device */
 	set_bit(HCI_RESET, &req->hdev->flags);
 	hci_req_add(req, HCI_OP_RESET, 0, NULL);
+	return 0;
 }
 
 static void bredr_init(struct hci_request *req)
@@ -235,7 +236,7 @@ static void amp_init1(struct hci_request *req)
 	hci_req_add(req, HCI_OP_READ_LOCATION_DATA, 0, NULL);
 }
 
-static void amp_init2(struct hci_request *req)
+static int amp_init2(struct hci_request *req)
 {
 	/* Read Local Supported Features. Not all AMP controllers
 	 * support this so it's placed conditionally in the second
@@ -243,9 +244,11 @@ static void amp_init2(struct hci_request *req)
 	 */
 	if (req->hdev->commands[14] & 0x20)
 		hci_req_add(req, HCI_OP_READ_LOCAL_FEATURES, 0, NULL);
+
+	return 0;
 }
 
-static void hci_init1_req(struct hci_request *req, unsigned long opt)
+static int hci_init1_req(struct hci_request *req, unsigned long opt)
 {
 	struct hci_dev *hdev = req->hdev;
 
@@ -268,6 +271,8 @@ static void hci_init1_req(struct hci_request *req, unsigned long opt)
 		BT_ERR("Unknown device type %d", hdev->dev_type);
 		break;
 	}
+
+	return 0;
 }
 
 static void bredr_setup(struct hci_request *req)
@@ -422,7 +427,7 @@ static void hci_setup_event_mask(struct hci_request *req)
 	hci_req_add(req, HCI_OP_SET_EVENT_MASK, sizeof(events), events);
 }
 
-static void hci_init2_req(struct hci_request *req, unsigned long opt)
+static int hci_init2_req(struct hci_request *req, unsigned long opt)
 {
 	struct hci_dev *hdev = req->hdev;
 
@@ -502,6 +507,8 @@ static void hci_init2_req(struct hci_request *req, unsigned long opt)
 		hci_req_add(req, HCI_OP_WRITE_AUTH_ENABLE, sizeof(enable),
 			    &enable);
 	}
+
+	return 0;
 }
 
 static void hci_setup_link_policy(struct hci_request *req)
@@ -576,7 +583,7 @@ static void hci_set_event_mask_page_2(struct hci_request *req)
 	hci_req_add(req, HCI_OP_SET_EVENT_MASK_PAGE_2, sizeof(events), events);
 }
 
-static void hci_init3_req(struct hci_request *req, unsigned long opt)
+static int hci_init3_req(struct hci_request *req, unsigned long opt)
 {
 	struct hci_dev *hdev = req->hdev;
 	u8 p;
@@ -704,9 +711,11 @@ static void hci_init3_req(struct hci_request *req, unsigned long opt)
 		hci_req_add(req, HCI_OP_READ_LOCAL_EXT_FEATURES,
 			    sizeof(cp), &cp);
 	}
+
+	return 0;
 }
 
-static void hci_init4_req(struct hci_request *req, unsigned long opt)
+static int hci_init4_req(struct hci_request *req, unsigned long opt)
 {
 	struct hci_dev *hdev = req->hdev;
 
@@ -757,6 +766,8 @@ static void hci_init4_req(struct hci_request *req, unsigned long opt)
 		hci_req_add(req, HCI_OP_WRITE_SC_SUPPORT,
 			    sizeof(support), &support);
 	}
+
+	return 0;
 }
 
 static int __hci_init(struct hci_dev *hdev)
@@ -816,7 +827,7 @@ static int __hci_init(struct hci_dev *hdev)
 	return 0;
 }
 
-static void hci_init0_req(struct hci_request *req, unsigned long opt)
+static int hci_init0_req(struct hci_request *req, unsigned long opt)
 {
 	struct hci_dev *hdev = req->hdev;
 
@@ -832,6 +843,8 @@ static void hci_init0_req(struct hci_request *req, unsigned long opt)
 	/* Read BD Address */
 	if (hdev->set_bdaddr)
 		hci_req_add(req, HCI_OP_READ_BD_ADDR, 0, NULL);
+
+	return 0;
 }
 
 static int __hci_unconf_init(struct hci_dev *hdev)
@@ -851,7 +864,7 @@ static int __hci_unconf_init(struct hci_dev *hdev)
 	return 0;
 }
 
-static void hci_scan_req(struct hci_request *req, unsigned long opt)
+static int hci_scan_req(struct hci_request *req, unsigned long opt)
 {
 	__u8 scan = opt;
 
@@ -859,9 +872,10 @@ static void hci_scan_req(struct hci_request *req, unsigned long opt)
 
 	/* Inquiry and Page scans */
 	hci_req_add(req, HCI_OP_WRITE_SCAN_ENABLE, 1, &scan);
+	return 0;
 }
 
-static void hci_auth_req(struct hci_request *req, unsigned long opt)
+static int hci_auth_req(struct hci_request *req, unsigned long opt)
 {
 	__u8 auth = opt;
 
@@ -869,9 +883,10 @@ static void hci_auth_req(struct hci_request *req, unsigned long opt)
 
 	/* Authentication */
 	hci_req_add(req, HCI_OP_WRITE_AUTH_ENABLE, 1, &auth);
+	return 0;
 }
 
-static void hci_encrypt_req(struct hci_request *req, unsigned long opt)
+static int hci_encrypt_req(struct hci_request *req, unsigned long opt)
 {
 	__u8 encrypt = opt;
 
@@ -879,9 +894,10 @@ static void hci_encrypt_req(struct hci_request *req, unsigned long opt)
 
 	/* Encryption */
 	hci_req_add(req, HCI_OP_WRITE_ENCRYPT_MODE, 1, &encrypt);
+	return 0;
 }
 
-static void hci_linkpol_req(struct hci_request *req, unsigned long opt)
+static int hci_linkpol_req(struct hci_request *req, unsigned long opt)
 {
 	__le16 policy = cpu_to_le16(opt);
 
@@ -889,6 +905,7 @@ static void hci_linkpol_req(struct hci_request *req, unsigned long opt)
 
 	/* Default link policy */
 	hci_req_add(req, HCI_OP_WRITE_DEF_LINK_POLICY, 2, &policy);
+	return 0;
 }
 
 /* Get HCI device by index.
@@ -1133,7 +1150,7 @@ static int inquiry_cache_dump(struct hci_dev *hdev, int num, __u8 *buf)
 	return copied;
 }
 
-static void hci_inq_req(struct hci_request *req, unsigned long opt)
+static int hci_inq_req(struct hci_request *req, unsigned long opt)
 {
 	struct hci_inquiry_req *ir = (struct hci_inquiry_req *) opt;
 	struct hci_dev *hdev = req->hdev;
@@ -1142,13 +1159,15 @@ static void hci_inq_req(struct hci_request *req, unsigned long opt)
 	BT_DBG("%s", hdev->name);
 
 	if (test_bit(HCI_INQUIRY, &hdev->flags))
-		return;
+		return 0;
 
 	/* Start Inquiry */
 	memcpy(&cp.lap, &ir->lap, 3);
 	cp.length  = ir->length;
 	cp.num_rsp = ir->num_rsp;
 	hci_req_add(req, HCI_OP_INQUIRY, sizeof(cp), &cp);
+
+	return 0;
 }
 
 int hci_inquiry(void __user *arg)
