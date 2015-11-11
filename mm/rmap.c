@@ -864,6 +864,7 @@ unlock_pmd:
 		return ret;
 	} else {
 		pmd_t pmde = *pmd;
+
 		barrier();
 		if (!pmd_present(pmde) || pmd_trans_huge(pmde))
 			return SWAP_AGAIN;
