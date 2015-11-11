@@ -110,6 +110,13 @@ int dm_btree_lookup(struct dm_btree_info *info, dm_block_t root,
 		    uint64_t *keys, void *value_le);
 
 /*
+ * Tries to find the first key where the bottom level key is >= to that
+ * given.  Useful for skipping empty sections of the btree.
+ */
+int dm_btree_lookup_next(struct dm_btree_info *info, dm_block_t root,
+			 uint64_t *keys, uint64_t *rkey, void *value_le);
+
+/*
  * Insertion (or overwrite an existing value).  O(ln(n))
  */
 int dm_btree_insert(struct dm_btree_info *info, dm_block_t root,
