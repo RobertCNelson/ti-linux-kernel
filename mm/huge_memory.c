@@ -3036,6 +3036,7 @@ static void unfreeze_page_vma(struct vm_area_struct *vma, struct page *page,
 			continue;
 
 		entry = pte_mkold(mk_pte(page, vma->vm_page_prot));
+		entry = pte_mkdirty(entry);
 		if (is_write_migration_entry(swp_entry))
 			entry = maybe_mkwrite(entry, vma);
 
