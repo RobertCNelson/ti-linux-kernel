@@ -17,6 +17,7 @@
 #include <linux/notifier.h>
 #include <linux/reboot.h>
 
+#include <asm/cputype.h>
 
 #include "exynos-pmu.h"
 #include "regs-pmu.h"
