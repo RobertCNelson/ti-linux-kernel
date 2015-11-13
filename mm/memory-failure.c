@@ -882,15 +882,7 @@ int get_hwpoison_page(struct page *page)
 {
 	struct page *head = compound_head(page);
 
-	if (PageHuge(head))
-		return get_page_unless_zero(head);
-
-	/*
-	 * Thp tail page has special refcounting rule (refcount of tail pages
-	 * is stored in ->_mapcount,) so we can't call get_page_unless_zero()
-	 * directly for tail pages.
-	 */
-	if (PageTransHuge(head)) {
+	if (!PageHuge(head) && PageTransHuge(head)) {
 		/*
 		 * Non anonymous thp exists only in allocation/free time. We
 		 * can't handle such a case correctly, so let's give it up.
@@ -902,40 +894,11 @@ int get_hwpoison_page(struct page *page)
 				page_to_pfn(page));
 			return 0;
 		}
-
-		if (get_page_unless_zero(head)) {
-			if (PageTail(page))
-				get_page(page);
-			return 1;
-		} else {
-			return 0;
-		}
 	}
 
-	return get_page_unless_zero(page);
+	return get_page_unless_zero(head);
 }
 EXPORT_SYMBOL_GPL(get_hwpoison_page);
-
-/**
- * put_hwpoison_page() - Put refcount for memory error handling:
- * @page:	raw error page (hit by memory error)
- */
-void put_hwpoison_page(struct page *page)
-{
-	struct page *head = compound_head(page);
-
-	if (PageHuge(head)) {
-		put_page(head);
-		return;
-	}
-
-	if (PageTransHuge(head))
-		if (page != head)
-			put_page(head);
-
-	put_page(page);
-}
-EXPORT_SYMBOL_GPL(put_hwpoison_page);
 
 /*
  * Do all that is necessary to remove user space mappings. Unmap
@@ -1149,7 +1112,9 @@ int memory_failure(unsigned long pfn, int trapno, int flags)
 	}
 
 	if (!PageHuge(p) && PageTransHuge(hpage)) {
+		lock_page(hpage);
 		if (!PageAnon(hpage) || unlikely(split_huge_page(hpage))) {
+			unlock_page(hpage);
 			if (!PageAnon(hpage))
 				pr_err("MCE: %#lx: non anonymous thp\n", pfn);
 			else
@@ -1159,6 +1124,9 @@ int memory_failure(unsigned long pfn, int trapno, int flags)
 			put_hwpoison_page(p);
 			return -EBUSY;
 		}
+		unlock_page(hpage);
+		get_hwpoison_page(p);
+		put_hwpoison_page(hpage);
 		VM_BUG_ON_PAGE(!page_count(p), p);
 		hpage = compound_head(p);
 	}
@@ -1166,7 +1134,7 @@ int memory_failure(unsigned long pfn, int trapno, int flags)
 	/*
 	 * We ignore non-LRU pages for good reasons.
 	 * - PG_locked is only well defined for LRU pages and a few others
-	 * - to avoid races with __set_page_locked()
+	 * - to avoid races with __SetPageLocked()
 	 * - to avoid races with __SetPageSlab*() (and more non-atomic ops)
 	 * The check (unnecessarily) ignores LRU pages being isolated and
 	 * walked by the page reclaim code, however that's not a big loss.
@@ -1572,7 +1540,7 @@ static int get_any_page(struct page *page, unsigned long pfn, int flags)
 		 * Did it turn free?
 		 */
 		ret = __get_any_page(page, pfn, 0);
-		if (!PageLRU(page)) {
+		if (ret == 1 && !PageLRU(page)) {
 			/* Drop page reference which is from __get_any_page() */
 			put_hwpoison_page(page);
 			pr_info("soft_offline: %#lx: unknown non LRU page type %lx\n",
@@ -1750,21 +1718,28 @@ int soft_offline_page(struct page *page, int flags)
 			put_hwpoison_page(page);
 		return -EBUSY;
 	}
-	if (!PageHuge(page) && PageTransHuge(hpage)) {
-		if (PageAnon(hpage) && unlikely(split_huge_page(hpage))) {
-			pr_info("soft offline: %#lx: failed to split THP\n",
-				pfn);
-			if (flags & MF_COUNT_INCREASED)
-				put_hwpoison_page(page);
-			return -EBUSY;
-		}
-	}
 
 	get_online_mems();
-
 	ret = get_any_page(page, pfn, flags);
 	put_online_mems();
+
 	if (ret > 0) { /* for in-use pages */
+		if (!PageHuge(page) && PageTransHuge(hpage)) {
+			lock_page(hpage);
+			ret = split_huge_page(hpage);
+			unlock_page(hpage);
+			if (unlikely(ret || PageTransCompound(page) ||
+					!PageAnon(page))) {
+				pr_info("soft offline: %#lx: failed to split THP\n",
+					pfn);
+				if (flags & MF_COUNT_INCREASED)
+					put_hwpoison_page(hpage);
+				return -EBUSY;
+			}
+			get_hwpoison_page(page);
+			put_hwpoison_page(hpage);
+		}
+
 		if (PageHuge(page))
 			ret = soft_offline_huge_page(page, flags);
 		else
