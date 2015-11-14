@@ -917,7 +917,7 @@ void reipl_ccw_dev(struct ccw_dev_id *devid)
 {
 	struct subchannel_id uninitialized_var(schid);
 
-	s390_reset_system(NULL, NULL, NULL);
+	s390_reset_system();
 	if (reipl_find_schid(devid, &schid) != 0)
 		panic("IPL Device not found\n");
 	do_reipl_asm(*((__u32*)&schid));
@@ -925,18 +925,32 @@ void reipl_ccw_dev(struct ccw_dev_id *devid)
 
 int __init cio_get_iplinfo(struct cio_iplinfo *iplinfo)
 {
+	static struct chsc_sda_area sda_area __initdata;
 	struct subchannel_id schid;
 	struct schib schib;
 
 	schid = *(struct subchannel_id *)&S390_lowcore.subchannel_id;
 	if (!schid.one)
 		return -ENODEV;
+
+	if (schid.ssid) {
+		/*
+		 * Firmware should have already enabled MSS but whoever started
+		 * the kernel might have initiated a channel subsystem reset.
+		 * Ensure that MSS is enabled.
+		 */
+		memset(&sda_area, 0, sizeof(sda_area));
+		if (__chsc_enable_facility(&sda_area, CHSC_SDA_OC_MSS))
+			return -ENODEV;
+	}
 	if (stsch_err(schid, &schib))
 		return -ENODEV;
 	if (schib.pmcw.st != SUBCHANNEL_TYPE_IO)
 		return -ENODEV;
 	if (!schib.pmcw.dnv)
 		return -ENODEV;
+
+	iplinfo->ssid = schid.ssid;
 	iplinfo->devno = schib.pmcw.dev;
 	iplinfo->is_qdio = schib.pmcw.qf;
 	return 0;
