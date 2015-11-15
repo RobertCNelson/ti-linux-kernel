@@ -440,8 +440,11 @@ static void process_remove_disk(struct mddev *mddev, struct cluster_msg *msg)
 	struct md_rdev *rdev = md_find_rdev_nr_rcu(mddev,
 						   le32_to_cpu(msg->raid_slot));
 
-	if (rdev)
-		md_kick_rdev_from_array(rdev);
+	if (rdev) {
+		set_bit(ClusterRemove, &rdev->flags);
+		set_bit(MD_RECOVERY_NEEDED, &mddev->recovery);
+		md_wakeup_thread(mddev->thread);
+	}
 	else
 		pr_warn("%s: %d Could not find disk(%d) to REMOVE\n",
 			__func__, __LINE__, le32_to_cpu(msg->raid_slot));
@@ -882,7 +885,15 @@ static int resync_start(struct mddev *mddev)
 static int resync_info_update(struct mddev *mddev, sector_t lo, sector_t hi)
 {
 	struct md_cluster_info *cinfo = mddev->cluster_info;
+	struct resync_info ri;
 	struct cluster_msg cmsg = {0};
+
+	/* do not send zero again, if we have sent before */
+	if (hi == 0) {
+		memcpy(&ri, cinfo->bitmap_lockres->lksb.sb_lvbptr, sizeof(struct resync_info));
+		if (le64_to_cpu(ri.hi) == 0)
+			return 0;
+	}
 
 	add_resync_info(cinfo->bitmap_lockres, lo, hi);
 	/* Re-acquire the lock to refresh LVB */
@@ -986,7 +997,7 @@ static int remove_disk(struct mddev *mddev, struct md_rdev *rdev)
 	struct md_cluster_info *cinfo = mddev->cluster_info;
 	cmsg.type = cpu_to_le32(REMOVE);
 	cmsg.raid_slot = cpu_to_le32(rdev->desc_nr);
-	return __sendmsg(cinfo, &cmsg);
+	return sendmsg(cinfo, &cmsg);
 }
 
 static int gather_bitmaps(struct md_rdev *rdev)
