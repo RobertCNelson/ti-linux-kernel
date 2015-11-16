@@ -312,7 +312,7 @@ static int intel_pstate_init_perf_limits(struct cpufreq_policy *policy)
 		 * Also need to convert to MHz as _PSS freq is in MHz.
 		 */
 		cpu->acpi_perf_data.states[0].core_frequency =
-						turbo_pss_ctl * 100;
+				turbo_pss_ctl * cpu->pstate.scaling / 1000;
 	}
 
 	pr_debug("intel_pstate: Updated limits using _PSS 0x%x 0x%x 0x%x\n",
@@ -1555,9 +1555,12 @@ static int __init intel_pstate_init(void)
 	if (!all_cpu_data)
 		return -ENOMEM;
 
-	if (static_cpu_has_safe(X86_FEATURE_HWP) && !no_hwp) {
-		pr_info("intel_pstate: HWP enabled\n");
-		hwp_active++;
+	if (static_cpu_has_safe(X86_FEATURE_HWP)) {
+		if (!no_hwp) {
+			pr_info("intel_pstate: HWP enabled\n");
+			hwp_active++;
+		}
+		no_acpi_perf = 1;
 	}
 
 	if (!hwp_active && hwp_only)
