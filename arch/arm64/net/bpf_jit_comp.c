@@ -161,11 +161,11 @@ static void build_prologue(struct jit_ctx *ctx)
 	if (ctx->tmp_used)
 		emit(A64_PUSH(tmp1, tmp2, A64_SP), ctx);
 
-	/* Set up BPF stack */
-	emit(A64_SUB_I(1, A64_SP, A64_SP, stack_size), ctx);
-
 	/* Set up frame pointer */
 	emit(A64_MOV(1, fp, A64_SP), ctx);
+
+	/* Set up BPF stack */
+	emit(A64_SUB_I(1, A64_SP, A64_SP, stack_size), ctx);
 
 	/* Clear registers A and X */
 	emit_a64_mov_i64(ra, 0, ctx);
@@ -758,7 +758,7 @@ void bpf_int_jit_compile(struct bpf_prog *prog)
 	if (bpf_jit_enable > 1)
 		bpf_jit_dump(prog->len, image_size, 2, ctx.image);
 
-	bpf_flush_icache(ctx.image, ctx.image + ctx.idx);
+	bpf_flush_icache(header, ctx.image + ctx.idx);
 
 	set_memory_ro((unsigned long)header, header->pages);
 	prog->bpf_func = (void *)ctx.image;
