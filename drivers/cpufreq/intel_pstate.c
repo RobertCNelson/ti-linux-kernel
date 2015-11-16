@@ -326,13 +326,9 @@ static int intel_pstate_init_perf_limits(struct cpufreq_policy *policy)
 
 static int intel_pstate_exit_perf_limits(struct cpufreq_policy *policy)
 {
-	struct cpudata *cpu;
-
 	if (!no_acpi_perf)
-		return 0;
+		acpi_processor_unregister_performance(policy->cpu);
 
-	cpu = all_cpu_data[policy->cpu];
-	acpi_processor_unregister_performance(policy->cpu);
 	return 0;
 }
 
