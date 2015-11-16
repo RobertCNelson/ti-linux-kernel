@@ -29,19 +29,7 @@
 
 #define FORCEWAKE_ACK_TIMEOUT_MS 50
 
-#define __raw_i915_read8(dev_priv__, reg__) readb((dev_priv__)->regs + (reg__))
-#define __raw_i915_write8(dev_priv__, reg__, val__) writeb(val__, (dev_priv__)->regs + (reg__))
-
-#define __raw_i915_read16(dev_priv__, reg__) readw((dev_priv__)->regs + (reg__))
-#define __raw_i915_write16(dev_priv__, reg__, val__) writew(val__, (dev_priv__)->regs + (reg__))
-
-#define __raw_i915_read32(dev_priv__, reg__) readl((dev_priv__)->regs + (reg__))
-#define __raw_i915_write32(dev_priv__, reg__, val__) writel(val__, (dev_priv__)->regs + (reg__))
-
-#define __raw_i915_read64(dev_priv__, reg__) readq((dev_priv__)->regs + (reg__))
-#define __raw_i915_write64(dev_priv__, reg__, val__) writeq(val__, (dev_priv__)->regs + (reg__))
-
-#define __raw_posting_read(dev_priv__, reg__) (void)__raw_i915_read32(dev_priv__, reg__)
+#define __raw_posting_read(dev_priv__, reg__) (void)__raw_i915_read32((dev_priv__), (reg__))
 
 static const char * const forcewake_domain_names[] = {
 	"render",
@@ -525,8 +513,7 @@ void assert_forcewakes_inactive(struct drm_i915_private *dev_priv)
 }
 
 /* We give fast paths for the really cool registers */
-#define NEEDS_FORCE_WAKE(reg) \
-	 ((reg) < 0x40000 && (reg) != FORCEWAKE)
+#define NEEDS_FORCE_WAKE(reg) ((reg) < 0x40000)
 
 #define REG_RANGE(reg, start, end) ((reg) >= (start) && (reg) < (end))
 
@@ -589,7 +576,7 @@ void assert_forcewakes_inactive(struct drm_i915_private *dev_priv)
 	REG_RANGE((reg), 0x9400, 0x9800)
 
 #define FORCEWAKE_GEN9_BLITTER_RANGE_OFFSET(reg) \
-	((reg) < 0x40000 &&\
+	((reg) < 0x40000 && \
 	 !FORCEWAKE_GEN9_UNCORE_RANGE_OFFSET(reg) && \
 	 !FORCEWAKE_GEN9_RENDER_RANGE_OFFSET(reg) && \
 	 !FORCEWAKE_GEN9_MEDIA_RANGE_OFFSET(reg) && \
@@ -737,11 +724,16 @@ gen6_read##x(struct drm_i915_private *dev_priv, off_t reg, bool trace) { \
 #define __vlv_read(x) \
 static u##x \
 vlv_read##x(struct drm_i915_private *dev_priv, off_t reg, bool trace) { \
+	enum forcewake_domains fw_engine = 0; \
 	GEN6_READ_HEADER(x); \
-	if (FORCEWAKE_VLV_RENDER_RANGE_OFFSET(reg)) \
-		__force_wake_get(dev_priv, FORCEWAKE_RENDER); \
+	if (!NEEDS_FORCE_WAKE(reg)) \
+		fw_engine = 0; \
+	else if (FORCEWAKE_VLV_RENDER_RANGE_OFFSET(reg)) \
+		fw_engine = FORCEWAKE_RENDER; \
 	else if (FORCEWAKE_VLV_MEDIA_RANGE_OFFSET(reg)) \
-		__force_wake_get(dev_priv, FORCEWAKE_MEDIA); \
+		fw_engine = FORCEWAKE_MEDIA; \
+	if (fw_engine) \
+		__force_wake_get(dev_priv, fw_engine); \
 	val = __raw_i915_read##x(dev_priv, reg); \
 	GEN6_READ_FOOTER; \
 }
@@ -749,20 +741,24 @@ vlv_read##x(struct drm_i915_private *dev_priv, off_t reg, bool trace) { \
 #define __chv_read(x) \
 static u##x \
 chv_read##x(struct drm_i915_private *dev_priv, off_t reg, bool trace) { \
+	enum forcewake_domains fw_engine = 0; \
 	GEN6_READ_HEADER(x); \
-	if (FORCEWAKE_CHV_RENDER_RANGE_OFFSET(reg)) \
-		__force_wake_get(dev_priv, FORCEWAKE_RENDER); \
+	if (!NEEDS_FORCE_WAKE(reg)) \
+		fw_engine = 0; \
+	else if (FORCEWAKE_CHV_RENDER_RANGE_OFFSET(reg)) \
+		fw_engine = FORCEWAKE_RENDER; \
 	else if (FORCEWAKE_CHV_MEDIA_RANGE_OFFSET(reg)) \
-		__force_wake_get(dev_priv, FORCEWAKE_MEDIA); \
+		fw_engine = FORCEWAKE_MEDIA; \
 	else if (FORCEWAKE_CHV_COMMON_RANGE_OFFSET(reg)) \
-		__force_wake_get(dev_priv, \
-				 FORCEWAKE_RENDER | FORCEWAKE_MEDIA); \
+		fw_engine = FORCEWAKE_RENDER | FORCEWAKE_MEDIA; \
+	if (fw_engine) \
+		__force_wake_get(dev_priv, fw_engine); \
 	val = __raw_i915_read##x(dev_priv, reg); \
 	GEN6_READ_FOOTER; \
 }
 
 #define SKL_NEEDS_FORCE_WAKE(reg) \
-	 ((reg) < 0x40000 && !FORCEWAKE_GEN9_UNCORE_RANGE_OFFSET(reg))
+	((reg) < 0x40000 && !FORCEWAKE_GEN9_UNCORE_RANGE_OFFSET(reg))
 
 #define __gen9_read(x) \
 static u##x \
@@ -930,7 +926,7 @@ static void \
 gen8_write##x(struct drm_i915_private *dev_priv, off_t reg, u##x val, bool trace) { \
 	GEN6_WRITE_HEADER; \
 	hsw_unclaimed_reg_debug(dev_priv, reg, false, true); \
-	if (reg < 0x40000 && !is_gen8_shadowed(dev_priv, reg)) \
+	if (NEEDS_FORCE_WAKE(reg) && !is_gen8_shadowed(dev_priv, reg)) \
 		__force_wake_get(dev_priv, FORCEWAKE_RENDER); \
 	__raw_i915_write##x(dev_priv, reg, val); \
 	hsw_unclaimed_reg_debug(dev_priv, reg, false, false); \
@@ -941,16 +937,19 @@ gen8_write##x(struct drm_i915_private *dev_priv, off_t reg, u##x val, bool trace
 #define __chv_write(x) \
 static void \
 chv_write##x(struct drm_i915_private *dev_priv, off_t reg, u##x val, bool trace) { \
-	bool shadowed = is_gen8_shadowed(dev_priv, reg); \
+	enum forcewake_domains fw_engine = 0; \
 	GEN6_WRITE_HEADER; \
-	if (!shadowed) { \
-		if (FORCEWAKE_CHV_RENDER_RANGE_OFFSET(reg)) \
-			__force_wake_get(dev_priv, FORCEWAKE_RENDER); \
-		else if (FORCEWAKE_CHV_MEDIA_RANGE_OFFSET(reg)) \
-			__force_wake_get(dev_priv, FORCEWAKE_MEDIA); \
-		else if (FORCEWAKE_CHV_COMMON_RANGE_OFFSET(reg)) \
-			__force_wake_get(dev_priv, FORCEWAKE_RENDER | FORCEWAKE_MEDIA); \
-	} \
+	if (!NEEDS_FORCE_WAKE(reg) || \
+	    is_gen8_shadowed(dev_priv, reg)) \
+		fw_engine = 0; \
+	else if (FORCEWAKE_CHV_RENDER_RANGE_OFFSET(reg)) \
+		fw_engine = FORCEWAKE_RENDER; \
+	else if (FORCEWAKE_CHV_MEDIA_RANGE_OFFSET(reg)) \
+		fw_engine = FORCEWAKE_MEDIA; \
+	else if (FORCEWAKE_CHV_COMMON_RANGE_OFFSET(reg)) \
+		fw_engine = FORCEWAKE_RENDER | FORCEWAKE_MEDIA; \
+	if (fw_engine) \
+		__force_wake_get(dev_priv, fw_engine); \
 	__raw_i915_write##x(dev_priv, reg, val); \
 	GEN6_WRITE_FOOTER; \
 }
