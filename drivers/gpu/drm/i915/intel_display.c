@@ -2646,11 +2646,13 @@ intel_find_initial_plane_obj(struct intel_crtc *intel_crtc,
 	return;
 
 valid_fb:
-	plane_state->src_x = plane_state->src_y = 0;
+	plane_state->src_x = 0;
+	plane_state->src_y = 0;
 	plane_state->src_w = fb->width << 16;
 	plane_state->src_h = fb->height << 16;
 
-	plane_state->crtc_x = plane_state->src_y = 0;
+	plane_state->crtc_x = 0;
+	plane_state->crtc_y = 0;
 	plane_state->crtc_w = fb->width;
 	plane_state->crtc_h = fb->height;
 
@@ -14704,6 +14706,9 @@ static struct intel_quirk intel_quirks[] = {
 
 	/* Apple Macbook 2,1 (Core 2 T7400) */
 	{ 0x27a2, 0x8086, 0x7270, quirk_backlight_present },
+
+	/* Apple Macbook 4,1 */
+	{ 0x2a02, 0x106b, 0x00a1, quirk_backlight_present },
 
 	/* Toshiba CB35 Chromebook (Celeron 2955U) */
 	{ 0x0a06, 0x1179, 0x0a88, quirk_backlight_present },
