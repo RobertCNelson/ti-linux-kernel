@@ -23,3 +23,8 @@ config S3C2443_COMMON_CLK
 	bool "Samsung S3C2443 clock controller support" if COMPILE_TEST
 	select COMMON_CLK_SAMSUNG
 
+# ARM64 SoCs (e.g. Exynos5433, Exynos7):
+config EXYNOS_ARM64_COMMON_CLK
+	bool "Samsung Exynos ARMv8-family clock controller support" if COMPILE_TEST
+	default ARM64 && COMMON_CLK_SAMSUNG
+	depends on (ARM64 && COMMON_CLK_SAMSUNG) || COMPILE_TEST
