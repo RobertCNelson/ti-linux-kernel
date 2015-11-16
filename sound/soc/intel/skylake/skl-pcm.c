@@ -291,7 +291,53 @@ static int skl_be_hw_params(struct snd_pcm_substream *substream,
 	p_params.ch = params_channels(params);
 	p_params.s_freq = params_rate(params);
 	p_params.stream = substream->stream;
-	skl_tplg_be_update_params(dai, &p_params);
+
+	return skl_tplg_be_update_params(dai, &p_params);
+}
+
+static int skl_decoupled_trigger(struct snd_pcm_substream *substream,
+		int cmd)
+{
+	struct hdac_ext_bus *ebus = get_bus_ctx(substream);
+	struct hdac_bus *bus = ebus_to_hbus(ebus);
+	struct hdac_ext_stream *stream;
+	int start;
+	unsigned long cookie;
+	struct hdac_stream *hstr;
+
+	stream = get_hdac_ext_stream(substream);
+	hstr = hdac_stream(stream);
+
+	if (!hstr->prepared)
+		return -EPIPE;
+
+	switch (cmd) {
+	case SNDRV_PCM_TRIGGER_START:
+	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+	case SNDRV_PCM_TRIGGER_RESUME:
+		start = 1;
+		break;
+
+	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+	case SNDRV_PCM_TRIGGER_SUSPEND:
+	case SNDRV_PCM_TRIGGER_STOP:
+		start = 0;
+		break;
+
+	default:
+		return -EINVAL;
+	}
+
+	spin_lock_irqsave(&bus->reg_lock, cookie);
+
+	if (start) {
+		snd_hdac_stream_start(hdac_stream(stream), true);
+		snd_hdac_stream_timecounter_init(hstr, 0);
+	} else {
+		snd_hdac_stream_stop(hdac_stream(stream));
+	}
+
+	spin_unlock_irqrestore(&bus->reg_lock, cookie);
 
 	return 0;
 }
@@ -302,23 +348,48 @@ static int skl_pcm_trigger(struct snd_pcm_substream *substream, int cmd,
 	struct skl *skl = get_skl_ctx(dai->dev);
 	struct skl_sst *ctx = skl->skl_sst;
 	struct skl_module_cfg *mconfig;
+	int ret;
 
 	mconfig = skl_tplg_fe_get_cpr_module(dai, substream->stream);
 	if (!mconfig)
 		return -EIO;
 
 	switch (cmd) {
+	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 	case SNDRV_PCM_TRIGGER_RESUME:
+		/*
+		 * Start HOST DMA and Start FE Pipe.This is to make sure that
+		 * there are no underrun/overrun in the case when the FE
+		 * pipeline is started but there is a delay in starting the
+		 * DMA channel on the host.
+		 */
+		ret = skl_decoupled_trigger(substream, cmd);
+		if (ret < 0)
+			return ret;
 		return skl_run_pipe(ctx, mconfig->pipe);
+		break;
 
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 	case SNDRV_PCM_TRIGGER_SUSPEND:
-		return skl_stop_pipe(ctx, mconfig->pipe);
+	case SNDRV_PCM_TRIGGER_STOP:
+		/*
+		 * Stop FE Pipe first and stop DMA. This is to make sure that
+		 * there are no underrun/overrun in the case if there is a delay
+		 * between the two operations.
+		 */
+		ret = skl_stop_pipe(ctx, mconfig->pipe);
+		if (ret < 0)
+			return ret;
+
+		ret = skl_decoupled_trigger(substream, cmd);
+		break;
 
 	default:
-		return 0;
+		return -EINVAL;
 	}
+
+	return 0;
 }
 
 static int skl_link_hw_params(struct snd_pcm_substream *substream,
@@ -352,9 +423,7 @@ static int skl_link_hw_params(struct snd_pcm_substream *substream,
 	p_params.stream = substream->stream;
 	p_params.link_dma_id = hdac_stream(link_dev)->stream_tag - 1;
 
-	skl_tplg_be_update_params(dai, &p_params);
-
-	return 0;
+	return skl_tplg_be_update_params(dai, &p_params);
 }
 
 static int skl_link_pcm_prepare(struct snd_pcm_substream *substream,
@@ -688,66 +757,15 @@ static int skl_coupled_trigger(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-static int skl_decoupled_trigger(struct snd_pcm_substream *substream,
-		int cmd)
-{
-	struct hdac_ext_bus *ebus = get_bus_ctx(substream);
-	struct hdac_bus *bus = ebus_to_hbus(ebus);
-	struct snd_soc_pcm_runtime *rtd = snd_pcm_substream_chip(substream);
-	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
-	struct hdac_ext_stream *stream;
-	int start;
-	unsigned long cookie;
-	struct hdac_stream *hstr;
-
-	dev_dbg(bus->dev, "In %s cmd=%d streamname=%s\n", __func__, cmd, cpu_dai->name);
-
-	stream = get_hdac_ext_stream(substream);
-	hstr = hdac_stream(stream);
-
-	if (!hstr->prepared)
-		return -EPIPE;
-
-	switch (cmd) {
-	case SNDRV_PCM_TRIGGER_START:
-	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
-	case SNDRV_PCM_TRIGGER_RESUME:
-		start = 1;
-		break;
-
-	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
-	case SNDRV_PCM_TRIGGER_SUSPEND:
-	case SNDRV_PCM_TRIGGER_STOP:
-		start = 0;
-		break;
-
-	default:
-		return -EINVAL;
-	}
-
-	spin_lock_irqsave(&bus->reg_lock, cookie);
-
-	if (start)
-		snd_hdac_stream_start(hdac_stream(stream), true);
-	else
-		snd_hdac_stream_stop(hdac_stream(stream));
-
-	if (start)
-		snd_hdac_stream_timecounter_init(hstr, 0);
-
-	spin_unlock_irqrestore(&bus->reg_lock, cookie);
-
-	return 0;
-}
 static int skl_platform_pcm_trigger(struct snd_pcm_substream *substream,
 					int cmd)
 {
 	struct hdac_ext_bus *ebus = get_bus_ctx(substream);
 
-	if (ebus->ppcap)
-		return skl_decoupled_trigger(substream, cmd);
-	else
+	if (!ebus->ppcap)
 		return skl_coupled_trigger(substream, cmd);
+
+	return 0;
 }
 
 /* calculate runtime delay from LPIB */
@@ -789,7 +807,7 @@ static unsigned int skl_get_position(struct hdac_ext_stream *hstream,
 {
 	struct hdac_stream *hstr = hdac_stream(hstream);
 	struct snd_pcm_substream *substream = hstr->substream;
-	struct hdac_ext_bus *ebus = get_bus_ctx(substream);
+	struct hdac_ext_bus *ebus;
 	unsigned int pos;
 	int delay;
 
@@ -800,6 +818,7 @@ static unsigned int skl_get_position(struct hdac_ext_stream *hstream,
 		pos = 0;
 
 	if (substream->runtime) {
+		ebus = get_bus_ctx(substream);
 		delay = skl_get_delay_from_lpib(ebus, hstream, pos)
 						 + codec_delay;
 		substream->runtime->delay += delay;
@@ -941,7 +960,6 @@ int skl_platform_register(struct device *dev)
 	struct skl *skl = ebus_to_skl(ebus);
 
 	INIT_LIST_HEAD(&skl->ppl_list);
-	INIT_LIST_HEAD(&skl->dapm_path_list);
 
 	ret = snd_soc_register_platform(dev, &skl_platform_drv);
 	if (ret) {
