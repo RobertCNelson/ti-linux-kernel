@@ -470,8 +470,7 @@ int zpci_dma_init_device(struct zpci_dev *zdev)
 	zdev->iommu_size = min3((u64) high_memory,
 				ZPCI_TABLE_SIZE_RT - zdev->start_dma,
 				zdev->end_dma - zdev->start_dma + 1);
-	zdev->end_dma = min(zdev->end_dma,
-			    zdev->start_dma + zdev->iommu_size - 1);
+	zdev->end_dma = zdev->start_dma + zdev->iommu_size - 1;
 	zdev->iommu_pages = zdev->iommu_size >> PAGE_SHIFT;
 	zdev->iommu_bitmap = vzalloc(zdev->iommu_pages / 8);
 	if (!zdev->iommu_bitmap) {
