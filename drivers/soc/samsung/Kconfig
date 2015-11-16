@@ -8,6 +8,6 @@ config SOC_SAMSUNG
 
 config EXYNOS_SROM
 	bool
-	depends on ARM && ARCH_EXYNOS && PM
+	depends on ARM && ARCH_EXYNOS
 
 endmenu
