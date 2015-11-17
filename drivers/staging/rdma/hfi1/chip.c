@@ -4774,13 +4774,25 @@ int read_lcb_csr(struct hfi1_devdata *dd, u32 addr, u64 *data)
  */
 static int write_lcb_via_8051(struct hfi1_devdata *dd, u32 addr, u64 data)
 {
+	u32 regno;
+	int ret;
 
-	if (acquire_lcb_access(dd, 0) == 0) {
-		write_csr(dd, addr, data);
-		release_lcb_access(dd, 0);
-		return 0;
+	if (dd->icode == ICODE_FUNCTIONAL_SIMULATOR ||
+	    (dd->dc8051_ver < dc8051_ver(0, 20))) {
+		if (acquire_lcb_access(dd, 0) == 0) {
+			write_csr(dd, addr, data);
+			release_lcb_access(dd, 0);
+			return 0;
+		}
+		return -EBUSY;
 	}
-	return -EBUSY;
+
+	/* register is an index of LCB registers: (offset - base) / 8 */
+	regno = (addr - DC_LCB_CFG_RUN) >> 3;
+	ret = do_8051_command(dd, HCMD_WRITE_LCB_CSR, regno, &data);
+	if (ret != HCMD_SUCCESS)
+		return -EBUSY;
+	return 0;
 }
 
 /*
@@ -4860,6 +4872,26 @@ static int do_8051_command(
 	 * If there is no timeout, then the 8051 command interface is
 	 * waiting for a command.
 	 */
+
+	/*
+	 * When writing a LCB CSR, out_data contains the full value to
+	 * to be written, while in_data contains the relative LCB
+	 * address in 7:0.  Do the work here, rather than the caller,
+	 * of distrubting the write data to where it needs to go:
+	 *
+	 * Write data
+	 *   39:00 -> in_data[47:8]
+	 *   47:40 -> DC8051_CFG_EXT_DEV_0.RETURN_CODE
+	 *   63:48 -> DC8051_CFG_EXT_DEV_0.RSP_DATA
+	 */
+	if (type == HCMD_WRITE_LCB_CSR) {
+		in_data |= ((*out_data) & 0xffffffffffull) << 8;
+		reg = ((((*out_data) >> 40) & 0xff) <<
+				DC_DC8051_CFG_EXT_DEV_0_RETURN_CODE_SHIFT)
+		      | ((((*out_data) >> 48) & 0xffff) <<
+				DC_DC8051_CFG_EXT_DEV_0_RSP_DATA_SHIFT);
+		write_csr(dd, DC_DC8051_CFG_EXT_DEV_0, reg);
+	}
 
 	/*
 	 * Do two writes: the first to stabilize the type and req_data, the
@@ -8785,7 +8817,7 @@ static void clean_up_interrupts(struct hfi1_devdata *dd)
 	/* turn off interrupts */
 	if (dd->num_msix_entries) {
 		/* MSI-X */
-		hfi1_nomsix(dd);
+		pci_disable_msix(dd->pcidev);
 	} else {
 		/* INTx */
 		disable_intx(dd->pcidev);
@@ -8838,12 +8870,6 @@ static void remap_sdma_interrupts(struct hfi1_devdata *dd,
 		msix_intr);
 	remap_intr(dd, IS_SDMA_START + 2*TXE_NUM_SDMA_ENGINES + engine,
 		msix_intr);
-}
-
-static void remap_receive_available_interrupt(struct hfi1_devdata *dd,
-					      int rx, int msix_intr)
-{
-	remap_intr(dd, IS_RCVAVAIL_START + rx, msix_intr);
 }
 
 static int request_intx_irq(struct hfi1_devdata *dd)
@@ -8983,7 +9009,7 @@ static int request_msix_irqs(struct hfi1_devdata *dd)
 			snprintf(me->name, sizeof(me->name),
 				DRIVER_NAME"_%d kctxt%d", dd->unit, idx);
 			err_info = "receive context";
-			remap_receive_available_interrupt(dd, idx, i);
+			remap_intr(dd, IS_RCVAVAIL_START + idx, i);
 		} else {
 			/* not in our expected range - complain, then
 			   ignore it */
@@ -9455,7 +9481,7 @@ static void reset_asic_csrs(struct hfi1_devdata *dd)
 	/* We might want to retain this state across FLR if we ever use it */
 	write_csr(dd, ASIC_CFG_DRV_STR, 0);
 
-	write_csr(dd, ASIC_CFG_THERM_POLL_EN, 0);
+	/* ASIC_CFG_THERM_POLL_EN leave alone */
 	/* ASIC_STS_THERM read-only */
 	/* ASIC_CFG_RESET leave alone */
 
@@ -9929,19 +9955,16 @@ static void init_chip(struct hfi1_devdata *dd)
 		setextled(dd, 0);
 	/*
 	 * Clear the QSFP reset.
-	 * A0 leaves the out lines floating on power on, then on an FLR
-	 * enforces a 0 on all out pins.  The driver does not touch
+	 * An FLR enforces a 0 on all out pins. The driver does not touch
 	 * ASIC_QSFPn_OUT otherwise.  This leaves RESET_N low and
-	 * anything  plugged constantly in reset, if it pays attention
+	 * anything plugged constantly in reset, if it pays attention
 	 * to RESET_N.
-	 * A prime example of this is SiPh. For now, set all pins high.
+	 * Prime examples of this are optical cables. Set all pins high.
 	 * I2CCLK and I2CDAT will change per direction, and INT_N and
 	 * MODPRS_N are input only and their value is ignored.
 	 */
-	if (is_a0(dd)) {
-		write_csr(dd, ASIC_QSFP1_OUT, 0x1f);
-		write_csr(dd, ASIC_QSFP2_OUT, 0x1f);
-	}
+	write_csr(dd, ASIC_QSFP1_OUT, 0x1f);
+	write_csr(dd, ASIC_QSFP2_OUT, 0x1f);
 }
 
 static void init_early_variables(struct hfi1_devdata *dd)
@@ -10803,7 +10826,9 @@ static int thermal_init(struct hfi1_devdata *dd)
 
 	acquire_hw_mutex(dd);
 	dd_dev_info(dd, "Initializing thermal sensor\n");
-
+	/* Disable polling of thermal readings */
+	write_csr(dd, ASIC_CFG_THERM_POLL_EN, 0x0);
+	msleep(100);
 	/* Thermal Sensor Initialization */
 	/*    Step 1: Reset the Thermal SBus Receiver */
 	ret = sbus_request_slow(dd, SBUS_THERMAL, 0x0,
