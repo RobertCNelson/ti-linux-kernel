@@ -43,8 +43,8 @@ static int cp210x_tiocmset(struct tty_struct *, unsigned int, unsigned int);
 static int cp210x_tiocmset_port(struct usb_serial_port *port,
 		unsigned int, unsigned int);
 static void cp210x_break_ctl(struct tty_struct *, int);
-static int cp210x_startup(struct usb_serial *);
-static void cp210x_release(struct usb_serial *);
+static int cp210x_port_probe(struct usb_serial_port *);
+static int cp210x_port_remove(struct usb_serial_port *);
 static void cp210x_dtr_rts(struct usb_serial_port *p, int on);
 
 static const struct usb_device_id id_table[] = {
@@ -197,8 +197,9 @@ static const struct usb_device_id id_table[] = {
 
 MODULE_DEVICE_TABLE(usb, id_table);
 
-struct cp210x_serial_private {
+struct cp210x_port_private {
 	__u8			bInterfaceNumber;
+	bool			has_swapped_line_ctl;
 };
 
 static struct usb_serial_driver cp210x_device = {
@@ -216,8 +217,8 @@ static struct usb_serial_driver cp210x_device = {
 	.set_termios		= cp210x_set_termios,
 	.tiocmget		= cp210x_tiocmget,
 	.tiocmset		= cp210x_tiocmset,
-	.attach			= cp210x_startup,
-	.release		= cp210x_release,
+	.port_probe		= cp210x_port_probe,
+	.port_remove		= cp210x_port_remove,
 	.dtr_rts		= cp210x_dtr_rts
 };
 
@@ -301,6 +302,14 @@ static struct usb_serial_driver * const serial_drivers[] = {
 #define CONTROL_WRITE_RTS	0x0200
 
 /*
+ * CP210X_PURGE - 16 bits passed in wValue of USB request.
+ * SiLabs app note AN571 gives a strange description of the 4 bits:
+ * bit 0 or bit 2 clears the transmit queue and 1 or 3 receive.
+ * writing 1 to all, however, purges cp2108 well enough to avoid the hang.
+ */
+#define PURGE_ALL		0x000f
+
+/*
  * cp210x_get_config
  * Reads from the CP210x configuration registers
  * 'size' is specified in bytes.
@@ -311,7 +320,7 @@ static int cp210x_get_config(struct usb_serial_port *port, u8 request,
 		unsigned int *data, int size)
 {
 	struct usb_serial *serial = port->serial;
-	struct cp210x_serial_private *spriv = usb_get_serial_data(serial);
+	struct cp210x_port_private *port_priv = usb_get_serial_port_data(port);
 	__le32 *buf;
 	int result, i, length;
 
@@ -325,7 +334,7 @@ static int cp210x_get_config(struct usb_serial_port *port, u8 request,
 	/* Issue the request, attempting to read 'size' bytes */
 	result = usb_control_msg(serial->dev, usb_rcvctrlpipe(serial->dev, 0),
 				request, REQTYPE_INTERFACE_TO_HOST, 0x0000,
-				spriv->bInterfaceNumber, buf, size,
+				port_priv->bInterfaceNumber, buf, size,
 				USB_CTRL_GET_TIMEOUT);
 
 	/* Convert data into an array of integers */
@@ -356,7 +365,7 @@ static int cp210x_set_config(struct usb_serial_port *port, u8 request,
 		unsigned int *data, int size)
 {
 	struct usb_serial *serial = port->serial;
-	struct cp210x_serial_private *spriv = usb_get_serial_data(serial);
+	struct cp210x_port_private *port_priv = usb_get_serial_port_data(port);
 	__le32 *buf;
 	int result, i, length;
 
@@ -375,13 +384,13 @@ static int cp210x_set_config(struct usb_serial_port *port, u8 request,
 		result = usb_control_msg(serial->dev,
 				usb_sndctrlpipe(serial->dev, 0),
 				request, REQTYPE_HOST_TO_INTERFACE, 0x0000,
-				spriv->bInterfaceNumber, buf, size,
+				port_priv->bInterfaceNumber, buf, size,
 				USB_CTRL_SET_TIMEOUT);
 	} else {
 		result = usb_control_msg(serial->dev,
 				usb_sndctrlpipe(serial->dev, 0),
 				request, REQTYPE_HOST_TO_INTERFACE, data[0],
-				spriv->bInterfaceNumber, NULL, 0,
+				port_priv->bInterfaceNumber, NULL, 0,
 				USB_CTRL_SET_TIMEOUT);
 	}
 
@@ -408,6 +417,60 @@ static inline int cp210x_set_config_single(struct usb_serial_port *port,
 		u8 request, unsigned int data)
 {
 	return cp210x_set_config(port, request, &data, 2);
+}
+
+/*
+ * Detect CP2108 GET_LINE_CTL bug and activate workaround.
+ * Write a known good value 0x800, read it back.
+ * If it comes back swapped the bug is detected.
+ * Preserve the original register value.
+ */
+static int cp210x_detect_swapped_line_ctl(struct usb_serial_port *port)
+{
+	struct cp210x_port_private *port_priv = usb_get_serial_port_data(port);
+	unsigned int line_ctl_save;
+	unsigned int line_ctl_test;
+	int err;
+
+	err = cp210x_get_config(port, CP210X_GET_LINE_CTL, &line_ctl_save, 2);
+	if (err)
+		return err;
+
+	line_ctl_test = 0x800;
+	err = cp210x_set_config(port, CP210X_SET_LINE_CTL, &line_ctl_test, 2);
+	if (err)
+		return err;
+
+	err = cp210x_get_config(port, CP210X_GET_LINE_CTL, &line_ctl_test, 2);
+	if (err)
+		return err;
+
+	if (line_ctl_test == 8) {
+		port_priv->has_swapped_line_ctl = true;
+		line_ctl_save = swab16((u16)line_ctl_save);
+	}
+
+	return cp210x_set_config(port, CP210X_SET_LINE_CTL, &line_ctl_save, 2);
+}
+
+/*
+ * Must always be called instead of cp210x_get_config(CP210X_GET_LINE_CTL)
+ * to workaround cp2108 bug and get correct value.
+ */
+static int cp210x_get_line_ctl(struct usb_serial_port *port, unsigned int *ctl)
+{
+	struct cp210x_port_private *port_priv = usb_get_serial_port_data(port);
+	int err;
+
+	err = cp210x_get_config(port, CP210X_GET_LINE_CTL, ctl, 2);
+	if (err)
+		return err;
+
+	/* Workaround swapped bytes in 16-bit value from CP210X_GET_LINE_CTL */
+	if (port_priv->has_swapped_line_ctl)
+		*ctl = swab16((u16)(*ctl));
+
+	return 0;
 }
 
 /*
@@ -475,7 +538,14 @@ static int cp210x_open(struct tty_struct *tty, struct usb_serial_port *port)
 
 static void cp210x_close(struct usb_serial_port *port)
 {
+	unsigned int purge_ctl;
+
 	usb_serial_generic_close(port);
+
+	/* Clear both queues; cp2108 needs this to avoid an occasional hang */
+	purge_ctl = PURGE_ALL;
+	cp210x_set_config(port, CP210X_PURGE, &purge_ctl, 2);
+
 	cp210x_set_config_single(port, CP210X_IFC_ENABLE, UART_DISABLE);
 }
 
@@ -520,7 +590,7 @@ static void cp210x_get_termios_port(struct usb_serial_port *port,
 
 	cflag = *cflagp;
 
-	cp210x_get_config(port, CP210X_GET_LINE_CTL, &bits, 2);
+	cp210x_get_line_ctl(port, &bits);
 	cflag &= ~CSIZE;
 	switch (bits & BITS_DATA_MASK) {
 	case BITS_DATA_5:
@@ -688,7 +758,7 @@ static void cp210x_set_termios(struct tty_struct *tty,
 
 	/* If the number of data bits is to be updated */
 	if ((cflag & CSIZE) != (old_cflag & CSIZE)) {
-		cp210x_get_config(port, CP210X_GET_LINE_CTL, &bits, 2);
+		cp210x_get_line_ctl(port, &bits);
 		bits &= ~BITS_DATA_MASK;
 		switch (cflag & CSIZE) {
 		case CS5:
@@ -722,7 +792,7 @@ static void cp210x_set_termios(struct tty_struct *tty,
 
 	if ((cflag     & (PARENB|PARODD|CMSPAR)) !=
 	    (old_cflag & (PARENB|PARODD|CMSPAR))) {
-		cp210x_get_config(port, CP210X_GET_LINE_CTL, &bits, 2);
+		cp210x_get_line_ctl(port, &bits);
 		bits &= ~BITS_PARITY_MASK;
 		if (cflag & PARENB) {
 			if (cflag & CMSPAR) {
@@ -748,7 +818,7 @@ static void cp210x_set_termios(struct tty_struct *tty,
 	}
 
 	if ((cflag & CSTOPB) != (old_cflag & CSTOPB)) {
-		cp210x_get_config(port, CP210X_GET_LINE_CTL, &bits, 2);
+		cp210x_get_line_ctl(port, &bits);
 		bits &= ~BITS_STOP_MASK;
 		if (cflag & CSTOPB) {
 			bits |= BITS_STOP_2;
@@ -863,29 +933,39 @@ static void cp210x_break_ctl(struct tty_struct *tty, int break_state)
 	cp210x_set_config(port, CP210X_SET_BREAK, &state, 2);
 }
 
-static int cp210x_startup(struct usb_serial *serial)
+static int cp210x_port_probe(struct usb_serial_port *port)
 {
+	struct usb_serial *serial = port->serial;
 	struct usb_host_interface *cur_altsetting;
-	struct cp210x_serial_private *spriv;
+	struct cp210x_port_private *port_priv;
+	int ret;
 
-	spriv = kzalloc(sizeof(*spriv), GFP_KERNEL);
-	if (!spriv)
+	port_priv = kzalloc(sizeof(*port_priv), GFP_KERNEL);
+	if (!port_priv)
 		return -ENOMEM;
 
 	cur_altsetting = serial->interface->cur_altsetting;
-	spriv->bInterfaceNumber = cur_altsetting->desc.bInterfaceNumber;
+	port_priv->bInterfaceNumber = cur_altsetting->desc.bInterfaceNumber;
 
-	usb_set_serial_data(serial, spriv);
+	usb_set_serial_port_data(port, port_priv);
+
+	ret = cp210x_detect_swapped_line_ctl(port);
+	if (ret) {
+		kfree(port_priv);
+		return ret;
+	}
 
 	return 0;
 }
 
-static void cp210x_release(struct usb_serial *serial)
+static int cp210x_port_remove(struct usb_serial_port *port)
 {
-	struct cp210x_serial_private *spriv;
+	struct cp210x_port_private *port_priv;
 
-	spriv = usb_get_serial_data(serial);
-	kfree(spriv);
+	port_priv = usb_get_serial_port_data(port);
+	kfree(port_priv);
+
+	return 0;
 }
 
 module_usb_serial_driver(serial_drivers, id_table);
