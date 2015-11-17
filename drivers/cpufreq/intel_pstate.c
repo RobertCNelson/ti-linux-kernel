@@ -38,10 +38,10 @@
 #include <acpi/processor.h>
 #endif
 
-#define BYT_RATIOS		0x66a
-#define BYT_VIDS		0x66b
-#define BYT_TURBO_RATIOS	0x66c
-#define BYT_TURBO_VIDS		0x66d
+#define ATOM_RATIOS		0x66a
+#define ATOM_VIDS		0x66b
+#define ATOM_TURBO_RATIOS	0x66c
+#define ATOM_TURBO_VIDS		0x66d
 
 #define FRAC_BITS 8
 #define int_tofp(X) ((int64_t)(X) << FRAC_BITS)
@@ -312,7 +312,7 @@ static int intel_pstate_init_perf_limits(struct cpufreq_policy *policy)
 		 * Also need to convert to MHz as _PSS freq is in MHz.
 		 */
 		cpu->acpi_perf_data.states[0].core_frequency =
-						turbo_pss_ctl * 100;
+				turbo_pss_ctl * cpu->pstate.scaling / 1000;
 	}
 
 	pr_debug("intel_pstate: Updated limits using _PSS 0x%x 0x%x 0x%x\n",
@@ -326,13 +326,9 @@ static int intel_pstate_init_perf_limits(struct cpufreq_policy *policy)
 
 static int intel_pstate_exit_perf_limits(struct cpufreq_policy *policy)
 {
-	struct cpudata *cpu;
-
 	if (!no_acpi_perf)
-		return 0;
+		acpi_processor_unregister_performance(policy->cpu);
 
-	cpu = all_cpu_data[policy->cpu];
-	acpi_processor_unregister_performance(policy->cpu);
 	return 0;
 }
 
@@ -687,31 +683,31 @@ static void intel_pstate_hwp_enable(struct cpudata *cpudata)
 	wrmsrl_on_cpu(cpudata->cpu, MSR_PM_ENABLE, 0x1);
 }
 
-static int byt_get_min_pstate(void)
+static int atom_get_min_pstate(void)
 {
 	u64 value;
 
-	rdmsrl(BYT_RATIOS, value);
+	rdmsrl(ATOM_RATIOS, value);
 	return (value >> 8) & 0x7F;
 }
 
-static int byt_get_max_pstate(void)
+static int atom_get_max_pstate(void)
 {
 	u64 value;
 
-	rdmsrl(BYT_RATIOS, value);
+	rdmsrl(ATOM_RATIOS, value);
 	return (value >> 16) & 0x7F;
 }
 
-static int byt_get_turbo_pstate(void)
+static int atom_get_turbo_pstate(void)
 {
 	u64 value;
 
-	rdmsrl(BYT_TURBO_RATIOS, value);
+	rdmsrl(ATOM_TURBO_RATIOS, value);
 	return value & 0x7F;
 }
 
-static void byt_set_pstate(struct cpudata *cpudata, int pstate)
+static void atom_set_pstate(struct cpudata *cpudata, int pstate)
 {
 	u64 val;
 	int32_t vid_fp;
@@ -736,27 +732,42 @@ static void byt_set_pstate(struct cpudata *cpudata, int pstate)
 	wrmsrl_on_cpu(cpudata->cpu, MSR_IA32_PERF_CTL, val);
 }
 
-#define BYT_BCLK_FREQS 5
-static int byt_freq_table[BYT_BCLK_FREQS] = { 833, 1000, 1333, 1167, 800};
-
-static int byt_get_scaling(void)
+static int silvermont_get_scaling(void)
 {
 	u64 value;
 	int i;
+	/* Defined in Table 35-6 from SDM (Sept 2015) */
+	static int silvermont_freq_table[] = {
+		83300, 100000, 133300, 116700, 80000};
 
 	rdmsrl(MSR_FSB_FREQ, value);
-	i = value & 0x3;
+	i = value & 0x7;
+	WARN_ON(i > 4);
 
-	BUG_ON(i > BYT_BCLK_FREQS);
-
-	return byt_freq_table[i] * 100;
+	return silvermont_freq_table[i];
 }
 
-static void byt_get_vid(struct cpudata *cpudata)
+static int airmont_get_scaling(void)
+{
+	u64 value;
+	int i;
+	/* Defined in Table 35-10 from SDM (Sept 2015) */
+	static int airmont_freq_table[] = {
+		83300, 100000, 133300, 116700, 80000,
+		93300, 90000, 88900, 87500};
+
+	rdmsrl(MSR_FSB_FREQ, value);
+	i = value & 0xF;
+	WARN_ON(i > 8);
+
+	return airmont_freq_table[i];
+}
+
+static void atom_get_vid(struct cpudata *cpudata)
 {
 	u64 value;
 
-	rdmsrl(BYT_VIDS, value);
+	rdmsrl(ATOM_VIDS, value);
 	cpudata->vid.min = int_tofp((value >> 8) & 0x7f);
 	cpudata->vid.max = int_tofp((value >> 16) & 0x7f);
 	cpudata->vid.ratio = div_fp(
@@ -764,7 +775,7 @@ static void byt_get_vid(struct cpudata *cpudata)
 		int_tofp(cpudata->pstate.max_pstate -
 			cpudata->pstate.min_pstate));
 
-	rdmsrl(BYT_TURBO_VIDS, value);
+	rdmsrl(ATOM_TURBO_VIDS, value);
 	cpudata->vid.turbo = value & 0x7f;
 }
 
@@ -885,7 +896,7 @@ static struct cpu_defaults core_params = {
 	},
 };
 
-static struct cpu_defaults byt_params = {
+static struct cpu_defaults silvermont_params = {
 	.pid_policy = {
 		.sample_rate_ms = 10,
 		.deadband = 0,
@@ -895,13 +906,33 @@ static struct cpu_defaults byt_params = {
 		.i_gain_pct = 4,
 	},
 	.funcs = {
-		.get_max = byt_get_max_pstate,
-		.get_max_physical = byt_get_max_pstate,
-		.get_min = byt_get_min_pstate,
-		.get_turbo = byt_get_turbo_pstate,
-		.set = byt_set_pstate,
-		.get_scaling = byt_get_scaling,
-		.get_vid = byt_get_vid,
+		.get_max = atom_get_max_pstate,
+		.get_max_physical = atom_get_max_pstate,
+		.get_min = atom_get_min_pstate,
+		.get_turbo = atom_get_turbo_pstate,
+		.set = atom_set_pstate,
+		.get_scaling = silvermont_get_scaling,
+		.get_vid = atom_get_vid,
+	},
+};
+
+static struct cpu_defaults airmont_params = {
+	.pid_policy = {
+		.sample_rate_ms = 10,
+		.deadband = 0,
+		.setpoint = 60,
+		.p_gain_pct = 14,
+		.d_gain_pct = 0,
+		.i_gain_pct = 4,
+	},
+	.funcs = {
+		.get_max = atom_get_max_pstate,
+		.get_max_physical = atom_get_max_pstate,
+		.get_min = atom_get_min_pstate,
+		.get_turbo = atom_get_turbo_pstate,
+		.set = atom_set_pstate,
+		.get_scaling = airmont_get_scaling,
+		.get_vid = atom_get_vid,
 	},
 };
 
@@ -1153,7 +1184,7 @@ static void intel_pstate_timer_func(unsigned long __data)
 static const struct x86_cpu_id intel_pstate_cpu_ids[] = {
 	ICPU(0x2a, core_params),
 	ICPU(0x2d, core_params),
-	ICPU(0x37, byt_params),
+	ICPU(0x37, silvermont_params),
 	ICPU(0x3a, core_params),
 	ICPU(0x3c, core_params),
 	ICPU(0x3d, core_params),
@@ -1162,7 +1193,7 @@ static const struct x86_cpu_id intel_pstate_cpu_ids[] = {
 	ICPU(0x45, core_params),
 	ICPU(0x46, core_params),
 	ICPU(0x47, core_params),
-	ICPU(0x4c, byt_params),
+	ICPU(0x4c, airmont_params),
 	ICPU(0x4e, core_params),
 	ICPU(0x4f, core_params),
 	ICPU(0x5e, core_params),
@@ -1555,9 +1586,12 @@ static int __init intel_pstate_init(void)
 	if (!all_cpu_data)
 		return -ENOMEM;
 
-	if (static_cpu_has_safe(X86_FEATURE_HWP) && !no_hwp) {
-		pr_info("intel_pstate: HWP enabled\n");
-		hwp_active++;
+	if (static_cpu_has_safe(X86_FEATURE_HWP)) {
+		if (!no_hwp) {
+			pr_info("intel_pstate: HWP enabled\n");
+			hwp_active++;
+		}
+		no_acpi_perf = 1;
 	}
 
 	if (!hwp_active && hwp_only)
