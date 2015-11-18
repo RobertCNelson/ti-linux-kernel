@@ -63,6 +63,9 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/kvm.h>
 
+/* Worst case buffer size needed for holding an integer. */
+#define ITOA_MAX_LEN 12
+
 MODULE_AUTHOR("Qumranet");
 MODULE_LICENSE("GPL");
 
@@ -99,6 +102,9 @@ static __read_mostly struct preempt_ops kvm_preempt_ops;
 
 struct dentry *kvm_debugfs_dir;
 EXPORT_SYMBOL_GPL(kvm_debugfs_dir);
+
+static u64 kvm_debugfs_num_entries;
+static const struct file_operations *stat_fops_per_vm[];
 
 static long kvm_vcpu_ioctl(struct file *file, unsigned int ioctl,
 			   unsigned long arg);
@@ -539,6 +545,71 @@ static void kvm_free_memslots(struct kvm *kvm, struct kvm_memslots *slots)
 	kvfree(slots);
 }
 
+static int kvm_destroy_vm_debugfs(struct kvm *kvm)
+{
+	u64 i;
+	struct kvm_stat_data **stat_data = kvm->debugfs_data;
+
+	for (i = 0; i < kvm_debugfs_num_entries; i++)
+		kfree(stat_data[i]);
+
+	kfree(kvm->debugfs_data);
+
+	return 0;
+}
+
+static int kvm_create_vm_debugfs(struct kvm *kvm)
+{
+	int r = 0, i = 0;
+	char dir_name[ITOA_MAX_LEN];
+	struct kvm_stat_data *stat_data;
+	struct kvm_stats_debugfs_item *p;
+
+	if (!kvm)
+		return -EINVAL;
+
+	snprintf(dir_name, sizeof(dir_name), "%d", current->pid);
+	kvm->debugfs_dentry = debugfs_create_dir(dir_name, kvm_debugfs_dir);
+	if (!kvm->debugfs_dentry)
+		goto out_err;
+
+	kvm->debugfs_data = kmalloc(sizeof(*kvm->debugfs_data) *
+				    kvm_debugfs_num_entries, GFP_KERNEL);
+	if (!kvm->debugfs_data)
+		return -ENOMEM;
+
+	for (p = debugfs_entries; p->name; p++, i++) {
+		stat_data = kzalloc(sizeof(*stat_data), GFP_KERNEL);
+		if (!stat_data) {
+			r = -ENOMEM;
+			goto out_err_clean;
+		}
+
+		stat_data->offset = p->offset;
+		stat_data->kvm = kvm;
+		if (!debugfs_create_file(p->name, 0444,
+					 kvm->debugfs_dentry,
+					 stat_data,
+					 stat_fops_per_vm[p->kind])) {
+			r = -EEXIST;
+			goto out_err_clean;
+		}
+		kvm->debugfs_data[i] = stat_data;
+	}
+
+	return r;
+
+out_err_clean:
+	debugfs_remove_recursive(kvm->debugfs_dentry);
+	kfree(stat_data);
+	for (i--; i >= 0; i--)
+		kfree(kvm->debugfs_data[i]);
+
+	kfree(kvm->debugfs_data);
+out_err:
+	return r;
+}
+
 static struct kvm *kvm_create_vm(unsigned long type)
 {
 	int r, i;
@@ -597,6 +668,10 @@ static struct kvm *kvm_create_vm(unsigned long type)
 	list_add(&kvm->vm_list, &vm_list);
 	spin_unlock(&kvm_lock);
 
+	r = kvm_create_vm_debugfs(kvm);
+	if (r)
+		goto out_err;
+
 	preempt_notifier_inc();
 
 	return kvm;
@@ -646,6 +721,7 @@ static void kvm_destroy_vm(struct kvm *kvm)
 	int i;
 	struct mm_struct *mm = kvm->mm;
 
+	kvm_destroy_vm_debugfs(kvm);
 	kvm_arch_sync_events(kvm);
 	spin_lock(&kvm_lock);
 	list_del(&kvm->vm_list);
@@ -689,6 +765,7 @@ static int kvm_vm_release(struct inode *inode, struct file *filp)
 {
 	struct kvm *kvm = filp->private_data;
 
+	debugfs_remove_recursive(kvm->debugfs_dentry);
 	kvm_irqfd_release(kvm);
 
 	kvm_put_kvm(kvm);
@@ -2257,7 +2334,7 @@ static int create_vcpu_fd(struct kvm_vcpu *vcpu)
 static int kvm_vm_ioctl_create_vcpu(struct kvm *kvm, u32 id)
 {
 	int r;
-	struct kvm_vcpu *vcpu, *v;
+	struct kvm_vcpu *vcpu;
 
 	if (id >= KVM_MAX_VCPUS)
 		return -EINVAL;
@@ -2281,12 +2358,10 @@ static int kvm_vm_ioctl_create_vcpu(struct kvm *kvm, u32 id)
 		r = -EINVAL;
 		goto unlock_vcpu_destroy;
 	}
-
-	kvm_for_each_vcpu(r, v, kvm)
-		if (v->vcpu_id == id) {
-			r = -EEXIST;
-			goto unlock_vcpu_destroy;
-		}
+	if (kvm_lookup_vcpu(kvm, id)) {
+		r = -EEXIST;
+		goto unlock_vcpu_destroy;
+	}
 
 	BUG_ON(kvm->vcpus[atomic_read(&kvm->online_vcpus)]);
 
@@ -3400,15 +3475,107 @@ static struct notifier_block kvm_cpu_notifier = {
 	.notifier_call = kvm_cpu_hotplug,
 };
 
+static int kvm_debugfs_open(struct inode *inode, struct file *file,
+			   int (*get)(void *, u64 *), int (*set)(void *, u64),
+			   const char *fmt)
+{
+	int err;
+	struct kvm_stat_data *stat_data = (struct kvm_stat_data *)
+					  inode->i_private;
+
+	err = simple_attr_open(inode, file, get, set, fmt);
+	if (err)
+		return err;
+
+	kvm_get_kvm(stat_data->kvm);
+
+	return 0;
+}
+
+static int kvm_debugfs_release(struct inode *inode, struct file *file)
+{
+	struct kvm_stat_data *stat_data = (struct kvm_stat_data *)
+					  inode->i_private;
+
+	simple_attr_release(inode, file);
+	kvm_put_kvm(stat_data->kvm);
+
+	return 0;
+}
+
+static int vm_stat_get_per_vm(void *data, u64 *val)
+{
+	struct kvm_stat_data *stat_data = (struct kvm_stat_data *)data;
+
+	*val = *(u32 *)((void *)stat_data->kvm + stat_data->offset);
+
+	return 0;
+}
+
+static int vm_stat_get_per_vm_open(struct inode *inode, struct file *file)
+{
+	__simple_attr_check_format("%llu\n", 0ull);
+	return simple_attr_open(inode, file, vm_stat_get_per_vm,
+				 NULL, "%llu\n");
+}
+
+static const struct file_operations vm_stat_get_per_vm_fops = {
+	.owner   = THIS_MODULE,
+	.open    = vm_stat_get_per_vm_open,
+	.release = kvm_debugfs_release,
+	.read    = simple_attr_read,
+	.write   = simple_attr_write,
+	.llseek  = generic_file_llseek,
+};
+
+static int vcpu_stat_get_per_vm(void *data, u64 *val)
+{
+	int i;
+	struct kvm_stat_data *stat_data = (struct kvm_stat_data *)data;
+	struct kvm_vcpu *vcpu;
+
+	*val = 0;
+
+	kvm_for_each_vcpu(i, vcpu, stat_data->kvm)
+		*val += *(u32 *)((void *)vcpu + stat_data->offset);
+
+	return 0;
+}
+
+static int vcpu_stat_get_per_vm_open(struct inode *inode, struct file *file)
+{
+	__simple_attr_check_format("%llu\n", 0ull);
+	return kvm_debugfs_open(inode, file, vcpu_stat_get_per_vm,
+				 NULL, "%llu\n");
+}
+
+static const struct file_operations vcpu_stat_get_per_vm_fops = {
+	.owner   = THIS_MODULE,
+	.open    = vcpu_stat_get_per_vm_open,
+	.release = kvm_debugfs_release,
+	.read    = simple_attr_read,
+	.write   = simple_attr_write,
+	.llseek  = generic_file_llseek,
+};
+
+static const struct file_operations *stat_fops_per_vm[] = {
+	[KVM_STAT_VCPU] = &vcpu_stat_get_per_vm_fops,
+	[KVM_STAT_VM]   = &vm_stat_get_per_vm_fops,
+};
+
 static int vm_stat_get(void *_offset, u64 *val)
 {
 	unsigned offset = (long)_offset;
 	struct kvm *kvm;
+	struct kvm_stat_data stat_tmp = {.offset = offset};
+	u64 tmp_val;
 
 	*val = 0;
 	spin_lock(&kvm_lock);
 	list_for_each_entry(kvm, &vm_list, vm_list)
-		*val += *(u32 *)((void *)kvm + offset);
+		stat_tmp.kvm = kvm;
+		vm_stat_get_per_vm((void *)&stat_tmp, &tmp_val);
+		*val += tmp_val;
 	spin_unlock(&kvm_lock);
 	return 0;
 }
@@ -3419,16 +3586,18 @@ static int vcpu_stat_get(void *_offset, u64 *val)
 {
 	unsigned offset = (long)_offset;
 	struct kvm *kvm;
-	struct kvm_vcpu *vcpu;
-	int i;
+	struct kvm_stat_data stat_tmp = {.offset = offset};
+	u64 tmp_val;
 
 	*val = 0;
 	spin_lock(&kvm_lock);
-	list_for_each_entry(kvm, &vm_list, vm_list)
-		kvm_for_each_vcpu(i, vcpu, kvm)
-			*val += *(u32 *)((void *)vcpu + offset);
-
+	list_for_each_entry(kvm, &vm_list, vm_list) {
+		stat_tmp.kvm = kvm;
+		vcpu_stat_get_per_vm((void *)&stat_tmp, &tmp_val);
+		*val += tmp_val;
+	}
 	spin_unlock(&kvm_lock);
+
 	return 0;
 }
 
@@ -3448,11 +3617,11 @@ static int kvm_init_debug(void)
 	if (kvm_debugfs_dir == NULL)
 		goto out;
 
-	for (p = debugfs_entries; p->name; ++p) {
-		p->dentry = debugfs_create_file(p->name, 0444, kvm_debugfs_dir,
-						(void *)(long)p->offset,
-						stat_fops[p->kind]);
-		if (p->dentry == NULL)
+	kvm_debugfs_num_entries = 0;
+	for (p = debugfs_entries; p->name; ++p, kvm_debugfs_num_entries++) {
+		if (!debugfs_create_file(p->name, 0444, kvm_debugfs_dir,
+					 (void *)(long)p->offset,
+					 stat_fops[p->kind]))
 			goto out_dir;
 	}
 
@@ -3462,15 +3631,6 @@ out_dir:
 	debugfs_remove_recursive(kvm_debugfs_dir);
 out:
 	return r;
-}
-
-static void kvm_exit_debug(void)
-{
-	struct kvm_stats_debugfs_item *p;
-
-	for (p = debugfs_entries; p->name; ++p)
-		debugfs_remove(p->dentry);
-	debugfs_remove(kvm_debugfs_dir);
 }
 
 static int kvm_suspend(void)
@@ -3630,7 +3790,7 @@ EXPORT_SYMBOL_GPL(kvm_init);
 
 void kvm_exit(void)
 {
-	kvm_exit_debug();
+	debugfs_remove_recursive(kvm_debugfs_dir);
 	misc_deregister(&kvm_dev);
 	kmem_cache_destroy(kvm_vcpu_cache);
 	kvm_async_pf_deinit();
