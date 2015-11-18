@@ -856,7 +856,7 @@ static const struct flash_info *spi_nor_read_id(struct spi_nor *nor)
 
 	tmp = nor->read_reg(nor, SPINOR_OP_RDID, id, SPI_NOR_MAX_ID_LEN);
 	if (tmp < 0) {
-		dev_dbg(nor->dev, " error %d reading JEDEC ID\n", tmp);
+		dev_dbg(nor->dev, "error %d reading JEDEC ID\n", tmp);
 		return ERR_PTR(tmp);
 	}
 
@@ -1151,7 +1151,7 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 	const struct flash_info *info = NULL;
 	struct device *dev = nor->dev;
 	struct mtd_info *mtd = &nor->mtd;
-	struct device_node *np = nor->flash_node;
+	struct device_node *np = spi_nor_get_flash_node(nor);
 	int ret;
 	int i;
 
