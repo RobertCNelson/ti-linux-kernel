@@ -17,10 +17,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/sched/core.c                        |   10 +++++++--
  7 files changed, 33 insertions(+), 27 deletions(-)
 
-Index: linux-rt-devel/drivers/net/wireless/orinoco/orinoco_usb.c
-===================================================================
---- linux-rt-devel.orig/drivers/net/wireless/orinoco/orinoco_usb.c
-+++ linux-rt-devel/drivers/net/wireless/orinoco/orinoco_usb.c
+--- a/drivers/net/wireless/orinoco/orinoco_usb.c
++++ b/drivers/net/wireless/orinoco/orinoco_usb.c
 @@ -697,7 +697,7 @@ static void ezusb_req_ctx_wait(struct ez
  			while (!ctx->done.done && msecs--)
  				udelay(1000);
@@ -30,10 +28,8 @@ Index: linux-rt-devel/drivers/net/wireless/orinoco/orinoco_usb.c
  						 ctx->done.done);
  		}
  		break;
-Index: linux-rt-devel/drivers/usb/gadget/function/f_fs.c
-===================================================================
---- linux-rt-devel.orig/drivers/usb/gadget/function/f_fs.c
-+++ linux-rt-devel/drivers/usb/gadget/function/f_fs.c
+--- a/drivers/usb/gadget/function/f_fs.c
++++ b/drivers/usb/gadget/function/f_fs.c
 @@ -1405,7 +1405,7 @@ static void ffs_data_put(struct ffs_data
  		pr_info("%s(): freeing\n", __func__);
  		ffs_data_clear(ffs);
@@ -43,10 +39,8 @@ Index: linux-rt-devel/drivers/usb/gadget/function/f_fs.c
  		kfree(ffs->dev_name);
  		kfree(ffs);
  	}
-Index: linux-rt-devel/drivers/usb/gadget/legacy/inode.c
-===================================================================
---- linux-rt-devel.orig/drivers/usb/gadget/legacy/inode.c
-+++ linux-rt-devel/drivers/usb/gadget/legacy/inode.c
+--- a/drivers/usb/gadget/legacy/inode.c
++++ b/drivers/usb/gadget/legacy/inode.c
 @@ -345,7 +345,7 @@ ep_io (struct ep_data *epdata, void *buf
  	spin_unlock_irq (&epdata->dev->lock);
  
@@ -65,10 +59,8 @@ Index: linux-rt-devel/drivers/usb/gadget/legacy/inode.c
  				if (epdata->status == -ECONNRESET)
  					epdata->status = -EINTR;
  			} else {
-Index: linux-rt-devel/include/linux/completion.h
-===================================================================
---- linux-rt-devel.orig/include/linux/completion.h
-+++ linux-rt-devel/include/linux/completion.h
+--- a/include/linux/completion.h
++++ b/include/linux/completion.h
 @@ -7,8 +7,7 @@
   * Atomic wait-for-completion handler data structures.
   * See kernel/sched/completion.c for details.
@@ -102,10 +94,8 @@ Index: linux-rt-devel/include/linux/completion.h
  }
  
  /**
-Index: linux-rt-devel/include/linux/uprobes.h
-===================================================================
---- linux-rt-devel.orig/include/linux/uprobes.h
-+++ linux-rt-devel/include/linux/uprobes.h
+--- a/include/linux/uprobes.h
++++ b/include/linux/uprobes.h
 @@ -27,6 +27,7 @@
  #include <linux/errno.h>
  #include <linux/rbtree.h>
@@ -114,10 +104,8 @@ Index: linux-rt-devel/include/linux/uprobes.h
  
  struct vm_area_struct;
  struct mm_struct;
-Index: linux-rt-devel/kernel/sched/completion.c
-===================================================================
---- linux-rt-devel.orig/kernel/sched/completion.c
-+++ linux-rt-devel/kernel/sched/completion.c
+--- a/kernel/sched/completion.c
++++ b/kernel/sched/completion.c
 @@ -30,10 +30,10 @@ void complete(struct completion *x)
  {
  	unsigned long flags;
@@ -172,7 +160,7 @@ Index: linux-rt-devel/kernel/sched/completion.c
  		if (!x->done)
  			return timeout;
  	}
-@@ -89,9 +89,9 @@ __wait_for_common(struct completion *x,
+@@ -89,9 +89,9 @@ static inline long __sched
  {
  	might_sleep();
  
@@ -208,11 +196,9 @@ Index: linux-rt-devel/kernel/sched/completion.c
  	return true;
  }
  EXPORT_SYMBOL(completion_done);
-Index: linux-rt-devel/kernel/sched/core.c
-===================================================================
---- linux-rt-devel.orig/kernel/sched/core.c
-+++ linux-rt-devel/kernel/sched/core.c
-@@ -2802,7 +2802,10 @@ void migrate_disable(void)
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -2809,7 +2809,10 @@ void migrate_disable(void)
  	}
  
  #ifdef CONFIG_SCHED_DEBUG
@@ -224,7 +210,7 @@ Index: linux-rt-devel/kernel/sched/core.c
  #endif
  
  	if (p->migrate_disable) {
-@@ -2832,7 +2835,10 @@ void migrate_enable(void)
+@@ -2839,7 +2842,10 @@ void migrate_enable(void)
  	}
  
  #ifdef CONFIG_SCHED_DEBUG

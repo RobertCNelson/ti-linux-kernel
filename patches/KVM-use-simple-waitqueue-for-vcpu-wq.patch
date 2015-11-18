@@ -44,10 +44,8 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  virt/kvm/kvm_main.c                 |   16 ++++++++--------
  10 files changed, 37 insertions(+), 38 deletions(-)
 
-Index: linux-rt-devel/arch/arm/kvm/arm.c
-===================================================================
---- linux-rt-devel.orig/arch/arm/kvm/arm.c
-+++ linux-rt-devel/arch/arm/kvm/arm.c
+--- a/arch/arm/kvm/arm.c
++++ b/arch/arm/kvm/arm.c
 @@ -474,9 +474,9 @@ bool kvm_arch_intc_initialized(struct kv
  
  static void vcpu_pause(struct kvm_vcpu *vcpu)
@@ -60,10 +58,8 @@ Index: linux-rt-devel/arch/arm/kvm/arm.c
  }
  
  static int kvm_vcpu_initialized(struct kvm_vcpu *vcpu)
-Index: linux-rt-devel/arch/arm/kvm/psci.c
-===================================================================
---- linux-rt-devel.orig/arch/arm/kvm/psci.c
-+++ linux-rt-devel/arch/arm/kvm/psci.c
+--- a/arch/arm/kvm/psci.c
++++ b/arch/arm/kvm/psci.c
 @@ -68,7 +68,7 @@ static unsigned long kvm_psci_vcpu_on(st
  {
  	struct kvm *kvm = source_vcpu->kvm;
@@ -82,10 +78,8 @@ Index: linux-rt-devel/arch/arm/kvm/psci.c
  
  	return PSCI_RET_SUCCESS;
  }
-Index: linux-rt-devel/arch/powerpc/include/asm/kvm_host.h
-===================================================================
---- linux-rt-devel.orig/arch/powerpc/include/asm/kvm_host.h
-+++ linux-rt-devel/arch/powerpc/include/asm/kvm_host.h
+--- a/arch/powerpc/include/asm/kvm_host.h
++++ b/arch/powerpc/include/asm/kvm_host.h
 @@ -280,7 +280,7 @@ struct kvmppc_vcore {
  	u8 in_guest;
  	struct list_head runnable_threads;
@@ -104,10 +98,8 @@ Index: linux-rt-devel/arch/powerpc/include/asm/kvm_host.h
  	struct kvmppc_vcore *vcore;
  	int ret;
  	int trap;
-Index: linux-rt-devel/arch/powerpc/kvm/book3s_hv.c
-===================================================================
---- linux-rt-devel.orig/arch/powerpc/kvm/book3s_hv.c
-+++ linux-rt-devel/arch/powerpc/kvm/book3s_hv.c
+--- a/arch/powerpc/kvm/book3s_hv.c
++++ b/arch/powerpc/kvm/book3s_hv.c
 @@ -115,11 +115,11 @@ static bool kvmppc_ipi_thread(int cpu)
  static void kvmppc_fast_vcpu_kick_hv(struct kvm_vcpu *vcpu)
  {
@@ -183,10 +175,8 @@ Index: linux-rt-devel/arch/powerpc/kvm/book3s_hv.c
  		}
  
  	}
-Index: linux-rt-devel/arch/s390/include/asm/kvm_host.h
-===================================================================
---- linux-rt-devel.orig/arch/s390/include/asm/kvm_host.h
-+++ linux-rt-devel/arch/s390/include/asm/kvm_host.h
+--- a/arch/s390/include/asm/kvm_host.h
++++ b/arch/s390/include/asm/kvm_host.h
 @@ -419,7 +419,7 @@ struct kvm_s390_irq_payload {
  struct kvm_s390_local_interrupt {
  	spinlock_t lock;
@@ -196,11 +186,9 @@ Index: linux-rt-devel/arch/s390/include/asm/kvm_host.h
  	atomic_t *cpuflags;
  	DECLARE_BITMAP(sigp_emerg_pending, KVM_MAX_VCPUS);
  	struct kvm_s390_irq_payload irq;
-Index: linux-rt-devel/arch/s390/kvm/interrupt.c
-===================================================================
---- linux-rt-devel.orig/arch/s390/kvm/interrupt.c
-+++ linux-rt-devel/arch/s390/kvm/interrupt.c
-@@ -875,13 +875,13 @@ no_timer:
+--- a/arch/s390/kvm/interrupt.c
++++ b/arch/s390/kvm/interrupt.c
+@@ -875,13 +875,13 @@ int kvm_s390_handle_wait(struct kvm_vcpu
  
  void kvm_s390_vcpu_wakeup(struct kvm_vcpu *vcpu)
  {
@@ -234,10 +222,8 @@ Index: linux-rt-devel/arch/s390/kvm/interrupt.c
  	spin_unlock(&li->lock);
  	return rc;
  }
-Index: linux-rt-devel/arch/x86/kvm/lapic.c
-===================================================================
---- linux-rt-devel.orig/arch/x86/kvm/lapic.c
-+++ linux-rt-devel/arch/x86/kvm/lapic.c
+--- a/arch/x86/kvm/lapic.c
++++ b/arch/x86/kvm/lapic.c
 @@ -1104,7 +1104,7 @@ static void apic_update_lvtt(struct kvm_
  static void apic_timer_expired(struct kvm_lapic *apic)
  {
@@ -258,10 +244,8 @@ Index: linux-rt-devel/arch/x86/kvm/lapic.c
  
  	if (apic_lvtt_tscdeadline(apic))
  		ktimer->expired_tscdeadline = ktimer->tscdeadline;
-Index: linux-rt-devel/include/linux/kvm_host.h
-===================================================================
---- linux-rt-devel.orig/include/linux/kvm_host.h
-+++ linux-rt-devel/include/linux/kvm_host.h
+--- a/include/linux/kvm_host.h
++++ b/include/linux/kvm_host.h
 @@ -230,7 +230,7 @@ struct kvm_vcpu {
  
  	int fpu_active;
@@ -280,10 +264,8 @@ Index: linux-rt-devel/include/linux/kvm_host.h
  {
  #ifdef __KVM_HAVE_ARCH_WQP
  	return vcpu->arch.wqp;
-Index: linux-rt-devel/virt/kvm/async_pf.c
-===================================================================
---- linux-rt-devel.orig/virt/kvm/async_pf.c
-+++ linux-rt-devel/virt/kvm/async_pf.c
+--- a/virt/kvm/async_pf.c
++++ b/virt/kvm/async_pf.c
 @@ -94,8 +94,8 @@ static void async_pf_execute(struct work
  
  	trace_kvm_async_pf_completed(addr, gva);
@@ -295,10 +277,8 @@ Index: linux-rt-devel/virt/kvm/async_pf.c
  
  	mmput(mm);
  	kvm_put_kvm(vcpu->kvm);
-Index: linux-rt-devel/virt/kvm/kvm_main.c
-===================================================================
---- linux-rt-devel.orig/virt/kvm/kvm_main.c
-+++ linux-rt-devel/virt/kvm/kvm_main.c
+--- a/virt/kvm/kvm_main.c
++++ b/virt/kvm/kvm_main.c
 @@ -218,7 +218,7 @@ int kvm_vcpu_init(struct kvm_vcpu *vcpu,
  	vcpu->kvm = kvm;
  	vcpu->vcpu_id = id;

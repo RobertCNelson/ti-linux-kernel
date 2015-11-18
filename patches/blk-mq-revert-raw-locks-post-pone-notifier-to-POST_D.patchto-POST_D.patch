@@ -17,10 +17,8 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  block/blk-mq.c     |    2 +-
  2 files changed, 11 insertions(+), 8 deletions(-)
 
-Index: linux-rt-devel/block/blk-mq-cpu.c
-===================================================================
---- linux-rt-devel.orig/block/blk-mq-cpu.c
-+++ linux-rt-devel/block/blk-mq-cpu.c
+--- a/block/blk-mq-cpu.c
++++ b/block/blk-mq-cpu.c
 @@ -16,7 +16,7 @@
  #include "blk-mq.h"
  
@@ -72,10 +70,8 @@ Index: linux-rt-devel/block/blk-mq-cpu.c
  }
  
  void blk_mq_init_cpu_notifier(struct blk_mq_cpu_notifier *notifier,
-Index: linux-rt-devel/block/blk-mq.c
-===================================================================
---- linux-rt-devel.orig/block/blk-mq.c
-+++ linux-rt-devel/block/blk-mq.c
+--- a/block/blk-mq.c
++++ b/block/blk-mq.c
 @@ -1612,7 +1612,7 @@ static int blk_mq_hctx_notify(void *data
  {
  	struct blk_mq_hw_ctx *hctx = data;

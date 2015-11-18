@@ -20,10 +20,8 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  include/linux/wait.h |    1 +
  1 file changed, 1 insertion(+)
 
-Index: linux-rt-devel/include/linux/wait.h
-===================================================================
---- linux-rt-devel.orig/include/linux/wait.h
-+++ linux-rt-devel/include/linux/wait.h
+--- a/include/linux/wait.h
++++ b/include/linux/wait.h
 @@ -8,6 +8,7 @@
  #include <linux/spinlock.h>
  #include <asm/current.h>

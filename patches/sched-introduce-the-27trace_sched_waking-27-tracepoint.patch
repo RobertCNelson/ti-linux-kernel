@@ -51,14 +51,12 @@ Thanks,
 
 Mathieu
 ---
- include/trace/events/sched.h      | 30 +++++++++++++++++++++---------
- kernel/sched/core.c               |  8 +++++---
- kernel/trace/trace_sched_switch.c |  2 +-
- kernel/trace/trace_sched_wakeup.c |  2 +-
+ include/trace/events/sched.h      |   30 +++++++++++++++++++++---------
+ kernel/sched/core.c               |    8 +++++---
+ kernel/trace/trace_sched_switch.c |    2 +-
+ kernel/trace/trace_sched_wakeup.c |    2 +-
  4 files changed, 28 insertions(+), 14 deletions(-)
 
-diff --git a/include/trace/events/sched.h b/include/trace/events/sched.h
-index 30fedaf..3b63828 100644
 --- a/include/trace/events/sched.h
 +++ b/include/trace/events/sched.h
 @@ -55,9 +55,9 @@ TRACE_EVENT(sched_kthread_stop_ret,
@@ -73,7 +71,7 @@ index 30fedaf..3b63828 100644
  
  	TP_STRUCT__entry(
  		__array(	char,	comm,	TASK_COMM_LEN	)
-@@ -71,25 +71,37 @@ DECLARE_EVENT_CLASS(sched_wakeup_template,
+@@ -71,25 +71,37 @@ DECLARE_EVENT_CLASS(sched_wakeup_templat
  		memcpy(__entry->comm, p->comm, TASK_COMM_LEN);
  		__entry->pid		= p->pid;
  		__entry->prio		= p->prio;
@@ -118,8 +116,6 @@ index 30fedaf..3b63828 100644
  
  #ifdef CREATE_TRACE_POINTS
  static inline long __trace_sched_switch_state(struct task_struct *p)
-diff --git a/kernel/sched/core.c b/kernel/sched/core.c
-index 799b75b..b8b53df 100644
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
 @@ -1558,9 +1558,9 @@ static void
@@ -134,7 +130,7 @@ index 799b75b..b8b53df 100644
  #ifdef CONFIG_SMP
  	if (p->sched_class->task_woken)
  		p->sched_class->task_woken(rq, p);
-@@ -1784,6 +1784,8 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
+@@ -1784,6 +1784,8 @@ try_to_wake_up(struct task_struct *p, un
  	if (!(wake_flags & WF_LOCK_SLEEPER))
  		p->saved_state = TASK_RUNNING;
  
@@ -143,7 +139,7 @@ index 799b75b..b8b53df 100644
  	success = 1; /* we're going to change ->state */
  	cpu = task_cpu(p);
  
-@@ -2188,7 +2190,7 @@ void wake_up_new_task(struct task_struct *p)
+@@ -2188,7 +2190,7 @@ void wake_up_new_task(struct task_struct
  	rq = __task_rq_lock(p);
  	activate_task(rq, p, 0);
  	p->on_rq = TASK_ON_RQ_QUEUED;
@@ -152,11 +148,9 @@ index 799b75b..b8b53df 100644
  	check_preempt_curr(rq, p, WF_FORK);
  #ifdef CONFIG_SMP
  	if (p->sched_class->task_woken)
-diff --git a/kernel/trace/trace_sched_switch.c b/kernel/trace/trace_sched_switch.c
-index 419ca37..f270088 100644
 --- a/kernel/trace/trace_sched_switch.c
 +++ b/kernel/trace/trace_sched_switch.c
-@@ -26,7 +26,7 @@ probe_sched_switch(void *ignore, struct task_struct *prev, struct task_struct *n
+@@ -26,7 +26,7 @@ probe_sched_switch(void *ignore, struct
  }
  
  static void
@@ -165,11 +159,9 @@ index 419ca37..f270088 100644
  {
  	if (unlikely(!sched_ref))
  		return;
-diff --git a/kernel/trace/trace_sched_wakeup.c b/kernel/trace/trace_sched_wakeup.c
-index d6e1003..79a2a5f 100644
 --- a/kernel/trace/trace_sched_wakeup.c
 +++ b/kernel/trace/trace_sched_wakeup.c
-@@ -514,7 +514,7 @@ static void wakeup_reset(struct trace_array *tr)
+@@ -514,7 +514,7 @@ static void wakeup_reset(struct trace_ar
  }
  
  static void
@@ -178,8 +170,3 @@ index d6e1003..79a2a5f 100644
  {
  	struct trace_array_cpu *data;
  	int cpu = smp_processor_id();
--- 
-2.1.4
-
-
-

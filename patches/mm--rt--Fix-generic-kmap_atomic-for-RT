@@ -18,10 +18,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  include/linux/highmem.h |    4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
 
-Index: linux-rt-devel/include/linux/highmem.h
-===================================================================
---- linux-rt-devel.orig/include/linux/highmem.h
-+++ linux-rt-devel/include/linux/highmem.h
+--- a/include/linux/highmem.h
++++ b/include/linux/highmem.h
 @@ -65,7 +65,7 @@ static inline void kunmap(struct page *p
  
  static inline void *kmap_atomic(struct page *page)

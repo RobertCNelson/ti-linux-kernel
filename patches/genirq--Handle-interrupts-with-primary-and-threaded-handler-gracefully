@@ -41,10 +41,8 @@ hard irq handler'
  kernel/irq/manage.c       |  160 +++++++++++++++++++++++++++++++++-------------
  2 files changed, 120 insertions(+), 42 deletions(-)
 
-Index: linux-rt-devel/include/linux/interrupt.h
-===================================================================
---- linux-rt-devel.orig/include/linux/interrupt.h
-+++ linux-rt-devel/include/linux/interrupt.h
+--- a/include/linux/interrupt.h
++++ b/include/linux/interrupt.h
 @@ -102,6 +102,7 @@ typedef irqreturn_t (*irq_handler_t)(int
   * @flags:	flags (see IRQF_* above)
   * @thread_fn:	interrupt handler function for threaded interrupts
@@ -61,10 +59,8 @@ Index: linux-rt-devel/include/linux/interrupt.h
  	unsigned int		irq;
  	unsigned int		flags;
  	unsigned long		thread_flags;
-Index: linux-rt-devel/kernel/irq/manage.c
-===================================================================
---- linux-rt-devel.orig/kernel/irq/manage.c
-+++ linux-rt-devel/kernel/irq/manage.c
+--- a/kernel/irq/manage.c
++++ b/kernel/irq/manage.c
 @@ -697,6 +697,12 @@ static irqreturn_t irq_nested_primary_ha
  	return IRQ_NONE;
  }
@@ -210,7 +206,7 @@ Index: linux-rt-devel/kernel/irq/manage.c
  /*
   * Internal function to register an irqaction - typically used to
   * allocate special interrupts that are part of the architecture.
-@@ -1004,6 +1083,8 @@ __setup_irq(unsigned int irq, struct irq
+@@ -1004,6 +1083,8 @@ static int
  	if (!try_module_get(desc->owner))
  		return -ENODEV;
  
@@ -219,7 +215,7 @@ Index: linux-rt-devel/kernel/irq/manage.c
  	/*
  	 * Check whether the interrupt nests into another interrupt
  	 * thread.
-@@ -1021,8 +1102,11 @@ __setup_irq(unsigned int irq, struct irq
+@@ -1021,8 +1102,11 @@ static int
  		 */
  		new->handler = irq_nested_primary_handler;
  	} else {
@@ -233,7 +229,7 @@ Index: linux-rt-devel/kernel/irq/manage.c
  	}
  
  	/*
-@@ -1031,37 +1115,14 @@ __setup_irq(unsigned int irq, struct irq
+@@ -1031,37 +1115,14 @@ static int
  	 * thread.
  	 */
  	if (new->thread_fn && !nested) {
@@ -277,7 +273,7 @@ Index: linux-rt-devel/kernel/irq/manage.c
  	}
  
  	if (!alloc_cpumask_var(&mask, GFP_KERNEL)) {
-@@ -1234,7 +1295,6 @@ __setup_irq(unsigned int irq, struct irq
+@@ -1234,7 +1295,6 @@ static int
  				   irq, nmsk, omsk);
  	}
  
@@ -285,7 +281,7 @@ Index: linux-rt-devel/kernel/irq/manage.c
  	*old_ptr = new;
  
  	irq_pm_install_action(desc, new);
-@@ -1260,6 +1320,8 @@ __setup_irq(unsigned int irq, struct irq
+@@ -1260,6 +1320,8 @@ static int
  	 */
  	if (new->thread)
  		wake_up_process(new->thread);
@@ -294,7 +290,7 @@ Index: linux-rt-devel/kernel/irq/manage.c
  
  	register_irq_proc(irq, desc);
  	new->dir = NULL;
-@@ -1290,6 +1352,13 @@ out_thread:
+@@ -1290,6 +1352,13 @@ static int
  		kthread_stop(t);
  		put_task_struct(t);
  	}

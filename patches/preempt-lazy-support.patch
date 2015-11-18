@@ -67,10 +67,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/trace/trace_output.c    |   13 +++++++++-
  13 files changed, 204 insertions(+), 29 deletions(-)
 
-Index: linux-rt-devel/arch/x86/include/asm/preempt.h
-===================================================================
---- linux-rt-devel.orig/arch/x86/include/asm/preempt.h
-+++ linux-rt-devel/arch/x86/include/asm/preempt.h
+--- a/arch/x86/include/asm/preempt.h
++++ b/arch/x86/include/asm/preempt.h
 @@ -82,17 +82,33 @@ static __always_inline void __preempt_co
   * a decrement which hits zero means we have no preempt_count and should
   * reschedule.
@@ -106,10 +104,8 @@ Index: linux-rt-devel/arch/x86/include/asm/preempt.h
  }
  
  #ifdef CONFIG_PREEMPT
-Index: linux-rt-devel/include/linux/ftrace_event.h
-===================================================================
---- linux-rt-devel.orig/include/linux/ftrace_event.h
-+++ linux-rt-devel/include/linux/ftrace_event.h
+--- a/include/linux/ftrace_event.h
++++ b/include/linux/ftrace_event.h
 @@ -68,6 +68,7 @@ struct trace_entry {
  	int			pid;
  	unsigned short		migrate_disable;
@@ -118,10 +114,8 @@ Index: linux-rt-devel/include/linux/ftrace_event.h
  };
  
  #define FTRACE_MAX_EVENT						\
-Index: linux-rt-devel/include/linux/preempt.h
-===================================================================
---- linux-rt-devel.orig/include/linux/preempt.h
-+++ linux-rt-devel/include/linux/preempt.h
+--- a/include/linux/preempt.h
++++ b/include/linux/preempt.h
 @@ -34,6 +34,20 @@ extern void preempt_count_sub(int val);
  #define preempt_count_inc() preempt_count_add(1)
  #define preempt_count_dec() preempt_count_sub(1)
@@ -179,10 +173,8 @@ Index: linux-rt-devel/include/linux/preempt.h
  		set_preempt_need_resched(); \
  } while (0)
  
-Index: linux-rt-devel/include/linux/sched.h
-===================================================================
---- linux-rt-devel.orig/include/linux/sched.h
-+++ linux-rt-devel/include/linux/sched.h
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
 @@ -2898,6 +2898,43 @@ static inline int test_tsk_need_resched(
  	return unlikely(test_tsk_thread_flag(tsk,TIF_NEED_RESCHED));
  }
@@ -227,10 +219,8 @@ Index: linux-rt-devel/include/linux/sched.h
  static inline int restart_syscall(void)
  {
  	set_tsk_thread_flag(current, TIF_SIGPENDING);
-Index: linux-rt-devel/include/linux/thread_info.h
-===================================================================
---- linux-rt-devel.orig/include/linux/thread_info.h
-+++ linux-rt-devel/include/linux/thread_info.h
+--- a/include/linux/thread_info.h
++++ b/include/linux/thread_info.h
 @@ -102,7 +102,17 @@ static inline int test_ti_thread_flag(st
  #define test_thread_flag(flag) \
  	test_ti_thread_flag(current_thread_info(), flag)
@@ -250,10 +240,8 @@ Index: linux-rt-devel/include/linux/thread_info.h
  
  #if defined TIF_RESTORE_SIGMASK && !defined HAVE_SET_RESTORE_SIGMASK
  /*
-Index: linux-rt-devel/kernel/Kconfig.preempt
-===================================================================
---- linux-rt-devel.orig/kernel/Kconfig.preempt
-+++ linux-rt-devel/kernel/Kconfig.preempt
+--- a/kernel/Kconfig.preempt
++++ b/kernel/Kconfig.preempt
 @@ -6,6 +6,12 @@ config PREEMPT_RT_BASE
  	bool
  	select PREEMPT
@@ -267,10 +255,8 @@ Index: linux-rt-devel/kernel/Kconfig.preempt
  choice
  	prompt "Preemption Model"
  	default PREEMPT_NONE
-Index: linux-rt-devel/kernel/sched/core.c
-===================================================================
---- linux-rt-devel.orig/kernel/sched/core.c
-+++ linux-rt-devel/kernel/sched/core.c
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
 @@ -623,6 +623,38 @@ void resched_curr(struct rq *rq)
  		trace_sched_wake_idle_without_ipi(cpu);
  }
@@ -370,10 +356,8 @@ Index: linux-rt-devel/kernel/sched/core.c
  	/*
  	 * The idle tasks have their own, simple scheduling class:
  	 */
-Index: linux-rt-devel/kernel/sched/fair.c
-===================================================================
---- linux-rt-devel.orig/kernel/sched/fair.c
-+++ linux-rt-devel/kernel/sched/fair.c
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
 @@ -3201,7 +3201,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq
  	ideal_runtime = sched_slice(cfs_rq, curr);
  	delta_exec = curr->sum_exec_runtime - curr->prev_sum_exec_runtime;
@@ -446,10 +430,8 @@ Index: linux-rt-devel/kernel/sched/fair.c
  	} else
  		check_preempt_curr(rq, p, 0);
  }
-Index: linux-rt-devel/kernel/sched/features.h
-===================================================================
---- linux-rt-devel.orig/kernel/sched/features.h
-+++ linux-rt-devel/kernel/sched/features.h
+--- a/kernel/sched/features.h
++++ b/kernel/sched/features.h
 @@ -52,6 +52,9 @@ SCHED_FEAT(NONTASK_CAPACITY, true)
  
  #ifdef CONFIG_PREEMPT_RT_FULL
@@ -460,10 +442,8 @@ Index: linux-rt-devel/kernel/sched/features.h
  #else
  
  /*
-Index: linux-rt-devel/kernel/sched/sched.h
-===================================================================
---- linux-rt-devel.orig/kernel/sched/sched.h
-+++ linux-rt-devel/kernel/sched/sched.h
+--- a/kernel/sched/sched.h
++++ b/kernel/sched/sched.h
 @@ -1291,6 +1291,15 @@ extern void init_sched_dl_class(void);
  extern void resched_curr(struct rq *rq);
  extern void resched_cpu(int cpu);
@@ -480,10 +460,8 @@ Index: linux-rt-devel/kernel/sched/sched.h
  extern struct rt_bandwidth def_rt_bandwidth;
  extern void init_rt_bandwidth(struct rt_bandwidth *rt_b, u64 period, u64 runtime);
  
-Index: linux-rt-devel/kernel/trace/trace.c
-===================================================================
---- linux-rt-devel.orig/kernel/trace/trace.c
-+++ linux-rt-devel/kernel/trace/trace.c
+--- a/kernel/trace/trace.c
++++ b/kernel/trace/trace.c
 @@ -1630,6 +1630,7 @@ tracing_generic_entry_update(struct trac
  	struct task_struct *tsk = current;
  
@@ -549,10 +527,8 @@ Index: linux-rt-devel/kernel/trace/trace.c
  }
  
  void
-Index: linux-rt-devel/kernel/trace/trace.h
-===================================================================
---- linux-rt-devel.orig/kernel/trace/trace.h
-+++ linux-rt-devel/kernel/trace/trace.h
+--- a/kernel/trace/trace.h
++++ b/kernel/trace/trace.h
 @@ -120,6 +120,7 @@ struct kretprobe_trace_entry_head {
   *  NEED_RESCHED	- reschedule is requested
   *  HARDIRQ		- inside an interrupt handler
@@ -569,10 +545,8 @@ Index: linux-rt-devel/kernel/trace/trace.h
  };
  
  #define TRACE_BUF_SIZE		1024
-Index: linux-rt-devel/kernel/trace/trace_output.c
-===================================================================
---- linux-rt-devel.orig/kernel/trace/trace_output.c
-+++ linux-rt-devel/kernel/trace/trace_output.c
+--- a/kernel/trace/trace_output.c
++++ b/kernel/trace/trace_output.c
 @@ -430,6 +430,7 @@ int trace_print_lat_fmt(struct trace_seq
  {
  	char hardsoft_irq;

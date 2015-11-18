@@ -13,10 +13,8 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  mm/swap.c            |    2 +-
  4 files changed, 18 insertions(+), 9 deletions(-)
 
-Index: linux-rt-devel/include/linux/swap.h
-===================================================================
---- linux-rt-devel.orig/include/linux/swap.h
-+++ linux-rt-devel/include/linux/swap.h
+--- a/include/linux/swap.h
++++ b/include/linux/swap.h
 @@ -298,6 +298,7 @@ extern unsigned long nr_free_pagecache_p
  
  
@@ -25,11 +23,9 @@ Index: linux-rt-devel/include/linux/swap.h
  extern void lru_cache_add(struct page *);
  extern void lru_cache_add_anon(struct page *page);
  extern void lru_cache_add_file(struct page *page);
-Index: linux-rt-devel/mm/compaction.c
-===================================================================
---- linux-rt-devel.orig/mm/compaction.c
-+++ linux-rt-devel/mm/compaction.c
-@@ -1406,10 +1406,12 @@ check_drain:
+--- a/mm/compaction.c
++++ b/mm/compaction.c
+@@ -1406,10 +1406,12 @@ static int compact_zone(struct zone *zon
  				cc->migrate_pfn & ~((1UL << cc->order) - 1);
  
  			if (last_migrated_pfn < current_block_start) {
@@ -44,10 +40,8 @@ Index: linux-rt-devel/mm/compaction.c
  				/* No more flushing until we migrate again */
  				last_migrated_pfn = 0;
  			}
-Index: linux-rt-devel/mm/memcontrol.c
-===================================================================
---- linux-rt-devel.orig/mm/memcontrol.c
-+++ linux-rt-devel/mm/memcontrol.c
+--- a/mm/memcontrol.c
++++ b/mm/memcontrol.c
 @@ -66,6 +66,8 @@
  #include <net/sock.h>
  #include <net/ip.h>
@@ -65,7 +59,7 @@ Index: linux-rt-devel/mm/memcontrol.c
  static const char * const mem_cgroup_stat_names[] = {
  	"cache",
  	"rss",
-@@ -4801,12 +4804,12 @@ static int mem_cgroup_move_account(struc
+@@ -4802,12 +4805,12 @@ static int mem_cgroup_move_account(struc
  
  	ret = 0;
  
@@ -80,7 +74,7 @@ Index: linux-rt-devel/mm/memcontrol.c
  out_unlock:
  	unlock_page(page);
  out:
-@@ -5543,10 +5546,10 @@ void mem_cgroup_commit_charge(struct pag
+@@ -5544,10 +5547,10 @@ void mem_cgroup_commit_charge(struct pag
  		VM_BUG_ON_PAGE(!PageTransHuge(page), page);
  	}
  
@@ -93,7 +87,7 @@ Index: linux-rt-devel/mm/memcontrol.c
  
  	if (do_swap_account && PageSwapCache(page)) {
  		swp_entry_t entry = { .val = page_private(page) };
-@@ -5602,14 +5605,14 @@ static void uncharge_batch(struct mem_cg
+@@ -5603,14 +5606,14 @@ static void uncharge_batch(struct mem_cg
  		memcg_oom_recover(memcg);
  	}
  
@@ -110,7 +104,7 @@ Index: linux-rt-devel/mm/memcontrol.c
  
  	if (!mem_cgroup_is_root(memcg))
  		css_put_many(&memcg->css, nr_pages);
-@@ -5813,6 +5816,7 @@ void mem_cgroup_swapout(struct page *pag
+@@ -5814,6 +5817,7 @@ void mem_cgroup_swapout(struct page *pag
  {
  	struct mem_cgroup *memcg;
  	unsigned short oldid;
@@ -118,7 +112,7 @@ Index: linux-rt-devel/mm/memcontrol.c
  
  	VM_BUG_ON_PAGE(PageLRU(page), page);
  	VM_BUG_ON_PAGE(page_count(page), page);
-@@ -5835,9 +5839,11 @@ void mem_cgroup_swapout(struct page *pag
+@@ -5836,9 +5840,11 @@ void mem_cgroup_swapout(struct page *pag
  	if (!mem_cgroup_is_root(memcg))
  		page_counter_uncharge(&memcg->memory, 1);
  
@@ -130,10 +124,8 @@ Index: linux-rt-devel/mm/memcontrol.c
  }
  
  /**
-Index: linux-rt-devel/mm/swap.c
-===================================================================
---- linux-rt-devel.orig/mm/swap.c
-+++ linux-rt-devel/mm/swap.c
+--- a/mm/swap.c
++++ b/mm/swap.c
 @@ -47,7 +47,7 @@ static DEFINE_PER_CPU(struct pagevec, lr
  static DEFINE_PER_CPU(struct pagevec, lru_deactivate_file_pvecs);
  

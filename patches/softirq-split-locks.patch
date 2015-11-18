@@ -34,10 +34,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  net/core/dev.c               |    6 
  8 files changed, 477 insertions(+), 94 deletions(-)
 
-Index: linux-rt-devel/include/linux/bottom_half.h
-===================================================================
---- linux-rt-devel.orig/include/linux/bottom_half.h
-+++ linux-rt-devel/include/linux/bottom_half.h
+--- a/include/linux/bottom_half.h
++++ b/include/linux/bottom_half.h
 @@ -4,6 +4,39 @@
  #include <linux/preempt.h>
  #include <linux/preempt_mask.h>
@@ -85,10 +83,8 @@ Index: linux-rt-devel/include/linux/bottom_half.h
 +#endif
  
  #endif /* _LINUX_BH_H */
-Index: linux-rt-devel/include/linux/interrupt.h
-===================================================================
---- linux-rt-devel.orig/include/linux/interrupt.h
-+++ linux-rt-devel/include/linux/interrupt.h
+--- a/include/linux/interrupt.h
++++ b/include/linux/interrupt.h
 @@ -442,10 +442,11 @@ struct softirq_action
  	void	(*action)(struct softirq_action *);
  };
@@ -134,10 +130,8 @@ Index: linux-rt-devel/include/linux/interrupt.h
  /*
   * Autoprobing for irqs:
   *
-Index: linux-rt-devel/include/linux/preempt_mask.h
-===================================================================
---- linux-rt-devel.orig/include/linux/preempt_mask.h
-+++ linux-rt-devel/include/linux/preempt_mask.h
+--- a/include/linux/preempt_mask.h
++++ b/include/linux/preempt_mask.h
 @@ -44,16 +44,26 @@
  #define HARDIRQ_OFFSET	(1UL << HARDIRQ_SHIFT)
  #define NMI_OFFSET	(1UL << NMI_SHIFT)
@@ -175,10 +169,8 @@ Index: linux-rt-devel/include/linux/preempt_mask.h
  
  /*
   * Are we in NMI context?
-Index: linux-rt-devel/include/linux/sched.h
-===================================================================
---- linux-rt-devel.orig/include/linux/sched.h
-+++ linux-rt-devel/include/linux/sched.h
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
 @@ -1791,6 +1791,8 @@ struct task_struct {
  #endif
  #ifdef CONFIG_PREEMPT_RT_BASE
@@ -196,10 +188,8 @@ Index: linux-rt-devel/include/linux/sched.h
  #define PF_EXITING	0x00000004	/* getting shut down */
  #define PF_EXITPIDONE	0x00000008	/* pi exit done on shut down */
  #define PF_VCPU		0x00000010	/* I'm a virtual CPU */
-Index: linux-rt-devel/init/main.c
-===================================================================
---- linux-rt-devel.orig/init/main.c
-+++ linux-rt-devel/init/main.c
+--- a/init/main.c
++++ b/init/main.c
 @@ -525,6 +525,7 @@ asmlinkage __visible void __init start_k
  	setup_command_line(command_line);
  	setup_nr_cpu_ids();
@@ -208,10 +198,8 @@ Index: linux-rt-devel/init/main.c
  	smp_prepare_boot_cpu();	/* arch-specific boot-cpu hooks */
  
  	build_all_zonelists(NULL, NULL);
-Index: linux-rt-devel/kernel/softirq.c
-===================================================================
---- linux-rt-devel.orig/kernel/softirq.c
-+++ linux-rt-devel/kernel/softirq.c
+--- a/kernel/softirq.c
++++ b/kernel/softirq.c
 @@ -26,6 +26,7 @@
  #include <linux/smp.h>
  #include <linux/smpboot.h>
@@ -399,7 +387,7 @@ Index: linux-rt-devel/kernel/softirq.c
  
  	/*
  	 * Mask out PF_MEMALLOC s current task context is borrowed for the
-@@ -255,36 +408,7 @@ restart:
+@@ -255,36 +408,7 @@ asmlinkage __visible void __do_softirq(v
  	/* Reset the pending bitmask before enabling irqs */
  	set_softirq_pending(0);
  
@@ -794,10 +782,8 @@ Index: linux-rt-devel/kernel/softirq.c
  	.thread_should_run	= ksoftirqd_should_run,
  	.thread_fn		= run_ksoftirqd,
  	.thread_comm		= "ksoftirqd/%u",
-Index: linux-rt-devel/kernel/time/tick-sched.c
-===================================================================
---- linux-rt-devel.orig/kernel/time/tick-sched.c
-+++ linux-rt-devel/kernel/time/tick-sched.c
+--- a/kernel/time/tick-sched.c
++++ b/kernel/time/tick-sched.c
 @@ -764,14 +764,7 @@ static bool can_stop_idle_tick(int cpu,
  		return false;
  
@@ -814,10 +800,8 @@ Index: linux-rt-devel/kernel/time/tick-sched.c
  		return false;
  	}
  
-Index: linux-rt-devel/net/core/dev.c
-===================================================================
---- linux-rt-devel.orig/net/core/dev.c
-+++ linux-rt-devel/net/core/dev.c
+--- a/net/core/dev.c
++++ b/net/core/dev.c
 @@ -3436,11 +3436,9 @@ int netif_rx_ni(struct sk_buff *skb)
  
  	trace_netif_rx_ni_entry(skb);

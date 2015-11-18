@@ -34,10 +34,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  mm/mmu_context.c |    2 ++
  2 files changed, 4 insertions(+)
 
-Index: linux-rt-devel/fs/exec.c
-===================================================================
---- linux-rt-devel.orig/fs/exec.c
-+++ linux-rt-devel/fs/exec.c
+--- a/fs/exec.c
++++ b/fs/exec.c
 @@ -859,12 +859,14 @@ static int exec_mmap(struct mm_struct *m
  		}
  	}
@@ -53,10 +51,8 @@ Index: linux-rt-devel/fs/exec.c
  	task_unlock(tsk);
  	if (old_mm) {
  		up_read(&old_mm->mmap_sem);
-Index: linux-rt-devel/mm/mmu_context.c
-===================================================================
---- linux-rt-devel.orig/mm/mmu_context.c
-+++ linux-rt-devel/mm/mmu_context.c
+--- a/mm/mmu_context.c
++++ b/mm/mmu_context.c
 @@ -23,6 +23,7 @@ void use_mm(struct mm_struct *mm)
  	struct task_struct *tsk = current;
  

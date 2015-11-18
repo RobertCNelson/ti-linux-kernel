@@ -48,10 +48,8 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  mm/memory.c            |   18 ++++++------------
  2 files changed, 8 insertions(+), 13 deletions(-)
 
-Index: linux-rt-devel/include/linux/kernel.h
-===================================================================
---- linux-rt-devel.orig/include/linux/kernel.h
-+++ linux-rt-devel/include/linux/kernel.h
+--- a/include/linux/kernel.h
++++ b/include/linux/kernel.h
 @@ -244,7 +244,8 @@ static inline u32 reciprocal_scale(u32 v
  
  #if defined(CONFIG_MMU) && \
@@ -62,10 +60,8 @@ Index: linux-rt-devel/include/linux/kernel.h
  #else
  static inline void might_fault(void) { }
  #endif
-Index: linux-rt-devel/mm/memory.c
-===================================================================
---- linux-rt-devel.orig/mm/memory.c
-+++ linux-rt-devel/mm/memory.c
+--- a/mm/memory.c
++++ b/mm/memory.c
 @@ -3743,7 +3743,7 @@ void print_vma_addr(char *prefix, unsign
  }
  

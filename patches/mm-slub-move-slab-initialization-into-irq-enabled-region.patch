@@ -25,10 +25,8 @@ Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
  mm/slub.c |   89 +++++++++++++++++++++++++++++---------------------------------
  1 file changed, 42 insertions(+), 47 deletions(-)
 
-Index: linux-rt-devel/mm/slub.c
-===================================================================
---- linux-rt-devel.orig/mm/slub.c
-+++ linux-rt-devel/mm/slub.c
+--- a/mm/slub.c
++++ b/mm/slub.c
 @@ -1306,6 +1306,17 @@ static inline void slab_free_hook(struct
  	kasan_slab_free(s, x);
  }

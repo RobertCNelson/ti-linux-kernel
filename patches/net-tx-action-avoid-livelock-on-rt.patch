@@ -42,10 +42,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  net/core/dev.c |   32 +++++++++++++++++++++++++++++++-
  1 file changed, 31 insertions(+), 1 deletion(-)
 
-Index: linux-rt-devel/net/core/dev.c
-===================================================================
---- linux-rt-devel.orig/net/core/dev.c
-+++ linux-rt-devel/net/core/dev.c
+--- a/net/core/dev.c
++++ b/net/core/dev.c
 @@ -3444,6 +3444,36 @@ int netif_rx_ni(struct sk_buff *skb)
  }
  EXPORT_SYMBOL(netif_rx_ni);

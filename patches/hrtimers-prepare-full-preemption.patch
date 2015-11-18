@@ -15,10 +15,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/time/posix-timers.c |   33 +++++++++++++++++++++++++++++++++
  4 files changed, 76 insertions(+), 1 deletion(-)
 
-Index: linux-rt-devel/include/linux/hrtimer.h
-===================================================================
---- linux-rt-devel.orig/include/linux/hrtimer.h
-+++ linux-rt-devel/include/linux/hrtimer.h
+--- a/include/linux/hrtimer.h
++++ b/include/linux/hrtimer.h
 @@ -197,6 +197,9 @@ struct hrtimer_cpu_base {
  	unsigned long			nr_hangs;
  	ktime_t				max_hang_time;
@@ -43,10 +41,8 @@ Index: linux-rt-devel/include/linux/hrtimer.h
  /* Query timers: */
  extern ktime_t hrtimer_get_remaining(const struct hrtimer *timer);
  extern int hrtimer_get_res(const clockid_t which_clock, struct timespec *tp);
-Index: linux-rt-devel/kernel/time/hrtimer.c
-===================================================================
---- linux-rt-devel.orig/kernel/time/hrtimer.c
-+++ linux-rt-devel/kernel/time/hrtimer.c
+--- a/kernel/time/hrtimer.c
++++ b/kernel/time/hrtimer.c
 @@ -837,6 +837,32 @@ u64 hrtimer_forward(struct hrtimer *time
  }
  EXPORT_SYMBOL_GPL(hrtimer_forward);
@@ -108,11 +104,9 @@ Index: linux-rt-devel/kernel/time/hrtimer.c
  }
  
  #ifdef CONFIG_HOTPLUG_CPU
-Index: linux-rt-devel/kernel/time/itimer.c
-===================================================================
---- linux-rt-devel.orig/kernel/time/itimer.c
-+++ linux-rt-devel/kernel/time/itimer.c
-@@ -213,6 +213,7 @@ again:
+--- a/kernel/time/itimer.c
++++ b/kernel/time/itimer.c
+@@ -213,6 +213,7 @@ int do_setitimer(int which, struct itime
  		/* We are sharing ->siglock with it_real_fn() */
  		if (hrtimer_try_to_cancel(timer) < 0) {
  			spin_unlock_irq(&tsk->sighand->siglock);
@@ -120,10 +114,8 @@ Index: linux-rt-devel/kernel/time/itimer.c
  			goto again;
  		}
  		expires = timeval_to_ktime(value->it_value);
-Index: linux-rt-devel/kernel/time/posix-timers.c
-===================================================================
---- linux-rt-devel.orig/kernel/time/posix-timers.c
-+++ linux-rt-devel/kernel/time/posix-timers.c
+--- a/kernel/time/posix-timers.c
++++ b/kernel/time/posix-timers.c
 @@ -821,6 +821,20 @@ SYSCALL_DEFINE1(timer_getoverrun, timer_
  	return overrun;
  }
@@ -145,7 +137,7 @@ Index: linux-rt-devel/kernel/time/posix-timers.c
  /* Set a POSIX.1b interval timer. */
  /* timr->it_lock is taken. */
  static int
-@@ -898,6 +912,7 @@ retry:
+@@ -898,6 +912,7 @@ SYSCALL_DEFINE4(timer_settime, timer_t,
  	if (!timr)
  		return -EINVAL;
  
@@ -153,7 +145,7 @@ Index: linux-rt-devel/kernel/time/posix-timers.c
  	kc = clockid_to_kclock(timr->it_clock);
  	if (WARN_ON_ONCE(!kc || !kc->timer_set))
  		error = -EINVAL;
-@@ -906,9 +921,12 @@ retry:
+@@ -906,9 +921,12 @@ SYSCALL_DEFINE4(timer_settime, timer_t,
  
  	unlock_timer(timr, flag);
  	if (error == TIMER_RETRY) {
@@ -166,7 +158,7 @@ Index: linux-rt-devel/kernel/time/posix-timers.c
  
  	if (old_setting && !error &&
  	    copy_to_user(old_setting, &old_spec, sizeof (old_spec)))
-@@ -946,10 +964,15 @@ retry_delete:
+@@ -946,10 +964,15 @@ SYSCALL_DEFINE1(timer_delete, timer_t, t
  	if (!timer)
  		return -EINVAL;
  

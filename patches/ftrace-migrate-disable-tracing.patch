@@ -10,10 +10,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/trace/trace_output.c  |    5 +++++
  4 files changed, 15 insertions(+), 3 deletions(-)
 
-Index: linux-rt-devel/include/linux/ftrace_event.h
-===================================================================
---- linux-rt-devel.orig/include/linux/ftrace_event.h
-+++ linux-rt-devel/include/linux/ftrace_event.h
+--- a/include/linux/ftrace_event.h
++++ b/include/linux/ftrace_event.h
 @@ -66,6 +66,8 @@ struct trace_entry {
  	unsigned char		flags;
  	unsigned char		preempt_count;
@@ -23,10 +21,8 @@ Index: linux-rt-devel/include/linux/ftrace_event.h
  };
  
  #define FTRACE_MAX_EVENT						\
-Index: linux-rt-devel/kernel/trace/trace.c
-===================================================================
---- linux-rt-devel.orig/kernel/trace/trace.c
-+++ linux-rt-devel/kernel/trace/trace.c
+--- a/kernel/trace/trace.c
++++ b/kernel/trace/trace.c
 @@ -1641,6 +1641,8 @@ tracing_generic_entry_update(struct trac
  		((pc & SOFTIRQ_MASK) ? TRACE_FLAG_SOFTIRQ : 0) |
  		(tif_need_resched() ? TRACE_FLAG_NEED_RESCHED : 0) |
@@ -50,10 +46,8 @@ Index: linux-rt-devel/kernel/trace/trace.c
  }
  
  static void print_event_info(struct trace_buffer *buf, struct seq_file *m)
-Index: linux-rt-devel/kernel/trace/trace_events.c
-===================================================================
---- linux-rt-devel.orig/kernel/trace/trace_events.c
-+++ linux-rt-devel/kernel/trace/trace_events.c
+--- a/kernel/trace/trace_events.c
++++ b/kernel/trace/trace_events.c
 @@ -162,6 +162,8 @@ static int trace_define_common_fields(vo
  	__common_field(unsigned char, flags);
  	__common_field(unsigned char, preempt_count);
@@ -63,10 +57,8 @@ Index: linux-rt-devel/kernel/trace/trace_events.c
  
  	return ret;
  }
-Index: linux-rt-devel/kernel/trace/trace_output.c
-===================================================================
---- linux-rt-devel.orig/kernel/trace/trace_output.c
-+++ linux-rt-devel/kernel/trace/trace_output.c
+--- a/kernel/trace/trace_output.c
++++ b/kernel/trace/trace_output.c
 @@ -472,6 +472,11 @@ int trace_print_lat_fmt(struct trace_seq
  	else
  		trace_seq_putc(s, '.');

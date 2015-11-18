@@ -25,10 +25,8 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  arch/powerpc/kvm/Kconfig |    1 +
  1 file changed, 1 insertion(+)
 
-Index: linux-rt-devel/arch/powerpc/kvm/Kconfig
-===================================================================
---- linux-rt-devel.orig/arch/powerpc/kvm/Kconfig
-+++ linux-rt-devel/arch/powerpc/kvm/Kconfig
+--- a/arch/powerpc/kvm/Kconfig
++++ b/arch/powerpc/kvm/Kconfig
 @@ -172,6 +172,7 @@ config KVM_E500MC
  config KVM_MPIC
  	bool "KVM in-kernel MPIC emulation"

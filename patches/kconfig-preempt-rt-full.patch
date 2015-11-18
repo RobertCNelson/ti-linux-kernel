@@ -11,20 +11,16 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  scripts/mkcompile_h    |    4 +++-
  3 files changed, 12 insertions(+), 2 deletions(-)
 
-Index: linux-rt-devel/init/Makefile
-===================================================================
---- linux-rt-devel.orig/init/Makefile
-+++ linux-rt-devel/init/Makefile
-@@ -33,4 +33,4 @@ silent_chk_compile.h = :
+--- a/init/Makefile
++++ b/init/Makefile
+@@ -33,4 +33,4 @@ mounts-$(CONFIG_BLK_DEV_MD)	+= do_mounts
  include/generated/compile.h: FORCE
  	@$($(quiet)chk_compile.h)
  	$(Q)$(CONFIG_SHELL) $(srctree)/scripts/mkcompile_h $@ \
 -	"$(UTS_MACHINE)" "$(CONFIG_SMP)" "$(CONFIG_PREEMPT)" "$(CC) $(KBUILD_CFLAGS)"
 +	"$(UTS_MACHINE)" "$(CONFIG_SMP)" "$(CONFIG_PREEMPT)" "$(CONFIG_PREEMPT_RT_FULL)" "$(CC) $(KBUILD_CFLAGS)"
-Index: linux-rt-devel/kernel/Kconfig.preempt
-===================================================================
---- linux-rt-devel.orig/kernel/Kconfig.preempt
-+++ linux-rt-devel/kernel/Kconfig.preempt
+--- a/kernel/Kconfig.preempt
++++ b/kernel/Kconfig.preempt
 @@ -67,6 +67,14 @@ config PREEMPT_RTB
  	  enables changes which are preliminary for the full preemptible
  	  RT kernel.
@@ -40,10 +36,8 @@ Index: linux-rt-devel/kernel/Kconfig.preempt
  endchoice
  
  config PREEMPT_COUNT
-Index: linux-rt-devel/scripts/mkcompile_h
-===================================================================
---- linux-rt-devel.orig/scripts/mkcompile_h
-+++ linux-rt-devel/scripts/mkcompile_h
+--- a/scripts/mkcompile_h
++++ b/scripts/mkcompile_h
 @@ -4,7 +4,8 @@ TARGET=$1
  ARCH=$2
  SMP=$3

@@ -85,10 +85,8 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  kernel/time/hrtimer.c |   19 +++++++++++++++++++
  2 files changed, 25 insertions(+)
 
-Index: linux-rt-devel/include/linux/delay.h
-===================================================================
---- linux-rt-devel.orig/include/linux/delay.h
-+++ linux-rt-devel/include/linux/delay.h
+--- a/include/linux/delay.h
++++ b/include/linux/delay.h
 @@ -52,4 +52,10 @@ static inline void ssleep(unsigned int s
  	msleep(seconds * 1000);
  }
@@ -100,10 +98,8 @@ Index: linux-rt-devel/include/linux/delay.h
 +#endif
 +
  #endif /* defined(_LINUX_DELAY_H) */
-Index: linux-rt-devel/kernel/time/hrtimer.c
-===================================================================
---- linux-rt-devel.orig/kernel/time/hrtimer.c
-+++ linux-rt-devel/kernel/time/hrtimer.c
+--- a/kernel/time/hrtimer.c
++++ b/kernel/time/hrtimer.c
 @@ -1867,6 +1867,25 @@ SYSCALL_DEFINE2(nanosleep, struct timesp
  	return hrtimer_nanosleep(&tu, rmtp, HRTIMER_MODE_REL, CLOCK_MONOTONIC);
  }

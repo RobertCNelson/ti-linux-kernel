@@ -41,10 +41,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/softirq.c          |  201 ++++++++++++++++++++++++++++++++--------------
  2 files changed, 162 insertions(+), 72 deletions(-)
 
-Index: linux-rt-devel/include/linux/interrupt.h
-===================================================================
---- linux-rt-devel.orig/include/linux/interrupt.h
-+++ linux-rt-devel/include/linux/interrupt.h
+--- a/include/linux/interrupt.h
++++ b/include/linux/interrupt.h
 @@ -481,8 +481,9 @@ static inline struct task_struct *this_c
       to be executed on some cpu at least once after this.
     * If the tasklet is already scheduled, but its execution is still not
@@ -114,10 +112,8 @@ Index: linux-rt-devel/include/linux/interrupt.h
  extern void tasklet_kill(struct tasklet_struct *t);
  extern void tasklet_kill_immediate(struct tasklet_struct *t, unsigned int cpu);
  extern void tasklet_init(struct tasklet_struct *t,
-Index: linux-rt-devel/kernel/softirq.c
-===================================================================
---- linux-rt-devel.orig/kernel/softirq.c
-+++ linux-rt-devel/kernel/softirq.c
+--- a/kernel/softirq.c
++++ b/kernel/softirq.c
 @@ -21,6 +21,7 @@
  #include <linux/freezer.h>
  #include <linux/kthread.h>

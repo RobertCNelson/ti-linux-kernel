@@ -15,10 +15,8 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  mm/workingset.c      |   23 ++++++++++++-----------
  4 files changed, 28 insertions(+), 17 deletions(-)
 
-Index: linux-rt-devel/include/linux/swap.h
-===================================================================
---- linux-rt-devel.orig/include/linux/swap.h
-+++ linux-rt-devel/include/linux/swap.h
+--- a/include/linux/swap.h
++++ b/include/linux/swap.h
 @@ -11,6 +11,7 @@
  #include <linux/fs.h>
  #include <linux/atomic.h>
@@ -37,10 +35,8 @@ Index: linux-rt-devel/include/linux/swap.h
  
  static inline unsigned int workingset_node_pages(struct radix_tree_node *node)
  {
-Index: linux-rt-devel/mm/filemap.c
-===================================================================
---- linux-rt-devel.orig/mm/filemap.c
-+++ linux-rt-devel/mm/filemap.c
+--- a/mm/filemap.c
++++ b/mm/filemap.c
 @@ -167,7 +167,9 @@ static void page_cache_tree_delete(struc
  	if (!workingset_node_pages(node) &&
  	    list_empty(&node->private_list)) {
@@ -67,10 +63,8 @@ Index: linux-rt-devel/mm/filemap.c
  	}
  	return 0;
  }
-Index: linux-rt-devel/mm/truncate.c
-===================================================================
---- linux-rt-devel.orig/mm/truncate.c
-+++ linux-rt-devel/mm/truncate.c
+--- a/mm/truncate.c
++++ b/mm/truncate.c
 @@ -56,8 +56,11 @@ static void clear_exceptional_entry(stru
  	 * protected by mapping->tree_lock.
  	 */
@@ -85,10 +79,8 @@ Index: linux-rt-devel/mm/truncate.c
  	__radix_tree_delete_node(&mapping->page_tree, node);
  unlock:
  	spin_unlock_irq(&mapping->tree_lock);
-Index: linux-rt-devel/mm/workingset.c
-===================================================================
---- linux-rt-devel.orig/mm/workingset.c
-+++ linux-rt-devel/mm/workingset.c
+--- a/mm/workingset.c
++++ b/mm/workingset.c
 @@ -264,7 +264,8 @@ void workingset_activation(struct page *
   * point where they would still be useful.
   */

@@ -50,10 +50,8 @@ v1 -> v2:
  arch/arm64/kernel/insn.c |    6 +++---
  1 file changed, 3 insertions(+), 3 deletions(-)
 
-Index: linux-rt-devel/arch/arm64/kernel/insn.c
-===================================================================
---- linux-rt-devel.orig/arch/arm64/kernel/insn.c
-+++ linux-rt-devel/arch/arm64/kernel/insn.c
+--- a/arch/arm64/kernel/insn.c
++++ b/arch/arm64/kernel/insn.c
 @@ -77,7 +77,7 @@ bool __kprobes aarch64_insn_is_nop(u32 i
  	}
  }

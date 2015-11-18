@@ -10,10 +10,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  arch/arm64/Kconfig |    2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
-Index: linux-rt-devel/arch/arm64/Kconfig
-===================================================================
---- linux-rt-devel.orig/arch/arm64/Kconfig
-+++ linux-rt-devel/arch/arm64/Kconfig
+--- a/arch/arm64/Kconfig
++++ b/arch/arm64/Kconfig
 @@ -600,7 +600,7 @@ config XEN_DOM0
  
  config XEN

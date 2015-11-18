@@ -17,10 +17,8 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  include/linux/srcu.h     |    6 +++---
  2 files changed, 28 insertions(+), 12 deletions(-)
 
-Index: linux-rt-devel/include/linux/notifier.h
-===================================================================
---- linux-rt-devel.orig/include/linux/notifier.h
-+++ linux-rt-devel/include/linux/notifier.h
+--- a/include/linux/notifier.h
++++ b/include/linux/notifier.h
 @@ -6,7 +6,7 @@
   *
   *				Alan Cox <Alan.Cox@linux.org>
@@ -100,10 +98,8 @@ Index: linux-rt-devel/include/linux/notifier.h
  /* CPU notfiers are defined in include/linux/cpu.h. */
  
  /* netdevice notifiers are defined in include/linux/netdevice.h */
-Index: linux-rt-devel/include/linux/srcu.h
-===================================================================
---- linux-rt-devel.orig/include/linux/srcu.h
-+++ linux-rt-devel/include/linux/srcu.h
+--- a/include/linux/srcu.h
++++ b/include/linux/srcu.h
 @@ -84,10 +84,10 @@ int init_srcu_struct(struct srcu_struct
  
  void process_srcu(struct work_struct *work);

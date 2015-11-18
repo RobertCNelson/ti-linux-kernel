@@ -56,10 +56,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  fs/xfs/xfs_inode.h |   79 +++++++++++++++++++++++++++++++++++++----------------
  2 files changed, 107 insertions(+), 40 deletions(-)
 
-Index: linux-rt-devel/fs/xfs/xfs_inode.c
-===================================================================
---- linux-rt-devel.orig/fs/xfs/xfs_inode.c
-+++ linux-rt-devel/fs/xfs/xfs_inode.c
+--- a/fs/xfs/xfs_inode.c
++++ b/fs/xfs/xfs_inode.c
 @@ -164,7 +164,7 @@ xfs_ilock(
  	       (XFS_MMAPLOCK_SHARED | XFS_MMAPLOCK_EXCL));
  	ASSERT((lock_flags & (XFS_ILOCK_SHARED | XFS_ILOCK_EXCL)) !=
@@ -182,10 +180,8 @@ Index: linux-rt-devel/fs/xfs/xfs_inode.c
  
  	try_lock = 0;
  	i = 0;
-Index: linux-rt-devel/fs/xfs/xfs_inode.h
-===================================================================
---- linux-rt-devel.orig/fs/xfs/xfs_inode.h
-+++ linux-rt-devel/fs/xfs/xfs_inode.h
+--- a/fs/xfs/xfs_inode.h
++++ b/fs/xfs/xfs_inode.h
 @@ -284,9 +284,9 @@ static inline int xfs_isiflocked(struct
   * Flags for lockdep annotations.
   *

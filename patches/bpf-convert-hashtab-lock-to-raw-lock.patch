@@ -48,11 +48,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 ---
 This patch is applicable to mainline kernel too.
 
- kernel/bpf/hashtab.c | 14 +++++++-------
+ kernel/bpf/hashtab.c |   14 +++++++-------
  1 file changed, 7 insertions(+), 7 deletions(-)
 
-diff --git a/kernel/bpf/hashtab.c b/kernel/bpf/hashtab.c
-index 83c209d..972b76b 100644
 --- a/kernel/bpf/hashtab.c
 +++ b/kernel/bpf/hashtab.c
 @@ -17,7 +17,7 @@
@@ -64,7 +62,7 @@ index 83c209d..972b76b 100644
  	u32 count;	/* number of elements in this hashtable */
  	u32 n_buckets;	/* number of hash buckets */
  	u32 elem_size;	/* size of each element in bytes */
-@@ -82,7 +82,7 @@ static struct bpf_map *htab_map_alloc(union bpf_attr *attr)
+@@ -82,7 +82,7 @@ static struct bpf_map *htab_map_alloc(un
  	for (i = 0; i < htab->n_buckets; i++)
  		INIT_HLIST_HEAD(&htab->buckets[i]);
  
@@ -73,7 +71,7 @@ index 83c209d..972b76b 100644
  	htab->count = 0;
  
  	htab->elem_size = sizeof(struct htab_elem) +
-@@ -230,7 +230,7 @@ static int htab_map_update_elem(struct bpf_map *map, void *key, void *value,
+@@ -230,7 +230,7 @@ static int htab_map_update_elem(struct b
  	l_new->hash = htab_map_hash(l_new->key, key_size);
  
  	/* bpf_map_update_elem() can be called in_irq() */
@@ -82,7 +80,7 @@ index 83c209d..972b76b 100644
  
  	head = select_bucket(htab, l_new->hash);
  
-@@ -266,11 +266,11 @@ static int htab_map_update_elem(struct bpf_map *map, void *key, void *value,
+@@ -266,11 +266,11 @@ static int htab_map_update_elem(struct b
  	} else {
  		htab->count++;
  	}
@@ -96,7 +94,7 @@ index 83c209d..972b76b 100644
  	kfree(l_new);
  	return ret;
  }
-@@ -291,7 +291,7 @@ static int htab_map_delete_elem(struct bpf_map *map, void *key)
+@@ -291,7 +291,7 @@ static int htab_map_delete_elem(struct b
  
  	hash = htab_map_hash(key, key_size);
  
@@ -105,7 +103,7 @@ index 83c209d..972b76b 100644
  
  	head = select_bucket(htab, hash);
  
-@@ -304,7 +304,7 @@ static int htab_map_delete_elem(struct bpf_map *map, void *key)
+@@ -304,7 +304,7 @@ static int htab_map_delete_elem(struct b
  		ret = 0;
  	}
  
@@ -114,12 +112,3 @@ index 83c209d..972b76b 100644
  	return ret;
  }
  
--- 
-2.0.2
-
---
-To unsubscribe from this list: send the line "unsubscribe linux-rt-users" in
-the body of a message to majordomo@vger.kernel.org
-More majordomo info at  http://vger.kernel.org/majordomo-info.html
-
-

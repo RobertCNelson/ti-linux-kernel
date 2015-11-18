@@ -17,10 +17,8 @@ Signed-off-by: Peter Zijlstra <a.p.zijlstra@chello.nl>
  kernel/ksysfs.c |   12 ++++++++++++
  1 file changed, 12 insertions(+)
 
-Index: linux-rt-devel/kernel/ksysfs.c
-===================================================================
---- linux-rt-devel.orig/kernel/ksysfs.c
-+++ linux-rt-devel/kernel/ksysfs.c
+--- a/kernel/ksysfs.c
++++ b/kernel/ksysfs.c
 @@ -136,6 +136,15 @@ KERNEL_ATTR_RO(vmcoreinfo);
  
  #endif /* CONFIG_KEXEC */

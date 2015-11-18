@@ -14,10 +14,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/time/timekeeping.h |    3 ++-
  5 files changed, 28 insertions(+), 17 deletions(-)
 
-Index: linux-rt-devel/kernel/time/jiffies.c
-===================================================================
---- linux-rt-devel.orig/kernel/time/jiffies.c
-+++ linux-rt-devel/kernel/time/jiffies.c
+--- a/kernel/time/jiffies.c
++++ b/kernel/time/jiffies.c
 @@ -74,7 +74,8 @@ static struct clocksource clocksource_ji
  	.max_cycles	= 10,
  };
@@ -40,10 +38,8 @@ Index: linux-rt-devel/kernel/time/jiffies.c
  	return ret;
  }
  EXPORT_SYMBOL(get_jiffies_64);
-Index: linux-rt-devel/kernel/time/tick-common.c
-===================================================================
---- linux-rt-devel.orig/kernel/time/tick-common.c
-+++ linux-rt-devel/kernel/time/tick-common.c
+--- a/kernel/time/tick-common.c
++++ b/kernel/time/tick-common.c
 @@ -78,13 +78,15 @@ int tick_is_oneshot_available(void)
  static void tick_periodic(int cpu)
  {
@@ -74,10 +70,8 @@ Index: linux-rt-devel/kernel/time/tick-common.c
  
  		clockevents_set_state(dev, CLOCK_EVT_STATE_ONESHOT);
  
-Index: linux-rt-devel/kernel/time/tick-sched.c
-===================================================================
---- linux-rt-devel.orig/kernel/time/tick-sched.c
-+++ linux-rt-devel/kernel/time/tick-sched.c
+--- a/kernel/time/tick-sched.c
++++ b/kernel/time/tick-sched.c
 @@ -62,7 +62,8 @@ static void tick_do_update_jiffies64(kti
  		return;
  
@@ -133,10 +127,8 @@ Index: linux-rt-devel/kernel/time/tick-sched.c
  
  	if (rcu_needs_cpu(&rcu_delta_jiffies) ||
  	    arch_needs_cpu() || irq_work_needs_cpu()) {
-Index: linux-rt-devel/kernel/time/timekeeping.c
-===================================================================
---- linux-rt-devel.orig/kernel/time/timekeeping.c
-+++ linux-rt-devel/kernel/time/timekeeping.c
+--- a/kernel/time/timekeeping.c
++++ b/kernel/time/timekeeping.c
 @@ -2065,8 +2065,10 @@ EXPORT_SYMBOL(hardpps);
   */
  void xtime_update(unsigned long ticks)
@@ -150,10 +142,8 @@ Index: linux-rt-devel/kernel/time/timekeeping.c
 +	raw_spin_unlock(&jiffies_lock);
  	update_wall_time();
  }
-Index: linux-rt-devel/kernel/time/timekeeping.h
-===================================================================
---- linux-rt-devel.orig/kernel/time/timekeeping.h
-+++ linux-rt-devel/kernel/time/timekeeping.h
+--- a/kernel/time/timekeeping.h
++++ b/kernel/time/timekeeping.h
 @@ -22,7 +22,8 @@ extern void timekeeping_resume(void);
  extern void do_timer(unsigned long ticks);
  extern void update_wall_time(void);

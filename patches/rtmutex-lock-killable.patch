@@ -11,10 +11,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/locking/rtmutex.c |   19 +++++++++++++++++++
  2 files changed, 20 insertions(+)
 
-Index: linux-rt-devel/include/linux/rtmutex.h
-===================================================================
---- linux-rt-devel.orig/include/linux/rtmutex.h
-+++ linux-rt-devel/include/linux/rtmutex.h
+--- a/include/linux/rtmutex.h
++++ b/include/linux/rtmutex.h
 @@ -91,6 +91,7 @@ extern void rt_mutex_destroy(struct rt_m
  
  extern void rt_mutex_lock(struct rt_mutex *lock);
@@ -23,10 +21,8 @@ Index: linux-rt-devel/include/linux/rtmutex.h
  extern int rt_mutex_timed_lock(struct rt_mutex *lock,
  			       struct hrtimer_sleeper *timeout);
  
-Index: linux-rt-devel/kernel/locking/rtmutex.c
-===================================================================
---- linux-rt-devel.orig/kernel/locking/rtmutex.c
-+++ linux-rt-devel/kernel/locking/rtmutex.c
+--- a/kernel/locking/rtmutex.c
++++ b/kernel/locking/rtmutex.c
 @@ -1442,6 +1442,25 @@ int rt_mutex_timed_futex_lock(struct rt_
  }
  

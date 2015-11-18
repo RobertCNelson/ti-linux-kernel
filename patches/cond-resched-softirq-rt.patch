@@ -13,11 +13,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/sched/core.c   |    2 ++
  2 files changed, 6 insertions(+)
 
-Index: linux-rt-devel/include/linux/sched.h
-===================================================================
---- linux-rt-devel.orig/include/linux/sched.h
-+++ linux-rt-devel/include/linux/sched.h
-@@ -2937,12 +2937,16 @@ extern int __cond_resched_lock(spinlock_
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -2931,12 +2931,16 @@ extern int __cond_resched_lock(spinlock_
  	__cond_resched_lock(lock);				\
  })
  
@@ -34,11 +32,9 @@ Index: linux-rt-devel/include/linux/sched.h
  
  static inline void cond_resched_rcu(void)
  {
-Index: linux-rt-devel/kernel/sched/core.c
-===================================================================
---- linux-rt-devel.orig/kernel/sched/core.c
-+++ linux-rt-devel/kernel/sched/core.c
-@@ -4479,6 +4479,7 @@ int __cond_resched_lock(spinlock_t *lock
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -4486,6 +4486,7 @@ int __cond_resched_lock(spinlock_t *lock
  }
  EXPORT_SYMBOL(__cond_resched_lock);
  
@@ -46,7 +42,7 @@ Index: linux-rt-devel/kernel/sched/core.c
  int __sched __cond_resched_softirq(void)
  {
  	BUG_ON(!in_softirq());
-@@ -4492,6 +4493,7 @@ int __sched __cond_resched_softirq(void)
+@@ -4499,6 +4500,7 @@ int __sched __cond_resched_softirq(void)
  	return 0;
  }
  EXPORT_SYMBOL(__cond_resched_softirq);

@@ -19,11 +19,9 @@ Cc: stable-rt@vger.kernel.org
  kernel/locking/rtmutex.c |    2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
-Index: linux-rt-devel/kernel/locking/rtmutex.c
-===================================================================
---- linux-rt-devel.orig/kernel/locking/rtmutex.c
-+++ linux-rt-devel/kernel/locking/rtmutex.c
-@@ -2141,7 +2141,7 @@ int rt_mutex_start_proxy_lock(struct rt_
+--- a/kernel/locking/rtmutex.c
++++ b/kernel/locking/rtmutex.c
+@@ -1575,7 +1575,7 @@ int rt_mutex_start_proxy_lock(struct rt_
  		ret = 0;
  	}
  

@@ -11,10 +11,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  init/Kconfig |    2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
-Index: linux-rt-devel/init/Kconfig
-===================================================================
---- linux-rt-devel.orig/init/Kconfig
-+++ linux-rt-devel/init/Kconfig
+--- a/init/Kconfig
++++ b/init/Kconfig
 @@ -637,7 +637,7 @@ config RCU_FANOUT_EXACT
  
  config RCU_FAST_NO_HZ

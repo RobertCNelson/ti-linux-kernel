@@ -29,10 +29,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/workqueue_internal.h |    5 +--
  3 files changed, 41 insertions(+), 89 deletions(-)
 
-Index: linux-rt-devel/kernel/sched/core.c
-===================================================================
---- linux-rt-devel.orig/kernel/sched/core.c
-+++ linux-rt-devel/kernel/sched/core.c
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
 @@ -1517,10 +1517,6 @@ static void ttwu_activate(struct rq *rq,
  {
  	activate_task(rq, p, en_flags);
@@ -44,7 +42,7 @@ Index: linux-rt-devel/kernel/sched/core.c
  }
  
  /*
-@@ -1797,42 +1793,6 @@ out:
+@@ -1797,42 +1793,6 @@ try_to_wake_up(struct task_struct *p, un
  }
  
  /**
@@ -87,7 +85,7 @@ Index: linux-rt-devel/kernel/sched/core.c
   * wake_up_process - Wake up a specific process
   * @p: The process to be woken up.
   *
-@@ -2995,21 +2955,6 @@ static void __sched __schedule(void)
+@@ -3002,21 +2962,6 @@ static void __sched __schedule(void)
  		} else {
  			deactivate_task(rq, prev, DEQUEUE_SLEEP);
  			prev->on_rq = 0;
@@ -109,7 +107,7 @@ Index: linux-rt-devel/kernel/sched/core.c
  		}
  		switch_count = &prev->nvcsw;
  	}
-@@ -3041,6 +2986,14 @@ static inline void sched_submit_work(str
+@@ -3048,6 +2993,14 @@ static inline void sched_submit_work(str
  {
  	if (!tsk->state || tsk_is_pi_blocked(tsk))
  		return;
@@ -124,7 +122,7 @@ Index: linux-rt-devel/kernel/sched/core.c
  	/*
  	 * If we are going to sleep and we have plugged IO queued,
  	 * make sure to submit it to avoid deadlocks.
-@@ -3049,6 +3002,12 @@ static inline void sched_submit_work(str
+@@ -3056,6 +3009,12 @@ static inline void sched_submit_work(str
  		blk_schedule_flush_plug(tsk);
  }
  
@@ -137,7 +135,7 @@ Index: linux-rt-devel/kernel/sched/core.c
  asmlinkage __visible void __sched schedule(void)
  {
  	struct task_struct *tsk = current;
-@@ -3057,6 +3016,7 @@ asmlinkage __visible void __sched schedu
+@@ -3064,6 +3023,7 @@ asmlinkage __visible void __sched schedu
  	do {
  		__schedule();
  	} while (need_resched());
@@ -145,10 +143,8 @@ Index: linux-rt-devel/kernel/sched/core.c
  }
  EXPORT_SYMBOL(schedule);
  
-Index: linux-rt-devel/kernel/workqueue.c
-===================================================================
---- linux-rt-devel.orig/kernel/workqueue.c
-+++ linux-rt-devel/kernel/workqueue.c
+--- a/kernel/workqueue.c
++++ b/kernel/workqueue.c
 @@ -804,44 +804,31 @@ static void wake_up_worker(struct worker
  }
  
@@ -242,10 +238,8 @@ Index: linux-rt-devel/kernel/workqueue.c
  }
  
  /**
-Index: linux-rt-devel/kernel/workqueue_internal.h
-===================================================================
---- linux-rt-devel.orig/kernel/workqueue_internal.h
-+++ linux-rt-devel/kernel/workqueue_internal.h
+--- a/kernel/workqueue_internal.h
++++ b/kernel/workqueue_internal.h
 @@ -43,6 +43,7 @@ struct worker {
  	unsigned long		last_active;	/* L: last active timestamp */
  	unsigned int		flags;		/* X: flags */

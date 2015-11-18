@@ -13,10 +13,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  net/core/dev.c            |   19 +++++++++++++------
  3 files changed, 21 insertions(+), 6 deletions(-)
 
-Index: linux-rt-devel/include/linux/netdevice.h
-===================================================================
---- linux-rt-devel.orig/include/linux/netdevice.h
-+++ linux-rt-devel/include/linux/netdevice.h
+--- a/include/linux/netdevice.h
++++ b/include/linux/netdevice.h
 @@ -2469,6 +2469,7 @@ struct softnet_data {
  	unsigned int		dropped;
  	struct sk_buff_head	input_pkt_queue;
@@ -25,10 +23,8 @@ Index: linux-rt-devel/include/linux/netdevice.h
  
  };
  
-Index: linux-rt-devel/include/linux/skbuff.h
-===================================================================
---- linux-rt-devel.orig/include/linux/skbuff.h
-+++ linux-rt-devel/include/linux/skbuff.h
+--- a/include/linux/skbuff.h
++++ b/include/linux/skbuff.h
 @@ -187,6 +187,7 @@ struct sk_buff_head {
  
  	__u32		qlen;
@@ -50,10 +46,8 @@ Index: linux-rt-devel/include/linux/skbuff.h
  static inline void skb_queue_head_init_class(struct sk_buff_head *list,
  		struct lock_class_key *class)
  {
-Index: linux-rt-devel/net/core/dev.c
-===================================================================
---- linux-rt-devel.orig/net/core/dev.c
-+++ linux-rt-devel/net/core/dev.c
+--- a/net/core/dev.c
++++ b/net/core/dev.c
 @@ -205,14 +205,14 @@ static inline struct hlist_head *dev_ind
  static inline void rps_lock(struct softnet_data *sd)
  {

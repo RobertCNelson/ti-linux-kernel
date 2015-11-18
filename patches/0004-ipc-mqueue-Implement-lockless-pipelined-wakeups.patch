@@ -39,10 +39,8 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  ipc/mqueue.c |   54 +++++++++++++++++++++++++++++++++---------------------
  1 file changed, 33 insertions(+), 21 deletions(-)
 
-Index: linux-rt-devel/ipc/mqueue.c
-===================================================================
---- linux-rt-devel.orig/ipc/mqueue.c
-+++ linux-rt-devel/ipc/mqueue.c
+--- a/ipc/mqueue.c
++++ b/ipc/mqueue.c
 @@ -47,8 +47,7 @@
  #define RECV		1
  
@@ -70,7 +68,7 @@ Index: linux-rt-devel/ipc/mqueue.c
  		if (ewp->state == STATE_READY) {
  			retval = 0;
  			goto out;
-@@ -904,11 +900,15 @@ out_name:
+@@ -904,11 +900,15 @@ SYSCALL_DEFINE1(mq_unlink, const char __
   * list of waiting receivers. A sender checks that list before adding the new
   * message into the message array. If there is a waiting receiver, then it
   * bypasses the message array and directly hands the message over to the
@@ -91,7 +89,7 @@ Index: linux-rt-devel/ipc/mqueue.c
   *
   * The same algorithm is used for senders.
   */
-@@ -916,21 +916,29 @@ out_name:
+@@ -916,21 +916,29 @@ SYSCALL_DEFINE1(mq_unlink, const char __
  /* pipelined_send() - send a message directly to the task waiting in
   * sys_mq_timedreceive() (without inserting message into a queue).
   */

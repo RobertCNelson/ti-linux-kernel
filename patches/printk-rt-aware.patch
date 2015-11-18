@@ -10,10 +10,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/printk/printk.c |   26 +++++++++++++++++++++++---
  1 file changed, 23 insertions(+), 3 deletions(-)
 
-Index: linux-rt-devel/kernel/printk/printk.c
-===================================================================
---- linux-rt-devel.orig/kernel/printk/printk.c
-+++ linux-rt-devel/kernel/printk/printk.c
+--- a/kernel/printk/printk.c
++++ b/kernel/printk/printk.c
 @@ -1401,6 +1401,7 @@ static void call_console_drivers(int lev
  	if (!console_drivers)
  		return;
@@ -82,7 +80,7 @@ Index: linux-rt-devel/kernel/printk/printk.c
  	return;
  out:
  	raw_spin_unlock_irqrestore(&logbuf_lock, flags);
-@@ -2278,12 +2293,17 @@ skip:
+@@ -2278,12 +2293,17 @@ void console_unlock(void)
  		console_idx = log_next(console_idx);
  		console_seq++;
  		console_prev = msg->flags;

@@ -27,10 +27,8 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  fs/aio.c |   24 +++++++++++++++++-------
  1 file changed, 17 insertions(+), 7 deletions(-)
 
-Index: linux-rt-devel/fs/aio.c
-===================================================================
---- linux-rt-devel.orig/fs/aio.c
-+++ linux-rt-devel/fs/aio.c
+--- a/fs/aio.c
++++ b/fs/aio.c
 @@ -40,6 +40,7 @@
  #include <linux/ramfs.h>
  #include <linux/percpu-refcount.h>

@@ -15,10 +15,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  fs/namespace.c        |    3 ++-
  4 files changed, 7 insertions(+), 4 deletions(-)
 
-Index: linux-rt-devel/fs/autofs4/autofs_i.h
-===================================================================
---- linux-rt-devel.orig/fs/autofs4/autofs_i.h
-+++ linux-rt-devel/fs/autofs4/autofs_i.h
+--- a/fs/autofs4/autofs_i.h
++++ b/fs/autofs4/autofs_i.h
 @@ -34,6 +34,7 @@
  #include <linux/sched.h>
  #include <linux/mount.h>
@@ -27,11 +25,9 @@ Index: linux-rt-devel/fs/autofs4/autofs_i.h
  #include <asm/current.h>
  #include <asm/uaccess.h>
  
-Index: linux-rt-devel/fs/autofs4/expire.c
-===================================================================
---- linux-rt-devel.orig/fs/autofs4/expire.c
-+++ linux-rt-devel/fs/autofs4/expire.c
-@@ -150,7 +150,7 @@ again:
+--- a/fs/autofs4/expire.c
++++ b/fs/autofs4/expire.c
+@@ -150,7 +150,7 @@ static struct dentry *get_next_positive_
  			parent = p->d_parent;
  			if (!spin_trylock(&parent->d_lock)) {
  				spin_unlock(&p->d_lock);
@@ -40,10 +36,8 @@ Index: linux-rt-devel/fs/autofs4/expire.c
  				goto relock;
  			}
  			spin_unlock(&p->d_lock);
-Index: linux-rt-devel/fs/dcache.c
-===================================================================
---- linux-rt-devel.orig/fs/dcache.c
-+++ linux-rt-devel/fs/dcache.c
+--- a/fs/dcache.c
++++ b/fs/dcache.c
 @@ -19,6 +19,7 @@
  #include <linux/mm.h>
  #include <linux/fs.h>
@@ -61,7 +55,7 @@ Index: linux-rt-devel/fs/dcache.c
  	return dentry; /* try again with same dentry */
  }
  
-@@ -2395,7 +2396,7 @@ again:
+@@ -2398,7 +2399,7 @@ void d_delete(struct dentry * dentry)
  	if (dentry->d_lockref.count == 1) {
  		if (!spin_trylock(&inode->i_lock)) {
  			spin_unlock(&dentry->d_lock);
@@ -70,10 +64,8 @@ Index: linux-rt-devel/fs/dcache.c
  			goto again;
  		}
  		dentry->d_flags &= ~DCACHE_CANT_MOUNT;
-Index: linux-rt-devel/fs/namespace.c
-===================================================================
---- linux-rt-devel.orig/fs/namespace.c
-+++ linux-rt-devel/fs/namespace.c
+--- a/fs/namespace.c
++++ b/fs/namespace.c
 @@ -14,6 +14,7 @@
  #include <linux/mnt_namespace.h>
  #include <linux/user_namespace.h>

@@ -18,10 +18,8 @@ Tested-by: Udo van den Heuvel <udovdh@xs4all.nl>
  drivers/md/raid5.h |    1 +
  2 files changed, 6 insertions(+), 2 deletions(-)
 
-Index: linux-rt-devel/drivers/md/raid5.c
-===================================================================
---- linux-rt-devel.orig/drivers/md/raid5.c
-+++ linux-rt-devel/drivers/md/raid5.c
+--- a/drivers/md/raid5.c
++++ b/drivers/md/raid5.c
 @@ -1918,8 +1918,9 @@ static void raid_run_ops(struct stripe_h
  	struct raid5_percpu *percpu;
  	unsigned long cpu;
@@ -43,7 +41,7 @@ Index: linux-rt-devel/drivers/md/raid5.c
  }
  
  static struct stripe_head *alloc_stripe(struct kmem_cache *sc, gfp_t gfp)
-@@ -6361,6 +6363,7 @@ static int raid5_alloc_percpu(struct r5c
+@@ -6363,6 +6365,7 @@ static int raid5_alloc_percpu(struct r5c
  			       __func__, cpu);
  			break;
  		}
@@ -51,10 +49,8 @@ Index: linux-rt-devel/drivers/md/raid5.c
  	}
  	put_online_cpus();
  
-Index: linux-rt-devel/drivers/md/raid5.h
-===================================================================
---- linux-rt-devel.orig/drivers/md/raid5.h
-+++ linux-rt-devel/drivers/md/raid5.h
+--- a/drivers/md/raid5.h
++++ b/drivers/md/raid5.h
 @@ -495,6 +495,7 @@ struct r5conf {
  	int			recovery_disabled;
  	/* per cpu variables */

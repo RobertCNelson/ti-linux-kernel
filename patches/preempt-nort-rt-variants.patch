@@ -11,11 +11,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  include/linux/preempt.h |   18 +++++++++++++++++-
  1 file changed, 17 insertions(+), 1 deletion(-)
 
-Index: linux-rt-devel/include/linux/preempt.h
-===================================================================
---- linux-rt-devel.orig/include/linux/preempt.h
-+++ linux-rt-devel/include/linux/preempt.h
-@@ -47,7 +47,11 @@ do { \
+--- a/include/linux/preempt.h
++++ b/include/linux/preempt.h
+@@ -48,7 +48,11 @@ do { \
  	preempt_count_dec(); \
  } while (0)
  
@@ -28,7 +26,7 @@ Index: linux-rt-devel/include/linux/preempt.h
  
  #ifdef CONFIG_PREEMPT
  #define preempt_enable() \
-@@ -144,6 +148,18 @@ do { \
+@@ -145,6 +149,18 @@ do { \
  		set_preempt_need_resched(); \
  } while (0)
  

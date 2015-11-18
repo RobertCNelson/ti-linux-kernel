@@ -25,10 +25,8 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  lib/strnlen_user.c                    |    6 +++-
  12 files changed, 118 insertions(+), 59 deletions(-)
 
-Index: linux-rt-devel/arch/avr32/include/asm/uaccess.h
-===================================================================
---- linux-rt-devel.orig/arch/avr32/include/asm/uaccess.h
-+++ linux-rt-devel/arch/avr32/include/asm/uaccess.h
+--- a/arch/avr32/include/asm/uaccess.h
++++ b/arch/avr32/include/asm/uaccess.h
 @@ -97,7 +97,8 @@ static inline __kernel_size_t __copy_fro
   * @x:   Value to copy to user space.
   * @ptr: Destination address, in user space.
@@ -69,10 +67,8 @@ Index: linux-rt-devel/arch/avr32/include/asm/uaccess.h
   *
   * This macro copies a single simple variable from user space to kernel
   * space.  It supports simple types like char and int, but not larger
-Index: linux-rt-devel/arch/hexagon/include/asm/uaccess.h
-===================================================================
---- linux-rt-devel.orig/arch/hexagon/include/asm/uaccess.h
-+++ linux-rt-devel/arch/hexagon/include/asm/uaccess.h
+--- a/arch/hexagon/include/asm/uaccess.h
++++ b/arch/hexagon/include/asm/uaccess.h
 @@ -36,7 +36,8 @@
   * @addr: User space pointer to start of block to check
   * @size: Size of block to check
@@ -83,10 +79,8 @@ Index: linux-rt-devel/arch/hexagon/include/asm/uaccess.h
   *
   * Checks if a pointer to a block of memory in user space is valid.
   *
-Index: linux-rt-devel/arch/m32r/include/asm/uaccess.h
-===================================================================
---- linux-rt-devel.orig/arch/m32r/include/asm/uaccess.h
-+++ linux-rt-devel/arch/m32r/include/asm/uaccess.h
+--- a/arch/m32r/include/asm/uaccess.h
++++ b/arch/m32r/include/asm/uaccess.h
 @@ -91,7 +91,8 @@ static inline void set_fs(mm_segment_t s
   * @addr: User space pointer to start of block to check
   * @size: Size of block to check
@@ -187,10 +181,8 @@ Index: linux-rt-devel/arch/m32r/include/asm/uaccess.h
   *
   * Get the size of a NUL-terminated string in user space.
   *
-Index: linux-rt-devel/arch/microblaze/include/asm/uaccess.h
-===================================================================
---- linux-rt-devel.orig/arch/microblaze/include/asm/uaccess.h
-+++ linux-rt-devel/arch/microblaze/include/asm/uaccess.h
+--- a/arch/microblaze/include/asm/uaccess.h
++++ b/arch/microblaze/include/asm/uaccess.h
 @@ -178,7 +178,8 @@ extern long __user_bad(void);
   * @x:   Variable to store result.
   * @ptr: Source address, in user space.
@@ -211,10 +203,8 @@ Index: linux-rt-devel/arch/microblaze/include/asm/uaccess.h
   *
   * This macro copies a single simple value from kernel space to user
   * space.  It supports simple types like char and int, but not larger
-Index: linux-rt-devel/arch/mips/include/asm/uaccess.h
-===================================================================
---- linux-rt-devel.orig/arch/mips/include/asm/uaccess.h
-+++ linux-rt-devel/arch/mips/include/asm/uaccess.h
+--- a/arch/mips/include/asm/uaccess.h
++++ b/arch/mips/include/asm/uaccess.h
 @@ -103,7 +103,8 @@ extern u64 __ua_limit;
   * @addr: User space pointer to start of block to check
   * @size: Size of block to check
@@ -365,10 +355,8 @@ Index: linux-rt-devel/arch/mips/include/asm/uaccess.h
   *
   * Get the size of a NUL-terminated string in user space.
   *
-Index: linux-rt-devel/arch/s390/include/asm/uaccess.h
-===================================================================
---- linux-rt-devel.orig/arch/s390/include/asm/uaccess.h
-+++ linux-rt-devel/arch/s390/include/asm/uaccess.h
+--- a/arch/s390/include/asm/uaccess.h
++++ b/arch/s390/include/asm/uaccess.h
 @@ -98,7 +98,8 @@ static inline unsigned long extable_fixu
   * @from: Source address, in user space.
   * @n:	  Number of bytes to copy.
@@ -399,7 +387,7 @@ Index: linux-rt-devel/arch/s390/include/asm/uaccess.h
   *
   * Copy data from kernel space to user space.
   *
-@@ -290,7 +293,8 @@ __compiletime_warning("copy_from_user()
+@@ -290,7 +293,8 @@ void copy_from_user_overflow(void)
   * @from: Source address, in user space.
   * @n:    Number of bytes to copy.
   *
@@ -419,10 +407,8 @@ Index: linux-rt-devel/arch/s390/include/asm/uaccess.h
   *
   * Get the size of a NUL-terminated string in user space.
   *
-Index: linux-rt-devel/arch/score/include/asm/uaccess.h
-===================================================================
---- linux-rt-devel.orig/arch/score/include/asm/uaccess.h
-+++ linux-rt-devel/arch/score/include/asm/uaccess.h
+--- a/arch/score/include/asm/uaccess.h
++++ b/arch/score/include/asm/uaccess.h
 @@ -36,7 +36,8 @@
   * @addr: User space pointer to start of block to check
   * @size: Size of block to check
@@ -473,10 +459,8 @@ Index: linux-rt-devel/arch/score/include/asm/uaccess.h
   *
   * This macro copies a single simple variable from user space to kernel
   * space.  It supports simple types like char and int, but not larger
-Index: linux-rt-devel/arch/tile/include/asm/uaccess.h
-===================================================================
---- linux-rt-devel.orig/arch/tile/include/asm/uaccess.h
-+++ linux-rt-devel/arch/tile/include/asm/uaccess.h
+--- a/arch/tile/include/asm/uaccess.h
++++ b/arch/tile/include/asm/uaccess.h
 @@ -78,7 +78,8 @@ int __range_ok(unsigned long addr, unsig
   * @addr: User space pointer to start of block to check
   * @size: Size of block to check
@@ -537,10 +521,8 @@ Index: linux-rt-devel/arch/tile/include/asm/uaccess.h
   *
   * Copy data from user space to user space.  Caller must check
   * the specified blocks with access_ok() before calling this function.
-Index: linux-rt-devel/arch/x86/include/asm/uaccess.h
-===================================================================
---- linux-rt-devel.orig/arch/x86/include/asm/uaccess.h
-+++ linux-rt-devel/arch/x86/include/asm/uaccess.h
+--- a/arch/x86/include/asm/uaccess.h
++++ b/arch/x86/include/asm/uaccess.h
 @@ -74,7 +74,8 @@ static inline bool __chk_range_not_ok(un
   * @addr: User space pointer to start of block to check
   * @size: Size of block to check
@@ -551,7 +533,7 @@ Index: linux-rt-devel/arch/x86/include/asm/uaccess.h
   *
   * Checks if a pointer to a block of memory in user space is valid.
   *
-@@ -145,7 +146,8 @@ __typeof__(__builtin_choose_expr(sizeof(
+@@ -145,7 +146,8 @@ extern int __get_user_bad(void);
   * @x:   Variable to store result.
   * @ptr: Source address, in user space.
   *
@@ -591,11 +573,9 @@ Index: linux-rt-devel/arch/x86/include/asm/uaccess.h
   *
   * This macro copies a single simple value from kernel space to user
   * space.  It supports simple types like char and int, but not larger
-Index: linux-rt-devel/arch/x86/include/asm/uaccess_32.h
-===================================================================
---- linux-rt-devel.orig/arch/x86/include/asm/uaccess_32.h
-+++ linux-rt-devel/arch/x86/include/asm/uaccess_32.h
-@@ -70,7 +70,8 @@ __copy_to_user_inatomic(void __user *to,
+--- a/arch/x86/include/asm/uaccess_32.h
++++ b/arch/x86/include/asm/uaccess_32.h
+@@ -70,7 +70,8 @@ static __always_inline unsigned long __m
   * @from: Source address, in kernel space.
   * @n:    Number of bytes to copy.
   *
@@ -605,7 +585,7 @@ Index: linux-rt-devel/arch/x86/include/asm/uaccess_32.h
   *
   * Copy data from kernel space to user space.  Caller must check
   * the specified block with access_ok() before calling this function.
-@@ -117,7 +118,8 @@ __copy_from_user_inatomic(void *to, cons
+@@ -117,7 +118,8 @@ static __always_inline unsigned long
   * @from: Source address, in user space.
   * @n:    Number of bytes to copy.
   *
@@ -615,10 +595,8 @@ Index: linux-rt-devel/arch/x86/include/asm/uaccess_32.h
   *
   * Copy data from user space to kernel space.  Caller must check
   * the specified block with access_ok() before calling this function.
-Index: linux-rt-devel/arch/x86/lib/usercopy_32.c
-===================================================================
---- linux-rt-devel.orig/arch/x86/lib/usercopy_32.c
-+++ linux-rt-devel/arch/x86/lib/usercopy_32.c
+--- a/arch/x86/lib/usercopy_32.c
++++ b/arch/x86/lib/usercopy_32.c
 @@ -647,7 +647,8 @@ EXPORT_SYMBOL(__copy_from_user_ll_nocach
   * @from: Source address, in kernel space.
   * @n:    Number of bytes to copy.
@@ -639,10 +617,8 @@ Index: linux-rt-devel/arch/x86/lib/usercopy_32.c
   *
   * Copy data from user space to kernel space.
   *
-Index: linux-rt-devel/lib/strnlen_user.c
-===================================================================
---- linux-rt-devel.orig/lib/strnlen_user.c
-+++ linux-rt-devel/lib/strnlen_user.c
+--- a/lib/strnlen_user.c
++++ b/lib/strnlen_user.c
 @@ -85,7 +85,8 @@ static inline long do_strnlen_user(const
   * @str: The string to measure.
   * @count: Maximum count (including NUL character)

@@ -10,10 +10,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  include/linux/preempt_mask.h |    4 ++++
  1 file changed, 4 insertions(+)
 
-Index: linux-rt-devel/include/linux/preempt_mask.h
-===================================================================
---- linux-rt-devel.orig/include/linux/preempt_mask.h
-+++ linux-rt-devel/include/linux/preempt_mask.h
+--- a/include/linux/preempt_mask.h
++++ b/include/linux/preempt_mask.h
 @@ -83,7 +83,11 @@
  /*
   * The preempt_count offset after spin_lock()

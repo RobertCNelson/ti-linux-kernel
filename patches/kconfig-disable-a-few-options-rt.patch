@@ -10,10 +10,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  mm/Kconfig   |    2 +-
  2 files changed, 2 insertions(+), 1 deletion(-)
 
-Index: linux-rt-devel/arch/Kconfig
-===================================================================
---- linux-rt-devel.orig/arch/Kconfig
-+++ linux-rt-devel/arch/Kconfig
+--- a/arch/Kconfig
++++ b/arch/Kconfig
 @@ -6,6 +6,7 @@ config OPROFILE
  	tristate "OProfile system profiling"
  	depends on PROFILING
@@ -22,10 +20,8 @@ Index: linux-rt-devel/arch/Kconfig
  	select RING_BUFFER
  	select RING_BUFFER_ALLOW_SWAP
  	help
-Index: linux-rt-devel/mm/Kconfig
-===================================================================
---- linux-rt-devel.orig/mm/Kconfig
-+++ linux-rt-devel/mm/Kconfig
+--- a/mm/Kconfig
++++ b/mm/Kconfig
 @@ -409,7 +409,7 @@ config NOMMU_INITIAL_TRIM_EXCESS
  
  config TRANSPARENT_HUGEPAGE

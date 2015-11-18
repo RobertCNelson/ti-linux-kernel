@@ -22,11 +22,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  net/core/dev.c |    2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
-Index: linux-rt-devel/net/core/dev.c
-===================================================================
---- linux-rt-devel.orig/net/core/dev.c
-+++ linux-rt-devel/net/core/dev.c
-@@ -6969,7 +6969,7 @@ EXPORT_SYMBOL(free_netdev);
+--- a/net/core/dev.c
++++ b/net/core/dev.c
+@@ -6930,7 +6930,7 @@ EXPORT_SYMBOL(free_netdev);
  void synchronize_net(void)
  {
  	might_sleep();

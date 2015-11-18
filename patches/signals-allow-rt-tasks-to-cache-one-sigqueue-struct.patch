@@ -15,10 +15,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/signal.c        |   84 ++++++++++++++++++++++++++++++++++++++++++++++---
  5 files changed, 84 insertions(+), 5 deletions(-)
 
-Index: linux-rt-devel/include/linux/sched.h
-===================================================================
---- linux-rt-devel.orig/include/linux/sched.h
-+++ linux-rt-devel/include/linux/sched.h
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
 @@ -1527,6 +1527,7 @@ struct task_struct {
  /* signal handlers */
  	struct signal_struct *signal;
@@ -27,10 +25,8 @@ Index: linux-rt-devel/include/linux/sched.h
  
  	sigset_t blocked, real_blocked;
  	sigset_t saved_sigmask;	/* restored if set_restore_sigmask() was used */
-Index: linux-rt-devel/include/linux/signal.h
-===================================================================
---- linux-rt-devel.orig/include/linux/signal.h
-+++ linux-rt-devel/include/linux/signal.h
+--- a/include/linux/signal.h
++++ b/include/linux/signal.h
 @@ -218,6 +218,7 @@ static inline void init_sigpending(struc
  }
  
@@ -39,10 +35,8 @@ Index: linux-rt-devel/include/linux/signal.h
  
  /* Test if 'sig' is valid signal. Use this instead of testing _NSIG directly */
  static inline int valid_signal(unsigned long sig)
-Index: linux-rt-devel/kernel/exit.c
-===================================================================
---- linux-rt-devel.orig/kernel/exit.c
-+++ linux-rt-devel/kernel/exit.c
+--- a/kernel/exit.c
++++ b/kernel/exit.c
 @@ -144,7 +144,7 @@ static void __exit_signal(struct task_st
  	 * Do this under ->siglock, we can race with another thread
  	 * doing sigqueue_free() if we have SIGQUEUE_PREALLOC signals.
@@ -52,10 +46,8 @@ Index: linux-rt-devel/kernel/exit.c
  	tsk->sighand = NULL;
  	spin_unlock(&sighand->siglock);
  
-Index: linux-rt-devel/kernel/fork.c
-===================================================================
---- linux-rt-devel.orig/kernel/fork.c
-+++ linux-rt-devel/kernel/fork.c
+--- a/kernel/fork.c
++++ b/kernel/fork.c
 @@ -1338,6 +1338,7 @@ static struct task_struct *copy_process(
  	spin_lock_init(&p->alloc_lock);
  
@@ -64,10 +56,8 @@ Index: linux-rt-devel/kernel/fork.c
  
  	p->utime = p->stime = p->gtime = 0;
  	p->utimescaled = p->stimescaled = 0;
-Index: linux-rt-devel/kernel/signal.c
-===================================================================
---- linux-rt-devel.orig/kernel/signal.c
-+++ linux-rt-devel/kernel/signal.c
+--- a/kernel/signal.c
++++ b/kernel/signal.c
 @@ -14,6 +14,7 @@
  #include <linux/export.h>
  #include <linux/init.h>
@@ -123,7 +113,7 @@ Index: linux-rt-devel/kernel/signal.c
  {
  	struct sigqueue *q = NULL;
  	struct user_struct *user;
-@@ -375,7 +408,10 @@ __sigqueue_alloc(int sig, struct task_st
+@@ -375,7 +408,10 @@ static struct sigqueue *
  	if (override_rlimit ||
  	    atomic_read(&user->sigpending) <=
  			task_rlimit(t, RLIMIT_SIGPENDING)) {
@@ -135,7 +125,7 @@ Index: linux-rt-devel/kernel/signal.c
  	} else {
  		print_dropped_signal(sig);
  	}
-@@ -392,6 +428,13 @@ __sigqueue_alloc(int sig, struct task_st
+@@ -392,6 +428,13 @@ static struct sigqueue *
  	return q;
  }
  

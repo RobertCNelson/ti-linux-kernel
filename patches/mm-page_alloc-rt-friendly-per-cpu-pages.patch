@@ -15,10 +15,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  mm/page_alloc.c |   57 ++++++++++++++++++++++++++++++++++++++++----------------
  1 file changed, 41 insertions(+), 16 deletions(-)
 
-Index: linux-rt-devel/mm/page_alloc.c
-===================================================================
---- linux-rt-devel.orig/mm/page_alloc.c
-+++ linux-rt-devel/mm/page_alloc.c
+--- a/mm/page_alloc.c
++++ b/mm/page_alloc.c
 @@ -60,6 +60,7 @@
  #include <linux/page_ext.h>
  #include <linux/hugetlb.h>

@@ -17,10 +17,8 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  drivers/clocksource/timer-atmel-st.c  |    1 +
  2 files changed, 5 insertions(+)
 
-Index: linux-rt-devel/drivers/clocksource/timer-atmel-pit.c
-===================================================================
---- linux-rt-devel.orig/drivers/clocksource/timer-atmel-pit.c
-+++ linux-rt-devel/drivers/clocksource/timer-atmel-pit.c
+--- a/drivers/clocksource/timer-atmel-pit.c
++++ b/drivers/clocksource/timer-atmel-pit.c
 @@ -90,6 +90,7 @@ static cycle_t read_pit_clk(struct clock
  	return elapsed;
  }
@@ -46,10 +44,8 @@ Index: linux-rt-devel/drivers/clocksource/timer-atmel-pit.c
  		break;
  	case CLOCK_EVT_MODE_RESUME:
  		break;
-Index: linux-rt-devel/drivers/clocksource/timer-atmel-st.c
-===================================================================
---- linux-rt-devel.orig/drivers/clocksource/timer-atmel-st.c
-+++ linux-rt-devel/drivers/clocksource/timer-atmel-st.c
+--- a/drivers/clocksource/timer-atmel-st.c
++++ b/drivers/clocksource/timer-atmel-st.c
 @@ -131,6 +131,7 @@ clkevt32k_mode(enum clock_event_mode mod
  		break;
  	case CLOCK_EVT_MODE_SHUTDOWN:

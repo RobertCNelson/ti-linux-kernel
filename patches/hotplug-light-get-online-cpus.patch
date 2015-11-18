@@ -16,10 +16,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/cpu.c        |  119 +++++++++++++++++++++++++++++++++++++++++++++++++++-
  2 files changed, 122 insertions(+), 4 deletions(-)
 
-Index: linux-rt-devel/include/linux/cpu.h
-===================================================================
---- linux-rt-devel.orig/include/linux/cpu.h
-+++ linux-rt-devel/include/linux/cpu.h
+--- a/include/linux/cpu.h
++++ b/include/linux/cpu.h
 @@ -221,9 +221,6 @@ static inline void smpboot_thread_init(v
  #endif /* CONFIG_SMP */
  extern struct bus_type cpu_subsys;
@@ -48,10 +46,8 @@ Index: linux-rt-devel/include/linux/cpu.h
  #define hotcpu_notifier(fn, pri)	do { (void)(fn); } while (0)
  #define __hotcpu_notifier(fn, pri)	do { (void)(fn); } while (0)
  /* These aren't inline functions due to a GCC bug. */
-Index: linux-rt-devel/kernel/cpu.c
-===================================================================
---- linux-rt-devel.orig/kernel/cpu.c
-+++ linux-rt-devel/kernel/cpu.c
+--- a/kernel/cpu.c
++++ b/kernel/cpu.c
 @@ -88,6 +88,100 @@ static struct {
  #define cpuhp_lock_acquire()      lock_map_acquire(&cpu_hotplug.dep_map)
  #define cpuhp_lock_release()      lock_map_release(&cpu_hotplug.dep_map)

@@ -17,10 +17,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/irq/manage.c     |    6 ++++++
  5 files changed, 20 insertions(+), 8 deletions(-)
 
-Index: linux-rt-devel/drivers/char/random.c
-===================================================================
---- linux-rt-devel.orig/drivers/char/random.c
-+++ linux-rt-devel/drivers/char/random.c
+--- a/drivers/char/random.c
++++ b/drivers/char/random.c
 @@ -868,28 +868,27 @@ static __u32 get_reg(struct fast_pool *f
  	return *(ptr + f->reg_idx++);
  }
@@ -55,10 +53,8 @@ Index: linux-rt-devel/drivers/char/random.c
  
  	fast_mix(fast_pool);
  	add_interrupt_bench(cycles);
-Index: linux-rt-devel/include/linux/irqdesc.h
-===================================================================
---- linux-rt-devel.orig/include/linux/irqdesc.h
-+++ linux-rt-devel/include/linux/irqdesc.h
+--- a/include/linux/irqdesc.h
++++ b/include/linux/irqdesc.h
 @@ -63,6 +63,7 @@ struct irq_desc {
  	unsigned int		irqs_unhandled;
  	atomic_t		threads_handled;
@@ -67,10 +63,8 @@ Index: linux-rt-devel/include/linux/irqdesc.h
  	raw_spinlock_t		lock;
  	struct cpumask		*percpu_enabled;
  #ifdef CONFIG_SMP
-Index: linux-rt-devel/include/linux/random.h
-===================================================================
---- linux-rt-devel.orig/include/linux/random.h
-+++ linux-rt-devel/include/linux/random.h
+--- a/include/linux/random.h
++++ b/include/linux/random.h
 @@ -11,7 +11,7 @@
  extern void add_device_randomness(const void *, unsigned int);
  extern void add_input_randomness(unsigned int type, unsigned int code,
@@ -80,10 +74,8 @@ Index: linux-rt-devel/include/linux/random.h
  
  extern void get_random_bytes(void *buf, int nbytes);
  extern void get_random_bytes_arch(void *buf, int nbytes);
-Index: linux-rt-devel/kernel/irq/handle.c
-===================================================================
---- linux-rt-devel.orig/kernel/irq/handle.c
-+++ linux-rt-devel/kernel/irq/handle.c
+--- a/kernel/irq/handle.c
++++ b/kernel/irq/handle.c
 @@ -133,6 +133,8 @@ void __irq_wake_thread(struct irq_desc *
  irqreturn_t
  handle_irq_event_percpu(struct irq_desc *desc, struct irqaction *action)
@@ -106,10 +98,8 @@ Index: linux-rt-devel/kernel/irq/handle.c
  
  	if (!noirqdebug)
  		note_interrupt(irq, desc, retval);
-Index: linux-rt-devel/kernel/irq/manage.c
-===================================================================
---- linux-rt-devel.orig/kernel/irq/manage.c
-+++ linux-rt-devel/kernel/irq/manage.c
+--- a/kernel/irq/manage.c
++++ b/kernel/irq/manage.c
 @@ -1012,6 +1012,12 @@ static int irq_thread(void *data)
  		if (action_ret == IRQ_WAKE_THREAD)
  			irq_wake_secondary(desc, action);

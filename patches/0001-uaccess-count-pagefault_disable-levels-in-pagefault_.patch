@@ -24,10 +24,8 @@ Signed-off-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
  kernel/fork.c           |    3 +++
  3 files changed, 33 insertions(+), 7 deletions(-)
 
-Index: linux-rt-devel/include/linux/sched.h
-===================================================================
---- linux-rt-devel.orig/include/linux/sched.h
-+++ linux-rt-devel/include/linux/sched.h
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
 @@ -1724,6 +1724,7 @@ struct task_struct {
  #ifdef CONFIG_DEBUG_ATOMIC_SLEEP
  	unsigned long	task_state_change;
@@ -36,10 +34,8 @@ Index: linux-rt-devel/include/linux/sched.h
  };
  
  /* Future-safe accessor for struct task_struct's cpus_allowed. */
-Index: linux-rt-devel/include/linux/uaccess.h
-===================================================================
---- linux-rt-devel.orig/include/linux/uaccess.h
-+++ linux-rt-devel/include/linux/uaccess.h
+--- a/include/linux/uaccess.h
++++ b/include/linux/uaccess.h
 @@ -2,20 +2,36 @@
  #define __LINUX_UACCESS_H__
  
@@ -109,10 +105,8 @@ Index: linux-rt-devel/include/linux/uaccess.h
  #ifndef ARCH_HAS_NOCACHE_UACCESS
  
  static inline unsigned long __copy_from_user_inatomic_nocache(void *to,
-Index: linux-rt-devel/kernel/fork.c
-===================================================================
---- linux-rt-devel.orig/kernel/fork.c
-+++ linux-rt-devel/kernel/fork.c
+--- a/kernel/fork.c
++++ b/kernel/fork.c
 @@ -1396,6 +1396,9 @@ static struct task_struct *copy_process(
  	p->hardirq_context = 0;
  	p->softirq_context = 0;

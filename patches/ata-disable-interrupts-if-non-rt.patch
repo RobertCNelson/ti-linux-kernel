@@ -12,10 +12,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  drivers/ata/libata-sff.c |   12 ++++++------
  1 file changed, 6 insertions(+), 6 deletions(-)
 
-Index: linux-rt-devel/drivers/ata/libata-sff.c
-===================================================================
---- linux-rt-devel.orig/drivers/ata/libata-sff.c
-+++ linux-rt-devel/drivers/ata/libata-sff.c
+--- a/drivers/ata/libata-sff.c
++++ b/drivers/ata/libata-sff.c
 @@ -678,9 +678,9 @@ unsigned int ata_sff_data_xfer_noirq(str
  	unsigned long flags;
  	unsigned int consumed;
@@ -46,7 +44,7 @@ Index: linux-rt-devel/drivers/ata/libata-sff.c
  	} else {
  		buf = page_address(page);
  		ap->ops->sff_data_xfer(qc->dev, buf + offset, qc->sect_size,
-@@ -864,7 +864,7 @@ next_sg:
+@@ -864,7 +864,7 @@ static int __atapi_pio_bytes(struct ata_
  		unsigned long flags;
  
  		/* FIXME: use bounce buffer */
@@ -55,7 +53,7 @@ Index: linux-rt-devel/drivers/ata/libata-sff.c
  		buf = kmap_atomic(page);
  
  		/* do the actual data transfer */
-@@ -872,7 +872,7 @@ next_sg:
+@@ -872,7 +872,7 @@ static int __atapi_pio_bytes(struct ata_
  								count, rw);
  
  		kunmap_atomic(buf);

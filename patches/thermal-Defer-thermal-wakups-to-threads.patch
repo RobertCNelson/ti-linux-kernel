@@ -26,10 +26,8 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  drivers/thermal/x86_pkg_temp_thermal.c |   50 +++++++++++++++++++++++++++++++--
  1 file changed, 47 insertions(+), 3 deletions(-)
 
-Index: linux-rt-devel/drivers/thermal/x86_pkg_temp_thermal.c
-===================================================================
---- linux-rt-devel.orig/drivers/thermal/x86_pkg_temp_thermal.c
-+++ linux-rt-devel/drivers/thermal/x86_pkg_temp_thermal.c
+--- a/drivers/thermal/x86_pkg_temp_thermal.c
++++ b/drivers/thermal/x86_pkg_temp_thermal.c
 @@ -29,6 +29,7 @@
  #include <linux/pm.h>
  #include <linux/thermal.h>
@@ -115,7 +113,7 @@ Index: linux-rt-devel/drivers/thermal/x86_pkg_temp_thermal.c
  	spin_lock_init(&pkg_work_lock);
  	platform_thermal_package_notify =
  			pkg_temp_thermal_platform_thermal_notify;
-@@ -608,7 +651,7 @@ err_ret:
+@@ -608,7 +651,7 @@ static int __init pkg_temp_thermal_init(
  	kfree(pkg_work_scheduled);
  	platform_thermal_package_notify = NULL;
  	platform_thermal_package_rate_control = NULL;

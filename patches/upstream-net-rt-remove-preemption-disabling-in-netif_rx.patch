@@ -35,10 +35,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  net/core/dev.c |    8 ++++----
  1 file changed, 4 insertions(+), 4 deletions(-)
 
-Index: linux-rt-devel/net/core/dev.c
-===================================================================
---- linux-rt-devel.orig/net/core/dev.c
-+++ linux-rt-devel/net/core/dev.c
+--- a/net/core/dev.c
++++ b/net/core/dev.c
 @@ -3386,7 +3386,7 @@ static int netif_rx_internal(struct sk_b
  		struct rps_dev_flow voidflow, *rflow = &voidflow;
  		int cpu;

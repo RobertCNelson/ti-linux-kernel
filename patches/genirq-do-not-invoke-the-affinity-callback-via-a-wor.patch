@@ -14,10 +14,8 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  kernel/irq/manage.c       |   79 ++++++++++++++++++++++++++++++++++++++++++++--
  2 files changed, 77 insertions(+), 3 deletions(-)
 
-Index: linux-rt-devel/include/linux/interrupt.h
-===================================================================
---- linux-rt-devel.orig/include/linux/interrupt.h
-+++ linux-rt-devel/include/linux/interrupt.h
+--- a/include/linux/interrupt.h
++++ b/include/linux/interrupt.h
 @@ -217,6 +217,7 @@ struct irq_affinity_notify {
  	unsigned int irq;
  	struct kref kref;
@@ -26,10 +24,8 @@ Index: linux-rt-devel/include/linux/interrupt.h
  	void (*notify)(struct irq_affinity_notify *, const cpumask_t *mask);
  	void (*release)(struct kref *ref);
  };
-Index: linux-rt-devel/kernel/irq/manage.c
-===================================================================
---- linux-rt-devel.orig/kernel/irq/manage.c
-+++ linux-rt-devel/kernel/irq/manage.c
+--- a/kernel/irq/manage.c
++++ b/kernel/irq/manage.c
 @@ -181,6 +181,62 @@ static inline void
  irq_get_pending(struct cpumask *mask, struct irq_desc *desc) { }
  #endif
@@ -123,7 +119,7 @@ Index: linux-rt-devel/kernel/irq/manage.c
  	struct irq_desc *desc = irq_to_desc(notify->irq);
  	cpumask_var_t cpumask;
  	unsigned long flags;
-@@ -283,6 +347,13 @@ out:
+@@ -283,6 +347,13 @@ static void irq_affinity_notify(struct w
  	kref_put(&notify->kref, notify->release);
  }
  

@@ -13,10 +13,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  include/linux/irqflags.h  |   19 +++++++++++++++++++
  2 files changed, 20 insertions(+), 1 deletion(-)
 
-Index: linux-rt-devel/include/linux/interrupt.h
-===================================================================
---- linux-rt-devel.orig/include/linux/interrupt.h
-+++ linux-rt-devel/include/linux/interrupt.h
+--- a/include/linux/interrupt.h
++++ b/include/linux/interrupt.h
 @@ -186,7 +186,7 @@ extern void devm_free_irq(struct device
  #ifdef CONFIG_LOCKDEP
  # define local_irq_enable_in_hardirq()	do { } while (0)
@@ -26,10 +24,8 @@ Index: linux-rt-devel/include/linux/interrupt.h
  #endif
  
  extern void disable_irq_nosync(unsigned int irq);
-Index: linux-rt-devel/include/linux/irqflags.h
-===================================================================
---- linux-rt-devel.orig/include/linux/irqflags.h
-+++ linux-rt-devel/include/linux/irqflags.h
+--- a/include/linux/irqflags.h
++++ b/include/linux/irqflags.h
 @@ -148,4 +148,23 @@
  
  #define irqs_disabled_flags(flags) raw_irqs_disabled_flags(flags)

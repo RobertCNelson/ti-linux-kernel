@@ -13,10 +13,8 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  include/linux/blkdev.h |    1 +
  4 files changed, 25 insertions(+)
 
-Index: linux-rt-devel/block/blk-core.c
-===================================================================
---- linux-rt-devel.orig/block/blk-core.c
-+++ linux-rt-devel/block/blk-core.c
+--- a/block/blk-core.c
++++ b/block/blk-core.c
 @@ -100,6 +100,9 @@ void blk_rq_init(struct request_queue *q
  
  	INIT_LIST_HEAD(&rq->queuelist);
@@ -27,10 +25,8 @@ Index: linux-rt-devel/block/blk-core.c
  	rq->cpu = -1;
  	rq->q = q;
  	rq->__sector = (sector_t) -1;
-Index: linux-rt-devel/block/blk-mq.c
-===================================================================
---- linux-rt-devel.orig/block/blk-mq.c
-+++ linux-rt-devel/block/blk-mq.c
+--- a/block/blk-mq.c
++++ b/block/blk-mq.c
 @@ -217,6 +217,9 @@ static void blk_mq_rq_ctx_init(struct re
  	rq->resid_len = 0;
  	rq->sense = NULL;
@@ -83,10 +79,8 @@ Index: linux-rt-devel/block/blk-mq.c
  	} else {
  		rq->q->softirq_done_fn(rq);
  	}
-Index: linux-rt-devel/include/linux/blk-mq.h
-===================================================================
---- linux-rt-devel.orig/include/linux/blk-mq.h
-+++ linux-rt-devel/include/linux/blk-mq.h
+--- a/include/linux/blk-mq.h
++++ b/include/linux/blk-mq.h
 @@ -202,6 +202,7 @@ static inline u16 blk_mq_unique_tag_to_t
  
  struct blk_mq_hw_ctx *blk_mq_map_queue(struct request_queue *, const int ctx_index);
@@ -95,10 +89,8 @@ Index: linux-rt-devel/include/linux/blk-mq.h
  
  int blk_mq_request_started(struct request *rq);
  void blk_mq_start_request(struct request *rq);
-Index: linux-rt-devel/include/linux/blkdev.h
-===================================================================
---- linux-rt-devel.orig/include/linux/blkdev.h
-+++ linux-rt-devel/include/linux/blkdev.h
+--- a/include/linux/blkdev.h
++++ b/include/linux/blkdev.h
 @@ -101,6 +101,7 @@ struct request {
  	struct list_head queuelist;
  	union {

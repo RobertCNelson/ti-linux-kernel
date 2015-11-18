@@ -11,10 +11,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  mm/page_alloc.c |   85 ++++++++++++++++++++++++++++++++++++++++----------------
  1 file changed, 61 insertions(+), 24 deletions(-)
 
-Index: linux-rt-devel/mm/page_alloc.c
-===================================================================
---- linux-rt-devel.orig/mm/page_alloc.c
-+++ linux-rt-devel/mm/page_alloc.c
+--- a/mm/page_alloc.c
++++ b/mm/page_alloc.c
 @@ -694,7 +694,7 @@ static inline int free_pages_check(struc
  }
  

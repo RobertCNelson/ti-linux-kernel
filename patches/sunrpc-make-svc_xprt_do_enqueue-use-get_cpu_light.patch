@@ -31,10 +31,8 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  net/sunrpc/svc_xprt.c |    6 +++---
  1 file changed, 3 insertions(+), 3 deletions(-)
 
-Index: linux-rt-devel/net/sunrpc/svc_xprt.c
-===================================================================
---- linux-rt-devel.orig/net/sunrpc/svc_xprt.c
-+++ linux-rt-devel/net/sunrpc/svc_xprt.c
+--- a/net/sunrpc/svc_xprt.c
++++ b/net/sunrpc/svc_xprt.c
 @@ -341,7 +341,7 @@ static void svc_xprt_do_enqueue(struct s
  		goto out;
  	}
@@ -44,7 +42,7 @@ Index: linux-rt-devel/net/sunrpc/svc_xprt.c
  	pool = svc_pool_for_cpu(xprt->xpt_server, cpu);
  
  	atomic_long_inc(&pool->sp_stats.packets);
-@@ -377,7 +377,7 @@ redo_search:
+@@ -377,7 +377,7 @@ static void svc_xprt_do_enqueue(struct s
  
  		atomic_long_inc(&pool->sp_stats.threads_woken);
  		wake_up_process(rqstp->rq_task);
@@ -53,7 +51,7 @@ Index: linux-rt-devel/net/sunrpc/svc_xprt.c
  		goto out;
  	}
  	rcu_read_unlock();
-@@ -398,7 +398,7 @@ redo_search:
+@@ -398,7 +398,7 @@ static void svc_xprt_do_enqueue(struct s
  		goto redo_search;
  	}
  	rqstp = NULL;

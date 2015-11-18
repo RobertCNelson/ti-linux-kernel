@@ -54,10 +54,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/sched/core.c   |   82 ++++++++++++++++
  3 files changed, 285 insertions(+), 48 deletions(-)
 
-Index: linux-rt-devel/include/linux/sched.h
-===================================================================
---- linux-rt-devel.orig/include/linux/sched.h
-+++ linux-rt-devel/include/linux/sched.h
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
 @@ -2217,6 +2217,10 @@ extern void do_set_cpus_allowed(struct t
  
  extern int set_cpus_allowed_ptr(struct task_struct *p,
@@ -79,10 +77,8 @@ Index: linux-rt-devel/include/linux/sched.h
  #endif
  
  #ifdef CONFIG_NO_HZ_COMMON
-Index: linux-rt-devel/kernel/cpu.c
-===================================================================
---- linux-rt-devel.orig/kernel/cpu.c
-+++ linux-rt-devel/kernel/cpu.c
+--- a/kernel/cpu.c
++++ b/kernel/cpu.c
 @@ -59,16 +59,10 @@ static int cpu_hotplug_disabled;
  
  static struct {
@@ -458,11 +454,9 @@ Index: linux-rt-devel/kernel/cpu.c
  	/*
  	 * So now all preempt/rcu users must observe !cpu_active().
  	 */
-Index: linux-rt-devel/kernel/sched/core.c
-===================================================================
---- linux-rt-devel.orig/kernel/sched/core.c
-+++ linux-rt-devel/kernel/sched/core.c
-@@ -2754,7 +2754,7 @@ void migrate_disable(void)
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -2761,7 +2761,7 @@ void migrate_disable(void)
  {
  	struct task_struct *p = current;
  
@@ -471,7 +465,7 @@ Index: linux-rt-devel/kernel/sched/core.c
  #ifdef CONFIG_SCHED_DEBUG
  		p->migrate_disable_atomic++;
  #endif
-@@ -2787,7 +2787,7 @@ void migrate_enable(void)
+@@ -2794,7 +2794,7 @@ void migrate_enable(void)
  	unsigned long flags;
  	struct rq *rq;
  
@@ -480,7 +474,7 @@ Index: linux-rt-devel/kernel/sched/core.c
  #ifdef CONFIG_SCHED_DEBUG
  		p->migrate_disable_atomic--;
  #endif
-@@ -4960,6 +4960,84 @@ void do_set_cpus_allowed(struct task_str
+@@ -4967,6 +4967,84 @@ void do_set_cpus_allowed(struct task_str
  	cpumask_copy(&p->cpus_allowed, new_mask);
  }
  
