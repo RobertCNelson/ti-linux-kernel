@@ -434,6 +434,7 @@ net-core-cpuhotplug-drain-input_pkt_queue-lockless.patch
 
 # irqwork
 irqwork-push_most_work_into_softirq_context.patch
+irqwork-Move-irq-safe-work-to-irq-context.patch
 
 # Sound
 snd-pcm-fix-snd_pcm_stream_lock-irqs_disabled-splats.patch
