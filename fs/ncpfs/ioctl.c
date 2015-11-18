@@ -527,7 +527,7 @@ static long __ncp_ioctl(struct inode *inode, unsigned int cmd, unsigned long arg
 				case NCP_LOCK_SH:
 						if (rqdata.timeout < 0)
 							return -EINVAL;
-						else if (rqdata.timeout == 0)
+						if (rqdata.timeout == 0)
 							rqdata.timeout = NCP_LOCK_DEFAULT_TIMEOUT;
 						else if (rqdata.timeout > NCP_LOCK_MAX_TIMEOUT)
 							rqdata.timeout = NCP_LOCK_MAX_TIMEOUT;
