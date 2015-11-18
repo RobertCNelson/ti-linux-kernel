@@ -3420,8 +3420,8 @@ void *kmem_cache_alloc(struct kmem_cache *cachep, gfp_t flags)
 EXPORT_SYMBOL(kmem_cache_alloc);
 
 /* Note that interrupts must be enabled when calling this function. */
-bool kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
-			   void **p)
+int kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
+			  void **p)
 {
 	size_t i;
 
@@ -3431,11 +3431,11 @@ bool kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
 
 		if (!x) {
 			__kmem_cache_free_bulk(s, i, p);
-			return false;
+			return 0;
 		}
 	}
 	local_irq_enable();
-	return true;
+	return i;
 }
 EXPORT_SYMBOL(kmem_cache_alloc_bulk);
 
