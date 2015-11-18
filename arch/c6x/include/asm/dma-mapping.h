@@ -24,6 +24,4 @@ static inline struct dma_map_ops *get_dma_ops(struct device *dev)
 	return &c6x_dma_ops;
 }
 
-#include <asm-generic/dma-mapping-common.h>
-
 #endif	/* _ASM_C6X_DMA_MAPPING_H */
