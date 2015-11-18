@@ -151,13 +151,31 @@ static void vlv_psr_enable_sink(struct intel_dp *intel_dp)
 			   DP_PSR_ENABLE | DP_PSR_MAIN_LINK_ACTIVE);
 }
 
+static uint32_t psr_aux_ctl_reg(struct drm_i915_private *dev_priv,
+				enum port port)
+{
+	if (INTEL_INFO(dev_priv)->gen >= 9)
+		return DP_AUX_CH_CTL(port);
+	else
+		return EDP_PSR_AUX_CTL;
+}
+
+static uint32_t psr_aux_data_reg(struct drm_i915_private *dev_priv,
+				 enum port port, int index)
+{
+	if (INTEL_INFO(dev_priv)->gen >= 9)
+		return DP_AUX_CH_DATA(port, index);
+	else
+		return EDP_PSR_AUX_DATA(index);
+}
+
 static void hsw_psr_enable_sink(struct intel_dp *intel_dp)
 {
 	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
 	struct drm_device *dev = dig_port->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	uint32_t aux_clock_divider;
-	uint32_t aux_data_reg, aux_ctl_reg;
+	uint32_t aux_ctl_reg;
 	int precharge = 0x3;
 	static const uint8_t aux_msg[] = {
 		[0] = DP_AUX_NATIVE_WRITE << 4,
@@ -166,6 +184,7 @@ static void hsw_psr_enable_sink(struct intel_dp *intel_dp)
 		[3] = 1 - 1,
 		[4] = DP_SET_POWER_D0,
 	};
+	enum port port = dig_port->port;
 	int i;
 
 	BUILD_BUG_ON(sizeof(aux_msg) > 20);
@@ -181,14 +200,11 @@ static void hsw_psr_enable_sink(struct intel_dp *intel_dp)
 				DP_SINK_DEVICE_AUX_FRAME_SYNC_CONF,
 				DP_AUX_FRAME_SYNC_ENABLE);
 
-	aux_data_reg = (INTEL_INFO(dev)->gen >= 9) ?
-				DPA_AUX_CH_DATA1 : EDP_PSR_AUX_DATA1(dev);
-	aux_ctl_reg = (INTEL_INFO(dev)->gen >= 9) ?
-				DPA_AUX_CH_CTL : EDP_PSR_AUX_CTL(dev);
+	aux_ctl_reg = psr_aux_ctl_reg(dev_priv, port);
 
 	/* Setup AUX registers */
 	for (i = 0; i < sizeof(aux_msg); i += 4)
-		I915_WRITE(aux_data_reg + i,
+		I915_WRITE(psr_aux_data_reg(dev_priv, port, i >> 2),
 			   intel_dp_pack_aux(&aux_msg[i], sizeof(aux_msg) - i));
 
 	if (INTEL_INFO(dev)->gen >= 9) {
@@ -276,7 +292,7 @@ static void hsw_psr_enable_source(struct intel_dp *intel_dp)
 		idle_frames += 4;
 	}
 
-	I915_WRITE(EDP_PSR_CTL(dev), val |
+	I915_WRITE(EDP_PSR_CTL, val |
 		   (IS_BROADWELL(dev) ? 0 : link_entry_time) |
 		   max_sleep_time << EDP_PSR_MAX_SLEEP_TIME_SHIFT |
 		   idle_frames << EDP_PSR_IDLE_FRAME_SHIFT |
@@ -340,7 +356,7 @@ static void intel_psr_activate(struct intel_dp *intel_dp)
 	struct drm_device *dev = intel_dig_port->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	WARN_ON(I915_READ(EDP_PSR_CTL(dev)) & EDP_PSR_ENABLE);
+	WARN_ON(I915_READ(EDP_PSR_CTL) & EDP_PSR_ENABLE);
 	WARN_ON(dev_priv->psr.active);
 	lockdep_assert_held(&dev_priv->psr.lock);
 
@@ -404,7 +420,7 @@ void intel_psr_enable(struct intel_dp *intel_dp)
 		}
 
 		/* Avoid continuous PSR exit by masking memup and hpd */
-		I915_WRITE(EDP_PSR_DEBUG_CTL(dev), EDP_PSR_DEBUG_MASK_MEMUP |
+		I915_WRITE(EDP_PSR_DEBUG_CTL, EDP_PSR_DEBUG_MASK_MEMUP |
 			   EDP_PSR_DEBUG_MASK_HPD);
 
 		/* Enable PSR on the panel */
@@ -466,17 +482,17 @@ static void hsw_psr_disable(struct intel_dp *intel_dp)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	if (dev_priv->psr.active) {
-		I915_WRITE(EDP_PSR_CTL(dev),
-			   I915_READ(EDP_PSR_CTL(dev)) & ~EDP_PSR_ENABLE);
+		I915_WRITE(EDP_PSR_CTL,
+			   I915_READ(EDP_PSR_CTL) & ~EDP_PSR_ENABLE);
 
 		/* Wait till PSR is idle */
-		if (_wait_for((I915_READ(EDP_PSR_STATUS_CTL(dev)) &
+		if (_wait_for((I915_READ(EDP_PSR_STATUS_CTL) &
 			       EDP_PSR_STATUS_STATE_MASK) == 0, 2000, 10))
 			DRM_ERROR("Timed out waiting for PSR Idle State\n");
 
 		dev_priv->psr.active = false;
 	} else {
-		WARN_ON(I915_READ(EDP_PSR_CTL(dev)) & EDP_PSR_ENABLE);
+		WARN_ON(I915_READ(EDP_PSR_CTL) & EDP_PSR_ENABLE);
 	}
 }
 
@@ -523,7 +539,7 @@ static void intel_psr_work(struct work_struct *work)
 	 * and be ready for re-enable.
 	 */
 	if (HAS_DDI(dev_priv->dev)) {
-		if (wait_for((I915_READ(EDP_PSR_STATUS_CTL(dev_priv->dev)) &
+		if (wait_for((I915_READ(EDP_PSR_STATUS_CTL) &
 			      EDP_PSR_STATUS_STATE_MASK) == 0, 50)) {
 			DRM_ERROR("Timed out waiting for PSR Idle for re-enable\n");
 			return;
@@ -566,11 +582,11 @@ static void intel_psr_exit(struct drm_device *dev)
 		return;
 
 	if (HAS_DDI(dev)) {
-		val = I915_READ(EDP_PSR_CTL(dev));
+		val = I915_READ(EDP_PSR_CTL);
 
 		WARN_ON(!(val & EDP_PSR_ENABLE));
 
-		I915_WRITE(EDP_PSR_CTL(dev), val & ~EDP_PSR_ENABLE);
+		I915_WRITE(EDP_PSR_CTL, val & ~EDP_PSR_ENABLE);
 	} else {
 		val = I915_READ(VLV_PSRCTL(pipe));
 
@@ -750,6 +766,9 @@ void intel_psr_flush(struct drm_device *dev,
 void intel_psr_init(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	dev_priv->psr_mmio_base = IS_HASWELL(dev_priv) ?
+		HSW_EDP_PSR_BASE : BDW_EDP_PSR_BASE;
 
 	INIT_DELAYED_WORK(&dev_priv->psr.work, intel_psr_work);
 	mutex_init(&dev_priv->psr.lock);

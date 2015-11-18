@@ -24,6 +24,7 @@
  */
 
 #include <linux/seq_file.h>
+#include <linux/stop_machine.h>
 #include <drm/drmP.h>
 #include <drm/i915_drm.h>
 #include "i915_drv.h"
@@ -104,9 +105,11 @@ static int sanitize_enable_ppgtt(struct drm_device *dev, int enable_ppgtt)
 {
 	bool has_aliasing_ppgtt;
 	bool has_full_ppgtt;
+	bool has_full_48bit_ppgtt;
 
 	has_aliasing_ppgtt = INTEL_INFO(dev)->gen >= 6;
 	has_full_ppgtt = INTEL_INFO(dev)->gen >= 7;
+	has_full_48bit_ppgtt = IS_BROADWELL(dev) || INTEL_INFO(dev)->gen >= 9;
 
 	if (intel_vgpu_active(dev))
 		has_full_ppgtt = false; /* emulation is too hard */
@@ -125,6 +128,9 @@ static int sanitize_enable_ppgtt(struct drm_device *dev, int enable_ppgtt)
 	if (enable_ppgtt == 2 && has_full_ppgtt)
 		return 2;
 
+	if (enable_ppgtt == 3 && has_full_48bit_ppgtt)
+		return 3;
+
 #ifdef CONFIG_INTEL_IOMMU
 	/* Disable ppgtt on SNB if VT-d is on. */
 	if (INTEL_INFO(dev)->gen == 6 && intel_iommu_gfx_mapped) {
@@ -141,7 +147,7 @@ static int sanitize_enable_ppgtt(struct drm_device *dev, int enable_ppgtt)
 	}
 
 	if (INTEL_INFO(dev)->gen >= 8 && i915.enable_execlists)
-		return 2;
+		return has_full_48bit_ppgtt ? 3 : 2;
 	else
 		return has_aliasing_ppgtt ? 1 : 0;
 }
@@ -2528,6 +2534,26 @@ static int ggtt_bind_vma(struct i915_vma *vma,
 	return 0;
 }
 
+struct ggtt_bind_vma__cb {
+	struct i915_vma *vma;
+	enum i915_cache_level cache_level;
+	u32 flags;
+};
+
+static int ggtt_bind_vma__cb(void *_arg)
+{
+	struct ggtt_bind_vma__cb *arg = _arg;
+	return ggtt_bind_vma(arg->vma, arg->cache_level, arg->flags);
+}
+
+static int ggtt_bind_vma__BKL(struct i915_vma *vma,
+			      enum i915_cache_level cache_level,
+			      u32 flags)
+{
+	struct ggtt_bind_vma__cb arg = { vma, cache_level, flags };
+	return stop_machine(ggtt_bind_vma__cb, &arg, NULL);
+}
+
 static int aliasing_gtt_bind_vma(struct i915_vma *vma,
 				 enum i915_cache_level cache_level,
 				 u32 flags)
@@ -2994,6 +3020,9 @@ static int gen8_gmch_probe(struct drm_device *dev,
 	dev_priv->gtt.base.insert_entries = gen8_ggtt_insert_entries;
 	dev_priv->gtt.base.bind_vma = ggtt_bind_vma;
 	dev_priv->gtt.base.unbind_vma = ggtt_unbind_vma;
+
+	if (IS_CHERRYVIEW(dev))
+		dev_priv->gtt.base.bind_vma = ggtt_bind_vma__BKL;
 
 	return ret;
 }

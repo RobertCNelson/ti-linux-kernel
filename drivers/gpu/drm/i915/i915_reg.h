@@ -3075,8 +3075,9 @@ enum skl_disp_power_wells {
 #define VLV_PSRSTAT(pipe) _PIPE(pipe, _PSRSTATA, _PSRSTATB)
 
 /* HSW+ eDP PSR registers */
-#define EDP_PSR_BASE(dev)                       (IS_HASWELL(dev) ? 0x64800 : 0x6f800)
-#define EDP_PSR_CTL(dev)			(EDP_PSR_BASE(dev) + 0)
+#define HSW_EDP_PSR_BASE	0x64800
+#define BDW_EDP_PSR_BASE	0x6f800
+#define EDP_PSR_CTL				(dev_priv->psr_mmio_base + 0)
 #define   EDP_PSR_ENABLE			(1<<31)
 #define   BDW_PSR_SINGLE_FRAME			(1<<30)
 #define   EDP_PSR_LINK_STANDBY			(1<<27)
@@ -3099,14 +3100,10 @@ enum skl_disp_power_wells {
 #define   EDP_PSR_TP1_TIME_0us			(3<<4)
 #define   EDP_PSR_IDLE_FRAME_SHIFT		0
 
-#define EDP_PSR_AUX_CTL(dev)			(EDP_PSR_BASE(dev) + 0x10)
-#define EDP_PSR_AUX_DATA1(dev)			(EDP_PSR_BASE(dev) + 0x14)
-#define EDP_PSR_AUX_DATA2(dev)			(EDP_PSR_BASE(dev) + 0x18)
-#define EDP_PSR_AUX_DATA3(dev)			(EDP_PSR_BASE(dev) + 0x1c)
-#define EDP_PSR_AUX_DATA4(dev)			(EDP_PSR_BASE(dev) + 0x20)
-#define EDP_PSR_AUX_DATA5(dev)			(EDP_PSR_BASE(dev) + 0x24)
+#define EDP_PSR_AUX_CTL				(dev_priv->psr_mmio_base + 0x10)
+#define EDP_PSR_AUX_DATA(i)			(dev_priv->psr_mmio_base + 0x14 + (i) * 4) /* 5 registers */
 
-#define EDP_PSR_STATUS_CTL(dev)			(EDP_PSR_BASE(dev) + 0x40)
+#define EDP_PSR_STATUS_CTL			(dev_priv->psr_mmio_base + 0x40)
 #define   EDP_PSR_STATUS_STATE_MASK		(7<<29)
 #define   EDP_PSR_STATUS_STATE_IDLE		(0<<29)
 #define   EDP_PSR_STATUS_STATE_SRDONACK		(1<<29)
@@ -3130,10 +3127,10 @@ enum skl_disp_power_wells {
 #define   EDP_PSR_STATUS_SENDING_TP1		(1<<4)
 #define   EDP_PSR_STATUS_IDLE_MASK		0xf
 
-#define EDP_PSR_PERF_CNT(dev)		(EDP_PSR_BASE(dev) + 0x44)
+#define EDP_PSR_PERF_CNT		(dev_priv->psr_mmio_base + 0x44)
 #define   EDP_PSR_PERF_CNT_MASK		0xffffff
 
-#define EDP_PSR_DEBUG_CTL(dev)		(EDP_PSR_BASE(dev) + 0x60)
+#define EDP_PSR_DEBUG_CTL		(dev_priv->psr_mmio_base + 0x60)
 #define   EDP_PSR_DEBUG_MASK_LPSP	(1<<27)
 #define   EDP_PSR_DEBUG_MASK_MEMUP	(1<<26)
 #define   EDP_PSR_DEBUG_MASK_HPD	(1<<25)
@@ -4199,7 +4196,7 @@ enum skl_disp_power_wells {
 
 /* eDP */
 #define   DP_PLL_FREQ_270MHZ		(0 << 16)
-#define   DP_PLL_FREQ_160MHZ		(1 << 16)
+#define   DP_PLL_FREQ_162MHZ		(1 << 16)
 #define   DP_PLL_FREQ_MASK		(3 << 16)
 
 /* locked once port is enabled */
@@ -4232,33 +4229,36 @@ enum skl_disp_power_wells {
  * is 20 bytes in each direction, hence the 5 fixed
  * data registers
  */
-#define DPA_AUX_CH_CTL			0x64010
-#define DPA_AUX_CH_DATA1		0x64014
-#define DPA_AUX_CH_DATA2		0x64018
-#define DPA_AUX_CH_DATA3		0x6401c
-#define DPA_AUX_CH_DATA4		0x64020
-#define DPA_AUX_CH_DATA5		0x64024
+#define _DPA_AUX_CH_CTL		(dev_priv->info.display_mmio_offset + 0x64010)
+#define _DPA_AUX_CH_DATA1	(dev_priv->info.display_mmio_offset + 0x64014)
+#define _DPA_AUX_CH_DATA2	(dev_priv->info.display_mmio_offset + 0x64018)
+#define _DPA_AUX_CH_DATA3	(dev_priv->info.display_mmio_offset + 0x6401c)
+#define _DPA_AUX_CH_DATA4	(dev_priv->info.display_mmio_offset + 0x64020)
+#define _DPA_AUX_CH_DATA5	(dev_priv->info.display_mmio_offset + 0x64024)
 
-#define DPB_AUX_CH_CTL			0x64110
-#define DPB_AUX_CH_DATA1		0x64114
-#define DPB_AUX_CH_DATA2		0x64118
-#define DPB_AUX_CH_DATA3		0x6411c
-#define DPB_AUX_CH_DATA4		0x64120
-#define DPB_AUX_CH_DATA5		0x64124
+#define _DPB_AUX_CH_CTL		(dev_priv->info.display_mmio_offset + 0x64110)
+#define _DPB_AUX_CH_DATA1	(dev_priv->info.display_mmio_offset + 0x64114)
+#define _DPB_AUX_CH_DATA2	(dev_priv->info.display_mmio_offset + 0x64118)
+#define _DPB_AUX_CH_DATA3	(dev_priv->info.display_mmio_offset + 0x6411c)
+#define _DPB_AUX_CH_DATA4	(dev_priv->info.display_mmio_offset + 0x64120)
+#define _DPB_AUX_CH_DATA5	(dev_priv->info.display_mmio_offset + 0x64124)
 
-#define DPC_AUX_CH_CTL			0x64210
-#define DPC_AUX_CH_DATA1		0x64214
-#define DPC_AUX_CH_DATA2		0x64218
-#define DPC_AUX_CH_DATA3		0x6421c
-#define DPC_AUX_CH_DATA4		0x64220
-#define DPC_AUX_CH_DATA5		0x64224
+#define _DPC_AUX_CH_CTL		(dev_priv->info.display_mmio_offset + 0x64210)
+#define _DPC_AUX_CH_DATA1	(dev_priv->info.display_mmio_offset + 0x64214)
+#define _DPC_AUX_CH_DATA2	(dev_priv->info.display_mmio_offset + 0x64218)
+#define _DPC_AUX_CH_DATA3	(dev_priv->info.display_mmio_offset + 0x6421c)
+#define _DPC_AUX_CH_DATA4	(dev_priv->info.display_mmio_offset + 0x64220)
+#define _DPC_AUX_CH_DATA5	(dev_priv->info.display_mmio_offset + 0x64224)
 
-#define DPD_AUX_CH_CTL			0x64310
-#define DPD_AUX_CH_DATA1		0x64314
-#define DPD_AUX_CH_DATA2		0x64318
-#define DPD_AUX_CH_DATA3		0x6431c
-#define DPD_AUX_CH_DATA4		0x64320
-#define DPD_AUX_CH_DATA5		0x64324
+#define _DPD_AUX_CH_CTL		(dev_priv->info.display_mmio_offset + 0x64310)
+#define _DPD_AUX_CH_DATA1	(dev_priv->info.display_mmio_offset + 0x64314)
+#define _DPD_AUX_CH_DATA2	(dev_priv->info.display_mmio_offset + 0x64318)
+#define _DPD_AUX_CH_DATA3	(dev_priv->info.display_mmio_offset + 0x6431c)
+#define _DPD_AUX_CH_DATA4	(dev_priv->info.display_mmio_offset + 0x64320)
+#define _DPD_AUX_CH_DATA5	(dev_priv->info.display_mmio_offset + 0x64324)
+
+#define DP_AUX_CH_CTL(port)	_PORT(port, _DPA_AUX_CH_CTL, _DPB_AUX_CH_CTL)
+#define DP_AUX_CH_DATA(port, i)	(_PORT(port, _DPA_AUX_CH_DATA1, _DPB_AUX_CH_DATA1) + (i) * 4) /* 5 registers */
 
 #define   DP_AUX_CH_CTL_SEND_BUSY	    (1 << 31)
 #define   DP_AUX_CH_CTL_DONE		    (1 << 30)
@@ -5005,6 +5005,7 @@ enum skl_disp_power_wells {
 #define SWF0(i)	(dev_priv->info.display_mmio_offset + 0x70410 + (i) * 4)
 #define SWF1(i)	(dev_priv->info.display_mmio_offset + 0x71410 + (i) * 4)
 #define SWF3(i)	(dev_priv->info.display_mmio_offset + 0x72414 + (i) * 4)
+#define SWF_ILK(i)	(0x4F000 + (i) * 4)
 
 /* Pipe B */
 #define _PIPEBDSL		(dev_priv->info.display_mmio_offset + 0x71000)
@@ -5695,6 +5696,21 @@ enum skl_disp_power_wells {
 #define GAMMA_MODE_MODE_10BIT	(1 << 0)
 #define GAMMA_MODE_MODE_12BIT	(2 << 0)
 #define GAMMA_MODE_MODE_SPLIT	(3 << 0)
+
+/* DMC/CSR */
+#define CSR_PROGRAM(i)		(0x80000 + (i) * 4)
+#define CSR_SSP_BASE_ADDR_GEN9	0x00002FC0
+#define CSR_HTP_ADDR_SKL	0x00500034
+#define CSR_SSP_BASE		0x8F074
+#define CSR_HTP_SKL		0x8F004
+#define CSR_LAST_WRITE		0x8F034
+#define CSR_LAST_WRITE_VALUE	0xc003b400
+/* MMIO address range for CSR program (0x80000 - 0x82FFF) */
+#define CSR_MMIO_START_RANGE	0x80000
+#define CSR_MMIO_END_RANGE	0x8FFFF
+#define SKL_CSR_DC3_DC5_COUNT	0x80030
+#define SKL_CSR_DC5_DC6_COUNT	0x8002C
+#define BXT_CSR_DC3_DC5_COUNT	0x80038
 
 /* interrupts */
 #define DE_MASTER_IRQ_CONTROL   (1 << 31)
@@ -6593,28 +6609,31 @@ enum skl_disp_power_wells {
 #define BXT_PP_OFF_DELAYS(n)	_PIPE(n, PCH_PP_OFF_DELAYS, _BXT_PP_OFF_DELAYS2)
 
 #define PCH_DP_B		0xe4100
-#define PCH_DPB_AUX_CH_CTL	0xe4110
-#define PCH_DPB_AUX_CH_DATA1	0xe4114
-#define PCH_DPB_AUX_CH_DATA2	0xe4118
-#define PCH_DPB_AUX_CH_DATA3	0xe411c
-#define PCH_DPB_AUX_CH_DATA4	0xe4120
-#define PCH_DPB_AUX_CH_DATA5	0xe4124
+#define _PCH_DPB_AUX_CH_CTL	0xe4110
+#define _PCH_DPB_AUX_CH_DATA1	0xe4114
+#define _PCH_DPB_AUX_CH_DATA2	0xe4118
+#define _PCH_DPB_AUX_CH_DATA3	0xe411c
+#define _PCH_DPB_AUX_CH_DATA4	0xe4120
+#define _PCH_DPB_AUX_CH_DATA5	0xe4124
 
 #define PCH_DP_C		0xe4200
-#define PCH_DPC_AUX_CH_CTL	0xe4210
-#define PCH_DPC_AUX_CH_DATA1	0xe4214
-#define PCH_DPC_AUX_CH_DATA2	0xe4218
-#define PCH_DPC_AUX_CH_DATA3	0xe421c
-#define PCH_DPC_AUX_CH_DATA4	0xe4220
-#define PCH_DPC_AUX_CH_DATA5	0xe4224
+#define _PCH_DPC_AUX_CH_CTL	0xe4210
+#define _PCH_DPC_AUX_CH_DATA1	0xe4214
+#define _PCH_DPC_AUX_CH_DATA2	0xe4218
+#define _PCH_DPC_AUX_CH_DATA3	0xe421c
+#define _PCH_DPC_AUX_CH_DATA4	0xe4220
+#define _PCH_DPC_AUX_CH_DATA5	0xe4224
 
 #define PCH_DP_D		0xe4300
-#define PCH_DPD_AUX_CH_CTL	0xe4310
-#define PCH_DPD_AUX_CH_DATA1	0xe4314
-#define PCH_DPD_AUX_CH_DATA2	0xe4318
-#define PCH_DPD_AUX_CH_DATA3	0xe431c
-#define PCH_DPD_AUX_CH_DATA4	0xe4320
-#define PCH_DPD_AUX_CH_DATA5	0xe4324
+#define _PCH_DPD_AUX_CH_CTL	0xe4310
+#define _PCH_DPD_AUX_CH_DATA1	0xe4314
+#define _PCH_DPD_AUX_CH_DATA2	0xe4318
+#define _PCH_DPD_AUX_CH_DATA3	0xe431c
+#define _PCH_DPD_AUX_CH_DATA4	0xe4320
+#define _PCH_DPD_AUX_CH_DATA5	0xe4324
+
+#define PCH_DP_AUX_CH_CTL(port)		_PORT((port) - PORT_B, _PCH_DPB_AUX_CH_CTL, _PCH_DPC_AUX_CH_CTL)
+#define PCH_DP_AUX_CH_DATA(port, i)	(_PORT((port) - PORT_B, _PCH_DPB_AUX_CH_DATA1, _PCH_DPC_AUX_CH_DATA1) + (i) * 4) /* 5 registers */
 
 /* CPT */
 #define  PORT_TRANS_A_SEL_CPT	0
@@ -7312,7 +7331,7 @@ enum skl_disp_power_wells {
 /* WRPLL */
 #define WRPLL_CTL1			0x46040
 #define WRPLL_CTL2			0x46060
-#define WRPLL_CTL(pll)			(pll == 0 ? WRPLL_CTL1 : WRPLL_CTL2)
+#define WRPLL_CTL(pll)			_PIPE(pll, WRPLL_CTL1, WRPLL_CTL2)
 #define  WRPLL_PLL_ENABLE		(1<<31)
 #define  WRPLL_PLL_SSC			(1<<28)
 #define  WRPLL_PLL_NON_SSC		(2<<28)
