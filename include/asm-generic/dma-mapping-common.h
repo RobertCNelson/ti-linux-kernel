@@ -260,7 +260,7 @@ static inline void *dma_alloc_attrs(struct device *dev, size_t size,
 		return NULL;
 
 	cpu_addr = ops->alloc(dev, size, dma_handle, flag, attrs);
-	debug_dma_alloc_coherent(dev, size, *dma_handle, cpu_addr);
+	debug_dma_alloc_coherent(dev, size, *dma_handle, cpu_addr, flag);
 	return cpu_addr;
 }
 
