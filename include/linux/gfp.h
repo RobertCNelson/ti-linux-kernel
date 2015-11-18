@@ -385,9 +385,9 @@ static inline enum zone_type gfp_zone(gfp_t flags)
 static inline int gfp_zonelist(gfp_t flags)
 {
 	if (IS_ENABLED(CONFIG_NUMA) && unlikely(flags & __GFP_THISNODE))
-		return 1;
+		return ZONELIST_NOFALLBACK;
 
-	return 0;
+	return ZONELIST_FALLBACK;
 }
 
 /*
