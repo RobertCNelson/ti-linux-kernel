@@ -2179,7 +2179,7 @@ struct clk *tegra_clk_register_pllc_tegra210(const char *name,
 			spinlock_t *lock)
 {
 	struct clk *parent, *clk;
-	struct pdiv_map *p_tohw = pll_params->pdiv_tohw;
+	const struct pdiv_map *p_tohw = pll_params->pdiv_tohw;
 	struct tegra_clk_pll *pll;
 	unsigned long parent_rate;
 
