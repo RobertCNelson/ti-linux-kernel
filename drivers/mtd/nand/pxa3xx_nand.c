@@ -30,11 +30,6 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_mtd.h>
-
-#if defined(CONFIG_ARM) && (defined(CONFIG_ARCH_PXA) || defined(CONFIG_ARCH_MMP))
-#define ARCH_HAS_DMA
-#endif
-
 #include <linux/platform_data/mtd-nand-pxa3xx.h>
 
 #define	CHIP_DELAY_TIMEOUT	msecs_to_jiffies(200)
@@ -1387,37 +1382,53 @@ static int pxa3xx_nand_waitfunc(struct mtd_info *mtd, struct nand_chip *this)
 	return NAND_STATUS_READY;
 }
 
-static int pxa3xx_nand_config_flash(struct pxa3xx_nand_info *info)
+static int pxa3xx_nand_config_ident(struct pxa3xx_nand_info *info)
 {
+	struct pxa3xx_nand_host *host = info->host[info->cs];
 	struct platform_device *pdev = info->pdev;
 	struct pxa3xx_nand_platform_data *pdata = dev_get_platdata(&pdev->dev);
+	const struct nand_sdr_timings *timings;
+
+	/* Configure default flash values */
+	info->chunk_size = PAGE_CHUNK_SIZE;
+	info->reg_ndcr = 0x0; /* enable all interrupts */
+	info->reg_ndcr |= (pdata->enable_arbiter) ? NDCR_ND_ARB_EN : 0;
+	info->reg_ndcr |= NDCR_RD_ID_CNT(READ_ID_BYTES);
+	info->reg_ndcr |= NDCR_SPARE_EN;
+
+	/* use the common timing to make a try */
+	timings = onfi_async_timing_mode_to_sdr_timings(0);
+	if (IS_ERR(timings))
+		return PTR_ERR(timings);
+
+	pxa3xx_nand_set_sdr_timing(host, timings);
+	return 0;
+}
+
+static void pxa3xx_nand_config_tail(struct pxa3xx_nand_info *info)
+{
 	struct pxa3xx_nand_host *host = info->host[info->cs];
 	struct mtd_info *mtd = host->mtd;
 	struct nand_chip *chip = mtd->priv;
 
-	/* configure default flash values */
-	info->reg_ndcr = 0x0; /* enable all interrupts */
-	info->reg_ndcr |= (pdata->enable_arbiter) ? NDCR_ND_ARB_EN : 0;
-	info->reg_ndcr |= NDCR_RD_ID_CNT(READ_ID_BYTES);
-	info->reg_ndcr |= NDCR_SPARE_EN; /* enable spare by default */
 	info->reg_ndcr |= (host->col_addr_cycles == 2) ? NDCR_RA_START : 0;
 	info->reg_ndcr |= (chip->page_shift == 6) ? NDCR_PG_PER_BLK : 0;
 	info->reg_ndcr |= (mtd->writesize == 2048) ? NDCR_PAGE_SZ : 0;
-
-	return 0;
 }
 
-static int pxa3xx_nand_detect_config(struct pxa3xx_nand_info *info)
+static void pxa3xx_nand_detect_config(struct pxa3xx_nand_info *info)
 {
+	struct platform_device *pdev = info->pdev;
+	struct pxa3xx_nand_platform_data *pdata = dev_get_platdata(&pdev->dev);
 	uint32_t ndcr = nand_readl(info, NDCR);
 
 	/* Set an initial chunk size */
 	info->chunk_size = ndcr & NDCR_PAGE_SZ ? 2048 : 512;
 	info->reg_ndcr = ndcr &
 		~(NDCR_INT_MASK | NDCR_ND_ARB_EN | NFCV1_NDCR_ARB_CNTL);
+	info->reg_ndcr |= (pdata->enable_arbiter) ? NDCR_ND_ARB_EN : 0;
 	info->ndtr0cs0 = nand_readl(info, NDTR0CS0);
 	info->ndtr1cs0 = nand_readl(info, NDTR1CS0);
-	return 0;
 }
 
 static int pxa3xx_nand_init_buff(struct pxa3xx_nand_info *info)
@@ -1481,32 +1492,6 @@ static void pxa3xx_nand_free_buff(struct pxa3xx_nand_info *info)
 		dma_release_channel(info->dma_chan);
 	}
 	kfree(info->data_buff);
-}
-
-static int pxa3xx_nand_sensing(struct pxa3xx_nand_host *host)
-{
-	struct pxa3xx_nand_info *info = host->info_data;
-	struct mtd_info *mtd;
-	struct nand_chip *chip;
-	const struct nand_sdr_timings *timings;
-	int ret;
-
-	mtd = info->host[info->cs]->mtd;
-	chip = mtd->priv;
-
-	/* use the common timing to make a try */
-	timings = onfi_async_timing_mode_to_sdr_timings(0);
-	if (IS_ERR(timings))
-		return PTR_ERR(timings);
-
-	pxa3xx_nand_set_sdr_timing(host, timings);
-
-	chip->cmdfunc(mtd, NAND_CMD_RESET, 0, 0);
-	ret = chip->waitfunc(mtd, chip);
-	if (ret & NAND_STATUS_FAIL)
-		return -ENODEV;
-
-	return 0;
 }
 
 static int pxa_ecc_init(struct pxa3xx_nand_info *info,
@@ -1588,26 +1573,14 @@ static int pxa3xx_nand_scan(struct mtd_info *mtd)
 	int ret;
 	uint16_t ecc_strength, ecc_step;
 
-	if (pdata->keep_config && !pxa3xx_nand_detect_config(info))
-		goto KEEP_CONFIG;
-
-	/* Set a default chunk size */
-	info->chunk_size = 512;
-
-	ret = pxa3xx_nand_config_flash(info);
-	if (ret)
-		return ret;
-
-	ret = pxa3xx_nand_sensing(host);
-	if (ret) {
-		dev_info(&info->pdev->dev, "There is no chip on cs %d!\n",
-			 info->cs);
-
-		return ret;
+	if (pdata->keep_config) {
+		pxa3xx_nand_detect_config(info);
+	} else {
+		ret = pxa3xx_nand_config_ident(info);
+		if (ret)
+			return ret;
 	}
 
-KEEP_CONFIG:
-	info->reg_ndcr |= (pdata->enable_arbiter) ? NDCR_ND_ARB_EN : 0;
 	if (info->reg_ndcr & NDCR_DWIDTH_M)
 		chip->options |= NAND_BUSWIDTH_16;
 
@@ -1692,11 +1665,16 @@ KEEP_CONFIG:
 		host->row_addr_cycles = 3;
 	else
 		host->row_addr_cycles = 2;
+
+	if (!pdata->keep_config)
+		pxa3xx_nand_config_tail(info);
+
 	return nand_scan_tail(mtd);
 }
 
 static int alloc_nand_resource(struct platform_device *pdev)
 {
+	struct device_node *np = pdev->dev.of_node;
 	struct pxa3xx_nand_platform_data *pdata;
 	struct pxa3xx_nand_info *info;
 	struct pxa3xx_nand_host *host;
@@ -1725,6 +1703,8 @@ static int alloc_nand_resource(struct platform_device *pdev)
 		host->info_data = info;
 		mtd->priv = host;
 		mtd->dev.parent = &pdev->dev;
+		/* FIXME: all chips use the same device tree partitions */
+		nand_set_flash_node(chip, np);
 
 		chip->ecc.read_page	= pxa3xx_nand_read_page_hwecc;
 		chip->ecc.write_page	= pxa3xx_nand_write_page_hwecc;
@@ -1886,7 +1866,6 @@ static int pxa3xx_nand_probe_dt(struct platform_device *pdev)
 static int pxa3xx_nand_probe(struct platform_device *pdev)
 {
 	struct pxa3xx_nand_platform_data *pdata;
-	struct mtd_part_parser_data ppdata = {};
 	struct pxa3xx_nand_info *info;
 	int ret, cs, probe_success, dma_available;
 
@@ -1933,10 +1912,8 @@ static int pxa3xx_nand_probe(struct platform_device *pdev)
 			continue;
 		}
 
-		ppdata.of_node = pdev->dev.of_node;
-		ret = mtd_device_parse_register(mtd, NULL,
-						&ppdata, pdata->parts[cs],
-						pdata->nr_parts[cs]);
+		ret = mtd_device_register(mtd, pdata->parts[cs],
+					  pdata->nr_parts[cs]);
 		if (!ret)
 			probe_success = 1;
 	}
@@ -1959,12 +1936,18 @@ static int pxa3xx_nand_suspend(struct device *dev)
 		return -EAGAIN;
 	}
 
+	clk_disable(info->clk);
 	return 0;
 }
 
 static int pxa3xx_nand_resume(struct device *dev)
 {
 	struct pxa3xx_nand_info *info = dev_get_drvdata(dev);
+	int ret;
+
+	ret = clk_enable(info->clk);
+	if (ret < 0)
+		return ret;
 
 	/* We don't want to handle interrupt without calling mtd routine */
 	disable_int(info, NDCR_INT_MASK);
