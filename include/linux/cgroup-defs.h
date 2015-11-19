@@ -66,7 +66,6 @@ enum {
 
 /* cgroup_root->flags */
 enum {
-	CGRP_ROOT_SANE_BEHAVIOR	= (1 << 0), /* __DEVEL__sane_behavior specified */
 	CGRP_ROOT_NOPREFIX	= (1 << 1), /* mounted subsystems have no named prefix */
 	CGRP_ROOT_XATTR		= (1 << 2), /* supports extended attributes */
 };
@@ -90,7 +89,6 @@ enum {
  */
 struct cgroup_file {
 	/* do not access any fields from outside cgroup core */
-	struct list_head node;			/* anchored at css->files */
 	struct kernfs_node *kn;
 };
 
@@ -133,9 +131,6 @@ struct cgroup_subsys_state {
 	 * used to allow interrupting and resuming iterations.
 	 */
 	u64 serial_nr;
-
-	/* all cgroup_files associated with this css */
-	struct list_head files;
 
 	/* percpu_ref killing and RCU release */
 	struct rcu_head rcu_head;
