@@ -98,6 +98,7 @@ static int cppc_cpufreq_cpu_init(struct cpufreq_policy *policy)
 	policy->max = cpu->perf_caps.highest_perf;
 	policy->cpuinfo.min_freq = policy->min;
 	policy->cpuinfo.max_freq = policy->max;
+	policy->shared_type = cpu->shared_type;
 
 	if (policy->shared_type == CPUFREQ_SHARED_TYPE_ANY)
 		cpumask_copy(policy->cpus, cpu->shared_cpu_map);
