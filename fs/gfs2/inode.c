@@ -601,7 +601,7 @@ static int gfs2_create_inode(struct inode *dir, struct dentry *dentry,
 	if (!name->len || name->len > GFS2_FNAMESIZE)
 		return -ENAMETOOLONG;
 
-	error = gfs2_rs_alloc(dip);
+	error = gfs2_qa_alloc(dip);
 	if (error)
 		return error;
 
@@ -653,7 +653,7 @@ static int gfs2_create_inode(struct inode *dir, struct dentry *dentry,
 		goto fail_free_vfs_inode;
 
 	ip = GFS2_I(inode);
-	error = gfs2_rs_alloc(ip);
+	error = gfs2_qa_alloc(ip);
 	if (error)
 		goto fail_free_acls;
 
@@ -685,6 +685,11 @@ static int gfs2_create_inode(struct inode *dir, struct dentry *dentry,
 		ip->i_entries = 2;
 		break;
 	}
+
+	/* Force SYSTEM flag on all files and subdirs of a SYSTEM directory */
+	if (dip->i_diskflags & GFS2_DIF_SYSTEM)
+		ip->i_diskflags |= GFS2_DIF_SYSTEM;
+
 	gfs2_set_inode_flags(inode);
 
 	if ((GFS2_I(d_inode(sdp->sd_root_dir)) == dip) ||
@@ -776,7 +781,7 @@ fail_gunlock2:
 fail_free_inode:
 	if (ip->i_gl)
 		gfs2_glock_put(ip->i_gl);
-	gfs2_rs_delete(ip, NULL);
+	gfs2_qa_delete(ip, NULL);
 fail_free_acls:
 	if (default_acl)
 		posix_acl_release(default_acl);
@@ -898,7 +903,7 @@ static int gfs2_link(struct dentry *old_dentry, struct inode *dir,
 	if (S_ISDIR(inode->i_mode))
 		return -EPERM;
 
-	error = gfs2_rs_alloc(dip);
+	error = gfs2_qa_alloc(dip);
 	if (error)
 		return error;
 
@@ -1371,7 +1376,7 @@ static int gfs2_rename(struct inode *odir, struct dentry *odentry,
 	if (error)
 		return error;
 
-	error = gfs2_rs_alloc(ndip);
+	error = gfs2_qa_alloc(ndip);
 	if (error)
 		return error;
 
@@ -1854,11 +1859,7 @@ static int setattr_chown(struct inode *inode, struct iattr *attr)
 	if (!(attr->ia_valid & ATTR_GID) || gid_eq(ogid, ngid))
 		ogid = ngid = NO_GID_QUOTA_CHANGE;
 
-	error = get_write_access(inode);
-	if (error)
-		return error;
-
-	error = gfs2_rs_alloc(ip);
+	error = gfs2_qa_alloc(ip);
 	if (error)
 		goto out;
 
@@ -1898,7 +1899,6 @@ out_end_trans:
 out_gunlock_q:
 	gfs2_quota_unlock(ip);
 out:
-	put_write_access(inode);
 	return error;
 }
 
@@ -1920,7 +1920,7 @@ static int gfs2_setattr(struct dentry *dentry, struct iattr *attr)
 	struct gfs2_holder i_gh;
 	int error;
 
-	error = gfs2_rs_alloc(ip);
+	error = gfs2_qa_alloc(ip);
 	if (error)
 		return error;
 
@@ -2002,7 +2002,7 @@ static int gfs2_setxattr(struct dentry *dentry, const char *name,
 	gfs2_holder_init(ip->i_gl, LM_ST_EXCLUSIVE, 0, &gh);
 	ret = gfs2_glock_nq(&gh);
 	if (ret == 0) {
-		ret = gfs2_rs_alloc(ip);
+		ret = gfs2_qa_alloc(ip);
 		if (ret == 0)
 			ret = generic_setxattr(dentry, name, data, size, flags);
 		gfs2_glock_dq(&gh);
@@ -2043,7 +2043,7 @@ static int gfs2_removexattr(struct dentry *dentry, const char *name)
 	gfs2_holder_init(ip->i_gl, LM_ST_EXCLUSIVE, 0, &gh);
 	ret = gfs2_glock_nq(&gh);
 	if (ret == 0) {
-		ret = gfs2_rs_alloc(ip);
+		ret = gfs2_qa_alloc(ip);
 		if (ret == 0)
 			ret = generic_removexattr(dentry, name);
 		gfs2_glock_dq(&gh);

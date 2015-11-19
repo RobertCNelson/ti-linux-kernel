@@ -556,6 +556,7 @@ void update_statfs(struct gfs2_sbd *sdp, struct buffer_head *m_bh,
 	struct gfs2_statfs_change_host *l_sc = &sdp->sd_statfs_local;
 
 	gfs2_trans_add_meta(l_ip->i_gl, l_bh);
+	gfs2_trans_add_meta(m_ip->i_gl, m_bh);
 
 	spin_lock(&sdp->sd_statfs_spin);
 	m_sc->sc_total += l_sc->sc_total;
@@ -564,10 +565,8 @@ void update_statfs(struct gfs2_sbd *sdp, struct buffer_head *m_bh,
 	memset(l_sc, 0, sizeof(struct gfs2_statfs_change));
 	memset(l_bh->b_data + sizeof(struct gfs2_dinode),
 	       0, sizeof(struct gfs2_statfs_change));
-	spin_unlock(&sdp->sd_statfs_spin);
-
-	gfs2_trans_add_meta(m_ip->i_gl, m_bh);
 	gfs2_statfs_change_out(m_sc, m_bh->b_data + sizeof(struct gfs2_dinode));
+	spin_unlock(&sdp->sd_statfs_spin);
 }
 
 int gfs2_statfs_sync(struct super_block *sb, int type)
@@ -1593,8 +1592,8 @@ out_truncate:
 
 out_unlock:
 	/* Error path for case 1 */
-	if (gfs2_rs_active(ip->i_res))
-		gfs2_rs_deltree(ip->i_res);
+	if (gfs2_rs_active(&ip->i_res))
+		gfs2_rs_deltree(&ip->i_res);
 
 	if (test_bit(HIF_HOLDER, &ip->i_iopen_gh.gh_iflags)) {
 		ip->i_iopen_gh.gh_flags |= GL_NOCACHE;
@@ -1607,7 +1606,7 @@ out_unlock:
 out:
 	/* Case 3 starts here */
 	truncate_inode_pages_final(&inode->i_data);
-	gfs2_rs_delete(ip, NULL);
+	gfs2_qa_delete(ip, NULL);
 	gfs2_ordered_del_inode(ip);
 	clear_inode(inode);
 	gfs2_dir_hash_inval(ip);
@@ -1632,7 +1631,9 @@ static struct inode *gfs2_alloc_inode(struct super_block *sb)
 		ip->i_flags = 0;
 		ip->i_gl = NULL;
 		ip->i_rgd = NULL;
-		ip->i_res = NULL;
+		memset(&ip->i_res, 0, sizeof(ip->i_res));
+		RB_CLEAR_NODE(&ip->i_res.rs_node);
+		ip->i_rahead = 0;
 	}
 	return &ip->i_inode;
 }
