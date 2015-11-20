@@ -139,15 +139,6 @@ extern const struct pci_error_handlers hfi1_pci_err_handler;
 struct hfi1_opcode_stats_perctx;
 #endif
 
-/*
- * struct ps_state keeps state associated with RX queue "prescanning"
- * (prescanning for FECNs, and BECNs), if prescanning is in use.
- */
-struct ps_state {
-	u32 ps_head;
-	int initialized;
-};
-
 struct ctxt_eager_bufs {
 	ssize_t size;            /* total size of eager buffers */
 	u32 count;               /* size of buffers array */
@@ -301,10 +292,6 @@ struct hfi1_ctxtdata {
 	struct task_struct *progress;
 	struct list_head sdma_queues;
 	spinlock_t sdma_qlock;
-
-#ifdef CONFIG_PRESCAN_RXQ
-	struct ps_state ps_state;
-#endif /* CONFIG_PRESCAN_RXQ */
 
 	/*
 	 * The interrupt handler for a particular receive context can vary
@@ -1423,18 +1410,6 @@ int snoop_send_pio_handler(struct hfi1_qp *qp, struct ahg_ib_header *ibhdr,
 void snoop_inline_pio_send(struct hfi1_devdata *dd, struct pio_buf *pbuf,
 			   u64 pbc, const void *from, size_t count);
 
-/* for use in system calls, where we want to know device type, etc. */
-#define ctxt_fp(fp) \
-	(((struct hfi1_filedata *)(fp)->private_data)->uctxt)
-#define subctxt_fp(fp) \
-	(((struct hfi1_filedata *)(fp)->private_data)->subctxt)
-#define tidcursor_fp(fp) \
-	(((struct hfi1_filedata *)(fp)->private_data)->tidcursor)
-#define user_sdma_pkt_fp(fp) \
-	(((struct hfi1_filedata *)(fp)->private_data)->pq)
-#define user_sdma_comp_fp(fp) \
-	(((struct hfi1_filedata *)(fp)->private_data)->cq)
-
 static inline struct hfi1_devdata *dd_from_ppd(struct hfi1_pportdata *ppd)
 {
 	return ppd->dd;
@@ -1612,7 +1587,6 @@ void hfi1_pcie_flr(struct hfi1_devdata *);
 int pcie_speeds(struct hfi1_devdata *);
 void request_msix(struct hfi1_devdata *, u32 *, struct hfi1_msix_entry *);
 void hfi1_enable_intx(struct pci_dev *);
-void hfi1_nomsix(struct hfi1_devdata *);
 void restore_pci_variables(struct hfi1_devdata *dd);
 int do_pcie_gen3_transition(struct hfi1_devdata *dd);
 int parse_platform_config(struct hfi1_devdata *dd);
