@@ -341,7 +341,7 @@ static void _clk_pll_disable(struct clk_hw *hw)
 
 	val = pll_readl_base(pll);
 	if (pll->params->flags & TEGRA_PLL_BYPASS)
-		val &= ~PLL_BASE_BYPASS;
+		val |= PLL_BASE_BYPASS;
 	val &= ~PLL_BASE_ENABLE;
 	pll_writel_base(val, pll);
 
