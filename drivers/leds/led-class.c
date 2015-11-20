@@ -109,7 +109,7 @@ static const struct attribute_group *led_groups[] = {
 void led_classdev_suspend(struct led_classdev *led_cdev)
 {
 	led_cdev->flags |= LED_SUSPENDED;
-	led_cdev->brightness_set(led_cdev, 0);
+	led_set_brightness_nopm(led_cdev, 0);
 }
 EXPORT_SYMBOL_GPL(led_classdev_suspend);
 
@@ -119,7 +119,7 @@ EXPORT_SYMBOL_GPL(led_classdev_suspend);
  */
 void led_classdev_resume(struct led_classdev *led_cdev)
 {
-	led_cdev->brightness_set(led_cdev, led_cdev->brightness);
+	led_set_brightness_nopm(led_cdev, led_cdev->brightness);
 
 	if (led_cdev->flash_resume)
 		led_cdev->flash_resume(led_cdev);
@@ -214,8 +214,6 @@ int led_classdev_register(struct device *parent, struct led_classdev *led_cdev)
 
 	if (!led_cdev->max_brightness)
 		led_cdev->max_brightness = LED_FULL;
-
-	led_cdev->flags |= SET_BRIGHTNESS_ASYNC;
 
 	led_update_brightness(led_cdev);
 
