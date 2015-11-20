@@ -126,6 +126,8 @@ config S390
 	select HAVE_CMPXCHG_DOUBLE
 	select HAVE_CMPXCHG_LOCAL
 	select HAVE_DEBUG_KMEMLEAK
+	select HAVE_DMA_ATTRS
+	select HAVE_DMA_API_DEBUG
 	select HAVE_DYNAMIC_FTRACE
 	select HAVE_DYNAMIC_FTRACE_WITH_REGS
 	select HAVE_FTRACE_MCOUNT_RECORD
@@ -582,7 +584,6 @@ config QDIO
 
 menuconfig PCI
 	bool "PCI support"
-	select HAVE_DMA_ATTRS
 	select PCI_MSI
 	select IOMMU_SUPPORT
 	help
@@ -622,10 +623,6 @@ config HAS_IOMEM
 
 config IOMMU_HELPER
 	def_bool PCI
-
-config HAS_DMA
-	def_bool PCI
-	select HAVE_DMA_API_DEBUG
 
 config NEED_SG_DMA_LENGTH
 	def_bool PCI
