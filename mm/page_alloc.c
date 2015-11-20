@@ -229,12 +229,14 @@ static char * const zone_names[MAX_NR_ZONES] = {
 #endif
 };
 
-static void free_compound_page(struct page *page);
 compound_page_dtor * const compound_page_dtors[] = {
 	NULL,
 	free_compound_page,
 #ifdef CONFIG_HUGETLB_PAGE
 	free_huge_page,
+#endif
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+	free_transhuge_page,
 #endif
 };
 
@@ -457,7 +459,7 @@ out:
  * This usage means that zero-order pages may not be compound.
  */
 
-static void free_compound_page(struct page *page)
+void free_compound_page(struct page *page)
 {
 	__free_pages_ok(page, compound_order(page));
 }
@@ -473,8 +475,10 @@ void prep_compound_page(struct page *page, unsigned int order)
 	for (i = 1; i < nr_pages; i++) {
 		struct page *p = page + i;
 		set_page_count(p, 0);
+		p->mapping = TAIL_MAPPING;
 		set_compound_head(p, page);
 	}
+	atomic_set(compound_mapcount_ptr(page), -1);
 }
 
 #ifdef CONFIG_DEBUG_PAGEALLOC
@@ -739,7 +743,7 @@ static inline int free_pages_check(struct page *page)
 	const char *bad_reason = NULL;
 	unsigned long bad_flags = 0;
 
-	if (unlikely(page_mapcount(page)))
+	if (unlikely(atomic_read(&page->_mapcount) != -1))
 		bad_reason = "nonzero mapcount";
 	if (unlikely(page->mapping != NULL))
 		bad_reason = "non-NULL mapping";
@@ -863,6 +867,27 @@ static int free_tail_pages_check(struct page *head_page, struct page *page)
 		ret = 0;
 		goto out;
 	}
+	switch (page - head_page) {
+	case 1:
+		/* the first tail page: ->mapping is compound_mapcount() */
+		if (unlikely(compound_mapcount(page))) {
+			bad_page(page, "nonzero compound_mapcount", 0);
+			goto out;
+		}
+		break;
+	case 2:
+		/*
+		 * the second tail page: ->mapping is
+		 * page_deferred_list().next -- ignore value.
+		 */
+		break;
+	default:
+		if (page->mapping != TAIL_MAPPING) {
+			bad_page(page, "corrupted mapping in tail page", 0);
+			goto out;
+		}
+		break;
+	}
 	if (unlikely(!PageTail(page))) {
 		bad_page(page, "PageTail not set", 0);
 		goto out;
@@ -873,6 +898,7 @@ static int free_tail_pages_check(struct page *head_page, struct page *page)
 	}
 	ret = 0;
 out:
+	page->mapping = NULL;
 	clear_compound_head(page);
 	return ret;
 }
@@ -1336,7 +1362,7 @@ static inline int check_new_page(struct page *page)
 	const char *bad_reason = NULL;
 	unsigned long bad_flags = 0;
 
-	if (unlikely(page_mapcount(page)))
+	if (unlikely(atomic_read(&page->_mapcount) != -1))
 		bad_reason = "nonzero mapcount";
 	if (unlikely(page->mapping != NULL))
 		bad_reason = "non-NULL mapping";
@@ -2876,28 +2902,6 @@ retry:
 	return page;
 }
 
-/*
- * This is called in the allocator slow-path if the allocation request is of
- * sufficient urgency to ignore watermarks and take other desperate measures
- */
-static inline struct page *
-__alloc_pages_high_priority(gfp_t gfp_mask, unsigned int order,
-				const struct alloc_context *ac)
-{
-	struct page *page;
-
-	do {
-		page = get_page_from_freelist(gfp_mask, order,
-						ALLOC_NO_WATERMARKS, ac);
-
-		if (!page && gfp_mask & __GFP_NOFAIL)
-			wait_iff_congested(ac->preferred_zone, BLK_RW_ASYNC,
-									HZ/50);
-	} while (!page && (gfp_mask & __GFP_NOFAIL));
-
-	return page;
-}
-
 static void wake_all_kswapds(unsigned int order, const struct alloc_context *ac)
 {
 	struct zoneref *z;
@@ -3042,12 +3046,16 @@ retry:
 		 * allocations are system rather than user orientated
 		 */
 		ac->zonelist = node_zonelist(numa_node_id(), gfp_mask);
+		do {
+			page = get_page_from_freelist(gfp_mask, order,
+						      ALLOC_NO_WATERMARKS, ac);
+			if (page)
+				goto got_pg;
 
-		page = __alloc_pages_high_priority(gfp_mask, order, ac);
-
-		if (page) {
-			goto got_pg;
-		}
+			if (gfp_mask & __GFP_NOFAIL)
+				wait_iff_congested(ac->preferred_zone,
+						   BLK_RW_ASYNC, HZ/50);
+		} while (gfp_mask & __GFP_NOFAIL);
 	}
 
 	/* Caller is not willing to reclaim, we can't balance anything */
@@ -3402,7 +3410,8 @@ EXPORT_SYMBOL(__free_page_frag);
 
 /*
  * alloc_kmem_pages charges newly allocated pages to the kmem resource counter
- * of the current memory cgroup.
+ * of the current memory cgroup if __GFP_ACCOUNT is set, other than that it is
+ * equivalent to alloc_pages.
  *
  * It should be used when the caller would like to use kmalloc, but since the
  * allocation is large, it has to fall back to the page allocator.
@@ -6723,8 +6732,12 @@ int alloc_contig_range(unsigned long start, unsigned long end,
 	if (ret)
 		return ret;
 
+	/*
+	 * In case of -EBUSY, we'd like to know which page causes problem.
+	 * So, just fall through. We will check it in test_pages_isolated().
+	 */
 	ret = __alloc_contig_migrate_range(&cc, start, end);
-	if (ret)
+	if (ret && ret != -EBUSY)
 		goto done;
 
 	/*
@@ -6751,8 +6764,8 @@ int alloc_contig_range(unsigned long start, unsigned long end,
 	outer_start = start;
 	while (!PageBuddy(pfn_to_page(outer_start))) {
 		if (++order >= MAX_ORDER) {
-			ret = -EBUSY;
-			goto done;
+			outer_start = start;
+			break;
 		}
 		outer_start &= ~0UL << order;
 	}

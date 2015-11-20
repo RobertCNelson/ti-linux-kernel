@@ -441,8 +441,7 @@ nocache:
 		if (list_is_last(&first->list, &vmap_area_list))
 			goto found;
 
-		first = list_entry(first->list.next,
-				struct vmap_area, list);
+		first = list_next_entry(first, list);
 	}
 
 found:
@@ -1443,7 +1442,6 @@ struct vm_struct *remove_vm_area(const void *addr)
 		vmap_debug_free_range(va->va_start, va->va_end);
 		kasan_free_shadow(vm);
 		free_unmap_vmap_area(va);
-		vm->size -= PAGE_SIZE;
 
 		return vm;
 	}
@@ -1468,8 +1466,8 @@ static void __vunmap(const void *addr, int deallocate_pages)
 		return;
 	}
 
-	debug_check_no_locks_freed(addr, area->size);
-	debug_check_no_obj_freed(addr, area->size);
+	debug_check_no_locks_freed(addr, get_vm_area_size(area));
+	debug_check_no_obj_freed(addr, get_vm_area_size(area));
 
 	if (deallocate_pages) {
 		int i;
@@ -1478,13 +1476,10 @@ static void __vunmap(const void *addr, int deallocate_pages)
 			struct page *page = area->pages[i];
 
 			BUG_ON(!page);
-			__free_page(page);
+			__free_kmem_pages(page, 0);
 		}
 
-		if (area->flags & VM_VPAGES)
-			vfree(area->pages);
-		else
-			kfree(area->pages);
+		kvfree(area->pages);
 	}
 
 	kfree(area);
@@ -1609,9 +1604,9 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 		struct page *page;
 
 		if (node == NUMA_NO_NODE)
-			page = alloc_page(alloc_mask);
+			page = alloc_kmem_pages(alloc_mask, order);
 		else
-			page = alloc_pages_node(node, alloc_mask, order);
+			page = alloc_kmem_pages_node(node, alloc_mask, order);
 
 		if (unlikely(!page)) {
 			/* Successfully allocated i pages, free them in __vunmap() */
@@ -2560,10 +2555,10 @@ static void *s_start(struct seq_file *m, loff_t *pos)
 	struct vmap_area *va;
 
 	spin_lock(&vmap_area_lock);
-	va = list_entry((&vmap_area_list)->next, typeof(*va), list);
+	va = list_first_entry(&vmap_area_list, typeof(*va), list);
 	while (n > 0 && &va->list != &vmap_area_list) {
 		n--;
-		va = list_entry(va->list.next, typeof(*va), list);
+		va = list_next_entry(va, list);
 	}
 	if (!n && &va->list != &vmap_area_list)
 		return va;
@@ -2577,7 +2572,7 @@ static void *s_next(struct seq_file *m, void *p, loff_t *pos)
 	struct vmap_area *va = p, *next;
 
 	++*pos;
-	next = list_entry(va->list.next, typeof(*va), list);
+	next = list_next_entry(va, list);
 	if (&next->list != &vmap_area_list)
 		return next;
 
