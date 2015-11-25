@@ -1,0 +1,46 @@
+* Richtek Technology Corporation - RT5033 Flash LED Driver
+
+The RT5033 Flash LED Circuit is designed for one or two LEDs driving
+for torch and strobe applications, it provides an I2C software command
+to trigger the torch and strobe operation.
+
+There are two LED outputs available - FLED1 and FLED2. Each of them can
+control a separate LED or they can be connected together to double
+the maximum current for a single connected LED. One LED is represented
+by one child node.
+
+Required properties:
+- compatible : Must be "richtek,rt5033-led".
+
+A discrete LED element connected to the device must be represented by a child
+node - see Documentation/devicetree/bindings/leds/common.txt.
+
+Required properties for the LED child node:
+  See Documentation/devicetree/bindings/leds/common.txt
+- led-sources : device current output identifiers:  0 - FLED1, 1 - FLED2
+- led-max-microamp : 12.5mA to 200mA, step by 12.5mA.
+- flash-max-microamp :
+	Turn on one LED channel : 50mA to 800mA, step by 25mA.
+	Turn on two LED channels : 50mA to 600mA, step by 25mA.
+- flash-max-timeout-us : 64ms to 1216ms, step by 32ms.
+
+Optional properties for the LED child node:
+- label : see Documentation/devicetree/bindings/leds/common.txt
+
+Example:
+
+rt5033 {
+	compatible = "richtek,rt5033";
+
+	led {
+		compatible = "richtek,rt5033-led";
+
+		flash-led {
+			label = "rt5033-flash";
+			led-sources = <0>, <1>;
+			led-max-microamp = <200000>;
+			flash-max-microamp = <800000>;
+			flash-max-timeout-us = <1216000>;
+		};
+	};
+}
