@@ -41,27 +41,17 @@ void x86_pci_root_bus_resources(int bus, struct list_head *resources)
 	       bus);
 
 	/* already added by acpi ? */
-	resource_list_for_each_entry(window, resources)
+	resource_list_for_each_entry(window, &info->resources)
 		if (window->res->flags & IORESOURCE_BUS) {
 			found = true;
 			break;
 		}
-
 	if (!found)
 		pci_add_resource(resources, &info->busn);
 
-	list_for_each_entry(root_res, &info->resources, list) {
-		struct resource *res;
-		struct resource *root;
+	list_for_each_entry(root_res, &info->resources, list)
+		pci_add_resource(resources, &root_res->res);
 
-		res = &root_res->res;
-		pci_add_resource(resources, res);
-		if (res->flags & IORESOURCE_IO)
-			root = &ioport_resource;
-		else
-			root = &iomem_resource;
-		insert_resource(root, res);
-	}
 	return;
 
 default_resources:
