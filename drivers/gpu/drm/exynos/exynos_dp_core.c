@@ -1436,8 +1436,10 @@ static int exynos_dp_probe(struct platform_device *pdev)
 			of_node_put(bridge_node);
 			if (!dp->ptn_bridge)
 				return -EPROBE_DEFER;
-		} else
-			return -EPROBE_DEFER;
+		} else {
+			DRM_ERROR("no port node for bridge device.\n");
+			return -EINVAL;
+		}
 	}
 
 	pm_runtime_enable(dev);
