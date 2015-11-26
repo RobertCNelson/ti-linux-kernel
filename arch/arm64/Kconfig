@@ -51,6 +51,8 @@ config ARM64
 	select HAVE_ARCH_JUMP_LABEL
 	select HAVE_ARCH_KASAN if SPARSEMEM_VMEMMAP
 	select HAVE_ARCH_KGDB
+	select HAVE_ARCH_MMAP_RND_BITS
+	select HAVE_ARCH_MMAP_RND_COMPAT_BITS if COMPAT
 	select HAVE_ARCH_SECCOMP_FILTER
 	select HAVE_ARCH_TRACEHOOK
 	select HAVE_BPF_JIT
@@ -103,6 +105,27 @@ config ARCH_PHYS_ADDR_T_64BIT
 
 config MMU
 	def_bool y
+
+config ARCH_MMAP_RND_BITS_MIN
+       default 15 if ARM64_64K_PAGES
+       default 19
+
+config ARCH_MMAP_RND_BITS_MAX
+       default 20 if ARM64_64K_PAGES && ARCH_VA_BITS=39
+       default 24 if ARCH_VA_BITS=39
+       default 23 if ARM64_64K_PAGES && ARCH_VA_BITS=42
+       default 27 if ARCH_VA_BITS=42
+       default 29 if ARM64_64K_PAGES && ARCH_VA_BITS=48
+       default 33 if ARCH_VA_BITS=48
+       default 15 if ARM64_64K_PAGES
+       default 19
+
+config ARCH_MMAP_RND_COMPAT_BITS_MIN
+       default 7 if ARM64_64K_PAGES
+       default 11
+
+config ARCH_MMAP_RND_COMPAT_BITS_MAX
+       default 16
 
 config NO_IOPORT_MAP
 	def_bool y if !PCI
