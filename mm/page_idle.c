@@ -55,25 +55,22 @@ static int page_idle_clear_pte_refs_one(struct page *page,
 					unsigned long addr, void *arg)
 {
 	struct mm_struct *mm = vma->vm_mm;
-	spinlock_t *ptl;
 	pmd_t *pmd;
 	pte_t *pte;
+	spinlock_t *ptl;
 	bool referenced = false;
 
-	if (unlikely(PageTransHuge(page))) {
-		pmd = page_check_address_pmd(page, mm, addr,
-					     PAGE_CHECK_ADDRESS_PMD_FLAG, &ptl);
-		if (pmd) {
-			referenced = pmdp_clear_young_notify(vma, addr, pmd);
-			spin_unlock(ptl);
-		}
-	} else {
-		pte = page_check_address(page, mm, addr, &ptl, 0);
-		if (pte) {
-			referenced = ptep_clear_young_notify(vma, addr, pte);
-			pte_unmap_unlock(pte, ptl);
-		}
-	}
+	if (!page_check_address_transhuge(page, mm, addr, &pmd, &pte, &ptl))
+		return SWAP_AGAIN;
+
+	if (pte) {
+		referenced = ptep_clear_young_notify(vma, addr, pte);
+		pte_unmap(pte);
+	} else
+		referenced = pmdp_clear_young_notify(vma, addr, pmd);
+
+	spin_unlock(ptl);
+
 	if (referenced) {
 		clear_page_idle(page);
 		/*
