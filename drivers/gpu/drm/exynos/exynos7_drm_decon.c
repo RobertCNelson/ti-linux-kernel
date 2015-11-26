@@ -54,7 +54,6 @@ struct decon_context {
 	void __iomem			*regs;
 	unsigned long			irq_flags;
 	bool				i80_if;
-	bool				suspended;
 	int				pipe;
 	wait_queue_head_t		wait_vsync_queue;
 	atomic_t			wait_vsync_event;
@@ -84,9 +83,6 @@ static const uint32_t decon_formats[] = {
 static void decon_wait_for_vblank(struct exynos_drm_crtc *crtc)
 {
 	struct decon_context *ctx = crtc->ctx;
-
-	if (ctx->suspended)
-		return;
 
 	atomic_set(&ctx->wait_vsync_event, 1);
 
@@ -119,13 +115,8 @@ static void decon_clear_channels(struct exynos_drm_crtc *crtc)
 	}
 
 	/* Wait for vsync, as disable channel takes effect at next vsync */
-	if (ch_enabled) {
-		unsigned int state = ctx->suspended;
-
-		ctx->suspended = 0;
+	if (ch_enabled)
 		decon_wait_for_vblank(ctx->crtc);
-		ctx->suspended = state;
-	}
 }
 
 static int decon_ctx_initialize(struct decon_context *ctx,
@@ -169,9 +160,6 @@ static void decon_commit(struct exynos_drm_crtc *crtc)
 	struct decon_context *ctx = crtc->ctx;
 	struct drm_display_mode *mode = &crtc->base.state->adjusted_mode;
 	u32 val, clkdiv;
-
-	if (ctx->suspended)
-		return;
 
 	/* nothing to do if we haven't set the mode yet */
 	if (mode->htotal == 0 || mode->vtotal == 0)
@@ -234,9 +222,6 @@ static int decon_enable_vblank(struct exynos_drm_crtc *crtc)
 	struct decon_context *ctx = crtc->ctx;
 	u32 val;
 
-	if (ctx->suspended)
-		return -EPERM;
-
 	if (!test_and_set_bit(0, &ctx->irq_flags)) {
 		val = readl(ctx->regs + VIDINTCON0);
 
@@ -258,9 +243,6 @@ static void decon_disable_vblank(struct exynos_drm_crtc *crtc)
 {
 	struct decon_context *ctx = crtc->ctx;
 	u32 val;
-
-	if (ctx->suspended)
-		return;
 
 	if (test_and_clear_bit(0, &ctx->irq_flags)) {
 		val = readl(ctx->regs + VIDINTCON0);
@@ -389,9 +371,6 @@ static void decon_atomic_begin(struct exynos_drm_crtc *crtc,
 {
 	struct decon_context *ctx = crtc->ctx;
 
-	if (ctx->suspended)
-		return;
-
 	decon_shadow_protect_win(ctx, plane->zpos, true);
 }
 
@@ -408,9 +387,6 @@ static void decon_update_plane(struct exynos_drm_crtc *crtc,
 	unsigned int win = plane->zpos;
 	unsigned int bpp = state->fb->bits_per_pixel >> 3;
 	unsigned int pitch = state->fb->pitches[0];
-
-	if (ctx->suspended)
-		return;
 
 	/*
 	 * SHADOWCON/PRTCON register is used for enabling timing.
@@ -508,9 +484,6 @@ static void decon_disable_plane(struct exynos_drm_crtc *crtc,
 	unsigned int win = plane->zpos;
 	u32 val;
 
-	if (ctx->suspended)
-		return;
-
 	/* protect windows */
 	decon_shadow_protect_win(ctx, win, true);
 
@@ -528,9 +501,6 @@ static void decon_atomic_flush(struct exynos_drm_crtc *crtc,
 					struct exynos_drm_plane *plane)
 {
 	struct decon_context *ctx = crtc->ctx;
-
-	if (ctx->suspended)
-		return;
 
 	decon_shadow_protect_win(ctx, plane->zpos, false);
 }
@@ -555,38 +525,8 @@ static void decon_init(struct decon_context *ctx)
 static void decon_enable(struct exynos_drm_crtc *crtc)
 {
 	struct decon_context *ctx = crtc->ctx;
-	int ret;
-
-	if (!ctx->suspended)
-		return;
-
-	ctx->suspended = false;
 
 	pm_runtime_get_sync(ctx->dev);
-
-	ret = clk_prepare_enable(ctx->pclk);
-	if (ret < 0) {
-		DRM_ERROR("Failed to prepare_enable the pclk [%d]\n", ret);
-		return;
-	}
-
-	ret = clk_prepare_enable(ctx->aclk);
-	if (ret < 0) {
-		DRM_ERROR("Failed to prepare_enable the aclk [%d]\n", ret);
-		return;
-	}
-
-	ret = clk_prepare_enable(ctx->eclk);
-	if  (ret < 0) {
-		DRM_ERROR("Failed to prepare_enable the eclk [%d]\n", ret);
-		return;
-	}
-
-	ret = clk_prepare_enable(ctx->vclk);
-	if  (ret < 0) {
-		DRM_ERROR("Failed to prepare_enable the vclk [%d]\n", ret);
-		return;
-	}
 
 	decon_init(ctx);
 
@@ -602,9 +542,6 @@ static void decon_disable(struct exynos_drm_crtc *crtc)
 	struct decon_context *ctx = crtc->ctx;
 	int i;
 
-	if (ctx->suspended)
-		return;
-
 	/*
 	 * We need to make sure that all windows are disabled before we
 	 * suspend that connector. Otherwise we might try to scan from
@@ -613,14 +550,7 @@ static void decon_disable(struct exynos_drm_crtc *crtc)
 	for (i = 0; i < WINDOWS_NR; i++)
 		decon_disable_plane(crtc, &ctx->planes[i]);
 
-	clk_disable_unprepare(ctx->vclk);
-	clk_disable_unprepare(ctx->eclk);
-	clk_disable_unprepare(ctx->aclk);
-	clk_disable_unprepare(ctx->pclk);
-
 	pm_runtime_put_sync(ctx->dev);
-
-	ctx->suspended = true;
 }
 
 static const struct exynos_drm_crtc_ops decon_crtc_ops = {
@@ -748,7 +678,6 @@ static int decon_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	ctx->dev = dev;
-	ctx->suspended = true;
 
 	i80_if_timings = of_get_child_by_name(dev->of_node, "i80-if-timings");
 	if (i80_if_timings)
@@ -843,11 +772,63 @@ static int decon_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_PM
+static int exynos7_decon_suspend(struct device *dev)
+{
+	struct decon_context *ctx = dev_get_drvdata(dev);
+
+	clk_disable_unprepare(ctx->vclk);
+	clk_disable_unprepare(ctx->eclk);
+	clk_disable_unprepare(ctx->aclk);
+	clk_disable_unprepare(ctx->pclk);
+
+	return 0;
+}
+
+static int exynos7_decon_resume(struct device *dev)
+{
+	struct decon_context *ctx = dev_get_drvdata(dev);
+	int ret;
+
+	ret = clk_prepare_enable(ctx->pclk);
+	if (ret < 0) {
+		DRM_ERROR("Failed to prepare_enable the pclk [%d]\n", ret);
+		return ret;
+	}
+
+	ret = clk_prepare_enable(ctx->aclk);
+	if (ret < 0) {
+		DRM_ERROR("Failed to prepare_enable the aclk [%d]\n", ret);
+		return ret;
+	}
+
+	ret = clk_prepare_enable(ctx->eclk);
+	if  (ret < 0) {
+		DRM_ERROR("Failed to prepare_enable the eclk [%d]\n", ret);
+		return ret;
+	}
+
+	ret = clk_prepare_enable(ctx->vclk);
+	if  (ret < 0) {
+		DRM_ERROR("Failed to prepare_enable the vclk [%d]\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+#endif
+
+static const struct dev_pm_ops exynos7_decon_pm_ops = {
+	SET_RUNTIME_PM_OPS(exynos7_decon_suspend, exynos7_decon_resume,
+			   NULL)
+};
+
 struct platform_driver decon_driver = {
 	.probe		= decon_probe,
 	.remove		= decon_remove,
 	.driver		= {
 		.name	= "exynos-decon",
+		.pm	= &exynos7_decon_pm_ops,
 		.of_match_table = decon_driver_dt_match,
 	},
 };
