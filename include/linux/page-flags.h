@@ -541,8 +541,7 @@ static inline int PageTransTail(struct page *page)
  */
 static inline int PageDoubleMap(struct page *page)
 {
-	VM_BUG_ON_PAGE(!PageHead(page), page);
-	return test_bit(PG_double_map, &page[1].flags);
+	return PageHead(page) && test_bit(PG_double_map, &page[1].flags);
 }
 
 static inline int TestSetPageDoubleMap(struct page *page)
