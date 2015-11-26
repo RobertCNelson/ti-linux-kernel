@@ -2424,6 +2424,7 @@ static int ocfs2_check_volume(struct ocfs2_super *osb)
 	int status;
 	int dirty;
 	int local;
+	int la_dirty = 0, recovery = 0;
 	struct ocfs2_dinode *local_alloc = NULL; /* only used if we
 						  * recover
 						  * ourselves. */
@@ -2445,6 +2446,16 @@ static int ocfs2_check_volume(struct ocfs2_super *osb)
 	 * recover anything. Otherwise, journal_load will do that
 	 * dirty work for us :) */
 	if (!dirty) {
+		/* It may happen that local alloc is unclean shutdown, but
+		 * journal has been marked clean, so check it here and do
+		 * recovery if needed */
+		status = ocfs2_load_local_alloc(osb, 1, &recovery);
+		if (recovery) {
+			printk(KERN_NOTICE "ocfs2: local alloc needs recovery "
+					"on device (%s).\n", osb->dev_str);
+			la_dirty = 1;
+		}
+
 		status = ocfs2_journal_wipe(osb->journal, 0);
 		if (status < 0) {
 			mlog_errno(status);
@@ -2473,7 +2484,7 @@ static int ocfs2_check_volume(struct ocfs2_super *osb)
 				JBD2_FEATURE_COMPAT_CHECKSUM, 0,
 				JBD2_FEATURE_INCOMPAT_ASYNC_COMMIT);
 
-	if (dirty) {
+	if (dirty || la_dirty) {
 		/* recover my local alloc if we didn't unmount cleanly. */
 		status = ocfs2_begin_local_alloc_recovery(osb,
 							  osb->slot_num,
@@ -2486,13 +2497,13 @@ static int ocfs2_check_volume(struct ocfs2_super *osb)
 		 * ourselves as mounted. */
 	}
 
-	status = ocfs2_load_local_alloc(osb);
+	status = ocfs2_load_local_alloc(osb, 0, &recovery);
 	if (status < 0) {
 		mlog_errno(status);
 		goto finally;
 	}
 
-	if (dirty) {
+	if (dirty || la_dirty) {
 		/* Recovery will be completed after we've mounted the
 		 * rest of the volume. */
 		osb->dirty = 1;

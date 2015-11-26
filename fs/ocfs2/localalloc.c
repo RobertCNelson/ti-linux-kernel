@@ -281,7 +281,7 @@ bail:
 	return ret;
 }
 
-int ocfs2_load_local_alloc(struct ocfs2_super *osb)
+int ocfs2_load_local_alloc(struct ocfs2_super *osb, int check, int *recovery)
 {
 	int status = 0;
 	struct ocfs2_dinode *alloc = NULL;
@@ -345,21 +345,26 @@ int ocfs2_load_local_alloc(struct ocfs2_super *osb)
 	if (num_used
 	    || alloc->id1.bitmap1.i_used
 	    || alloc->id1.bitmap1.i_total
-	    || la->la_bm_off)
+	    || la->la_bm_off) {
 		mlog(ML_ERROR, "Local alloc hasn't been recovered!\n"
 		     "found = %u, set = %u, taken = %u, off = %u\n",
 		     num_used, le32_to_cpu(alloc->id1.bitmap1.i_used),
 		     le32_to_cpu(alloc->id1.bitmap1.i_total),
 		     OCFS2_LOCAL_ALLOC(alloc)->la_bm_off);
+		status = -EINVAL;
+		*recovery = 1;
+		goto bail;
+	}
 
-	osb->local_alloc_bh = alloc_bh;
-	osb->local_alloc_state = OCFS2_LA_ENABLED;
+	if (!check) {
+		osb->local_alloc_bh = alloc_bh;
+		osb->local_alloc_state = OCFS2_LA_ENABLED;
+	}
 
 bail:
-	if (status < 0)
+	if (status < 0 || check)
 		brelse(alloc_bh);
-	if (inode)
-		iput(inode);
+	iput(inode);
 
 	trace_ocfs2_load_local_alloc(osb->local_alloc_bits);
 
