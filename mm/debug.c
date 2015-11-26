@@ -46,17 +46,14 @@ static const struct trace_print_flags pageflag_names[] = {
 #endif
 };
 
-static void dump_flags(unsigned long flags,
+static void dump_flag_names(unsigned long flags,
 			const struct trace_print_flags *names, int count)
 {
 	const char *delim = "";
 	unsigned long mask;
 	int i;
 
-	pr_emerg("flags: %#lx(", flags);
-
-	/* remove zone id */
-	flags &= (1UL << NR_PAGEFLAGS) - 1;
+	pr_cont("(");
 
 	for (i = 0; i < count && flags; i++) {
 
@@ -79,6 +76,8 @@ static void dump_flags(unsigned long flags,
 void dump_page_badflags(struct page *page, const char *reason,
 		unsigned long badflags)
 {
+	unsigned long printflags = page->flags;
+
 	pr_emerg("page:%p count:%d mapcount:%d mapping:%p index:%#lx",
 		  page, atomic_read(&page->_count), page_mapcount(page),
 		  page->mapping, page->index);
@@ -86,13 +85,19 @@ void dump_page_badflags(struct page *page, const char *reason,
 		pr_cont(" compound_mapcount: %d", compound_mapcount(page));
 	pr_cont("\n");
 	BUILD_BUG_ON(ARRAY_SIZE(pageflag_names) != __NR_PAGEFLAGS);
-	dump_flags(page->flags, pageflag_names, ARRAY_SIZE(pageflag_names));
+
+	pr_emerg("flags: %#lx", printflags);
+	/* remove zone id */
+	printflags &= (1UL << NR_PAGEFLAGS) - 1;
+	dump_flag_names(printflags, pageflag_names, ARRAY_SIZE(pageflag_names));
+
 	if (reason)
 		pr_alert("page dumped because: %s\n", reason);
 	if (page->flags & badflags) {
-		pr_alert("bad because of flags:\n");
-		dump_flags(page->flags & badflags,
-				pageflag_names, ARRAY_SIZE(pageflag_names));
+		printflags = page->flags & badflags;
+		pr_alert("bad because of flags: %#lx:", printflags);
+		dump_flag_names(printflags, pageflag_names,
+						ARRAY_SIZE(pageflag_names));
 	}
 #ifdef CONFIG_MEMCG
 	if (page->mem_cgroup)
@@ -162,7 +167,9 @@ void dump_vma(const struct vm_area_struct *vma)
 		(unsigned long)pgprot_val(vma->vm_page_prot),
 		vma->anon_vma, vma->vm_ops, vma->vm_pgoff,
 		vma->vm_file, vma->vm_private_data);
-	dump_flags(vma->vm_flags, vmaflags_names, ARRAY_SIZE(vmaflags_names));
+	pr_emerg("flags: %#lx", vma->vm_flags);
+	dump_flag_names(vma->vm_flags, vmaflags_names,
+						ARRAY_SIZE(vmaflags_names));
 }
 EXPORT_SYMBOL(dump_vma);
 
@@ -233,8 +240,9 @@ void dump_mm(const struct mm_struct *mm)
 		""		/* This is here to not have a comma! */
 		);
 
-		dump_flags(mm->def_flags, vmaflags_names,
-				ARRAY_SIZE(vmaflags_names));
+	pr_emerg("def_flags: %#lx(", mm->def_flags);
+	dump_flag_names(mm->def_flags, vmaflags_names,
+					ARRAY_SIZE(vmaflags_names));
 }
 
 #endif		/* CONFIG_DEBUG_VM */
