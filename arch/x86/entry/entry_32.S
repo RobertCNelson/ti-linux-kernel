@@ -308,8 +308,9 @@ sysenter_past_esp:
 
 	movl	%esp, %eax
 	call	do_fast_syscall_32
-	testl	%eax, %eax
-	jz	.Lsyscall_32_done
+	/* XEN PV guests always use IRET path */
+	ALTERNATIVE "testl %eax, %eax; jz .Lsyscall_32_done", \
+		    "jmp .Lsyscall_32_done", X86_FEATURE_XENPV
 
 /* Opportunistic SYSEXIT */
 	TRACE_IRQS_ON			/* User mode traces as IRQs on. */
@@ -328,7 +329,8 @@ sysenter_past_esp:
 	 * Return back to the vDSO, which will pop ecx and edx.
 	 * Don't bother with DS and ES (they already contain __USER_DS).
 	 */
-	ENABLE_INTERRUPTS_SYSEXIT
+	sti
+	sysexit
 
 .pushsection .fixup, "ax"
 2:	movl	$0, PT_FS(%esp)
@@ -551,11 +553,6 @@ ENTRY(native_iret)
 	iret
 	_ASM_EXTABLE(native_iret, iret_exc)
 END(native_iret)
-
-ENTRY(native_irq_enable_sysexit)
-	sti
-	sysexit
-END(native_irq_enable_sysexit)
 #endif
 
 ENTRY(overflow)
