@@ -345,6 +345,14 @@ config LEDS_PCA963X
 	  LED driver chip accessed via the I2C bus. Supported
 	  devices include PCA9633 and PCA9634
 
+config LEDS_RT5033
+	tristate "LED support for RT5033 PMIC"
+	depends on LEDS_CLASS_FLASH && OF
+	depends on MFD_RT5033
+	help
+	  This option enables support for on-chip LED driver on
+	  RT5033 PMIC.
+
 config LEDS_WM831X_STATUS
 	tristate "LED support for status LEDs on WM831x PMICs"
 	depends on LEDS_CLASS
