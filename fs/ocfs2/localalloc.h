@@ -26,7 +26,7 @@
 #ifndef OCFS2_LOCALALLOC_H
 #define OCFS2_LOCALALLOC_H
 
-int ocfs2_load_local_alloc(struct ocfs2_super *osb);
+int ocfs2_load_local_alloc(struct ocfs2_super *osb, int check, int *recovery);
 
 void ocfs2_shutdown_local_alloc(struct ocfs2_super *osb);
 
