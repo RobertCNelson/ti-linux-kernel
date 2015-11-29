@@ -14,8 +14,9 @@
  * (C) Copyright 2013-2015 Hewlett-Packard Development Company, L.P.
  * (C) Copyright 2013-2014 Red Hat, Inc.
  * (C) Copyright 2015 Intel Corp.
+ * (C) Copyright 2015 Hewlett-Packard Enterprise Development LP
  *
- * Authors: Waiman Long <waiman.long@hp.com>
+ * Authors: Waiman Long <waiman.long@hpe.com>
  *          Peter Zijlstra <peterz@infradead.org>
  */
 
@@ -176,7 +177,12 @@ static __always_inline u32 xchg_tail(struct qspinlock *lock, u32 tail)
 {
 	struct __qspinlock *l = (void *)lock;
 
-	return (u32)xchg(&l->tail, tail >> _Q_TAIL_OFFSET) << _Q_TAIL_OFFSET;
+	/*
+	 * Use release semantics to make sure that the MCS node is properly
+	 * initialized before changing the tail code.
+	 */
+	return (u32)xchg_release(&l->tail,
+				 tail >> _Q_TAIL_OFFSET) << _Q_TAIL_OFFSET;
 }
 
 #else /* _Q_PENDING_BITS == 8 */
@@ -208,7 +214,11 @@ static __always_inline u32 xchg_tail(struct qspinlock *lock, u32 tail)
 
 	for (;;) {
 		new = (val & _Q_LOCKED_PENDING_MASK) | tail;
-		old = atomic_cmpxchg(&lock->val, val, new);
+		/*
+		 * Use release semantics to make sure that the MCS node is
+		 * properly initialized before changing the tail code.
+		 */
+		old = atomic_cmpxchg_release(&lock->val, val, new);
 		if (old == val)
 			break;
 
@@ -319,7 +329,11 @@ void queued_spin_lock_slowpath(struct qspinlock *lock, u32 val)
 		if (val == new)
 			new |= _Q_PENDING_VAL;
 
-		old = atomic_cmpxchg(&lock->val, val, new);
+		/*
+		 * Acquire semantic is required here as the function may
+		 * return immediately if the lock was free.
+		 */
+		old = atomic_cmpxchg_acquire(&lock->val, val, new);
 		if (old == val)
 			break;
 
@@ -382,6 +396,7 @@ queue:
 	 * p,*,* -> n,*,*
 	 */
 	old = xchg_tail(lock, tail);
+	next = NULL;
 
 	/*
 	 * if there was a previous node; link it and wait until reaching the
@@ -393,6 +408,16 @@ queue:
 
 		pv_wait_node(node);
 		arch_mcs_spin_lock_contended(&node->locked);
+
+		/*
+		 * While waiting for the MCS lock, the next pointer may have
+		 * been set by another lock waiter. We optimistically load
+		 * the next pointer & prefetch the cacheline for writing
+		 * to reduce latency in the upcoming MCS unlock operation.
+		 */
+		next = READ_ONCE(node->next);
+		if (next)
+			prefetchw(next);
 	}
 
 	/*
@@ -426,7 +451,12 @@ queue:
 			set_locked(lock);
 			break;
 		}
-		old = atomic_cmpxchg(&lock->val, val, _Q_LOCKED_VAL);
+		/*
+		 * The smp_load_acquire() call above has provided the necessary
+		 * acquire semantics required for locking. At most two
+		 * iterations of this loop may be ran.
+		 */
+		old = atomic_cmpxchg_relaxed(&lock->val, val, _Q_LOCKED_VAL);
 		if (old == val)
 			goto release;	/* No contention */
 
@@ -434,10 +464,12 @@ queue:
 	}
 
 	/*
-	 * contended path; wait for next, release.
+	 * contended path; wait for next if not observed yet, release.
 	 */
-	while (!(next = READ_ONCE(node->next)))
-		cpu_relax();
+	if (!next) {
+		while (!(next = READ_ONCE(node->next)))
+			cpu_relax();
+	}
 
 	arch_mcs_spin_unlock_contended(&next->locked);
 	pv_kick_node(lock, next);
