@@ -117,6 +117,7 @@ static int __assign_irq_vector(int irq, struct apic_chip_data *d,
 	static int current_vector = FIRST_EXTERNAL_VECTOR + VECTOR_OFFSET_START;
 	static int current_offset = VECTOR_OFFSET_START % 16;
 	int cpu, err;
+	unsigned int dest = d->cfg.dest_apicid;
 
 	if (d->move_in_progress)
 		return -EBUSY;
@@ -140,11 +141,16 @@ static int __assign_irq_vector(int irq, struct apic_chip_data *d,
 			 * the current in use mask. So cleanup the vector
 			 * allocation for the members that are not used anymore.
 			 */
+			cpumask_and(used_cpumask, d->domain, vector_cpumask);
+			err = apic->cpu_mask_to_apicid_and(mask, used_cpumask,
+							   &dest);
+			if (err)
+				break;
 			cpumask_andnot(d->old_domain, d->domain,
 				       vector_cpumask);
 			d->move_in_progress =
 			   cpumask_intersects(d->old_domain, cpu_online_mask);
-			cpumask_and(d->domain, d->domain, vector_cpumask);
+			cpumask_copy(d->domain, used_cpumask);
 			break;
 		}
 
@@ -167,11 +173,13 @@ next:
 
 		if (test_bit(vector, used_vectors))
 			goto next;
-
 		for_each_cpu_and(new_cpu, vector_cpumask, cpu_online_mask) {
 			if (!IS_ERR_OR_NULL(per_cpu(vector_irq, new_cpu)[vector]))
 				goto next;
 		}
+		if (apic->cpu_mask_to_apicid_and(mask, vector_cpumask, &dest))
+			goto next;
+
 		/* Found one! */
 		current_vector = vector;
 		current_offset = offset;
@@ -190,8 +198,7 @@ next:
 
 	if (!err) {
 		/* cache destination APIC IDs into cfg->dest_apicid */
-		err = apic->cpu_mask_to_apicid_and(mask, d->domain,
-						   &d->cfg.dest_apicid);
+		d->cfg.dest_apicid = dest;
 	}
 
 	return err;
@@ -493,14 +500,8 @@ static int apic_set_affinity(struct irq_data *irq_data,
 		return -EINVAL;
 
 	err = assign_irq_vector(irq, data, dest);
-	if (err) {
-		if (assign_irq_vector(irq, data,
-				      irq_data_get_affinity_mask(irq_data)))
-			pr_err("Failed to recover vector for irq %d\n", irq);
-		return err;
-	}
 
-	return IRQ_SET_MASK_OK;
+	return err ? err : IRQ_SET_MASK_OK;
 }
 
 static struct irq_chip lapic_controller = {
