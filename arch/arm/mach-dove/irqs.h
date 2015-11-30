@@ -1,6 +1,4 @@
 /*
- * arch/arm/mach-dove/include/mach/irqs.h
- *
  * IRQ definitions for Marvell Dove 88AP510 SoC
  *
  * This file is licensed under the terms of the GNU General Public
@@ -90,7 +88,7 @@
 #define NR_PMU_IRQS		7
 #define IRQ_DOVE_RTC		(IRQ_DOVE_PMU_START + 5)
 
-#define NR_IRQS			(IRQ_DOVE_PMU_START + NR_PMU_IRQS)
+#define DOVE_NR_IRQS		(IRQ_DOVE_PMU_START + NR_PMU_IRQS)
 
 
 #endif
