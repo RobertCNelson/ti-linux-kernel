@@ -231,23 +231,16 @@ static int assign_irq_vector_policy(int irq, int node,
 static void clear_irq_vector(int irq, struct apic_chip_data *data)
 {
 	struct irq_desc *desc;
-	unsigned long flags;
-	int cpu, vector;
+	int cpu, vector = data->cfg.vector;
 
-	raw_spin_lock_irqsave(&vector_lock, flags);
-	BUG_ON(!data->cfg.vector);
-
-	vector = data->cfg.vector;
+	BUG_ON(!vector);
 	for_each_cpu_and(cpu, data->domain, cpu_online_mask)
 		per_cpu(vector_irq, cpu)[vector] = VECTOR_UNUSED;
-
 	data->cfg.vector = 0;
 	cpumask_clear(data->domain);
 
-	if (likely(!data->move_in_progress)) {
-		raw_spin_unlock_irqrestore(&vector_lock, flags);
+	if (likely(!data->move_in_progress))
 		return;
-	}
 
 	desc = irq_to_desc(irq);
 	for_each_cpu_and(cpu, data->old_domain, cpu_online_mask) {
@@ -260,7 +253,7 @@ static void clear_irq_vector(int irq, struct apic_chip_data *data)
 		}
 	}
 	data->move_in_progress = 0;
-	raw_spin_unlock_irqrestore(&vector_lock, flags);
+	cpumask_clear(data->old_domain);
 }
 
 void init_irq_alloc_info(struct irq_alloc_info *info,
@@ -282,18 +275,21 @@ static void x86_vector_free_irqs(struct irq_domain *domain,
 				 unsigned int virq, unsigned int nr_irqs)
 {
 	struct irq_data *irq_data;
+	unsigned long flags;
 	int i;
 
 	for (i = 0; i < nr_irqs; i++) {
 		irq_data = irq_domain_get_irq_data(x86_vector_domain, virq + i);
 		if (irq_data && irq_data->chip_data) {
+			raw_spin_lock_irqsave(&vector_lock, flags);
 			clear_irq_vector(virq + i, irq_data->chip_data);
 			free_apic_chip_data(irq_data->chip_data);
+			irq_domain_reset_irq_data(irq_data);
+			raw_spin_unlock_irqrestore(&vector_lock, flags);
 #ifdef	CONFIG_X86_IO_APIC
 			if (virq + i < nr_legacy_irqs())
 				legacy_irq_data[virq + i] = NULL;
 #endif
-			irq_domain_reset_irq_data(irq_data);
 		}
 	}
 }
