@@ -23,9 +23,9 @@
 
 struct apic_chip_data {
 	struct irq_cfg		cfg;
+	u8			move_in_progress : 1;
 	cpumask_var_t		domain;
 	cpumask_var_t		old_domain;
-	u8			move_in_progress : 1;
 };
 
 struct irq_domain *x86_vector_domain;
@@ -38,7 +38,7 @@ static struct apic_chip_data *legacy_irq_data[NR_IRQS_LEGACY];
 
 void lock_vector_lock(void)
 {
-	/* Used to the online set of cpus does not change
+	/* Used to ensure that the online set of cpus does not change
 	 * during assign_irq_vector.
 	 */
 	raw_spin_lock(&vector_lock);
@@ -100,8 +100,7 @@ static void free_apic_chip_data(struct apic_chip_data *data)
 	}
 }
 
-static int __assign_irq_vector(int irq, struct apic_chip_data *d,
-			       const struct cpumask *mask)
+static int assign_irq_vector(struct irq_data *data, const struct cpumask *mask)
 {
 	/*
 	 * NOTE! The local APIC isn't very good at handling
@@ -116,11 +115,15 @@ static int __assign_irq_vector(int irq, struct apic_chip_data *d,
 	 */
 	static int current_vector = FIRST_EXTERNAL_VECTOR + VECTOR_OFFSET_START;
 	static int current_offset = VECTOR_OFFSET_START % 16;
-	int cpu, err;
+	int cpu, err = -EBUSY;
+	struct irq_desc *desc = irq_data_to_desc(data);
+	struct apic_chip_data *d = data->chip_data;
 	unsigned int dest;
+	unsigned long flags;
 
+	raw_spin_lock_irqsave(&vector_lock, flags);
 	if (cpumask_intersects(d->old_domain, cpu_online_mask))
-		return -EBUSY;
+		goto out;
 
 	/* Only try and allocate irqs on cpus that are present */
 	err = -ENOSPC;
@@ -187,7 +190,7 @@ next:
 		d->cfg.vector = vector;
 		d->cfg.dest_apicid = dest;
 		for_each_cpu_and(new_cpu, vector_cpumask, cpu_online_mask)
-			per_cpu(vector_irq, new_cpu)[vector] = irq_to_desc(irq);
+			per_cpu(vector_irq, new_cpu)[vector] = desc;
 		cpumask_copy(d->domain, vector_cpumask);
 		err = 0;
 		break;
@@ -198,37 +201,27 @@ next:
 		cpumask_and(d->old_domain, d->old_domain, cpu_online_mask);
 		d->move_in_progress = !cpumask_empty(d->old_domain);
 	}
-
-	return err;
-}
-
-static int assign_irq_vector(int irq, struct apic_chip_data *data,
-			     const struct cpumask *mask)
-{
-	int err;
-	unsigned long flags;
-
-	raw_spin_lock_irqsave(&vector_lock, flags);
-	err = __assign_irq_vector(irq, data, mask);
+out:
 	raw_spin_unlock_irqrestore(&vector_lock, flags);
+
 	return err;
 }
 
-static int assign_irq_vector_policy(int irq, int node,
-				    struct apic_chip_data *data,
+static int assign_irq_vector_policy(struct irq_data *data, int node,
 				    struct irq_alloc_info *info)
 {
 	if (info && info->mask)
-		return assign_irq_vector(irq, data, info->mask);
+		return assign_irq_vector(data, info->mask);
 	if (node != NUMA_NO_NODE &&
-	    assign_irq_vector(irq, data, cpumask_of_node(node)) == 0)
+	    assign_irq_vector(data, cpumask_of_node(node)) == 0)
 		return 0;
-	return assign_irq_vector(irq, data, apic->target_cpus());
+	return assign_irq_vector(data, apic->target_cpus());
 }
 
-static void clear_irq_vector(int irq, struct apic_chip_data *data)
+static void clear_irq_vector(struct irq_data *irq_data)
 {
-	struct irq_desc *desc = irq_to_desc(irq);
+	struct irq_desc *desc = irq_data_to_desc(irq_data);
+	struct apic_chip_data *data = irq_data->chip_data;
 	int cpu, vector = data->cfg.vector;
 
 	BUG_ON(!vector);
@@ -276,7 +269,7 @@ static void x86_vector_free_irqs(struct irq_domain *domain,
 		irq_data = irq_domain_get_irq_data(x86_vector_domain, virq + i);
 		if (irq_data && irq_data->chip_data) {
 			raw_spin_lock_irqsave(&vector_lock, flags);
-			clear_irq_vector(virq + i, irq_data->chip_data);
+			clear_irq_vector(irq_data);
 			free_apic_chip_data(irq_data->chip_data);
 			irq_domain_reset_irq_data(irq_data);
 			raw_spin_unlock_irqrestore(&vector_lock, flags);
@@ -321,7 +314,7 @@ static int x86_vector_alloc_irqs(struct irq_domain *domain, unsigned int virq,
 		irq_data->chip = &lapic_controller;
 		irq_data->chip_data = data;
 		irq_data->hwirq = virq + i;
-		err = assign_irq_vector_policy(virq + i, node, data, info);
+		err = assign_irq_vector_policy(irq_data, node, info);
 		if (err)
 			goto error;
 	}
@@ -483,8 +476,7 @@ void apic_ack_edge(struct irq_data *data)
 static int apic_set_affinity(struct irq_data *irq_data,
 			     const struct cpumask *dest, bool force)
 {
-	struct apic_chip_data *data = irq_data->chip_data;
-	int err, irq = irq_data->irq;
+	int err;
 
 	if (!config_enabled(CONFIG_SMP))
 		return -EPERM;
@@ -492,7 +484,7 @@ static int apic_set_affinity(struct irq_data *irq_data,
 	if (!cpumask_intersects(dest, cpu_online_mask))
 		return -EINVAL;
 
-	err = assign_irq_vector(irq, data, dest);
+	err = assign_irq_vector(irq_data, dest);
 
 	return err ? err : IRQ_SET_MASK_OK;
 }
