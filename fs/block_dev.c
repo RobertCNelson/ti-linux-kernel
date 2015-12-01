@@ -1806,7 +1806,7 @@ int __invalidate_device(struct block_device *bdev, bool kill_dirty)
 }
 EXPORT_SYMBOL(__invalidate_device);
 
-static void generic_bdi_gone(struct super_block *sb)
+void generic_bdi_gone(struct super_block *sb)
 {
 	struct inode *inode, *_inode = NULL;
 
@@ -1832,6 +1832,7 @@ static void generic_bdi_gone(struct super_block *sb)
 	spin_unlock(&sb->s_inode_list_lock);
 	iput(_inode);
 }
+EXPORT_SYMBOL(generic_bdi_gone);
 
 void shutdown_partition(struct gendisk *disk, int partno)
 {
