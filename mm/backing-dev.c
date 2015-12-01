@@ -343,10 +343,17 @@ static void wb_shutdown(struct bdi_writeback *wb)
 {
 	/* Make sure nobody queues further work */
 	spin_lock_bh(&wb->work_lock);
+
 	if (!test_and_clear_bit(WB_registered, &wb->state)) {
 		spin_unlock_bh(&wb->work_lock);
 		return;
 	}
+
+	/* tell __mark_inode_dirty that writeback is no longer possible */
+	spin_lock(&wb->list_lock);
+	wb->bdi->capabilities |= BDI_CAP_NO_WRITEBACK;
+	spin_unlock(&wb->list_lock);
+
 	spin_unlock_bh(&wb->work_lock);
 
 	/*
