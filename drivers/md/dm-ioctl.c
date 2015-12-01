@@ -1642,9 +1642,13 @@ static ioctl_fn lookup_ioctl(unsigned int cmd, int *ioctl_flags)
 static int check_version(unsigned int cmd, struct dm_ioctl __user *user)
 {
 	uint32_t version[3];
+	uint32_t __user *versionp;
 	int r = 0;
 
-	if (copy_from_user(version, user->version, sizeof(version)))
+	if (copy_from_user(&versionp, &user->version, sizeof(versionp)))
+		return -EFAULT;
+
+	if (copy_from_user(version, versionp, sizeof(version)))
 		return -EFAULT;
 
 	if ((DM_VERSION_MAJOR != version[0]) ||
@@ -1663,7 +1667,7 @@ static int check_version(unsigned int cmd, struct dm_ioctl __user *user)
 	version[0] = DM_VERSION_MAJOR;
 	version[1] = DM_VERSION_MINOR;
 	version[2] = DM_VERSION_PATCHLEVEL;
-	if (copy_to_user(user->version, version, sizeof(version)))
+	if (copy_to_user(versionp, version, sizeof(version)))
 		return -EFAULT;
 
 	return r;
