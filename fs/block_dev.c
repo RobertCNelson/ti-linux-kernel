@@ -1778,26 +1778,82 @@ fail:
 }
 EXPORT_SYMBOL(lookup_bdev);
 
+static int generic_quiesce_super(struct super_block *sb, bool kill_dirty)
+{
+	/*
+	 * no need to lock the super, get_super holds the read mutex so
+	 * the filesystem cannot go away under us (->put_super runs with
+	 * the write lock held).
+	 */
+	shrink_dcache_sb(sb);
+	return invalidate_inodes(sb, kill_dirty);
+}
+
 int __invalidate_device(struct block_device *bdev, bool kill_dirty)
 {
 	struct super_block *sb = get_super(bdev);
 	int res = 0;
 
-	if (sb) {
-		/*
-		 * no need to lock the super, get_super holds the
-		 * read mutex so the filesystem cannot go away
-		 * under us (->put_super runs with the write lock
-		 * hold).
-		 */
-		shrink_dcache_sb(sb);
-		res = invalidate_inodes(sb, kill_dirty);
-		drop_super(sb);
-	}
+	if (!sb)
+		goto out;
+
+	res = generic_quiesce_super(sb, kill_dirty);
+	drop_super(sb);
+ out:
 	invalidate_bdev(bdev);
+
 	return res;
 }
 EXPORT_SYMBOL(__invalidate_device);
+
+static void generic_bdi_gone(struct super_block *sb)
+{
+	struct inode *inode, *_inode = NULL;
+
+	spin_lock(&sb->s_inode_list_lock);
+	list_for_each_entry(inode, &sb->s_inodes, i_sb_list) {
+		spin_lock(&inode->i_lock);
+		if ((inode->i_state & (I_FREEING|I_WILL_FREE|I_NEW))
+				|| !IS_DAX(inode)) {
+			spin_unlock(&inode->i_lock);
+			continue;
+		}
+		__iget(inode);
+		spin_unlock(&inode->i_lock);
+		spin_unlock(&sb->s_inode_list_lock);
+
+		unmap_mapping_range(inode->i_mapping, 0, 0, 1);
+		iput(_inode);
+		_inode = inode;
+		cond_resched();
+
+		spin_lock(&sb->s_inode_list_lock);
+	}
+	spin_unlock(&sb->s_inode_list_lock);
+	iput(_inode);
+}
+
+void shutdown_partition(struct gendisk *disk, int partno)
+{
+	struct block_device *bdev = bdget_disk(disk, partno);
+	struct super_block *sb = get_super(bdev);
+
+	if (!bdev)
+		return;
+
+	if (!sb) {
+		bdput(bdev);
+		return;
+	}
+
+	if (sb->s_op->bdi_gone)
+		sb->s_op->bdi_gone(sb);
+	else
+		generic_bdi_gone(sb);
+
+	drop_super(sb);
+	bdput(bdev);
+}
 
 void iterate_bdevs(void (*func)(struct block_device *, void *), void *arg)
 {

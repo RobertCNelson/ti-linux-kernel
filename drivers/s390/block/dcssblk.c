@@ -388,8 +388,7 @@ removeseg:
 	}
 	list_del(&dev_info->lh);
 
-	del_gendisk(dev_info->gd);
-	blk_cleanup_queue(dev_info->dcssblk_queue);
+	del_gendisk_queue(dev_info->gd);
 	dev_info->gd->queue = NULL;
 	put_disk(dev_info->gd);
 	up_write(&dcssblk_devices_sem);
@@ -751,8 +750,7 @@ dcssblk_remove_store(struct device *dev, struct device_attribute *attr, const ch
 	}
 
 	list_del(&dev_info->lh);
-	del_gendisk(dev_info->gd);
-	blk_cleanup_queue(dev_info->dcssblk_queue);
+	del_gendisk_queue(dev_info->gd);
 	dev_info->gd->queue = NULL;
 	put_disk(dev_info->gd);
 	device_unregister(&dev_info->dev);

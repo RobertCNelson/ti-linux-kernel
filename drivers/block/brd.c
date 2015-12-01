@@ -532,7 +532,6 @@ out:
 static void brd_free(struct brd_device *brd)
 {
 	put_disk(brd->brd_disk);
-	blk_cleanup_queue(brd->brd_queue);
 	brd_free_pages(brd);
 	kfree(brd);
 }
@@ -560,7 +559,7 @@ out:
 static void brd_del_one(struct brd_device *brd)
 {
 	list_del(&brd->brd_list);
-	del_gendisk(brd->brd_disk);
+	del_gendisk_queue(brd->brd_disk);
 	brd_free(brd);
 }
 
