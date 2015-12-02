@@ -723,19 +723,23 @@ generic_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size)
 
 	if (!buffer) {
 		for_each_xattr_handler(handlers, handler) {
-			size += handler->list(handler, dentry, NULL, 0,
-					      NULL, 0);
+			if (handler->list(dentry))
+				size += strlen(handler->name) + 1;
 		}
 	} else {
 		char *buf = buffer;
+		size_t len;
 
 		for_each_xattr_handler(handlers, handler) {
-			size = handler->list(handler, dentry, buf, buffer_size,
-					     NULL, 0);
-			if (size > buffer_size)
+			if (!handler->list(dentry))
+				continue;
+			len = strlen(handler->name);
+			if (len + 1 > buffer_size)
 				return -ERANGE;
-			buf += size;
-			buffer_size -= size;
+			memcpy(buf, handler->name, len);
+			buf[len] = 0;
+			buf += len + 1;
+			buffer_size -= len + 1;
 		}
 		size = buf - buffer;
 	}
