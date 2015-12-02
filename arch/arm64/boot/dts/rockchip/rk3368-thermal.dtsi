@@ -1,7 +1,8 @@
 /*
- * Device Tree Source for RK3288 SoC thermal
+ * Device Tree Source for RK3368 SoC thermal
  *
- * Copyright (c) 2014, Fuzhou Rockchip Electronics Co., Ltd
+ * Copyright (c) 2015, Fuzhou Rockchip Electronics Co., Ltd
+ * Caesar Wang <wxt@rock-chips.com>
  *
  * This file is dual-licensed: you can use it either under the terms
  * of the GPL or the X11 license, at your option. Note that this dual
@@ -44,32 +45,25 @@
 
 #include <dt-bindings/thermal/thermal.h>
 
-reserve_thermal: reserve_thermal {
-	polling-delay-passive = <1000>; /* milliseconds */
-	polling-delay = <5000>; /* milliseconds */
-
-	thermal-sensors = <&tsadc 0>;
-};
-
 cpu_thermal: cpu_thermal {
 	polling-delay-passive = <100>; /* milliseconds */
 	polling-delay = <5000>; /* milliseconds */
 
-	thermal-sensors = <&tsadc 1>;
+	thermal-sensors = <&tsadc 0>;
 
 	trips {
 		cpu_alert0: cpu_alert0 {
-			temperature = <70000>; /* millicelsius */
-			hysteresis = <2000>; /* millicelsius */
-			type = "passive";
-		};
-		cpu_alert1: cpu_alert1 {
 			temperature = <75000>; /* millicelsius */
 			hysteresis = <2000>; /* millicelsius */
 			type = "passive";
 		};
+		cpu_alert1: cpu_alert1 {
+			temperature = <80000>; /* millicelsius */
+			hysteresis = <2000>; /* millicelsius */
+			type = "passive";
+		};
 		cpu_crit: cpu_crit {
-			temperature = <90000>; /* millicelsius */
+			temperature = <95000>; /* millicelsius */
 			hysteresis = <2000>; /* millicelsius */
 			type = "critical";
 		};
@@ -79,12 +73,12 @@ cpu_thermal: cpu_thermal {
 		map0 {
 			trip = <&cpu_alert0>;
 			cooling-device =
-				<&cpu0 THERMAL_NO_LIMIT 6>;
+				<&cpu_b0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
 		};
 		map1 {
 			trip = <&cpu_alert1>;
 			cooling-device =
-				<&cpu0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+				<&cpu_l0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
 		};
 	};
 };
@@ -93,16 +87,16 @@ gpu_thermal: gpu_thermal {
 	polling-delay-passive = <100>; /* milliseconds */
 	polling-delay = <5000>; /* milliseconds */
 
-	thermal-sensors = <&tsadc 2>;
+	thermal-sensors = <&tsadc 1>;
 
 	trips {
 		gpu_alert0: gpu_alert0 {
-			temperature = <70000>; /* millicelsius */
+			temperature = <80000>; /* millicelsius */
 			hysteresis = <2000>; /* millicelsius */
 			type = "passive";
 		};
 		gpu_crit: gpu_crit {
-			temperature = <90000>; /* millicelsius */
+			temperature = <1150000>; /* millicelsius */
 			hysteresis = <2000>; /* millicelsius */
 			type = "critical";
 		};
@@ -112,7 +106,7 @@ gpu_thermal: gpu_thermal {
 		map0 {
 			trip = <&gpu_alert0>;
 			cooling-device =
-				<&cpu0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+				<&cpu_b0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
 		};
 	};
 };
