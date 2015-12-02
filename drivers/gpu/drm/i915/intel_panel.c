@@ -1264,6 +1264,14 @@ static void intel_backlight_device_unregister(struct intel_connector *connector)
 #endif /* CONFIG_BACKLIGHT_CLASS_DEVICE */
 
 /*
+ * BXT: PWM clock frequency = 19.2 MHz.
+ */
+static u32 bxt_hz_to_pwm(struct intel_connector *connector, u32 pwm_freq_hz)
+{
+	return KHz(19200) / pwm_freq_hz;
+}
+
+/*
  * SPT: This value represents the period of the PWM stream in clock periods
  * multiplied by 16 (default increment) or 128 (alternate increment selected in
  * SCHICKEN_1 bit 0). PWM clock is 24 MHz.
@@ -1385,14 +1393,18 @@ static u32 get_backlight_max_vbt(struct intel_connector *connector)
 	u16 pwm_freq_hz = dev_priv->vbt.backlight.pwm_freq_hz;
 	u32 pwm;
 
-	if (!pwm_freq_hz) {
-		DRM_DEBUG_KMS("backlight frequency not specified in VBT\n");
+	if (!panel->backlight.hz_to_pwm) {
+		DRM_DEBUG_KMS("backlight frequency conversion not supported\n");
 		return 0;
 	}
 
-	if (!panel->backlight.hz_to_pwm) {
-		DRM_DEBUG_KMS("backlight frequency setting from VBT currently not supported on this platform\n");
-		return 0;
+	if (pwm_freq_hz) {
+		DRM_DEBUG_KMS("VBT defined backlight frequency %u Hz\n",
+			      pwm_freq_hz);
+	} else {
+		pwm_freq_hz = 200;
+		DRM_DEBUG_KMS("default backlight frequency %u Hz\n",
+			      pwm_freq_hz);
 	}
 
 	pwm = panel->backlight.hz_to_pwm(connector, pwm_freq_hz);
@@ -1400,8 +1412,6 @@ static u32 get_backlight_max_vbt(struct intel_connector *connector)
 		DRM_DEBUG_KMS("backlight frequency conversion failed\n");
 		return 0;
 	}
-
-	DRM_DEBUG_KMS("backlight frequency %u Hz from VBT\n", pwm_freq_hz);
 
 	return pwm;
 }
@@ -1750,6 +1760,7 @@ intel_panel_init_backlight_funcs(struct intel_panel *panel)
 		panel->backlight.disable = bxt_disable_backlight;
 		panel->backlight.set = bxt_set_backlight;
 		panel->backlight.get = bxt_get_backlight;
+		panel->backlight.hz_to_pwm = bxt_hz_to_pwm;
 	} else if (HAS_PCH_LPT(dev) || HAS_PCH_SPT(dev)) {
 		panel->backlight.setup = lpt_setup_backlight;
 		panel->backlight.enable = lpt_enable_backlight;
