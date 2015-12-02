@@ -51,7 +51,7 @@ DEFINE_IDA(blk_queue_ida);
 /*
  * For the allocated request tables
  */
-struct kmem_cache *request_cachep = NULL;
+struct kmem_cache *request_cachep;
 
 /*
  * For queue allocation
@@ -3513,7 +3513,7 @@ int __init blk_dev_init(void)
 	request_cachep = kmem_cache_create("blkdev_requests",
 			sizeof(struct request), 0, SLAB_PANIC, NULL);
 
-	blk_requestq_cachep = kmem_cache_create("blkdev_queue",
+	blk_requestq_cachep = kmem_cache_create("request_queue",
 			sizeof(struct request_queue), 0, SLAB_PANIC, NULL);
 
 	return 0;
