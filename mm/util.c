@@ -381,8 +381,8 @@ int __page_mapcount(struct page *page)
 {
 	int ret;
 
-	page = compound_head(page);
 	ret = atomic_read(&page->_mapcount) + 1;
+	page = compound_head(page);
 	ret += atomic_read(compound_mapcount_ptr(page)) + 1;
 	if (PageDoubleMap(page))
 		ret--;
