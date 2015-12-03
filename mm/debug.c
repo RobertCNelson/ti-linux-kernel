@@ -10,6 +10,7 @@
 #include <linux/trace_events.h>
 #include <linux/memcontrol.h>
 #include <trace/events/gfpflags.h>
+#include <linux/page_owner.h>
 
 static const struct trace_print_flags pageflag_names[] = {
 	{1UL << PG_locked,		"locked"	},
@@ -118,6 +119,7 @@ void dump_page_badflags(struct page *page, const char *reason,
 void dump_page(struct page *page, const char *reason)
 {
 	dump_page_badflags(page, reason, 0);
+	dump_page_owner(page);
 }
 EXPORT_SYMBOL(dump_page);
 
