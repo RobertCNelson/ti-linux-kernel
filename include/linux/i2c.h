@@ -493,6 +493,8 @@ struct i2c_adapter_quirks {
 /* convenience macro for typical write-then read case */
 #define I2C_AQ_COMB_WRITE_THEN_READ	(I2C_AQ_COMB | I2C_AQ_COMB_WRITE_FIRST | \
 					 I2C_AQ_COMB_READ_SECOND | I2C_AQ_COMB_SAME_ADDR)
+/* clock stretching is not supported */
+#define I2C_AQ_NO_CLK_STRETCH		BIT(4)
 
 /*
  * i2c_adapter is the structure used to identify a physical i2c bus along
@@ -613,6 +615,20 @@ static inline u32 i2c_get_functionality(struct i2c_adapter *adap)
 static inline int i2c_check_functionality(struct i2c_adapter *adap, u32 func)
 {
 	return (func & i2c_get_functionality(adap)) == func;
+}
+
+/**
+ * i2c_check_quirks() - Function for checking the quirk flags in an i2c adapter
+ * @adap: i2c adapter
+ * @quirks: quirk flags
+ *
+ * Return: true if the adapter has all the specified quirk flags, false if not
+ */
+static inline bool i2c_check_quirks(struct i2c_adapter *adap, u64 quirks)
+{
+	if (!adap->quirks)
+		return false;
+	return (adap->quirks->flags & quirks) == quirks;
 }
 
 /* Return the adapter number for a specific adapter */
