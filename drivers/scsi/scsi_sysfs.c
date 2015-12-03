@@ -760,11 +760,15 @@ show_vpd_##_page(struct file *filp, struct kobject *kobj,	\
 {									\
 	struct device *dev = container_of(kobj, struct device, kobj);	\
 	struct scsi_device *sdev = to_scsi_device(dev);			\
+	int ret;							\
 	if (!sdev->vpd_##_page)						\
 		return -EINVAL;						\
-	return memory_read_from_buffer(buf, count, &off,		\
-				       sdev->vpd_##_page,		\
+	rcu_read_lock();						\
+	ret = memory_read_from_buffer(buf, count, &off,			\
+				      rcu_dereference(sdev->vpd_##_page), \
 				       sdev->vpd_##_page##_len);	\
+	rcu_read_unlock();						\
+	return ret;						\
 }									\
 static struct bin_attribute dev_attr_vpd_##_page = {		\
 	.attr =	{.name = __stringify(vpd_##_page), .mode = S_IRUGO },	\
@@ -1102,6 +1106,14 @@ void __scsi_remove_device(struct scsi_device *sdev)
 {
 	struct device *dev = &sdev->sdev_gendev;
 
+	/*
+	 * This cleanup path is not reentrant and while it is impossible
+	 * to get a new reference with scsi_device_get() someone can still
+	 * hold a previously acquired one.
+	 */
+	if (sdev->sdev_state == SDEV_DEL)
+		return;
+
 	if (sdev->is_visible) {
 		if (scsi_device_set_state(sdev, SDEV_CANCEL) != 0)
 			return;
@@ -1110,7 +1122,9 @@ void __scsi_remove_device(struct scsi_device *sdev)
 		device_unregister(&sdev->sdev_dev);
 		transport_remove_device(dev);
 		scsi_dh_remove_device(sdev);
-	}
+		device_del(dev);
+	} else
+		put_device(&sdev->sdev_dev);
 
 	/*
 	 * Stop accepting new requests and wait until all queuecommand() and
@@ -1120,16 +1134,6 @@ void __scsi_remove_device(struct scsi_device *sdev)
 	scsi_device_set_state(sdev, SDEV_DEL);
 	blk_cleanup_queue(sdev->request_queue);
 	cancel_work_sync(&sdev->requeue_work);
-
-	/*
-	 * Remove the device after blk_cleanup_queue() has been called such
-	 * a possible bdi_register() call with the same name occurs after
-	 * blk_cleanup_queue() has called bdi_destroy().
-	 */
-	if (sdev->is_visible)
-		device_del(dev);
-	else
-		put_device(&sdev->sdev_dev);
 
 	if (sdev->host->hostt->slave_destroy)
 		sdev->host->hostt->slave_destroy(sdev);

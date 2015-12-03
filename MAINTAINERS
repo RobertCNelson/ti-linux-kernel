@@ -5045,6 +5045,13 @@ F:	include/uapi/linux/if_hippi.h
 F:	net/802/hippi.c
 F:	drivers/net/hippi/
 
+HISILICON SAS Controller
+M:	John Garry <john.garry@huawei.com>
+W:	http://www.hisilicon.com
+S:	Supported
+F:	drivers/scsi/hisi_sas/
+F:	Documentation/devicetree/bindings/scsi/hisilicon-sas.txt
+
 HOST AP DRIVER
 M:	Jouni Malinen <j@w1.fi>
 L:	hostap@shmoo.com (subscribers-only)
@@ -9435,8 +9442,10 @@ F:	include/scsi/sg.h
 
 SCSI SUBSYSTEM
 M:	"James E.J. Bottomley" <JBottomley@odin.com>
-L:	linux-scsi@vger.kernel.org
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/jejb/scsi.git
+M:	"Martin K. Petersen" <martin.petersen@oracle.com>
+T:	git git://git.kernel.org/pub/scm/linux/kernel/git/mkp/scsi.git
+L:	linux-scsi@vger.kernel.org
 S:	Maintained
 F:	drivers/scsi/
 F:	include/scsi/
