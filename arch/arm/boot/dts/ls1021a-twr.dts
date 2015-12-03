@@ -105,6 +105,15 @@
 			bitclock-master;
 		};
 	};
+
+	panel: panel {
+		compatible = "nec,nl4827hc19-05b";
+	};
+};
+
+&dcu {
+	fsl,panel = <&panel>;
+	status = "okay";
 };
 
 &dspi1 {
@@ -217,5 +226,9 @@
 };
 
 &uart1 {
+	status = "okay";
+};
+
+&sata {
 	status = "okay";
 };
