@@ -1691,11 +1691,6 @@ int hid_connect(struct hid_device *hdev, unsigned int connect_mask)
 		hid_warn(hdev,
 			 "can't create sysfs country code attribute err: %d\n", ret);
 
-	ret = device_create_bin_file(&hdev->dev, &dev_bin_attr_report_desc);
-	if (ret)
-		hid_warn(hdev,
-			 "can't create sysfs report descriptor attribute err: %d\n", ret);
-
 	hid_info(hdev, "%s: %s HID v%x.%02x %s [%s] on %s\n",
 		 buf, bus, hdev->version >> 8, hdev->version & 0xff,
 		 type, hdev->name, hdev->phys);
@@ -1707,7 +1702,6 @@ EXPORT_SYMBOL_GPL(hid_connect);
 void hid_disconnect(struct hid_device *hdev)
 {
 	device_remove_file(&hdev->dev, &dev_attr_country);
-	device_remove_bin_file(&hdev->dev, &dev_bin_attr_report_desc);
 	if (hdev->claimed & HID_CLAIMED_INPUT)
 		hidinput_disconnect(hdev);
 	if (hdev->claimed & HID_CLAIMED_HIDDEV)
@@ -1902,6 +1896,7 @@ static const struct hid_device_id hid_have_special_driver[] = {
 	{ HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_RUMBLEPAD) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_RUMBLEPAD2_2) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_G29_WHEEL) },
+	{ HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_G920_WHEEL) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_WINGMAN_F3D) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_WINGMAN_FFG ) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_FORCE3D_PRO) },
@@ -2223,12 +2218,9 @@ static ssize_t modalias_show(struct device *dev, struct device_attribute *a,
 			     char *buf)
 {
 	struct hid_device *hdev = container_of(dev, struct hid_device, dev);
-	int len;
 
-	len = snprintf(buf, PAGE_SIZE, "hid:b%04Xg%04Xv%08Xp%08X\n",
-		       hdev->bus, hdev->group, hdev->vendor, hdev->product);
-
-	return (len >= PAGE_SIZE) ? (PAGE_SIZE - 1) : len;
+	return scnprintf(buf, PAGE_SIZE, "hid:b%04Xg%04Xv%08Xp%08X\n",
+			 hdev->bus, hdev->group, hdev->vendor, hdev->product);
 }
 static DEVICE_ATTR_RO(modalias);
 
@@ -2236,7 +2228,15 @@ static struct attribute *hid_dev_attrs[] = {
 	&dev_attr_modalias.attr,
 	NULL,
 };
-ATTRIBUTE_GROUPS(hid_dev);
+static struct bin_attribute *hid_dev_bin_attrs[] = {
+	&dev_bin_attr_report_desc,
+	NULL
+};
+static const struct attribute_group hid_dev_group = {
+	.attrs = hid_dev_attrs,
+	.bin_attrs = hid_dev_bin_attrs,
+};
+__ATTRIBUTE_GROUPS(hid_dev);
 
 static int hid_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
