@@ -17,7 +17,7 @@ config H8300
 	select HAVE_MEMBLOCK
 	select HAVE_DMA_ATTRS
 	select CLKSRC_OF
-	select HAVE_KERNEL_GZIP
+	select HAVE_ARCH_KGDB
 	select HAVE_KERNEL_LZO
 
 config RWSEM_GENERIC_SPINLOCK
