@@ -798,6 +798,7 @@ int page_mapped_in_vma(struct page *page, struct vm_area_struct *vma)
 	return 1;
 }
 
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
 /*
  * Check that @page is mapped at @address into @mm. In contrast to
  * page_check_address(), this function can handle transparent huge pages.
@@ -885,6 +886,7 @@ found:
 	*ptlp = ptl;
 	return true;
 }
+#endif /* CONFIG_TRANSPARENT_HUGEPAGE */
 
 struct page_referenced_arg {
 	int mapcount;
