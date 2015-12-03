@@ -1,0 +1,399 @@
+Importing jdelvare-hwmon based on 3.15-rc7
+Unknown BASE
+Importing rd-docs based on 3.17-rc1
+Unknown BASE
+Importing jdelvare-hwmon based on 3.15-rc7
+Unknown BASE
+Importing rd-docs based on 3.17-rc1
+Unknown BASE
+Importing jdelvare-hwmon based on 3.15-rc7
+Unknown BASE
+Importing rd-docs based on 3.17-rc1
+Unknown BASE
+Importing jdelvare-hwmon based on 3.15-rc7
+Unknown BASE
+Importing rd-docs based on 3.17-rc1
+Unknown BASE
+Importing jdelvare-hwmon based on 3.15-rc7
+Unknown BASE
+Importing rd-docs based on 3.17-rc1
+Unknown BASE
+Importing jdelvare-hwmon based on 3.15-rc7
+Unknown BASE
+Importing rd-docs based on 3.17-rc1
+Unknown BASE
+Importing jdelvare-hwmon based on 3.14-rc3
+Unknown BASE
+Importing jdelvare-hwmon based on 3.14-rc3
+Unchanged quilt series jdelvare-hwmon
+Importing jdelvare-hwmon based on 3.14-rc3
+Unchanged quilt series jdelvare-hwmon
+Importing jdelvare-hwmon based on 3.14-rc3
+Unchanged quilt series jdelvare-hwmon
+Importing jdelvare-hwmon based on 3.14-rc3
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 6d0abeca3242a88cab8232e4acd7e2bf088f3bc2
+HEAD is now at 6d0abeca3242 Linux 3.14-rc3
+$ git am ../quilt/jdelvare-hwmon/hwmon-f71805f-fix-author-address.patch
+Applying: hwmon: (f71805f) Fix author's address
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-01-add-additional-sysfs-group-for-temp2_type-attribute.patch
+Applying: hwmon: (lm63) Add additional sysfs group for temp2_type attribute
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-02-introduce-dev-variable-to-point-to-client-dev.patch
+Applying: hwmon: (lm63) Introduce 'dev' variable to point to client->dev
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-03-create-all-sysfs-groups-in-one-call.patch
+Applying: hwmon: (lm63) Create all sysfs groups in one call
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-04-convert-to-use-devm_hwmon_device_register_with_groups.patch
+Applying: hwmon: (lm63) Convert to use devm_hwmon_device_register_with_groups
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-05-avoid-double-initialization.patch
+Applying: hwmon: (lm63) Avoid initializing the same field twice
+$ git am ../quilt/jdelvare-hwmon/hwmon-adm1021-convert-to-use-devm_hwmon_device_register_with_groups.patch
+Applying: hwmon: (adm1021) Convert to use devm_hwmon_device_register_with_groups
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm80-convert-to-use-devm_hwmon_device_register_with_groups.patch
+Applying: hwmon: (lm80) Convert to use devm_hwmon_device_register_with_groups
+$ git am ../quilt/jdelvare-hwmon/hwmon-pc87360-avoid-double-initializations.patch
+Applying: hwmon: (pc87360) Avoid initializing the same field twice
+$ git am ../quilt/jdelvare-hwmon/hwmon-avoid-double-initializations.patch
+Applying: hwmon: Avoid initializing the same field twice
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm90-01-create-most-optional.patch
+Applying: hwmon: (lm90) Create most optional attributes with sysfs_create_group
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm90-02-always-use-the-dev.patch
+Applying: hwmon: (lm90) Always use the dev variable in the probe function
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm90-03-create-all-sysfs-groups.patch
+Applying: hwmon: (lm90) Create all sysfs groups in one call
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm90-04-convert-to-use.patch
+Applying: hwmon: (lm90) Convert to use hwmon_device_register_with_groups
+$ cd /home/broonie/git/next/sfr/next
+$ git fetch -f ../quilt-tmp master:jdelvare-hwmon/master
+From ../quilt-tmp
+ + c7208164e66f...3a3583e25e63 master     -> jdelvare-hwmon/master  (forced update)
+Importing jdelvare-hwmon based on 3.14-rc3
+Unchanged quilt series jdelvare-hwmon
+Importing jdelvare-hwmon based on 3.14-rc3
+Unchanged quilt series jdelvare-hwmon
+Importing jdelvare-hwmon based on 3.14-rc3
+Unchanged quilt series jdelvare-hwmon
+Importing jdelvare-hwmon based on 3.14-rc3
+Unchanged quilt series jdelvare-hwmon
+Importing jdelvare-hwmon based on 3.14-rc3
+Unchanged quilt series jdelvare-hwmon
+Importing jdelvare-hwmon based on 3.17-rc1
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 7d1311b93e58ed55f3a31cc8f94c4b8fe988a2b9
+HEAD is now at 7d1311b93e58 Linux 3.17-rc1
+$ git am ../quilt/jdelvare-hwmon/hwmon-f71805f-fix-author-address.patch
+Applying: hwmon: (f71805f) Fix author's address
+error: patch failed: drivers/hwmon/f71805f.c:1648
+error: drivers/hwmon/f71805f.c: patch does not apply
+Patch failed at 0001 hwmon: (f71805f) Fix author's address
+The copy of the patch that failed is found in:
+   /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply/patch
+When you have resolved this problem, run "git am --continue".
+If you prefer to skip this patch, run "git am --skip" instead.
+To restore the original branch and stop patching, run "git am --abort".
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-01-add-additional-sysfs-group-for-temp2_type-attribute.patch
+Applying: hwmon: (lm63) Add additional sysfs group for temp2_type attribute
+error: patch failed: drivers/hwmon/lm63.c:915
+error: drivers/hwmon/lm63.c: patch does not apply
+Patch failed at 0001 hwmon: (lm63) Add additional sysfs group for temp2_type attribute
+The copy of the patch that failed is found in:
+   /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply/patch
+When you have resolved this problem, run "git am --continue".
+If you prefer to skip this patch, run "git am --skip" instead.
+To restore the original branch and stop patching, run "git am --abort".
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-02-introduce-dev-variable-to-point-to-client-dev.patch
+Applying: hwmon: (lm63) Introduce 'dev' variable to point to client->dev
+error: patch failed: drivers/hwmon/lm63.c:1038
+error: drivers/hwmon/lm63.c: patch does not apply
+Patch failed at 0001 hwmon: (lm63) Introduce 'dev' variable to point to client->dev
+The copy of the patch that failed is found in:
+   /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply/patch
+When you have resolved this problem, run "git am --continue".
+If you prefer to skip this patch, run "git am --skip" instead.
+To restore the original branch and stop patching, run "git am --abort".
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-03-create-all-sysfs-groups-in-one-call.patch
+Applying: hwmon: (lm63) Create all sysfs groups in one call
+error: patch failed: drivers/hwmon/lm63.c:157
+error: drivers/hwmon/lm63.c: patch does not apply
+Patch failed at 0001 hwmon: (lm63) Create all sysfs groups in one call
+The copy of the patch that failed is found in:
+   /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply/patch
+When you have resolved this problem, run "git am --continue".
+If you prefer to skip this patch, run "git am --skip" instead.
+To restore the original branch and stop patching, run "git am --abort".
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-04-convert-to-use-devm_hwmon_device_register_with_groups.patch
+Applying: hwmon: (lm63) Convert to use devm_hwmon_device_register_with_groups
+error: patch failed: drivers/hwmon/lm63.c:155
+error: drivers/hwmon/lm63.c: patch does not apply
+Patch failed at 0001 hwmon: (lm63) Convert to use devm_hwmon_device_register_with_groups
+The copy of the patch that failed is found in:
+   /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply/patch
+When you have resolved this problem, run "git am --continue".
+If you prefer to skip this patch, run "git am --skip" instead.
+To restore the original branch and stop patching, run "git am --abort".
+Importing jdelvare-hwmon based on 3.17-rc1
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 7d1311b93e58ed55f3a31cc8f94c4b8fe988a2b9
+HEAD is now at 7d1311b93e58 Linux 3.17-rc1
+$ git am ../quilt/jdelvare-hwmon/hwmon-f71805f-fix-author-address.patch
+Applying: hwmon: (f71805f) Fix author's address
+error: patch failed: drivers/hwmon/f71805f.c:1648
+error: drivers/hwmon/f71805f.c: patch does not apply
+Patch failed at 0001 hwmon: (f71805f) Fix author's address
+The copy of the patch that failed is found in:
+   /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply/patch
+When you have resolved this problem, run "git am --continue".
+If you prefer to skip this patch, run "git am --skip" instead.
+To restore the original branch and stop patching, run "git am --abort".
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-01-add-additional-sysfs-group-for-temp2_type-attribute.patch
+previous rebase directory /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply still exists but mbox given.
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-02-introduce-dev-variable-to-point-to-client-dev.patch
+previous rebase directory /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply still exists but mbox given.
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-03-create-all-sysfs-groups-in-one-call.patch
+previous rebase directory /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply still exists but mbox given.
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-04-convert-to-use-devm_hwmon_device_register_with_groups.patch
+previous rebase directory /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply still exists but mbox given.
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-05-avoid-double-initialization.patch
+previous rebase directory /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply still exists but mbox given.
+$ git am ../quilt/jdelvare-hwmon/hwmon-adm1021-convert-to-use-devm_hwmon_device_register_with_groups.patch
+previous rebase directory /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply still exists but mbox given.
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm80-convert-to-use-devm_hwmon_device_register_with_groups.patch
+previous rebase directory /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply still exists but mbox given.
+$ git am ../quilt/jdelvare-hwmon/hwmon-pc87360-avoid-double-initializations.patch
+previous rebase directory /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply still exists but mbox given.
+$ git am ../quilt/jdelvare-hwmon/hwmon-avoid-double-initializations.patch
+previous rebase directory /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply still exists but mbox given.
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm90-01-create-most-optional.patch
+previous rebase directory /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply still exists but mbox given.
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm90-02-always-use-the-dev.patch
+previous rebase directory /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply still exists but mbox given.
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm90-03-create-all-sysfs-groups.patch
+previous rebase directory /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply still exists but mbox given.
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm90-04-convert-to-use.patch
+previous rebase directory /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply still exists but mbox given.
+$ cd /home/broonie/git/next/sfr/next
+$ git fetch -f ../quilt-tmp master:jdelvare-hwmon/master
+From ../quilt-tmp
+ + 3a3583e...7d1311b master     -> jdelvare-hwmon/master  (forced update)
+Importing jdelvare-hwmon based on 3.17-rc1
+Unchanged quilt series jdelvare-hwmon
+Importing jdelvare-hwmon based on 3.17-rc1
+Unchanged quilt series jdelvare-hwmon
+Importing jdelvare-hwmon based on 3.17-rc1
+Unchanged quilt series jdelvare-hwmon
+Importing jdelvare-hwmon based on 3.15-rc7
+	quilt series is empty
+$ git branch -f jdelvare-hwmon/master c7208164e66f63e3ec1759b98087849286410741
+Importing jdelvare-hwmon based on 3.15-rc7
+Unchanged quilt series jdelvare-hwmon
+Importing jdelvare-hwmon based on 3.15-rc7
+Unchanged quilt series jdelvare-hwmon
+Importing rd-docs based on 3.17-rc1
+Unchanged quilt series rd-docs
+Importing jdelvare-hwmon based on 3.15-rc7
+Unchanged quilt series jdelvare-hwmon
+Importing rd-docs based on 3.17-rc1
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 7d1311b93e58ed55f3a31cc8f94c4b8fe988a2b9
+HEAD is now at 7d1311b93e58 Linux 3.17-rc1
+$ git am ../quilt/rd-docs/001-docum-use-subdiry-avoid-builtin.patch
+Patch format detection failed.
+$ git am ../quilt/rd-docs/002-docum-add-make-more-targets.patch
+Patch format detection failed.
+$ git am ../quilt/rd-docs/003-docum-funcs-static.patch
+Applying: Documentation: make functions static to avoid prototype warnings
+$ git am ../quilt/rd-docs/004-docum-misc-warnings.patch
+Patch format detection failed.
+$ git am ../quilt/rd-docs/docum-submit-patches-add-gregkh-page.patch
+Patch format detection failed.
+$ git am ../quilt/rd-docs/media-v4l2-pci-skel-dep-pci.patch
+Patch format detection failed.
+$ git am ../quilt/rd-docs/docum-i2c-fix-interface-example.patch
+Patch format detection failed.
+$ git am ../quilt/rd-docs/docum-fs-seq-open-release-private.patch
+Patch format detection failed.
+$ git am ../quilt/rd-docs/docum-misc-devices-freefall.patch
+Patch format detection failed.
+$ cd /home/broonie/git/next/sfr/next
+$ git fetch -f ../quilt-tmp master:rd-docs/master
+From ../quilt-tmp
+ + 1f65b1aaaa0a...330261642606 master     -> rd-docs/master  (forced update)
+Importing jdelvare-hwmon based on 3.15-rc7
+Unchanged quilt series jdelvare-hwmon
+Importing rd-docs based on 3.17-rc1
+Unchanged quilt series rd-docs
+Importing jdelvare-hwmon based on 3.15-rc7
+Unchanged quilt series jdelvare-hwmon
+Importing rd-docs based on 3.17-rc1
+Unchanged quilt series rd-docs
+Importing jdelvare-hwmon based on 3.15-rc7
+Unchanged quilt series jdelvare-hwmon
+Importing rd-docs based on 3.17-rc1
+Unchanged quilt series rd-docs
+Importing jdelvare-hwmon based on 3.15-rc7
+Unchanged quilt series jdelvare-hwmon
+Importing rd-docs based on 3.17-rc1
+Unchanged quilt series rd-docs
+Importing jdelvare-hwmon based on 3.15-rc7
+Unchanged quilt series jdelvare-hwmon
+Importing rd-docs based on 3.17-rc1
+$ git branch rd-docs/master 7d1311b93e58ed55f3a31cc8f94c4b8fe988a2b9
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 7d1311b93e58ed55f3a31cc8f94c4b8fe988a2b9
+HEAD is now at 7d1311b93e58 Linux 3.17-rc1
+$ git am ../quilt/rd-docs/001-docum-use-subdiry-avoid-builtin.patch
+Patch format detection failed.
+Importing jdelvare-hwmon based on 3.15-rc7
+Unchanged quilt series jdelvare-hwmon
+Importing rd-docs based on 3.17-rc1
+Unchanged quilt series rd-docs
+$ git am ../quilt/rd-docs/002-docum-add-make-more-targets.patch
+sh: 0: getcwd() failed: No such file or directory
+fatal: Unable to read current working directory: No such file or directory
+Importing jdelvare-hwmon based on 3.15-rc7
+Unchanged quilt series jdelvare-hwmon
+Importing rd-docs based on 3.17-rc1
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 7d1311b93e58ed55f3a31cc8f94c4b8fe988a2b9
+HEAD is now at 7d1311b93e58 Linux 3.17-rc1
+$ git am ../quilt/rd-docs/001-docum-use-subdiry-avoid-builtin.patch
+Patch format detection failed.
+$ git am ../quilt/rd-docs/002-docum-add-make-more-targets.patch
+Patch format detection failed.
+$ git am ../quilt/rd-docs/003-docum-funcs-static.patch
+Applying: Documentation: make functions static to avoid prototype warnings
+$ git am ../quilt/rd-docs/004-docum-misc-warnings.patch
+Patch format detection failed.
+$ git am ../quilt/rd-docs/docum-submit-patches-add-gregkh-page.patch
+Patch format detection failed.
+$ git am ../quilt/rd-docs/media-v4l2-pci-skel-dep-pci.patch
+Patch format detection failed.
+$ git am ../quilt/rd-docs/docum-i2c-fix-interface-example.patch
+Patch format detection failed.
+$ git am ../quilt/rd-docs/docum-fs-seq-open-release-private.patch
+Patch format detection failed.
+$ git am ../quilt/rd-docs/docum-misc-devices-freefall.patch
+Patch format detection failed.
+$ cd /home/broonie/git/next/sfr/next
+$ git fetch -f ../quilt-tmp master:rd-docs/master
+From ../quilt-tmp
+ + 330261642606...8f3f7fc4140b master     -> rd-docs/master  (forced update)
+Importing jdelvare-hwmon based on 3.15-rc7
+Unchanged quilt series jdelvare-hwmon
+Importing rd-docs based on 3.17-rc1
+Unchanged quilt series rd-docs
+Importing jdelvare-hwmon based on 3.15-rc7
+Unchanged quilt series jdelvare-hwmon
+Importing rd-docs based on 3.17-rc1
+Unchanged quilt series rd-docs
+Importing jdelvare-hwmon based on 3.15-rc7
+Unchanged quilt series jdelvare-hwmon
+Importing rd-docs based on 3.17-rc1
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 7d1311b93e58ed55f3a31cc8f94c4b8fe988a2b9
+HEAD is now at 7d1311b93e58 Linux 3.17-rc1
+$ git am ../quilt/rd-docs/001-docum-use-subdiry-avoid-builtin.patch
+Patch format detection failed.
+$ git am ../quilt/rd-docs/002-docum-add-make-more-targets.patch
+Patch format detection failed.
+$ git am ../quilt/rd-docs/003-docum-funcs-static.patch
+Applying: Documentation: make functions static to avoid prototype warnings
+error: patch failed: Documentation/arm/SH-Mobile/vrl4.c:77
+error: Documentation/arm/SH-Mobile/vrl4.c: patch does not apply
+error: patch failed: Documentation/prctl/disable-tsc-ctxt-sw-stress-test.c:27
+error: Documentation/prctl/disable-tsc-ctxt-sw-stress-test.c: patch does not apply
+error: patch failed: Documentation/prctl/disable-tsc-on-off-stress-test.c:29
+error: Documentation/prctl/disable-tsc-on-off-stress-test.c: patch does not apply
+error: patch failed: Documentation/prctl/disable-tsc-test.c:29
+error: Documentation/prctl/disable-tsc-test.c: patch does not apply
+Patch failed at 0001 Documentation: make functions static to avoid prototype warnings
+The copy of the patch that failed is found in:
+   /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply/patch
+When you have resolved this problem, run "git am --continue".
+If you prefer to skip this patch, run "git am --skip" instead.
+To restore the original branch and stop patching, run "git am --abort".
+$ git am ../quilt/rd-docs/004-docum-misc-warnings.patch
+previous rebase directory /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply still exists but mbox given.
+$ git am ../quilt/rd-docs/docum-submit-patches-add-gregkh-page.patch
+previous rebase directory /home/broonie/git/next/sfr/quilt-tmp/.git/rebase-apply still exists but mbox given.
+$ git am ../quilt/rd-docs/media-v4l2-pci-skel-dep-pci.patch
+Patch format detection failed.
+$ git am ../quilt/rd-docs/docum-i2c-fix-interface-example.patch
+Patch format detection failed.
+$ git am ../quilt/rd-docs/docum-fs-seq-open-release-private.patch
+Patch format detection failed.
+$ git am ../quilt/rd-docs/docum-misc-devices-freefall.patch
+Patch format detection failed.
+$ git am ../quilt/rd-docs/docum-nfs-rdma-sep-symbols.patch
+Applying: NFS/RDMA: Document separate Kconfig symbols
+$ cd /home/broonie/git/next/sfr/next
+$ git fetch -f ../quilt-tmp master:rd-docs/master
+From ../quilt-tmp
+   8f3f7fc4140b..294e6c50f834  master     -> rd-docs/master
+Importing jdelvare-hwmon based on 3.15-rc7
+Unchanged quilt series jdelvare-hwmon
+Importing rd-docs based on 3.17-rc1
+Unchanged quilt series rd-docs
+Importing jdelvare-hwmon based on 3.15-rc7
+Unchanged quilt series jdelvare-hwmon
+Importing dmi based on origin/master
+$ git branch dmi/master 2255702db4014d1c69d6037ed7bdad2d2e271985
+	quilt series is empty
+$ git branch -f dmi/master 2255702db4014d1c69d6037ed7bdad2d2e271985
+Importing jdelvare-hwmon based on 3.15-rc7
+Unchanged quilt series jdelvare-hwmon
+Importing dmi based on origin/master
+Unchanged quilt series dmi
+Importing jdelvare-hwmon based on 4.3
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 6a13feb9c82803e2b815eca72fa7a9f5561d7861
+HEAD is now at 6a13feb9c828 Linux 4.3
+$ git am --patch-format=mbox ../quilt/jdelvare-hwmon/hwmon-k10temp-remove-duplicate-pci-id-define.patch
+Applying: hwmon: (k10temp) Remove duplicate pci-id define
+$ cd /home/broonie/git/next/sfr/next
+$ git fetch -f ../quilt-tmp master:jdelvare-hwmon/master
+From ../quilt-tmp
+ + 69bb8a38c5a9...c0453e633a6a master     -> jdelvare-hwmon/master  (forced update)
+Importing dmi based on 4.3
+$ cd ../quilt-tmp
+$ git reset --hard 6a13feb9c82803e2b815eca72fa7a9f5561d7861
+HEAD is now at 6a13feb9c828 Linux 4.3
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi_scan-01-optimize-dmi_save_extended_devices.patch
+Applying: firmware: dmi_scan: Optimize dmi_save_extended_devices
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi_scan-02-clarify-dmi_save_extended_devices.patch
+Applying: firmware: dmi_scan: Clarify dmi_save_extended_devices
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi_scan-03-fix-dmi_find_device-description.patch
+Applying: firmware: dmi_scan: Fix dmi_find_device description
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi_scan-04-save-type-9-system-slots.patch
+Applying: firmware: dmi_scan: Save SMBIOS Type 9 System Slots
+$ cd /home/broonie/git/next/sfr/next
+$ git fetch -f ../quilt-tmp master:dmi/master
+From ../quilt-tmp
+   1dc51b828800..77bb27fef9dc  master     -> dmi/master
+Importing jdelvare-hwmon based on 4.3
+Unchanged quilt series jdelvare-hwmon
+Importing dmi based on 4.3
+Unchanged quilt series dmi
+Importing jdelvare-hwmon based on 4.3
+Unchanged quilt series jdelvare-hwmon
+Importing dmi based on 4.3
+Unchanged quilt series dmi
+Importing jdelvare-hwmon based on 4.3
+Unchanged quilt series jdelvare-hwmon
+Importing dmi based on 4.3
+Unchanged quilt series dmi
+Importing jdelvare-hwmon based on 4.3
+Unchanged quilt series jdelvare-hwmon
+Importing dmi based on 4.3
+Unchanged quilt series dmi
+Importing jdelvare-hwmon based on 4.3
+Unchanged quilt series jdelvare-hwmon
+Importing dmi based on 4.3
+Unchanged quilt series dmi
