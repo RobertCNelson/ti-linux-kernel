@@ -1170,7 +1170,6 @@ void do_page_add_anon_rmap(struct page *page,
 			atomic_inc(&page->_mapcount);
 		}
 	} else {
-		VM_BUG_ON_PAGE(compound, page);
 		first = atomic_inc_and_test(&page->_mapcount);
 	}
 
