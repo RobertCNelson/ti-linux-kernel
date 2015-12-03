@@ -3,7 +3,7 @@
  *
  *  Copyright (C) 2008 Thomas Gleixner <tglx@linutronix.de>
  *  Copyright (C) 2008-2011 Red Hat, Inc., Ingo Molnar
- *  Copyright (C) 2008-2011 Red Hat, Inc., Peter Zijlstra <pzijlstr@redhat.com>
+ *  Copyright (C) 2008-2011 Red Hat, Inc., Peter Zijlstra
  *  Copyright  ©  2009 Paul Mackerras, IBM Corp. <paulus@au1.ibm.com>
  *
  * For licensing details see kernel-base/COPYING
@@ -435,7 +435,7 @@ static inline void update_cgrp_time_from_event(struct perf_event *event)
 	if (!is_cgroup_event(event))
 		return;
 
-	cgrp = perf_cgroup_from_task(current);
+	cgrp = perf_cgroup_from_task(current, event->ctx);
 	/*
 	 * Do not update time when cgroup is not active
 	 */
@@ -458,7 +458,7 @@ perf_cgroup_set_timestamp(struct task_struct *task,
 	if (!task || !ctx->nr_cgroups)
 		return;
 
-	cgrp = perf_cgroup_from_task(task);
+	cgrp = perf_cgroup_from_task(task, ctx);
 	info = this_cpu_ptr(cgrp->info);
 	info->timestamp = ctx->timestamp;
 }
@@ -489,7 +489,6 @@ static void perf_cgroup_switch(struct task_struct *task, int mode)
 	 * we reschedule only in the presence of cgroup
 	 * constrained events.
 	 */
-	rcu_read_lock();
 
 	list_for_each_entry_rcu(pmu, &pmus, entry) {
 		cpuctx = this_cpu_ptr(pmu->pmu_cpu_context);
@@ -522,16 +521,16 @@ static void perf_cgroup_switch(struct task_struct *task, int mode)
 				 * set cgrp before ctxsw in to allow
 				 * event_filter_match() to not have to pass
 				 * task around
+				 * we pass the cpuctx->ctx to perf_cgroup_from_task()
+				 * because cgorup events are only per-cpu
 				 */
-				cpuctx->cgrp = perf_cgroup_from_task(task);
+				cpuctx->cgrp = perf_cgroup_from_task(task, &cpuctx->ctx);
 				cpu_ctx_sched_in(cpuctx, EVENT_ALL, task);
 			}
 			perf_pmu_enable(cpuctx->ctx.pmu);
 			perf_ctx_unlock(cpuctx, cpuctx->task_ctx);
 		}
 	}
-
-	rcu_read_unlock();
 
 	local_irq_restore(flags);
 }
@@ -542,17 +541,20 @@ static inline void perf_cgroup_sched_out(struct task_struct *task,
 	struct perf_cgroup *cgrp1;
 	struct perf_cgroup *cgrp2 = NULL;
 
+	rcu_read_lock();
 	/*
 	 * we come here when we know perf_cgroup_events > 0
+	 * we do not need to pass the ctx here because we know
+	 * we are holding the rcu lock
 	 */
-	cgrp1 = perf_cgroup_from_task(task);
+	cgrp1 = perf_cgroup_from_task(task, NULL);
 
 	/*
 	 * next is NULL when called from perf_event_enable_on_exec()
 	 * that will systematically cause a cgroup_switch()
 	 */
 	if (next)
-		cgrp2 = perf_cgroup_from_task(next);
+		cgrp2 = perf_cgroup_from_task(next, NULL);
 
 	/*
 	 * only schedule out current cgroup events if we know
@@ -561,6 +563,8 @@ static inline void perf_cgroup_sched_out(struct task_struct *task,
 	 */
 	if (cgrp1 != cgrp2)
 		perf_cgroup_switch(task, PERF_CGROUP_SWOUT);
+
+	rcu_read_unlock();
 }
 
 static inline void perf_cgroup_sched_in(struct task_struct *prev,
@@ -569,13 +573,16 @@ static inline void perf_cgroup_sched_in(struct task_struct *prev,
 	struct perf_cgroup *cgrp1;
 	struct perf_cgroup *cgrp2 = NULL;
 
+	rcu_read_lock();
 	/*
 	 * we come here when we know perf_cgroup_events > 0
+	 * we do not need to pass the ctx here because we know
+	 * we are holding the rcu lock
 	 */
-	cgrp1 = perf_cgroup_from_task(task);
+	cgrp1 = perf_cgroup_from_task(task, NULL);
 
 	/* prev can never be NULL */
-	cgrp2 = perf_cgroup_from_task(prev);
+	cgrp2 = perf_cgroup_from_task(prev, NULL);
 
 	/*
 	 * only need to schedule in cgroup events if we are changing
@@ -584,6 +591,8 @@ static inline void perf_cgroup_sched_in(struct task_struct *prev,
 	 */
 	if (cgrp1 != cgrp2)
 		perf_cgroup_switch(task, PERF_CGROUP_SWIN);
+
+	rcu_read_unlock();
 }
 
 static inline int perf_cgroup_connect(int fd, struct perf_event *event,
@@ -9452,7 +9461,9 @@ static void perf_cgroup_css_free(struct cgroup_subsys_state *css)
 static int __perf_cgroup_move(void *info)
 {
 	struct task_struct *task = info;
+	rcu_read_lock();
 	perf_cgroup_switch(task, PERF_CGROUP_SWOUT | PERF_CGROUP_SWIN);
+	rcu_read_unlock();
 	return 0;
 }
 
