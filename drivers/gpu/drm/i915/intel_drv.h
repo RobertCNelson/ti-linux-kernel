@@ -393,6 +393,9 @@ struct intel_crtc_state {
 	 * accordingly. */
 	bool has_dp_encoder;
 
+	/* DSI has special cases */
+	bool has_dsi_encoder;
+
 	/* Whether we should send NULL infoframes. Required for audio. */
 	bool has_hdmi_sink;
 
@@ -710,7 +713,8 @@ struct intel_hdmi {
 	void (*set_infoframes)(struct drm_encoder *encoder,
 			       bool enable,
 			       const struct drm_display_mode *adjusted_mode);
-	bool (*infoframe_enabled)(struct drm_encoder *encoder);
+	bool (*infoframe_enabled)(struct drm_encoder *encoder,
+				  const struct intel_crtc_state *pipe_config);
 };
 
 struct intel_dp_mst_encoder;
@@ -1410,6 +1414,8 @@ void intel_power_domains_suspend(struct drm_i915_private *dev_priv);
 void skl_pw1_misc_io_init(struct drm_i915_private *dev_priv);
 void skl_pw1_misc_io_fini(struct drm_i915_private *dev_priv);
 void intel_runtime_pm_enable(struct drm_i915_private *dev_priv);
+const char *
+intel_display_power_domain_str(enum intel_display_power_domain domain);
 
 bool intel_display_power_is_enabled(struct drm_i915_private *dev_priv,
 				    enum intel_display_power_domain domain);
