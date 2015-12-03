@@ -72,7 +72,7 @@ static int page_idle_clear_pte_refs_one(struct page *page,
 
 	if (pmd_trans_huge(*pmd)) {
 		ptl = pmd_lock(mm, pmd);
-                if (!pmd_present(*pmd))
+		if (!pmd_present(*pmd))
 			goto unlock_pmd;
 		if (unlikely(!pmd_trans_huge(*pmd))) {
 			spin_unlock(ptl);
@@ -90,6 +90,7 @@ unlock_pmd:
 		return SWAP_AGAIN;
 	} else {
 		pmd_t pmde = *pmd;
+
 		barrier();
 		if (!pmd_present(pmde) || pmd_trans_huge(pmde))
 			return SWAP_AGAIN;
