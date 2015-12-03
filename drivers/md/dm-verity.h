@@ -2,6 +2,10 @@
  * Copyright (C) 2012 Red Hat, Inc.
  * Copyright (C) 2015 Google, Inc.
  *
+ * Author: Mikulas Patocka <mpatocka@redhat.com>
+ *
+ * Based on Chromium dm-verity driver (C) 2011 The Chromium OS Authors
+ *
  * This file is released under the GPLv2.
  */
 
@@ -24,6 +28,8 @@ enum verity_block_type {
 	DM_VERITY_BLOCK_TYPE_DATA,
 	DM_VERITY_BLOCK_TYPE_METADATA
 };
+
+struct dm_verity_fec;
 
 struct dm_verity {
 	struct dm_dev *data_dev;
@@ -54,6 +60,8 @@ struct dm_verity {
 
 	/* starting blocks for each tree level. 0 is the lowest level. */
 	sector_t hash_level_block[DM_VERITY_MAX_LEVELS];
+
+	struct dm_verity_fec *fec;	/* forward error correction */
 };
 
 struct dm_verity_io {
@@ -97,6 +105,12 @@ static inline u8 *verity_io_want_digest(struct dm_verity *v,
 					struct dm_verity_io *io)
 {
 	return (u8 *)(io + 1) + v->shash_descsize + v->digest_size;
+}
+
+static inline u8 *verity_io_digest_end(struct dm_verity *v,
+				       struct dm_verity_io *io)
+{
+	return verity_io_want_digest(v, io) + v->digest_size;
 }
 
 extern int verity_for_bv_block(struct dm_verity *v, struct dm_verity_io *io,
