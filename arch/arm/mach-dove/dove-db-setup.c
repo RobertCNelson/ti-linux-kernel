@@ -24,7 +24,7 @@
 #include <linux/gpio.h>
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
-#include <mach/dove.h>
+#include "dove.h"
 #include "common.h"
 
 static struct mv643xx_eth_platform_data dove_db_ge00_data = {
@@ -94,6 +94,7 @@ static void __init dove_db_init(void)
 
 MACHINE_START(DOVE_DB, "Marvell DB-MV88AP510-BP Development Board")
 	.atag_offset	= 0x100,
+	.nr_irqs	= DOVE_NR_IRQS,
 	.init_machine	= dove_db_init,
 	.map_io		= dove_map_io,
 	.init_early	= dove_init_early,
