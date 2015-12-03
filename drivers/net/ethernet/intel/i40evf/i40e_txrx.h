@@ -201,6 +201,7 @@ struct i40e_tx_queue_stats {
 	u64 tx_busy;
 	u64 tx_done_old;
 	u64 tx_linearize;
+	u64 tx_force_wb;
 };
 
 struct i40e_rx_queue_stats {
@@ -267,6 +268,8 @@ struct i40e_ring {
 
 	bool ring_active;		/* is ring online or not */
 	bool arm_wb;		/* do something to arm write back */
+	u8 packet_stride;
+#define I40E_TXR_FLAGS_LAST_XMIT_MORE_SET BIT(2)
 
 	u16 flags;
 #define I40E_TXR_FLAGS_WB_ON_ITR	BIT(0)

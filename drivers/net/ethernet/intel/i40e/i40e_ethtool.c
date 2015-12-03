@@ -88,6 +88,7 @@ static const struct i40e_stats i40e_gstrings_misc_stats[] = {
 	I40E_VSI_STAT("tx_broadcast", eth_stats.tx_broadcast),
 	I40E_VSI_STAT("rx_unknown_protocol", eth_stats.rx_unknown_protocol),
 	I40E_VSI_STAT("tx_linearize", tx_linearize),
+	I40E_VSI_STAT("tx_force_wb", tx_force_wb),
 };
 
 /* These PF_STATs might look like duplicates of some NETDEV_STATs,
@@ -2110,7 +2111,7 @@ static int i40e_get_rxnfc(struct net_device *netdev, struct ethtool_rxnfc *cmd,
 
 	switch (cmd->cmd) {
 	case ETHTOOL_GRXRINGS:
-		cmd->data = vsi->alloc_queue_pairs;
+		cmd->data = vsi->num_queue_pairs;
 		ret = 0;
 		break;
 	case ETHTOOL_GRXFH:
@@ -2583,7 +2584,6 @@ static int i40e_set_channels(struct net_device *dev,
 		return -EINVAL;
 }
 
-#define I40E_HLUT_ARRAY_SIZE ((I40E_PFQF_HLUT_MAX_INDEX + 1) * 4)
 /**
  * i40e_get_rxfh_key_size - get the RSS hash key size
  * @netdev: network interface device structure
@@ -2611,10 +2611,9 @@ static int i40e_get_rxfh(struct net_device *netdev, u32 *indir, u8 *key,
 {
 	struct i40e_netdev_priv *np = netdev_priv(netdev);
 	struct i40e_vsi *vsi = np->vsi;
-	struct i40e_pf *pf = vsi->back;
-	struct i40e_hw *hw = &pf->hw;
-	u32 reg_val;
-	int i, j;
+	u8 *lut, *seed = NULL;
+	int ret;
+	u16 i;
 
 	if (hfunc)
 		*hfunc = ETH_RSS_HASH_TOP;
@@ -2622,24 +2621,20 @@ static int i40e_get_rxfh(struct net_device *netdev, u32 *indir, u8 *key,
 	if (!indir)
 		return 0;
 
-	for (i = 0, j = 0; i <= I40E_PFQF_HLUT_MAX_INDEX; i++) {
-		reg_val = rd32(hw, I40E_PFQF_HLUT(i));
-		indir[j++] = reg_val & 0xff;
-		indir[j++] = (reg_val >> 8) & 0xff;
-		indir[j++] = (reg_val >> 16) & 0xff;
-		indir[j++] = (reg_val >> 24) & 0xff;
-	}
+	seed = key;
+	lut = kzalloc(I40E_HLUT_ARRAY_SIZE, GFP_KERNEL);
+	if (!lut)
+		return -ENOMEM;
+	ret = i40e_get_rss(vsi, seed, lut, I40E_HLUT_ARRAY_SIZE);
+	if (ret)
+		goto out;
+	for (i = 0; i < I40E_HLUT_ARRAY_SIZE; i++)
+		indir[i] = (u32)(lut[i]);
 
-	if (key) {
-		for (i = 0, j = 0; i <= I40E_PFQF_HKEY_MAX_INDEX; i++) {
-			reg_val = rd32(hw, I40E_PFQF_HKEY(i));
-			key[j++] = (u8)(reg_val & 0xff);
-			key[j++] = (u8)((reg_val >> 8) & 0xff);
-			key[j++] = (u8)((reg_val >> 16) & 0xff);
-			key[j++] = (u8)((reg_val >> 24) & 0xff);
-		}
-	}
-	return 0;
+out:
+	kfree(lut);
+
+	return ret;
 }
 
 /**
@@ -2656,10 +2651,8 @@ static int i40e_set_rxfh(struct net_device *netdev, const u32 *indir,
 {
 	struct i40e_netdev_priv *np = netdev_priv(netdev);
 	struct i40e_vsi *vsi = np->vsi;
-	struct i40e_pf *pf = vsi->back;
-	struct i40e_hw *hw = &pf->hw;
-	u32 reg_val;
-	int i, j;
+	u8 *seed = NULL;
+	u16 i;
 
 	if (hfunc != ETH_RSS_HASH_NO_CHANGE && hfunc != ETH_RSS_HASH_TOP)
 		return -EOPNOTSUPP;
@@ -2667,24 +2660,28 @@ static int i40e_set_rxfh(struct net_device *netdev, const u32 *indir,
 	if (!indir)
 		return 0;
 
-	for (i = 0, j = 0; i <= I40E_PFQF_HLUT_MAX_INDEX; i++) {
-		reg_val = indir[j++];
-		reg_val |= indir[j++] << 8;
-		reg_val |= indir[j++] << 16;
-		reg_val |= indir[j++] << 24;
-		wr32(hw, I40E_PFQF_HLUT(i), reg_val);
+	if (key) {
+		if (!vsi->rss_hkey_user) {
+			vsi->rss_hkey_user = kzalloc(I40E_HKEY_ARRAY_SIZE,
+						     GFP_KERNEL);
+			if (!vsi->rss_hkey_user)
+				return -ENOMEM;
+		}
+		memcpy(vsi->rss_hkey_user, key, I40E_HKEY_ARRAY_SIZE);
+		seed = vsi->rss_hkey_user;
+	}
+	if (!vsi->rss_lut_user) {
+		vsi->rss_lut_user = kzalloc(I40E_HLUT_ARRAY_SIZE, GFP_KERNEL);
+		if (!vsi->rss_lut_user)
+			return -ENOMEM;
 	}
 
-	if (key) {
-		for (i = 0, j = 0; i <= I40E_PFQF_HKEY_MAX_INDEX; i++) {
-			reg_val = key[j++];
-			reg_val |= key[j++] << 8;
-			reg_val |= key[j++] << 16;
-			reg_val |= key[j++] << 24;
-			wr32(hw, I40E_PFQF_HKEY(i), reg_val);
-		}
-	}
-	return 0;
+	/* Each 32 bits pointed by 'indir' is stored with a lut entry */
+	for (i = 0; i < I40E_HLUT_ARRAY_SIZE; i++)
+		vsi->rss_lut_user[i] = (u8)(indir[i]);
+
+	return i40e_config_rss(vsi, seed, vsi->rss_lut_user,
+			       I40E_HLUT_ARRAY_SIZE);
 }
 
 /**
