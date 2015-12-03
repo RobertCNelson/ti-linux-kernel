@@ -79,12 +79,6 @@ static struct kmem_cache *ocfs2_inode_cachep;
 struct kmem_cache *ocfs2_dquot_cachep;
 struct kmem_cache *ocfs2_qf_chunk_cachep;
 
-/* OCFS2 needs to schedule several different types of work which
- * require cluster locking, disk I/O, recovery waits, etc. Since these
- * types of work tend to be heavy we avoid using the kernel events
- * workqueue and schedule on our own. */
-struct workqueue_struct *ocfs2_wq = NULL;
-
 static struct dentry *ocfs2_debugfs_root;
 
 MODULE_AUTHOR("Oracle");
@@ -1280,6 +1274,8 @@ static int ocfs2_parse_options(struct super_block *sb,
 	int status, user_stack = 0;
 	char *p;
 	u32 tmp;
+	int token, option;
+	substring_t args[MAX_OPT_ARGS];
 
 	trace_ocfs2_parse_options(is_remount, options ? options : "(none)");
 
@@ -1298,9 +1294,6 @@ static int ocfs2_parse_options(struct super_block *sb,
 	}
 
 	while ((p = strsep(&options, ",")) != NULL) {
-		int token, option;
-		substring_t args[MAX_OPT_ARGS];
-
 		if (!*p)
 			continue;
 
@@ -1367,7 +1360,6 @@ static int ocfs2_parse_options(struct super_block *sb,
 				mopt->atime_quantum = option;
 			break;
 		case Opt_slot:
-			option = 0;
 			if (match_int(&args[0], &option)) {
 				status = 0;
 				goto bail;
@@ -1376,7 +1368,6 @@ static int ocfs2_parse_options(struct super_block *sb,
 				mopt->slot = (s16)option;
 			break;
 		case Opt_commit:
-			option = 0;
 			if (match_int(&args[0], &option)) {
 				status = 0;
 				goto bail;
@@ -1388,7 +1379,6 @@ static int ocfs2_parse_options(struct super_block *sb,
 			mopt->commit_interval = HZ * option;
 			break;
 		case Opt_localalloc:
-			option = 0;
 			if (match_int(&args[0], &option)) {
 				status = 0;
 				goto bail;
@@ -1612,33 +1602,25 @@ static int __init ocfs2_init(void)
 	if (status < 0)
 		goto out2;
 
-	ocfs2_wq = create_singlethread_workqueue("ocfs2_wq");
-	if (!ocfs2_wq) {
-		status = -ENOMEM;
-		goto out3;
-	}
-
 	ocfs2_debugfs_root = debugfs_create_dir("ocfs2", NULL);
 	if (!ocfs2_debugfs_root) {
 		status = -ENOMEM;
 		mlog(ML_ERROR, "Unable to create ocfs2 debugfs root.\n");
-		goto out4;
+		goto out3;
 	}
 
 	ocfs2_set_locking_protocol();
 
 	status = register_quota_format(&ocfs2_quota_format);
 	if (status < 0)
-		goto out4;
+		goto out3;
 	status = register_filesystem(&ocfs2_fs_type);
 	if (!status)
 		return 0;
 
 	unregister_quota_format(&ocfs2_quota_format);
-out4:
-	destroy_workqueue(ocfs2_wq);
-	debugfs_remove(ocfs2_debugfs_root);
 out3:
+	debugfs_remove(ocfs2_debugfs_root);
 	ocfs2_free_mem_caches();
 out2:
 	exit_ocfs2_uptodate_cache();
@@ -1649,11 +1631,6 @@ out1:
 
 static void __exit ocfs2_exit(void)
 {
-	if (ocfs2_wq) {
-		flush_workqueue(ocfs2_wq);
-		destroy_workqueue(ocfs2_wq);
-	}
-
 	unregister_quota_format(&ocfs2_quota_format);
 
 	debugfs_remove(ocfs2_debugfs_root);
@@ -1744,8 +1721,8 @@ static void ocfs2_inode_init_once(void *data)
 	spin_lock_init(&oi->ip_lock);
 	ocfs2_extent_map_init(&oi->vfs_inode);
 	INIT_LIST_HEAD(&oi->ip_io_markers);
+	INIT_LIST_HEAD(&oi->ip_unwritten_list);
 	oi->ip_dir_start_lookup = 0;
-	mutex_init(&oi->ip_unaligned_aio);
 	init_rwsem(&oi->ip_alloc_sem);
 	init_rwsem(&oi->ip_xattr_sem);
 	mutex_init(&oi->ip_io_mutex);
@@ -1771,7 +1748,7 @@ static int ocfs2_initialize_mem_caches(void)
 				       sizeof(struct ocfs2_inode_info),
 				       0,
 				       (SLAB_HWCACHE_ALIGN|SLAB_RECLAIM_ACCOUNT|
-						SLAB_MEM_SPREAD),
+						SLAB_MEM_SPREAD|SLAB_ACCOUNT),
 				       ocfs2_inode_init_once);
 	ocfs2_dquot_cachep = kmem_cache_create("ocfs2_dquot_cache",
 					sizeof(struct ocfs2_dquot),
@@ -2348,6 +2325,12 @@ static int ocfs2_initialize_super(struct super_block *sb,
 	}
 	cleancache_init_shared_fs(sb);
 
+	osb->ocfs2_wq = create_singlethread_workqueue("ocfs2_wq");
+	if (!osb->ocfs2_wq) {
+		status = -ENOMEM;
+		mlog_errno(status);
+	}
+
 bail:
 	return status;
 }
@@ -2428,6 +2411,7 @@ static int ocfs2_check_volume(struct ocfs2_super *osb)
 	int status;
 	int dirty;
 	int local;
+	int la_dirty = 0, recovery = 0;
 	struct ocfs2_dinode *local_alloc = NULL; /* only used if we
 						  * recover
 						  * ourselves. */
@@ -2449,6 +2433,16 @@ static int ocfs2_check_volume(struct ocfs2_super *osb)
 	 * recover anything. Otherwise, journal_load will do that
 	 * dirty work for us :) */
 	if (!dirty) {
+		/* It may happen that local alloc is unclean shutdown, but
+		 * journal has been marked clean, so check it here and do
+		 * recovery if needed */
+		status = ocfs2_load_local_alloc(osb, 1, &recovery);
+		if (recovery) {
+			printk(KERN_NOTICE "ocfs2: local alloc needs recovery "
+					"on device (%s).\n", osb->dev_str);
+			la_dirty = 1;
+		}
+
 		status = ocfs2_journal_wipe(osb->journal, 0);
 		if (status < 0) {
 			mlog_errno(status);
@@ -2477,7 +2471,7 @@ static int ocfs2_check_volume(struct ocfs2_super *osb)
 				JBD2_FEATURE_COMPAT_CHECKSUM, 0,
 				JBD2_FEATURE_INCOMPAT_ASYNC_COMMIT);
 
-	if (dirty) {
+	if (dirty || la_dirty) {
 		/* recover my local alloc if we didn't unmount cleanly. */
 		status = ocfs2_begin_local_alloc_recovery(osb,
 							  osb->slot_num,
@@ -2490,13 +2484,13 @@ static int ocfs2_check_volume(struct ocfs2_super *osb)
 		 * ourselves as mounted. */
 	}
 
-	status = ocfs2_load_local_alloc(osb);
+	status = ocfs2_load_local_alloc(osb, 0, &recovery);
 	if (status < 0) {
 		mlog_errno(status);
 		goto finally;
 	}
 
-	if (dirty) {
+	if (dirty || la_dirty) {
 		/* Recovery will be completed after we've mounted the
 		 * rest of the volume. */
 		osb->dirty = 1;
@@ -2534,6 +2528,12 @@ finally:
 static void ocfs2_delete_osb(struct ocfs2_super *osb)
 {
 	/* This function assumes that the caller has the main osb resource */
+
+	/* ocfs2_initializer_super have already created this workqueue */
+	if (osb->ocfs2_wq) {
+		flush_workqueue(osb->ocfs2_wq);
+		destroy_workqueue(osb->ocfs2_wq);
+	}
 
 	ocfs2_free_slot_info(osb);
 
