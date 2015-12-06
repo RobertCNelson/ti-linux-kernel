@@ -723,13 +723,26 @@ void *virtqueue_detach_unused_buf(struct virtqueue *_vq)
 }
 EXPORT_SYMBOL_GPL(virtqueue_detach_unused_buf);
 
-irqreturn_t vring_interrupt(int irq, void *_vq)
+irqreturn_t vring_interrupt(int irq, void *p)
 {
+	struct virtqueue *_vq = p;
 	struct vring_virtqueue *vq = to_vvq(_vq);
 
-	if (!more_used(vq)) {
-		pr_debug("virtqueue interrupt with no work for %p\n", vq);
-		return IRQ_NONE;
+	if (!vq->poll) {
+		if (!more_used(vq)) {
+			pr_debug("virtqueue interrupt with no work for %p\n", vq);
+			return IRQ_NONE;
+		}
+	} else {
+		unsigned int i;
+		u16 last_used;
+
+		last_used = (vq->last_used_idx & (vq->vring.num - 1));
+		i = virtio32_to_cpu(_vq->vdev, vq->vring.used->ring[last_used].id);
+		if ((i ^ vq->last_used_idx ^ 0x8000) & ~(vq->vring.num - 1)) {
+			pr_debug("virtqueue interrupt with no work for %p\n", vq);
+			return IRQ_NONE;
+		}
 	}
 
 	if (unlikely(vq->broken))
