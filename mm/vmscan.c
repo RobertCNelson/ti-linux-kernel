@@ -908,6 +908,7 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		int may_enter_fs;
 		enum page_references references = PAGEREF_RECLAIM_CLEAN;
 		bool dirty, writeback;
+		bool lazyfree = false;
 
 		cond_resched();
 
@@ -1051,6 +1052,7 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 				goto keep_locked;
 			if (!add_to_swap(page, page_list))
 				goto activate_locked;
+			lazyfree = true;
 			may_enter_fs = 1;
 
 			/* Adding to swap updated mapping */
@@ -1062,8 +1064,9 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		 * processes. Try to unmap it here.
 		 */
 		if (page_mapped(page) && mapping) {
-			switch (try_to_unmap(page,
-					ttu_flags|TTU_BATCH_FLUSH)) {
+			switch (try_to_unmap(page, lazyfree ?
+				(ttu_flags | TTU_BATCH_FLUSH | TTU_LZFREE) :
+				(ttu_flags | TTU_BATCH_FLUSH))) {
 			case SWAP_FAIL:
 				goto activate_locked;
 			case SWAP_AGAIN:
@@ -1188,6 +1191,9 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		 */
 		__ClearPageLocked(page);
 free_it:
+		if (lazyfree && !PageDirty(page))
+			count_vm_event(PGLAZYFREED);
+
 		nr_reclaimed++;
 
 		/*
