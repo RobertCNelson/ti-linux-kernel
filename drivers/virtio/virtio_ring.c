@@ -203,7 +203,7 @@ static inline int virtqueue_add(struct virtqueue *_vq,
 		/* FIXME: for historical reasons, we force a notify here if
 		 * there are outgoing parts to the buffer.  Presumably the
 		 * host should service the ring ASAP. */
-		if (out_sgs)
+		if (!vq->event && out_sgs)
 			vq->notify(&vq->vq);
 		END_USE(vq);
 		return -ENOSPC;
