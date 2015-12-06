@@ -11,6 +11,7 @@
 #include <linux/memcontrol.h>
 #include <linux/migrate.h>
 #include <trace/events/gfpflags.h>
+#include <linux/page_owner.h>
 
 char *migrate_reason_names[MR_TYPES] = {
 	"compaction",
@@ -129,6 +130,7 @@ void dump_page_badflags(struct page *page, const char *reason,
 void dump_page(struct page *page, const char *reason)
 {
 	dump_page_badflags(page, reason, 0);
+	dump_page_owner(page);
 }
 EXPORT_SYMBOL(dump_page);
 
