@@ -46,7 +46,7 @@ static void *arc_dma_alloc(struct device *dev, size_t size,
 	 *   (vs. always going to memory - thus are faster)
 	 */
 	if ((is_isa_arcv2() && ioc_exists) ||
-	    dma_get_attr(DMA_ATTR_NON_CONSISTENT, attrs)
+	    dma_get_attr(DMA_ATTR_NON_CONSISTENT, attrs))
 		return paddr;
 
 	/* This is kernel Virtual address (0x7000_0000 based) */
@@ -74,7 +74,7 @@ static void arc_dma_free(struct device *dev, size_t size, void *vaddr,
 {
 	if (!(is_isa_arcv2() && ioc_exists) ||
 	    dma_get_attr(DMA_ATTR_NON_CONSISTENT, attrs))
-		iounmap((void __force __iomem *)kvaddr);
+		iounmap((void __force __iomem *)vaddr);
 
 	free_pages_exact((void *)dma_handle, size);
 }
@@ -135,7 +135,7 @@ static void arc_dma_sync_single_for_device(struct device *dev,
 	_dma_cache_sync(dma_handle, size, DMA_TO_DEVICE);
 }
 
-static void arm_dma_sync_sg_for_cpu(struct device *dev,
+static void arc_dma_sync_sg_for_cpu(struct device *dev,
 		struct scatterlist *sglist, int nelems,
 		enum dma_data_direction dir)
 {
@@ -171,7 +171,7 @@ struct dma_map_ops arc_dma_ops = {
 	.sync_single_for_device	= arc_dma_sync_single_for_device,
 	.sync_single_for_cpu	= arc_dma_sync_single_for_cpu,
 	.sync_sg_for_cpu	= arc_dma_sync_sg_for_cpu,
-	.sync_sg_for_dev	= arc_dma_sync_sg_for_device,
+	.sync_sg_for_device	= arc_dma_sync_sg_for_device,
 	.dma_supported		= arc_dma_supported,
 };
 EXPORT_SYMBOL(arc_dma_ops);
