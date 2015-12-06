@@ -542,7 +542,7 @@ config ARCH_MMAP_RND_BITS
 	  by the architecture's minimum and maximum supported values.
 
 	  This value can be changed after boot using the
-	  /proc/sys/kernel/mmap_rnd_bits tunable
+	  /proc/sys/vm/mmap_rnd_bits tunable
 
 config HAVE_ARCH_MMAP_RND_COMPAT_BITS
 	bool
@@ -560,9 +560,13 @@ config ARCH_MMAP_RND_COMPAT_BITS_MIN
 config ARCH_MMAP_RND_COMPAT_BITS_MAX
 	int
 
+config ARCH_MMAP_RND_COMPAT_BITS_DEFAULT
+	int
+
 config ARCH_MMAP_RND_COMPAT_BITS
 	int "Number of bits to use for ASLR of mmap base address for compatible applications" if EXPERT
 	range ARCH_MMAP_RND_COMPAT_BITS_MIN ARCH_MMAP_RND_COMPAT_BITS_MAX
+	default ARCH_MMAP_RND_COMPAT_BITS_DEFAULT if ARCH_MMAP_RND_COMPAT_BITS_DEFAULT
 	default ARCH_MMAP_RND_COMPAT_BITS_MIN
 	depends on HAVE_ARCH_MMAP_RND_COMPAT_BITS
 	help
@@ -573,7 +577,7 @@ config ARCH_MMAP_RND_COMPAT_BITS
 	  supported values.
 
 	  This value can be changed after boot using the
-	  /proc/sys/kernel/mmap_rnd_compat_bits tunable
+	  /proc/sys/vm/mmap_rnd_compat_bits tunable
 
 config HAVE_COPY_THREAD_TLS
 	bool

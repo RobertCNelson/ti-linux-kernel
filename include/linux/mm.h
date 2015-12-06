@@ -52,14 +52,14 @@ extern int sysctl_legacy_va_layout;
 #endif
 
 #ifdef CONFIG_HAVE_ARCH_MMAP_RND_BITS
-extern int mmap_rnd_bits_min;
-extern int mmap_rnd_bits_max;
-extern int mmap_rnd_bits;
+extern const int mmap_rnd_bits_min;
+extern const int mmap_rnd_bits_max;
+extern int mmap_rnd_bits __read_mostly;
 #endif
 #ifdef CONFIG_HAVE_ARCH_MMAP_RND_COMPAT_BITS
-extern int mmap_rnd_compat_bits_min;
-extern int mmap_rnd_compat_bits_max;
-extern int mmap_rnd_compat_bits;
+extern const int mmap_rnd_compat_bits_min;
+extern const int mmap_rnd_compat_bits_max;
+extern int mmap_rnd_compat_bits __read_mostly;
 #endif
 
 #include <asm/page.h>
