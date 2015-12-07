@@ -5628,9 +5628,7 @@ F:	Documentation/trace/intel_th.txt
 F:	drivers/hwtracing/intel_th/
 
 INTEL(R) TRUSTED EXECUTION TECHNOLOGY (TXT)
-M:	Richard L Maliszewski <richard.l.maliszewski@intel.com>
-M:	Gang Wei <gang.wei@intel.com>
-M:	Shane Wang <shane.wang@intel.com>
+M:	Ning Sun <ning.sun@intel.com>
 L:	tboot-devel@lists.sourceforge.net
 W:	http://tboot.sourceforge.net
 T:	hg http://tboot.hg.sourceforge.net:8000/hgroot/tboot/tboot
@@ -8301,7 +8299,7 @@ F:	include/linux/delayacct.h
 F:	kernel/delayacct.c
 
 PERFORMANCE EVENTS SUBSYSTEM
-M:	Peter Zijlstra <a.p.zijlstra@chello.nl>
+M:	Peter Zijlstra <peterz@infradead.org>
 M:	Ingo Molnar <mingo@redhat.com>
 M:	Arnaldo Carvalho de Melo <acme@kernel.org>
 L:	linux-kernel@vger.kernel.org
