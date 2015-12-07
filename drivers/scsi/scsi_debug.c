@@ -679,7 +679,7 @@ static void *fake_store(unsigned long long lba)
 
 static struct sd_dif_tuple *dif_store(sector_t sector)
 {
-	sector = do_div(sector, sdebug_store_sectors);
+	sector = sector_div(sector, sdebug_store_sectors);
 
 	return dif_storep + sector;
 }
@@ -2781,7 +2781,7 @@ static unsigned long lba_to_map_index(sector_t lba)
 		lba += scsi_debug_unmap_granularity -
 			scsi_debug_unmap_alignment;
 	}
-	do_div(lba, scsi_debug_unmap_granularity);
+	sector_div(lba, scsi_debug_unmap_granularity);
 
 	return lba;
 }
@@ -4847,10 +4847,10 @@ static int __init scsi_debug_init(void)
 	/* play around with geometry, don't waste too much on track 0 */
 	sdebug_heads = 8;
 	sdebug_sectors_per = 32;
-	if (scsi_debug_dev_size_mb >= 16)
-		sdebug_heads = 32;
-	else if (scsi_debug_dev_size_mb >= 256)
+	if (scsi_debug_dev_size_mb >= 256)
 		sdebug_heads = 64;
+	else if (scsi_debug_dev_size_mb >= 16)
+		sdebug_heads = 32;
 	sdebug_cylinders_per = (unsigned long)sdebug_capacity /
 			       (sdebug_sectors_per * sdebug_heads);
 	if (sdebug_cylinders_per >= 1024) {
