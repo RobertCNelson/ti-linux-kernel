@@ -303,6 +303,10 @@ static int memory_subsys_offline(struct device *dev)
 	if (mem->state == MEM_OFFLINE)
 		return 0;
 
+	/* Can't offline block with non-present sections */
+	if (mem->section_count != sections_per_block)
+		return -EINVAL;
+
 	return memory_block_change_state(mem, MEM_OFFLINE, MEM_ONLINE);
 }
 
@@ -614,7 +618,6 @@ static int init_memory_block(struct memory_block **memory,
 			base_memory_block_id(scn_nr) * sections_per_block;
 	mem->end_section_nr = mem->start_section_nr + sections_per_block - 1;
 	mem->state = state;
-	mem->section_count++;
 	start_pfn = section_nr_to_pfn(mem->start_section_nr);
 	mem->phys_device = arch_get_memory_phys_device(start_pfn);
 
@@ -668,6 +671,7 @@ int register_new_memory(int nid, struct mem_section *section)
 		ret = init_memory_block(&mem, section, MEM_OFFLINE);
 		if (ret)
 			goto out;
+		mem->section_count++;
 	}
 
 	if (mem->section_count == sections_per_block)
@@ -688,7 +692,7 @@ unregister_memory(struct memory_block *memory)
 	device_unregister(&memory->dev);
 }
 
-static int remove_memory_block(unsigned long node_id,
+static int remove_memory_section(unsigned long node_id,
 			       struct mem_section *section, int phys_device)
 {
 	struct memory_block *mem;
@@ -712,7 +716,7 @@ int unregister_memory_section(struct mem_section *section)
 	if (!present_section(section))
 		return -EINVAL;
 
-	return remove_memory_block(0, section, 0);
+	return remove_memory_section(0, section, 0);
 }
 #endif /* CONFIG_MEMORY_HOTREMOVE */
 
