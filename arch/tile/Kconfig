@@ -33,6 +33,7 @@ config TILE
 	select GENERIC_STRNCPY_FROM_USER
 	select GENERIC_STRNLEN_USER
 	select HAVE_ARCH_SECCOMP_FILTER
+	select HAVE_ARCH_JUMP_LABEL
 
 # FIXME: investigate whether we need/want these options.
 #	select HAVE_IOREMAP_PROT
