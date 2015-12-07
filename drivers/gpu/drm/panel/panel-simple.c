@@ -832,6 +832,34 @@ static const struct panel_desc innolux_g121i1_l01 = {
 	},
 };
 
+static const struct drm_display_mode innolux_g121x1_l03_mode = {
+	.clock = 65000,
+	.hdisplay = 1024,
+	.hsync_start = 1024 + 0,
+	.hsync_end = 1024 + 1,
+	.htotal = 1024 + 0 + 1 + 320,
+	.vdisplay = 768,
+	.vsync_start = 768 + 38,
+	.vsync_end = 768 + 38 + 1,
+	.vtotal = 768 + 38 + 1 + 0,
+	.vrefresh = 60,
+};
+
+static const struct panel_desc innolux_g121x1_l03 = {
+	.modes = &innolux_g121x1_l03_mode,
+	.num_modes = 1,
+	.bpc = 6,
+	.size = {
+		.width = 246,
+		.height = 185,
+	},
+	.delay = {
+		.enable = 200,
+		.unprepare = 200,
+		.disable = 400,
+	},
+};
+
 static const struct drm_display_mode innolux_n116bge_mode = {
 	.clock = 76420,
 	.hdisplay = 1366,
@@ -1158,6 +1186,9 @@ static const struct of_device_id platform_of_match[] = {
 		.compatible ="innolux,g121i1-l01",
 		.data = &innolux_g121i1_l01
 	}, {
+		.compatible = "innolux,g121x1-l03",
+		.data = &innolux_g121x1_l03,
+	}, {
 		.compatible = "innolux,n116bge",
 		.data = &innolux_n116bge,
 	}, {
@@ -1263,6 +1294,36 @@ static const struct panel_desc_dsi auo_b080uan01 = {
 	.lanes = 4,
 };
 
+static const struct drm_display_mode boe_tv080wum_nl0_mode = {
+	.clock = 160000,
+	.hdisplay = 1200,
+	.hsync_start = 1200 + 120,
+	.hsync_end = 1200 + 120 + 20,
+	.htotal = 1200 + 120 + 20 + 21,
+	.vdisplay = 1920,
+	.vsync_start = 1920 + 21,
+	.vsync_end = 1920 + 21 + 3,
+	.vtotal = 1920 + 21 + 3 + 18,
+	.vrefresh = 60,
+	.flags = DRM_MODE_FLAG_NVSYNC | DRM_MODE_FLAG_NHSYNC,
+};
+
+static const struct panel_desc_dsi boe_tv080wum_nl0 = {
+	.desc = {
+		.modes = &boe_tv080wum_nl0_mode,
+		.num_modes = 1,
+		.size = {
+			.width = 107,
+			.height = 172,
+		},
+	},
+	.flags = MIPI_DSI_MODE_VIDEO |
+		 MIPI_DSI_MODE_VIDEO_BURST |
+		 MIPI_DSI_MODE_VIDEO_SYNC_PULSE,
+	.format = MIPI_DSI_FMT_RGB888,
+	.lanes = 4,
+};
+
 static const struct drm_display_mode lg_ld070wx3_sl01_mode = {
 	.clock = 71000,
 	.hdisplay = 800,
@@ -1348,10 +1409,14 @@ static const struct panel_desc_dsi panasonic_vvx10f004b00 = {
 	.lanes = 4,
 };
 
+
 static const struct of_device_id dsi_of_match[] = {
 	{
 		.compatible = "auo,b080uan01",
 		.data = &auo_b080uan01
+	}, {
+		.compatible = "boe,tv080wum-nl0",
+		.data = &boe_tv080wum_nl0
 	}, {
 		.compatible = "lg,ld070wx3-sl01",
 		.data = &lg_ld070wx3_sl01
