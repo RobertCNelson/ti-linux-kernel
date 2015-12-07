@@ -1,0 +1,19 @@
+Importing jdelvare-hwmon based on 4.3
+Unchanged quilt series jdelvare-hwmon
+Importing dmi based on 4.3
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 6a13feb9c82803e2b815eca72fa7a9f5561d7861
+HEAD is now at 6a13feb9c828 Linux 4.3
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi_scan-01-optimize-dmi_save_extended_devices.patch
+Applying: firmware: dmi_scan: Optimize dmi_save_extended_devices
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi_scan-02-clarify-dmi_save_extended_devices.patch
+Applying: firmware: dmi_scan: Clarify dmi_save_extended_devices
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi_scan-03-fix-dmi_find_device-description.patch
+Applying: firmware: dmi_scan: Fix dmi_find_device description
+$ git am --patch-format=mbox ../quilt/dmi/firmware-dmi_scan-04-save-type-9-system-slots.patch
+Applying: firmware: dmi_scan: Save SMBIOS Type 9 System Slots
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:dmi/master
+From ../quilt-tmp
+   1dc51b828800..072151bb0154  master     -> dmi/master
