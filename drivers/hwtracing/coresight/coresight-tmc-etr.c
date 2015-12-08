@@ -70,7 +70,7 @@ static void tmc_etr_dump_hw(struct tmc_drvdata *drvdata)
 		drvdata->buf = drvdata->vaddr;
 }
 
-void tmc_etr_disable_hw(struct tmc_drvdata *drvdata)
+static void tmc_etr_disable_hw(struct tmc_drvdata *drvdata)
 {
 	CS_UNLOCK(drvdata->base);
 
@@ -126,3 +126,51 @@ static const struct coresight_ops_sink tmc_etr_sink_ops = {
 const struct coresight_ops tmc_etr_cs_ops = {
 	.sink_ops	= &tmc_etr_sink_ops,
 };
+
+int tmc_read_prepare_etr(struct tmc_drvdata *drvdata)
+{
+	int ret = 0;
+	unsigned long flags;
+
+	spin_lock_irqsave(&drvdata->spinlock, flags);
+
+	/* The TMC isn't enable, so there is no need to disable it */
+	if (!drvdata->enable)
+		goto out;
+
+	if (drvdata->config_type != TMC_CONFIG_TYPE_ETR) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	tmc_etr_disable_hw(drvdata);
+	drvdata->reading = true;
+
+out:
+	spin_unlock_irqrestore(&drvdata->spinlock, flags);
+	return ret;
+}
+
+int tmc_read_unprepare_etr(struct tmc_drvdata *drvdata)
+{
+	int ret = 0;
+	unsigned long flags;
+
+	spin_lock_irqsave(&drvdata->spinlock, flags);
+
+	/* The TMC isn't enable, so there is no need to enable it */
+	if (!drvdata->enable)
+		goto out;
+
+	if (drvdata->config_type != TMC_CONFIG_TYPE_ETR) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	tmc_etr_enable_hw(drvdata);
+	drvdata->reading = false;
+
+out:
+	spin_unlock_irqrestore(&drvdata->spinlock, flags);
+	return ret;
+}
