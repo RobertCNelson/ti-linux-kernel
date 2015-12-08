@@ -75,7 +75,6 @@ static void tmc_etr_disable_hw(struct tmc_drvdata *drvdata)
 	CS_UNLOCK(drvdata->base);
 
 	tmc_flush_and_stop(drvdata);
-	tmc_etr_dump_hw(drvdata);
 	tmc_disable_hw(drvdata);
 
 	CS_LOCK(drvdata->base);
@@ -112,6 +111,7 @@ static void tmc_disable_etr_sink(struct coresight_device *csdev)
 	}
 
 	tmc_etr_disable_hw(drvdata);
+	tmc_etr_dump_hw(drvdata);
 	drvdata->enable = false;
 	spin_unlock_irqrestore(&drvdata->spinlock, flags);
 
