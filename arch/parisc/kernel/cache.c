@@ -442,13 +442,15 @@ EXPORT_SYMBOL(copy_user_page);
 int __flush_tlb_range(unsigned long sid, unsigned long start,
 		      unsigned long end)
 {
-	unsigned long flags, size;
+	unsigned long flags;
 
-	size = (end - start);
+#if !defined(CONFIG_HUGETLB_PAGE)
+	unsigned long size = (end - start);
 	if (size >= parisc_tlb_flush_threshold) {
 		flush_tlb_all();
 		return 1;
 	}
+#endif
 
 	/* Purge TLB entries for small ranges using the pdtlb and
 	   pitlb instructions.  These instructions execute locally
