@@ -18,6 +18,7 @@
 #ifndef _CORESIGHT_TMC_H
 #define _CORESIGHT_TMC_H
 
+#include <linux/io.h>
 #include <linux/miscdevice.h>
 
 #define TMC_RSZ			0x004
@@ -100,7 +101,7 @@ enum tmc_mem_intf_width {
  * @paddr:	DMA start location in RAM.
  * @vaddr:	virtual representation of @paddr.
  * @size:	@buf size.
- * @enable:	this TMC is being used.
+ * @mode:	how this TMC is being used.
  * @config_type: TMC variant, must be of type @tmc_config_type.
  * @trigger_cntr: amount of words to store after a trigger.
  */
@@ -116,7 +117,7 @@ struct tmc_drvdata {
 	dma_addr_t		paddr;
 	void __iomem		*vaddr;
 	u32			size;
-	bool			enable;
+	local_t			mode;
 	enum tmc_config_type	config_type;
 	u32			trigger_cntr;
 };

@@ -84,6 +84,7 @@ static void tmc_etr_disable_hw(struct tmc_drvdata *drvdata)
 
 static int tmc_enable_etr_sink(struct coresight_device *csdev, u32 mode)
 {
+	u32 val;
 	bool allocated = false;
 	unsigned long flags;
 	void __iomem *vaddr;
@@ -107,6 +108,15 @@ static int tmc_enable_etr_sink(struct coresight_device *csdev, u32 mode)
 		return -EBUSY;
 	}
 
+	val = local_cmpxchg(&drvdata->mode, CS_MODE_DISABLED, mode);
+	/*
+	 * In sysFS mode we can have multiple writers per sink.  Since this
+	 * sink is already enabled no memory is needed and the HW need not be
+	 * touched.
+	 */
+	if (val == CS_MODE_SYSFS)
+		goto out;
+
 	/*
 	 * If drvdata::buf == NULL, use the memory allocated above.
 	 * Otherwise a buffer still exists from a previous session, so
@@ -122,9 +132,9 @@ static int tmc_enable_etr_sink(struct coresight_device *csdev, u32 mode)
 	memset(drvdata->vaddr, 0, drvdata->size);
 
 	tmc_etr_enable_hw(drvdata);
-	drvdata->enable = true;
 	spin_unlock_irqrestore(&drvdata->spinlock, flags);
 
+out:
 	/* Free memory outside the spinlock if need be */
 	if (!allocated)
 		dma_free_coherent(drvdata->dev, drvdata->size, vaddr, paddr);
@@ -135,6 +145,7 @@ static int tmc_enable_etr_sink(struct coresight_device *csdev, u32 mode)
 
 static void tmc_disable_etr_sink(struct coresight_device *csdev)
 {
+	u32 val;
 	unsigned long flags;
 	struct tmc_drvdata *drvdata = dev_get_drvdata(csdev->dev.parent);
 
@@ -144,9 +155,15 @@ static void tmc_disable_etr_sink(struct coresight_device *csdev)
 		return;
 	}
 
+	val = local_cmpxchg(&drvdata->mode, CS_MODE_SYSFS, CS_MODE_DISABLED);
+	/* Nothing to do, the TMC was already disabled */
+	if (val == CS_MODE_DISABLED)
+		goto out;
+
 	tmc_etr_disable_hw(drvdata);
 	tmc_etr_dump_hw(drvdata);
-	drvdata->enable = false;
+
+out:
 	spin_unlock_irqrestore(&drvdata->spinlock, flags);
 
 	dev_info(drvdata->dev, "TMC-ETR disabled\n");
@@ -168,7 +185,7 @@ int tmc_read_prepare_etr(struct tmc_drvdata *drvdata)
 	spin_lock_irqsave(&drvdata->spinlock, flags);
 
 	/* The TMC isn't enabled, so there is no need to disable it */
-	if (!drvdata->enable) {
+	if (local_read(&drvdata->mode) == CS_MODE_DISABLED) {
 		/*
 		 * The ETR is disabled already.  If drvdata::buf is NULL
 		 * trace data has been harvested.
@@ -210,7 +227,7 @@ int tmc_read_unprepare_etr(struct tmc_drvdata *drvdata)
 	}
 
 	/* The TMC isn't enabled, so there is no need to enable it */
-	if (!drvdata->enable) {
+	if (local_read(&drvdata->mode) == CS_MODE_DISABLED) {
 		/*
 		 * The ETR is not tracing and trace data was just read. As
 		 * such prepare to free the trace buffer.
