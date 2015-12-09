@@ -1295,7 +1295,9 @@ static inline int ocfs2_may_continue_on_blocked_lock(struct ocfs2_lock_res *lock
 {
 	BUG_ON(!(lockres->l_flags & OCFS2_LOCK_BLOCKED));
 
-	return wanted <= ocfs2_highest_compat_lock_level(lockres->l_blocking);
+	/* allow nested lock request go to avoid deadlock. */
+	return wanted <= ocfs2_highest_compat_lock_level(lockres->l_blocking)
+		|| lockres->l_ro_holders || lockres->l_ex_holders;
 }
 
 static void ocfs2_init_mask_waiter(struct ocfs2_mask_waiter *mw)
