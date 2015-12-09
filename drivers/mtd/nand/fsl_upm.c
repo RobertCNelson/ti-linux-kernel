@@ -79,7 +79,7 @@ static void fun_wait_rnb(struct fsl_upm_nand *fun)
 
 static void fun_cmd_ctrl(struct mtd_info *mtd, int cmd, unsigned int ctrl)
 {
-	struct nand_chip *chip = mtd->priv;
+	struct nand_chip *chip = mtd_to_nand(mtd);
 	struct fsl_upm_nand *fun = to_fsl_upm_nand(mtd);
 	u32 mar;
 
@@ -109,7 +109,7 @@ static void fun_cmd_ctrl(struct mtd_info *mtd, int cmd, unsigned int ctrl)
 
 static void fun_select_chip(struct mtd_info *mtd, int mchip_nr)
 {
-	struct nand_chip *chip = mtd->priv;
+	struct nand_chip *chip = mtd_to_nand(mtd);
 	struct fsl_upm_nand *fun = to_fsl_upm_nand(mtd);
 
 	if (mchip_nr == -1) {
@@ -159,7 +159,6 @@ static int fun_chip_init(struct fsl_upm_nand *fun,
 {
 	int ret;
 	struct device_node *flash_np;
-	struct mtd_part_parser_data ppdata;
 
 	fun->chip.IO_ADDR_R = fun->io_base;
 	fun->chip.IO_ADDR_W = fun->io_base;
@@ -182,6 +181,7 @@ static int fun_chip_init(struct fsl_upm_nand *fun,
 	if (!flash_np)
 		return -ENODEV;
 
+	nand_set_flash_node(&fun->chip, flash_np);
 	fun->mtd.name = kasprintf(GFP_KERNEL, "0x%llx.%s", (u64)io_res->start,
 				  flash_np->name);
 	if (!fun->mtd.name) {
@@ -193,8 +193,7 @@ static int fun_chip_init(struct fsl_upm_nand *fun,
 	if (ret)
 		goto err;
 
-	ppdata.of_node = flash_np;
-	ret = mtd_device_parse_register(&fun->mtd, NULL, &ppdata, NULL, 0);
+	ret = mtd_device_register(&fun->mtd, NULL, 0);
 err:
 	of_node_put(flash_np);
 	if (ret)
