@@ -494,8 +494,7 @@ static void __init_memblock memblock_insert_region(struct memblock_type *type,
 
 	BUG_ON(type->cnt >= type->max);
 	/* special case for empty array */
-	if (idx)
-	{
+	if (idx) {
 		memmove(rgn + 1, rgn, (type->cnt - idx) * sizeof(*rgn));
 		type->cnt++;
 	}
