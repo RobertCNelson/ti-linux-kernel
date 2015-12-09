@@ -11,12 +11,20 @@
  * GNU General Public License for more details.
  */
 
-/dts-v1/;
-
-#include "msm8916-mtp.dtsi"
+#include "msm8996.dtsi"
 
 / {
-	model = "Qualcomm Technologies, Inc. MSM 8916 MTP";
-	compatible = "qcom,msm8916-mtp", "qcom,msm8916-mtp/1",
-			"qcom,msm8916", "qcom,mtp";
+	aliases {
+		serial0 = &blsp2_uart1;
+	};
+
+	chosen {
+		stdout-path = "serial0";
+	};
+
+	soc {
+		serial@75b0000 {
+			status = "okay";
+		};
+	};
 };
