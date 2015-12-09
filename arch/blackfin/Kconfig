@@ -40,7 +40,6 @@ config BLACKFIN
 	select HAVE_MOD_ARCH_SPECIFIC
 	select MODULES_USE_ELF_RELA
 	select HAVE_DEBUG_STACKOVERFLOW
-	select HAVE_DMA_ATTRS
 
 config GENERIC_CSUM
 	def_bool y
