@@ -329,16 +329,16 @@ uuid(void)
 
 static struct dentry test_dentry[4] __initdata = {
 	{ .d_parent = &test_dentry[0],
-	  .d_name = { .len = 3, .name = test_dentry[0].d_iname },
+	  .d_name = QSTR_INIT(test_dentry[0].d_iname, 3),
 	  .d_iname = "foo" },
 	{ .d_parent = &test_dentry[0],
-	  .d_name = { .len = 5, .name = test_dentry[1].d_iname },
+	  .d_name = QSTR_INIT(test_dentry[1].d_iname, 5),
 	  .d_iname = "bravo" },
 	{ .d_parent = &test_dentry[1],
-	  .d_name = { .len = 4, .name = test_dentry[2].d_iname },
+	  .d_name = QSTR_INIT(test_dentry[2].d_iname, 4),
 	  .d_iname = "alfa" },
 	{ .d_parent = &test_dentry[2],
-	  .d_name = { .len = 5, .name = test_dentry[3].d_iname },
+	  .d_name = QSTR_INIT(test_dentry[3].d_iname, 5),
 	  .d_iname = "romeo" },
 };
 
