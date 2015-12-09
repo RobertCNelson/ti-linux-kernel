@@ -89,7 +89,6 @@ static int ib_device_check_mandatory(struct ib_device *device)
 		size_t offset;
 		char  *name;
 	} mandatory_table[] = {
-		IB_MANDATORY_FUNC(query_device),
 		IB_MANDATORY_FUNC(query_port),
 		IB_MANDATORY_FUNC(query_pkey),
 		IB_MANDATORY_FUNC(query_gid),
@@ -626,25 +625,6 @@ void ib_dispatch_event(struct ib_event *event)
 	spin_unlock_irqrestore(&event->device->event_handler_lock, flags);
 }
 EXPORT_SYMBOL(ib_dispatch_event);
-
-/**
- * ib_query_device - Query IB device attributes
- * @device:Device to query
- * @device_attr:Device attributes
- *
- * ib_query_device() returns the attributes of a device through the
- * @device_attr pointer.
- */
-int ib_query_device(struct ib_device *device,
-		    struct ib_device_attr *device_attr)
-{
-	struct ib_udata uhw = {.outlen = 0, .inlen = 0};
-
-	memset(device_attr, 0, sizeof(*device_attr));
-
-	return device->query_device(device, device_attr, &uhw);
-}
-EXPORT_SYMBOL(ib_query_device);
 
 /**
  * ib_query_port - Query IB port attributes

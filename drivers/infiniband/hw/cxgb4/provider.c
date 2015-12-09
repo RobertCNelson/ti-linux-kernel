@@ -305,45 +305,6 @@ static int c4iw_query_gid(struct ib_device *ibdev, u8 port, int index,
 	return 0;
 }
 
-static int c4iw_query_device(struct ib_device *ibdev, struct ib_device_attr *props,
-			     struct ib_udata *uhw)
-{
-
-	struct c4iw_dev *dev;
-
-	PDBG("%s ibdev %p\n", __func__, ibdev);
-
-	if (uhw->inlen || uhw->outlen)
-		return -EINVAL;
-
-	dev = to_c4iw_dev(ibdev);
-	memset(props, 0, sizeof *props);
-	memcpy(&props->sys_image_guid, dev->rdev.lldi.ports[0]->dev_addr, 6);
-	props->hw_ver = CHELSIO_CHIP_RELEASE(dev->rdev.lldi.adapter_type);
-	props->fw_ver = dev->rdev.lldi.fw_vers;
-	props->device_cap_flags = dev->device_cap_flags;
-	props->page_size_cap = T4_PAGESIZE_MASK;
-	props->vendor_id = (u32)dev->rdev.lldi.pdev->vendor;
-	props->vendor_part_id = (u32)dev->rdev.lldi.pdev->device;
-	props->max_mr_size = T4_MAX_MR_SIZE;
-	props->max_qp = dev->rdev.lldi.vr->qp.size / 2;
-	props->max_qp_wr = dev->rdev.hw_queue.t4_max_qp_depth;
-	props->max_sge = T4_MAX_RECV_SGE;
-	props->max_sge_rd = 1;
-	props->max_res_rd_atom = dev->rdev.lldi.max_ird_adapter;
-	props->max_qp_rd_atom = min(dev->rdev.lldi.max_ordird_qp,
-				    c4iw_max_read_depth);
-	props->max_qp_init_rd_atom = props->max_qp_rd_atom;
-	props->max_cq = dev->rdev.lldi.vr->qp.size;
-	props->max_cqe = dev->rdev.hw_queue.t4_max_cq_depth;
-	props->max_mr = c4iw_num_stags(&dev->rdev);
-	props->max_pd = T4_MAX_NUM_PD;
-	props->local_ca_ack_delay = 0;
-	props->max_fast_reg_page_list_len = t4_max_fr_depth(use_dsgl);
-
-	return 0;
-}
-
 static int c4iw_query_port(struct ib_device *ibdev, u8 port,
 			   struct ib_port_attr *props)
 {
@@ -529,7 +490,6 @@ int c4iw_register_device(struct c4iw_dev *dev)
 	dev->ibdev.phys_port_cnt = dev->rdev.lldi.nports;
 	dev->ibdev.num_comp_vectors =  dev->rdev.lldi.nciq;
 	dev->ibdev.dma_device = &(dev->rdev.lldi.pdev->dev);
-	dev->ibdev.query_device = c4iw_query_device;
 	dev->ibdev.query_port = c4iw_query_port;
 	dev->ibdev.query_pkey = c4iw_query_pkey;
 	dev->ibdev.query_gid = c4iw_query_gid;
@@ -580,6 +540,30 @@ int c4iw_register_device(struct c4iw_dev *dev)
 	dev->ibdev.iwcm->add_ref = c4iw_qp_add_ref;
 	dev->ibdev.iwcm->rem_ref = c4iw_qp_rem_ref;
 	dev->ibdev.iwcm->get_qp = c4iw_get_qp;
+
+	memcpy(&dev->ibdev.sys_image_guid,
+		dev->rdev.lldi.ports[0]->dev_addr, 6);
+	dev->ibdev.hw_ver = CHELSIO_CHIP_RELEASE(dev->rdev.lldi.adapter_type);
+	dev->ibdev.fw_ver = dev->rdev.lldi.fw_vers;
+	dev->ibdev.device_cap_flags = dev->device_cap_flags;
+	dev->ibdev.page_size_cap = T4_PAGESIZE_MASK;
+	dev->ibdev.vendor_id = (u32)dev->rdev.lldi.pdev->vendor;
+	dev->ibdev.vendor_part_id = (u32)dev->rdev.lldi.pdev->device;
+	dev->ibdev.max_mr_size = T4_MAX_MR_SIZE;
+	dev->ibdev.max_qp = dev->rdev.lldi.vr->qp.size / 2;
+	dev->ibdev.max_qp_wr = dev->rdev.hw_queue.t4_max_qp_depth;
+	dev->ibdev.max_sge = T4_MAX_RECV_SGE;
+	dev->ibdev.max_sge_rd = 1;
+	dev->ibdev.max_res_rd_atom = dev->rdev.lldi.max_ird_adapter;
+	dev->ibdev.max_qp_rd_atom = min(dev->rdev.lldi.max_ordird_qp,
+				    c4iw_max_read_depth);
+	dev->ibdev.max_qp_init_rd_atom = dev->ibdev.max_qp_rd_atom;
+	dev->ibdev.max_cq = dev->rdev.lldi.vr->qp.size;
+	dev->ibdev.max_cqe = dev->rdev.hw_queue.t4_max_cq_depth;
+	dev->ibdev.max_mr = c4iw_num_stags(&dev->rdev);
+	dev->ibdev.max_pd = T4_MAX_NUM_PD;
+	dev->ibdev.local_ca_ack_delay = 0;
+	dev->ibdev.max_fast_reg_page_list_len = t4_max_fr_depth(use_dsgl);
 
 	ret = ib_register_device(&dev->ibdev, NULL);
 	if (ret)

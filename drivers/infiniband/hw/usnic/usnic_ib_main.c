@@ -388,7 +388,6 @@ static void *usnic_ib_device_add(struct pci_dev *dev)
 		(1ull << IB_USER_VERBS_CMD_DETACH_MCAST) |
 		(1ull << IB_USER_VERBS_CMD_OPEN_QP);
 
-	us_ibdev->ib_dev.query_device = usnic_ib_query_device;
 	us_ibdev->ib_dev.query_port = usnic_ib_query_port;
 	us_ibdev->ib_dev.query_pkey = usnic_ib_query_pkey;
 	us_ibdev->ib_dev.query_gid = usnic_ib_query_gid;
@@ -415,6 +414,8 @@ static void *usnic_ib_device_add(struct pci_dev *dev)
 	us_ibdev->ib_dev.get_dma_mr = usnic_ib_get_dma_mr;
 	us_ibdev->ib_dev.get_port_immutable = usnic_port_immutable;
 
+	if (usnic_ib_init_device_flags(&us_ibdev->ib_dev))
+		goto err_fwd_dealloc;
 
 	if (ib_register_device(&us_ibdev->ib_dev, NULL))
 		goto err_fwd_dealloc;

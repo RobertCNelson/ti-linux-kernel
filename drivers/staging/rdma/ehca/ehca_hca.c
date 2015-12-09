@@ -50,8 +50,7 @@ static unsigned int limit_uint(unsigned int value)
 	return min_t(unsigned int, value, INT_MAX);
 }
 
-int ehca_query_device(struct ib_device *ibdev, struct ib_device_attr *props,
-		      struct ib_udata *uhw)
+int ehca_init_device_limits(struct ib_device *ibdev)
 {
 	int i, ret = 0;
 	struct ehca_shca *shca = container_of(ibdev, struct ehca_shca,
@@ -72,8 +71,6 @@ int ehca_query_device(struct ib_device *ibdev, struct ib_device_attr *props,
 		IB_DEVICE_PORT_ACTIVE_EVENT,  HCA_CAP_PORT_ACTIVE_EVENT,
 	};
 
-	if (uhw->inlen || uhw->outlen)
-		return -EINVAL;
 
 	rblock = ehca_alloc_fw_ctrlblock(GFP_KERNEL);
 	if (!rblock) {
@@ -87,55 +84,54 @@ int ehca_query_device(struct ib_device *ibdev, struct ib_device_attr *props,
 		goto query_device1;
 	}
 
-	memset(props, 0, sizeof(struct ib_device_attr));
-	props->page_size_cap   = shca->hca_cap_mr_pgsize;
-	props->fw_ver          = rblock->hw_ver;
-	props->max_mr_size     = rblock->max_mr_size;
-	props->vendor_id       = rblock->vendor_id >> 8;
-	props->vendor_part_id  = rblock->vendor_part_id >> 16;
-	props->hw_ver          = rblock->hw_ver;
-	props->max_qp          = limit_uint(rblock->max_qp);
-	props->max_qp_wr       = limit_uint(rblock->max_wqes_wq);
-	props->max_sge         = limit_uint(rblock->max_sge);
-	props->max_sge_rd      = limit_uint(rblock->max_sge_rd);
-	props->max_cq          = limit_uint(rblock->max_cq);
-	props->max_cqe         = limit_uint(rblock->max_cqe);
-	props->max_mr          = limit_uint(rblock->max_mr);
-	props->max_mw          = limit_uint(rblock->max_mw);
-	props->max_pd          = limit_uint(rblock->max_pd);
-	props->max_ah          = limit_uint(rblock->max_ah);
-	props->max_ee          = limit_uint(rblock->max_rd_ee_context);
-	props->max_rdd         = limit_uint(rblock->max_rd_domain);
-	props->max_fmr         = limit_uint(rblock->max_mr);
-	props->max_qp_rd_atom  = limit_uint(rblock->max_rr_qp);
-	props->max_ee_rd_atom  = limit_uint(rblock->max_rr_ee_context);
-	props->max_res_rd_atom = limit_uint(rblock->max_rr_hca);
-	props->max_qp_init_rd_atom = limit_uint(rblock->max_act_wqs_qp);
-	props->max_ee_init_rd_atom = limit_uint(rblock->max_act_wqs_ee_context);
+	ibdev->page_size_cap   = shca->hca_cap_mr_pgsize;
+	ibdev->fw_ver          = rblock->hw_ver;
+	ibdev->max_mr_size     = rblock->max_mr_size;
+	ibdev->vendor_id       = rblock->vendor_id >> 8;
+	ibdev->vendor_part_id  = rblock->vendor_part_id >> 16;
+	ibdev->hw_ver          = rblock->hw_ver;
+	ibdev->max_qp          = limit_uint(rblock->max_qp);
+	ibdev->max_qp_wr       = limit_uint(rblock->max_wqes_wq);
+	ibdev->max_sge         = limit_uint(rblock->max_sge);
+	ibdev->max_sge_rd      = limit_uint(rblock->max_sge_rd);
+	ibdev->max_cq          = limit_uint(rblock->max_cq);
+	ibdev->max_cqe         = limit_uint(rblock->max_cqe);
+	ibdev->max_mr          = limit_uint(rblock->max_mr);
+	ibdev->max_mw          = limit_uint(rblock->max_mw);
+	ibdev->max_pd          = limit_uint(rblock->max_pd);
+	ibdev->max_ah          = limit_uint(rblock->max_ah);
+	ibdev->max_ee          = limit_uint(rblock->max_rd_ee_context);
+	ibdev->max_rdd         = limit_uint(rblock->max_rd_domain);
+	ibdev->max_fmr         = limit_uint(rblock->max_mr);
+	ibdev->max_qp_rd_atom  = limit_uint(rblock->max_rr_qp);
+	ibdev->max_ee_rd_atom  = limit_uint(rblock->max_rr_ee_context);
+	ibdev->max_res_rd_atom = limit_uint(rblock->max_rr_hca);
+	ibdev->max_qp_init_rd_atom = limit_uint(rblock->max_act_wqs_qp);
+	ibdev->max_ee_init_rd_atom = limit_uint(rblock->max_act_wqs_ee_context);
 
 	if (EHCA_BMASK_GET(HCA_CAP_SRQ, shca->hca_cap)) {
-		props->max_srq         = limit_uint(props->max_qp);
-		props->max_srq_wr      = limit_uint(props->max_qp_wr);
-		props->max_srq_sge     = 3;
+		ibdev->max_srq         = limit_uint(ibdev->max_qp);
+		ibdev->max_srq_wr      = limit_uint(ibdev->max_qp_wr);
+		ibdev->max_srq_sge     = 3;
 	}
 
-	props->max_pkeys           = 16;
+	ibdev->max_pkeys           = 16;
 	/* Some FW versions say 0 here; insert sensible value in that case */
-	props->local_ca_ack_delay  = rblock->local_ca_ack_delay ?
+	ibdev->local_ca_ack_delay  = rblock->local_ca_ack_delay ?
 		min_t(u8, rblock->local_ca_ack_delay, 255) : 12;
-	props->max_raw_ipv6_qp     = limit_uint(rblock->max_raw_ipv6_qp);
-	props->max_raw_ethy_qp     = limit_uint(rblock->max_raw_ethy_qp);
-	props->max_mcast_grp       = limit_uint(rblock->max_mcast_grp);
-	props->max_mcast_qp_attach = limit_uint(rblock->max_mcast_qp_attach);
-	props->max_total_mcast_qp_attach
+	ibdev->max_raw_ipv6_qp     = limit_uint(rblock->max_raw_ipv6_qp);
+	ibdev->max_raw_ethy_qp     = limit_uint(rblock->max_raw_ethy_qp);
+	ibdev->max_mcast_grp       = limit_uint(rblock->max_mcast_grp);
+	ibdev->max_mcast_qp_attach = limit_uint(rblock->max_mcast_qp_attach);
+	ibdev->max_total_mcast_qp_attach
 		= limit_uint(rblock->max_total_mcast_qp_attach);
 
 	/* translate device capabilities */
-	props->device_cap_flags = IB_DEVICE_SYS_IMAGE_GUID |
+	ibdev->device_cap_flags = IB_DEVICE_SYS_IMAGE_GUID |
 		IB_DEVICE_RC_RNR_NAK_GEN | IB_DEVICE_N_NOTIFY_CQ;
 	for (i = 0; i < ARRAY_SIZE(cap_mapping); i += 2)
 		if (rblock->hca_cap_indicators & cap_mapping[i + 1])
-			props->device_cap_flags |= cap_mapping[i];
+			ibdev->device_cap_flags |= cap_mapping[i];
 
 query_device1:
 	ehca_free_fw_ctrlblock(rblock);

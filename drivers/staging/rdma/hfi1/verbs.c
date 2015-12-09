@@ -1372,57 +1372,6 @@ int hfi1_verbs_send(struct hfi1_qp *qp, struct ahg_ib_header *ahdr,
 	return ret;
 }
 
-static int query_device(struct ib_device *ibdev,
-			struct ib_device_attr *props,
-			struct ib_udata *uhw)
-{
-	struct hfi1_devdata *dd = dd_from_ibdev(ibdev);
-	struct hfi1_ibdev *dev = to_idev(ibdev);
-
-	if (uhw->inlen || uhw->outlen)
-		return -EINVAL;
-	memset(props, 0, sizeof(*props));
-
-	props->device_cap_flags = IB_DEVICE_BAD_PKEY_CNTR |
-		IB_DEVICE_BAD_QKEY_CNTR | IB_DEVICE_SHUTDOWN_PORT |
-		IB_DEVICE_SYS_IMAGE_GUID | IB_DEVICE_RC_RNR_NAK_GEN |
-		IB_DEVICE_PORT_ACTIVE_EVENT | IB_DEVICE_SRQ_RESIZE;
-
-	props->page_size_cap = PAGE_SIZE;
-	props->vendor_id =
-		dd->oui1 << 16 | dd->oui2 << 8 | dd->oui3;
-	props->vendor_part_id = dd->pcidev->device;
-	props->hw_ver = dd->minrev;
-	props->sys_image_guid = ib_hfi1_sys_image_guid;
-	props->max_mr_size = ~0ULL;
-	props->max_qp = hfi1_max_qps;
-	props->max_qp_wr = hfi1_max_qp_wrs;
-	props->max_sge = hfi1_max_sges;
-	props->max_sge_rd = hfi1_max_sges;
-	props->max_cq = hfi1_max_cqs;
-	props->max_ah = hfi1_max_ahs;
-	props->max_cqe = hfi1_max_cqes;
-	props->max_mr = dev->lk_table.max;
-	props->max_fmr = dev->lk_table.max;
-	props->max_map_per_fmr = 32767;
-	props->max_pd = hfi1_max_pds;
-	props->max_qp_rd_atom = HFI1_MAX_RDMA_ATOMIC;
-	props->max_qp_init_rd_atom = 255;
-	/* props->max_res_rd_atom */
-	props->max_srq = hfi1_max_srqs;
-	props->max_srq_wr = hfi1_max_srq_wrs;
-	props->max_srq_sge = hfi1_max_srq_sges;
-	/* props->local_ca_ack_delay */
-	props->atomic_cap = IB_ATOMIC_GLOB;
-	props->max_pkeys = hfi1_get_npkeys(dd);
-	props->max_mcast_grp = hfi1_max_mcast_grps;
-	props->max_mcast_qp_attach = hfi1_max_mcast_qp_attached;
-	props->max_total_mcast_qp_attach = props->max_mcast_qp_attach *
-		props->max_mcast_grp;
-
-	return 0;
-}
-
 static inline u16 opa_speed_to_ib(u16 in)
 {
 	u16 out = 0;
@@ -2032,7 +1981,6 @@ int hfi1_register_ib_device(struct hfi1_devdata *dd)
 	ibdev->phys_port_cnt = dd->num_pports;
 	ibdev->num_comp_vectors = 1;
 	ibdev->dma_device = &dd->pcidev->dev;
-	ibdev->query_device = query_device;
 	ibdev->modify_device = modify_device;
 	ibdev->query_port = query_port;
 	ibdev->modify_port = modify_port;
@@ -2077,6 +2025,43 @@ int hfi1_register_ib_device(struct hfi1_devdata *dd)
 	ibdev->mmap = hfi1_mmap;
 	ibdev->dma_ops = &hfi1_dma_mapping_ops;
 	ibdev->get_port_immutable = port_immutable;
+
+	ibdev->device_cap_flags = IB_DEVICE_BAD_PKEY_CNTR |
+		IB_DEVICE_BAD_QKEY_CNTR | IB_DEVICE_SHUTDOWN_PORT |
+		IB_DEVICE_SYS_IMAGE_GUID | IB_DEVICE_RC_RNR_NAK_GEN |
+		IB_DEVICE_PORT_ACTIVE_EVENT | IB_DEVICE_SRQ_RESIZE;
+
+	ibdev->page_size_cap = PAGE_SIZE;
+	ibdev->vendor_id =
+		dd->oui1 << 16 | dd->oui2 << 8 | dd->oui3;
+	ibdev->vendor_part_id = dd->pcidev->device;
+	ibdev->hw_ver = dd->minrev;
+	ibdev->sys_image_guid = ib_hfi1_sys_image_guid;
+	ibdev->max_mr_size = ~0ULL;
+	ibdev->max_qp = hfi1_max_qps;
+	ibdev->max_qp_wr = hfi1_max_qp_wrs;
+	ibdev->max_sge = hfi1_max_sges;
+	ibdev->max_sge_rd = hfi1_max_sges;
+	ibdev->max_cq = hfi1_max_cqs;
+	ibdev->max_ah = hfi1_max_ahs;
+	ibdev->max_cqe = hfi1_max_cqes;
+	ibdev->max_mr = dev->lk_table.max;
+	ibdev->max_fmr = dev->lk_table.max;
+	ibdev->max_map_per_fmr = 32767;
+	ibdev->max_pd = hfi1_max_pds;
+	ibdev->max_qp_rd_atom = HFI1_MAX_RDMA_ATOMIC;
+	ibdev->max_qp_init_rd_atom = 255;
+	/* ibdev->max_res_rd_atom */
+	ibdev->max_srq = hfi1_max_srqs;
+	ibdev->max_srq_wr = hfi1_max_srq_wrs;
+	ibdev->max_srq_sge = hfi1_max_srq_sges;
+	/* ibdev->local_ca_ack_delay */
+	ibdev->atomic_cap = IB_ATOMIC_GLOB;
+	ibdev->max_pkeys = hfi1_get_npkeys(dd);
+	ibdev->max_mcast_grp = hfi1_max_mcast_grps;
+	ibdev->max_mcast_qp_attach = hfi1_max_mcast_qp_attached;
+	ibdev->max_total_mcast_qp_attach = ibdev->max_mcast_qp_attach *
+		ibdev->max_mcast_grp;
 
 	strncpy(ibdev->node_desc, init_utsname()->nodename,
 		sizeof(ibdev->node_desc));

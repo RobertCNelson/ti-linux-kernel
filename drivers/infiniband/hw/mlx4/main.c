@@ -356,15 +356,12 @@ int mlx4_ib_gid_index_to_real_index(struct mlx4_ib_dev *ibdev,
 	return real_index;
 }
 
-static int mlx4_ib_query_device(struct ib_device *ibdev,
-				struct ib_device_attr *props,
-				struct ib_udata *uhw)
+static int mlx4_ib_query_device(struct ib_device *ibdev, struct ib_udata *uhw)
 {
 	struct mlx4_ib_dev *dev = to_mdev(ibdev);
 	struct ib_smp *in_mad  = NULL;
 	struct ib_smp *out_mad = NULL;
 	int err = -ENOMEM;
-	int have_ib_ports;
 	struct mlx4_uverbs_ex_query_device cmd;
 	struct mlx4_uverbs_ex_query_device_resp resp = {.comp_mask = 0};
 	struct mlx4_clock_params clock_params;
@@ -399,88 +396,6 @@ static int mlx4_ib_query_device(struct ib_device *ibdev,
 	if (err)
 		goto out;
 
-	memset(props, 0, sizeof *props);
-
-	have_ib_ports = num_ib_ports(dev->dev);
-
-	props->fw_ver = dev->dev->caps.fw_ver;
-	props->device_cap_flags    = IB_DEVICE_CHANGE_PHY_PORT |
-		IB_DEVICE_PORT_ACTIVE_EVENT		|
-		IB_DEVICE_SYS_IMAGE_GUID		|
-		IB_DEVICE_RC_RNR_NAK_GEN		|
-		IB_DEVICE_BLOCK_MULTICAST_LOOPBACK;
-	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_BAD_PKEY_CNTR)
-		props->device_cap_flags |= IB_DEVICE_BAD_PKEY_CNTR;
-	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_BAD_QKEY_CNTR)
-		props->device_cap_flags |= IB_DEVICE_BAD_QKEY_CNTR;
-	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_APM && have_ib_ports)
-		props->device_cap_flags |= IB_DEVICE_AUTO_PATH_MIG;
-	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_UD_AV_PORT)
-		props->device_cap_flags |= IB_DEVICE_UD_AV_PORT_ENFORCE;
-	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_IPOIB_CSUM)
-		props->device_cap_flags |= IB_DEVICE_UD_IP_CSUM;
-	if (dev->dev->caps.max_gso_sz &&
-	    (dev->dev->rev_id != MLX4_IB_CARD_REV_A0) &&
-	    (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_BLH))
-		props->device_cap_flags |= IB_DEVICE_UD_TSO;
-	if (dev->dev->caps.bmme_flags & MLX4_BMME_FLAG_RESERVED_LKEY)
-		props->device_cap_flags |= IB_DEVICE_LOCAL_DMA_LKEY;
-	if ((dev->dev->caps.bmme_flags & MLX4_BMME_FLAG_LOCAL_INV) &&
-	    (dev->dev->caps.bmme_flags & MLX4_BMME_FLAG_REMOTE_INV) &&
-	    (dev->dev->caps.bmme_flags & MLX4_BMME_FLAG_FAST_REG_WR))
-		props->device_cap_flags |= IB_DEVICE_MEM_MGT_EXTENSIONS;
-	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_XRC)
-		props->device_cap_flags |= IB_DEVICE_XRC;
-	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_MEM_WINDOW)
-		props->device_cap_flags |= IB_DEVICE_MEM_WINDOW;
-	if (dev->dev->caps.bmme_flags & MLX4_BMME_FLAG_TYPE_2_WIN) {
-		if (dev->dev->caps.bmme_flags & MLX4_BMME_FLAG_WIN_TYPE_2B)
-			props->device_cap_flags |= IB_DEVICE_MEM_WINDOW_TYPE_2B;
-		else
-			props->device_cap_flags |= IB_DEVICE_MEM_WINDOW_TYPE_2A;
-	if (dev->steering_support ==  MLX4_STEERING_MODE_DEVICE_MANAGED)
-		props->device_cap_flags |= IB_DEVICE_MANAGED_FLOW_STEERING;
-	}
-
-	props->device_cap_flags |= IB_DEVICE_RAW_IP_CSUM;
-
-	props->vendor_id	   = be32_to_cpup((__be32 *) (out_mad->data + 36)) &
-		0xffffff;
-	props->vendor_part_id	   = dev->dev->persist->pdev->device;
-	props->hw_ver		   = be32_to_cpup((__be32 *) (out_mad->data + 32));
-	memcpy(&props->sys_image_guid, out_mad->data +	4, 8);
-
-	props->max_mr_size	   = ~0ull;
-	props->page_size_cap	   = dev->dev->caps.page_size_cap;
-	props->max_qp		   = dev->dev->quotas.qp;
-	props->max_qp_wr	   = dev->dev->caps.max_wqes - MLX4_IB_SQ_MAX_SPARE;
-	props->max_sge		   = min(dev->dev->caps.max_sq_sg,
-					 dev->dev->caps.max_rq_sg);
-	props->max_sge_rd	   = MLX4_MAX_SGE_RD;
-	props->max_cq		   = dev->dev->quotas.cq;
-	props->max_cqe		   = dev->dev->caps.max_cqes;
-	props->max_mr		   = dev->dev->quotas.mpt;
-	props->max_pd		   = dev->dev->caps.num_pds - dev->dev->caps.reserved_pds;
-	props->max_qp_rd_atom	   = dev->dev->caps.max_qp_dest_rdma;
-	props->max_qp_init_rd_atom = dev->dev->caps.max_qp_init_rdma;
-	props->max_res_rd_atom	   = props->max_qp_rd_atom * props->max_qp;
-	props->max_srq		   = dev->dev->quotas.srq;
-	props->max_srq_wr	   = dev->dev->caps.max_srq_wqes - 1;
-	props->max_srq_sge	   = dev->dev->caps.max_srq_sge;
-	props->max_fast_reg_page_list_len = MLX4_MAX_FAST_REG_PAGES;
-	props->local_ca_ack_delay  = dev->dev->caps.local_ca_ack_delay;
-	props->atomic_cap	   = dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_ATOMIC ?
-		IB_ATOMIC_HCA : IB_ATOMIC_NONE;
-	props->masked_atomic_cap   = props->atomic_cap;
-	props->max_pkeys	   = dev->dev->caps.pkey_table_len[1];
-	props->max_mcast_grp	   = dev->dev->caps.num_mgms + dev->dev->caps.num_amgms;
-	props->max_mcast_qp_attach = dev->dev->caps.num_qp_per_mgm;
-	props->max_total_mcast_qp_attach = props->max_mcast_qp_attach *
-					   props->max_mcast_grp;
-	props->max_map_per_fmr = dev->dev->caps.max_fmr_maps;
-	props->hca_core_clock = dev->dev->caps.hca_core_clock * 1000UL;
-	props->timestamp_mask = 0xFFFFFFFFFFFFULL;
-
 	if (!mlx4_is_slave(dev->dev))
 		err = mlx4_get_internal_clock_params(dev->dev, &clock_params);
 
@@ -497,6 +412,121 @@ static int mlx4_ib_query_device(struct ib_device *ibdev,
 		if (err)
 			goto out;
 	}
+out:
+	kfree(in_mad);
+	kfree(out_mad);
+
+	return err;
+}
+
+static int mlx4_ib_init_device_flags(struct ib_device *ibdev)
+{
+	struct mlx4_ib_dev *dev = to_mdev(ibdev);
+	struct ib_smp *in_mad  = NULL;
+	struct ib_smp *out_mad = NULL;
+	int err = -ENOMEM;
+	int have_ib_ports;
+	struct mlx4_uverbs_ex_query_device_resp resp = {.comp_mask = 0};
+	struct mlx4_clock_params clock_params;
+
+	resp.response_length = offsetof(typeof(resp), response_length) +
+		sizeof(resp.response_length);
+	in_mad  = kzalloc(sizeof *in_mad, GFP_KERNEL);
+	out_mad = kmalloc(sizeof *out_mad, GFP_KERNEL);
+	if (!in_mad || !out_mad)
+		goto out;
+
+	init_query_mad(in_mad);
+	in_mad->attr_id = IB_SMP_ATTR_NODE_INFO;
+
+	err = mlx4_MAD_IFC(to_mdev(ibdev), MLX4_MAD_IFC_IGNORE_KEYS,
+			   1, NULL, NULL, in_mad, out_mad);
+	if (err)
+		goto out;
+
+	have_ib_ports = num_ib_ports(dev->dev);
+
+	ibdev->fw_ver = dev->dev->caps.fw_ver;
+	ibdev->device_cap_flags    = IB_DEVICE_CHANGE_PHY_PORT |
+		IB_DEVICE_PORT_ACTIVE_EVENT		|
+		IB_DEVICE_SYS_IMAGE_GUID		|
+		IB_DEVICE_RC_RNR_NAK_GEN		|
+		IB_DEVICE_BLOCK_MULTICAST_LOOPBACK;
+	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_BAD_PKEY_CNTR)
+		ibdev->device_cap_flags |= IB_DEVICE_BAD_PKEY_CNTR;
+	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_BAD_QKEY_CNTR)
+		ibdev->device_cap_flags |= IB_DEVICE_BAD_QKEY_CNTR;
+	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_APM && have_ib_ports)
+		ibdev->device_cap_flags |= IB_DEVICE_AUTO_PATH_MIG;
+	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_UD_AV_PORT)
+		ibdev->device_cap_flags |= IB_DEVICE_UD_AV_PORT_ENFORCE;
+	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_IPOIB_CSUM)
+		ibdev->device_cap_flags |= IB_DEVICE_UD_IP_CSUM;
+	if (dev->dev->caps.max_gso_sz &&
+	    (dev->dev->rev_id != MLX4_IB_CARD_REV_A0) &&
+	    (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_BLH))
+		ibdev->device_cap_flags |= IB_DEVICE_UD_TSO;
+	if (dev->dev->caps.bmme_flags & MLX4_BMME_FLAG_RESERVED_LKEY)
+		ibdev->device_cap_flags |= IB_DEVICE_LOCAL_DMA_LKEY;
+	if ((dev->dev->caps.bmme_flags & MLX4_BMME_FLAG_LOCAL_INV) &&
+	    (dev->dev->caps.bmme_flags & MLX4_BMME_FLAG_REMOTE_INV) &&
+	    (dev->dev->caps.bmme_flags & MLX4_BMME_FLAG_FAST_REG_WR))
+		ibdev->device_cap_flags |= IB_DEVICE_MEM_MGT_EXTENSIONS;
+	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_XRC)
+		ibdev->device_cap_flags |= IB_DEVICE_XRC;
+	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_MEM_WINDOW)
+		ibdev->device_cap_flags |= IB_DEVICE_MEM_WINDOW;
+	if (dev->dev->caps.bmme_flags & MLX4_BMME_FLAG_TYPE_2_WIN) {
+		if (dev->dev->caps.bmme_flags & MLX4_BMME_FLAG_WIN_TYPE_2B)
+			ibdev->device_cap_flags |= IB_DEVICE_MEM_WINDOW_TYPE_2B;
+		else
+			ibdev->device_cap_flags |= IB_DEVICE_MEM_WINDOW_TYPE_2A;
+		if (dev->steering_support ==  MLX4_STEERING_MODE_DEVICE_MANAGED)
+			ibdev->device_cap_flags |= IB_DEVICE_MANAGED_FLOW_STEERING;
+	}
+
+	ibdev->device_cap_flags |= IB_DEVICE_RAW_IP_CSUM;
+
+	ibdev->vendor_id	   = be32_to_cpup((__be32 *) (out_mad->data + 36)) &
+		0xffffff;
+	ibdev->vendor_part_id	   = dev->dev->persist->pdev->device;
+	ibdev->hw_ver		   = be32_to_cpup((__be32 *) (out_mad->data + 32));
+	memcpy(&ibdev->sys_image_guid, out_mad->data +	4, 8);
+
+	ibdev->max_mr_size	   = ~0ull;
+	ibdev->page_size_cap	   = dev->dev->caps.page_size_cap;
+	ibdev->max_qp		   = dev->dev->quotas.qp;
+	ibdev->max_qp_wr	   = dev->dev->caps.max_wqes - MLX4_IB_SQ_MAX_SPARE;
+	ibdev->max_sge		   = min(dev->dev->caps.max_sq_sg,
+					 dev->dev->caps.max_rq_sg);
+	ibdev->max_sge_rd	   = MLX4_MAX_SGE_RD;
+	ibdev->max_cq		   = dev->dev->quotas.cq;
+	ibdev->max_cqe		   = dev->dev->caps.max_cqes;
+	ibdev->max_mr		   = dev->dev->quotas.mpt;
+	ibdev->max_pd		   = dev->dev->caps.num_pds - dev->dev->caps.reserved_pds;
+	ibdev->max_qp_rd_atom	   = dev->dev->caps.max_qp_dest_rdma;
+	ibdev->max_qp_init_rd_atom = dev->dev->caps.max_qp_init_rdma;
+	ibdev->max_res_rd_atom	   = ibdev->max_qp_rd_atom * ibdev->max_qp;
+	ibdev->max_srq		   = dev->dev->quotas.srq;
+	ibdev->max_srq_wr	   = dev->dev->caps.max_srq_wqes - 1;
+	ibdev->max_srq_sge	   = dev->dev->caps.max_srq_sge;
+	ibdev->max_fast_reg_page_list_len = MLX4_MAX_FAST_REG_PAGES;
+	ibdev->local_ca_ack_delay  = dev->dev->caps.local_ca_ack_delay;
+	ibdev->atomic_cap	   = dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_ATOMIC ?
+		IB_ATOMIC_HCA : IB_ATOMIC_NONE;
+	ibdev->masked_atomic_cap   = ibdev->atomic_cap;
+	ibdev->max_pkeys	   = dev->dev->caps.pkey_table_len[1];
+	ibdev->max_mcast_grp	   = dev->dev->caps.num_mgms + dev->dev->caps.num_amgms;
+	ibdev->max_mcast_qp_attach = dev->dev->caps.num_qp_per_mgm;
+	ibdev->max_total_mcast_qp_attach = ibdev->max_mcast_qp_attach *
+					   ibdev->max_mcast_grp;
+	ibdev->max_map_per_fmr = dev->dev->caps.max_fmr_maps;
+	ibdev->hca_core_clock = dev->dev->caps.hca_core_clock * 1000UL;
+	ibdev->timestamp_mask = 0xFFFFFFFFFFFFULL;
+
+	if (!mlx4_is_slave(dev->dev))
+		err = mlx4_get_internal_clock_params(dev->dev, &clock_params);
+
 out:
 	kfree(in_mad);
 	kfree(out_mad);
@@ -2317,6 +2347,9 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 	mlx4_ib_alloc_eqs(dev, ibdev);
 
 	spin_lock_init(&iboe->lock);
+
+	if (mlx4_ib_init_device_flags(&ibdev->ib_dev))
+		goto err_map;
 
 	if (init_node_data(ibdev))
 		goto err_map;

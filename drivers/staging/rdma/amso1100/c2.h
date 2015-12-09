@@ -306,9 +306,6 @@ struct c2_dev {
 	struct list_head eh_wakeup_list;	/* event wakeup list */
 	wait_queue_head_t req_vq_wo;
 
-	/* Cached RNIC properties */
-	struct ib_device_attr props;
-
 	struct c2_pd_table pd_table;
 	struct c2_qp_table qp_table;
 	int ports;		/* num of GigE ports */

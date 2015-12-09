@@ -484,7 +484,6 @@ static int ehca_init_device(struct ehca_shca *shca)
 	shca->ib_device.phys_port_cnt       = shca->num_ports;
 	shca->ib_device.num_comp_vectors    = 1;
 	shca->ib_device.dma_device          = &shca->ofdev->dev;
-	shca->ib_device.query_device        = ehca_query_device;
 	shca->ib_device.query_port          = ehca_query_port;
 	shca->ib_device.query_gid           = ehca_query_gid;
 	shca->ib_device.query_pkey          = ehca_query_pkey;
@@ -545,7 +544,7 @@ static int ehca_init_device(struct ehca_shca *shca)
 		shca->ib_device.post_srq_recv       = ehca_post_srq_recv;
 	}
 
-	return ret;
+	return ehca_init_device_limits(&shca->ib_device);
 }
 
 static int ehca_create_aqp1(struct ehca_shca *shca, u32 port)

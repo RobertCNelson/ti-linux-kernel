@@ -44,8 +44,7 @@
 
 #include "ehca_classes.h"
 
-int ehca_query_device(struct ib_device *ibdev, struct ib_device_attr *props,
-		      struct ib_udata *uhw);
+int ehca_init_device_limits(struct ib_device *ibdev);
 
 int ehca_query_port(struct ib_device *ibdev, u8 port,
 		    struct ib_port_attr *props);
