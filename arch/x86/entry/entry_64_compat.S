@@ -18,13 +18,6 @@
 
 	.section .entry.text, "ax"
 
-#ifdef CONFIG_PARAVIRT
-ENTRY(native_usergs_sysret32)
-	swapgs
-	sysretl
-ENDPROC(native_usergs_sysret32)
-#endif
-
 /*
  * 32-bit SYSENTER instruction entry.
  *
@@ -121,8 +114,9 @@ sysenter_flags_fixed:
 
 	movq	%rsp, %rdi
 	call	do_fast_syscall_32
-	testl	%eax, %eax
-	jz	.Lsyscall_32_done
+	/* XEN PV guests always use IRET path */
+	ALTERNATIVE "testl %eax, %eax; jz .Lsyscall_32_done", \
+		    "jmp .Lsyscall_32_done", X86_FEATURE_XENPV
 	jmp	sysret32_from_system_call
 
 sysenter_fix_flags:
@@ -200,8 +194,9 @@ ENTRY(entry_SYSCALL_compat)
 
 	movq	%rsp, %rdi
 	call	do_fast_syscall_32
-	testl	%eax, %eax
-	jz	.Lsyscall_32_done
+	/* XEN PV guests always use IRET path */
+	ALTERNATIVE "testl %eax, %eax; jz .Lsyscall_32_done", \
+		    "jmp .Lsyscall_32_done", X86_FEATURE_XENPV
 
 	/* Opportunistic SYSRET */
 sysret32_from_system_call:
@@ -236,7 +231,8 @@ sysret32_from_system_call:
 	xorq	%r9, %r9
 	xorq	%r10, %r10
 	movq	RSP-ORIG_RAX(%rsp), %rsp
-        USERGS_SYSRET32
+	swapgs
+	sysretl
 END(entry_SYSCALL_compat)
 
 /*
