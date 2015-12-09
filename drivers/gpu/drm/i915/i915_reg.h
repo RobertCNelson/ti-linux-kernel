@@ -2973,6 +2973,13 @@ enum skl_disp_power_wells {
 #define OGAMC0			_MMIO(0x30024)
 
 /*
+ * GEN9 clock gating regs
+ */
+#define GEN9_CLKGATE_DIS_0		_MMIO(0x46530)
+#define   PWM2_GATING_DIS		(1 << 14)
+#define   PWM1_GATING_DIS		(1 << 13)
+
+/*
  * Display engine regs
  */
 
@@ -7320,6 +7327,7 @@ enum skl_disp_power_wells {
 #define  SBI_READY			(0x0<<0)
 
 /* SBI offsets */
+#define  SBI_SSCDIVINTPHASE			0x0200
 #define  SBI_SSCDIVINTPHASE6			0x0600
 #define   SBI_SSCDIVINTPHASE_DIVSEL_MASK	((0x7f)<<1)
 #define   SBI_SSCDIVINTPHASE_DIVSEL(x)		((x)<<1)
@@ -7327,6 +7335,7 @@ enum skl_disp_power_wells {
 #define   SBI_SSCDIVINTPHASE_INCVAL(x)		((x)<<8)
 #define   SBI_SSCDIVINTPHASE_DIR(x)		((x)<<15)
 #define   SBI_SSCDIVINTPHASE_PROPAGATE		(1<<0)
+#define  SBI_SSCDITHPHASE			0x0204
 #define  SBI_SSCCTL				0x020c
 #define  SBI_SSCCTL6				0x060C
 #define   SBI_SSCCTL_PATHALT			(1<<3)
@@ -7549,6 +7558,7 @@ enum skl_disp_power_wells {
 #define SFUSE_STRAP			_MMIO(0xc2014)
 #define  SFUSE_STRAP_FUSE_LOCK		(1<<13)
 #define  SFUSE_STRAP_DISPLAY_DISABLED	(1<<7)
+#define  SFUSE_STRAP_CRT_DISABLED	(1<<6)
 #define  SFUSE_STRAP_DDIB_DETECTED	(1<<2)
 #define  SFUSE_STRAP_DDIC_DETECTED	(1<<1)
 #define  SFUSE_STRAP_DDID_DETECTED	(1<<0)
@@ -7706,7 +7716,7 @@ enum skl_disp_power_wells {
 #define BXT_DSI_PLL_RATIO_MAX		0x7D
 #define BXT_DSI_PLL_RATIO_MIN		0x22
 #define BXT_DSI_PLL_RATIO_MASK		0xFF
-#define BXT_REF_CLOCK_KHZ		19500
+#define BXT_REF_CLOCK_KHZ		19200
 
 #define BXT_DSI_PLL_ENABLE		_MMIO(0x46080)
 #define  BXT_DSI_PLL_DO_ENABLE		(1 << 31)
