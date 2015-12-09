@@ -16,6 +16,7 @@
  */
 
 #include <linux/coresight.h>
+#include <linux/dma-mapping.h>
 #include "coresight-priv.h"
 #include "coresight-tmc.h"
 
@@ -83,18 +84,69 @@ static void tmc_etr_disable_hw(struct tmc_drvdata *drvdata)
 
 static int tmc_enable_etr_sink(struct coresight_device *csdev, u32 mode)
 {
+	bool used = false;
 	unsigned long flags;
+	void __iomem *vaddr = NULL;
+	dma_addr_t paddr;
 	struct tmc_drvdata *drvdata = dev_get_drvdata(csdev->dev.parent);
 
+	 /* This shouldn't be happening */
+	if (WARN_ON(mode != CS_MODE_SYSFS))
+		return -EINVAL;
+
+	/*
+	 * If a buffer is already allocated *keep holding* the lock and
+	 * jump to the fast path.  Otherwise release the lock and allocate
+	 * memory to work with.
+	 */
 	spin_lock_irqsave(&drvdata->spinlock, flags);
+	if (drvdata->vaddr)
+		goto fast_path;
+
+	spin_unlock_irqrestore(&drvdata->spinlock, flags);
+
+	/*
+	 * Contiguous  memory can't be allocated while a spinlock is held.
+	 * As such allocate memory here and free it if a buffer has already
+	 * been allocated (from a previous session).
+	 */
+	vaddr = dma_alloc_coherent(drvdata->dev, drvdata->size,
+				   &paddr, GFP_KERNEL);
+	if (!vaddr)
+		return -ENOMEM;
+
+	/* Let's try again */
+	spin_lock_irqsave(&drvdata->spinlock, flags);
+fast_path:
 	if (drvdata->reading) {
 		spin_unlock_irqrestore(&drvdata->spinlock, flags);
+		if (vaddr)
+			dma_free_coherent(drvdata->dev, drvdata->size,
+					  vaddr, paddr);
 		return -EBUSY;
 	}
+
+	/*
+	 * If drvdata::buf == NULL, use the memory allocated above.
+	 * Otherwise a buffer still exists from a previous session, so
+	 * simply use that.
+	 */
+	if (drvdata->buf == NULL) {
+		used = true;
+		drvdata->vaddr = vaddr;
+		drvdata->paddr = paddr;
+		drvdata->buf = drvdata->vaddr;
+	}
+
+	memset(drvdata->vaddr, 0, drvdata->size);
 
 	tmc_etr_enable_hw(drvdata);
 	drvdata->enable = true;
 	spin_unlock_irqrestore(&drvdata->spinlock, flags);
+
+	/* Free memory outside the spinlock if need be */
+	if (!used && vaddr)
+		dma_free_coherent(drvdata->dev, drvdata->size, vaddr, paddr);
 
 	dev_info(drvdata->dev, "TMC-ETR enabled\n");
 	return 0;
@@ -137,6 +189,12 @@ int tmc_read_prepare_etr(struct tmc_drvdata *drvdata)
 
 	spin_lock_irqsave(&drvdata->spinlock, flags);
 
+	/* If drvdata::buf is NULL the trace data has been read already */
+	if (drvdata->buf == NULL) {
+		spin_unlock_irqrestore(&drvdata->spinlock, flags);
+		return -EINVAL;
+	}
+
 	/* Disable the TMC if need be */
 	if (drvdata->enable)
 		tmc_etr_disable_hw(drvdata);
@@ -150,6 +208,8 @@ int tmc_read_prepare_etr(struct tmc_drvdata *drvdata)
 int tmc_read_unprepare_etr(struct tmc_drvdata *drvdata)
 {
 	unsigned long flags;
+	dma_addr_t paddr;
+	void __iomem *vaddr = NULL;
 
 	/* config types are set a boot time and never change */
 	if (WARN_ON_ONCE(drvdata->config_type != TMC_CONFIG_TYPE_ETR))
@@ -158,11 +218,33 @@ int tmc_read_unprepare_etr(struct tmc_drvdata *drvdata)
 	spin_lock_irqsave(&drvdata->spinlock, flags);
 
 	/* RE-enable the TMC if need be */
-	if (drvdata->enable)
+	if (drvdata->enable) {
+		/*
+		 * The trace run will continue with the same allocated trace
+		 * buffer. As such zero-out the buffer so that we don't end
+		 * up with stale data.
+		 *
+		 * Since the tracer is still enabled drvdata::buf
+		 * can't be NULL.
+		 */
+		memset(drvdata->buf, 0, drvdata->size);
 		tmc_etr_enable_hw(drvdata);
+	} else {
+		/*
+		 * The ETR is not tracing and the buffer was just read.
+		 * As such prepare to free the trace buffer.
+		 */
+		vaddr = drvdata->vaddr;
+		paddr = drvdata->paddr;
+		drvdata->buf = NULL;
+	}
 
 	drvdata->reading = false;
 	spin_unlock_irqrestore(&drvdata->spinlock, flags);
+
+	/* Free allocated memory out side of the spinlock */
+	if (vaddr)
+		dma_free_coherent(drvdata->dev, drvdata->size, vaddr, paddr);
 
 	return 0;
 }
