@@ -39,6 +39,7 @@
 
 #include <linux/module.h>
 #include <linux/nvram.h>
+#include <linux/pagemap.h>	/* for PAGE_CACHE_SIZE */
 
 #define PC		1
 #define ATARI		2
