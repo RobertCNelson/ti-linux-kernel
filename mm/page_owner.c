@@ -208,9 +208,9 @@ void __dump_page_owner(struct page *page)
 		return;
 	}
 
-	pr_alert("page allocated via order %u, migratetype %s, gfp_mask 0x%x",
-			page_ext->order, migratetype_names[mt], gfp_mask);
-	dump_gfpflag_names(gfp_mask);
+	pr_alert("page allocated via order %u, migratetype %s, "
+			"gfp_mask %#x(%pgg)\n", page_ext->order,
+			migratetype_names[mt], gfp_mask, &gfp_mask);
 	print_stack_trace(&trace, 0);
 
 	if (page_ext->last_migrate_reason != -1)
