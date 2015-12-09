@@ -16,6 +16,7 @@
 #include <linux/pagemap.h>
 #include <linux/splice.h>
 #include <linux/compat.h>
+#include <linux/mount.h>
 #include "internal.h"
 
 #include <asm/uaccess.h>
@@ -169,6 +170,45 @@ loff_t fixed_size_llseek(struct file *file, loff_t offset, int whence, loff_t si
 	}
 }
 EXPORT_SYMBOL(fixed_size_llseek);
+
+/**
+ * no_seek_end_llseek - llseek implementation for fixed-sized devices
+ * @file:	file structure to seek on
+ * @offset:	file offset to seek to
+ * @whence:	type of seek
+ *
+ */
+loff_t no_seek_end_llseek(struct file *file, loff_t offset, int whence)
+{
+	switch (whence) {
+	case SEEK_SET: case SEEK_CUR:
+		return generic_file_llseek_size(file, offset, whence,
+						~0ULL, 0);
+	default:
+		return -EINVAL;
+	}
+}
+EXPORT_SYMBOL(no_seek_end_llseek);
+
+/**
+ * no_seek_end_llseek_size - llseek implementation for fixed-sized devices
+ * @file:	file structure to seek on
+ * @offset:	file offset to seek to
+ * @whence:	type of seek
+ * @size:	maximal offset allowed
+ *
+ */
+loff_t no_seek_end_llseek_size(struct file *file, loff_t offset, int whence, loff_t size)
+{
+	switch (whence) {
+	case SEEK_SET: case SEEK_CUR:
+		return generic_file_llseek_size(file, offset, whence,
+						size, 0);
+	default:
+		return -EINVAL;
+	}
+}
+EXPORT_SYMBOL(no_seek_end_llseek_size);
 
 /**
  * noop_llseek - No Operation Performed llseek implementation
@@ -395,9 +435,8 @@ int rw_verify_area(int read_write, struct file *file, const loff_t *ppos, size_t
 	}
 
 	if (unlikely(inode->i_flctx && mandatory_lock(inode))) {
-		retval = locks_mandatory_area(
-			read_write == READ ? FLOCK_VERIFY_READ : FLOCK_VERIFY_WRITE,
-			inode, file, pos, count);
+		retval = locks_mandatory_area(inode, file, pos, pos + count - 1,
+				read_write == READ ? F_RDLCK : F_WRLCK);
 		if (retval < 0)
 			return retval;
 	}
@@ -1327,3 +1366,199 @@ COMPAT_SYSCALL_DEFINE4(sendfile64, int, out_fd, int, in_fd,
 	return do_sendfile(out_fd, in_fd, NULL, count, 0);
 }
 #endif
+
+/*
+ * copy_file_range() differs from regular file read and write in that it
+ * specifically allows return partial success.  When it does so is up to
+ * the copy_file_range method.
+ */
+ssize_t vfs_copy_file_range(struct file *file_in, loff_t pos_in,
+			    struct file *file_out, loff_t pos_out,
+			    size_t len, unsigned int flags)
+{
+	struct inode *inode_in = file_inode(file_in);
+	struct inode *inode_out = file_inode(file_out);
+	ssize_t ret;
+
+	if (flags != 0)
+		return -EINVAL;
+
+	/* copy_file_range allows full ssize_t len, ignoring MAX_RW_COUNT  */
+	ret = rw_verify_area(READ, file_in, &pos_in, len);
+	if (ret >= 0)
+		ret = rw_verify_area(WRITE, file_out, &pos_out, len);
+	if (ret < 0)
+		return ret;
+
+	if (!(file_in->f_mode & FMODE_READ) ||
+	    !(file_out->f_mode & FMODE_WRITE) ||
+	    (file_out->f_flags & O_APPEND))
+		return -EBADF;
+
+	/* this could be relaxed once a method supports cross-fs copies */
+	if (inode_in->i_sb != inode_out->i_sb)
+		return -EXDEV;
+
+	if (len == 0)
+		return 0;
+
+	ret = mnt_want_write_file(file_out);
+	if (ret)
+		return ret;
+
+	ret = -EOPNOTSUPP;
+	if (file_out->f_op->copy_file_range)
+		ret = file_out->f_op->copy_file_range(file_in, pos_in, file_out,
+						      pos_out, len, flags);
+	if (ret == -EOPNOTSUPP)
+		ret = do_splice_direct(file_in, &pos_in, file_out, &pos_out,
+				len > MAX_RW_COUNT ? MAX_RW_COUNT : len, 0);
+
+	if (ret > 0) {
+		fsnotify_access(file_in);
+		add_rchar(current, ret);
+		fsnotify_modify(file_out);
+		add_wchar(current, ret);
+	}
+	inc_syscr(current);
+	inc_syscw(current);
+
+	mnt_drop_write_file(file_out);
+
+	return ret;
+}
+EXPORT_SYMBOL(vfs_copy_file_range);
+
+SYSCALL_DEFINE6(copy_file_range, int, fd_in, loff_t __user *, off_in,
+		int, fd_out, loff_t __user *, off_out,
+		size_t, len, unsigned int, flags)
+{
+	loff_t pos_in;
+	loff_t pos_out;
+	struct fd f_in;
+	struct fd f_out;
+	ssize_t ret = -EBADF;
+
+	f_in = fdget(fd_in);
+	if (!f_in.file)
+		goto out2;
+
+	f_out = fdget(fd_out);
+	if (!f_out.file)
+		goto out1;
+
+	ret = -EFAULT;
+	if (off_in) {
+		if (copy_from_user(&pos_in, off_in, sizeof(loff_t)))
+			goto out;
+	} else {
+		pos_in = f_in.file->f_pos;
+	}
+
+	if (off_out) {
+		if (copy_from_user(&pos_out, off_out, sizeof(loff_t)))
+			goto out;
+	} else {
+		pos_out = f_out.file->f_pos;
+	}
+
+	ret = vfs_copy_file_range(f_in.file, pos_in, f_out.file, pos_out, len,
+				  flags);
+	if (ret > 0) {
+		pos_in += ret;
+		pos_out += ret;
+
+		if (off_in) {
+			if (copy_to_user(off_in, &pos_in, sizeof(loff_t)))
+				ret = -EFAULT;
+		} else {
+			f_in.file->f_pos = pos_in;
+		}
+
+		if (off_out) {
+			if (copy_to_user(off_out, &pos_out, sizeof(loff_t)))
+				ret = -EFAULT;
+		} else {
+			f_out.file->f_pos = pos_out;
+		}
+	}
+
+out:
+	fdput(f_out);
+out1:
+	fdput(f_in);
+out2:
+	return ret;
+}
+
+static int clone_verify_area(struct file *file, loff_t pos, u64 len, bool write)
+{
+	struct inode *inode = file_inode(file);
+
+	if (unlikely(pos < 0))
+		return -EINVAL;
+
+	 if (unlikely((loff_t) (pos + len) < 0))
+		return -EINVAL;
+
+	if (unlikely(inode->i_flctx && mandatory_lock(inode))) {
+		loff_t end = len ? pos + len - 1 : OFFSET_MAX;
+		int retval;
+
+		retval = locks_mandatory_area(inode, file, pos, end,
+				write ? F_WRLCK : F_RDLCK);
+		if (retval < 0)
+			return retval;
+	}
+
+	return security_file_permission(file, write ? MAY_WRITE : MAY_READ);
+}
+
+int vfs_clone_file_range(struct file *file_in, loff_t pos_in,
+		struct file *file_out, loff_t pos_out, u64 len)
+{
+	struct inode *inode_in = file_inode(file_in);
+	struct inode *inode_out = file_inode(file_out);
+	int ret;
+
+	if (inode_in->i_sb != inode_out->i_sb ||
+	    file_in->f_path.mnt != file_out->f_path.mnt)
+		return -EXDEV;
+
+	if (S_ISDIR(inode_in->i_mode) || S_ISDIR(inode_out->i_mode))
+		return -EISDIR;
+	if (!S_ISREG(inode_in->i_mode) || !S_ISREG(inode_out->i_mode))
+		return -EOPNOTSUPP;
+
+	if (!(file_in->f_mode & FMODE_READ) ||
+	    !(file_out->f_mode & FMODE_WRITE) ||
+	    (file_out->f_flags & O_APPEND) ||
+	    !file_in->f_op->clone_file_range)
+		return -EBADF;
+
+	ret = clone_verify_area(file_in, pos_in, len, false);
+	if (ret)
+		return ret;
+
+	ret = clone_verify_area(file_out, pos_out, len, true);
+	if (ret)
+		return ret;
+
+	if (pos_in + len > i_size_read(inode_in))
+		return -EINVAL;
+
+	ret = mnt_want_write_file(file_out);
+	if (ret)
+		return ret;
+
+	ret = file_in->f_op->clone_file_range(file_in, pos_in,
+			file_out, pos_out, len);
+	if (!ret) {
+		fsnotify_access(file_in);
+		fsnotify_modify(file_out);
+	}
+
+	mnt_drop_write_file(file_out);
+	return ret;
+}
+EXPORT_SYMBOL(vfs_clone_file_range);
