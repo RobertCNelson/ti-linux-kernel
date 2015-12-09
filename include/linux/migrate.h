@@ -27,7 +27,7 @@ enum migrate_reason {
 	MR_TYPES
 };
 
-/* In mm/migrate.c; also keep sync with include/trace/events/migrate.h */
+/* In mm/debug.c; also keep sync with include/trace/events/migrate.h */
 extern char * migrate_reason_names[MR_TYPES];
 
 #ifdef CONFIG_MIGRATION
