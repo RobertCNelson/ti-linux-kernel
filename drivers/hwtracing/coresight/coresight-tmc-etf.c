@@ -16,14 +16,13 @@
  */
 
 #include <linux/coresight.h>
+#include <linux/slab.h>
+
 #include "coresight-priv.h"
 #include "coresight-tmc.h"
 
 void tmc_etb_enable_hw(struct tmc_drvdata *drvdata)
 {
-	/* Zero out the memory to help with debug */
-	memset(drvdata->buf, 0, drvdata->size);
-
 	CS_UNLOCK(drvdata->base);
 
 	/* Wait for TMCSReady bit to be set */
@@ -109,18 +108,45 @@ static void tmc_etf_disable_hw(struct tmc_drvdata *drvdata)
 
 static int tmc_enable_etf_sink(struct coresight_device *csdev, u32 mode)
 {
+	bool allocated = false;
+	char *buf = NULL;
 	unsigned long flags;
 	struct tmc_drvdata *drvdata = dev_get_drvdata(csdev->dev.parent);
+
+	/* Allocating the memory here while outside of the spinlock */
+	buf = devm_kzalloc(drvdata->dev, drvdata->size, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
 
 	spin_lock_irqsave(&drvdata->spinlock, flags);
 	if (drvdata->reading) {
 		spin_unlock_irqrestore(&drvdata->spinlock, flags);
+		kfree(buf);
 		return -EBUSY;
+	}
+
+	/*
+	 * If drvdata::buf isn't NULL, memory was allocated for a previous
+	 * trace run but wasn't read.  If so simply zero-out the memory.
+	 *
+	 * The memory is freed when users read the buffer using the
+	 * /dev/xyz.{etf|etb} interface.  See tmc_read_unprepare_etf() for
+	 * details.
+	 */
+	if (!drvdata->buf) {
+		allocated = true;
+		drvdata->buf = buf;
+	} else {
+		memset(drvdata->buf, 0, drvdata->size);
 	}
 
 	tmc_etb_enable_hw(drvdata);
 	drvdata->enable = true;
 	spin_unlock_irqrestore(&drvdata->spinlock, flags);
+
+	/* Free memory outside the spinlock if need be */
+	if (!allocated)
+		kfree(buf);
 
 	dev_info(drvdata->dev, "TMC-ETB/ETF enabled\n");
 	return 0;
@@ -205,52 +231,75 @@ const struct coresight_ops tmc_etf_cs_ops = {
 
 int tmc_read_prepare_etf(struct tmc_drvdata *drvdata)
 {
-	int ret = 0;
 	enum tmc_mode mode;
 	unsigned long flags;
 
 	spin_lock_irqsave(&drvdata->spinlock, flags);
 
-	/* The TMC isn't enable, so there is no need to disable it */
-	if (!drvdata->enable)
+	/* The TMC isn't enabled, so there is no need to disable it */
+	if (!drvdata->enable) {
+		/*
+		 * The ETB/ETF is disabled already.  If drvdata::buf is NULL
+		 * trace data has been harvested.
+		 */
+		if (!drvdata->buf) {
+			spin_unlock_irqrestore(&drvdata->spinlock, flags);
+			return -EINVAL;
+		}
+
 		goto out;
+	}
 
 	if (drvdata->config_type != TMC_CONFIG_TYPE_ETB &&
 	    drvdata->config_type != TMC_CONFIG_TYPE_ETF) {
-		ret = -EINVAL;
-		goto out;
+		spin_unlock_irqrestore(&drvdata->spinlock, flags);
+		return -EINVAL;
 	}
 
 	/* There is no point in reading a TMC in HW FIFO mode */
 	mode = readl_relaxed(drvdata->base + TMC_MODE);
 	if (mode != TMC_MODE_CIRCULAR_BUFFER) {
-		ret = -EINVAL;
-		goto out;
+		spin_unlock_irqrestore(&drvdata->spinlock, flags);
+		return -EINVAL;
 	}
 
 	tmc_etb_disable_hw(drvdata);
-	drvdata->reading = true;
+	tmc_etb_dump_hw(drvdata);
 
 out:
+	drvdata->reading = true;
 	spin_unlock_irqrestore(&drvdata->spinlock, flags);
-	return ret;
+	return 0;
 }
 
 int tmc_read_unprepare_etf(struct tmc_drvdata *drvdata)
 {
 	int ret = 0;
+	char *buf = NULL;
 	enum tmc_mode mode;
 	unsigned long flags;
 
 	spin_lock_irqsave(&drvdata->spinlock, flags);
 
-	/* The TMC isn't enable, so there is no need to enable it */
-	if (!drvdata->enable)
-		goto out;
-
 	if (drvdata->config_type != TMC_CONFIG_TYPE_ETB &&
 	    drvdata->config_type != TMC_CONFIG_TYPE_ETF) {
 		ret = -EINVAL;
+		goto err;
+	}
+
+	/* The TMC isn't enabled, so there is no need to enable it */
+	if (!drvdata->enable) {
+		/*
+		 * The ETB/ETF is not tracing and the buffer was just read.
+		 * As such prepare to free the trace buffer.
+		 */
+		buf = drvdata->buf;
+
+		/*
+		 * drvdata::buf is switched on in tmc_read_prepare_etf() so
+		 * it is important to set it back to NULL.
+		 */
+		drvdata->buf = NULL;
 		goto out;
 	}
 
@@ -258,13 +307,25 @@ int tmc_read_unprepare_etf(struct tmc_drvdata *drvdata)
 	mode = readl_relaxed(drvdata->base + TMC_MODE);
 	if (mode != TMC_MODE_CIRCULAR_BUFFER) {
 		ret = -EINVAL;
-		goto out;
+		goto err;
 	}
 
+	/*
+	 * The trace run will continue with the same allocated trace buffer.
+	 * As such zero-out the buffer so that we don't end up with stale
+	 * data.
+	 */
+	memset(drvdata->buf, 0, drvdata->size);
 	tmc_etb_enable_hw(drvdata);
-	drvdata->reading = false;
 
 out:
+	drvdata->reading = false;
+
+err:
 	spin_unlock_irqrestore(&drvdata->spinlock, flags);
+
+	/* Free allocated memory outside of the spinlock */
+	kfree(buf);
+
 	return ret;
 }
