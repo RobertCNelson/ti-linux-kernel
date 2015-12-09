@@ -40,6 +40,9 @@ struct vringh {
 	/* Can we get away with weak barriers? */
 	bool weak_barriers;
 
+	/* Poll ring directly */
+	bool poll;
+
 	/* Last available index we saw (ie. where we're up to). */
 	u16 last_avail_idx;
 
