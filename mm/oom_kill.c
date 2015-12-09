@@ -386,10 +386,12 @@ static void dump_tasks(struct mem_cgroup *memcg, const nodemask_t *nodemask)
 static void dump_header(struct oom_control *oc, struct task_struct *p,
 			struct mem_cgroup *memcg)
 {
-	pr_warning("%s invoked oom-killer: gfp_mask=0x%x, order=%d, "
-		"oom_score_adj=%hd\n",
-		current->comm, oc->gfp_mask, oc->order,
-		current->signal->oom_score_adj);
+	pr_warning("%s invoked oom-killer: order=%d, oom_score_adj=%hd, "
+			"gfp_mask=0x%x",
+		current->comm, oc->order, current->signal->oom_score_adj,
+		oc->gfp_mask);
+	dump_gfpflag_names(oc->gfp_mask);
+
 	cpuset_print_current_mems_allowed();
 	dump_stack();
 	if (memcg)
