@@ -52,6 +52,12 @@
  * drm_atomic_helper_disable_plane(), drm_atomic_helper_disable_plane() and the
  * various functions to implement set_property callbacks. New drivers must not
  * implement these functions themselves but must use the provided helpers.
+ *
+ * The atomic helper uses the same function table structures as all other
+ * modesetting helpers. See the documentation for struct &drm_crtc_helper_funcs,
+ * struct &drm_encoder_helper_funcs and struct &drm_connector_helper_funcs. It
+ * also shares the struct &drm_plane_helper_funcs function table with the plane
+ * helpers.
  */
 static void
 drm_atomic_helper_plane_changed(struct drm_atomic_state *state,
@@ -2399,6 +2405,12 @@ EXPORT_SYMBOL(drm_atomic_helper_connector_dpms);
  * The simpler solution is to just reset the software state to everything off,
  * which is easiest to do by calling drm_mode_config_reset(). To facilitate this
  * the atomic helpers provide default reset implementations for all hooks.
+ *
+ * On the upside the precise state tracking of atomic simplifies system suspend
+ * and resume a lot. For drivers using drm_mode_config_reset() a complete recipe
+ * is implemented in drm_atomic_helper_suspend() and drm_atomic_helper_resume().
+ * For other drivers the building blocks are split out, see the documentation
+ * for these functions.
  */
 
 /**
