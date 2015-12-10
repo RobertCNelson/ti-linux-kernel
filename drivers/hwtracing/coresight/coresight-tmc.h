@@ -130,6 +130,9 @@ void tmc_disable_hw(struct tmc_drvdata *drvdata);
 /* ETB/ETF functions */
 int tmc_read_prepare_etb(struct tmc_drvdata *drvdata);
 int tmc_read_unprepare_etb(struct tmc_drvdata *drvdata);
+void tmc_update_etf_buffer(struct coresight_device *csdev,
+			   struct perf_output_handle *handle,
+			   void *sink_config);
 extern const struct coresight_ops tmc_etb_cs_ops;
 extern const struct coresight_ops tmc_etf_cs_ops;
 
