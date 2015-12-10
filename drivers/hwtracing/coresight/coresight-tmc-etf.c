@@ -106,7 +106,7 @@ static void tmc_etf_disable_hw(struct tmc_drvdata *drvdata)
 	CS_LOCK(drvdata->base);
 }
 
-static int tmc_enable_etf_sink(struct coresight_device *csdev, u32 mode)
+static int tmc_enable_etf_sink_sysfs(struct coresight_device *csdev, u32 mode)
 {
 	u32 val;
 	bool allocated = false;
@@ -127,6 +127,12 @@ static int tmc_enable_etf_sink(struct coresight_device *csdev, u32 mode)
 	}
 
 	val = local_cmpxchg(&drvdata->mode, CS_MODE_DISABLED, mode);
+	/* No need to continue if already operated from Perf */
+	if (val == CS_MODE_PERF) {
+		spin_unlock_irqrestore(&drvdata->spinlock, flags);
+		kfree(buf);
+		return -EBUSY;
+	}
 	/*
 	 * In sysFS mode we can have multiple writers per sink.  Since this
 	 * sink is already enabled no memory is needed and the HW need not be
@@ -162,9 +168,51 @@ out:
 	return 0;
 }
 
-static void tmc_disable_etf_sink(struct coresight_device *csdev)
+static int tmc_enable_etf_sink_perf(struct coresight_device *csdev, u32 mode)
 {
 	u32 val;
+	unsigned long flags;
+	struct tmc_drvdata *drvdata = dev_get_drvdata(csdev->dev.parent);
+
+	spin_lock_irqsave(&drvdata->spinlock, flags);
+	if (drvdata->reading) {
+		spin_unlock_irqrestore(&drvdata->spinlock, flags);
+		return -EBUSY;
+	}
+
+	val = local_cmpxchg(&drvdata->mode, CS_MODE_DISABLED, mode);
+	/*
+	 * In Perf mode there can be only one writer per sink.  There
+	 * is also no need to continue if the ETB/ETR is already operated
+	 * from sysFS.
+	 */
+	if (val != CS_MODE_DISABLED) {
+		spin_unlock_irqrestore(&drvdata->spinlock, flags);
+		return -EBUSY;
+	}
+
+	tmc_etb_enable_hw(drvdata);
+	spin_unlock_irqrestore(&drvdata->spinlock, flags);
+
+	return 0;
+}
+
+static int tmc_enable_etf_sink(struct coresight_device *csdev, u32 mode)
+{
+	switch (mode) {
+	case CS_MODE_SYSFS:
+		return tmc_enable_etf_sink_sysfs(csdev, mode);
+	case CS_MODE_PERF:
+		return tmc_enable_etf_sink_perf(csdev, mode);
+	}
+
+	/* We shouldn't be here */
+	return -EINVAL;
+}
+
+static void tmc_disable_etf_sink(struct coresight_device *csdev)
+{
+	u32 mode;
 	unsigned long flags;
 	struct tmc_drvdata *drvdata = dev_get_drvdata(csdev->dev.parent);
 
@@ -174,13 +222,21 @@ static void tmc_disable_etf_sink(struct coresight_device *csdev)
 		return;
 	}
 
-	val = local_cmpxchg(&drvdata->mode, CS_MODE_SYSFS, CS_MODE_DISABLED);
-	/* Nothing to do, the TMC was already disabled */
-	if (val == CS_MODE_DISABLED)
+	mode = local_xchg(&drvdata->mode, CS_MODE_DISABLED);
+	/* Nothing to do, the ETB/ETF was already disabled */
+	if (mode == CS_MODE_DISABLED)
 		goto out;
 
+	/* The engine has to be stopped in both sysFS and Perf mode */
 	tmc_etb_disable_hw(drvdata);
-	tmc_etb_dump_hw(drvdata);
+
+	/*
+	 * If we operated from sysFS, dump the trace data for retrieval
+	 * via /dev/.  From Perf trace data is handled via the Perf ring
+	 * buffer.
+	 */
+	if (mode == CS_MODE_SYSFS)
+		tmc_etb_dump_hw(drvdata);
 
 out:
 	spin_unlock_irqrestore(&drvdata->spinlock, flags);
@@ -253,7 +309,13 @@ int tmc_read_prepare_etf(struct tmc_drvdata *drvdata)
 
 	spin_lock_irqsave(&drvdata->spinlock, flags);
 
-	/* The TMC isn't enabled, so there is no need to disable it */
+	/* Don't interfere if operated from Perf */
+	if (local_read(&drvdata->mode) == CS_MODE_PERF) {
+		spin_unlock_irqrestore(&drvdata->spinlock, flags);
+		return -EBUSY;
+	}
+
+	/* The ETB/ETF isn't enabled, so there is no need to disable it */
 	if (local_read(&drvdata->mode) == CS_MODE_DISABLED) {
 		/*
 		 * The ETB/ETF is disabled already.  If drvdata::buf is NULL
