@@ -19,6 +19,7 @@ config H8300
 	select CLKSRC_OF
 	select HAVE_KERNEL_GZIP
 	select HAVE_KERNEL_LZO
+	select H8300_TMR8
 
 config RWSEM_GENERIC_SPINLOCK
 	def_bool y
