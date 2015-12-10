@@ -30,7 +30,7 @@ struct apic_chip_data {
 
 struct irq_domain *x86_vector_domain;
 static DEFINE_RAW_SPINLOCK(vector_lock);
-static cpumask_var_t vector_cpumask;
+static cpumask_var_t vector_cpumask, used_cpumask;
 static struct irq_chip lapic_controller;
 #ifdef	CONFIG_X86_IO_APIC
 static struct apic_chip_data *legacy_irq_data[NR_IRQS_LEGACY];
@@ -117,13 +117,15 @@ static int __assign_irq_vector(int irq, struct apic_chip_data *d,
 	static int current_vector = FIRST_EXTERNAL_VECTOR + VECTOR_OFFSET_START;
 	static int current_offset = VECTOR_OFFSET_START % 16;
 	int cpu, err;
+	unsigned int dest;
 
-	if (d->move_in_progress)
+	if (cpumask_intersects(d->old_domain, cpu_online_mask))
 		return -EBUSY;
 
 	/* Only try and allocate irqs on cpus that are present */
 	err = -ENOSPC;
 	cpumask_clear(d->old_domain);
+	cpumask_clear(used_cpumask);
 	cpu = cpumask_first_and(mask, cpu_online_mask);
 	while (cpu < nr_cpu_ids) {
 		int new_cpu, vector, offset;
@@ -139,11 +141,15 @@ static int __assign_irq_vector(int irq, struct apic_chip_data *d,
 			 * the current in use mask. So cleanup the vector
 			 * allocation for the members that are not used anymore.
 			 */
-			cpumask_andnot(d->old_domain, d->domain,
-				       vector_cpumask);
-			d->move_in_progress =
-			   cpumask_intersects(d->old_domain, cpu_online_mask);
-			cpumask_and(d->domain, d->domain, vector_cpumask);
+			cpumask_and(used_cpumask, d->domain, vector_cpumask);
+			err = apic->cpu_mask_to_apicid_and(mask, used_cpumask,
+							   &dest);
+			if (!err) {
+				cpumask_andnot(d->old_domain, d->domain,
+					       vector_cpumask);
+				cpumask_copy(d->domain, used_cpumask);
+				d->cfg.dest_apicid = dest;
+			}
 			break;
 		}
 
@@ -157,9 +163,8 @@ next:
 		}
 
 		if (unlikely(current_vector == vector)) {
-			cpumask_or(d->old_domain, d->old_domain,
-				   vector_cpumask);
-			cpumask_andnot(vector_cpumask, mask, d->old_domain);
+			cpumask_or(used_cpumask, used_cpumask, vector_cpumask);
+			cpumask_andnot(vector_cpumask, mask, used_cpumask);
 			cpu = cpumask_first_and(vector_cpumask,
 						cpu_online_mask);
 			continue;
@@ -167,22 +172,22 @@ next:
 
 		if (test_bit(vector, used_vectors))
 			goto next;
-
 		for_each_cpu_and(new_cpu, vector_cpumask, cpu_online_mask) {
 			if (!IS_ERR_OR_NULL(per_cpu(vector_irq, new_cpu)[vector]))
 				goto next;
 		}
+		if (apic->cpu_mask_to_apicid_and(mask, vector_cpumask, &dest))
+			goto next;
+
 		/* Found one! */
 		current_vector = vector;
 		current_offset = offset;
-		if (d->cfg.vector) {
+		if (d->cfg.vector)
 			cpumask_copy(d->old_domain, d->domain);
-			d->move_in_progress =
-			   cpumask_intersects(d->old_domain, cpu_online_mask);
-		}
+		d->cfg.vector = vector;
+		d->cfg.dest_apicid = dest;
 		for_each_cpu_and(new_cpu, vector_cpumask, cpu_online_mask)
 			per_cpu(vector_irq, new_cpu)[vector] = irq_to_desc(irq);
-		d->cfg.vector = vector;
 		cpumask_copy(d->domain, vector_cpumask);
 		err = 0;
 		break;
@@ -190,8 +195,8 @@ next:
 
 	if (!err) {
 		/* cache destination APIC IDs into cfg->dest_apicid */
-		err = apic->cpu_mask_to_apicid_and(mask, d->domain,
-						   &d->cfg.dest_apicid);
+		cpumask_and(d->old_domain, d->old_domain, cpu_online_mask);
+		d->move_in_progress = !cpumask_empty(d->old_domain);
 	}
 
 	return err;
@@ -223,26 +228,15 @@ static int assign_irq_vector_policy(int irq, int node,
 
 static void clear_irq_vector(int irq, struct apic_chip_data *data)
 {
-	struct irq_desc *desc;
-	unsigned long flags;
-	int cpu, vector;
+	struct irq_desc *desc = irq_to_desc(irq);
+	int cpu, vector = data->cfg.vector;
 
-	raw_spin_lock_irqsave(&vector_lock, flags);
-	BUG_ON(!data->cfg.vector);
-
-	vector = data->cfg.vector;
+	BUG_ON(!vector);
 	for_each_cpu_and(cpu, data->domain, cpu_online_mask)
 		per_cpu(vector_irq, cpu)[vector] = VECTOR_UNUSED;
-
 	data->cfg.vector = 0;
 	cpumask_clear(data->domain);
 
-	if (likely(!data->move_in_progress)) {
-		raw_spin_unlock_irqrestore(&vector_lock, flags);
-		return;
-	}
-
-	desc = irq_to_desc(irq);
 	for_each_cpu_and(cpu, data->old_domain, cpu_online_mask) {
 		for (vector = FIRST_EXTERNAL_VECTOR; vector < NR_VECTORS;
 		     vector++) {
@@ -253,7 +247,7 @@ static void clear_irq_vector(int irq, struct apic_chip_data *data)
 		}
 	}
 	data->move_in_progress = 0;
-	raw_spin_unlock_irqrestore(&vector_lock, flags);
+	cpumask_clear(data->old_domain);
 }
 
 void init_irq_alloc_info(struct irq_alloc_info *info,
@@ -275,18 +269,21 @@ static void x86_vector_free_irqs(struct irq_domain *domain,
 				 unsigned int virq, unsigned int nr_irqs)
 {
 	struct irq_data *irq_data;
+	unsigned long flags;
 	int i;
 
 	for (i = 0; i < nr_irqs; i++) {
 		irq_data = irq_domain_get_irq_data(x86_vector_domain, virq + i);
 		if (irq_data && irq_data->chip_data) {
+			raw_spin_lock_irqsave(&vector_lock, flags);
 			clear_irq_vector(virq + i, irq_data->chip_data);
 			free_apic_chip_data(irq_data->chip_data);
+			irq_domain_reset_irq_data(irq_data);
+			raw_spin_unlock_irqrestore(&vector_lock, flags);
 #ifdef	CONFIG_X86_IO_APIC
 			if (virq + i < nr_legacy_irqs())
 				legacy_irq_data[virq + i] = NULL;
 #endif
-			irq_domain_reset_irq_data(irq_data);
 		}
 	}
 }
@@ -361,7 +358,11 @@ int __init arch_probe_nr_irqs(void)
 	if (nr < nr_irqs)
 		nr_irqs = nr;
 
-	return nr_legacy_irqs();
+	/*
+	 * We don't know if PIC is present at this point so we need to do
+	 * probe() to get the right number of legacy IRQs.
+	 */
+	return legacy_pic->probe();
 }
 
 #ifdef	CONFIG_X86_IO_APIC
@@ -400,6 +401,7 @@ int __init arch_early_irq_init(void)
 	arch_init_htirq_domain(x86_vector_domain);
 
 	BUG_ON(!alloc_cpumask_var(&vector_cpumask, GFP_KERNEL));
+	BUG_ON(!alloc_cpumask_var(&used_cpumask, GFP_KERNEL));
 
 	return arch_early_ioapic_init();
 }
@@ -416,10 +418,13 @@ static void __setup_vector_irq(int cpu)
 		struct irq_data *idata = irq_desc_get_irq_data(desc);
 
 		data = apic_chip_data(idata);
-		if (!data || !cpumask_test_cpu(cpu, data->domain))
-			continue;
-		vector = data->cfg.vector;
-		per_cpu(vector_irq, cpu)[vector] = desc;
+		if (data) {
+			cpumask_clear_cpu(cpu, data->old_domain);
+			if (cpumask_test_cpu(cpu, data->domain)) {
+				vector = data->cfg.vector;
+				per_cpu(vector_irq, cpu)[vector] = desc;
+			}
+		}
 	}
 	/* Mark the free vectors */
 	for (vector = 0; vector < NR_VECTORS; ++vector) {
@@ -488,14 +493,8 @@ static int apic_set_affinity(struct irq_data *irq_data,
 		return -EINVAL;
 
 	err = assign_irq_vector(irq, data, dest);
-	if (err) {
-		if (assign_irq_vector(irq, data,
-				      irq_data_get_affinity_mask(irq_data)))
-			pr_err("Failed to recover vector for irq %d\n", irq);
-		return err;
-	}
 
-	return IRQ_SET_MASK_OK;
+	return err ? err : IRQ_SET_MASK_OK;
 }
 
 static struct irq_chip lapic_controller = {
@@ -507,20 +506,17 @@ static struct irq_chip lapic_controller = {
 #ifdef CONFIG_SMP
 static void __send_cleanup_vector(struct apic_chip_data *data)
 {
-	cpumask_var_t cleanup_mask;
+	unsigned long flags;
 
-	if (unlikely(!alloc_cpumask_var(&cleanup_mask, GFP_ATOMIC))) {
-		unsigned int i;
-
-		for_each_cpu_and(i, data->old_domain, cpu_online_mask)
-			apic->send_IPI_mask(cpumask_of(i),
-					    IRQ_MOVE_CLEANUP_VECTOR);
-	} else {
-		cpumask_and(cleanup_mask, data->old_domain, cpu_online_mask);
-		apic->send_IPI_mask(cleanup_mask, IRQ_MOVE_CLEANUP_VECTOR);
-		free_cpumask_var(cleanup_mask);
-	}
+	raw_spin_lock_irqsave(&vector_lock, flags);
+	if (!data->move_in_progress)
+		goto out_unlock;
 	data->move_in_progress = 0;
+	cpumask_and(data->old_domain, data->old_domain, cpu_online_mask);
+	if (!cpumask_empty(data->old_domain))
+		apic->send_IPI_mask(data->old_domain, IRQ_MOVE_CLEANUP_VECTOR);
+out_unlock:
+	raw_spin_unlock_irqrestore(&vector_lock, flags);
 }
 
 void send_cleanup_vector(struct irq_cfg *cfg)
@@ -564,14 +560,10 @@ asmlinkage __visible void smp_irq_move_cleanup_interrupt(void)
 			goto unlock;
 
 		/*
-		 * Check if the irq migration is in progress. If so, we
-		 * haven't received the cleanup request yet for this irq.
+		 * Nothing to cleanup if this cpu is not set
+		 * in the old_domain mask.
 		 */
-		if (data->move_in_progress)
-			goto unlock;
-
-		if (vector == data->cfg.vector &&
-		    cpumask_test_cpu(me, data->domain))
+		if (!cpumask_test_cpu(me, data->old_domain))
 			goto unlock;
 
 		irr = apic_read(APIC_IRR + (vector / 32 * 0x10));
@@ -587,6 +579,7 @@ asmlinkage __visible void smp_irq_move_cleanup_interrupt(void)
 			goto unlock;
 		}
 		__this_cpu_write(vector_irq[vector], VECTOR_UNUSED);
+		cpumask_clear_cpu(me, data->old_domain);
 unlock:
 		raw_spin_unlock(&desc->lock);
 	}
