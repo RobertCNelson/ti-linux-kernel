@@ -220,6 +220,14 @@ const struct option longopts[] = {
 		.val = 'e',
 	},
 	{
+		.name = "ring-poll",
+		.val = 'R',
+	},
+	{
+		.name = "no-ring-poll",
+		.val = 'r',
+	},
+	{
 		.name = "indirect",
 		.val = 'I',
 	},
@@ -261,7 +269,8 @@ int main(int argc, char **argv)
 {
 	struct vdev_info dev;
 	unsigned long long features = (1ULL << VIRTIO_RING_F_INDIRECT_DESC) |
-		(1ULL << VIRTIO_RING_F_EVENT_IDX) | (1ULL << VIRTIO_F_VERSION_1);
+		(1ULL << VIRTIO_RING_F_EVENT_IDX) | (1ULL << VIRTIO_F_VERSION_1) |
+		(1ULL << VIRTIO_RING_F_POLL);
 	int o;
 	bool delayed = false;
 
@@ -275,6 +284,9 @@ int main(int argc, char **argv)
 			exit(2);
 		case 'e':
 			features &= ~(1ULL << VIRTIO_RING_F_EVENT_IDX);
+			break;
+		case 'r':
+			features &= ~(1ULL << VIRTIO_RING_F_POLL);
 			break;
 		case 'h':
 			help();
