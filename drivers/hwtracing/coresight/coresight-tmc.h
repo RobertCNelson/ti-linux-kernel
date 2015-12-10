@@ -52,6 +52,7 @@
 /* TMC_CTL - 0x020 */
 #define TMC_CTL_CAPT_EN		BIT(0)
 /* TMC_STS - 0x00C */
+#define TMC_STS_FULL		BIT(0)
 #define TMC_STS_TRIGGERED	BIT(1)
 /* TMC_AXICTL - 0x110 */
 #define TMC_AXICTL_PROT_CTL_B0	BIT(0)
@@ -87,6 +88,26 @@ enum tmc_mem_intf_width {
 	TMC_MEM_INTF_WIDTH_64BITS	= 0x3,
 	TMC_MEM_INTF_WIDTH_128BITS	= 0x4,
 	TMC_MEM_INTF_WIDTH_256BITS	= 0x5,
+};
+
+/**
+ * struct cs_buffer - keep track of a recording session' specifics
+ * @cur:	index of the current buffer
+ * @nr_pages:	max number of pages granted to us
+ * @offset:	offset within the current buffer
+ * @data_size:	how much we collected in this run
+ * @lost:	other than zero if we had a HW buffer wrap around
+ * @snapshot:	is this run in snapshot mode
+ * @data_pages:	a handle the ring buffer
+ */
+struct cs_tmc_buffers {
+	unsigned int		cur;
+	unsigned int		nr_pages;
+	unsigned long		offset;
+	local_t			data_size;
+	local_t			lost;
+	bool			snapshot;
+	void			**data_pages;
 };
 
 /**
