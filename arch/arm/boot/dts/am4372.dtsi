@@ -30,6 +30,7 @@
 		serial5 = &uart5;
 		ethernet0 = &cpsw_emac0;
 		ethernet1 = &cpsw_emac1;
+		spi0 = &qspi;
 	};
 
 	cpus {
@@ -74,7 +75,7 @@
 		reg = <0x48240200 0x100>;
 		interrupts = <GIC_PPI 11 IRQ_TYPE_LEVEL_HIGH>;
 		interrupt-parent = <&gic>;
-		clocks = <&dpll_mpu_m2_ck>;
+		clocks = <&mpu_periphclk>;
 	};
 
 	local_timer: timer@48240600 {
@@ -82,7 +83,7 @@
 		reg = <0x48240600 0x100>;
 		interrupts = <GIC_PPI 13 IRQ_TYPE_LEVEL_HIGH>;
 		interrupt-parent = <&gic>;
-		clocks = <&dpll_mpu_m2_ck>;
+		clocks = <&mpu_periphclk>;
 	};
 
 	l2-cache-controller@48242000 {
@@ -842,6 +843,8 @@
 		gpmc: gpmc@50000000 {
 			compatible = "ti,am3352-gpmc";
 			ti,hwmods = "gpmc";
+			dmas = <&edma 52>;
+			dma-names = "rxtx";
 			clocks = <&l3s_gclk>;
 			clock-names = "fck";
 			reg = <0x50000000 0x2000>;
