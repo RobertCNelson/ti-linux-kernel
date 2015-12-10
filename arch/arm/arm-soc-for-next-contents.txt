@@ -1,0 +1,40 @@
+fixes
+	patch
+		irqchip/versatile-fpga: Fix PCI IRQ mapping on Versatile PB
+		ARM: ixp4xx: fix read{b,w,l} return types
+	<no branch> (62f49ee26f14753bd7fa634f51d537a79061bf0f)
+		https://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-fixes-4.4
+	<no branch> (8423536fe453b3623f4ed7c2c3cca9b86af1ace5)
+		git://git.kernel.org/pub/scm/linux/kernel/git/abelloni/linux tags/at91-4.4-fixes-2
+	<no branch> (b5010d2081331e1c95358c4eb500bd30f5d532ce)
+		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-fixes-for-4.4-rc1-1
+	patch
+		ARM: pxa: use PWM lookup table for all machines
+
+next/fixes-non-critical
+
+next/cleanup
+	patch
+		ARM: hisi: do not export smp_operations structures
+		ARM: use const and __initconst for smp_operations
+		ARM/clocksource: use automatic DT probing for ux500 PRCMU
+		ARM: use "depends on" for SoC configs instead of "if" after prompt
+
+next/soc
+
+next/dt
+	lpc32xx/dt
+		https://github.com/vzapolskiy/linux lpc32xx-dts
+	renesas/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-for-v4.5
+
+next/defconfig
+	patch
+		ARM: multi_v7_defconfig: Enable required QCOM SPMI/PMIC drivers
+		ARM: defconfig: multi_v7: Enable Qualcomm options for Honami
+
+next/drivers
+	drivers/reset
+		git://git.pengutronix.de/git/pza/linux tags/reset-for-4.5
+
+
