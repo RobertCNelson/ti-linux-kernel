@@ -48,6 +48,7 @@
 #include <linux/uio.h>
 
 #include <asm/uaccess.h>
+#include <asm-generic/sections.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/printk.h>
@@ -232,7 +233,11 @@ struct printk_log {
 	u8 facility;		/* syslog facility */
 	u8 flags:5;		/* internal record flags */
 	u8 level:3;		/* syslog level */
-};
+}
+#ifdef CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS
+__packed __aligned(4)
+#endif
+;
 
 /*
  * The logbuf_lock protects kmsg buffer, indices, counters.  This can be taken
@@ -273,11 +278,7 @@ static u32 clear_idx;
 #define LOG_FACILITY(v)		((v) >> 3 & 0xff)
 
 /* record buffer */
-#if defined(CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS)
-#define LOG_ALIGN 4
-#else
 #define LOG_ALIGN __alignof__(struct printk_log)
-#endif
 #define __LOG_BUF_LEN (1 << CONFIG_LOG_BUF_SHIFT)
 static char __log_buf[__LOG_BUF_LEN] __aligned(LOG_ALIGN);
 static char *log_buf = __log_buf;
@@ -2233,13 +2234,24 @@ void console_unlock(void)
 	static u64 seen_seq;
 	unsigned long flags;
 	bool wake_klogd = false;
-	bool retry;
+	bool do_cond_resched, retry;
 
 	if (console_suspended) {
 		up_console_sem();
 		return;
 	}
 
+	/*
+	 * Console drivers are called under logbuf_lock, so
+	 * @console_may_schedule should be cleared before; however, we may
+	 * end up dumping a lot of lines, for example, if called from
+	 * console registration path, and should invoke cond_resched()
+	 * between lines if allowable.  Not doing so can cause a very long
+	 * scheduling stall on a slow console leading to RCU stall and
+	 * softlockup warnings which exacerbate the issue with more
+	 * messages practically incapacitating the system.
+	 */
+	do_cond_resched = console_may_schedule;
 	console_may_schedule = 0;
 
 	/* flush buffered message fragment immediately to console */
@@ -2311,6 +2323,9 @@ skip:
 		call_console_drivers(level, ext_text, ext_len, text, len);
 		start_critical_timings();
 		local_irq_restore(flags);
+
+		if (do_cond_resched)
+			cond_resched();
 	}
 	console_locked = 0;
 
@@ -2658,13 +2673,36 @@ int unregister_console(struct console *console)
 }
 EXPORT_SYMBOL(unregister_console);
 
+/*
+ * Some boot consoles access data that is in the init section and which will
+ * be discarded after the initcalls have been run. To make sure that no code
+ * will access this data, unregister the boot consoles in a late initcall.
+ *
+ * If for some reason, such as deferred probe or the driver being a loadable
+ * module, the real console hasn't registered yet at this point, there will
+ * be a brief interval in which no messages are logged to the console, which
+ * makes it difficult to diagnose problems that occur during this time.
+ *
+ * To mitigate this problem somewhat, only unregister consoles whose memory
+ * intersects with the init section. Note that code exists elsewhere to get
+ * rid of the boot console as soon as the proper console shows up, so there
+ * won't be side-effects from postponing the removal.
+ */
 static int __init printk_late_init(void)
 {
 	struct console *con;
 
 	for_each_console(con) {
 		if (!keep_bootcon && con->flags & CON_BOOT) {
-			unregister_console(con);
+			/*
+			 * Make sure to unregister boot consoles whose data
+			 * resides in the init section before the init section
+			 * is discarded. Boot consoles whose data will stick
+			 * around will automatically be unregistered when the
+			 * proper console replaces them.
+			 */
+			if (init_section_intersects(con, sizeof(*con)))
+				unregister_console(con);
 		}
 	}
 	hotcpu_notifier(console_cpu_notify, 0);
