@@ -1230,11 +1230,24 @@ static int arizona_extcon_device_get_pdata(struct arizona *arizona)
 	device_property_read_u32(arizona->dev, "wlf,micd-dbtime",
 				 &pdata->micd_dbtime);
 
-	device_property_read_u32(arizona->dev, "wlf,micd-timeout",
+	device_property_read_u32(arizona->dev, "wlf,micd-timeout-ms",
 				 &pdata->micd_timeout);
 
 	pdata->micd_force_micbias = device_property_read_bool(arizona->dev,
 						"wlf,micd-force-micbias");
+
+	pdata->micd_software_compare = device_property_read_bool(arizona->dev,
+						"wlf,micd-software-compare");
+
+	pdata->jd_invert = device_property_read_bool(arizona->dev,
+						     "wlf,jd-invert");
+
+	device_property_read_u32(arizona->dev, "wlf,gpsw", &pdata->gpsw);
+
+	pdata->jd_gpio5 = device_property_read_bool(arizona->dev,
+						    "wlf,use-jd2");
+	pdata->jd_gpio5_nopull = device_property_read_bool(arizona->dev,
+						"wlf,use-jd2-nopull");
 
 	return 0;
 }
