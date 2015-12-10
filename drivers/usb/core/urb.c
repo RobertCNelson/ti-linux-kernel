@@ -444,8 +444,8 @@ int usb_submit_urb(struct urb *urb, gfp_t mem_flags)
 	 */
 
 	/* Check that the pipe's type matches the endpoint's type */
-	if (usb_pipetype(urb->pipe) != pipetypes[xfertype])
-		dev_WARN(&dev->dev, "BOGUS urb xfer, pipe %x != type %x\n",
+	dev_WARN(&dev->dev, usb_pipetype(urb->pipe) != pipetypes[xfertype],
+			"BOGUS urb xfer, pipe %x != type %x\n",
 			usb_pipetype(urb->pipe), pipetypes[xfertype]);
 
 	/* Check against a simple/standard policy */
@@ -471,8 +471,8 @@ int usb_submit_urb(struct urb *urb, gfp_t mem_flags)
 	allowed &= urb->transfer_flags;
 
 	/* warn if submitter gave bogus flags */
-	if (allowed != urb->transfer_flags)
-		dev_WARN(&dev->dev, "BOGUS urb flags, %x --> %x\n",
+	dev_WARN(&dev->dev, allowed != urb->transfer_flags,
+			"BOGUS urb flags, %x --> %x\n",
 			urb->transfer_flags, allowed);
 
 	/*

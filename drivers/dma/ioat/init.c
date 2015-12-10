@@ -740,7 +740,7 @@ static int ioat_alloc_chan_resources(struct dma_chan *c)
 
 	chanerr = readl(ioat_chan->reg_base + IOAT_CHANERR_OFFSET);
 
-	dev_WARN(to_dev(ioat_chan),
+	dev_WARN(to_dev(ioat_chan), true,
 		 "failed to start channel chanerr: %#x\n", chanerr);
 	ioat_free_chan_resources(c);
 	return -EFAULT;

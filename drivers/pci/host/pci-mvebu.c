@@ -397,11 +397,9 @@ static void mvebu_pcie_handle_iobase_change(struct mvebu_pcie_port *port)
 		return;
 	}
 
-	if (!mvebu_has_ioport(port)) {
-		dev_WARN(&port->pcie->pdev->dev,
-			 "Attempt to set IO when IO is disabled\n");
+	if (dev_WARN(&port->pcie->pdev->dev, !mvebu_has_ioport(port),
+				"Attempt to set IO when IO is disabled\n"))
 		return;
-	}
 
 	/*
 	 * We read the PCI-to-PCI bridge emulated registers, and

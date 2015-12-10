@@ -506,8 +506,10 @@ static void dwc_handle_error(struct dw_dma *dw, struct dw_dma_chan *dwc)
 	 * controller flagged an error instead of scribbling over
 	 * random memory locations.
 	 */
-	dev_WARN(chan2dev(&dwc->chan), "Bad descriptor submitted for DMA!\n"
-				       "  cookie: %d\n", bad_desc->txd.cookie);
+	dev_WARN(chan2dev(&dwc->chan), true,
+			"Bad descriptor submitted for DMA!\n cookie: %d\n",
+			bad_desc->txd.cookie);
+
 	dwc_dump_lli(dwc, &bad_desc->lli);
 	list_for_each_entry(child, &bad_desc->tx_list, desc_node)
 		dwc_dump_lli(dwc, &child->lli);

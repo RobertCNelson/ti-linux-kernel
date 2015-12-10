@@ -51,11 +51,10 @@ static void ring_interrupt_active(struct tb_ring *ring, bool active)
 		 "%s interrupt at register %#x bit %d (%#x -> %#x)\n",
 		 active ? "enabling" : "disabling", reg, bit, old, new);
 
-	if (new == old)
-		dev_WARN(&ring->nhi->pdev->dev,
-					 "interrupt for %s %d is already %s\n",
-					 RING_TYPE(ring), ring->hop,
-					 active ? "enabled" : "disabled");
+	dev_WARN(&ring->nhi->pdev->dev, new == old,
+			"interrupt for %s %d is already %s\n",
+			RING_TYPE(ring), ring->hop,
+			active ? "enabled" : "disabled");
 	iowrite32(new, ring->nhi->iobase + reg);
 }
 
@@ -189,11 +188,10 @@ static void ring_work(struct work_struct *work)
 			frame->eof = ring->descriptors[ring->tail].eof;
 			frame->sof = ring->descriptors[ring->tail].sof;
 			frame->flags = ring->descriptors[ring->tail].flags;
-			if (frame->sof != 0)
-				dev_WARN(&ring->nhi->pdev->dev,
-					 "%s %d got unexpected SOF: %#x\n",
-					 RING_TYPE(ring), ring->hop,
-					 frame->sof);
+			dev_WARN(&ring->nhi->pdev->dev, frame->sof != 0,
+					"%s %d got unexpected SOF: %#x\n",
+					RING_TYPE(ring), ring->hop,
+					frame->sof);
 			/*
 			 * known flags:
 			 * raw not enabled, interupt not set: 0x2=0010
@@ -201,11 +199,10 @@ static void ring_work(struct work_struct *work)
 			 * raw not enabled: 0xb=1011
 			 * partial frame (>MAX_FRAME_SIZE): 0xe=1110
 			 */
-			if (frame->flags != 0xa)
-				dev_WARN(&ring->nhi->pdev->dev,
-					 "%s %d got unexpected flags: %#x\n",
-					 RING_TYPE(ring), ring->hop,
-					 frame->flags);
+			dev_WARN(&ring->nhi->pdev->dev, frame->flags != 0xa,
+					"%s %d got unexpected flags: %#x\n",
+					RING_TYPE(ring), ring->hop,
+					frame->flags);
 		}
 		ring->tail = (ring->tail + 1) % ring->size;
 	}
@@ -246,17 +243,17 @@ static struct tb_ring *ring_alloc(struct tb_nhi *nhi, u32 hop, int size,
 		 transmit ? "TX" : "RX", hop, size);
 
 	mutex_lock(&nhi->lock);
-	if (hop >= nhi->hop_count) {
-		dev_WARN(&nhi->pdev->dev, "invalid hop: %d\n", hop);
+	if (dev_WARN(&nhi->pdev->dev, hop >= nhi->hop_count,
+					"invalid hop: %d\n", hop))
 		goto err;
-	}
-	if (transmit && nhi->tx_rings[hop]) {
-		dev_WARN(&nhi->pdev->dev, "TX hop %d already allocated\n", hop);
+
+	if (dev_WARN(&nhi->pdev->dev, transmit && nhi->tx_rings[hop],
+					"TX hop %d already allocated\n", hop))
 		goto err;
-	} else if (!transmit && nhi->rx_rings[hop]) {
-		dev_WARN(&nhi->pdev->dev, "RX hop %d already allocated\n", hop);
+	else if (dev_WARN(&nhi->pdev->dev, !transmit && nhi->rx_rings[hop],
+					"RX hop %d already allocated\n", hop))
 		goto err;
-	}
+
 	ring = kzalloc(sizeof(*ring), GFP_KERNEL);
 	if (!ring)
 		goto err;
@@ -313,10 +310,10 @@ void ring_start(struct tb_ring *ring)
 {
 	mutex_lock(&ring->nhi->lock);
 	mutex_lock(&ring->lock);
-	if (ring->running) {
-		dev_WARN(&ring->nhi->pdev->dev, "ring already started\n");
+	if (dev_WARN(&ring->nhi->pdev->dev, ring->running,
+					"ring already started\n"))
 		goto err;
-	}
+
 	dev_info(&ring->nhi->pdev->dev, "starting %s %d\n",
 		 RING_TYPE(ring), ring->hop);
 
@@ -359,11 +356,11 @@ void ring_stop(struct tb_ring *ring)
 	mutex_lock(&ring->lock);
 	dev_info(&ring->nhi->pdev->dev, "stopping %s %d\n",
 		 RING_TYPE(ring), ring->hop);
-	if (!ring->running) {
-		dev_WARN(&ring->nhi->pdev->dev, "%s %d already stopped\n",
-			 RING_TYPE(ring), ring->hop);
+	if (dev_WARN(&ring->nhi->pdev->dev, !ring->running,
+					"%s %d already stopped\n",
+					RING_TYPE(ring), ring->hop))
 		goto err;
-	}
+
 	ring_interrupt_active(ring, false);
 
 	ring_iowrite32options(ring, 0, 0);
@@ -407,11 +404,8 @@ void ring_free(struct tb_ring *ring)
 	else
 		ring->nhi->rx_rings[ring->hop] = NULL;
 
-	if (ring->running) {
-		dev_WARN(&ring->nhi->pdev->dev, "%s %d still running\n",
-			 RING_TYPE(ring), ring->hop);
-	}
-
+	dev_WARN(&ring->nhi->pdev->dev, ring->running,
+			"%s %d still running\n", RING_TYPE(ring), ring->hop);
 	dma_free_coherent(&ring->nhi->pdev->dev,
 			  ring->size * sizeof(*ring->descriptors),
 			  ring->descriptors, ring->descriptors_dma);
@@ -515,12 +509,10 @@ static void nhi_shutdown(struct tb_nhi *nhi)
 	dev_info(&nhi->pdev->dev, "shutdown\n");
 
 	for (i = 0; i < nhi->hop_count; i++) {
-		if (nhi->tx_rings[i])
-			dev_WARN(&nhi->pdev->dev,
-				 "TX ring %d is still active\n", i);
-		if (nhi->rx_rings[i])
-			dev_WARN(&nhi->pdev->dev,
-				 "RX ring %d is still active\n", i);
+		dev_WARN(&nhi->pdev->dev, nhi->tx_rings[i],
+				"TX ring %d is still active\n", i);
+		dev_WARN(&nhi->pdev->dev, nhi->rx_rings[i],
+				"RX ring %d is still active\n", i);
 	}
 	nhi_disable_interrupts(nhi);
 	/*

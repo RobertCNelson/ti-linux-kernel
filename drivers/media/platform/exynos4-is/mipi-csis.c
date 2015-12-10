@@ -838,7 +838,7 @@ static int s5pcsis_probe(struct platform_device *pdev)
 		ret = clk_set_rate(state->clock[CSIS_CLK_MUX],
 				   state->clk_frequency);
 	else
-		dev_WARN(dev, "No clock frequency specified!\n");
+		dev_WARN(dev, true, "No clock frequency specified!\n");
 	if (ret < 0)
 		goto e_clkput;
 

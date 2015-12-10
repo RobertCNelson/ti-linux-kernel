@@ -297,10 +297,10 @@ int fimc_is_wait_event(struct fimc_is *is, unsigned long bit,
 	int ret = wait_event_timeout(is->irq_queue,
 				     !state ^ test_bit(bit, &is->state),
 				     timeout);
-	if (ret == 0) {
-		dev_WARN(&is->pdev->dev, "%s() timed out\n", __func__);
+
+	if (dev_WARN(&is->pdev->dev, ret == 0, "%s() timed out\n", __func__))
 		return -ETIME;
-	}
+
 	return 0;
 }
 

@@ -2155,7 +2155,7 @@ create_syslog_header(const struct device *dev, char *hdr, size_t hdrlen)
 	return pos;
 
 overflow:
-	dev_WARN(dev, "device/subsystem name too long");
+	dev_WARN(dev, true, "device/subsystem name too long");
 	return 0;
 }
 
