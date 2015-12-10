@@ -364,9 +364,9 @@ static unsigned long tmc_reset_etf_buffer(struct coresight_device *csdev,
 	return size;
 }
 
-static void tmc_update_etf_buffer(struct coresight_device *csdev,
-				  struct perf_output_handle *handle,
-				  void *sink_config)
+void tmc_update_etf_buffer(struct coresight_device *csdev,
+			   struct perf_output_handle *handle,
+			   void *sink_config)
 {
 	int i, cur;
 	u32 *buf_ptr;
