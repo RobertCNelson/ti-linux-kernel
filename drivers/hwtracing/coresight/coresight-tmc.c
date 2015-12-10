@@ -305,6 +305,7 @@ static int tmc_probe(struct amba_device *adev, const struct amba_id *id)
 
 	devid = readl_relaxed(drvdata->base + CORESIGHT_DEVID);
 	drvdata->config_type = BMVAL(devid, 6, 7);
+	drvdata->memwidth = BMVAL(devid, 8, 10);
 
 	if (drvdata->config_type == TMC_CONFIG_TYPE_ETR) {
 		if (np)

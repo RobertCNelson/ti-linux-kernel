@@ -103,6 +103,7 @@ enum tmc_mem_intf_width {
  * @size:	@buf size.
  * @mode:	how this TMC is being used.
  * @config_type: TMC variant, must be of type @tmc_config_type.
+ * @memwidth:	width of the memory interface databus, powers of two.
  * @trigger_cntr: amount of words to store after a trigger.
  */
 struct tmc_drvdata {
@@ -119,6 +120,7 @@ struct tmc_drvdata {
 	u32			size;
 	local_t			mode;
 	enum tmc_config_type	config_type;
+	enum tmc_mem_intf_width	memwidth;
 	u32			trigger_cntr;
 };
 
