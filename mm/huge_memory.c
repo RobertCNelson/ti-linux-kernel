@@ -2855,6 +2855,13 @@ static void __split_huge_pmd_locked(struct vm_area_struct *vma, pmd_t *pmd,
 
 	smp_wmb(); /* make pte visible before pmd */
 	pmd_populate(mm, pmd, pgtable);
+
+	if (freeze) {
+		for (i = 0; i < HPAGE_PMD_NR; i++, haddr += PAGE_SIZE) {
+			page_remove_rmap(page + i, false);
+			put_page(page + i);
+		}
+	}
 }
 
 void __split_huge_pmd(struct vm_area_struct *vma, pmd_t *pmd,
@@ -2986,6 +2993,8 @@ static void freeze_page_vma(struct vm_area_struct *vma, struct page *page,
 		if (pte_soft_dirty(entry))
 			swp_pte = pte_swp_mksoft_dirty(swp_pte);
 		set_pte_at(vma->vm_mm, address, pte + i, swp_pte);
+		page_remove_rmap(page, false);
+		put_page(page);
 	}
 	pte_unmap_unlock(pte, ptl);
 }
@@ -3024,8 +3033,6 @@ static void unfreeze_page_vma(struct vm_area_struct *vma, struct page *page,
 		return;
 	pte = pte_offset_map_lock(vma->vm_mm, pmd, address, &ptl);
 	for (i = 0; i < HPAGE_PMD_NR; i++, address += PAGE_SIZE, page++) {
-		if (!page_mapped(page))
-			continue;
 		if (!is_swap_pte(pte[i]))
 			continue;
 
@@ -3034,6 +3041,9 @@ static void unfreeze_page_vma(struct vm_area_struct *vma, struct page *page,
 			continue;
 		if (migration_entry_to_page(swp_entry) != page)
 			continue;
+
+		get_page(page);
+		page_add_anon_rmap(page, vma, address, false);
 
 		entry = pte_mkold(mk_pte(page, vma->vm_page_prot));
 		entry = pte_mkdirty(entry);
@@ -3102,8 +3112,6 @@ static int __split_huge_page_tail(struct page *head, int tail,
 	 */
 	atomic_add(mapcount + 1, &page_tail->_count);
 
-	/* after clearing PageTail the gup refcount can be released */
-	smp_mb__after_atomic();
 
 	page_tail->flags &= ~PAGE_FLAGS_CHECK_AT_PREP;
 	page_tail->flags |= (head->flags &
@@ -3115,6 +3123,12 @@ static int __split_huge_page_tail(struct page *head, int tail,
 			 (1L << PG_locked) |
 			 (1L << PG_unevictable)));
 	page_tail->flags |= (1L << PG_dirty);
+
+	/*
+	 * After clearing PageTail the gup refcount can be released.
+	 * Page flags also must be visible before we make the page non-compound.
+	 */
+	smp_wmb();
 
 	clear_compound_head(page_tail);
 
