@@ -13,6 +13,8 @@
 #include <trace/events/gfpflags.h>
 #include <linux/page_owner.h>
 
+#include "internal.h"
+
 char *migrate_reason_names[MR_TYPES] = {
 	"compaction",
 	"memory_failure",
