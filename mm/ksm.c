@@ -629,8 +629,8 @@ static void remove_node_from_stable_tree(struct stable_node *stable_node)
 	 * from &migrate_nodes. This will verify that future list.h changes
 	 * don't break STABLE_NODE_DUP_HEAD.
 	 */
-	BUILD_BUG_ON(STABLE_NODE_DUP_HEAD <= &migrate_nodes);
-	BUILD_BUG_ON(STABLE_NODE_DUP_HEAD >= &migrate_nodes + 1);
+	WARN_ON_ONCE(STABLE_NODE_DUP_HEAD <= &migrate_nodes);
+	WARN_ON_ONCE(STABLE_NODE_DUP_HEAD >= &migrate_nodes + 1);
 
 	if (stable_node->head == &migrate_nodes)
 		list_del(&stable_node->list);
