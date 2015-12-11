@@ -3073,7 +3073,7 @@ i915_gem_wait_ioctl(struct drm_device *dev, void *data, struct drm_file *file)
 		if (ret == 0)
 			ret = __i915_wait_request(req[i], reset_counter, true,
 						  args->timeout_ns > 0 ? &args->timeout_ns : NULL,
-						  file->driver_priv);
+						  to_rps_client(file));
 		i915_gem_request_unreference__unlocked(req[i]);
 	}
 	return ret;
@@ -3476,30 +3476,50 @@ i915_gem_object_bind_to_vm(struct drm_i915_gem_object *obj,
 	if (IS_ERR(vma))
 		goto err_unpin;
 
-	if (flags & PIN_HIGH) {
-		search_flag = DRM_MM_SEARCH_BELOW;
-		alloc_flag = DRM_MM_CREATE_TOP;
+	if (flags & PIN_OFFSET_FIXED) {
+		uint64_t offset = flags & PIN_OFFSET_MASK;
+
+		if (offset & (alignment - 1) || offset + size > end) {
+			ret = -EINVAL;
+			goto err_free_vma;
+		}
+		vma->node.start = offset;
+		vma->node.size = size;
+		vma->node.color = obj->cache_level;
+		ret = drm_mm_reserve_node(&vm->mm, &vma->node);
+		if (ret) {
+			ret = i915_gem_evict_for_vma(vma);
+			if (ret == 0)
+				ret = drm_mm_reserve_node(&vm->mm, &vma->node);
+		}
+		if (ret)
+			goto err_free_vma;
 	} else {
-		search_flag = DRM_MM_SEARCH_DEFAULT;
-		alloc_flag = DRM_MM_CREATE_DEFAULT;
-	}
+		if (flags & PIN_HIGH) {
+			search_flag = DRM_MM_SEARCH_BELOW;
+			alloc_flag = DRM_MM_CREATE_TOP;
+		} else {
+			search_flag = DRM_MM_SEARCH_DEFAULT;
+			alloc_flag = DRM_MM_CREATE_DEFAULT;
+		}
 
 search_free:
-	ret = drm_mm_insert_node_in_range_generic(&vm->mm, &vma->node,
-						  size, alignment,
-						  obj->cache_level,
-						  start, end,
-						  search_flag,
-						  alloc_flag);
-	if (ret) {
-		ret = i915_gem_evict_something(dev, vm, size, alignment,
-					       obj->cache_level,
-					       start, end,
-					       flags);
-		if (ret == 0)
-			goto search_free;
+		ret = drm_mm_insert_node_in_range_generic(&vm->mm, &vma->node,
+							  size, alignment,
+							  obj->cache_level,
+							  start, end,
+							  search_flag,
+							  alloc_flag);
+		if (ret) {
+			ret = i915_gem_evict_something(dev, vm, size, alignment,
+						       obj->cache_level,
+						       start, end,
+						       flags);
+			if (ret == 0)
+				goto search_free;
 
-		goto err_free_vma;
+			goto err_free_vma;
+		}
 	}
 	if (WARN_ON(!i915_gem_valid_gtt_space(vma, obj->cache_level))) {
 		ret = -EINVAL;
@@ -4088,6 +4108,10 @@ i915_vma_misplaced(struct i915_vma *vma, uint32_t alignment, uint64_t flags)
 
 	if (flags & PIN_OFFSET_BIAS &&
 	    vma->node.start < (flags & PIN_OFFSET_MASK))
+		return true;
+
+	if (flags & PIN_OFFSET_FIXED &&
+	    vma->node.start != (flags & PIN_OFFSET_MASK))
 		return true;
 
 	return false;
@@ -4838,14 +4862,6 @@ int i915_gem_init(struct drm_device *dev)
 
 	mutex_lock(&dev->struct_mutex);
 
-	if (IS_VALLEYVIEW(dev)) {
-		/* VLVA0 (potential hack), BIOS isn't actually waking us */
-		I915_WRITE(VLV_GTLC_WAKE_CTRL, VLV_GTLC_ALLOWWAKEREQ);
-		if (wait_for((I915_READ(VLV_GTLC_PW_STATUS) &
-			      VLV_GTLC_ALLOWWAKEACK), 10))
-			DRM_DEBUG_DRIVER("allow wake ack timed out\n");
-	}
-
 	if (!i915.enable_execlists) {
 		dev_priv->gt.execbuf_submit = i915_gem_ringbuffer_submission;
 		dev_priv->gt.init_rings = i915_gem_init_rings;
@@ -4963,7 +4979,7 @@ i915_gem_load(struct drm_device *dev)
 
 	dev_priv->relative_constants_mode = I915_EXEC_CONSTANTS_REL_GENERAL;
 
-	if (INTEL_INFO(dev)->gen >= 7 && !IS_VALLEYVIEW(dev))
+	if (INTEL_INFO(dev)->gen >= 7 && !IS_VALLEYVIEW(dev) && !IS_CHERRYVIEW(dev))
 		dev_priv->num_fence_regs = 32;
 	else if (INTEL_INFO(dev)->gen >= 4 || IS_I945G(dev) || IS_I945GM(dev) || IS_G33(dev))
 		dev_priv->num_fence_regs = 16;
