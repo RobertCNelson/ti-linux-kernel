@@ -1,4 +1,4 @@
-config ARCH_HAS_UBSAN_SANTIZE_ALL
+config ARCH_HAS_UBSAN_SANITIZE_ALL
 	bool
 
 config UBSAN
@@ -12,7 +12,7 @@ config UBSAN
 config UBSAN_SANITIZE_ALL
 	bool "Enable instrumentation for the entire kernel"
 	depends on UBSAN
-	depends on ARCH_HAS_UBSAN_SANTIZE_ALL
+	depends on ARCH_HAS_UBSAN_SANITIZE_ALL
 	default y
 	help
 	  This option activates instrumentation for the entire kernel.
