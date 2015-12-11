@@ -207,7 +207,7 @@ void __dump_page_owner(struct page *page)
 		pr_alert("page_owner info is not active (free page?)\n");
 		return;
 	}
-			                        ;
+
 	pr_alert("page allocated via order %u, migratetype %s, gfp_mask 0x%x",
 			page_ext->order, migratetype_names[mt], gfp_mask);
 	dump_gfpflag_names(gfp_mask);
