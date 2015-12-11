@@ -470,6 +470,7 @@ get_futex_key(u32 __user *uaddr, int fshared, union futex_key *key, int rw)
 	unsigned long address = (unsigned long)uaddr;
 	struct mm_struct *mm = current->mm;
 	struct page *page;
+	struct address_space *mapping;
 	int err, ro = 0;
 
 	/*
@@ -535,7 +536,8 @@ again:
 	 * shmem_writepage move it from filecache to swapcache beneath us:
 	 * an unlikely race, but we do need to retry for page->mapping.
 	 */
-	if (!page->mapping) {
+	mapping = compound_head(page)->mapping;
+	if (!mapping) {
 		int shmem_swizzled = PageSwapCache(page);
 		unlock_page(page);
 		put_page(page);
@@ -566,7 +568,7 @@ again:
 		key->private.address = address;
 	} else {
 		key->both.offset |= FUT_OFF_INODE; /* inode-based key */
-		key->shared.inode = page->mapping->host;
+		key->shared.inode = mapping->host;
 		key->shared.pgoff = basepage_index(page);
 	}
 
