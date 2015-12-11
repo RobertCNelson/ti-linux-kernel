@@ -3,7 +3,7 @@
   redistributing this file, you may do so under either license.
 
   GPL LICENSE SUMMARY
-  Copyright(c) 2014 Intel Corporation.
+  Copyright(c) 2015 Intel Corporation.
   This program is free software; you can redistribute it and/or modify
   it under the terms of version 2 of the GNU General Public License as
   published by the Free Software Foundation.
@@ -17,7 +17,7 @@
   qat-linux@intel.com
 
   BSD LICENSE
-  Copyright(c) 2014 Intel Corporation.
+  Copyright(c) 2015 Intel Corporation.
   Redistribution and use in source and binary forms, with or without
   modification, are permitted provided that the following conditions
   are met:
@@ -44,14 +44,21 @@
   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef ADF_DH895xVF_DRV_H_
-#define ADF_DH895xVF_DRV_H_
-#include <adf_accel_devices.h>
-#include <adf_transport.h>
+#ifndef ADF_C3XXXVF_HW_DATA_H_
+#define ADF_C3XXXVF_HW_DATA_H_
 
-void adf_init_hw_data_dh895xcciov(struct adf_hw_device_data *hw_data);
-void adf_clean_hw_data_dh895xcciov(struct adf_hw_device_data *hw_data);
-int adf_vf_isr_resource_alloc(struct adf_accel_dev *accel_dev);
-void adf_vf_isr_resource_free(struct adf_accel_dev *accel_dev);
-void adf_update_ring_arb_enable(struct adf_etr_ring_data *ring);
+#define ADF_C3XXXIOV_PMISC_BAR 1
+#define ADF_C3XXXIOV_ACCELERATORS_MASK 0x1
+#define ADF_C3XXXIOV_ACCELENGINES_MASK 0x1
+#define ADF_C3XXXIOV_MAX_ACCELERATORS 1
+#define ADF_C3XXXIOV_MAX_ACCELENGINES 1
+#define ADF_C3XXXIOV_RX_RINGS_OFFSET 8
+#define ADF_C3XXXIOV_TX_RINGS_MASK 0xFF
+#define ADF_C3XXXIOV_ETR_BAR 0
+#define ADF_C3XXXIOV_ETR_MAX_BANKS 1
+#define ADF_C3XXXIOV_PF2VF_OFFSET	0x200
+#define ADF_C3XXXIOV_VINTMSK_OFFSET	0x208
+
+void adf_init_hw_data_c3xxxiov(struct adf_hw_device_data *hw_data);
+void adf_clean_hw_data_c3xxxiov(struct adf_hw_device_data *hw_data);
 #endif
