@@ -3022,7 +3022,7 @@ retry:
 		ac->zonelist = node_zonelist(numa_node_id(), gfp_mask);
 		do {
 			page = get_page_from_freelist(gfp_mask, order,
-							ALLOC_NO_WATERMARKS, ac);
+						      ALLOC_NO_WATERMARKS, ac);
 			if (page)
 				goto got_pg;
 
