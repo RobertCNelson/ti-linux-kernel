@@ -1479,10 +1479,7 @@ static void __vunmap(const void *addr, int deallocate_pages)
 			__free_kmem_pages(page, 0);
 		}
 
-		if (area->flags & VM_VPAGES)
-			vfree(area->pages);
-		else
-			kfree(area->pages);
+		kvfree(area->pages);
 	}
 
 	kfree(area);
