@@ -276,15 +276,15 @@ struct nand_onfi_params {
 	__le16 t_r;
 	__le16 t_ccs;
 	__le16 src_sync_timing_mode;
-	__le16 src_ssync_features;
+	u8 src_ssync_features;
 	__le16 clk_pin_capacitance_typ;
 	__le16 io_pin_capacitance_typ;
 	__le16 input_pin_capacitance_typ;
 	u8 input_pin_capacitance_max;
 	u8 driver_strength_support;
 	__le16 t_int_r;
-	__le16 t_ald;
-	u8 reserved4[7];
+	__le16 t_adl;
+	u8 reserved4[8];
 
 	/* vendor */
 	__le16 vendor_revision;
@@ -407,7 +407,7 @@ struct nand_jedec_params {
 	__le16 input_pin_capacitance_typ;
 	__le16 clk_pin_capacitance_typ;
 	u8 driver_strength_support;
-	__le16 t_ald;
+	__le16 t_adl;
 	u8 reserved4[36];
 
 	/* ECC and endurance block */
@@ -540,6 +540,7 @@ struct nand_buffers {
 
 /**
  * struct nand_chip - NAND Private Flash Chip Data
+ * @mtd:		MTD device registered to the MTD framework
  * @IO_ADDR_R:		[BOARDSPECIFIC] address to read the 8 I/O lines of the
  *			flash device
  * @IO_ADDR_W:		[BOARDSPECIFIC] address to write the 8 I/O lines of the
@@ -640,6 +641,7 @@ struct nand_buffers {
  */
 
 struct nand_chip {
+	struct mtd_info mtd;
 	void __iomem *IO_ADDR_R;
 	void __iomem *IO_ADDR_W;
 
@@ -718,6 +720,27 @@ struct nand_chip {
 
 	void *priv;
 };
+
+static inline void nand_set_flash_node(struct nand_chip *chip,
+				       struct device_node *np)
+{
+	chip->flash_node = np;
+}
+
+static inline struct device_node *nand_get_flash_node(struct nand_chip *chip)
+{
+	return chip->flash_node;
+}
+
+static inline struct nand_chip *mtd_to_nand(struct mtd_info *mtd)
+{
+	return mtd->priv;
+}
+
+static inline struct mtd_info *nand_to_mtd(struct nand_chip *chip)
+{
+	return &chip->mtd;
+}
 
 /*
  * NAND Flash Manufacturer ID Codes
