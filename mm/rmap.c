@@ -1511,6 +1511,13 @@ static int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 		 * See handle_pte_fault() ...
 		 */
 		VM_BUG_ON_PAGE(!PageSwapCache(page), page);
+
+		if (!PageDirty(page) && (flags & TTU_LZFREE)) {
+			/* It's a freeable page by MADV_FREE */
+			dec_mm_counter(mm, MM_ANONPAGES);
+			goto discard;
+		}
+
 		if (swap_duplicate(entry) < 0) {
 			set_pte_at(mm, address, pte, pteval);
 			ret = SWAP_FAIL;
@@ -1531,6 +1538,7 @@ static int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 	} else
 		dec_mm_counter(mm, mm_counter_file(page));
 
+discard:
 	page_remove_rmap(page, PageHuge(page));
 	page_cache_release(page);
 
