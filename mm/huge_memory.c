@@ -2346,7 +2346,7 @@ static int __collapse_huge_page_isolate(struct vm_area_struct *vma,
 	if (likely(writable)) {
 		if (likely(referenced)) {
 			result = SCAN_SUCCEED;
-			trace_mm_collapse_huge_page_isolate(page_to_pfn(page), none_or_zero,
+			trace_mm_collapse_huge_page_isolate(page, none_or_zero,
 							    referenced, writable, result);
 			return 1;
 		}
@@ -2356,7 +2356,7 @@ static int __collapse_huge_page_isolate(struct vm_area_struct *vma,
 
 out:
 	release_pte_pages(pte, _pte);
-	trace_mm_collapse_huge_page_isolate(page_to_pfn(page), none_or_zero,
+	trace_mm_collapse_huge_page_isolate(page, none_or_zero,
 					    referenced, writable, result);
 	return 0;
 }
@@ -2852,7 +2852,7 @@ out_unmap:
 		collapse_huge_page(mm, address, hpage, vma, node);
 	}
 out:
-	trace_mm_khugepaged_scan_pmd(mm, page_to_pfn(page), writable, referenced,
+	trace_mm_khugepaged_scan_pmd(mm, page, writable, referenced,
 				     none_or_zero, result, unmapped);
 	return ret;
 }
