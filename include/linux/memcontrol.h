@@ -152,6 +152,12 @@ struct mem_cgroup_thresholds {
 	struct mem_cgroup_threshold_ary *spare;
 };
 
+enum memcg_kmem_state {
+	KMEM_NONE,
+	KMEM_ALLOCATED,
+	KMEM_ONLINE,
+};
+
 /*
  * The memory controller data structure. The memory controller controls both
  * page cache and RSS per cgroup. We would eventually like to provide
@@ -227,14 +233,13 @@ struct mem_cgroup {
 	 */
 	struct mem_cgroup_stat_cpu __percpu *stat;
 
-#if defined(CONFIG_MEMCG_KMEM) && defined(CONFIG_INET)
+#if defined(CONFIG_MEMCG_LEGACY_KMEM) && defined(CONFIG_INET)
 	struct cg_proto tcp_mem;
 #endif
-#if defined(CONFIG_MEMCG_KMEM)
+#ifndef CONFIG_SLOB
         /* Index in the kmem_cache->memcg_params.memcg_caches array */
 	int kmemcg_id;
-	bool kmem_acct_activated;
-	bool kmem_acct_active;
+	enum memcg_kmem_state kmem_state;
 #endif
 
 	int last_scanned_node;
@@ -712,7 +717,7 @@ extern struct static_key_false memcg_sockets_enabled_key;
 #define mem_cgroup_sockets_enabled static_branch_unlikely(&memcg_sockets_enabled_key)
 static inline bool mem_cgroup_under_socket_pressure(struct mem_cgroup *memcg)
 {
-#ifdef CONFIG_MEMCG_KMEM
+#ifdef CONFIG_MEMCG_LEGACY_KMEM
 	if (memcg->tcp_mem.memory_pressure)
 		return true;
 #endif
@@ -730,7 +735,7 @@ static inline bool mem_cgroup_under_socket_pressure(struct mem_cgroup *memcg)
 }
 #endif
 
-#ifdef CONFIG_MEMCG_KMEM
+#if defined(CONFIG_MEMCG) && !defined(CONFIG_SLOB)
 extern struct static_key_false memcg_kmem_enabled_key;
 
 extern int memcg_nr_cache_ids;
@@ -750,9 +755,9 @@ static inline bool memcg_kmem_enabled(void)
 	return static_branch_unlikely(&memcg_kmem_enabled_key);
 }
 
-static inline bool memcg_kmem_is_active(struct mem_cgroup *memcg)
+static inline bool memcg_kmem_online(struct mem_cgroup *memcg)
 {
-	return memcg->kmem_acct_active;
+	return memcg->kmem_state == KMEM_ONLINE;
 }
 
 /*
@@ -850,7 +855,7 @@ static inline bool memcg_kmem_enabled(void)
 	return false;
 }
 
-static inline bool memcg_kmem_is_active(struct mem_cgroup *memcg)
+static inline bool memcg_kmem_online(struct mem_cgroup *memcg)
 {
 	return false;
 }
@@ -886,5 +891,6 @@ memcg_kmem_get_cache(struct kmem_cache *cachep, gfp_t gfp)
 static inline void memcg_kmem_put_cache(struct kmem_cache *cachep)
 {
 }
-#endif /* CONFIG_MEMCG_KMEM */
+#endif /* CONFIG_MEMCG && !CONFIG_SLOB */
+
 #endif /* _LINUX_MEMCONTROL_H */
