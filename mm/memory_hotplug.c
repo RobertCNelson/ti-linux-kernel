@@ -1383,6 +1383,9 @@ int test_pages_in_a_zone(unsigned long start_pfn, unsigned long end_pfn)
 	     pfn < end_pfn;
 	     pfn += MAX_ORDER_NR_PAGES) {
 		i = 0;
+		/* Make sure the memory section is present */
+		if (!present_section_nr(pfn_to_section_nr(pfn)))
+			continue;
 		/* This is just a CONFIG_HOLES_IN_ZONE check.*/
 		while ((i < MAX_ORDER_NR_PAGES) && !pfn_valid_within(pfn + i))
 			i++;
