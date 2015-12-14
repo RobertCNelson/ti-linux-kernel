@@ -72,6 +72,10 @@ enum adf_device_type {
 	DEV_UNKNOWN = 0,
 	DEV_DH895XCC,
 	DEV_DH895XCCVF,
+	DEV_C62X,
+	DEV_C62XVF,
+	DEV_C3XXX,
+	DEV_C3XXXVF
 };
 
 struct adf_dev_status_info {
