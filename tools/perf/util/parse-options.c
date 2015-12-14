@@ -501,8 +501,6 @@ int parse_options_subcommand(int argc, const char **argv, const struct option *o
 {
 	struct parse_opt_ctx_t ctx;
 
-	perf_env__set_cmdline(&perf_env, argc, argv);
-
 	/* build usage string if it's not provided */
 	if (subcommands && !usagestr[0]) {
 		struct strbuf buf = STRBUF_INIT;
@@ -768,7 +766,6 @@ int usage_with_options_internal(const char * const *usagestr,
 void usage_with_options(const char * const *usagestr,
 			const struct option *opts)
 {
-	exit_browser(false);
 	usage_with_options_internal(usagestr, opts, 0, NULL);
 	exit(129);
 }
@@ -777,8 +774,6 @@ void usage_with_options_msg(const char * const *usagestr,
 			    const struct option *opts, const char *fmt, ...)
 {
 	va_list ap;
-
-	exit_browser(false);
 
 	va_start(ap, fmt);
 	strbuf_addv(&error_buf, fmt, ap);
