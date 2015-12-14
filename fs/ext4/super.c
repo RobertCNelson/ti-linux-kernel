@@ -80,6 +80,36 @@ static void ext4_destroy_lazyinit_thread(void);
 static void ext4_unregister_li_request(struct super_block *sb);
 static void ext4_clear_request_list(void);
 
+/*
+ * Lock ordering
+ *
+ * Note the difference between i_mmap_sem (EXT4_I(inode)->i_mmap_sem) and
+ * i_mmap_rwsem (inode->i_mmap_rwsem)!
+ *
+ * page fault path:
+ * mmap_sem -> sb_start_pagefault -> i_mmap_sem (r) -> transaction start ->
+ *   page lock -> i_data_sem (rw)
+ *
+ * buffered write path:
+ * sb_start_write -> i_mutex -> mmap_sem
+ * sb_start_write -> i_mutex -> transaction start -> page lock ->
+ *   i_data_sem (rw)
+ *
+ * truncate:
+ * sb_start_write -> i_mutex -> EXT4_STATE_DIOREAD_LOCK (w) -> i_mmap_sem (w) ->
+ *   i_mmap_rwsem (w) -> page lock
+ * sb_start_write -> i_mutex -> EXT4_STATE_DIOREAD_LOCK (w) -> i_mmap_sem (w) ->
+ *   transaction start -> i_data_sem (rw)
+ *
+ * direct IO:
+ * sb_start_write -> i_mutex -> EXT4_STATE_DIOREAD_LOCK (r) -> mmap_sem
+ * sb_start_write -> i_mutex -> EXT4_STATE_DIOREAD_LOCK (r) ->
+ *   transaction start -> i_data_sem (rw)
+ *
+ * writepages:
+ * transaction start -> page lock(s) -> i_data_sem (rw)
+ */
+
 #if !defined(CONFIG_EXT2_FS) && !defined(CONFIG_EXT2_FS_MODULE) && defined(CONFIG_EXT4_USE_FOR_EXT2)
 static struct file_system_type ext2_fs_type = {
 	.owner		= THIS_MODULE,
@@ -958,6 +988,7 @@ static void init_once(void *foo)
 	INIT_LIST_HEAD(&ei->i_orphan);
 	init_rwsem(&ei->xattr_sem);
 	init_rwsem(&ei->i_data_sem);
+	init_rwsem(&ei->i_mmap_sem);
 	inode_init_once(&ei->vfs_inode);
 }
 
@@ -1000,6 +1031,49 @@ void ext4_clear_inode(struct inode *inode)
 	if (EXT4_I(inode)->i_crypt_info)
 		ext4_free_encryption_info(inode, EXT4_I(inode)->i_crypt_info);
 #endif
+}
+
+/*
+ * Create a copy of the inode structure so when we are reading the
+ * last block of an encrypted inode using direct I/O to get the
+ * ciphertext, we can futz with the i_size in the shadow inode.  This
+ * is necessary so that we can make a copy of the full AES block when
+ * i_size is not a multiple of the AES block size.
+ */
+struct inode *ext4_alloc_shadow_inode(struct inode *inode)
+{
+	struct ext4_inode_info *shadow_ei, *ei = EXT4_I(inode);
+	struct inode *shadow;
+
+	shadow_ei = kmem_cache_alloc(ext4_inode_cachep, GFP_NOFS);
+	if (!shadow_ei)
+		return NULL;
+
+	memcpy(shadow_ei, ei, sizeof(struct ext4_inode_info));
+	shadow = &shadow_ei->vfs_inode;
+
+	init_rwsem(&shadow_ei->xattr_sem);
+	init_rwsem(&shadow_ei->i_data_sem);
+	init_rwsem(&shadow_ei->i_mmap_sem);
+	i_size_ordered_init(shadow);
+	mutex_init(&shadow->i_mutex);
+	spin_lock_init(&shadow_ei->i_raw_lock);
+	spin_lock_init(&shadow_ei->i_prealloc_lock);
+	spin_lock_init(&(shadow_ei->i_block_reservation_lock));
+	spin_lock_init(&shadow_ei->i_completed_io_lock);
+	rwlock_init(&shadow_ei->i_es_lock);
+	ext4_es_init_tree(&shadow_ei->i_es_tree);
+	INIT_LIST_HEAD(&shadow_ei->i_es_list);
+	shadow_ei->i_es_all_nr = 0;
+	shadow_ei->i_es_shk_nr = 0;
+
+	return shadow;
+}
+
+void ext4_free_shadow_inode(struct inode *shadow)
+{
+	ext4_es_remove_extent(shadow, 0, EXT_MAX_BLOCKS);
+	kmem_cache_free(ext4_inode_cachep, EXT4_I(shadow));
 }
 
 static struct inode *ext4_nfs_get_inode(struct super_block *sb,
@@ -1151,6 +1225,7 @@ enum {
 	Opt_journal_path, Opt_journal_checksum, Opt_journal_async_commit,
 	Opt_abort, Opt_data_journal, Opt_data_ordered, Opt_data_writeback,
 	Opt_data_err_abort, Opt_data_err_ignore, Opt_test_dummy_encryption,
+	Opt_ciphertext_access, Opt_nociphertext_access,
 	Opt_usrjquota, Opt_grpjquota, Opt_offusrjquota, Opt_offgrpjquota,
 	Opt_jqfmt_vfsold, Opt_jqfmt_vfsv0, Opt_jqfmt_vfsv1, Opt_quota,
 	Opt_noquota, Opt_barrier, Opt_nobarrier, Opt_err,
@@ -1242,6 +1317,8 @@ static const match_table_t tokens = {
 	{Opt_noinit_itable, "noinit_itable"},
 	{Opt_max_dir_size_kb, "max_dir_size_kb=%u"},
 	{Opt_test_dummy_encryption, "test_dummy_encryption"},
+	{Opt_ciphertext_access, "ciphertext_access"},
+	{Opt_nociphertext_access, "nociphertext_access"},
 	{Opt_removed, "check=none"},	/* mount option from ext2/3 */
 	{Opt_removed, "nocheck"},	/* mount option from ext2/3 */
 	{Opt_removed, "reservation"},	/* mount option from ext2/3 */
@@ -1444,6 +1521,8 @@ static const struct mount_opts {
 	{Opt_jqfmt_vfsv1, QFMT_VFS_V1, MOPT_QFMT},
 	{Opt_max_dir_size_kb, 0, MOPT_GTE0},
 	{Opt_test_dummy_encryption, 0, MOPT_GTE0},
+	{Opt_ciphertext_access, EXT4_MOUNT_CIPHERTEXT_ACCESS, MOPT_SET},
+	{Opt_nociphertext_access, EXT4_MOUNT_CIPHERTEXT_ACCESS, MOPT_CLEAR},
 	{Opt_err, 0, 0}
 };
 
