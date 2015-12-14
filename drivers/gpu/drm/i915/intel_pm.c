@@ -66,6 +66,14 @@ static void bxt_init_clock_gating(struct drm_device *dev)
 	 */
 	I915_WRITE(GEN8_UCGCTL6, I915_READ(GEN8_UCGCTL6) |
 		   GEN8_HDCUNIT_CLOCK_GATE_DISABLE_HDCREQ);
+
+	/*
+	 * Wa: Backlight PWM may stop in the asserted state, causing backlight
+	 * to stay fully on.
+	 */
+	if (IS_BXT_REVID(dev_priv, BXT_REVID_B0, REVID_FOREVER))
+		I915_WRITE(GEN9_CLKGATE_DIS_0, I915_READ(GEN9_CLKGATE_DIS_0) |
+			   PWM1_GATING_DIS | PWM2_GATING_DIS);
 }
 
 static void i915_pineview_get_mem_freq(struct drm_device *dev)
@@ -283,7 +291,7 @@ void intel_set_memory_cxsr(struct drm_i915_private *dev_priv, bool enable)
 	struct drm_device *dev = dev_priv->dev;
 	u32 val;
 
-	if (IS_VALLEYVIEW(dev)) {
+	if (IS_VALLEYVIEW(dev) || IS_CHERRYVIEW(dev)) {
 		I915_WRITE(FW_BLC_SELF_VLV, enable ? FW_CSPWRDWNEN : 0);
 		POSTING_READ(FW_BLC_SELF_VLV);
 		dev_priv->wm.vlv.cxsr = enable;
@@ -2422,7 +2430,7 @@ static void ilk_wm_merge(struct drm_device *dev,
 	 * enabled sometime later.
 	 */
 	if (IS_GEN5(dev) && !merged->fbc_wm_enabled &&
-	    intel_fbc_enabled(dev_priv)) {
+	    intel_fbc_is_active(dev_priv)) {
 		for (level = 2; level <= max_level; level++) {
 			struct intel_wm_level *wm = &merged->wm[level];
 
@@ -4397,7 +4405,7 @@ void gen6_rps_idle(struct drm_i915_private *dev_priv)
 
 	mutex_lock(&dev_priv->rps.hw_lock);
 	if (dev_priv->rps.enabled) {
-		if (IS_VALLEYVIEW(dev))
+		if (IS_VALLEYVIEW(dev) || IS_CHERRYVIEW(dev))
 			vlv_set_rps_idle(dev_priv);
 		else
 			gen6_set_rps(dev_priv->dev, dev_priv->rps.idle_freq);
@@ -4450,7 +4458,7 @@ void gen6_rps_boost(struct drm_i915_private *dev_priv,
 
 void intel_set_rps(struct drm_device *dev, u8 val)
 {
-	if (IS_VALLEYVIEW(dev))
+	if (IS_VALLEYVIEW(dev) || IS_CHERRYVIEW(dev))
 		valleyview_set_rps(dev, val);
 	else
 		gen6_set_rps(dev, val);
@@ -4494,7 +4502,7 @@ static void valleyview_disable_rps(struct drm_device *dev)
 
 static void intel_print_rc6_info(struct drm_device *dev, u32 mode)
 {
-	if (IS_VALLEYVIEW(dev)) {
+	if (IS_VALLEYVIEW(dev) || IS_CHERRYVIEW(dev)) {
 		if (mode & (GEN7_RC_CTL_TO_MODE | GEN6_RC_CTL_EI_MODE(1)))
 			mode = GEN6_RC_CTL_RC6_ENABLE;
 		else
@@ -5092,7 +5100,17 @@ static int valleyview_rps_rpe_freq(struct drm_i915_private *dev_priv)
 
 static int valleyview_rps_min_freq(struct drm_i915_private *dev_priv)
 {
-	return vlv_punit_read(dev_priv, PUNIT_REG_GPU_LFM) & 0xff;
+	u32 val;
+
+	val = vlv_punit_read(dev_priv, PUNIT_REG_GPU_LFM) & 0xff;
+	/*
+	 * According to the BYT Punit GPU turbo HAS 1.1.6.3 the minimum value
+	 * for the minimum frequency in GPLL mode is 0xc1. Contrary to this on
+	 * a BYT-M B0 the above register contains 0xbf. Moreover when setting
+	 * a frequency Punit will not allow values below 0xc0. Clamp it 0xc0
+	 * to make sure it matches what Punit accepts.
+	 */
+	return max_t(u32, val, 0xc0);
 }
 
 /* Check that the pctx buffer wasn't move under us. */
