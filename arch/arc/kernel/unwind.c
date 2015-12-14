@@ -241,7 +241,7 @@ static void swap_eh_frame_hdr_table_entries(void *p1, void *p2, int size)
 	e2->fde = v;
 }
 
-static void __init setup_unwind_table(struct unwind_table *table,
+static void setup_unwind_table(struct unwind_table *table,
 				      void *(*alloc) (unsigned long))
 {
 	const u8 *ptr;
@@ -358,6 +358,11 @@ void __init arc_unwind_setup(void)
 
 static struct unwind_table *last_table;
 
+static void * mod_unw_hdr_alloc(unsigned long sz)
+{
+	return kmalloc(sz, GFP_KERNEL);
+}
+
 /* Must be called with module_mutex held. */
 void *unwind_add_table(struct module *module, const void *table_start,
 		       unsigned long table_size)
@@ -376,6 +381,8 @@ void *unwind_add_table(struct module *module, const void *table_start,
 			  module->module_init, module->init_size,
 			  table_start, table_size,
 			  NULL, 0);
+
+	setup_unwind_table(table, mod_unw_hdr_alloc);
 
 #ifdef UNWIND_DEBUG
 	unw_debug("Table added for [%s] %lx %lx\n",
