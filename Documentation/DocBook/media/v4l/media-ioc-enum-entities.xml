@@ -59,15 +59,6 @@
     <para>Entity IDs can be non-contiguous. Applications must
     <emphasis>not</emphasis> try to enumerate entities by calling
     MEDIA_IOC_ENUM_ENTITIES with increasing id's until they get an error.</para>
-    <para>Two or more entities that share a common non-zero
-    <structfield>group_id</structfield> value are considered as logically
-    grouped. Groups are used to report
-    <itemizedlist>
-      <listitem><para>ALSA, VBI and video nodes that carry the same media
-      stream</para></listitem>
-      <listitem><para>lens and flash controllers associated with a sensor</para></listitem>
-    </itemizedlist>
-    </para>
 
     <table pgwide="1" frame="none" id="media-entity-desc">
       <title>struct <structname>media_entity_desc</structname></title>
@@ -106,7 +97,7 @@
 	    <entry><structfield>revision</structfield></entry>
 	    <entry></entry>
 	    <entry></entry>
-	    <entry>Entity revision in a driver/hardware specific format.</entry>
+	    <entry>Entity revision. Always zero (obsolete)</entry>
 	  </row>
 	  <row>
 	    <entry>__u32</entry>
@@ -120,7 +111,7 @@
 	    <entry><structfield>group_id</structfield></entry>
 	    <entry></entry>
 	    <entry></entry>
-	    <entry>Entity group ID</entry>
+	    <entry>Entity group ID. Always zero (obsolete)</entry>
 	  </row>
 	  <row>
 	    <entry>__u16</entry>
@@ -179,70 +170,83 @@
         <colspec colname="c2"/>
 	<tbody valign="top">
 	  <row>
-	    <entry><constant>MEDIA_ENT_T_DEVNODE</constant></entry>
-	    <entry>Unknown device node</entry>
+	    <entry><constant>MEDIA_ENT_F_UNKNOWN</constant> and <constant>MEDIA_ENT_F_V4L2_SUBDEV_UNKNOWN</constant></entry>
+	    <entry>Unknown entity. That generally indicates that
+	    a driver didn't initialize properly the entity, with is a Kernel bug</entry>
 	  </row>
 	  <row>
-	    <entry><constant>MEDIA_ENT_T_DEVNODE_V4L</constant></entry>
-	    <entry>V4L video, radio or vbi device node</entry>
+	    <entry><constant>MEDIA_ENT_F_IO_V4L</constant></entry>
+	    <entry>Data streaming input and/or output entity.</entry>
 	  </row>
 	  <row>
-	    <entry><constant>MEDIA_ENT_T_DEVNODE_FB</constant></entry>
-	    <entry>Frame buffer device node</entry>
+	    <entry><constant>MEDIA_ENT_F_IO_VBI</constant></entry>
+	    <entry>V4L VBI streaming input or output entity</entry>
 	  </row>
 	  <row>
-	    <entry><constant>MEDIA_ENT_T_DEVNODE_ALSA</constant></entry>
-	    <entry>ALSA card</entry>
+	    <entry><constant>MEDIA_ENT_F_IO_SWRADIO</constant></entry>
+	    <entry>V4L Software Digital Radio (SDR) streaming input or output entity</entry>
 	  </row>
 	  <row>
-	    <entry><constant>MEDIA_ENT_T_DEVNODE_DVB_FE</constant></entry>
-	    <entry>DVB frontend devnode</entry>
+	    <entry><constant>MEDIA_ENT_F_IO_DTV</constant></entry>
+	    <entry>DVB Digital TV streaming input or output entity</entry>
 	  </row>
 	  <row>
-	    <entry><constant>MEDIA_ENT_T_DEVNODE_DVB_DEMUX</constant></entry>
-	    <entry>DVB demux devnode</entry>
+	    <entry><constant>MEDIA_ENT_F_DTV_DEMOD</constant></entry>
+	    <entry>Digital TV demodulator entity.</entry>
 	  </row>
 	  <row>
-	    <entry><constant>MEDIA_ENT_T_DEVNODE_DVB_DVR</constant></entry>
-	    <entry>DVB DVR devnode</entry>
+	    <entry><constant>MEDIA_ENT_F_MPEG_TS_DEMUX</constant></entry>
+	    <entry>MPEG Transport stream demux entity. Could be implemented on hardware or in Kernelspace by the Linux DVB subsystem.</entry>
 	  </row>
 	  <row>
-	    <entry><constant>MEDIA_ENT_T_DEVNODE_DVB_CA</constant></entry>
-	    <entry>DVB CAM devnode</entry>
+	    <entry><constant>MEDIA_ENT_F_DTV_CA</constant></entry>
+	    <entry>Digital TV Conditional Access module (CAM) entity</entry>
 	  </row>
 	  <row>
-	    <entry><constant>MEDIA_ENT_T_DEVNODE_DVB_NET</constant></entry>
-	    <entry>DVB network devnode</entry>
+	    <entry><constant>MEDIA_ENT_F_DTV_NET_DECAP</constant></entry>
+	    <entry>Digital TV network ULE/MLE desencapsulation entity. Could be implemented on hardware or in Kernelspace</entry>
 	  </row>
 	  <row>
-	    <entry><constant>MEDIA_ENT_T_V4L2_SUBDEV</constant></entry>
-	    <entry>Unknown V4L sub-device</entry>
+	    <entry><constant>MEDIA_ENT_F_CONN_RF</constant></entry>
+	    <entry>Connector for a Radio Frequency (RF) signal.</entry>
 	  </row>
 	  <row>
-	    <entry><constant>MEDIA_ENT_T_V4L2_SUBDEV_SENSOR</constant></entry>
-	    <entry>Video sensor</entry>
+	    <entry><constant>MEDIA_ENT_F_CONN_SVIDEO</constant></entry>
+	    <entry>Connector for a S-Video signal.</entry>
 	  </row>
 	  <row>
-	    <entry><constant>MEDIA_ENT_T_V4L2_SUBDEV_FLASH</constant></entry>
-	    <entry>Flash controller</entry>
+	    <entry><constant>MEDIA_ENT_F_CONN_COMPOSITE</constant></entry>
+	    <entry>Connector for a RGB composite signal.</entry>
 	  </row>
 	  <row>
-	    <entry><constant>MEDIA_ENT_T_V4L2_SUBDEV_LENS</constant></entry>
-	    <entry>Lens controller</entry>
+	    <entry><constant>MEDIA_ENT_F_CONN_TEST</constant></entry>
+	    <entry>Connector for a test generator.</entry>
 	  </row>
 	  <row>
-	    <entry><constant>MEDIA_ENT_T_V4L2_SUBDEV_DECODER</constant></entry>
-	    <entry>Video decoder, the basic function of the video decoder is to
-	    accept analogue video from a wide variety of sources such as
+	    <entry><constant>MEDIA_ENT_F_CAM_SENSOR</constant></entry>
+	    <entry>Camera video sensor entity.</entry>
+	  </row>
+	  <row>
+	    <entry><constant>MEDIA_ENT_F_FLASH</constant></entry>
+	    <entry>Flash controller entity.</entry>
+	  </row>
+	  <row>
+	    <entry><constant>MEDIA_ENT_F_LENS</constant></entry>
+	    <entry>Lens controller entity.</entry>
+	  </row>
+	  <row>
+	    <entry><constant>MEDIA_ENT_F_ATV_DECODER</constant></entry>
+	    <entry>Analog video decoder, the basic function of the video decoder
+	    is to accept analogue video from a wide variety of sources such as
 	    broadcast, DVD players, cameras and video cassette recorders, in
-	    either NTSC, PAL or HD format and still occasionally SECAM, separate
-	    it into its component parts, luminance and chrominance, and output
-	    it in some digital video standard, with appropriate embedded timing
+	    either NTSC, PAL, SECAM or HD format, separating the stream
+	    into its component parts, luminance and chrominance, and output
+	    it in some digital video standard, with appropriate timing
 	    signals.</entry>
 	  </row>
 	  <row>
-	    <entry><constant>MEDIA_ENT_T_V4L2_SUBDEV_TUNER</constant></entry>
-	    <entry>TV and/or radio tuner</entry>
+	    <entry><constant>MEDIA_ENT_F_TUNER</constant></entry>
+	    <entry>Digital TV, analog TV, radio and/or software radio tuner.</entry>
 	  </row>
 	</tbody>
       </tgroup>

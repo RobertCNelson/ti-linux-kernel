@@ -31,7 +31,7 @@
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-of.h>
 #include <media/media-device.h>
-#include <media/exynos-fimc.h>
+#include <media/drv-intf/exynos-fimc.h>
 
 #include "media-dev.h"
 #include "fimc-core.h"
@@ -88,8 +88,7 @@ static void fimc_pipeline_prepare(struct fimc_pipeline *p,
 				break;
 		}
 
-		if (pad == NULL ||
-		    media_entity_type(pad->entity) != MEDIA_ENT_T_V4L2_SUBDEV)
+		if (!pad || !is_media_entity_v4l2_subdev(pad->entity))
 			break;
 		sd = media_entity_to_v4l2_subdev(pad->entity);
 
@@ -729,7 +728,7 @@ static int __fimc_md_create_fimc_sink_links(struct fimc_md *fmd,
 		flags = ((1 << i) & link_mask) ? MEDIA_LNK_FL_ENABLED : 0;
 
 		sink = &fmd->fimc[i]->vid_cap.subdev.entity;
-		ret = media_entity_create_link(source, pad, sink,
+		ret = media_create_pad_link(source, pad, sink,
 					      FIMC_SD_PAD_SINK_CAM, flags);
 		if (ret)
 			return ret;
@@ -749,7 +748,7 @@ static int __fimc_md_create_fimc_sink_links(struct fimc_md *fmd,
 			continue;
 
 		sink = &fmd->fimc_lite[i]->subdev.entity;
-		ret = media_entity_create_link(source, pad, sink,
+		ret = media_create_pad_link(source, pad, sink,
 					       FLITE_SD_PAD_SINK, 0);
 		if (ret)
 			return ret;
@@ -781,13 +780,13 @@ static int __fimc_md_create_flite_source_links(struct fimc_md *fmd)
 		source = &fimc->subdev.entity;
 		sink = &fimc->ve.vdev.entity;
 		/* FIMC-LITE's subdev and video node */
-		ret = media_entity_create_link(source, FLITE_SD_PAD_SOURCE_DMA,
+		ret = media_create_pad_link(source, FLITE_SD_PAD_SOURCE_DMA,
 					       sink, 0, 0);
 		if (ret)
 			break;
 		/* Link from FIMC-LITE to IS-ISP subdev */
 		sink = &fmd->fimc_is->isp.subdev.entity;
-		ret = media_entity_create_link(source, FLITE_SD_PAD_SOURCE_ISP,
+		ret = media_create_pad_link(source, FLITE_SD_PAD_SOURCE_ISP,
 					       sink, 0, 0);
 		if (ret)
 			break;
@@ -811,7 +810,7 @@ static int __fimc_md_create_fimc_is_links(struct fimc_md *fmd)
 
 		/* Link from FIMC-IS-ISP subdev to FIMC */
 		sink = &fmd->fimc[i]->vid_cap.subdev.entity;
-		ret = media_entity_create_link(source, FIMC_ISP_SD_PAD_SRC_FIFO,
+		ret = media_create_pad_link(source, FIMC_ISP_SD_PAD_SRC_FIFO,
 					       sink, FIMC_SD_PAD_SINK_FIFO, 0);
 		if (ret)
 			return ret;
@@ -824,7 +823,7 @@ static int __fimc_md_create_fimc_is_links(struct fimc_md *fmd)
 	if (sink->num_pads == 0)
 		return 0;
 
-	return media_entity_create_link(source, FIMC_ISP_SD_PAD_SRC_DMA,
+	return media_create_pad_link(source, FIMC_ISP_SD_PAD_SRC_DMA,
 					sink, 0, 0);
 }
 
@@ -873,7 +872,7 @@ static int fimc_md_create_links(struct fimc_md *fmd)
 				return -EINVAL;
 
 			pad = sensor->entity.num_pads - 1;
-			ret = media_entity_create_link(&sensor->entity, pad,
+			ret = media_create_pad_link(&sensor->entity, pad,
 					      &csis->entity, CSIS_PAD_SINK,
 					      MEDIA_LNK_FL_IMMUTABLE |
 					      MEDIA_LNK_FL_ENABLED);
@@ -927,7 +926,7 @@ static int fimc_md_create_links(struct fimc_md *fmd)
 		source = &fmd->fimc[i]->vid_cap.subdev.entity;
 		sink = &fmd->fimc[i]->vid_cap.ve.vdev.entity;
 
-		ret = media_entity_create_link(source, FIMC_SD_PAD_SOURCE,
+		ret = media_create_pad_link(source, FIMC_SD_PAD_SOURCE,
 					      sink, 0, flags);
 		if (ret)
 			break;
@@ -1046,7 +1045,7 @@ static int __fimc_md_modify_pipeline(struct media_entity *entity, bool enable)
 	return ret;
 }
 
-/* Locking: called with entity->parent->graph_mutex mutex held. */
+/* Locking: called with entity->graph_obj.mdev->graph_mutex mutex held. */
 static int __fimc_md_modify_pipelines(struct media_entity *entity, bool enable)
 {
 	struct media_entity *entity_err = entity;
@@ -1062,7 +1061,7 @@ static int __fimc_md_modify_pipelines(struct media_entity *entity, bool enable)
 	media_entity_graph_walk_start(&graph, entity);
 
 	while ((entity = media_entity_graph_walk_next(&graph))) {
-		if (media_entity_type(entity) != MEDIA_ENT_T_DEVNODE)
+		if (!is_media_entity_v4l2_io(entity))
 			continue;
 
 		ret  = __fimc_md_modify_pipeline(entity, enable);
@@ -1076,7 +1075,7 @@ static int __fimc_md_modify_pipelines(struct media_entity *entity, bool enable)
 	media_entity_graph_walk_start(&graph, entity_err);
 
 	while ((entity_err = media_entity_graph_walk_next(&graph))) {
-		if (media_entity_type(entity_err) != MEDIA_ENT_T_DEVNODE)
+		if (!is_media_entity_v4l2_io(entity_err))
 			continue;
 
 		__fimc_md_modify_pipeline(entity_err, !enable);
