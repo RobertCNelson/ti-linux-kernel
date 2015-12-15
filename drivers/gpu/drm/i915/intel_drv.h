@@ -365,7 +365,9 @@ struct intel_crtc_state {
 #define PIPE_CONFIG_QUIRK_MODE_SYNC_FLAGS	(1<<0) /* unreliable sync mode.flags */
 	unsigned long quirks;
 
-	bool update_pipe;
+	bool update_pipe; /* can a fast modeset be performed? */
+	bool disable_cxsr;
+	bool wm_changed; /* watermarks are updated */
 
 	/* Pipe source size (ie. panel fitter input size)
 	 * All planes will be positioned inside this space,
@@ -392,6 +394,9 @@ struct intel_crtc_state {
 	/* DP has a bunch of special case unfortunately, so mark the pipe
 	 * accordingly. */
 	bool has_dp_encoder;
+
+	/* DSI has special cases */
+	bool has_dsi_encoder;
 
 	/* Whether we should send NULL infoframes. Required for audio. */
 	bool has_hdmi_sink;
@@ -528,9 +533,7 @@ struct intel_crtc_atomic_commit {
 	/* Sleepable operations to perform before commit */
 	bool disable_fbc;
 	bool disable_ips;
-	bool disable_cxsr;
 	bool pre_disable_primary;
-	bool update_wm_pre, update_wm_post;
 
 	/* Sleepable operations to perform after commit */
 	unsigned fb_bits;
@@ -565,7 +568,6 @@ struct intel_crtc {
 	int adjusted_x;
 	int adjusted_y;
 
-	struct drm_i915_gem_object *cursor_bo;
 	uint32_t cursor_addr;
 	uint32_t cursor_cntl;
 	uint32_t cursor_size;
@@ -710,7 +712,8 @@ struct intel_hdmi {
 	void (*set_infoframes)(struct drm_encoder *encoder,
 			       bool enable,
 			       const struct drm_display_mode *adjusted_mode);
-	bool (*infoframe_enabled)(struct drm_encoder *encoder);
+	bool (*infoframe_enabled)(struct drm_encoder *encoder,
+				  const struct intel_crtc_state *pipe_config);
 };
 
 struct intel_dp_mst_encoder;
@@ -814,6 +817,8 @@ struct intel_digital_port {
 	struct intel_hdmi hdmi;
 	enum irqreturn (*hpd_pulse)(struct intel_digital_port *, bool);
 	bool release_cl2_override;
+	/* for communication with audio component; protected by av_mutex */
+	const struct drm_connector *audio_connector;
 };
 
 struct intel_dp_mst_encoder {
@@ -1008,6 +1013,8 @@ void intel_ddi_set_pipe_settings(struct drm_crtc *crtc);
 void intel_ddi_prepare_link_retrain(struct intel_dp *intel_dp);
 bool intel_ddi_connector_get_hw_state(struct intel_connector *intel_connector);
 void intel_ddi_fdi_disable(struct drm_crtc *crtc);
+bool intel_ddi_is_audio_enabled(struct drm_i915_private *dev_priv,
+				 struct intel_crtc *intel_crtc);
 void intel_ddi_get_config(struct intel_encoder *encoder,
 			  struct intel_crtc_state *pipe_config);
 struct intel_encoder *
@@ -1316,9 +1323,11 @@ static inline void intel_fbdev_restore_mode(struct drm_device *dev)
 #endif
 
 /* intel_fbc.c */
-bool intel_fbc_enabled(struct drm_i915_private *dev_priv);
-void intel_fbc_update(struct drm_i915_private *dev_priv);
+bool intel_fbc_is_active(struct drm_i915_private *dev_priv);
+void intel_fbc_deactivate(struct intel_crtc *crtc);
+void intel_fbc_update(struct intel_crtc *crtc);
 void intel_fbc_init(struct drm_i915_private *dev_priv);
+void intel_fbc_enable(struct intel_crtc *crtc);
 void intel_fbc_disable(struct drm_i915_private *dev_priv);
 void intel_fbc_disable_crtc(struct intel_crtc *crtc);
 void intel_fbc_invalidate(struct drm_i915_private *dev_priv,
@@ -1410,6 +1419,8 @@ void intel_power_domains_suspend(struct drm_i915_private *dev_priv);
 void skl_pw1_misc_io_init(struct drm_i915_private *dev_priv);
 void skl_pw1_misc_io_fini(struct drm_i915_private *dev_priv);
 void intel_runtime_pm_enable(struct drm_i915_private *dev_priv);
+const char *
+intel_display_power_domain_str(enum intel_display_power_domain domain);
 
 bool intel_display_power_is_enabled(struct drm_i915_private *dev_priv,
 				    enum intel_display_power_domain domain);
