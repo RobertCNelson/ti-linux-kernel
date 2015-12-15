@@ -24,11 +24,14 @@
 #include <linux/export.h>
 #include <linux/ioctl.h>
 #include <linux/media.h>
+#include <linux/slab.h>
 #include <linux/types.h>
 
 #include <media/media-device.h>
 #include <media/media-devnode.h>
 #include <media/media-entity.h>
+
+#ifdef CONFIG_MEDIA_CONTROLLER
 
 /* -----------------------------------------------------------------------------
  * Userspace API
@@ -75,8 +78,8 @@ static struct media_entity *find_entity(struct media_device *mdev, u32 id)
 	spin_lock(&mdev->lock);
 
 	media_device_for_each_entity(entity, mdev) {
-		if ((entity->id == id && !next) ||
-		    (entity->id > id && next)) {
+		if (((media_entity_id(entity) == id) && !next) ||
+		    ((media_entity_id(entity) > id) && next)) {
 			spin_unlock(&mdev->lock);
 			return entity;
 		}
@@ -102,13 +105,13 @@ static long media_device_enum_entities(struct media_device *mdev,
 	if (ent == NULL)
 		return -EINVAL;
 
-	u_ent.id = ent->id;
+	u_ent.id = media_entity_id(ent);
 	if (ent->name)
 		strlcpy(u_ent.name, ent->name, sizeof(u_ent.name));
-	u_ent.type = ent->type;
-	u_ent.revision = ent->revision;
+	u_ent.type = ent->function;
+	u_ent.revision = 0;		/* Unused */
 	u_ent.flags = ent->flags;
-	u_ent.group_id = ent->group_id;
+	u_ent.group_id = 0;		/* Unused */
 	u_ent.pads = ent->num_pads;
 	u_ent.links = ent->num_links - ent->num_backlinks;
 	memcpy(&u_ent.raw, &ent->info, sizeof(ent->info));
@@ -120,7 +123,7 @@ static long media_device_enum_entities(struct media_device *mdev,
 static void media_device_kpad_to_upad(const struct media_pad *kpad,
 				      struct media_pad_desc *upad)
 {
-	upad->entity = kpad->entity->id;
+	upad->entity = media_entity_id(kpad->entity);
 	upad->index = kpad->index;
 	upad->flags = kpad->flags;
 }
@@ -148,25 +151,25 @@ static long __media_device_enum_links(struct media_device *mdev,
 	}
 
 	if (links->links) {
-		struct media_link_desc __user *ulink;
-		unsigned int l;
+		struct media_link *link;
+		struct media_link_desc __user *ulink_desc = links->links;
 
-		for (l = 0, ulink = links->links; l < entity->num_links; l++) {
-			struct media_link_desc link;
+		list_for_each_entry(link, &entity->links, list) {
+			struct media_link_desc klink_desc;
 
 			/* Ignore backlinks. */
-			if (entity->links[l].source->entity != entity)
+			if (link->source->entity != entity)
 				continue;
-
-			memset(&link, 0, sizeof(link));
-			media_device_kpad_to_upad(entity->links[l].source,
-						  &link.source);
-			media_device_kpad_to_upad(entity->links[l].sink,
-						  &link.sink);
-			link.flags = entity->links[l].flags;
-			if (copy_to_user(ulink, &link, sizeof(*ulink)))
+			memset(&klink_desc, 0, sizeof(klink_desc));
+			media_device_kpad_to_upad(link->source,
+						  &klink_desc.source);
+			media_device_kpad_to_upad(link->sink,
+						  &klink_desc.sink);
+			klink_desc.flags = link->flags;
+			if (copy_to_user(ulink_desc, &klink_desc,
+					 sizeof(*ulink_desc)))
 				return -EFAULT;
-			ulink++;
+			ulink_desc++;
 		}
 	}
 
@@ -230,6 +233,163 @@ static long media_device_setup_link(struct media_device *mdev,
 	return ret;
 }
 
+static long __media_device_get_topology(struct media_device *mdev,
+				      struct media_v2_topology *topo)
+{
+	struct media_entity *entity;
+	struct media_interface *intf;
+	struct media_pad *pad;
+	struct media_link *link;
+	struct media_v2_entity kentity, *uentity;
+	struct media_v2_interface kintf, *uintf;
+	struct media_v2_pad kpad, *upad;
+	struct media_v2_link klink, *ulink;
+	unsigned int i;
+	int ret = 0;
+
+	topo->topology_version = mdev->topology_version;
+
+	/* Get entities and number of entities */
+	i = 0;
+	uentity = media_get_uptr(topo->ptr_entities);
+	media_device_for_each_entity(entity, mdev) {
+		i++;
+		if (ret || !uentity)
+			continue;
+
+		if (i > topo->num_entities) {
+			ret = -ENOSPC;
+			continue;
+		}
+
+		/* Copy fields to userspace struct if not error */
+		memset(&kentity, 0, sizeof(kentity));
+		kentity.id = entity->graph_obj.id;
+		kentity.function = entity->function;
+		strncpy(kentity.name, entity->name,
+			sizeof(kentity.name));
+
+		if (copy_to_user(uentity, &kentity, sizeof(kentity)))
+			ret = -EFAULT;
+		uentity++;
+	}
+	topo->num_entities = i;
+
+	/* Get interfaces and number of interfaces */
+	i = 0;
+	uintf = media_get_uptr(topo->ptr_interfaces);
+	media_device_for_each_intf(intf, mdev) {
+		i++;
+		if (ret || !uintf)
+			continue;
+
+		if (i > topo->num_interfaces) {
+			ret = -ENOSPC;
+			continue;
+		}
+
+		memset(&kintf, 0, sizeof(kintf));
+
+		/* Copy intf fields to userspace struct */
+		kintf.id = intf->graph_obj.id;
+		kintf.intf_type = intf->type;
+		kintf.flags = intf->flags;
+
+		if (media_type(&intf->graph_obj) == MEDIA_GRAPH_INTF_DEVNODE) {
+			struct media_intf_devnode *devnode;
+
+			devnode = intf_to_devnode(intf);
+
+			kintf.devnode.major = devnode->major;
+			kintf.devnode.minor = devnode->minor;
+		}
+
+		if (copy_to_user(uintf, &kintf, sizeof(kintf)))
+			ret = -EFAULT;
+		uintf++;
+	}
+	topo->num_interfaces = i;
+
+	/* Get pads and number of pads */
+	i = 0;
+	upad = media_get_uptr(topo->ptr_pads);
+	media_device_for_each_pad(pad, mdev) {
+		i++;
+		if (ret || !upad)
+			continue;
+
+		if (i > topo->num_pads) {
+			ret = -ENOSPC;
+			continue;
+		}
+
+		memset(&kpad, 0, sizeof(kpad));
+
+		/* Copy pad fields to userspace struct */
+		kpad.id = pad->graph_obj.id;
+		kpad.entity_id = pad->entity->graph_obj.id;
+		kpad.flags = pad->flags;
+
+		if (copy_to_user(upad, &kpad, sizeof(kpad)))
+			ret = -EFAULT;
+		upad++;
+	}
+	topo->num_pads = i;
+
+	/* Get links and number of links */
+	i = 0;
+	ulink = media_get_uptr(topo->ptr_links);
+	media_device_for_each_link(link, mdev) {
+		if (link->is_backlink)
+			continue;
+
+		i++;
+
+		if (ret || !ulink)
+			continue;
+
+		if (i > topo->num_links) {
+			ret = -ENOSPC;
+			continue;
+		}
+
+		memset(&klink, 0, sizeof(klink));
+
+		/* Copy link fields to userspace struct */
+		klink.id = link->graph_obj.id;
+		klink.source_id = link->gobj0->id;
+		klink.sink_id = link->gobj1->id;
+		klink.flags = link->flags;
+
+		if (copy_to_user(ulink, &klink, sizeof(klink)))
+			ret = -EFAULT;
+		ulink++;
+	}
+	topo->num_links = i;
+
+	return ret;
+}
+
+static long media_device_get_topology(struct media_device *mdev,
+				      struct media_v2_topology __user *utopo)
+{
+	struct media_v2_topology ktopo;
+	int ret;
+
+	ret = copy_from_user(&ktopo, utopo, sizeof(ktopo));
+
+	if (ret < 0)
+		return ret;
+
+	ret = __media_device_get_topology(mdev, &ktopo);
+	if (ret < 0)
+		return ret;
+
+	ret = copy_to_user(utopo, &ktopo, sizeof(*utopo));
+
+	return ret;
+}
+
 static long media_device_ioctl(struct file *filp, unsigned int cmd,
 			       unsigned long arg)
 {
@@ -259,6 +419,13 @@ static long media_device_ioctl(struct file *filp, unsigned int cmd,
 		mutex_lock(&dev->graph_mutex);
 		ret = media_device_setup_link(dev,
 				(struct media_link_desc __user *)arg);
+		mutex_unlock(&dev->graph_mutex);
+		break;
+
+	case MEDIA_IOC_G_TOPOLOGY:
+		mutex_lock(&dev->graph_mutex);
+		ret = media_device_get_topology(dev,
+				(struct media_v2_topology __user *)arg);
 		mutex_unlock(&dev->graph_mutex);
 		break;
 
@@ -310,6 +477,7 @@ static long media_device_compat_ioctl(struct file *filp, unsigned int cmd,
 	case MEDIA_IOC_DEVICE_INFO:
 	case MEDIA_IOC_ENUM_ENTITIES:
 	case MEDIA_IOC_SETUP_LINK:
+	case MEDIA_IOC_G_TOPOLOGY:
 		return media_device_ioctl(filp, cmd, arg);
 
 	case MEDIA_IOC_ENUM_LINKS32:
@@ -357,6 +525,7 @@ static DEVICE_ATTR(model, S_IRUGO, show_model, NULL);
 
 static void media_device_release(struct media_devnode *mdev)
 {
+	dev_dbg(mdev->parent, "Media device released\n");
 }
 
 /**
@@ -377,8 +546,10 @@ int __must_check __media_device_register(struct media_device *mdev,
 	if (WARN_ON(mdev->dev == NULL || mdev->model[0] == 0))
 		return -EINVAL;
 
-	mdev->entity_id = 1;
 	INIT_LIST_HEAD(&mdev->entities);
+	INIT_LIST_HEAD(&mdev->interfaces);
+	INIT_LIST_HEAD(&mdev->pads);
+	INIT_LIST_HEAD(&mdev->links);
 	spin_lock_init(&mdev->lock);
 	mutex_init(&mdev->graph_mutex);
 
@@ -396,6 +567,8 @@ int __must_check __media_device_register(struct media_device *mdev,
 		return ret;
 	}
 
+	dev_dbg(mdev->dev, "Media device registered\n");
+
 	return 0;
 }
 EXPORT_SYMBOL_GPL(__media_device_register);
@@ -409,12 +582,26 @@ void media_device_unregister(struct media_device *mdev)
 {
 	struct media_entity *entity;
 	struct media_entity *next;
+	struct media_interface *intf, *tmp_intf;
 
-	list_for_each_entry_safe(entity, next, &mdev->entities, list)
+	/* Remove all entities from the media device */
+	list_for_each_entry_safe(entity, next, &mdev->entities, graph_obj.list)
 		media_device_unregister_entity(entity);
+
+	/* Remove all interfaces from the media device */
+	spin_lock(&mdev->lock);
+	list_for_each_entry_safe(intf, tmp_intf, &mdev->interfaces,
+				 graph_obj.list) {
+		__media_remove_intf_links(intf);
+		media_gobj_destroy(&intf->graph_obj);
+		kfree(intf);
+	}
+	spin_unlock(&mdev->lock);
 
 	device_remove_file(&mdev->devnode.dev, &dev_attr_model);
 	media_devnode_unregister(&mdev->devnode);
+
+	dev_dbg(mdev->dev, "Media device unregistered\n");
 }
 EXPORT_SYMBOL_GPL(media_device_unregister);
 
@@ -426,16 +613,30 @@ EXPORT_SYMBOL_GPL(media_device_unregister);
 int __must_check media_device_register_entity(struct media_device *mdev,
 					      struct media_entity *entity)
 {
+	unsigned int i;
+
+	if (entity->function == MEDIA_ENT_F_V4L2_SUBDEV_UNKNOWN ||
+	    entity->function == MEDIA_ENT_F_UNKNOWN)
+		dev_warn(mdev->dev,
+			 "Entity type for entity %s was not initialized!\n",
+			 entity->name);
+
 	/* Warn if we apparently re-register an entity */
-	WARN_ON(entity->parent != NULL);
-	entity->parent = mdev;
+	WARN_ON(entity->graph_obj.mdev != NULL);
+	entity->graph_obj.mdev = mdev;
+	INIT_LIST_HEAD(&entity->links);
+	entity->num_links = 0;
+	entity->num_backlinks = 0;
 
 	spin_lock(&mdev->lock);
-	if (entity->id == 0)
-		entity->id = mdev->entity_id++;
-	else
-		mdev->entity_id = max(entity->id + 1, mdev->entity_id);
-	list_add_tail(&entity->list, &mdev->entities);
+	/* Initialize media_gobj embedded at the entity */
+	media_gobj_create(mdev, MEDIA_GRAPH_ENTITY, &entity->graph_obj);
+
+	/* Initialize objects at the pads */
+	for (i = 0; i < entity->num_pads; i++)
+		media_gobj_create(mdev, MEDIA_GRAPH_PAD,
+			       &entity->pads[i].graph_obj);
+
 	spin_unlock(&mdev->lock);
 
 	return 0;
@@ -451,14 +652,70 @@ EXPORT_SYMBOL_GPL(media_device_register_entity);
  */
 void media_device_unregister_entity(struct media_entity *entity)
 {
-	struct media_device *mdev = entity->parent;
+	struct media_device *mdev = entity->graph_obj.mdev;
+	struct media_link *link, *tmp;
+	struct media_interface *intf;
+	unsigned int i;
 
 	if (mdev == NULL)
 		return;
 
 	spin_lock(&mdev->lock);
-	list_del(&entity->list);
+
+	/* Remove all interface links pointing to this entity */
+	list_for_each_entry(intf, &mdev->interfaces, graph_obj.list) {
+		list_for_each_entry_safe(link, tmp, &intf->links, list) {
+			if (link->entity == entity)
+				__media_remove_intf_link(link);
+		}
+	}
+
+	/* Remove all data links that belong to this entity */
+	__media_entity_remove_links(entity);
+
+	/* Remove all pads that belong to this entity */
+	for (i = 0; i < entity->num_pads; i++)
+		media_gobj_destroy(&entity->pads[i].graph_obj);
+
+	/* Remove the entity */
+	media_gobj_destroy(&entity->graph_obj);
+
 	spin_unlock(&mdev->lock);
-	entity->parent = NULL;
+	entity->graph_obj.mdev = NULL;
 }
 EXPORT_SYMBOL_GPL(media_device_unregister_entity);
+
+static void media_device_release_devres(struct device *dev, void *res)
+{
+}
+
+/*
+ * media_device_get_devres() -	get media device as device resource
+ *				creates if one doesn't exist
+*/
+struct media_device *media_device_get_devres(struct device *dev)
+{
+	struct media_device *mdev;
+
+	mdev = devres_find(dev, media_device_release_devres, NULL, NULL);
+	if (mdev)
+		return mdev;
+
+	mdev = devres_alloc(media_device_release_devres,
+				sizeof(struct media_device), GFP_KERNEL);
+	if (!mdev)
+		return NULL;
+	return devres_get(dev, mdev, NULL, NULL);
+}
+EXPORT_SYMBOL_GPL(media_device_get_devres);
+
+/*
+ * media_device_find_devres() - find media device as device resource
+*/
+struct media_device *media_device_find_devres(struct device *dev)
+{
+	return devres_find(dev, media_device_release_devres, NULL, NULL);
+}
+EXPORT_SYMBOL_GPL(media_device_find_devres);
+
+#endif /* CONFIG_MEDIA_CONTROLLER */
