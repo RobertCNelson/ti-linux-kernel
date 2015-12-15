@@ -3861,3 +3861,27 @@ const struct inode_operations ext4_special_inode_operations = {
 	.get_acl	= ext4_get_acl,
 	.set_acl	= ext4_set_acl,
 };
+
+int ext4_get_encrypted_filename(struct file *filp,
+				struct ext4_encrypted_metadata *mdata)
+{
+	struct dentry *dentry = filp->f_path.dentry;
+	struct inode *dir = dentry->d_parent->d_inode;
+	struct buffer_head *bh;
+	struct ext4_dir_entry_2 *de;
+
+	if (!dir || !ext4_encrypted_inode(dir))
+		return -EINVAL;
+
+	bh = ext4_find_entry(dir, &dentry->d_name, &de, NULL);
+	if (IS_ERR(bh))
+		return PTR_ERR(bh);
+	if (de == NULL)
+		return -ENOENT;
+
+	if (mdata->len < de->name_len)
+		return -ENOSPC;
+	mdata->len = de->name_len;
+	memcpy(mdata->metadata, de->name, de->name_len);
+	return 0;
+}
