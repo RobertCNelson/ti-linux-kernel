@@ -210,8 +210,7 @@ isp_video_remote_subdev(struct isp_video *video, u32 *pad)
 
 	remote = media_entity_remote_pad(&video->pad);
 
-	if (remote == NULL ||
-	    media_entity_type(remote->entity) != MEDIA_ENT_T_V4L2_SUBDEV)
+	if (!remote || !is_media_entity_v4l2_subdev(remote->entity))
 		return NULL;
 
 	if (pad)
@@ -226,7 +225,7 @@ static int isp_video_get_graph_data(struct isp_video *video,
 {
 	struct media_entity_graph graph;
 	struct media_entity *entity = &video->video.entity;
-	struct media_device *mdev = entity->parent;
+	struct media_device *mdev = entity->graph_obj.mdev;
 	struct isp_video *far_end = NULL;
 
 	mutex_lock(&mdev->graph_mutex);
@@ -235,7 +234,7 @@ static int isp_video_get_graph_data(struct isp_video *video,
 	while ((entity = media_entity_graph_walk_next(&graph))) {
 		struct isp_video *__video;
 
-		pipe->entities |= 1 << entity->id;
+		pipe->entities |= 1 << media_entity_id(entity);
 
 		if (far_end != NULL)
 			continue;
@@ -243,7 +242,7 @@ static int isp_video_get_graph_data(struct isp_video *video,
 		if (entity == &video->video.entity)
 			continue;
 
-		if (media_entity_type(entity) != MEDIA_ENT_T_DEVNODE)
+		if (!is_media_entity_v4l2_io(entity))
 			continue;
 
 		__video = to_isp_video(media_entity_to_video_device(entity));
@@ -894,6 +893,7 @@ static int isp_video_check_external_subdevs(struct isp_video *video,
 	struct v4l2_ext_control ctrl;
 	unsigned int i;
 	int ret;
+	u32 id;
 
 	/* Memory-to-memory pipelines have no external subdev. */
 	if (pipe->input != NULL)
@@ -901,7 +901,7 @@ static int isp_video_check_external_subdevs(struct isp_video *video,
 
 	for (i = 0; i < ARRAY_SIZE(ents); i++) {
 		/* Is the entity part of the pipeline? */
-		if (!(pipe->entities & (1 << ents[i]->id)))
+		if (!(pipe->entities & (1 << media_entity_id(ents[i]))))
 			continue;
 
 		/* ISP entities have always sink pad == 0. Find source. */
@@ -919,7 +919,7 @@ static int isp_video_check_external_subdevs(struct isp_video *video,
 		return -EINVAL;
 	}
 
-	if (media_entity_type(source) != MEDIA_ENT_T_V4L2_SUBDEV)
+	if (!is_media_entity_v4l2_subdev(source))
 		return 0;
 
 	pipe->external = media_entity_to_v4l2_subdev(source);
@@ -953,7 +953,8 @@ static int isp_video_check_external_subdevs(struct isp_video *video,
 
 	pipe->external_rate = ctrl.value64;
 
-	if (pipe->entities & (1 << isp->isp_ccdc.subdev.entity.id)) {
+	id = media_entity_id(&isp->isp_ccdc.subdev.entity);
+	if (pipe->entities & (1 << id)) {
 		unsigned int rate = UINT_MAX;
 		/*
 		 * Check that maximum allowed CCDC pixel rate isn't
@@ -1368,7 +1369,7 @@ int omap3isp_video_init(struct isp_video *video, const char *name)
 	if (IS_ERR(video->alloc_ctx))
 		return PTR_ERR(video->alloc_ctx);
 
-	ret = media_entity_init(&video->video.entity, 1, &video->pad, 0);
+	ret = media_entity_pads_init(&video->video.entity, 1, &video->pad);
 	if (ret < 0) {
 		vb2_dma_contig_cleanup_ctx(video->alloc_ctx);
 		return ret;
