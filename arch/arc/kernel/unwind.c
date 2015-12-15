@@ -170,6 +170,7 @@ static struct unwind_table *find_table(unsigned long pc)
 
 static unsigned long read_pointer(const u8 **pLoc,
 				  const void *end, signed ptrType);
+static void init_unwind_hdr(struct unwind_table *table, int is_module);
 
 static void init_unwind_table(struct unwind_table *table, const char *name,
 			      const void *core_start, unsigned long core_size,
@@ -179,6 +180,7 @@ static void init_unwind_table(struct unwind_table *table, const char *name,
 {
 	const u8 *ptr = header_start + 4;
 	const u8 *end = header_start + header_size;
+	int is_module = strcmp(name, "kernel");
 
 	table->core.pc = (unsigned long)core_start;
 	table->core.range = core_size;
@@ -201,6 +203,8 @@ static void init_unwind_table(struct unwind_table *table, const char *name,
 	table->header = header_start;
 	table->link = NULL;
 	table->name = name;
+
+	init_unwind_hdr(table, is_module);
 }
 
 void __init arc_unwind_init(void)
@@ -241,8 +245,7 @@ static void swap_eh_frame_hdr_table_entries(void *p1, void *p2, int size)
 	e2->fde = v;
 }
 
-static void __init setup_unwind_table(struct unwind_table *table,
-				      void *(*alloc) (unsigned long))
+static void init_unwind_hdr(struct unwind_table *table, int is_module)
 {
 	const u8 *ptr;
 	unsigned long tableSize = table->size, hdrSize;
@@ -300,7 +303,13 @@ static void __init setup_unwind_table(struct unwind_table *table,
 
 	hdrSize = 4 + sizeof(unsigned long) + sizeof(unsigned int)
 	    + 2 * n * sizeof(unsigned long);
-	header = alloc(hdrSize);
+
+	if (!is_module)  /* kernel proper */
+		header = __alloc_bootmem_nopanic(hdrSize, sizeof(unsigned int),
+						 MAX_DMA_ADDRESS);
+	else
+		header = kmalloc(hdrSize, GFP_KERNEL);
+
 	if (!header)
 		return;
 	header->version = 1;
@@ -340,18 +349,6 @@ static void __init setup_unwind_table(struct unwind_table *table,
 	table->hdrsz = hdrSize;
 	smp_wmb();
 	table->header = (const void *)header;
-}
-
-static void *__init balloc(unsigned long sz)
-{
-	return __alloc_bootmem_nopanic(sz,
-				       sizeof(unsigned int),
-				       __pa(MAX_DMA_ADDRESS));
-}
-
-void __init arc_unwind_setup(void)
-{
-	setup_unwind_table(&root_table, balloc);
 }
 
 #ifdef CONFIG_MODULES
@@ -439,6 +436,7 @@ void unwind_remove_table(void *handle, int init_only)
 	info.init_only = init_only;
 
 	unlink_table(&info); /* XXX: SMP */
+	kfree(table->header);
 	kfree(table);
 }
 
