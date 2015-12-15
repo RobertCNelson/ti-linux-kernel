@@ -488,8 +488,11 @@ server_unresponsive(struct TCP_Server_Info *server)
 	 */
 	if (server->tcpStatus == CifsGood &&
 	    time_after(jiffies, server->lstrp + 2 * SMB_ECHO_INTERVAL)) {
-		cifs_dbg(VFS, "Server %s has not responded in %d seconds. Reconnecting...\n",
-			 server->hostname, (2 * SMB_ECHO_INTERVAL) / HZ);
+		cifs_dbg(VFS, "Server %s (addr=%pISc) has not responded in "
+			 "%d seconds. Reconnecting...\n",
+			 server->hostname,
+			 (struct sockaddr *)&server->dstaddr,
+			 (2 * SMB_ECHO_INTERVAL) / HZ);
 		cifs_reconnect(server);
 		wake_up(&server->response_q);
 		return true;
@@ -828,7 +831,7 @@ standard_receive3(struct TCP_Server_Info *server, struct mid_q_entry *mid)
 	 * 48 bytes is enough to display the header and a little bit
 	 * into the payload for debugging purposes.
 	 */
-	length = server->ops->check_message(buf, server->total_read);
+	length = server->ops->check_message(buf, server->total_read, server);
 	if (length != 0)
 		cifs_dump_mem("Bad SMB: ", buf,
 			min_t(unsigned int, server->total_read, 48));
