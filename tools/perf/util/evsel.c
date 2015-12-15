@@ -981,10 +981,23 @@ int perf_evsel__append_filter(struct perf_evsel *evsel,
 	return -1;
 }
 
-int perf_evsel__enable(struct perf_evsel *evsel, int ncpus, int nthreads)
+int perf_evsel__enable(struct perf_evsel *evsel)
 {
+	int nthreads = thread_map__nr(evsel->threads);
+	int ncpus = cpu_map__nr(evsel->cpus);
+
 	return perf_evsel__run_ioctl(evsel, ncpus, nthreads,
 				     PERF_EVENT_IOC_ENABLE,
+				     0);
+}
+
+int perf_evsel__disable(struct perf_evsel *evsel)
+{
+	int nthreads = thread_map__nr(evsel->threads);
+	int ncpus = cpu_map__nr(evsel->cpus);
+
+	return perf_evsel__run_ioctl(evsel, ncpus, nthreads,
+				     PERF_EVENT_IOC_DISABLE,
 				     0);
 }
 
@@ -1192,6 +1205,7 @@ static void __p_sample_type(char *buf, size_t size, u64 value)
 		bit_name(PERIOD), bit_name(STREAM_ID), bit_name(RAW),
 		bit_name(BRANCH_STACK), bit_name(REGS_USER), bit_name(STACK_USER),
 		bit_name(IDENTIFIER), bit_name(REGS_INTR), bit_name(DATA_SRC),
+		bit_name(WEIGHT),
 		{ .name = NULL, }
 	};
 #undef bit_name
