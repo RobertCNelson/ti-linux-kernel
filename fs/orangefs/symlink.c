@@ -8,9 +8,15 @@
 #include "pvfs2-kernel.h"
 #include "pvfs2-bufmap.h"
 
-static const char *pvfs2_follow_link(struct dentry *dentry, void **cookie)
+static const char *pvfs2_get_link(struct dentry *dentry, struct inode *inode,
+				  void **cookie)
 {
-	char *target =  PVFS2_I(dentry->d_inode)->link_target;
+	char *target;
+
+	if (!dentry)
+		return ERR_PTR(-ECHILD);
+
+	target =  PVFS2_I(inode)->link_target;
 
 	gossip_debug(GOSSIP_INODE_DEBUG,
 		     "%s: called on %s (target is %p)\n",
@@ -23,7 +29,7 @@ static const char *pvfs2_follow_link(struct dentry *dentry, void **cookie)
 
 struct inode_operations pvfs2_symlink_inode_operations = {
 	.readlink = generic_readlink,
-	.follow_link = pvfs2_follow_link,
+	.get_link = pvfs2_get_link,
 	.setattr = pvfs2_setattr,
 	.getattr = pvfs2_getattr,
 	.listxattr = pvfs2_listxattr,
