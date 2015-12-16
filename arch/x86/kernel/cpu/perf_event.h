@@ -14,17 +14,7 @@
 
 #include <linux/perf_event.h>
 
-#if 0
-#undef wrmsrl
-#define wrmsrl(msr, val) 						\
-do {									\
-	unsigned int _msr = (msr);					\
-	u64 _val = (val);						\
-	trace_printk("wrmsrl(%x, %Lx)\n", (unsigned int)(_msr),		\
-			(unsigned long long)(_val));			\
-	native_write_msr((_msr), (u32)(_val), (u32)(_val >> 32));	\
-} while (0)
-#endif
+/* To enable MSR tracing please use the generic trace points. */
 
 /*
  *          |   NHM/WSM    |      SNB     |
@@ -317,6 +307,10 @@ struct cpu_hw_events {
  */
 #define INTEL_UEVENT_CONSTRAINT(c, n)	\
 	EVENT_CONSTRAINT(c, n, INTEL_ARCH_EVENT_MASK)
+
+/* Constraint on specific umask bit only + event */
+#define INTEL_UBIT_EVENT_CONSTRAINT(c, n)	\
+	EVENT_CONSTRAINT(c, n, ARCH_PERFMON_EVENTSEL_EVENT|(c))
 
 /* Like UEVENT_CONSTRAINT, but match flags too */
 #define INTEL_FLAGS_UEVENT_CONSTRAINT(c, n)	\
