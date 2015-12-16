@@ -227,8 +227,15 @@ static int isp_video_get_graph_data(struct isp_video *video,
 	struct media_entity *entity = &video->video.entity;
 	struct media_device *mdev = entity->graph_obj.mdev;
 	struct isp_video *far_end = NULL;
+	int ret;
 
 	mutex_lock(&mdev->graph_mutex);
+	ret = media_entity_graph_walk_init(&graph, entity->graph_obj.mdev);
+	if (ret) {
+		mutex_unlock(&mdev->graph_mutex);
+		return ret;
+	}
+
 	media_entity_graph_walk_start(&graph, entity);
 
 	while ((entity = media_entity_graph_walk_next(&graph))) {
@@ -251,6 +258,8 @@ static int isp_video_get_graph_data(struct isp_video *video,
 	}
 
 	mutex_unlock(&mdev->graph_mutex);
+
+	media_entity_graph_walk_cleanup(&graph);
 
 	if (video->type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
 		pipe->input = far_end;
@@ -1245,7 +1254,12 @@ static int isp_video_open(struct file *file)
 		goto done;
 	}
 
-	ret = omap3isp_pipeline_pm_use(&video->video.entity, 1);
+	ret = media_entity_graph_walk_init(&handle->graph,
+					   &video->isp->media_dev);
+	if (ret)
+		goto done;
+
+	ret = omap3isp_pipeline_pm_use(&video->video.entity, 1, &handle->graph);
 	if (ret < 0) {
 		omap3isp_put(video->isp);
 		goto done;
@@ -1276,6 +1290,7 @@ static int isp_video_open(struct file *file)
 done:
 	if (ret < 0) {
 		v4l2_fh_del(&handle->vfh);
+		media_entity_graph_walk_cleanup(&handle->graph);
 		kfree(handle);
 	}
 
@@ -1295,7 +1310,8 @@ static int isp_video_release(struct file *file)
 	vb2_queue_release(&handle->queue);
 	mutex_unlock(&video->queue_lock);
 
-	omap3isp_pipeline_pm_use(&video->video.entity, 0);
+	omap3isp_pipeline_pm_use(&video->video.entity, 0, &handle->graph);
+	media_entity_graph_walk_cleanup(&handle->graph);
 
 	/* Release the file handle. */
 	v4l2_fh_del(vfh);
