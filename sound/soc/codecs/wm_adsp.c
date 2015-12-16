@@ -201,27 +201,48 @@ static void wm_adsp_buf_free(struct list_head *list)
 	}
 }
 
-#define WM_ADSP_NUM_FW 4
+#define WM_ADSP_FW_MBC_VSS  0
+#define WM_ADSP_FW_HIFI     1
+#define WM_ADSP_FW_TX       2
+#define WM_ADSP_FW_TX_SPK   3
+#define WM_ADSP_FW_RX       4
+#define WM_ADSP_FW_RX_ANC   5
+#define WM_ADSP_FW_CTRL     6
+#define WM_ADSP_FW_ASR      7
+#define WM_ADSP_FW_TRACE    8
+#define WM_ADSP_FW_SPK_PROT 9
+#define WM_ADSP_FW_MISC     10
 
-#define WM_ADSP_FW_MBC_VSS 0
-#define WM_ADSP_FW_TX      1
-#define WM_ADSP_FW_TX_SPK  2
-#define WM_ADSP_FW_RX_ANC  3
+#define WM_ADSP_NUM_FW      11
 
 static const char *wm_adsp_fw_text[WM_ADSP_NUM_FW] = {
-	[WM_ADSP_FW_MBC_VSS] = "MBC/VSS",
-	[WM_ADSP_FW_TX] =      "Tx",
-	[WM_ADSP_FW_TX_SPK] =  "Tx Speaker",
-	[WM_ADSP_FW_RX_ANC] =  "Rx ANC",
+	[WM_ADSP_FW_MBC_VSS] =  "MBC/VSS",
+	[WM_ADSP_FW_HIFI] =     "MasterHiFi",
+	[WM_ADSP_FW_TX] =       "Tx",
+	[WM_ADSP_FW_TX_SPK] =   "Tx Speaker",
+	[WM_ADSP_FW_RX] =       "Rx",
+	[WM_ADSP_FW_RX_ANC] =   "Rx ANC",
+	[WM_ADSP_FW_CTRL] =     "Voice Ctrl",
+	[WM_ADSP_FW_ASR] =      "ASR Assist",
+	[WM_ADSP_FW_TRACE] =    "Dbg Trace",
+	[WM_ADSP_FW_SPK_PROT] = "Protection",
+	[WM_ADSP_FW_MISC] =     "Misc",
 };
 
 static struct {
 	const char *file;
 } wm_adsp_fw[WM_ADSP_NUM_FW] = {
-	[WM_ADSP_FW_MBC_VSS] = { .file = "mbc-vss" },
-	[WM_ADSP_FW_TX] =      { .file = "tx" },
-	[WM_ADSP_FW_TX_SPK] =  { .file = "tx-spk" },
-	[WM_ADSP_FW_RX_ANC] =  { .file = "rx-anc" },
+	[WM_ADSP_FW_MBC_VSS] =  { .file = "mbc-vss" },
+	[WM_ADSP_FW_HIFI] =     { .file = "hifi" },
+	[WM_ADSP_FW_TX] =       { .file = "tx" },
+	[WM_ADSP_FW_TX_SPK] =   { .file = "tx-spk" },
+	[WM_ADSP_FW_RX] =       { .file = "rx" },
+	[WM_ADSP_FW_RX_ANC] =   { .file = "rx-anc" },
+	[WM_ADSP_FW_CTRL] =     { .file = "ctrl" },
+	[WM_ADSP_FW_ASR] =      { .file = "asr" },
+	[WM_ADSP_FW_TRACE] =    { .file = "trace" },
+	[WM_ADSP_FW_SPK_PROT] = { .file = "spk-prot" },
+	[WM_ADSP_FW_MISC] =     { .file = "misc" },
 };
 
 struct wm_coeff_ctl_ops {
@@ -254,30 +275,24 @@ static void wm_adsp_debugfs_save_wmfwname(struct wm_adsp *dsp, const char *s)
 {
 	char *tmp = kasprintf(GFP_KERNEL, "%s\n", s);
 
-	mutex_lock(&dsp->debugfs_lock);
 	kfree(dsp->wmfw_file_name);
 	dsp->wmfw_file_name = tmp;
-	mutex_unlock(&dsp->debugfs_lock);
 }
 
 static void wm_adsp_debugfs_save_binname(struct wm_adsp *dsp, const char *s)
 {
 	char *tmp = kasprintf(GFP_KERNEL, "%s\n", s);
 
-	mutex_lock(&dsp->debugfs_lock);
 	kfree(dsp->bin_file_name);
 	dsp->bin_file_name = tmp;
-	mutex_unlock(&dsp->debugfs_lock);
 }
 
 static void wm_adsp_debugfs_clear(struct wm_adsp *dsp)
 {
-	mutex_lock(&dsp->debugfs_lock);
 	kfree(dsp->wmfw_file_name);
 	kfree(dsp->bin_file_name);
 	dsp->wmfw_file_name = NULL;
 	dsp->bin_file_name = NULL;
-	mutex_unlock(&dsp->debugfs_lock);
 }
 
 static ssize_t wm_adsp_debugfs_wmfw_read(struct file *file,
@@ -287,7 +302,7 @@ static ssize_t wm_adsp_debugfs_wmfw_read(struct file *file,
 	struct wm_adsp *dsp = file->private_data;
 	ssize_t ret;
 
-	mutex_lock(&dsp->debugfs_lock);
+	mutex_lock(&dsp->pwr_lock);
 
 	if (!dsp->wmfw_file_name || !dsp->running)
 		ret = 0;
@@ -296,7 +311,7 @@ static ssize_t wm_adsp_debugfs_wmfw_read(struct file *file,
 					      dsp->wmfw_file_name,
 					      strlen(dsp->wmfw_file_name));
 
-	mutex_unlock(&dsp->debugfs_lock);
+	mutex_unlock(&dsp->pwr_lock);
 	return ret;
 }
 
@@ -307,7 +322,7 @@ static ssize_t wm_adsp_debugfs_bin_read(struct file *file,
 	struct wm_adsp *dsp = file->private_data;
 	ssize_t ret;
 
-	mutex_lock(&dsp->debugfs_lock);
+	mutex_lock(&dsp->pwr_lock);
 
 	if (!dsp->bin_file_name || !dsp->running)
 		ret = 0;
@@ -316,7 +331,7 @@ static ssize_t wm_adsp_debugfs_bin_read(struct file *file,
 					      dsp->bin_file_name,
 					      strlen(dsp->bin_file_name));
 
-	mutex_unlock(&dsp->debugfs_lock);
+	mutex_unlock(&dsp->pwr_lock);
 	return ret;
 }
 
@@ -436,6 +451,7 @@ static int wm_adsp_fw_put(struct snd_kcontrol *kcontrol,
 	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
 	struct soc_enum *e = (struct soc_enum *)kcontrol->private_value;
 	struct wm_adsp *dsp = snd_soc_codec_get_drvdata(codec);
+	int ret = 0;
 
 	if (ucontrol->value.integer.value[0] == dsp[e->shift_l].fw)
 		return 0;
@@ -443,12 +459,16 @@ static int wm_adsp_fw_put(struct snd_kcontrol *kcontrol,
 	if (ucontrol->value.integer.value[0] >= WM_ADSP_NUM_FW)
 		return -EINVAL;
 
+	mutex_lock(&dsp[e->shift_l].pwr_lock);
+
 	if (dsp[e->shift_l].running)
-		return -EBUSY;
+		ret = -EBUSY;
+	else
+		dsp[e->shift_l].fw = ucontrol->value.integer.value[0];
 
-	dsp[e->shift_l].fw = ucontrol->value.integer.value[0];
+	mutex_unlock(&dsp[e->shift_l].pwr_lock);
 
-	return 0;
+	return ret;
 }
 
 static const struct soc_enum wm_adsp_fw_enum[] = {
@@ -523,10 +543,10 @@ static void wm_adsp2_show_fw_status(struct wm_adsp *dsp)
 		 be16_to_cpu(scratch[3]));
 }
 
-static int wm_coeff_info(struct snd_kcontrol *kcontrol,
+static int wm_coeff_info(struct snd_kcontrol *kctl,
 			 struct snd_ctl_elem_info *uinfo)
 {
-	struct wm_coeff_ctl *ctl = (struct wm_coeff_ctl *)kcontrol->private_value;
+	struct wm_coeff_ctl *ctl = (struct wm_coeff_ctl *)kctl->private_value;
 
 	uinfo->type = SNDRV_CTL_ELEM_TYPE_BYTES;
 	uinfo->count = ctl->len;
@@ -572,19 +592,24 @@ static int wm_coeff_write_control(struct wm_coeff_ctl *ctl,
 	return 0;
 }
 
-static int wm_coeff_put(struct snd_kcontrol *kcontrol,
+static int wm_coeff_put(struct snd_kcontrol *kctl,
 			struct snd_ctl_elem_value *ucontrol)
 {
-	struct wm_coeff_ctl *ctl = (struct wm_coeff_ctl *)kcontrol->private_value;
+	struct wm_coeff_ctl *ctl = (struct wm_coeff_ctl *)kctl->private_value;
 	char *p = ucontrol->value.bytes.data;
+	int ret = 0;
+
+	mutex_lock(&ctl->dsp->pwr_lock);
 
 	memcpy(ctl->cache, p, ctl->len);
 
 	ctl->set = 1;
-	if (!ctl->enabled)
-		return 0;
+	if (ctl->enabled)
+		ret = wm_coeff_write_control(ctl, p, ctl->len);
 
-	return wm_coeff_write_control(ctl, p, ctl->len);
+	mutex_unlock(&ctl->dsp->pwr_lock);
+
+	return ret;
 }
 
 static int wm_coeff_read_control(struct wm_coeff_ctl *ctl,
@@ -626,22 +651,27 @@ static int wm_coeff_read_control(struct wm_coeff_ctl *ctl,
 	return 0;
 }
 
-static int wm_coeff_get(struct snd_kcontrol *kcontrol,
+static int wm_coeff_get(struct snd_kcontrol *kctl,
 			struct snd_ctl_elem_value *ucontrol)
 {
-	struct wm_coeff_ctl *ctl = (struct wm_coeff_ctl *)kcontrol->private_value;
+	struct wm_coeff_ctl *ctl = (struct wm_coeff_ctl *)kctl->private_value;
 	char *p = ucontrol->value.bytes.data;
+	int ret = 0;
+
+	mutex_lock(&ctl->dsp->pwr_lock);
 
 	if (ctl->flags & WMFW_CTL_FLAG_VOLATILE) {
 		if (ctl->enabled)
-			return wm_coeff_read_control(ctl, p, ctl->len);
+			ret = wm_coeff_read_control(ctl, p, ctl->len);
 		else
-			return -EPERM;
+			ret = -EPERM;
+	} else {
+		memcpy(p, ctl->cache, ctl->len);
 	}
 
-	memcpy(p, ctl->cache, ctl->len);
+	mutex_unlock(&ctl->dsp->pwr_lock);
 
-	return 0;
+	return ret;
 }
 
 struct wmfw_ctl_work {
@@ -808,8 +838,7 @@ static int wm_adsp_create_control(struct wm_adsp *dsp,
 		break;
 	}
 
-	list_for_each_entry(ctl, &dsp->ctl_list,
-			    list) {
+	list_for_each_entry(ctl, &dsp->ctl_list, list) {
 		if (!strcmp(ctl->name, name)) {
 			if (!ctl->enabled)
 				ctl->enabled = 1;
@@ -1088,7 +1117,7 @@ static int wm_adsp_load(struct wm_adsp *dsp)
 		goto out_fw;
 	}
 
-	header = (void*)&firmware->data[0];
+	header = (void *)&firmware->data[0];
 
 	if (memcmp(&header->magic[0], "WMFW", 4) != 0) {
 		adsp_err(dsp, "%s: invalid magic\n", file);
@@ -1168,7 +1197,7 @@ static int wm_adsp_load(struct wm_adsp *dsp)
 		offset = le32_to_cpu(region->offset) & 0xffffff;
 		type = be32_to_cpu(region->type) & 0xff;
 		mem = wm_adsp_find_region(dsp, type);
-		
+
 		switch (type) {
 		case WMFW_NAME_TEXT:
 			region_name = "Firmware name";
@@ -1625,7 +1654,7 @@ static int wm_adsp_load_coeff(struct wm_adsp *dsp)
 		goto out_fw;
 	}
 
-	hdr = (void*)&firmware->data[0];
+	hdr = (void *)&firmware->data[0];
 	if (memcmp(hdr->magic, "WMDR", 4) != 0) {
 		adsp_err(dsp, "%s: invalid magic\n", file);
 		goto out_fw;
@@ -1651,7 +1680,7 @@ static int wm_adsp_load_coeff(struct wm_adsp *dsp)
 	blocks = 0;
 	while (pos < firmware->size &&
 	       pos - firmware->size > sizeof(*blk)) {
-		blk = (void*)(&firmware->data[pos]);
+		blk = (void *)(&firmware->data[pos]);
 
 		type = le16_to_cpu(blk->type);
 		offset = le16_to_cpu(blk->offset);
@@ -1778,9 +1807,8 @@ int wm_adsp1_init(struct wm_adsp *dsp)
 {
 	INIT_LIST_HEAD(&dsp->alg_regions);
 
-#ifdef CONFIG_DEBUG_FS
-	mutex_init(&dsp->debugfs_lock);
-#endif
+	mutex_init(&dsp->pwr_lock);
+
 	return 0;
 }
 EXPORT_SYMBOL_GPL(wm_adsp1_init);
@@ -1795,9 +1823,11 @@ int wm_adsp1_event(struct snd_soc_dapm_widget *w,
 	struct wm_adsp_alg_region *alg_region;
 	struct wm_coeff_ctl *ctl;
 	int ret;
-	int val;
+	unsigned int val;
 
 	dsp->card = codec->component.card;
+
+	mutex_lock(&dsp->pwr_lock);
 
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
@@ -1808,12 +1838,12 @@ int wm_adsp1_event(struct snd_soc_dapm_widget *w,
 		 * For simplicity set the DSP clock rate to be the
 		 * SYSCLK rate rather than making it configurable.
 		 */
-		if(dsp->sysclk_reg) {
+		if (dsp->sysclk_reg) {
 			ret = regmap_read(dsp->regmap, dsp->sysclk_reg, &val);
 			if (ret != 0) {
 				adsp_err(dsp, "Failed to read SYSCLK state: %d\n",
 				ret);
-				return ret;
+				goto err_mutex;
 			}
 
 			val = (val & dsp->sysclk_mask)
@@ -1825,31 +1855,31 @@ int wm_adsp1_event(struct snd_soc_dapm_widget *w,
 			if (ret != 0) {
 				adsp_err(dsp, "Failed to set clock rate: %d\n",
 					 ret);
-				return ret;
+				goto err_mutex;
 			}
 		}
 
 		ret = wm_adsp_load(dsp);
 		if (ret != 0)
-			goto err;
+			goto err_ena;
 
 		ret = wm_adsp1_setup_algs(dsp);
 		if (ret != 0)
-			goto err;
+			goto err_ena;
 
 		ret = wm_adsp_load_coeff(dsp);
 		if (ret != 0)
-			goto err;
+			goto err_ena;
 
 		/* Initialize caches for enabled and unset controls */
 		ret = wm_coeff_init_control_caches(dsp);
 		if (ret != 0)
-			goto err;
+			goto err_ena;
 
 		/* Sync set controls */
 		ret = wm_coeff_sync_controls(dsp);
 		if (ret != 0)
-			goto err;
+			goto err_ena;
 
 		/* Start the core running */
 		regmap_update_bits(dsp->regmap, dsp->base + ADSP1_CONTROL_30,
@@ -1884,11 +1914,16 @@ int wm_adsp1_event(struct snd_soc_dapm_widget *w,
 		break;
 	}
 
+	mutex_unlock(&dsp->pwr_lock);
+
 	return 0;
 
-err:
+err_ena:
 	regmap_update_bits(dsp->regmap, dsp->base + ADSP1_CONTROL_30,
 			   ADSP1_SYS_ENA, 0);
+err_mutex:
+	mutex_unlock(&dsp->pwr_lock);
+
 	return ret;
 }
 EXPORT_SYMBOL_GPL(wm_adsp1_event);
@@ -1934,6 +1969,8 @@ static void wm_adsp2_boot_work(struct work_struct *work)
 	int ret;
 	unsigned int val;
 
+	mutex_lock(&dsp->pwr_lock);
+
 	/*
 	 * For simplicity set the DSP clock rate to be the
 	 * SYSCLK rate rather than making it configurable.
@@ -1941,7 +1978,7 @@ static void wm_adsp2_boot_work(struct work_struct *work)
 	ret = regmap_read(dsp->regmap, ARIZONA_SYSTEM_CLOCK_1, &val);
 	if (ret != 0) {
 		adsp_err(dsp, "Failed to read SYSCLK state: %d\n", ret);
-		return;
+		goto err_mutex;
 	}
 	val = (val & ARIZONA_SYSCLK_FREQ_MASK)
 		>> ARIZONA_SYSCLK_FREQ_SHIFT;
@@ -1951,42 +1988,46 @@ static void wm_adsp2_boot_work(struct work_struct *work)
 				       ADSP2_CLK_SEL_MASK, val);
 	if (ret != 0) {
 		adsp_err(dsp, "Failed to set clock rate: %d\n", ret);
-		return;
+		goto err_mutex;
 	}
 
 	ret = wm_adsp2_ena(dsp);
 	if (ret != 0)
-		return;
+		goto err_mutex;
 
 	ret = wm_adsp_load(dsp);
 	if (ret != 0)
-		goto err;
+		goto err_ena;
 
 	ret = wm_adsp2_setup_algs(dsp);
 	if (ret != 0)
-		goto err;
+		goto err_ena;
 
 	ret = wm_adsp_load_coeff(dsp);
 	if (ret != 0)
-		goto err;
+		goto err_ena;
 
 	/* Initialize caches for enabled and unset controls */
 	ret = wm_coeff_init_control_caches(dsp);
 	if (ret != 0)
-		goto err;
+		goto err_ena;
 
 	/* Sync set controls */
 	ret = wm_coeff_sync_controls(dsp);
 	if (ret != 0)
-		goto err;
+		goto err_ena;
 
 	dsp->running = true;
 
+	mutex_unlock(&dsp->pwr_lock);
+
 	return;
 
-err:
+err_ena:
 	regmap_update_bits(dsp->regmap, dsp->base + ADSP2_CONTROL,
 			   ADSP2_SYS_ENA | ADSP2_CORE_ENA | ADSP2_START, 0);
+err_mutex:
+	mutex_unlock(&dsp->pwr_lock);
 }
 
 int wm_adsp2_early_event(struct snd_soc_dapm_widget *w,
@@ -2039,6 +2080,8 @@ int wm_adsp2_event(struct snd_soc_dapm_widget *w,
 		/* Log firmware state, it can be useful for analysis */
 		wm_adsp2_show_fw_status(dsp);
 
+		mutex_lock(&dsp->pwr_lock);
+
 		wm_adsp_debugfs_clear(dsp);
 
 		dsp->fw_id = 0;
@@ -2064,6 +2107,8 @@ int wm_adsp2_event(struct snd_soc_dapm_widget *w,
 			list_del(&alg_region->list);
 			kfree(alg_region);
 		}
+
+		mutex_unlock(&dsp->pwr_lock);
 
 		adsp_dbg(dsp, "Shutdown complete\n");
 		break;
@@ -2117,9 +2162,8 @@ int wm_adsp2_init(struct wm_adsp *dsp)
 	INIT_LIST_HEAD(&dsp->ctl_list);
 	INIT_WORK(&dsp->boot_work, wm_adsp2_boot_work);
 
-#ifdef CONFIG_DEBUG_FS
-	mutex_init(&dsp->debugfs_lock);
-#endif
+	mutex_init(&dsp->pwr_lock);
+
 	return 0;
 }
 EXPORT_SYMBOL_GPL(wm_adsp2_init);
