@@ -638,7 +638,7 @@ static bool intel_hdmi_set_gcp_infoframe(struct drm_encoder *encoder)
 
 	if (HAS_DDI(dev_priv))
 		reg = HSW_TVIDEO_DIP_GCP(crtc->config->cpu_transcoder);
-	else if (IS_VALLEYVIEW(dev_priv))
+	else if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
 		reg = VLV_TVIDEO_DIP_GCP(crtc->pipe);
 	else if (HAS_PCH_SPLIT(dev_priv->dev))
 		reg = TVIDEO_DIP_GCP(crtc->pipe);
@@ -2100,7 +2100,7 @@ void intel_hdmi_init_connector(struct intel_digital_port *intel_dig_port,
 		BUG();
 	}
 
-	if (IS_VALLEYVIEW(dev)) {
+	if (IS_VALLEYVIEW(dev) || IS_CHERRYVIEW(dev)) {
 		intel_hdmi->write_infoframe = vlv_write_infoframe;
 		intel_hdmi->set_infoframes = vlv_set_infoframes;
 		intel_hdmi->infoframe_enabled = vlv_infoframe_enabled;
@@ -2147,6 +2147,7 @@ void intel_hdmi_init_connector(struct intel_digital_port *intel_dig_port,
 void intel_hdmi_init(struct drm_device *dev,
 		     i915_reg_t hdmi_reg, enum port port)
 {
+	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_digital_port *intel_dig_port;
 	struct intel_encoder *intel_encoder;
 	struct intel_connector *intel_connector;
@@ -2215,6 +2216,7 @@ void intel_hdmi_init(struct drm_device *dev,
 		intel_encoder->cloneable |= 1 << INTEL_OUTPUT_HDMI;
 
 	intel_dig_port->port = port;
+	dev_priv->dig_port_map[port] = intel_encoder;
 	intel_dig_port->hdmi.hdmi_reg = hdmi_reg;
 	intel_dig_port->dp.output_reg = INVALID_MMIO_REG;
 
