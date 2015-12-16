@@ -349,6 +349,8 @@ struct drm_file {
 	struct list_head event_list;
 	int event_space;
 
+	struct mutex event_read_lock;
+
 	struct drm_prime_file_private prime;
 };
 
@@ -584,6 +586,13 @@ struct drm_driver {
 	void (*gem_free_object) (struct drm_gem_object *obj);
 	int (*gem_open_object) (struct drm_gem_object *, struct drm_file *);
 	void (*gem_close_object) (struct drm_gem_object *, struct drm_file *);
+
+	/**
+	 * Hook for allocating the GEM object struct, for use by core
+	 * helpers.
+	 */
+	struct drm_gem_object *(*gem_create_object)(struct drm_device *dev,
+						    size_t size);
 
 	/* prime: */
 	/* export handle -> fd (see drm_gem_prime_handle_to_fd() helper) */
@@ -1120,5 +1129,8 @@ static __inline__ bool drm_can_sleep(void)
 		return false;
 	return true;
 }
+
+/* helper for handling conditionals in various for_each macros */
+#define for_each_if(condition) if (!(condition)) {} else
 
 #endif
