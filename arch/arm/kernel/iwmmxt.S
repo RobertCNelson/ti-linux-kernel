@@ -14,6 +14,7 @@
  * published by the Free Software Foundation.
  */
 
+#include <linux/init.h>
 #include <linux/linkage.h>
 #include <asm/ptrace.h>
 #include <asm/thread_info.h>
@@ -370,3 +371,23 @@ ENDPROC(iwmmxt_task_release)
 concan_owner:
 	.word	0
 
+#if defined(CONFIG_CPU_PJ4) || defined(CONFIG_CPU_PJ4B)
+
+	__INIT
+
+ENTRY(pj4_cp_access_read)
+	mrc	p15, 0, r0, c1, c0, 2
+	ret	lr
+ENDPROC(pj4_cp_access_read)
+
+ENTRY(pj4_cp_access_write)
+	mcr	p15, 0, r0, c1, c0, 2
+	mrc	p15, 0, r0, c1, c0, 2
+	mov	r0, r0
+	sub	pc, pc, #4
+	ret	lr
+ENDPROC(pj4_cp_access_write)
+
+	__FINIT
+
+#endif
