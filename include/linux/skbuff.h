@@ -833,7 +833,7 @@ struct sk_buff_fclones {
  *	skb_fclone_busy - check if fclone is busy
  *	@skb: buffer
  *
- * Returns true is skb is a fast clone, and its clone is not freed.
+ * Returns true if skb is a fast clone, and its clone is not freed.
  * Some drivers call skb_orphan() in their ndo_start_xmit(),
  * so we also check that this didnt happen.
  */
@@ -1082,9 +1082,6 @@ static inline void skb_copy_hash(struct sk_buff *to, const struct sk_buff *from)
 
 static inline void skb_sender_cpu_clear(struct sk_buff *skb)
 {
-#ifdef CONFIG_XPS
-	skb->sender_cpu = 0;
-#endif
 }
 
 #ifdef NET_SKBUFF_DATA_USES_OFFSET
@@ -2788,6 +2785,12 @@ static inline void skb_frag_list_init(struct sk_buff *skb)
 #define skb_walk_frags(skb, iter)	\
 	for (iter = skb_shinfo(skb)->frag_list; iter; iter = iter->next)
 
+
+int __skb_wait_for_more_packets(struct sock *sk, int *err, long *timeo_p,
+				const struct sk_buff *skb);
+struct sk_buff *__skb_try_recv_datagram(struct sock *sk, unsigned flags,
+					int *peeked, int *off, int *err,
+					struct sk_buff **last);
 struct sk_buff *__skb_recv_datagram(struct sock *sk, unsigned flags,
 				    int *peeked, int *off, int *err);
 struct sk_buff *skb_recv_datagram(struct sock *sk, unsigned flags, int noblock,
