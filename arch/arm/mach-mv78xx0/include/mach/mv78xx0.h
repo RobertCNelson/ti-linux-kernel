@@ -1,4 +1,6 @@
 /*
+ * arch/arm/mach-mv78xx0/include/mach/mv78xx0.h
+ *
  * Generic definitions for Marvell MV78xx0 SoC flavors:
  *  MV781x0 and MV782x0.
  *
@@ -9,8 +11,6 @@
 
 #ifndef __ASM_ARCH_MV78XX0_H
 #define __ASM_ARCH_MV78XX0_H
-
-#include "irqs.h"
 
 /*
  * Marvell MV78xx0 address maps.
