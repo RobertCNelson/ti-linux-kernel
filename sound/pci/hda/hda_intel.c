@@ -284,13 +284,19 @@ enum {
 	(AZX_DCAPS_OLD_SSYNC | AZX_DCAPS_NO_ALIGN_BUFSIZE)
 
 /* quirks for Intel PCH */
-#define AZX_DCAPS_INTEL_PCH_NOPM \
+#define AZX_DCAPS_INTEL_PCH_BASE \
 	(AZX_DCAPS_NO_ALIGN_BUFSIZE | AZX_DCAPS_COUNT_LPIB_DELAY |\
 	 AZX_DCAPS_REVERSE_ASSIGN | AZX_DCAPS_SNOOP_TYPE(SCH))
 
-#define AZX_DCAPS_INTEL_PCH \
-	(AZX_DCAPS_INTEL_PCH_NOPM | AZX_DCAPS_PM_RUNTIME)
+/* PCH up to IVB; no runtime PM */
+#define AZX_DCAPS_INTEL_PCH_NOPM \
+	(AZX_DCAPS_INTEL_PCH_BASE)
 
+/* PCH for HSW/BDW; with runtime PM */
+#define AZX_DCAPS_INTEL_PCH \
+	(AZX_DCAPS_INTEL_PCH_BASE | AZX_DCAPS_PM_RUNTIME)
+
+/* HSW HDMI */
 #define AZX_DCAPS_INTEL_HASWELL \
 	(/*AZX_DCAPS_ALIGN_BUFSIZE |*/ AZX_DCAPS_COUNT_LPIB_DELAY |\
 	 AZX_DCAPS_PM_RUNTIME | AZX_DCAPS_I915_POWERWELL |\
@@ -649,7 +655,7 @@ static int azx_position_ok(struct azx *chip, struct azx_dev *azx_dev)
 	if (wallclk < (azx_dev->core.period_wallclk * 5) / 4 &&
 	    pos % azx_dev->core.period_bytes > azx_dev->core.period_bytes / 2)
 		/* NG - it's below the first next period boundary */
-		return chip->bdl_pos_adj[chip->dev_index] ? 0 : -1;
+		return chip->bdl_pos_adj ? 0 : -1;
 	azx_dev->core.start_wallclk += wallclk;
 	return 1; /* OK, it's fine */
 }
@@ -1505,6 +1511,26 @@ static void azx_probe_work(struct work_struct *work)
 	azx_probe_continue(&hda->chip);
 }
 
+static int default_bdl_pos_adj(struct azx *chip)
+{
+	/* some exceptions: Atoms seem problematic with value 1 */
+	if (chip->pci->vendor == PCI_VENDOR_ID_INTEL) {
+		switch (chip->pci->device) {
+		case 0x0f04: /* Baytrail */
+		case 0x2284: /* Braswell */
+			return 32;
+		}
+	}
+
+	switch (chip->driver_type) {
+	case AZX_DRIVER_ICH:
+	case AZX_DRIVER_PCH:
+		return 1;
+	default:
+		return 32;
+	}
+}
+
 /*
  * constructor
  */
@@ -1558,18 +1584,10 @@ static int azx_create(struct snd_card *card, struct pci_dev *pci,
 	chip->single_cmd = single_cmd;
 	azx_check_snoop_available(chip);
 
-	if (bdl_pos_adj[dev] < 0) {
-		switch (chip->driver_type) {
-		case AZX_DRIVER_ICH:
-		case AZX_DRIVER_PCH:
-			bdl_pos_adj[dev] = 1;
-			break;
-		default:
-			bdl_pos_adj[dev] = 32;
-			break;
-		}
-	}
-	chip->bdl_pos_adj = bdl_pos_adj;
+	if (bdl_pos_adj[dev] < 0)
+		chip->bdl_pos_adj = default_bdl_pos_adj(chip);
+	else
+		chip->bdl_pos_adj = bdl_pos_adj[dev];
 
 	err = azx_bus_init(chip, model[dev], &pci_hda_io_ops);
 	if (err < 0) {
@@ -1971,8 +1989,8 @@ static int azx_probe(struct pci_dev *pci,
 #endif /* CONFIG_SND_HDA_PATCH_LOADER */
 
 #ifndef CONFIG_SND_HDA_I915
-	if (chip->driver_caps & AZX_DCAPS_I915_POWERWELL)
-		dev_err(card->dev, "Haswell must build in CONFIG_SND_HDA_I915\n");
+	if (CONTROLLER_IN_GPU(pci))
+		dev_err(card->dev, "Haswell/Broadwell HDMI/DP must build in CONFIG_SND_HDA_I915\n");
 #endif
 
 	if (schedule_probe)
@@ -2169,10 +2187,10 @@ static const struct pci_device_id azx_ids[] = {
 	  .driver_data = AZX_DRIVER_SCH | AZX_DCAPS_INTEL_PCH_NOPM },
 	/* Poulsbo */
 	{ PCI_DEVICE(0x8086, 0x811b),
-	  .driver_data = AZX_DRIVER_SCH | AZX_DCAPS_INTEL_PCH_NOPM },
+	  .driver_data = AZX_DRIVER_SCH | AZX_DCAPS_INTEL_PCH_BASE },
 	/* Oaktrail */
 	{ PCI_DEVICE(0x8086, 0x080a),
-	  .driver_data = AZX_DRIVER_SCH | AZX_DCAPS_INTEL_PCH_NOPM },
+	  .driver_data = AZX_DRIVER_SCH | AZX_DCAPS_INTEL_PCH_BASE },
 	/* BayTrail */
 	{ PCI_DEVICE(0x8086, 0x0f04),
 	  .driver_data = AZX_DRIVER_PCH | AZX_DCAPS_INTEL_BAYTRAIL },
