@@ -15,6 +15,7 @@ menuconfig ARCH_EXYNOS
 	select ARCH_REQUIRE_GPIOLIB
 	select ARM_AMBA
 	select ARM_GIC
+	select CLKSRC_EXYNOS_MCT
 	select COMMON_CLK_SAMSUNG
 	select EXYNOS_THERMAL
 	select HAVE_ARM_SCU if SMP
@@ -24,13 +25,13 @@ menuconfig ARCH_EXYNOS
 	select PINCTRL
 	select PINCTRL_EXYNOS
 	select PM_GENERIC_DOMAINS if PM
+	select POWER_RESET
+	select POWER_RESET_SYSCON
+	select POWER_RESET_SYSCON_POWEROFF
 	select S5P_DEV_MFC
 	select SRAM
 	select THERMAL
 	select MFD_SYSCON
-	select POWER_RESET
-	select POWER_RESET_SYSCON
-	select POWER_RESET_SYSCON_POWEROFF
 	help
 	  Support for SAMSUNG EXYNOS SoCs (EXYNOS4/5)
 
