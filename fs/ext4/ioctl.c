@@ -689,6 +689,67 @@ encryption_policy_out:
 		return -EOPNOTSUPP;
 #endif
 	}
+	case EXT4_IOC_GET_ENCRYPTION_METADATA: {
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+		struct ext4_encrypted_metadata mdata;
+		int err = 0;
+
+		if (get_user(mdata.len, (u32 __user *) arg))
+			return -EFAULT;
+		if (mdata.len > sizeof(mdata.metadata))
+			return -EINVAL;
+
+		if (!ext4_encrypted_inode(inode))
+			return -ENOENT;
+		err = ext4_get_encryption_metadata(inode, &mdata);
+		if (err)
+			return err;
+		if (copy_to_user((void __user *)arg, &mdata, sizeof(mdata)))
+			return -EFAULT;
+		return 0;
+#else
+		return -EOPNOTSUPP;
+#endif
+	}
+	case EXT4_IOC_SET_ENCRYPTION_METADATA: {
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+		struct ext4_encrypted_metadata mdata;
+		int err = 0;
+
+		if (ext4_encrypted_inode(inode))
+			return -EINVAL;
+		if (copy_from_user(&mdata,
+				   (struct ext4_encrypted_metadata __user *)arg,
+				   sizeof(mdata)))
+			return -EFAULT;
+		err = ext4_set_encryption_metadata(inode, &mdata);
+		return err;
+#else
+		return -EOPNOTSUPP;
+#endif
+	}
+	case EXT4_IOC_GET_ENCRYPTED_FILENAME: {
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+		struct ext4_encrypted_metadata mdata;
+		int err = 0;
+
+		if (get_user(mdata.len, (u32 __user *) arg))
+			return -EFAULT;
+		if (mdata.len > sizeof(mdata.metadata))
+			return -EINVAL;
+
+		if (!ext4_encrypted_inode(inode))
+			return -ENOENT;
+		err = ext4_get_encrypted_filename(filp, &mdata);
+		if (err)
+			return err;
+		if (copy_to_user((void __user *)arg, &mdata, sizeof(mdata)))
+			return -EFAULT;
+		return 0;
+#else
+		return -EOPNOTSUPP;
+#endif
+	}
 	default:
 		return -ENOTTY;
 	}
@@ -755,6 +816,9 @@ long ext4_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case EXT4_IOC_SET_ENCRYPTION_POLICY:
 	case EXT4_IOC_GET_ENCRYPTION_PWSALT:
 	case EXT4_IOC_GET_ENCRYPTION_POLICY:
+	case EXT4_IOC_GET_ENCRYPTION_METADATA:
+	case EXT4_IOC_SET_ENCRYPTION_METADATA:
+	case EXT4_IOC_GET_ENCRYPTED_FILENAME:
 		break;
 	default:
 		return -ENOIOCTLCMD;

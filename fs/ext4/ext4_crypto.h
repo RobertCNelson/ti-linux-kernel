@@ -156,4 +156,12 @@ static inline u32 encrypted_symlink_data_len(u32 l)
 	return (l + sizeof(struct ext4_encrypted_symlink_data) - 1);
 }
 
+/**
+ * Structure used for communicating encrypted metadata with userspace
+ */
+struct ext4_encrypted_metadata {
+	u32 len;
+	char metadata[288];
+};
+
 #endif	/* _EXT4_CRYPTO_H */
