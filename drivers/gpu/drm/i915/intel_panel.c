@@ -1784,7 +1784,7 @@ intel_panel_init_backlight_funcs(struct intel_panel *panel)
 		panel->backlight.set = pch_set_backlight;
 		panel->backlight.get = pch_get_backlight;
 		panel->backlight.hz_to_pwm = pch_hz_to_pwm;
-	} else if (IS_VALLEYVIEW(dev)) {
+	} else if (IS_VALLEYVIEW(dev) || IS_CHERRYVIEW(dev)) {
 		if (dev_priv->vbt.has_mipi) {
 			panel->backlight.setup = pwm_setup_backlight;
 			panel->backlight.enable = pwm_enable_backlight;
@@ -1845,7 +1845,7 @@ void intel_backlight_register(struct drm_device *dev)
 {
 	struct intel_connector *connector;
 
-	list_for_each_entry(connector, &dev->mode_config.connector_list, base.head)
+	for_each_intel_connector(dev, connector)
 		intel_backlight_device_register(connector);
 }
 
@@ -1853,6 +1853,6 @@ void intel_backlight_unregister(struct drm_device *dev)
 {
 	struct intel_connector *connector;
 
-	list_for_each_entry(connector, &dev->mode_config.connector_list, base.head)
+	for_each_intel_connector(dev, connector)
 		intel_backlight_device_unregister(connector);
 }
