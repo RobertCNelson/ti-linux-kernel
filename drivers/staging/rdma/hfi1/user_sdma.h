@@ -52,15 +52,7 @@
 
 #include "common.h"
 #include "iowait.h"
-
-#define EXP_TID_TIDLEN_MASK   0x7FFULL
-#define EXP_TID_TIDLEN_SHIFT  0
-#define EXP_TID_TIDCTRL_MASK  0x3ULL
-#define EXP_TID_TIDCTRL_SHIFT 20
-#define EXP_TID_TIDIDX_MASK   0x7FFULL
-#define EXP_TID_TIDIDX_SHIFT  22
-#define EXP_TID_GET(tid, field)	\
-	(((tid) >> EXP_TID_TID##field##_SHIFT) & EXP_TID_TID##field##_MASK)
+#include "user_exp_rcv.h"
 
 extern uint extended_psn;
 
