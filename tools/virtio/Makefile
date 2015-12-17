@@ -1,6 +1,7 @@
 all: test mod
-test: virtio_test vringh_test
+test: virtio_test vringh_test vring_bench
 virtio_test: virtio_ring.o virtio_test.o
+vring_bench: virtio_ring.o vring_bench.o
 vringh_test: vringh_test.o vringh.o virtio_ring.o
 
 CFLAGS += -g -O2 -Werror -Wall -I. -I../include/ -I ../../usr/include/ -Wno-pointer-sign -fno-strict-overflow -fno-strict-aliasing -fno-common -MMD -U_FORTIFY_SOURCE
@@ -9,6 +10,6 @@ mod:
 	${MAKE} -C `pwd`/../.. M=`pwd`/vhost_test V=${V}
 .PHONY: all test mod clean
 clean:
-	${RM} *.o vringh_test virtio_test vhost_test/*.o vhost_test/.*.cmd \
+	${RM} *.o vringh_test virtio_test vring_bench vhost_test/*.o vhost_test/.*.cmd \
               vhost_test/Module.symvers vhost_test/modules.order *.d
 -include *.d
