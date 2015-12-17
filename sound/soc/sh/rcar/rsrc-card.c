@@ -75,7 +75,7 @@ static int rsrc_card_startup(struct snd_pcm_substream *substream)
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct rsrc_card_priv *priv =	snd_soc_card_get_drvdata(rtd->card);
 	struct rsrc_card_dai *dai_props =
-		rsrc_priv_to_props(priv, rtd - rtd->card->rtd);
+		rsrc_priv_to_props(priv, rtd->num);
 
 	return clk_prepare_enable(dai_props->clk);
 }
@@ -85,7 +85,7 @@ static void rsrc_card_shutdown(struct snd_pcm_substream *substream)
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct rsrc_card_priv *priv =	snd_soc_card_get_drvdata(rtd->card);
 	struct rsrc_card_dai *dai_props =
-		rsrc_priv_to_props(priv, rtd - rtd->card->rtd);
+		rsrc_priv_to_props(priv, rtd->num);
 
 	clk_disable_unprepare(dai_props->clk);
 }
@@ -101,7 +101,7 @@ static int rsrc_card_dai_init(struct snd_soc_pcm_runtime *rtd)
 	struct snd_soc_dai *dai;
 	struct snd_soc_dai_link *dai_link;
 	struct rsrc_card_dai *dai_props;
-	int num = rtd - rtd->card->rtd;
+	int num = rtd->num;
 	int ret;
 
 	dai_link	= rsrc_priv_to_link(priv, num);
@@ -208,7 +208,9 @@ static int rsrc_card_parse_links(struct device_node *np,
 		dai_link->dynamic		= 1;
 		dai_link->dpcm_merged_format	= 1;
 		dai_link->cpu_of_node		= args.np;
-		snd_soc_of_get_dai_name(np, &dai_link->cpu_dai_name);
+		ret = snd_soc_of_get_dai_name(np, &dai_link->cpu_dai_name);
+		if (ret < 0)
+			return ret;
 
 		/* set dai_name */
 		snprintf(dai_props->dai_name, DAI_NAME_NUM, "fe.%s",
@@ -240,7 +242,9 @@ static int rsrc_card_parse_links(struct device_node *np,
 		dai_link->no_pcm		= 1;
 		dai_link->be_hw_params_fixup	= rsrc_card_be_hw_params_fixup;
 		dai_link->codec_of_node		= args.np;
-		snd_soc_of_get_dai_name(np, &dai_link->codec_dai_name);
+		ret = snd_soc_of_get_dai_name(np, &dai_link->codec_dai_name);
+		if (ret < 0)
+			return ret;
 
 		/* additional name prefix */
 		if (of_data) {
