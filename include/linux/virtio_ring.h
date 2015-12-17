@@ -45,6 +45,32 @@ static inline void virtio_wmb(bool weak_barriers)
 		wmb();
 }
 
+/* a load + acquire barrier, but only guaranteed to order reads */
+static inline __virtio16 virtio_load_acquire_rmb(bool weak_barriers,
+						 __virtio16 *p)
+{
+	if (weak_barriers)
+		return __smp_load_acquire(p);
+	else {
+		__virtio16 v = READ_ONCE(*p);
+		rmb();
+		return v;
+	}
+}
+
+/* a release barrier + store, but only guaranteed to order writes */
+static inline void virtio_store_release_wmb(bool weak_barriers,
+					    __virtio16 *p, __virtio16 v)
+{
+	if (weak_barriers)
+		__smp_store_release(p, v);
+	else {
+		wmb();
+		WRITE_ONCE(*p, v);
+		return;
+	}
+}
+
 struct virtio_device;
 struct virtqueue;
 
