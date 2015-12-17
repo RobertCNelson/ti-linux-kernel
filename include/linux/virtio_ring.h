@@ -45,6 +45,18 @@ static inline void virtio_wmb(bool weak_barriers)
 		wmb();
 }
 
+static inline void virtio_store_mb(bool weak_barriers,
+				   __virtio16 *p, __virtio16 v)
+{
+	if (weak_barriers)
+		__smp_store_mb(*p, v);
+	else
+	{
+		WRITE_ONCE(*p, v);
+		mb();
+	}
+}
+
 /* a load + acquire barrier, but only guaranteed to order reads */
 static inline __virtio16 virtio_load_acquire_rmb(bool weak_barriers,
 						 __virtio16 *p)
