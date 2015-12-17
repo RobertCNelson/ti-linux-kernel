@@ -80,6 +80,7 @@ config SPARC64
 	select NO_BOOTMEM
 	select HAVE_ARCH_AUDITSYSCALL
 	select ARCH_SUPPORTS_ATOMIC_RMW
+	select HAVE_NMI
 
 config ARCH_DEFCONFIG
 	string
@@ -98,10 +99,6 @@ config STACKTRACE_SUPPORT
 	default y if SPARC64
 
 config LOCKDEP_SUPPORT
-	bool
-	default y if SPARC64
-
-config HAVE_LATENCYTOP_SUPPORT
 	bool
 	default y if SPARC64
 
