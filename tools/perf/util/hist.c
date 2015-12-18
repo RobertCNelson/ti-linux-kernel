@@ -270,6 +270,8 @@ static void hists__delete_entry(struct hists *hists, struct hist_entry *he)
 
 	if (sort__need_collapse)
 		rb_erase(&he->rb_node_in, &hists->entries_collapsed);
+	else
+		rb_erase(&he->rb_node_in, hists->entries_in);
 
 	--hists->nr_entries;
 	if (!he->filtered)
@@ -924,9 +926,6 @@ hist_entry__cmp(struct hist_entry *left, struct hist_entry *right)
 	int64_t cmp = 0;
 
 	perf_hpp__for_each_sort_list(fmt) {
-		if (perf_hpp__should_skip(fmt))
-			continue;
-
 		cmp = fmt->cmp(fmt, left, right);
 		if (cmp)
 			break;
@@ -942,9 +941,6 @@ hist_entry__collapse(struct hist_entry *left, struct hist_entry *right)
 	int64_t cmp = 0;
 
 	perf_hpp__for_each_sort_list(fmt) {
-		if (perf_hpp__should_skip(fmt))
-			continue;
-
 		cmp = fmt->collapse(fmt, left, right);
 		if (cmp)
 			break;
@@ -1573,6 +1569,35 @@ static int hists_evsel__init(struct perf_evsel *evsel)
 	return 0;
 }
 
+static void hists__delete_remaining_entries(struct rb_root *root)
+{
+	struct rb_node *node;
+	struct hist_entry *he;
+
+	while (!RB_EMPTY_ROOT(root)) {
+		node = rb_first(root);
+		rb_erase(node, root);
+
+		he = rb_entry(node, struct hist_entry, rb_node_in);
+		hist_entry__delete(he);
+	}
+}
+
+static void hists__delete_all_entries(struct hists *hists)
+{
+	hists__delete_entries(hists);
+	hists__delete_remaining_entries(&hists->entries_in_array[0]);
+	hists__delete_remaining_entries(&hists->entries_in_array[1]);
+	hists__delete_remaining_entries(&hists->entries_collapsed);
+}
+
+static void hists_evsel__exit(struct perf_evsel *evsel)
+{
+	struct hists *hists = evsel__hists(evsel);
+
+	hists__delete_all_entries(hists);
+}
+
 /*
  * XXX We probably need a hists_evsel__exit() to free the hist_entries
  * stored in the rbtree...
@@ -1581,7 +1606,8 @@ static int hists_evsel__init(struct perf_evsel *evsel)
 int hists__init(void)
 {
 	int err = perf_evsel__object_config(sizeof(struct hists_evsel),
-					    hists_evsel__init, NULL);
+					    hists_evsel__init,
+					    hists_evsel__exit);
 	if (err)
 		fputs("FATAL ERROR: Couldn't setup hists class\n", stderr);
 

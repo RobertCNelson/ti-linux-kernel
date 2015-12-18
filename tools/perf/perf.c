@@ -39,6 +39,7 @@ struct cmd_struct {
 static struct cmd_struct commands[] = {
 	{ "buildid-cache", cmd_buildid_cache, 0 },
 	{ "buildid-list", cmd_buildid_list, 0 },
+	{ "config",	cmd_config,	0 },
 	{ "diff",	cmd_diff,	0 },
 	{ "evlist",	cmd_evlist,	0 },
 	{ "help",	cmd_help,	0 },
@@ -383,6 +384,7 @@ static int run_builtin(struct cmd_struct *p, int argc, const char **argv)
 		use_pager = 1;
 	commit_pager_choice();
 
+	perf_env__set_cmdline(&perf_env, argc, argv);
 	status = p->fn(argc, argv, prefix);
 	exit_browser(status);
 	perf_env__exit(&perf_env);
