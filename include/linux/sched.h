@@ -1469,8 +1469,6 @@ struct task_struct {
 	unsigned sched_migrated:1;
 #ifdef CONFIG_MEMCG
 	unsigned memcg_may_oom:1;
-#endif
-#ifdef CONFIG_MEMCG_KMEM
 	unsigned memcg_kmem_skip_account:1;
 #endif
 #ifdef CONFIG_COMPAT_BRK
