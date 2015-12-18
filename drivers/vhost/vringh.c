@@ -36,18 +36,21 @@ static inline int __vringh_get_head(const struct vringh *vrh,
 	u16 avail_idx, i, head;
 	int err;
 
-	err = getu16(vrh, &avail_idx, &vrh->vring.avail->idx);
-	if (err) {
-		vringh_bad("Failed to access avail idx at %p",
-			   &vrh->vring.avail->idx);
-		return err;
+	if (!vrh->poll) {
+		err = getu16(vrh, &avail_idx, &vrh->vring.avail->idx);
+		if (err) {
+			vringh_bad("Failed to access avail idx at %p",
+				   &vrh->vring.avail->idx);
+			return err;
+		}
+
+		if (*last_avail_idx == avail_idx)
+			return vrh->vring.num;
+
+		/* Only get avail ring entries after they have been exposed by guest. */
+		virtio_rmb(vrh->weak_barriers);
+
 	}
-
-	if (*last_avail_idx == avail_idx)
-		return vrh->vring.num;
-
-	/* Only get avail ring entries after they have been exposed by guest. */
-	virtio_rmb(vrh->weak_barriers);
 
 	i = *last_avail_idx & (vrh->vring.num - 1);
 
@@ -58,10 +61,20 @@ static inline int __vringh_get_head(const struct vringh *vrh,
 		return err;
 	}
 
-	if (head >= vrh->vring.num) {
-		vringh_bad("Guest says index %u > %u is available",
-			   head, vrh->vring.num);
-		return -EINVAL;
+	if (vrh->poll) {
+		if ((head ^ *last_avail_idx ^ 0x8000) & ~(vrh->vring.num - 1))
+			return vrh->vring.num;
+
+		/* Only get descriptor entries after they have been exposed by guest. */
+		virtio_rmb(vrh->weak_barriers);
+
+		head &= vrh->vring.num - 1;
+	} else {
+		if (head >= vrh->vring.num) {
+			vringh_bad("Guest says index %u > %u is available",
+				   head, vrh->vring.num);
+			return -EINVAL;
+		}
 	}
 
 	(*last_avail_idx)++;
@@ -397,6 +410,57 @@ fail:
 	return err;
 }
 
+static inline int __vringh_complete_poll(struct vringh *vrh,
+					 int (*putu32)(const struct vringh *vrh,
+						       __virtio32 *p, u32 val),
+					 int (*putu16)(const struct vringh *vrh,
+						       __virtio16 *p, u16 val),
+					 __virtio32 head, __virtio32 len,
+					 bool last)
+{
+	struct vring_used *used_ring;
+	int err;
+	u16 used_idx, off;
+
+	used_ring = vrh->vring.used;
+	used_idx = vrh->last_used_idx + vrh->completed;
+
+	off = used_idx & (vrh->vring.num - 1);
+
+	err = putu32(vrh, &used_ring->ring[off].len, len);
+	if (err) {
+		vringh_bad("Failed to write used length %u at %p",
+			   off, &used_ring->ring[off]);
+		return err;
+	}
+
+	/* Make sure length is written before we update index. */
+	virtio_wmb(vrh->weak_barriers);
+
+	head ^= cpu_to_vringh32(vrh, (used_idx & ~(vrh->vring.num - 1)) ^ 0x8000);
+	err = putu32(vrh, &used_ring->ring[off].id, head);
+	if (err) {
+		vringh_bad("Failed to write used id %u at %p",
+			   off, &used_ring->ring[off]);
+		return err;
+	}
+
+	if (last) {
+		/* Make sure buffer is written before we update index. */
+		virtio_wmb(vrh->weak_barriers);
+
+		err = putu16(vrh, &vrh->vring.used->idx, used_idx + 1);
+		if (err) {
+			vringh_bad("Failed to update used index at %p",
+				   &vrh->vring.used->idx);
+			return err;
+		}
+	}
+
+	vrh->completed++;
+	return 0;
+}
+
 static inline int __vringh_complete(struct vringh *vrh,
 				    const struct vring_used_elem *used,
 				    unsigned int num_used,
@@ -556,6 +620,13 @@ static inline int getu16_user(const struct vringh *vrh, u16 *val, const __virtio
 	return rc;
 }
 
+static inline int putu32_user(const struct vringh *vrh, __virtio32 *p, u32 val)
+{
+	__virtio32 v = cpu_to_vringh32(vrh, val);
+	return put_user(v, (__force __virtio32 __user *)p);
+}
+
+
 static inline int putu16_user(const struct vringh *vrh, __virtio16 *p, u16 val)
 {
 	__virtio16 v = cpu_to_vringh16(vrh, val);
@@ -615,6 +686,7 @@ int vringh_init_user(struct vringh *vrh, u64 features,
 
 	vrh->little_endian = (features & (1ULL << VIRTIO_F_VERSION_1));
 	vrh->event_indices = (features & (1 << VIRTIO_RING_F_EVENT_IDX));
+	vrh->poll = (features & (1ULL << VIRTIO_RING_F_POLL));
 	vrh->weak_barriers = weak_barriers;
 	vrh->completed = 0;
 	vrh->last_avail_idx = 0;
@@ -752,11 +824,19 @@ EXPORT_SYMBOL(vringh_abandon_user);
  */
 int vringh_complete_user(struct vringh *vrh, u16 head, u32 len)
 {
-	struct vring_used_elem used;
+	if (vrh->poll) {
+		return __vringh_complete_poll(vrh, putu32_user,
+					      putu16_user,
+					      cpu_to_vringh32(vrh, head),
+					      cpu_to_vringh32(vrh, len),
+					      true);
+	} else {
+		struct vring_used_elem used;
 
-	used.id = cpu_to_vringh32(vrh, head);
-	used.len = cpu_to_vringh32(vrh, len);
-	return __vringh_complete(vrh, &used, 1, putu16_user, putused_user);
+		used.id = cpu_to_vringh32(vrh, head);
+		used.len = cpu_to_vringh32(vrh, len);
+		return __vringh_complete(vrh, &used, 1, putu16_user, putused_user);
+	}
 }
 EXPORT_SYMBOL(vringh_complete_user);
 
@@ -773,8 +853,21 @@ int vringh_complete_multi_user(struct vringh *vrh,
 			       const struct vring_used_elem used[],
 			       unsigned num_used)
 {
-	return __vringh_complete(vrh, used, num_used,
-				 putu16_user, putused_user);
+	if (vrh->poll) {
+		int i, r;
+
+		for (i = 0; i < num_used; ++i) {
+			r = __vringh_complete_poll(vrh, putu32_user, putu16_user,
+						   used[i].id, used[i].len,
+						   i == num_used - 1);
+			if (r)
+				return r;
+		}
+		return 0;
+	} else {
+		return __vringh_complete(vrh, used, num_used,
+					 putu16_user, putused_user);
+	}
 }
 EXPORT_SYMBOL(vringh_complete_multi_user);
 
@@ -830,6 +923,12 @@ static inline int putu16_kern(const struct vringh *vrh, __virtio16 *p, u16 val)
 	return 0;
 }
 
+static inline int putu32_kern(const struct vringh *vrh, __virtio32 *p, u32 val)
+{
+	ACCESS_ONCE(*p) = cpu_to_vringh32(vrh, val);
+	return 0;
+}
+
 static inline int copydesc_kern(void *dst, const void *src, size_t len)
 {
 	memcpy(dst, src, len);
@@ -876,6 +975,7 @@ int vringh_init_kern(struct vringh *vrh, u64 features,
 
 	vrh->little_endian = (features & (1ULL << VIRTIO_F_VERSION_1));
 	vrh->event_indices = (features & (1 << VIRTIO_RING_F_EVENT_IDX));
+	vrh->poll = (features & (1ULL << VIRTIO_RING_F_POLL));
 	vrh->weak_barriers = weak_barriers;
 	vrh->completed = 0;
 	vrh->last_avail_idx = 0;
@@ -987,12 +1087,17 @@ EXPORT_SYMBOL(vringh_abandon_kern);
  */
 int vringh_complete_kern(struct vringh *vrh, u16 head, u32 len)
 {
-	struct vring_used_elem used;
+	if (vrh->poll) {
+		return __vringh_complete_poll(vrh, putu32_kern, putu16_kern,
+					      head, len, true);
+	} else {
+		struct vring_used_elem used;
 
-	used.id = cpu_to_vringh32(vrh, head);
-	used.len = cpu_to_vringh32(vrh, len);
+		used.id = cpu_to_vringh32(vrh, head);
+		used.len = cpu_to_vringh32(vrh, len);
 
-	return __vringh_complete(vrh, &used, 1, putu16_kern, putused_kern);
+		return __vringh_complete(vrh, &used, 1, putu16_kern, putused_kern);
+	}
 }
 EXPORT_SYMBOL(vringh_complete_kern);
 

@@ -1346,25 +1346,27 @@ int vhost_get_vq_desc(struct vhost_virtqueue *vq,
 
 	/* Check it isn't doing very strange things with descriptor numbers. */
 	last_avail_idx = vq->last_avail_idx;
-	if (unlikely(__get_user(avail_idx, &vq->avail->idx))) {
-		vq_err(vq, "Failed to access avail idx at %p\n",
-		       &vq->avail->idx);
-		return -EFAULT;
+	if (!vhost_has_feature(vq, VIRTIO_RING_F_POLL)) {
+		if (unlikely(__get_user(avail_idx, &vq->avail->idx))) {
+			vq_err(vq, "Failed to access avail idx at %p\n",
+			       &vq->avail->idx);
+			return -EFAULT;
+		}
+		vq->avail_idx = vhost16_to_cpu(vq, avail_idx);
+
+		if (unlikely((u16)(vq->avail_idx - last_avail_idx) > vq->num)) {
+			vq_err(vq, "Guest moved used index from %u to %u",
+			       last_avail_idx, vq->avail_idx);
+			return -EFAULT;
+		}
+
+		/* If there's nothing new since last we looked, return invalid. */
+		if (vq->avail_idx == last_avail_idx)
+			return vq->num;
+
+		/* Only get avail ring entries after they have been exposed by guest. */
+		smp_rmb();
 	}
-	vq->avail_idx = vhost16_to_cpu(vq, avail_idx);
-
-	if (unlikely((u16)(vq->avail_idx - last_avail_idx) > vq->num)) {
-		vq_err(vq, "Guest moved used index from %u to %u",
-		       last_avail_idx, vq->avail_idx);
-		return -EFAULT;
-	}
-
-	/* If there's nothing new since last we looked, return invalid. */
-	if (vq->avail_idx == last_avail_idx)
-		return vq->num;
-
-	/* Only get avail ring entries after they have been exposed by guest. */
-	smp_rmb();
 
 	/* Grab the next descriptor number they're advertising, and increment
 	 * the index we've seen. */
@@ -1378,11 +1380,22 @@ int vhost_get_vq_desc(struct vhost_virtqueue *vq,
 
 	head = vhost16_to_cpu(vq, ring_head);
 
-	/* If their number is silly, that's an error. */
-	if (unlikely(head >= vq->num)) {
-		vq_err(vq, "Guest says index %u > %u is available",
-		       head, vq->num);
-		return -EINVAL;
+	if (vhost_has_feature(vq, VIRTIO_RING_F_POLL)) {
+		/* If there's nothing new since last we looked, return invalid. */
+		if ((head ^ last_avail_idx ^ 0x8000) & ~(vq->num - 1))
+			return vq->num;
+
+		/* Only get avail ring entries after they have been exposed by guest. */
+		smp_rmb();
+
+		head &= vq->num - 1;
+	} else {
+		/* If their number is silly, that's an error. */
+		if (unlikely(head >= vq->num)) {
+			vq_err(vq, "Guest says index %u > %u is available",
+			       head, vq->num);
+			return -EINVAL;
+		}
 	}
 
 	/* When we start there are none of either input nor output. */
@@ -1481,6 +1494,27 @@ int vhost_add_used(struct vhost_virtqueue *vq, unsigned int head, int len)
 }
 EXPORT_SYMBOL_GPL(vhost_add_used);
 
+static inline int __vhost_add_used_poll(struct vhost_virtqueue *vq,
+					struct vring_used_elem *heads,
+					struct vring_used_elem __user *used,
+					int idx)
+{
+	__virtio32 head = heads[0].id ^
+		cpu_to_vhost32(vq, ~(vq->num - 1) &
+			       ((vq->last_used_idx + idx) ^ 0x8000));
+
+	if (__put_user(heads[0].len, &used->len)) {
+		vq_err(vq, "Failed to write used len");
+		return -EFAULT;
+	}
+	smp_wmb();
+	if (__put_user(head, &used->id)) {
+		vq_err(vq, "Failed to write used id");
+		return -EFAULT;
+	}
+	return 0;
+}
+
 static int __vhost_add_used_n(struct vhost_virtqueue *vq,
 			    struct vring_used_elem *heads,
 			    unsigned count)
@@ -1491,18 +1525,28 @@ static int __vhost_add_used_n(struct vhost_virtqueue *vq,
 
 	start = vq->last_used_idx & (vq->num - 1);
 	used = vq->used->ring + start;
-	if (count == 1) {
-		if (__put_user(heads[0].id, &used->id)) {
-			vq_err(vq, "Failed to write used id");
+	if (vhost_has_feature(vq, VIRTIO_RING_F_POLL)) {
+		int ret = 0;
+		int i;
+
+		for (i = 0; i < count; ++i)
+			ret |= __vhost_add_used_poll(vq, heads + i, used + i, i);
+		if (ret)
+			return -EFAULT;
+	} else {
+		if (count == 1) {
+			if (__put_user(heads[0].id, &used->id)) {
+				vq_err(vq, "Failed to write used id");
+				return -EFAULT;
+			}
+			if (__put_user(heads[0].len, &used->len)) {
+				vq_err(vq, "Failed to write used len");
+				return -EFAULT;
+			}
+		} else if (__copy_to_user(used, heads, count * sizeof *used)) {
+			vq_err(vq, "Failed to write used");
 			return -EFAULT;
 		}
-		if (__put_user(heads[0].len, &used->len)) {
-			vq_err(vq, "Failed to write used len");
-			return -EFAULT;
-		}
-	} else if (__copy_to_user(used, heads, count * sizeof *used)) {
-		vq_err(vq, "Failed to write used");
-		return -EFAULT;
 	}
 	if (unlikely(vq->log_used)) {
 		/* Make sure data is seen before log. */

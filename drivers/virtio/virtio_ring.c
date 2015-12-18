@@ -80,6 +80,9 @@ struct vring_virtqueue {
 	/* Last used index we've seen. */
 	u16 last_used_idx;
 
+	/* Poll ring instead of the index */
+	bool poll;
+
 	/* Last written value to avail->flags */
 	u16 avail_flags_shadow;
 
@@ -200,7 +203,7 @@ static inline int virtqueue_add(struct virtqueue *_vq,
 		/* FIXME: for historical reasons, we force a notify here if
 		 * there are outgoing parts to the buffer.  Presumably the
 		 * host should service the ring ASAP. */
-		if (out_sgs)
+		if (!vq->event && out_sgs)
 			vq->notify(&vq->vq);
 		END_USE(vq);
 		return -ENOSPC;
@@ -239,9 +242,14 @@ static inline int virtqueue_add(struct virtqueue *_vq,
 	/* Set token. */
 	vq->data[head] = data;
 
+	avail = vq->avail_idx_shadow & (vq->vring.num - 1);
+
+	if (vq->poll) {
+		virtio_wmb(vq->weak_barriers);
+		head ^= ((vq->avail_idx_shadow ^ 0x8000) & ~(vq->vring.num - 1));
+	}
 	/* Put entry in available array (but don't update avail->idx until they
 	 * do sync). */
-	avail = vq->avail_idx_shadow & (vq->vring.num - 1);
 	vq->vring.avail->ring[avail] = cpu_to_virtio16(_vq->vdev, head);
 
 	/* Descriptors and available array need to be set before we expose the
@@ -488,17 +496,32 @@ void *virtqueue_get_buf(struct virtqueue *_vq, unsigned int *len)
 		return NULL;
 	}
 
-	if (!more_used(vq)) {
-		pr_debug("No more buffers in queue\n");
-		END_USE(vq);
-		return NULL;
-	}
+	if (!vq->poll) {
+		if (!more_used(vq)) {
+			pr_debug("No more buffers in queue\n");
+			END_USE(vq);
+			return NULL;
+		}
 
-	/* Only get used array entries after they have been exposed by host. */
-	virtio_rmb(vq->weak_barriers);
+		/* Only get used array entries after they have been exposed by host. */
+		virtio_rmb(vq->weak_barriers);
+	}
 
 	last_used = (vq->last_used_idx & (vq->vring.num - 1));
 	i = virtio32_to_cpu(_vq->vdev, vq->vring.used->ring[last_used].id);
+
+	if (vq->poll) {
+		if ((i ^ vq->last_used_idx ^ 0x8000) & ~(vq->vring.num - 1)) {
+			pr_debug("No more buffers in queue\n");
+			END_USE(vq);
+			return NULL;
+		}
+		i &= vq->vring.num - 1;
+
+		/* Only get used array entries after they have been exposed by host. */
+		virtio_rmb(vq->weak_barriers);
+	}
+
 	*len = virtio32_to_cpu(_vq->vdev, vq->vring.used->ring[last_used].len);
 
 	if (unlikely(i >= vq->vring.num)) {
@@ -700,13 +723,26 @@ void *virtqueue_detach_unused_buf(struct virtqueue *_vq)
 }
 EXPORT_SYMBOL_GPL(virtqueue_detach_unused_buf);
 
-irqreturn_t vring_interrupt(int irq, void *_vq)
+irqreturn_t vring_interrupt(int irq, void *p)
 {
+	struct virtqueue *_vq = p;
 	struct vring_virtqueue *vq = to_vvq(_vq);
 
-	if (!more_used(vq)) {
-		pr_debug("virtqueue interrupt with no work for %p\n", vq);
-		return IRQ_NONE;
+	if (!vq->poll) {
+		if (!more_used(vq)) {
+			pr_debug("virtqueue interrupt with no work for %p\n", vq);
+			return IRQ_NONE;
+		}
+	} else {
+		unsigned int i;
+		u16 last_used;
+
+		last_used = (vq->last_used_idx & (vq->vring.num - 1));
+		i = virtio32_to_cpu(_vq->vdev, vq->vring.used->ring[last_used].id);
+		if ((i ^ vq->last_used_idx ^ 0x8000) & ~(vq->vring.num - 1)) {
+			pr_debug("virtqueue interrupt with no work for %p\n", vq);
+			return IRQ_NONE;
+		}
 	}
 
 	if (unlikely(vq->broken))
@@ -764,6 +800,7 @@ struct virtqueue *vring_new_virtqueue(unsigned int index,
 
 	vq->indirect = virtio_has_feature(vdev, VIRTIO_RING_F_INDIRECT_DESC);
 	vq->event = virtio_has_feature(vdev, VIRTIO_RING_F_EVENT_IDX);
+	vq->poll = virtio_has_feature(vdev, VIRTIO_RING_F_POLL);
 
 	/* No callback?  Tell other side not to bother us. */
 	if (!callback) {
