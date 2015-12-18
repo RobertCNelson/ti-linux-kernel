@@ -10,4 +10,8 @@ config EXYNOS_SROM
 	bool
 	depends on ARM && ARCH_EXYNOS
 
+config EXYNOS_PMU
+	bool
+	depends on ARM && ARCH_EXYNOS
+
 endmenu
