@@ -297,7 +297,6 @@ static inline struct mem_cgroup *mem_cgroup_from_id(unsigned short id)
 	return mem_cgroup_from_css(css);
 }
 
-#ifdef CONFIG_MEMCG_KMEM
 /*
  * This will be the memcg's index in each cache's ->memcg_params.memcg_caches.
  * The main reason for not using cgroup id for this:
@@ -348,8 +347,6 @@ void memcg_put_cache_ids(void)
  */
 DEFINE_STATIC_KEY_FALSE(memcg_kmem_enabled_key);
 EXPORT_SYMBOL(memcg_kmem_enabled_key);
-
-#endif /* CONFIG_MEMCG_KMEM */
 
 static struct mem_cgroup_per_zone *
 mem_cgroup_zone_zoneinfo(struct mem_cgroup *memcg, struct zone *zone)
@@ -2205,7 +2202,6 @@ static void commit_charge(struct page *page, struct mem_cgroup *memcg,
 		unlock_page_lru(page, isolated);
 }
 
-#ifdef CONFIG_MEMCG_KMEM
 static int memcg_alloc_cache_id(void)
 {
 	int id, size;
@@ -2426,7 +2422,6 @@ void __memcg_kmem_uncharge(struct page *page, int order)
 	page->mem_cgroup = NULL;
 	css_put_many(&memcg->css, nr_pages);
 }
-#endif /* CONFIG_MEMCG_KMEM */
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 
@@ -2862,7 +2857,6 @@ static u64 mem_cgroup_read_u64(struct cgroup_subsys_state *css,
 	}
 }
 
-#ifdef CONFIG_MEMCG_KMEM
 static int memcg_online_kmem(struct mem_cgroup *memcg)
 {
 	int err = 0;
@@ -2908,24 +2902,6 @@ static int memcg_online_kmem(struct mem_cgroup *memcg)
 	memcg->kmem_state = KMEM_ONLINE;
 out:
 	return err;
-}
-
-static int memcg_update_kmem_limit(struct mem_cgroup *memcg,
-				   unsigned long limit)
-{
-	int ret;
-
-	mutex_lock(&memcg_limit_mutex);
-	/* Top-level cgroup doesn't propagate from root */
-	if (!memcg_kmem_online(memcg)) {
-		ret = memcg_online_kmem(memcg);
-		if (ret)
-			goto out;
-	}
-	ret = page_counter_limit(&memcg->kmem, limit);
-out:
-	mutex_unlock(&memcg_limit_mutex);
-	return ret;
 }
 
 static int memcg_propagate_kmem(struct mem_cgroup *memcg)
@@ -3001,14 +2977,30 @@ static void memcg_free_kmem(struct mem_cgroup *memcg)
 		WARN_ON(page_counter_read(&memcg->kmem));
 	}
 }
+
+#ifdef CONFIG_MEMCG_KMEM
+static int memcg_update_kmem_limit(struct mem_cgroup *memcg,
+				   unsigned long limit)
+{
+	int ret;
+
+	mutex_lock(&memcg_limit_mutex);
+	/* Top-level cgroup doesn't propagate from root */
+	if (!memcg_kmem_online(memcg)) {
+		ret = memcg_online_kmem(memcg);
+		if (ret)
+			goto out;
+	}
+	ret = page_counter_limit(&memcg->kmem, limit);
+out:
+	mutex_unlock(&memcg_limit_mutex);
+	return ret;
+}
 #else
 static int memcg_update_kmem_limit(struct mem_cgroup *memcg,
 				   unsigned long limit)
 {
 	return -EINVAL;
-}
-static void memcg_offline_kmem(struct mem_cgroup *memcg)
-{
 }
 #endif /* CONFIG_MEMCG_KMEM */
 
@@ -4183,9 +4175,7 @@ mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 	vmpressure_init(&memcg->vmpressure);
 	INIT_LIST_HEAD(&memcg->event_list);
 	spin_lock_init(&memcg->event_list_lock);
-#ifdef CONFIG_MEMCG_KMEM
 	memcg->kmemcg_id = -1;
-#endif
 #ifdef CONFIG_CGROUP_WRITEBACK
 	INIT_LIST_HEAD(&memcg->cgwb_list);
 #endif
@@ -4245,10 +4235,11 @@ mem_cgroup_css_online(struct cgroup_subsys_state *css)
 	}
 	mutex_unlock(&memcg_create_mutex);
 
-#ifdef CONFIG_MEMCG_KMEM
 	ret = memcg_propagate_kmem(memcg);
 	if (ret)
 		return ret;
+
+#ifdef CONFIG_MEMCG_KMEM
 	ret = tcp_init_cgroup(memcg);
 	if (ret)
 		return ret;
@@ -4309,8 +4300,9 @@ static void mem_cgroup_css_free(struct cgroup_subsys_state *css)
 		static_branch_dec(&memcg_sockets_enabled_key);
 #endif
 
-#ifdef CONFIG_MEMCG_KMEM
 	memcg_free_kmem(memcg);
+
+#ifdef CONFIG_MEMCG_KMEM
 	tcp_destroy_cgroup(memcg);
 #endif
 
