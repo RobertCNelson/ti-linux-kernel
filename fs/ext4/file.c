@@ -388,7 +388,10 @@ static int ext4_file_open(struct inode * inode, struct file * filp)
 		ret = ext4_get_encryption_info(inode);
 		if (ret)
 			return -EACCES;
-		if (ext4_encryption_info(inode) == NULL)
+		if ((ext4_encryption_info(inode) == NULL) &&
+		    !(test_opt(inode->i_sb, CIPHERTEXT_ACCESS) &&
+		      ((filp->f_flags & O_ACCMODE) == O_RDONLY) &&
+		      capable(CAP_SYS_ADMIN)))
 			return -ENOKEY;
 	}
 	/*

@@ -3279,9 +3279,6 @@ static ssize_t ext4_ext_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 		get_block_func = ext4_get_block_write;
 		dio_flags = DIO_LOCKING;
 	}
-#ifdef CONFIG_EXT4_FS_ENCRYPTION
-	BUG_ON(ext4_encrypted_inode(inode) && S_ISREG(inode->i_mode));
-#endif
 	if (IS_DAX(inode))
 		ret = dax_do_io(iocb, inode, iter, offset, get_block_func,
 				ext4_end_io_dio, dio_flags);
@@ -3344,10 +3341,16 @@ static ssize_t ext4_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 	size_t count = iov_iter_count(iter);
 	ssize_t ret;
 
-#ifdef CONFIG_EXT4_FS_ENCRYPTION
-	if (ext4_encrypted_inode(inode) && S_ISREG(inode->i_mode))
-		return 0;
-#endif
+	if (ext4_encrypted_inode(inode) && S_ISREG(inode->i_mode)) {
+		if (iov_iter_rw(iter) == WRITE)
+			return 0;
+		if (test_opt(inode->i_sb, CIPHERTEXT_ACCESS) &&
+		    capable(CAP_SYS_ADMIN)) {
+			if (iov_iter_rw(iter) == WRITE)
+				return -EPERM;
+		} else
+			return 0;
+	}
 
 	/*
 	 * If we are doing data journalling we don't support O_DIRECT
