@@ -54,7 +54,7 @@
 #include <linux/platform_data/mmc-pxamci.h>
 #include "udc.h"
 #include "pxa27x-udc.h"
-#include <linux/platform_data/camera-pxa.h>
+#include <linux/platform_data/media/camera-pxa.h>
 #include <mach/audio.h>
 #include <mach/smemc.h>
 #include <media/soc_camera.h>

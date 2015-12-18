@@ -148,8 +148,11 @@ struct dvb_device {
 	const char *name;
 
 	/* Allocated and filled inside dvbdev.c */
-	struct media_entity *entity;
-	struct media_pad *pads;
+	struct media_intf_devnode *intf_devnode;
+
+	unsigned tsout_num_entities;
+	struct media_entity *entity, *tsout_entity;
+	struct media_pad *pads, *tsout_pads;
 #endif
 
 	void *priv;
@@ -192,7 +195,8 @@ int dvb_register_device(struct dvb_adapter *adap,
 			struct dvb_device **pdvbdev,
 			const struct dvb_device *template,
 			void *priv,
-			int type);
+			int type,
+			int demux_sink_pads);
 
 /**
  * dvb_unregister_device - Unregisters a DVB device
@@ -202,7 +206,7 @@ int dvb_register_device(struct dvb_adapter *adap,
 void dvb_unregister_device(struct dvb_device *dvbdev);
 
 #ifdef CONFIG_MEDIA_CONTROLLER_DVB
-void dvb_create_media_graph(struct dvb_adapter *adap);
+__must_check int dvb_create_media_graph(struct dvb_adapter *adap);
 static inline void dvb_register_media_controller(struct dvb_adapter *adap,
 						 struct media_device *mdev)
 {
@@ -210,7 +214,10 @@ static inline void dvb_register_media_controller(struct dvb_adapter *adap,
 }
 
 #else
-static inline void dvb_create_media_graph(struct dvb_adapter *adap) {}
+static inline int dvb_create_media_graph(struct dvb_adapter *adap)
+{
+	return 0;
+};
 #define dvb_register_media_controller(a, b) {}
 #endif
 

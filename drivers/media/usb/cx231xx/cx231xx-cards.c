@@ -30,7 +30,7 @@
 #include <media/tveeprom.h>
 #include <media/v4l2-common.h>
 
-#include <media/cx25840.h>
+#include <media/drv-intf/cx25840.h>
 #include "dvb-usb-ids.h"
 #include "xc5000.h"
 #include "tda18271.h"
@@ -352,7 +352,7 @@ struct cx231xx_board cx231xx_boards[] = {
 		.agc_analog_digital_select_gpio = 0x0c,
 		.gpio_pin_status_mask = 0x4001000,
 		.tuner_i2c_master = I2C_1_MUX_1,
-		.demod_i2c_master = I2C_2,
+		.demod_i2c_master = I2C_1_MUX_1,
 		.has_dvb = 1,
 		.demod_addr = 0x0e,
 		.norm = V4L2_STD_NTSC,
@@ -713,7 +713,7 @@ struct cx231xx_board cx231xx_boards[] = {
 		.agc_analog_digital_select_gpio = 0x0c,
 		.gpio_pin_status_mask = 0x4001000,
 		.tuner_i2c_master = I2C_1_MUX_3,
-		.demod_i2c_master = I2C_2,
+		.demod_i2c_master = I2C_1_MUX_3,
 		.has_dvb = 1,
 		.demod_addr = 0x0e,
 		.norm = V4L2_STD_PAL,
@@ -752,7 +752,7 @@ struct cx231xx_board cx231xx_boards[] = {
 		.agc_analog_digital_select_gpio = 0x0c,
 		.gpio_pin_status_mask = 0x4001000,
 		.tuner_i2c_master = I2C_1_MUX_3,
-		.demod_i2c_master = I2C_2,
+		.demod_i2c_master = I2C_1_MUX_3,
 		.has_dvb = 1,
 		.demod_addr = 0x0e,
 		.norm = V4L2_STD_PAL,
@@ -791,7 +791,7 @@ struct cx231xx_board cx231xx_boards[] = {
 		.agc_analog_digital_select_gpio = 0x0c,
 		.gpio_pin_status_mask = 0x4001000,
 		.tuner_i2c_master = I2C_1_MUX_3,
-		.demod_i2c_master = I2C_2,
+		.demod_i2c_master = I2C_1_MUX_3,
 		.has_dvb = 1,
 		.demod_addr = 0x0e,
 		.norm = V4L2_STD_NTSC,
@@ -1185,8 +1185,6 @@ static void cx231xx_unregister_media_device(struct cx231xx *dev)
 */
 void cx231xx_release_resources(struct cx231xx *dev)
 {
-	cx231xx_unregister_media_device(dev);
-
 	cx231xx_release_analog_resources(dev);
 
 	cx231xx_remove_from_devlist(dev);
@@ -1198,6 +1196,8 @@ void cx231xx_release_resources(struct cx231xx *dev)
 
 	/* delete v4l2 device */
 	v4l2_device_unregister(&dev->v4l2_dev);
+
+	cx231xx_unregister_media_device(dev);
 
 	usb_put_dev(dev->udev);
 
@@ -1237,22 +1237,23 @@ static void cx231xx_media_device_register(struct cx231xx *dev,
 #endif
 }
 
-static void cx231xx_create_media_graph(struct cx231xx *dev)
+static int cx231xx_create_media_graph(struct cx231xx *dev)
 {
 #ifdef CONFIG_MEDIA_CONTROLLER
 	struct media_device *mdev = dev->media_dev;
 	struct media_entity *entity;
 	struct media_entity *tuner = NULL, *decoder = NULL;
+	int ret;
 
 	if (!mdev)
-		return;
+		return 0;
 
 	media_device_for_each_entity(entity, mdev) {
-		switch (entity->type) {
-		case MEDIA_ENT_T_V4L2_SUBDEV_TUNER:
+		switch (entity->function) {
+		case MEDIA_ENT_F_TUNER:
 			tuner = entity;
 			break;
-		case MEDIA_ENT_T_V4L2_SUBDEV_DECODER:
+		case MEDIA_ENT_F_ATV_DECODER:
 			decoder = entity;
 			break;
 		}
@@ -1261,16 +1262,24 @@ static void cx231xx_create_media_graph(struct cx231xx *dev)
 	/* Analog setup, using tuner as a link */
 
 	if (!decoder)
-		return;
+		return 0;
 
-	if (tuner)
-		media_entity_create_link(tuner, 0, decoder, 0,
-					 MEDIA_LNK_FL_ENABLED);
-	media_entity_create_link(decoder, 1, &dev->vdev.entity, 0,
-				 MEDIA_LNK_FL_ENABLED);
-	media_entity_create_link(decoder, 2, &dev->vbi_dev.entity, 0,
-				 MEDIA_LNK_FL_ENABLED);
+	if (tuner) {
+		ret = media_create_pad_link(tuner, TUNER_PAD_IF_OUTPUT, decoder, 0,
+					    MEDIA_LNK_FL_ENABLED);
+		if (ret < 0)
+			return ret;
+	}
+	ret = media_create_pad_link(decoder, 1, &dev->vdev.entity, 0,
+				    MEDIA_LNK_FL_ENABLED);
+	if (ret < 0)
+		return ret;
+	ret = media_create_pad_link(decoder, 2, &dev->vbi_dev.entity, 0,
+				    MEDIA_LNK_FL_ENABLED);
+	if (ret < 0)
+		return ret;
 #endif
+	return 0;
 }
 
 /*
@@ -1732,9 +1741,12 @@ static int cx231xx_usb_probe(struct usb_interface *interface,
 	/* load other modules required */
 	request_modules(dev);
 
-	cx231xx_create_media_graph(dev);
+	retval = cx231xx_create_media_graph(dev);
+	if (retval < 0) {
+		cx231xx_release_resources(dev);
+	}
 
-	return 0;
+	return retval;
 err_video_alt:
 	/* cx231xx_uninit_dev: */
 	cx231xx_close_extension(dev);
