@@ -84,6 +84,7 @@ static void init_device_slot_control(unsigned char *dest_desc,
 static int ses_recv_diag(struct scsi_device *sdev, int page_code,
 			 void *buf, int bufflen)
 {
+	int ret;
 	unsigned char cmd[] = {
 		RECEIVE_DIAGNOSTIC,
 		1,		/* Set PCV bit */
@@ -92,9 +93,26 @@ static int ses_recv_diag(struct scsi_device *sdev, int page_code,
 		bufflen & 0xff,
 		0
 	};
+	unsigned char recv_page_code;
 
-	return scsi_execute_req(sdev, cmd, DMA_FROM_DEVICE, buf, bufflen,
+	ret =  scsi_execute_req(sdev, cmd, DMA_FROM_DEVICE, buf, bufflen,
 				NULL, SES_TIMEOUT, SES_RETRIES, NULL);
+	if (unlikely(!ret))
+		return ret;
+
+	recv_page_code = ((unsigned char *)buf)[0];
+
+	if (likely(recv_page_code == page_code))
+		return ret;
+
+	/* successful diagnostic but wrong page code.  This happens to some
+	 * USB devices, just print a message and pretend there was an error */
+
+	sdev_printk(KERN_ERR, sdev,
+		    "Wrong diagnostic page; asked for %d got %u\n",
+		    page_code, recv_page_code);
+
+	return -EINVAL;
 }
 
 static int ses_send_diag(struct scsi_device *sdev, int page_code,
@@ -541,7 +559,15 @@ static void ses_enclosure_data_process(struct enclosure_device *edev,
 			if (desc_ptr)
 				desc_ptr += len;
 
-			if (addl_desc_ptr)
+			if (addl_desc_ptr &&
+			    /* only find additional descriptions for specific devices */
+			    (type_ptr[0] == ENCLOSURE_COMPONENT_DEVICE ||
+			     type_ptr[0] == ENCLOSURE_COMPONENT_ARRAY_DEVICE ||
+			     type_ptr[0] == ENCLOSURE_COMPONENT_SAS_EXPANDER ||
+			     /* these elements are optional */
+			     type_ptr[0] == ENCLOSURE_COMPONENT_SCSI_TARGET_PORT ||
+			     type_ptr[0] == ENCLOSURE_COMPONENT_SCSI_INITIATOR_PORT ||
+			     type_ptr[0] == ENCLOSURE_COMPONENT_CONTROLLER_ELECTRONICS))
 				addl_desc_ptr += addl_desc_ptr[1] + 2;
 
 		}
@@ -554,17 +580,22 @@ static void ses_match_to_enclosure(struct enclosure_device *edev,
 				   struct scsi_device *sdev)
 {
 	unsigned char *desc;
+	unsigned char __rcu *vpd_pg83;
 	struct efd efd = {
 		.addr = 0,
 	};
 
 	ses_enclosure_data_process(edev, to_scsi_device(edev->edev.parent), 0);
 
-	if (!sdev->vpd_pg83_len)
+	rcu_read_lock();
+	vpd_pg83 = rcu_dereference(sdev->vpd_pg83);
+	if (!vpd_pg83) {
+		rcu_read_unlock();
 		return;
+	}
 
-	desc = sdev->vpd_pg83 + 4;
-	while (desc < sdev->vpd_pg83 + sdev->vpd_pg83_len) {
+	desc = vpd_pg83 + 4;
+	while (desc < vpd_pg83 + sdev->vpd_pg83_len) {
 		enum scsi_protocol proto = desc[0] >> 4;
 		u8 code_set = desc[0] & 0x0f;
 		u8 piv = desc[1] & 0x80;
@@ -578,6 +609,7 @@ static void ses_match_to_enclosure(struct enclosure_device *edev,
 
 		desc += len + 4;
 	}
+	rcu_read_unlock();
 	if (efd.addr) {
 		efd.dev = &sdev->sdev_gendev;
 
