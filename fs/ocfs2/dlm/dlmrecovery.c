@@ -1373,6 +1373,7 @@ int dlm_mig_lockres_handler(struct o2net_msg *msg, u32 len, void *data,
 	char *buf = NULL;
 	struct dlm_work_item *item = NULL;
 	struct dlm_lock_resource *res = NULL;
+	unsigned int hash;
 
 	if (!dlm_grab(dlm))
 		return -EINVAL;
@@ -1400,7 +1401,10 @@ int dlm_mig_lockres_handler(struct o2net_msg *msg, u32 len, void *data,
 	/* lookup the lock to see if we have a secondary queue for this
 	 * already...  just add the locks in and this will have its owner
 	 * and RECOVERY flag changed when it completes. */
-	res = dlm_lookup_lockres(dlm, mres->lockname, mres->lockname_len);
+	hash = dlm_lockid_hash(mres->lockname, mres->lockname_len);
+	spin_lock(&dlm->spinlock);
+	res = __dlm_lookup_lockres(dlm, mres->lockname, mres->lockname_len,
+			hash);
 	if (res) {
 	 	/* this will get a ref on res */
 		/* mark it as recovering/migrating and hash it */
@@ -1421,13 +1425,16 @@ int dlm_mig_lockres_handler(struct o2net_msg *msg, u32 len, void *data,
 				     mres->lockname_len, mres->lockname);
 				ret = -EFAULT;
 				spin_unlock(&res->spinlock);
+				spin_unlock(&dlm->spinlock);
 				dlm_lockres_put(res);
 				goto leave;
 			}
 			res->state |= DLM_LOCK_RES_MIGRATING;
 		}
 		spin_unlock(&res->spinlock);
+		spin_unlock(&dlm->spinlock);
 	} else {
+		spin_unlock(&dlm->spinlock);
 		/* need to allocate, just like if it was
 		 * mastered here normally  */
 		res = dlm_new_lockres(dlm, mres->lockname, mres->lockname_len);
@@ -2064,7 +2071,6 @@ void dlm_move_lockres_to_recovery_list(struct dlm_ctxt *dlm,
 			dlm_lock_get(lock);
 			if (lock->convert_pending) {
 				/* move converting lock back to granted */
-				BUG_ON(i != DLM_CONVERTING_LIST);
 				mlog(0, "node died with convert pending "
 				     "on %.*s. move back to granted list.\n",
 				     res->lockname.len, res->lockname.name);
