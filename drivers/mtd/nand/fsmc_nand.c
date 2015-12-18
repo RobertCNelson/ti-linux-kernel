@@ -329,7 +329,7 @@ struct fsmc_nand_data {
 /* Assert CS signal based on chipnr */
 static void fsmc_select_chip(struct mtd_info *mtd, int chipnr)
 {
-	struct nand_chip *chip = mtd->priv;
+	struct nand_chip *chip = mtd_to_nand(mtd);
 	struct fsmc_nand_data *host;
 
 	host = container_of(mtd, struct fsmc_nand_data, mtd);
@@ -358,7 +358,7 @@ static void fsmc_select_chip(struct mtd_info *mtd, int chipnr)
  */
 static void fsmc_cmd_ctrl(struct mtd_info *mtd, int cmd, unsigned int ctrl)
 {
-	struct nand_chip *this = mtd->priv;
+	struct nand_chip *this = mtd_to_nand(mtd);
 	struct fsmc_nand_data *host = container_of(mtd,
 					struct fsmc_nand_data, mtd);
 	void __iomem *regs = host->regs_va;
@@ -629,7 +629,7 @@ unmap_dma:
 static void fsmc_write_buf(struct mtd_info *mtd, const uint8_t *buf, int len)
 {
 	int i;
-	struct nand_chip *chip = mtd->priv;
+	struct nand_chip *chip = mtd_to_nand(mtd);
 
 	if (IS_ALIGNED((uint32_t)buf, sizeof(uint32_t)) &&
 			IS_ALIGNED(len, sizeof(uint32_t))) {
@@ -652,7 +652,7 @@ static void fsmc_write_buf(struct mtd_info *mtd, const uint8_t *buf, int len)
 static void fsmc_read_buf(struct mtd_info *mtd, uint8_t *buf, int len)
 {
 	int i;
-	struct nand_chip *chip = mtd->priv;
+	struct nand_chip *chip = mtd_to_nand(mtd);
 
 	if (IS_ALIGNED((uint32_t)buf, sizeof(uint32_t)) &&
 			IS_ALIGNED(len, sizeof(uint32_t))) {
@@ -784,7 +784,7 @@ static int fsmc_bch8_correct_data(struct mtd_info *mtd, uint8_t *dat,
 {
 	struct fsmc_nand_data *host = container_of(mtd,
 					struct fsmc_nand_data, mtd);
-	struct nand_chip *chip = mtd->priv;
+	struct nand_chip *chip = mtd_to_nand(mtd);
 	void __iomem *regs = host->regs_va;
 	unsigned int bank = host->bank;
 	uint32_t err_idx[8];
@@ -926,7 +926,6 @@ static int __init fsmc_nand_probe(struct platform_device *pdev)
 {
 	struct fsmc_nand_platform_data *pdata = dev_get_platdata(&pdev->dev);
 	struct device_node __maybe_unused *np = pdev->dev.of_node;
-	struct mtd_part_parser_data ppdata = {};
 	struct fsmc_nand_data *host;
 	struct mtd_info *mtd;
 	struct nand_chip *nand;
@@ -1016,6 +1015,7 @@ static int __init fsmc_nand_probe(struct platform_device *pdev)
 	nand = &host->nand;
 	mtd->priv = nand;
 	nand->priv = host;
+	nand_set_flash_node(nand, np);
 
 	host->mtd.dev.parent = &pdev->dev;
 	nand->IO_ADDR_R = host->data_va;
@@ -1033,7 +1033,7 @@ static int __init fsmc_nand_probe(struct platform_device *pdev)
 	nand->options = pdata->options;
 	nand->select_chip = fsmc_select_chip;
 	nand->badblockbits = 7;
-	nand->flash_node = np;
+	nand_set_flash_node(nand, np);
 
 	if (pdata->width == FSMC_NAND_BW16)
 		nand->options |= NAND_BUSWIDTH_16;
@@ -1175,9 +1175,8 @@ static int __init fsmc_nand_probe(struct platform_device *pdev)
 	 * Check for partition info passed
 	 */
 	host->mtd.name = "nand";
-	ppdata.of_node = np;
-	ret = mtd_device_parse_register(&host->mtd, NULL, &ppdata,
-					host->partitions, host->nr_partitions);
+	ret = mtd_device_register(&host->mtd, host->partitions,
+				  host->nr_partitions);
 	if (ret)
 		goto err_probe;
 
