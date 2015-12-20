@@ -5299,8 +5299,6 @@ static int decode_getacl(struct xdr_stream *xdr, struct rpc_rqst *req,
 	if ((status = decode_op_hdr(xdr, OP_GETATTR)) != 0)
 		goto out;
 
-	xdr_enter_page(xdr, xdr->buf->page_len);
-
 	/* Calculate the offset of the page data */
 	pg_offset = xdr->buf->head[0].iov_len;
 
