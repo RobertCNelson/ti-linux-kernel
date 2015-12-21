@@ -461,7 +461,8 @@ dtb-$(CONFIG_ARCH_OMAP3) += \
 dtb-$(CONFIG_SOC_TI81XX) += \
 	dm8148-evm.dtb \
 	dm8148-t410.dtb \
-	dm8168-evm.dtb
+	dm8168-evm.dtb \
+	dra62x-j5eco-evm.dtb
 dtb-$(CONFIG_SOC_AM33XX) += \
 	am335x-baltos-ir5221.dtb \
 	am335x-base0033.dtb \
@@ -476,6 +477,7 @@ dtb-$(CONFIG_SOC_AM33XX) += \
 	am335x-nano.dtb \
 	am335x-pepper.dtb \
 	am335x-shc.dtb \
+	am335x-sbc-t335.dtb \
 	am335x-sl50.dtb \
 	am335x-wega-rdk.dtb
 dtb-$(CONFIG_ARCH_OMAP4) += \
