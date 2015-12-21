@@ -494,10 +494,6 @@ alloc:
 	if (i_size_read(dn->inode) < ((loff_t)(fofs + 1) << PAGE_CACHE_SHIFT))
 		i_size_write(dn->inode,
 				((loff_t)(fofs + 1) << PAGE_CACHE_SHIFT));
-
-	/* direct IO doesn't use extent cache to maximize the performance */
-	f2fs_drop_largest_extent(dn->inode, fofs);
-
 	return 0;
 }
 
@@ -566,7 +562,7 @@ out:
  *     b. do not use extent cache for better performance
  *     c. give the block addresses to blockdev
  */
-static int f2fs_map_blocks(struct inode *inode, struct f2fs_map_blocks *map,
+int f2fs_map_blocks(struct inode *inode, struct f2fs_map_blocks *map,
 						int create, int flag)
 {
 	unsigned int maxblocks = map->m_len;
@@ -577,6 +573,7 @@ static int f2fs_map_blocks(struct inode *inode, struct f2fs_map_blocks *map,
 	int err = 0, ofs = 1;
 	struct extent_info ei;
 	bool allocated = false;
+	block_t blkaddr;
 
 	map->m_len = 0;
 	map->m_flags = 0;
@@ -640,6 +637,9 @@ static int f2fs_map_blocks(struct inode *inode, struct f2fs_map_blocks *map,
 	pgofs++;
 
 get_next:
+	if (map->m_len >= maxblocks)
+		goto sync_out;
+
 	if (dn.ofs_in_node >= end_offset) {
 		if (allocated)
 			sync_inode_page(&dn);
@@ -657,44 +657,43 @@ get_next:
 		end_offset = ADDRS_PER_PAGE(dn.node_page, F2FS_I(inode));
 	}
 
-	if (maxblocks > map->m_len) {
-		block_t blkaddr = datablock_addr(dn.node_page, dn.ofs_in_node);
+	blkaddr = datablock_addr(dn.node_page, dn.ofs_in_node);
 
-		if (blkaddr == NEW_ADDR || blkaddr == NULL_ADDR) {
-			if (create) {
-				if (unlikely(f2fs_cp_error(sbi))) {
-					err = -EIO;
-					goto sync_out;
-				}
-				err = __allocate_data_block(&dn);
-				if (err)
-					goto sync_out;
-				allocated = true;
-				map->m_flags |= F2FS_MAP_NEW;
-				blkaddr = dn.data_blkaddr;
-			} else {
-				/*
-				 * we only merge preallocated unwritten blocks
-				 * for fiemap.
-				 */
-				if (flag != F2FS_GET_BLOCK_FIEMAP ||
-						blkaddr != NEW_ADDR)
-					goto sync_out;
+	if (blkaddr == NEW_ADDR || blkaddr == NULL_ADDR) {
+		if (create) {
+			if (unlikely(f2fs_cp_error(sbi))) {
+				err = -EIO;
+				goto sync_out;
 			}
-		}
-
-		/* Give more consecutive addresses for the readahead */
-		if ((map->m_pblk != NEW_ADDR &&
-				blkaddr == (map->m_pblk + ofs)) ||
-				(map->m_pblk == NEW_ADDR &&
-				blkaddr == NEW_ADDR)) {
-			ofs++;
-			dn.ofs_in_node++;
-			pgofs++;
-			map->m_len++;
-			goto get_next;
+			err = __allocate_data_block(&dn);
+			if (err)
+				goto sync_out;
+			allocated = true;
+			map->m_flags |= F2FS_MAP_NEW;
+			blkaddr = dn.data_blkaddr;
+		} else {
+			/*
+			 * we only merge preallocated unwritten blocks
+			 * for fiemap.
+			 */
+			if (flag != F2FS_GET_BLOCK_FIEMAP ||
+					blkaddr != NEW_ADDR)
+				goto sync_out;
 		}
 	}
+
+	/* Give more consecutive addresses for the readahead */
+	if ((map->m_pblk != NEW_ADDR &&
+			blkaddr == (map->m_pblk + ofs)) ||
+			(map->m_pblk == NEW_ADDR &&
+			blkaddr == NEW_ADDR)) {
+		ofs++;
+		dn.ofs_in_node++;
+		pgofs++;
+		map->m_len++;
+		goto get_next;
+	}
+
 sync_out:
 	if (allocated)
 		sync_inode_page(&dn);
@@ -1083,6 +1082,7 @@ int do_write_data_page(struct f2fs_io_info *fio)
 	 */
 	if (unlikely(fio->blk_addr != NEW_ADDR &&
 			!is_cold_data(page) &&
+			!IS_ATOMIC_WRITTEN_PAGE(page) &&
 			need_inplace_update(inode))) {
 		rewrite_data_page(fio);
 		set_inode_flag(F2FS_I(inode), FI_UPDATE_WRITE);
@@ -1181,8 +1181,10 @@ out:
 	unlock_page(page);
 	if (need_balance_fs)
 		f2fs_balance_fs(sbi);
-	if (wbc->for_reclaim)
+	if (wbc->for_reclaim) {
 		f2fs_submit_merged_bio(sbi, DATA, WRITE);
+		remove_dirty_inode(inode);
+	}
 	return 0;
 
 redirty_out:
@@ -1354,6 +1356,10 @@ static int f2fs_write_data_pages(struct address_space *mapping,
 			available_free_memory(sbi, DIRTY_DENTS))
 		goto skip_write;
 
+	/* skip writing during file defragment */
+	if (is_inode_flag_set(F2FS_I(inode), FI_DO_DEFRAG))
+		goto skip_write;
+
 	/* during POR, we don't need to trigger writepage at all. */
 	if (unlikely(is_sbi_flag_set(sbi, SBI_POR_DOING)))
 		goto skip_write;
@@ -1369,7 +1375,7 @@ static int f2fs_write_data_pages(struct address_space *mapping,
 	if (locked)
 		mutex_unlock(&sbi->writepages);
 
-	remove_dirty_dir_inode(inode);
+	remove_dirty_inode(inode);
 
 	wbc->nr_to_write = max((long)0, wbc->nr_to_write - diff);
 	return ret;
