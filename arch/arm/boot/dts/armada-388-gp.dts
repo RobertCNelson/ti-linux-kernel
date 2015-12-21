@@ -44,8 +44,8 @@
 #include <dt-bindings/gpio/gpio.h>
 
 / {
-	model = "Marvell Armada 385 GP";
-	compatible = "marvell,a385-gp", "marvell,armada388", "marvell,armada380";
+	model = "Marvell Armada 388 DB-88F6820-GP";
+	compatible = "marvell,a388-gp", "marvell,armada388", "marvell,armada380";
 
 	chosen {
 		stdout-path = "serial0:115200n8";
@@ -291,16 +291,6 @@
 		enable-active-high;
 		regulator-always-on;
 		gpio = <&expander1 14 GPIO_ACTIVE_HIGH>;
-	};
-
-	reg_usb2_1_vbus: v5-vbus1 {
-		compatible = "regulator-fixed";
-		regulator-name = "v5.0-vbus1";
-		regulator-min-microvolt = <5000000>;
-		regulator-max-microvolt = <5000000>;
-		enable-active-high;
-		regulator-always-on;
-		gpio = <&expander0 4 GPIO_ACTIVE_HIGH>;
 	};
 
 	reg_usb2_1_vbus: v5-vbus1 {
