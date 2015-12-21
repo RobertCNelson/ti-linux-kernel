@@ -395,6 +395,7 @@ static inline pte_t pte_mkspecial(pte_t pte)	{ return pte; }
 
 #define mk_pte(page, pgprot)	pfn_pte(page_to_pfn(page), (pgprot))
 
+#define pfn_pte pfn_pte
 static inline pte_t pfn_pte(unsigned long pfn, pgprot_t pgprot)
 {
 	pte_t pte;
