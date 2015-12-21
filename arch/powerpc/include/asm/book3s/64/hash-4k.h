@@ -1,5 +1,5 @@
-#ifndef _ASM_POWERPC_PGTABLE_PPC64_4K_H
-#define _ASM_POWERPC_PGTABLE_PPC64_4K_H
+#ifndef _ASM_POWERPC_BOOK3S_64_HASH_4K_H
+#define _ASM_POWERPC_BOOK3S_64_HASH_4K_H
 /*
  * Entries per page directory level.  The PTE level must use a 64b record
  * for each page table entry.  The PMD and PGD level use a 32b record for
@@ -47,7 +47,15 @@
 /* Bits to mask out from a PGD to get to the PUD page */
 #define PGD_MASKED_BITS		0
 
+/* PTE flags to conserve for HPTE identification */
+#define _PAGE_HPTEFLAGS (_PAGE_BUSY | _PAGE_HASHPTE | \
+			 _PAGE_F_SECOND | _PAGE_F_GIX)
 
+/* shift to put page number into pte */
+#define PTE_RPN_SHIFT	(18)
+
+#define _PAGE_4K_PFN		0
+#ifndef __ASSEMBLY__
 /*
  * 4-level page tables related bits
  */
@@ -55,10 +63,12 @@
 #define pgd_none(pgd)		(!pgd_val(pgd))
 #define pgd_bad(pgd)		(pgd_val(pgd) == 0)
 #define pgd_present(pgd)	(pgd_val(pgd) != 0)
-#define pgd_clear(pgdp)		(pgd_val(*(pgdp)) = 0)
 #define pgd_page_vaddr(pgd)	(pgd_val(pgd) & ~PGD_MASKED_BITS)
 
-#ifndef __ASSEMBLY__
+static inline void pgd_clear(pgd_t *pgdp)
+{
+	*pgdp = __pgd(0);
+}
 
 static inline pte_t pgd_pte(pgd_t pgd)
 {
@@ -70,8 +80,6 @@ static inline pgd_t pte_pgd(pte_t pte)
 	return __pgd(pte_val(pte));
 }
 extern struct page *pgd_page(pgd_t pgd);
-
-#endif /* !__ASSEMBLY__ */
 
 #define pud_offset(pgdp, addr)	\
   (((pud_t *) pgd_page_vaddr(*(pgdp))) + \
@@ -85,4 +93,40 @@ extern struct page *pgd_page(pgd_t pgd);
 #define remap_4k_pfn(vma, addr, pfn, prot)	\
 	remap_pfn_range((vma), (addr), (pfn), PAGE_SIZE, (prot))
 
-#endif /* _ASM_POWERPC_PGTABLE_PPC64_4K_H */
+#ifdef CONFIG_HUGETLB_PAGE
+/*
+ * For 4k page size, we support explicit hugepage via hugepd
+ */
+static inline int pmd_huge(pmd_t pmd)
+{
+	return 0;
+}
+
+static inline int pud_huge(pud_t pud)
+{
+	return 0;
+}
+
+static inline int pgd_huge(pgd_t pgd)
+{
+	return 0;
+}
+#define pgd_huge pgd_huge
+
+static inline int hugepd_ok(hugepd_t hpd)
+{
+	/*
+	 * if it is not a pte and have hugepd shift mask
+	 * set, then it is a hugepd directory pointer
+	 */
+	if (!(hpd.pd & _PAGE_PTE) &&
+	    ((hpd.pd & HUGEPD_SHIFT_MASK) != 0))
+		return true;
+	return false;
+}
+#define is_hugepd(hpd)		(hugepd_ok(hpd))
+#endif
+
+#endif /* !__ASSEMBLY__ */
+
+#endif /* _ASM_POWERPC_BOOK3S_64_HASH_4K_H */
