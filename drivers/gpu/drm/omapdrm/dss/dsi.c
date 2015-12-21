@@ -144,7 +144,7 @@ struct dsi_reg { u16 module; u16 idx; };
 #define DSI_IRQ_TA_TIMEOUT	(1 << 20)
 #define DSI_IRQ_ERROR_MASK \
 	(DSI_IRQ_HS_TX_TIMEOUT | DSI_IRQ_LP_RX_TIMEOUT | DSI_IRQ_SYNC_LOST | \
-	DSI_IRQ_TA_TIMEOUT | DSI_IRQ_SYNC_LOST)
+	DSI_IRQ_TA_TIMEOUT)
 #define DSI_IRQ_CHANNEL_MASK	0xf
 
 /* Virtual channel interrupts */
@@ -3833,7 +3833,7 @@ static int dsi_enable_video_output(struct omap_dss_device *dssdev, int channel)
 	u16 word_count;
 	int r;
 
-	if (out == NULL || out->manager == NULL) {
+	if (out->manager == NULL) {
 		DSSERR("failed to enable display: no output/manager\n");
 		return -ENODEV;
 	}
