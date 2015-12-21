@@ -28,7 +28,7 @@
 #include <linux/slab.h>
 #include <linux/videodev2.h>
 #include <linux/of.h>
-#include <linux/platform_data/coda.h>
+#include <linux/platform_data/media/coda.h>
 #include <linux/reset.h>
 
 #include <media/v4l2-ctrls.h>
@@ -1131,7 +1131,7 @@ static void set_default_params(struct coda_ctx *ctx)
 /*
  * Queue operations
  */
-static int coda_queue_setup(struct vb2_queue *vq, const void *parg,
+static int coda_queue_setup(struct vb2_queue *vq,
 				unsigned int *nbuffers, unsigned int *nplanes,
 				unsigned int sizes[], void *alloc_ctxs[])
 {
