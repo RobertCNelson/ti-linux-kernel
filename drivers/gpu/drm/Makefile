@@ -73,3 +73,4 @@ obj-y			+= i2c/
 obj-y			+= panel/
 obj-y			+= bridge/
 obj-$(CONFIG_DRM_FSL_DCU) += fsl-dcu/
+obj-$(CONFIG_DRM_ETNAVIV) += etnaviv/

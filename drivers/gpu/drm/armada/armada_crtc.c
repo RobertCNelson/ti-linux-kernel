@@ -1074,7 +1074,7 @@ armada_drm_crtc_set_property(struct drm_crtc *crtc,
 	return 0;
 }
 
-static struct drm_crtc_funcs armada_crtc_funcs = {
+static const struct drm_crtc_funcs armada_crtc_funcs = {
 	.cursor_set	= armada_drm_crtc_cursor_set,
 	.cursor_move	= armada_drm_crtc_cursor_move,
 	.destroy	= armada_drm_crtc_destroy,
@@ -1216,14 +1216,14 @@ static int armada_drm_crtc_create(struct drm_device *drm, struct device *dev,
 				       &armada_primary_plane_funcs,
 				       armada_primary_formats,
 				       ARRAY_SIZE(armada_primary_formats),
-				       DRM_PLANE_TYPE_PRIMARY);
+				       DRM_PLANE_TYPE_PRIMARY, NULL);
 	if (ret) {
 		kfree(primary);
 		return ret;
 	}
 
 	ret = drm_crtc_init_with_planes(drm, &dcrtc->crtc, &primary->base, NULL,
-					&armada_crtc_funcs);
+					&armada_crtc_funcs, NULL);
 	if (ret)
 		goto err_crtc_init;
 
