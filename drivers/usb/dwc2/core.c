@@ -1707,6 +1707,7 @@ void dwc2_hc_start_transfer(struct dwc2_hsotg *hsotg,
 	u32 hcchar;
 	u32 hctsiz = 0;
 	u16 num_packets;
+	u32 ec_mc;
 
 	if (dbg_hc(chan))
 		dev_vdbg(hsotg->dev, "%s()\n", __func__);
@@ -1743,6 +1744,13 @@ void dwc2_hc_start_transfer(struct dwc2_hsotg *hsotg,
 
 		hctsiz |= chan->xfer_len << TSIZ_XFERSIZE_SHIFT &
 			  TSIZ_XFERSIZE_MASK;
+
+		/* For split set ec_mc for immediate retries */
+		if (chan->ep_type == USB_ENDPOINT_XFER_INT ||
+		    chan->ep_type == USB_ENDPOINT_XFER_ISOC)
+			ec_mc = 3;
+		else
+			ec_mc = 1;
 	} else {
 		if (dbg_hc(chan))
 			dev_vdbg(hsotg->dev, "no split\n");
@@ -1805,6 +1813,9 @@ void dwc2_hc_start_transfer(struct dwc2_hsotg *hsotg,
 
 		hctsiz |= chan->xfer_len << TSIZ_XFERSIZE_SHIFT &
 			  TSIZ_XFERSIZE_MASK;
+
+		/* The ec_mc gets the multi_count for non-split */
+		ec_mc = chan->multi_count;
 	}
 
 	chan->start_pkt_count = num_packets;
@@ -1855,8 +1866,7 @@ void dwc2_hc_start_transfer(struct dwc2_hsotg *hsotg,
 
 	hcchar = dwc2_readl(hsotg->regs + HCCHAR(chan->hc_num));
 	hcchar &= ~HCCHAR_MULTICNT_MASK;
-	hcchar |= chan->multi_count << HCCHAR_MULTICNT_SHIFT &
-		  HCCHAR_MULTICNT_MASK;
+	hcchar |= (ec_mc << HCCHAR_MULTICNT_SHIFT) & HCCHAR_MULTICNT_MASK;
 	dwc2_hc_set_even_odd_frame(hsotg, chan, &hcchar);
 
 	if (hcchar & HCCHAR_CHDIS)
@@ -1905,7 +1915,6 @@ void dwc2_hc_start_transfer_ddma(struct dwc2_hsotg *hsotg,
 				 struct dwc2_host_chan *chan)
 {
 	u32 hcchar;
-	u32 hc_dma;
 	u32 hctsiz = 0;
 
 	if (chan->do_ping)
@@ -1934,14 +1943,14 @@ void dwc2_hc_start_transfer_ddma(struct dwc2_hsotg *hsotg,
 
 	dwc2_writel(hctsiz, hsotg->regs + HCTSIZ(chan->hc_num));
 
-	hc_dma = (u32)chan->desc_list_addr & HCDMA_DMA_ADDR_MASK;
+	dma_sync_single_for_device(hsotg->dev, chan->desc_list_addr,
+				   chan->desc_list_sz, DMA_TO_DEVICE);
 
-	/* Always start from first descriptor */
-	hc_dma &= ~HCDMA_CTD_MASK;
-	dwc2_writel(hc_dma, hsotg->regs + HCDMA(chan->hc_num));
+	dwc2_writel(chan->desc_list_addr, hsotg->regs + HCDMA(chan->hc_num));
+
 	if (dbg_hc(chan))
-		dev_vdbg(hsotg->dev, "Wrote %08x to HCDMA(%d)\n",
-			 hc_dma, chan->hc_num);
+		dev_vdbg(hsotg->dev, "Wrote %pad to HCDMA(%d)\n",
+			 &chan->desc_list_addr, chan->hc_num);
 
 	hcchar = dwc2_readl(hsotg->regs + HCCHAR(chan->hc_num));
 	hcchar &= ~HCCHAR_MULTICNT_MASK;
@@ -2485,6 +2494,29 @@ void dwc2_set_param_dma_desc_enable(struct dwc2_hsotg *hsotg, int val)
 	hsotg->core_params->dma_desc_enable = val;
 }
 
+void dwc2_set_param_dma_desc_fs_enable(struct dwc2_hsotg *hsotg, int val)
+{
+	int valid = 1;
+
+	if (val > 0 && (hsotg->core_params->dma_enable <= 0 ||
+			!hsotg->hw_params.dma_desc_enable))
+		valid = 0;
+	if (val < 0)
+		valid = 0;
+
+	if (!valid) {
+		if (val >= 0)
+			dev_err(hsotg->dev,
+				"%d invalid for dma_desc_fs_enable parameter. Check HW configuration.\n",
+				val);
+		val = (hsotg->core_params->dma_enable > 0 &&
+			hsotg->hw_params.dma_desc_enable);
+	}
+
+	hsotg->core_params->dma_desc_fs_enable = val;
+	dev_dbg(hsotg->dev, "Setting dma_desc_fs_enable to %d\n", val);
+}
+
 void dwc2_set_param_host_support_fs_ls_low_power(struct dwc2_hsotg *hsotg,
 						 int val)
 {
@@ -3016,6 +3048,7 @@ void dwc2_set_parameters(struct dwc2_hsotg *hsotg,
 	dwc2_set_param_otg_cap(hsotg, params->otg_cap);
 	dwc2_set_param_dma_enable(hsotg, params->dma_enable);
 	dwc2_set_param_dma_desc_enable(hsotg, params->dma_desc_enable);
+	dwc2_set_param_dma_desc_fs_enable(hsotg, params->dma_desc_fs_enable);
 	dwc2_set_param_host_support_fs_ls_low_power(hsotg,
 			params->host_support_fs_ls_low_power);
 	dwc2_set_param_enable_dynamic_fifo(hsotg,
