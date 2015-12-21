@@ -649,17 +649,17 @@ ssize_t ext4_ind_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file->f_mapping->host;
+	struct inode *shadow = inode;
 	struct ext4_inode_info *ei = EXT4_I(inode);
 	handle_t *handle;
 	ssize_t ret;
 	int orphan = 0;
 	size_t count = iov_iter_count(iter);
 	int retries = 0;
+	loff_t final_size = offset + count;
 
 	if (iov_iter_rw(iter) == WRITE) {
-		loff_t final_size = offset + count;
-
-		if (final_size > inode->i_size) {
+		if (final_size > i_size_read(inode)) {
 			/* Credits for sb + inode write */
 			handle = ext4_journal_start(inode, EXT4_HT_INODE, 2);
 			if (IS_ERR(handle)) {
@@ -675,6 +675,18 @@ ssize_t ext4_ind_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 			ei->i_disksize = inode->i_size;
 			ext4_journal_stop(handle);
 		}
+	}
+	if (iov_iter_rw(iter) == READ &&
+	    ext4_encrypted_inode(inode) &&
+	    is_sync_kiocb(iocb) &&
+	    final_size > i_size_read(inode)) {
+		shadow = ext4_alloc_shadow_inode(inode);
+		if (shadow)
+			i_size_write(shadow,
+				     round_up(i_size_read(inode),
+					      inode->i_sb->s_blocksize));
+		else
+			shadow = inode;
 	}
 
 retry:
@@ -695,7 +707,7 @@ retry:
 			ret = dax_do_io(iocb, inode, iter, offset,
 					ext4_get_block, NULL, 0);
 		else
-			ret = __blockdev_direct_IO(iocb, inode,
+			ret = __blockdev_direct_IO(iocb, shadow,
 						   inode->i_sb->s_bdev, iter,
 						   offset, ext4_get_block, NULL,
 						   NULL, 0);
@@ -706,7 +718,7 @@ locked:
 			ret = dax_do_io(iocb, inode, iter, offset,
 					ext4_get_block, NULL, DIO_LOCKING);
 		else
-			ret = blockdev_direct_IO(iocb, inode, iter, offset,
+			ret = blockdev_direct_IO(iocb, shadow, iter, offset,
 						 ext4_get_block);
 
 		if (unlikely(iov_iter_rw(iter) == WRITE && ret < 0)) {
@@ -757,6 +769,8 @@ locked:
 			ret = err;
 	}
 out:
+	if (shadow != inode)
+		ext4_free_shadow_inode(shadow);
 	return ret;
 }
 
