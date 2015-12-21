@@ -2,13 +2,10 @@
 #define LINUX_WLAN_SPI_H
 
 #include <linux/spi/spi.h>
-extern struct spi_device *wilc_spi_dev;
-extern struct spi_driver wilc_bus;
+#include "wilc_wfi_netdevice.h"
 
-int linux_spi_init(void *vp);
-void linux_spi_deinit(void *vp);
-int linux_spi_write(u8 *b, u32 len);
-int linux_spi_read(u8 *rb, u32 rlen);
-int linux_spi_write_read(u8 *wb, u8 *rb, u32 rlen);
-int linux_spi_set_max_speed(void);
+int wilc_spi_init(void);
+int wilc_spi_write(struct wilc *wilc, u8 *b, u32 len);
+int wilc_spi_read(struct wilc *wilc, u8 *rb, u32 rlen);
+int wilc_spi_write_read(struct wilc *wilc, u8 *wb, u8 *rb, u32 rlen);
 #endif
