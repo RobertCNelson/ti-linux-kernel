@@ -278,7 +278,7 @@ static int adf_ctl_stop_devices(uint32_t id)
 	struct list_head *itr, *head = adf_devmgr_get_head();
 	int ret = 0;
 
-	list_for_each(itr, head) {
+	list_for_each_prev(itr, head) {
 		struct adf_accel_dev *accel_dev =
 				list_entry(itr, struct adf_accel_dev, list);
 		if (id == accel_dev->accel_id || id == ADF_CFG_ALL_DEVICES) {
@@ -342,12 +342,10 @@ static int adf_ctl_ioctl_dev_start(struct file *fp, unsigned int cmd,
 	if (ret)
 		return ret;
 
+	ret = -ENODEV;
 	accel_dev = adf_devmgr_get_dev_by_id(ctl_data->device_id);
-	if (!accel_dev) {
-		pr_err("QAT: Device %d not found\n", ctl_data->device_id);
-		ret = -ENODEV;
+	if (!accel_dev)
 		goto out;
-	}
 
 	if (!adf_dev_started(accel_dev)) {
 		dev_info(&GET_DEV(accel_dev),
