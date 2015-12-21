@@ -48,6 +48,7 @@
 #include <asm/syscalls.h>
 #include <asm/debugreg.h>
 #include <asm/switch_to.h>
+#include <asm/intel_rdt.h>
 
 asmlinkage extern void ret_from_fork(void);
 
@@ -438,6 +439,11 @@ __switch_to(struct task_struct *prev_p, struct task_struct *next_p)
 		if (ss_sel != __KERNEL_DS)
 			loadsegment(ss, __KERNEL_DS);
 	}
+
+	/*
+	 * Load the Intel cache allocation PQR MSR.
+	 */
+	intel_rdt_sched_in();
 
 	return prev_p;
 }

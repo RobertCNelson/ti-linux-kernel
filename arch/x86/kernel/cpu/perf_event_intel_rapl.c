@@ -63,7 +63,7 @@
 #define INTEL_RAPL_PP1		0x4	/* pseudo-encoding */
 
 #define NR_RAPL_DOMAINS         0x4
-static const char *rapl_domain_names[NR_RAPL_DOMAINS] __initconst = {
+static const char *const rapl_domain_names[NR_RAPL_DOMAINS] __initconst = {
 	"pp0-core",
 	"package",
 	"dram",
@@ -129,6 +129,12 @@ static int rapl_hw_unit[NR_RAPL_DOMAINS] __read_mostly;  /* 1/2^hw_unit Joule */
 static struct pmu rapl_pmu_class;
 static cpumask_t rapl_cpu_mask;
 static int rapl_cntr_mask;
+
+/*
+ * Temporary cpumask used during hot cpu notificaiton handling. The usage
+ * is serialized by hot cpu locks.
+ */
+static cpumask_t tmp_cpumask;
 
 static DEFINE_PER_CPU(struct rapl_pmu *, rapl_pmu);
 static DEFINE_PER_CPU(struct rapl_pmu *, rapl_pmu_to_free);
@@ -533,18 +539,16 @@ static struct pmu rapl_pmu_class = {
 static void rapl_cpu_exit(int cpu)
 {
 	struct rapl_pmu *pmu = per_cpu(rapl_pmu, cpu);
-	int i, phys_id = topology_physical_package_id(cpu);
 	int target = -1;
+	int i;
 
 	/* find a new cpu on same package */
-	for_each_online_cpu(i) {
-		if (i == cpu)
-			continue;
-		if (phys_id == topology_physical_package_id(i)) {
-			target = i;
-			break;
-		}
-	}
+	cpumask_and(&tmp_cpumask, topology_core_cpumask(cpu), cpu_online_mask);
+	cpumask_clear_cpu(cpu, &tmp_cpumask);
+	i = cpumask_any(&tmp_cpumask);
+	if (i < nr_cpu_ids)
+		target = i;
+
 	/*
 	 * clear cpu from cpumask
 	 * if was set in cpumask and still some cpu on package,
@@ -566,15 +570,10 @@ static void rapl_cpu_exit(int cpu)
 
 static void rapl_cpu_init(int cpu)
 {
-	int i, phys_id = topology_physical_package_id(cpu);
-
-	/* check if phys_is is already covered */
-	for_each_cpu(i, &rapl_cpu_mask) {
-		if (phys_id == topology_physical_package_id(i))
-			return;
-	}
-	/* was not found, so add it */
-	cpumask_set_cpu(cpu, &rapl_cpu_mask);
+	/* check if cpu's package is already covered.If not, add it.*/
+	cpumask_and(&tmp_cpumask, &rapl_cpu_mask, topology_core_cpumask(cpu));
+	if (cpumask_empty(&tmp_cpumask))
+		cpumask_set_cpu(cpu, &rapl_cpu_mask);
 }
 
 static __init void rapl_hsw_server_quirk(void)

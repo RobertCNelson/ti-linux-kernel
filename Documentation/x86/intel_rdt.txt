@@ -1,0 +1,109 @@
+        Intel RDT
+        ---------
+
+Copyright (C) 2014 Intel Corporation
+Written by vikas.shivappa@linux.intel.com
+
+CONTENTS:
+=========
+
+1. Cache Allocation Technology
+  1.1 What is RDT and Cache allocation ?
+  1.2 Why is Cache allocation needed ?
+  1.3 Cache allocation implementation overview
+  1.4 Assignment of CBM and CLOS
+  1.5 Scheduling and Context Switch
+
+1. Cache Allocation Technology
+===================================
+
+1.1 What is RDT and Cache allocation
+------------------------------------
+
+Cache allocation is a sub-feature of Resource Director Technology (RDT)
+Allocation or Platform Shared resource control which provides support to
+control Platform shared resources like L3 cache. Currently L3 Cache is
+the only resource that is supported in RDT. More information can be
+found in the Intel SDM June 2015, Volume 3, section 17.16.
+
+Cache Allocation Technology provides a way for the Software (OS/VMM) to
+restrict cache allocation to a defined 'subset' of cache which may be
+overlapping with other 'subsets'. This feature is used when allocating a
+line in cache ie when pulling new data into the cache. The programming
+of the h/w is done via programming MSRs.
+
+The different cache subsets are identified by CLOS identifier (class of
+service) and each CLOS has a CBM (cache bit mask). The CBM is a
+contiguous set of bits which defines the amount of cache resource that
+is available for each 'subset'.
+
+1.2 Why is Cache allocation needed
+----------------------------------
+
+In todays new processors the number of cores is continuously increasing
+especially in large scale usage models where VMs are used like
+webservers and datacenters. The number of cores increase the number of
+threads or workloads that can simultaneously be run. When
+multi-threaded-applications, VMs, workloads run concurrently they
+compete for shared resources including L3 cache.
+
+The architecture also allows dynamically changing these subsets during
+runtime to further optimize the performance of the higher priority
+application with minimal degradation to the low priority app.
+Additionally, resources can be rebalanced for system throughput benefit.
+
+This technique may be useful in managing large computer server systems
+with large L3 cache, in the cloud and container context. Examples may be
+large servers running instances of webservers or database servers. In
+such complex systems, these subsets can be used for more careful placing
+of the available cache resources by a centralized root accessible
+interface.
+
+A specific use case may be to solve the noisy neighbour issue when a app
+which is constantly copying data like streaming app is using large
+amount of cache which could have otherwise been used by a high priority
+computing application. Using the cache allocation feature, the streaming
+application can be confined to use a smaller cache and the high priority
+application be awarded a larger amount of cache space.
+
+1.3 Cache allocation implementation Overview
+--------------------------------------------
+
+Kernel has a new field in the task_struct called 'closid' which
+represents the Class of service ID of the task.
+
+There is a 1:1 CLOSid <-> CBM (capacity bit mask) mapping. A CLOS (Class
+of service) is represented by a CLOSid. Each closid would have one CBM
+and would just represent one cache 'subset'.  The tasks would get to
+fill the L3 cache represented by the capacity bit mask or CBM.
+
+The APIs to manage the closid and CBM can be used to develop user
+interfaces.
+
+1.4 Assignment of CBM, CLOS
+---------------------------
+
+The framework provides APIs to manage the closid and CBM which can be
+used to develop user/kernel mode interfaces.
+
+1.5 Scheduling and Context Switch
+---------------------------------
+
+During context switch kernel implements this by writing the CLOSid of
+the task to the CPU's IA32_PQR_ASSOC MSR. The MSR is only written when
+there is a change in the CLOSid for the CPU in order to minimize the
+latency incurred during context switch.
+
+The following considerations are done for the PQR MSR write so that it
+has minimal impact on scheduling hot path:
+ - This path doesn't exist on any non-intel platforms.
+ - On Intel platforms, this would not exist by default unless INTEL_RDT
+ is enabled.
+ - remains a no-op when INTEL_RDT is enabled and intel hardware does
+ not support the feature.
+ - When feature is available, does not do MSR write till the user
+ starts using the feature *and* assigns a new cache capacity mask.
+ - per cpu PQR values are cached and the MSR write is only done when
+ there is a task with different PQR is scheduled on the CPU. Typically
+ if the task groups are bound to be scheduled on a set of CPUs, the
+ number of MSR writes is greatly reduced.
