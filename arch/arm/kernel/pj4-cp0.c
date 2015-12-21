@@ -62,14 +62,10 @@ static u32 __init pj4_cp_access_read(void)
 
 static void __init pj4_cp_access_write(u32 value)
 {
-	u32 temp;
-
 	__asm__ __volatile__ (
-		"mcr	p15, 0, %1, c1, c0, 2\n\t"
-		"mrc	p15, 0, %0, c1, c0, 2\n\t"
-		"mov	%0, %0\n\t"
-		"sub	pc, pc, #4\n\t"
-		: "=r" (temp) : "r" (value));
+		"mcr	p15, 0, %0, c1, c0, 2\n\t"
+		"isb\n\t"
+		: : "r" (value));
 }
 
 static int __init pj4_get_iwmmxt_version(void)
