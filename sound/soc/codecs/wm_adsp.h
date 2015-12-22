@@ -45,8 +45,8 @@ struct wm_adsp {
 
 	struct list_head alg_regions;
 
-	int fw_id;
-	int fw_id_version;
+	unsigned int fw_id;
+	unsigned int fw_id_version;
 
 	const struct wm_adsp_region *mem;
 	int num_mems;
@@ -59,9 +59,10 @@ struct wm_adsp {
 
 	struct work_struct boot_work;
 
+	struct mutex pwr_lock;
+
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *debugfs_root;
-	struct mutex debugfs_lock;
 	char *wmfw_file_name;
 	char *bin_file_name;
 #endif
