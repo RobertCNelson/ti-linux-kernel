@@ -224,7 +224,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  }
 --- a/arch/x86/kvm/lapic.c
 +++ b/arch/x86/kvm/lapic.c
-@@ -1104,7 +1104,7 @@ static void apic_update_lvtt(struct kvm_
+@@ -1106,7 +1106,7 @@ static void apic_update_lvtt(struct kvm_
  static void apic_timer_expired(struct kvm_lapic *apic)
  {
  	struct kvm_vcpu *vcpu = apic->vcpu;
@@ -233,7 +233,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	struct kvm_timer *ktimer = &apic->lapic_timer;
  
  	if (atomic_read(&apic->lapic_timer.pending))
-@@ -1113,8 +1113,8 @@ static void apic_timer_expired(struct kv
+@@ -1115,8 +1115,8 @@ static void apic_timer_expired(struct kv
  	atomic_inc(&apic->lapic_timer.pending);
  	kvm_set_pending_timer(vcpu);
  
@@ -255,7 +255,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	struct pid *pid;
  	int sigset_active;
  	sigset_t sigset;
-@@ -690,7 +690,7 @@ static inline bool kvm_arch_has_noncoher
+@@ -701,7 +701,7 @@ static inline bool kvm_arch_has_noncoher
  }
  #endif
  

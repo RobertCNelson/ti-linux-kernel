@@ -1,6 +1,7 @@
+From 8b568939eb4098e3cf10ec0b49f3b082a332667d Mon Sep 17 00:00:00 2001
 From: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
-Date: Thu, 12 Feb 2015 16:01:13 +0100
-Subject: gpio: omap: use raw locks for locking
+Date: Mon, 31 Aug 2015 18:52:19 +0300
+Subject: [PATCH 10/21] gpio: omap: use raw locks for locking
 
 This patch converts gpio_bank.lock from a spin_lock into a
 raw_spin_lock. The call path is to access this lock is always under a
@@ -27,10 +28,13 @@ is not and this is not limited to -RT:
   The number of users of gpiod_set_debounce() / gpio_set_debounce()
   looks low but still this is not good.
 
+Acked-by: Javier Martinez Canillas <javier@dowhile0.org>
+Acked-by: Santosh Shilimkar <ssantosh@kernel.org>
 Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
+Signed-off-by: Linus Walleij <linus.walleij@linaro.org>
 ---
- drivers/gpio/gpio-omap.c |   78 +++++++++++++++++++++++------------------------
- 1 file changed, 39 insertions(+), 39 deletions(-)
+ drivers/gpio/gpio-omap.c |   80 +++++++++++++++++++++++------------------------
+ 1 file changed, 40 insertions(+), 40 deletions(-)
 
 --- a/drivers/gpio/gpio-omap.c
 +++ b/drivers/gpio/gpio-omap.c
@@ -43,25 +47,30 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	struct gpio_chip chip;
  	struct clk *dbck;
  	u32 mod_usage;
-@@ -498,14 +498,14 @@ static int omap_gpio_irq_type(struct irq
- 		(type & (IRQ_TYPE_LEVEL_LOW|IRQ_TYPE_LEVEL_HIGH)))
- 		return -EINVAL;
+@@ -498,7 +498,7 @@ static int omap_gpio_irq_type(struct irq
+ 	if (!BANK_USED(bank))
+ 		pm_runtime_get_sync(bank->dev);
  
 -	spin_lock_irqsave(&bank->lock, flags);
 +	raw_spin_lock_irqsave(&bank->lock, flags);
  	retval = omap_set_gpio_triggering(bank, offset, type);
+ 	if (retval) {
+ 		spin_unlock_irqrestore(&bank->lock, flags);
+@@ -506,11 +506,11 @@ static int omap_gpio_irq_type(struct irq
+ 	}
  	omap_gpio_init_irq(bank, offset);
  	if (!omap_gpio_is_input(bank, offset)) {
 -		spin_unlock_irqrestore(&bank->lock, flags);
 +		raw_spin_unlock_irqrestore(&bank->lock, flags);
- 		return -EINVAL;
+ 		retval = -EINVAL;
+ 		goto error;
  	}
 -	spin_unlock_irqrestore(&bank->lock, flags);
 +	raw_spin_unlock_irqrestore(&bank->lock, flags);
  
  	if (type & (IRQ_TYPE_LEVEL_LOW | IRQ_TYPE_LEVEL_HIGH))
  		__irq_set_handler_locked(d->irq, handle_level_irq);
-@@ -626,14 +626,14 @@ static int omap_set_gpio_wakeup(struct g
+@@ -636,14 +636,14 @@ static int omap_set_gpio_wakeup(struct g
  		return -EINVAL;
  	}
  
@@ -78,65 +87,79 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	return 0;
  }
-@@ -668,7 +668,7 @@ static int omap_gpio_request(struct gpio
+@@ -669,10 +669,10 @@ static int omap_gpio_request(struct gpio
  	if (!BANK_USED(bank))
  		pm_runtime_get_sync(bank->dev);
  
 -	spin_lock_irqsave(&bank->lock, flags);
 +	raw_spin_lock_irqsave(&bank->lock, flags);
- 	/* Set trigger to none. You need to enable the desired trigger with
- 	 * request_irq() or set_irq_type(). Only do this if the IRQ line has
- 	 * not already been requested.
-@@ -678,7 +678,7 @@ static int omap_gpio_request(struct gpio
- 		omap_enable_gpio_module(bank, offset);
- 	}
+ 	omap_enable_gpio_module(bank, offset);
  	bank->mod_usage |= BIT(offset);
 -	spin_unlock_irqrestore(&bank->lock, flags);
 +	raw_spin_unlock_irqrestore(&bank->lock, flags);
  
  	return 0;
  }
-@@ -688,11 +688,11 @@ static void omap_gpio_free(struct gpio_c
+@@ -682,14 +682,14 @@ static void omap_gpio_free(struct gpio_c
  	struct gpio_bank *bank = container_of(chip, struct gpio_bank, chip);
  	unsigned long flags;
  
 -	spin_lock_irqsave(&bank->lock, flags);
 +	raw_spin_lock_irqsave(&bank->lock, flags);
  	bank->mod_usage &= ~(BIT(offset));
+ 	if (!LINE_USED(bank->irq_usage, offset)) {
+ 		omap_set_gpio_direction(bank, offset, 1);
+ 		omap_clear_gpio_debounce(bank, offset);
+ 	}
  	omap_disable_gpio_module(bank, offset);
- 	omap_reset_gpio(bank, offset);
 -	spin_unlock_irqrestore(&bank->lock, flags);
 +	raw_spin_unlock_irqrestore(&bank->lock, flags);
  
  	/*
  	 * If this is the last gpio to be freed in the bank,
-@@ -794,9 +794,9 @@ static unsigned int omap_gpio_irq_startu
+@@ -791,7 +791,7 @@ static unsigned int omap_gpio_irq_startu
  	if (!BANK_USED(bank))
  		pm_runtime_get_sync(bank->dev);
  
 -	spin_lock_irqsave(&bank->lock, flags);
 +	raw_spin_lock_irqsave(&bank->lock, flags);
- 	omap_gpio_init_irq(bank, offset);
+ 
+ 	if (!LINE_USED(bank->mod_usage, offset))
+ 		omap_set_gpio_direction(bank, offset, 1);
+@@ -800,12 +800,12 @@ static unsigned int omap_gpio_irq_startu
+ 	omap_enable_gpio_module(bank, offset);
+ 	bank->irq_usage |= BIT(offset);
+ 
 -	spin_unlock_irqrestore(&bank->lock, flags);
 +	raw_spin_unlock_irqrestore(&bank->lock, flags);
  	omap_gpio_unmask_irq(d);
  
  	return 0;
-@@ -808,11 +808,11 @@ static void omap_gpio_irq_shutdown(struc
+ err:
+-	spin_unlock_irqrestore(&bank->lock, flags);
++	raw_spin_unlock_irqrestore(&bank->lock, flags);
+ 	if (!BANK_USED(bank))
+ 		pm_runtime_put(bank->dev);
+ 	return -EINVAL;
+@@ -817,7 +817,7 @@ static void omap_gpio_irq_shutdown(struc
  	unsigned long flags;
  	unsigned offset = d->hwirq;
  
 -	spin_lock_irqsave(&bank->lock, flags);
 +	raw_spin_lock_irqsave(&bank->lock, flags);
  	bank->irq_usage &= ~(BIT(offset));
+ 	omap_set_gpio_irqenable(bank, offset, 0);
+ 	omap_clear_gpio_irqstatus(bank, offset);
+@@ -825,7 +825,7 @@ static void omap_gpio_irq_shutdown(struc
+ 	if (!LINE_USED(bank->mod_usage, offset))
+ 		omap_clear_gpio_debounce(bank, offset);
  	omap_disable_gpio_module(bank, offset);
- 	omap_reset_gpio(bank, offset);
 -	spin_unlock_irqrestore(&bank->lock, flags);
 +	raw_spin_unlock_irqrestore(&bank->lock, flags);
  
  	/*
  	 * If this is the last IRQ to be freed in the bank,
-@@ -836,10 +836,10 @@ static void omap_gpio_mask_irq(struct ir
+@@ -849,10 +849,10 @@ static void omap_gpio_mask_irq(struct ir
  	unsigned offset = d->hwirq;
  	unsigned long flags;
  
@@ -149,7 +172,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  }
  
  static void omap_gpio_unmask_irq(struct irq_data *d)
-@@ -849,7 +849,7 @@ static void omap_gpio_unmask_irq(struct
+@@ -862,7 +862,7 @@ static void omap_gpio_unmask_irq(struct
  	u32 trigger = irqd_get_trigger_type(d);
  	unsigned long flags;
  
@@ -158,7 +181,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	if (trigger)
  		omap_set_gpio_triggering(bank, offset, trigger);
  
-@@ -861,7 +861,7 @@ static void omap_gpio_unmask_irq(struct
+@@ -874,7 +874,7 @@ static void omap_gpio_unmask_irq(struct
  	}
  
  	omap_set_gpio_irqenable(bank, offset, 1);
@@ -167,7 +190,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  }
  
  /*---------------------------------------------------------------------*/
-@@ -874,9 +874,9 @@ static int omap_mpuio_suspend_noirq(stru
+@@ -887,9 +887,9 @@ static int omap_mpuio_suspend_noirq(stru
  					OMAP_MPUIO_GPIO_MASKIT / bank->stride;
  	unsigned long		flags;
  
@@ -179,7 +202,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	return 0;
  }
-@@ -889,9 +889,9 @@ static int omap_mpuio_resume_noirq(struc
+@@ -902,9 +902,9 @@ static int omap_mpuio_resume_noirq(struc
  					OMAP_MPUIO_GPIO_MASKIT / bank->stride;
  	unsigned long		flags;
  
@@ -191,7 +214,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	return 0;
  }
-@@ -937,9 +937,9 @@ static int omap_gpio_get_direction(struc
+@@ -950,9 +950,9 @@ static int omap_gpio_get_direction(struc
  
  	bank = container_of(chip, struct gpio_bank, chip);
  	reg = bank->base + bank->regs->direction;
@@ -203,7 +226,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	return dir;
  }
  
-@@ -949,9 +949,9 @@ static int omap_gpio_input(struct gpio_c
+@@ -962,9 +962,9 @@ static int omap_gpio_input(struct gpio_c
  	unsigned long flags;
  
  	bank = container_of(chip, struct gpio_bank, chip);
@@ -215,7 +238,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	return 0;
  }
  
-@@ -973,10 +973,10 @@ static int omap_gpio_output(struct gpio_
+@@ -986,10 +986,10 @@ static int omap_gpio_output(struct gpio_
  	unsigned long flags;
  
  	bank = container_of(chip, struct gpio_bank, chip);
@@ -228,7 +251,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	return 0;
  }
  
-@@ -988,9 +988,9 @@ static int omap_gpio_debounce(struct gpi
+@@ -1001,9 +1001,9 @@ static int omap_gpio_debounce(struct gpi
  
  	bank = container_of(chip, struct gpio_bank, chip);
  
@@ -240,7 +263,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	return 0;
  }
-@@ -1001,9 +1001,9 @@ static void omap_gpio_set(struct gpio_ch
+@@ -1014,9 +1014,9 @@ static void omap_gpio_set(struct gpio_ch
  	unsigned long flags;
  
  	bank = container_of(chip, struct gpio_bank, chip);
@@ -252,7 +275,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  }
  
  /*---------------------------------------------------------------------*/
-@@ -1199,7 +1199,7 @@ static int omap_gpio_probe(struct platfo
+@@ -1207,7 +1207,7 @@ static int omap_gpio_probe(struct platfo
  	else
  		bank->set_dataout = omap_set_gpio_dataout_mask;
  
@@ -261,7 +284,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	/* Static mapping, never released */
  	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-@@ -1246,7 +1246,7 @@ static int omap_gpio_runtime_suspend(str
+@@ -1265,7 +1265,7 @@ static int omap_gpio_runtime_suspend(str
  	unsigned long flags;
  	u32 wake_low, wake_hi;
  
@@ -270,7 +293,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	/*
  	 * Only edges can generate a wakeup event to the PRCM.
-@@ -1299,7 +1299,7 @@ static int omap_gpio_runtime_suspend(str
+@@ -1318,7 +1318,7 @@ static int omap_gpio_runtime_suspend(str
  				bank->get_context_loss_count(bank->dev);
  
  	omap_gpio_dbck_disable(bank);
@@ -279,7 +302,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	return 0;
  }
-@@ -1314,7 +1314,7 @@ static int omap_gpio_runtime_resume(stru
+@@ -1333,7 +1333,7 @@ static int omap_gpio_runtime_resume(stru
  	unsigned long flags;
  	int c;
  
@@ -288,14 +311,13 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	/*
  	 * On the first resume during the probe, the context has not
-@@ -1350,14 +1350,14 @@ static int omap_gpio_runtime_resume(stru
- 			if (c != bank->context_loss_count) {
- 				omap_gpio_restore_context(bank);
- 			} else {
--				spin_unlock_irqrestore(&bank->lock, flags);
-+				raw_spin_unlock_irqrestore(&bank->lock, flags);
- 				return 0;
- 			}
+@@ -1368,13 +1368,13 @@ static int omap_gpio_runtime_resume(stru
+ 		if (c != bank->context_loss_count) {
+ 			omap_gpio_restore_context(bank);
+ 		} else {
+-			spin_unlock_irqrestore(&bank->lock, flags);
++			raw_spin_unlock_irqrestore(&bank->lock, flags);
+ 			return 0;
  		}
  	}
  
@@ -305,7 +327,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  		return 0;
  	}
  
-@@ -1412,7 +1412,7 @@ static int omap_gpio_runtime_resume(stru
+@@ -1429,7 +1429,7 @@ static int omap_gpio_runtime_resume(stru
  	}
  
  	bank->workaround_enabled = false;

@@ -89,7 +89,27 @@ kernel-SRCU-provide-a-static-initializer.patch
 ############################################################
 # Stuff which should go upstream ASAP
 ############################################################
-gpio-omap-use-raw-locks-for-locking.patch
+0001-gpio-omap-Allow-building-as-a-loadable-module.patch
+0002-gpio-omap-fix-omap_gpio_free-to-not-clean-up-irq-con.patch
+0003-gpio-omap-fix-error-handling-in-omap_gpio_irq_type.patch
+0004-gpio-omap-rework-omap_x_irq_shutdown-to-touch-only-i.patch
+0005-gpio-omap-rework-omap_gpio_request-to-touch-only-gpi.patch
+0006-gpio-omap-rework-omap_gpio_irq_startup-to-handle-cur.patch
+0007-gpio-omap-add-missed-spin_unlock_irqrestore-in-omap_.patch
+0008-gpio-omap-prevent-module-from-being-unloaded-while-i.patch
+0009-ARM-OMAP2-Drop-the-concept-of-certain-power-domains-.patch
+0010-gpio-omap-use-raw-locks-for-locking.patch
+0011-gpio-omap-Fix-missing-raw-locks-conversion.patch
+0012-gpio-omap-remove-wrong-irq_domain_remove-usage-in-pr.patch
+0013-gpio-omap-switch-to-use-platform_get_irq.patch
+0014-gpio-omap-fix-omap2_set_gpio_debounce.patch
+0015-gpio-omap-protect-regs-access-in-omap_gpio_irq_handl.patch
+0016-gpio-omap-fix-clk_prepare-unprepare-usage.patch
+0017-gpio-omap-Fix-gpiochip_add-handling-for-deferred-pro.patch
+0018-gpio-omap-Fix-GPIO-numbering-for-deferred-probe.patch
+0019-gpio-omap-fix-static-checker-warning.patch
+0020-gpio-omap-move-pm-runtime-in-irq_chip.irq_bus_lock-s.patch
+0021-gpio-omap-convert-to-use-generic-irq-handler.patch
 
 # SCHED BLOCK/WQ
 block-shorten-interrupt-disabled-regions.patch
@@ -141,6 +161,7 @@ net-sched-dev_deactivate_many-use-msleep-1-instead-o.patch
 # X86
 x86-io-apic-migra-no-unmask.patch
 fix-rt-int3-x86_32-3.2-rt.patch
+Revert-x86-Do-not-disable-preemption-in-int3-on-32bi.patch
 
 # RCU
 
@@ -210,6 +231,7 @@ mm-workingset-do-not-protect-workingset_shadow_nodes.patch
 # Sigh
 signal-fix-up-rcu-wreckage.patch
 oleg-signal-rt-fix.patch
+x86-signal-delay-calling-signals-on-32bit.patch
 
 # ANNOTATE BUG/WARNON
 net-wireless-warn-nort.patch
@@ -337,6 +359,7 @@ rtmutex-lock-killable.patch
 spinlock-types-separate-raw.patch
 rtmutex-avoid-include-hell.patch
 rt-add-rt-locks.patch
+rtmutex-Use-chainwalking-control-enum.patch
 rtmutex-add-a-first-shot-of-ww_mutex.patch
 
 ptrace-fix-ptrace-vs-tasklist_lock-race.patch

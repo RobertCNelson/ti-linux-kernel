@@ -1,0 +1,90 @@
+From: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
+Date: Tue, 22 Dec 2015 12:17:39 +0100
+Subject: Revert "x86: Do not disable preemption in int3 on 32bit"
+
+Since commit 959274753857 ("x86, traps: Track entry into and exit from
+IST context") we always disable preemption. Which means the original
+patch is no longer usefull.
+The patch mentioned is part of v4.0-rc1+
+
+Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
+---
+ arch/x86/kernel/traps.c |   28 +++++++---------------------
+ 1 file changed, 7 insertions(+), 21 deletions(-)
+
+--- a/arch/x86/kernel/traps.c
++++ b/arch/x86/kernel/traps.c
+@@ -88,21 +88,9 @@ static inline void conditional_sti(struc
+ 		local_irq_enable();
+ }
+ 
+-static inline void conditional_sti_ist(struct pt_regs *regs)
++static inline void preempt_conditional_sti(struct pt_regs *regs)
+ {
+-#ifdef CONFIG_X86_64
+-	/*
+-	 * X86_64 uses a per CPU stack on the IST for certain traps
+-	 * like int3. The task can not be preempted when using one
+-	 * of these stacks, thus preemption must be disabled, otherwise
+-	 * the stack can be corrupted if the task is scheduled out,
+-	 * and another task comes in and uses this stack.
+-	 *
+-	 * On x86_32 the task keeps its own stack and it is OK if the
+-	 * task schedules out.
+-	 */
+ 	preempt_count_inc();
+-#endif
+ 	if (regs->flags & X86_EFLAGS_IF)
+ 		local_irq_enable();
+ }
+@@ -113,13 +101,11 @@ static inline void conditional_cli(struc
+ 		local_irq_disable();
+ }
+ 
+-static inline void conditional_cli_ist(struct pt_regs *regs)
++static inline void preempt_conditional_cli(struct pt_regs *regs)
+ {
+ 	if (regs->flags & X86_EFLAGS_IF)
+ 		local_irq_disable();
+-#ifdef CONFIG_X86_64
+ 	preempt_count_dec();
+-#endif
+ }
+ 
+ enum ctx_state ist_enter(struct pt_regs *regs)
+@@ -550,9 +536,9 @@ dotraplinkage void notrace do_int3(struc
+ 	 * as we may switch to the interrupt stack.
+ 	 */
+ 	debug_stack_usage_inc();
+-	conditional_sti_ist(regs);
++	preempt_conditional_sti(regs);
+ 	do_trap(X86_TRAP_BP, SIGTRAP, "int3", regs, error_code, NULL);
+-	conditional_cli_ist(regs);
++	preempt_conditional_cli(regs);
+ 	debug_stack_usage_dec();
+ exit:
+ 	ist_exit(regs, prev_state);
+@@ -682,12 +668,12 @@ dotraplinkage void do_debug(struct pt_re
+ 	debug_stack_usage_inc();
+ 
+ 	/* It's safe to allow irq's after DR6 has been saved */
+-	conditional_sti_ist(regs);
++	preempt_conditional_sti(regs);
+ 
+ 	if (v8086_mode(regs)) {
+ 		handle_vm86_trap((struct kernel_vm86_regs *) regs, error_code,
+ 					X86_TRAP_DB);
+-		conditional_cli_ist(regs);
++		preempt_conditional_cli(regs);
+ 		debug_stack_usage_dec();
+ 		goto exit;
+ 	}
+@@ -707,7 +693,7 @@ dotraplinkage void do_debug(struct pt_re
+ 	si_code = get_si_code(tsk->thread.debugreg6);
+ 	if (tsk->thread.debugreg6 & (DR_STEP | DR_TRAP_BITS) || user_icebp)
+ 		send_sigtrap(tsk, regs, error_code, si_code);
+-	conditional_cli_ist(regs);
++	preempt_conditional_cli(regs);
+ 	debug_stack_usage_dec();
+ 
+ exit:
