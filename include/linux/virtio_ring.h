@@ -47,6 +47,50 @@ static inline void virtio_wmb(bool weak_barriers)
 		wmb();
 }
 
+static inline void virtio_store_mb(bool weak_barriers,
+				   __virtio16 *p, __virtio16 v)
+{
+#ifdef CONFIG_SMP
+	if (weak_barriers)
+		smp_store_mb(*p, v);
+	else
+#endif
+	{
+		WRITE_ONCE(*p, v);
+		mb();
+	}
+}
+
+static inline __virtio16 virtio_load_acquire(bool weak_barriers, __virtio16 *p)
+{
+	if (!weak_barriers) {
+		rmb();
+		return READ_ONCE(*p);
+	}
+#ifdef CONFIG_SMP
+	return smp_load_acquire(p);
+#else
+	dma_rmb();
+	return READ_ONCE(*p);
+#endif
+}
+
+static inline void virtio_store_release(bool weak_barriers,
+					__virtio16 *p, __virtio16 v)
+{
+	if (!weak_barriers) {
+		wmb();
+		WRITE_ONCE(*p, v);
+		return;
+	}
+#ifdef CONFIG_SMP
+	smp_store_release(p, v);
+#else
+	dma_wmb();
+	WRITE_ONCE(*p, v);
+#endif
+}
+
 struct virtio_device;
 struct virtqueue;
 
