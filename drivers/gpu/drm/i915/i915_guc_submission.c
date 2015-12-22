@@ -158,10 +158,8 @@ static int host2guc_sample_forcewake(struct intel_guc *guc,
 
 	data[0] = HOST2GUC_ACTION_SAMPLE_FORCEWAKE;
 	/* WaRsDisableCoarsePowerGating:skl,bxt */
-	if (!intel_enable_rc6(dev_priv->dev) ||
-	    IS_BXT_REVID(dev, 0, BXT_REVID_A1) ||
-	    (IS_SKL_GT3(dev) && IS_SKL_REVID(dev, 0, SKL_REVID_E0)) ||
-	    (IS_SKL_GT4(dev) && IS_SKL_REVID(dev, 0, SKL_REVID_E0)))
+	if (!intel_enable_rc6(dev) ||
+	    NEEDS_WaRsDisableCoarsePowerGating(dev))
 		data[1] = 0;
 	else
 		/* bit 0 and 1 are for Render and Media domain separately */
@@ -568,7 +566,7 @@ static void lr_context_update(struct drm_i915_gem_request *rq)
 	WARN_ON(!i915_gem_obj_is_pinned(ctx_obj));
 	WARN_ON(!i915_gem_obj_is_pinned(rb_obj));
 
-	page = i915_gem_object_get_page(ctx_obj, LRC_STATE_PN);
+	page = i915_gem_object_get_dirty_page(ctx_obj, LRC_STATE_PN);
 	reg_state = kmap_atomic(page);
 
 	reg_state[CTX_RING_BUFFER_START+1] = i915_gem_obj_ggtt_offset(rb_obj);
