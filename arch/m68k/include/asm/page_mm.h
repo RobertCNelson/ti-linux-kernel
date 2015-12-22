@@ -122,6 +122,7 @@ static inline void *__va(unsigned long x)
  */
 #define virt_to_pfn(kaddr)	(__pa(kaddr) >> PAGE_SHIFT)
 #define pfn_to_virt(pfn)	__va((pfn) << PAGE_SHIFT)
+#define	__pfn_to_phys(pfn)	PFN_PHYS(pfn)
 
 extern int m68k_virt_to_node_shift;
 

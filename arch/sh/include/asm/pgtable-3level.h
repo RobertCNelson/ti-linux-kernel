@@ -29,6 +29,7 @@
 
 typedef struct { unsigned long long pmd; } pmd_t;
 #define pmd_val(x)	((x).pmd)
+#define pmd_pfn(x)	((pmd_val(x) & PMD_MASK) >> PAGE_SHIFT)
 #define __pmd(x)	((pmd_t) { (x) } )
 
 static inline unsigned long pud_page_vaddr(pud_t pud)

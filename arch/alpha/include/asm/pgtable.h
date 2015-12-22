@@ -216,6 +216,7 @@ extern unsigned long __zero_page(void);
 })
 #endif
 
+#define pfn_pte pfn_pte
 extern inline pte_t pfn_pte(unsigned long physpfn, pgprot_t pgprot)
 { pte_t pte; pte_val(pte) = (PHYS_TWIDDLE(physpfn) << 32) | pgprot_val(pgprot); return pte; }
 

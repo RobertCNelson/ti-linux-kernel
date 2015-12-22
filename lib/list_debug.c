@@ -12,6 +12,8 @@
 #include <linux/kernel.h>
 #include <linux/rculist.h>
 
+struct list_head list_force_poison;
+
 /*
  * Insert a new entry between two known consecutive entries.
  *
@@ -23,6 +25,8 @@ void __list_add(struct list_head *new,
 			      struct list_head *prev,
 			      struct list_head *next)
 {
+	WARN(new->next == &list_force_poison || new->prev == &list_force_poison,
+		"list_add attempted on force-poisoned entry\n");
 	WARN(next->prev != prev,
 		"list_add corruption. next->prev should be "
 		"prev (%p), but was %p. (next=%p).\n",

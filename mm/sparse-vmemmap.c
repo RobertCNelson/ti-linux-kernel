@@ -70,7 +70,7 @@ void * __meminit vmemmap_alloc_block(unsigned long size, int node)
 }
 
 /* need to make sure size is all the same during early stage */
-void * __meminit vmemmap_alloc_block_buf(unsigned long size, int node)
+static void * __meminit alloc_block_buf(unsigned long size, int node)
 {
 	void *ptr;
 
@@ -85,6 +85,39 @@ void * __meminit vmemmap_alloc_block_buf(unsigned long size, int node)
 	vmemmap_buf = ptr + size;
 
 	return ptr;
+}
+
+static void * __meminit altmap_alloc_block_buf(unsigned long size,
+		struct vmem_altmap *altmap)
+{
+	unsigned long pfn, nr_pfns;
+	void *ptr;
+
+	if (size & ~PAGE_MASK) {
+		pr_warn_once("%s: allocations must be multiple of PAGE_SIZE (%ld)\n",
+				__func__, size);
+		return NULL;
+	}
+
+	nr_pfns = size >> PAGE_SHIFT;
+	pfn = vmem_altmap_alloc(altmap, nr_pfns);
+	if (pfn < ULONG_MAX)
+		ptr = __va(__pfn_to_phys(pfn));
+	else
+		ptr = NULL;
+	pr_debug("%s: pfn: %#lx alloc: %ld align: %ld nr: %#lx\n",
+			__func__, pfn, altmap->alloc, altmap->align, nr_pfns);
+
+	return ptr;
+}
+
+/* need to make sure size is all the same during early stage */
+void * __meminit __vmemmap_alloc_block_buf(unsigned long size, int node,
+		struct vmem_altmap *altmap)
+{
+	if (altmap)
+		return altmap_alloc_block_buf(size, altmap);
+	return alloc_block_buf(size, node);
 }
 
 void __meminit vmemmap_verify(pte_t *pte, int node,
@@ -103,7 +136,7 @@ pte_t * __meminit vmemmap_pte_populate(pmd_t *pmd, unsigned long addr, int node)
 	pte_t *pte = pte_offset_kernel(pmd, addr);
 	if (pte_none(*pte)) {
 		pte_t entry;
-		void *p = vmemmap_alloc_block_buf(PAGE_SIZE, node);
+		void *p = alloc_block_buf(PAGE_SIZE, node);
 		if (!p)
 			return NULL;
 		entry = pfn_pte(__pa(p) >> PAGE_SHIFT, PAGE_KERNEL);
