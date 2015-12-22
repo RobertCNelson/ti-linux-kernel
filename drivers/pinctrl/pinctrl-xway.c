@@ -1535,7 +1535,7 @@ static struct ltq_pinmux_info xway_info = {
 /* ---------  gpio_chip related code --------- */
 static void xway_gpio_set(struct gpio_chip *chip, unsigned int pin, int val)
 {
-	struct ltq_pinmux_info *info = dev_get_drvdata(chip->dev);
+	struct ltq_pinmux_info *info = dev_get_drvdata(chip->parent);
 
 	if (val)
 		gpio_setbit(info->membase[0], GPIO_OUT(pin), PORT_PIN(pin));
@@ -1545,14 +1545,14 @@ static void xway_gpio_set(struct gpio_chip *chip, unsigned int pin, int val)
 
 static int xway_gpio_get(struct gpio_chip *chip, unsigned int pin)
 {
-	struct ltq_pinmux_info *info = dev_get_drvdata(chip->dev);
+	struct ltq_pinmux_info *info = dev_get_drvdata(chip->parent);
 
 	return gpio_getbit(info->membase[0], GPIO_IN(pin), PORT_PIN(pin));
 }
 
 static int xway_gpio_dir_in(struct gpio_chip *chip, unsigned int pin)
 {
-	struct ltq_pinmux_info *info = dev_get_drvdata(chip->dev);
+	struct ltq_pinmux_info *info = dev_get_drvdata(chip->parent);
 
 	gpio_clearbit(info->membase[0], GPIO_DIR(pin), PORT_PIN(pin));
 
@@ -1561,7 +1561,7 @@ static int xway_gpio_dir_in(struct gpio_chip *chip, unsigned int pin)
 
 static int xway_gpio_dir_out(struct gpio_chip *chip, unsigned int pin, int val)
 {
-	struct ltq_pinmux_info *info = dev_get_drvdata(chip->dev);
+	struct ltq_pinmux_info *info = dev_get_drvdata(chip->parent);
 
 	if (PORT(pin) == PORT3)
 		gpio_setbit(info->membase[0], GPIO3_OD, PORT_PIN(pin));
@@ -1573,6 +1573,22 @@ static int xway_gpio_dir_out(struct gpio_chip *chip, unsigned int pin, int val)
 	return 0;
 }
 
+/*
+ * gpiolib gpiod_to_irq callback function.
+ * Returns the mapped IRQ (external interrupt) number for a given GPIO pin.
+ */
+static int xway_gpio_to_irq(struct gpio_chip *chip, unsigned offset)
+{
+	struct ltq_pinmux_info *info = dev_get_drvdata(chip->parent);
+	int i;
+
+	for (i = 0; i < info->num_exin; i++)
+		if (info->exin[i] == offset)
+			return ltq_eiu_get_irq(i);
+
+	return -1;
+}
+
 static struct gpio_chip xway_chip = {
 	.label = "gpio-xway",
 	.direction_input = xway_gpio_dir_in,
@@ -1581,6 +1597,7 @@ static struct gpio_chip xway_chip = {
 	.set = xway_gpio_set,
 	.request = gpiochip_generic_request,
 	.free = gpiochip_generic_free,
+	.to_irq = xway_gpio_to_irq,
 	.base = -1,
 };
 
@@ -1708,7 +1725,7 @@ static int pinmux_xway_probe(struct platform_device *pdev)
 	xway_pctrl_desc.pins = xway_info.pads;
 
 	/* load the gpio chip */
-	xway_chip.dev = &pdev->dev;
+	xway_chip.parent = &pdev->dev;
 	ret = gpiochip_add(&xway_chip);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to register gpio chip\n");
