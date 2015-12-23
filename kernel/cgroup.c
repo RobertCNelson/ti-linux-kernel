@@ -57,6 +57,9 @@
 #include <linux/vmalloc.h> /* TODO: replace with more sophisticated array */
 #include <linux/kthread.h>
 #include <linux/delay.h>
+#include <linux/proc_ns.h>
+#include <linux/nsproxy.h>
+#include <linux/proc_ns.h>
 
 #include <linux/atomic.h>
 
@@ -207,6 +210,15 @@ static u64 css_serial_nr_next = 1;
 static unsigned long have_fork_callback __read_mostly;
 static unsigned long have_exit_callback __read_mostly;
 static unsigned long have_free_callback __read_mostly;
+
+/* Cgroup namespace for init task */
+struct cgroup_namespace init_cgroup_ns = {
+	.count		= { .counter = 2, },
+	.user_ns	= &init_user_ns,
+	.ns.ops		= &cgroupns_operations,
+	.ns.inum	= PROC_CGROUP_INIT_INO,
+	.root_cset	= &init_css_set,
+};
 
 /* Ditto for the can_fork callback. */
 static unsigned long have_canfork_callback __read_mostly;
@@ -2165,6 +2177,30 @@ static struct file_system_type cgroup2_fs_type = {
 	.mount = cgroup_mount,
 	.kill_sb = cgroup_kill_sb,
 };
+
+static int cgroup_path_ns(struct cgroup *cgrp, char *buf, size_t buflen,
+			  struct cgroup_namespace *ns)
+{
+	struct cgroup *root;
+
+	root = cset_cgroup_from_root(ns->root_cset, cgrp->root);
+	return kernfs_path_from_node(cgrp->kn, root->kn, buf, buflen);
+}
+
+char *cgroup_path(struct cgroup *cgrp, char *buf, size_t buflen)
+{
+	int ret;
+	struct cgroup_namespace *ns = &init_cgroup_ns;
+
+	if (!in_interrupt())
+		ns = current->nsproxy->cgroup_ns;
+
+	ret = cgroup_path_ns(cgrp, buf, buflen, ns);
+	if (ret < 0 || ret >= buflen)
+		return NULL;
+	return buf;
+}
+EXPORT_SYMBOL_GPL(cgroup_path);
 
 /**
  * task_cgroup_path - cgroup path of a task in the first cgroup hierarchy
@@ -5272,6 +5308,8 @@ int __init cgroup_init(void)
 	BUG_ON(cgroup_init_cftypes(NULL, cgroup_dfl_base_files));
 	BUG_ON(cgroup_init_cftypes(NULL, cgroup_legacy_base_files));
 
+	get_user_ns(init_cgroup_ns.user_ns);
+
 	mutex_lock(&cgroup_mutex);
 
 	/* Add init_css_set to the hash table */
@@ -5821,6 +5859,116 @@ struct cgroup *cgroup_get_from_path(const char *path)
 	return cgrp;
 }
 EXPORT_SYMBOL_GPL(cgroup_get_from_path);
+
+/* cgroup namespaces */
+
+static struct cgroup_namespace *alloc_cgroup_ns(void)
+{
+	struct cgroup_namespace *new_ns;
+	int ret;
+
+	new_ns = kzalloc(sizeof(struct cgroup_namespace), GFP_KERNEL);
+	if (!new_ns)
+		return ERR_PTR(-ENOMEM);
+	ret = ns_alloc_inum(&new_ns->ns);
+	if (ret) {
+		kfree(new_ns);
+		return ERR_PTR(ret);
+	}
+	atomic_set(&new_ns->count, 1);
+	new_ns->ns.ops = &cgroupns_operations;
+	return new_ns;
+}
+
+void free_cgroup_ns(struct cgroup_namespace *ns)
+{
+	put_css_set(ns->root_cset);
+	put_user_ns(ns->user_ns);
+	ns_free_inum(&ns->ns);
+	kfree(ns);
+}
+EXPORT_SYMBOL(free_cgroup_ns);
+
+struct cgroup_namespace *
+copy_cgroup_ns(unsigned long flags, struct user_namespace *user_ns,
+	       struct cgroup_namespace *old_ns)
+{
+	struct cgroup_namespace *new_ns = NULL;
+	struct css_set *cset = NULL;
+	int err;
+
+	BUG_ON(!old_ns);
+
+	if (!(flags & CLONE_NEWCGROUP)) {
+		get_cgroup_ns(old_ns);
+		return old_ns;
+	}
+
+	/* Allow only sysadmin to create cgroup namespace. */
+	err = -EPERM;
+	if (!ns_capable(user_ns, CAP_SYS_ADMIN))
+		goto err_out;
+
+	cset = task_css_set(current);
+	get_css_set(cset);
+
+	err = -ENOMEM;
+	new_ns = alloc_cgroup_ns();
+	if (!new_ns)
+		goto err_out;
+
+	new_ns->user_ns = get_user_ns(user_ns);
+	new_ns->root_cset = cset;
+
+	return new_ns;
+
+err_out:
+	if (cset)
+		put_css_set(cset);
+	kfree(new_ns);
+	return ERR_PTR(err);
+}
+
+static int cgroupns_install(struct nsproxy *nsproxy, void *ns)
+{
+	pr_info("setns not supported for cgroup namespace");
+	return -EINVAL;
+}
+
+static struct ns_common *cgroupns_get(struct task_struct *task)
+{
+	struct cgroup_namespace *ns = NULL;
+	struct nsproxy *nsproxy;
+
+	task_lock(task);
+	nsproxy = task->nsproxy;
+	if (nsproxy) {
+		ns = nsproxy->cgroup_ns;
+		get_cgroup_ns(ns);
+	}
+	task_unlock(task);
+
+	return ns ? &ns->ns : NULL;
+}
+
+static void cgroupns_put(struct ns_common *ns)
+{
+	put_cgroup_ns(to_cg_ns(ns));
+}
+
+const struct proc_ns_operations cgroupns_operations = {
+	.name		= "cgroup",
+	.type		= CLONE_NEWCGROUP,
+	.get		= cgroupns_get,
+	.put		= cgroupns_put,
+	.install	= cgroupns_install,
+};
+
+static __init int cgroup_namespaces_init(void)
+{
+	return 0;
+}
+subsys_initcall(cgroup_namespaces_init);
 
 #ifdef CONFIG_CGROUP_DEBUG
 static struct cgroup_subsys_state *
