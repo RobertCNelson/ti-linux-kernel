@@ -14,7 +14,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/lib/scatterlist.c
 +++ b/lib/scatterlist.c
-@@ -592,7 +592,7 @@ void sg_miter_stop(struct sg_mapping_ite
+@@ -620,7 +620,7 @@ void sg_miter_stop(struct sg_mapping_ite
  			flush_kernel_dcache_page(miter->page);
  
  		if (miter->__flags & SG_MITER_ATOMIC) {
@@ -23,7 +23,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  			kunmap_atomic(miter->addr);
  		} else
  			kunmap(miter->page);
-@@ -637,7 +637,7 @@ static size_t sg_copy_buffer(struct scat
+@@ -664,7 +664,7 @@ size_t sg_copy_buffer(struct scatterlist
  	if (!sg_miter_skip(&miter, skip))
  		return false;
  
@@ -32,7 +32,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	while (sg_miter_next(&miter) && offset < buflen) {
  		unsigned int len;
-@@ -654,7 +654,7 @@ static size_t sg_copy_buffer(struct scat
+@@ -681,7 +681,7 @@ size_t sg_copy_buffer(struct scatterlist
  
  	sg_miter_stop(&miter);
  
@@ -40,4 +40,4 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +	local_irq_restore_nort(flags);
  	return offset;
  }
- 
+ EXPORT_SYMBOL(sg_copy_buffer);

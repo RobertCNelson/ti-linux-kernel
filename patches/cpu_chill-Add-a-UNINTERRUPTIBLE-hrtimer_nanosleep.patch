@@ -33,7 +33,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/kernel/time/hrtimer.c
 +++ b/kernel/time/hrtimer.c
-@@ -1746,12 +1746,13 @@ void hrtimer_init_sleeper(struct hrtimer
+@@ -1657,12 +1657,13 @@ void hrtimer_init_sleeper(struct hrtimer
  }
  EXPORT_SYMBOL_GPL(hrtimer_init_sleeper);
  
@@ -47,9 +47,9 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 -		set_current_state(TASK_INTERRUPTIBLE);
 +		set_current_state(state);
  		hrtimer_start_expires(&t->timer, mode);
- 		if (!hrtimer_active(&t->timer))
- 			t->task = NULL;
-@@ -1795,7 +1796,8 @@ long __sched hrtimer_nanosleep_restart(s
+ 
+ 		if (likely(t->task))
+@@ -1704,7 +1705,8 @@ long __sched hrtimer_nanosleep_restart(s
  				HRTIMER_MODE_ABS);
  	hrtimer_set_expires_tv64(&t.timer, restart->nanosleep.expires);
  
@@ -59,7 +59,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  		goto out;
  
  	rmtp = restart->nanosleep.rmtp;
-@@ -1812,8 +1814,10 @@ long __sched hrtimer_nanosleep_restart(s
+@@ -1721,8 +1723,10 @@ long __sched hrtimer_nanosleep_restart(s
  	return ret;
  }
  
@@ -72,7 +72,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  {
  	struct restart_block *restart;
  	struct hrtimer_sleeper t;
-@@ -1826,7 +1830,7 @@ long hrtimer_nanosleep(struct timespec *
+@@ -1735,7 +1739,7 @@ long hrtimer_nanosleep(struct timespec *
  
  	hrtimer_init_on_stack(&t.timer, clockid, mode);
  	hrtimer_set_expires_range_ns(&t.timer, timespec_to_ktime(*rqtp), slack);
@@ -81,7 +81,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  		goto out;
  
  	/* Absolute timers do not update the rmtp value and restart: */
-@@ -1853,6 +1857,12 @@ long hrtimer_nanosleep(struct timespec *
+@@ -1762,6 +1766,12 @@ long hrtimer_nanosleep(struct timespec *
  	return ret;
  }
  
@@ -94,7 +94,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  SYSCALL_DEFINE2(nanosleep, struct timespec __user *, rqtp,
  		struct timespec __user *, rmtp)
  {
-@@ -1879,7 +1889,8 @@ void cpu_chill(void)
+@@ -1788,7 +1798,8 @@ void cpu_chill(void)
  	unsigned int freeze_flag = current->flags & PF_NOFREEZE;
  
  	current->flags |= PF_NOFREEZE;

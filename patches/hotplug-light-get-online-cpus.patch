@@ -18,7 +18,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/include/linux/cpu.h
 +++ b/include/linux/cpu.h
-@@ -221,9 +221,6 @@ static inline void smpboot_thread_init(v
+@@ -222,9 +222,6 @@ static inline void smpboot_thread_init(v
  #endif /* CONFIG_SMP */
  extern struct bus_type cpu_subsys;
  
@@ -28,7 +28,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #ifdef CONFIG_HOTPLUG_CPU
  /* Stop CPUs going up and down. */
  
-@@ -234,6 +231,8 @@ extern bool try_get_online_cpus(void);
+@@ -234,6 +231,8 @@ extern void get_online_cpus(void);
  extern void put_online_cpus(void);
  extern void cpu_hotplug_disable(void);
  extern void cpu_hotplug_enable(void);
@@ -37,7 +37,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #define hotcpu_notifier(fn, pri)	cpu_notifier(fn, pri)
  #define __hotcpu_notifier(fn, pri)	__cpu_notifier(fn, pri)
  #define register_hotcpu_notifier(nb)	register_cpu_notifier(nb)
-@@ -252,6 +251,8 @@ static inline void cpu_hotplug_done(void
+@@ -251,6 +250,8 @@ static inline void cpu_hotplug_done(void
  #define put_online_cpus()	do { } while (0)
  #define cpu_hotplug_disable()	do { } while (0)
  #define cpu_hotplug_enable()	do { } while (0)
@@ -48,7 +48,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /* These aren't inline functions due to a GCC bug. */
 --- a/kernel/cpu.c
 +++ b/kernel/cpu.c
-@@ -88,6 +88,100 @@ static struct {
+@@ -89,6 +89,100 @@ static struct {
  #define cpuhp_lock_acquire()      lock_map_acquire(&cpu_hotplug.dep_map)
  #define cpuhp_lock_release()      lock_map_release(&cpu_hotplug.dep_map)
  
@@ -149,9 +149,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  void get_online_cpus(void)
  {
-@@ -349,13 +443,14 @@ static int __ref take_cpu_down(void *_pa
+@@ -338,13 +432,14 @@ static int take_cpu_down(void *_param)
  /* Requires cpu_add_remove_lock to be held */
- static int __ref _cpu_down(unsigned int cpu, int tasks_frozen)
+ static int _cpu_down(unsigned int cpu, int tasks_frozen)
  {
 -	int err, nr_calls = 0;
 +	int mycpu, err, nr_calls = 0;
@@ -165,7 +165,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	if (num_online_cpus() == 1)
  		return -EBUSY;
-@@ -363,7 +458,27 @@ static int __ref _cpu_down(unsigned int
+@@ -352,7 +447,27 @@ static int _cpu_down(unsigned int cpu, i
  	if (!cpu_online(cpu))
  		return -EINVAL;
  
@@ -193,7 +193,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	err = __cpu_notify(CPU_DOWN_PREPARE | mod, hcpu, -1, &nr_calls);
  	if (err) {
-@@ -427,6 +542,8 @@ static int __ref _cpu_down(unsigned int
+@@ -424,6 +539,8 @@ static int _cpu_down(unsigned int cpu, i
  	check_for_tasks(cpu);
  
  out_release:

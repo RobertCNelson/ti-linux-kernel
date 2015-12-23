@@ -39,22 +39,23 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /**
 --- a/lib/radix-tree.c
 +++ b/lib/radix-tree.c
-@@ -195,12 +195,13 @@ radix_tree_node_alloc(struct radix_tree_
+@@ -196,13 +196,14 @@ radix_tree_node_alloc(struct radix_tree_
  		 * succeed in getting a node here (and never reach
  		 * kmem_cache_alloc)
  		 */
 -		rtp = this_cpu_ptr(&radix_tree_preloads);
 +		rtp = &get_cpu_var(radix_tree_preloads);
  		if (rtp->nr) {
- 			ret = rtp->nodes[rtp->nr - 1];
- 			rtp->nodes[rtp->nr - 1] = NULL;
+ 			ret = rtp->nodes;
+ 			rtp->nodes = ret->private_data;
+ 			ret->private_data = NULL;
  			rtp->nr--;
  		}
 +		put_cpu_var(radix_tree_preloads);
  		/*
  		 * Update the allocation stack trace as this is more useful
  		 * for debugging.
-@@ -240,6 +241,7 @@ radix_tree_node_free(struct radix_tree_n
+@@ -242,6 +243,7 @@ radix_tree_node_free(struct radix_tree_n
  	call_rcu(&node->rcu_head, radix_tree_node_rcu_free);
  }
  
@@ -62,7 +63,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
   * Load up this CPU's radix_tree_node buffer with sufficient objects to
   * ensure that the addition of a single element in the tree cannot fail.  On
-@@ -305,6 +307,7 @@ int radix_tree_maybe_preload(gfp_t gfp_m
+@@ -310,6 +312,7 @@ int radix_tree_maybe_preload(gfp_t gfp_m
  	return 0;
  }
  EXPORT_SYMBOL(radix_tree_maybe_preload);

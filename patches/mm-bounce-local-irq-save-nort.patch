@@ -11,7 +11,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/block/bounce.c
 +++ b/block/bounce.c
-@@ -54,11 +54,11 @@ static void bounce_copy_vec(struct bio_v
+@@ -55,11 +55,11 @@ static void bounce_copy_vec(struct bio_v
  	unsigned long flags;
  	unsigned char *vto;
  

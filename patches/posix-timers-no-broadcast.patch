@@ -13,7 +13,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/kernel/time/posix-timers.c
 +++ b/kernel/time/posix-timers.c
-@@ -499,6 +499,7 @@ static enum hrtimer_restart posix_timer_
+@@ -506,6 +506,7 @@ static enum hrtimer_restart posix_timer_
  static struct pid *good_sigevent(sigevent_t * event)
  {
  	struct task_struct *rtn = current->group_leader;
@@ -21,7 +21,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	if ((event->sigev_notify & SIGEV_THREAD_ID ) &&
  		(!(rtn = find_task_by_vpid(event->sigev_notify_thread_id)) ||
-@@ -507,7 +508,8 @@ static struct pid *good_sigevent(sigeven
+@@ -514,7 +515,8 @@ static struct pid *good_sigevent(sigeven
  		return NULL;
  
  	if (((event->sigev_notify & ~SIGEV_THREAD_ID) != SIGEV_NONE) &&

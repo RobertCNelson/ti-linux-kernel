@@ -27,7 +27,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -2977,7 +2977,16 @@ asmlinkage __visible void __sched notrac
+@@ -3306,7 +3306,16 @@ asmlinkage __visible void __sched notrac
  		 * an infinite recursion.
  		 */
  		prev_ctx = exception_enter();
@@ -39,8 +39,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +		 * we must force it manually.
 +		 */
 +		start_critical_timings();
- 		__schedule();
+ 		__schedule(true);
 +		stop_critical_timings();
  		exception_exit(prev_ctx);
  
- 		__preempt_count_sub(PREEMPT_ACTIVE);
+ 		preempt_enable_no_resched_notrace();

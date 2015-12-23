@@ -42,7 +42,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/mm/memcontrol.c
 +++ b/mm/memcontrol.c
-@@ -2127,14 +2127,17 @@ static void drain_local_stock(struct wor
+@@ -1913,14 +1913,17 @@ static void drain_local_stock(struct wor
   */
  static void refill_stock(struct mem_cgroup *memcg, unsigned int nr_pages)
  {

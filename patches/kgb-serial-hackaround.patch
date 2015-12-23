@@ -18,22 +18,22 @@ Thanks,
 Jason.
 
 ---
- drivers/tty/serial/8250/8250_core.c |    3 ++-
+ drivers/tty/serial/8250/8250_port.c |    3 ++-
  include/linux/kdb.h                 |    2 ++
  kernel/debug/kdb/kdb_io.c           |    6 ++----
  3 files changed, 6 insertions(+), 5 deletions(-)
 
---- a/drivers/tty/serial/8250/8250_core.c
-+++ b/drivers/tty/serial/8250/8250_core.c
-@@ -36,6 +36,7 @@
+--- a/drivers/tty/serial/8250/8250_port.c
++++ b/drivers/tty/serial/8250/8250_port.c
+@@ -35,6 +35,7 @@
  #include <linux/nmi.h>
  #include <linux/mutex.h>
  #include <linux/slab.h>
 +#include <linux/kdb.h>
  #include <linux/uaccess.h>
  #include <linux/pm_runtime.h>
- #ifdef CONFIG_SPARC
-@@ -3381,7 +3382,7 @@ static void serial8250_console_write(str
+ 
+@@ -2851,7 +2852,7 @@ void serial8250_console_write(struct uar
  
  	if (port->sysrq)
  		locked = 0;

@@ -34,7 +34,7 @@ Signed-off-by: Tiejun Chen <tiejun.chen@windriver.com>
 
 --- a/kernel/cpu.c
 +++ b/kernel/cpu.c
-@@ -668,6 +668,7 @@ static int __ref _cpu_down(unsigned int
+@@ -657,6 +657,7 @@ static int _cpu_down(unsigned int cpu, i
  		err = -EBUSY;
  		goto restore_cpus;
  	}
@@ -42,7 +42,7 @@ Signed-off-by: Tiejun Chen <tiejun.chen@windriver.com>
  
  	cpu_hotplug_begin();
  	err = cpu_unplug_begin(cpu);
-@@ -744,7 +745,6 @@ static int __ref _cpu_down(unsigned int
+@@ -741,7 +742,6 @@ static int _cpu_down(unsigned int cpu, i
  out_release:
  	cpu_unplug_done(cpu);
  out_cancel:

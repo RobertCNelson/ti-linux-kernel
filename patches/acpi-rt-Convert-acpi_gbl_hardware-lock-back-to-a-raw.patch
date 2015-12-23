@@ -72,7 +72,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/drivers/acpi/acpica/acglobal.h
 +++ b/drivers/acpi/acpica/acglobal.h
-@@ -112,7 +112,7 @@ ACPI_GLOBAL(u8, acpi_gbl_global_lock_pen
+@@ -116,7 +116,7 @@ ACPI_GLOBAL(u8, acpi_gbl_global_lock_pen
   * interrupt level
   */
  ACPI_GLOBAL(acpi_spinlock, acpi_gbl_gpe_lock);	/* For GPE data structs and registers */
@@ -131,7 +131,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	if (ACPI_FAILURE (status)) {
  		return_ACPI_STATUS (status);
  	}
-@@ -141,7 +141,7 @@ void acpi_ut_mutex_terminate(void)
+@@ -156,7 +156,7 @@ void acpi_ut_mutex_terminate(void)
  	/* Delete the spinlocks */
  
  	acpi_os_delete_lock(acpi_gbl_gpe_lock);
@@ -142,7 +142,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	/* Delete the reader/writer lock */
 --- a/include/acpi/platform/aclinux.h
 +++ b/include/acpi/platform/aclinux.h
-@@ -123,6 +123,7 @@
+@@ -127,6 +127,7 @@
  
  #define acpi_cache_t                        struct kmem_cache
  #define acpi_spinlock                       spinlock_t *
@@ -150,7 +150,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  #define acpi_cpu_flags                      unsigned long
  
  /* Use native linux version of acpi_os_allocate_zeroed */
-@@ -141,6 +142,20 @@
+@@ -145,6 +146,20 @@
  #define ACPI_USE_ALTERNATE_PROTOTYPE_acpi_os_get_thread_id
  #define ACPI_USE_ALTERNATE_PROTOTYPE_acpi_os_create_lock
  

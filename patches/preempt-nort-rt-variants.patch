@@ -13,7 +13,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/include/linux/preempt.h
 +++ b/include/linux/preempt.h
-@@ -48,7 +48,11 @@ do { \
+@@ -154,7 +154,11 @@ do { \
  	preempt_count_dec(); \
  } while (0)
  
@@ -24,9 +24,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +# define preempt_enable_no_resched() preempt_enable()
 +#endif
  
- #ifdef CONFIG_PREEMPT
- #define preempt_enable() \
-@@ -145,6 +149,18 @@ do { \
+ #define preemptible()	(preempt_count() == 0 && !irqs_disabled())
+ 
+@@ -248,6 +252,18 @@ do { \
  		set_preempt_need_resched(); \
  } while (0)
  

@@ -24,15 +24,15 @@ Link: http://lkml.kernel.org/r/20111005185938.GA20403@linux.vnet.ibm.com
 Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 ---
- include/linux/rcupdate.h |   25 +++++++++++++++++++++++++
+ include/linux/rcupdate.h |   23 +++++++++++++++++++++++
  include/linux/rcutree.h  |   18 ++++++++++++++++--
  kernel/rcu/tree.c        |   16 ++++++++++++++++
  kernel/rcu/update.c      |    2 ++
- 4 files changed, 59 insertions(+), 2 deletions(-)
+ 4 files changed, 57 insertions(+), 2 deletions(-)
 
 --- a/include/linux/rcupdate.h
 +++ b/include/linux/rcupdate.h
-@@ -167,6 +167,9 @@ void call_rcu(struct rcu_head *head,
+@@ -169,6 +169,9 @@ void call_rcu(struct rcu_head *head,
  
  #endif /* #else #ifdef CONFIG_PREEMPT_RCU */
  
@@ -42,29 +42,27 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /**
   * call_rcu_bh() - Queue an RCU for invocation after a quicker grace period.
   * @head: structure to be used for queueing the RCU updates.
-@@ -190,6 +193,7 @@ void call_rcu(struct rcu_head *head,
+@@ -192,6 +195,7 @@ void call_rcu(struct rcu_head *head,
   */
  void call_rcu_bh(struct rcu_head *head,
- 		 void (*func)(struct rcu_head *head));
+ 		 rcu_callback_t func);
 +#endif
  
  /**
   * call_rcu_sched() - Queue an RCU for invocation after sched grace period.
-@@ -296,7 +300,13 @@ static inline int rcu_preempt_depth(void
+@@ -330,7 +334,11 @@ static inline int rcu_preempt_depth(void
  void rcu_init(void);
  void rcu_end_inkernel_boot(void);
  void rcu_sched_qs(void);
-+
 +#ifdef CONFIG_PREEMPT_RT_FULL
 +static inline void rcu_bh_qs(void) { }
 +#else
  void rcu_bh_qs(void);
 +#endif
-+
  void rcu_check_callbacks(int user);
  struct notifier_block;
- void rcu_idle_enter(void);
-@@ -470,7 +480,14 @@ extern struct lockdep_map rcu_callback_m
+ int rcu_cpu_notify(struct notifier_block *self,
+@@ -496,7 +504,14 @@ extern struct lockdep_map rcu_callback_m
  int debug_lockdep_rcu_enabled(void);
  
  int rcu_read_lock_held(void);
@@ -79,7 +77,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  /**
   * rcu_read_lock_sched_held() - might we be in RCU-sched read-side critical section?
-@@ -997,10 +1014,14 @@ static inline void rcu_read_unlock(void)
+@@ -944,10 +959,14 @@ static inline void rcu_read_unlock(void)
  static inline void rcu_read_lock_bh(void)
  {
  	local_bh_disable();
@@ -88,21 +86,21 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +#else
  	__acquire(RCU_BH);
  	rcu_lock_acquire(&rcu_bh_lock_map);
- 	rcu_lockdep_assert(rcu_is_watching(),
- 			   "rcu_read_lock_bh() used illegally while idle");
+ 	RCU_LOCKDEP_WARN(!rcu_is_watching(),
+ 			 "rcu_read_lock_bh() used illegally while idle");
 +#endif
  }
  
  /*
-@@ -1010,10 +1031,14 @@ static inline void rcu_read_lock_bh(void
+@@ -957,10 +976,14 @@ static inline void rcu_read_lock_bh(void
   */
  static inline void rcu_read_unlock_bh(void)
  {
 +#ifdef CONFIG_PREEMPT_RT_FULL
 +	rcu_read_unlock();
 +#else
- 	rcu_lockdep_assert(rcu_is_watching(),
- 			   "rcu_read_unlock_bh() used illegally while idle");
+ 	RCU_LOCKDEP_WARN(!rcu_is_watching(),
+ 			 "rcu_read_unlock_bh() used illegally while idle");
  	rcu_lock_release(&rcu_bh_lock_map);
  	__release(RCU_BH);
 +#endif
@@ -111,7 +109,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
 --- a/include/linux/rcutree.h
 +++ b/include/linux/rcutree.h
-@@ -46,7 +46,11 @@ static inline void rcu_virt_note_context
+@@ -44,7 +44,11 @@ static inline void rcu_virt_note_context
  	rcu_note_context_switch();
  }
  
@@ -123,7 +121,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  void synchronize_sched_expedited(void);
  void synchronize_rcu_expedited(void);
  
-@@ -74,7 +78,11 @@ static inline void synchronize_rcu_bh_ex
+@@ -72,7 +76,11 @@ static inline void synchronize_rcu_bh_ex
  }
  
  void rcu_barrier(void);
@@ -147,8 +145,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 -void rcu_bh_force_quiescent_state(void);
  void rcu_sched_force_quiescent_state(void);
  
- void exit_rcu(void);
-@@ -100,6 +106,14 @@ extern int rcu_scheduler_active __read_m
+ void rcu_idle_enter(void);
+@@ -105,6 +111,14 @@ extern int rcu_scheduler_active __read_m
  
  bool rcu_is_watching(void);
  
@@ -165,23 +163,23 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #endif /* __LINUX_RCUTREE_H */
 --- a/kernel/rcu/tree.c
 +++ b/kernel/rcu/tree.c
-@@ -220,6 +220,7 @@ void rcu_sched_qs(void)
+@@ -266,6 +266,7 @@ void rcu_sched_qs(void)
  	}
  }
  
 +#ifndef CONFIG_PREEMPT_RT_FULL
  void rcu_bh_qs(void)
  {
- 	if (!__this_cpu_read(rcu_bh_data.passed_quiesce)) {
-@@ -229,6 +230,7 @@ void rcu_bh_qs(void)
- 		__this_cpu_write(rcu_bh_data.passed_quiesce, 1);
+ 	if (__this_cpu_read(rcu_bh_data.cpu_no_qs.s)) {
+@@ -275,6 +276,7 @@ void rcu_bh_qs(void)
+ 		__this_cpu_write(rcu_bh_data.cpu_no_qs.b.norm, false);
  	}
  }
 +#endif
  
  static DEFINE_PER_CPU(int, rcu_sched_qs_mask);
  
-@@ -404,6 +406,7 @@ unsigned long rcu_batches_completed_sche
+@@ -459,6 +461,7 @@ unsigned long rcu_batches_completed_sche
  }
  EXPORT_SYMBOL_GPL(rcu_batches_completed_sched);
  
@@ -189,7 +187,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
   * Return the number of RCU BH batches completed thus far for debug & stats.
   */
-@@ -431,6 +434,13 @@ void rcu_bh_force_quiescent_state(void)
+@@ -486,6 +489,13 @@ void rcu_bh_force_quiescent_state(void)
  }
  EXPORT_SYMBOL_GPL(rcu_bh_force_quiescent_state);
  
@@ -203,7 +201,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
   * Force a quiescent state for RCU-sched.
   */
-@@ -3040,6 +3050,7 @@ void call_rcu_sched(struct rcu_head *hea
+@@ -3114,6 +3124,7 @@ void call_rcu_sched(struct rcu_head *hea
  }
  EXPORT_SYMBOL_GPL(call_rcu_sched);
  
@@ -211,7 +209,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
   * Queue an RCU callback for invocation after a quicker grace period.
   */
-@@ -3048,6 +3059,7 @@ void call_rcu_bh(struct rcu_head *head,
+@@ -3122,6 +3133,7 @@ void call_rcu_bh(struct rcu_head *head,
  	__call_rcu(head, func, &rcu_bh_state, -1, 0);
  }
  EXPORT_SYMBOL_GPL(call_rcu_bh);
@@ -219,7 +217,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  /*
   * Queue an RCU callback for lazy invocation after a grace period.
-@@ -3139,6 +3151,7 @@ void synchronize_sched(void)
+@@ -3213,6 +3225,7 @@ void synchronize_sched(void)
  }
  EXPORT_SYMBOL_GPL(synchronize_sched);
  
@@ -227,7 +225,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /**
   * synchronize_rcu_bh - wait until an rcu_bh grace period has elapsed.
   *
-@@ -3165,6 +3178,7 @@ void synchronize_rcu_bh(void)
+@@ -3239,6 +3252,7 @@ void synchronize_rcu_bh(void)
  		wait_rcu_gp(call_rcu_bh);
  }
  EXPORT_SYMBOL_GPL(synchronize_rcu_bh);
@@ -235,7 +233,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  /**
   * get_state_synchronize_rcu - Snapshot current RCU state
-@@ -3677,6 +3691,7 @@ static void _rcu_barrier(struct rcu_stat
+@@ -4101,6 +4115,7 @@ static void _rcu_barrier(struct rcu_stat
  	mutex_unlock(&rsp->barrier_mutex);
  }
  
@@ -243,7 +241,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /**
   * rcu_barrier_bh - Wait until all in-flight call_rcu_bh() callbacks complete.
   */
-@@ -3685,6 +3700,7 @@ void rcu_barrier_bh(void)
+@@ -4109,6 +4124,7 @@ void rcu_barrier_bh(void)
  	_rcu_barrier(&rcu_bh_state);
  }
  EXPORT_SYMBOL_GPL(rcu_barrier_bh);
@@ -253,7 +251,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
   * rcu_barrier_sched - Wait for in-flight call_rcu_sched() callbacks.
 --- a/kernel/rcu/update.c
 +++ b/kernel/rcu/update.c
-@@ -227,6 +227,7 @@ int rcu_read_lock_held(void)
+@@ -276,6 +276,7 @@ int rcu_read_lock_held(void)
  }
  EXPORT_SYMBOL_GPL(rcu_read_lock_held);
  
@@ -261,7 +259,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /**
   * rcu_read_lock_bh_held() - might we be in RCU-bh read-side critical section?
   *
-@@ -253,6 +254,7 @@ int rcu_read_lock_bh_held(void)
+@@ -302,6 +303,7 @@ int rcu_read_lock_bh_held(void)
  	return in_softirq() || irqs_disabled();
  }
  EXPORT_SYMBOL_GPL(rcu_read_lock_bh_held);

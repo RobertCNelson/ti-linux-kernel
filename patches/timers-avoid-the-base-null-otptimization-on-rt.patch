@@ -7,59 +7,64 @@ base as a preempter would spin forever in lock_timer_base().
 
 Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 ---
- kernel/time/timer.c |   40 ++++++++++++++++++++++++++++++++--------
- 1 file changed, 32 insertions(+), 8 deletions(-)
+ kernel/time/timer.c |   45 +++++++++++++++++++++++++++++++++++----------
+ 1 file changed, 35 insertions(+), 10 deletions(-)
 
 --- a/kernel/time/timer.c
 +++ b/kernel/time/timer.c
-@@ -771,6 +771,36 @@ static struct tvec_base *lock_timer_base
+@@ -780,6 +780,39 @@ static struct tvec_base *lock_timer_base
+ 		cpu_relax();
  	}
  }
- 
-+#ifndef CONFIG_PREEMPT_RT_FULL
-+static inline struct tvec_base *switch_timer_base(struct timer_list *timer,
-+						  struct tvec_base *old,
-+						  struct tvec_base *new)
-+{
-+	/* See the comment in lock_timer_base() */
-+	timer_set_base(timer, NULL);
-+	spin_unlock(&old->lock);
-+	spin_lock(&new->lock);
-+	timer_set_base(timer, new);
-+	return new;
-+}
-+#else
++#ifdef CONFIG_PREEMPT_RT_FULL
 +static inline struct tvec_base *switch_timer_base(struct timer_list *timer,
 +						  struct tvec_base *old,
 +						  struct tvec_base *new)
 +{
 +	/*
-+	 * We cannot do the above because we might be preempted and
++	 * We cannot do the below because we might be preempted and
 +	 * then the preempter would see NULL and loop forever.
 +	 */
 +	if (spin_trylock(&new->lock)) {
-+		timer_set_base(timer, new);
++		WRITE_ONCE(timer->flags,
++			   (timer->flags & ~TIMER_BASEMASK) | new->cpu);
 +		spin_unlock(&old->lock);
 +		return new;
 +	}
 +	return old;
 +}
-+#endif
 +
++#else
++static inline struct tvec_base *switch_timer_base(struct timer_list *timer,
++						  struct tvec_base *old,
++						  struct tvec_base *new)
++{
++	/* See the comment in lock_timer_base() */
++	timer->flags |= TIMER_MIGRATING;
++
++	spin_unlock(&old->lock);
++	spin_lock(&new->lock);
++	WRITE_ONCE(timer->flags,
++		   (timer->flags & ~TIMER_BASEMASK) | new->cpu);
++	return new;
++}
++#endif
+ 
  static inline int
  __mod_timer(struct timer_list *timer, unsigned long expires,
- 						bool pending_only, int pinned)
-@@ -801,14 +831,8 @@ static inline int
+@@ -810,16 +843,8 @@ static inline int
  		 * handler yet has not finished. This also guarantees that
  		 * the timer is serialized wrt itself.
  		 */
 -		if (likely(base->running_timer != timer)) {
 -			/* See the comment in lock_timer_base() */
--			timer_set_base(timer, NULL);
+-			timer->flags |= TIMER_MIGRATING;
+-
 -			spin_unlock(&base->lock);
 -			base = new_base;
 -			spin_lock(&base->lock);
--			timer_set_base(timer, base);
+-			WRITE_ONCE(timer->flags,
+-				   (timer->flags & ~TIMER_BASEMASK) | base->cpu);
 -		}
 +		if (likely(base->running_timer != timer))
 +			base = switch_timer_base(timer, base, new_base);

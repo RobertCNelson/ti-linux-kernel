@@ -20,7 +20,7 @@ Tested-by: Udo van den Heuvel <udovdh@xs4all.nl>
 
 --- a/drivers/md/raid5.c
 +++ b/drivers/md/raid5.c
-@@ -1918,8 +1918,9 @@ static void raid_run_ops(struct stripe_h
+@@ -1929,8 +1929,9 @@ static void raid_run_ops(struct stripe_h
  	struct raid5_percpu *percpu;
  	unsigned long cpu;
  
@@ -31,7 +31,7 @@ Tested-by: Udo van den Heuvel <udovdh@xs4all.nl>
  	if (test_bit(STRIPE_OP_BIOFILL, &ops_request)) {
  		ops_run_biofill(sh);
  		overlap_clear++;
-@@ -1975,7 +1976,8 @@ static void raid_run_ops(struct stripe_h
+@@ -1986,7 +1987,8 @@ static void raid_run_ops(struct stripe_h
  			if (test_and_clear_bit(R5_Overlap, &dev->flags))
  				wake_up(&sh->raid_conf->wait_for_overlap);
  		}
@@ -41,7 +41,7 @@ Tested-by: Udo van den Heuvel <udovdh@xs4all.nl>
  }
  
  static struct stripe_head *alloc_stripe(struct kmem_cache *sc, gfp_t gfp)
-@@ -6363,6 +6365,7 @@ static int raid5_alloc_percpu(struct r5c
+@@ -6411,6 +6413,7 @@ static int raid5_alloc_percpu(struct r5c
  			       __func__, cpu);
  			break;
  		}
@@ -51,7 +51,7 @@ Tested-by: Udo van den Heuvel <udovdh@xs4all.nl>
  
 --- a/drivers/md/raid5.h
 +++ b/drivers/md/raid5.h
-@@ -495,6 +495,7 @@ struct r5conf {
+@@ -504,6 +504,7 @@ struct r5conf {
  	int			recovery_disabled;
  	/* per cpu variables */
  	struct raid5_percpu {

@@ -16,7 +16,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/include/linux/lglock.h
 +++ b/include/linux/lglock.h
-@@ -76,6 +76,12 @@ void lg_local_unlock_cpu(struct lglock *
+@@ -82,6 +82,12 @@ void lg_double_unlock(struct lglock *lg,
  void lg_global_lock(struct lglock *lg);
  void lg_global_unlock(struct lglock *lg);
  
@@ -41,7 +41,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	do {					\
 --- a/kernel/locking/lglock.c
 +++ b/kernel/locking/lglock.c
-@@ -105,3 +105,28 @@ void lg_global_unlock(struct lglock *lg)
+@@ -127,3 +127,28 @@ void lg_global_unlock(struct lglock *lg)
  	preempt_enable_nort();
  }
  EXPORT_SYMBOL(lg_global_unlock);
@@ -72,7 +72,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 +#endif
 --- a/kernel/locking/rtmutex.c
 +++ b/kernel/locking/rtmutex.c
-@@ -1133,6 +1133,11 @@ void __lockfunc rt_spin_unlock_wait(spin
+@@ -1153,6 +1153,11 @@ void __lockfunc rt_spin_unlock_wait(spin
  }
  EXPORT_SYMBOL(rt_spin_unlock_wait);
  

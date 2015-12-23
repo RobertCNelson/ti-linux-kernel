@@ -16,16 +16,16 @@ Tested-by: Mike Galbraith <bitbucket@online.de>
 Signed-off-by: Paul E. McKenney <paulmck@linux.vnet.ibm.com>
 Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 ---
- kernel/rcu/tree.c        |  110 +++++++++++++++++++++++++++++++++---
+ kernel/rcu/tree.c        |  110 ++++++++++++++++++++++++++++++---
  kernel/rcu/tree.h        |    5 -
- kernel/rcu/tree_plugin.h |  141 +++++------------------------------------------
- 3 files changed, 116 insertions(+), 140 deletions(-)
+ kernel/rcu/tree_plugin.h |  153 ++++++-----------------------------------------
+ 3 files changed, 122 insertions(+), 146 deletions(-)
 
 --- a/kernel/rcu/tree.c
 +++ b/kernel/rcu/tree.c
 @@ -56,6 +56,11 @@
  #include <linux/random.h>
- #include <linux/ftrace_event.h>
+ #include <linux/trace_events.h>
  #include <linux/suspend.h>
 +#include <linux/delay.h>
 +#include <linux/gfp.h>
@@ -35,7 +35,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  #include "tree.h"
  #include "rcu.h"
-@@ -2882,18 +2887,17 @@ static void
+@@ -2956,18 +2961,17 @@ static void
  /*
   * Do RCU core processing for the current CPU.
   */
@@ -56,9 +56,9 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  /*
   * Schedule RCU callback invocation.  If the specified type of RCU
   * does not support RCU priority boosting, just do a direct call,
-@@ -2905,18 +2909,105 @@ static void invoke_rcu_callbacks(struct
+@@ -2979,18 +2983,105 @@ static void invoke_rcu_callbacks(struct
  {
- 	if (unlikely(!ACCESS_ONCE(rcu_scheduler_fully_active)))
+ 	if (unlikely(!READ_ONCE(rcu_scheduler_fully_active)))
  		return;
 -	if (likely(!rsp->boost)) {
 -		rcu_do_batch(rsp, rdp);
@@ -168,9 +168,9 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  /*
   * Handle any core-RCU processing required by a call_rcu() invocation.
-@@ -4148,7 +4239,6 @@ void __init rcu_init(void)
- 	rcu_init_one(&rcu_bh_state, &rcu_bh_data);
- 	rcu_init_one(&rcu_sched_state, &rcu_sched_data);
+@@ -4609,7 +4700,6 @@ void __init rcu_init(void)
+ 	if (dump_tree)
+ 		rcu_dump_rcu_node_tree(&rcu_sched_state);
  	__rcu_init_preempt();
 -	open_softirq(RCU_SOFTIRQ, rcu_process_callbacks);
  
@@ -178,8 +178,8 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	 * We don't need protection against CPU-hotplug here because
 --- a/kernel/rcu/tree.h
 +++ b/kernel/rcu/tree.h
-@@ -530,12 +530,10 @@ extern struct rcu_state rcu_preempt_stat
- DECLARE_PER_CPU(struct rcu_data, rcu_preempt_data);
+@@ -563,12 +563,10 @@ extern struct rcu_state rcu_bh_state;
+ extern struct rcu_state rcu_preempt_state;
  #endif /* #ifdef CONFIG_PREEMPT_RCU */
  
 -#ifdef CONFIG_RCU_BOOST
@@ -191,7 +191,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  #ifndef RCU_TREE_NONCORE
  
-@@ -554,10 +552,9 @@ void call_rcu(struct rcu_head *head, voi
+@@ -588,10 +586,9 @@ void call_rcu(struct rcu_head *head, rcu
  static void __init __rcu_init_preempt(void);
  static void rcu_initiate_boost(struct rcu_node *rnp, unsigned long flags);
  static void rcu_preempt_boost_start_gp(struct rcu_node *rnp);
@@ -205,7 +205,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  #endif /* #ifdef CONFIG_RCU_BOOST */
 --- a/kernel/rcu/tree_plugin.h
 +++ b/kernel/rcu/tree_plugin.h
-@@ -24,28 +24,20 @@
+@@ -24,26 +24,10 @@
   *	   Paul E. McKenney <paulmck@linux.vnet.ibm.com>
   */
  
@@ -220,23 +220,34 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  #include "../locking/rtmutex_common.h"
  
-+#endif /* #ifdef CONFIG_RCU_BOOST */
-+
- /*
-  * Control variables for per-CPU and per-rcu_node kthreads.  These
-  * handle all flavors of RCU.
-  */
+-/*
+- * Control variables for per-CPU and per-rcu_node kthreads.  These
+- * handle all flavors of RCU.
+- */
 -static DEFINE_PER_CPU(struct task_struct *, rcu_cpu_kthread_task);
- DEFINE_PER_CPU(unsigned int, rcu_cpu_kthread_status);
- DEFINE_PER_CPU(unsigned int, rcu_cpu_kthread_loops);
- DEFINE_PER_CPU(char, rcu_cpu_has_work);
- 
--#endif /* #ifdef CONFIG_RCU_BOOST */
+-DEFINE_PER_CPU(unsigned int, rcu_cpu_kthread_status);
+-DEFINE_PER_CPU(unsigned int, rcu_cpu_kthread_loops);
+-DEFINE_PER_CPU(char, rcu_cpu_has_work);
 -
+ #else /* #ifdef CONFIG_RCU_BOOST */
+ 
+ /*
+@@ -56,6 +40,14 @@ DEFINE_PER_CPU(char, rcu_cpu_has_work);
+ 
+ #endif /* #else #ifdef CONFIG_RCU_BOOST */
+ 
++/*
++ * Control variables for per-CPU and per-rcu_node kthreads.  These
++ * handle all flavors of RCU.
++ */
++DEFINE_PER_CPU(unsigned int, rcu_cpu_kthread_status);
++DEFINE_PER_CPU(unsigned int, rcu_cpu_kthread_loops);
++DEFINE_PER_CPU(char, rcu_cpu_has_work);
++
  #ifdef CONFIG_RCU_NOCB_CPU
  static cpumask_var_t rcu_nocb_mask; /* CPUs to have callbacks offloaded. */
  static bool have_rcu_nocb_mask;	    /* Was rcu_nocb_mask allocated? */
-@@ -497,15 +489,6 @@ static void rcu_preempt_check_callbacks(
+@@ -646,15 +638,6 @@ static void rcu_preempt_check_callbacks(
  		t->rcu_read_unlock_special.b.need_qs = true;
  }
  
@@ -244,7 +255,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 -
 -static void rcu_preempt_do_callbacks(void)
 -{
--	rcu_do_batch(&rcu_preempt_state, this_cpu_ptr(&rcu_preempt_data));
+-	rcu_do_batch(rcu_state_p, this_cpu_ptr(rcu_data_p));
 -}
 -
 -#endif /* #ifdef CONFIG_RCU_BOOST */
@@ -252,7 +263,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  /*
   * Queue a preemptible-RCU callback for invocation after a grace period.
   */
-@@ -940,6 +923,19 @@ void exit_rcu(void)
+@@ -931,6 +914,19 @@ void exit_rcu(void)
  
  #endif /* #else #ifdef CONFIG_PREEMPT_RCU */
  
@@ -272,7 +283,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  #ifdef CONFIG_RCU_BOOST
  
  #include "../locking/rtmutex_common.h"
-@@ -971,16 +967,6 @@ static void rcu_initiate_boost_trace(str
+@@ -962,16 +958,6 @@ static void rcu_initiate_boost_trace(str
  
  #endif /* #else #ifdef CONFIG_RCU_TRACE */
  
@@ -289,7 +300,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  /*
   * Carry out RCU priority boosting on the task indicated by ->exp_tasks
   * or ->boost_tasks, advancing the pointer to the next task in the
-@@ -1126,23 +1112,6 @@ static void rcu_initiate_boost(struct rc
+@@ -1116,23 +1102,6 @@ static void rcu_initiate_boost(struct rc
  }
  
  /*
@@ -313,7 +324,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
   * Is the current CPU running the RCU-callbacks kthread?
   * Caller must have preemption disabled.
   */
-@@ -1197,67 +1166,6 @@ static int rcu_spawn_one_boost_kthread(s
+@@ -1187,67 +1156,6 @@ static int rcu_spawn_one_boost_kthread(s
  	return 0;
  }
  
@@ -381,7 +392,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  /*
   * Set the per-rcu_node kthread's affinity to cover all CPUs that are
   * served by the rcu_node in question.  The CPU hotplug lock is still
-@@ -1287,26 +1195,12 @@ static void rcu_boost_kthread_setaffinit
+@@ -1277,26 +1185,12 @@ static void rcu_boost_kthread_setaffinit
  	free_cpumask_var(cm);
  }
  
@@ -408,7 +419,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	rcu_for_each_leaf_node(rcu_state_p, rnp)
  		(void)rcu_spawn_one_boost_kthread(rcu_state_p, rnp);
  }
-@@ -1329,11 +1223,6 @@ static void rcu_initiate_boost(struct rc
+@@ -1319,11 +1213,6 @@ static void rcu_initiate_boost(struct rc
  	raw_spin_unlock_irqrestore(&rnp->lock, flags);
  }
  

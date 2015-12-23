@@ -28,31 +28,31 @@ To avoid:
 
 Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 ---
- include/linux/cgroup.h |    2 ++
- kernel/cgroup.c        |    9 +++++----
+ include/linux/cgroup-defs.h |    2 ++
+ kernel/cgroup.c             |    9 +++++----
  2 files changed, 7 insertions(+), 4 deletions(-)
 
---- a/include/linux/cgroup.h
-+++ b/include/linux/cgroup.h
-@@ -22,6 +22,7 @@
- #include <linux/seq_file.h>
- #include <linux/kernfs.h>
- #include <linux/wait.h>
+--- a/include/linux/cgroup-defs.h
++++ b/include/linux/cgroup-defs.h
+@@ -16,6 +16,7 @@
+ #include <linux/percpu-refcount.h>
+ #include <linux/percpu-rwsem.h>
+ #include <linux/workqueue.h>
 +#include <linux/work-simple.h>
  
  #ifdef CONFIG_CGROUPS
  
-@@ -91,6 +92,7 @@ struct cgroup_subsys_state {
+@@ -136,6 +137,7 @@ struct cgroup_subsys_state {
  	/* percpu_ref killing and RCU release */
  	struct rcu_head rcu_head;
  	struct work_struct destroy_work;
 +	struct swork_event destroy_swork;
  };
  
- /* bits in struct cgroup_subsys_state flags field */
+ /*
 --- a/kernel/cgroup.c
 +++ b/kernel/cgroup.c
-@@ -4422,10 +4422,10 @@ static void css_free_rcu_fn(struct rcu_h
+@@ -4724,10 +4724,10 @@ static void css_free_rcu_fn(struct rcu_h
  	queue_work(cgroup_destroy_wq, &css->destroy_work);
  }
  
@@ -65,7 +65,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	struct cgroup_subsys *ss = css->ss;
  	struct cgroup *cgrp = css->cgroup;
  
-@@ -4464,8 +4464,8 @@ static void css_release(struct percpu_re
+@@ -4766,8 +4766,8 @@ static void css_release(struct percpu_re
  	struct cgroup_subsys_state *css =
  		container_of(ref, struct cgroup_subsys_state, refcnt);
  
@@ -76,7 +76,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  }
  
  static void init_and_link_css(struct cgroup_subsys_state *css,
-@@ -5069,6 +5069,7 @@ static int __init cgroup_wq_init(void)
+@@ -5363,6 +5363,7 @@ static int __init cgroup_wq_init(void)
  	 */
  	cgroup_destroy_wq = alloc_workqueue("cgroup_destroy", 0, 1);
  	BUG_ON(!cgroup_destroy_wq);

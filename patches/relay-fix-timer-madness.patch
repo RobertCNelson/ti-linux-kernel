@@ -15,7 +15,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/kernel/relay.c
 +++ b/kernel/relay.c
-@@ -339,6 +339,10 @@ static void wakeup_readers(unsigned long
+@@ -336,6 +336,10 @@ static void wakeup_readers(unsigned long
  {
  	struct rchan_buf *buf = (struct rchan_buf *)data;
  	wake_up_interruptible(&buf->read_wait);
@@ -26,7 +26,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /**
-@@ -356,6 +360,7 @@ static void __relay_reset(struct rchan_b
+@@ -353,6 +357,7 @@ static void __relay_reset(struct rchan_b
  		init_waitqueue_head(&buf->read_wait);
  		kref_init(&buf->kref);
  		setup_timer(&buf->timer, wakeup_readers, (unsigned long)buf);
@@ -34,7 +34,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	} else
  		del_timer_sync(&buf->timer);
  
-@@ -739,15 +744,6 @@ size_t relay_switch_subbuf(struct rchan_
+@@ -736,15 +741,6 @@ size_t relay_switch_subbuf(struct rchan_
  		else
  			buf->early_bytes += buf->chan->subbuf_size -
  					    buf->padding[old_subbuf];

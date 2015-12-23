@@ -17,9 +17,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/drivers/tty/serial/8250/8250_core.c
 +++ b/drivers/tty/serial/8250/8250_core.c
-@@ -80,7 +80,16 @@ static unsigned int skip_txen_test; /* f
- #define DEBUG_INTR(fmt...)	do { } while (0)
- #endif
+@@ -58,7 +58,16 @@ static struct uart_driver serial8250_reg
+ 
+ static unsigned int skip_txen_test; /* force skip of txen test at init time */
  
 -#define PASS_LIMIT	512
 +/*
@@ -33,5 +33,5 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +# define PASS_LIMIT	512
 +#endif
  
- #define BOTH_EMPTY 	(UART_LSR_TEMT | UART_LSR_THRE)
- 
+ #include <asm/serial.h>
+ /*

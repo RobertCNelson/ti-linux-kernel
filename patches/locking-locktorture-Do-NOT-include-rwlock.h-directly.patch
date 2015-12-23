@@ -16,9 +16,9 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/kernel/locking/locktorture.c
 +++ b/kernel/locking/locktorture.c
-@@ -24,7 +24,6 @@
- #include <linux/module.h>
+@@ -26,7 +26,6 @@
  #include <linux/kthread.h>
+ #include <linux/sched/rt.h>
  #include <linux/spinlock.h>
 -#include <linux/rwlock.h>
  #include <linux/mutex.h>

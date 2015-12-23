@@ -21,7 +21,7 @@ Signed-off-by: Peter Zijlstra <a.p.zijlstra@chello.nl>
 +++ b/kernel/ksysfs.c
 @@ -136,6 +136,15 @@ KERNEL_ATTR_RO(vmcoreinfo);
  
- #endif /* CONFIG_KEXEC */
+ #endif /* CONFIG_KEXEC_CORE */
  
 +#if defined(CONFIG_PREEMPT_RT_FULL)
 +static ssize_t  realtime_show(struct kobject *kobj,

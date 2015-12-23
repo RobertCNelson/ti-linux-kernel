@@ -23,7 +23,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/drivers/net/ethernet/atheros/atl1c/atl1c_main.c
 +++ b/drivers/net/ethernet/atheros/atl1c/atl1c_main.c
-@@ -2213,11 +2213,7 @@ static netdev_tx_t atl1c_xmit_frame(stru
+@@ -2221,11 +2221,7 @@ static netdev_tx_t atl1c_xmit_frame(stru
  	}
  
  	tpd_req = atl1c_cal_tpd_req(skb);

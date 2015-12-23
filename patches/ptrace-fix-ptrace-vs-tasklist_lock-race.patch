@@ -25,12 +25,12 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 ---
  include/linux/sched.h |   48 +++++++++++++++++++++++++++++++++++++++++++++---
  kernel/ptrace.c       |    7 ++++++-
- kernel/sched/core.c   |   19 ++++++++++++++++---
- 3 files changed, 67 insertions(+), 7 deletions(-)
+ kernel/sched/core.c   |   17 +++++++++++++++--
+ 3 files changed, 66 insertions(+), 6 deletions(-)
 
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -234,10 +234,7 @@ extern char ___assert_task_state[1 - 2*!
+@@ -242,10 +242,7 @@ extern char ___assert_task_state[1 - 2*!
  				 TASK_UNINTERRUPTIBLE | __TASK_STOPPED | \
  				 __TASK_TRACED | EXIT_ZOMBIE | EXIT_DEAD)
  
@@ -40,8 +40,8 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 -			((task->state & (__TASK_STOPPED | __TASK_TRACED)) != 0)
  #define task_contributes_to_load(task)	\
  				((task->state & TASK_UNINTERRUPTIBLE) != 0 && \
- 				 (task->flags & PF_FROZEN) == 0)
-@@ -2918,6 +2915,51 @@ static inline int signal_pending_state(l
+ 				 (task->flags & PF_FROZEN) == 0 && \
+@@ -2981,6 +2978,51 @@ static inline int signal_pending_state(l
  	return (state & TASK_INTERRUPTIBLE) || __fatal_signal_pending(p);
  }
  
@@ -111,9 +111,9 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	spin_unlock_irq(&task->sighand->siglock);
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -1219,6 +1219,18 @@ struct migration_arg {
- 
- static int migration_cpu_stop(void *data);
+@@ -1435,6 +1435,18 @@ int migrate_swap(struct task_struct *cur
+ 	return ret;
+ }
  
 +static bool check_task_state(struct task_struct *p, long match_state)
 +{
@@ -130,7 +130,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  /*
   * wait_task_inactive - wait for a thread to unschedule.
   *
-@@ -1263,7 +1275,7 @@ unsigned long wait_task_inactive(struct
+@@ -1479,7 +1491,7 @@ unsigned long wait_task_inactive(struct
  		 * is actually now running somewhere else!
  		 */
  		while (task_running(rq, p)) {
@@ -139,7 +139,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  				return 0;
  			cpu_relax();
  		}
-@@ -1278,7 +1290,8 @@ unsigned long wait_task_inactive(struct
+@@ -1494,7 +1506,8 @@ unsigned long wait_task_inactive(struct
  		running = task_running(rq, p);
  		queued = task_on_rq_queued(p);
  		ncsw = 0;
@@ -149,12 +149,3 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  			ncsw = p->nvcsw | LONG_MIN; /* sets MSB */
  		task_rq_unlock(rq, p, &flags);
  
-@@ -1833,7 +1846,7 @@ static void try_to_wake_up_local(struct
-  */
- int wake_up_process(struct task_struct *p)
- {
--	WARN_ON(task_is_stopped_or_traced(p));
-+	WARN_ON(__task_is_stopped_or_traced(p));
- 	return try_to_wake_up(p, TASK_NORMAL, 0);
- }
- EXPORT_SYMBOL(wake_up_process);

@@ -14,7 +14,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/fs/buffer.c
 +++ b/fs/buffer.c
-@@ -301,8 +301,7 @@ static void end_buffer_async_read(struct
+@@ -305,8 +305,7 @@ static void end_buffer_async_read(struct
  	 * decide that the page is now completely done.
  	 */
  	first = page_buffers(page);
@@ -24,7 +24,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	clear_buffer_async_read(bh);
  	unlock_buffer(bh);
  	tmp = bh;
-@@ -315,8 +314,7 @@ static void end_buffer_async_read(struct
+@@ -319,8 +318,7 @@ static void end_buffer_async_read(struct
  		}
  		tmp = tmp->b_this_page;
  	} while (tmp != bh);
@@ -34,7 +34,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	/*
  	 * If none of the buffers had errors and they are all
-@@ -328,9 +326,7 @@ static void end_buffer_async_read(struct
+@@ -332,9 +330,7 @@ static void end_buffer_async_read(struct
  	return;
  
  still_busy:
@@ -45,7 +45,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /*
-@@ -358,8 +354,7 @@ void end_buffer_async_write(struct buffe
+@@ -362,8 +358,7 @@ void end_buffer_async_write(struct buffe
  	}
  
  	first = page_buffers(page);
@@ -55,7 +55,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	clear_buffer_async_write(bh);
  	unlock_buffer(bh);
-@@ -371,15 +366,12 @@ void end_buffer_async_write(struct buffe
+@@ -375,15 +370,12 @@ void end_buffer_async_write(struct buffe
  		}
  		tmp = tmp->b_this_page;
  	}

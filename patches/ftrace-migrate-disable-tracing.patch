@@ -4,14 +4,14 @@ Subject: trace: Add migrate-disabled counter to tracing output
 
 Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 ---
- include/linux/ftrace_event.h |    2 ++
+ include/linux/trace_events.h |    2 ++
  kernel/trace/trace.c         |    9 ++++++---
  kernel/trace/trace_events.c  |    2 ++
  kernel/trace/trace_output.c  |    5 +++++
  4 files changed, 15 insertions(+), 3 deletions(-)
 
---- a/include/linux/ftrace_event.h
-+++ b/include/linux/ftrace_event.h
+--- a/include/linux/trace_events.h
++++ b/include/linux/trace_events.h
 @@ -66,6 +66,8 @@ struct trace_entry {
  	unsigned char		flags;
  	unsigned char		preempt_count;
@@ -20,10 +20,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +	unsigned short		padding;
  };
  
- #define FTRACE_MAX_EVENT						\
+ #define TRACE_EVENT_TYPE_MAX						\
 --- a/kernel/trace/trace.c
 +++ b/kernel/trace/trace.c
-@@ -1641,6 +1641,8 @@ tracing_generic_entry_update(struct trac
+@@ -1663,6 +1663,8 @@ tracing_generic_entry_update(struct trac
  		((pc & SOFTIRQ_MASK) ? TRACE_FLAG_SOFTIRQ : 0) |
  		(tif_need_resched() ? TRACE_FLAG_NEED_RESCHED : 0) |
  		(test_preempt_need_resched() ? TRACE_FLAG_PREEMPT_RESCHED : 0);
@@ -32,7 +32,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  EXPORT_SYMBOL_GPL(tracing_generic_entry_update);
  
-@@ -2563,9 +2565,10 @@ static void print_lat_help_header(struct
+@@ -2560,9 +2562,10 @@ static void print_lat_help_header(struct
  		    "#                | / _----=> need-resched    \n"
  		    "#                || / _---=> hardirq/softirq \n"
  		    "#                ||| / _--=> preempt-depth   \n"
@@ -48,7 +48,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  static void print_event_info(struct trace_buffer *buf, struct seq_file *m)
 --- a/kernel/trace/trace_events.c
 +++ b/kernel/trace/trace_events.c
-@@ -162,6 +162,8 @@ static int trace_define_common_fields(vo
+@@ -186,6 +186,8 @@ static int trace_define_common_fields(vo
  	__common_field(unsigned char, flags);
  	__common_field(unsigned char, preempt_count);
  	__common_field(int, pid);
@@ -59,7 +59,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
 --- a/kernel/trace/trace_output.c
 +++ b/kernel/trace/trace_output.c
-@@ -472,6 +472,11 @@ int trace_print_lat_fmt(struct trace_seq
+@@ -428,6 +428,11 @@ int trace_print_lat_fmt(struct trace_seq
  	else
  		trace_seq_putc(s, '.');
  

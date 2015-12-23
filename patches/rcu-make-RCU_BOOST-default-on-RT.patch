@@ -15,10 +15,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -664,7 +664,7 @@ config TREE_RCU_TRACE
+@@ -641,7 +641,7 @@ config TREE_RCU_TRACE
  config RCU_BOOST
  	bool "Enable RCU priority boosting"
- 	depends on RT_MUTEXES && PREEMPT_RCU
+ 	depends on RT_MUTEXES && PREEMPT_RCU && RCU_EXPERT
 -	default n
 +	default y if PREEMPT_RT_FULL
  	help

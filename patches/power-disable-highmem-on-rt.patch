@@ -11,7 +11,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/arch/powerpc/Kconfig
 +++ b/arch/powerpc/Kconfig
-@@ -313,7 +313,7 @@ menu "Kernel options"
+@@ -320,7 +320,7 @@ menu "Kernel options"
  
  config HIGHMEM
  	bool "High memory support"

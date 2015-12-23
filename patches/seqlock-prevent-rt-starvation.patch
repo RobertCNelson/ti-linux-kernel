@@ -28,7 +28,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/include/linux/seqlock.h
 +++ b/include/linux/seqlock.h
-@@ -219,20 +219,30 @@ static inline int read_seqcount_retry(co
+@@ -220,20 +220,30 @@ static inline int read_seqcount_retry(co
  	return __read_seqcount_retry(s, start);
  }
  
@@ -60,10 +60,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +	preempt_enable_rt();
 +}
 +
- /*
-  * raw_write_seqcount_latch - redirect readers to even/odd copy
+ /**
+  * raw_write_seqcount_barrier - do a seq write barrier
   * @s: pointer to seqcount_t
-@@ -305,10 +315,32 @@ typedef struct {
+@@ -425,10 +435,32 @@ typedef struct {
  /*
   * Read side functions for starting and finalizing a read side section.
   */
@@ -96,7 +96,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  static inline unsigned read_seqretry(const seqlock_t *sl, unsigned start)
  {
-@@ -323,36 +355,36 @@ static inline unsigned read_seqretry(con
+@@ -443,36 +475,36 @@ static inline unsigned read_seqretry(con
  static inline void write_seqlock(seqlock_t *sl)
  {
  	spin_lock(&sl->lock);
@@ -139,7 +139,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	spin_unlock_irq(&sl->lock);
  }
  
-@@ -361,7 +393,7 @@ static inline unsigned long __write_seql
+@@ -481,7 +513,7 @@ static inline unsigned long __write_seql
  	unsigned long flags;
  
  	spin_lock_irqsave(&sl->lock, flags);
@@ -148,7 +148,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	return flags;
  }
  
-@@ -371,7 +403,7 @@ static inline unsigned long __write_seql
+@@ -491,7 +523,7 @@ static inline unsigned long __write_seql
  static inline void
  write_sequnlock_irqrestore(seqlock_t *sl, unsigned long flags)
  {
@@ -159,7 +159,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
 --- a/include/net/dst.h
 +++ b/include/net/dst.h
-@@ -403,7 +403,7 @@ static inline void dst_confirm(struct ds
+@@ -437,7 +437,7 @@ static inline void dst_confirm(struct ds
  static inline int dst_neigh_output(struct dst_entry *dst, struct neighbour *n,
  				   struct sk_buff *skb)
  {
@@ -170,7 +170,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		unsigned long now = jiffies;
 --- a/include/net/neighbour.h
 +++ b/include/net/neighbour.h
-@@ -445,7 +445,7 @@ static inline int neigh_hh_bridge(struct
+@@ -446,7 +446,7 @@ static inline int neigh_hh_bridge(struct
  }
  #endif
  
@@ -179,7 +179,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  {
  	unsigned int seq;
  	int hh_len;
-@@ -500,7 +500,7 @@ struct neighbour_cb {
+@@ -501,7 +501,7 @@ struct neighbour_cb {
  
  #define NEIGH_CB(skb)	((struct neighbour_cb *)(skb)->cb)
  

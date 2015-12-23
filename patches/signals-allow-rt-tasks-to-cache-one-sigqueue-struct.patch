@@ -12,12 +12,12 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  include/linux/signal.h |    1 
  kernel/exit.c          |    2 -
  kernel/fork.c          |    1 
- kernel/signal.c        |   84 ++++++++++++++++++++++++++++++++++++++++++++++---
- 5 files changed, 84 insertions(+), 5 deletions(-)
+ kernel/signal.c        |   69 ++++++++++++++++++++++++++++++++++++++++++++++---
+ 5 files changed, 69 insertions(+), 5 deletions(-)
 
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -1527,6 +1527,7 @@ struct task_struct {
+@@ -1566,6 +1566,7 @@ struct task_struct {
  /* signal handlers */
  	struct signal_struct *signal;
  	struct sighand_struct *sighand;
@@ -48,7 +48,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
 --- a/kernel/fork.c
 +++ b/kernel/fork.c
-@@ -1338,6 +1338,7 @@ static struct task_struct *copy_process(
+@@ -1343,6 +1343,7 @@ static struct task_struct *copy_process(
  	spin_lock_init(&p->alloc_lock);
  
  	init_sigpending(&p->pending);
@@ -66,11 +66,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #include <linux/fs.h>
  #include <linux/tty.h>
  #include <linux/binfmts.h>
-@@ -352,13 +353,45 @@ static bool task_participate_group_stop(
+@@ -352,13 +353,30 @@ static bool task_participate_group_stop(
  	return false;
  }
  
-+#ifdef __HAVE_ARCH_CMPXCHG
 +static inline struct sigqueue *get_task_cache(struct task_struct *t)
 +{
 +	struct sigqueue *q = t->sigqueue_cache;
@@ -87,20 +86,6 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +	return 1;
 +}
 +
-+#else
-+
-+static inline struct sigqueue *get_task_cache(struct task_struct *t)
-+{
-+	return NULL;
-+}
-+
-+static inline int put_task_cache(struct task_struct *t, struct sigqueue *q)
-+{
-+	return 1;
-+}
-+
-+#endif
-+
  /*
   * allocate a new signal queue record
   * - this may be called without locks if and only if t == current, otherwise an
@@ -113,7 +98,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  {
  	struct sigqueue *q = NULL;
  	struct user_struct *user;
-@@ -375,7 +408,10 @@ static struct sigqueue *
+@@ -375,7 +393,10 @@ static struct sigqueue *
  	if (override_rlimit ||
  	    atomic_read(&user->sigpending) <=
  			task_rlimit(t, RLIMIT_SIGPENDING)) {
@@ -125,7 +110,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	} else {
  		print_dropped_signal(sig);
  	}
-@@ -392,6 +428,13 @@ static struct sigqueue *
+@@ -392,6 +413,13 @@ static struct sigqueue *
  	return q;
  }
  
@@ -139,7 +124,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  static void __sigqueue_free(struct sigqueue *q)
  {
  	if (q->flags & SIGQUEUE_PREALLOC)
-@@ -401,6 +444,21 @@ static void __sigqueue_free(struct sigqu
+@@ -401,6 +429,21 @@ static void __sigqueue_free(struct sigqu
  	kmem_cache_free(sigqueue_cachep, q);
  }
  
@@ -161,7 +146,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  void flush_sigqueue(struct sigpending *queue)
  {
  	struct sigqueue *q;
-@@ -414,6 +472,21 @@ void flush_sigqueue(struct sigpending *q
+@@ -414,6 +457,21 @@ void flush_sigqueue(struct sigpending *q
  }
  
  /*
@@ -180,10 +165,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +}
 +
 +/*
-  * Flush all pending signals for a task.
+  * Flush all pending signals for this kthread.
   */
- void __flush_signals(struct task_struct *t)
-@@ -565,7 +638,7 @@ static void collect_signal(int sig, stru
+ void flush_signals(struct task_struct *t)
+@@ -525,7 +583,7 @@ static void collect_signal(int sig, stru
  still_pending:
  		list_del_init(&first->list);
  		copy_siginfo(info, &first->info);
@@ -192,7 +177,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	} else {
  		/*
  		 * Ok, it wasn't in the queue.  This must be
-@@ -611,6 +684,8 @@ int dequeue_signal(struct task_struct *t
+@@ -560,6 +618,8 @@ int dequeue_signal(struct task_struct *t
  {
  	int signr;
  
@@ -201,7 +186,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	/* We only dequeue private signals from ourselves, we don't let
  	 * signalfd steal them
  	 */
-@@ -1536,7 +1611,8 @@ EXPORT_SYMBOL(kill_pid);
+@@ -1485,7 +1545,8 @@ EXPORT_SYMBOL(kill_pid);
   */
  struct sigqueue *sigqueue_alloc(void)
  {

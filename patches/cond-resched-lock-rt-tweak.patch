@@ -7,12 +7,12 @@ locked. Update PREEMPT_LOCK_OFFSET for that case.
 
 Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 ---
- include/linux/preempt_mask.h |    4 ++++
+ include/linux/preempt.h |    4 ++++
  1 file changed, 4 insertions(+)
 
---- a/include/linux/preempt_mask.h
-+++ b/include/linux/preempt_mask.h
-@@ -83,7 +83,11 @@
+--- a/include/linux/preempt.h
++++ b/include/linux/preempt.h
+@@ -91,7 +91,11 @@
  /*
   * The preempt_count offset after spin_lock()
   */

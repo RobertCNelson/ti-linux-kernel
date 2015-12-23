@@ -15,7 +15,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/kernel/futex.c
 +++ b/kernel/futex.c
-@@ -1717,6 +1717,16 @@ static int futex_requeue(u32 __user *uad
+@@ -1812,6 +1812,16 @@ static int futex_requeue(u32 __user *uad
  				requeue_pi_wake_futex(this, &key2, hb2);
  				drop_count++;
  				continue;
@@ -32,7 +32,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  			} else if (ret) {
  				/* -EDEADLK */
  				this->pi_state = NULL;
-@@ -2576,7 +2586,7 @@ static int futex_wait_requeue_pi(u32 __u
+@@ -2672,7 +2682,7 @@ static int futex_wait_requeue_pi(u32 __u
  	struct hrtimer_sleeper timeout, *to = NULL;
  	struct rt_mutex_waiter rt_waiter;
  	struct rt_mutex *pi_mutex = NULL;
@@ -41,7 +41,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	union futex_key key2 = FUTEX_KEY_INIT;
  	struct futex_q q = futex_q_init;
  	int res, ret;
-@@ -2635,20 +2645,55 @@ static int futex_wait_requeue_pi(u32 __u
+@@ -2731,20 +2741,55 @@ static int futex_wait_requeue_pi(u32 __u
  	/* Queue the futex_q, drop the hb lock, wait for wakeup. */
  	futex_wait_queue_me(hb, &q, to);
  
@@ -108,7 +108,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	/* Check if the requeue code acquired the second futex for us. */
  	if (!q.rt_waiter) {
-@@ -2657,9 +2702,10 @@ static int futex_wait_requeue_pi(u32 __u
+@@ -2753,9 +2798,10 @@ static int futex_wait_requeue_pi(u32 __u
  		 * did a lock-steal - fix up the PI-state in that case.
  		 */
  		if (q.pi_state && (q.pi_state->owner != current)) {
@@ -121,7 +121,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		}
  	} else {
  		/*
-@@ -2672,7 +2718,8 @@ static int futex_wait_requeue_pi(u32 __u
+@@ -2768,7 +2814,8 @@ static int futex_wait_requeue_pi(u32 __u
  		ret = rt_mutex_finish_proxy_lock(pi_mutex, to, &rt_waiter);
  		debug_rt_mutex_free_waiter(&rt_waiter);
  
@@ -143,9 +143,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +}
 +
  /*
-  * We can speed up the acquire/release, if the architecture
-  * supports cmpxchg and if there's no debugging state to be set up
-@@ -342,7 +347,8 @@ int max_lock_depth = 1024;
+  * We can speed up the acquire/release, if there's no debugging state to be
+  * set up.
+@@ -355,7 +360,8 @@ int max_lock_depth = 1024;
  
  static inline struct rt_mutex *task_blocked_on_lock(struct task_struct *p)
  {
@@ -155,7 +155,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /*
-@@ -479,7 +485,7 @@ static int rt_mutex_adjust_prio_chain(st
+@@ -492,7 +498,7 @@ static int rt_mutex_adjust_prio_chain(st
  	 * reached or the state of the chain has changed while we
  	 * dropped the locks.
  	 */
@@ -164,7 +164,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		goto out_unlock_pi;
  
  	/*
-@@ -896,6 +902,23 @@ static int task_blocks_on_rt_mutex(struc
+@@ -909,6 +915,23 @@ static int task_blocks_on_rt_mutex(struc
  		return -EDEADLK;
  
  	raw_spin_lock_irqsave(&task->pi_lock, flags);
@@ -188,7 +188,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	__rt_mutex_adjust_prio(task);
  	waiter->task = task;
  	waiter->lock = lock;
-@@ -919,7 +942,7 @@ static int task_blocks_on_rt_mutex(struc
+@@ -932,7 +955,7 @@ static int task_blocks_on_rt_mutex(struc
  		rt_mutex_enqueue_pi(owner, waiter);
  
  		__rt_mutex_adjust_prio(owner);
@@ -197,7 +197,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  			chain_walk = 1;
  	} else if (rt_mutex_cond_detect_deadlock(waiter, chwalk)) {
  		chain_walk = 1;
-@@ -1011,7 +1034,7 @@ static void remove_waiter(struct rt_mute
+@@ -1017,7 +1040,7 @@ static void remove_waiter(struct rt_mute
  {
  	bool is_top_waiter = (waiter == rt_mutex_top_waiter(lock));
  	struct task_struct *owner = rt_mutex_owner(lock);
@@ -206,7 +206,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	unsigned long flags;
  
  	raw_spin_lock_irqsave(&current->pi_lock, flags);
-@@ -1036,7 +1059,8 @@ static void remove_waiter(struct rt_mute
+@@ -1042,7 +1065,8 @@ static void remove_waiter(struct rt_mute
  	__rt_mutex_adjust_prio(owner);
  
  	/* Store the lock on which owner is blocked or NULL */
@@ -216,7 +216,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	raw_spin_unlock_irqrestore(&owner->pi_lock, flags);
  
-@@ -1072,7 +1096,7 @@ void rt_mutex_adjust_pi(struct task_stru
+@@ -1078,7 +1102,7 @@ void rt_mutex_adjust_pi(struct task_stru
  	raw_spin_lock_irqsave(&task->pi_lock, flags);
  
  	waiter = task->pi_blocked_on;
@@ -227,7 +227,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		return;
 --- a/kernel/locking/rtmutex_common.h
 +++ b/kernel/locking/rtmutex_common.h
-@@ -119,6 +119,8 @@ enum rtmutex_chainwalk {
+@@ -97,6 +97,8 @@ enum rtmutex_chainwalk {
  /*
   * PI-futex support (proxy locking functions, etc.):
   */

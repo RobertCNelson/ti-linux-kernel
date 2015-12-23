@@ -9,12 +9,12 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 ---
  include/linux/printk.h |    2 +
  kernel/printk/printk.c |   76 ++++++++++++++++++++++++++++++++++++-------------
- kernel/watchdog.c      |   14 +++++++--
- 3 files changed, 70 insertions(+), 22 deletions(-)
+ kernel/watchdog.c      |   10 ++++++
+ 3 files changed, 68 insertions(+), 20 deletions(-)
 
 --- a/include/linux/printk.h
 +++ b/include/linux/printk.h
-@@ -115,9 +115,11 @@ int no_printk(const char *fmt, ...)
+@@ -117,9 +117,11 @@ int no_printk(const char *fmt, ...)
  #ifdef CONFIG_EARLY_PRINTK
  extern asmlinkage __printf(1, 2)
  void early_printk(const char *fmt, ...);
@@ -25,10 +25,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +static inline void printk_kill(void) { }
  #endif
  
- typedef int(*printk_func_t)(const char *fmt, va_list args);
+ typedef __printf(1, 0) int (*printk_func_t)(const char *fmt, va_list args);
 --- a/kernel/printk/printk.c
 +++ b/kernel/printk/printk.c
-@@ -1607,6 +1607,55 @@ static size_t cont_print_text(char *text
+@@ -1656,6 +1656,55 @@ static size_t cont_print_text(char *text
  	return textlen;
  }
  
@@ -84,7 +84,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  asmlinkage int vprintk_emit(int facility, int level,
  			    const char *dict, size_t dictlen,
  			    const char *fmt, va_list args)
-@@ -1623,6 +1672,13 @@ asmlinkage int vprintk_emit(int facility
+@@ -1672,6 +1721,13 @@ asmlinkage int vprintk_emit(int facility
  	/* cpu currently holding logbuf_lock in this function */
  	static unsigned int logbuf_cpu = UINT_MAX;
  
@@ -98,7 +98,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	if (level == LOGLEVEL_SCHED) {
  		level = LOGLEVEL_DEFAULT;
  		in_sched = true;
-@@ -1902,26 +1958,6 @@ DEFINE_PER_CPU(printk_func_t, printk_fun
+@@ -1961,26 +2017,6 @@ DEFINE_PER_CPU(printk_func_t, printk_fun
  
  #endif /* CONFIG_PRINTK */
  
@@ -127,7 +127,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  {
 --- a/kernel/watchdog.c
 +++ b/kernel/watchdog.c
-@@ -262,6 +262,8 @@ static int is_softlockup(unsigned long t
+@@ -299,6 +299,8 @@ static int is_softlockup(unsigned long t
  
  #ifdef CONFIG_HARDLOCKUP_DETECTOR
  
@@ -136,7 +136,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  static struct perf_event_attr wd_hw_attr = {
  	.type		= PERF_TYPE_HARDWARE,
  	.config		= PERF_COUNT_HW_CPU_CYCLES,
-@@ -295,13 +297,21 @@ static void watchdog_overflow_callback(s
+@@ -333,6 +335,13 @@ static void watchdog_overflow_callback(s
  		/* only print hardlockups once */
  		if (__this_cpu_read(hard_watchdog_warn) == true)
  			return;
@@ -145,18 +145,16 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +		 * lock up in printk() and kill console logging:
 +		 */
 +		printk_kill();
++
++		raw_spin_lock(&watchdog_output_lock);
  
--		if (hardlockup_panic)
-+		if (hardlockup_panic) {
- 			panic("Watchdog detected hard LOCKUP on cpu %d",
- 			      this_cpu);
--		else
-+		} else {
-+			raw_spin_lock(&watchdog_output_lock);
- 			WARN(1, "Watchdog detected hard LOCKUP on cpu %d",
- 			     this_cpu);
-+			raw_spin_unlock(&watchdog_output_lock);
-+		}
+ 		pr_emerg("Watchdog detected hard LOCKUP on cpu %d", this_cpu);
+ 		print_modules();
+@@ -350,6 +359,7 @@ static void watchdog_overflow_callback(s
+ 				!test_and_set_bit(0, &hardlockup_allcpu_dumped))
+ 			trigger_allbutself_cpu_backtrace();
  
- 		__this_cpu_write(hard_watchdog_warn, true);
- 		return;
++		raw_spin_unlock(&watchdog_output_lock);
+ 		if (hardlockup_panic)
+ 			panic("Hard LOCKUP");
+ 

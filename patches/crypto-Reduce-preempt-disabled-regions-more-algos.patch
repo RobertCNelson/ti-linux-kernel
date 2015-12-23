@@ -43,7 +43,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/arch/x86/crypto/cast5_avx_glue.c
 +++ b/arch/x86/crypto/cast5_avx_glue.c
-@@ -60,7 +60,7 @@ static inline void cast5_fpu_end(bool fp
+@@ -59,7 +59,7 @@ static inline void cast5_fpu_end(bool fp
  static int ecb_crypt(struct blkcipher_desc *desc, struct blkcipher_walk *walk,
  		     bool enc)
  {
@@ -52,7 +52,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	struct cast5_ctx *ctx = crypto_blkcipher_ctx(desc->tfm);
  	const unsigned int bsize = CAST5_BLOCK_SIZE;
  	unsigned int nbytes;
-@@ -76,7 +76,7 @@ static int ecb_crypt(struct blkcipher_de
+@@ -75,7 +75,7 @@ static int ecb_crypt(struct blkcipher_de
  		u8 *wsrc = walk->src.virt.addr;
  		u8 *wdst = walk->dst.virt.addr;
  
@@ -61,7 +61,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  		/* Process multi-block batch */
  		if (nbytes >= bsize * CAST5_PARALLEL_BLOCKS) {
-@@ -104,10 +104,9 @@ static int ecb_crypt(struct blkcipher_de
+@@ -103,10 +103,9 @@ static int ecb_crypt(struct blkcipher_de
  		} while (nbytes >= bsize);
  
  done:
@@ -73,7 +73,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	return err;
  }
  
-@@ -228,7 +227,7 @@ static unsigned int __cbc_decrypt(struct
+@@ -227,7 +226,7 @@ static unsigned int __cbc_decrypt(struct
  static int cbc_decrypt(struct blkcipher_desc *desc, struct scatterlist *dst,
  		       struct scatterlist *src, unsigned int nbytes)
  {
@@ -82,7 +82,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	struct blkcipher_walk walk;
  	int err;
  
-@@ -237,12 +236,11 @@ static int cbc_decrypt(struct blkcipher_
+@@ -236,12 +235,11 @@ static int cbc_decrypt(struct blkcipher_
  	desc->flags &= ~CRYPTO_TFM_REQ_MAY_SLEEP;
  
  	while ((nbytes = walk.nbytes)) {
@@ -97,7 +97,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	return err;
  }
  
-@@ -312,7 +310,7 @@ static unsigned int __ctr_crypt(struct b
+@@ -311,7 +309,7 @@ static unsigned int __ctr_crypt(struct b
  static int ctr_crypt(struct blkcipher_desc *desc, struct scatterlist *dst,
  		     struct scatterlist *src, unsigned int nbytes)
  {
@@ -106,7 +106,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	struct blkcipher_walk walk;
  	int err;
  
-@@ -321,13 +319,12 @@ static int ctr_crypt(struct blkcipher_de
+@@ -320,13 +318,12 @@ static int ctr_crypt(struct blkcipher_de
  	desc->flags &= ~CRYPTO_TFM_REQ_MAY_SLEEP;
  
  	while ((nbytes = walk.nbytes) >= CAST5_BLOCK_SIZE) {

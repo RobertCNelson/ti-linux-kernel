@@ -34,14 +34,14 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  include/linux/preempt.h |    9 +++
  include/linux/sched.h   |   29 +++++++++-
  include/linux/smp.h     |    3 +
- kernel/sched/core.c     |  131 ++++++++++++++++++++++++++++++++++++++++++++++--
+ kernel/sched/core.c     |  132 +++++++++++++++++++++++++++++++++++++++++++++++-
  kernel/sched/debug.c    |    7 ++
  lib/smp_processor_id.c  |    5 +
- 7 files changed, 178 insertions(+), 9 deletions(-)
+ 7 files changed, 182 insertions(+), 6 deletions(-)
 
 --- a/include/linux/cpu.h
 +++ b/include/linux/cpu.h
-@@ -221,6 +221,9 @@ static inline void smpboot_thread_init(v
+@@ -222,6 +222,9 @@ static inline void smpboot_thread_init(v
  #endif /* CONFIG_SMP */
  extern struct bus_type cpu_subsys;
  
@@ -53,7 +53,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
 --- a/include/linux/preempt.h
 +++ b/include/linux/preempt.h
-@@ -154,11 +154,20 @@ do { \
+@@ -257,11 +257,20 @@ do { \
  # define preempt_enable_rt()		preempt_enable()
  # define preempt_disable_nort()		barrier()
  # define preempt_enable_nort()		barrier()
@@ -76,7 +76,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #ifdef CONFIG_PREEMPT_NOTIFIERS
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -1371,6 +1371,12 @@ struct task_struct {
+@@ -1413,6 +1413,12 @@ struct task_struct {
  #endif
  
  	unsigned int policy;
@@ -89,9 +89,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	int nr_cpus_allowed;
  	cpumask_t cpus_allowed;
  
-@@ -1781,9 +1787,6 @@ struct task_struct {
- 	int pagefault_disabled;
- };
+@@ -1836,9 +1842,6 @@ extern int arch_task_struct_size __read_
+ # define arch_task_struct_size (sizeof(struct task_struct))
+ #endif
  
 -/* Future-safe accessor for struct task_struct's cpus_allowed. */
 -#define tsk_cpus_allowed(tsk) (&(tsk)->cpus_allowed)
@@ -99,7 +99,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #define TNF_MIGRATED	0x01
  #define TNF_NO_GROUP	0x02
  #define TNF_SHARED	0x04
-@@ -3066,6 +3069,26 @@ static inline void set_task_cpu(struct t
+@@ -3114,6 +3117,26 @@ static inline void set_task_cpu(struct t
  
  #endif /* CONFIG_SMP */
  
@@ -140,14 +140,48 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
   * boot command line:
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -2703,6 +2703,125 @@ static inline void schedule_debug(struct
- 	schedstat_inc(this_rq(), sched_count);
+@@ -1164,6 +1164,15 @@ void set_cpus_allowed_common(struct task
+ 	p->nr_cpus_allowed = cpumask_weight(new_mask);
  }
  
 +#if defined(CONFIG_PREEMPT_RT_FULL) && defined(CONFIG_SMP)
 +#define MIGRATE_DISABLE_SET_AFFIN	(1<<30) /* Can't make a negative */
 +#define migrate_disabled_updated(p)	((p)->migrate_disable & MIGRATE_DISABLE_SET_AFFIN)
 +#define migrate_disable_count(p)	((p)->migrate_disable & ~MIGRATE_DISABLE_SET_AFFIN)
++#else
++static inline void update_migrate_disable(struct task_struct *p) { }
++#define migrate_disabled_updated(p)		0
++#endif
++
+ void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
+ {
+ 	struct rq *rq = task_rq(p);
+@@ -1171,6 +1180,11 @@ void do_set_cpus_allowed(struct task_str
+ 
+ 	lockdep_assert_held(&p->pi_lock);
+ 
++	if (migrate_disabled_updated(p)) {
++		cpumask_copy(&p->cpus_allowed, new_mask);
++		return;
++	}
++
+ 	queued = task_on_rq_queued(p);
+ 	running = task_current(rq, p);
+ 
+@@ -1232,7 +1246,7 @@ static int __set_cpus_allowed_ptr(struct
+ 	do_set_cpus_allowed(p, new_mask);
+ 
+ 	/* Can the task run on the task's current CPU? If so, we're done */
+-	if (cpumask_test_cpu(task_cpu(p), new_mask))
++	if (cpumask_test_cpu(task_cpu(p), new_mask) || __migrate_disabled(p))
+ 		goto out;
+ 
+ 	dest_cpu = cpumask_any_and(cpu_active_mask, new_mask);
+@@ -3022,6 +3036,120 @@ static inline void schedule_debug(struct
+ 	schedstat_inc(this_rq(), sched_count);
+ }
+ 
++#if defined(CONFIG_PREEMPT_RT_FULL) && defined(CONFIG_SMP)
 +
 +static inline void update_migrate_disable(struct task_struct *p)
 +{
@@ -239,7 +273,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +		 * about locking.
 +		 */
 +		rq = this_rq();
-+		raw_spin_lock_irqsave(&rq->lock, flags);
++		raw_spin_lock_irqsave(&current->pi_lock, flags);
++		raw_spin_lock(&rq->lock);
 +
 +		/*
 +		 * Clearing migrate_disable causes tsk_cpus_allowed to
@@ -247,10 +282,10 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +		 */
 +		p->migrate_disable = 0;
 +		mask = tsk_cpus_allowed(p);
-+		if (p->sched_class->set_cpus_allowed)
-+			p->sched_class->set_cpus_allowed(p, mask);
-+		p->nr_cpus_allowed = cpumask_weight(mask);
-+		raw_spin_unlock_irqrestore(&rq->lock, flags);
++		do_set_cpus_allowed(p, mask);
++
++		raw_spin_unlock(&rq->lock);
++		raw_spin_unlock_irqrestore(&current->pi_lock, flags);
 +	} else
 +		p->migrate_disable = 0;
 +
@@ -258,52 +293,23 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +	preempt_enable();
 +}
 +EXPORT_SYMBOL(migrate_enable);
-+#else
-+static inline void update_migrate_disable(struct task_struct *p) { }
-+#define migrate_disabled_updated(p)		0
 +#endif
 +
  /*
   * Pick up the highest-prio task:
   */
-@@ -2809,6 +2928,8 @@ static void __sched __schedule(void)
- 	smp_mb__before_spinlock();
+@@ -3137,6 +3265,8 @@ static void __sched notrace __schedule(b
  	raw_spin_lock_irq(&rq->lock);
+ 	lockdep_pin_lock(&rq->lock);
  
 +	update_migrate_disable(prev);
 +
  	rq->clock_skip_update <<= 1; /* promote REQ to ACT */
  
  	switch_count = &prev->nivcsw;
-@@ -4810,11 +4931,13 @@ static struct rq *move_queued_task(struc
- 
- void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
- {
--	if (p->sched_class->set_cpus_allowed)
--		p->sched_class->set_cpus_allowed(p, new_mask);
-+	if (!migrate_disabled_updated(p)) {
-+		if (p->sched_class->set_cpus_allowed)
-+			p->sched_class->set_cpus_allowed(p, new_mask);
-+		p->nr_cpus_allowed = cpumask_weight(new_mask);
-+	}
- 
- 	cpumask_copy(&p->cpus_allowed, new_mask);
--	p->nr_cpus_allowed = cpumask_weight(new_mask);
- }
- 
- /*
-@@ -4860,7 +4983,7 @@ int set_cpus_allowed_ptr(struct task_str
- 	do_set_cpus_allowed(p, new_mask);
- 
- 	/* Can the task run on the task's current CPU? If so, we're done */
--	if (cpumask_test_cpu(task_cpu(p), new_mask))
-+	if (cpumask_test_cpu(task_cpu(p), new_mask) || __migrate_disabled(p))
- 		goto out;
- 
- 	dest_cpu = cpumask_any_and(cpu_active_mask, new_mask);
 --- a/kernel/sched/debug.c
 +++ b/kernel/sched/debug.c
-@@ -260,6 +260,9 @@ void print_rt_rq(struct seq_file *m, int
+@@ -251,6 +251,9 @@ void print_rt_rq(struct seq_file *m, int
  	P(rt_throttled);
  	PN(rt_time);
  	PN(rt_runtime);
@@ -313,7 +319,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  #undef PN
  #undef P
-@@ -648,6 +651,10 @@ void proc_sched_show_task(struct task_st
+@@ -635,6 +638,10 @@ void proc_sched_show_task(struct task_st
  #endif
  	P(policy);
  	P(prio);

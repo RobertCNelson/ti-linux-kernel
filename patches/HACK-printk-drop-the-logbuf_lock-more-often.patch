@@ -12,7 +12,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/kernel/printk/printk.c
 +++ b/kernel/printk/printk.c
-@@ -1163,6 +1163,7 @@ static int syslog_print_all(char __user
+@@ -1203,6 +1203,7 @@ static int syslog_print_all(char __user
  {
  	char *text;
  	int len = 0;
@@ -20,7 +20,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	text = kmalloc(LOG_LINE_MAX + PREFIX_MAX, GFP_KERNEL);
  	if (!text)
-@@ -1174,7 +1175,14 @@ static int syslog_print_all(char __user
+@@ -1214,7 +1215,14 @@ static int syslog_print_all(char __user
  		u64 seq;
  		u32 idx;
  		enum log_flags prev;
@@ -36,7 +36,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  		if (clear_seq < log_first_seq) {
  			/* messages are gone, move to first available one */
  			clear_seq = log_first_seq;
-@@ -1195,6 +1203,14 @@ static int syslog_print_all(char __user
+@@ -1235,6 +1243,14 @@ static int syslog_print_all(char __user
  			prev = msg->flags;
  			idx = log_next(idx);
  			seq++;
@@ -51,7 +51,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  		}
  
  		/* move first record forward until length fits into the buffer */
-@@ -1208,6 +1224,14 @@ static int syslog_print_all(char __user
+@@ -1248,6 +1264,14 @@ static int syslog_print_all(char __user
  			prev = msg->flags;
  			idx = log_next(idx);
  			seq++;
@@ -66,7 +66,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  		}
  
  		/* last message fitting into this dump */
-@@ -1248,6 +1272,7 @@ static int syslog_print_all(char __user
+@@ -1288,6 +1312,7 @@ static int syslog_print_all(char __user
  		clear_seq = log_next_seq;
  		clear_idx = log_next_idx;
  	}

@@ -55,7 +55,7 @@ Cc: stable-rt@vger.kernel.org
   * Synchronize against the irq_work @entry, ensures the entry is not
 --- a/kernel/time/timer.c
 +++ b/kernel/time/timer.c
-@@ -1455,7 +1455,7 @@ void update_process_times(int user_tick)
+@@ -1484,7 +1484,7 @@ void update_process_times(int user_tick)
  	scheduler_tick();
  	run_local_timers();
  	rcu_check_callbacks(user_tick);
@@ -64,9 +64,9 @@ Cc: stable-rt@vger.kernel.org
  	if (in_irq())
  		irq_work_tick();
  #endif
-@@ -1471,9 +1471,7 @@ static void run_timer_softirq(struct sof
- 
- 	hrtimer_run_pending();
+@@ -1498,9 +1498,7 @@ static void run_timer_softirq(struct sof
+ {
+ 	struct tvec_base *base = this_cpu_ptr(&tvec_bases);
  
 -#if defined(CONFIG_IRQ_WORK) && defined(CONFIG_PREEMPT_RT_FULL)
 -	irq_work_tick();

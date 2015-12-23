@@ -5,40 +5,15 @@
 ############################################################
 # UPSTREAM changes queued
 ############################################################
-xfs--clean-up-inode-lockdep-annotations
 
 ############################################################
 # UPSTREAM FIXES, patches pending
 ############################################################
-0001-arm64-Mark-PMU-interrupt-IRQF_NO_THREAD.patch
-0002-arm64-Allow-forced-irq-threading.patch
-0001-uaccess-count-pagefault_disable-levels-in-pagefault_.patch
-0002-mm-uaccess-trigger-might_sleep-in-might_fault-with-d.patch
-0003-uaccess-clarify-that-uaccess-may-only-sleep-if-pagef.patch
-0004-mm-explicitly-disable-enable-preemption-in-kmap_atom.patch
-0005-mips-kmap_coherent-relies-on-disabled-preemption.patch
-0006-mm-use-pagefault_disable-to-check-for-disabled-pagef.patch
-0007-drm-i915-use-pagefault_disabled-to-check-for-disable.patch
-0008-futex-UP-futex_atomic_op_inuser-relies-on-disabled-p.patch
-0009-futex-UP-futex_atomic_cmpxchg_inatomic-relies-on-dis.patch
-0010-arm-futex-UP-futex_atomic_cmpxchg_inatomic-relies-on.patch
-0011-arm-futex-UP-futex_atomic_op_inuser-relies-on-disabl.patch
-0012-futex-clarify-that-preemption-doesn-t-have-to-be-dis.patch
-0013-mips-properly-lock-access-to-the-fpu.patch
-0014-uaccess-decouple-preemption-from-the-pagefault-logic.patch
-0001-sched-Implement-lockless-wake-queues.patch
-0002-futex-Implement-lockless-wakeups.patch
-0004-ipc-mqueue-Implement-lockless-pipelined-wakeups.patch
-mm-slub-move-slab-initialization-into-irq-enabled-region.patch
-arm64-convert-patch_lock-to-raw-lock.patch
-arm64-replace-read_lock-to-rcu-lock-in-call_break_hook.patch
-bpf-convert-hashtab-lock-to-raw-lock.patch
 
 ############################################################
 # Stuff broken upstream, patches submitted
 ############################################################
-cpufreq-Remove-cpufreq_rwsem.patch
-genirq--Handle-interrupts-with-primary-and-threaded-handler-gracefully
+sched-reset-task-s-lockless-wake-queues-on-fork.patch
 
 ############################################################
 # Stuff which needs addressing upstream, but requires more
@@ -89,27 +64,7 @@ kernel-SRCU-provide-a-static-initializer.patch
 ############################################################
 # Stuff which should go upstream ASAP
 ############################################################
-0001-gpio-omap-Allow-building-as-a-loadable-module.patch
-0002-gpio-omap-fix-omap_gpio_free-to-not-clean-up-irq-con.patch
-0003-gpio-omap-fix-error-handling-in-omap_gpio_irq_type.patch
-0004-gpio-omap-rework-omap_x_irq_shutdown-to-touch-only-i.patch
-0005-gpio-omap-rework-omap_gpio_request-to-touch-only-gpi.patch
-0006-gpio-omap-rework-omap_gpio_irq_startup-to-handle-cur.patch
-0007-gpio-omap-add-missed-spin_unlock_irqrestore-in-omap_.patch
-0008-gpio-omap-prevent-module-from-being-unloaded-while-i.patch
 0009-ARM-OMAP2-Drop-the-concept-of-certain-power-domains-.patch
-0010-gpio-omap-use-raw-locks-for-locking.patch
-0011-gpio-omap-Fix-missing-raw-locks-conversion.patch
-0012-gpio-omap-remove-wrong-irq_domain_remove-usage-in-pr.patch
-0013-gpio-omap-switch-to-use-platform_get_irq.patch
-0014-gpio-omap-fix-omap2_set_gpio_debounce.patch
-0015-gpio-omap-protect-regs-access-in-omap_gpio_irq_handl.patch
-0016-gpio-omap-fix-clk_prepare-unprepare-usage.patch
-0017-gpio-omap-Fix-gpiochip_add-handling-for-deferred-pro.patch
-0018-gpio-omap-Fix-GPIO-numbering-for-deferred-probe.patch
-0019-gpio-omap-fix-static-checker-warning.patch
-0020-gpio-omap-move-pm-runtime-in-irq_chip.irq_bus_lock-s.patch
-0021-gpio-omap-convert-to-use-generic-irq-handler.patch
 
 # SCHED BLOCK/WQ
 block-shorten-interrupt-disabled-regions.patch
@@ -160,8 +115,6 @@ net-sched-dev_deactivate_many-use-msleep-1-instead-o.patch
 
 # X86
 x86-io-apic-migra-no-unmask.patch
-fix-rt-int3-x86_32-3.2-rt.patch
-Revert-x86-Do-not-disable-preemption-in-int3-on-32bi.patch
 
 # RCU
 
@@ -176,7 +129,6 @@ pci-access-use-__wake_up_all_locked.patch
 #####################################################
 # Stuff which should go mainline, but wants some care
 #####################################################
-futex-avoid-double-wake-up-in-PI-futex-wait-wake-on-.patch
 
 # SEQLOCK
 
@@ -249,7 +201,6 @@ genirq-do-not-invoke-the-affinity-callback-via-a-wor.patch
 # DRIVERS NET
 drivers-net-fix-livelock-issues.patch
 drivers-net-vortex-fix-locking-issues.patch
-net-gianfar-do-not-disable-interrupts.patch
 
 # MM PAGE_ALLOC
 mm-page_alloc-rt-friendly-per-cpu-pages.patch
@@ -277,6 +228,7 @@ slub-disable-SLUB_CPU_PARTIAL.patch
 mm-page-alloc-use-local-lock-on-target-cpu.patch
 mm-memcontrol-Don-t-call-schedule_work_on-in-preempt.patch
 mm-memcontrol-do_not_disable_irq.patch
+mm-rmap-retry-lock-check-in-anon_vma_free.patch_vma_free.patch
 
 # RADIX TREE
 radix-tree-rt-aware.patch
@@ -285,7 +237,7 @@ radix-tree-rt-aware.patch
 panic-disable-random-on-rt.patch
 
 # IPC
-ipc-make-rt-aware.patch
+ipc-msg-Implement-lockless-pipelined-wakeups.patch
 
 # RELAY
 relay-fix-timer-madness.patch
@@ -298,10 +250,10 @@ timers-avoid-the-base-null-otptimization-on-rt.patch
 
 # HRTIMERS
 hrtimers-prepare-full-preemption.patch
+hrtimer-enfore-64byte-alignment.patch
 hrtimer-fixup-hrtimer-callback-changes-for-preempt-r.patch
 sched-deadline-dl_task_timer-has-to-be-irqsafe.patch
 timer-fd-avoid-live-lock.patch
-hrtimer-raise-softirq-if-hrtimer-irq-stalled.patch
 hrtimer-Move-schedule_work-call-to-helper-thread.patch
 
 # POSIX-CPU-TIMERS
@@ -343,6 +295,7 @@ softirq-preempt-fix-3-re.patch
 softirq-disable-softirq-stacks-for-rt.patch
 softirq-split-locks.patch
 irq-allow-disabling-of-softirq-processing-in-irq-thread-context.patch
+rtmutex-trylock-is-okay-on-RT.patch
 
 # RAID5
 md-raid5-percpu-handling-rt-aware.patch
@@ -358,6 +311,7 @@ locking-locktorture-Do-NOT-include-rwlock.h-directly.patch
 rtmutex-lock-killable.patch
 spinlock-types-separate-raw.patch
 rtmutex-avoid-include-hell.patch
+rtmutex_dont_include_rcu.patch
 rt-add-rt-locks.patch
 rtmutex-Use-chainwalking-control-enum.patch
 rtmutex-add-a-first-shot-of-ww_mutex.patch
@@ -398,7 +352,6 @@ fs-namespace-preemption-fix.patch
 mm-protect-activate-switch-mm.patch
 fs-block-rt-support.patch
 fs-ntfs-disable-interrupt-non-rt.patch
-fs-jbd-pull-plug-when-waiting-for-space.patch
 fs-jbd2-pull-your-plug-when-waiting-for-space.patch
 
 # X86
@@ -424,6 +377,7 @@ cpu_chill-Add-a-UNINTERRUPTIBLE-hrtimer_nanosleep.patch
 # block
 blk-mq-revert-raw-locks-post-pone-notifier-to-POST_D.patchto-POST_D.patch
 block-blk-mq-use-swait.patch
+# XXX melt
 block-mq-drop-per-ctx-cpu_lock.patch
 
 # BLOCK LIVELOCK PREVENTION
@@ -461,7 +415,6 @@ irqwork-Move-irq-safe-work-to-irq-context.patch
 
 # Sound
 snd-pcm-fix-snd_pcm_stream_lock-irqs_disabled-splats.patch
-ASoC-Intel-sst-use-instead-of-at-the-of-a-C-statemen.patch
 
 # CONSOLE. NEEDS more thought !!!
 printk-rt-aware.patch
@@ -476,7 +429,6 @@ powerpc-ps3-device-init.c-adapt-to-completions-using.patch
 arm-at91-tclib-default-to-tclib-timer-for-rt.patch
 arm-unwind-use_raw_lock.patch
 ARM-enable-irq-in-translation-section-permission-fau.patch
-ARM-cmpxchg-define-__HAVE_ARCH_CMPXCHG-for-armv6-and.patch
 
 # ARM64
 arm64-xen--Make-XEN-depend-on-non-rt.patch
@@ -603,7 +555,6 @@ md-disable-bcache.patch
 workqueue-prevent-deadlock-stall.patch
 
 # TRACING
-sched-introduce-the-27trace_sched_waking-27-tracepoint.patch
 latency_hist-update-sched_wakeup-probe.patch
 
 # Add RT to version

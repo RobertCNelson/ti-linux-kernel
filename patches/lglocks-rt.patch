@@ -11,20 +11,20 @@ owner and boost if needed.
 
 Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 ---
- include/linux/lglock.h  |   21 ++++++++++++++++--
- kernel/locking/lglock.c |   54 ++++++++++++++++++++++++++++++++----------------
- 2 files changed, 55 insertions(+), 20 deletions(-)
+ include/linux/lglock.h  |   18 +++++++++++++
+ kernel/locking/lglock.c |   62 ++++++++++++++++++++++++++++++------------------
+ 2 files changed, 58 insertions(+), 22 deletions(-)
 
 --- a/include/linux/lglock.h
 +++ b/include/linux/lglock.h
-@@ -34,22 +34,39 @@
+@@ -34,13 +34,30 @@
  #endif
  
  struct lglock {
-+#ifndef CONFIG_PREEMPT_RT_FULL
- 	arch_spinlock_t __percpu *lock;
-+#else
++#ifdef CONFIG_PREEMPT_RT_FULL
 +	struct rt_mutex __percpu *lock;
++#else
+ 	arch_spinlock_t __percpu *lock;
 +#endif
  #ifdef CONFIG_DEBUG_LOCK_ALLOC
  	struct lock_class_key lock_key;
@@ -32,20 +32,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #endif
  };
  
--#define DEFINE_LGLOCK(name)						\
-+#ifndef CONFIG_PREEMPT_RT_FULL
-+# define DEFINE_LGLOCK(name)						\
- 	static DEFINE_PER_CPU(arch_spinlock_t, name ## _lock)		\
- 	= __ARCH_SPIN_LOCK_UNLOCKED;					\
- 	struct lglock name = { .lock = &name ## _lock }
- 
--#define DEFINE_STATIC_LGLOCK(name)					\
-+# define DEFINE_STATIC_LGLOCK(name)					\
- 	static DEFINE_PER_CPU(arch_spinlock_t, name ## _lock)		\
- 	= __ARCH_SPIN_LOCK_UNLOCKED;					\
- 	static struct lglock name = { .lock = &name ## _lock }
-+#else
-+
++#ifdef CONFIG_PREEMPT_RT_FULL
 +# define DEFINE_LGLOCK(name)						\
 +	static DEFINE_PER_CPU(struct rt_mutex, name ## _lock)		\
 +	= __RT_MUTEX_INITIALIZER( name ## _lock);			\
@@ -55,10 +42,20 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +	static DEFINE_PER_CPU(struct rt_mutex, name ## _lock)		\
 +	= __RT_MUTEX_INITIALIZER( name ## _lock);			\
 +	static struct lglock name = { .lock = &name ## _lock }
++
++#else
++
+ #define DEFINE_LGLOCK(name)						\
+ 	static DEFINE_PER_CPU(arch_spinlock_t, name ## _lock)		\
+ 	= __ARCH_SPIN_LOCK_UNLOCKED;					\
+@@ -50,6 +67,7 @@ struct lglock {
+ 	static DEFINE_PER_CPU(arch_spinlock_t, name ## _lock)		\
+ 	= __ARCH_SPIN_LOCK_UNLOCKED;					\
+ 	static struct lglock name = { .lock = &name ## _lock }
 +#endif
  
  void lg_lock_init(struct lglock *lg, char *name);
- void lg_local_lock(struct lglock *lg);
+ 
 --- a/kernel/locking/lglock.c
 +++ b/kernel/locking/lglock.c
 @@ -4,6 +4,15 @@
@@ -150,7 +147,27 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  EXPORT_SYMBOL(lg_local_unlock_cpu);
  
-@@ -64,12 +82,12 @@ void lg_global_lock(struct lglock *lg)
+@@ -70,15 +88,15 @@ void lg_double_lock(struct lglock *lg, i
+ 
+ 	preempt_disable();
+ 	lock_acquire_shared(&lg->lock_dep_map, 0, 0, NULL, _RET_IP_);
+-	arch_spin_lock(per_cpu_ptr(lg->lock, cpu1));
+-	arch_spin_lock(per_cpu_ptr(lg->lock, cpu2));
++	lg_do_lock(per_cpu_ptr(lg->lock, cpu1));
++	lg_do_lock(per_cpu_ptr(lg->lock, cpu2));
+ }
+ 
+ void lg_double_unlock(struct lglock *lg, int cpu1, int cpu2)
+ {
+ 	lock_release(&lg->lock_dep_map, 1, _RET_IP_);
+-	arch_spin_unlock(per_cpu_ptr(lg->lock, cpu1));
+-	arch_spin_unlock(per_cpu_ptr(lg->lock, cpu2));
++	lg_do_unlock(per_cpu_ptr(lg->lock, cpu1));
++	lg_do_unlock(per_cpu_ptr(lg->lock, cpu2));
+ 	preempt_enable();
+ }
+ 
+@@ -86,12 +104,12 @@ void lg_global_lock(struct lglock *lg)
  {
  	int i;
  
@@ -166,7 +183,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	}
  }
  EXPORT_SYMBOL(lg_global_lock);
-@@ -80,10 +98,10 @@ void lg_global_unlock(struct lglock *lg)
+@@ -102,10 +120,10 @@ void lg_global_unlock(struct lglock *lg)
  
  	lock_release(&lg->lock_dep_map, 1, _RET_IP_);
  	for_each_possible_cpu(i) {

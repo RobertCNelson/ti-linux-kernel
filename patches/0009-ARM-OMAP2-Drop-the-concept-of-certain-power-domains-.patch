@@ -85,7 +85,7 @@ Signed-off-by: Keerthy <j-keerthy@ti.com>
  
 --- a/drivers/gpio/gpio-omap.c
 +++ b/drivers/gpio/gpio-omap.c
-@@ -67,7 +67,7 @@ struct gpio_bank {
+@@ -69,7 +69,7 @@ struct gpio_bank {
  	struct device *dev;
  	bool is_mpuio;
  	bool dbck_flag;
@@ -94,7 +94,7 @@ Signed-off-by: Keerthy <j-keerthy@ti.com>
  	bool context_valid;
  	int stride;
  	u32 width;
-@@ -1197,15 +1197,9 @@ static int omap_gpio_probe(struct platfo
+@@ -1208,15 +1208,9 @@ static int omap_gpio_probe(struct platfo
  #ifdef CONFIG_OF_GPIO
  	bank->chip.of_node = of_node_get(node);
  #endif
@@ -113,7 +113,7 @@ Signed-off-by: Keerthy <j-keerthy@ti.com>
  	}
  
  	if (bank->regs->set_dataout && bank->regs->clr_dataout)
-@@ -1346,7 +1340,7 @@ static int omap_gpio_runtime_resume(stru
+@@ -1373,7 +1367,7 @@ static int omap_gpio_runtime_resume(stru
  	 * been initialised and so initialise it now. Also initialise
  	 * the context loss count.
  	 */
@@ -122,7 +122,7 @@ Signed-off-by: Keerthy <j-keerthy@ti.com>
  		omap_gpio_init_context(bank);
  
  		if (bank->get_context_loss_count)
-@@ -1367,17 +1361,15 @@ static int omap_gpio_runtime_resume(stru
+@@ -1394,17 +1388,15 @@ static int omap_gpio_runtime_resume(stru
  	writel_relaxed(bank->context.risingdetect,
  		     bank->base + bank->regs->risingdetect);
  
@@ -139,7 +139,7 @@ Signed-off-by: Keerthy <j-keerthy@ti.com>
 -			if (c != bank->context_loss_count) {
 -				omap_gpio_restore_context(bank);
 -			} else {
--				spin_unlock_irqrestore(&bank->lock, flags);
+-				raw_spin_unlock_irqrestore(&bank->lock, flags);
 -				return 0;
 -			}
 +			spin_unlock_irqrestore(&bank->lock, flags);
@@ -147,7 +147,7 @@ Signed-off-by: Keerthy <j-keerthy@ti.com>
  		}
  	}
  
-@@ -1449,7 +1441,7 @@ void omap2_gpio_prepare_for_idle(int pwr
+@@ -1476,7 +1468,7 @@ void omap2_gpio_prepare_for_idle(int pwr
  	struct gpio_bank *bank;
  
  	list_for_each_entry(bank, &omap_gpio_list, node) {
@@ -156,7 +156,7 @@ Signed-off-by: Keerthy <j-keerthy@ti.com>
  			continue;
  
  		bank->power_mode = pwr_mode;
-@@ -1463,7 +1455,7 @@ void omap2_gpio_resume_after_idle(void)
+@@ -1490,7 +1482,7 @@ void omap2_gpio_resume_after_idle(void)
  	struct gpio_bank *bank;
  
  	list_for_each_entry(bank, &omap_gpio_list, node) {

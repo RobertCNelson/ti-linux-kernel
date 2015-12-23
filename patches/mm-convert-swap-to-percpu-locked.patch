@@ -14,15 +14,15 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/mm/swap.c
 +++ b/mm/swap.c
-@@ -32,6 +32,7 @@
+@@ -31,6 +31,7 @@
+ #include <linux/memcontrol.h>
  #include <linux/gfp.h>
  #include <linux/uio.h>
- #include <linux/hugetlb.h>
 +#include <linux/locallock.h>
+ #include <linux/hugetlb.h>
+ #include <linux/page_idle.h>
  
- #include "internal.h"
- 
-@@ -45,6 +46,9 @@ static DEFINE_PER_CPU(struct pagevec, lr
+@@ -46,6 +47,9 @@ static DEFINE_PER_CPU(struct pagevec, lr
  static DEFINE_PER_CPU(struct pagevec, lru_rotate_pvecs);
  static DEFINE_PER_CPU(struct pagevec, lru_deactivate_file_pvecs);
  
@@ -80,7 +80,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /*
-@@ -628,13 +633,13 @@ EXPORT_SYMBOL(mark_page_accessed);
+@@ -630,13 +635,13 @@ EXPORT_SYMBOL(mark_page_accessed);
  
  static void __lru_cache_add(struct page *page)
  {
@@ -96,7 +96,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /**
-@@ -814,9 +819,9 @@ void lru_add_drain_cpu(int cpu)
+@@ -816,9 +821,9 @@ void lru_add_drain_cpu(int cpu)
  		unsigned long flags;
  
  		/* No harm done if a racing interrupt already did this */
@@ -108,7 +108,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	}
  
  	pvec = &per_cpu(lru_deactivate_file_pvecs, cpu);
-@@ -844,18 +849,19 @@ void deactivate_file_page(struct page *p
+@@ -846,18 +851,19 @@ void deactivate_file_page(struct page *p
  		return;
  
  	if (likely(get_page_unless_zero(page))) {

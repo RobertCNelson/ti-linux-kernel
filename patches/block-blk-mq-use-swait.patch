@@ -38,61 +38,61 @@ Subject: block: blk-mq: Use swait
 
 Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 ---
- block/blk-core.c       |    2 +-
- block/blk-mq.c         |   10 +++++-----
+ block/blk-core.c       |    6 +++---
+ block/blk-mq.c         |    6 +++---
  include/linux/blkdev.h |    2 +-
  3 files changed, 7 insertions(+), 7 deletions(-)
 
 --- a/block/blk-core.c
 +++ b/block/blk-core.c
-@@ -664,7 +664,7 @@ struct request_queue *blk_alloc_queue_no
+@@ -644,7 +644,7 @@ int blk_queue_enter(struct request_queue
+ 		if (!gfpflags_allow_blocking(gfp))
+ 			return -EBUSY;
+ 
+-		ret = wait_event_interruptible(q->mq_freeze_wq,
++		ret = swait_event_interruptible(q->mq_freeze_wq,
+ 				!atomic_read(&q->mq_freeze_depth) ||
+ 				blk_queue_dying(q));
+ 		if (blk_queue_dying(q))
+@@ -664,7 +664,7 @@ static void blk_queue_usage_counter_rele
+ 	struct request_queue *q =
+ 		container_of(ref, struct request_queue, q_usage_counter);
+ 
+-	wake_up_all(&q->mq_freeze_wq);
++	swait_wake_all(&q->mq_freeze_wq);
+ }
+ 
+ struct request_queue *blk_alloc_queue_node(gfp_t gfp_mask, int node_id)
+@@ -726,7 +726,7 @@ struct request_queue *blk_alloc_queue_no
  	q->bypass_depth = 1;
  	__set_bit(QUEUE_FLAG_BYPASS, &q->queue_flags);
  
 -	init_waitqueue_head(&q->mq_freeze_wq);
 +	init_swait_head(&q->mq_freeze_wq);
  
- 	if (blkcg_init_queue(q))
- 		goto fail_bdi;
+ 	/*
+ 	 * Init percpu_ref in atomic mode so that it's faster to shutdown.
 --- a/block/blk-mq.c
 +++ b/block/blk-mq.c
-@@ -88,7 +88,7 @@ static int blk_mq_queue_enter(struct req
- 		if (!(gfp & __GFP_WAIT))
- 			return -EBUSY;
- 
--		ret = wait_event_interruptible(q->mq_freeze_wq,
-+		ret = swait_event_interruptible(q->mq_freeze_wq,
- 				!q->mq_freeze_depth || blk_queue_dying(q));
- 		if (blk_queue_dying(q))
- 			return -ENODEV;
-@@ -107,7 +107,7 @@ static void blk_mq_usage_counter_release
- 	struct request_queue *q =
- 		container_of(ref, struct request_queue, mq_usage_counter);
- 
--	wake_up_all(&q->mq_freeze_wq);
-+	swait_wake_all(&q->mq_freeze_wq);
- }
- 
- void blk_mq_freeze_queue_start(struct request_queue *q)
-@@ -127,7 +127,7 @@ EXPORT_SYMBOL_GPL(blk_mq_freeze_queue_st
+@@ -92,7 +92,7 @@ EXPORT_SYMBOL_GPL(blk_mq_freeze_queue_st
  
  static void blk_mq_freeze_queue_wait(struct request_queue *q)
  {
--	wait_event(q->mq_freeze_wq, percpu_ref_is_zero(&q->mq_usage_counter));
-+	swait_event(q->mq_freeze_wq, percpu_ref_is_zero(&q->mq_usage_counter));
+-	wait_event(q->mq_freeze_wq, percpu_ref_is_zero(&q->q_usage_counter));
++	swait_event(q->mq_freeze_wq, percpu_ref_is_zero(&q->q_usage_counter));
  }
  
  /*
-@@ -151,7 +151,7 @@ void blk_mq_unfreeze_queue(struct reques
- 	spin_unlock_irq(q->queue_lock);
- 	if (wake) {
- 		percpu_ref_reinit(&q->mq_usage_counter);
+@@ -130,7 +130,7 @@ void blk_mq_unfreeze_queue(struct reques
+ 	WARN_ON_ONCE(freeze_depth < 0);
+ 	if (!freeze_depth) {
+ 		percpu_ref_reinit(&q->q_usage_counter);
 -		wake_up_all(&q->mq_freeze_wq);
 +		swait_wake_all(&q->mq_freeze_wq);
  	}
  }
  EXPORT_SYMBOL_GPL(blk_mq_unfreeze_queue);
-@@ -170,7 +170,7 @@ void blk_mq_wake_waiters(struct request_
+@@ -149,7 +149,7 @@ void blk_mq_wake_waiters(struct request_
  	 * dying, we need to ensure that processes currently waiting on
  	 * the queue are notified as well.
  	 */
@@ -103,12 +103,12 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  bool blk_mq_can_queue(struct blk_mq_hw_ctx *hctx)
 --- a/include/linux/blkdev.h
 +++ b/include/linux/blkdev.h
-@@ -483,7 +483,7 @@ struct request_queue {
+@@ -456,7 +456,7 @@ struct request_queue {
  	struct throtl_data *td;
  #endif
  	struct rcu_head		rcu_head;
 -	wait_queue_head_t	mq_freeze_wq;
 +	struct swait_head	mq_freeze_wq;
- 	struct percpu_ref	mq_usage_counter;
+ 	struct percpu_ref	q_usage_counter;
  	struct list_head	all_q_node;
  

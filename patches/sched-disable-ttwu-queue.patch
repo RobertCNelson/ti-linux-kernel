@@ -12,7 +12,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/kernel/sched/features.h
 +++ b/kernel/sched/features.h
-@@ -50,11 +50,16 @@ SCHED_FEAT(LB_BIAS, true)
+@@ -45,11 +45,16 @@ SCHED_FEAT(LB_BIAS, true)
   */
  SCHED_FEAT(NONTASK_CAPACITY, true)
  

@@ -9,18 +9,19 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
 Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 ---
+xXx
  arch/x86/kernel/apic/io_apic.c |    3 ++-
  1 file changed, 2 insertions(+), 1 deletion(-)
 
 --- a/arch/x86/kernel/apic/io_apic.c
 +++ b/arch/x86/kernel/apic/io_apic.c
-@@ -1891,7 +1891,8 @@ static bool io_apic_level_ack_pending(st
- static inline bool ioapic_irqd_mask(struct irq_data *data, struct irq_cfg *cfg)
+@@ -1711,7 +1711,8 @@ static bool io_apic_level_ack_pending(st
+ static inline bool ioapic_irqd_mask(struct irq_data *data)
  {
  	/* If we are moving the irq we need to mask it */
 -	if (unlikely(irqd_is_setaffinity_pending(data))) {
 +	if (unlikely(irqd_is_setaffinity_pending(data) &&
 +		     !irqd_irq_inprogress(data))) {
- 		mask_ioapic(cfg);
+ 		mask_ioapic_irq(data);
  		return true;
  	}

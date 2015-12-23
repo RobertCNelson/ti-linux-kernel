@@ -35,7 +35,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/arch/arm/kernel/process.c
 +++ b/arch/arm/kernel/process.c
-@@ -290,6 +290,30 @@ unsigned long arch_randomize_brk(struct
+@@ -319,6 +319,30 @@ unsigned long arch_randomize_brk(struct
  }
  
  #ifdef CONFIG_MMU

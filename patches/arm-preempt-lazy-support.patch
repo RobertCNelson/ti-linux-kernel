@@ -15,7 +15,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/arch/arm/Kconfig
 +++ b/arch/arm/Kconfig
-@@ -66,6 +66,7 @@ config ARM
+@@ -68,6 +68,7 @@ config ARM
  	select HAVE_PERF_EVENTS
  	select HAVE_PERF_REGS
  	select HAVE_PERF_USER_STACK_DUMP
@@ -25,7 +25,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	select HAVE_SYSCALL_TRACEPOINTS
 --- a/arch/arm/include/asm/thread_info.h
 +++ b/arch/arm/include/asm/thread_info.h
-@@ -50,6 +50,7 @@ struct cpu_context_save {
+@@ -49,6 +49,7 @@ struct cpu_context_save {
  struct thread_info {
  	unsigned long		flags;		/* low level flags */
  	int			preempt_count;	/* 0 => preemptable, <0 => bug */
@@ -33,15 +33,15 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	mm_segment_t		addr_limit;	/* address limit */
  	struct task_struct	*task;		/* main task structure */
  	__u32			cpu;		/* cpu */
-@@ -147,6 +148,7 @@ extern int vfp_restore_user_hwstate(stru
- #define TIF_SIGPENDING		0
- #define TIF_NEED_RESCHED	1
- #define TIF_NOTIFY_RESUME	2	/* callback before returning to user */
-+#define TIF_NEED_RESCHED_LAZY	3
- #define TIF_UPROBE		7
- #define TIF_SYSCALL_TRACE	8
- #define TIF_SYSCALL_AUDIT	9
-@@ -160,6 +162,7 @@ extern int vfp_restore_user_hwstate(stru
+@@ -143,6 +144,7 @@ extern int vfp_restore_user_hwstate(stru
+ #define TIF_SYSCALL_AUDIT	5	/* syscall auditing active */
+ #define TIF_SYSCALL_TRACEPOINT	6	/* syscall tracepoint instrumentation */
+ #define TIF_SECCOMP		7	/* seccomp syscall filtering active */
++#define TIF_NEED_RESCHED_LAZY	8
+ 
+ #define TIF_NOHZ		12	/* in adaptive nohz mode */
+ #define TIF_USING_IWMMXT	17
+@@ -152,6 +154,7 @@ extern int vfp_restore_user_hwstate(stru
  #define _TIF_SIGPENDING		(1 << TIF_SIGPENDING)
  #define _TIF_NEED_RESCHED	(1 << TIF_NEED_RESCHED)
  #define _TIF_NOTIFY_RESUME	(1 << TIF_NOTIFY_RESUME)
@@ -61,7 +61,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
    DEFINE(TI_CPU,		offsetof(struct thread_info, cpu));
 --- a/arch/arm/kernel/entry-armv.S
 +++ b/arch/arm/kernel/entry-armv.S
-@@ -208,11 +208,18 @@ ENDPROC(__dabt_svc)
+@@ -215,11 +215,18 @@ ENDPROC(__dabt_svc)
  #ifdef CONFIG_PREEMPT
  	get_thread_info tsk
  	ldr	r8, [tsk, #TI_PREEMPT]		@ get preempt count
@@ -82,7 +82,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #endif
  
  	svc_exit r5, irq = 1			@ return from exception
-@@ -227,6 +234,8 @@ ENDPROC(__irq_svc)
+@@ -234,6 +241,8 @@ ENDPROC(__irq_svc)
  1:	bl	preempt_schedule_irq		@ irq en/disable is done inside
  	ldr	r0, [tsk, #TI_FLAGS]		@ get new tasks TI_FLAGS
  	tst	r0, #_TIF_NEED_RESCHED
@@ -93,9 +93,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #endif
 --- a/arch/arm/kernel/signal.c
 +++ b/arch/arm/kernel/signal.c
-@@ -568,7 +568,8 @@ asmlinkage int
- do_work_pending(struct pt_regs *regs, unsigned int thread_flags, int syscall)
- {
+@@ -572,7 +572,8 @@ do_work_pending(struct pt_regs *regs, un
+ 	 */
+ 	trace_hardirqs_off();
  	do {
 -		if (likely(thread_flags & _TIF_NEED_RESCHED)) {
 +		if (likely(thread_flags & (_TIF_NEED_RESCHED |

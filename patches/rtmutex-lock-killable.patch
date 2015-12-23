@@ -23,7 +23,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
 --- a/kernel/locking/rtmutex.c
 +++ b/kernel/locking/rtmutex.c
-@@ -1442,6 +1442,25 @@ int rt_mutex_timed_futex_lock(struct rt_
+@@ -1458,6 +1458,25 @@ int rt_mutex_timed_futex_lock(struct rt_
  }
  
  /**

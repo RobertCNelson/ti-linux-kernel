@@ -58,7 +58,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/kernel/time/timer.c
 +++ b/kernel/time/timer.c
-@@ -1428,13 +1428,13 @@ void update_process_times(int user_tick)
+@@ -1456,13 +1456,13 @@ void update_process_times(int user_tick)
  
  	/* Note: this timer irq context must be accounted for as well. */
  	account_process_tick(p, user_tick);

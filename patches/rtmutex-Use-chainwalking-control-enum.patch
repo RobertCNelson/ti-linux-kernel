@@ -17,7 +17,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/kernel/locking/rtmutex.c
 +++ b/kernel/locking/rtmutex.c
-@@ -1007,7 +1007,7 @@ static void  noinline __sched rt_spin_lo
+@@ -1020,7 +1020,7 @@ static void  noinline __sched rt_spin_lo
  	__set_current_state_no_track(TASK_UNINTERRUPTIBLE);
  	pi_unlock(&self->pi_lock);
  

@@ -46,13 +46,13 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/drivers/gpu/drm/i915/i915_gem_execbuffer.c
 +++ b/drivers/gpu/drm/i915/i915_gem_execbuffer.c
-@@ -1339,7 +1339,9 @@ i915_gem_ringbuffer_submission(struct dr
- 			return ret;
- 	}
+@@ -1264,7 +1264,9 @@ i915_gem_ringbuffer_submission(struct i9
+ 	if (ret)
+ 		return ret;
  
 +#ifndef CONFIG_PREEMPT_RT_BASE
- 	trace_i915_gem_ring_dispatch(intel_ring_get_request(ring), dispatch_flags);
+ 	trace_i915_gem_ring_dispatch(params->request, params->dispatch_flags);
 +#endif
  
- 	i915_gem_execbuffer_move_to_active(vmas, ring);
- 	i915_gem_execbuffer_retire_commands(dev, file, ring, batch_obj);
+ 	i915_gem_execbuffer_move_to_active(vmas, params->request);
+ 	i915_gem_execbuffer_retire_commands(params);

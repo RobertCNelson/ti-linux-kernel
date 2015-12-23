@@ -143,7 +143,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
 --- a/kernel/sched/rt.c
 +++ b/kernel/sched/rt.c
-@@ -90,6 +90,7 @@ void init_rt_rq(struct rt_rq *rt_rq)
+@@ -94,6 +94,7 @@ void init_rt_rq(struct rt_rq *rt_rq)
  	rt_rq->push_cpu = nr_cpu_ids;
  	raw_spin_lock_init(&rt_rq->push_lock);
  	init_irq_work(&rt_rq->push_work, push_irq_work_func);
@@ -165,7 +165,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	/* sched_clock_tick() needs us? */
  #ifdef CONFIG_HAVE_UNSTABLE_SCHED_CLOCK
  	/*
-@@ -227,6 +232,7 @@ static void nohz_full_kick_work_func(str
+@@ -209,6 +214,7 @@ static void nohz_full_kick_work_func(str
  
  static DEFINE_PER_CPU(struct irq_work, nohz_full_kick_work) = {
  	.func = nohz_full_kick_work_func,
@@ -175,7 +175,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  /*
 --- a/kernel/time/timer.c
 +++ b/kernel/time/timer.c
-@@ -1455,7 +1455,7 @@ void update_process_times(int user_tick)
+@@ -1484,7 +1484,7 @@ void update_process_times(int user_tick)
  	scheduler_tick();
  	run_local_timers();
  	rcu_check_callbacks(user_tick);
@@ -184,9 +184,9 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	if (in_irq())
  		irq_work_tick();
  #endif
-@@ -1471,6 +1471,10 @@ static void run_timer_softirq(struct sof
- 
- 	hrtimer_run_pending();
+@@ -1498,6 +1498,10 @@ static void run_timer_softirq(struct sof
+ {
+ 	struct tvec_base *base = this_cpu_ptr(&tvec_bases);
  
 +#if defined(CONFIG_IRQ_WORK) && defined(CONFIG_PREEMPT_RT_FULL)
 +	irq_work_tick();

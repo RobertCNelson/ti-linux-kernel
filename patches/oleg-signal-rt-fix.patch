@@ -30,12 +30,28 @@ Signed-off-by: Steven Rostedt <rostedt@goodmis.org>
 Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 ---
 
+ arch/x86/entry/common.c       |    7 +++++++
  arch/x86/include/asm/signal.h |   13 +++++++++++++
- arch/x86/kernel/signal.c      |    8 ++++++++
  include/linux/sched.h         |    4 ++++
  kernel/signal.c               |   37 +++++++++++++++++++++++++++++++++++--
- 4 files changed, 60 insertions(+), 2 deletions(-)
+ 4 files changed, 59 insertions(+), 2 deletions(-)
 
+--- a/arch/x86/entry/common.c
++++ b/arch/x86/entry/common.c
+@@ -239,6 +239,13 @@ static void exit_to_usermode_loop(struct
+ 		if (cached_flags & _TIF_NEED_RESCHED)
+ 			schedule();
+ 
++#ifdef ARCH_RT_DELAYS_SIGNAL_SEND
++		if (unlikely(current->forced_info.si_signo)) {
++			struct task_struct *t = current;
++			force_sig_info(t->forced_info.si_signo, &t->forced_info, t);
++			t->forced_info.si_signo = 0;
++		}
++#endif
+ 		if (cached_flags & _TIF_UPROBE)
+ 			uprobe_notify_resume(regs);
+ 
 --- a/arch/x86/include/asm/signal.h
 +++ b/arch/x86/include/asm/signal.h
 @@ -23,6 +23,19 @@ typedef struct {
@@ -58,26 +74,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #ifndef CONFIG_COMPAT
  typedef sigset_t compat_sigset_t;
  #endif
---- a/arch/x86/kernel/signal.c
-+++ b/arch/x86/kernel/signal.c
-@@ -723,6 +723,14 @@ do_notify_resume(struct pt_regs *regs, v
- {
- 	user_exit();
- 
-+#ifdef ARCH_RT_DELAYS_SIGNAL_SEND
-+	if (unlikely(current->forced_info.si_signo)) {
-+		struct task_struct *t = current;
-+		force_sig_info(t->forced_info.si_signo, &t->forced_info, t);
-+		t->forced_info.si_signo = 0;
-+	}
-+#endif
-+
- 	if (thread_info_flags & _TIF_UPROBE)
- 		uprobe_notify_resume(regs);
- 
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -1538,6 +1538,10 @@ struct task_struct {
+@@ -1577,6 +1577,10 @@ struct task_struct {
  	sigset_t blocked, real_blocked;
  	sigset_t saved_sigmask;	/* restored if set_restore_sigmask() was used */
  	struct sigpending pending;
@@ -90,7 +89,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	size_t sas_ss_size;
 --- a/kernel/signal.c
 +++ b/kernel/signal.c
-@@ -1282,8 +1282,8 @@ int do_send_sig_info(int sig, struct sig
+@@ -1216,8 +1216,8 @@ int do_send_sig_info(int sig, struct sig
   * We don't want to have recursive SIGSEGV's etc, for example,
   * that is why we also clear SIGNAL_UNKILLABLE.
   */
@@ -101,7 +100,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  {
  	unsigned long int flags;
  	int ret, blocked, ignored;
-@@ -1308,6 +1308,39 @@ force_sig_info(int sig, struct siginfo *
+@@ -1242,6 +1242,39 @@ force_sig_info(int sig, struct siginfo *
  	return ret;
  }
  

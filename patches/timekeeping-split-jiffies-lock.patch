@@ -40,7 +40,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  EXPORT_SYMBOL(get_jiffies_64);
 --- a/kernel/time/tick-common.c
 +++ b/kernel/time/tick-common.c
-@@ -78,13 +78,15 @@ int tick_is_oneshot_available(void)
+@@ -79,13 +79,15 @@ int tick_is_oneshot_available(void)
  static void tick_periodic(int cpu)
  {
  	if (tick_do_timer_cpu == cpu) {
@@ -58,7 +58,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		update_wall_time();
  	}
  
-@@ -146,9 +148,9 @@ void tick_setup_periodic(struct clock_ev
+@@ -157,9 +159,9 @@ void tick_setup_periodic(struct clock_ev
  		ktime_t next;
  
  		do {
@@ -68,7 +68,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 -		} while (read_seqretry(&jiffies_lock, seq));
 +		} while (read_seqcount_retry(&jiffies_seq, seq));
  
- 		clockevents_set_state(dev, CLOCK_EVT_STATE_ONESHOT);
+ 		clockevents_switch_state(dev, CLOCK_EVT_STATE_ONESHOT);
  
 --- a/kernel/time/tick-sched.c
 +++ b/kernel/time/tick-sched.c
@@ -120,16 +120,16 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	do {
 -		seq = read_seqbegin(&jiffies_lock);
 +		seq = read_seqcount_begin(&jiffies_seq);
- 		last_update = last_jiffies_update;
- 		last_jiffies = jiffies;
+ 		basemono = last_jiffies_update.tv64;
+ 		basejiff = jiffies;
 -	} while (read_seqretry(&jiffies_lock, seq));
 +	} while (read_seqcount_retry(&jiffies_seq, seq));
+ 	ts->last_jiffies = basejiff;
  
- 	if (rcu_needs_cpu(&rcu_delta_jiffies) ||
- 	    arch_needs_cpu() || irq_work_needs_cpu()) {
+ 	if (rcu_needs_cpu(basemono, &next_rcu) ||
 --- a/kernel/time/timekeeping.c
 +++ b/kernel/time/timekeeping.c
-@@ -2065,8 +2065,10 @@ EXPORT_SYMBOL(hardpps);
+@@ -2048,8 +2048,10 @@ EXPORT_SYMBOL(hardpps);
   */
  void xtime_update(unsigned long ticks)
  {
@@ -144,7 +144,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
 --- a/kernel/time/timekeeping.h
 +++ b/kernel/time/timekeeping.h
-@@ -22,7 +22,8 @@ extern void timekeeping_resume(void);
+@@ -19,7 +19,8 @@ extern void timekeeping_resume(void);
  extern void do_timer(unsigned long ticks);
  extern void update_wall_time(void);
  

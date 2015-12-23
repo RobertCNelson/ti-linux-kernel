@@ -50,13 +50,13 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 ---
  include/linux/sched.h |    7 +
- kernel/cpu.c          |  244 ++++++++++++++++++++++++++++++++++++++++----------
- kernel/sched/core.c   |   82 ++++++++++++++++
- 3 files changed, 285 insertions(+), 48 deletions(-)
+ kernel/cpu.c          |  240 ++++++++++++++++++++++++++++++++++++++++----------
+ kernel/sched/core.c   |   82 ++++++++++++++++-
+ 3 files changed, 283 insertions(+), 46 deletions(-)
 
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -2217,6 +2217,10 @@ extern void do_set_cpus_allowed(struct t
+@@ -2282,6 +2282,10 @@ extern void do_set_cpus_allowed(struct t
  
  extern int set_cpus_allowed_ptr(struct task_struct *p,
  				const struct cpumask *new_mask);
@@ -67,7 +67,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #else
  static inline void do_set_cpus_allowed(struct task_struct *p,
  				      const struct cpumask *new_mask)
-@@ -2229,6 +2233,9 @@ static inline int set_cpus_allowed_ptr(s
+@@ -2294,6 +2298,9 @@ static inline int set_cpus_allowed_ptr(s
  		return -EINVAL;
  	return 0;
  }
@@ -79,7 +79,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #ifdef CONFIG_NO_HZ_COMMON
 --- a/kernel/cpu.c
 +++ b/kernel/cpu.c
-@@ -59,16 +59,10 @@ static int cpu_hotplug_disabled;
+@@ -60,16 +60,10 @@ static int cpu_hotplug_disabled;
  
  static struct {
  	struct task_struct *active_writer;
@@ -96,7 +96,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	/*
  	 * Also blocks the new readers during
  	 * an ongoing cpu hotplug operation.
-@@ -80,27 +74,13 @@ static struct {
+@@ -81,27 +75,13 @@ static struct {
  #endif
  } cpu_hotplug = {
  	.active_writer = NULL,
@@ -125,7 +125,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /* Lockdep annotations for get/put_online_cpus() and cpu_hotplug_begin/end() */
  #define cpuhp_lock_acquire_read() lock_map_acquire_read(&cpu_hotplug.dep_map)
  #define cpuhp_lock_acquire_tryread() \
-@@ -108,12 +88,42 @@ static struct {
+@@ -109,12 +89,42 @@ static struct {
  #define cpuhp_lock_acquire()      lock_map_acquire(&cpu_hotplug.dep_map)
  #define cpuhp_lock_release()      lock_map_release(&cpu_hotplug.dep_map)
  
@@ -168,7 +168,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  static DEFINE_PER_CPU(struct hotplug_pcp, hotplug_pcp);
  
  /**
-@@ -127,18 +137,39 @@ static DEFINE_PER_CPU(struct hotplug_pcp
+@@ -128,18 +138,39 @@ static DEFINE_PER_CPU(struct hotplug_pcp
  void pin_current_cpu(void)
  {
  	struct hotplug_pcp *hp;
@@ -212,7 +212,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	preempt_disable();
  	goto retry;
  }
-@@ -159,26 +190,84 @@ void unpin_current_cpu(void)
+@@ -160,26 +191,84 @@ void unpin_current_cpu(void)
  		wake_up_process(hp->unplug);
  }
  
@@ -304,7 +304,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
   * Start the sync_unplug_thread on the target cpu and wait for it to
   * complete.
-@@ -186,23 +275,83 @@ static int sync_unplug_thread(void *data
+@@ -187,23 +276,83 @@ static int sync_unplug_thread(void *data
  static int cpu_unplug_begin(unsigned int cpu)
  {
  	struct hotplug_pcp *hp = &per_cpu(hotplug_pcp, cpu);
@@ -395,7 +395,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  void get_online_cpus(void)
-@@ -211,9 +360,9 @@ void get_online_cpus(void)
+@@ -212,9 +361,9 @@ void get_online_cpus(void)
  	if (cpu_hotplug.active_writer == current)
  		return;
  	cpuhp_lock_acquire_read();
@@ -407,21 +407,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  EXPORT_SYMBOL_GPL(get_online_cpus);
  
-@@ -221,11 +370,11 @@ bool try_get_online_cpus(void)
- {
- 	if (cpu_hotplug.active_writer == current)
- 		return true;
--	if (!hotplug_trylock())
-+	if (!mutex_trylock(&cpu_hotplug.lock))
- 		return false;
- 	cpuhp_lock_acquire_tryread();
- 	atomic_inc(&cpu_hotplug.refcount);
--	hotplug_unlock();
-+	mutex_unlock(&cpu_hotplug.lock);
- 	return true;
- }
- EXPORT_SYMBOL_GPL(try_get_online_cpus);
-@@ -279,11 +428,11 @@ void cpu_hotplug_begin(void)
+@@ -267,11 +416,11 @@ void cpu_hotplug_begin(void)
  	cpuhp_lock_acquire();
  
  	for (;;) {
@@ -435,7 +421,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		schedule();
  	}
  	finish_wait(&cpu_hotplug.wq, &wait);
-@@ -292,7 +441,7 @@ void cpu_hotplug_begin(void)
+@@ -280,7 +429,7 @@ void cpu_hotplug_begin(void)
  void cpu_hotplug_done(void)
  {
  	cpu_hotplug.active_writer = NULL;
@@ -444,7 +430,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	cpuhp_lock_release();
  }
  
-@@ -527,6 +676,9 @@ static int __ref _cpu_down(unsigned int
+@@ -516,6 +665,9 @@ static int _cpu_down(unsigned int cpu, i
  
  	smpboot_park_threads(cpu);
  
@@ -452,30 +438,12 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +	cpu_unplug_sync(cpu);
 +
  	/*
- 	 * So now all preempt/rcu users must observe !cpu_active().
- 	 */
+ 	 * Prevent irq alloc/free while the dying cpu reorganizes the
+ 	 * interrupt affinities.
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -2761,7 +2761,7 @@ void migrate_disable(void)
- {
- 	struct task_struct *p = current;
- 
--	if (in_atomic() || p->flags & PF_NO_SETAFFINITY) {
-+	if (in_atomic()) {
- #ifdef CONFIG_SCHED_DEBUG
- 		p->migrate_disable_atomic++;
- #endif
-@@ -2794,7 +2794,7 @@ void migrate_enable(void)
- 	unsigned long flags;
- 	struct rq *rq;
- 
--	if (in_atomic() || p->flags & PF_NO_SETAFFINITY) {
-+	if (in_atomic()) {
- #ifdef CONFIG_SCHED_DEBUG
- 		p->migrate_disable_atomic--;
- #endif
-@@ -4967,6 +4967,84 @@ void do_set_cpus_allowed(struct task_str
- 	cpumask_copy(&p->cpus_allowed, new_mask);
+@@ -1220,6 +1220,84 @@ void do_set_cpus_allowed(struct task_str
+ 		enqueue_task(rq, p, ENQUEUE_RESTORE);
  }
  
 +static DEFINE_PER_CPU(struct cpumask, sched_cpumasks);
@@ -557,5 +525,23 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +}
 +
  /*
-  * This is how migration works:
-  *
+  * Change a given task's CPU affinity. Migrate the thread to a
+  * proper CPU and schedule it away if the CPU it's executing on
+@@ -3085,7 +3163,7 @@ void migrate_disable(void)
+ {
+ 	struct task_struct *p = current;
+ 
+-	if (in_atomic() || p->flags & PF_NO_SETAFFINITY) {
++	if (in_atomic()) {
+ #ifdef CONFIG_SCHED_DEBUG
+ 		p->migrate_disable_atomic++;
+ #endif
+@@ -3118,7 +3196,7 @@ void migrate_enable(void)
+ 	unsigned long flags;
+ 	struct rq *rq;
+ 
+-	if (in_atomic() || p->flags & PF_NO_SETAFFINITY) {
++	if (in_atomic()) {
+ #ifdef CONFIG_SCHED_DEBUG
+ 		p->migrate_disable_atomic--;
+ #endif

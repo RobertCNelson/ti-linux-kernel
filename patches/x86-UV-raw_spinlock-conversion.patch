@@ -63,7 +63,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  extern struct uv_blade_info *uv_blade_info;
 --- a/arch/x86/kernel/apic/x2apic_uv_x.c
 +++ b/arch/x86/kernel/apic/x2apic_uv_x.c
-@@ -949,7 +949,7 @@ void __init uv_system_init(void)
+@@ -947,7 +947,7 @@ void __init uv_system_init(void)
  			uv_blade_info[blade].pnode = pnode;
  			uv_blade_info[blade].nr_possible_cpus = 0;
  			uv_blade_info[blade].nr_online_cpus = 0;
@@ -162,7 +162,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
 --- a/arch/x86/platform/uv/uv_time.c
 +++ b/arch/x86/platform/uv/uv_time.c
-@@ -58,7 +58,7 @@ static DEFINE_PER_CPU(struct clock_event
+@@ -57,7 +57,7 @@ static DEFINE_PER_CPU(struct clock_event
  
  /* There is one of these allocated per node */
  struct uv_rtc_timer_head {
@@ -171,7 +171,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	/* next cpu waiting for timer, local node relative: */
  	int		next_cpu;
  	/* number of cpus on this node: */
-@@ -178,7 +178,7 @@ static __init int uv_rtc_allocate_timers
+@@ -177,7 +177,7 @@ static __init int uv_rtc_allocate_timers
  				uv_rtc_deallocate_timers();
  				return -ENOMEM;
  			}
@@ -180,7 +180,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  			head->ncpus = uv_blade_nr_possible_cpus(bid);
  			head->next_cpu = -1;
  			blade_info[bid] = head;
-@@ -232,7 +232,7 @@ static int uv_rtc_set_timer(int cpu, u64
+@@ -231,7 +231,7 @@ static int uv_rtc_set_timer(int cpu, u64
  	unsigned long flags;
  	int next_cpu;
  
@@ -189,7 +189,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	next_cpu = head->next_cpu;
  	*t = expires;
-@@ -244,12 +244,12 @@ static int uv_rtc_set_timer(int cpu, u64
+@@ -243,12 +243,12 @@ static int uv_rtc_set_timer(int cpu, u64
  		if (uv_setup_intr(cpu, expires)) {
  			*t = ULLONG_MAX;
  			uv_rtc_find_next_timer(head, pnode);
@@ -204,7 +204,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	return 0;
  }
  
-@@ -268,7 +268,7 @@ static int uv_rtc_unset_timer(int cpu, i
+@@ -267,7 +267,7 @@ static int uv_rtc_unset_timer(int cpu, i
  	unsigned long flags;
  	int rc = 0;
  
@@ -213,7 +213,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	if ((head->next_cpu == bcpu && uv_read_rtc(NULL) >= *t) || force)
  		rc = 1;
-@@ -280,7 +280,7 @@ static int uv_rtc_unset_timer(int cpu, i
+@@ -279,7 +279,7 @@ static int uv_rtc_unset_timer(int cpu, i
  			uv_rtc_find_next_timer(head, pnode);
  	}
  
@@ -222,7 +222,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	return rc;
  }
-@@ -300,13 +300,18 @@ static int uv_rtc_unset_timer(int cpu, i
+@@ -299,13 +299,18 @@ static int uv_rtc_unset_timer(int cpu, i
  static cycle_t uv_read_rtc(struct clocksource *cs)
  {
  	unsigned long offset;

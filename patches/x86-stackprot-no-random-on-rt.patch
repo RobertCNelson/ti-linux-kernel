@@ -14,12 +14,12 @@ Reported-by: Carsten Emde <carsten.emde@osadl.org>
 Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 ---
- arch/x86/include/asm/stackprotector.h |   10 +++++++++-
- 1 file changed, 9 insertions(+), 1 deletion(-)
+ arch/x86/include/asm/stackprotector.h |    9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
 
 --- a/arch/x86/include/asm/stackprotector.h
 +++ b/arch/x86/include/asm/stackprotector.h
-@@ -57,7 +57,7 @@
+@@ -59,7 +59,7 @@
   */
  static __always_inline void boot_init_stack_canary(void)
  {
@@ -28,7 +28,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	u64 tsc;
  
  #ifdef CONFIG_X86_64
-@@ -68,8 +68,16 @@ static __always_inline void boot_init_st
+@@ -70,8 +70,15 @@ static __always_inline void boot_init_st
  	 * of randomness. The TSC only matters for very early init,
  	 * there it already has some randomness on most systems. Later
  	 * on during the bootup the random pool has true entropy too.
@@ -36,12 +36,11 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +	 * For preempt-rt we need to weaken the randomness a bit, as
 +	 * we can't call into the random generator from atomic context
 +	 * due to locking constraints. We just leave canary
-+	 * uninitialized and use the TSC based randomness on top of
-+	 * it.
++	 * uninitialized and use the TSC based randomness on top of it.
  	 */
 +#ifndef CONFIG_PREEMPT_RT_FULL
  	get_random_bytes(&canary, sizeof(canary));
 +#endif
- 	tsc = __native_read_tsc();
+ 	tsc = rdtsc();
  	canary += tsc + (tsc << 32UL);
  

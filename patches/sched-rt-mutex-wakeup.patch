@@ -17,7 +17,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -1335,6 +1335,7 @@ enum perf_event_task_context {
+@@ -1377,6 +1377,7 @@ struct tlbflush_unmap_batch {
  
  struct task_struct {
  	volatile long state;	/* -1 unrunnable, 0 runnable, >0 stopped */
@@ -25,7 +25,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	void *stack;
  	atomic_t usage;
  	unsigned int flags;	/* per process flags, defined below */
-@@ -2432,6 +2433,7 @@ extern void xtime_update(unsigned long t
+@@ -2480,6 +2481,7 @@ extern void xtime_update(unsigned long t
  
  extern int wake_up_state(struct task_struct *tsk, unsigned int state);
  extern int wake_up_process(struct task_struct *tsk);
@@ -35,7 +35,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
   extern void kick_process(struct task_struct *tsk);
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -1721,8 +1721,25 @@ try_to_wake_up(struct task_struct *p, un
+@@ -1958,8 +1958,25 @@ try_to_wake_up(struct task_struct *p, un
  	 */
  	smp_mb__before_spinlock();
  	raw_spin_lock_irqsave(&p->pi_lock, flags);
@@ -60,9 +60,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +	if (!(wake_flags & WF_LOCK_SLEEPER))
 +		p->saved_state = TASK_RUNNING;
  
- 	success = 1; /* we're going to change ->state */
- 	cpu = task_cpu(p);
-@@ -1819,6 +1836,18 @@ int wake_up_process(struct task_struct *
+ 	trace_sched_waking(p);
+ 
+@@ -2092,6 +2109,18 @@ int wake_up_process(struct task_struct *
  }
  EXPORT_SYMBOL(wake_up_process);
  
@@ -83,7 +83,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	return try_to_wake_up(p, state, 0);
 --- a/kernel/sched/sched.h
 +++ b/kernel/sched/sched.h
-@@ -1093,6 +1093,7 @@ static inline void finish_lock_switch(st
+@@ -1100,6 +1100,7 @@ static inline void finish_lock_switch(st
  #define WF_SYNC		0x01		/* waker goes to sleep after wakeup */
  #define WF_FORK		0x02		/* child wakeup after fork */
  #define WF_MIGRATED	0x4		/* internal use, task got migrated */

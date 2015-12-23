@@ -15,7 +15,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/arch/powerpc/Kconfig
 +++ b/arch/powerpc/Kconfig
-@@ -139,6 +139,7 @@ config PPC
+@@ -142,6 +142,7 @@ config PPC
  	select ARCH_HAS_TICK_BROADCAST if GENERIC_CLOCKEVENTS_BROADCAST
  	select GENERIC_STRNCPY_FROM_USER
  	select GENERIC_STRNLEN_USER
@@ -83,7 +83,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
 --- a/arch/powerpc/kernel/entry_32.S
 +++ b/arch/powerpc/kernel/entry_32.S
-@@ -813,7 +813,14 @@ user_exc_return:		/* r10 contains MSR_KE
+@@ -818,7 +818,14 @@ user_exc_return:		/* r10 contains MSR_KE
  	cmpwi	0,r0,0		/* if non-zero, just restore regs and return */
  	bne	restore
  	andi.	r8,r8,_TIF_NEED_RESCHED
@@ -98,7 +98,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	lwz	r3,_MSR(r1)
  	andi.	r0,r3,MSR_EE	/* interrupts off? */
  	beq	restore		/* don't schedule if so */
-@@ -824,11 +831,11 @@ user_exc_return:		/* r10 contains MSR_KE
+@@ -829,11 +836,11 @@ user_exc_return:		/* r10 contains MSR_KE
  	 */
  	bl	trace_hardirqs_off
  #endif
@@ -113,7 +113,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #ifdef CONFIG_TRACE_IRQFLAGS
  	/* And now, to properly rebalance the above, we tell lockdep they
  	 * are being turned back on, which will happen when we return
-@@ -1149,7 +1156,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_NEED_PAIRE
+@@ -1154,7 +1161,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_NEED_PAIRE
  #endif /* !(CONFIG_4xx || CONFIG_BOOKE) */
  
  do_work:			/* r10 contains MSR_KERNEL here */
@@ -122,7 +122,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	beq	do_user_signal
  
  do_resched:			/* r10 contains MSR_KERNEL here */
-@@ -1170,7 +1177,7 @@ do_resched:			/* r10 contains MSR_KERNEL
+@@ -1175,7 +1182,7 @@ do_resched:			/* r10 contains MSR_KERNEL
  	MTMSRD(r10)		/* disable interrupts */
  	CURRENT_THREAD_INFO(r9, r1)
  	lwz	r9,TI_FLAGS(r9)
@@ -133,7 +133,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	beq	restore_user
 --- a/arch/powerpc/kernel/entry_64.S
 +++ b/arch/powerpc/kernel/entry_64.S
-@@ -636,7 +636,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_DSCR)
+@@ -683,7 +683,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_DSCR)
  #else
  	beq	restore
  #endif
@@ -142,7 +142,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	beq	2f
  	bl	restore_interrupts
  	SCHEDULE_USER
-@@ -698,10 +698,18 @@ END_FTR_SECTION_IFSET(CPU_FTR_DSCR)
+@@ -745,10 +745,18 @@ END_FTR_SECTION_IFSET(CPU_FTR_DSCR)
  
  #ifdef CONFIG_PREEMPT
  	/* Check if we need to preempt */
@@ -162,7 +162,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	cmpwi	cr1,r8,0
  	ld	r0,SOFTE(r1)
  	cmpdi	r0,0
-@@ -718,7 +726,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_DSCR)
+@@ -765,7 +773,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_DSCR)
  	/* Re-test flags and eventually loop */
  	CURRENT_THREAD_INFO(r9, r1)
  	ld	r4,TI_FLAGS(r9)

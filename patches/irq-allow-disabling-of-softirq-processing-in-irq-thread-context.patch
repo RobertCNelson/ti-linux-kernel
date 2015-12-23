@@ -43,28 +43,28 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
   *				  it from the spurious interrupt detection
   *				  mechanism and from core side polling.
 + * IRQ_NO_SOFTIRQ_CALL		- No softirq processing in the irq thread context (RT)
+  * IRQ_DISABLE_UNLAZY		- Disable lazy irq disable
   */
  enum {
- 	IRQ_TYPE_NONE		= 0x00000000,
-@@ -97,13 +98,14 @@ enum {
- 	IRQ_NOTHREAD		= (1 << 16),
+@@ -99,13 +100,14 @@ enum {
  	IRQ_PER_CPU_DEVID	= (1 << 17),
  	IRQ_IS_POLLED		= (1 << 18),
-+	IRQ_NO_SOFTIRQ_CALL     = (1 << 19),
+ 	IRQ_DISABLE_UNLAZY	= (1 << 19),
++	IRQ_NO_SOFTIRQ_CALL	= (1 << 20),
  };
  
  #define IRQF_MODIFY_MASK	\
  	(IRQ_TYPE_SENSE_MASK | IRQ_NOPROBE | IRQ_NOREQUEST | \
  	 IRQ_NOAUTOEN | IRQ_MOVE_PCNTXT | IRQ_LEVEL | IRQ_NO_BALANCING | \
  	 IRQ_PER_CPU | IRQ_NESTED_THREAD | IRQ_NOTHREAD | IRQ_PER_CPU_DEVID | \
--	 IRQ_IS_POLLED)
-+	 IRQ_IS_POLLED | IRQ_NO_SOFTIRQ_CALL)
+-	 IRQ_IS_POLLED | IRQ_DISABLE_UNLAZY)
++	 IRQ_IS_POLLED | IRQ_DISABLE_UNLAZY | IRQ_NO_SOFTIRQ_CALL)
  
  #define IRQ_NO_BALANCING_MASK	(IRQ_PER_CPU | IRQ_NO_BALANCING)
  
 --- a/kernel/irq/manage.c
 +++ b/kernel/irq/manage.c
-@@ -907,7 +907,15 @@ irq_forced_thread_fn(struct irq_desc *de
+@@ -940,7 +940,15 @@ irq_forced_thread_fn(struct irq_desc *de
  	local_bh_disable();
  	ret = action->thread_fn(action->irq, action->dev_id);
  	irq_finalize_oneshot(desc, action);
@@ -81,7 +81,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	return ret;
  }
  
-@@ -1357,6 +1365,9 @@ static int
+@@ -1390,6 +1398,9 @@ static int
  			irqd_set(&desc->irq_data, IRQD_NO_BALANCING);
  		}
  
@@ -89,27 +89,27 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +			irq_settings_set_no_softirq_call(desc);
 +
  		/* Set default affinity mask once everything is setup */
- 		setup_affinity(irq, desc, mask);
+ 		setup_affinity(desc, mask);
  
 --- a/kernel/irq/settings.h
 +++ b/kernel/irq/settings.h
-@@ -15,6 +15,7 @@ enum {
- 	_IRQ_NESTED_THREAD	= IRQ_NESTED_THREAD,
+@@ -16,6 +16,7 @@ enum {
  	_IRQ_PER_CPU_DEVID	= IRQ_PER_CPU_DEVID,
  	_IRQ_IS_POLLED		= IRQ_IS_POLLED,
+ 	_IRQ_DISABLE_UNLAZY	= IRQ_DISABLE_UNLAZY,
 +	_IRQ_NO_SOFTIRQ_CALL	= IRQ_NO_SOFTIRQ_CALL,
  	_IRQF_MODIFY_MASK	= IRQF_MODIFY_MASK,
  };
  
-@@ -28,6 +29,7 @@ enum {
- #define IRQ_NESTED_THREAD	GOT_YOU_MORON
+@@ -30,6 +31,7 @@ enum {
  #define IRQ_PER_CPU_DEVID	GOT_YOU_MORON
  #define IRQ_IS_POLLED		GOT_YOU_MORON
+ #define IRQ_DISABLE_UNLAZY	GOT_YOU_MORON
 +#define IRQ_NO_SOFTIRQ_CALL	GOT_YOU_MORON
  #undef IRQF_MODIFY_MASK
  #define IRQF_MODIFY_MASK	GOT_YOU_MORON
  
-@@ -38,6 +40,16 @@ irq_settings_clr_and_set(struct irq_desc
+@@ -40,6 +42,16 @@ irq_settings_clr_and_set(struct irq_desc
  	desc->status_use_accessors |= (set & _IRQF_MODIFY_MASK);
  }
  
