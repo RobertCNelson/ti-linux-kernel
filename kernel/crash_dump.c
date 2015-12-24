@@ -29,7 +29,7 @@ unsigned long long elfcorehdr_size;
  * elfcorehdr= specifies the location of elf core header stored by the crashed
  * kernel. This option will be passed by kexec loader to the capture kernel.
  *
- * Syntax: elfcorehdr=[size[KMG]@]offset[KMG]
+ * Syntax: elfcorehdr=[size[KMGTPE]@]offset[KMGTPE]
  */
 static int __init setup_elfcorehdr(char *arg)
 {
