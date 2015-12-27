@@ -617,6 +617,10 @@ enum {
 #define EXT4_IOC_SET_ENCRYPTION_POLICY	_IOR('f', 19, struct ext4_encryption_policy)
 #define EXT4_IOC_GET_ENCRYPTION_PWSALT	_IOW('f', 20, __u8[16])
 #define EXT4_IOC_GET_ENCRYPTION_POLICY	_IOW('f', 21, struct ext4_encryption_policy)
+#define EXT4_IOC_GET_ENCRYPTION_METADATA _IOWR('f', 22, struct ext4_encrypted_metadata)
+#define EXT4_IOC_SET_ENCRYPTION_METADATA _IOR('f', 23, struct ext4_encrypted_metadata)
+#define EXT4_IOC_GET_ENCRYPTED_FILENAME	_IOWR('f', 24, struct ext4_encrypted_metadata)
+#define EXT4_IOC_SET_ENCRYPTED_FILENAME	_IOR('f', 25, struct ext4_encrypted_metadata)
 
 #if defined(__KERNEL__) && defined(CONFIG_COMPAT)
 /*
@@ -2228,6 +2232,7 @@ ext4_fsblk_t ext4_inode_to_goal_block(struct inode *);
 /* crypto_policy.c */
 int ext4_is_child_context_consistent_with_parent(struct inode *parent,
 						 struct inode *child);
+int ext4_validate_encryption_context(struct ext4_encryption_context *ctx);
 int ext4_inherit_context(struct inode *parent, struct inode *child);
 void ext4_to_hex(char *dst, char *src, size_t src_size);
 int ext4_process_policy(const struct ext4_encryption_policy *policy,
@@ -2311,6 +2316,10 @@ static inline void ext4_fname_free_filename(struct ext4_filename *fname) { }
 void ext4_free_crypt_info(struct ext4_crypt_info *ci);
 void ext4_free_encryption_info(struct inode *inode, struct ext4_crypt_info *ci);
 int _ext4_get_encryption_info(struct inode *inode);
+int ext4_set_encryption_metadata(struct inode *inode,
+				 struct ext4_rw_enc_mdata *mdata);
+int ext4_get_encryption_metadata(struct inode *inode,
+				 struct ext4_rw_enc_mdata *mdata);
 
 #ifdef CONFIG_EXT4_FS_ENCRYPTION
 int ext4_has_encryption_key(struct inode *inode);
@@ -2400,18 +2409,24 @@ extern int ext4fs_dirhash(const char *name, int len, struct
 			  dx_hash_info *hinfo);
 
 /* ialloc.c */
+#define EXT4_NEW_INODE_NOENCRYPT	0x0001
 extern struct inode *__ext4_new_inode(handle_t *, struct inode *, umode_t,
 				      const struct qstr *qstr, __u32 goal,
 				      uid_t *owner, int handle_type,
-				      unsigned int line_no, int nblocks);
+				      unsigned int line_no, int nblocks,
+				      int flags);
 
 #define ext4_new_inode(handle, dir, mode, qstr, goal, owner) \
 	__ext4_new_inode((handle), (dir), (mode), (qstr), (goal), (owner), \
-			 0, 0, 0)
+			 0, 0, 0, 0)
 #define ext4_new_inode_start_handle(dir, mode, qstr, goal, owner, \
 				    type, nblocks)		    \
 	__ext4_new_inode(NULL, (dir), (mode), (qstr), (goal), (owner), \
-			 (type), __LINE__, (nblocks))
+			 (type), __LINE__, (nblocks), 0)
+#define ext4_new_inode_start_handle_flags(dir, mode, qstr, goal, owner, \
+					  type, nblocks, flags)		\
+	__ext4_new_inode(NULL, (dir), (mode), (qstr), (goal), (owner), \
+			 (type), __LINE__, (nblocks), (flags))
 
 
 extern void ext4_free_inode(handle_t *, struct inode *);
@@ -2546,6 +2561,10 @@ extern int ext4_generic_delete_entry(handle_t *handle,
 				     int buf_size,
 				     int csum_size);
 extern int ext4_empty_dir(struct inode *inode);
+extern int ext4_get_encrypted_filename(struct file *filp,
+				       struct ext4_rw_enc_mdata *mdata);
+extern int ext4_set_encrypted_filename(struct inode *dir,
+				       struct ext4_rw_enc_mdata *efn);
 
 /* resize.c */
 extern int ext4_group_add(struct super_block *sb,
