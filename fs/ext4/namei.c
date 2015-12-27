@@ -33,6 +33,8 @@
 #include <linux/quotaops.h>
 #include <linux/buffer_head.h>
 #include <linux/bio.h>
+#include <linux/crc16.h>
+#include <linux/file.h>
 #include "ext4.h"
 #include "ext4_jbd2.h"
 
@@ -2048,24 +2050,16 @@ out_frames:
 }
 
 /*
- *	ext4_add_entry()
- *
- * adds a file entry to the specified directory, using the same
- * semantics as ext4_find_entry(). It returns NULL if it failed.
- *
- * NOTE!! The inode part of 'de' is left at 0 - which means you
- * may not sleep between calling this and putting something into
- * the entry, as someone else might have used it while you slept.
+ * Add a directory entry to a directory, given the filename and the
+ * inode it will point to.
  */
-static int ext4_add_entry(handle_t *handle, struct dentry *dentry,
-			  struct inode *inode)
+static int ext4_add_fname(handle_t *handle, struct inode *dir,
+			  struct ext4_filename *fname, struct inode *inode)
 {
-	struct inode *dir = d_inode(dentry->d_parent);
 	struct buffer_head *bh = NULL;
 	struct ext4_dir_entry_2 *de;
 	struct ext4_dir_entry_tail *t;
 	struct super_block *sb;
-	struct ext4_filename fname;
 	int	retval;
 	int	dx_fallback=0;
 	unsigned blocksize;
@@ -2077,15 +2071,9 @@ static int ext4_add_entry(handle_t *handle, struct dentry *dentry,
 
 	sb = dir->i_sb;
 	blocksize = sb->s_blocksize;
-	if (!dentry->d_name.len)
-		return -EINVAL;
-
-	retval = ext4_fname_setup_filename(dir, &dentry->d_name, 0, &fname);
-	if (retval)
-		return retval;
 
 	if (ext4_has_inline_data(dir)) {
-		retval = ext4_try_add_inline_entry(handle, &fname, dir, inode);
+		retval = ext4_try_add_inline_entry(handle, fname, dir, inode);
 		if (retval < 0)
 			goto out;
 		if (retval == 1) {
@@ -2095,7 +2083,7 @@ static int ext4_add_entry(handle_t *handle, struct dentry *dentry,
 	}
 
 	if (is_dx(dir)) {
-		retval = ext4_dx_add_entry(handle, &fname, dir, inode);
+		retval = ext4_dx_add_entry(handle, fname, dir, inode);
 		if (!retval || (retval != ERR_BAD_DX_DIR))
 			goto out;
 		ext4_clear_inode_flag(dir, EXT4_INODE_INDEX);
@@ -2110,14 +2098,14 @@ static int ext4_add_entry(handle_t *handle, struct dentry *dentry,
 			bh = NULL;
 			goto out;
 		}
-		retval = add_dirent_to_buf(handle, &fname, dir, inode,
+		retval = add_dirent_to_buf(handle, fname, dir, inode,
 					   NULL, bh);
 		if (retval != -ENOSPC)
 			goto out;
 
 		if (blocks == 1 && !dx_fallback &&
 		    ext4_has_feature_dir_index(sb)) {
-			retval = make_indexed_dir(handle, &fname, dir,
+			retval = make_indexed_dir(handle, fname, dir,
 						  inode, bh);
 			bh = NULL; /* make_indexed_dir releases bh */
 			goto out;
@@ -2139,12 +2127,34 @@ static int ext4_add_entry(handle_t *handle, struct dentry *dentry,
 		initialize_dirent_tail(t, blocksize);
 	}
 
-	retval = add_dirent_to_buf(handle, &fname, dir, inode, de, bh);
+	retval = add_dirent_to_buf(handle, fname, dir, inode, de, bh);
 out:
-	ext4_fname_free_filename(&fname);
 	brelse(bh);
 	if (retval == 0)
 		ext4_set_inode_state(inode, EXT4_STATE_NEWENTRY);
+	return retval;
+}
+
+/*
+ * Create a directory entry associated with the specified dentry and
+ * inode.
+ */
+static int ext4_add_entry(handle_t *handle, struct dentry *dentry,
+			  struct inode *inode)
+{
+	struct inode *dir = d_inode(dentry->d_parent);
+	struct ext4_filename fname;
+	int	retval;
+
+	if (!dentry->d_name.len)
+		return -EINVAL;
+
+	retval = ext4_fname_setup_filename(dir, &dentry->d_name, 0, &fname);
+	if (retval)
+		return retval;
+
+	retval = ext4_add_fname(handle, dir, &fname, inode);
+	ext4_fname_free_filename(&fname);
 	return retval;
 }
 
@@ -3858,3 +3868,252 @@ const struct inode_operations ext4_special_inode_operations = {
 	.get_acl	= ext4_get_acl,
 	.set_acl	= ext4_set_acl,
 };
+
+int ext4_get_encrypted_filename(struct file *filp,
+				struct ext4_rw_enc_mdata *mdata)
+{
+	unsigned char *cp = mdata->buf;
+	struct dentry *dentry = filp->f_path.dentry;
+	struct inode *inode = file_inode(filp);
+	struct inode *dir = dentry->d_parent->d_inode;
+	struct buffer_head *bh;
+	struct ext4_dir_entry_2 *de;
+	int isdir = S_ISDIR(inode->i_mode);
+	int len = isdir ? 10 : 4;
+	int ret;
+
+	if (!dir || !ext4_encrypted_inode(dir))
+		return -EINVAL;
+
+	if (!inode_owner_or_capable(dir) && !capable(CAP_SYS_ADMIN))
+		return -EACCES;
+
+	if (mdata->u.len < len)
+		return -ENOSPC;
+
+	*cp++ = 'e';
+	*cp++ = isdir ? 'd' : 'f';
+	*cp++ = 0;
+	*cp++ = 0;
+
+	if (isdir) {
+		*((u32 *)cp) = cpu_to_le32(inode->i_mode);
+		cp += 4;
+		ret = ext4_xattr_get(inode, EXT4_XATTR_INDEX_ENCRYPTION,
+				     EXT4_XATTR_NAME_ENCRYPTION_CONTEXT,
+				     NULL, 0);
+		if (ret < 0)
+			return ret;
+		*((u16 *)cp) = cpu_to_le16((u16) ret);
+		cp += 2;
+
+		len += ret;
+		if (mdata->u.len < len)
+			return -ENOSPC;
+		ret = ext4_xattr_get(inode, EXT4_XATTR_INDEX_ENCRYPTION,
+				     EXT4_XATTR_NAME_ENCRYPTION_CONTEXT,
+				     cp, ret);
+		if (ret < 0)
+			return ret;
+		cp += ret;
+	}
+
+	bh = ext4_find_entry(dir, &dentry->d_name, &de, NULL);
+	if (IS_ERR(bh))
+		return PTR_ERR(bh);
+	if (de == NULL)
+		return -ENOENT;
+
+	len += de->name_len;
+	if (mdata->u.len < len)
+		return -ENOSPC;
+
+	mdata->u.len = len;
+	memcpy(cp, de->name, de->name_len);
+	*((u16 *) &mdata->buf[2]) = cpu_to_le16(crc16(~0, mdata->buf,
+						      mdata->u.len));
+	return 0;
+}
+
+int ext4_set_encrypted_filename(struct inode *dir,
+				struct ext4_rw_enc_mdata *mdata)
+{
+	struct ext4_encryption_context *ctx = NULL;
+	struct ext4_filename		fname;
+	unsigned char			*cp = mdata->buf;
+	struct inode			*inode = NULL;
+	struct fd			fd;
+	handle_t			*handle = NULL;
+	umode_t				mode;
+	u16				crc, xlen, credits;
+	int				retval = 0, retries = 0, do_retry = 0;
+	int				len = mdata->u.len;
+
+	if (!dir || !ext4_encrypted_inode(dir))
+		return -EINVAL;
+
+	retval = inode_permission(dir, MAY_WRITE | MAY_EXEC);
+	if (retval)
+		return retval;
+
+	if (len < 4)
+		return -EINVAL;
+
+	if (cp[0] != 'e' ||
+	    cp[1] != ((mdata->u.fd == -1) ? 'd' : 'f'))
+		return -EINVAL;
+	crc = le16_to_cpu(*(u16 *)(cp+2));
+	cp[2] = cp[3] = 0;
+	cp += 4; len -= 4;
+
+	if (crc != crc16(~0, mdata->buf, mdata->u.len))
+		return -EINVAL;
+
+	if ((len < EXT4_CRYPTO_BLOCK_SIZE) || (len > EXT4_NAME_LEN + 1))
+		return -EINVAL;
+
+	retval = dquot_initialize(dir);
+	if (retval)
+		return retval;
+
+	credits = (EXT4_DATA_TRANS_BLOCKS(dir->i_sb) +
+		   EXT4_INDEX_EXTRA_TRANS_BLOCKS + 2);
+
+	if (mdata->u.fd >= 0) {
+		fd = fdget(mdata->u.fd);
+		if (!fd.file)
+			return -EBADF;
+		inode = file_inode(fd.file);
+		mode = inode->i_mode;
+		retval = -EISDIR;
+		if (S_ISDIR(mode))
+			goto out;
+	} else if (mdata->u.fd == -1) {
+		/* do an encrypted mkdir */
+		fd.file = NULL;
+		if (EXT4_DIR_LINK_MAX(dir))
+			return -EMLINK;
+		if (len < 6)
+			return -EINVAL;
+		mode = le32_to_cpu(*(u32 *)cp);
+		cp += 4;
+		xlen = le16_to_cpu(*(u16 *)cp);
+		cp += 2; len -= 6;
+
+		if (len < xlen ||
+		    xlen != sizeof(struct ext4_encryption_context))
+			return -EINVAL;
+
+		ctx = (struct ext4_encryption_context *) cp;
+		retval = ext4_validate_encryption_context(ctx);
+		if (retval)
+			return retval;
+		cp += xlen; len -= xlen;
+
+		/* credits for the mkdir and xattr set */
+		credits += (EXT4_DATA_TRANS_BLOCKS(dir->i_sb) +
+			    EXT4_INDEX_EXTRA_TRANS_BLOCKS + 3 +
+			    ext4_jbd2_credits_xattr(dir));
+	retry:
+		inode = ext4_new_inode_start_handle_flags(dir, mode, NULL, 0,
+					NULL, EXT4_HT_DIR, credits,
+					EXT4_NEW_INODE_NOENCRYPT);
+		handle = ext4_journal_current_handle();
+		if (IS_ERR(inode)) {
+			retval = PTR_ERR(inode);
+			inode = NULL;
+			goto out;
+		}
+		inode->i_op = &ext4_dir_inode_operations;
+		inode->i_fop = &ext4_dir_operations;
+		retval = ext4_init_new_dir(handle, dir, inode);
+		if (retval)
+			goto out;
+
+		retval = ext4_xattr_set_handle(handle, inode,
+				EXT4_XATTR_INDEX_ENCRYPTION,
+				EXT4_XATTR_NAME_ENCRYPTION_CONTEXT, ctx,
+				sizeof(struct ext4_encryption_context),
+				fd.file ? XATTR_REPLACE : XATTR_CREATE);
+		if (retval)
+			goto out;
+		ext4_set_inode_flag(inode, EXT4_INODE_ENCRYPT);
+		ext4_clear_inode_state(inode, EXT4_STATE_MAY_INLINE_DATA);
+
+		goto insert_fname;
+	} else
+		return -EINVAL;
+
+
+	if ((mode & S_ISUID) ||
+	    ((mode & (S_ISGID | S_IXGRP)) == (S_ISGID | S_IXGRP))) {
+		/*
+		 * root or the inode owner can link even in the case
+		 * of "unsafe" hard link sources.  See
+		 * safe_hardlink_sources() in fs/namei.c
+		 */
+		if (!inode_owner_or_capable(inode) && !capable(CAP_SYS_ADMIN)) {
+			retval = -EACCES;
+			goto out;
+		}
+	}
+
+	retval = inode_permission(inode, MAY_READ | MAY_WRITE);
+	if (!retval && !inode_owner_or_capable(inode) &&
+	    !capable(CAP_SYS_ADMIN))
+		goto out;
+
+	handle = ext4_journal_start(dir, EXT4_HT_DIR,
+		(EXT4_DATA_TRANS_BLOCKS(dir->i_sb) +
+		 EXT4_INDEX_EXTRA_TRANS_BLOCKS) + 2);
+	if (IS_ERR(handle)) {
+		retval = PTR_ERR(handle);
+		goto out;
+	}
+
+insert_fname:
+	if (!ext4_is_child_context_consistent_with_parent(dir, inode)) {
+		retval = -EPERM;
+		goto out;
+	}
+
+	memset(&fname, 0, sizeof(fname));
+	fname.disk_name.name = cp;
+	fname.disk_name.len = len;
+	retval = ext4_add_fname(handle, dir, &fname, inode);
+	if (retval)
+		goto out;
+
+	if (fd.file)
+		ext4_inc_count(handle, inode);
+	ext4_mark_inode_dirty(handle, inode);
+	if (!fd.file)
+		ext4_inc_count(handle, dir);
+	ext4_update_dx_flag(dir);
+	ext4_mark_inode_dirty(handle, dir);
+	if (fd.file == NULL) {
+		unlock_new_inode(inode);
+		iput(inode);
+	}
+
+out:
+	if (fd.file)
+		fdput(fd);
+	else if (retval && inode) {
+		/* need to undo a failed attempted mkdir */
+		clear_nlink(inode);
+		unlock_new_inode(inode);
+		ext4_mark_inode_dirty(handle, inode);
+		iput(inode);
+		if (retval == -ENOSPC &&
+		    ext4_should_retry_alloc(dir->i_sb, &retries))
+			do_retry++;
+	}
+	if (handle)
+		ext4_journal_stop(handle);
+	if (do_retry) {
+		do_retry = 0;
+		goto retry;
+	}
+	return retval;
+}

@@ -10,11 +10,12 @@
 
 #include <keys/encrypted-type.h>
 #include <keys/user-type.h>
+#include <linux/crc16.h>
 #include <linux/random.h>
 #include <linux/scatterlist.h>
 #include <uapi/linux/keyctl.h>
 
-#include "ext4.h"
+#include "ext4_jbd2.h"
 #include "xattr.h"
 
 static void derive_crypt_complete(struct crypto_async_request *req, int rc)
@@ -273,4 +274,126 @@ int ext4_has_encryption_key(struct inode *inode)
 	struct ext4_inode_info *ei = EXT4_I(inode);
 
 	return (ei->i_crypt_info != NULL);
+}
+
+int ext4_get_encryption_metadata(struct inode *inode,
+				 struct ext4_rw_enc_mdata *mdata)
+{
+	unsigned char *cp = mdata->buf;
+	size_t size = mdata->u.len;
+	loff_t isize;
+	int res;
+
+	if (size < sizeof(struct ext4_encryption_context) + 12)
+		return -EINVAL;
+
+	if (!inode_owner_or_capable(inode) && !capable(CAP_SYS_ADMIN))
+		return -EACCES;
+
+	*cp++ = 'e';
+	*cp++ = '5';
+	*cp++ = 0;
+	*cp++ = 0;
+	isize = i_size_read(inode);
+	*((u32 *)cp) = cpu_to_le32(isize & 0xFFFFFFFF);
+	cp += 4;
+	*((u32 *)cp) = cpu_to_le32(isize >> 32);
+	cp += 4;
+	size -= 12;
+
+	res = ext4_xattr_get(inode, EXT4_XATTR_INDEX_ENCRYPTION,
+			     EXT4_XATTR_NAME_ENCRYPTION_CONTEXT,
+			     cp, size);
+
+	if (res < 0)
+		return res;
+	if (res > size)
+		return -ENOSPC;
+
+	mdata->u.len = res + 12;
+
+	*((u16 *) &mdata->buf[2]) = cpu_to_le16(crc16(~0, mdata->buf, mdata->u.len));
+	return 0;
+}
+
+int ext4_set_encryption_metadata(struct inode *inode,
+				 struct ext4_rw_enc_mdata *mdata)
+{
+	struct ext4_encryption_context *ctx;
+	unsigned char *cp = mdata->buf;
+	handle_t *handle = NULL;
+	loff_t size;
+	unsigned bs = inode->i_sb->s_blocksize;
+	int res;
+	u16 crc;
+
+	if (!inode_owner_or_capable(inode) && !capable(CAP_SYS_ADMIN))
+		return -EACCES;
+
+	if (!S_ISREG(inode->i_mode) && !S_ISDIR(inode->i_mode))
+		return -EINVAL;
+
+	if (mdata->u.len != sizeof(struct ext4_encryption_context) + 12)
+		return -EINVAL;
+
+	if (cp[0] != 'e' || cp[1] != '5')
+		return -EINVAL;
+	crc = le16_to_cpu(*(u16 *)(cp+2));
+	cp[2] = cp[3] = 0;
+	cp += 4;
+
+	if (crc != crc16(~0, mdata->buf, mdata->u.len))
+		return -EINVAL;
+
+	size = le32_to_cpu(*(u32 *) cp);
+	cp += 4;
+	size += ((u64) le32_to_cpu(*(u32 *) cp)) << 32;
+	cp += 4;
+
+	ctx = (struct ext4_encryption_context *) cp;
+	res = ext4_validate_encryption_context(ctx);
+	if (res)
+		return res;
+
+	res = ext4_convert_inline_data(inode);
+	if (res)
+		return res;
+
+	res = filemap_write_and_wait(&inode->i_data);
+	if (res)
+		return res;
+
+	mutex_lock(&inode->i_mutex);
+	if (S_ISREG(inode->i_mode) &&
+	    round_up(size, bs) != round_up(i_size_read(inode), bs)) {
+		res = -EINVAL;
+		goto errout;
+	}
+
+	handle = ext4_journal_start(inode, EXT4_HT_MISC,
+				    ext4_jbd2_credits_xattr(inode));
+	if (IS_ERR(handle))
+		return PTR_ERR(handle);
+	res = ext4_xattr_set(inode, EXT4_XATTR_INDEX_ENCRYPTION,
+			     EXT4_XATTR_NAME_ENCRYPTION_CONTEXT, ctx,
+			     sizeof(struct ext4_encryption_context), 0);
+	if (res < 0)
+		goto errout;
+	ext4_set_inode_flag(inode, EXT4_INODE_ENCRYPT);
+	ext4_clear_inode_state(inode, EXT4_STATE_MAY_INLINE_DATA);
+
+	if (S_ISREG(inode->i_mode)) {
+		i_size_write(inode, size);
+		EXT4_I(inode)->i_disksize = size;
+	}
+	res = ext4_mark_inode_dirty(handle, inode);
+	if (res)
+		EXT4_ERROR_INODE(inode, "Failed to mark inode dirty");
+	else
+		res = ext4_get_encryption_info(inode);
+errout:
+	mutex_unlock(&inode->i_mutex);
+	if (handle)
+		ext4_journal_stop(handle);
+	return res;
 }

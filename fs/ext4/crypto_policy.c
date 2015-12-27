@@ -180,6 +180,16 @@ int ext4_is_child_context_consistent_with_parent(struct inode *parent,
 		(parent_ci->ci_flags == child_ci->ci_flags));
 }
 
+int ext4_validate_encryption_context(struct ext4_encryption_context *ctx)
+{
+	if ((ctx->format != EXT4_ENCRYPTION_CONTEXT_FORMAT_V1) ||
+	    !ext4_valid_contents_enc_mode(ctx->contents_encryption_mode) ||
+	    !ext4_valid_filenames_enc_mode(ctx->filenames_encryption_mode) ||
+	    (ctx->flags & ~EXT4_POLICY_FLAGS_VALID))
+		return -EINVAL;
+	return 0;
+}
+
 /**
  * ext4_inherit_context() - Sets a child context from its parent
  * @parent: Parent inode from which the context is inherited.
