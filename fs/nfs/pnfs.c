@@ -1139,6 +1139,7 @@ void pnfs_roc_set_barrier(struct inode *ino, u32 barrier)
 
 	spin_lock(&ino->i_lock);
 	lo = NFS_I(ino)->layout;
+	pnfs_mark_layout_returned_if_empty(lo);
 	if (pnfs_seqid_is_newer(barrier, lo->plh_barrier))
 		lo->plh_barrier = barrier;
 	spin_unlock(&ino->i_lock);
@@ -1733,7 +1734,7 @@ out_forget_reply:
 	goto out;
 }
 
-static void
+void
 pnfs_mark_matching_lsegs_return(struct pnfs_layout_hdr *lo,
 				struct list_head *tmp_list,
 				struct pnfs_layout_range *return_range)
@@ -1744,6 +1745,8 @@ pnfs_mark_matching_lsegs_return(struct pnfs_layout_hdr *lo,
 
 	if (list_empty(&lo->plh_segs))
 		return;
+
+	assert_spin_locked(&lo->plh_inode->i_lock);
 
 	list_for_each_entry_safe(lseg, next, &lo->plh_segs, pls_list)
 		if (should_free_lseg(&lseg->pls_range, return_range)) {
