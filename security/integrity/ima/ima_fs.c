@@ -259,30 +259,21 @@ static const struct file_operations ima_ascii_measurements_ops = {
 static ssize_t ima_write_policy(struct file *file, const char __user *buf,
 				size_t datalen, loff_t *ppos)
 {
-	char *data = NULL;
 	ssize_t result;
+	char *data;
 
 	if (datalen >= PAGE_SIZE)
 		datalen = PAGE_SIZE - 1;
 
 	/* No partial writes. */
-	result = -EINVAL;
 	if (*ppos != 0)
-		goto out;
+		return -EINVAL;
 
-	result = -ENOMEM;
-	data = kmalloc(datalen + 1, GFP_KERNEL);
-	if (!data)
-		goto out;
-
-	*(data + datalen) = '\0';
-
-	result = -EFAULT;
-	if (copy_from_user(data, buf, datalen))
-		goto out;
+	data = memdup_user_nul(buf, datalen);
+	if (IS_ERR(data))
+		return PTR_ERR(data);
 
 	result = ima_parse_add_rule(data);
-out:
 	if (result < 0)
 		valid_policy = 0;
 	kfree(data);
