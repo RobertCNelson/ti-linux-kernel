@@ -388,7 +388,6 @@ struct printf_spec {
 	unsigned int	base:8;		/* number base, 8, 10 or 16 only */
 	signed int	precision:16;	/* # of digits/chars */
 } __packed;
-extern char __check_printf_spec[1-2*(sizeof(struct printf_spec) != 8)];
 
 static noinline_for_stack
 char *number(char *buf, char *end, unsigned long long num,
@@ -401,6 +400,8 @@ char *number(char *buf, char *end, unsigned long long num,
 	int need_pfx = ((spec.flags & SPECIAL) && spec.base != 10);
 	int i;
 	bool is_zero = num == 0LL;
+
+	BUILD_BUG_ON(sizeof(struct printf_spec) != 8);
 
 	/* locase = 0 or 0x20. ORing digits or letters with 'locase'
 	 * produces same digits or (maybe lowercased) letters */
