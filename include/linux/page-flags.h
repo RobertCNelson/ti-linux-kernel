@@ -160,9 +160,7 @@ static inline int PageCompound(struct page *page)
 #define PF_NO_TAIL(page, enforce) ({					\
 		if (enforce)						\
 			VM_BUG_ON_PAGE(PageTail(page), page);		\
-		else							\
-			page = compound_head(page);			\
-		page;})
+		compound_head(page);})
 #define PF_NO_COMPOUND(page, enforce) ({					\
 		if (enforce)						\
 			VM_BUG_ON_PAGE(PageCompound(page), page);	\
