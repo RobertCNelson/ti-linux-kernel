@@ -132,7 +132,7 @@ more:
 	 * @len must only increase.
 	 */
 	if (i && i >= len)
-		pr_err("printk_nmi_flush: internal error: i=%d >= len=%lu\n",
+		pr_err("printk_nmi_flush: internal error: i=%d >= len=%zu\n",
 		       i, len);
 
 	if (!len)
