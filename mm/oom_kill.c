@@ -472,10 +472,8 @@ static void oom_reap_vmas(struct mm_struct *mm)
 	int attempts = 0;
 
 	/* Retry the down_read_trylock(mmap_sem) a few times */
-	while (attempts++ < 10 && !__oom_reap_vmas(mm)) {
-		__set_task_state(current, TASK_IDLE);
-		schedule_timeout(HZ/10);
-	}
+	while (attempts++ < 10 && !__oom_reap_vmas(mm))
+		schedule_timeout_idle(HZ/10);
 
 	/* Drop a reference taken by wake_oom_reaper */
 	mmdrop(mm);
