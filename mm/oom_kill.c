@@ -111,6 +111,18 @@ struct task_struct *find_lock_task_mm(struct task_struct *p)
 
 	rcu_read_lock();
 
+	/*
+	 * Treat the whole process p as unkillable when one of subthreads has
+	 * TIF_MEMDIE pending. Otherwise, we may end up setting TIF_MEMDIE on
+	 * the same victim forever (e.g. making SysRq-f unusable).
+	 */
+	for_each_thread(p, t) {
+		if (likely(!test_tsk_thread_flag(t, TIF_MEMDIE)))
+			continue;
+		t = NULL;
+		goto found;
+	}
+
 	for_each_thread(p, t) {
 		task_lock(t);
 		if (likely(t->mm))
