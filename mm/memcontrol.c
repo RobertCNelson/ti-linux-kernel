@@ -4905,7 +4905,7 @@ retry:
 			 * ignore such a partial THP and keep it in original
 			 * memcg. There should be somebody mapping the head.
 			 */
-			if (PageCompound(page))
+			if (PageTransCompound(page))
 				goto put;
 			if (isolate_lru_page(page))
 				goto put;
