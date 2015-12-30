@@ -422,16 +422,16 @@ void __ubsan_handle_shift_out_of_bounds(struct shift_out_of_bounds_data *data,
 }
 EXPORT_SYMBOL(__ubsan_handle_shift_out_of_bounds);
 
-void __ubsan_handle_builtin_unreachable(struct unreachable_data *data)
+
+void __noreturn
+__ubsan_handle_builtin_unreachable(struct unreachable_data *data)
 {
 	unsigned long flags;
-
-	if (suppress_report(&data->location))
-		return;
 
 	ubsan_prologue(&data->location, &flags);
 	pr_err("calling __builtin_unreachable()\n");
 	ubsan_epilogue(&flags);
+	panic("can't return from __builtin_unreachable()");
 }
 EXPORT_SYMBOL(__ubsan_handle_builtin_unreachable);
 
