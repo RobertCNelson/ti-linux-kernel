@@ -1426,6 +1426,9 @@ static void vmstat_update(struct work_struct *w)
  */
 void quiet_vmstat(void)
 {
+	if (system_state != SYSTEM_RUNNING)
+		return;
+
 	do {
 		if (!cpumask_test_and_set_cpu(smp_processor_id(), cpu_stat_off))
 			cancel_delayed_work(this_cpu_ptr(&vmstat_work));
