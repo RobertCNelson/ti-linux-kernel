@@ -4486,6 +4486,7 @@ void __meminit memmap_init_zone(unsigned long size, int nid, unsigned long zone,
 						&nr_initialised))
 				break;
 
+#ifdef CONFIG_HAVE_MEMBLOCK_NODE_MAP
 			/*
 			 * if not mirrored_kernelcore and ZONE_MOVABLE exists,
 			 * range from zone_movable_pfn[nid] to end of each node
@@ -4495,7 +4496,6 @@ void __meminit memmap_init_zone(unsigned long size, int nid, unsigned long zone,
 				if (zone == ZONE_NORMAL &&
 				    pfn >= zone_movable_pfn[nid])
 					continue;
-
 			/*
 			 * check given memblock attribute by firmware which
 			 * can affect kernel memory layout.
@@ -4517,6 +4517,7 @@ void __meminit memmap_init_zone(unsigned long size, int nid, unsigned long zone,
 					continue;
 				}
 			}
+#endif
 		}
 
 		/*
