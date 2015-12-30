@@ -29,13 +29,6 @@ enum {
 	ND_MAX_LANES = 256,
 	SECTOR_SHIFT = 9,
 	INT_LBASIZE_ALIGNMENT = 64,
-#if IS_ENABLED(CONFIG_NVDIMM_PFN)
-	ND_PFN_ALIGN = PAGES_PER_SECTION * PAGE_SIZE,
-	ND_PFN_MASK = ND_PFN_ALIGN - 1,
-#else
-	ND_PFN_ALIGN = 0,
-	ND_PFN_MASK = 0,
-#endif
 };
 
 struct nd_poison {
@@ -159,6 +152,7 @@ struct nd_pfn {
 	int id;
 	u8 *uuid;
 	struct device dev;
+	unsigned long align;
 	unsigned long npfns;
 	enum nd_pfn_mode mode;
 	struct nd_pfn_sb *pfn_sb;
