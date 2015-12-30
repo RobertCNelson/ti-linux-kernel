@@ -72,8 +72,8 @@ static void *arc_dma_alloc(struct device *dev, size_t size,
 static void arc_dma_free(struct device *dev, size_t size, void *vaddr,
 		dma_addr_t dma_handle, struct dma_attrs *attrs)
 {
-	if (!(is_isa_arcv2() && ioc_exists) ||
-	    dma_get_attr(DMA_ATTR_NON_CONSISTENT, attrs))
+	if (!dma_get_attr(DMA_ATTR_NON_CONSISTENT, attrs) &&
+	    !(is_isa_arcv2() && ioc_exists))
 		iounmap((void __force __iomem *)vaddr);
 
 	free_pages_exact((void *)dma_handle, size);
@@ -107,7 +107,8 @@ static dma_addr_t arc_dma_map_page(struct device *dev, struct page *page,
 		struct dma_attrs *attrs)
 {
 	unsigned long paddr = page_to_phys(page) + offset;
-	return dma_map_single(dev, (void *)paddr, size, dir);
+	_dma_cache_sync(paddr, size, dir);
+	return (dma_addr_t)paddr;
 }
 
 static int arc_dma_map_sg(struct device *dev, struct scatterlist *sg,
