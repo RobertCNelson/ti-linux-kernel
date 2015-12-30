@@ -55,7 +55,7 @@
 
 #include "console_cmdline.h"
 #include "braille.h"
-#include "printk.h"
+#include "internal.h"
 
 int console_printk[4] = {
 	CONSOLE_LOGLEVEL_DEFAULT,	/* console_loglevel */

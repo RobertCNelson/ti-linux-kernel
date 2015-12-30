@@ -22,7 +22,7 @@
 #include <linux/irq_work.h>
 #include <linux/printk.h>
 
-#include "printk.h"
+#include "internal.h"
 
 /*
  * printk() could not take logbuf_lock in NMI context. Instead,
@@ -57,12 +57,13 @@ static DEFINE_PER_CPU(struct nmi_seq_buf, nmi_print_seq);
 static int vprintk_nmi(const char *fmt, va_list args)
 {
 	struct nmi_seq_buf *s = this_cpu_ptr(&nmi_print_seq);
-	int add = 0, len;
+	int add = 0;
+	size_t len;
 
 again:
 	len = atomic_read(&s->len);
 
-	if (len >=  sizeof(s->buffer))
+	if (len >= sizeof(s->buffer))
 		return 0;
 
 	/*
@@ -109,7 +110,8 @@ static void __printk_nmi_flush(struct irq_work *work)
 	static raw_spinlock_t read_lock =
 		__RAW_SPIN_LOCK_INITIALIZER(read_lock);
 	struct nmi_seq_buf *s = container_of(work, struct nmi_seq_buf, work);
-	int len, size, i, last_i;
+	size_t len, size;
+	int i, last_i;
 
 	/*
 	 * The lock has two functions. First, one reader has to flush all
@@ -129,7 +131,9 @@ more:
 	 * the buffer an unexpected way. If we printed something then
 	 * @len must only increase.
 	 */
-	WARN_ON(i && i >= len);
+	if (i && i >= len)
+		pr_err("printk_nmi_flush: internal error: i=%d >= len=%lu\n",
+		       i, len);
 
 	if (!len)
 		goto out; /* Someone else has already flushed the buffer. */
