@@ -470,7 +470,7 @@ static void oom_reap_vmas(struct mm_struct *mm)
 	int attempts = 0;
 
 	while (attempts++ < 10 && !__oom_reap_vmas(mm))
-		schedule_timeout(HZ/10);
+		msleep_interruptible(100);
 
 	/* Drop a reference taken by wake_oom_reaper */
 	mmdrop(mm);
