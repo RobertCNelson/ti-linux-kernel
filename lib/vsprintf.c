@@ -540,7 +540,7 @@ char *string(char *buf, char *end, const char *s, struct printf_spec spec)
 	return buf;
 }
 
-static void widen(char *buf, char *end, unsigned len, unsigned spaces)
+static void move_right(char *buf, char *end, unsigned len, unsigned spaces)
 {
 	size_t size;
 	if (buf >= end)	/* nowhere to put anything */
@@ -556,6 +556,35 @@ static void widen(char *buf, char *end, unsigned len, unsigned spaces)
 		memmove(buf + spaces, buf, len);
 	}
 	memset(buf, ' ', spaces);
+}
+
+/*
+ * Handle field width padding for a string.
+ * @buf: current buffer position
+ * @n: length of string
+ * @end: end of output buffer
+ * @spec: for field width and flags
+ * Returns: new buffer position after padding.
+ */
+static noinline_for_stack
+char *widen_string(char *buf, int n, char *end, struct printf_spec spec)
+{
+	unsigned spaces;
+
+	if (likely(n >= spec.field_width))
+		return buf;
+	/* we want to pad the sucker */
+	spaces = spec.field_width - n;
+	if (!(spec.flags & LEFT)) {
+		move_right(buf - n, end, n, spaces);
+		return buf + spaces;
+	}
+	while (spaces--) {
+		if (buf < end)
+			*buf = ' ';
+		++buf;
+	}
+	return buf;
 }
 
 static noinline_for_stack
@@ -599,20 +628,7 @@ char *dentry_name(char *buf, char *end, const struct dentry *d, struct printf_sp
 			*buf = c;
 	}
 	rcu_read_unlock();
-	if (n < spec.field_width) {
-		/* we want to pad the sucker */
-		unsigned spaces = spec.field_width - n;
-		if (!(spec.flags & LEFT)) {
-			widen(buf - n, end, n, spaces);
-			return buf + spaces;
-		}
-		while (spaces--) {
-			if (buf < end)
-				*buf = ' ';
-			++buf;
-		}
-	}
-	return buf;
+	return widen_string(buf, n, end, spec);
 }
 
 static noinline_for_stack
