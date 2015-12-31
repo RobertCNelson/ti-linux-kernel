@@ -30,6 +30,7 @@ struct nvdimm_bus {
 	struct list_head list;
 	struct device dev;
 	int id, probe_active;
+	struct list_head poison_list;
 	struct mutex reconfig_mutex;
 };
 
@@ -52,6 +53,7 @@ void nd_region_probe_success(struct nvdimm_bus *nvdimm_bus, struct device *dev);
 struct nd_region;
 void nd_region_create_blk_seed(struct nd_region *nd_region);
 void nd_region_create_btt_seed(struct nd_region *nd_region);
+void nd_region_create_pfn_seed(struct nd_region *nd_region);
 void nd_region_disable(struct nvdimm_bus *nvdimm_bus, struct device *dev);
 int nvdimm_bus_create_ndctl(struct nvdimm_bus *nvdimm_bus);
 void nvdimm_bus_destroy_ndctl(struct nvdimm_bus *nvdimm_bus);
@@ -89,4 +91,6 @@ bool __nd_attach_ndns(struct device *dev, struct nd_namespace_common *attach,
 ssize_t nd_namespace_store(struct device *dev,
 		struct nd_namespace_common **_ndns, const char *buf,
 		size_t len);
+int nvdimm_namespace_add_poison(struct gendisk *disk, resource_size_t offset,
+		struct nd_namespace_common *ndns);
 #endif /* __ND_CORE_H__ */
