@@ -98,4 +98,27 @@ struct desc_ptr {
 
 #endif /* !__ASSEMBLY__ */
 
+/* Access rights as returned by LAR */
+#define AR_TYPE_RODATA		(0 * (1 << 9))
+#define AR_TYPE_RWDATA		(1 * (1 << 9))
+#define AR_TYPE_RODATA_EXPDOWN	(2 * (1 << 9))
+#define AR_TYPE_RWDATA_EXPDOWN	(3 * (1 << 9))
+#define AR_TYPE_XOCODE		(4 * (1 << 9))
+#define AR_TYPE_XRCODE		(5 * (1 << 9))
+#define AR_TYPE_XOCODE_CONF	(6 * (1 << 9))
+#define AR_TYPE_XRCODE_CONF	(7 * (1 << 9))
+#define AR_TYPE_MASK		(7 * (1 << 9))
+
+#define AR_DPL0			(0 * (1 << 13))
+#define AR_DPL3			(3 * (1 << 13))
+#define AR_DPL_MASK		(3 * (1 << 13))
+
+#define AR_A			(1 << 8)	/* A means "accessed" */
+#define AR_S			(1 << 12)	/* S means "not system" */
+#define AR_P			(1 << 15)	/* P means "present" */
+#define AR_AVL			(1 << 20)	/* AVL does nothing */
+#define AR_L			(1 << 21)	/* L means "long mode" */
+#define AR_DB			(1 << 22)	/* D or B, depending on type */
+#define AR_G			(1 << 23)	/* G means "limit in pages" */
+
 #endif /* _ASM_X86_DESC_DEFS_H */
