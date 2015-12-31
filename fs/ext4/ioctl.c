@@ -202,6 +202,39 @@ static int uuid_is_zero(__u8 u[16])
 	return 1;
 }
 
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+static int read_user_mdata(unsigned long arg,
+			   struct ext4_rw_enc_mdata *mdata)
+{
+	if (copy_from_user(&mdata->u,
+			   (struct ext4_encrypted_metadata __user *)arg,
+			   sizeof(struct ext4_encrypted_metadata)))
+		return -EFAULT;
+	/* Sanity check, as nothing should need to be this big */
+	if (mdata->u.len > PAGE_CACHE_SIZE)
+		return -EINVAL;
+	mdata->buf = kmalloc(mdata->u.len, GFP_KERNEL);
+	if (!mdata->buf)
+		return -ENOMEM;
+	if (copy_from_user(mdata->buf, mdata->u.data, mdata->u.len))
+		return -EFAULT;
+	return 0;
+
+}
+
+static int write_user_mdata(unsigned long arg,
+			  struct ext4_rw_enc_mdata *mdata)
+{
+	if (copy_to_user(mdata->u.data, mdata->buf, mdata->u.len))
+		return -EFAULT;
+	if (copy_to_user((struct ext4_encrypted_metadata __user *)arg,
+			   &mdata->u,
+			   sizeof(struct ext4_encrypted_metadata)))
+		return -EFAULT;
+	return 0;
+}
+#endif
+
 long ext4_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	struct inode *inode = file_inode(filp);
@@ -689,6 +722,83 @@ encryption_policy_out:
 		return -EOPNOTSUPP;
 #endif
 	}
+	case EXT4_IOC_GET_ENCRYPTION_METADATA: {
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+		struct ext4_rw_enc_mdata mdata;
+		int err = 0;
+
+		if (!ext4_encrypted_inode(inode))
+			return -ENOENT;
+
+		err = read_user_mdata(arg, &mdata);
+		if (err)
+			return err;
+		err = ext4_get_encryption_metadata(inode, &mdata);
+		if (!err)
+			err = write_user_mdata(arg, &mdata);
+		kfree(mdata.buf);
+		return err;
+#else
+		return -EOPNOTSUPP;
+#endif
+	}
+	case EXT4_IOC_SET_ENCRYPTION_METADATA: {
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+		struct ext4_rw_enc_mdata mdata;
+		int err = 0;
+
+		if (ext4_encrypted_inode(inode))
+			return -EINVAL;
+		err = read_user_mdata(arg, &mdata);
+		if (err)
+			return err;
+		err = mnt_want_write_file(filp);
+		if (!err)
+			err = ext4_set_encryption_metadata(inode, &mdata);
+		mnt_drop_write_file(filp);
+		kfree(mdata.buf);
+		return err;
+#else
+		return -EOPNOTSUPP;
+#endif
+	}
+	case EXT4_IOC_GET_ENCRYPTED_FILENAME: {
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+		struct ext4_rw_enc_mdata mdata;
+		int err = 0;
+
+		if (!ext4_encrypted_inode(inode))
+			return -ENOENT;
+		err = read_user_mdata(arg, &mdata);
+		if (err)
+			return err;
+		err = ext4_get_encrypted_filename(filp, &mdata);
+		if (!err)
+			err = write_user_mdata(arg, &mdata);
+		kfree(mdata.buf);
+		return err;
+#else
+		return -EOPNOTSUPP;
+#endif
+	}
+	case EXT4_IOC_SET_ENCRYPTED_FILENAME: {
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+		struct ext4_rw_enc_mdata mdata;
+		int err = 0;
+
+		err = read_user_mdata(arg, &mdata);
+		if (err)
+			return err;
+		err = mnt_want_write_file(filp);
+		if (!err)
+			err = ext4_set_encrypted_filename(inode, &mdata);
+		mnt_drop_write_file(filp);
+		kfree(mdata.buf);
+		return err;
+#else
+		return -EOPNOTSUPP;
+#endif
+	}
 	default:
 		return -ENOTTY;
 	}
@@ -755,6 +865,9 @@ long ext4_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case EXT4_IOC_SET_ENCRYPTION_POLICY:
 	case EXT4_IOC_GET_ENCRYPTION_PWSALT:
 	case EXT4_IOC_GET_ENCRYPTION_POLICY:
+	case EXT4_IOC_GET_ENCRYPTION_METADATA:
+	case EXT4_IOC_SET_ENCRYPTION_METADATA:
+	case EXT4_IOC_GET_ENCRYPTED_FILENAME:
 		break;
 	default:
 		return -ENOIOCTLCMD;

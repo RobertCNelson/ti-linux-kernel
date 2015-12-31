@@ -655,11 +655,10 @@ ssize_t ext4_ind_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 	int orphan = 0;
 	size_t count = iov_iter_count(iter);
 	int retries = 0;
+	loff_t final_size = offset + count;
 
 	if (iov_iter_rw(iter) == WRITE) {
-		loff_t final_size = offset + count;
-
-		if (final_size > inode->i_size) {
+		if (final_size > i_size_read(inode)) {
 			/* Credits for sb + inode write */
 			handle = ext4_journal_start(inode, EXT4_HT_INODE, 2);
 			if (IS_ERR(handle)) {
