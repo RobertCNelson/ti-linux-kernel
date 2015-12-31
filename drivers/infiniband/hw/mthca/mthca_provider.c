@@ -57,25 +57,19 @@ static void init_query_mad(struct ib_smp *mad)
 	mad->method    	   = IB_MGMT_METHOD_GET;
 }
 
-static int mthca_query_device(struct ib_device *ibdev, struct ib_device_attr *props,
-			      struct ib_udata *uhw)
+static int mthca_init_device_flags(struct ib_device *ibdev)
 {
 	struct ib_smp *in_mad  = NULL;
 	struct ib_smp *out_mad = NULL;
 	int err = -ENOMEM;
 	struct mthca_dev *mdev = to_mdev(ibdev);
 
-	if (uhw->inlen || uhw->outlen)
-		return -EINVAL;
-
 	in_mad  = kzalloc(sizeof *in_mad, GFP_KERNEL);
 	out_mad = kmalloc(sizeof *out_mad, GFP_KERNEL);
 	if (!in_mad || !out_mad)
 		goto out;
 
-	memset(props, 0, sizeof *props);
-
-	props->fw_ver              = mdev->fw_ver;
+	ibdev->fw_ver              = mdev->fw_ver;
 
 	init_query_mad(in_mad);
 	in_mad->attr_id = IB_SMP_ATTR_NODE_INFO;
@@ -85,46 +79,46 @@ static int mthca_query_device(struct ib_device *ibdev, struct ib_device_attr *pr
 	if (err)
 		goto out;
 
-	props->device_cap_flags    = mdev->device_cap_flags;
-	props->vendor_id           = be32_to_cpup((__be32 *) (out_mad->data + 36)) &
+	ibdev->device_cap_flags    = mdev->device_cap_flags;
+	ibdev->vendor_id           = be32_to_cpup((__be32 *) (out_mad->data + 36)) &
 		0xffffff;
-	props->vendor_part_id      = be16_to_cpup((__be16 *) (out_mad->data + 30));
-	props->hw_ver              = be32_to_cpup((__be32 *) (out_mad->data + 32));
-	memcpy(&props->sys_image_guid, out_mad->data +  4, 8);
+	ibdev->vendor_part_id      = be16_to_cpup((__be16 *) (out_mad->data + 30));
+	ibdev->hw_ver              = be32_to_cpup((__be32 *) (out_mad->data + 32));
+	memcpy(&ibdev->sys_image_guid, out_mad->data +  4, 8);
 
-	props->max_mr_size         = ~0ull;
-	props->page_size_cap       = mdev->limits.page_size_cap;
-	props->max_qp              = mdev->limits.num_qps - mdev->limits.reserved_qps;
-	props->max_qp_wr           = mdev->limits.max_wqes;
-	props->max_sge             = mdev->limits.max_sg;
-	props->max_sge_rd          = props->max_sge;
-	props->max_cq              = mdev->limits.num_cqs - mdev->limits.reserved_cqs;
-	props->max_cqe             = mdev->limits.max_cqes;
-	props->max_mr              = mdev->limits.num_mpts - mdev->limits.reserved_mrws;
-	props->max_pd              = mdev->limits.num_pds - mdev->limits.reserved_pds;
-	props->max_qp_rd_atom      = 1 << mdev->qp_table.rdb_shift;
-	props->max_qp_init_rd_atom = mdev->limits.max_qp_init_rdma;
-	props->max_res_rd_atom     = props->max_qp_rd_atom * props->max_qp;
-	props->max_srq             = mdev->limits.num_srqs - mdev->limits.reserved_srqs;
-	props->max_srq_wr          = mdev->limits.max_srq_wqes;
-	props->max_srq_sge         = mdev->limits.max_srq_sge;
-	props->local_ca_ack_delay  = mdev->limits.local_ca_ack_delay;
-	props->atomic_cap          = mdev->limits.flags & DEV_LIM_FLAG_ATOMIC ?
+	ibdev->max_mr_size         = ~0ull;
+	ibdev->page_size_cap       = mdev->limits.page_size_cap;
+	ibdev->max_qp              = mdev->limits.num_qps - mdev->limits.reserved_qps;
+	ibdev->max_qp_wr           = mdev->limits.max_wqes;
+	ibdev->max_sge             = mdev->limits.max_sg;
+	ibdev->max_sge_rd          = ibdev->max_sge;
+	ibdev->max_cq              = mdev->limits.num_cqs - mdev->limits.reserved_cqs;
+	ibdev->max_cqe             = mdev->limits.max_cqes;
+	ibdev->max_mr              = mdev->limits.num_mpts - mdev->limits.reserved_mrws;
+	ibdev->max_pd              = mdev->limits.num_pds - mdev->limits.reserved_pds;
+	ibdev->max_qp_rd_atom      = 1 << mdev->qp_table.rdb_shift;
+	ibdev->max_qp_init_rd_atom = mdev->limits.max_qp_init_rdma;
+	ibdev->max_res_rd_atom     = ibdev->max_qp_rd_atom * ibdev->max_qp;
+	ibdev->max_srq             = mdev->limits.num_srqs - mdev->limits.reserved_srqs;
+	ibdev->max_srq_wr          = mdev->limits.max_srq_wqes;
+	ibdev->max_srq_sge         = mdev->limits.max_srq_sge;
+	ibdev->local_ca_ack_delay  = mdev->limits.local_ca_ack_delay;
+	ibdev->atomic_cap          = mdev->limits.flags & DEV_LIM_FLAG_ATOMIC ?
 					IB_ATOMIC_HCA : IB_ATOMIC_NONE;
-	props->max_pkeys           = mdev->limits.pkey_table_len;
-	props->max_mcast_grp       = mdev->limits.num_mgms + mdev->limits.num_amgms;
-	props->max_mcast_qp_attach = MTHCA_QP_PER_MGM;
-	props->max_total_mcast_qp_attach = props->max_mcast_qp_attach *
-					   props->max_mcast_grp;
+	ibdev->max_pkeys           = mdev->limits.pkey_table_len;
+	ibdev->max_mcast_grp       = mdev->limits.num_mgms + mdev->limits.num_amgms;
+	ibdev->max_mcast_qp_attach = MTHCA_QP_PER_MGM;
+	ibdev->max_total_mcast_qp_attach = ibdev->max_mcast_qp_attach *
+					   ibdev->max_mcast_grp;
 	/*
 	 * If Sinai memory key optimization is being used, then only
 	 * the 8-bit key portion will change.  For other HCAs, the
 	 * unused index bits will also be used for FMR remapping.
 	 */
 	if (mdev->mthca_flags & MTHCA_FLAG_SINAI_OPT)
-		props->max_map_per_fmr = 255;
+		ibdev->max_map_per_fmr = 255;
 	else
-		props->max_map_per_fmr =
+		ibdev->max_map_per_fmr =
 			(1 << (32 - ilog2(mdev->limits.num_mpts))) - 1;
 
 	err = 0;
@@ -1305,7 +1299,6 @@ int mthca_register_device(struct mthca_dev *dev)
 	dev->ib_dev.phys_port_cnt        = dev->limits.num_ports;
 	dev->ib_dev.num_comp_vectors     = 1;
 	dev->ib_dev.dma_device           = &dev->pdev->dev;
-	dev->ib_dev.query_device         = mthca_query_device;
 	dev->ib_dev.query_port           = mthca_query_port;
 	dev->ib_dev.modify_device        = mthca_modify_device;
 	dev->ib_dev.modify_port          = mthca_modify_port;
@@ -1376,6 +1369,10 @@ int mthca_register_device(struct mthca_dev *dev)
 	}
 
 	mutex_init(&dev->cap_mask_mutex);
+
+	ret = mthca_init_device_flags(&dev->ib_dev);
+	if (ret)
+		return ret;
 
 	ret = ib_register_device(&dev->ib_dev, NULL);
 	if (ret)

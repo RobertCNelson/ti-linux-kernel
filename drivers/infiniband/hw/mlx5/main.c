@@ -203,9 +203,7 @@ static int mlx5_query_node_desc(struct mlx5_ib_dev *dev, char *node_desc)
 				    MLX5_REG_NODE_DESC, 0, 0);
 }
 
-static int mlx5_ib_query_device(struct ib_device *ibdev,
-				struct ib_device_attr *props,
-				struct ib_udata *uhw)
+static int mlx5_ib_init_device_flags(struct ib_device *ibdev)
 {
 	struct mlx5_ib_dev *dev = to_mdev(ibdev);
 	struct mlx5_core_dev *mdev = dev->mdev;
@@ -214,90 +212,86 @@ static int mlx5_ib_query_device(struct ib_device *ibdev,
 	int max_sq_sg;
 	u64 min_page_size = 1ull << MLX5_CAP_GEN(mdev, log_pg_sz);
 
-	if (uhw->inlen || uhw->outlen)
-		return -EINVAL;
-
-	memset(props, 0, sizeof(*props));
 	err = mlx5_query_system_image_guid(ibdev,
-					   &props->sys_image_guid);
+					   &ibdev->sys_image_guid);
 	if (err)
 		return err;
 
-	err = mlx5_query_max_pkeys(ibdev, &props->max_pkeys);
+	err = mlx5_query_max_pkeys(ibdev, &ibdev->max_pkeys);
 	if (err)
 		return err;
 
-	err = mlx5_query_vendor_id(ibdev, &props->vendor_id);
+	err = mlx5_query_vendor_id(ibdev, &ibdev->vendor_id);
 	if (err)
 		return err;
 
-	props->fw_ver = ((u64)fw_rev_maj(dev->mdev) << 32) |
+	ibdev->fw_ver = ((u64)fw_rev_maj(dev->mdev) << 32) |
 		(fw_rev_min(dev->mdev) << 16) |
 		fw_rev_sub(dev->mdev);
-	props->device_cap_flags    = IB_DEVICE_CHANGE_PHY_PORT |
+	ibdev->device_cap_flags    = IB_DEVICE_CHANGE_PHY_PORT |
 		IB_DEVICE_PORT_ACTIVE_EVENT		|
 		IB_DEVICE_SYS_IMAGE_GUID		|
 		IB_DEVICE_RC_RNR_NAK_GEN;
 
 	if (MLX5_CAP_GEN(mdev, pkv))
-		props->device_cap_flags |= IB_DEVICE_BAD_PKEY_CNTR;
+		ibdev->device_cap_flags |= IB_DEVICE_BAD_PKEY_CNTR;
 	if (MLX5_CAP_GEN(mdev, qkv))
-		props->device_cap_flags |= IB_DEVICE_BAD_QKEY_CNTR;
+		ibdev->device_cap_flags |= IB_DEVICE_BAD_QKEY_CNTR;
 	if (MLX5_CAP_GEN(mdev, apm))
-		props->device_cap_flags |= IB_DEVICE_AUTO_PATH_MIG;
+		ibdev->device_cap_flags |= IB_DEVICE_AUTO_PATH_MIG;
 	if (MLX5_CAP_GEN(mdev, xrc))
-		props->device_cap_flags |= IB_DEVICE_XRC;
-	props->device_cap_flags |= IB_DEVICE_MEM_MGT_EXTENSIONS;
+		ibdev->device_cap_flags |= IB_DEVICE_XRC;
+	ibdev->device_cap_flags |= IB_DEVICE_MEM_MGT_EXTENSIONS;
 	if (MLX5_CAP_GEN(mdev, sho)) {
-		props->device_cap_flags |= IB_DEVICE_SIGNATURE_HANDOVER;
+		ibdev->device_cap_flags |= IB_DEVICE_SIGNATURE_HANDOVER;
 		/* At this stage no support for signature handover */
-		props->sig_prot_cap = IB_PROT_T10DIF_TYPE_1 |
+		ibdev->sig_prot_cap = IB_PROT_T10DIF_TYPE_1 |
 				      IB_PROT_T10DIF_TYPE_2 |
 				      IB_PROT_T10DIF_TYPE_3;
-		props->sig_guard_cap = IB_GUARD_T10DIF_CRC |
+		ibdev->sig_guard_cap = IB_GUARD_T10DIF_CRC |
 				       IB_GUARD_T10DIF_CSUM;
 	}
 	if (MLX5_CAP_GEN(mdev, block_lb_mc))
-		props->device_cap_flags |= IB_DEVICE_BLOCK_MULTICAST_LOOPBACK;
+		ibdev->device_cap_flags |= IB_DEVICE_BLOCK_MULTICAST_LOOPBACK;
 
-	props->vendor_part_id	   = mdev->pdev->device;
-	props->hw_ver		   = mdev->pdev->revision;
+	ibdev->vendor_part_id	   = mdev->pdev->device;
+	ibdev->hw_ver		   = mdev->pdev->revision;
 
-	props->max_mr_size	   = ~0ull;
-	props->page_size_cap	   = ~(min_page_size - 1);
-	props->max_qp		   = 1 << MLX5_CAP_GEN(mdev, log_max_qp);
-	props->max_qp_wr	   = 1 << MLX5_CAP_GEN(mdev, log_max_qp_sz);
+	ibdev->max_mr_size	   = ~0ull;
+	ibdev->page_size_cap	   = ~(min_page_size - 1);
+	ibdev->max_qp		   = 1 << MLX5_CAP_GEN(mdev, log_max_qp);
+	ibdev->max_qp_wr	   = 1 << MLX5_CAP_GEN(mdev, log_max_qp_sz);
 	max_rq_sg =  MLX5_CAP_GEN(mdev, max_wqe_sz_rq) /
 		     sizeof(struct mlx5_wqe_data_seg);
 	max_sq_sg = (MLX5_CAP_GEN(mdev, max_wqe_sz_sq) -
 		     sizeof(struct mlx5_wqe_ctrl_seg)) /
 		     sizeof(struct mlx5_wqe_data_seg);
-	props->max_sge = min(max_rq_sg, max_sq_sg);
-	props->max_sge_rd = props->max_sge;
-	props->max_cq		   = 1 << MLX5_CAP_GEN(mdev, log_max_cq);
-	props->max_cqe = (1 << MLX5_CAP_GEN(mdev, log_max_eq_sz)) - 1;
-	props->max_mr		   = 1 << MLX5_CAP_GEN(mdev, log_max_mkey);
-	props->max_pd		   = 1 << MLX5_CAP_GEN(mdev, log_max_pd);
-	props->max_qp_rd_atom	   = 1 << MLX5_CAP_GEN(mdev, log_max_ra_req_qp);
-	props->max_qp_init_rd_atom = 1 << MLX5_CAP_GEN(mdev, log_max_ra_res_qp);
-	props->max_srq		   = 1 << MLX5_CAP_GEN(mdev, log_max_srq);
-	props->max_srq_wr = (1 << MLX5_CAP_GEN(mdev, log_max_srq_sz)) - 1;
-	props->local_ca_ack_delay  = MLX5_CAP_GEN(mdev, local_ca_ack_delay);
-	props->max_res_rd_atom	   = props->max_qp_rd_atom * props->max_qp;
-	props->max_srq_sge	   = max_rq_sg - 1;
-	props->max_fast_reg_page_list_len = (unsigned int)-1;
-	props->atomic_cap	   = IB_ATOMIC_NONE;
-	props->masked_atomic_cap   = IB_ATOMIC_NONE;
-	props->max_mcast_grp	   = 1 << MLX5_CAP_GEN(mdev, log_max_mcg);
-	props->max_mcast_qp_attach = MLX5_CAP_GEN(mdev, max_qp_mcg);
-	props->max_total_mcast_qp_attach = props->max_mcast_qp_attach *
-					   props->max_mcast_grp;
-	props->max_map_per_fmr = INT_MAX; /* no limit in ConnectIB */
+	ibdev->max_sge = min(max_rq_sg, max_sq_sg);
+	ibdev->max_sge_rd = ibdev->max_sge;
+	ibdev->max_cq		   = 1 << MLX5_CAP_GEN(mdev, log_max_cq);
+	ibdev->max_cqe = (1 << MLX5_CAP_GEN(mdev, log_max_eq_sz)) - 1;
+	ibdev->max_mr		   = 1 << MLX5_CAP_GEN(mdev, log_max_mkey);
+	ibdev->max_pd		   = 1 << MLX5_CAP_GEN(mdev, log_max_pd);
+	ibdev->max_qp_rd_atom	   = 1 << MLX5_CAP_GEN(mdev, log_max_ra_req_qp);
+	ibdev->max_qp_init_rd_atom = 1 << MLX5_CAP_GEN(mdev, log_max_ra_res_qp);
+	ibdev->max_srq		   = 1 << MLX5_CAP_GEN(mdev, log_max_srq);
+	ibdev->max_srq_wr = (1 << MLX5_CAP_GEN(mdev, log_max_srq_sz)) - 1;
+	ibdev->local_ca_ack_delay  = MLX5_CAP_GEN(mdev, local_ca_ack_delay);
+	ibdev->max_res_rd_atom	   = ibdev->max_qp_rd_atom * ibdev->max_qp;
+	ibdev->max_srq_sge	   = max_rq_sg - 1;
+	ibdev->max_fast_reg_page_list_len = (unsigned int)-1;
+	ibdev->atomic_cap	   = IB_ATOMIC_NONE;
+	ibdev->masked_atomic_cap   = IB_ATOMIC_NONE;
+	ibdev->max_mcast_grp	   = 1 << MLX5_CAP_GEN(mdev, log_max_mcg);
+	ibdev->max_mcast_qp_attach = MLX5_CAP_GEN(mdev, max_qp_mcg);
+	ibdev->max_total_mcast_qp_attach = ibdev->max_mcast_qp_attach *
+					   ibdev->max_mcast_grp;
+	ibdev->max_map_per_fmr = INT_MAX; /* no limit in ConnectIB */
 
 #ifdef CONFIG_INFINIBAND_ON_DEMAND_PAGING
 	if (MLX5_CAP_GEN(mdev, pg))
-		props->device_cap_flags |= IB_DEVICE_ON_DEMAND_PAGING;
-	props->odp_caps = dev->odp_caps;
+		ibdev->device_cap_flags |= IB_DEVICE_ON_DEMAND_PAGING;
+	ibdev->odp_caps = dev->odp_caps;
 #endif
 
 	return 0;
@@ -1013,25 +1007,13 @@ static void get_ext_port_caps(struct mlx5_ib_dev *dev)
 
 static int get_port_caps(struct mlx5_ib_dev *dev)
 {
-	struct ib_device_attr *dprops = NULL;
 	struct ib_port_attr *pprops = NULL;
 	int err = -ENOMEM;
 	int port;
-	struct ib_udata uhw = {.inlen = 0, .outlen = 0};
 
 	pprops = kmalloc(sizeof(*pprops), GFP_KERNEL);
 	if (!pprops)
 		goto out;
-
-	dprops = kmalloc(sizeof(*dprops), GFP_KERNEL);
-	if (!dprops)
-		goto out;
-
-	err = mlx5_ib_query_device(&dev->ib_dev, dprops, &uhw);
-	if (err) {
-		mlx5_ib_warn(dev, "query_device failed %d\n", err);
-		goto out;
-	}
 
 	for (port = 1; port <= MLX5_CAP_GEN(dev->mdev, num_ports); port++) {
 		err = mlx5_ib_query_port(&dev->ib_dev, port, pprops);
@@ -1041,16 +1023,15 @@ static int get_port_caps(struct mlx5_ib_dev *dev)
 			break;
 		}
 		dev->mdev->port_caps[port - 1].pkey_table_len =
-						dprops->max_pkeys;
+						dev->ib_dev.max_pkeys;
 		dev->mdev->port_caps[port - 1].gid_table_len =
 						pprops->gid_tbl_len;
 		mlx5_ib_dbg(dev, "pkey_table_len %d, gid_table_len %d\n",
-			    dprops->max_pkeys, pprops->gid_tbl_len);
+			    dev->ib_dev.max_pkeys, pprops->gid_tbl_len);
 	}
 
 out:
 	kfree(pprops);
-	kfree(dprops);
 
 	return err;
 }
@@ -1340,6 +1321,10 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 
 	dev->mdev = mdev;
 
+	err = mlx5_ib_init_device_flags(&dev->ib_dev);
+	if (err)
+		goto err_rsrc;
+
 	err = get_port_caps(dev);
 	if (err)
 		goto err_dealloc;
@@ -1387,7 +1372,6 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 	dev->ib_dev.uverbs_ex_cmd_mask =
 		(1ull << IB_USER_VERBS_EX_CMD_QUERY_DEVICE);
 
-	dev->ib_dev.query_device	= mlx5_ib_query_device;
 	dev->ib_dev.query_port		= mlx5_ib_query_port;
 	dev->ib_dev.query_gid		= mlx5_ib_query_gid;
 	dev->ib_dev.query_pkey		= mlx5_ib_query_pkey;
