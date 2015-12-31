@@ -12,7 +12,7 @@
  * anyone care?
  *
  * For virtio_pci on SMP, we don't need to order with respect to MMIO
- * accesses through relaxed memory I/O windows, so smp_mb() et al are
+ * accesses through relaxed memory I/O windows, so __smp_mb() et al are
  * sufficient.
  *
  * For using virtio to talk to real devices (eg. other heterogeneous
@@ -23,18 +23,16 @@
 
 static inline void virtio_mb(bool weak_barriers)
 {
-#ifdef CONFIG_SMP
 	if (weak_barriers)
-		smp_mb();
+		__smp_mb();
 	else
-#endif
 		mb();
 }
 
 static inline void virtio_rmb(bool weak_barriers)
 {
 	if (weak_barriers)
-		dma_rmb();
+		__smp_rmb();
 	else
 		rmb();
 }
@@ -42,9 +40,47 @@ static inline void virtio_rmb(bool weak_barriers)
 static inline void virtio_wmb(bool weak_barriers)
 {
 	if (weak_barriers)
-		dma_wmb();
+		__smp_wmb();
 	else
 		wmb();
+}
+
+static inline void virtio_store_mb(bool weak_barriers,
+				   __virtio16 *p, __virtio16 v)
+{
+	if (weak_barriers)
+		__smp_store_mb(*p, v);
+	else
+	{
+		WRITE_ONCE(*p, v);
+		mb();
+	}
+}
+
+/* a load + acquire barrier, but only guaranteed to order reads */
+static inline __virtio16 virtio_load_acquire_rmb(bool weak_barriers,
+						 __virtio16 *p)
+{
+	if (weak_barriers)
+		return __smp_load_acquire(p);
+	else {
+		__virtio16 v = READ_ONCE(*p);
+		rmb();
+		return v;
+	}
+}
+
+/* a release barrier + store, but only guaranteed to order writes */
+static inline void virtio_store_release_wmb(bool weak_barriers,
+					    __virtio16 *p, __virtio16 v)
+{
+	if (weak_barriers)
+		__smp_store_release(p, v);
+	else {
+		wmb();
+		WRITE_ONCE(*p, v);
+		return;
+	}
 }
 
 struct virtio_device;
