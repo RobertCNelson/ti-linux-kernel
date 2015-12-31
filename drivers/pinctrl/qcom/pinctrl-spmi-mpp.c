@@ -592,7 +592,7 @@ static int pmic_mpp_get(struct gpio_chip *chip, unsigned pin)
 		pad->out_value = ret & PMIC_MPP_REG_RT_STS_VAL_MASK;
 	}
 
-	return pad->out_value;
+	return !!pad->out_value;
 }
 
 static void pmic_mpp_set(struct gpio_chip *chip, unsigned pin, int value)
@@ -863,7 +863,7 @@ static int pmic_mpp_probe(struct platform_device *pdev)
 	}
 
 	state->chip = pmic_mpp_gpio_template;
-	state->chip.dev = dev;
+	state->chip.parent = dev;
 	state->chip.base = -1;
 	state->chip.ngpio = npins;
 	state->chip.label = dev_name(dev);

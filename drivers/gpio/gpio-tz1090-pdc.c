@@ -113,7 +113,7 @@ static int tz1090_pdc_gpio_direction_output(struct gpio_chip *chip,
 static int tz1090_pdc_gpio_get(struct gpio_chip *chip, unsigned int offset)
 {
 	struct tz1090_pdc_gpio *priv = to_pdc(chip);
-	return pdc_read(priv, REG_SOC_GPIO_STATUS) & BIT(offset);
+	return !!(pdc_read(priv, REG_SOC_GPIO_STATUS) & BIT(offset));
 }
 
 static void tz1090_pdc_gpio_set(struct gpio_chip *chip, unsigned int offset,
@@ -188,7 +188,7 @@ static int tz1090_pdc_gpio_probe(struct platform_device *pdev)
 
 	/* Set up GPIO chip */
 	priv->chip.label		= "tz1090-pdc-gpio";
-	priv->chip.dev			= &pdev->dev;
+	priv->chip.parent		= &pdev->dev;
 	priv->chip.direction_input	= tz1090_pdc_gpio_direction_input;
 	priv->chip.direction_output	= tz1090_pdc_gpio_direction_output;
 	priv->chip.get			= tz1090_pdc_gpio_get;

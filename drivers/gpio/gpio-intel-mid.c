@@ -120,7 +120,7 @@ static int intel_gpio_get(struct gpio_chip *chip, unsigned offset)
 {
 	void __iomem *gplr = gpio_reg(chip, offset, GPLR);
 
-	return readl(gplr) & BIT(offset % 32);
+	return !!(readl(gplr) & BIT(offset % 32));
 }
 
 static void intel_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
@@ -392,7 +392,7 @@ static int intel_gpio_probe(struct pci_dev *pdev,
 
 	priv->reg_base = pcim_iomap_table(pdev)[0];
 	priv->chip.label = dev_name(&pdev->dev);
-	priv->chip.dev = &pdev->dev;
+	priv->chip.parent = &pdev->dev;
 	priv->chip.request = intel_gpio_request;
 	priv->chip.direction_input = intel_gpio_direction_input;
 	priv->chip.direction_output = intel_gpio_direction_output;

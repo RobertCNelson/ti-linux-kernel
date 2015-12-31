@@ -214,7 +214,7 @@ static int tz1090_gpio_get(struct gpio_chip *chip, unsigned int offset)
 {
 	struct tz1090_gpio_bank *bank = to_bank(chip);
 
-	return tz1090_gpio_read_bit(bank, REG_GPIO_DIN, offset);
+	return !!tz1090_gpio_read_bit(bank, REG_GPIO_DIN, offset);
 }
 
 /*
@@ -425,7 +425,7 @@ static int tz1090_gpio_bank_probe(struct tz1090_gpio_bank_info *info)
 	snprintf(bank->label, sizeof(bank->label), "tz1090-gpio-%u",
 		 info->index);
 	bank->chip.label		= bank->label;
-	bank->chip.dev			= dev;
+	bank->chip.parent		= dev;
 	bank->chip.direction_input	= tz1090_gpio_direction_input;
 	bank->chip.direction_output	= tz1090_gpio_direction_output;
 	bank->chip.get			= tz1090_gpio_get;
