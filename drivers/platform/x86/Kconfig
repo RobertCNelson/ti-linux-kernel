@@ -641,6 +641,7 @@ config ACPI_TOSHIBA
 	depends on INPUT
 	depends on SERIO_I8042 || SERIO_I8042 = n
 	depends on ACPI_VIDEO || ACPI_VIDEO = n
+	depends on RFKILL || RFKILL = n
 	select INPUT_POLLDEV
 	select INPUT_SPARSEKMAP
 	---help---
@@ -730,6 +731,17 @@ config ACPI_CMPC
 	  Support for Intel Classmate PC ACPI devices, including some
 	  keys as input device, backlight device, tablet and accelerometer
 	  devices.
+
+config INTEL_HID_EVENT
+	tristate "INTEL HID Event"
+	depends on ACPI
+	depends on INPUT
+	help
+	  This driver provides support for the Intel HID Event hotkey interface.
+	  Some laptops require this driver for hotkey support.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called intel_hid.
 
 config INTEL_SCU_IPC
 	bool "Intel SCU IPC Support"
@@ -944,4 +956,10 @@ config SURFACE_PRO3_BUTTON
 	depends on ACPI && INPUT
 	---help---
 	  This driver handles the power/home/volume buttons on the Microsoft Surface Pro 3 tablet.
+
+config INTEL_PUNIT_IPC
+	tristate "Intel P-Unit IPC Driver"
+	---help---
+	  This driver provides support for Intel P-Unit Mailbox IPC mechanism,
+	  which is used to bridge the communications between kernel and P-Unit.
 endif # X86_PLATFORM_DEVICES
