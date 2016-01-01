@@ -26,6 +26,5 @@
 #include <asm-generic/irq.h>
 
 extern void arc_init_IRQ(void);
-void arc_local_timer_setup(void);
 
 #endif
