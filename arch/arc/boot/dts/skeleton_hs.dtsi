@@ -25,6 +25,26 @@
 		};
 	};
 
+	/* TIMER0 with interrupt for clockevent */
+	timer@0 {
+		compatible = "snps,arc-timer";
+		interrupts = <16>;
+		interrupt-parent = <&core_intc>;
+		clocks = <&core_clk>;
+	};
+
+	/* 64-bit Local RTC: preferred clocksource for UP */
+	timer@1 {
+		compatible = "snps,archs-timer-rtc";
+		clocks = <&core_clk>;
+	};
+
+	/* TIMER1 for free running clocksource: Fallback if rtc not found */
+	timer@2 {
+		compatible = "snps,arc-timer";
+		clocks = <&core_clk>;
+	};
+
 	memory {
 		device_type = "memory";
 		reg = <0x80000000 0x10000000>;	/* 256M */
