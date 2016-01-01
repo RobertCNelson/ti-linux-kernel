@@ -218,7 +218,7 @@ bool fwnode_property_present(struct fwnode_handle *fwnode, const char *propname)
 	bool ret;
 
 	ret = __fwnode_property_present(fwnode, propname);
-	if (ret == false && fwnode->secondary)
+	if (ret == false && fwnode && fwnode->secondary)
 		ret = __fwnode_property_present(fwnode->secondary, propname);
 	return ret;
 }
@@ -423,7 +423,7 @@ EXPORT_SYMBOL_GPL(device_property_match_string);
 	int _ret_;									\
 	_ret_ = FWNODE_PROP_READ(_fwnode_, _propname_, _type_, _proptype_,		\
 				 _val_, _nval_);					\
-	if (_ret_ == -EINVAL && _fwnode_->secondary)					\
+	if (_ret_ == -EINVAL && _fwnode_ && _fwnode_->secondary)			\
 		_ret_ = FWNODE_PROP_READ(_fwnode_->secondary, _propname_, _type_,	\
 				_proptype_, _val_, _nval_);				\
 	_ret_;										\
@@ -593,7 +593,7 @@ int fwnode_property_read_string_array(struct fwnode_handle *fwnode,
 	int ret;
 
 	ret = __fwnode_property_read_string_array(fwnode, propname, val, nval);
-	if (ret == -EINVAL && fwnode->secondary)
+	if (ret == -EINVAL && fwnode && fwnode->secondary)
 		ret = __fwnode_property_read_string_array(fwnode->secondary,
 							  propname, val, nval);
 	return ret;
@@ -621,7 +621,7 @@ int fwnode_property_read_string(struct fwnode_handle *fwnode,
 	int ret;
 
 	ret = __fwnode_property_read_string(fwnode, propname, val);
-	if (ret == -EINVAL && fwnode->secondary)
+	if (ret == -EINVAL && fwnode && fwnode->secondary)
 		ret = __fwnode_property_read_string(fwnode->secondary,
 						    propname, val);
 	return ret;
@@ -652,6 +652,9 @@ int fwnode_property_match_string(struct fwnode_handle *fwnode,
 	nval = fwnode_property_read_string_array(fwnode, propname, NULL, 0);
 	if (nval < 0)
 		return nval;
+
+	if (nval == 0)
+		return -ENODATA;
 
 	values = kcalloc(nval, sizeof(*values), GFP_KERNEL);
 	if (!values)
@@ -718,6 +721,9 @@ static int pset_copy_entry(struct property_entry *dst,
 		return -ENOMEM;
 
 	if (src->is_array) {
+		if (!src->length)
+			return -ENODATA;
+
 		if (src->is_string) {
 			nval = src->length / sizeof(const char *);
 			dst->pointer.str = kcalloc(nval, sizeof(const char *),
