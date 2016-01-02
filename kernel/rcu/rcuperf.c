@@ -318,6 +318,17 @@ rcu_perf_shutdown(void *arg)
 }
 
 /*
+ * If performance tests complete, wait for shutdown to commence.
+ */
+static void rcu_perf_wait_shutdown(void)
+{
+	if (atomic_read(&n_rcu_perf_writer_finished) < nrealwriters)
+		return;
+	while (!torture_must_stop())
+		schedule_timeout_uninterruptible(1);
+}
+
+/*
  * RCU perf reader kthread.  Repeatedly does empty RCU read-side
  * critical section, minimizing update-side interference.
  */
@@ -336,6 +347,7 @@ rcu_perf_reader(void *arg)
 		idx = cur_ops->readlock();
 		cur_ops->readunlock(idx);
 		local_irq_restore(flags);
+		rcu_perf_wait_shutdown();
 	} while (!torture_must_stop());
 	torture_kthread_stopping("rcu_perf_reader");
 	return 0;
@@ -377,11 +389,13 @@ rcu_perf_writer(void *arg)
 			if (i == MIN_MEAS &&
 			    atomic_inc_return(&n_rcu_perf_writer_finished) ==
 			    nrealwriters) {
+				PERFOUT_STRING("Test complete");
 				t_rcu_perf_writer_finished = t;
 				smp_mb(); /* Assign before wake. */
 				wake_up(&shutdown_wq);
 			}
 		}
+		rcu_perf_wait_shutdown();
 	} while (!torture_must_stop());
 	rcu_perf_writer_state = RTWS_STOPPING;
 	writer_n_durations[me] = i + 1;
