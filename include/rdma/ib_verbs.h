@@ -192,54 +192,6 @@ struct ib_cq_init_attr {
 	u32		flags;
 };
 
-struct ib_device_attr {
-	u64			fw_ver;
-	__be64			sys_image_guid;
-	u64			max_mr_size;
-	u64			page_size_cap;
-	u32			vendor_id;
-	u32			vendor_part_id;
-	u32			hw_ver;
-	int			max_qp;
-	int			max_qp_wr;
-	int			device_cap_flags;
-	int			max_sge;
-	int			max_sge_rd;
-	int			max_cq;
-	int			max_cqe;
-	int			max_mr;
-	int			max_pd;
-	int			max_qp_rd_atom;
-	int			max_ee_rd_atom;
-	int			max_res_rd_atom;
-	int			max_qp_init_rd_atom;
-	int			max_ee_init_rd_atom;
-	enum ib_atomic_cap	atomic_cap;
-	enum ib_atomic_cap	masked_atomic_cap;
-	int			max_ee;
-	int			max_rdd;
-	int			max_mw;
-	int			max_raw_ipv6_qp;
-	int			max_raw_ethy_qp;
-	int			max_mcast_grp;
-	int			max_mcast_qp_attach;
-	int			max_total_mcast_qp_attach;
-	int			max_ah;
-	int			max_fmr;
-	int			max_map_per_fmr;
-	int			max_srq;
-	int			max_srq_wr;
-	int			max_srq_sge;
-	unsigned int		max_fast_reg_page_list_len;
-	u16			max_pkeys;
-	u8			local_ca_ack_delay;
-	int			sig_prot_cap;
-	int			sig_guard_cap;
-	struct ib_odp_caps	odp_caps;
-	uint64_t		timestamp_mask;
-	uint64_t		hca_core_clock; /* in KHZ */
-};
-
 enum ib_mtu {
 	IB_MTU_256  = 1,
 	IB_MTU_512  = 2,
@@ -1603,7 +1555,6 @@ struct ib_device {
 	int		           (*get_protocol_stats)(struct ib_device *device,
 							 union rdma_protocol_stats *stats);
 	int		           (*query_device)(struct ib_device *device,
-						   struct ib_device_attr *device_attr,
 						   struct ib_udata *udata);
 	int		           (*query_port)(struct ib_device *device,
 						 u8 port_num,
@@ -1824,6 +1775,52 @@ struct ib_device {
 	u8                           node_type;
 	u8                           phys_port_cnt;
 
+	u64			fw_ver;
+	__be64			sys_image_guid;
+	u64			max_mr_size;
+	u64			page_size_cap;
+	u32			vendor_id;
+	u32			vendor_part_id;
+	u32			hw_ver;
+	int			max_qp;
+	int			max_qp_wr;
+	int			device_cap_flags;
+	int			max_sge;
+	int			max_sge_rd;
+	int			max_cq;
+	int			max_cqe;
+	int			max_mr;
+	int			max_pd;
+	int			max_qp_rd_atom;
+	int			max_ee_rd_atom;
+	int			max_res_rd_atom;
+	int			max_qp_init_rd_atom;
+	int			max_ee_init_rd_atom;
+	enum ib_atomic_cap	atomic_cap;
+	enum ib_atomic_cap	masked_atomic_cap;
+	int			max_ee;
+	int			max_rdd;
+	int			max_mw;
+	int			max_raw_ipv6_qp;
+	int			max_raw_ethy_qp;
+	int			max_mcast_grp;
+	int			max_mcast_qp_attach;
+	int			max_total_mcast_qp_attach;
+	int			max_ah;
+	int			max_fmr;
+	int			max_map_per_fmr;
+	int			max_srq;
+	int			max_srq_wr;
+	int			max_srq_sge;
+	unsigned int		max_fast_reg_page_list_len;
+	u16			max_pkeys;
+	u8			local_ca_ack_delay;
+	int			sig_prot_cap;
+	int			sig_guard_cap;
+	struct ib_odp_caps	odp_caps;
+	uint64_t		timestamp_mask;
+	uint64_t		hca_core_clock; /* in KHZ */
+
 	/**
 	 * The following mandatory functions are used only at device
 	 * registration.  Keep functions such as these at the end of this
@@ -1911,9 +1908,6 @@ int ib_modify_qp_is_ok(enum ib_qp_state cur_state, enum ib_qp_state next_state,
 int ib_register_event_handler  (struct ib_event_handler *event_handler);
 int ib_unregister_event_handler(struct ib_event_handler *event_handler);
 void ib_dispatch_event(struct ib_event *event);
-
-int ib_query_device(struct ib_device *device,
-		    struct ib_device_attr *device_attr);
 
 int ib_query_port(struct ib_device *device,
 		  u8 port_num, struct ib_port_attr *port_attr);

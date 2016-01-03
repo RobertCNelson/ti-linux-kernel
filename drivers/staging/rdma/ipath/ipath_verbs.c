@@ -1508,57 +1508,6 @@ bail:
 	return 0;
 }
 
-static int ipath_query_device(struct ib_device *ibdev, struct ib_device_attr *props,
-			      struct ib_udata *uhw)
-{
-	struct ipath_ibdev *dev = to_idev(ibdev);
-
-	if (uhw->inlen || uhw->outlen)
-		return -EINVAL;
-
-	memset(props, 0, sizeof(*props));
-
-	props->device_cap_flags = IB_DEVICE_BAD_PKEY_CNTR |
-		IB_DEVICE_BAD_QKEY_CNTR | IB_DEVICE_SHUTDOWN_PORT |
-		IB_DEVICE_SYS_IMAGE_GUID | IB_DEVICE_RC_RNR_NAK_GEN |
-		IB_DEVICE_PORT_ACTIVE_EVENT | IB_DEVICE_SRQ_RESIZE;
-	props->page_size_cap = PAGE_SIZE;
-	props->vendor_id =
-		IPATH_SRC_OUI_1 << 16 | IPATH_SRC_OUI_2 << 8 | IPATH_SRC_OUI_3;
-	props->vendor_part_id = dev->dd->ipath_deviceid;
-	props->hw_ver = dev->dd->ipath_pcirev;
-
-	props->sys_image_guid = dev->sys_image_guid;
-
-	props->max_mr_size = ~0ull;
-	props->max_qp = ib_ipath_max_qps;
-	props->max_qp_wr = ib_ipath_max_qp_wrs;
-	props->max_sge = ib_ipath_max_sges;
-	props->max_sge_rd = ib_ipath_max_sges;
-	props->max_cq = ib_ipath_max_cqs;
-	props->max_ah = ib_ipath_max_ahs;
-	props->max_cqe = ib_ipath_max_cqes;
-	props->max_mr = dev->lk_table.max;
-	props->max_fmr = dev->lk_table.max;
-	props->max_map_per_fmr = 32767;
-	props->max_pd = ib_ipath_max_pds;
-	props->max_qp_rd_atom = IPATH_MAX_RDMA_ATOMIC;
-	props->max_qp_init_rd_atom = 255;
-	/* props->max_res_rd_atom */
-	props->max_srq = ib_ipath_max_srqs;
-	props->max_srq_wr = ib_ipath_max_srq_wrs;
-	props->max_srq_sge = ib_ipath_max_srq_sges;
-	/* props->local_ca_ack_delay */
-	props->atomic_cap = IB_ATOMIC_GLOB;
-	props->max_pkeys = ipath_get_npkeys(dev->dd);
-	props->max_mcast_grp = ib_ipath_max_mcast_grps;
-	props->max_mcast_qp_attach = ib_ipath_max_mcast_qp_attached;
-	props->max_total_mcast_qp_attach = props->max_mcast_qp_attach *
-		props->max_mcast_grp;
-
-	return 0;
-}
-
 const u8 ipath_cvt_physportstate[32] = {
 	[INFINIPATH_IBCS_LT_STATE_DISABLED] = IB_PHYSPORTSTATE_DISABLED,
 	[INFINIPATH_IBCS_LT_STATE_LINKUP] = IB_PHYSPORTSTATE_LINKUP,
@@ -2171,7 +2120,6 @@ int ipath_register_ib_device(struct ipath_devdata *dd)
 	dev->phys_port_cnt = 1;
 	dev->num_comp_vectors = 1;
 	dev->dma_device = &dd->pcidev->dev;
-	dev->query_device = ipath_query_device;
 	dev->modify_device = ipath_modify_device;
 	dev->query_port = ipath_query_port;
 	dev->modify_port = ipath_modify_port;
@@ -2214,6 +2162,44 @@ int ipath_register_ib_device(struct ipath_devdata *dd)
 	dev->mmap = ipath_mmap;
 	dev->dma_ops = &ipath_dma_mapping_ops;
 	dev->get_port_immutable = ipath_port_immutable;
+
+	dev->device_cap_flags = IB_DEVICE_BAD_PKEY_CNTR |
+		IB_DEVICE_BAD_QKEY_CNTR | IB_DEVICE_SHUTDOWN_PORT |
+		IB_DEVICE_SYS_IMAGE_GUID | IB_DEVICE_RC_RNR_NAK_GEN |
+		IB_DEVICE_PORT_ACTIVE_EVENT | IB_DEVICE_SRQ_RESIZE;
+	dev->page_size_cap = PAGE_SIZE;
+	dev->vendor_id =
+		IPATH_SRC_OUI_1 << 16 | IPATH_SRC_OUI_2 << 8 | IPATH_SRC_OUI_3;
+	dev->vendor_part_id = idev->dd->ipath_deviceid;
+	dev->hw_ver = idev->dd->ipath_pcirev;
+
+	dev->sys_image_guid = idev->sys_image_guid;
+
+	dev->max_mr_size = ~0ull;
+	dev->max_qp = ib_ipath_max_qps;
+	dev->max_qp_wr = ib_ipath_max_qp_wrs;
+	dev->max_sge = ib_ipath_max_sges;
+	dev->max_sge_rd = ib_ipath_max_sges;
+	dev->max_cq = ib_ipath_max_cqs;
+	dev->max_ah = ib_ipath_max_ahs;
+	dev->max_cqe = ib_ipath_max_cqes;
+	dev->max_mr = idev->lk_table.max;
+	dev->max_fmr = idev->lk_table.max;
+	dev->max_map_per_fmr = 32767;
+	dev->max_pd = ib_ipath_max_pds;
+	dev->max_qp_rd_atom = IPATH_MAX_RDMA_ATOMIC;
+	dev->max_qp_init_rd_atom = 255;
+	/* dev->max_res_rd_atom */
+	dev->max_srq = ib_ipath_max_srqs;
+	dev->max_srq_wr = ib_ipath_max_srq_wrs;
+	dev->max_srq_sge = ib_ipath_max_srq_sges;
+	/* dev->local_ca_ack_delay */
+	dev->atomic_cap = IB_ATOMIC_GLOB;
+	dev->max_pkeys = ipath_get_npkeys(idev->dd);
+	dev->max_mcast_grp = ib_ipath_max_mcast_grps;
+	dev->max_mcast_qp_attach = ib_ipath_max_mcast_qp_attached;
+	dev->max_total_mcast_qp_attach = dev->max_mcast_qp_attach *
+		dev->max_mcast_grp;
 
 	snprintf(dev->node_desc, sizeof(dev->node_desc),
 		 IPATH_IDSTR " %s", init_utsname()->nodename);

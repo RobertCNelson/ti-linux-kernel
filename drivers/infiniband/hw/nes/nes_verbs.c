@@ -487,61 +487,6 @@ static int nes_map_mr_sg(struct ib_mr *ibmr,
 }
 
 /**
- * nes_query_device
- */
-static int nes_query_device(struct ib_device *ibdev, struct ib_device_attr *props,
-			    struct ib_udata *uhw)
-{
-	struct nes_vnic *nesvnic = to_nesvnic(ibdev);
-	struct nes_device *nesdev = nesvnic->nesdev;
-	struct nes_ib_device *nesibdev = nesvnic->nesibdev;
-
-	if (uhw->inlen || uhw->outlen)
-		return -EINVAL;
-
-	memset(props, 0, sizeof(*props));
-	memcpy(&props->sys_image_guid, nesvnic->netdev->dev_addr, 6);
-
-	props->fw_ver = nesdev->nesadapter->firmware_version;
-	props->device_cap_flags = nesdev->nesadapter->device_cap_flags;
-	props->vendor_id = nesdev->nesadapter->vendor_id;
-	props->vendor_part_id = nesdev->nesadapter->vendor_part_id;
-	props->hw_ver = nesdev->nesadapter->hw_rev;
-	props->max_mr_size = 0x80000000;
-	props->max_qp = nesibdev->max_qp;
-	props->max_qp_wr = nesdev->nesadapter->max_qp_wr - 2;
-	props->max_sge = nesdev->nesadapter->max_sge;
-	props->max_cq = nesibdev->max_cq;
-	props->max_cqe = nesdev->nesadapter->max_cqe;
-	props->max_mr = nesibdev->max_mr;
-	props->max_mw = nesibdev->max_mr;
-	props->max_pd = nesibdev->max_pd;
-	props->max_sge_rd = 1;
-	switch (nesdev->nesadapter->max_irrq_wr) {
-		case 0:
-			props->max_qp_rd_atom = 2;
-			break;
-		case 1:
-			props->max_qp_rd_atom = 8;
-			break;
-		case 2:
-			props->max_qp_rd_atom = 32;
-			break;
-		case 3:
-			props->max_qp_rd_atom = 64;
-			break;
-		default:
-			props->max_qp_rd_atom = 0;
-	}
-	props->max_qp_init_rd_atom = props->max_qp_rd_atom;
-	props->atomic_cap = IB_ATOMIC_NONE;
-	props->max_map_per_fmr = 1;
-
-	return 0;
-}
-
-
-/**
  * nes_query_port
  */
 static int nes_query_port(struct ib_device *ibdev, u8 port, struct ib_port_attr *props)
@@ -3869,7 +3814,6 @@ struct nes_ib_device *nes_init_ofa_device(struct net_device *netdev)
 	nesibdev->ibdev.num_comp_vectors = 1;
 	nesibdev->ibdev.dma_device = &nesdev->pcidev->dev;
 	nesibdev->ibdev.dev.parent = &nesdev->pcidev->dev;
-	nesibdev->ibdev.query_device = nes_query_device;
 	nesibdev->ibdev.query_port = nes_query_port;
 	nesibdev->ibdev.query_pkey = nes_query_pkey;
 	nesibdev->ibdev.query_gid = nes_query_gid;
@@ -3905,6 +3849,44 @@ struct nes_ib_device *nes_init_ofa_device(struct net_device *netdev)
 	nesibdev->ibdev.req_notify_cq = nes_req_notify_cq;
 	nesibdev->ibdev.post_send = nes_post_send;
 	nesibdev->ibdev.post_recv = nes_post_recv;
+
+	memcpy(&nesibdev->ibdev.sys_image_guid,
+			nesvnic->netdev->dev_addr, 6);
+
+	nesibdev->ibdev.fw_ver = nesdev->nesadapter->firmware_version;
+	nesibdev->ibdev.device_cap_flags = nesdev->nesadapter->device_cap_flags;
+	nesibdev->ibdev.vendor_id = nesdev->nesadapter->vendor_id;
+	nesibdev->ibdev.vendor_part_id = nesdev->nesadapter->vendor_part_id;
+	nesibdev->ibdev.hw_ver = nesdev->nesadapter->hw_rev;
+	nesibdev->ibdev.max_mr_size = 0x80000000;
+	nesibdev->ibdev.max_qp = nesibdev->max_qp;
+	nesibdev->ibdev.max_qp_wr = nesdev->nesadapter->max_qp_wr - 2;
+	nesibdev->ibdev.max_sge = nesdev->nesadapter->max_sge;
+	nesibdev->ibdev.max_cq = nesibdev->max_cq;
+	nesibdev->ibdev.max_cqe = nesdev->nesadapter->max_cqe;
+	nesibdev->ibdev.max_mr = nesibdev->max_mr;
+	nesibdev->ibdev.max_mw = nesibdev->max_mr;
+	nesibdev->ibdev.max_pd = nesibdev->max_pd;
+	nesibdev->ibdev.max_sge_rd = 1;
+	switch (nesdev->nesadapter->max_irrq_wr) {
+		case 0:
+			nesibdev->ibdev.max_qp_rd_atom = 2;
+			break;
+		case 1:
+			nesibdev->ibdev.max_qp_rd_atom = 8;
+			break;
+		case 2:
+			nesibdev->ibdev.max_qp_rd_atom = 32;
+			break;
+		case 3:
+			nesibdev->ibdev.max_qp_rd_atom = 64;
+			break;
+		default:
+			nesibdev->ibdev.max_qp_rd_atom = 0;
+	}
+	nesibdev->ibdev.max_qp_init_rd_atom = nesibdev->ibdev.max_qp_rd_atom;
+	nesibdev->ibdev.atomic_cap = IB_ATOMIC_NONE;
+	nesibdev->ibdev.max_map_per_fmr = 1;
 
 	nesibdev->ibdev.iwcm = kzalloc(sizeof(*nesibdev->ibdev.iwcm), GFP_KERNEL);
 	if (nesibdev->ibdev.iwcm == NULL) {

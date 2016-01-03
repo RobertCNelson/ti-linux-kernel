@@ -143,7 +143,6 @@ static int ocrdma_register_device(struct ocrdma_dev *dev)
 	dev->ibdev.num_comp_vectors = dev->eq_cnt;
 
 	/* mandatory verbs. */
-	dev->ibdev.query_device = ocrdma_query_device;
 	dev->ibdev.query_port = ocrdma_query_port;
 	dev->ibdev.modify_port = ocrdma_modify_port;
 	dev->ibdev.query_gid = ocrdma_query_gid;
@@ -205,6 +204,45 @@ static int ocrdma_register_device(struct ocrdma_dev *dev)
 		dev->ibdev.destroy_srq = ocrdma_destroy_srq;
 		dev->ibdev.post_srq_recv = ocrdma_post_srq_recv;
 	}
+
+	memcpy(&dev->ibdev.fw_ver, &dev->attr.fw_ver[0],
+	       min(sizeof(dev->attr.fw_ver), sizeof(dev->ibdev.fw_ver)));
+	ocrdma_get_guid(dev, (u8 *)&dev->ibdev.sys_image_guid);
+	dev->ibdev.max_mr_size = dev->attr.max_mr_size;
+	dev->ibdev.page_size_cap = 0xffff000;
+	dev->ibdev.vendor_id = dev->nic_info.pdev->vendor;
+	dev->ibdev.vendor_part_id = dev->nic_info.pdev->device;
+	dev->ibdev.hw_ver = dev->asic_id;
+	dev->ibdev.max_qp = dev->attr.max_qp;
+	dev->ibdev.max_ah = OCRDMA_MAX_AH;
+	dev->ibdev.max_qp_wr = dev->attr.max_wqe;
+
+	dev->ibdev.device_cap_flags = IB_DEVICE_CURR_QP_STATE_MOD |
+					IB_DEVICE_RC_RNR_NAK_GEN |
+					IB_DEVICE_SHUTDOWN_PORT |
+					IB_DEVICE_SYS_IMAGE_GUID |
+					IB_DEVICE_LOCAL_DMA_LKEY |
+					IB_DEVICE_MEM_MGT_EXTENSIONS;
+	dev->ibdev.max_sge = min(dev->attr.max_send_sge, dev->attr.max_srq_sge);
+	dev->ibdev.max_sge_rd = 0;
+	dev->ibdev.max_cq = dev->attr.max_cq;
+	dev->ibdev.max_cqe = dev->attr.max_cqe;
+	dev->ibdev.max_mr = dev->attr.max_mr;
+	dev->ibdev.max_mw = dev->attr.max_mw;
+	dev->ibdev.max_pd = dev->attr.max_pd;
+	dev->ibdev.atomic_cap = 0;
+	dev->ibdev.max_fmr = 0;
+	dev->ibdev.max_map_per_fmr = 0;
+	dev->ibdev.max_qp_rd_atom =
+	    min(dev->attr.max_ord_per_qp, dev->attr.max_ird_per_qp);
+	dev->ibdev.max_qp_init_rd_atom = dev->attr.max_ord_per_qp;
+	dev->ibdev.max_srq = dev->attr.max_srq;
+	dev->ibdev.max_srq_sge = dev->attr.max_srq_sge;
+	dev->ibdev.max_srq_wr = dev->attr.max_rqe;
+	dev->ibdev.local_ca_ack_delay = dev->attr.local_ca_ack_delay;
+	dev->ibdev.max_fast_reg_page_list_len = dev->attr.max_pages_per_frmr;
+	dev->ibdev.max_pkeys = 1;
+
 	return ib_register_device(&dev->ibdev, NULL);
 }
 

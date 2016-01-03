@@ -63,20 +63,6 @@
 #include "c2_provider.h"
 #include "c2_user.h"
 
-static int c2_query_device(struct ib_device *ibdev, struct ib_device_attr *props,
-			   struct ib_udata *uhw)
-{
-	struct c2_dev *c2dev = to_c2dev(ibdev);
-
-	pr_debug("%s:%u\n", __func__, __LINE__);
-
-	if (uhw->inlen || uhw->outlen)
-		return -EINVAL;
-
-	*props = c2dev->props;
-	return 0;
-}
-
 static int c2_query_port(struct ib_device *ibdev,
 			 u8 port, struct ib_port_attr *props)
 {
@@ -523,7 +509,7 @@ static ssize_t show_rev(struct device *dev, struct device_attribute *attr,
 {
 	struct c2_dev *c2dev = container_of(dev, struct c2_dev, ibdev.dev);
 	pr_debug("%s:%u\n", __func__, __LINE__);
-	return sprintf(buf, "%x\n", c2dev->props.hw_ver);
+	return sprintf(buf, "%x\n", c2dev->ibdev.hw_ver);
 }
 
 static ssize_t show_fw_ver(struct device *dev, struct device_attribute *attr,
@@ -532,9 +518,9 @@ static ssize_t show_fw_ver(struct device *dev, struct device_attribute *attr,
 	struct c2_dev *c2dev = container_of(dev, struct c2_dev, ibdev.dev);
 	pr_debug("%s:%u\n", __func__, __LINE__);
 	return sprintf(buf, "%x.%x.%x\n",
-		       (int) (c2dev->props.fw_ver >> 32),
-		       (int) (c2dev->props.fw_ver >> 16) & 0xffff,
-		       (int) (c2dev->props.fw_ver & 0xffff));
+		       (int) (c2dev->ibdev.fw_ver >> 32),
+		       (int) (c2dev->ibdev.fw_ver >> 16) & 0xffff,
+		       (int) (c2dev->ibdev.fw_ver & 0xffff));
 }
 
 static ssize_t show_hca(struct device *dev, struct device_attribute *attr,
@@ -828,7 +814,6 @@ int c2_register_device(struct c2_dev *dev)
 	dev->ibdev.phys_port_cnt = 1;
 	dev->ibdev.num_comp_vectors = 1;
 	dev->ibdev.dma_device = &dev->pcidev->dev;
-	dev->ibdev.query_device = c2_query_device;
 	dev->ibdev.query_port = c2_query_port;
 	dev->ibdev.query_pkey = c2_query_pkey;
 	dev->ibdev.query_gid = c2_query_gid;

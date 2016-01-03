@@ -120,7 +120,7 @@ static void c2_adapter_term(struct c2_dev *c2dev)
 /*
  * Query the adapter
  */
-static int c2_rnic_query(struct c2_dev *c2dev, struct ib_device_attr *props)
+static int c2_rnic_query(struct c2_dev *c2dev)
 {
 	struct c2_vq_req *vq_req;
 	struct c2wr_rnic_query_req wr;
@@ -156,47 +156,30 @@ static int c2_rnic_query(struct c2_dev *c2dev, struct ib_device_attr *props)
 	if (err)
 		goto bail2;
 
-	props->fw_ver =
+	c2dev->ibdev.fw_ver =
 		((u64)be32_to_cpu(reply->fw_ver_major) << 32) |
 		((be32_to_cpu(reply->fw_ver_minor) & 0xFFFF) << 16) |
 		(be32_to_cpu(reply->fw_ver_patch) & 0xFFFF);
-	memcpy(&props->sys_image_guid, c2dev->netdev->dev_addr, 6);
-	props->max_mr_size         = 0xFFFFFFFF;
-	props->page_size_cap       = ~(C2_MIN_PAGESIZE-1);
-	props->vendor_id           = be32_to_cpu(reply->vendor_id);
-	props->vendor_part_id      = be32_to_cpu(reply->part_number);
-	props->hw_ver              = be32_to_cpu(reply->hw_version);
-	props->max_qp              = be32_to_cpu(reply->max_qps);
-	props->max_qp_wr           = be32_to_cpu(reply->max_qp_depth);
-	props->device_cap_flags    = c2dev->device_cap_flags;
-	props->max_sge             = C2_MAX_SGES;
-	props->max_sge_rd          = C2_MAX_SGE_RD;
-	props->max_cq              = be32_to_cpu(reply->max_cqs);
-	props->max_cqe             = be32_to_cpu(reply->max_cq_depth);
-	props->max_mr              = be32_to_cpu(reply->max_mrs);
-	props->max_pd              = be32_to_cpu(reply->max_pds);
-	props->max_qp_rd_atom      = be32_to_cpu(reply->max_qp_ird);
-	props->max_ee_rd_atom      = 0;
-	props->max_res_rd_atom     = be32_to_cpu(reply->max_global_ird);
-	props->max_qp_init_rd_atom = be32_to_cpu(reply->max_qp_ord);
-	props->max_ee_init_rd_atom = 0;
-	props->atomic_cap          = IB_ATOMIC_NONE;
-	props->max_ee              = 0;
-	props->max_rdd             = 0;
-	props->max_mw              = be32_to_cpu(reply->max_mws);
-	props->max_raw_ipv6_qp     = 0;
-	props->max_raw_ethy_qp     = 0;
-	props->max_mcast_grp       = 0;
-	props->max_mcast_qp_attach = 0;
-	props->max_total_mcast_qp_attach = 0;
-	props->max_ah              = 0;
-	props->max_fmr             = 0;
-	props->max_map_per_fmr     = 0;
-	props->max_srq             = 0;
-	props->max_srq_wr          = 0;
-	props->max_srq_sge         = 0;
-	props->max_pkeys           = 0;
-	props->local_ca_ack_delay  = 0;
+	memcpy(&c2dev->ibdev.sys_image_guid, c2dev->netdev->dev_addr, 6);
+	c2dev->ibdev.max_mr_size         = 0xFFFFFFFF;
+	c2dev->ibdev.page_size_cap       = ~(C2_MIN_PAGESIZE-1);
+	c2dev->ibdev.vendor_id           = be32_to_cpu(reply->vendor_id);
+	c2dev->ibdev.vendor_part_id      = be32_to_cpu(reply->part_number);
+	c2dev->ibdev.hw_ver              = be32_to_cpu(reply->hw_version);
+	c2dev->ibdev.max_qp              = be32_to_cpu(reply->max_qps);
+	c2dev->ibdev.max_qp_wr           = be32_to_cpu(reply->max_qp_depth);
+	c2dev->ibdev.device_cap_flags    = c2dev->device_cap_flags;
+	c2dev->ibdev.max_sge             = C2_MAX_SGES;
+	c2dev->ibdev.max_sge_rd          = C2_MAX_SGE_RD;
+	c2dev->ibdev.max_cq              = be32_to_cpu(reply->max_cqs);
+	c2dev->ibdev.max_cqe             = be32_to_cpu(reply->max_cq_depth);
+	c2dev->ibdev.max_mr              = be32_to_cpu(reply->max_mrs);
+	c2dev->ibdev.max_pd              = be32_to_cpu(reply->max_pds);
+	c2dev->ibdev.max_qp_rd_atom      = be32_to_cpu(reply->max_qp_ird);
+	c2dev->ibdev.max_res_rd_atom     = be32_to_cpu(reply->max_global_ird);
+	c2dev->ibdev.max_qp_init_rd_atom = be32_to_cpu(reply->max_qp_ord);
+	c2dev->ibdev.atomic_cap          = IB_ATOMIC_NONE;
+	c2dev->ibdev.max_mw              = be32_to_cpu(reply->max_mws);
 
  bail2:
 	vq_repbuf_free(c2dev, reply);
@@ -576,7 +559,7 @@ int c2_rnic_init(struct c2_dev *c2dev)
 		goto bail4;
 
 	/* Initialize cached the adapter limits */
-	err = c2_rnic_query(c2dev, &c2dev->props);
+	err = c2_rnic_query(c2dev);
 	if (err)
 		goto bail5;
 
