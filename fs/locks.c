@@ -119,7 +119,6 @@
 #include <linux/fdtable.h>
 #include <linux/fs.h>
 #include <linux/init.h>
-#include <linux/module.h>
 #include <linux/security.h>
 #include <linux/slab.h>
 #include <linux/syscalls.h>
@@ -1191,6 +1190,7 @@ static int posix_lock_inode_wait(struct inode *inode, struct file_lock *fl)
 	return error;
 }
 
+#ifdef CONFIG_MANDATORY_FILE_LOCKING
 /**
  * locks_mandatory_locked - Check for an active lock
  * @file: the file to check
@@ -1289,6 +1289,7 @@ int locks_mandatory_area(int read_write, struct inode *inode,
 }
 
 EXPORT_SYMBOL(locks_mandatory_area);
+#endif /* CONFIG_MANDATORY_FILE_LOCKING */
 
 static void lease_clear_pending(struct file_lock *fl, int arg)
 {
@@ -1503,12 +1504,10 @@ void lease_get_mtime(struct inode *inode, struct timespec *time)
 	ctx = smp_load_acquire(&inode->i_flctx);
 	if (ctx && !list_empty_careful(&ctx->flc_lease)) {
 		spin_lock(&ctx->flc_lock);
-		if (!list_empty(&ctx->flc_lease)) {
-			fl = list_first_entry(&ctx->flc_lease,
-						struct file_lock, fl_list);
-			if (fl->fl_type == F_WRLCK)
-				has_lease = true;
-		}
+		fl = list_first_entry_or_null(&ctx->flc_lease,
+					      struct file_lock, fl_list);
+		if (fl && (fl->fl_type == F_WRLCK))
+			has_lease = true;
 		spin_unlock(&ctx->flc_lock);
 	}
 
@@ -2706,7 +2705,7 @@ static int __init proc_locks_init(void)
 	proc_create("locks", 0, NULL, &proc_locks_operations);
 	return 0;
 }
-module_init(proc_locks_init);
+fs_initcall(proc_locks_init);
 #endif
 
 static int __init filelock_init(void)
