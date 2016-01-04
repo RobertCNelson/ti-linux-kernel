@@ -5121,7 +5121,8 @@ sub process {
 		my @smp_barriers = ('smp_store_release', 'smp_load_acquire', 'smp_store_mb');
 
 		@smp_barriers = (@smp_barriers, map {"smp_" . $_} @barriers);
-		my $all_barriers = join('|', (@barriers, @smp_barriers));
+		my @virt_barriers = map {my $l = $_; $l =~ s/smp_/virt_/; $l} @smp_barriers;
+		my $all_barriers = join('|', (@barriers, @smp_barriers, @virt_barriers));
 
 		if ($line =~ /\b($all_barriers)\(/) {
 			if (!ctx_has_comment($first_line, $linenr)) {
