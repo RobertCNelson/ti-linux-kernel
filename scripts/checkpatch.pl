@@ -5130,6 +5130,17 @@ sub process {
 			}
 		}
 
+		my @underscore_smp_barriers = map {"__" . $_} @smp_barriers;
+		my $underscore_all_barriers = join('|', @underscore_smp_barriers);
+
+		if ($realfile !~ m@^include/asm-generic/@ &&
+		    $realfile !~ m@/barrier\.h$@ &&
+		    $line =~ m/\b($underscore_all_barriers)\(/ &&
+		    $line !~ m/^.\s*\#\s*define\s+($underscore_all_barriers)\(/) {
+			WARN("MEMORY_BARRIER",
+			     "__smp memory barriers shouldn't be used outside barrier.h and asm-generic\n" . $herecurr);
+		}
+
 # check for waitqueue_active without a comment.
 		if ($line =~ /\bwaitqueue_active\s*\(/) {
 			if (!ctx_has_comment($first_line, $linenr)) {
