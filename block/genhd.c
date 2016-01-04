@@ -20,6 +20,7 @@
 #include <linux/idr.h>
 #include <linux/log2.h>
 #include <linux/pm_runtime.h>
+#include <linux/badblocks.h>
 
 #include "blk.h"
 
@@ -505,6 +506,16 @@ static int exact_lock(dev_t devt, void *data)
 	return 0;
 }
 
+int disk_alloc_badblocks(struct gendisk *disk)
+{
+	disk->bb = kzalloc(sizeof(*(disk->bb)), GFP_KERNEL);
+	if (!disk->bb)
+		return -ENOMEM;
+
+	return badblocks_init(disk->bb, 1);
+}
+EXPORT_SYMBOL(disk_alloc_badblocks);
+
 static void register_disk(struct gendisk *disk)
 {
 	struct device *ddev = disk_to_dev(disk);
@@ -634,24 +645,14 @@ void add_disk(struct gendisk *disk)
 }
 EXPORT_SYMBOL(add_disk);
 
-void del_gendisk(struct gendisk *disk)
+static void del_gendisk_start(struct gendisk *disk)
 {
-	struct disk_part_iter piter;
-	struct hd_struct *part;
-
 	blk_integrity_del(disk);
 	disk_del_events(disk);
+}
 
-	/* invalidate stuff */
-	disk_part_iter_init(&piter, disk,
-			     DISK_PITER_INCL_EMPTY | DISK_PITER_REVERSE);
-	while ((part = disk_part_iter_next(&piter))) {
-		invalidate_partition(disk, part->partno);
-		delete_partition(disk, part->partno);
-	}
-	disk_part_iter_exit(&piter);
-
-	invalidate_partition(disk, 0);
+static void del_gendisk_end(struct gendisk *disk)
+{
 	set_capacity(disk, 0);
 	disk->flags &= ~GENHD_FL_UP;
 
@@ -659,18 +660,148 @@ void del_gendisk(struct gendisk *disk)
 	blk_unregister_queue(disk);
 	blk_unregister_region(disk_devt(disk), disk->minors);
 
+	if (disk->bb) {
+		badblocks_free(disk->bb);
+		kfree(disk->bb);
+	}
+
 	part_stat_set_all(&disk->part0, 0);
 	disk->part0.stamp = 0;
 
 	kobject_put(disk->part0.holder_dir);
 	kobject_put(disk->slave_dir);
-	disk->driverfs_dev = NULL;
 	if (!sysfs_deprecated)
 		sysfs_remove_link(block_depr, dev_name(disk_to_dev(disk)));
 	pm_runtime_set_memalloc_noio(disk_to_dev(disk), false);
 	device_del(disk_to_dev(disk));
 }
+
+#define for_each_part(part, piter) \
+	for (part = disk_part_iter_next(piter); part; \
+			part = disk_part_iter_next(piter))
+void del_gendisk(struct gendisk *disk)
+{
+	struct disk_part_iter piter;
+	struct hd_struct *part;
+
+	del_gendisk_start(disk);
+
+	/* invalidate stuff */
+	disk_part_iter_init(&piter, disk,
+			     DISK_PITER_INCL_EMPTY | DISK_PITER_REVERSE);
+	for_each_part(part, &piter) {
+		invalidate_partition(disk, part->partno);
+		delete_partition(disk, part->partno);
+	}
+	disk_part_iter_exit(&piter);
+	invalidate_partition(disk, 0);
+
+	del_gendisk_end(disk);
+}
 EXPORT_SYMBOL(del_gendisk);
+
+/*
+ * The gendisk usage of badblocks does not track acknowledgements for
+ * badblocks. We always assume they are acknowledged.
+ */
+int disk_check_badblocks(struct gendisk *disk, sector_t s, int sectors,
+		   sector_t *first_bad, int *bad_sectors)
+{
+	if (!disk->bb)
+		return 0;
+
+	return badblocks_check(disk->bb, s, sectors, first_bad, bad_sectors);
+}
+EXPORT_SYMBOL(disk_check_badblocks);
+
+int disk_set_badblocks(struct gendisk *disk, sector_t s, int sectors)
+{
+	if (!disk->bb)
+		return 0;
+
+	return badblocks_set(disk->bb, s, sectors, 1);
+}
+EXPORT_SYMBOL(disk_set_badblocks);
+
+int disk_clear_badblocks(struct gendisk *disk, sector_t s, int sectors)
+{
+	if (!disk->bb)
+		return 0;
+
+	return badblocks_clear(disk->bb, s, sectors);
+}
+EXPORT_SYMBOL(disk_clear_badblocks);
+
+/* sysfs access to bad-blocks list. */
+static ssize_t disk_badblocks_show(struct device *dev,
+					struct device_attribute *attr,
+					char *page)
+{
+	struct gendisk *disk = dev_to_disk(dev);
+
+	if (!disk->bb)
+		return 0;
+
+	return badblocks_show(disk->bb, page, 0);
+}
+
+static ssize_t disk_badblocks_store(struct device *dev,
+					struct device_attribute *attr,
+					const char *page, size_t len)
+{
+	struct gendisk *disk = dev_to_disk(dev);
+
+	if (!disk->bb)
+		return 0;
+
+	return badblocks_store(disk->bb, page, len, 0);
+}
+
+/**
+ * del_gendisk_queue - combined del_gendisk + blk_cleanup_queue
+ * @disk: disk to delete, invalidate, unmap, and end i/o
+ *
+ * This alternative for open coded calls to:
+ *     del_gendisk()
+ *     blk_cleanup_queue()
+ * ...is for notifying the filesystem that the block device has gone
+ * away.  This distinction is important for triggering a filesystem to
+ * abort its error recovery and for (DAX) capable devices.  DAX bypasses
+ * page cache and mappings go directly to storage media.  When such a
+ * disk is removed the pfn backing a mapping may be invalid or removed
+ * from the system.  Upon return accessing DAX mappings of this disk
+ * will trigger SIGBUS.
+ */
+void del_gendisk_queue(struct gendisk *disk)
+{
+	struct disk_part_iter piter;
+	struct hd_struct *part;
+
+	del_gendisk_start(disk);
+
+	/* pass1 sync fs + evict idle inodes */
+	disk_part_iter_init(&piter, disk,
+			     DISK_PITER_INCL_EMPTY | DISK_PITER_REVERSE);
+	for_each_part(part, &piter)
+		invalidate_partition(disk, part->partno);
+	disk_part_iter_exit(&piter);
+	invalidate_partition(disk, 0);
+
+	blk_cleanup_queue(disk->queue);
+
+	/* pass2 the queue is dead, trigger fs shutdown via ->bdi_gone() */
+	disk_part_iter_init(&piter, disk,
+			     DISK_PITER_INCL_EMPTY | DISK_PITER_REVERSE);
+	for_each_part(part, &piter) {
+		shutdown_partition(disk, part->partno);
+		delete_partition(disk, part->partno);
+	}
+	disk_part_iter_exit(&piter);
+	shutdown_partition(disk, 0);
+
+	del_gendisk_end(disk);
+}
+EXPORT_SYMBOL(del_gendisk_queue);
 
 /**
  * get_gendisk - get partitioning information for a given device
@@ -990,6 +1121,8 @@ static DEVICE_ATTR(discard_alignment, S_IRUGO, disk_discard_alignment_show,
 static DEVICE_ATTR(capability, S_IRUGO, disk_capability_show, NULL);
 static DEVICE_ATTR(stat, S_IRUGO, part_stat_show, NULL);
 static DEVICE_ATTR(inflight, S_IRUGO, part_inflight_show, NULL);
+static DEVICE_ATTR(badblocks, S_IRUGO | S_IWUSR, disk_badblocks_show,
+		disk_badblocks_store);
 #ifdef CONFIG_FAIL_MAKE_REQUEST
 static struct device_attribute dev_attr_fail =
 	__ATTR(make-it-fail, S_IRUGO|S_IWUSR, part_fail_show, part_fail_store);
@@ -1011,6 +1144,7 @@ static struct attribute *disk_attrs[] = {
 	&dev_attr_capability.attr,
 	&dev_attr_stat.attr,
 	&dev_attr_inflight.attr,
+	&dev_attr_badblocks.attr,
 #ifdef CONFIG_FAIL_MAKE_REQUEST
 	&dev_attr_fail.attr,
 #endif
