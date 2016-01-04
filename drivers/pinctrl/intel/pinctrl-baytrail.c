@@ -281,7 +281,7 @@ static int byt_gpio_get(struct gpio_chip *chip, unsigned offset)
 	val = readl(reg);
 	raw_spin_unlock_irqrestore(&vg->lock, flags);
 
-	return val & BYT_LEVEL;
+	return !!(val & BYT_LEVEL);
 }
 
 static void byt_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
@@ -598,7 +598,7 @@ static int byt_gpio_probe(struct platform_device *pdev)
 	gc->dbg_show = byt_gpio_dbg_show;
 	gc->base = -1;
 	gc->can_sleep = false;
-	gc->dev = dev;
+	gc->parent = dev;
 
 #ifdef CONFIG_PM_SLEEP
 	vg->saved_context = devm_kcalloc(&pdev->dev, gc->ngpio,

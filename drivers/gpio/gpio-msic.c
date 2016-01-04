@@ -143,7 +143,7 @@ static int msic_gpio_get(struct gpio_chip *chip, unsigned offset)
 	if (ret < 0)
 		return ret;
 
-	return r & MSIC_GPIO_DIN_MASK;
+	return !!(r & MSIC_GPIO_DIN_MASK);
 }
 
 static void msic_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
@@ -293,7 +293,7 @@ static int platform_msic_gpio_probe(struct platform_device *pdev)
 	mg->chip.base = pdata->gpio_base;
 	mg->chip.ngpio = MSIC_NUM_GPIO;
 	mg->chip.can_sleep = true;
-	mg->chip.dev = dev;
+	mg->chip.parent = dev;
 
 	mutex_init(&mg->buslock);
 

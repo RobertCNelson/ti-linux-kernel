@@ -103,7 +103,7 @@ static int em_gio_irq_reqres(struct irq_data *d)
 	struct em_gio_priv *p = irq_data_get_irq_chip_data(d);
 
 	if (gpiochip_lock_as_irq(&p->gpio_chip, irqd_to_hwirq(d))) {
-		dev_err(p->gpio_chip.dev,
+		dev_err(p->gpio_chip.parent,
 			"unable to lock HW IRQ %lu for IRQ\n",
 			irqd_to_hwirq(d));
 		return -EINVAL;
@@ -203,7 +203,7 @@ static int em_gio_direction_input(struct gpio_chip *chip, unsigned offset)
 
 static int em_gio_get(struct gpio_chip *chip, unsigned offset)
 {
-	return (int)(em_gio_read(gpio_to_priv(chip), GIO_I) & BIT(offset));
+	return !!(em_gio_read(gpio_to_priv(chip), GIO_I) & BIT(offset));
 }
 
 static void __em_gio_set(struct gpio_chip *chip, unsigned int reg,
@@ -332,7 +332,7 @@ static int em_gio_probe(struct platform_device *pdev)
 	gpio_chip->request = em_gio_request;
 	gpio_chip->free = em_gio_free;
 	gpio_chip->label = name;
-	gpio_chip->dev = &pdev->dev;
+	gpio_chip->parent = &pdev->dev;
 	gpio_chip->owner = THIS_MODULE;
 	gpio_chip->base = -1;
 	gpio_chip->ngpio = ngpios;

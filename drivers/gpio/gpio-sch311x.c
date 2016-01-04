@@ -149,7 +149,7 @@ static int sch311x_gpio_request(struct gpio_chip *chip, unsigned offset)
 
 	if (!request_region(block->runtime_reg + block->config_regs[offset],
 			    1, DRV_NAME)) {
-		dev_err(chip->dev, "Failed to request region 0x%04x.\n",
+		dev_err(chip->parent, "Failed to request region 0x%04x.\n",
 			block->runtime_reg + block->config_regs[offset]);
 		return -EBUSY;
 	}
@@ -229,7 +229,7 @@ static int sch311x_gpio_direction_out(struct gpio_chip *chip, unsigned offset,
 
 static int sch311x_gpio_probe(struct platform_device *pdev)
 {
-	struct sch311x_pdev_data *pdata = pdev->dev.platform_data;
+	struct sch311x_pdev_data *pdata = dev_get_platdata(&pdev->dev);
 	struct sch311x_gpio_priv *priv;
 	struct sch311x_gpio_block *block;
 	int err, i;
@@ -261,7 +261,7 @@ static int sch311x_gpio_probe(struct platform_device *pdev)
 		block->chip.get = sch311x_gpio_get;
 		block->chip.set = sch311x_gpio_set;
 		block->chip.ngpio = 8;
-		block->chip.dev = &pdev->dev;
+		block->chip.parent = &pdev->dev;
 		block->chip.base = sch311x_gpio_blocks[i].base;
 		block->config_regs = sch311x_gpio_blocks[i].config_regs;
 		block->data_reg = sch311x_gpio_blocks[i].data_reg;
@@ -289,7 +289,7 @@ exit_err:
 
 static int sch311x_gpio_remove(struct platform_device *pdev)
 {
-	struct sch311x_pdev_data *pdata = pdev->dev.platform_data;
+	struct sch311x_pdev_data *pdata = dev_get_platdata(&pdev->dev);
 	struct sch311x_gpio_priv *priv = platform_get_drvdata(pdev);
 	int i;
 
