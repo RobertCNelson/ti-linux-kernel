@@ -8,9 +8,15 @@
 #include "orangefs-kernel.h"
 #include "orangefs-bufmap.h"
 
-static const char *orangefs_follow_link(struct dentry *dentry, void **cookie)
+static const char *orangefs_get_link(struct dentry *dentry, struct inode *inode,
+				     void **cookie)
 {
-	char *target =  ORANGEFS_I(dentry->d_inode)->link_target;
+	char *target;
+
+	if (!dentry)
+		return ERR_PTR(-ECHILD);
+
+	target = ORANGEFS_I(inode)->link_target;
 
 	gossip_debug(GOSSIP_INODE_DEBUG,
 		     "%s: called on %s (target is %p)\n",
@@ -23,7 +29,7 @@ static const char *orangefs_follow_link(struct dentry *dentry, void **cookie)
 
 struct inode_operations orangefs_symlink_inode_operations = {
 	.readlink = generic_readlink,
-	.follow_link = orangefs_follow_link,
+	.get_link = orangefs_get_link,
 	.setattr = orangefs_setattr,
 	.getattr = orangefs_getattr,
 	.listxattr = orangefs_listxattr,
