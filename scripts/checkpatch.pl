@@ -5116,7 +5116,14 @@ sub process {
 			}
 		}
 # check for memory barriers without a comment.
-		if ($line =~ /\b(mb|rmb|wmb|read_barrier_depends|smp_mb|smp_rmb|smp_wmb|smp_read_barrier_depends)\(/) {
+
+		my @barriers = ('mb', 'rmb', 'wmb', 'read_barrier_depends');
+		my @smp_barriers = ('smp_store_release', 'smp_load_acquire', 'smp_store_mb');
+
+		@smp_barriers = (@smp_barriers, map {"smp_" . $_} @barriers);
+		my $all_barriers = join('|', (@barriers, @smp_barriers));
+
+		if ($line =~ /\b($all_barriers)\(/) {
 			if (!ctx_has_comment($first_line, $linenr)) {
 				WARN("MEMORY_BARRIER",
 				     "memory barrier without comment\n" . $herecurr);
