@@ -46,7 +46,7 @@
 
 /* Current ACPICA subsystem version in YYYYMMDD format */
 
-#define ACPI_CA_VERSION                 0x20150930
+#define ACPI_CA_VERSION                 0x20151218
 
 #include <acpi/acconfig.h>
 #include <acpi/actypes.h>
@@ -190,6 +190,11 @@ ACPI_INIT_GLOBAL(u8, acpi_gbl_copy_dsdt_locally, FALSE);
 ACPI_INIT_GLOBAL(u8, acpi_gbl_do_not_use_xsdt, FALSE);
 
 /*
+ * Optionally support group module level code.
+ */
+ACPI_INIT_GLOBAL(u8, acpi_gbl_group_module_level_code, TRUE);
+
+/*
  * Optionally use 32-bit FADT addresses if and when there is a conflict
  * (address mismatch) between the 32-bit and 64-bit versions of the
  * address. Although ACPICA adheres to the ACPI specification which
@@ -262,6 +267,10 @@ ACPI_INIT_GLOBAL(u32, acpi_gbl_trace_dbg_layer, ACPI_TRACE_LAYER_DEFAULT);
  */
 ACPI_INIT_GLOBAL(u32, acpi_dbg_level, ACPI_DEBUG_DEFAULT);
 ACPI_INIT_GLOBAL(u32, acpi_dbg_layer, 0);
+
+/* Optionally enable timer output with Debug Object output */
+
+ACPI_INIT_GLOBAL(u8, acpi_gbl_display_debug_timer, FALSE);
 
 /*
  * Debugger command handshake globals. Host OSes need to access these
