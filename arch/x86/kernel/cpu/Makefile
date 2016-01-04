@@ -51,6 +51,7 @@ obj-$(CONFIG_CPU_SUP_INTEL)		+= perf_event_msr.o
 obj-$(CONFIG_CPU_SUP_AMD)		+= perf_event_msr.o
 endif
 
+obj-$(CONFIG_INTEL_RDT)			+= intel_rdt.o
 
 obj-$(CONFIG_X86_MCE)			+= mcheck/
 obj-$(CONFIG_MTRR)			+= mtrr/

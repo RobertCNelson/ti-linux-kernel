@@ -18,13 +18,6 @@
 
 	.section .entry.text, "ax"
 
-#ifdef CONFIG_PARAVIRT
-ENTRY(native_usergs_sysret32)
-	swapgs
-	sysretl
-ENDPROC(native_usergs_sysret32)
-#endif
-
 /*
  * 32-bit SYSENTER instruction entry.
  *
@@ -103,15 +96,15 @@ ENTRY(entry_SYSENTER_compat)
 	 * This needs to happen before enabling interrupts so that
 	 * we don't get preempted with NT set.
 	 *
-	 * NB.: sysenter_fix_flags is a label with the code under it moved
+	 * NB.: .Lsysenter_fix_flags is a label with the code under it moved
 	 * out-of-line as an optimization: NT is unlikely to be set in the
 	 * majority of the cases and instead of polluting the I$ unnecessarily,
 	 * we're keeping that code behind a branch which will predict as
 	 * not-taken and therefore its instructions won't be fetched.
 	 */
 	testl	$X86_EFLAGS_NT, EFLAGS(%rsp)
-	jnz	sysenter_fix_flags
-sysenter_flags_fixed:
+	jnz	.Lsysenter_fix_flags
+.Lsysenter_flags_fixed:
 
 	/*
 	 * User mode is traced as though IRQs are on, and SYSENTER
@@ -121,14 +114,15 @@ sysenter_flags_fixed:
 
 	movq	%rsp, %rdi
 	call	do_fast_syscall_32
-	testl	%eax, %eax
-	jz	.Lsyscall_32_done
+	/* XEN PV guests always use IRET path */
+	ALTERNATIVE "testl %eax, %eax; jz .Lsyscall_32_done", \
+		    "jmp .Lsyscall_32_done", X86_FEATURE_XENPV
 	jmp	sysret32_from_system_call
 
-sysenter_fix_flags:
+.Lsysenter_fix_flags:
 	pushq	$X86_EFLAGS_FIXED
 	popfq
-	jmp	sysenter_flags_fixed
+	jmp	.Lsysenter_flags_fixed
 ENDPROC(entry_SYSENTER_compat)
 
 /*
@@ -200,8 +194,9 @@ ENTRY(entry_SYSCALL_compat)
 
 	movq	%rsp, %rdi
 	call	do_fast_syscall_32
-	testl	%eax, %eax
-	jz	.Lsyscall_32_done
+	/* XEN PV guests always use IRET path */
+	ALTERNATIVE "testl %eax, %eax; jz .Lsyscall_32_done", \
+		    "jmp .Lsyscall_32_done", X86_FEATURE_XENPV
 
 	/* Opportunistic SYSRET */
 sysret32_from_system_call:
@@ -236,7 +231,8 @@ sysret32_from_system_call:
 	xorq	%r9, %r9
 	xorq	%r10, %r10
 	movq	RSP-ORIG_RAX(%rsp), %rsp
-        USERGS_SYSRET32
+	swapgs
+	sysretl
 END(entry_SYSCALL_compat)
 
 /*

@@ -1,0 +1,133 @@
+        RDT
+        ---
+
+Copyright (C) 2014 Intel Corporation
+Written by vikas.shivappa@linux.intel.com
+
+CONTENTS:
+=========
+
+1. Cache Allocation Technology
+  1.1 Why is Cache allocation needed?
+2. Usage Examples and Syntax
+
+1. Cache Allocation Technology
+===================================
+
+1.1 Why is Cache allocation needed
+----------------------------------
+
+In today's new processors the number of cores is continuously increasing
+especially in large scale usage models where VMs are used like
+webservers and datacenters. The number of cores increase the number of
+threads or workloads that can simultaneously be run. When
+multi-threaded-applications, VMs, workloads run concurrently they
+compete for shared resources including L3 cache.
+
+The architecture also allows dynamically changing these subsets during
+runtime to further optimize the performance of the higher priority
+application with minimal degradation to the low priority app.
+Additionally, resources can be rebalanced for system throughput benefit.
+This technique may be useful in managing large computer systems which
+large L3 cache.
+
+Cloud/Container use case:
+The key use case scenarios are in large server clusters in a typical
+cloud or container context. A central 'managing agent' would control
+resource allocations to a set of VMs or containers. In today's resource
+management, cgroups are widely used already and a significant amount of
+plumbing in user space is already done to perform tasks like
+allocating/configuring resources dynamically and statically. An
+important example is dockers using systemd and systemd in turn using
+cgroups in its core to manage resources. This makes cgroup interface an
+easily adaptable interface for cache allocation.
+
+Noisy neighbour use case:
+A more specific use case may be when a streaming app which is constantly
+copying data and accessing linear space larger than L3 cache
+and hence evicting a large amount of cache which could have
+otherwise been used by a high priority computing application. Using the
+cache allocation feature, the 'noisy neighbours' like the streaming
+application can be confined to use a smaller cache and the high priority
+application be awarded a larger amount of cache space. A managing agent
+can monitor the cache allocation using cache monitoring through libperf
+and be able to make resource adjustments either statically or
+dynamically.
+This interface hence helps in maintaining a resource policy to
+provide the quality of service requirements like number of requests
+handled, response time.
+
+More information can be found in the Intel SDM June 2015, Volume 3,
+section 17.16. More information on kernel implementation details can be
+found in Documentation/x86/intel_rdt.txt.
+
+2. Usage examples and syntax
+============================
+
+Following is an example on how a system administrator/root user can
+configure L3 cache allocation to threads.
+
+To enable the cache allocation during compile time set the
+CONFIG_INTEL_RDT=y.
+
+To check if Cache allocation was enabled on your system
+  $ dmesg | grep -i intel_rdt
+  intel_rdt: Intel Cache Allocation enabled
+
+  $ cat /proc/cpuinfo
+output would have 'rdt' (if rdt is enabled) and 'cat_l3' (if L3
+cache allocation is enabled).
+
+example1: Following would mount the cache allocation cgroup subsystem
+and create 2 directories.
+
+  $ cd /sys/fs/cgroup
+  $ mkdir rdt
+  $ mount -t cgroup -ointel_rdt intel_rdt /sys/fs/cgroup/rdt
+  $ cd rdt
+  $ mkdir group1
+  $ mkdir group2
+
+Following are some of the Files in the directory
+
+  $ ls
+  intel_rdt.l3_cbm
+  tasks
+
+Say if the cache is 4MB (looked up from /proc/cpuinfo) and max cbm is 16
+bits (indicated by the root nodes cbm). This assigns 1MB of cache to
+group1 and group2 which is exclusive between them.
+
+  $ cd group1
+  $ /bin/echo 0xf > intel_rdt.l3_cbm
+
+  $ cd group2
+  $ /bin/echo 0xf0 > intel_rdt.l3_cbm
+
+Assign tasks to the group2
+
+  $ /bin/echo PID1 > tasks
+  $ /bin/echo PID2 > tasks
+
+Now threads PID1 and PID2 get to fill the 1MB of cache that was
+allocated to group2. Similarly assign tasks to group1.
+
+example2: Below commands allocate '1MB L3 cache on socket1 to group1'
+and '2MB of L3 cache on socket2 to group2'.
+This mounts both cpuset and intel_rdt and hence the ls would list the
+files in both the subsystems.
+  $ mount -t cgroup -ocpuset,intel_rdt cpuset,intel_rdt rdt/
+
+Assign the cache
+  $ /bin/echo 0xf > /sys/fs/cgroup/rdt/group1/intel_rdt.l3_cbm
+  $ /bin/echo 0xff > /sys/fs/cgroup/rdt/group2/intel_rdt.l3_cbm
+
+Assign tasks for group1 and group2
+  $ /bin/echo PID1 > /sys/fs/cgroup/rdt/group1/tasks
+  $ /bin/echo PID2 > /sys/fs/cgroup/rdt/group1/tasks
+  $ /bin/echo PID3 > /sys/fs/cgroup/rdt/group2/tasks
+  $ /bin/echo PID4 > /sys/fs/cgroup/rdt/group2/tasks
+
+Tie the group1 to socket1 and group2 to socket2
+  $ /bin/echo <cpumask for socket1> > /sys/fs/cgroup/rdt/group1/cpuset.cpus
+  $ /bin/echo <cpumask for socket2> > /sys/fs/cgroup/rdt/group2/cpuset.cpus
