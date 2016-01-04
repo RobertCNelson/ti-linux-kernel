@@ -5133,7 +5133,8 @@ sub process {
 		}x;
 		my $all_barriers = qr{
 			$barriers|
-			smp_(?:$smp_barrier_stems)
+			smp_(?:$smp_barrier_stems)|
+			virt_(?:$smp_barrier_stems)
 		}x;
 
 		if ($line =~ /\b(?:$all_barriers)\s*\(/) {
