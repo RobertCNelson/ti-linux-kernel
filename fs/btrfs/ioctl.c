@@ -992,7 +992,7 @@ static struct extent_map *defrag_lookup_extent(struct inode *inode, u64 start)
 		u64 end = start + len - 1;
 
 		/* get the big lock and read metadata off disk */
-		lock_extent_bits(io_tree, start, end, 0, &cached);
+		lock_extent_bits(io_tree, start, end, &cached);
 		em = btrfs_get_extent(inode, NULL, 0, start, len, 0);
 		unlock_extent_cached(io_tree, start, end, &cached, GFP_NOFS);
 
@@ -1140,7 +1140,7 @@ again:
 		page_end = page_start + PAGE_CACHE_SIZE - 1;
 		while (1) {
 			lock_extent_bits(tree, page_start, page_end,
-					 0, &cached_state);
+					 &cached_state);
 			ordered = btrfs_lookup_ordered_extent(inode,
 							      page_start);
 			unlock_extent_cached(tree, page_start, page_end,
@@ -1200,7 +1200,7 @@ again:
 	page_end = page_offset(pages[i_done - 1]) + PAGE_CACHE_SIZE;
 
 	lock_extent_bits(&BTRFS_I(inode)->io_tree,
-			 page_start, page_end - 1, 0, &cached_state);
+			 page_start, page_end - 1, &cached_state);
 	clear_extent_bit(&BTRFS_I(inode)->io_tree, page_start,
 			  page_end - 1, EXTENT_DIRTY | EXTENT_DELALLOC |
 			  EXTENT_DO_ACCOUNTING | EXTENT_DEFRAG, 0, 0,
@@ -4147,7 +4147,7 @@ static long btrfs_ioctl_space_info(struct btrfs_root *root, void __user *arg)
 		return -ENOMEM;
 
 	space_args.total_spaces = 0;
-	dest = kmalloc(alloc_size, GFP_NOFS);
+	dest = kmalloc(alloc_size, GFP_KERNEL);
 	if (!dest)
 		return -ENOMEM;
 	dest_orig = dest;
@@ -4673,7 +4673,7 @@ locked:
 		goto out_bargs;
 	}
 
-	bctl = kzalloc(sizeof(*bctl), GFP_NOFS);
+	bctl = kzalloc(sizeof(*bctl), GFP_KERNEL);
 	if (!bctl) {
 		ret = -ENOMEM;
 		goto out_bargs;
@@ -4759,7 +4759,7 @@ static long btrfs_ioctl_balance_progress(struct btrfs_root *root,
 		goto out;
 	}
 
-	bargs = kzalloc(sizeof(*bargs), GFP_NOFS);
+	bargs = kzalloc(sizeof(*bargs), GFP_KERNEL);
 	if (!bargs) {
 		ret = -ENOMEM;
 		goto out;
@@ -5019,7 +5019,7 @@ static long btrfs_ioctl_quota_rescan_status(struct file *file, void __user *arg)
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
-	qsa = kzalloc(sizeof(*qsa), GFP_NOFS);
+	qsa = kzalloc(sizeof(*qsa), GFP_KERNEL);
 	if (!qsa)
 		return -ENOMEM;
 
@@ -5149,7 +5149,7 @@ static long btrfs_ioctl_set_received_subvol_32(struct file *file,
 		goto out;
 	}
 
-	args64 = kmalloc(sizeof(*args64), GFP_NOFS);
+	args64 = kmalloc(sizeof(*args64), GFP_KERNEL);
 	if (!args64) {
 		ret = -ENOMEM;
 		goto out;
