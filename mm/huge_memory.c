@@ -2979,16 +2979,15 @@ void __split_huge_pmd(struct vm_area_struct *vma, pmd_t *pmd,
 
 	mmu_notifier_invalidate_range_start(mm, haddr, haddr + HPAGE_PMD_SIZE);
 	ptl = pmd_lock(mm, pmd);
-	if (unlikely(!pmd_trans_huge(*pmd) && !pmd_devmap(*pmd)))
+	if (pmd_trans_huge(*pmd)) {
+		page = pmd_page(*pmd);
+		if (PageMlocked(page))
+			get_page(page);
+		else
+			page = NULL;
+	} else if (!pmd_devmap(*pmd))
 		goto out;
 	__split_huge_pmd_locked(vma, pmd, haddr, false);
-
-	if (pmd_trans_huge(*pmd))
-		page = pmd_page(*pmd);
-	if (page && PageMlocked(page))
-		get_page(page);
-	else
-		page = NULL;
 out:
 	spin_unlock(ptl);
 	mmu_notifier_invalidate_range_end(mm, haddr, haddr + HPAGE_PMD_SIZE);
