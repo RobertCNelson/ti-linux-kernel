@@ -1105,7 +1105,10 @@ again:
 
 			if (!PageAnon(page)) {
 				if (pte_dirty(ptent)) {
-					/* oom_reaper cannot tear down dirty pages */
+					/*
+					 * oom_reaper cannot tear down dirty
+					 * pages
+					 */
 					if (unlikely(details && details->ignore_dirty))
 						continue;
 					force_flush = 1;

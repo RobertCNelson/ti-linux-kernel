@@ -482,7 +482,9 @@ static int oom_reaper(void *unused)
 {
 	while (true) {
 		struct mm_struct *mm;
-		wait_event_freezable(oom_reaper_wait, (mm = READ_ONCE(mm_to_reap)));
+
+		wait_event_freezable(oom_reaper_wait,
+				     (mm = READ_ONCE(mm_to_reap)));
 		oom_reap_vmas(mm);
 		WRITE_ONCE(mm_to_reap, NULL);
 	}
@@ -720,9 +722,9 @@ void oom_kill_process(struct oom_control *oc, struct task_struct *p,
 		if (unlikely(p->flags & PF_KTHREAD) ||
 		    p->signal->oom_score_adj == OOM_SCORE_ADJ_MIN) {
 			/*
-			 * We cannot use oom_reaper for the mm shared by this process
-			 * because it wouldn't get killed and so the memory might be
-			 * still used.
+			 * We cannot use oom_reaper for the mm shared by this
+			 * process because it wouldn't get killed and so the
+			 * memory might be still used.
 			 */
 			can_oom_reap = false;
 			continue;
