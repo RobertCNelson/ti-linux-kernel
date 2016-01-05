@@ -3463,7 +3463,7 @@ static int __init split_huge_pages_debugfs(void)
 	ret = debugfs_create_file("split_huge_pages", 0644, NULL, NULL,
 			&split_huge_pages_fops);
 	if (!ret)
-		pr_warn("Failed to create fault_around_bytes in debugfs");
+		pr_warn("Failed to create split_huge_pages in debugfs");
 	return 0;
 }
 late_initcall(split_huge_pages_debugfs);
