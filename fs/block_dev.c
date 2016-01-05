@@ -1799,6 +1799,25 @@ int __invalidate_device(struct block_device *bdev, bool kill_dirty)
 }
 EXPORT_SYMBOL(__invalidate_device);
 
+void force_failure_partition(struct gendisk *disk, int partno)
+{
+	struct block_device *bdev;
+	struct super_block *sb;
+
+	bdev = bdget_disk(disk, partno);
+	if (!bdev)
+		return;
+
+	sb = get_super(bdev);
+	if (!sb)
+		goto out;
+
+	unmap_dax_inodes(sb);
+	drop_super(sb);
+ out:
+	bdput(bdev);
+}
+
 void iterate_bdevs(void (*func)(struct block_device *, void *), void *arg)
 {
 	struct inode *inode, *old_inode = NULL;

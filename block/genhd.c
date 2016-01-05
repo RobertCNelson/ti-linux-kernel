@@ -717,12 +717,15 @@ void del_gendisk_queue(struct gendisk *disk)
 
 	blk_cleanup_queue(disk->queue);
 
-	/* pass2 the queue is dead */
+	/* pass2 the queue is dead, halt dax */
 	disk_part_iter_init(&piter, disk,
 			     DISK_PITER_INCL_EMPTY | DISK_PITER_REVERSE);
-	for_each_part(part, &piter)
+	for_each_part(part, &piter) {
+		force_failure_partition(disk, part->partno);
 		delete_partition(disk, part->partno);
+	}
 	disk_part_iter_exit(&piter);
+	force_failure_partition(disk, 0);
 
 	del_gendisk_end(disk);
 }
