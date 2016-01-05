@@ -1529,3 +1529,9 @@ void __weak crash_map_reserved_pages(void)
 
 void __weak crash_unmap_reserved_pages(void)
 {}
+
+void __weak arch_kexec_protect_crashkres(void)
+{}
+
+void __weak arch_kexec_unprotect_crashkres(void)
+{}
