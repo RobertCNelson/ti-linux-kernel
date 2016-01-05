@@ -10,6 +10,7 @@
 #include <linux/trace_events.h>
 #include <linux/memcontrol.h>
 #include <linux/migrate.h>
+#include <trace/events/gfpflags.h>
 
 char *migrate_reason_names[MR_TYPES] = {
 	"compaction",
@@ -57,6 +58,10 @@ static const struct trace_print_flags pageflag_names[] = {
 #endif
 };
 
+static const struct trace_print_flags gfpflag_names[] = {
+	__def_gfpflag_names
+};
+
 static void dump_flag_names(unsigned long flags,
 			const struct trace_print_flags *names, int count)
 {
@@ -82,6 +87,11 @@ static void dump_flag_names(unsigned long flags,
 		pr_cont("%s%#lx", delim, flags);
 
 	pr_cont(")\n");
+}
+
+void dump_gfpflag_names(unsigned long gfp_flags)
+{
+	dump_flag_names(gfp_flags, gfpflag_names, ARRAY_SIZE(gfpflag_names));
 }
 
 void dump_page_badflags(struct page *page, const char *reason,
