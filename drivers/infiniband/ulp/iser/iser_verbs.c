@@ -299,7 +299,7 @@ iser_alloc_reg_res(struct ib_device *ib_device,
 		iser_err("Failed to allocate ib_fast_reg_mr err=%d\n", ret);
 		return ret;
 	}
-	res->mr_valid = 1;
+	res->mr_valid = 0;
 
 	return 0;
 }
@@ -336,7 +336,7 @@ iser_alloc_pi_ctx(struct ib_device *ib_device,
 		ret = PTR_ERR(pi_ctx->sig_mr);
 		goto sig_mr_failure;
 	}
-	pi_ctx->sig_mr_valid = 1;
+	pi_ctx->sig_mr_valid = 0;
 	desc->pi_ctx->sig_protected = 0;
 
 	return 0;
@@ -847,10 +847,11 @@ static void iser_route_handler(struct rdma_cm_id *cma_id)
 	conn_param.rnr_retry_count     = 6;
 
 	memset(&req_hdr, 0, sizeof(req_hdr));
-	req_hdr.flags = (ISER_ZBVA_NOT_SUPPORTED |
-			ISER_SEND_W_INV_NOT_SUPPORTED);
-	conn_param.private_data		= (void *)&req_hdr;
-	conn_param.private_data_len	= sizeof(struct iser_cm_hdr);
+	req_hdr.flags = ISER_ZBVA_NOT_SUP;
+	if (!device->remote_inv_sup)
+		req_hdr.flags |= ISER_SEND_W_INV_NOT_SUP;
+	conn_param.private_data	= (void *)&req_hdr;
+	conn_param.private_data_len = sizeof(struct iser_cm_hdr);
 
 	ret = rdma_connect(cma_id, &conn_param);
 	if (ret) {
@@ -863,7 +864,8 @@ failure:
 	iser_connect_error(cma_id);
 }
 
-static void iser_connected_handler(struct rdma_cm_id *cma_id)
+static void iser_connected_handler(struct rdma_cm_id *cma_id,
+				   const void *private_data)
 {
 	struct iser_conn *iser_conn;
 	struct ib_qp_attr attr;
@@ -876,6 +878,15 @@ static void iser_connected_handler(struct rdma_cm_id *cma_id)
 
 	(void)ib_query_qp(cma_id->qp, &attr, ~0, &init_attr);
 	iser_info("remote qpn:%x my qpn:%x\n", attr.dest_qp_num, cma_id->qp->qp_num);
+
+	if (private_data) {
+		u8 flags = *(u8 *)private_data;
+
+		iser_conn->snd_w_inv = !(flags & ISER_SEND_W_INV_NOT_SUP);
+	}
+
+	iser_info("conn %p: negotiated %s invalidation\n",
+		  iser_conn, iser_conn->snd_w_inv ? "remote" : "local");
 
 	iser_conn->state = ISER_CONN_UP;
 	complete(&iser_conn->up_completion);
@@ -928,7 +939,7 @@ static int iser_cma_handler(struct rdma_cm_id *cma_id, struct rdma_cm_event *eve
 		iser_route_handler(cma_id);
 		break;
 	case RDMA_CM_EVENT_ESTABLISHED:
-		iser_connected_handler(cma_id);
+		iser_connected_handler(cma_id, event->param.conn.private_data);
 		break;
 	case RDMA_CM_EVENT_ADDR_ERROR:
 	case RDMA_CM_EVENT_ROUTE_ERROR:
@@ -1206,8 +1217,7 @@ static void iser_handle_wc(struct ib_wc *wc)
 	if (likely(wc->status == IB_WC_SUCCESS)) {
 		if (wc->opcode == IB_WC_RECV) {
 			rx_desc = (struct iser_rx_desc *)(uintptr_t)wc->wr_id;
-			iser_rcv_completion(rx_desc, wc->byte_len,
-					    ib_conn);
+			iser_rcv_completion(rx_desc, wc, ib_conn);
 		} else
 		if (wc->opcode == IB_WC_SEND) {
 			tx_desc = (struct iser_tx_desc *)(uintptr_t)wc->wr_id;

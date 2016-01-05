@@ -29,7 +29,6 @@
 #include <target/iscsi/iscsi_transport.h>
 #include <linux/semaphore.h>
 
-#include "isert_proto.h"
 #include "ib_isert.h"
 
 #define	ISERT_MAX_CONN		8
@@ -673,6 +672,32 @@ out_login_buf:
 	return ret;
 }
 
+static void
+isert_set_nego_params(struct isert_conn *isert_conn,
+		      struct rdma_conn_param *param)
+{
+	struct isert_device *device = isert_conn->device;
+
+	/* Set max inflight RDMA READ requests */
+	isert_conn->initiator_depth = min_t(u8, param->initiator_depth,
+				device->dev_attr.max_qp_init_rd_atom);
+	isert_dbg("Using initiator_depth: %u\n", isert_conn->initiator_depth);
+
+	if (param->private_data) {
+		u8 flags = *(u8 *)param->private_data;
+
+		/*
+		 * use remote invalidation if the both initiator
+		 * and the HCA support it
+		 */
+		isert_conn->snd_w_inv = !(flags & ISER_SEND_W_INV_NOT_SUP) &&
+					  (device->dev_attr.device_cap_flags &
+					   IB_DEVICE_MEM_MGT_EXTENSIONS);
+		if (isert_conn->snd_w_inv)
+			isert_info("Using remote invalidation\n");
+	}
+}
+
 static int
 isert_connect_request(struct rdma_cm_id *cma_id, struct rdma_cm_event *event)
 {
@@ -711,11 +736,7 @@ isert_connect_request(struct rdma_cm_id *cma_id, struct rdma_cm_event *event)
 	}
 	isert_conn->device = device;
 
-	/* Set max inflight RDMA READ requests */
-	isert_conn->initiator_depth = min_t(u8,
-				event->param.conn.initiator_depth,
-				device->dev_attr.max_qp_init_rd_atom);
-	isert_dbg("Using initiator_depth: %u\n", isert_conn->initiator_depth);
+	isert_set_nego_params(isert_conn, &event->param.conn);
 
 	ret = isert_conn_setup_qp(isert_conn, cma_id);
 	if (ret)
@@ -1047,8 +1068,8 @@ isert_create_send_desc(struct isert_conn *isert_conn,
 	ib_dma_sync_single_for_cpu(ib_dev, tx_desc->dma_addr,
 				   ISER_HEADERS_LEN, DMA_TO_DEVICE);
 
-	memset(&tx_desc->iser_header, 0, sizeof(struct iser_hdr));
-	tx_desc->iser_header.flags = ISER_VER;
+	memset(&tx_desc->iser_header, 0, sizeof(struct iser_ctrl));
+	tx_desc->iser_header.flags = ISCSI_CTRL;
 
 	tx_desc->num_sge = 1;
 	tx_desc->isert_cmd = isert_cmd;
@@ -1094,7 +1115,14 @@ isert_init_send_wr(struct isert_conn *isert_conn, struct isert_cmd *isert_cmd,
 
 	isert_cmd->rdma_wr.iser_ib_op = ISER_IB_SEND;
 	send_wr->wr_id = (uintptr_t)&isert_cmd->tx_desc;
-	send_wr->opcode = IB_WR_SEND;
+
+	if (isert_conn->snd_w_inv && isert_cmd->inv_rkey) {
+		send_wr->opcode  = IB_WR_SEND_WITH_INV;
+		send_wr->ex.invalidate_rkey = isert_cmd->inv_rkey;
+	} else {
+		send_wr->opcode = IB_WR_SEND;
+	}
+
 	send_wr->sg_list = &tx_desc->tx_sg[0];
 	send_wr->num_sge = isert_cmd->tx_desc.num_sge;
 	send_wr->send_flags = IB_SEND_SIGNALED;
@@ -1483,6 +1511,7 @@ isert_rx_opcode(struct isert_conn *isert_conn, struct iser_rx_desc *rx_desc,
 		isert_cmd->read_va = read_va;
 		isert_cmd->write_stag = write_stag;
 		isert_cmd->write_va = write_va;
+		isert_cmd->inv_rkey = read_stag ? read_stag : write_stag;
 
 		ret = isert_handle_scsi_cmd(isert_conn, isert_cmd, cmd,
 					rx_desc, (unsigned char *)hdr);
@@ -1540,21 +1569,21 @@ isert_rx_opcode(struct isert_conn *isert_conn, struct iser_rx_desc *rx_desc,
 static void
 isert_rx_do_work(struct iser_rx_desc *rx_desc, struct isert_conn *isert_conn)
 {
-	struct iser_hdr *iser_hdr = &rx_desc->iser_header;
+	struct iser_ctrl *iser_ctrl = &rx_desc->iser_header;
 	uint64_t read_va = 0, write_va = 0;
 	uint32_t read_stag = 0, write_stag = 0;
 
-	switch (iser_hdr->flags & 0xF0) {
+	switch (iser_ctrl->flags & 0xF0) {
 	case ISCSI_CTRL:
-		if (iser_hdr->flags & ISER_RSV) {
-			read_stag = be32_to_cpu(iser_hdr->read_stag);
-			read_va = be64_to_cpu(iser_hdr->read_va);
+		if (iser_ctrl->flags & ISER_RSV) {
+			read_stag = be32_to_cpu(iser_ctrl->read_stag);
+			read_va = be64_to_cpu(iser_ctrl->read_va);
 			isert_dbg("ISER_RSV: read_stag: 0x%x read_va: 0x%llx\n",
 				  read_stag, (unsigned long long)read_va);
 		}
-		if (iser_hdr->flags & ISER_WSV) {
-			write_stag = be32_to_cpu(iser_hdr->write_stag);
-			write_va = be64_to_cpu(iser_hdr->write_va);
+		if (iser_ctrl->flags & ISER_WSV) {
+			write_stag = be32_to_cpu(iser_ctrl->write_stag);
+			write_va = be64_to_cpu(iser_ctrl->write_va);
 			isert_dbg("ISER_WSV: write_stag: 0x%x write_va: 0x%llx\n",
 				  write_stag, (unsigned long long)write_va);
 		}
@@ -1565,7 +1594,7 @@ isert_rx_do_work(struct iser_rx_desc *rx_desc, struct isert_conn *isert_conn)
 		isert_err("iSER Hello message\n");
 		break;
 	default:
-		isert_warn("Unknown iSER hdr flags: 0x%02x\n", iser_hdr->flags);
+		isert_warn("Unknown iSER hdr flags: 0x%02x\n", iser_ctrl->flags);
 		break;
 	}
 
@@ -3092,11 +3121,19 @@ isert_rdma_accept(struct isert_conn *isert_conn)
 	struct rdma_cm_id *cm_id = isert_conn->cm_id;
 	struct rdma_conn_param cp;
 	int ret;
+	struct iser_cm_hdr rsp_hdr;
 
 	memset(&cp, 0, sizeof(struct rdma_conn_param));
 	cp.initiator_depth = isert_conn->initiator_depth;
 	cp.retry_count = 7;
 	cp.rnr_retry_count = 7;
+
+	memset(&rsp_hdr, 0, sizeof(rsp_hdr));
+	rsp_hdr.flags = ISERT_ZBVA_NOT_USED;
+	if (!isert_conn->snd_w_inv)
+		rsp_hdr.flags = rsp_hdr.flags | ISERT_SEND_W_INV_NOT_USED;
+	cp.private_data = (void *)&rsp_hdr;
+	cp.private_data_len = sizeof(rsp_hdr);
 
 	ret = rdma_accept(cm_id, &cp);
 	if (ret) {
