@@ -216,6 +216,14 @@ static inline pte_t *page_check_address(struct page *page, struct mm_struct *mm,
 }
 
 /*
+ * Used by idle page tracking to check if a page was referenced via page
+ * tables.
+ */
+bool page_check_address_transhuge(struct page *page, struct mm_struct *mm,
+				  unsigned long address, pmd_t **pmdp,
+				  pte_t **ptep, spinlock_t **ptlp);
+
+/*
  * Used by swapoff to help locate where page is expected in vma.
  */
 unsigned long page_address_in_vma(struct page *, struct vm_area_struct *);
