@@ -108,7 +108,7 @@ static int octeon_gpio_probe(struct platform_device *pdev)
 
 	pdev->dev.platform_data = chip;
 	chip->label = "octeon-gpio";
-	chip->dev = &pdev->dev;
+	chip->parent = &pdev->dev;
 	chip->owner = THIS_MODULE;
 	chip->base = 0;
 	chip->can_sleep = false;
@@ -128,7 +128,7 @@ out:
 
 static int octeon_gpio_remove(struct platform_device *pdev)
 {
-	struct gpio_chip *chip = pdev->dev.platform_data;
+	struct gpio_chip *chip = dev_get_platdata(&pdev->dev);
 	gpiochip_remove(chip);
 	return 0;
 }

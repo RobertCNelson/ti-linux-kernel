@@ -221,7 +221,7 @@ static int u300_gpio_get(struct gpio_chip *chip, unsigned offset)
 {
 	struct u300_gpio *gpio = to_u300_gpio(chip);
 
-	return readl(U300_PIN_REG(offset, dir)) & U300_PIN_BIT(offset);
+	return !!(readl(U300_PIN_REG(offset, dir)) & U300_PIN_BIT(offset));
 }
 
 static void u300_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
@@ -637,7 +637,7 @@ static int __init u300_gpio_probe(struct platform_device *pdev)
 
 	gpio->chip = u300_gpio_chip;
 	gpio->chip.ngpio = U300_GPIO_NUM_PORTS * U300_GPIO_PINS_PER_PORT;
-	gpio->chip.dev = &pdev->dev;
+	gpio->chip.parent = &pdev->dev;
 	gpio->chip.base = 0;
 	gpio->dev = &pdev->dev;
 

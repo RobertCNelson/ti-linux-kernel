@@ -503,13 +503,13 @@ static int pm8xxx_mpp_get(struct gpio_chip *chip, unsigned offset)
 	int ret;
 
 	if (!pin->input)
-		return pin->output_value;
+		return !!pin->output_value;
 
 	ret = irq_get_irqchip_state(pin->irq, IRQCHIP_STATE_LINE_LEVEL, &state);
 	if (!ret)
-		ret = !!state;
+		ret = state;
 
-	return ret;
+	return !!ret;
 }
 
 static void pm8xxx_mpp_set(struct gpio_chip *chip, unsigned offset, int value)
@@ -825,7 +825,7 @@ static int pm8xxx_mpp_probe(struct platform_device *pdev)
 
 	pctrl->chip = pm8xxx_mpp_template;
 	pctrl->chip.base = -1;
-	pctrl->chip.dev = &pdev->dev;
+	pctrl->chip.parent = &pdev->dev;
 	pctrl->chip.of_node = pdev->dev.of_node;
 	pctrl->chip.of_gpio_n_cells = 2;
 	pctrl->chip.label = dev_name(pctrl->dev);
