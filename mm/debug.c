@@ -111,25 +111,17 @@ const struct trace_print_flags gfpflag_names[] = {
 	{0, NULL},
 };
 
-void dump_page_badflags(struct page *page, const char *reason,
-		unsigned long badflags)
+void __dump_page(struct page *page, const char *reason)
 {
-	unsigned long printflags = page->flags;
-
 	pr_emerg("page:%p count:%d mapcount:%d mapping:%p index:%#lx\n",
 		  page, atomic_read(&page->_count), page_mapcount(page),
 		  page->mapping, page->index);
 	BUILD_BUG_ON(ARRAY_SIZE(pageflag_names) != __NR_PAGEFLAGS + 1);
 
-	pr_emerg("flags: %#lx(%pgp)\n", printflags, &printflags);
+	pr_emerg("flags: %#lx(%pgp)\n", page->flags, &page->flags);
 
 	if (reason)
 		pr_alert("page dumped because: %s\n", reason);
-	if (page->flags & badflags) {
-		printflags = page->flags & badflags;
-		pr_alert("bad because of flags: %#lx(%pgp)\n", printflags,
-								&printflags);
-	}
 #ifdef CONFIG_MEMCG
 	if (page->mem_cgroup)
 		pr_alert("page->mem_cgroup:%p\n", page->mem_cgroup);
@@ -138,7 +130,7 @@ void dump_page_badflags(struct page *page, const char *reason,
 
 void dump_page(struct page *page, const char *reason)
 {
-	dump_page_badflags(page, reason, 0);
+	__dump_page(page, reason);
 	dump_page_owner(page);
 }
 EXPORT_SYMBOL(dump_page);
