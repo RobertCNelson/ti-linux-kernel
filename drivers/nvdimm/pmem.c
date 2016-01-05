@@ -27,6 +27,7 @@
 #include <linux/slab.h>
 #include <linux/pmem.h>
 #include <linux/nd.h>
+#include "nd-core.h"
 #include "pfn.h"
 #include "nd.h"
 
@@ -158,9 +159,8 @@ static void pmem_detach_disk(struct pmem_device *pmem)
 	if (!pmem->pmem_disk)
 		return;
 
-	del_gendisk(pmem->pmem_disk);
+	del_gendisk_queue(pmem->pmem_disk);
 	put_disk(pmem->pmem_disk);
-	blk_cleanup_queue(pmem->pmem_queue);
 }
 
 static int pmem_attach_disk(struct device *dev,
@@ -168,6 +168,7 @@ static int pmem_attach_disk(struct device *dev,
 {
 	int nid = dev_to_node(dev);
 	struct gendisk *disk;
+	int ret;
 
 	pmem->pmem_queue = blk_alloc_queue_node(GFP_KERNEL, nid);
 	if (!pmem->pmem_queue)
@@ -195,6 +196,10 @@ static int pmem_attach_disk(struct device *dev,
 	disk->driverfs_dev = dev;
 	set_capacity(disk, (pmem->size - pmem->data_offset) / 512);
 	pmem->pmem_disk = disk;
+
+	ret = nvdimm_namespace_add_poison(disk, pmem->data_offset, ndns);
+	if (ret)
+		return ret;
 
 	add_disk(disk);
 	revalidate_disk(disk);
@@ -238,13 +243,10 @@ static int nd_pfn_init(struct nd_pfn *nd_pfn)
 
 	nd_pfn->pfn_sb = pfn_sb;
 	rc = nd_pfn_validate(nd_pfn);
-	if (rc == 0 || rc == -EBUSY)
+	if (rc == -ENODEV)
+		/* no info block, do init */;
+	else
 		return rc;
-
-	/* section alignment for simple hotplug */
-	if (nvdimm_namespace_capacity(ndns) < ND_PFN_ALIGN
-			|| pmem->phys_addr & ND_PFN_MASK)
-		return -ENODEV;
 
 	nd_region = to_nd_region(nd_pfn->dev.parent);
 	if (nd_region->ro) {
@@ -263,9 +265,9 @@ static int nd_pfn_init(struct nd_pfn *nd_pfn)
 	 * ->direct_access() to those that are included in the memmap.
 	 */
 	if (nd_pfn->mode == PFN_MODE_PMEM)
-		offset = ALIGN(SZ_8K + 64 * npfns, PMD_SIZE);
+		offset = ALIGN(SZ_8K + 64 * npfns, nd_pfn->align);
 	else if (nd_pfn->mode == PFN_MODE_RAM)
-		offset = SZ_8K;
+		offset = ALIGN(SZ_8K, nd_pfn->align);
 	else
 		goto err;
 
@@ -275,6 +277,7 @@ static int nd_pfn_init(struct nd_pfn *nd_pfn)
 	pfn_sb->npfns = cpu_to_le64(npfns);
 	memcpy(pfn_sb->signature, PFN_SIG, PFN_SIG_LEN);
 	memcpy(pfn_sb->uuid, nd_pfn->uuid, 16);
+	memcpy(pfn_sb->parent_uuid, nd_dev_to_uuid(&ndns->dev), 16);
 	pfn_sb->version_major = cpu_to_le16(1);
 	checksum = nd_sb_checksum((struct nd_gen_sb *) pfn_sb);
 	pfn_sb->checksum = cpu_to_le64(checksum);
@@ -326,21 +329,11 @@ static int nvdimm_namespace_attach_pfn(struct nd_namespace_common *ndns)
 	if (rc)
 		return rc;
 
-	if (PAGE_SIZE != SZ_4K) {
-		dev_err(dev, "only supported on systems with 4K PAGE_SIZE\n");
-		return -ENXIO;
-	}
-	if (nsio->res.start & ND_PFN_MASK) {
-		dev_err(dev, "%s not memory hotplug section aligned\n",
-				dev_name(&ndns->dev));
-		return -ENXIO;
-	}
-
 	pfn_sb = nd_pfn->pfn_sb;
 	offset = le64_to_cpu(pfn_sb->dataoff);
 	nd_pfn->mode = le32_to_cpu(nd_pfn->pfn_sb->mode);
 	if (nd_pfn->mode == PFN_MODE_RAM) {
-		if (offset != SZ_8K)
+		if (offset < SZ_8K)
 			return -EINVAL;
 		nd_pfn->npfns = le64_to_cpu(pfn_sb->npfns);
 		altmap = NULL;
