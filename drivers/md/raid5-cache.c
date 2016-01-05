@@ -438,7 +438,7 @@ static void r5l_wake_reclaim(struct r5l_log *log, sector_t space);
  * running in raid5d, where reclaim could wait for raid5d too (when it flushes
  * data from log to raid disks), so we shouldn't wait for reclaim here
  */
-int r5l_write_stripe(struct r5l_log *log, struct stripe_head *sh)
+int r5l_write_stripe(struct r5conf *conf, struct stripe_head *sh)
 {
 	int write_disks = 0;
 	int data_pages, parity_pages;
@@ -446,6 +446,7 @@ int r5l_write_stripe(struct r5l_log *log, struct stripe_head *sh)
 	int reserve;
 	int i;
 	int ret = 0;
+	struct r5l_log *log = rcu_dereference(conf->log);
 
 	if (!log)
 		return -EAGAIN;
@@ -513,8 +514,9 @@ int r5l_write_stripe(struct r5l_log *log, struct stripe_head *sh)
 	return 0;
 }
 
-void r5l_write_stripe_run(struct r5l_log *log)
+void r5l_write_stripe_run(struct r5conf *conf)
 {
+	struct r5l_log *log = rcu_dereference(conf->log);
 	if (!log)
 		return;
 	mutex_lock(&log->io_mutex);
@@ -522,8 +524,10 @@ void r5l_write_stripe_run(struct r5l_log *log)
 	mutex_unlock(&log->io_mutex);
 }
 
-int r5l_handle_flush_request(struct r5l_log *log, struct bio *bio)
+int r5l_handle_flush_request(struct r5conf *conf, struct bio *bio)
 {
+	struct r5l_log *log = ACCESS_ONCE(conf->log);
+
 	if (!log)
 		return -ENODEV;
 	/*
@@ -664,9 +668,10 @@ static void r5l_log_flush_endio(struct bio *bio)
  * only write stripes of an io_unit to raid disks till the io_unit is the first
  * one whose data/parity is in log.
  */
-void r5l_flush_stripe_to_raid(struct r5l_log *log)
+void r5l_flush_stripe_to_raid(struct r5conf *conf)
 {
 	bool do_flush;
+	struct r5l_log *log = rcu_dereference(conf->log);
 
 	if (!log || !log->need_cache_flush)
 		return;
@@ -800,7 +805,7 @@ static void r5l_reclaim_thread(struct md_thread *thread)
 {
 	struct mddev *mddev = thread->mddev;
 	struct r5conf *conf = mddev->private;
-	struct r5l_log *log = conf->log;
+	struct r5l_log *log = rcu_dereference(conf->log);
 
 	if (!log)
 		return;
@@ -820,9 +825,11 @@ static void r5l_wake_reclaim(struct r5l_log *log, sector_t space)
 	md_wakeup_thread(log->reclaim_thread);
 }
 
-void r5l_quiesce(struct r5l_log *log, int state)
+void r5l_quiesce(struct r5conf *conf, int state)
 {
 	struct mddev *mddev;
+	struct r5l_log *log = rcu_dereference(conf->log);
+
 	if (!log || state == 2)
 		return;
 	if (state == 0) {

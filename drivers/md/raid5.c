@@ -757,7 +757,7 @@ static bool stripe_can_batch(struct stripe_head *sh)
 {
 	struct r5conf *conf = sh->raid_conf;
 
-	if (conf->log)
+	if (ACCESS_ONCE(conf->log))
 		return false;
 	return test_bit(STRIPE_BATCH_READY, &sh->state) &&
 		!test_bit(STRIPE_BITMAP_PENDING, &sh->state) &&
@@ -897,7 +897,7 @@ static void ops_run_io(struct stripe_head *sh, struct stripe_head_state *s)
 
 	might_sleep();
 
-	if (r5l_write_stripe(conf->log, sh) == 0)
+	if (r5l_write_stripe(conf, sh) == 0)
 		return;
 	for (i = disks; i--; ) {
 		int rw;
@@ -5148,7 +5148,7 @@ static void make_request(struct mddev *mddev, struct bio * bi)
 	bool do_prepare;
 
 	if (unlikely(bi->bi_rw & REQ_FLUSH)) {
-		int ret = r5l_handle_flush_request(conf->log, bi);
+		int ret = r5l_handle_flush_request(conf, bi);
 
 		if (ret == 0)
 			return;
@@ -5751,7 +5751,7 @@ static int handle_active_stripes(struct r5conf *conf, int group,
 				break;
 		if (i == NR_STRIPE_HASH_LOCKS) {
 			spin_unlock_irq(&conf->device_lock);
-			r5l_flush_stripe_to_raid(conf->log);
+			r5l_flush_stripe_to_raid(conf);
 			spin_lock_irq(&conf->device_lock);
 			return batch_size;
 		}
@@ -5762,7 +5762,7 @@ static int handle_active_stripes(struct r5conf *conf, int group,
 	release_inactive_stripe_list(conf, temp_inactive_list,
 				     NR_STRIPE_HASH_LOCKS);
 
-	r5l_flush_stripe_to_raid(conf->log);
+	r5l_flush_stripe_to_raid(conf);
 	if (release_inactive) {
 		spin_lock_irq(&conf->device_lock);
 		return 0;
@@ -5770,7 +5770,7 @@ static int handle_active_stripes(struct r5conf *conf, int group,
 
 	for (i = 0; i < batch_size; i++)
 		handle_stripe(batch[i]);
-	r5l_write_stripe_run(conf->log);
+	r5l_write_stripe_run(conf);
 
 	cond_resched();
 
@@ -5904,7 +5904,7 @@ static void raid5d(struct md_thread *thread)
 		mutex_unlock(&conf->cache_size_mutex);
 	}
 
-	r5l_flush_stripe_to_raid(conf->log);
+	r5l_flush_stripe_to_raid(conf);
 
 	async_tx_issue_pending_all();
 	blk_finish_plug(&plug);
@@ -7291,7 +7291,7 @@ static int raid5_resize(struct mddev *mddev, sector_t sectors)
 	sector_t newsize;
 	struct r5conf *conf = mddev->private;
 
-	if (conf->log)
+	if (ACCESS_ONCE(conf->log))
 		return -EINVAL;
 	sectors &= ~((sector_t)conf->chunk_sectors - 1);
 	newsize = raid5_size(mddev, sectors, mddev->raid_disks);
@@ -7344,7 +7344,7 @@ static int check_reshape(struct mddev *mddev)
 {
 	struct r5conf *conf = mddev->private;
 
-	if (conf->log)
+	if (ACCESS_ONCE(conf->log))
 		return -EINVAL;
 	if (mddev->delta_disks == 0 &&
 	    mddev->new_layout == mddev->layout &&
@@ -7622,7 +7622,7 @@ static void raid5_quiesce(struct mddev *mddev, int state)
 		unlock_all_device_hash_locks_irq(conf);
 		break;
 	}
-	r5l_quiesce(conf->log, state);
+	r5l_quiesce(conf, state);
 }
 
 static void *raid45_takeover_raid0(struct mddev *mddev, int level)
