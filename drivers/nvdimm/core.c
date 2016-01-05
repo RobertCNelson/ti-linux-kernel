@@ -11,6 +11,7 @@
  * General Public License for more details.
  */
 #include <linux/libnvdimm.h>
+#include <linux/badblocks.h>
 #include <linux/export.h>
 #include <linux/module.h>
 #include <linux/blkdev.h>
@@ -362,7 +363,8 @@ EXPORT_SYMBOL_GPL(__nvdimm_bus_register);
 
 /**
  * __add_badblock_range() - Convert a physical address range to bad sectors
- * @disk:	the disk associated with the namespace
+ * @dev:	host device for allocations
+ * @bb:		badblocks instance to establish / extend
  * @ns_offset:	namespace offset where the error range begins (in bytes)
  * @len:	number of bytes of poison to be added
  *
@@ -370,9 +372,10 @@ EXPORT_SYMBOL_GPL(__nvdimm_bus_register);
  * the bounds of physical addresses for this namespace, i.e. lies in the
  * interval [ns_start, ns_start + ns_size)
  */
-static int __add_badblock_range(struct gendisk *disk, u64 ns_offset, u64 len)
+static int __add_badblock_range(struct device *dev, struct badblocks **bb,
+		u64 ns_offset, u64 len)
 {
-	unsigned int sector_size = queue_logical_block_size(disk->queue);
+	const unsigned int sector_size = 512;
 	sector_t start_sector;
 	u64 num_sectors;
 	u32 rem;
@@ -383,10 +386,10 @@ static int __add_badblock_range(struct gendisk *disk, u64 ns_offset, u64 len)
 	if (rem)
 		num_sectors++;
 
-	if (!disk->bb) {
-		rc = disk_alloc_badblocks(disk);
-		if (rc)
-			return rc;
+	if (!*bb) {
+		*bb = devm_alloc_badblocks(dev);
+		if (*bb == NULL)
+			return -ENOMEM;
 	}
 
 	if (unlikely(num_sectors > (u64)INT_MAX)) {
@@ -396,7 +399,7 @@ static int __add_badblock_range(struct gendisk *disk, u64 ns_offset, u64 len)
 		while (remaining) {
 			int done = min_t(u64, remaining, INT_MAX);
 
-			rc = disk_set_badblocks(disk, s, done);
+			rc = badblocks_set(*bb, s, done, 1);
 			if (rc)
 				return rc;
 			remaining -= done;
@@ -404,7 +407,7 @@ static int __add_badblock_range(struct gendisk *disk, u64 ns_offset, u64 len)
 		}
 		return 0;
 	} else
-		return disk_set_badblocks(disk, start_sector, num_sectors);
+		return badblocks_set(*bb, start_sector, num_sectors, 1);
 }
 
 /**
@@ -430,6 +433,7 @@ int nvdimm_namespace_add_poison(struct gendisk *disk, resource_size_t offset,
 	struct nvdimm_bus *nvdimm_bus;
 	struct list_head *poison_list;
 	u64 ns_start, ns_end, ns_size;
+	struct badblocks *bb = NULL;
 	struct nd_poison *pl;
 	int rc;
 
@@ -460,7 +464,8 @@ int nvdimm_namespace_add_poison(struct gendisk *disk, resource_size_t offset,
 			else
 				len = ns_start + ns_size - pl->start;
 
-			rc = __add_badblock_range(disk, start - ns_start, len);
+			rc = __add_badblock_range(&ndns->dev, &bb,
+					start - ns_start, len);
 			if (rc)
 				return rc;
 			dev_info(&nvdimm_bus->dev,
@@ -477,7 +482,7 @@ int nvdimm_namespace_add_poison(struct gendisk *disk, resource_size_t offset,
 			else
 				len = ns_size;
 
-			rc = __add_badblock_range(disk, 0, len);
+			rc = __add_badblock_range(&ndns->dev, &bb, 0, len);
 			if (rc)
 				return rc;
 			dev_info(&nvdimm_bus->dev,

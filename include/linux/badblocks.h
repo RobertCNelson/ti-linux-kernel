@@ -23,6 +23,7 @@
 #define MAX_BADBLOCKS	(PAGE_SIZE/8)
 
 struct badblocks {
+	struct device *dev;	/* set by devm_alloc_badblocks */
 	int count;		/* count of bad blocks */
 	int unacked_exist;	/* there probably are unacknowledged
 				 * bad blocks.  This is only cleared
@@ -49,5 +50,7 @@ ssize_t badblocks_store(struct badblocks *bb, const char *page, size_t len,
 			int unack);
 int badblocks_init(struct badblocks *bb, int enable);
 void badblocks_exit(struct badblocks *bb);
+struct device;
+struct badblocks *devm_alloc_badblocks(struct device *dev);
 
 #endif

@@ -161,8 +161,6 @@ static void pmem_detach_disk(struct pmem_device *pmem)
 	if (!disk)
 		return;
 
-	badblocks_exit(disk->bb);
-	kfree(disk->bb);
 	del_gendisk_queue(disk);
 	put_disk(disk);
 }
