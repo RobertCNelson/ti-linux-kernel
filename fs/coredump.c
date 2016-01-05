@@ -120,7 +120,7 @@ int cn_esc_printf(struct core_name *cn, const char *fmt, ...)
 	if (ret == 0) {
 		/*
 		 * Ensure that this coredump name component can't cause the
-		 * resulting corefile path to contain a ".." or "." component.
+		 * resulting corefile path to consist of a ".." or ".".
 		 */
 		if ((cn->used - cur == 1 && cn->corename[cur] == '.') ||
 				(cn->used - cur == 2 && cn->corename[cur] == '.'
