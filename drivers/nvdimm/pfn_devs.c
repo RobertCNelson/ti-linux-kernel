@@ -305,6 +305,7 @@ int nd_pfn_probe(struct nd_namespace_common *ndns, void *drvdata)
 {
 	int rc;
 	struct device *dev;
+	struct badblocks *bb;
 	struct nd_pfn *nd_pfn;
 	struct nd_pfn_sb *pfn_sb;
 	struct nd_region *nd_region = to_nd_region(ndns->dev.parent);
@@ -312,6 +313,15 @@ int nd_pfn_probe(struct nd_namespace_common *ndns, void *drvdata)
 	if (ndns->force_raw)
 		return -ENODEV;
 
+	bb = nvdimm_namespace_badblocks(ndns, 0);
+	if (IS_ERR(bb)) {
+		if (PTR_ERR(bb) == -ENOENT)
+			bb = NULL;
+		else
+			return PTR_ERR(bb);
+	}
+
+	ndns->bb = bb;
 	nvdimm_bus_lock(&ndns->dev);
 	dev = __nd_pfn_create(nd_region, NULL, PFN_MODE_NONE, ndns);
 	nvdimm_bus_unlock(&ndns->dev);

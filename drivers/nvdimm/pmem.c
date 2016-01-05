@@ -247,9 +247,14 @@ static int pmem_rw_bytes(struct nd_namespace_common *ndns,
 		return -EFAULT;
 	}
 
-	if (rw == READ)
+	if (rw == READ) {
+		unsigned int sz_align = ALIGN(size + (offset & (512 - 1)), 512);
+
+		if (unlikely(is_bad_pmem(ndns->bb, offset / 512,
+						sz_align)))
+			return -EIO;
 		memcpy_from_pmem(buf, pmem->virt_addr + offset, size);
-	else {
+	} else {
 		memcpy_to_pmem(pmem->virt_addr + offset, buf, size);
 		wmb_pmem();
 	}
