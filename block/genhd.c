@@ -717,7 +717,7 @@ void del_gendisk_queue(struct gendisk *disk)
 
 	blk_cleanup_queue(disk->queue);
 
-	/* pass2 the queue is dead, halt dax */
+	/* pass2 the queue is dead, halt dax, and halt fs operations */
 	disk_part_iter_init(&piter, disk,
 			     DISK_PITER_INCL_EMPTY | DISK_PITER_REVERSE);
 	for_each_part(part, &piter) {
