@@ -5232,6 +5232,8 @@ static inline unsigned long __meminit zone_spanned_pages_in_node(int nid,
 					unsigned long *zone_end_pfn,
 					unsigned long *zones_size)
 {
+	*zone_start_pfn = node_start_pfn;
+	*zone_end_pfn = node_end_pfn;
 	return zones_size[zone_type];
 }
 
