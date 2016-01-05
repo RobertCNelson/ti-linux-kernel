@@ -240,7 +240,7 @@ void dump_mm(const struct mm_struct *mm)
 		""		/* This is here to not have a comma! */
 		);
 
-	pr_emerg("def_flags: %#lx(", mm->def_flags);
+	pr_emerg("def_flags: %#lx", mm->def_flags);
 	dump_flag_names(mm->def_flags, vmaflags_names,
 					ARRAY_SIZE(vmaflags_names));
 }
