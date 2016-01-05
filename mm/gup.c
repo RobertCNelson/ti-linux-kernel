@@ -63,6 +63,7 @@ static struct page *follow_page_pte(struct vm_area_struct *vma,
 		unsigned long address, pmd_t *pmd, unsigned int flags)
 {
 	struct mm_struct *mm = vma->vm_mm;
+	struct dev_pagemap *pgmap = NULL;
 	struct page *page;
 	spinlock_t *ptl;
 	pte_t *ptep, pte;
@@ -104,7 +105,8 @@ retry:
 		 * Only return device mapping pages in the FOLL_GET case since
 		 * they are only valid while holding the pgmap reference.
 		 */
-		if (get_dev_pagemap(pte_pfn(pte), NULL))
+		pgmap = get_dev_pagemap(pte_pfn(pte), NULL);
+		if (pgmap)
 			page = pte_page(pte);
 		else
 			goto no_page;
@@ -139,8 +141,15 @@ retry:
 		goto retry;
 	}
 
-	if (flags & FOLL_GET)
+	if (flags & FOLL_GET) {
 		get_page(page);
+
+		/* drop the pgmap reference now that we hold the page */
+		if (pgmap) {
+			put_dev_pagemap(pgmap);
+			pgmap = NULL;
+		}
+	}
 	if (flags & FOLL_TOUCH) {
 		if ((flags & FOLL_WRITE) &&
 		    !pte_dirty(pte) && !PageDirty(page))
