@@ -415,6 +415,7 @@ static DECLARE_WAIT_QUEUE_HEAD(oom_victims_wait);
 
 bool oom_killer_disabled __read_mostly;
 
+#ifdef CONFIG_MMU
 /*
  * OOM Reaper kernel thread which tries to reap the memory used by the OOM
  * victim (if that is possible) to help the OOM killer to move on.
@@ -516,6 +517,27 @@ static void wake_oom_reaper(struct mm_struct *mm)
 	else
 		mmdrop(mm);
 }
+
+static int __init oom_init(void)
+{
+	oom_reaper_th = kthread_run(oom_reaper, NULL, "oom_reaper");
+	if (IS_ERR(oom_reaper_th)) {
+		pr_err("Unable to start OOM reaper %ld. Continuing regardless\n",
+				PTR_ERR(oom_reaper_th));
+		oom_reaper_th = NULL;
+	} else {
+		struct sched_param param = { .sched_priority = MAX_RT_PRIO-1 };
+
+		/*
+		 * Make sure our oom reaper thread will get scheduled when
+		 * ASAP and that it won't get preempted by malicious userspace.
+		 */
+		sched_setscheduler(oom_reaper_th, SCHED_FIFO, &param);
+	}
+	return 0;
+}
+module_init(oom_init)
+#endif
 
 /**
  * mark_oom_victim - mark the given task as OOM victim
@@ -626,7 +648,9 @@ void oom_kill_process(struct oom_control *oc, struct task_struct *p,
 	unsigned int victim_points = 0;
 	static DEFINE_RATELIMIT_STATE(oom_rs, DEFAULT_RATELIMIT_INTERVAL,
 					      DEFAULT_RATELIMIT_BURST);
+#ifdef CONFIG_MMU
 	bool can_oom_reap = true;
+#endif
 
 	/*
 	 * If the task is already exiting, don't alarm the sysadmin or kill
@@ -719,6 +743,7 @@ void oom_kill_process(struct oom_control *oc, struct task_struct *p,
 			continue;
 		if (is_global_init(p))
 			continue;
+#ifdef CONFIG_MMU
 		if (unlikely(p->flags & PF_KTHREAD) ||
 		    p->signal->oom_score_adj == OOM_SCORE_ADJ_MIN) {
 			/*
@@ -729,13 +754,16 @@ void oom_kill_process(struct oom_control *oc, struct task_struct *p,
 			can_oom_reap = false;
 			continue;
 		}
-
+#endif
 		do_send_sig_info(SIGKILL, SEND_SIG_FORCED, p, true);
 	}
 	rcu_read_unlock();
 
+#ifdef CONFIG_MMU
 	if (can_oom_reap)
 		wake_oom_reaper(mm);
+#endif
+
 	mmdrop(mm);
 	put_task_struct(victim);
 }
@@ -887,23 +915,3 @@ void pagefault_out_of_memory(void)
 
 	mutex_unlock(&oom_lock);
 }
-
-static int __init oom_init(void)
-{
-	oom_reaper_th = kthread_run(oom_reaper, NULL, "oom_reaper");
-	if (IS_ERR(oom_reaper_th)) {
-		pr_err("Unable to start OOM reaper %ld. Continuing regardless\n",
-				PTR_ERR(oom_reaper_th));
-		oom_reaper_th = NULL;
-	} else {
-		struct sched_param param = { .sched_priority = MAX_RT_PRIO-1 };
-
-		/*
-		 * Make sure our oom reaper thread will get scheduled when
-		 * ASAP and that it won't get preempted by malicious userspace.
-		 */
-		sched_setscheduler(oom_reaper_th, SCHED_FIFO, &param);
-	}
-	return 0;
-}
-module_init(oom_init)
