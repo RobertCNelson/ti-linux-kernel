@@ -287,15 +287,19 @@ static void __init of_gpio_clk_setup(struct device_node *node,
 	const char **parent_names;
 	int i, num_parents;
 
+	num_parents = of_clk_get_parent_count(node);
+	if (num_parents < 0)
+		return;
+
 	data = kzalloc(sizeof(*data), GFP_KERNEL);
 	if (!data)
 		return;
 
-	num_parents = of_clk_get_parent_count(node);
-
 	parent_names = kcalloc(num_parents, sizeof(char *), GFP_KERNEL);
-	if (!parent_names)
+	if (!parent_names) {
+		kfree(data);
 		return;
+	}
 
 	for (i = 0; i < num_parents; i++)
 		parent_names[i] = of_clk_get_parent_name(node, i);
