@@ -3217,13 +3217,6 @@ static void __split_huge_page(struct page *page, struct list_head *list)
 	spin_lock_irq(&zone->lru_lock);
 	lruvec = mem_cgroup_page_lruvec(head, zone);
 
-	spin_lock(&split_queue_lock);
-	if (!list_empty(page_deferred_list(head))) {
-		split_queue_len--;
-		list_del(page_deferred_list(head));
-	}
-	spin_unlock(&split_queue_lock);
-
 	/* complete memcg works before add pages to LRU */
 	mem_cgroup_split_huge_fixup(head);
 
@@ -3311,12 +3304,20 @@ int split_huge_page_to_list(struct page *page, struct list_head *list)
 	freeze_page(anon_vma, head);
 	VM_BUG_ON_PAGE(compound_mapcount(head), head);
 
+	/* Prevent deferred_split_scan() touching ->_count */
+	spin_lock(&split_queue_lock);
 	count = page_count(head);
 	mapcount = total_mapcount(head);
 	if (mapcount == count - 1) {
+		if (!list_empty(page_deferred_list(head))) {
+			split_queue_len--;
+			list_del(page_deferred_list(head));
+		}
+		spin_unlock(&split_queue_lock);
 		__split_huge_page(page, list);
 		ret = 0;
 	} else if (IS_ENABLED(CONFIG_DEBUG_VM) && mapcount > count - 1) {
+		spin_unlock(&split_queue_lock);
 		pr_alert("total_mapcount: %u, page_count(): %u\n",
 				mapcount, count);
 		if (PageTail(page))
@@ -3324,6 +3325,7 @@ int split_huge_page_to_list(struct page *page, struct list_head *list)
 		dump_page(page, "total_mapcount(head) > page_count(head) - 1");
 		BUG();
 	} else {
+		spin_unlock(&split_queue_lock);
 		unfreeze_page(anon_vma, head);
 		ret = -EBUSY;
 	}
