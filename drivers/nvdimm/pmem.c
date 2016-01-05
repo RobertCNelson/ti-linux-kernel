@@ -192,8 +192,8 @@ static int pmem_attach_disk(struct device *dev,
 		struct nd_namespace_common *ndns, struct pmem_device *pmem)
 {
 	int nid = dev_to_node(dev);
+	struct badblocks *bb;
 	struct gendisk *disk;
-	int ret;
 
 	pmem->pmem_queue = blk_alloc_queue_node(GFP_KERNEL, nid);
 	if (!pmem->pmem_queue)
@@ -222,10 +222,15 @@ static int pmem_attach_disk(struct device *dev,
 	set_capacity(disk, (pmem->size - pmem->data_offset) / 512);
 	pmem->pmem_disk = disk;
 
-	ret = nvdimm_namespace_add_poison(disk, pmem->data_offset, ndns);
-	if (ret)
-		return ret;
+	bb = nvdimm_namespace_badblocks(ndns, pmem->data_offset);
+	if (IS_ERR(bb)) {
+		if (PTR_ERR(bb) == -ENOENT)
+			bb = NULL;
+		else
+			return PTR_ERR(bb);
+	}
 
+	disk->bb = bb;
 	add_disk(disk);
 	revalidate_disk(disk);
 
