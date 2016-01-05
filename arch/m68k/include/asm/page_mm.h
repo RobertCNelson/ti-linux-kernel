@@ -168,6 +168,9 @@ static inline __attribute_const__ int __virt_to_node_shift(void)
 	((__p) - pgdat->node_mem_map) + pgdat->node_start_pfn;		\
 })
 
+#define __phys_to_pfn(paddr)	((unsigned long)((paddr) >> PAGE_SHIFT))
+#define __pfn_to_phys(pfn)	PFN_PHYS(pfn)
+
 #define virt_addr_valid(kaddr)	((void *)(kaddr) >= (void *)PAGE_OFFSET && (void *)(kaddr) < high_memory)
 #define pfn_valid(pfn)		virt_addr_valid(pfn_to_virt(pfn))
 
