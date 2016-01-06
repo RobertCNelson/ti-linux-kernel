@@ -5825,6 +5825,8 @@ M:	Julian Anastasov <ja@ssi.bg>
 L:	netdev@vger.kernel.org
 L:	lvs-devel@vger.kernel.org
 S:	Maintained
+T:	git git://git.kernel.org/pub/scm/linux/kernel/git/horms/ipvs-next.git
+T:	git git://git.kernel.org/pub/scm/linux/kernel/git/horms/ipvs.git
 F:	Documentation/networking/ipvs-sysctl.txt
 F:	include/net/ip_vs.h
 F:	include/uapi/linux/ip_vs.h
