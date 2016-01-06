@@ -2864,8 +2864,7 @@ static u64 mem_cgroup_read_u64(struct cgroup_subsys_state *css,
 }
 
 #ifdef CONFIG_MEMCG_KMEM
-static int memcg_activate_kmem(struct mem_cgroup *memcg,
-			       unsigned long nr_pages)
+static int memcg_activate_kmem(struct mem_cgroup *memcg)
 {
 	int err = 0;
 	int memcg_id;
@@ -2900,13 +2899,6 @@ static int memcg_activate_kmem(struct mem_cgroup *memcg,
 		goto out;
 	}
 
-	/*
-	 * We couldn't have accounted to this cgroup, because it hasn't got
-	 * activated yet, so this should succeed.
-	 */
-	err = page_counter_limit(&memcg->kmem, nr_pages);
-	VM_BUG_ON(err);
-
 	static_branch_inc(&memcg_kmem_enabled_key);
 	/*
 	 * A memory cgroup is considered kmem-active as soon as it gets
@@ -2927,10 +2919,14 @@ static int memcg_update_kmem_limit(struct mem_cgroup *memcg,
 	int ret;
 
 	mutex_lock(&memcg_limit_mutex);
-	if (!memcg_kmem_is_active(memcg))
-		ret = memcg_activate_kmem(memcg, limit);
-	else
-		ret = page_counter_limit(&memcg->kmem, limit);
+	/* Top-level cgroup doesn't propagate from root */
+	if (!memcg_kmem_is_active(memcg)) {
+		ret = memcg_activate_kmem(memcg);
+		if (ret)
+			goto out;
+	}
+	ret = page_counter_limit(&memcg->kmem, limit);
+out:
 	mutex_unlock(&memcg_limit_mutex);
 	return ret;
 }
@@ -2949,7 +2945,7 @@ static int memcg_propagate_kmem(struct mem_cgroup *memcg)
 	 * after this point, because it has at least one child already.
 	 */
 	if (memcg_kmem_is_active(parent))
-		ret = memcg_activate_kmem(memcg, PAGE_COUNTER_MAX);
+		ret = memcg_activate_kmem(memcg);
 	mutex_unlock(&memcg_limit_mutex);
 	return ret;
 }
