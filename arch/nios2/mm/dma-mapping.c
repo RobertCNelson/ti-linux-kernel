@@ -128,7 +128,7 @@ static void nios2_dma_unmap_page(struct device *dev, dma_addr_t dma_address,
 	__dma_sync_for_cpu(phys_to_virt(dma_address), size, direction);
 }
 
-static void dma_unmap_sg(struct device *dev, struct scatterlist *sg,
+static void nios2_dma_unmap_sg(struct device *dev, struct scatterlist *sg,
 		int nhwentries, enum dma_data_direction direction,
 		struct dma_attrs *attrs)
 {
@@ -183,13 +183,15 @@ static void nios2_dma_sync_sg_for_device(struct device *dev,
 }
 
 struct dma_map_ops nios2_dma_ops = {
-	.alloc                  = nios2_dma_alloc,
-	.free                   = nios2_dma_free,
-	.map_page               = nios2_dma_map_page,
-	.map_sg                 = nios2_dma_map_sg,
-	.sync_single_for_device = nios2_dma_sync_single_for_device,
-	.sync_single_for_cpu    = nios2_dma_sync_single_for_cpu,
-	.sync_sg_for_cpu        = nios2_dma_sync_sg_for_cpu,
-	.sync_sg_for_dev        = nios2_dma_sync_sg_for_device,
+	.alloc			= nios2_dma_alloc,
+	.free			= nios2_dma_free,
+	.map_page		= nios2_dma_map_page,
+	.unmap_page		= nios2_dma_unmap_page,
+	.map_sg			= nios2_dma_map_sg,
+	.unmap_sg		= nios2_dma_unmap_sg,
+	.sync_single_for_device	= nios2_dma_sync_single_for_device,
+	.sync_single_for_cpu	= nios2_dma_sync_single_for_cpu,
+	.sync_sg_for_cpu	= nios2_dma_sync_sg_for_cpu,
+	.sync_sg_for_device	= nios2_dma_sync_sg_for_device,
 };
 EXPORT_SYMBOL(nios2_dma_ops);
