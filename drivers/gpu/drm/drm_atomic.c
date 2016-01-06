@@ -508,6 +508,22 @@ static int drm_atomic_crtc_check(struct drm_crtc *crtc,
 		return -EINVAL;
 	}
 
+	/*
+	 * Reject event generation for when a CRTC is off and stays off.
+	 * It wouldn't be hard to implement this, but userspace has a track
+	 * record of happily burning through 100% cpu (or worse, crash) when the
+	 * display pipe is suspended. To avoid all that fun just reject updates
+	 * that ask for events since likely that indicates a bug in the
+	 * compositor's drawing loop. This is consistent with the vblank IOCTL
+	 * and legacy page_flip IOCTL which also reject service on a disabled
+	 * pipe.
+	 */
+	if (state->event && !state->active && !crtc->state->active) {
+		DRM_DEBUG_ATOMIC("[CRTC:%d] requesting event but off\n",
+				 crtc->base.id);
+		return -EINVAL;
+	}
+
 	return 0;
 }
 
@@ -1063,10 +1079,21 @@ drm_atomic_set_crtc_for_connector(struct drm_connector_state *conn_state,
 {
 	struct drm_crtc_state *crtc_state;
 
+	if (conn_state->crtc && conn_state->crtc != crtc) {
+		crtc_state = drm_atomic_get_existing_crtc_state(conn_state->state,
+								conn_state->crtc);
+
+		crtc_state->connector_mask &=
+			~(1 << drm_connector_index(conn_state->connector));
+	}
+
 	if (crtc) {
 		crtc_state = drm_atomic_get_crtc_state(conn_state->state, crtc);
 		if (IS_ERR(crtc_state))
 			return PTR_ERR(crtc_state);
+
+		crtc_state->connector_mask |=
+			1 << drm_connector_index(conn_state->connector);
 	}
 
 	conn_state->crtc = crtc;
