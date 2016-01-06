@@ -10289,6 +10289,7 @@ SQUASHFS FILE SYSTEM
 M:	Phillip Lougher <phillip@squashfs.org.uk>
 L:	squashfs-devel@lists.sourceforge.net (subscribers-only)
 W:	http://squashfs.org.uk
+T:	git git://git.kernel.org/pub/scm/linux/kernel/git/pkl/squashfs-next.git
 S:	Maintained
 F:	Documentation/filesystems/squashfs.txt
 F:	fs/squashfs/
