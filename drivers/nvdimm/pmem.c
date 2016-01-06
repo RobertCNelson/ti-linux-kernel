@@ -46,15 +46,31 @@ struct pmem_device {
 
 static int pmem_major;
 
-static void pmem_do_bvec(struct pmem_device *pmem, struct page *page,
-			unsigned int len, unsigned int off, int rw,
-			sector_t sector)
+static bool is_bad_pmem(struct badblocks *bb, sector_t sector, unsigned int len)
+{
+	if (bb && bb->count) {
+		sector_t first_bad;
+		int num_bad;
+
+		return !!badblocks_check(bb, sector, len / 512, &first_bad,
+				&num_bad);
+	}
+
+	return false;
+}
+
+static int pmem_do_bvec(struct block_device *bdev, struct page *page,
+		unsigned int len, unsigned int off, int rw, sector_t sector)
 {
 	void *mem = kmap_atomic(page);
+	struct gendisk *disk = bdev->bd_disk;
+	struct pmem_device *pmem = disk->private_data;
 	phys_addr_t pmem_off = sector * 512 + pmem->data_offset;
 	void __pmem *pmem_addr = pmem->virt_addr + pmem_off;
 
 	if (rw == READ) {
+		if (unlikely(is_bad_pmem(disk->bb, sector, len)))
+			return -EIO;
 		memcpy_from_pmem(mem + off, pmem_addr, len);
 		flush_dcache_page(page);
 	} else {
@@ -63,21 +79,28 @@ static void pmem_do_bvec(struct pmem_device *pmem, struct page *page,
 	}
 
 	kunmap_atomic(mem);
+	return 0;
 }
 
 static blk_qc_t pmem_make_request(struct request_queue *q, struct bio *bio)
 {
+	int rc = 0;
 	bool do_acct;
 	unsigned long start;
 	struct bio_vec bvec;
 	struct bvec_iter iter;
 	struct block_device *bdev = bio->bi_bdev;
-	struct pmem_device *pmem = bdev->bd_disk->private_data;
 
 	do_acct = nd_iostat_start(bio, &start);
-	bio_for_each_segment(bvec, bio, iter)
-		pmem_do_bvec(pmem, bvec.bv_page, bvec.bv_len, bvec.bv_offset,
-				bio_data_dir(bio), iter.bi_sector);
+	bio_for_each_segment(bvec, bio, iter) {
+		rc = pmem_do_bvec(bdev, bvec.bv_page, bvec.bv_len,
+				bvec.bv_offset, bio_data_dir(bio),
+				iter.bi_sector);
+		if (rc) {
+			bio->bi_error = rc;
+			break;
+		}
+	}
 	if (do_acct)
 		nd_iostat_end(bio, start);
 
@@ -91,14 +114,14 @@ static blk_qc_t pmem_make_request(struct request_queue *q, struct bio *bio)
 static int pmem_rw_page(struct block_device *bdev, sector_t sector,
 		       struct page *page, int rw)
 {
-	struct pmem_device *pmem = bdev->bd_disk->private_data;
+	int rc;
 
-	pmem_do_bvec(pmem, page, PAGE_CACHE_SIZE, 0, rw, sector);
+	rc = pmem_do_bvec(bdev, page, PAGE_CACHE_SIZE, 0, rw, sector);
 	if (rw & WRITE)
 		wmb_pmem();
 	page_endio(page, rw & WRITE, 0);
 
-	return 0;
+	return rc;
 }
 
 static long pmem_direct_access(struct block_device *bdev, sector_t sector,
