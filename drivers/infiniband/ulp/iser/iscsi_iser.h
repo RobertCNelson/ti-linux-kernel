@@ -48,6 +48,7 @@
 #include <scsi/scsi_transport_iscsi.h>
 #include <scsi/scsi_cmnd.h>
 #include <scsi/scsi_device.h>
+#include <scsi/iser.h>
 
 #include <linux/interrupt.h>
 #include <linux/wait.h>
@@ -154,43 +155,11 @@
 #define ISER_WC_BATCH_COUNT   16
 #define ISER_SIGNAL_CMD_COUNT 32
 
-#define ISER_VER			0x10
-#define ISER_WSV			0x08
-#define ISER_RSV			0x04
-
 #define ISER_FASTREG_LI_WRID		0xffffffffffffffffULL
 #define ISER_BEACON_WRID		0xfffffffffffffffeULL
 
-/**
- * struct iser_hdr - iSER header
- *
- * @flags:        flags support (zbva, remote_inv)
- * @rsvd:         reserved
- * @write_stag:   write rkey
- * @write_va:     write virtual address
- * @reaf_stag:    read rkey
- * @read_va:      read virtual address
- */
-struct iser_hdr {
-	u8      flags;
-	u8      rsvd[3];
-	__be32  write_stag;
-	__be64  write_va;
-	__be32  read_stag;
-	__be64  read_va;
-} __attribute__((packed));
-
-
-#define ISER_ZBVA_NOT_SUPPORTED		0x80
-#define ISER_SEND_W_INV_NOT_SUPPORTED	0x40
-
-struct iser_cm_hdr {
-	u8      flags;
-	u8      rsvd[3];
-} __packed;
-
 /* Constant PDU lengths calculations */
-#define ISER_HEADERS_LEN  (sizeof(struct iser_hdr) + sizeof(struct iscsi_hdr))
+#define ISER_HEADERS_LEN	(sizeof(struct iser_ctrl) + sizeof(struct iscsi_hdr))
 
 #define ISER_RECV_DATA_SEG_LEN	128
 #define ISER_RX_PAYLOAD_SIZE	(ISER_HEADERS_LEN + ISER_RECV_DATA_SEG_LEN)
@@ -287,7 +256,7 @@ enum iser_desc_type {
  * @sig_attrs:     Signature attributes
  */
 struct iser_tx_desc {
-	struct iser_hdr              iser_header;
+	struct iser_ctrl             iser_header;
 	struct iscsi_hdr             iscsi_header;
 	enum   iser_desc_type        type;
 	u64		             dma_addr;
@@ -318,7 +287,7 @@ struct iser_tx_desc {
  * @pad:           for sense data TODO: Modify to maximum sense length supported
  */
 struct iser_rx_desc {
-	struct iser_hdr              iser_header;
+	struct iser_ctrl             iser_header;
 	struct iscsi_hdr             iscsi_header;
 	char		             data[ISER_RECV_DATA_SEG_LEN];
 	u64		             dma_addr;
@@ -389,6 +358,7 @@ struct iser_reg_ops {
  *                 cpus and device max completion vectors
  * @comps:         Dinamically allocated array of completion handlers
  * @reg_ops:       Registration ops
+ * @remote_inv_sup: Remote invalidate is supported on this device
  */
 struct iser_device {
 	struct ib_device             *ib_device;
@@ -401,6 +371,7 @@ struct iser_device {
 	int			     comps_used;
 	struct iser_comp	     *comps;
 	struct iser_reg_ops          *reg_ops;
+	bool                         remote_inv_sup;
 };
 
 #define ISER_CHECK_GUARD	0xc0
@@ -550,6 +521,7 @@ struct iser_conn {
 	u32                          num_rx_descs;
 	unsigned short               scsi_sg_tablesize;
 	unsigned int                 scsi_max_sectors;
+	bool			     snd_w_inv;
 };
 
 /**
@@ -579,9 +551,8 @@ struct iscsi_iser_task {
 
 struct iser_page_vec {
 	u64 *pages;
-	int length;
-	int offset;
-	int data_size;
+	int npages;
+	struct ib_mr fake_mr;
 };
 
 /**
@@ -634,7 +605,7 @@ int iser_conn_terminate(struct iser_conn *iser_conn);
 void iser_release_work(struct work_struct *work);
 
 void iser_rcv_completion(struct iser_rx_desc *desc,
-			 unsigned long dto_xfer_len,
+			 struct ib_wc *wc,
 			 struct ib_conn *ib_conn);
 
 void iser_snd_completion(struct iser_tx_desc *desc,
@@ -651,7 +622,8 @@ void iser_finalize_rdma_unaligned_sg(struct iscsi_iser_task *iser_task,
 				     enum iser_data_dir cmd_dir);
 
 int iser_reg_rdma_mem(struct iscsi_iser_task *task,
-		      enum iser_data_dir dir);
+		      enum iser_data_dir dir,
+		      bool all_imm);
 void iser_unreg_rdma_mem(struct iscsi_iser_task *task,
 			 enum iser_data_dir dir);
 

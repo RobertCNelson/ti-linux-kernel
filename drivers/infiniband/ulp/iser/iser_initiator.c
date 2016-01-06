@@ -51,7 +51,7 @@ static int iser_prepare_read_cmd(struct iscsi_task *task)
 	struct iscsi_iser_task *iser_task = task->dd_data;
 	struct iser_mem_reg *mem_reg;
 	int err;
-	struct iser_hdr *hdr = &iser_task->desc.iser_header;
+	struct iser_ctrl *hdr = &iser_task->desc.iser_header;
 	struct iser_data_buf *buf_in = &iser_task->data[ISER_DIR_IN];
 
 	err = iser_dma_map_task_data(iser_task,
@@ -72,7 +72,7 @@ static int iser_prepare_read_cmd(struct iscsi_task *task)
 			return err;
 	}
 
-	err = iser_reg_rdma_mem(iser_task, ISER_DIR_IN);
+	err = iser_reg_rdma_mem(iser_task, ISER_DIR_IN, false);
 	if (err) {
 		iser_err("Failed to set up Data-IN RDMA\n");
 		return err;
@@ -104,7 +104,7 @@ iser_prepare_write_cmd(struct iscsi_task *task,
 	struct iscsi_iser_task *iser_task = task->dd_data;
 	struct iser_mem_reg *mem_reg;
 	int err;
-	struct iser_hdr *hdr = &iser_task->desc.iser_header;
+	struct iser_ctrl *hdr = &iser_task->desc.iser_header;
 	struct iser_data_buf *buf_out = &iser_task->data[ISER_DIR_OUT];
 	struct ib_sge *tx_dsg = &iser_task->desc.tx_sg[1];
 
@@ -126,7 +126,8 @@ iser_prepare_write_cmd(struct iscsi_task *task,
 			return err;
 	}
 
-	err = iser_reg_rdma_mem(iser_task, ISER_DIR_OUT);
+	err = iser_reg_rdma_mem(iser_task, ISER_DIR_OUT,
+				buf_out->data_len == imm_sz);
 	if (err != 0) {
 		iser_err("Failed to register write cmd RDMA mem\n");
 		return err;
@@ -166,7 +167,7 @@ static void iser_create_send_desc(struct iser_conn	*iser_conn,
 	ib_dma_sync_single_for_cpu(device->ib_device,
 		tx_desc->dma_addr, ISER_HEADERS_LEN, DMA_TO_DEVICE);
 
-	memset(&tx_desc->iser_header, 0, sizeof(struct iser_hdr));
+	memset(&tx_desc->iser_header, 0, sizeof(struct iser_ctrl));
 	tx_desc->iser_header.flags = ISER_VER;
 	tx_desc->num_sge = 1;
 }
@@ -562,11 +563,61 @@ send_control_error:
 	return err;
 }
 
+static inline void
+iser_inv_desc(struct iser_fr_desc *desc, u32 rkey)
+{
+	if (likely(rkey == desc->rsc.mr->rkey))
+		desc->rsc.mr_valid = 0;
+	else if (likely(rkey == desc->pi_ctx->sig_mr->rkey))
+		desc->pi_ctx->sig_mr_valid = 0;
+}
+
+static int
+iser_check_remote_inv(struct iser_conn *iser_conn,
+		      struct ib_wc *wc,
+		      struct iscsi_hdr *hdr)
+{
+	if (wc->wc_flags & IB_WC_WITH_INVALIDATE) {
+		struct iscsi_task *task;
+		u32 rkey = wc->ex.invalidate_rkey;
+
+		iser_dbg("conn %p: remote invalidation for rkey %#x\n",
+			 iser_conn, rkey);
+
+		if (unlikely(!iser_conn->snd_w_inv)) {
+			iser_err("conn %p: unexepected remote invalidation, "
+				 "terminating connection\n", iser_conn);
+			return -EPROTO;
+		}
+
+		task = iscsi_itt_to_ctask(iser_conn->iscsi_conn, hdr->itt);
+		if (likely(task)) {
+			struct iscsi_iser_task *iser_task = task->dd_data;
+			struct iser_fr_desc *desc;
+
+			if (iser_task->dir[ISER_DIR_IN]) {
+				desc = iser_task->rdma_reg[ISER_DIR_IN].mem_h;
+				iser_inv_desc(desc, rkey);
+			}
+
+			if (iser_task->dir[ISER_DIR_OUT]) {
+				desc = iser_task->rdma_reg[ISER_DIR_OUT].mem_h;
+				iser_inv_desc(desc, rkey);
+			}
+		} else {
+			iser_err("failed to get task for itt=%d\n", hdr->itt);
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
+
 /**
  * iser_rcv_dto_completion - recv DTO completion
  */
 void iser_rcv_completion(struct iser_rx_desc *rx_desc,
-			 unsigned long rx_xfer_len,
+			 struct ib_wc *wc,
 			 struct ib_conn *ib_conn)
 {
 	struct iser_conn *iser_conn = container_of(ib_conn, struct iser_conn,
@@ -574,6 +625,7 @@ void iser_rcv_completion(struct iser_rx_desc *rx_desc,
 	struct iscsi_hdr *hdr;
 	u64 rx_dma;
 	int rx_buflen, outstanding, count, err;
+	unsigned long rx_xfer_len = wc->byte_len;
 
 	/* differentiate between login to all other PDUs */
 	if ((char *)rx_desc == iser_conn->login_resp_buf) {
@@ -591,6 +643,12 @@ void iser_rcv_completion(struct iser_rx_desc *rx_desc,
 
 	iser_dbg("op 0x%x itt 0x%x dlen %d\n", hdr->opcode,
 			hdr->itt, (int)(rx_xfer_len - ISER_HEADERS_LEN));
+
+	if (iser_check_remote_inv(iser_conn, wc, hdr)) {
+		iscsi_conn_failure(iser_conn->iscsi_conn,
+				   ISCSI_ERR_CONN_FAILED);
+		return;
+	}
 
 	iscsi_iser_recv(iser_conn->iscsi_conn, hdr, rx_desc->data,
 			rx_xfer_len - ISER_HEADERS_LEN);
