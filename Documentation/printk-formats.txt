@@ -292,20 +292,25 @@ bitmap and its derivatives such as cpumask and nodemask:
 
 	Passed by reference.
 
+Flags bitfields such as page flags, gfp_flags:
+
+	%pgp	referenced|uptodate|lru|active|private
+	%pgg	GFP_USER|GFP_DMA32|GFP_NOWARN
+	%pgv	read|exec|mayread|maywrite|mayexec|denywrite
+
+	For printing flags bitfields as a collection of symbolic constants that
+	would construct the value. The type of flags is given by the third
+	character. Currently supported are [p]age flags, [g]fp_flags and
+	[v]ma_flags. The flag names and print order depends on the particular
+	type.
+
+	Passed by reference.
+
 Network device features:
 
 	%pNF	0x000000000000c000
 
 	For printing netdev_features_t.
-
-	Passed by reference.
-
-Command from struct task_struct
-
-	%pT	ls
-
-	For printing executable name excluding path from struct
-	task_struct.
 
 	Passed by reference.
 
