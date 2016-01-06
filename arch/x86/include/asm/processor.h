@@ -120,6 +120,9 @@ struct cpuinfo_x86 {
 	int			x86_cache_occ_scale;	/* scale to bytes */
 	int			x86_power;
 	unsigned long		loops_per_jiffy;
+	/* Cache Allocation values: */
+	u16			x86_cache_max_cbm_len;
+	u16			x86_cache_max_closid;
 	/* cpuid returned max cores value: */
 	u16			 x86_max_cores;
 	u16			apicid;
@@ -472,6 +475,7 @@ static inline unsigned long current_top_of_stack(void)
 #else
 #define __cpuid			native_cpuid
 #define paravirt_enabled()	0
+#define paravirt_has(x) 	0
 
 static inline void load_sp0(struct tss_struct *tss,
 			    struct thread_struct *thread)

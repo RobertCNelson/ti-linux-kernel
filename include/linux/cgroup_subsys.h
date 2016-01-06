@@ -58,6 +58,10 @@ SUBSYS(net_prio)
 SUBSYS(hugetlb)
 #endif
 
+#if IS_ENABLED(CONFIG_INTEL_RDT)
+SUBSYS(intel_rdt)
+#endif
+
 /*
  * Subsystems that implement the can_fork() family of callbacks.
  */
