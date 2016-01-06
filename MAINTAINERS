@@ -5493,6 +5493,7 @@ M:	Dmitry Kasatkin <dmitry.kasatkin@gmail.com>
 L:	linux-ima-devel@lists.sourceforge.net
 L:	linux-ima-user@lists.sourceforge.net
 L:	linux-security-module@vger.kernel.org
+T:	git git://git.kernel.org/pub/scm/linux/kernel/git/zohar/linux-integrity.git
 S:	Supported
 F:	security/integrity/ima/
 
