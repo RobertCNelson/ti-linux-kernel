@@ -23,6 +23,7 @@
 #include <linux/module.h>
 #include <linux/memory_hotplug.h>
 #include <linux/moduleparam.h>
+#include <linux/badblocks.h>
 #include <linux/vmalloc.h>
 #include <linux/slab.h>
 #include <linux/pmem.h>
@@ -155,11 +156,15 @@ static struct pmem_device *pmem_alloc(struct device *dev,
 
 static void pmem_detach_disk(struct pmem_device *pmem)
 {
-	if (!pmem->pmem_disk)
+	struct gendisk *disk = pmem->pmem_disk;
+
+	if (!disk)
 		return;
 
-	del_gendisk_queue(pmem->pmem_disk);
-	put_disk(pmem->pmem_disk);
+	badblocks_exit(disk->bb);
+	kfree(disk->bb);
+	del_gendisk_queue(disk);
+	put_disk(disk);
 }
 
 static int pmem_attach_disk(struct device *dev,

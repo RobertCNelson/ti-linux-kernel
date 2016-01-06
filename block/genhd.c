@@ -660,11 +660,6 @@ static void del_gendisk_end(struct gendisk *disk)
 	blk_unregister_queue(disk);
 	blk_unregister_region(disk_devt(disk), disk->minors);
 
-	if (disk->bb) {
-		badblocks_exit(disk->bb);
-		kfree(disk->bb);
-	}
-
 	part_stat_set_all(&disk->part0, 0);
 	disk->part0.stamp = 0;
 
