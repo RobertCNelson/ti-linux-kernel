@@ -828,6 +828,15 @@ xfs_do_force_shutdown(
 	if (xfs_log_force_umount(mp, logerror))
 		return;
 
+	/*
+	 * If DAX is in use, we have to unmap all direct access virtual
+	 * mappings to ensure nothing more gets written directly from
+	 * userspace. This will force them to refault and that will
+	 * result in them detecting the shutdown condition and hence
+	 * will fail appropriately.
+	 */
+	unmap_dax_inodes(mp->m_super);
+
 	if (flags & SHUTDOWN_CORRUPT_INCORE) {
 		xfs_alert_tag(mp, XFS_PTAG_SHUTDOWN_CORRUPT,
     "Corruption of in-memory data detected.  Shutting down filesystem");

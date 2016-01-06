@@ -415,6 +415,12 @@ static void nd_region_notify_driver_action(struct nvdimm_bus *nvdimm_bus,
 
 		to_nd_blk_region(dev)->disable(nvdimm_bus, dev);
 	}
+	if (dev->parent && is_nd_pmem(dev->parent) && !probe) {
+		struct nd_namespace_common *ndns = to_ndns(dev);
+
+		/* badblocks list is only valid between ->probe and ->remove */
+		ndns->bb = NULL;
+	}
 	if (dev->parent && is_nd_blk(dev->parent) && probe) {
 		nd_region = to_nd_region(dev->parent);
 		nvdimm_bus_lock(dev);
