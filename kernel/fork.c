@@ -380,6 +380,7 @@ static struct task_struct *dup_task_struct(struct task_struct *orig)
 #endif
 	tsk->splice_pipe = NULL;
 	tsk->task_frag.page = NULL;
+	tsk->wake_q.next = NULL;
 
 	account_kernel_stack(ti, 1);
 
@@ -1348,9 +1349,9 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 	prev_cputime_init(&p->prev_cputime);
 
 #ifdef CONFIG_VIRT_CPU_ACCOUNTING_GEN
-	seqlock_init(&p->vtime_seqlock);
+	seqcount_init(&p->vtime_seqcount);
 	p->vtime_snap = 0;
-	p->vtime_snap_whence = VTIME_SLEEPING;
+	p->vtime_snap_whence = VTIME_INACTIVE;
 #endif
 
 #if defined(SPLIT_RSS_COUNTING)
