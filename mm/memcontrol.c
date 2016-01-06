@@ -250,13 +250,6 @@ enum res_type {
 /* Used for OOM nofiier */
 #define OOM_CONTROL		(0)
 
-/*
- * The memcg_create_mutex will be held whenever a new cgroup is created.
- * As a consequence, any change that needs to protect against new child cgroups
- * appearing has to hold it as well.
- */
-static DEFINE_MUTEX(memcg_create_mutex);
-
 /* Some nice accessors for the vmpressure. */
 struct vmpressure *memcg_to_vmpressure(struct mem_cgroup *memcg)
 {
@@ -2684,14 +2677,6 @@ static inline bool memcg_has_children(struct mem_cgroup *memcg)
 {
 	bool ret;
 
-	/*
-	 * The lock does not prevent addition or deletion of children, but
-	 * it prevents a new child from being initialized based on this
-	 * parent in css_online(), so it's enough to decide whether
-	 * hierarchically inherited attributes can still be changed or not.
-	 */
-	lockdep_assert_held(&memcg_create_mutex);
-
 	rcu_read_lock();
 	ret = css_next_child(NULL, &memcg->css);
 	rcu_read_unlock();
@@ -2754,10 +2739,8 @@ static int mem_cgroup_hierarchy_write(struct cgroup_subsys_state *css,
 	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
 	struct mem_cgroup *parent_memcg = mem_cgroup_from_css(memcg->css.parent);
 
-	mutex_lock(&memcg_create_mutex);
-
 	if (memcg->use_hierarchy == val)
-		goto out;
+		return 0;
 
 	/*
 	 * If parent's use_hierarchy is set, we can't make any modifications
@@ -2775,9 +2758,6 @@ static int mem_cgroup_hierarchy_write(struct cgroup_subsys_state *css,
 			retval = -EBUSY;
 	} else
 		retval = -EINVAL;
-
-out:
-	mutex_unlock(&memcg_create_mutex);
 
 	return retval;
 }
@@ -2953,6 +2933,10 @@ static void memcg_offline_kmem(struct mem_cgroup *memcg)
 
 static void memcg_free_kmem(struct mem_cgroup *memcg)
 {
+	/* css_alloc() failed, offlining didn't happen */
+	if (unlikely(memcg->kmem_state == KMEM_ONLINE))
+		memcg_offline_kmem(memcg);
+
 	if (memcg->kmem_state == KMEM_ALLOCATED) {
 		memcg_destroy_kmem_caches(memcg);
 		static_branch_dec(&memcg_kmem_enabled_key);
@@ -2980,11 +2964,9 @@ static int memcg_update_kmem_limit(struct mem_cgroup *memcg,
 	mutex_lock(&memcg_limit_mutex);
 	/* Top-level cgroup doesn't propagate from root */
 	if (!memcg_kmem_online(memcg)) {
-		mutex_lock(&memcg_create_mutex);
 		if (cgroup_is_populated(memcg->css.cgroup) ||
 		    (memcg->use_hierarchy && memcg_has_children(memcg)))
 			ret = -EBUSY;
-		mutex_unlock(&memcg_create_mutex);
 		if (ret)
 			goto out;
 		ret = memcg_online_kmem(memcg);
@@ -4208,14 +4190,14 @@ mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 	if (!memcg)
 		return ERR_PTR(error);
 
-	mutex_lock(&memcg_create_mutex);
 	memcg->high = PAGE_COUNTER_MAX;
 	memcg->soft_limit = PAGE_COUNTER_MAX;
-	if (parent)
+	if (parent) {
 		memcg->swappiness = mem_cgroup_swappiness(parent);
+		memcg->oom_kill_disable = parent->oom_kill_disable;
+	}
 	if (parent && parent->use_hierarchy) {
 		memcg->use_hierarchy = true;
-		memcg->oom_kill_disable = parent->oom_kill_disable;
 		page_counter_init(&memcg->memory, &parent->memory);
 		page_counter_init(&memcg->memsw, &parent->memsw);
 		page_counter_init(&memcg->kmem, &parent->kmem);
@@ -4233,7 +4215,6 @@ mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 		if (parent != root_mem_cgroup)
 			memory_cgrp_subsys.broken_hierarchy = true;
 	}
-	mutex_unlock(&memcg_create_mutex);
 
 	/* The following stuff does not apply to the root */
 	if (!parent) {
