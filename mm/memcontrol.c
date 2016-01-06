@@ -4417,8 +4417,6 @@ static void mem_cgroup_css_free(struct cgroup_subsys_state *css)
 		static_branch_dec(&memcg_sockets_enabled_key);
 #endif
 
-	memcg_free_kmem(memcg);
-
 	__mem_cgroup_free(memcg);
 }
 
