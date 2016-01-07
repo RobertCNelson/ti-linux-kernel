@@ -66,6 +66,13 @@ struct btrfs_iget_args {
 	struct btrfs_root *root;
 };
 
+struct btrfs_dio_data {
+	u64 outstanding_extents;
+	u64 reserve;
+	u64 unsubmitted_oe_range_start;
+	u64 unsubmitted_oe_range_end;
+};
+
 static const struct inode_operations btrfs_dir_inode_operations;
 static const struct inode_operations btrfs_symlink_inode_operations;
 static const struct inode_operations btrfs_dir_ro_inode_operations;
@@ -1989,7 +1996,7 @@ again:
 	page_start = page_offset(page);
 	page_end = page_offset(page) + PAGE_CACHE_SIZE - 1;
 
-	lock_extent_bits(&BTRFS_I(inode)->io_tree, page_start, page_end, 0,
+	lock_extent_bits(&BTRFS_I(inode)->io_tree, page_start, page_end,
 			 &cached_state);
 
 	/* already ordered? We're done */
@@ -2482,7 +2489,7 @@ static noinline int relink_extent_backref(struct btrfs_path *path,
 	lock_start = backref->file_pos;
 	lock_end = backref->file_pos + backref->num_bytes - 1;
 	lock_extent_bits(&BTRFS_I(inode)->io_tree, lock_start, lock_end,
-			 0, &cached);
+			 &cached);
 
 	ordered = btrfs_lookup_first_ordered_extent(inode, lock_end);
 	if (ordered) {
@@ -2874,7 +2881,7 @@ static int btrfs_finish_ordered_io(struct btrfs_ordered_extent *ordered_extent)
 
 	lock_extent_bits(io_tree, ordered_extent->file_offset,
 			 ordered_extent->file_offset + ordered_extent->len - 1,
-			 0, &cached_state);
+			 &cached_state);
 
 	ret = test_range_bit(io_tree, ordered_extent->file_offset,
 			ordered_extent->file_offset + ordered_extent->len - 1,
@@ -4668,7 +4675,7 @@ again:
 	}
 	wait_on_page_writeback(page);
 
-	lock_extent_bits(io_tree, page_start, page_end, 0, &cached_state);
+	lock_extent_bits(io_tree, page_start, page_end, &cached_state);
 	set_page_extent_mapped(page);
 
 	ordered = btrfs_lookup_ordered_extent(inode, page_start);
@@ -4799,7 +4806,7 @@ int btrfs_cont_expand(struct inode *inode, loff_t oldsize, loff_t size)
 	while (1) {
 		struct btrfs_ordered_extent *ordered;
 
-		lock_extent_bits(io_tree, hole_start, block_end - 1, 0,
+		lock_extent_bits(io_tree, hole_start, block_end - 1,
 				 &cached_state);
 		ordered = btrfs_lookup_ordered_range(inode, hole_start,
 						     block_end - hole_start);
@@ -5111,7 +5118,7 @@ static void evict_inode_truncate_pages(struct inode *inode)
 		end = state->end;
 		spin_unlock(&io_tree->lock);
 
-		lock_extent_bits(io_tree, start, end, 0, &cached_state);
+		lock_extent_bits(io_tree, start, end, &cached_state);
 
 		/*
 		 * If still has DELALLOC flag, the extent didn't reach disk,
@@ -7380,7 +7387,7 @@ static int lock_extent_direct(struct inode *inode, u64 lockstart, u64 lockend,
 
 	while (1) {
 		lock_extent_bits(&BTRFS_I(inode)->io_tree, lockstart, lockend,
-				 0, cached_state);
+				 cached_state);
 		/*
 		 * We're concerned with the entire range that we're going to be
 		 * doing DIO to, so we need to make sure theres no ordered
@@ -7408,25 +7415,21 @@ static int lock_extent_direct(struct inode *inode, u64 lockstart, u64 lockend,
 			btrfs_start_ordered_extent(inode, ordered, 1);
 			btrfs_put_ordered_extent(ordered);
 		} else {
-			/* Screw you mmap */
-			ret = btrfs_fdatawrite_range(inode, lockstart, lockend);
-			if (ret)
-				break;
-			ret = filemap_fdatawait_range(inode->i_mapping,
-						      lockstart,
-						      lockend);
-			if (ret)
-				break;
-
 			/*
-			 * If we found a page that couldn't be invalidated just
-			 * fall back to buffered.
+			 * We could trigger writeback for this range (and wait
+			 * for it to complete) and then invalidate the pages for
+			 * this range (through invalidate_inode_pages2_range()),
+			 * but that can lead us to a deadlock with a concurrent
+			 * call to readpages() (a buffered read or a defrag call
+			 * triggered a readahead) on a page lock due to an
+			 * ordered dio extent we created before but did not have
+			 * yet a corresponding bio submitted (whence it can not
+			 * complete), which makes readpages() wait for that
+			 * ordered extent to complete while holding a lock on
+			 * that page.
 			 */
-			ret = invalidate_inode_pages2_range(inode->i_mapping,
-					lockstart >> PAGE_CACHE_SHIFT,
-					lockend >> PAGE_CACHE_SHIFT);
-			if (ret)
-				break;
+			ret = -ENOTBLK;
+			break;
 		}
 
 		cond_resched();
@@ -7481,11 +7484,6 @@ static struct extent_map *create_pinned_em(struct inode *inode, u64 start,
 
 	return em;
 }
-
-struct btrfs_dio_data {
-	u64 outstanding_extents;
-	u64 reserve;
-};
 
 static void adjust_dio_outstanding_extents(struct inode *inode,
 					   struct btrfs_dio_data *dio_data,
@@ -7670,6 +7668,7 @@ unlock:
 		btrfs_free_reserved_data_space(inode, start, len);
 		WARN_ON(dio_data->reserve < len);
 		dio_data->reserve -= len;
+		dio_data->unsubmitted_oe_range_end = start + len;
 		current->journal_info = dio_data;
 	}
 
@@ -7992,22 +7991,22 @@ static void btrfs_endio_direct_read(struct bio *bio)
 	bio_put(bio);
 }
 
-static void btrfs_endio_direct_write(struct bio *bio)
+static void btrfs_endio_direct_write_update_ordered(struct inode *inode,
+						    const u64 offset,
+						    const u64 bytes,
+						    const int uptodate)
 {
-	struct btrfs_dio_private *dip = bio->bi_private;
-	struct inode *inode = dip->inode;
 	struct btrfs_root *root = BTRFS_I(inode)->root;
 	struct btrfs_ordered_extent *ordered = NULL;
-	u64 ordered_offset = dip->logical_offset;
-	u64 ordered_bytes = dip->bytes;
-	struct bio *dio_bio;
+	u64 ordered_offset = offset;
+	u64 ordered_bytes = bytes;
 	int ret;
 
 again:
 	ret = btrfs_dec_test_first_ordered_pending(inode, &ordered,
 						   &ordered_offset,
 						   ordered_bytes,
-						   !bio->bi_error);
+						   uptodate);
 	if (!ret)
 		goto out_test;
 
@@ -8020,13 +8019,22 @@ out_test:
 	 * our bio might span multiple ordered extents.  If we haven't
 	 * completed the accounting for the whole dio, go back and try again
 	 */
-	if (ordered_offset < dip->logical_offset + dip->bytes) {
-		ordered_bytes = dip->logical_offset + dip->bytes -
-			ordered_offset;
+	if (ordered_offset < offset + bytes) {
+		ordered_bytes = offset + bytes - ordered_offset;
 		ordered = NULL;
 		goto again;
 	}
-	dio_bio = dip->dio_bio;
+}
+
+static void btrfs_endio_direct_write(struct bio *bio)
+{
+	struct btrfs_dio_private *dip = bio->bi_private;
+	struct bio *dio_bio = dip->dio_bio;
+
+	btrfs_endio_direct_write_update_ordered(dip->inode,
+						dip->logical_offset,
+						dip->bytes,
+						!bio->bi_error);
 
 	kfree(dip);
 
@@ -8334,6 +8342,21 @@ static void btrfs_submit_direct(int rw, struct bio *dio_bio,
 		dip->subio_endio = btrfs_subio_endio_read;
 	}
 
+	/*
+	 * Reset the range for unsubmitted ordered extents (to a 0 length range)
+	 * even if we fail to submit a bio, because in such case we do the
+	 * corresponding error handling below and it must not be done a second
+	 * time by btrfs_direct_IO().
+	 */
+	if (write) {
+		struct btrfs_dio_data *dio_data = current->journal_info;
+
+		dio_data->unsubmitted_oe_range_end = dip->logical_offset +
+			dip->bytes;
+		dio_data->unsubmitted_oe_range_start =
+			dio_data->unsubmitted_oe_range_end;
+	}
+
 	ret = btrfs_submit_direct_hook(rw, dip, skip_sum);
 	if (!ret)
 		return;
@@ -8362,24 +8385,15 @@ free_ordered:
 		dip = NULL;
 		io_bio = NULL;
 	} else {
-		if (write) {
-			struct btrfs_ordered_extent *ordered;
-
-			ordered = btrfs_lookup_ordered_extent(inode,
-							      file_offset);
-			set_bit(BTRFS_ORDERED_IOERR, &ordered->flags);
-			/*
-			 * Decrements our ref on the ordered extent and removes
-			 * the ordered extent from the inode's ordered tree,
-			 * doing all the proper resource cleanup such as for the
-			 * reserved space and waking up any waiters for this
-			 * ordered extent (through btrfs_remove_ordered_extent).
-			 */
-			btrfs_finish_ordered_io(ordered);
-		} else {
+		if (write)
+			btrfs_endio_direct_write_update_ordered(inode,
+						file_offset,
+						dio_bio->bi_iter.bi_size,
+						0);
+		else
 			unlock_extent(&BTRFS_I(inode)->io_tree, file_offset,
 			      file_offset + dio_bio->bi_iter.bi_size - 1);
-		}
+
 		dio_bio->bi_error = -EIO;
 		/*
 		 * Releases and cleans up our dio_bio, no need to bio_put()
@@ -8479,6 +8493,8 @@ static ssize_t btrfs_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 		 * originally calculated.  Abuse current->journal_info for this.
 		 */
 		dio_data.reserve = round_up(count, root->sectorsize);
+		dio_data.unsubmitted_oe_range_start = (u64)offset;
+		dio_data.unsubmitted_oe_range_end = (u64)offset;
 		current->journal_info = &dio_data;
 	} else if (test_bit(BTRFS_INODE_READDIO_NEED_LOCK,
 				     &BTRFS_I(inode)->runtime_flags)) {
@@ -8497,6 +8513,19 @@ static ssize_t btrfs_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 			if (dio_data.reserve)
 				btrfs_delalloc_release_space(inode, offset,
 							     dio_data.reserve);
+			/*
+			 * On error we might have left some ordered extents
+			 * without submitting corresponding bios for them, so
+			 * cleanup them up to avoid other tasks getting them
+			 * and waiting for them to complete forever.
+			 */
+			if (dio_data.unsubmitted_oe_range_start <
+			    dio_data.unsubmitted_oe_range_end)
+				btrfs_endio_direct_write_update_ordered(inode,
+					dio_data.unsubmitted_oe_range_start,
+					dio_data.unsubmitted_oe_range_end -
+					dio_data.unsubmitted_oe_range_start,
+					0);
 		} else if (ret >= 0 && (size_t)ret < count)
 			btrfs_delalloc_release_space(inode, offset,
 						     count - (size_t)ret);
@@ -8614,7 +8643,7 @@ static void btrfs_invalidatepage(struct page *page, unsigned int offset,
 	}
 
 	if (!inode_evicting)
-		lock_extent_bits(tree, page_start, page_end, 0, &cached_state);
+		lock_extent_bits(tree, page_start, page_end, &cached_state);
 	ordered = btrfs_lookup_ordered_extent(inode, page_start);
 	if (ordered) {
 		/*
@@ -8652,7 +8681,7 @@ static void btrfs_invalidatepage(struct page *page, unsigned int offset,
 		btrfs_put_ordered_extent(ordered);
 		if (!inode_evicting) {
 			cached_state = NULL;
-			lock_extent_bits(tree, page_start, page_end, 0,
+			lock_extent_bits(tree, page_start, page_end,
 					 &cached_state);
 		}
 	}
@@ -8750,7 +8779,7 @@ again:
 	}
 	wait_on_page_writeback(page);
 
-	lock_extent_bits(io_tree, page_start, page_end, 0, &cached_state);
+	lock_extent_bits(io_tree, page_start, page_end, &cached_state);
 	set_page_extent_mapped(page);
 
 	/*
@@ -9418,14 +9447,10 @@ static void btrfs_run_delalloc_work(struct btrfs_work *work)
 	delalloc_work = container_of(work, struct btrfs_delalloc_work,
 				     work);
 	inode = delalloc_work->inode;
-	if (delalloc_work->wait) {
-		btrfs_wait_ordered_range(inode, 0, (u64)-1);
-	} else {
+	filemap_flush(inode->i_mapping);
+	if (test_bit(BTRFS_INODE_HAS_ASYNC_EXTENT,
+				&BTRFS_I(inode)->runtime_flags))
 		filemap_flush(inode->i_mapping);
-		if (test_bit(BTRFS_INODE_HAS_ASYNC_EXTENT,
-			     &BTRFS_I(inode)->runtime_flags))
-			filemap_flush(inode->i_mapping);
-	}
 
 	if (delalloc_work->delay_iput)
 		btrfs_add_delayed_iput(inode);
@@ -9435,7 +9460,7 @@ static void btrfs_run_delalloc_work(struct btrfs_work *work)
 }
 
 struct btrfs_delalloc_work *btrfs_alloc_delalloc_work(struct inode *inode,
-						    int wait, int delay_iput)
+						    int delay_iput)
 {
 	struct btrfs_delalloc_work *work;
 
@@ -9446,7 +9471,6 @@ struct btrfs_delalloc_work *btrfs_alloc_delalloc_work(struct inode *inode,
 	init_completion(&work->completion);
 	INIT_LIST_HEAD(&work->list);
 	work->inode = inode;
-	work->wait = wait;
 	work->delay_iput = delay_iput;
 	WARN_ON_ONCE(!inode);
 	btrfs_init_work(&work->work, btrfs_flush_delalloc_helper,
@@ -9494,7 +9518,7 @@ static int __start_delalloc_inodes(struct btrfs_root *root, int delay_iput,
 		}
 		spin_unlock(&root->delalloc_lock);
 
-		work = btrfs_alloc_delalloc_work(inode, 0, delay_iput);
+		work = btrfs_alloc_delalloc_work(inode, delay_iput);
 		if (!work) {
 			if (delay_iput)
 				btrfs_add_delayed_iput(inode);
