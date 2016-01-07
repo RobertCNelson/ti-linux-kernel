@@ -5117,11 +5117,30 @@ sub process {
 			}
 		}
 # check for memory barriers without a comment.
-		if ($line =~ /\b(mb|rmb|wmb|read_barrier_depends|smp_mb|smp_rmb|smp_wmb|smp_read_barrier_depends)\(/) {
+
+		my @barriers = ('mb', 'rmb', 'wmb', 'read_barrier_depends');
+		my @smp_barriers = ('smp_store_release', 'smp_load_acquire', 'smp_store_mb');
+
+		@smp_barriers = (@smp_barriers, map {"smp_" . $_} @barriers);
+		my @virt_barriers = map {my $l = $_; $l =~ s/smp_/virt_/; $l} @smp_barriers;
+		my $all_barriers = join('|', (@barriers, @smp_barriers, @virt_barriers));
+
+		if ($line =~ /\b($all_barriers)\(/) {
 			if (!ctx_has_comment($first_line, $linenr)) {
 				WARN("MEMORY_BARRIER",
 				     "memory barrier without comment\n" . $herecurr);
 			}
+		}
+
+		my @underscore_smp_barriers = map {"__" . $_} @smp_barriers;
+		my $underscore_all_barriers = join('|', @underscore_smp_barriers);
+
+		if ($realfile !~ m@^include/asm-generic/@ &&
+		    $realfile !~ m@/barrier\.h$@ &&
+		    $line =~ m/\b($underscore_all_barriers)\(/ &&
+		    $line !~ m/^.\s*\#\s*define\s+($underscore_all_barriers)\(/) {
+			WARN("MEMORY_BARRIER",
+			     "__smp memory barriers shouldn't be used outside barrier.h and asm-generic\n" . $herecurr);
 		}
 
 # check for waitqueue_active without a comment.
