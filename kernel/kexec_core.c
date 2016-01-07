@@ -310,12 +310,9 @@ static void kimage_free_pages(struct page *page)
 
 void kimage_free_page_list(struct list_head *list)
 {
-	struct list_head *pos, *next;
+	struct page *page, *next;
 
-	list_for_each_safe(pos, next, list) {
-		struct page *page;
-
-		page = list_entry(pos, struct page, lru);
+	list_for_each_entry_safe(page, next, list, lru) {
 		list_del(&page->lru);
 		kimage_free_pages(page);
 	}
@@ -1559,4 +1556,10 @@ void __weak crash_map_reserved_pages(void)
 {}
 
 void __weak crash_unmap_reserved_pages(void)
+{}
+
+void __weak arch_kexec_protect_crashkres(void)
+{}
+
+void __weak arch_kexec_unprotect_crashkres(void)
 {}

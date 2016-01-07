@@ -618,7 +618,6 @@ static int init_memory_block(struct memory_block **memory,
 			base_memory_block_id(scn_nr) * sections_per_block;
 	mem->end_section_nr = mem->start_section_nr + sections_per_block - 1;
 	mem->state = state;
-	mem->section_count++;
 	start_pfn = section_nr_to_pfn(mem->start_section_nr);
 	mem->phys_device = arch_get_memory_phys_device(start_pfn);
 
@@ -652,6 +651,13 @@ static int add_memory_block(int base_section_nr)
 	return 0;
 }
 
+static bool is_zone_device_section(struct mem_section *ms)
+{
+	struct page *page;
+
+	page = sparse_decode_mem_map(ms->section_mem_map, __section_nr(ms));
+	return is_zone_device_page(page);
+}
 
 /*
  * need an interface for the VM to add new memory regions,
@@ -661,6 +667,9 @@ int register_new_memory(int nid, struct mem_section *section)
 {
 	int ret = 0;
 	struct memory_block *mem;
+
+	if (is_zone_device_section(section))
+		return 0;
 
 	mutex_lock(&mem_sysfs_mutex);
 
@@ -672,6 +681,7 @@ int register_new_memory(int nid, struct mem_section *section)
 		ret = init_memory_block(&mem, section, MEM_OFFLINE);
 		if (ret)
 			goto out;
+		mem->section_count++;
 	}
 
 	if (mem->section_count == sections_per_block)
@@ -692,10 +702,13 @@ unregister_memory(struct memory_block *memory)
 	device_unregister(&memory->dev);
 }
 
-static int remove_memory_block(unsigned long node_id,
+static int remove_memory_section(unsigned long node_id,
 			       struct mem_section *section, int phys_device)
 {
 	struct memory_block *mem;
+
+	if (is_zone_device_section(section))
+		return 0;
 
 	mutex_lock(&mem_sysfs_mutex);
 	mem = find_memory_block(section);
@@ -716,7 +729,7 @@ int unregister_memory_section(struct mem_section *section)
 	if (!present_section(section))
 		return -EINVAL;
 
-	return remove_memory_block(0, section, 0);
+	return remove_memory_section(0, section, 0);
 }
 #endif /* CONFIG_MEMORY_HOTREMOVE */
 
