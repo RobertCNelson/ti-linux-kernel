@@ -191,9 +191,10 @@ out:
  * Caller holds ft_lport_lock.
  */
 static struct ft_sess *ft_sess_create(struct ft_tport *tport, u32 port_id,
-				      struct ft_node_acl *acl)
+				      struct fc_rport_priv *rdata)
 {
 	struct ft_sess *sess;
+	struct ft_node_acl *acl;
 	struct hlist_head *head;
 
 	head = &tport->hash[ft_sess_hash(port_id)];
@@ -212,6 +213,14 @@ static struct ft_sess *ft_sess_create(struct ft_tport *tport, u32 port_id,
 		kfree(sess);
 		return NULL;
 	}
+
+	acl = ft_acl_get(tport->tpg, rdata);
+	if (!acl) {
+		transport_free_session(sess->se_sess);
+		kfree(sess);
+		return NULL;
+	}
+
 	sess->se_sess->se_node_acl = &acl->se_node_acl;
 	sess->tport = tport;
 	sess->port_id = port_id;
@@ -349,16 +358,11 @@ static int ft_prli_locked(struct fc_rport_priv *rdata, u32 spp_len,
 {
 	struct ft_tport *tport;
 	struct ft_sess *sess;
-	struct ft_node_acl *acl;
 	u32 fcp_parm;
 
 	tport = ft_tport_get(rdata->local_port);
 	if (!tport)
 		goto not_target;	/* not a target for this local port */
-
-	acl = ft_acl_get(tport->tpg, rdata);
-	if (!acl)
-		goto not_target;	/* no target for this remote */
 
 	if (!rspp)
 		goto fill;
@@ -381,7 +385,7 @@ static int ft_prli_locked(struct fc_rport_priv *rdata, u32 spp_len,
 		spp->spp_flags |= FC_SPP_EST_IMG_PAIR;
 		if (!(fcp_parm & FCP_SPPF_INIT_FCN))
 			return FC_SPP_RESP_CONF;
-		sess = ft_sess_create(tport, rdata->ids.port_id, acl);
+		sess = ft_sess_create(tport, rdata->ids.port_id, rdata);
 		if (!sess)
 			return FC_SPP_RESP_RES;
 		if (!sess->params)
