@@ -56,12 +56,34 @@ EXPORT_SYMBOL_GPL(balloon_page_enqueue);
  */
 struct page *balloon_page_dequeue(struct balloon_dev_info *b_dev_info)
 {
-	struct page *page, *tmp;
+	struct page *page;
 	unsigned long flags;
 	bool dequeued_page;
+	LIST_HEAD(processed); /* protected by b_dev_info->pages_lock */
 
 	dequeued_page = false;
-	list_for_each_entry_safe(page, tmp, &b_dev_info->pages, lru) {
+	/*
+	 * We need to go over b_dev_info->pages and lock each page,
+	 * but b_dev_info->pages_lock must nest within page lock.
+	 *
+	 * To make this safe, remove each page from b_dev_info->pages list
+	 * under b_dev_info->pages_lock, then drop this lock. Once list is
+	 * empty, re-add them also under b_dev_info->pages_lock.
+	 */
+	spin_lock_irqsave(&b_dev_info->pages_lock, flags);
+	while (!list_empty(&b_dev_info->pages)) {
+		page = list_first_entry(&b_dev_info->pages, typeof(*page), lru);
+		/* move to processed list to avoid going over it another time */
+		list_move(&page->lru, &processed);
+
+		if (!get_page_unless_zero(page))
+			continue;
+		/*
+		 * pages_lock nests within page lock,
+		 * so drop it before trylock_page
+		 */
+		spin_unlock_irqrestore(&b_dev_info->pages_lock, flags);
+
 		/*
 		 * Block others from accessing the 'page' while we get around
 		 * establishing additional references and preparing the 'page'
@@ -72,6 +94,7 @@ struct page *balloon_page_dequeue(struct balloon_dev_info *b_dev_info)
 			if (!PagePrivate(page)) {
 				/* raced with isolation */
 				unlock_page(page);
+				put_page(page);
 				continue;
 			}
 #endif
@@ -80,10 +103,17 @@ struct page *balloon_page_dequeue(struct balloon_dev_info *b_dev_info)
 			__count_vm_event(BALLOON_DEFLATE);
 			spin_unlock_irqrestore(&b_dev_info->pages_lock, flags);
 			unlock_page(page);
+			put_page(page);
 			dequeued_page = true;
 			break;
 		}
+		put_page(page);
+		spin_lock_irqsave(&b_dev_info->pages_lock, flags);
 	}
+
+	/* re-add remaining entries */
+	list_splice(&processed, &b_dev_info->pages);
+	spin_unlock_irqrestore(&b_dev_info->pages_lock, flags);
 
 	if (!dequeued_page) {
 		/*
