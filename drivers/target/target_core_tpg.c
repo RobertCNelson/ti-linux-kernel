@@ -75,9 +75,16 @@ struct se_node_acl *core_tpg_get_initiator_node_acl(
 	unsigned char *initiatorname)
 {
 	struct se_node_acl *acl;
-
+	/*
+	 * Obtain the acl_kref now, which will be dropped upon the
+	 * release of se_sess memory within transport_free_session().
+	 */
 	mutex_lock(&tpg->acl_node_mutex);
 	acl = __core_tpg_get_initiator_node_acl(tpg, initiatorname);
+	if (acl) {
+		if (!kref_get_unless_zero(&acl->acl_kref))
+			acl = NULL;
+	}
 	mutex_unlock(&tpg->acl_node_mutex);
 
 	return acl;
@@ -240,6 +247,15 @@ struct se_node_acl *core_tpg_check_initiator_node_acl(
 	acl = target_alloc_node_acl(tpg, initiatorname);
 	if (!acl)
 		return NULL;
+	/*
+	 * When allocating a dynamically generated node_acl, go ahead
+	 * and take the extra kref now before returning to the fabric
+	 * driver caller.
+	 *
+	 * Note this reference will be released at session shutdown
+	 * time within transport_free_session() code.
+	 */
+	kref_get(&acl->acl_kref);
 	acl->dynamic_node_acl = 1;
 
 	/*
