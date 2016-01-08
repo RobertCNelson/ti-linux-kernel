@@ -686,6 +686,49 @@ void del_gendisk(struct gendisk *disk)
 EXPORT_SYMBOL(del_gendisk);
 
 /**
+ * del_gendisk_queue - combined del_gendisk + blk_cleanup_queue
+ * @disk: disk to delete, invalidate, unmap, and force-fail fs operations
+ *
+ * This is an alternative for open coded calls to:
+ *     del_gendisk()
+ *     blk_cleanup_queue()
+ * It notifies filesystems / vfs that a block device is permanently dead
+ * after the queue has been torn down.  This notification is needed for
+ * triggering a filesystem to abort its error recovery and for (DAX)
+ * capable devices.  DAX bypasses page cache and mappings go directly to
+ * storage media.  When such a disk is removed the pfn backing a mapping
+ * may be invalid or removed from the system.  Upon return accessing DAX
+ * mappings of this disk will trigger SIGBUS.
+ */
+void del_gendisk_queue(struct gendisk *disk)
+{
+	struct disk_part_iter piter;
+	struct hd_struct *part;
+
+	del_gendisk_start(disk);
+
+	/* pass1 sync fs + evict idle inodes */
+	disk_part_iter_init(&piter, disk,
+			     DISK_PITER_INCL_EMPTY | DISK_PITER_REVERSE);
+	for_each_part(part, &piter)
+		invalidate_partition(disk, part->partno);
+	disk_part_iter_exit(&piter);
+	invalidate_partition(disk, 0);
+
+	blk_cleanup_queue(disk->queue);
+
+	/* pass2 the queue is dead */
+	disk_part_iter_init(&piter, disk,
+			     DISK_PITER_INCL_EMPTY | DISK_PITER_REVERSE);
+	for_each_part(part, &piter)
+		delete_partition(disk, part->partno);
+	disk_part_iter_exit(&piter);
+
+	del_gendisk_end(disk);
+}
+EXPORT_SYMBOL(del_gendisk_queue);
+
+/**
  * get_gendisk - get partitioning information for a given device
  * @devt: device to get partitioning information for
  * @partno: returned partition index
