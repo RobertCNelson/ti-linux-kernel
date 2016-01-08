@@ -23,6 +23,7 @@
 #include <linux/module.h>
 #include <linux/memory_hotplug.h>
 #include <linux/moduleparam.h>
+#include <linux/badblocks.h>
 #include <linux/vmalloc.h>
 #include <linux/slab.h>
 #include <linux/pmem.h>
@@ -45,15 +46,31 @@ struct pmem_device {
 
 static int pmem_major;
 
-static void pmem_do_bvec(struct pmem_device *pmem, struct page *page,
-			unsigned int len, unsigned int off, int rw,
-			sector_t sector)
+static bool is_bad_pmem(struct badblocks *bb, sector_t sector, unsigned int len)
+{
+	if (bb && bb->count) {
+		sector_t first_bad;
+		int num_bad;
+
+		return !!badblocks_check(bb, sector, len / 512, &first_bad,
+				&num_bad);
+	}
+
+	return false;
+}
+
+static int pmem_do_bvec(struct block_device *bdev, struct page *page,
+		unsigned int len, unsigned int off, int rw, sector_t sector)
 {
 	void *mem = kmap_atomic(page);
+	struct gendisk *disk = bdev->bd_disk;
+	struct pmem_device *pmem = disk->private_data;
 	phys_addr_t pmem_off = sector * 512 + pmem->data_offset;
 	void __pmem *pmem_addr = pmem->virt_addr + pmem_off;
 
 	if (rw == READ) {
+		if (unlikely(is_bad_pmem(disk->bb, sector, len)))
+			return -EIO;
 		memcpy_from_pmem(mem + off, pmem_addr, len);
 		flush_dcache_page(page);
 	} else {
@@ -62,21 +79,28 @@ static void pmem_do_bvec(struct pmem_device *pmem, struct page *page,
 	}
 
 	kunmap_atomic(mem);
+	return 0;
 }
 
 static blk_qc_t pmem_make_request(struct request_queue *q, struct bio *bio)
 {
+	int rc = 0;
 	bool do_acct;
 	unsigned long start;
 	struct bio_vec bvec;
 	struct bvec_iter iter;
 	struct block_device *bdev = bio->bi_bdev;
-	struct pmem_device *pmem = bdev->bd_disk->private_data;
 
 	do_acct = nd_iostat_start(bio, &start);
-	bio_for_each_segment(bvec, bio, iter)
-		pmem_do_bvec(pmem, bvec.bv_page, bvec.bv_len, bvec.bv_offset,
-				bio_data_dir(bio), iter.bi_sector);
+	bio_for_each_segment(bvec, bio, iter) {
+		rc = pmem_do_bvec(bdev, bvec.bv_page, bvec.bv_len,
+				bvec.bv_offset, bio_data_dir(bio),
+				iter.bi_sector);
+		if (rc) {
+			bio->bi_error = rc;
+			break;
+		}
+	}
 	if (do_acct)
 		nd_iostat_end(bio, start);
 
@@ -90,14 +114,14 @@ static blk_qc_t pmem_make_request(struct request_queue *q, struct bio *bio)
 static int pmem_rw_page(struct block_device *bdev, sector_t sector,
 		       struct page *page, int rw)
 {
-	struct pmem_device *pmem = bdev->bd_disk->private_data;
+	int rc;
 
-	pmem_do_bvec(pmem, page, PAGE_CACHE_SIZE, 0, rw, sector);
+	rc = pmem_do_bvec(bdev, page, PAGE_CACHE_SIZE, 0, rw, sector);
 	if (rw & WRITE)
 		wmb_pmem();
 	page_endio(page, rw & WRITE, 0);
 
-	return 0;
+	return rc;
 }
 
 static long pmem_direct_access(struct block_device *bdev, sector_t sector,
@@ -155,18 +179,20 @@ static struct pmem_device *pmem_alloc(struct device *dev,
 
 static void pmem_detach_disk(struct pmem_device *pmem)
 {
-	if (!pmem->pmem_disk)
+	struct gendisk *disk = pmem->pmem_disk;
+
+	if (!disk)
 		return;
 
-	del_gendisk(pmem->pmem_disk);
-	put_disk(pmem->pmem_disk);
-	blk_cleanup_queue(pmem->pmem_queue);
+	del_gendisk_queue(disk);
+	put_disk(disk);
 }
 
 static int pmem_attach_disk(struct device *dev,
 		struct nd_namespace_common *ndns, struct pmem_device *pmem)
 {
 	int nid = dev_to_node(dev);
+	struct badblocks *bb;
 	struct gendisk *disk;
 
 	pmem->pmem_queue = blk_alloc_queue_node(GFP_KERNEL, nid);
@@ -196,6 +222,15 @@ static int pmem_attach_disk(struct device *dev,
 	set_capacity(disk, (pmem->size - pmem->data_offset) / 512);
 	pmem->pmem_disk = disk;
 
+	bb = nvdimm_namespace_badblocks(ndns, pmem->data_offset);
+	if (IS_ERR(bb)) {
+		if (PTR_ERR(bb) == -ENOENT)
+			bb = NULL;
+		else
+			return PTR_ERR(bb);
+	}
+
+	disk->bb = bb;
 	add_disk(disk);
 	revalidate_disk(disk);
 
@@ -212,9 +247,14 @@ static int pmem_rw_bytes(struct nd_namespace_common *ndns,
 		return -EFAULT;
 	}
 
-	if (rw == READ)
+	if (rw == READ) {
+		unsigned int sz_align = ALIGN(size + (offset & (512 - 1)), 512);
+
+		if (unlikely(is_bad_pmem(ndns->bb, offset / 512,
+						sz_align)))
+			return -EIO;
 		memcpy_from_pmem(buf, pmem->virt_addr + offset, size);
-	else {
+	} else {
 		memcpy_to_pmem(pmem->virt_addr + offset, buf, size);
 		wmb_pmem();
 	}

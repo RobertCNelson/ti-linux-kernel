@@ -162,6 +162,7 @@ struct disk_part_tbl {
 };
 
 struct disk_events;
+struct badblocks;
 
 #if defined(CONFIG_BLK_DEV_INTEGRITY)
 
@@ -213,6 +214,7 @@ struct gendisk {
 	struct kobject integrity_kobj;
 #endif	/* CONFIG_BLK_DEV_INTEGRITY */
 	int node_id;
+	struct badblocks *bb;
 };
 
 static inline struct gendisk *part_to_disk(struct hd_struct *part)
@@ -431,6 +433,7 @@ extern void part_round_stats(int cpu, struct hd_struct *part);
 /* block/genhd.c */
 extern void add_disk(struct gendisk *disk);
 extern void del_gendisk(struct gendisk *gp);
+extern void del_gendisk_queue(struct gendisk *disk);
 extern struct gendisk *get_gendisk(dev_t dev, int *partno);
 extern struct block_device *bdget_disk(struct gendisk *disk, int partno);
 
