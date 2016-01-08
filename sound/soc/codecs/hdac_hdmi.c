@@ -67,9 +67,9 @@ struct hdac_hdmi_priv {
 
 static inline struct hdac_ext_device *to_hda_ext_device(struct device *dev)
 {
-	struct hdac_device *hdac = container_of(dev, struct hdac_device, dev);
+	struct hdac_device *hdac = dev_to_hdac_dev(dev);
 
-	return container_of(hdac, struct hdac_ext_device, hdac);
+	return to_ehdac_device(hdac);
 }
 
 static int hdac_hdmi_setup_stream(struct hdac_ext_device *hdac,
@@ -415,7 +415,7 @@ static int hdac_hdmi_parse_and_map_nid(struct hdac_ext_device *edev)
 	int cvt_nid = 0, pin_nid = 0;
 
 	num_nodes = snd_hdac_get_sub_nodes(hdac, hdac->afg, &nid);
-	if (!nid || num_nodes < 0) {
+	if (!nid || num_nodes <= 0) {
 		dev_warn(&hdac->dev, "HDMI: failed to get afg sub nodes\n");
 		return -EINVAL;
 	}
