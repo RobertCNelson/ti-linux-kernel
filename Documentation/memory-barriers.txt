@@ -232,7 +232,7 @@ And there are a number of things that _must_ or _must_not_ be assumed:
      with memory references that are not protected by READ_ONCE() and
      WRITE_ONCE().  Without them, the compiler is within its rights to
      do all sorts of "creative" transformations, which are covered in
-     the Compiler Barrier section.
+     the COMPILER BARRIER section.
 
  (*) It _must_not_ be assumed that independent loads and stores will be issued
      in the order given.  This means that for:
@@ -800,9 +800,13 @@ In summary:
       use smp_rmb(), smp_wmb(), or, in the case of prior stores and
       later loads, smp_mb().
 
-  (*) If both legs of the "if" statement begin with identical stores
-      to the same variable, a barrier() statement is required at the
-      beginning of each leg of the "if" statement.
+  (*) If both legs of the "if" statement begin with identical stores to
+      the same variable, then those stores must be ordered, either by
+      preceding both of them with smp_mb() or by using smp_store_release()
+      to carry out the stores.  Please note that it is -not- sufficient
+      to use barrier() at beginning of each leg of the "if" statement,
+      as optimizing compilers do not necessarily respect barrier()
+      in this case.
 
   (*) Control dependencies require at least one run-time conditional
       between the prior load and the subsequent store, and this
@@ -814,7 +818,7 @@ In summary:
   (*) Control dependencies require that the compiler avoid reordering the
       dependency into nonexistence.  Careful use of READ_ONCE() or
       atomic{,64}_read() can help to preserve your control dependency.
-      Please see the Compiler Barrier section for more information.
+      Please see the COMPILER BARRIER section for more information.
 
   (*) Control dependencies pair normally with other types of barriers.
 
