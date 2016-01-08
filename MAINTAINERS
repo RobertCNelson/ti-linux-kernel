@@ -12112,6 +12112,7 @@ F:	Documentation/devicetree/bindings/regulator/arizona-regulator.txt
 F:	Documentation/devicetree/bindings/mfd/arizona.txt
 F:	arch/arm/mach-s3c64xx/mach-crag6410*
 F:	drivers/clk/clk-wm83*.c
+F:	drivers/clk/clk-arizona.c
 F:	drivers/extcon/extcon-arizona.c
 F:	drivers/leds/leds-wm83*.c
 F:	drivers/gpio/gpio-*wm*.c

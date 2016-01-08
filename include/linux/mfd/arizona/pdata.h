@@ -87,6 +87,9 @@ struct arizona_pdata {
 	/** If a direct 32kHz clock is provided on an MCLK specify it here */
 	int clk32k_src;
 
+	/** Name of the parent clock for the 32k clock */
+	const char *clk32k_parent;
+
 	/** Mode for primary IRQ (defaults to active low) */
 	unsigned int irq_flags;
 
