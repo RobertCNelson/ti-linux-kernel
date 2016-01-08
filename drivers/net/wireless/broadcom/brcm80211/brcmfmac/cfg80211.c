@@ -236,10 +236,6 @@ struct parsed_vndr_ies {
 	struct parsed_vndr_ie_info ie_info[VNDR_IE_PARSE_LIMIT];
 };
 
-static int brcmf_roamoff;
-module_param_named(roamoff, brcmf_roamoff, int, S_IRUSR);
-MODULE_PARM_DESC(roamoff, "do not use internal roaming engine");
-
 
 static u16 chandef_to_chanspec(struct brcmu_d11inf *d11inf,
 			       struct cfg80211_chan_def *ch)
@@ -1448,8 +1444,13 @@ brcmf_cfg80211_leave_ibss(struct wiphy *wiphy, struct net_device *ndev)
 	struct brcmf_if *ifp = netdev_priv(ndev);
 
 	brcmf_dbg(TRACE, "Enter\n");
-	if (!check_vif_up(ifp->vif))
-		return -EIO;
+	if (!check_vif_up(ifp->vif)) {
+		/* When driver is being unloaded, it can end up here. If an
+		 * error is returned then later on a debug trace in the wireless
+		 * core module will be printed. To avoid this 0 is returned.
+		 */
+		return 0;
+	}
 
 	brcmf_link_down(ifp->vif, WLAN_REASON_DEAUTH_LEAVING);
 
@@ -2429,6 +2430,54 @@ static void brcmf_fill_bss_param(struct brcmf_if *ifp, struct station_info *si)
 }
 
 static s32
+brcmf_cfg80211_get_station_ibss(struct brcmf_if *ifp,
+				struct station_info *sinfo)
+{
+	struct brcmf_scb_val_le scbval;
+	struct brcmf_pktcnt_le pktcnt;
+	s32 err;
+	u32 rate;
+	u32 rssi;
+
+	/* Get the current tx rate */
+	err = brcmf_fil_cmd_int_get(ifp, BRCMF_C_GET_RATE, &rate);
+	if (err < 0) {
+		brcmf_err("BRCMF_C_GET_RATE error (%d)\n", err);
+		return err;
+	}
+	sinfo->filled |= BIT(NL80211_STA_INFO_TX_BITRATE);
+	sinfo->txrate.legacy = rate * 5;
+
+	memset(&scbval, 0, sizeof(scbval));
+	err = brcmf_fil_cmd_data_get(ifp, BRCMF_C_GET_RSSI, &scbval,
+				     sizeof(scbval));
+	if (err) {
+		brcmf_err("BRCMF_C_GET_RSSI error (%d)\n", err);
+		return err;
+	}
+	rssi = le32_to_cpu(scbval.val);
+	sinfo->filled |= BIT(NL80211_STA_INFO_SIGNAL);
+	sinfo->signal = rssi;
+
+	err = brcmf_fil_cmd_data_get(ifp, BRCMF_C_GET_GET_PKTCNTS, &pktcnt,
+				     sizeof(pktcnt));
+	if (err) {
+		brcmf_err("BRCMF_C_GET_GET_PKTCNTS error (%d)\n", err);
+		return err;
+	}
+	sinfo->filled |= BIT(NL80211_STA_INFO_RX_PACKETS) |
+			 BIT(NL80211_STA_INFO_RX_DROP_MISC) |
+			 BIT(NL80211_STA_INFO_TX_PACKETS) |
+			 BIT(NL80211_STA_INFO_TX_FAILED);
+	sinfo->rx_packets = le32_to_cpu(pktcnt.rx_good_pkt);
+	sinfo->rx_dropped_misc = le32_to_cpu(pktcnt.rx_bad_pkt);
+	sinfo->tx_packets = le32_to_cpu(pktcnt.tx_good_pkt);
+	sinfo->tx_failed  = le32_to_cpu(pktcnt.tx_bad_pkt);
+
+	return 0;
+}
+
+static s32
 brcmf_cfg80211_get_station(struct wiphy *wiphy, struct net_device *ndev,
 			   const u8 *mac, struct station_info *sinfo)
 {
@@ -2444,6 +2493,9 @@ brcmf_cfg80211_get_station(struct wiphy *wiphy, struct net_device *ndev,
 	brcmf_dbg(TRACE, "Enter, MAC %pM\n", mac);
 	if (!check_vif_up(ifp->vif))
 		return -EIO;
+
+	if (brcmf_is_ibssmode(ifp->vif))
+		return brcmf_cfg80211_get_station_ibss(ifp, sinfo);
 
 	memset(&sta_info_le, 0, sizeof(sta_info_le));
 	memcpy(&sta_info_le, mac, ETH_ALEN);
@@ -3493,9 +3545,14 @@ static int brcmf_dev_pno_clean(struct net_device *ndev)
 	return ret;
 }
 
-static int brcmf_dev_pno_config(struct net_device *ndev)
+static int brcmf_dev_pno_config(struct brcmf_if *ifp,
+				struct cfg80211_sched_scan_request *request)
 {
 	struct brcmf_pno_param_le pfn_param;
+	struct brcmf_pno_macaddr_le pfn_mac;
+	s32 err;
+	u8 *mac_mask;
+	int i;
 
 	memset(&pfn_param, 0, sizeof(pfn_param));
 	pfn_param.version = cpu_to_le32(BRCMF_PNO_VERSION);
@@ -3508,8 +3565,37 @@ static int brcmf_dev_pno_config(struct net_device *ndev)
 	/* set up pno scan fr */
 	pfn_param.scan_freq = cpu_to_le32(BRCMF_PNO_TIME);
 
-	return brcmf_fil_iovar_data_set(netdev_priv(ndev), "pfn_set",
-					&pfn_param, sizeof(pfn_param));
+	err = brcmf_fil_iovar_data_set(ifp, "pfn_set", &pfn_param,
+				       sizeof(pfn_param));
+	if (err) {
+		brcmf_err("pfn_set failed, err=%d\n", err);
+		return err;
+	}
+
+	/* Find out if mac randomization should be turned on */
+	if (!(request->flags & NL80211_SCAN_FLAG_RANDOM_ADDR))
+		return 0;
+
+	pfn_mac.version = BRCMF_PFN_MACADDR_CFG_VER;
+	pfn_mac.flags = BRCMF_PFN_MAC_OUI_ONLY | BRCMF_PFN_SET_MAC_UNASSOC;
+
+	memcpy(pfn_mac.mac, request->mac_addr, ETH_ALEN);
+	mac_mask = request->mac_addr_mask;
+	for (i = 0; i < ETH_ALEN; i++) {
+		pfn_mac.mac[i] &= mac_mask[i];
+		pfn_mac.mac[i] |= get_random_int() & ~(mac_mask[i]);
+	}
+	/* Clear multi bit */
+	pfn_mac.mac[0] &= 0xFE;
+	/* Set locally administered */
+	pfn_mac.mac[0] |= 0x02;
+
+	err = brcmf_fil_iovar_data_set(ifp, "pfn_macaddr", &pfn_mac,
+				       sizeof(pfn_mac));
+	if (err)
+		brcmf_err("pfn_macaddr failed, err=%d\n", err);
+
+	return err;
 }
 
 static int
@@ -3563,11 +3649,8 @@ brcmf_cfg80211_sched_scan_start(struct wiphy *wiphy,
 		}
 
 		/* configure pno */
-		ret = brcmf_dev_pno_config(ndev);
-		if (ret < 0) {
-			brcmf_err("PNO setup failed!! ret=%d\n", ret);
+		if (brcmf_dev_pno_config(ifp, request))
 			return -EINVAL;
-		}
 
 		/* configure each match set */
 		for (i = 0; i < request->n_match_sets; i++) {
@@ -5308,7 +5391,7 @@ static s32 brcmf_dongle_roam(struct brcmf_if *ifp)
 	__le32 roam_delta[2];
 
 	/* Configure beacon timeout value based upon roaming setting */
-	if (brcmf_roamoff)
+	if (ifp->drvr->settings->roamoff)
 		bcn_timeout = BRCMF_DEFAULT_BCN_TIMEOUT_ROAM_OFF;
 	else
 		bcn_timeout = BRCMF_DEFAULT_BCN_TIMEOUT_ROAM_ON;
@@ -5322,8 +5405,9 @@ static s32 brcmf_dongle_roam(struct brcmf_if *ifp)
 	 * roaming.
 	 */
 	brcmf_dbg(INFO, "Internal Roaming = %s\n",
-		  brcmf_roamoff ? "Off" : "On");
-	err = brcmf_fil_iovar_int_set(ifp, "roam_off", !!(brcmf_roamoff));
+		  ifp->drvr->settings->roamoff ? "Off" : "On");
+	err = brcmf_fil_iovar_int_set(ifp, "roam_off",
+				      ifp->drvr->settings->roamoff);
 	if (err) {
 		brcmf_err("roam_off error (%d)\n", err);
 		goto roam_setup_done;
@@ -5995,7 +6079,7 @@ static int brcmf_setup_wiphy(struct wiphy *wiphy, struct brcmf_if *ifp)
 			WIPHY_FLAG_HAS_REMAIN_ON_CHANNEL;
 	if (brcmf_feat_is_enabled(ifp, BRCMF_FEAT_TDLS))
 		wiphy->flags |= WIPHY_FLAG_SUPPORTS_TDLS;
-	if (!brcmf_roamoff)
+	if (!ifp->drvr->settings->roamoff)
 		wiphy->flags |= WIPHY_FLAG_SUPPORTS_FW_ROAM;
 	wiphy->mgmt_stypes = brcmf_txrx_stypes;
 	wiphy->max_remain_on_channel_duration = 5000;
@@ -6402,6 +6486,15 @@ struct brcmf_cfg80211_info *brcmf_cfg80211_attach(struct brcmf_pub *drvr,
 	if (err) {
 		brcmf_err("FWEH activation failed (%d)\n", err);
 		goto wiphy_unreg_out;
+	}
+
+	/* Fill in some of the advertised nl80211 supported features */
+	if (brcmf_feat_is_enabled(ifp, BRCMF_FEAT_SCAN_RANDOM_MAC)) {
+		wiphy->features |= NL80211_FEATURE_SCHED_SCAN_RANDOM_MAC_ADDR;
+#ifdef CONFIG_PM
+		if (wiphy->wowlan->flags & WIPHY_WOWLAN_NET_DETECT)
+			wiphy->features |= NL80211_FEATURE_ND_RANDOM_MAC_ADDR;
+#endif
 	}
 
 	return cfg;
