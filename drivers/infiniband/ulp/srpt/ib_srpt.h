@@ -364,11 +364,9 @@ struct srpt_port {
 	u16			sm_lid;
 	u16			lid;
 	union ib_gid		gid;
-	spinlock_t		port_acl_lock;
 	struct work_struct	work;
 	struct se_portal_group	port_tpg_1;
 	struct se_wwn		port_wwn;
-	struct list_head	port_acl_list;
 	struct srpt_port_attrib port_attrib;
 };
 
