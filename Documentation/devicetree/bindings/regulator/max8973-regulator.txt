@@ -31,6 +31,11 @@ Optional properties:
 		property is available then etr will be enable default.
 
 Enhanced transient response (ETR) will affect the configuration of CKADV.
+-maxim,junction-temp-warning: Junction temp warning on which device generates
+		warning interrupts. This is in millicelcius.
+
+Please note that thermal functionality is only supported on MAX77621. The
+threshold warning supported by MAX77621 are 120 degC and 140 degC.
 
 Example:
 
