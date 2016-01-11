@@ -626,11 +626,11 @@ raid5_get_active_stripe(struct r5conf *conf, sector_t sector,
 			int previous, int noblock, int noquiesce);
 extern int r5l_init_log(struct r5conf *conf, struct md_rdev *rdev);
 extern void r5l_exit_log(struct r5l_log *log);
-extern int r5l_write_stripe(struct r5l_log *log, struct stripe_head *head_sh);
-extern void r5l_write_stripe_run(struct r5l_log *log);
-extern void r5l_flush_stripe_to_raid(struct r5l_log *log);
+extern int r5l_write_stripe(struct r5conf *conf, struct stripe_head *head_sh);
+extern void r5l_write_stripe_run(struct r5conf *conf);
+extern void r5l_flush_stripe_to_raid(struct r5conf *conf);
 extern void r5l_stripe_write_finished(struct stripe_head *sh);
-extern int r5l_handle_flush_request(struct r5l_log *log, struct bio *bio);
-extern void r5l_quiesce(struct r5l_log *log, int state);
+extern int r5l_handle_flush_request(struct r5conf *conf, struct bio *bio);
+extern void r5l_quiesce(struct r5conf *conf, int state);
 extern bool r5l_log_disk_error(struct r5conf *conf);
 #endif
