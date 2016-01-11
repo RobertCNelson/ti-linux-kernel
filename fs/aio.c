@@ -200,6 +200,7 @@ struct aio_kiocb {
 	struct task_struct	*ki_submit_task;
 #if IS_ENABLED(CONFIG_AIO_THREAD)
 	struct task_struct	*ki_cancel_task;
+	unsigned long		ki_data;
 	unsigned long		ki_rlimit_fsize;
 	aio_thread_work_fn_t	ki_work_fn;
 	struct work_struct	ki_work;
@@ -225,6 +226,7 @@ static const struct address_space_operations aio_ctx_aops;
 
 static void aio_complete(struct kiocb *kiocb, long res, long res2);
 ssize_t aio_fsync(struct kiocb *iocb, int datasync);
+long aio_poll(struct aio_kiocb *iocb);
 
 static __always_inline bool aio_may_use_threads(void)
 {
@@ -1675,6 +1677,45 @@ ssize_t aio_fsync(struct kiocb *iocb, int datasync)
 	return aio_thread_queue_iocb(req, datasync ? aio_thread_op_fdatasync
 						   : aio_thread_op_fsync, 0);
 }
+
+static long aio_thread_op_poll(struct aio_kiocb *iocb)
+{
+	struct file *file = iocb->common.ki_filp;
+	short events = iocb->ki_data;
+	struct poll_wqueues table;
+	unsigned int mask;
+	ssize_t ret = 0;
+
+	poll_initwait(&table);
+	events |= POLLERR | POLLHUP;
+
+	for (;;) {
+		mask = DEFAULT_POLLMASK;
+		if (file->f_op && file->f_op->poll) {
+			table.pt._key = events;
+			mask = file->f_op->poll(file, &table.pt);
+		}
+		/* Mask out unneeded events. */
+		mask &= events;
+		ret = mask;
+		if (mask)
+			break;
+
+		ret = -EINTR;
+		if (signal_pending(current))
+			break;
+
+		poll_schedule_timeout(&table, TASK_INTERRUPTIBLE, NULL, 0);
+	}
+
+	poll_freewait(&table);
+	return ret;
+}
+
+long aio_poll(struct aio_kiocb *req)
+{
+	return aio_thread_queue_iocb(req, aio_thread_op_poll, 0);
+}
 #endif /* IS_ENABLED(CONFIG_AIO_THREAD) */
 
 /*
@@ -1762,6 +1803,11 @@ rw_common:
 			ret = file->f_op->aio_fsync(&req->common, 0);
 		else if (file->f_op->fsync && (aio_may_use_threads()))
 			ret = aio_fsync(&req->common, 0);
+		break;
+
+	case IOCB_CMD_POLL:
+		if (aio_may_use_threads())
+			ret = aio_poll(req);
 		break;
 
 	default:
