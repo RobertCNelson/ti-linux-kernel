@@ -34,12 +34,14 @@ static inline struct nd_device_driver *to_nd_device_driver(
  * @force_raw: ignore other personalities for the namespace (e.g. btt)
  * @dev: device model node
  * @claim: when set a another personality has taken ownership of the namespace
+ * @bb: badblocks list only valid while namespace is active
  * @rw_bytes: access the raw namespace capacity with byte-aligned transfers
  */
 struct nd_namespace_common {
 	int force_raw;
 	struct device dev;
 	struct device *claim;
+	struct badblocks *bb;
 	int (*rw_bytes)(struct nd_namespace_common *, resource_size_t offset,
 			void *buf, size_t size, int rw);
 };

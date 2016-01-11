@@ -1388,6 +1388,7 @@ int nvdimm_namespace_attach_btt(struct nd_namespace_common *ndns)
 {
 	struct nd_btt *nd_btt = to_nd_btt(ndns->claim);
 	struct nd_region *nd_region;
+	struct badblocks *bb;
 	struct btt *btt;
 	size_t rawsize;
 
@@ -1398,6 +1399,16 @@ int nvdimm_namespace_attach_btt(struct nd_namespace_common *ndns)
 	if (rawsize < ARENA_MIN_SIZE) {
 		return -ENXIO;
 	}
+
+	bb = nvdimm_namespace_badblocks(ndns, 0);
+	if (IS_ERR(bb)) {
+		if (PTR_ERR(bb) == -ENOENT)
+			bb = NULL;
+		else
+			return PTR_ERR(bb);
+	}
+
+	ndns->bb = bb;
 	nd_region = to_nd_region(nd_btt->dev.parent);
 	btt = btt_init(nd_btt, rawsize, nd_btt->lbasize, nd_btt->uuid,
 			nd_region);
