@@ -232,10 +232,10 @@ static int acpi_memory_enable_device(struct acpi_memory_device *mem_device)
 
 		/*
 		 * If the memory block has been used by the kernel, add_memory()
-		 * returns -EEXIST. If add_memory() returns the other error, it
+		 * returns -EBUSY. If add_memory() returns the other error, it
 		 * means that this memory block is not used by the kernel.
 		 */
-		if (result && result != -EEXIST)
+		if (result && result != -EBUSY)
 			continue;
 
 		result = acpi_bind_memory_blocks(info, mem_device->device);
