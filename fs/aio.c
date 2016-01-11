@@ -1992,7 +1992,7 @@ long aio_renameat(struct aio_kiocb *iocb, struct iocb *user_iocb)
 	if (user_iocb->aio_offset)
 		return -EINVAL;
 
-	user_info = (const void * __user)user_iocb->aio_buf;
+	user_info = (const void * __user)(long)user_iocb->aio_buf;
 	if (unlikely(!access_ok(VERIFY_READ, user_info,
 				sizeof(struct renameat_info))))
 		return -EFAULT;
