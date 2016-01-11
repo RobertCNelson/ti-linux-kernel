@@ -1,0 +1,13 @@
+Importing jdelvare-hwmon based on 4.4-rc8
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 168309855a7d1e16db751e9c647119fe2d2dc878
+HEAD is now at 168309855a7d Linux 4.4-rc8
+$ git am --patch-format=mbox ../quilt/jdelvare-hwmon/hwmon-emc2103-fix-typo-in-module_parm_desc.patch
+Applying: hwmon: (emc2103) Fix typo in MODULE_PARM_DESC
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:jdelvare-hwmon/master
+From ../quilt-tmp
+ + 69bb8a38c5a9...ef0303d2bba0 master     -> jdelvare-hwmon/master  (forced update)
+Importing dmi based on 4.4-rc8
+Unchanged quilt series dmi
