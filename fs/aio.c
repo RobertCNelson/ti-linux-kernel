@@ -240,6 +240,7 @@ long aio_do_unlinkat(int fd, const char *filename, int flags, int mode);
 long aio_foo_at(struct aio_kiocb *req, do_foo_at_t do_foo_at);
 
 long aio_readahead(struct aio_kiocb *iocb, unsigned long len);
+long aio_renameat(struct aio_kiocb *iocb, struct iocb *user_iocb);
 
 static __always_inline bool aio_may_use_threads(void)
 {
@@ -1946,6 +1947,63 @@ long aio_readahead(struct aio_kiocb *iocb, unsigned long len)
 		return aio_thread_queue_iocb(iocb, aio_thread_op_readahead, 0);
 	return len;
 }
+
+static long aio_thread_op_renameat(struct aio_kiocb *iocb)
+{
+	const void * __user user_info = (void * __user)iocb->common.private;
+	struct renameat_info info;
+	const char * __user old;
+	const char * __user new;
+	int olddir, newdir;
+	unsigned flags;
+	long ret;
+
+	use_mm(aio_get_mm(&iocb->common));
+	if (unlikely(copy_from_user(&info, user_info, sizeof(info)))) {
+		ret = -EFAULT;
+		goto done;
+	}
+
+	old = (const char * __user)(unsigned long)info.oldpath;
+	new = (const char * __user)(unsigned long)info.newpath;
+	olddir = info.olddirfd;
+	newdir = info.newdirfd;
+	flags = info.flags;
+
+	if (((unsigned long)old != info.oldpath) ||
+	    ((unsigned long)new != info.newpath) ||
+	    (olddir != info.olddirfd) ||
+	    (newdir != info.newdirfd) ||
+	    (flags != info.flags))
+		ret = -EINVAL;
+	else
+		ret = sys_renameat2(olddir, old, newdir, new, flags);
+done:
+	unuse_mm(aio_get_mm(&iocb->common));
+	return ret;
+}
+
+long aio_renameat(struct aio_kiocb *iocb, struct iocb *user_iocb)
+{
+	const void * __user user_info;
+
+	if (user_iocb->aio_nbytes != sizeof(struct renameat_info))
+		return -EINVAL;
+	if (user_iocb->aio_offset)
+		return -EINVAL;
+
+	user_info = (const void * __user)user_iocb->aio_buf;
+	if (unlikely(!access_ok(VERIFY_READ, user_info,
+				sizeof(struct renameat_info))))
+		return -EFAULT;
+
+	iocb->common.private = (void *)user_info;
+	return aio_thread_queue_iocb(iocb, aio_thread_op_renameat,
+				     AIO_THREAD_NEED_TASK |
+				     AIO_THREAD_NEED_FS |
+				     AIO_THREAD_NEED_FILES |
+				     AIO_THREAD_NEED_CRED);
+}
 #endif /* IS_ENABLED(CONFIG_AIO_THREAD) */
 
 /*
@@ -2061,6 +2119,11 @@ rw_common:
 			return -EINVAL;
 		if (aio_may_use_threads())
 			ret = aio_readahead(req, user_iocb->aio_nbytes);
+		break;
+
+	case IOCB_CMD_RENAMEAT:
+		if (aio_may_use_threads())
+			ret = aio_renameat(req, user_iocb);
 		break;
 
 	default:
