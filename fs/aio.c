@@ -232,7 +232,11 @@ static const struct address_space_operations aio_ctx_aops;
 static void aio_complete(struct kiocb *kiocb, long res, long res2);
 ssize_t aio_fsync(struct kiocb *iocb, int datasync);
 long aio_poll(struct aio_kiocb *iocb);
-long aio_openat(struct aio_kiocb *req);
+
+typedef long (*do_foo_at_t)(int fd, const char *filename, int flags, int mode);
+long aio_do_openat(int fd, const char *filename, int flags, int mode);
+long aio_do_unlinkat(int fd, const char *filename, int flags, int mode);
+long aio_foo_at(struct aio_kiocb *req, do_foo_at_t do_foo_at);
 
 static __always_inline bool aio_may_use_threads(void)
 {
@@ -1763,7 +1767,19 @@ long aio_poll(struct aio_kiocb *req)
 	return aio_thread_queue_iocb(req, aio_thread_op_poll, 0);
 }
 
-static long aio_thread_op_openat(struct aio_kiocb *req)
+long aio_do_openat(int fd, const char *filename, int flags, int mode)
+{
+	return do_sys_open(fd, filename, flags, mode);
+}
+
+long aio_do_unlinkat(int fd, const char *filename, int flags, int mode)
+{
+	if (flags || mode)
+		return -EINVAL;
+	return do_unlinkat(fd, filename);
+}
+
+static long aio_thread_op_foo_at(struct aio_kiocb *req)
 {
 	u64 buf, offset;
 	long ret;
@@ -1777,18 +1793,21 @@ static long aio_thread_op_openat(struct aio_kiocb *req)
 	else if (unlikely(__get_user(offset, &req->ki_user_iocb->aio_offset)))
 		ret = -EFAULT;
 	else {
-		ret = do_sys_open((s32)fd,
-				  (const char __user *)(long)buf,
-				  (int)offset,
-				  (unsigned short)(offset >> 32));
+		do_foo_at_t do_foo_at = (void *)req->ki_data;
+
+		ret = do_foo_at((s32)fd,
+				(const char __user *)(long)buf,
+				(int)offset,
+				(unsigned short)(offset >> 32));
 	}
 	unuse_mm(req->ki_ctx->mm);
 	return ret;
 }
 
-long aio_openat(struct aio_kiocb *req)
+long aio_foo_at(struct aio_kiocb *req, do_foo_at_t do_foo_at)
 {
-	return aio_thread_queue_iocb(req, aio_thread_op_openat,
+	req->ki_data = (unsigned long)(void *)do_foo_at;
+	return aio_thread_queue_iocb(req, aio_thread_op_foo_at,
 				     AIO_THREAD_NEED_TASK |
 				     AIO_THREAD_NEED_FILES |
 				     AIO_THREAD_NEED_CRED);
@@ -1895,7 +1914,12 @@ rw_common:
 
 	case IOCB_CMD_OPENAT:
 		if (aio_may_use_threads())
-			ret = aio_openat(req);
+			ret = aio_foo_at(req, aio_do_openat);
+		break;
+
+	case IOCB_CMD_UNLINKAT:
+		if (aio_may_use_threads())
+			ret = aio_foo_at(req, aio_do_unlinkat);
 		break;
 
 	default:

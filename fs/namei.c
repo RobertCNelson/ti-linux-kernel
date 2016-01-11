@@ -3828,7 +3828,7 @@ EXPORT_SYMBOL(vfs_unlink);
  * writeout happening, and we don't want to prevent access to the directory
  * while waiting on the I/O.
  */
-static long do_unlinkat(int dfd, const char __user *pathname)
+long do_unlinkat(int dfd, const char __user *pathname)
 {
 	int error;
 	struct filename *name;

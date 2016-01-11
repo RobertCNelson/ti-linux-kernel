@@ -46,6 +46,7 @@ enum {
 	IOCB_CMD_PWRITEV = 8,
 
 	IOCB_CMD_OPENAT = 9,
+	IOCB_CMD_UNLINKAT = 10,
 };
 
 /*
