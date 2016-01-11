@@ -125,6 +125,7 @@ static int btrfs_relocate_sys_chunks(struct btrfs_root *root);
 static void __btrfs_reset_dev_stats(struct btrfs_device *dev);
 static void btrfs_dev_stat_print_on_error(struct btrfs_device *dev);
 static void btrfs_dev_stat_print_on_load(struct btrfs_device *device);
+static void btrfs_close_one_device(struct btrfs_device *device);
 
 DEFINE_MUTEX(uuid_mutex);
 static LIST_HEAD(fs_uuids);
@@ -4793,7 +4794,7 @@ int btrfs_finish_chunk_alloc(struct btrfs_trans_handle *trans,
 	u64 dev_offset;
 	u64 stripe_size;
 	int i = 0;
-	int ret;
+	int ret = 0;
 
 	em_tree = &extent_root->fs_info->mapping_tree.map_tree;
 	read_lock(&em_tree->lock);
@@ -4824,20 +4825,32 @@ int btrfs_finish_chunk_alloc(struct btrfs_trans_handle *trans,
 		goto out;
 	}
 
+	/*
+	 * Take the device list mutex to prevent races with the final phase of
+	 * a device replace operation that replaces the device object associated
+	 * with the map's stripes, because the device object's id can change
+	 * at any time during that final phase of the device replace operation
+	 * (dev-replace.c:btrfs_dev_replace_finishing()).
+	 */
+	mutex_lock(&chunk_root->fs_info->fs_devices->device_list_mutex);
 	for (i = 0; i < map->num_stripes; i++) {
 		device = map->stripes[i].dev;
 		dev_offset = map->stripes[i].physical;
 
 		ret = btrfs_update_device(trans, device);
 		if (ret)
-			goto out;
+			break;
 		ret = btrfs_alloc_dev_extent(trans, device,
 					     chunk_root->root_key.objectid,
 					     BTRFS_FIRST_CHUNK_TREE_OBJECTID,
 					     chunk_offset, dev_offset,
 					     stripe_size);
 		if (ret)
-			goto out;
+			break;
+	}
+	if (ret) {
+		mutex_unlock(&chunk_root->fs_info->fs_devices->device_list_mutex);
+		goto out;
 	}
 
 	stripe = &chunk->stripe;
@@ -4850,6 +4863,7 @@ int btrfs_finish_chunk_alloc(struct btrfs_trans_handle *trans,
 		memcpy(stripe->dev_uuid, device->uuid, BTRFS_UUID_SIZE);
 		stripe++;
 	}
+	mutex_unlock(&chunk_root->fs_info->fs_devices->device_list_mutex);
 
 	btrfs_set_stack_chunk_length(chunk, chunk_size);
 	btrfs_set_stack_chunk_owner(chunk, extent_root->root_key.objectid);
@@ -6465,11 +6479,11 @@ int btrfs_read_sys_array(struct btrfs_root *root)
 	sb = btrfs_find_create_tree_block(root, BTRFS_SUPER_INFO_OFFSET);
 	if (!sb)
 		return -ENOMEM;
-	btrfs_set_buffer_uptodate(sb);
+	set_extent_buffer_uptodate(sb);
 	btrfs_set_buffer_lockdep_class(root->root_key.objectid, sb, 0);
 	/*
 	 * The sb extent buffer is artifical and just used to read the system array.
-	 * btrfs_set_buffer_uptodate() call does not properly mark all it's
+	 * set_extent_buffer_uptodate() call does not properly mark all it's
 	 * pages up-to-date when the page is larger: extent does not cover the
 	 * whole page and consequently check_page_uptodate does not find all
 	 * the page's extents up-to-date (the hole beyond sb),
@@ -6949,7 +6963,7 @@ void btrfs_reset_fs_info_ptr(struct btrfs_fs_info *fs_info)
 	}
 }
 
-void btrfs_close_one_device(struct btrfs_device *device)
+static void btrfs_close_one_device(struct btrfs_device *device)
 {
 	struct btrfs_fs_devices *fs_devices = device->fs_devices;
 	struct btrfs_device *new_device;
