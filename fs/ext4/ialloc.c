@@ -740,7 +740,7 @@ out:
 struct inode *__ext4_new_inode(handle_t *handle, struct inode *dir,
 			       umode_t mode, const struct qstr *qstr,
 			       __u32 goal, uid_t *owner, int handle_type,
-			       unsigned int line_no, int nblocks)
+			       unsigned int line_no, int nblocks, int flags)
 {
 	struct super_block *sb;
 	struct buffer_head *inode_bitmap_bh = NULL;
@@ -762,7 +762,8 @@ struct inode *__ext4_new_inode(handle_t *handle, struct inode *dir,
 	if (!dir || !dir->i_nlink)
 		return ERR_PTR(-EPERM);
 
-	if ((ext4_encrypted_inode(dir) ||
+	if (!(flags & EXT4_NEW_INODE_NOENCRYPT) &&
+	    (ext4_encrypted_inode(dir) ||
 	     DUMMY_ENCRYPTION_ENABLED(EXT4_SB(dir->i_sb))) &&
 	    (S_ISREG(mode) || S_ISDIR(mode) || S_ISLNK(mode))) {
 		err = ext4_get_encryption_info(dir);
@@ -799,6 +800,13 @@ struct inode *__ext4_new_inode(handle_t *handle, struct inode *dir,
 		inode->i_gid = dir->i_gid;
 	} else
 		inode_init_owner(inode, dir, mode);
+
+	if (EXT4_HAS_RO_COMPAT_FEATURE(sb, EXT4_FEATURE_RO_COMPAT_PROJECT) &&
+	    ext4_test_inode_flag(dir, EXT4_INODE_PROJINHERIT))
+		ei->i_projid = EXT4_I(dir)->i_projid;
+	else
+		ei->i_projid = make_kprojid(&init_user_ns, EXT4_DEF_PROJID);
+
 	err = dquot_initialize(inode);
 	if (err)
 		goto out;
