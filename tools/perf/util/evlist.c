@@ -18,7 +18,7 @@
 #include <unistd.h>
 
 #include "parse-events.h"
-#include "parse-options.h"
+#include <subcmd/parse-options.h>
 
 #include <sys/mman.h>
 
@@ -336,20 +336,12 @@ static int perf_evlist__nr_threads(struct perf_evlist *evlist,
 
 void perf_evlist__disable(struct perf_evlist *evlist)
 {
-	int cpu, thread;
 	struct perf_evsel *pos;
-	int nr_cpus = cpu_map__nr(evlist->cpus);
-	int nr_threads;
 
-	for (cpu = 0; cpu < nr_cpus; cpu++) {
-		evlist__for_each(evlist, pos) {
-			if (!perf_evsel__is_group_leader(pos) || !pos->fd)
-				continue;
-			nr_threads = perf_evlist__nr_threads(evlist, pos);
-			for (thread = 0; thread < nr_threads; thread++)
-				ioctl(FD(pos, cpu, thread),
-				      PERF_EVENT_IOC_DISABLE, 0);
-		}
+	evlist__for_each(evlist, pos) {
+		if (!perf_evsel__is_group_leader(pos) || !pos->fd)
+			continue;
+		perf_evsel__disable(pos);
 	}
 
 	evlist->enabled = false;
@@ -357,20 +349,12 @@ void perf_evlist__disable(struct perf_evlist *evlist)
 
 void perf_evlist__enable(struct perf_evlist *evlist)
 {
-	int cpu, thread;
 	struct perf_evsel *pos;
-	int nr_cpus = cpu_map__nr(evlist->cpus);
-	int nr_threads;
 
-	for (cpu = 0; cpu < nr_cpus; cpu++) {
-		evlist__for_each(evlist, pos) {
-			if (!perf_evsel__is_group_leader(pos) || !pos->fd)
-				continue;
-			nr_threads = perf_evlist__nr_threads(evlist, pos);
-			for (thread = 0; thread < nr_threads; thread++)
-				ioctl(FD(pos, cpu, thread),
-				      PERF_EVENT_IOC_ENABLE, 0);
-		}
+	evlist__for_each(evlist, pos) {
+		if (!perf_evsel__is_group_leader(pos) || !pos->fd)
+			continue;
+		perf_evsel__enable(pos);
 	}
 
 	evlist->enabled = true;
@@ -550,9 +534,9 @@ void perf_evlist__id_add(struct perf_evlist *evlist, struct perf_evsel *evsel,
 	evsel->id[evsel->ids++] = id;
 }
 
-static int perf_evlist__id_add_fd(struct perf_evlist *evlist,
-				  struct perf_evsel *evsel,
-				  int cpu, int thread, int fd)
+int perf_evlist__id_add_fd(struct perf_evlist *evlist,
+			   struct perf_evsel *evsel,
+			   int cpu, int thread, int fd)
 {
 	u64 read_data[4] = { 0, };
 	int id_idx = 1; /* The first entry is the counter value */
