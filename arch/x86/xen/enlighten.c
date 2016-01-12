@@ -1192,7 +1192,7 @@ static const struct pv_info xen_info __initconst = {
 #ifdef CONFIG_X86_64
 	.extra_user_64bit_cs = FLAT_USER_CS64,
 #endif
-
+	.features = 0,
 	.name = "Xen",
 };
 
@@ -1229,10 +1229,7 @@ static const struct pv_cpu_ops xen_cpu_ops __initconst = {
 
 	.iret = xen_iret,
 #ifdef CONFIG_X86_64
-	.usergs_sysret32 = xen_sysret32,
 	.usergs_sysret64 = xen_sysret64,
-#else
-	.irq_enable_sysexit = xen_sysexit,
 #endif
 
 	.load_tr_desc = paravirt_nop,
@@ -1263,12 +1260,6 @@ static const struct pv_cpu_ops xen_cpu_ops __initconst = {
 
 	.start_context_switch = paravirt_start_context_switch,
 	.end_context_switch = xen_end_context_switch,
-};
-
-static const struct pv_apic_ops xen_apic_ops __initconst = {
-#ifdef CONFIG_X86_LOCAL_APIC
-	.startup_ipi_hook = paravirt_nop,
-#endif
 };
 
 static void xen_reboot(int reason)
@@ -1535,8 +1526,9 @@ asmlinkage __visible void __init xen_start_kernel(void)
 
 	/* Install Xen paravirt ops */
 	pv_info = xen_info;
+	if (xen_initial_domain())
+		pv_info.features |= PV_SUPPORTED_RTC;
 	pv_init_ops = xen_init_ops;
-	pv_apic_ops = xen_apic_ops;
 	if (!xen_pvh_domain()) {
 		pv_cpu_ops = xen_cpu_ops;
 
@@ -1886,8 +1878,10 @@ EXPORT_SYMBOL_GPL(xen_hvm_need_lapic);
 
 static void xen_set_cpu_features(struct cpuinfo_x86 *c)
 {
-	if (xen_pv_domain())
+	if (xen_pv_domain()) {
 		clear_cpu_bug(c, X86_BUG_SYSRET_SS_ATTRS);
+		set_cpu_cap(c, X86_FEATURE_XENPV);
+	}
 }
 
 const struct hypervisor_x86 x86_hyper_xen = {
