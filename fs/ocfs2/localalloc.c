@@ -358,8 +358,7 @@ int ocfs2_load_local_alloc(struct ocfs2_super *osb)
 bail:
 	if (status < 0)
 		brelse(alloc_bh);
-	if (inode)
-		iput(inode);
+	iput(inode);
 
 	trace_ocfs2_load_local_alloc(osb->local_alloc_bits);
 
@@ -387,7 +386,7 @@ void ocfs2_shutdown_local_alloc(struct ocfs2_super *osb)
 	struct ocfs2_dinode *alloc = NULL;
 
 	cancel_delayed_work(&osb->la_enable_wq);
-	flush_workqueue(ocfs2_wq);
+	flush_workqueue(osb->ocfs2_wq);
 
 	if (osb->local_alloc_state == OCFS2_LA_UNUSED)
 		goto out;
@@ -473,8 +472,7 @@ out_mutex:
 	iput(main_bm_inode);
 
 out:
-	if (local_alloc_inode)
-		iput(local_alloc_inode);
+	iput(local_alloc_inode);
 
 	kfree(alloc_copy);
 }
@@ -1087,7 +1085,7 @@ static int ocfs2_recalc_la_window(struct ocfs2_super *osb,
 		} else {
 			osb->local_alloc_state = OCFS2_LA_DISABLED;
 		}
-		queue_delayed_work(ocfs2_wq, &osb->la_enable_wq,
+		queue_delayed_work(osb->ocfs2_wq, &osb->la_enable_wq,
 				   OCFS2_LA_ENABLE_INTERVAL);
 		goto out_unlock;
 	}
@@ -1327,9 +1325,7 @@ bail:
 
 	brelse(main_bm_bh);
 
-	if (main_bm_inode)
-		iput(main_bm_inode);
-
+	iput(main_bm_inode);
 	kfree(alloc_copy);
 
 	if (ac)
