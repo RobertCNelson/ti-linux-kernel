@@ -127,13 +127,12 @@ void mem_hotplug_done(void)
 }
 
 /* add this memory to iomem resource */
-static int register_memory_resource(u64 start, u64 size,
-				    struct resource **resource)
+static struct resource *register_memory_resource(u64 start, u64 size)
 {
 	struct resource *res;
 	res = kzalloc(sizeof(struct resource), GFP_KERNEL);
 	if (!res)
-		return -ENOMEM;
+		return ERR_PTR(-ENOMEM);
 
 	res->name = "System RAM";
 	res->start = start;
@@ -142,10 +141,9 @@ static int register_memory_resource(u64 start, u64 size,
 	if (request_resource(&iomem_resource, res) < 0) {
 		pr_debug("System RAM resource %pR cannot be added\n", res);
 		kfree(res);
-		return -EEXIST;
+		return ERR_PTR(-EEXIST);
 	}
-	*resource = res;
-	return 0;
+	return res;
 }
 
 static void release_memory_resource(struct resource *res)
@@ -1314,9 +1312,9 @@ int __ref add_memory(int nid, u64 start, u64 size)
 	struct resource *res;
 	int ret;
 
-	ret = register_memory_resource(start, size, &res);
-	if (ret)
-		return ret;
+	res = register_memory_resource(start, size);
+	if (IS_ERR(res))
+		return PTR_ERR(res);
 
 	ret = add_memory_resource(nid, res);
 	if (ret < 0)
