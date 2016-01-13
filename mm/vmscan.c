@@ -2046,7 +2046,8 @@ static void get_scan_count(struct lruvec *lruvec, int swappiness,
 	 * There is enough inactive page cache, do not reclaim
 	 * anything from the anonymous working set right now.
 	 */
-	if (!inactive_file_is_low(lruvec)) {
+	if (!inactive_file_is_low(lruvec) &&
+	    get_lru_size(lruvec, LRU_INACTIVE_FILE) >> sc->priority > 0) {
 		scan_balance = SCAN_FILE;
 		goto out;
 	}
