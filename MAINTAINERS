@@ -11040,7 +11040,7 @@ R:	Jason Gunthorpe <jgunthorpe@obsidianresearch.com>
 W:	http://tpmdd.sourceforge.net
 L:	tpmdd-devel@lists.sourceforge.net (moderated for non-subscribers)
 Q:	git git://github.com/PeterHuewe/linux-tpmdd.git
-T:	https://github.com/PeterHuewe/linux-tpmdd
+T:	git https://github.com/PeterHuewe/linux-tpmdd
 S:	Maintained
 F:	drivers/char/tpm/
 
