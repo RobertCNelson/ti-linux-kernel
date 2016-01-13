@@ -36,7 +36,7 @@ static long dax_map_atomic(struct block_device *bdev, struct blk_dax_ctl *dax)
 	long rc = -EIO;
 
 	dax->addr = (void __pmem *) ERR_PTR(-EIO);
-	if (blk_queue_enter(q, GFP_NOWAIT) != 0)
+	if (blk_queue_enter(q, true) != 0)
 		return rc;
 
 	rc = bdev_direct_access(bdev, dax);
