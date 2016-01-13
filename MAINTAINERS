@@ -6116,6 +6116,7 @@ M:	"J. Bruce Fields" <bfields@fieldses.org>
 M:	Jeff Layton <jlayton@poochiereds.net>
 L:	linux-nfs@vger.kernel.org
 W:	http://nfs.sourceforge.net/
+T:	git git://linux-nfs.org/~bfields/linux.git
 S:	Supported
 F:	fs/nfsd/
 F:	include/uapi/linux/nfsd/
