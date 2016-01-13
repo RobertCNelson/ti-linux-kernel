@@ -530,7 +530,7 @@ static inline int PageTransTail(struct page *page)
  * PageDoubleMap indicates that the compound page is mapped with PTEs as well
  * as PMDs.
  *
- * This is required for optimization of rmap oprations for THP: we can postpone
+ * This is required for optimization of rmap operations for THP: we can postpone
  * per small page mapcount accounting (and its overhead from atomic operations)
  * until the first PMD split.
  *
