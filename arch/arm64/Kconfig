@@ -51,8 +51,8 @@ config ARM64
 	select HAVE_ARCH_JUMP_LABEL
 	select HAVE_ARCH_KASAN if SPARSEMEM_VMEMMAP && !(ARM64_16K_PAGES && ARM64_VA_BITS_48)
 	select HAVE_ARCH_KGDB
-	select HAVE_ARCH_MMAP_RND_BITS if MMU
-	select HAVE_ARCH_MMAP_RND_COMPAT_BITS if MMU && COMPAT
+	select HAVE_ARCH_MMAP_RND_BITS
+	select HAVE_ARCH_MMAP_RND_COMPAT_BITS if COMPAT
 	select HAVE_ARCH_SECCOMP_FILTER
 	select HAVE_ARCH_TRACEHOOK
 	select HAVE_BPF_JIT
@@ -107,10 +107,12 @@ config MMU
 	def_bool y
 
 config ARCH_MMAP_RND_BITS_MIN
-       default 15 if ARM64_64K_PAGES
-       default 17 if ARM64_16K_PAGES
-       default 19
+       default 14 if ARM64_64K_PAGES
+       default 16 if ARM64_16K_PAGES
+       default 18
 
+# max bits determined by the following formula:
+#  VA_BITS - PAGE_SHIFT - 3
 config ARCH_MMAP_RND_BITS_MAX
        default 19 if ARM64_VA_BITS=36
        default 20 if ARM64_64K_PAGES && ARM64_VA_BITS=39
@@ -125,7 +127,7 @@ config ARCH_MMAP_RND_BITS_MAX
        default 33 if ARM64_VA_BITS=48
        default 15 if ARM64_64K_PAGES
        default 17 if ARM64_16K_PAGES
-       default 19
+       default 18
 
 config ARCH_MMAP_RND_COMPAT_BITS_MIN
        default 7 if ARM64_64K_PAGES
