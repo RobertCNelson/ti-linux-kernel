@@ -24,6 +24,7 @@
 #include <linux/export.h>
 #include <linux/mm_inline.h>
 #include <linux/percpu_counter.h>
+#include <linux/memremap.h>
 #include <linux/percpu.h>
 #include <linux/cpu.h>
 #include <linux/notifier.h>
@@ -94,6 +95,8 @@ void __put_page(struct page *page)
 {
 	if (unlikely(PageCompound(page)))
 		__put_compound_page(page);
+	else if (unlikely(is_zone_device_page(page)))
+		release_zone_device_page(page);
 	else
 		__put_single_page(page);
 }
