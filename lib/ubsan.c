@@ -118,11 +118,11 @@ static u_max get_unsigned_val(struct type_descriptor *type, unsigned long val)
 static void val_to_string(char *str, size_t size, struct type_descriptor *type,
 	unsigned long value)
 {
-	u_max val = get_unsigned_val(type, value);
-
 	if (type_is_int(type)) {
 		if (type_bit_width(type) == 128) {
 #ifdef CONFIG_ARCH_SUPPORTS_INT128
+			u_max val = get_unsigned_val(type, value);
+
 			scnprintf(str, size, "0x%08x%08x%08x%08x",
 				(u32)(val >> 96),
 				(u32)(val >> 64),
