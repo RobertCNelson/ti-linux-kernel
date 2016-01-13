@@ -120,9 +120,8 @@ extern void list_del(struct list_head *entry);
  */
 extern void list_force_poison(struct list_head *entry);
 #else
-static inline void list_force_poison(struct list_head *entry)
-{
-}
+/* fallback to the less strict LIST_POISON* definitions */
+#define list_force_poison list_del
 #endif
 
 /**
