@@ -1322,11 +1322,22 @@ char *uuid_string(char *buf, char *end, const u8 *addr,
 	return string(buf, end, uuid, spec);
 }
 
-static
-char *netdev_feature_string(char *buf, char *end, const void *addr)
+static noinline_for_stack
+char *netdev_bits(char *buf, char *end, const void *addr, const char *fmt)
 {
-	unsigned long long num = *(const netdev_features_t *)addr;
-	int size = sizeof(netdev_features_t);
+	unsigned long long num;
+	int size;
+
+	switch (fmt[1]) {
+	case 'F':
+		num = *(const netdev_features_t *)addr;
+		size = sizeof(netdev_features_t);
+		break;
+	default:
+		num = (unsigned long)addr;
+		size = sizeof(unsigned long);
+		break;
+	}
 
 	return special_hex_number(buf, end, num, size);
 }
@@ -1597,11 +1608,7 @@ char *pointer(const char *fmt, char *buf, char *end, void *ptr,
 		break;
 
 	case 'N':
-		switch (fmt[1]) {
-		case 'F':
-			return netdev_feature_string(buf, end, ptr);
-		}
-		break;
+		return netdev_bits(buf, end, ptr, fmt);
 	case 'a':
 		return address_val(buf, end, ptr, fmt);
 	case 'd':
