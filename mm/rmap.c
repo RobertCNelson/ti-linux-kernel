@@ -1430,7 +1430,7 @@ static int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 	} else
 		dec_mm_counter(mm, mm_counter_file(page));
 
-	page_remove_rmap(page, false);
+	page_remove_rmap(page, PageHuge(page));
 	page_cache_release(page);
 
 out_unmap:
