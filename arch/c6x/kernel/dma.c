@@ -58,7 +58,7 @@ static int c6x_dma_map_sg(struct device *dev, struct scatterlist *sglist,
 	struct scatterlist *sg;
 	int i;
 
-	for_each_sg(sglist, sg, nents, i)
+	for_each_sg(sglist, sg, nents, i) {
 		sg->dma_address = sg_phys(sg);
 		c6x_dma_sync(sg->dma_address, sg->length, dir);
 	}
