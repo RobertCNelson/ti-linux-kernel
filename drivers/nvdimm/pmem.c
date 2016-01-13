@@ -21,8 +21,8 @@
 #include <linux/init.h>
 #include <linux/platform_device.h>
 #include <linux/module.h>
-#include <linux/memory_hotplug.h>
 #include <linux/moduleparam.h>
+#include <linux/memremap.h>
 #include <linux/vmalloc.h>
 #include <linux/pfn_t.h>
 #include <linux/slab.h>
