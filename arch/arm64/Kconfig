@@ -115,18 +115,14 @@ config ARCH_MMAP_RND_BITS_MIN
 #  VA_BITS - PAGE_SHIFT - 3
 config ARCH_MMAP_RND_BITS_MAX
        default 19 if ARM64_VA_BITS=36
-       default 20 if ARM64_64K_PAGES && ARM64_VA_BITS=39
-       default 22 if ARM64_16K_PAGES && ARM64_VA_BITS=39
        default 24 if ARM64_VA_BITS=39
-       default 23 if ARM64_64K_PAGES && ARM64_VA_BITS=42
-       default 25 if ARM64_16K_PAGES && ARM64_VA_BITS=42
        default 27 if ARM64_VA_BITS=42
        default 30 if ARM64_VA_BITS=47
-       default 29 if ARM64_64K_PAGES && ARM64_VA_BITS=48
-       default 31 if ARM64_16K_PAGES && ARM64_VA_BITS=48
+       default 29 if ARM64_VA_BITS=48 && ARM64_64K_PAGES
+       default 31 if ARM64_VA_BITS=48 && ARM64_16K_PAGES
        default 33 if ARM64_VA_BITS=48
-       default 15 if ARM64_64K_PAGES
-       default 17 if ARM64_16K_PAGES
+       default 14 if ARM64_64K_PAGES
+       default 16 if ARM64_16K_PAGES
        default 18
 
 config ARCH_MMAP_RND_COMPAT_BITS_MIN
