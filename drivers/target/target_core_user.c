@@ -194,7 +194,7 @@ static struct tcmu_cmd *tcmu_alloc_cmd(struct se_cmd *se_cmd)
 
 static inline void tcmu_flush_dcache_range(void *vaddr, size_t size)
 {
-	unsigned long offset = (unsigned long) vaddr & ~PAGE_MASK;
+	unsigned long offset = offset_in_page(vaddr);
 
 	size = round_up(size+offset, PAGE_SIZE);
 	vaddr -= offset;
@@ -917,8 +917,10 @@ static int tcmu_configure_device(struct se_device *dev)
 	if (ret)
 		goto err_register;
 
+	/* User can set hw_block_size before enable the device */
+	if (dev->dev_attrib.hw_block_size == 0)
+		dev->dev_attrib.hw_block_size = 512;
 	/* Other attributes can be configured in userspace */
-	dev->dev_attrib.hw_block_size = 512;
 	dev->dev_attrib.hw_max_sectors = 128;
 	dev->dev_attrib.hw_queue_depth = 128;
 
