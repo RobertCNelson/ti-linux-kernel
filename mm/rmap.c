@@ -1608,7 +1608,7 @@ int try_to_unmap(struct page *page, enum ttu_flags flags)
 
 	struct rmap_walk_control rwc = {
 		.rmap_one = try_to_unmap_one,
-		.arg = (void *)&rp,
+		.arg = &rp,
 		.done = page_not_mapped,
 		.anon_lock = page_lock_anon_vma_read,
 	};
@@ -1654,7 +1654,6 @@ int try_to_unmap(struct page *page, enum ttu_flags flags)
 int try_to_munlock(struct page *page)
 {
 	int ret;
-
 	struct rmap_private rp = {
 		.flags = TTU_MUNLOCK,
 		.lazyfreed = 0,
@@ -1662,7 +1661,7 @@ int try_to_munlock(struct page *page)
 
 	struct rmap_walk_control rwc = {
 		.rmap_one = try_to_unmap_one,
-		.arg = (void *)&rp,
+		.arg = &rp,
 		.done = page_not_mapped,
 		.anon_lock = page_lock_anon_vma_read,
 
