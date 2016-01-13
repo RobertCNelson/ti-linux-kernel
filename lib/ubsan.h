@@ -73,7 +73,7 @@ struct invalid_value_data {
 	struct type_descriptor *type;
 };
 
-#ifdef CONFIG_ARCH_SUPPORTS_INT128
+#if defined(CONFIG_ARCH_SUPPORTS_INT128) && defined(__SIZEOF_INT128__)
 typedef __int128 s_max;
 typedef unsigned __int128 u_max;
 #else
