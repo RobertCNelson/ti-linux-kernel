@@ -175,19 +175,11 @@ void get_zone_device_page(struct page *page)
 }
 EXPORT_SYMBOL(get_zone_device_page);
 
-int release_zone_device_page(struct page *page)
+void put_zone_device_page(struct page *page)
 {
-	/*
-	 * ZONE_DEVICE pages are never "onlined" so their reference
-	 * counts never reach zero.  They are always owned by a device
-	 * driver, not the mm core.  I.e. the page is 'idle' when the
-	 * count is 1.
-	 */
-	VM_BUG_ON_PAGE(atomic_read(&page->_count) == 1, page);
 	put_dev_pagemap(page->pgmap);
-	return atomic_dec_return(&page->_count) == 1;
 }
-EXPORT_SYMBOL(release_zone_device_page);
+EXPORT_SYMBOL(put_zone_device_page);
 
 static void pgmap_radix_release(struct resource *res)
 {
