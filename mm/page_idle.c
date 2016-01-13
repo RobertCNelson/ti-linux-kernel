@@ -66,8 +66,12 @@ static int page_idle_clear_pte_refs_one(struct page *page,
 	if (pte) {
 		referenced = ptep_clear_young_notify(vma, addr, pte);
 		pte_unmap(pte);
-	} else
+	} else if (IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE)) {
 		referenced = pmdp_clear_young_notify(vma, addr, pmd);
+	} else {
+		/* unexpected pmd-mapped page? */
+		WARN_ON_ONCE(1);
+	}
 
 	spin_unlock(ptl);
 
