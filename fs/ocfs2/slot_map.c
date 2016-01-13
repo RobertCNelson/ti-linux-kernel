@@ -505,8 +505,8 @@ int ocfs2_find_slot(struct ocfs2_super *osb)
 	if (status < 0) {
 		mlog_errno(status);
 		/*
-		 * if write block failed, invalidate slot to avoid overwrite slot during
-		 * dismount in case another node rightly has mounted
+		 * if write block failed, invalidate slot to avoid overwrite
+		 * slot during dismount in case another node rightly has mounted
 		 */
 		spin_lock(&osb->osb_lock);
 		ocfs2_invalidate_slot(si, osb->slot_num);
