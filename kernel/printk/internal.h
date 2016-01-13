@@ -1,5 +1,5 @@
 /*
- * printk.h - printk internal definitions
+ * internal.h - printk internal definitions
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
