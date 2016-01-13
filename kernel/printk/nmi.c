@@ -141,7 +141,7 @@ more:
 	/* Make sure that data has been written up to the @len */
 	smp_rmb();
 
-	size = min_t(int, len, sizeof(s->buffer));
+	size = min(len, sizeof(s->buffer));
 	last_i = i;
 
 	/* Print line by line. */
