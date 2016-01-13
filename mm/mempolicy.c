@@ -510,6 +510,8 @@ static int queue_pages_pte_range(pmd_t *pmd, unsigned long addr,
 				if (ret)
 					return 0;
 			}
+		} else {
+			spin_unlock(ptl);
 		}
 	}
 
