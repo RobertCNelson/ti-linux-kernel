@@ -65,7 +65,7 @@ static int vprintk_nmi(const char *fmt, va_list args)
 again:
 	len = atomic_read(&s->len);
 
-	if (len >=  sizeof(s->buffer)) {
+	if (len >= sizeof(s->buffer)) {
 		atomic_inc(&nmi_message_lost);
 		return 0;
 	}
