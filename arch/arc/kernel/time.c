@@ -304,6 +304,9 @@ static void __init arc_clockevent_setup(void)
  */
 void __init time_init(void)
 {
+	of_clk_init(NULL);
+	clocksource_probe();
+
 	/*
 	 * sets up the timekeeping free-flowing counter which also returns
 	 * whether the counter is usable as clocksource
