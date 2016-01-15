@@ -3,6 +3,7 @@
 #include <linux/string.h>
 #include <linux/compiler.h>
 #include <linux/export.h>
+#include <linux/ctype.h>
 #include <linux/err.h>
 #include <linux/sched.h>
 #include <linux/security.h>
@@ -98,6 +99,35 @@ char *kstrndup(const char *s, size_t max, gfp_t gfp)
 	return buf;
 }
 EXPORT_SYMBOL(kstrndup);
+
+/**
+ * kstrimdup - Trim and copy a %NUL terminated string.
+ * @s: the string to trim and duplicate
+ * @gfp: the GFP mask used in the kmalloc() call when allocating memory
+ *
+ * Returns an address, which the caller must kfree, containing
+ * a duplicate of the passed string with leading and/or trailing
+ * whitespace (as defined by isspace) removed.
+ */
+char *kstrimdup(const char *s, gfp_t gfp)
+{
+	char *buf;
+	char *begin = skip_spaces(s);
+	size_t len = strlen(begin);
+
+	while (len && isspace(begin[len - 1]))
+		len--;
+
+	buf = kmalloc_track_caller(len + 1, gfp);
+	if (!buf)
+		return NULL;
+
+	memcpy(buf, begin, len);
+	buf[len] = '\0';
+
+	return buf;
+}
+EXPORT_SYMBOL(kstrimdup);
 
 /**
  * kmemdup - duplicate region of memory
@@ -386,7 +416,9 @@ struct anon_vma *page_anon_vma(struct page *page)
 
 struct address_space *page_mapping(struct page *page)
 {
-	unsigned long mapping;
+	struct address_space *mapping;
+
+	page = compound_head(page);
 
 	/* This happens if someone calls flush_dcache_page on slab page */
 	if (unlikely(PageSlab(page)))
@@ -399,11 +431,25 @@ struct address_space *page_mapping(struct page *page)
 		return swap_address_space(entry);
 	}
 
-	mapping = (unsigned long)page->mapping;
-	if (mapping & PAGE_MAPPING_FLAGS)
+	mapping = page->mapping;
+	if ((unsigned long)mapping & PAGE_MAPPING_FLAGS)
 		return NULL;
-	return page->mapping;
+	return mapping;
 }
+
+/* Slow path of page_mapcount() for compound pages */
+int __page_mapcount(struct page *page)
+{
+	int ret;
+
+	ret = atomic_read(&page->_mapcount) + 1;
+	page = compound_head(page);
+	ret += atomic_read(compound_mapcount_ptr(page)) + 1;
+	if (PageDoubleMap(page))
+		ret--;
+	return ret;
+}
+EXPORT_SYMBOL_GPL(__page_mapcount);
 
 int overcommit_ratio_handler(struct ctl_table *table, int write,
 			     void __user *buffer, size_t *lenp,
@@ -460,17 +506,25 @@ int get_cmdline(struct task_struct *task, char *buffer, int buflen)
 	int res = 0;
 	unsigned int len;
 	struct mm_struct *mm = get_task_mm(task);
+	unsigned long arg_start, arg_end, env_start, env_end;
 	if (!mm)
 		goto out;
 	if (!mm->arg_end)
 		goto out_mm;	/* Shh! No looking before we're done */
 
-	len = mm->arg_end - mm->arg_start;
+	down_read(&mm->mmap_sem);
+	arg_start = mm->arg_start;
+	arg_end = mm->arg_end;
+	env_start = mm->env_start;
+	env_end = mm->env_end;
+	up_read(&mm->mmap_sem);
+
+	len = arg_end - arg_start;
 
 	if (len > buflen)
 		len = buflen;
 
-	res = access_process_vm(task, mm->arg_start, buffer, len, 0);
+	res = access_process_vm(task, arg_start, buffer, len, 0);
 
 	/*
 	 * If the nul at the end of args has been overwritten, then
@@ -481,10 +535,10 @@ int get_cmdline(struct task_struct *task, char *buffer, int buflen)
 		if (len < res) {
 			res = len;
 		} else {
-			len = mm->env_end - mm->env_start;
+			len = env_end - env_start;
 			if (len > buflen - res)
 				len = buflen - res;
-			res += access_process_vm(task, mm->env_start,
+			res += access_process_vm(task, env_start,
 						 buffer+res, len, 0);
 			res = strnlen(buffer, res);
 		}

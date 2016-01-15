@@ -109,11 +109,13 @@ int __weak arch_kimage_file_post_load_cleanup(struct kimage *image)
 	return -EINVAL;
 }
 
+#ifdef CONFIG_KEXEC_VERIFY_SIG
 int __weak arch_kexec_kernel_verify_sig(struct kimage *image, void *buf,
 					unsigned long buf_len)
 {
 	return -EKEYREJECTED;
 }
+#endif
 
 /* Apply relocations of type RELA */
 int __weak
@@ -327,8 +329,11 @@ SYSCALL_DEFINE5(kexec_file_load, int, kernel_fd, int, initrd_fd,
 		return -EBUSY;
 
 	dest_image = &kexec_image;
-	if (flags & KEXEC_FILE_ON_CRASH)
+	if (flags & KEXEC_FILE_ON_CRASH) {
 		dest_image = &kexec_crash_image;
+		if (kexec_crash_image)
+			arch_kexec_unprotect_crashkres();
+	}
 
 	if (flags & KEXEC_FILE_UNLOAD)
 		goto exchange;
@@ -377,6 +382,9 @@ SYSCALL_DEFINE5(kexec_file_load, int, kernel_fd, int, initrd_fd,
 exchange:
 	image = xchg(dest_image, image);
 out:
+	if ((flags & KEXEC_ON_CRASH) && kexec_crash_image)
+		arch_kexec_protect_crashkres();
+
 	mutex_unlock(&kexec_mutex);
 	kimage_free(image);
 	return ret;
