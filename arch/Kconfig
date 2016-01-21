@@ -187,7 +187,11 @@ config HAVE_OPTPROBES
 config HAVE_KPROBES_ON_FTRACE
 	bool
 
+config HAVE_NMI
+	bool
+
 config HAVE_NMI_WATCHDOG
+	depends on HAVE_NMI
 	bool
 #
 # An arch should select this if it provides all these things:
@@ -203,9 +207,6 @@ config HAVE_NMI_WATCHDOG
 #	signal delivery		calls tracehook_signal_handler()
 #
 config HAVE_ARCH_TRACEHOOK
-	bool
-
-config HAVE_DMA_ATTRS
 	bool
 
 config HAVE_DMA_CONTIGUOUS
@@ -630,6 +631,9 @@ config OLD_SIGACTION
 	  compatibility...
 
 config COMPAT_OLD_SIGACTION
+	bool
+
+config ARCH_NO_COHERENT_DMA_MMAP
 	bool
 
 source "kernel/gcov/Kconfig"

@@ -55,6 +55,7 @@
 
 #include "console_cmdline.h"
 #include "braille.h"
+#include "internal.h"
 
 int console_printk[4] = {
 	CONSOLE_LOGLEVEL_DEFAULT,	/* console_loglevel */
@@ -233,7 +234,11 @@ struct printk_log {
 	u8 facility;		/* syslog facility */
 	u8 flags:5;		/* internal record flags */
 	u8 level:3;		/* syslog level */
-};
+}
+#ifdef CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS
+__packed __aligned(4)
+#endif
+;
 
 /*
  * The logbuf_lock protects kmsg buffer, indices, counters.  This can be taken
@@ -274,11 +279,7 @@ static u32 clear_idx;
 #define LOG_FACILITY(v)		((v) >> 3 & 0xff)
 
 /* record buffer */
-#if defined(CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS)
-#define LOG_ALIGN 4
-#else
 #define LOG_ALIGN __alignof__(struct printk_log)
-#endif
 #define __LOG_BUF_LEN (1 << CONFIG_LOG_BUF_SHIFT)
 static char __log_buf[__LOG_BUF_LEN] __aligned(LOG_ALIGN);
 static char *log_buf = __log_buf;
@@ -1669,6 +1670,7 @@ asmlinkage int vprintk_emit(int facility, int level,
 	unsigned long flags;
 	int this_cpu;
 	int printed_len = 0;
+	int nmi_message_lost;
 	bool in_sched = false;
 	/* cpu currently holding logbuf_lock in this function */
 	static unsigned int logbuf_cpu = UINT_MAX;
@@ -1717,6 +1719,15 @@ asmlinkage int vprintk_emit(int facility, int level,
 		printed_len += log_store(0, 2, LOG_PREFIX|LOG_NEWLINE, 0,
 					 NULL, 0, recursion_msg,
 					 strlen(recursion_msg));
+	}
+
+	nmi_message_lost = get_nmi_message_lost();
+	if (unlikely(nmi_message_lost)) {
+		text_len = scnprintf(textbuf, sizeof(textbuf),
+				     "BAD LUCK: lost %d message(s) from NMI context!",
+				     nmi_message_lost);
+		printed_len += log_store(0, 2, LOG_PREFIX|LOG_NEWLINE, 0,
+					 NULL, 0, textbuf, text_len);
 	}
 
 	/*
@@ -1868,14 +1879,6 @@ int vprintk_default(const char *fmt, va_list args)
 }
 EXPORT_SYMBOL_GPL(vprintk_default);
 
-/*
- * This allows printk to be diverted to another function per cpu.
- * This is useful for calling printk functions from within NMI
- * without worrying about race conditions that can lock up the
- * box.
- */
-DEFINE_PER_CPU(printk_func_t, printk_func) = vprintk_default;
-
 /**
  * printk - print a kernel message
  * @fmt: format string
@@ -1899,21 +1902,11 @@ DEFINE_PER_CPU(printk_func_t, printk_func) = vprintk_default;
  */
 asmlinkage __visible int printk(const char *fmt, ...)
 {
-	printk_func_t vprintk_func;
 	va_list args;
 	int r;
 
 	va_start(args, fmt);
-
-	/*
-	 * If a caller overrides the per_cpu printk_func, then it needs
-	 * to disable preemption when calling printk(). Otherwise
-	 * the printk_func should be set to the default. No need to
-	 * disable preemption here.
-	 */
-	vprintk_func = this_cpu_read(printk_func);
 	r = vprintk_func(fmt, args);
-
 	va_end(args);
 
 	return r;
