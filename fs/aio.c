@@ -1507,8 +1507,8 @@ static void aio_thread_fn(struct work_struct *work)
 	 * cancellation if it has not already occurred.
 	 */
 	old_cancel = cmpxchg(&iocb->ki_cancel,
-			     aio_thread_queue_iocb_cancel_early,
-			     aio_thread_queue_iocb_cancel);
+			     (kiocb_cancel_fn *)aio_thread_queue_iocb_cancel_early,
+			     (kiocb_cancel_fn *)aio_thread_queue_iocb_cancel);
 	if (old_cancel != KIOCB_CANCELLED)
 		ret = iocb->ki_work_fn(iocb);
 	else
