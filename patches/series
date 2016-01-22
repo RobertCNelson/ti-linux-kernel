@@ -13,6 +13,11 @@
 ############################################################
 # Stuff broken upstream, patches submitted
 ############################################################
+btrfs-initialize-the-seq-counter-in-struct-btrfs_dev.patch
+sched-use-tsk_cpus_allowed-instead-of-accessing-cpus.patch
+sched-provide-a-tsk_nr_cpus_allowed-helper.patch
+drivers-cpuidle-coupled-fix-warning-cpuidle_coupled_.patch
+drivers-media-vsp1_video-fix-compile-error.patch
 
 ############################################################
 # Stuff which needs addressing upstream, but requires more
@@ -63,7 +68,6 @@ kernel-SRCU-provide-a-static-initializer.patch
 ############################################################
 # Stuff which should go upstream ASAP
 ############################################################
-0009-ARM-OMAP2-Drop-the-concept-of-certain-power-domains-.patch
 
 # SCHED BLOCK/WQ
 block-shorten-interrupt-disabled-regions.patch
@@ -135,6 +139,8 @@ pci-access-use-__wake_up_all_locked.patch
 
 # TRACING
 latency-hist.patch
+latency_hist-update-sched_wakeup-probe.patch
+trace-latency-hist-Consider-new-argument-when-probin.patch
 
 # HW LATENCY DETECTOR - this really wants a rewrite
 hwlatdetect.patch
@@ -227,7 +233,6 @@ slub-disable-SLUB_CPU_PARTIAL.patch
 mm-page-alloc-use-local-lock-on-target-cpu.patch
 mm-memcontrol-Don-t-call-schedule_work_on-in-preempt.patch
 mm-memcontrol-do_not_disable_irq.patch
-mm-rmap-retry-lock-check-in-anon_vma_free.patch_vma_free.patch
 
 # RADIX TREE
 radix-tree-rt-aware.patch
@@ -294,6 +299,7 @@ softirq-preempt-fix-3-re.patch
 softirq-disable-softirq-stacks-for-rt.patch
 softirq-split-locks.patch
 irq-allow-disabling-of-softirq-processing-in-irq-thread-context.patch
+softirq-split-timer-softirqs-out-of-ksoftirqd.patch
 rtmutex-trylock-is-okay-on-RT.patch
 
 # RAID5
@@ -319,6 +325,8 @@ ptrace-fix-ptrace-vs-tasklist_lock-race.patch
 
 # RTMUTEX Fallout
 tasklist-lock-fix-section-conflict.patch
+#fold
+ptrace-don-t-open-IRQs-in-ptrace_freeze_traced-too-e.patch
 
 # RCU
 peter_zijlstra-frob-rcu.patch
@@ -407,6 +415,14 @@ sunrpc-make-svc_xprt_do_enqueue-use-get_cpu_light.patch
 net__Make_synchronize-rcu_expedited_conditional-on-non-rt
 skbufhead-raw-lock.patch
 net-core-cpuhotplug-drain-input_pkt_queue-lockless.patch
+net-move-xmit_recursion-to-per-task-variable-on-RT.patch
+net-provide-a-way-to-delegate-processing-a-softirq-t.patch
+
+# NETWORK livelock fix
+net-tx-action-avoid-livelock-on-rt.patch
+
+# NETWORK DEBUGGING AID
+ping-sysrq.patch
 
 # irqwork
 irqwork-push_most_work_into_softirq_context.patch
@@ -431,12 +447,6 @@ ARM-enable-irq-in-translation-section-permission-fau.patch
 
 # ARM64
 arm64-xen--Make-XEN-depend-on-non-rt.patch
-
-# NETWORK livelock fix
-net-tx-action-avoid-livelock-on-rt.patch
-
-# NETWORK DEBUGGING AID
-ping-sysrq.patch
 
 # KGDB
 kgb-serial-hackaround.patch
@@ -501,6 +511,7 @@ scsi-qla2xxx-fix-bug-sleeping-function-called-from-invalid-context.patch
 # NET
 upstream-net-rt-remove-preemption-disabling-in-netif_rx.patch
 net-another-local-irq-disable-alloc-atomic-headache.patch
+net-core-protect-users-of-napi_alloc_cache-against-r.patch
 net-fix-iptable-xt-write-recseq-begin-rt-fallout.patch
 net-make-devnet_rename_seq-a-mutex.patch
 
@@ -521,10 +532,12 @@ rcu-make-RCU_BOOST-default-on-RT.patch
 
 # PREEMPT LAZY
 preempt-lazy-support.patch
+preempt-lazy-check-preempt_schedule.patch
 x86-preempt-lazy.patch
 arm-preempt-lazy-support.patch
 powerpc-preempt-lazy-support.patch
 arch-arm64-Add-lazy-preempt-support.patch
+arm-arm64-lazy-preempt-add-TIF_NEED_RESCHED_LAZY-to-.patch
 
 # LEDS
 leds-trigger-disable-CPU-trigger-on-RT.patch
@@ -552,9 +565,6 @@ md-disable-bcache.patch
 
 # WORKQUEUE SIGH
 workqueue-prevent-deadlock-stall.patch
-
-# TRACING
-latency_hist-update-sched_wakeup-probe.patch
 
 # Add RT to version
 localversion.patch

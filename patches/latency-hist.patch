@@ -14,7 +14,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 ---
  Documentation/trace/histograms.txt  |  186 +++++
- include/linux/hrtimer.h             |    3 
+ include/linux/hrtimer.h             |    4 
  include/linux/sched.h               |    6 
  include/trace/events/hist.h         |   72 ++
  include/trace/events/latency_hist.h |   29 
@@ -23,7 +23,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/trace/Makefile               |    4 
  kernel/trace/latency_hist.c         | 1178 ++++++++++++++++++++++++++++++++++++
  kernel/trace/trace_irqsoff.c        |   11 
- 10 files changed, 1614 insertions(+)
+ 10 files changed, 1615 insertions(+)
 
 --- /dev/null
 +++ b/Documentation/trace/histograms.txt
@@ -216,7 +216,15 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +These data are also reset when the wakeup histogram is reset.
 --- a/include/linux/hrtimer.h
 +++ b/include/linux/hrtimer.h
-@@ -102,6 +102,9 @@ struct hrtimer {
+@@ -87,6 +87,7 @@ enum hrtimer_restart {
+  * @function:	timer expiry callback function
+  * @base:	pointer to the timer base (per cpu and per clock)
+  * @state:	state information (See bit values above)
++ * @praecox:	timer expiry time if expired at the time of programming
+  * @start_pid: timer statistics field to store the pid of the task which
+  *		started the timer
+  * @start_site:	timer statistics field to store the site where the timer
+@@ -102,6 +103,9 @@ struct hrtimer {
  	enum hrtimer_restart		(*function)(struct hrtimer *);
  	struct hrtimer_clock_base	*base;
  	unsigned long			state;
@@ -375,7 +383,16 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	leftmost = enqueue_hrtimer(timer, new_base);
  	if (!leftmost)
  		goto unlock;
-@@ -1275,6 +1285,15 @@ static void __hrtimer_run_queues(struct
+@@ -1256,6 +1266,8 @@ static void __run_hrtimer(struct hrtimer
+ 	cpu_base->running = NULL;
+ }
+ 
++static enum hrtimer_restart hrtimer_wakeup(struct hrtimer *timer);
++
+ static void __hrtimer_run_queues(struct hrtimer_cpu_base *cpu_base, ktime_t now)
+ {
+ 	struct hrtimer_clock_base *base = cpu_base->clock_base;
+@@ -1275,6 +1287,15 @@ static void __hrtimer_run_queues(struct
  
  			timer = container_of(node, struct hrtimer, node);
  
@@ -391,15 +408,6 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  			/*
  			 * The immediate goal for using the softexpires is
  			 * minimizing wakeups, not running timers at the
-@@ -1297,6 +1316,8 @@ static void __hrtimer_run_queues(struct
- 
- #ifdef CONFIG_HIGH_RES_TIMERS
- 
-+static enum hrtimer_restart hrtimer_wakeup(struct hrtimer *timer);
-+
- /*
-  * High resolution timer interrupt
-  * Called with interrupts disabled
 --- a/kernel/trace/Kconfig
 +++ b/kernel/trace/Kconfig
 @@ -187,6 +187,24 @@ config IRQSOFF_TRACER
