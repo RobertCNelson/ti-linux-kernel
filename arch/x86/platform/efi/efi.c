@@ -144,8 +144,8 @@ void __init efi_find_mirror(void)
 		}
 	}
 	if (mirror_size)
-		pr_info("Memory: %lldM/%lldM mirrored memory\n",
-			mirror_size>>20, total_size>>20);
+		pr_info("Memory: %lld MiB/%lld MiB mirrored memory\n",
+			mirror_size >> 20, total_size >> 20);
 }
 
 /*
