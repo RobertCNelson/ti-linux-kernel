@@ -741,7 +741,7 @@ static void record_relative_base(void)
 		 */
 		relative_base = kernel_start_addr;
 	} else {
-		relative_base = ULLONG_MAX;
+		relative_base = -1ULL;
 		for (i = 0; i < table_cnt; i++)
 			if (!symbol_absolute(&table[i]) &&
 			    table[i].addr < relative_base)
