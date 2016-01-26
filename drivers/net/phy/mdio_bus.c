@@ -303,6 +303,8 @@ int __mdiobus_register(struct mii_bus *bus, struct module *owner)
 	struct mdio_device *mdiodev;
 	int i, err;
 
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
+
 	if (NULL == bus || NULL == bus->name ||
 	    NULL == bus->read || NULL == bus->write)
 		return -EINVAL;
@@ -310,11 +312,15 @@ int __mdiobus_register(struct mii_bus *bus, struct module *owner)
 	BUG_ON(bus->state != MDIOBUS_ALLOCATED &&
 	       bus->state != MDIOBUS_UNREGISTERED);
 
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
+
 	bus->owner = owner;
 	bus->dev.parent = bus->parent;
 	bus->dev.class = &mdio_bus_class;
 	bus->dev.groups = NULL;
 	dev_set_name(&bus->dev, "%s", bus->id);
+
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
 
 	err = device_register(&bus->dev);
 	if (err) {
@@ -323,10 +329,14 @@ int __mdiobus_register(struct mii_bus *bus, struct module *owner)
 		return -EINVAL;
 	}
 
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
+
 	mutex_init(&bus->mdio_lock);
 
 	if (bus->reset)
 		bus->reset(bus);
+
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
 
 	for (i = 0; i < PHY_MAX_ADDR; i++) {
 		if ((bus->phy_mask & (1 << i)) == 0) {
@@ -340,11 +350,15 @@ int __mdiobus_register(struct mii_bus *bus, struct module *owner)
 		}
 	}
 
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
+
 	bus->state = MDIOBUS_REGISTERED;
 	pr_info("%s: probed\n", bus->name);
 	return 0;
 
 error:
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
+
 	while (--i >= 0) {
 		mdiodev = bus->mdio_map[i];
 		if (!mdiodev)
@@ -353,6 +367,7 @@ error:
 		mdiodev->device_remove(mdiodev);
 		mdiodev->device_free(mdiodev);
 	}
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
 	device_del(&bus->dev);
 	return err;
 }
