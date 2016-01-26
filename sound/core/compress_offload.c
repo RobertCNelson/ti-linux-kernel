@@ -46,8 +46,8 @@
 #include <sound/compress_offload.h>
 #include <sound/compress_driver.h>
 
-/* FIXME: struct snd_compr_codec_caps overflows the ioctl bit size for some
- *        architectures, so we need to disable the relevant ioctls.
+/* struct snd_compr_codec_caps overflows the ioctl bit size for some
+ * architectures, so we need to disable the relevant ioctls.
  */
 #if _IOC_SIZEBITS < 14
 #define COMPR_CODEC_CAPS_OVERFLOW
