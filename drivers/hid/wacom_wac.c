@@ -580,11 +580,12 @@ static int wacom_intuos_inout(struct wacom_wac *wacom)
 	struct wacom_features *features = &wacom->features;
 	unsigned char *data = wacom->data;
 	struct input_dev *input = wacom->pen_input;
-	int idx = 0;
+	int idx = (features->type == INTUOS) ? (data[1] & 0x01) : 0;
 
-	/* tool number */
-	if (features->type == INTUOS)
-		idx = data[1] & 0x01;
+	if (!(((data[1] & 0xfc) == 0xc0) ||  /* in prox */
+	    ((data[1] & 0xfe) == 0x20) ||    /* in range */
+	    ((data[1] & 0xfe) == 0x80)))     /* out prox */
+		return 0;
 
 	/* Enter report */
 	if ((data[1] & 0xfc) == 0xc0) {
@@ -612,6 +613,7 @@ static int wacom_intuos_inout(struct wacom_wac *wacom)
 		case 0x885: /* Intuos3 Marker Pen */
 		case 0x802: /* Intuos4/5 13HD/24HD General Pen */
 		case 0x804: /* Intuos4/5 13HD/24HD Marker Pen */
+		case 0x8e2: /* IntuosHT2 pen */
 		case 0x022:
 		case 0x100804: /* Intuos4/5 13HD/24HD Art Pen */
 		case 0x140802: /* Intuos4/5 13HD/24HD Classic Pen */
@@ -673,39 +675,23 @@ static int wacom_intuos_inout(struct wacom_wac *wacom)
 			wacom->tool[idx] = BTN_TOOL_PEN;
 			break;
 		}
+		wacom->shared->stylus_in_proximity = true;
 		return 1;
 	}
 
-	/*
-	 * don't report events for invalid data
-	 */
-	/* older I4 styli don't work with new Cintiqs */
-	if ((!((wacom->id[idx] >> 20) & 0x01) &&
-			(features->type == WACOM_21UX2)) ||
-	    /* Only large Intuos support Lense Cursor */
-	    (wacom->tool[idx] == BTN_TOOL_LENS &&
-		(features->type == INTUOS3 ||
-		 features->type == INTUOS3S ||
-		 features->type == INTUOS4 ||
-		 features->type == INTUOS4S ||
-		 features->type == INTUOS5 ||
-		 features->type == INTUOS5S ||
-		 features->type == INTUOSPM ||
-		 features->type == INTUOSPS)) ||
-	   /* Cintiq doesn't send data when RDY bit isn't set */
-	   (features->type == CINTIQ && !(data[1] & 0x40)))
-		return 1;
+	/* in Range */
+	if ((data[1] & 0xfe) == 0x20) {
+		if (features->type != INTUOSHT2)
+			wacom->shared->stylus_in_proximity = true;
 
-	wacom->shared->stylus_in_proximity = true;
-	if (wacom->shared->touch_down)
+		/* in Range while exiting */
+		if (wacom->reporting_data) {
+			input_report_key(input, BTN_TOUCH, 0);
+			input_report_abs(input, ABS_PRESSURE, 0);
+			input_report_abs(input, ABS_DISTANCE, wacom->features.distance_max);
+			return 2;
+		}
 		return 1;
-
-	/* in Range while exiting */
-	if (((data[1] & 0xfe) == 0x20) && wacom->reporting_data) {
-		input_report_key(input, BTN_TOUCH, 0);
-		input_report_abs(input, ABS_PRESSURE, 0);
-		input_report_abs(input, ABS_DISTANCE, wacom->features.distance_max);
-		return 2;
 	}
 
 	/* Exit report */
@@ -748,13 +734,6 @@ static int wacom_intuos_inout(struct wacom_wac *wacom)
 		input_event(input, EV_MSC, MSC_SERIAL, wacom->serial[idx]);
 		wacom->id[idx] = 0;
 		return 2;
-	}
-
-	/* don't report other events if we don't know the ID */
-	if (!wacom->id[idx]) {
-		/* but reschedule a read of the current tool */
-		wacom_intuos_schedule_prox_event(wacom);
-		return 1;
 	}
 
 	return 0;
@@ -896,6 +875,36 @@ static int wacom_intuos_general(struct wacom_wac *wacom)
 	if (data[0] != WACOM_REPORT_PENABLED && data[0] != WACOM_REPORT_CINTIQ &&
 		data[0] != WACOM_REPORT_INTUOS_PEN)
 		return 0;
+
+	if (wacom->shared->touch_down)
+		return 1;
+
+	/* don't report events if we don't know the tool ID */
+	if (!wacom->id[idx]) {
+		/* but reschedule a read of the current tool */
+		wacom_intuos_schedule_prox_event(wacom);
+		return 1;
+	}
+
+	/*
+	 * don't report events for invalid data
+	 */
+	/* older I4 styli don't work with new Cintiqs */
+	if ((!((wacom->id[idx] >> 20) & 0x01) &&
+			(features->type == WACOM_21UX2)) ||
+	    /* Only large Intuos support Lense Cursor */
+	    (wacom->tool[idx] == BTN_TOOL_LENS &&
+		(features->type == INTUOS3 ||
+		 features->type == INTUOS3S ||
+		 features->type == INTUOS4 ||
+		 features->type == INTUOS4S ||
+		 features->type == INTUOS5 ||
+		 features->type == INTUOS5S ||
+		 features->type == INTUOSPM ||
+		 features->type == INTUOSPS)) ||
+	   /* Cintiq doesn't send data when RDY bit isn't set */
+	   (features->type == CINTIQ && !(data[1] & 0x40)))
+		return 1;
 
 	x = (be16_to_cpup((__be16 *)&data[2]) << 1) | ((data[9] >> 1) & 1);
 	y = (be16_to_cpup((__be16 *)&data[4]) << 1) | (data[9] & 1);
