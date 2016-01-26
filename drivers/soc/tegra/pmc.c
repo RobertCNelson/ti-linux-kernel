@@ -113,8 +113,11 @@ struct tegra_pmc_soc {
 
 /**
  * struct tegra_pmc - NVIDIA Tegra PMC
+ * @dev: pointer to PMC device structure
  * @base: pointer to I/O remapped register region
  * @clk: pointer to pclk clock
+ * @soc: pointer to SoC data structure
+ * @debugfs: pointer to debugfs entry
  * @rate: currently configured rate of pclk
  * @suspend_mode: lowest suspend mode available
  * @cpu_good_time: CPU power good time (in microseconds)
@@ -134,6 +137,7 @@ struct tegra_pmc {
 	struct device *dev;
 	void __iomem *base;
 	struct clk *clk;
+	struct dentry *debugfs;
 
 	const struct tegra_pmc_soc *soc;
 
@@ -445,11 +449,9 @@ static const struct file_operations powergate_fops = {
 
 static int tegra_powergate_debugfs_init(void)
 {
-	struct dentry *d;
-
-	d = debugfs_create_file("powergate", S_IRUGO, NULL, NULL,
-				&powergate_fops);
-	if (!d)
+	pmc->debugfs = debugfs_create_file("powergate", S_IRUGO, NULL, NULL,
+					   &powergate_fops);
+	if (!pmc->debugfs)
 		return -ENOMEM;
 
 	return 0;
@@ -727,7 +729,7 @@ static void tegra_pmc_init(struct tegra_pmc *pmc)
 	tegra_pmc_writel(value, PMC_CNTRL);
 }
 
-void tegra_pmc_init_tsense_reset(struct tegra_pmc *pmc)
+static void tegra_pmc_init_tsense_reset(struct tegra_pmc *pmc)
 {
 	static const char disabled[] = "emergency thermal reset disabled";
 	u32 pmu_addr, ctrl_id, reg_addr, reg_data, pinmux;
@@ -842,6 +844,7 @@ static int tegra_pmc_probe(struct platform_device *pdev)
 
 	err = register_restart_handler(&tegra_pmc_restart_handler);
 	if (err) {
+		debugfs_remove(pmc->debugfs);
 		dev_err(&pdev->dev, "unable to register restart handler, %d\n",
 			err);
 		return err;
@@ -1006,17 +1009,13 @@ static const char * const tegra210_powergates[] = {
 	[TEGRA_POWERGATE_3D] = "3d",
 	[TEGRA_POWERGATE_VENC] = "venc",
 	[TEGRA_POWERGATE_PCIE] = "pcie",
-	[TEGRA_POWERGATE_L2] = "l2",
 	[TEGRA_POWERGATE_MPE] = "mpe",
-	[TEGRA_POWERGATE_HEG] = "heg",
 	[TEGRA_POWERGATE_SATA] = "sata",
 	[TEGRA_POWERGATE_CPU1] = "cpu1",
 	[TEGRA_POWERGATE_CPU2] = "cpu2",
 	[TEGRA_POWERGATE_CPU3] = "cpu3",
-	[TEGRA_POWERGATE_CELP] = "celp",
 	[TEGRA_POWERGATE_CPU0] = "cpu0",
 	[TEGRA_POWERGATE_C0NC] = "c0nc",
-	[TEGRA_POWERGATE_C1NC] = "c1nc",
 	[TEGRA_POWERGATE_SOR] = "sor",
 	[TEGRA_POWERGATE_DIS] = "dis",
 	[TEGRA_POWERGATE_DISB] = "disb",
