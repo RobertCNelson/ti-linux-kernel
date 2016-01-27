@@ -1,5 +1,4 @@
 /*
- * Copyright 2015 Josef Gajdusek <atx@atx.name>
  * Copyright 2015 - Marcus Cooper <codekipper@gmail.com>
  *
  * This file is dual-licensed: you can use it either under the terms
@@ -42,12 +41,30 @@
  */
 
 /dts-v1/;
-#include "sun4i-a10.dtsi"
+#include "sun7i-a20.dtsi"
 #include "sunxi-itead-core-common.dtsi"
 
 / {
-	model = "Iteaduino Plus A10";
-	compatible = "itead,iteaduino-plus-a10", "allwinner,sun4i-a10";
+	model = "Itead Ibox A20";
+	compatible = "itead,itead-ibox-a20", "allwinner,sun7i-a20";
+
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&led_pins_itead_core>;
+
+		green {
+			label = "itead_core:green:usr";
+			gpios = <&pio 7 20 GPIO_ACTIVE_HIGH>;
+			default-state = "on";
+		};
+
+		blue {
+			label = "itead_core:blue:usr";
+			gpios = <&pio 7 21 GPIO_ACTIVE_HIGH>;
+			default-state = "on";
+		};
+	};
 };
 
 &ahci {
@@ -55,47 +72,33 @@
 	status = "okay";
 };
 
-&emac {
-	pinctrl-names = "default";
-	pinctrl-0 = <&emac_pins_a>;
-	phy = <&phy1>;
+&codec {
 	status = "okay";
 };
 
-&emac_sram {
+&gmac {
+	pinctrl-names = "default";
+	pinctrl-0 = <&gmac_pins_mii_a>;
+	phy = <&phy1>;
+	phy-mode = "mii";
 	status = "okay";
+
+	phy1: ethernet-phy@1 {
+		reg = <1>;
+	};
 };
 
 &i2c0 {
 	axp209: pmic@34 {
-		interrupts = <0>;
+		interrupt-parent = <&nmi_intc>;
+		interrupts = <0 IRQ_TYPE_LEVEL_LOW>;
 	};
-};
-
-&i2c1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c1_pins_a>;
-	status = "okay";
-};
-
-&i2c2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c2_pins_a>;
-	status = "okay";
 };
 
 &ir0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&ir0_rx_pins_a>;
 	status = "okay";
-};
-
-&mdio {
-	status = "okay";
-
-	phy1: ethernet-phy@1 {
-		reg = <1>;
-	};
 };
 
 &mmc0 {
@@ -108,13 +111,15 @@
 	status = "okay";
 };
 
-&reg_ahci_5v {
-	status = "okay";
+&pio {
+	led_pins_itead_core: led_pins@0 {
+		allwinner,pins = "PH20","PH21";
+		allwinner,function = "gpio_out";
+		allwinner,drive = <SUN4I_PINCTRL_20_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
+	};
 };
 
-&spi0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&spi0_pins_a>,
-		    <&spi0_cs0_pins_a>;
+&reg_ahci_5v {
 	status = "okay";
 };
