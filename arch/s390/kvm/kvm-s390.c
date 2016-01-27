@@ -1414,7 +1414,10 @@ int kvm_arch_vcpu_init(struct kvm_vcpu *vcpu)
 				    KVM_SYNC_PFAULT;
 	if (test_kvm_facility(vcpu->kvm, 64))
 		vcpu->run->kvm_valid_regs |= KVM_SYNC_RICCB;
-	if (test_kvm_facility(vcpu->kvm, 129))
+	/* fprs can be synchronized via vrs, even if the guest has no vx. With
+	 * MACHINE_HAS_VX, (load|store)_fpu_regs() will work with vrs format.
+	 */
+	if (MACHINE_HAS_VX)
 		vcpu->run->kvm_valid_regs |= KVM_SYNC_VRS;
 
 	if (kvm_is_ucontrol(vcpu->kvm))
@@ -2176,7 +2179,7 @@ static int vcpu_post_run_fault_in_sie(struct kvm_vcpu *vcpu)
 	rc = read_guest(vcpu, psw->addr, 0, &opcode, 1);
 	if (rc)
 		return kvm_s390_inject_prog_cond(vcpu, rc);
-	psw->addr = __rewind_psw(*psw, -insn_length(opcode));
+	kvm_s390_forward_psw(vcpu, insn_length(opcode));
 
 	return kvm_s390_inject_program_int(vcpu, PGM_ADDRESSING);
 }
@@ -2605,7 +2608,8 @@ static long kvm_s390_guest_mem_op(struct kvm_vcpu *vcpu,
 	switch (mop->op) {
 	case KVM_S390_MEMOP_LOGICAL_READ:
 		if (mop->flags & KVM_S390_MEMOP_F_CHECK_ONLY) {
-			r = check_gva_range(vcpu, mop->gaddr, mop->ar, mop->size, false);
+			r = check_gva_range(vcpu, mop->gaddr, mop->ar,
+					    mop->size, GACC_FETCH);
 			break;
 		}
 		r = read_guest(vcpu, mop->gaddr, mop->ar, tmpbuf, mop->size);
@@ -2616,7 +2620,8 @@ static long kvm_s390_guest_mem_op(struct kvm_vcpu *vcpu,
 		break;
 	case KVM_S390_MEMOP_LOGICAL_WRITE:
 		if (mop->flags & KVM_S390_MEMOP_F_CHECK_ONLY) {
-			r = check_gva_range(vcpu, mop->gaddr, mop->ar, mop->size, true);
+			r = check_gva_range(vcpu, mop->gaddr, mop->ar,
+					    mop->size, GACC_STORE);
 			break;
 		}
 		if (copy_from_user(tmpbuf, uaddr, mop->size)) {
