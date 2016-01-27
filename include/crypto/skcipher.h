@@ -60,8 +60,7 @@ struct crypto_skcipher {
 
 	unsigned int ivsize;
 	unsigned int reqsize;
-
-	bool has_setkey;
+	unsigned int keysize;
 
 	struct crypto_tfm base;
 };
@@ -309,7 +308,13 @@ static inline int crypto_skcipher_setkey(struct crypto_skcipher *tfm,
 
 static inline bool crypto_skcipher_has_setkey(struct crypto_skcipher *tfm)
 {
-	return tfm->has_setkey;
+	return tfm->keysize;
+}
+
+static inline unsigned int crypto_skcipher_default_keysize(
+	struct crypto_skcipher *tfm)
+{
+	return tfm->keysize;
 }
 
 /**
@@ -438,6 +443,13 @@ static inline struct skcipher_request *skcipher_request_alloc(
 static inline void skcipher_request_free(struct skcipher_request *req)
 {
 	kzfree(req);
+}
+
+static inline void skcipher_request_zero(struct skcipher_request *req)
+{
+	struct crypto_skcipher *tfm = crypto_skcipher_reqtfm(req);
+
+	memzero_explicit(req, sizeof(*req) + crypto_skcipher_reqsize(tfm));
 }
 
 /**
