@@ -161,7 +161,7 @@
 	};
 
 	usb_otg: usb@10180000 {
-		compatible = "rockchip,rk3288-usb", "rockchip,rk3066-usb",
+		compatible = "rockchip,rk3036-usb", "rockchip,rk3066-usb",
 				"snps,dwc2";
 		reg = <0x10180000 0x40000>;
 		interrupts = <GIC_SPI 10 IRQ_TYPE_LEVEL_HIGH>;
@@ -176,7 +176,7 @@
 	};
 
 	usb_host: usb@101c0000 {
-		compatible = "rockchip,rk3288-usb", "rockchip,rk3066-usb",
+		compatible = "rockchip,rk3036-usb", "rockchip,rk3066-usb",
 				"snps,dwc2";
 		reg = <0x101c0000 0x40000>;
 		interrupts = <GIC_SPI 11 IRQ_TYPE_LEVEL_HIGH>;
@@ -211,7 +211,7 @@
 	};
 
 	emmc: dwmmc@1021c000 {
-		compatible = "rockchip,rk3288-dw-mshc";
+		compatible = "rockchip,rk3036-dw-mshc", "rockchip,rk3288-dw-mshc";
 		reg = <0x1021c000 0x4000>;
 		interrupts = <GIC_SPI 16 IRQ_TYPE_LEVEL_HIGH>;
 		broken-cd;
@@ -241,8 +241,8 @@
 		interrupts = <GIC_SPI 51 IRQ_TYPE_LEVEL_HIGH>;
 		#address-cells = <1>;
 		#size-cells = <0>;
-		clock-names = "i2s_hclk", "i2s_clk";
-		clocks = <&cru HCLK_I2S>, <&cru SCLK_I2S>;
+		clock-names = "i2s_clk", "i2s_hclk";
+		clocks = <&cru SCLK_I2S>, <&cru HCLK_I2S>;
 		dmas = <&pdma 0>, <&pdma 1>;
 		dma-names = "tx", "rx";
 		pinctrl-names = "default";
@@ -327,7 +327,7 @@
 	};
 
 	i2c1: i2c@20056000 {
-		compatible = "rockchip,rk3288-i2c";
+		compatible = "rockchip,rk3036-i2c", "rockchip,rk3288-i2c";
 		reg = <0x20056000 0x1000>;
 		interrupts = <GIC_SPI 25 IRQ_TYPE_LEVEL_HIGH>;
 		#address-cells = <1>;
@@ -340,7 +340,7 @@
 	};
 
 	i2c2: i2c@2005a000 {
-		compatible = "rockchip,rk3288-i2c";
+		compatible = "rockchip,rk3036-i2c", "rockchip,rk3288-i2c";
 		reg = <0x2005a000 0x1000>;
 		interrupts = <GIC_SPI 26 IRQ_TYPE_LEVEL_HIGH>;
 		#address-cells = <1>;
@@ -395,7 +395,7 @@
 	};
 
 	i2c0: i2c@20072000 {
-		compatible = "rockchip,rk3288-i2c";
+		compatible = "rockchip,rk3036-i2c", "rockchip,rk3288-i2c";
 		reg = <0x20072000 0x1000>;
 		interrupts = <GIC_SPI 24 IRQ_TYPE_LEVEL_HIGH>;
 		#address-cells = <1>;
@@ -579,12 +579,12 @@
 
 		i2s {
 			i2s_bus: i2s-bus {
-				rockchip,pins = <1 0 RK_FUNC_1 &pcfg_pull_none>,
-						<1 1 RK_FUNC_1 &pcfg_pull_none>,
-						<1 2 RK_FUNC_1 &pcfg_pull_none>,
-						<1 3 RK_FUNC_1 &pcfg_pull_none>,
-						<1 4 RK_FUNC_1 &pcfg_pull_none>,
-						<1 5 RK_FUNC_1 &pcfg_pull_none>;
+				rockchip,pins = <1 0 RK_FUNC_1 &pcfg_pull_default>,
+						<1 1 RK_FUNC_1 &pcfg_pull_default>,
+						<1 2 RK_FUNC_1 &pcfg_pull_default>,
+						<1 3 RK_FUNC_1 &pcfg_pull_default>,
+						<1 4 RK_FUNC_1 &pcfg_pull_default>,
+						<1 5 RK_FUNC_1 &pcfg_pull_default>;
 			};
 		};
 
