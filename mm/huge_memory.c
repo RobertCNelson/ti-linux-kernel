@@ -3506,6 +3506,12 @@ static unsigned long deferred_split_scan(struct shrinker *shrink,
 	list_splice_tail(&list, &pgdata->split_queue);
 	spin_unlock_irqrestore(&pgdata->split_queue_lock, flags);
 
+	/*
+	 * Stop shrinker if we didn't split any page, but the queue is empty.
+	 * This can happen if pages were freed under us.
+	 */
+	if (!split && list_empty(&pgdata->split_queue))
+		return SHRINK_STOP;
 	return split;
 }
 
