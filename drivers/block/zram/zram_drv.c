@@ -429,6 +429,7 @@ static ssize_t mm_stat_show(struct device *dev,
 	struct zs_pool_stats pool_stats;
 	u64 orig_size, mem_used = 0;
 	long max_used;
+	int avail_streams = 0;
 	ssize_t ret;
 
 	memset(&pool_stats, 0x00, sizeof(struct zs_pool_stats));
@@ -437,20 +438,22 @@ static ssize_t mm_stat_show(struct device *dev,
 	if (init_done(zram)) {
 		mem_used = zs_get_total_pages(zram->meta->mem_pool);
 		zs_pool_stats(zram->meta->mem_pool, &pool_stats);
+		avail_streams = zcomp_num_avail_streams(zram->comp);
 	}
 
 	orig_size = atomic64_read(&zram->stats.pages_stored);
 	max_used = atomic_long_read(&zram->stats.max_used_pages);
 
 	ret = scnprintf(buf, PAGE_SIZE,
-			"%8llu %8llu %8llu %8lu %8ld %8llu %8lu\n",
+			"%8llu %8llu %8llu %8lu %8ld %8llu %8lu %8d\n",
 			orig_size << PAGE_SHIFT,
 			(u64)atomic64_read(&zram->stats.compr_data_size),
 			mem_used << PAGE_SHIFT,
 			zram->limit_pages << PAGE_SHIFT,
 			max_used << PAGE_SHIFT,
 			(u64)atomic64_read(&zram->stats.zero_pages),
-			pool_stats.pages_compacted);
+			pool_stats.pages_compacted,
+			avail_streams);
 	up_read(&zram->init_lock);
 
 	return ret;
