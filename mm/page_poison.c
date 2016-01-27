@@ -12,15 +12,15 @@ static bool want_page_poisoning __read_mostly =
 
 static int early_page_poison_param(char *buf)
 {
-        if (!buf)
-                return -EINVAL;
+	if (!buf)
+		return -EINVAL;
 
-        if (strcmp(buf, "on") == 0)
-                want_page_poisoning = true;
+	if (strcmp(buf, "on") == 0)
+		want_page_poisoning = true;
 	else if (strcmp(buf, "off") == 0)
 		want_page_poisoning = false;
 
-        return 0;
+	return 0;
 }
 early_param("page_poison", early_page_poison_param);
 
