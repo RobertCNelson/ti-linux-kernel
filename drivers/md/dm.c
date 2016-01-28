@@ -232,6 +232,12 @@ static bool use_blk_mq = true;
 static bool use_blk_mq = false;
 #endif
 
+#define DM_MQ_NR_HW_QUEUES 1
+#define DM_MQ_QUEUE_DEPTH 2048
+
+static unsigned blk_mq_nr_hw_queues = DM_MQ_NR_HW_QUEUES;
+static unsigned blk_mq_queue_depth = DM_MQ_QUEUE_DEPTH;
+
 bool dm_use_blk_mq(struct mapped_device *md)
 {
 	return md->use_blk_mq;
@@ -301,6 +307,17 @@ unsigned dm_get_reserved_rq_based_ios(void)
 				     RESERVED_REQUEST_BASED_IOS, RESERVED_MAX_IOS);
 }
 EXPORT_SYMBOL_GPL(dm_get_reserved_rq_based_ios);
+
+unsigned dm_get_blk_mq_nr_hw_queues(void)
+{
+	return __dm_get_module_param(&blk_mq_nr_hw_queues, 1, 32);
+}
+
+unsigned dm_get_blk_mq_queue_depth(void)
+{
+	return __dm_get_module_param(&blk_mq_queue_depth,
+				     DM_MQ_QUEUE_DEPTH, BLK_MQ_MAX_DEPTH);
+}
 
 static int __init local_init(void)
 {
@@ -2682,10 +2699,10 @@ static int dm_init_request_based_blk_mq_queue(struct mapped_device *md)
 
 	memset(&md->tag_set, 0, sizeof(md->tag_set));
 	md->tag_set.ops = &dm_mq_ops;
-	md->tag_set.queue_depth = BLKDEV_MAX_RQ;
+	md->tag_set.queue_depth = dm_get_blk_mq_queue_depth();
 	md->tag_set.numa_node = NUMA_NO_NODE;
 	md->tag_set.flags = BLK_MQ_F_SHOULD_MERGE | BLK_MQ_F_SG_MERGE;
-	md->tag_set.nr_hw_queues = 1;
+	md->tag_set.nr_hw_queues = dm_get_blk_mq_nr_hw_queues();
 	if (md_type == DM_TYPE_REQUEST_BASED) {
 		/* make the memory for non-blk-mq clone part of the pdu */
 		md->tag_set.cmd_size = sizeof(struct dm_rq_target_io) + sizeof(struct request);
@@ -3660,6 +3677,12 @@ MODULE_PARM_DESC(reserved_rq_based_ios, "Reserved IOs in request-based mempools"
 
 module_param(use_blk_mq, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(use_blk_mq, "Use block multiqueue for request-based DM devices");
+
+module_param(blk_mq_nr_hw_queues, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(blk_mq_nr_hw_queues, "Number of hardware queues for blk-mq request-based DM devices");
+
+module_param(blk_mq_queue_depth, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(blk_mq_queue_depth, "Queue depth for blk-mq request-based DM devices");
 
 MODULE_DESCRIPTION(DM_NAME " driver");
 MODULE_AUTHOR("Joe Thornber <dm-devel@redhat.com>");
