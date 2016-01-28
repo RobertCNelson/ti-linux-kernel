@@ -146,8 +146,7 @@ init_onchip_IRQ(struct device_node *intc, struct device_node *parent)
 	if (parent)
 		panic("DeviceTree incore intc not a root irq controller\n");
 
-	root_domain = irq_domain_add_legacy(intc, NR_CPU_IRQS, 0, 0,
-					    &arcv2_irq_ops, NULL);
+	root_domain = irq_domain_add_linear(intc, NR_CPU_IRQS, &arcv2_irq_ops, NULL);
 	if (!root_domain)
 		panic("root irq domain not avail\n");
 
@@ -157,6 +156,9 @@ init_onchip_IRQ(struct device_node *intc, struct device_node *parent)
 	 */
 	irq_set_default_host(root_domain);
 
+#ifdef CONFIG_SMP
+	irq_create_mapping(root_domain, IPI_IRQ);
+#endif
 	return 0;
 }
 
