@@ -233,6 +233,14 @@ static bool use_blk_mq = true;
 static bool use_blk_mq = false;
 #endif
 
+#define DM_MQ_NR_HW_QUEUES 1
+#define DM_MQ_QUEUE_DEPTH 2048
+#define DM_MQ_NUMA_NODE NUMA_NO_NODE
+
+static unsigned dm_mq_nr_hw_queues = DM_MQ_NR_HW_QUEUES;
+static unsigned dm_mq_queue_depth = DM_MQ_QUEUE_DEPTH;
+static int dm_mq_numa_node = DM_MQ_NUMA_NODE;
+
 bool dm_use_blk_mq(struct mapped_device *md)
 {
 	return md->use_blk_mq;
@@ -270,6 +278,27 @@ static unsigned reserved_bio_based_ios = RESERVED_BIO_BASED_IOS;
  */
 static unsigned reserved_rq_based_ios = RESERVED_REQUEST_BASED_IOS;
 
+static int __dm_get_module_param_int(int *module_param, int min, int max)
+{
+	int param = ACCESS_ONCE(*module_param);
+	int modified_param = 0;
+	bool modified = true;
+
+	if (param < min)
+		modified_param = min;
+	else if (param > max)
+		modified_param = max;
+	else
+		modified = false;
+
+	if (modified) {
+		(void)cmpxchg(module_param, param, modified_param);
+		param = modified_param;
+	}
+
+	return param;
+}
+
 static unsigned __dm_get_module_param(unsigned *module_param,
 				      unsigned def, unsigned max)
 {
@@ -302,6 +331,23 @@ unsigned dm_get_reserved_rq_based_ios(void)
 				     RESERVED_REQUEST_BASED_IOS, RESERVED_MAX_IOS);
 }
 EXPORT_SYMBOL_GPL(dm_get_reserved_rq_based_ios);
+
+static unsigned dm_get_blk_mq_nr_hw_queues(void)
+{
+	return __dm_get_module_param(&dm_mq_nr_hw_queues, 1, 32);
+}
+
+static unsigned dm_get_blk_mq_queue_depth(void)
+{
+	return __dm_get_module_param(&dm_mq_queue_depth,
+				     DM_MQ_QUEUE_DEPTH, BLK_MQ_MAX_DEPTH);
+}
+
+static unsigned dm_get_blk_mq_numa_node(void)
+{
+	return __dm_get_module_param_int(&dm_mq_numa_node,
+					 DM_MQ_NUMA_NODE, num_online_nodes() - 1);
+}
 
 static int __init local_init(void)
 {
@@ -2693,10 +2739,10 @@ static int dm_init_request_based_blk_mq_queue(struct mapped_device *md)
 
 	memset(&md->tag_set, 0, sizeof(md->tag_set));
 	md->tag_set.ops = &dm_mq_ops;
-	md->tag_set.queue_depth = BLKDEV_MAX_RQ;
-	md->tag_set.numa_node = NUMA_NO_NODE;
+	md->tag_set.queue_depth = dm_get_blk_mq_queue_depth();
+	md->tag_set.numa_node = dm_get_blk_mq_numa_node();
 	md->tag_set.flags = BLK_MQ_F_SHOULD_MERGE | BLK_MQ_F_SG_MERGE;
-	md->tag_set.nr_hw_queues = 1;
+	md->tag_set.nr_hw_queues = dm_get_blk_mq_nr_hw_queues();
 	if (md_type == DM_TYPE_REQUEST_BASED) {
 		/* make the memory for non-blk-mq clone part of the pdu */
 		md->tag_set.cmd_size = sizeof(struct dm_rq_target_io) + sizeof(struct request);
@@ -3666,6 +3712,15 @@ MODULE_PARM_DESC(reserved_rq_based_ios, "Reserved IOs in request-based mempools"
 
 module_param(use_blk_mq, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(use_blk_mq, "Use block multiqueue for request-based DM devices");
+
+module_param(dm_mq_nr_hw_queues, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(dm_mq_nr_hw_queues, "Number of hardware queues for request-based dm-mq devices");
+
+module_param(dm_mq_queue_depth, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(dm_mq_queue_depth, "Queue depth for request-based dm-mq devices");
+
+module_param(dm_mq_numa_node, int, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(dm_mq_numa_node, "NUMA node for request-based dm-mq devices");
 
 MODULE_DESCRIPTION(DM_NAME " driver");
 MODULE_AUTHOR("Joe Thornber <dm-devel@redhat.com>");
