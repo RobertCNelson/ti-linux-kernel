@@ -376,7 +376,6 @@ unsigned long shmem_partial_swap_usage(struct address_space *mapping,
 
 	rcu_read_lock();
 
-restart:
 	radix_tree_for_each_slot(slot, &mapping->page_tree, &iter, start) {
 		if (iter.index >= end)
 			break;
@@ -388,16 +387,17 @@ restart:
 		 * don't need to reset the counter, nor do we risk infinite
 		 * restarts.
 		 */
-		if (radix_tree_deref_retry(page))
-			goto restart;
+		if (radix_tree_deref_retry(page)) {
+			slot = radix_tree_iter_retry(&iter);
+			continue;
+		}
 
 		if (radix_tree_exceptional_entry(page))
 			swapped++;
 
 		if (need_resched()) {
 			cond_resched_rcu();
-			start = iter.index + 1;
-			goto restart;
+			slot = radix_tree_iter_next(&iter);
 		}
 	}
 
@@ -1947,12 +1947,13 @@ static void shmem_tag_pins(struct address_space *mapping)
 	start = 0;
 	rcu_read_lock();
 
-restart:
 	radix_tree_for_each_slot(slot, &mapping->page_tree, &iter, start) {
 		page = radix_tree_deref_slot(slot);
 		if (!page || radix_tree_exception(page)) {
-			if (radix_tree_deref_retry(page))
-				goto restart;
+			if (radix_tree_deref_retry(page)) {
+				slot = radix_tree_iter_retry(&iter);
+				continue;
+			}
 		} else if (page_count(page) - page_mapcount(page) > 1) {
 			spin_lock_irq(&mapping->tree_lock);
 			radix_tree_tag_set(&mapping->page_tree, iter.index,
@@ -1962,8 +1963,7 @@ restart:
 
 		if (need_resched()) {
 			cond_resched_rcu();
-			start = iter.index + 1;
-			goto restart;
+			slot = radix_tree_iter_next(&iter);
 		}
 	}
 	rcu_read_unlock();
@@ -2000,14 +2000,15 @@ static int shmem_wait_for_pins(struct address_space *mapping)
 
 		start = 0;
 		rcu_read_lock();
-restart:
 		radix_tree_for_each_tagged(slot, &mapping->page_tree, &iter,
 					   start, SHMEM_TAG_PINNED) {
 
 			page = radix_tree_deref_slot(slot);
 			if (radix_tree_exception(page)) {
-				if (radix_tree_deref_retry(page))
-					goto restart;
+				if (radix_tree_deref_retry(page)) {
+					slot = radix_tree_iter_retry(&iter);
+					continue;
+				}
 
 				page = NULL;
 			}
@@ -2032,8 +2033,7 @@ restart:
 continue_resched:
 			if (need_resched()) {
 				cond_resched_rcu();
-				start = iter.index + 1;
-				goto restart;
+				slot = radix_tree_iter_next(&iter);
 			}
 		}
 		rcu_read_unlock();
