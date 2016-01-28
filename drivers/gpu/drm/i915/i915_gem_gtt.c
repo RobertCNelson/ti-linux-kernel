@@ -96,9 +96,11 @@
 static int
 i915_get_ggtt_vma_pages(struct i915_vma *vma);
 
-const struct i915_ggtt_view i915_ggtt_view_normal;
+const struct i915_ggtt_view i915_ggtt_view_normal = {
+	.type = I915_GGTT_VIEW_NORMAL,
+};
 const struct i915_ggtt_view i915_ggtt_view_rotated = {
-        .type = I915_GGTT_VIEW_ROTATED
+	.type = I915_GGTT_VIEW_ROTATED,
 };
 
 static int sanitize_enable_ppgtt(struct drm_device *dev, int enable_ppgtt)
@@ -2807,6 +2809,8 @@ void i915_global_gtt_cleanup(struct drm_device *dev)
 		ppgtt->base.cleanup(&ppgtt->base);
 	}
 
+	i915_gem_cleanup_stolen(dev);
+
 	if (drm_mm_initialized(&vm->mm)) {
 		if (intel_vgpu_active(dev))
 			intel_vgt_deballoon();
@@ -3179,6 +3183,14 @@ int i915_gem_gtt_init(struct drm_device *dev)
 	if (ret)
 		return ret;
 
+	/*
+	 * Initialise stolen early so that we may reserve preallocated
+	 * objects for the BIOS to KMS transition.
+	 */
+	ret = i915_gem_init_stolen(dev);
+	if (ret)
+		goto out_gtt_cleanup;
+
 	/* GMADR is the PCI mmio aperture into the global GTT. */
 	DRM_INFO("Memory usable by graphics device = %lluM\n",
 		 gtt->base.total >> 20);
@@ -3198,6 +3210,11 @@ int i915_gem_gtt_init(struct drm_device *dev)
 	DRM_DEBUG_DRIVER("ppgtt mode: %i\n", i915.enable_ppgtt);
 
 	return 0;
+
+out_gtt_cleanup:
+	gtt->base.cleanup(&dev_priv->gtt.base);
+
+	return ret;
 }
 
 void i915_gem_restore_gtt_mappings(struct drm_device *dev)
@@ -3329,7 +3346,7 @@ i915_gem_obj_lookup_or_create_ggtt_vma(struct drm_i915_gem_object *obj,
 }
 
 static struct scatterlist *
-rotate_pages(dma_addr_t *in, unsigned int offset,
+rotate_pages(const dma_addr_t *in, unsigned int offset,
 	     unsigned int width, unsigned int height,
 	     struct sg_table *st, struct scatterlist *sg)
 {
