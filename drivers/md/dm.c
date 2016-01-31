@@ -242,6 +242,7 @@ bool dm_use_blk_mq(struct mapped_device *md)
 {
 	return md->use_blk_mq;
 }
+EXPORT_SYMBOL_GPL(dm_use_blk_mq);
 
 /*
  * For mempools pre-allocation at the table loading time.
@@ -1846,6 +1847,8 @@ static struct request *clone_rq(struct request *rq, struct mapped_device *md,
 				struct dm_rq_target_io *tio, gfp_t gfp_mask)
 {
 	/*
+	 * Create clone for use with .request_fn request_queue
+	 *
 	 * Do not allocate a clone if tio->clone was already set
 	 * (see: dm_mq_queue_rq).
 	 */
@@ -1873,14 +1876,20 @@ static struct request *clone_rq(struct request *rq, struct mapped_device *md,
 static void map_tio_request(struct kthread_work *work);
 
 static void init_tio(struct dm_rq_target_io *tio, struct request *rq,
-		     struct mapped_device *md)
+		     struct mapped_device *md, bool init_info)
 {
 	tio->md = md;
 	tio->ti = NULL;
 	tio->clone = NULL;
 	tio->orig = rq;
 	tio->error = 0;
-	memset(&tio->info, 0, sizeof(tio->info));
+	/*
+	 * Avoid initializing info for blk-mq; it passes
+	 * target-specific data through info.ptr
+	 * (see: dm_mq_init_request)
+	 */
+	if (init_info)
+		memset(&tio->info, 0, sizeof(tio->info));
 	if (md->kworker_task)
 		init_kthread_work(&tio->work, map_tio_request);
 }
@@ -1896,7 +1905,7 @@ static struct dm_rq_target_io *prep_tio(struct request *rq,
 	if (!tio)
 		return NULL;
 
-	init_tio(tio, rq, md);
+	init_tio(tio, rq, md, true);
 
 	table = dm_get_live_table(md, &srcu_idx);
 	if (!dm_table_mq_request_based(table)) {
@@ -2497,7 +2506,6 @@ static struct dm_table *__bind(struct mapped_device *md, struct dm_table *t,
 
 	old_map = rcu_dereference_protected(md->map, lockdep_is_held(&md->suspend_lock));
 	rcu_assign_pointer(md->map, t);
-	md->immutable_target_type = dm_table_get_immutable_target_type(t);
 
 	dm_table_set_restrictions(t, q, limits);
 	if (old_map)
@@ -2630,6 +2638,16 @@ static int dm_mq_init_request(void *data, struct request *rq,
 	 */
 	tio->md = md;
 
+	/*
+	 * FIXME: If/when there is another blk-mq request-based DM target
+	 * other than multipath: make conditional on ti->per_bio_data_size
+	 * but it is a serious pain to get target here.
+	 */
+	{
+		/* target-specific per-io data is immediately after the tio */
+		tio->info.ptr = tio + 1;
+	}
+
 	return 0;
 }
 
@@ -2653,7 +2671,7 @@ static int dm_mq_queue_rq(struct blk_mq_hw_ctx *hctx,
 	dm_start_request(md, rq);
 
 	/* Init tio using md established in .init_request */
-	init_tio(tio, rq, md);
+	init_tio(tio, rq, md, !ti->per_io_data_size);
 
 	/*
 	 * Establish tio->ti before queuing work (map_tio_request)
@@ -2661,10 +2679,12 @@ static int dm_mq_queue_rq(struct blk_mq_hw_ctx *hctx,
 	 */
 	tio->ti = ti;
 
-	/* Clone the request if underlying devices aren't blk-mq */
 	if (dm_table_get_type(map) == DM_TYPE_REQUEST_BASED) {
-		/* clone request is allocated at the end of the pdu */
-		tio->clone = (void *)blk_mq_rq_to_pdu(rq) + sizeof(struct dm_rq_target_io);
+		/*
+		 * Clone the request if underlying devices aren't blk-mq
+		 * - clone request is allocated at the end of the pdu
+		 */
+		tio->clone = blk_mq_rq_to_pdu(rq) + sizeof(*tio) + ti->per_io_data_size;
 		(void) clone_rq(rq, md, tio, GFP_ATOMIC);
 		queue_kthread_work(&md->kworker, &tio->work);
 	} else {
@@ -2687,7 +2707,8 @@ static struct blk_mq_ops dm_mq_ops = {
 	.init_request = dm_mq_init_request,
 };
 
-static int dm_init_request_based_blk_mq_queue(struct mapped_device *md)
+static int dm_init_request_based_blk_mq_queue(struct mapped_device *md,
+					      struct dm_target *immutable_tgt)
 {
 	unsigned md_type = dm_get_md_type(md);
 	struct request_queue *q;
@@ -2699,11 +2720,17 @@ static int dm_init_request_based_blk_mq_queue(struct mapped_device *md)
 	md->tag_set.numa_node = NUMA_NO_NODE;
 	md->tag_set.flags = BLK_MQ_F_SHOULD_MERGE | BLK_MQ_F_SG_MERGE;
 	md->tag_set.nr_hw_queues = dm_get_blk_mq_nr_hw_queues();
+
+	md->tag_set.cmd_size = sizeof(struct dm_rq_target_io);
+	if (immutable_tgt && immutable_tgt->per_io_data_size) {
+		/* any target-specific per-io data is immediately after the tio */
+		md->tag_set.cmd_size += immutable_tgt->per_io_data_size;
+	}
 	if (md_type == DM_TYPE_REQUEST_BASED) {
-		/* make the memory for non-blk-mq clone part of the pdu */
-		md->tag_set.cmd_size = sizeof(struct dm_rq_target_io) + sizeof(struct request);
-	} else
-		md->tag_set.cmd_size = sizeof(struct dm_rq_target_io);
+		/* put the memory for non-blk-mq clone at the end of the pdu */
+		md->tag_set.cmd_size += sizeof(struct request);
+	}
+
 	md->tag_set.driver_data = md;
 
 	err = blk_mq_alloc_tag_set(&md->tag_set);
@@ -2742,7 +2769,7 @@ static unsigned filter_md_type(unsigned type, struct mapped_device *md)
 /*
  * Setup the DM device's queue based on md's type
  */
-int dm_setup_md_queue(struct mapped_device *md)
+int dm_setup_md_queue(struct mapped_device *md, struct dm_table *t)
 {
 	int r;
 	unsigned md_type = filter_md_type(dm_get_md_type(md), md);
@@ -2756,7 +2783,7 @@ int dm_setup_md_queue(struct mapped_device *md)
 		}
 		break;
 	case DM_TYPE_MQ_REQUEST_BASED:
-		r = dm_init_request_based_blk_mq_queue(md);
+		r = dm_init_request_based_blk_mq_queue(md, dm_table_get_immutable_target(t));
 		if (r) {
 			DMWARN("Cannot initialize queue for request-based blk-mq mapped device");
 			return r;
@@ -3484,8 +3511,7 @@ struct dm_md_mempools *dm_alloc_md_mempools(struct mapped_device *md, unsigned t
 		if (!pool_size)
 			pool_size = dm_get_reserved_rq_based_ios();
 		front_pad = offsetof(struct dm_rq_clone_bio_info, clone);
-		/* per_io_data_size is not used. */
-		WARN_ON(per_io_data_size != 0);
+		/* per_io_data_size is used for blk-mq pdu at queue allocation */
 		break;
 	default:
 		BUG();
