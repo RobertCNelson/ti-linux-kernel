@@ -2644,24 +2644,9 @@ static int dm_mq_queue_rq(struct blk_mq_hw_ctx *hctx,
 	int srcu_idx;
 	struct dm_table *map = dm_get_live_table(md, &srcu_idx);
 	struct dm_target *ti;
-	sector_t pos;
 
-	/* always use block 0 to find the target for flushes for now */
-	pos = 0;
-	if (!(rq->cmd_flags & REQ_FLUSH))
-		pos = blk_rq_pos(rq);
-
-	ti = dm_table_find_target(map, pos);
-	if (!dm_target_is_valid(ti)) {
-		dm_put_live_table(md, srcu_idx);
-		DMERR_LIMIT("request attempted access beyond the end of device");
-		/*
-		 * Must perform setup, that rq_completed() requires,
-		 * before returning BLK_MQ_RQ_QUEUE_ERROR
-		 */
-		dm_start_request(md, rq);
-		return BLK_MQ_RQ_QUEUE_ERROR;
-	}
+	/* All dm-mq request-based targets are immutable singletons */
+	ti = dm_table_get_immutable_target(map);
 	dm_put_live_table(md, srcu_idx);
 
 	if (ti->type->busy && ti->type->busy(ti))
