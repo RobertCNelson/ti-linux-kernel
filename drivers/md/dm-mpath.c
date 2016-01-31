@@ -427,17 +427,17 @@ static int __multipath_map(struct dm_target *ti, struct request *clone,
 		goto out_unlock;
 	}
 
+	spin_unlock_irq(&m->lock);
+
 	mpio = set_mpio(m, map_context);
 	if (!mpio)
 		/* ENOMEM, requeue */
-		goto out_unlock;
+		return r;
 
 	mpio->pgpath = pgpath;
 	mpio->nr_bytes = nr_bytes;
 
 	bdev = pgpath->path.dev->bdev;
-
-	spin_unlock_irq(&m->lock);
 
 	if (clone) {
 		/*
