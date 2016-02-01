@@ -23,7 +23,6 @@
 #include <asm/page.h>
 #include <asm/irq.h>
 #include <asm/unwind.h>
-#include <asm/clk.h>
 #include <asm/mach_desc.h>
 #include <asm/smp.h>
 
@@ -228,10 +227,6 @@ static char *arc_cpu_mumbojumbo(int cpu_id, char *buf, int len)
 
 	if (tbl->info.id == 0)
 		n += scnprintf(buf + n, len - n, "UNKNOWN ARC Processor\n");
-
-	n += scnprintf(buf + n, len - n, "CPU speed\t: %u.%02u Mhz\n",
-		       (unsigned int)(arc_get_core_freq() / 1000000),
-		       (unsigned int)(arc_get_core_freq() / 10000) % 100);
 
 	n += scnprintf(buf + n, len - n, "Timers\t\t: %s%s%s%s\nISA Extn\t: ",
 		       IS_AVAIL1(cpu->extn.timer0, "Timer0 "),
@@ -487,6 +482,10 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 {
 	char *str;
 	int cpu_id = ptr_to_cpu(v);
+	struct device_node *pll = of_find_node_by_name(NULL, "core_clk");
+	u32 freq;
+
+	of_property_read_u32(pll, "clock-frequency", &freq);
 
 	if (!cpu_online(cpu_id)) {
 		seq_printf(m, "processor [%d]\t: Offline\n", cpu_id);
@@ -498,6 +497,9 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 		goto done;
 
 	seq_printf(m, arc_cpu_mumbojumbo(cpu_id, str, PAGE_SIZE));
+	seq_printf(m, "CPU speed\t: %u.%02u Mhz\n",
+		   (unsigned int)(freq / 1000000),
+		   (unsigned int)(freq / 10000) % 100);
 
 	seq_printf(m, "Bogo MIPS\t: %lu.%02lu\n",
 		   loops_per_jiffy / (500000 / HZ),
