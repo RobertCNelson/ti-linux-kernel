@@ -35,8 +35,10 @@
 #include <linux/efi.h>
 #include <linux/swiotlb.h>
 
+#include <asm/boot.h>
 #include <asm/fixmap.h>
 #include <asm/kasan.h>
+#include <asm/kernel-pgtable.h>
 #include <asm/memory.h>
 #include <asm/sections.h>
 #include <asm/setup.h>
@@ -158,9 +160,80 @@ static int __init early_mem(char *p)
 }
 early_param("mem", early_mem);
 
+/*
+ * clip_mem_range() - remove memblock memory between @min and @max until
+ *                    we meet the limit in 'memory_limit'.
+ */
+static void __init clip_mem_range(u64 min, u64 max)
+{
+	u64 mem_size, to_remove;
+	int i;
+
+again:
+	mem_size = memblock_phys_mem_size();
+	if (mem_size <= memory_limit || max <= min)
+		return;
+
+	to_remove = mem_size - memory_limit;
+
+	for (i = memblock.memory.cnt - 1; i >= 0; i--) {
+		struct memblock_region *r = memblock.memory.regions + i;
+		u64 start = max(min, r->base);
+		u64 end = min(max, r->base + r->size);
+
+		if (start >= max || end <= min)
+			continue;
+
+		if (end > min) {
+			u64 size = min(to_remove, end - max(start, min));
+
+			memblock_remove(end - size, size);
+		} else {
+			memblock_remove(start, min(max - start, to_remove));
+		}
+		goto again;
+	}
+}
+
 void __init arm64_memblock_init(void)
 {
-	memblock_enforce_memory_limit(memory_limit);
+	const s64 linear_region_size = -(s64)PAGE_OFFSET;
+
+	/*
+	 * Select a suitable value for the base of physical memory.
+	 */
+	memstart_addr = round_down(memblock_start_of_DRAM(),
+				   ARM64_MEMSTART_ALIGN);
+
+	/*
+	 * Remove the memory that we will not be able to cover with the
+	 * linear mapping. Take care not to clip the kernel which may be
+	 * high in memory.
+	 */
+	memblock_remove(max(memstart_addr + linear_region_size, __pa(_end)),
+			ULLONG_MAX);
+	if (memblock_end_of_DRAM() > linear_region_size)
+		memblock_remove(0, memblock_end_of_DRAM() - linear_region_size);
+
+	if (memory_limit != (phys_addr_t)ULLONG_MAX) {
+		u64 kbase = round_down(__pa(_text), MIN_KIMG_ALIGN);
+		u64 kend = PAGE_ALIGN(__pa(_end));
+		u64 const sz_4g = 0x100000000UL;
+
+		/*
+		 * Clip memory in order of preference:
+		 * - above the kernel and above 4 GB
+		 * - between 4 GB and the start of the kernel (if the kernel
+		 *   is loaded high in memory)
+		 * - between the kernel and 4 GB (if the kernel is loaded
+		 *   low in memory)
+		 * - below 4 GB
+		 */
+		clip_mem_range(max(sz_4g, kend), ULLONG_MAX);
+		clip_mem_range(sz_4g, kbase);
+		clip_mem_range(kend, sz_4g);
+		clip_mem_range(0, min(kbase, sz_4g));
+	}
 
 	/*
 	 * Register the kernel text, kernel data, initrd, and initial
@@ -381,3 +454,28 @@ static int __init keepinitrd_setup(char *__unused)
 
 __setup("keepinitrd", keepinitrd_setup);
 #endif
+
+/*
+ * Dump out memory limit information on panic.
+ */
+static int dump_mem_limit(struct notifier_block *self, unsigned long v, void *p)
+{
+	if (memory_limit != (phys_addr_t)ULLONG_MAX) {
+		pr_emerg("Memory Limit: %llu MB\n", memory_limit >> 20);
+	} else {
+		pr_emerg("Memory Limit: none\n");
+	}
+	return 0;
+}
+
+static struct notifier_block mem_limit_notifier = {
+	.notifier_call = dump_mem_limit,
+};
+
+static int __init register_mem_limit_dumper(void)
+{
+	atomic_notifier_chain_register(&panic_notifier_list,
+				       &mem_limit_notifier);
+	return 0;
+}
+__initcall(register_mem_limit_dumper);

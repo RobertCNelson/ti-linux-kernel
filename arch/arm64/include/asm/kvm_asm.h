@@ -26,7 +26,7 @@
 #define KVM_ARM64_DEBUG_DIRTY_SHIFT	0
 #define KVM_ARM64_DEBUG_DIRTY		(1 << KVM_ARM64_DEBUG_DIRTY_SHIFT)
 
-#define kvm_ksym_ref(sym)		((void *)&sym - KIMAGE_VADDR + PAGE_OFFSET)
+#define kvm_ksym_ref(sym)		phys_to_virt((u64)&sym - kimage_voffset)
 
 #ifndef __ASSEMBLY__
 struct kvm;
