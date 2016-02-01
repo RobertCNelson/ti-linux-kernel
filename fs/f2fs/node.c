@@ -861,7 +861,7 @@ skip_partial:
 				f2fs_put_page(page, 1);
 				goto restart;
 			}
-			f2fs_wait_on_page_writeback(page, NODE);
+			f2fs_wait_on_page_writeback(page, NODE, true);
 			ri->i_nid[offset[0] - NODE_DIR1_BLOCK] = 0;
 			set_page_dirty(page);
 			unlock_page(page);
@@ -976,7 +976,7 @@ struct page *new_node_page(struct dnode_of_data *dn,
 	new_ni.ino = dn->inode->i_ino;
 	set_node_addr(sbi, &new_ni, NEW_ADDR, false);
 
-	f2fs_wait_on_page_writeback(page, NODE);
+	f2fs_wait_on_page_writeback(page, NODE, true);
 	fill_node_footer(page, dn->nid, dn->inode->i_ino, ofs, true);
 	set_cold_node(dn->inode, page);
 	SetPageUptodate(page);
@@ -1154,6 +1154,39 @@ void sync_inode_page(struct dnode_of_data *dn)
 	dn->node_changed = ret ? true: false;
 }
 
+static void flush_inline_data(struct f2fs_sb_info *sbi, nid_t ino)
+{
+	struct inode *inode;
+	struct page *page;
+
+	/* should flush inline_data before evict_inode */
+	inode = ilookup(sbi->sb, ino);
+	if (!inode)
+		return;
+
+	page = pagecache_get_page(inode->i_mapping, 0, FGP_LOCK|FGP_NOWAIT, 0);
+	if (!page)
+		goto iput_out;
+
+	if (!PageUptodate(page))
+		goto page_out;
+
+	if (!PageDirty(page))
+		goto page_out;
+
+	if (!clear_page_dirty_for_io(page))
+		goto page_out;
+
+	if (!f2fs_write_inline_data(inode, page))
+		inode_dec_dirty_pages(inode);
+	else
+		set_page_dirty(page);
+page_out:
+	f2fs_put_page(page, 1);
+iput_out:
+	iput(inode);
+}
+
 int sync_node_pages(struct f2fs_sb_info *sbi, nid_t ino,
 					struct writeback_control *wbc)
 {
@@ -1219,6 +1252,14 @@ continue_unlock:
 			if (!PageDirty(page)) {
 				/* someone wrote it for us */
 				goto continue_unlock;
+			}
+
+			/* flush inline_data */
+			if (!ino && is_inline_node(page)) {
+				clear_inline_node(page);
+				unlock_page(page);
+				flush_inline_data(sbi, ino_of_node(page));
+				continue;
 			}
 
 			if (!clear_page_dirty_for_io(page))
@@ -1287,7 +1328,7 @@ int wait_on_node_pages_writeback(struct f2fs_sb_info *sbi, nid_t ino)
 				continue;
 
 			if (ino && ino_of_node(page) == ino) {
-				f2fs_wait_on_page_writeback(page, NODE);
+				f2fs_wait_on_page_writeback(page, NODE, true);
 				if (TestClearPageError(page))
 					ret = -EIO;
 			}
@@ -1326,7 +1367,7 @@ static int f2fs_write_node_page(struct page *page,
 	if (unlikely(f2fs_cp_error(sbi)))
 		goto redirty_out;
 
-	f2fs_wait_on_page_writeback(page, NODE);
+	f2fs_wait_on_page_writeback(page, NODE, true);
 
 	/* get old block addr of this node page */
 	nid = nid_of_node(page);
@@ -1703,7 +1744,7 @@ void recover_inline_xattr(struct inode *inode, struct page *page)
 	src_addr = inline_xattr_addr(page);
 	inline_size = inline_xattr_size(inode);
 
-	f2fs_wait_on_page_writeback(ipage, NODE);
+	f2fs_wait_on_page_writeback(ipage, NODE, true);
 	memcpy(dst_addr, src_addr, inline_size);
 update_inode:
 	update_inode(inode, ipage);
@@ -2000,6 +2041,7 @@ static int init_node_manager(struct f2fs_sb_info *sbi)
 	nm_i->nat_cnt = 0;
 	nm_i->ram_thresh = DEF_RAM_THRESHOLD;
 	nm_i->ra_nid_pages = DEF_RA_NID_PAGES;
+	nm_i->dirty_nats_ratio = DEF_DIRTY_NAT_RATIO_THRESHOLD;
 
 	INIT_RADIX_TREE(&nm_i->free_nid_root, GFP_ATOMIC);
 	INIT_LIST_HEAD(&nm_i->free_nid_list);
