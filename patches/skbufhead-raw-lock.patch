@@ -65,7 +65,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #endif
  }
  
-@@ -4045,7 +4045,7 @@ static void flush_backlog(void *arg)
+@@ -4050,7 +4050,7 @@ static void flush_backlog(void *arg)
  	skb_queue_walk_safe(&sd->input_pkt_queue, skb, tmp) {
  		if (skb->dev == dev) {
  			__skb_unlink(skb, &sd->input_pkt_queue);
@@ -74,7 +74,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  			input_queue_head_incr(sd);
  		}
  	}
-@@ -4054,10 +4054,13 @@ static void flush_backlog(void *arg)
+@@ -4059,10 +4059,13 @@ static void flush_backlog(void *arg)
  	skb_queue_walk_safe(&sd->process_queue, skb, tmp) {
  		if (skb->dev == dev) {
  			__skb_unlink(skb, &sd->process_queue);
@@ -89,7 +89,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  static int napi_gro_complete(struct sk_buff *skb)
-@@ -7464,6 +7467,9 @@ static int dev_cpu_callback(struct notif
+@@ -7469,6 +7472,9 @@ static int dev_cpu_callback(struct notif
  		netif_rx_ni(skb);
  		input_queue_head_incr(oldsd);
  	}
@@ -99,7 +99,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	return NOTIFY_OK;
  }
-@@ -7765,8 +7771,9 @@ static int __init net_dev_init(void)
+@@ -7770,8 +7776,9 @@ static int __init net_dev_init(void)
  	for_each_possible_cpu(i) {
  		struct softnet_data *sd = &per_cpu(softnet_data, i);
  

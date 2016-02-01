@@ -35,7 +35,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	void __user *bd_addr;
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -2605,12 +2605,24 @@ extern struct mm_struct * mm_alloc(void)
+@@ -2606,12 +2606,24 @@ extern struct mm_struct * mm_alloc(void)
  
  /* mmdrop drops the mm and the page tables */
  extern void __mmdrop(struct mm_struct *);
