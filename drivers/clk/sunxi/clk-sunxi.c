@@ -227,9 +227,9 @@ static void sun4i_get_pll5_factors(struct factors_request *req)
 }
 
 /**
- * sun6i_a31_get_pll6_factors() - calculates n, k factors for A31 PLL6x2
- * PLL6x2 rate is calculated as follows
- * rate = parent_rate * (n + 1) * (k + 1)
+ * sun6i_a31_get_pll6_factors() - calculates n, k factors for A31 PLL6
+ * PLL6 rate is calculated as follows
+ * rate = parent_rate * (n + 1) * (k + 1) / 2
  * parent_rate is always 24Mhz
  */
 
@@ -238,14 +238,23 @@ static void sun6i_a31_get_pll6_factors(struct factors_request *req)
 	u8 div;
 
 	/* Normalize value to a parent_rate multiple (24M) */
-	div = req->rate / req->parent_rate;
-	req->rate = req->parent_rate * div;
+	div = req->rate / (req->parent_rate / 2);
+	req->rate = (req->parent_rate / 2) * div;
 
 	req->k = div / 32;
 	if (req->k > 3)
 		req->k = 3;
 
 	req->n = DIV_ROUND_UP(div, (req->k + 1)) - 1;
+}
+
+static void sun6i_a31_pll6_recalc(struct factors_request *req)
+{
+	req->rate = req->parent_rate;
+
+	req->rate *= req->n + 1;
+	req->rate *= req->k + 1;
+	req->rate /= 2;
 }
 
 /**
@@ -537,7 +546,7 @@ static const struct factors_data sun6i_a31_pll6_data __initconst = {
 	.enable = 31,
 	.table = &sun6i_a31_pll6_config,
 	.getter = sun6i_a31_get_pll6_factors,
-	.name = "pll6x2",
+	.recalc = sun6i_a31_pll6_recalc,
 };
 
 static const struct factors_data sun5i_a13_ahb_data __initconst = {
@@ -800,15 +809,6 @@ static const struct divs_data pll6_divs_data __initconst = {
 	}
 };
 
-static const struct divs_data sun6i_a31_pll6_divs_data __initconst = {
-	.factors = &sun6i_a31_pll6_data,
-	.ndivs = 2,
-	.div = {
-		{ .fixed = 2 }, /* normal output */
-		{ .self = 1 }, /* base factor clock, 2x */
-	}
-};
-
 /**
  * sunxi_divs_clk_setup() - Setup function for leaf divisors on clocks
  *
@@ -950,6 +950,7 @@ free_clkdata:
 static const struct of_device_id clk_factors_match[] __initconst = {
 	{.compatible = "allwinner,sun4i-a10-pll1-clk", .data = &sun4i_pll1_data,},
 	{.compatible = "allwinner,sun6i-a31-pll1-clk", .data = &sun6i_a31_pll1_data,},
+	{.compatible = "allwinner,sun6i-a31-pll6-clk", .data = &sun6i_a31_pll6_data,},
 	{.compatible = "allwinner,sun8i-a23-pll1-clk", .data = &sun8i_a23_pll1_data,},
 	{.compatible = "allwinner,sun7i-a20-pll4-clk", .data = &sun7i_a20_pll4_data,},
 	{.compatible = "allwinner,sun5i-a13-ahb-clk", .data = &sun5i_a13_ahb_data,},
@@ -971,7 +972,6 @@ static const struct of_device_id clk_div_match[] __initconst = {
 static const struct of_device_id clk_divs_match[] __initconst = {
 	{.compatible = "allwinner,sun4i-a10-pll5-clk", .data = &pll5_divs_data,},
 	{.compatible = "allwinner,sun4i-a10-pll6-clk", .data = &pll6_divs_data,},
-	{.compatible = "allwinner,sun6i-a31-pll6-clk", .data = &sun6i_a31_pll6_divs_data,},
 	{}
 };
 

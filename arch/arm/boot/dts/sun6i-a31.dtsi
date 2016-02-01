@@ -65,7 +65,7 @@
 			compatible = "allwinner,simple-framebuffer",
 				     "simple-framebuffer";
 			allwinner,pipeline = "de_be0-lcd0-hdmi";
-			clocks = <&pll6 0>;
+			clocks = <&pll6>;
 			status = "disabled";
 		};
 
@@ -73,7 +73,7 @@
 			compatible = "allwinner,simple-framebuffer",
 				     "simple-framebuffer";
 			allwinner,pipeline = "de_be0-lcd0";
-			clocks = <&pll6 0>;
+			clocks = <&pll6>;
 			status = "disabled";
 		};
 	};
@@ -201,11 +201,11 @@
 		};
 
 		pll6: clk@01c20028 {
-			#clock-cells = <1>;
+			#clock-cells = <0>;
 			compatible = "allwinner,sun6i-a31-pll6-clk";
 			reg = <0x01c20028 0x4>;
 			clocks = <&osc24M>;
-			clock-output-names = "pll6", "pll6x2";
+			clock-output-names = "pll6";
 		};
 
 		cpu: cpu@01c20050 {
@@ -235,7 +235,7 @@
 			#clock-cells = <0>;
 			compatible = "allwinner,sun6i-a31-ahb1-clk";
 			reg = <0x01c20054 0x4>;
-			clocks = <&osc32k>, <&osc24M>, <&axi>, <&pll6 0>;
+			clocks = <&osc32k>, <&osc24M>, <&axi>, <&pll6>;
 			clock-output-names = "ahb1";
 
 			/*
@@ -244,7 +244,7 @@
 			 * controller requires AHB1 clocked from PLL6.
 			 */
 			assigned-clocks = <&ahb1>;
-			assigned-clock-parents = <&pll6 0>;
+			assigned-clock-parents = <&pll6>;
 		};
 
 		ahb1_gates: clk@01c20060 {
@@ -307,7 +307,7 @@
 			#clock-cells = <0>;
 			compatible = "allwinner,sun4i-a10-apb1-clk";
 			reg = <0x01c20058 0x4>;
-			clocks = <&osc32k>, <&osc24M>, <&pll6 0>, <&pll6 0>;
+			clocks = <&osc32k>, <&osc24M>, <&pll6>, <&pll6>;
 			clock-output-names = "apb2";
 		};
 
@@ -331,7 +331,7 @@
 			#clock-cells = <1>;
 			compatible = "allwinner,sun4i-a10-mmc-clk";
 			reg = <0x01c20088 0x4>;
-			clocks = <&osc24M>, <&pll6 0>;
+			clocks = <&osc24M>, <&pll6>;
 			clock-output-names = "mmc0",
 					     "mmc0_output",
 					     "mmc0_sample";
@@ -341,7 +341,7 @@
 			#clock-cells = <1>;
 			compatible = "allwinner,sun4i-a10-mmc-clk";
 			reg = <0x01c2008c 0x4>;
-			clocks = <&osc24M>, <&pll6 0>;
+			clocks = <&osc24M>, <&pll6>;
 			clock-output-names = "mmc1",
 					     "mmc1_output",
 					     "mmc1_sample";
@@ -351,7 +351,7 @@
 			#clock-cells = <1>;
 			compatible = "allwinner,sun4i-a10-mmc-clk";
 			reg = <0x01c20090 0x4>;
-			clocks = <&osc24M>, <&pll6 0>;
+			clocks = <&osc24M>, <&pll6>;
 			clock-output-names = "mmc2",
 					     "mmc2_output",
 					     "mmc2_sample";
@@ -361,7 +361,7 @@
 			#clock-cells = <1>;
 			compatible = "allwinner,sun4i-a10-mmc-clk";
 			reg = <0x01c20094 0x4>;
-			clocks = <&osc24M>, <&pll6 0>;
+			clocks = <&osc24M>, <&pll6>;
 			clock-output-names = "mmc3",
 					     "mmc3_output",
 					     "mmc3_sample";
@@ -371,7 +371,7 @@
 			#clock-cells = <0>;
 			compatible = "allwinner,sun4i-a10-mod0-clk";
 			reg = <0x01c2009c 0x4>;
-			clocks = <&osc24M>, <&pll6 0>;
+			clocks = <&osc24M>, <&pll6>;
 			clock-output-names = "ss";
 		};
 
@@ -379,7 +379,7 @@
 			#clock-cells = <0>;
 			compatible = "allwinner,sun4i-a10-mod0-clk";
 			reg = <0x01c200a0 0x4>;
-			clocks = <&osc24M>, <&pll6 0>;
+			clocks = <&osc24M>, <&pll6>;
 			clock-output-names = "spi0";
 		};
 
@@ -387,7 +387,7 @@
 			#clock-cells = <0>;
 			compatible = "allwinner,sun4i-a10-mod0-clk";
 			reg = <0x01c200a4 0x4>;
-			clocks = <&osc24M>, <&pll6 0>;
+			clocks = <&osc24M>, <&pll6>;
 			clock-output-names = "spi1";
 		};
 
@@ -395,7 +395,7 @@
 			#clock-cells = <0>;
 			compatible = "allwinner,sun4i-a10-mod0-clk";
 			reg = <0x01c200a8 0x4>;
-			clocks = <&osc24M>, <&pll6 0>;
+			clocks = <&osc24M>, <&pll6>;
 			clock-output-names = "spi2";
 		};
 
@@ -403,7 +403,7 @@
 			#clock-cells = <0>;
 			compatible = "allwinner,sun4i-a10-mod0-clk";
 			reg = <0x01c200ac 0x4>;
-			clocks = <&osc24M>, <&pll6 0>;
+			clocks = <&osc24M>, <&pll6>;
 			clock-output-names = "spi3";
 		};
 
@@ -1042,8 +1042,8 @@
 			ar100: ar100_clk {
 				compatible = "allwinner,sun6i-a31-ar100-clk";
 				#clock-cells = <0>;
-				clocks = <&osc32k>, <&osc24M>, <&pll6 0>,
-					 <&pll6 0>;
+				clocks = <&osc32k>, <&osc24M>, <&pll6>,
+					 <&pll6>;
 				clock-output-names = "ar100";
 			};
 

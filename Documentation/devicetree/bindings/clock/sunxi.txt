@@ -88,7 +88,7 @@ Required properties for all clocks:
 - #clock-cells : from common clock binding; shall be set to 0 except for
 	the following compatibles where it shall be set to 1:
 	"allwinner,*-gates-clk", "allwinner,sun4i-pll5-clk",
-	"allwinner,sun4i-pll6-clk", "allwinner,sun6i-a31-pll6-clk",
+	"allwinner,sun4i-pll6-clk",
 	"allwinner,*-usb-clk", "allwinner,*-mmc-clk",
 	"allwinner,*-mmc-config-clk"
 - clock-output-names : shall be the corresponding names of the outputs.
