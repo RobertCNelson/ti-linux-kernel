@@ -30,8 +30,6 @@ source "drivers/staging/wlan-ng/Kconfig"
 
 source "drivers/staging/comedi/Kconfig"
 
-source "drivers/staging/olpc_dcon/Kconfig"
-
 source "drivers/staging/panel/Kconfig"
 
 source "drivers/staging/rtl8192u/Kconfig"
@@ -91,8 +89,6 @@ source "drivers/staging/mt29f_spinand/Kconfig"
 source "drivers/staging/lustre/Kconfig"
 
 source "drivers/staging/dgnc/Kconfig"
-
-source "drivers/staging/dgap/Kconfig"
 
 source "drivers/staging/gs_fpgaboot/Kconfig"
 
