@@ -8418,6 +8418,13 @@ L:     linux-arm-msm@vger.kernel.org
 S:     Maintained
 F:     drivers/pci/host/*qcom*
 
+PCI DRIVER FOR SYNOPSYS PROTOTYPING DEVICE
+M:	Joao Pinto <jpinto@synopsys.com>
+L:	linux-pci@vger.kernel.org
+S:	Maintained
+F:	Documentation/devicetree/bindings/pci/pcie-synopsys.txt
+F:	drivers/pci/host/pcie-synopsys.c
+
 PCMCIA SUBSYSTEM
 P:	Linux PCMCIA Team
 L:	linux-pcmcia@lists.infradead.org
