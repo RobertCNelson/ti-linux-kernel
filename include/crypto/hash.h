@@ -14,6 +14,7 @@
 #define _CRYPTO_HASH_H
 
 #include <linux/crypto.h>
+#include <linux/string.h>
 
 struct crypto_ahash;
 
@@ -258,6 +259,18 @@ static inline void crypto_free_ahash(struct crypto_ahash *tfm)
 {
 	crypto_destroy_tfm(tfm, crypto_ahash_tfm(tfm));
 }
+
+/**
+ * crypto_has_ahash() - Search for the availability of an ahash.
+ * @alg_name: is the cra_name / name or cra_driver_name / driver name of the
+ *	      ahash
+ * @type: specifies the type of the ahash
+ * @mask: specifies the mask for the ahash
+ *
+ * Return: true when the ahash is known to the kernel crypto API; false
+ *	   otherwise
+ */
+int crypto_has_ahash(const char *alg_name, u32 type, u32 mask);
 
 static inline unsigned int crypto_ahash_alignmask(
 	struct crypto_ahash *tfm)
@@ -548,6 +561,12 @@ static inline struct ahash_request *ahash_request_alloc(
 static inline void ahash_request_free(struct ahash_request *req)
 {
 	kzfree(req);
+}
+
+static inline void ahash_request_zero(struct ahash_request *req)
+{
+	memzero_explicit(req, sizeof(*req) +
+			      crypto_ahash_reqsize(crypto_ahash_reqtfm(req)));
 }
 
 static inline struct ahash_request *ahash_request_cast(
@@ -871,5 +890,11 @@ int crypto_shash_final(struct shash_desc *desc, u8 *out);
  */
 int crypto_shash_finup(struct shash_desc *desc, const u8 *data,
 		       unsigned int len, u8 *out);
+
+static inline void shash_desc_zero(struct shash_desc *desc)
+{
+	memzero_explicit(desc,
+			 sizeof(*desc) + crypto_shash_descsize(desc->tfm));
+}
 
 #endif	/* _CRYPTO_HASH_H */
