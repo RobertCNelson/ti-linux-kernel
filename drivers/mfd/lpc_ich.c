@@ -936,7 +936,10 @@ static int lpc_ich_init_gpio(struct pci_dev *dev)
 gpe0_done:
 	/* Setup GPIO base register */
 	pci_read_config_dword(dev, priv->gbase, &base_addr_cfg);
-	base_addr = base_addr_cfg & 0x0000ff80;
+
+	/* Clear the i/o flag */
+	base_addr = base_addr_cfg & ~BIT(0);
+
 	if (!base_addr) {
 		dev_notice(&dev->dev, "I/O space for GPIO uninitialized\n");
 		ret = -ENODEV;
