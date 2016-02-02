@@ -976,10 +976,8 @@ static void rs_set_termios(struct tty_struct *tty, struct ktermios *old_termios)
 
 	change_speed(info, tty);
 
-	if ((old_termios->c_cflag & CRTSCTS) &&
-	    !(tty->termios.c_cflag & CRTSCTS))
+	if ((old_termios->c_cflag & CRTSCTS) && !C_CRTSCTS(tty))
 		rs_start(tty);
-	
 }
 
 /*
@@ -1030,7 +1028,6 @@ static void rs_close(struct tty_struct *tty, struct file *filp)
 		local_irq_restore(flags);
 		return;
 	}
-	port->flags |= ASYNC_CLOSING;
 	/*
 	 * Now we wait for the transmit buffer to clear; and we notify 
 	 * the line discipline to only process XON/XOFF characters.
@@ -1054,23 +1051,13 @@ static void rs_close(struct tty_struct *tty, struct file *filp)
 	tty_ldisc_flush(tty);
 	tty->closing = 0;
 	tty_port_tty_set(&info->tport, NULL);
-#warning "This is not and has never been valid so fix it"	
-#if 0
-	if (tty->ldisc.num != ldiscs[N_TTY].num) {
-		if (tty->ldisc.close)
-			(tty->ldisc.close)(tty);
-		tty->ldisc = ldiscs[N_TTY];
-		tty->termios.c_line = N_TTY;
-		if (tty->ldisc.open)
-			(tty->ldisc.open)(tty);
-	}
-#endif	
+
 	if (port->blocked_open) {
 		if (port->close_delay)
 			msleep_interruptible(jiffies_to_msecs(port->close_delay));
 		wake_up_interruptible(&port->open_wait);
 	}
-	port->flags &= ~(ASYNC_NORMAL_ACTIVE|ASYNC_CLOSING);
+	port->flags &= ~ASYNC_NORMAL_ACTIVE;
 	local_irq_restore(flags);
 }
 
