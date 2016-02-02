@@ -973,6 +973,8 @@ M:	Rob Herring <robh@kernel.org>
 L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
 S:	Maintained
 F:	arch/arm/mach-highbank/
+F:	arch/arm/boot/dts/highbank.dts
+F:	arch/arm/boot/dts/ecx-*.dts*
 
 ARM/CAVIUM NETWORKS CNS3XXX MACHINE SUPPORT
 M:	Krzysztof Halasa <khalasa@piap.pl>
@@ -1048,6 +1050,7 @@ M:	Barry Song <baohua@kernel.org>
 L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/baohua/linux.git
 S:	Maintained
+F:	arch/arm/boot/dts/prima2*
 F:	arch/arm/mach-prima2/
 F:	drivers/clk/sirf/
 F:	drivers/clocksource/timer-prima2.c
@@ -1149,6 +1152,10 @@ W:	http://www.hisilicon.com
 S:	Supported
 T:	git git://github.com/hisilicon/linux-hisi.git
 F:	arch/arm/mach-hisi/
+F:	arch/arm/boot/dts/hi3*
+F:	arch/arm/boot/dts/hip*
+F:	arch/arm/boot/dts/hisi*
+F:	arch/arm64/boot/dts/hisilicon/
 
 ARM/HP JORNADA 7XX MACHINE SUPPORT
 M:	Kristoffer Ericson <kristoffer.ericson@gmail.com>
@@ -1225,6 +1232,7 @@ M:	Santosh Shilimkar <ssantosh@kernel.org>
 L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
 S:	Maintained
 F:	arch/arm/mach-keystone/
+F:	arch/arm/boot/dts/k2*
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone.git
 
 ARM/TEXAS INSTRUMENT KEYSTONE CLOCK FRAMEWORK
@@ -1293,6 +1301,7 @@ L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
 S:	Maintained
 F:	arch/arm/mach-berlin/
 F:	arch/arm/boot/dts/berlin*
+F:	arch/arm64/boot/dts/marvell/berlin*
 
 
 ARM/Marvell Dove/MV78xx0/Orion SOC support
@@ -1431,6 +1440,7 @@ S:	Maintained
 F:	arch/arm/boot/dts/qcom-*.dts
 F:	arch/arm/boot/dts/qcom-*.dtsi
 F:	arch/arm/mach-qcom/
+F:	arch/arm64/boot/dts/qcom/*
 F:	drivers/i2c/busses/i2c-qup.c
 F:	drivers/soc/qcom/
 F:	drivers/spi/spi-qup.c
@@ -1492,6 +1502,8 @@ L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
 L:	linux-samsung-soc@vger.kernel.org (moderated for non-subscribers)
 S:	Maintained
 F:	arch/arm/boot/dts/s3c*
+F:	arch/arm/boot/dts/s5p*
+F:	arch/arm/boot/dts/samsung*
 F:	arch/arm/boot/dts/exynos*
 F:	arch/arm64/boot/dts/exynos/
 F:	arch/arm/plat-samsung/
@@ -1572,6 +1584,7 @@ S:	Maintained
 F:	arch/arm/mach-socfpga/
 F:	arch/arm/boot/dts/socfpga*
 F:	arch/arm/configs/socfpga_defconfig
+F:	arch/arm64/boot/dts/altera/
 W:	http://www.rocketboards.org
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/dinguyen/linux.git
 
@@ -1725,7 +1738,7 @@ M:	Lorenzo Pieralisi <lorenzo.pieralisi@arm.com>
 L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
 S:	Maintained
 F:	arch/arm/boot/dts/vexpress*
-F:	arch/arm64/boot/dts/arm/vexpress*
+F:	arch/arm64/boot/dts/arm/
 F:	arch/arm/mach-vexpress/
 F:	*/*/vexpress*
 F:	*/*/*/vexpress*
@@ -2352,6 +2365,7 @@ F:	arch/arm/mach-bcm/
 F:	arch/arm/boot/dts/bcm113*
 F:	arch/arm/boot/dts/bcm216*
 F:	arch/arm/boot/dts/bcm281*
+F:	arch/arm64/boot/dts/broadcom/
 F:	arch/arm/configs/bcm_defconfig
 F:	drivers/mmc/host/sdhci-bcm-kona.c
 F:	drivers/clocksource/bcm_kona_timer.c
@@ -8842,6 +8856,7 @@ L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
 T:	git git://github.com/hzhuang1/linux.git
 T:	git git://github.com/rjarzmik/linux.git
 S:	Maintained
+F:	arch/arm/boot/dts/pxa*
 F:	arch/arm/mach-pxa/
 F:	drivers/dma/pxa*
 F:	drivers/pcmcia/pxa2xx*
@@ -8871,6 +8886,7 @@ L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
 T:	git git://github.com/hzhuang1/linux.git
 T:	git git://git.linaro.org/people/ycmiao/pxa-linux.git
 S:	Maintained
+F:	arch/arm/boot/dts/mmp*
 F:	arch/arm/mach-mmp/
 
 PXA MMCI DRIVER
@@ -10316,6 +10332,7 @@ L:	spear-devel@list.st.com
 L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
 W:	http://www.st.com/spear
 S:	Maintained
+F:	arch/arm/boot/dts/spear*
 F:	arch/arm/mach-spear/
 
 SPEAR CLOCK FRAMEWORK SUPPORT
