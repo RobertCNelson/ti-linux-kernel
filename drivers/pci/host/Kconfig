@@ -191,4 +191,12 @@ config PCIE_QCOM
 	  PCIe controller uses the Designware core plus Qualcomm-specific
 	  hardware wrappers.
 
+config PCIE_SYNOPSYS
+	bool "Platform Driver for Synopsys Device"
+	depends on ARC && OF
+	select PCIEPORTBUS
+	select PCIE_DW
+	help
+	  Say Y here if you want to enable PCIe controller support on the
+	  Synopsys IP Prototyping Kits.
 endmenu
