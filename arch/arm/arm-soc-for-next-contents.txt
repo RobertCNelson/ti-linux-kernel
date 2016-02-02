@@ -1,0 +1,35 @@
+fixes
+	patch
+		bus: uniphier-system-bus: revive tristate prompt
+		ARM: realview: use const and __initconst for smp_operations
+		ARM: tango: use const and __initconst for smp_operations
+		ARM: tango: use "depends on" instead of "if" after prompt
+		ARM: realview: use "depends on" instead of "if" after prompt
+		ARM64: tegra: Add chosen node for tegra132 norrin
+	<no branch> (e873cc022ce5e2c04bbc53b5874494b657e29d3f)
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-fixes
+	<no branch> (ab342c77fa60a30fce4d4228f88fd1b7bf566055)
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.5/fixes-rc1
+	<no branch> (ff61ee84e7aa5842d9e33c0b442f0b43a6a44eaf)
+		git://git.infradead.org/linux-mvebu tags/mvebu-fixes-4.5-1
+	<no branch> (aeb2ee5683e51305aff274d8b0a50af69b3ab310)
+		git://git.kernel.org/pub/scm/linux/kernel/git/sudeep.holla/linux tags/vexpress-for-v4.5/fixes-rc2
+
+next/fixes-non-critical
+
+next/cleanup
+
+next/multiplatform
+
+next/soc
+
+next/dt
+
+next/dt64
+
+next/defconfig
+
+next/config64
+
+next/drivers
+
