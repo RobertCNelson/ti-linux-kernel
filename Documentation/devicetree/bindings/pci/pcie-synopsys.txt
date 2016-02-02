@@ -1,0 +1,33 @@
+Synopsys PCI RC IP Prototyping Kit
+----------------------------------
+
+This is the reference platform driver to be used in the Synopsys PCI Root
+Complex IP Prototyping Kit.
+
+Required properties:
+- compatible: set to "snps,pcie-synopsys";
+- reg: base address and length of the pcie controller registers.
+- #address-cells: set to <3>
+- #size-cells: set to <2>
+- device_type: set to "pci"
+- ranges: ranges for the PCI memory and I/O regions.
+- interrupts: one interrupt source for MSI interrupts, followed by interrupt
+	source for hardware related interrupts.
+- #interrupt-cells: set to <1>
+- num-lanes: set to <1>;
+
+Example configuration:
+
+	pcie: pcie@0xdffff000 {
+		compatible = "snps,pcie-synopsys";
+		reg = <0xdffff000 0x1000>;
+		#address-cells = <3>;
+		#size-cells = <2>;
+		device_type = "pci";
+		ranges = <0x00000800 0 0xd0000000 0xd0000000 0 0x00002000>,
+			 <0x81000000 0 0x00000000 0xde000000 0 0x00010000>,
+			 <0x82000000 0 0xd0400000 0xd0400000 0 0x0d000000>;
+		interrupts = <25>, <24>;
+		#interrupt-cells = <1>;
+		num-lanes = <1>;
+	};
