@@ -194,8 +194,8 @@ int mlx5_eswitch_get_vport_stats(struct mlx5_eswitch *esw,
 				 int vport,
 				 struct ifla_vf_stats *vf_stats);
 
-int mlx5_eswitch_add_send_to_vport_rule(struct mlx5_eswitch *esw, int vport,
-					u32 sqn, struct mlx5_flow_rule **rule);
+struct mlx5_flow_rule *
+mlx5_eswitch_add_send_to_vport_rule(struct mlx5_eswitch *esw, int vport, u32 sqn);
 
 #define MLX5_DEBUG_ESWITCH_MASK BIT(3)
 
@@ -207,5 +207,4 @@ int mlx5_eswitch_add_send_to_vport_rule(struct mlx5_eswitch *esw, int vport,
 
 #define esw_debug(dev, format, ...)				\
 	mlx5_core_dbg_mask(dev, MLX5_DEBUG_ESWITCH_MASK, format, ##__VA_ARGS__)
-
 #endif /* __MLX5_ESWITCH_H__ */
