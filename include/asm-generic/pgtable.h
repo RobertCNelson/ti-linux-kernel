@@ -692,7 +692,7 @@ static inline int pmd_write(pmd_t pmd)
 #endif /* __HAVE_ARCH_PMD_WRITE */
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE */
 
-#ifndef CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD
+#if !defined(CONFIG_TRANSPARENT_HUGEPAGE) || !defined(CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD)
 static inline int pud_trans_huge(pud_t pud)
 {
 	return 0;
