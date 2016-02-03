@@ -3248,7 +3248,8 @@ static int create_huge_pmd(struct mm_struct *mm, struct vm_area_struct *vma,
 		.gfp_mask = __get_fault_gfp_mask(vma),
 		.pgoff = linear_page_index(vma, address & HPAGE_PMD_MASK),
 		.virtual_address = (void __user *)address,
-		.pmd = pmd,
+		.max_pgoff = 0,		/* work around gcc union init bug */
+		{ .pmd = pmd },
 	};
 
 	if (vma_is_anonymous(vma))
@@ -3269,7 +3270,8 @@ static int wp_huge_pmd(struct mm_struct *mm, struct vm_area_struct *vma,
 		.gfp_mask = __get_fault_gfp_mask(vma),
 		.pgoff = linear_page_index(vma, address & HPAGE_PMD_MASK),
 		.virtual_address = (void __user *)address,
-		.pmd = pmd,
+		.max_pgoff = 0,		/* work around gcc union init bug */
+		{ .pmd = pmd },
 	};
 
 	if (vma_is_anonymous(vma))
