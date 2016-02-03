@@ -227,6 +227,15 @@ line of text and contains the following stats separated by whitespace:
 	mem_used_max
 	zero_pages
 	num_migrated
+	avail_streams
+
+`avail_streams' column shows the current number of available compression
+streams, which is not necessarily equal to the number of max compression
+streams. The number of max compression streams can be set too high and be
+unreachable (depending on the load and the usage pattern, of course).
+`avail_streams' let to find out the real 'level of concurrency' that
+a particular zram device saw and to calculate the real memory consumption
+by allocated compression streams, not the theoretical maximum value.
 
 9) Deactivate:
 	swapoff /dev/zram0
