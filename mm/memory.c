@@ -952,7 +952,7 @@ static inline int copy_pmd_range(struct mm_struct *dst_mm, struct mm_struct *src
 		next = pmd_addr_end(addr, end);
 		if (pmd_trans_huge(*src_pmd) || pmd_devmap(*src_pmd)) {
 			int err;
-			VM_BUG_ON_VMA(vma, next-addr != HPAGE_PMD_SIZE);
+			VM_BUG_ON_VMA(next-addr != HPAGE_PMD_SIZE, vma);
 			err = copy_huge_pmd(dst_mm, src_mm,
 					    dst_pmd, src_pmd, addr, vma);
 			if (err == -ENOMEM)
@@ -985,7 +985,7 @@ static inline int copy_pud_range(struct mm_struct *dst_mm, struct mm_struct *src
 		next = pud_addr_end(addr, end);
 		if (pud_trans_huge(*src_pud) || pud_devmap(*src_pud)) {
 			int err;
-			VM_BUG_ON_VMA(vma, next-addr != HPAGE_PUD_SIZE);
+			VM_BUG_ON_VMA(next-addr != HPAGE_PUD_SIZE, vma);
 			err = copy_huge_pud(dst_mm, src_mm,
 					    dst_pud, src_pud, addr, vma);
 			if (err == -ENOMEM)
@@ -3312,7 +3312,8 @@ static int create_huge_pud(struct mm_struct *mm, struct vm_area_struct *vma,
 		.gfp_mask = __get_fault_gfp_mask(vma),
 		.pgoff = linear_page_index(vma, address & HPAGE_PUD_MASK),
 		.virtual_address = (void __user *)address,
-		.pud = pud,
+		.max_pgoff = 0,		/* work around gcc union init bug */
+		{ .pud = pud },
 	};
 
 	/* No support for anonymous transparent PUD pages yet */
@@ -3334,7 +3335,8 @@ static int wp_huge_pud(struct mm_struct *mm, struct vm_area_struct *vma,
 		.gfp_mask = __get_fault_gfp_mask(vma),
 		.pgoff = linear_page_index(vma, address & HPAGE_PUD_MASK),
 		.virtual_address = (void __user *)address,
-		.pud = pud,
+		.max_pgoff = 0,		/* work around gcc union init bug */
+		{ .pud = pud },
 	};
 
 	/* No support for anonymous transparent PUD pages yet */
