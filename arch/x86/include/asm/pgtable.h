@@ -200,17 +200,8 @@ static inline int pud_trans_huge(pud_t pud)
 {
 	return (pud_val(pud) & (_PAGE_PSE|_PAGE_DEVMAP)) == _PAGE_PSE;
 }
-#define pud_trans_huge pud_trans_huge
 #endif
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE */
-
-#ifndef pud_trans_huge
-static inline int pud_trans_huge(pud_t pud)
-{
-	return 0;
-}
-#define pud_trans_huge pud_trans_huge
-#endif
 
 static inline pte_t pte_set_flags(pte_t pte, pteval_t set)
 {
