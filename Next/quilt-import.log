@@ -1,0 +1,15 @@
+Importing jdelvare-hwmon based on 4.5-rc2
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 36f90b0a2ddd60823fe193a85e60ff1906c2a9b3
+HEAD is now at 36f90b0a2ddd Linux 4.5-rc2
+$ git am --patch-format=mbox ../quilt/jdelvare-hwmon/hwmon-emc2103-fix-typo-in-module_parm_desc.patch
+Applying: hwmon: (emc2103) Fix typo in MODULE_PARM_DESC
+$ git am --patch-format=mbox ../quilt/jdelvare-hwmon/documentation-hwmon-update-links-in-max34440.patch
+Applying: Documentation/hwmon: Update links in max34440
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:jdelvare-hwmon/master
+From ../quilt-tmp
+ + ef0303d2bba0...f02de116250d master     -> jdelvare-hwmon/master  (forced update)
+Importing dmi based on 4.4
+Unchanged quilt series dmi
