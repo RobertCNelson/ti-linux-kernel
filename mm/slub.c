@@ -284,30 +284,6 @@ static inline int slab_index(void *p, struct kmem_cache *s, void *addr)
 	return (p - addr) / s->size;
 }
 
-static inline size_t slab_ksize(const struct kmem_cache *s)
-{
-#ifdef CONFIG_SLUB_DEBUG
-	/*
-	 * Debugging requires use of the padding between object
-	 * and whatever may come after it.
-	 */
-	if (s->flags & (SLAB_RED_ZONE | SLAB_POISON))
-		return s->object_size;
-
-#endif
-	/*
-	 * If we have the need to store the freelist pointer
-	 * back there or track user information then we can
-	 * only use the space before that information.
-	 */
-	if (s->flags & (SLAB_DESTROY_BY_RCU | SLAB_STORE_USER))
-		return s->inuse;
-	/*
-	 * Else we can use all the padding etc for the allocation
-	 */
-	return s->size;
-}
-
 static inline int order_objects(int order, unsigned long size, int reserved)
 {
 	return ((PAGE_SIZE << order) - reserved) / size;
@@ -1279,36 +1255,6 @@ static inline void kfree_hook(const void *x)
 {
 	kmemleak_free(x);
 	kasan_kfree_large(x);
-}
-
-static inline struct kmem_cache *slab_pre_alloc_hook(struct kmem_cache *s,
-						     gfp_t flags)
-{
-	flags &= gfp_allowed_mask;
-	lockdep_trace_alloc(flags);
-	might_sleep_if(gfpflags_allow_blocking(flags));
-
-	if (should_failslab(s->object_size, flags, s->flags))
-		return NULL;
-
-	return memcg_kmem_get_cache(s, flags);
-}
-
-static inline void slab_post_alloc_hook(struct kmem_cache *s, gfp_t flags,
-					size_t size, void **p)
-{
-	size_t i;
-
-	flags &= gfp_allowed_mask;
-	for (i = 0; i < size; i++) {
-		void *object = p[i];
-
-		kmemcheck_slab_alloc(s, flags, object, slab_ksize(s));
-		kmemleak_alloc_recursive(object, s->object_size, 1,
-					 s->flags, flags);
-		kasan_slab_alloc(s, object);
-	}
-	memcg_kmem_put_cache(s);
 }
 
 static inline void slab_free_hook(struct kmem_cache *s, void *x)
@@ -2821,6 +2767,7 @@ struct detached_freelist {
 	void *tail;
 	void *freelist;
 	int cnt;
+	struct kmem_cache *s;
 };
 
 /*
@@ -2835,26 +2782,45 @@ struct detached_freelist {
  * synchronization primitive.  Look ahead in the array is limited due
  * to performance reasons.
  */
-static int build_detached_freelist(struct kmem_cache *s, size_t size,
-				   void **p, struct detached_freelist *df)
+static inline
+int build_detached_freelist(struct kmem_cache *s, size_t size,
+			    void **p, struct detached_freelist *df)
 {
 	size_t first_skipped_index = 0;
 	int lookahead = 3;
 	void *object;
+	struct page *page;
 
 	/* Always re-init detached_freelist */
 	df->page = NULL;
 
 	do {
 		object = p[--size];
+		/* Do we need !ZERO_OR_NULL_PTR(object) here? (for kfree) */
 	} while (!object && size);
 
 	if (!object)
 		return 0;
 
+	page = virt_to_head_page(object);
+	if (!s) {
+		/* Handle kalloc'ed objects */
+		if (unlikely(!PageSlab(page))) {
+			BUG_ON(!PageCompound(page));
+			kfree_hook(object);
+			__free_kmem_pages(page, compound_order(page));
+			p[size] = NULL; /* mark object processed */
+			return size;
+		}
+		/* Derive kmem_cache from object */
+		df->s = page->slab_cache;
+	} else {
+		df->s = cache_from_obj(s, object); /* Support for memcg */
+	}
+
 	/* Start new detached freelist */
-	set_freepointer(s, object, NULL);
-	df->page = virt_to_head_page(object);
+	df->page = page;
+	set_freepointer(df->s, object, NULL);
 	df->tail = object;
 	df->freelist = object;
 	p[size] = NULL; /* mark object processed */
@@ -2868,7 +2834,7 @@ static int build_detached_freelist(struct kmem_cache *s, size_t size,
 		/* df->page is always set at this point */
 		if (df->page == virt_to_head_page(object)) {
 			/* Opportunity build freelist */
-			set_freepointer(s, object, df->freelist);
+			set_freepointer(df->s, object, df->freelist);
 			df->freelist = object;
 			df->cnt++;
 			p[size] = NULL; /* mark object processed */
@@ -2887,25 +2853,20 @@ static int build_detached_freelist(struct kmem_cache *s, size_t size,
 	return first_skipped_index;
 }
 
-
 /* Note that interrupts must be enabled when calling this function. */
-void kmem_cache_free_bulk(struct kmem_cache *orig_s, size_t size, void **p)
+void kmem_cache_free_bulk(struct kmem_cache *s, size_t size, void **p)
 {
 	if (WARN_ON(!size))
 		return;
 
 	do {
 		struct detached_freelist df;
-		struct kmem_cache *s;
-
-		/* Support for memcg */
-		s = cache_from_obj(orig_s, p[size - 1]);
 
 		size = build_detached_freelist(s, size, p, &df);
 		if (unlikely(!df.page))
 			continue;
 
-		slab_free(s, df.page, df.freelist, df.tail, df.cnt, _RET_IP_);
+		slab_free(df.s, df.page, df.freelist, df.tail, df.cnt,_RET_IP_);
 	} while (likely(size));
 }
 EXPORT_SYMBOL(kmem_cache_free_bulk);
@@ -5296,11 +5257,6 @@ static void memcg_propagate_slab_attrs(struct kmem_cache *s)
 #endif
 }
 
-static void kmem_cache_release(struct kobject *k)
-{
-	slab_kmem_cache_release(to_slab(k));
-}
-
 static const struct sysfs_ops slab_sysfs_ops = {
 	.show = slab_attr_show,
 	.store = slab_attr_store,
@@ -5308,7 +5264,6 @@ static const struct sysfs_ops slab_sysfs_ops = {
 
 static struct kobj_type slab_ktype = {
 	.sysfs_ops = &slab_sysfs_ops,
-	.release = kmem_cache_release,
 };
 
 static int uevent_filter(struct kset *kset, struct kobject *kobj)

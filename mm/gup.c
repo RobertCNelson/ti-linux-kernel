@@ -242,6 +242,13 @@ struct page *follow_page_mask(struct vm_area_struct *vma,
 			return page;
 		return no_page_table(vma, flags);
 	}
+	if (pud_devmap(*pud)) {
+		ptl = pud_lock(mm, pud);
+		page = follow_devmap_pud(vma, address, pud, flags);
+		spin_unlock(ptl);
+		if (page)
+			return page;
+	}
 	if (unlikely(pud_bad(*pud)))
 		return no_page_table(vma, flags);
 
@@ -430,10 +437,8 @@ static int check_vma_flags(struct vm_area_struct *vma, unsigned long gup_flags)
 			 * Anon pages in shared mappings are surprising: now
 			 * just reject it.
 			 */
-			if (!is_cow_mapping(vm_flags)) {
-				WARN_ON_ONCE(vm_flags & VM_MAYWRITE);
+			if (!is_cow_mapping(vm_flags))
 				return -EFAULT;
-			}
 		}
 	} else if (!(vm_flags & VM_READ)) {
 		if (!(gup_flags & FOLL_FORCE))

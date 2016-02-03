@@ -42,6 +42,7 @@
 #include <linux/memory.h>
 #include <linux/printk.h>
 #include <linux/userfaultfd_k.h>
+#include <linux/moduleparam.h>
 
 #include <asm/uaccess.h>
 #include <asm/cacheflush.h>
@@ -69,6 +70,8 @@ const int mmap_rnd_compat_bits_max = CONFIG_ARCH_MMAP_RND_COMPAT_BITS_MAX;
 int mmap_rnd_compat_bits __read_mostly = CONFIG_ARCH_MMAP_RND_COMPAT_BITS;
 #endif
 
+static bool ignore_rlimit_data = true;
+core_param(ignore_rlimit_data, ignore_rlimit_data, bool, 0644);
 
 static void unmap_region(struct mm_struct *mm,
 		struct vm_area_struct *vma, struct vm_area_struct *prev,
@@ -387,8 +390,9 @@ static long vma_compute_subtree_gap(struct vm_area_struct *vma)
 }
 
 #ifdef CONFIG_DEBUG_VM_RB
-static int browse_rb(struct rb_root *root)
+static int browse_rb(struct mm_struct *mm)
 {
+	struct rb_root *root = &mm->mm_rb;
 	int i = 0, j, bug = 0;
 	struct rb_node *nd, *pn = NULL;
 	unsigned long prev = 0, pend = 0;
@@ -411,12 +415,14 @@ static int browse_rb(struct rb_root *root)
 				  vma->vm_start, vma->vm_end);
 			bug = 1;
 		}
+		spin_lock(&mm->page_table_lock);
 		if (vma->rb_subtree_gap != vma_compute_subtree_gap(vma)) {
 			pr_emerg("free gap %lx, correct %lx\n",
 			       vma->rb_subtree_gap,
 			       vma_compute_subtree_gap(vma));
 			bug = 1;
 		}
+		spin_unlock(&mm->page_table_lock);
 		i++;
 		pn = nd;
 		prev = vma->vm_start;
@@ -472,7 +478,7 @@ static void validate_mm(struct mm_struct *mm)
 			  mm->highest_vm_end, highest_address);
 		bug = 1;
 	}
-	i = browse_rb(&mm->mm_rb);
+	i = browse_rb(mm);
 	if (i != mm->map_count) {
 		if (i != -1)
 			pr_emerg("map_count %d rb %d\n", mm->map_count, i);
@@ -2982,9 +2988,17 @@ bool may_expand_vm(struct mm_struct *mm, vm_flags_t flags, unsigned long npages)
 	if (mm->total_vm + npages > rlimit(RLIMIT_AS) >> PAGE_SHIFT)
 		return false;
 
-	if ((flags & (VM_WRITE | VM_SHARED | (VM_STACK_FLAGS &
-				(VM_GROWSUP | VM_GROWSDOWN)))) == VM_WRITE)
-		return mm->data_vm + npages <= rlimit(RLIMIT_DATA);
+	if (is_data_mapping(flags) &&
+	    mm->data_vm + npages > rlimit(RLIMIT_DATA) >> PAGE_SHIFT) {
+		if (ignore_rlimit_data)
+			pr_warn_once("%s (%d): VmData %lu exceed data ulimit "
+				     "%lu. Will be forbidden soon.\n",
+				     current->comm, current->pid,
+				     (mm->data_vm + npages) << PAGE_SHIFT,
+				     rlimit(RLIMIT_DATA));
+		else
+			return false;
+	}
 
 	return true;
 }
@@ -2993,11 +3007,11 @@ void vm_stat_account(struct mm_struct *mm, vm_flags_t flags, long npages)
 {
 	mm->total_vm += npages;
 
-	if ((flags & (VM_EXEC | VM_WRITE)) == VM_EXEC)
+	if (is_exec_mapping(flags))
 		mm->exec_vm += npages;
-	else if (flags & (VM_STACK_FLAGS & (VM_GROWSUP | VM_GROWSDOWN)))
+	else if (is_stack_mapping(flags))
 		mm->stack_vm += npages;
-	else if ((flags & (VM_WRITE | VM_SHARED)) == VM_WRITE)
+	else if (is_data_mapping(flags))
 		mm->data_vm += npages;
 }
 

@@ -202,54 +202,34 @@ static int ext4_dax_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	bool write = vmf->flags & FAULT_FLAG_WRITE;
 
 	if (write) {
+		unsigned nblocks;
+		switch (vmf->flags & FAULT_FLAG_SIZE_MASK) {
+		case FAULT_FLAG_SIZE_PTE:
+			nblocks = EXT4_DATA_TRANS_BLOCKS(sb);
+			break;
+		case FAULT_FLAG_SIZE_PMD:
+			nblocks = ext4_chunk_trans_blocks(inode,
+						PMD_SIZE / PAGE_SIZE);
+			break;
+		case FAULT_FLAG_SIZE_PUD:
+			nblocks = ext4_chunk_trans_blocks(inode,
+						PUD_SIZE / PAGE_SIZE);
+			break;
+		default:
+			return VM_FAULT_FALLBACK;
+		}
+
 		sb_start_pagefault(sb);
 		file_update_time(vma->vm_file);
 		down_read(&EXT4_I(inode)->i_mmap_sem);
-		handle = ext4_journal_start_sb(sb, EXT4_HT_WRITE_PAGE,
-						EXT4_DATA_TRANS_BLOCKS(sb));
+		handle = ext4_journal_start_sb(sb, EXT4_HT_WRITE_PAGE, nblocks);
 	} else
 		down_read(&EXT4_I(inode)->i_mmap_sem);
 
 	if (IS_ERR(handle))
 		result = VM_FAULT_SIGBUS;
 	else
-		result = __dax_fault(vma, vmf, ext4_dax_mmap_get_block, NULL);
-
-	if (write) {
-		if (!IS_ERR(handle))
-			ext4_journal_stop(handle);
-		up_read(&EXT4_I(inode)->i_mmap_sem);
-		sb_end_pagefault(sb);
-	} else
-		up_read(&EXT4_I(inode)->i_mmap_sem);
-
-	return result;
-}
-
-static int ext4_dax_pmd_fault(struct vm_area_struct *vma, unsigned long addr,
-						pmd_t *pmd, unsigned int flags)
-{
-	int result;
-	handle_t *handle = NULL;
-	struct inode *inode = file_inode(vma->vm_file);
-	struct super_block *sb = inode->i_sb;
-	bool write = flags & FAULT_FLAG_WRITE;
-
-	if (write) {
-		sb_start_pagefault(sb);
-		file_update_time(vma->vm_file);
-		down_read(&EXT4_I(inode)->i_mmap_sem);
-		handle = ext4_journal_start_sb(sb, EXT4_HT_WRITE_PAGE,
-				ext4_chunk_trans_blocks(inode,
-							PMD_SIZE / PAGE_SIZE));
-	} else
-		down_read(&EXT4_I(inode)->i_mmap_sem);
-
-	if (IS_ERR(handle))
-		result = VM_FAULT_SIGBUS;
-	else
-		result = __dax_pmd_fault(vma, addr, pmd, flags,
-				ext4_dax_mmap_get_block, NULL);
+		result = dax_fault(vma, vmf, ext4_dax_mmap_get_block, NULL);
 
 	if (write) {
 		if (!IS_ERR(handle))
@@ -270,7 +250,7 @@ static int ext4_dax_mkwrite(struct vm_area_struct *vma, struct vm_fault *vmf)
 	sb_start_pagefault(inode->i_sb);
 	file_update_time(vma->vm_file);
 	down_read(&EXT4_I(inode)->i_mmap_sem);
-	err = __dax_mkwrite(vma, vmf, ext4_dax_mmap_get_block, NULL);
+	err = dax_mkwrite(vma, vmf, ext4_dax_mmap_get_block, NULL);
 	up_read(&EXT4_I(inode)->i_mmap_sem);
 	sb_end_pagefault(inode->i_sb);
 
@@ -310,7 +290,7 @@ static int ext4_dax_pfn_mkwrite(struct vm_area_struct *vma,
 
 static const struct vm_operations_struct ext4_dax_vm_ops = {
 	.fault		= ext4_dax_fault,
-	.pmd_fault	= ext4_dax_pmd_fault,
+	.huge_fault	= ext4_dax_fault,
 	.page_mkwrite	= ext4_dax_mkwrite,
 	.pfn_mkwrite	= ext4_dax_pfn_mkwrite,
 };

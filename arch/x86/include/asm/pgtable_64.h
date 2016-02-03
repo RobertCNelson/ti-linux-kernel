@@ -106,6 +106,21 @@ static inline void native_pud_clear(pud_t *pud)
 	native_set_pud(pud, native_make_pud(0));
 }
 
+static inline pud_t native_pudp_get_and_clear(pud_t *pudp)
+{
+#ifdef CONFIG_SMP
+	return native_make_pud(xchg(&pudp->pud, 0));
+#else
+	/*
+	 * native_local_pudp_get_and_clear, but duplicated because of cyclic
+	 * dependency
+	 */
+	pud_t ret = *pudp;
+	native_pud_clear(pudp);
+	return ret;
+#endif
+}
+
 static inline void native_set_pgd(pgd_t *pgdp, pgd_t pgd)
 {
 	*pgdp = pgd;

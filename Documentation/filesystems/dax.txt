@@ -49,6 +49,7 @@ These block devices may be used for inspiration:
 - axonram: Axon DDR2 device driver
 - brd: RAM backed block device driver
 - dcssblk: s390 dcss block device driver
+- pmem: NV-DIMM Persistent Memory driver
 
 
 Implementation Tips for Filesystem Writers
@@ -61,9 +62,9 @@ Filesystem support consists of
   dax_do_io() instead of blockdev_direct_IO() if S_DAX is set
 - implementing an mmap file operation for DAX files which sets the
   VM_MIXEDMAP and VM_HUGEPAGE flags on the VMA, and setting the vm_ops to
-  include handlers for fault, pmd_fault and page_mkwrite (which should
-  probably call dax_fault(), dax_pmd_fault() and dax_mkwrite(), passing the
-  appropriate get_block() callback)
+  include handlers for fault, huge_fault and page_mkwrite (which should
+  probably call dax_fault() and dax_mkwrite(), passing the appropriate
+  get_block() callback)
 - calling dax_truncate_page() instead of block_truncate_page() for DAX files
 - calling dax_zero_page_range() instead of zero_user() for DAX files
 - ensuring that there is sufficient locking between reads, writes,
@@ -75,8 +76,9 @@ calls to get_block() (for example by a page-fault racing with a read()
 or a write()) work correctly.
 
 These filesystems may be used for inspiration:
-- ext2: the second extended filesystem, see Documentation/filesystems/ext2.txt
-- ext4: the fourth extended filesystem, see Documentation/filesystems/ext4.txt
+- ext2: see Documentation/filesystems/ext2.txt
+- ext4: see Documentation/filesystems/ext4.txt
+- xfs: see Documentation/filesystems/xfs.txt
 
 
 Shortcomings

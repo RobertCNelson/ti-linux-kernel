@@ -290,9 +290,20 @@ LIST_HEAD(all_lock_classes);
 #define CLASSHASH_BITS		(MAX_LOCKDEP_KEYS_BITS - 1)
 #define CLASSHASH_SIZE		(1UL << CLASSHASH_BITS)
 #define __classhashfn(key)	hash_long((unsigned long)key, CLASSHASH_BITS)
-#define classhashentry(key)	(classhash_table + __classhashfn((key)))
 
-static struct list_head classhash_table[CLASSHASH_SIZE];
+static struct list_head __classhash_table[CLASSHASH_SIZE];
+
+static inline struct list_head *get_classhash_table(void)
+{
+	if (unlikely(!lockdep_initialized))
+		lockdep_init();
+	return __classhash_table;
+}
+
+static inline struct list_head *classhashentry(struct lockdep_subclass_key *key)
+{
+	return get_classhash_table() + __classhashfn(key);
+}
 
 /*
  * We put the lock dependency chains into a hash-table as well, to cache
@@ -301,9 +312,15 @@ static struct list_head classhash_table[CLASSHASH_SIZE];
 #define CHAINHASH_BITS		(MAX_LOCKDEP_CHAINS_BITS-1)
 #define CHAINHASH_SIZE		(1UL << CHAINHASH_BITS)
 #define __chainhashfn(chain)	hash_long(chain, CHAINHASH_BITS)
-#define chainhashentry(chain)	(chainhash_table + __chainhashfn((chain)))
 
-static struct list_head chainhash_table[CHAINHASH_SIZE];
+static struct list_head __chainhash_table[CHAINHASH_SIZE];
+
+static struct list_head *chainhashentry(unsigned long chain)
+{
+	if (unlikely(!lockdep_initialized))
+		lockdep_init();
+	return __chainhash_table + __chainhashfn(chain);
+}
 
 /*
  * The hash key of the lock dependency chains is a hash itself too:
@@ -3875,7 +3892,7 @@ void lockdep_reset(void)
 	nr_process_chains = 0;
 	debug_locks = 1;
 	for (i = 0; i < CHAINHASH_SIZE; i++)
-		INIT_LIST_HEAD(chainhash_table + i);
+		INIT_LIST_HEAD(__chainhash_table + i);
 	raw_local_irq_restore(flags);
 }
 
@@ -3929,7 +3946,7 @@ void lockdep_free_key_range(void *start, unsigned long size)
 	 * Unhash all classes that were created by this module:
 	 */
 	for (i = 0; i < CLASSHASH_SIZE; i++) {
-		head = classhash_table + i;
+		head = get_classhash_table() + i;
 		if (list_empty(head))
 			continue;
 		list_for_each_entry_rcu(class, head, hash_entry) {
@@ -3986,7 +4003,7 @@ void lockdep_reset_lock(struct lockdep_map *lock)
 	 */
 	locked = graph_lock();
 	for (i = 0; i < CLASSHASH_SIZE; i++) {
-		head = classhash_table + i;
+		head = get_classhash_table() + i;
 		if (list_empty(head))
 			continue;
 		list_for_each_entry_rcu(class, head, hash_entry) {
@@ -4027,10 +4044,10 @@ void lockdep_init(void)
 		return;
 
 	for (i = 0; i < CLASSHASH_SIZE; i++)
-		INIT_LIST_HEAD(classhash_table + i);
+		INIT_LIST_HEAD(__classhash_table + i);
 
 	for (i = 0; i < CHAINHASH_SIZE; i++)
-		INIT_LIST_HEAD(chainhash_table + i);
+		INIT_LIST_HEAD(__chainhash_table + i);
 
 	lockdep_initialized = 1;
 }

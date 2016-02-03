@@ -259,23 +259,29 @@ static int do_maps_open(struct inode *inode, struct file *file,
 				sizeof(struct proc_maps_private));
 }
 
-static pid_t pid_of_stack(struct proc_maps_private *priv,
-				struct vm_area_struct *vma, bool is_pid)
+/*
+ * Indicate if the VMA is a stack for the given task; for
+ * /proc/PID/maps that is the stack of the main task.
+ */
+static int is_stack(struct proc_maps_private *priv,
+		    struct vm_area_struct *vma, int is_pid)
 {
-	struct inode *inode = priv->inode;
-	struct task_struct *task;
-	pid_t ret = 0;
+	int stack = 0;
 
-	rcu_read_lock();
-	task = pid_task(proc_pid(inode), PIDTYPE_PID);
-	if (task) {
-		task = task_of_stack(task, vma, is_pid);
+	if (is_pid) {
+		stack = vma->vm_start <= vma->vm_mm->start_stack &&
+			vma->vm_end >= vma->vm_mm->start_stack;
+	} else {
+		struct inode *inode = priv->inode;
+		struct task_struct *task;
+
+		rcu_read_lock();
+		task = pid_task(proc_pid(inode), PIDTYPE_PID);
 		if (task)
-			ret = task_pid_nr_ns(task, inode->i_sb->s_fs_info);
+			stack = vma_is_stack_for_task(vma, task);
+		rcu_read_unlock();
 	}
-	rcu_read_unlock();
-
-	return ret;
+	return stack;
 }
 
 static void
@@ -335,8 +341,6 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
 
 	name = arch_vma_name(vma);
 	if (!name) {
-		pid_t tid;
-
 		if (!mm) {
 			name = "[vdso]";
 			goto done;
@@ -348,21 +352,8 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
 			goto done;
 		}
 
-		tid = pid_of_stack(priv, vma, is_pid);
-		if (tid != 0) {
-			/*
-			 * Thread stack in /proc/PID/task/TID/maps or
-			 * the main process stack.
-			 */
-			if (!is_pid || (vma->vm_start <= mm->start_stack &&
-			    vma->vm_end >= mm->start_stack)) {
-				name = "[stack]";
-			} else {
-				/* Thread stack in /proc/PID/maps */
-				seq_pad(m, ' ');
-				seq_printf(m, "[stack:%d]", tid);
-			}
-		}
+		if (is_stack(priv, vma, is_pid))
+			name = "[stack]";
 	}
 
 done:
@@ -595,6 +586,33 @@ static void smaps_pmd_entry(pmd_t *pmd, unsigned long addr,
 }
 #endif
 
+static int smaps_pud_range(pud_t *pud, unsigned long addr, unsigned long end,
+		struct mm_walk *walk)
+{
+#ifdef CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD
+	struct vm_area_struct *vma = walk->vma;
+	struct mem_size_stats *mss = walk->private;
+
+	if (is_huge_zero_pud(*pud))
+		return 0;
+
+	mss->resident += HPAGE_PUD_SIZE;
+	if (vma->vm_flags & VM_SHARED) {
+		if (pud_dirty(*pud))
+			mss->shared_dirty += HPAGE_PUD_SIZE;
+		else
+			mss->shared_clean += HPAGE_PUD_SIZE;
+	} else {
+		if (pud_dirty(*pud))
+			mss->private_dirty += HPAGE_PUD_SIZE;
+		else
+			mss->private_clean += HPAGE_PUD_SIZE;
+	}
+#endif /* CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD */
+
+	return 0;
+}
+
 static int smaps_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 			   struct mm_walk *walk)
 {
@@ -716,6 +734,7 @@ static int show_smap(struct seq_file *m, void *v, int is_pid)
 	struct vm_area_struct *vma = v;
 	struct mem_size_stats mss;
 	struct mm_walk smaps_walk = {
+		.pud_entry = smaps_pud_range,
 		.pmd_entry = smaps_pte_range,
 #ifdef CONFIG_HUGETLB_PAGE
 		.hugetlb_entry = smaps_hugetlb_range,
@@ -898,12 +917,49 @@ static inline void clear_soft_dirty_pmd(struct vm_area_struct *vma,
 
 	set_pmd_at(vma->vm_mm, addr, pmdp, pmd);
 }
+static inline void clear_soft_dirty_pud(struct vm_area_struct *vma,
+		unsigned long addr, pud_t *pudp)
+{
+#ifdef CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD
+	pud_t pud = pudp_huge_get_and_clear(vma->vm_mm, addr, pudp);
+
+	pud = pud_wrprotect(pud);
+	pud = pud_clear_soft_dirty(pud);
+
+	if (vma->vm_flags & VM_SOFTDIRTY)
+		vma->vm_flags &= ~VM_SOFTDIRTY;
+
+	set_pud_at(vma->vm_mm, addr, pudp, pud);
+#endif /* CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD */
+}
 #else
 static inline void clear_soft_dirty_pmd(struct vm_area_struct *vma,
 		unsigned long addr, pmd_t *pmdp)
 {
 }
+static inline void clear_soft_dirty_pud(struct vm_area_struct *vma,
+		unsigned long addr, pud_t *pudp)
+{
+}
 #endif
+
+static int clear_refs_pud_range(pud_t *pud, unsigned long addr,
+				unsigned long end, struct mm_walk *walk)
+{
+#ifdef CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD
+	struct clear_refs_private *cp = walk->private;
+	struct vm_area_struct *vma = walk->vma;
+
+	if (cp->type == CLEAR_REFS_SOFT_DIRTY) {
+		clear_soft_dirty_pud(vma, addr, pud);
+	} else {
+		/* Clear accessed and referenced bits. */
+		pudp_test_and_clear_young(vma, addr, pud);
+	}
+#endif /* CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD */
+
+	return 0;
+}
 
 static int clear_refs_pte_range(pmd_t *pmd, unsigned long addr,
 				unsigned long end, struct mm_walk *walk)
@@ -1015,6 +1071,7 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 			.type = type,
 		};
 		struct mm_walk clear_refs_walk = {
+			.pud_entry = clear_refs_pud_range,
 			.pmd_entry = clear_refs_pte_range,
 			.test_walk = clear_refs_test_walk,
 			.mm = mm,
@@ -1177,6 +1234,48 @@ static pagemap_entry_t pte_to_pagemap_entry(struct pagemapread *pm,
 		flags |= PM_SOFT_DIRTY;
 
 	return make_pme(frame, flags);
+}
+
+static int pagemap_pud_range(pud_t *pudp, unsigned long addr, unsigned long end,
+			     struct mm_walk *walk)
+{
+	int err = 0;
+#ifdef CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD
+	struct vm_area_struct *vma = walk->vma;
+	struct pagemapread *pm = walk->private;
+	u64 flags = 0, frame = 0;
+	pud_t pud = *pudp;
+
+	if ((vma->vm_flags & VM_SOFTDIRTY) || pud_soft_dirty(pud))
+		flags |= PM_SOFT_DIRTY;
+
+	/*
+	 * Currently pud for thp is always present because thp
+	 * can not be swapped-out, migrated, or HWPOISONed
+	 * (split in such cases instead.)
+	 * This if-check is just to prepare for future implementation.
+	 */
+	if (pud_present(pud)) {
+		flags |= PM_PRESENT;
+		if (!(vma->vm_flags & VM_SHARED))
+			flags |= PM_MMAP_EXCLUSIVE;
+
+		if (pm->show_pfn)
+			frame = pud_pfn(pud) +
+					((addr & ~PUD_MASK) >> PAGE_SHIFT);
+
+		for (; addr != end; addr += PAGE_SIZE) {
+			pagemap_entry_t pme = make_pme(frame, flags);
+
+			err = add_to_pagemap(addr, &pme, pm);
+			if (err)
+				break;
+			if (pm->show_pfn && (flags & PM_PRESENT))
+				frame++;
+		}
+	}
+#endif /* CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD */
+	return err;
 }
 
 static int pagemap_pmd_range(pmd_t *pmdp, unsigned long addr, unsigned long end,
@@ -1358,6 +1457,7 @@ static ssize_t pagemap_read(struct file *file, char __user *buf,
 	if (!pm.buffer)
 		goto out_mm;
 
+	pagemap_walk.pud_entry = pagemap_pud_range;
 	pagemap_walk.pmd_entry = pagemap_pmd_range;
 	pagemap_walk.pte_hole = pagemap_pte_hole;
 #ifdef CONFIG_HUGETLB_PAGE
@@ -1552,18 +1652,19 @@ static int gather_pte_stats(pmd_t *pmd, unsigned long addr,
 static int gather_hugetlb_stats(pte_t *pte, unsigned long hmask,
 		unsigned long addr, unsigned long end, struct mm_walk *walk)
 {
+	pte_t huge_pte = huge_ptep_get(pte);
 	struct numa_maps *md;
 	struct page *page;
 
-	if (!pte_present(*pte))
+	if (!pte_present(huge_pte))
 		return 0;
 
-	page = pte_page(*pte);
+	page = pte_page(huge_pte);
 	if (!page)
 		return 0;
 
 	md = walk->private;
-	gather_stats(page, md, pte_dirty(*pte), 1);
+	gather_stats(page, md, pte_dirty(huge_pte), 1);
 	return 0;
 }
 
@@ -1617,19 +1718,8 @@ static int show_numa_map(struct seq_file *m, void *v, int is_pid)
 		seq_file_path(m, file, "\n\t= ");
 	} else if (vma->vm_start <= mm->brk && vma->vm_end >= mm->start_brk) {
 		seq_puts(m, " heap");
-	} else {
-		pid_t tid = pid_of_stack(proc_priv, vma, is_pid);
-		if (tid != 0) {
-			/*
-			 * Thread stack in /proc/PID/task/TID/maps or
-			 * the main process stack.
-			 */
-			if (!is_pid || (vma->vm_start <= mm->start_stack &&
-			    vma->vm_end >= mm->start_stack))
-				seq_puts(m, " stack");
-			else
-				seq_printf(m, " stack:%d", tid);
-		}
+	} else if (is_stack(proc_priv, vma, is_pid)) {
+		seq_puts(m, " stack");
 	}
 
 	if (is_vm_hugetlb_page(vma))

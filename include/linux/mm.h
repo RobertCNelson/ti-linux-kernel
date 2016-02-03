@@ -201,10 +201,12 @@ extern unsigned int kobjsize(const void *objp);
 #endif
 
 #ifdef CONFIG_STACK_GROWSUP
-#define VM_STACK_FLAGS	(VM_GROWSUP | VM_STACK_DEFAULT_FLAGS | VM_ACCOUNT)
+#define VM_STACK	VM_GROWSUP
 #else
-#define VM_STACK_FLAGS	(VM_GROWSDOWN | VM_STACK_DEFAULT_FLAGS | VM_ACCOUNT)
+#define VM_STACK	VM_GROWSDOWN
 #endif
+
+#define VM_STACK_FLAGS	(VM_STACK | VM_STACK_DEFAULT_FLAGS | VM_ACCOUNT)
 
 /*
  * Special vmas that are non-mergable, non-mlock()able.
@@ -232,15 +234,21 @@ extern pgprot_t protection_map[16];
 #define FAULT_FLAG_TRIED	0x20	/* Second try */
 #define FAULT_FLAG_USER		0x40	/* The fault originated in userspace */
 
+#define FAULT_FLAG_SIZE_MASK	0x700	/* Support up to 8-level page tables */
+#define FAULT_FLAG_SIZE_PTE	0x000	/* First level (eg 4k) */
+#define FAULT_FLAG_SIZE_PMD	0x100	/* Second level (eg 2MB) */
+#define FAULT_FLAG_SIZE_PUD	0x200	/* Third level (eg 1GB) */
+#define FAULT_FLAG_SIZE_PGD	0x300	/* Fourth level (eg 512GB) */
+
 /*
- * vm_fault is filled by the the pagefault handler and passed to the vma's
+ * vm_fault is filled in by the pagefault handler and passed to the vma's
  * ->fault function. The vma's ->fault is responsible for returning a bitmask
  * of VM_FAULT_xxx flags that give details about how the fault was handled.
  *
  * MM layer fills up gfp_mask for page allocations but fault handler might
  * alter it if its implementation requires a different allocation context.
  *
- * pgoff should be used in favour of virtual_address, if possible.
+ * pgoff should be used instead of virtual_address, if possible.
  */
 struct vm_fault {
 	unsigned int flags;		/* FAULT_FLAG_xxx flags */
@@ -257,7 +265,12 @@ struct vm_fault {
 	/* for ->map_pages() only */
 	pgoff_t max_pgoff;		/* map pages for offset from pgoff till
 					 * max_pgoff inclusive */
-	pte_t *pte;			/* pte entry associated with ->pgoff */
+	union {
+		pte_t *pte;		/* pte entry associated with ->pgoff */
+		pmd_t *pmd;
+		pud_t *pud;
+		pgd_t *pgd;
+	};
 };
 
 /*
@@ -270,8 +283,7 @@ struct vm_operations_struct {
 	void (*close)(struct vm_area_struct * area);
 	int (*mremap)(struct vm_area_struct * area);
 	int (*fault)(struct vm_area_struct *vma, struct vm_fault *vmf);
-	int (*pmd_fault)(struct vm_area_struct *, unsigned long address,
-						pmd_t *, unsigned int flags);
+	int (*huge_fault)(struct vm_area_struct *, struct vm_fault *vmf);
 	void (*map_pages)(struct vm_area_struct *vma, struct vm_fault *vmf);
 
 	/* notification that a previously read-only page is about to become
@@ -332,6 +344,10 @@ struct inode;
 
 #if !defined(__HAVE_ARCH_PTE_DEVMAP) || !defined(CONFIG_TRANSPARENT_HUGEPAGE)
 static inline int pmd_devmap(pmd_t pmd)
+{
+	return 0;
+}
+static inline int pud_devmap(pud_t pud)
 {
 	return 0;
 }
@@ -903,19 +919,10 @@ static inline struct mem_cgroup *page_memcg(struct page *page)
 {
 	return page->mem_cgroup;
 }
-
-static inline void set_page_memcg(struct page *page, struct mem_cgroup *memcg)
-{
-	page->mem_cgroup = memcg;
-}
 #else
 static inline struct mem_cgroup *page_memcg(struct page *page)
 {
 	return NULL;
-}
-
-static inline void set_page_memcg(struct page *page, struct mem_cgroup *memcg)
-{
 }
 #endif
 
@@ -1112,6 +1119,8 @@ struct zap_details {
 	struct address_space *check_mapping;	/* Check page->mapping if set */
 	pgoff_t	first_index;			/* Lowest page->index to unmap */
 	pgoff_t last_index;			/* Highest page->index to unmap */
+	bool ignore_dirty;			/* Ignore dirty pages */
+	bool check_swap_entries;		/* Check also swap entries */
 };
 
 struct page *vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
@@ -1126,6 +1135,10 @@ void unmap_vmas(struct mmu_gather *tlb, struct vm_area_struct *start_vma,
 
 /**
  * mm_walk - callbacks for walk_page_range
+ * @pud_entry: if set, called for each non-empty PUD (2nd-level) entry
+ *	       this handler should only handle pud_trans_huge() puds.
+ *	       the pmd_entry or pte_entry callbacks will be used for
+ *	       regular PUDs.
  * @pmd_entry: if set, called for each non-empty PMD (3rd-level) entry
  *	       this handler is required to be able to handle
  *	       pmd_trans_huge() pmds.  They may simply choose to
@@ -1145,6 +1158,8 @@ void unmap_vmas(struct mmu_gather *tlb, struct vm_area_struct *start_vma,
  * (see the comment on walk_page_range() for more details)
  */
 struct mm_walk {
+	int (*pud_entry)(pud_t *pud, unsigned long addr,
+			 unsigned long next, struct mm_walk *walk);
 	int (*pmd_entry)(pmd_t *pmd, unsigned long addr,
 			 unsigned long next, struct mm_walk *walk);
 	int (*pte_entry)(pte_t *pte, unsigned long addr,
@@ -1298,10 +1313,9 @@ int __set_page_dirty_nobuffers(struct page *page);
 int __set_page_dirty_no_writeback(struct page *page);
 int redirty_page_for_writepage(struct writeback_control *wbc,
 				struct page *page);
-void account_page_dirtied(struct page *page, struct address_space *mapping,
-			  struct mem_cgroup *memcg);
+void account_page_dirtied(struct page *page, struct address_space *mapping);
 void account_page_cleaned(struct page *page, struct address_space *mapping,
-			  struct mem_cgroup *memcg, struct bdi_writeback *wb);
+			  struct bdi_writeback *wb);
 int set_page_dirty(struct page *page);
 int set_page_dirty_lock(struct page *page);
 void cancel_dirty_page(struct page *page);
@@ -1342,8 +1356,7 @@ static inline int stack_guard_page_end(struct vm_area_struct *vma,
 		!vma_growsup(vma->vm_next, addr);
 }
 
-extern struct task_struct *task_of_stack(struct task_struct *task,
-				struct vm_area_struct *vma, bool in_group);
+int vma_is_stack_for_task(struct vm_area_struct *vma, struct task_struct *t);
 
 extern unsigned long move_page_tables(struct vm_area_struct *vma,
 		unsigned long old_addr, struct vm_area_struct *new_vma,
@@ -1721,6 +1734,24 @@ static inline void pgtable_pmd_page_dtor(struct page *page) {}
 static inline spinlock_t *pmd_lock(struct mm_struct *mm, pmd_t *pmd)
 {
 	spinlock_t *ptl = pmd_lockptr(mm, pmd);
+	spin_lock(ptl);
+	return ptl;
+}
+
+/*
+ * No scalability reason to split PUD locks yet, but follow the same pattern
+ * as the PMD locks to make it easier if we decide to.  The VM should not be
+ * considered ready to switch to split PUD locks yet; there may be places
+ * which need to be converted from page_table_lock.
+ */
+static inline spinlock_t *pud_lockptr(struct mm_struct *mm, pud_t *pud)
+{
+	return &mm->page_table_lock;
+}
+
+static inline spinlock_t *pud_lock(struct mm_struct *mm, pud_t *pud)
+{
+	spinlock_t *ptl = pud_lockptr(mm, pud);
 	spin_lock(ptl);
 	return ptl;
 }
@@ -2176,6 +2207,19 @@ typedef int (*pte_fn_t)(pte_t *pte, pgtable_t token, unsigned long addr,
 extern int apply_to_page_range(struct mm_struct *mm, unsigned long address,
 			       unsigned long size, pte_fn_t fn, void *data);
 
+
+#ifdef CONFIG_PAGE_POISONING
+extern void poison_pages(struct page *page, int n);
+extern void unpoison_pages(struct page *page, int n);
+extern bool page_poisoning_enabled(void);
+extern void kernel_poison_pages(struct page *page, int numpages, int enable);
+#else
+static inline void poison_pages(struct page *page, int n) { }
+static inline void unpoison_pages(struct page *page, int n) { }
+static inline bool page_poisoning_enabled(void) { return false; }
+static inline void kernel_poison_pages(struct page *page, int numpages,
+					int enable) { }
+#endif
 
 #ifdef CONFIG_DEBUG_PAGEALLOC
 extern bool _debug_pagealloc_enabled;
