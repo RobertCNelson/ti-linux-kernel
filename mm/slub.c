@@ -5296,11 +5296,6 @@ static void memcg_propagate_slab_attrs(struct kmem_cache *s)
 #endif
 }
 
-static void kmem_cache_release(struct kobject *k)
-{
-	slab_kmem_cache_release(to_slab(k));
-}
-
 static const struct sysfs_ops slab_sysfs_ops = {
 	.show = slab_attr_show,
 	.store = slab_attr_store,
@@ -5308,7 +5303,6 @@ static const struct sysfs_ops slab_sysfs_ops = {
 
 static struct kobj_type slab_ktype = {
 	.sysfs_ops = &slab_sysfs_ops,
-	.release = kmem_cache_release,
 };
 
 static int uevent_filter(struct kset *kset, struct kobject *kobj)

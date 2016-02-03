@@ -468,13 +468,8 @@ static void release_caches(struct list_head *release, bool need_rcu_barrier)
 	if (need_rcu_barrier)
 		rcu_barrier();
 
-	list_for_each_entry_safe(s, s2, release, list) {
-#ifdef SLAB_SUPPORTS_SYSFS
-		sysfs_slab_remove(s);
-#else
+	list_for_each_entry_safe(s, s2, release, list)
 		slab_kmem_cache_release(s);
-#endif
-	}
 }
 
 #if defined(CONFIG_MEMCG) && !defined(CONFIG_SLOB)
@@ -614,6 +609,9 @@ void memcg_destroy_kmem_caches(struct mem_cgroup *memcg)
 	list_for_each_entry_safe(s, s2, &slab_caches, list) {
 		if (is_root_cache(s) || s->memcg_params.memcg != memcg)
 			continue;
+
+		sysfs_slab_remove(s);
+
 		/*
 		 * The cgroup is about to be freed and therefore has no charges
 		 * left. Hence, all its caches must be empty by now.
