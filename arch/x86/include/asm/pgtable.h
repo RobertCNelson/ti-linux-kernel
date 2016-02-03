@@ -866,7 +866,7 @@ static inline void native_set_pmd_at(struct mm_struct *mm, unsigned long addr,
 }
 
 static inline void native_set_pud_at(struct mm_struct *mm, unsigned long addr,
-				     pud_t *pudp , pud_t pud)
+				     pud_t *pudp, pud_t pud)
 {
 	native_set_pud(pudp, pud);
 }
