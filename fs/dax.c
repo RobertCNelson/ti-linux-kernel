@@ -578,14 +578,14 @@ static int dax_pte_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
 	int error;
 	int major = 0;
 
-	size = (i_size_read(inode) + PAGE_SIZE - 1) >> PAGE_SHIFT;
+	size = (i_size_read(inode) + PAGE_CACHE_SIZE - 1) >> PAGE_CACHE_SHIFT;
 	if (vmf->pgoff >= size)
 		return VM_FAULT_SIGBUS;
 
 	memset(&bh, 0, sizeof(bh));
-	block = (sector_t)vmf->pgoff << (PAGE_SHIFT - blkbits);
+	block = (sector_t)vmf->pgoff << (PAGE_CACHE_SHIFT - blkbits);
 	bh.b_bdev = inode->i_sb->s_bdev;
-	bh.b_size = PAGE_SIZE;
+	bh.b_size = PAGE_CACHE_SIZE;
 
  repeat:
 	page = find_get_page(mapping, vmf->pgoff);
@@ -602,7 +602,7 @@ static int dax_pte_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
 	}
 
 	error = get_block(inode, block, &bh, 0);
-	if (!error && (bh.b_size < PAGE_SIZE))
+	if (!error && (bh.b_size < PAGE_CACHE_SIZE))
 		error = -EIO;		/* fs corruption? */
 	if (error)
 		goto unlock_page;
@@ -613,7 +613,7 @@ static int dax_pte_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
 			count_vm_event(PGMAJFAULT);
 			mem_cgroup_count_vm_event(vma->vm_mm, PGMAJFAULT);
 			major = VM_FAULT_MAJOR;
-			if (!error && (bh.b_size < PAGE_SIZE))
+			if (!error && (bh.b_size < PAGE_CACHE_SIZE))
 				error = -EIO;
 			if (error)
 				goto unlock_page;
@@ -650,7 +650,7 @@ static int dax_pte_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
 		page = find_lock_page(mapping, vmf->pgoff);
 
 	if (page) {
-		unmap_mapping_range(mapping, vmf->pgoff << PAGE_SHIFT,
+		unmap_mapping_range(mapping, vmf->pgoff << PAGE_CACHE_SHIFT,
 							PAGE_CACHE_SIZE, 0);
 		delete_from_page_cache(page);
 		unlock_page(page);
@@ -697,7 +697,7 @@ static int dax_pte_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
  * The 'colour' (ie low bits) within a PMD of a page offset.  This comes up
  * more often than one might expect in the below function.
  */
-#define PG_PMD_COLOUR	((PMD_SIZE >> PAGE_SHIFT) - 1)
+#define PG_PMD_COLOUR	((PMD_SIZE >> PAGE_CACHE_SHIFT) - 1)
 
 static void __dax_dbg(struct buffer_head *bh, unsigned long address,
 		const char *reason, const char *fn)
@@ -754,7 +754,7 @@ static int dax_pmd_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
 		return VM_FAULT_FALLBACK;
 	}
 
-	size = (i_size_read(inode) + PAGE_SIZE - 1) >> PAGE_SHIFT;
+	size = (i_size_read(inode) + PAGE_CACHE_SIZE - 1) >> PAGE_CACHE_SHIFT;
 	if (vmf->pgoff >= size)
 		return VM_FAULT_SIGBUS;
 	/* If the PMD would cover blocks out of the file */
@@ -766,7 +766,7 @@ static int dax_pmd_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
 
 	memset(&bh, 0, sizeof(bh));
 	bh.b_bdev = inode->i_sb->s_bdev;
-	block = (sector_t)vmf->pgoff << (PAGE_SHIFT - blkbits);
+	block = (sector_t)vmf->pgoff << (PAGE_CACHE_SHIFT - blkbits);
 
 	bh.b_size = PMD_SIZE;
 
@@ -796,7 +796,7 @@ static int dax_pmd_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
 	 * zero pages covering this hole
 	 */
 	if (alloc) {
-		loff_t lstart = vmf->pgoff << PAGE_SHIFT;
+		loff_t lstart = vmf->pgoff << PAGE_CACHE_SHIFT;
 		loff_t lend = lstart + PMD_SIZE - 1; /* inclusive */
 
 		truncate_pagecache_range(inode, lstart, lend);
@@ -924,7 +924,7 @@ static int dax_pmd_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
  * The 'colour' (ie low bits) within a PUD of a page offset.  This comes up
  * more often than one might expect in the below function.
  */
-#define PG_PUD_COLOUR	((PUD_SIZE >> PAGE_SHIFT) - 1)
+#define PG_PUD_COLOUR	((PUD_SIZE >> PAGE_CACHE_SHIFT) - 1)
 
 #define dax_pud_dbg(bh, address, reason)	__dax_dbg(bh, address, reason, "dax_pud")
 
@@ -965,7 +965,7 @@ static int dax_pud_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
 		return VM_FAULT_FALLBACK;
 	}
 
-	size = (i_size_read(inode) + PAGE_SIZE - 1) >> PAGE_SHIFT;
+	size = (i_size_read(inode) + PAGE_CACHE_SIZE - 1) >> PAGE_CACHE_SHIFT;
 	if (vmf->pgoff >= size)
 		return VM_FAULT_SIGBUS;
 	/* If the PUD would cover blocks out of the file */
@@ -977,7 +977,7 @@ static int dax_pud_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
 
 	memset(&bh, 0, sizeof(bh));
 	bh.b_bdev = inode->i_sb->s_bdev;
-	block = (sector_t)vmf->pgoff << (PAGE_SHIFT - blkbits);
+	block = (sector_t)vmf->pgoff << (PAGE_CACHE_SHIFT - blkbits);
 
 	bh.b_size = PUD_SIZE;
 
@@ -1007,7 +1007,7 @@ static int dax_pud_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
 	 * zero pages covering this hole
 	 */
 	if (alloc) {
-		loff_t lstart = vmf->pgoff << PAGE_SHIFT;
+		loff_t lstart = vmf->pgoff << PAGE_CACHE_SHIFT;
 		loff_t lend = lstart + PUD_SIZE - 1; /* inclusive */
 
 		truncate_pagecache_range(inode, lstart, lend);
