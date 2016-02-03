@@ -69,7 +69,7 @@ config PAGE_POISONING_ZERO
 	depends on PAGE_POISONING
 	---help---
 	   Instead of using the existing poison value, fill the pages with
-	   zeros. This makes it harder to detect when errors are occuring
+	   zeros. This makes it harder to detect when errors are occurring
 	   due to sanitization but the zeroing at free means that it is
 	   no longer necessary to write zeros when GFP_ZERO is used on
 	   allocation.
