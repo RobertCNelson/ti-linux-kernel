@@ -1486,25 +1486,25 @@ static void vmstat_shepherd(struct work_struct *w)
 
 	get_online_cpus();
 	/* Check processors whose vmstat worker threads have been disabled */
-	for_each_cpu(cpu, cpu_stat_off)
+	for_each_cpu(cpu, cpu_stat_off) {
+		struct delayed_work *dw = &per_cpu(vmstat_work, cpu);
+
 		if (need_update(cpu)) {
 			if (cpumask_test_and_clear_cpu(cpu, cpu_stat_off))
-				queue_delayed_work_on(cpu, vmstat_wq,
-					&per_cpu(vmstat_work, cpu), 0);
+				queue_delayed_work_on(cpu, vmstat_wq, dw, 0);
 		} else {
 			/*
 			 * Cancel the work if quiet_vmstat has put this
 			 * cpu on cpu_stat_off because the work item might
 			 * be still scheduled
 			 */
-			cancel_delayed_work(this_cpu_ptr(&vmstat_work));
+			cancel_delayed_work(dw);
 		}
-
+	}
 	put_online_cpus();
 
 	schedule_delayed_work(&shepherd,
 		round_jiffies_relative(sysctl_stat_interval));
-
 }
 
 static void __init start_shepherd_timer(void)
