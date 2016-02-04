@@ -1,0 +1,41 @@
+* Si-En Technology - SN3218 18-Channel LED Driver
+
+Required properties:
+- compatible :
+	"si-en,sn3218"
+- address-cells : must be 1
+- size-cells : must be 0
+- reg : I2C slave address, typically 0x54
+
+There must be at least 1 LED which is represented as a sub-node
+of the sn3218 device.
+
+LED sub-node properties:
+- label : (optional) see Documentation/devicetree/bindings/leds/common.txt
+- reg : number of LED line (could be from 0 to 17)
+- linux,default-trigger : (optional)
+   see Documentation/devicetree/bindings/leds/common.txt
+
+Example:
+
+sn3218: led-controller@54 {
+	compatible = "si-en,sn3218";
+	#address-cells = <1>;
+	#size-cells = <0>;
+	reg = <0x54>;
+
+	led@0 {
+		label = "led1";
+		reg = <0x0>;
+	};
+
+	led@1 {
+		label = "led2";
+		reg = <0x1>;
+	};
+
+	led@2 {
+		label = "led3";
+		reg = <0x2>;
+	};
+};
