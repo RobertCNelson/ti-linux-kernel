@@ -183,6 +183,18 @@ static bool zcomp_strm_multi_set_max_streams(struct zcomp *comp, int num_strm)
 	return true;
 }
 
+static int zcomp_strm_multi_num_avail_streams(struct zcomp *comp)
+{
+	int avail;
+	struct zcomp_strm_multi *zs = comp->stream;
+
+	spin_lock(&zs->strm_lock);
+	avail = zs->avail_strm;
+	spin_unlock(&zs->strm_lock);
+
+	return avail;
+}
+
 static void zcomp_strm_multi_destroy(struct zcomp *comp)
 {
 	struct zcomp_strm_multi *zs = comp->stream;
@@ -206,6 +218,7 @@ static int zcomp_strm_multi_create(struct zcomp *comp, int max_strm)
 	comp->strm_find = zcomp_strm_multi_find;
 	comp->strm_release = zcomp_strm_multi_release;
 	comp->set_max_streams = zcomp_strm_multi_set_max_streams;
+	comp->num_avail_streams = zcomp_strm_multi_num_avail_streams;
 	zs = kmalloc(sizeof(struct zcomp_strm_multi), GFP_KERNEL);
 	if (!zs)
 		return -ENOMEM;
@@ -246,6 +259,11 @@ static bool zcomp_strm_single_set_max_streams(struct zcomp *comp, int num_strm)
 	return false;
 }
 
+static int zcomp_strm_single_num_avail_streams(struct zcomp *comp)
+{
+	return 1;
+}
+
 static void zcomp_strm_single_destroy(struct zcomp *comp)
 {
 	struct zcomp_strm_single *zs = comp->stream;
@@ -261,6 +279,7 @@ static int zcomp_strm_single_create(struct zcomp *comp)
 	comp->strm_find = zcomp_strm_single_find;
 	comp->strm_release = zcomp_strm_single_release;
 	comp->set_max_streams = zcomp_strm_single_set_max_streams;
+	comp->num_avail_streams = zcomp_strm_single_num_avail_streams;
 	zs = kmalloc(sizeof(struct zcomp_strm_single), GFP_KERNEL);
 	if (!zs)
 		return -ENOMEM;
@@ -302,6 +321,11 @@ bool zcomp_available_algorithm(const char *comp)
 bool zcomp_set_max_streams(struct zcomp *comp, int num_strm)
 {
 	return comp->set_max_streams(comp, num_strm);
+}
+
+int zcomp_num_avail_streams(struct zcomp *comp)
+{
+	return comp->num_avail_streams(comp);
 }
 
 struct zcomp_strm *zcomp_strm_find(struct zcomp *comp)
