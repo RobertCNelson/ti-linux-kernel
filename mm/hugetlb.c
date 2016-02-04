@@ -1001,7 +1001,7 @@ static int hstate_next_node_to_free(struct hstate *h, nodemask_t *nodes_allowed)
 		((node = hstate_next_node_to_free(hs, mask)) || 1);	\
 		nr_nodes--)
 
-#if defined(CONFIG_CMA) && defined(CONFIG_X86_64)
+#if defined(CONFIG_MEMORY_ISOLATION) && defined(CONFIG_X86_64)
 static void destroy_compound_gigantic_page(struct page *page,
 					unsigned int order)
 {
