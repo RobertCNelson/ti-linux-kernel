@@ -28,12 +28,12 @@ rfc-arm-smp-__cpu_disable-fix-sleeping-function-called-from-invalid-context.patc
 ############################################################
 # Stuff broken upstream, need to be sent
 ############################################################
-
 rtmutex--Handle-non-enqueued-waiters-gracefully
 
 ############################################################
 # Submitted on LKML
 ############################################################
+genirq-Add-default-affinity-mask-command-line-option.patch
 
 # SPARC part of erly printk consolidation
 sparc64-use-generic-rwsem-spinlocks-rt.patch
@@ -138,6 +138,7 @@ pci-access-use-__wake_up_all_locked.patch
 # ANON RW SEMAPHORES
 
 # TRACING
+latencyhist-disable-jump-labels.patch
 latency-hist.patch
 latency_hist-update-sched_wakeup-probe.patch
 trace-latency-hist-Consider-new-argument-when-probin.patch
@@ -524,6 +525,7 @@ lockdep-selftest-fix-warnings-due-to-missing-PREEMPT.patch
 
 # PERF
 perf-make-swevent-hrtimer-irqsafe.patch
+kernel-perf-mark-perf_cpu_context-s-timer-as-irqsafe.patch
 
 # RCU
 rcu-disable-rcu-fast-no-hz-on-rt.patch

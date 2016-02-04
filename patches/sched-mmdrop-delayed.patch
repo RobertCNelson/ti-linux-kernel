@@ -98,7 +98,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	if (unlikely(prev_state == TASK_DEAD)) {
  		if (prev->sched_class->task_dead)
  			prev->sched_class->task_dead(prev);
-@@ -5256,6 +5260,8 @@ void sched_setnuma(struct task_struct *p
+@@ -5255,6 +5259,8 @@ void sched_setnuma(struct task_struct *p
  #endif /* CONFIG_NUMA_BALANCING */
  
  #ifdef CONFIG_HOTPLUG_CPU
@@ -107,7 +107,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
   * Ensures that the idle task is using init_mm right before its cpu goes
   * offline.
-@@ -5270,7 +5276,11 @@ void idle_task_exit(void)
+@@ -5269,7 +5275,11 @@ void idle_task_exit(void)
  		switch_mm(mm, &init_mm, current);
  		finish_arch_post_lock_switch();
  	}
@@ -120,7 +120,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /*
-@@ -5642,6 +5652,10 @@ migration_call(struct notifier_block *nf
+@@ -5641,6 +5651,10 @@ migration_call(struct notifier_block *nf
  
  	case CPU_DEAD:
  		calc_load_migrate(rq);

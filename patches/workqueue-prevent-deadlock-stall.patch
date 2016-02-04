@@ -43,7 +43,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
 
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -3378,9 +3378,8 @@ static void __sched notrace __schedule(b
+@@ -3377,9 +3377,8 @@ static void __sched notrace __schedule(b
  
  static inline void sched_submit_work(struct task_struct *tsk)
  {
@@ -54,7 +54,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  	/*
  	 * If a worker went to sleep, notify and ask workqueue whether
  	 * it wants to wake up a task to maintain concurrency.
-@@ -3388,6 +3387,10 @@ static inline void sched_submit_work(str
+@@ -3387,6 +3386,10 @@ static inline void sched_submit_work(str
  	if (tsk->flags & PF_WQ_WORKER)
  		wq_worker_sleeping(tsk);
  

@@ -32,12 +32,12 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 ---
  include/linux/cpu.h     |    3 ++
  include/linux/preempt.h |    9 ++++++
- include/linux/sched.h   |   39 ++++++++++++++++++++------
+ include/linux/sched.h   |   39 +++++++++++++++++++++-----
  include/linux/smp.h     |    3 ++
- kernel/sched/core.c     |   71 +++++++++++++++++++++++++++++++++++++++++++++++-
+ kernel/sched/core.c     |   70 +++++++++++++++++++++++++++++++++++++++++++++++-
  kernel/sched/debug.c    |    7 ++++
  lib/smp_processor_id.c  |    5 ++-
- 7 files changed, 126 insertions(+), 11 deletions(-)
+ 7 files changed, 125 insertions(+), 11 deletions(-)
 
 --- a/include/linux/cpu.h
 +++ b/include/linux/cpu.h
@@ -171,7 +171,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		goto out;
  
  	dest_cpu = cpumask_any_and(cpu_active_mask, new_mask);
-@@ -3022,6 +3027,70 @@ static inline void schedule_debug(struct
+@@ -3022,6 +3027,69 @@ static inline void schedule_debug(struct
  	schedstat_inc(this_rq(), sched_count);
  }
  
@@ -181,7 +181,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +{
 +	struct task_struct *p = current;
 +
-+	if (in_atomic() || p->flags & PF_NO_SETAFFINITY) {
++	if (in_atomic()) {
 +#ifdef CONFIG_SCHED_DEBUG
 +		p->migrate_disable_atomic++;
 +#endif
@@ -200,7 +200,6 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +	preempt_disable();
 +	pin_current_cpu();
 +	p->migrate_disable = 1;
-+	p->nr_cpus_allowed = 1;
 +	preempt_enable();
 +}
 +EXPORT_SYMBOL(migrate_disable);
@@ -209,7 +208,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +{
 +	struct task_struct *p = current;
 +
-+	if (in_atomic() || p->flags & PF_NO_SETAFFINITY) {
++	if (in_atomic()) {
 +#ifdef CONFIG_SCHED_DEBUG
 +		p->migrate_disable_atomic--;
 +#endif
