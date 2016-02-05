@@ -304,6 +304,7 @@ struct invalidate_command_table {
 #define BEISCSI_GET_ULP_FROM_CRI(phwi_ctrlr, cri) \
 	(phwi_ctrlr->wrb_context[cri].ulp_num)
 struct hwi_wrb_context {
+	spinlock_t wrb_lock;
 	struct list_head wrb_handle_list;
 	struct list_head wrb_handle_drvr_list;
 	struct wrb_handle **pwrb_handle_base;
@@ -853,6 +854,7 @@ void hwi_ring_cq_db(struct beiscsi_hba *phba,
 		     unsigned char rearm);
 
 unsigned int beiscsi_process_cq(struct be_eq_obj *pbe_eq, int budget);
+void beiscsi_process_mcc_cq(struct beiscsi_hba *phba);
 
 static inline bool beiscsi_error(struct beiscsi_hba *phba)
 {
