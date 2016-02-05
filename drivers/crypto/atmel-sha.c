@@ -53,6 +53,7 @@
 
 #define SHA_FLAGS_FINUP		BIT(16)
 #define SHA_FLAGS_SG		BIT(17)
+#define SHA_FLAGS_ALGO_MASK	GENMASK(22, 18)
 #define SHA_FLAGS_SHA1		BIT(18)
 #define SHA_FLAGS_SHA224	BIT(19)
 #define SHA_FLAGS_SHA256	BIT(20)
@@ -60,11 +61,12 @@
 #define SHA_FLAGS_SHA512	BIT(22)
 #define SHA_FLAGS_ERROR		BIT(23)
 #define SHA_FLAGS_PAD		BIT(24)
+#define SHA_FLAGS_RESTORE	BIT(25)
 
 #define SHA_OP_UPDATE	1
 #define SHA_OP_FINAL	2
 
-#define SHA_BUFFER_LEN		PAGE_SIZE
+#define SHA_BUFFER_LEN		(PAGE_SIZE / 16)
 
 #define ATMEL_SHA_DMA_THRESHOLD		56
 
@@ -73,9 +75,21 @@ struct atmel_sha_caps {
 	bool	has_dualbuff;
 	bool	has_sha224;
 	bool	has_sha_384_512;
+	bool	has_uihv;
 };
 
 struct atmel_sha_dev;
+
+/*
+ * .statesize = sizeof(struct atmel_sha_state) must be <= PAGE_SIZE / 8 as
+ * tested by the ahash_prepare_alg() function.
+ */
+struct atmel_sha_state {
+	u8	digest[SHA512_DIGEST_SIZE];
+	u8	buffer[SHA_BUFFER_LEN];
+	u64	digcnt[2];
+	size_t	bufcnt;
+};
 
 struct atmel_sha_reqctx {
 	struct atmel_sha_dev	*dd;
@@ -122,6 +136,7 @@ struct atmel_sha_dev {
 	spinlock_t		lock;
 	int			err;
 	struct tasklet_struct	done_task;
+	struct tasklet_struct	queue_task;
 
 	unsigned long		flags;
 	struct crypto_queue	queue;
@@ -317,7 +332,8 @@ static int atmel_sha_init(struct ahash_request *req)
 static void atmel_sha_write_ctrl(struct atmel_sha_dev *dd, int dma)
 {
 	struct atmel_sha_reqctx *ctx = ahash_request_ctx(dd->req);
-	u32 valcr = 0, valmr = SHA_MR_MODE_AUTO;
+	u32 valmr = SHA_MR_MODE_AUTO;
+	unsigned int i, hashsize = 0;
 
 	if (likely(dma)) {
 		if (!dd->caps.has_dma)
@@ -329,22 +345,62 @@ static void atmel_sha_write_ctrl(struct atmel_sha_dev *dd, int dma)
 		atmel_sha_write(dd, SHA_IER, SHA_INT_DATARDY);
 	}
 
-	if (ctx->flags & SHA_FLAGS_SHA1)
+	switch (ctx->flags & SHA_FLAGS_ALGO_MASK) {
+	case SHA_FLAGS_SHA1:
 		valmr |= SHA_MR_ALGO_SHA1;
-	else if (ctx->flags & SHA_FLAGS_SHA224)
+		hashsize = SHA1_DIGEST_SIZE;
+		break;
+
+	case SHA_FLAGS_SHA224:
 		valmr |= SHA_MR_ALGO_SHA224;
-	else if (ctx->flags & SHA_FLAGS_SHA256)
+		hashsize = SHA256_DIGEST_SIZE;
+		break;
+
+	case SHA_FLAGS_SHA256:
 		valmr |= SHA_MR_ALGO_SHA256;
-	else if (ctx->flags & SHA_FLAGS_SHA384)
+		hashsize = SHA256_DIGEST_SIZE;
+		break;
+
+	case SHA_FLAGS_SHA384:
 		valmr |= SHA_MR_ALGO_SHA384;
-	else if (ctx->flags & SHA_FLAGS_SHA512)
+		hashsize = SHA512_DIGEST_SIZE;
+		break;
+
+	case SHA_FLAGS_SHA512:
 		valmr |= SHA_MR_ALGO_SHA512;
+		hashsize = SHA512_DIGEST_SIZE;
+		break;
+
+	default:
+		break;
+	}
 
 	/* Setting CR_FIRST only for the first iteration */
-	if (!(ctx->digcnt[0] || ctx->digcnt[1]))
-		valcr = SHA_CR_FIRST;
+	if (!(ctx->digcnt[0] || ctx->digcnt[1])) {
+		atmel_sha_write(dd, SHA_CR, SHA_CR_FIRST);
+	} else if (dd->caps.has_uihv && (ctx->flags & SHA_FLAGS_RESTORE)) {
+		const u32 *hash = (const u32 *)ctx->digest;
 
-	atmel_sha_write(dd, SHA_CR, valcr);
+		/*
+		 * Restore the hardware context: update the User Initialize
+		 * Hash Value (UIHV) with the value saved when the latest
+		 * 'update' operation completed on this very same crypto
+		 * request.
+		 */
+		ctx->flags &= ~SHA_FLAGS_RESTORE;
+		atmel_sha_write(dd, SHA_CR, SHA_CR_WUIHV);
+		for (i = 0; i < hashsize / sizeof(u32); ++i)
+			atmel_sha_write(dd, SHA_REG_DIN(i), hash[i]);
+		atmel_sha_write(dd, SHA_CR, SHA_CR_FIRST);
+		valmr |= SHA_MR_UIHV;
+	}
+	/*
+	 * WARNING: If the UIHV feature is not available, the hardware CANNOT
+	 * process concurrent requests: the internal registers used to store
+	 * the hash/digest are still set to the partial digest output values
+	 * computed during the latest round.
+	 */
+
 	atmel_sha_write(dd, SHA_MR, valmr);
 }
 
@@ -713,23 +769,31 @@ static void atmel_sha_copy_hash(struct ahash_request *req)
 {
 	struct atmel_sha_reqctx *ctx = ahash_request_ctx(req);
 	u32 *hash = (u32 *)ctx->digest;
-	int i;
+	unsigned int i, hashsize;
 
-	if (ctx->flags & SHA_FLAGS_SHA1)
-		for (i = 0; i < SHA1_DIGEST_SIZE / sizeof(u32); i++)
-			hash[i] = atmel_sha_read(ctx->dd, SHA_REG_DIGEST(i));
-	else if (ctx->flags & SHA_FLAGS_SHA224)
-		for (i = 0; i < SHA224_DIGEST_SIZE / sizeof(u32); i++)
-			hash[i] = atmel_sha_read(ctx->dd, SHA_REG_DIGEST(i));
-	else if (ctx->flags & SHA_FLAGS_SHA256)
-		for (i = 0; i < SHA256_DIGEST_SIZE / sizeof(u32); i++)
-			hash[i] = atmel_sha_read(ctx->dd, SHA_REG_DIGEST(i));
-	else if (ctx->flags & SHA_FLAGS_SHA384)
-		for (i = 0; i < SHA384_DIGEST_SIZE / sizeof(u32); i++)
-			hash[i] = atmel_sha_read(ctx->dd, SHA_REG_DIGEST(i));
-	else
-		for (i = 0; i < SHA512_DIGEST_SIZE / sizeof(u32); i++)
-			hash[i] = atmel_sha_read(ctx->dd, SHA_REG_DIGEST(i));
+	switch (ctx->flags & SHA_FLAGS_ALGO_MASK) {
+	case SHA_FLAGS_SHA1:
+		hashsize = SHA1_DIGEST_SIZE;
+		break;
+
+	case SHA_FLAGS_SHA224:
+	case SHA_FLAGS_SHA256:
+		hashsize = SHA256_DIGEST_SIZE;
+		break;
+
+	case SHA_FLAGS_SHA384:
+	case SHA_FLAGS_SHA512:
+		hashsize = SHA512_DIGEST_SIZE;
+		break;
+
+	default:
+		/* Should not happen... */
+		return;
+	}
+
+	for (i = 0; i < hashsize / sizeof(u32); ++i)
+		hash[i] = atmel_sha_read(ctx->dd, SHA_REG_DIGEST(i));
+	ctx->flags |= SHA_FLAGS_RESTORE;
 }
 
 static void atmel_sha_copy_ready_hash(struct ahash_request *req)
@@ -788,7 +852,7 @@ static void atmel_sha_finish_req(struct ahash_request *req, int err)
 		req->base.complete(&req->base, err);
 
 	/* handle new request */
-	tasklet_schedule(&dd->done_task);
+	tasklet_schedule(&dd->queue_task);
 }
 
 static int atmel_sha_hw_init(struct atmel_sha_dev *dd)
@@ -939,6 +1003,7 @@ static int atmel_sha_final(struct ahash_request *req)
 		if (err)
 			goto err1;
 
+		dd->req = req;
 		dd->flags |= SHA_FLAGS_BUSY;
 		err = atmel_sha_final_req(dd);
 	} else {
@@ -979,6 +1044,39 @@ static int atmel_sha_digest(struct ahash_request *req)
 	return atmel_sha_init(req) ?: atmel_sha_finup(req);
 }
 
+
+static int atmel_sha_export(struct ahash_request *req, void *out)
+{
+	const struct atmel_sha_reqctx *ctx = ahash_request_ctx(req);
+	struct atmel_sha_state state;
+
+	memcpy(state.digest, ctx->digest, SHA512_DIGEST_SIZE);
+	memcpy(state.buffer, ctx->buffer, ctx->bufcnt);
+	state.bufcnt = ctx->bufcnt;
+	state.digcnt[0] = ctx->digcnt[0];
+	state.digcnt[1] = ctx->digcnt[1];
+
+	/* out might be unaligned. */
+	memcpy(out, &state, sizeof(state));
+	return 0;
+}
+
+static int atmel_sha_import(struct ahash_request *req, const void *in)
+{
+	struct atmel_sha_reqctx *ctx = ahash_request_ctx(req);
+	struct atmel_sha_state state;
+
+	/* in might be unaligned. */
+	memcpy(&state, in, sizeof(state));
+
+	memcpy(ctx->digest, state.digest, SHA512_DIGEST_SIZE);
+	memcpy(ctx->buffer, state.buffer, state.bufcnt);
+	ctx->bufcnt = state.bufcnt;
+	ctx->digcnt[0] = state.digcnt[0];
+	ctx->digcnt[1] = state.digcnt[1];
+	return 0;
+}
+
 static int atmel_sha_cra_init(struct crypto_tfm *tfm)
 {
 	crypto_ahash_set_reqsize(__crypto_ahash_cast(tfm),
@@ -995,8 +1093,11 @@ static struct ahash_alg sha_1_256_algs[] = {
 	.final		= atmel_sha_final,
 	.finup		= atmel_sha_finup,
 	.digest		= atmel_sha_digest,
+	.export		= atmel_sha_export,
+	.import		= atmel_sha_import,
 	.halg = {
 		.digestsize	= SHA1_DIGEST_SIZE,
+		.statesize	= sizeof(struct atmel_sha_state),
 		.base	= {
 			.cra_name		= "sha1",
 			.cra_driver_name	= "atmel-sha1",
@@ -1016,8 +1117,11 @@ static struct ahash_alg sha_1_256_algs[] = {
 	.final		= atmel_sha_final,
 	.finup		= atmel_sha_finup,
 	.digest		= atmel_sha_digest,
+	.export		= atmel_sha_export,
+	.import		= atmel_sha_import,
 	.halg = {
 		.digestsize	= SHA256_DIGEST_SIZE,
+		.statesize	= sizeof(struct atmel_sha_state),
 		.base	= {
 			.cra_name		= "sha256",
 			.cra_driver_name	= "atmel-sha256",
@@ -1039,8 +1143,11 @@ static struct ahash_alg sha_224_alg = {
 	.final		= atmel_sha_final,
 	.finup		= atmel_sha_finup,
 	.digest		= atmel_sha_digest,
+	.export		= atmel_sha_export,
+	.import		= atmel_sha_import,
 	.halg = {
 		.digestsize	= SHA224_DIGEST_SIZE,
+		.statesize	= sizeof(struct atmel_sha_state),
 		.base	= {
 			.cra_name		= "sha224",
 			.cra_driver_name	= "atmel-sha224",
@@ -1062,8 +1169,11 @@ static struct ahash_alg sha_384_512_algs[] = {
 	.final		= atmel_sha_final,
 	.finup		= atmel_sha_finup,
 	.digest		= atmel_sha_digest,
+	.export		= atmel_sha_export,
+	.import		= atmel_sha_import,
 	.halg = {
 		.digestsize	= SHA384_DIGEST_SIZE,
+		.statesize	= sizeof(struct atmel_sha_state),
 		.base	= {
 			.cra_name		= "sha384",
 			.cra_driver_name	= "atmel-sha384",
@@ -1083,8 +1193,11 @@ static struct ahash_alg sha_384_512_algs[] = {
 	.final		= atmel_sha_final,
 	.finup		= atmel_sha_finup,
 	.digest		= atmel_sha_digest,
+	.export		= atmel_sha_export,
+	.import		= atmel_sha_import,
 	.halg = {
 		.digestsize	= SHA512_DIGEST_SIZE,
+		.statesize	= sizeof(struct atmel_sha_state),
 		.base	= {
 			.cra_name		= "sha512",
 			.cra_driver_name	= "atmel-sha512",
@@ -1100,15 +1213,17 @@ static struct ahash_alg sha_384_512_algs[] = {
 },
 };
 
+static void atmel_sha_queue_task(unsigned long data)
+{
+	struct atmel_sha_dev *dd = (struct atmel_sha_dev *)data;
+
+	atmel_sha_handle_queue(dd, NULL);
+}
+
 static void atmel_sha_done_task(unsigned long data)
 {
 	struct atmel_sha_dev *dd = (struct atmel_sha_dev *)data;
 	int err = 0;
-
-	if (!(SHA_FLAGS_BUSY & dd->flags)) {
-		atmel_sha_handle_queue(dd, NULL);
-		return;
-	}
 
 	if (SHA_FLAGS_CPU & dd->flags) {
 		if (SHA_FLAGS_OUTPUT_READY & dd->flags) {
@@ -1272,14 +1387,23 @@ static void atmel_sha_get_cap(struct atmel_sha_dev *dd)
 	dd->caps.has_dualbuff = 0;
 	dd->caps.has_sha224 = 0;
 	dd->caps.has_sha_384_512 = 0;
+	dd->caps.has_uihv = 0;
 
 	/* keep only major version number */
 	switch (dd->hw_version & 0xff0) {
+	case 0x510:
+		dd->caps.has_dma = 1;
+		dd->caps.has_dualbuff = 1;
+		dd->caps.has_sha224 = 1;
+		dd->caps.has_sha_384_512 = 1;
+		dd->caps.has_uihv = 1;
+		break;
 	case 0x420:
 		dd->caps.has_dma = 1;
 		dd->caps.has_dualbuff = 1;
 		dd->caps.has_sha224 = 1;
 		dd->caps.has_sha_384_512 = 1;
+		dd->caps.has_uihv = 1;
 		break;
 	case 0x410:
 		dd->caps.has_dma = 1;
@@ -1365,6 +1489,8 @@ static int atmel_sha_probe(struct platform_device *pdev)
 	spin_lock_init(&sha_dd->lock);
 
 	tasklet_init(&sha_dd->done_task, atmel_sha_done_task,
+					(unsigned long)sha_dd);
+	tasklet_init(&sha_dd->queue_task, atmel_sha_queue_task,
 					(unsigned long)sha_dd);
 
 	crypto_init_queue(&sha_dd->queue, ATMEL_SHA_QUEUE_LENGTH);
@@ -1458,6 +1584,7 @@ err_algs:
 		atmel_sha_dma_cleanup(sha_dd);
 err_sha_dma:
 res_err:
+	tasklet_kill(&sha_dd->queue_task);
 	tasklet_kill(&sha_dd->done_task);
 sha_dd_err:
 	dev_err(dev, "initialization failed.\n");
@@ -1478,6 +1605,7 @@ static int atmel_sha_remove(struct platform_device *pdev)
 
 	atmel_sha_unregister_algs(sha_dd);
 
+	tasklet_kill(&sha_dd->queue_task);
 	tasklet_kill(&sha_dd->done_task);
 
 	if (sha_dd->caps.has_dma)
