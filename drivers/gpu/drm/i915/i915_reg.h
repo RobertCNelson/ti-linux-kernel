@@ -610,16 +610,17 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define   IOSF_BYTE_ENABLES_SHIFT		4
 #define   IOSF_BAR_SHIFT			1
 #define   IOSF_SB_BUSY				(1<<0)
-#define   IOSF_PORT_BUNIT			0x3
-#define   IOSF_PORT_PUNIT			0x4
+#define   IOSF_PORT_BUNIT			0x03
+#define   IOSF_PORT_PUNIT			0x04
 #define   IOSF_PORT_NC				0x11
 #define   IOSF_PORT_DPIO			0x12
-#define   IOSF_PORT_DPIO_2			0x1a
 #define   IOSF_PORT_GPIO_NC			0x13
 #define   IOSF_PORT_CCK				0x14
-#define   IOSF_PORT_CCU				0xA9
-#define   IOSF_PORT_GPS_CORE			0x48
-#define   IOSF_PORT_FLISDSI			0x1B
+#define   IOSF_PORT_DPIO_2			0x1a
+#define   IOSF_PORT_FLISDSI			0x1b
+#define   IOSF_PORT_GPIO_SC			0x48
+#define   IOSF_PORT_GPIO_SUS			0xa8
+#define   IOSF_PORT_CCU				0xa9
 #define VLV_IOSF_DATA				_MMIO(VLV_DISPLAY_BASE + 0x2104)
 #define VLV_IOSF_ADDR				_MMIO(VLV_DISPLAY_BASE + 0x2108)
 
@@ -1635,6 +1636,9 @@ enum skl_disp_power_wells {
 #define   RING_WAIT		(1<<11) /* gen3+, PRBx_CTL */
 #define   RING_WAIT_SEMAPHORE	(1<<10) /* gen6+ */
 
+#define RING_FORCE_TO_NONPRIV(base, i) _MMIO(((base)+0x4D0) + (i)*4)
+#define   RING_MAX_NONPRIV_SLOTS  12
+
 #define GEN7_TLB_RD_ADDR	_MMIO(0x4700)
 
 #if 0
@@ -1710,6 +1714,11 @@ enum skl_disp_power_wells {
 
 #define FPGA_DBG		_MMIO(0x42300)
 #define   FPGA_DBG_RM_NOCLAIM	(1<<31)
+
+#define CLAIM_ER		_MMIO(VLV_DISPLAY_BASE + 0x2028)
+#define   CLAIM_ER_CLR		(1 << 31)
+#define   CLAIM_ER_OVERFLOW	(1 << 16)
+#define   CLAIM_ER_CTR_MASK	0xffff
 
 #define DERRMR		_MMIO(0x44050)
 /* Note that HBLANK events are reserved on bdw+ */
@@ -5986,9 +5995,18 @@ enum skl_disp_power_wells {
 #define SKL_DFSM_CDCLK_LIMIT_540	(1 << 23)
 #define SKL_DFSM_CDCLK_LIMIT_450	(2 << 23)
 #define SKL_DFSM_CDCLK_LIMIT_337_5	(3 << 23)
+#define SKL_DFSM_PIPE_A_DISABLE		(1 << 30)
+#define SKL_DFSM_PIPE_B_DISABLE		(1 << 21)
+#define SKL_DFSM_PIPE_C_DISABLE		(1 << 28)
+
+#define GEN7_FF_SLICE_CS_CHICKEN1	_MMIO(0x20e0)
+#define   GEN9_FFSC_PERCTX_PREEMPT_CTRL	(1<<14)
 
 #define FF_SLICE_CS_CHICKEN2			_MMIO(0x20e4)
 #define  GEN9_TSG_BARRIER_ACK_DISABLE		(1<<8)
+
+#define GEN9_CS_DEBUG_MODE1		_MMIO(0x20ec)
+#define GEN8_CS_CHICKEN1		_MMIO(0x2580)
 
 /* GEN7 chicken */
 #define GEN7_COMMON_SLICE_CHICKEN1		_MMIO(0x7010)
@@ -6034,6 +6052,8 @@ enum skl_disp_power_wells {
 #define  HDC_FORCE_CONTEXT_SAVE_RESTORE_NON_COHERENT	(1<<5)
 #define  HDC_FORCE_NON_COHERENT			(1<<4)
 #define  HDC_BARRIER_PERFORMANCE_DISABLE	(1<<10)
+
+#define GEN8_HDC_CHICKEN1			_MMIO(0x7304)
 
 /* GEN9 chicken */
 #define SLICE_ECO_CHICKEN0			_MMIO(0x7308)
@@ -8153,5 +8173,12 @@ enum skl_disp_power_wells {
 #define GEN9_MFX1_MOCS(i)	_MMIO(0xca00 + (i) * 4)	/* Media 1 MOCS registers */
 #define GEN9_VEBOX_MOCS(i)	_MMIO(0xcb00 + (i) * 4)	/* Video MOCS registers */
 #define GEN9_BLT_MOCS(i)	_MMIO(0xcc00 + (i) * 4)	/* Blitter MOCS registers */
+
+/* gamt regs */
+#define GEN8_L3_LRA_1_GPGPU _MMIO(0x4dd4)
+#define   GEN8_L3_LRA_1_GPGPU_DEFAULT_VALUE_BDW  0x67F1427F /* max/min for LRA1/2 */
+#define   GEN8_L3_LRA_1_GPGPU_DEFAULT_VALUE_CHV  0x5FF101FF /* max/min for LRA1/2 */
+#define   GEN9_L3_LRA_1_GPGPU_DEFAULT_VALUE_SKL  0x67F1427F /*    "        " */
+#define   GEN9_L3_LRA_1_GPGPU_DEFAULT_VALUE_BXT  0x5FF101FF /*    "        " */
 
 #endif /* _I915_REG_H_ */
