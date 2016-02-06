@@ -522,7 +522,9 @@ struct zone {
 	bool			compact_blockskip_flush;
 #endif
 
+#ifdef CONFIG_MEMORY_HOTPLUG
 	bool			contiguous;
+#endif
 
 	ZONE_PADDING(_pad3_)
 	/* Zone statistics */

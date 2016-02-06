@@ -200,7 +200,10 @@ void mem_hotplug_done(void);
 
 extern void set_zone_contiguous(struct zone *zone);
 extern void clear_zone_contiguous(struct zone *zone);
-
+static inline bool zone_contiguous(struct zone *zone)
+{
+	return zone->contiguous;
+}
 #else /* ! CONFIG_MEMORY_HOTPLUG */
 /*
  * Stub functions for when hotplug is off
@@ -242,6 +245,13 @@ static inline void put_online_mems(void) {}
 
 static inline void mem_hotplug_begin(void) {}
 static inline void mem_hotplug_done(void) {}
+
+static inline void set_zone_contiguous(struct zone *zone) {}
+static inline void clear_zone_contiguous(struct zone *zone) {}
+static inline bool zone_contiguous(struct zone *zone)
+{
+	return false;
+}
 
 #endif /* ! CONFIG_MEMORY_HOTPLUG */
 
