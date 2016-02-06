@@ -2044,7 +2044,7 @@ static bool set_objfreelist_slab_cache(struct kmem_cache *cachep,
 
 	cachep->num = 0;
 
-	if (cachep->ctor)
+	if (cachep->ctor || flags & SLAB_DESTROY_BY_RCU)
 		return false;
 
 	left = calculate_slab_order(cachep, size,
