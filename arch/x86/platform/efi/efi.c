@@ -35,10 +35,12 @@
 #include <linux/efi.h>
 #include <linux/efi-bgrt.h>
 #include <linux/export.h>
+#include <linux/bitops.h>
 #include <linux/bootmem.h>
 #include <linux/slab.h>
 #include <linux/memblock.h>
 #include <linux/spinlock.h>
+#include <linux/string_helpers.h>
 #include <linux/uaccess.h>
 #include <linux/time.h>
 #include <linux/io.h>
@@ -115,6 +117,14 @@ void efi_get_time(struct timespec *now)
 	now->tv_sec = mktime(eft.year, eft.month, eft.day, eft.hour,
 			     eft.minute, eft.second);
 	now->tv_nsec = 0;
+}
+
+static char * __init efi_size_format(char *buf, size_t size, u64 bytes)
+{
+	unsigned long i = bytes ? __ffs64(bytes) / 10 : 0;
+
+	snprintf(buf, size, "%llu %s", bytes >> (i * 10), string_units_2[i]);
+	return buf;
 }
 
 void __init efi_find_mirror(void)
@@ -225,21 +235,20 @@ int __init efi_memblock_x86_reserve_range(void)
 void __init efi_print_memmap(void)
 {
 #ifdef EFI_DEBUG
-	efi_memory_desc_t *md;
 	void *p;
 	int i;
 
 	for (p = memmap.map, i = 0;
 	     p < memmap.map_end;
 	     p += memmap.desc_size, i++) {
-		char buf[64];
+		efi_memory_desc_t *md = p;
+		u64 size = md->num_pages << EFI_PAGE_SHIFT;
+		char buf[64], buf3[32];
 
-		md = p;
-		pr_info("mem%02u: %s range=[0x%016llx-0x%016llx) (%lluMB)\n",
+		pr_info("mem%02u: %s range=[0x%016llx-0x%016llx] (%s)\n",
 			i, efi_md_typeattr_format(buf, sizeof(buf), md),
-			md->phys_addr,
-			md->phys_addr + (md->num_pages << EFI_PAGE_SHIFT),
-			(md->num_pages >> (20 - EFI_PAGE_SHIFT)));
+			md->phys_addr, md->phys_addr + size,
+			efi_size_format(buf3, sizeof(buf3), size));
 	}
 #endif  /*  EFI_DEBUG  */
 }
