@@ -2414,12 +2414,18 @@ int __kmem_cache_shrink(struct kmem_cache *cachep, bool deactivate)
 
 int __kmem_cache_shutdown(struct kmem_cache *cachep)
 {
-	int i;
-	struct kmem_cache_node *n;
 	int rc = __kmem_cache_shrink(cachep, false);
 
 	if (rc)
 		return rc;
+
+	return 0;
+}
+
+void __kmem_cache_release(struct kmem_cache *cachep)
+{
+	int i;
+	struct kmem_cache_node *n;
 
 	free_percpu(cachep->cpu_cache);
 
@@ -2430,7 +2436,6 @@ int __kmem_cache_shutdown(struct kmem_cache *cachep)
 		kfree(n);
 		cachep->node[i] = NULL;
 	}
-	return 0;
 }
 
 /*
