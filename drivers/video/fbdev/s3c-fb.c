@@ -1131,7 +1131,7 @@ static void s3c_fb_free_memory(struct s3c_fb *sfb, struct s3c_fb_win *win)
 
 	if (fbi->screen_base)
 		dma_free_wc(sfb->dev, PAGE_ALIGN(fbi->fix.smem_len),
-		            fbi->screen_base, fbi->fix.smem_start);
+			    fbi->screen_base, fbi->fix.smem_start);
 }
 
 /**
