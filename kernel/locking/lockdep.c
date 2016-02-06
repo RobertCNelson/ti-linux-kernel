@@ -3930,8 +3930,6 @@ void lockdep_free_key_range(void *start, unsigned long size)
 	 */
 	for (i = 0; i < CLASSHASH_SIZE; i++) {
 		head = classhash_table + i;
-		if (!head)
-			continue;
 		hlist_for_each_entry_rcu(class, head, hash_entry) {
 			if (within(class->key, start, size))
 				zap_class(class);
@@ -3987,8 +3985,6 @@ void lockdep_reset_lock(struct lockdep_map *lock)
 	locked = graph_lock();
 	for (i = 0; i < CLASSHASH_SIZE; i++) {
 		head = classhash_table + i;
-		if (!head)
-			continue;
 		hlist_for_each_entry_rcu(class, head, hash_entry) {
 			int match = 0;
 
