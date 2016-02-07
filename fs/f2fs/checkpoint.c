@@ -39,7 +39,7 @@ repeat:
 		cond_resched();
 		goto repeat;
 	}
-	f2fs_wait_on_page_writeback(page, META);
+	f2fs_wait_on_page_writeback(page, META, true);
 	SetPageUptodate(page);
 	return page;
 }
@@ -232,13 +232,17 @@ static int f2fs_write_meta_page(struct page *page,
 	if (unlikely(f2fs_cp_error(sbi)))
 		goto redirty_out;
 
-	f2fs_wait_on_page_writeback(page, META);
 	write_meta_page(sbi, page);
 	dec_page_count(sbi, F2FS_DIRTY_META);
+
+	if (wbc->for_reclaim)
+		f2fs_submit_merged_bio_cond(sbi, NULL, page, 0, META, WRITE);
+
 	unlock_page(page);
 
-	if (wbc->for_reclaim || unlikely(f2fs_cp_error(sbi)))
+	if (unlikely(f2fs_cp_error(sbi)))
 		f2fs_submit_merged_bio(sbi, META, WRITE);
+
 	return 0;
 
 redirty_out:
@@ -315,6 +319,9 @@ continue_unlock:
 				goto continue_unlock;
 			}
 
+			f2fs_wait_on_page_writeback(page, META, true);
+
+			BUG_ON(PageWriteback(page));
 			if (!clear_page_dirty_for_io(page))
 				goto continue_unlock;
 
@@ -921,6 +928,9 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	int cp_payload_blks = __cp_payload(sbi);
 	block_t discard_blk = NEXT_FREE_BLKADDR(sbi, curseg);
 	bool invalidate = false;
+	struct super_block *sb = sbi->sb;
+	struct curseg_info *seg_i = CURSEG_I(sbi, CURSEG_HOT_NODE);
+	u64 kbytes_written;
 
 	/*
 	 * This avoids to conduct wrong roll-forward operations and uses
@@ -1034,6 +1044,14 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 
 	write_data_summaries(sbi, start_blk);
 	start_blk += data_sum_blocks;
+
+	/* Record write statistics in the hot node summary */
+	kbytes_written = sbi->kbytes_written;
+	if (sb->s_bdev->bd_part)
+		kbytes_written += BD_PART_WRITTEN(sbi);
+
+	seg_i->sum_blk->info.kbytes_written = cpu_to_le64(kbytes_written);
+
 	if (__remain_node_summaries(cpc->reason)) {
 		write_node_summaries(sbi, start_blk);
 		start_blk += NR_CURSEG_NODE_TYPE;
