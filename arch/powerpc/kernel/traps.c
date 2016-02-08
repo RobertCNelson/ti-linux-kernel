@@ -203,8 +203,9 @@ static int __kprobes __die(const char *str, struct pt_regs *regs, long err)
 #ifdef CONFIG_SMP
 	printk("SMP NR_CPUS=%d ", NR_CPUS);
 #endif
-	if (debug_pagealloc_enabled())
-		printk("DEBUG_PAGEALLOC ");
+#ifdef CONFIG_DEBUG_PAGEALLOC
+	printk("DEBUG_PAGEALLOC ");
+#endif
 #ifdef CONFIG_NUMA
 	printk("NUMA ");
 #endif
