@@ -140,10 +140,9 @@ static int __dwc3_gadget_ep0_queue(struct dwc3_ep *dep,
 
 		direction = !!(dep->flags & DWC3_EP0_DIR_IN);
 
-		if (dwc->ep0state != EP0_DATA_PHASE) {
-			dev_WARN(dwc->dev, "Unexpected pending request\n");
+		if (dev_WARN(dwc->dev, dwc->ep0state != EP0_DATA_PHASE,
+						"Unexpected pending request\n"))
 			return 0;
-		}
 
 		__dwc3_ep0_do_control_data(dwc, dwc->eps[direction], req);
 
