@@ -3,12 +3,16 @@
  * Written by Martin Mares <mj@atrey.karlin.mff.cuni.cz>
  */
 
+#ifdef CONFIG_XIP_KERNEL
+#include "vmlinux-xip.lds.S"
+#else
+
 #include <asm-generic/vmlinux.lds.h>
 #include <asm/cache.h>
 #include <asm/thread_info.h>
 #include <asm/memory.h>
 #include <asm/page.h>
-#ifdef CONFIG_ARM_KERNMEM_PERMS
+#ifdef CONFIG_DEBUG_RODATA
 #include <asm/pgtable.h>
 #endif
 
@@ -84,17 +88,13 @@ SECTIONS
 		*(.discard.*)
 	}
 
-#ifdef CONFIG_XIP_KERNEL
-	. = XIP_VIRT_ADDR(CONFIG_XIP_PHYS_ADDR);
-#else
 	. = PAGE_OFFSET + TEXT_OFFSET;
-#endif
 	.head.text : {
 		_text = .;
 		HEAD_TEXT
 	}
 
-#ifdef CONFIG_ARM_KERNMEM_PERMS
+#ifdef CONFIG_DEBUG_RODATA
 	. = ALIGN(1<<SECTION_SHIFT);
 #endif
 
@@ -117,7 +117,7 @@ SECTIONS
 			ARM_CPU_KEEP(PROC_INFO)
 	}
 
-#ifdef CONFIG_DEBUG_RODATA
+#ifdef CONFIG_DEBUG_ALIGN_RODATA
 	. = ALIGN(1<<SECTION_SHIFT);
 #endif
 	RO_DATA(PAGE_SIZE)
@@ -152,14 +152,13 @@ SECTIONS
 
 	_etext = .;			/* End of text and rodata section */
 
-#ifndef CONFIG_XIP_KERNEL
-# ifdef CONFIG_ARM_KERNMEM_PERMS
+#ifdef CONFIG_DEBUG_RODATA
 	. = ALIGN(1<<SECTION_SHIFT);
-# else
+#else
 	. = ALIGN(PAGE_SIZE);
-# endif
-	__init_begin = .;
 #endif
+	__init_begin = .;
+
 	/*
 	 * The vectors and stubs are relocatable code, and the
 	 * only thing that matters is their relative offsets
@@ -208,37 +207,28 @@ SECTIONS
 		__pv_table_end = .;
 	}
 	.init.data : {
-#ifndef CONFIG_XIP_KERNEL
 		INIT_DATA
-#endif
 		INIT_SETUP(16)
 		INIT_CALLS
 		CON_INITCALL
 		SECURITY_INITCALL
 		INIT_RAM_FS
 	}
-#ifndef CONFIG_XIP_KERNEL
 	.exit.data : {
 		ARM_EXIT_KEEP(EXIT_DATA)
 	}
-#endif
 
 #ifdef CONFIG_SMP
 	PERCPU_SECTION(L1_CACHE_BYTES)
 #endif
 
-#ifdef CONFIG_XIP_KERNEL
-	__data_loc = ALIGN(4);		/* location in binary */
-	. = PAGE_OFFSET + TEXT_OFFSET;
-#else
-#ifdef CONFIG_ARM_KERNMEM_PERMS
+#ifdef CONFIG_DEBUG_RODATA
 	. = ALIGN(1<<SECTION_SHIFT);
 #else
 	. = ALIGN(THREAD_SIZE);
 #endif
 	__init_end = .;
 	__data_loc = .;
-#endif
 
 	.data : AT(__data_loc) {
 		_data = .;		/* address in memory */
@@ -249,15 +239,6 @@ SECTIONS
 		 * to an 8192 byte boundary.
 		 */
 		INIT_TASK_DATA(THREAD_SIZE)
-
-#ifdef CONFIG_XIP_KERNEL
-		. = ALIGN(PAGE_SIZE);
-		__init_begin = .;
-		INIT_DATA
-		ARM_EXIT_KEEP(EXIT_DATA)
-		. = ALIGN(PAGE_SIZE);
-		__init_end = .;
-#endif
 
 		NOSAVE_DATA
 		CACHELINE_ALIGNED_DATA(L1_CACHE_BYTES)
@@ -351,3 +332,5 @@ ASSERT((__arch_info_end - __arch_info_begin), "no machine record defined")
  */
 ASSERT(__hyp_idmap_text_end - (__hyp_idmap_text_start & PAGE_MASK) <= PAGE_SIZE,
 	"HYP init code too big or misaligned")
+
+#endif /* CONFIG_XIP_KERNEL */
