@@ -288,26 +288,19 @@ static struct net_device *get_if_handler(struct wilc *wilc, u8 *mac_header)
 	bssid = mac_header + 10;
 	bssid1 = mac_header + 4;
 
-	for (i = 0; i < wilc->vif_num; i++)
-		if (!memcmp(bssid1, wilc->vif[i]->bssid, ETH_ALEN) ||
-		    !memcmp(bssid, wilc->vif[i]->bssid, ETH_ALEN))
-			return wilc->vif[i]->ndev;
+	for (i = 0; i < wilc->vif_num; i++) {
+		if (wilc->vif[i]->mode == STATION_MODE)
+			if (!memcmp(bssid, wilc->vif[i]->bssid, ETH_ALEN))
+				return wilc->vif[i]->ndev;
+		if (wilc->vif[i]->mode == AP_MODE)
+			if (!memcmp(bssid1, wilc->vif[i]->bssid, ETH_ALEN))
+				return wilc->vif[i]->ndev;
+	}
 
-	PRINT_INFO(INIT_DBG, "Invalide handle\n");
-	for (i = 0; i < 25; i++)
-		PRINT_D(INIT_DBG, "%02x ", mac_header[i]);
-	bssid = mac_header + 18;
-	bssid1 = mac_header + 12;
-	for (i = 0; i < wilc->vif_num; i++)
-		if (!memcmp(bssid1, wilc->vif[i]->bssid, ETH_ALEN) ||
-		    !memcmp(bssid, wilc->vif[i]->bssid, ETH_ALEN))
-			return wilc->vif[i]->ndev;
-
-	PRINT_INFO(INIT_DBG, "\n");
 	return NULL;
 }
 
-int wilc_wlan_set_bssid(struct net_device *wilc_netdev, u8 *bssid)
+int wilc_wlan_set_bssid(struct net_device *wilc_netdev, u8 *bssid, u8 mode)
 {
 	int i = 0;
 	int ret = -1;
@@ -320,6 +313,7 @@ int wilc_wlan_set_bssid(struct net_device *wilc_netdev, u8 *bssid)
 	for (i = 0; i < wilc->vif_num; i++)
 		if (wilc->vif[i]->ndev == wilc_netdev) {
 			memcpy(wilc->vif[i]->bssid, bssid, 6);
+			wilc->vif[i]->mode = mode;
 			ret = 0;
 			break;
 		}
@@ -391,9 +385,6 @@ static int linux_wlan_txq_task(void *vp)
 			}
 
 			if (ret == WILC_TX_ERR_NO_BUF) {
-				do {
-					msleep(TX_BACKOFF_WEIGHT_UNIT_MS << backoff_weight);
-				} while (0);
 				backoff_weight += TX_BACKOFF_WEIGHT_INCR_STEP;
 				if (backoff_weight > TX_BACKOFF_WEIGHT_MAX)
 					backoff_weight = TX_BACKOFF_WEIGHT_MAX;
@@ -419,21 +410,21 @@ int wilc_wlan_get_firmware(struct net_device *dev)
 {
 	struct wilc_vif *vif;
 	struct wilc *wilc;
-	int ret = 0;
+	int chip_id, ret = 0;
 	const struct firmware *wilc_firmware;
 	char *firmware;
 
 	vif = netdev_priv(dev);
 	wilc = vif->wilc;
 
-	if (vif->iftype == AP_MODE) {
-		firmware = AP_FIRMWARE;
-	} else if (vif->iftype == STATION_MODE) {
-		firmware = STA_FIRMWARE;
-	} else {
-		PRINT_D(INIT_DBG, "Get P2P_CONCURRENCY_FIRMWARE\n");
-		firmware = P2P_CONCURRENCY_FIRMWARE;
-	}
+	chip_id = wilc_get_chipid(wilc, 0);
+
+	if (chip_id < 0x1003a0)
+		firmware = FIRMWARE_1002;
+	else
+		firmware = FIRMWARE_1003;
+
+	netdev_info(dev, "loading firmware %s\n", firmware);
 
 	if (!vif) {
 		PRINT_ER("vif is NULL\n");
@@ -514,20 +505,19 @@ static int wilc1000_firmware_download(struct net_device *dev)
 }
 
 static int linux_wlan_init_test_config(struct net_device *dev,
-				       struct wilc *wilc)
+				       struct wilc_vif *vif)
 {
 	unsigned char c_val[64];
 	unsigned char mac_add[] = {0x00, 0x80, 0xC2, 0x5E, 0xa2, 0xff};
-
+	struct wilc *wilc = vif->wilc;
 	struct wilc_priv *priv;
 	struct host_if_drv *hif_drv;
 
 	PRINT_D(TX_DBG, "Start configuring Firmware\n");
-	get_random_bytes(&mac_add[5], 1);
-	get_random_bytes(&mac_add[4], 1);
 	priv = wiphy_priv(dev->ieee80211_ptr->wiphy);
 	hif_drv = (struct host_if_drv *)priv->hWILCWFIDrv;
 	PRINT_D(INIT_DBG, "Host = %p\n", hif_drv);
+	wilc_get_mac_address(vif, mac_add);
 
 	PRINT_D(INIT_DBG, "MAC address is : %02x-%02x-%02x-%02x-%02x-%02x\n",
 		mac_add[0], mac_add[1], mac_add[2],
@@ -947,7 +937,7 @@ int wilc1000_wlan_init(struct net_device *dev, struct wilc_vif *vif)
 			Firmware_ver[size] = '\0';
 			PRINT_D(INIT_DBG, "***** Firmware Ver = %s  *******\n", Firmware_ver);
 		}
-		ret = linux_wlan_init_test_config(dev, wl);
+		ret = linux_wlan_init_test_config(dev, vif);
 
 		if (ret < 0) {
 			PRINT_ER("Failed to configure firmware\n");
@@ -1003,7 +993,7 @@ int wilc_mac_open(struct net_device *ndev)
 	vif = netdev_priv(ndev);
 	wl = vif->wilc;
 
-	if (!wl|| !wl->dev) {
+	if (!wl || !wl->dev) {
 		netdev_err(ndev, "wilc1000: SPI device not ready\n");
 		return -ENODEV;
 	}
@@ -1028,14 +1018,13 @@ int wilc_mac_open(struct net_device *ndev)
 		return ret;
 	}
 
-	wilc_set_machw_change_vir_if(ndev, false);
-
 	wilc_get_mac_address(vif, mac_add);
 	PRINT_D(INIT_DBG, "Mac address: %pM\n", mac_add);
 
 	for (i = 0; i < wl->vif_num; i++) {
 		if (ndev == wl->vif[i]->ndev) {
 			memcpy(wl->vif[i]->src_addr, mac_add, ETH_ALEN);
+			wilc_set_operation_mode(vif, vif->iftype);
 			break;
 		}
 	}
@@ -1065,7 +1054,7 @@ int wilc_mac_open(struct net_device *ndev)
 
 static struct net_device_stats *mac_stats(struct net_device *dev)
 {
-	struct wilc_vif *vif= netdev_priv(dev);
+	struct wilc_vif *vif = netdev_priv(dev);
 
 	return &vif->netstats;
 }
@@ -1278,7 +1267,7 @@ static int mac_ioctl(struct net_device *ndev, struct ifreq *req, int cmd)
 	switch (cmd) {
 	case SIOCSIWPRIV:
 	{
-		struct iwreq *wrq = (struct iwreq *) req;
+		struct iwreq *wrq = (struct iwreq *)req;
 
 		size = wrq->u.data.length;
 
@@ -1333,6 +1322,9 @@ void wilc_frmw_to_linux(struct wilc *wilc, u8 *buff, u32 size, u32 pkt_offset)
 	struct net_device *wilc_netdev;
 	struct wilc_vif *vif;
 
+	if (!wilc)
+		return;
+
 	wilc_netdev = get_if_handler(wilc, buff);
 	if (!wilc_netdev)
 		return;
@@ -1349,13 +1341,7 @@ void wilc_frmw_to_linux(struct wilc *wilc, u8 *buff, u32 size, u32 pkt_offset)
 			PRINT_ER("Low memory - packet droped\n");
 			return;
 		}
-
-		if (!wilc || !wilc_netdev)
-			PRINT_ER("wilc_netdev in wilc is NULL");
 		skb->dev = wilc_netdev;
-
-		if (!skb->dev)
-			PRINT_ER("skb->dev is NULL\n");
 
 		memcpy(skb_put(skb, frame_len), buff_to_send, frame_len);
 
@@ -1403,7 +1389,7 @@ void wilc_netdev_cleanup(struct wilc *wilc)
 		release_firmware(wilc->firmware);
 
 	if (wilc && (wilc->vif[0]->ndev || wilc->vif[1]->ndev)) {
-		wilc_lock_timeout(wilc, &close_exit_sync, 12 * 1000);
+		wilc_lock_timeout(wilc, &close_exit_sync, 5 * 1000);
 
 		for (i = 0; i < NUM_CONCURRENT_IFC; i++)
 			if (wilc->vif[i]->ndev)

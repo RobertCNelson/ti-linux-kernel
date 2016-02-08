@@ -106,6 +106,7 @@
 #define WILC_HAVE_LEGACY_RF_SETTINGS	BIT(5)
 #define WILC_HAVE_XTAL_24		BIT(6)
 #define WILC_HAVE_DISABLE_WILC_UART	BIT(7)
+#define WILC_HAVE_USE_IRQ_AS_HOST_WAKE	BIT(8)
 
 /********************************************
  *
@@ -226,7 +227,7 @@ struct rxq_entry_t {
  ********************************************/
 struct wilc;
 struct wilc_hif_func {
-	int (*hif_init)(struct wilc *);
+	int (*hif_init)(struct wilc *, bool resume);
 	int (*hif_deinit)(struct wilc *);
 	int (*hif_read_reg)(struct wilc *, u32, u32 *);
 	int (*hif_write_reg)(struct wilc *, u32, u32);
@@ -292,9 +293,10 @@ int wilc_mac_xmit(struct sk_buff *skb, struct net_device *dev);
 int wilc_mac_open(struct net_device *ndev);
 int wilc_mac_close(struct net_device *ndev);
 
-int wilc_wlan_set_bssid(struct net_device *wilc_netdev, u8 *pBSSID);
 void WILC_WFI_p2p_rx(struct net_device *dev, u8 *buff, u32 size);
-
+void host_wakeup_notify(struct wilc *wilc);
+void host_sleep_notify(struct wilc *wilc);
 extern bool wilc_enable_ps;
-
+void chip_allow_sleep(struct wilc *wilc);
+void chip_wakeup(struct wilc *wilc);
 #endif
