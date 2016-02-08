@@ -1,3 +1,5 @@
+#define pr_fmt(fmt) "efi: " fmt
+
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/string.h>
@@ -267,7 +269,7 @@ void __init efi_apply_memmap_quirks(void)
 	 * services.
 	 */
 	if (!efi_runtime_supported()) {
-		pr_info("efi: Setup done, disabling due to 32/64-bit mismatch\n");
+		pr_info("Setup done, disabling due to 32/64-bit mismatch\n");
 		efi_unmap_memmap();
 	}
 
