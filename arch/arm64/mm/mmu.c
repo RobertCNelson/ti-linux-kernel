@@ -46,12 +46,19 @@
 
 u64 idmap_t0sz = TCR_T0SZ(VA_BITS);
 
+u64 kimage_voffset __read_mostly;
+EXPORT_SYMBOL(kimage_voffset);
+
 /*
  * Empty_zero_page is a special page that is used for zero-initialized data
  * and COW.
  */
 unsigned long empty_zero_page[PAGE_SIZE / sizeof(unsigned long)] __page_aligned_bss;
 EXPORT_SYMBOL(empty_zero_page);
+
+static pte_t bm_pte[PTRS_PER_PTE] __page_aligned_bss;
+static pmd_t bm_pmd[PTRS_PER_PMD] __page_aligned_bss __maybe_unused;
+static pud_t bm_pud[PTRS_PER_PUD] __page_aligned_bss __maybe_unused;
 
 pgprot_t phys_mem_access_prot(struct file *file, unsigned long pfn,
 			      unsigned long size, pgprot_t vma_prot)
@@ -349,14 +356,14 @@ static void __init __map_memblock(pgd_t *pgd, phys_addr_t start, phys_addr_t end
 {
 
 	unsigned long kernel_start = __pa(_stext);
-	unsigned long kernel_end = __pa(_end);
+	unsigned long kernel_end = __pa(_etext);
 
 	/*
-	 * The kernel itself is mapped at page granularity. Map all other
-	 * memory, making sure we don't overwrite the existing kernel mappings.
+	 * Take care not to create a writable alias for the
+	 * read-only text and rodata sections of the kernel image.
 	 */
 
-	/* No overlap with the kernel. */
+	/* No overlap with the kernel text */
 	if (end < kernel_start || start >= kernel_end) {
 		__create_pgd_mapping(pgd, start, __phys_to_virt(start),
 				     end - start, PAGE_KERNEL,
@@ -365,7 +372,7 @@ static void __init __map_memblock(pgd_t *pgd, phys_addr_t start, phys_addr_t end
 	}
 
 	/*
-	 * This block overlaps the kernel mapping. Map the portion(s) which
+	 * This block overlaps the kernel text mapping. Map the portion(s) which
 	 * don't overlap.
 	 */
 	if (start < kernel_start)
@@ -398,25 +405,28 @@ static void __init map_mem(pgd_t *pgd)
 	}
 }
 
-#ifdef CONFIG_DEBUG_RODATA
 void mark_rodata_ro(void)
 {
+	if (!IS_ENABLED(CONFIG_DEBUG_RODATA))
+		return;
+
 	create_mapping_late(__pa(_stext), (unsigned long)_stext,
 				(unsigned long)_etext - (unsigned long)_stext,
 				PAGE_KERNEL_ROX);
-
 }
-#endif
 
 void fixup_init(void)
 {
-	create_mapping_late(__pa(__init_begin), (unsigned long)__init_begin,
-			(unsigned long)__init_end - (unsigned long)__init_begin,
-			PAGE_KERNEL);
+	/*
+	 * Unmap the __init region but leave the VM area in place. This
+	 * prevents the region from being reused for kernel modules, which
+	 * is not supported by kallsyms.
+	 */
+	unmap_kernel_range((u64)__init_begin, (u64)(__init_end - __init_begin));
 }
 
 static void __init map_kernel_chunk(pgd_t *pgd, void *va_start, void *va_end,
-				    pgprot_t prot)
+				    pgprot_t prot, struct vm_struct *vma)
 {
 	phys_addr_t pa_start = __pa(va_start);
 	unsigned long size = va_end - va_start;
@@ -426,6 +436,14 @@ static void __init map_kernel_chunk(pgd_t *pgd, void *va_start, void *va_end,
 
 	__create_pgd_mapping(pgd, pa_start, (unsigned long)va_start, size, prot,
 			     early_pgtable_alloc);
+
+	vma->addr	= va_start;
+	vma->phys_addr	= pa_start;
+	vma->size	= size;
+	vma->flags	= VM_MAP;
+	vma->caller	= map_kernel_chunk;
+
+	vm_area_add_early(vma);
 }
 
 /*
@@ -433,17 +451,35 @@ static void __init map_kernel_chunk(pgd_t *pgd, void *va_start, void *va_end,
  */
 static void __init map_kernel(pgd_t *pgd)
 {
+	static struct vm_struct vmlinux_text, vmlinux_init, vmlinux_data;
 
-	map_kernel_chunk(pgd, _stext, _etext, PAGE_KERNEL_EXEC);
-	map_kernel_chunk(pgd, __init_begin, __init_end, PAGE_KERNEL_EXEC);
-	map_kernel_chunk(pgd, _data, _end, PAGE_KERNEL);
+	map_kernel_chunk(pgd, _stext, _etext, PAGE_KERNEL_EXEC, &vmlinux_text);
+	map_kernel_chunk(pgd, __init_begin, __init_end, PAGE_KERNEL_EXEC,
+			 &vmlinux_init);
+	map_kernel_chunk(pgd, _data, _end, PAGE_KERNEL, &vmlinux_data);
 
-	/*
-	 * The fixmap falls in a separate pgd to the kernel, and doesn't live
-	 * in the carveout for the swapper_pg_dir. We can simply re-use the
-	 * existing dir for the fixmap.
-	 */
-	set_pgd(pgd_offset_raw(pgd, FIXADDR_START), *pgd_offset_k(FIXADDR_START));
+	if (!pgd_val(*pgd_offset_raw(pgd, FIXADDR_START))) {
+		/*
+		 * The fixmap falls in a separate pgd to the kernel, and doesn't
+		 * live in the carveout for the swapper_pg_dir. We can simply
+		 * re-use the existing dir for the fixmap.
+		 */
+		set_pgd(pgd_offset_raw(pgd, FIXADDR_START),
+			*pgd_offset_k(FIXADDR_START));
+	} else if (CONFIG_PGTABLE_LEVELS > 3) {
+		/*
+		 * The fixmap shares its top level pgd entry with the kernel
+		 * mapping. This can really only occur when we are running
+		 * with 16k/4 levels, so we can simply reuse the pud level
+		 * entry instead.
+		 */
+		BUG_ON(!IS_ENABLED(CONFIG_ARM64_16K_PAGES));
+		set_pud(pud_set_fixmap_offset(pgd, FIXADDR_START),
+			__pud(__pa(bm_pmd) | PUD_TYPE_TABLE));
+		pud_clear_fixmap();
+	} else {
+		BUG();
+	}
 
 	kasan_copy_shadow(pgd);
 }
@@ -569,21 +605,13 @@ void vmemmap_free(unsigned long start, unsigned long end)
 }
 #endif	/* CONFIG_SPARSEMEM_VMEMMAP */
 
-static pte_t bm_pte[PTRS_PER_PTE] __page_aligned_bss;
-#if CONFIG_PGTABLE_LEVELS > 2
-static pmd_t bm_pmd[PTRS_PER_PMD] __page_aligned_bss;
-#endif
-#if CONFIG_PGTABLE_LEVELS > 3
-static pud_t bm_pud[PTRS_PER_PUD] __page_aligned_bss;
-#endif
-
 static inline pud_t * fixmap_pud(unsigned long addr)
 {
 	pgd_t *pgd = pgd_offset_k(addr);
 
 	BUG_ON(pgd_none(*pgd) || pgd_bad(*pgd));
 
-	return pud_offset(pgd, addr);
+	return pud_offset_kimg(pgd, addr);
 }
 
 static inline pmd_t * fixmap_pmd(unsigned long addr)
@@ -592,16 +620,12 @@ static inline pmd_t * fixmap_pmd(unsigned long addr)
 
 	BUG_ON(pud_none(*pud) || pud_bad(*pud));
 
-	return pmd_offset(pud, addr);
+	return pmd_offset_kimg(pud, addr);
 }
 
 static inline pte_t * fixmap_pte(unsigned long addr)
 {
-	pmd_t *pmd = fixmap_pmd(addr);
-
-	BUG_ON(pmd_none(*pmd) || pmd_bad(*pmd));
-
-	return pte_offset_kernel(pmd, addr);
+	return &bm_pte[pte_index(addr)];
 }
 
 void __init early_fixmap_init(void)
@@ -612,15 +636,25 @@ void __init early_fixmap_init(void)
 	unsigned long addr = FIXADDR_START;
 
 	pgd = pgd_offset_k(addr);
-	pgd_populate(&init_mm, pgd, bm_pud);
-	pud = pud_offset(pgd, addr);
+	if (CONFIG_PGTABLE_LEVELS > 3 && !pgd_none(*pgd)) {
+		/*
+		 * We only end up here if the kernel mapping and the fixmap
+		 * share the top level pgd entry, which should only happen on
+		 * 16k/4 levels configurations.
+		 */
+		BUG_ON(!IS_ENABLED(CONFIG_ARM64_16K_PAGES));
+		pud = pud_offset_kimg(pgd, addr);
+	} else {
+		pgd_populate(&init_mm, pgd, bm_pud);
+		pud = fixmap_pud(addr);
+	}
 	pud_populate(&init_mm, pud, bm_pmd);
-	pmd = pmd_offset(pud, addr);
+	pmd = fixmap_pmd(addr);
 	pmd_populate_kernel(&init_mm, pmd, bm_pte);
 
 	/*
 	 * The boot-ioremap range spans multiple pmds, for which
-	 * we are not preparted:
+	 * we are not prepared:
 	 */
 	BUILD_BUG_ON((__fix_to_virt(FIX_BTMAP_BEGIN) >> PMD_SHIFT)
 		     != (__fix_to_virt(FIX_BTMAP_END) >> PMD_SHIFT));
@@ -713,4 +747,45 @@ void *__init fixmap_remap_fdt(phys_addr_t dt_phys)
 	memblock_reserve(dt_phys, size);
 
 	return dt_virt;
+}
+
+int __init arch_ioremap_pud_supported(void)
+{
+	/* only 4k granule supports level 1 block mappings */
+	return IS_ENABLED(CONFIG_ARM64_4K_PAGES);
+}
+
+int __init arch_ioremap_pmd_supported(void)
+{
+	return 1;
+}
+
+int pud_set_huge(pud_t *pud, phys_addr_t phys, pgprot_t prot)
+{
+	BUG_ON(phys & ~PUD_MASK);
+	set_pud(pud, __pud(phys | PUD_TYPE_SECT | pgprot_val(mk_sect_prot(prot))));
+	return 1;
+}
+
+int pmd_set_huge(pmd_t *pmd, phys_addr_t phys, pgprot_t prot)
+{
+	BUG_ON(phys & ~PMD_MASK);
+	set_pmd(pmd, __pmd(phys | PMD_TYPE_SECT | pgprot_val(mk_sect_prot(prot))));
+	return 1;
+}
+
+int pud_clear_huge(pud_t *pud)
+{
+	if (!pud_sect(*pud))
+		return 0;
+	pud_clear(pud);
+	return 1;
+}
+
+int pmd_clear_huge(pmd_t *pmd)
+{
+	if (!pmd_sect(*pmd))
+		return 0;
+	pmd_clear(pmd);
+	return 1;
 }
