@@ -1965,11 +1965,13 @@ config CPU_MIPSR2
 	bool
 	default y if CPU_MIPS32_R2 || CPU_MIPS64_R2 || CPU_CAVIUM_OCTEON
 	select MIPS_SPRAM
+	select CPU_HAS_RIXI
 
 config CPU_MIPSR6
 	bool
 	default y if CPU_MIPS32_R6 || CPU_MIPS64_R6
 	select MIPS_SPRAM
+	select CPU_HAS_RIXI
 
 config EVA
 	bool
@@ -2372,6 +2374,9 @@ config CPU_HAS_WB
 	bool
 
 config XKS01
+	bool
+
+config CPU_HAS_RIXI
 	bool
 
 #
