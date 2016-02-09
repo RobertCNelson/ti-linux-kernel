@@ -13,14 +13,6 @@
 #include <linux/uaccess.h>
 #include <linux/kcov.h>
 
-enum kcov_mode {
-	/*
-	 * Tracing coverage collection mode.
-	 * Covered PCs are collected in a per-task buffer.
-	 */
-	KCOV_MODE_TRACE = 1,
-};
-
 /*
  * kcov descriptor (one per opened debugfs file).
  * State transitions of the descriptor:
