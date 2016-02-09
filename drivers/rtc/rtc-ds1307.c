@@ -19,6 +19,8 @@
 #include <linux/rtc.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <linux/hwmon.h>
+#include <linux/hwmon-sysfs.h>
 
 /*
  * We can't determine type by probing, but if we expect pre-Linux code
@@ -842,6 +844,90 @@ out:
 	return;
 }
 
+/*----------------------------------------------------------------------*/
+
+#ifdef CONFIG_RTC_DRV_DS1307_HWMON
+
+/*
+ * Temperature sensor support for ds3231 devices.
+ */
+
+#define DS3231_REG_TEMPERATURE	0x11
+
+/*
+ * A user-initiated temperature conversion is not started by this function,
+ * so the temperature is updated once every 64 seconds.
+ */
+static int ds3231_hwmon_read_temp(struct device *dev, s16 *mC)
+{
+	struct ds1307 *ds1307 = dev_get_drvdata(dev);
+	u8 temp_buf[2];
+	s16 temp;
+	int ret;
+
+	ret = ds1307->read_block_data(ds1307->client, DS3231_REG_TEMPERATURE,
+					sizeof(temp_buf), temp_buf);
+	if (ret < 0)
+		return ret;
+	if (ret != sizeof(temp_buf))
+		return -EIO;
+
+	/*
+	 * Temperature is represented as a 10-bit code with a resolution of
+	 * 0.25 degree celsius and encoded in two's complement format.
+	 */
+	temp = (temp_buf[0] << 8) | temp_buf[1];
+	temp >>= 6;
+	*mC = temp * 250;
+
+	return 0;
+}
+
+static ssize_t ds3231_hwmon_show_temp(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	int ret;
+	s16 temp;
+
+	ret = ds3231_hwmon_read_temp(dev, &temp);
+	if (ret)
+		return ret;
+
+	return sprintf(buf, "%d\n", temp);
+}
+static SENSOR_DEVICE_ATTR(temp1_input, S_IRUGO, ds3231_hwmon_show_temp,
+			NULL, 0);
+
+static struct attribute *ds3231_hwmon_attrs[] = {
+	&sensor_dev_attr_temp1_input.dev_attr.attr,
+	NULL,
+};
+ATTRIBUTE_GROUPS(ds3231_hwmon);
+
+static void ds1307_hwmon_register(struct ds1307 *ds1307)
+{
+	struct device *dev;
+
+	if (ds1307->type != ds_3231)
+		return;
+
+	dev = devm_hwmon_device_register_with_groups(&ds1307->client->dev,
+						ds1307->client->name,
+						ds1307, ds3231_hwmon_groups);
+	if (IS_ERR(dev)) {
+		dev_warn(&ds1307->client->dev,
+			"unable to register hwmon device %ld\n", PTR_ERR(dev));
+	}
+}
+
+#else
+
+static void ds1307_hwmon_register(struct ds1307 *ds1307)
+{
+}
+
+#endif
+
 static int ds1307_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
@@ -851,6 +937,7 @@ static int ds1307_probe(struct i2c_client *client,
 	struct chip_desc	*chip = &chips[id->driver_data];
 	struct i2c_adapter	*adapter = to_i2c_adapter(client->dev.parent);
 	bool			want_irq = false;
+	bool			ds1307_can_wakeup_device = false;
 	unsigned char		*buf;
 	struct ds1307_platform_data *pdata = dev_get_platdata(&client->dev);
 	irq_handler_t	irq_handler = ds1307_irq;
@@ -898,6 +985,20 @@ static int ds1307_probe(struct i2c_client *client,
 		ds1307->write_block_data = ds1307_write_block_data;
 	}
 
+#ifdef CONFIG_OF
+/*
+ * For devices with no IRQ directly connected to the SoC, the RTC chip
+ * can be forced as a wakeup source by stating that explicitly in
+ * the device's .dts file using the "wakeup-source" boolean property.
+ * If the "wakeup-source" property is set, don't request an IRQ.
+ * This will guarantee the 'wakealarm' sysfs entry is available on the device,
+ * if supported by the RTC.
+ */
+	if (of_property_read_bool(client->dev.of_node, "wakeup-source")) {
+		ds1307_can_wakeup_device = true;
+	}
+#endif
+
 	switch (ds1307->type) {
 	case ds_1337:
 	case ds_1339:
@@ -916,11 +1017,13 @@ static int ds1307_probe(struct i2c_client *client,
 			ds1307->regs[0] &= ~DS1337_BIT_nEOSC;
 
 		/*
-		 * Using IRQ?  Disable the square wave and both alarms.
+		 * Using IRQ or defined as wakeup-source?
+		 * Disable the square wave and both alarms.
 		 * For some variants, be sure alarms can trigger when we're
 		 * running on Vbackup (BBSQI/BBSQW)
 		 */
-		if (ds1307->client->irq > 0 && chip->alarm) {
+		if (chip->alarm && (ds1307->client->irq > 0 ||
+						ds1307_can_wakeup_device)) {
 			ds1307->regs[0] |= DS1337_BIT_INTCN
 					| bbsqi_bitpos[ds1307->type];
 			ds1307->regs[0] &= ~(DS1337_BIT_A2IE | DS1337_BIT_A1IE);
@@ -1135,6 +1238,14 @@ read_rtc:
 		return PTR_ERR(ds1307->rtc);
 	}
 
+	if (ds1307_can_wakeup_device) {
+		/* Disable request for an IRQ */
+		want_irq = false;
+		dev_info(&client->dev, "'wakeup-source' is set, request for an IRQ is disabled!\n");
+		/* We cannot support UIE mode if we do not have an IRQ line */
+		ds1307->rtc->uie_unsupported = 1;
+	}
+
 	if (want_irq) {
 		err = devm_request_threaded_irq(&client->dev,
 						client->irq, NULL, irq_handler,
@@ -1181,6 +1292,8 @@ read_rtc:
 			}
 		}
 	}
+
+	ds1307_hwmon_register(ds1307);
 
 	return 0;
 
