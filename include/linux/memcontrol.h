@@ -663,7 +663,6 @@ mem_cgroup_print_oom_info(struct mem_cgroup *memcg, struct task_struct *p)
 
 static inline void lock_page_memcg(struct page *page)
 {
-	return NULL;
 }
 
 static inline void unlock_page_memcg(struct page *page)
