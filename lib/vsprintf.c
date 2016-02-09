@@ -1598,8 +1598,8 @@ char *pointer(const char *fmt, char *buf, char *end, void *ptr,
 			const struct cred *cred;
 
 			/*
-			 * kptr_restrict==1 cannot be used in IRQ context because
-			 * its test for CAP_SYSLOG would be meaningless.
+			 * kptr_restrict==1 cannot be used in IRQ context
+			 * because its test for CAP_SYSLOG would be meaningless.
 			 */
 			if (in_irq() || in_serving_softirq() || in_nmi()) {
 				if (spec.field_width == -1)
