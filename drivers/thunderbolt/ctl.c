@@ -41,7 +41,7 @@ struct tb_ctl {
 
 
 #define tb_ctl_WARN(ctl, format, arg...) \
-	dev_WARN(&(ctl)->nhi->pdev->dev, format, ## arg)
+	dev_WARN(&(ctl)->nhi->pdev->dev, true, format, ## arg)
 
 #define tb_ctl_err(ctl, format, arg...) \
 	dev_err(&(ctl)->nhi->pdev->dev, format, ## arg)
