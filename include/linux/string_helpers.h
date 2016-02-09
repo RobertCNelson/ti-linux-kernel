@@ -10,6 +10,12 @@ enum string_size_units {
 	STRING_UNITS_2,		/* use binary powers of 2^10 */
 };
 
+#define STRING_UNITS_10_NUM	9
+#define STRING_UNITS_2_NUM	9
+
+extern const char *const string_units_10[STRING_UNITS_10_NUM];
+extern const char *const string_units_2[STRING_UNITS_2_NUM];
+
 void string_get_size(u64 size, u64 blk_size, enum string_size_units units,
 		     char *buf, int len);
 
