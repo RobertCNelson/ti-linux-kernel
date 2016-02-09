@@ -1387,6 +1387,12 @@ static inline int check_new_page(struct page *page)
 	return 0;
 }
 
+static inline bool should_zero(void)
+{
+	return !IS_ENABLED(CONFIG_PAGE_POISONING_ZERO) ||
+		!page_poisoning_enabled();
+}
+
 static int prep_new_page(struct page *page, unsigned int order, gfp_t gfp_flags,
 								int alloc_flags)
 {
@@ -1406,7 +1412,7 @@ static int prep_new_page(struct page *page, unsigned int order, gfp_t gfp_flags,
 	kernel_map_pages(page, 1 << order, 1);
 	kasan_alloc_pages(page, order);
 
-	if (gfp_flags & __GFP_ZERO)
+	if (should_zero() && gfp_flags & __GFP_ZERO)
 		for (i = 0; i < (1 << order); i++)
 			clear_highpage(page + i);
 
