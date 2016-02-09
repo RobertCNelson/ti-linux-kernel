@@ -18,6 +18,7 @@
 #define _CPUFREQ_GOVERNOR_H
 
 #include <linux/atomic.h>
+#include <linux/irq_work.h>
 #include <linux/cpufreq.h>
 #include <linux/kernel_stat.h>
 #include <linux/module.h>
@@ -77,14 +78,15 @@ __ATTR(_name, 0644, show_##_name##_gov_pol, store_##_name##_gov_pol)
 static ssize_t show_##file_name##_gov_sys				\
 (struct kobject *kobj, struct attribute *attr, char *buf)		\
 {									\
-	struct _gov##_dbs_tuners *tuners = _gov##_dbs_cdata.gdbs_data->tuners; \
+	struct _gov##_dbs_tuners *tuners = _gov##_dbs_gov.gdbs_data->tuners; \
 	return sprintf(buf, "%u\n", tuners->file_name);			\
 }									\
 									\
 static ssize_t show_##file_name##_gov_pol				\
 (struct cpufreq_policy *policy, char *buf)				\
 {									\
-	struct dbs_data *dbs_data = policy->governor_data;		\
+	struct policy_dbs_info *policy_dbs = policy->governor_data;	\
+	struct dbs_data *dbs_data = policy_dbs->dbs_data;		\
 	struct _gov##_dbs_tuners *tuners = dbs_data->tuners;		\
 	return sprintf(buf, "%u\n", tuners->file_name);			\
 }
@@ -93,15 +95,15 @@ static ssize_t show_##file_name##_gov_pol				\
 static ssize_t store_##file_name##_gov_sys				\
 (struct kobject *kobj, struct attribute *attr, const char *buf, size_t count) \
 {									\
-	struct dbs_data *dbs_data = _gov##_dbs_cdata.gdbs_data;		\
+	struct dbs_data *dbs_data = _gov##_dbs_gov.gdbs_data;		\
 	return store_##file_name(dbs_data, buf, count);			\
 }									\
 									\
 static ssize_t store_##file_name##_gov_pol				\
 (struct cpufreq_policy *policy, const char *buf, size_t count)		\
 {									\
-	struct dbs_data *dbs_data = policy->governor_data;		\
-	return store_##file_name(dbs_data, buf, count);			\
+	struct policy_dbs_info *policy_dbs = policy->governor_data;	\
+	return store_##file_name(policy_dbs->dbs_data, buf, count);			\
 }
 
 #define show_store_one(_gov, file_name)					\
@@ -129,8 +131,15 @@ static void *get_cpu_dbs_info_s(int cpu)				\
  * cs_*: Conservative governor
  */
 
+/* Governor demand based switching data (per-policy or global). */
+struct dbs_data {
+	unsigned int min_sampling_rate;
+	int usage_count;
+	void *tuners;
+};
+
 /* Common to all CPUs of a policy */
-struct cpu_common_dbs_info {
+struct policy_dbs_info {
 	struct cpufreq_policy *policy;
 	/*
 	 * Per policy mutex that serializes load evaluation from limit-change
@@ -138,10 +147,20 @@ struct cpu_common_dbs_info {
 	 */
 	struct mutex timer_mutex;
 
-	ktime_t time_stamp;
-	atomic_t skip_work;
+	u64 last_sample_time;
+	s64 sample_delay_ns;
+	atomic_t work_count;
+	struct irq_work irq_work;
 	struct work_struct work;
+	/* dbs_data may be shared between multiple policy objects */
+	struct dbs_data *dbs_data;
 };
+
+static inline void gov_update_sample_delay(struct policy_dbs_info *policy_dbs,
+					   unsigned int delay_us)
+{
+	policy_dbs->sample_delay_ns = delay_us * NSEC_PER_USEC;
+}
 
 /* Per cpu structures */
 struct cpu_dbs_info {
@@ -155,8 +174,8 @@ struct cpu_dbs_info {
 	 * wake-up from idle.
 	 */
 	unsigned int prev_load;
-	struct timer_list timer;
-	struct cpu_common_dbs_info *shared;
+	struct update_util_data update_util;
+	struct policy_dbs_info *policy_dbs;
 };
 
 struct od_cpu_dbs_info_s {
@@ -195,9 +214,9 @@ struct cs_dbs_tuners {
 };
 
 /* Common Governor data across policies */
-struct dbs_data;
-struct common_dbs_data {
-	/* Common across governors */
+struct dbs_governor {
+	struct cpufreq_governor gov;
+
 	#define GOV_ONDEMAND		0
 	#define GOV_CONSERVATIVE	1
 	int governor;
@@ -212,28 +231,19 @@ struct common_dbs_data {
 
 	struct cpu_dbs_info *(*get_cpu_cdbs)(int cpu);
 	void *(*get_cpu_dbs_info_s)(int cpu);
-	unsigned int (*gov_dbs_timer)(struct cpufreq_policy *policy,
-				      bool modify_all);
+	unsigned int (*gov_dbs_timer)(struct cpufreq_policy *policy);
 	void (*gov_check_cpu)(int cpu, unsigned int load);
 	int (*init)(struct dbs_data *dbs_data, bool notify);
 	void (*exit)(struct dbs_data *dbs_data, bool notify);
 
 	/* Governor specific ops, see below */
 	void *gov_ops;
-
-	/*
-	 * Protects governor's data (struct dbs_data and struct common_dbs_data)
-	 */
-	struct mutex mutex;
 };
 
-/* Governor Per policy data */
-struct dbs_data {
-	struct common_dbs_data *cdata;
-	unsigned int min_sampling_rate;
-	int usage_count;
-	void *tuners;
-};
+static inline struct dbs_governor *dbs_governor_of(struct cpufreq_policy *policy)
+{
+	return container_of(policy->governor, struct dbs_governor, gov);
+}
 
 /* Governor specific ops, will be passed to dbs_data->gov_ops */
 struct od_ops {
@@ -258,24 +268,22 @@ static inline int delay_for_sampling_rate(unsigned int sampling_rate)
 static ssize_t show_sampling_rate_min_gov_sys				\
 (struct kobject *kobj, struct attribute *attr, char *buf)		\
 {									\
-	struct dbs_data *dbs_data = _gov##_dbs_cdata.gdbs_data;		\
+	struct dbs_data *dbs_data = _gov##_dbs_gov.gdbs_data;		\
 	return sprintf(buf, "%u\n", dbs_data->min_sampling_rate);	\
 }									\
 									\
 static ssize_t show_sampling_rate_min_gov_pol				\
 (struct cpufreq_policy *policy, char *buf)				\
 {									\
-	struct dbs_data *dbs_data = policy->governor_data;		\
+	struct policy_dbs_info *policy_dbs = policy->governor_data;	\
+	struct dbs_data *dbs_data = policy_dbs->dbs_data;		\
 	return sprintf(buf, "%u\n", dbs_data->min_sampling_rate);	\
 }
 
+extern struct mutex dbs_data_mutex;
 extern struct mutex cpufreq_governor_lock;
-
-void gov_add_timers(struct cpufreq_policy *policy, unsigned int delay);
-void gov_cancel_work(struct cpu_common_dbs_info *shared);
-void dbs_check_cpu(struct dbs_data *dbs_data, int cpu);
-int cpufreq_governor_dbs(struct cpufreq_policy *policy,
-		struct common_dbs_data *cdata, unsigned int event);
+void dbs_check_cpu(struct cpufreq_policy *policy);
+int cpufreq_governor_dbs(struct cpufreq_policy *policy, unsigned int event);
 void od_register_powersave_bias_handler(unsigned int (*f)
 		(struct cpufreq_policy *, unsigned int, unsigned int),
 		unsigned int powersave_bias);
