@@ -226,9 +226,11 @@ static void devm_memremap_pages_release(struct device *dev, void *data)
 	resource_size_t align_start, align_size;
 	struct dev_pagemap *pgmap = &page_map->pgmap;
 
-	if (dev_WARN(dev, percpu_ref_tryget_live(pgmap->ref),
-		     "%s: page mapping is still live!\n", __func__))
+	if (percpu_ref_tryget_live(pgmap->ref)) {
+		dev_WARN(dev, true, "%s: page mapping is still live!\n",
+			 __func__);
 		percpu_ref_put(pgmap->ref);
+	}
 
 	/* pages are dead and unused, undo the arch mapping */
 	align_start = res->start & ~(SECTION_SIZE - 1);
