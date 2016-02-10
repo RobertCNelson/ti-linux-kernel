@@ -156,6 +156,7 @@ static void split_pud(pud_t *old_pud, pmd_t *pmd)
 	} while (pmd++, i++, i < PTRS_PER_PMD);
 }
 
+#ifdef CONFIG_DEBUG_PAGEALLOC
 static bool block_mappings_allowed(phys_addr_t (*pgtable_alloc)(void))
 {
 
@@ -168,6 +169,12 @@ static bool block_mappings_allowed(phys_addr_t (*pgtable_alloc)(void))
 	 */
 	return !pgtable_alloc || !debug_pagealloc_enabled();
 }
+#else
+static bool block_mappings_allowed(phys_addr_t (*pgtable_alloc)(void))
+{
+	return true;
+}
+#endif
 
 static void alloc_init_pmd(pud_t *pud, unsigned long addr, unsigned long end,
 				  phys_addr_t phys, pgprot_t prot,
