@@ -57,18 +57,6 @@
 #define NVME_NR_AEN_COMMANDS	1
 #define NVME_AQ_BLKMQ_DEPTH	(NVME_AQ_DEPTH - NVME_NR_AEN_COMMANDS)
 
-unsigned char admin_timeout = 60;
-module_param(admin_timeout, byte, 0644);
-MODULE_PARM_DESC(admin_timeout, "timeout in seconds for admin commands");
-
-unsigned char nvme_io_timeout = 30;
-module_param_named(io_timeout, nvme_io_timeout, byte, 0644);
-MODULE_PARM_DESC(io_timeout, "timeout in seconds for I/O");
-
-unsigned char shutdown_timeout = 5;
-module_param(shutdown_timeout, byte, 0644);
-MODULE_PARM_DESC(shutdown_timeout, "timeout in seconds for controller shutdown");
-
 static int use_threaded_interrupts;
 module_param(use_threaded_interrupts, int, 0);
 
@@ -77,6 +65,7 @@ module_param(use_cmb_sqes, bool, 0644);
 MODULE_PARM_DESC(use_cmb_sqes, "use controller's memory buffer for I/O SQes");
 
 static LIST_HEAD(dev_list);
+static DEFINE_SPINLOCK(dev_list_lock);
 static struct task_struct *nvme_thread;
 static struct workqueue_struct *nvme_workq;
 static wait_queue_head_t nvme_kthread_wait;
@@ -2036,6 +2025,7 @@ static int nvme_pci_reset_ctrl(struct nvme_ctrl *ctrl)
 }
 
 static const struct nvme_ctrl_ops nvme_pci_ctrl_ops = {
+	.module			= THIS_MODULE,
 	.reg_read32		= nvme_pci_reg_read32,
 	.reg_write32		= nvme_pci_reg_write32,
 	.reg_read64		= nvme_pci_reg_read64,
@@ -2240,26 +2230,15 @@ static int __init nvme_init(void)
 	if (!nvme_workq)
 		return -ENOMEM;
 
-	result = nvme_core_init();
-	if (result < 0)
-		goto kill_workq;
-
 	result = pci_register_driver(&nvme_driver);
 	if (result)
-		goto core_exit;
-	return 0;
-
- core_exit:
-	nvme_core_exit();
- kill_workq:
-	destroy_workqueue(nvme_workq);
+		destroy_workqueue(nvme_workq);
 	return result;
 }
 
 static void __exit nvme_exit(void)
 {
 	pci_unregister_driver(&nvme_driver);
-	nvme_core_exit();
 	destroy_workqueue(nvme_workq);
 	BUG_ON(nvme_thread && !IS_ERR(nvme_thread));
 	_nvme_check_size();

@@ -33,6 +33,20 @@
 
 #define NVME_MINORS		(1U << MINORBITS)
 
+unsigned char admin_timeout = 60;
+module_param(admin_timeout, byte, 0644);
+MODULE_PARM_DESC(admin_timeout, "timeout in seconds for admin commands");
+EXPORT_SYMBOL_GPL(admin_timeout);
+
+unsigned char nvme_io_timeout = 30;
+module_param_named(io_timeout, nvme_io_timeout, byte, 0644);
+MODULE_PARM_DESC(io_timeout, "timeout in seconds for I/O");
+EXPORT_SYMBOL_GPL(nvme_io_timeout);
+
+unsigned char shutdown_timeout = 5;
+module_param(shutdown_timeout, byte, 0644);
+MODULE_PARM_DESC(shutdown_timeout, "timeout in seconds for controller shutdown");
+
 static int nvme_major;
 module_param(nvme_major, int, 0);
 
@@ -40,7 +54,7 @@ static int nvme_char_major;
 module_param(nvme_char_major, int, 0);
 
 static LIST_HEAD(nvme_ctrl_list);
-DEFINE_SPINLOCK(dev_list_lock);
+static DEFINE_SPINLOCK(dev_list_lock);
 
 static struct class *nvme_class;
 
@@ -71,11 +85,21 @@ static struct nvme_ns *nvme_get_ns_from_disk(struct gendisk *disk)
 
 	spin_lock(&dev_list_lock);
 	ns = disk->private_data;
-	if (ns && !kref_get_unless_zero(&ns->kref))
-		ns = NULL;
+	if (ns) {
+		if (!kref_get_unless_zero(&ns->kref))
+			goto fail;
+		if (!try_module_get(ns->ctrl->ops->module))
+			goto fail_put_ns;
+	}
 	spin_unlock(&dev_list_lock);
 
 	return ns;
+
+fail_put_ns:
+	kref_put(&ns->kref, nvme_free_ns);
+fail:
+	spin_unlock(&dev_list_lock);
+	return NULL;
 }
 
 void nvme_requeue_req(struct request *req)
@@ -88,6 +112,7 @@ void nvme_requeue_req(struct request *req)
 		blk_mq_kick_requeue_list(req->q);
 	spin_unlock_irqrestore(req->q->queue_lock, flags);
 }
+EXPORT_SYMBOL_GPL(nvme_requeue_req);
 
 struct request *nvme_alloc_request(struct request_queue *q,
 		struct nvme_command *cmd, unsigned int flags)
@@ -111,6 +136,7 @@ struct request *nvme_alloc_request(struct request_queue *q,
 
 	return req;
 }
+EXPORT_SYMBOL_GPL(nvme_alloc_request);
 
 /*
  * Returns 0 on success.  If the result is negative, it's a Linux error code;
@@ -148,6 +174,7 @@ int nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
 {
 	return __nvme_submit_sync_cmd(q, cmd, buffer, bufflen, NULL, 0);
 }
+EXPORT_SYMBOL_GPL(nvme_submit_sync_cmd);
 
 int __nvme_submit_user_cmd(struct request_queue *q, struct nvme_command *cmd,
 		void __user *ubuffer, unsigned bufflen,
@@ -363,6 +390,7 @@ int nvme_set_queue_count(struct nvme_ctrl *ctrl, int *count)
 	*count = min(*count, nr_io_queues);
 	return 0;
 }
+EXPORT_SYMBOL_GPL(nvme_set_queue_count);
 
 static int nvme_submit_io(struct nvme_ns *ns, struct nvme_user_io __user *uio)
 {
@@ -499,7 +527,10 @@ static int nvme_open(struct block_device *bdev, fmode_t mode)
 
 static void nvme_release(struct gendisk *disk, fmode_t mode)
 {
-	nvme_put_ns(disk->private_data);
+	struct nvme_ns *ns = disk->private_data;
+
+	module_put(ns->ctrl->ops->module);
+	nvme_put_ns(ns);
 }
 
 static int nvme_getgeo(struct block_device *bdev, struct hd_geometry *geo)
@@ -769,6 +800,7 @@ int nvme_disable_ctrl(struct nvme_ctrl *ctrl, u64 cap)
 		return ret;
 	return nvme_wait_ready(ctrl, cap, false);
 }
+EXPORT_SYMBOL_GPL(nvme_disable_ctrl);
 
 int nvme_enable_ctrl(struct nvme_ctrl *ctrl, u64 cap)
 {
@@ -800,6 +832,7 @@ int nvme_enable_ctrl(struct nvme_ctrl *ctrl, u64 cap)
 		return ret;
 	return nvme_wait_ready(ctrl, cap, true);
 }
+EXPORT_SYMBOL_GPL(nvme_enable_ctrl);
 
 int nvme_shutdown_ctrl(struct nvme_ctrl *ctrl)
 {
@@ -830,6 +863,7 @@ int nvme_shutdown_ctrl(struct nvme_ctrl *ctrl)
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(nvme_shutdown_ctrl);
 
 /*
  * Initialize the cached copies of the Identify data and various controller
@@ -891,6 +925,7 @@ int nvme_init_identify(struct nvme_ctrl *ctrl)
 	kfree(id);
 	return 0;
 }
+EXPORT_SYMBOL_GPL(nvme_init_identify);
 
 static int nvme_dev_open(struct inode *inode, struct file *file)
 {
@@ -1296,6 +1331,7 @@ void nvme_scan_namespaces(struct nvme_ctrl *ctrl)
 	mutex_unlock(&ctrl->namespaces_mutex);
 	kfree(id);
 }
+EXPORT_SYMBOL_GPL(nvme_scan_namespaces);
 
 void nvme_remove_namespaces(struct nvme_ctrl *ctrl)
 {
@@ -1306,6 +1342,7 @@ void nvme_remove_namespaces(struct nvme_ctrl *ctrl)
 		nvme_ns_remove(ns);
 	mutex_unlock(&ctrl->namespaces_mutex);
 }
+EXPORT_SYMBOL_GPL(nvme_remove_namespaces);
 
 static DEFINE_IDA(nvme_instance_ida);
 
@@ -1337,13 +1374,14 @@ static void nvme_release_instance(struct nvme_ctrl *ctrl)
 }
 
 void nvme_uninit_ctrl(struct nvme_ctrl *ctrl)
- {
+{
 	device_destroy(nvme_class, MKDEV(nvme_char_major, ctrl->instance));
 
 	spin_lock(&dev_list_lock);
 	list_del(&ctrl->node);
 	spin_unlock(&dev_list_lock);
 }
+EXPORT_SYMBOL_GPL(nvme_uninit_ctrl);
 
 static void nvme_free_ctrl(struct kref *kref)
 {
@@ -1359,6 +1397,7 @@ void nvme_put_ctrl(struct nvme_ctrl *ctrl)
 {
 	kref_put(&ctrl->kref, nvme_free_ctrl);
 }
+EXPORT_SYMBOL_GPL(nvme_put_ctrl);
 
 /*
  * Initialize a NVMe controller structures.  This needs to be called during
@@ -1401,6 +1440,7 @@ out_release_instance:
 out:
 	return ret;
 }
+EXPORT_SYMBOL_GPL(nvme_init_ctrl);
 
 void nvme_stop_queues(struct nvme_ctrl *ctrl)
 {
@@ -1417,6 +1457,7 @@ void nvme_stop_queues(struct nvme_ctrl *ctrl)
 	}
 	mutex_unlock(&ctrl->namespaces_mutex);
 }
+EXPORT_SYMBOL_GPL(nvme_stop_queues);
 
 void nvme_start_queues(struct nvme_ctrl *ctrl)
 {
@@ -1430,6 +1471,7 @@ void nvme_start_queues(struct nvme_ctrl *ctrl)
 	}
 	mutex_unlock(&ctrl->namespaces_mutex);
 }
+EXPORT_SYMBOL_GPL(nvme_start_queues);
 
 int __init nvme_core_init(void)
 {
@@ -1469,3 +1511,8 @@ void nvme_core_exit(void)
 	class_destroy(nvme_class);
 	__unregister_chrdev(nvme_char_major, 0, NVME_MINORS, "nvme");
 }
+
+MODULE_LICENSE("GPL");
+MODULE_VERSION("1.0");
+module_init(nvme_core_init);
+module_exit(nvme_core_exit);
