@@ -102,6 +102,50 @@ static LIST_HEAD(cpufreq_governor_list);
 static struct cpufreq_driver *cpufreq_driver;
 static DEFINE_PER_CPU(struct cpufreq_policy *, cpufreq_cpu_data);
 static DEFINE_RWLOCK(cpufreq_driver_lock);
+
+static DEFINE_PER_CPU(struct update_util_data *, cpufreq_update_util_data);
+
+/**
+ * cpufreq_set_update_util_data - Populate the CPU's update_util_data pointer.
+ * @cpu: The CPU to set the pointer for.
+ * @data: New pointer value.
+ *
+ * Set and publish the update_util_data pointer for the given CPU.  That pointer
+ * points to a struct update_util_data object containing a callback function
+ * to call from cpufreq_update_util().  That function will be called from an RCU
+ * read-side critical section, so it must not sleep.
+ *
+ * Callers must use RCU callbacks to free any memory that might be accessed
+ * via the old update_util_data pointer or invoke synchronize_rcu() right after
+ * this function to avoid use-after-free.
+ */
+void cpufreq_set_update_util_data(int cpu, struct update_util_data *data)
+{
+	rcu_assign_pointer(per_cpu(cpufreq_update_util_data, cpu), data);
+}
+EXPORT_SYMBOL_GPL(cpufreq_set_update_util_data);
+
+/**
+ * cpufreq_update_util - Take a note about CPU utilization changes.
+ * @util: Current utilization.
+ * @max: Utilization ceiling.
+ *
+ * This function is called by the scheduler on every invocation of
+ * update_load_avg() on the CPU whose utilization is being updated.
+ */
+void cpufreq_update_util(u64 time, unsigned long util, unsigned long max)
+{
+	struct update_util_data *data;
+
+	rcu_read_lock();
+
+	data = rcu_dereference(*this_cpu_ptr(&cpufreq_update_util_data));
+	if (data && data->func)
+		data->func(data, time, util, max);
+
+	rcu_read_unlock();
+}
+
 DEFINE_MUTEX(cpufreq_governor_lock);
 
 /* Flag to suspend/resume CPUFreq governors */
@@ -959,6 +1003,11 @@ static int cpufreq_add_dev_interface(struct cpufreq_policy *policy)
 	return cpufreq_add_dev_symlink(policy);
 }
 
+__weak struct cpufreq_governor *cpufreq_default_governor(void)
+{
+	return NULL;
+}
+
 static int cpufreq_init_policy(struct cpufreq_policy *policy)
 {
 	struct cpufreq_governor *gov = NULL;
@@ -968,11 +1017,14 @@ static int cpufreq_init_policy(struct cpufreq_policy *policy)
 
 	/* Update governor of new_policy to the governor used before hotplug */
 	gov = find_governor(policy->last_governor);
-	if (gov)
+	if (gov) {
 		pr_debug("Restoring governor %s for cpu %d\n",
 				policy->governor->name, policy->cpu);
-	else
-		gov = CPUFREQ_DEFAULT_GOVERNOR;
+	} else {
+		gov = cpufreq_default_governor();
+		if (!gov)
+			return -ENODATA;
+	}
 
 	new_policy.governor = gov;
 
@@ -1920,20 +1972,15 @@ int cpufreq_driver_target(struct cpufreq_policy *policy,
 }
 EXPORT_SYMBOL_GPL(cpufreq_driver_target);
 
+__weak struct cpufreq_governor *cpufreq_fallback_governor(void)
+{
+	return NULL;
+}
+
 static int __cpufreq_governor(struct cpufreq_policy *policy,
 					unsigned int event)
 {
 	int ret;
-
-	/* Only must be defined when default governor is known to have latency
-	   restrictions, like e.g. conservative or ondemand.
-	   That this is the case is already ensured in Kconfig
-	*/
-#ifdef CONFIG_CPU_FREQ_GOV_PERFORMANCE
-	struct cpufreq_governor *gov = &cpufreq_gov_performance;
-#else
-	struct cpufreq_governor *gov = NULL;
-#endif
 
 	/* Don't start any governor operations if we are entering suspend */
 	if (cpufreq_suspended)
@@ -1948,12 +1995,14 @@ static int __cpufreq_governor(struct cpufreq_policy *policy,
 	if (policy->governor->max_transition_latency &&
 	    policy->cpuinfo.transition_latency >
 	    policy->governor->max_transition_latency) {
-		if (!gov)
-			return -EINVAL;
-		else {
+		struct cpufreq_governor *gov = cpufreq_fallback_governor();
+
+		if (gov) {
 			pr_warn("%s governor failed, too long transition latency of HW, fallback to %s governor\n",
 				policy->governor->name, gov->name);
 			policy->governor = gov;
+		} else {
+			return -EINVAL;
 		}
 	}
 
