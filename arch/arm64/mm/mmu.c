@@ -156,7 +156,7 @@ static void split_pud(pud_t *old_pud, pmd_t *pmd)
 	} while (pmd++, i++, i < PTRS_PER_PMD);
 }
 
-bool block_mappings_allowed(phys_addr_t (*pgtable_alloc)(void))
+static bool block_mappings_allowed(phys_addr_t (*pgtable_alloc)(void))
 {
 
 	/*
