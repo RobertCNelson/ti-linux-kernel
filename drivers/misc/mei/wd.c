@@ -157,7 +157,7 @@ int mei_wd_stop(struct mei_device *dev)
 
 	dev->wd_state = MEI_WD_STOPPING;
 
-	ret = mei_cl_flow_ctrl_creds(cl);
+	ret = mei_cl_flow_ctrl_creds(cl, NULL);
 	if (ret < 0)
 		goto err;
 
@@ -280,7 +280,7 @@ static int mei_wd_ops_ping(struct watchdog_device *wd_dev)
 
 	dev->wd_state = MEI_WD_RUNNING;
 
-	ret = mei_cl_flow_ctrl_creds(cl);
+	ret = mei_cl_flow_ctrl_creds(cl, NULL);
 	if (ret < 0)
 		goto end;
 
