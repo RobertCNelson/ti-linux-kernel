@@ -53,7 +53,7 @@ struct tb_path *tb_path_alloc(struct tb *tb, int num_hops)
 void tb_path_free(struct tb_path *path)
 {
 	if (path->activated) {
-		tb_WARN(path->tb, "trying to free an activated path\n")
+		tb_WARN(path->tb, "trying to free an activated path\n");
 		return;
 	}
 	kfree(path->hops);

@@ -500,10 +500,8 @@ struct phy *phy_get(struct device *dev, const char *string)
 	int index = 0;
 	struct phy *phy;
 
-	if (string == NULL) {
-		dev_WARN(dev, "missing string\n");
+	if (dev_WARN(dev, string == NULL, "missing string\n"))
 		return ERR_PTR(-EINVAL);
-	}
 
 	if (dev->of_node) {
 		index = of_property_match_string(dev->of_node, "phy-names",
