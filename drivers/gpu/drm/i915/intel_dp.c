@@ -979,7 +979,10 @@ intel_dp_aux_transfer(struct drm_dp_aux *aux, struct drm_dp_aux_msg *msg)
 		if (WARN_ON(txsize > 20))
 			return -E2BIG;
 
-		memcpy(txbuf + HEADER_SIZE, msg->buffer, msg->size);
+		if (msg->buffer)
+			memcpy(txbuf + HEADER_SIZE, msg->buffer, msg->size);
+		else
+			WARN_ON(msg->size);
 
 		ret = intel_dp_aux_ch(intel_dp, txbuf, txsize, rxbuf, rxsize);
 		if (ret > 0) {
@@ -4008,7 +4011,7 @@ static int intel_dp_sink_crc_stop(struct intel_dp *intel_dp)
 	} while (--attempts && count);
 
 	if (attempts == 0) {
-		DRM_ERROR("TIMEOUT: Sink CRC counter is not zeroed\n");
+		DRM_DEBUG_KMS("TIMEOUT: Sink CRC counter is not zeroed after calculation is stopped\n");
 		ret = -ETIMEDOUT;
 	}
 
