@@ -123,8 +123,6 @@ static inline int debug_locks_off_graph_unlock(void)
 	return ret;
 }
 
-static int lockdep_initialized;
-
 unsigned long nr_list_entries;
 static struct lock_list list_entries[MAX_LOCKDEP_ENTRIES];
 
@@ -292,7 +290,7 @@ LIST_HEAD(all_lock_classes);
 #define __classhashfn(key)	hash_long((unsigned long)key, CLASSHASH_BITS)
 #define classhashentry(key)	(classhash_table + __classhashfn((key)))
 
-static struct list_head classhash_table[CLASSHASH_SIZE];
+static struct hlist_head classhash_table[CLASSHASH_SIZE];
 
 /*
  * We put the lock dependency chains into a hash-table as well, to cache
@@ -303,7 +301,7 @@ static struct list_head classhash_table[CLASSHASH_SIZE];
 #define __chainhashfn(chain)	hash_long(chain, CHAINHASH_BITS)
 #define chainhashentry(chain)	(chainhash_table + __chainhashfn((chain)))
 
-static struct list_head chainhash_table[CHAINHASH_SIZE];
+static struct hlist_head chainhash_table[CHAINHASH_SIZE];
 
 /*
  * The hash key of the lock dependency chains is a hash itself too:
@@ -433,19 +431,6 @@ unsigned int nr_process_chains;
 unsigned int max_lockdep_depth;
 
 #ifdef CONFIG_DEBUG_LOCKDEP
-/*
- * We cannot printk in early bootup code. Not even early_printk()
- * might work. So we mark any initialization errors and printk
- * about it later on, in lockdep_info().
- */
-static int lockdep_init_error;
-static const char *lock_init_error;
-static unsigned long lockdep_init_trace_data[20];
-static struct stack_trace lockdep_init_trace = {
-	.max_entries = ARRAY_SIZE(lockdep_init_trace_data),
-	.entries = lockdep_init_trace_data,
-};
-
 /*
  * Various lockdep statistics:
  */
@@ -666,22 +651,8 @@ static inline struct lock_class *
 look_up_lock_class(struct lockdep_map *lock, unsigned int subclass)
 {
 	struct lockdep_subclass_key *key;
-	struct list_head *hash_head;
+	struct hlist_head *hash_head;
 	struct lock_class *class;
-
-#ifdef CONFIG_DEBUG_LOCKDEP
-	/*
-	 * If the architecture calls into lockdep before initializing
-	 * the hashes then we'll warn about it later. (we cannot printk
-	 * right now)
-	 */
-	if (unlikely(!lockdep_initialized)) {
-		lockdep_init();
-		lockdep_init_error = 1;
-		lock_init_error = lock->name;
-		save_stack_trace(&lockdep_init_trace);
-	}
-#endif
 
 	if (unlikely(subclass >= MAX_LOCKDEP_SUBCLASSES)) {
 		debug_locks_off();
@@ -719,7 +690,7 @@ look_up_lock_class(struct lockdep_map *lock, unsigned int subclass)
 	if (DEBUG_LOCKS_WARN_ON(!irqs_disabled()))
 		return NULL;
 
-	list_for_each_entry_rcu(class, hash_head, hash_entry) {
+	hlist_for_each_entry_rcu(class, hash_head, hash_entry) {
 		if (class->key == key) {
 			/*
 			 * Huh! same key, different name? Did someone trample
@@ -742,7 +713,7 @@ static inline struct lock_class *
 register_lock_class(struct lockdep_map *lock, unsigned int subclass, int force)
 {
 	struct lockdep_subclass_key *key;
-	struct list_head *hash_head;
+	struct hlist_head *hash_head;
 	struct lock_class *class;
 
 	DEBUG_LOCKS_WARN_ON(!irqs_disabled());
@@ -774,7 +745,7 @@ register_lock_class(struct lockdep_map *lock, unsigned int subclass, int force)
 	 * We have to do the hash-walk again, to avoid races
 	 * with another CPU:
 	 */
-	list_for_each_entry_rcu(class, hash_head, hash_entry) {
+	hlist_for_each_entry_rcu(class, hash_head, hash_entry) {
 		if (class->key == key)
 			goto out_unlock_set;
 	}
@@ -805,7 +776,7 @@ register_lock_class(struct lockdep_map *lock, unsigned int subclass, int force)
 	 * We use RCU's safe list-add method to make
 	 * parallel walking of the hash-list safe:
 	 */
-	list_add_tail_rcu(&class->hash_entry, hash_head);
+	hlist_add_head_rcu(&class->hash_entry, hash_head);
 	/*
 	 * Add it to the global list of classes:
 	 */
@@ -1822,7 +1793,7 @@ check_deadlock(struct task_struct *curr, struct held_lock *next,
  */
 static int
 check_prev_add(struct task_struct *curr, struct held_lock *prev,
-	       struct held_lock *next, int distance, int trylock_loop)
+	       struct held_lock *next, int distance, int *stack_saved)
 {
 	struct lock_list *entry;
 	int ret;
@@ -1883,8 +1854,11 @@ check_prev_add(struct task_struct *curr, struct held_lock *prev,
 		}
 	}
 
-	if (!trylock_loop && !save_trace(&trace))
-		return 0;
+	if (!*stack_saved) {
+		if (!save_trace(&trace))
+			return 0;
+		*stack_saved = 1;
+	}
 
 	/*
 	 * Ok, all validations passed, add the new lock
@@ -1907,6 +1881,8 @@ check_prev_add(struct task_struct *curr, struct held_lock *prev,
 	 * Debugging printouts:
 	 */
 	if (verbose(hlock_class(prev)) || verbose(hlock_class(next))) {
+		/* We drop graph lock, so another thread can overwrite trace. */
+		*stack_saved = 0;
 		graph_unlock();
 		printk("\n new dependency: ");
 		print_lock_name(hlock_class(prev));
@@ -1929,7 +1905,7 @@ static int
 check_prevs_add(struct task_struct *curr, struct held_lock *next)
 {
 	int depth = curr->lockdep_depth;
-	int trylock_loop = 0;
+	int stack_saved = 0;
 	struct held_lock *hlock;
 
 	/*
@@ -1956,7 +1932,7 @@ check_prevs_add(struct task_struct *curr, struct held_lock *next)
 		 */
 		if (hlock->read != 2 && hlock->check) {
 			if (!check_prev_add(curr, hlock, next,
-						distance, trylock_loop))
+						distance, &stack_saved))
 				return 0;
 			/*
 			 * Stop after the first non-trylock entry,
@@ -1979,7 +1955,6 @@ check_prevs_add(struct task_struct *curr, struct held_lock *next)
 		if (curr->held_locks[depth].irq_context !=
 				curr->held_locks[depth-1].irq_context)
 			break;
-		trylock_loop = 1;
 	}
 	return 1;
 out_bug:
@@ -2017,7 +1992,7 @@ static inline int lookup_chain_cache(struct task_struct *curr,
 				     u64 chain_key)
 {
 	struct lock_class *class = hlock_class(hlock);
-	struct list_head *hash_head = chainhashentry(chain_key);
+	struct hlist_head *hash_head = chainhashentry(chain_key);
 	struct lock_chain *chain;
 	struct held_lock *hlock_curr;
 	int i, j;
@@ -2033,7 +2008,7 @@ static inline int lookup_chain_cache(struct task_struct *curr,
 	 * We can walk it lock-free, because entries only get added
 	 * to the hash:
 	 */
-	list_for_each_entry_rcu(chain, hash_head, entry) {
+	hlist_for_each_entry_rcu(chain, hash_head, entry) {
 		if (chain->chain_key == chain_key) {
 cache_hit:
 			debug_atomic_inc(chain_lookup_hits);
@@ -2057,7 +2032,7 @@ cache_hit:
 	/*
 	 * We have to walk the chain again locked - to avoid duplicates:
 	 */
-	list_for_each_entry(chain, hash_head, entry) {
+	hlist_for_each_entry(chain, hash_head, entry) {
 		if (chain->chain_key == chain_key) {
 			graph_unlock();
 			goto cache_hit;
@@ -2091,7 +2066,7 @@ cache_hit:
 		}
 		chain_hlocks[chain->base + j] = class - lock_classes;
 	}
-	list_add_tail_rcu(&chain->entry, hash_head);
+	hlist_add_head_rcu(&chain->entry, hash_head);
 	debug_atomic_inc(chain_lookup_misses);
 	inc_chains();
 
@@ -3875,7 +3850,7 @@ void lockdep_reset(void)
 	nr_process_chains = 0;
 	debug_locks = 1;
 	for (i = 0; i < CHAINHASH_SIZE; i++)
-		INIT_LIST_HEAD(chainhash_table + i);
+		INIT_HLIST_HEAD(chainhash_table + i);
 	raw_local_irq_restore(flags);
 }
 
@@ -3894,7 +3869,7 @@ static void zap_class(struct lock_class *class)
 	/*
 	 * Unhash the class and remove it from the all_lock_classes list:
 	 */
-	list_del_rcu(&class->hash_entry);
+	hlist_del_rcu(&class->hash_entry);
 	list_del_rcu(&class->lock_entry);
 
 	RCU_INIT_POINTER(class->key, NULL);
@@ -3917,7 +3892,7 @@ static inline int within(const void *addr, void *start, unsigned long size)
 void lockdep_free_key_range(void *start, unsigned long size)
 {
 	struct lock_class *class;
-	struct list_head *head;
+	struct hlist_head *head;
 	unsigned long flags;
 	int i;
 	int locked;
@@ -3930,9 +3905,7 @@ void lockdep_free_key_range(void *start, unsigned long size)
 	 */
 	for (i = 0; i < CLASSHASH_SIZE; i++) {
 		head = classhash_table + i;
-		if (list_empty(head))
-			continue;
-		list_for_each_entry_rcu(class, head, hash_entry) {
+		hlist_for_each_entry_rcu(class, head, hash_entry) {
 			if (within(class->key, start, size))
 				zap_class(class);
 			else if (within(class->name, start, size))
@@ -3962,7 +3935,7 @@ void lockdep_free_key_range(void *start, unsigned long size)
 void lockdep_reset_lock(struct lockdep_map *lock)
 {
 	struct lock_class *class;
-	struct list_head *head;
+	struct hlist_head *head;
 	unsigned long flags;
 	int i, j;
 	int locked;
@@ -3987,9 +3960,7 @@ void lockdep_reset_lock(struct lockdep_map *lock)
 	locked = graph_lock();
 	for (i = 0; i < CLASSHASH_SIZE; i++) {
 		head = classhash_table + i;
-		if (list_empty(head))
-			continue;
-		list_for_each_entry_rcu(class, head, hash_entry) {
+		hlist_for_each_entry_rcu(class, head, hash_entry) {
 			int match = 0;
 
 			for (j = 0; j < NR_LOCKDEP_CACHING_CLASSES; j++)
@@ -4011,28 +3982,6 @@ void lockdep_reset_lock(struct lockdep_map *lock)
 
 out_restore:
 	raw_local_irq_restore(flags);
-}
-
-void lockdep_init(void)
-{
-	int i;
-
-	/*
-	 * Some architectures have their own start_kernel()
-	 * code which calls lockdep_init(), while we also
-	 * call lockdep_init() from the start_kernel() itself,
-	 * and we want to initialize the hashes only once:
-	 */
-	if (lockdep_initialized)
-		return;
-
-	for (i = 0; i < CLASSHASH_SIZE; i++)
-		INIT_LIST_HEAD(classhash_table + i);
-
-	for (i = 0; i < CHAINHASH_SIZE; i++)
-		INIT_LIST_HEAD(chainhash_table + i);
-
-	lockdep_initialized = 1;
 }
 
 void __init lockdep_info(void)
@@ -4061,14 +4010,6 @@ void __init lockdep_info(void)
 
 	printk(" per task-struct memory footprint: %lu bytes\n",
 		sizeof(struct held_lock) * MAX_LOCK_DEPTH);
-
-#ifdef CONFIG_DEBUG_LOCKDEP
-	if (lockdep_init_error) {
-		printk("WARNING: lockdep init error: lock '%s' was acquired before lockdep_init().\n", lock_init_error);
-		printk("Call stack leading to lockdep invocation was:\n");
-		print_stack_trace(&lockdep_init_trace, 0);
-	}
-#endif
 }
 
 static void
