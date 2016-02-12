@@ -366,7 +366,7 @@ static struct pgpath *choose_path_in_pg(struct multipath *m,
 
 	pgpath = path_to_pgpath(path);
 
-	if (unlikely(get_current_pg(paths) != pg)) {
+	if (unlikely(rcu_access_pointer(paths->current_pg) != pg)) {
 		/* Only update current_pgpath if pg changed */
 		spin_lock_irqsave(&m->lock, flags);
 		rcu_assign_pointer(paths->current_pgpath, pgpath);
@@ -1091,7 +1091,7 @@ static int fail_path(struct pgpath *pgpath)
 	paths->nr_valid_paths--;
 	sync_rcu = true;
 
-	if (pgpath == get_current_pgpath(paths))
+	if (pgpath == rcu_access_pointer(paths->current_pgpath))
 		rcu_assign_pointer(paths->current_pgpath, NULL);
 
 	dm_path_uevent(DM_UEVENT_PATH_FAILED, m->ti,
@@ -1143,7 +1143,8 @@ static int reinstate_path(struct pgpath *pgpath)
 	if (!paths->nr_valid_paths++) {
 		rcu_assign_pointer(paths->current_pgpath, NULL);
 		run_queue = true;
-	} else if (m->hw_handler_name && (get_current_pg(paths) == pgpath->pg)) {
+	} else if (m->hw_handler_name &&
+		   (rcu_access_pointer(paths->current_pg) == pgpath->pg)) {
 		if (queue_work(kmpath_handlerd, &pgpath->activate_path.work))
 			paths->pg_init_in_progress++;
 	}
@@ -1359,7 +1360,7 @@ static void pg_init_done(void *data, int errors)
 
 	spin_lock_irqsave(&m->lock, flags);
 	if (errors) {
-		if (pgpath == get_current_pgpath(paths)) {
+		if (pgpath == rcu_access_pointer(paths->current_pgpath)) {
 			DMERR("Could not failover device. Error %d.", errors);
 			rcu_assign_pointer(paths->current_pgpath, NULL);
 			rcu_assign_pointer(paths->current_pg, NULL);
@@ -1588,7 +1589,7 @@ static void multipath_status(struct dm_target *ti, status_type_t type,
 
 	current_pg = get_current_pg(paths);
 
-	if (get_next_pg(paths))
+	if (rcu_access_pointer(paths->next_pg))
 		pg_num = get_next_pg(paths)->pg_num;
 	else if (current_pg)
 		pg_num = current_pg->pg_num;
@@ -1756,7 +1757,7 @@ static int multipath_prepare_ioctl(struct dm_target *ti,
 	}
 
 	if (r == -ENOTCONN) {
-		if (!get_current_pg(paths)) {
+		if (!rcu_access_pointer(paths->current_pg)) {
 			/* Path status changed, redo selection */
 			(void) choose_pgpath(m, 0, &sync_rcu);
 		}
@@ -1835,9 +1836,10 @@ static int multipath_busy(struct dm_target *ti)
 		goto out;
 	}
 	/* Guess which priority_group will be used at next mapping time */
-	if (unlikely(!get_current_pgpath(paths) && get_next_pg(paths)))
+	if (unlikely(!rcu_access_pointer(paths->current_pgpath) &&
+		     rcu_access_pointer(paths->next_pg)))
 		pg = get_next_pg(paths);
-	else if (likely(get_current_pg(paths)))
+	else if (likely(rcu_access_pointer(paths->current_pg)))
 		pg = get_current_pg(paths);
 
 	if (!pg) {
