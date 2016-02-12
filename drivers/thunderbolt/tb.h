@@ -186,7 +186,7 @@ static inline int tb_port_write(struct tb_port *port, void *buffer,
 }
 
 #define tb_err(tb, fmt, arg...) dev_err(&(tb)->nhi->pdev->dev, fmt, ## arg)
-#define tb_WARN(tb, fmt, arg...) dev_WARN(&(tb)->nhi->pdev->dev, fmt, ## arg)
+#define tb_WARN(tb, fmt, arg...) dev_WARN(&(tb)->nhi->pdev->dev, true, fmt, ## arg)
 #define tb_warn(tb, fmt, arg...) dev_warn(&(tb)->nhi->pdev->dev, fmt, ## arg)
 #define tb_info(tb, fmt, arg...) dev_info(&(tb)->nhi->pdev->dev, fmt, ## arg)
 
