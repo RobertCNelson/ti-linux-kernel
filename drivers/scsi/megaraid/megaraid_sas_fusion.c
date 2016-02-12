@@ -204,6 +204,7 @@ megasas_fire_cmd_fusion(struct megasas_instance *instance,
 		&instance->reg_set->inbound_low_queue_port);
 	writel(le32_to_cpu(req_desc->u.high),
 		&instance->reg_set->inbound_high_queue_port);
+	mmiowb();
 	spin_unlock_irqrestore(&instance->hba_lock, flags);
 #endif
 }
@@ -3325,27 +3326,37 @@ out:
 	return ret;
 }
 
+/*SRIOV get other instance in cluster if any*/
+struct megasas_instance *megasas_get_peer_instance(struct megasas_instance *instance)
+{
+	int i;
+
+	for (i = 0; i < MAX_MGMT_ADAPTERS; i++) {
+		if (megasas_mgmt_info.instance[i] &&
+			(megasas_mgmt_info.instance[i] != instance) &&
+			 megasas_mgmt_info.instance[i]->requestorId &&
+			 megasas_mgmt_info.instance[i]->peerIsPresent &&
+			(memcmp((megasas_mgmt_info.instance[i]->clusterId),
+			instance->clusterId, MEGASAS_CLUSTER_ID_SIZE) == 0))
+			return megasas_mgmt_info.instance[i];
+	}
+	return NULL;
+}
+
 /* Check for a second path that is currently UP */
 int megasas_check_mpio_paths(struct megasas_instance *instance,
 	struct scsi_cmnd *scmd)
 {
-	int i, j, retval = (DID_RESET << 16);
+	struct megasas_instance *peer_instance = NULL;
+	int retval = (DID_RESET << 16);
 
-	if (instance->mpio && instance->requestorId) {
-		for (i = 0 ; i < MAX_MGMT_ADAPTERS ; i++)
-			for (j = 0 ; j < MAX_LOGICAL_DRIVES; j++)
-				if (megasas_mgmt_info.instance[i] &&
-				    (megasas_mgmt_info.instance[i] != instance) &&
-				    megasas_mgmt_info.instance[i]->mpio &&
-				    megasas_mgmt_info.instance[i]->requestorId
-				    &&
-				    (megasas_mgmt_info.instance[i]->ld_ids[j]
-				     == scmd->device->id)) {
-					    retval = (DID_NO_CONNECT << 16);
-					    goto out;
-				}
+	if (instance->peerIsPresent) {
+		peer_instance = megasas_get_peer_instance(instance);
+		if ((peer_instance) &&
+			(atomic_read(&peer_instance->adprecovery) ==
+			MEGASAS_HBA_OPERATIONAL))
+			retval = (DID_NO_CONNECT << 16);
 	}
-out:
 	return retval;
 }
 

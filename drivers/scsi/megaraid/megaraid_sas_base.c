@@ -749,6 +749,7 @@ megasas_fire_cmd_skinny(struct megasas_instance *instance,
 	       &(regs)->inbound_high_queue_port);
 	writel((lower_32_bits(frame_phys_addr) | (frame_count<<1))|1,
 	       &(regs)->inbound_low_queue_port);
+	mmiowb();
 	spin_unlock_irqrestore(&instance->hba_lock, flags);
 }
 
@@ -1943,7 +1944,7 @@ void megaraid_sas_kill_hba(struct megasas_instance *instance)
 		writel(MFI_STOP_ADP, &instance->reg_set->doorbell);
 		/* Flush */
 		readl(&instance->reg_set->doorbell);
-		if (instance->mpio && instance->requestorId)
+		if (instance->requestorId && instance->peerIsPresent)
 			memset(instance->ld_ids, 0xff, MEGASAS_MAX_LD_IDS);
 	} else {
 		writel(MFI_STOP_ADP,
@@ -5182,7 +5183,9 @@ static int megasas_init_fw(struct megasas_instance *instance)
 
 	tmp_sectors = min_t(u32, max_sectors_1, max_sectors_2);
 
-	instance->mpio = ctrl_info->adapterOperations2.mpio;
+	instance->peerIsPresent = ctrl_info->cluster.peerIsPresent;
+	instance->passive = ctrl_info->cluster.passive;
+	memcpy(instance->clusterId, ctrl_info->clusterId, sizeof(instance->clusterId));
 	instance->UnevenSpanSupport =
 		ctrl_info->adapterOperations2.supportUnevenSpans;
 	if (instance->UnevenSpanSupport) {
@@ -6841,9 +6844,9 @@ static int megasas_mgmt_compat_ioctl_fw(struct file *file, unsigned long arg)
 	int i;
 	int error = 0;
 	compat_uptr_t ptr;
-	unsigned long local_raw_ptr;
 	u32 local_sense_off;
 	u32 local_sense_len;
+	u32 user_sense_off;
 
 	if (clear_user(ioc, sizeof(*ioc)))
 		return -EFAULT;
@@ -6861,17 +6864,16 @@ static int megasas_mgmt_compat_ioctl_fw(struct file *file, unsigned long arg)
 	 * sense_len is not null, so prepare the 64bit value under
 	 * the same condition.
 	 */
-	if (get_user(local_raw_ptr, ioc->frame.raw) ||
-		get_user(local_sense_off, &ioc->sense_off) ||
-		get_user(local_sense_len, &ioc->sense_len))
+	if (get_user(local_sense_off, &ioc->sense_off) ||
+		get_user(local_sense_len, &ioc->sense_len) ||
+		get_user(user_sense_off, &cioc->sense_off))
 		return -EFAULT;
-
 
 	if (local_sense_len) {
 		void __user **sense_ioc_ptr =
-			(void __user **)((u8*)local_raw_ptr + local_sense_off);
+			(void __user **)((u8 *)((unsigned long)&ioc->frame.raw) + local_sense_off);
 		compat_uptr_t *sense_cioc_ptr =
-			(compat_uptr_t *)(cioc->frame.raw + cioc->sense_off);
+			(compat_uptr_t *)(((unsigned long)&cioc->frame.raw) + user_sense_off);
 		if (get_user(ptr, sense_cioc_ptr) ||
 		    put_user(compat_ptr(ptr), sense_ioc_ptr))
 			return -EFAULT;
