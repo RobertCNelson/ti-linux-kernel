@@ -100,6 +100,9 @@ struct btrfs_ordered_sum;
 /* tracks free space in block groups. */
 #define BTRFS_FREE_SPACE_TREE_OBJECTID 10ULL
 
+/* device stats in the device tree */
+#define BTRFS_DEV_STATS_OBJECTID 0ULL
+
 /* for storing balance parameters in the root tree */
 #define BTRFS_BALANCE_OBJECTID -4ULL
 
@@ -2185,13 +2188,43 @@ struct btrfs_ioctl_defrag_range_args {
  */
 #define BTRFS_QGROUP_RELATION_KEY       246
 
+/*
+ * Obsolete name, see BTRFS_TEMPORARY_ITEM_KEY.
+ */
 #define BTRFS_BALANCE_ITEM_KEY	248
 
 /*
- * Persistantly stores the io stats in the device tree.
- * One key for all stats, (0, BTRFS_DEV_STATS_KEY, devid).
+ * The key type for tree items that are stored persistently, but do not need to
+ * exist for extended period of time. The items can exist in any tree.
+ *
+ * [subtype, BTRFS_TEMPORARY_ITEM_KEY, data]
+ *
+ * Existing items:
+ *
+ * - balance status item
+ *   (BTRFS_BALANCE_OBJECTID, BTRFS_TEMPORARY_ITEM_KEY, 0)
  */
-#define BTRFS_DEV_STATS_KEY	249
+#define BTRFS_TEMPORARY_ITEM_KEY	248
+
+/*
+ * Obsolete name, see BTRFS_PERSISTENT_ITEM_KEY
+ */
+#define BTRFS_DEV_STATS_KEY		249
+
+/*
+ * The key type for tree items that are stored persistently and usually exist
+ * for a long period, eg. filesystem lifetime. The item kinds can be status
+ * information, stats or preference values. The item can exist in any tree.
+ *
+ * [subtype, BTRFS_PERSISTENT_ITEM_KEY, data]
+ *
+ * Existing items:
+ *
+ * - device statistics, store IO stats in the device tree, one key for all
+ *   stats
+ *   (BTRFS_DEV_STATS_OBJECTID, BTRFS_DEV_STATS_KEY, 0)
+ */
+#define BTRFS_PERSISTENT_ITEM_KEY	249
 
 /*
  * Persistantly stores the device replace state in the device tree.
@@ -2241,7 +2274,7 @@ struct btrfs_ioctl_defrag_range_args {
 #define BTRFS_MOUNT_ENOSPC_DEBUG	 (1 << 15)
 #define BTRFS_MOUNT_AUTO_DEFRAG		(1 << 16)
 #define BTRFS_MOUNT_INODE_MAP_CACHE	(1 << 17)
-#define BTRFS_MOUNT_RECOVERY		(1 << 18)
+#define BTRFS_MOUNT_USEBACKUPROOT	(1 << 18)
 #define BTRFS_MOUNT_SKIP_BALANCE	(1 << 19)
 #define BTRFS_MOUNT_CHECK_INTEGRITY	(1 << 20)
 #define BTRFS_MOUNT_CHECK_INTEGRITY_INCLUDING_EXTENT_DATA (1 << 21)
@@ -2250,9 +2283,10 @@ struct btrfs_ioctl_defrag_range_args {
 #define BTRFS_MOUNT_FRAGMENT_DATA	(1 << 24)
 #define BTRFS_MOUNT_FRAGMENT_METADATA	(1 << 25)
 #define BTRFS_MOUNT_FREE_SPACE_TREE	(1 << 26)
+#define BTRFS_MOUNT_NOLOGREPLAY		(1 << 27)
 
 #define BTRFS_DEFAULT_COMMIT_INTERVAL	(30)
-#define BTRFS_DEFAULT_MAX_INLINE	(8192)
+#define BTRFS_DEFAULT_MAX_INLINE	(2048)
 
 #define btrfs_clear_opt(o, opt)		((o) &= ~BTRFS_MOUNT_##opt)
 #define btrfs_set_opt(o, opt)		((o) |= BTRFS_MOUNT_##opt)
@@ -2352,6 +2386,9 @@ struct btrfs_map_token {
 	char *kaddr;
 	unsigned long offset;
 };
+
+#define BTRFS_BYTES_TO_BLKS(fs_info, bytes) \
+				((bytes) >> (fs_info)->sb->s_blocksize_bits)
 
 static inline void btrfs_init_map_token (struct btrfs_map_token *token)
 {
@@ -4027,7 +4064,7 @@ int btrfs_unlink_subvol(struct btrfs_trans_handle *trans,
 			struct btrfs_root *root,
 			struct inode *dir, u64 objectid,
 			const char *name, int name_len);
-int btrfs_truncate_page(struct inode *inode, loff_t from, loff_t len,
+int btrfs_truncate_block(struct inode *inode, loff_t from, loff_t len,
 			int front);
 int btrfs_truncate_inode_items(struct btrfs_trans_handle *trans,
 			       struct btrfs_root *root,
@@ -4099,7 +4136,8 @@ void btrfs_get_block_group_info(struct list_head *groups_list,
 				struct btrfs_ioctl_space_info *space);
 void update_ioctl_balance_args(struct btrfs_fs_info *fs_info, int lock,
 			       struct btrfs_ioctl_balance_args *bargs);
-
+ssize_t btrfs_dedupe_file_range(struct file *src_file, u64 loff, u64 olen,
+			   struct file *dst_file, u64 dst_loff);
 
 /* file.c */
 int btrfs_auto_defrag_init(void);
@@ -4130,6 +4168,11 @@ int btrfs_dirty_pages(struct btrfs_root *root, struct inode *inode,
 		      loff_t pos, size_t write_bytes,
 		      struct extent_state **cached);
 int btrfs_fdatawrite_range(struct inode *inode, loff_t start, loff_t end);
+ssize_t btrfs_copy_file_range(struct file *file_in, loff_t pos_in,
+			      struct file *file_out, loff_t pos_out,
+			      size_t len, unsigned int flags);
+int btrfs_clone_file_range(struct file *file_in, loff_t pos_in,
+			   struct file *file_out, loff_t pos_out, u64 len);
 
 /* tree-defrag.c */
 int btrfs_defrag_leaves(struct btrfs_trans_handle *trans,
@@ -4145,7 +4188,8 @@ void btrfs_sysfs_remove_mounted(struct btrfs_fs_info *fs_info);
 ssize_t btrfs_listxattr(struct dentry *dentry, char *buffer, size_t size);
 
 /* super.c */
-int btrfs_parse_options(struct btrfs_root *root, char *options);
+int btrfs_parse_options(struct btrfs_root *root, char *options,
+			unsigned long new_flags);
 int btrfs_sync_fs(struct super_block *sb, int wait);
 
 #ifdef CONFIG_PRINTK
