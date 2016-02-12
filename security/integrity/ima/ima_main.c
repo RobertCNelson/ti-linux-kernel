@@ -24,7 +24,6 @@
 #include <linux/slab.h>
 #include <linux/xattr.h>
 #include <linux/ima.h>
-#include <crypto/hash_info.h>
 
 #include "ima.h"
 
@@ -154,8 +153,8 @@ void ima_file_free(struct file *file)
 	ima_check_last_writer(iint, inode, file);
 }
 
-static int process_measurement(struct file *file, int mask, int function,
-			       int opened)
+static int process_measurement(struct file *file, int mask,
+			       enum ima_hooks func, int opened)
 {
 	struct inode *inode = file_inode(file);
 	struct integrity_iint_cache *iint = NULL;
@@ -163,9 +162,10 @@ static int process_measurement(struct file *file, int mask, int function,
 	char *pathbuf = NULL;
 	const char *pathname = NULL;
 	int rc = -ENOMEM, action, must_appraise;
-	struct evm_ima_xattr_data *xattr_value = NULL, **xattr_ptr = NULL;
+	struct evm_ima_xattr_data *xattr_value = NULL;
 	int xattr_len = 0;
 	bool violation_check;
+	enum hash_algo hash_algo;
 
 	if (!ima_policy_flag || !S_ISREG(inode->i_mode))
 		return 0;
@@ -174,8 +174,8 @@ static int process_measurement(struct file *file, int mask, int function,
 	 * bitmask based on the appraise/audit/measurement policy.
 	 * Included is the appraise submask.
 	 */
-	action = ima_get_action(inode, mask, function);
-	violation_check = ((function == FILE_CHECK || function == MMAP_CHECK) &&
+	action = ima_get_action(inode, mask, func);
+	violation_check = ((func == FILE_CHECK || func == MMAP_CHECK) &&
 			   (ima_policy_flag & IMA_MEASURE));
 	if (!action && !violation_check)
 		return 0;
@@ -184,7 +184,7 @@ static int process_measurement(struct file *file, int mask, int function,
 
 	/*  Is the appraise rule hook specific?  */
 	if (action & IMA_FILE_APPRAISE)
-		function = FILE_CHECK;
+		func = FILE_CHECK;
 
 	inode_lock(inode);
 
@@ -214,16 +214,19 @@ static int process_measurement(struct file *file, int mask, int function,
 	/* Nothing to do, just return existing appraised status */
 	if (!action) {
 		if (must_appraise)
-			rc = ima_get_cache_status(iint, function);
+			rc = ima_get_cache_status(iint, func);
 		goto out_digsig;
 	}
 
 	template_desc = ima_template_desc_current();
 	if ((action & IMA_APPRAISE_SUBMASK) ||
 		    strcmp(template_desc->name, IMA_TEMPLATE_IMA_NAME) != 0)
-		xattr_ptr = &xattr_value;
+		/* read 'security.ima' */
+		xattr_len = ima_read_xattr(file->f_path.dentry, &xattr_value);
 
-	rc = ima_collect_measurement(iint, file, xattr_ptr, &xattr_len);
+	hash_algo = ima_get_hash_algo(xattr_value, xattr_len);
+
+	rc = ima_collect_measurement(iint, file, hash_algo);
 	if (rc != 0) {
 		if (file->f_flags & O_DIRECT)
 			rc = (iint->flags & IMA_PERMIT_DIRECTIO) ? 0 : -EACCES;
@@ -237,7 +240,7 @@ static int process_measurement(struct file *file, int mask, int function,
 		ima_store_measurement(iint, file, pathname,
 				      xattr_value, xattr_len);
 	if (action & IMA_APPRAISE_SUBMASK)
-		rc = ima_appraise_measurement(function, iint, file, pathname,
+		rc = ima_appraise_measurement(func, iint, file, pathname,
 					      xattr_value, xattr_len, opened);
 	if (action & IMA_AUDIT)
 		ima_audit_measurement(iint, pathname);
