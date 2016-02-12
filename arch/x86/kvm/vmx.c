@@ -10764,13 +10764,26 @@ static int vmx_update_pi_irte(struct kvm *kvm, unsigned int host_irq,
 		 */
 
 		kvm_set_msi_irq(e, &irq);
-		if (!kvm_intr_is_single_vcpu(kvm, &irq, &vcpu))
+		if (!kvm_intr_is_single_vcpu(kvm, &irq, &vcpu)) {
+			/*
+			 * Make sure the IRTE is in remapped mode if
+			 * we don't handle it in posted mode.
+			 */
+			ret = irq_set_vcpu_affinity(host_irq, NULL);
+			if (ret < 0) {
+				printk(KERN_INFO
+				   "failed to back to remapped mode, irq: %u\n",
+				   host_irq);
+				goto out;
+			}
+
 			continue;
+		}
 
 		vcpu_info.pi_desc_addr = __pa(vcpu_to_pi_desc(vcpu));
 		vcpu_info.vector = irq.vector;
 
-		trace_kvm_pi_irte_update(vcpu->vcpu_id, e->gsi,
+		trace_kvm_pi_irte_update(vcpu->vcpu_id, host_irq, e->gsi,
 				vcpu_info.vector, vcpu_info.pi_desc_addr, set);
 
 		if (set)
