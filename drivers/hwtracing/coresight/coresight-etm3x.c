@@ -315,6 +315,13 @@ static void etm_enable_hw(void *info)
 	dev_dbg(drvdata->dev, "cpu: %d enable smp call done\n", drvdata->cpu);
 }
 
+static int etm_cpu_id(struct coresight_device *csdev)
+{
+	struct etm_drvdata *drvdata = dev_get_drvdata(csdev->dev.parent);
+
+	return drvdata->cpu;
+}
+
 static int etm_trace_id(struct coresight_device *csdev)
 {
 	struct etm_drvdata *drvdata = dev_get_drvdata(csdev->dev.parent);
@@ -421,6 +428,7 @@ static void etm_disable(struct coresight_device *csdev)
 }
 
 static const struct coresight_ops_source etm_source_ops = {
+	.cpu_id		= etm_cpu_id,
 	.trace_id	= etm_trace_id,
 	.enable		= etm_enable,
 	.disable	= etm_disable,
@@ -1877,17 +1885,6 @@ err_arch_supported:
 	return ret;
 }
 
-static int etm_remove(struct amba_device *adev)
-{
-	struct etm_drvdata *drvdata = amba_get_drvdata(adev);
-
-	coresight_unregister(drvdata->csdev);
-	if (--etm_count == 0)
-		unregister_hotcpu_notifier(&etm_cpu_notifier);
-
-	return 0;
-}
-
 #ifdef CONFIG_PM
 static int etm_runtime_suspend(struct device *dev)
 {
@@ -1948,9 +1945,9 @@ static struct amba_driver etm_driver = {
 		.name	= "coresight-etm3x",
 		.owner	= THIS_MODULE,
 		.pm	= &etm_dev_pm_ops,
+		.suppress_bind_attrs = true,
 	},
 	.probe		= etm_probe,
-	.remove		= etm_remove,
 	.id_table	= etm_ids,
 };
 

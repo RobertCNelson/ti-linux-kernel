@@ -13,6 +13,8 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
+#include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/slab.h>
 #include <linux/spi/spi.h>
 #include <linux/sysfs.h>
@@ -45,7 +47,7 @@ eeprom_93xx46_bin_read(struct file *filp, struct kobject *kobj,
 	int bits, ret;
 	u16 cmd_addr;
 
-	dev = container_of(kobj, struct device, kobj);
+	dev = kobj_to_dev(kobj);
 	edev = dev_get_drvdata(dev);
 
 	cmd_addr = OP_READ << edev->addrlen;
@@ -54,7 +56,7 @@ eeprom_93xx46_bin_read(struct file *filp, struct kobject *kobj,
 		cmd_addr |= off & 0x7f;
 		bits = 10;
 	} else {
-		cmd_addr |= off & 0x3f;
+		cmd_addr |= (off >> 1) & 0x3f;
 		bits = 9;
 	}
 
@@ -155,7 +157,7 @@ eeprom_93xx46_write_word(struct eeprom_93xx46_dev *edev,
 		bits = 10;
 		data_len = 1;
 	} else {
-		cmd_addr |= off & 0x3f;
+		cmd_addr |= (off >> 1) & 0x3f;
 		bits = 9;
 		data_len = 2;
 	}
@@ -190,7 +192,7 @@ eeprom_93xx46_bin_write(struct file *filp, struct kobject *kobj,
 	struct device *dev;
 	int i, ret, step = 1;
 
-	dev = container_of(kobj, struct device, kobj);
+	dev = kobj_to_dev(kobj);
 	edev = dev_get_drvdata(dev);
 
 	/* only write even number of bytes on 16-bit devices */
@@ -294,11 +296,57 @@ static ssize_t eeprom_93xx46_store_erase(struct device *dev,
 }
 static DEVICE_ATTR(erase, S_IWUSR, NULL, eeprom_93xx46_store_erase);
 
+static const struct of_device_id eeprom_93xx46_of_table[] = {
+	{ .compatible = "eeprom-93xx46", },
+	{}
+};
+MODULE_DEVICE_TABLE(of, eeprom_93xx46_of_table);
+
+static int eeprom_93xx46_probe_dt(struct spi_device *spi)
+{
+	struct device_node *np = spi->dev.of_node;
+	struct eeprom_93xx46_platform_data *pd;
+	u32 tmp;
+	int ret;
+
+	pd = devm_kzalloc(&spi->dev, sizeof(*pd), GFP_KERNEL);
+	if (!pd)
+		return -ENOMEM;
+
+	ret = of_property_read_u32(np, "data-size", &tmp);
+	if (ret < 0) {
+		dev_err(&spi->dev, "data-size property not found\n");
+		return ret;
+	}
+
+	if (tmp == 8) {
+		pd->flags |= EE_ADDR8;
+	} else if (tmp == 16) {
+		pd->flags |= EE_ADDR16;
+	} else {
+		dev_err(&spi->dev, "invalid data-size (%d)\n", tmp);
+		return -EINVAL;
+	}
+
+	if (of_property_read_bool(np, "read-only"))
+		pd->flags |= EE_READONLY;
+
+	spi->dev.platform_data = pd;
+
+	return 0;
+}
+
 static int eeprom_93xx46_probe(struct spi_device *spi)
 {
 	struct eeprom_93xx46_platform_data *pd;
 	struct eeprom_93xx46_dev *edev;
 	int err;
+
+	if (spi->dev.of_node) {
+		err = eeprom_93xx46_probe_dt(spi);
+		if (err < 0)
+			return err;
+	}
 
 	pd = spi->dev.platform_data;
 	if (!pd) {
@@ -370,6 +418,7 @@ static int eeprom_93xx46_remove(struct spi_device *spi)
 static struct spi_driver eeprom_93xx46_driver = {
 	.driver = {
 		.name	= "93xx46",
+		.of_match_table = of_match_ptr(eeprom_93xx46_of_table),
 	},
 	.probe		= eeprom_93xx46_probe,
 	.remove		= eeprom_93xx46_remove,
