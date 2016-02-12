@@ -73,8 +73,8 @@
 
 /* Bitfields in CNTL1 */
 #define BCM2835_AUX_SPI_CNTL1_CSHIGH	0x00000700
-#define BCM2835_AUX_SPI_CNTL1_IDLE	0x00000080
-#define BCM2835_AUX_SPI_CNTL1_TXEMPTY	0x00000040
+#define BCM2835_AUX_SPI_CNTL1_TXEMPTY	0x00000080
+#define BCM2835_AUX_SPI_CNTL1_IDLE	0x00000040
 #define BCM2835_AUX_SPI_CNTL1_MSBF_IN	0x00000002
 #define BCM2835_AUX_SPI_CNTL1_KEEP_IN	0x00000001
 
@@ -210,6 +210,12 @@ static irqreturn_t bcm2835aux_spi_interrupt(int irq, void *dev_id)
 		  BCM2835_AUX_SPI_STAT_BUSY))) {
 		bcm2835aux_rd_fifo(bs);
 		ret = IRQ_HANDLED;
+	}
+
+	if (!bs->tx_len) {
+		/* disable tx fifo empty interrupt */
+		bcm2835aux_wr(bs, BCM2835_AUX_SPI_CNTL1, bs->cntl[1] |
+			BCM2835_AUX_SPI_CNTL1_IDLE);
 	}
 
 	/* and if rx_len is 0 then wake up completion and disable spi */
