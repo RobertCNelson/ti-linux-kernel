@@ -128,7 +128,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	return desc->status_use_accessors & _IRQ_PER_CPU;
 --- a/kernel/softirq.c
 +++ b/kernel/softirq.c
-@@ -576,6 +576,15 @@ void __local_bh_enable(void)
+@@ -578,6 +578,15 @@ void __local_bh_enable(void)
  }
  EXPORT_SYMBOL(__local_bh_enable);
  
