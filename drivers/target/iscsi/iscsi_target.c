@@ -2531,16 +2531,11 @@ static void iscsit_build_conn_drop_async_message(struct iscsi_conn *conn)
 	iscsit_dec_conn_usage_count(conn_p);
 }
 
-static int iscsit_send_conn_drop_async_message(
+void iscsit_build_conn_drop_async_pdu(
 	struct iscsi_cmd *cmd,
-	struct iscsi_conn *conn)
+	struct iscsi_conn *conn,
+	struct iscsi_async *hdr)
 {
-	struct iscsi_async *hdr;
-
-	cmd->tx_size = ISCSI_HDR_LEN;
-	cmd->iscsi_opcode = ISCSI_OP_ASYNC_EVENT;
-
-	hdr			= (struct iscsi_async *) cmd->pdu;
 	hdr->opcode		= ISCSI_OP_ASYNC_EVENT;
 	hdr->flags		= ISCSI_FLAG_CMD_FINAL;
 	cmd->init_task_tag	= RESERVED_ITT;
@@ -2554,6 +2549,21 @@ static int iscsit_send_conn_drop_async_message(
 	hdr->param1		= cpu_to_be16(cmd->logout_cid);
 	hdr->param2		= cpu_to_be16(conn->sess->sess_ops->DefaultTime2Wait);
 	hdr->param3		= cpu_to_be16(conn->sess->sess_ops->DefaultTime2Retain);
+}
+EXPORT_SYMBOL(iscsit_build_conn_drop_async_pdu);
+
+static int iscsit_send_conn_drop_async_message(
+	struct iscsi_cmd *cmd,
+	struct iscsi_conn *conn)
+{
+	struct iscsi_async *hdr;
+
+	cmd->tx_size = ISCSI_HDR_LEN;
+	cmd->iscsi_opcode = ISCSI_OP_ASYNC_EVENT;
+
+	hdr			= (struct iscsi_async *)cmd->pdu;
+
+	iscsit_build_conn_drop_async_pdu(cmd, conn, hdr);
 
 	if (conn->conn_ops->HeaderDigest) {
 		u32 *header_digest = (u32 *)&cmd->pdu[ISCSI_HDR_LEN];
