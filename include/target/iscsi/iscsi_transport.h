@@ -77,6 +77,16 @@ extern void iscsit_build_reject(struct iscsi_cmd *, struct iscsi_conn *,
 extern int iscsit_build_logout_rsp(struct iscsi_cmd *, struct iscsi_conn *,
 				struct iscsi_logout_rsp *);
 extern int iscsit_logout_post_handler(struct iscsi_cmd *, struct iscsi_conn *);
+extern int iscsit_queue_rsp(struct iscsi_conn *, struct iscsi_cmd *);
+extern void iscsit_aborted_task(struct iscsi_conn *, struct iscsi_cmd *);
+extern int iscsit_add_reject(struct iscsi_conn *, u8, unsigned char *);
+extern int iscsit_reject_cmd(struct iscsi_cmd *, u8, unsigned char *);
+extern int iscsit_handle_snack(struct iscsi_conn *, unsigned char *);
+extern void iscsit_build_datain_pdu(struct iscsi_cmd *, struct iscsi_conn *,
+				    struct iscsi_datain *,
+				    struct iscsi_data_rsp *, bool);
+extern int iscsit_build_r2ts_for_cmd(struct iscsi_conn *, struct iscsi_cmd *,
+				     bool);
 /*
  * From iscsi_target_device.c
  */
