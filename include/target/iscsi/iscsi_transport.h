@@ -85,9 +85,11 @@ extern void iscsit_increment_maxcmdsn(struct iscsi_cmd *, struct iscsi_session *
  * From iscsi_target_erl0.c
  */
 extern void iscsit_cause_connection_reinstatement(struct iscsi_conn *, int);
+extern void iscsit_fall_back_to_erl0(struct iscsi_session *);
 /*
  * From iscsi_target_erl1.c
  */
+extern void iscsit_start_dataout_timer(struct iscsi_cmd *, struct iscsi_conn *);
 extern void iscsit_stop_dataout_timer(struct iscsi_cmd *);
 
 /*
@@ -102,3 +104,35 @@ extern struct iscsi_cmd *iscsit_allocate_cmd(struct iscsi_conn *, int);
 extern int iscsit_sequence_cmd(struct iscsi_conn *, struct iscsi_cmd *,
 			       unsigned char *, __be32);
 extern void iscsit_release_cmd(struct iscsi_cmd *);
+extern struct iscsi_r2t *iscsit_get_r2t_from_list(struct iscsi_cmd *);
+extern void iscsit_free_cmd(struct iscsi_cmd *, bool);
+extern void iscsit_mod_nopin_response_timer(struct iscsi_conn *);
+extern void iscsit_add_cmd_to_immediate_queue(struct iscsi_cmd *,
+					      struct iscsi_conn *, u8);
+
+/*
+ * From iscsi_target_datain_values.c
+ */
+extern void iscsit_free_datain_req(struct iscsi_cmd *,
+				   struct iscsi_datain_req *);
+extern struct iscsi_datain_req *iscsit_get_datain_req(struct iscsi_cmd *);
+extern struct iscsi_datain_req *iscsit_get_datain_values(struct iscsi_cmd *,
+							 struct iscsi_datain *);
+
+/*
+ * From iscsi_target_nego.c
+ */
+extern int iscsi_target_check_login_request(struct iscsi_conn *,
+					    struct iscsi_login *);
+
+/*
+ * From iscsi_target_login.c
+ */
+extern __printf(2, 3) int iscsi_change_param_sprintf(
+	struct iscsi_conn *, const char *, ...);
+
+/*
+ * From iscsi_target_parameters.c
+ */
+extern struct iscsi_param *iscsi_find_param_from_key(
+	char *, struct iscsi_param_list *);
