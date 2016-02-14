@@ -89,6 +89,9 @@ extern int iscsit_build_r2ts_for_cmd(struct iscsi_conn *, struct iscsi_cmd *,
 				     bool);
 extern void iscsit_build_r2t_pdu(struct iscsi_cmd *, struct iscsi_conn *,
 				 struct iscsi_r2t *, struct iscsi_r2t_rsp *);
+extern void iscsit_build_conn_drop_async_pdu(struct iscsi_cmd *,
+					     struct iscsi_conn *,
+					     struct iscsi_async *);
 /*
  * From iscsi_target_device.c
  */
