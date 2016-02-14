@@ -22,6 +22,9 @@ struct iscsit_transport {
 	int (*iscsit_queue_data_in)(struct iscsi_conn *, struct iscsi_cmd *);
 	int (*iscsit_queue_status)(struct iscsi_conn *, struct iscsi_cmd *);
 	void (*iscsit_aborted_task)(struct iscsi_conn *, struct iscsi_cmd *);
+	void (*iscsit_rx_pdu)(struct iscsi_conn *);
+	void (*iscsit_release_cmd)(struct iscsi_conn *, struct iscsi_cmd *);
+	int (*iscsit_validate_params)(struct iscsi_conn *);
 	enum target_prot_op (*iscsit_get_sup_prot_ops)(struct iscsi_conn *);
 };
 
