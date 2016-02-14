@@ -3019,6 +3019,26 @@ iscsit_send_nopin(struct iscsi_cmd *cmd, struct iscsi_conn *conn)
 	return 0;
 }
 
+void iscsit_build_r2t_pdu(struct iscsi_cmd *cmd,
+			  struct iscsi_conn *conn,
+			  struct iscsi_r2t *r2t,
+			  struct iscsi_r2t_rsp *hdr)
+{
+	hdr->opcode		= ISCSI_OP_R2T;
+	hdr->flags		|= ISCSI_FLAG_CMD_FINAL;
+	int_to_scsilun(cmd->se_cmd.orig_fe_lun,	(struct scsi_lun *)&hdr->lun);
+	hdr->itt		= cmd->init_task_tag;
+	hdr->ttt		= cpu_to_be32(r2t->targ_xfer_tag);
+	hdr->statsn		= cpu_to_be32(conn->stat_sn);
+	hdr->exp_cmdsn		= cpu_to_be32(conn->sess->exp_cmd_sn);
+	hdr->max_cmdsn		= cpu_to_be32(
+				  (u32)atomic_read(&conn->sess->max_cmd_sn));
+	hdr->r2tsn		= cpu_to_be32(r2t->r2t_sn);
+	hdr->data_offset	= cpu_to_be32(r2t->offset);
+	hdr->data_length	= cpu_to_be32(r2t->xfer_len);
+}
+EXPORT_SYMBOL(iscsit_build_r2t_pdu);
+
 static int iscsit_send_r2t(
 	struct iscsi_cmd *cmd,
 	struct iscsi_conn *conn)
@@ -3034,19 +3054,9 @@ static int iscsit_send_r2t(
 
 	hdr			= (struct iscsi_r2t_rsp *) cmd->pdu;
 	memset(hdr, 0, ISCSI_HDR_LEN);
-	hdr->opcode		= ISCSI_OP_R2T;
-	hdr->flags		|= ISCSI_FLAG_CMD_FINAL;
-	int_to_scsilun(cmd->se_cmd.orig_fe_lun,
-			(struct scsi_lun *)&hdr->lun);
-	hdr->itt		= cmd->init_task_tag;
 	r2t->targ_xfer_tag	= session_get_next_ttt(conn->sess);
-	hdr->ttt		= cpu_to_be32(r2t->targ_xfer_tag);
-	hdr->statsn		= cpu_to_be32(conn->stat_sn);
-	hdr->exp_cmdsn		= cpu_to_be32(conn->sess->exp_cmd_sn);
-	hdr->max_cmdsn		= cpu_to_be32((u32) atomic_read(&conn->sess->max_cmd_sn));
-	hdr->r2tsn		= cpu_to_be32(r2t->r2t_sn);
-	hdr->data_offset	= cpu_to_be32(r2t->offset);
-	hdr->data_length	= cpu_to_be32(r2t->xfer_len);
+
+	iscsit_build_r2t_pdu(cmd, conn, r2t, hdr);
 
 	cmd->iov_misc[0].iov_base	= cmd->pdu;
 	cmd->iov_misc[0].iov_len	= ISCSI_HDR_LEN;
