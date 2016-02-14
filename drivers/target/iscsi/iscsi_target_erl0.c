@@ -913,6 +913,7 @@ void iscsit_fall_back_to_erl0(struct iscsi_session *sess)
 
 	atomic_set(&sess->session_fall_back_to_erl0, 1);
 }
+EXPORT_SYMBOL(iscsit_fall_back_to_erl0);
 
 static void iscsit_handle_connection_cleanup(struct iscsi_conn *conn)
 {
