@@ -15,6 +15,7 @@ menuconfig ARCH_EXYNOS
 	select ARCH_REQUIRE_GPIOLIB
 	select ARM_AMBA
 	select ARM_GIC
+	select COMMON_CLK
 	select COMMON_CLK_SAMSUNG
 	select EXYNOS_THERMAL
 	select HAVE_ARM_SCU if SMP

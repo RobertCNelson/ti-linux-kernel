@@ -28,6 +28,7 @@ config CPU_S3C2410
 	bool "SAMSUNG S3C2410"
 	default y
 	select CPU_ARM920T
+	select COMMON_CLK
 	select S3C2410_COMMON_CLK
 	select ARM_S3C2410_CPUFREQ if ARM_S3C24XX_CPUFREQ
 	select S3C2410_PM if PM
@@ -54,6 +55,7 @@ config CPU_S3C2416
 config CPU_S3C2440
 	bool "SAMSUNG S3C2440"
 	select CPU_ARM920T
+	select COMMON_CLK
 	select S3C2410_COMMON_CLK
 	select S3C2410_PM if PM_SLEEP
 	help
@@ -62,6 +64,7 @@ config CPU_S3C2440
 config CPU_S3C2442
 	bool "SAMSUNG S3C2442"
 	select CPU_ARM920T
+	select COMMON_CLK
 	select S3C2410_COMMON_CLK
 	select S3C2410_PM if PM_SLEEP
 	help
@@ -196,6 +199,7 @@ config ARCH_BAST
 	bool "Simtec Electronics BAST (EB2410ITX)"
 	select ISA
 	select MACH_BAST_IDE
+	select COMMON_CLK
 	select S3C2410_COMMON_DCLK
 	select S3C2410_IOTIMING if ARM_S3C2410_CPUFREQ
 	select S3C24XX_SIMTEC_NOR
@@ -273,6 +277,7 @@ config MACH_TCT_HAMMER
 config MACH_VR1000
 	bool "Thorcom VR1000"
 	select MACH_BAST_IDE
+	select COMMON_CLK
 	select S3C2410_COMMON_DCLK
 	select S3C24XX_SIMTEC_NOR
 	select S3C24XX_SIMTEC_PM if PM
@@ -443,6 +448,7 @@ comment "S3C2440 Boards"
 config MACH_ANUBIS
 	bool "Simtec Electronics ANUBIS"
 	select HAVE_PATA_PLATFORM
+	select COMMON_CLK
 	select S3C2410_COMMON_DCLK
 	select S3C2440_XTAL_12000000
 	select S3C24XX_SIMTEC_PM if PM
@@ -482,6 +488,7 @@ config MACH_NEXCODER_2440
 
 config MACH_OSIRIS
 	bool "Simtec IM2440D20 (OSIRIS) module"
+	select COMMON_CLK
 	select S3C2410_COMMON_DCLK
 	select S3C2410_IOTIMING if ARM_S3C2440_CPUFREQ
 	select S3C2440_XTAL_12000000
@@ -553,6 +560,7 @@ config MACH_RX1950
 	bool "HP iPAQ rx1950"
 	select I2C
 	select PM_H1940 if PM
+	select COMMON_CLK
 	select S3C2410_COMMON_DCLK
 	select S3C2410_IOTIMING if ARM_S3C2440_CPUFREQ
 	select S3C2440_XTAL_16934400
