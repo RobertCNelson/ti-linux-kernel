@@ -9,6 +9,7 @@ menuconfig ARCH_S3C64XX
 	select ARM_AMBA
 	select ARM_VIC
 	select CLKSRC_SAMSUNG_PWM
+	select COMMON_CLK
 	select COMMON_CLK_SAMSUNG
 	select GPIO_SAMSUNG if ATAGS
 	select HAVE_S3C2410_I2C if I2C
