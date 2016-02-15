@@ -23,6 +23,7 @@
 #include <linux/delay.h>
 #include <scsi/scsi_dh.h>
 #include <linux/atomic.h>
+#include <linux/blk-mq.h>
 
 #define DM_MSG_PREFIX "multipath"
 #define DM_PG_INIT_DELAY_MSECS 2000
@@ -181,10 +182,9 @@ static void free_priority_group(struct priority_group *pg,
 	kfree(pg);
 }
 
-static struct multipath *alloc_multipath(struct dm_target *ti)
+static struct multipath *alloc_multipath(struct dm_target *ti, bool use_blk_mq)
 {
 	struct multipath *m;
-	unsigned min_ios = dm_get_reserved_rq_based_ios();
 
 	m = kzalloc(sizeof(*m), GFP_KERNEL);
 	if (m) {
@@ -195,11 +195,18 @@ static struct multipath *alloc_multipath(struct dm_target *ti)
 		INIT_WORK(&m->trigger_event, trigger_event);
 		init_waitqueue_head(&m->pg_init_wait);
 		mutex_init(&m->work_mutex);
-		m->mpio_pool = mempool_create_slab_pool(min_ios, _mpio_cache);
-		if (!m->mpio_pool) {
-			kfree(m);
-			return NULL;
+
+		m->mpio_pool = NULL;
+		if (!use_blk_mq) {
+			unsigned min_ios = dm_get_reserved_rq_based_ios();
+
+			m->mpio_pool = mempool_create_slab_pool(min_ios, _mpio_cache);
+			if (!m->mpio_pool) {
+				kfree(m);
+				return NULL;
+			}
 		}
+
 		m->ti = ti;
 		ti->private = m;
 	}
@@ -222,26 +229,41 @@ static void free_multipath(struct multipath *m)
 	kfree(m);
 }
 
-static int set_mapinfo(struct multipath *m, union map_info *info)
+static struct dm_mpath_io *get_mpio(union map_info *info)
+{
+	return info->ptr;
+}
+
+static struct dm_mpath_io *set_mpio(struct multipath *m, union map_info *info)
 {
 	struct dm_mpath_io *mpio;
 
+	if (!m->mpio_pool) {
+		/* Use blk-mq pdu memory requested via per_io_data_size */
+		mpio = get_mpio(info);
+		memset(mpio, 0, sizeof(*mpio));
+		return mpio;
+	}
+
 	mpio = mempool_alloc(m->mpio_pool, GFP_ATOMIC);
 	if (!mpio)
-		return -ENOMEM;
+		return NULL;
 
 	memset(mpio, 0, sizeof(*mpio));
 	info->ptr = mpio;
 
-	return 0;
+	return mpio;
 }
 
-static void clear_mapinfo(struct multipath *m, union map_info *info)
+static void clear_request_fn_mpio(struct multipath *m, union map_info *info)
 {
-	struct dm_mpath_io *mpio = info->ptr;
+	/* Only needed for non blk-mq (.request_fn) multipath */
+	if (m->mpio_pool) {
+		struct dm_mpath_io *mpio = info->ptr;
 
-	info->ptr = NULL;
-	mempool_free(mpio, m->mpio_pool);
+		info->ptr = NULL;
+		mempool_free(mpio, m->mpio_pool);
+	}
 }
 
 /*-----------------------------------------------
@@ -380,7 +402,7 @@ static int __multipath_map(struct dm_target *ti, struct request *clone,
 			   union map_info *map_context,
 			   struct request *rq, struct request **__clone)
 {
-	struct multipath *m = (struct multipath *) ti->private;
+	struct multipath *m = ti->private;
 	int r = DM_MAPIO_REQUEUE;
 	size_t nr_bytes = clone ? blk_rq_bytes(clone) : blk_rq_bytes(rq);
 	struct pgpath *pgpath;
@@ -405,30 +427,37 @@ static int __multipath_map(struct dm_target *ti, struct request *clone,
 		goto out_unlock;
 	}
 
-	if (set_mapinfo(m, map_context) < 0)
-		/* ENOMEM, requeue */
-		goto out_unlock;
+	spin_unlock_irq(&m->lock);
 
-	mpio = map_context->ptr;
+	mpio = set_mpio(m, map_context);
+	if (!mpio)
+		/* ENOMEM, requeue */
+		return r;
+
 	mpio->pgpath = pgpath;
 	mpio->nr_bytes = nr_bytes;
 
 	bdev = pgpath->path.dev->bdev;
 
-	spin_unlock_irq(&m->lock);
-
 	if (clone) {
-		/* Old request-based interface: allocated clone is passed in */
+		/*
+		 * Old request-based interface: allocated clone is passed in.
+		 * Used by both: .request_fn stacked on .request_fn path(s) and
+		 * blk-mq stacked on .request_fn path(s).
+		 */
 		clone->q = bdev_get_queue(bdev);
 		clone->rq_disk = bdev->bd_disk;
 		clone->cmd_flags |= REQ_FAILFAST_TRANSPORT;
 	} else {
-		/* blk-mq request-based interface */
-		*__clone = blk_get_request(bdev_get_queue(bdev),
-					   rq_data_dir(rq), GFP_ATOMIC);
+		/*
+		 * blk-mq request-based interface; used by both:
+		 * .request_fn stacked on blk-mq path(s) and
+		 * blk-mq stacked on blk-mq path(s).
+		 */
+		*__clone = blk_mq_alloc_request(bdev_get_queue(bdev),
+						rq_data_dir(rq), BLK_MQ_REQ_NOWAIT);
 		if (IS_ERR(*__clone)) {
 			/* ENOMEM, requeue */
-			clear_mapinfo(m, map_context);
 			return r;
 		}
 		(*__clone)->bio = (*__clone)->biotail = NULL;
@@ -463,7 +492,7 @@ static int multipath_clone_and_map(struct dm_target *ti, struct request *rq,
 
 static void multipath_release_clone(struct request *clone)
 {
-	blk_put_request(clone);
+	blk_mq_free_request(clone);
 }
 
 /*
@@ -820,11 +849,12 @@ static int multipath_ctr(struct dm_target *ti, unsigned int argc,
 	struct dm_arg_set as;
 	unsigned pg_count = 0;
 	unsigned next_pg_num;
+	bool use_blk_mq = dm_use_blk_mq(dm_table_get_md(ti->table));
 
 	as.argc = argc;
 	as.argv = argv;
 
-	m = alloc_multipath(ti);
+	m = alloc_multipath(ti, use_blk_mq);
 	if (!m) {
 		ti->error = "can't allocate multipath";
 		return -EINVAL;
@@ -880,6 +910,8 @@ static int multipath_ctr(struct dm_target *ti, unsigned int argc,
 	ti->num_flush_bios = 1;
 	ti->num_discard_bios = 1;
 	ti->num_write_same_bios = 1;
+	if (use_blk_mq)
+		ti->per_io_data_size = sizeof(struct dm_mpath_io);
 
 	return 0;
 
@@ -1291,21 +1323,21 @@ static int multipath_end_io(struct dm_target *ti, struct request *clone,
 			    int error, union map_info *map_context)
 {
 	struct multipath *m = ti->private;
-	struct dm_mpath_io *mpio = map_context->ptr;
+	struct dm_mpath_io *mpio = get_mpio(map_context);
 	struct pgpath *pgpath;
 	struct path_selector *ps;
 	int r;
 
 	BUG_ON(!mpio);
 
-	r  = do_end_io(m, clone, error, mpio);
+	r = do_end_io(m, clone, error, mpio);
 	pgpath = mpio->pgpath;
 	if (pgpath) {
 		ps = &pgpath->pg->ps;
 		if (ps->type->end_io)
 			ps->type->end_io(ps, &pgpath->path, mpio->nr_bytes);
 	}
-	clear_mapinfo(m, map_context);
+	clear_request_fn_mpio(m, map_context);
 
 	return r;
 }
@@ -1318,7 +1350,7 @@ static int multipath_end_io(struct dm_target *ti, struct request *clone,
  */
 static void multipath_presuspend(struct dm_target *ti)
 {
-	struct multipath *m = (struct multipath *) ti->private;
+	struct multipath *m = ti->private;
 
 	queue_if_no_path(m, 0, 1);
 }
@@ -1337,7 +1369,7 @@ static void multipath_postsuspend(struct dm_target *ti)
  */
 static void multipath_resume(struct dm_target *ti)
 {
-	struct multipath *m = (struct multipath *) ti->private;
+	struct multipath *m = ti->private;
 	unsigned long flags;
 
 	spin_lock_irqsave(&m->lock, flags);
@@ -1366,7 +1398,7 @@ static void multipath_status(struct dm_target *ti, status_type_t type,
 {
 	int sz = 0;
 	unsigned long flags;
-	struct multipath *m = (struct multipath *) ti->private;
+	struct multipath *m = ti->private;
 	struct priority_group *pg;
 	struct pgpath *p;
 	unsigned pg_num;
@@ -1474,7 +1506,7 @@ static int multipath_message(struct dm_target *ti, unsigned argc, char **argv)
 {
 	int r = -EINVAL;
 	struct dm_dev *dev;
-	struct multipath *m = (struct multipath *) ti->private;
+	struct multipath *m = ti->private;
 	action_fn action;
 
 	mutex_lock(&m->work_mutex);
@@ -1684,7 +1716,8 @@ out:
  *---------------------------------------------------------------*/
 static struct target_type multipath_target = {
 	.name = "multipath",
-	.version = {1, 10, 0},
+	.version = {1, 11, 0},
+	.features = DM_TARGET_SINGLETON | DM_TARGET_IMMUTABLE,
 	.module = THIS_MODULE,
 	.ctr = multipath_ctr,
 	.dtr = multipath_dtr,

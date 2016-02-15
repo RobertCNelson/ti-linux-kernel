@@ -106,14 +106,6 @@ struct dm_rq_clone_bio_info {
 	struct bio clone;
 };
 
-union map_info *dm_get_rq_mapinfo(struct request *rq)
-{
-	if (rq && rq->end_io_data)
-		return &((struct dm_rq_target_io *)rq->end_io_data)->info;
-	return NULL;
-}
-EXPORT_SYMBOL_GPL(dm_get_rq_mapinfo);
-
 #define MINOR_ALLOCED ((void *)-1)
 
 /*
@@ -162,6 +154,7 @@ struct mapped_device {
 	/* Protect queue and type against concurrent access. */
 	struct mutex type_lock;
 
+	struct dm_target *immutable_target;
 	struct target_type *immutable_target_type;
 
 	struct gendisk *disk;
@@ -230,8 +223,9 @@ struct mapped_device {
 	ktime_t last_rq_start_time;
 
 	/* for blk-mq request-based DM support */
-	struct blk_mq_tag_set tag_set;
-	bool use_blk_mq;
+	struct blk_mq_tag_set *tag_set;
+	bool use_blk_mq:1;
+	bool init_tio_pdu:1;
 };
 
 #ifdef CONFIG_DM_MQ_DEFAULT
@@ -240,10 +234,17 @@ static bool use_blk_mq = true;
 static bool use_blk_mq = false;
 #endif
 
+#define DM_MQ_NR_HW_QUEUES 1
+#define DM_MQ_QUEUE_DEPTH 2048
+
+static unsigned blk_mq_nr_hw_queues = DM_MQ_NR_HW_QUEUES;
+static unsigned blk_mq_queue_depth = DM_MQ_QUEUE_DEPTH;
+
 bool dm_use_blk_mq(struct mapped_device *md)
 {
 	return md->use_blk_mq;
 }
+EXPORT_SYMBOL_GPL(dm_use_blk_mq);
 
 /*
  * For mempools pre-allocation at the table loading time.
@@ -309,6 +310,17 @@ unsigned dm_get_reserved_rq_based_ios(void)
 				     RESERVED_REQUEST_BASED_IOS, RESERVED_MAX_IOS);
 }
 EXPORT_SYMBOL_GPL(dm_get_reserved_rq_based_ios);
+
+unsigned dm_get_blk_mq_nr_hw_queues(void)
+{
+	return __dm_get_module_param(&blk_mq_nr_hw_queues, 1, 32);
+}
+
+unsigned dm_get_blk_mq_queue_depth(void)
+{
+	return __dm_get_module_param(&blk_mq_queue_depth,
+				     DM_MQ_QUEUE_DEPTH, BLK_MQ_MAX_DEPTH);
+}
 
 static int __init local_init(void)
 {
@@ -1109,12 +1121,8 @@ static void rq_completed(struct mapped_device *md, int rw, bool run_queue)
 	 * back into ->request_fn() could deadlock attempting to grab the
 	 * queue lock again.
 	 */
-	if (run_queue) {
-		if (md->queue->mq_ops)
-			blk_mq_run_hw_queues(md->queue, true);
-		else
-			blk_run_queue_async(md->queue);
-	}
+	if (!md->queue->mq_ops && run_queue)
+		blk_run_queue_async(md->queue);
 
 	/*
 	 * dm_put() must be at the end of this function. See the comment above
@@ -1334,7 +1342,10 @@ static void dm_complete_request(struct request *rq, int error)
 	struct dm_rq_target_io *tio = tio_from_request(rq);
 
 	tio->error = error;
-	blk_complete_request(rq);
+	if (!rq->q->mq_ops)
+		blk_complete_request(rq);
+	else
+		blk_mq_complete_request(rq, rq->errors);
 }
 
 /*
@@ -1841,6 +1852,8 @@ static struct request *clone_rq(struct request *rq, struct mapped_device *md,
 				struct dm_rq_target_io *tio, gfp_t gfp_mask)
 {
 	/*
+	 * Create clone for use with .request_fn request_queue
+	 *
 	 * Do not allocate a clone if tio->clone was already set
 	 * (see: dm_mq_queue_rq).
 	 */
@@ -1875,7 +1888,13 @@ static void init_tio(struct dm_rq_target_io *tio, struct request *rq,
 	tio->clone = NULL;
 	tio->orig = rq;
 	tio->error = 0;
-	memset(&tio->info, 0, sizeof(tio->info));
+	/*
+	 * Avoid initializing info for blk-mq; it passes
+	 * target-specific data through info.ptr
+	 * (see: dm_mq_init_request)
+	 */
+	if (!md->init_tio_pdu)
+		memset(&tio->info, 0, sizeof(tio->info));
 	if (md->kworker_task)
 		init_kthread_work(&tio->work, map_tio_request);
 }
@@ -2077,12 +2096,18 @@ static bool dm_request_peeked_before_merge_deadline(struct mapped_device *md)
 static void dm_request_fn(struct request_queue *q)
 {
 	struct mapped_device *md = q->queuedata;
-	int srcu_idx;
-	struct dm_table *map = dm_get_live_table(md, &srcu_idx);
-	struct dm_target *ti;
+	struct dm_target *ti = md->immutable_target;
 	struct request *rq;
 	struct dm_rq_target_io *tio;
-	sector_t pos;
+	sector_t pos = 0;
+
+	if (unlikely(!ti)) {
+		int srcu_idx;
+		struct dm_table *map = dm_get_live_table(md, &srcu_idx);
+
+		ti = dm_table_find_target(map, pos);
+		dm_put_live_table(md, srcu_idx);
+	}
 
 	/*
 	 * For suspend, check blk_queue_stopped() and increment
@@ -2093,32 +2118,20 @@ static void dm_request_fn(struct request_queue *q)
 	while (!blk_queue_stopped(q)) {
 		rq = blk_peek_request(q);
 		if (!rq)
-			goto out;
+			return;
 
 		/* always use block 0 to find the target for flushes for now */
 		pos = 0;
 		if (!(rq->cmd_flags & REQ_FLUSH))
 			pos = blk_rq_pos(rq);
 
-		ti = dm_table_find_target(map, pos);
-		if (!dm_target_is_valid(ti)) {
-			/*
-			 * Must perform setup, that rq_completed() requires,
-			 * before calling dm_kill_unmapped_request
-			 */
-			DMERR_LIMIT("request attempted access beyond the end of device");
-			dm_start_request(md, rq);
-			dm_kill_unmapped_request(rq, -EIO);
-			continue;
+		if ((dm_request_peeked_before_merge_deadline(md) &&
+		     md_in_flight(md) && rq->bio && rq->bio->bi_vcnt == 1 &&
+		     md->last_rq_pos == pos && md->last_rq_rw == rq_data_dir(rq)) ||
+		    (ti->type->busy && ti->type->busy(ti))) {
+			blk_delay_queue(q, HZ / 100);
+			return;
 		}
-
-		if (dm_request_peeked_before_merge_deadline(md) &&
-		    md_in_flight(md) && rq->bio && rq->bio->bi_vcnt == 1 &&
-		    md->last_rq_pos == pos && md->last_rq_rw == rq_data_dir(rq))
-			goto delay_and_out;
-
-		if (ti->type->busy && ti->type->busy(ti))
-			goto delay_and_out;
 
 		dm_start_request(md, rq);
 
@@ -2128,13 +2141,6 @@ static void dm_request_fn(struct request_queue *q)
 		queue_kthread_work(&md->kworker, &tio->work);
 		BUG_ON(!irqs_disabled());
 	}
-
-	goto out;
-
-delay_and_out:
-	blk_delay_queue(q, HZ / 100);
-out:
-	dm_put_live_table(md, srcu_idx);
 }
 
 static int dm_any_congested(void *congested_data, int bdi_bits)
@@ -2144,19 +2150,18 @@ static int dm_any_congested(void *congested_data, int bdi_bits)
 	struct dm_table *map;
 
 	if (!test_bit(DMF_BLOCK_IO_FOR_SUSPEND, &md->flags)) {
-		map = dm_get_live_table_fast(md);
-		if (map) {
+		if (dm_request_based(md)) {
 			/*
-			 * Request-based dm cares about only own queue for
-			 * the query about congestion status of request_queue
+			 * With request-based DM we only need to check the
+			 * top-level queue for congestion.
 			 */
-			if (dm_request_based(md))
-				r = md->queue->backing_dev_info.wb.state &
-				    bdi_bits;
-			else
+			r = md->queue->backing_dev_info.wb.state & bdi_bits;
+		} else {
+			map = dm_get_live_table_fast(md);
+			if (map)
 				r = dm_table_any_congested(map, bdi_bits);
+			dm_put_live_table_fast(md);
 		}
-		dm_put_live_table_fast(md);
 	}
 
 	return r;
@@ -2308,6 +2313,7 @@ static struct mapped_device *alloc_dev(int minor)
 		goto bad_io_barrier;
 
 	md->use_blk_mq = use_blk_mq;
+	md->init_tio_pdu = false;
 	md->type = DM_TYPE_NONE;
 	mutex_init(&md->suspend_lock);
 	mutex_init(&md->type_lock);
@@ -2391,8 +2397,10 @@ static void free_dev(struct mapped_device *md)
 	unlock_fs(md);
 
 	cleanup_mapped_device(md);
-	if (md->use_blk_mq)
-		blk_mq_free_tag_set(&md->tag_set);
+	if (md->tag_set) {
+		blk_mq_free_tag_set(md->tag_set);
+		kfree(md->tag_set);
+	}
 
 	free_table_devices(&md->table_devices);
 	dm_stats_cleanup(&md->stats);
@@ -2500,8 +2508,15 @@ static struct dm_table *__bind(struct mapped_device *md, struct dm_table *t,
 	 * This must be done before setting the queue restrictions,
 	 * because request-based dm may be run just after the setting.
 	 */
-	if (dm_table_request_based(t))
+	if (dm_table_request_based(t)) {
 		stop_queue(q);
+		/*
+		 * Leverage the fact that request-based DM targets are
+		 * immutable singletons and establish md->immutable_target
+		 * - used to optimize both dm_request_fn and dm_mq_queue_rq
+		 */
+		md->immutable_target = dm_table_get_immutable_target(t);
+	}
 
 	__bind_mempools(md, t);
 
@@ -2572,7 +2587,6 @@ void dm_set_md_type(struct mapped_device *md, unsigned type)
 
 unsigned dm_get_md_type(struct mapped_device *md)
 {
-	BUG_ON(!mutex_is_locked(&md->type_lock));
 	return md->type;
 }
 
@@ -2640,6 +2654,11 @@ static int dm_mq_init_request(void *data, struct request *rq,
 	 */
 	tio->md = md;
 
+	if (md->init_tio_pdu) {
+		/* target-specific per-io data is immediately after the tio */
+		tio->info.ptr = tio + 1;
+	}
+
 	return 0;
 }
 
@@ -2649,28 +2668,15 @@ static int dm_mq_queue_rq(struct blk_mq_hw_ctx *hctx,
 	struct request *rq = bd->rq;
 	struct dm_rq_target_io *tio = blk_mq_rq_to_pdu(rq);
 	struct mapped_device *md = tio->md;
-	int srcu_idx;
-	struct dm_table *map = dm_get_live_table(md, &srcu_idx);
-	struct dm_target *ti;
-	sector_t pos;
+	struct dm_target *ti = md->immutable_target;
 
-	/* always use block 0 to find the target for flushes for now */
-	pos = 0;
-	if (!(rq->cmd_flags & REQ_FLUSH))
-		pos = blk_rq_pos(rq);
+	if (unlikely(!ti)) {
+		int srcu_idx;
+		struct dm_table *map = dm_get_live_table(md, &srcu_idx);
 
-	ti = dm_table_find_target(map, pos);
-	if (!dm_target_is_valid(ti)) {
+		ti = dm_table_find_target(map, 0);
 		dm_put_live_table(md, srcu_idx);
-		DMERR_LIMIT("request attempted access beyond the end of device");
-		/*
-		 * Must perform setup, that rq_completed() requires,
-		 * before returning BLK_MQ_RQ_QUEUE_ERROR
-		 */
-		dm_start_request(md, rq);
-		return BLK_MQ_RQ_QUEUE_ERROR;
 	}
-	dm_put_live_table(md, srcu_idx);
 
 	if (ti->type->busy && ti->type->busy(ti))
 		return BLK_MQ_RQ_QUEUE_BUSY;
@@ -2686,10 +2692,15 @@ static int dm_mq_queue_rq(struct blk_mq_hw_ctx *hctx,
 	 */
 	tio->ti = ti;
 
-	/* Clone the request if underlying devices aren't blk-mq */
-	if (dm_table_get_type(map) == DM_TYPE_REQUEST_BASED) {
-		/* clone request is allocated at the end of the pdu */
-		tio->clone = (void *)blk_mq_rq_to_pdu(rq) + sizeof(struct dm_rq_target_io);
+	/*
+	 * Both the table and md type cannot change after initial table load
+	 */
+	if (dm_get_md_type(md) == DM_TYPE_REQUEST_BASED) {
+		/*
+		 * Clone the request if underlying devices aren't blk-mq
+		 * - clone request is allocated at the end of the pdu
+		 */
+		tio->clone = blk_mq_rq_to_pdu(rq) + sizeof(*tio) + ti->per_io_data_size;
 		(void) clone_rq(rq, md, tio, GFP_ATOMIC);
 		queue_kthread_work(&md->kworker, &tio->work);
 	} else {
@@ -2712,30 +2723,40 @@ static struct blk_mq_ops dm_mq_ops = {
 	.init_request = dm_mq_init_request,
 };
 
-static int dm_init_request_based_blk_mq_queue(struct mapped_device *md)
+static int dm_init_request_based_blk_mq_queue(struct mapped_device *md,
+					      struct dm_target *immutable_tgt)
 {
 	unsigned md_type = dm_get_md_type(md);
 	struct request_queue *q;
 	int err;
 
-	memset(&md->tag_set, 0, sizeof(md->tag_set));
-	md->tag_set.ops = &dm_mq_ops;
-	md->tag_set.queue_depth = BLKDEV_MAX_RQ;
-	md->tag_set.numa_node = NUMA_NO_NODE;
-	md->tag_set.flags = BLK_MQ_F_SHOULD_MERGE | BLK_MQ_F_SG_MERGE;
-	md->tag_set.nr_hw_queues = 1;
+	md->tag_set = kzalloc(sizeof(struct blk_mq_tag_set), GFP_KERNEL);
+	if (!md->tag_set)
+		return -ENOMEM;
+
+	md->tag_set->ops = &dm_mq_ops;
+	md->tag_set->queue_depth = dm_get_blk_mq_queue_depth();
+	md->tag_set->numa_node = NUMA_NO_NODE;
+	md->tag_set->flags = BLK_MQ_F_SHOULD_MERGE | BLK_MQ_F_SG_MERGE;
+	md->tag_set->nr_hw_queues = dm_get_blk_mq_nr_hw_queues();
+	md->tag_set->driver_data = md;
+
+	md->tag_set->cmd_size = sizeof(struct dm_rq_target_io);
+	if (immutable_tgt && immutable_tgt->per_io_data_size) {
+		/* any target-specific per-io data is immediately after the tio */
+		md->tag_set->cmd_size += immutable_tgt->per_io_data_size;
+		md->init_tio_pdu = true;
+	}
 	if (md_type == DM_TYPE_REQUEST_BASED) {
-		/* make the memory for non-blk-mq clone part of the pdu */
-		md->tag_set.cmd_size = sizeof(struct dm_rq_target_io) + sizeof(struct request);
-	} else
-		md->tag_set.cmd_size = sizeof(struct dm_rq_target_io);
-	md->tag_set.driver_data = md;
+		/* put the memory for non-blk-mq clone at the end of the pdu */
+		md->tag_set->cmd_size += sizeof(struct request);
+	}
 
-	err = blk_mq_alloc_tag_set(&md->tag_set);
+	err = blk_mq_alloc_tag_set(md->tag_set);
 	if (err)
-		return err;
+		goto out_kfree_tag_set;
 
-	q = blk_mq_init_allocated_queue(&md->tag_set, md->queue);
+	q = blk_mq_init_allocated_queue(md->tag_set, md->queue);
 	if (IS_ERR(q)) {
 		err = PTR_ERR(q);
 		goto out_tag_set;
@@ -2752,7 +2773,10 @@ static int dm_init_request_based_blk_mq_queue(struct mapped_device *md)
 	return 0;
 
 out_tag_set:
-	blk_mq_free_tag_set(&md->tag_set);
+	blk_mq_free_tag_set(md->tag_set);
+out_kfree_tag_set:
+	kfree(md->tag_set);
+
 	return err;
 }
 
@@ -2767,7 +2791,7 @@ static unsigned filter_md_type(unsigned type, struct mapped_device *md)
 /*
  * Setup the DM device's queue based on md's type
  */
-int dm_setup_md_queue(struct mapped_device *md)
+int dm_setup_md_queue(struct mapped_device *md, struct dm_table *t)
 {
 	int r;
 	unsigned md_type = filter_md_type(dm_get_md_type(md), md);
@@ -2781,7 +2805,7 @@ int dm_setup_md_queue(struct mapped_device *md)
 		}
 		break;
 	case DM_TYPE_MQ_REQUEST_BASED:
-		r = dm_init_request_based_blk_mq_queue(md);
+		r = dm_init_request_based_blk_mq_queue(md, dm_table_get_immutable_target(t));
 		if (r) {
 			DMWARN("Cannot initialize queue for request-based blk-mq mapped device");
 			return r;
@@ -3480,7 +3504,7 @@ int dm_noflush_suspending(struct dm_target *ti)
 EXPORT_SYMBOL_GPL(dm_noflush_suspending);
 
 struct dm_md_mempools *dm_alloc_md_mempools(struct mapped_device *md, unsigned type,
-					    unsigned integrity, unsigned per_bio_data_size)
+					    unsigned integrity, unsigned per_io_data_size)
 {
 	struct dm_md_mempools *pools = kzalloc(sizeof(*pools), GFP_KERNEL);
 	struct kmem_cache *cachep = NULL;
@@ -3496,7 +3520,7 @@ struct dm_md_mempools *dm_alloc_md_mempools(struct mapped_device *md, unsigned t
 	case DM_TYPE_BIO_BASED:
 		cachep = _io_cache;
 		pool_size = dm_get_reserved_bio_based_ios();
-		front_pad = roundup(per_bio_data_size, __alignof__(struct dm_target_io)) + offsetof(struct dm_target_io, clone);
+		front_pad = roundup(per_io_data_size, __alignof__(struct dm_target_io)) + offsetof(struct dm_target_io, clone);
 		break;
 	case DM_TYPE_REQUEST_BASED:
 		cachep = _rq_tio_cache;
@@ -3509,8 +3533,7 @@ struct dm_md_mempools *dm_alloc_md_mempools(struct mapped_device *md, unsigned t
 		if (!pool_size)
 			pool_size = dm_get_reserved_rq_based_ios();
 		front_pad = offsetof(struct dm_rq_clone_bio_info, clone);
-		/* per_bio_data_size is not used. See __bind_mempools(). */
-		WARN_ON(per_bio_data_size != 0);
+		/* per_io_data_size is used for blk-mq pdu at queue allocation */
 		break;
 	default:
 		BUG();
@@ -3698,6 +3721,12 @@ MODULE_PARM_DESC(reserved_rq_based_ios, "Reserved IOs in request-based mempools"
 
 module_param(use_blk_mq, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(use_blk_mq, "Use block multiqueue for request-based DM devices");
+
+module_param(blk_mq_nr_hw_queues, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(blk_mq_nr_hw_queues, "Number of hardware queues for blk-mq request-based DM devices");
+
+module_param(blk_mq_queue_depth, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(blk_mq_queue_depth, "Queue depth for blk-mq request-based DM devices");
 
 MODULE_DESCRIPTION(DM_NAME " driver");
 MODULE_AUTHOR("Joe Thornber <dm-devel@redhat.com>");
