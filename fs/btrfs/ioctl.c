@@ -2097,8 +2097,6 @@ static noinline int search_ioctl(struct inode *inode,
 		key.offset = (u64)-1;
 		root = btrfs_read_fs_root_no_name(info, &key);
 		if (IS_ERR(root)) {
-			btrfs_err(info, "could not find root %llu",
-			       sk->tree_id);
 			btrfs_free_path(path);
 			return -ENOENT;
 		}
@@ -2960,8 +2958,8 @@ static int btrfs_cmp_data_prepare(struct inode *src, u64 loff,
 	 * of the array is bounded by len, which is in turn bounded by
 	 * BTRFS_MAX_DEDUPE_LEN.
 	 */
-	src_pgarr = kzalloc(num_pages * sizeof(struct page *), GFP_NOFS);
-	dst_pgarr = kzalloc(num_pages * sizeof(struct page *), GFP_NOFS);
+	src_pgarr = kcalloc(num_pages, sizeof(struct page *), GFP_KERNEL);
+	dst_pgarr = kcalloc(num_pages, sizeof(struct page *), GFP_KERNEL);
 	if (!src_pgarr || !dst_pgarr) {
 		kfree(src_pgarr);
 		kfree(dst_pgarr);
@@ -3889,8 +3887,9 @@ static noinline int btrfs_clone_files(struct file *file, struct file *file_src,
 	 * Truncate page cache pages so that future reads will see the cloned
 	 * data immediately and not the previous data.
 	 */
-	truncate_inode_pages_range(&inode->i_data, destoff,
-				   PAGE_CACHE_ALIGN(destoff + len) - 1);
+	truncate_inode_pages_range(&inode->i_data,
+				round_down(destoff, PAGE_CACHE_SIZE),
+				round_up(destoff + len, PAGE_CACHE_SIZE) - 1);
 out_unlock:
 	if (!same_inode)
 		btrfs_double_inode_unlock(src, inode);

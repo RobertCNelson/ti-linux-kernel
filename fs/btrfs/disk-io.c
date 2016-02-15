@@ -1296,9 +1296,10 @@ static void __setup_root(u32 nodesize, u32 sectorsize, u32 stripesize,
 	spin_lock_init(&root->root_item_lock);
 }
 
-static struct btrfs_root *btrfs_alloc_root(struct btrfs_fs_info *fs_info)
+static struct btrfs_root *btrfs_alloc_root(struct btrfs_fs_info *fs_info,
+		gfp_t flags)
 {
-	struct btrfs_root *root = kzalloc(sizeof(*root), GFP_NOFS);
+	struct btrfs_root *root = kzalloc(sizeof(*root), flags);
 	if (root)
 		root->fs_info = fs_info;
 	return root;
@@ -1310,7 +1311,7 @@ struct btrfs_root *btrfs_alloc_dummy_root(void)
 {
 	struct btrfs_root *root;
 
-	root = btrfs_alloc_root(NULL);
+	root = btrfs_alloc_root(NULL, GFP_KERNEL);
 	if (!root)
 		return ERR_PTR(-ENOMEM);
 	__setup_root(4096, 4096, 4096, root, NULL, 1);
@@ -1332,7 +1333,7 @@ struct btrfs_root *btrfs_create_tree(struct btrfs_trans_handle *trans,
 	int ret = 0;
 	uuid_le uuid;
 
-	root = btrfs_alloc_root(fs_info);
+	root = btrfs_alloc_root(fs_info, GFP_KERNEL);
 	if (!root)
 		return ERR_PTR(-ENOMEM);
 
@@ -1408,7 +1409,7 @@ static struct btrfs_root *alloc_log_tree(struct btrfs_trans_handle *trans,
 	struct btrfs_root *tree_root = fs_info->tree_root;
 	struct extent_buffer *leaf;
 
-	root = btrfs_alloc_root(fs_info);
+	root = btrfs_alloc_root(fs_info, GFP_NOFS);
 	if (!root)
 		return ERR_PTR(-ENOMEM);
 
@@ -1506,7 +1507,7 @@ static struct btrfs_root *btrfs_read_tree_root(struct btrfs_root *tree_root,
 	if (!path)
 		return ERR_PTR(-ENOMEM);
 
-	root = btrfs_alloc_root(fs_info);
+	root = btrfs_alloc_root(fs_info, GFP_NOFS);
 	if (!root) {
 		ret = -ENOMEM;
 		goto alloc_fail;
@@ -2385,7 +2386,7 @@ static int btrfs_replay_log(struct btrfs_fs_info *fs_info,
 		return -EIO;
 	}
 
-	log_tree_root = btrfs_alloc_root(fs_info);
+	log_tree_root = btrfs_alloc_root(fs_info, GFP_KERNEL);
 	if (!log_tree_root)
 		return -ENOMEM;
 
@@ -2510,8 +2511,8 @@ int open_ctree(struct super_block *sb,
 	int backup_index = 0;
 	int max_active;
 
-	tree_root = fs_info->tree_root = btrfs_alloc_root(fs_info);
-	chunk_root = fs_info->chunk_root = btrfs_alloc_root(fs_info);
+	tree_root = fs_info->tree_root = btrfs_alloc_root(fs_info, GFP_KERNEL);
+	chunk_root = fs_info->chunk_root = btrfs_alloc_root(fs_info, GFP_KERNEL);
 	if (!tree_root || !chunk_root) {
 		err = -ENOMEM;
 		goto fail;
@@ -2622,7 +2623,7 @@ int open_ctree(struct super_block *sb,
 	INIT_LIST_HEAD(&fs_info->ordered_roots);
 	spin_lock_init(&fs_info->ordered_root_lock);
 	fs_info->delayed_root = kmalloc(sizeof(struct btrfs_delayed_root),
-					GFP_NOFS);
+					GFP_KERNEL);
 	if (!fs_info->delayed_root) {
 		err = -ENOMEM;
 		goto fail_iput;
@@ -2750,7 +2751,7 @@ int open_ctree(struct super_block *sb,
 	 */
 	fs_info->compress_type = BTRFS_COMPRESS_ZLIB;
 
-	ret = btrfs_parse_options(tree_root, options);
+	ret = btrfs_parse_options(tree_root, options, sb->s_flags);
 	if (ret) {
 		err = ret;
 		goto fail_alloc;
@@ -3029,8 +3030,9 @@ retry_root_backup:
 	if (ret)
 		goto fail_trans_kthread;
 
-	/* do not make disk changes in broken FS */
-	if (btrfs_super_log_root(disk_super) != 0) {
+	/* do not make disk changes in broken FS or nologreplay is given */
+	if (btrfs_super_log_root(disk_super) != 0 &&
+	    !btrfs_test_opt(tree_root, NOLOGREPLAY)) {
 		ret = btrfs_replay_log(fs_info, fs_devices);
 		if (ret) {
 			err = ret;
@@ -3146,6 +3148,12 @@ retry_root_backup:
 
 	fs_info->open = 1;
 
+	/*
+	 * backuproot only affect mount behavior, and if open_ctree succeeded,
+	 * no need to keep the flag
+	 */
+	btrfs_clear_opt(fs_info->mount_opt, USEBACKUPROOT);
+
 	return 0;
 
 fail_qgroup:
@@ -3200,7 +3208,7 @@ fail:
 	return err;
 
 recovery_tree_root:
-	if (!btrfs_test_opt(tree_root, RECOVERY))
+	if (!btrfs_test_opt(tree_root, USEBACKUPROOT))
 		goto fail_tree_roots;
 
 	free_root_pointers(fs_info, 0);
