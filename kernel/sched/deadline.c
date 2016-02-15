@@ -935,6 +935,9 @@ static void enqueue_task_dl(struct rq *rq, struct task_struct *p, int flags)
 	struct task_struct *pi_task = rt_mutex_get_top_task(p);
 	struct sched_dl_entity *pi_se = &p->dl;
 
+	/* Kick cpufreq (see the comment in linux/cpufreq.h). */
+	cpufreq_trigger_update(rq_clock(rq));
+
 	/*
 	 * Use the scheduling parameters of the top pi-waiter
 	 * task if we have one and its (absolute) deadline is
@@ -1205,6 +1208,9 @@ static void task_tick_dl(struct rq *rq, struct task_struct *p, int queued)
 	if (hrtick_enabled(rq) && queued && p->dl.runtime > 0 &&
 	    is_leftmost(p, &rq->dl))
 		start_hrtick_dl(rq, p);
+
+	/* Kick cpufreq (see the comment in linux/cpufreq.h). */
+	cpufreq_trigger_update(rq_clock(rq));
 }
 
 static void task_fork_dl(struct task_struct *p)
