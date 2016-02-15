@@ -203,10 +203,8 @@ void __init plat_mem_setup(void)
 	fdt_start = fw_getenvl("fdt_start");
 	if (fdt_start)
 		__dt_setup_arch((void *)KSEG0ADDR(fdt_start));
-#ifdef CONFIG_BUILTIN_DTB
-	else
-		__dt_setup_arch(__dtb_start);
-#endif
+	else if (fw_arg0 == -2)
+		__dt_setup_arch((void *)KSEG0ADDR(fw_arg1));
 
 	ath79_reset_base = ioremap_nocache(AR71XX_RESET_BASE,
 					   AR71XX_RESET_SIZE);
@@ -215,10 +213,11 @@ void __init plat_mem_setup(void)
 	ath79_detect_sys_type();
 	ath79_ddr_ctrl_init();
 
-	if (mips_machtype != ATH79_MACH_GENERIC_OF)
+	if (mips_machtype != ATH79_MACH_GENERIC_OF) {
 		detect_memory_region(0, ATH79_MEM_SIZE_MIN, ATH79_MEM_SIZE_MAX);
-
-	_machine_restart = ath79_restart;
+		/* OF machines should use the reset driver */
+		_machine_restart = ath79_restart;
+	}
 	_machine_halt = ath79_halt;
 	pm_power_off = ath79_halt;
 }
