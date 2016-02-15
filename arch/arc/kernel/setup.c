@@ -439,7 +439,6 @@ void __init setup_arch(char **cmdline_p)
 
 static int __init customize_machine(void)
 {
-	of_clk_init(NULL);
 	/*
 	 * Traverses flattened DeviceTree - registering platform devices
 	 * (if any) complete with their resources
