@@ -1257,6 +1257,9 @@ enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct sched_rt_entity *rt_se = &p->rt;
 
+	/* Kick cpufreq (see the comment in linux/cpufreq.h). */
+	cpufreq_trigger_update(rq_clock(rq));
+
 	if (flags & ENQUEUE_WAKEUP)
 		rt_se->timeout = 0;
 
@@ -2213,6 +2216,9 @@ static void task_tick_rt(struct rq *rq, struct task_struct *p, int queued)
 	update_curr_rt(rq);
 
 	watchdog(rq, p);
+
+	/* Kick cpufreq (see the comment in linux/cpufreq.h). */
+	cpufreq_trigger_update(rq_clock(rq));
 
 	/*
 	 * RR tasks need a special form of timeslice management.
