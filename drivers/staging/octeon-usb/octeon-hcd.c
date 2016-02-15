@@ -1048,7 +1048,7 @@ static struct cvmx_usb_port_status cvmx_usb_get_status(
 	result.port_speed = usbc_hprt.s.prtspd;
 	result.connected = usbc_hprt.s.prtconnsts;
 	result.connect_change =
-		(result.connected != usb->port_status.connected);
+		result.connected != usb->port_status.connected;
 
 	return result;
 }
@@ -2006,7 +2006,8 @@ static void octeon_usb_urb_complete_callback(struct cvmx_usb_state *usb,
 	urb->hcpriv = NULL;
 
 	/* For Isochronous transactions we need to update the URB packet status
-	   list from data in our private copy */
+	 * list from data in our private copy
+	 */
 	if (usb_pipetype(urb->pipe) == PIPE_ISOCHRONOUS) {
 		int i;
 		/*
