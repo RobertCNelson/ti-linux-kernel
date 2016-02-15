@@ -177,7 +177,7 @@ static int pbias_regulator_probe(struct platform_device *pdev)
 			return -EINVAL;
 
 		offset = res->start;
-		dev_WARN(&pdev->dev,
+		dev_WARN(&pdev->dev, true,
 			 "using legacy dt data for pbias offset\n");
 	}
 

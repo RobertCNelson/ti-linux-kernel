@@ -226,7 +226,8 @@ static void devm_memremap_pages_release(struct device *dev, void *data)
 	struct dev_pagemap *pgmap = &page_map->pgmap;
 
 	if (percpu_ref_tryget_live(pgmap->ref)) {
-		dev_WARN(dev, "%s: page mapping is still live!\n", __func__);
+		dev_WARN(dev, true, "%s: page mapping is still live!\n",
+			 __func__);
 		percpu_ref_put(pgmap->ref);
 	}
 
