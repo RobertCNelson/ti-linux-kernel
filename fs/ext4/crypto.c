@@ -467,3 +467,47 @@ uint32_t ext4_validate_encryption_key_size(uint32_t mode, uint32_t size)
 		return size;
 	return 0;
 }
+
+/*
+ * Validate dentries for encrypted directories to make sure we aren't
+ * potentially caching stale data after a key has been added or
+ * removed.
+ */
+static int ext4_d_revalidate(struct dentry *dentry, unsigned int flags)
+{
+	struct inode *dir = d_inode(dentry->d_parent);
+	struct ext4_crypt_info *ci = EXT4_I(dir)->i_crypt_info;
+	int inode_has_key, encrypted_filename;
+
+	if (!ext4_encrypted_inode(dir))
+		return 0;
+
+	if (ci && ci->ci_keyring_key &&
+	    (ci->ci_keyring_key->flags & ((1 << KEY_FLAG_INVALIDATED) |
+					  (1 << KEY_FLAG_REVOKED) |
+					  (1 << KEY_FLAG_DEAD))))
+		ci = NULL;
+
+	/* this should eventually be an flag in d_flags */
+	encrypted_filename = dentry->d_fsdata != NULL;
+	inode_has_key = (ci != NULL);
+
+	/*
+	 * If this is an encrypted file name, and it is a negative
+	 * dentry, it might be a valid name.  We can't check if the
+	 * key has since been made available due to locking reasons,
+	 * so we fail the validation so ext4_lookup() can do this
+	 * check.
+	 *
+	 * We also fail the validation if the dentry is for a
+	 * decrypted filename, but we no longer have the key.
+	 */
+	if ((encrypted_filename && d_is_negative(dentry)) ||
+	    (!encrypted_filename && !inode_has_key))
+		return 0;
+	return 1;
+}
+
+const struct dentry_operations ext4_encrypted_d_ops = {
+	.d_revalidate = ext4_d_revalidate,
+};
