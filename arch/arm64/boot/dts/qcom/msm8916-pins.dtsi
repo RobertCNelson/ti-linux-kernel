@@ -82,7 +82,7 @@
 		};
 		pinconf_cs {
 			pins = "gpio2";
-			drive-strength = <2>;
+			drive-strength = <16>;
 			bias-disable;
 			output-high;
 		};
@@ -110,13 +110,13 @@
 			pins = "gpio6";
 		};
 		pinconf {
-			pins = "gpio4", "gpio5", "gpio6", "gpio7";
+			pins = "gpio4", "gpio5", "gpio7";
 			drive-strength = <12>;
 			bias-disable;
 		};
 		pinconf_cs {
 			pins = "gpio6";
-			drive-strength = <2>;
+			drive-strength = <16>;
 			bias-disable;
 			output-high;
 		};
@@ -144,13 +144,13 @@
 			pins = "gpio10";
 		};
 		pinconf {
-			pins = "gpio8", "gpio9", "gpio10", "gpio11";
+			pins = "gpio8", "gpio9", "gpio11";
 			drive-strength = <12>;
 			bias-disable;
 		};
 		pinconf_cs {
 			pins = "gpio10";
-			drive-strength = <2>;
+			drive-strength = <16>;
 			bias-disable;
 			output-high;
 		};
@@ -178,13 +178,13 @@
 			pins = "gpio14";
 		};
 		pinconf {
-			pins = "gpio12", "gpio13", "gpio14", "gpio15";
+			pins = "gpio12", "gpio13", "gpio15";
 			drive-strength = <12>;
 			bias-disable;
 		};
 		pinconf_cs {
 			pins = "gpio14";
-			drive-strength = <2>;
+			drive-strength = <16>;
 			bias-disable;
 			output-high;
 		};
@@ -212,13 +212,13 @@
 			pins = "gpio18";
 		};
 		pinconf {
-			pins = "gpio16", "gpio17", "gpio18", "gpio19";
+			pins = "gpio16", "gpio17", "gpio19";
 			drive-strength = <12>;
 			bias-disable;
 		};
 		pinconf_cs {
 			pins = "gpio18";
-			drive-strength = <2>;
+			drive-strength = <16>;
 			bias-disable;
 			output-high;
 		};
@@ -246,13 +246,13 @@
 			pins = "gpio22";
 		};
 		pinconf {
-			pins = "gpio20", "gpio21", "gpio22", "gpio23";
+			pins = "gpio20", "gpio21", "gpio23";
 			drive-strength = <12>;
 			bias-disable;
 		};
 		pinconf_cs {
 			pins = "gpio22";
-			drive-strength = <2>;
+			drive-strength = <16>;
 			bias-disable;
 			output-high;
 		};
