@@ -207,8 +207,8 @@ static void ima_lsm_update_rules(void)
  *
  * Returns true on rule match, false on failure.
  */
-static bool ima_match_rules(struct ima_rule_entry *rule,
-			    struct inode *inode, enum ima_hooks func, int mask)
+static bool ima_match_rules(struct ima_rule_entry *rule, struct inode *inode,
+			    enum ima_hooks func, int mask)
 {
 	struct task_struct *tsk = current;
 	const struct cred *cred = current_cred();
@@ -289,7 +289,7 @@ retry:
  * In addition to knowing that we need to appraise the file in general,
  * we need to differentiate between calling hooks, for hook specific rules.
  */
-static int get_subaction(struct ima_rule_entry *rule, int func)
+static int get_subaction(struct ima_rule_entry *rule, enum ima_hooks func)
 {
 	if (!(rule->flags & IMA_FUNC))
 		return IMA_FILE_APPRAISE;
@@ -417,7 +417,7 @@ void __init ima_init_policy(void)
 }
 
 /* Make sure we have a valid policy, at least containing some rules. */
-int ima_check_policy()
+int ima_check_policy(void)
 {
 	if (list_empty(&ima_temp_rules))
 		return -EINVAL;
@@ -903,6 +903,40 @@ void ima_policy_stop(struct seq_file *m, void *v)
 #define mt(token)	mask_tokens[token]
 #define ft(token)	func_tokens[token]
 
+/*
+ * policy_func_show - display the ima_hooks policy rule
+ */
+static void policy_func_show(struct seq_file *m, enum ima_hooks func)
+{
+	char tbuf[64] = {0,};
+
+	switch (func) {
+	case FILE_CHECK:
+		seq_printf(m, pt(Opt_func), ft(func_file));
+		break;
+	case MMAP_CHECK:
+		seq_printf(m, pt(Opt_func), ft(func_mmap));
+		break;
+	case BPRM_CHECK:
+		seq_printf(m, pt(Opt_func), ft(func_bprm));
+		break;
+	case MODULE_CHECK:
+		seq_printf(m, pt(Opt_func), ft(func_module));
+		break;
+	case FIRMWARE_CHECK:
+		seq_printf(m, pt(Opt_func), ft(func_firmware));
+		break;
+	case POST_SETATTR:
+		seq_printf(m, pt(Opt_func), ft(func_post));
+		break;
+	default:
+		snprintf(tbuf, sizeof(tbuf), "%d", func);
+		seq_printf(m, pt(Opt_func), tbuf);
+		break;
+	}
+	seq_puts(m, " ");
+}
+
 int ima_policy_show(struct seq_file *m, void *v)
 {
 	struct ima_rule_entry *entry = v;
@@ -924,33 +958,8 @@ int ima_policy_show(struct seq_file *m, void *v)
 
 	seq_puts(m, " ");
 
-	if (entry->flags & IMA_FUNC) {
-		switch (entry->func) {
-		case FILE_CHECK:
-			seq_printf(m, pt(Opt_func), ft(func_file));
-			break;
-		case MMAP_CHECK:
-			seq_printf(m, pt(Opt_func), ft(func_mmap));
-			break;
-		case BPRM_CHECK:
-			seq_printf(m, pt(Opt_func), ft(func_bprm));
-			break;
-		case MODULE_CHECK:
-			seq_printf(m, pt(Opt_func), ft(func_module));
-			break;
-		case FIRMWARE_CHECK:
-			seq_printf(m, pt(Opt_func), ft(func_firmware));
-			break;
-		case POST_SETATTR:
-			seq_printf(m, pt(Opt_func), ft(func_post));
-			break;
-		default:
-			snprintf(tbuf, sizeof(tbuf), "%d", entry->func);
-			seq_printf(m, pt(Opt_func), tbuf);
-			break;
-		}
-		seq_puts(m, " ");
-	}
+	if (entry->flags & IMA_FUNC)
+		policy_func_show(m, entry->func);
 
 	if (entry->flags & IMA_MASK) {
 		if (entry->mask & MAY_EXEC)
