@@ -75,7 +75,10 @@ static int report__config(const char *var, const char *value, void *cb)
 		return 0;
 	}
 	if (!strcmp(var, "report.percent-limit")) {
-		rep->min_percent = strtof(value, NULL);
+		double pcnt = strtof(value, NULL);
+
+		rep->min_percent = pcnt;
+		callchain_param.min_percent = pcnt;
 		return 0;
 	}
 	if (!strcmp(var, "report.children")) {
@@ -504,7 +507,7 @@ static void report__output_resort(struct report *rep)
 	ui_progress__init(&prog, rep->nr_entries, "Sorting events for output...");
 
 	evlist__for_each(rep->session->evlist, pos)
-		hists__output_resort(evsel__hists(pos), &prog);
+		perf_evsel__output_resort(pos, &prog);
 
 	ui_progress__finish();
 }
@@ -633,8 +636,10 @@ parse_percent_limit(const struct option *opt, const char *str,
 		    int unset __maybe_unused)
 {
 	struct report *rep = opt->value;
+	double pcnt = strtof(str, NULL);
 
-	rep->min_percent = strtof(str, NULL);
+	rep->min_percent = pcnt;
+	callchain_param.min_percent = pcnt;
 	return 0;
 }
 
@@ -907,15 +912,6 @@ repeat:
 		symbol_conf.cumulate_callchain = false;
 	}
 
-	if (setup_sorting(session->evlist) < 0) {
-		if (sort_order)
-			parse_options_usage(report_usage, options, "s", 1);
-		if (field_order)
-			parse_options_usage(sort_order ? NULL : report_usage,
-					    options, "F", 1);
-		goto error;
-	}
-
 	/* Force tty output for header output and per-thread stat. */
 	if (report.header || report.header_only || report.show_threads)
 		use_browser = 0;
@@ -924,6 +920,15 @@ repeat:
 		setup_browser(true);
 	else
 		use_browser = 0;
+
+	if (setup_sorting(session->evlist) < 0) {
+		if (sort_order)
+			parse_options_usage(report_usage, options, "s", 1);
+		if (field_order)
+			parse_options_usage(sort_order ? NULL : report_usage,
+					    options, "F", 1);
+		goto error;
+	}
 
 	if (report.header || report.header_only) {
 		perf_session__fprintf_info(session, stdout,

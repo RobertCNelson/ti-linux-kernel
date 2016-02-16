@@ -343,5 +343,7 @@ int fetch_kernel_version(unsigned int *puint,
 #define KVER_PARAM(x)	KVER_VERSION(x), KVER_PATCHLEVEL(x), KVER_SUBLEVEL(x)
 
 const char *perf_tip(const char *dirpath);
+bool is_regular_file(const char *file);
+int fetch_current_timestamp(char *buf, size_t sz);
 
 #endif /* GIT_COMPAT_UTIL_H */
