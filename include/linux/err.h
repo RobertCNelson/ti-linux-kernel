@@ -18,7 +18,9 @@
 
 #ifndef __ASSEMBLY__
 
-#define IS_ERR_VALUE(x) unlikely((x) >= (unsigned long)-MAX_ERRNO)
+#define IS_ERR_VALUE(x) ((typeof(x))(-1) <= 0 \
+				? unlikely((x) <= -1) \
+				: unlikely((x) >= (typeof(x))-MAX_ERRNO))
 
 static inline void * __must_check ERR_PTR(long error)
 {

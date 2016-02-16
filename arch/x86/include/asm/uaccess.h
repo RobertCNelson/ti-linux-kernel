@@ -106,9 +106,8 @@ static inline bool __chk_range_not_ok(unsigned long addr, unsigned long size, un
 struct exception_table_entry {
 	int insn, fixup;
 };
-/* This is not the generic standard exception_table_entry format */
-#define ARCH_HAS_SORT_EXTABLE
-#define ARCH_HAS_SEARCH_EXTABLE
+
+#define ARCH_HAS_RELATIVE_EXTABLE
 
 extern int fixup_exception(struct pt_regs *regs);
 extern int early_fixup_exception(unsigned long *ip);
