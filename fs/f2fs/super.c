@@ -775,6 +775,7 @@ static void default_options(struct f2fs_sb_info *sbi)
 	set_opt(sbi, BG_GC);
 	set_opt(sbi, INLINE_DATA);
 	set_opt(sbi, EXTENT_CACHE);
+	set_opt(sbi, FLUSH_MERGE);
 
 #ifdef CONFIG_F2FS_FS_XATTR
 	set_opt(sbi, XATTR_USER);
