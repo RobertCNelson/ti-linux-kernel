@@ -317,9 +317,10 @@ void workingset_activation(struct page *page)
 	 * root_mem_cgroup even for !CONFIG_MEMCG.
 	 */
 	if (!mem_cgroup_disabled() && !memcg)
-		return;
+		goto out;
 	lruvec = mem_cgroup_zone_lruvec(page_zone(page), memcg);
 	atomic_long_inc(&lruvec->inactive_age);
+out:
 	unlock_page_memcg(memcg);
 }
 
