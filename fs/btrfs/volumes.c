@@ -1898,8 +1898,7 @@ int btrfs_rm_device(struct btrfs_root *root, char *device_path, u64 devid)
 	}
 
 out:
-	if (dev_name)
-		kfree(dev_name);
+	kfree(dev_name);
 
 	mutex_unlock(&uuid_mutex);
 	return ret;
