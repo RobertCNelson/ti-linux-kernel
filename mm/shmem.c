@@ -383,11 +383,6 @@ restart:
 
 		page = radix_tree_deref_slot(slot);
 
-		/*
-		 * This should only be possible to happen at index 0, so we
-		 * don't need to reset the counter, nor do we risk infinite
-		 * restarts.
-		 */
 		if (radix_tree_deref_retry(page)) {
 			slot = radix_tree_iter_retry(&iter);
 			continue;
