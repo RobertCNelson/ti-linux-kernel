@@ -444,6 +444,7 @@ SYSCALL_DEFINE3(mprotect, unsigned long, start, size_t, len,
 			error = -ENOMEM;
 			goto out;
 		}
+		prot = reqprot;
 	}
 out:
 	up_write(&current->mm->mmap_sem);
