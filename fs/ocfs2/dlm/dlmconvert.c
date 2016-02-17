@@ -213,8 +213,8 @@ grant:
 		memcpy(res->lvb, lock->lksb->lvb, DLM_LVB_LEN);
 
 	/*
-	 * move the lock to tail because it may be the only lock who has
-	 * a invalid lvb.
+	 * Move the lock to the tail because it may be the only lock which has
+	 * an invalid lvb.
 	 */
 	list_move_tail(&lock->list, &res->granted);
 
