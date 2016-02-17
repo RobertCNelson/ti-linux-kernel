@@ -592,8 +592,6 @@ __setup("surveillance=", surveillance_setup);
 
 static int __init rtasmsgs_setup(char *str)
 {
-	kstrtobool(str, &full_rtas_msgs);
-
-	return 1;
+	return (kstrtobool(str, &full_rtas_msgs) == 0);
 }
 __setup("rtasmsgs=", rtasmsgs_setup);
