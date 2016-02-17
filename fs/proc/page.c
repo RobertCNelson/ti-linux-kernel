@@ -148,6 +148,8 @@ u64 stable_page_flags(struct page *page)
 	 */
 	if (PageBuddy(page))
 		u |= 1 << KPF_BUDDY;
+	else if (page_count(page) == 0 && is_free_buddy_page(page))
+		u |= 1 << KPF_BUDDY;
 
 	if (PageBalloon(page))
 		u |= 1 << KPF_BALLOON;
