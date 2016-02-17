@@ -689,6 +689,9 @@ asmlinkage long compat_sys_sendfile64(int out_fd, int in_fd,
 asmlinkage long compat_sys_sigaltstack(const compat_stack_t __user *uss_ptr,
 				       compat_stack_t __user *uoss_ptr);
 
+asmlinkage long compat_sys_madvisev(const struct compat_iovec __user *uvector,
+		compat_ulong_t nr_segs, compat_int_t behavior);
+
 #ifdef __ARCH_WANT_SYS_SIGPENDING
 asmlinkage long compat_sys_sigpending(compat_old_sigset_t __user *set);
 #endif
