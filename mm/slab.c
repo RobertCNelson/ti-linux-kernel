@@ -1868,7 +1868,6 @@ static void slabs_destroy(struct kmem_cache *cachep, struct list_head *list)
  * calculate_slab_order - calculate size (page order) of slabs
  * @cachep: pointer to the cache that is being created
  * @size: size of objects to be created in this cache.
- * @align: required alignment for the objects.
  * @flags: slab allocation flags
  *
  * Also calculates the number of objects per slab.
