@@ -1,6 +1,5 @@
 /* SandyBridge-EP/IvyTown uncore support */
-#include "perf_event_intel_uncore.h"
-
+#include "uncore.h"
 
 /* SNB-EP Box level control */
 #define SNBEP_PMON_BOX_CTL_RST_CTRL	(1 << 0)
