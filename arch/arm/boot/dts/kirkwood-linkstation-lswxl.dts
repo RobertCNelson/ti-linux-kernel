@@ -1,5 +1,5 @@
 /*
- * Device Tree file for Buffalo Linkstation LS-WTGL
+ * Device Tree file for Buffalo Linkstation LS-WXL
  *
  * Copyright (C) 2015, 2016
  * Roger Shimizu <rogershimizu@gmail.com>
@@ -44,108 +44,73 @@
  */
 
 /dts-v1/;
-
-#include "orion5x-linkstation.dtsi"
-#include "mvebu-linkstation-gpio-simple.dtsi"
-#include "mvebu-linkstation-fan.dtsi"
-#include <dt-bindings/gpio/gpio.h>
+#include "kirkwood-linkstation-duo-6281.dtsi"
 
 / {
-	model = "Buffalo Linkstation LS-WTGL";
-	compatible = "buffalo,lswtgl", "marvell,orion5x-88f5182", "marvell,orion5x";
+	model = "Buffalo Linkstation LS-WXL";
+	compatible = "buffalo,lswxl", "marvell,kirkwood-88f6281", "marvell,kirkwood";
 
-	memory { /* 64 MB */
+	memory { /* 128 MB */
 		device_type = "memory";
-		reg = <0x00000000 0x4000000>;
+		reg = <0x00000000 0x8000000>;
 	};
 
-	gpio_keys {
-		power-on-switch {
-			gpios = <&gpio0 8 GPIO_ACTIVE_LOW>;
-		};
-
-		power-auto-switch {
-			gpios = <&gpio0 10 GPIO_ACTIVE_LOW>;
+	ocp@f1000000 {
+		pinctrl: pin-controller@10000 {
+			pmx_led_hdderr0: pmx-led-hdderr0 {
+				marvell,pins = "mpp8";
+				marvell,function = "gpio";
+			};
+			pmx_led_hdderr1: pmx-led-hdderr1 {
+				marvell,pins = "mpp46";
+				marvell,function = "gpio";
+			};
+			pmx_fan_lock: pmx-fan-lock {
+				marvell,pins = "mpp40";
+				marvell,function = "gpio";
+			};
+			pmx_fan_high: pmx-fan-high {
+				marvell,pins = "mpp47";
+				marvell,function = "gpio";
+			};
+			pmx_fan_low: pmx-fan-low {
+				marvell,pins = "mpp48";
+				marvell,function = "gpio";
+			};
 		};
 	};
 
 	gpio_leds {
-		blue-power-led {
-			gpios = <&gpio0 0 GPIO_ACTIVE_LOW>;
+		pinctrl-0 = <&pmx_led_function_red &pmx_led_alarm
+			     &pmx_led_info &pmx_led_power
+			     &pmx_led_function_blue
+			     &pmx_led_hdderr0
+			     &pmx_led_hdderr1>;
+
+		red-hdderr0-led {
+			label = "linkstation:red:hdderr0";
+			gpios = <&gpio0 8 GPIO_ACTIVE_HIGH>;
 		};
 
-		red-alarm-led {
-			gpios = <&gpio0 2 GPIO_ACTIVE_LOW>;
-		};
-
-		amber-info-led {
-			gpios = <&gpio0 3 GPIO_ACTIVE_LOW>;
+		red-hdderr1-led {
+			label = "linkstation:red:hdderr1";
+			gpios = <&gpio1 14 GPIO_ACTIVE_HIGH>;
 		};
 	};
 
 	gpio_fan {
-		gpios = <&gpio0 14 GPIO_ACTIVE_LOW
-			 &gpio0 17 GPIO_ACTIVE_LOW>;
+		compatible = "gpio-fan";
+		pinctrl-0 = <&pmx_fan_low &pmx_fan_high &pmx_fan_lock>;
+		pinctrl-names = "default";
 
-		alarm-gpios = <&gpio0 6 GPIO_ACTIVE_HIGH>;
+		gpios = <&gpio1 16 GPIO_ACTIVE_LOW
+			 &gpio1 15 GPIO_ACTIVE_LOW>;
+
+		gpio-fan,speed-map = <0 3
+				1500 2
+				3250 1
+				5000 0>;
+
+		alarm-gpios = <&gpio1 8 GPIO_ACTIVE_HIGH>;
 	};
-};
-
-&pinctrl {
-	pmx_led_power: pmx-leds {
-		marvell,pins = "mpp0";
-		marvell,function = "gpio";
-	};
-
-	pmx_power_hdd: pmx-power-hdd {
-		marvell,pins = "mpp1";
-		marvell,function = "gpio";
-	};
-
-	pmx_led_alarm: pmx-leds {
-		marvell,pins = "mpp2";
-		marvell,function = "gpio";
-	};
-
-	pmx_led_info: pmx-leds {
-		marvell,pins = "mpp3";
-		marvell,function = "gpio";
-	};
-
-	pmx_fan_lock: pmx-fan-lock {
-		marvell,pins = "mpp6";
-		marvell,function = "gpio";
-	};
-
-	pmx_power_switch: pmx-power-switch {
-		marvell,pins = "mpp8", "mpp10";
-		marvell,function = "gpio";
-	};
-
-	pmx_power_usb: pmx-power-usb {
-		marvell,pins = "mpp9";
-		marvell,function = "gpio";
-	};
-
-	pmx_fan_high: pmx-fan-high {
-		marvell,pins = "mpp14";
-		marvell,function = "gpio";
-	};
-
-	pmx_fan_low: pmx-fan-low {
-		marvell,pins = "mpp17";
-		marvell,function = "gpio";
-	};
-};
-
-&hdd_power {
-	gpios = <&gpio0 1 GPIO_ACTIVE_HIGH>;
-};
-
-&usb_power {
-	gpios = <&gpio0 9 GPIO_ACTIVE_HIGH>;
-};
-
-&sata {
-	nr-ports = <2>;
 };
