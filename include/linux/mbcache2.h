@@ -19,8 +19,11 @@ struct mb2_cache_entry {
 	unsigned int		e_key;
 	/* Block number of hashed block - stable during lifetime of the entry */
 	sector_t		e_block;
-	/* Head of hash list (for list bit lock) - stable */
-	struct hlist_bl_head	*e_hash_list_head;
+	/*
+	 * Head of hash list (for list bit lock) - stable. Combined with
+	 * referenced bit of entry
+	 */
+	unsigned long		_e_hash_list_head;
 };
 
 struct mb2_cache *mb2_cache_create(int bucket_bits);

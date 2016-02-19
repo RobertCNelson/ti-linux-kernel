@@ -39,6 +39,29 @@ static struct kmem_cache *mb2_entry_cache;
 static unsigned long mb2_cache_shrink(struct mb2_cache *cache,
 				      unsigned int nr_to_scan);
 
+static inline bool mb2_cache_entry_referenced(struct mb2_cache_entry *entry)
+{
+	return entry->_e_hash_list_head & 1;
+}
+
+static inline void mb2_cache_entry_set_referenced(struct mb2_cache_entry *entry)
+{
+	entry->_e_hash_list_head |= 1;
+}
+
+static inline void mb2_cache_entry_clear_referenced(
+					struct mb2_cache_entry *entry)
+{
+	entry->_e_hash_list_head &= ~1;
+}
+
+static inline struct hlist_bl_head *mb2_cache_entry_head(
+					struct mb2_cache_entry *entry)
+{
+	return (struct hlist_bl_head *)
+			(entry->_e_hash_list_head & ~1);
+}
+
 /*
  * Number of entries to reclaim synchronously when there are too many entries
  * in cache
@@ -83,7 +106,7 @@ struct mb2_cache_entry *mb2_cache_entry_create(struct mb2_cache *cache,
 	entry->e_key = key;
 	entry->e_block = block;
 	head = &cache->c_hash[hash_32(key, cache->c_bucket_bits)];
-	entry->e_hash_list_head = head;
+	entry->_e_hash_list_head = (unsigned long)head;
 	hlist_bl_lock(head);
 	hlist_bl_for_each_entry(dup, dup_node, head, e_hash_list) {
 		if (dup->e_key == key && dup->e_block == block) {
@@ -125,7 +148,7 @@ EXPORT_SYMBOL(__mb2_cache_entry_free);
 void mb2_cache_entry_delete(struct mb2_cache *cache,
 			    struct mb2_cache_entry *entry)
 {
-	struct hlist_bl_head *head = entry->e_hash_list_head;
+	struct hlist_bl_head *head = mb2_cache_entry_head(entry);
 
 	hlist_bl_lock(head);
 	if (!hlist_bl_unhashed(&entry->e_hash_list)) {
@@ -153,7 +176,7 @@ static struct mb2_cache_entry *__entry_find(struct mb2_cache *cache,
 	struct hlist_bl_head *head;
 
 	if (entry)
-		head = entry->e_hash_list_head;
+		head = mb2_cache_entry_head(entry);
 	else
 		head = &cache->c_hash[hash_32(key, cache->c_bucket_bits)];
 	hlist_bl_lock(head);
@@ -256,10 +279,7 @@ EXPORT_SYMBOL(mb2_cache_entry_delete_block);
 void mb2_cache_entry_touch(struct mb2_cache *cache,
 			   struct mb2_cache_entry *entry)
 {
-	spin_lock(&cache->c_lru_list_lock);
-	if (!list_empty(&entry->e_lru_list))
-		list_move_tail(&cache->c_lru_list, &entry->e_lru_list);
-	spin_unlock(&cache->c_lru_list_lock);
+	mb2_cache_entry_set_referenced(entry);
 }
 EXPORT_SYMBOL(mb2_cache_entry_touch);
 
@@ -284,6 +304,11 @@ static unsigned long mb2_cache_shrink(struct mb2_cache *cache,
 	while (nr_to_scan-- && !list_empty(&cache->c_lru_list)) {
 		entry = list_first_entry(&cache->c_lru_list,
 					 struct mb2_cache_entry, e_lru_list);
+		if (mb2_cache_entry_referenced(entry)) {
+			mb2_cache_entry_clear_referenced(entry);
+			list_move_tail(&cache->c_lru_list, &entry->e_lru_list);
+			continue;
+		}
 		list_del_init(&entry->e_lru_list);
 		cache->c_entry_count--;
 		/*
@@ -291,7 +316,7 @@ static unsigned long mb2_cache_shrink(struct mb2_cache *cache,
 		 * from under us.
 		 */
 		spin_unlock(&cache->c_lru_list_lock);
-		head = entry->e_hash_list_head;
+		head = mb2_cache_entry_head(entry);
 		hlist_bl_lock(head);
 		if (!hlist_bl_unhashed(&entry->e_hash_list)) {
 			hlist_bl_del_init(&entry->e_hash_list);
