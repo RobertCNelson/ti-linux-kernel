@@ -395,19 +395,16 @@
 	pinctrl-0 = <&uart4_pins>;
 };
 
+#include "tps65217.dtsi"
+
 &tps {
-	compatible = "ti,tps65217";
 	ti,pmic-shutdown-controller;
 
 	interrupt-parent = <&intc>;
 	interrupts = <7>;	/* NNMI */
 
 	regulators {
-		#address-cells = <1>;
-		#size-cells = <0>;
-
 		dcdc1_reg: regulator@0 {
-			reg = <0>;
 			/* VDDS_DDR */
 			regulator-min-microvolt = <1500000>;
 			regulator-max-microvolt = <1500000>;
@@ -415,7 +412,6 @@
 		};
 
 		dcdc2_reg: regulator@1 {
-			reg = <1>;
 			/* VDD_MPU voltage limits 0.95V - 1.26V with +/-4% tolerance */
 			regulator-name = "vdd_mpu";
 			regulator-min-microvolt = <925000>;
@@ -425,7 +421,6 @@
 		};
 
 		dcdc3_reg: regulator@2 {
-			reg = <2>;
 			/* VDD_CORE voltage limits 0.95V - 1.1V with +/-4% tolerance */
 			regulator-name = "vdd_core";
 			regulator-min-microvolt = <925000>;
@@ -435,7 +430,6 @@
 		};
 
 		ldo1_reg: regulator@3 {
-			reg = <3>;
 			/* VRTC / VIO / VDDS*/
 			regulator-always-on;
 			regulator-min-microvolt = <1800000>;
@@ -443,7 +437,6 @@
 		};
 
 		ldo2_reg: regulator@4 {
-			reg = <4>;
 			/* VDD_3V3AUX */
 			regulator-always-on;
 			regulator-min-microvolt = <3300000>;
@@ -451,7 +444,6 @@
 		};
 
 		ldo3_reg: regulator@5 {
-			reg = <5>;
 			/* VDD_1V8 */
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
@@ -459,7 +451,6 @@
 		};
 
 		ldo4_reg: regulator@6 {
-			reg = <6>;
 			/* VDD_3V3A */
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
