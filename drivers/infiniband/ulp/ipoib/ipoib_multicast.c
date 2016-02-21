@@ -570,11 +570,18 @@ void ipoib_mcast_join_task(struct work_struct *work)
 		return;
 	}
 	priv->local_lid = port_attr.lid;
+	netif_addr_lock(dev);
 
-	if (ib_query_gid(priv->ca, priv->port, 0, &priv->local_gid, NULL))
-		ipoib_warn(priv, "ib_query_gid() failed\n");
-	else
-		memcpy(priv->dev->dev_addr + 4, priv->local_gid.raw, sizeof (union ib_gid));
+	if (test_bit(IPOIB_FLAG_DEV_ADDR_SET, &priv->flags)) {
+		priv->local_gid.global.subnet_prefix =
+			cpu_to_be64(port_attr.subnet_prefix);
+		memcpy(dev->dev_addr + 4, priv->local_gid.raw,
+		       sizeof(union ib_gid));
+		netif_addr_unlock(dev);
+	} else {
+		netif_addr_unlock(dev);
+		return;
+	}
 
 	spin_lock_irq(&priv->lock);
 	if (!test_bit(IPOIB_FLAG_OPER_UP, &priv->flags))
