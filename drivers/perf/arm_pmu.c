@@ -889,6 +889,15 @@ int arm_pmu_device_probe(struct platform_device *pdev,
 	if (node && (of_id = of_match_node(of_table, pdev->dev.of_node))) {
 		init_fn = of_id->data;
 
+		pmu->secure_access = of_property_read_bool(pdev->dev.of_node,
+							   "secure-reg-access");
+
+		/* arm64 systems boot only as non-secure */
+		if (IS_ENABLED(CONFIG_ARM64) && pmu->secure_access) {
+			pr_warn("ignoring \"secure-reg-access\" property for arm64\n");
+			pmu->secure_access = false;
+		}
+
 		ret = of_pmu_irq_cfg(pmu);
 		if (!ret)
 			ret = init_fn(pmu);
@@ -898,7 +907,8 @@ int arm_pmu_device_probe(struct platform_device *pdev,
 	}
 
 	if (ret) {
-		pr_info("failed to probe PMU!\n");
+		pr_info("%s: failed to probe PMU! Error %i\n",
+			node->full_name, ret);
 		goto out_free;
 	}
 
@@ -918,7 +928,8 @@ int arm_pmu_device_probe(struct platform_device *pdev,
 out_destroy:
 	cpu_pmu_destroy(pmu);
 out_free:
-	pr_info("failed to register PMU devices!\n");
+	pr_info("%s: failed to register PMU devices! Error %i\n",
+		node->full_name, ret);
 	kfree(pmu);
 	return ret;
 }
