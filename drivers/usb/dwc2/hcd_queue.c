@@ -53,6 +53,94 @@
 #include "core.h"
 #include "hcd.h"
 
+/* Wait this long before releasing periodic reservation */
+#define DWC2_UNRESERVE_DELAY (msecs_to_jiffies(5))
+
+/**
+ * dwc2_do_unreserve() - Actually release the periodic reservation
+ *
+ * This function actually releases the periodic bandwidth that was reserved
+ * by the given qh.
+ *
+ * @hsotg: The HCD state structure for the DWC OTG controller
+ * @qh:    QH for the periodic transfer.
+ */
+static void dwc2_do_unreserve(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
+{
+	assert_spin_locked(&hsotg->lock);
+
+	WARN_ON(!qh->unreserve_pending);
+
+	/* No more unreserve pending--we're doing it */
+	qh->unreserve_pending = false;
+
+	if (WARN_ON(!list_empty(&qh->qh_list_entry)))
+		list_del_init(&qh->qh_list_entry);
+
+	/* Update claimed usecs per (micro)frame */
+	hsotg->periodic_usecs -= qh->usecs;
+
+	if (hsotg->core_params->uframe_sched > 0) {
+		int i;
+
+		for (i = 0; i < 8; i++) {
+			hsotg->frame_usecs[i] += qh->frame_usecs[i];
+			qh->frame_usecs[i] = 0;
+		}
+	} else {
+		/* Release periodic channel reservation */
+		hsotg->periodic_channels--;
+	}
+}
+
+/**
+ * dwc2_unreserve_timer_fn() - Timer function to release periodic reservation
+ *
+ * According to the kernel doc for usb_submit_urb() (specifically the part about
+ * "Reserved Bandwidth Transfers"), we need to keep a reservation active as
+ * long as a device driver keeps submitting.  Since we're using HCD_BH to give
+ * back the URB we need to give the driver a little bit of time before we
+ * release the reservation.  This worker is called after the appropriate
+ * delay.
+ *
+ * @work: Pointer to a qh unreserve_work.
+ */
+static void dwc2_unreserve_timer_fn(unsigned long data)
+{
+	struct dwc2_qh *qh = (struct dwc2_qh *)data;
+	struct dwc2_hsotg *hsotg = qh->hsotg;
+	unsigned long flags;
+
+	/*
+	 * Wait for the lock, or for us to be scheduled again.  We
+	 * could be scheduled again if:
+	 * - We started executing but didn't get the lock yet.
+	 * - A new reservation came in, but cancel didn't take effect
+	 *   because we already started executing.
+	 * - The timer has been kicked again.
+	 * In that case cancel and wait for the next call.
+	 */
+	while (!spin_trylock_irqsave(&hsotg->lock, flags)) {
+		if (timer_pending(&qh->unreserve_timer))
+			return;
+	}
+
+	/*
+	 * Might be no more unreserve pending if:
+	 * - We started executing but didn't get the lock yet.
+	 * - A new reservation came in, but cancel didn't take effect
+	 *   because we already started executing.
+	 *
+	 * We can't put this in the loop above because unreserve_pending needs
+	 * to be accessed under lock, so we can only check it once we got the
+	 * lock.
+	 */
+	if (qh->unreserve_pending)
+		dwc2_do_unreserve(hsotg, qh);
+
+	spin_unlock_irqrestore(&hsotg->lock, flags);
+}
+
 /**
  * dwc2_qh_init() - Initializes a QH structure
  *
@@ -71,6 +159,9 @@ static void dwc2_qh_init(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh,
 	dev_vdbg(hsotg->dev, "%s()\n", __func__);
 
 	/* Initialize QH */
+	qh->hsotg = hsotg;
+	setup_timer(&qh->unreserve_timer, dwc2_unreserve_timer_fn,
+		    (unsigned long)qh);
 	qh->ep_type = dwc2_hcd_get_pipe_type(&urb->pipe_info);
 	qh->ep_is_in = dwc2_hcd_is_pipe_in(&urb->pipe_info) ? 1 : 0;
 
@@ -113,6 +204,9 @@ static void dwc2_qh_init(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh,
 		qh->sched_frame = dwc2_frame_num_inc(hsotg->frame_number,
 						     SCHEDULE_SLOP);
 		qh->interval = urb->interval;
+		dwc2_sch_dbg(hsotg, "QH=%p init sch=%04x, fn=%04x, int=%#x\n",
+			     qh, qh->sched_frame, hsotg->frame_number,
+			     qh->interval);
 #if 0
 		/* Increase interrupt polling rate for debugging */
 		if (qh->ep_type == USB_ENDPOINT_XFER_INT)
@@ -126,6 +220,11 @@ static void dwc2_qh_init(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh,
 			qh->interval *= 8;
 			qh->sched_frame |= 0x7;
 			qh->start_split_frame = qh->sched_frame;
+			dwc2_sch_dbg(hsotg,
+				     "QH=%p init*8 sch=%04x, fn=%04x, int=%#x\n",
+				     qh, qh->sched_frame, hsotg->frame_number,
+				     qh->interval);
+
 		}
 		dev_dbg(hsotg->dev, "interval=%d\n", qh->interval);
 	}
@@ -232,13 +331,17 @@ struct dwc2_qh *dwc2_hcd_qh_create(struct dwc2_hsotg *hsotg,
  */
 void dwc2_hcd_qh_free(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
 {
-	if (qh->desc_list) {
-		dwc2_hcd_qh_free_ddma(hsotg, qh);
-	} else {
-		/* kfree(NULL) is safe */
-		kfree(qh->dw_align_buf);
-		qh->dw_align_buf_dma = (dma_addr_t)0;
+	/* Make sure any unreserve work is finished. */
+	if (del_timer_sync(&qh->unreserve_timer)) {
+		unsigned long flags;
+
+		spin_lock_irqsave(&hsotg->lock, flags);
+		dwc2_do_unreserve(hsotg, qh);
+		spin_unlock_irqrestore(&hsotg->lock, flags);
 	}
+
+	if (qh->desc_list)
+		dwc2_hcd_qh_free_ddma(hsotg, qh);
 	kfree(qh);
 }
 
@@ -474,42 +577,6 @@ static int dwc2_schedule_periodic(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
 {
 	int status;
 
-	if (hsotg->core_params->uframe_sched > 0) {
-		int frame = -1;
-
-		status = dwc2_find_uframe(hsotg, qh);
-		if (status == 0)
-			frame = 7;
-		else if (status > 0)
-			frame = status - 1;
-
-		/* Set the new frame up */
-		if (frame >= 0) {
-			qh->sched_frame &= ~0x7;
-			qh->sched_frame |= (frame & 7);
-		}
-
-		if (status > 0)
-			status = 0;
-	} else {
-		status = dwc2_periodic_channel_available(hsotg);
-		if (status) {
-			dev_info(hsotg->dev,
-				 "%s: No host channel available for periodic transfer\n",
-				 __func__);
-			return status;
-		}
-
-		status = dwc2_check_periodic_bandwidth(hsotg, qh);
-	}
-
-	if (status) {
-		dev_dbg(hsotg->dev,
-			"%s: Insufficient periodic bandwidth for periodic transfer\n",
-			__func__);
-		return status;
-	}
-
 	status = dwc2_check_max_xfer_size(hsotg, qh);
 	if (status) {
 		dev_dbg(hsotg->dev,
@@ -518,6 +585,67 @@ static int dwc2_schedule_periodic(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
 		return status;
 	}
 
+	/* Cancel pending unreserve; if canceled OK, unreserve was pending */
+	if (del_timer(&qh->unreserve_timer))
+		WARN_ON(!qh->unreserve_pending);
+
+	/*
+	 * Only need to reserve if there's not an unreserve pending, since if an
+	 * unreserve is pending then by definition our old reservation is still
+	 * valid.  Unreserve might still be pending even if we didn't cancel if
+	 * dwc2_unreserve_timer_fn() already started.  Code in the timer handles
+	 * that case.
+	 */
+	if (!qh->unreserve_pending) {
+		if (hsotg->core_params->uframe_sched > 0) {
+			int frame = -1;
+
+			status = dwc2_find_uframe(hsotg, qh);
+			if (status == 0)
+				frame = 7;
+			else if (status > 0)
+				frame = status - 1;
+
+			/* Set the new frame up */
+			if (frame >= 0) {
+				qh->sched_frame &= ~0x7;
+				qh->sched_frame |= (frame & 7);
+				dwc2_sch_dbg(hsotg,
+					     "QH=%p sched_p sch=%04x, uf=%d\n",
+					     qh, qh->sched_frame, frame);
+			}
+
+			if (status > 0)
+				status = 0;
+		} else {
+			status = dwc2_periodic_channel_available(hsotg);
+			if (status) {
+				dev_info(hsotg->dev,
+					"%s: No host channel available for periodic transfer\n",
+					__func__);
+				return status;
+			}
+
+			status = dwc2_check_periodic_bandwidth(hsotg, qh);
+		}
+
+		if (status) {
+			dev_dbg(hsotg->dev,
+				"%s: Insufficient periodic bandwidth for periodic transfer\n",
+				__func__);
+			return status;
+		}
+
+		if (hsotg->core_params->uframe_sched <= 0)
+			/* Reserve periodic channel */
+			hsotg->periodic_channels++;
+
+		/* Update claimed usecs per (micro)frame */
+		hsotg->periodic_usecs += qh->usecs;
+	}
+
+	qh->unreserve_pending = 0;
+
 	if (hsotg->core_params->dma_desc_enable > 0)
 		/* Don't rely on SOF and start in ready schedule */
 		list_add_tail(&qh->qh_list_entry, &hsotg->periodic_sched_ready);
@@ -525,13 +653,6 @@ static int dwc2_schedule_periodic(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
 		/* Always start in inactive schedule */
 		list_add_tail(&qh->qh_list_entry,
 			      &hsotg->periodic_sched_inactive);
-
-	if (hsotg->core_params->uframe_sched <= 0)
-		/* Reserve periodic channel */
-		hsotg->periodic_channels++;
-
-	/* Update claimed usecs per (micro)frame */
-	hsotg->periodic_usecs += qh->usecs;
 
 	return status;
 }
@@ -546,22 +667,31 @@ static int dwc2_schedule_periodic(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
 static void dwc2_deschedule_periodic(struct dwc2_hsotg *hsotg,
 				     struct dwc2_qh *qh)
 {
-	int i;
+	bool did_modify;
+
+	assert_spin_locked(&hsotg->lock);
+
+	/*
+	 * Schedule the unreserve to happen in a little bit.  Cases here:
+	 * - Unreserve worker might be sitting there waiting to grab the lock.
+	 *   In this case it will notice it's been schedule again and will
+	 *   quit.
+	 * - Unreserve worker might not be scheduled.
+	 *
+	 * We should never already be scheduled since dwc2_schedule_periodic()
+	 * should have canceled the scheduled unreserve timer (hence the
+	 * warning on did_modify).
+	 *
+	 * We add + 1 to the timer to guarantee that at least 1 jiffy has
+	 * passed (otherwise if the jiffy counter might tick right after we
+	 * read it and we'll get no delay).
+	 */
+	did_modify = mod_timer(&qh->unreserve_timer,
+			       jiffies + DWC2_UNRESERVE_DELAY + 1);
+	WARN_ON(did_modify);
+	qh->unreserve_pending = 1;
 
 	list_del_init(&qh->qh_list_entry);
-
-	/* Update claimed usecs per (micro)frame */
-	hsotg->periodic_usecs -= qh->usecs;
-
-	if (hsotg->core_params->uframe_sched > 0) {
-		for (i = 0; i < 8; i++) {
-			hsotg->frame_usecs[i] += qh->frame_usecs[i];
-			qh->frame_usecs[i] = 0;
-		}
-	} else {
-		/* Release periodic channel reservation */
-		hsotg->periodic_channels--;
-	}
 }
 
 /**
@@ -588,10 +718,16 @@ int dwc2_hcd_qh_add(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh)
 
 	if (!dwc2_frame_num_le(qh->sched_frame, hsotg->frame_number) &&
 			!hsotg->frame_number) {
+		u16 new_frame;
+
 		dev_dbg(hsotg->dev,
 				"reset frame number counter\n");
-		qh->sched_frame = dwc2_frame_num_inc(hsotg->frame_number,
+		new_frame = dwc2_frame_num_inc(hsotg->frame_number,
 				SCHEDULE_SLOP);
+
+		dwc2_sch_vdbg(hsotg, "QH=%p reset sch=%04x=>%04x\n",
+			      qh, qh->sched_frame, new_frame);
+		qh->sched_frame = new_frame;
 	}
 
 	/* Add the new QH to the appropriate schedule */
@@ -657,6 +793,7 @@ static void dwc2_sched_periodic_split(struct dwc2_hsotg *hsotg,
 				      int sched_next_periodic_split)
 {
 	u16 incr;
+	u16 old_frame = qh->sched_frame;
 
 	if (sched_next_periodic_split) {
 		qh->sched_frame = frame_number;
@@ -682,6 +819,11 @@ static void dwc2_sched_periodic_split(struct dwc2_hsotg *hsotg,
 		qh->sched_frame |= 0x7;
 		qh->start_split_frame = qh->sched_frame;
 	}
+
+	dwc2_sch_vdbg(hsotg, "QH=%p next(%d) fn=%04x, sch=%04x=>%04x (%+d)\n",
+		      qh, sched_next_periodic_split, frame_number, old_frame,
+		      qh->sched_frame,
+		      dwc2_frame_num_dec(qh->sched_frame, old_frame));
 }
 
 /*
@@ -737,9 +879,11 @@ void dwc2_hcd_qh_deactivate(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh,
 	     dwc2_frame_num_le(qh->sched_frame, frame_number)) ||
 	    (hsotg->core_params->uframe_sched <= 0 &&
 	     qh->sched_frame == frame_number))
-		list_move(&qh->qh_list_entry, &hsotg->periodic_sched_ready);
+		list_move_tail(&qh->qh_list_entry,
+			       &hsotg->periodic_sched_ready);
 	else
-		list_move(&qh->qh_list_entry, &hsotg->periodic_sched_inactive);
+		list_move_tail(&qh->qh_list_entry,
+			       &hsotg->periodic_sched_inactive);
 }
 
 /**
