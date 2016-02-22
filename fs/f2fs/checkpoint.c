@@ -39,7 +39,7 @@ repeat:
 		cond_resched();
 		goto repeat;
 	}
-	f2fs_wait_on_page_writeback(page, META);
+	f2fs_wait_on_page_writeback(page, META, true);
 	SetPageUptodate(page);
 	return page;
 }
@@ -56,7 +56,8 @@ static struct page *__get_meta_page(struct f2fs_sb_info *sbi, pgoff_t index,
 		.sbi = sbi,
 		.type = META,
 		.rw = READ_SYNC | REQ_META | REQ_PRIO,
-		.blk_addr = index,
+		.old_blkaddr = index,
+		.new_blkaddr = index,
 		.encrypted_page = NULL,
 	};
 
@@ -143,7 +144,6 @@ bool is_valid_blkaddr(struct f2fs_sb_info *sbi, block_t blkaddr, int type)
 int ra_meta_pages(struct f2fs_sb_info *sbi, block_t start, int nrpages,
 							int type, bool sync)
 {
-	block_t prev_blk_addr = 0;
 	struct page *page;
 	block_t blkno = start;
 	struct f2fs_io_info fio = {
@@ -152,10 +152,12 @@ int ra_meta_pages(struct f2fs_sb_info *sbi, block_t start, int nrpages,
 		.rw = sync ? (READ_SYNC | REQ_META | REQ_PRIO) : READA,
 		.encrypted_page = NULL,
 	};
+	struct blk_plug plug;
 
 	if (unlikely(type == META_POR))
 		fio.rw &= ~REQ_META;
 
+	blk_start_plug(&plug);
 	for (; nrpages-- > 0; blkno++) {
 
 		if (!is_valid_blkaddr(sbi, blkno, type))
@@ -167,27 +169,24 @@ int ra_meta_pages(struct f2fs_sb_info *sbi, block_t start, int nrpages,
 					NAT_BLOCK_OFFSET(NM_I(sbi)->max_nid)))
 				blkno = 0;
 			/* get nat block addr */
-			fio.blk_addr = current_nat_addr(sbi,
+			fio.new_blkaddr = current_nat_addr(sbi,
 					blkno * NAT_ENTRY_PER_BLOCK);
 			break;
 		case META_SIT:
 			/* get sit block addr */
-			fio.blk_addr = current_sit_addr(sbi,
+			fio.new_blkaddr = current_sit_addr(sbi,
 					blkno * SIT_ENTRY_PER_BLOCK);
-			if (blkno != start && prev_blk_addr + 1 != fio.blk_addr)
-				goto out;
-			prev_blk_addr = fio.blk_addr;
 			break;
 		case META_SSA:
 		case META_CP:
 		case META_POR:
-			fio.blk_addr = blkno;
+			fio.new_blkaddr = blkno;
 			break;
 		default:
 			BUG();
 		}
 
-		page = grab_cache_page(META_MAPPING(sbi), fio.blk_addr);
+		page = grab_cache_page(META_MAPPING(sbi), fio.new_blkaddr);
 		if (!page)
 			continue;
 		if (PageUptodate(page)) {
@@ -196,11 +195,13 @@ int ra_meta_pages(struct f2fs_sb_info *sbi, block_t start, int nrpages,
 		}
 
 		fio.page = page;
+		fio.old_blkaddr = fio.new_blkaddr;
 		f2fs_submit_page_mbio(&fio);
 		f2fs_put_page(page, 0);
 	}
 out:
 	f2fs_submit_merged_bio(sbi, META, READ);
+	blk_finish_plug(&plug);
 	return blkno - start;
 }
 
@@ -232,13 +233,17 @@ static int f2fs_write_meta_page(struct page *page,
 	if (unlikely(f2fs_cp_error(sbi)))
 		goto redirty_out;
 
-	f2fs_wait_on_page_writeback(page, META);
 	write_meta_page(sbi, page);
 	dec_page_count(sbi, F2FS_DIRTY_META);
+
+	if (wbc->for_reclaim)
+		f2fs_submit_merged_bio_cond(sbi, NULL, page, 0, META, WRITE);
+
 	unlock_page(page);
 
-	if (wbc->for_reclaim || unlikely(f2fs_cp_error(sbi)))
+	if (unlikely(f2fs_cp_error(sbi)))
 		f2fs_submit_merged_bio(sbi, META, WRITE);
+
 	return 0;
 
 redirty_out:
@@ -252,12 +257,12 @@ static int f2fs_write_meta_pages(struct address_space *mapping,
 	struct f2fs_sb_info *sbi = F2FS_M_SB(mapping);
 	long diff, written;
 
-	trace_f2fs_writepages(mapping->host, wbc, META);
-
 	/* collect a number of dirty meta pages and write together */
 	if (wbc->for_kupdate ||
 		get_pages(sbi, F2FS_DIRTY_META) < nr_pages_to_skip(sbi, META))
 		goto skip_write;
+
+	trace_f2fs_writepages(mapping->host, wbc, META);
 
 	/* if mounting is failed, skip writing node pages */
 	mutex_lock(&sbi->cp_mutex);
@@ -269,6 +274,7 @@ static int f2fs_write_meta_pages(struct address_space *mapping,
 
 skip_write:
 	wbc->pages_skipped += get_pages(sbi, F2FS_DIRTY_META);
+	trace_f2fs_writepages(mapping->host, wbc, META);
 	return 0;
 }
 
@@ -282,8 +288,11 @@ long sync_meta_pages(struct f2fs_sb_info *sbi, enum page_type type,
 	struct writeback_control wbc = {
 		.for_reclaim = 0,
 	};
+	struct blk_plug plug;
 
 	pagevec_init(&pvec, 0);
+
+	blk_start_plug(&plug);
 
 	while (index <= end) {
 		int i, nr_pages;
@@ -315,6 +324,9 @@ continue_unlock:
 				goto continue_unlock;
 			}
 
+			f2fs_wait_on_page_writeback(page, META, true);
+
+			BUG_ON(PageWriteback(page));
 			if (!clear_page_dirty_for_io(page))
 				goto continue_unlock;
 
@@ -333,6 +345,8 @@ continue_unlock:
 stop:
 	if (nwritten)
 		f2fs_submit_merged_bio(sbi, type, WRITE);
+
+	blk_finish_plug(&plug);
 
 	return nwritten;
 }
@@ -696,6 +710,10 @@ int get_valid_checkpoint(struct f2fs_sb_info *sbi)
 	cp_block = (struct f2fs_checkpoint *)page_address(cur_page);
 	memcpy(sbi->ckpt, cp_block, blk_size);
 
+	/* Sanity checking of checkpoint */
+	if (sanity_check_ckpt(sbi))
+		goto fail_no_cp;
+
 	if (cp_blks <= 1)
 		goto done;
 
@@ -921,6 +939,9 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	int cp_payload_blks = __cp_payload(sbi);
 	block_t discard_blk = NEXT_FREE_BLKADDR(sbi, curseg);
 	bool invalidate = false;
+	struct super_block *sb = sbi->sb;
+	struct curseg_info *seg_i = CURSEG_I(sbi, CURSEG_HOT_NODE);
+	u64 kbytes_written;
 
 	/*
 	 * This avoids to conduct wrong roll-forward operations and uses
@@ -1034,6 +1055,14 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 
 	write_data_summaries(sbi, start_blk);
 	start_blk += data_sum_blocks;
+
+	/* Record write statistics in the hot node summary */
+	kbytes_written = sbi->kbytes_written;
+	if (sb->s_bdev->bd_part)
+		kbytes_written += BD_PART_WRITTEN(sbi);
+
+	seg_i->journal->info.kbytes_written = cpu_to_le64(kbytes_written);
+
 	if (__remain_node_summaries(cpc->reason)) {
 		write_node_summaries(sbi, start_blk);
 		start_blk += NR_CURSEG_NODE_TYPE;
