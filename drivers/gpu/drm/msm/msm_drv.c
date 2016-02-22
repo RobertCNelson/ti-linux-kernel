@@ -61,7 +61,7 @@ module_param(fbdev, bool, 0600);
 #endif
 
 static char *vram = "16m";
-MODULE_PARM_DESC(vram, "Configure VRAM size (for devices without IOMMU/GPUMMU");
+MODULE_PARM_DESC(vram, "Configure VRAM size (for devices without IOMMU/GPUMMU)");
 module_param(vram, charp, 0);
 
 /*
@@ -196,6 +196,11 @@ static int msm_unload(struct drm_device *dev)
 	}
 
 	drm_kms_helper_poll_fini(dev);
+
+#ifdef CONFIG_DRM_FBDEV_EMULATION
+	if (fbdev && priv->fbdev)
+		msm_fbdev_free(dev);
+#endif
 	drm_mode_config_cleanup(dev);
 	drm_vblank_cleanup(dev);
 

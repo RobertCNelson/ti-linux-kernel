@@ -163,6 +163,10 @@ struct msm_dsi_host {
 	enum mipi_dsi_pixel_format format;
 	unsigned long mode_flags;
 
+	/* lane data parsed via DT */
+	int dlane_swap;
+	int num_data_lanes;
+
 	u32 dma_cmd_ctrl_restore;
 
 	bool registered;
@@ -845,19 +849,10 @@ static void dsi_ctrl_config(struct msm_dsi_host *msm_host, bool enable,
 	data = DSI_CTRL_CLK_EN;
 
 	DBG("lane number=%d", msm_host->lanes);
-	if (msm_host->lanes == 2) {
-		data |= DSI_CTRL_LANE1 | DSI_CTRL_LANE2;
-		/* swap lanes for 2-lane panel for better performance */
-		dsi_write(msm_host, REG_DSI_LANE_SWAP_CTRL,
-			DSI_LANE_SWAP_CTRL_DLN_SWAP_SEL(LANE_SWAP_1230));
-	} else {
-		/* Take 4 lanes as default */
-		data |= DSI_CTRL_LANE0 | DSI_CTRL_LANE1 | DSI_CTRL_LANE2 |
-			DSI_CTRL_LANE3;
-		/* Do not swap lanes for 4-lane panel */
-		dsi_write(msm_host, REG_DSI_LANE_SWAP_CTRL,
-			DSI_LANE_SWAP_CTRL_DLN_SWAP_SEL(LANE_SWAP_0123));
-	}
+	data |= ((DSI_CTRL_LANE0 << msm_host->lanes) - DSI_CTRL_LANE0);
+
+	dsi_write(msm_host, REG_DSI_LANE_SWAP_CTRL,
+		  DSI_LANE_SWAP_CTRL_DLN_SWAP_SEL(msm_host->dlane_swap));
 
 	if (!(flags & MIPI_DSI_CLOCK_NON_CONTINUOUS))
 		dsi_write(msm_host, REG_DSI_LANE_CTRL,
@@ -1479,12 +1474,13 @@ static int dsi_host_attach(struct mipi_dsi_host *host,
 	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
 	int ret;
 
+	if (dsi->lanes > msm_host->num_data_lanes)
+		return -EINVAL;
+
 	msm_host->channel = dsi->channel;
 	msm_host->lanes = dsi->lanes;
 	msm_host->format = dsi->format;
 	msm_host->mode_flags = dsi->mode_flags;
-
-	WARN_ON(dsi->dev.of_node != msm_host->device_node);
 
 	/* Some gpios defined in panel DT need to be controlled by host */
 	ret = dsi_host_init_panel_gpios(msm_host, &dsi->dev);
@@ -1534,6 +1530,105 @@ static struct mipi_dsi_host_ops dsi_host_ops = {
 	.transfer = dsi_host_transfer,
 };
 
+/*
+ * List of supported physical to logical lane mappings.
+ * For example, the 2nd entry represents the following mapping:
+ *
+ * "3012": Logic 3->Phys 0; Logic 0->Phys 1; Logic 1->Phys 2; Logic 2->Phys 3;
+ */
+static const int supported_data_lane_swaps[][4] = {
+	{ 0, 1, 2, 3 },
+	{ 3, 0, 1, 2 },
+	{ 2, 3, 0, 1 },
+	{ 1, 2, 3, 0 },
+	{ 0, 3, 2, 1 },
+	{ 1, 0, 3, 2 },
+	{ 2, 1, 0, 3 },
+	{ 3, 2, 1, 0 },
+};
+
+static int dsi_host_parse_lane_data(struct msm_dsi_host *msm_host,
+				    struct device_node *ep)
+{
+	struct device *dev = &msm_host->pdev->dev;
+	struct property *prop;
+	u32 pins[10];
+	int logic_pos[4];
+	int ret, i, len, num_pins, num_data;
+
+	prop = of_find_property(ep, "lanes", &len);
+	if (!prop) {
+		dev_dbg(dev, "failed to find lane data, setting defaults\n");
+		msm_host->num_data_lanes = 4;
+		msm_host->dlane_swap = 0;
+		return -EINVAL;
+	}
+
+	num_pins = len / sizeof(u32);
+
+	if (num_pins < 4 || num_pins > 10 || num_pins % 2 != 0) {
+		dev_err(dev, "bad number of lanes\n");
+		return -EINVAL;
+	}
+
+	ret = of_property_read_u32_array(ep, "lanes", pins, num_pins);
+	if (ret) {
+		dev_err(dev, "failed to read lane data\n");
+		return ret;
+	}
+
+	/* parse CLK pins */
+	if (pins[0] != 0 || pins[1] != 1) {
+		dev_err(dev, "clkp and clkn have to be at positions 0 and 1\n");
+		return -EINVAL;
+	}
+
+	/* parse DATA pins */
+	num_data = 0;
+
+	for (i = 2; i < num_pins; i += 2) {
+		int dp, dn;
+
+		dp = pins[i];
+		dn = pins[i + 1];
+
+		if ((dp < 0 || dp > 9) || (dn < 0 || dn > 9))
+			return -EINVAL;
+
+		if (dn & 1) {
+			if (dn != dp + 1)
+				return -EINVAL;
+		} else {
+			return -EINVAL;
+		}
+
+		logic_pos[num_data++] = dp / 2 - 1;
+	}
+
+	msm_host->num_data_lanes = num_data;
+
+	/*
+	 * compare DT specified physical-logical lane mappings with the ones
+	 * supported by hardware
+	 */
+	for (i = 0; i < ARRAY_SIZE(supported_data_lane_swaps); i++) {
+		const int *swap = supported_data_lane_swaps[i];
+		int j;
+
+		for (j = 0; j < num_data; j++) {
+			if (swap[j] != logic_pos[j])
+				break;
+		}
+
+		if (j == num_data) {
+			msm_host->dlane_swap = i;
+			return 0;
+		}
+	}
+
+	return -EINVAL;
+}
+
 static int dsi_host_parse_dt(struct msm_dsi_host *msm_host)
 {
 	struct device *dev = &msm_host->pdev->dev;
@@ -1560,16 +1655,20 @@ static int dsi_host_parse_dt(struct msm_dsi_host *msm_host)
 		return 0;
 	}
 
+	ret = dsi_host_parse_lane_data(msm_host, endpoint);
+	if (ret) {
+		dev_err(dev, "%s: invalid lane configuration %d\n",
+			__func__, ret);
+		goto err;
+	}
+
 	/* Get panel node from the output port's endpoint data */
 	device_node = of_graph_get_remote_port_parent(endpoint);
 	if (!device_node) {
 		dev_err(dev, "%s: no valid device\n", __func__);
-		of_node_put(endpoint);
-		return -ENODEV;
+		ret = -ENODEV;
+		goto err;
 	}
-
-	of_node_put(endpoint);
-	of_node_put(device_node);
 
 	msm_host->device_node = device_node;
 
@@ -1579,11 +1678,16 @@ static int dsi_host_parse_dt(struct msm_dsi_host *msm_host)
 		if (IS_ERR(msm_host->sfpb)) {
 			dev_err(dev, "%s: failed to get sfpb regmap\n",
 				__func__);
-			return PTR_ERR(msm_host->sfpb);
+			ret = PTR_ERR(msm_host->sfpb);
 		}
 	}
 
-	return 0;
+	of_node_put(device_node);
+
+err:
+	of_node_put(endpoint);
+
+	return ret;
 }
 
 int msm_dsi_host_init(struct msm_dsi *msm_dsi)

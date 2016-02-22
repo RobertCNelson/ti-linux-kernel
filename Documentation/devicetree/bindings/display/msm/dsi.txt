@@ -44,9 +44,28 @@ Optional properties:
 - pinctrl-names: the pin control state names; should contain "default"
 - pinctrl-0: the default pinctrl state (active)
 - pinctrl-n: the "sleep" pinctrl state
-- port: DSI controller output port. This contains one endpoint subnode, with its
-  remote-endpoint set to the phandle of the connected panel's endpoint.
-  See Documentation/devicetree/bindings/graph.txt for device graph info.
+- port: DSI controller output port, containing one endpoint subnode.
+
+  DSI Endpoint properties:
+  - remote-endpoint: set to phandle of the connected panel's endpoint.
+    See Documentation/devicetree/bindings/graph.txt for device graph info.
+  - lanes: list of pin numbers for the DSI lanes: CLKp, CLKn, DATA0p, DATA0n,
+    DATA1p, DATA1n, ...
+    This provides a physical to logical mapping of the DSI lanes. The CLKp and
+    CLKn pins have to be mapped to pins 0 and 1. For data lanes, there are only
+    a limited number of physical to logical mappings possible:
+
+     "0123": Logic 0->Phys 0; Logic 1->Phys 1; Logic 2->Phys 2; Logic 3->Phys 3;
+     "3012": Logic 3->Phys 0; Logic 0->Phys 1; Logic 1->Phys 2; Logic 2->Phys 3;
+     "2301": Logic 2->Phys 0; Logic 3->Phys 1; Logic 0->Phys 2; Logic 1->Phys 3;
+     "1230": Logic 1->Phys 0; Logic 2->Phys 1; Logic 3->Phys 2; Logic 0->Phys 3;
+     "0321": Logic 0->Phys 0; Logic 3->Phys 1; Logic 2->Phys 2; Logic 1->Phys 3;
+     "1032": Logic 1->Phys 0; Logic 0->Phys 1; Logic 3->Phys 2; Logic 2->Phys 3;
+     "2103": Logic 2->Phys 0; Logic 1->Phys 1; Logic 0->Phys 2; Logic 3->Phys 3;
+     "3210": Logic 3->Phys 0; Logic 2->Phys 1; Logic 1->Phys 2; Logic 0->Phys 3;
+
+     Here, a "3012" mapping will be represented by:
+     lanes = <0 1 8 9 2 3 4 5 6 7>;
 
 DSI PHY:
 Required properties:
@@ -131,6 +150,7 @@ Example:
 		port {
 			dsi0_out: endpoint {
 				remote-endpoint = <&panel_in>;
+				lanes = <0 1 2 3 4 5 6 7 8 9>;
 			};
 		};
 	};
