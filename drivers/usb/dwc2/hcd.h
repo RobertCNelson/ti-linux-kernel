@@ -75,8 +75,6 @@ struct dwc2_qh;
  *                      (micro)frame
  * @xfer_buf:           Pointer to current transfer buffer position
  * @xfer_dma:           DMA address of xfer_buf
- * @align_buf:          In Buffer DMA mode this will be used if xfer_buf is not
- *                      DWORD aligned
  * @xfer_len:           Total number of bytes to transfer
  * @xfer_count:         Number of bytes transferred so far
  * @start_pkt_count:    Packet count at start of transfer
@@ -108,6 +106,7 @@ struct dwc2_qh;
  * @hc_list_entry:      For linking to list of host channels
  * @desc_list_addr:     Current QH's descriptor list DMA address
  * @desc_list_sz:       Current QH's descriptor list size
+ * @split_order_list_entry: List entry for keeping track of the order of splits
  *
  * This structure represents the state of a single host channel when acting in
  * host mode. It contains the data items needed to transfer packets to an
@@ -133,7 +132,6 @@ struct dwc2_host_chan {
 
 	u8 *xfer_buf;
 	dma_addr_t xfer_dma;
-	dma_addr_t align_buf;
 	u32 xfer_len;
 	u32 xfer_count;
 	u16 start_pkt_count;
@@ -161,6 +159,7 @@ struct dwc2_host_chan {
 	struct list_head hc_list_entry;
 	dma_addr_t desc_list_addr;
 	u32 desc_list_sz;
+	struct list_head split_order_list_entry;
 };
 
 struct dwc2_hcd_pipe_info {
@@ -216,6 +215,7 @@ enum dwc2_transaction_type {
 /**
  * struct dwc2_qh - Software queue head structure
  *
+ * @hsotg:              The HCD state structure for the DWC OTG controller
  * @ep_type:            Endpoint type. One of the following values:
  *                       - USB_ENDPOINT_XFER_CONTROL
  *                       - USB_ENDPOINT_XFER_BULK
@@ -243,10 +243,6 @@ enum dwc2_transaction_type {
  * @frame_usecs:        Internal variable used by the microframe scheduler
  * @start_split_frame:  (Micro)frame at which last start split was initialized
  * @ntd:                Actual number of transfer descriptors in a list
- * @dw_align_buf:       Used instead of original buffer if its physical address
- *                      is not dword-aligned
- * @dw_align_buf_size:  Size of dw_align_buf
- * @dw_align_buf_dma:   DMA address for dw_align_buf
  * @qtd_list:           List of QTDs for this QH
  * @channel:            Host channel currently processing transfers for this QH
  * @qh_list_entry:      Entry for QH in either the periodic or non-periodic
@@ -257,13 +253,16 @@ enum dwc2_transaction_type {
  * @n_bytes:            Xfer Bytes array. Each element corresponds to a transfer
  *                      descriptor and indicates original XferSize value for the
  *                      descriptor
+ * @unreserve_timer:    Timer for releasing periodic reservation.
  * @tt_buffer_dirty     True if clear_tt_buffer_complete is pending
+ * @unreserve_pending:  True if we planned to unreserve but haven't yet.
  *
  * A Queue Head (QH) holds the static characteristics of an endpoint and
  * maintains a list of transfers (QTDs) for that endpoint. A QH structure may
  * be entered in either the non-periodic or periodic schedule.
  */
 struct dwc2_qh {
+	struct dwc2_hsotg *hsotg;
 	u8 ep_type;
 	u8 ep_is_in;
 	u16 maxp;
@@ -279,9 +278,6 @@ struct dwc2_qh {
 	u16 frame_usecs[8];
 	u16 start_split_frame;
 	u16 ntd;
-	u8 *dw_align_buf;
-	int dw_align_buf_size;
-	dma_addr_t dw_align_buf_dma;
 	struct list_head qtd_list;
 	struct dwc2_host_chan *channel;
 	struct list_head qh_list_entry;
@@ -289,7 +285,9 @@ struct dwc2_qh {
 	dma_addr_t desc_list_dma;
 	u32 desc_list_sz;
 	u32 *n_bytes;
+	struct timer_list unreserve_timer;
 	unsigned tt_buffer_dirty:1;
+	unsigned unreserve_pending:1;
 };
 
 /**
@@ -569,6 +567,11 @@ static inline int dwc2_frame_num_gt(u16 frame1, u16 frame2)
 static inline u16 dwc2_frame_num_inc(u16 frame, u16 inc)
 {
 	return (frame + inc) & HFNUM_MAX_FRNUM;
+}
+
+static inline u16 dwc2_frame_num_dec(u16 frame, u16 dec)
+{
+	return (frame + HFNUM_MAX_FRNUM + 1 - dec) & HFNUM_MAX_FRNUM;
 }
 
 static inline u16 dwc2_full_frame_num(u16 frame)
