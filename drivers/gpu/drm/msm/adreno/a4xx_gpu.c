@@ -585,6 +585,22 @@ static int a4xx_pm_suspend(struct msm_gpu *gpu) {
 	return 0;
 }
 
+static int a4xx_get_timestamp(struct msm_gpu *gpu, uint64_t *value)
+{
+	uint32_t hi, lo, tmp;
+
+	tmp = gpu_read(gpu, REG_A4XX_RBBM_ALWAYSON_COUNTER_HI);
+	do {
+		hi = tmp;
+		lo = gpu_read(gpu, REG_A4XX_RBBM_ALWAYSON_COUNTER_LO);
+		tmp = gpu_read(gpu, REG_A4XX_RBBM_ALWAYSON_COUNTER_HI);
+	} while (tmp != hi);
+
+	*value = (((uint64_t)hi) << 32) | lo;
+
+	return 0;
+}
+
 static const struct adreno_gpu_funcs funcs = {
 	.base = {
 		.get_param = adreno_get_param,
@@ -602,6 +618,7 @@ static const struct adreno_gpu_funcs funcs = {
 		.show = a4xx_show,
 #endif
 	},
+	.get_timestamp = a4xx_get_timestamp,
 };
 
 struct msm_gpu *a4xx_gpu_init(struct drm_device *dev)
