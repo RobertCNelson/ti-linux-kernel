@@ -1230,7 +1230,6 @@ static int wm9713_soc_remove(struct snd_soc_codec *codec)
 {
 	struct wm9713_priv *wm9713 = snd_soc_codec_get_drvdata(codec);
 
-	snd_soc_codec_exit_regmap(codec);
 	snd_soc_free_ac97_codec(wm9713->ac97);
 	return 0;
 }
