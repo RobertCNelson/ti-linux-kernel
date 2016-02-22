@@ -91,10 +91,20 @@ config ASUS_LAPTOP
 
 	  If you have an ACPI-compatible ASUS laptop, say Y or M here.
 
+config DELL_SMBIOS
+	tristate "Dell SMBIOS Support"
+	depends on DCDBAS
+	default n
+	---help---
+	This module provides common functions for kernel modules using
+	Dell SMBIOS.
+
+	If you have a Dell laptop, say Y or M here.
+
 config DELL_LAPTOP
 	tristate "Dell Laptop Extras"
 	depends on X86
-	depends on DCDBAS
+	depends on DELL_SMBIOS
 	depends on BACKLIGHT_CLASS_DEVICE
 	depends on ACPI_VIDEO || ACPI_VIDEO = n
 	depends on RFKILL || RFKILL = n
@@ -102,6 +112,7 @@ config DELL_LAPTOP
 	select POWER_SUPPLY
 	select LEDS_CLASS
 	select NEW_LEDS
+	select DMI
 	default n
 	---help---
 	This driver adds support for rfkill and backlight control to Dell
@@ -113,6 +124,7 @@ config DELL_WMI
 	depends on INPUT
 	depends on ACPI_VIDEO || ACPI_VIDEO = n
 	select INPUT_SPARSEKMAP
+	select DMI
 	---help---
 	  Say Y here if you want to support WMI-based hotkeys on Dell laptops.
 
