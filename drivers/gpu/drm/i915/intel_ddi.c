@@ -1546,8 +1546,10 @@ skl_ddi_pll_select(struct intel_crtc *intel_crtc,
 		}
 
 		cfgcr1 = cfgcr2 = 0;
-	} else /* eDP */
+	} else if (intel_encoder->type == INTEL_OUTPUT_EDP) {
 		return true;
+	} else
+		return false;
 
 	memset(&crtc_state->dpll_hw_state, 0,
 	       sizeof(crtc_state->dpll_hw_state));
@@ -1911,13 +1913,16 @@ bool intel_ddi_connector_get_hw_state(struct intel_connector *intel_connector)
 	enum transcoder cpu_transcoder;
 	enum intel_display_power_domain power_domain;
 	uint32_t tmp;
+	bool ret;
 
 	power_domain = intel_display_port_power_domain(intel_encoder);
-	if (!intel_display_power_is_enabled(dev_priv, power_domain))
+	if (!intel_display_power_get_if_enabled(dev_priv, power_domain))
 		return false;
 
-	if (!intel_encoder->get_hw_state(intel_encoder, &pipe))
-		return false;
+	if (!intel_encoder->get_hw_state(intel_encoder, &pipe)) {
+		ret = false;
+		goto out;
+	}
 
 	if (port == PORT_A)
 		cpu_transcoder = TRANSCODER_EDP;
@@ -1929,23 +1934,33 @@ bool intel_ddi_connector_get_hw_state(struct intel_connector *intel_connector)
 	switch (tmp & TRANS_DDI_MODE_SELECT_MASK) {
 	case TRANS_DDI_MODE_SELECT_HDMI:
 	case TRANS_DDI_MODE_SELECT_DVI:
-		return (type == DRM_MODE_CONNECTOR_HDMIA);
+		ret = type == DRM_MODE_CONNECTOR_HDMIA;
+		break;
 
 	case TRANS_DDI_MODE_SELECT_DP_SST:
-		if (type == DRM_MODE_CONNECTOR_eDP)
-			return true;
-		return (type == DRM_MODE_CONNECTOR_DisplayPort);
+		ret = type == DRM_MODE_CONNECTOR_eDP ||
+		      type == DRM_MODE_CONNECTOR_DisplayPort;
+		break;
+
 	case TRANS_DDI_MODE_SELECT_DP_MST:
 		/* if the transcoder is in MST state then
 		 * connector isn't connected */
-		return false;
+		ret = false;
+		break;
 
 	case TRANS_DDI_MODE_SELECT_FDI:
-		return (type == DRM_MODE_CONNECTOR_VGA);
+		ret = type == DRM_MODE_CONNECTOR_VGA;
+		break;
 
 	default:
-		return false;
+		ret = false;
+		break;
 	}
+
+out:
+	intel_display_power_put(dev_priv, power_domain);
+
+	return ret;
 }
 
 bool intel_ddi_get_hw_state(struct intel_encoder *encoder,
@@ -1957,15 +1972,18 @@ bool intel_ddi_get_hw_state(struct intel_encoder *encoder,
 	enum intel_display_power_domain power_domain;
 	u32 tmp;
 	int i;
+	bool ret;
 
 	power_domain = intel_display_port_power_domain(encoder);
-	if (!intel_display_power_is_enabled(dev_priv, power_domain))
+	if (!intel_display_power_get_if_enabled(dev_priv, power_domain))
 		return false;
+
+	ret = false;
 
 	tmp = I915_READ(DDI_BUF_CTL(port));
 
 	if (!(tmp & DDI_BUF_CTL_ENABLE))
-		return false;
+		goto out;
 
 	if (port == PORT_A) {
 		tmp = I915_READ(TRANS_DDI_FUNC_CTL(TRANSCODER_EDP));
@@ -1983,25 +2001,32 @@ bool intel_ddi_get_hw_state(struct intel_encoder *encoder,
 			break;
 		}
 
-		return true;
-	} else {
-		for (i = TRANSCODER_A; i <= TRANSCODER_C; i++) {
-			tmp = I915_READ(TRANS_DDI_FUNC_CTL(i));
+		ret = true;
 
-			if ((tmp & TRANS_DDI_PORT_MASK)
-			    == TRANS_DDI_SELECT_PORT(port)) {
-				if ((tmp & TRANS_DDI_MODE_SELECT_MASK) == TRANS_DDI_MODE_SELECT_DP_MST)
-					return false;
+		goto out;
+	}
 
-				*pipe = i;
-				return true;
-			}
+	for (i = TRANSCODER_A; i <= TRANSCODER_C; i++) {
+		tmp = I915_READ(TRANS_DDI_FUNC_CTL(i));
+
+		if ((tmp & TRANS_DDI_PORT_MASK) == TRANS_DDI_SELECT_PORT(port)) {
+			if ((tmp & TRANS_DDI_MODE_SELECT_MASK) ==
+			    TRANS_DDI_MODE_SELECT_DP_MST)
+				goto out;
+
+			*pipe = i;
+			ret = true;
+
+			goto out;
 		}
 	}
 
 	DRM_DEBUG_KMS("No pipe for ddi port %c found\n", port_name(port));
 
-	return false;
+out:
+	intel_display_power_put(dev_priv, power_domain);
+
+	return ret;
 }
 
 void intel_ddi_enable_pipe_clock(struct intel_crtc *intel_crtc)
@@ -2447,11 +2472,13 @@ static bool hsw_ddi_wrpll_get_hw_state(struct drm_i915_private *dev_priv,
 {
 	uint32_t val;
 
-	if (!intel_display_power_is_enabled(dev_priv, POWER_DOMAIN_PLLS))
+	if (!intel_display_power_get_if_enabled(dev_priv, POWER_DOMAIN_PLLS))
 		return false;
 
 	val = I915_READ(WRPLL_CTL(pll->id));
 	hw_state->wrpll = val;
+
+	intel_display_power_put(dev_priv, POWER_DOMAIN_PLLS);
 
 	return val & WRPLL_PLL_ENABLE;
 }
@@ -2462,11 +2489,13 @@ static bool hsw_ddi_spll_get_hw_state(struct drm_i915_private *dev_priv,
 {
 	uint32_t val;
 
-	if (!intel_display_power_is_enabled(dev_priv, POWER_DOMAIN_PLLS))
+	if (!intel_display_power_get_if_enabled(dev_priv, POWER_DOMAIN_PLLS))
 		return false;
 
 	val = I915_READ(SPLL_CTL);
 	hw_state->spll = val;
+
+	intel_display_power_put(dev_priv, POWER_DOMAIN_PLLS);
 
 	return val & SPLL_PLL_ENABLE;
 }
@@ -2584,16 +2613,19 @@ static bool skl_ddi_pll_get_hw_state(struct drm_i915_private *dev_priv,
 	uint32_t val;
 	unsigned int dpll;
 	const struct skl_dpll_regs *regs = skl_dpll_regs;
+	bool ret;
 
-	if (!intel_display_power_is_enabled(dev_priv, POWER_DOMAIN_PLLS))
+	if (!intel_display_power_get_if_enabled(dev_priv, POWER_DOMAIN_PLLS))
 		return false;
+
+	ret = false;
 
 	/* DPLL0 is not part of the shared DPLLs, so pll->id is 0 for DPLL1 */
 	dpll = pll->id + 1;
 
 	val = I915_READ(regs[pll->id].ctl);
 	if (!(val & LCPLL_PLL_ENABLE))
-		return false;
+		goto out;
 
 	val = I915_READ(DPLL_CTRL1);
 	hw_state->ctrl1 = (val >> (dpll * 6)) & 0x3f;
@@ -2603,8 +2635,12 @@ static bool skl_ddi_pll_get_hw_state(struct drm_i915_private *dev_priv,
 		hw_state->cfgcr1 = I915_READ(regs[pll->id].cfgcr1);
 		hw_state->cfgcr2 = I915_READ(regs[pll->id].cfgcr2);
 	}
+	ret = true;
 
-	return true;
+out:
+	intel_display_power_put(dev_priv, POWER_DOMAIN_PLLS);
+
+	return ret;
 }
 
 static void skl_shared_dplls_init(struct drm_i915_private *dev_priv)
@@ -2871,13 +2907,16 @@ static bool bxt_ddi_pll_get_hw_state(struct drm_i915_private *dev_priv,
 {
 	enum port port = (enum port)pll->id;	/* 1:1 port->PLL mapping */
 	uint32_t val;
+	bool ret;
 
-	if (!intel_display_power_is_enabled(dev_priv, POWER_DOMAIN_PLLS))
+	if (!intel_display_power_get_if_enabled(dev_priv, POWER_DOMAIN_PLLS))
 		return false;
+
+	ret = false;
 
 	val = I915_READ(BXT_PORT_PLL_ENABLE(port));
 	if (!(val & PORT_PLL_ENABLE))
-		return false;
+		goto out;
 
 	hw_state->ebb0 = I915_READ(BXT_PORT_PLL_EBB_0(port));
 	hw_state->ebb0 &= PORT_PLL_P1_MASK | PORT_PLL_P2_MASK;
@@ -2924,7 +2963,12 @@ static bool bxt_ddi_pll_get_hw_state(struct drm_i915_private *dev_priv,
 				 I915_READ(BXT_PORT_PCS_DW12_LN23(port)));
 	hw_state->pcsdw12 &= LANE_STAGGER_MASK | LANESTAGGER_STRAP_OVRD;
 
-	return true;
+	ret = true;
+
+out:
+	intel_display_power_put(dev_priv, POWER_DOMAIN_PLLS);
+
+	return ret;
 }
 
 static void bxt_shared_dplls_init(struct drm_i915_private *dev_priv)
@@ -3059,11 +3103,15 @@ bool intel_ddi_is_audio_enabled(struct drm_i915_private *dev_priv,
 {
 	u32 temp;
 
-	if (intel_display_power_is_enabled(dev_priv, POWER_DOMAIN_AUDIO)) {
+	if (intel_display_power_get_if_enabled(dev_priv, POWER_DOMAIN_AUDIO)) {
 		temp = I915_READ(HSW_AUD_PIN_ELD_CP_VLD);
+
+		intel_display_power_put(dev_priv, POWER_DOMAIN_AUDIO);
+
 		if (temp & AUDIO_OUTPUT_ENABLE(intel_crtc->pipe))
 			return true;
 	}
+
 	return false;
 }
 
@@ -3282,7 +3330,6 @@ void intel_ddi_init(struct drm_device *dev, enum port port)
 	intel_dig_port->saved_port_bits = I915_READ(DDI_BUF_CTL(port)) &
 					  (DDI_BUF_PORT_REVERSAL |
 					   DDI_A_4_LANES);
-	intel_dig_port->max_lanes = max_lanes;
 
 	/*
 	 * Bspec says that DDI_A_4_LANES is the only supported configuration
@@ -3295,8 +3342,11 @@ void intel_ddi_init(struct drm_device *dev, enum port port)
 		if (!(intel_dig_port->saved_port_bits & DDI_A_4_LANES)) {
 			DRM_DEBUG_KMS("BXT BIOS forgot to set DDI_A_4_LANES for port A; fixing\n");
 			intel_dig_port->saved_port_bits |= DDI_A_4_LANES;
+			max_lanes = 4;
 		}
 	}
+
+	intel_dig_port->max_lanes = max_lanes;
 
 	intel_encoder->type = INTEL_OUTPUT_UNKNOWN;
 	intel_encoder->crtc_mask = (1 << 0) | (1 << 1) | (1 << 2);

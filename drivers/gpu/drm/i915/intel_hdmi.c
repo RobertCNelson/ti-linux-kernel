@@ -880,15 +880,18 @@ static bool intel_hdmi_get_hw_state(struct intel_encoder *encoder,
 	struct intel_hdmi *intel_hdmi = enc_to_intel_hdmi(&encoder->base);
 	enum intel_display_power_domain power_domain;
 	u32 tmp;
+	bool ret;
 
 	power_domain = intel_display_port_power_domain(encoder);
-	if (!intel_display_power_is_enabled(dev_priv, power_domain))
+	if (!intel_display_power_get_if_enabled(dev_priv, power_domain))
 		return false;
+
+	ret = false;
 
 	tmp = I915_READ(intel_hdmi->hdmi_reg);
 
 	if (!(tmp & SDVO_ENABLE))
-		return false;
+		goto out;
 
 	if (HAS_PCH_CPT(dev))
 		*pipe = PORT_TO_PIPE_CPT(tmp);
@@ -897,7 +900,12 @@ static bool intel_hdmi_get_hw_state(struct intel_encoder *encoder,
 	else
 		*pipe = PORT_TO_PIPE(tmp);
 
-	return true;
+	ret = true;
+
+out:
+	intel_display_power_put(dev_priv, power_domain);
+
+	return ret;
 }
 
 static void intel_hdmi_get_config(struct intel_encoder *encoder,
@@ -1202,11 +1210,19 @@ intel_hdmi_mode_valid(struct drm_connector *connector,
 	struct drm_device *dev = intel_hdmi_to_dev(hdmi);
 	enum drm_mode_status status;
 	int clock;
+	int max_dotclk = to_i915(connector->dev)->max_dotclk_freq;
 
 	if (mode->flags & DRM_MODE_FLAG_DBLSCAN)
 		return MODE_NO_DBLESCAN;
 
 	clock = mode->clock;
+
+	if ((mode->flags & DRM_MODE_FLAG_3D_MASK) == DRM_MODE_FLAG_3D_FRAME_PACKING)
+		clock *= 2;
+
+	if (clock > max_dotclk)
+		return MODE_CLOCK_HIGH;
+
 	if (mode->flags & DRM_MODE_FLAG_DBLCLK)
 		clock *= 2;
 
