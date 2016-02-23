@@ -237,6 +237,26 @@ static inline int fscrypt_has_encryption_key(struct inode *inode)
 #endif
 }
 
+static inline void fscrypt_set_encrypted_dentry(struct dentry *dentry)
+{
+#ifdef CONFIG_FS_ENCRYPTION
+	spin_lock(&dentry->d_lock);
+	dentry->d_flags |= DCACHE_ENCRYPTED_WITH_KEY;
+	spin_unlock(&dentry->d_lock);
+#endif
+}
+
+#ifdef CONFIG_FS_ENCRYPTION
+extern const struct dentry_operations fscrypt_d_ops;
+#endif
+
+static inline void fscrypt_set_d_op(struct dentry *dentry)
+{
+#ifdef CONFIG_FS_ENCRYPTION
+	d_set_d_op(dentry, &fscrypt_d_ops);
+#endif
+}
+
 /* crypto.c */
 extern struct kmem_cache *fscrypt_info_cachep;
 int fscrypt_initialize(void);
