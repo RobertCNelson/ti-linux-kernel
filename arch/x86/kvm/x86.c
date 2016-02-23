@@ -123,6 +123,9 @@ module_param(tsc_tolerance_ppm, uint, S_IRUGO | S_IWUSR);
 unsigned int __read_mostly lapic_timer_advance_ns = 0;
 module_param(lapic_timer_advance_ns, uint, S_IRUGO | S_IWUSR);
 
+static bool __read_mostly vector_hashing = true;
+module_param(vector_hashing, bool, S_IRUGO);
+
 static bool __read_mostly backwards_tsc_observed = false;
 
 #define KVM_NR_SHARED_MSRS 16
@@ -1196,14 +1199,8 @@ static void kvm_write_wall_clock(struct kvm *kvm, gpa_t wall_clock)
 
 static uint32_t div_frac(uint32_t dividend, uint32_t divisor)
 {
-	uint32_t quotient, remainder;
-
-	/* Don't try to replace with do_div(), this one calculates
-	 * "(dividend << 32) / divisor" */
-	__asm__ ( "divl %4"
-		  : "=a" (quotient), "=d" (remainder)
-		  : "0" (0), "1" (dividend), "r" (divisor) );
-	return quotient;
+	do_shl32_div32(dividend, divisor);
+	return dividend;
 }
 
 static void kvm_get_time_scale(uint32_t scaled_khz, uint32_t base_khz,
@@ -2987,7 +2984,7 @@ static int kvm_vcpu_ioctl_x86_set_vcpu_events(struct kvm_vcpu *vcpu,
 	kvm_x86_ops->set_nmi_mask(vcpu, events->nmi.masked);
 
 	if (events->flags & KVM_VCPUEVENT_VALID_SIPI_VECTOR &&
-	    kvm_vcpu_has_lapic(vcpu))
+	    lapic_in_kernel(vcpu))
 		vcpu->arch.apic->sipi_vector = events->sipi_vector;
 
 	if (events->flags & KVM_VCPUEVENT_VALID_SMM) {
@@ -3000,7 +2997,7 @@ static int kvm_vcpu_ioctl_x86_set_vcpu_events(struct kvm_vcpu *vcpu,
 			vcpu->arch.hflags |= HF_SMM_INSIDE_NMI_MASK;
 		else
 			vcpu->arch.hflags &= ~HF_SMM_INSIDE_NMI_MASK;
-		if (kvm_vcpu_has_lapic(vcpu)) {
+		if (lapic_in_kernel(vcpu)) {
 			if (events->smi.latched_init)
 				set_bit(KVM_APIC_INIT, &vcpu->arch.apic->pending_events);
 			else
@@ -3240,7 +3237,7 @@ long kvm_arch_vcpu_ioctl(struct file *filp,
 	switch (ioctl) {
 	case KVM_GET_LAPIC: {
 		r = -EINVAL;
-		if (!vcpu->arch.apic)
+		if (!lapic_in_kernel(vcpu))
 			goto out;
 		u.lapic = kzalloc(sizeof(struct kvm_lapic_state), GFP_KERNEL);
 
@@ -3258,7 +3255,7 @@ long kvm_arch_vcpu_ioctl(struct file *filp,
 	}
 	case KVM_SET_LAPIC: {
 		r = -EINVAL;
-		if (!vcpu->arch.apic)
+		if (!lapic_in_kernel(vcpu))
 			goto out;
 		u.lapic = memdup_user(argp, sizeof(*u.lapic));
 		if (IS_ERR(u.lapic))
@@ -4093,7 +4090,7 @@ static int vcpu_mmio_write(struct kvm_vcpu *vcpu, gpa_t addr, int len,
 
 	do {
 		n = min(len, 8);
-		if (!(vcpu->arch.apic &&
+		if (!(lapic_in_kernel(vcpu) &&
 		      !kvm_iodevice_write(vcpu, &vcpu->arch.apic->dev, addr, n, v))
 		    && kvm_io_bus_write(vcpu, KVM_MMIO_BUS, addr, n, v))
 			break;
@@ -4113,7 +4110,7 @@ static int vcpu_mmio_read(struct kvm_vcpu *vcpu, gpa_t addr, int len, void *v)
 
 	do {
 		n = min(len, 8);
-		if (!(vcpu->arch.apic &&
+		if (!(lapic_in_kernel(vcpu) &&
 		      !kvm_iodevice_read(vcpu, &vcpu->arch.apic->dev,
 					 addr, n, v))
 		    && kvm_io_bus_read(vcpu, KVM_MMIO_BUS, addr, n, v))
@@ -6010,7 +6007,7 @@ static void update_cr8_intercept(struct kvm_vcpu *vcpu)
 	if (!kvm_x86_ops->update_cr8_intercept)
 		return;
 
-	if (!vcpu->arch.apic)
+	if (!lapic_in_kernel(vcpu))
 		return;
 
 	if (vcpu->arch.apicv_active)
@@ -7038,7 +7035,7 @@ int kvm_arch_vcpu_ioctl_get_mpstate(struct kvm_vcpu *vcpu,
 int kvm_arch_vcpu_ioctl_set_mpstate(struct kvm_vcpu *vcpu,
 				    struct kvm_mp_state *mp_state)
 {
-	if (!kvm_vcpu_has_lapic(vcpu) &&
+	if (!lapic_in_kernel(vcpu) &&
 	    mp_state->mp_state != KVM_MP_STATE_RUNNABLE)
 		return -EINVAL;
 
@@ -7593,6 +7590,7 @@ bool kvm_vcpu_compatible(struct kvm_vcpu *vcpu)
 }
 
 struct static_key kvm_no_apic_vcpu __read_mostly;
+EXPORT_SYMBOL_GPL(kvm_no_apic_vcpu);
 
 int kvm_arch_vcpu_init(struct kvm_vcpu *vcpu)
 {
@@ -8369,6 +8367,12 @@ int kvm_arch_update_irqfd_routing(struct kvm *kvm, unsigned int host_irq,
 
 	return kvm_x86_ops->update_pi_irte(kvm, host_irq, guest_irq, set);
 }
+
+bool kvm_vector_hashing_enabled(void)
+{
+	return vector_hashing;
+}
+EXPORT_SYMBOL_GPL(kvm_vector_hashing_enabled);
 
 EXPORT_TRACEPOINT_SYMBOL_GPL(kvm_exit);
 EXPORT_TRACEPOINT_SYMBOL_GPL(kvm_fast_mmio);
