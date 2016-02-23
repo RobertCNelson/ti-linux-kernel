@@ -489,7 +489,7 @@ int i915_gem_obj_prepare_shmem_read(struct drm_i915_gem_object *obj,
 
 	*needs_clflush = 0;
 
-	if (!obj->base.filp)
+	if (WARN_ON((obj->ops->flags & I915_GEM_OBJECT_HAS_STRUCT_PAGE) == 0))
 		return -EINVAL;
 
 	if (!(obj->base.read_domains & I915_GEM_DOMAIN_CPU)) {
@@ -2680,7 +2680,7 @@ void i915_gem_request_free(struct kref *req_ref)
 
 	if (ctx) {
 		if (i915.enable_execlists && ctx != req->i915->kernel_context)
-			intel_lr_context_unpin(req);
+			intel_lr_context_unpin(ctx, req->ring);
 
 		i915_gem_context_unreference(ctx);
 	}
@@ -2970,11 +2970,9 @@ i915_gem_retire_requests(struct drm_device *dev)
 		i915_gem_retire_requests_ring(ring);
 		idle &= list_empty(&ring->request_list);
 		if (i915.enable_execlists) {
-			unsigned long flags;
-
-			spin_lock_irqsave(&ring->execlist_lock, flags);
+			spin_lock_irq(&ring->execlist_lock);
 			idle &= list_empty(&ring->execlist_queue);
-			spin_unlock_irqrestore(&ring->execlist_lock, flags);
+			spin_unlock_irq(&ring->execlist_lock);
 
 			intel_execlists_retire_requests(ring);
 		}
@@ -5035,7 +5033,7 @@ init_ring_lists(struct intel_engine_cs *ring)
 }
 
 void
-i915_gem_load(struct drm_device *dev)
+i915_gem_load_init(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int i;
@@ -5101,9 +5099,16 @@ i915_gem_load(struct drm_device *dev)
 
 	dev_priv->mm.interruptible = true;
 
-	i915_gem_shrinker_init(dev_priv);
-
 	mutex_init(&dev_priv->fb_tracking.lock);
+}
+
+void i915_gem_load_cleanup(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = to_i915(dev);
+
+	kmem_cache_destroy(dev_priv->requests);
+	kmem_cache_destroy(dev_priv->vmas);
+	kmem_cache_destroy(dev_priv->objects);
 }
 
 void i915_gem_release(struct drm_device *dev, struct drm_file *file)
