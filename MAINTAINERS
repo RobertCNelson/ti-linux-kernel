@@ -673,11 +673,19 @@ F:	drivers/gpu/drm/radeon/radeon_kfd.c
 F:	drivers/gpu/drm/radeon/radeon_kfd.h
 F:	include/uapi/linux/kfd_ioctl.h
 
+AMD SEATTLE DEVICE TREE SUPPORT
+M:	Brijesh Singh <brijeshkumar.singh@amd.com>
+M:	Suravee Suthikulpanit <suravee.suthikulpanit@amd.com>
+M:	Tom Lendacky <thomas.lendacky@amd.com>
+S:	Supported
+F:	arch/arm64/boot/dts/amd/
+
 AMD XGBE DRIVER
 M:	Tom Lendacky <thomas.lendacky@amd.com>
 L:	netdev@vger.kernel.org
 S:	Supported
 F:	drivers/net/ethernet/amd/xgbe/
+F:	arch/arm64/boot/dts/amd/amd-seattle-xgbe*.dtsi
 
 AMS (Apple Motion Sensor) DRIVER
 M:	Michael Hanselmann <linux-kernel@hansmi.ch>
@@ -920,17 +928,24 @@ M:	Emilio López <emilio@elopez.com.ar>
 S:	Maintained
 F:	drivers/clk/sunxi/
 
-ARM/Amlogic MesonX SoC support
+ARM/Amlogic Meson SoC support
 M:	Carlo Caione <carlo@caione.org>
 L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
+L:	linux-meson@googlegroups.com
+W:	http://linux-meson.com/
 S:	Maintained
-F:	drivers/media/rc/meson-ir.c
-N:	meson[x68]
+F:	arch/arm/mach-meson/
+F:	arch/arm/boot/dts/meson*
+N:	meson
 
 ARM/Annapurna Labs ALPINE ARCHITECTURE
 M:	Tsahee Zidenberg <tsahee@annapurnalabs.com>
+M:	Antoine Tenart <antoine.tenart@free-electrons.com>
 S:	Maintained
 F:	arch/arm/mach-alpine/
+F:	arch/arm/boot/dts/alpine*
+F:	arch/arm64/boot/dts/al/
+F:	drivers/*/*alpine*
 
 ARM/ATMEL AT91RM9200, AT91SAM9 AND SAMA5 SOC SUPPORT
 M:	Nicolas Ferre <nicolas.ferre@atmel.com>
