@@ -16,6 +16,8 @@ fixes
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-fixes-for-v4.5
 
 next/fixes-non-critical
+	smasung/fixes-nc
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-fixes-non-critical-4.6
 
 next/cleanup
 	patch
@@ -65,6 +67,8 @@ next/dt
 		ARM: dts: artpec: add Artpec-6 development board dts
 	renesas/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-for-v4.6
+	samsung/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-dt-4.6
 
 next/dt64
 	patch
@@ -96,8 +100,13 @@ next/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/realview-defconfig-redux
 	patch
 		ARM: multi_v7_defconfig: add MACH_ARTPEC6
+	samsung/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-defconfig-4.6
+		contains depends/rtc-max77802
 
 next/drivers
 	rockchip/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.6-rockchip-drivers1
+	samsung/drivers
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-drivers-4.6
 
