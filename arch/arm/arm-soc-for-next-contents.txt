@@ -26,7 +26,7 @@ next/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-cleanup-for-v4.6
 	mvebu/cleanup
 		git://git.infradead.org/linux-mvebu tags/mvebu-cleanup-4.6-1
-	<no branch> (0ac1a101f5dd28c3894be3c0230ee7ea2e05e8aa)
+	lpc32xx/soc
 		https://github.com/vzapolskiy/linux lpc32xx/soc
 
 next/soc
@@ -34,20 +34,37 @@ next/soc
 		ARM: debug: add support for Palmchip BK-310x UART
 	mvebu/drivers
 		git://git.infradead.org/linux-mvebu tags/mvebu-drivers-4.6-1
+	stm32/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/mcoquelin/stm32 tags/stm32-soc-for-v4.6-1
+	patch
+		arm: initial machine port for artpec-6 SoC
+		ARM: mach-artpec: add entry to MAINTAINERS
 
 next/arm64
 	patch
 		arm64: defconfig: add spmi and usb related configs
+	<no branch> (c840f28bbf643c361c463bcb8fb815d0b2dad4e8)
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.6-rockchip-soc64-1
 
 next/dt
-	<no branch> (5dda254d0cc5cbdcc81dbce0985c35b68dd5e3b1)
+	mvebu/dt
 		git://git.infradead.org/linux-mvebu tags/mvebu-dt-4.6-1
 	patch
 		ARM: dts: spear: replace gpio-key,wakeup with wakeup-source property
-	<no branch> (d06670e96267d1f1a771f71f5719c0a2c0092ec1)
+	lpc32xx/dt
 		https://github.com/vzapolskiy/linux lpc32xx/dt
-	<no branch> (9fd9288ed0899f9e318a97d73e777d6d3357265e)
+	vexpress/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/sudeep.holla/linux tags/vexpress-for-v4.6/dt-updates
+	stm32/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/mcoquelin/stm32 tags/stm32-dt-for-v4.6-1
+	rockchip/dts32
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.6-rockchip-dts32-1
+	patch
+		ARM: add device-tree SoC bindings for Axis Artpec-6
+		ARM: dts: artpeg: add Artpec-6 SoC dtsi file
+		ARM: dts: artpec: add Artpec-6 development board dts
+	renesas/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-for-v4.6
 
 next/dt64
 	patch
@@ -65,14 +82,22 @@ next/dt64
 		dtb: amd: Add support for AMD/Linaro 96Boards Enterprise Edition Server board
 	renesas/dt64
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-arm64-dt-for-v4.6
+	rockchip/dts64
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.6-rockchip-dts64-1
+	patch
+		arm64: dts: amd: Fix-up for ccn504 and kcs nodes
 
 next/defconfig
 	renesas/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig-for-v4.6
 	mvebu/defconfig
 		git://git.infradead.org/linux-mvebu tags/mvebu-defconfig-4.6-1
-	<no branch> (52abf1eff88d291c5ba092dc93fc8065efd94236)
+	integrator/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/realview-defconfig-redux
+	patch
+		ARM: multi_v7_defconfig: add MACH_ARTPEC6
 
 next/drivers
+	rockchip/drivers
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.6-rockchip-drivers1
 
