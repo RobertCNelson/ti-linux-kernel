@@ -72,7 +72,7 @@ EXPORT_SYMBOL(class_find_param);
 
 /* returns 0 if this is the first key in the buffer, else 1.
    valp points to first char after key. */
-static int class_match_param(char *buf, char *key, char **valp)
+static int class_match_param(char *buf, const char *key, char **valp)
 {
 	if (!buf)
 		return 1;
@@ -210,7 +210,7 @@ static int class_attach(struct lustre_cfg *lcfg)
 		       name, typename, rc);
 		goto out;
 	}
-	LASSERTF(obd != NULL, "Cannot get obd device %s of type %s\n",
+	LASSERTF(obd, "Cannot get obd device %s of type %s\n",
 		 name, typename);
 	LASSERTF(obd->obd_magic == OBD_DEVICE_MAGIC,
 		 "obd %p obd_magic %08X != %08X\n",
@@ -272,9 +272,9 @@ static int class_attach(struct lustre_cfg *lcfg)
 	       obd->obd_minor, typename, atomic_read(&obd->obd_refcount));
 	return 0;
  out:
-	if (obd != NULL) {
+	if (obd)
 		class_release_dev(obd);
-	}
+
 	return rc;
 }
 
@@ -286,7 +286,7 @@ static int class_setup(struct obd_device *obd, struct lustre_cfg *lcfg)
 	int err = 0;
 	struct obd_export *exp;
 
-	LASSERT(obd != NULL);
+	LASSERT(obd);
 	LASSERTF(obd == class_num2obd(obd->obd_minor),
 		 "obd %p != obd_devs[%d] %p\n",
 		 obd, obd->obd_minor, class_num2obd(obd->obd_minor));
@@ -1008,7 +1008,7 @@ int class_process_proc_param(char *prefix, struct lprocfs_vars *lvars,
 		/* Search proc entries */
 		while (lvars[j].name) {
 			var = &lvars[j];
-			if (class_match_param(key, (char *)var->name, NULL) == 0
+			if (!class_match_param(key, var->name, NULL)
 			    && keylen == strlen(var->name)) {
 				matched++;
 				rc = -EROFS;
@@ -1183,7 +1183,7 @@ int class_config_llog_handler(const struct lu_env *env,
 
 		/* we override the llog's uuid for clients, to insure they
 		are unique */
-		if (clli && clli->cfg_instance != NULL &&
+		if (clli && clli->cfg_instance &&
 		    lcfg->lcfg_command == LCFG_ATTACH) {
 			lustre_cfg_bufs_set_string(&bufs, 2,
 						   clli->cfg_uuid.uuid);
@@ -1270,7 +1270,7 @@ int class_config_parse_llog(const struct lu_env *env, struct llog_ctxt *ctxt,
 	if (cfg) {
 		cd.lpcd_first_idx = cfg->cfg_last_idx;
 		callback = cfg->cfg_callback;
-		LASSERT(callback != NULL);
+		LASSERT(callback);
 	} else {
 		callback = class_config_llog_handler;
 	}
