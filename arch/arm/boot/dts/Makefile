@@ -191,9 +191,12 @@ dtb-$(CONFIG_MACH_KIRKWOOD) += \
 	kirkwood-is2.dtb \
 	kirkwood-km_kirkwood.dtb \
 	kirkwood-laplug.dtb \
+	kirkwood-linkstation-lsqvl.dtb \
+	kirkwood-linkstation-lsvl.dtb \
+	kirkwood-linkstation-lswsxl.dtb \
+	kirkwood-linkstation-lswvl.dtb \
+	kirkwood-linkstation-lswxl.dtb \
 	kirkwood-lschlv2.dtb \
-	kirkwood-lswvl.dtb \
-	kirkwood-lswxl.dtb \
 	kirkwood-lsxhl.dtb \
 	kirkwood-mplcec4.dtb \
 	kirkwood-mv88f6281gtw-ge.dtb \
@@ -521,6 +524,7 @@ dtb-$(CONFIG_SOC_DRA7XX) += \
 dtb-$(CONFIG_ARCH_ORION5X) += \
 	orion5x-lacie-d2-network.dtb \
 	orion5x-lacie-ethernet-disk-mini-v2.dtb \
+	orion5x-linkstation-lsgl.dtb \
 	orion5x-linkstation-lswtgl.dtb \
 	orion5x-lswsgl.dtb \
 	orion5x-maxtor-shared-storage-2.dtb \
