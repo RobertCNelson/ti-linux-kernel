@@ -337,6 +337,8 @@
 				clocks = <&gcc GSBI3_QUP_CLK>,
 					 <&gcc GSBI3_H_CLK>;
 				clock-names = "core", "iface";
+				#address-cells = <1>;
+				#size-cells = <0>;
 			};
 		};
 
@@ -520,6 +522,11 @@
 					  <GIC_SPI 21 IRQ_TYPE_EDGE_RISING>,
 					  <GIC_SPI 22 IRQ_TYPE_EDGE_RISING>;
 			interrupt-names	= "ack", "err", "wakeup";
+
+			rpmcc: clock-controller {
+				compatible	= "qcom,rpmcc-apq8064", "qcom,rpmcc";
+				#clock-cells = <1>;
+			};
 
 			regulators {
 				compatible = "qcom,rpm-pm8921-regulators";
