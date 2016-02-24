@@ -1,4 +1,19 @@
 fixes
+	<no branch> (44361a2cc13493fc41216d33bb9a562ec3a9cc4e)
+		git://git.infradead.org/linux-mvebu tags/mvebu-fixes-4.5-2
+	<no branch> (cf26f1137333251f3515dea31f95775b99df0fd5)
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.5/fixes-rc3-v2
+	<no branch> (f5d0ca224a071d7077bbdae347cb514949d64fd9)
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-fixes-4.5
+	patch
+		ARM: at91/dt: fix typo in sama5d2 pinmux descriptions
+		MAINTAINERS: alpine: add a new maintainer and update the entry
+	<no branch> (3f315c5b850fa7aff73f50de8e316b98f611a32b)
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.5/fixes-rc5
+	patch
+		MAINTAINERS: Extend info, add wiki and ml for meson arch
+	<no branch> (901c5ffaaed117a38be9d0c29247c4888d6c8636)
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-fixes-for-v4.5
 
 next/fixes-non-critical
 
@@ -11,6 +26,8 @@ next/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-cleanup-for-v4.6
 	mvebu/cleanup
 		git://git.infradead.org/linux-mvebu tags/mvebu-cleanup-4.6-1
+	<no branch> (0ac1a101f5dd28c3894be3c0230ee7ea2e05e8aa)
+		https://github.com/vzapolskiy/linux lpc32xx/soc
 
 next/soc
 	patch
@@ -23,6 +40,14 @@ next/arm64
 		arm64: defconfig: add spmi and usb related configs
 
 next/dt
+	<no branch> (5dda254d0cc5cbdcc81dbce0985c35b68dd5e3b1)
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-4.6-1
+	patch
+		ARM: dts: spear: replace gpio-key,wakeup with wakeup-source property
+	<no branch> (d06670e96267d1f1a771f71f5719c0a2c0092ec1)
+		https://github.com/vzapolskiy/linux lpc32xx/dt
+	<no branch> (9fd9288ed0899f9e318a97d73e777d6d3357265e)
+		git://git.kernel.org/pub/scm/linux/kernel/git/sudeep.holla/linux tags/vexpress-for-v4.6/dt-updates
 
 next/dt64
 	patch
@@ -46,6 +71,8 @@ next/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig-for-v4.6
 	mvebu/defconfig
 		git://git.infradead.org/linux-mvebu tags/mvebu-defconfig-4.6-1
+	<no branch> (52abf1eff88d291c5ba092dc93fc8065efd94236)
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/realview-defconfig-redux
 
 next/drivers
 
