@@ -41,7 +41,7 @@ config DEBUG_PAGEALLOC_ENABLE_DEFAULT
 	  can be overridden by debug_pagealloc=off|on.
 
 config PAGE_POISONING
-	bool "Poisson pages after freeing"
+	bool "Poison pages after freeing"
 	select PAGE_EXTENSION
 	select PAGE_POISONING_NO_SANITY if HIBERNATION
 	---help---
