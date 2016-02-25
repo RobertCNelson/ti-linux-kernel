@@ -382,7 +382,7 @@ SYSCALL_DEFINE5(kexec_file_load, int, kernel_fd, int, initrd_fd,
 exchange:
 	image = xchg(dest_image, image);
 out:
-	if ((flags & KEXEC_ON_CRASH) && kexec_crash_image)
+	if ((flags & KEXEC_FILE_ON_CRASH) && kexec_crash_image)
 		arch_kexec_protect_crashkres();
 
 	mutex_unlock(&kexec_mutex);
