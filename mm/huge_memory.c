@@ -2857,7 +2857,7 @@ static void __split_huge_pmd_locked(struct vm_area_struct *vma, pmd_t *pmd,
 
 	page = pmd_page(*pmd);
 	VM_BUG_ON_PAGE(!page_count(page), page);
-	atomic_add(HPAGE_PMD_NR - 1, &page->_count);
+	page_ref_add(page, HPAGE_PMD_NR - 1);
 	write = pmd_write(*pmd);
 	young = pmd_young(*pmd);
 	dirty = pmd_dirty(*pmd);
@@ -3239,7 +3239,7 @@ static void __split_huge_page_tail(struct page *head, int tail,
 	 * atomic_set() here would be safe on all archs (and not only on x86),
 	 * it's safer to use atomic_inc().
 	 */
-	atomic_inc(&page_tail->_count);
+	page_ref_inc(page_tail);
 
 	page_tail->flags &= ~PAGE_FLAGS_CHECK_AT_PREP;
 	page_tail->flags |= (head->flags &
