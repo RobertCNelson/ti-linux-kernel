@@ -25,6 +25,8 @@
 extern void fpu__activate_curr(struct fpu *fpu);
 extern void fpu__activate_fpstate_read(struct fpu *fpu);
 extern void fpu__activate_fpstate_write(struct fpu *fpu);
+extern void fpu__current_fpstate_write_begin(void);
+extern void fpu__current_fpstate_write_end(void);
 extern void fpu__save(struct fpu *fpu);
 extern void fpu__restore(struct fpu *fpu);
 extern int  fpu__restore_sig(void __user *buf, int ia32_frame);
@@ -590,7 +592,8 @@ switch_fpu_prepare(struct fpu *old_fpu, struct fpu *new_fpu, int cpu)
 	 * If the task has used the math, pre-load the FPU on xsave processors
 	 * or if the past 5 consecutive context-switches used math.
 	 */
-	fpu.preload = new_fpu->fpstate_active &&
+	fpu.preload = static_cpu_has(X86_FEATURE_FPU) &&
+		      new_fpu->fpstate_active &&
 		      (use_eager_fpu() || new_fpu->counter > 5);
 
 	if (old_fpu->fpregs_active) {
