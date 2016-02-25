@@ -7,8 +7,8 @@ interrupts while printing to a serial console.
 
 Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 ---
- kernel/printk/printk.c |   26 +++++++++++++++++++++++---
- 1 file changed, 23 insertions(+), 3 deletions(-)
+ kernel/printk/printk.c |   27 +++++++++++++++++++++++----
+ 1 file changed, 23 insertions(+), 4 deletions(-)
 
 --- a/kernel/printk/printk.c
 +++ b/kernel/printk/printk.c
@@ -80,7 +80,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	return;
  out:
  	raw_spin_unlock_irqrestore(&logbuf_lock, flags);
-@@ -2351,12 +2366,17 @@ void console_unlock(void)
+@@ -2362,13 +2377,17 @@ void console_unlock(void)
  		console_idx = log_next(console_idx);
  		console_seq++;
  		console_prev = msg->flags;
@@ -94,7 +94,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		call_console_drivers(level, ext_text, ext_len, text, len);
  		start_critical_timings();
  		local_irq_restore(flags);
+-
 +#endif
+ 		if (do_cond_resched)
+ 			cond_resched();
  	}
- 	console_locked = 0;
- 

@@ -13,7 +13,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/include/linux/hrtimer.h
 +++ b/include/linux/hrtimer.h
-@@ -125,11 +125,7 @@ struct hrtimer_sleeper {
+@@ -127,11 +127,7 @@ struct hrtimer_sleeper {
  	struct task_struct *task;
  };
  
