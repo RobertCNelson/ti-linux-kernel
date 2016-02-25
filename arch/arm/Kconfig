@@ -527,10 +527,10 @@ config ARCH_LPC32XX
 	select ARCH_REQUIRE_GPIOLIB
 	select ARM_AMBA
 	select CLKDEV_LOOKUP
-	select CLKSRC_MMIO
+	select CLKSRC_LPC32XX
+	select COMMON_CLK
 	select CPU_ARM926T
 	select GENERIC_CLOCKEVENTS
-	select HAVE_IDE
 	select USE_OF
 	help
 	  Support for the NXP LPC32XX family of processors
@@ -723,6 +723,8 @@ source "arch/arm/mach-mvebu/Kconfig"
 
 source "arch/arm/mach-alpine/Kconfig"
 
+source "arch/arm/mach-artpec/Kconfig"
+
 source "arch/arm/mach-asm9260/Kconfig"
 
 source "arch/arm/mach-at91/Kconfig"
@@ -878,9 +880,15 @@ config ARCH_STM32
 	select ARCH_HAS_RESET_CONTROLLER
 	select ARMV7M_SYSTICK
 	select CLKSRC_STM32
+	select PINCTRL
 	select RESET_CONTROLLER
 	help
 	  Support for STMicroelectronics STM32 processors.
+
+config MACH_STM32F429
+	bool "STMicrolectronics STM32F429"
+	depends on ARCH_STM32
+	default y
 
 # Definitions to make life easier
 config ARCH_ACORN
