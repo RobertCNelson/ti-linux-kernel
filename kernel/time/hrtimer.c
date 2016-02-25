@@ -90,19 +90,30 @@ DEFINE_PER_CPU(struct hrtimer_cpu_base, hrtimer_bases) =
 			.clockid = CLOCK_TAI,
 			.get_time = &ktime_get_clocktai,
 		},
+		{
+			.index = HRTIMER_BASE_MONOTONIC_RAW,
+			.clockid = CLOCK_MONOTONIC_RAW,
+			.get_time = &ktime_get_raw,
+		},
 	}
 };
 
 static const int hrtimer_clock_to_base_table[MAX_CLOCKS] = {
+	/* Make sure we catch unsupported clockids */
+	[0 ... MAX_CLOCKS - 1]	= HRTIMER_MAX_CLOCK_BASES,
+
 	[CLOCK_REALTIME]	= HRTIMER_BASE_REALTIME,
 	[CLOCK_MONOTONIC]	= HRTIMER_BASE_MONOTONIC,
+	[CLOCK_MONOTONIC_RAW]	= HRTIMER_BASE_MONOTONIC_RAW,
 	[CLOCK_BOOTTIME]	= HRTIMER_BASE_BOOTTIME,
 	[CLOCK_TAI]		= HRTIMER_BASE_TAI,
 };
 
 static inline int hrtimer_clockid_to_base(clockid_t clock_id)
 {
-	return hrtimer_clock_to_base_table[clock_id];
+	int base = hrtimer_clock_to_base_table[clock_id];
+	BUG_ON(base == HRTIMER_MAX_CLOCK_BASES);
+	return base;
 }
 
 /*
@@ -1287,7 +1298,10 @@ static void __hrtimer_run_queues(struct hrtimer_cpu_base *cpu_base, ktime_t now)
 		if (!(active & 0x01))
 			continue;
 
-		basenow = ktime_add(now, base->offset);
+		if (unlikely(base->index == HRTIMER_BASE_MONOTONIC_RAW))
+			basenow = ktime_get_raw();
+		else
+			basenow = ktime_add(now, base->offset);
 
 		while ((node = timerqueue_getnext(&base->active))) {
 			struct hrtimer *timer;
