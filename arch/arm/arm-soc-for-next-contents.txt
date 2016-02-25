@@ -49,6 +49,9 @@ next/arm64
 		arm64: defconfig: add spmi and usb related configs
 	<no branch> (c840f28bbf643c361c463bcb8fb815d0b2dad4e8)
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.6-rockchip-soc64-1
+	mvebu/arm64
+		git://git.infradead.org/linux-mvebu tags/mvebu-arm64-4.6-1
+		contains depends/irqchip-armada-370-xp
 
 next/dt
 	mvebu/dt
@@ -73,6 +76,8 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-dt-4.6
 	versatile/dt-cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/versatile-dt-cleanup-1
+	patch
+		dts/ls2080a: Update PCIe compatible
 
 next/dt64
 	patch
@@ -94,6 +99,8 @@ next/dt64
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.6-rockchip-dts64-1
 	patch
 		arm64: dts: amd: Fix-up for ccn504 and kcs nodes
+	mvebu/dt64
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt64-4.6-1
 
 next/defconfig
 	renesas/defconfig
