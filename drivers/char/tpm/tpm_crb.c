@@ -227,8 +227,10 @@ static int crb_check_resource(struct acpi_resource *ares, void *data)
 	struct crb_priv *priv = data;
 	struct resource res;
 
-	if (acpi_dev_resource_memory(ares, &res))
+	if (acpi_dev_resource_memory(ares, &res)) {
 		priv->res = res;
+		priv->res.name = NULL;
+	}
 
 	return 1;
 }
@@ -342,10 +344,10 @@ static int crb_acpi_remove(struct acpi_device *device)
 	struct device *dev = &device->dev;
 	struct tpm_chip *chip = dev_get_drvdata(dev);
 
-	tpm_chip_unregister(chip);
-
 	if (chip->flags & TPM_CHIP_FLAG_TPM2)
 		tpm2_shutdown(chip, TPM2_SU_CLEAR);
+
+	tpm_chip_unregister(chip);
 
 	return 0;
 }
