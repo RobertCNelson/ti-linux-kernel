@@ -146,7 +146,7 @@ static void btrfs_free_dummy_fs_info(struct btrfs_fs_info *fs_info)
 		/* Shouldn't happen but that kind of thinking creates CVE's */
 		if (radix_tree_exception(eb)) {
 			if (radix_tree_deref_retry(eb))
-				slot = radix_tree_iter_retry(iter);
+				slot = radix_tree_iter_retry(&iter);
 			continue;
 		}
 		spin_unlock(&fs_info->buffer_lock);
