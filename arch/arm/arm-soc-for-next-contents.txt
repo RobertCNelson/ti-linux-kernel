@@ -30,6 +30,8 @@ next/cleanup
 		git://git.infradead.org/linux-mvebu tags/mvebu-cleanup-4.6-1
 	lpc32xx/soc
 		https://github.com/vzapolskiy/linux lpc32xx/soc
+	versatile/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/plat-versatile-cleanup
 
 next/soc
 	patch
@@ -69,6 +71,8 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-for-v4.6
 	samsung/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-dt-4.6
+	versatile/dt-cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/versatile-dt-cleanup-1
 
 next/dt64
 	patch
@@ -109,4 +113,6 @@ next/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.6-rockchip-drivers1
 	samsung/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-drivers-4.6
+	scpi/updates
+		git://git.kernel.org/pub/scm/linux/kernel/git/sudeep.holla/linux tags/scpi-for-v4.6/updates
 
