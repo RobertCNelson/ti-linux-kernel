@@ -253,13 +253,12 @@ struct cgroup {
 	/*
 	 * The bitmask of subsystems enabled on the child cgroups.
 	 * ->subtree_control is the one configured through
-	 * "cgroup.subtree_control" while ->child_subsys_mask is the
-	 * effective one which may have more subsystems enabled.
-	 * Controller knobs are made available iff it's enabled in
-	 * ->subtree_control.
+	 * "cgroup.subtree_control" while ->child_ss_mask is the effective
+	 * one which may have more subsystems enabled.  Controller knobs
+	 * are made available iff it's enabled in ->subtree_control.
 	 */
-	unsigned int subtree_control;
-	unsigned int child_subsys_mask;
+	u16 subtree_control;
+	u16 subtree_ss_mask;
 
 	/* Private pointers for each registered subsystem */
 	struct cgroup_subsys_state __rcu *subsys[CGROUP_SUBSYS_COUNT];
@@ -434,7 +433,6 @@ struct cgroup_subsys {
 	void (*css_released)(struct cgroup_subsys_state *css);
 	void (*css_free)(struct cgroup_subsys_state *css);
 	void (*css_reset)(struct cgroup_subsys_state *css);
-	void (*css_e_css_changed)(struct cgroup_subsys_state *css);
 
 	int (*can_attach)(struct cgroup_taskset *tset);
 	void (*cancel_attach)(struct cgroup_taskset *tset);
@@ -446,7 +444,7 @@ struct cgroup_subsys {
 	void (*free)(struct task_struct *task);
 	void (*bind)(struct cgroup_subsys_state *root_css);
 
-	int early_init;
+	bool early_init:1;
 
 	/*
 	 * If %false, this subsystem is properly hierarchical -
@@ -460,8 +458,8 @@ struct cgroup_subsys {
 	 * cases.  Eventually, all subsystems will be made properly
 	 * hierarchical and this will go away.
 	 */
-	bool broken_hierarchy;
-	bool warned_broken_hierarchy;
+	bool broken_hierarchy:1;
+	bool warned_broken_hierarchy:1;
 
 	/* the following two fields are initialized automtically during boot */
 	int id;
