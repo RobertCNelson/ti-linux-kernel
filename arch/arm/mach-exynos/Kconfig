@@ -29,6 +29,7 @@ menuconfig ARCH_EXYNOS
 	select SOC_SAMSUNG
 	select SRAM
 	select THERMAL
+	select THERMAL_OF
 	select MFD_SYSCON
 	select CLKSRC_EXYNOS_MCT
 	select POWER_RESET
