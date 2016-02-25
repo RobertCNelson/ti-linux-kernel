@@ -1203,9 +1203,12 @@ static void flush_inline_data(struct f2fs_sb_info *sbi, nid_t ino)
 	if (!inode)
 		return;
 
-	page = pagecache_get_page(inode->i_mapping, 0, FGP_LOCK|FGP_NOWAIT, 0);
+	page = pagecache_get_page(inode->i_mapping, 0, FGP_NOWAIT, 0);
 	if (!page)
 		goto iput_out;
+
+	if (!trylock_page(page))
+		goto page_out;
 
 	if (!PageUptodate(page))
 		goto page_out;
