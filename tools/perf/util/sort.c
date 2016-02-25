@@ -25,9 +25,18 @@ int		sort__has_parent = 0;
 int		sort__has_sym = 0;
 int		sort__has_dso = 0;
 int		sort__has_socket = 0;
+int		sort__has_thread = 0;
 enum sort_mode	sort__mode = SORT_MODE__NORMAL;
 
-
+/*
+ * Replaces all occurrences of a char used with the:
+ *
+ * -t, --field-separator
+ *
+ * option, that uses a special separator character and don't pad with spaces,
+ * replacing all occurances of this separator in symbol names (and other
+ * output) with a '.' character, that thus it's the only non valid separator.
+*/
 static int repsep_snprintf(char *bf, size_t size, const char *fmt, ...)
 {
 	int n;
@@ -246,10 +255,8 @@ static int _hist_entry__sym_snprintf(struct map *map, struct symbol *sym,
 			ret += repsep_snprintf(bf + ret, size - ret, "%s", sym->name);
 			ret += repsep_snprintf(bf + ret, size - ret, "+0x%llx",
 					ip - map->unmap_ip(map, sym->start));
-			ret += repsep_snprintf(bf + ret, size - ret, "%-*s",
-				       width - ret, "");
 		} else {
-			ret += repsep_snprintf(bf + ret, size - ret, "%-*s",
+			ret += repsep_snprintf(bf + ret, size - ret, "%.*s",
 					       width - ret,
 					       sym->name);
 		}
@@ -257,14 +264,9 @@ static int _hist_entry__sym_snprintf(struct map *map, struct symbol *sym,
 		size_t len = BITS_PER_LONG / 4;
 		ret += repsep_snprintf(bf + ret, size - ret, "%-#.*llx",
 				       len, ip);
-		ret += repsep_snprintf(bf + ret, size - ret, "%-*s",
-				       width - ret, "");
 	}
 
-	if (ret > width)
-		bf[width] = '\0';
-
-	return width;
+	return ret;
 }
 
 static int hist_entry__sym_snprintf(struct hist_entry *he, char *bf,
@@ -810,7 +812,7 @@ static int hist_entry__locked_snprintf(struct hist_entry *he, char *bf,
 	else
 		out = "No";
 
-	return repsep_snprintf(bf, size, "%-*s", width, out);
+	return repsep_snprintf(bf, size, "%.*s", width, out);
 }
 
 static int64_t
@@ -1440,20 +1442,6 @@ struct hpp_sort_entry {
 	struct sort_entry *se;
 };
 
-bool perf_hpp__same_sort_entry(struct perf_hpp_fmt *a, struct perf_hpp_fmt *b)
-{
-	struct hpp_sort_entry *hse_a;
-	struct hpp_sort_entry *hse_b;
-
-	if (!perf_hpp__is_sort_entry(a) || !perf_hpp__is_sort_entry(b))
-		return false;
-
-	hse_a = container_of(a, struct hpp_sort_entry, hpp);
-	hse_b = container_of(b, struct hpp_sort_entry, hpp);
-
-	return hse_a->se == hse_b->se;
-}
-
 void perf_hpp__reset_sort_width(struct perf_hpp_fmt *fmt, struct hists *hists)
 {
 	struct hpp_sort_entry *hse;
@@ -1539,6 +1527,33 @@ static int64_t __sort__hpp_sort(struct perf_hpp_fmt *fmt,
 	return sort_fn(a, b);
 }
 
+bool perf_hpp__is_sort_entry(struct perf_hpp_fmt *format)
+{
+	return format->header == __sort__hpp_header;
+}
+
+static bool __sort__hpp_equal(struct perf_hpp_fmt *a, struct perf_hpp_fmt *b)
+{
+	struct hpp_sort_entry *hse_a;
+	struct hpp_sort_entry *hse_b;
+
+	if (!perf_hpp__is_sort_entry(a) || !perf_hpp__is_sort_entry(b))
+		return false;
+
+	hse_a = container_of(a, struct hpp_sort_entry, hpp);
+	hse_b = container_of(b, struct hpp_sort_entry, hpp);
+
+	return hse_a->se == hse_b->se;
+}
+
+static void hse_free(struct perf_hpp_fmt *fmt)
+{
+	struct hpp_sort_entry *hse;
+
+	hse = container_of(fmt, struct hpp_sort_entry, hpp);
+	free(hse);
+}
+
 static struct hpp_sort_entry *
 __sort_dimension__alloc_hpp(struct sort_dimension *sd)
 {
@@ -1560,6 +1575,8 @@ __sort_dimension__alloc_hpp(struct sort_dimension *sd)
 	hse->hpp.cmp = __sort__hpp_cmp;
 	hse->hpp.collapse = __sort__hpp_collapse;
 	hse->hpp.sort = __sort__hpp_sort;
+	hse->hpp.equal = __sort__hpp_equal;
+	hse->hpp.free = hse_free;
 
 	INIT_LIST_HEAD(&hse->hpp.list);
 	INIT_LIST_HEAD(&hse->hpp.sort_list);
@@ -1570,9 +1587,23 @@ __sort_dimension__alloc_hpp(struct sort_dimension *sd)
 	return hse;
 }
 
-bool perf_hpp__is_sort_entry(struct perf_hpp_fmt *format)
+static void hpp_free(struct perf_hpp_fmt *fmt)
 {
-	return format->header == __sort__hpp_header;
+	free(fmt);
+}
+
+static struct perf_hpp_fmt *__hpp_dimension__alloc_hpp(struct hpp_dimension *hd)
+{
+	struct perf_hpp_fmt *fmt;
+
+	fmt = memdup(hd->fmt, sizeof(*fmt));
+	if (fmt) {
+		INIT_LIST_HEAD(&fmt->list);
+		INIT_LIST_HEAD(&fmt->sort_list);
+		fmt->free = hpp_free;
+	}
+
+	return fmt;
 }
 
 static int __sort_dimension__add_hpp_sort(struct sort_dimension *sd)
@@ -1586,14 +1617,15 @@ static int __sort_dimension__add_hpp_sort(struct sort_dimension *sd)
 	return 0;
 }
 
-static int __sort_dimension__add_hpp_output(struct sort_dimension *sd)
+static int __sort_dimension__add_hpp_output(struct perf_hpp_list *list,
+					    struct sort_dimension *sd)
 {
 	struct hpp_sort_entry *hse = __sort_dimension__alloc_hpp(sd);
 
 	if (hse == NULL)
 		return -1;
 
-	perf_hpp__column_register(&hse->hpp);
+	perf_hpp_list__column_register(list, &hse->hpp);
 	return 0;
 }
 
@@ -1803,6 +1835,14 @@ bool perf_hpp__is_dynamic_entry(struct perf_hpp_fmt *fmt)
 	return fmt->cmp == __sort__hde_cmp;
 }
 
+static void hde_free(struct perf_hpp_fmt *fmt)
+{
+	struct hpp_dynamic_entry *hde;
+
+	hde = container_of(fmt, struct hpp_dynamic_entry, hpp);
+	free(hde);
+}
+
 static struct hpp_dynamic_entry *
 __alloc_dynamic_entry(struct perf_evsel *evsel, struct format_field *field)
 {
@@ -1827,6 +1867,7 @@ __alloc_dynamic_entry(struct perf_evsel *evsel, struct format_field *field)
 	hde->hpp.cmp = __sort__hde_cmp;
 	hde->hpp.collapse = __sort__hde_cmp;
 	hde->hpp.sort = __sort__hde_cmp;
+	hde->hpp.free = hde_free;
 
 	INIT_LIST_HEAD(&hde->hpp.list);
 	INIT_LIST_HEAD(&hde->hpp.sort_list);
@@ -2064,40 +2105,54 @@ static int __sort_dimension__add(struct sort_dimension *sd)
 
 static int __hpp_dimension__add(struct hpp_dimension *hd)
 {
-	if (!hd->taken) {
-		hd->taken = 1;
+	struct perf_hpp_fmt *fmt;
 
-		perf_hpp__register_sort_field(hd->fmt);
-	}
+	if (hd->taken)
+		return 0;
+
+	fmt = __hpp_dimension__alloc_hpp(hd);
+	if (!fmt)
+		return -1;
+
+	hd->taken = 1;
+	perf_hpp__register_sort_field(fmt);
 	return 0;
 }
 
-static int __sort_dimension__add_output(struct sort_dimension *sd)
+static int __sort_dimension__add_output(struct perf_hpp_list *list,
+					struct sort_dimension *sd)
 {
 	if (sd->taken)
 		return 0;
 
-	if (__sort_dimension__add_hpp_output(sd) < 0)
+	if (__sort_dimension__add_hpp_output(list, sd) < 0)
 		return -1;
 
 	sd->taken = 1;
 	return 0;
 }
 
-static int __hpp_dimension__add_output(struct hpp_dimension *hd)
+static int __hpp_dimension__add_output(struct perf_hpp_list *list,
+				       struct hpp_dimension *hd)
 {
-	if (!hd->taken) {
-		hd->taken = 1;
+	struct perf_hpp_fmt *fmt;
 
-		perf_hpp__column_register(hd->fmt);
-	}
+	if (hd->taken)
+		return 0;
+
+	fmt = __hpp_dimension__alloc_hpp(hd);
+	if (!fmt)
+		return -1;
+
+	hd->taken = 1;
+	perf_hpp_list__column_register(list, fmt);
 	return 0;
 }
 
 int hpp_dimension__add_output(unsigned col)
 {
 	BUG_ON(col >= PERF_HPP__MAX_INDEX);
-	return __hpp_dimension__add_output(&hpp_sort_dimensions[col]);
+	return __hpp_dimension__add_output(&perf_hpp_list, &hpp_sort_dimensions[col]);
 }
 
 static int sort_dimension__add(const char *tok,
@@ -2136,6 +2191,8 @@ static int sort_dimension__add(const char *tok,
 			sort__has_dso = 1;
 		} else if (sd->entry == &sort_socket) {
 			sort__has_socket = 1;
+		} else if (sd->entry == &sort_thread) {
+			sort__has_thread = 1;
 		}
 
 		return __sort_dimension__add(sd);
@@ -2186,6 +2243,26 @@ static int sort_dimension__add(const char *tok,
 		return 0;
 
 	return -ESRCH;
+}
+
+static int setup_sort_list(char *str, struct perf_evlist *evlist)
+{
+	char *tmp, *tok;
+	int ret = 0;
+
+	for (tok = strtok_r(str, ", ", &tmp);
+			tok; tok = strtok_r(NULL, ", ", &tmp)) {
+		ret = sort_dimension__add(tok, evlist);
+		if (ret == -EINVAL) {
+			error("Invalid --sort key: `%s'", tok);
+			break;
+		} else if (ret == -ESRCH) {
+			error("Unknown --sort key: `%s'", tok);
+			break;
+		}
+	}
+
+	return ret;
 }
 
 static const char *get_default_sort_order(struct perf_evlist *evlist)
@@ -2282,7 +2359,7 @@ static char *setup_overhead(char *keys)
 
 static int __setup_sorting(struct perf_evlist *evlist)
 {
-	char *tmp, *tok, *str;
+	char *str;
 	const char *sort_keys;
 	int ret = 0;
 
@@ -2320,17 +2397,7 @@ static int __setup_sorting(struct perf_evlist *evlist)
 		}
 	}
 
-	for (tok = strtok_r(str, ", ", &tmp);
-			tok; tok = strtok_r(NULL, ", ", &tmp)) {
-		ret = sort_dimension__add(tok, evlist);
-		if (ret == -EINVAL) {
-			error("Invalid --sort key: `%s'", tok);
-			break;
-		} else if (ret == -ESRCH) {
-			error("Unknown --sort key: `%s'", tok);
-			break;
-		}
-	}
+	ret = setup_sort_list(str, evlist);
 
 	free(str);
 	return ret;
@@ -2341,7 +2408,7 @@ void perf_hpp__set_elide(int idx, bool elide)
 	struct perf_hpp_fmt *fmt;
 	struct hpp_sort_entry *hse;
 
-	perf_hpp__for_each_format(fmt) {
+	perf_hpp_list__for_each_format(&perf_hpp_list, fmt) {
 		if (!perf_hpp__is_sort_entry(fmt))
 			continue;
 
@@ -2401,7 +2468,7 @@ void sort__setup_elide(FILE *output)
 	struct perf_hpp_fmt *fmt;
 	struct hpp_sort_entry *hse;
 
-	perf_hpp__for_each_format(fmt) {
+	perf_hpp_list__for_each_format(&perf_hpp_list, fmt) {
 		if (!perf_hpp__is_sort_entry(fmt))
 			continue;
 
@@ -2413,7 +2480,7 @@ void sort__setup_elide(FILE *output)
 	 * It makes no sense to elide all of sort entries.
 	 * Just revert them to show up again.
 	 */
-	perf_hpp__for_each_format(fmt) {
+	perf_hpp_list__for_each_format(&perf_hpp_list, fmt) {
 		if (!perf_hpp__is_sort_entry(fmt))
 			continue;
 
@@ -2421,7 +2488,7 @@ void sort__setup_elide(FILE *output)
 			return;
 	}
 
-	perf_hpp__for_each_format(fmt) {
+	perf_hpp_list__for_each_format(&perf_hpp_list, fmt) {
 		if (!perf_hpp__is_sort_entry(fmt))
 			continue;
 
@@ -2429,7 +2496,7 @@ void sort__setup_elide(FILE *output)
 	}
 }
 
-static int output_field_add(char *tok)
+static int output_field_add(struct perf_hpp_list *list, char *tok)
 {
 	unsigned int i;
 
@@ -2439,7 +2506,7 @@ static int output_field_add(char *tok)
 		if (strncasecmp(tok, sd->name, strlen(tok)))
 			continue;
 
-		return __sort_dimension__add_output(sd);
+		return __sort_dimension__add_output(list, sd);
 	}
 
 	for (i = 0; i < ARRAY_SIZE(hpp_sort_dimensions); i++) {
@@ -2448,7 +2515,7 @@ static int output_field_add(char *tok)
 		if (strncasecmp(tok, hd->name, strlen(tok)))
 			continue;
 
-		return __hpp_dimension__add_output(hd);
+		return __hpp_dimension__add_output(list, hd);
 	}
 
 	for (i = 0; i < ARRAY_SIZE(bstack_sort_dimensions); i++) {
@@ -2457,7 +2524,7 @@ static int output_field_add(char *tok)
 		if (strncasecmp(tok, sd->name, strlen(tok)))
 			continue;
 
-		return __sort_dimension__add_output(sd);
+		return __sort_dimension__add_output(list, sd);
 	}
 
 	for (i = 0; i < ARRAY_SIZE(memory_sort_dimensions); i++) {
@@ -2466,10 +2533,30 @@ static int output_field_add(char *tok)
 		if (strncasecmp(tok, sd->name, strlen(tok)))
 			continue;
 
-		return __sort_dimension__add_output(sd);
+		return __sort_dimension__add_output(list, sd);
 	}
 
 	return -ESRCH;
+}
+
+static int setup_output_list(struct perf_hpp_list *list, char *str)
+{
+	char *tmp, *tok;
+	int ret = 0;
+
+	for (tok = strtok_r(str, ", ", &tmp);
+			tok; tok = strtok_r(NULL, ", ", &tmp)) {
+		ret = output_field_add(list, tok);
+		if (ret == -EINVAL) {
+			error("Invalid --fields key: `%s'", tok);
+			break;
+		} else if (ret == -ESRCH) {
+			error("Unknown --fields key: `%s'", tok);
+			break;
+		}
+	}
+
+	return ret;
 }
 
 static void reset_dimensions(void)
@@ -2496,7 +2583,7 @@ bool is_strict_order(const char *order)
 
 static int __setup_output_field(void)
 {
-	char *tmp, *tok, *str, *strp;
+	char *str, *strp;
 	int ret = -EINVAL;
 
 	if (field_order == NULL)
@@ -2516,17 +2603,7 @@ static int __setup_output_field(void)
 		goto out;
 	}
 
-	for (tok = strtok_r(strp, ", ", &tmp);
-			tok; tok = strtok_r(NULL, ", ", &tmp)) {
-		ret = output_field_add(tok);
-		if (ret == -EINVAL) {
-			error("Invalid --fields key: `%s'", tok);
-			break;
-		} else if (ret == -ESRCH) {
-			error("Unknown --fields key: `%s'", tok);
-			break;
-		}
-	}
+	ret = setup_output_list(&perf_hpp_list, strp);
 
 out:
 	free(str);
@@ -2560,9 +2637,9 @@ int setup_sorting(struct perf_evlist *evlist)
 		return err;
 
 	/* copy sort keys to output fields */
-	perf_hpp__setup_output_field();
+	perf_hpp__setup_output_field(&perf_hpp_list);
 	/* and then copy output fields to sort keys */
-	perf_hpp__append_sort_keys();
+	perf_hpp__append_sort_keys(&perf_hpp_list);
 
 	return 0;
 }
@@ -2578,5 +2655,5 @@ void reset_output_field(void)
 	sort_order = NULL;
 
 	reset_dimensions();
-	perf_hpp__reset_output_field();
+	perf_hpp__reset_output_field(&perf_hpp_list);
 }
