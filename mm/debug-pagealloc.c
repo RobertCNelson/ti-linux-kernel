@@ -8,11 +8,5 @@
 
 void __kernel_map_pages(struct page *page, int numpages, int enable)
 {
-	if (!page_poisoning_enabled())
-		return;
-
-	if (enable)
-		unpoison_pages(page, numpages);
-	else
-		poison_pages(page, numpages);
+	kernel_poison_pages(page, numpages, enable);
 }
