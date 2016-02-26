@@ -961,25 +961,36 @@ static const u32 vmx_msr_index[] = {
 	MSR_EFER, MSR_TSC_AUX, MSR_STAR,
 };
 
-static inline bool is_page_fault(u32 intr_info)
+static inline bool is_exception_n(u32 intr_info, u8 vector)
 {
 	return (intr_info & (INTR_INFO_INTR_TYPE_MASK | INTR_INFO_VECTOR_MASK |
 			     INTR_INFO_VALID_MASK)) ==
-		(INTR_TYPE_HARD_EXCEPTION | PF_VECTOR | INTR_INFO_VALID_MASK);
+		(INTR_TYPE_HARD_EXCEPTION | vector | INTR_INFO_VALID_MASK);
+}
+
+static inline bool is_debug(u32 intr_info)
+{
+	return is_exception_n(intr_info, DB_VECTOR);
+}
+
+static inline bool is_breakpoint(u32 intr_info)
+{
+	return is_exception_n(intr_info, BP_VECTOR);
+}
+
+static inline bool is_page_fault(u32 intr_info)
+{
+	return is_exception_n(intr_info, PF_VECTOR);
 }
 
 static inline bool is_no_device(u32 intr_info)
 {
-	return (intr_info & (INTR_INFO_INTR_TYPE_MASK | INTR_INFO_VECTOR_MASK |
-			     INTR_INFO_VALID_MASK)) ==
-		(INTR_TYPE_HARD_EXCEPTION | NM_VECTOR | INTR_INFO_VALID_MASK);
+	return is_exception_n(intr_info, NM_VECTOR);
 }
 
 static inline bool is_invalid_opcode(u32 intr_info)
 {
-	return (intr_info & (INTR_INFO_INTR_TYPE_MASK | INTR_INFO_VECTOR_MASK |
-			     INTR_INFO_VALID_MASK)) ==
-		(INTR_TYPE_HARD_EXCEPTION | UD_VECTOR | INTR_INFO_VALID_MASK);
+	return is_exception_n(intr_info, UD_VECTOR);
 }
 
 static inline bool is_external_interrupt(u32 intr_info)
@@ -5747,8 +5758,7 @@ static int handle_halt(struct kvm_vcpu *vcpu)
 
 static int handle_vmcall(struct kvm_vcpu *vcpu)
 {
-	kvm_emulate_hypercall(vcpu);
-	return 1;
+	return kvm_emulate_hypercall(vcpu);
 }
 
 static int handle_invd(struct kvm_vcpu *vcpu)
@@ -6435,8 +6445,8 @@ static struct loaded_vmcs *nested_get_current_vmcs02(struct vcpu_vmx *vmx)
 
 	if (vmx->nested.vmcs02_num >= max(VMCS02_POOL_SIZE, 1)) {
 		/* Recycle the least recently used VMCS. */
-		item = list_entry(vmx->nested.vmcs02_pool.prev,
-			struct vmcs02_list, list);
+		item = list_last_entry(&vmx->nested.vmcs02_pool,
+				       struct vmcs02_list, list);
 		item->vmptr = vmx->nested.current_vmptr;
 		list_move(&item->list, &vmx->nested.vmcs02_pool);
 		return &item->vmcs02;
@@ -7751,6 +7761,13 @@ static bool nested_vmx_exit_handled(struct kvm_vcpu *vcpu)
 			return enable_ept;
 		else if (is_no_device(intr_info) &&
 			 !(vmcs12->guest_cr0 & X86_CR0_TS))
+			return false;
+		else if (is_debug(intr_info) &&
+			 vcpu->guest_debug &
+			 (KVM_GUESTDBG_SINGLESTEP | KVM_GUESTDBG_USE_HW_BP))
+			return false;
+		else if (is_breakpoint(intr_info) &&
+			 vcpu->guest_debug & KVM_GUESTDBG_USE_SW_BP)
 			return false;
 		return vmcs12->exception_bitmap &
 				(1u << (intr_info & INTR_INFO_VECTOR_MASK));
@@ -10766,13 +10783,26 @@ static int vmx_update_pi_irte(struct kvm *kvm, unsigned int host_irq,
 		 */
 
 		kvm_set_msi_irq(e, &irq);
-		if (!kvm_intr_is_single_vcpu(kvm, &irq, &vcpu))
+		if (!kvm_intr_is_single_vcpu(kvm, &irq, &vcpu)) {
+			/*
+			 * Make sure the IRTE is in remapped mode if
+			 * we don't handle it in posted mode.
+			 */
+			ret = irq_set_vcpu_affinity(host_irq, NULL);
+			if (ret < 0) {
+				printk(KERN_INFO
+				   "failed to back to remapped mode, irq: %u\n",
+				   host_irq);
+				goto out;
+			}
+
 			continue;
+		}
 
 		vcpu_info.pi_desc_addr = __pa(vcpu_to_pi_desc(vcpu));
 		vcpu_info.vector = irq.vector;
 
-		trace_kvm_pi_irte_update(vcpu->vcpu_id, e->gsi,
+		trace_kvm_pi_irte_update(vcpu->vcpu_id, host_irq, e->gsi,
 				vcpu_info.vector, vcpu_info.pi_desc_addr, set);
 
 		if (set)
