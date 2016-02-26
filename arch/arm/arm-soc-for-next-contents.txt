@@ -41,6 +41,8 @@ next/cleanup
 		https://github.com/vzapolskiy/linux lpc32xx/soc
 	versatile/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/plat-versatile-cleanup
+	renesas/cleanup2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-cleanup2-for-v4.6
 
 next/soc
 	patch
@@ -52,6 +54,20 @@ next/soc
 	patch
 		arm: initial machine port for artpec-6 SoC
 		ARM: mach-artpec: add entry to MAINTAINERS
+	mediatek/soc
+		https://github.com/mbgg/linux-mediatek tags/v4.5-next-soc
+	renesas/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-for-v4.6
+	davinci/edma
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v4.6/edma
+	zynq/soc
+		https://github.com/Xilinx/linux-xlnx tags/zynq-soc-for-4.6
+	patch
+		ARM: alpine: select the Alpine MSI controller driver
+	broadcom/soc
+		http://github.com/Broadcom/stblinux tags/arm-soc/for-4.6/soc
+	broadcom/maintainers
+		http://github.com/Broadcom/stblinux tags/arm-soc/for-4.6/maintainers
 
 next/arm64
 	patch
@@ -61,6 +77,16 @@ next/arm64
 	mvebu/arm64
 		git://git.infradead.org/linux-mvebu tags/mvebu-arm64-4.6-1
 		contains depends/irqchip-armada-370-xp
+	patch
+		arm64: add Alpine SoC family
+		arm64: defconfig: enable the Alpine family
+		arm64: alpine: select the Alpine MSI controller driver
+	broadcom/maintainers64
+		http://github.com/Broadcom/stblinux tags/arm-soc/for-4.6/maintainers-arm64
+	broadcom/defconfig-arm64
+		http://github.com/Broadcom/stblinux tags/arm-soc/for-4.6/defconfig-arm64
+	broadcom/soc-arm64
+		http://github.com/Broadcom/stblinux tags/arm-soc/for-4.6/soc-arm64
 
 next/dt
 	mvebu/dt
@@ -89,6 +115,18 @@ next/dt
 		dts/ls2080a: Update PCIe compatible
 	at91/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/abelloni/linux tags/at91-ab-4.6-dt
+	mediatek/dts
+		https://github.com/mbgg/linux-mediatek tags/v4.5-next-dts
+	omap/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.6/dt-pt1
+	keystone/dts
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone_dts_for_4.6_v2
+	zynq/dts
+		https://github.com/Xilinx/linux-xlnx tags/zynq-dt-for-4.6
+	patch
+		ARM: dts: alpine: add the MSIX node
+	broadcom/dt
+		http://github.com/Broadcom/stblinux tags/arm-soc/for-4.6/devicetree
 
 next/dt64
 	patch
@@ -112,6 +150,15 @@ next/dt64
 		arm64: dts: amd: Fix-up for ccn504 and kcs nodes
 	mvebu/dt64
 		git://git.infradead.org/linux-mvebu tags/mvebu-dt64-4.6-1
+	mediatek/dts64
+		https://github.com/mbgg/linux-mediatek tags/v4.5-next-dts64
+	zynq/dts64
+		https://github.com/Xilinx/linux-xlnx tags/zynqmp-dt-for-4.6
+	patch
+		arm64: dts: add the Alpine v2 EVP
+		arm64: dts: alpine: add the MSIX node in the Alpine v2 dtsi
+	broadcom/dt-arm64
+		http://github.com/Broadcom/stblinux tags/arm-soc/for-4.6/devicetree-arm64
 
 next/defconfig
 	renesas/defconfig
@@ -131,6 +178,10 @@ next/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/dinguyen/linux tags/socfpga_defconfig_for_v4.6
 	patch
 		ARM: multi_v7_defconfig: enable useful configurations for Vybrid
+		ARM: multi_v5_defconfig: Cleanup multi_v5_defconfig
+		ARM: multi_v5_defconfig: Enable initramfs support
+	broadcom/defconfig
+		http://github.com/Broadcom/stblinux tags/arm-soc/for-4.6/defconfig
 
 next/drivers
 	rockchip/drivers
@@ -143,4 +194,3 @@ next/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/abelloni/linux tags/at91-ab-4.6-drivers
 	drivers/reset
 		git://git.pengutronix.de/git/pza/linux tags/reset-for-4.6
-
