@@ -18,6 +18,15 @@ fixes
 next/fixes-non-critical
 	smasung/fixes-nc
 		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-fixes-non-critical-4.6
+	patch
+		ARM: ks8695: fix __initdata annotation
+		ARM: ux500: fix ureachable iounmap()
+		ARM: socfpga: hide unused functions
+		ARM: prima2: always enable reset controller
+	davinci/fixes
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v4.6/fixes
+	patch
+		soc: TI knav_qmss: fix dma_addr_t printing
 
 next/cleanup
 	patch
@@ -120,6 +129,8 @@ next/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/abelloni/linux tags/at91-ab-4.6-defconfig
 	socfpga/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/dinguyen/linux tags/socfpga_defconfig_for_v4.6
+	patch
+		ARM: multi_v7_defconfig: enable useful configurations for Vybrid
 
 next/drivers
 	rockchip/drivers
