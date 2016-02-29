@@ -1,5 +1,10 @@
 menu "Platform selection"
 
+config ARCH_SUNXI
+	bool "Allwinner sunxi 64-bit SoC Family"
+	help
+	  This enables support for Allwinner sunxi based SoCs like the A64.
+
 config ARCH_ALPINE
 	bool "Annapurna Labs Alpine platform"
 	select ALPINE_MSI
@@ -60,9 +65,14 @@ config ARCH_MEDIATEK
 
 config ARCH_MVEBU
 	bool "Marvell EBU SoC Family"
+	select ARMADA_AP806_CORE_CLK
+	select ARMADA_AP806_RING_CLK
+	select MVEBU_ODMI
 	help
-	  This enables support for Marvell EBU family such as the
-	  Armada 3700 SoC family.
+	  This enables support for Marvell EBU familly, including:
+	   - Armada 3700 SoC Family
+	   - Armada 7K SoC Family
+	   - Armada 8K SoC Family
 
 config ARCH_QCOM
 	bool "Qualcomm Platforms"
@@ -93,7 +103,9 @@ config ARCH_RENESAS
 	bool "Renesas SoC Platforms"
 	select ARCH_SHMOBILE
 	select PINCTRL
-	select PM_GENERIC_DOMAINS if PM
+	select PM
+	select PM_GENERIC_DOMAINS
+	select RENESAS_IRQC
 	help
 	  This enables support for the ARMv8 based Renesas SoCs.
 
