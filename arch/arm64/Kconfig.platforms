@@ -1,7 +1,17 @@
 menu "Platform selection"
 
+config ARCH_ALPINE
+	bool "Annapurna Labs Alpine platform"
+	select ALPINE_MSI
+	help
+	  This enables support for the Annapurna Labs Alpine
+	  Soc family.
+
 config ARCH_BCM_IPROC
 	bool "Broadcom iProc SoC Family"
+	select COMMON_CLK_IPROC
+	select PINCTRL
+	select ARCH_REQUIRE_GPIOLIB
 	help
 	  This enables support for Broadcom iProc based SoCs
 
@@ -48,6 +58,12 @@ config ARCH_MEDIATEK
 	help
 	  Support for Mediatek MT65xx & MT81xx ARMv8 SoCs
 
+config ARCH_MVEBU
+	bool "Marvell EBU SoC Family"
+	help
+	  This enables support for Marvell EBU family such as the
+	  Armada 3700 SoC family.
+
 config ARCH_QCOM
 	bool "Qualcomm Platforms"
 	select PINCTRL
@@ -60,6 +76,7 @@ config ARCH_ROCKCHIP
 	select ARCH_REQUIRE_GPIOLIB
 	select PINCTRL
 	select PINCTRL_ROCKCHIP
+	select ROCKCHIP_TIMER
 	help
 	  This enables support for the ARMv8 based Rockchip chipsets,
 	  like the RK3368.
@@ -130,6 +147,11 @@ config ARCH_VEXPRESS
 	help
 	  This enables support for the ARMv8 software model (Versatile
 	  Express).
+
+config ARCH_VULCAN
+	bool "Broadcom Vulcan SOC Family"
+	help
+	  This enables support for Broadcom Vulcan SoC Family
 
 config ARCH_XGENE
 	bool "AppliedMicro X-Gene SOC Family"
