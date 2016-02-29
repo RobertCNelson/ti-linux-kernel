@@ -406,8 +406,7 @@ int btrfs_run_defrag_inodes(struct btrfs_fs_info *fs_info)
 /* simple helper to fault in pages and copy.  This should go away
  * and be replaced with calls into generic code.
  */
-static noinline int btrfs_copy_from_user(loff_t pos, int num_pages,
-					 size_t write_bytes,
+static noinline int btrfs_copy_from_user(loff_t pos, size_t write_bytes,
 					 struct page **prepared_pages,
 					 struct iov_iter *i)
 {
@@ -1394,7 +1393,7 @@ lock_and_cleanup_extent_if_need(struct inode *inode, struct page **pages,
 	if (start_pos < inode->i_size) {
 		struct btrfs_ordered_extent *ordered;
 		lock_extent_bits(&BTRFS_I(inode)->io_tree,
-				 start_pos, last_pos, 0, cached_state);
+				 start_pos, last_pos, cached_state);
 		ordered = btrfs_lookup_ordered_range(inode, start_pos,
 						     last_pos - start_pos + 1);
 		if (ordered &&
@@ -1588,8 +1587,7 @@ again:
 			ret = 0;
 		}
 
-		copied = btrfs_copy_from_user(pos, num_pages,
-					   write_bytes, pages, i);
+		copied = btrfs_copy_from_user(pos, write_bytes, pages, i);
 
 		/*
 		 * if we have trouble faulting in the pages, fall
@@ -2398,7 +2396,7 @@ static int btrfs_punch_hole(struct inode *inode, loff_t offset, loff_t len)
 		truncate_pagecache_range(inode, lockstart, lockend);
 
 		lock_extent_bits(&BTRFS_I(inode)->io_tree, lockstart, lockend,
-				 0, &cached_state);
+				 &cached_state);
 		ordered = btrfs_lookup_first_ordered_extent(inode, lockend);
 
 		/*
@@ -2705,7 +2703,7 @@ static long btrfs_fallocate(struct file *file, int mode,
 		 * transaction
 		 */
 		lock_extent_bits(&BTRFS_I(inode)->io_tree, alloc_start,
-				 locked_end, 0, &cached_state);
+				 locked_end, &cached_state);
 		ordered = btrfs_lookup_first_ordered_extent(inode,
 							    alloc_end - 1);
 		if (ordered &&
@@ -2852,7 +2850,7 @@ static int find_desired_extent(struct inode *inode, loff_t *offset, int whence)
 	lockend--;
 	len = lockend - lockstart + 1;
 
-	lock_extent_bits(&BTRFS_I(inode)->io_tree, lockstart, lockend, 0,
+	lock_extent_bits(&BTRFS_I(inode)->io_tree, lockstart, lockend,
 			 &cached_state);
 
 	while (start < inode->i_size) {
