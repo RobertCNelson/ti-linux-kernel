@@ -79,21 +79,21 @@ struct media_device_info {
 #define MEDIA_ENT_F_IO_SWRADIO		(MEDIA_ENT_F_BASE + 1003)
 
 /*
+ * Analog TV IF-PLL decoders
+ *
+ * It is a responsibility of the master/bridge drivers to create links
+ * for MEDIA_ENT_F_IF_VID_DECODER and MEDIA_ENT_F_IF_AUD_DECODER.
+ */
+#define MEDIA_ENT_F_IF_VID_DECODER	(MEDIA_ENT_F_BASE + 2001)
+#define MEDIA_ENT_F_IF_AUD_DECODER	(MEDIA_ENT_F_BASE + 2002)
+
+/*
  * Connectors
  */
 /* It is a responsibility of the entity drivers to add connectors and links */
 #define MEDIA_ENT_F_CONN_RF		(MEDIA_ENT_F_BASE + 10001)
 #define MEDIA_ENT_F_CONN_SVIDEO		(MEDIA_ENT_F_BASE + 10002)
 #define MEDIA_ENT_F_CONN_COMPOSITE	(MEDIA_ENT_F_BASE + 10003)
-
-/*
- * Analog TV IF-PLL decoders
- *
- * It is a responsibility of the master/bridge drivers to create links
- * for MEDIA_ENT_F_IF_VID_DECODER and MEDIA_ENT_F_IF_AUD_DECODER.
- */
-#define MEDIA_ENT_F_IF_VID_DECODER	(MEDIA_ENT_F_BASE + 41)
-#define MEDIA_ENT_F_IF_AUD_DECODER	(MEDIA_ENT_F_BASE + 42)
 
 /*
  * Don't touch on those. The ranges MEDIA_ENT_F_OLD_BASE and
