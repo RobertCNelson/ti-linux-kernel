@@ -88,7 +88,7 @@ static __ref void *early_alloc_pgtable(unsigned long size)
  * map_kernel_page adds an entry to the ioremap page table
  * and adds an entry to the HPT, possibly bolting it
  */
-int map_kernel_page(unsigned long ea, unsigned long pa, int flags)
+int map_kernel_page(unsigned long ea, unsigned long pa, unsigned long flags)
 {
 	pgd_t *pgdp;
 	pud_t *pudp;
@@ -749,7 +749,7 @@ pmd_t pfn_pmd(unsigned long pfn, pgprot_t pgprot)
 {
 	unsigned long pmdv;
 
-	pmdv = pfn << PTE_RPN_SHIFT;
+	pmdv = (pfn << PTE_RPN_SHIFT) & PTE_RPN_MASK;
 	return pmd_set_protbits(__pmd(pmdv), pgprot);
 }
 

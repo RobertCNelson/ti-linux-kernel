@@ -52,7 +52,8 @@
 			 _PAGE_F_SECOND | _PAGE_F_GIX)
 
 /* shift to put page number into pte */
-#define PTE_RPN_SHIFT	(18)
+#define PTE_RPN_SHIFT	(12)
+#define PTE_RPN_SIZE	(45)	/* gives 57-bit real addresses */
 
 #define _PAGE_4K_PFN		0
 #ifndef __ASSEMBLY__
@@ -63,7 +64,7 @@
 #define pgd_none(pgd)		(!pgd_val(pgd))
 #define pgd_bad(pgd)		(pgd_val(pgd) == 0)
 #define pgd_present(pgd)	(pgd_val(pgd) != 0)
-#define pgd_page_vaddr(pgd)	(pgd_val(pgd) & ~PGD_MASKED_BITS)
+#define pgd_page_vaddr(pgd)	__va(pgd_val(pgd) & ~PGD_MASKED_BITS)
 
 static inline void pgd_clear(pgd_t *pgdp)
 {
