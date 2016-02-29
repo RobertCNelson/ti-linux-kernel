@@ -479,6 +479,12 @@ static int find_group_orlov(struct super_block *sb, struct inode *parent,
 	     (ext4_test_inode_flag(parent, EXT4_INODE_TOPDIR)))) {
 		int best_ndir = inodes_per_group;
 		int ret = -1;
+		/* Maximum usable blocks per group as some blocks are used
+		 * for inode tables and allocation bitmaps */
+		unsigned long long  max_blocks_per_flex =
+			((sbi->s_blocks_per_group -
+			  (sbi->s_itb_per_group +  2)) *
+			 flex_size) >>  sbi->s_cluster_bits;
 
 		if (qstr) {
 			hinfo.hash_version = DX_HASH_HALF_MD4;
@@ -491,6 +497,10 @@ static int find_group_orlov(struct super_block *sb, struct inode *parent,
 		for (i = 0; i < ngroups; i++) {
 			g = (parent_group + i) % ngroups;
 			get_orlov_stats(sb, g, flex_size, &stats);
+			/* can't get better group than empty group */
+			if (max_blocks_per_flex == stats.free_clusters &&
+			    (inodes_per_group * flex_size) == stats.free_inodes)
+				goto found_flex_bg;
 			if (!stats.free_inodes)
 				continue;
 			if (stats.used_dirs >= best_ndir)
