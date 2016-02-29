@@ -20,6 +20,8 @@ sched-use-tsk_cpus_allowed-instead-of-accessing-cpus.patch
 sched-provide-a-tsk_nr_cpus_allowed-helper.patch
 drivers-cpuidle-coupled-fix-warning-cpuidle_coupled_.patch
 drivers-media-vsp1_video-fix-compile-error.patch
+sc16is7xx_Drop_bogus_use_of_IRQF_ONESHOT.patch
+f2fs_Mutex_cant_be_used_by_down_write_nest_lock().patch
 
 ############################################################
 # Stuff which needs addressing upstream, but requires more
@@ -31,6 +33,11 @@ rfc-arm-smp-__cpu_disable-fix-sleeping-function-called-from-invalid-context.patc
 # Stuff broken upstream, need to be sent
 ############################################################
 rtmutex--Handle-non-enqueued-waiters-gracefully
+kernel-sched-fix-preempt_disable_ip-recodring-for-pr.patch
+
+# Wants a different fix for upstream
+iommu-amd--Use-WARN_ON_NORT.patch
+trace-writeback--Block-cgroup-path-tracing-on-RT.patch
 
 ############################################################
 # Submitted on LKML
@@ -144,6 +151,7 @@ latencyhist-disable-jump-labels.patch
 latency-hist.patch
 latency_hist-update-sched_wakeup-probe.patch
 trace-latency-hist-Consider-new-argument-when-probin.patch
+trace_Use_rcuidle_version_for_preemptoff_hist_trace_point.patch
 
 # HW LATENCY DETECTOR - this really wants a rewrite
 hwlatdetect.patch
@@ -263,6 +271,7 @@ hrtimer-fixup-hrtimer-callback-changes-for-preempt-r.patch
 sched-deadline-dl_task_timer-has-to-be-irqsafe.patch
 timer-fd-avoid-live-lock.patch
 hrtimer-Move-schedule_work-call-to-helper-thread.patch
+tick-broadcast--Make-hrtimer-irqsafe.patch
 
 # POSIX-CPU-TIMERS
 posix-timers-thread-posix-cpu-timers-on-rt.patch
@@ -340,9 +349,11 @@ rcu-merge-rcu-bh-into-rcu-preempt-for-rt.patch
 patch-to-introduce-rcu-bh-qs-where-safe-from-softirq.patch
 rcutree-rcu_bh_qs-disable-irq-while-calling-rcu_pree.patch
 rcu-disable-more-spots-of-rcu_bh.patch
+rcutorture-comment-out-rcu_bh-ops-on-PREEMPT_RT_FULL.patch
 
 # LGLOCKS - lovely
 lglocks-rt.patch
+lockinglglocks_Use_preempt_enabledisable_nort()_in_lg_double_locklg_double_unlock.patch
 
 # STOP machine (depend on lglock & rtmutex)
 stomp-machine-create-lg_global_trylock_relax-primiti.patch
@@ -565,6 +576,8 @@ cpufreq-drop-K8-s-driver-from-beeing-selected.patch
 i915_compile_fix.patch
 drm-i915-drop-trace_i915_gem_ring_dispatch-onrt.patch
 i915-bogus-warning-from-i915-when-running-on-PREEMPT.patch
+drmradeoni915_Use_preempt_disableenable_rt()_where_recommended.patch
+drmi915_Use_local_lockunlock_irq()_in_intel_pipe_update_startend().patch
 
 # CGROUPS
 cgroups-use-simple-wait-in-css_release.patch
