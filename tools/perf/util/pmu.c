@@ -153,7 +153,7 @@ static int perf_pmu__parse_unit(struct perf_pmu_alias *alias, char *dir, char *n
 	if (fd == -1)
 		return -1;
 
-		sret = read(fd, alias->unit, UNIT_MAX_LEN);
+	sret = read(fd, alias->unit, UNIT_MAX_LEN);
 	if (sret < 0)
 		goto error;
 
@@ -284,13 +284,12 @@ static int pmu_aliases_parse(char *dir, struct list_head *head)
 {
 	struct dirent *evt_ent;
 	DIR *event_dir;
-	int ret = 0;
 
 	event_dir = opendir(dir);
 	if (!event_dir)
 		return -EINVAL;
 
-	while (!ret && (evt_ent = readdir(event_dir))) {
+	while ((evt_ent = readdir(event_dir))) {
 		char path[PATH_MAX];
 		char *name = evt_ent->d_name;
 		FILE *file;
@@ -306,17 +305,19 @@ static int pmu_aliases_parse(char *dir, struct list_head *head)
 
 		snprintf(path, PATH_MAX, "%s/%s", dir, name);
 
-		ret = -EINVAL;
 		file = fopen(path, "r");
-		if (!file)
-			break;
+		if (!file) {
+			pr_debug("Cannot open %s\n", path);
+			continue;
+		}
 
-		ret = perf_pmu__new_alias(head, dir, name, file);
+		if (perf_pmu__new_alias(head, dir, name, file) < 0)
+			pr_debug("Cannot set up %s\n", name);
 		fclose(file);
 	}
 
 	closedir(event_dir);
-	return ret;
+	return 0;
 }
 
 /*
@@ -354,7 +355,7 @@ static int pmu_alias_terms(struct perf_pmu_alias *alias,
 	list_for_each_entry(term, &alias->terms, list) {
 		ret = parse_events_term__clone(&cloned, term);
 		if (ret) {
-			parse_events__free_terms(&list);
+			parse_events_terms__purge(&list);
 			return ret;
 		}
 		list_add_tail(&cloned->list, &list);
