@@ -179,7 +179,8 @@ static const struct stepping_info kbl_stepping_info[] = {
 static const struct stepping_info skl_stepping_info[] = {
 	{'A', '0'}, {'B', '0'}, {'C', '0'},
 	{'D', '0'}, {'E', '0'}, {'F', '0'},
-	{'G', '0'}, {'H', '0'}, {'I', '0'}
+	{'G', '0'}, {'H', '0'}, {'I', '0'},
+	{'J', '0'}, {'K', '0'}
 };
 
 static const struct stepping_info bxt_stepping_info[] = {
@@ -219,19 +220,19 @@ static const struct stepping_info *intel_get_stepping_info(struct drm_device *de
  * Everytime display comes back from low power state this function is called to
  * copy the firmware from internal memory to registers.
  */
-void intel_csr_load_program(struct drm_i915_private *dev_priv)
+bool intel_csr_load_program(struct drm_i915_private *dev_priv)
 {
 	u32 *payload = dev_priv->csr.dmc_payload;
 	uint32_t i, fw_size;
 
 	if (!IS_GEN9(dev_priv)) {
 		DRM_ERROR("No CSR support available for this platform\n");
-		return;
+		return false;
 	}
 
 	if (!dev_priv->csr.dmc_payload) {
 		DRM_ERROR("Tried to program CSR with empty payload\n");
-		return;
+		return false;
 	}
 
 	fw_size = dev_priv->csr.dmc_fw_size;
@@ -244,6 +245,8 @@ void intel_csr_load_program(struct drm_i915_private *dev_priv)
 	}
 
 	dev_priv->csr.dc_state = 0;
+
+	return true;
 }
 
 static uint32_t *parse_csr_fw(struct drm_i915_private *dev_priv,
