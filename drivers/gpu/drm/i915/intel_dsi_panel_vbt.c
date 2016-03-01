@@ -234,14 +234,15 @@ static const u8 *mipi_exec_gpio(struct intel_dsi *intel_dsi, const u8 *data)
 	if (!gtable[gpio].init) {
 		/* program the function */
 		/* FIXME: remove constant below */
-		vlv_gpio_nc_write(dev_priv, function, 0x2000CC00);
+		vlv_iosf_sb_write(dev_priv, IOSF_PORT_GPIO_NC, function,
+				  0x2000CC00);
 		gtable[gpio].init = 1;
 	}
 
 	val = 0x4 | action;
 
 	/* pull up/down */
-	vlv_gpio_nc_write(dev_priv, pad, val);
+	vlv_iosf_sb_write(dev_priv, IOSF_PORT_GPIO_NC, pad, val);
 	mutex_unlock(&dev_priv->sb_lock);
 
 out:
@@ -439,10 +440,7 @@ struct drm_panel *vbt_panel_init(struct intel_dsi *intel_dsi, u16 panel_id)
 	intel_dsi->dual_link = mipi_config->dual_link;
 	intel_dsi->pixel_overlap = mipi_config->pixel_overlap;
 
-	if (intel_dsi->pixel_format == VID_MODE_FORMAT_RGB666)
-		bits_per_pixel = 18;
-	else if (intel_dsi->pixel_format == VID_MODE_FORMAT_RGB565)
-		bits_per_pixel = 16;
+	bits_per_pixel = dsi_pixel_format_bpp(intel_dsi->pixel_format);
 
 	intel_dsi->operation_mode = mipi_config->is_cmd_mode;
 	intel_dsi->video_mode_format = mipi_config->video_transfer_mode;

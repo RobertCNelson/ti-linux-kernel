@@ -668,7 +668,7 @@ need_reloc_mappable(struct i915_vma *vma)
 	if (entry->relocation_count == 0)
 		return false;
 
-	if (!i915_is_ggtt(vma->vm))
+	if (!vma->is_ggtt)
 		return false;
 
 	/* See also use_cpu_reloc() */
@@ -687,8 +687,7 @@ eb_vma_misplaced(struct i915_vma *vma)
 	struct drm_i915_gem_exec_object2 *entry = vma->exec_entry;
 	struct drm_i915_gem_object *obj = vma->obj;
 
-	WARN_ON(entry->flags & __EXEC_OBJECT_NEEDS_MAP &&
-	       !i915_is_ggtt(vma->vm));
+	WARN_ON(entry->flags & __EXEC_OBJECT_NEEDS_MAP && !vma->is_ggtt);
 
 	if (entry->alignment &&
 	    vma->node.start & (entry->alignment - 1))
@@ -1401,6 +1400,7 @@ eb_select_ring(struct drm_i915_private *dev_priv,
 			bsd_idx = gen8_dispatch_bsd_ring(dev_priv, file);
 		} else if (bsd_idx >= I915_EXEC_BSD_RING1 &&
 			   bsd_idx <= I915_EXEC_BSD_RING2) {
+			bsd_idx >>= I915_EXEC_BSD_SHIFT;
 			bsd_idx--;
 		} else {
 			DRM_DEBUG("execbuf with unknown bsd ring: %u\n",
@@ -1654,7 +1654,7 @@ err:
 	 * must be freed again. If it was submitted then it is being tracked
 	 * on the active request list and no clean up is required here.
 	 */
-	if (ret && req)
+	if (ret && !IS_ERR_OR_NULL(req))
 		i915_gem_request_cancel(req);
 
 	mutex_unlock(&dev->struct_mutex);

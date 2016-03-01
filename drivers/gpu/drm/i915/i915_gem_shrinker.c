@@ -52,7 +52,7 @@ static int num_vma_bound(struct drm_i915_gem_object *obj)
 	struct i915_vma *vma;
 	int count = 0;
 
-	list_for_each_entry(vma, &obj->vma_list, vma_link) {
+	list_for_each_entry(vma, &obj->vma_list, obj_link) {
 		if (drm_mm_node_allocated(&vma->node))
 			count++;
 		if (vma->pin_count)
@@ -176,7 +176,7 @@ i915_gem_shrink(struct drm_i915_private *dev_priv,
 
 			/* For the unbound phase, this should be a no-op! */
 			list_for_each_entry_safe(vma, v,
-						 &obj->vma_list, vma_link)
+						 &obj->vma_list, obj_link)
 				if (i915_vma_unbind(vma))
 					break;
 
@@ -367,8 +367,20 @@ void i915_gem_shrinker_init(struct drm_i915_private *dev_priv)
 	dev_priv->mm.shrinker.scan_objects = i915_gem_shrinker_scan;
 	dev_priv->mm.shrinker.count_objects = i915_gem_shrinker_count;
 	dev_priv->mm.shrinker.seeks = DEFAULT_SEEKS;
-	register_shrinker(&dev_priv->mm.shrinker);
+	WARN_ON(register_shrinker(&dev_priv->mm.shrinker));
 
 	dev_priv->mm.oom_notifier.notifier_call = i915_gem_shrinker_oom;
-	register_oom_notifier(&dev_priv->mm.oom_notifier);
+	WARN_ON(register_oom_notifier(&dev_priv->mm.oom_notifier));
+}
+
+/**
+ * i915_gem_shrinker_cleanup - Clean up i915 shrinker
+ * @dev_priv: i915 device
+ *
+ * This function unregisters the i915 shrinker and OOM handler.
+ */
+void i915_gem_shrinker_cleanup(struct drm_i915_private *dev_priv)
+{
+	WARN_ON(unregister_oom_notifier(&dev_priv->mm.oom_notifier));
+	unregister_shrinker(&dev_priv->mm.shrinker);
 }
