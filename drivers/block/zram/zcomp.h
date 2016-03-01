@@ -47,6 +47,7 @@ struct zcomp {
 	struct zcomp_strm *(*strm_find)(struct zcomp *comp);
 	void (*strm_release)(struct zcomp *comp, struct zcomp_strm *zstrm);
 	bool (*set_max_streams)(struct zcomp *comp, int num_strm);
+	int (*num_avail_streams)(struct zcomp *comp);
 	void (*destroy)(struct zcomp *comp);
 };
 
@@ -66,4 +67,5 @@ int zcomp_decompress(struct zcomp *comp, const unsigned char *src,
 		size_t src_len, unsigned char *dst);
 
 bool zcomp_set_max_streams(struct zcomp *comp, int num_strm);
+int zcomp_num_avail_streams(struct zcomp *comp);
 #endif /* _ZCOMP_H_ */
