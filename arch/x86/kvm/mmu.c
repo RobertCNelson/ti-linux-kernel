@@ -2354,8 +2354,8 @@ static bool prepare_zap_oldest_mmu_page(struct kvm *kvm,
 	if (list_empty(&kvm->arch.active_mmu_pages))
 		return false;
 
-	sp = list_entry(kvm->arch.active_mmu_pages.prev,
-			struct kvm_mmu_page, link);
+	sp = list_last_entry(&kvm->arch.active_mmu_pages,
+			     struct kvm_mmu_page, link);
 	kvm_mmu_prepare_zap_page(kvm, sp, invalid_list);
 
 	return true;
@@ -3273,7 +3273,7 @@ static bool is_shadow_zero_bits_set(struct kvm_mmu *mmu, u64 spte, int level)
 	return __is_rsvd_bits_set(&mmu->shadow_zero_check, spte, level);
 }
 
-static bool quickly_check_mmio_pf(struct kvm_vcpu *vcpu, u64 addr, bool direct)
+static bool mmio_info_in_cache(struct kvm_vcpu *vcpu, u64 addr, bool direct)
 {
 	if (direct)
 		return vcpu_match_mmio_gpa(vcpu, addr);
@@ -3332,7 +3332,7 @@ int handle_mmio_page_fault(struct kvm_vcpu *vcpu, u64 addr, bool direct)
 	u64 spte;
 	bool reserved;
 
-	if (quickly_check_mmio_pf(vcpu, addr, direct))
+	if (mmio_info_in_cache(vcpu, addr, direct))
 		return RET_MMIO_PF_EMULATE;
 
 	reserved = walk_shadow_page_get_mmio_spte(vcpu, addr, &spte);
@@ -3369,13 +3369,6 @@ static int nonpaging_page_fault(struct kvm_vcpu *vcpu, gva_t gva,
 	int r;
 
 	pgprintk("%s: gva %lx error %x\n", __func__, gva, error_code);
-
-	if (unlikely(error_code & PFERR_RSVD_MASK)) {
-		r = handle_mmio_page_fault(vcpu, gva, true);
-
-		if (likely(r != RET_MMIO_PF_INVALID))
-			return r;
-	}
 
 	r = mmu_topup_memory_caches(vcpu);
 	if (r)
@@ -3459,13 +3452,6 @@ static int tdp_page_fault(struct kvm_vcpu *vcpu, gva_t gpa, u32 error_code,
 	bool map_writable;
 
 	MMU_WARN_ON(!VALID_PAGE(vcpu->arch.mmu.root_hpa));
-
-	if (unlikely(error_code & PFERR_RSVD_MASK)) {
-		r = handle_mmio_page_fault(vcpu, gpa, true);
-
-		if (likely(r != RET_MMIO_PF_INVALID))
-			return r;
-	}
 
 	r = mmu_topup_memory_caches(vcpu);
 	if (r)
@@ -4354,32 +4340,34 @@ static void make_mmu_pages_available(struct kvm_vcpu *vcpu)
 	kvm_mmu_commit_zap_page(vcpu->kvm, &invalid_list);
 }
 
-static bool is_mmio_page_fault(struct kvm_vcpu *vcpu, gva_t addr)
-{
-	if (vcpu->arch.mmu.direct_map || mmu_is_nested(vcpu))
-		return vcpu_match_mmio_gpa(vcpu, addr);
-
-	return vcpu_match_mmio_gva(vcpu, addr);
-}
-
 int kvm_mmu_page_fault(struct kvm_vcpu *vcpu, gva_t cr2, u32 error_code,
 		       void *insn, int insn_len)
 {
 	int r, emulation_type = EMULTYPE_RETRY;
 	enum emulation_result er;
+	bool direct = vcpu->arch.mmu.direct_map || mmu_is_nested(vcpu);
+
+	if (unlikely(error_code & PFERR_RSVD_MASK)) {
+		r = handle_mmio_page_fault(vcpu, cr2, direct);
+		if (r == RET_MMIO_PF_EMULATE) {
+			emulation_type = 0;
+			goto emulate;
+		}
+		if (r == RET_MMIO_PF_RETRY)
+			return 1;
+		if (r < 0)
+			return r;
+	}
 
 	r = vcpu->arch.mmu.page_fault(vcpu, cr2, error_code, false);
 	if (r < 0)
-		goto out;
+		return r;
+	if (!r)
+		return 1;
 
-	if (!r) {
-		r = 1;
-		goto out;
-	}
-
-	if (is_mmio_page_fault(vcpu, cr2))
+	if (mmio_info_in_cache(vcpu, cr2, direct))
 		emulation_type = 0;
-
+emulate:
 	er = x86_emulate_instruction(vcpu, cr2, emulation_type, insn, insn_len);
 
 	switch (er) {
@@ -4393,8 +4381,6 @@ int kvm_mmu_page_fault(struct kvm_vcpu *vcpu, gva_t cr2, u32 error_code,
 	default:
 		BUG();
 	}
-out:
-	return r;
 }
 EXPORT_SYMBOL_GPL(kvm_mmu_page_fault);
 
