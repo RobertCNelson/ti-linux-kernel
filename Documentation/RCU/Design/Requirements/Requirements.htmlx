@@ -682,6 +682,34 @@ That said, it is much easier to fool yourself into believing that you have
 adhered to the as-if rule than it is to actually adhere to it!
 <p>@@QQE@@
 
+<p>@@QQ@@
+You claim that <tt>rcu_read_lock()</tt> and <tt>rcu_read_unlock()</tt>
+generate absolutely no code in some kernel builds.
+This means that the compiler might arbitrarily rearrange consecutive
+RCU read-side critical sections.
+Given such rearrangement, if a given RCU read-side critical section
+is done, how can you be sure that all prior RCU read-side critical
+sections are done?
+Won't the compiler rearrangements make that impossible to determine?
+<p>@@QQA@@
+In cases where <tt>rcu_read_lock()</tt> and <tt>rcu_read_unlock()</tt>
+generate absolutely no code, RCU infers quiescent states only at
+special locations, for example, within the scheduler.
+Because calls to <tt>schedule()</tt> had better prevent calling-code
+accesses to shared variables from being rearranged across the call to
+<tt>schedule()</tt>, if RCU detects the end of a given RCU read-side
+critical section, it will necessarily detect the end of all prior
+RCU read-side critical sections, no matter how aggressively the
+compiler scrambles the code.
+
+<p>
+Again, this all assumes that the compiler cannot scramble code across
+calls to the scheduler, out of interrupt handlers, into the idle loop,
+into user-mode code, and so on.
+But if your kernel build allows that sort of scrambling, you have broken
+far more than just RCU!
+<p>@@QQE@@
+
 <p>
 Note that these memory-barrier requirements do not replace the fundamental
 RCU requirement that a grace period wait for all pre-existing readers.
@@ -1485,7 +1513,8 @@ situations where neither <tt>synchronize_rcu()</tt> nor
 <tt>synchronize_rcu_expedited()</tt> would be legal,
 including within preempt-disable code, <tt>local_bh_disable()</tt> code,
 interrupt-disable code, and interrupt handlers.
-However, even <tt>call_rcu()</tt> is illegal within NMI handlers.
+However, even <tt>call_rcu()</tt> is illegal within NMI handlers
+and from offline CPUs.
 The callback function (<tt>remove_gp_cb()</tt> in this case) will be
 executed within softirq (software interrupt) environment within the
 Linux kernel,
@@ -2338,6 +2367,14 @@ This real-time requirement motivated the grace-period kthread, which
 also simplified handling of a number of race conditions.
 
 <p>
+RCU must avoid degrading real-time response for CPU-bound threads, whether
+executing in usermode (which is one use case for
+<tt>CONFIG_NO_HZ_FULL=y</tt>) or in the kernel.
+That said, CPU-bound loops in the kernel must execute
+<tt>cond_resched_rcu_qs()</tt> at least once per few tens of milliseconds
+in order to avoid receiving an IPI from RCU.
+
+<p>
 Finally, RCU's status as a synchronization primitive means that
 any RCU failure can result in arbitrary memory corruption that can be
 extremely difficult to debug.
@@ -2390,6 +2427,8 @@ described in a separate section.
 <li>	<a href="#Sched Flavor">Sched Flavor</a>
 <li>	<a href="#Sleepable RCU">Sleepable RCU</a>
 <li>	<a href="#Tasks RCU">Tasks RCU</a>
+<li>	<a href="#Waiting for Multiple Grace Periods">
+	Waiting for Multiple Grace Periods</a>
 </ol>
 
 <h3><a name="Bottom-Half Flavor">Bottom-Half Flavor</a></h3>
@@ -2638,6 +2677,86 @@ The tasks-RCU API is quite compact, consisting only of
 <tt>call_rcu_tasks()</tt>,
 <tt>synchronize_rcu_tasks()</tt>, and
 <tt>rcu_barrier_tasks()</tt>.
+
+<h3><a name="Waiting for Multiple Grace Periods">
+Waiting for Multiple Grace Periods</a></h3>
+
+<p>
+Perhaps you have an RCU protected data structure that is accessed from
+RCU read-side critical sections, from softirq handlers, and from
+hardware interrupt handlers.
+That is three flavors of RCU, the normal flavor, the bottom-half flavor,
+and the sched flavor.
+How to wait for a compound grace period?
+
+<p>
+The best approach is usually to &ldquo;just say no!&rdquo; and
+insert <tt>rcu_read_lock()</tt> and <tt>rcu_read_unlock()</tt>
+around each RCU read-side critical section, regardless of what
+environment it happens to be in.
+But suppose that some of the RCU read-side critical sections are
+on extremely hot code paths, and that use of <tt>CONFIG_PREEMPT=n</tt>
+is not a viable option, so that <tt>rcu_read_lock()</tt> and
+<tt>rcu_read_unlock()</tt> are not free.
+What then?
+
+<p>
+You <i>could</i> wait on all three grace periods in succession, as follows:
+
+<blockquote>
+<pre>
+ 1 synchronize_rcu();
+ 2 synchronize_rcu_bh();
+ 3 synchronize_sched();
+</pre>
+</blockquote>
+
+<p>
+This works, but triples the update-side latency penalty.
+In cases where this is not acceptable, <tt>synchronize_rcu_mult()</tt>
+may be used to wait on all three flavors of grace period concurrently:
+
+<blockquote>
+<pre>
+ 1 synchronize_rcu_mult(call_rcu, call_rcu_bh, call_rcu_sched);
+</pre>
+</blockquote>
+
+<p>
+But what if it is necessary to also wait on SRCU?
+This can be done as follows:
+
+<blockquote>
+<pre>
+ 1 static void call_my_srcu(struct rcu_head *head,
+ 2        void (*func)(struct rcu_head *head))
+ 3 {
+ 4   call_srcu(&amp;my_srcu, head, func);
+ 5 }
+ 6
+ 7 synchronize_rcu_mult(call_rcu, call_rcu_bh, call_rcu_sched, call_my_srcu);
+</pre>
+</blockquote>
+
+<p>
+If you needed to wait on multiple different flavors of SRCU
+(but why???), you would need to create a wrapper function resembling
+<tt>call_my_srcu()</tt> for each SRCU flavor.
+
+<p>@@QQ@@
+But what if I need to wait for multiple RCU flavors, but I also need
+the grace periods to be expedited?
+<p>@@QQA@@
+If you are using expedited grace periods, there should be less penalty
+for waiting on them in succession.
+But if that is nevertheless a problem, you can use workqueues or multiple
+kthreads to wait on the various expedited grace periods concurrently.
+<p>@@QQE@@
+
+<p>
+Again, it is usually better to adjust the RCU read-side critical sections
+to use a single flavor of RCU, but when this is not feasible, you can use
+<tt>synchronize_rcu_mult()</tt>.
 
 <h2><a name="Possible Future Changes">Possible Future Changes</a></h2>
 
