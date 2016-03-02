@@ -284,6 +284,13 @@ static void hsw_power_well_post_enable(struct drm_i915_private *dev_priv)
 						1 << PIPE_C | 1 << PIPE_B);
 }
 
+static void hsw_power_well_pre_disable(struct drm_i915_private *dev_priv)
+{
+	if (IS_BROADWELL(dev_priv))
+		gen8_irq_power_well_pre_disable(dev_priv,
+						1 << PIPE_C | 1 << PIPE_B);
+}
+
 static void skl_power_well_post_enable(struct drm_i915_private *dev_priv,
 				       struct i915_power_well *power_well)
 {
@@ -307,6 +314,14 @@ static void skl_power_well_post_enable(struct drm_i915_private *dev_priv,
 		gen8_irq_power_well_post_enable(dev_priv,
 						1 << PIPE_C | 1 << PIPE_B);
 	}
+}
+
+static void skl_power_well_pre_disable(struct drm_i915_private *dev_priv,
+				       struct i915_power_well *power_well)
+{
+	if (power_well->data == SKL_DISP_PW_2)
+		gen8_irq_power_well_pre_disable(dev_priv,
+						1 << PIPE_C | 1 << PIPE_B);
 }
 
 static void hsw_set_power_well(struct drm_i915_private *dev_priv,
@@ -334,6 +349,7 @@ static void hsw_set_power_well(struct drm_i915_private *dev_priv,
 
 	} else {
 		if (enable_requested) {
+			hsw_power_well_pre_disable(dev_priv);
 			I915_WRITE(HSW_PWR_WELL_DRIVER, 0);
 			POSTING_READ(HSW_PWR_WELL_DRIVER);
 			DRM_DEBUG_KMS("Requesting to disable the power well\n");
@@ -456,15 +472,19 @@ static void assert_can_disable_dc9(struct drm_i915_private *dev_priv)
 	  */
 }
 
-static void gen9_set_dc_state_debugmask_memory_up(
-			struct drm_i915_private *dev_priv)
+static void gen9_set_dc_state_debugmask(struct drm_i915_private *dev_priv)
 {
-	uint32_t val;
+	uint32_t val, mask;
+
+	mask = DC_STATE_DEBUG_MASK_MEMORY_UP;
+
+	if (IS_BROXTON(dev_priv))
+		mask |= DC_STATE_DEBUG_MASK_CORES;
 
 	/* The below bit doesn't need to be cleared ever afterwards */
 	val = I915_READ(DC_STATE_DEBUG);
-	if (!(val & DC_STATE_DEBUG_MASK_MEMORY_UP)) {
-		val |= DC_STATE_DEBUG_MASK_MEMORY_UP;
+	if ((val & mask) != mask) {
+		val |= mask;
 		I915_WRITE(DC_STATE_DEBUG, val);
 		POSTING_READ(DC_STATE_DEBUG);
 	}
@@ -524,9 +544,6 @@ static void gen9_set_dc_state(struct drm_i915_private *dev_priv, uint32_t state)
 		state = DC_STATE_DISABLE;
 	else if (i915.enable_dc == 1 && state > DC_STATE_EN_UPTO_DC5)
 		state = DC_STATE_EN_UPTO_DC5;
-
-	if (state & DC_STATE_EN_UPTO_DC5_DC6_MASK)
-		gen9_set_dc_state_debugmask_memory_up(dev_priv);
 
 	val = I915_READ(DC_STATE_EN);
 	DRM_DEBUG_KMS("Setting DC state from %02x to %02x\n",
@@ -707,6 +724,9 @@ static void skl_set_power_well(struct drm_i915_private *dev_priv,
 	enable_requested = tmp & req_mask;
 	state_mask = SKL_POWER_WELL_STATE(power_well->data);
 	is_enabled = tmp & state_mask;
+
+	if (!enable && enable_requested)
+		skl_power_well_pre_disable(dev_priv, power_well);
 
 	if (enable) {
 		if (!enable_requested) {
@@ -985,6 +1005,9 @@ static void vlv_display_power_well_deinit(struct drm_i915_private *dev_priv)
 	spin_lock_irq(&dev_priv->irq_lock);
 	valleyview_disable_display_irqs(dev_priv);
 	spin_unlock_irq(&dev_priv->irq_lock);
+
+	/* make sure we're done processing display irqs */
+	synchronize_irq(dev_priv->dev->irq);
 
 	vlv_power_sequencer_reset(dev_priv);
 }
@@ -2118,8 +2141,8 @@ static void skl_display_core_init(struct drm_i915_private *dev_priv,
 
 	skl_init_cdclk(dev_priv);
 
-	if (dev_priv->csr.dmc_payload)
-		intel_csr_load_program(dev_priv);
+	if (dev_priv->csr.dmc_payload && intel_csr_load_program(dev_priv))
+		gen9_set_dc_state_debugmask(dev_priv);
 }
 
 static void skl_display_core_uninit(struct drm_i915_private *dev_priv)
@@ -2342,22 +2365,20 @@ bool intel_runtime_pm_get_if_in_use(struct drm_i915_private *dev_priv)
 {
 	struct drm_device *dev = dev_priv->dev;
 	struct device *device = &dev->pdev->dev;
-	int ret;
 
-	if (!IS_ENABLED(CONFIG_PM))
-		return true;
+	if (IS_ENABLED(CONFIG_PM)) {
+		int ret = pm_runtime_get_if_in_use(device);
 
-	ret = pm_runtime_get_if_in_use(device);
-
-	/*
-	 * In cases runtime PM is disabled by the RPM core and we get an
-	 * -EINVAL return value we are not supposed to call this function,
-	 * since the power state is undefined. This applies atm to the
-	 * late/early system suspend/resume handlers.
-	 */
-	WARN_ON_ONCE(ret < 0);
-	if (ret <= 0)
-		return false;
+		/*
+		 * In cases runtime PM is disabled by the RPM core and we get
+		 * an -EINVAL return value we are not supposed to call this
+		 * function, since the power state is undefined. This applies
+		 * atm to the late/early system suspend/resume handlers.
+		 */
+		WARN_ON_ONCE(ret < 0);
+		if (ret <= 0)
+			return false;
+	}
 
 	atomic_inc(&dev_priv->pm.wakeref_count);
 	assert_rpm_wakelock_held(dev_priv);

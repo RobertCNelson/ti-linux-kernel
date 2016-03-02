@@ -634,7 +634,6 @@ static void intel_dsi_post_disable(struct intel_encoder *encoder)
 {
 	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
-	u32 val;
 
 	DRM_DEBUG_KMS("\n");
 
@@ -642,9 +641,13 @@ static void intel_dsi_post_disable(struct intel_encoder *encoder)
 
 	intel_dsi_clear_device_ready(encoder);
 
-	val = I915_READ(DSPCLK_GATE_D);
-	val &= ~DPOUNIT_CLOCK_GATE_DISABLE;
-	I915_WRITE(DSPCLK_GATE_D, val);
+	if (!IS_BROXTON(dev_priv)) {
+		u32 val;
+
+		val = I915_READ(DSPCLK_GATE_D);
+		val &= ~DPOUNIT_CLOCK_GATE_DISABLE;
+		I915_WRITE(DSPCLK_GATE_D, val);
+	}
 
 	drm_panel_unprepare(intel_dsi->panel);
 
@@ -782,10 +785,9 @@ static void set_dsi_timings(struct drm_encoder *encoder,
 {
 	struct drm_device *dev = encoder->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(encoder);
 	enum port port;
-	unsigned int bpp = intel_crtc->config->pipe_bpp;
+	unsigned int bpp = dsi_pixel_format_bpp(intel_dsi->pixel_format);
 	unsigned int lane_count = intel_dsi->lane_count;
 
 	u16 hactive, hfp, hsync, hbp, vfp, vsync, vbp;
@@ -856,7 +858,7 @@ static void intel_dsi_prepare(struct intel_encoder *intel_encoder)
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(encoder);
 	const struct drm_display_mode *adjusted_mode = &intel_crtc->config->base.adjusted_mode;
 	enum port port;
-	unsigned int bpp = intel_crtc->config->pipe_bpp;
+	unsigned int bpp = dsi_pixel_format_bpp(intel_dsi->pixel_format);
 	u32 val, tmp;
 	u16 mode_hdisplay;
 
