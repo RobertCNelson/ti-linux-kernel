@@ -16,7 +16,7 @@
 
 #include <linux/platform_device.h>
 
-#define MFD_ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+#define MFD_ARRAY_SIZE(arr) (arr ? (sizeof(arr) / sizeof((arr)[0])) : 0)
 
 #define MFD_CELL_ALL(_name, _res, _pdata, _id, _compat, _match)		\
 	{								\
