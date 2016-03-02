@@ -325,12 +325,17 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6dl-udoo.dtb \
 	imx6dl-wandboard.dtb \
 	imx6dl-wandboard-revb1.dtb \
+	imx6q-apalis-ixora.dtb \
 	imx6q-apf6dev.dtb \
 	imx6q-arm2.dtb \
+	imx6q-b450v3.dtb \
+	imx6q-b650v3.dtb \
+	imx6q-b850v3.dtb \
 	imx6q-cm-fx6.dtb \
 	imx6q-cubox-i.dtb \
 	imx6q-dfi-fs700-m60.dtb \
 	imx6q-dmo-edmqmx6.dtb \
+	imx6q-evi.dtb \
 	imx6q-gk802.dtb \
 	imx6q-gw51xx.dtb \
 	imx6q-gw52xx.dtb \
@@ -340,6 +345,7 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6q-gw551x.dtb \
 	imx6q-gw552x.dtb \
 	imx6q-hummingboard.dtb \
+	imx6q-icore-rqs.dtb \
 	imx6q-nitrogen6x.dtb \
 	imx6q-nitrogen6_max.dtb \
 	imx6q-novena.dtb \
@@ -357,7 +363,9 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6q-tx6q-1110.dtb \
 	imx6q-udoo.dtb \
 	imx6q-wandboard.dtb \
-	imx6q-wandboard-revb1.dtb
+	imx6q-wandboard-revb1.dtb \
+	imx6qp-sabreauto.dtb \
+	imx6qp-sabresd.dtb
 dtb-$(CONFIG_SOC_IMX6SL) += \
 	imx6sl-evk.dtb \
 	imx6sl-warp.dtb
@@ -468,6 +476,7 @@ dtb-$(CONFIG_ARCH_OMAP3) += \
 	omap3-sbc-t3517.dtb \
 	omap3-sbc-t3530.dtb \
 	omap3-sbc-t3730.dtb \
+	omap3-sniper.dtb \
 	omap3-thunder.dtb \
 	omap3-zoom3.dtb
 dtb-$(CONFIG_SOC_TI81XX) += \
@@ -533,6 +542,7 @@ dtb-$(CONFIG_ARCH_QCOM) += \
 	qcom-apq8064-cm-qs600.dtb \
 	qcom-apq8064-ifc6410.dtb \
 	qcom-apq8064-sony-xperia-yuga.dtb \
+	qcom-apq8064-asus-nexus7-flo.dtb \
 	qcom-apq8074-dragonboard.dtb \
 	qcom-apq8084-ifc6540.dtb \
 	qcom-apq8084-mtp.dtb \
@@ -620,6 +630,7 @@ dtb-$(CONFIG_ARCH_STI) += \
 	stih418-b2199.dtb
 dtb-$(CONFIG_ARCH_STM32)+= \
 	stm32f429-disco.dtb \
+	stm32f469-disco.dtb \
 	stm32429i-eval.dtb
 dtb-$(CONFIG_MACH_SUN4I) += \
 	sun4i-a10-a1000.dtb \
