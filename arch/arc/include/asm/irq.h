@@ -25,9 +25,5 @@
 #include <asm-generic/irq.h>
 
 extern void arc_init_IRQ(void);
-void arc_local_timer_setup(void);
-void arc_request_percpu_irq(int irq, int cpu,
-                            irqreturn_t (*isr)(int irq, void *dev),
-                            const char *irq_nm, void *percpu_dev);
 
 #endif
