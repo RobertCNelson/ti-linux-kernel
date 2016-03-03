@@ -7362,9 +7362,11 @@ enum skl_disp_power_wells {
 /* SBI offsets */
 #define  SBI_SSCDIVINTPHASE			0x0200
 #define  SBI_SSCDIVINTPHASE6			0x0600
-#define   SBI_SSCDIVINTPHASE_DIVSEL_MASK	((0x7f)<<1)
+#define   SBI_SSCDIVINTPHASE_DIVSEL_SHIFT	1
+#define   SBI_SSCDIVINTPHASE_DIVSEL_MASK	(0x7f<<1)
 #define   SBI_SSCDIVINTPHASE_DIVSEL(x)		((x)<<1)
-#define   SBI_SSCDIVINTPHASE_INCVAL_MASK	((0x7f)<<8)
+#define   SBI_SSCDIVINTPHASE_INCVAL_SHIFT	8
+#define   SBI_SSCDIVINTPHASE_INCVAL_MASK	(0x7f<<8)
 #define   SBI_SSCDIVINTPHASE_INCVAL(x)		((x)<<8)
 #define   SBI_SSCDIVINTPHASE_DIR(x)		((x)<<15)
 #define   SBI_SSCDIVINTPHASE_PROPAGATE		(1<<0)
@@ -7374,6 +7376,8 @@ enum skl_disp_power_wells {
 #define   SBI_SSCCTL_PATHALT			(1<<3)
 #define   SBI_SSCCTL_DISABLE			(1<<0)
 #define  SBI_SSCAUXDIV6				0x0610
+#define   SBI_SSCAUXDIV_FINALDIV2SEL_SHIFT	4
+#define   SBI_SSCAUXDIV_FINALDIV2SEL_MASK	(1<<4)
 #define   SBI_SSCAUXDIV_FINALDIV2SEL(x)		((x)<<4)
 #define  SBI_DBUFF0				0x2a00
 #define  SBI_GEN0				0x1f00
@@ -7568,6 +7572,7 @@ enum skl_disp_power_wells {
 #define  DC_STATE_EN_UPTO_DC5_DC6_MASK   0x3
 
 #define  DC_STATE_DEBUG                  _MMIO(0x45520)
+#define  DC_STATE_DEBUG_MASK_CORES	(1<<0)
 #define  DC_STATE_DEBUG_MASK_MEMORY_UP	(1<<1)
 
 /* Please see hsw_read_dcomp() and hsw_write_dcomp() before using this register,

@@ -444,8 +444,8 @@ static int i915_load_modeset_init(struct drm_device *dev)
 
 cleanup_gem:
 	mutex_lock(&dev->struct_mutex);
+	i915_gem_cleanup_ringbuffer(dev);
 	i915_gem_context_fini(dev);
-	i915_gem_cleanup_engines(dev);
 	mutex_unlock(&dev->struct_mutex);
 cleanup_irq:
 	intel_guc_ucode_fini(dev);
@@ -853,6 +853,10 @@ static void intel_device_info_runtime_init(struct drm_device *dev)
 	else if (INTEL_INFO(dev)->gen >= 9)
 		gen9_sseu_info_init(dev);
 
+	/* Snooping is broken on BXT A stepping. */
+	info->has_snoop = !info->has_llc;
+	info->has_snoop &= !IS_BXT_REVID(dev, 0, BXT_REVID_A1);
+
 	DRM_DEBUG_DRIVER("slice total: %u\n", info->slice_total);
 	DRM_DEBUG_DRIVER("subslice total: %u\n", info->subslice_total);
 	DRM_DEBUG_DRIVER("subslice per slice: %u\n", info->subslice_per_slice);
@@ -1010,6 +1014,7 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 	mutex_init(&dev_priv->sb_lock);
 	mutex_init(&dev_priv->modeset_restore_lock);
 	mutex_init(&dev_priv->av_mutex);
+	mutex_init(&dev_priv->wm.wm_mutex);
 
 	ret = i915_workqueues_init(dev_priv);
 	if (ret < 0)
@@ -1256,8 +1261,8 @@ int i915_driver_unload(struct drm_device *dev)
 
 	intel_guc_ucode_fini(dev);
 	mutex_lock(&dev->struct_mutex);
+	i915_gem_cleanup_ringbuffer(dev);
 	i915_gem_context_fini(dev);
-	i915_gem_cleanup_engines(dev);
 	mutex_unlock(&dev->struct_mutex);
 	intel_fbc_cleanup_cfb(dev_priv);
 

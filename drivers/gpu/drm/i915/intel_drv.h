@@ -118,6 +118,7 @@ enum intel_output_type {
 struct intel_framebuffer {
 	struct drm_framebuffer base;
 	struct drm_i915_gem_object *obj;
+	struct intel_rotation_info rot_info;
 };
 
 struct intel_fbdev {
@@ -260,6 +261,12 @@ struct intel_atomic_state {
 
 	struct intel_shared_dpll_config shared_dpll[I915_NUM_PLLS];
 	struct intel_wm_config wm_config;
+
+	/*
+	 * Current watermarks can't be trusted during hardware readout, so
+	 * don't bother calculating intermediate watermarks.
+	 */
+	bool skip_intermediate_wm;
 };
 
 struct intel_plane_state {
@@ -379,6 +386,7 @@ struct intel_crtc_state {
 	bool update_pipe; /* can a fast modeset be performed? */
 	bool disable_cxsr;
 	bool wm_changed; /* watermarks are updated */
+	bool fb_changed; /* fb on any of the planes is changed */
 
 	/* Pipe source size (ie. panel fitter input size)
 	 * All planes will be positioned inside this space,
@@ -509,13 +517,29 @@ struct intel_crtc_state {
 
 	struct {
 		/*
-		 * optimal watermarks, programmed post-vblank when this state
-		 * is committed
+		 * Optimal watermarks, programmed post-vblank when this state
+		 * is committed.
 		 */
 		union {
 			struct intel_pipe_wm ilk;
 			struct skl_pipe_wm skl;
 		} optimal;
+
+		/*
+		 * Intermediate watermarks; these can be programmed immediately
+		 * since they satisfy both the current configuration we're
+		 * switching away from and the new configuration we're switching
+		 * to.
+		 */
+		struct intel_pipe_wm intermediate;
+
+		/*
+		 * Platforms with two-step watermark programming will need to
+		 * update watermark programming post-vblank to switch from the
+		 * safe intermediate watermarks to the optimal final
+		 * watermarks.
+		 */
+		bool need_postvbl_update;
 	} wm;
 };
 
@@ -547,9 +571,7 @@ struct intel_crtc_atomic_commit {
 
 	/* Sleepable operations to perform after commit */
 	unsigned fb_bits;
-	bool wait_vblank;
 	bool post_enable_primary;
-	unsigned update_sprite_watermarks;
 
 	/* Sleepable operations to perform before and after commit */
 	bool update_fbc;
@@ -601,6 +623,7 @@ struct intel_crtc {
 			struct intel_pipe_wm ilk;
 			struct skl_pipe_wm skl;
 		} active;
+
 		/* allow CxSR on this pipe */
 		bool cxsr_allowed;
 	} wm;
@@ -910,9 +933,7 @@ struct intel_unpin_work {
 };
 
 struct intel_load_detect_pipe {
-	struct drm_framebuffer *release_fb;
-	bool load_detect_temp;
-	int dpms_mode;
+	struct drm_atomic_state *restore_state;
 };
 
 static inline struct intel_encoder *
@@ -995,6 +1016,8 @@ static inline bool intel_irqs_enabled(struct drm_i915_private *dev_priv)
 int intel_get_crtc_scanline(struct intel_crtc *crtc);
 void gen8_irq_power_well_post_enable(struct drm_i915_private *dev_priv,
 				     unsigned int pipe_mask);
+void gen8_irq_power_well_pre_disable(struct drm_i915_private *dev_priv,
+				     unsigned int pipe_mask);
 
 /* intel_crt.c */
 void intel_crt_init(struct drm_device *dev);
@@ -1060,6 +1083,7 @@ void i915_audio_component_cleanup(struct drm_i915_private *dev_priv);
 
 /* intel_display.c */
 extern const struct drm_plane_funcs intel_plane_funcs;
+unsigned int intel_rotation_info_size(const struct intel_rotation_info *rot_info);
 bool intel_has_pending_fb_unpin(struct drm_device *dev);
 int intel_pch_rawclk(struct drm_device *dev);
 int intel_hrawclk(struct drm_device *dev);
@@ -1107,9 +1131,8 @@ bool intel_get_load_detect_pipe(struct drm_connector *connector,
 void intel_release_load_detect_pipe(struct drm_connector *connector,
 				    struct intel_load_detect_pipe *old,
 				    struct drm_modeset_acquire_ctx *ctx);
-int intel_pin_and_fence_fb_obj(struct drm_plane *plane,
-			       struct drm_framebuffer *fb,
-			       const struct drm_plane_state *plane_state);
+int intel_pin_and_fence_fb_obj(struct drm_framebuffer *fb,
+			       unsigned int rotation);
 struct drm_framebuffer *
 __intel_framebuffer_create(struct drm_device *dev,
 			   struct drm_mode_fb_cmd2 *mode_cmd,
@@ -1158,6 +1181,7 @@ struct intel_shared_dpll *intel_get_shared_dpll(struct intel_crtc *crtc,
 int vlv_force_pll_on(struct drm_device *dev, enum pipe pipe,
 		     const struct dpll *dpll);
 void vlv_force_pll_off(struct drm_device *dev, enum pipe pipe);
+int lpt_get_iclkip(struct drm_i915_private *dev_priv);
 
 /* modesetting asserts */
 void assert_panel_unlocked(struct drm_i915_private *dev_priv,
@@ -1173,11 +1197,10 @@ void assert_fdi_rx_pll(struct drm_i915_private *dev_priv,
 void assert_pipe(struct drm_i915_private *dev_priv, enum pipe pipe, bool state);
 #define assert_pipe_enabled(d, p) assert_pipe(d, p, true)
 #define assert_pipe_disabled(d, p) assert_pipe(d, p, false)
-u32 intel_compute_tile_offset(struct drm_i915_private *dev_priv,
-			      int *x, int *y,
-			      uint64_t fb_modifier,
-			      unsigned int cpp,
-			      unsigned int pitch);
+u32 intel_compute_tile_offset(int *x, int *y,
+			      const struct drm_framebuffer *fb, int plane,
+			      unsigned int pitch,
+			      unsigned int rotation);
 void intel_prepare_reset(struct drm_device *dev);
 void intel_finish_reset(struct drm_device *dev);
 void hsw_enable_pc8(struct drm_i915_private *dev_priv);
@@ -1197,9 +1220,6 @@ void intel_dp_get_m_n(struct intel_crtc *crtc,
 		      struct intel_crtc_state *pipe_config);
 void intel_dp_set_m_n(struct intel_crtc *crtc, enum link_m_n_set m_n);
 int intel_dotclock_calculate(int link_freq, const struct intel_link_m_n *m_n);
-void
-ironlake_check_encoder_dotclock(const struct intel_crtc_state *pipe_config,
-				int dotclock);
 bool bxt_find_best_dpll(struct intel_crtc_state *crtc_state, int target_clock,
 			intel_clock_t *best_clock);
 int chv_calc_dpll_params(int refclk, intel_clock_t *pll_clock);
@@ -1227,7 +1247,7 @@ u32 skl_plane_ctl_rotation(unsigned int rotation);
 
 /* intel_csr.c */
 void intel_csr_ucode_init(struct drm_i915_private *);
-void intel_csr_load_program(struct drm_i915_private *);
+bool intel_csr_load_program(struct drm_i915_private *);
 void intel_csr_ucode_fini(struct drm_i915_private *);
 
 /* intel_dp.c */
@@ -1566,6 +1586,7 @@ void skl_wm_get_hw_state(struct drm_device *dev);
 void skl_ddb_get_hw_state(struct drm_i915_private *dev_priv,
 			  struct skl_ddb_allocation *ddb /* out */);
 uint32_t ilk_pipe_pixel_rate(const struct intel_crtc_state *pipe_config);
+bool ilk_disable_lp_wm(struct drm_device *dev);
 int sanitize_rc6_option(const struct drm_device *dev, int enable_rc6);
 
 /* intel_sdvo.c */
