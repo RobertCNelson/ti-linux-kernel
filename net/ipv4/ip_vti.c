@@ -206,7 +206,8 @@ static netdev_tx_t vti_xmit(struct sk_buff *skb, struct net_device *dev,
 		else
 			icmpv6_send(skb, ICMPV6_PKT_TOOBIG, 0, mtu);
 
-		return -EMSGSIZE;
+		dst_release(dst);
+		goto tx_error;
 	}
 
 	err = dst_output(tunnel->net, skb->sk, skb);
