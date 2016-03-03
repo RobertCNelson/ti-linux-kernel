@@ -392,6 +392,17 @@ config LWTUNNEL
 	  weight tunnel endpoint. Tunnel encapsulation parameters are stored
 	  with light weight tunnel state associated with fib routes.
 
+config DST_CACHE
+	bool "dst cache"
+	default n
+
+config NET_DEVLINK
+	tristate "Network physical/parent device Netlink interface"
+	help
+	  Network physical/parent device Netlink interface provides
+	  infrastructure to support access to physical chip-wide config and
+	  monitoring.
+
 endif   # if NET
 
 # Used by archs to tell that they support BPF_JIT
