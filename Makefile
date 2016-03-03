@@ -773,6 +773,9 @@ KBUILD_CFLAGS   += $(call cc-option,-Werror=strict-prototypes)
 # Prohibit date/time macros, which would make the build non-deterministic
 KBUILD_CFLAGS   += $(call cc-option,-Werror=date-time)
 
+# enforce correct pointer usage
+KBUILD_CFLAGS   += $(call cc-option,-Werror=incompatible-pointer-types)
+
 # use the deterministic mode of AR if available
 KBUILD_ARFLAGS := $(call ar-option,D)
 
@@ -993,7 +996,20 @@ prepare0: archprepare FORCE
 	$(Q)$(MAKE) $(build)=.
 
 # All the preparing..
-prepare: prepare0
+prepare: prepare0 prepare-objtool
+
+
+ifdef CONFIG_STACK_VALIDATION
+  ifeq ($(CROSS_COMPILE),)
+    objtool_target := tools/objtool FORCE
+  else
+    $(warning Stack validation is not supported with cross-compilation.  Disabling CONFIG_STACK_VALIDATION!)
+  endif
+endif
+
+PHONY += prepare-objtool
+prepare-objtool: $(objtool_target)
+
 
 # Generate some files
 # ---------------------------------------------------------------------------

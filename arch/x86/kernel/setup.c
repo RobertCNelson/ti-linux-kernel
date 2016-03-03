@@ -112,6 +112,7 @@
 #include <asm/alternative.h>
 #include <asm/prom.h>
 #include <asm/microcode.h>
+#include <asm/mmu_context.h>
 
 /*
  * max_low_pfn_mapped: highest direct mapped pfn under 4GB
@@ -152,23 +153,29 @@ static struct resource data_resource = {
 	.name	= "Kernel data",
 	.start	= 0,
 	.end	= 0,
-	.flags	= IORESOURCE_BUSY | IORESOURCE_MEM
+	.flags	= IORESOURCE_BUSY | IORESOURCE_SYSTEM_RAM
 };
 
 static struct resource code_resource = {
 	.name	= "Kernel code",
 	.start	= 0,
 	.end	= 0,
-	.flags	= IORESOURCE_BUSY | IORESOURCE_MEM
+	.flags	= IORESOURCE_BUSY | IORESOURCE_SYSTEM_RAM
 };
 
 static struct resource bss_resource = {
 	.name	= "Kernel bss",
 	.start	= 0,
 	.end	= 0,
-	.flags	= IORESOURCE_BUSY | IORESOURCE_MEM
+	.flags	= IORESOURCE_BUSY | IORESOURCE_SYSTEM_RAM
 };
 
+struct ramdisk {
+	u64 start_addr;		/* ramdisk load address */
+	u64 end_addr;		/* ramdisk end address */
+	u64 size;		/* ramdisk size */
+	bool reserve_ramdisk;	/* do initrd provided by bootloader */
+};
 
 #ifdef CONFIG_X86_32
 /* cpu data as detected by the assembly code in head.S */
@@ -309,6 +316,7 @@ static u64 __init get_ramdisk_image(void)
 
 	return ramdisk_image;
 }
+
 static u64 __init get_ramdisk_size(void)
 {
 	u64 ramdisk_size = boot_params.hdr.ramdisk_size;
@@ -318,90 +326,87 @@ static u64 __init get_ramdisk_size(void)
 	return ramdisk_size;
 }
 
-static void __init relocate_initrd(void)
+static void __init relocate_initrd(struct ramdisk *ramdisk)
 {
-	/* Assume only end is not page aligned */
-	u64 ramdisk_image = get_ramdisk_image();
-	u64 ramdisk_size  = get_ramdisk_size();
-	u64 area_size     = PAGE_ALIGN(ramdisk_size);
-
 	/* We need to move the initrd down into directly mapped mem */
 	relocated_ramdisk = memblock_find_in_range(0, PFN_PHYS(max_pfn_mapped),
-						   area_size, PAGE_SIZE);
+						   ramdisk->size, PAGE_SIZE);
 
 	if (!relocated_ramdisk)
 		panic("Cannot find place for new RAMDISK of size %lld\n",
-		      ramdisk_size);
+		      ramdisk->size);
 
 	/* Note: this includes all the mem currently occupied by
 	   the initrd, we rely on that fact to keep the data intact. */
-	memblock_reserve(relocated_ramdisk, area_size);
+	memblock_reserve(relocated_ramdisk, ramdisk->size);
 	initrd_start = relocated_ramdisk + PAGE_OFFSET;
-	initrd_end   = initrd_start + ramdisk_size;
+	initrd_end   = initrd_start + ramdisk->size;
 	printk(KERN_INFO "Allocated new RAMDISK: [mem %#010llx-%#010llx]\n",
-	       relocated_ramdisk, relocated_ramdisk + ramdisk_size - 1);
+	       relocated_ramdisk, relocated_ramdisk + ramdisk->size - 1);
 
-	copy_from_early_mem((void *)initrd_start, ramdisk_image, ramdisk_size);
+	copy_from_early_mem((void *)initrd_start, ramdisk->start_addr, ramdisk->size);
 
 	printk(KERN_INFO "Move RAMDISK from [mem %#010llx-%#010llx] to"
 		" [mem %#010llx-%#010llx]\n",
-		ramdisk_image, ramdisk_image + ramdisk_size - 1,
-		relocated_ramdisk, relocated_ramdisk + ramdisk_size - 1);
+		ramdisk->start_addr, ramdisk->start_addr + ramdisk->size - 1,
+		relocated_ramdisk, relocated_ramdisk + ramdisk->size - 1);
 }
 
-static void __init early_reserve_initrd(void)
+static void __init early_reserve_initrd(struct ramdisk *ramdisk)
 {
-	/* Assume only end is not page aligned */
-	u64 ramdisk_image = get_ramdisk_image();
-	u64 ramdisk_size  = get_ramdisk_size();
-	u64 ramdisk_end   = PAGE_ALIGN(ramdisk_image + ramdisk_size);
-
+	/* No initrd provided by bootloader */
 	if (!boot_params.hdr.type_of_loader ||
-	    !ramdisk_image || !ramdisk_size)
-		return;		/* No initrd provided by bootloader */
-
-	memblock_reserve(ramdisk_image, ramdisk_end - ramdisk_image);
+	    !ramdisk->start_addr ||
+	    !ramdisk->size)
+		ramdisk->reserve_ramdisk = false;
+	else
+		memblock_reserve(ramdisk->start_addr, ramdisk->size);
 }
-static void __init reserve_initrd(void)
+
+static void __init reserve_initrd(struct ramdisk *ramdisk)
 {
-	/* Assume only end is not page aligned */
-	u64 ramdisk_image = get_ramdisk_image();
-	u64 ramdisk_size  = get_ramdisk_size();
-	u64 ramdisk_end   = PAGE_ALIGN(ramdisk_image + ramdisk_size);
 	u64 mapped_size;
 
-	if (!boot_params.hdr.type_of_loader ||
-	    !ramdisk_image || !ramdisk_size)
-		return;		/* No initrd provided by bootloader */
+	if (!ramdisk->reserve_ramdisk)
+		return;
 
 	initrd_start = 0;
 
 	mapped_size = memblock_mem_size(max_pfn_mapped);
-	if (ramdisk_size >= (mapped_size>>1))
+	if (ramdisk->size >= (mapped_size >> 1))
 		panic("initrd too large to handle, "
-		       "disabling initrd (%lld needed, %lld available)\n",
-		       ramdisk_size, mapped_size>>1);
+		      "disabling initrd (%lld needed, %lld available)\n",
+		       ramdisk->size, mapped_size >> 1);
 
-	printk(KERN_INFO "RAMDISK: [mem %#010llx-%#010llx]\n", ramdisk_image,
-			ramdisk_end - 1);
+	printk(KERN_INFO "RAMDISK: [mem %#010llx-%#010llx]\n",
+		ramdisk->start_addr, ramdisk->end_addr - 1);
 
-	if (pfn_range_is_mapped(PFN_DOWN(ramdisk_image),
-				PFN_DOWN(ramdisk_end))) {
+	if (pfn_range_is_mapped(PFN_DOWN(ramdisk->start_addr),
+				PFN_DOWN(ramdisk->end_addr))) {
 		/* All are mapped, easy case */
-		initrd_start = ramdisk_image + PAGE_OFFSET;
-		initrd_end = initrd_start + ramdisk_size;
+		initrd_start = ramdisk->start_addr + PAGE_OFFSET;
+		initrd_end = initrd_start + ramdisk->size;
 		return;
 	}
 
-	relocate_initrd();
+	relocate_initrd(ramdisk);
 
-	memblock_free(ramdisk_image, ramdisk_end - ramdisk_image);
+	memblock_free(ramdisk->start_addr, ramdisk->size);
 }
 #else
-static void __init early_reserve_initrd(void)
+static u64 __init get_ramdisk_image(void)
 {
+	return 0;
 }
-static void __init reserve_initrd(void)
+static u64 __init get_ramdisk_size(void)
+{
+	return 0;
+}
+static void __init early_reserve_initrd(struct ramdisk *ramdisk)
+{
+
+}
+static void __init reserve_initrd(struct ramdisk *ramdisk)
 {
 }
 #endif /* CONFIG_BLK_DEV_INITRD */
@@ -844,13 +849,20 @@ dump_kernel_offset(struct notifier_block *self, unsigned long v, void *p)
  *
  * Note: On x86_64, fixmaps are ready for use even before this is called.
  */
-
 void __init setup_arch(char **cmdline_p)
 {
-	memblock_reserve(__pa_symbol(_text),
-			 (unsigned long)__bss_stop - (unsigned long)_text);
+	struct ramdisk ramdisk = {
+	       .start_addr	= get_ramdisk_image(),
+	       .size		= PAGE_ALIGN(get_ramdisk_size()),
+	       .reserve_ramdisk	= true
+	};
 
-	early_reserve_initrd();
+	/* Assume end is not page aligned */
+	ramdisk.end_addr = PAGE_ALIGN(ramdisk.start_addr + ramdisk.size);
+
+	memblock_reserve(__pa_symbol(_text), (unsigned long)(__bss_stop - _text));
+
+	early_reserve_initrd(&ramdisk);
 
 	/*
 	 * At this point everything still needed from the boot loader
@@ -1135,7 +1147,7 @@ void __init setup_arch(char **cmdline_p)
 	/* Allocate bigger log buffer */
 	setup_log_buf(1);
 
-	reserve_initrd();
+	reserve_initrd(&ramdisk);
 
 #if defined(CONFIG_ACPI) && defined(CONFIG_BLK_DEV_INITRD)
 	acpi_initrd_override((void *)initrd_start, initrd_end - initrd_start);
@@ -1282,3 +1294,11 @@ static int __init register_kernel_offset_dumper(void)
 	return 0;
 }
 __initcall(register_kernel_offset_dumper);
+
+void arch_show_smap(struct seq_file *m, struct vm_area_struct *vma)
+{
+	if (!boot_cpu_has(X86_FEATURE_OSPKE))
+		return;
+
+	seq_printf(m, "ProtectionKey:  %8u\n", vma_pkey(vma));
+}
