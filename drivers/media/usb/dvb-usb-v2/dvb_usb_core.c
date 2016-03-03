@@ -20,6 +20,7 @@
  */
 
 #include "dvb_usb_common.h"
+#include <media/media-device.h>
 
 static int dvb_usbv2_disable_rc_polling;
 module_param_named(disable_rc_polling, dvb_usbv2_disable_rc_polling, int, 0644);
@@ -411,15 +412,7 @@ static int dvb_usbv2_media_device_init(struct dvb_usb_adapter *adap)
 	if (!mdev)
 		return -ENOMEM;
 
-	mdev->dev = &udev->dev;
-	strlcpy(mdev->model, d->name, sizeof(mdev->model));
-	if (udev->serial)
-		strlcpy(mdev->serial, udev->serial, sizeof(mdev->serial));
-	strcpy(mdev->bus_info, udev->devpath);
-	mdev->hw_revision = le16_to_cpu(udev->descriptor.bcdDevice);
-	mdev->driver_version = LINUX_VERSION_CODE;
-
-	media_device_init(mdev);
+	media_device_usb_init(mdev, udev, d->name);
 
 	dvb_register_media_controller(&adap->dvb_adap, mdev);
 

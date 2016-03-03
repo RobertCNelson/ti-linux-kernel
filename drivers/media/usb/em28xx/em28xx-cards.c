@@ -32,7 +32,7 @@
 #include <media/tuner.h>
 #include <media/drv-intf/msp3400.h>
 #include <media/i2c/saa7115.h>
-#include <media/i2c/tvp5150.h>
+#include <dt-bindings/media/tvp5150.h>
 #include <media/i2c/tvaudio.h>
 #include <media/i2c-addr.h>
 #include <media/tveeprom.h>
@@ -556,6 +556,16 @@ static struct em28xx_led pctv_80e_leds[] = {
 		.gpio_reg  = EM2874_R80_GPIO_P0_CTRL,
 		.gpio_mask = 0x80,
 		.inverted  = 0,
+	},
+	{-1, 0, 0, 0},
+};
+
+static struct em28xx_led terratec_grabby_leds[] = {
+	{
+		.role      = EM28XX_LED_ANALOG_CAPTURING,
+		.gpio_reg  = EM2820_R08_GPIO_CTRL,
+		.gpio_mask = EM_GPIO_3,
+		.inverted  = 1,
 	},
 	{-1, 0, 0, 0},
 };
@@ -2015,6 +2025,8 @@ struct em28xx_board em28xx_boards[] = {
 			.vmux     = SAA7115_SVIDEO3,
 			.amux     = EM28XX_AMUX_LINE_IN,
 		} },
+		.buttons         = std_snapshot_button,
+		.leds            = terratec_grabby_leds,
 	},
 	[EM2860_BOARD_TERRATEC_AV350] = {
 		.name            = "Terratec AV350",
@@ -3023,19 +3035,12 @@ static int em28xx_media_device_init(struct em28xx *dev,
 	if (!mdev)
 		return -ENOMEM;
 
-	mdev->dev = &udev->dev;
-
-	if (!dev->name)
-		strlcpy(mdev->model, "unknown em28xx", sizeof(mdev->model));
+	if (udev->product)
+		media_device_usb_init(mdev, udev, udev->product);
+	else if (udev->manufacturer)
+		media_device_usb_init(mdev, udev, udev->manufacturer);
 	else
-		strlcpy(mdev->model, dev->name, sizeof(mdev->model));
-	if (udev->serial)
-		strlcpy(mdev->serial, udev->serial, sizeof(mdev->serial));
-	strcpy(mdev->bus_info, udev->devpath);
-	mdev->hw_revision = le16_to_cpu(udev->descriptor.bcdDevice);
-	mdev->driver_version = LINUX_VERSION_CODE;
-
-	media_device_init(mdev);
+		media_device_usb_init(mdev, udev, dev->name);
 
 	dev->media_dev = mdev;
 #endif
