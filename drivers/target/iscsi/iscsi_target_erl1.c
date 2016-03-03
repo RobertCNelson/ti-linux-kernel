@@ -1271,6 +1271,7 @@ void iscsit_start_dataout_timer(
 	cmd->dataout_timer_flags |= ISCSI_TF_RUNNING;
 	add_timer(&cmd->dataout_timer);
 }
+EXPORT_SYMBOL(iscsit_start_dataout_timer);
 
 void iscsit_stop_dataout_timer(struct iscsi_cmd *cmd)
 {
