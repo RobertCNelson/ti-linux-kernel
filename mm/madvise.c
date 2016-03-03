@@ -21,7 +21,8 @@
 #include <linux/swap.h>
 #include <linux/swapops.h>
 #include <linux/mmu_notifier.h>
-
+#include <linux/uio.h>
+#include <linux/compat.h>
 #include <asm/tlb.h>
 
 /*
@@ -555,8 +556,9 @@ static int madvise_hwpoison(int bhv, unsigned long start, unsigned long end)
 		}
 		pr_info("Injecting memory failure for page %#lx at %#lx\n",
 		       page_to_pfn(p), start);
-		/* Ignore return value for now */
-		memory_failure(page_to_pfn(p), 0, MF_COUNT_INCREASED);
+		ret = memory_failure(page_to_pfn(p), 0, MF_COUNT_INCREASED);
+		if (ret)
+			return ret;
 	}
 	return 0;
 }
@@ -564,7 +566,8 @@ static int madvise_hwpoison(int bhv, unsigned long start, unsigned long end)
 
 static long
 madvise_vma(struct vm_area_struct *vma, struct vm_area_struct **prev,
-		unsigned long start, unsigned long end, int behavior)
+		unsigned long start, unsigned long end, int behavior,
+		void *data)
 {
 	switch (behavior) {
 	case MADV_REMOVE:
@@ -616,6 +619,62 @@ madvise_behavior_valid(int behavior)
 	}
 }
 
+typedef long (*madvise_iterate_fn)(struct vm_area_struct *vma,
+	struct vm_area_struct **prev, unsigned long start,
+	unsigned long end, int behavior, void *data);
+static int madvise_iterate_vma(unsigned long start, unsigned long end,
+	int *unmapped_error, int behavior, madvise_iterate_fn fn, void *data)
+{
+	struct vm_area_struct *vma, *prev;
+	unsigned long tmp;
+	int error = 0;
+
+	/*
+	 * If the interval [start,end) covers some unmapped address
+	 * ranges, just ignore them, but return -ENOMEM at the end.
+	 * - different from the way of handling in mlock etc.
+	 */
+	vma = find_vma_prev(current->mm, start, &prev);
+	if (vma && start > vma->vm_start)
+		prev = vma;
+
+	for (;;) {
+		/* Still start < end. */
+		error = -ENOMEM;
+		if (!vma)
+			break;
+
+		/* Here start < (end|vma->vm_end). */
+		if (start < vma->vm_start) {
+			*unmapped_error = -ENOMEM;
+			start = vma->vm_start;
+			if (start >= end)
+				break;
+		}
+
+		/* Here vma->vm_start <= start < (end|vma->vm_end) */
+		tmp = vma->vm_end;
+		if (end < tmp)
+			tmp = end;
+
+		/* Here vma->vm_start <= start < tmp <= (end|vma->vm_end). */
+		error = fn(vma, &prev, start, tmp, behavior, data);
+		if (error)
+			break;
+		start = tmp;
+		if (prev && start < prev->vm_end)
+			start = prev->vm_end;
+		if (start >= end)
+			break;
+		if (prev)
+			vma = prev->vm_next;
+		else	/* madvise_remove dropped mmap_sem */
+			vma = find_vma(current->mm, start);
+	}
+
+	return error;
+}
+
 /*
  * The madvise(2) system call.
  *
@@ -638,14 +697,28 @@ madvise_behavior_valid(int behavior)
  *		some pages ahead.
  *  MADV_DONTNEED - the application is finished with the given range,
  *		so the kernel can free resources associated with it.
+ *  MADV_FREE - the application marks pages in the given range as lazy free,
+ *		where actual purges are postponed until memory pressure happens.
  *  MADV_REMOVE - the application wants to free up the given range of
  *		pages and associated backing store.
  *  MADV_DONTFORK - omit this area from child's address space when forking:
  *		typically, to avoid COWing pages pinned by get_user_pages().
  *  MADV_DOFORK - cancel MADV_DONTFORK: no longer omit this area when forking.
+ *  MADV_HWPOISON - trigger memory error handler as if the given memory range
+ *		were corrupted by unrecoverable hardware memory failure.
+ *  MADV_SOFT_OFFLINE - try to soft-offline the given range of memory.
  *  MADV_MERGEABLE - the application recommends that KSM try to merge pages in
  *		this area with pages of identical content from other such areas.
  *  MADV_UNMERGEABLE- cancel MADV_MERGEABLE: no longer merge pages with others.
+ *  MADV_HUGEPAGE - the application wants to back the given range by transparent
+ *		huge pages in the future. Existing pages might be coalesced and
+ *		new pages might be allocated as THP.
+ *  MADV_NOHUGEPAGE - mark the given range as not worth being backed by
+ *		transparent huge pages so the existing pages will not be
+ *		coalesced into THP and new pages will not be allocated as THP.
+ *  MADV_DONTDUMP - the application wants to prevent pages in the given range
+ *		from being included in its core dump.
+ *  MADV_DODUMP - cancel MADV_DONTDUMP: no longer exclude from core dump.
  *
  * return values:
  *  zero    - success
@@ -660,8 +733,7 @@ madvise_behavior_valid(int behavior)
  */
 SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
 {
-	unsigned long end, tmp;
-	struct vm_area_struct *vma, *prev;
+	unsigned long end;
 	int unmapped_error = 0;
 	int error = -EINVAL;
 	int write;
@@ -697,51 +769,13 @@ SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
 	else
 		down_read(&current->mm->mmap_sem);
 
-	/*
-	 * If the interval [start,end) covers some unmapped address
-	 * ranges, just ignore them, but return -ENOMEM at the end.
-	 * - different from the way of handling in mlock etc.
-	 */
-	vma = find_vma_prev(current->mm, start, &prev);
-	if (vma && start > vma->vm_start)
-		prev = vma;
-
 	blk_start_plug(&plug);
-	for (;;) {
-		/* Still start < end. */
-		error = -ENOMEM;
-		if (!vma)
-			goto out;
 
-		/* Here start < (end|vma->vm_end). */
-		if (start < vma->vm_start) {
-			unmapped_error = -ENOMEM;
-			start = vma->vm_start;
-			if (start >= end)
-				goto out;
-		}
-
-		/* Here vma->vm_start <= start < (end|vma->vm_end) */
-		tmp = vma->vm_end;
-		if (end < tmp)
-			tmp = end;
-
-		/* Here vma->vm_start <= start < tmp <= (end|vma->vm_end). */
-		error = madvise_vma(vma, &prev, start, tmp, behavior);
-		if (error)
-			goto out;
-		start = tmp;
-		if (prev && start < prev->vm_end)
-			start = prev->vm_end;
+	error = madvise_iterate_vma(start, end, &unmapped_error,
+			behavior, madvise_vma, NULL);
+	if (error == 0 && unmapped_error != 0)
 		error = unmapped_error;
-		if (start >= end)
-			goto out;
-		if (prev)
-			vma = prev->vm_next;
-		else	/* madvise_remove dropped mmap_sem */
-			vma = find_vma(current->mm, start);
-	}
-out:
+
 	blk_finish_plug(&plug);
 	if (write)
 		up_write(&current->mm->mmap_sem);
@@ -750,3 +784,175 @@ out:
 
 	return error;
 }
+
+static long
+madvisev_vma(struct vm_area_struct *vma, struct vm_area_struct **prev,
+		unsigned long start, unsigned long end, int behavior,
+		void *data)
+{
+	struct mmu_gather *tlb = data;
+	*prev = vma;
+	if (vma->vm_flags & (VM_LOCKED|VM_HUGETLB|VM_PFNMAP))
+		return -EINVAL;
+
+	switch (behavior) {
+	case MADV_FREE:
+		/*
+		 * XXX: In this implementation, MADV_FREE works like
+		 * MADV_DONTNEED on swapless system or full swap.
+		 */
+		if (get_nr_swap_pages() > 0) {
+			/* MADV_FREE works for only anon vma at the moment */
+			if (!vma_is_anonymous(vma))
+				return -EINVAL;
+			madvise_free_page_range(tlb, vma, start, end);
+			break;
+		}
+		/* passthrough */
+	case MADV_DONTNEED:
+		unmap_vmas(tlb, vma, start, end);
+		break;
+	}
+	return 0;
+}
+
+static int do_madvisev(struct iovec *iov, unsigned long nr_segs, int behavior)
+{
+	unsigned long start, end = 0;
+	int unmapped_error = 0;
+	size_t len;
+	struct mmu_gather tlb;
+	int error = 0;
+	int i;
+	int write;
+	struct blk_plug plug;
+
+#ifdef CONFIG_MEMORY_FAILURE
+	if (behavior == MADV_HWPOISON || behavior == MADV_SOFT_OFFLINE) {
+		for (i = 0; i < nr_segs; i++) {
+			start = (unsigned long)iov[i].iov_base;
+			len = iov[i].iov_len;
+			error = madvise_hwpoison(behavior, start, start + len);
+			if (error)
+				return error;
+		}
+		return 0;
+	}
+#endif
+
+	if (!madvise_behavior_valid(behavior))
+		return -EINVAL;
+
+	for (i = 0; i < nr_segs; i++) {
+		start = (unsigned long)iov[i].iov_base;
+		/* Make sure iovs don't overlap and sorted */
+		if (start & ~PAGE_MASK || start < end)
+			return -EINVAL;
+		len = ((iov[i].iov_len + ~PAGE_MASK) & PAGE_MASK);
+
+		/*
+		 * Check to see whether len was rounded up from small -ve to
+		 * zero
+		 */
+		if (iov[i].iov_len && !len)
+			return -EINVAL;
+
+		end = start + len;
+
+		/*
+		 * end == start returns error (different against madvise).
+		 * return 0 is improper as there are other iovs
+		 */
+		if (end <= start)
+			return -EINVAL;
+
+		iov[i].iov_len = len;
+	}
+
+	write = madvise_need_mmap_write(behavior);
+	if (write)
+		down_write(&current->mm->mmap_sem);
+	else
+		down_read(&current->mm->mmap_sem);
+
+	if (behavior == MADV_DONTNEED || behavior == MADV_FREE) {
+		lru_add_drain();
+		tlb_gather_mmu(&tlb, current->mm,
+			(unsigned long)iov[0].iov_base, end);
+		update_hiwater_rss(current->mm);
+		for (i = 0; i < nr_segs; i++) {
+			start = (unsigned long)iov[i].iov_base;
+			len = iov[i].iov_len;
+
+			error = madvise_iterate_vma(start, start + len,
+				&unmapped_error, behavior, madvisev_vma, &tlb);
+			if (error)
+				break;
+		}
+		tlb_finish_mmu(&tlb, (unsigned long)iov[0].iov_base, end);
+	} else {
+		blk_start_plug(&plug);
+		for (i = 0; i < nr_segs; i++) {
+			start = (unsigned long)iov[i].iov_base;
+			len = iov[i].iov_len;
+
+			error = madvise_iterate_vma(start, start + len,
+				&unmapped_error, behavior, madvise_vma, NULL);
+			if (error)
+				break;
+		}
+		blk_finish_plug(&plug);
+	}
+	if (error == 0 && unmapped_error != 0)
+		error = unmapped_error;
+
+	if (write)
+		up_write(&current->mm->mmap_sem);
+	else
+		up_read(&current->mm->mmap_sem);
+	return error;
+}
+
+/*
+ * The vector madvise(). Like madvise except running for a vector of virtual
+ * address ranges
+ */
+SYSCALL_DEFINE3(madvisev, const struct iovec __user *, uvector,
+	unsigned long, nr_segs, int, behavior)
+{
+	struct iovec iovstack[UIO_FASTIOV];
+	struct iovec *iov = NULL;
+	int error;
+
+	error = rw_copy_check_uvector(CHECK_IOVEC_ONLY, uvector, nr_segs,
+			UIO_FASTIOV, iovstack, &iov);
+	if (error <= 0)
+		return error;
+
+	error = do_madvisev(iov, nr_segs, behavior);
+
+	if (iov != iovstack)
+		kfree(iov);
+	return error;
+}
+
+#ifdef CONFIG_COMPAT
+COMPAT_SYSCALL_DEFINE3(madvisev, const struct compat_iovec __user *, uvector,
+	compat_ulong_t, nr_segs, compat_int_t, behavior)
+{
+	struct iovec iovstack[UIO_FASTIOV];
+	struct iovec *iov = NULL;
+	int error;
+
+	error = compat_rw_copy_check_uvector(CHECK_IOVEC_ONLY, uvector, nr_segs,
+			UIO_FASTIOV, iovstack, &iov);
+	if (error <= 0)
+		return error;
+
+	error = do_madvisev(iov, nr_segs, behavior);
+
+	if (iov != iovstack)
+		kfree(iov);
+	return error;
+}
+#endif
