@@ -379,7 +379,7 @@ static int qcom_smp2p_alloc_outbound_item(struct qcom_smp2p *smp2p)
 		return PTR_ERR(out);
 	}
 
-	memset(out, 0, sizeof(*out));
+	memset_io(out, 0, sizeof(*out));
 	out->magic = SMP2P_MAGIC;
 	out->local_pid = smp2p->local_pid;
 	out->remote_pid = smp2p->remote_pid;
