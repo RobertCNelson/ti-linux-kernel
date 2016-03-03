@@ -89,6 +89,7 @@ struct rfkill_data {
 	struct mutex		mtx;
 	wait_queue_head_t	read_wait;
 	bool			input_handler;
+	bool			is_apm_owner;
 };
 
 
@@ -123,9 +124,46 @@ static struct {
 } rfkill_global_states[NUM_RFKILL_TYPES];
 
 static bool rfkill_epo_lock_active;
-
+static bool rfkill_apm_owned;
 
 #ifdef CONFIG_RFKILL_LEDS
+static struct led_trigger rfkill_apm_led_trigger;
+
+static void rfkill_apm_led_trigger_event(bool state)
+{
+	struct rfkill_data *data;
+	struct rfkill_int_event *ev;
+
+	led_trigger_event(&rfkill_apm_led_trigger, state ? LED_FULL : LED_OFF);
+
+	list_for_each_entry(data, &rfkill_fds, list) {
+		ev = kzalloc(sizeof(*ev), GFP_KERNEL);
+		if (!ev)
+			continue;
+		ev->ev.op = RFKILL_OP_AIRPLANE_MODE_INDICATOR_CHANGE;
+		ev->ev.soft = state;
+		list_add_tail(&ev->list, &data->events);
+		wake_up_interruptible(&data->read_wait);
+	}
+}
+
+static void rfkill_apm_led_trigger_activate(struct led_classdev *led)
+{
+	rfkill_apm_led_trigger_event(!rfkill_default_state);
+}
+
+static int rfkill_apm_led_trigger_register(void)
+{
+	rfkill_apm_led_trigger.name = "rfkill-airplane-mode";
+	rfkill_apm_led_trigger.activate = rfkill_apm_led_trigger_activate;
+	return led_trigger_register(&rfkill_apm_led_trigger);
+}
+
+static void rfkill_apm_led_trigger_unregister(void)
+{
+	led_trigger_unregister(&rfkill_apm_led_trigger);
+}
+
 static void rfkill_led_trigger_event(struct rfkill *rfkill)
 {
 	struct led_trigger *trigger;
@@ -177,6 +215,19 @@ static void rfkill_led_trigger_unregister(struct rfkill *rfkill)
 	led_trigger_unregister(&rfkill->led_trigger);
 }
 #else
+static void rfkill_apm_led_trigger_event(bool state)
+{
+}
+
+static int rfkill_apm_led_trigger_register(void)
+{
+	return 0;
+}
+
+static void rfkill_apm_led_trigger_unregister(void)
+{
+}
+
 static void rfkill_led_trigger_event(struct rfkill *rfkill)
 {
 }
@@ -313,6 +364,8 @@ static void rfkill_update_global_state(enum rfkill_type type, bool blocked)
 
 	for (i = 0; i < NUM_RFKILL_TYPES; i++)
 		rfkill_global_states[i].cur = blocked;
+	if (!rfkill_apm_owned)
+		rfkill_apm_led_trigger_event(blocked);
 }
 
 #ifdef CONFIG_RFKILL_INPUT
@@ -1136,11 +1189,26 @@ static ssize_t rfkill_fop_read(struct file *file, char __user *buf,
 	return ret;
 }
 
+static int rfkill_airplane_mode_release(struct rfkill_data *data)
+{
+	bool state = rfkill_global_states[RFKILL_TYPE_ALL].cur;
+
+	if (rfkill_apm_owned && data->is_apm_owner) {
+		rfkill_apm_owned = false;
+		data->is_apm_owner = false;
+		rfkill_apm_led_trigger_event(state);
+		return 0;
+	}
+	return -EACCES;
+}
+
 static ssize_t rfkill_fop_write(struct file *file, const char __user *buf,
 				size_t count, loff_t *pos)
 {
+	struct rfkill_data *data = file->private_data;
 	struct rfkill *rfkill;
 	struct rfkill_event ev;
+	int ret;
 
 	/* we don't need the 'hard' variable but accept it */
 	if (count < RFKILL_EVENT_SIZE_V1 - 1)
@@ -1155,29 +1223,55 @@ static ssize_t rfkill_fop_write(struct file *file, const char __user *buf,
 	if (copy_from_user(&ev, buf, count))
 		return -EFAULT;
 
-	if (ev.op != RFKILL_OP_CHANGE && ev.op != RFKILL_OP_CHANGE_ALL)
-		return -EINVAL;
-
 	if (ev.type >= NUM_RFKILL_TYPES)
 		return -EINVAL;
 
 	mutex_lock(&rfkill_global_mutex);
 
-	if (ev.op == RFKILL_OP_CHANGE_ALL)
+	switch (ev.op) {
+	case RFKILL_OP_CHANGE_ALL:
 		rfkill_update_global_state(ev.type, ev.soft);
+		list_for_each_entry(rfkill, &rfkill_list, node)
+			if (rfkill->type == ev.type ||
+			    ev.type == RFKILL_TYPE_ALL)
+				rfkill_set_block(rfkill, ev.soft);
+		ret = 0;
+		break;
+	case RFKILL_OP_CHANGE:
+		list_for_each_entry(rfkill, &rfkill_list, node)
+			if (rfkill->idx == ev.idx &&
+			    (rfkill->type == ev.type ||
+			     ev.type == RFKILL_TYPE_ALL))
+				rfkill_set_block(rfkill, ev.soft);
+		ret = 0;
+		break;
+	case RFKILL_OP_AIRPLANE_MODE_INDICATOR_ACQUIRE:
+		if (rfkill_apm_owned && !data->is_apm_owner) {
+			ret = -EACCES;
+			break;
+		}
 
-	list_for_each_entry(rfkill, &rfkill_list, node) {
-		if (rfkill->idx != ev.idx && ev.op != RFKILL_OP_CHANGE_ALL)
-			continue;
+		rfkill_apm_owned = true;
+		data->is_apm_owner = true;
+		ret = 0;
+		break;
+	case RFKILL_OP_AIRPLANE_MODE_INDICATOR_CHANGE:
+		if (!rfkill_apm_owned || !data->is_apm_owner) {
+			ret = -EACCES;
+			break;
+		}
 
-		if (rfkill->type != ev.type && ev.type != RFKILL_TYPE_ALL)
-			continue;
-
-		rfkill_set_block(rfkill, ev.soft);
+		rfkill_apm_led_trigger_event(ev.soft);
+		ret = 0;
+		break;
+	default:
+		ret = -EINVAL;
+		break;
 	}
+
 	mutex_unlock(&rfkill_global_mutex);
 
-	return count;
+	return ret ?: count;
 }
 
 static int rfkill_fop_release(struct inode *inode, struct file *file)
@@ -1186,6 +1280,7 @@ static int rfkill_fop_release(struct inode *inode, struct file *file)
 	struct rfkill_int_event *ev, *tmp;
 
 	mutex_lock(&rfkill_global_mutex);
+	rfkill_airplane_mode_release(data);
 	list_del(&data->list);
 	mutex_unlock(&rfkill_global_mutex);
 
@@ -1254,15 +1349,22 @@ static int __init rfkill_init(void)
 {
 	int error;
 
+	error = rfkill_apm_led_trigger_register();
+	if (error)
+		goto out;
+
 	rfkill_update_global_state(RFKILL_TYPE_ALL, !rfkill_default_state);
 
 	error = class_register(&rfkill_class);
-	if (error)
+	if (error) {
+		rfkill_apm_led_trigger_unregister();
 		goto out;
+	}
 
 	error = misc_register(&rfkill_miscdev);
 	if (error) {
 		class_unregister(&rfkill_class);
+		rfkill_apm_led_trigger_unregister();
 		goto out;
 	}
 
@@ -1271,6 +1373,7 @@ static int __init rfkill_init(void)
 	if (error) {
 		misc_deregister(&rfkill_miscdev);
 		class_unregister(&rfkill_class);
+		rfkill_apm_led_trigger_unregister();
 		goto out;
 	}
 #endif
@@ -1287,5 +1390,6 @@ static void __exit rfkill_exit(void)
 #endif
 	misc_deregister(&rfkill_miscdev);
 	class_unregister(&rfkill_class);
+	rfkill_apm_led_trigger_unregister();
 }
 module_exit(rfkill_exit);
