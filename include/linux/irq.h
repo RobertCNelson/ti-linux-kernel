@@ -140,7 +140,7 @@ struct irq_domain;
  * @ipi_offset:		Offset of first IPI target cpu in @affinity. Optional.
  */
 struct irq_common_data {
-	unsigned int		state_use_accessors;
+	unsigned int		__private state_use_accessors;
 #ifdef CONFIG_NUMA
 	unsigned int		node;
 #endif
@@ -214,7 +214,7 @@ enum {
 	IRQD_FORWARDED_TO_VCPU		= (1 << 20),
 };
 
-#define __irqd_to_state(d)		((d)->common->state_use_accessors)
+#define __irqd_to_state(d) ACCESS_PRIVATE((d)->common, state_use_accessors)
 
 static inline bool irqd_is_setaffinity_pending(struct irq_data *d)
 {
@@ -304,6 +304,8 @@ static inline void irqd_clr_forwarded_to_vcpu(struct irq_data *d)
 {
 	__irqd_to_state(d) &= ~IRQD_FORWARDED_TO_VCPU;
 }
+
+#undef __irqd_to_state
 
 static inline irq_hw_number_t irqd_to_hwirq(struct irq_data *d)
 {
