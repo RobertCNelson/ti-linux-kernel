@@ -433,9 +433,9 @@ int kgdb_arch_handle_exception(int vector, int signo, int err_code,
 struct kgdb_arch arch_kgdb_ops;
 
 /*
- * kgdb_arch_init - Perform any architecture specific initalization.
+ * kgdb_arch_init - Perform any architecture specific initialization.
  *
- * This function will handle the initalization of any architecture
+ * This function will handle the initialization of any architecture
  * specific callbacks.
  */
 int kgdb_arch_init(void)
