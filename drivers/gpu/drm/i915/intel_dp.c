@@ -1779,11 +1779,11 @@ static void wait_panel_status(struct intel_dp *intel_dp,
 			I915_READ(pp_stat_reg),
 			I915_READ(pp_ctrl_reg));
 
-	if (_wait_for((I915_READ(pp_stat_reg) & mask) == value, 5000, 10)) {
+	if (_wait_for((I915_READ(pp_stat_reg) & mask) == value,
+		      5 * USEC_PER_SEC, 10 * USEC_PER_MSEC))
 		DRM_ERROR("Panel status timeout: status %08x control %08x\n",
 				I915_READ(pp_stat_reg),
 				I915_READ(pp_ctrl_reg));
-	}
 
 	DRM_DEBUG_KMS("Wait complete\n");
 }
@@ -2409,7 +2409,6 @@ static void intel_dp_get_config(struct intel_encoder *encoder,
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	enum port port = dp_to_dig_port(intel_dp)->port;
 	struct intel_crtc *crtc = to_intel_crtc(encoder->base.crtc);
-	int dotclock;
 
 	tmp = I915_READ(intel_dp->output_reg);
 
@@ -2459,13 +2458,9 @@ static void intel_dp_get_config(struct intel_encoder *encoder,
 			pipe_config->port_clock = 270000;
 	}
 
-	dotclock = intel_dotclock_calculate(pipe_config->port_clock,
-					    &pipe_config->dp_m_n);
-
-	if (HAS_PCH_SPLIT(dev_priv->dev) && port != PORT_A)
-		ironlake_check_encoder_dotclock(pipe_config, dotclock);
-
-	pipe_config->base.adjusted_mode.crtc_clock = dotclock;
+	pipe_config->base.adjusted_mode.crtc_clock =
+		intel_dotclock_calculate(pipe_config->port_clock,
+					 &pipe_config->dp_m_n);
 
 	if (is_edp(intel_dp) && dev_priv->vbt.edp_bpp &&
 	    pipe_config->pipe_bpp > dev_priv->vbt.edp_bpp) {
@@ -4558,7 +4553,7 @@ bool intel_digital_port_connected(struct drm_i915_private *dev_priv,
 {
 	if (HAS_PCH_IBX(dev_priv))
 		return ibx_digital_port_connected(dev_priv, port);
-	if (HAS_PCH_SPLIT(dev_priv))
+	else if (HAS_PCH_SPLIT(dev_priv))
 		return cpt_digital_port_connected(dev_priv, port);
 	else if (IS_BROXTON(dev_priv))
 		return bxt_digital_port_connected(dev_priv, port);
