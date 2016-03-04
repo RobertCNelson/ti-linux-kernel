@@ -1614,7 +1614,6 @@ static int rcu_future_gp_cleanup(struct rcu_state *rsp, struct rcu_node *rnp)
 	int needmore;
 	struct rcu_data *rdp = this_cpu_ptr(rsp->rda);
 
-	rcu_nocb_gp_cleanup(rsp, rnp);
 	rnp->need_future_gp[c & 0x1] = 0;
 	needmore = rnp->need_future_gp[(c + 1) & 0x1];
 	trace_rcu_future_gp(rnp, rdp, c,
@@ -1635,7 +1634,7 @@ static void rcu_gp_kthread_wake(struct rcu_state *rsp)
 	    !READ_ONCE(rsp->gp_flags) ||
 	    !rsp->gp_kthread)
 		return;
-	wake_up(&rsp->gp_wq);
+	swake_up(&rsp->gp_wq);
 }
 
 /*
@@ -2010,6 +2009,7 @@ static void rcu_gp_cleanup(struct rcu_state *rsp)
 	int nocb = 0;
 	struct rcu_data *rdp;
 	struct rcu_node *rnp = rcu_get_root(rsp);
+	struct swait_queue_head *sq;
 
 	WRITE_ONCE(rsp->gp_activity, jiffies);
 	raw_spin_lock_irq_rcu_node(rnp);
@@ -2046,7 +2046,9 @@ static void rcu_gp_cleanup(struct rcu_state *rsp)
 			needgp = __note_gp_changes(rsp, rnp, rdp) || needgp;
 		/* smp_mb() provided by prior unlock-lock pair. */
 		nocb += rcu_future_gp_cleanup(rsp, rnp);
+		sq = rcu_nocb_gp_get(rnp);
 		raw_spin_unlock_irq(&rnp->lock);
+		rcu_nocb_gp_cleanup(sq);
 		cond_resched_rcu_qs();
 		WRITE_ONCE(rsp->gp_activity, jiffies);
 		rcu_gp_slow(rsp, gp_cleanup_delay);
@@ -2092,7 +2094,7 @@ static int __noreturn rcu_gp_kthread(void *arg)
 					       READ_ONCE(rsp->gpnum),
 					       TPS("reqwait"));
 			rsp->gp_state = RCU_GP_WAIT_GPS;
-			wait_event_interruptible(rsp->gp_wq,
+			swait_event_interruptible(rsp->gp_wq,
 						 READ_ONCE(rsp->gp_flags) &
 						 RCU_GP_FLAG_INIT);
 			rsp->gp_state = RCU_GP_DONE_GPS;
@@ -2122,7 +2124,7 @@ static int __noreturn rcu_gp_kthread(void *arg)
 					       READ_ONCE(rsp->gpnum),
 					       TPS("fqswait"));
 			rsp->gp_state = RCU_GP_WAIT_FQS;
-			ret = wait_event_interruptible_timeout(rsp->gp_wq,
+			ret = swait_event_interruptible_timeout(rsp->gp_wq,
 					rcu_gp_fqs_check_wake(rsp, &gf), j);
 			rsp->gp_state = RCU_GP_DOING_FQS;
 			/* Locking provides needed memory barriers. */
@@ -2246,7 +2248,7 @@ static void rcu_report_qs_rsp(struct rcu_state *rsp, unsigned long flags)
 	WARN_ON_ONCE(!rcu_gp_in_progress(rsp));
 	WRITE_ONCE(rsp->gp_flags, READ_ONCE(rsp->gp_flags) | RCU_GP_FLAG_FQS);
 	raw_spin_unlock_irqrestore(&rcu_get_root(rsp)->lock, flags);
-	rcu_gp_kthread_wake(rsp);
+	swake_up(&rsp->gp_wq);  /* Memory barrier implied by swake_up() path. */
 }
 
 /*
@@ -2607,28 +2609,6 @@ static void rcu_cleanup_dead_rnp(struct rcu_node *rnp_leaf)
 }
 
 /*
- * The CPU is exiting the idle loop into the arch_cpu_idle_dead()
- * function.  We now remove it from the rcu_node tree's ->qsmaskinit
- * bit masks.
- */
-static void rcu_cleanup_dying_idle_cpu(int cpu, struct rcu_state *rsp)
-{
-	unsigned long flags;
-	unsigned long mask;
-	struct rcu_data *rdp = per_cpu_ptr(rsp->rda, cpu);
-	struct rcu_node *rnp = rdp->mynode;  /* Outgoing CPU's rdp & rnp. */
-
-	if (!IS_ENABLED(CONFIG_HOTPLUG_CPU))
-		return;
-
-	/* Remove outgoing CPU from mask in the leaf rcu_node structure. */
-	mask = rdp->grpmask;
-	raw_spin_lock_irqsave_rcu_node(rnp, flags); /* Enforce GP memory-order guarantee. */
-	rnp->qsmaskinitnext &= ~mask;
-	raw_spin_unlock_irqrestore(&rnp->lock, flags);
-}
-
-/*
  * The CPU has been completely removed, and some other CPU is reporting
  * this fact from process context.  Do the remainder of the cleanup,
  * including orphaning the outgoing CPU's RCU callbacks, and also
@@ -2900,7 +2880,7 @@ static void force_quiescent_state(struct rcu_state *rsp)
 	}
 	WRITE_ONCE(rsp->gp_flags, READ_ONCE(rsp->gp_flags) | RCU_GP_FLAG_FQS);
 	raw_spin_unlock_irqrestore(&rnp_old->lock, flags);
-	rcu_gp_kthread_wake(rsp);
+	swake_up(&rsp->gp_wq); /* Memory barrier implied by swake_up() path. */
 }
 
 /*
@@ -3529,7 +3509,7 @@ static void __rcu_report_exp_rnp(struct rcu_state *rsp, struct rcu_node *rnp,
 			raw_spin_unlock_irqrestore(&rnp->lock, flags);
 			if (wake) {
 				smp_mb(); /* EGP done before wake_up(). */
-				wake_up(&rsp->expedited_wq);
+				swake_up(&rsp->expedited_wq);
 			}
 			break;
 		}
@@ -3780,7 +3760,7 @@ static void synchronize_sched_expedited_wait(struct rcu_state *rsp)
 	jiffies_start = jiffies;
 
 	for (;;) {
-		ret = wait_event_interruptible_timeout(
+		ret = swait_event_timeout(
 				rsp->expedited_wq,
 				sync_rcu_preempt_exp_done(rnp_root),
 				jiffies_stall);
@@ -3788,7 +3768,7 @@ static void synchronize_sched_expedited_wait(struct rcu_state *rsp)
 			return;
 		if (ret < 0) {
 			/* Hit a signal, disable CPU stall warnings. */
-			wait_event(rsp->expedited_wq,
+			swait_event(rsp->expedited_wq,
 				   sync_rcu_preempt_exp_done(rnp_root));
 			return;
 		}
@@ -4247,6 +4227,43 @@ static void rcu_prepare_cpu(int cpu)
 		rcu_init_percpu_data(cpu, rsp);
 }
 
+#ifdef CONFIG_HOTPLUG_CPU
+/*
+ * The CPU is exiting the idle loop into the arch_cpu_idle_dead()
+ * function.  We now remove it from the rcu_node tree's ->qsmaskinit
+ * bit masks.
+ */
+static void rcu_cleanup_dying_idle_cpu(int cpu, struct rcu_state *rsp)
+{
+	unsigned long flags;
+	unsigned long mask;
+	struct rcu_data *rdp = per_cpu_ptr(rsp->rda, cpu);
+	struct rcu_node *rnp = rdp->mynode;  /* Outgoing CPU's rdp & rnp. */
+
+	if (!IS_ENABLED(CONFIG_HOTPLUG_CPU))
+		return;
+
+	/* Remove outgoing CPU from mask in the leaf rcu_node structure. */
+	mask = rdp->grpmask;
+	raw_spin_lock_irqsave_rcu_node(rnp, flags); /* Enforce GP memory-order guarantee. */
+	rnp->qsmaskinitnext &= ~mask;
+	raw_spin_unlock_irqrestore(&rnp->lock, flags);
+}
+
+void rcu_report_dead(unsigned int cpu)
+{
+	struct rcu_state *rsp;
+
+	/* QS for any half-done expedited RCU-sched GP. */
+	preempt_disable();
+	rcu_report_exp_rdp(&rcu_sched_state,
+			   this_cpu_ptr(rcu_sched_state.rda), true);
+	preempt_enable();
+	for_each_rcu_flavor(rsp)
+		rcu_cleanup_dying_idle_cpu(cpu, rsp);
+}
+#endif
+
 /*
  * Handle CPU online/offline notification events.
  */
@@ -4277,17 +4294,6 @@ int rcu_cpu_notify(struct notifier_block *self,
 	case CPU_DYING_FROZEN:
 		for_each_rcu_flavor(rsp)
 			rcu_cleanup_dying_cpu(rsp);
-		break;
-	case CPU_DYING_IDLE:
-		/* QS for any half-done expedited RCU-sched GP. */
-		preempt_disable();
-		rcu_report_exp_rdp(&rcu_sched_state,
-				   this_cpu_ptr(rcu_sched_state.rda), true);
-		preempt_enable();
-
-		for_each_rcu_flavor(rsp) {
-			rcu_cleanup_dying_idle_cpu(cpu, rsp);
-		}
 		break;
 	case CPU_DEAD:
 	case CPU_DEAD_FROZEN:
@@ -4482,8 +4488,8 @@ static void __init rcu_init_one(struct rcu_state *rsp)
 		}
 	}
 
-	init_waitqueue_head(&rsp->gp_wq);
-	init_waitqueue_head(&rsp->expedited_wq);
+	init_swait_queue_head(&rsp->gp_wq);
+	init_swait_queue_head(&rsp->expedited_wq);
 	rnp = rsp->level[rcu_num_lvls - 1];
 	for_each_possible_cpu(i) {
 		while (i > rnp->grphi)
