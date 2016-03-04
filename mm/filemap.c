@@ -2354,10 +2354,8 @@ inline ssize_t generic_write_checks(struct kiocb *iocb, struct iov_iter *from)
 	 */
 	if (unlikely(pos + iov_iter_count(from) > MAX_NON_LFS &&
 				!(file->f_flags & O_LARGEFILE))) {
-		if (pos >= MAX_NON_LFS) {
-			io_send_sig(SIGXFSZ);
+		if (pos >= MAX_NON_LFS)
 			return -EFBIG;
-		}
 		iov_iter_truncate(from, MAX_NON_LFS - (unsigned long)pos);
 	}
 
