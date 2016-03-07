@@ -45,7 +45,6 @@
 
 static struct acpi_device  *hv_acpi_dev;
 
-static struct tasklet_struct msg_dpc;
 static struct completion probe_event;
 
 
@@ -709,28 +708,10 @@ static void hv_process_timer_expiration(struct hv_message *msg, int cpu)
 	if (dev->event_handler)
 		dev->event_handler(dev);
 
-	msg->header.message_type = HVMSG_NONE;
-
-	/*
-	 * Make sure the write to MessageType (ie set to
-	 * HVMSG_NONE) happens before we read the
-	 * MessagePending and EOMing. Otherwise, the EOMing
-	 * will not deliver any more messages since there is
-	 * no empty slot
-	 */
-	mb();
-
-	if (msg->header.message_flags.msg_pending) {
-		/*
-		 * This will cause message queue rescan to
-		 * possibly deliver another msg from the
-		 * hypervisor
-		 */
-		wrmsrl(HV_X64_MSR_EOM, 0);
-	}
+	vmbus_signal_eom(msg);
 }
 
-static void vmbus_on_msg_dpc(unsigned long data)
+void vmbus_on_msg_dpc(unsigned long data)
 {
 	int cpu = smp_processor_id();
 	void *page_addr = hv_context.synic_message_page[cpu];
@@ -740,52 +721,32 @@ static void vmbus_on_msg_dpc(unsigned long data)
 	struct vmbus_channel_message_table_entry *entry;
 	struct onmessage_work_context *ctx;
 
-	while (1) {
-		if (msg->header.message_type == HVMSG_NONE)
-			/* no msg */
-			break;
+	if (msg->header.message_type == HVMSG_NONE)
+		/* no msg */
+		return;
 
-		hdr = (struct vmbus_channel_message_header *)msg->u.payload;
+	hdr = (struct vmbus_channel_message_header *)msg->u.payload;
 
-		if (hdr->msgtype >= CHANNELMSG_COUNT) {
-			WARN_ONCE(1, "unknown msgtype=%d\n", hdr->msgtype);
-			goto msg_handled;
-		}
+	if (hdr->msgtype >= CHANNELMSG_COUNT) {
+		WARN_ONCE(1, "unknown msgtype=%d\n", hdr->msgtype);
+		goto msg_handled;
+	}
 
-		entry = &channel_message_table[hdr->msgtype];
-		if (entry->handler_type	== VMHT_BLOCKING) {
-			ctx = kmalloc(sizeof(*ctx), GFP_ATOMIC);
-			if (ctx == NULL)
-				continue;
+	entry = &channel_message_table[hdr->msgtype];
+	if (entry->handler_type	== VMHT_BLOCKING) {
+		ctx = kmalloc(sizeof(*ctx), GFP_ATOMIC);
+		if (ctx == NULL)
+			return;
 
-			INIT_WORK(&ctx->work, vmbus_onmessage_work);
-			memcpy(&ctx->msg, msg, sizeof(*msg));
+		INIT_WORK(&ctx->work, vmbus_onmessage_work);
+		memcpy(&ctx->msg, msg, sizeof(*msg));
 
-			queue_work(vmbus_connection.work_queue, &ctx->work);
-		} else
-			entry->message_handler(hdr);
+		queue_work(vmbus_connection.work_queue, &ctx->work);
+	} else
+		entry->message_handler(hdr);
 
 msg_handled:
-		msg->header.message_type = HVMSG_NONE;
-
-		/*
-		 * Make sure the write to MessageType (ie set to
-		 * HVMSG_NONE) happens before we read the
-		 * MessagePending and EOMing. Otherwise, the EOMing
-		 * will not deliver any more messages since there is
-		 * no empty slot
-		 */
-		mb();
-
-		if (msg->header.message_flags.msg_pending) {
-			/*
-			 * This will cause message queue rescan to
-			 * possibly deliver another msg from the
-			 * hypervisor
-			 */
-			wrmsrl(HV_X64_MSR_EOM, 0);
-		}
-	}
+	vmbus_signal_eom(msg);
 }
 
 static void vmbus_isr(void)
@@ -838,7 +799,7 @@ static void vmbus_isr(void)
 		if (msg->header.message_type == HVMSG_TIMER_EXPIRED)
 			hv_process_timer_expiration(msg, cpu);
 		else
-			tasklet_schedule(&msg_dpc);
+			tasklet_schedule(hv_context.msg_dpc[cpu]);
 	}
 }
 
@@ -861,8 +822,6 @@ static int vmbus_bus_init(void)
 		pr_err("Unable to initialize the hypervisor - 0x%x\n", ret);
 		return ret;
 	}
-
-	tasklet_init(&msg_dpc, vmbus_on_msg_dpc, 0);
 
 	ret = bus_register(&hv_bus);
 	if (ret)
@@ -1293,7 +1252,7 @@ static void hv_kexec_handler(void)
 	int cpu;
 
 	hv_synic_clockevents_cleanup();
-	vmbus_initiate_unload();
+	vmbus_initiate_unload(false);
 	for_each_online_cpu(cpu)
 		smp_call_function_single(cpu, hv_synic_cleanup, NULL, 1);
 	hv_cleanup();
@@ -1301,7 +1260,7 @@ static void hv_kexec_handler(void)
 
 static void hv_crash_handler(struct pt_regs *regs)
 {
-	vmbus_initiate_unload();
+	vmbus_initiate_unload(true);
 	/*
 	 * In crash handler we can't schedule synic cleanup for all CPUs,
 	 * doing the cleanup for current CPU only. This should be sufficient
@@ -1359,7 +1318,8 @@ static void __exit vmbus_exit(void)
 	hv_synic_clockevents_cleanup();
 	vmbus_disconnect();
 	hv_remove_vmbus_irq();
-	tasklet_kill(&msg_dpc);
+	for_each_online_cpu(cpu)
+		tasklet_kill(hv_context.msg_dpc[cpu]);
 	vmbus_free_channels();
 	if (ms_hyperv.misc_features & HV_FEATURE_GUEST_CRASH_MSR_AVAILABLE) {
 		unregister_die_notifier(&hyperv_die_block);
