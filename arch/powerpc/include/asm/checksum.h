@@ -9,16 +9,9 @@
  * 2 of the License, or (at your option) any later version.
  */
 
-/*
- * This is a version of ip_compute_csum() optimized for IP headers,
- * which always checksum on 4 octet boundaries.  ihl is the number
- * of 32-bit words and is always >= 5.
- */
 #ifdef CONFIG_GENERIC_CSUM
 #include <asm-generic/checksum.h>
 #else
-extern __sum16 ip_fast_csum(const void *iph, unsigned int ihl);
-
 /*
  * computes the checksum of a memory block at buff, length len,
  * and adds in "sum" (32-bit)
@@ -47,21 +40,12 @@ extern __wsum csum_partial_copy_generic(const void *src, void *dst,
 					      int len, __wsum sum,
 					      int *src_err, int *dst_err);
 
-#ifdef __powerpc64__
 #define _HAVE_ARCH_COPY_AND_CSUM_FROM_USER
 extern __wsum csum_and_copy_from_user(const void __user *src, void *dst,
 				      int len, __wsum sum, int *err_ptr);
 #define HAVE_CSUM_COPY_USER
 extern __wsum csum_and_copy_to_user(const void *src, void __user *dst,
 				    int len, __wsum sum, int *err_ptr);
-#else
-/*
- * the same as csum_partial, but copies from src to dst while it
- * checksums.
- */
-#define csum_partial_copy_from_user(src, dst, len, sum, errp)   \
-        csum_partial_copy_generic((__force const void *)(src), (dst), (len), (sum), (errp), NULL)
-#endif
 
 #define csum_partial_copy_nocheck(src, dst, len, sum)   \
         csum_partial_copy_generic((src), (dst), (len), (sum), NULL, NULL)
@@ -135,15 +119,59 @@ static inline __wsum csum_add(__wsum csum, __wsum addend)
 {
 #ifdef __powerpc64__
 	u64 res = (__force u64)csum;
+#endif
+	if (__builtin_constant_p(csum) && csum == 0)
+		return addend;
+	if (__builtin_constant_p(addend) && addend == 0)
+		return csum;
 
+#ifdef __powerpc64__
 	res += (__force u64)addend;
 	return (__force __wsum)((u32)res + (res >> 32));
 #else
 	asm("addc %0,%0,%1;"
 	    "addze %0,%0;"
-	    : "+r" (csum) : "r" (addend));
+	    : "+r" (csum) : "r" (addend) : "xer");
 	return csum;
 #endif
+}
+
+/*
+ * This is a version of ip_compute_csum() optimized for IP headers,
+ * which always checksum on 4 octet boundaries.  ihl is the number
+ * of 32-bit words and is always >= 5.
+ */
+static inline __wsum ip_fast_csum_nofold(const void *iph, unsigned int ihl)
+{
+	const u32 *ptr = (const u32 *)iph + 1;
+#ifdef __powerpc64__
+	unsigned int i;
+	u64 s = *(const u32 *)iph;
+
+	for (i = 0; i < ihl - 1; i++, ptr++)
+		s += *ptr;
+	s += (s >> 32);
+	return (__force __wsum)s;
+#else
+	__wsum sum, tmp;
+
+	asm("mtctr %3;"
+	    "addc %0,%4,%5;"
+	    "1: lwzu %1, 4(%2);"
+	    "adde %0,%0,%1;"
+	    "bdnz 1b;"
+	    "addze %0,%0;"
+	    : "=r" (sum), "=r" (tmp), "+b" (ptr)
+	    : "r" (ihl - 2), "r" (*(const u32 *)iph), "r" (*ptr)
+	    : "ctr", "xer", "memory");
+
+	return sum;
+#endif
+}
+
+static inline __sum16 ip_fast_csum(const void *iph, unsigned int ihl)
+{
+	return csum_fold(ip_fast_csum_nofold(iph, ihl));
 }
 
 #endif
