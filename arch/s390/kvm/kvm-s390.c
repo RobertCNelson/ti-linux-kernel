@@ -158,6 +158,8 @@ static int kvm_clock_sync(struct notifier_block *notifier, unsigned long val,
 		kvm->arch.epoch -= *delta;
 		kvm_for_each_vcpu(i, vcpu, kvm) {
 			vcpu->arch.sie_block->epoch -= *delta;
+			if (vcpu->arch.cputm_enabled)
+				vcpu->arch.cputm_start += *delta;
 		}
 	}
 	return NOTIFY_OK;
@@ -1429,6 +1431,93 @@ int kvm_arch_vcpu_init(struct kvm_vcpu *vcpu)
 	return 0;
 }
 
+/* needs disabled preemption to protect from TOD sync and vcpu_load/put */
+static void __start_cpu_timer_accounting(struct kvm_vcpu *vcpu)
+{
+	WARN_ON_ONCE(vcpu->arch.cputm_start != 0);
+	write_seqcount_begin(&vcpu->arch.cputm_seqcount);
+	vcpu->arch.cputm_start = get_tod_clock_fast();
+	write_seqcount_end(&vcpu->arch.cputm_seqcount);
+}
+
+/* needs disabled preemption to protect from TOD sync and vcpu_load/put */
+static void __stop_cpu_timer_accounting(struct kvm_vcpu *vcpu)
+{
+	WARN_ON_ONCE(vcpu->arch.cputm_start == 0);
+	write_seqcount_begin(&vcpu->arch.cputm_seqcount);
+	vcpu->arch.sie_block->cputm -= get_tod_clock_fast() - vcpu->arch.cputm_start;
+	vcpu->arch.cputm_start = 0;
+	write_seqcount_end(&vcpu->arch.cputm_seqcount);
+}
+
+/* needs disabled preemption to protect from TOD sync and vcpu_load/put */
+static void __enable_cpu_timer_accounting(struct kvm_vcpu *vcpu)
+{
+	WARN_ON_ONCE(vcpu->arch.cputm_enabled);
+	vcpu->arch.cputm_enabled = true;
+	__start_cpu_timer_accounting(vcpu);
+}
+
+/* needs disabled preemption to protect from TOD sync and vcpu_load/put */
+static void __disable_cpu_timer_accounting(struct kvm_vcpu *vcpu)
+{
+	WARN_ON_ONCE(!vcpu->arch.cputm_enabled);
+	__stop_cpu_timer_accounting(vcpu);
+	vcpu->arch.cputm_enabled = false;
+}
+
+static void enable_cpu_timer_accounting(struct kvm_vcpu *vcpu)
+{
+	preempt_disable(); /* protect from TOD sync and vcpu_load/put */
+	__enable_cpu_timer_accounting(vcpu);
+	preempt_enable();
+}
+
+static void disable_cpu_timer_accounting(struct kvm_vcpu *vcpu)
+{
+	preempt_disable(); /* protect from TOD sync and vcpu_load/put */
+	__disable_cpu_timer_accounting(vcpu);
+	preempt_enable();
+}
+
+/* set the cpu timer - may only be called from the VCPU thread itself */
+void kvm_s390_set_cpu_timer(struct kvm_vcpu *vcpu, __u64 cputm)
+{
+	preempt_disable(); /* protect from TOD sync and vcpu_load/put */
+	write_seqcount_begin(&vcpu->arch.cputm_seqcount);
+	if (vcpu->arch.cputm_enabled)
+		vcpu->arch.cputm_start = get_tod_clock_fast();
+	vcpu->arch.sie_block->cputm = cputm;
+	write_seqcount_end(&vcpu->arch.cputm_seqcount);
+	preempt_enable();
+}
+
+/* update and get the cpu timer - can also be called from other VCPU threads */
+__u64 kvm_s390_get_cpu_timer(struct kvm_vcpu *vcpu)
+{
+	unsigned int seq;
+	__u64 value;
+
+	if (unlikely(!vcpu->arch.cputm_enabled))
+		return vcpu->arch.sie_block->cputm;
+
+	preempt_disable(); /* protect from TOD sync and vcpu_load/put */
+	do {
+		seq = raw_read_seqcount_begin(&vcpu->arch.cputm_seqcount);
+		/*
+		 * If the writer would ever execute a read in the critical
+		 * section, e.g. in irq context, we have a deadlock.
+		 */
+		WARN_ON_ONCE((seq & 1) && smp_processor_id() == vcpu->cpu);
+		value = vcpu->arch.sie_block->cputm;
+		/* if cputm_start is 0, accounting is being started/stopped */
+		if (likely(vcpu->arch.cputm_start))
+			value -= get_tod_clock_fast() - vcpu->arch.cputm_start;
+	} while (read_seqcount_retry(&vcpu->arch.cputm_seqcount, seq));
+	preempt_enable();
+	return value;
+}
+
 void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 {
 	/* Save host register state */
@@ -1449,10 +1538,16 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	restore_access_regs(vcpu->run->s.regs.acrs);
 	gmap_enable(vcpu->arch.gmap);
 	atomic_or(CPUSTAT_RUNNING, &vcpu->arch.sie_block->cpuflags);
+	if (vcpu->arch.cputm_enabled && !is_vcpu_idle(vcpu))
+		__start_cpu_timer_accounting(vcpu);
+	vcpu->cpu = cpu;
 }
 
 void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu)
 {
+	vcpu->cpu = -1;
+	if (vcpu->arch.cputm_enabled && !is_vcpu_idle(vcpu))
+		__stop_cpu_timer_accounting(vcpu);
 	atomic_andnot(CPUSTAT_RUNNING, &vcpu->arch.sie_block->cpuflags);
 	gmap_disable(vcpu->arch.gmap);
 
@@ -1474,7 +1569,7 @@ static void kvm_s390_vcpu_initial_reset(struct kvm_vcpu *vcpu)
 	vcpu->arch.sie_block->gpsw.mask = 0UL;
 	vcpu->arch.sie_block->gpsw.addr = 0UL;
 	kvm_s390_set_prefix(vcpu, 0);
-	vcpu->arch.sie_block->cputm     = 0UL;
+	kvm_s390_set_cpu_timer(vcpu, 0);
 	vcpu->arch.sie_block->ckc       = 0UL;
 	vcpu->arch.sie_block->todpr     = 0;
 	memset(vcpu->arch.sie_block->gcr, 0, 16 * sizeof(__u64));
@@ -1544,7 +1639,8 @@ static void kvm_s390_vcpu_setup_model(struct kvm_vcpu *vcpu)
 
 	vcpu->arch.cpu_id = model->cpu_id;
 	vcpu->arch.sie_block->ibc = model->ibc;
-	vcpu->arch.sie_block->fac = (int) (long) model->fac->list;
+	if (test_kvm_facility(vcpu->kvm, 7))
+		vcpu->arch.sie_block->fac = (int) (long) model->fac->list;
 }
 
 int kvm_arch_vcpu_setup(struct kvm_vcpu *vcpu)
@@ -1622,6 +1718,7 @@ struct kvm_vcpu *kvm_arch_vcpu_create(struct kvm *kvm,
 	vcpu->arch.local_int.float_int = &kvm->arch.float_int;
 	vcpu->arch.local_int.wq = &vcpu->wq;
 	vcpu->arch.local_int.cpuflags = &vcpu->arch.sie_block->cpuflags;
+	seqcount_init(&vcpu->arch.cputm_seqcount);
 
 	rc = kvm_vcpu_init(vcpu, kvm, id);
 	if (rc)
@@ -1721,7 +1818,7 @@ static int kvm_arch_vcpu_ioctl_get_one_reg(struct kvm_vcpu *vcpu,
 			     (u64 __user *)reg->addr);
 		break;
 	case KVM_REG_S390_CPU_TIMER:
-		r = put_user(vcpu->arch.sie_block->cputm,
+		r = put_user(kvm_s390_get_cpu_timer(vcpu),
 			     (u64 __user *)reg->addr);
 		break;
 	case KVM_REG_S390_CLOCK_COMP:
@@ -1759,6 +1856,7 @@ static int kvm_arch_vcpu_ioctl_set_one_reg(struct kvm_vcpu *vcpu,
 					   struct kvm_one_reg *reg)
 {
 	int r = -EINVAL;
+	__u64 val;
 
 	switch (reg->id) {
 	case KVM_REG_S390_TODPR:
@@ -1770,8 +1868,9 @@ static int kvm_arch_vcpu_ioctl_set_one_reg(struct kvm_vcpu *vcpu,
 			     (u64 __user *)reg->addr);
 		break;
 	case KVM_REG_S390_CPU_TIMER:
-		r = get_user(vcpu->arch.sie_block->cputm,
-			     (u64 __user *)reg->addr);
+		r = get_user(val, (u64 __user *)reg->addr);
+		if (!r)
+			kvm_s390_set_cpu_timer(vcpu, val);
 		break;
 	case KVM_REG_S390_CLOCK_COMP:
 		r = get_user(vcpu->arch.sie_block->ckc,
@@ -2261,10 +2360,12 @@ static int __vcpu_run(struct kvm_vcpu *vcpu)
 		 */
 		local_irq_disable();
 		__kvm_guest_enter();
+		__disable_cpu_timer_accounting(vcpu);
 		local_irq_enable();
 		exit_reason = sie64a(vcpu->arch.sie_block,
 				     vcpu->run->s.regs.gprs);
 		local_irq_disable();
+		__enable_cpu_timer_accounting(vcpu);
 		__kvm_guest_exit();
 		local_irq_enable();
 		vcpu->srcu_idx = srcu_read_lock(&vcpu->kvm->srcu);
@@ -2288,7 +2389,7 @@ static void sync_regs(struct kvm_vcpu *vcpu, struct kvm_run *kvm_run)
 		kvm_make_request(KVM_REQ_TLB_FLUSH, vcpu);
 	}
 	if (kvm_run->kvm_dirty_regs & KVM_SYNC_ARCH0) {
-		vcpu->arch.sie_block->cputm = kvm_run->s.regs.cputm;
+		kvm_s390_set_cpu_timer(vcpu, kvm_run->s.regs.cputm);
 		vcpu->arch.sie_block->ckc = kvm_run->s.regs.ckc;
 		vcpu->arch.sie_block->todpr = kvm_run->s.regs.todpr;
 		vcpu->arch.sie_block->pp = kvm_run->s.regs.pp;
@@ -2310,7 +2411,7 @@ static void store_regs(struct kvm_vcpu *vcpu, struct kvm_run *kvm_run)
 	kvm_run->psw_addr = vcpu->arch.sie_block->gpsw.addr;
 	kvm_run->s.regs.prefix = kvm_s390_get_prefix(vcpu);
 	memcpy(&kvm_run->s.regs.crs, &vcpu->arch.sie_block->gcr, 128);
-	kvm_run->s.regs.cputm = vcpu->arch.sie_block->cputm;
+	kvm_run->s.regs.cputm = kvm_s390_get_cpu_timer(vcpu);
 	kvm_run->s.regs.ckc = vcpu->arch.sie_block->ckc;
 	kvm_run->s.regs.todpr = vcpu->arch.sie_block->todpr;
 	kvm_run->s.regs.pp = vcpu->arch.sie_block->pp;
@@ -2342,6 +2443,7 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *kvm_run)
 	}
 
 	sync_regs(vcpu, kvm_run);
+	enable_cpu_timer_accounting(vcpu);
 
 	might_fault();
 	rc = __vcpu_run(vcpu);
@@ -2361,6 +2463,7 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *kvm_run)
 		rc = 0;
 	}
 
+	disable_cpu_timer_accounting(vcpu);
 	store_regs(vcpu, kvm_run);
 
 	if (vcpu->sigset_active)
@@ -2381,7 +2484,7 @@ int kvm_s390_store_status_unloaded(struct kvm_vcpu *vcpu, unsigned long gpa)
 	unsigned char archmode = 1;
 	freg_t fprs[NUM_FPRS];
 	unsigned int px;
-	u64 clkcomp;
+	u64 clkcomp, cputm;
 	int rc;
 
 	px = kvm_s390_get_prefix(vcpu);
@@ -2415,8 +2518,9 @@ int kvm_s390_store_status_unloaded(struct kvm_vcpu *vcpu, unsigned long gpa)
 			      &vcpu->run->s.regs.fpc, 4);
 	rc |= write_guest_abs(vcpu, gpa + __LC_TOD_PROGREG_SAVE_AREA,
 			      &vcpu->arch.sie_block->todpr, 4);
+	cputm = kvm_s390_get_cpu_timer(vcpu);
 	rc |= write_guest_abs(vcpu, gpa + __LC_CPU_TIMER_SAVE_AREA,
-			      &vcpu->arch.sie_block->cputm, 8);
+			      &cputm, 8);
 	clkcomp = vcpu->arch.sie_block->ckc >> 8;
 	rc |= write_guest_abs(vcpu, gpa + __LC_CLOCK_COMP_SAVE_AREA,
 			      &clkcomp, 8);
