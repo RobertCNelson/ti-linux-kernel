@@ -59,7 +59,7 @@
 
 #define DRIVER_NAME		"i915"
 #define DRIVER_DESC		"Intel Graphics"
-#define DRIVER_DATE		"20160214"
+#define DRIVER_DATE		"20160229"
 
 #undef WARN_ON
 /* Many gcc seem to no see through this and fall over :( */
@@ -261,6 +261,9 @@ struct i915_hotplug {
 
 #define for_each_pipe(__dev_priv, __p) \
 	for ((__p) = 0; (__p) < INTEL_INFO(__dev_priv)->num_pipes; (__p)++)
+#define for_each_pipe_masked(__dev_priv, __p, __mask) \
+	for ((__p) = 0; (__p) < INTEL_INFO(__dev_priv)->num_pipes; (__p)++) \
+		for_each_if ((__mask) & (1 << (__p)))
 #define for_each_plane(__dev_priv, __pipe, __p)				\
 	for ((__p) = 0;							\
 	     (__p) < INTEL_INFO(__dev_priv)->num_sprites[(__pipe)] + 1;	\
@@ -558,6 +561,8 @@ struct drm_i915_error_state {
 			u32 *pages[0];
 		} *ringbuffer, *batchbuffer, *wa_batchbuffer, *ctx, *hws_page;
 
+		struct drm_i915_error_object *wa_ctx;
+
 		struct drm_i915_error_request {
 			long jiffies;
 			u32 seqno;
@@ -626,9 +631,12 @@ struct drm_i915_display_funcs {
 			  int target, int refclk,
 			  struct dpll *match_clock,
 			  struct dpll *best_clock);
-	int (*compute_pipe_wm)(struct intel_crtc *crtc,
-			       struct drm_atomic_state *state);
-	void (*program_watermarks)(struct intel_crtc_state *cstate);
+	int (*compute_pipe_wm)(struct intel_crtc_state *cstate);
+	int (*compute_intermediate_wm)(struct drm_device *dev,
+				       struct intel_crtc *intel_crtc,
+				       struct intel_crtc_state *newstate);
+	void (*initial_watermarks)(struct intel_crtc_state *cstate);
+	void (*optimize_watermarks)(struct intel_crtc_state *cstate);
 	void (*update_wm)(struct drm_crtc *crtc);
 	int (*modeset_calc_cdclk)(struct drm_atomic_state *state);
 	void (*modeset_commit_cdclk)(struct drm_atomic_state *state);
@@ -747,6 +755,7 @@ struct intel_csr {
 	i915_reg_t mmioaddr[8];
 	uint32_t mmiodata[8];
 	uint32_t dc_state;
+	uint32_t allowed_dc_mask;
 };
 
 #define DEV_INFO_FOR_EACH_FLAG(func, sep) \
@@ -776,6 +785,7 @@ struct intel_csr {
 	func(overlay_needs_physical) sep \
 	func(supports_tv) sep \
 	func(has_llc) sep \
+	func(has_snoop) sep \
 	func(has_ddi) sep \
 	func(has_fpga_dbg)
 
@@ -1826,6 +1836,7 @@ struct drm_i915_private {
 	unsigned int skl_boot_cdclk;
 	unsigned int cdclk_freq, max_cdclk_freq, atomic_cdclk_freq;
 	unsigned int max_dotclk_freq;
+	unsigned int rawclk_freq;
 	unsigned int hpll_freq;
 	unsigned int czclk_freq;
 
@@ -1849,6 +1860,7 @@ struct drm_i915_private {
 
 	enum modeset_restore modeset_restore;
 	struct mutex modeset_restore_lock;
+	struct drm_atomic_state *modeset_restore_state;
 
 	struct list_head vm_list; /* Global list of all address spaces */
 	struct i915_gtt gtt; /* VM representing the global address space */
@@ -1976,6 +1988,13 @@ struct drm_i915_private {
 		};
 
 		uint8_t max_level;
+
+		/*
+		 * Should be held around atomic WM register writing; also
+		 * protects * intel_crtc->wm.active and
+		 * cstate->wm.need_postvbl_update.
+		 */
+		struct mutex wm_mutex;
 	} wm;
 
 	struct i915_runtime_pm pm;
@@ -2612,6 +2631,7 @@ struct drm_i915_cmd_table {
 #define HAS_BLT(dev)		(INTEL_INFO(dev)->ring_mask & BLT_RING)
 #define HAS_VEBOX(dev)		(INTEL_INFO(dev)->ring_mask & VEBOX_RING)
 #define HAS_LLC(dev)		(INTEL_INFO(dev)->has_llc)
+#define HAS_SNOOP(dev)		(INTEL_INFO(dev)->has_snoop)
 #define HAS_WT(dev)		((IS_HASWELL(dev) || IS_BROADWELL(dev)) && \
 				 __I915__(dev)->ellc_size)
 #define I915_NEED_GFX_HWS(dev)	(INTEL_INFO(dev)->need_gfx_hws)
@@ -3059,7 +3079,7 @@ int i915_gem_init_rings(struct drm_device *dev);
 int __must_check i915_gem_init_hw(struct drm_device *dev);
 int i915_gem_l3_remap(struct drm_i915_gem_request *req, int slice);
 void i915_gem_init_swizzling(struct drm_device *dev);
-void i915_gem_cleanup_engines(struct drm_device *dev);
+void i915_gem_cleanup_ringbuffer(struct drm_device *dev);
 int __must_check i915_gpu_idle(struct drm_device *dev);
 int __must_check i915_gem_suspend(struct drm_device *dev);
 void __i915_add_request(struct drm_i915_gem_request *req,
@@ -3152,18 +3172,11 @@ bool i915_gem_obj_is_pinned(struct drm_i915_gem_object *obj);
 /* Some GGTT VM helpers */
 #define i915_obj_to_ggtt(obj) \
 	(&((struct drm_i915_private *)(obj)->base.dev->dev_private)->gtt.base)
-static inline bool i915_is_ggtt(struct i915_address_space *vm)
-{
-	struct i915_address_space *ggtt =
-		&((struct drm_i915_private *)(vm)->dev->dev_private)->gtt.base;
-	return vm == ggtt;
-}
 
 static inline struct i915_hw_ppgtt *
 i915_vm_to_ppgtt(struct i915_address_space *vm)
 {
 	WARN_ON(i915_is_ggtt(vm));
-
 	return container_of(vm, struct i915_hw_ppgtt, base);
 }
 

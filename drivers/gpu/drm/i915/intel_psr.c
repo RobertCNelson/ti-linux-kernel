@@ -507,7 +507,8 @@ static void hsw_psr_disable(struct intel_dp *intel_dp)
 
 		/* Wait till PSR is idle */
 		if (_wait_for((I915_READ(EDP_PSR_STATUS_CTL) &
-			       EDP_PSR_STATUS_STATE_MASK) == 0, 2000, 10))
+			       EDP_PSR_STATUS_STATE_MASK) == 0,
+			       2 * USEC_PER_SEC, 10 * USEC_PER_MSEC))
 			DRM_ERROR("Timed out waiting for PSR Idle State\n");
 
 		dev_priv->psr.active = false;
@@ -777,6 +778,15 @@ void intel_psr_init(struct drm_device *dev)
 
 	dev_priv->psr_mmio_base = IS_HASWELL(dev_priv) ?
 		HSW_EDP_PSR_BASE : BDW_EDP_PSR_BASE;
+
+	/* Per platform default */
+	if (i915.enable_psr == -1) {
+		if (IS_HASWELL(dev) || IS_BROADWELL(dev) ||
+		    IS_VALLEYVIEW(dev) || IS_CHERRYVIEW(dev))
+			i915.enable_psr = 1;
+		else
+			i915.enable_psr = 0;
+	}
 
 	/* Set link_standby x link_off defaults */
 	if (IS_HASWELL(dev) || IS_BROADWELL(dev))

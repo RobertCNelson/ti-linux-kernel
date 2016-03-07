@@ -671,60 +671,55 @@ intel_dp_aux_wait_done(struct intel_dp *intel_dp, bool has_aux_irq)
 	return status;
 }
 
-static uint32_t i9xx_get_aux_clock_divider(struct intel_dp *intel_dp, int index)
+static uint32_t g4x_get_aux_clock_divider(struct intel_dp *intel_dp, int index)
 {
 	struct intel_digital_port *intel_dig_port = dp_to_dig_port(intel_dp);
-	struct drm_device *dev = intel_dig_port->base.base.dev;
+	struct drm_i915_private *dev_priv = to_i915(intel_dig_port->base.base.dev);
+
+	if (index)
+		return 0;
 
 	/*
 	 * The clock divider is based off the hrawclk, and would like to run at
-	 * 2MHz.  So, take the hrawclk value and divide by 2 and use that
+	 * 2MHz.  So, take the hrawclk value and divide by 2000 and use that
 	 */
-	return index ? 0 : DIV_ROUND_CLOSEST(intel_hrawclk(dev), 2);
+	return DIV_ROUND_CLOSEST(dev_priv->rawclk_freq, 2000);
 }
 
 static uint32_t ilk_get_aux_clock_divider(struct intel_dp *intel_dp, int index)
 {
 	struct intel_digital_port *intel_dig_port = dp_to_dig_port(intel_dp);
-	struct drm_device *dev = intel_dig_port->base.base.dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_i915_private *dev_priv = to_i915(intel_dig_port->base.base.dev);
 
 	if (index)
 		return 0;
 
-	if (intel_dig_port->port == PORT_A) {
+	/*
+	 * The clock divider is based off the cdclk or PCH rawclk, and would
+	 * like to run at 2MHz.  So, take the cdclk or PCH rawclk value and
+	 * divide by 2000 and use that
+	 */
+	if (intel_dig_port->port == PORT_A)
 		return DIV_ROUND_CLOSEST(dev_priv->cdclk_freq, 2000);
-
-	} else {
-		return DIV_ROUND_CLOSEST(intel_pch_rawclk(dev), 2);
-	}
+	else
+		return DIV_ROUND_CLOSEST(dev_priv->rawclk_freq, 2000);
 }
 
 static uint32_t hsw_get_aux_clock_divider(struct intel_dp *intel_dp, int index)
 {
 	struct intel_digital_port *intel_dig_port = dp_to_dig_port(intel_dp);
-	struct drm_device *dev = intel_dig_port->base.base.dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_i915_private *dev_priv = to_i915(intel_dig_port->base.base.dev);
 
-	if (intel_dig_port->port == PORT_A) {
-		if (index)
-			return 0;
-		return DIV_ROUND_CLOSEST(dev_priv->cdclk_freq, 2000);
-	} else if (HAS_PCH_LPT_H(dev_priv)) {
+	if (intel_dig_port->port != PORT_A && HAS_PCH_LPT_H(dev_priv)) {
 		/* Workaround for non-ULT HSW */
 		switch (index) {
 		case 0: return 63;
 		case 1: return 72;
 		default: return 0;
 		}
-	} else  {
-		return index ? 0 : DIV_ROUND_CLOSEST(intel_pch_rawclk(dev), 2);
 	}
-}
 
-static uint32_t vlv_get_aux_clock_divider(struct intel_dp *intel_dp, int index)
-{
-	return index ? 0 : 100;
+	return ilk_get_aux_clock_divider(intel_dp, index);
 }
 
 static uint32_t skl_get_aux_clock_divider(struct intel_dp *intel_dp, int index)
@@ -737,10 +732,10 @@ static uint32_t skl_get_aux_clock_divider(struct intel_dp *intel_dp, int index)
 	return index ? 0 : 1;
 }
 
-static uint32_t i9xx_get_aux_send_ctl(struct intel_dp *intel_dp,
-				      bool has_aux_irq,
-				      int send_bytes,
-				      uint32_t aux_clock_divider)
+static uint32_t g4x_get_aux_send_ctl(struct intel_dp *intel_dp,
+				     bool has_aux_irq,
+				     int send_bytes,
+				     uint32_t aux_clock_divider)
 {
 	struct intel_digital_port *intel_dig_port = dp_to_dig_port(intel_dp);
 	struct drm_device *dev = intel_dig_port->base.base.dev;
@@ -1779,11 +1774,11 @@ static void wait_panel_status(struct intel_dp *intel_dp,
 			I915_READ(pp_stat_reg),
 			I915_READ(pp_ctrl_reg));
 
-	if (_wait_for((I915_READ(pp_stat_reg) & mask) == value, 5000, 10)) {
+	if (_wait_for((I915_READ(pp_stat_reg) & mask) == value,
+		      5 * USEC_PER_SEC, 10 * USEC_PER_MSEC))
 		DRM_ERROR("Panel status timeout: status %08x control %08x\n",
 				I915_READ(pp_stat_reg),
 				I915_READ(pp_ctrl_reg));
-	}
 
 	DRM_DEBUG_KMS("Wait complete\n");
 }
@@ -2409,7 +2404,6 @@ static void intel_dp_get_config(struct intel_encoder *encoder,
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	enum port port = dp_to_dig_port(intel_dp)->port;
 	struct intel_crtc *crtc = to_intel_crtc(encoder->base.crtc);
-	int dotclock;
 
 	tmp = I915_READ(intel_dp->output_reg);
 
@@ -2459,13 +2453,9 @@ static void intel_dp_get_config(struct intel_encoder *encoder,
 			pipe_config->port_clock = 270000;
 	}
 
-	dotclock = intel_dotclock_calculate(pipe_config->port_clock,
-					    &pipe_config->dp_m_n);
-
-	if (HAS_PCH_SPLIT(dev_priv->dev) && port != PORT_A)
-		ironlake_check_encoder_dotclock(pipe_config, dotclock);
-
-	pipe_config->base.adjusted_mode.crtc_clock = dotclock;
+	pipe_config->base.adjusted_mode.crtc_clock =
+		intel_dotclock_calculate(pipe_config->port_clock,
+					 &pipe_config->dp_m_n);
 
 	if (is_edp(intel_dp) && dev_priv->vbt.edp_bpp &&
 	    pipe_config->pipe_bpp > dev_priv->vbt.edp_bpp) {
@@ -4558,7 +4548,7 @@ bool intel_digital_port_connected(struct drm_i915_private *dev_priv,
 {
 	if (HAS_PCH_IBX(dev_priv))
 		return ibx_digital_port_connected(dev_priv, port);
-	if (HAS_PCH_SPLIT(dev_priv))
+	else if (HAS_PCH_SPLIT(dev_priv))
 		return cpt_digital_port_connected(dev_priv, port);
 	else if (IS_BROXTON(dev_priv))
 		return bxt_digital_port_connected(dev_priv, port);
@@ -5259,7 +5249,7 @@ intel_dp_init_panel_power_sequencer_registers(struct drm_device *dev,
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 pp_on, pp_off, pp_div, port_sel = 0;
-	int div = HAS_PCH_SPLIT(dev) ? intel_pch_rawclk(dev) : intel_hrawclk(dev);
+	int div = dev_priv->rawclk_freq / 1000;
 	i915_reg_t pp_on_reg, pp_off_reg, pp_div_reg, pp_ctrl_reg;
 	enum port port = dp_to_dig_port(intel_dp)->port;
 	const struct edp_power_seq *seq = &intel_dp->pps_delays;
@@ -5852,19 +5842,17 @@ intel_dp_init_connector(struct intel_digital_port *intel_dig_port,
 	/* intel_dp vfuncs */
 	if (INTEL_INFO(dev)->gen >= 9)
 		intel_dp->get_aux_clock_divider = skl_get_aux_clock_divider;
-	else if (IS_VALLEYVIEW(dev) || IS_CHERRYVIEW(dev))
-		intel_dp->get_aux_clock_divider = vlv_get_aux_clock_divider;
 	else if (IS_HASWELL(dev) || IS_BROADWELL(dev))
 		intel_dp->get_aux_clock_divider = hsw_get_aux_clock_divider;
 	else if (HAS_PCH_SPLIT(dev))
 		intel_dp->get_aux_clock_divider = ilk_get_aux_clock_divider;
 	else
-		intel_dp->get_aux_clock_divider = i9xx_get_aux_clock_divider;
+		intel_dp->get_aux_clock_divider = g4x_get_aux_clock_divider;
 
 	if (INTEL_INFO(dev)->gen >= 9)
 		intel_dp->get_aux_send_ctl = skl_get_aux_send_ctl;
 	else
-		intel_dp->get_aux_send_ctl = i9xx_get_aux_send_ctl;
+		intel_dp->get_aux_send_ctl = g4x_get_aux_send_ctl;
 
 	if (HAS_DDI(dev))
 		intel_dp->prepare_link_retrain = intel_ddi_prepare_link_retrain;
