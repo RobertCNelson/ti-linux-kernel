@@ -18,8 +18,8 @@
 #include <linux/usb.h>
 #include <linux/list.h>
 
-#define B_DIFF_DL_DRV		(1 << 4)
-#define B_DOWNLOAD		(1 << 5)
+#define B_DIFF_DL_DRV		BIT(4)
+#define B_DOWNLOAD		BIT(5)
 #define MAX_NR_SDU_BUF		64
 
 struct usb_tx {
@@ -41,7 +41,7 @@ struct tx_cxt {
 #if defined(CONFIG_WIMAX_GDM72XX_USB_PM) || defined(CONFIG_WIMAX_GDM72XX_K_MODE)
 	struct list_head	pending_list;
 #endif
-	spinlock_t		lock;
+	spinlock_t		lock; /* Protect structure fields */
 };
 
 struct usb_rx {
@@ -49,14 +49,14 @@ struct usb_rx {
 	struct rx_cxt		*rx_cxt;
 	struct urb		*urb;
 	u8			*buf;
-	void (*callback)(void *cb_data, void *data, int len);
+	void (*callback)(void *cb_data, void *data, size_t len);
 	void *cb_data;
 };
 
 struct rx_cxt {
 	struct list_head	free_list;
 	struct list_head	used_list;
-	spinlock_t		lock;
+	spinlock_t		lock; /* Protect structure fields */
 };
 
 struct usbwm_dev {
