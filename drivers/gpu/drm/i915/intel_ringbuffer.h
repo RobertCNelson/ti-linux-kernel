@@ -79,7 +79,6 @@ enum intel_ring_hangcheck_action {
 	HANGCHECK_IDLE = 0,
 	HANGCHECK_WAIT,
 	HANGCHECK_ACTIVE,
-	HANGCHECK_ACTIVE_LOOP,
 	HANGCHECK_KICK,
 	HANGCHECK_HUNG,
 };
@@ -88,7 +87,6 @@ enum intel_ring_hangcheck_action {
 
 struct intel_ring_hangcheck {
 	u64 acthd;
-	u64 max_acthd;
 	u32 seqno;
 	int score;
 	enum intel_ring_hangcheck_action action;
@@ -271,7 +269,8 @@ struct  intel_engine_cs {
 	spinlock_t execlist_lock;
 	struct list_head execlist_queue;
 	struct list_head execlist_retired_req_list;
-	u8 next_context_status_buffer;
+	unsigned int next_context_status_buffer;
+	unsigned int idle_lite_restore_wa;
 	bool disable_lite_restore_wa;
 	u32 ctx_desc_template;
 	u32             irq_keep_mask; /* bitmask for interrupts that should not be masked */
