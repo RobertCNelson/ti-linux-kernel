@@ -721,12 +721,12 @@ int bcm47xx_sprom_register_fallbacks(void)
 
 #if IS_BUILTIN(CONFIG_SSB) && IS_ENABLED(CONFIG_SSB_SPROM)
 	if (ssb_arch_register_fallback_sprom(&bcm47xx_get_sprom_ssb))
-		pr_warn("Failed to registered ssb SPROM handler\n");
+		pr_warn("Failed to register ssb SPROM handler\n");
 #endif
 
 #if IS_BUILTIN(CONFIG_BCMA)
 	if (bcma_arch_register_fallback_sprom(&bcm47xx_get_sprom_bcma))
-		pr_warn("Failed to registered bcma SPROM handler\n");
+		pr_warn("Failed to register bcma SPROM handler\n");
 #endif
 
 	bcm47xx_sprom_registered = 1;
