@@ -189,6 +189,9 @@ static u16 cgroup_no_v1_mask;
 /* some controllers are not supported in the default hierarchy */
 static u16 cgrp_dfl_inhibit_ss_mask;
 
+/* some controllers are implicitly enabled on the default hierarchy */
+static unsigned long cgrp_dfl_implicit_ss_mask;
+
 /* The list of hierarchy roots */
 
 static LIST_HEAD(cgroup_roots);
@@ -371,8 +374,8 @@ static u16 cgroup_control(struct cgroup *cgrp)
 		return parent->subtree_control;
 
 	if (cgroup_on_dfl(cgrp))
-		root_ss_mask &= ~cgrp_dfl_inhibit_ss_mask;
-
+		root_ss_mask &= ~(cgrp_dfl_inhibit_ss_mask |
+				  cgrp_dfl_implicit_ss_mask);
 	return root_ss_mask;
 }
 
@@ -1339,6 +1342,8 @@ static u16 cgroup_calc_subtree_ss_mask(u16 subtree_control, u16 this_ss_mask)
 
 	lockdep_assert_held(&cgroup_mutex);
 
+	cur_ss_mask |= cgrp_dfl_implicit_ss_mask;
+
 	while (true) {
 		u16 new_ss_mask = cur_ss_mask;
 
@@ -1524,8 +1529,13 @@ static int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 	lockdep_assert_held(&cgroup_mutex);
 
 	do_each_subsys_mask(ss, ssid, ss_mask) {
-		/* if @ss has non-root csses attached to it, can't move */
-		if (css_next_child(NULL, cgroup_css(&ss->root->cgrp, ss)))
+		/*
+		 * If @ss has non-root csses attached to it, can't move.
+		 * If @ss is an implicit controller, it is exempt from this
+		 * rule and can be stolen.
+		 */
+		if (css_next_child(NULL, cgroup_css(&ss->root->cgrp, ss)) &&
+		    !ss->implicit_on_dfl)
 			return -EBUSY;
 
 		/* can't move between two non-dummy roots either */
@@ -2444,38 +2454,38 @@ struct task_struct *cgroup_taskset_next(struct cgroup_taskset *tset,
 }
 
 /**
- * cgroup_taskset_migrate - migrate a taskset to a cgroup
+ * cgroup_taskset_migrate - migrate a taskset
  * @tset: taget taskset
- * @dst_cgrp: destination cgroup
+ * @root: cgroup root the migration is taking place on
  *
- * Migrate tasks in @tset to @dst_cgrp.  This function fails iff one of the
- * ->can_attach callbacks fails and guarantees that either all or none of
- * the tasks in @tset are migrated.  @tset is consumed regardless of
- * success.
+ * Migrate tasks in @tset as setup by migration preparation functions.
+ * This function fails iff one of the ->can_attach callbacks fails and
+ * guarantees that either all or none of the tasks in @tset are migrated.
+ * @tset is consumed regardless of success.
  */
 static int cgroup_taskset_migrate(struct cgroup_taskset *tset,
-				  struct cgroup *dst_cgrp)
+				  struct cgroup_root *root)
 {
-	struct cgroup_subsys_state *css, *failed_css = NULL;
+	struct cgroup_subsys *ss;
 	struct task_struct *task, *tmp_task;
 	struct css_set *cset, *tmp_cset;
-	int i, ret;
+	int ssid, failed_ssid, ret;
 
 	/* methods shouldn't be called if no task is actually migrating */
 	if (list_empty(&tset->src_csets))
 		return 0;
 
 	/* check that we can legitimately attach to the cgroup */
-	for_each_e_css(css, i, dst_cgrp) {
-		if (css->ss->can_attach) {
-			tset->ssid = i;
-			ret = css->ss->can_attach(tset);
+	do_each_subsys_mask(ss, ssid, root->subsys_mask) {
+		if (ss->can_attach) {
+			tset->ssid = ssid;
+			ret = ss->can_attach(tset);
 			if (ret) {
-				failed_css = css;
+				failed_ssid = ssid;
 				goto out_cancel_attach;
 			}
 		}
-	}
+	} while_each_subsys_mask();
 
 	/*
 	 * Now that we're guaranteed success, proceed to move all tasks to
@@ -2502,25 +2512,25 @@ static int cgroup_taskset_migrate(struct cgroup_taskset *tset,
 	 */
 	tset->csets = &tset->dst_csets;
 
-	for_each_e_css(css, i, dst_cgrp) {
-		if (css->ss->attach) {
-			tset->ssid = i;
-			css->ss->attach(tset);
+	do_each_subsys_mask(ss, ssid, root->subsys_mask) {
+		if (ss->attach) {
+			tset->ssid = ssid;
+			ss->attach(tset);
 		}
-	}
+	} while_each_subsys_mask();
 
 	ret = 0;
 	goto out_release_tset;
 
 out_cancel_attach:
-	for_each_e_css(css, i, dst_cgrp) {
-		if (css == failed_css)
+	do_each_subsys_mask(ss, ssid, root->subsys_mask) {
+		if (ssid == failed_ssid)
 			break;
-		if (css->ss->cancel_attach) {
-			tset->ssid = i;
-			css->ss->cancel_attach(tset);
+		if (ss->cancel_attach) {
+			tset->ssid = ssid;
+			ss->cancel_attach(tset);
 		}
-	}
+	} while_each_subsys_mask();
 out_release_tset:
 	spin_lock_bh(&css_set_lock);
 	list_splice_init(&tset->dst_csets, &tset->src_csets);
@@ -2530,6 +2540,20 @@ out_release_tset:
 	}
 	spin_unlock_bh(&css_set_lock);
 	return ret;
+}
+
+/**
+ * cgroup_may_migrate_to - verify whether a cgroup can be migration destination
+ * @dst_cgrp: destination cgroup to test
+ *
+ * On the default hierarchy, except for the root, subtree_control must be
+ * zero for migration destination cgroups with tasks so that child cgroups
+ * don't compete against tasks.
+ */
+static bool cgroup_may_migrate_to(struct cgroup *dst_cgrp)
+{
+	return !cgroup_on_dfl(dst_cgrp) || !cgroup_parent(dst_cgrp) ||
+		!dst_cgrp->subtree_control;
 }
 
 /**
@@ -2548,6 +2572,7 @@ static void cgroup_migrate_finish(struct list_head *preloaded_csets)
 	spin_lock_bh(&css_set_lock);
 	list_for_each_entry_safe(cset, tmp_cset, preloaded_csets, mg_preload_node) {
 		cset->mg_src_cgrp = NULL;
+		cset->mg_dst_cgrp = NULL;
 		cset->mg_dst_cset = NULL;
 		list_del_init(&cset->mg_preload_node);
 		put_css_set_locked(cset);
@@ -2586,52 +2611,42 @@ static void cgroup_migrate_add_src(struct css_set *src_cset,
 		return;
 
 	WARN_ON(src_cset->mg_src_cgrp);
+	WARN_ON(src_cset->mg_dst_cgrp);
 	WARN_ON(!list_empty(&src_cset->mg_tasks));
 	WARN_ON(!list_empty(&src_cset->mg_node));
 
 	src_cset->mg_src_cgrp = src_cgrp;
+	src_cset->mg_dst_cgrp = dst_cgrp;
 	get_css_set(src_cset);
 	list_add(&src_cset->mg_preload_node, preloaded_csets);
 }
 
 /**
  * cgroup_migrate_prepare_dst - prepare destination css_sets for migration
- * @dst_cgrp: the destination cgroup (may be %NULL)
  * @preloaded_csets: list of preloaded source css_sets
  *
- * Tasks are about to be moved to @dst_cgrp and all the source css_sets
- * have been preloaded to @preloaded_csets.  This function looks up and
- * pins all destination css_sets, links each to its source, and append them
- * to @preloaded_csets.  If @dst_cgrp is %NULL, the destination of each
- * source css_set is assumed to be its cgroup on the default hierarchy.
+ * Tasks are about to be moved and all the source css_sets have been
+ * preloaded to @preloaded_csets.  This function looks up and pins all
+ * destination css_sets, links each to its source, and append them to
+ * @preloaded_csets.
  *
  * This function must be called after cgroup_migrate_add_src() has been
  * called on each migration source css_set.  After migration is performed
  * using cgroup_migrate(), cgroup_migrate_finish() must be called on
  * @preloaded_csets.
  */
-static int cgroup_migrate_prepare_dst(struct cgroup *dst_cgrp,
-				      struct list_head *preloaded_csets)
+static int cgroup_migrate_prepare_dst(struct list_head *preloaded_csets)
 {
 	LIST_HEAD(csets);
 	struct css_set *src_cset, *tmp_cset;
 
 	lockdep_assert_held(&cgroup_mutex);
 
-	/*
-	 * Except for the root, subtree_control must be zero for a cgroup
-	 * with tasks so that child cgroups don't compete against tasks.
-	 */
-	if (dst_cgrp && cgroup_on_dfl(dst_cgrp) && cgroup_parent(dst_cgrp) &&
-	    dst_cgrp->subtree_control)
-		return -EBUSY;
-
 	/* look up the dst cset for each src cset and link it to src */
 	list_for_each_entry_safe(src_cset, tmp_cset, preloaded_csets, mg_preload_node) {
 		struct css_set *dst_cset;
 
-		dst_cset = find_css_set(src_cset,
-					dst_cgrp ?: src_cset->dfl_cgrp);
+		dst_cset = find_css_set(src_cset, src_cset->mg_dst_cgrp);
 		if (!dst_cset)
 			goto err;
 
@@ -2644,6 +2659,7 @@ static int cgroup_migrate_prepare_dst(struct cgroup *dst_cgrp,
 		 */
 		if (src_cset == dst_cset) {
 			src_cset->mg_src_cgrp = NULL;
+			src_cset->mg_dst_cgrp = NULL;
 			list_del_init(&src_cset->mg_preload_node);
 			put_css_set(src_cset);
 			put_css_set(dst_cset);
@@ -2669,11 +2685,11 @@ err:
  * cgroup_migrate - migrate a process or task to a cgroup
  * @leader: the leader of the process or the task to migrate
  * @threadgroup: whether @leader points to the whole process or a single task
- * @cgrp: the destination cgroup
+ * @root: cgroup root migration is taking place on
  *
- * Migrate a process or task denoted by @leader to @cgrp.  If migrating a
- * process, the caller must be holding cgroup_threadgroup_rwsem.  The
- * caller is also responsible for invoking cgroup_migrate_add_src() and
+ * Migrate a process or task denoted by @leader.  If migrating a process,
+ * the caller must be holding cgroup_threadgroup_rwsem.  The caller is also
+ * responsible for invoking cgroup_migrate_add_src() and
  * cgroup_migrate_prepare_dst() on the targets before invoking this
  * function and following up with cgroup_migrate_finish().
  *
@@ -2684,7 +2700,7 @@ err:
  * actually starting migrating.
  */
 static int cgroup_migrate(struct task_struct *leader, bool threadgroup,
-			  struct cgroup *cgrp)
+			  struct cgroup_root *root)
 {
 	struct cgroup_taskset tset = CGROUP_TASKSET_INIT(tset);
 	struct task_struct *task;
@@ -2705,7 +2721,7 @@ static int cgroup_migrate(struct task_struct *leader, bool threadgroup,
 	rcu_read_unlock();
 	spin_unlock_bh(&css_set_lock);
 
-	return cgroup_taskset_migrate(&tset, cgrp);
+	return cgroup_taskset_migrate(&tset, root);
 }
 
 /**
@@ -2723,6 +2739,9 @@ static int cgroup_attach_task(struct cgroup *dst_cgrp,
 	struct task_struct *task;
 	int ret;
 
+	if (!cgroup_may_migrate_to(dst_cgrp))
+		return -EBUSY;
+
 	/* look up all src csets */
 	spin_lock_bh(&css_set_lock);
 	rcu_read_lock();
@@ -2737,9 +2756,9 @@ static int cgroup_attach_task(struct cgroup *dst_cgrp,
 	spin_unlock_bh(&css_set_lock);
 
 	/* prepare dst csets and commit */
-	ret = cgroup_migrate_prepare_dst(dst_cgrp, &preloaded_csets);
+	ret = cgroup_migrate_prepare_dst(&preloaded_csets);
 	if (!ret)
-		ret = cgroup_migrate(leader, threadgroup, dst_cgrp);
+		ret = cgroup_migrate(leader, threadgroup, dst_cgrp->root);
 
 	cgroup_migrate_finish(&preloaded_csets);
 	return ret;
@@ -2990,13 +3009,13 @@ static int cgroup_update_dfl_csses(struct cgroup *cgrp)
 		struct cgrp_cset_link *link;
 
 		list_for_each_entry(link, &dsct->cset_links, cset_link)
-			cgroup_migrate_add_src(link->cset, cgrp,
+			cgroup_migrate_add_src(link->cset, dsct,
 					       &preloaded_csets);
 	}
 	spin_unlock_bh(&css_set_lock);
 
 	/* NULL dst indicates self on default hierarchy */
-	ret = cgroup_migrate_prepare_dst(NULL, &preloaded_csets);
+	ret = cgroup_migrate_prepare_dst(&preloaded_csets);
 	if (ret)
 		goto out_finish;
 
@@ -3014,7 +3033,7 @@ static int cgroup_update_dfl_csses(struct cgroup *cgrp)
 	}
 	spin_unlock_bh(&css_set_lock);
 
-	ret = cgroup_taskset_migrate(&tset, cgrp);
+	ret = cgroup_taskset_migrate(&tset, cgrp->root);
 out_finish:
 	cgroup_migrate_finish(&preloaded_csets);
 	percpu_up_write(&cgroup_threadgroup_rwsem);
@@ -3119,6 +3138,18 @@ static void cgroup_restore_control(struct cgroup *cgrp)
 	}
 }
 
+static bool css_visible(struct cgroup_subsys_state *css)
+{
+	struct cgroup_subsys *ss = css->ss;
+	struct cgroup *cgrp = css->cgroup;
+
+	if (cgroup_control(cgrp) & (1 << ss->id))
+		return true;
+	if (!(cgroup_ss_mask(cgrp) & (1 << ss->id)))
+		return false;
+	return cgroup_on_dfl(cgrp) && ss->implicit_on_dfl;
+}
+
 /**
  * cgroup_apply_control_enable - enable or show csses according to control
  * @cgrp: root of the target subtree
@@ -3154,7 +3185,7 @@ static int cgroup_apply_control_enable(struct cgroup *cgrp)
 					return PTR_ERR(css);
 			}
 
-			if (cgroup_control(dsct) & (1 << ss->id)) {
+			if (css_visible(css)) {
 				ret = css_populate_dir(css);
 				if (ret)
 					return ret;
@@ -3197,7 +3228,7 @@ static void cgroup_apply_control_disable(struct cgroup *cgrp)
 			if (css->parent &&
 			    !(cgroup_ss_mask(dsct) & (1 << ss->id))) {
 				kill_css(css);
-			} else if (!(cgroup_control(dsct) & (1 << ss->id))) {
+			} else if (!css_visible(css)) {
 				css_clear_dir(css);
 				if (ss->css_reset)
 					ss->css_reset(css);
@@ -4225,6 +4256,9 @@ int cgroup_transfer_tasks(struct cgroup *to, struct cgroup *from)
 	struct task_struct *task;
 	int ret;
 
+	if (!cgroup_may_migrate_to(to))
+		return -EBUSY;
+
 	mutex_lock(&cgroup_mutex);
 
 	/* all tasks in @from are being moved, all csets are source */
@@ -4233,7 +4267,7 @@ int cgroup_transfer_tasks(struct cgroup *to, struct cgroup *from)
 		cgroup_migrate_add_src(link->cset, to, &preloaded_csets);
 	spin_unlock_bh(&css_set_lock);
 
-	ret = cgroup_migrate_prepare_dst(to, &preloaded_csets);
+	ret = cgroup_migrate_prepare_dst(&preloaded_csets);
 	if (ret)
 		goto out_err;
 
@@ -4249,7 +4283,7 @@ int cgroup_transfer_tasks(struct cgroup *to, struct cgroup *from)
 		css_task_iter_end(&it);
 
 		if (task) {
-			ret = cgroup_migrate(task, false, to);
+			ret = cgroup_migrate(task, false, to->root);
 			put_task_struct(task);
 		}
 	} while (task && !ret);
@@ -5534,7 +5568,9 @@ int __init cgroup_init(void)
 
 		cgrp_dfl_root.subsys_mask |= 1 << ss->id;
 
-		if (!ss->dfl_cftypes)
+		if (ss->implicit_on_dfl)
+			cgrp_dfl_implicit_ss_mask |= 1 << ss->id;
+		else if (!ss->dfl_cftypes)
 			cgrp_dfl_inhibit_ss_mask |= 1 << ss->id;
 
 		if (ss->dfl_cftypes == ss->legacy_cftypes) {
