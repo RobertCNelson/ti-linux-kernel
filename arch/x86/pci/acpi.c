@@ -275,11 +275,14 @@ static void pci_acpi_root_release_info(struct acpi_pci_root_info *ci)
  *     to access PCI configuration space.
  *
  * So explicitly filter out PCI CFG IO ports[0xCF8-0xCFF].
+ *
+ * Furthermore, IO ports address space is limited to 64k on x86,
+ * any IO resource exceeding the boundary must therefore be discarded.
  */
-static bool resource_is_pcicfg_ioport(struct resource *res)
+static bool ioport_valid(struct resource *res)
 {
-	return (res->flags & IORESOURCE_IO) &&
-		res->start == 0xCF8 && res->end == 0xCFF;
+	return !(res->start == 0xCF8 && res->end == 0xCFF) &&
+	       !(res->end >= 0x10003);
 }
 
 static int pci_acpi_root_prepare_resources(struct acpi_pci_root_info *ci)
@@ -287,13 +290,18 @@ static int pci_acpi_root_prepare_resources(struct acpi_pci_root_info *ci)
 	struct acpi_device *device = ci->bridge;
 	int busnum = ci->root->secondary.start;
 	struct resource_entry *entry, *tmp;
+	struct resource *res;
 	int status;
 
 	status = acpi_pci_probe_root_resources(ci);
 	if (pci_use_crs) {
-		resource_list_for_each_entry_safe(entry, tmp, &ci->resources)
-			if (resource_is_pcicfg_ioport(entry->res))
+		resource_list_for_each_entry_safe(entry, tmp, &ci->resources) {
+			res = entry->res;
+
+			if (res->flags & IORESOURCE_IO && !ioport_valid(res))
 				resource_list_destroy_entry(entry);
+		}
+
 		return status;
 	}
 
