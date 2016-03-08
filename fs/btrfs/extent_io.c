@@ -3918,7 +3918,6 @@ static int extent_write_cache_pages(struct extent_io_tree *tree,
 	struct inode *inode = mapping->host;
 	int ret = 0;
 	int done = 0;
-	int err = 0;
 	int nr_to_write_done = 0;
 	struct pagevec pvec;
 	int nr_pages;
@@ -4011,8 +4010,6 @@ retry:
 				unlock_page(page);
 				ret = 0;
 			}
-			if (!err && ret < 0)
-				err = ret;
 			if (ret < 0) {
 				/*
 				 * done_index is set past this page,
@@ -4038,7 +4035,7 @@ retry:
 		pagevec_release(&pvec);
 		cond_resched();
 	}
-	if (!scanned && !done && !err) {
+	if (!scanned && !done) {
 		/*
 		 * We hit the last page and there is more work to be done: wrap
 		 * back to the start of the file
@@ -4052,7 +4049,7 @@ retry:
 		mapping->writeback_index = done_index;
 
 	btrfs_add_delayed_iput(inode);
-	return err;
+	return ret;
 }
 
 static void flush_epd_write_bio(struct extent_page_data *epd)
