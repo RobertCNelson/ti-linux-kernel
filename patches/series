@@ -7,6 +7,26 @@
 ############################################################
 rtmutex-Make-wait_lock-irq-safe.patch
 arm64-replace-read_lock-to-rcu-lock-in-call_step_hoo.patch
+# AT91 queue in ARM-SOC
+0001-clk-at91-make-use-of-syscon-to-share-PMC-registers-i.patch
+0002-clk-at91-make-use-of-syscon-regmap-internally.patch
+0003-clk-at91-remove-IRQ-handling-and-use-polling.patch
+0004-clk-at91-pmc-merge-at91_pmc_init-in-atmel_pmc_probe.patch
+0005-clk-at91-pmc-move-pmc-structures-to-C-file.patch
+0006-ARM-at91-pm-simply-call-at91_pm_init.patch
+0007-ARM-at91-pm-find-and-remap-the-pmc.patch
+0008-ARM-at91-pm-move-idle-functions-to-pm.c.patch
+0009-ARM-at91-remove-useless-includes-and-function-protot.patch
+0010-usb-gadget-atmel-access-the-PMC-using-regmap.patch
+0011-clk-at91-pmc-drop-at91_pmc_base.patch
+0012-clk-at91-pmc-remove-useless-capacities-handling.patch
+0013-clk-at91-remove-useless-includes.patch
+# SWAIT queue in TIP
+0001-wait.-ch-Introduce-the-simple-waitqueue-swait-implem.patch
+0002-kbuild-Add-option-to-turn-incompatible-pointer-check.patch
+0003-KVM-Use-simple-waitqueue-for-vcpu-wq.patch
+0004-rcu-Do-not-call-rcu_nocb_gp_cleanup-while-holding-rn.patch
+0005-rcu-Use-simple-wait-queues-where-possible-in-rcutree.patch
 
 ############################################################
 # UPSTREAM FIXES, patches pending
@@ -21,6 +41,7 @@ drivers-cpuidle-coupled-fix-warning-cpuidle_coupled_.patch
 drivers-media-vsp1_video-fix-compile-error.patch
 sc16is7xx_Drop_bogus_use_of_IRQF_ONESHOT.patch
 f2fs_Mutex_cant_be_used_by_down_write_nest_lock().patch
+at91_dont_enable_disable_clock.patch
 
 ############################################################
 # Stuff which needs addressing upstream, but requires more
@@ -31,7 +52,7 @@ rfc-arm-smp-__cpu_disable-fix-sleeping-function-called-from-invalid-context.patc
 ############################################################
 # Stuff broken upstream, need to be sent
 ############################################################
-rtmutex--Handle-non-enqueued-waiters-gracefully
+rtmutex--Handle-non-enqueued-waiters-gracefully.patch
 kernel-sched-fix-preempt_disable_ip-recodring-for-pr.patch
 
 # Wants a different fix for upstream
@@ -366,9 +387,7 @@ rt-serial-warn-fix.patch
 
 # SIMPLE WAITQUEUE
 wait.h-include-atomic.h.patch
-wait-simple-implementation.patch
 work-simple-Simple-work-queue-implemenation.patch
-rcu-more-swait-conversions.patch
 completion-use-simple-wait-queues.patch
 fs-aio-simple-simple-work.patch
 
@@ -430,7 +449,7 @@ jump-label-rt.patch
 
 # NETWORKING
 sunrpc-make-svc_xprt_do_enqueue-use-get_cpu_light.patch
-net__Make_synchronize-rcu_expedited_conditional-on-non-rt
+net__Make_synchronize-rcu_expedited_conditional-on-non-rt.patch
 skbufhead-raw-lock.patch
 net-core-cpuhotplug-drain-input_pkt_queue-lockless.patch
 net-move-xmit_recursion-to-per-task-variable-on-RT.patch
@@ -478,7 +497,7 @@ sysfs-realtime-entry.patch
 power-disable-highmem-on-rt.patch
 mips-disable-highmem-on-rt.patch
 mm-rt-kmap-atomic-scheduling.patch
-mm--rt--Fix-generic-kmap_atomic-for-RT
+mm--rt--Fix-generic-kmap_atomic-for-RT.patch
 x86-highmem-add-a-already-used-pte-check.patch
 arm-highmem-flush-tlb-on-unmap.patch
 arm-enable-highmem-for-rt.patch
@@ -491,7 +510,6 @@ ipc-sem-rework-semaphore-wakeups.patch
 # KVM require constant freq TSC (smp function call -> cpufreq)
 x86-kvm-require-const-tsc-for-rt.patch
 KVM-lapic-mark-LAPIC-timer-handler-as-irqsafe.patch
-KVM-use-simple-waitqueue-for-vcpu-wq.patch
 
 # SCSI/FCOE
 scsi-fcoe-rt-aware.patch

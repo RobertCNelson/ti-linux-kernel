@@ -39,7 +39,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	case RCU_SCHED_FLAVOR:
  		rsp = &rcu_sched_state;
  		break;
-@@ -4604,7 +4608,9 @@ void __init rcu_init(void)
+@@ -4606,7 +4610,9 @@ void __init rcu_init(void)
  
  	rcu_bootup_announce();
  	rcu_init_geometry();
@@ -51,7 +51,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  		rcu_dump_rcu_node_tree(&rcu_sched_state);
 --- a/kernel/rcu/tree.h
 +++ b/kernel/rcu/tree.h
-@@ -556,7 +556,9 @@ extern struct list_head rcu_struct_flavo
+@@ -557,7 +557,9 @@ extern struct list_head rcu_struct_flavo
   */
  extern struct rcu_state rcu_sched_state;
  

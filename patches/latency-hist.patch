@@ -16,14 +16,14 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  Documentation/trace/histograms.txt  |  186 +++++
  include/linux/hrtimer.h             |    4 
  include/linux/sched.h               |    6 
- include/trace/events/hist.h         |   72 ++
+ include/trace/events/hist.h         |   73 ++
  include/trace/events/latency_hist.h |   29 
  kernel/time/hrtimer.c               |   21 
  kernel/trace/Kconfig                |  104 +++
  kernel/trace/Makefile               |    4 
  kernel/trace/latency_hist.c         | 1178 ++++++++++++++++++++++++++++++++++++
  kernel/trace/trace_irqsoff.c        |   11 
- 10 files changed, 1615 insertions(+)
+ 10 files changed, 1616 insertions(+)
 
 --- /dev/null
 +++ b/Documentation/trace/histograms.txt
@@ -251,7 +251,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	struct mem_cgroup *memcg_in_oom;
 --- /dev/null
 +++ b/include/trace/events/hist.h
-@@ -0,0 +1,72 @@
+@@ -0,0 +1,73 @@
 +#undef TRACE_SYSTEM
 +#define TRACE_SYSTEM hist
 +
@@ -263,6 +263,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +
 +#if !defined(CONFIG_PREEMPT_OFF_HIST) && !defined(CONFIG_INTERRUPT_OFF_HIST)
 +#define trace_preemptirqsoff_hist(a, b)
++#define trace_preemptirqsoff_hist_rcuidle(a, b)
 +#else
 +TRACE_EVENT(preemptirqsoff_hist,
 +

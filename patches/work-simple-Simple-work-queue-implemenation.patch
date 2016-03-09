@@ -50,8 +50,8 @@ Cc: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  obj-y += core.o loadavg.o clock.o cputime.o
  obj-y += idle_task.o fair.o rt.o deadline.o stop_task.o
--obj-y += wait.o wait-simple.o completion.o idle.o
-+obj-y += wait.o wait-simple.o work-simple.o completion.o idle.o
+-obj-y += wait.o swait.o completion.o idle.o
++obj-y += wait.o swait.o work-simple.o completion.o idle.o
  obj-$(CONFIG_SMP) += cpupri.o cpudeadline.o
  obj-$(CONFIG_SCHED_AUTOGROUP) += auto_group.o
  obj-$(CONFIG_SCHEDSTATS) += stats.o
@@ -65,7 +65,7 @@ Cc: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 + * PREEMPT_RT_FULL safe. The callbacks are executed in kthread context.
 + */
 +
-+#include <linux/wait-simple.h>
++#include <linux/swait.h>
 +#include <linux/work-simple.h>
 +#include <linux/kthread.h>
 +#include <linux/slab.h>
@@ -79,7 +79,7 @@ Cc: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 +
 +struct sworker {
 +	struct list_head events;
-+	struct swait_head wq;
++	struct swait_queue_head wq;
 +
 +	raw_spinlock_t lock;
 +
@@ -140,7 +140,7 @@ Cc: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 +
 +	INIT_LIST_HEAD(&worker->events);
 +	raw_spin_lock_init(&worker->lock);
-+	init_swait_head(&worker->wq);
++	init_swait_queue_head(&worker->wq);
 +
 +	worker->task = kthread_run(swork_kthread, worker, "kswork");
 +	if (IS_ERR(worker->task)) {
@@ -177,7 +177,7 @@ Cc: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 +	list_add_tail(&sev->item, &glob_worker->events);
 +	raw_spin_unlock_irqrestore(&glob_worker->lock, flags);
 +
-+	swait_wake(&glob_worker->wq);
++	swake_up(&glob_worker->wq);
 +	return true;
 +}
 +EXPORT_SYMBOL_GPL(swork_queue);

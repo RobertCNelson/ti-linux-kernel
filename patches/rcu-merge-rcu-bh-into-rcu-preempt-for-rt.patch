@@ -201,7 +201,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
   * Force a quiescent state for RCU-sched.
   */
-@@ -3114,6 +3124,7 @@ void call_rcu_sched(struct rcu_head *hea
+@@ -3116,6 +3126,7 @@ void call_rcu_sched(struct rcu_head *hea
  }
  EXPORT_SYMBOL_GPL(call_rcu_sched);
  
@@ -209,7 +209,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
   * Queue an RCU callback for invocation after a quicker grace period.
   */
-@@ -3122,6 +3133,7 @@ void call_rcu_bh(struct rcu_head *head,
+@@ -3124,6 +3135,7 @@ void call_rcu_bh(struct rcu_head *head,
  	__call_rcu(head, func, &rcu_bh_state, -1, 0);
  }
  EXPORT_SYMBOL_GPL(call_rcu_bh);
@@ -217,7 +217,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  /*
   * Queue an RCU callback for lazy invocation after a grace period.
-@@ -3213,6 +3225,7 @@ void synchronize_sched(void)
+@@ -3215,6 +3227,7 @@ void synchronize_sched(void)
  }
  EXPORT_SYMBOL_GPL(synchronize_sched);
  
@@ -225,7 +225,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /**
   * synchronize_rcu_bh - wait until an rcu_bh grace period has elapsed.
   *
-@@ -3239,6 +3252,7 @@ void synchronize_rcu_bh(void)
+@@ -3241,6 +3254,7 @@ void synchronize_rcu_bh(void)
  		wait_rcu_gp(call_rcu_bh);
  }
  EXPORT_SYMBOL_GPL(synchronize_rcu_bh);
@@ -233,7 +233,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  /**
   * get_state_synchronize_rcu - Snapshot current RCU state
-@@ -4101,6 +4115,7 @@ static void _rcu_barrier(struct rcu_stat
+@@ -4103,6 +4117,7 @@ static void _rcu_barrier(struct rcu_stat
  	mutex_unlock(&rsp->barrier_mutex);
  }
  
@@ -241,7 +241,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /**
   * rcu_barrier_bh - Wait until all in-flight call_rcu_bh() callbacks complete.
   */
-@@ -4109,6 +4124,7 @@ void rcu_barrier_bh(void)
+@@ -4111,6 +4126,7 @@ void rcu_barrier_bh(void)
  	_rcu_barrier(&rcu_bh_state);
  }
  EXPORT_SYMBOL_GPL(rcu_barrier_bh);

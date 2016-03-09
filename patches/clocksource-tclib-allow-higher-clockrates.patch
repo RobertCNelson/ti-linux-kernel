@@ -26,15 +26,15 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
   *
   * A boot clocksource and clockevent source are also currently needed,
   * unless the relevant platforms (ARM/AT91, AVR32/AT32) are changed so
-@@ -74,6 +73,7 @@ static struct clocksource clksrc = {
- struct tc_clkevt_device {
+@@ -75,6 +74,7 @@ struct tc_clkevt_device {
  	struct clock_event_device	clkevt;
  	struct clk			*clk;
+ 	bool				clk_enabled;
 +	u32				freq;
  	void __iomem			*regs;
  };
  
-@@ -82,13 +82,6 @@ static struct tc_clkevt_device *to_tc_cl
+@@ -83,13 +83,6 @@ static struct tc_clkevt_device *to_tc_cl
  	return container_of(clkevt, struct tc_clkevt_device, clkevt);
  }
  
@@ -47,19 +47,19 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 - */
  static u32 timer_clock;
  
- static int tc_shutdown(struct clock_event_device *d)
-@@ -114,7 +107,7 @@ static int tc_set_oneshot(struct clock_e
+ static void tc_clk_disable(struct clock_event_device *d)
+@@ -139,7 +132,7 @@ static int tc_set_oneshot(struct clock_e
  
- 	clk_enable(tcd->clk);
+ 	tc_clk_enable(d);
  
 -	/* slow clock, count up to RC, then irq and stop */
 +	/* count up to RC, then irq and stop */
  	__raw_writel(timer_clock | ATMEL_TC_CPCSTOP | ATMEL_TC_WAVE |
  		     ATMEL_TC_WAVESEL_UP_AUTO, regs + ATMEL_TC_REG(2, CMR));
  	__raw_writel(ATMEL_TC_CPCS, regs + ATMEL_TC_REG(2, IER));
-@@ -136,10 +129,10 @@ static int tc_set_periodic(struct clock_
+@@ -161,10 +154,10 @@ static int tc_set_periodic(struct clock_
  	 */
- 	clk_enable(tcd->clk);
+ 	tc_clk_enable(d);
  
 -	/* slow clock, count up to RC, then irq and restart */
 +	/* count up to RC, then irq and restart */
@@ -70,7 +70,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	/* Enable clock and interrupts on RC compare */
  	__raw_writel(ATMEL_TC_CPCS, regs + ATMEL_TC_REG(2, IER));
-@@ -166,7 +159,11 @@ static struct tc_clkevt_device clkevt =
+@@ -191,7 +184,11 @@ static struct tc_clkevt_device clkevt =
  		.features		= CLOCK_EVT_FEAT_PERIODIC |
  					  CLOCK_EVT_FEAT_ONESHOT,
  		/* Should be lower than at91rm9200's system timer */
@@ -80,9 +80,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +		.rating			= 200,
 +#endif
  		.set_next_event		= tc_next_event,
- 		.set_state_shutdown	= tc_shutdown,
+ 		.set_state_shutdown	= tc_shutdown_clk_off,
  		.set_state_periodic	= tc_set_periodic,
-@@ -188,8 +185,9 @@ static irqreturn_t ch2_irq(int irq, void
+@@ -213,8 +210,9 @@ static irqreturn_t ch2_irq(int irq, void
  	return IRQ_NONE;
  }
  
@@ -93,7 +93,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	int ret;
  	struct clk *t2_clk = tc->clk[2];
  	int irq = tc->irq[2];
-@@ -210,7 +208,11 @@ static int __init setup_clkevents(struct
+@@ -235,7 +233,11 @@ static int __init setup_clkevents(struct
  	clkevt.regs = tc->regs;
  	clkevt.clk = t2_clk;
  
@@ -106,7 +106,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	clkevt.clkevt.cpumask = cpumask_of(0);
  
-@@ -221,7 +223,7 @@ static int __init setup_clkevents(struct
+@@ -246,7 +248,7 @@ static int __init setup_clkevents(struct
  		return ret;
  	}
  
@@ -115,7 +115,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	return ret;
  }
-@@ -358,7 +360,11 @@ static int __init tcb_clksrc_init(void)
+@@ -383,7 +385,11 @@ static int __init tcb_clksrc_init(void)
  		goto err_disable_t1;
  
  	/* channel 2:  periodic and oneshot timer support */

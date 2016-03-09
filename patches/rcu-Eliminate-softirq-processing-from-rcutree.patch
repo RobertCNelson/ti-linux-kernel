@@ -35,7 +35,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  #include "tree.h"
  #include "rcu.h"
-@@ -2960,18 +2965,17 @@ static void
+@@ -2962,18 +2967,17 @@ static void
  /*
   * Do RCU core processing for the current CPU.
   */
@@ -56,7 +56,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  /*
   * Schedule RCU callback invocation.  If the specified type of RCU
   * does not support RCU priority boosting, just do a direct call,
-@@ -2983,18 +2987,105 @@ static void invoke_rcu_callbacks(struct
+@@ -2985,18 +2989,105 @@ static void invoke_rcu_callbacks(struct
  {
  	if (unlikely(!READ_ONCE(rcu_scheduler_fully_active)))
  		return;
@@ -168,7 +168,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  /*
   * Handle any core-RCU processing required by a call_rcu() invocation.
-@@ -4615,7 +4706,6 @@ void __init rcu_init(void)
+@@ -4617,7 +4708,6 @@ void __init rcu_init(void)
  	if (dump_tree)
  		rcu_dump_rcu_node_tree(&rcu_sched_state);
  	__rcu_init_preempt();
