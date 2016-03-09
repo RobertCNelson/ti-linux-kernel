@@ -561,6 +561,8 @@ struct drm_i915_error_state {
 			u32 *pages[0];
 		} *ringbuffer, *batchbuffer, *wa_batchbuffer, *ctx, *hws_page;
 
+		struct drm_i915_error_object *wa_ctx;
+
 		struct drm_i915_error_request {
 			long jiffies;
 			u32 seqno;
@@ -629,9 +631,12 @@ struct drm_i915_display_funcs {
 			  int target, int refclk,
 			  struct dpll *match_clock,
 			  struct dpll *best_clock);
-	int (*compute_pipe_wm)(struct intel_crtc *crtc,
-			       struct drm_atomic_state *state);
-	void (*program_watermarks)(struct intel_crtc_state *cstate);
+	int (*compute_pipe_wm)(struct intel_crtc_state *cstate);
+	int (*compute_intermediate_wm)(struct drm_device *dev,
+				       struct intel_crtc *intel_crtc,
+				       struct intel_crtc_state *newstate);
+	void (*initial_watermarks)(struct intel_crtc_state *cstate);
+	void (*optimize_watermarks)(struct intel_crtc_state *cstate);
 	void (*update_wm)(struct drm_crtc *crtc);
 	int (*modeset_calc_cdclk)(struct drm_atomic_state *state);
 	void (*modeset_commit_cdclk)(struct drm_atomic_state *state);
@@ -750,6 +755,7 @@ struct intel_csr {
 	i915_reg_t mmioaddr[8];
 	uint32_t mmiodata[8];
 	uint32_t dc_state;
+	uint32_t allowed_dc_mask;
 };
 
 #define DEV_INFO_FOR_EACH_FLAG(func, sep) \
@@ -779,6 +785,7 @@ struct intel_csr {
 	func(overlay_needs_physical) sep \
 	func(supports_tv) sep \
 	func(has_llc) sep \
+	func(has_snoop) sep \
 	func(has_ddi) sep \
 	func(has_fpga_dbg)
 
@@ -1829,6 +1836,7 @@ struct drm_i915_private {
 	unsigned int skl_boot_cdclk;
 	unsigned int cdclk_freq, max_cdclk_freq, atomic_cdclk_freq;
 	unsigned int max_dotclk_freq;
+	unsigned int rawclk_freq;
 	unsigned int hpll_freq;
 	unsigned int czclk_freq;
 
@@ -1980,6 +1988,13 @@ struct drm_i915_private {
 		};
 
 		uint8_t max_level;
+
+		/*
+		 * Should be held around atomic WM register writing; also
+		 * protects * intel_crtc->wm.active and
+		 * cstate->wm.need_postvbl_update.
+		 */
+		struct mutex wm_mutex;
 	} wm;
 
 	struct i915_runtime_pm pm;
@@ -2616,6 +2631,7 @@ struct drm_i915_cmd_table {
 #define HAS_BLT(dev)		(INTEL_INFO(dev)->ring_mask & BLT_RING)
 #define HAS_VEBOX(dev)		(INTEL_INFO(dev)->ring_mask & VEBOX_RING)
 #define HAS_LLC(dev)		(INTEL_INFO(dev)->has_llc)
+#define HAS_SNOOP(dev)		(INTEL_INFO(dev)->has_snoop)
 #define HAS_WT(dev)		((IS_HASWELL(dev) || IS_BROADWELL(dev)) && \
 				 __I915__(dev)->ellc_size)
 #define I915_NEED_GFX_HWS(dev)	(INTEL_INFO(dev)->need_gfx_hws)
