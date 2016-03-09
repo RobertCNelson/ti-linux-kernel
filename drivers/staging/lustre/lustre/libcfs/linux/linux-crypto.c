@@ -47,7 +47,7 @@ static int cfs_crypto_hash_alloc(unsigned char alg_id,
 
 	*type = cfs_crypto_hash_type(alg_id);
 
-	if (*type == NULL) {
+	if (!*type) {
 		CWARN("Unsupported hash algorithm id = %d, max id is %d\n",
 		      alg_id, CFS_HASH_ALG_MAX);
 		return -EINVAL;
@@ -76,7 +76,7 @@ static int cfs_crypto_hash_alloc(unsigned char alg_id,
 	 * Skip this function for digest, because we use shash logic at
 	 * cfs_crypto_hash_alloc.
 	 */
-	if (key != NULL)
+	if (key)
 		err = crypto_ahash_setkey(tfm, key, key_len);
 	else if ((*type)->cht_key != 0)
 		err = crypto_ahash_setkey(tfm,
@@ -110,14 +110,14 @@ int cfs_crypto_hash_digest(unsigned char alg_id,
 	int			err;
 	const struct cfs_crypto_hash_type	*type;
 
-	if (buf == NULL || buf_len == 0 || hash_len == NULL)
+	if (!buf || buf_len == 0 || !hash_len)
 		return -EINVAL;
 
 	err = cfs_crypto_hash_alloc(alg_id, &type, &req, key, key_len);
 	if (err != 0)
 		return err;
 
-	if (hash == NULL || *hash_len < type->cht_size) {
+	if (!hash || *hash_len < type->cht_size) {
 		*hash_len = type->cht_size;
 		crypto_free_ahash(crypto_ahash_reqtfm(req));
 		ahash_request_free(req);
@@ -186,12 +186,12 @@ int cfs_crypto_hash_final(struct cfs_crypto_hash_desc *hdesc,
 	struct ahash_request *req = (void *)hdesc;
 	int size = crypto_ahash_digestsize(crypto_ahash_reqtfm(req));
 
-	if (hash_len == NULL) {
+	if (!hash_len) {
 		crypto_free_ahash(crypto_ahash_reqtfm(req));
 		ahash_request_free(req);
 		return 0;
 	}
-	if (hash == NULL || *hash_len < size) {
+	if (!hash || *hash_len < size) {
 		*hash_len = size;
 		return -ENOSPC;
 	}
@@ -224,7 +224,6 @@ static void cfs_crypto_performance_test(unsigned char alg_id,
 					     hash, &hash_len);
 		if (err)
 			break;
-
 	}
 	end = jiffies;
 
@@ -247,8 +246,7 @@ int cfs_crypto_hash_speed(unsigned char hash_alg)
 {
 	if (hash_alg < CFS_HASH_ALG_MAX)
 		return cfs_crypto_hash_speeds[hash_alg];
-	else
-		return -1;
+	return -1;
 }
 EXPORT_SYMBOL(cfs_crypto_hash_speed);
 
@@ -261,14 +259,13 @@ static int cfs_crypto_test_hashes(void)
 	unsigned char	   *data;
 	unsigned int	    j;
 	/* Data block size for testing hash. Maximum
-	 * kmalloc size for 2.6.18 kernel is 128K */
+	 * kmalloc size for 2.6.18 kernel is 128K
+	 */
 	unsigned int	    data_len = 1 * 128 * 1024;
 
 	data = kmalloc(data_len, 0);
-	if (data == NULL) {
-		CERROR("Failed to allocate mem\n");
+	if (!data)
 		return -ENOMEM;
-	}
 
 	for (j = 0; j < data_len; j++)
 		data[j] = j & 0xff;
@@ -297,6 +294,4 @@ void cfs_crypto_unregister(void)
 {
 	if (adler32 == 0)
 		cfs_crypto_adler32_unregister();
-
-	return;
 }
