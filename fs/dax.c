@@ -1068,9 +1068,11 @@ int dax_pfn_mkwrite(struct vm_area_struct *vma, struct vm_fault *vmf)
 	 */
 	error = dax_radix_entry(file->f_mapping, vmf->pgoff, NO_SECTOR, false,
 			true);
-	if (error)
-		return error;
 
+	if (error == -ENOMEM)
+		return VM_FAULT_OOM;
+	if (error)
+		return VM_FAULT_SIGBUS;
 	return VM_FAULT_NOPAGE;
 }
 EXPORT_SYMBOL_GPL(dax_pfn_mkwrite);
