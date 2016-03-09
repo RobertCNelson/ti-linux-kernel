@@ -39,10 +39,6 @@
 
 #include "internal.h"
 
-#ifdef CONFIG_KASAN
-#include "kasan/kasan.h"
-#endif
-
 /*
  * Lock order:
  *   1. slab_mutex (Global Mutex)
@@ -273,12 +269,14 @@ static inline void set_freepointer(struct kmem_cache *s, void *object, void *fp)
 
 /* Loop over all objects in a slab */
 #define for_each_object(__p, __s, __addr, __objects) \
-	for (__p = (__addr); __p < (__addr) + (__objects) * (__s)->size;\
-			__p += (__s)->size)
+	for (__p = fixup_red_left(__s, __addr); \
+		__p < (__addr) + (__objects) * (__s)->size; \
+		__p += (__s)->size)
 
 #define for_each_object_idx(__p, __idx, __s, __addr, __objects) \
-	for (__p = (__addr), __idx = 1; __idx <= __objects;\
-			__p += (__s)->size, __idx++)
+	for (__p = fixup_red_left(__s, __addr), __idx = 1; \
+		__idx <= __objects; \
+		__p += (__s)->size, __idx++)
 
 /* Determine object index from a given position */
 static inline int slab_index(void *p, struct kmem_cache *s, void *addr)
@@ -1044,17 +1042,14 @@ static inline void dec_slabs_node(struct kmem_cache *s, int node, int objects)
 }
 
 /* Object debug checks for alloc/free paths */
-static void *setup_object_debug(struct kmem_cache *s, struct page *page,
+static void setup_object_debug(struct kmem_cache *s, struct page *page,
 								void *object)
 {
 	if (!(s->flags & (SLAB_STORE_USER|SLAB_RED_ZONE|__OBJECT_POISON)))
-		return object;
+		return;
 
-	object = fixup_red_left(s, object);
 	init_object(s, object, SLUB_RED_INACTIVE);
 	init_tracking(s, object);
-
-	return object;
 }
 
 static inline int alloc_consistency_checks(struct kmem_cache *s,
@@ -1272,8 +1267,8 @@ unsigned long kmem_cache_flags(unsigned long object_size,
 	return flags;
 }
 #else /* !CONFIG_SLUB_DEBUG */
-static inline void *setup_object_debug(struct kmem_cache *s,
-			struct page *page, void *object) { return object; }
+static inline void setup_object_debug(struct kmem_cache *s,
+			struct page *page, void *object) {}
 
 static inline int alloc_debug_processing(struct kmem_cache *s,
 	struct page *page, void *object, unsigned long addr) { return 0; }
@@ -1376,17 +1371,15 @@ static inline void slab_free_freelist_hook(struct kmem_cache *s,
 #endif
 }
 
-static void *setup_object(struct kmem_cache *s, struct page *page,
+static void setup_object(struct kmem_cache *s, struct page *page,
 				void *object)
 {
-	object = setup_object_debug(s, page, object);
+	setup_object_debug(s, page, object);
 	if (unlikely(s->ctor)) {
 		kasan_unpoison_object_data(s, object);
 		s->ctor(object);
 		kasan_poison_object_data(s, object);
 	}
-
-	return object;
 }
 
 /*
@@ -1482,13 +1475,11 @@ static struct page *allocate_slab(struct kmem_cache *s, gfp_t flags, int node)
 	kasan_poison_slab(page);
 
 	for_each_object_idx(p, idx, s, start, page->objects) {
-		void *object = setup_object(s, page, p);
-
-		if (likely(idx < page->objects)) {
-			set_freepointer(s, object,
-				fixup_red_left(s, p + s->size));
-		} else
-			set_freepointer(s, object, NULL);
+		setup_object(s, page, p);
+		if (likely(idx < page->objects))
+			set_freepointer(s, p, p + s->size);
+		else
+			set_freepointer(s, p, NULL);
 	}
 
 	page->freelist = fixup_red_left(s, start);
@@ -1532,11 +1523,8 @@ static void __free_slab(struct kmem_cache *s, struct page *page)
 
 		slab_pad_check(s, page);
 		for_each_object(p, s, page_address(page),
-						page->objects) {
-			void *object = fixup_red_left(s, p);
-
-			check_object(s, page, object, SLUB_RED_INACTIVE);
-		}
+						page->objects)
+			check_object(s, page, p, SLUB_RED_INACTIVE);
 	}
 
 	kmemcheck_free_shadow(page, compound_order(page));
@@ -3323,7 +3311,7 @@ static int calculate_sizes(struct kmem_cache *s, int forced_order)
 		 */
 		size += 2 * sizeof(struct track);
 
-	if (flags & SLAB_RED_ZONE)
+	if (flags & SLAB_RED_ZONE) {
 		/*
 		 * Add some empty padding so that we can catch
 		 * overwrites from earlier objects rather than let
@@ -3333,12 +3321,7 @@ static int calculate_sizes(struct kmem_cache *s, int forced_order)
 		 */
 		size += sizeof(void *);
 
-	if (flags & SLAB_RED_ZONE) {
 		s->red_left_pad = sizeof(void *);
-#ifdef CONFIG_KASAN
-		s->red_left_pad = min_t(int, s->red_left_pad,
-				KASAN_SHADOW_SCALE_SIZE);
-#endif
 		s->red_left_pad = ALIGN(s->red_left_pad, s->align);
 		size += s->red_left_pad;
 	}
@@ -3478,12 +3461,10 @@ static void list_slab_objects(struct kmem_cache *s, struct page *page,
 
 	get_map(s, page, map);
 	for_each_object(p, s, addr, page->objects) {
-		void *object = fixup_red_left(s, p);
 
 		if (!test_bit(slab_index(p, s, addr), map)) {
-			pr_err("INFO: Object 0x%p @offset=%tu\n",
-					object, object - addr);
-			print_tracking(s, object);
+			pr_err("INFO: Object 0x%p @offset=%tu\n", p, p - addr);
+			print_tracking(s, p);
 		}
 	}
 	slab_unlock(page);
@@ -4148,21 +4129,15 @@ static int validate_slab(struct kmem_cache *s, struct page *page,
 
 	get_map(s, page, map);
 	for_each_object(p, s, addr, page->objects) {
-		void *object = fixup_red_left(s, p);
-
 		if (test_bit(slab_index(p, s, addr), map))
-			if (!check_object(s, page, object, SLUB_RED_INACTIVE))
+			if (!check_object(s, page, p, SLUB_RED_INACTIVE))
 				return 0;
 	}
 
-	for_each_object(p, s, addr, page->objects) {
-		void *object = fixup_red_left(s, p);
-
+	for_each_object(p, s, addr, page->objects)
 		if (!test_bit(slab_index(p, s, addr), map))
-			if (!check_object(s, page, object, SLUB_RED_ACTIVE))
+			if (!check_object(s, page, p, SLUB_RED_ACTIVE))
 				return 0;
-	}
-
 	return 1;
 }
 
@@ -4360,12 +4335,9 @@ static void process_slab(struct loc_track *t, struct kmem_cache *s,
 	bitmap_zero(map, page->objects);
 	get_map(s, page, map);
 
-	for_each_object(p, s, addr, page->objects) {
-		void *object = fixup_red_left(s, p);
-
+	for_each_object(p, s, addr, page->objects)
 		if (!test_bit(slab_index(p, s, addr), map))
-			add_location(t, s, get_track(s, object, alloc));
-	}
+			add_location(t, s, get_track(s, p, alloc));
 }
 
 static int list_locations(struct kmem_cache *s, char *buf,
