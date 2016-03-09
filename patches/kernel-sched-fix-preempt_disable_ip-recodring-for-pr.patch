@@ -44,7 +44,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
    extern void time_hardirqs_off(unsigned long a0, unsigned long a1);
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -183,8 +183,6 @@ extern void update_cpu_load_nohz(void);
+@@ -182,8 +182,6 @@ extern void update_cpu_load_nohz(void);
  static inline void update_cpu_load_nohz(void) { }
  #endif
  
@@ -55,7 +55,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  struct seq_file;
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -3039,16 +3039,6 @@ u64 scheduler_tick_max_deferment(void)
+@@ -2910,16 +2910,6 @@ u64 scheduler_tick_max_deferment(void)
  }
  #endif
  
@@ -72,7 +72,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  #if defined(CONFIG_PREEMPT) && (defined(CONFIG_DEBUG_PREEMPT) || \
  				defined(CONFIG_PREEMPT_TRACER))
  
-@@ -3070,7 +3060,7 @@ void preempt_count_add(int val)
+@@ -2941,7 +2931,7 @@ void preempt_count_add(int val)
  				PREEMPT_MASK - 10);
  #endif
  	if (preempt_count() == val) {
@@ -81,7 +81,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  #ifdef CONFIG_DEBUG_PREEMPT
  		current->preempt_disable_ip = ip;
  #endif
-@@ -3097,7 +3087,7 @@ void preempt_count_sub(int val)
+@@ -2968,7 +2958,7 @@ void preempt_count_sub(int val)
  #endif
  
  	if (preempt_count() == val)
@@ -92,7 +92,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  EXPORT_SYMBOL(preempt_count_sub);
 --- a/kernel/softirq.c
 +++ b/kernel/softirq.c
-@@ -287,9 +287,9 @@ void __local_bh_disable_ip(unsigned long
+@@ -116,9 +116,9 @@ void __local_bh_disable_ip(unsigned long
  
  	if (preempt_count() == cnt) {
  #ifdef CONFIG_DEBUG_PREEMPT

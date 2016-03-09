@@ -43,7 +43,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
 
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -3377,9 +3377,8 @@ static void __sched notrace __schedule(b
+@@ -3367,9 +3367,8 @@ static void __sched notrace __schedule(b
  
  static inline void sched_submit_work(struct task_struct *tsk)
  {
@@ -54,7 +54,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  	/*
  	 * If a worker went to sleep, notify and ask workqueue whether
  	 * it wants to wake up a task to maintain concurrency.
-@@ -3387,6 +3386,10 @@ static inline void sched_submit_work(str
+@@ -3377,6 +3376,10 @@ static inline void sched_submit_work(str
  	if (tsk->flags & PF_WQ_WORKER)
  		wq_worker_sleeping(tsk);
  
@@ -111,7 +111,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  #ifdef CONFIG_DEBUG_OBJECTS_WORK
  
  static struct debug_obj_descr work_debug_descr;
-@@ -804,10 +834,16 @@ static struct worker *first_idle_worker(
+@@ -814,10 +844,16 @@ static struct worker *first_idle_worker(
   */
  static void wake_up_worker(struct worker_pool *pool)
  {
@@ -129,7 +129,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  }
  
  /**
-@@ -835,7 +871,7 @@ void wq_worker_running(struct task_struc
+@@ -845,7 +881,7 @@ void wq_worker_running(struct task_struc
   */
  void wq_worker_sleeping(struct task_struct *task)
  {
@@ -138,7 +138,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  	struct worker_pool *pool;
  
  	/*
-@@ -852,25 +888,18 @@ void wq_worker_sleeping(struct task_stru
+@@ -862,25 +898,18 @@ void wq_worker_sleeping(struct task_stru
  		return;
  
  	worker->sleeping = 1;
@@ -168,7 +168,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  }
  
  /**
-@@ -1561,7 +1590,9 @@ static void worker_enter_idle(struct wor
+@@ -1571,7 +1600,9 @@ static void worker_enter_idle(struct wor
  	worker->last_active = jiffies;
  
  	/* idle_list is LIFO */
@@ -178,7 +178,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  
  	if (too_many_workers(pool) && !timer_pending(&pool->idle_timer))
  		mod_timer(&pool->idle_timer, jiffies + IDLE_WORKER_TIMEOUT);
-@@ -1594,7 +1625,9 @@ static void worker_leave_idle(struct wor
+@@ -1604,7 +1635,9 @@ static void worker_leave_idle(struct wor
  		return;
  	worker_clr_flags(worker, WORKER_IDLE);
  	pool->nr_idle--;
@@ -188,7 +188,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  }
  
  static struct worker *alloc_worker(int node)
-@@ -1760,7 +1793,9 @@ static void destroy_worker(struct worker
+@@ -1770,7 +1803,9 @@ static void destroy_worker(struct worker
  	pool->nr_workers--;
  	pool->nr_idle--;
  

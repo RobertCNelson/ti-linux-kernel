@@ -17,7 +17,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/net/core/skbuff.c
 +++ b/net/core/skbuff.c
-@@ -351,6 +351,7 @@ EXPORT_SYMBOL(build_skb);
+@@ -353,6 +353,7 @@ EXPORT_SYMBOL(build_skb);
  static DEFINE_PER_CPU(struct page_frag_cache, netdev_alloc_cache);
  static DEFINE_PER_CPU(struct page_frag_cache, napi_alloc_cache);
  static DEFINE_LOCAL_IRQ_LOCK(netdev_alloc_lock);
@@ -25,7 +25,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  static void *__netdev_alloc_frag(unsigned int fragsz, gfp_t gfp_mask)
  {
-@@ -380,9 +381,13 @@ EXPORT_SYMBOL(netdev_alloc_frag);
+@@ -382,9 +383,13 @@ EXPORT_SYMBOL(netdev_alloc_frag);
  
  static void *__napi_alloc_frag(unsigned int fragsz, gfp_t gfp_mask)
  {
@@ -41,7 +41,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  }
  
  void *napi_alloc_frag(unsigned int fragsz)
-@@ -476,9 +481,10 @@ EXPORT_SYMBOL(__netdev_alloc_skb);
+@@ -478,9 +483,10 @@ EXPORT_SYMBOL(__netdev_alloc_skb);
  struct sk_buff *__napi_alloc_skb(struct napi_struct *napi, unsigned int len,
  				 gfp_t gfp_mask)
  {
@@ -53,7 +53,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	len += NET_SKB_PAD + NET_IP_ALIGN;
  
-@@ -496,7 +502,11 @@ struct sk_buff *__napi_alloc_skb(struct
+@@ -498,7 +504,11 @@ struct sk_buff *__napi_alloc_skb(struct
  	if (sk_memalloc_socks())
  		gfp_mask |= __GFP_MEMALLOC;
  
@@ -65,7 +65,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	if (unlikely(!data))
  		return NULL;
  
-@@ -507,7 +517,7 @@ struct sk_buff *__napi_alloc_skb(struct
+@@ -509,7 +519,7 @@ struct sk_buff *__napi_alloc_skb(struct
  	}
  
  	/* use OR instead of assignment to avoid clearing of bits in mask */

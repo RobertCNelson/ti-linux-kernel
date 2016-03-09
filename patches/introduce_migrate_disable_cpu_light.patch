@@ -76,7 +76,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #ifdef CONFIG_PREEMPT_NOTIFIERS
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -1414,6 +1414,12 @@ struct task_struct {
+@@ -1412,6 +1412,12 @@ struct task_struct {
  #endif
  
  	unsigned int policy;
@@ -89,7 +89,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	int nr_cpus_allowed;
  	cpumask_t cpus_allowed;
  
-@@ -1838,14 +1844,6 @@ extern int arch_task_struct_size __read_
+@@ -1836,14 +1842,6 @@ extern int arch_task_struct_size __read_
  # define arch_task_struct_size (sizeof(struct task_struct))
  #endif
  
@@ -104,7 +104,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #define TNF_MIGRATED	0x01
  #define TNF_NO_GROUP	0x02
  #define TNF_SHARED	0x04
-@@ -3122,6 +3120,31 @@ static inline void set_task_cpu(struct t
+@@ -3120,6 +3118,31 @@ static inline void set_task_cpu(struct t
  
  #endif /* CONFIG_SMP */
  
@@ -171,7 +171,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		goto out;
  
  	dest_cpu = cpumask_any_and(cpu_active_mask, new_mask);
-@@ -3022,6 +3027,69 @@ static inline void schedule_debug(struct
+@@ -3012,6 +3017,69 @@ static inline void schedule_debug(struct
  	schedstat_inc(this_rq(), sched_count);
  }
  

@@ -59,7 +59,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  static const char * const mem_cgroup_stat_names[] = {
  	"cache",
  	"rss",
-@@ -4615,12 +4618,12 @@ static int mem_cgroup_move_account(struc
+@@ -4616,12 +4619,12 @@ static int mem_cgroup_move_account(struc
  
  	ret = 0;
  
@@ -74,7 +74,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  out_unlock:
  	unlock_page(page);
  out:
-@@ -5373,10 +5376,10 @@ void mem_cgroup_commit_charge(struct pag
+@@ -5374,10 +5377,10 @@ void mem_cgroup_commit_charge(struct pag
  		VM_BUG_ON_PAGE(!PageTransHuge(page), page);
  	}
  
@@ -87,7 +87,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	if (do_swap_account && PageSwapCache(page)) {
  		swp_entry_t entry = { .val = page_private(page) };
-@@ -5432,14 +5435,14 @@ static void uncharge_batch(struct mem_cg
+@@ -5433,14 +5436,14 @@ static void uncharge_batch(struct mem_cg
  		memcg_oom_recover(memcg);
  	}
  
@@ -104,7 +104,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	if (!mem_cgroup_is_root(memcg))
  		css_put_many(&memcg->css, nr_pages);
-@@ -5631,6 +5634,7 @@ void mem_cgroup_swapout(struct page *pag
+@@ -5632,6 +5635,7 @@ void mem_cgroup_swapout(struct page *pag
  {
  	struct mem_cgroup *memcg;
  	unsigned short oldid;
@@ -112,7 +112,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	VM_BUG_ON_PAGE(PageLRU(page), page);
  	VM_BUG_ON_PAGE(page_count(page), page);
-@@ -5659,9 +5663,13 @@ void mem_cgroup_swapout(struct page *pag
+@@ -5660,9 +5664,13 @@ void mem_cgroup_swapout(struct page *pag
  	 * important here to have the interrupts disabled because it is the
  	 * only synchronisation we have for udpating the per-CPU variables.
  	 */

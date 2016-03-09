@@ -172,7 +172,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
   * Are we in NMI context?
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -1834,6 +1834,8 @@ struct task_struct {
+@@ -1832,6 +1832,8 @@ struct task_struct {
  #endif
  #ifdef CONFIG_PREEMPT_RT_BASE
  	struct rcu_head put_rcu;
@@ -181,7 +181,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #endif
  #ifdef CONFIG_DEBUG_ATOMIC_SLEEP
  	unsigned long	task_state_change;
-@@ -2099,6 +2101,7 @@ extern void thread_group_cputime_adjuste
+@@ -2097,6 +2099,7 @@ extern void thread_group_cputime_adjuste
  /*
   * Per process flags
   */

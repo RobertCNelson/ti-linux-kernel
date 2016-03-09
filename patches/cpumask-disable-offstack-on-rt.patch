@@ -24,7 +24,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	  If unsure, say N.
 --- a/lib/Kconfig
 +++ b/lib/Kconfig
-@@ -395,6 +395,7 @@ config CHECK_SIGNATURE
+@@ -397,6 +397,7 @@ config CHECK_SIGNATURE
  
  config CPUMASK_OFFSTACK
  	bool "Force CPU masks off stack" if DEBUG_PER_CPU_MAPS

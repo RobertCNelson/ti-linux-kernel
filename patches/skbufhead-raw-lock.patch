@@ -33,7 +33,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  };
  
  struct sk_buff;
-@@ -1463,6 +1464,12 @@ static inline void skb_queue_head_init(s
+@@ -1464,6 +1465,12 @@ static inline void skb_queue_head_init(s
  	__skb_queue_head_init(list);
  }
  
@@ -89,7 +89,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  static int napi_gro_complete(struct sk_buff *skb)
-@@ -7469,6 +7472,9 @@ static int dev_cpu_callback(struct notif
+@@ -7474,6 +7477,9 @@ static int dev_cpu_callback(struct notif
  		netif_rx_ni(skb);
  		input_queue_head_incr(oldsd);
  	}
@@ -99,7 +99,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	return NOTIFY_OK;
  }
-@@ -7770,8 +7776,9 @@ static int __init net_dev_init(void)
+@@ -7775,8 +7781,9 @@ static int __init net_dev_init(void)
  	for_each_possible_cpu(i) {
  		struct softnet_data *sd = &per_cpu(softnet_data, i);
  

@@ -76,7 +76,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #endif
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -1579,6 +1579,10 @@ struct task_struct {
+@@ -1577,6 +1577,10 @@ struct task_struct {
  	sigset_t blocked, real_blocked;
  	sigset_t saved_sigmask;	/* restored if set_restore_sigmask() was used */
  	struct sigpending pending;

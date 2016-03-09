@@ -35,7 +35,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	void __user *bd_addr;
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -2606,12 +2606,24 @@ extern struct mm_struct * mm_alloc(void)
+@@ -2604,12 +2604,24 @@ extern struct mm_struct * mm_alloc(void)
  
  /* mmdrop drops the mm and the page tables */
  extern void __mmdrop(struct mm_struct *);
@@ -98,7 +98,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	if (unlikely(prev_state == TASK_DEAD)) {
  		if (prev->sched_class->task_dead)
  			prev->sched_class->task_dead(prev);
-@@ -5255,6 +5259,8 @@ void sched_setnuma(struct task_struct *p
+@@ -5245,6 +5249,8 @@ void sched_setnuma(struct task_struct *p
  #endif /* CONFIG_NUMA_BALANCING */
  
  #ifdef CONFIG_HOTPLUG_CPU
@@ -107,7 +107,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
   * Ensures that the idle task is using init_mm right before its cpu goes
   * offline.
-@@ -5269,7 +5275,11 @@ void idle_task_exit(void)
+@@ -5259,7 +5265,11 @@ void idle_task_exit(void)
  		switch_mm(mm, &init_mm, current);
  		finish_arch_post_lock_switch();
  	}
@@ -120,7 +120,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /*
-@@ -5641,6 +5651,10 @@ migration_call(struct notifier_block *nf
+@@ -5631,6 +5641,10 @@ migration_call(struct notifier_block *nf
  
  	case CPU_DEAD:
  		calc_load_migrate(rq);

@@ -30,7 +30,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -242,10 +242,7 @@ extern char ___assert_task_state[1 - 2*!
+@@ -240,10 +240,7 @@ extern char ___assert_task_state[1 - 2*!
  				 TASK_UNINTERRUPTIBLE | __TASK_STOPPED | \
  				 __TASK_TRACED | EXIT_ZOMBIE | EXIT_DEAD)
  
@@ -41,7 +41,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  #define task_contributes_to_load(task)	\
  				((task->state & TASK_UNINTERRUPTIBLE) != 0 && \
  				 (task->flags & PF_FROZEN) == 0 && \
-@@ -2984,6 +2981,51 @@ static inline int signal_pending_state(l
+@@ -2982,6 +2979,51 @@ static inline int signal_pending_state(l
  	return (state & TASK_INTERRUPTIBLE) || __fatal_signal_pending(p);
  }
  

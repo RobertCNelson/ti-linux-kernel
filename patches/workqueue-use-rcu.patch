@@ -104,7 +104,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
   * read locked.
   * If the pwq needs to be used beyond the locking in effect, the caller is
   * responsible for guaranteeing that the pwq stays online.
-@@ -662,8 +662,8 @@ static struct pool_workqueue *get_work_p
+@@ -672,8 +672,8 @@ static struct pool_workqueue *get_work_p
   * @work: the work item of interest
   *
   * Pools are created and destroyed under wq_pool_mutex, and allows read
@@ -115,7 +115,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
   *
   * All fields of the returned pool are accessible as long as the above
   * mentioned locking is in effect.  If the returned pool needs to be used
-@@ -1069,7 +1069,7 @@ static void put_pwq_unlocked(struct pool
+@@ -1079,7 +1079,7 @@ static void put_pwq_unlocked(struct pool
  {
  	if (pwq) {
  		/*
@@ -124,7 +124,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		 * following lock operations are safe.
  		 */
  		spin_lock_irq(&pwq->pool->lock);
-@@ -1195,6 +1195,7 @@ static int try_to_grab_pending(struct wo
+@@ -1205,6 +1205,7 @@ static int try_to_grab_pending(struct wo
  	if (!test_and_set_bit(WORK_STRUCT_PENDING_BIT, work_data_bits(work)))
  		return 0;
  
@@ -132,7 +132,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	/*
  	 * The queueing is in progress, or it is already queued. Try to
  	 * steal it from ->worklist without clearing WORK_STRUCT_PENDING.
-@@ -1233,10 +1234,12 @@ static int try_to_grab_pending(struct wo
+@@ -1243,10 +1244,12 @@ static int try_to_grab_pending(struct wo
  		set_work_pool_and_keep_pending(work, pool->id);
  
  		spin_unlock(&pool->lock);
@@ -145,7 +145,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	local_irq_restore(*flags);
  	if (work_is_canceling(work))
  		return -ENOENT;
-@@ -1317,6 +1320,8 @@ static void __queue_work(int cpu, struct
+@@ -1327,6 +1330,8 @@ static void __queue_work(int cpu, struct
  	if (unlikely(wq->flags & __WQ_DRAINING) &&
  	    WARN_ON_ONCE(!is_chained_work(wq)))
  		return;
@@ -154,7 +154,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  retry:
  	if (req_cpu == WORK_CPU_UNBOUND)
  		cpu = raw_smp_processor_id();
-@@ -1373,10 +1378,8 @@ static void __queue_work(int cpu, struct
+@@ -1383,10 +1388,8 @@ static void __queue_work(int cpu, struct
  	/* pwq determined, queue */
  	trace_workqueue_queue_work(req_cpu, pwq, work);
  
@@ -167,7 +167,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	pwq->nr_in_flight[pwq->work_color]++;
  	work_flags = work_color_to_flags(pwq->work_color);
-@@ -1392,7 +1395,9 @@ static void __queue_work(int cpu, struct
+@@ -1402,7 +1405,9 @@ static void __queue_work(int cpu, struct
  
  	insert_work(pwq, work, worklist, work_flags);
  
@@ -177,7 +177,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /**
-@@ -2677,14 +2682,14 @@ static bool start_flush_work(struct work
+@@ -2687,14 +2692,14 @@ static bool start_flush_work(struct work
  
  	might_sleep();
  
@@ -195,7 +195,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	/* see the comment in try_to_grab_pending() with the same code */
  	pwq = get_work_pwq(work);
  	if (pwq) {
-@@ -2711,10 +2716,11 @@ static bool start_flush_work(struct work
+@@ -2721,10 +2726,11 @@ static bool start_flush_work(struct work
  	else
  		lock_map_acquire_read(&pwq->wq->lockdep_map);
  	lock_map_release(&pwq->wq->lockdep_map);
@@ -208,7 +208,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	return false;
  }
  
-@@ -3122,7 +3128,7 @@ static void rcu_free_pool(struct rcu_hea
+@@ -3132,7 +3138,7 @@ static void rcu_free_pool(struct rcu_hea
   * put_unbound_pool - put a worker_pool
   * @pool: worker_pool to put
   *
@@ -217,7 +217,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
   * safe manner.  get_unbound_pool() calls this function on its failure path
   * and this function should be able to release pools which went through,
   * successfully or not, init_worker_pool().
-@@ -3176,8 +3182,8 @@ static void put_unbound_pool(struct work
+@@ -3186,8 +3192,8 @@ static void put_unbound_pool(struct work
  	del_timer_sync(&pool->idle_timer);
  	del_timer_sync(&pool->mayday_timer);
  
@@ -228,7 +228,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /**
-@@ -3284,14 +3290,14 @@ static void pwq_unbound_release_workfn(s
+@@ -3294,14 +3300,14 @@ static void pwq_unbound_release_workfn(s
  	put_unbound_pool(pool);
  	mutex_unlock(&wq_pool_mutex);
  
@@ -245,7 +245,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /**
-@@ -3944,7 +3950,7 @@ void destroy_workqueue(struct workqueue_
+@@ -3954,7 +3960,7 @@ void destroy_workqueue(struct workqueue_
  		 * The base ref is never dropped on per-cpu pwqs.  Directly
  		 * schedule RCU free.
  		 */
@@ -254,7 +254,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	} else {
  		/*
  		 * We're the sole accessor of @wq at this point.  Directly
-@@ -4037,7 +4043,8 @@ bool workqueue_congested(int cpu, struct
+@@ -4047,7 +4053,8 @@ bool workqueue_congested(int cpu, struct
  	struct pool_workqueue *pwq;
  	bool ret;
  
@@ -264,7 +264,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	if (cpu == WORK_CPU_UNBOUND)
  		cpu = smp_processor_id();
-@@ -4048,7 +4055,8 @@ bool workqueue_congested(int cpu, struct
+@@ -4058,7 +4065,8 @@ bool workqueue_congested(int cpu, struct
  		pwq = unbound_pwq_by_node(wq, cpu_to_node(cpu));
  
  	ret = !list_empty(&pwq->delayed_works);
@@ -274,7 +274,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	return ret;
  }
-@@ -4074,15 +4082,15 @@ unsigned int work_busy(struct work_struc
+@@ -4084,15 +4092,15 @@ unsigned int work_busy(struct work_struc
  	if (work_pending(work))
  		ret |= WORK_BUSY_PENDING;
  
@@ -294,7 +294,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	return ret;
  }
-@@ -4271,7 +4279,7 @@ void show_workqueue_state(void)
+@@ -4281,7 +4289,7 @@ void show_workqueue_state(void)
  	unsigned long flags;
  	int pi;
  
@@ -303,7 +303,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	pr_info("Showing busy workqueues and worker pools:\n");
  
-@@ -4322,7 +4330,7 @@ void show_workqueue_state(void)
+@@ -4332,7 +4340,7 @@ void show_workqueue_state(void)
  		spin_unlock_irqrestore(&pool->lock, flags);
  	}
  
@@ -312,7 +312,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /*
-@@ -4672,16 +4680,16 @@ bool freeze_workqueues_busy(void)
+@@ -4682,16 +4690,16 @@ bool freeze_workqueues_busy(void)
  		 * nr_active is monotonically decreasing.  It's safe
  		 * to peek without lock.
  		 */
@@ -332,7 +332,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	}
  out_unlock:
  	mutex_unlock(&wq_pool_mutex);
-@@ -4871,7 +4879,8 @@ static ssize_t wq_pool_ids_show(struct d
+@@ -4881,7 +4889,8 @@ static ssize_t wq_pool_ids_show(struct d
  	const char *delim = "";
  	int node, written = 0;
  
@@ -342,7 +342,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	for_each_node(node) {
  		written += scnprintf(buf + written, PAGE_SIZE - written,
  				     "%s%d:%d", delim, node,
-@@ -4879,7 +4888,8 @@ static ssize_t wq_pool_ids_show(struct d
+@@ -4889,7 +4898,8 @@ static ssize_t wq_pool_ids_show(struct d
  		delim = " ";
  	}
  	written += scnprintf(buf + written, PAGE_SIZE - written, "\n");
