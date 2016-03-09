@@ -192,8 +192,6 @@ struct rockchip_spi {
 	/* protect state */
 	spinlock_t lock;
 
-	struct completion xfer_completion;
-
 	u32 use_dma;
 	struct sg_table tx_sg;
 	struct sg_table rx_sg;
@@ -265,7 +263,10 @@ static inline u32 rx_max(struct rockchip_spi *rs)
 static void rockchip_spi_set_cs(struct spi_device *spi, bool enable)
 {
 	u32 ser;
-	struct rockchip_spi *rs = spi_master_get_devdata(spi->master);
+	struct spi_master *master = spi->master;
+	struct rockchip_spi *rs = spi_master_get_devdata(master);
+
+	pm_runtime_get_sync(rs->dev);
 
 	ser = readl_relaxed(rs->regs + ROCKCHIP_SPI_SER) & SER_MASK;
 
@@ -290,6 +291,8 @@ static void rockchip_spi_set_cs(struct spi_device *spi, bool enable)
 		ser &= ~(1 << spi->chip_select);
 
 	writel_relaxed(ser, rs->regs + ROCKCHIP_SPI_SER);
+
+	pm_runtime_put_sync(rs->dev);
 }
 
 static int rockchip_spi_prepare_message(struct spi_master *master,
@@ -503,7 +506,8 @@ static void rockchip_spi_config(struct rockchip_spi *rs)
 	int rsd = 0;
 
 	u32 cr0 = (CR0_BHT_8BIT << CR0_BHT_OFFSET)
-		| (CR0_SSD_ONE << CR0_SSD_OFFSET);
+		| (CR0_SSD_ONE << CR0_SSD_OFFSET)
+		| (CR0_EM_BIG << CR0_EM_OFFSET);
 
 	cr0 |= (rs->n_bytes << CR0_DFS_OFFSET);
 	cr0 |= ((rs->mode & 0x3) << CR0_SCPH_OFFSET);
@@ -871,6 +875,7 @@ static const struct of_device_id rockchip_spi_dt_match[] = {
 	{ .compatible = "rockchip,rk3066-spi", },
 	{ .compatible = "rockchip,rk3188-spi", },
 	{ .compatible = "rockchip,rk3288-spi", },
+	{ .compatible = "rockchip,rk3399-spi", },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, rockchip_spi_dt_match);
