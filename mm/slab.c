@@ -597,23 +597,20 @@ static struct array_cache *alloc_arraycache(int node, int entries,
 }
 
 static noinline void cache_free_pfmemalloc(struct kmem_cache *cachep,
-					void *objp)
+					struct page *page, void *objp)
 {
-	struct page *page = virt_to_head_page(objp);
 	struct kmem_cache_node *n;
 	int page_node;
 	LIST_HEAD(list);
 
-	if (unlikely(PageSlabPfmemalloc(page))) {
-		page_node = page_to_nid(page);
-		n = get_node(cachep, page_node);
+	page_node = page_to_nid(page);
+	n = get_node(cachep, page_node);
 
-		spin_lock(&n->list_lock);
-		free_block(cachep, &objp, 1, page_node, &list);
-		spin_unlock(&n->list_lock);
+	spin_lock(&n->list_lock);
+	free_block(cachep, &objp, 1, page_node, &list);
+	spin_unlock(&n->list_lock);
 
-		slabs_destroy(cachep, &list);
-	}
+	slabs_destroy(cachep, &list);
 }
 
 /*
@@ -2765,10 +2762,6 @@ static noinline void *cache_alloc_pfmemalloc(struct kmem_cache *cachep,
 	if (!gfp_pfmemalloc_allowed(flags))
 		return NULL;
 
-	/* Racy check if there is free objects */
-	if (!n->free_objects)
-		return NULL;
-
 	spin_lock(&n->list_lock);
 	page = get_first_slab(n, true);
 	if (!page) {
@@ -3357,8 +3350,12 @@ static inline void __cache_free(struct kmem_cache *cachep, void *objp,
 	}
 
 	if (sk_memalloc_socks()) {
-		cache_free_pfmemalloc(cachep, objp);
-		return;
+		struct page *page = virt_to_head_page(objp);
+
+		if (unlikely(PageSlabPfmemalloc(page))) {
+			cache_free_pfmemalloc(cachep, page, objp);
+			return;
+		}
 	}
 
 	ac->entry[ac->avail++] = objp;
