@@ -586,6 +586,7 @@ struct x86_pmu {
 			pebs_broken	:1,
 			pebs_prec_dist	:1;
 	int		pebs_record_size;
+	int		pebs_buffer_size;
 	void		(*drain_pebs)(struct pt_regs *regs);
 	struct event_constraint *pebs_constraints;
 	void		(*pebs_aliases)(struct perf_event *event);
@@ -860,6 +861,8 @@ extern struct event_constraint intel_ivb_pebs_event_constraints[];
 
 extern struct event_constraint intel_hsw_pebs_event_constraints[];
 
+extern struct event_constraint intel_bdw_pebs_event_constraints[];
+
 extern struct event_constraint intel_skl_pebs_event_constraints[];
 
 struct event_constraint *intel_pebs_constraints(struct perf_event *event);
@@ -903,6 +906,8 @@ void intel_pmu_lbr_init_hsw(void);
 void intel_pmu_lbr_init_skl(void);
 
 void intel_pmu_lbr_init_knl(void);
+
+void intel_pmu_pebs_data_source_nhm(void);
 
 int intel_pmu_setup_lbr_filter(struct perf_event *event);
 
