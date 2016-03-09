@@ -123,6 +123,7 @@ intercontrol	Inter Control Group
 invensense	InvenSense Inc.
 isee	ISEE 2007 S.L.
 isil	Intersil
+issi	Integrated Silicon Solutions Inc.
 jedec	JEDEC Solid State Technology Association
 karo	Ka-Ro electronics GmbH
 keymile	Keymile GmbH
@@ -208,6 +209,7 @@ seagate	Seagate Technology PLC
 semtech	Semtech Corporation
 sgx	SGX Sensortech
 sharp	Sharp Corporation
+si-en	Si-En Technology Ltd.
 sigma	Sigma Designs, Inc.
 sil	Silicon Image
 silabs	Silicon Laboratories
