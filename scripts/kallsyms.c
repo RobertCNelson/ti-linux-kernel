@@ -375,23 +375,24 @@ static void write_src(void)
 	for (i = 0; i < table_cnt; i++) {
 		if (base_relative) {
 			long long offset;
+			int overflow;
 
-			if (symbol_absolute(&table[i])) {
+			if (!absolute_percpu) {
+				offset = table[i].addr - relative_base;
+				overflow = (offset < 0 || offset > UINT_MAX);
+			} else if (symbol_absolute(&table[i])) {
 				offset = table[i].addr;
-				if (offset < 0 || offset > INT_MAX) {
-					fprintf(stderr, "kallsyms failure: "
-						"absolute symbol value %#llx out of range in relative mode\n",
-						table[i].addr);
-					exit(EXIT_FAILURE);
-				}
+				overflow = (offset < 0 || offset > INT_MAX);
 			} else {
 				offset = relative_base - table[i].addr - 1;
-				if (offset < INT_MIN || offset >= 0) {
-					fprintf(stderr, "kallsyms failure: "
-						"relative symbol value %#llx out of range in relative mode\n",
-						table[i].addr);
-					exit(EXIT_FAILURE);
-				}
+				overflow = (offset < INT_MIN || offset >= 0);
+			}
+			if (overflow) {
+				fprintf(stderr, "kallsyms failure: "
+					"%s symbol value %#llx out of range in relative mode\n",
+					symbol_absolute(&table[i]) ? "absolute" : "relative",
+					table[i].addr);
+				exit(EXIT_FAILURE);
 			}
 			printf("\t.long\t%#x\n", (int)offset);
 		} else if (!symbol_absolute(&table[i])) {
@@ -742,21 +743,11 @@ static void record_relative_base(void)
 {
 	unsigned int i;
 
-	if (kernel_start_addr > 0) {
-		/*
-		 * If the kernel start address was specified, use that as
-		 * the relative base rather than going through the table,
-		 * since it should be a reasonable default, and values below
-		 * it will be ignored anyway.
-		 */
-		relative_base = kernel_start_addr;
-	} else {
-		relative_base = -1ULL;
-		for (i = 0; i < table_cnt; i++)
-			if (!symbol_absolute(&table[i]) &&
-			    table[i].addr < relative_base)
-				relative_base = table[i].addr;
-	}
+	relative_base = -1ULL;
+	for (i = 0; i < table_cnt; i++)
+		if (!symbol_absolute(&table[i]) &&
+		    table[i].addr < relative_base)
+			relative_base = table[i].addr;
 }
 
 int main(int argc, char **argv)
