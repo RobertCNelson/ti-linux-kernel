@@ -1811,8 +1811,11 @@ static void kcompactd_do_work(pg_data_t *pgdat)
 						cc.classzone_idx, 0)) {
 			success = true;
 			compaction_defer_reset(zone, cc.order, false);
-		} else if (cc.mode != MIGRATE_ASYNC &&
-						status == COMPACT_COMPLETE) {
+		} else if (status == COMPACT_COMPLETE) {
+			/*
+			 * We use sync migration mode here, so we defer like
+			 * sync direct compaction does.
+			 */
 			defer_compaction(zone, cc.order);
 		}
 
@@ -1827,8 +1830,8 @@ static void kcompactd_do_work(pg_data_t *pgdat)
 	 */
 	if (pgdat->kcompactd_max_order <= cc.order)
 		pgdat->kcompactd_max_order = 0;
-	if (pgdat->classzone_idx >= cc.classzone_idx)
-		pgdat->classzone_idx = pgdat->nr_zones - 1;
+	if (pgdat->kcompactd_classzone_idx >= cc.classzone_idx)
+		pgdat->kcompactd_classzone_idx = pgdat->nr_zones - 1;
 }
 
 void wakeup_kcompactd(pg_data_t *pgdat, int order, int classzone_idx)
