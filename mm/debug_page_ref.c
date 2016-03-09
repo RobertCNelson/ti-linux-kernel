@@ -1,3 +1,4 @@
+#include <linux/mm_types.h>
 #include <linux/tracepoint.h>
 
 #define CREATE_TRACE_POINTS
