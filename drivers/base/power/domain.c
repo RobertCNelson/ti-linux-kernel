@@ -487,8 +487,13 @@ static int pm_genpd_runtime_resume(struct device *dev)
 	if (timed && runtime_pm)
 		time_start = ktime_get();
 
-	genpd_start_dev(genpd, dev);
-	genpd_restore_dev(genpd, dev);
+	ret = genpd_start_dev(genpd, dev);
+	if (ret)
+		goto err_poweroff;
+
+	ret = genpd_restore_dev(genpd, dev);
+	if (ret)
+		goto err_stop;
 
 	/* Update resume latency value if the measured time exceeds it. */
 	if (timed && runtime_pm) {
@@ -503,6 +508,17 @@ static int pm_genpd_runtime_resume(struct device *dev)
 	}
 
 	return 0;
+
+err_stop:
+	genpd_stop_dev(genpd, dev);
+err_poweroff:
+	if (!dev->power.irq_safe) {
+		mutex_lock(&genpd->lock);
+		genpd_poweroff(genpd, 0);
+		mutex_unlock(&genpd->lock);
+	}
+
+	return ret;
 }
 
 static bool pd_ignore_unused;
@@ -1382,7 +1398,7 @@ int pm_genpd_remove_subdomain(struct generic_pm_domain *genpd,
 	mutex_lock(&subdomain->lock);
 	mutex_lock_nested(&genpd->lock, SINGLE_DEPTH_NESTING);
 
-	if (!list_empty(&subdomain->slave_links) || subdomain->device_count) {
+	if (!list_empty(&subdomain->master_links) || subdomain->device_count) {
 		pr_warn("%s: unable to remove subdomain %s\n", genpd->name,
 			subdomain->name);
 		ret = -EBUSY;
@@ -1686,6 +1702,9 @@ struct generic_pm_domain *of_genpd_get_from_provider(
 	struct generic_pm_domain *genpd = ERR_PTR(-ENOENT);
 	struct of_genpd_provider *provider;
 
+	if (!genpdspec)
+		return ERR_PTR(-EINVAL);
+
 	mutex_lock(&of_genpd_mutex);
 
 	/* Check if we have such a provider in our array */
@@ -1882,6 +1901,7 @@ static int pm_genpd_summary_one(struct seq_file *s,
 	struct pm_domain_data *pm_data;
 	const char *kobj_path;
 	struct gpd_link *link;
+	char state[16];
 	int ret;
 
 	ret = mutex_lock_interruptible(&genpd->lock);
@@ -1890,12 +1910,13 @@ static int pm_genpd_summary_one(struct seq_file *s,
 
 	if (WARN_ON(genpd->status >= ARRAY_SIZE(status_lookup)))
 		goto exit;
-	seq_printf(s, "%-30s  %s", genpd->name, status_lookup[genpd->status]);
-
 	if (genpd->status == GPD_STATE_POWER_OFF)
-		seq_printf(s, " %-13d ", genpd->state_idx);
+		snprintf(state, sizeof(state), "%s-%u",
+			 status_lookup[genpd->status], genpd->state_idx);
 	else
-		seq_printf(s, " %-15s ", "");
+		snprintf(state, sizeof(state), "%s",
+			 status_lookup[genpd->status]);
+	seq_printf(s, "%-30s  %-15s ", genpd->name, state);
 
 	/*
 	 * Modifications on the list require holding locks on both
