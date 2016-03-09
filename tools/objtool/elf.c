@@ -59,7 +59,7 @@ static struct symbol *find_symbol_by_index(struct elf *elf, unsigned int idx)
 	struct symbol *sym;
 
 	list_for_each_entry(sec, &elf->sections, list)
-		list_for_each_entry(sym, &sec->symbols, list)
+		hash_for_each_possible(sec->symbol_hash, sym, hash, idx)
 			if (sym->idx == idx)
 				return sym;
 
@@ -70,7 +70,7 @@ struct symbol *find_symbol_by_offset(struct section *sec, unsigned long offset)
 {
 	struct symbol *sym;
 
-	list_for_each_entry(sym, &sec->symbols, list)
+	list_for_each_entry(sym, &sec->symbol_list, list)
 		if (sym->type != STT_SECTION &&
 		    sym->offset == offset)
 			return sym;
@@ -82,13 +82,15 @@ struct rela *find_rela_by_dest_range(struct section *sec, unsigned long offset,
 				     unsigned int len)
 {
 	struct rela *rela;
+	unsigned long o;
 
 	if (!sec->rela)
 		return NULL;
 
-	list_for_each_entry(rela, &sec->rela->relas, list)
-		if (rela->offset >= offset && rela->offset < offset + len)
-			return rela;
+	for (o = offset; o < offset + len; o++)
+		hash_for_each_possible(sec->rela->rela_hash, rela, hash, o)
+			if (rela->offset == o)
+				return rela;
 
 	return NULL;
 }
@@ -102,7 +104,7 @@ struct symbol *find_containing_func(struct section *sec, unsigned long offset)
 {
 	struct symbol *func;
 
-	list_for_each_entry(func, &sec->symbols, list)
+	list_for_each_entry(func, &sec->symbol_list, list)
 		if (func->type == STT_FUNC && offset >= func->offset &&
 		    offset < func->offset + func->len)
 			return func;
@@ -135,8 +137,10 @@ static int read_sections(struct elf *elf)
 		}
 		memset(sec, 0, sizeof(*sec));
 
-		INIT_LIST_HEAD(&sec->symbols);
-		INIT_LIST_HEAD(&sec->relas);
+		INIT_LIST_HEAD(&sec->symbol_list);
+		INIT_LIST_HEAD(&sec->rela_list);
+		hash_init(sec->rela_hash);
+		hash_init(sec->symbol_hash);
 
 		list_add_tail(&sec->list, &elf->sections);
 
@@ -244,8 +248,8 @@ static int read_symbols(struct elf *elf)
 		sym->len = sym->sym.st_size;
 
 		/* sorted insert into a per-section list */
-		entry = &sym->sec->symbols;
-		list_for_each_prev(tmp, &sym->sec->symbols) {
+		entry = &sym->sec->symbol_list;
+		list_for_each_prev(tmp, &sym->sec->symbol_list) {
 			struct symbol *s;
 
 			s = list_entry(tmp, struct symbol, list);
@@ -261,6 +265,7 @@ static int read_symbols(struct elf *elf)
 			}
 		}
 		list_add(&sym->list, entry);
+		hash_add(sym->sec->symbol_hash, &sym->hash, sym->idx);
 	}
 
 	return 0;
@@ -298,8 +303,6 @@ static int read_relas(struct elf *elf)
 			}
 			memset(rela, 0, sizeof(*rela));
 
-			list_add_tail(&rela->list, &sec->relas);
-
 			if (!gelf_getrela(sec->elf_data, i, &rela->rela)) {
 				perror("gelf_getrela");
 				return -1;
@@ -315,6 +318,10 @@ static int read_relas(struct elf *elf)
 				     symndx, sec->name);
 				return -1;
 			}
+
+			list_add_tail(&rela->list, &sec->rela_list);
+			hash_add(sec->rela_hash, &rela->hash, rela->offset);
+
 		}
 	}
 
@@ -382,12 +389,14 @@ void elf_close(struct elf *elf)
 	struct rela *rela, *tmprela;
 
 	list_for_each_entry_safe(sec, tmpsec, &elf->sections, list) {
-		list_for_each_entry_safe(sym, tmpsym, &sec->symbols, list) {
+		list_for_each_entry_safe(sym, tmpsym, &sec->symbol_list, list) {
 			list_del(&sym->list);
+			hash_del(&sym->hash);
 			free(sym);
 		}
-		list_for_each_entry_safe(rela, tmprela, &sec->relas, list) {
+		list_for_each_entry_safe(rela, tmprela, &sec->rela_list, list) {
 			list_del(&rela->list);
+			hash_del(&rela->hash);
 			free(rela);
 		}
 		list_del(&sec->list);
