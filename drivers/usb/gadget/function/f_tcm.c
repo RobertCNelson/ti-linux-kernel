@@ -1078,6 +1078,7 @@ static struct usbg_cmd *usbg_get_cmd(struct f_uas *fu,
 		return ERR_PTR(-ENOMEM);
 
 	cmd = &((struct usbg_cmd *)se_sess->sess_cmd_map)[tag];
+	memset(cmd, 0, sizeof(*cmd));
 	cmd->se_cmd.map_tag = tag;
 	cmd->se_cmd.tag = cmd->tag = scsi_tag;
 	cmd->fu = fu;
@@ -1570,6 +1571,16 @@ out:
 	return ret;
 }
 
+static int usbg_alloc_sess_cb(struct se_portal_group *se_tpg,
+			      struct se_session *se_sess, void *p)
+{
+	struct usbg_tpg *tpg = container_of(se_tpg,
+				struct usbg_tpg, se_tpg);
+
+	tpg->tpg_nexus = p;
+	return 0;
+}
+
 static int tcm_usbg_make_nexus(struct usbg_tpg *tpg, char *name)
 {
 	struct tcm_usbg_nexus *tv_nexus;
@@ -1591,7 +1602,7 @@ static int tcm_usbg_make_nexus(struct usbg_tpg *tpg, char *name)
 	tv_nexus->tvn_se_sess = target_alloc_session(&tpg->se_tpg, 128,
 						     sizeof(struct usbg_cmd),
 						     TARGET_PROT_NORMAL, name,
-						     tv_nexus, NULL);
+						     tv_nexus, usbg_alloc_sess_cb);
 	if (IS_ERR(tv_nexus->tvn_se_sess)) {
 #define MAKE_NEXUS_MSG "core_tpg_check_initiator_node_acl() failed for %s\n"
 		pr_debug(MAKE_NEXUS_MSG, name);
