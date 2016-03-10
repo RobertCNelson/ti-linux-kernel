@@ -559,6 +559,29 @@ struct bad_iret_stack *fixup_bad_iret(struct bad_iret_stack *s)
 NOKPROBE_SYMBOL(fixup_bad_iret);
 #endif
 
+static bool is_sysenter_singlestep(struct pt_regs *regs)
+{
+	/*
+	 * We don't try for precision here.  If we're anywhere in the region of
+	 * code that can be single-stepped in the SYSENTER entry path, then
+	 * assume that this is a useless single-step trap due to SYSENTER
+	 * being invoked with TF set.  (We don't know in advance exactly
+	 * which instructions will be hit because BTF could plausibly
+	 * be set.)
+	 */
+#ifdef CONFIG_X86_32
+	return (regs->ip - (unsigned long)__begin_SYSENTER_singlestep_region) <
+		(unsigned long)__end_SYSENTER_singlestep_region -
+		(unsigned long)__begin_SYSENTER_singlestep_region;
+#elif defined(CONFIG_IA32_EMULATION)
+	return (regs->ip - (unsigned long)entry_SYSENTER_compat) <
+		(unsigned long)__end_entry_SYSENTER_compat -
+		(unsigned long)entry_SYSENTER_compat;
+#else
+	return false;
+#endif
+}
+
 /*
  * Our handling of the processor debug registers is non-trivial.
  * We do not clear them on entry and exit from the kernel. Therefore
@@ -593,9 +616,40 @@ dotraplinkage void do_debug(struct pt_regs *regs, long error_code)
 	ist_enter(regs);
 
 	get_debugreg(dr6, 6);
+	/*
+	 * The Intel SDM says:
+	 *
+	 *   Certain debug exceptions may clear bits 0-3. The remaining
+	 *   contents of the DR6 register are never cleared by the
+	 *   processor. To avoid confusion in identifying debug
+	 *   exceptions, debug handlers should clear the register before
+	 *   returning to the interrupted task.
+	 *
+	 * Keep it simple: clear DR6 immediately.
+	 */
+	set_debugreg(0, 6);
 
 	/* Filter out all the reserved bits which are preset to 1 */
 	dr6 &= ~DR6_RESERVED;
+
+	/*
+	 * The SDM says "The processor clears the BTF flag when it
+	 * generates a debug exception."  Clear TIF_BLOCKSTEP to keep
+	 * TIF_BLOCKSTEP in sync with the hardware BTF flag.
+	 */
+	clear_tsk_thread_flag(tsk, TIF_BLOCKSTEP);
+
+	if (unlikely(!user_mode(regs) && (dr6 & DR_STEP) &&
+		     is_sysenter_singlestep(regs))) {
+		dr6 &= ~DR_STEP;
+		if (!dr6)
+			goto exit;
+		/*
+		 * else we might have gotten a single-step trap and hit a
+		 * watchpoint at the same time, in which case we should fall
+		 * through and handle the watchpoint.
+		 */
+	}
 
 	/*
 	 * If dr6 has no reason to give us about the origin of this trap,
@@ -605,17 +659,9 @@ dotraplinkage void do_debug(struct pt_regs *regs, long error_code)
 	if (!dr6 && user_mode(regs))
 		user_icebp = 1;
 
-	/* Catch kmemcheck conditions first of all! */
+	/* Catch kmemcheck conditions! */
 	if ((dr6 & DR_STEP) && kmemcheck_trap(regs))
 		goto exit;
-
-	/* DR6 may or may not be cleared by the CPU */
-	set_debugreg(0, 6);
-
-	/*
-	 * The processor cleared BTF, so don't mark that we need it set.
-	 */
-	clear_tsk_thread_flag(tsk, TIF_BLOCKSTEP);
 
 	/* Store the virtualized DR6 value */
 	tsk->thread.debugreg6 = dr6;
@@ -648,14 +694,13 @@ dotraplinkage void do_debug(struct pt_regs *regs, long error_code)
 		goto exit;
 	}
 
-	/*
-	 * Single-stepping through system calls: ignore any exceptions in
-	 * kernel space, but re-enable TF when returning to user mode.
-	 *
-	 * We already checked v86 mode above, so we can check for kernel mode
-	 * by just checking the CPL of CS.
-	 */
-	if ((dr6 & DR_STEP) && !user_mode(regs)) {
+	if (WARN_ON_ONCE((dr6 & DR_STEP) && !user_mode(regs))) {
+		/*
+		 * Historical junk that used to handle SYSENTER single-stepping.
+		 * This should be unreachable now.  If we survive for a while
+		 * without anyone hitting this warning, we'll turn this into
+		 * an oops.
+		 */
 		tsk->thread.debugreg6 &= ~DR_STEP;
 		set_tsk_thread_flag(tsk, TIF_SINGLESTEP);
 		regs->flags &= ~X86_EFLAGS_TF;
@@ -668,6 +713,14 @@ dotraplinkage void do_debug(struct pt_regs *regs, long error_code)
 	debug_stack_usage_dec();
 
 exit:
+#if defined(CONFIG_X86_32)
+	/*
+	 * This is the most likely code path that involves non-trivial use
+	 * of the SYSENTER stack.  Check that we haven't overrun it.
+	 */
+	WARN(this_cpu_read(cpu_tss.SYSENTER_stack_canary) != STACK_END_MAGIC,
+	     "Overran or corrupted SYSENTER stack\n");
+#endif
 	ist_exit(regs);
 }
 NOKPROBE_SYMBOL(do_debug);
@@ -858,7 +911,7 @@ void __init trap_init(void)
 #endif
 
 #ifdef CONFIG_X86_32
-	set_system_trap_gate(IA32_SYSCALL_VECTOR, entry_INT80_32);
+	set_system_intr_gate(IA32_SYSCALL_VECTOR, entry_INT80_32);
 	set_bit(IA32_SYSCALL_VECTOR, used_vectors);
 #endif
 
