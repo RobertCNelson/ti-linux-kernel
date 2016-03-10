@@ -75,14 +75,17 @@ static inline int wrmsrl_amd_safe(unsigned msr, unsigned long long val)
  */
 
 extern __visible void vide(void);
-__asm__(".globl vide\n\t.align 4\nvide: ret");
+__asm__(".globl vide\n"
+	".type vide, @function\n"
+	".align 4\n"
+	"vide: ret\n");
 
 static void init_amd_k5(struct cpuinfo_x86 *c)
 {
 #ifdef CONFIG_X86_32
 /*
  * General Systems BIOSen alias the cpu frequency registers
- * of the Elan at 0x000df000. Unfortuantly, one of the Linux
+ * of the Elan at 0x000df000. Unfortunately, one of the Linux
  * drivers subsequently pokes it, and changes the CPU speed.
  * Workaround : Remove the unneeded alias.
  */
@@ -117,7 +120,7 @@ static void init_amd_k6(struct cpuinfo_x86 *c)
 		void (*f_vide)(void);
 		u64 d, d2;
 
-		printk(KERN_INFO "AMD K6 stepping B detected - ");
+		pr_info("AMD K6 stepping B detected - ");
 
 		/*
 		 * It looks like AMD fixed the 2.6.2 bug and improved indirect
@@ -133,10 +136,9 @@ static void init_amd_k6(struct cpuinfo_x86 *c)
 		d = d2-d;
 
 		if (d > 20*K6_BUG_LOOP)
-			printk(KERN_CONT
-				"system stability may be impaired when more than 32 MB are used.\n");
+			pr_cont("system stability may be impaired when more than 32 MB are used.\n");
 		else
-			printk(KERN_CONT "probably OK (after B9730xxxx).\n");
+			pr_cont("probably OK (after B9730xxxx).\n");
 	}
 
 	/* K6 with old style WHCR */
@@ -154,7 +156,7 @@ static void init_amd_k6(struct cpuinfo_x86 *c)
 			wbinvd();
 			wrmsr(MSR_K6_WHCR, l, h);
 			local_irq_restore(flags);
-			printk(KERN_INFO "Enabling old style K6 write allocation for %d Mb\n",
+			pr_info("Enabling old style K6 write allocation for %d Mb\n",
 				mbytes);
 		}
 		return;
@@ -175,7 +177,7 @@ static void init_amd_k6(struct cpuinfo_x86 *c)
 			wbinvd();
 			wrmsr(MSR_K6_WHCR, l, h);
 			local_irq_restore(flags);
-			printk(KERN_INFO "Enabling new style K6 write allocation for %d Mb\n",
+			pr_info("Enabling new style K6 write allocation for %d Mb\n",
 				mbytes);
 		}
 
@@ -202,7 +204,7 @@ static void init_amd_k7(struct cpuinfo_x86 *c)
 	 */
 	if (c->x86_model >= 6 && c->x86_model <= 10) {
 		if (!cpu_has(c, X86_FEATURE_XMM)) {
-			printk(KERN_INFO "Enabling disabled K7/SSE Support.\n");
+			pr_info("Enabling disabled K7/SSE Support.\n");
 			msr_clear_bit(MSR_K7_HWCR, 15);
 			set_cpu_cap(c, X86_FEATURE_XMM);
 		}
@@ -216,9 +218,8 @@ static void init_amd_k7(struct cpuinfo_x86 *c)
 	if ((c->x86_model == 8 && c->x86_mask >= 1) || (c->x86_model > 8)) {
 		rdmsr(MSR_K7_CLK_CTL, l, h);
 		if ((l & 0xfff00000) != 0x20000000) {
-			printk(KERN_INFO
-			    "CPU: CLK_CTL MSR was %x. Reprogramming to %x\n",
-					l, ((l & 0x000fffff)|0x20000000));
+			pr_info("CPU: CLK_CTL MSR was %x. Reprogramming to %x\n",
+				l, ((l & 0x000fffff)|0x20000000));
 			wrmsr(MSR_K7_CLK_CTL, (l & 0x000fffff)|0x20000000, h);
 		}
 	}
@@ -485,7 +486,7 @@ static void bsp_init_amd(struct cpuinfo_x86 *c)
 		if (!rdmsrl_safe(MSR_K8_TSEG_ADDR, &tseg)) {
 			unsigned long pfn = tseg >> PAGE_SHIFT;
 
-			printk(KERN_DEBUG "tseg: %010llx\n", tseg);
+			pr_debug("tseg: %010llx\n", tseg);
 			if (pfn_range_is_mapped(pfn, pfn + 1))
 				set_memory_4k((unsigned long)__va(tseg), 1);
 		}
@@ -500,8 +501,7 @@ static void bsp_init_amd(struct cpuinfo_x86 *c)
 
 			rdmsrl(MSR_K7_HWCR, val);
 			if (!(val & BIT(24)))
-				printk(KERN_WARNING FW_BUG "TSC doesn't count "
-					"with P0 frequency!\n");
+				pr_warn(FW_BUG "TSC doesn't count with P0 frequency!\n");
 		}
 	}
 
