@@ -205,10 +205,10 @@ static int au0828_media_device_init(struct au0828_dev *dev,
 	return 0;
 }
 
+#ifdef CONFIG_MEDIA_CONTROLLER
 static void au0828_media_graph_notify(struct media_entity *new,
 				      void *notify_data)
 {
-#ifdef CONFIG_MEDIA_CONTROLLER
 	struct au0828_dev *dev = (struct au0828_dev *) notify_data;
 	int ret;
 	struct media_entity *entity, *mixer = NULL, *decoder = NULL;
@@ -256,13 +256,11 @@ create_link:
 			dev_err(&dev->usbdev->dev,
 				"Mixer Pad Link Create Error: %d\n", ret);
 	}
-#endif
 }
 
 static int au0828_enable_source(struct media_entity *entity,
 				struct media_pipeline *pipe)
 {
-#ifdef CONFIG_MEDIA_CONTROLLER
 	struct media_entity  *source, *find_source;
 	struct media_entity *sink;
 	struct media_link *link, *found_link = NULL;
@@ -405,13 +403,10 @@ end:
 	pr_debug("au0828_enable_source() end %s %d %d\n",
 		 entity->name, entity->function, ret);
 	return ret;
-#endif
-	return 0;
 }
 
 static void au0828_disable_source(struct media_entity *entity)
 {
-#ifdef CONFIG_MEDIA_CONTROLLER
 	int ret = 0;
 	struct media_device *mdev = entity->graph_obj.mdev;
 	struct au0828_dev *dev;
@@ -453,14 +448,15 @@ static void au0828_disable_source(struct media_entity *entity)
 
 end:
 	mutex_unlock(&mdev->graph_mutex);
-#endif
 }
+#endif
 
 static int au0828_media_device_register(struct au0828_dev *dev,
 					struct usb_device *udev)
 {
 #ifdef CONFIG_MEDIA_CONTROLLER
 	int ret;
+	struct media_entity *entity, *demod = NULL, *tuner = NULL;
 
 	if (!dev->media_dev)
 		return 0;
@@ -484,6 +480,31 @@ static int au0828_media_device_register(struct au0828_dev *dev,
 		*/
 		au0828_media_graph_notify(NULL, (void *) dev);
 	}
+
+	/*
+	 * Find tuner and demod to disable the link between
+	 * the two to avoid disable step when tuner is requested
+	 * by video or audio. Note that this step can't be done
+	 * until dvb graph is created during dvb register.
+	*/
+	media_device_for_each_entity(entity, dev->media_dev) {
+		if (entity->function == MEDIA_ENT_F_DTV_DEMOD)
+			demod = entity;
+		else if (entity->function == MEDIA_ENT_F_TUNER)
+			tuner = entity;
+	}
+	/* Disable link between tuner and demod */
+	if (tuner && demod) {
+		struct media_link *link;
+
+		list_for_each_entry(link, &demod->links, list) {
+			if (link->sink->entity == demod &&
+			    link->source->entity == tuner) {
+				media_entity_setup_link(link, 0);
+			}
+		}
+	}
+
 	/* register entity_notify callback */
 	dev->entity_notify.notify_data = (void *) dev;
 	dev->entity_notify.notify = (void *) au0828_media_graph_notify;
