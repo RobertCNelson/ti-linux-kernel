@@ -21,7 +21,7 @@
 #include "netlink_k.h"
 
 #if !defined(NLMSG_HDRLEN)
-#define NLMSG_HDRLEN	 ((int) NLMSG_ALIGN(sizeof(struct nlmsghdr)))
+#define NLMSG_HDRLEN	 ((int)NLMSG_ALIGN(sizeof(struct nlmsghdr)))
 #endif
 
 #define ND_MAX_GROUP			30
@@ -29,8 +29,8 @@
 #define ND_NLMSG_SPACE(len)		(nlmsg_total_size(len) + ND_IFINDEX_LEN)
 #define ND_NLMSG_DATA(nlh) \
 	((void *)((char *)nlmsg_data(nlh) + ND_IFINDEX_LEN))
-#define ND_NLMSG_S_LEN(len)		(len+ND_IFINDEX_LEN)
-#define ND_NLMSG_R_LEN(nlh)		(nlh->nlmsg_len-ND_IFINDEX_LEN)
+#define ND_NLMSG_S_LEN(len)		(len + ND_IFINDEX_LEN)
+#define ND_NLMSG_R_LEN(nlh)		(nlh->nlmsg_len - ND_IFINDEX_LEN)
 #define ND_NLMSG_IFIDX(nlh)		nlmsg_data(nlh)
 #define ND_MAX_MSG_LEN			8096
 
@@ -55,7 +55,8 @@ static void netlink_rcv_cb(struct sk_buff *skb)
 	if (skb->len >= NLMSG_HDRLEN) {
 		nlh = (struct nlmsghdr *)skb->data;
 
-		if (skb->len < nlh->nlmsg_len ||
+		if (nlh->nlmsg_len < ND_IFINDEX_LEN ||
+		    nlh->nlmsg_len > skb->len ||
 		    nlh->nlmsg_len > ND_MAX_MSG_LEN) {
 			netdev_err(skb->dev, "Invalid length (%d,%d)\n",
 				   skb->len, nlh->nlmsg_len);
@@ -113,7 +114,7 @@ void netlink_exit(struct sock *sock)
 	netlink_kernel_release(sock);
 }
 
-int netlink_send(struct sock *sock, int group, u16 type, void *msg, int len)
+int netlink_send(struct sock *sock, u16 group, u16 type, void *msg, int len)
 {
 	static u32 seq;
 	struct sk_buff *skb = NULL;
@@ -143,7 +144,7 @@ int netlink_send(struct sock *sock, int group, u16 type, void *msg, int len)
 	NETLINK_CB(skb).portid = 0;
 	NETLINK_CB(skb).dst_group = 0;
 
-	ret = netlink_broadcast(sock, skb, 0, group+1, GFP_ATOMIC);
+	ret = netlink_broadcast(sock, skb, 0, group + 1, GFP_ATOMIC);
 
 	if (!ret)
 		return len;
@@ -151,6 +152,5 @@ int netlink_send(struct sock *sock, int group, u16 type, void *msg, int len)
 		pr_err("netlink_broadcast g=%d, t=%d, l=%d, r=%d\n",
 		       group, type, len, ret);
 	}
-	ret = 0;
-	return ret;
+	return 0;
 }
