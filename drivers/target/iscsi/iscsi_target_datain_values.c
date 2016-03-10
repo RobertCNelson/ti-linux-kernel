@@ -55,6 +55,7 @@ void iscsit_free_datain_req(struct iscsi_cmd *cmd, struct iscsi_datain_req *dr)
 
 	kmem_cache_free(lio_dr_cache, dr);
 }
+EXPORT_SYMBOL(iscsit_free_datain_req);
 
 void iscsit_free_all_datain_reqs(struct iscsi_cmd *cmd)
 {
@@ -79,6 +80,7 @@ struct iscsi_datain_req *iscsit_get_datain_req(struct iscsi_cmd *cmd)
 	return list_first_entry(&cmd->datain_list, struct iscsi_datain_req,
 				cmd_datain_node);
 }
+EXPORT_SYMBOL(iscsit_get_datain_req);
 
 /*
  *	For Normal and Recovery DataSequenceInOrder=Yes and DataPDUInOrder=Yes.
@@ -524,3 +526,4 @@ struct iscsi_datain_req *iscsit_get_datain_values(
 
 	return NULL;
 }
+EXPORT_SYMBOL(iscsit_get_datain_values);

@@ -258,7 +258,7 @@ static void iscsi_login_set_conn_values(
 	mutex_unlock(&auth_id_lock);
 }
 
-static __printf(2, 3) int iscsi_change_param_sprintf(
+__printf(2, 3) int iscsi_change_param_sprintf(
 	struct iscsi_conn *conn,
 	const char *fmt, ...)
 {
@@ -279,6 +279,7 @@ static __printf(2, 3) int iscsi_change_param_sprintf(
 
 	return 0;
 }
+EXPORT_SYMBOL(iscsi_change_param_sprintf);
 
 /*
  *	This is the leading connection of a new session,
@@ -1385,6 +1386,16 @@ static int __iscsi_target_login_thread(struct iscsi_np *np)
 	} else {
 		if (iscsi_login_non_zero_tsih_s2(conn, buffer) < 0)
 			goto old_sess_out;
+	}
+
+	if (conn->conn_transport->iscsit_validate_params) {
+		ret = conn->conn_transport->iscsit_validate_params(conn);
+		if (ret < 0) {
+			if (zero_tsih)
+				goto new_sess_out;
+			else
+				goto old_sess_out;
+		}
 	}
 
 	ret = iscsi_target_start_negotiation(login, conn);
