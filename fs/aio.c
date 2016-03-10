@@ -42,6 +42,8 @@
 #include <linux/mount.h>
 #include <linux/fdtable.h>
 #include <linux/fs_struct.h>
+#include <linux/fsnotify.h>
+#include <linux/namei.h>
 #include <../mm/internal.h>
 
 #include <asm/kmap_types.h>
@@ -163,6 +165,7 @@ struct kioctx {
 
 struct aio_kiocb;
 typedef long (*aio_thread_work_fn_t)(struct aio_kiocb *iocb);
+typedef void (*aio_destruct_fn_t)(struct aio_kiocb *iocb);
 
 /*
  * We use ki_cancel == KIOCB_CANCELLED to indicate that a kiocb has been either
@@ -210,6 +213,7 @@ struct aio_kiocb {
 #if IS_ENABLED(CONFIG_AIO_THREAD)
 	struct task_struct	*ki_cancel_task;
 	unsigned long		ki_data;
+	unsigned long		ki_data2;
 	unsigned long		ki_rlimit_fsize;
 	unsigned		ki_thread_flags;	/* AIO_THREAD_NEED... */
 	aio_thread_work_fn_t	ki_work_fn;
@@ -217,6 +221,7 @@ struct aio_kiocb {
 	struct fs_struct	*ki_fs;
 	struct files_struct	*ki_files;
 	const struct cred	*ki_cred;
+	aio_destruct_fn_t	ki_destruct_fn;
 #endif
 };
 
@@ -1093,6 +1098,8 @@ out_put:
 
 static void kiocb_free(struct aio_kiocb *req)
 {
+	if (req->ki_destruct_fn)
+		req->ki_destruct_fn(req);
 	if (req->common.ki_filp)
 		fput(req->common.ki_filp);
 	if (req->ki_eventfd != NULL)
@@ -1546,6 +1553,18 @@ static void aio_thread_fn(struct work_struct *work)
 		     ret == -ERESTARTNOHAND || ret == -ERESTART_RESTARTBLOCK))
 		ret = -EINTR;
 
+	/* Completion serializes cancellation by taking ctx_lock, so
+	 * aio_complete() will not return until after force_sig() in
+	 * aio_thread_queue_iocb_cancel().  This should ensure that
+	 * the signal is pending before being flushed in this thread.
+	 */
+	aio_complete(&iocb->common, ret, 0);
+	if (fatal_signal_pending(current))
+		flush_signals(current);
+
+	/* Clean up state after aio_complete() since ki_destruct may still
+	 * need to access them.
+	 */
 	if (iocb->ki_cred) {
 		current->cred = old_cred;
 		put_cred(iocb->ki_cred);
@@ -1558,15 +1577,6 @@ static void aio_thread_fn(struct work_struct *work)
 		exit_fs(current);
 		current->fs = old_fs;
 	}
-
-	/* Completion serializes cancellation by taking ctx_lock, so
-	 * aio_complete() will not return until after force_sig() in
-	 * aio_thread_queue_iocb_cancel().  This should ensure that
-	 * the signal is pending before being flushed in this thread.
-	 */
-	aio_complete(&iocb->common, ret, 0);
-	if (fatal_signal_pending(current))
-		flush_signals(current);
 }
 
 /* aio_thread_queue_iocb
@@ -1758,11 +1768,6 @@ static long aio_poll(struct aio_kiocb *req, struct iocb *user_iocb, bool compat)
 	return aio_thread_queue_iocb(req, aio_thread_op_poll, 0);
 }
 
-static long aio_do_openat(int fd, const char *filename, int flags, int mode)
-{
-	return do_sys_open(fd, filename, flags, mode);
-}
-
 static long aio_do_unlinkat(int fd, const char *filename, int flags, int mode)
 {
 	if (flags || mode)
@@ -1793,14 +1798,91 @@ static long aio_thread_op_foo_at(struct aio_kiocb *req)
 	return ret;
 }
 
+static void openat_destruct(struct aio_kiocb *req)
+{
+	struct filename *filename = req->common.private;
+	int fd;
+
+	putname(filename);
+	fd = req->ki_data;
+	if (fd >= 0)
+		put_unused_fd(fd);
+}
+
+static long aio_thread_op_openat(struct aio_kiocb *req)
+{
+	struct filename *filename = req->common.private;
+	int mode = req->common.ki_pos >> 32;
+	int flags = req->common.ki_pos;
+	struct open_flags op;
+	struct file *f;
+	int dfd = req->ki_data2;
+
+	build_open_flags(flags, mode, &op);
+	f = do_filp_open(dfd, filename, &op);
+	if (!IS_ERR(f)) {
+		int fd = req->ki_data;
+		/* Prevent openat_destruct from doing put_unused_fd() */
+		req->ki_data = -1;
+		fsnotify_open(f);
+		fd_install(fd, f);
+		return fd;
+	}
+	return PTR_ERR(f);
+}
+
 static long aio_openat(struct aio_kiocb *req, struct iocb *uiocb, bool compat)
 {
-	req->ki_data = (unsigned long)(void *)aio_do_openat;
-	return aio_thread_queue_iocb(req, aio_thread_op_foo_at,
-				     AIO_THREAD_NEED_TASK |
-				     AIO_THREAD_NEED_MM |
-				     AIO_THREAD_NEED_FILES |
-				     AIO_THREAD_NEED_CRED);
+	int mode = req->common.ki_pos >> 32;
+	struct filename *filename;
+	struct open_flags op;
+	int flags;
+	int fd;
+
+	if (force_o_largefile())
+		req->common.ki_pos |= O_LARGEFILE;
+	flags = req->common.ki_pos;
+	fd = build_open_flags(flags, mode, &op);
+	if (fd)
+		goto out_err;
+
+	filename = getname((const char __user *)(long)uiocb->aio_buf);
+	if (IS_ERR(filename)) {
+		fd = PTR_ERR(filename);
+		goto out_err;
+	}
+	req->common.private = filename;
+	req->ki_destruct_fn = openat_destruct;
+	req->ki_data = fd = get_unused_fd_flags(flags);
+	if (fd >= 0) {
+		struct file *f;
+		op.lookup_flags |= LOOKUP_RCU | LOOKUP_NONBLOCK;
+		req->ki_data = fd;
+		req->ki_data2 = uiocb->aio_fildes;
+		f = do_filp_open(uiocb->aio_fildes, filename, &op);
+		if (IS_ERR(f) && ((PTR_ERR(f) == -ECHILD) ||
+				  (PTR_ERR(f) == -ESTALE) ||
+				  (PTR_ERR(f) == -EAGAIN))) {
+			int ret;
+			ret = aio_thread_queue_iocb(req, aio_thread_op_openat,
+						   AIO_THREAD_NEED_TASK |
+						   AIO_THREAD_NEED_FILES |
+						   AIO_THREAD_NEED_CRED);
+			if (ret == -EIOCBQUEUED)
+				return ret;
+			put_unused_fd(fd);
+			fd = ret;
+		} else if (IS_ERR(f)) {
+			put_unused_fd(fd);
+			fd = PTR_ERR(f);
+		} else {
+			fsnotify_open(f);
+			fd_install(fd, f);
+		}
+	}
+out_err:
+	aio_complete(&req->common, fd, 0);
+	return -EIOCBQUEUED;
 }
 
 static long aio_unlink(struct aio_kiocb *req, struct iocb *uiocb, bool compt)

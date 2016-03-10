@@ -102,6 +102,7 @@ struct open_flags {
 	int intent;
 	int lookup_flags;
 };
+extern int build_open_flags(int flags, umode_t mode, struct open_flags *op);
 extern struct file *do_filp_open(int dfd, struct filename *pathname,
 		const struct open_flags *op);
 extern struct file *do_file_open_root(struct dentry *, struct vfsmount *,
