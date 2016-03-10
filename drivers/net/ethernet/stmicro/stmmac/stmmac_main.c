@@ -3054,14 +3054,19 @@ int stmmac_dvr_probe(struct device *device,
 	return 0;
 
 error_mdio_register:
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
 	unregister_netdev(ndev);
 error_netdev_register:
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
 	netif_napi_del(&priv->napi);
 error_hw_init:
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
 	clk_disable_unprepare(priv->pclk);
 error_pclk_get:
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
 	clk_disable_unprepare(priv->stmmac_clk);
 error_clk_get:
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
 	free_netdev(ndev);
 
 	return ret;

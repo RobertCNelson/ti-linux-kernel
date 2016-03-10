@@ -243,6 +243,8 @@ int stmmac_mdio_register(struct net_device *ndev)
 		goto bus_register_fail;
 	}
 
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
+
 	found = 0;
 	for (addr = 0; addr < PHY_MAX_ADDR; addr++) {
 		struct phy_device *phydev = mdiobus_get_phy(new_bus, addr);
@@ -255,6 +257,7 @@ int stmmac_mdio_register(struct net_device *ndev)
 			 * If an IRQ was provided to be assigned after
 			 * the bus probe, do it here.
 			 */
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
 			if ((mdio_bus_data->irqs == NULL) &&
 			    (mdio_bus_data->probed_phy_irq > 0)) {
 				new_bus->irq[addr] =
@@ -270,6 +273,7 @@ int stmmac_mdio_register(struct net_device *ndev)
 			if (priv->plat->phy_addr == -1)
 				priv->plat->phy_addr = addr;
 
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
 			act = (priv->plat->phy_addr == addr);
 			switch (phydev->irq) {
 			case PHY_POLL:
@@ -283,6 +287,7 @@ int stmmac_mdio_register(struct net_device *ndev)
 				irq_str = irq_num;
 				break;
 			}
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
 			pr_info("%s: PHY ID %08x at %d IRQ %s (%s)%s\n",
 				ndev->name, phydev->phy_id, addr,
 				irq_str, phydev_name(phydev),
@@ -291,13 +296,18 @@ int stmmac_mdio_register(struct net_device *ndev)
 		}
 	}
 
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
 	if (!found && !mdio_node) {
 		pr_warn("%s: No PHY found\n", ndev->name);
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
 		mdiobus_unregister(new_bus);
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
 		mdiobus_free(new_bus);
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
 		return -ENODEV;
 	}
 
+	printk("LEE: %s %s()[%d]: \n", __FILE__, __func__, __LINE__);
 	priv->mii = new_bus;
 
 	return 0;
