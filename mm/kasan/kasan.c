@@ -436,7 +436,7 @@ static inline void filter_irq_stacks(struct stack_trace *trace)
 		}
 }
 
-static inline depot_stack_handle save_stack(gfp_t flags)
+static inline depot_stack_handle_t save_stack(gfp_t flags)
 {
 	unsigned long entries[KASAN_STACK_DEPTH];
 	struct stack_trace trace = {

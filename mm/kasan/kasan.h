@@ -71,7 +71,7 @@ struct kasan_track {
 	u64 cpu : 6;			/* for NR_CPUS = 64 */
 	u64 pid : 16;			/* 65536 processes */
 	u64 when : 42;			/* ~140 years */
-	depot_stack_handle stack : sizeof(depot_stack_handle);
+	depot_stack_handle_t stack : sizeof(depot_stack_handle_t);
 };
 
 struct kasan_alloc_meta {

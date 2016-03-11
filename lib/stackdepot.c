@@ -39,7 +39,7 @@
 #include <linux/string.h>
 #include <linux/types.h>
 
-#define DEPOT_STACK_BITS (sizeof(depot_stack_handle) * 8)
+#define DEPOT_STACK_BITS (sizeof(depot_stack_handle_t) * 8)
 
 #define STACK_ALLOC_ORDER 2 /* 'Slab' size order for stack depot, 4 pages */
 #define STACK_ALLOC_SIZE (1LL << (PAGE_SHIFT + STACK_ALLOC_ORDER))
@@ -54,7 +54,7 @@
 
 /* The compact structure to store the reference to stacks. */
 union handle_parts {
-	depot_stack_handle handle;
+	depot_stack_handle_t handle;
 	struct {
 		u32 slabindex : STACK_ALLOC_INDEX_BITS;
 		u32 offset : STACK_ALLOC_OFFSET_BITS;
@@ -173,7 +173,7 @@ static inline struct stack_record *find_stack(struct stack_record *bucket,
 	return NULL;
 }
 
-void depot_fetch_stack(depot_stack_handle handle, struct stack_trace *trace)
+void depot_fetch_stack(depot_stack_handle_t handle, struct stack_trace *trace)
 {
 	union handle_parts parts = { .handle = handle };
 	void *slab = stack_slabs[parts.slabindex];
@@ -192,11 +192,11 @@ void depot_fetch_stack(depot_stack_handle handle, struct stack_trace *trace)
  *
  * Returns the handle of the stack struct stored in depot.
  */
-depot_stack_handle depot_save_stack(struct stack_trace *trace,
+depot_stack_handle_t depot_save_stack(struct stack_trace *trace,
 				    gfp_t alloc_flags)
 {
 	u32 hash;
-	depot_stack_handle retval = 0;
+	depot_stack_handle_t retval = 0;
 	struct stack_record *found = NULL, **bucket;
 	unsigned long flags;
 	struct page *page = NULL;
