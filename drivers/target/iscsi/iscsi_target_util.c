@@ -126,6 +126,7 @@ struct iscsi_r2t *iscsit_get_r2t_from_list(struct iscsi_cmd *cmd)
 			" 0x%08x.\n", cmd->init_task_tag);
 	return NULL;
 }
+EXPORT_SYMBOL(iscsit_get_r2t_from_list);
 
 /*
  *	Called with cmd->r2t_lock held.
@@ -514,6 +515,7 @@ void iscsit_add_cmd_to_immediate_queue(
 
 	wake_up(&conn->queues_wq);
 }
+EXPORT_SYMBOL(iscsit_add_cmd_to_immediate_queue);
 
 struct iscsi_queue_req *iscsit_get_cmd_from_immediate_queue(struct iscsi_conn *conn)
 {
@@ -725,6 +727,9 @@ void __iscsit_free_cmd(struct iscsi_cmd *cmd, bool scsi_cmd,
 		iscsit_remove_cmd_from_immediate_queue(cmd, conn);
 		iscsit_remove_cmd_from_response_queue(cmd, conn);
 	}
+
+	if (conn && conn->conn_transport->iscsit_release_cmd)
+		conn->conn_transport->iscsit_release_cmd(conn, cmd);
 }
 
 void iscsit_free_cmd(struct iscsi_cmd *cmd, bool shutdown)
@@ -773,6 +778,7 @@ void iscsit_free_cmd(struct iscsi_cmd *cmd, bool shutdown)
 		break;
 	}
 }
+EXPORT_SYMBOL(iscsit_free_cmd);
 
 int iscsit_check_session_usage_count(struct iscsi_session *sess)
 {
@@ -958,6 +964,7 @@ void iscsit_mod_nopin_response_timer(struct iscsi_conn *conn)
 		(get_jiffies_64() + na->nopin_response_timeout * HZ));
 	spin_unlock_bh(&conn->nopin_timer_lock);
 }
+EXPORT_SYMBOL(iscsit_mod_nopin_response_timer);
 
 /*
  *	Called with conn->nopin_timer_lock held.
