@@ -414,6 +414,7 @@ static inline __must_check
 void **radix_tree_iter_next(struct radix_tree_iter *iter)
 {
 	iter->next_index = iter->index + 1;
+	iter->tags = 0;
 	return NULL;
 }
 
