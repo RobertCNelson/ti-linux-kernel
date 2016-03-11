@@ -1400,7 +1400,8 @@ static int f2fs_write_data_pages(struct address_space *mapping,
 
 	diff = nr_pages_to_write(sbi, DATA, wbc);
 
-	if (!S_ISDIR(inode->i_mode) && wbc->sync_mode == WB_SYNC_ALL) {
+	if (!S_ISDIR(inode->i_mode) && wbc->sync_mode == WB_SYNC_ALL &&
+			!is_inode_flag_set(F2FS_I(inode), FI_NEED_IPU)) {
 		mutex_lock(&sbi->writepages);
 		locked = true;
 	}
