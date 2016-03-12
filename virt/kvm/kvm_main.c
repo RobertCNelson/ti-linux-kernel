@@ -1951,6 +1951,9 @@ static void grow_halt_poll_ns(struct kvm_vcpu *vcpu)
 	else
 		val *= halt_poll_ns_grow;
 
+	if (val > halt_poll_ns)
+		val = halt_poll_ns;
+
 	vcpu->halt_poll_ns = val;
 	trace_kvm_halt_poll_ns_grow(vcpu->vcpu_id, val, old);
 }
