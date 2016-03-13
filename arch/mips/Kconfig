@@ -62,6 +62,7 @@ config MIPS
 	select HAVE_IRQ_TIME_ACCOUNTING
 	select GENERIC_TIME_VSYSCALL
 	select ARCH_CLOCKSOURCE_DATA
+	select HANDLE_DOMAIN_IRQ
 
 menu "Machine selection"
 
@@ -137,7 +138,7 @@ config ATH79
 	select SYS_SUPPORTS_32BIT_KERNEL
 	select SYS_SUPPORTS_BIG_ENDIAN
 	select SYS_SUPPORTS_MIPS16
-	select SYS_SUPPORTS_ZBOOT
+	select SYS_SUPPORTS_ZBOOT_UART_PROM
 	select USE_OF
 	help
 	  Support for the Atheros AR71XX/AR724X/AR913X SoCs.
@@ -195,6 +196,7 @@ config BCM47XX
 	select GPIOLIB
 	select LEDS_GPIO_REGISTER
 	select BCM47XX_NVRAM
+	select BCM47XX_SPROM
 	help
 	 Support for BCM47XX based boards
 
@@ -2169,7 +2171,7 @@ config MIPS_MT_SMP
 	select CPU_MIPSR2_IRQ_VI
 	select CPU_MIPSR2_IRQ_EI
 	select SYNC_R4K
-	select MIPS_GIC_IPI
+	select MIPS_GIC_IPI if MIPS_GIC
 	select MIPS_MT
 	select SMP
 	select SMP_UP
@@ -2267,7 +2269,7 @@ config MIPS_VPE_APSP_API_MT
 config MIPS_CMP
 	bool "MIPS CMP framework support (DEPRECATED)"
 	depends on SYS_SUPPORTS_MIPS_CMP && !CPU_MIPSR6
-	select MIPS_GIC_IPI
+	select MIPS_GIC_IPI if MIPS_GIC
 	select SMP
 	select SYNC_R4K
 	select SYS_SUPPORTS_SMP
@@ -2287,7 +2289,7 @@ config MIPS_CPS
 	select MIPS_CM
 	select MIPS_CPC
 	select MIPS_CPS_PM if HOTPLUG_CPU
-	select MIPS_GIC_IPI
+	select MIPS_GIC_IPI if MIPS_GIC
 	select SMP
 	select SYNC_R4K if (CEVT_R4K || CSRC_R4K)
 	select SYS_SUPPORTS_HOTPLUG_CPU
@@ -2306,6 +2308,7 @@ config MIPS_CPS_PM
 	bool
 
 config MIPS_GIC_IPI
+	depends on MIPS_GIC
 	bool
 
 config MIPS_CM
