@@ -503,14 +503,6 @@ static int event_data_to_attrs(unsigned ix, struct attribute **attrs,
 	return 0;
 }
 
-static unsigned long vmalloc_to_phys(void *v)
-{
-	struct page *p = vmalloc_to_page(v);
-
-	BUG_ON(!p);
-	return page_to_phys(p) + offset_in_page(v);
-}
-
 /* */
 struct event_uniq {
 	struct rb_node node;
