@@ -53,6 +53,7 @@
 #include <linux/kref.h>
 #include <linux/pm_qos.h>
 #include "intel_guc.h"
+#include "intel_dpll_mgr.h"
 
 /* General customization:
  */
@@ -340,81 +341,6 @@ struct drm_i915_file_private {
 	unsigned int bsd_ring;
 };
 
-enum intel_dpll_id {
-	DPLL_ID_PRIVATE = -1, /* non-shared dpll in use */
-	/* real shared dpll ids must be >= 0 */
-	DPLL_ID_PCH_PLL_A = 0,
-	DPLL_ID_PCH_PLL_B = 1,
-	/* hsw/bdw */
-	DPLL_ID_WRPLL1 = 0,
-	DPLL_ID_WRPLL2 = 1,
-	DPLL_ID_SPLL = 2,
-
-	/* skl */
-	DPLL_ID_SKL_DPLL1 = 0,
-	DPLL_ID_SKL_DPLL2 = 1,
-	DPLL_ID_SKL_DPLL3 = 2,
-};
-#define I915_NUM_PLLS 3
-
-struct intel_dpll_hw_state {
-	/* i9xx, pch plls */
-	uint32_t dpll;
-	uint32_t dpll_md;
-	uint32_t fp0;
-	uint32_t fp1;
-
-	/* hsw, bdw */
-	uint32_t wrpll;
-	uint32_t spll;
-
-	/* skl */
-	/*
-	 * DPLL_CTRL1 has 6 bits for each each this DPLL. We store those in
-	 * lower part of ctrl1 and they get shifted into position when writing
-	 * the register.  This allows us to easily compare the state to share
-	 * the DPLL.
-	 */
-	uint32_t ctrl1;
-	/* HDMI only, 0 when used for DP */
-	uint32_t cfgcr1, cfgcr2;
-
-	/* bxt */
-	uint32_t ebb0, ebb4, pll0, pll1, pll2, pll3, pll6, pll8, pll9, pll10,
-		 pcsdw12;
-};
-
-struct intel_shared_dpll_config {
-	unsigned crtc_mask; /* mask of CRTCs sharing this PLL */
-	struct intel_dpll_hw_state hw_state;
-};
-
-struct intel_shared_dpll {
-	struct intel_shared_dpll_config config;
-
-	int active; /* count of number of active CRTCs (i.e. DPMS on) */
-	bool on; /* is the PLL actually active? Disabled during modeset */
-	const char *name;
-	/* should match the index in the dev_priv->shared_dplls array */
-	enum intel_dpll_id id;
-	/* The mode_set hook is optional and should be used together with the
-	 * intel_prepare_shared_dpll function. */
-	void (*mode_set)(struct drm_i915_private *dev_priv,
-			 struct intel_shared_dpll *pll);
-	void (*enable)(struct drm_i915_private *dev_priv,
-		       struct intel_shared_dpll *pll);
-	void (*disable)(struct drm_i915_private *dev_priv,
-			struct intel_shared_dpll *pll);
-	bool (*get_hw_state)(struct drm_i915_private *dev_priv,
-			     struct intel_shared_dpll *pll,
-			     struct intel_dpll_hw_state *hw_state);
-};
-
-#define SKL_DPLL0 0
-#define SKL_DPLL1 1
-#define SKL_DPLL2 2
-#define SKL_DPLL3 3
-
 /* Used by dp and fdi links */
 struct intel_link_m_n {
 	uint32_t	tu;
@@ -561,6 +487,8 @@ struct drm_i915_error_state {
 			u32 *pages[0];
 		} *ringbuffer, *batchbuffer, *wa_batchbuffer, *ctx, *hws_page;
 
+		struct drm_i915_error_object *wa_ctx;
+
 		struct drm_i915_error_request {
 			long jiffies;
 			u32 seqno;
@@ -629,9 +557,12 @@ struct drm_i915_display_funcs {
 			  int target, int refclk,
 			  struct dpll *match_clock,
 			  struct dpll *best_clock);
-	int (*compute_pipe_wm)(struct intel_crtc *crtc,
-			       struct drm_atomic_state *state);
-	void (*program_watermarks)(struct intel_crtc_state *cstate);
+	int (*compute_pipe_wm)(struct intel_crtc_state *cstate);
+	int (*compute_intermediate_wm)(struct drm_device *dev,
+				       struct intel_crtc *intel_crtc,
+				       struct intel_crtc_state *newstate);
+	void (*initial_watermarks)(struct intel_crtc_state *cstate);
+	void (*optimize_watermarks)(struct intel_crtc_state *cstate);
 	void (*update_wm)(struct drm_crtc *crtc);
 	int (*modeset_calc_cdclk)(struct drm_atomic_state *state);
 	void (*modeset_commit_cdclk)(struct drm_atomic_state *state);
@@ -750,6 +681,7 @@ struct intel_csr {
 	i915_reg_t mmioaddr[8];
 	uint32_t mmiodata[8];
 	uint32_t dc_state;
+	uint32_t allowed_dc_mask;
 };
 
 #define DEV_INFO_FOR_EACH_FLAG(func, sep) \
@@ -779,6 +711,7 @@ struct intel_csr {
 	func(overlay_needs_physical) sep \
 	func(supports_tv) sep \
 	func(has_llc) sep \
+	func(has_snoop) sep \
 	func(has_ddi) sep \
 	func(has_fpga_dbg)
 
@@ -1829,6 +1762,7 @@ struct drm_i915_private {
 	unsigned int skl_boot_cdclk;
 	unsigned int cdclk_freq, max_cdclk_freq, atomic_cdclk_freq;
 	unsigned int max_dotclk_freq;
+	unsigned int rawclk_freq;
 	unsigned int hpll_freq;
 	unsigned int czclk_freq;
 
@@ -1876,6 +1810,7 @@ struct drm_i915_private {
 	/* dpll and cdclk state is protected by connection_mutex */
 	int num_shared_dpll;
 	struct intel_shared_dpll shared_dplls[I915_NUM_PLLS];
+	const struct intel_dpll_mgr *dpll_mgr;
 
 	unsigned int active_crtcs;
 	unsigned int min_pixclk[I915_MAX_PIPES];
@@ -1980,6 +1915,13 @@ struct drm_i915_private {
 		};
 
 		uint8_t max_level;
+
+		/*
+		 * Should be held around atomic WM register writing; also
+		 * protects * intel_crtc->wm.active and
+		 * cstate->wm.need_postvbl_update.
+		 */
+		struct mutex wm_mutex;
 	} wm;
 
 	struct i915_runtime_pm pm;
@@ -2616,6 +2558,7 @@ struct drm_i915_cmd_table {
 #define HAS_BLT(dev)		(INTEL_INFO(dev)->ring_mask & BLT_RING)
 #define HAS_VEBOX(dev)		(INTEL_INFO(dev)->ring_mask & VEBOX_RING)
 #define HAS_LLC(dev)		(INTEL_INFO(dev)->has_llc)
+#define HAS_SNOOP(dev)		(INTEL_INFO(dev)->has_snoop)
 #define HAS_WT(dev)		((IS_HASWELL(dev) || IS_BROADWELL(dev)) && \
 				 __I915__(dev)->ellc_size)
 #define I915_NEED_GFX_HWS(dev)	(INTEL_INFO(dev)->need_gfx_hws)
