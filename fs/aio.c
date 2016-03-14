@@ -1781,11 +1781,11 @@ static long aio_thread_op_foo_at(struct aio_kiocb *req)
 	long ret;
 	u32 fd;
 
-	if (unlikely(__get_user(fd, &req->ki_user_iocb->aio_fildes)))
+	if (unlikely(get_user(fd, &req->ki_user_iocb->aio_fildes)))
 		ret = -EFAULT;
-	else if (unlikely(__get_user(buf, &req->ki_user_iocb->aio_buf)))
+	else if (unlikely(get_user(buf, &req->ki_user_iocb->aio_buf)))
 		ret = -EFAULT;
-	else if (unlikely(__get_user(offset, &req->ki_user_iocb->aio_offset)))
+	else if (unlikely(get_user(offset, &req->ki_user_iocb->aio_offset)))
 		ret = -EFAULT;
 	else {
 		do_foo_at_t do_foo_at = (void *)req->ki_data;
