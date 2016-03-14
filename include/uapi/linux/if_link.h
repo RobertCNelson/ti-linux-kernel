@@ -35,6 +35,8 @@ struct rtnl_link_stats {
 	/* for cslip etc */
 	__u32	rx_compressed;
 	__u32	tx_compressed;
+
+	__u32	rx_nohandler;		/* dropped, no handler found	*/
 };
 
 /* The main device statistics structure */
@@ -68,6 +70,8 @@ struct rtnl_link_stats64 {
 	/* for cslip etc */
 	__u64	rx_compressed;
 	__u64	tx_compressed;
+
+	__u64	rx_nohandler;		/* dropped, no handler found	*/
 };
 
 /* The struct should be in sync with struct ifmap */
@@ -401,6 +405,14 @@ enum {
 
 #define IFLA_VRF_MAX (__IFLA_VRF_MAX - 1)
 
+enum {
+	IFLA_VRF_PORT_UNSPEC,
+	IFLA_VRF_PORT_TABLE,
+	__IFLA_VRF_PORT_MAX
+};
+
+#define IFLA_VRF_PORT_MAX (__IFLA_VRF_PORT_MAX - 1)
+
 /* IPVLAN section */
 enum {
 	IFLA_IPVLAN_UNSPEC,
@@ -444,6 +456,7 @@ enum {
 	IFLA_VXLAN_GBP,
 	IFLA_VXLAN_REMCSUM_NOPARTIAL,
 	IFLA_VXLAN_COLLECT_METADATA,
+	IFLA_VXLAN_LABEL,
 	__IFLA_VXLAN_MAX
 };
 #define IFLA_VXLAN_MAX	(__IFLA_VXLAN_MAX - 1)
@@ -466,6 +479,7 @@ enum {
 	IFLA_GENEVE_UDP_CSUM,
 	IFLA_GENEVE_UDP_ZERO_CSUM6_TX,
 	IFLA_GENEVE_UDP_ZERO_CSUM6_RX,
+	IFLA_GENEVE_LABEL,
 	__IFLA_GENEVE_MAX
 };
 #define IFLA_GENEVE_MAX	(__IFLA_GENEVE_MAX - 1)

@@ -311,6 +311,8 @@ struct iwl_pwr_tx_backoff {
  * @dccm2_len: length of the second DCCM
  * @smem_offset: offset from which the SMEM begins
  * @smem_len: the length of SMEM
+ * @mq_rx_supported: multi-queue rx support
+ * @vht_mu_mimo_supported: VHT MU-MIMO support
  *
  * We enable the driver to be backward compatible wrt. hardware features.
  * API differences in uCode shouldn't be handled here but through TLVs
@@ -362,6 +364,8 @@ struct iwl_cfg {
 	const u32 smem_len;
 	const struct iwl_tt_params *thermal_params;
 	bool apmg_not_supported;
+	bool mq_rx_supported;
+	bool vht_mu_mimo_supported;
 };
 
 /*

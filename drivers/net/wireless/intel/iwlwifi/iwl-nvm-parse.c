@@ -366,6 +366,9 @@ static void iwl_init_vht_hw_capab(const struct iwl_cfg *cfg,
 		       max_ampdu_exponent <<
 		       IEEE80211_VHT_CAP_MAX_A_MPDU_LENGTH_EXPONENT_SHIFT;
 
+	if (cfg->vht_mu_mimo_supported)
+		vht_cap->cap |= IEEE80211_VHT_CAP_MU_BEAMFORMEE_CAPABLE;
+
 	if (cfg->ht_params->ldpc)
 		vht_cap->cap |= IEEE80211_VHT_CAP_RXLDPC;
 
@@ -449,7 +452,7 @@ static void iwl_init_sbands(struct device *dev, const struct iwl_cfg *cfg,
 					  IEEE80211_BAND_5GHZ);
 	iwl_init_ht_hw_capab(cfg, data, &sband->ht_cap, IEEE80211_BAND_5GHZ,
 			     tx_chains, rx_chains);
-	if (data->sku_cap_11ac_enable)
+	if (data->sku_cap_11ac_enable && !iwlwifi_mod_params.disable_11ac)
 		iwl_init_vht_hw_capab(cfg, data, &sband->vht_cap,
 				      tx_chains, rx_chains);
 
@@ -539,7 +542,7 @@ static void iwl_set_hw_address_family_8000(struct device *dev,
 					   struct iwl_nvm_data *data,
 					   const __le16 *mac_override,
 					   const __le16 *nvm_hw,
-					   u32 mac_addr0, u32 mac_addr1)
+					   __le32 mac_addr0, __le32 mac_addr1)
 {
 	const u8 *hw_addr;
 
@@ -583,7 +586,8 @@ static void iwl_set_hw_address_family_8000(struct device *dev,
 
 		if (!is_valid_ether_addr(data->hw_addr))
 			IWL_ERR_DEV(dev,
-				    "mac address from hw section is not valid\n");
+				    "mac address (%pM) from hw section is not valid\n",
+				    data->hw_addr);
 
 		return;
 	}
@@ -597,7 +601,7 @@ iwl_parse_nvm_data(struct device *dev, const struct iwl_cfg *cfg,
 		   const __le16 *nvm_calib, const __le16 *regulatory,
 		   const __le16 *mac_override, const __le16 *phy_sku,
 		   u8 tx_chains, u8 rx_chains, bool lar_fw_supported,
-		   u32 mac_addr0, u32 mac_addr1)
+		   __le32 mac_addr0, __le32 mac_addr1)
 {
 	struct iwl_nvm_data *data;
 	u32 sku;
