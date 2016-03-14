@@ -479,7 +479,8 @@ vti6_xmit(struct sk_buff *skb, struct net_device *dev, struct flowi *fl)
 			icmp_send(skb, ICMP_DEST_UNREACH, ICMP_FRAG_NEEDED,
 				  htonl(mtu));
 
-		return -EMSGSIZE;
+		err = -EMSGSIZE;
+		goto tx_err_dst_release;
 	}
 
 	err = dst_output(t->net, skb->sk, skb);
