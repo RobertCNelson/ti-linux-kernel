@@ -1,0 +1,14 @@
+Synopsys ARC Free Running 64-bit Global Timer for ARC HS CPUs
+- clocksource provider for SMP SoC
+
+Required properties:
+
+- compatible : should be "snps,archs-gfrc"
+- clocks     : phandle to the source clock
+
+Example:
+
+	timer@1 {
+		compatible = "snps,archs-gfrc";
+		clocks = <&core_clk>;
+	};

@@ -13,7 +13,6 @@
 #include <linux/console.h>
 #include <linux/module.h>
 #include <linux/cpu.h>
-#include <linux/clk-provider.h>
 #include <linux/of_fdt.h>
 #include <linux/of_platform.h>
 #include <linux/cache.h>
@@ -24,7 +23,6 @@
 #include <asm/page.h>
 #include <asm/irq.h>
 #include <asm/unwind.h>
-#include <asm/clk.h>
 #include <asm/mach_desc.h>
 #include <asm/smp.h>
 
@@ -230,10 +228,6 @@ static char *arc_cpu_mumbojumbo(int cpu_id, char *buf, int len)
 	if (tbl->info.id == 0)
 		n += scnprintf(buf + n, len - n, "UNKNOWN ARC Processor\n");
 
-	n += scnprintf(buf + n, len - n, "CPU speed\t: %u.%02u Mhz\n",
-		       (unsigned int)(arc_get_core_freq() / 1000000),
-		       (unsigned int)(arc_get_core_freq() / 10000) % 100);
-
 	n += scnprintf(buf + n, len - n, "Timers\t\t: %s%s%s%s\nISA Extn\t: ",
 		       IS_AVAIL1(cpu->extn.timer0, "Timer0 "),
 		       IS_AVAIL1(cpu->extn.timer1, "Timer1 "),
@@ -323,9 +317,6 @@ static void arc_chk_core_config(void)
 
 	if (!cpu->extn.timer1)
 		panic("Timer1 is not present!\n");
-
-	if (IS_ENABLED(CONFIG_ARC_HAS_RTC) && !cpu->extn.rtc)
-		panic("RTC is not present\n");
 
 #ifdef CONFIG_ARC_HAS_DCCM
 	/*
@@ -459,7 +450,6 @@ void __init setup_arch(char **cmdline_p)
 
 static int __init customize_machine(void)
 {
-	of_clk_init(NULL);
 	/*
 	 * Traverses flattened DeviceTree - registering platform devices
 	 * (if any) complete with their resources
@@ -492,6 +482,10 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 {
 	char *str;
 	int cpu_id = ptr_to_cpu(v);
+	struct device_node *pll = of_find_node_by_name(NULL, "core_clk");
+	u32 freq;
+
+	of_property_read_u32(pll, "clock-frequency", &freq);
 
 	if (!cpu_online(cpu_id)) {
 		seq_printf(m, "processor [%d]\t: Offline\n", cpu_id);
@@ -503,6 +497,9 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 		goto done;
 
 	seq_printf(m, arc_cpu_mumbojumbo(cpu_id, str, PAGE_SIZE));
+	seq_printf(m, "CPU speed\t: %u.%02u Mhz\n",
+		   (unsigned int)(freq / 1000000),
+		   (unsigned int)(freq / 10000) % 100);
 
 	seq_printf(m, "Bogo MIPS\t: %lu.%02lu\n",
 		   loops_per_jiffy / (500000 / HZ),
