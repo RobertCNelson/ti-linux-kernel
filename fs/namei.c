@@ -1513,6 +1513,7 @@ static int lookup_fast(struct nameidata *nd,
 {
 	struct vfsmount *mnt = nd->path.mnt;
 	struct dentry *dentry, *parent = nd->path.dentry;
+	int status = 1;
 	int err;
 
 	/*
@@ -1550,52 +1551,44 @@ static int lookup_fast(struct nameidata *nd,
 			return -ECHILD;
 
 		*seqp = seq;
-		if (unlikely(dentry->d_flags & DCACHE_OP_REVALIDATE)) {
-			int status = d_revalidate(dentry, nd->flags);
-			if (unlikely(status <= 0)) {
-				if (unlazy_walk(nd, dentry, seq))
-					return -ECHILD;
-				if (status == -ECHILD)
-					status = d_revalidate(dentry, nd->flags);
-				if (status <= 0) {
-					if (!status)
-						d_invalidate(dentry);
-					dput(dentry);
-					return status;
-				}
-			}
+		if (unlikely(dentry->d_flags & DCACHE_OP_REVALIDATE))
+			status = d_revalidate(dentry, nd->flags);
+		if (unlikely(status <= 0)) {
+			if (unlazy_walk(nd, dentry, seq))
+				return -ECHILD;
+			if (status == -ECHILD)
+				status = d_revalidate(dentry, nd->flags);
+		} else {
+			/*
+			 * Note: do negative dentry check after revalidation in
+			 * case that drops it.
+			 */
+			if (unlikely(negative))
+				return -ENOENT;
+			path->mnt = mnt;
+			path->dentry = dentry;
+			if (likely(__follow_mount_rcu(nd, path, inode, seqp)))
+				return 1;
+			if (unlazy_walk(nd, dentry, seq))
+				return -ECHILD;
 		}
-		/*
-		 * Note: do negative dentry check after revalidation in
-		 * case that drops it.
-		 */
-		if (unlikely(negative))
-			return -ENOENT;
-		path->mnt = mnt;
-		path->dentry = dentry;
-		if (likely(__follow_mount_rcu(nd, path, inode, seqp)))
-			return 1;
-		if (unlazy_walk(nd, dentry, seq))
-			return -ECHILD;
 	} else {
 		dentry = __d_lookup(parent, &nd->last);
 		if (unlikely(!dentry))
 			return 0;
-		if (unlikely(dentry->d_flags & DCACHE_OP_REVALIDATE)) {
-			int status = d_revalidate(dentry, nd->flags);
-			if (unlikely(status <= 0)) {
-				if (!status)
-					d_invalidate(dentry);
-				dput(dentry);
-				return status;
-			}
-		}
-		if (unlikely(d_is_negative(dentry))) {
-			dput(dentry);
-			return -ENOENT;
-		}
+		if (unlikely(dentry->d_flags & DCACHE_OP_REVALIDATE))
+			status = d_revalidate(dentry, nd->flags);
 	}
-
+	if (unlikely(status <= 0)) {
+		if (!status)
+			d_invalidate(dentry);
+		dput(dentry);
+		return status;
+	}
+	if (unlikely(d_is_negative(dentry))) {
+		dput(dentry);
+		return -ENOENT;
+	}
 	path->mnt = mnt;
 	path->dentry = dentry;
 	err = follow_managed(path, nd);
