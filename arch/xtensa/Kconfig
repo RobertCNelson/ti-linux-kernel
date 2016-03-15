@@ -430,8 +430,6 @@ config FORCE_MAX_ZONEORDER
 
 source "drivers/pcmcia/Kconfig"
 
-source "drivers/pci/hotplug/Kconfig"
-
 config PLATFORM_WANT_DEFAULT_MEM
 	def_bool n
 
