@@ -443,10 +443,11 @@ struct hv_context {
 	u32 vp_index[NR_CPUS];
 	/*
 	 * Starting with win8, we can take channel interrupts on any CPU;
-	 * we will manage the tasklet that handles events on a per CPU
+	 * we will manage the tasklet that handles events messages on a per CPU
 	 * basis.
 	 */
 	struct tasklet_struct *event_dpc[NR_CPUS];
+	struct tasklet_struct *msg_dpc[NR_CPUS];
 	/*
 	 * To optimize the mapping of relid to channel, maintain
 	 * per-cpu list of the channels based on their CPU affinity.
@@ -618,6 +619,30 @@ struct vmbus_channel_message_table_entry {
 extern struct vmbus_channel_message_table_entry
 	channel_message_table[CHANNELMSG_COUNT];
 
+/* Free the message slot and signal end-of-message if required */
+static inline void vmbus_signal_eom(struct hv_message *msg)
+{
+	msg->header.message_type = HVMSG_NONE;
+
+	/*
+	 * Make sure the write to MessageType (ie set to
+	 * HVMSG_NONE) happens before we read the
+	 * MessagePending and EOMing. Otherwise, the EOMing
+	 * will not deliver any more messages since there is
+	 * no empty slot
+	 */
+	mb();
+
+	if (msg->header.message_flags.msg_pending) {
+		/*
+		 * This will cause message queue rescan to
+		 * possibly deliver another msg from the
+		 * hypervisor
+		 */
+		wrmsrl(HV_X64_MSR_EOM, 0);
+	}
+}
+
 /* General vmbus interface */
 
 struct hv_device *vmbus_device_create(const uuid_le *type,
@@ -645,6 +670,7 @@ int vmbus_post_msg(void *buffer, size_t buflen);
 void vmbus_set_event(struct vmbus_channel *channel);
 
 void vmbus_on_event(unsigned long data);
+void vmbus_on_msg_dpc(unsigned long data);
 
 int hv_kvp_init(struct hv_util_service *);
 void hv_kvp_deinit(void);
@@ -657,7 +683,7 @@ void hv_vss_onchannelcallback(void *);
 int hv_fcopy_init(struct hv_util_service *);
 void hv_fcopy_deinit(void);
 void hv_fcopy_onchannelcallback(void *);
-void vmbus_initiate_unload(void);
+void vmbus_initiate_unload(bool crash);
 
 static inline void hv_poll_channel(struct vmbus_channel *channel,
 				   void (*cb)(void *))

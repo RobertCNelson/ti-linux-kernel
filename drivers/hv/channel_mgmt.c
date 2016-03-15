@@ -605,7 +605,7 @@ static void vmbus_wait_for_unload(void)
 	bool unloaded = false;
 
 	while (1) {
-		if (msg->header.message_type == HVMSG_NONE) {
+		if (READ_ONCE(msg->header.message_type) == HVMSG_NONE) {
 			mdelay(10);
 			continue;
 		}
@@ -614,15 +614,7 @@ static void vmbus_wait_for_unload(void)
 		if (hdr->msgtype == CHANNELMSG_UNLOAD_RESPONSE)
 			unloaded = true;
 
-		msg->header.message_type = HVMSG_NONE;
-		/*
-		 * header.message_type needs to be written before we do
-		 * wrmsrl() below.
-		 */
-		mb();
-
-		if (msg->header.message_flags.msg_pending)
-			wrmsrl(HV_X64_MSR_EOM, 0);
+		vmbus_signal_eom(msg);
 
 		if (unloaded)
 			break;
@@ -641,7 +633,7 @@ static void vmbus_unload_response(struct vmbus_channel_message_header *hdr)
 	complete(&vmbus_connection.unload_event);
 }
 
-void vmbus_initiate_unload(void)
+void vmbus_initiate_unload(bool crash)
 {
 	struct vmbus_channel_message_header hdr;
 
@@ -658,7 +650,7 @@ void vmbus_initiate_unload(void)
 	 * vmbus_initiate_unload() is also called on crash and the crash can be
 	 * happening in an interrupt context, where scheduling is impossible.
 	 */
-	if (!in_interrupt())
+	if (!crash)
 		wait_for_completion(&vmbus_connection.unload_event);
 	else
 		vmbus_wait_for_unload();
