@@ -39,11 +39,16 @@ enum {
 	IOCB_CMD_FDSYNC = 3,
 	/* These two are experimental.
 	 * IOCB_CMD_PREADX = 4,
-	 * IOCB_CMD_POLL = 5,
 	 */
+	IOCB_CMD_POLL = 5,
 	IOCB_CMD_NOOP = 6,
 	IOCB_CMD_PREADV = 7,
 	IOCB_CMD_PWRITEV = 8,
+
+	IOCB_CMD_OPENAT = 9,
+	IOCB_CMD_UNLINKAT = 10,
+	IOCB_CMD_READAHEAD = 12,
+	IOCB_CMD_RENAMEAT = 13,
 };
 
 /*
@@ -103,6 +108,14 @@ struct iocb {
 	 */
 	__u32	aio_resfd;
 }; /* 64 bytes */
+
+struct renameat_info {
+	__s64	olddirfd;
+	__u64	oldpath;
+	__s64	newdirfd;
+	__u64	newpath;
+	__u64	flags;
+};
 
 #undef IFBIG
 #undef IFLITTLE

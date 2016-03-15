@@ -3125,6 +3125,12 @@ retry_lookup:
 		 * dropping this one anyway.
 		 */
 	}
+
+	if (nd->flags & LOOKUP_NONBLOCK) {
+		error = -EAGAIN;
+		goto out;
+	}
+		
 	inode_lock(dir->d_inode);
 	error = lookup_open(nd, &path, file, op, got_write, opened);
 	inode_unlock(dir->d_inode);
@@ -3405,10 +3411,12 @@ struct file *do_filp_open(int dfd, struct filename *pathname,
 
 	set_nameidata(&nd, dfd, pathname);
 	filp = path_openat(&nd, op, flags | LOOKUP_RCU);
-	if (unlikely(filp == ERR_PTR(-ECHILD)))
-		filp = path_openat(&nd, op, flags);
-	if (unlikely(filp == ERR_PTR(-ESTALE)))
-		filp = path_openat(&nd, op, flags | LOOKUP_REVAL);
+	if (!(op->lookup_flags & LOOKUP_RCU)) {
+		if (unlikely(filp == ERR_PTR(-ECHILD)))
+			filp = path_openat(&nd, op, flags);
+		if (unlikely(filp == ERR_PTR(-ESTALE)))
+			filp = path_openat(&nd, op, flags | LOOKUP_REVAL);
+	}
 	restore_nameidata();
 	return filp;
 }
@@ -3852,7 +3860,7 @@ EXPORT_SYMBOL(vfs_unlink);
  * writeout happening, and we don't want to prevent access to the directory
  * while waiting on the I/O.
  */
-static long do_unlinkat(int dfd, const char __user *pathname)
+long do_unlinkat(int dfd, const char __user *pathname)
 {
 	int error;
 	struct filename *name;

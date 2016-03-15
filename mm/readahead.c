@@ -150,12 +150,13 @@ out:
  */
 int __do_page_cache_readahead(struct address_space *mapping, struct file *filp,
 			pgoff_t offset, unsigned long nr_to_read,
-			unsigned long lookahead_size)
+			unsigned long lookahead_size, int report_present)
 {
 	struct inode *inode = mapping->host;
 	struct page *page;
 	unsigned long end_index;	/* The last page we want to read */
 	LIST_HEAD(page_pool);
+	int present = 0;
 	int page_idx;
 	int ret = 0;
 	loff_t isize = i_size_read(inode);
@@ -177,8 +178,10 @@ int __do_page_cache_readahead(struct address_space *mapping, struct file *filp,
 		rcu_read_lock();
 		page = radix_tree_lookup(&mapping->page_tree, page_offset);
 		rcu_read_unlock();
-		if (page && !radix_tree_exceptional_entry(page))
+		if (page && !radix_tree_exceptional_entry(page)) {
+			present++;
 			continue;
+		}
 
 		page = page_cache_alloc_readahead(mapping);
 		if (!page)
@@ -198,6 +201,8 @@ int __do_page_cache_readahead(struct address_space *mapping, struct file *filp,
 	if (ret)
 		read_pages(mapping, filp, &page_pool, ret);
 	BUG_ON(!list_empty(&page_pool));
+	if (report_present)
+		ret += present;
 out:
 	return ret;
 }
@@ -221,7 +226,7 @@ int force_page_cache_readahead(struct address_space *mapping, struct file *filp,
 		if (this_chunk > nr_to_read)
 			this_chunk = nr_to_read;
 		err = __do_page_cache_readahead(mapping, filp,
-						offset, this_chunk, 0);
+						offset, this_chunk, 0, 0);
 		if (err < 0)
 			return err;
 
@@ -440,7 +445,7 @@ ondemand_readahead(struct address_space *mapping,
 	 * standalone, small random read
 	 * Read as is, and do not pollute the readahead state.
 	 */
-	return __do_page_cache_readahead(mapping, filp, offset, req_size, 0);
+	return __do_page_cache_readahead(mapping, filp, offset, req_size, 0, 0);
 
 initial_readahead:
 	ra->start = offset;
