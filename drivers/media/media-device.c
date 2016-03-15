@@ -707,11 +707,16 @@ void media_device_init(struct media_device *mdev)
 }
 EXPORT_SYMBOL_GPL(media_device_init);
 
-void media_device_cleanup(struct media_device *mdev)
+static void __media_device_cleanup(struct media_device *mdev)
 {
 	ida_destroy(&mdev->entity_internal_idx);
 	mdev->entity_internal_idx_max = 0;
 	media_entity_graph_walk_cleanup(&mdev->pm_count_walk);
+}
+
+void media_device_cleanup(struct media_device *mdev)
+{
+	__media_device_cleanup(mdev);
 	mutex_destroy(&mdev->graph_mutex);
 }
 EXPORT_SYMBOL_GPL(media_device_cleanup);
@@ -720,6 +725,9 @@ int __must_check __media_device_register(struct media_device *mdev,
 					 struct module *owner)
 {
 	int ret;
+
+	/* Check if mdev was ever registered at all */
+	mutex_lock(&mdev->graph_mutex);
 
 	/* Register the device node. */
 	mdev->devnode.fops = &media_device_fops;
@@ -731,17 +739,19 @@ int __must_check __media_device_register(struct media_device *mdev,
 
 	ret = media_devnode_register(&mdev->devnode, owner);
 	if (ret < 0)
-		return ret;
+		goto err;
 
 	ret = device_create_file(&mdev->devnode.dev, &dev_attr_model);
 	if (ret < 0) {
 		media_devnode_unregister(&mdev->devnode);
-		return ret;
+		goto err;
 	}
 
 	dev_dbg(mdev->dev, "Media device registered\n");
 
-	return 0;
+err:
+	mutex_unlock(&mdev->graph_mutex);
+	return ret;
 }
 EXPORT_SYMBOL_GPL(__media_device_register);
 
@@ -773,23 +783,12 @@ void media_device_unregister_entity_notify(struct media_device *mdev,
 }
 EXPORT_SYMBOL_GPL(media_device_unregister_entity_notify);
 
-void media_device_unregister(struct media_device *mdev)
+static void __media_device_unregister(struct media_device *mdev)
 {
 	struct media_entity *entity;
 	struct media_entity *next;
 	struct media_interface *intf, *tmp_intf;
 	struct media_entity_notify *notify, *nextp;
-
-	if (mdev == NULL)
-		return;
-
-	mutex_lock(&mdev->graph_mutex);
-
-	/* Check if mdev was ever registered at all */
-	if (!media_devnode_is_registered(&mdev->devnode)) {
-		mutex_unlock(&mdev->graph_mutex);
-		return;
-	}
 
 	/* Remove all entities from the media device */
 	list_for_each_entry_safe(entity, next, &mdev->entities, graph_obj.list)
@@ -807,12 +806,23 @@ void media_device_unregister(struct media_device *mdev)
 		kfree(intf);
 	}
 
-	mutex_unlock(&mdev->graph_mutex);
-
-	device_remove_file(&mdev->devnode.dev, &dev_attr_model);
-	media_devnode_unregister(&mdev->devnode);
+	/* Check if mdev devnode was registered */
+	if (media_devnode_is_registered(&mdev->devnode)) {
+		device_remove_file(&mdev->devnode.dev, &dev_attr_model);
+		media_devnode_unregister(&mdev->devnode);
+	}
 
 	dev_dbg(mdev->dev, "Media device unregistered\n");
+}
+
+void media_device_unregister(struct media_device *mdev)
+{
+	if (mdev == NULL)
+		return;
+
+	mutex_lock(&mdev->graph_mutex);
+	__media_device_unregister(mdev);
+	mutex_unlock(&mdev->graph_mutex);
 }
 EXPORT_SYMBOL_GPL(media_device_unregister);
 
@@ -820,25 +830,74 @@ static void media_device_release_devres(struct device *dev, void *res)
 {
 }
 
+static void do_media_device_unregister_devres(struct kref *kref)
+{
+	struct media_device_devres *mdev_devres;
+	struct media_device *mdev;
+	int ret;
+
+	mdev_devres = container_of(kref, struct media_device_devres, kref);
+
+	if (!mdev_devres)
+		return;
+
+	mdev = &mdev_devres->mdev;
+
+	mutex_lock(&mdev->graph_mutex);
+	__media_device_unregister(mdev);
+	__media_device_cleanup(mdev);
+	mutex_unlock(&mdev->graph_mutex);
+	mutex_destroy(&mdev->graph_mutex);
+
+	ret = devres_destroy(mdev->dev, media_device_release_devres,
+			     NULL, NULL);
+	pr_debug("%s: devres_destroy() returned %d\n", __func__, ret);
+}
+
+void media_device_unregister_devres(struct media_device *mdev)
+{
+	struct media_device_devres *mdev_devres;
+
+	mdev_devres = container_of(mdev, struct media_device_devres, mdev);
+	kref_put(&mdev_devres->kref, do_media_device_unregister_devres);
+}
+EXPORT_SYMBOL_GPL(media_device_unregister_devres);
+
 struct media_device *media_device_get_devres(struct device *dev)
 {
-	struct media_device *mdev;
+	struct media_device_devres *mdev_devres, *ptr;
 
-	mdev = devres_find(dev, media_device_release_devres, NULL, NULL);
-	if (mdev)
-		return mdev;
+	mdev_devres = devres_find(dev, media_device_release_devres, NULL, NULL);
+	if (mdev_devres) {
+		kref_get(&mdev_devres->kref);
+		return &mdev_devres->mdev;
+	}
 
-	mdev = devres_alloc(media_device_release_devres,
-				sizeof(struct media_device), GFP_KERNEL);
-	if (!mdev)
+	mdev_devres = devres_alloc(media_device_release_devres,
+				   sizeof(struct media_device_devres),
+				   GFP_KERNEL);
+	if (!mdev_devres)
 		return NULL;
-	return devres_get(dev, mdev, NULL, NULL);
+
+	ptr = devres_get(dev, mdev_devres, NULL, NULL);
+	if (ptr)
+		kref_init(&ptr->kref);
+	else
+		devres_free(mdev_devres);
+
+	return &ptr->mdev;
 }
 EXPORT_SYMBOL_GPL(media_device_get_devres);
 
 struct media_device *media_device_find_devres(struct device *dev)
 {
-	return devres_find(dev, media_device_release_devres, NULL, NULL);
+	struct media_device_devres *mdev_devres;
+
+	mdev_devres = devres_find(dev, media_device_release_devres, NULL, NULL);
+	if (!mdev_devres)
+		return NULL;
+
+	return &mdev_devres->mdev;
 }
 EXPORT_SYMBOL_GPL(media_device_find_devres);
 
