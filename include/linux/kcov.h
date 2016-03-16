@@ -10,6 +10,14 @@ struct task_struct;
 void kcov_task_init(struct task_struct *t);
 void kcov_task_exit(struct task_struct *t);
 
+enum kcov_mode {
+	/*
+	 * Tracing coverage collection mode.
+	 * Covered PCs are collected in a per-task buffer.
+	 */
+	KCOV_MODE_TRACE = 1,
+};
+
 #else
 
 static inline void kcov_task_init(struct task_struct *t) {}
