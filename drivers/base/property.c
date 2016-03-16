@@ -665,6 +665,8 @@ int fwnode_property_match_string(struct fwnode_handle *fwnode,
 		goto out;
 
 	ret = match_string(values, nval, string);
+	if (ret < 0)
+		ret = -ENODATA;
 out:
 	kfree(values);
 	return ret;
