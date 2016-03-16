@@ -263,19 +263,11 @@ int media_snd_device_create(struct snd_usb_audio *chip,
 	mdev = media_device_get_devres(&usbdev->dev);
 	if (!mdev)
 		return -ENOMEM;
-	if (!mdev->dev) {
-		/* register media device */
-		mdev->dev = &usbdev->dev;
-		if (usbdev->product)
-			strlcpy(mdev->model, usbdev->product,
-				sizeof(mdev->model));
-		if (usbdev->serial)
-			strlcpy(mdev->serial, usbdev->serial,
-				sizeof(mdev->serial));
-		strcpy(mdev->bus_info, usbdev->devpath);
-		mdev->hw_revision = le16_to_cpu(usbdev->descriptor.bcdDevice);
-		media_device_init(mdev);
-	}
+
+	/* Initialize media device */
+	if (!mdev->dev)
+		media_device_usb_init(mdev, usbdev, NULL);
+
 	if (!media_devnode_is_registered(&mdev->devnode)) {
 		ret = media_device_register(mdev);
 		if (ret) {
