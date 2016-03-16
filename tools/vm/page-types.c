@@ -170,7 +170,7 @@ static int		opt_list;	/* list pages (in ranges) */
 static int		opt_no_summary;	/* don't show summary */
 static pid_t		opt_pid;	/* process to walk */
 const char *		opt_file;	/* file or directory path */
-static int64_t		opt_cgroup = -1;/* cgroup inode */
+static uint64_t		opt_cgroup;	/* cgroup inode */
 static int		opt_list_cgroup;/* list page cgroup */
 
 #define MAX_ADDR_RANGES	1024
@@ -604,7 +604,7 @@ static void add_page(unsigned long voffset, unsigned long offset,
 	if (!bit_mask_ok(flags))
 		return;
 
-	if (opt_cgroup >= 0 && cgroup != (uint64_t)opt_cgroup)
+	if (opt_cgroup && cgroup != (uint64_t)opt_cgroup)
 		return;
 
 	if (opt_hwpoison)
@@ -659,10 +659,13 @@ static void walk_swap(unsigned long voffset, uint64_t pme)
 	if (!bit_mask_ok(flags))
 		return;
 
+	if (opt_cgroup)
+		return;
+
 	if (opt_list == 1)
-		show_page_range(voffset, pagemap_swap_offset(pme), 1, flags);
+		show_page_range(voffset, pagemap_swap_offset(pme), 1, flags, 0);
 	else if (opt_list == 2)
-		show_page(voffset, pagemap_swap_offset(pme), flags);
+		show_page(voffset, pagemap_swap_offset(pme), flags, 0);
 
 	nr_pages[hash_slot(flags)]++;
 	total_pages++;
@@ -1240,7 +1243,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	if (opt_cgroup >= 0 || opt_list_cgroup)
+	if (opt_cgroup || opt_list_cgroup)
 		kpagecgroup_fd = checked_open(PROC_KPAGECGROUP, O_RDONLY);
 
 	if (opt_list && opt_pid)
