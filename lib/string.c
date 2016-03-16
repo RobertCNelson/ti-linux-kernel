@@ -637,7 +637,7 @@ EXPORT_SYMBOL(sysfs_streq);
  * @string:	string to match with
  *
  * Return:
- * index of a @string in the @array if matches, or %-ENODATA otherwise.
+ * index of a @string in the @array if matches, or %-EINVAL otherwise.
  */
 int match_string(const char * const *array, size_t n, const char *string)
 {
@@ -652,7 +652,7 @@ int match_string(const char * const *array, size_t n, const char *string)
 			return index;
 	}
 
-	return -ENODATA;
+	return -EINVAL;
 }
 EXPORT_SYMBOL(match_string);
 
