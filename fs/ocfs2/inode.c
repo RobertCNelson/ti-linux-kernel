@@ -425,7 +425,7 @@ static int ocfs2_read_locked_inode(struct inode *inode,
 	struct ocfs2_super *osb;
 	struct ocfs2_dinode *fe;
 	struct buffer_head *bh = NULL;
-	int status, can_lock;
+	int status, can_lock, lock_level = 0;
 	u32 generation = 0;
 
 	status = -EINVAL;
@@ -493,7 +493,7 @@ static int ocfs2_read_locked_inode(struct inode *inode,
 			mlog_errno(status);
 			return status;
 		}
-		status = ocfs2_inode_lock(inode, NULL, 0);
+		status = ocfs2_inode_lock(inode, NULL, lock_level);
 		if (status) {
 			make_bad_inode(inode);
 			mlog_errno(status);
@@ -563,7 +563,12 @@ static int ocfs2_read_locked_inode(struct inode *inode,
 
 	BUG_ON(args->fi_blkno != le64_to_cpu(fe->i_blkno));
 
-	if (buffer_dirty(bh)) {
+	if (buffer_dirty(bh) && !buffer_jbd(bh)) {
+		if (can_lock) {
+			ocfs2_inode_unlock(inode, lock_level);
+			lock_level = 1;
+			ocfs2_inode_lock(inode, NULL, lock_level);
+		}
 		status = ocfs2_write_block(osb, bh, INODE_CACHE(inode));
 		if (status < 0) {
 			mlog_errno(status);
@@ -575,7 +580,7 @@ static int ocfs2_read_locked_inode(struct inode *inode,
 
 bail:
 	if (can_lock)
-		ocfs2_inode_unlock(inode, 0);
+		ocfs2_inode_unlock(inode, lock_level);
 
 	if (status < 0)
 		make_bad_inode(inode);
@@ -1450,13 +1455,18 @@ static int ocfs2_filecheck_validate_inode_block(struct super_block *sb,
 
 	BUG_ON(!buffer_uptodate(bh));
 
+	/*
+	 * Call ocfs2_validate_meta_ecc() first since it has ecc repair
+	 * function, but we should not return error immediately when ecc
+	 * validation fails, because the reason is quite likely the invalid
+	 * inode number inputed.
+	 */
 	rc = ocfs2_validate_meta_ecc(sb, bh->b_data, &di->i_check);
 	if (rc) {
 		mlog(ML_ERROR,
 		     "Filecheck: checksum failed for dinode %llu\n",
 		     (unsigned long long)bh->b_blocknr);
 		rc = -OCFS2_FILECHECK_ERR_BLOCKECC;
-		goto bail;
 	}
 
 	if (!OCFS2_IS_VALID_DINODE(di)) {
@@ -1465,7 +1475,8 @@ static int ocfs2_filecheck_validate_inode_block(struct super_block *sb,
 		     (unsigned long long)bh->b_blocknr, 7, di->i_signature);
 		rc = -OCFS2_FILECHECK_ERR_INVALIDINO;
 		goto bail;
-	}
+	} else if (rc)
+		goto bail;
 
 	if (le64_to_cpu(di->i_blkno) != bh->b_blocknr) {
 		mlog(ML_ERROR,
@@ -1518,6 +1529,14 @@ static int ocfs2_filecheck_repair_inode_block(struct super_block *sb,
 		     "on readonly filesystem\n",
 		     (unsigned long long)bh->b_blocknr);
 		return -OCFS2_FILECHECK_ERR_READONLY;
+	}
+
+	if (buffer_jbd(bh)) {
+		mlog(ML_ERROR,
+		     "Filecheck: cannot repair dinode #%llu, "
+		     "its buffer is in jbd\n",
+		     (unsigned long long)bh->b_blocknr);
+		return -OCFS2_FILECHECK_ERR_INJBD;
 	}
 
 	if (!OCFS2_IS_VALID_DINODE(di)) {
