@@ -254,11 +254,12 @@ static inline void *get_freepointer_safe(struct kmem_cache *s, void *object)
 {
 	void *p;
 
-#ifdef CONFIG_DEBUG_PAGEALLOC
-	probe_kernel_read(&p, (void **)(object + s->offset), sizeof(p));
-#else
-	p = get_freepointer(s, object);
-#endif
+	if (debug_pagealloc_enabled()) {
+		probe_kernel_read(&p,
+			(void **)(object + s->offset), sizeof(p));
+	} else
+		p = get_freepointer(s, object);
+
 	return p;
 }
 
