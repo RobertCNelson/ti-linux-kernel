@@ -256,6 +256,7 @@ static inline void *get_freepointer_safe(struct kmem_cache *s, void *object)
 
 	if (!debug_pagealloc_enabled())
 		return get_freepointer(s, object);
+
 	probe_kernel_read(&p, (void **)(object + s->offset), sizeof(p));
 	return p;
 }
