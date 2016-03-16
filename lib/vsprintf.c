@@ -2721,13 +2721,15 @@ int vsscanf(const char *buf, const char *fmt, va_list args)
 		/*
 		 * Warning: This implementation of the '[' conversion specifier
 		 * deviates from its glibc counterpart in the following ways:
-		 * (1) It does NOT support ranges i.e. '-' is NOT a special character
+		 * (1) It does NOT support ranges i.e. '-' is NOT a special
+		 *     character
 		 * (2) It cannot match the closing bracket ']' itself
 		 * (3) A field width is required
 		 * (4) '%*[' (discard matching input) is currently not supported
 		 *
 		 * Example usage:
-		 * ret = sscanf("00:0a:95","%2[^:]:%2[^:]:%2[^:]", buf1, buf2, buf3);
+		 * ret = sscanf("00:0a:95","%2[^:]:%2[^:]:%2[^:]",
+		 *		buf1, buf2, buf3);
 		 * if (ret < 3)
 		 *    // etc..
 		 */
