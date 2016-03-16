@@ -86,10 +86,9 @@ config DEBUG_PAGE_REF
 	depends on DEBUG_KERNEL
 	depends on TRACEPOINTS
 	---help---
-	  This is the feature to add tracepoint for tracking down page reference
-	  manipulation. This tracking is useful to diagnosis functional failure
-	  due to migration failure caused by page reference mismatch. Be
-	  careful to turn on this feature because it could bloat some kernel
-	  text. In my configuration, it bloats 30 KB. Although kernel text will
-	  be bloated, there would be no runtime performance overhead if
-	  tracepoint isn't enabled thanks to jump label.
+	  This is a feature to add tracepoint for tracking down page reference
+	  manipulation. This tracking is useful to diagnose functional failure
+	  due to migration failures caused by page reference mismatches.  Be
+	  careful when enabling this feature because it adds about 30 KB to the
+	  kernel code.  However the runtime performance overhead is virtually
+	  nil until the tracepoints are actually enabled.
