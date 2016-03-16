@@ -3007,7 +3007,7 @@ out:
 }
 
 void split_huge_pmd_address(struct vm_area_struct *vma, unsigned long address,
-		bool freeze)
+		bool freeze, struct page *page)
 {
 	pgd_t *pgd;
 	pud_t *pud;
@@ -3024,6 +3024,15 @@ void split_huge_pmd_address(struct vm_area_struct *vma, unsigned long address,
 	pmd = pmd_offset(pud, address);
 	if (!pmd_present(*pmd) || (!pmd_trans_huge(*pmd) && !pmd_devmap(*pmd)))
 		return;
+
+	/*
+	 * If caller asks to setup a migration entries, we need a page to check
+	 * pmd against. Otherwise we can end up replacing wrong page.
+	 */
+	VM_BUG_ON(freeze && !page);
+	if (page && page != pmd_page(*pmd))
+		return;
+
 	/*
 	 * Caller holds the mmap_sem write mode, so a huge pmd cannot
 	 * materialize from under us.
@@ -3044,7 +3053,7 @@ void vma_adjust_trans_huge(struct vm_area_struct *vma,
 	if (start & ~HPAGE_PMD_MASK &&
 	    (start & HPAGE_PMD_MASK) >= vma->vm_start &&
 	    (start & HPAGE_PMD_MASK) + HPAGE_PMD_SIZE <= vma->vm_end)
-		split_huge_pmd_address(vma, start, false);
+		split_huge_pmd_address(vma, start, false, NULL);
 
 	/*
 	 * If the new end address isn't hpage aligned and it could
@@ -3054,7 +3063,7 @@ void vma_adjust_trans_huge(struct vm_area_struct *vma,
 	if (end & ~HPAGE_PMD_MASK &&
 	    (end & HPAGE_PMD_MASK) >= vma->vm_start &&
 	    (end & HPAGE_PMD_MASK) + HPAGE_PMD_SIZE <= vma->vm_end)
-		split_huge_pmd_address(vma, end, false);
+		split_huge_pmd_address(vma, end, false, NULL);
 
 	/*
 	 * If we're also updating the vma->vm_next->vm_start, if the new
@@ -3068,7 +3077,7 @@ void vma_adjust_trans_huge(struct vm_area_struct *vma,
 		if (nstart & ~HPAGE_PMD_MASK &&
 		    (nstart & HPAGE_PMD_MASK) >= next->vm_start &&
 		    (nstart & HPAGE_PMD_MASK) + HPAGE_PMD_SIZE <= next->vm_end)
-			split_huge_pmd_address(next, nstart, false);
+			split_huge_pmd_address(next, nstart, false, NULL);
 	}
 }
 

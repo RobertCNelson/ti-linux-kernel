@@ -109,7 +109,7 @@ void __split_huge_pmd(struct vm_area_struct *vma, pmd_t *pmd,
 
 
 void split_huge_pmd_address(struct vm_area_struct *vma, unsigned long address,
-		bool freeze);
+		bool freeze, struct page *page);
 
 #if HPAGE_PMD_ORDER >= MAX_ORDER
 #error "hugepages can't be allocated by the buddy allocator"
@@ -180,7 +180,7 @@ static inline void deferred_split_huge_page(struct page *page) {}
 	do { } while (0)
 
 static inline void split_huge_pmd_address(struct vm_area_struct *vma,
-		unsigned long address, bool freeze) {}
+		unsigned long address, bool freeze, struct page *page) {}
 
 static inline int hugepage_madvise(struct vm_area_struct *vma,
 				   unsigned long *vm_flags, int advice)
