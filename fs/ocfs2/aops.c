@@ -1219,6 +1219,9 @@ struct ocfs2_write_ctxt {
 	/* First cluster allocated in a nonsparse extend */
 	u32				w_first_new_cpos;
 
+	/* Type of caller. Must be one of buffer, mmap, direct.  */
+	ocfs2_write_type_t		w_type;
+
 	struct ocfs2_write_cluster_desc	w_desc[OCFS2_MAX_CLUSTERS_PER_PAGE];
 
 	/*
@@ -1314,7 +1317,8 @@ static void ocfs2_free_write_ctxt(struct ocfs2_write_ctxt *wc)
 
 static int ocfs2_alloc_write_ctxt(struct ocfs2_write_ctxt **wcp,
 				  struct ocfs2_super *osb, loff_t pos,
-				  unsigned len, struct buffer_head *di_bh)
+				  unsigned len, ocfs2_write_type_t type,
+				  struct buffer_head *di_bh)
 {
 	u32 cend;
 	struct ocfs2_write_ctxt *wc;
@@ -1329,6 +1333,7 @@ static int ocfs2_alloc_write_ctxt(struct ocfs2_write_ctxt **wcp,
 	wc->w_clen = cend - wc->w_cpos + 1;
 	get_bh(di_bh);
 	wc->w_di_bh = di_bh;
+	wc->w_type = type;
 
 	if (unlikely(PAGE_CACHE_SHIFT > osb->s_clustersize_bits))
 		wc->w_large_pages = 1;
@@ -2072,9 +2077,8 @@ out:
 	return ret;
 }
 
-int ocfs2_write_begin_nolock(struct file *filp,
-			     struct address_space *mapping,
-			     loff_t pos, unsigned len, unsigned flags,
+int ocfs2_write_begin_nolock(struct address_space *mapping,
+			     loff_t pos, unsigned len, ocfs2_write_type_t type,
 			     struct page **pagep, void **fsdata,
 			     struct buffer_head *di_bh, struct page *mmap_page)
 {
@@ -2091,7 +2095,7 @@ int ocfs2_write_begin_nolock(struct file *filp,
 	int try_free = 1, ret1;
 
 try_again:
-	ret = ocfs2_alloc_write_ctxt(&wc, osb, pos, len, di_bh);
+	ret = ocfs2_alloc_write_ctxt(&wc, osb, pos, len, type, di_bh);
 	if (ret) {
 		mlog_errno(ret);
 		return ret;
@@ -2148,7 +2152,7 @@ try_again:
 			(unsigned long long)OCFS2_I(inode)->ip_blkno,
 			(long long)i_size_read(inode),
 			le32_to_cpu(di->i_clusters),
-			pos, len, flags, mmap_page,
+			pos, len, type, mmap_page,
 			clusters_to_alloc, extents_to_split);
 
 	/*
@@ -2318,8 +2322,8 @@ static int ocfs2_write_begin(struct file *file, struct address_space *mapping,
 	 */
 	down_write(&OCFS2_I(inode)->ip_alloc_sem);
 
-	ret = ocfs2_write_begin_nolock(file, mapping, pos, len, flags, pagep,
-				       fsdata, di_bh, NULL);
+	ret = ocfs2_write_begin_nolock(mapping, pos, len, OCFS2_WRITE_BUFFER,
+				       pagep, fsdata, di_bh, NULL);
 	if (ret) {
 		mlog_errno(ret);
 		goto out_fail;
