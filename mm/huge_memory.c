@@ -279,6 +279,8 @@ static ssize_t triple_flag_store(struct kobject *kobj,
 {
 	if (!memcmp("defer", buf,
 		    min(sizeof("defer")-1, count))) {
+		if (enabled == deferred)
+			return -EINVAL;
 		clear_bit(enabled, &transparent_hugepage_flags);
 		clear_bit(req_madv, &transparent_hugepage_flags);
 		set_bit(deferred, &transparent_hugepage_flags);
@@ -306,10 +308,9 @@ static ssize_t triple_flag_store(struct kobject *kobj,
 static ssize_t enabled_show(struct kobject *kobj,
 			    struct kobj_attribute *attr, char *buf)
 {
-	if (test_bit(TRANSPARENT_HUGEPAGE_FLAG, &transparent_hugepage_flags)) {
-		VM_BUG_ON(test_bit(TRANSPARENT_HUGEPAGE_REQ_MADV_FLAG, &transparent_hugepage_flags));
+	if (test_bit(TRANSPARENT_HUGEPAGE_FLAG, &transparent_hugepage_flags))
 		return sprintf(buf, "[always] madvise never\n");
-	} else if (test_bit(TRANSPARENT_HUGEPAGE_REQ_MADV_FLAG, &transparent_hugepage_flags))
+	else if (test_bit(TRANSPARENT_HUGEPAGE_REQ_MADV_FLAG, &transparent_hugepage_flags))
 		return sprintf(buf, "always [madvise] never\n");
 	else
 		return sprintf(buf, "always madvise [never]\n");
