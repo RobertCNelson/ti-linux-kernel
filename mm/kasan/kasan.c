@@ -414,6 +414,7 @@ void kasan_poison_object_data(struct kmem_cache *cache, void *object)
 #endif
 }
 
+#ifdef CONFIG_SLAB
 static inline int in_irqentry_text(unsigned long ptr)
 {
 	return (ptr >= (unsigned long)&__irqentry_text_start &&
@@ -457,13 +458,10 @@ static inline depot_stack_handle_t save_stack(gfp_t flags)
 
 static inline void set_track(struct kasan_track *track, gfp_t flags)
 {
-	track->cpu = raw_smp_processor_id();
 	track->pid = current->pid;
-	track->when = jiffies;
 	track->stack = save_stack(flags);
 }
 
-#ifdef CONFIG_SLAB
 struct kasan_alloc_meta *get_alloc_info(struct kmem_cache *cache,
 					const void *object)
 {
