@@ -11,6 +11,8 @@ void kcov_task_init(struct task_struct *t);
 void kcov_task_exit(struct task_struct *t);
 
 enum kcov_mode {
+	/* Coverage collection is not enabled yet. */
+	KCOV_MODE_DISABLED = 0,
 	/*
 	 * Tracing coverage collection mode.
 	 * Covered PCs are collected in a per-task buffer.
