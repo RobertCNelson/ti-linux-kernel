@@ -178,7 +178,7 @@ struct mport_dev {
 	struct list_head		portwrites;
 	spinlock_t			pw_lock;
 	struct list_head	mappings;
-#ifdef CONFIG_DMA_ENGINE
+#ifdef CONFIG_RAPIDIO_DMA_ENGINE
 	struct dma_chan *dma_chan;
 	struct kref	dma_ref;
 	struct completion comp;
@@ -209,7 +209,7 @@ struct mport_cdev_priv {
 	wait_queue_head_t       event_rx_wait;
 	spinlock_t              fifo_lock;
 	unsigned int            event_mask; /* RIO_DOORBELL, RIO_PORTWRITE */
-#ifdef CONFIG_DMA_ENGINE
+#ifdef CONFIG_RAPIDIO_DMA_ENGINE
 	struct dma_chan		*dmach;
 	struct list_head	async_list;
 	struct list_head	pend_list;
@@ -532,7 +532,7 @@ static int maint_comptag_set(struct mport_cdev_priv *priv, void __user *arg)
 	return 0;
 }
 
-#ifdef CONFIG_DMA_ENGINE
+#ifdef CONFIG_RAPIDIO_DMA_ENGINE
 
 struct mport_dma_req {
 	struct list_head node;
@@ -1127,19 +1127,6 @@ err_tmo:
 	spin_unlock(&priv->req_lock);
 	return ret;
 }
-#else /* CONFIG_DMA_ENGINE */
-static int rio_mport_transfer_ioctl(struct file *filp, void *arg)
-{
-	return -ENODEV;
-}
-
-static int rio_mport_wait_for_async_dma(struct file *filp, void __user *arg)
-{
-	return -ENODEV;
-}
-#endif /* CONFIG_DMA_ENGINE */
-
-#ifdef CONFIG_RAPIDIO_DMA_ENGINE
 
 static int rio_mport_create_dma_mapping(struct mport_dev *md, struct file *filp,
 			uint64_t size, struct rio_mport_mapping **mapping)
@@ -1228,6 +1215,16 @@ static int rio_mport_free_dma(struct file *filp, void __user *arg)
 	return 0;
 }
 #else
+static int rio_mport_transfer_ioctl(struct file *filp, void *arg)
+{
+	return -ENODEV;
+}
+
+static int rio_mport_wait_for_async_dma(struct file *filp, void __user *arg)
+{
+	return -ENODEV;
+}
+
 static int rio_mport_alloc_dma(struct file *filp, void __user *arg)
 {
 	return -ENODEV;
@@ -1237,7 +1234,6 @@ static int rio_mport_free_dma(struct file *filp, void __user *arg)
 {
 	return -ENODEV;
 }
-
 #endif /* CONFIG_RAPIDIO_DMA_ENGINE */
 
 /*
@@ -1956,7 +1952,7 @@ static int mport_cdev_open(struct inode *inode, struct file *filp)
 		goto err_fifo;
 	}
 
-#ifdef CONFIG_DMA_ENGINE
+#ifdef CONFIG_RAPIDIO_DMA_ENGINE
 	INIT_LIST_HEAD(&priv->async_list);
 	INIT_LIST_HEAD(&priv->pend_list);
 	spin_lock_init(&priv->req_lock);
