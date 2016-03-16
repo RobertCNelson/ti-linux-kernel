@@ -119,8 +119,7 @@ static inline bool init_task_stack_addr(const void *addr)
 #ifdef CONFIG_SLAB
 static void print_track(struct kasan_track *track)
 {
-	pr_err("PID = %u, CPU = %u, timestamp = %lu\n", track->pid,
-	       track->cpu, (unsigned long)track->when);
+	pr_err("PID = %u\n", track->pid);
 	if (track->stack) {
 		struct stack_trace trace;
 
