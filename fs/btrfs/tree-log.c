@@ -26,6 +26,7 @@
 #include "print-tree.h"
 #include "backref.h"
 #include "hash.h"
+#include "compression.h"
 
 /* magic values for the inode_only field in btrfs_log_inode:
  *
@@ -1045,7 +1046,7 @@ again:
 
 		/*
 		 * NOTE: we have searched root tree and checked the
-		 * coresponding ref, it does not need to check again.
+		 * corresponding ref, it does not need to check again.
 		 */
 		*search_done = 1;
 	}
