@@ -192,6 +192,17 @@ SECTIONS
 	:init
 #endif
 
+	/*
+	 * Section for code used exclusively before alternatives are run. All
+	 * references to such code must be patched out by alternatives, normally
+	 * by using X86_FEATURE_ALWAYS CPU feature bit.
+	 *
+	 * See static_cpu_has() for an example.
+	 */
+	.altinstr_aux : AT(ADDR(.altinstr_aux) - LOAD_OFFSET) {
+		*(.altinstr_aux)
+	}
+
 	INIT_DATA_SECTION(16)
 
 	.x86_cpu_dev.init : AT(ADDR(.x86_cpu_dev.init) - LOAD_OFFSET) {
@@ -322,6 +333,7 @@ SECTIONS
 		__brk_limit = .;
 	}
 
+	. = ALIGN(PAGE_SIZE);
 	_end = .;
 
         STABS_DEBUG
@@ -329,7 +341,10 @@ SECTIONS
 
 	/* Sections to be discarded */
 	DISCARDS
-	/DISCARD/ : { *(.eh_frame) }
+	/DISCARD/ : {
+		*(.eh_frame)
+		*(__func_stack_frame_non_standard)
+	}
 }
 
 

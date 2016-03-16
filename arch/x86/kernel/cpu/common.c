@@ -162,6 +162,22 @@ static int __init x86_mpx_setup(char *s)
 }
 __setup("nompx", x86_mpx_setup);
 
+static int __init x86_noinvpcid_setup(char *s)
+{
+	/* noinvpcid doesn't accept parameters */
+	if (s)
+		return -EINVAL;
+
+	/* do not emit a message if the feature is not present */
+	if (!boot_cpu_has(X86_FEATURE_INVPCID))
+		return 0;
+
+	setup_clear_cpu_cap(X86_FEATURE_INVPCID);
+	pr_info("noinvpcid: INVPCID feature disabled\n");
+	return 0;
+}
+early_param("noinvpcid", x86_noinvpcid_setup);
+
 #ifdef CONFIG_X86_32
 static int cachesize_override = -1;
 static int disable_x86_serial_nr = 1;
@@ -286,6 +302,48 @@ static __always_inline void setup_smap(struct cpuinfo_x86 *c)
 #endif
 	}
 }
+
+/*
+ * Protection Keys are not available in 32-bit mode.
+ */
+static bool pku_disabled;
+
+static __always_inline void setup_pku(struct cpuinfo_x86 *c)
+{
+	if (!cpu_has(c, X86_FEATURE_PKU))
+		return;
+	if (pku_disabled)
+		return;
+
+	cr4_set_bits(X86_CR4_PKE);
+	/*
+	 * Seting X86_CR4_PKE will cause the X86_FEATURE_OSPKE
+	 * cpuid bit to be set.  We need to ensure that we
+	 * update that bit in this CPU's "cpu_info".
+	 */
+	get_cpu_cap(c);
+}
+
+#ifdef CONFIG_X86_INTEL_MEMORY_PROTECTION_KEYS
+static __init int setup_disable_pku(char *arg)
+{
+	/*
+	 * Do not clear the X86_FEATURE_PKU bit.  All of the
+	 * runtime checks are against OSPKE so clearing the
+	 * bit does nothing.
+	 *
+	 * This way, we will see "pku" in cpuinfo, but not
+	 * "ospke", which is exactly what we want.  It shows
+	 * that the CPU has PKU, but the OS has not enabled it.
+	 * This happens to be exactly how a system would look
+	 * if we disabled the config option.
+	 */
+	pr_info("x86: 'nopku' specified, disabling Memory Protection Keys\n");
+	pku_disabled = true;
+	return 1;
+}
+__setup("nopku", setup_disable_pku);
+#endif /* CONFIG_X86_64 */
 
 /*
  * Some CPU features depend on higher CPUID levels, which may not always
@@ -609,6 +667,7 @@ void get_cpu_cap(struct cpuinfo_x86 *c)
 		c->x86_capability[CPUID_7_0_EBX] = ebx;
 
 		c->x86_capability[CPUID_6_EAX] = cpuid_eax(0x00000006);
+		c->x86_capability[CPUID_7_ECX] = ecx;
 	}
 
 	/* Extended state features: level 0x0000000d */
@@ -801,6 +860,31 @@ static void detect_nopl(struct cpuinfo_x86 *c)
 #else
 	set_cpu_cap(c, X86_FEATURE_NOPL);
 #endif
+
+	/*
+	 * ESPFIX is a strange bug.  All real CPUs have it.  Paravirt
+	 * systems that run Linux at CPL > 0 may or may not have the
+	 * issue, but, even if they have the issue, there's absolutely
+	 * nothing we can do about it because we can't use the real IRET
+	 * instruction.
+	 *
+	 * NB: For the time being, only 32-bit kernels support
+	 * X86_BUG_ESPFIX as such.  64-bit kernels directly choose
+	 * whether to apply espfix using paravirt hooks.  If any
+	 * non-paravirt system ever shows up that does *not* have the
+	 * ESPFIX issue, we can change this.
+	 */
+#ifdef CONFIG_X86_32
+#ifdef CONFIG_PARAVIRT
+	do {
+		extern void native_iret(void);
+		if (pv_cpu_ops.iret == native_iret)
+			set_cpu_bug(c, X86_BUG_ESPFIX);
+	} while (0);
+#else
+	set_cpu_bug(c, X86_BUG_ESPFIX);
+#endif
+#endif
 }
 
 static void generic_identify(struct cpuinfo_x86 *c)
@@ -884,7 +968,7 @@ static void identify_cpu(struct cpuinfo_x86 *c)
 	if (this_cpu->c_identify)
 		this_cpu->c_identify(c);
 
-	/* Clear/Set all flags overriden by options, after probe */
+	/* Clear/Set all flags overridden by options, after probe */
 	for (i = 0; i < NCAPINTS; i++) {
 		c->x86_capability[i] &= ~cpu_caps_cleared[i];
 		c->x86_capability[i] |= cpu_caps_set[i];
@@ -941,9 +1025,10 @@ static void identify_cpu(struct cpuinfo_x86 *c)
 	init_hypervisor(c);
 	x86_init_rdrand(c);
 	x86_init_cache_qos(c);
+	setup_pku(c);
 
 	/*
-	 * Clear/Set all flags overriden by options, need do it
+	 * Clear/Set all flags overridden by options, need do it
 	 * before following smp all cpus cap AND.
 	 */
 	for (i = 0; i < NCAPINTS; i++) {
@@ -1474,20 +1559,6 @@ void cpu_init(void)
 	fpu__init_cpu();
 }
 #endif
-
-#ifdef CONFIG_X86_DEBUG_STATIC_CPU_HAS
-void warn_pre_alternatives(void)
-{
-	WARN(1, "You're using static_cpu_has before alternatives have run!\n");
-}
-EXPORT_SYMBOL_GPL(warn_pre_alternatives);
-#endif
-
-inline bool __static_cpu_has_safe(u16 bit)
-{
-	return boot_cpu_has(bit);
-}
-EXPORT_SYMBOL_GPL(__static_cpu_has_safe);
 
 static void bsp_resume(void)
 {

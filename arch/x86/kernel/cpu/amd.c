@@ -75,14 +75,17 @@ static inline int wrmsrl_amd_safe(unsigned msr, unsigned long long val)
  */
 
 extern __visible void vide(void);
-__asm__(".globl vide\n\t.align 4\nvide: ret");
+__asm__(".globl vide\n"
+	".type vide, @function\n"
+	".align 4\n"
+	"vide: ret\n");
 
 static void init_amd_k5(struct cpuinfo_x86 *c)
 {
 #ifdef CONFIG_X86_32
 /*
  * General Systems BIOSen alias the cpu frequency registers
- * of the Elan at 0x000df000. Unfortuantly, one of the Linux
+ * of the Elan at 0x000df000. Unfortunately, one of the Linux
  * drivers subsequently pokes it, and changes the CPU speed.
  * Workaround : Remove the unneeded alias.
  */
