@@ -59,6 +59,7 @@
 #include "props.h"
 #include "sysfs.h"
 #include "qgroup.h"
+#include "tree-log.h"
 
 #ifdef CONFIG_64BIT
 /* If we have a 32-bit userspace and 64-bit kernel, then the UAPI
@@ -2470,6 +2471,8 @@ static noinline int btrfs_ioctl_snap_destroy(struct file *file,
 	trans->block_rsv = &block_rsv;
 	trans->bytes_reserved = block_rsv.size;
 
+	btrfs_record_snapshot_destroy(trans, dir);
+
 	ret = btrfs_unlink_subvol(trans, root, dir,
 				dest->root_key.objectid,
 				dentry->d_name.name,
@@ -3060,6 +3063,9 @@ static int btrfs_extent_same(struct inode *src, u64 loff, u64 olen,
 		inode_lock(src);
 
 		ret = extent_same_check_offsets(src, loff, &len, olen);
+		if (ret)
+			goto out_unlock;
+		ret = extent_same_check_offsets(src, dst_loff, &len, olen);
 		if (ret)
 			goto out_unlock;
 
