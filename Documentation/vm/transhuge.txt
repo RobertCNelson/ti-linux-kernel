@@ -129,7 +129,7 @@ available in the near future. It's the responsibility of khugepaged
 to then install the THP pages later.
 
 "madvise" will enter direct reclaim like "always" but only for regions
-that are have used madvise(). This is the default behaviour.
+that are have used madvise(MADV_HUGEPAGE). This is the default behaviour.
 
 "never" should be self-explanatory.
 
