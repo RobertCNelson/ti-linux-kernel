@@ -19,7 +19,7 @@
  * Special Publication 800-38E and IEEE P1619/D16.
  */
 
-#include <linux/crypto.h>
+#include <crypto/skcipher.h>
 #include <linux/ecryptfs.h>
 #include <linux/pagemap.h>
 #include <linux/mempool.h>
@@ -150,14 +150,14 @@ static int do_page_crypto(struct inode *inode,
 			struct page *src_page, struct page *dest_page)
 {
 	u8 xts_tweak[FS_XTS_TWEAK_SIZE];
-	struct ablkcipher_request *req = NULL;
+	struct skcipher_request *req = NULL;
 	DECLARE_FS_COMPLETION_RESULT(ecr);
 	struct scatterlist dst, src;
 	struct fscrypt_info *ci = inode->i_crypt_info;
-	struct crypto_ablkcipher *tfm = ci->ci_ctfm;
+	struct crypto_skcipher *tfm = ci->ci_ctfm;
 	int res = 0;
 
-	req = ablkcipher_request_alloc(tfm, GFP_NOFS);
+	req = skcipher_request_alloc(tfm, GFP_NOFS);
 	if (!req) {
 		printk_ratelimited(KERN_ERR
 				"%s: crypto_request_alloc() failed\n",
@@ -165,7 +165,7 @@ static int do_page_crypto(struct inode *inode,
 		return -ENOMEM;
 	}
 
-	ablkcipher_request_set_callback(
+	skcipher_request_set_callback(
 		req, CRYPTO_TFM_REQ_MAY_BACKLOG | CRYPTO_TFM_REQ_MAY_SLEEP,
 		fscrypt_complete, &ecr);
 
@@ -178,21 +178,21 @@ static int do_page_crypto(struct inode *inode,
 	sg_set_page(&dst, dest_page, PAGE_CACHE_SIZE, 0);
 	sg_init_table(&src, 1);
 	sg_set_page(&src, src_page, PAGE_CACHE_SIZE, 0);
-	ablkcipher_request_set_crypt(req, &src, &dst, PAGE_CACHE_SIZE,
-					xts_tweak);
+	skcipher_request_set_crypt(req, &src, &dst, PAGE_CACHE_SIZE,
+				   xts_tweak);
 	if (rw == FS_DECRYPT)
-		res = crypto_ablkcipher_decrypt(req);
+		res = crypto_skcipher_decrypt(req);
 	else
-		res = crypto_ablkcipher_encrypt(req);
+		res = crypto_skcipher_encrypt(req);
 	if (res == -EINPROGRESS || res == -EBUSY) {
 		BUG_ON(req->base.data != &ecr);
 		wait_for_completion(&ecr.completion);
 		res = ecr.res;
 	}
-	ablkcipher_request_free(req);
+	skcipher_request_free(req);
 	if (res) {
 		printk_ratelimited(KERN_ERR
-			"%s: crypto_ablkcipher_encrypt() returned %d\n",
+			"%s: crypto_skcipher_encrypt() returned %d\n",
 			__func__, res);
 		return res;
 	}
