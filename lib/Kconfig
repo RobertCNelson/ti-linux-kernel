@@ -537,6 +537,6 @@ config ARCH_HAS_MMIO_FLUSH
 	bool
 
 config STACKDEPOT
-  bool
+	bool
 
 endmenu
