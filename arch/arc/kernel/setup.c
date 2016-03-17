@@ -357,11 +357,6 @@ static void arc_chk_core_config(void)
 		pr_warn("CONFIG_ARC_FPU_SAVE_RESTORE needed for working apps\n");
 	else if (!cpu->extn.fpu_dp && fpu_enabled)
 		panic("FPU non-existent, disable CONFIG_ARC_FPU_SAVE_RESTORE\n");
-
-	if (is_isa_arcv2() && IS_ENABLED(CONFIG_SMP) && cpu->isa.atomic &&
-	    IS_ENABLED(CONFIG_ARC_HAS_LLSC) &&
-	    !IS_ENABLED(CONFIG_ARC_STAR_9000923308))
-		panic("llock/scond livelock workaround missing\n");
 }
 
 /*
@@ -464,7 +459,7 @@ static int __init customize_machine(void)
 	 * Traverses flattened DeviceTree - registering platform devices
 	 * (if any) complete with their resources
 	 */
-	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
+	of_platform_default_populate(NULL, NULL, NULL);
 
 	if (machine_desc->init_machine)
 		machine_desc->init_machine();
