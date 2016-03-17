@@ -5,7 +5,7 @@
  *
  * Code which implements online file check.
  *
- * Copyright (C) 2015 Novell.  All rights reserved.
+ * Copyright (C) 2016 SuSE.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -44,6 +44,7 @@ static const char * const ocfs2_filecheck_errs[] = {
 	"FAILED",
 	"INPROGRESS",
 	"READONLY",
+	"INJBD",
 	"INVALIDINO",
 	"BLOCKECC",
 	"BLOCKNO",
@@ -86,8 +87,8 @@ struct ocfs2_filecheck_entry {
 	struct list_head fe_list;
 	unsigned long fe_ino;
 	unsigned int fe_type;
-	unsigned short fe_done:1;
-	unsigned short fe_status:15;
+	unsigned int fe_done:1;
+	unsigned int fe_status:31;
 };
 
 struct ocfs2_filecheck_args {
@@ -494,11 +495,11 @@ ocfs2_filecheck_done_entry(struct ocfs2_filecheck_sysfs_entry *ent,
 	spin_unlock(&ent->fs_fcheck->fc_lock);
 }
 
-static unsigned short
+static unsigned int
 ocfs2_filecheck_handle(struct super_block *sb,
 		       unsigned long ino, unsigned int flags)
 {
-	unsigned short ret = OCFS2_FILECHECK_ERR_SUCCESS;
+	unsigned int ret = OCFS2_FILECHECK_ERR_SUCCESS;
 	struct inode *inode = NULL;
 	int rc;
 

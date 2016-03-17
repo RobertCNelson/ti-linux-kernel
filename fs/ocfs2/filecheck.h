@@ -5,7 +5,7 @@
  *
  * Online file check.
  *
- * Copyright (C) 2015 Novell.  All rights reserved.
+ * Copyright (C) 2016 SuSE.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -31,6 +31,7 @@ enum {
 	OCFS2_FILECHECK_ERR_FAILED = 1000,	/* Other failure */
 	OCFS2_FILECHECK_ERR_INPROGRESS,		/* In progress */
 	OCFS2_FILECHECK_ERR_READONLY,		/* Read only */
+	OCFS2_FILECHECK_ERR_INJBD,		/* Buffer in jbd */
 	OCFS2_FILECHECK_ERR_INVALIDINO,		/* Invalid ino */
 	OCFS2_FILECHECK_ERR_BLOCKECC,		/* Block ecc */
 	OCFS2_FILECHECK_ERR_BLOCKNO,		/* Block number */
