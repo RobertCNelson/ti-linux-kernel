@@ -298,6 +298,7 @@ struct rio_mport {
  * @mports: List of master ports accessing this network
  * @hport: Default port for accessing this network
  * @id: RIO network ID
+ * @dev: Device object
  * @enum_data: private data specific to a network enumerator
  * @release: enumerator-specific release callback
  */
