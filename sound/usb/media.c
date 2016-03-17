@@ -135,7 +135,7 @@ void media_snd_stream_delete(struct snd_usb_substream *subs)
 	if (mctl && mctl->media_dev) {
 		struct media_device *mdev;
 
-		mdev = subs->stream->chip->media_dev;
+		mdev = mctl->media_dev;
 		if (mdev && media_devnode_is_registered(&mdev->devnode)) {
 			media_devnode_remove(mctl->intf_devnode);
 			media_device_unregister_entity(&mctl->media_entity);
