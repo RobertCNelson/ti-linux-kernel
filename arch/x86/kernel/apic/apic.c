@@ -1998,7 +1998,7 @@ void disconnect_bsp_APIC(int virt_wire_setup)
 	apic_write(APIC_LVT1, value);
 }
 
-int generic_processor_info(int apicid, int version)
+static int __generic_processor_info(int apicid, int version, bool enabled)
 {
 	int cpu, max = nr_cpu_ids;
 	bool boot_cpu_detected = physid_isset(boot_cpu_physical_apicid,
@@ -2032,7 +2032,8 @@ int generic_processor_info(int apicid, int version)
 			   " Processor %d/0x%x ignored.\n",
 			   thiscpu, apicid);
 
-		disabled_cpus++;
+		if (enabled)
+			disabled_cpus++;
 		return -ENODEV;
 	}
 
@@ -2049,7 +2050,8 @@ int generic_processor_info(int apicid, int version)
 			" reached. Keeping one slot for boot cpu."
 			"  Processor %d/0x%x ignored.\n", max, thiscpu, apicid);
 
-		disabled_cpus++;
+		if (enabled)
+			disabled_cpus++;
 		return -ENODEV;
 	}
 
@@ -2060,11 +2062,14 @@ int generic_processor_info(int apicid, int version)
 			"ACPI: NR_CPUS/possible_cpus limit of %i reached."
 			"  Processor %d/0x%x ignored.\n", max, thiscpu, apicid);
 
-		disabled_cpus++;
+		if (enabled)
+			disabled_cpus++;
 		return -EINVAL;
 	}
 
-	num_processors++;
+	if (enabled)
+		num_processors++;
+
 	if (apicid == boot_cpu_physical_apicid) {
 		/*
 		 * x86_bios_cpu_apicid is required to have processors listed
@@ -2106,7 +2111,8 @@ int generic_processor_info(int apicid, int version)
 			apic_version[boot_cpu_physical_apicid], cpu, version);
 	}
 
-	physid_set(apicid, phys_cpu_present_map);
+	if (enabled)
+		physid_set(apicid, phys_cpu_present_map);
 	if (apicid > max_physical_apicid)
 		max_physical_apicid = apicid;
 
@@ -2119,9 +2125,15 @@ int generic_processor_info(int apicid, int version)
 		apic->x86_32_early_logical_apicid(cpu);
 #endif
 	set_cpu_possible(cpu, true);
-	set_cpu_present(cpu, true);
+	if (enabled)
+		set_cpu_present(cpu, true);
 
 	return cpu;
+}
+
+int generic_processor_info(int apicid, int version)
+{
+	return __generic_processor_info(apicid, version, true);
 }
 
 int hard_smp_processor_id(void)
