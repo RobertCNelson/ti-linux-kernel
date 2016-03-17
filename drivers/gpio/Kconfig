@@ -844,6 +844,12 @@ config GPIO_TIMBERDALE
 	---help---
 	Add support for the GPIO IP in the timberdale FPGA.
 
+config GPIO_TPS65086
+	tristate "TI TPS65086 GPO"
+	depends on MFD_TPS65086
+	help
+	  This driver supports the GPO on TI TPS65086x PMICs.
+
 config GPIO_TPS6586X
 	bool "TPS6586X GPIO"
 	depends on MFD_TPS6586X
@@ -860,7 +866,7 @@ config GPIO_TPS65910
 
 config GPIO_TPS65912
 	tristate "TI TPS65912 GPIO"
-	depends on (MFD_TPS65912_I2C || MFD_TPS65912_SPI)
+	depends on MFD_TPS65912
 	help
 	  This driver supports TPS65912 gpio chip
 
