@@ -1215,7 +1215,7 @@ static int ff_layout_read_done_cb(struct rpc_task *task,
 					hdr->pgio_mirror_idx + 1,
 					&hdr->pgio_mirror_idx))
 			goto out_eagain;
-		set_bit(NFS_LAYOUT_RETURN_BEFORE_CLOSE,
+		set_bit(NFS_LAYOUT_RETURN_REQUESTED,
 			&hdr->lseg->pls_layout->plh_flags);
 		pnfs_read_resend_pnfs(hdr);
 		return task->tk_status;
@@ -1948,11 +1948,9 @@ ff_layout_encode_layoutreturn(struct pnfs_layout_hdr *lo,
 	start = xdr_reserve_space(xdr, 4);
 	BUG_ON(!start);
 
-	if (ff_layout_encode_ioerr(flo, xdr, args))
-		goto out;
-
+	ff_layout_encode_ioerr(flo, xdr, args);
 	ff_layout_encode_iostats(flo, xdr, args);
-out:
+
 	*start = cpu_to_be32((xdr->p - start - 1) * 4);
 	dprintk("%s: Return\n", __func__);
 }

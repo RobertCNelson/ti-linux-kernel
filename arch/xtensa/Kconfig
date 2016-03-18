@@ -15,7 +15,6 @@ config XTENSA
 	select GENERIC_PCI_IOMAP
 	select GENERIC_SCHED_CLOCK
 	select HAVE_DMA_API_DEBUG
-	select HAVE_DMA_ATTRS
 	select HAVE_FUNCTION_TRACER
 	select HAVE_FUTEX_CMPXCHG if !MMU
 	select HAVE_IRQ_TIME_ACCOUNTING
@@ -413,8 +412,6 @@ config FORCE_MAX_ZONEORDER
 	  a value of 11 means that the largest free memory block is 2^10 pages.
 
 source "drivers/pcmcia/Kconfig"
-
-source "drivers/pci/hotplug/Kconfig"
 
 config PLATFORM_WANT_DEFAULT_MEM
 	def_bool n

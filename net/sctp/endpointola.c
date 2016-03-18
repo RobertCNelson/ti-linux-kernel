@@ -42,7 +42,6 @@
 #include <linux/slab.h>
 #include <linux/in.h>
 #include <linux/random.h>	/* get_random_bytes() */
-#include <linux/crypto.h>
 #include <net/sock.h>
 #include <net/ipv6.h>
 #include <net/sctp/sctp.h>
@@ -333,7 +332,7 @@ struct sctp_association *sctp_endpoint_lookup_assoc(
 	if (!ep->base.bind_addr.port)
 		goto out;
 	t = sctp_epaddr_lookup_transport(ep, paddr);
-	if (!t || t->asoc->temp)
+	if (!t)
 		goto out;
 
 	*transport = t;

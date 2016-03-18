@@ -51,10 +51,10 @@ struct acpi_gpio_chip {
 
 static int acpi_gpiochip_find(struct gpio_chip *gc, void *data)
 {
-	if (!gc->dev)
+	if (!gc->parent)
 		return false;
 
-	return ACPI_HANDLE(gc->dev) == data;
+	return ACPI_HANDLE(gc->parent) == data;
 }
 
 #ifdef CONFIG_PINCTRL
@@ -71,29 +71,29 @@ static int acpi_gpiochip_find(struct gpio_chip *gc, void *data)
  * controller uses pin controller and the mapping is not contiguous the
  * offset might be different.
  */
-static int acpi_gpiochip_pin_to_gpio_offset(struct gpio_chip *chip, int pin)
+static int acpi_gpiochip_pin_to_gpio_offset(struct gpio_device *gdev, int pin)
 {
 	struct gpio_pin_range *pin_range;
 
 	/* If there are no ranges in this chip, use 1:1 mapping */
-	if (list_empty(&chip->pin_ranges))
+	if (list_empty(&gdev->pin_ranges))
 		return pin;
 
-	list_for_each_entry(pin_range, &chip->pin_ranges, node) {
+	list_for_each_entry(pin_range, &gdev->pin_ranges, node) {
 		const struct pinctrl_gpio_range *range = &pin_range->range;
 		int i;
 
 		if (range->pins) {
 			for (i = 0; i < range->npins; i++) {
 				if (range->pins[i] == pin)
-					return range->base + i - chip->base;
+					return range->base + i - gdev->base;
 			}
 		} else {
 			if (pin >= range->pin_base &&
 			    pin < range->pin_base + range->npins) {
 				unsigned gpio_base;
 
-				gpio_base = range->base - chip->base;
+				gpio_base = range->base - gdev->base;
 				return gpio_base + pin - range->pin_base;
 			}
 		}
@@ -102,7 +102,7 @@ static int acpi_gpiochip_pin_to_gpio_offset(struct gpio_chip *chip, int pin)
 	return -EINVAL;
 }
 #else
-static inline int acpi_gpiochip_pin_to_gpio_offset(struct gpio_chip *chip,
+static inline int acpi_gpiochip_pin_to_gpio_offset(struct gpio_device *gdev,
 						   int pin)
 {
 	return pin;
@@ -134,7 +134,7 @@ static struct gpio_desc *acpi_get_gpiod(char *path, int pin)
 	if (!chip)
 		return ERR_PTR(-EPROBE_DEFER);
 
-	offset = acpi_gpiochip_pin_to_gpio_offset(chip, pin);
+	offset = acpi_gpiochip_pin_to_gpio_offset(chip->gpiodev, pin);
 	if (offset < 0)
 		return ERR_PTR(offset);
 
@@ -184,7 +184,7 @@ static acpi_status acpi_gpiochip_request_interrupt(struct acpi_resource *ares,
 	if (agpio->connection_type != ACPI_RESOURCE_GPIO_TYPE_INT)
 		return AE_OK;
 
-	handle = ACPI_HANDLE(chip->dev);
+	handle = ACPI_HANDLE(chip->parent);
 	pin = agpio->pin_table[0];
 
 	if (pin <= 255) {
@@ -202,13 +202,13 @@ static acpi_status acpi_gpiochip_request_interrupt(struct acpi_resource *ares,
 	if (!handler)
 		return AE_BAD_PARAMETER;
 
-	pin = acpi_gpiochip_pin_to_gpio_offset(chip, pin);
+	pin = acpi_gpiochip_pin_to_gpio_offset(chip->gpiodev, pin);
 	if (pin < 0)
 		return AE_BAD_PARAMETER;
 
 	desc = gpiochip_request_own_desc(chip, pin, "ACPI:Event");
 	if (IS_ERR(desc)) {
-		dev_err(chip->dev, "Failed to request GPIO\n");
+		dev_err(chip->parent, "Failed to request GPIO\n");
 		return AE_ERROR;
 	}
 
@@ -216,13 +216,13 @@ static acpi_status acpi_gpiochip_request_interrupt(struct acpi_resource *ares,
 
 	ret = gpiochip_lock_as_irq(chip, pin);
 	if (ret) {
-		dev_err(chip->dev, "Failed to lock GPIO as interrupt\n");
+		dev_err(chip->parent, "Failed to lock GPIO as interrupt\n");
 		goto fail_free_desc;
 	}
 
 	irq = gpiod_to_irq(desc);
 	if (irq < 0) {
-		dev_err(chip->dev, "Failed to translate GPIO to IRQ\n");
+		dev_err(chip->parent, "Failed to translate GPIO to IRQ\n");
 		goto fail_unlock_irq;
 	}
 
@@ -259,7 +259,8 @@ static acpi_status acpi_gpiochip_request_interrupt(struct acpi_resource *ares,
 	ret = request_threaded_irq(event->irq, NULL, handler, irqflags,
 				   "ACPI:Event", event);
 	if (ret) {
-		dev_err(chip->dev, "Failed to setup interrupt handler for %d\n",
+		dev_err(chip->parent,
+			"Failed to setup interrupt handler for %d\n",
 			event->irq);
 		goto fail_free_event;
 	}
@@ -293,10 +294,10 @@ void acpi_gpiochip_request_interrupts(struct gpio_chip *chip)
 	acpi_handle handle;
 	acpi_status status;
 
-	if (!chip->dev || !chip->to_irq)
+	if (!chip->parent || !chip->to_irq)
 		return;
 
-	handle = ACPI_HANDLE(chip->dev);
+	handle = ACPI_HANDLE(chip->parent);
 	if (!handle)
 		return;
 
@@ -323,10 +324,10 @@ void acpi_gpiochip_free_interrupts(struct gpio_chip *chip)
 	acpi_handle handle;
 	acpi_status status;
 
-	if (!chip->dev || !chip->to_irq)
+	if (!chip->parent || !chip->to_irq)
 		return;
 
-	handle = ACPI_HANDLE(chip->dev);
+	handle = ACPI_HANDLE(chip->parent);
 	if (!handle)
 		return;
 
@@ -672,7 +673,7 @@ acpi_gpio_adr_space_handler(u32 function, acpi_physical_address address,
 		struct gpio_desc *desc;
 		bool found;
 
-		pin = acpi_gpiochip_pin_to_gpio_offset(chip, pin);
+		pin = acpi_gpiochip_pin_to_gpio_offset(chip->gpiodev, pin);
 		if (pin < 0) {
 			status = AE_BAD_PARAMETER;
 			goto out;
@@ -769,7 +770,7 @@ out:
 static void acpi_gpiochip_request_regions(struct acpi_gpio_chip *achip)
 {
 	struct gpio_chip *chip = achip->chip;
-	acpi_handle handle = ACPI_HANDLE(chip->dev);
+	acpi_handle handle = ACPI_HANDLE(chip->parent);
 	acpi_status status;
 
 	INIT_LIST_HEAD(&achip->conns);
@@ -778,20 +779,22 @@ static void acpi_gpiochip_request_regions(struct acpi_gpio_chip *achip)
 						    acpi_gpio_adr_space_handler,
 						    NULL, achip);
 	if (ACPI_FAILURE(status))
-		dev_err(chip->dev, "Failed to install GPIO OpRegion handler\n");
+		dev_err(chip->parent,
+		        "Failed to install GPIO OpRegion handler\n");
 }
 
 static void acpi_gpiochip_free_regions(struct acpi_gpio_chip *achip)
 {
 	struct gpio_chip *chip = achip->chip;
-	acpi_handle handle = ACPI_HANDLE(chip->dev);
+	acpi_handle handle = ACPI_HANDLE(chip->parent);
 	struct acpi_gpio_connection *conn, *tmp;
 	acpi_status status;
 
 	status = acpi_remove_address_space_handler(handle, ACPI_ADR_SPACE_GPIO,
 						   acpi_gpio_adr_space_handler);
 	if (ACPI_FAILURE(status)) {
-		dev_err(chip->dev, "Failed to remove GPIO OpRegion handler\n");
+		dev_err(chip->parent,
+			"Failed to remove GPIO OpRegion handler\n");
 		return;
 	}
 
@@ -808,16 +811,16 @@ void acpi_gpiochip_add(struct gpio_chip *chip)
 	acpi_handle handle;
 	acpi_status status;
 
-	if (!chip || !chip->dev)
+	if (!chip || !chip->parent)
 		return;
 
-	handle = ACPI_HANDLE(chip->dev);
+	handle = ACPI_HANDLE(chip->parent);
 	if (!handle)
 		return;
 
 	acpi_gpio = kzalloc(sizeof(*acpi_gpio), GFP_KERNEL);
 	if (!acpi_gpio) {
-		dev_err(chip->dev,
+		dev_err(chip->parent,
 			"Failed to allocate memory for ACPI GPIO chip\n");
 		return;
 	}
@@ -827,7 +830,7 @@ void acpi_gpiochip_add(struct gpio_chip *chip)
 
 	status = acpi_attach_data(handle, acpi_gpio_chip_dh, acpi_gpio);
 	if (ACPI_FAILURE(status)) {
-		dev_err(chip->dev, "Failed to attach ACPI GPIO chip\n");
+		dev_err(chip->parent, "Failed to attach ACPI GPIO chip\n");
 		kfree(acpi_gpio);
 		return;
 	}
@@ -841,16 +844,16 @@ void acpi_gpiochip_remove(struct gpio_chip *chip)
 	acpi_handle handle;
 	acpi_status status;
 
-	if (!chip || !chip->dev)
+	if (!chip || !chip->parent)
 		return;
 
-	handle = ACPI_HANDLE(chip->dev);
+	handle = ACPI_HANDLE(chip->parent);
 	if (!handle)
 		return;
 
 	status = acpi_get_data(handle, acpi_gpio_chip_dh, (void **)&acpi_gpio);
 	if (ACPI_FAILURE(status)) {
-		dev_warn(chip->dev, "Failed to retrieve ACPI GPIO chip\n");
+		dev_warn(chip->parent, "Failed to retrieve ACPI GPIO chip\n");
 		return;
 	}
 

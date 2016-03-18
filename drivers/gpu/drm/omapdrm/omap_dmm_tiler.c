@@ -363,6 +363,7 @@ struct tiler_block *tiler_reserve_2d(enum tiler_fmt fmt, uint16_t w,
 	u32 min_align = 128;
 	int ret;
 	unsigned long flags;
+	size_t slot_bytes;
 
 	BUG_ON(!validfmt(fmt));
 
@@ -371,13 +372,15 @@ struct tiler_block *tiler_reserve_2d(enum tiler_fmt fmt, uint16_t w,
 	h = DIV_ROUND_UP(h, geom[fmt].slot_h);
 
 	/* convert alignment to slots */
-	min_align = max(min_align, (geom[fmt].slot_w * geom[fmt].cpp));
-	align = ALIGN(align, min_align);
-	align /= geom[fmt].slot_w * geom[fmt].cpp;
+	slot_bytes = geom[fmt].slot_w * geom[fmt].cpp;
+	min_align = max(min_align, slot_bytes);
+	align = (align > min_align) ? ALIGN(align, min_align) : min_align;
+	align /= slot_bytes;
 
 	block->fmt = fmt;
 
-	ret = tcm_reserve_2d(containers[fmt], w, h, align, &block->area);
+	ret = tcm_reserve_2d(containers[fmt], w, h, align, -1, slot_bytes,
+			&block->area);
 	if (ret) {
 		kfree(block);
 		return ERR_PTR(-ENOMEM);
@@ -570,10 +573,9 @@ static int omap_dmm_remove(struct platform_device *dev)
 
 		kfree(omap_dmm->engines);
 		if (omap_dmm->refill_va)
-			dma_free_writecombine(omap_dmm->dev,
-				REFILL_BUFFER_SIZE * omap_dmm->num_engines,
-				omap_dmm->refill_va,
-				omap_dmm->refill_pa);
+			dma_free_wc(omap_dmm->dev,
+				    REFILL_BUFFER_SIZE * omap_dmm->num_engines,
+				    omap_dmm->refill_va, omap_dmm->refill_pa);
 		if (omap_dmm->dummy_page)
 			__free_page(omap_dmm->dummy_page);
 
@@ -698,9 +700,9 @@ static int omap_dmm_probe(struct platform_device *dev)
 	omap_dmm->dummy_pa = page_to_phys(omap_dmm->dummy_page);
 
 	/* alloc refill memory */
-	omap_dmm->refill_va = dma_alloc_writecombine(&dev->dev,
-				REFILL_BUFFER_SIZE * omap_dmm->num_engines,
-				&omap_dmm->refill_pa, GFP_KERNEL);
+	omap_dmm->refill_va = dma_alloc_wc(&dev->dev,
+					   REFILL_BUFFER_SIZE * omap_dmm->num_engines,
+					   &omap_dmm->refill_pa, GFP_KERNEL);
 	if (!omap_dmm->refill_va) {
 		dev_err(&dev->dev, "could not allocate refill memory\n");
 		goto fail;
@@ -739,8 +741,7 @@ static int omap_dmm_probe(struct platform_device *dev)
 	   programming during reill operations */
 	for (i = 0; i < omap_dmm->num_lut; i++) {
 		omap_dmm->tcm[i] = sita_init(omap_dmm->container_width,
-						omap_dmm->container_height,
-						NULL);
+						omap_dmm->container_height);
 
 		if (!omap_dmm->tcm[i]) {
 			dev_err(&dev->dev, "failed to allocate container\n");
@@ -1030,4 +1031,3 @@ struct platform_driver omap_dmm_driver = {
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Andy Gross <andy.gross@ti.com>");
 MODULE_DESCRIPTION("OMAP DMM/Tiler Driver");
-MODULE_ALIAS("platform:" DMM_DRIVER_NAME);

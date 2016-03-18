@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2016, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -88,7 +88,7 @@
  */
 acpi_status acpi_ns_initialize_objects(void);
 
-acpi_status acpi_ns_initialize_devices(void);
+acpi_status acpi_ns_initialize_devices(u32 flags);
 
 /*
  * nsload -  Namespace loading

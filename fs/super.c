@@ -415,6 +415,7 @@ void generic_shutdown_super(struct super_block *sb)
 		sb->s_flags &= ~MS_ACTIVE;
 
 		fsnotify_unmount_inodes(sb);
+		cgroup_writeback_umount();
 
 		evict_inodes(sb);
 
@@ -1197,7 +1198,7 @@ int __sb_start_write(struct super_block *sb, int level, bool wait)
 	else
 		ret = percpu_down_read_trylock(sb->s_writers.rw_sem + level-1);
 
-	WARN_ON(force_trylock & !ret);
+	WARN_ON(force_trylock && !ret);
 	return ret;
 }
 EXPORT_SYMBOL(__sb_start_write);

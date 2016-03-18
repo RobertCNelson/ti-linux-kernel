@@ -5,7 +5,7 @@
  ******************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2016, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -175,8 +175,7 @@ ACPI_EXPORT_SYMBOL(acpi_warning)
  * TBD: module_name and line_number args are not needed, should be removed.
  *
  ******************************************************************************/
-void ACPI_INTERNAL_VAR_XFACE
-acpi_info(const char *module_name, u32 line_number, const char *format, ...)
+void ACPI_INTERNAL_VAR_XFACE acpi_info(const char *format, ...)
 {
 	va_list arg_list;
 
