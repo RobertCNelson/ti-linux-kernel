@@ -33,6 +33,14 @@ struct platform_msi_desc {
 };
 
 /**
+ * fsl_mc_msi_desc - FSL-MC device specific msi descriptor data
+ * @msi_index:		The index of the MSI descriptor
+ */
+struct fsl_mc_msi_desc {
+	u16				msi_index;
+};
+
+/**
  * struct msi_desc - Descriptor structure for MSI based interrupts
  * @list:	List head for management
  * @irq:	The base interrupt number
@@ -87,6 +95,7 @@ struct msi_desc {
 		 * tree wide cleanup.
 		 */
 		struct platform_msi_desc platform;
+		struct fsl_mc_msi_desc fsl_mc;
 	};
 };
 
@@ -187,7 +196,7 @@ struct msi_domain_info;
  * @msi_free:		Domain specific function to free a MSI interrupts
  * @msi_check:		Callback for verification of the domain/info/dev data
  * @msi_prepare:	Prepare the allocation of the interrupts in the domain
- * @msi_finish:		Optional callbacl to finalize the allocation
+ * @msi_finish:		Optional callback to finalize the allocation
  * @set_desc:		Set the msi descriptor for an interrupt
  * @handle_error:	Optional error handler if the allocation fails
  *
@@ -195,7 +204,7 @@ struct msi_domain_info;
  * msi_create_irq_domain() and related interfaces
  *
  * @msi_check, @msi_prepare, @msi_finish, @set_desc and @handle_error
- * are callbacks used by msi_irq_domain_alloc_irqs() and related
+ * are callbacks used by msi_domain_alloc_irqs() and related
  * interfaces which are based on msi_desc.
  */
 struct msi_domain_ops {

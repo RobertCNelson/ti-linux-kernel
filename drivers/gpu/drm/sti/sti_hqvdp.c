@@ -617,9 +617,9 @@ static void sti_hqvdp_init(struct sti_hqvdp *hqvdp)
 
 	/* Allocate memory for the VDP commands */
 	size = NB_VDP_CMD * sizeof(struct sti_hqvdp_cmd);
-	hqvdp->hqvdp_cmd = dma_alloc_writecombine(hqvdp->dev, size,
-					 &hqvdp->hqvdp_cmd_paddr,
-					 GFP_KERNEL | GFP_DMA);
+	hqvdp->hqvdp_cmd = dma_alloc_wc(hqvdp->dev, size,
+					&hqvdp->hqvdp_cmd_paddr,
+					GFP_KERNEL | GFP_DMA);
 	if (!hqvdp->hqvdp_cmd) {
 		DRM_ERROR("Failed to allocate memory for VDP cmd\n");
 		return;
@@ -973,7 +973,7 @@ static struct drm_plane *sti_hqvdp_create(struct drm_device *drm_dev,
 				       &sti_plane_helpers_funcs,
 				       hqvdp_supported_formats,
 				       ARRAY_SIZE(hqvdp_supported_formats),
-				       DRM_PLANE_TYPE_OVERLAY);
+				       DRM_PLANE_TYPE_OVERLAY, NULL);
 	if (res) {
 		DRM_ERROR("Failed to initialize universal plane\n");
 		return NULL;

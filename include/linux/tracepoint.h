@@ -14,8 +14,10 @@
  * See the file COPYING for more details.
  */
 
+#include <linux/smp.h>
 #include <linux/errno.h>
 #include <linux/types.h>
+#include <linux/cpumask.h>
 #include <linux/rcupdate.h>
 #include <linux/tracepoint-defs.h>
 
@@ -338,15 +340,19 @@ extern void syscall_unregfunc(void);
  * "void *__data, proto" as the callback prototype.
  */
 #define DECLARE_TRACE_NOARGS(name)					\
-		__DECLARE_TRACE(name, void, , 1, void *__data, __data)
+	__DECLARE_TRACE(name, void, ,					\
+			cpu_online(raw_smp_processor_id()),		\
+			void *__data, __data)
 
 #define DECLARE_TRACE(name, proto, args)				\
-		__DECLARE_TRACE(name, PARAMS(proto), PARAMS(args), 1,	\
-				PARAMS(void *__data, proto),		\
-				PARAMS(__data, args))
+	__DECLARE_TRACE(name, PARAMS(proto), PARAMS(args),		\
+			cpu_online(raw_smp_processor_id()),		\
+			PARAMS(void *__data, proto),			\
+			PARAMS(__data, args))
 
 #define DECLARE_TRACE_CONDITION(name, proto, args, cond)		\
-	__DECLARE_TRACE(name, PARAMS(proto), PARAMS(args), PARAMS(cond), \
+	__DECLARE_TRACE(name, PARAMS(proto), PARAMS(args),		\
+			cpu_online(raw_smp_processor_id()) && (PARAMS(cond)), \
 			PARAMS(void *__data, proto),			\
 			PARAMS(__data, args))
 
@@ -479,6 +485,10 @@ extern void syscall_unregfunc(void);
 #define TRACE_EVENT_FN(name, proto, args, struct,		\
 		assign, print, reg, unreg)			\
 	DECLARE_TRACE(name, PARAMS(proto), PARAMS(args))
+#define TRACE_EVENT_FN_COND(name, proto, args, cond, struct,		\
+		assign, print, reg, unreg)			\
+	DECLARE_TRACE_CONDITION(name, PARAMS(proto),	\
+			PARAMS(args), PARAMS(cond))
 #define TRACE_EVENT_CONDITION(name, proto, args, cond,		\
 			      struct, assign, print)		\
 	DECLARE_TRACE_CONDITION(name, PARAMS(proto),		\

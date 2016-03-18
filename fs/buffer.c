@@ -134,13 +134,10 @@ __clear_page_buffers(struct page *page)
 
 static void buffer_io_error(struct buffer_head *bh, char *msg)
 {
-	char b[BDEVNAME_SIZE];
-
 	if (!test_bit(BH_Quiet, &bh->b_state))
 		printk_ratelimited(KERN_ERR
-			"Buffer I/O error on dev %s, logical block %llu%s\n",
-			bdevname(bh->b_bdev, b),
-			(unsigned long long)bh->b_blocknr, msg);
+			"Buffer I/O error on dev %pg, logical block %llu%s\n",
+			bh->b_bdev, (unsigned long long)bh->b_blocknr, msg);
 }
 
 /*
@@ -237,15 +234,13 @@ __find_get_block_slow(struct block_device *bdev, sector_t block)
 	 * elsewhere, don't buffer_error if we had some unmapped buffers
 	 */
 	if (all_mapped) {
-		char b[BDEVNAME_SIZE];
-
 		printk("__find_get_block_slow() failed. "
 			"block=%llu, b_blocknr=%llu\n",
 			(unsigned long long)block,
 			(unsigned long long)bh->b_blocknr);
 		printk("b_state=0x%08lx, b_size=%zu\n",
 			bh->b_state, bh->b_size);
-		printk("device %s blocksize: %d\n", bdevname(bdev, b),
+		printk("device %pg blocksize: %d\n", bdev,
 			1 << bd_inode->i_blkbits);
 	}
 out_unlock:
@@ -531,10 +526,8 @@ repeat:
 
 static void do_thaw_one(struct super_block *sb, void *unused)
 {
-	char b[BDEVNAME_SIZE];
 	while (sb->s_bdev && !thaw_bdev(sb->s_bdev, sb))
-		printk(KERN_WARNING "Emergency Thaw on %s\n",
-		       bdevname(sb->s_bdev, b));
+		printk(KERN_WARNING "Emergency Thaw on %pg\n", sb->s_bdev);
 }
 
 static void do_thaw_all(struct work_struct *work)
@@ -628,17 +621,17 @@ EXPORT_SYMBOL(mark_buffer_dirty_inode);
  * If warn is true, then emit a warning if the page is not uptodate and has
  * not been truncated.
  *
- * The caller must hold mem_cgroup_begin_page_stat() lock.
+ * The caller must hold lock_page_memcg().
  */
 static void __set_page_dirty(struct page *page, struct address_space *mapping,
-			     struct mem_cgroup *memcg, int warn)
+			     int warn)
 {
 	unsigned long flags;
 
 	spin_lock_irqsave(&mapping->tree_lock, flags);
 	if (page->mapping) {	/* Race with truncate? */
 		WARN_ON_ONCE(warn && !PageUptodate(page));
-		account_page_dirtied(page, mapping, memcg);
+		account_page_dirtied(page, mapping);
 		radix_tree_tag_set(&mapping->page_tree,
 				page_index(page), PAGECACHE_TAG_DIRTY);
 	}
@@ -673,7 +666,6 @@ static void __set_page_dirty(struct page *page, struct address_space *mapping,
 int __set_page_dirty_buffers(struct page *page)
 {
 	int newly_dirty;
-	struct mem_cgroup *memcg;
 	struct address_space *mapping = page_mapping(page);
 
 	if (unlikely(!mapping))
@@ -690,17 +682,17 @@ int __set_page_dirty_buffers(struct page *page)
 		} while (bh != head);
 	}
 	/*
-	 * Use mem_group_begin_page_stat() to keep PageDirty synchronized with
-	 * per-memcg dirty page counters.
+	 * Lock out page->mem_cgroup migration to keep PageDirty
+	 * synchronized with per-memcg dirty page counters.
 	 */
-	memcg = mem_cgroup_begin_page_stat(page);
+	lock_page_memcg(page);
 	newly_dirty = !TestSetPageDirty(page);
 	spin_unlock(&mapping->private_lock);
 
 	if (newly_dirty)
-		__set_page_dirty(page, mapping, memcg, 1);
+		__set_page_dirty(page, mapping, 1);
 
-	mem_cgroup_end_page_stat(memcg);
+	unlock_page_memcg(page);
 
 	if (newly_dirty)
 		__mark_inode_dirty(mapping->host, I_DIRTY_PAGES);
@@ -1074,12 +1066,10 @@ grow_buffers(struct block_device *bdev, sector_t block, int size, gfp_t gfp)
 	 * pagecache index.  (this comparison is done using sector_t types).
 	 */
 	if (unlikely(index != block >> sizebits)) {
-		char b[BDEVNAME_SIZE];
-
 		printk(KERN_ERR "%s: requested out-of-range block %llu for "
-			"device %s\n",
+			"device %pg\n",
 			__func__, (unsigned long long)block,
-			bdevname(bdev, b));
+			bdev);
 		return -EIO;
 	}
 
@@ -1176,15 +1166,14 @@ void mark_buffer_dirty(struct buffer_head *bh)
 	if (!test_set_buffer_dirty(bh)) {
 		struct page *page = bh->b_page;
 		struct address_space *mapping = NULL;
-		struct mem_cgroup *memcg;
 
-		memcg = mem_cgroup_begin_page_stat(page);
+		lock_page_memcg(page);
 		if (!TestSetPageDirty(page)) {
 			mapping = page_mapping(page);
 			if (mapping)
-				__set_page_dirty(page, mapping, memcg, 0);
+				__set_page_dirty(page, mapping, 0);
 		}
-		mem_cgroup_end_page_stat(memcg);
+		unlock_page_memcg(page);
 		if (mapping)
 			__mark_inode_dirty(mapping->host, I_DIRTY_PAGES);
 	}

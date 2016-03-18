@@ -70,7 +70,7 @@ static int init_mregion(struct hfi1_mregion *mr, struct ib_pd *pd,
 	int m, i = 0;
 	int rval = 0;
 
-	m = (count + HFI1_SEGSZ - 1) / HFI1_SEGSZ;
+	m = DIV_ROUND_UP(count, HFI1_SEGSZ);
 	for (; i < m; i++) {
 		mr->map[i] = kzalloc(sizeof(*mr->map[0]), GFP_KERNEL);
 		if (!mr->map[i])
@@ -159,7 +159,7 @@ static struct hfi1_mr *alloc_mr(int count, struct ib_pd *pd)
 	int m;
 
 	/* Allocate struct plus pointers to first level page tables. */
-	m = (count + HFI1_SEGSZ - 1) / HFI1_SEGSZ;
+	m = DIV_ROUND_UP(count, HFI1_SEGSZ);
 	mr = kzalloc(sizeof(*mr) + m * sizeof(mr->mr.map[0]), GFP_KERNEL);
 	if (!mr)
 		goto bail;
@@ -167,10 +167,7 @@ static struct hfi1_mr *alloc_mr(int count, struct ib_pd *pd)
 	rval = init_mregion(&mr->mr, pd, count);
 	if (rval)
 		goto bail;
-	/*
-	 * ib_reg_phys_mr() will initialize mr->ibmr except for
-	 * lkey and rkey.
-	 */
+
 	rval = hfi1_alloc_lkey(&mr->mr, 0);
 	if (rval)
 		goto bail_mregion;
@@ -185,52 +182,6 @@ bail:
 	kfree(mr);
 	mr = ERR_PTR(rval);
 	goto done;
-}
-
-/**
- * hfi1_reg_phys_mr - register a physical memory region
- * @pd: protection domain for this memory region
- * @buffer_list: pointer to the list of physical buffers to register
- * @num_phys_buf: the number of physical buffers to register
- * @iova_start: the starting address passed over IB which maps to this MR
- *
- * Returns the memory region on success, otherwise returns an errno.
- */
-struct ib_mr *hfi1_reg_phys_mr(struct ib_pd *pd,
-			       struct ib_phys_buf *buffer_list,
-			       int num_phys_buf, int acc, u64 *iova_start)
-{
-	struct hfi1_mr *mr;
-	int n, m, i;
-	struct ib_mr *ret;
-
-	mr = alloc_mr(num_phys_buf, pd);
-	if (IS_ERR(mr)) {
-		ret = (struct ib_mr *)mr;
-		goto bail;
-	}
-
-	mr->mr.user_base = *iova_start;
-	mr->mr.iova = *iova_start;
-	mr->mr.access_flags = acc;
-
-	m = 0;
-	n = 0;
-	for (i = 0; i < num_phys_buf; i++) {
-		mr->mr.map[m]->segs[n].vaddr = (void *) buffer_list[i].addr;
-		mr->mr.map[m]->segs[n].length = buffer_list[i].size;
-		mr->mr.length += buffer_list[i].size;
-		n++;
-		if (n == HFI1_SEGSZ) {
-			m++;
-			n = 0;
-		}
-	}
-
-	ret = &mr->ibmr;
-
-bail:
-	return ret;
 }
 
 /**
@@ -382,7 +333,7 @@ struct ib_fmr *hfi1_alloc_fmr(struct ib_pd *pd, int mr_access_flags,
 	int rval = -ENOMEM;
 
 	/* Allocate struct plus pointers to first level page tables. */
-	m = (fmr_attr->max_pages + HFI1_SEGSZ - 1) / HFI1_SEGSZ;
+	m = DIV_ROUND_UP(fmr_attr->max_pages, HFI1_SEGSZ);
 	fmr = kzalloc(sizeof(*fmr) + m * sizeof(fmr->mr.map[0]), GFP_KERNEL);
 	if (!fmr)
 		goto bail;

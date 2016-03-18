@@ -160,7 +160,8 @@ void pio_copy(struct hfi1_devdata *dd, struct pio_buf *pbuf, u64 pbc,
 	}
 
 	/* finished with this buffer */
-	atomic_dec(&pbuf->sc->buffers_allocated);
+	this_cpu_dec(*pbuf->sc->buffers_allocated);
+	preempt_enable();
 }
 
 /* USE_SHIFTS is faster in user-space tests on a Xeon X5570 @ 2.93GHz */
@@ -234,7 +235,7 @@ static inline void read_extra_bytes(struct pio_buf *pbuf,
 	while (nbytes) {
 		/* find the number of bytes in this u64 */
 		room = 8 - off;	/* this u64 has room for this many bytes */
-		xbytes = nbytes > room ? room : nbytes;
+		xbytes = min(room, nbytes);
 
 		/*
 		 * shift down to zero lower bytes, shift up to zero upper
@@ -564,7 +565,7 @@ static void mid_copy_mix(struct pio_buf *pbuf, const void *from, size_t nbytes)
 		/* calculate the end of data or end of block, whichever
 		   comes first */
 		send = pbuf->start + PIO_BLOCK_SIZE;
-		xend = send < dend ? send : dend;
+		xend = min(send, dend);
 
 		/* shift up to SOP=1 space */
 		dest += SOP_DISTANCE;
@@ -658,7 +659,7 @@ static void mid_copy_straight(struct pio_buf *pbuf,
 		/* calculate the end of data or end of block, whichever
 		   comes first */
 		send = pbuf->start + PIO_BLOCK_SIZE;
-		xend = send < dend ? send : dend;
+		xend = min(send, dend);
 
 		/* shift up to SOP=1 space */
 		dest += SOP_DISTANCE;
@@ -854,5 +855,6 @@ void seg_pio_copy_end(struct pio_buf *pbuf)
 	}
 
 	/* finished with this buffer */
-	atomic_dec(&pbuf->sc->buffers_allocated);
+	this_cpu_dec(*pbuf->sc->buffers_allocated);
+	preempt_enable();
 }

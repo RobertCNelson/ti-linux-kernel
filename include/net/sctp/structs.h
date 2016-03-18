@@ -48,6 +48,7 @@
 #define __sctp_structs_h__
 
 #include <linux/ktime.h>
+#include <linux/rhashtable.h>
 #include <linux/socket.h>	/* linux/in.h needs this!!    */
 #include <linux/in.h>		/* We get struct sockaddr_in. */
 #include <linux/in6.h>		/* We get struct in6_addr     */
@@ -81,7 +82,7 @@ struct sctp_bind_addr;
 struct sctp_ulpq;
 struct sctp_ep_common;
 struct sctp_ssnmap;
-struct crypto_hash;
+struct crypto_shash;
 
 
 #include <net/sctp/tsnmap.h>
@@ -119,14 +120,13 @@ extern struct sctp_globals {
 
 	/* This is the hash of all endpoints. */
 	struct sctp_hashbucket *ep_hashtable;
-	/* This is the hash of all associations. */
-	struct sctp_hashbucket *assoc_hashtable;
 	/* This is the sctp port control hash.	*/
 	struct sctp_bind_hashbucket *port_hashtable;
+	/* This is the hash of all transports. */
+	struct rhashtable transport_hashtable;
 
 	/* Sizes of above hashtables. */
 	int ep_hashsize;
-	int assoc_hashsize;
 	int port_hashsize;
 
 	/* Default initialization values to be applied to new associations. */
@@ -143,10 +143,9 @@ extern struct sctp_globals {
 #define sctp_address_families		(sctp_globals.address_families)
 #define sctp_ep_hashsize		(sctp_globals.ep_hashsize)
 #define sctp_ep_hashtable		(sctp_globals.ep_hashtable)
-#define sctp_assoc_hashsize		(sctp_globals.assoc_hashsize)
-#define sctp_assoc_hashtable		(sctp_globals.assoc_hashtable)
 #define sctp_port_hashsize		(sctp_globals.port_hashsize)
 #define sctp_port_hashtable		(sctp_globals.port_hashtable)
+#define sctp_transport_hashtable	(sctp_globals.transport_hashtable)
 #define sctp_checksum_disable		(sctp_globals.checksum_disable)
 
 /* SCTP Socket type: UDP or TCP style. */
@@ -167,7 +166,7 @@ struct sctp_sock {
 	struct sctp_pf *pf;
 
 	/* Access to HMAC transform. */
-	struct crypto_hash *hmac;
+	struct crypto_shash *hmac;
 	char *sctp_hmac_alg;
 
 	/* What is our base endpointer? */
@@ -753,10 +752,10 @@ static inline int sctp_packet_empty(struct sctp_packet *packet)
 struct sctp_transport {
 	/* A list of transports. */
 	struct list_head transports;
+	struct rhash_head node;
 
 	/* Reference counting. */
 	atomic_t refcnt;
-	__u32	 dead:1,
 		/* RTO-Pending : A flag used to track if one of the DATA
 		 *		chunks sent to this address is currently being
 		 *		used to compute a RTT. If this flag is 0,
@@ -766,7 +765,7 @@ struct sctp_transport {
 		 *		calculation completes (i.e. the DATA chunk
 		 *		is SACK'd) clear this flag.
 		 */
-		 rto_pending:1,
+	__u32	rto_pending:1,
 
 		/*
 		 * hb_sent : a flag that signals that we have a pending
@@ -955,7 +954,7 @@ void sctp_transport_route(struct sctp_transport *, union sctp_addr *,
 void sctp_transport_pmtu(struct sctp_transport *, struct sock *sk);
 void sctp_transport_free(struct sctp_transport *);
 void sctp_transport_reset_timers(struct sctp_transport *);
-void sctp_transport_hold(struct sctp_transport *);
+int sctp_transport_hold(struct sctp_transport *);
 void sctp_transport_put(struct sctp_transport *);
 void sctp_transport_update_rto(struct sctp_transport *, __u32);
 void sctp_transport_raise_cwnd(struct sctp_transport *, __u32, __u32);
@@ -1235,7 +1234,7 @@ struct sctp_endpoint {
 	/* SCTP AUTH: array of the HMACs that will be allocated
 	 * we need this per association so that we don't serialize
 	 */
-	struct crypto_hash **auth_hmacs;
+	struct crypto_shash **auth_hmacs;
 
 	/* SCTP-AUTH: hmacs for the endpoint encoded into parameter */
 	 struct sctp_hmac_algo_param *auth_hmacs_list;

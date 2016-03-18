@@ -338,7 +338,6 @@ struct atlas7_pinctrl_data {
 #define ATLAS7_GPIO_CTL_DATAIN_MASK		BIT(7)
 
 struct atlas7_gpio_bank {
-	struct pinctrl_dev *pctldev;
 	int id;
 	int irq;
 	void __iomem *base;
@@ -357,11 +356,6 @@ struct atlas7_gpio_chip {
 	struct gpio_chip chip;
 	struct atlas7_gpio_bank banks[0];
 };
-
-static inline struct atlas7_gpio_chip *to_atlas7_gpio(struct gpio_chip *gc)
-{
-	return container_of(gc, struct atlas7_gpio_chip, chip);
-}
 
 /**
  * @dev: a pointer back to containing device
@@ -5642,7 +5636,7 @@ static int __atlas7_gpio_to_pin(struct atlas7_gpio_chip *a7gc, u32 gpio)
 static void atlas7_gpio_irq_ack(struct irq_data *d)
 {
 	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
-	struct atlas7_gpio_chip *a7gc = to_atlas7_gpio(gc);
+	struct atlas7_gpio_chip *a7gc = gpiochip_get_data(gc);
 	struct atlas7_gpio_bank *bank;
 	void __iomem *ctrl_reg;
 	u32 val, pin_in_bank;
@@ -5680,7 +5674,7 @@ static void __atlas7_gpio_irq_mask(struct atlas7_gpio_chip *a7gc, int idx)
 static void atlas7_gpio_irq_mask(struct irq_data *d)
 {
 	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
-	struct atlas7_gpio_chip *a7gc = to_atlas7_gpio(gc);
+	struct atlas7_gpio_chip *a7gc = gpiochip_get_data(gc);
 	unsigned long flags;
 
 	spin_lock_irqsave(&a7gc->lock, flags);
@@ -5693,7 +5687,7 @@ static void atlas7_gpio_irq_mask(struct irq_data *d)
 static void atlas7_gpio_irq_unmask(struct irq_data *d)
 {
 	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
-	struct atlas7_gpio_chip *a7gc = to_atlas7_gpio(gc);
+	struct atlas7_gpio_chip *a7gc = gpiochip_get_data(gc);
 	struct atlas7_gpio_bank *bank;
 	void __iomem *ctrl_reg;
 	u32 val, pin_in_bank;
@@ -5717,7 +5711,7 @@ static int atlas7_gpio_irq_type(struct irq_data *d,
 				unsigned int type)
 {
 	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
-	struct atlas7_gpio_chip *a7gc = to_atlas7_gpio(gc);
+	struct atlas7_gpio_chip *a7gc = gpiochip_get_data(gc);
 	struct atlas7_gpio_bank *bank;
 	void __iomem *ctrl_reg;
 	u32 val, pin_in_bank;
@@ -5786,7 +5780,7 @@ static struct irq_chip atlas7_gpio_irq_chip = {
 static void atlas7_gpio_handle_irq(struct irq_desc *desc)
 {
 	struct gpio_chip *gc = irq_desc_get_handler_data(desc);
-	struct atlas7_gpio_chip *a7gc = to_atlas7_gpio(gc);
+	struct atlas7_gpio_chip *a7gc = gpiochip_get_data(gc);
 	struct atlas7_gpio_bank *bank = NULL;
 	u32 status, ctrl;
 	int pin_in_bank = 0, idx;
@@ -5854,7 +5848,7 @@ static void __atlas7_gpio_set_input(struct atlas7_gpio_chip *a7gc,
 static int atlas7_gpio_request(struct gpio_chip *chip,
 				unsigned int gpio)
 {
-	struct atlas7_gpio_chip *a7gc = to_atlas7_gpio(chip);
+	struct atlas7_gpio_chip *a7gc = gpiochip_get_data(chip);
 	int ret;
 	unsigned long flags;
 
@@ -5882,7 +5876,7 @@ static int atlas7_gpio_request(struct gpio_chip *chip,
 static void atlas7_gpio_free(struct gpio_chip *chip,
 				unsigned int gpio)
 {
-	struct atlas7_gpio_chip *a7gc = to_atlas7_gpio(chip);
+	struct atlas7_gpio_chip *a7gc = gpiochip_get_data(chip);
 	unsigned long flags;
 
 	spin_lock_irqsave(&a7gc->lock, flags);
@@ -5898,7 +5892,7 @@ static void atlas7_gpio_free(struct gpio_chip *chip,
 static int atlas7_gpio_direction_input(struct gpio_chip *chip,
 					unsigned int gpio)
 {
-	struct atlas7_gpio_chip *a7gc = to_atlas7_gpio(chip);
+	struct atlas7_gpio_chip *a7gc = gpiochip_get_data(chip);
 	unsigned long flags;
 
 	spin_lock_irqsave(&a7gc->lock, flags);
@@ -5935,7 +5929,7 @@ static void __atlas7_gpio_set_output(struct atlas7_gpio_chip *a7gc,
 static int atlas7_gpio_direction_output(struct gpio_chip *chip,
 				unsigned int gpio, int value)
 {
-	struct atlas7_gpio_chip *a7gc = to_atlas7_gpio(chip);
+	struct atlas7_gpio_chip *a7gc = gpiochip_get_data(chip);
 	unsigned long flags;
 
 	spin_lock_irqsave(&a7gc->lock, flags);
@@ -5950,7 +5944,7 @@ static int atlas7_gpio_direction_output(struct gpio_chip *chip,
 static int atlas7_gpio_get_value(struct gpio_chip *chip,
 					unsigned int gpio)
 {
-	struct atlas7_gpio_chip *a7gc = to_atlas7_gpio(chip);
+	struct atlas7_gpio_chip *a7gc = gpiochip_get_data(chip);
 	struct atlas7_gpio_bank *bank;
 	u32 val, pin_in_bank;
 	unsigned long flags;
@@ -5970,7 +5964,7 @@ static int atlas7_gpio_get_value(struct gpio_chip *chip,
 static void atlas7_gpio_set_value(struct gpio_chip *chip,
 				unsigned int gpio, int value)
 {
-	struct atlas7_gpio_chip *a7gc = to_atlas7_gpio(chip);
+	struct atlas7_gpio_chip *a7gc = gpiochip_get_data(chip);
 	struct atlas7_gpio_bank *bank;
 	void __iomem *ctrl_reg;
 	u32 ctrl, pin_in_bank;
@@ -6054,10 +6048,10 @@ static int atlas7_gpio_probe(struct platform_device *pdev)
 	chip->label = kstrdup(np->name, GFP_KERNEL);
 	chip->of_node = np;
 	chip->of_gpio_n_cells = 2;
-	chip->dev = &pdev->dev;
+	chip->parent = &pdev->dev;
 
 	/* Add gpio chip to system */
-	ret = gpiochip_add(chip);
+	ret = gpiochip_add_data(chip, a7gc);
 	if (ret) {
 		dev_err(&pdev->dev,
 		"%s: error in probe function with status %d\n",
@@ -6075,7 +6069,6 @@ static int atlas7_gpio_probe(struct platform_device *pdev)
 	}
 
 	for (idx = 0; idx < nbank; idx++) {
-		struct gpio_pin_range *pin_range;
 		struct atlas7_gpio_bank *bank;
 
 		bank = &a7gc->banks[idx];
@@ -6093,22 +6086,6 @@ static int atlas7_gpio_probe(struct platform_device *pdev)
 
 		gpiochip_set_chained_irqchip(chip, &atlas7_gpio_irq_chip,
 					bank->irq, atlas7_gpio_handle_irq);
-
-		/* Records gpio_pin_range to a7gc */
-		list_for_each_entry(pin_range, &chip->pin_ranges, node) {
-			struct pinctrl_gpio_range *range;
-
-			range = &pin_range->range;
-			if (range->id == NGPIO_OF_BANK * idx) {
-				bank->gpio_offset = range->id;
-				bank->ngpio = range->npins;
-				bank->gpio_pins = range->pins;
-				bank->pctldev = pin_range->pctldev;
-				break;
-			}
-		}
-
-		BUG_ON(!bank->pctldev);
 	}
 
 	platform_set_drvdata(pdev, a7gc);

@@ -120,6 +120,7 @@ int test__hists_filter(int subtest __maybe_unused)
 	err = parse_events(evlist, "task-clock", NULL);
 	if (err)
 		goto out;
+	err = TEST_FAIL;
 
 	/* default sort order (comm,dso,sym) will be used */
 	if (setup_sorting(NULL) < 0)
@@ -144,7 +145,7 @@ int test__hists_filter(int subtest __maybe_unused)
 		struct hists *hists = evsel__hists(evsel);
 
 		hists__collapse_resort(hists, NULL);
-		hists__output_resort(hists, NULL);
+		perf_evsel__output_resort(evsel, NULL);
 
 		if (verbose > 2) {
 			pr_info("Normal histogram\n");

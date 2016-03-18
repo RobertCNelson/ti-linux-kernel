@@ -27,7 +27,7 @@
  * Copyright (c) 1999, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  *
- * Copyright (c) 2011, Intel Corporation.
+ * Copyright (c) 2011, 2015, Intel Corporation.
  */
 /*
  * This file is part of Lustre, http://www.lustre.org/
@@ -62,8 +62,8 @@ struct static_lustre_uintvalue_attr {
 };
 
 static ssize_t static_uintvalue_show(struct kobject *kobj,
-				    struct attribute *attr,
-				    char *buf)
+				     struct attribute *attr,
+				     char *buf)
 {
 	struct static_lustre_uintvalue_attr *lattr = (void *)attr;
 
@@ -71,8 +71,8 @@ static ssize_t static_uintvalue_show(struct kobject *kobj,
 }
 
 static ssize_t static_uintvalue_store(struct kobject *kobj,
-				     struct attribute *attr,
-				     const char *buffer, size_t count)
+				      struct attribute *attr,
+				      const char *buffer, size_t count)
 {
 	struct static_lustre_uintvalue_attr *lattr  = (void *)attr;
 	int rc;

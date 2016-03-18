@@ -17,7 +17,7 @@ detected_var = $(shell echo "$(1)=$($(1))" >> $(OUTPUT).config-detected)
 
 CFLAGS := $(EXTRA_CFLAGS) $(EXTRA_WARNINGS)
 
-include $(src-perf)/config/Makefile.arch
+include $(srctree)/tools/scripts/Makefile.arch
 
 $(call detected_var,ARCH)
 
@@ -61,50 +61,45 @@ endif
 
 ifeq ($(LIBUNWIND_LIBS),)
   NO_LIBUNWIND := 1
-else
-  #
-  # For linking with debug library, run like:
-  #
-  #   make DEBUG=1 LIBUNWIND_DIR=/opt/libunwind/
-  #
-  ifdef LIBUNWIND_DIR
-    LIBUNWIND_CFLAGS  = -I$(LIBUNWIND_DIR)/include
-    LIBUNWIND_LDFLAGS = -L$(LIBUNWIND_DIR)/lib
-  endif
-  LIBUNWIND_LDFLAGS += $(LIBUNWIND_LIBS)
-
-  # Set per-feature check compilation flags
-  FEATURE_CHECK_CFLAGS-libunwind = $(LIBUNWIND_CFLAGS)
-  FEATURE_CHECK_LDFLAGS-libunwind = $(LIBUNWIND_LDFLAGS)
-  FEATURE_CHECK_CFLAGS-libunwind-debug-frame = $(LIBUNWIND_CFLAGS)
-  FEATURE_CHECK_LDFLAGS-libunwind-debug-frame = $(LIBUNWIND_LDFLAGS)
 endif
+#
+# For linking with debug library, run like:
+#
+#   make DEBUG=1 LIBUNWIND_DIR=/opt/libunwind/
+#
+ifdef LIBUNWIND_DIR
+  LIBUNWIND_CFLAGS  = -I$(LIBUNWIND_DIR)/include
+  LIBUNWIND_LDFLAGS = -L$(LIBUNWIND_DIR)/lib
+endif
+LIBUNWIND_LDFLAGS += $(LIBUNWIND_LIBS)
+
+# Set per-feature check compilation flags
+FEATURE_CHECK_CFLAGS-libunwind = $(LIBUNWIND_CFLAGS)
+FEATURE_CHECK_LDFLAGS-libunwind = $(LIBUNWIND_LDFLAGS)
+FEATURE_CHECK_CFLAGS-libunwind-debug-frame = $(LIBUNWIND_CFLAGS)
+FEATURE_CHECK_LDFLAGS-libunwind-debug-frame = $(LIBUNWIND_LDFLAGS)
 
 ifeq ($(NO_PERF_REGS),0)
   CFLAGS += -DHAVE_PERF_REGS_SUPPORT
 endif
 
-ifndef NO_LIBELF
-  # for linking with debug library, run like:
-  # make DEBUG=1 LIBDW_DIR=/opt/libdw/
-  ifdef LIBDW_DIR
-    LIBDW_CFLAGS  := -I$(LIBDW_DIR)/include
-    LIBDW_LDFLAGS := -L$(LIBDW_DIR)/lib
-  endif
-  FEATURE_CHECK_CFLAGS-libdw-dwarf-unwind := $(LIBDW_CFLAGS)
-  FEATURE_CHECK_LDFLAGS-libdw-dwarf-unwind := $(LIBDW_LDFLAGS) -ldw
+# for linking with debug library, run like:
+# make DEBUG=1 LIBDW_DIR=/opt/libdw/
+ifdef LIBDW_DIR
+  LIBDW_CFLAGS  := -I$(LIBDW_DIR)/include
+  LIBDW_LDFLAGS := -L$(LIBDW_DIR)/lib
 endif
+FEATURE_CHECK_CFLAGS-libdw-dwarf-unwind := $(LIBDW_CFLAGS)
+FEATURE_CHECK_LDFLAGS-libdw-dwarf-unwind := $(LIBDW_LDFLAGS) -ldw
 
-ifdef LIBBABELTRACE
-  # for linking with debug library, run like:
-  # make DEBUG=1 LIBBABELTRACE_DIR=/opt/libbabeltrace/
-  ifdef LIBBABELTRACE_DIR
-    LIBBABELTRACE_CFLAGS  := -I$(LIBBABELTRACE_DIR)/include
-    LIBBABELTRACE_LDFLAGS := -L$(LIBBABELTRACE_DIR)/lib
-  endif
-  FEATURE_CHECK_CFLAGS-libbabeltrace := $(LIBBABELTRACE_CFLAGS)
-  FEATURE_CHECK_LDFLAGS-libbabeltrace := $(LIBBABELTRACE_LDFLAGS) -lbabeltrace-ctf
+# for linking with debug library, run like:
+# make DEBUG=1 LIBBABELTRACE_DIR=/opt/libbabeltrace/
+ifdef LIBBABELTRACE_DIR
+  LIBBABELTRACE_CFLAGS  := -I$(LIBBABELTRACE_DIR)/include
+  LIBBABELTRACE_LDFLAGS := -L$(LIBBABELTRACE_DIR)/lib
 endif
+FEATURE_CHECK_CFLAGS-libbabeltrace := $(LIBBABELTRACE_CFLAGS)
+FEATURE_CHECK_LDFLAGS-libbabeltrace := $(LIBBABELTRACE_LDFLAGS) -lbabeltrace-ctf
 
 FEATURE_CHECK_CFLAGS-bpf = -I. -I$(srctree)/tools/include -I$(srctree)/arch/$(ARCH)/include/uapi -I$(srctree)/include/uapi
 # include ARCH specific config
@@ -145,28 +140,26 @@ ifdef PARSER_DEBUG
   $(call detected_var,PARSER_DEBUG_FLEX)
 endif
 
-ifndef NO_LIBPYTHON
-  # Try different combinations to accommodate systems that only have
-  # python[2][-config] in weird combinations but always preferring
-  # python2 and python2-config as per pep-0394. If we catch a
-  # python[-config] in version 3, the version check will kill it.
-  PYTHON2 := $(if $(call get-executable,python2),python2,python)
-  override PYTHON := $(call get-executable-or-default,PYTHON,$(PYTHON2))
-  PYTHON2_CONFIG := \
-    $(if $(call get-executable,$(PYTHON)-config),$(PYTHON)-config,python-config)
-  override PYTHON_CONFIG := \
-    $(call get-executable-or-default,PYTHON_CONFIG,$(PYTHON2_CONFIG))
+# Try different combinations to accommodate systems that only have
+# python[2][-config] in weird combinations but always preferring
+# python2 and python2-config as per pep-0394. If we catch a
+# python[-config] in version 3, the version check will kill it.
+PYTHON2 := $(if $(call get-executable,python2),python2,python)
+override PYTHON := $(call get-executable-or-default,PYTHON,$(PYTHON2))
+PYTHON2_CONFIG := \
+  $(if $(call get-executable,$(PYTHON)-config),$(PYTHON)-config,python-config)
+override PYTHON_CONFIG := \
+  $(call get-executable-or-default,PYTHON_CONFIG,$(PYTHON2_CONFIG))
 
-  PYTHON_CONFIG_SQ := $(call shell-sq,$(PYTHON_CONFIG))
+PYTHON_CONFIG_SQ := $(call shell-sq,$(PYTHON_CONFIG))
 
-  PYTHON_EMBED_LDOPTS := $(shell $(PYTHON_CONFIG_SQ) --ldflags 2>/dev/null)
-  PYTHON_EMBED_CCOPTS := $(shell $(PYTHON_CONFIG_SQ) --cflags 2>/dev/null)
+PYTHON_EMBED_LDOPTS := $(shell $(PYTHON_CONFIG_SQ) --ldflags 2>/dev/null)
+PYTHON_EMBED_CCOPTS := $(shell $(PYTHON_CONFIG_SQ) --cflags 2>/dev/null)
 
-  FEATURE_CHECK_CFLAGS-libpython := $(PYTHON_EMBED_CCOPTS)
-  FEATURE_CHECK_LDFLAGS-libpython := $(PYTHON_EMBED_LDOPTS)
-  FEATURE_CHECK_CFLAGS-libpython-version := $(PYTHON_EMBED_CCOPTS)
-  FEATURE_CHECK_LDFLAGS-libpython-version := $(PYTHON_EMBED_LDOPTS)
-endif
+FEATURE_CHECK_CFLAGS-libpython := $(PYTHON_EMBED_CCOPTS)
+FEATURE_CHECK_LDFLAGS-libpython := $(PYTHON_EMBED_LDOPTS)
+FEATURE_CHECK_CFLAGS-libpython-version := $(PYTHON_EMBED_CCOPTS)
+FEATURE_CHECK_LDFLAGS-libpython-version := $(PYTHON_EMBED_LDOPTS)
 
 CFLAGS += -fno-omit-frame-pointer
 CFLAGS += -ggdb3
@@ -181,7 +174,11 @@ LDFLAGS += -Wl,-z,noexecstack
 
 EXTLIBS = -lpthread -lrt -lm -ldl
 
+ifeq ($(FEATURES_DUMP),)
 include $(srctree)/tools/build/Makefile.feature
+else
+include $(FEATURES_DUMP)
+endif
 
 ifeq ($(feature-stackprotector-all), 1)
   CFLAGS += -fstack-protector-all
@@ -331,6 +328,13 @@ ifndef NO_LIBELF
   endif # NO_LIBBPF
 endif # NO_LIBELF
 
+ifdef PERF_HAVE_JITDUMP
+  ifndef NO_DWARF
+    $(call detected,CONFIG_JITDUMP)
+    CFLAGS += -DHAVE_JITDUMP
+  endif
+endif
+
 ifeq ($(ARCH),powerpc)
   ifndef NO_DWARF
     CFLAGS += -DHAVE_SKIP_CALLCHAIN_IDX
@@ -404,6 +408,17 @@ ifndef NO_LIBAUDIT
     CFLAGS += -DHAVE_LIBAUDIT_SUPPORT
     EXTLIBS += -laudit
     $(call detected,CONFIG_AUDIT)
+  endif
+endif
+
+ifndef NO_LIBCRYPTO
+  ifneq ($(feature-libcrypto), 1)
+    msg := $(warning No libcrypto.h found, disables jitted code injection, please install libssl-devel or libssl-dev);
+    NO_LIBCRYPTO := 1
+  else
+    CFLAGS += -DHAVE_LIBCRYPTO_SUPPORT
+    EXTLIBS += -lcrypto
+    $(call detected,CONFIG_CRYPTO)
   endif
 endif
 
@@ -493,7 +508,7 @@ else
 
       PYTHON_EMBED_LDOPTS := $(shell $(PYTHON_CONFIG_SQ) --ldflags 2>/dev/null)
       PYTHON_EMBED_LDFLAGS := $(call strip-libs,$(PYTHON_EMBED_LDOPTS))
-      PYTHON_EMBED_LIBADD := $(call grep-libs,$(PYTHON_EMBED_LDOPTS))
+      PYTHON_EMBED_LIBADD := $(call grep-libs,$(PYTHON_EMBED_LDOPTS)) -lutil
       PYTHON_EMBED_CCOPTS := $(shell $(PYTHON_CONFIG_SQ) --cflags 2>/dev/null)
       FLAGS_PYTHON_EMBED := $(PYTHON_EMBED_CCOPTS) $(PYTHON_EMBED_LDOPTS)
 
@@ -692,6 +707,7 @@ template_dir = share/perf-core/templates
 STRACE_GROUPS_DIR = share/perf-core/strace/groups
 htmldir = share/doc/perf-doc
 tipdir = share/doc/perf-tip
+srcdir = $(srctree)/tools/perf
 ifeq ($(prefix),/usr)
 sysconfdir = /etc
 ETC_PERFCONFIG = $(sysconfdir)/perfconfig
@@ -722,6 +738,7 @@ tipdir_SQ = $(subst ','\'',$(tipdir))
 prefix_SQ = $(subst ','\'',$(prefix))
 sysconfdir_SQ = $(subst ','\'',$(sysconfdir))
 libdir_SQ = $(subst ','\'',$(libdir))
+srcdir_SQ = $(subst ','\'',$(srcdir))
 
 ifneq ($(filter /%,$(firstword $(perfexecdir))),)
 perfexec_instdir = $(perfexecdir)
@@ -776,6 +793,7 @@ $(call detected_var,STRACE_GROUPS_DIR_SQ)
 $(call detected_var,prefix_SQ)
 $(call detected_var,perfexecdir_SQ)
 $(call detected_var,tipdir_SQ)
+$(call detected_var,srcdir_SQ)
 $(call detected_var,LIBDIR)
 $(call detected_var,GTK_CFLAGS)
 $(call detected_var,PERL_EMBED_CCOPTS)

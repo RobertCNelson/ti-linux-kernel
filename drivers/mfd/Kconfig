@@ -211,7 +211,7 @@ config MFD_DA9062
 	  of the device.
 
 config MFD_DA9063
-	bool "Dialog Semiconductor DA9063 PMIC Support"
+	tristate "Dialog Semiconductor DA9063 PMIC Support"
 	select MFD_CORE
 	select REGMAP_I2C
 	select REGMAP_IRQ
@@ -1181,27 +1181,25 @@ config MFD_TPS65910
 	  Power Management chips.
 
 config MFD_TPS65912
-	bool "TI TPS65912 Power Management chip"
-	depends on GPIOLIB
+	tristate
 	select MFD_CORE
-	help
-	  If you say yes here you get support for the TPS65912 series of
-	  PM chips.
+	select REGMAP
+	select REGMAP_IRQ
 
 config MFD_TPS65912_I2C
-	bool "TI TPS65912 Power Management chip with I2C"
-	select MFD_CORE
+	tristate "TI TPS65912 Power Management chip with I2C"
 	select MFD_TPS65912
-	depends on I2C=y && GPIOLIB
+	select REGMAP_I2C
+	depends on I2C
 	help
 	  If you say yes here you get support for the TPS65912 series of
 	  PM chips with I2C interface.
 
 config MFD_TPS65912_SPI
-	bool "TI TPS65912 Power Management chip with SPI"
-	select MFD_CORE
+	tristate "TI TPS65912 Power Management chip with SPI"
 	select MFD_TPS65912
-	depends on SPI_MASTER && GPIOLIB
+	select REGMAP_SPI
+	depends on SPI_MASTER
 	help
 	  If you say yes here you get support for the TPS65912 series of
 	  PM chips with SPI interface.
@@ -1370,24 +1368,30 @@ config MFD_ARIZONA
 	bool
 
 config MFD_ARIZONA_I2C
-	tristate "Wolfson Microelectronics Arizona platform with I2C"
+	tristate "Cirrus Logic/Wolfson Microelectronics Arizona platform with I2C"
 	select MFD_ARIZONA
 	select MFD_CORE
 	select REGMAP_I2C
 	depends on I2C
 	help
-	  Support for the Wolfson Microelectronics Arizona platform audio SoC
-	  core functionality controlled via I2C.
+	  Support for the Cirrus Logic/Wolfson Microelectronics Arizona platform
+	  audio SoC core functionality controlled via I2C.
 
 config MFD_ARIZONA_SPI
-	tristate "Wolfson Microelectronics Arizona platform with SPI"
+	tristate "Cirrus Logic/Wolfson Microelectronics Arizona platform with SPI"
 	select MFD_ARIZONA
 	select MFD_CORE
 	select REGMAP_SPI
 	depends on SPI_MASTER
 	help
-	  Support for the Wolfson Microelectronics Arizona platform audio SoC
-	  core functionality controlled via I2C.
+	  Support for the Cirrus Logic/Wolfson Microelectronics Arizona platform
+	  audio SoC core functionality controlled via I2C.
+
+config MFD_CS47L24
+	bool "Cirrus Logic CS47L24 and WM1831"
+	depends on MFD_ARIZONA
+	help
+	  Support for Cirrus Logic CS47L24 and WM1831 low power audio SoC
 
 config MFD_WM5102
 	bool "Wolfson Microelectronics WM5102"

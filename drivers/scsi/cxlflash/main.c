@@ -368,6 +368,7 @@ out:
 
 no_room:
 	afu->read_room = true;
+	kref_get(&cfg->afu->mapcount);
 	schedule_work(&cfg->work_q);
 	rc = SCSI_MLQUEUE_HOST_BUSY;
 	goto out;
@@ -473,6 +474,16 @@ out:
 	return rc;
 }
 
+static void afu_unmap(struct kref *ref)
+{
+	struct afu *afu = container_of(ref, struct afu, mapcount);
+
+	if (likely(afu->afu_map)) {
+		cxl_psa_unmap((void __iomem *)afu->afu_map);
+		afu->afu_map = NULL;
+	}
+}
+
 /**
  * cxlflash_driver_info() - information handler for this host driver
  * @host:	SCSI host associated with device.
@@ -503,6 +514,7 @@ static int cxlflash_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *scp)
 	ulong lock_flags;
 	short lflag = 0;
 	int rc = 0;
+	int kref_got = 0;
 
 	dev_dbg_ratelimited(dev, "%s: (scp=%p) %d/%d/%d/%llu "
 			    "cdb=(%08X-%08X-%08X-%08X)\n",
@@ -547,6 +559,9 @@ static int cxlflash_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *scp)
 		goto out;
 	}
 
+	kref_get(&cfg->afu->mapcount);
+	kref_got = 1;
+
 	cmd->rcb.ctx_id = afu->ctx_hndl;
 	cmd->rcb.port_sel = port_sel;
 	cmd->rcb.lun_id = lun_to_lunid(scp->device->lun);
@@ -587,6 +602,8 @@ static int cxlflash_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *scp)
 	}
 
 out:
+	if (kref_got)
+		kref_put(&afu->mapcount, afu_unmap);
 	pr_devel("%s: returning rc=%d\n", __func__, rc);
 	return rc;
 }
@@ -632,20 +649,36 @@ static void free_mem(struct cxlflash_cfg *cfg)
  * @cfg:	Internal structure associated with the host.
  *
  * Safe to call with AFU in a partially allocated/initialized state.
+ *
+ * Cleans up all state associated with the command queue, and unmaps
+ * the MMIO space.
+ *
+ *  - complete() will take care of commands we initiated (they'll be checked
+ *  in as part of the cleanup that occurs after the completion)
+ *
+ *  - cmd_checkin() will take care of entries that we did not initiate and that
+ *  have not (and will not) complete because they are sitting on a [now stale]
+ *  hardware queue
  */
 static void stop_afu(struct cxlflash_cfg *cfg)
 {
 	int i;
 	struct afu *afu = cfg->afu;
+	struct afu_cmd *cmd;
 
 	if (likely(afu)) {
-		for (i = 0; i < CXLFLASH_NUM_CMDS; i++)
-			complete(&afu->cmd[i].cevent);
+		for (i = 0; i < CXLFLASH_NUM_CMDS; i++) {
+			cmd = &afu->cmd[i];
+			complete(&cmd->cevent);
+			if (!atomic_read(&cmd->free))
+				cmd_checkin(cmd);
+		}
 
 		if (likely(afu->afu_map)) {
 			cxl_psa_unmap((void __iomem *)afu->afu_map);
 			afu->afu_map = NULL;
 		}
+		kref_put(&afu->mapcount, afu_unmap);
 	}
 }
 
@@ -693,10 +726,10 @@ static void term_mc(struct cxlflash_cfg *cfg, enum undo_level level)
  */
 static void term_afu(struct cxlflash_cfg *cfg)
 {
-	term_mc(cfg, UNDO_START);
-
 	if (cfg->afu)
 		stop_afu(cfg);
+
+	term_mc(cfg, UNDO_START);
 
 	pr_debug("%s: returning\n", __func__);
 }
@@ -731,10 +764,9 @@ static void cxlflash_remove(struct pci_dev *pdev)
 		scsi_remove_host(cfg->host);
 		/* fall through */
 	case INIT_STATE_AFU:
-		term_afu(cfg);
 		cancel_work_sync(&cfg->work_q);
+		term_afu(cfg);
 	case INIT_STATE_PCI:
-		pci_release_regions(cfg->dev);
 		pci_disable_device(pdev);
 	case INIT_STATE_NONE:
 		free_mem(cfg);
@@ -807,15 +839,6 @@ static int init_pci(struct cxlflash_cfg *cfg)
 	struct pci_dev *pdev = cfg->dev;
 	int rc = 0;
 
-	cfg->cxlflash_regs_pci = pci_resource_start(pdev, 0);
-	rc = pci_request_regions(pdev, CXLFLASH_NAME);
-	if (rc < 0) {
-		dev_err(&pdev->dev,
-			"%s: Couldn't register memory range of registers\n",
-			__func__);
-		goto out;
-	}
-
 	rc = pci_enable_device(pdev);
 	if (rc || pci_channel_offline(pdev)) {
 		if (pci_channel_offline(pdev)) {
@@ -827,55 +850,13 @@ static int init_pci(struct cxlflash_cfg *cfg)
 			dev_err(&pdev->dev, "%s: Cannot enable adapter\n",
 				__func__);
 			cxlflash_wait_for_pci_err_recovery(cfg);
-			goto out_release_regions;
+			goto out;
 		}
-	}
-
-	rc = pci_set_dma_mask(pdev, DMA_BIT_MASK(64));
-	if (rc < 0) {
-		dev_dbg(&pdev->dev, "%s: Failed to set 64 bit PCI DMA mask\n",
-			__func__);
-		rc = pci_set_dma_mask(pdev, DMA_BIT_MASK(32));
-	}
-
-	if (rc < 0) {
-		dev_err(&pdev->dev, "%s: Failed to set PCI DMA mask\n",
-			__func__);
-		goto out_disable;
-	}
-
-	pci_set_master(pdev);
-
-	if (pci_channel_offline(pdev)) {
-		cxlflash_wait_for_pci_err_recovery(cfg);
-		if (pci_channel_offline(pdev)) {
-			rc = -EIO;
-			goto out_msi_disable;
-		}
-	}
-
-	rc = pci_save_state(pdev);
-
-	if (rc != PCIBIOS_SUCCESSFUL) {
-		dev_err(&pdev->dev, "%s: Failed to save PCI config space\n",
-			__func__);
-		rc = -EIO;
-		goto cleanup_nolog;
 	}
 
 out:
 	pr_debug("%s: returning rc=%d\n", __func__, rc);
 	return rc;
-
-cleanup_nolog:
-out_msi_disable:
-	cxlflash_wait_for_pci_err_recovery(cfg);
-out_disable:
-	pci_disable_device(pdev);
-out_release_regions:
-	pci_release_regions(pdev);
-	goto out;
-
 }
 
 /**
@@ -1108,7 +1089,7 @@ static const struct asyc_intr_info ainfo[] = {
 	{SISL_ASTATUS_FC1_OTHER, "other error", 1, CLR_FC_ERROR | LINK_RESET},
 	{SISL_ASTATUS_FC1_LOGO, "target initiated LOGO", 1, 0},
 	{SISL_ASTATUS_FC1_CRC_T, "CRC threshold exceeded", 1, LINK_RESET},
-	{SISL_ASTATUS_FC1_LOGI_R, "login timed out, retrying", 1, 0},
+	{SISL_ASTATUS_FC1_LOGI_R, "login timed out, retrying", 1, LINK_RESET},
 	{SISL_ASTATUS_FC1_LOGI_F, "login failed", 1, CLR_FC_ERROR},
 	{SISL_ASTATUS_FC1_LOGI_S, "login succeeded", 1, SCAN_HOST},
 	{SISL_ASTATUS_FC1_LINK_DN, "link down", 1, 0},
@@ -1316,6 +1297,7 @@ static irqreturn_t cxlflash_async_err_irq(int irq, void *data)
 				__func__, port);
 			cfg->lr_state = LINK_RESET_REQUIRED;
 			cfg->lr_port = port;
+			kref_get(&cfg->afu->mapcount);
 			schedule_work(&cfg->work_q);
 		}
 
@@ -1336,6 +1318,7 @@ static irqreturn_t cxlflash_async_err_irq(int irq, void *data)
 
 		if (info->action & SCAN_HOST) {
 			atomic_inc(&cfg->scan_host_needed);
+			kref_get(&cfg->afu->mapcount);
 			schedule_work(&cfg->work_q);
 		}
 	}
@@ -1731,6 +1714,7 @@ static int init_afu(struct cxlflash_cfg *cfg)
 		rc = -ENOMEM;
 		goto err1;
 	}
+	kref_init(&afu->mapcount);
 
 	/* No byte reverse on reading afu_version or string will be backwards */
 	reg = readq(&afu->afu_map->global.regs.afu_version);
@@ -1765,8 +1749,7 @@ out:
 	return rc;
 
 err2:
-	cxl_psa_unmap((void __iomem *)afu->afu_map);
-	afu->afu_map = NULL;
+	kref_put(&afu->mapcount, afu_unmap);
 err1:
 	term_mc(cfg, UNDO_START);
 	goto out;
@@ -2114,6 +2097,16 @@ static ssize_t lun_mode_store(struct device *dev,
 	rc = kstrtouint(buf, 10, &lun_mode);
 	if (!rc && (lun_mode < 5) && (lun_mode != afu->internal_lun)) {
 		afu->internal_lun = lun_mode;
+
+		/*
+		 * When configured for internal LUN, there is only one channel,
+		 * channel number 0, else there will be 2 (default).
+		 */
+		if (afu->internal_lun)
+			shost->max_channel = 0;
+		else
+			shost->max_channel = NUM_FC_PORTS - 1;
+
 		afu_reset(cfg);
 		scsi_scan_host(cfg->host);
 	}
@@ -2260,7 +2253,7 @@ static struct scsi_host_template driver_template = {
 	.eh_device_reset_handler = cxlflash_eh_device_reset_handler,
 	.eh_host_reset_handler = cxlflash_eh_host_reset_handler,
 	.change_queue_depth = cxlflash_change_queue_depth,
-	.cmd_per_lun = 16,
+	.cmd_per_lun = CXLFLASH_MAX_CMDS_PER_LUN,
 	.can_queue = CXLFLASH_MAX_CMDS,
 	.this_id = -1,
 	.sg_tablesize = SG_NONE,	/* No scatter gather support */
@@ -2274,6 +2267,7 @@ static struct scsi_host_template driver_template = {
  * Device dependent values
  */
 static struct dev_dependent_vals dev_corsa_vals = { CXLFLASH_MAX_SECTORS };
+static struct dev_dependent_vals dev_flash_gt_vals = { CXLFLASH_MAX_SECTORS };
 
 /*
  * PCI device binding table
@@ -2281,6 +2275,8 @@ static struct dev_dependent_vals dev_corsa_vals = { CXLFLASH_MAX_SECTORS };
 static struct pci_device_id cxlflash_pci_table[] = {
 	{PCI_VENDOR_ID_IBM, PCI_DEVICE_ID_IBM_CORSA,
 	 PCI_ANY_ID, PCI_ANY_ID, 0, 0, (kernel_ulong_t)&dev_corsa_vals},
+	{PCI_VENDOR_ID_IBM, PCI_DEVICE_ID_IBM_FLASH_GT,
+	 PCI_ANY_ID, PCI_ANY_ID, 0, 0, (kernel_ulong_t)&dev_flash_gt_vals},
 	{}
 };
 
@@ -2339,6 +2335,7 @@ static void cxlflash_worker_thread(struct work_struct *work)
 
 	if (atomic_dec_if_positive(&cfg->scan_host_needed) >= 0)
 		scsi_scan_host(cfg->host);
+	kref_put(&afu->mapcount, afu_unmap);
 }
 
 /**
@@ -2505,8 +2502,8 @@ static pci_ers_result_t cxlflash_pci_error_detected(struct pci_dev *pdev,
 		if (unlikely(rc))
 			dev_err(dev, "%s: Failed to mark user contexts!(%d)\n",
 				__func__, rc);
-		term_mc(cfg, UNDO_START);
 		stop_afu(cfg);
+		term_mc(cfg, UNDO_START);
 		return PCI_ERS_RESULT_NEED_RESET;
 	case pci_channel_io_perm_failure:
 		cfg->state = STATE_FAILTERM;
@@ -2585,8 +2582,7 @@ static struct pci_driver cxlflash_driver = {
  */
 static int __init init_cxlflash(void)
 {
-	pr_info("%s: IBM Power CXL Flash Adapter: %s\n",
-		__func__, CXLFLASH_DRIVER_DATE);
+	pr_info("%s: %s\n", __func__, CXLFLASH_ADAPTER_NAME);
 
 	cxlflash_list_init();
 
