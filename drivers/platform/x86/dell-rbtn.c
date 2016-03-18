@@ -28,6 +28,7 @@ struct rbtn_data {
 	enum rbtn_type type;
 	struct rfkill *rfkill;
 	struct input_dev *input_dev;
+	bool suspended;
 };
 
 
@@ -235,9 +236,49 @@ static const struct acpi_device_id rbtn_ids[] = {
 	{ "", 0 },
 };
 
+#ifdef CONFIG_PM_SLEEP
+static void ACPI_SYSTEM_XFACE rbtn_acpi_clear_flag(void *context)
+{
+	struct rbtn_data *rbtn_data = context;
+
+	rbtn_data->suspended = false;
+}
+
+static int rbtn_suspend(struct device *dev)
+{
+	struct acpi_device *device = to_acpi_device(dev);
+	struct rbtn_data *rbtn_data = acpi_driver_data(device);
+
+	rbtn_data->suspended = true;
+
+	return 0;
+}
+
+static int rbtn_resume(struct device *dev)
+{
+	struct acpi_device *device = to_acpi_device(dev);
+	struct rbtn_data *rbtn_data = acpi_driver_data(device);
+	acpi_status status;
+
+	/*
+	 * Clear the flag only after we received the extra
+	 * ACPI notification.
+	 */
+	status = acpi_os_execute(OSL_NOTIFY_HANDLER,
+			 rbtn_acpi_clear_flag, rbtn_data);
+	if (ACPI_FAILURE(status))
+		rbtn_data->suspended = false;
+
+	return 0;
+}
+#endif
+
+static SIMPLE_DEV_PM_OPS(rbtn_pm_ops, rbtn_suspend, rbtn_resume);
+
 static struct acpi_driver rbtn_driver = {
 	.name = "dell-rbtn",
 	.ids = rbtn_ids,
+	.drv.pm = &rbtn_pm_ops,
 	.ops = {
 		.add = rbtn_add,
 		.remove = rbtn_remove,
@@ -398,6 +439,15 @@ static int rbtn_remove(struct acpi_device *device)
 static void rbtn_notify(struct acpi_device *device, u32 event)
 {
 	struct rbtn_data *rbtn_data = device->driver_data;
+
+	/*
+	 * Some BIOSes send autonomously a notification at resume.
+	 * Ignore it to prevent unwanted input events.
+	 */
+	if (rbtn_data->suspended) {
+		dev_dbg(&device->dev, "ACPI notification ignored\n");
+		return;
+	}
 
 	if (event != 0x80) {
 		dev_info(&device->dev, "Received unknown event (0x%x)\n",
