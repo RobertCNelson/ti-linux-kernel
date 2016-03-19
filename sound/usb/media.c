@@ -299,6 +299,13 @@ int media_snd_device_create(struct snd_usb_audio *chip,
 void media_snd_device_delete(struct snd_usb_audio *chip)
 {
 	struct media_device *mdev = chip->media_dev;
+	struct snd_usb_stream *stream;
+
+	/* release resources */
+	list_for_each_entry(stream, &chip->pcm_list, list) {
+		media_snd_stream_delete(&stream->substream[0]);
+		media_snd_stream_delete(&stream->substream[1]);
+	}
 
 	media_snd_mixer_delete(chip);
 
