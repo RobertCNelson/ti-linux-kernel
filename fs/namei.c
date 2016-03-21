@@ -4150,6 +4150,17 @@ SYSCALL_DEFINE2(link, const char __user *, oldname, const char __user *, newname
 	return sys_linkat(AT_FDCWD, oldname, AT_FDCWD, newname, 0);
 }
 
+static struct inode *backing_inode(struct dentry *dentry)
+{
+	struct inode *inode = d_inode(dentry);
+
+	if (inode && dentry->d_flags & DCACHE_OP_SELECT_INODE) {
+		inode = dentry->d_op->d_select_inode(dentry, 0);
+		WARN_ON(IS_ERR(inode));
+	}
+	return inode;
+}
+
 /**
  * vfs_rename - rename a filesystem object
  * @old_dir:	parent of source
@@ -4211,7 +4222,7 @@ int vfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	bool new_is_dir = false;
 	unsigned max_links = new_dir->i_sb->s_max_links;
 
-	if (source == target)
+	if (backing_inode(old_dentry) == backing_inode(new_dentry))
 		return 0;
 
 	error = may_delete(old_dir, old_dentry, is_dir);
