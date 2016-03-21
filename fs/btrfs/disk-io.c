@@ -25,7 +25,6 @@
 #include <linux/buffer_head.h>
 #include <linux/workqueue.h>
 #include <linux/kthread.h>
-#include <linux/freezer.h>
 #include <linux/slab.h>
 #include <linux/migrate.h>
 #include <linux/ratelimit.h>
@@ -303,7 +302,7 @@ static int csum_tree_block(struct btrfs_fs_info *fs_info,
 		err = map_private_extent_buffer(buf, offset, 32,
 					&kaddr, &map_start, &map_len);
 		if (err)
-			return 1;
+			return err;
 		cur_len = min(len, map_len - (offset - map_start));
 		crc = btrfs_csum_data(kaddr + offset - map_start,
 				      crc, cur_len);
@@ -313,7 +312,7 @@ static int csum_tree_block(struct btrfs_fs_info *fs_info,
 	if (csum_size > sizeof(inline_result)) {
 		result = kzalloc(csum_size, GFP_NOFS);
 		if (!result)
-			return 1;
+			return -ENOMEM;
 	} else {
 		result = (char *)&inline_result;
 	}
@@ -334,7 +333,7 @@ static int csum_tree_block(struct btrfs_fs_info *fs_info,
 				val, found, btrfs_header_level(buf));
 			if (result != (char *)&inline_result)
 				kfree(result);
-			return 1;
+			return -EUCLEAN;
 		}
 	} else {
 		write_extent_buffer(buf, result, 0, csum_size);
@@ -513,11 +512,21 @@ static int csum_dirty_buffer(struct btrfs_fs_info *fs_info, struct page *page)
 	eb = (struct extent_buffer *)page->private;
 	if (page != eb->pages[0])
 		return 0;
+
 	found_start = btrfs_header_bytenr(eb);
-	if (WARN_ON(found_start != start || !PageUptodate(page)))
-		return 0;
-	csum_tree_block(fs_info, eb, 0);
-	return 0;
+	/*
+	 * Please do not consolidate these warnings into a single if.
+	 * It is useful to know what went wrong.
+	 */
+	if (WARN_ON(found_start != start))
+		return -EUCLEAN;
+	if (WARN_ON(!PageUptodate(page)))
+		return -EUCLEAN;
+
+	ASSERT(memcmp_extent_buffer(eb, fs_info->fsid,
+			btrfs_header_fsid(), BTRFS_FSID_SIZE) == 0);
+
+	return csum_tree_block(fs_info, eb, 0);
 }
 
 static int check_tree_block_fsid(struct btrfs_fs_info *fs_info,
@@ -661,10 +670,8 @@ static int btree_readpage_end_io_hook(struct btrfs_io_bio *io_bio,
 				       eb, found_level);
 
 	ret = csum_tree_block(fs_info, eb, 1);
-	if (ret) {
-		ret = -EIO;
+	if (ret)
 		goto err;
-	}
 
 	/*
 	 * If this is a leaf block and it is corrupt, set the corrupt bit so
@@ -1831,7 +1838,7 @@ static int cleaner_kthread(void *arg)
 		 */
 		btrfs_delete_unused_bgs(root->fs_info);
 sleep:
-		if (!try_to_freeze() && !again) {
+		if (!again) {
 			set_current_state(TASK_INTERRUPTIBLE);
 			if (!kthread_should_stop())
 				schedule();
@@ -1921,14 +1928,12 @@ sleep:
 		if (unlikely(test_bit(BTRFS_FS_STATE_ERROR,
 				      &root->fs_info->fs_state)))
 			btrfs_cleanup_transaction(root);
-		if (!try_to_freeze()) {
-			set_current_state(TASK_INTERRUPTIBLE);
-			if (!kthread_should_stop() &&
-			    (!btrfs_transaction_blocked(root->fs_info) ||
-			     cannot_commit))
-				schedule_timeout(delay);
-			__set_current_state(TASK_RUNNING);
-		}
+		set_current_state(TASK_INTERRUPTIBLE);
+		if (!kthread_should_stop() &&
+				(!btrfs_transaction_blocked(root->fs_info) ||
+				 cannot_commit))
+			schedule_timeout(delay);
+		__set_current_state(TASK_RUNNING);
 	} while (!kthread_should_stop());
 	return 0;
 }
@@ -2412,7 +2417,7 @@ static int btrfs_replay_log(struct btrfs_fs_info *fs_info,
 	/* returns with log_tree_root freed on success */
 	ret = btrfs_recover_log_trees(log_tree_root);
 	if (ret) {
-		btrfs_std_error(tree_root->fs_info, ret,
+		btrfs_handle_fs_error(tree_root->fs_info, ret,
 			    "Failed to recover log tree");
 		free_extent_buffer(log_tree_root->node);
 		kfree(log_tree_root);
@@ -3641,7 +3646,7 @@ static int write_all_supers(struct btrfs_root *root, int max_mirrors)
 		if (ret) {
 			mutex_unlock(
 				&root->fs_info->fs_devices->device_list_mutex);
-			btrfs_std_error(root->fs_info, ret,
+			btrfs_handle_fs_error(root->fs_info, ret,
 				    "errors while submitting device barriers.");
 			return ret;
 		}
@@ -3681,7 +3686,7 @@ static int write_all_supers(struct btrfs_root *root, int max_mirrors)
 		mutex_unlock(&root->fs_info->fs_devices->device_list_mutex);
 
 		/* FUA is masked off if unsupported and can't be the reason */
-		btrfs_std_error(root->fs_info, -EIO,
+		btrfs_handle_fs_error(root->fs_info, -EIO,
 			    "%d errors while writing supers", total_errors);
 		return -EIO;
 	}
@@ -3699,7 +3704,7 @@ static int write_all_supers(struct btrfs_root *root, int max_mirrors)
 	}
 	mutex_unlock(&root->fs_info->fs_devices->device_list_mutex);
 	if (total_errors > max_errors) {
-		btrfs_std_error(root->fs_info, -EIO,
+		btrfs_handle_fs_error(root->fs_info, -EIO,
 			    "%d errors while writing supers", total_errors);
 		return -EIO;
 	}
