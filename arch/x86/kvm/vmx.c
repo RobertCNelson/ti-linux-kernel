@@ -5506,7 +5506,7 @@ static int handle_set_cr4(struct kvm_vcpu *vcpu, unsigned long val)
 		return kvm_set_cr4(vcpu, val);
 }
 
-/* called to set cr0 as approriate for clts instruction exit. */
+/* called to set cr0 as appropriate for clts instruction exit. */
 static void handle_clts(struct kvm_vcpu *vcpu)
 {
 	if (is_guest_mode(vcpu)) {
@@ -7245,7 +7245,7 @@ static int handle_vmwrite(struct kvm_vcpu *vcpu)
 	/* The value to write might be 32 or 64 bits, depending on L1's long
 	 * mode, and eventually we need to write that into a field of several
 	 * possible lengths. The code below first zero-extends the value to 64
-	 * bit (field_value), and then copies only the approriate number of
+	 * bit (field_value), and then copies only the appropriate number of
 	 * bits into the vmcs12 field.
 	 */
 	u64 field_value = 0;
@@ -8385,6 +8385,7 @@ static void vmx_complete_atomic_exit(struct vcpu_vmx *vmx)
 static void vmx_handle_external_intr(struct kvm_vcpu *vcpu)
 {
 	u32 exit_intr_info = vmcs_read32(VM_EXIT_INTR_INFO);
+	register void *__sp asm(_ASM_SP);
 
 	/*
 	 * If external interrupt exists, IF bit is set in rflags/eflags on the
@@ -8417,8 +8418,9 @@ static void vmx_handle_external_intr(struct kvm_vcpu *vcpu)
 			"call *%[entry]\n\t"
 			:
 #ifdef CONFIG_X86_64
-			[sp]"=&r"(tmp)
+			[sp]"=&r"(tmp),
 #endif
+			"+r"(__sp)
 			:
 			[entry]"r"(entry),
 			[ss]"i"(__KERNEL_DS),
