@@ -1241,6 +1241,8 @@ static inline struct inode *file_inode(const struct file *f)
 	return f->f_inode;
 }
 
+extern struct dentry *file_dentry(const struct file *file);
+
 static inline int locks_lock_file_wait(struct file *filp, struct file_lock *fl)
 {
 	return locks_lock_inode_wait(file_inode(filp), fl);
