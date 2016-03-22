@@ -1320,6 +1320,10 @@ struct net_device_ops {
  * @IFF_LIVE_ADDR_CHANGE: device supports hardware address
  *	change when it's running
  * @IFF_MACVLAN: Macvlan device
+ * @IFF_XMIT_DST_RELEASE_PERM: IFF_XMIT_DST_RELEASE not taking into account
+ *	underlying stacked devices
+ * @IFF_IPVLAN_MASTER: IPvlan master device
+ * @IFF_IPVLAN_SLAVE: IPvlan slave device
  * @IFF_L3MDEV_MASTER: device is an L3 master device
  * @IFF_NO_QUEUE: device can run without qdisc attached
  * @IFF_OPENVSWITCH: device is a Open vSwitch master
@@ -1414,6 +1418,8 @@ enum netdev_priv_flags {
  *	@unreg_list:	List entry, that is used, when we are unregistering the
  *			device, see the function unregister_netdev
  *	@close_list:	List entry, that is used, when we are closing the device
+ *	@ptype_all:     Device-specific packet handlers for all protocols
+ *	@ptype_specific: Device-specific, protocol-specific packet handlers
  *
  *	@adj_list:	Directly linked devices, like slaves for bonding
  *	@all_adj_list:	All linked devices, *including* neighbours
@@ -2096,8 +2102,8 @@ struct napi_gro_cb {
 	/* This is non-zero if the packet may be of the same flow. */
 	u8	same_flow:1;
 
-	/* Used in udp_gro_receive */
-	u8	udp_mark:1;
+	/* Used in tunnel GRO receive */
+	u8	encap_mark:1;
 
 	/* GRO checksum is valid */
 	u8	csum_valid:1;
