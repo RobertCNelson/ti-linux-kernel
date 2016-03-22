@@ -63,6 +63,7 @@ config MIPS
 	select GENERIC_TIME_VSYSCALL
 	select ARCH_CLOCKSOURCE_DATA
 	select HANDLE_DOMAIN_IRQ
+	select HAVE_NMI
 
 menu "Machine selection"
 
