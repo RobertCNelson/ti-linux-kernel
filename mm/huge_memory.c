@@ -1700,7 +1700,8 @@ bool move_huge_pmd(struct vm_area_struct *vma, struct vm_area_struct *new_vma,
 		pmd = pmdp_huge_get_and_clear(mm, old_addr, old_pmd);
 		VM_BUG_ON(!pmd_none(*new_pmd));
 
-		if (pmd_move_must_withdraw(new_ptl, old_ptl)) {
+		if (pmd_move_must_withdraw(new_ptl, old_ptl) &&
+				vma_is_anonymous(vma)) {
 			pgtable_t pgtable;
 			pgtable = pgtable_trans_huge_withdraw(mm, old_pmd);
 			pgtable_trans_huge_deposit(mm, new_pmd, pgtable);
@@ -2835,6 +2836,7 @@ static void __split_huge_pmd_locked(struct vm_area_struct *vma, pmd_t *pmd,
 	pgtable_t pgtable;
 	pmd_t _pmd;
 	bool young, write, dirty;
+	unsigned long addr;
 	int i;
 
 	VM_BUG_ON(haddr & ~HPAGE_PMD_MASK);
@@ -2860,10 +2862,11 @@ static void __split_huge_pmd_locked(struct vm_area_struct *vma, pmd_t *pmd,
 	young = pmd_young(*pmd);
 	dirty = pmd_dirty(*pmd);
 
+	pmdp_huge_split_prepare(vma, haddr, pmd);
 	pgtable = pgtable_trans_huge_withdraw(mm, pmd);
 	pmd_populate(mm, &_pmd, pgtable);
 
-	for (i = 0; i < HPAGE_PMD_NR; i++, haddr += PAGE_SIZE) {
+	for (i = 0, addr = haddr; i < HPAGE_PMD_NR; i++, addr += PAGE_SIZE) {
 		pte_t entry, *pte;
 		/*
 		 * Note that NUMA hinting access restrictions are not
@@ -2884,9 +2887,9 @@ static void __split_huge_pmd_locked(struct vm_area_struct *vma, pmd_t *pmd,
 		}
 		if (dirty)
 			SetPageDirty(page + i);
-		pte = pte_offset_map(&_pmd, haddr);
+		pte = pte_offset_map(&_pmd, addr);
 		BUG_ON(!pte_none(*pte));
-		set_pte_at(mm, haddr, pte, entry);
+		set_pte_at(mm, addr, pte, entry);
 		atomic_inc(&page[i]._mapcount);
 		pte_unmap(pte);
 	}
@@ -2936,7 +2939,7 @@ static void __split_huge_pmd_locked(struct vm_area_struct *vma, pmd_t *pmd,
 	pmd_populate(mm, pmd, pgtable);
 
 	if (freeze) {
-		for (i = 0; i < HPAGE_PMD_NR; i++, haddr += PAGE_SIZE) {
+		for (i = 0; i < HPAGE_PMD_NR; i++) {
 			page_remove_rmap(page + i, false);
 			put_page(page + i);
 		}
@@ -3217,28 +3220,26 @@ static void unfreeze_page(struct anon_vma *anon_vma, struct page *page)
 	}
 }
 
-static int __split_huge_page_tail(struct page *head, int tail,
+static void __split_huge_page_tail(struct page *head, int tail,
 		struct lruvec *lruvec, struct list_head *list)
 {
-	int mapcount;
 	struct page *page_tail = head + tail;
 
-	mapcount = atomic_read(&page_tail->_mapcount) + 1;
+	VM_BUG_ON_PAGE(atomic_read(&page_tail->_mapcount) != -1, page_tail);
 	VM_BUG_ON_PAGE(atomic_read(&page_tail->_count) != 0, page_tail);
 
 	/*
 	 * tail_page->_count is zero and not changing from under us. But
 	 * get_page_unless_zero() may be running from under us on the
-	 * tail_page. If we used atomic_set() below instead of atomic_add(), we
+	 * tail_page. If we used atomic_set() below instead of atomic_inc(), we
 	 * would then run atomic_set() concurrently with
 	 * get_page_unless_zero(), and atomic_set() is implemented in C not
 	 * using locked ops. spin_unlock on x86 sometime uses locked ops
 	 * because of PPro errata 66, 92, so unless somebody can guarantee
 	 * atomic_set() here would be safe on all archs (and not only on x86),
-	 * it's safer to use atomic_add().
+	 * it's safer to use atomic_inc().
 	 */
-	atomic_add(mapcount + 1, &page_tail->_count);
-
+	atomic_inc(&page_tail->_count);
 
 	page_tail->flags &= ~PAGE_FLAGS_CHECK_AT_PREP;
 	page_tail->flags |= (head->flags &
@@ -3272,8 +3273,6 @@ static int __split_huge_page_tail(struct page *head, int tail,
 	page_tail->index = head->index + tail;
 	page_cpupid_xchg_last(page_tail, page_cpupid_last(head));
 	lru_add_page_tail(head, page_tail, lruvec, list);
-
-	return mapcount;
 }
 
 static void __split_huge_page(struct page *page, struct list_head *list)
@@ -3281,7 +3280,7 @@ static void __split_huge_page(struct page *page, struct list_head *list)
 	struct page *head = compound_head(page);
 	struct zone *zone = page_zone(head);
 	struct lruvec *lruvec;
-	int i, tail_mapcount;
+	int i;
 
 	/* prevent PageLRU to go away from under us, and freeze lru stats */
 	spin_lock_irq(&zone->lru_lock);
@@ -3290,10 +3289,8 @@ static void __split_huge_page(struct page *page, struct list_head *list)
 	/* complete memcg works before add pages to LRU */
 	mem_cgroup_split_huge_fixup(head);
 
-	tail_mapcount = 0;
 	for (i = HPAGE_PMD_NR - 1; i >= 1; i--)
-		tail_mapcount += __split_huge_page_tail(head, i, lruvec, list);
-	atomic_sub(tail_mapcount, &head->_count);
+		__split_huge_page_tail(head, i, lruvec, list);
 
 	ClearPageCompound(head);
 	spin_unlock_irq(&zone->lru_lock);
