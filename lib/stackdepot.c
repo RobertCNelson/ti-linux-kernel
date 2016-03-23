@@ -34,6 +34,7 @@
 #include <linux/mm.h>
 #include <linux/percpu.h>
 #include <linux/printk.h>
+#include <linux/slab.h>
 #include <linux/stacktrace.h>
 #include <linux/stackdepot.h>
 #include <linux/string.h>
@@ -203,7 +204,7 @@ depot_stack_handle_t depot_save_stack(struct stack_trace *trace,
 	void *prealloc = NULL;
 
 	if (unlikely(trace->nr_entries == 0))
-		goto exit;
+		goto fast_exit;
 
 	hash = hash_stack(trace->entries, trace->nr_entries);
 	/* Bad luck, we won't store this stack. */
@@ -266,10 +267,12 @@ depot_stack_handle_t depot_save_stack(struct stack_trace *trace,
 
 	spin_unlock_irqrestore(&depot_lock, flags);
 exit:
-	if (prealloc)
+	if (prealloc) {
 		/* Nobody used this memory, ok to free it. */
 		free_pages((unsigned long)prealloc, STACK_ALLOC_ORDER);
+	}
 	if (found)
 		retval = found->handle.handle;
+fast_exit:
 	return retval;
 }
