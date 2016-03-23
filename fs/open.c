@@ -831,6 +831,17 @@ char *file_path(struct file *filp, char *buf, int buflen)
 }
 EXPORT_SYMBOL(file_path);
 
+struct dentry *file_dentry(const struct file *file)
+{
+	struct dentry *dentry = file->f_path.dentry;
+
+	if (likely(d_inode(dentry) == file_inode(file)))
+		return dentry;
+	else
+		return dentry->d_op->d_native_dentry(dentry, file_inode(file));
+}
+EXPORT_SYMBOL(file_dentry);
+
 /**
  * vfs_open - open the file at the given path
  * @path: path to open
