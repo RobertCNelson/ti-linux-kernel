@@ -538,5 +538,6 @@ config ARCH_HAS_MMIO_FLUSH
 
 config STACKDEPOT
 	bool
+	select STACKTRACE
 
 endmenu
