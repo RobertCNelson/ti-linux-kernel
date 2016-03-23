@@ -23,6 +23,7 @@
 #ifndef _MEDIA_DEVICE_H
 #define _MEDIA_DEVICE_H
 
+#include <linux/kref.h>
 #include <linux/list.h>
 #include <linux/mutex.h>
 
@@ -355,7 +356,7 @@ struct media_device {
 	u32 hw_revision;
 	u32 driver_version;
 
-	u32 topology_version;
+	u64 topology_version;
 
 	u32 id;
 	struct ida entity_internal_idx;
@@ -380,6 +381,16 @@ struct media_device {
 
 	int (*link_notify)(struct media_link *link, u32 flags,
 			   unsigned int notification);
+};
+
+/**
+ * struct media_device_devres - Media device device resource
+ * @mdev:	pointer to struct media_device
+ * @kref:	Object refcount
+ */
+struct media_device_devres {
+	struct media_device mdev;
+	struct kref kref;
 };
 
 /* We don't need to include pci.h or usb.h here */
@@ -604,6 +615,19 @@ struct media_device *media_device_get_devres(struct device *dev);
  */
 struct media_device *media_device_find_devres(struct device *dev);
 
+/**
+ * media_device_unregister_devres) - Unregister media device allocated as
+ *				     as device resource
+ *
+ * @dev: pointer to struct &device.
+ *
+ * Devices allocated via media_device_get_devres should be de-alocalted
+ * and freed via this function. Callers should not call
+ * media_device_unregister() nor media_device_cleanup() on devices
+ * allocated via media_device_get_devres().
+ */
+void media_device_unregister_devres(struct media_device *mdev);
+
 /* Iterate over all entities. */
 #define media_device_for_each_entity(entity, mdev)			\
 	list_for_each_entry(entity, &(mdev)->entities, graph_obj.list)
@@ -686,6 +710,10 @@ static inline struct media_device *media_device_get_devres(struct device *dev)
 static inline struct media_device *media_device_find_devres(struct device *dev)
 {
 	return NULL;
+}
+
+static inline void media_device_unregister_devres(struct media_device *mdev)
+{
 }
 
 static inline void media_device_pci_init(struct media_device *mdev,

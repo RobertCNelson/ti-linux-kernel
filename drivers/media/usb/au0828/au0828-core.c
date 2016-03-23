@@ -157,8 +157,7 @@ static void au0828_unregister_media_device(struct au0828_dev *dev)
 	dev->media_dev->enable_source = NULL;
 	dev->media_dev->disable_source = NULL;
 
-	media_device_unregister(dev->media_dev);
-	media_device_cleanup(dev->media_dev);
+	media_device_unregister_devres(dev->media_dev);
 	dev->media_dev = NULL;
 #endif
 }
@@ -185,7 +184,7 @@ static void au0828_usb_disconnect(struct usb_interface *interface)
 	   Set the status so poll routines can check and avoid
 	   access after disconnect.
 	*/
-	dev->dev_state = DEV_DISCONNECTED;
+	set_bit(DEV_DISCONNECTED, &dev->dev_state);
 
 	au0828_rc_unregister(dev);
 	/* Digital TV */
