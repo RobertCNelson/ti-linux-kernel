@@ -53,6 +53,33 @@
 					bias-disable;
 				};
 			};
+
+			user_leds: user_leds {
+				mux {
+					pins = "gpio3", "gpio7", "gpio10", "gpio11";
+					function = "gpio";
+				};
+
+				conf {
+					pins = "gpio3", "gpio7", "gpio10", "gpio11";
+					function = "gpio";
+					output-low;
+				};
+			};
+		};
+
+		qcom,ssbi@500000 {
+			pmic@0 {
+				mpps@50 {
+					mpp_leds: mpp_leds {
+						pinconf {
+							pins = "mpp7", "mpp8";
+							function = "digital";
+							output-low;
+						};
+					};
+				};
+			};
 		};
 
 		rpm@108000 {
@@ -162,6 +189,55 @@
 				status = "okay";
 				pinctrl-names = "default";
 				pinctrl-0 = <&gsbi7_uart_2pins>;
+			};
+		};
+
+		leds {
+			pinctrl-names = "default";
+			pinctrl-0 = <&user_leds>, <&mpp_leds>;
+
+			compatible = "gpio-leds";
+
+			led@1 {
+				label = "dragonboard-600c:green:user1";
+				gpios = <&tlmm_pinmux 3 GPIO_ACTIVE_HIGH>;
+				linux,default-trigger = "heartbeat";
+				default-state = "off";
+			};
+
+			led@2 {
+				label = "dragonboard-600c:green:user2";
+				gpios = <&tlmm_pinmux 7 GPIO_ACTIVE_HIGH>;
+				linux,default-trigger = "mmc0";
+				default-state = "off";
+			};
+
+			led@3 {
+				label = "dragonboard-600c:green:user3";
+				gpios = <&tlmm_pinmux 10 GPIO_ACTIVE_HIGH>;
+				linux,default-trigger = "mmc1";
+				default-state = "off";
+			};
+
+			led@4 {
+				label = "apq8016-sbc:green:user4";
+				gpios = <&tlmm_pinmux 11 GPIO_ACTIVE_HIGH>;
+				linux,default-trigger = "none";
+				default-state = "off";
+			};
+
+			led@5 {
+				label = "dragonboard-600c:yellow:wlan";
+				gpios = <&pm8921_mpps 7 GPIO_ACTIVE_HIGH>;
+				linux,default-trigger = "wlan";
+				default-state = "off";
+			};
+
+			led@6 {
+				label = "dragonboard-600c:blue:bt";
+				gpios = <&pm8921_mpps 8 GPIO_ACTIVE_HIGH>;
+				linux,default-trigger = "bt";
+				default-state = "off";
 			};
 		};
 
