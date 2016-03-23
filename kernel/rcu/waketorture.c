@@ -203,7 +203,8 @@ wake_torture_stats_print(void)
 	for (i = 0; i < nrealwaiters; i++)
 		if (waiter_kicks[i]) {
 			if (!tardy)
-				TOROUT_STRING("Tardy kthreads:");
+				pr_alert("%s" TORTURE_FLAG " Tardy kthreads:",
+					 torture_type);
 			tardy = true;
 			pr_cont("  P%d%c: %lud/%lu",
 				waiter_tasks && waiter_tasks[i]
@@ -215,7 +216,7 @@ wake_torture_stats_print(void)
 	if (tardy)
 		pr_cont("\n");
 	else
-		TOROUT_STRING("No tardy kthreads\n");
+		TOROUT_STRING(" No tardy kthreads");
 }
 
 /*
@@ -251,6 +252,7 @@ static void
 wake_torture_cleanup(void)
 {
 	int i;
+	bool success;
 
 	(void)torture_cleanup_begin();
 
@@ -265,13 +267,22 @@ wake_torture_cleanup(void)
 
 	wake_torture_stats_print();  /* -After- the stats thread is stopped! */
 
+	success = !!waiter_kicks;
+	for (i = 0; i < nrealwaiters; i++)
+		if (!success || waiter_kicks[i]) {
+			success = false;
+			break;
+		}
+
 	kfree(waiter_done);
 	kfree(waiter_iter);
 	kfree(waiter_cts);
 	kfree(waiter_kicks);
 	kfree(waiter_ts);
 
-	wake_torture_print_module_parms(cur_ops, "End of test");
+	wake_torture_print_module_parms(cur_ops,
+					success ? "End of test: SUCCESS"
+						: "End of test: FAILURE");
 	torture_cleanup_end();
 }
 
