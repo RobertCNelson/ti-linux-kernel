@@ -234,11 +234,12 @@ wake_torture_stats_print(void)
 		pr_cont("\n");
 	else
 		TOROUT_STRING(" No tardy kthreads");
-	timediff = (trace_clock_local() - starttime) / 1000;
+	timediff = (trace_clock_global() - starttime) / 1000;
 	timetot = 0;
 	for_each_possible_cpu(i)
 		timetot += READ_ONCE(per_cpu(waiter_cputime, i));
 	timetot /= nr_cpu_ids;
+	timetot /= timediff;
 	pr_alert("%s" TORTURE_FLAG " timediff: %llu utilization: %llu.%llu nr_cpu_ids: %d\n",
 		 torture_type, timediff,
 		 timetot / 1000ULL, timetot % 1000ULL, nr_cpu_ids);
@@ -320,7 +321,7 @@ wake_torture_init(void)
 
 	if (!torture_init_begin(torture_type, verbose, &torture_runnable))
 		return -EBUSY;
-	starttime = trace_clock_local();
+	starttime = trace_clock_global();
 
 	/* Process args and tell the world that the torturer is on the job. */
 	for (i = 0; i < ARRAY_SIZE(torture_ops); i++) {
