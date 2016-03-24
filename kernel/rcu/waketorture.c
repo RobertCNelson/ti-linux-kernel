@@ -152,7 +152,7 @@ static int wake_torture_waiter(void *arg)
 		smp_mb(); /* Ensure waiter_ts[] written before waiter_cts[]. */
 			  /* Pairs with [A]. */
 		waiter_cts[me] = false;
-		__this_cpu_add(waiter_cputime, ts);
+		__this_cpu_add(waiter_cputime, trace_clock_local() - ts);
 		preempt_enable();
 		cur_ops->wait(wait_duration);
 		preempt_disable();
@@ -178,13 +178,13 @@ static int wake_torture_waiter(void *arg)
 				mutex_unlock(&waiter_mutex);
 			}
 		}
-		__this_cpu_add(waiter_cputime, ts);
+		__this_cpu_add(waiter_cputime, trace_clock_local() - ts);
 		preempt_enable();
 		torture_shutdown_absorb("wake_torture_waiter");
 		preempt_disable();
 		ts = trace_clock_local();
 	} while (!torture_must_stop());
-	__this_cpu_add(waiter_cputime, ts);
+	__this_cpu_add(waiter_cputime, trace_clock_local() - ts);
 	preempt_enable();
 	mutex_lock(&waiter_mutex);
 	waiter_done[me] = true;
