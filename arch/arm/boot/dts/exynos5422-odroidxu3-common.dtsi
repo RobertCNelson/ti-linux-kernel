@@ -291,7 +291,7 @@
 			buck9_reg: BUCK9 {
 				regulator-name = "vdd_2.8v_ldo";
 				regulator-min-microvolt = <3000000>;
-				regulator-max-microvolt = <3750000>;
+				regulator-max-microvolt = <3755000>;
 				regulator-always-on;
 				regulator-boot-on;
 			};
