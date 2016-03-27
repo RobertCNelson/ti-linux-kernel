@@ -7025,36 +7025,35 @@ btrfs_lock_cluster(struct btrfs_block_group_cache *block_group,
 		   int delalloc)
 {
 	struct btrfs_block_group_cache *used_bg = NULL;
-	bool locked = false;
-again:
+
 	spin_lock(&cluster->refill_lock);
-	if (locked) {
+	while (1) {
+		used_bg = cluster->block_group;
+		if (!used_bg)
+			return NULL;
+
+		if (used_bg == block_group)
+			return used_bg;
+
+		btrfs_get_block_group(used_bg);
+
+		if (!delalloc)
+			return used_bg;
+
+		if (down_read_trylock(&used_bg->data_rwsem))
+			return used_bg;
+
+		spin_unlock(&cluster->refill_lock);
+
+		down_read(&used_bg->data_rwsem);
+
+		spin_lock(&cluster->refill_lock);
 		if (used_bg == cluster->block_group)
 			return used_bg;
 
 		up_read(&used_bg->data_rwsem);
 		btrfs_put_block_group(used_bg);
 	}
-
-	used_bg = cluster->block_group;
-	if (!used_bg)
-		return NULL;
-
-	if (used_bg == block_group)
-		return used_bg;
-
-	btrfs_get_block_group(used_bg);
-
-	if (!delalloc)
-		return used_bg;
-
-	if (down_read_trylock(&used_bg->data_rwsem))
-		return used_bg;
-
-	spin_unlock(&cluster->refill_lock);
-	down_read(&used_bg->data_rwsem);
-	locked = true;
-	goto again;
 }
 
 static inline void
@@ -9058,7 +9057,7 @@ out:
 	if (!for_reloc && root_dropped == false)
 		btrfs_add_dead_root(root);
 	if (err && err != -EAGAIN)
-		btrfs_std_error(root->fs_info, err, NULL);
+		btrfs_handle_fs_error(root->fs_info, err, NULL);
 	return err;
 }
 
@@ -9386,15 +9385,23 @@ int btrfs_can_relocate(struct btrfs_root *root, u64 bytenr)
 	u64 dev_min = 1;
 	u64 dev_nr = 0;
 	u64 target;
+	int debug;
 	int index;
 	int full = 0;
 	int ret = 0;
 
+	debug = btrfs_test_opt(root, ENOSPC_DEBUG);
+
 	block_group = btrfs_lookup_block_group(root->fs_info, bytenr);
 
 	/* odd, couldn't find the block group, leave it alone */
-	if (!block_group)
+	if (!block_group) {
+		if (debug)
+			btrfs_warn(root->fs_info,
+				   "can't find block group for bytenr %llu",
+				   bytenr);
 		return -1;
+	}
 
 	min_free = btrfs_block_group_used(&block_group->item);
 
@@ -9448,8 +9455,13 @@ int btrfs_can_relocate(struct btrfs_root *root, u64 bytenr)
 		 * this is just a balance, so if we were marked as full
 		 * we know there is no space for a new chunk
 		 */
-		if (full)
+		if (full) {
+			if (debug)
+				btrfs_warn(root->fs_info,
+					"no space to alloc new chunk for block group %llu",
+					block_group->key.objectid);
 			goto out;
+		}
 
 		index = get_block_group_index(block_group);
 	}
@@ -9496,6 +9508,10 @@ int btrfs_can_relocate(struct btrfs_root *root, u64 bytenr)
 			ret = -1;
 		}
 	}
+	if (debug && ret == -1)
+		btrfs_warn(root->fs_info,
+			"no space to allocate a new chunk for block group %llu",
+			block_group->key.objectid);
 	mutex_unlock(&root->fs_info->chunk_mutex);
 	btrfs_end_transaction(trans, root);
 out:
