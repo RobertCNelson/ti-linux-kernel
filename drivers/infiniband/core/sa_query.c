@@ -1841,7 +1841,7 @@ err1:
 
 static void __exit ib_sa_cleanup(void)
 {
-	ibnl_remove_client(RDMA_NL_LS);
+	ibnl_remove_client(RDMA_NL_LS, RDMA_NL_LS_NUM_OPS, ib_sa_cb_table);
 	cancel_delayed_work(&ib_nl_timed_work);
 	flush_workqueue(ib_nl_wq);
 	destroy_workqueue(ib_nl_wq);
