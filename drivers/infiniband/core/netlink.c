@@ -38,6 +38,10 @@
 #include <net/sock.h>
 #include <rdma/rdma_netlink.h>
 
+MODULE_AUTHOR("Roland Dreier");
+MODULE_DESCRIPTION("RDMA netlink infrastructure");
+MODULE_LICENSE("Dual BSD/GPL");
+
 struct ibnl_client {
 	struct list_head		list;
 	int				index;
@@ -255,7 +259,7 @@ int __init ibnl_init(void)
 	return 0;
 }
 
-void ibnl_cleanup(void)
+void __exit ibnl_cleanup(void)
 {
 	struct ibnl_client *cur, *next;
 
@@ -268,3 +272,6 @@ void ibnl_cleanup(void)
 
 	netlink_kernel_release(nls);
 }
+
+module_init(ibnl_init);
+module_exit(ibnl_cleanup);
