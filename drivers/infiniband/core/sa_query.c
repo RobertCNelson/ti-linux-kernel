@@ -838,7 +838,7 @@ resp_out:
 	return skb->len;
 }
 
-static struct ibnl_client_cbs ib_sa_cb_table[] = {
+static struct ibnl_client_cbs ib_sa_cb_table[RDMA_NL_LS_NUM_OPS] = {
 	[RDMA_NL_LS_OP_RESOLVE] = {
 		.dump = ib_nl_handle_resolve_resp,
 		.module = THIS_MODULE },
