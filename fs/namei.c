@@ -265,7 +265,7 @@ static int check_acl(struct inode *inode, int mask)
 	        if (!acl)
 	                return -EAGAIN;
 		/* no ->get_acl() calls in RCU mode... */
-		if (acl == ACL_NOT_CACHED)
+		if (is_uncached_acl(acl))
 			return -ECHILD;
 	        return posix_acl_permission(inode, acl, mask & ~MAY_NOT_BLOCK);
 	}
@@ -2800,7 +2800,7 @@ static inline int open_to_namei_flags(int flag)
 	return flag;
 }
 
-static int may_o_create(struct path *dir, struct dentry *dentry, umode_t mode)
+static int may_o_create(const struct path *dir, struct dentry *dentry, umode_t mode)
 {
 	int error = security_path_mknod(dir, dentry, mode, 0);
 	if (error)
