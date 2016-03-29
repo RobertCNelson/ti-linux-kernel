@@ -357,12 +357,11 @@ static void o2hb_disarm_timeout(struct o2hb_region *reg)
 
 static void o2hb_nego_timeout(struct work_struct *work)
 {
-	struct o2hb_region *reg =
-		container_of(work, struct o2hb_region,
-			     hr_nego_timeout_work.work);
 	unsigned long live_node_bitmap[BITS_TO_LONGS(O2NM_MAX_NODES)];
 	int master_node;
+	struct o2hb_region *reg;
 
+	reg = container_of(work, struct o2hb_region, hr_nego_timeout_work.work);
 	o2hb_fill_node_map(live_node_bitmap, sizeof(live_node_bitmap));
 	/* lowest node as master node to make negotiate decision. */
 	master_node = find_next_bit(live_node_bitmap, O2NM_MAX_NODES, 0);
