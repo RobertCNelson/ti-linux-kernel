@@ -397,11 +397,11 @@ static __always_inline void __write_once_size(volatile void *p, void *res, int s
  */
 #define noinline_for_stack noinline
 
+#endif /* __KERNEL__ */
+
 #ifndef __always_inline
 #define __always_inline inline
 #endif
-
-#endif /* __KERNEL__ */
 
 /*
  * From the GCC manual:
