@@ -1291,7 +1291,6 @@ static int intel_idle_cpu_init(int cpu)
 
 	if (cpuidle_register_device(dev)) {
 		pr_debug(PREFIX "cpuidle_register_device %d failed!\n", cpu);
-		intel_idle_cpuidle_devices_uninit();
 		return -EIO;
 	}
 
@@ -1335,6 +1334,7 @@ static int __init intel_idle_init(void)
 	for_each_online_cpu(i) {
 		retval = intel_idle_cpu_init(i);
 		if (retval) {
+			intel_idle_cpuidle_devices_uninit();
 			cpu_notifier_register_done();
 			cpuidle_unregister_driver(&intel_idle_driver);
 			free_percpu(intel_idle_cpuidle_devices);
