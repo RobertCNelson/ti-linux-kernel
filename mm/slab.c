@@ -519,22 +519,15 @@ static DEFINE_PER_CPU(unsigned long, slab_reap_node);
 
 static void init_reap_node(int cpu)
 {
-	int node;
-
-	node = next_node(cpu_to_mem(cpu), node_online_map);
-	if (node == MAX_NUMNODES)
-		node = first_node(node_online_map);
-
-	per_cpu(slab_reap_node, cpu) = node;
+	per_cpu(slab_reap_node, cpu) = next_node_in(cpu_to_mem(cpu),
+						    node_online_map);
 }
 
 static void next_reap_node(void)
 {
 	int node = __this_cpu_read(slab_reap_node);
 
-	node = next_node(node, node_online_map);
-	if (unlikely(node >= MAX_NUMNODES))
-		node = first_node(node_online_map);
+	node = next_node_in(node, node_online_map);
 	__this_cpu_write(slab_reap_node, node);
 }
 
@@ -3327,9 +3320,20 @@ free_done:
 static inline void __cache_free(struct kmem_cache *cachep, void *objp,
 				unsigned long caller)
 {
-	struct array_cache *ac = cpu_cache_get(cachep);
+#ifdef CONFIG_KASAN
+	if (kasan_slab_free(cachep, objp))
+		/* The object has been put into the quarantine, don't touch it
+		 * for now.
+		 */
+		return;
+#endif
+	___cache_free(cachep, objp, caller);
+}
 
-	kasan_slab_free(cachep, objp);
+void ___cache_free(struct kmem_cache *cachep, void *objp,
+		unsigned long caller)
+{
+	struct array_cache *ac = cpu_cache_get(cachep);
 
 	check_irq_off();
 	kmemleak_free_recursive(objp, cachep->flags);

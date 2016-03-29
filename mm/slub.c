@@ -1319,7 +1319,7 @@ static inline void kmalloc_large_node_hook(void *ptr, size_t size, gfp_t flags)
 static inline void kfree_hook(const void *x)
 {
 	kmemleak_free(x);
-	kasan_kfree_large(x);
+	kasan_poison_kfree_large(x);
 }
 
 static inline void slab_free_hook(struct kmem_cache *s, void *x)
@@ -1344,7 +1344,7 @@ static inline void slab_free_hook(struct kmem_cache *s, void *x)
 	if (!(s->flags & SLAB_DEBUG_OBJECTS))
 		debug_check_no_obj_freed(x, s->object_size);
 
-	kasan_slab_free(s, x);
+	kasan_poison_slab_free(s, x);
 }
 
 static inline void slab_free_freelist_hook(struct kmem_cache *s,
