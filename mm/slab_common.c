@@ -753,7 +753,9 @@ int kmem_cache_shrink(struct kmem_cache *cachep)
 
 	get_online_cpus();
 	get_online_mems();
+	mutex_lock(&slab_mutex);
 	ret = __kmem_cache_shrink(cachep, false);
+	mutex_unlock(&slab_mutex);
 	put_online_mems();
 	put_online_cpus();
 	return ret;
