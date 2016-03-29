@@ -48,7 +48,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  static void print_event_info(struct trace_buffer *buf, struct seq_file *m)
 --- a/kernel/trace/trace_events.c
 +++ b/kernel/trace/trace_events.c
-@@ -186,6 +186,8 @@ static int trace_define_common_fields(vo
+@@ -188,6 +188,8 @@ static int trace_define_common_fields(vo
  	__common_field(unsigned char, flags);
  	__common_field(unsigned char, preempt_count);
  	__common_field(int, pid);

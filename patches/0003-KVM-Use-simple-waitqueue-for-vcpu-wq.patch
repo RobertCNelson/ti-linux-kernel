@@ -367,7 +367,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	kvm_async_pf_vcpu_init(vcpu);
  
  	vcpu->pre_pcpu = -1;
-@@ -1999,7 +1998,7 @@ static int kvm_vcpu_check_block(struct k
+@@ -2002,7 +2001,7 @@ static int kvm_vcpu_check_block(struct k
  void kvm_vcpu_block(struct kvm_vcpu *vcpu)
  {
  	ktime_t start, cur;
@@ -376,7 +376,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	bool waited = false;
  	u64 block_ns;
  
-@@ -2024,7 +2023,7 @@ void kvm_vcpu_block(struct kvm_vcpu *vcp
+@@ -2027,7 +2026,7 @@ void kvm_vcpu_block(struct kvm_vcpu *vcp
  	kvm_arch_vcpu_blocking(vcpu);
  
  	for (;;) {
@@ -385,7 +385,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  		if (kvm_vcpu_check_block(vcpu) < 0)
  			break;
-@@ -2033,7 +2032,7 @@ void kvm_vcpu_block(struct kvm_vcpu *vcp
+@@ -2036,7 +2035,7 @@ void kvm_vcpu_block(struct kvm_vcpu *vcp
  		schedule();
  	}
  
@@ -394,7 +394,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	cur = ktime_get();
  
  	kvm_arch_vcpu_unblocking(vcpu);
-@@ -2065,11 +2064,11 @@ void kvm_vcpu_kick(struct kvm_vcpu *vcpu
+@@ -2068,11 +2067,11 @@ void kvm_vcpu_kick(struct kvm_vcpu *vcpu
  {
  	int me;
  	int cpu = vcpu->cpu;
@@ -409,7 +409,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		++vcpu->stat.halt_wakeup;
  	}
  
-@@ -2170,7 +2169,7 @@ void kvm_vcpu_on_spin(struct kvm_vcpu *m
+@@ -2173,7 +2172,7 @@ void kvm_vcpu_on_spin(struct kvm_vcpu *m
  				continue;
  			if (vcpu == me)
  				continue;

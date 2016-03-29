@@ -46,7 +46,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #include <linux/slab.h>
  #include <linux/init.h>
  #include <linux/hash.h>
-@@ -589,7 +590,7 @@ static struct dentry *dentry_kill(struct
+@@ -578,7 +579,7 @@ static struct dentry *dentry_kill(struct
  
  failed:
  	spin_unlock(&dentry->d_lock);
@@ -55,7 +55,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	return dentry; /* try again with same dentry */
  }
  
-@@ -2398,7 +2399,7 @@ void d_delete(struct dentry * dentry)
+@@ -2388,7 +2389,7 @@ void d_delete(struct dentry * dentry)
  	if (dentry->d_lockref.count == 1) {
  		if (!spin_trylock(&inode->i_lock)) {
  			spin_unlock(&dentry->d_lock);

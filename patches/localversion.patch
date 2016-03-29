@@ -1,4 +1,4 @@
-Subject: v4.4.4-rt11
+Subject: v4.4.6-rt12
 From: Thomas Gleixner <tglx@linutronix.de>
 Date: Fri, 08 Jul 2011 20:25:16 +0200
 
@@ -10,4 +10,4 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 --- /dev/null
 +++ b/localversion-rt
 @@ -0,0 +1 @@
-+-rt11
++-rt12
