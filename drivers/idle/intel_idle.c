@@ -1069,7 +1069,7 @@ static int __init intel_idle_probe(void)
 
 /*
  * intel_idle_cpuidle_devices_uninit()
- * unregister, free cpuidle_devices
+ * Unregisters the cpuidle devices.
  */
 static void intel_idle_cpuidle_devices_uninit(void)
 {
@@ -1080,9 +1080,6 @@ static void intel_idle_cpuidle_devices_uninit(void)
 		dev = per_cpu_ptr(intel_idle_cpuidle_devices, i);
 		cpuidle_unregister_device(dev);
 	}
-
-	free_percpu(intel_idle_cpuidle_devices);
-	return;
 }
 
 /*
@@ -1347,6 +1344,7 @@ static int __init intel_idle_init(void)
 		if (retval) {
 			cpu_notifier_register_done();
 			cpuidle_unregister_driver(&intel_idle_driver);
+			free_percpu(intel_idle_cpuidle_devices);
 			return retval;
 		}
 	}
@@ -1369,6 +1367,7 @@ static void __exit intel_idle_exit(void)
 	cpu_notifier_register_done();
 
 	cpuidle_unregister_driver(&intel_idle_driver);
+	free_percpu(intel_idle_cpuidle_devices);
 }
 
 module_init(intel_idle_init);
