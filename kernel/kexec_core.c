@@ -1410,7 +1410,7 @@ static int __init crash_save_vmcoreinfo_init(void)
 	VMCOREINFO_STRUCT_SIZE(list_head);
 	VMCOREINFO_SIZE(nodemask_t);
 	VMCOREINFO_OFFSET(page, flags);
-	VMCOREINFO_OFFSET(page, _count);
+	VMCOREINFO_OFFSET(page, _refcount);
 	VMCOREINFO_OFFSET(page, mapping);
 	VMCOREINFO_OFFSET(page, lru);
 	VMCOREINFO_OFFSET(page, _mapcount);
@@ -1558,4 +1558,10 @@ void __weak crash_map_reserved_pages(void)
 {}
 
 void __weak crash_unmap_reserved_pages(void)
+{}
+
+void __weak arch_kexec_protect_crashkres(void)
+{}
+
+void __weak arch_kexec_unprotect_crashkres(void)
 {}
