@@ -2855,6 +2855,16 @@ static int mark_irqflags(struct task_struct *curr, struct held_lock *hlock)
 	return 1;
 }
 
+static unsigned int task_irq_context(struct task_struct *task)
+{
+	return 2 * (task->hardirq_context ? 1 : 0) + task->softirq_context;
+}
+
+static bool is_same_irq_context(unsigned int ctx1, unsigned int ctx2)
+{
+	return ctx1 == ctx2;
+}
+
 static int separate_irq_context(struct task_struct *curr,
 		struct held_lock *hlock)
 {
@@ -2863,8 +2873,7 @@ static int separate_irq_context(struct task_struct *curr,
 	/*
 	 * Keep track of points where we cross into an interrupt context:
 	 */
-	hlock->irq_context = 2*(curr->hardirq_context ? 1 : 0) +
-				curr->softirq_context;
+	hlock->irq_context = task_irq_context(curr);
 	if (depth) {
 		struct held_lock *prev_hlock;
 
@@ -2895,6 +2904,9 @@ static inline int mark_irqflags(struct task_struct *curr,
 {
 	return 1;
 }
+
+#define task_irq_context(task)			0
+#define is_same_irq_context(ctx1, ctx2)		true
 
 static inline int separate_irq_context(struct task_struct *curr,
 		struct held_lock *hlock)
@@ -3093,6 +3105,9 @@ static int __lock_acquire(struct lockdep_map *lock, unsigned int subclass,
 	int chain_head = 0;
 	int class_idx;
 	u64 chain_key;
+#ifdef CONFIG_LOCKED_ACCESS
+	u64 acqchain_key;
+#endif
 
 	if (unlikely(!debug_locks))
 		return 0;
@@ -3199,6 +3214,9 @@ static int __lock_acquire(struct lockdep_map *lock, unsigned int subclass,
 		return 0;
 
 	chain_key = curr->curr_chain_key;
+#ifdef CONFIG_LOCKED_ACCESS
+	acqchain_key = curr->curr_acqchain_key;
+#endif
 	if (!depth) {
 		/*
 		 * How can we have a chain hash when we ain't got no keys?!
@@ -3209,12 +3227,23 @@ static int __lock_acquire(struct lockdep_map *lock, unsigned int subclass,
 	}
 
 	hlock->prev_chain_key = chain_key;
+#ifdef CONFIG_LOCKED_ACCESS
+	hlock->prev_acqchain_key = acqchain_key;
+#endif
 	if (separate_irq_context(curr, hlock)) {
 		chain_key = 0;
+
+#ifdef CONFIG_LOCKED_ACCESS
+		acqchain_key = 0;
+#endif
+
 		chain_head = 1;
 	}
 	chain_key = iterate_chain_key(chain_key, class_idx);
 
+#ifdef CONFIG_LOCKED_ACCESS
+	acqchain_key = iterate_acqchain_key(acqchain_key, ip);
+#endif
 	if (nest_lock && !__lock_is_held(nest_lock))
 		return print_lock_nested_lock_not_held(curr, hlock, ip);
 
@@ -3222,6 +3251,9 @@ static int __lock_acquire(struct lockdep_map *lock, unsigned int subclass,
 		return 0;
 
 	curr->curr_chain_key = chain_key;
+#ifdef CONFIG_LOCKED_ACCESS
+	curr->curr_acqchain_key = acqchain_key;
+#endif
 	curr->lockdep_depth++;
 	check_chain_key(curr);
 #ifdef CONFIG_DEBUG_LOCKDEP
@@ -3351,6 +3383,9 @@ found_it:
 
 	curr->lockdep_depth = i;
 	curr->curr_chain_key = hlock->prev_chain_key;
+#ifdef CONFIG_LOCKED_ACCESS
+	curr->curr_acqchain_key = hlock->prev_acqchain_key;
+#endif
 
 	for (; i < depth; i++) {
 		hlock = curr->held_locks + i;
@@ -3441,6 +3476,9 @@ found_it:
 
 	curr->lockdep_depth = i;
 	curr->curr_chain_key = hlock->prev_chain_key;
+#ifdef CONFIG_LOCKED_ACCESS
+	curr->curr_acqchain_key = hlock->prev_acqchain_key;
+#endif
 
 	for (i++; i < depth; i++) {
 		hlock = curr->held_locks + i;
@@ -3882,6 +3920,11 @@ void lockdep_reset(void)
 
 	raw_local_irq_save(flags);
 	current->curr_chain_key = 0;
+
+#ifdef CONFIG_LOCKED_ACCESS
+	current->curr_acqchain_key = 0;
+#endif
+
 	current->lockdep_depth = 0;
 	current->lockdep_recursion = 0;
 	memset(current->held_locks, 0, MAX_LOCK_DEPTH*sizeof(struct held_lock));
@@ -4279,3 +4322,283 @@ void lockdep_rcu_suspicious(const char *file, const int line, const char *s)
 	dump_stack();
 }
 EXPORT_SYMBOL_GPL(lockdep_rcu_suspicious);
+
+#ifdef CONFIG_LOCKED_ACCESS
+static void locked_access_class_init(struct locked_access_class *laclass)
+{
+	int i;
+	unsigned long flags;
+
+	local_irq_save(flags);
+	arch_spin_lock(&laclass->lock);
+
+	if (laclass->initialized) {
+		arch_spin_unlock(&laclass->lock);
+		return;
+	}
+
+	for (i = 0; i < ACQCHAIN_HASH_SIZE; i++)
+		INIT_LIST_HEAD(laclass->acqchain_hashtable + i);
+
+	laclass->nr_acqchains = 0;
+	laclass->nr_acqchain_hlocks = 0;
+	laclass->nr_access_structs = 0;
+
+	/*
+	 * Make sure the members of laclass have been initialized before
+	 * setting ->initialized.
+	 */
+	smp_store_release(&laclass->initialized, 1);
+	arch_spin_unlock(&laclass->lock);
+	local_irq_restore(flags);
+}
+
+static struct acqchain *lookup_acqchain(struct locked_access_class *laclass,
+					struct task_struct *task,
+					u64 acqchain_key)
+{
+	struct list_head *hash_head;
+	struct acqchain *acqchain;
+
+	hash_head = acqchainhashentry(laclass, acqchain_key);
+
+	list_for_each_entry_lockless(acqchain, hash_head, entry) {
+		if (acqchain->chain_key == acqchain_key
+		    && is_same_irq_context(acqchain->irq_context,
+					   task_irq_context(task)))
+			return acqchain;
+	}
+
+	return NULL;
+}
+
+static struct acqchain *add_acqchain(struct locked_access_class *laclass,
+				     struct task_struct *task,
+				     u64 acqchain_key)
+{
+	unsigned long flags;
+	struct acqchain *acqchain = NULL;
+	struct held_lock *hlock, *hlock_curr;
+	struct lockdep_map *instance;
+	int i, j, max_depth;
+	struct list_head *hash_head;
+
+	local_irq_save(flags);
+	arch_spin_lock(&laclass->lock);
+
+	/* Lookup again while holding the lock */
+	acqchain = lookup_acqchain(laclass, task, acqchain_key);
+
+	if (acqchain)
+		goto out;
+
+	if (laclass->nr_acqchains >= MAX_ACQCHAINS)
+		goto out;
+
+	hash_head = acqchainhashentry(laclass, acqchain_key);
+	acqchain = laclass->acqchains + laclass->nr_acqchains;
+	acqchain->chain_key = acqchain_key;
+
+	hlock = task->held_locks + task->lockdep_depth - 1;
+	acqchain->irq_context = task_irq_context(task);
+
+	for (i = task->lockdep_depth - 1; i >= 0; i--) {
+		hlock_curr = task->held_locks + i;
+		if (!is_same_irq_context(hlock_curr->irq_context,
+				acqchain->irq_context))
+			break;
+	}
+
+	i++;
+	max_depth = task->lockdep_depth - i;
+
+	j = 0;
+	if (likely(laclass->nr_acqchain_hlocks + max_depth
+			<= MAX_ACQCHAIN_HLOCKS)) {
+		acqchain->base = laclass->nr_acqchain_hlocks;
+		for (; i < task->lockdep_depth; i++) {
+			hlock_curr = task->held_locks + i;
+			instance = hlock_curr->instance;
+
+			/*
+			 * The a lock instance may use its address as * ->key,
+			 * in which case the lock instance doesn't belong to
+			 * a locked access class.
+			 */
+			if (instance != (void *)instance->key &&
+			    instance->key->laclass == laclass) {
+				laclass->acqchain_hlocks[acqchain->base + j]
+						= hlock_curr->acquire_ip;
+				j++;
+			}
+		}
+		laclass->nr_acqchain_hlocks += j;
+	}
+
+	acqchain->depth = j;
+
+	/*
+	 * Make sure stores to the members of acqchain observed after publish
+	 * it.
+	 */
+	smp_store_release(&laclass->nr_acqchains, laclass->nr_acqchains + 1);
+	INIT_LIST_HEAD(&acqchain->accesses);
+
+	/*
+	 * Pair with the list_for_each_entry_lockless() in lookup_acqchain()
+	 */
+	list_add_tail_rcu(&acqchain->entry, hash_head);
+out:
+	arch_spin_unlock(&laclass->lock);
+	local_irq_restore(flags);
+	return acqchain;
+}
+
+/*
+ * Lookup the acqchain with a key of @acqchain_key in the hash table of
+ * @laclass, if none exists, add a new one.
+ *
+ * Return the acqchain if one is found or if one is added, otherwise return
+ * NULL.
+ *
+ * Must be called after @laclass is initialized.
+ */
+static struct acqchain *
+lookup_or_add_acqchain(struct locked_access_class *laclass,
+		      struct task_struct *task,
+		      u64 acqchain_key)
+{
+	struct acqchain *acqchain = NULL;
+
+	acqchain = lookup_acqchain(laclass, task, acqchain_key);
+	if (!acqchain)
+		acqchain = add_acqchain(laclass, task, acqchain_key);
+
+	return acqchain;
+}
+
+/*
+ * Lookup the data access at @loc in the ->accesses list of @acqchain.
+ *
+ * Must be called after @laclass is initialized.
+ */
+static int lookup_locked_access(struct acqchain *acqchain,
+				struct locked_access_location *loc)
+{
+	struct locked_access_struct *s;
+
+	list_for_each_entry_lockless(s, &acqchain->accesses, list) {
+		if (s->loc == loc)
+			return 1;
+	}
+	return 0;
+
+}
+
+/*
+ * Add the data access at @loc into the ->accesses list of @acqchain.
+ *
+ * Return 1 if one access is added, otherwise return 0.
+ *
+ * Must be called after @laclass is initialized.
+ */
+static int add_locked_access(struct locked_access_class *laclass,
+			     struct acqchain *acqchain,
+			     struct locked_access_location *loc,
+			     int type)
+{
+	unsigned long flags;
+	struct locked_access_struct *s;
+
+	local_irq_save(flags);
+	arch_spin_lock(&laclass->lock);
+
+	/* Lookup again while holding the lock */
+	if (lookup_locked_access(acqchain, loc)) {
+		arch_spin_unlock(&laclass->lock);
+		local_irq_restore(flags);
+		return 1;
+	}
+
+	if (unlikely(laclass->nr_access_structs >= MAX_LOCKED_ACCESS_STRUCTS)) {
+		arch_spin_unlock(&laclass->lock);
+		local_irq_restore(flags);
+		return 0;
+	}
+
+	s = laclass->access_structs + laclass->nr_access_structs;
+	s->loc = loc;
+	s->type = type;
+	laclass->nr_access_structs++;
+
+	/*
+	 * Pair with the list_for_each_entry_lockless() in
+	 * lookup_locked_access()
+	 */
+	list_add_tail_rcu(&s->list, &acqchain->accesses);
+
+	arch_spin_unlock(&laclass->lock);
+	local_irq_restore(flags);
+	return 1;
+}
+
+/*
+ * Correlate the data access at @loc with @acqchain for @laclass
+ *
+ * Must be called after @laclass is initialized.
+ */
+static int correlate_locked_access(struct locked_access_class *laclass,
+				   struct acqchain *acqchain,
+				   struct locked_access_location *loc,
+				   int type)
+{
+	if (lookup_locked_access(acqchain, loc))
+		return 1;
+
+	return add_locked_access(laclass, acqchain, loc, type);
+}
+
+/*
+ * The implementation of entry point locked_access_point(), called when a data
+ * access belonging to @laclass happens.
+ */
+void locked_access(struct locked_access_class *laclass,
+		   struct locked_access_location *loc,
+		   int type)
+{
+	u64 acqchain_key = current->curr_acqchain_key;
+	struct acqchain *acqchain;
+
+	if (unlikely(!laclass))
+		return;
+
+	/*
+	 * Don't track for data access for lockdep itself, because we rely
+	 * on the ->held_locks lockdep maintains, and if ->lockdep_recursion is
+	 * not 0, the lock is not being maintained in ->held_locks.
+	 */
+	if (unlikely(current->lockdep_recursion))
+		return;
+
+	/* Data access outside a critical section */
+	if (current->lockdep_depth <= 0)
+		return;
+
+	/*
+	 * we only check whether laclass is initialized in locked_access,
+	 * because this is the entry point of LOCKED_ACCESS.
+	 */
+	if (unlikely(!smp_load_acquire(&laclass->initialized)))
+		locked_access_class_init(laclass);
+
+	acqchain = lookup_or_add_acqchain(laclass, current, acqchain_key);
+
+	if (acqchain)
+		correlate_locked_access(laclass, acqchain, loc, type);
+}
+EXPORT_SYMBOL(locked_access);
+#ifdef CONFIG_RCU_LOCKED_ACCESS
+DEFINE_LACLASS(rcu);
+#endif
+
+#endif /* CONFIG_LOCKED_ACCESS */

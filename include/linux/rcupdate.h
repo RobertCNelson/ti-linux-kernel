@@ -508,14 +508,7 @@ int rcu_read_lock_bh_held(void);
  * CONFIG_DEBUG_LOCK_ALLOC, this assumes we are in an RCU-sched read-side
  * critical section unless it can prove otherwise.
  */
-#ifdef CONFIG_PREEMPT_COUNT
 int rcu_read_lock_sched_held(void);
-#else /* #ifdef CONFIG_PREEMPT_COUNT */
-static inline int rcu_read_lock_sched_held(void)
-{
-	return 1;
-}
-#endif /* #else #ifdef CONFIG_PREEMPT_COUNT */
 
 #else /* #ifdef CONFIG_DEBUG_LOCK_ALLOC */
 
@@ -532,18 +525,10 @@ static inline int rcu_read_lock_bh_held(void)
 	return 1;
 }
 
-#ifdef CONFIG_PREEMPT_COUNT
 static inline int rcu_read_lock_sched_held(void)
 {
-	return preempt_count() != 0 || irqs_disabled();
+	return !preemptible();
 }
-#else /* #ifdef CONFIG_PREEMPT_COUNT */
-static inline int rcu_read_lock_sched_held(void)
-{
-	return 1;
-}
-#endif /* #else #ifdef CONFIG_PREEMPT_COUNT */
-
 #endif /* #else #ifdef CONFIG_DEBUG_LOCK_ALLOC */
 
 #ifdef CONFIG_PROVE_RCU
@@ -606,6 +591,17 @@ static inline void rcu_preempt_sleep_check(void)
 #define rcu_dereference_sparse(p, space)
 #endif /* #else #ifdef __CHECKER__ */
 
+#ifdef CONFIG_RCU_LOCKED_ACCESS
+extern struct locked_access_class rcu_laclass;
+#define STATIC_DEFINE_RCU_LOCK_CLASS_KEY(name) \
+	static struct lock_class_key name = { .laclass = &rcu_laclass }
+#define rcu_dereference_access() \
+	locked_access_point(&rcu_laclass, LOCKED_ACCESS_TYPE_READ)
+#else /* #ifdef CONFIG_LOCKED_ACCESS */
+#define rcu_dereference_access()
+#define STATIC_DEFINE_RCU_LOCK_CLASS_KEY(name) \
+	static struct lock_class_key name
+#endif /* #else #ifdef CONFIG_LOCKED_ACCESS */
 #define __rcu_access_pointer(p, space) \
 ({ \
 	typeof(*p) *_________p1 = (typeof(*p) *__force)READ_ONCE(p); \
@@ -618,6 +614,7 @@ static inline void rcu_preempt_sleep_check(void)
 	typeof(*p) *________p1 = (typeof(*p) *__force)lockless_dereference(p); \
 	RCU_LOCKDEP_WARN(!(c), "suspicious rcu_dereference_check() usage"); \
 	rcu_dereference_sparse(p, space); \
+	rcu_dereference_access(); \
 	((typeof(*p) __force __kernel *)(________p1)); \
 })
 #define __rcu_dereference_protected(p, c, space) \
@@ -1142,6 +1139,19 @@ static inline void rcu_sysidle_force_exit(void)
 }
 
 #endif /* #else #ifdef CONFIG_NO_HZ_FULL_SYSIDLE */
+
+
+/*
+ * Dump the ftrace buffer, but only one time per callsite per boot.
+ */
+#define rcu_ftrace_dump(oops_dump_mode) \
+do { \
+	static atomic_t ___rfd_beenhere = ATOMIC_INIT(0); \
+	\
+	if (!atomic_read(&___rfd_beenhere) && \
+	    !atomic_xchg(&___rfd_beenhere, 1)) \
+		ftrace_dump(oops_dump_mode); \
+} while (0)
 
 
 #endif /* __LINUX_RCUPDATE_H */
