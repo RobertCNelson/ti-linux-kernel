@@ -539,6 +539,7 @@ static int set_ftlb_enable(struct cpuinfo_mips *c, int enable)
 	switch (c->cputype) {
 	case CPU_PROAPTIV:
 	case CPU_P5600:
+	case CPU_P6600:
 		/* proAptiv & related cores use Config6 to enable the FTLB */
 		config = read_c0_config6();
 		/* Clear the old probability value */
@@ -796,6 +797,8 @@ static inline unsigned int decode_config5(struct cpuinfo_mips *c)
 	if (config5 & MIPS_CONF5_MVH)
 		c->options |= MIPS_CPU_XPA;
 #endif
+	if (cpu_has_mips_r6 && (config5 & MIPS_CONF5_VP))
+		c->options |= MIPS_CPU_VP;
 
 	return config5 & MIPS_CONF_M;
 }
@@ -827,15 +830,6 @@ static void decode_configs(struct cpuinfo_mips *c)
 		ok = decode_config5(c);
 
 	mips_probe_watch_registers(c);
-
-	if (cpu_has_rixi) {
-		/* Enable the RIXI exceptions */
-		set_c0_pagegrain(PG_IEC);
-		back_to_back_c0_hazard();
-		/* Verify the IEC bit is set */
-		if (read_c0_pagegrain() & PG_IEC)
-			c->options |= MIPS_CPU_RIXIEX;
-	}
 
 #ifndef CONFIG_MIPS_CPS
 	if (cpu_has_mips_r2_r6) {
@@ -1314,6 +1308,10 @@ static inline void cpu_probe_mips(struct cpuinfo_mips *c, unsigned int cpu)
 		c->cputype = CPU_P5600;
 		__cpu_name[cpu] = "MIPS P5600";
 		break;
+	case PRID_IMP_P6600:
+		c->cputype = CPU_P6600;
+		__cpu_name[cpu] = "MIPS P6600";
+		break;
 	case PRID_IMP_I6400:
 		c->cputype = CPU_I6400;
 		__cpu_name[cpu] = "MIPS I6400";
@@ -1321,6 +1319,10 @@ static inline void cpu_probe_mips(struct cpuinfo_mips *c, unsigned int cpu)
 	case PRID_IMP_M5150:
 		c->cputype = CPU_M5150;
 		__cpu_name[cpu] = "MIPS M5150";
+		break;
+	case PRID_IMP_M6250:
+		c->cputype = CPU_M6250;
+		__cpu_name[cpu] = "MIPS M6250";
 		break;
 	}
 
@@ -1435,6 +1437,7 @@ static inline void cpu_probe_broadcom(struct cpuinfo_mips *c, unsigned int cpu)
 			c->cputype = CPU_BMIPS4380;
 			__cpu_name[cpu] = "Broadcom BMIPS4380";
 			set_elf_platform(cpu, "bmips4380");
+			c->options |= MIPS_CPU_RIXI;
 		} else {
 			c->cputype = CPU_BMIPS4350;
 			__cpu_name[cpu] = "Broadcom BMIPS4350";
@@ -1447,7 +1450,7 @@ static inline void cpu_probe_broadcom(struct cpuinfo_mips *c, unsigned int cpu)
 		c->cputype = CPU_BMIPS5000;
 		__cpu_name[cpu] = "Broadcom BMIPS5000";
 		set_elf_platform(cpu, "bmips5000");
-		c->options |= MIPS_CPU_ULRI;
+		c->options |= MIPS_CPU_ULRI | MIPS_CPU_RIXI;
 		break;
 	}
 }
@@ -1481,6 +1484,8 @@ platform:
 		set_elf_platform(cpu, "octeon2");
 		break;
 	case PRID_IMP_CAVIUM_CN70XX:
+	case PRID_IMP_CAVIUM_CN73XX:
+	case PRID_IMP_CAVIUM_CNF75XX:
 	case PRID_IMP_CAVIUM_CN78XX:
 		c->cputype = CPU_CAVIUM_OCTEON3;
 		__cpu_name[cpu] = "Cavium Octeon III";
@@ -1659,6 +1664,15 @@ void cpu_probe(void)
 	 * manually setup otherwise it could trigger some nasty bugs.
 	 */
 	BUG_ON(current_cpu_type() != c->cputype);
+
+	if (cpu_has_rixi) {
+		/* Enable the RIXI exceptions */
+		set_c0_pagegrain(PG_IEC);
+		back_to_back_c0_hazard();
+		/* Verify the IEC bit is set */
+		if (read_c0_pagegrain() & PG_IEC)
+			c->options |= MIPS_CPU_RIXIEX;
+	}
 
 	if (mips_fpu_disabled)
 		c->options &= ~MIPS_CPU_FPU;
