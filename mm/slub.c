@@ -329,8 +329,8 @@ static inline void set_page_slub_counters(struct page *page, unsigned long count
 	tmp.counters = counters_new;
 	/*
 	 * page->counters can cover frozen/inuse/objects as well
-	 * as page->_count.  If we assign to ->counters directly
-	 * we run the risk of losing updates to page->_count, so
+	 * as page->_refcount.  If we assign to ->counters directly
+	 * we run the risk of losing updates to page->_refcount, so
 	 * be careful and only assign to the fields we need.
 	 */
 	page->frozen  = tmp.frozen;
@@ -1319,7 +1319,7 @@ static inline void kmalloc_large_node_hook(void *ptr, size_t size, gfp_t flags)
 static inline void kfree_hook(const void *x)
 {
 	kmemleak_free(x);
-	kasan_kfree_large(x);
+	kasan_poison_kfree_large(x);
 }
 
 static inline void slab_free_hook(struct kmem_cache *s, void *x)
@@ -1344,7 +1344,7 @@ static inline void slab_free_hook(struct kmem_cache *s, void *x)
 	if (!(s->flags & SLAB_DEBUG_OBJECTS))
 		debug_check_no_obj_freed(x, s->object_size);
 
-	kasan_slab_free(s, x);
+	kasan_poison_slab_free(s, x);
 }
 
 static inline void slab_free_freelist_hook(struct kmem_cache *s,

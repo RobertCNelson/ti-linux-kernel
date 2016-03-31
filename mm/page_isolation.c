@@ -215,7 +215,7 @@ int undo_isolate_page_range(unsigned long start_pfn, unsigned long end_pfn,
  * all pages in [start_pfn...end_pfn) must be in the same zone.
  * zone->lock must be held before call this.
  *
- * Returns 1 if all pages in the range are isolated.
+ * Returns the last tested pfn.
  */
 static unsigned long
 __test_page_isolated_in_pageblock(unsigned long pfn, unsigned long end_pfn,
@@ -288,13 +288,10 @@ struct page *alloc_migrate_target(struct page *page, unsigned long private,
 	 * accordance with memory policy of the user process if possible. For
 	 * now as a simple work-around, we use the next node for destination.
 	 */
-	if (PageHuge(page)) {
-		nodemask_t src = nodemask_of_node(page_to_nid(page));
-		nodemask_t dst;
-		nodes_complement(dst, src);
+	if (PageHuge(page))
 		return alloc_huge_page_node(page_hstate(compound_head(page)),
-					    next_node(page_to_nid(page), dst));
-	}
+					    next_node_in(page_to_nid(page),
+							 node_online_map));
 
 	if (PageHighMem(page))
 		gfp_mask |= __GFP_HIGHMEM;

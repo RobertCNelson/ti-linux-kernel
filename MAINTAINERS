@@ -8177,7 +8177,6 @@ F:	drivers/of/resolver.c
 OPENRISC ARCHITECTURE
 M:	Jonas Bonn <jonas@southpole.se>
 W:	http://openrisc.net
-L:	linux@lists.openrisc.net (moderated for non-subscribers)
 S:	Maintained
 T:	git git://openrisc.net/~jonas/linux
 F:	arch/openrisc/
@@ -8257,7 +8256,7 @@ F:	Documentation/filesystems/overlayfs.txt
 
 ORANGEFS FILESYSTEM
 M:	Mike Marshall <hubcap@omnibond.com>
-L:	pvfs2-developers@beowulf-underground.org
+L:	pvfs2-developers@beowulf-underground.org (subscribers-only)
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/hubcap/linux.git
 S:	Supported
 F:	fs/orangefs/
