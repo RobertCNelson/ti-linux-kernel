@@ -370,6 +370,21 @@ void rcu_all_qs(void)
 		rcu_momentary_dyntick_idle();
 		local_irq_restore(flags);
 	}
+	if (unlikely(raw_cpu_read(rcu_sched_data.cpu_no_qs.b.exp))) {
+		/*
+		 * Yes, we just checked a per-CPU variable with preemption
+		 * enabled, so we might be migrated to some other CPU at
+		 * this point.  That is OK because in that case, the
+		 * migration will supply the needed quiescent state.
+		 * We might end up needlessly disabling preemption and
+		 * invoking rcu_sched_qs() on the destination CPU, but
+		 * the probability and cost are both quite low, so this
+		 * should not be a problem in practice.
+		 */
+		preempt_disable();
+		rcu_sched_qs();
+		preempt_enable();
+	}
 	this_cpu_inc(rcu_qs_ctr);
 	barrier(); /* Avoid RCU read-side critical sections leaking up. */
 }
@@ -385,9 +400,11 @@ module_param(qlowmark, long, 0444);
 
 static ulong jiffies_till_first_fqs = ULONG_MAX;
 static ulong jiffies_till_next_fqs = ULONG_MAX;
+static bool rcu_kick_kthreads;
 
 module_param(jiffies_till_first_fqs, ulong, 0644);
 module_param(jiffies_till_next_fqs, ulong, 0644);
+module_param(rcu_kick_kthreads, bool, 0644);
 
 /*
  * How long the grace period must be before we start recruiting
@@ -458,6 +475,28 @@ unsigned long rcu_batches_completed_bh(void)
 	return rcu_bh_state.completed;
 }
 EXPORT_SYMBOL_GPL(rcu_batches_completed_bh);
+
+/*
+ * Return the number of RCU expedited batches completed thus far for
+ * debug & stats.  Odd numbers mean that a batch is in progress, even
+ * numbers mean idle.  The value returned will thus be roughly double
+ * the cumulative batches since boot.
+ */
+unsigned long rcu_exp_batches_completed(void)
+{
+	return rcu_state_p->expedited_sequence;
+}
+EXPORT_SYMBOL_GPL(rcu_exp_batches_completed);
+
+/*
+ * Return the number of RCU-sched expedited batches completed thus far
+ * for debug & stats.  Similar to rcu_exp_batches_completed().
+ */
+unsigned long rcu_exp_batches_completed_sched(void)
+{
+	return rcu_sched_state.expedited_sequence;
+}
+EXPORT_SYMBOL_GPL(rcu_exp_batches_completed_sched);
 
 /*
  * Force a quiescent state.
@@ -1224,8 +1263,10 @@ static void rcu_check_gp_kthread_starvation(struct rcu_state *rsp)
 		       rsp->gp_flags,
 		       gp_state_getname(rsp->gp_state), rsp->gp_state,
 		       rsp->gp_kthread ? rsp->gp_kthread->state : ~0);
-		if (rsp->gp_kthread)
+		if (rsp->gp_kthread) {
 			sched_show_task(rsp->gp_kthread);
+			wake_up_process(rsp->gp_kthread);
+		}
 	}
 }
 
@@ -1249,6 +1290,24 @@ static void rcu_dump_cpu_stacks(struct rcu_state *rsp)
 	}
 }
 
+/*
+ * If too much time has passed in the current grace period, and if
+ * so configured, go kick the relevant kthreads.
+ */
+static void rcu_stall_kick_kthreads(struct rcu_state *rsp)
+{
+	unsigned long j;
+
+	if (!rcu_kick_kthreads)
+		return;
+	j = READ_ONCE(rsp->jiffies_kick_kthreads);
+	if (time_after(jiffies, j) && rsp->gp_kthread) {
+		WARN_ONCE(1, "Kicking %s grace-period kthread\n", rsp->name);
+		wake_up_process(rsp->gp_kthread);
+		WRITE_ONCE(rsp->jiffies_kick_kthreads, j + HZ);
+	}
+}
+
 static void print_other_cpu_stall(struct rcu_state *rsp, unsigned long gpnum)
 {
 	int cpu;
@@ -1259,6 +1318,11 @@ static void print_other_cpu_stall(struct rcu_state *rsp, unsigned long gpnum)
 	int ndetected = 0;
 	struct rcu_node *rnp = rcu_get_root(rsp);
 	long totqlen = 0;
+
+	/* Kick and suppress, if so configured. */
+	rcu_stall_kick_kthreads(rsp);
+	if (rcu_cpu_stall_suppress)
+		return;
 
 	/* Only let one CPU complain about others per time interval. */
 
@@ -1333,6 +1397,11 @@ static void print_cpu_stall(struct rcu_state *rsp)
 	struct rcu_node *rnp = rcu_get_root(rsp);
 	long totqlen = 0;
 
+	/* Kick and suppress, if so configured. */
+	rcu_stall_kick_kthreads(rsp);
+	if (rcu_cpu_stall_suppress)
+		return;
+
 	/*
 	 * OK, time to rat on ourselves...
 	 * See Documentation/RCU/stallwarn.txt for info on how to debug
@@ -1377,8 +1446,10 @@ static void check_cpu_stall(struct rcu_state *rsp, struct rcu_data *rdp)
 	unsigned long js;
 	struct rcu_node *rnp;
 
-	if (rcu_cpu_stall_suppress || !rcu_gp_in_progress(rsp))
+	if ((rcu_cpu_stall_suppress && !rcu_kick_kthreads) ||
+	    !rcu_gp_in_progress(rsp))
 		return;
+	rcu_stall_kick_kthreads(rsp);
 	j = jiffies;
 
 	/*
@@ -2117,8 +2188,11 @@ static int __noreturn rcu_gp_kthread(void *arg)
 		}
 		ret = 0;
 		for (;;) {
-			if (!ret)
+			if (!ret) {
 				rsp->jiffies_force_qs = jiffies + j;
+				WRITE_ONCE(rsp->jiffies_kick_kthreads,
+					   jiffies + 3 * j);
+			}
 			trace_rcu_grace_period(rsp->name,
 					       READ_ONCE(rsp->gpnum),
 					       TPS("fqswait"));
@@ -2144,6 +2218,15 @@ static int __noreturn rcu_gp_kthread(void *arg)
 						       TPS("fqsend"));
 				cond_resched_rcu_qs();
 				WRITE_ONCE(rsp->gp_activity, jiffies);
+				ret = 0; /* Force full wait till next FQS. */
+				j = jiffies_till_next_fqs;
+				if (j > HZ) {
+					j = HZ;
+					jiffies_till_next_fqs = HZ;
+				} else if (j < 1) {
+					j = 1;
+					jiffies_till_next_fqs = 1;
+				}
 			} else {
 				/* Deal with stray signal. */
 				cond_resched_rcu_qs();
@@ -2152,14 +2235,12 @@ static int __noreturn rcu_gp_kthread(void *arg)
 				trace_rcu_grace_period(rsp->name,
 						       READ_ONCE(rsp->gpnum),
 						       TPS("fqswaitsig"));
-			}
-			j = jiffies_till_next_fqs;
-			if (j > HZ) {
-				j = HZ;
-				jiffies_till_next_fqs = HZ;
-			} else if (j < 1) {
-				j = 1;
-				jiffies_till_next_fqs = 1;
+				ret = 1; /* Keep old FQS timing. */
+				j = jiffies;
+				if (time_after(jiffies, rsp->jiffies_force_qs))
+					j = 1;
+				else
+					j = rsp->jiffies_force_qs - j;
 			}
 		}
 
@@ -3569,10 +3650,19 @@ static bool sync_exp_work_done(struct rcu_state *rsp, struct rcu_node *rnp,
 			       atomic_long_t *stat, unsigned long s)
 {
 	if (rcu_exp_gp_seq_done(rsp, s)) {
-		if (rnp)
+		trace_rcu_exp_grace_period(rsp->name, s, TPS("done"));
+		if (rnp) {
+			trace_rcu_exp_funnel_lock(rsp->name, rnp->level,
+						  rnp->grplo, rnp->grphi,
+						  TPS("rel"));
 			mutex_unlock(&rnp->exp_funnel_mutex);
-		else if (rdp)
+		} else if (rdp) {
+			trace_rcu_exp_funnel_lock(rsp->name,
+						  rdp->mynode->level + 1,
+						  rdp->cpu, rdp->cpu,
+						  TPS("rel"));
 			mutex_unlock(&rdp->exp_funnel_mutex);
+		}
 		/* Ensure test happens before caller kfree(). */
 		smp_mb__before_atomic(); /* ^^^ */
 		atomic_long_inc(stat);
@@ -3593,22 +3683,6 @@ static struct rcu_node *exp_funnel_lock(struct rcu_state *rsp, unsigned long s)
 	struct rcu_node *rnp1 = NULL;
 
 	/*
-	 * First try directly acquiring the root lock in order to reduce
-	 * latency in the common case where expedited grace periods are
-	 * rare.  We check mutex_is_locked() to avoid pathological levels of
-	 * memory contention on ->exp_funnel_mutex in the heavy-load case.
-	 */
-	rnp0 = rcu_get_root(rsp);
-	if (!mutex_is_locked(&rnp0->exp_funnel_mutex)) {
-		if (mutex_trylock(&rnp0->exp_funnel_mutex)) {
-			if (sync_exp_work_done(rsp, rnp0, NULL,
-					       &rdp->expedited_workdone0, s))
-				return NULL;
-			return rnp0;
-		}
-	}
-
-	/*
 	 * Each pass through the following loop works its way
 	 * up the rcu_node tree, returning if others have done the
 	 * work or otherwise falls through holding the root rnp's
@@ -3619,16 +3693,28 @@ static struct rcu_node *exp_funnel_lock(struct rcu_state *rsp, unsigned long s)
 	if (sync_exp_work_done(rsp, NULL, NULL, &rdp->expedited_workdone1, s))
 		return NULL;
 	mutex_lock(&rdp->exp_funnel_mutex);
+	trace_rcu_exp_funnel_lock(rsp->name, rdp->mynode->level + 1,
+				  rdp->cpu, rdp->cpu, TPS("acq"));
 	rnp0 = rdp->mynode;
 	for (; rnp0 != NULL; rnp0 = rnp0->parent) {
 		if (sync_exp_work_done(rsp, rnp1, rdp,
 				       &rdp->expedited_workdone2, s))
 			return NULL;
 		mutex_lock(&rnp0->exp_funnel_mutex);
-		if (rnp1)
+		trace_rcu_exp_funnel_lock(rsp->name, rnp0->level,
+					  rnp0->grplo, rnp0->grphi, TPS("acq"));
+		if (rnp1) {
+			trace_rcu_exp_funnel_lock(rsp->name, rnp1->level,
+						  rnp1->grplo, rnp1->grphi,
+						  TPS("rel"));
 			mutex_unlock(&rnp1->exp_funnel_mutex);
-		else
+		} else {
+			trace_rcu_exp_funnel_lock(rsp->name,
+						  rdp->mynode->level + 1,
+						  rdp->cpu, rdp->cpu,
+						  TPS("rel"));
 			mutex_unlock(&rdp->exp_funnel_mutex);
+		}
 		rnp1 = rnp0;
 	}
 	if (sync_exp_work_done(rsp, rnp1, rdp,
@@ -3649,6 +3735,11 @@ static void sync_sched_exp_handler(void *data)
 	if (!(READ_ONCE(rnp->expmask) & rdp->grpmask) ||
 	    __this_cpu_read(rcu_sched_data.cpu_no_qs.b.exp))
 		return;
+	if (rcu_is_cpu_rrupt_from_idle()) {
+		rcu_report_exp_rdp(&rcu_sched_state,
+				   this_cpu_ptr(&rcu_sched_data), true);
+		return;
+	}
 	__this_cpu_write(rcu_sched_data.cpu_no_qs.b.exp, true);
 	resched_cpu(smp_processor_id());
 }
@@ -3773,7 +3864,7 @@ static void synchronize_sched_expedited_wait(struct rcu_state *rsp)
 		       rsp->name);
 		ndetected = 0;
 		rcu_for_each_leaf_node(rsp, rnp) {
-			ndetected = rcu_print_task_exp_stall(rnp);
+			ndetected += rcu_print_task_exp_stall(rnp);
 			mask = 1;
 			for (cpu = rnp->grplo; cpu <= rnp->grphi; cpu++, mask <<= 1) {
 				struct rcu_data *rdp;
@@ -3792,7 +3883,7 @@ static void synchronize_sched_expedited_wait(struct rcu_state *rsp)
 		pr_cont(" } %lu jiffies s: %lu root: %#lx/%c\n",
 			jiffies - jiffies_start, rsp->expedited_sequence,
 			rnp_root->expmask, ".T"[!!rnp_root->exp_tasks]);
-		if (!ndetected) {
+		if (ndetected) {
 			pr_err("blocking rcu_node structures:");
 			rcu_for_each_node_breadth_first(rsp, rnp) {
 				if (rnp == rnp_root)
@@ -3852,16 +3943,21 @@ void synchronize_sched_expedited(void)
 
 	/* Take a snapshot of the sequence number.  */
 	s = rcu_exp_gp_seq_snap(rsp);
+	trace_rcu_exp_grace_period(rsp->name, s, TPS("snap"));
 
 	rnp = exp_funnel_lock(rsp, s);
 	if (rnp == NULL)
 		return;  /* Someone else did our work for us. */
 
 	rcu_exp_gp_seq_start(rsp);
+	trace_rcu_exp_grace_period(rsp->name, s, TPS("start"));
 	sync_rcu_exp_select_cpus(rsp, sync_sched_exp_handler);
 	synchronize_sched_expedited_wait(rsp);
 
 	rcu_exp_gp_seq_end(rsp);
+	trace_rcu_exp_grace_period(rsp->name, s, TPS("end"));
+	trace_rcu_exp_funnel_lock(rsp->name, rnp->level,
+				  rnp->grplo, rnp->grphi, TPS("rel"));
 	mutex_unlock(&rnp->exp_funnel_mutex);
 }
 EXPORT_SYMBOL_GPL(synchronize_sched_expedited);
