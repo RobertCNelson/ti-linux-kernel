@@ -1925,8 +1925,13 @@ event_sched_in(struct perf_event *event,
 	if (event->state <= PERF_EVENT_STATE_OFF)
 		return 0;
 
-	event->state = PERF_EVENT_STATE_ACTIVE;
-	event->oncpu = smp_processor_id();
+	WRITE_ONCE(event->oncpu, smp_processor_id());
+	/*
+	 * Order event::oncpu write to happen before the ACTIVE state
+	 * is visible.
+	 */
+	smp_wmb();
+	WRITE_ONCE(event->state, PERF_EVENT_STATE_ACTIVE);
 
 	/*
 	 * Unthrottle events, since we scheduled we might have missed several
@@ -2358,6 +2363,29 @@ void perf_event_enable(struct perf_event *event)
 }
 EXPORT_SYMBOL_GPL(perf_event_enable);
 
+static int __perf_event_stop(void *info)
+{
+	struct perf_event *event = info;
+
+	/* for AUX events, our job is done if the event is already inactive */
+	if (READ_ONCE(event->state) != PERF_EVENT_STATE_ACTIVE)
+		return 0;
+
+	/* matches smp_wmb() in event_sched_in() */
+	smp_rmb();
+
+	/*
+	 * There is a window with interrupts enabled before we get here,
+	 * so we need to check again lest we try to stop another CPU's event.
+	 */
+	if (READ_ONCE(event->oncpu) != smp_processor_id())
+		return -EAGAIN;
+
+	event->pmu->stop(event, PERF_EF_UPDATE);
+
+	return 0;
+}
+
 static int _perf_event_refresh(struct perf_event *event, int refresh)
 {
 	/*
@@ -2417,13 +2445,23 @@ static void ctx_sched_out(struct perf_event_context *ctx,
 			cpuctx->task_ctx = NULL;
 	}
 
-	is_active ^= ctx->is_active; /* changed bits */
-
+	/*
+	 * Always update time if it was set; not only when it changes.
+	 * Otherwise we can 'forget' to update time for any but the last
+	 * context we sched out. For example:
+	 *
+	 *   ctx_sched_out(.event_type = EVENT_FLEXIBLE)
+	 *   ctx_sched_out(.event_type = EVENT_PINNED)
+	 *
+	 * would only update time for the pinned events.
+	 */
 	if (is_active & EVENT_TIME) {
 		/* update (and stop) ctx time */
 		update_context_time(ctx);
 		update_cgrp_time_from_cpuctx(cpuctx);
 	}
+
+	is_active ^= ctx->is_active; /* changed bits */
 
 	if (!ctx->nr_active || !(is_active & EVENT_ALL))
 		return;
@@ -4341,6 +4379,19 @@ static long _perf_ioctl(struct perf_event *event, unsigned int cmd, unsigned lon
 	case PERF_EVENT_IOC_SET_BPF:
 		return perf_event_set_bpf_prog(event, arg);
 
+	case PERF_EVENT_IOC_PAUSE_OUTPUT: {
+		struct ring_buffer *rb;
+
+		rcu_read_lock();
+		rb = rcu_dereference(event->rb);
+		if (!rb || !rb->nr_pages) {
+			rcu_read_unlock();
+			return -EINVAL;
+		}
+		rb_toggle_paused(rb, !!arg);
+		rcu_read_unlock();
+		return 0;
+	}
 	default:
 		return -ENOTTY;
 	}
@@ -4657,6 +4708,8 @@ static void perf_mmap_open(struct vm_area_struct *vma)
 		event->pmu->event_mapped(event);
 }
 
+static void perf_pmu_output_stop(struct perf_event *event);
+
 /*
  * A buffer can be mmap()ed multiple times; either directly through the same
  * event, or through other events by use of perf_event_set_output().
@@ -4684,10 +4737,22 @@ static void perf_mmap_close(struct vm_area_struct *vma)
 	 */
 	if (rb_has_aux(rb) && vma->vm_pgoff == rb->aux_pgoff &&
 	    atomic_dec_and_mutex_lock(&rb->aux_mmap_count, &event->mmap_mutex)) {
+		/*
+		 * Stop all AUX events that are writing to this buffer,
+		 * so that we can free its AUX pages and corresponding PMU
+		 * data. Note that after rb::aux_mmap_count dropped to zero,
+		 * they won't start any more (see perf_aux_output_begin()).
+		 */
+		perf_pmu_output_stop(event);
+
+		/* now it's safe to free the pages */
 		atomic_long_sub(rb->aux_nr_pages, &mmap_user->locked_vm);
 		vma->vm_mm->pinned_vm -= rb->aux_mmap_locked;
 
+		/* this has to be the last one */
 		rb_free_aux(rb);
+		WARN_ON_ONCE(atomic_read(&rb->aux_refcount));
+
 		mutex_unlock(&event->mmap_mutex);
 	}
 
@@ -5758,6 +5823,80 @@ next:
 	rcu_read_unlock();
 }
 
+struct remote_output {
+	struct ring_buffer	*rb;
+	int			err;
+};
+
+static void __perf_event_output_stop(struct perf_event *event, void *data)
+{
+	struct perf_event *parent = event->parent;
+	struct remote_output *ro = data;
+	struct ring_buffer *rb = ro->rb;
+
+	if (!has_aux(event))
+		return;
+
+	if (!parent)
+		parent = event;
+
+	/*
+	 * In case of inheritance, it will be the parent that links to the
+	 * ring-buffer, but it will be the child that's actually using it:
+	 */
+	if (rcu_dereference(parent->rb) == rb)
+		ro->err = __perf_event_stop(event);
+}
+
+static int __perf_pmu_output_stop(void *info)
+{
+	struct perf_event *event = info;
+	struct pmu *pmu = event->pmu;
+	struct perf_cpu_context *cpuctx = get_cpu_ptr(pmu->pmu_cpu_context);
+	struct remote_output ro = {
+		.rb	= event->rb,
+	};
+
+	rcu_read_lock();
+	perf_event_aux_ctx(&cpuctx->ctx, __perf_event_output_stop, &ro);
+	if (cpuctx->task_ctx)
+		perf_event_aux_ctx(cpuctx->task_ctx, __perf_event_output_stop,
+				   &ro);
+	rcu_read_unlock();
+
+	return ro.err;
+}
+
+static void perf_pmu_output_stop(struct perf_event *event)
+{
+	struct perf_event *iter;
+	int err, cpu;
+
+restart:
+	rcu_read_lock();
+	list_for_each_entry_rcu(iter, &event->rb->event_list, rb_entry) {
+		/*
+		 * For per-CPU events, we need to make sure that neither they
+		 * nor their children are running; for cpu==-1 events it's
+		 * sufficient to stop the event itself if it's active, since
+		 * it can't have children.
+		 */
+		cpu = iter->cpu;
+		if (cpu == -1)
+			cpu = READ_ONCE(iter->oncpu);
+
+		if (cpu == -1)
+			continue;
+
+		err = cpu_function_call(cpu, __perf_pmu_output_stop, event);
+		if (err == -EAGAIN) {
+			rcu_read_unlock();
+			goto restart;
+		}
+	}
+	rcu_read_unlock();
+}
+
 /*
  * task tracking -- fork/exit
  *
@@ -6489,10 +6628,7 @@ static int __perf_event_overflow(struct perf_event *event,
 		irq_work_queue(&event->pending);
 	}
 
-	if (event->overflow_handler)
-		event->overflow_handler(event, data, regs);
-	else
-		perf_event_output(event, data, regs);
+	event->overflow_handler(event, data, regs);
 
 	if (*perf_event_fasync(event) && event->pending_kill) {
 		event->pending_wakeup = 1;
@@ -7683,6 +7819,15 @@ int perf_pmu_register(struct pmu *pmu, const char *name, int type)
 	}
 
 skip_type:
+	if (pmu->task_ctx_nr == perf_hw_context) {
+		static int hw_context_taken = 0;
+
+		if (WARN_ON_ONCE(hw_context_taken))
+			pmu->task_ctx_nr = perf_invalid_context;
+
+		hw_context_taken = 1;
+	}
+
 	pmu->pmu_cpu_context = find_pmu_context(pmu->task_ctx_nr);
 	if (pmu->pmu_cpu_context)
 		goto got_cpu_context;
@@ -8004,8 +8149,13 @@ perf_event_alloc(struct perf_event_attr *attr, int cpu,
 		context = parent_event->overflow_handler_context;
 	}
 
-	event->overflow_handler	= overflow_handler;
-	event->overflow_handler_context = context;
+	if (overflow_handler) {
+		event->overflow_handler	= overflow_handler;
+		event->overflow_handler_context = context;
+	} else {
+		event->overflow_handler = perf_event_output;
+		event->overflow_handler_context = NULL;
+	}
 
 	perf_event__state_init(event);
 
@@ -8532,6 +8682,7 @@ SYSCALL_DEFINE5(perf_event_open,
 					f_flags);
 	if (IS_ERR(event_file)) {
 		err = PTR_ERR(event_file);
+		event_file = NULL;
 		goto err_context;
 	}
 
