@@ -1850,6 +1850,7 @@ again:
 			eb = read_tree_block(dest, old_bytenr, old_ptr_gen);
 			if (IS_ERR(eb)) {
 				ret = PTR_ERR(eb);
+				break;
 			} else if (!extent_buffer_uptodate(eb)) {
 				ret = -EIO;
 				free_extent_buffer(eb);
@@ -2417,7 +2418,7 @@ again:
 	}
 out:
 	if (ret) {
-		btrfs_std_error(root->fs_info, ret, NULL);
+		btrfs_handle_fs_error(root->fs_info, ret, NULL);
 		if (!list_empty(&reloc_roots))
 			free_reloc_roots(&reloc_roots);
 
