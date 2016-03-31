@@ -35,16 +35,14 @@
 struct men_z127_gpio {
 	struct gpio_chip gc;
 	void __iomem *reg_base;
-	struct mcb_device *mdev;
 	struct resource *mem;
-	spinlock_t lock;
 };
 
 static int men_z127_debounce(struct gpio_chip *gc, unsigned gpio,
 			     unsigned debounce)
 {
 	struct men_z127_gpio *priv = gpiochip_get_data(gc);
-	struct device *dev = &priv->mdev->dev;
+	struct device *dev = gc->parent;
 	unsigned int rnd;
 	u32 db_en, db_cnt;
 
@@ -69,7 +67,7 @@ static int men_z127_debounce(struct gpio_chip *gc, unsigned gpio,
 		debounce /= 50;
 	}
 
-	spin_lock(&priv->lock);
+	spin_lock(&gc->bgpio_lock);
 
 	db_en = readl(priv->reg_base + MEN_Z127_DBER);
 
@@ -84,7 +82,7 @@ static int men_z127_debounce(struct gpio_chip *gc, unsigned gpio,
 	writel(db_en, priv->reg_base + MEN_Z127_DBER);
 	writel(db_cnt, priv->reg_base + GPIO_TO_DBCNT_REG(gpio));
 
-	spin_unlock(&priv->lock);
+	spin_unlock(&gc->bgpio_lock);
 
 	return 0;
 }
@@ -97,7 +95,7 @@ static int men_z127_request(struct gpio_chip *gc, unsigned gpio_pin)
 	if (gpio_pin >= gc->ngpio)
 		return -EINVAL;
 
-	spin_lock(&priv->lock);
+	spin_lock(&gc->bgpio_lock);
 	od_en = readl(priv->reg_base + MEN_Z127_ODER);
 
 	if (gpiochip_line_is_open_drain(gc, gpio_pin))
@@ -106,7 +104,7 @@ static int men_z127_request(struct gpio_chip *gc, unsigned gpio_pin)
 		od_en &= ~BIT(gpio_pin);
 
 	writel(od_en, priv->reg_base + MEN_Z127_ODER);
-	spin_unlock(&priv->lock);
+	spin_unlock(&gc->bgpio_lock);
 
 	return 0;
 }
@@ -136,7 +134,6 @@ static int men_z127_probe(struct mcb_device *mdev,
 		goto err_release;
 	}
 
-	men_z127_gpio->mdev = mdev;
 	mcb_set_drvdata(mdev, men_z127_gpio);
 
 	ret = bgpio_init(&men_z127_gpio->gc, &mdev->dev, 4,
