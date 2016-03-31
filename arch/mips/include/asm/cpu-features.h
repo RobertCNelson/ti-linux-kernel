@@ -307,8 +307,16 @@
 #define cpu_has_dsp2		(cpu_data[0].ases & MIPS_ASE_DSP2P)
 #endif
 
+#ifndef cpu_has_dsp3
+#define cpu_has_dsp3		(cpu_data[0].ases & MIPS_ASE_DSP3)
+#endif
+
 #ifndef cpu_has_mipsmt
 #define cpu_has_mipsmt		(cpu_data[0].ases & MIPS_ASE_MIPSMT)
+#endif
+
+#ifndef cpu_has_vp
+#define cpu_has_vp		(cpu_data[0].options & MIPS_CPU_VP)
 #endif
 
 #ifndef cpu_has_userlocal
