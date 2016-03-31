@@ -122,6 +122,7 @@ config GPIO_ALTERA
 config GPIO_AMDPT
 	tristate "AMD Promontory GPIO support"
 	depends on ACPI
+	select GPIO_GENERIC
 	help
 	  driver for GPIO functionality on Promontory IOHub
 	  Require ACPI ASL code to enumerate as a platform device.
@@ -1091,6 +1092,7 @@ menu "SPI or I2C GPIO expanders"
 
 config GPIO_MCP23S08
 	tristate "Microchip MCP23xxx I/O expander"
+	select GPIOLIB_IRQCHIP
 	help
 	  SPI/I2C driver for Microchip MCP23S08/MCP23S17/MCP23008/MCP23017
 	  I/O expanders.
