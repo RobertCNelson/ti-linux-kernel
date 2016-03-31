@@ -485,11 +485,15 @@ skl_tplg_init_pipe_modules(struct skl *skl, struct skl_pipe *pipe)
 		if (!skl_is_pipe_mcps_avail(skl, mconfig))
 			return -ENOMEM;
 
+		skl_tplg_alloc_pipe_mcps(skl, mconfig);
+
 		if (mconfig->is_loadable && ctx->dsp->fw_ops.load_mod) {
 			ret = ctx->dsp->fw_ops.load_mod(ctx->dsp,
 				mconfig->id.module_id, mconfig->guid);
 			if (ret < 0)
 				return ret;
+
+			mconfig->m_state = SKL_MODULE_LOADED;
 		}
 
 		/* update blob if blob is null for be with default value */
@@ -509,7 +513,6 @@ skl_tplg_init_pipe_modules(struct skl *skl, struct skl_pipe *pipe)
 		ret = skl_tplg_set_module_params(w, ctx);
 		if (ret < 0)
 			return ret;
-		skl_tplg_alloc_pipe_mcps(skl, mconfig);
 	}
 
 	return 0;
@@ -524,7 +527,8 @@ static int skl_tplg_unload_pipe_modules(struct skl_sst *ctx,
 	list_for_each_entry(w_module, &pipe->w_list, node) {
 		mconfig  = w_module->w->priv;
 
-		if (mconfig->is_loadable && ctx->dsp->fw_ops.unload_mod)
+		if (mconfig->is_loadable && ctx->dsp->fw_ops.unload_mod &&
+			mconfig->m_state > SKL_MODULE_UNINIT)
 			return ctx->dsp->fw_ops.unload_mod(ctx->dsp,
 						mconfig->id.module_id);
 	}
@@ -557,6 +561,9 @@ static int skl_tplg_mixer_dapm_pre_pmu_event(struct snd_soc_dapm_widget *w,
 
 	if (!skl_is_pipe_mem_avail(skl, mconfig))
 		return -ENOMEM;
+
+	skl_tplg_alloc_pipe_mem(skl, mconfig);
+	skl_tplg_alloc_pipe_mcps(skl, mconfig);
 
 	/*
 	 * Create a list of modules for pipe.
@@ -600,9 +607,6 @@ static int skl_tplg_mixer_dapm_pre_pmu_event(struct snd_soc_dapm_widget *w,
 
 		src_module = dst_module;
 	}
-
-	skl_tplg_alloc_pipe_mem(skl, mconfig);
-	skl_tplg_alloc_pipe_mcps(skl, mconfig);
 
 	return 0;
 }
