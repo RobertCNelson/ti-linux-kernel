@@ -492,7 +492,7 @@ static void hold_bio(struct mirror_set *ms, struct bio *bio)
 		if (dm_noflush_suspending(ms->ti))
 			bio->bi_error = DM_ENDIO_REQUEUE;
 		else
-			bio->bi_error = -EIO;
+			bio->bi_error = 0;
 
 		bio_endio(bio);
 		return;
@@ -804,7 +804,7 @@ static void do_failures(struct mirror_set *ms, struct bio_list *failures)
 	 * the I/O's to the core.  This give userspace a chance
 	 * to reconfigure the mirror, at which point the core
 	 * will reissue the writes.  If the 'noflush' flag is
-	 * not set, we have no choice but to return errors.
+	 * not set, we pretend the I/O succeeded (more below).
 	 *
 	 * Some writes on the failures list may have been
 	 * submitted before the log failure and represent a
