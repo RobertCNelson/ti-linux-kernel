@@ -7,6 +7,9 @@
 ############################################################
 rtmutex-Make-wait_lock-irq-safe.patch
 arm64-replace-read_lock-to-rcu-lock-in-call_step_hoo.patch
+tracing-writeback-Replace-cgroup-path-to-cgroup-ino.patch
+kvm-rt-change-async-pagefault-code-locking-for-PREEM.patch
+
 # AT91 queue in ARM-SOC
 0001-clk-at91-make-use-of-syscon-to-share-PMC-registers-i.patch
 0002-clk-at91-make-use-of-syscon-regmap-internally.patch
@@ -41,6 +44,8 @@ drivers-cpuidle-coupled-fix-warning-cpuidle_coupled_.patch
 drivers-media-vsp1_video-fix-compile-error.patch
 sc16is7xx_Drop_bogus_use_of_IRQF_ONESHOT.patch
 f2fs_Mutex_cant_be_used_by_down_write_nest_lock().patch
+
+# Those two should vanish soon (not use PIT during bootup)
 at91_dont_enable_disable_clock.patch
 
 ############################################################
@@ -57,7 +62,6 @@ kernel-sched-fix-preempt_disable_ip-recodring-for-pr.patch
 
 # Wants a different fix for upstream
 iommu-amd--Use-WARN_ON_NORT.patch
-trace-writeback--Block-cgroup-path-tracing-on-RT.patch
 
 ############################################################
 # Submitted on LKML
@@ -131,6 +135,7 @@ drivers-random-reduce-preempt-disabled-region.patch
 
 # CLOCKSOURCE
 arm-at91-pit-remove-irq-handler-when-clock-is-unused.patch
+clockevents-drivers-timer-atmel-pit-fix-double-free_.patch
 clocksource-tclib-allow-higher-clockrates.patch
 
 # DRIVERS NET
@@ -230,6 +235,7 @@ fs-jbd-replace-bh_state-lock.patch
 
 # GENIRQ
 list_bl.h-make-list-head-locking-RT-safe.patch
+list_bl-fixup-bogus-lockdep-warning.patch
 genirq-disable-irqpoll-on-rt.patch
 genirq-force-threading.patch
 genirq-do-not-invoke-the-affinity-callback-via-a-wor.patch
@@ -265,6 +271,7 @@ mm-page-alloc-use-local-lock-on-target-cpu.patch
 mm-memcontrol-Don-t-call-schedule_work_on-in-preempt.patch
 mm-memcontrol-do_not_disable_irq.patch
 mm-backing-dev-don-t-disable-IRQs-in-wb_congested_pu.patch
+mm-zsmalloc-Use-get-put_cpu_light-in-zs_map_object-z.patch
 
 # RADIX TREE
 radix-tree-rt-aware.patch
@@ -454,6 +461,7 @@ skbufhead-raw-lock.patch
 net-core-cpuhotplug-drain-input_pkt_queue-lockless.patch
 net-move-xmit_recursion-to-per-task-variable-on-RT.patch
 net-provide-a-way-to-delegate-processing-a-softirq-t.patch
+net-dev-always-take-qdisc-s-busylock-in-__dev_xmit_s.patch
 
 # NETWORK livelock fix
 net-tx-action-avoid-livelock-on-rt.patch
@@ -588,6 +596,7 @@ leds-trigger-disable-CPU-trigger-on-RT.patch
 i2c-omap-drop-the-lock-hard-irq-context.patch
 mmci-remove-bogus-irq-save.patch
 cpufreq-drop-K8-s-driver-from-beeing-selected.patch
+drivers-block-zram-Replace-bit-spinlocks-with-rtmute.patch
 
 # I915
 i915_compile_fix.patch

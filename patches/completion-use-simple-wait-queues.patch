@@ -12,12 +12,15 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  drivers/usb/gadget/function/f_fs.c         |    2 -
  drivers/usb/gadget/legacy/inode.c          |    4 +--
  include/linux/completion.h                 |    9 +++-----
+ include/linux/suspend.h                    |    6 +++++
  include/linux/swait.h                      |    1 
  include/linux/uprobes.h                    |    1 
+ kernel/power/hibernate.c                   |    7 ++++++
+ kernel/power/suspend.c                     |    5 ++++
  kernel/sched/completion.c                  |   32 ++++++++++++++---------------
  kernel/sched/core.c                        |   10 +++++++--
- kernel/sched/swait.c                       |   17 +++++++++++++++
- 9 files changed, 51 insertions(+), 27 deletions(-)
+ kernel/sched/swait.c                       |   20 ++++++++++++++++++
+ 12 files changed, 72 insertions(+), 27 deletions(-)
 
 --- a/drivers/net/wireless/orinoco/orinoco_usb.c
 +++ b/drivers/net/wireless/orinoco/orinoco_usb.c
@@ -96,6 +99,21 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /**
+--- a/include/linux/suspend.h
++++ b/include/linux/suspend.h
+@@ -194,6 +194,12 @@ struct platform_freeze_ops {
+ 	void (*end)(void);
+ };
+ 
++#if defined(CONFIG_SUSPEND) || defined(CONFIG_HIBERNATION)
++extern bool pm_in_action;
++#else
++# define pm_in_action false
++#endif
++
+ #ifdef CONFIG_SUSPEND
+ /**
+  * suspend_set_ops - set platform dependent suspend operations
 --- a/include/linux/swait.h
 +++ b/include/linux/swait.h
 @@ -87,6 +87,7 @@ static inline int swait_active(struct sw
@@ -116,6 +134,64 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  struct vm_area_struct;
  struct mm_struct;
+--- a/kernel/power/hibernate.c
++++ b/kernel/power/hibernate.c
+@@ -648,6 +648,10 @@ static void power_down(void)
+ 		cpu_relax();
+ }
+ 
++#ifndef CONFIG_SUSPEND
++bool pm_in_action;
++#endif
++
+ /**
+  * hibernate - Carry out system hibernation, including saving the image.
+  */
+@@ -660,6 +664,8 @@ int hibernate(void)
+ 		return -EPERM;
+ 	}
+ 
++	pm_in_action = true;
++
+ 	lock_system_sleep();
+ 	/* The snapshot device should not be opened while we're running */
+ 	if (!atomic_add_unless(&snapshot_device_available, -1, 0)) {
+@@ -725,6 +731,7 @@ int hibernate(void)
+ 	atomic_inc(&snapshot_device_available);
+  Unlock:
+ 	unlock_system_sleep();
++	pm_in_action = false;
+ 	return error;
+ }
+ 
+--- a/kernel/power/suspend.c
++++ b/kernel/power/suspend.c
+@@ -522,6 +522,8 @@ static int enter_state(suspend_state_t s
+ 	return error;
+ }
+ 
++bool pm_in_action;
++
+ /**
+  * pm_suspend - Externally visible function for suspending the system.
+  * @state: System sleep state to enter.
+@@ -536,6 +538,8 @@ int pm_suspend(suspend_state_t state)
+ 	if (state <= PM_SUSPEND_ON || state >= PM_SUSPEND_MAX)
+ 		return -EINVAL;
+ 
++	pm_in_action = true;
++
+ 	error = enter_state(state);
+ 	if (error) {
+ 		suspend_stats.fail++;
+@@ -543,6 +547,7 @@ int pm_suspend(suspend_state_t state)
+ 	} else {
+ 		suspend_stats.success++;
+ 	}
++	pm_in_action = false;
+ 	return error;
+ }
+ EXPORT_SYMBOL(pm_suspend);
 --- a/kernel/sched/completion.c
 +++ b/kernel/sched/completion.c
 @@ -30,10 +30,10 @@ void complete(struct completion *x)
@@ -236,7 +312,14 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
 --- a/kernel/sched/swait.c
 +++ b/kernel/sched/swait.c
-@@ -29,6 +29,23 @@ void swake_up_locked(struct swait_queue_
+@@ -1,5 +1,6 @@
+ #include <linux/sched.h>
+ #include <linux/swait.h>
++#include <linux/suspend.h>
+ 
+ void __init_swait_queue_head(struct swait_queue_head *q, const char *name,
+ 			     struct lock_class_key *key)
+@@ -29,6 +30,25 @@ void swake_up_locked(struct swait_queue_
  }
  EXPORT_SYMBOL(swake_up_locked);
  
@@ -253,7 +336,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +		list_del_init(&curr->task_list);
 +		wakes++;
 +	}
-+	WARN_ON(wakes > 2);
++	if (pm_in_action)
++		return;
++	WARN(wakes > 2, "complate_all() with %d waiters\n", wakes);
 +}
 +EXPORT_SYMBOL(swake_up_all_locked);
 +
