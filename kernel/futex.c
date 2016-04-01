@@ -402,8 +402,12 @@ static inline void hb_remove_q(struct futex_q *q, struct futex_hash_bucket *hb)
 	plist_del(&q->list, &hb->chain);
 }
 
-/*
- * We hash on the keys returned from get_futex_key (see below).
+/**
+ * hash_futex - Return the hash bucket in the global hash
+ * @key:	Pointer to the futex key for which the hash is calculated
+ *
+ * We hash on the keys returned from get_futex_key (see below) and return the
+ * corresponding hash bucket in the global hash.
  */
 static struct futex_hash_bucket *hash_futex(union futex_key *key)
 {
@@ -413,7 +417,12 @@ static struct futex_hash_bucket *hash_futex(union futex_key *key)
 	return &futex_queues[hash & (futex_hashsize - 1)];
 }
 
-/*
+
+/**
+ * match_futex - Check whether to futex keys are equal
+ * @key1:	Pointer to key1
+ * @key2:	Pointer to key2
+ *
  * Return 1 if two futex_keys are equal, 0 otherwise.
  */
 static inline int match_futex(union futex_key *key1, union futex_key *key2)
