@@ -1214,6 +1214,21 @@ config SBC_EPX_C3_WATCHDOG
 	  To compile this driver as a module, choose M here: the
 	  module will be called sbc_epx_c3.
 
+config INTEL_MEI_WDT
+	tristate "Intel MEI iAMT Watchdog"
+	depends on INTEL_MEI && X86
+	select WATCHDOG_CORE
+	---help---
+	  A device driver for the Intel MEI iAMT watchdog.
+
+	  The Intel AMT Watchdog is an OS Health (Hang/Crash) watchdog.
+	  Whenever the OS hangs or crashes, iAMT will send an event
+	  to any subscriber to this event. The watchdog doesn't reset the
+	  the platform.
+
+	  To compile this driver as a module, choose M here:
+	  the module will be called mei_wdt.
+
 # M32R Architecture
 
 # M68K Architecture
@@ -1568,6 +1583,17 @@ config WATCHDOG_RIO
 	  Say Y here to support the hardware watchdog capability on Sun RIO
 	  machines.  The watchdog timeout period is normally one minute but
 	  can be changed with a boot-time parameter.
+
+config WATCHDOG_SUN4V
+	tristate "Sun4v Watchdog support"
+	select WATCHDOG_CORE
+	depends on SPARC64
+	help
+	  Say Y here to support the hypervisor watchdog capability embedded
+	  in the SPARC sun4v architecture.
+
+	  To compile this driver as a module, choose M here. The module will
+	  be called sun4v_wdt.
 
 # XTENSA Architecture
 
