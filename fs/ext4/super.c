@@ -5095,6 +5095,8 @@ static int ext4_quota_enable(struct super_block *sb, int type, int format_id,
 
 	/* Don't account quota for quota files to avoid recursion */
 	qf_inode->i_flags |= S_NOQUOTA;
+	lockdep_set_subclass(&EXT4_I(qf_inode)->i_data_sem, I_DATA_SEM_QUOTA);
+
 	err = dquot_enable(qf_inode, type, format_id, flags);
 	iput(qf_inode);
 
