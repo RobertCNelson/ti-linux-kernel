@@ -433,6 +433,21 @@ static inline int match_futex(union futex_key *key1, union futex_key *key2)
 		&& key1->both.offset == key2->both.offset);
 }
 
+/**
+ * futex_key_init - Initialize a futex key
+ * @key:	Pointer to the key to initialize
+ * @uaddr:	User space address of the futex
+ * @flags:	Flags to check for futex mode. Not yet used
+ *
+ * Returns:	@uaddr
+ */
+static u32 __user *futex_key_init(union futex_key *key, u32 __user *uaddr,
+				  unsigned int flags)
+{
+	*key = FUTEX_KEY_INIT;
+	return uaddr;
+}
+
 /*
  * Take a reference to the resource addressed by a key.
  * Can be called while holding spinlocks.
@@ -1403,11 +1418,15 @@ futex_wake(u32 __user *uaddr, unsigned int flags, int nr_wake, u32 bitset)
 {
 	struct futex_hash_bucket *hb;
 	struct futex_q *this, *next;
-	union futex_key key = FUTEX_KEY_INIT;
+	union futex_key key;
 	int ret;
 	WAKE_Q(wake_q);
 
 	if (!bitset)
+		return -EINVAL;
+
+	uaddr = futex_key_init(&key, uaddr, flags);
+	if (!uaddr)
 		return -EINVAL;
 
 	ret = get_futex_key(uaddr, flags & FLAGS_SHARED, &key, VERIFY_READ);
@@ -1455,11 +1474,19 @@ static int
 futex_wake_op(u32 __user *uaddr1, unsigned int flags, u32 __user *uaddr2,
 	      int nr_wake, int nr_wake2, int op)
 {
-	union futex_key key1 = FUTEX_KEY_INIT, key2 = FUTEX_KEY_INIT;
 	struct futex_hash_bucket *hb1, *hb2;
 	struct futex_q *this, *next;
+	union futex_key key1, key2;
 	int ret, op_ret;
 	WAKE_Q(wake_q);
+
+	uaddr1 = futex_key_init(&key1, uaddr1, flags);
+	if (!uaddr1)
+		return -EINVAL;
+
+	uaddr2 = futex_key_init(&key2, uaddr2, flags);
+	if (!uaddr2)
+		return -EINVAL;
 
 retry:
 	ret = get_futex_key(uaddr1, flags & FLAGS_SHARED, &key1, VERIFY_READ);
@@ -1693,11 +1720,11 @@ static int futex_requeue(u32 __user *uaddr1, unsigned int flags,
 			 u32 __user *uaddr2, int nr_wake, int nr_requeue,
 			 u32 *cmpval, int requeue_pi)
 {
-	union futex_key key1 = FUTEX_KEY_INIT, key2 = FUTEX_KEY_INIT;
 	int drop_count = 0, task_count = 0, ret;
 	struct futex_pi_state *pi_state = NULL;
 	struct futex_hash_bucket *hb1, *hb2;
 	struct futex_q *this, *next;
+	union futex_key key1, key2;
 	WAKE_Q(wake_q);
 
 	if (requeue_pi) {
@@ -1727,6 +1754,14 @@ static int futex_requeue(u32 __user *uaddr1, unsigned int flags,
 		if (nr_wake != 1)
 			return -EINVAL;
 	}
+
+	uaddr1 = futex_key_init(&key1, uaddr1, flags);
+	if (!uaddr1)
+		return -EINVAL;
+
+	uaddr2 = futex_key_init(&key2, uaddr2, flags);
+	if (!uaddr2)
+		return -EINVAL;
 
 retry:
 	ret = get_futex_key(uaddr1, flags & FLAGS_SHARED, &key1, VERIFY_READ);
@@ -2398,6 +2433,11 @@ static int futex_wait(u32 __user *uaddr, unsigned int flags, u32 val,
 
 	if (!bitset)
 		return -EINVAL;
+
+	uaddr = futex_key_init(&q.key, uaddr, flags);
+	if (!uaddr)
+		return -EINVAL;
+
 	q.bitset = bitset;
 
 	if (abs_time) {
@@ -2497,6 +2537,10 @@ static int futex_lock_pi(u32 __user *uaddr, unsigned int flags,
 
 	if (refill_pi_state_cache())
 		return -ENOMEM;
+
+	uaddr = futex_key_init(&q.key, uaddr, flags);
+	if (!uaddr)
+		return -EINVAL;
 
 	if (time) {
 		to = &timeout;
@@ -2617,11 +2661,14 @@ uaddr_faulted:
 static int futex_unlock_pi(u32 __user *uaddr, unsigned int flags)
 {
 	u32 uninitialized_var(curval), uval, vpid = task_pid_vnr(current);
-	union futex_key key = FUTEX_KEY_INIT;
 	struct futex_hash_bucket *hb;
 	struct futex_q *match;
+	union futex_key key;
 	int ret;
 
+	uaddr = futex_key_init(&key, uaddr, flags);
+	if (!uaddr)
+		return -EINVAL;
 retry:
 	if (get_user(uval, uaddr))
 		return -EFAULT;
@@ -2793,15 +2840,23 @@ static int futex_wait_requeue_pi(u32 __user *uaddr, unsigned int flags,
 	struct hrtimer_sleeper timeout, *to = NULL;
 	struct rt_mutex_waiter rt_waiter;
 	struct rt_mutex *pi_mutex = NULL;
-	struct futex_hash_bucket *hb;
-	union futex_key key2 = FUTEX_KEY_INIT;
 	struct futex_q q = futex_q_init;
+	struct futex_hash_bucket *hb;
+	union futex_key key2;
 	int res, ret;
 
 	if (uaddr == uaddr2)
 		return -EINVAL;
 
 	if (!bitset)
+		return -EINVAL;
+
+	uaddr = futex_key_init(&q.key, uaddr, flags);
+	if (!uaddr)
+		return -EINVAL;
+
+	uaddr2 = futex_key_init(&key2, uaddr2, flags);
+	if (!uaddr2)
 		return -EINVAL;
 
 	if (abs_time) {
