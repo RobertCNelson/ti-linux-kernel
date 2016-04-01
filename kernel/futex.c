@@ -373,6 +373,35 @@ static inline int hb_waiters_pending(struct futex_hash_bucket *hb)
 #endif
 }
 
+/**
+ * hb_insert_q - Insert futex_q into a hash bucket
+ * @q:		Pointer to the futex_q object
+ * @hb:		Pointer to the hash bucket
+ * @prio:	Priority ordering for insertion
+ *
+ * Inserts @q into the hash buckets @hb plist. Must be called with @hb->lock
+ * held.
+ */
+static inline void
+hb_insert_q(struct futex_q *q, struct futex_hash_bucket *hb, int prio)
+{
+	plist_node_init(&q->list, prio);
+	plist_add(&q->list, &hb->chain);
+}
+
+/**
+ * hb_remove_q - Remove futex_q from a hash bucket
+ * @q:		Pointer to the futex_q object
+ * @hb:		Pointer to the hash bucket
+ *
+ * Removes @q from the hash buckets @hb plist. Must be called with @hb->lock
+ * held.
+ */
+static inline void hb_remove_q(struct futex_q *q, struct futex_hash_bucket *hb)
+{
+	plist_del(&q->list, &hb->chain);
+}
+
 /*
  * We hash on the keys returned from get_futex_key (see below).
  */
@@ -1221,7 +1250,7 @@ static void __unqueue_futex(struct futex_q *q)
 		return;
 
 	hb = container_of(q->lock_ptr, struct futex_hash_bucket, lock);
-	plist_del(&q->list, &hb->chain);
+	hb_remove_q(q, hb);
 	hb_waiters_dec(hb);
 }
 
@@ -1523,7 +1552,7 @@ void requeue_futex(struct futex_q *q, struct futex_hash_bucket *hb1,
 	 * requeue.
 	 */
 	if (likely(&hb1->chain != &hb2->chain)) {
-		plist_del(&q->list, &hb1->chain);
+		hb_remove_q(q, hb1);
 		hb_waiters_dec(hb1);
 		plist_add(&q->list, &hb2->chain);
 		hb_waiters_inc(hb2);
@@ -1985,9 +2014,7 @@ static inline void queue_me(struct futex_q *q, struct futex_hash_bucket *hb)
 	 * the others are woken last, in FIFO order.
 	 */
 	prio = min(current->normal_prio, MAX_RT_PRIO);
-
-	plist_node_init(&q->list, prio);
-	plist_add(&q->list, &hb->chain);
+	hb_insert_q(q, hb, prio);
 	q->task = current;
 	spin_unlock(&hb->lock);
 }
@@ -2697,7 +2724,7 @@ int handle_early_requeue_pi_wakeup(struct futex_hash_bucket *hb,
 		 * We were woken prior to requeue by a timeout or a signal.
 		 * Unqueue the futex_q and determine which it was.
 		 */
-		plist_del(&q->list, &hb->chain);
+		hb_remove_q(q, hb);
 		hb_waiters_dec(hb);
 
 		/* Handle spurious wakeups gracefully */
