@@ -1704,9 +1704,7 @@ static int omap_nand_probe(struct platform_device *pdev)
 	}
 
 	if (pdata->flash_bbt)
-		nand_chip->bbt_options |= NAND_BBT_USE_FLASH | NAND_BBT_NO_OOB;
-	else
-		nand_chip->options |= NAND_SKIP_BBTSCAN;
+		nand_chip->bbt_options |= NAND_BBT_USE_FLASH;
 
 	/* scan NAND device connected to chip controller */
 	nand_chip->options |= pdata->devsize & NAND_BUSWIDTH_16;
@@ -1715,6 +1713,11 @@ static int omap_nand_probe(struct platform_device *pdev)
 		err = -ENXIO;
 		goto return_error;
 	}
+
+	if (nand_chip->bbt_options & NAND_BBT_USE_FLASH)
+		nand_chip->bbt_options |= NAND_BBT_NO_OOB;
+	else
+		nand_chip->options |= NAND_SKIP_BBTSCAN;
 
 	/* re-populate low-level callbacks based on xfer modes */
 	switch (pdata->xfer_type) {
