@@ -51,6 +51,7 @@ __initdata LIST_HEAD(huge_boot_pages);
 static struct hstate * __initdata parsed_hstate;
 static unsigned long __initdata default_hstate_max_huge_pages;
 static unsigned long __initdata default_hstate_size;
+static bool __initdata parsed_valid_hugepagesz = true;
 
 /*
  * Protects updates to hugepage_freelists, hugepage_activelist, nr_huge_pages,
@@ -144,7 +145,8 @@ static long hugepage_subpool_get_pages(struct hugepage_subpool *spool,
 		}
 	}
 
-	if (spool->min_hpages != -1) {		/* minimum size accounting */
+	/* minimum size accounting */
+	if (spool->min_hpages != -1 && spool->rsv_hpages) {
 		if (delta > spool->rsv_hpages) {
 			/*
 			 * Asking for more reserves than those already taken on
@@ -182,7 +184,8 @@ static long hugepage_subpool_put_pages(struct hugepage_subpool *spool,
 	if (spool->max_hpages != -1)		/* maximum size accounting */
 		spool->used_hpages -= delta;
 
-	if (spool->min_hpages != -1) {		/* minimum size accounting */
+	 /* minimum size accounting */
+	if (spool->min_hpages != -1 && spool->used_hpages < spool->min_hpages) {
 		if (spool->rsv_hpages + delta <= spool->min_hpages)
 			ret = 0;
 		else
@@ -937,9 +940,7 @@ err:
  */
 static int next_node_allowed(int nid, nodemask_t *nodes_allowed)
 {
-	nid = next_node(nid, *nodes_allowed);
-	if (nid == MAX_NUMNODES)
-		nid = first_node(*nodes_allowed);
+	nid = next_node_in(nid, *nodes_allowed);
 	VM_BUG_ON(nid >= MAX_NUMNODES);
 
 	return nid;
@@ -2659,6 +2660,11 @@ static int __init hugetlb_init(void)
 subsys_initcall(hugetlb_init);
 
 /* Should be called on processing a hugepagesz=... option */
+void __init hugetlb_bad_size(void)
+{
+	parsed_valid_hugepagesz = false;
+}
+
 void __init hugetlb_add_hstate(unsigned int order)
 {
 	struct hstate *h;
@@ -2691,11 +2697,17 @@ static int __init hugetlb_nrpages_setup(char *s)
 	unsigned long *mhp;
 	static unsigned long *last_mhp;
 
+	if (!parsed_valid_hugepagesz) {
+		pr_warn("hugepages = %s preceded by "
+			"an unsupported hugepagesz, ignoring\n", s);
+		parsed_valid_hugepagesz = true;
+		return 1;
+	}
 	/*
 	 * !hugetlb_max_hstate means we haven't parsed a hugepagesz= parameter yet,
 	 * so this hugepages= parameter goes to the "default hstate".
 	 */
-	if (!hugetlb_max_hstate)
+	else if (!hugetlb_max_hstate)
 		mhp = &default_hstate_max_huge_pages;
 	else
 		mhp = &parsed_hstate->max_huge_pages;
