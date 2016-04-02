@@ -752,12 +752,21 @@ struct address_space_operations {
         and transfer data directly between the storage and the
         application's address space.
 
+  isolate_page: Called by the VM when isolating a movable non-lru page.
+	If page is successfully isolated, we should mark the page as
+	PG_isolated via __SetPageIsolated.
+
   migrate_page:  This is used to compact the physical memory usage.
         If the VM wants to relocate a page (maybe off a memory card
         that is signalling imminent failure) it will pass a new page
 	and an old page to this function.  migrate_page should
 	transfer any private data across and update any references
-        that it has to the page.
+	that it has to the page. If migrated page is non-lru page,
+	we should clear PG_isolated and PG_movable via __ClearPageIsolated
+	and __ClearPageMovable.
+
+  putback_page: Called by the VM when isolated page's migration fails.
+	We should clear PG_isolated marked in isolated_page function.
 
   launder_page: Called before freeing a page - it writes back the dirty page. To
   	prevent redirtying the page, it is kept locked during the whole
