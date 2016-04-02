@@ -33,7 +33,7 @@
 
 /* Data structure and operations for quarantine queues. */
 
-/* Each queue is a signled-linked list, which also stores the total size of
+/* Each queue is a signle-linked list, which also stores the total size of
  * objects inside of it.
  */
 struct qlist {
@@ -44,20 +44,20 @@ struct qlist {
 
 #define QLIST_INIT { NULL, NULL, 0 }
 
-static inline bool empty_qlist(struct qlist *q)
+static bool qlist_empty(struct qlist *q)
 {
 	return !q->head;
 }
 
-static inline void init_qlist(struct qlist *q)
+static void qlist_init(struct qlist *q)
 {
 	q->head = q->tail = NULL;
 	q->bytes = 0;
 }
 
-static inline void qlist_put(struct qlist *q, void **qlink, size_t size)
+static void qlist_put(struct qlist *q, void **qlink, size_t size)
 {
-	if (unlikely(empty_qlist(q)))
+	if (unlikely(qlist_empty(q)))
 		q->head = qlink;
 	else
 		*q->tail = qlink;
@@ -66,31 +66,14 @@ static inline void qlist_put(struct qlist *q, void **qlink, size_t size)
 	q->bytes += size;
 }
 
-static inline void **qlist_remove(struct qlist *q, void ***prev,
-				 size_t size)
+static void qlist_move_all(struct qlist *from, struct qlist *to)
 {
-	void **qlink = *prev;
-
-	*prev = *qlink;
-	if (q->tail == qlink) {
-		if (q->head == qlink)
-			q->tail = NULL;
-		else
-			q->tail = (void **)prev;
-	}
-	q->bytes -= size;
-
-	return qlink;
-}
-
-static inline void qlist_move_all(struct qlist *from, struct qlist *to)
-{
-	if (unlikely(empty_qlist(from)))
+	if (unlikely(qlist_empty(from)))
 		return;
 
-	if (empty_qlist(to)) {
+	if (qlist_empty(to)) {
 		*to = *from;
-		init_qlist(from);
+		qlist_init(from);
 		return;
 	}
 
@@ -98,17 +81,17 @@ static inline void qlist_move_all(struct qlist *from, struct qlist *to)
 	to->tail = from->tail;
 	to->bytes += from->bytes;
 
-	init_qlist(from);
+	qlist_init(from);
 }
 
-static inline void qlist_move(struct qlist *from, void **last, struct qlist *to,
+static void qlist_move(struct qlist *from, void **last, struct qlist *to,
 			  size_t size)
 {
 	if (unlikely(last == from->tail)) {
 		qlist_move_all(from, to);
 		return;
 	}
-	if (empty_qlist(to))
+	if (qlist_empty(to))
 		to->head = from->head;
 	else
 		*to->tail = from->head;
@@ -143,12 +126,12 @@ static unsigned long quarantine_size;
 #define QUARANTINE_LOW_SIZE (smp_load_acquire(&quarantine_size) * 3 / 4)
 #define QUARANTINE_PERCPU_SIZE (1 << 20)
 
-static inline struct kmem_cache *qlink_to_cache(void **qlink)
+static struct kmem_cache *qlink_to_cache(void **qlink)
 {
 	return virt_to_head_page(qlink)->slab_cache;
 }
 
-static inline void *qlink_to_object(void **qlink, struct kmem_cache *cache)
+static void *qlink_to_object(void **qlink, struct kmem_cache *cache)
 {
 	struct kasan_free_meta *free_info =
 		container_of((void ***)qlink, struct kasan_free_meta,
@@ -157,7 +140,7 @@ static inline void *qlink_to_object(void **qlink, struct kmem_cache *cache)
 	return ((void *)free_info) - cache->kasan_info.free_meta_offset;
 }
 
-static inline void qlink_free(void **qlink, struct kmem_cache *cache)
+static void qlink_free(void **qlink, struct kmem_cache *cache)
 {
 	void *object = qlink_to_object(qlink, cache);
 	struct kasan_alloc_meta *alloc_info = get_alloc_info(cache, object);
@@ -169,11 +152,11 @@ static inline void qlink_free(void **qlink, struct kmem_cache *cache)
 	local_irq_restore(flags);
 }
 
-static inline void qlist_free_all(struct qlist *q, struct kmem_cache *cache)
+static void qlist_free_all(struct qlist *q, struct kmem_cache *cache)
 {
 	void **qlink;
 
-	if (unlikely(empty_qlist(q)))
+	if (unlikely(qlist_empty(q)))
 		return;
 
 	qlink = q->head;
@@ -185,7 +168,7 @@ static inline void qlist_free_all(struct qlist *q, struct kmem_cache *cache)
 		qlink_free(qlink, obj_cache);
 		qlink = next;
 	}
-	init_qlist(q);
+	qlist_init(q);
 }
 
 void quarantine_put(struct kasan_free_meta *info, struct kmem_cache *cache)
@@ -203,7 +186,7 @@ void quarantine_put(struct kasan_free_meta *info, struct kmem_cache *cache)
 
 	local_irq_restore(flags);
 
-	if (unlikely(!empty_qlist(&temp))) {
+	if (unlikely(!qlist_empty(&temp))) {
 		spin_lock_irqsave(&quarantine_lock, flags);
 		qlist_move_all(&temp, &global_quarantine);
 		spin_unlock_irqrestore(&quarantine_lock, flags);
@@ -251,13 +234,13 @@ void quarantine_reduce(void)
 	qlist_free_all(&to_free, NULL);
 }
 
-static inline void qlist_move_cache(struct qlist *from,
+static void qlist_move_cache(struct qlist *from,
 				   struct qlist *to,
 				   struct kmem_cache *cache)
 {
 	void ***prev;
 
-	if (unlikely(empty_qlist(from)))
+	if (unlikely(qlist_empty(from)))
 		return;
 
 	prev = &from->head;
