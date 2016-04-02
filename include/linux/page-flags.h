@@ -129,6 +129,10 @@ enum pageflags {
 
 	/* Compound pages. Stored in first tail page's flags */
 	PG_double_map = PG_private_2,
+
+	/* non-lru movable pages */
+	PG_movable = PG_reclaim,
+	PG_isolated = PG_owner_priv_1,
 };
 
 #ifndef __GENERATING_BOUNDS_H
@@ -613,6 +617,33 @@ static inline void __ClearPageBalloon(struct page *page)
 	VM_BUG_ON_PAGE(!PageBalloon(page), page);
 	atomic_set(&page->_mapcount, -1);
 }
+
+#define PAGE_MOVABLE_MAPCOUNT_VALUE (-255)
+
+static inline int PageMovable(struct page *page)
+{
+	return ((test_bit(PG_movable, &(page)->flags) &&
+		atomic_read(&page->_mapcount) == PAGE_MOVABLE_MAPCOUNT_VALUE)
+		|| PageBalloon(page));
+}
+
+/* Caller should hold a PG_lock */
+static inline void __SetPageMovable(struct page *page,
+				struct address_space *mapping)
+{
+	page->mapping = mapping;
+	__set_bit(PG_movable, &page->flags);
+	atomic_set(&page->_mapcount, PAGE_MOVABLE_MAPCOUNT_VALUE);
+}
+
+static inline void __ClearPageMovable(struct page *page)
+{
+	atomic_set(&page->_mapcount, -1);
+	__clear_bit(PG_movable, &(page)->flags);
+	page->mapping = NULL;
+}
+
+PAGEFLAG(Isolated, isolated, PF_ANY);
 
 /*
  * If network-based swap is enabled, sl*b must keep track of whether pages
