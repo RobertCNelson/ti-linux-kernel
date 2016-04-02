@@ -157,8 +157,8 @@ void putback_movable_page(struct page *page)
  * from where they were once taken off for compaction/migration.
  *
  * This function shall be used whenever the isolated pageset has been
- * built from lru, balloon, hugetlbfs page. See isolate_migratepages_range()
- * and isolate_huge_page().
+ * built from lru, movable, hugetlbfs page.
+ * See isolate_migratepages_range() and isolate_huge_page().
  */
 void putback_movable_pages(struct list_head *l)
 {
@@ -173,9 +173,7 @@ void putback_movable_pages(struct list_head *l)
 		list_del(&page->lru);
 		dec_zone_page_state(page, NR_ISOLATED_ANON +
 				page_is_file_cache(page));
-		if (unlikely(isolated_balloon_page(page))) {
-			balloon_page_putback(page);
-		} else if (unlikely(PageMovable(page))) {
+		if (unlikely(PageMovable(page))) {
 			if (PageIsolated(page)) {
 				putback_movable_page(page);
 			} else {
@@ -977,18 +975,6 @@ static int __unmap_and_move(struct page *page, struct page *newpage,
 	if (unlikely(!trylock_page(newpage)))
 		goto out_unlock;
 
-	if (unlikely(isolated_balloon_page(page))) {
-		/*
-		 * A ballooned page does not need any special attention from
-		 * physical to virtual reverse mapping procedures.
-		 * Skip any attempt to unmap PTEs or to remap swap cache,
-		 * in order to avoid burning cycles at rmap level, and perform
-		 * the page migration right away (proteced by page lock).
-		 */
-		rc = balloon_page_migrate(newpage, page, mode);
-		goto out_unlock_both;
-	}
-
 	/*
 	 * Corner case handling:
 	 * 1. When a new swap-cache page is read into, it is added to the LRU
@@ -1033,7 +1019,7 @@ out_unlock:
 out:
 	/* If migration is successful, move newpage to right list */
 	if (rc == MIGRATEPAGE_SUCCESS) {
-		if (unlikely(__is_movable_balloon_page(newpage)))
+		if (unlikely(PageMovable(newpage)))
 			put_page(newpage);
 		else
 			putback_lru_page(newpage);

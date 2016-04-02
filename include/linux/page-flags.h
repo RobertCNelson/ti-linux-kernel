@@ -599,32 +599,13 @@ static inline void __ClearPageBuddy(struct page *page)
 
 extern bool is_free_buddy_page(struct page *page);
 
-#define PAGE_BALLOON_MAPCOUNT_VALUE (-256)
-
-static inline int PageBalloon(struct page *page)
-{
-	return atomic_read(&page->_mapcount) == PAGE_BALLOON_MAPCOUNT_VALUE;
-}
-
-static inline void __SetPageBalloon(struct page *page)
-{
-	VM_BUG_ON_PAGE(atomic_read(&page->_mapcount) != -1, page);
-	atomic_set(&page->_mapcount, PAGE_BALLOON_MAPCOUNT_VALUE);
-}
-
-static inline void __ClearPageBalloon(struct page *page)
-{
-	VM_BUG_ON_PAGE(!PageBalloon(page), page);
-	atomic_set(&page->_mapcount, -1);
-}
-
-#define PAGE_MOVABLE_MAPCOUNT_VALUE (-255)
+#define PAGE_MOVABLE_MAPCOUNT_VALUE (-256)
+#define PAGE_BALLOON_MAPCOUNT_VALUE PAGE_MOVABLE_MAPCOUNT_VALUE
 
 static inline int PageMovable(struct page *page)
 {
-	return ((test_bit(PG_movable, &(page)->flags) &&
-		atomic_read(&page->_mapcount) == PAGE_MOVABLE_MAPCOUNT_VALUE)
-		|| PageBalloon(page));
+	return (test_bit(PG_movable, &(page)->flags) &&
+		atomic_read(&page->_mapcount) == PAGE_MOVABLE_MAPCOUNT_VALUE);
 }
 
 /* Caller should hold a PG_lock */
@@ -644,6 +625,35 @@ static inline void __ClearPageMovable(struct page *page)
 }
 
 PAGEFLAG(Isolated, isolated, PF_ANY);
+
+static inline int PageBalloon(struct page *page)
+{
+	return atomic_read(&page->_mapcount) == PAGE_BALLOON_MAPCOUNT_VALUE
+		&& PagePrivate2(page);
+}
+
+static inline void __SetPageBalloon(struct page *page,
+				struct address_space *mapping)
+{
+	VM_BUG_ON_PAGE(atomic_read(&page->_mapcount) != -1, page);
+#ifdef CONFIG_BALLOON_COMPACTION
+	__SetPageMovable(page, mapping);
+#else
+	atomic_set(&page->_mapcount, PAGE_BALLOON_MAPCOUNT_VALUE);
+#endif
+	SetPagePrivate2(page);
+}
+
+static inline void __ClearPageBalloon(struct page *page)
+{
+	VM_BUG_ON_PAGE(!PageBalloon(page), page);
+#ifdef CONFIG_BALLOON_COMPACTION
+	__ClearPageMovable(page);
+#else
+	atomic_set(&page->_mapcount, -1);
+#endif
+	ClearPagePrivate2(page);
+}
 
 /*
  * If network-based swap is enabled, sl*b must keep track of whether pages
