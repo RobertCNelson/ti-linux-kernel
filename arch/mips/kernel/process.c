@@ -73,10 +73,6 @@ void start_thread(struct pt_regs * regs, unsigned long pc, unsigned long sp)
 	regs->regs[29] = sp;
 }
 
-void exit_thread(void)
-{
-}
-
 void flush_thread(void)
 {
 }
