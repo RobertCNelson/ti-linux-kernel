@@ -259,7 +259,7 @@ static int __inode_security_revalidate(struct inode *inode,
 
 	might_sleep_if(may_sleep);
 
-	if (isec->initialized == LABEL_INVALID) {
+	if (isec->initialized != LABEL_INITIALIZED) {
 		if (!may_sleep)
 			return -ECHILD;
 
@@ -2229,6 +2229,20 @@ static int selinux_vm_enough_memory(struct mm_struct *mm, long pages)
 
 /* binprm security operations */
 
+static u32 ptrace_parent_sid(struct task_struct *task)
+{
+	u32 sid = 0;
+	struct task_struct *tracer;
+
+	rcu_read_lock();
+	tracer = ptrace_parent(task);
+	if (tracer)
+		sid = task_sid(tracer);
+	rcu_read_unlock();
+
+	return sid;
+}
+
 static int check_nnp_nosuid(const struct linux_binprm *bprm,
 			    const struct task_security_struct *old_tsec,
 			    const struct task_security_struct *new_tsec)
@@ -2350,18 +2364,7 @@ static int selinux_bprm_set_creds(struct linux_binprm *bprm)
 		 * changes its SID has the appropriate permit */
 		if (bprm->unsafe &
 		    (LSM_UNSAFE_PTRACE | LSM_UNSAFE_PTRACE_CAP)) {
-			struct task_struct *tracer;
-			struct task_security_struct *sec;
-			u32 ptsid = 0;
-
-			rcu_read_lock();
-			tracer = ptrace_parent(current);
-			if (likely(tracer != NULL)) {
-				sec = __task_cred(tracer)->security;
-				ptsid = sec->sid;
-			}
-			rcu_read_unlock();
-
+			u32 ptsid = ptrace_parent_sid(current);
 			if (ptsid != 0) {
 				rc = avc_has_perm(ptsid, new_tsec->sid,
 						  SECCLASS_PROCESS,
@@ -4598,6 +4601,7 @@ static int selinux_socket_getpeersec_dgram(struct socket *sock, struct sk_buff *
 {
 	u32 peer_secid = SECSID_NULL;
 	u16 family;
+	struct inode_security_struct *isec;
 
 	if (skb && skb->protocol == htons(ETH_P_IP))
 		family = PF_INET;
@@ -4608,9 +4612,10 @@ static int selinux_socket_getpeersec_dgram(struct socket *sock, struct sk_buff *
 	else
 		goto out;
 
-	if (sock && family == PF_UNIX)
-		selinux_inode_getsecid(SOCK_INODE(sock), &peer_secid);
-	else if (skb)
+	if (sock && family == PF_UNIX) {
+		isec = inode_security_novalidate(SOCK_INODE(sock));
+		peer_secid = isec->sid;
+	} else if (skb)
 		selinux_skb_peerlbl_sid(skb, family, &peer_secid);
 
 out:
@@ -5675,7 +5680,6 @@ static int selinux_setprocattr(struct task_struct *p,
 			       char *name, void *value, size_t size)
 {
 	struct task_security_struct *tsec;
-	struct task_struct *tracer;
 	struct cred *new;
 	u32 sid = 0, ptsid;
 	int error;
@@ -5782,14 +5786,8 @@ static int selinux_setprocattr(struct task_struct *p,
 
 		/* Check for ptracing, and update the task SID if ok.
 		   Otherwise, leave SID unchanged and fail. */
-		ptsid = 0;
-		rcu_read_lock();
-		tracer = ptrace_parent(p);
-		if (tracer)
-			ptsid = task_sid(tracer);
-		rcu_read_unlock();
-
-		if (tracer) {
+		ptsid = ptrace_parent_sid(p);
+		if (ptsid != 0) {
 			error = avc_has_perm(ptsid, sid, SECCLASS_PROCESS,
 					     PROCESS__PTRACE, NULL);
 			if (error)
