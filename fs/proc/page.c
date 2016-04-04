@@ -142,7 +142,7 @@ u64 stable_page_flags(struct page *page)
 
 
 	/*
-	 * Caveats on high order pages: page->_count will only be set
+	 * Caveats on high order pages: page->_refcount will only be set
 	 * -1 on the head page; SLUB/SLQB do the same for PG_slab;
 	 * SLOB won't set PG_slab at all on compound pages.
 	 */
@@ -156,6 +156,9 @@ u64 stable_page_flags(struct page *page)
 
 	if (page_is_idle(page))
 		u |= 1 << KPF_IDLE;
+
+	if (PageMovable(page))
+		u |= 1 << KPF_MOVABLE;
 
 	u |= kpf_copy_bit(k, KPF_LOCKED,	PG_locked);
 
