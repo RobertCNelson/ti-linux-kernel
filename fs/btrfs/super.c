@@ -97,15 +97,6 @@ const char *btrfs_decode_error(int errno)
 	return errstr;
 }
 
-static void save_error_info(struct btrfs_fs_info *fs_info)
-{
-	/*
-	 * today we only save the error info into ram.  Long term we'll
-	 * also send it down to the disk
-	 */
-	set_bit(BTRFS_FS_STATE_ERROR, &fs_info->fs_state);
-}
-
 /* btrfs handle error by forcing the filesystem readonly */
 static void btrfs_handle_error(struct btrfs_fs_info *fs_info)
 {
@@ -131,11 +122,11 @@ static void btrfs_handle_error(struct btrfs_fs_info *fs_info)
 }
 
 /*
- * __btrfs_std_error decodes expected errors from the caller and
+ * __btrfs_handle_fs_error decodes expected errors from the caller and
  * invokes the approciate error response.
  */
 __cold
-void __btrfs_std_error(struct btrfs_fs_info *fs_info, const char *function,
+void __btrfs_handle_fs_error(struct btrfs_fs_info *fs_info, const char *function,
 		       unsigned int line, int errno, const char *fmt, ...)
 {
 	struct super_block *sb = fs_info->sb;
@@ -170,8 +161,13 @@ void __btrfs_std_error(struct btrfs_fs_info *fs_info, const char *function,
 	}
 #endif
 
+	/*
+	 * Today we only save the error info to memory.  Long term we'll
+	 * also send it down to the disk
+	 */
+	set_bit(BTRFS_FS_STATE_ERROR, &fs_info->fs_state);
+
 	/* Don't go through full error handling during mount */
-	save_error_info(fs_info);
 	if (sb->s_flags & MS_BORN)
 		btrfs_handle_error(fs_info);
 }
@@ -252,7 +248,7 @@ void __btrfs_abort_transaction(struct btrfs_trans_handle *trans,
 	/* Wake up anybody who may be waiting on this transaction */
 	wake_up(&root->fs_info->transaction_wait);
 	wake_up(&root->fs_info->transaction_blocked_wait);
-	__btrfs_std_error(root->fs_info, function, line, errno, NULL);
+	__btrfs_handle_fs_error(root->fs_info, function, line, errno, NULL);
 }
 /*
  * __btrfs_panic decodes unexpected, fatal errors from the caller,
@@ -2051,6 +2047,7 @@ static int btrfs_statfs(struct dentry *dentry, struct kstatfs *buf)
 	struct btrfs_block_rsv *block_rsv = &fs_info->global_block_rsv;
 	int ret;
 	u64 thresh = 0;
+	int mixed = 0;
 
 	/*
 	 * holding chunk_muext to avoid allocating new chunks, holding
@@ -2076,8 +2073,17 @@ static int btrfs_statfs(struct dentry *dentry, struct kstatfs *buf)
 				}
 			}
 		}
-		if (found->flags & BTRFS_BLOCK_GROUP_METADATA)
-			total_free_meta += found->disk_total - found->disk_used;
+
+		/*
+		 * Metadata in mixed block goup profiles are accounted in data
+		 */
+		if (!mixed && found->flags & BTRFS_BLOCK_GROUP_METADATA) {
+			if (found->flags & BTRFS_BLOCK_GROUP_DATA)
+				mixed = 1;
+			else
+				total_free_meta += found->disk_total -
+					found->disk_used;
+		}
 
 		total_used += found->disk_used;
 	}
@@ -2090,7 +2096,11 @@ static int btrfs_statfs(struct dentry *dentry, struct kstatfs *buf)
 
 	/* Account global block reserve as used, it's in logical size already */
 	spin_lock(&block_rsv->lock);
-	buf->f_bfree -= block_rsv->size >> bits;
+	/* Mixed block groups accounting is not byte-accurate, avoid overflow */
+	if (buf->f_bfree >= block_rsv->size >> bits)
+		buf->f_bfree -= block_rsv->size >> bits;
+	else
+		buf->f_bfree = 0;
 	spin_unlock(&block_rsv->lock);
 
 	buf->f_bavail = div_u64(total_free_data, factor);
@@ -2115,7 +2125,7 @@ static int btrfs_statfs(struct dentry *dentry, struct kstatfs *buf)
 	 */
 	thresh = 4 * 1024 * 1024;
 
-	if (total_free_meta - thresh < block_rsv->size)
+	if (!mixed && total_free_meta - thresh < block_rsv->size)
 		buf->f_bavail = 0;
 
 	buf->f_type = BTRFS_SUPER_MAGIC;
