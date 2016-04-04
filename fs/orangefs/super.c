@@ -220,7 +220,7 @@ int orangefs_remount(struct orangefs_sb_info_s *orangefs_sb)
 	new_op = op_alloc(ORANGEFS_VFS_OP_FS_MOUNT);
 	if (!new_op)
 		return -ENOMEM;
-	strncpy(new_op->upcall.req.fs_mount.orangefs_config_server,
+	strlcpy(new_op->upcall.req.fs_mount.orangefs_config_server,
 		orangefs_sb->devname,
 		ORANGEFS_MAX_SERVER_ADDR_LEN);
 
@@ -434,7 +434,7 @@ struct dentry *orangefs_mount(struct file_system_type *fst,
 	if (!new_op)
 		return ERR_PTR(-ENOMEM);
 
-	strncpy(new_op->upcall.req.fs_mount.orangefs_config_server,
+	strlcpy(new_op->upcall.req.fs_mount.orangefs_config_server,
 		devname,
 		ORANGEFS_MAX_SERVER_ADDR_LEN);
 
@@ -474,7 +474,7 @@ struct dentry *orangefs_mount(struct file_system_type *fst,
 	 * on successful mount, store the devname and data
 	 * used
 	 */
-	strncpy(ORANGEFS_SB(sb)->devname,
+	strlcpy(ORANGEFS_SB(sb)->devname,
 		devname,
 		ORANGEFS_MAX_SERVER_ADDR_LEN);
 
