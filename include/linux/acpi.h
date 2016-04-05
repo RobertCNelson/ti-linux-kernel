@@ -265,6 +265,12 @@ static inline bool invalid_phys_cpuid(phys_cpuid_t phys_id)
 /* Arch dependent functions for cpu hotplug support */
 int acpi_map_cpu(acpi_handle handle, phys_cpuid_t physid, int *pcpu);
 int acpi_unmap_cpu(int cpu);
+#if defined(CONFIG_X86)
+void acpi_map_cpu2node(acpi_handle handle, int cpu, int physid);
+#elif defined(CONFIG_IA64)
+int acpi_map_cpu2node(acpi_handle handle, int cpu, int physid);
+#endif
+void __init acpi_set_processor_mapping(void);
 #endif /* CONFIG_ACPI_HOTPLUG_CPU */
 
 #ifdef CONFIG_ACPI_HOTPLUG_IOAPIC
