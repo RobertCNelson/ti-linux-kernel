@@ -142,5 +142,72 @@ Steps:
 20. The new page is moved to the LRU and can be scanned by the swapper
     etc again.
 
-Christoph Lameter, May 8, 2006.
+C. Non-LRU Page migration
+-------------------------
 
+Although original migration aimed for reducing the latency of memory access
+for NUMA, compaction who want to create high-order page is also main customer.
+
+Ppage migration's disadvantage is that it was designed to migrate only
+*LRU* pages. However, there are potential non-lru movable pages which can be
+migrated in system, for example, zsmalloc, virtio-balloon pages.
+For virtio-balloon pages, some parts of migration code path was hooked up
+and added virtio-balloon specific functions to intercept logi.
+It's too specific to one subsystem so other subsystem who want to make
+their pages movable should add own specific hooks in migration path.
+
+To solve such problem, VM supports non-LRU page migration which provides
+generic functions for non-LRU movable pages without needing subsystem
+specific hook in mm/{migrate|compact}.c.
+
+If a subsystem want to make own pages movable, it should mark pages as
+PG_movable via __SetPageMovable. __SetPageMovable needs address_space for
+argument for register functions which will be called by VM.
+
+Three functions in address_space_operation related to non-lru movable page:
+
+	bool (*isolate_page) (struct page *, isolate_mode_t);
+	int (*migratepage) (struct address_space *,
+		struct page *, struct page *, enum migrate_mode);
+	void (*putback_page)(struct page *);
+
+1. Isolation
+
+What VM expected on isolate_page of subsystem is to set PG_isolated flags
+of the page if it was successful. With that, concurrent isolation among
+CPUs skips the isolated page by other CPU earlier. VM calls isolate_page
+under PG_lock of page. If a subsystem cannot isolate the page, it should
+return false.
+
+2. Migration
+
+After successful isolation, VM calls migratepage. The migratepage's goal is
+to move content of the old page to new page and set up struct page fields
+of new page. If migration is successful, subsystem should release old page's
+refcount to free. Keep in mind that subsystem should clear PG_movable and
+PG_isolated before releasing the refcount.  If everything are done, user
+should return MIGRATEPAGE_SUCCESS. If subsystem cannot migrate the page
+at the moment, migratepage can return -EAGAIN. On -EAGAIN, VM will retry page
+migration because VM interprets -EAGAIN as "temporal migration failure".
+
+3. Putback
+
+If migration was unsuccessful, VM calls putback_page. The subsystem should
+insert isolated page to own data structure again if it has. And subsystem
+should clear PG_isolated which was marked in isolation step.
+
+Note about releasing page:
+
+Subsystem can release pages whenever it want but if it releses the page
+which is already isolated, it should clear PG_isolated but doesn't touch
+PG_movable under PG_lock. Instead of it, VM will clear PG_movable after
+his job done. Otherweise, subsystem should clear both page flags before
+releasing the page.
+
+Note about PG_isolated:
+
+PG_isolated check on a page is valid only if the page's flag is already
+set to PG_movable.
+
+Christoph Lameter, May 8, 2006.
+Minchan Kim, Mar 28, 2016.

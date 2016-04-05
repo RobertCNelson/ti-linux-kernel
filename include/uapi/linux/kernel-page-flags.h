@@ -34,6 +34,7 @@
 #define KPF_BALLOON		23
 #define KPF_ZERO_PAGE		24
 #define KPF_IDLE		25
+#define KPF_MOVABLE		26
 
 
 #endif /* _UAPILINUX_KERNEL_PAGE_FLAGS_H */

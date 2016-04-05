@@ -35,6 +35,10 @@
 /* Do not use these with a slab allocator */
 #define GFP_SLAB_BUG_MASK (__GFP_DMA32|__GFP_HIGHMEM|~__GFP_BITS_MASK)
 
+extern int do_swap_page(struct mm_struct *mm, struct vm_area_struct *vma,
+			unsigned long address, pte_t *page_table, pmd_t *pmd,
+			unsigned int flags, pte_t orig_pte);
+
 void free_pgtables(struct mmu_gather *tlb, struct vm_area_struct *start_vma,
 		unsigned long floor, unsigned long ceiling);
 
@@ -58,7 +62,7 @@ static inline unsigned long ra_submit(struct file_ra_state *ra,
 }
 
 /*
- * Turn a non-refcounted page (->_count == 0) into refcounted with
+ * Turn a non-refcounted page (->_refcount == 0) into refcounted with
  * a count of one.
  */
 static inline void set_page_refcounted(struct page *page)
@@ -145,6 +149,8 @@ static inline struct page *pageblock_pfn_to_page(unsigned long start_pfn,
 }
 
 extern int __isolate_free_page(struct page *page, unsigned int order);
+extern struct page *alloc_pages_zone(struct zone *zone, unsigned int order,
+							int migratetype);
 extern void __free_pages_bootmem(struct page *page, unsigned long pfn,
 					unsigned int order);
 extern void prep_compound_page(struct page *page, unsigned int order);
@@ -165,6 +171,9 @@ extern int user_min_free_kbytes;
 struct compact_control {
 	struct list_head freepages;	/* List of free pages to migrate to */
 	struct list_head migratepages;	/* List of pages being migrated */
+	struct list_head freepages_held;/* List of free pages from the block
+					 * that's being migrated
+					 */
 	unsigned long nr_freepages;	/* Number of isolated free pages */
 	unsigned long nr_migratepages;	/* Number of pages to migrate */
 	unsigned long free_pfn;		/* isolate_freepages search base */

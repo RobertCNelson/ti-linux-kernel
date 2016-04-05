@@ -73,13 +73,92 @@ int migrate_prep_local(void)
 	return 0;
 }
 
+bool isolate_movable_page(struct page *page, isolate_mode_t mode)
+{
+	bool ret = false;
+
+	/*
+	 * Avoid burning cycles with pages that are yet under __free_pages(),
+	 * or just got freed under us.
+	 *
+	 * In case we 'win' a race for a movable page being freed under us and
+	 * raise its refcount preventing __free_pages() from doing its job
+	 * the put_page() at the end of this block will take care of
+	 * release this page, thus avoiding a nasty leakage.
+	 */
+	if (unlikely(!get_page_unless_zero(page)))
+		goto out;
+
+	/*
+	 * Check PG_movable before holding a PG_lock because page's owner
+	 * assumes anybody doesn't touch PG_lock of newly allocated page.
+	 */
+	if (unlikely(!PageMovable(page)))
+		goto out_putpage;
+	/*
+	 * As movable pages are not isolated from LRU lists, concurrent
+	 * compaction threads can race against page migration functions
+	 * as well as race against the releasing a page.
+	 *
+	 * In order to avoid having an already isolated movable page
+	 * being (wrongly) re-isolated while it is under migration,
+	 * or to avoid attempting to isolate pages being released,
+	 * lets be sure we have the page lock
+	 * before proceeding with the movable page isolation steps.
+	 */
+	if (unlikely(!trylock_page(page)))
+		goto out_putpage;
+
+	if (!PageMovable(page) || PageIsolated(page))
+		goto out_no_isolated;
+
+	ret = page->mapping->a_ops->isolate_page(page, mode);
+	if (!ret)
+		goto out_no_isolated;
+
+	WARN_ON_ONCE(!PageIsolated(page));
+	unlock_page(page);
+	return ret;
+
+out_no_isolated:
+	unlock_page(page);
+out_putpage:
+	put_page(page);
+out:
+	return ret;
+}
+
+/* It should be called on page which is PG_movable */
+void putback_movable_page(struct page *page)
+{
+	/*
+	 * 'lock_page()' stabilizes the page and prevents races against
+	 * concurrent isolation threads attempting to re-isolate it.
+	 */
+	VM_BUG_ON_PAGE(!PageMovable(page), page);
+
+	lock_page(page);
+	if (PageIsolated(page)) {
+		struct address_space *mapping;
+
+		mapping = page_mapping(page);
+		mapping->a_ops->putback_page(page);
+		WARN_ON_ONCE(PageIsolated(page));
+	} else {
+		__ClearPageMovable(page);
+	}
+	unlock_page(page);
+	/* drop the extra ref count taken for movable page isolation */
+	put_page(page);
+}
+
 /*
  * Put previously isolated pages back onto the appropriate lists
  * from where they were once taken off for compaction/migration.
  *
  * This function shall be used whenever the isolated pageset has been
- * built from lru, balloon, hugetlbfs page. See isolate_migratepages_range()
- * and isolate_huge_page().
+ * built from lru, movable, hugetlbfs page.
+ * See isolate_migratepages_range() and isolate_huge_page().
  */
 void putback_movable_pages(struct list_head *l)
 {
@@ -94,10 +173,16 @@ void putback_movable_pages(struct list_head *l)
 		list_del(&page->lru);
 		dec_zone_page_state(page, NR_ISOLATED_ANON +
 				page_is_file_cache(page));
-		if (unlikely(isolated_balloon_page(page)))
-			balloon_page_putback(page);
-		else
+		if (unlikely(PageMovable(page))) {
+			if (PageIsolated(page)) {
+				putback_movable_page(page);
+			} else {
+				__ClearPageMovable(page);
+				put_page(page);
+			}
+		} else {
 			putback_lru_page(page);
+		}
 	}
 }
 
@@ -592,7 +677,7 @@ void migrate_page_copy(struct page *newpage, struct page *page)
  ***********************************************************/
 
 /*
- * Common logic to directly migrate a single page suitable for
+ * Common logic to directly migrate a single LRU page suitable for
  * pages that do not use PagePrivate/PagePrivate2.
  *
  * Pages are locked upon entry and exit.
@@ -755,24 +840,54 @@ static int move_to_new_page(struct page *newpage, struct page *page,
 				enum migrate_mode mode)
 {
 	struct address_space *mapping;
-	int rc;
+	int rc = -EAGAIN;
+	bool lru_movable = true;
 
 	VM_BUG_ON_PAGE(!PageLocked(page), page);
 	VM_BUG_ON_PAGE(!PageLocked(newpage), newpage);
 
 	mapping = page_mapping(page);
-	if (!mapping)
-		rc = migrate_page(mapping, newpage, page, mode);
-	else if (mapping->a_ops->migratepage)
-		/*
-		 * Most pages have a mapping and most filesystems provide a
-		 * migratepage callback. Anonymous pages are part of swap
-		 * space which also has its own migratepage callback. This
-		 * is the most common path for page migration.
-		 */
-		rc = mapping->a_ops->migratepage(mapping, newpage, page, mode);
-	else
-		rc = fallback_migrate_page(mapping, newpage, page, mode);
+	/*
+	 * In case of non-lru page, it could be released after
+	 * isolation step. In that case, we shouldn't try
+	 * fallback migration which was designed for LRU pages.
+	 *
+	 * The rule for such case is that subsystem should clear
+	 * PG_isolated but remains PG_movable so VM should catch
+	 * it and clear PG_movable for it.
+	 */
+	if (unlikely(PageMovable(page))) {
+		lru_movable = false;
+		VM_BUG_ON_PAGE(!mapping, page);
+		if (!PageIsolated(page)) {
+			rc = MIGRATEPAGE_SUCCESS;
+			__ClearPageMovable(page);
+			goto out;
+		}
+	}
+
+	if (likely(lru_movable)) {
+		if (!mapping)
+			rc = migrate_page(mapping, newpage, page, mode);
+		else if (mapping->a_ops->migratepage)
+			/*
+			 * Most pages have a mapping and most filesystems
+			 * provide a migratepage callback. Anonymous pages
+			 * are part of swap space which also has its own
+			 * migratepage callback. This is the most common path
+			 * for page migration.
+			 */
+			rc = mapping->a_ops->migratepage(mapping, newpage,
+							page, mode);
+		else
+			rc = fallback_migrate_page(mapping, newpage,
+							page, mode);
+	} else {
+		rc = mapping->a_ops->migratepage(mapping, newpage,
+						page, mode);
+		WARN_ON_ONCE(rc == MIGRATEPAGE_SUCCESS &&
+			PageIsolated(page));
+	}
 
 	/*
 	 * When successful, old pagecache page->mapping must be cleared before
@@ -782,6 +897,7 @@ static int move_to_new_page(struct page *newpage, struct page *page,
 		if (!PageAnon(page))
 			page->mapping = NULL;
 	}
+out:
 	return rc;
 }
 
@@ -859,18 +975,6 @@ static int __unmap_and_move(struct page *page, struct page *newpage,
 	if (unlikely(!trylock_page(newpage)))
 		goto out_unlock;
 
-	if (unlikely(isolated_balloon_page(page))) {
-		/*
-		 * A ballooned page does not need any special attention from
-		 * physical to virtual reverse mapping procedures.
-		 * Skip any attempt to unmap PTEs or to remap swap cache,
-		 * in order to avoid burning cycles at rmap level, and perform
-		 * the page migration right away (proteced by page lock).
-		 */
-		rc = balloon_page_migrate(newpage, page, mode);
-		goto out_unlock_both;
-	}
-
 	/*
 	 * Corner case handling:
 	 * 1. When a new swap-cache page is read into, it is added to the LRU
@@ -913,6 +1017,14 @@ out_unlock:
 		put_anon_vma(anon_vma);
 	unlock_page(page);
 out:
+	/* If migration is successful, move newpage to right list */
+	if (rc == MIGRATEPAGE_SUCCESS) {
+		if (unlikely(PageMovable(newpage)))
+			put_page(newpage);
+		else
+			putback_lru_page(newpage);
+	}
+
 	return rc;
 }
 
@@ -946,6 +1058,14 @@ static ICE_noinline int unmap_and_move(new_page_t get_new_page,
 
 	if (page_count(page) == 1) {
 		/* page was freed from under us. So we are done. */
+		ClearPageActive(page);
+		ClearPageUnevictable(page);
+		if (put_new_page)
+			put_new_page(newpage, private);
+		else
+			put_page(newpage);
+		if (PageMovable(page))
+			__ClearPageMovable(page);
 		goto out;
 	}
 
@@ -958,10 +1078,8 @@ static ICE_noinline int unmap_and_move(new_page_t get_new_page,
 	}
 
 	rc = __unmap_and_move(page, newpage, force, mode);
-	if (rc == MIGRATEPAGE_SUCCESS) {
-		put_new_page = NULL;
+	if (rc == MIGRATEPAGE_SUCCESS)
 		set_page_owner_migrate_reason(newpage, reason);
-	}
 
 out:
 	if (rc != -EAGAIN) {
@@ -974,27 +1092,45 @@ out:
 		list_del(&page->lru);
 		dec_zone_page_state(page, NR_ISOLATED_ANON +
 				page_is_file_cache(page));
-		/* Soft-offlined page shouldn't go through lru cache list */
-		if (reason == MR_MEMORY_FAILURE) {
-			put_page(page);
-			if (!test_set_page_hwpoison(page))
-				num_poisoned_pages_inc();
-		} else
-			putback_lru_page(page);
 	}
 
 	/*
-	 * If migration was not successful and there's a freeing callback, use
-	 * it.  Otherwise, putback_lru_page() will drop the reference grabbed
-	 * during isolation.
+	 * If migration is successful, drop the reference grabbed during
+	 * isolation. Otherwise, restore the page to LRU list unless we
+	 * want to retry.
 	 */
-	if (put_new_page)
-		put_new_page(newpage, private);
-	else if (unlikely(__is_movable_balloon_page(newpage))) {
-		/* drop our reference, page already in the balloon */
-		put_page(newpage);
-	} else
-		putback_lru_page(newpage);
+	if (rc == MIGRATEPAGE_SUCCESS) {
+		put_page(page);
+		if (reason == MR_MEMORY_FAILURE) {
+			if (!test_set_page_hwpoison(page))
+				num_poisoned_pages_inc();
+		}
+	} else {
+		if (rc != -EAGAIN) {
+			/*
+			 * subsystem couldn't remove PG_movable since page is
+			 * isolated so PageMovable check is not racy in here.
+			 * But PageIsolated check can be racy but it's okay
+			 * because putback_movable_page checks it under PG_lock
+			 * again.
+			 */
+			if (unlikely(PageMovable(page))) {
+				if (PageIsolated(page))
+					putback_movable_page(page);
+				else {
+					__ClearPageMovable(page);
+					put_page(page);
+				}
+			} else {
+				putback_lru_page(page);
+			}
+		}
+
+		if (put_new_page)
+			put_new_page(newpage, private);
+		else
+			put_page(newpage);
+	}
 
 	if (result) {
 		if (rc)
