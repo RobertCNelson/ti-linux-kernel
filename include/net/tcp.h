@@ -754,7 +754,8 @@ struct tcp_skb_cb {
 				TCPCB_REPAIRED)
 
 	__u8		ip_dsfield;	/* IPv4 tos or IPv6 dsfield	*/
-	/* 1 byte hole */
+	__u8		txstamp_ack:1,	/* Record TX timestamp for ack? */
+			unused:7;
 	__u32		ack_seq;	/* Sequence number ACK'd	*/
 	union {
 		struct inet_skb_parm	h4;
@@ -1037,17 +1038,6 @@ __u32 tcp_init_cwnd(const struct tcp_sock *tp, const struct dst_entry *dst);
 static inline __u32 tcp_max_tso_deferred_mss(const struct tcp_sock *tp)
 {
 	return 3;
-}
-
-/* Slow start with delack produces 3 packets of burst, so that
- * it is safe "de facto".  This will be the default - same as
- * the default reordering threshold - but if reordering increases,
- * we must be able to allow cwnd to burst at least this much in order
- * to not pull it back when holes are filled.
- */
-static __inline__ __u32 tcp_max_burst(const struct tcp_sock *tp)
-{
-	return tp->reordering;
 }
 
 /* Returns end sequence number of the receiver's advertised window */
