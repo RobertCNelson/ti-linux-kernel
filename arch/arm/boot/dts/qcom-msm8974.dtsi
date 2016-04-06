@@ -1,6 +1,6 @@
 /dts-v1/;
 
-#include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/clock/qcom,gcc-msm8974.h>
 #include "skeleton.dtsi"
 
@@ -57,6 +57,17 @@
 		unused@0ff00000 {
 			reg = <0x0ff00000 0x10100000>;
 			no-map;
+		};
+	};
+
+	firmware {
+		compatible = "simple-bus";
+
+		scm {
+			compatible = "qcom,scm";
+			clocks = <&gcc GCC_CE1_CLK> , <&gcc GCC_CE1_AXI_CLK>,
+				 <&gcc GCC_CE1_AHB_CLK>;
+			clock-names = "core", "bus", "iface";
 		};
 	};
 
@@ -460,8 +471,6 @@
 			clock-names = "core", "iface";
 			#address-cells = <1>;
 			#size-cells = <0>;
-			dmas = <&blsp2_dma 20>, <&blsp2_dma 21>;
-			dma-names = "tx", "rx";
 		};
 
 		spmi_bus: spmi@fc4cf000 {
@@ -478,16 +487,6 @@
 			#size-cells = <0>;
 			interrupt-controller;
 			#interrupt-cells = <4>;
-		};
-
-		blsp2_dma: dma-controller@f9944000 {
-			compatible = "qcom,bam-v1.4.0";
-			reg = <0xf9944000 0x19000>;
-			interrupts = <GIC_SPI 239 IRQ_TYPE_LEVEL_HIGH>;
-			clocks = <&gcc GCC_BLSP2_AHB_CLK>;
-			clock-names = "bam_clk";
-			#dma-cells = <1>;
-			qcom,ee = <0>;
 		};
 	};
 
