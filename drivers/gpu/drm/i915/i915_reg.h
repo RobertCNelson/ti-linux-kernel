@@ -165,6 +165,7 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define  GEN6_GRDOM_MEDIA		(1 << 2)
 #define  GEN6_GRDOM_BLT			(1 << 3)
 #define  GEN6_GRDOM_VECS		(1 << 4)
+#define  GEN9_GRDOM_GUC			(1 << 5)
 #define  GEN8_GRDOM_MEDIA2		(1 << 7)
 
 #define RING_PP_DIR_BASE(ring)		_MMIO((ring)->mmio_base+0x228)
@@ -627,6 +628,10 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define   IOSF_PORT_GPIO_SC			0x48
 #define   IOSF_PORT_GPIO_SUS			0xa8
 #define   IOSF_PORT_CCU				0xa9
+#define   CHV_IOSF_PORT_GPIO_N			0x13
+#define   CHV_IOSF_PORT_GPIO_SE			0x48
+#define   CHV_IOSF_PORT_GPIO_E			0xa8
+#define   CHV_IOSF_PORT_GPIO_SW			0xb2
 #define VLV_IOSF_DATA				_MMIO(VLV_DISPLAY_BASE + 0x2104)
 #define VLV_IOSF_ADDR				_MMIO(VLV_DISPLAY_BASE + 0x2108)
 
@@ -791,6 +796,7 @@ enum skl_disp_power_wells {
 #define  DSI_PLL_M1_DIV_SHIFT			0
 #define  DSI_PLL_M1_DIV_MASK			(0x1ff << 0)
 #define CCK_CZ_CLOCK_CONTROL			0x62
+#define CCK_GPLL_CLOCK_CONTROL			0x67
 #define CCK_DISPLAY_CLOCK_CONTROL		0x6b
 #define CCK_DISPLAY_REF_CLOCK_CONTROL		0x6c
 #define  CCK_TRUNK_FORCE_ON			(1 << 17)
@@ -1324,6 +1330,7 @@ enum skl_disp_power_wells {
 #define _PORT_CL1CM_DW0_A		0x162000
 #define _PORT_CL1CM_DW0_BC		0x6C000
 #define   PHY_POWER_GOOD		(1 << 16)
+#define   PHY_RESERVED			(1 << 7)
 #define BXT_PORT_CL1CM_DW0(phy)		_BXT_PHY((phy), _PORT_CL1CM_DW0_BC, \
 							_PORT_CL1CM_DW0_A)
 
@@ -4784,6 +4791,10 @@ enum skl_disp_power_wells {
 #define CBR1_VLV			_MMIO(VLV_DISPLAY_BASE + 0x70400)
 #define  CBR_PND_DEADLINE_DISABLE	(1<<31)
 #define  CBR_PWM_CLOCK_MUX_SELECT	(1<<30)
+
+#define CBR4_VLV			_MMIO(VLV_DISPLAY_BASE + 0x70450)
+#define  CBR_DPLLBMD_PIPE_C		(1<<29)
+#define  CBR_DPLLBMD_PIPE_B		(1<<18)
 
 /* FIFO watermark sizes etc */
 #define G4X_FIFO_LINE_SIZE	64
