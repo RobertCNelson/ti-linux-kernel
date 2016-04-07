@@ -104,6 +104,7 @@ struct shmem_falloc {
 enum sgp_type {
 	SGP_READ,	/* don't exceed i_size, don't allocate page */
 	SGP_CACHE,	/* don't exceed i_size, may allocate page */
+	SGP_TEAM,	/* may exceed i_size, may make team page Uptodate */
 	SGP_WRITE,	/* may exceed i_size, may allocate !Uptodate page */
 	SGP_FALLOC,	/* like SGP_WRITE, but make existing page Uptodate */
 };
@@ -417,6 +418,44 @@ static void shmem_added_to_hugeteam(struct page *page, struct zone *zone,
 	}
 }
 
+static int shmem_populate_hugeteam(struct inode *inode, struct page *head,
+				   struct vm_area_struct *vma)
+{
+	gfp_t gfp = mapping_gfp_mask(inode->i_mapping);
+	struct page *page;
+	pgoff_t index;
+	int error;
+	int i;
+
+	/* We only have to do this once */
+	if (PageChecked(head))
+		return 0;
+
+	index = head->index;
+	for (i = 0; i < HPAGE_PMD_NR; i++, index++) {
+		if (!PageTeam(head))
+			return -EAGAIN;
+		if (PageChecked(head))
+			return 0;
+		/* Mark all pages dirty even when map is readonly, for now */
+		if (PageUptodate(head + i) && PageDirty(head + i))
+			continue;
+		error = shmem_getpage_gfp(inode, index, &page, SGP_TEAM,
+					  gfp, vma->vm_mm, NULL);
+		if (error)
+			return error;
+		SetPageDirty(page);
+		unlock_page(page);
+		put_page(page);
+		if (page != head + i)
+			return -EAGAIN;
+		cond_resched();
+	}
+
+	/* Now safe from the shrinker, but not yet from truncate */
+	return 0;
+}
+
 static int shmem_disband_hugehead(struct page *head)
 {
 	struct address_space *mapping;
@@ -452,6 +491,7 @@ static int shmem_disband_hugehead(struct page *head)
 			head->mapping = NULL;
 
 		if (nr >= HPAGE_PMD_NR) {
+			ClearPageChecked(head);
 			__dec_zone_state(zone, NR_SHMEM_HUGEPAGES);
 			VM_BUG_ON(nr != HPAGE_PMD_NR);
 		} else if (nr) {
@@ -840,6 +880,12 @@ static inline void shmem_disband_hugeteam(struct page *page)
 static inline void shmem_added_to_hugeteam(struct page *page,
 				struct zone *zone, struct page *hugehint)
 {
+}
+
+static inline int shmem_populate_hugeteam(struct inode *inode,
+				struct page *head, struct vm_area_struct *vma)
+{
+	return -EAGAIN;
 }
 
 static inline unsigned long shmem_shrink_hugehole(struct shrinker *shrink,
@@ -1816,8 +1862,8 @@ static int shmem_replace_page(struct page **pagep, gfp_t gfp,
  * vm. If we swap it in we mark it dirty since we also free the swap
  * entry since a page cannot live in both the swap and page cache.
  *
- * fault_mm and fault_type are only supplied by shmem_fault:
- * otherwise they are NULL.
+ * fault_mm and fault_type are only supplied by shmem_fault
+ * (or hugeteam population): otherwise they are NULL.
  */
 static int shmem_getpage_gfp(struct inode *inode, pgoff_t index,
 	struct page **pagep, enum sgp_type sgp, gfp_t gfp,
@@ -2094,10 +2140,13 @@ unlock:
 
 static int shmem_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 {
+	unsigned long addr = (unsigned long)vmf->virtual_address;
 	struct inode *inode = file_inode(vma->vm_file);
 	gfp_t gfp = mapping_gfp_mask(inode->i_mapping);
+	struct page *head;
+	int ret = 0;
+	int once = 0;
 	int error;
-	int ret = VM_FAULT_LOCKED;
 
 	/*
 	 * Trinity finds that probing a hole which tmpfs is punching can
@@ -2157,11 +2206,150 @@ static int shmem_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 		spin_unlock(&inode->i_lock);
 	}
 
+single:
+	vmf->page = NULL;
 	error = shmem_getpage_gfp(inode, vmf->pgoff, &vmf->page, SGP_CACHE,
 				  gfp, vma->vm_mm, &ret);
 	if (error)
 		return ((error == -ENOMEM) ? VM_FAULT_OOM : VM_FAULT_SIGBUS);
-	return ret;
+	ret |= VM_FAULT_LOCKED;
+
+	/*
+	 * Shall we map a huge page hugely?
+	 */
+	if (!IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE))
+		return ret;
+	if (!(vmf->flags & FAULT_FLAG_MAY_HUGE))
+		return ret;
+	if (!PageTeam(vmf->page))
+		return ret;
+	if (once++)
+		return ret;
+	if (!(vma->vm_flags & VM_SHARED) && (vmf->flags & FAULT_FLAG_WRITE))
+		return ret;
+	if ((vma->vm_start-(vma->vm_pgoff<<PAGE_SHIFT)) & (HPAGE_PMD_SIZE-1))
+		return ret;
+	if (round_down(addr, HPAGE_PMD_SIZE) < vma->vm_start)
+		return ret;
+	if (round_up(addr + 1, HPAGE_PMD_SIZE) > vma->vm_end)
+		return ret;
+	/* But omit i_size check: allow up to huge page boundary */
+
+	head = team_head(vmf->page);
+	if (!get_page_unless_zero(head))
+		return ret;
+	if (!PageTeam(head)) {
+		put_page(head);
+		return ret;
+	}
+
+	ret &= ~VM_FAULT_LOCKED;
+	unlock_page(vmf->page);
+	put_page(vmf->page);
+	if (shmem_populate_hugeteam(inode, head, vma) < 0) {
+		put_page(head);
+		goto single;
+	}
+	lock_page(head);
+	if (!PageTeam(head)) {
+		unlock_page(head);
+		put_page(head);
+		goto single;
+	}
+	if (!PageChecked(head))
+		SetPageChecked(head);
+
+	/* Now safe from truncation */
+	vmf->page = head;
+	return ret | VM_FAULT_LOCKED | VM_FAULT_HUGE;
+}
+
+unsigned long shmem_get_unmapped_area(struct file *file,
+				      unsigned long uaddr, unsigned long len,
+				      unsigned long pgoff, unsigned long flags)
+{
+	unsigned long (*get_area)(struct file *,
+		unsigned long, unsigned long, unsigned long, unsigned long);
+	unsigned long addr;
+	unsigned long offset;
+	unsigned long inflated_len;
+	unsigned long inflated_addr;
+	unsigned long inflated_offset;
+
+	if (len > TASK_SIZE)
+		return -ENOMEM;
+
+	get_area = current->mm->get_unmapped_area;
+	addr = get_area(file, uaddr, len, pgoff, flags);
+
+	if (!IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE))
+		return addr;
+	if (IS_ERR_VALUE(addr))
+		return addr;
+	if (addr & ~PAGE_MASK)
+		return addr;
+	if (addr > TASK_SIZE - len)
+		return addr;
+
+	if (shmem_huge == SHMEM_HUGE_DENY)
+		return addr;
+	if (len < HPAGE_PMD_SIZE)
+		return addr;
+	if (flags & MAP_FIXED)
+		return addr;
+	/*
+	 * Our priority is to support MAP_SHARED mapped hugely;
+	 * and support MAP_PRIVATE mapped hugely too, until it is COWed.
+	 * But if caller specified an address hint, respect that as before.
+	 */
+	if (uaddr)
+		return addr;
+
+	if (shmem_huge != SHMEM_HUGE_FORCE) {
+		struct super_block *sb;
+
+		if (file) {
+			VM_BUG_ON(file->f_op != &shmem_file_operations);
+			sb = file_inode(file)->i_sb;
+		} else {
+			/*
+			 * Called directly from mm/mmap.c, or drivers/char/mem.c
+			 * for "/dev/zero", to create a shared anonymous object.
+			 */
+			if (IS_ERR(shm_mnt))
+				return addr;
+			sb = shm_mnt->mnt_sb;
+		}
+		if (!SHMEM_SB(sb)->huge)
+			return addr;
+	}
+
+	offset = (pgoff << PAGE_SHIFT) & (HPAGE_PMD_SIZE-1);
+	if (offset && offset + len < 2 * HPAGE_PMD_SIZE)
+		return addr;
+	if ((addr & (HPAGE_PMD_SIZE-1)) == offset)
+		return addr;
+
+	inflated_len = len + HPAGE_PMD_SIZE - PAGE_SIZE;
+	if (inflated_len > TASK_SIZE)
+		return addr;
+	if (inflated_len < len)
+		return addr;
+
+	inflated_addr = get_area(NULL, 0, inflated_len, 0, flags);
+	if (IS_ERR_VALUE(inflated_addr))
+		return addr;
+	if (inflated_addr & ~PAGE_MASK)
+		return addr;
+
+	inflated_offset = inflated_addr & (HPAGE_PMD_SIZE-1);
+	inflated_addr += offset - inflated_offset;
+	if (inflated_offset > offset)
+		inflated_addr += HPAGE_PMD_SIZE;
+
+	if (inflated_addr > TASK_SIZE - len)
+		return addr;
+	return inflated_addr;
 }
 
 #ifdef CONFIG_NUMA
@@ -3904,6 +4092,7 @@ static const struct address_space_operations shmem_aops = {
 
 static const struct file_operations shmem_file_operations = {
 	.mmap		= shmem_mmap,
+	.get_unmapped_area = shmem_get_unmapped_area,
 #ifdef CONFIG_TMPFS
 	.llseek		= shmem_file_llseek,
 	.read_iter	= shmem_file_read_iter,
@@ -4109,6 +4298,13 @@ int shmem_lock(struct file *file, int lock, struct user_struct *user)
 
 void shmem_unlock_mapping(struct address_space *mapping)
 {
+}
+
+unsigned long shmem_get_unmapped_area(struct file *file,
+				      unsigned long addr, unsigned long len,
+				      unsigned long pgoff, unsigned long flags)
+{
+	return current->mm->get_unmapped_area(file, addr, len, pgoff, flags);
 }
 
 void shmem_truncate_range(struct inode *inode, loff_t lstart, loff_t lend)
