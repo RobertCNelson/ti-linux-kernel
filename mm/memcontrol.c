@@ -4329,6 +4329,7 @@ static int mem_cgroup_do_precharge(unsigned long count)
  *   2(MC_TARGET_SWAP): if the swap entry corresponding to this pte is a
  *     target for charge migration. if @target is not NULL, the entry is stored
  *     in target->ent.
+ *   3(MC_TARGET_TEAM): if pmd entry is not an anon THP: check it page by page
  *
  * Called with pte lock held.
  */
@@ -4341,6 +4342,7 @@ enum mc_target_type {
 	MC_TARGET_NONE = 0,
 	MC_TARGET_PAGE,
 	MC_TARGET_SWAP,
+	MC_TARGET_TEAM,
 };
 
 static struct page *mc_handle_present_pte(struct vm_area_struct *vma,
@@ -4562,19 +4564,22 @@ static enum mc_target_type get_mctgt_type(struct vm_area_struct *vma,
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 /*
- * We don't consider swapping or file mapped pages because THP does not
- * support them for now.
  * Caller should make sure that pmd_trans_huge(pmd) is true.
  */
-static enum mc_target_type get_mctgt_type_thp(struct vm_area_struct *vma,
-		unsigned long addr, pmd_t pmd, union mc_target *target)
+static enum mc_target_type get_mctgt_type_thp(pmd_t pmd,
+		union mc_target *target, unsigned long *pfn)
 {
-	struct page *page = NULL;
+	struct page *page;
 	enum mc_target_type ret = MC_TARGET_NONE;
 
 	page = pmd_page(pmd);
-	/* Don't attempt to move huge tmpfs pages yet: can be enabled later */
-	if (!(mc.flags & MOVE_ANON) || !PageAnon(page))
+	if (!PageAnon(page)) {
+		if (!(mc.flags & MOVE_FILE))
+			return ret;
+		*pfn = page_to_pfn(page);
+		return MC_TARGET_TEAM;
+	}
+	if (!(mc.flags & MOVE_ANON))
 		return ret;
 	if (page->mem_cgroup == mc.from) {
 		ret = MC_TARGET_PAGE;
@@ -4586,8 +4591,8 @@ static enum mc_target_type get_mctgt_type_thp(struct vm_area_struct *vma,
 	return ret;
 }
 #else
-static inline enum mc_target_type get_mctgt_type_thp(struct vm_area_struct *vma,
-		unsigned long addr, pmd_t pmd, union mc_target *target)
+static inline enum mc_target_type get_mctgt_type_thp(pmd_t pmd,
+		union mc_target *target, unsigned long *pfn)
 {
 	return MC_TARGET_NONE;
 }
@@ -4598,24 +4603,33 @@ static int mem_cgroup_count_precharge_pte_range(pmd_t *pmd,
 					struct mm_walk *walk)
 {
 	struct vm_area_struct *vma = walk->vma;
-	pte_t *pte;
+	enum mc_target_type target_type;
+	unsigned long uninitialized_var(pfn);
+	pte_t ptent;
+	pte_t *pte = NULL;
 	spinlock_t *ptl;
 
 	ptl = pmd_trans_huge_lock(pmd, vma);
 	if (ptl) {
-		if (get_mctgt_type_thp(vma, addr, *pmd, NULL) == MC_TARGET_PAGE)
+		target_type = get_mctgt_type_thp(*pmd, NULL, &pfn);
+		if (target_type == MC_TARGET_PAGE)
 			mc.precharge += HPAGE_PMD_NR;
-		spin_unlock(ptl);
-		return 0;
+		if (target_type != MC_TARGET_TEAM)
+			goto unlock;
+	} else {
+		if (pmd_trans_unstable(pmd))
+			return 0;
+		pte = pte_offset_map_lock(vma->vm_mm, pmd, addr, &ptl);
 	}
-
-	if (pmd_trans_unstable(pmd))
-		return 0;
-	pte = pte_offset_map_lock(vma->vm_mm, pmd, addr, &ptl);
-	for (; addr != end; pte++, addr += PAGE_SIZE)
-		if (get_mctgt_type(vma, addr, *pte, NULL))
+	for (; addr != end; addr += PAGE_SIZE) {
+		ptent = pte ? *(pte++) : pfn_pte(pfn++, vma->vm_page_prot);
+		if (get_mctgt_type(vma, addr, ptent, NULL))
 			mc.precharge++;	/* increment precharge temporarily */
-	pte_unmap_unlock(pte - 1, ptl);
+	}
+	if (pte)
+		pte_unmap(pte - 1);
+unlock:
+	spin_unlock(ptl);
 	cond_resched();
 
 	return 0;
@@ -4784,22 +4798,21 @@ static int mem_cgroup_move_charge_pte_range(pmd_t *pmd,
 {
 	int ret = 0;
 	struct vm_area_struct *vma = walk->vma;
-	pte_t *pte;
+	unsigned long uninitialized_var(pfn);
+	pte_t ptent;
+	pte_t *pte = NULL;
 	spinlock_t *ptl;
 	enum mc_target_type target_type;
 	union mc_target target;
 	struct page *page;
-
+retry:
 	ptl = pmd_trans_huge_lock(pmd, vma);
 	if (ptl) {
-		if (mc.precharge < HPAGE_PMD_NR) {
-			spin_unlock(ptl);
-			return 0;
-		}
-		target_type = get_mctgt_type_thp(vma, addr, *pmd, &target);
+		target_type = get_mctgt_type_thp(*pmd, &target, &pfn);
 		if (target_type == MC_TARGET_PAGE) {
 			page = target.page;
-			if (!isolate_lru_page(page)) {
+			if (mc.precharge >= HPAGE_PMD_NR &&
+			    !isolate_lru_page(page)) {
 				if (!mem_cgroup_move_account(page, true,
 							     mc.from, mc.to)) {
 					mc.precharge -= HPAGE_PMD_NR;
@@ -4808,22 +4821,19 @@ static int mem_cgroup_move_charge_pte_range(pmd_t *pmd,
 				putback_lru_page(page);
 			}
 			put_page(page);
+			addr = end;
 		}
-		spin_unlock(ptl);
-		return 0;
+		if (target_type != MC_TARGET_TEAM)
+			goto unlock;
+		/* addr is not aligned when retrying after precharge ran out */
+		pfn += (addr & (HPAGE_PMD_SIZE-1)) >> PAGE_SHIFT;
+	} else {
+		if (pmd_trans_unstable(pmd))
+			return 0;
+		pte = pte_offset_map_lock(vma->vm_mm, pmd, addr, &ptl);
 	}
-
-	if (pmd_trans_unstable(pmd))
-		return 0;
-retry:
-	pte = pte_offset_map_lock(vma->vm_mm, pmd, addr, &ptl);
-	for (; addr != end; addr += PAGE_SIZE) {
-		pte_t ptent = *(pte++);
-		swp_entry_t ent;
-
-		if (!mc.precharge)
-			break;
-
+	for (; addr != end && mc.precharge; addr += PAGE_SIZE) {
+		ptent = pte ? *(pte++) : pfn_pte(pfn++, vma->vm_page_prot);
 		switch (get_mctgt_type(vma, addr, ptent, &target)) {
 		case MC_TARGET_PAGE:
 			page = target.page;
@@ -4848,8 +4858,8 @@ put:			/* get_mctgt_type() gets the page */
 			put_page(page);
 			break;
 		case MC_TARGET_SWAP:
-			ent = target.ent;
-			if (!mem_cgroup_move_swap_account(ent, mc.from, mc.to)) {
+			if (!mem_cgroup_move_swap_account(target.ent,
+							  mc.from, mc.to)) {
 				mc.precharge--;
 				/* we fixup refcnts and charges later. */
 				mc.moved_swap++;
@@ -4859,7 +4869,10 @@ put:			/* get_mctgt_type() gets the page */
 			break;
 		}
 	}
-	pte_unmap_unlock(pte - 1, ptl);
+	if (pte)
+		pte_unmap(pte - 1);
+unlock:
+	spin_unlock(ptl);
 	cond_resched();
 
 	if (addr != end) {
