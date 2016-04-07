@@ -29,4 +29,10 @@ static inline struct page *team_head(struct page *page)
 	return head;
 }
 
+/* Temporary stub for mm/rmap.c until implemented in mm/huge_memory.c */
+static inline void unmap_team_by_pmd(struct vm_area_struct *vma,
+			unsigned long addr, pmd_t *pmd, struct page *page)
+{
+}
+
 #endif /* _LINUX_PAGETEAM_H */
