@@ -468,7 +468,7 @@ static int o2hb_nego_timeout_handler(struct o2net_msg *msg, u32 len, void *data,
 static int o2hb_nego_approve_handler(struct o2net_msg *msg, u32 len, void *data,
 				void **ret_data)
 {
-	struct o2hb_region *reg = (struct o2hb_region *)data;
+	struct o2hb_region *reg = data;
 
 	printk(KERN_NOTICE "o2hb: negotiate timeout approved by master node on region %s (%s).\n",
 		config_item_name(&reg->hr_item), reg->hr_dev_name);
