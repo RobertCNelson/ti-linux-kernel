@@ -1663,7 +1663,7 @@ unlock:
 		unlock_page(page);
 		put_page(page);
 	}
-	if (alloced_huge) {
+	if (IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE) && alloced_huge) {
 		shmem_disband_hugeteam(alloced_huge);
 		alloced_huge = NULL;
 	}
