@@ -152,6 +152,36 @@ static inline void count_team_pmd_mapped(struct page *head, int *file_mapped,
 }
 
 /*
+ * Slightly misnamed, team_page_mapcount() returns the number of times
+ * any page is mapped into userspace, either by pte or covered by pmd:
+ * it is a generalization of page_mapcount() to include the case of a
+ * team page.  We don't complicate page_mapcount() itself in this way,
+ * because almost nothing needs this number: only smaps accounting PSS.
+ * If something else wants it, we might have to worry more about races.
+ */
+static inline int team_page_mapcount(struct page *page)
+{
+	struct page *head;
+	long team_usage;
+	int mapcount;
+
+	mapcount = page_mapcount(page);
+	if (!PageTeam(page))
+		return mapcount;
+	head = team_head(page);
+	/* We always page_add_file_rmap to head when we page_add_team_rmap */
+	if (page == head)
+		return mapcount;
+
+	team_usage = atomic_long_read(&head->team_usage) - TEAM_COMPLETE;
+	/* Beware racing shmem_disband_hugehead() and add_to_swap_cache() */
+	smp_rmb();
+	if (PageTeam(head) && team_usage > 0)
+		mapcount += team_usage / TEAM_MAPPING_COUNTER;
+	return mapcount;
+}
+
+/*
  * Returns true if this pte mapping is of a non-team page, or of a team page not
  * covered by an existing huge pmd mapping: whereupon stats need to be updated.
  * Only called when mapcount goes up from 0 to 1 i.e. _mapcount from -1 to 0.

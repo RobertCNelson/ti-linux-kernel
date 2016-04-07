@@ -186,6 +186,10 @@ In addition to 0 and 1, it also accepts 2 to force the huge=1 option
 automatically on for all tmpfs mounts (intended for testing), or -1
 to force huge off for all (intended for safety if bugs appeared).
 
+/proc/<pid>/smaps shows:
+
+ShmemHugePages:    10240 kB   tmpfs hugepages mapped by pmd into this region
+
 /proc/meminfo, /sys/devices/system/node/nodeN/meminfo show:
 
 Shmem:             35016 kB   total shmem/tmpfs memory (subset of Cached)
