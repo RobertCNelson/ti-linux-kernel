@@ -159,6 +159,15 @@ may require compaction), and slower to set up initially than hugetlbfs pages
 (since a team of small pages is managed instead of a single compound page);
 but once set up and mapped, huge tmpfs performance should match hugetlbfs.
 
+When a file is created on a huge tmpfs (or copied there), a hugepage is
+allocated to it if possible.  Initially only one small page of the hugepage
+will actually be used for the file: then the neighbouring free holes filled
+as more data is added, until the hugepage is completed.  But if the hugepage
+is left incomplete, and memory needs to be reclaimed, then a shrinker can
+disband the team and free those holes; or page reclaim disband the team
+and swap out the tmpfs pagecache.  Free holes are not charged to any
+memcg, and are counted in MemAvailable; but are not counted in MemFree.
+
 /proc/sys/vm/shmem_huge (intended for experimentation only):
 
 Default 0; write 1 to set tmpfs mount option huge=1 on the kernel's
