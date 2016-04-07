@@ -24,6 +24,7 @@ enum migrate_reason {
 	MR_MEMPOLICY_MBIND,
 	MR_NUMA_MISPLACED,
 	MR_CMA,
+	MR_SHMEM_HUGEHOLE,
 	MR_TYPES
 };
 
