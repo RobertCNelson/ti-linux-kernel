@@ -280,8 +280,16 @@ static inline void munlock_vma_pages_all(struct vm_area_struct *vma)
 /*
  * must be called with vma's mmap_sem held for read or write, and page locked.
  */
-extern void mlock_vma_page(struct page *page);
-extern unsigned int munlock_vma_page(struct page *page);
+extern void mlock_vma_pages(struct page *page, int nr_pages);
+static inline void mlock_vma_page(struct page *page)
+{
+	mlock_vma_pages(page, 1);
+}
+extern int munlock_vma_pages(struct page *page, int nr_pages);
+static inline void munlock_vma_page(struct page *page)
+{
+	munlock_vma_pages(page, 1);
+}
 
 /*
  * Clear the page's PageMlocked().  This can be useful in a situation where
@@ -292,7 +300,11 @@ extern unsigned int munlock_vma_page(struct page *page);
  * If called for a page that is still mapped by mlocked vmas, all we do
  * is revert to lazy LRU behaviour -- semantics are not broken.
  */
-extern void clear_page_mlock(struct page *page);
+extern void clear_pages_mlock(struct page *page, int nr_pages);
+static inline void clear_page_mlock(struct page *page)
+{
+	clear_pages_mlock(page, 1);
+}
 
 /*
  * mlock_migrate_page - called only from migrate_misplaced_transhuge_page()
@@ -333,13 +345,7 @@ vma_address(struct page *page, struct vm_area_struct *vma)
 
 	return address;
 }
-
-#else /* !CONFIG_MMU */
-static inline void clear_page_mlock(struct page *page) { }
-static inline void mlock_vma_page(struct page *page) { }
-static inline void mlock_migrate_page(struct page *new, struct page *old) { }
-
-#endif /* !CONFIG_MMU */
+#endif /* CONFIG_MMU */
 
 /*
  * Return the mem_map entry representing the 'offset' subpage within

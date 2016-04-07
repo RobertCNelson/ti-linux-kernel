@@ -837,9 +837,14 @@ again:
 			spin_unlock(ptl);
 			goto again;
 		}
-		pte = NULL;
+		if (ptep)
+			*ptep = NULL;
 		goto found;
 	}
+
+	/* TTU_MUNLOCK on PageTeam makes a second try for huge pmd only */
+	if (unlikely(!ptep))
+		return false;
 
 	pte = pte_offset_map(pmd, address);
 	if (!pte_present(*pte)) {
@@ -861,8 +866,9 @@ check_pte:
 		pte_unmap_unlock(pte, ptl);
 		return false;
 	}
-found:
+
 	*ptep = pte;
+found:
 	*pmdp = pmd;
 	*ptlp = ptl;
 	return true;
@@ -1332,7 +1338,7 @@ static void page_remove_anon_compound_rmap(struct page *page)
 	}
 
 	if (unlikely(PageMlocked(page)))
-		clear_page_mlock(page);
+		clear_pages_mlock(page, HPAGE_PMD_NR);
 
 	if (nr) {
 		__mod_zone_page_state(page_zone(page), NR_ANON_PAGES, -nr);
@@ -1418,8 +1424,17 @@ static int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 			goto out;
 	}
 
-	if (!page_check_address_transhuge(page, mm, address, &pmd, &pte, &ptl))
-		goto out;
+	if (!page_check_address_transhuge(page, mm, address,
+							&pmd, &pte, &ptl)) {
+		if (!(flags & TTU_MUNLOCK) || !PageTeam(page))
+			goto out;
+		/* We need also to check whether head is hugely mapped here */
+		pte = NULL;
+		page = team_head(page);
+		if (!page_check_address_transhuge(page, mm, address,
+							&pmd, NULL, &ptl))
+			goto out;
+	}
 
 	/*
 	 * If the page is mlock()d, we cannot swap it out.
@@ -1429,7 +1444,7 @@ static int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 	if (!(flags & TTU_IGNORE_MLOCK)) {
 		if (vma->vm_flags & VM_LOCKED) {
 			/* Holding pte lock, we do *not* need mmap_sem here */
-			mlock_vma_page(page);
+			mlock_vma_pages(page, pte ? 1 : HPAGE_PMD_NR);
 			ret = SWAP_MLOCK;
 			goto out_unmap;
 		}
@@ -1635,11 +1650,6 @@ int try_to_unmap(struct page *page, enum ttu_flags flags)
 	return ret;
 }
 
-static int page_not_mapped(struct page *page)
-{
-	return !page_mapped(page);
-};
-
 /**
  * try_to_munlock - try to munlock a page
  * @page: the page to be munlocked
@@ -1657,24 +1667,20 @@ static int page_not_mapped(struct page *page)
  */
 int try_to_munlock(struct page *page)
 {
-	int ret;
 	struct rmap_private rp = {
 		.flags = TTU_MUNLOCK,
 		.lazyfreed = 0,
 	};
-
 	struct rmap_walk_control rwc = {
 		.rmap_one = try_to_unmap_one,
 		.arg = &rp,
-		.done = page_not_mapped,
 		.anon_lock = page_lock_anon_vma_read,
-
 	};
 
-	VM_BUG_ON_PAGE(!PageLocked(page) || PageLRU(page), page);
+	VM_BUG_ON_PAGE(!PageLocked(page) && !PageTeam(page), page);
+	VM_BUG_ON_PAGE(PageLRU(page), page);
 
-	ret = rmap_walk(page, &rwc);
-	return ret;
+	return rmap_walk(page, &rwc);
 }
 
 void __put_anon_vma(struct anon_vma *anon_vma)
@@ -1789,7 +1795,7 @@ static int rmap_walk_file(struct page *page, struct rmap_walk_control *rwc,
 	 * structure at mapping cannot be freed and reused yet,
 	 * so we can safely take mapping->i_mmap_rwsem.
 	 */
-	VM_BUG_ON_PAGE(!PageLocked(page), page);
+	VM_BUG_ON_PAGE(!PageLocked(page) && !PageTeam(page), page);
 
 	if (!mapping)
 		return ret;
