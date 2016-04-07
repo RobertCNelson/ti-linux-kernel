@@ -6,11 +6,13 @@
  *	on most operations but not ->writepage as the potential stall time
  *	is too significant
  * MIGRATE_SYNC will block when migrating pages
+ * MIGRATE_SHMEM_RECOVERY is a MIGRATE_SYNC specific to huge tmpfs recovery.
  */
 enum migrate_mode {
 	MIGRATE_ASYNC,
 	MIGRATE_SYNC_LIGHT,
 	MIGRATE_SYNC,
+	MIGRATE_SHMEM_RECOVERY,
 };
 
 #endif		/* MIGRATE_MODE_H_INCLUDED */
