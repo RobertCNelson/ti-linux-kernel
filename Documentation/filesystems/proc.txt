@@ -853,7 +853,7 @@ Dirty:             968 kB
 Writeback:           0 kB
 AnonPages:      861800 kB
 Mapped:         280372 kB
-Shmem:             644 kB
+Shmem:           26396 kB
 Slab:           284364 kB
 SReclaimable:   159856 kB
 SUnreclaim:     124508 kB
@@ -867,6 +867,9 @@ VmallocTotal:   112216 kB
 VmallocUsed:       428 kB
 VmallocChunk:   111088 kB
 AnonHugePages:   49152 kB
+ShmemHugePages:  20480 kB
+ShmemPmdMapped:  12288 kB
+ShmemFreeHoles:      0 kB
 
     MemTotal: Total usable ram (i.e. physical ram minus a few reserved
               bits and the kernel binary code)
@@ -908,7 +911,6 @@ MemAvailable: An estimate of how much memory is available for starting new
        Dirty: Memory which is waiting to get written back to the disk
    Writeback: Memory which is actively being written back to the disk
    AnonPages: Non-file backed pages mapped into userspace page tables
-AnonHugePages: Non-file backed huge pages mapped into userspace page tables
       Mapped: files which have been mmaped, such as libraries
        Shmem: Total memory used by shared memory (shmem) and tmpfs
         Slab: in-kernel data structures cache
@@ -949,6 +951,10 @@ Committed_AS: The amount of memory presently allocated on the system.
 VmallocTotal: total size of vmalloc memory area
  VmallocUsed: amount of vmalloc area which is used
 VmallocChunk: largest contiguous block of vmalloc area which is free
+ AnonHugePages: Non-file backed huge pages mapped into userspace page tables
+ShmemHugePages: tmpfs-file backed huge pages completed (subset of Shmem)
+ShmemPmdMapped: tmpfs-file backed huge pages with huge mappings into userspace
+ShmemFreeHoles: Space reserved for tmpfs team pages but available to shrinker
 
 ..............................................................................
 
