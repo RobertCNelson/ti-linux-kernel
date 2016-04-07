@@ -353,6 +353,7 @@ void *page_rmapping(struct page *page)
 bool page_mapped(struct page *page)
 {
 	int i;
+
 	if (likely(!PageCompound(page)))
 		return atomic_read(&page->_mapcount) >= 0;
 	page = compound_head(page);
