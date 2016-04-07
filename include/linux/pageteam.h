@@ -30,6 +30,30 @@ static inline struct page *team_head(struct page *page)
 }
 
 /*
+ * Layout of team head's page->team_usage field, as on x86_64 and arm64_4K:
+ *
+ *  63        32 31          22 21      12     11         10    9          0
+ * +------------+--------------+----------+----------+---------+------------+
+ * | pmd_mapped & instantiated |pte_mapped| reserved | mlocked | lru_weight |
+ * |   42 bits       10 bits   |  10 bits |  1 bit   |  1 bit  |   10 bits  |
+ * +------------+--------------+----------+----------+---------+------------+
+ *
+ * TEAM_LRU_WEIGHT_ONE               1  (1<<0)
+ * TEAM_LRU_WEIGHT_MASK            3ff  (1<<10)-1
+ * TEAM_PMD_MLOCKED                400  (1<<10)
+ * TEAM_RESERVED_FLAG              800  (1<<11)
+ * TEAM_PTE_COUNTER               1000  (1<<12)
+ * TEAM_PTE_MASK                3ff000  (1<<22)-(1<<12)
+ * TEAM_PAGE_COUNTER            400000  (1<<22)
+ * TEAM_COMPLETE              80000000  (1<<31)
+ * TEAM_MAPPING_COUNTER         400000  (1<<22)
+ * TEAM_PMD_MAPPED            80400000  (1<<31)
+ *
+ * The upper bits count up to TEAM_COMPLETE as pages are instantiated,
+ * and then, above TEAM_COMPLETE, they count huge mappings of the team.
+ * Team tails have team_usage either 1 (lru_weight 1) or 0 (lru_weight 0).
+ */
+/*
  * Mask for lower bits of team_usage, giving the weight 0..HPAGE_PMD_NR of the
  * page on its LRU: normal pages have weight 1, tails held unevictable until
  * head is evicted have weight 0, and the head gathers weight 1..HPAGE_PMD_NR.
@@ -42,8 +66,22 @@ static inline struct page *team_head(struct page *page)
  */
 #define TEAM_PMD_MLOCKED	(1L << (HPAGE_PMD_ORDER + 1))
 #define TEAM_RESERVED_FLAG	(1L << (HPAGE_PMD_ORDER + 2))
-
+#ifdef CONFIG_64BIT
+/*
+ * Count how many pages of team are individually mapped into userspace.
+ */
+#define TEAM_PTE_COUNTER	(1L << (HPAGE_PMD_ORDER + 3))
+#define TEAM_HIGH_COUNTER	(1L << (2*HPAGE_PMD_ORDER + 4))
+#define TEAM_PTE_MASK		(TEAM_HIGH_COUNTER - TEAM_PTE_COUNTER)
+#define team_pte_count(usage)	(((usage) & TEAM_PTE_MASK) / TEAM_PTE_COUNTER)
+#else /* 32-bit */
+/*
+ * Not enough bits in atomic_long_t: we prefer not to bloat struct page just to
+ * avoid duplication in Mapped, when a page is mapped both hugely and unhugely.
+ */
 #define TEAM_HIGH_COUNTER	(1L << (HPAGE_PMD_ORDER + 3))
+#define team_pte_count(usage)	1 /* allows for the extra page_add_file_rmap */
+#endif /* CONFIG_64BIT */
 /*
  * Count how many pages of team are instantiated, as it is built up.
  */
@@ -66,22 +104,110 @@ static inline bool team_pmd_mapped(struct page *head)
 
 /*
  * Returns true if this was the first mapping by pmd, whereupon mapped stats
- * need to be updated.
+ * need to be updated.  Together with the number of pages which then need
+ * to be accounted (can be ignored when false returned): because some team
+ * members may have been mapped unhugely by pte, so already counted as Mapped.
  */
-static inline bool inc_team_pmd_mapped(struct page *head)
+static inline bool inc_team_pmd_mapped(struct page *head, int *nr_pages)
 {
-	return atomic_long_add_return(TEAM_MAPPING_COUNTER, &head->team_usage)
-		< TEAM_PMD_MAPPED + TEAM_MAPPING_COUNTER;
+	long team_usage;
+
+	team_usage = atomic_long_add_return(TEAM_MAPPING_COUNTER,
+					    &head->team_usage);
+	*nr_pages = HPAGE_PMD_NR - team_pte_count(team_usage);
+	return team_usage < TEAM_PMD_MAPPED + TEAM_MAPPING_COUNTER;
 }
 
 /*
  * Returns true if this was the last mapping by pmd, whereupon mapped stats
- * need to be updated.
+ * need to be updated.  Together with the number of pages which then need
+ * to be accounted (can be ignored when false returned): because some team
+ * members may still be mapped unhugely by pte, so remain counted as Mapped.
  */
-static inline bool dec_team_pmd_mapped(struct page *head)
+static inline bool dec_team_pmd_mapped(struct page *head, int *nr_pages)
 {
-	return atomic_long_sub_return(TEAM_MAPPING_COUNTER, &head->team_usage)
-		< TEAM_PMD_MAPPED;
+	long team_usage;
+
+	team_usage = atomic_long_sub_return(TEAM_MAPPING_COUNTER,
+					    &head->team_usage);
+	*nr_pages = HPAGE_PMD_NR - team_pte_count(team_usage);
+	return team_usage < TEAM_PMD_MAPPED;
+}
+
+/*
+ * Returns true if this pte mapping is of a non-team page, or of a team page not
+ * covered by an existing huge pmd mapping: whereupon stats need to be updated.
+ * Only called when mapcount goes up from 0 to 1 i.e. _mapcount from -1 to 0.
+ */
+static inline bool inc_team_pte_mapped(struct page *page)
+{
+#ifdef CONFIG_64BIT
+	struct page *head;
+	long team_usage;
+	long old;
+
+	if (likely(!PageTeam(page)))
+		return true;
+	head = team_head(page);
+	team_usage = atomic_long_read(&head->team_usage);
+	for (;;) {
+		/* Is team now being disbanded? Stop once team_usage is reset */
+		if (unlikely(!PageTeam(head) ||
+			     team_usage / TEAM_PAGE_COUNTER == 0))
+			return true;
+		/*
+		 * XXX: but despite the impressive-looking cmpxchg, gthelen
+		 * points out that head might be freed and reused and assigned
+		 * a matching value in ->private now: tiny chance, must revisit.
+		 */
+		old = atomic_long_cmpxchg(&head->team_usage,
+			team_usage, team_usage + TEAM_PTE_COUNTER);
+		if (likely(old == team_usage))
+			break;
+		team_usage = old;
+	}
+	return team_usage < TEAM_PMD_MAPPED;
+#else /* 32-bit */
+	return true;
+#endif
+}
+
+/*
+ * Returns true if this pte mapping is of a non-team page, or of a team page not
+ * covered by a remaining huge pmd mapping: whereupon stats need to be updated.
+ * Only called when mapcount goes down from 1 to 0 i.e. _mapcount from 0 to -1.
+ */
+static inline bool dec_team_pte_mapped(struct page *page)
+{
+#ifdef CONFIG_64BIT
+	struct page *head;
+	long team_usage;
+	long old;
+
+	if (likely(!PageTeam(page)))
+		return true;
+	head = team_head(page);
+	team_usage = atomic_long_read(&head->team_usage);
+	for (;;) {
+		/* Is team now being disbanded? Stop once team_usage is reset */
+		if (unlikely(!PageTeam(head) ||
+			     team_usage / TEAM_PAGE_COUNTER == 0))
+			return true;
+		/*
+		 * XXX: but despite the impressive-looking cmpxchg, gthelen
+		 * points out that head might be freed and reused and assigned
+		 * a matching value in ->private now: tiny chance, must revisit.
+		 */
+		old = atomic_long_cmpxchg(&head->team_usage,
+			team_usage, team_usage - TEAM_PTE_COUNTER);
+		if (likely(old == team_usage))
+			break;
+		team_usage = old;
+	}
+	return team_usage < TEAM_PMD_MAPPED;
+#else /* 32-bit */
+	return true;
+#endif
 }
 
 static inline void inc_lru_weight(struct page *head)

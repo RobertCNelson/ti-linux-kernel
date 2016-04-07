@@ -3665,8 +3665,12 @@ static inline unsigned long zone_unmapped_file_pages(struct zone *zone)
 	/*
 	 * It's possible for there to be more file mapped pages than
 	 * accounted for by the pages on the file LRU lists because
-	 * tmpfs pages accounted for as ANON can also be FILE_MAPPED
+	 * tmpfs pages accounted for as ANON can also be FILE_MAPPED.
+	 * We don't know how many, beyond the PMDMAPPED excluded below.
 	 */
+	if (IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE))
+		file_mapped -= zone_page_state(zone, NR_SHMEM_PMDMAPPED) <<
+							HPAGE_PMD_ORDER;
 	return (file_lru > file_mapped) ? (file_lru - file_mapped) : 0;
 }
 
