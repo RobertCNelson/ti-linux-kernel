@@ -285,6 +285,7 @@ static unsigned long zone_dirtyable_memory(struct zone *zone)
 	 */
 	nr_pages -= min(nr_pages, zone->totalreserve_pages);
 
+	nr_pages += zone_page_state(zone, NR_SHMEM_FREEHOLES);
 	nr_pages += zone_page_state(zone, NR_INACTIVE_FILE);
 	nr_pages += zone_page_state(zone, NR_ACTIVE_FILE);
 
@@ -348,6 +349,7 @@ static unsigned long global_dirtyable_memory(void)
 	 */
 	x -= min(x, totalreserve_pages);
 
+	x += global_page_state(NR_SHMEM_FREEHOLES);
 	x += global_page_state(NR_INACTIVE_FILE);
 	x += global_page_state(NR_ACTIVE_FILE);
 

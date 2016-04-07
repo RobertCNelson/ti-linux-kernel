@@ -3790,6 +3790,12 @@ long si_mem_available(void)
 	available += pagecache;
 
 	/*
+	 * Shmem freeholes help to keep huge pages intact, but contain
+	 * no data, and can be shrunk whenever small pages are needed.
+	 */
+	available += global_page_state(NR_SHMEM_FREEHOLES);
+
+	/*
 	 * Part of the reclaimable slab consists of items that are in use,
 	 * and cannot be freed. Cap this estimate at the low watermark.
 	 */
