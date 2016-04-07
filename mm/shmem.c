@@ -413,6 +413,8 @@ static void shmem_added_to_hugeteam(struct page *page, struct zone *zone,
 				&head->team_usage) >= TEAM_COMPLETE) {
 			shmem_clear_tag_hugehole(mapping, head->index);
 			__inc_zone_state(zone, NR_SHMEM_HUGEPAGES);
+			mem_cgroup_update_page_stat_treelocked(head,
+				MEM_CGROUP_STAT_SHMEM_HUGEPAGES, HPAGE_PMD_NR);
 		}
 		__dec_zone_state(zone, NR_SHMEM_FREEHOLES);
 	}
@@ -523,6 +525,8 @@ again2:
 		if (nr >= HPAGE_PMD_NR) {
 			ClearPageChecked(head);
 			__dec_zone_state(zone, NR_SHMEM_HUGEPAGES);
+			mem_cgroup_update_page_stat_treelocked(head,
+				MEM_CGROUP_STAT_SHMEM_HUGEPAGES, -HPAGE_PMD_NR);
 			VM_BUG_ON(nr != HPAGE_PMD_NR);
 		} else if (nr) {
 			shmem_clear_tag_hugehole(mapping, head->index);

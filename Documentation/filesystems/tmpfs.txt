@@ -200,6 +200,14 @@ nr_shmem_hugepages 13         tmpfs hugepages completed (each 512 in nr_shmem)
 nr_shmem_pmdmapped 6          tmpfs hugepages with huge mappings in userspace
 nr_shmem_freeholes 167861     pages reserved for team but available to shrinker
 
+/sys/fs/cgroup/memory/<cgroup>/memory.stat shows:
+
+shmem_hugepages 27262976   bytes tmpfs hugepage completed (subset of cache)
+shmem_pmdmapped 12582912   bytes tmpfs huge mapped huge (subset of mapped_file)
+
+Note: the individual pages of a huge team might be charged to different
+memcgs, but these counts assume that they are all charged to the same as head.
+
 Author:
    Christoph Rohland <cr@sap.com>, 1.12.01
 Updated:

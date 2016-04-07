@@ -107,6 +107,7 @@ static const char * const mem_cgroup_stat_names[] = {
 	"dirty",
 	"writeback",
 	"swap",
+	"shmem_hugepages",
 	"shmem_pmdmapped",
 };
 
@@ -4428,6 +4429,17 @@ static struct page *mc_handle_file_pte(struct vm_area_struct *vma,
 	return page;
 }
 
+void mem_cgroup_update_page_stat_treelocked(struct page *page,
+				enum mem_cgroup_stat_index idx, int val)
+{
+	/* Update this VM_BUG_ON if other cases are added */
+	VM_BUG_ON(idx != MEM_CGROUP_STAT_SHMEM_HUGEPAGES);
+	lockdep_assert_held(&page->mapping->tree_lock);
+
+	if (page->mem_cgroup)
+		__this_cpu_add(page->mem_cgroup->stat->count[idx], val);
+}
+
 /**
  * mem_cgroup_move_account - move account of the page
  * @page: the page
@@ -4445,6 +4457,7 @@ static int mem_cgroup_move_account(struct page *page,
 				   struct mem_cgroup *from,
 				   struct mem_cgroup *to)
 {
+	spinlock_t *tree_lock = NULL;
 	unsigned long flags;
 	int nr_pages = compound ? hpage_nr_pages(page) : 1;
 	int file_mapped = 1;
@@ -4484,9 +4497,9 @@ static int mem_cgroup_move_account(struct page *page,
 	 * So mapping should be stable for dirty pages.
 	 */
 	if (!anon && PageDirty(page)) {
-		struct address_space *mapping = page_mapping(page);
+		struct address_space *mapping = page->mapping;
 
-		if (mapping_cap_account_dirty(mapping)) {
+		if (mapping && mapping_cap_account_dirty(mapping)) {
 			__this_cpu_sub(from->stat->count[MEM_CGROUP_STAT_DIRTY],
 				       nr_pages);
 			__this_cpu_add(to->stat->count[MEM_CGROUP_STAT_DIRTY],
@@ -4495,10 +4508,28 @@ static int mem_cgroup_move_account(struct page *page,
 	}
 
 	if (!anon && PageTeam(page)) {
-		if (page == team_head(page)) {
-			bool pmd_mapped;
+		struct address_space *mapping = page->mapping;
 
-			count_team_pmd_mapped(page, &file_mapped, &pmd_mapped);
+		if (mapping && page == team_head(page)) {
+			bool pmd_mapped, team_complete;
+			/*
+			 * We avoided taking mapping->tree_lock unnecessarily.
+			 * Is it safe to take mapping->tree_lock below?  Was it
+			 * safe to peek at PageTeam above, without tree_lock?
+			 * Yes, this is a team head, just now taken from its
+			 * lru: PageTeam must already be set. And we took
+			 * page lock above, so page->mapping is stable.
+			 */
+			tree_lock = &mapping->tree_lock;
+			spin_lock(tree_lock);
+			count_team_pmd_mapped(page, &file_mapped, &pmd_mapped,
+					      &team_complete);
+			if (team_complete) {
+				__this_cpu_sub(from->stat->count[
+				MEM_CGROUP_STAT_SHMEM_HUGEPAGES], HPAGE_PMD_NR);
+				__this_cpu_add(to->stat->count[
+				MEM_CGROUP_STAT_SHMEM_HUGEPAGES], HPAGE_PMD_NR);
+			}
 			if (pmd_mapped) {
 				__this_cpu_sub(from->stat->count[
 				MEM_CGROUP_STAT_SHMEM_PMDMAPPED], HPAGE_PMD_NR);
@@ -4519,10 +4550,12 @@ static int mem_cgroup_move_account(struct page *page,
 	 * It is safe to change page->mem_cgroup here because the page
 	 * is referenced, charged, and isolated - we can't race with
 	 * uncharging, charging, migration, or LRU putback.
+	 * Caller should have done css_get.
 	 */
-
-	/* caller should have done css_get */
 	page->mem_cgroup = to;
+
+	if (tree_lock)
+		spin_unlock(tree_lock);
 	spin_unlock_irqrestore(&from->move_lock, flags);
 
 	ret = 0;
