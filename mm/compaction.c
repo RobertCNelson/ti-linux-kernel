@@ -735,6 +735,11 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 			continue;
 		}
 
+		if (PageTeam(page)) {
+			low_pfn = round_up(low_pfn + 1, HPAGE_PMD_NR) - 1;
+			continue;
+		}
+
 		/*
 		 * Check may be lockless but that's ok as we recheck later.
 		 * It's possible to migrate LRU pages and balloon pages
