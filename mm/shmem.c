@@ -6,8 +6,8 @@
  *		 2000-2001 Christoph Rohland
  *		 2000-2001 SAP AG
  *		 2002 Red Hat Inc.
- * Copyright (C) 2002-2011 Hugh Dickins.
- * Copyright (C) 2011 Google Inc.
+ * Copyright (C) 2002-2016 Hugh Dickins.
+ * Copyright (C) 2011-2016 Google Inc.
  * Copyright (C) 2002-2005 VERITAS Software Corporation.
  * Copyright (C) 2004 Andi Kleen, SuSE Labs
  *
@@ -788,9 +788,90 @@ struct recovery {
 	bool exposed_team;
 };
 
-#define shr_stats(x)	do {} while (0)
-#define shr_stats_add(x, n) do {} while (0)
-/* Stats implemented in a later patch */
+#ifdef CONFIG_DEBUG_FS
+#include <linux/debugfs.h>
+
+static struct dentry *shr_debugfs_root;
+static struct {
+	/*
+	 * Just stats: no need to use atomics; and although many of these
+	 * u32s can soon overflow, debugging doesn't need them to be u64s.
+	 */
+	u32 huge_alloced;
+	u32 huge_failed;
+	u32 huge_too_late;
+	u32 page_created;
+	u32 page_migrate;
+	u32 page_off_lru;
+	u32 page_raced;
+	u32 page_teamed;
+	u32 page_unmigrated;
+	u32 recov_completed;
+	u32 recov_failed;
+	u32 recov_partial;
+	u32 recov_retried;
+	u32 remap_another;
+	u32 remap_faulter;
+	u32 remap_untried;
+	u32 resume_tagged;
+	u32 resume_teamed;
+	u32 swap_cached;
+	u32 swap_entry;
+	u32 swap_gone;
+	u32 swap_read;
+	u32 work_already;
+	u32 work_queued;
+	u32 work_too_late;
+	u32 work_too_many;
+} shmem_huge_recovery_stats;
+
+#define shr_create(x)	debugfs_create_u32(#x, S_IRUGO, shr_debugfs_root, \
+					   &shmem_huge_recovery_stats.x)
+static int __init shmem_debugfs_init(void)
+{
+	if (!debugfs_initialized())
+		return -ENODEV;
+	shr_debugfs_root = debugfs_create_dir("shmem_huge_recovery", NULL);
+	if (!shr_debugfs_root)
+		return -ENOMEM;
+
+	shr_create(huge_alloced);
+	shr_create(huge_failed);
+	shr_create(huge_too_late);
+	shr_create(page_created);
+	shr_create(page_migrate);
+	shr_create(page_off_lru);
+	shr_create(page_raced);
+	shr_create(page_teamed);
+	shr_create(page_unmigrated);
+	shr_create(recov_completed);
+	shr_create(recov_failed);
+	shr_create(recov_partial);
+	shr_create(recov_retried);
+	shr_create(remap_another);
+	shr_create(remap_faulter);
+	shr_create(remap_untried);
+	shr_create(resume_tagged);
+	shr_create(resume_teamed);
+	shr_create(swap_cached);
+	shr_create(swap_entry);
+	shr_create(swap_gone);
+	shr_create(swap_read);
+	shr_create(work_already);
+	shr_create(work_queued);
+	shr_create(work_too_late);
+	shr_create(work_too_many);
+	return 0;
+}
+fs_initcall(shmem_debugfs_init);
+
+#undef  shr_create
+#define shr_stats(x)		(shmem_huge_recovery_stats.x++)
+#define shr_stats_add(x, n)	(shmem_huge_recovery_stats.x += n)
+#else
+#define shr_stats(x)		do {} while (0)
+#define shr_stats_add(x, n)	do {} while (0)
+#endif /* CONFIG_DEBUG_FS */
 
 static bool shmem_work_still_useful(struct recovery *recovery)
 {
