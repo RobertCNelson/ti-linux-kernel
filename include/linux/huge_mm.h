@@ -127,10 +127,24 @@ static inline spinlock_t *pmd_trans_huge_lock(pmd_t *pmd,
 	else
 		return NULL;
 }
+
+/* Repeat definition from linux/pageteam.h to force error if different */
+#define TEAM_LRU_WEIGHT_MASK	((1L << (HPAGE_PMD_ORDER + 1)) - 1)
+
+/*
+ * hpage_nr_pages(page) returns the current LRU weight of the page.
+ * Beware of races when it is used: an Anon THPage might get split,
+ * so may need protection by compound lock or lruvec lock; a huge tmpfs
+ * team page might have weight 1 shifted from tail to head, or back to
+ * tail when disbanded, so may need protection by lruvec lock.
+ */
 static inline int hpage_nr_pages(struct page *page)
 {
 	if (unlikely(PageTransHuge(page)))
 		return HPAGE_PMD_NR;
+	if (PageTeam(page))
+		return atomic_long_read(&page->team_usage) &
+					TEAM_LRU_WEIGHT_MASK;
 	return 1;
 }
 
