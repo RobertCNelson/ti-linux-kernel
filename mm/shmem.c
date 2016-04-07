@@ -59,6 +59,7 @@ static struct vfsmount *shm_mnt;
 #include <linux/splice.h>
 #include <linux/security.h>
 #include <linux/shrinker.h>
+#include <linux/workqueue.h>
 #include <linux/sysctl.h>
 #include <linux/swapops.h>
 #include <linux/pageteam.h>
@@ -319,6 +320,7 @@ static DEFINE_SPINLOCK(shmem_shrinklist_lock);
 /* ifdef here to avoid bloating shmem.o when not necessary */
 
 int shmem_huge __read_mostly;
+int shmem_huge_recoveries __read_mostly = 8;	/* concurrent recovery limit */
 
 static struct page *shmem_hugeteam_lookup(struct address_space *mapping,
 					  pgoff_t index, bool speculative)
@@ -377,8 +379,8 @@ static int shmem_freeholes(struct page *head)
 		HPAGE_PMD_NR - (nr / TEAM_PAGE_COUNTER);
 }
 
-static void shmem_clear_tag_hugehole(struct address_space *mapping,
-				     pgoff_t index)
+static struct page *shmem_clear_tag_hugehole(struct address_space *mapping,
+					     pgoff_t index)
 {
 	struct page *page = NULL;
 
@@ -391,9 +393,13 @@ static void shmem_clear_tag_hugehole(struct address_space *mapping,
 	 */
 	radix_tree_gang_lookup_tag(&mapping->page_tree, (void **)&page,
 					index, 1, SHMEM_TAG_HUGEHOLE);
-	VM_BUG_ON(!page || page->index >= index + HPAGE_PMD_NR);
-	radix_tree_tag_clear(&mapping->page_tree, page->index,
+	VM_BUG_ON(radix_tree_exception(page));
+	if (page && page->index < index + HPAGE_PMD_NR) {
+		radix_tree_tag_clear(&mapping->page_tree, page->index,
 					SHMEM_TAG_HUGEHOLE);
+		return page;
+	}
+	return NULL;
 }
 
 static void shmem_added_to_hugeteam(struct page *page, struct zone *zone,
@@ -748,6 +754,190 @@ static void shmem_disband_hugeteam(struct page *page)
 	preempt_enable();
 }
 
+static LIST_HEAD(shmem_recoverylist);
+static unsigned int shmem_recoverylist_depth;
+static DEFINE_SPINLOCK(shmem_recoverylist_lock);
+
+struct recovery {
+	struct list_head list;
+	struct work_struct work;
+	struct mm_struct *mm;
+	struct inode *inode;
+	struct page *page;
+	pgoff_t head_index;
+};
+
+#define shr_stats(x)	do {} while (0)
+/* Stats implemented in a later patch */
+
+static bool shmem_work_still_useful(struct recovery *recovery)
+{
+	struct address_space *mapping = READ_ONCE(recovery->page->mapping);
+
+	return mapping &&			/* page is not yet truncated */
+#ifdef CONFIG_MEMCG
+		recovery->mm->owner &&		/* mm can still charge memcg */
+#else
+		atomic_read(&recovery->mm->mm_users) &&	/* mm still has users */
+#endif
+		!RB_EMPTY_ROOT(&mapping->i_mmap);  /* file is still mapped */
+}
+
+static int shmem_recovery_populate(struct recovery *recovery, struct page *head)
+{
+	/* Huge page has been split but is not yet PageTeam */
+	shmem_disband_hugetails(head, NULL, 0);
+	return -ENOENT;
+}
+
+static void shmem_recovery_remap(struct recovery *recovery, struct page *head)
+{
+}
+
+static void shmem_recovery_work(struct work_struct *work)
+{
+	struct recovery *recovery;
+	struct shmem_inode_info *info;
+	struct address_space *mapping;
+	struct page *page;
+	struct page *head = NULL;
+	int error = -ENOENT;
+
+	recovery = container_of(work, struct recovery, work);
+	info = SHMEM_I(recovery->inode);
+	if (!shmem_work_still_useful(recovery)) {
+		shr_stats(work_too_late);
+		goto out;
+	}
+
+	/* Are we resuming from an earlier partially successful attempt? */
+	mapping = recovery->inode->i_mapping;
+	spin_lock_irq(&mapping->tree_lock);
+	page = shmem_clear_tag_hugehole(mapping, recovery->head_index);
+	if (page)
+		head = team_head(page);
+	spin_unlock_irq(&mapping->tree_lock);
+	if (head) {
+		/* Serialize with shrinker so it won't mess with our range */
+		spin_lock(&shmem_shrinklist_lock);
+		spin_unlock(&shmem_shrinklist_lock);
+	}
+
+	/* If team is now complete, no tag and head would be found above */
+	page = recovery->page;
+	if (PageTeam(page))
+		head = team_head(page);
+
+	/* Get a reference to the head of the team already being assembled */
+	if (head) {
+		if (!get_page_unless_zero(head))
+			head = NULL;
+		else if (!PageTeam(head) || head->mapping != mapping ||
+				head->index != recovery->head_index) {
+			put_page(head);
+			head = NULL;
+		}
+	}
+
+	if (head) {
+		/* We are resuming work from a previous partial recovery */
+		if (PageTeam(page))
+			shr_stats(resume_teamed);
+		else
+			shr_stats(resume_tagged);
+	} else {
+		gfp_t gfp = mapping_gfp_mask(mapping);
+		/*
+		 * XXX: Note that with swapin readahead, page_to_nid(page) will
+		 * often choose an unsuitable NUMA node: something to fix soon,
+		 * but not an immediate blocker.
+		 */
+		head = __alloc_pages_node(page_to_nid(page),
+			gfp | __GFP_NOWARN | __GFP_THISNODE, HPAGE_PMD_ORDER);
+		if (!head) {
+			shr_stats(huge_failed);
+			error = -ENOMEM;
+			goto out;
+		}
+		if (!shmem_work_still_useful(recovery)) {
+			__free_pages(head, HPAGE_PMD_ORDER);
+			shr_stats(huge_too_late);
+			goto out;
+		}
+		split_page(head, HPAGE_PMD_ORDER);
+		get_page(head);
+		shr_stats(huge_alloced);
+	}
+
+	put_page(page);			/* before trying to migrate it */
+	recovery->page = head;		/* to put at out */
+
+	error = shmem_recovery_populate(recovery, head);
+	if (!error)
+		shmem_recovery_remap(recovery, head);
+out:
+	put_page(recovery->page);
+	/* Let shmem_evict_inode proceed towards freeing it */
+	if (atomic_dec_and_test(&info->recoveries))
+		wake_up_atomic_t(&info->recoveries);
+	mmdrop(recovery->mm);
+
+	spin_lock(&shmem_recoverylist_lock);
+	shmem_recoverylist_depth--;
+	list_del(&recovery->list);
+	spin_unlock(&shmem_recoverylist_lock);
+	kfree(recovery);
+}
+
+static void shmem_huge_recovery(struct inode *inode, struct page *page,
+				struct vm_area_struct *vma)
+{
+	struct recovery *recovery;
+	struct recovery *r;
+
+	/* Limit the outstanding work somewhat; but okay to overshoot */
+	if (shmem_recoverylist_depth >= shmem_huge_recoveries) {
+		shr_stats(work_too_many);
+		return;
+	}
+	recovery = kmalloc(sizeof(*recovery), GFP_KERNEL);
+	if (!recovery)
+		return;
+
+	recovery->mm = vma->vm_mm;
+	recovery->inode = inode;
+	recovery->page = page;
+	recovery->head_index = round_down(page->index, HPAGE_PMD_NR);
+
+	spin_lock(&shmem_recoverylist_lock);
+	list_for_each_entry(r, &shmem_recoverylist, list) {
+		/* Is someone already working on this extent? */
+		if (r->inode == inode &&
+		    r->head_index == recovery->head_index) {
+			spin_unlock(&shmem_recoverylist_lock);
+			kfree(recovery);
+			shr_stats(work_already);
+			return;
+		}
+	}
+	list_add(&recovery->list, &shmem_recoverylist);
+	shmem_recoverylist_depth++;
+	spin_unlock(&shmem_recoverylist_lock);
+
+	/*
+	 * It's safe to leave inc'ing these reference counts until after
+	 * dropping the list lock above, because the corresponding decs
+	 * cannot happen until the work is run, and we queue it below.
+	 */
+	atomic_inc(&recovery->mm->mm_count);
+	atomic_inc(&SHMEM_I(inode)->recoveries);
+	get_page(page);
+
+	INIT_WORK(&recovery->work, shmem_recovery_work);
+	schedule_work(&recovery->work);
+	shr_stats(work_queued);
+}
+
 static struct page *shmem_get_hugehole(struct address_space *mapping,
 				       unsigned long *index)
 {
@@ -998,6 +1188,8 @@ static struct shrinker shmem_hugehole_shrinker = {
 #else /* !CONFIG_TRANSPARENT_HUGEPAGE */
 
 #define shmem_huge SHMEM_HUGE_DENY
+#define shmem_huge_recoveries 0
+#define shr_stats(x) do {} while (0)
 
 static inline struct page *shmem_hugeteam_lookup(struct address_space *mapping,
 					pgoff_t index, bool speculative)
@@ -1019,6 +1211,11 @@ static inline int shmem_populate_hugeteam(struct inode *inode,
 				struct page *head, struct vm_area_struct *vma)
 {
 	return -EAGAIN;
+}
+
+static inline void shmem_huge_recovery(struct inode *inode,
+				struct page *page, struct vm_area_struct *vma)
+{
 }
 
 static inline unsigned long shmem_shrink_hugehole(struct shrinker *shrink,
@@ -1504,6 +1701,12 @@ static int shmem_setattr(struct dentry *dentry, struct iattr *attr)
 	return error;
 }
 
+static int shmem_wait_on_atomic_t(atomic_t *atomic)
+{
+	schedule();
+	return 0;
+}
+
 static void shmem_evict_inode(struct inode *inode)
 {
 	struct shmem_inode_info *info = SHMEM_I(inode);
@@ -1525,6 +1728,9 @@ static void shmem_evict_inode(struct inode *inode)
 			list_del_init(&info->swaplist);
 			mutex_unlock(&shmem_swaplist_mutex);
 		}
+		/* Stop inode from being freed while recovery is in progress */
+		wait_on_atomic_t(&info->recoveries, shmem_wait_on_atomic_t,
+				 TASK_UNINTERRUPTIBLE);
 	}
 
 	simple_xattrs_free(&info->xattrs);
@@ -1878,7 +2084,8 @@ static struct page *shmem_alloc_page(gfp_t gfp, struct shmem_inode_info *info,
 			head = alloc_pages_vma(gfp|__GFP_NORETRY|__GFP_NOWARN,
 				HPAGE_PMD_ORDER, &pvma, 0, numa_node_id(),
 				true);
-			if (!head &&
+			/* Shrink and retry? Or leave it to recovery worker */
+			if (!head && !shmem_huge_recoveries &&
 			    shmem_shrink_hugehole(NULL, NULL) != SHRINK_STOP) {
 				head = alloc_pages_vma(
 					gfp|__GFP_NORETRY|__GFP_NOWARN,
@@ -2376,9 +2583,9 @@ single:
 	 */
 	if (!IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE))
 		return ret;
-	if (!(vmf->flags & FAULT_FLAG_MAY_HUGE))
+	if (shmem_huge == SHMEM_HUGE_DENY)
 		return ret;
-	if (!PageTeam(vmf->page))
+	if (shmem_huge != SHMEM_HUGE_FORCE && !SHMEM_SB(inode->i_sb)->huge)
 		return ret;
 	if (once++)
 		return ret;
@@ -2391,6 +2598,17 @@ single:
 	if (round_up(addr + 1, HPAGE_PMD_SIZE) > vma->vm_end)
 		return ret;
 	/* But omit i_size check: allow up to huge page boundary */
+
+	if (!PageTeam(vmf->page) || !(vmf->flags & FAULT_FLAG_MAY_HUGE)) {
+		/*
+		 * XXX: Need to add check for unobstructed pmd
+		 * (no anon or swap), and per-pmd ratelimiting.
+		 * Use anon_vma as over-strict hint of COWed pages.
+		 */
+		if (shmem_huge_recoveries && !vma->anon_vma)
+			shmem_huge_recovery(inode, vmf->page, vma);
+		return ret;
+	}
 
 	head = team_head(vmf->page);
 	if (!get_page_unless_zero(head))
@@ -2579,6 +2797,7 @@ static struct inode *shmem_get_inode(struct super_block *sb, const struct inode 
 		info = SHMEM_I(inode);
 		memset(info, 0, (char *)inode - (char *)info);
 		spin_lock_init(&info->lock);
+		atomic_set(&info->recoveries, 0);
 		info->seals = F_SEAL_SEAL;
 		info->flags = flags & VM_NORESERVE;
 		INIT_LIST_HEAD(&info->shrinklist);
