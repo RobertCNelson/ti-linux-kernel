@@ -1083,6 +1083,41 @@ static void isolate_freepages(struct compact_control *cc)
 	cc->free_pfn = isolate_start_pfn;
 }
 
+static void isolate_freepages_direct(struct compact_control *cc)
+{
+	unsigned long nr_pages;
+	unsigned long flags;
+
+	nr_pages = cc->nr_migratepages - cc->nr_freepages;
+
+	if (!compact_trylock_irqsave(&cc->zone->lock, &flags, cc))
+		return;
+
+	while (nr_pages) {
+		struct page *page;
+		unsigned long pfn;
+
+		page = alloc_pages_zone(cc->zone, 0, MIGRATE_MOVABLE);
+		if (!page)
+			break;
+		pfn = page_to_pfn(page);
+
+		count_compact_event(COMPACTFREE_DIRECT_ALLOC);
+
+		/* Is the free page in the block we are migrating from? */
+		if (pfn >> cc->order ==	(cc->migrate_pfn - 1) >> cc->order) {
+			list_add(&page->lru, &cc->freepages_held);
+			count_compact_event(COMPACTFREE_DIRECT_MISS);
+		} else {
+			list_add(&page->lru, &cc->freepages);
+			cc->nr_freepages++;
+			nr_pages--;
+		}
+	}
+
+	spin_unlock_irqrestore(&cc->zone->lock, flags);
+}
+
 /*
  * This is a migrate-callback that "allocates" freepages by taking pages
  * from the isolated freelists in the block we are migrating to.
@@ -1099,7 +1134,12 @@ static struct page *compaction_alloc(struct page *migratepage,
 	 * contention.
 	 */
 	if (list_empty(&cc->freepages)) {
-		if (!cc->contended)
+		if (cc->contended)
+			return NULL;
+
+		if (cc->direct_compaction && (cc->mode == MIGRATE_ASYNC))
+			isolate_freepages_direct(cc);
+		else
 			isolate_freepages(cc);
 
 		if (list_empty(&cc->freepages))
@@ -1475,6 +1515,10 @@ static int compact_zone(struct zone *zone, struct compact_control *cc)
 						(cc->mode == MIGRATE_ASYNC)) {
 				cc->migrate_pfn = block_end_pfn(
 						cc->migrate_pfn - 1, cc->order);
+
+				if (!list_empty(&cc->freepages_held))
+					release_freepages(&cc->freepages_held);
+
 				/* Draining pcplists is useless in this case */
 				cc->last_migrated_pfn = 0;
 
@@ -1495,6 +1539,8 @@ check_drain:
 				block_start_pfn(cc->migrate_pfn, cc->order);
 
 			if (cc->last_migrated_pfn < current_block_start) {
+				if (!list_empty(&cc->freepages_held))
+					release_freepages(&cc->freepages_held);
 				cpu = get_cpu();
 				lru_add_drain_cpu(cpu);
 				drain_local_pages(zone);
@@ -1525,6 +1571,8 @@ out:
 		if (free_pfn > zone->compact_cached_free_pfn)
 			zone->compact_cached_free_pfn = free_pfn;
 	}
+	if (!list_empty(&cc->freepages_held))
+		release_freepages(&cc->freepages_held);
 
 	trace_mm_compaction_end(start_pfn, cc->migrate_pfn,
 				cc->free_pfn, end_pfn, sync, ret);
@@ -1553,6 +1601,7 @@ static unsigned long compact_zone_order(struct zone *zone, int order,
 	};
 	INIT_LIST_HEAD(&cc.freepages);
 	INIT_LIST_HEAD(&cc.migratepages);
+	INIT_LIST_HEAD(&cc.freepages_held);
 
 	ret = compact_zone(zone, &cc);
 
@@ -1698,6 +1747,7 @@ static void __compact_pgdat(pg_data_t *pgdat, struct compact_control *cc)
 		cc->zone = zone;
 		INIT_LIST_HEAD(&cc->freepages);
 		INIT_LIST_HEAD(&cc->migratepages);
+		INIT_LIST_HEAD(&cc->freepages_held);
 
 		/*
 		 * When called via /proc/sys/vm/compact_memory
