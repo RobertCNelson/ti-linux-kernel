@@ -1097,6 +1097,82 @@ unlock:
 
 static void shmem_recovery_remap(struct recovery *recovery, struct page *head)
 {
+	struct mm_struct *mm = recovery->mm;
+	struct address_space *mapping = head->mapping;
+	pgoff_t pgoff = head->index;
+	struct vm_area_struct *vma;
+	unsigned long addr;
+	pmd_t *pmd;
+	bool try_other_mms = false;
+
+	/*
+	 * XXX: This use of mmap_sem is regrettable.  It is needed for one
+	 * reason only: because callers of pte_offset_map(_lock)() are not
+	 * prepared for a huge pmd to appear in place of a page table at any
+	 * instant.  That can be fixed in pte_offset_map(_lock)() and callers,
+	 * but that is a more invasive change, so just do it this way for now.
+	 */
+	down_write(&mm->mmap_sem);
+	lock_page(head);
+	if (!PageTeam(head)) {
+		unlock_page(head);
+		up_write(&mm->mmap_sem);
+		return;
+	}
+	VM_BUG_ON_PAGE(!PageChecked(head), head);
+	i_mmap_lock_write(mapping);
+	vma_interval_tree_foreach(vma, &mapping->i_mmap, pgoff, pgoff) {
+		/* XXX: Use anon_vma as over-strict hint of COWed pages */
+		if (vma->anon_vma)
+			continue;
+		addr = vma_address(head, vma);
+		if (addr & (HPAGE_PMD_SIZE-1))
+			continue;
+		if (vma->vm_end < addr + HPAGE_PMD_SIZE)
+			continue;
+		if (!atomic_read(&vma->vm_mm->mm_users))
+			continue;
+		if (vma->vm_mm != mm) {
+			try_other_mms = true;
+			continue;
+		}
+		/* Only replace existing ptes: empty pmd can fault for itself */
+		pmd = mm_find_pmd(vma->vm_mm, addr);
+		if (!pmd)
+			continue;
+		remap_team_by_pmd(vma, addr, pmd, head);
+		shr_stats(remap_faulter);
+	}
+	up_write(&mm->mmap_sem);
+	if (!try_other_mms)
+		goto out;
+	vma_interval_tree_foreach(vma, &mapping->i_mmap, pgoff, pgoff) {
+		if (vma->vm_mm == mm)
+			continue;
+		/* XXX: Use anon_vma as over-strict hint of COWed pages */
+		if (vma->anon_vma)
+			continue;
+		addr = vma_address(head, vma);
+		if (addr & (HPAGE_PMD_SIZE-1))
+			continue;
+		if (vma->vm_end < addr + HPAGE_PMD_SIZE)
+			continue;
+		if (!atomic_read(&vma->vm_mm->mm_users))
+			continue;
+		/* Only replace existing ptes: empty pmd can fault for itself */
+		pmd = mm_find_pmd(vma->vm_mm, addr);
+		if (!pmd)
+			continue;
+		if (down_write_trylock(&vma->vm_mm->mmap_sem)) {
+			remap_team_by_pmd(vma, addr, pmd, head);
+			shr_stats(remap_another);
+			up_write(&vma->vm_mm->mmap_sem);
+		} else
+			shr_stats(remap_untried);
+	}
+out:
+	i_mmap_unlock_write(mapping);
+	unlock_page(head);
 }
 
 static void shmem_recovery_work(struct work_struct *work)

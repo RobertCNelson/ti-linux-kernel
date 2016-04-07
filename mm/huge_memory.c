@@ -3704,3 +3704,90 @@ raced:
 	spin_unlock(pml);
 	mmu_notifier_invalidate_range_end(mm, addr, end);
 }
+
+void remap_team_by_pmd(struct vm_area_struct *vma, unsigned long addr,
+		       pmd_t *pmd, struct page *head)
+{
+	struct mm_struct *mm = vma->vm_mm;
+	struct page *page = head;
+	pgtable_t pgtable;
+	unsigned long end;
+	spinlock_t *pml;
+	spinlock_t *ptl;
+	pmd_t pmdval;
+	pte_t *pte;
+	int rss = 0;
+
+	VM_BUG_ON_PAGE(!PageTeam(head), head);
+	VM_BUG_ON_PAGE(!PageLocked(head), head);
+	VM_BUG_ON(addr & ~HPAGE_PMD_MASK);
+	end = addr + HPAGE_PMD_SIZE;
+
+	mmu_notifier_invalidate_range_start(mm, addr, end);
+	pml = pmd_lock(mm, pmd);
+	pmdval = *pmd;
+	/* I don't see how this can happen now, but be defensive */
+	if (pmd_trans_huge(pmdval) || pmd_none(pmdval))
+		goto out;
+
+	ptl = pte_lockptr(mm, pmd);
+	if (ptl != pml)
+		spin_lock(ptl);
+
+	pgtable = pmd_pgtable(pmdval);
+	pmdval = mk_pmd(head, vma->vm_page_prot);
+	pmdval = pmd_mkhuge(pmd_mkdirty(pmdval));
+
+	/* Perhaps wise to mark head as mapped before removing pte rmaps */
+	page_add_file_rmap(head);
+
+	/*
+	 * Just as remap_team_by_ptes() would prefer to fill the page table
+	 * earlier, remap_team_by_pmd() would prefer to empty it later; but
+	 * ppc64's variant of the deposit/withdraw protocol prevents that.
+	 */
+	pte = pte_offset_map(pmd, addr);
+	do {
+		if (pte_none(*pte))
+			continue;
+
+		VM_BUG_ON(!pte_present(*pte));
+		VM_BUG_ON(pte_page(*pte) != page);
+
+		pte_clear(mm, addr, pte);
+		page_remove_rmap(page, false);
+		put_page(page);
+		rss++;
+	} while (pte++, page++, addr += PAGE_SIZE, addr != end);
+
+	pte -= HPAGE_PMD_NR;
+	addr -= HPAGE_PMD_SIZE;
+
+	if (rss) {
+		pmdp_collapse_flush(vma, addr, pmd);
+		pgtable_trans_huge_deposit(mm, pmd, pgtable);
+		set_pmd_at(mm, addr, pmd, pmdval);
+		update_mmu_cache_pmd(vma, addr, pmd);
+		get_page(head);
+		page_add_team_rmap(head);
+		add_mm_counter(mm, MM_SHMEMPAGES, HPAGE_PMD_NR - rss);
+	} else {
+		/*
+		 * Hmm.  We might have caught this vma in between unmap_vmas()
+		 * and free_pgtables(), which is a surprising time to insert a
+		 * huge page.  Before our caller checked mm_users, I sometimes
+		 * saw a "bad pmd" report, and pgtable_pmd_page_dtor() BUG on
+		 * pmd_huge_pte, when killing off tests.  But checking mm_users
+		 * is not enough to protect against munmap(): so for safety,
+		 * back out if we found no ptes to replace.
+		 */
+		page_remove_rmap(head, false);
+	}
+
+	if (ptl != pml)
+		spin_unlock(ptl);
+	pte_unmap(pte);
+out:
+	spin_unlock(pml);
+	mmu_notifier_invalidate_range_end(mm, addr, end);
+}
