@@ -25,6 +25,7 @@ enum migrate_reason {
 	MR_NUMA_MISPLACED,
 	MR_CMA,
 	MR_SHMEM_HUGEHOLE,
+	MR_SHMEM_RECOVERY,
 	MR_TYPES
 };
 
