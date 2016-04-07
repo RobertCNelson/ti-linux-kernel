@@ -135,6 +135,22 @@ static inline bool dec_team_pmd_mapped(struct page *head, int *nr_pages)
 }
 
 /*
+ * Supplies those values which mem_cgroup_move_account()
+ * needs to maintain memcg's huge tmpfs stats correctly.
+ */
+static inline void count_team_pmd_mapped(struct page *head, int *file_mapped,
+					 bool *pmd_mapped)
+{
+	long team_usage;
+
+	*file_mapped = 1;
+	team_usage = atomic_long_read(&head->team_usage);
+	*pmd_mapped = team_usage >= TEAM_PMD_MAPPED;
+	if (*pmd_mapped)
+		*file_mapped = HPAGE_PMD_NR - team_pte_count(team_usage);
+}
+
+/*
  * Returns true if this pte mapping is of a non-team page, or of a team page not
  * covered by an existing huge pmd mapping: whereupon stats need to be updated.
  * Only called when mapcount goes up from 0 to 1 i.e. _mapcount from -1 to 0.
