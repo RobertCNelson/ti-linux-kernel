@@ -145,7 +145,7 @@ static inline struct page *pageblock_pfn_to_page(unsigned long start_pfn,
 }
 
 extern int __isolate_free_page(struct page *page, unsigned int order);
-extern struct page * alloc_pages_zone(struct zone *zone, unsigned int order,
+extern struct page *alloc_pages_zone(struct zone *zone, unsigned int order,
 							int migratetype);
 extern void __free_pages_bootmem(struct page *page, unsigned long pfn,
 					unsigned int order);
