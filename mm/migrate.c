@@ -786,7 +786,7 @@ static int move_to_new_page(struct page *newpage, struct page *page,
 }
 
 static int __unmap_and_move(struct page *page, struct page *newpage,
-				int force, enum migrate_mode mode)
+		int force, enum migrate_mode mode, enum migrate_reason reason)
 {
 	int rc = -EAGAIN;
 	int page_was_mapped = 0;
@@ -813,6 +813,17 @@ static int __unmap_and_move(struct page *page, struct page *newpage,
 			goto out;
 
 		lock_page(page);
+	}
+
+	/*
+	 * huge tmpfs recovery: must not proceed if page has been truncated,
+	 * because the newpage we are about to migrate into *might* then be
+	 * already in use, on lru, with data newly written for that offset.
+	 * We can only be sure of this check once we have the page locked.
+	 */
+	if (reason == MR_SHMEM_RECOVERY && !page->mapping) {
+		rc = -ENOMEM;	/* quit migrate_pages() immediately */
+		goto out_unlock;
 	}
 
 	if (PageWriteback(page)) {
@@ -962,7 +973,7 @@ static ICE_noinline int unmap_and_move(new_page_t get_new_page,
 			goto out;
 	}
 
-	rc = __unmap_and_move(page, newpage, force, mode);
+	rc = __unmap_and_move(page, newpage, force, mode, reason);
 	if (rc == MIGRATEPAGE_SUCCESS) {
 		put_new_page = NULL;
 		set_page_owner_migrate_reason(newpage, reason);
