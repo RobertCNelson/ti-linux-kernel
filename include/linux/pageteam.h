@@ -313,6 +313,8 @@ void unmap_team_by_pmd(struct vm_area_struct *vma,
 			unsigned long addr, pmd_t *pmd, struct page *page);
 void remap_team_by_ptes(struct vm_area_struct *vma,
 			unsigned long addr, pmd_t *pmd);
+void remap_team_by_pmd(struct vm_area_struct *vma,
+			unsigned long addr, pmd_t *pmd, struct page *page);
 #else
 static inline int map_team_by_pmd(struct vm_area_struct *vma,
 			unsigned long addr, pmd_t *pmd, struct page *page)
