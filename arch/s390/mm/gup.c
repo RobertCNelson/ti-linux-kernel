@@ -66,9 +66,26 @@ static inline int gup_huge_pmd(pmd_t *pmdp, pmd_t pmd, unsigned long addr,
 		return 0;
 	VM_BUG_ON(!pfn_valid(pmd_val(pmd) >> PAGE_SHIFT));
 
-	refs = 0;
 	head = pmd_page(pmd);
 	page = head + ((addr & ~PMD_MASK) >> PAGE_SHIFT);
+
+	if (PageTeam(head)) {
+		/* Handle a huge tmpfs team with normal refcounting. */
+		do {
+			if (!page_cache_get_speculative(page))
+				return 0;
+			if (unlikely(pmd_val(pmd) != pmd_val(*pmdp))) {
+				put_page(page);
+				return 0;
+			}
+			pages[*nr] = page;
+			(*nr)++;
+			page++;
+		} while (addr += PAGE_SIZE, addr != end);
+		return 1;
+	}
+
+	refs = 0;
 	do {
 		VM_BUG_ON(compound_head(page) != head);
 		pages[*nr] = page;
