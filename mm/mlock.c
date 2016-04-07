@@ -11,6 +11,7 @@
 #include <linux/swap.h>
 #include <linux/swapops.h>
 #include <linux/pagemap.h>
+#include <linux/pageteam.h>
 #include <linux/pagevec.h>
 #include <linux/mempolicy.h>
 #include <linux/syscalls.h>
@@ -51,43 +52,72 @@ EXPORT_SYMBOL(can_do_mlock);
  * (see mm/rmap.c).
  */
 
-/*
- *  LRU accounting for clear_page_mlock()
+/**
+ * clear_pages_mlock - clear mlock from a page or pages
+ * @page - page to be unlocked
+ * @nr_pages - usually 1, but HPAGE_PMD_NR if pmd mapping is zapped.
+ *
+ * Clear the page's PageMlocked().  This can be useful in a situation where
+ * we want to unconditionally remove a page from the pagecache -- e.g.,
+ * on truncation or freeing.
+ *
+ * It is legal to call this function for any page, mlocked or not.
+ * If called for a page that is still mapped by mlocked vmas, all we do
+ * is revert to lazy LRU behaviour -- semantics are not broken.
  */
-void clear_page_mlock(struct page *page)
+void clear_pages_mlock(struct page *page, int nr_pages)
 {
-	if (!TestClearPageMlocked(page))
-		return;
+	struct zone *zone = page_zone(page);
+	struct page *endpage = page + 1;
 
-	mod_zone_page_state(page_zone(page), NR_MLOCK,
-			    -hpage_nr_pages(page));
-	count_vm_event(UNEVICTABLE_PGCLEARED);
-	if (!isolate_lru_page(page)) {
-		putback_lru_page(page);
-	} else {
-		/*
-		 * We lost the race. the page already moved to evictable list.
-		 */
-		if (PageUnevictable(page))
+	if (nr_pages > 1 && PageTeam(page)) {
+		clear_team_pmd_mlocked(page);	/* page is team head */
+		endpage = page + nr_pages;
+		nr_pages = 1;
+	}
+
+	for (; page < endpage; page++) {
+		if (page_mapped(page))
+			continue;
+		if (!TestClearPageMlocked(page))
+			continue;
+		mod_zone_page_state(zone, NR_MLOCK, -nr_pages);
+		count_vm_event(UNEVICTABLE_PGCLEARED);
+		if (!isolate_lru_page(page))
+			putback_lru_page(page);
+		else if (PageUnevictable(page))
 			count_vm_event(UNEVICTABLE_PGSTRANDED);
 	}
 }
 
-/*
- * Mark page as mlocked if not already.
+/**
+ * mlock_vma_pages - mlock a vma page or pages
+ * @page - page to be unlocked
+ * @nr_pages - usually 1, but HPAGE_PMD_NR if pmd mapping is mlocked.
+ *
+ * Mark pages as mlocked if not already.
  * If page on LRU, isolate and putback to move to unevictable list.
  */
-void mlock_vma_page(struct page *page)
+void mlock_vma_pages(struct page *page, int nr_pages)
 {
-	/* Serialize with page migration */
-	BUG_ON(!PageLocked(page));
+	struct zone *zone = page_zone(page);
+	struct page *endpage = page + 1;
 
+	/* Serialize with page migration */
+	VM_BUG_ON_PAGE(!PageLocked(page) && !PageTeam(page), page);
 	VM_BUG_ON_PAGE(PageTail(page), page);
 	VM_BUG_ON_PAGE(PageCompound(page) && PageDoubleMap(page), page);
 
-	if (!TestSetPageMlocked(page)) {
-		mod_zone_page_state(page_zone(page), NR_MLOCK,
-				    hpage_nr_pages(page));
+	if (nr_pages > 1 && PageTeam(page)) {
+		set_team_pmd_mlocked(page);	/* page is team head */
+		endpage = page + nr_pages;
+		nr_pages = 1;
+	}
+
+	for (; page < endpage; page++) {
+		if (TestSetPageMlocked(page))
+			continue;
+		mod_zone_page_state(zone, NR_MLOCK, nr_pages);
 		count_vm_event(UNEVICTABLE_PGMLOCKED);
 		if (!isolate_lru_page(page))
 			putback_lru_page(page);
@@ -111,6 +141,18 @@ static bool __munlock_isolate_lru_page(struct page *page, bool getpage)
 		return true;
 	}
 
+	/*
+	 * Perform accounting when page isolation fails in munlock.
+	 * There is nothing else to do because it means some other task has
+	 * already removed the page from the LRU. putback_lru_page() will take
+	 * care of removing the page from the unevictable list, if necessary.
+	 * vmscan [page_referenced()] will move the page back to the
+	 * unevictable list if some other vma has it mlocked.
+	 */
+	if (PageUnevictable(page))
+		__count_vm_event(UNEVICTABLE_PGSTRANDED);
+	else
+		__count_vm_event(UNEVICTABLE_PGMUNLOCKED);
 	return false;
 }
 
@@ -128,7 +170,7 @@ static void __munlock_isolated_page(struct page *page)
 	 * Optimization: if the page was mapped just once, that's our mapping
 	 * and we don't need to check all the other vmas.
 	 */
-	if (page_mapcount(page) > 1)
+	if (page_mapcount(page) > 1 || PageTeam(page))
 		ret = try_to_munlock(page);
 
 	/* Did try_to_unlock() succeed or punt? */
@@ -138,29 +180,12 @@ static void __munlock_isolated_page(struct page *page)
 	putback_lru_page(page);
 }
 
-/*
- * Accounting for page isolation fail during munlock
- *
- * Performs accounting when page isolation fails in munlock. There is nothing
- * else to do because it means some other task has already removed the page
- * from the LRU. putback_lru_page() will take care of removing the page from
- * the unevictable list, if necessary. vmscan [page_referenced()] will move
- * the page back to the unevictable list if some other vma has it mlocked.
- */
-static void __munlock_isolation_failed(struct page *page)
-{
-	if (PageUnevictable(page))
-		__count_vm_event(UNEVICTABLE_PGSTRANDED);
-	else
-		__count_vm_event(UNEVICTABLE_PGMUNLOCKED);
-}
-
 /**
- * munlock_vma_page - munlock a vma page
- * @page - page to be unlocked, either a normal page or THP page head
+ * munlock_vma_pages - munlock a vma page or pages
+ * @page - page to be unlocked
+ * @nr_pages - usually 1, but HPAGE_PMD_NR if pmd mapping is munlocked
  *
- * returns the size of the page as a page mask (0 for normal page,
- *         HPAGE_PMD_NR - 1 for THP head page)
+ * returns the size of the page (usually 1, but HPAGE_PMD_NR for huge page)
  *
  * called from munlock()/munmap() path with page supposedly on the LRU.
  * When we munlock a page, because the vma where we found the page is being
@@ -173,41 +198,56 @@ static void __munlock_isolation_failed(struct page *page)
  * can't isolate the page, we leave it for putback_lru_page() and vmscan
  * [page_referenced()/try_to_unmap()] to deal with.
  */
-unsigned int munlock_vma_page(struct page *page)
+int munlock_vma_pages(struct page *page, int nr_pages)
 {
-	int nr_pages;
 	struct zone *zone = page_zone(page);
+	struct page *endpage = page + 1;
+	struct page *head = NULL;
+	int ret = nr_pages;
+	bool isolated;
 
 	/* For try_to_munlock() and to serialize with page migration */
-	BUG_ON(!PageLocked(page));
-
+	VM_BUG_ON_PAGE(!PageLocked(page), page);
 	VM_BUG_ON_PAGE(PageTail(page), page);
 
+	if (nr_pages > 1 && PageTeam(page)) {
+		head = page;
+		clear_team_pmd_mlocked(page);	/* page is team head */
+		endpage = page + nr_pages;
+		nr_pages = 1;
+	}
+
 	/*
-	 * Serialize with any parallel __split_huge_page_refcount() which
-	 * might otherwise copy PageMlocked to part of the tail pages before
-	 * we clear it in the head page. It also stabilizes hpage_nr_pages().
+	 * Serialize THP with any parallel __split_huge_page_tail() which
+	 * might otherwise copy PageMlocked to some of the tail pages before
+	 * we clear it in the head page.
 	 */
 	spin_lock_irq(&zone->lru_lock);
+	if (nr_pages > 1 && !PageTransHuge(page))
+		ret = nr_pages = 1;
 
-	nr_pages = hpage_nr_pages(page);
-	if (!TestClearPageMlocked(page))
-		goto unlock_out;
+	for (; page < endpage; page++) {
+		if (!TestClearPageMlocked(page))
+			continue;
 
-	__mod_zone_page_state(zone, NR_MLOCK, -nr_pages);
-
-	if (__munlock_isolate_lru_page(page, true)) {
+		__mod_zone_page_state(zone, NR_MLOCK, -nr_pages);
+		isolated = __munlock_isolate_lru_page(page, true);
 		spin_unlock_irq(&zone->lru_lock);
-		__munlock_isolated_page(page);
-		goto out;
+		if (isolated)
+			__munlock_isolated_page(page);
+
+		/*
+		 * If try_to_munlock() found the huge page to be still
+		 * mlocked, don't waste more time munlocking and rmap
+		 * walking and re-mlocking each of the team's pages.
+		 */
+		if (!head || team_pmd_mlocked(head))
+			goto out;
+		spin_lock_irq(&zone->lru_lock);
 	}
-	__munlock_isolation_failed(page);
-
-unlock_out:
 	spin_unlock_irq(&zone->lru_lock);
-
 out:
-	return nr_pages - 1;
+	return ret;
 }
 
 /*
@@ -300,8 +340,6 @@ static void __munlock_pagevec(struct pagevec *pvec, struct zone *zone)
 			 */
 			if (__munlock_isolate_lru_page(page, false))
 				continue;
-			else
-				__munlock_isolation_failed(page);
 		}
 
 		/*
@@ -461,13 +499,8 @@ void munlock_vma_pages_range(struct vm_area_struct *vma,
 				put_page(page); /* follow_page_mask() */
 			} else if (PageTransHuge(page) || PageTeam(page)) {
 				lock_page(page);
-				/*
-				 * Any THP page found by follow_page_mask() may
-				 * have gotten split before reaching
-				 * munlock_vma_page(), so we need to recompute
-				 * the page_mask here.
-				 */
-				page_mask = munlock_vma_page(page);
+				page_mask = munlock_vma_pages(page,
+							page_mask + 1) - 1;
 				unlock_page(page);
 				put_page(page); /* follow_page_mask() */
 			} else {
