@@ -261,6 +261,12 @@ static int __init fdt_find_hyper_node(unsigned long node, const char *uname,
 	    !strncmp(hyper_node.prefix, s, strlen(hyper_node.prefix)))
 		hyper_node.version = s + strlen(hyper_node.prefix);
 
+	if (IS_ENABLED(CONFIG_XEN_EFI)) {
+		/* Check if Xen supports EFI */
+		if (of_get_flat_dt_subnode_by_name(node, "uefi") > 0)
+			set_bit(EFI_PARAVIRT, &efi.flags);
+	}
+
 	return 0;
 }
 
