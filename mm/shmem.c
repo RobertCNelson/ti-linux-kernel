@@ -464,6 +464,7 @@ static int shmem_populate_hugeteam(struct inode *inode, struct page *head,
 		/* Mark all pages dirty even when map is readonly, for now */
 		if (PageUptodate(head + i) && PageDirty(head + i))
 			continue;
+		page = NULL;
 		error = shmem_getpage_gfp(inode, index, &page, SGP_TEAM,
 					  gfp, vma->vm_mm, NULL);
 		if (error)
@@ -965,6 +966,7 @@ again:
 		    !account_head)
 			continue;
 
+		page = team;	/* used as hint if not yet instantiated */
 		error = shmem_getpage_gfp(recovery->inode, index, &page,
 					  SGP_TEAM, gfp, recovery->mm, NULL);
 		if (error)
@@ -2707,6 +2709,7 @@ static int shmem_replace_page(struct page **pagep, gfp_t gfp,
 
 /*
  * shmem_getpage_gfp - find page in cache, or get from swap, or allocate
+ *                     (or use page indicated by shmem_recovery_populate)
  *
  * If we allocate a new one we do not mark it dirty. That's up to the
  * vm. If we swap it in we mark it dirty since we also free the swap
@@ -2726,14 +2729,20 @@ static int shmem_getpage_gfp(struct inode *inode, pgoff_t index,
 	struct mem_cgroup *memcg;
 	struct page *page;
 	swp_entry_t swap;
+	loff_t offset;
 	int error;
 	int once = 0;
-	int alloced = 0;
+	bool alloced = false;
+	bool exposed_swapbacked = false;
 	struct page *hugehint;
 	struct page *alloced_huge = NULL;
 
 	if (index > (MAX_LFS_FILESIZE >> PAGE_SHIFT))
 		return -EFBIG;
+
+	offset = (loff_t)index << PAGE_SHIFT;
+	if (IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE) && sgp == SGP_TEAM)
+		offset &= ~((loff_t)HPAGE_PMD_SIZE-1);
 repeat:
 	swap.val = 0;
 	page = find_lock_entry(mapping, index);
@@ -2742,8 +2751,7 @@ repeat:
 		page = NULL;
 	}
 
-	if (sgp <= SGP_CACHE &&
-	    ((loff_t)index << PAGE_SHIFT) >= i_size_read(inode)) {
+	if (sgp <= SGP_TEAM && offset >= i_size_read(inode)) {
 		error = -EINVAL;
 		goto unlock;
 	}
@@ -2862,8 +2870,34 @@ repeat:
 			percpu_counter_inc(&sbinfo->used_blocks);
 		}
 
-		/* Take huge hint from super, except for shmem_symlink() */
 		hugehint = NULL;
+		if (IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE) &&
+		    sgp == SGP_TEAM && *pagep) {
+			struct page *head;
+
+			if (!get_page_unless_zero(*pagep)) {
+				error = -ENOENT;
+				goto decused;
+			}
+			page = *pagep;
+			lock_page(page);
+			head = page - (index & (HPAGE_PMD_NR-1));
+			if (!PageTeam(head)) {
+				error = -ENOENT;
+				goto decused;
+			}
+			if (PageSwapBacked(page)) {
+				shr_stats(page_raced);
+				/* maybe already created; or swapin truncated */
+				error = page->mapping ? -EEXIST : -ENOENT;
+				goto decused;
+			}
+			SetPageSwapBacked(page);
+			exposed_swapbacked = true;
+			goto memcg;
+		}
+
+		/* Take huge hint from super, except for shmem_symlink() */
 		if (mapping->a_ops == &shmem_aops &&
 		    (shmem_huge == SHMEM_HUGE_FORCE ||
 		     (sbinfo->huge && shmem_huge != SHMEM_HUGE_DENY)))
@@ -2877,7 +2911,7 @@ repeat:
 		}
 		if (sgp == SGP_WRITE)
 			__SetPageReferenced(page);
-
+memcg:
 		error = mem_cgroup_try_charge(page, charge_mm, gfp, &memcg,
 				false);
 		if (error)
@@ -2893,6 +2927,11 @@ repeat:
 			goto decused;
 		}
 		mem_cgroup_commit_charge(page, memcg, false, false);
+		if (exposed_swapbacked) {
+			shr_stats(page_created);
+			/* cannot clear swapbacked once sent to lru */
+			exposed_swapbacked = false;
+		}
 		lru_cache_add_anon(page);
 
 		spin_lock(&info->lock);
@@ -2936,8 +2975,7 @@ clear:
 	}
 
 	/* Perhaps the file has been truncated since we checked */
-	if (sgp <= SGP_CACHE &&
-	    ((loff_t)index << PAGE_SHIFT) >= i_size_read(inode)) {
+	if (sgp <= SGP_TEAM && offset >= i_size_read(inode)) {
 		if (alloced && !PageTeam(page)) {
 			ClearPageDirty(page);
 			delete_from_page_cache(page);
@@ -2965,6 +3003,10 @@ failed:
 		error = -EEXIST;
 unlock:
 	if (page) {
+		if (exposed_swapbacked) {
+			ClearPageSwapBacked(page);
+			exposed_swapbacked = false;
+		}
 		unlock_page(page);
 		put_page(page);
 	}
