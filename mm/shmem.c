@@ -4305,7 +4305,11 @@ unsigned long shmem_get_unmapped_area(struct file *file,
 				      unsigned long addr, unsigned long len,
 				      unsigned long pgoff, unsigned long flags)
 {
+#ifdef CONFIG_MMU
 	return current->mm->get_unmapped_area(file, addr, len, pgoff, flags);
+#else
+	return -ENOSYS;
+#endif
 }
 
 void shmem_truncate_range(struct inode *inode, loff_t lstart, loff_t lend)
