@@ -123,7 +123,7 @@ static int cpufreq_init(struct cpufreq_policy *policy)
 	}
 
 	/* OPPs might be populated at runtime, don't check for error here */
-	of_init_opp_table(cpu_dev);
+	dev_pm_opp_of_add_table(cpu_dev);
 
 	/*
 	 * But we need OPP table to function so if it is not there let's
@@ -200,7 +200,7 @@ out_free_cpufreq_table:
 out_free_priv:
 	kfree(priv);
 out_free_opp:
-	of_free_opp_table(cpu_dev);
+	dev_pm_opp_of_remove_table(cpu_dev);
 	of_node_put(np);
 out_put_clk:
 	clk_put(cpu_clk);
@@ -215,7 +215,7 @@ static int cpufreq_exit(struct cpufreq_policy *policy)
 	cpufreq_cooling_unregister(priv->cdev);
 	dev_pm_opp_free_cpufreq_table(priv->cpu_dev, &policy->freq_table);
 	of_pm_voltdm_notifier_unregister(priv->clk_nb);
-	of_free_opp_table(priv->cpu_dev);
+	dev_pm_opp_of_remove_table(priv->cpu_dev);
 	clk_put(policy->clk);
 	kfree(priv);
 
@@ -286,11 +286,11 @@ static int voltdm_cpufreq_probe(struct platform_device *pdev)
 	np = cpu_dev->of_node;
 
 	/* OPPs might be populated at runtime, This is just a dummy setup */
-	of_init_opp_table(cpu_dev);
+	dev_pm_opp_of_add_table(cpu_dev);
 
 	clk_nb = of_pm_voltdm_notifier_register(cpu_dev, np,
 						cpu_clk, "cpu0", &tmp);
-	of_free_opp_table(cpu_dev);
+	dev_pm_opp_of_remove_table(cpu_dev);
 
 	if (IS_ERR(clk_nb)) {
 		ret = PTR_ERR(clk_nb);
