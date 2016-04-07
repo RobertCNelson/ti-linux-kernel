@@ -187,6 +187,7 @@ struct page {
 #endif
 #endif
 		struct kmem_cache *slab_cache;	/* SL[AU]B: Pointer to slab */
+		atomic_long_t team_usage;	/* In shmem's PageTeam page */
 	};
 
 #ifdef CONFIG_MEMCG
