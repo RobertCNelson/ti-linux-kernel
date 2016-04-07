@@ -20,6 +20,7 @@ struct shmem_inode_info {
 	struct list_head	swaplist;	/* chain of maybes on swap */
 	struct shared_policy	policy;		/* NUMA memory alloc policy */
 	struct simple_xattrs	xattrs;		/* list of xattrs */
+	atomic_t		recoveries;	/* huge recovery work queued */
 	struct inode		vfs_inode;
 };
 
@@ -87,6 +88,7 @@ static inline long shmem_fcntl(struct file *f, unsigned int c, unsigned long a)
 # ifdef CONFIG_SYSCTL
 struct ctl_table;
 extern int shmem_huge, shmem_huge_min, shmem_huge_max;
+extern int shmem_huge_recoveries;
 extern int shmem_huge_sysctl(struct ctl_table *table, int write,
 			     void __user *buffer, size_t *lenp, loff_t *ppos);
 # endif /* CONFIG_SYSCTL */

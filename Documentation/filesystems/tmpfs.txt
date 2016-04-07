@@ -176,6 +176,12 @@ user accesses between end of file and that hugepage boundary will normally
 not fail with SIGBUS, as they would on a huge=0 filesystem - but will fail
 with SIGBUS if the kernel could only allocate small pages to back it.
 
+When memory pressure eases, or compaction repairs memory fragmentation,
+huge tmpfs recovery attempts to restore the original performance with
+hugepages: as small pages are faulted back in, a workitem is queued to
+bring the remainder back from swap, and migrate small pages into place,
+before remapping the completed hugepage with a pmd.
+
 /proc/sys/vm/shmem_huge (intended for experimentation only):
 
 Default 0; write 1 to set tmpfs mount option huge=1 on the kernel's
@@ -185,6 +191,12 @@ memfds, shared anonymous mmaps, GPU DRM objects, and ashmem.
 In addition to 0 and 1, it also accepts 2 to force the huge=1 option
 automatically on for all tmpfs mounts (intended for testing), or -1
 to force huge off for all (intended for safety if bugs appeared).
+
+/proc/sys/vm/shmem_huge_recoveries:
+
+Default 8, allows up to 8 concurrent workitems, recovering hugepages
+after fragmentation prevented or reclaim disbanded; write 0 to disable
+huge recoveries, or a higher number to allow more concurrent recoveries.
 
 /proc/<pid>/smaps shows:
 
