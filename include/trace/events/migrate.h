@@ -20,7 +20,8 @@
 	EM( MR_MEMPOLICY_MBIND,	"mempolicy_mbind")		\
 	EM( MR_NUMA_MISPLACED,	"numa_misplaced")		\
 	EM( MR_CMA,		"cma")				\
-	EMe(MR_SHMEM_HUGEHOLE,	"shmem_hugehole")
+	EM( MR_SHMEM_HUGEHOLE,	"shmem_hugehole")		\
+	EMe(MR_SHMEM_RECOVERY,	"shmem_recovery")
 
 /*
  * First define the enums in the above macros to be exported to userspace
