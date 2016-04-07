@@ -139,12 +139,13 @@ static inline bool dec_team_pmd_mapped(struct page *head, int *nr_pages)
  * needs to maintain memcg's huge tmpfs stats correctly.
  */
 static inline void count_team_pmd_mapped(struct page *head, int *file_mapped,
-					 bool *pmd_mapped)
+					 bool *pmd_mapped, bool *team_complete)
 {
 	long team_usage;
 
 	*file_mapped = 1;
 	team_usage = atomic_long_read(&head->team_usage);
+	*team_complete = team_usage >= TEAM_COMPLETE;
 	*pmd_mapped = team_usage >= TEAM_PMD_MAPPED;
 	if (*pmd_mapped)
 		*file_mapped = HPAGE_PMD_NR - team_pte_count(team_usage);
