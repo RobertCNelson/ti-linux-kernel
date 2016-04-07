@@ -2225,6 +2225,7 @@ static void do_drain(void *arg)
 	ac->avail = 0;
 }
 
+/* Should be called with slab_mutex to prevent from freeing shared array */
 static void drain_cpu_caches(struct kmem_cache *cachep)
 {
 	struct kmem_cache_node *n;
@@ -3867,6 +3868,7 @@ skip_setup:
  * Drain an array if it contains any elements taking the node lock only if
  * necessary. Note that the node listlock also protects the array_cache
  * if drain_array() is used on the shared array.
+ * Should be called with slab_mutex to prevent from freeing shared array.
  */
 static void drain_array(struct kmem_cache *cachep, struct kmem_cache_node *n,
 			 struct array_cache *ac, int force, int node)
