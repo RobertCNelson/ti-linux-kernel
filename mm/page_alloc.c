@@ -2342,6 +2342,33 @@ int split_free_page(struct page *page)
 }
 
 /*
+ * Like split_free_page, but given the zone, it will grab a free page from
+ * the freelists.
+ */
+struct page *
+alloc_pages_zone(struct zone *zone, unsigned int order, int migratetype)
+{
+	struct page *page;
+	unsigned long watermark;
+
+	watermark = low_wmark_pages(zone) + (1 << order);
+	if (!zone_watermark_ok(zone, 0, watermark, 0, 0))
+		return NULL;
+
+	page = __rmqueue(zone, order, migratetype);
+	if (!page)
+		return NULL;
+
+	__mod_zone_freepage_state(zone, -(1 << order),
+					  get_pcppage_migratetype(page));
+
+	set_page_owner(page, order, __GFP_MOVABLE);
+	set_page_refcounted(page);
+
+	return page;
+}
+
+/*
  * Allocate a page from the given zone. Use pcplists for order-0 allocations.
  */
 static inline
