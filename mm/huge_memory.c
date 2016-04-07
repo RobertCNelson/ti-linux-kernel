@@ -25,6 +25,7 @@
 #include <linux/mman.h>
 #include <linux/memremap.h>
 #include <linux/pagemap.h>
+#include <linux/pageteam.h>
 #include <linux/debugfs.h>
 #include <linux/migrate.h>
 #include <linux/hashtable.h>
@@ -62,6 +63,8 @@ enum scan_result {
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/huge_memory.h>
+
+static void page_remove_team_rmap(struct page *);
 
 /*
  * By default transparent hugepage support is disabled in order that avoid
@@ -1120,17 +1123,23 @@ int copy_huge_pmd(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 	if (!vma_is_dax(vma)) {
 		/* thp accounting separate from pmd_devmap accounting */
 		src_page = pmd_page(pmd);
-		VM_BUG_ON_PAGE(!PageHead(src_page), src_page);
 		get_page(src_page);
-		page_dup_rmap(src_page, true);
-		add_mm_counter(dst_mm, MM_ANONPAGES, HPAGE_PMD_NR);
+		if (PageAnon(src_page)) {
+			VM_BUG_ON_PAGE(!PageHead(src_page), src_page);
+			page_dup_rmap(src_page, true);
+			pmdp_set_wrprotect(src_mm, addr, src_pmd);
+			pmd = pmd_wrprotect(pmd);
+		} else {
+			VM_BUG_ON_PAGE(!PageTeam(src_page), src_page);
+			page_dup_rmap(src_page, false);
+			inc_team_pmd_mapped(src_page);
+		}
+		add_mm_counter(dst_mm, mm_counter(src_page), HPAGE_PMD_NR);
 		atomic_long_inc(&dst_mm->nr_ptes);
 		pgtable_trans_huge_deposit(dst_mm, dst_pmd, pgtable);
 	}
 
-	pmdp_set_wrprotect(src_mm, addr, src_pmd);
-	pmd = pmd_mkold(pmd_wrprotect(pmd));
-	set_pmd_at(dst_mm, addr, dst_pmd, pmd);
+	set_pmd_at(dst_mm, addr, dst_pmd, pmd_mkold(pmd));
 
 	ret = 0;
 out_unlock:
@@ -1429,7 +1438,7 @@ struct page *follow_trans_huge_pmd(struct vm_area_struct *vma,
 		goto out;
 
 	page = pmd_page(*pmd);
-	VM_BUG_ON_PAGE(!PageHead(page), page);
+	VM_BUG_ON_PAGE(!PageHead(page) && !PageTeam(page), page);
 	if (flags & FOLL_TOUCH)
 		touch_pmd(vma, addr, pmd);
 	if ((flags & FOLL_MLOCK) && (vma->vm_flags & VM_LOCKED)) {
@@ -1454,7 +1463,7 @@ struct page *follow_trans_huge_pmd(struct vm_area_struct *vma,
 		}
 	}
 	page += (addr & ~HPAGE_PMD_MASK) >> PAGE_SHIFT;
-	VM_BUG_ON_PAGE(!PageCompound(page), page);
+	VM_BUG_ON_PAGE(!PageCompound(page) && !PageTeam(page), page);
 	if (flags & FOLL_GET)
 		get_page(page);
 
@@ -1692,10 +1701,12 @@ int zap_huge_pmd(struct mmu_gather *tlb, struct vm_area_struct *vma,
 		tlb_remove_page(tlb, pmd_page(orig_pmd));
 	} else {
 		struct page *page = pmd_page(orig_pmd);
-		page_remove_rmap(page, true);
+		if (PageTeam(page))
+			page_remove_team_rmap(page);
+		page_remove_rmap(page, PageHead(page));
 		VM_BUG_ON_PAGE(page_mapcount(page) < 0, page);
-		add_mm_counter(tlb->mm, MM_ANONPAGES, -HPAGE_PMD_NR);
-		VM_BUG_ON_PAGE(!PageHead(page), page);
+		VM_BUG_ON_PAGE(!PageHead(page) && !PageTeam(page), page);
+		add_mm_counter(tlb->mm, mm_counter(page), -HPAGE_PMD_NR);
 		pte_free(tlb->mm, pgtable_trans_huge_withdraw(tlb->mm, pmd));
 		atomic_long_dec(&tlb->mm->nr_ptes);
 		spin_unlock(ptl);
@@ -1739,7 +1750,7 @@ bool move_huge_pmd(struct vm_area_struct *vma, unsigned long old_addr,
 		VM_BUG_ON(!pmd_none(*new_pmd));
 
 		if (pmd_move_must_withdraw(new_ptl, old_ptl) &&
-				vma_is_anonymous(vma)) {
+				!vma_is_dax(vma)) {
 			pgtable_t pgtable;
 			pgtable = pgtable_trans_huge_withdraw(mm, old_pmd);
 			pgtable_trans_huge_deposit(mm, new_pmd, pgtable);
@@ -1789,7 +1800,6 @@ int change_huge_pmd(struct vm_area_struct *vma, pmd_t *pmd,
 				entry = pmd_mkwrite(entry);
 			ret = HPAGE_PMD_NR;
 			set_pmd_at(mm, addr, pmd, entry);
-			BUG_ON(!preserve_write && pmd_write(entry));
 		}
 		spin_unlock(ptl);
 	}
@@ -2989,6 +2999,11 @@ void __split_huge_pmd(struct vm_area_struct *vma, pmd_t *pmd,
 	struct mm_struct *mm = vma->vm_mm;
 	unsigned long haddr = address & HPAGE_PMD_MASK;
 
+	if (!vma_is_anonymous(vma) && !vma->vm_ops->pmd_fault) {
+		remap_team_by_ptes(vma, address, pmd);
+		return;
+	}
+
 	mmu_notifier_invalidate_range_start(mm, haddr, haddr + HPAGE_PMD_SIZE);
 	ptl = pmd_lock(mm, pmd);
 	if (pmd_trans_huge(*pmd)) {
@@ -3467,4 +3482,190 @@ static int __init split_huge_pages_debugfs(void)
 	return 0;
 }
 late_initcall(split_huge_pages_debugfs);
-#endif
+#endif /* CONFIG_DEBUG_FS */
+
+/*
+ * huge pmd support for huge tmpfs
+ */
+
+static void page_add_team_rmap(struct page *page)
+{
+	VM_BUG_ON_PAGE(PageAnon(page), page);
+	VM_BUG_ON_PAGE(!PageTeam(page), page);
+	if (inc_team_pmd_mapped(page))
+		__inc_zone_page_state(page, NR_SHMEM_PMDMAPPED);
+}
+
+static void page_remove_team_rmap(struct page *page)
+{
+	VM_BUG_ON_PAGE(PageAnon(page), page);
+	VM_BUG_ON_PAGE(!PageTeam(page), page);
+	if (dec_team_pmd_mapped(page))
+		__dec_zone_page_state(page, NR_SHMEM_PMDMAPPED);
+}
+
+int map_team_by_pmd(struct vm_area_struct *vma, unsigned long addr,
+		    pmd_t *pmd, struct page *page)
+{
+	struct mm_struct *mm = vma->vm_mm;
+	pgtable_t pgtable;
+	spinlock_t *pml;
+	pmd_t pmdval;
+	int ret = VM_FAULT_NOPAGE;
+
+	/*
+	 * Another task may have mapped it in just ahead of us; but we
+	 * have the huge page locked, so others will wait on us now... or,
+	 * is there perhaps some way another might still map in a single pte?
+	 */
+	VM_BUG_ON_PAGE(!PageTeam(page), page);
+	VM_BUG_ON_PAGE(!PageLocked(page), page);
+	if (!pmd_none(*pmd))
+		goto raced2;
+
+	addr &= HPAGE_PMD_MASK;
+	pgtable = pte_alloc_one(mm, addr);
+	if (!pgtable) {
+		ret = VM_FAULT_OOM;
+		goto raced2;
+	}
+
+	pml = pmd_lock(mm, pmd);
+	if (!pmd_none(*pmd))
+		goto raced1;
+	pmdval = mk_pmd(page, vma->vm_page_prot);
+	pmdval = pmd_mkhuge(pmd_mkdirty(pmdval));
+	pgtable_trans_huge_deposit(mm, pmd, pgtable);
+	set_pmd_at(mm, addr, pmd, pmdval);
+	page_add_file_rmap(page);
+	page_add_team_rmap(page);
+	update_mmu_cache_pmd(vma, addr, pmd);
+	atomic_long_inc(&mm->nr_ptes);
+	spin_unlock(pml);
+
+	unlock_page(page);
+	add_mm_counter(mm, MM_SHMEMPAGES, HPAGE_PMD_NR);
+	return ret;
+raced1:
+	spin_unlock(pml);
+	pte_free(mm, pgtable);
+raced2:
+	unlock_page(page);
+	put_page(page);
+	return ret;
+}
+
+void unmap_team_by_pmd(struct vm_area_struct *vma, unsigned long addr,
+		       pmd_t *pmd, struct page *page)
+{
+	struct mm_struct *mm = vma->vm_mm;
+	pgtable_t pgtable = NULL;
+	unsigned long end;
+	spinlock_t *pml;
+
+	VM_BUG_ON_PAGE(!PageTeam(page), page);
+	VM_BUG_ON_PAGE(!PageLocked(page), page);
+	/*
+	 * But even so there might be a racing zap_huge_pmd() or
+	 * remap_team_by_ptes() while the page_table_lock is dropped.
+	 */
+
+	addr &= HPAGE_PMD_MASK;
+	end = addr + HPAGE_PMD_SIZE;
+
+	mmu_notifier_invalidate_range_start(mm, addr, end);
+	pml = pmd_lock(mm, pmd);
+	if (pmd_trans_huge(*pmd) && pmd_page(*pmd) == page) {
+		pmdp_huge_clear_flush(vma, addr, pmd);
+		pgtable = pgtable_trans_huge_withdraw(mm, pmd);
+		page_remove_team_rmap(page);
+		page_remove_rmap(page, false);
+		atomic_long_dec(&mm->nr_ptes);
+	}
+	spin_unlock(pml);
+	mmu_notifier_invalidate_range_end(mm, addr, end);
+
+	if (!pgtable)
+		return;
+
+	pte_free(mm, pgtable);
+	update_hiwater_rss(mm);
+	add_mm_counter(mm, MM_SHMEMPAGES, -HPAGE_PMD_NR);
+	put_page(page);
+}
+
+void remap_team_by_ptes(struct vm_area_struct *vma, unsigned long addr,
+			pmd_t *pmd)
+{
+	struct mm_struct *mm = vma->vm_mm;
+	struct page *head;
+	struct page *page;
+	pgtable_t pgtable;
+	unsigned long end;
+	spinlock_t *pml;
+	spinlock_t *ptl;
+	pte_t *pte;
+	pmd_t _pmd;
+	pmd_t pmdval;
+	pte_t pteval;
+
+	addr &= HPAGE_PMD_MASK;
+	end = addr + HPAGE_PMD_SIZE;
+
+	mmu_notifier_invalidate_range_start(mm, addr, end);
+	pml = pmd_lock(mm, pmd);
+	if (!pmd_trans_huge(*pmd))
+		goto raced;
+
+	page = head = pmd_page(*pmd);
+	pmdval = pmdp_huge_clear_flush(vma, addr, pmd);
+	pgtable = pgtable_trans_huge_withdraw(mm, pmd);
+	pmd_populate(mm, &_pmd, pgtable);
+	ptl = pte_lockptr(mm, &_pmd);
+	if (ptl != pml)
+		spin_lock(ptl);
+	pmd_populate(mm, pmd, pgtable);
+	update_mmu_cache_pmd(vma, addr, pmd);
+
+	/*
+	 * It would be nice to have prepared this page table in advance,
+	 * so we could just switch from pmd to ptes under one lock.
+	 * But a comment in zap_huge_pmd() warns that ppc64 needs
+	 * to look at the deposited page table when clearing the pmd.
+	 */
+	pte = pte_offset_map(pmd, addr);
+	do {
+		pteval = pte_mkdirty(mk_pte(page, vma->vm_page_prot));
+		if (!pmd_young(pmdval))
+			pteval = pte_mkold(pteval);
+		set_pte_at(mm, addr, pte, pteval);
+		VM_BUG_ON_PAGE(!PageTeam(page), page);
+		if (page != head) {
+			page_add_file_rmap(page);
+			get_page(page);
+		}
+		/*
+		 * Move page flags from head to page,
+		 * as __split_huge_page_tail() does for anon?
+		 * Start off by assuming not, but reconsider later.
+		 */
+	} while (pte++, page++, addr += PAGE_SIZE, addr != end);
+
+	/*
+	 * remap_team_by_ptes() is called from various locking contexts.
+	 * Don't dec_team_pmd_mapped() until after that page table has been
+	 * completed (with atomic_long_sub_return supplying a barrier):
+	 * otherwise shmem_disband_hugeteam() may disband it concurrently,
+	 * and pages be freed while mapped.
+	 */
+	page_remove_team_rmap(head);
+
+	pte -= HPAGE_PMD_NR;
+	addr -= HPAGE_PMD_NR;
+	if (ptl != pml)
+		spin_unlock(ptl);
+	pte_unmap(pte);
+raced:
+	spin_unlock(pml);
+	mmu_notifier_invalidate_range_end(mm, addr, end);
+}

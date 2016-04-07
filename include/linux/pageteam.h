@@ -29,10 +29,56 @@ static inline struct page *team_head(struct page *page)
 	return head;
 }
 
-/* Temporary stub for mm/rmap.c until implemented in mm/huge_memory.c */
+/*
+ * Returns true if this team is mapped by pmd somewhere.
+ */
+static inline bool team_pmd_mapped(struct page *head)
+{
+	return atomic_long_read(&head->team_usage) > HPAGE_PMD_NR;
+}
+
+/*
+ * Returns true if this was the first mapping by pmd, whereupon mapped stats
+ * need to be updated.
+ */
+static inline bool inc_team_pmd_mapped(struct page *head)
+{
+	return atomic_long_inc_return(&head->team_usage) == HPAGE_PMD_NR+1;
+}
+
+/*
+ * Returns true if this was the last mapping by pmd, whereupon mapped stats
+ * need to be updated.
+ */
+static inline bool dec_team_pmd_mapped(struct page *head)
+{
+	return atomic_long_dec_return(&head->team_usage) == HPAGE_PMD_NR;
+}
+
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+int map_team_by_pmd(struct vm_area_struct *vma,
+			unsigned long addr, pmd_t *pmd, struct page *page);
+void unmap_team_by_pmd(struct vm_area_struct *vma,
+			unsigned long addr, pmd_t *pmd, struct page *page);
+void remap_team_by_ptes(struct vm_area_struct *vma,
+			unsigned long addr, pmd_t *pmd);
+#else
+static inline int map_team_by_pmd(struct vm_area_struct *vma,
+			unsigned long addr, pmd_t *pmd, struct page *page)
+{
+	VM_BUG_ON_PAGE(1, page);
+	return 0;
+}
 static inline void unmap_team_by_pmd(struct vm_area_struct *vma,
 			unsigned long addr, pmd_t *pmd, struct page *page)
 {
+	VM_BUG_ON_PAGE(1, page);
 }
+static inline void remap_team_by_ptes(struct vm_area_struct *vma,
+			unsigned long addr, pmd_t *pmd)
+{
+	VM_BUG_ON(1);
+}
+#endif /* CONFIG_TRANSPARENT_HUGEPAGE */
 
 #endif /* _LINUX_PAGETEAM_H */
