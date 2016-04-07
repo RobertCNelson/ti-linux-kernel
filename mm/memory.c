@@ -45,6 +45,7 @@
 #include <linux/swap.h>
 #include <linux/highmem.h>
 #include <linux/pagemap.h>
+#include <linux/pageteam.h>
 #include <linux/ksm.h>
 #include <linux/rmap.h>
 #include <linux/export.h>
@@ -2848,11 +2849,21 @@ static int __do_fault(struct vm_area_struct *vma, unsigned long address,
 	vmf.gfp_mask = __get_fault_gfp_mask(vma);
 	vmf.cow_page = cow_page;
 
+	/*
+	 * Give huge pmd a chance before allocating pte or trying fault around.
+	 */
+	if (unlikely(pmd_none(*pmd)))
+		vmf.flags |= FAULT_FLAG_MAY_HUGE;
+
 	ret = vma->vm_ops->fault(vma, &vmf);
 	if (unlikely(ret & (VM_FAULT_ERROR | VM_FAULT_NOPAGE | VM_FAULT_RETRY)))
 		return ret;
 	if (!vmf.page)
 		goto out;
+	if (unlikely(ret & VM_FAULT_HUGE)) {
+		ret |= map_team_by_pmd(vma, address, pmd, vmf.page);
+		return ret;
+	}
 
 	if (unlikely(!(ret & VM_FAULT_LOCKED)))
 		lock_page(vmf.page);
@@ -3343,6 +3354,7 @@ static int wp_huge_pmd(struct mm_struct *mm, struct vm_area_struct *vma,
 		return do_huge_pmd_wp_page(mm, vma, address, pmd, orig_pmd);
 	if (vma->vm_ops->pmd_fault)
 		return vma->vm_ops->pmd_fault(vma, address, pmd, flags);
+	remap_team_by_ptes(vma, address, pmd);
 	return VM_FAULT_FALLBACK;
 }
 

@@ -9,8 +9,8 @@ using huge pages for the backing of virtual memory with huge pages
 that supports the automatic promotion and demotion of page sizes and
 without the shortcomings of hugetlbfs.
 
-Currently it only works for anonymous memory mappings but in the
-future it can expand over the pagecache layer starting with tmpfs.
+Initially it only worked for anonymous memory mappings, but then was
+extended to the pagecache layer, starting with tmpfs.
 
 The reason applications are running faster is because of two
 factors. The first factor is almost completely irrelevant and it's not
@@ -57,9 +57,8 @@ miss is going to run faster.
   feature that applies to all dynamic high order allocations in the
   kernel)
 
-- this initial support only offers the feature in the anonymous memory
-  regions but it'd be ideal to move it to tmpfs and the pagecache
-  later
+- initial support only offered the feature in anonymous memory regions,
+  but then it was extended to huge tmpfs pagecache: see section below.
 
 Transparent Hugepage Support maximizes the usefulness of free memory
 if compared to the reservation approach of hugetlbfs by allowing all
@@ -458,3 +457,32 @@ exit(2) if an THP crosses VMA boundary.
 Function deferred_split_huge_page() is used to queue page for splitting.
 The splitting itself will happen when we get memory pressure via shrinker
 interface.
+
+== Huge tmpfs ==
+
+Transparent hugepages were implemented much later in tmpfs.
+That implementation shares much of the "pmd" infrastructure
+devised for anonymous hugepages, and their reliance on compaction.
+
+But unlike hugetlbfs, which has always been free to impose its own
+restrictions, a transparent implementation of pagecache in tmpfs must
+be able to support files both large and small, with large extents
+mapped by hugepage pmds at the same time as small extents (of the
+very same pagecache) are mapped by ptes.  For this reason, the
+compound pages used for hugetlbfs and anonymous hugepages were found
+unsuitable, and the opposite approach taken: the high-order backing
+page is split from the start, and managed as a team of partially
+independent small cache pages.
+
+Huge tmpfs is enabled simply by a "huge=1" mount option, and does not
+attend to the boot options, sysfs settings and madvice controlling
+anonymous hugepages.  Huge tmpfs recovery (putting a hugepage back
+together after it was disbanded for reclaim, or after a period of
+fragmentation) is done by a workitem scheduled from fault, without
+involving khugepaged at all.
+
+For more info on huge tmpfs, see Documentation/filesystems/tmpfs.txt.
+It is an open question whether that implementation forms the basis for
+extending transparent hugepages to other filesystems' pagecache: in its
+present form, it makes use of struct page's private field, available on
+tmpfs, but already in use on most other filesystems.
