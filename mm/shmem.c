@@ -804,6 +804,105 @@ static bool shmem_work_still_useful(struct recovery *recovery)
 		!RB_EMPTY_ROOT(&mapping->i_mmap);  /* file is still mapped */
 }
 
+#ifdef CONFIG_SWAP
+static void *shmem_next_swap(struct address_space *mapping,
+			     pgoff_t *index, pgoff_t end)
+{
+	pgoff_t start = *index + 1;
+	struct radix_tree_iter iter;
+	void **slot;
+	void *radswap;
+
+	rcu_read_lock();
+restart:
+	radix_tree_for_each_slot(slot, &mapping->page_tree, &iter, start) {
+		if (iter.index >= end)
+			break;
+		radswap = radix_tree_deref_slot(slot);
+		if (radix_tree_exception(radswap)) {
+			if (radix_tree_deref_retry(radswap))
+				goto restart;
+			goto out;
+		}
+	}
+	radswap = NULL;
+out:
+	rcu_read_unlock();
+	*index = iter.index;
+	return radswap;
+}
+
+static void shmem_recovery_swapin(struct recovery *recovery, struct page *head)
+{
+	struct shmem_inode_info *info = SHMEM_I(recovery->inode);
+	struct address_space *mapping = recovery->inode->i_mapping;
+	pgoff_t index = recovery->head_index - 1;
+	pgoff_t end = recovery->head_index + HPAGE_PMD_NR;
+	struct blk_plug plug;
+	void *radswap;
+	int error;
+
+	/*
+	 * If the file has nothing swapped out, don't waste time here.
+	 * If the team has already been exposed by an earlier attempt,
+	 * it is not safe to pursue this optimization again - truncation
+	 * *might* let swapin I/O overlap with fresh use of the page.
+	 */
+	if (!info->swapped || recovery->exposed_team)
+		return;
+
+	blk_start_plug(&plug);
+	while ((radswap = shmem_next_swap(mapping, &index, end))) {
+		swp_entry_t swap = radix_to_swp_entry(radswap);
+		struct page *page = head + (index & (HPAGE_PMD_NR-1));
+
+		/*
+		 * Code below is adapted from __read_swap_cache_async():
+		 * we want to set up async swapin to the right pages.
+		 * We don't have to worry about a more limiting gfp_mask
+		 * leading to -ENOMEM from __add_to_swap_cache(), but we
+		 * do have to worry about swapcache_prepare() succeeding
+		 * when swap has been freed and reused for an unrelated page.
+		 */
+		shr_stats(swap_entry);
+		error = radix_tree_preload(GFP_KERNEL);
+		if (error)
+			break;
+
+		error = swapcache_prepare(swap);
+		if (error) {
+			radix_tree_preload_end();
+			shr_stats(swap_cached);
+			continue;
+		}
+
+		if (!shmem_confirm_swap(mapping, index, swap)) {
+			radix_tree_preload_end();
+			swapcache_free(swap);
+			shr_stats(swap_gone);
+			continue;
+		}
+
+		__SetPageLocked(page);
+		__SetPageSwapBacked(page);
+		error = __add_to_swap_cache(page, swap);
+		radix_tree_preload_end();
+		VM_BUG_ON(error);
+
+		shr_stats(swap_read);
+		lru_cache_add_anon(page);
+		swap_readpage(page);
+		cond_resched();
+	}
+	blk_finish_plug(&plug);
+	lru_add_drain();	/* not necessary but may help debugging */
+}
+#else
+static void shmem_recovery_swapin(struct recovery *recovery, struct page *head)
+{
+}
+#endif /* CONFIG_SWAP */
+
 static struct page *shmem_get_recovery_page(struct page *page,
 					unsigned long private, int **result)
 {
@@ -855,6 +954,8 @@ static int shmem_recovery_populate(struct recovery *recovery, struct page *head)
 	/* Warning: this optimization relies on disband's ClearPageChecked */
 	if (PageTeam(head) && PageChecked(head))
 		return 0;
+
+	shmem_recovery_swapin(recovery, head);
 again:
 	migratable = 0;
 	unmigratable = 0;
