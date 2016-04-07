@@ -605,6 +605,19 @@ static void shmem_disband_hugeteam(struct page *page)
 	}
 
 	/*
+	 * truncate_inode_page() will unmap page if page_mapped(page),
+	 * but there's a race by which the team could be hugely mapped,
+	 * with page_mapped(page) saying false.  So check here if the
+	 * head is hugely mapped, and if so unmap page to remap team.
+	 * Use a loop because there is no good locking against a
+	 * concurrent remap_team_by_ptes().
+	 */
+	while (team_pmd_mapped(head)) {
+		unmap_mapping_range(page->mapping,
+			(loff_t)page->index << PAGE_SHIFT, PAGE_SIZE, 0);
+	}
+
+	/*
 	 * Disable preemption because truncation may end up spinning until a
 	 * tail PageTeam has been cleared: we hold the lock as briefly as we
 	 * can (splitting disband in two stages), but better not be preempted.
@@ -1302,6 +1315,21 @@ static int shmem_getattr(struct vfsmount *mnt, struct dentry *dentry,
 	}
 	generic_fillattr(inode, stat);
 	return 0;
+}
+
+static int shmem_error_remove_page(struct address_space *mapping,
+				   struct page *page)
+{
+	if (PageTeam(page)) {
+		shmem_disband_hugeteam(page);
+		while (unlikely(PageTeam(page))) {
+			unlock_page(page);
+			cond_resched();
+			lock_page(page);
+			shmem_disband_hugeteam(page);
+		}
+	}
+	return generic_error_remove_page(mapping, page);
 }
 
 static int shmem_setattr(struct dentry *dentry, struct iattr *attr)
@@ -4087,7 +4115,7 @@ static const struct address_space_operations shmem_aops = {
 #ifdef CONFIG_MIGRATION
 	.migratepage	= migrate_page,
 #endif
-	.error_remove_page = generic_error_remove_page,
+	.error_remove_page = shmem_error_remove_page,
 };
 
 static const struct file_operations shmem_file_operations = {
