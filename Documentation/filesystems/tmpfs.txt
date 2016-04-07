@@ -224,6 +224,8 @@ shmem_pmdmapped 12582912   bytes tmpfs huge mapped huge (subset of mapped_file)
 Note: the individual pages of a huge team might be charged to different
 memcgs, but these counts assume that they are all charged to the same as head.
 
+/sys/kernel/debug/shmem_huge_recovery: recovery stats to assist development.
+
 Author:
    Christoph Rohland <cr@sap.com>, 1.12.01
 Updated:
