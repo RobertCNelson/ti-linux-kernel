@@ -1047,6 +1047,16 @@ void mem_cgroup_update_lru_size(struct lruvec *lruvec, enum lru_list lru,
 		*lru_size += nr_pages;
 
 	size = *lru_size;
+	if (!size && !empty && lru == LRU_UNEVICTABLE) {
+		struct page *page;
+		/*
+		 * The unevictable list might be full of team tail pages of 0
+		 * weight: check the first, and skip the warning if that fits.
+		 */
+		page = list_first_entry(lruvec->lists + lru, struct page, lru);
+		if (hpage_nr_pages(page) == 0)
+			empty = true;
+	}
 	if (WARN_ONCE(size < 0 || empty != !size,
 		"%s(%p, %d, %d): lru_size %ld but %sempty\n",
 		__func__, lruvec, lru, nr_pages, size, empty ? "" : "not ")) {

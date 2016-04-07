@@ -63,6 +63,7 @@ static struct vfsmount *shm_mnt;
 #include <linux/swapops.h>
 #include <linux/pageteam.h>
 #include <linux/mempolicy.h>
+#include <linux/mm_inline.h>
 #include <linux/namei.h>
 #include <linux/ctype.h>
 #include <linux/migrate.h>
@@ -372,7 +373,8 @@ static int shmem_freeholes(struct page *head)
 {
 	unsigned long nr = atomic_long_read(&head->team_usage);
 
-	return (nr >= HPAGE_PMD_NR) ? 0 : HPAGE_PMD_NR - nr;
+	return (nr >= TEAM_COMPLETE) ? 0 :
+		HPAGE_PMD_NR - (nr / TEAM_PAGE_COUNTER);
 }
 
 static void shmem_clear_tag_hugehole(struct address_space *mapping,
@@ -399,18 +401,16 @@ static void shmem_added_to_hugeteam(struct page *page, struct zone *zone,
 {
 	struct address_space *mapping = page->mapping;
 	struct page *head = team_head(page);
-	int nr;
 
 	if (hugehint == SHMEM_ALLOC_HUGE_PAGE) {
-		atomic_long_set(&head->team_usage, 1);
+		atomic_long_set(&head->team_usage,
+				TEAM_PAGE_COUNTER + TEAM_LRU_WEIGHT_ONE);
 		radix_tree_tag_set(&mapping->page_tree, page->index,
 					SHMEM_TAG_HUGEHOLE);
 		__mod_zone_page_state(zone, NR_SHMEM_FREEHOLES, HPAGE_PMD_NR-1);
 	} else {
-		/* We do not need atomic ops until huge page gets mapped */
-		nr = atomic_long_read(&head->team_usage) + 1;
-		atomic_long_set(&head->team_usage, nr);
-		if (nr == HPAGE_PMD_NR) {
+		if (atomic_long_add_return(TEAM_PAGE_COUNTER,
+				&head->team_usage) >= TEAM_COMPLETE) {
 			shmem_clear_tag_hugehole(mapping, head->index);
 			__inc_zone_state(zone, NR_SHMEM_HUGEPAGES);
 		}
@@ -456,11 +456,14 @@ static int shmem_populate_hugeteam(struct inode *inode, struct page *head,
 	return 0;
 }
 
-static int shmem_disband_hugehead(struct page *head)
+static int shmem_disband_hugehead(struct page *head, int *head_lru_weight)
 {
 	struct address_space *mapping;
+	bool lru_locked = false;
+	unsigned long flags;
 	struct zone *zone;
-	int nr = -EALREADY;	/* A racing task may have disbanded the team */
+	long team_usage;
+	long nr = -EALREADY;	/* A racing task may have disbanded the team */
 
 	/*
 	 * In most cases the head page is locked, or not yet exposed to others:
@@ -469,26 +472,53 @@ static int shmem_disband_hugehead(struct page *head)
 	 * stays safe because shmem_evict_inode must take the shrinklist_lock,
 	 * and our caller shmem_choose_hugehole is already holding that lock.
 	 */
+	*head_lru_weight = 0;
 	mapping = READ_ONCE(head->mapping);
 	if (!mapping)
 		return nr;
 
 	zone = page_zone(head);
-	spin_lock_irq(&mapping->tree_lock);
+	team_usage = atomic_long_read(&head->team_usage);
+again1:
+	if ((team_usage & TEAM_LRU_WEIGHT_MASK) != TEAM_LRU_WEIGHT_ONE) {
+		spin_lock_irq(&zone->lru_lock);
+		lru_locked = true;
+	}
+	spin_lock_irqsave(&mapping->tree_lock, flags);
 
 	if (PageTeam(head)) {
-		nr = atomic_long_read(&head->team_usage);
-		atomic_long_set(&head->team_usage, 0);
+again2:
+		nr = atomic_long_cmpxchg(&head->team_usage, team_usage,
+					 TEAM_LRU_WEIGHT_ONE);
+		if (unlikely(nr != team_usage)) {
+			team_usage = nr;
+			if (lru_locked ||
+			    (team_usage & TEAM_LRU_WEIGHT_MASK) ==
+						    TEAM_LRU_WEIGHT_ONE)
+				goto again2;
+			spin_unlock_irqrestore(&mapping->tree_lock, flags);
+			goto again1;
+		}
+		*head_lru_weight = nr & TEAM_LRU_WEIGHT_MASK;
+		nr /= TEAM_PAGE_COUNTER;
+
 		/*
-		 * Disable additions to the team.
-		 * Ensure head->private is written before PageTeam is
-		 * cleared, so shmem_writepage() cannot write swap into
-		 * head->private, then have it overwritten by that 0!
+		 * Disable additions to the team.  The cmpxchg above
+		 * ensures head->team_usage is read before PageTeam is cleared,
+		 * when shmem_writepage() might write swap into head->private.
 		 */
-		smp_mb__before_atomic();
 		ClearPageTeam(head);
+
+		/*
+		 * If head has not yet been instantiated into the cache,
+		 * reset its page->mapping now, while we have all the locks.
+		 */
 		if (!PageSwapBacked(head))
 			head->mapping = NULL;
+
+		if (PageLRU(head) && *head_lru_weight > 1)
+			update_lru_size(mem_cgroup_page_lruvec(head, zone),
+					page_lru(head), 1 - *head_lru_weight);
 
 		if (nr >= HPAGE_PMD_NR) {
 			ClearPageChecked(head);
@@ -501,8 +531,86 @@ static int shmem_disband_hugehead(struct page *head)
 		}
 	}
 
-	spin_unlock_irq(&mapping->tree_lock);
+	spin_unlock_irqrestore(&mapping->tree_lock, flags);
+	if (lru_locked)
+		spin_unlock_irq(&zone->lru_lock);
 	return nr;
+}
+
+static void shmem_evictify_hugetails(struct page *head, int head_lru_weight)
+{
+	struct page *page;
+	struct lruvec *lruvec = NULL;
+	struct zone *zone = page_zone(head);
+	bool lru_locked = false;
+
+	/*
+	 * The head has been sheltering the rest of its team from reclaim:
+	 * if any were moved to the unevictable list, now make them evictable.
+	 */
+again:
+	for (page = head + HPAGE_PMD_NR - 1; page > head; page--) {
+		if (!PageTeam(page))
+			continue;
+		if (atomic_long_read(&page->team_usage) == TEAM_LRU_WEIGHT_ONE)
+			continue;
+
+		/*
+		 * Delay getting lru lock until we reach a page that needs it.
+		 */
+		if (!lru_locked) {
+			spin_lock_irq(&zone->lru_lock);
+			lru_locked = true;
+		}
+		lruvec = mem_cgroup_page_lruvec(page, zone);
+
+		if (unlikely(atomic_long_read(&page->team_usage) ==
+							TEAM_LRU_WEIGHT_ONE))
+			continue;
+
+		set_lru_weight(page);
+		head_lru_weight--;
+
+		/*
+		 * Usually an Unevictable Team page just stays on its LRU;
+		 * but isolation for migration might take it off briefly.
+		 */
+		if (unlikely(!PageLRU(page)))
+			continue;
+
+		VM_BUG_ON_PAGE(!PageUnevictable(page), page);
+		VM_BUG_ON_PAGE(PageActive(page), page);
+
+		if (!page_evictable(page)) {
+			/*
+			 * This is tiresome, but page_evictable() needs weight 1
+			 * to make the right decision, whereas lru size update
+			 * needs weight 0 to avoid a bogus "not empty" warning.
+			 */
+			clear_lru_weight(page);
+			update_lru_size(lruvec, LRU_UNEVICTABLE, 1);
+			set_lru_weight(page);
+			continue;
+		}
+
+		ClearPageUnevictable(page);
+		update_lru_size(lruvec, LRU_INACTIVE_ANON, 1);
+
+		list_del(&page->lru);
+		list_add_tail(&page->lru, lruvec->lists + LRU_INACTIVE_ANON);
+	}
+
+	if (lru_locked) {
+		spin_unlock_irq(&zone->lru_lock);
+		lru_locked = false;
+	}
+
+	/*
+	 * But how can we be sure that a racing putback_inactive_pages()
+	 * did its clear_lru_weight() before we checked team_usage above?
+	 */
+	if (unlikely(head_lru_weight != TEAM_LRU_WEIGHT_ONE))
+		goto again;
 }
 
 static void shmem_disband_hugetails(struct page *head,
@@ -578,6 +686,7 @@ static void shmem_disband_hugetails(struct page *head,
 static void shmem_disband_hugeteam(struct page *page)
 {
 	struct page *head = team_head(page);
+	int head_lru_weight;
 	int nr_used;
 
 	/*
@@ -623,9 +732,11 @@ static void shmem_disband_hugeteam(struct page *page)
 	 * can (splitting disband in two stages), but better not be preempted.
 	 */
 	preempt_disable();
-	nr_used = shmem_disband_hugehead(head);
+	nr_used = shmem_disband_hugehead(head, &head_lru_weight);
 	if (head != page)
 		unlock_page(head);
+	if (head_lru_weight > TEAM_LRU_WEIGHT_ONE)
+		shmem_evictify_hugetails(head, head_lru_weight);
 	if (nr_used >= 0)
 		shmem_disband_hugetails(head, NULL, 0);
 	if (head != page)
@@ -681,6 +792,7 @@ static unsigned long shmem_choose_hugehole(struct list_head *fromlist,
 	struct page *topage = NULL;
 	struct page *page;
 	pgoff_t index;
+	int head_lru_weight;
 	int fromused;
 	int toused;
 	int nid;
@@ -722,8 +834,10 @@ static unsigned long shmem_choose_hugehole(struct list_head *fromlist,
 	if (!frompage)
 		goto unlock;
 	preempt_disable();
-	fromused = shmem_disband_hugehead(frompage);
+	fromused = shmem_disband_hugehead(frompage, &head_lru_weight);
 	spin_unlock(&shmem_shrinklist_lock);
+	if (head_lru_weight > TEAM_LRU_WEIGHT_ONE)
+		shmem_evictify_hugetails(frompage, head_lru_weight);
 	if (fromused > 0)
 		shmem_disband_hugetails(frompage, fromlist, -fromused);
 	preempt_enable();
@@ -777,8 +891,10 @@ static unsigned long shmem_choose_hugehole(struct list_head *fromlist,
 	if (!topage)
 		goto unlock;
 	preempt_disable();
-	toused = shmem_disband_hugehead(topage);
+	toused = shmem_disband_hugehead(topage, &head_lru_weight);
 	spin_unlock(&shmem_shrinklist_lock);
+	if (head_lru_weight > TEAM_LRU_WEIGHT_ONE)
+		shmem_evictify_hugetails(topage, head_lru_weight);
 	if (toused > 0) {
 		if (HPAGE_PMD_NR - toused >= fromused)
 			shmem_disband_hugetails(topage, tolist, fromused);
@@ -930,7 +1046,11 @@ shmem_add_to_page_cache(struct page *page, struct address_space *mapping,
 		}
 		if (!PageSwapBacked(page)) {	/* huge needs special care */
 			SetPageSwapBacked(page);
-			SetPageTeam(page);
+			if (!PageTeam(page)) {
+				atomic_long_set(&page->team_usage,
+						TEAM_LRU_WEIGHT_ONE);
+				SetPageTeam(page);
+			}
 		}
 	}
 
@@ -1612,9 +1732,13 @@ static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 		struct page *head = team_head(page);
 		/*
 		 * Only proceed if this is head, or if head is unpopulated.
+		 * Redirty any others, without setting PageActive, and then
+		 * putback_inactive_pages() will shift them to unevictable.
 		 */
-		if (page != head && PageSwapBacked(head))
+		if (page != head && PageSwapBacked(head)) {
+			wbc->for_reclaim = 0;
 			goto redirty;
+		}
 	}
 
 	swap = get_swap_page();
@@ -1762,7 +1886,8 @@ static struct page *shmem_alloc_page(gfp_t gfp, struct shmem_inode_info *info,
 				split_page(head, HPAGE_PMD_ORDER);
 
 				/* Prepare head page for add_to_page_cache */
-				atomic_long_set(&head->team_usage, 0);
+				atomic_long_set(&head->team_usage,
+						TEAM_LRU_WEIGHT_ONE);
 				__SetPageTeam(head);
 				head->mapping = mapping;
 				head->index = round_down(index, HPAGE_PMD_NR);

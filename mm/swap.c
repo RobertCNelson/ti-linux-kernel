@@ -469,6 +469,11 @@ void lru_cache_add_active_or_unevictable(struct page *page,
 					 struct vm_area_struct *vma)
 {
 	VM_BUG_ON_PAGE(PageLRU(page), page);
+	/*
+	 * Using hpage_nr_pages() on a huge tmpfs team page might not give the
+	 * 1 NR_MLOCK needs below; but this seems to be for anon pages only.
+	 */
+	VM_BUG_ON_PAGE(!PageAnon(page), page);
 
 	if (likely((vma->vm_flags & (VM_LOCKED | VM_SPECIAL)) != VM_LOCKED)) {
 		SetPageActive(page);
