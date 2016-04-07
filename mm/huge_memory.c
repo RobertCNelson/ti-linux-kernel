@@ -3512,6 +3512,8 @@ static void page_add_team_rmap(struct page *page)
 		__mod_zone_page_state(zone, NR_FILE_MAPPED, nr_pages);
 		mem_cgroup_update_page_stat(page,
 				MEM_CGROUP_STAT_FILE_MAPPED, nr_pages);
+		mem_cgroup_update_page_stat(page,
+				MEM_CGROUP_STAT_SHMEM_PMDMAPPED, HPAGE_PMD_NR);
 	}
 	unlock_page_memcg(page);
 }
@@ -3531,6 +3533,8 @@ static void page_remove_team_rmap(struct page *page)
 		__mod_zone_page_state(zone, NR_FILE_MAPPED, -nr_pages);
 		mem_cgroup_update_page_stat(page,
 				MEM_CGROUP_STAT_FILE_MAPPED, -nr_pages);
+		mem_cgroup_update_page_stat(page,
+				MEM_CGROUP_STAT_SHMEM_PMDMAPPED, -HPAGE_PMD_NR);
 	}
 	unlock_page_memcg(page);
 }

@@ -37,6 +37,7 @@
 #include <linux/mm.h>
 #include <linux/hugetlb.h>
 #include <linux/pagemap.h>
+#include <linux/pageteam.h>
 #include <linux/smp.h>
 #include <linux/page-flags.h>
 #include <linux/backing-dev.h>
@@ -106,6 +107,7 @@ static const char * const mem_cgroup_stat_names[] = {
 	"dirty",
 	"writeback",
 	"swap",
+	"shmem_pmdmapped",
 };
 
 static const char * const mem_cgroup_events_names[] = {
@@ -4444,7 +4446,8 @@ static int mem_cgroup_move_account(struct page *page,
 				   struct mem_cgroup *to)
 {
 	unsigned long flags;
-	unsigned int nr_pages = compound ? hpage_nr_pages(page) : 1;
+	int nr_pages = compound ? hpage_nr_pages(page) : 1;
+	int file_mapped = 1;
 	int ret;
 	bool anon;
 
@@ -4468,10 +4471,10 @@ static int mem_cgroup_move_account(struct page *page,
 
 	spin_lock_irqsave(&from->move_lock, flags);
 
-	if (!anon && page_mapped(page)) {
-		__this_cpu_sub(from->stat->count[MEM_CGROUP_STAT_FILE_MAPPED],
+	if (PageWriteback(page)) {
+		__this_cpu_sub(from->stat->count[MEM_CGROUP_STAT_WRITEBACK],
 			       nr_pages);
-		__this_cpu_add(to->stat->count[MEM_CGROUP_STAT_FILE_MAPPED],
+		__this_cpu_add(to->stat->count[MEM_CGROUP_STAT_WRITEBACK],
 			       nr_pages);
 	}
 
@@ -4491,11 +4494,25 @@ static int mem_cgroup_move_account(struct page *page,
 		}
 	}
 
-	if (PageWriteback(page)) {
-		__this_cpu_sub(from->stat->count[MEM_CGROUP_STAT_WRITEBACK],
-			       nr_pages);
-		__this_cpu_add(to->stat->count[MEM_CGROUP_STAT_WRITEBACK],
-			       nr_pages);
+	if (!anon && PageTeam(page)) {
+		if (page == team_head(page)) {
+			bool pmd_mapped;
+
+			count_team_pmd_mapped(page, &file_mapped, &pmd_mapped);
+			if (pmd_mapped) {
+				__this_cpu_sub(from->stat->count[
+				MEM_CGROUP_STAT_SHMEM_PMDMAPPED], HPAGE_PMD_NR);
+				__this_cpu_add(to->stat->count[
+				MEM_CGROUP_STAT_SHMEM_PMDMAPPED], HPAGE_PMD_NR);
+			}
+		}
+	}
+
+	if (!anon && page_mapped(page)) {
+		__this_cpu_sub(from->stat->count[MEM_CGROUP_STAT_FILE_MAPPED],
+			       file_mapped);
+		__this_cpu_add(to->stat->count[MEM_CGROUP_STAT_FILE_MAPPED],
+			       file_mapped);
 	}
 
 	/*
