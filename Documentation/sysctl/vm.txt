@@ -56,6 +56,7 @@ Currently, these files are in /proc/sys/vm:
 - page-cluster
 - panic_on_oom
 - percpu_pagelist_fraction
+- shmem_huge
 - stat_interval
 - stat_refresh
 - swappiness
@@ -745,6 +746,21 @@ set to pcp->high/4.  The upper limit of batch is (PAGE_SHIFT * 8)
 The initial value is zero.  Kernel does not use this value at boot time to set
 the high water marks for each per cpu page list.  If the user writes '0' to this
 sysctl, it will revert to this default behavior.
+
+==============================================================
+
+shmem_huge
+
+Default 0; write 1 to set tmpfs mount option huge=1 on the kernel's
+internal shmem mount, to use huge pages transparently for SysV SHM,
+memfds, shared anonymous mmaps, GPU DRM objects, and ashmem.
+
+In addition to 0 and 1, it also accepts 2 to force the huge=1 option
+automatically on for all tmpfs mounts (intended for testing), or -1
+to force huge off for all (intended for safety if bugs appeared).
+
+See Documentation/filesystems/tmpfs.txt for info on huge tmpfs.
+/proc/sys/vm/shmem_huge is intended for experimentation only.
 
 ==============================================================
 
