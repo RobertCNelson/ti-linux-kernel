@@ -36,8 +36,14 @@ static inline struct page *team_head(struct page *page)
  */
 #define TEAM_LRU_WEIGHT_ONE	1L
 #define TEAM_LRU_WEIGHT_MASK	((1L << (HPAGE_PMD_ORDER + 1)) - 1)
+/*
+ * Single bit to indicate whether team is hugely mlocked (like PageMlocked).
+ * Then another bit reserved for experiments with other team flags.
+ */
+#define TEAM_PMD_MLOCKED	(1L << (HPAGE_PMD_ORDER + 1))
+#define TEAM_RESERVED_FLAG	(1L << (HPAGE_PMD_ORDER + 2))
 
-#define TEAM_HIGH_COUNTER	(1L << (HPAGE_PMD_ORDER + 1))
+#define TEAM_HIGH_COUNTER	(1L << (HPAGE_PMD_ORDER + 3))
 /*
  * Count how many pages of team are instantiated, as it is built up.
  */
@@ -95,6 +101,36 @@ static inline void clear_lru_weight(struct page *page)
 {
 	VM_BUG_ON_PAGE(atomic_long_read(&page->team_usage) != 1, page);
 	atomic_long_set(&page->team_usage, 0);
+}
+
+static inline bool team_pmd_mlocked(struct page *head)
+{
+	VM_BUG_ON_PAGE(head != team_head(head), head);
+	return atomic_long_read(&head->team_usage) & TEAM_PMD_MLOCKED;
+}
+
+static inline void set_team_pmd_mlocked(struct page *head)
+{
+	long team_usage;
+
+	VM_BUG_ON_PAGE(head != team_head(head), head);
+	team_usage = atomic_long_read(&head->team_usage);
+	while (!(team_usage & TEAM_PMD_MLOCKED)) {
+		team_usage = atomic_long_cmpxchg(&head->team_usage,
+				team_usage, team_usage | TEAM_PMD_MLOCKED);
+	}
+}
+
+static inline void clear_team_pmd_mlocked(struct page *head)
+{
+	long team_usage;
+
+	VM_BUG_ON_PAGE(head != team_head(head), head);
+	team_usage = atomic_long_read(&head->team_usage);
+	while (team_usage & TEAM_PMD_MLOCKED) {
+		team_usage = atomic_long_cmpxchg(&head->team_usage,
+				team_usage, team_usage & ~TEAM_PMD_MLOCKED);
+	}
 }
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE

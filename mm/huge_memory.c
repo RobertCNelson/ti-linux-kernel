@@ -1443,8 +1443,8 @@ struct page *follow_trans_huge_pmd(struct vm_area_struct *vma,
 		touch_pmd(vma, addr, pmd);
 	if ((flags & FOLL_MLOCK) && (vma->vm_flags & VM_LOCKED)) {
 		/*
-		 * We don't mlock() pte-mapped THPs. This way we can avoid
-		 * leaking mlocked pages into non-VM_LOCKED VMAs.
+		 * We don't mlock() pte-mapped compound THPs. This way we
+		 * can avoid leaking mlocked pages into non-VM_LOCKED VMAs.
 		 *
 		 * In most cases the pmd is the only mapping of the page as we
 		 * break COW for the mlock() -- see gup_flags |= FOLL_WRITE for
@@ -1453,12 +1453,16 @@ struct page *follow_trans_huge_pmd(struct vm_area_struct *vma,
 		 * The only scenario when we have the page shared here is if we
 		 * mlocking read-only mapping shared over fork(). We skip
 		 * mlocking such pages.
+		 *
+		 * But the huge tmpfs PageTeam case is handled differently:
+		 * there are no arbitrary restrictions on mlocking such pages,
+		 * and compound_mapcount() returns 0 even when they are mapped.
 		 */
-		if (compound_mapcount(page) == 1 && !PageDoubleMap(page) &&
+		if (compound_mapcount(page) <= 1 && !PageDoubleMap(page) &&
 				page->mapping && trylock_page(page)) {
 			lru_add_drain();
 			if (page->mapping)
-				mlock_vma_page(page);
+				mlock_vma_pages(page, HPAGE_PMD_NR);
 			unlock_page(page);
 		}
 	}
@@ -1710,6 +1714,9 @@ int zap_huge_pmd(struct mmu_gather *tlb, struct vm_area_struct *vma,
 		pte_free(tlb->mm, pgtable_trans_huge_withdraw(tlb->mm, pmd));
 		atomic_long_dec(&tlb->mm->nr_ptes);
 		spin_unlock(ptl);
+		if (PageTeam(page) &&
+		    !team_pmd_mapped(page) && team_pmd_mlocked(page))
+			clear_pages_mlock(page, HPAGE_PMD_NR);
 		tlb_remove_page(tlb, page);
 	}
 	return 1;
