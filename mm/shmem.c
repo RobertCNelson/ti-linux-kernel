@@ -306,6 +306,7 @@ static bool shmem_confirm_swap(struct address_space *mapping,
 /* hugehint values: NULL to choose a small page always */
 #define SHMEM_ALLOC_SMALL_PAGE	((struct page *)1)
 #define SHMEM_ALLOC_HUGE_PAGE	((struct page *)2)
+#define SHMEM_RETRY_HUGE_PAGE	((struct page *)3)
 /* otherwise hugehint is the hugeteam page to be used */
 
 /* tag for shrinker to locate unfilled hugepages */
@@ -366,20 +367,6 @@ restart:
 	    headpage->mapping != mapping || headpage->index != start) {
 		if (speculative)
 			put_page(page);
-		return SHMEM_ALLOC_SMALL_PAGE;
-	}
-	if (PageSwapBacked(page)) {
-		if (speculative)
-			put_page(page);
-		/*
-		 * This is very often a case of two tasks racing to instantiate
-		 * the same hole in the huge page, and we don't particularly
-		 * want to allocate a small page.  But holepunch racing with
-		 * recovery migration, in between migrating to the page and
-		 * marking it team, can leave a PageSwapBacked NULL mapping
-		 * page here which we should avoid, and this is the easiest
-		 * way to handle all the cases correctly.
-		 */
 		return SHMEM_ALLOC_SMALL_PAGE;
 	}
 	return page;
@@ -784,7 +771,6 @@ struct recovery {
 	struct inode *inode;
 	struct page *page;
 	pgoff_t head_index;
-	struct page *migrated_head;
 	bool exposed_team;
 };
 
@@ -988,8 +974,7 @@ static void shmem_recovery_swapin(struct recovery *recovery, struct page *head)
 static struct page *shmem_get_recovery_page(struct page *page,
 					unsigned long private, int **result)
 {
-	struct recovery *recovery = (struct recovery *)private;
-	struct page *head = recovery->page;
+	struct page *head = (struct page *)private;
 	struct page *newpage = head + (page->index & (HPAGE_PMD_NR-1));
 
 	/* Increment refcount to match other routes through recovery_populate */
@@ -999,19 +984,33 @@ static struct page *shmem_get_recovery_page(struct page *page,
 		put_page(newpage);
 		return NULL;
 	}
-	/* Note when migrating to head: tricky case because already PageTeam */
-	if (newpage == head)
-		recovery->migrated_head = head;
 	return newpage;
+}
+
+/*
+ * shmem_recovery_migrate_page() is called from the heart of page migration's
+ * migrate_page_move_mapping(): with interrupts disabled, mapping->tree_lock
+ * held, page's reference count frozen to 0, and no other reason to turn back.
+ */
+bool shmem_recovery_migrate_page(struct page *newpage, struct page *page)
+{
+	struct page *head = newpage - (page->index & (HPAGE_PMD_NR-1));
+
+	if (!PageTeam(head))
+		return false;
+	if (newpage != head) {
+		/* Needs to be initialized before shmem_added_to_hugeteam() */
+		atomic_long_set(&newpage->team_usage, TEAM_LRU_WEIGHT_ONE);
+		SetPageTeam(newpage);
+		newpage->mapping = page->mapping;
+		newpage->index = page->index;
+	}
+	shmem_added_to_hugeteam(newpage, page_zone(newpage), NULL);
+	return true;
 }
 
 static void shmem_put_recovery_page(struct page *newpage, unsigned long private)
 {
-	struct recovery *recovery = (struct recovery *)private;
-
-	/* Must reset migrated_head if in the end it was not used */
-	if (recovery->migrated_head == newpage)
-		recovery->migrated_head = NULL;
 	/* Decrement refcount again if newpage was not used */
 	put_page(newpage);
 }
@@ -1024,9 +1023,7 @@ static int shmem_recovery_populate(struct recovery *recovery, struct page *head)
 	struct zone *zone = page_zone(head);
 	pgoff_t index;
 	bool drained_all = false;
-	bool account_head = false;
-	int migratable;
-	int unmigratable;
+	int unmigratable = 0;
 	struct page *team;
 	struct page *endteam = head + HPAGE_PMD_NR;
 	struct page *page;
@@ -1039,12 +1036,9 @@ static int shmem_recovery_populate(struct recovery *recovery, struct page *head)
 
 	shmem_recovery_swapin(recovery, head);
 again:
-	migratable = 0;
-	unmigratable = 0;
 	index = recovery->head_index;
 	for (team = head; team < endteam && !error; index++, team++) {
-		if (PageTeam(team) && PageUptodate(team) && PageDirty(team) &&
-		    !account_head)
+		if (PageTeam(team) && PageUptodate(team) && PageDirty(team))
 			continue;
 
 		page = team;	/* used as hint if not yet instantiated */
@@ -1070,8 +1064,7 @@ again:
 			 */
 			if (page != team)
 				error = -ENOENT;
-			if (error || !account_head)
-				goto unlock;
+			goto unlock;
 		}
 
 		if (PageSwapBacked(team) && page != team) {
@@ -1098,8 +1091,6 @@ again:
 			SetPageTeam(head);
 			head->mapping = mapping;
 			head->index = index;
-			if (page == head)
-				account_head = true;
 		}
 
 		/* Eviction or truncation or hole-punch already disbanded? */
@@ -1132,12 +1123,9 @@ again:
 							TEAM_LRU_WEIGHT_ONE);
 					SetPageTeam(page);
 				}
-				if (page != head || account_head) {
-					shmem_added_to_hugeteam(page, zone,
-								NULL);
-					put_page(page);
-					shr_stats(page_teamed);
-				}
+				shmem_added_to_hugeteam(page, zone, NULL);
+				put_page(page);
+				shr_stats(page_teamed);
 			}
 			spin_unlock_irq(&mapping->tree_lock);
 			if (page_mapped(page)) {
@@ -1145,16 +1133,13 @@ again:
 				page_remove_rmap(page, false);
 				preempt_enable();
 			}
-			account_head = false;
 		} else {
-			VM_BUG_ON(account_head);
 			if (!PageLRU(page))
 				lru_add_drain();
 			if (isolate_lru_page(page) == 0) {
 				inc_zone_page_state(page, NR_ISOLATED_ANON);
 				list_add_tail(&page->lru, &migrate);
 				shr_stats(page_migrate);
-				migratable++;
 			} else {
 				shr_stats(page_off_lru);
 				unmigratable++;
@@ -1169,12 +1154,9 @@ unlock:
 	if (!list_empty(&migrate)) {
 		lru_add_drain(); /* not necessary but may help debugging */
 		if (!error) {
-			VM_BUG_ON(recovery->page != head);
-			recovery->migrated_head = NULL;
 			nr = migrate_pages(&migrate, shmem_get_recovery_page,
-				shmem_put_recovery_page, (unsigned long)
-				recovery, MIGRATE_SYNC, MR_SHMEM_RECOVERY);
-			account_head = !!recovery->migrated_head;
+				shmem_put_recovery_page, (unsigned long)head,
+				MIGRATE_SHMEM_RECOVERY, MR_SHMEM_RECOVERY);
 			if (nr < 0) {
 				/*
 				 * If migrate_pages() returned error (-ENOMEM)
@@ -1189,7 +1171,6 @@ unlock:
 			if (nr > 0) {
 				shr_stats_add(page_unmigrated, nr);
 				unmigratable += nr;
-				migratable -= nr;
 			}
 		}
 		putback_movable_pages(&migrate);
@@ -1206,10 +1187,6 @@ unlock:
 			drained_all = true;
 			lru_add_drain_all();
 			shr_stats(recov_retried);
-			goto again;
-		}
-		if (migratable) {
-			/* Make another pass to SetPageTeam on them */
 			goto again;
 		}
 	}
@@ -2686,11 +2663,9 @@ static struct page *shmem_alloc_page(gfp_t gfp, struct shmem_inode_info *info,
 			 * add_to_page_cache has the tree_lock.
 			 */
 			lock_page(page);
-			if (!PageSwapBacked(page) && PageTeam(head))
-				goto out;
-			unlock_page(page);
-			put_page(page);
-			*hugehint = SHMEM_ALLOC_SMALL_PAGE;
+			if (PageSwapBacked(page) || !PageTeam(head))
+				*hugehint = SHMEM_RETRY_HUGE_PAGE;
+			goto out;
 		}
 	}
 
@@ -2988,6 +2963,10 @@ repeat:
 					&hugehint, &alloced_huge);
 		if (!page) {
 			error = -ENOMEM;
+			goto decused;
+		}
+		if (hugehint == SHMEM_RETRY_HUGE_PAGE) {
+			error = -EEXIST;
 			goto decused;
 		}
 		if (sgp == SGP_WRITE)

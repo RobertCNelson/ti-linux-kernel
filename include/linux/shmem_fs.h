@@ -85,6 +85,7 @@ static inline long shmem_fcntl(struct file *f, unsigned int c, unsigned long a)
 #endif /* CONFIG_TMPFS */
 
 #if defined(CONFIG_TRANSPARENT_HUGEPAGE) && defined(CONFIG_SHMEM)
+extern bool shmem_recovery_migrate_page(struct page *new, struct page *page);
 # ifdef CONFIG_SYSCTL
 struct ctl_table;
 extern int shmem_huge, shmem_huge_min, shmem_huge_max;
@@ -92,6 +93,11 @@ extern int shmem_huge_recoveries;
 extern int shmem_huge_sysctl(struct ctl_table *table, int write,
 			     void __user *buffer, size_t *lenp, loff_t *ppos);
 # endif /* CONFIG_SYSCTL */
+#else
+static inline bool shmem_recovery_migrate_page(struct page *new, struct page *p)
+{
+	return true;	/* Never called: true will optimize out the fallback */
+}
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE && CONFIG_SHMEM */
 
 #endif
