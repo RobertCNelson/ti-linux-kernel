@@ -1130,9 +1130,11 @@ int copy_huge_pmd(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 			pmdp_set_wrprotect(src_mm, addr, src_pmd);
 			pmd = pmd_wrprotect(pmd);
 		} else {
+			int nr_pages;	/* not interesting here */
+
 			VM_BUG_ON_PAGE(!PageTeam(src_page), src_page);
 			page_dup_rmap(src_page, false);
-			inc_team_pmd_mapped(src_page);
+			inc_team_pmd_mapped(src_page, &nr_pages);
 		}
 		add_mm_counter(dst_mm, mm_counter(src_page), HPAGE_PMD_NR);
 		atomic_long_inc(&dst_mm->nr_ptes);
@@ -3497,18 +3499,40 @@ late_initcall(split_huge_pages_debugfs);
 
 static void page_add_team_rmap(struct page *page)
 {
+	int nr_pages;
+
 	VM_BUG_ON_PAGE(PageAnon(page), page);
 	VM_BUG_ON_PAGE(!PageTeam(page), page);
-	if (inc_team_pmd_mapped(page))
-		__inc_zone_page_state(page, NR_SHMEM_PMDMAPPED);
+
+	lock_page_memcg(page);
+	if (inc_team_pmd_mapped(page, &nr_pages)) {
+		struct zone *zone = page_zone(page);
+
+		__inc_zone_state(zone, NR_SHMEM_PMDMAPPED);
+		__mod_zone_page_state(zone, NR_FILE_MAPPED, nr_pages);
+		mem_cgroup_update_page_stat(page,
+				MEM_CGROUP_STAT_FILE_MAPPED, nr_pages);
+	}
+	unlock_page_memcg(page);
 }
 
 static void page_remove_team_rmap(struct page *page)
 {
+	int nr_pages;
+
 	VM_BUG_ON_PAGE(PageAnon(page), page);
 	VM_BUG_ON_PAGE(!PageTeam(page), page);
-	if (dec_team_pmd_mapped(page))
-		__dec_zone_page_state(page, NR_SHMEM_PMDMAPPED);
+
+	lock_page_memcg(page);
+	if (dec_team_pmd_mapped(page, &nr_pages)) {
+		struct zone *zone = page_zone(page);
+
+		__dec_zone_state(zone, NR_SHMEM_PMDMAPPED);
+		__mod_zone_page_state(zone, NR_FILE_MAPPED, -nr_pages);
+		mem_cgroup_update_page_stat(page,
+				MEM_CGROUP_STAT_FILE_MAPPED, -nr_pages);
+	}
+	unlock_page_memcg(page);
 }
 
 int map_team_by_pmd(struct vm_area_struct *vma, unsigned long addr,
