@@ -1696,7 +1696,9 @@ again:
 			btrfs_end_write_no_snapshoting(root);
 			btrfs_delalloc_release_metadata(inode, release_bytes);
 		} else {
-			btrfs_delalloc_release_space(inode, pos, release_bytes);
+			btrfs_delalloc_release_space(inode,
+						round_down(pos, root->sectorsize),
+						release_bytes);
 		}
 	}
 
@@ -2682,9 +2684,12 @@ static long btrfs_fallocate(struct file *file, int mode,
 		return ret;
 
 	inode_lock(inode);
-	ret = inode_newsize_ok(inode, alloc_end);
-	if (ret)
-		goto out;
+
+	if (!(mode & FALLOC_FL_KEEP_SIZE) && offset + len > inode->i_size) {
+		ret = inode_newsize_ok(inode, offset + len);
+		if (ret)
+			goto out;
+	}
 
 	/*
 	 * TODO: Move these two operations after we have checked
@@ -2953,7 +2958,7 @@ const struct file_operations btrfs_file_operations = {
 	.fallocate	= btrfs_fallocate,
 	.unlocked_ioctl	= btrfs_ioctl,
 #ifdef CONFIG_COMPAT
-	.compat_ioctl	= btrfs_ioctl,
+	.compat_ioctl	= btrfs_compat_ioctl,
 #endif
 	.copy_file_range = btrfs_copy_file_range,
 	.clone_file_range = btrfs_clone_file_range,
