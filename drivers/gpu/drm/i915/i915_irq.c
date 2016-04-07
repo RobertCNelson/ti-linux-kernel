@@ -1323,7 +1323,7 @@ gen8_cs_irq_handler(struct intel_engine_cs *engine, u32 iir, int test_shift)
 	if (iir & (GT_RENDER_USER_INTERRUPT << test_shift))
 		notify_ring(engine);
 	if (iir & (GT_CONTEXT_SWITCH_INTERRUPT << test_shift))
-		intel_lrc_irq_handler(engine);
+		tasklet_schedule(&engine->irq_tasklet);
 }
 
 static irqreturn_t gen8_gt_irq_handler(struct drm_i915_private *dev_priv,
@@ -3500,6 +3500,26 @@ static void bxt_hpd_irq_setup(struct drm_device *dev)
 	hotplug = I915_READ(PCH_PORT_HOTPLUG);
 	hotplug |= PORTC_HOTPLUG_ENABLE | PORTB_HOTPLUG_ENABLE |
 		PORTA_HOTPLUG_ENABLE;
+
+	DRM_DEBUG_KMS("Invert bit setting: hp_ctl:%x hp_port:%x\n",
+		      hotplug, enabled_irqs);
+	hotplug &= ~BXT_DDI_HPD_INVERT_MASK;
+
+	/*
+	 * For BXT invert bit has to be set based on AOB design
+	 * for HPD detection logic, update it based on VBT fields.
+	 */
+
+	if ((enabled_irqs & BXT_DE_PORT_HP_DDIA) &&
+	    intel_bios_is_port_hpd_inverted(dev_priv, PORT_A))
+		hotplug |= BXT_DDIA_HPD_INVERT;
+	if ((enabled_irqs & BXT_DE_PORT_HP_DDIB) &&
+	    intel_bios_is_port_hpd_inverted(dev_priv, PORT_B))
+		hotplug |= BXT_DDIB_HPD_INVERT;
+	if ((enabled_irqs & BXT_DE_PORT_HP_DDIC) &&
+	    intel_bios_is_port_hpd_inverted(dev_priv, PORT_C))
+		hotplug |= BXT_DDIC_HPD_INVERT;
+
 	I915_WRITE(PCH_PORT_HOTPLUG, hotplug);
 }
 
