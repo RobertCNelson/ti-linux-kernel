@@ -528,7 +528,7 @@ invalidate_complete_page2(struct address_space *mapping, struct page *page)
 		return 0;
 
 	spin_lock_irqsave(&mapping->tree_lock, flags);
-	if (PageDirty(page))
+	if (PageDirty(page) || PageTeam(page))
 		goto failed;
 
 	BUG_ON(page_has_private(page));

@@ -346,7 +346,7 @@ int migrate_page_move_mapping(struct address_space *mapping,
  					page_index(page));
 
 	expected_count += 1 + page_has_private(page);
-	if (page_count(page) != expected_count ||
+	if (page_count(page) != expected_count || PageTeam(page) ||
 		radix_tree_deref_slot_protected(pslot, &mapping->tree_lock) != page) {
 		spin_unlock_irq(&mapping->tree_lock);
 		return -EAGAIN;
@@ -943,6 +943,11 @@ static ICE_noinline int unmap_and_move(new_page_t get_new_page,
 	newpage = get_new_page(page, private, &result);
 	if (!newpage)
 		return -ENOMEM;
+
+	if (PageTeam(page)) {
+		rc = -EBUSY;
+		goto out;
+	}
 
 	if (page_count(page) == 1) {
 		/* page was freed from under us. So we are done. */
@@ -1761,6 +1766,14 @@ int migrate_misplaced_transhuge_page(struct mm_struct *mm,
 	unsigned long mmun_start = address & HPAGE_PMD_MASK;
 	unsigned long mmun_end = mmun_start + HPAGE_PMD_SIZE;
 	pmd_t orig_entry;
+
+	/*
+	 * Leave support for NUMA balancing on huge tmpfs pages to the future.
+	 * The pmd marking up to this point should work okay, but from here on
+	 * there is work to be done: e.g. anon page->mapping assumption below.
+	 */
+	if (!PageAnon(page))
+		goto out_dropref;
 
 	/*
 	 * Rate-limit the amount of data that is being migrated to a node.

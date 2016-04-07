@@ -459,7 +459,7 @@ void munlock_vma_pages_range(struct vm_area_struct *vma,
 			if (PageTransTail(page)) {
 				VM_BUG_ON_PAGE(PageMlocked(page), page);
 				put_page(page); /* follow_page_mask() */
-			} else if (PageTransHuge(page)) {
+			} else if (PageTransHuge(page) || PageTeam(page)) {
 				lock_page(page);
 				/*
 				 * Any THP page found by follow_page_mask() may
