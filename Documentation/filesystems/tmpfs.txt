@@ -140,9 +140,52 @@ will give you tmpfs instance on /mytmpfs which can allocate 10GB
 RAM/SWAP in 10240 inodes and it is only accessible by root.
 
 
+Huge tmpfs
+==========
+
+If CONFIG_TRANSPARENT_HUGEPAGE is enabled, tmpfs has a mount (or remount)
+option for transparent huge pagecache, giving the efficiency advantage of
+hugepages (from less TLB pressure and fewer pagetable levels), without
+the inflexibility of hugetlbfs.  Huge tmpfs pages can be swapped out when
+memory pressure demands, just as ordinary tmpfs pages can be swapped out.
+
+huge=0    default, don't attempt to allocate hugepages.
+huge=1    allocate hugepages when available, and mmap on hugepage boundaries.
+
+So 'mount -t tmpfs -o huge=1 tmpfs /mytmpfs' will give you a huge tmpfs.
+
+Huge tmpfs pages can be slower to allocate than ordinary pages (since they
+may require compaction), and slower to set up initially than hugetlbfs pages
+(since a team of small pages is managed instead of a single compound page);
+but once set up and mapped, huge tmpfs performance should match hugetlbfs.
+
+/proc/sys/vm/shmem_huge (intended for experimentation only):
+
+Default 0; write 1 to set tmpfs mount option huge=1 on the kernel's
+internal shmem mount, to use huge pages transparently for SysV SHM,
+memfds, shared anonymous mmaps, GPU DRM objects, and ashmem.
+
+In addition to 0 and 1, it also accepts 2 to force the huge=1 option
+automatically on for all tmpfs mounts (intended for testing), or -1
+to force huge off for all (intended for safety if bugs appeared).
+
+/proc/meminfo, /sys/devices/system/node/nodeN/meminfo show:
+
+Shmem:             35016 kB   total shmem/tmpfs memory (subset of Cached)
+ShmemHugePages:    26624 kB   tmpfs hugepages completed (subset of Shmem)
+ShmemPmdMapped:    12288 kB   tmpfs hugepages with huge mappings in userspace
+ShmemFreeHoles:   671444 kB   reserved for team pages but available to shrinker
+
+/proc/vmstat, /proc/zoneinfo, /sys/devices/system/node/nodeN/vmstat show:
+
+nr_shmem 8754                 total shmem/tmpfs pages (subset of nr_file_pages)
+nr_shmem_hugepages 13         tmpfs hugepages completed (each 512 in nr_shmem)
+nr_shmem_pmdmapped 6          tmpfs hugepages with huge mappings in userspace
+nr_shmem_freeholes 167861     pages reserved for team but available to shrinker
+
 Author:
    Christoph Rohland <cr@sap.com>, 1.12.01
 Updated:
-   Hugh Dickins, 4 June 2007
+   Hugh Dickins, 4 June 2007, 3 Oct 2015
 Updated:
    KOSAKI Motohiro, 16 Mar 2010

@@ -28,9 +28,10 @@ struct shmem_sb_info {
 	unsigned long max_inodes;   /* How many inodes are allowed */
 	unsigned long free_inodes;  /* How many are left for allocation */
 	spinlock_t stat_lock;	    /* Serialize shmem_sb_info changes */
+	umode_t mode;		    /* Mount mode for root directory */
+	unsigned char huge;	    /* Whether to try for hugepages */
 	kuid_t uid;		    /* Mount uid for root directory */
 	kgid_t gid;		    /* Mount gid for root directory */
-	umode_t mode;		    /* Mount mode for root directory */
 	struct mempolicy *mpol;     /* default memory policy for mappings */
 };
 
@@ -69,18 +70,23 @@ static inline struct page *shmem_read_mapping_page(
 }
 
 #ifdef CONFIG_TMPFS
-
 extern int shmem_add_seals(struct file *file, unsigned int seals);
 extern int shmem_get_seals(struct file *file);
 extern long shmem_fcntl(struct file *file, unsigned int cmd, unsigned long arg);
-
 #else
-
 static inline long shmem_fcntl(struct file *f, unsigned int c, unsigned long a)
 {
 	return -EINVAL;
 }
+#endif /* CONFIG_TMPFS */
 
-#endif
+#if defined(CONFIG_TRANSPARENT_HUGEPAGE) && defined(CONFIG_SHMEM)
+# ifdef CONFIG_SYSCTL
+struct ctl_table;
+extern int shmem_huge, shmem_huge_min, shmem_huge_max;
+extern int shmem_huge_sysctl(struct ctl_table *table, int write,
+			     void __user *buffer, size_t *lenp, loff_t *ppos);
+# endif /* CONFIG_SYSCTL */
+#endif /* CONFIG_TRANSPARENT_HUGEPAGE && CONFIG_SHMEM */
 
 #endif
