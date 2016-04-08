@@ -1218,7 +1218,7 @@ static void ivybridge_parity_work(struct work_struct *work)
 		i915_reg_t reg;
 
 		slice--;
-		if (WARN_ON_ONCE(slice >= NUM_L3_SLICES(dev_priv->dev)))
+		if (WARN_ON_ONCE(slice >= NUM_L3_SLICES(dev_priv)))
 			break;
 
 		dev_priv->l3_parity.which_slice &= ~(1<<slice);
@@ -1257,7 +1257,7 @@ static void ivybridge_parity_work(struct work_struct *work)
 out:
 	WARN_ON(dev_priv->l3_parity.which_slice);
 	spin_lock_irq(&dev_priv->irq_lock);
-	gen5_enable_gt_irq(dev_priv, GT_PARITY_ERROR(dev_priv->dev));
+	gen5_enable_gt_irq(dev_priv, GT_PARITY_ERROR(dev_priv));
 	spin_unlock_irq(&dev_priv->irq_lock);
 
 	mutex_unlock(&dev_priv->dev->struct_mutex);
@@ -1323,7 +1323,7 @@ gen8_cs_irq_handler(struct intel_engine_cs *engine, u32 iir, int test_shift)
 	if (iir & (GT_RENDER_USER_INTERRUPT << test_shift))
 		notify_ring(engine);
 	if (iir & (GT_CONTEXT_SWITCH_INTERRUPT << test_shift))
-		intel_lrc_irq_handler(engine);
+		tasklet_schedule(&engine->irq_tasklet);
 }
 
 static irqreturn_t gen8_gt_irq_handler(struct drm_i915_private *dev_priv,
@@ -1626,7 +1626,7 @@ static void gen6_rps_irq_handler(struct drm_i915_private *dev_priv, u32 pm_iir)
 	if (INTEL_INFO(dev_priv)->gen >= 8)
 		return;
 
-	if (HAS_VEBOX(dev_priv->dev)) {
+	if (HAS_VEBOX(dev_priv)) {
 		if (pm_iir & PM_VEBOX_USER_INTERRUPT)
 			notify_ring(&dev_priv->engine[VECS]);
 
@@ -2828,7 +2828,7 @@ semaphore_wait_to_signaller_ring(struct intel_engine_cs *engine, u32 ipehr,
 	struct drm_i915_private *dev_priv = engine->dev->dev_private;
 	struct intel_engine_cs *signaller;
 
-	if (INTEL_INFO(dev_priv->dev)->gen >= 8) {
+	if (INTEL_INFO(dev_priv)->gen >= 8) {
 		for_each_engine(signaller, dev_priv) {
 			if (engine == signaller)
 				continue;
@@ -3500,6 +3500,26 @@ static void bxt_hpd_irq_setup(struct drm_device *dev)
 	hotplug = I915_READ(PCH_PORT_HOTPLUG);
 	hotplug |= PORTC_HOTPLUG_ENABLE | PORTB_HOTPLUG_ENABLE |
 		PORTA_HOTPLUG_ENABLE;
+
+	DRM_DEBUG_KMS("Invert bit setting: hp_ctl:%x hp_port:%x\n",
+		      hotplug, enabled_irqs);
+	hotplug &= ~BXT_DDI_HPD_INVERT_MASK;
+
+	/*
+	 * For BXT invert bit has to be set based on AOB design
+	 * for HPD detection logic, update it based on VBT fields.
+	 */
+
+	if ((enabled_irqs & BXT_DE_PORT_HP_DDIA) &&
+	    intel_bios_is_port_hpd_inverted(dev_priv, PORT_A))
+		hotplug |= BXT_DDIA_HPD_INVERT;
+	if ((enabled_irqs & BXT_DE_PORT_HP_DDIB) &&
+	    intel_bios_is_port_hpd_inverted(dev_priv, PORT_B))
+		hotplug |= BXT_DDIB_HPD_INVERT;
+	if ((enabled_irqs & BXT_DE_PORT_HP_DDIC) &&
+	    intel_bios_is_port_hpd_inverted(dev_priv, PORT_C))
+		hotplug |= BXT_DDIC_HPD_INVERT;
+
 	I915_WRITE(PCH_PORT_HOTPLUG, hotplug);
 }
 
