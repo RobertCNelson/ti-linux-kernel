@@ -1423,6 +1423,11 @@ struct super_block {
 
 extern struct timespec current_fs_time(struct super_block *sb);
 
+static inline struct timespec current_fs_time_sec(struct super_block *sb)
+{
+	return (struct timespec) { get_seconds(), 0 };
+}
+
 /*
  * Snapshotting support.
  */
