@@ -121,13 +121,14 @@ static int tmc_open(struct inode *inode, struct file *file)
 						   struct tmc_drvdata, miscdev);
 	int ret = 0;
 
-	if (drvdata->read_count++)
+	if (drvdata->read_count)
 		goto out;
 
 	ret = tmc_read_prepare(drvdata);
 	if (ret)
 		return ret;
 out:
+	drvdata->read_count++;
 	nonseekable_open(inode, file);
 
 	dev_dbg(drvdata->dev, "%s: successfully opened\n", __func__);
