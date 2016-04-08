@@ -44,6 +44,7 @@ drivers-cpuidle-coupled-fix-warning-cpuidle_coupled_.patch
 drivers-media-vsp1_video-fix-compile-error.patch
 sc16is7xx_Drop_bogus_use_of_IRQF_ONESHOT.patch
 f2fs_Mutex_cant_be_used_by_down_write_nest_lock().patch
+ARM-imx-always-use-TWD-on-IMX6Q.patch
 
 # Those two should vanish soon (not use PIT during bootup)
 at91_dont_enable_disable_clock.patch
