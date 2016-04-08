@@ -1428,6 +1428,21 @@ static inline struct timespec current_fs_time_sec(struct super_block *sb)
 	return (struct timespec) { get_seconds(), 0 };
 }
 
+/* Place holder defines to ensure safe transition to timespec64
+ * in the vfs layer.
+ * These can be deleted after all filesystems and vfs are switched
+ * over to using 64 bit time.
+ */
+static inline struct timespec vfs_time_to_timespec(struct timespec inode_ts)
+{
+	return inode_ts;
+}
+
+static inline struct timespec timespec_to_vfs_time(struct timespec ts)
+{
+	return ts;
+}
+
 /*
  * Snapshotting support.
  */
