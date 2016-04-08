@@ -158,7 +158,10 @@ enum zone_stat_item {
 	WORKINGSET_REFAULT,
 	WORKINGSET_ACTIVATE,
 	WORKINGSET_NODERECLAIM,
-	NR_ANON_TRANSPARENT_HUGEPAGES,
+	NR_ANON_HUGEPAGES,	/* transparent anon huge pages */
+	NR_SHMEM_HUGEPAGES,	/* transparent shmem huge pages */
+	NR_SHMEM_PMDMAPPED,	/* shmem huge pages currently mapped hugely */
+	NR_SHMEM_FREEHOLES,	/* unused memory of high-order allocations */
 	NR_FREE_CMA_PAGES,
 	NR_VM_ZONE_STAT_ITEMS };
 
@@ -828,10 +831,7 @@ static inline int is_highmem_idx(enum zone_type idx)
 static inline int is_highmem(struct zone *zone)
 {
 #ifdef CONFIG_HIGHMEM
-	int zone_off = (char *)zone - (char *)zone->zone_pgdat->node_zones;
-	return zone_off == ZONE_HIGHMEM * sizeof(*zone) ||
-	       (zone_off == ZONE_MOVABLE * sizeof(*zone) &&
-		zone_movable_is_highmem());
+	return is_highmem_idx(zone_idx(zone));
 #else
 	return 0;
 #endif

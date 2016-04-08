@@ -72,6 +72,8 @@ The unevictable list addresses the following classes of unevictable pages:
 
  (*) Those mapped into VM_LOCKED [mlock()ed] VMAs.
 
+ (*) Tails owned by huge tmpfs, unevictable until team head page is evicted.
+
 The infrastructure may also be able to handle other conditions that make pages
 unevictable, either by definition or by circumstance, in the future.
 
@@ -200,6 +202,15 @@ freeing them.
 page_evictable() also checks for mlocked pages by testing an additional page
 flag, PG_mlocked (as wrapped by PageMlocked()), which is set when a page is
 faulted into a VM_LOCKED vma, or found in a vma being VM_LOCKED.
+
+page_evictable() also uses hpage_nr_pages(), to check for a huge tmpfs team
+tail page which reached the bottom of the inactive list, but could not be
+evicted at that time because its team head had not yet been evicted.  We
+must not evict any member of the team while the whole team is mapped; and
+at present we only disband the team for reclaim when its head is evicted.
+When an inactive tail is held back from eviction, putback_inactive_pages()
+shifts its "weight" of 1 page to the head, to increase pressure on the head,
+but leave the tail as unevictable, without adding to the Unevictable count.
 
 
 VMSCAN'S HANDLING OF UNEVICTABLE PAGES
@@ -597,7 +608,9 @@ Some examples of these unevictable pages on the LRU lists are:
      unevictable list in mlock_vma_page().
 
 shrink_inactive_list() also diverts any unevictable pages that it finds on the
-inactive lists to the appropriate zone's unevictable list.
+inactive lists to the appropriate zone's unevictable list, adding in those
+huge tmpfs team tails which were rejected by pageout() (shmem_writepage())
+because the team has not yet been disbanded by evicting the head.
 
 shrink_inactive_list() should only see SHM_LOCK'd pages that became SHM_LOCK'd
 after shrink_active_list() had moved them to the inactive list, or pages mapped
