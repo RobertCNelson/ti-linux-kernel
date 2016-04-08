@@ -75,7 +75,6 @@
 #include <asm/mach_traps.h>
 #include <asm/mwait.h>
 #include <asm/pci_x86.h>
-#include <asm/pat.h>
 #include <asm/cpu.h>
 
 #ifdef CONFIG_ACPI
@@ -1469,10 +1468,10 @@ static void xen_pvh_set_cr_flags(int cpu)
 	 * For BSP, PSE PGE are set in probe_page_size_mask(), for APs
 	 * set them here. For all, OSFXSR OSXMMEXCPT are set in fpu__init_cpu().
 	*/
-	if (cpu_has_pse)
+	if (boot_cpu_has(X86_FEATURE_PSE))
 		cr4_set_bits_and_update_boot(X86_CR4_PSE);
 
-	if (cpu_has_pge)
+	if (boot_cpu_has(X86_FEATURE_PGE))
 		cr4_set_bits_and_update_boot(X86_CR4_PGE);
 }
 
@@ -1511,7 +1510,6 @@ asmlinkage __visible void __init xen_start_kernel(void)
 {
 	struct physdev_set_iopl set_iopl;
 	unsigned long initrd_start = 0;
-	u64 pat;
 	int rc;
 
 	if (!xen_start_info)
@@ -1617,13 +1615,6 @@ asmlinkage __visible void __init xen_start_kernel(void)
 	xen_setup_kernel_pagetable((pgd_t *)xen_start_info->pt_base,
 				   xen_start_info->nr_pages);
 	xen_reserve_special_pages();
-
-	/*
-	 * Modify the cache mode translation tables to match Xen's PAT
-	 * configuration.
-	 */
-	rdmsrl(MSR_IA32_CR_PAT, pat);
-	pat_init_cache_modes(pat);
 
 	/* keep using Xen gdt for now; no urgent need to change it */
 
