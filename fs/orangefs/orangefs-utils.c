@@ -505,7 +505,7 @@ int orangefs_unmount_sb(struct super_block *sb)
 		return -ENOMEM;
 	new_op->upcall.req.fs_umount.id = ORANGEFS_SB(sb)->id;
 	new_op->upcall.req.fs_umount.fs_id = ORANGEFS_SB(sb)->fs_id;
-	strncpy(new_op->upcall.req.fs_umount.orangefs_config_server,
+	strlcpy(new_op->upcall.req.fs_umount.orangefs_config_server,
 		ORANGEFS_SB(sb)->devname,
 		ORANGEFS_MAX_SERVER_ADDR_LEN);
 
