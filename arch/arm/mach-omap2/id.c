@@ -46,6 +46,7 @@ u32 omap_features;
 
 unsigned int omap_rev(void)
 {
+	WARN_ON_ONCE(!omap_revision || omap_revision == -1);
 	return omap_revision;
 }
 EXPORT_SYMBOL(omap_rev);
@@ -669,9 +670,9 @@ void __init dra7xxx_check_revision(void)
 		case 0:
 			omap_revision = DRA722_REV_ES1_0;
 			break;
+		case 1:
 		default:
-			/* If we have no new revisions */
-			omap_revision = DRA722_REV_ES1_0;
+			omap_revision = DRA722_REV_ES2_0;
 			break;
 		}
 		break;
