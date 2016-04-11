@@ -67,7 +67,7 @@
 		gpio = <&gpio7 11 GPIO_ACTIVE_HIGH>;
 	};
 
-	sound0: sound@0 {
+	sound0: sound0 {
 		compatible = "simple-audio-card";
 		simple-audio-card,name = "DRA7xx-EVM";
 		simple-audio-card,widgets =
@@ -904,6 +904,8 @@
 	serial-dir = <  /* 0: INACTIVE, 1: TX, 2: RX */
 		1 2 0 0
 	>;
+	tx-num-evt = <32>;
+	rx-num-evt = <32>;
 };
 
 &mailbox5 {
