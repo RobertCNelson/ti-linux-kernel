@@ -934,9 +934,10 @@ static int setup_kmem_cache_node(struct kmem_cache *cachep,
 
 	n = get_node(cachep, node);
 	spin_lock_irq(&n->list_lock);
-	if (n->shared) {
+	if (n->shared && force_change) {
 		free_block(cachep, n->shared->entry,
 				n->shared->avail, node, &list);
+		n->shared->avail = 0;
 	}
 
 	if (!n->shared || force_change) {
