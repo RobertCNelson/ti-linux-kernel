@@ -110,6 +110,7 @@ static int tmc_enable_etf_sink(struct coresight_device *csdev, u32 mode)
 {
 	bool allocated = false;
 	char *buf = NULL;
+	u32 val;
 	unsigned long flags;
 	struct tmc_drvdata *drvdata = dev_get_drvdata(csdev->dev.parent);
 
@@ -146,6 +147,15 @@ fast_path:
 		return -EBUSY;
 	}
 
+	val = local_xchg(&drvdata->mode, mode);
+	/*
+	 * In sysFS mode we can have multiple writers per sink.  Since this
+	 * sink is already enabled no memory is needed and the HW need not be
+	 * touched.
+	 */
+	if (val == CS_MODE_SYSFS)
+		goto out;
+
 	/*
 	 * If drvdata::buf isn't NULL, memory was allocated for a previous
 	 * trace run but wasn't read.  If so simply zero-out the memory.
@@ -163,9 +173,9 @@ fast_path:
 	}
 
 	tmc_etb_enable_hw(drvdata);
-	drvdata->enable = true;
 	spin_unlock_irqrestore(&drvdata->spinlock, flags);
 
+out:
 	/* Free memory outside the spinlock if need be */
 	if (!allocated && buf)
 		kfree(buf);
@@ -176,6 +186,7 @@ fast_path:
 
 static void tmc_disable_etf_sink(struct coresight_device *csdev)
 {
+	u32 val;
 	unsigned long flags;
 	struct tmc_drvdata *drvdata = dev_get_drvdata(csdev->dev.parent);
 
@@ -185,8 +196,11 @@ static void tmc_disable_etf_sink(struct coresight_device *csdev)
 		return;
 	}
 
-	tmc_etb_disable_hw(drvdata);
-	drvdata->enable = false;
+	val = local_xchg(&drvdata->mode, CS_MODE_DISABLED);
+	/* Disable the TMC only if it needs to */
+	if (val != CS_MODE_DISABLED)
+		tmc_etb_disable_hw(drvdata);
+
 	spin_unlock_irqrestore(&drvdata->spinlock, flags);
 
 	dev_info(drvdata->dev, "TMC-ETB/ETF disabled\n");
@@ -205,7 +219,7 @@ static int tmc_enable_etf_link(struct coresight_device *csdev,
 	}
 
 	tmc_etf_enable_hw(drvdata);
-	drvdata->enable = true;
+	local_set(&drvdata->mode, CS_MODE_SYSFS);
 	spin_unlock_irqrestore(&drvdata->spinlock, flags);
 
 	dev_info(drvdata->dev, "TMC-ETF enabled\n");
@@ -225,7 +239,7 @@ static void tmc_disable_etf_link(struct coresight_device *csdev,
 	}
 
 	tmc_etf_disable_hw(drvdata);
-	drvdata->enable = false;
+	local_set(&drvdata->mode, CS_MODE_DISABLED);
 	spin_unlock_irqrestore(&drvdata->spinlock, flags);
 
 	dev_info(drvdata->dev, "TMC disabled\n");
@@ -277,7 +291,7 @@ int tmc_read_prepare_etb(struct tmc_drvdata *drvdata)
 	}
 
 	/* Disable the TMC if need be */
-	if (drvdata->enable)
+	if (local_read(&drvdata->mode) == CS_MODE_SYSFS)
 		tmc_etb_disable_hw(drvdata);
 
 	drvdata->reading = true;
@@ -308,7 +322,7 @@ int tmc_read_unprepare_etb(struct tmc_drvdata *drvdata)
 	}
 
 	/* Re-enable the TMC if need be */
-	if (drvdata->enable) {
+	if (local_read(&drvdata->mode) == CS_MODE_SYSFS) {
 		/*
 		 * The trace run will continue with the same allocated trace
 		 * buffer. As such zero-out the buffer so that we don't end
