@@ -103,9 +103,7 @@
  * SMP data memory barrier
  */
 	.macro	smp_dmb, opt
-#ifdef CONFIG_SMP
 	dmb	\opt
-#endif
 	.endm
 
 #define USER(l, x...)				\
@@ -206,5 +204,16 @@ lr	.req	x30		// link register
 	adrp	\tmp, \sym
 	str	\src, [\tmp, :lo12:\sym]
 	.endm
+
+/*
+ * Annotate a function as position independent, i.e., safe to be called before
+ * the kernel virtual mapping is activated.
+ */
+#define ENDPIPROC(x)			\
+	.globl	__pi_##x;		\
+	.type 	__pi_##x, %function;	\
+	.set	__pi_##x, x;		\
+	.size	__pi_##x, . - x;	\
+	ENDPROC(x)
 
 #endif	/* __ASM_ASSEMBLER_H */
