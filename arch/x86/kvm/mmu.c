@@ -32,6 +32,7 @@
 #include <linux/module.h>
 #include <linux/swap.h>
 #include <linux/hugetlb.h>
+#include <linux/pageteam.h>
 #include <linux/compiler.h>
 #include <linux/srcu.h>
 #include <linux/slab.h>
@@ -2807,33 +2808,132 @@ static int kvm_handle_bad_page(struct kvm_vcpu *vcpu, gfn_t gfn, kvm_pfn_t pfn)
 	return -EFAULT;
 }
 
+/*
+ * We are holding kvm->mmu_lock, serializing against mmu notifiers.
+ * We have a ref on page.
+ *
+ * A team of tmpfs 512 pages can be mapped as an integral hugepage as long as
+ * the team is not disbanded. The head page is !PageTeam if disbanded.
+ *
+ * Huge tmpfs pages are disbanded for page freeing, shrinking, or swap out.
+ *
+ * Freeing (punch hole, truncation):
+ *  shmem_undo_range
+ *     disband
+ *       lock head page
+ *       unmap_mapping_range
+ *         zap_page_range_single
+ *           mmu_notifier_invalidate_range_start
+ *           __split_huge_pmd or zap_huge_pmd
+ *             remap_team_by_ptes
+ *           mmu_notifier_invalidate_range_end
+ *       unlock head page
+ *     pagevec_release
+ *        pages are freed
+ * If we race with disband MMUN will fix us up. The head page lock also
+ * serializes any gup() against resolving the page team.
+ *
+ * Shrinker, disbands, but once a page team is fully banded up it no longer is
+ * tagged as shrinkable in the radix tree and hence can't be shrunk.
+ *  shmem_shrink_hugehole
+ *     shmem_choose_hugehole
+ *        disband
+ *     migrate_pages
+ *        try_to_unmap
+ *           mmu_notifier_invalidate_page
+ * Double-indemnity: if we race with disband, MMUN will fix us up.
+ *
+ * Swap out:
+ *  shrink_page_list
+ *    try_to_unmap
+ *      unmap_team_by_pmd
+ *         mmu_notifier_invalidate_range
+ *    pageout
+ *      shmem_writepage
+ *         disband
+ *    free_hot_cold_page_list
+ *       pages are freed
+ * If we race with disband, no one will come to fix us up. So, we check for a
+ * pmd mapping, serializing against the MMUN in unmap_team_by_pmd, which will
+ * break the pmd mapping if it runs before us (or invalidate our mapping if ran
+ * after).
+ */
+static bool is_huge_tmpfs(struct kvm_vcpu *vcpu,
+			  unsigned long address, struct page *page)
+{
+	pgd_t *pgd;
+	pud_t *pud;
+	pmd_t *pmd;
+	struct page *head;
+
+	if (!PageTeam(page))
+		return false;
+	/*
+	 * This strictly assumes PMD-level huge-ing.
+	 * Which is the only thing KVM can handle here.
+	 */
+	if (((address & (HPAGE_PMD_SIZE - 1)) >> PAGE_SHIFT) !=
+	    (page->index & (HPAGE_PMD_NR-1)))
+		return false;
+	head = team_head(page);
+	if (!PageTeam(head))
+		return false;
+	/*
+	 * Attempt at early discard. If the head races into becoming SwapCache,
+	 * and thus having a bogus team_usage, we'll know for sure next.
+	 */
+	if (!team_pmd_mapped(head))
+		return false;
+	/*
+	 * Copied from page_check_address_transhuge, to avoid making it
+	 * a module-visible symbol. Simplify it. No need for page table lock,
+	 * as mmu notifier serialization ensures we are on either side of
+	 * unmap_team_by_pmd or remap_team_by_ptes.
+	 */
+	address &= HPAGE_PMD_MASK;
+	pgd = pgd_offset(vcpu->kvm->mm, address);
+	if (!pgd_present(*pgd))
+		return false;
+	pud = pud_offset(pgd, address);
+	if (!pud_present(*pud))
+		return false;
+	pmd = pmd_offset(pud, address);
+	if (!pmd_trans_huge(*pmd))
+		return false;
+	return pmd_page(*pmd) == head;
+}
+
+static bool is_transparent_hugepage(struct kvm_vcpu *vcpu,
+				    unsigned long address, kvm_pfn_t pfn)
+{
+	struct page *page = pfn_to_page(pfn);
+
+	return PageTransCompound(page) || is_huge_tmpfs(vcpu, address, page);
+}
+
 static void transparent_hugepage_adjust(struct kvm_vcpu *vcpu,
-					gfn_t *gfnp, kvm_pfn_t *pfnp,
-					int *levelp)
+					unsigned long address, gfn_t *gfnp,
+					kvm_pfn_t *pfnp, int *levelp)
 {
 	kvm_pfn_t pfn = *pfnp;
 	gfn_t gfn = *gfnp;
 	int level = *levelp;
 
 	/*
-	 * Check if it's a transparent hugepage. If this would be an
-	 * hugetlbfs page, level wouldn't be set to
-	 * PT_PAGE_TABLE_LEVEL and there would be no adjustment done
-	 * here.
+	 * Check if it's a transparent hugepage, either anon or huge tmpfs.
+	 * If this were a hugetlbfs page, level wouldn't be set to
+	 * PT_PAGE_TABLE_LEVEL and no adjustment would be done here.
 	 */
 	if (!is_error_noslot_pfn(pfn) && !kvm_is_reserved_pfn(pfn) &&
 	    level == PT_PAGE_TABLE_LEVEL &&
-	    PageTransCompound(pfn_to_page(pfn)) &&
+	    is_transparent_hugepage(vcpu, address, pfn) &&
 	    !mmu_gfn_lpage_is_disallowed(vcpu, gfn, PT_DIRECTORY_LEVEL)) {
 		unsigned long mask;
 		/*
 		 * mmu_notifier_retry was successful and we hold the
-		 * mmu_lock here, so the pmd can't become splitting
-		 * from under us, and in turn
-		 * __split_huge_page_refcount() can't run from under
-		 * us and we can safely transfer the refcount from
-		 * PG_tail to PG_head as we switch the pfn to tail to
-		 * head.
+		 * mmu_lock here, so the pmd can't be split under us,
+		 * so we can safely transfer the refcount from PG_tail
+		 * to PG_head as we switch the pfn from tail to head.
 		 */
 		*levelp = level = PT_DIRECTORY_LEVEL;
 		mask = KVM_PAGES_PER_HPAGE(level) - 1;
@@ -3000,7 +3100,8 @@ exit:
 }
 
 static bool try_async_pf(struct kvm_vcpu *vcpu, bool prefault, gfn_t gfn,
-			 gva_t gva, kvm_pfn_t *pfn, bool write, bool *writable);
+			 gva_t gva, kvm_pfn_t *pfn, bool write, bool *writable,
+			 unsigned long *hva);
 static void make_mmu_pages_available(struct kvm_vcpu *vcpu);
 
 static int nonpaging_map(struct kvm_vcpu *vcpu, gva_t v, u32 error_code,
@@ -3011,6 +3112,7 @@ static int nonpaging_map(struct kvm_vcpu *vcpu, gva_t v, u32 error_code,
 	bool force_pt_level = false;
 	kvm_pfn_t pfn;
 	unsigned long mmu_seq;
+	unsigned long hva;
 	bool map_writable, write = error_code & PFERR_WRITE_MASK;
 
 	level = mapping_level(vcpu, gfn, &force_pt_level);
@@ -3032,7 +3134,8 @@ static int nonpaging_map(struct kvm_vcpu *vcpu, gva_t v, u32 error_code,
 	mmu_seq = vcpu->kvm->mmu_notifier_seq;
 	smp_rmb();
 
-	if (try_async_pf(vcpu, prefault, gfn, v, &pfn, write, &map_writable))
+	if (try_async_pf(vcpu, prefault, gfn, v, &pfn, write,
+			 &map_writable, &hva))
 		return 0;
 
 	if (handle_abnormal_pfn(vcpu, v, gfn, pfn, ACC_ALL, &r))
@@ -3043,7 +3146,7 @@ static int nonpaging_map(struct kvm_vcpu *vcpu, gva_t v, u32 error_code,
 		goto out_unlock;
 	make_mmu_pages_available(vcpu);
 	if (likely(!force_pt_level))
-		transparent_hugepage_adjust(vcpu, &gfn, &pfn, &level);
+		transparent_hugepage_adjust(vcpu, hva, &gfn, &pfn, &level);
 	r = __direct_map(vcpu, write, map_writable, level, gfn, pfn, prefault);
 	spin_unlock(&vcpu->kvm->mmu_lock);
 
@@ -3495,14 +3598,16 @@ static bool can_do_async_pf(struct kvm_vcpu *vcpu)
 }
 
 static bool try_async_pf(struct kvm_vcpu *vcpu, bool prefault, gfn_t gfn,
-			 gva_t gva, kvm_pfn_t *pfn, bool write, bool *writable)
+			 gva_t gva, kvm_pfn_t *pfn, bool write, bool *writable,
+			 unsigned long *hva)
 {
 	struct kvm_memory_slot *slot;
 	bool async;
 
 	slot = kvm_vcpu_gfn_to_memslot(vcpu, gfn);
 	async = false;
-	*pfn = __gfn_to_pfn_memslot(slot, gfn, false, &async, write, writable);
+	*pfn = __gfn_to_pfn_memslot(slot, gfn,
+				    false, &async, write, writable, hva);
 	if (!async)
 		return false; /* *pfn has correct page already */
 
@@ -3516,7 +3621,8 @@ static bool try_async_pf(struct kvm_vcpu *vcpu, bool prefault, gfn_t gfn,
 			return true;
 	}
 
-	*pfn = __gfn_to_pfn_memslot(slot, gfn, false, NULL, write, writable);
+	*pfn = __gfn_to_pfn_memslot(slot, gfn,
+				    false, NULL, write, writable, hva);
 	return false;
 }
 
@@ -3539,6 +3645,7 @@ static int tdp_page_fault(struct kvm_vcpu *vcpu, gva_t gpa, u32 error_code,
 	bool force_pt_level;
 	gfn_t gfn = gpa >> PAGE_SHIFT;
 	unsigned long mmu_seq;
+	unsigned long hva;
 	int write = error_code & PFERR_WRITE_MASK;
 	bool map_writable;
 
@@ -3567,7 +3674,8 @@ static int tdp_page_fault(struct kvm_vcpu *vcpu, gva_t gpa, u32 error_code,
 	mmu_seq = vcpu->kvm->mmu_notifier_seq;
 	smp_rmb();
 
-	if (try_async_pf(vcpu, prefault, gfn, gpa, &pfn, write, &map_writable))
+	if (try_async_pf(vcpu, prefault, gfn, gpa, &pfn, write,
+			 &map_writable, &hva))
 		return 0;
 
 	if (handle_abnormal_pfn(vcpu, 0, gfn, pfn, ACC_ALL, &r))
@@ -3578,7 +3686,7 @@ static int tdp_page_fault(struct kvm_vcpu *vcpu, gva_t gpa, u32 error_code,
 		goto out_unlock;
 	make_mmu_pages_available(vcpu);
 	if (likely(!force_pt_level))
-		transparent_hugepage_adjust(vcpu, &gfn, &pfn, &level);
+		transparent_hugepage_adjust(vcpu, hva, &gfn, &pfn, &level);
 	r = __direct_map(vcpu, write, map_writable, level, gfn, pfn, prefault);
 	spin_unlock(&vcpu->kvm->mmu_lock);
 
