@@ -364,6 +364,7 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6q-udoo.dtb \
 	imx6q-wandboard.dtb \
 	imx6q-wandboard-revb1.dtb \
+	imx6qp-nitrogen6_max.dtb \
 	imx6qp-sabreauto.dtb \
 	imx6qp-sabresd.dtb
 dtb-$(CONFIG_SOC_IMX6SL) += \
@@ -374,7 +375,10 @@ dtb-$(CONFIG_SOC_IMX6SX) += \
 	imx6sx-sdb-reva.dtb \
 	imx6sx-sdb.dtb
 dtb-$(CONFIG_SOC_IMX6UL) += \
-	imx6ul-14x14-evk.dtb
+	imx6ul-14x14-evk.dtb \
+	imx6ul-tx6ul-0010.dtb \
+	imx6ul-tx6ul-0011.dtb \
+	imx6ul-tx6ul-mainboard.dtb
 dtb-$(CONFIG_SOC_IMX7D) += \
 	imx7d-cl-som-imx7.dtb \
 	imx7d-sbc-imx7.dtb \
