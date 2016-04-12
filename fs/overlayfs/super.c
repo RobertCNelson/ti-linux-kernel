@@ -412,7 +412,7 @@ static inline struct dentry *ovl_lookup_real(struct dentry *dir,
 	struct dentry *dentry;
 
 	inode_lock(dir->d_inode);
-	dentry = lookup_one_len(name->name, dir, name->len);
+	dentry = lookup_hash(name, dir, 0);
 	inode_unlock(dir->d_inode);
 
 	if (IS_ERR(dentry)) {
