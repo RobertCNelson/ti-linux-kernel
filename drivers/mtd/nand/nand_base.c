@@ -3967,7 +3967,7 @@ ident_done:
 static int nand_dt_init(struct nand_chip *chip)
 {
 	struct device_node *dn = nand_get_flash_node(chip);
-	int ecc_mode, ecc_strength, ecc_step;
+	int ecc_mode, ecc_algo, ecc_strength, ecc_step;
 
 	if (!dn)
 		return 0;
@@ -3979,6 +3979,7 @@ static int nand_dt_init(struct nand_chip *chip)
 		chip->bbt_options |= NAND_BBT_USE_FLASH;
 
 	ecc_mode = of_get_nand_ecc_mode(dn);
+	ecc_algo = of_get_nand_ecc_algo(dn);
 	ecc_strength = of_get_nand_ecc_strength(dn);
 	ecc_step = of_get_nand_ecc_step_size(dn);
 
@@ -3990,6 +3991,9 @@ static int nand_dt_init(struct nand_chip *chip)
 
 	if (ecc_mode >= 0)
 		chip->ecc.mode = ecc_mode;
+
+	if (ecc_algo >= 0)
+		chip->ecc.algo = ecc_algo;
 
 	if (ecc_strength >= 0)
 		chip->ecc.strength = ecc_strength;
@@ -4115,10 +4119,12 @@ int nand_scan_tail(struct mtd_info *mtd)
 	struct nand_chip *chip = mtd_to_nand(mtd);
 	struct nand_ecc_ctrl *ecc = &chip->ecc;
 	struct nand_buffers *nbuf;
+	int ret;
 
 	/* New bad blocks should be marked in OOB, flash-based BBT, or both */
-	BUG_ON((chip->bbt_options & NAND_BBT_NO_OOB_BBM) &&
-			!(chip->bbt_options & NAND_BBT_USE_FLASH));
+	if (WARN_ON((chip->bbt_options & NAND_BBT_NO_OOB_BBM) &&
+		   !(chip->bbt_options & NAND_BBT_USE_FLASH)))
+		return -EINVAL;
 
 	if (!(chip->options & NAND_OWN_BUFFERS)) {
 		nbuf = kzalloc(sizeof(*nbuf) + mtd->writesize
@@ -4156,9 +4162,10 @@ int nand_scan_tail(struct mtd_info *mtd)
 			ecc->layout = &nand_oob_128;
 			break;
 		default:
-			pr_warn("No oob scheme defined for oobsize %d\n",
-				   mtd->oobsize);
-			BUG();
+			WARN(1, "No oob scheme defined for oobsize %d\n",
+				mtd->oobsize);
+			ret = -EINVAL;
+			goto err_free;
 		}
 	}
 
@@ -4174,8 +4181,9 @@ int nand_scan_tail(struct mtd_info *mtd)
 	case NAND_ECC_HW_OOB_FIRST:
 		/* Similar to NAND_ECC_HW, but a separate read_page handle */
 		if (!ecc->calculate || !ecc->correct || !ecc->hwctl) {
-			pr_warn("No ECC functions supplied; hardware ECC not possible\n");
-			BUG();
+			WARN(1, "No ECC functions supplied; hardware ECC not possible\n");
+			ret = -EINVAL;
+			goto err_free;
 		}
 		if (!ecc->read_page)
 			ecc->read_page = nand_read_page_hwecc_oob_first;
@@ -4205,8 +4213,9 @@ int nand_scan_tail(struct mtd_info *mtd)
 		     ecc->read_page == nand_read_page_hwecc ||
 		     !ecc->write_page ||
 		     ecc->write_page == nand_write_page_hwecc)) {
-			pr_warn("No ECC functions supplied; hardware ECC not possible\n");
-			BUG();
+			WARN(1, "No ECC functions supplied; hardware ECC not possible\n");
+			ret = -EINVAL;
+			goto err_free;
 		}
 		/* Use standard syndrome read/write page function? */
 		if (!ecc->read_page)
@@ -4224,8 +4233,9 @@ int nand_scan_tail(struct mtd_info *mtd)
 
 		if (mtd->writesize >= ecc->size) {
 			if (!ecc->strength) {
-				pr_warn("Driver must set ecc.strength when using hardware ECC\n");
-				BUG();
+				WARN(1, "Driver must set ecc.strength when using hardware ECC\n");
+				ret = -EINVAL;
+				goto err_free;
 			}
 			break;
 		}
@@ -4251,8 +4261,9 @@ int nand_scan_tail(struct mtd_info *mtd)
 
 	case NAND_ECC_SOFT_BCH:
 		if (!mtd_nand_has_bch()) {
-			pr_warn("CONFIG_MTD_NAND_ECC_BCH not enabled\n");
-			BUG();
+			WARN(1, "CONFIG_MTD_NAND_ECC_BCH not enabled\n");
+			ret = -EINVAL;
+			goto err_free;
 		}
 		ecc->calculate = nand_bch_calculate_ecc;
 		ecc->correct = nand_bch_correct_data;
@@ -4277,8 +4288,9 @@ int nand_scan_tail(struct mtd_info *mtd)
 		ecc->bytes = 0;
 		ecc->priv = nand_bch_init(mtd);
 		if (!ecc->priv) {
-			pr_warn("BCH ECC initialization failed!\n");
-			BUG();
+			WARN(1, "BCH ECC initialization failed!\n");
+			ret = -EINVAL;
+			goto err_free;
 		}
 		break;
 
@@ -4296,8 +4308,9 @@ int nand_scan_tail(struct mtd_info *mtd)
 		break;
 
 	default:
-		pr_warn("Invalid NAND_ECC_MODE %d\n", ecc->mode);
-		BUG();
+		WARN(1, "Invalid NAND_ECC_MODE %d\n", ecc->mode);
+		ret = -EINVAL;
+		goto err_free;
 	}
 
 	/* For many systems, the standard OOB write also works for raw */
@@ -4327,8 +4340,9 @@ int nand_scan_tail(struct mtd_info *mtd)
 	 */
 	ecc->steps = mtd->writesize / ecc->size;
 	if (ecc->steps * ecc->size != mtd->writesize) {
-		pr_warn("Invalid ECC parameters\n");
-		BUG();
+		WARN(1, "Invalid ECC parameters\n");
+		ret = -EINVAL;
+		goto err_free;
 	}
 	ecc->total = ecc->steps * ecc->bytes;
 
@@ -4406,6 +4420,10 @@ int nand_scan_tail(struct mtd_info *mtd)
 
 	/* Build bad block table */
 	return chip->scan_bbt(mtd);
+err_free:
+	if (!(chip->options & NAND_OWN_BUFFERS))
+		kfree(chip->buffers);
+	return ret;
 }
 EXPORT_SYMBOL(nand_scan_tail);
 
