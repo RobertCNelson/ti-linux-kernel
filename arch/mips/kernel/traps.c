@@ -399,11 +399,8 @@ void __noreturn die(const char *str, struct pt_regs *regs)
 	if (in_interrupt())
 		panic("Fatal exception in interrupt");
 
-	if (panic_on_oops) {
-		printk(KERN_EMERG "Fatal exception: panic in 5 seconds");
-		ssleep(5);
+	if (panic_on_oops)
 		panic("Fatal exception");
-	}
 
 	if (regs && kexec_should_crash(current))
 		crash_kexec(regs);
@@ -1647,6 +1644,7 @@ static inline void parity_protection_init(void)
 	case CPU_P5600:
 	case CPU_QEMU_GENERIC:
 	case CPU_I6400:
+	case CPU_P6600:
 		{
 #define ERRCTL_PE	0x80000000
 #define ERRCTL_L2P	0x00800000
@@ -2119,6 +2117,13 @@ void per_cpu_trap_init(bool is_boot_cpu)
 	 *  o read IntCtl.IPFDC to determine the fast debug channel interrupt
 	 */
 	if (cpu_has_mips_r2_r6) {
+		/*
+		 * We shouldn't trust a secondary core has a sane EBASE register
+		 * so use the one calculated by the boot CPU.
+		 */
+		if (!is_boot_cpu)
+			write_c0_ebase(ebase);
+
 		cp0_compare_irq_shift = CAUSEB_TI - CAUSEB_IP;
 		cp0_compare_irq = (read_c0_intctl() >> INTCTLB_IPTI) & 7;
 		cp0_perfcount_irq = (read_c0_intctl() >> INTCTLB_IPPCI) & 7;
