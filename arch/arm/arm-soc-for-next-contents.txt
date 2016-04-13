@@ -5,6 +5,8 @@ next/fixes-non-critical
 next/cleanup
 	versatile/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/versatile-cleanup-1
+	rockchip/soc32
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.7-rockchip-soc32-1
 
 next/soc
 	at91/soc
@@ -31,6 +33,8 @@ next/dt
 		https://github.com/manabian/linux-lpc tags/lpc18xx_dts_for_4.7
 	socfpga/dts
 		git://git.kernel.org/pub/scm/linux/kernel/git/dinguyen/linux tags/socfpga_dts_for_v4.7
+	rockchip/dt32
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.7-rockchip-dts32-1
 
 next/dt64
 	meson/dt64
@@ -39,10 +43,15 @@ next/dt64
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-arm64-cleanup-for-v4.7
 	patch
 		arm64: dts: Add dts files for LG Electronics's lg1312 SoC
+	rockchip/dt64
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.7-rockchip-dts64-1
 
 next/defconfig
 	renesas/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig-for-v4.7
+	patch
+		ARM: multi_v7_defconfig: Enable Rockchip displayport phy
+		ARM: multi_v7_defconfig: Enable new Rockchip display-controller drivers
 
 next/drivers
 	qcom/soc
@@ -51,4 +60,6 @@ next/drivers
 		git://git.pengutronix.de/git/pza/linux tags/reset-for-4.7
 	renesas/pm-bus
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-simple-pm-bus-for-v4.7
+	rockchip/drivers
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.7-rockchip-drivers-1
 
