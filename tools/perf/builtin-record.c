@@ -29,6 +29,7 @@
 #include "util/data.h"
 #include "util/perf_regs.h"
 #include "util/auxtrace.h"
+#include "util/tsc.h"
 #include "util/parse-branch-options.h"
 #include "util/parse-regs-options.h"
 #include "util/llvm-utils.h"
@@ -283,7 +284,7 @@ static int record__open(struct record *rec)
 	struct record_opts *opts = &rec->opts;
 	int rc = 0;
 
-	perf_evlist__config(evlist, opts);
+	perf_evlist__config(evlist, opts, &callchain_param);
 
 	evlist__for_each(evlist, pos) {
 try_again:
@@ -512,6 +513,15 @@ static void workload_exec_failed_signal(int signo __maybe_unused,
 
 static void snapshot_sig_handler(int sig);
 
+int __weak
+perf_event__synth_time_conv(const struct perf_event_mmap_page *pc __maybe_unused,
+			    struct perf_tool *tool __maybe_unused,
+			    perf_event__handler_t process __maybe_unused,
+			    struct machine *machine __maybe_unused)
+{
+	return 0;
+}
+
 static int record__synthesize(struct record *rec)
 {
 	struct perf_session *session = rec->session;
@@ -548,6 +558,11 @@ static int record__synthesize(struct record *rec)
 			rec->bytes_written += err;
 		}
 	}
+
+	err = perf_event__synth_time_conv(rec->evlist->mmap[0].base, tool,
+					  process_synthesized_event, machine);
+	if (err)
+		goto out;
 
 	if (rec->opts.full_auxtrace) {
 		err = perf_event__synthesize_auxtrace_info(rec->itr, tool,
@@ -1260,6 +1275,14 @@ int cmd_record(int argc, const char **argv, const char *prefix __maybe_unused)
 					      rec->opts.auxtrace_snapshot_opts);
 	if (err)
 		return err;
+
+	err = bpf__setup_stdout(rec->evlist);
+	if (err) {
+		bpf__strerror_setup_stdout(rec->evlist, err, errbuf, sizeof(errbuf));
+		pr_err("ERROR: Setup BPF stdout failed: %s\n",
+			 errbuf);
+		return err;
+	}
 
 	err = -ENOMEM;
 

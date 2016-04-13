@@ -409,6 +409,8 @@ void perf_tool__fill_defaults(struct perf_tool *tool)
 		tool->stat = process_stat_stub;
 	if (tool->stat_round == NULL)
 		tool->stat_round = process_stat_round_stub;
+	if (tool->time_conv == NULL)
+		tool->time_conv = process_event_op2_stub;
 }
 
 static void swap_sample_id_all(union perf_event *event, void *data)
@@ -794,6 +796,7 @@ static perf_event__swap_op perf_event__swap_ops[] = {
 	[PERF_RECORD_STAT]		  = perf_event__stat_swap,
 	[PERF_RECORD_STAT_ROUND]	  = perf_event__stat_round_swap,
 	[PERF_RECORD_EVENT_UPDATE]	  = perf_event__event_update_swap,
+	[PERF_RECORD_TIME_CONV]		  = perf_event__all64_swap,
 	[PERF_RECORD_HEADER_MAX]	  = NULL,
 };
 
@@ -1341,6 +1344,9 @@ static s64 perf_session__process_user_event(struct perf_session *session,
 		return tool->stat(tool, event, session);
 	case PERF_RECORD_STAT_ROUND:
 		return tool->stat_round(tool, event, session);
+	case PERF_RECORD_TIME_CONV:
+		session->time_conv = event->time_conv;
+		return tool->time_conv(tool, event, session);
 	default:
 		return -EINVAL;
 	}
@@ -1947,10 +1953,12 @@ struct perf_evsel *perf_session__find_first_evtype(struct perf_session *session,
 	return NULL;
 }
 
-void perf_evsel__print_ip(struct perf_evsel *evsel, struct perf_sample *sample,
-			  struct addr_location *al,
-			  unsigned int print_opts, unsigned int stack_depth)
+int perf_evsel__fprintf_callchain(struct perf_evsel *evsel, struct perf_sample *sample,
+				  struct addr_location *al, int left_alignment,
+				  unsigned int print_opts, unsigned int stack_depth,
+				  FILE *fp)
 {
+	int printed = 0;
 	struct callchain_cursor_node *node;
 	int print_ip = print_opts & PRINT_IP_OPT_IP;
 	int print_sym = print_opts & PRINT_IP_OPT_SYM;
@@ -1958,9 +1966,10 @@ void perf_evsel__print_ip(struct perf_evsel *evsel, struct perf_sample *sample,
 	int print_symoffset = print_opts & PRINT_IP_OPT_SYMOFFSET;
 	int print_oneline = print_opts & PRINT_IP_OPT_ONELINE;
 	int print_srcline = print_opts & PRINT_IP_OPT_SRCLINE;
+	int print_unknown_as_addr = print_opts & PRINT_IP_OPT_UNKNOWN_AS_ADDR;
 	char s = print_oneline ? ' ' : '\t';
 
-	if (symbol_conf.use_callchain && sample->callchain) {
+	if (sample->callchain) {
 		struct addr_location node_al;
 
 		if (thread__resolve_callchain(al->thread, evsel,
@@ -1968,7 +1977,7 @@ void perf_evsel__print_ip(struct perf_evsel *evsel, struct perf_sample *sample,
 					      stack_depth) != 0) {
 			if (verbose)
 				error("Failed to resolve callchain. Skipping\n");
-			return;
+			return printed;
 		}
 		callchain_cursor_commit(&callchain_cursor);
 
@@ -1985,65 +1994,93 @@ void perf_evsel__print_ip(struct perf_evsel *evsel, struct perf_sample *sample,
 			if (node->sym && node->sym->ignore)
 				goto next;
 
+			printed += fprintf(fp, "%-*.*s", left_alignment, left_alignment, " ");
+
 			if (print_ip)
-				printf("%c%16" PRIx64, s, node->ip);
+				printed += fprintf(fp, "%c%16" PRIx64, s, node->ip);
 
 			if (node->map)
 				addr = node->map->map_ip(node->map, node->ip);
 
 			if (print_sym) {
-				printf(" ");
+				printed += fprintf(fp, " ");
+				node_al.addr = addr;
+				node_al.map  = node->map;
+
 				if (print_symoffset) {
-					node_al.addr = addr;
-					node_al.map  = node->map;
-					symbol__fprintf_symname_offs(node->sym, &node_al, stdout);
-				} else
-					symbol__fprintf_symname(node->sym, stdout);
+					printed += __symbol__fprintf_symname_offs(node->sym, &node_al,
+										  print_unknown_as_addr, fp);
+				} else {
+					printed += __symbol__fprintf_symname(node->sym, &node_al,
+									     print_unknown_as_addr, fp);
+				}
 			}
 
 			if (print_dso) {
-				printf(" (");
-				map__fprintf_dsoname(node->map, stdout);
-				printf(")");
+				printed += fprintf(fp, " (");
+				printed += map__fprintf_dsoname(node->map, fp);
+				printed += fprintf(fp, ")");
 			}
 
 			if (print_srcline)
-				map__fprintf_srcline(node->map, addr, "\n  ",
-						     stdout);
+				printed += map__fprintf_srcline(node->map, addr, "\n  ", fp);
 
 			if (!print_oneline)
-				printf("\n");
+				printed += fprintf(fp, "\n");
 
 			stack_depth--;
 next:
 			callchain_cursor_advance(&callchain_cursor);
 		}
+	}
 
-	} else {
-		if (al->sym && al->sym->ignore)
-			return;
+	return printed;
+}
+
+int perf_evsel__fprintf_sym(struct perf_evsel *evsel, struct perf_sample *sample,
+			    struct addr_location *al, int left_alignment,
+			    unsigned int print_opts, unsigned int stack_depth,
+			    FILE *fp)
+{
+	int printed = 0;
+	int print_ip = print_opts & PRINT_IP_OPT_IP;
+	int print_sym = print_opts & PRINT_IP_OPT_SYM;
+	int print_dso = print_opts & PRINT_IP_OPT_DSO;
+	int print_symoffset = print_opts & PRINT_IP_OPT_SYMOFFSET;
+	int print_srcline = print_opts & PRINT_IP_OPT_SRCLINE;
+	int print_unknown_as_addr = print_opts & PRINT_IP_OPT_UNKNOWN_AS_ADDR;
+
+	if (symbol_conf.use_callchain && sample->callchain) {
+		printed += perf_evsel__fprintf_callchain(evsel, sample, al, left_alignment,
+							 print_opts, stack_depth, fp);
+	} else if (!(al->sym && al->sym->ignore)) {
+		printed += fprintf(fp, "%-*.*s", left_alignment, left_alignment, " ");
 
 		if (print_ip)
-			printf("%16" PRIx64, sample->ip);
+			printed += fprintf(fp, "%16" PRIx64, sample->ip);
 
 		if (print_sym) {
-			printf(" ");
-			if (print_symoffset)
-				symbol__fprintf_symname_offs(al->sym, al,
-							     stdout);
-			else
-				symbol__fprintf_symname(al->sym, stdout);
+			printed += fprintf(fp, " ");
+			if (print_symoffset) {
+				printed += __symbol__fprintf_symname_offs(al->sym, al,
+									  print_unknown_as_addr, fp);
+			} else {
+				printed += __symbol__fprintf_symname(al->sym, al,
+								     print_unknown_as_addr, fp);
+			}
 		}
 
 		if (print_dso) {
-			printf(" (");
-			map__fprintf_dsoname(al->map, stdout);
-			printf(")");
+			printed += fprintf(fp, " (");
+			printed += map__fprintf_dsoname(al->map, fp);
+			printed += fprintf(fp, ")");
 		}
 
 		if (print_srcline)
-			map__fprintf_srcline(al->map, al->addr, "\n  ", stdout);
+			printed += map__fprintf_srcline(al->map, al->addr, "\n  ", fp);
 	}
+
+	return printed;
 }
 
 int perf_session__cpu_bitmap(struct perf_session *session,
