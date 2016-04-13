@@ -28,9 +28,7 @@ extern int zap_huge_pmd(struct mmu_gather *tlb,
 extern int mincore_huge_pmd(struct vm_area_struct *vma, pmd_t *pmd,
 			unsigned long addr, unsigned long end,
 			unsigned char *vec);
-extern bool move_huge_pmd(struct vm_area_struct *vma,
-			 struct vm_area_struct *new_vma,
-			 unsigned long old_addr,
+extern bool move_huge_pmd(struct vm_area_struct *vma, unsigned long old_addr,
 			 unsigned long new_addr, unsigned long old_end,
 			 pmd_t *old_pmd, pmd_t *new_pmd);
 extern int change_huge_pmd(struct vm_area_struct *vma, pmd_t *pmd,
@@ -129,10 +127,24 @@ static inline spinlock_t *pmd_trans_huge_lock(pmd_t *pmd,
 	else
 		return NULL;
 }
+
+/* Repeat definition from linux/pageteam.h to force error if different */
+#define TEAM_LRU_WEIGHT_MASK	((1L << (HPAGE_PMD_ORDER + 1)) - 1)
+
+/*
+ * hpage_nr_pages(page) returns the current LRU weight of the page.
+ * Beware of races when it is used: an Anon THPage might get split,
+ * so may need protection by compound lock or lruvec lock; a huge tmpfs
+ * team page might have weight 1 shifted from tail to head, or back to
+ * tail when disbanded, so may need protection by lruvec lock.
+ */
 static inline int hpage_nr_pages(struct page *page)
 {
 	if (unlikely(PageTransHuge(page)))
 		return HPAGE_PMD_NR;
+	if (PageTeam(page))
+		return atomic_long_read(&page->team_usage) &
+					TEAM_LRU_WEIGHT_MASK;
 	return 1;
 }
 
@@ -152,6 +164,7 @@ static inline bool is_huge_zero_pmd(pmd_t pmd)
 }
 
 struct page *get_huge_zero_page(void);
+void put_huge_zero_page(void);
 
 #else /* CONFIG_TRANSPARENT_HUGEPAGE */
 #define HPAGE_PMD_SHIFT ({ BUILD_BUG(); 0; })
@@ -208,6 +221,10 @@ static inline bool is_huge_zero_page(struct page *page)
 	return false;
 }
 
+static inline void put_huge_zero_page(void)
+{
+	BUILD_BUG();
+}
 
 static inline struct page *follow_devmap_pmd(struct vm_area_struct *vma,
 		unsigned long addr, pmd_t *pmd, int flags)

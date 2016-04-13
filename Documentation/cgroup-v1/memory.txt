@@ -487,6 +487,8 @@ rss		- # of bytes of anonymous and swap cache memory (includes
 		transparent hugepages).
 rss_huge	- # of bytes of anonymous transparent hugepages.
 mapped_file	- # of bytes of mapped file (includes tmpfs/shmem)
+shmem_hugepages - # of bytes of tmpfs huge pages completed (subset of cache)
+shmem_pmdmapped - # of bytes of tmpfs huge mapped huge (subset of mapped_file)
 pgpgin		- # of charging events to the memory cgroup. The charging
 		event happens each time a page is accounted as either mapped
 		anon page(RSS) or cache page(Page Cache) to the cgroup.

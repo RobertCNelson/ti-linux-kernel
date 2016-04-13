@@ -56,7 +56,10 @@ Currently, these files are in /proc/sys/vm:
 - page-cluster
 - panic_on_oom
 - percpu_pagelist_fraction
+- shmem_huge
+- shmem_huge_recoveries
 - stat_interval
+- stat_refresh
 - swappiness
 - user_reserve_kbytes
 - vfs_cache_pressure
@@ -747,10 +750,46 @@ sysctl, it will revert to this default behavior.
 
 ==============================================================
 
+shmem_huge
+
+Default 0; write 1 to set tmpfs mount option huge=1 on the kernel's
+internal shmem mount, to use huge pages transparently for SysV SHM,
+memfds, shared anonymous mmaps, GPU DRM objects, and ashmem.
+
+In addition to 0 and 1, it also accepts 2 to force the huge=1 option
+automatically on for all tmpfs mounts (intended for testing), or -1
+to force huge off for all (intended for safety if bugs appeared).
+
+See Documentation/filesystems/tmpfs.txt for info on huge tmpfs.
+/proc/sys/vm/shmem_huge is intended for experimentation only.
+
+==============================================================
+
+shmem_huge_recoveries
+
+Default 8, allows up to 8 concurrent workitems, recovering hugepages
+after fragmentation prevented or reclaim disbanded; write 0 to disable
+huge recoveries, or a higher number to allow more concurrent recoveries.
+
+==============================================================
+
 stat_interval
 
 The time interval between which vm statistics are updated.  The default
 is 1 second.
+
+==============================================================
+
+stat_refresh
+
+Any read or write (by root only) flushes all the per-cpu vm statistics
+into their global totals, for more accurate reports when testing
+e.g. cat /proc/sys/vm/stat_refresh /proc/meminfo
+
+As a side-effect, it also checks for negative totals (elsewhere reported
+as 0) and "fails" with EINVAL if any are found, with a warning in dmesg.
+(At time of writing, a few stats are known sometimes to be found negative,
+with no ill effects: errors and warnings on these stats are suppressed.)
 
 ==============================================================
 

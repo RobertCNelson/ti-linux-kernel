@@ -1326,10 +1326,6 @@ void show_regs(struct pt_regs * regs)
 		show_instructions(regs);
 }
 
-void exit_thread(void)
-{
-}
-
 void flush_thread(void)
 {
 #ifdef CONFIG_HAVE_HW_BREAKPOINT
