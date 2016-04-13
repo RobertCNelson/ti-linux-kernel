@@ -39,4 +39,8 @@ next/dt64
 next/defconfig
 
 next/drivers
+	qcom/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/agross/linux tags/qcom-soc-for-4.7
+	reset/shared-resets
+		git://git.pengutronix.de/git/pza/linux tags/reset-for-4.7
 
