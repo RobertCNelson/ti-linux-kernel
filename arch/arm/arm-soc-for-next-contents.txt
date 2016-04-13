@@ -37,6 +37,8 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-arm64-dt-for-v4.7
 	renesas/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-cleanup-for-v4.7
+	versatile/dts
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/versatile-dts-1
 
 next/dt64
 	meson/dt64
