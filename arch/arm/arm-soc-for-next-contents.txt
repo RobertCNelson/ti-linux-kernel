@@ -11,6 +11,8 @@ next/cleanup
 next/soc
 	at91/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-soc
+	sti/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/mcoquelin/sti tags/sti-soc-for-v4.7-1
 
 next/arm64
 	meson/arm64
@@ -52,6 +54,8 @@ next/defconfig
 	patch
 		ARM: multi_v7_defconfig: Enable Rockchip displayport phy
 		ARM: multi_v7_defconfig: Enable new Rockchip display-controller drivers
+	sti/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/mcoquelin/sti tags/sti-defconfig-for-v4.7-1
 
 next/drivers
 	qcom/soc
