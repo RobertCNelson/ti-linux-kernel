@@ -1,20 +1,4 @@
 fixes
-	patch
-		ARM: u8500_defconfig: turn on the Synaptics RMI4 driver
-		arm64: dts: vulcan: Update PCI ranges
-	<no branch> (11ca873574c2314de9f0cf1adf8b3be88e4e19ae)
-		https://github.com/carlocaione/linux-meson tags/meson8-dt-fix
-	patch
-		ARM: uniphier: drop weird sizeof()
-		bus: uniphier-system-bus: fix condition of overlap check
-	<no branch> (6f40fed1c911f218e1e189a404b26ef19effabb5)
-		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.6/fixes-rc1
-	<no branch> (4c35430ad18f5a034302cb90e559ede5a27f93b9)
-		https://github.com/rjarzmik/linux tags/pxa-fixes-v4.6
-	patch
-		ARM: sa1100: remove references to the defunct handhelds.org
-	<no branch> (199831c77c50e6913e893b6bc268ba9f4a9a2bf8)
-		git://git.infradead.org/linux-mvebu tags/mvebu-fixes-4.6-1
 
 next/fixes-non-critical
 
@@ -29,6 +13,10 @@ next/soc
 next/arm64
 	meson/arm64
 		https://github.com/carlocaione/linux-meson tags/gxbb-arm64
+	patch
+		arm64: add Kconfig entry for LG1K SoC family
+		arm64: defconfig: enable ARCH_LG1K
+		MAINTAINERS: add Chanho Min as ARM/LG1K maintainer
 
 next/dt
 	at91/dt
@@ -39,12 +27,18 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-cleanup-for-v4.7
 	versatile/dts
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/versatile-dts-1
+	lpc18xx/dts
+		https://github.com/manabian/linux-lpc tags/lpc18xx_dts_for_4.7
+	socfpga/dts
+		git://git.kernel.org/pub/scm/linux/kernel/git/dinguyen/linux tags/socfpga_dts_for_v4.7
 
 next/dt64
 	meson/dt64
 		https://github.com/carlocaione/linux-meson tags/gxbb-dt64
 	renesas/cleanup-arm64
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-arm64-cleanup-for-v4.7
+	patch
+		arm64: dts: Add dts files for LG Electronics's lg1312 SoC
 
 next/defconfig
 	renesas/defconfig
