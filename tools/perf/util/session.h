@@ -26,6 +26,7 @@ struct perf_session {
 	struct itrace_synth_opts *itrace_synth_opts;
 	struct list_head	auxtrace_index;
 	struct trace_event	tevent;
+	struct time_conv_event	time_conv;
 	bool			repipe;
 	bool			one_mmap;
 	void			*one_mmap_addr;
@@ -41,6 +42,7 @@ struct perf_session {
 #define PRINT_IP_OPT_SYMOFFSET	(1<<3)
 #define PRINT_IP_OPT_ONELINE	(1<<4)
 #define PRINT_IP_OPT_SRCLINE	(1<<5)
+#define PRINT_IP_OPT_UNKNOWN_AS_ADDR (1<<6)
 
 struct perf_tool;
 
@@ -103,9 +105,10 @@ size_t perf_session__fprintf_nr_events(struct perf_session *session, FILE *fp);
 struct perf_evsel *perf_session__find_first_evtype(struct perf_session *session,
 					    unsigned int type);
 
-void perf_evsel__print_ip(struct perf_evsel *evsel, struct perf_sample *sample,
-			  struct addr_location *al,
-			  unsigned int print_opts, unsigned int stack_depth);
+int perf_evsel__fprintf_sym(struct perf_evsel *evsel, struct perf_sample *sample,
+			    struct addr_location *al, int left_alignment,
+			    unsigned int print_opts, unsigned int stack_depth,
+			    FILE *fp);
 
 int perf_session__cpu_bitmap(struct perf_session *session,
 			     const char *cpu_list, unsigned long *cpu_bitmap);
