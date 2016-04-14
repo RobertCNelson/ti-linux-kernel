@@ -25,7 +25,6 @@
 #include <linux/platform_device.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
-#include <linux/of_mtd.h>
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
 #include <linux/omap-gpmc.h>
@@ -1875,12 +1874,6 @@ static int gpmc_probe_nand_child(struct platform_device *pdev,
 				gpmc_nand_data->xfer_type = val;
 				break;
 			}
-
-	gpmc_nand_data->flash_bbt = of_get_nand_on_flash_bbt(child);
-
-	val = of_get_nand_bus_width(child);
-	if (val == 16)
-		gpmc_nand_data->devsize = NAND_BUSWIDTH_16;
 
 	gpmc_read_timings_dt(child, &gpmc_t);
 	gpmc_nand_init(gpmc_nand_data, &gpmc_t);
