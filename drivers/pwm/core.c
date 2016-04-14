@@ -128,14 +128,6 @@ static int pwm_device_request(struct pwm_device *pwm, const char *label)
 	set_bit(PWMF_REQUESTED, &pwm->flags);
 	pwm->label = label;
 
-	/*
-	 * FIXME: this should be removed as soon as all PWM users are
-	 * properly making use of pwm_args to initialize the PWM device.
-	 * If we don't get rid of it, then PWM state and hardware can be
-	 * desynchronized.
-	 */
-	pwm_apply_args(pwm);
-
 	return 0;
 }
 
