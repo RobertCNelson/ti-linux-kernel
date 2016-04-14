@@ -35,7 +35,7 @@ struct dsi_mnp {
 	u32 dsi_pll_div;
 };
 
-static const u32 lfsr_converts[] = {
+static const u16 lfsr_converts[] = {
 	426, 469, 234, 373, 442, 221, 110, 311, 411,		/* 62 - 70 */
 	461, 486, 243, 377, 188, 350, 175, 343, 427, 213,	/* 71 - 80 */
 	106, 53, 282, 397, 454, 227, 113, 56, 284, 142,		/* 81 - 90 */
@@ -258,7 +258,7 @@ static u32 vlv_dsi_get_pclk(struct intel_encoder *encoder, int pipe_bpp)
 	u32 dsi_clock, pclk;
 	u32 pll_ctl, pll_div;
 	u32 m = 0, p = 0, n;
-	int refclk = 25000;
+	int refclk = IS_CHERRYVIEW(dev_priv) ? 100000 : 25000;
 	int i;
 
 	DRM_DEBUG_KMS("\n");
@@ -483,14 +483,6 @@ static void bxt_enable_dsi_pll(struct intel_encoder *encoder)
 	u32 val;
 
 	DRM_DEBUG_KMS("\n");
-
-	val = I915_READ(BXT_DSI_PLL_ENABLE);
-
-	if (val & BXT_DSI_PLL_DO_ENABLE) {
-		WARN(1, "DSI PLL already enabled. Disabling it.\n");
-		val &= ~BXT_DSI_PLL_DO_ENABLE;
-		I915_WRITE(BXT_DSI_PLL_ENABLE, val);
-	}
 
 	/* Configure PLL vales */
 	if (!bxt_configure_dsi_pll(encoder)) {

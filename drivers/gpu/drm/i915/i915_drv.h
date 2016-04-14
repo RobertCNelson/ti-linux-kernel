@@ -60,7 +60,7 @@
 
 #define DRIVER_NAME		"i915"
 #define DRIVER_DESC		"Intel Graphics"
-#define DRIVER_DATE		"20160330"
+#define DRIVER_DATE		"20160411"
 
 #undef WARN_ON
 /* Many gcc seem to no see through this and fall over :( */
@@ -495,6 +495,7 @@ struct drm_i915_error_state {
 		u32 cpu_ring_head;
 		u32 cpu_ring_tail;
 
+		u32 last_seqno;
 		u32 semaphore_seqno[I915_NUM_ENGINES - 1];
 
 		/* Register state */
@@ -612,8 +613,8 @@ struct drm_i915_display_funcs {
 	/* display clock increase/decrease */
 	/* pll clock increase/decrease */
 
-	void (*load_csc_matrix)(struct drm_crtc *crtc);
-	void (*load_luts)(struct drm_crtc *crtc);
+	void (*load_csc_matrix)(struct drm_crtc_state *crtc_state);
+	void (*load_luts)(struct drm_crtc_state *crtc_state);
 };
 
 enum forcewake_domain_id {
@@ -632,6 +633,13 @@ enum forcewake_domains {
 			 FORCEWAKE_BLITTER |
 			 FORCEWAKE_MEDIA)
 };
+
+#define FW_REG_READ  (1)
+#define FW_REG_WRITE (2)
+
+enum forcewake_domains
+intel_uncore_forcewake_for_reg(struct drm_i915_private *dev_priv,
+			       i915_reg_t reg, unsigned int op);
 
 struct intel_uncore_funcs {
 	void (*force_wake_get)(struct drm_i915_private *dev_priv,
@@ -665,8 +673,9 @@ struct intel_uncore {
 	struct intel_uncore_forcewake_domain {
 		struct drm_i915_private *i915;
 		enum forcewake_domain_id id;
+		enum forcewake_domains mask;
 		unsigned wake_count;
-		struct timer_list timer;
+		struct hrtimer timer;
 		i915_reg_t reg_set;
 		u32 val_set;
 		u32 val_clear;
@@ -679,14 +688,14 @@ struct intel_uncore {
 };
 
 /* Iterate over initialised fw domains */
-#define for_each_fw_domain_mask(domain__, mask__, dev_priv__, i__) \
-	for ((i__) = 0, (domain__) = &(dev_priv__)->uncore.fw_domain[0]; \
-	     (i__) < FW_DOMAIN_ID_COUNT; \
-	     (i__)++, (domain__) = &(dev_priv__)->uncore.fw_domain[i__]) \
-		for_each_if (((mask__) & (dev_priv__)->uncore.fw_domains) & (1 << (i__)))
+#define for_each_fw_domain_masked(domain__, mask__, dev_priv__) \
+	for ((domain__) = &(dev_priv__)->uncore.fw_domain[0]; \
+	     (domain__) < &(dev_priv__)->uncore.fw_domain[FW_DOMAIN_ID_COUNT]; \
+	     (domain__)++) \
+		for_each_if ((mask__) & (domain__)->mask)
 
-#define for_each_fw_domain(domain__, dev_priv__, i__) \
-	for_each_fw_domain_mask(domain__, FORCEWAKE_ALL, dev_priv__, i__)
+#define for_each_fw_domain(domain__, dev_priv__) \
+	for_each_fw_domain_masked(domain__, FORCEWAKE_ALL, dev_priv__)
 
 #define CSR_VERSION(major, minor)	((major) << 16 | (minor))
 #define CSR_VERSION_MAJOR(version)	((version) >> 16)
@@ -995,6 +1004,7 @@ struct intel_fbc_work;
 
 struct intel_gmbus {
 	struct i2c_adapter adapter;
+#define GMBUS_FORCE_BIT_RETRY (1U << 31)
 	u32 force_bit;
 	u32 reg0;
 	i915_reg_t gpio_reg;
@@ -1118,6 +1128,7 @@ struct intel_gen6_power_mgmt {
 	u8 efficient_freq;	/* AKA RPe. Pre-determined balanced frequency */
 	u8 rp1_freq;		/* "less than" RP0 power/freqency */
 	u8 rp0_freq;		/* Non-overclocked max frequency. */
+	u16 gpll_ref_freq;	/* vlv/chv GPLL reference frequency */
 
 	u8 up_threshold; /* Current %busy required to uplock */
 	u8 down_threshold; /* Current %busy required to downclock */
@@ -1257,6 +1268,7 @@ struct i915_gem_mm {
 	struct i915_hw_ppgtt *aliasing_ppgtt;
 
 	struct notifier_block oom_notifier;
+	struct notifier_block vmap_notifier;
 	struct shrinker shrinker;
 	bool shrinker_no_lock_stealing;
 
@@ -1441,6 +1453,7 @@ struct intel_vbt_data {
 	unsigned int lvds_use_ssc:1;
 	unsigned int display_clock_mode:1;
 	unsigned int fdi_rx_polarity_inverted:1;
+	unsigned int panel_type:4;
 	int lvds_ssc_freq;
 	unsigned int bios_lvds_val; /* initial [PCH_]LVDS reg val in VBIOS */
 
@@ -1837,6 +1850,13 @@ struct drm_i915_private {
 	struct intel_shared_dpll shared_dplls[I915_NUM_PLLS];
 	const struct intel_dpll_mgr *dpll_mgr;
 
+	/*
+	 * dpll_lock serializes intel_{prepare,enable,disable}_shared_dpll.
+	 * Must be global rather than per dpll, because on some platforms
+	 * plls share registers.
+	 */
+	struct mutex dpll_lock;
+
 	unsigned int active_crtcs;
 	unsigned int min_pixclk[I915_MAX_PIPES];
 
@@ -1893,7 +1913,14 @@ struct drm_i915_private {
 
 	u32 fdi_rx_config;
 
+	/* Shadow for DISPLAY_PHY_CONTROL which can't be safely read */
 	u32 chv_phy_control;
+	/*
+	 * Shadows for CHV DPLL_MD regs to keep the state
+	 * checker somewhat working in the presence hardware
+	 * crappiness (can't read out DPLL_MD for pipes B & C).
+	 */
+	u32 chv_dpll_md[I915_MAX_PIPES];
 
 	u32 suspend_count;
 	bool suspended_to_idle;
@@ -2152,10 +2179,7 @@ struct drm_i915_gem_object {
 		struct scatterlist *sg;
 		int last;
 	} get_page;
-
-	/* prime dma-buf support */
-	void *dma_buf_vmapping;
-	int vmapping_count;
+	void *mapping;
 
 	/** Breadcrumb of last rendering to the buffer.
 	 * There can only be one writer, but we allow for multiple readers.
@@ -2473,6 +2497,7 @@ struct drm_i915_cmd_table {
 	__p; \
 })
 #define INTEL_INFO(p) 	(&__I915__(p)->info)
+#define INTEL_GEN(p)	(INTEL_INFO(p)->gen)
 #define INTEL_DEVID(p)	(INTEL_INFO(p)->device_id)
 #define INTEL_REVID(p)	(__I915__(p)->dev->pdev->revision)
 
@@ -2617,8 +2642,9 @@ struct drm_i915_cmd_table {
 
 /* WaRsDisableCoarsePowerGating:skl,bxt */
 #define NEEDS_WaRsDisableCoarsePowerGating(dev) (IS_BXT_REVID(dev, 0, BXT_REVID_A1) || \
-						 ((IS_SKL_GT3(dev) || IS_SKL_GT4(dev)) && \
-						  IS_SKL_REVID(dev, 0, SKL_REVID_F0)))
+						 IS_SKL_GT3(dev) || \
+						 IS_SKL_GT4(dev))
+
 /*
  * dp aux and gmbus irq on gen4 seems to be able to generate legacy interrupts
  * even when in MSI mode. This results in spurious interrupt warnings if the
@@ -2732,6 +2758,7 @@ extern long i915_compat_ioctl(struct file *filp, unsigned int cmd,
 extern int intel_gpu_reset(struct drm_device *dev, u32 engine_mask);
 extern bool intel_has_gpu_reset(struct drm_device *dev);
 extern int i915_reset(struct drm_device *dev);
+extern int intel_guc_reset(struct drm_i915_private *dev_priv);
 extern void intel_engine_init_hangcheck(struct intel_engine_cs *engine);
 extern unsigned long i915_chipset_val(struct drm_i915_private *dev_priv);
 extern unsigned long i915_mch_val(struct drm_i915_private *dev_priv);
@@ -2970,10 +2997,42 @@ static inline void i915_gem_object_pin_pages(struct drm_i915_gem_object *obj)
 	BUG_ON(obj->pages == NULL);
 	obj->pages_pin_count++;
 }
+
 static inline void i915_gem_object_unpin_pages(struct drm_i915_gem_object *obj)
 {
 	BUG_ON(obj->pages_pin_count == 0);
 	obj->pages_pin_count--;
+}
+
+/**
+ * i915_gem_object_pin_map - return a contiguous mapping of the entire object
+ * @obj - the object to map into kernel address space
+ *
+ * Calls i915_gem_object_pin_pages() to prevent reaping of the object's
+ * pages and then returns a contiguous mapping of the backing storage into
+ * the kernel address space.
+ *
+ * The caller must hold the struct_mutex.
+ *
+ * Returns the pointer through which to access the backing storage.
+ */
+void *__must_check i915_gem_object_pin_map(struct drm_i915_gem_object *obj);
+
+/**
+ * i915_gem_object_unpin_map - releases an earlier mapping
+ * @obj - the object to unmap
+ *
+ * After pinning the object and mapping its pages, once you are finished
+ * with your access, call i915_gem_object_unpin_map() to release the pin
+ * upon the mapping. Once the pin count reaches zero, that mapping may be
+ * removed.
+ *
+ * The caller must hold the struct_mutex.
+ */
+static inline void i915_gem_object_unpin_map(struct drm_i915_gem_object *obj)
+{
+	lockdep_assert_held(&obj->base.dev->struct_mutex);
+	i915_gem_object_unpin_pages(obj);
 }
 
 int __must_check i915_mutex_lock_interruptible(struct drm_device *dev);
@@ -2999,15 +3058,19 @@ i915_seqno_passed(uint32_t seq1, uint32_t seq2)
 static inline bool i915_gem_request_started(struct drm_i915_gem_request *req,
 					   bool lazy_coherency)
 {
-	u32 seqno = req->engine->get_seqno(req->engine, lazy_coherency);
-	return i915_seqno_passed(seqno, req->previous_seqno);
+	if (!lazy_coherency && req->engine->irq_seqno_barrier)
+		req->engine->irq_seqno_barrier(req->engine);
+	return i915_seqno_passed(req->engine->get_seqno(req->engine),
+				 req->previous_seqno);
 }
 
 static inline bool i915_gem_request_completed(struct drm_i915_gem_request *req,
 					      bool lazy_coherency)
 {
-	u32 seqno = req->engine->get_seqno(req->engine, lazy_coherency);
-	return i915_seqno_passed(seqno, req->seqno);
+	if (!lazy_coherency && req->engine->irq_seqno_barrier)
+		req->engine->irq_seqno_barrier(req->engine);
+	return i915_seqno_passed(req->engine->get_seqno(req->engine),
+				 req->seqno);
 }
 
 int __must_check i915_gem_get_seqno(struct drm_device *dev, u32 *seqno);
@@ -3147,13 +3210,9 @@ i915_gem_obj_to_ggtt(struct drm_i915_gem_object *obj)
 bool i915_gem_obj_is_pinned(struct drm_i915_gem_object *obj);
 
 /* Some GGTT VM helpers */
-#define i915_obj_to_ggtt(obj) \
-	(&((struct drm_i915_private *)(obj)->base.dev->dev_private)->ggtt.base)
-
 static inline struct i915_hw_ppgtt *
 i915_vm_to_ppgtt(struct i915_address_space *vm)
 {
-	WARN_ON(i915_is_ggtt(vm));
 	return container_of(vm, struct i915_hw_ppgtt, base);
 }
 
@@ -3166,7 +3225,10 @@ static inline bool i915_gem_obj_ggtt_bound(struct drm_i915_gem_object *obj)
 static inline unsigned long
 i915_gem_obj_ggtt_size(struct drm_i915_gem_object *obj)
 {
-	return i915_gem_obj_size(obj, i915_obj_to_ggtt(obj));
+	struct drm_i915_private *dev_priv = to_i915(obj->base.dev);
+	struct i915_ggtt *ggtt = &dev_priv->ggtt;
+
+	return i915_gem_obj_size(obj, &ggtt->base);
 }
 
 static inline int __must_check
@@ -3174,7 +3236,10 @@ i915_gem_obj_ggtt_pin(struct drm_i915_gem_object *obj,
 		      uint32_t alignment,
 		      unsigned flags)
 {
-	return i915_gem_object_pin(obj, i915_obj_to_ggtt(obj),
+	struct drm_i915_private *dev_priv = to_i915(obj->base.dev);
+	struct i915_ggtt *ggtt = &dev_priv->ggtt;
+
+	return i915_gem_object_pin(obj, &ggtt->base,
 				   alignment, flags | PIN_GLOBAL);
 }
 
@@ -3289,6 +3354,7 @@ unsigned long i915_gem_shrink(struct drm_i915_private *dev_priv,
 #define I915_SHRINK_UNBOUND 0x2
 #define I915_SHRINK_BOUND 0x4
 #define I915_SHRINK_ACTIVE 0x8
+#define I915_SHRINK_VMAPS 0x10
 unsigned long i915_gem_shrink_all(struct drm_i915_private *dev_priv);
 void i915_gem_shrinker_init(struct drm_i915_private *dev_priv);
 void i915_gem_shrinker_cleanup(struct drm_i915_private *dev_priv);
@@ -3388,6 +3454,8 @@ bool intel_bios_is_tv_present(struct drm_i915_private *dev_priv);
 bool intel_bios_is_lvds_present(struct drm_i915_private *dev_priv, u8 *i2c_pin);
 bool intel_bios_is_port_edp(struct drm_i915_private *dev_priv, enum port port);
 bool intel_bios_is_dsi_present(struct drm_i915_private *dev_priv, enum port *port);
+bool intel_bios_is_port_hpd_inverted(struct drm_i915_private *dev_priv,
+				     enum port port);
 
 /* intel_opregion.c */
 #ifdef CONFIG_ACPI
@@ -3399,6 +3467,7 @@ extern int intel_opregion_notify_encoder(struct intel_encoder *intel_encoder,
 					 bool enable);
 extern int intel_opregion_notify_adapter(struct drm_device *dev,
 					 pci_power_t state);
+extern int intel_opregion_get_panel_type(struct drm_device *dev);
 #else
 static inline int intel_opregion_setup(struct drm_device *dev) { return 0; }
 static inline void intel_opregion_init(struct drm_device *dev) { return; }
@@ -3413,6 +3482,10 @@ static inline int
 intel_opregion_notify_adapter(struct drm_device *dev, pci_power_t state)
 {
 	return 0;
+}
+static inline int intel_opregion_get_panel_type(struct drm_device *dev)
+{
+	return -ENODEV;
 }
 #endif
 
