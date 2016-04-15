@@ -441,7 +441,7 @@ static int f2fs_file_mmap(struct file *file, struct vm_area_struct *vma)
 static int f2fs_file_open(struct inode *inode, struct file *filp)
 {
 	int ret = generic_file_open(inode, filp);
-	struct inode *dir = filp->f_path.dentry->d_parent->d_inode;
+	struct dentry *dir;
 
 	if (!ret && f2fs_encrypted_inode(inode)) {
 		ret = fscrypt_get_encryption_info(inode);
@@ -450,9 +450,13 @@ static int f2fs_file_open(struct inode *inode, struct file *filp)
 		if (!fscrypt_has_encryption_key(inode))
 			return -ENOKEY;
 	}
-	if (f2fs_encrypted_inode(dir) &&
-			!fscrypt_has_permitted_context(dir, inode))
+	dir = dget_parent(file_dentry(filp));
+	if (f2fs_encrypted_inode(d_inode(dir)) &&
+			!fscrypt_has_permitted_context(d_inode(dir), inode)) {
+		dput(dir);
 		return -EPERM;
+	}
+	dput(dir);
 	return ret;
 }
 
@@ -1250,10 +1254,19 @@ out:
 
 static int f2fs_release_file(struct inode *inode, struct file *filp)
 {
+	/*
+	 * f2fs_relase_file is called at every close calls. So we should
+	 * not drop any inmemory pages by close called by other process.
+	 */
+	if (!(filp->f_mode & FMODE_WRITE) ||
+			atomic_read(&inode->i_writecount) != 1)
+		return 0;
+
 	/* some remained atomic pages should discarded */
 	if (f2fs_is_atomic_file(inode))
 		drop_inmem_pages(inode);
 	if (f2fs_is_volatile_file(inode)) {
+		clear_inode_flag(F2FS_I(inode), FI_VOLATILE_FILE);
 		set_inode_flag(F2FS_I(inode), FI_DROP_CACHE);
 		filemap_fdatawrite(inode->i_mapping);
 		clear_inode_flag(F2FS_I(inode), FI_DROP_CACHE);
@@ -1437,10 +1450,8 @@ static int f2fs_ioc_abort_volatile_write(struct file *filp)
 	if (ret)
 		return ret;
 
-	if (f2fs_is_atomic_file(inode)) {
-		clear_inode_flag(F2FS_I(inode), FI_ATOMIC_FILE);
+	if (f2fs_is_atomic_file(inode))
 		drop_inmem_pages(inode);
-	}
 	if (f2fs_is_volatile_file(inode)) {
 		clear_inode_flag(F2FS_I(inode), FI_VOLATILE_FILE);
 		ret = f2fs_sync_file(filp, 0, LLONG_MAX, 0);
