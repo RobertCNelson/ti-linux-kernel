@@ -708,7 +708,7 @@ look_up_lock_class(struct lockdep_map *lock, unsigned int subclass)
  * yet. Otherwise we look it up. We cache the result in the lock object
  * itself, so actual lookup of the hash should be once per lock object.
  */
-static inline struct lock_class *
+static struct lock_class *
 register_lock_class(struct lockdep_map *lock, unsigned int subclass, int force)
 {
 	struct lockdep_subclass_key *key;
@@ -1999,6 +1999,7 @@ static inline int get_first_held_lock(struct task_struct *curr,
 	return ++i;
 }
 
+#ifdef CONFIG_DEBUG_LOCKDEP
 /*
  * Returns the next chain_key iteration
  */
@@ -2069,6 +2070,7 @@ static void print_collision(struct task_struct *curr,
 	printk("\nstack backtrace:\n");
 	dump_stack();
 }
+#endif
 
 /*
  * Checks whether the chain and the current held locks are consistent

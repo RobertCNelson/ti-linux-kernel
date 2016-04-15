@@ -226,7 +226,8 @@ struct perf_evsel *perf_evsel__new_idx(struct perf_event_attr *attr, int idx)
 		perf_evsel__init(evsel, attr, idx);
 
 	if (perf_evsel__is_bpf_output(evsel)) {
-		evsel->attr.sample_type |= PERF_SAMPLE_RAW;
+		evsel->attr.sample_type |= (PERF_SAMPLE_RAW | PERF_SAMPLE_TIME |
+					    PERF_SAMPLE_CPU | PERF_SAMPLE_PERIOD),
 		evsel->attr.sample_period = 1;
 	}
 
@@ -561,10 +562,9 @@ int perf_evsel__group_desc(struct perf_evsel *evsel, char *buf, size_t size)
 	return ret;
 }
 
-static void
-perf_evsel__config_callgraph(struct perf_evsel *evsel,
-			     struct record_opts *opts,
-			     struct callchain_param *param)
+void perf_evsel__config_callchain(struct perf_evsel *evsel,
+				  struct record_opts *opts,
+				  struct callchain_param *param)
 {
 	bool function = perf_evsel__is_function_event(evsel);
 	struct perf_event_attr *attr = &evsel->attr;
@@ -704,7 +704,7 @@ static void apply_config_terms(struct perf_evsel *evsel,
 
 		/* set perf-event callgraph */
 		if (param.enabled)
-			perf_evsel__config_callgraph(evsel, opts, &param);
+			perf_evsel__config_callchain(evsel, opts, &param);
 	}
 }
 
@@ -736,7 +736,8 @@ static void apply_config_terms(struct perf_evsel *evsel,
  *     enable/disable events specifically, as there's no
  *     initial traced exec call.
  */
-void perf_evsel__config(struct perf_evsel *evsel, struct record_opts *opts)
+void perf_evsel__config(struct perf_evsel *evsel, struct record_opts *opts,
+			struct callchain_param *callchain)
 {
 	struct perf_evsel *leader = evsel->leader;
 	struct perf_event_attr *attr = &evsel->attr;
@@ -811,8 +812,8 @@ void perf_evsel__config(struct perf_evsel *evsel, struct record_opts *opts)
 	if (perf_evsel__is_function_event(evsel))
 		evsel->attr.exclude_callchain_user = 1;
 
-	if (callchain_param.enabled && !evsel->no_aux_samples)
-		perf_evsel__config_callgraph(evsel, opts, &callchain_param);
+	if (callchain && callchain->enabled && !evsel->no_aux_samples)
+		perf_evsel__config_callchain(evsel, opts, callchain);
 
 	if (opts->sample_intr_regs) {
 		attr->sample_regs_intr = opts->sample_intr_regs;
@@ -2341,6 +2342,137 @@ out:
 	fputc('\n', fp);
 	return ++printed;
 }
+
+int perf_evsel__fprintf_callchain(struct perf_evsel *evsel, struct perf_sample *sample,
+				  struct addr_location *al, int left_alignment,
+				  unsigned int print_opts, unsigned int stack_depth,
+				  FILE *fp)
+{
+	int printed = 0;
+	struct callchain_cursor_node *node;
+	int print_ip = print_opts & EVSEL__PRINT_IP;
+	int print_sym = print_opts & EVSEL__PRINT_SYM;
+	int print_dso = print_opts & EVSEL__PRINT_DSO;
+	int print_symoffset = print_opts & EVSEL__PRINT_SYMOFFSET;
+	int print_oneline = print_opts & EVSEL__PRINT_ONELINE;
+	int print_srcline = print_opts & EVSEL__PRINT_SRCLINE;
+	int print_unknown_as_addr = print_opts & EVSEL__PRINT_UNKNOWN_AS_ADDR;
+	char s = print_oneline ? ' ' : '\t';
+
+	if (sample->callchain) {
+		struct addr_location node_al;
+
+		if (thread__resolve_callchain(al->thread, evsel,
+					      sample, NULL, NULL,
+					      stack_depth) != 0) {
+			if (verbose)
+				error("Failed to resolve callchain. Skipping\n");
+			return printed;
+		}
+		callchain_cursor_commit(&callchain_cursor);
+
+		if (print_symoffset)
+			node_al = *al;
+
+		while (stack_depth) {
+			u64 addr = 0;
+
+			node = callchain_cursor_current(&callchain_cursor);
+			if (!node)
+				break;
+
+			if (node->sym && node->sym->ignore)
+				goto next;
+
+			printed += fprintf(fp, "%-*.*s", left_alignment, left_alignment, " ");
+
+			if (print_ip)
+				printed += fprintf(fp, "%c%16" PRIx64, s, node->ip);
+
+			if (node->map)
+				addr = node->map->map_ip(node->map, node->ip);
+
+			if (print_sym) {
+				printed += fprintf(fp, " ");
+				node_al.addr = addr;
+				node_al.map  = node->map;
+
+				if (print_symoffset) {
+					printed += __symbol__fprintf_symname_offs(node->sym, &node_al,
+										  print_unknown_as_addr, fp);
+				} else {
+					printed += __symbol__fprintf_symname(node->sym, &node_al,
+									     print_unknown_as_addr, fp);
+				}
+			}
+
+			if (print_dso) {
+				printed += fprintf(fp, " (");
+				printed += map__fprintf_dsoname(node->map, fp);
+				printed += fprintf(fp, ")");
+			}
+
+			if (print_srcline)
+				printed += map__fprintf_srcline(node->map, addr, "\n  ", fp);
+
+			if (!print_oneline)
+				printed += fprintf(fp, "\n");
+
+			stack_depth--;
+next:
+			callchain_cursor_advance(&callchain_cursor);
+		}
+	}
+
+	return printed;
+}
+
+int perf_evsel__fprintf_sym(struct perf_evsel *evsel, struct perf_sample *sample,
+			    struct addr_location *al, int left_alignment,
+			    unsigned int print_opts, unsigned int stack_depth,
+			    FILE *fp)
+{
+	int printed = 0;
+	int print_ip = print_opts & EVSEL__PRINT_IP;
+	int print_sym = print_opts & EVSEL__PRINT_SYM;
+	int print_dso = print_opts & EVSEL__PRINT_DSO;
+	int print_symoffset = print_opts & EVSEL__PRINT_SYMOFFSET;
+	int print_srcline = print_opts & EVSEL__PRINT_SRCLINE;
+	int print_unknown_as_addr = print_opts & EVSEL__PRINT_UNKNOWN_AS_ADDR;
+
+	if (symbol_conf.use_callchain && sample->callchain) {
+		printed += perf_evsel__fprintf_callchain(evsel, sample, al, left_alignment,
+							 print_opts, stack_depth, fp);
+	} else if (!(al->sym && al->sym->ignore)) {
+		printed += fprintf(fp, "%-*.*s", left_alignment, left_alignment, " ");
+
+		if (print_ip)
+			printed += fprintf(fp, "%16" PRIx64, sample->ip);
+
+		if (print_sym) {
+			printed += fprintf(fp, " ");
+			if (print_symoffset) {
+				printed += __symbol__fprintf_symname_offs(al->sym, al,
+									  print_unknown_as_addr, fp);
+			} else {
+				printed += __symbol__fprintf_symname(al->sym, al,
+								     print_unknown_as_addr, fp);
+			}
+		}
+
+		if (print_dso) {
+			printed += fprintf(fp, " (");
+			printed += map__fprintf_dsoname(al->map, fp);
+			printed += fprintf(fp, ")");
+		}
+
+		if (print_srcline)
+			printed += map__fprintf_srcline(al->map, al->addr, "\n  ", fp);
+	}
+
+	return printed;
+}
+
 
 bool perf_evsel__fallback(struct perf_evsel *evsel, int err,
 			  char *msg, size_t msgsize)
