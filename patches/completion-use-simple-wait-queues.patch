@@ -136,7 +136,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  struct mm_struct;
 --- a/kernel/power/hibernate.c
 +++ b/kernel/power/hibernate.c
-@@ -648,6 +648,10 @@ static void power_down(void)
+@@ -649,6 +649,10 @@ static void power_down(void)
  		cpu_relax();
  }
  
@@ -147,7 +147,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /**
   * hibernate - Carry out system hibernation, including saving the image.
   */
-@@ -660,6 +664,8 @@ int hibernate(void)
+@@ -661,6 +665,8 @@ int hibernate(void)
  		return -EPERM;
  	}
  
@@ -156,7 +156,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	lock_system_sleep();
  	/* The snapshot device should not be opened while we're running */
  	if (!atomic_add_unless(&snapshot_device_available, -1, 0)) {
-@@ -725,6 +731,7 @@ int hibernate(void)
+@@ -726,6 +732,7 @@ int hibernate(void)
  	atomic_inc(&snapshot_device_available);
   Unlock:
  	unlock_system_sleep();

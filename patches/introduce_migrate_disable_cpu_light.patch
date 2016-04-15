@@ -89,7 +89,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	int nr_cpus_allowed;
  	cpumask_t cpus_allowed;
  
-@@ -1836,14 +1842,6 @@ extern int arch_task_struct_size __read_
+@@ -1838,14 +1844,6 @@ extern int arch_task_struct_size __read_
  # define arch_task_struct_size (sizeof(struct task_struct))
  #endif
  
@@ -104,7 +104,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #define TNF_MIGRATED	0x01
  #define TNF_NO_GROUP	0x02
  #define TNF_SHARED	0x04
-@@ -3120,6 +3118,31 @@ static inline void set_task_cpu(struct t
+@@ -3122,6 +3120,31 @@ static inline void set_task_cpu(struct t
  
  #endif /* CONFIG_SMP */
  

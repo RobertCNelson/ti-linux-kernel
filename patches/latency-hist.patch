@@ -236,7 +236,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	int				start_pid;
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -1794,6 +1794,12 @@ struct task_struct {
+@@ -1796,6 +1796,12 @@ struct task_struct {
  	unsigned long trace;
  	/* bitmask and counter of trace recursion */
  	unsigned long trace_recursion;
@@ -1740,7 +1740,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  #include "trace.h"
  
-@@ -420,11 +421,13 @@ void start_critical_timings(void)
+@@ -424,11 +425,13 @@ void start_critical_timings(void)
  {
  	if (preempt_trace() || irq_trace())
  		start_critical_timing(CALLER_ADDR0, CALLER_ADDR1);
@@ -1754,7 +1754,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	if (preempt_trace() || irq_trace())
  		stop_critical_timing(CALLER_ADDR0, CALLER_ADDR1);
  }
-@@ -434,6 +437,7 @@ EXPORT_SYMBOL_GPL(stop_critical_timings)
+@@ -438,6 +441,7 @@ EXPORT_SYMBOL_GPL(stop_critical_timings)
  #ifdef CONFIG_PROVE_LOCKING
  void time_hardirqs_on(unsigned long a0, unsigned long a1)
  {
@@ -1762,7 +1762,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	if (!preempt_trace() && irq_trace())
  		stop_critical_timing(a0, a1);
  }
-@@ -442,6 +446,7 @@ void time_hardirqs_off(unsigned long a0,
+@@ -446,6 +450,7 @@ void time_hardirqs_off(unsigned long a0,
  {
  	if (!preempt_trace() && irq_trace())
  		start_critical_timing(a0, a1);
@@ -1770,7 +1770,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  #else /* !CONFIG_PROVE_LOCKING */
-@@ -467,6 +472,7 @@ inline void print_irqtrace_events(struct
+@@ -471,6 +476,7 @@ inline void print_irqtrace_events(struct
   */
  void trace_hardirqs_on(void)
  {
@@ -1778,7 +1778,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	if (!preempt_trace() && irq_trace())
  		stop_critical_timing(CALLER_ADDR0, CALLER_ADDR1);
  }
-@@ -476,11 +482,13 @@ void trace_hardirqs_off(void)
+@@ -480,11 +486,13 @@ void trace_hardirqs_off(void)
  {
  	if (!preempt_trace() && irq_trace())
  		start_critical_timing(CALLER_ADDR0, CALLER_ADDR1);
@@ -1792,7 +1792,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	if (!preempt_trace() && irq_trace())
  		stop_critical_timing(CALLER_ADDR0, caller_addr);
  }
-@@ -490,6 +498,7 @@ EXPORT_SYMBOL(trace_hardirqs_on_caller);
+@@ -494,6 +502,7 @@ EXPORT_SYMBOL(trace_hardirqs_on_caller);
  {
  	if (!preempt_trace() && irq_trace())
  		start_critical_timing(CALLER_ADDR0, caller_addr);
@@ -1800,7 +1800,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  EXPORT_SYMBOL(trace_hardirqs_off_caller);
  
-@@ -499,12 +508,14 @@ EXPORT_SYMBOL(trace_hardirqs_off_caller)
+@@ -503,12 +512,14 @@ EXPORT_SYMBOL(trace_hardirqs_off_caller)
  #ifdef CONFIG_PREEMPT_TRACER
  void trace_preempt_on(unsigned long a0, unsigned long a1)
  {

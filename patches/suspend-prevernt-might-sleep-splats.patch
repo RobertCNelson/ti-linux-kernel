@@ -25,7 +25,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/include/linux/kernel.h
 +++ b/include/linux/kernel.h
-@@ -473,6 +473,7 @@ extern enum system_states {
+@@ -482,6 +482,7 @@ extern enum system_states {
  	SYSTEM_HALT,
  	SYSTEM_POWER_OFF,
  	SYSTEM_RESTART,
@@ -52,7 +52,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	local_irq_enable();
  
   Enable_cpus:
-@@ -437,6 +440,7 @@ static int resume_target_kernel(bool pla
+@@ -438,6 +441,7 @@ static int resume_target_kernel(bool pla
  		goto Enable_cpus;
  
  	local_irq_disable();
@@ -60,7 +60,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	error = syscore_suspend();
  	if (error)
-@@ -470,6 +474,7 @@ static int resume_target_kernel(bool pla
+@@ -471,6 +475,7 @@ static int resume_target_kernel(bool pla
  	syscore_resume();
  
   Enable_irqs:
@@ -68,7 +68,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	local_irq_enable();
  
   Enable_cpus:
-@@ -555,6 +560,7 @@ int hibernation_platform_enter(void)
+@@ -556,6 +561,7 @@ int hibernation_platform_enter(void)
  		goto Enable_cpus;
  
  	local_irq_disable();
@@ -76,7 +76,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	syscore_suspend();
  	if (pm_wakeup_pending()) {
  		error = -EAGAIN;
-@@ -567,6 +573,7 @@ int hibernation_platform_enter(void)
+@@ -568,6 +574,7 @@ int hibernation_platform_enter(void)
  
   Power_up:
  	syscore_resume();

@@ -9,6 +9,11 @@ rtmutex-Make-wait_lock-irq-safe.patch
 arm64-replace-read_lock-to-rcu-lock-in-call_step_hoo.patch
 tracing-writeback-Replace-cgroup-path-to-cgroup-ino.patch
 kvm-rt-change-async-pagefault-code-locking-for-PREEM.patch
+panic-x86-Fix-re-entrance-problem-due-to-panic-on-NM.patch
+panic-x86-Allow-CPUs-to-save-registers-even-if-loopi.patch
+panic-change-nmi_panic-from-macro-to-function.patch
+sched-cputime-Clarify-vtime-symbols-and-document-the.patch
+sched-cputime-Convert-vtime_seqlock-to-seqcount.patch
 
 # AT91 queue in ARM-SOC
 0001-clk-at91-make-use-of-syscon-to-share-PMC-registers-i.patch
@@ -108,9 +113,6 @@ block-shorten-interrupt-disabled-regions.patch
 
 # Timekeeping split jiffies lock. Needs a good argument :)
 timekeeping-split-jiffies-lock.patch
-
-# CHECKME: Should local_irq_enable() generally do a preemption check ?
-vtime-split-lock-and-seqcount.patch
 
 # Tracing
 tracing-account-for-preempt-off-in-preempt_schedule.patch
@@ -392,6 +394,7 @@ kernel-stop_machine-partly-revert-stop_machine-Use-r.patch
 drivers-tty-fix-omap-lock-crap.patch
 drivers-tty-pl011-irq-disable-madness.patch
 rt-serial-warn-fix.patch
+tty-serial-8250-don-t-take-the-trylock-during-oops.patch
 
 # SIMPLE WAITQUEUE
 wait.h-include-atomic.h.patch

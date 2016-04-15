@@ -31,8 +31,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +
  #ifdef CONFIG_VIRT_CPU_ACCOUNTING_GEN
  # define INIT_VTIME(tsk)						\
- 	.vtime_lock = __RAW_SPIN_LOCK_UNLOCKED(tsk.vtime_lock),	\
-@@ -240,6 +246,7 @@ extern struct task_group root_task_group
+ 	.vtime_seqcount = SEQCNT_ZERO(tsk.vtime_seqcount),	\
+@@ -239,6 +245,7 @@ extern struct task_group root_task_group
  	.cpu_timers	= INIT_CPU_TIMERS(tsk.cpu_timers),		\
  	.pi_lock	= __RAW_SPIN_LOCK_UNLOCKED(tsk.pi_lock),	\
  	.timer_slack_ns = 50000, /* 50 usec default slack */		\
@@ -42,7 +42,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		[PIDTYPE_PGID] = INIT_PID_LINK(PIDTYPE_PGID),		\
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -1542,6 +1542,9 @@ struct task_struct {
+@@ -1544,6 +1544,9 @@ struct task_struct {
  
  	struct task_cputime cputime_expires;
  	struct list_head cpu_timers[3];

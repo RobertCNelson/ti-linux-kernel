@@ -159,5 +159,5 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
 +		raw_spin_unlock(&watchdog_output_lock);
  		if (hardlockup_panic)
- 			panic("Hard LOCKUP");
+ 			nmi_panic(regs, "Hard LOCKUP");
  
