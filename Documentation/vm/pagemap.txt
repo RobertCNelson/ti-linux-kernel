@@ -71,6 +71,8 @@ There are four components to pagemap:
     23. BALLOON
     24. ZERO_PAGE
     25. IDLE
+    26. TEAM
+    27. TEAM_PMD_MMAP (only if the whole team is mapped as a pmd at least once)
 
  * /proc/kpagecgroup.  This file contains a 64-bit inode number of the
    memory cgroup each page is charged to, indexed by PFN. Only available when
