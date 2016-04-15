@@ -246,7 +246,6 @@ struct opregion_asle_ext {
 
 #define MAX_DSLP	1500
 
-#ifdef CONFIG_ACPI
 static int swsci(struct drm_device *dev, u32 function, u32 parm, u32 *parm_out)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -905,9 +904,6 @@ static void swsci_setup(struct drm_device *dev)
 			 opregion->swsci_gbda_sub_functions,
 			 opregion->swsci_sbcb_sub_functions);
 }
-#else /* CONFIG_ACPI */
-static inline void swsci_setup(struct drm_device *dev) {}
-#endif  /* CONFIG_ACPI */
 
 static int intel_no_opregion_vbt_callback(const struct dmi_system_id *id)
 {
@@ -950,9 +946,7 @@ int intel_opregion_setup(struct drm_device *dev)
 		return -ENOTSUPP;
 	}
 
-#ifdef CONFIG_ACPI
 	INIT_WORK(&opregion->asle_work, asle_work);
-#endif
 
 	base = memremap(asls, OPREGION_SIZE, MEMREMAP_WB);
 	if (!base)
@@ -1023,4 +1017,32 @@ int intel_opregion_setup(struct drm_device *dev)
 err_out:
 	memunmap(base);
 	return err;
+}
+
+int
+intel_opregion_get_panel_type(struct drm_device *dev)
+{
+	u32 panel_details;
+	int ret;
+
+	ret = swsci(dev, SWSCI_GBDA_PANEL_DETAILS, 0x0, &panel_details);
+	if (ret) {
+		DRM_DEBUG_KMS("Failed to get panel details from OpRegion (%d)\n",
+			      ret);
+		return ret;
+	}
+
+	ret = (panel_details >> 8) & 0xff;
+	if (ret > 0x10) {
+		DRM_DEBUG_KMS("Invalid OpRegion panel type 0x%x\n", ret);
+		return -EINVAL;
+	}
+
+	/* fall back to VBT panel type? */
+	if (ret == 0x0) {
+		DRM_DEBUG_KMS("No panel type in OpRegion\n");
+		return -ENODEV;
+	}
+
+	return ret - 1;
 }
