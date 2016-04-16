@@ -2882,7 +2882,7 @@ repeat:
 			page = *pagep;
 			lock_page(page);
 			head = page - (index & (HPAGE_PMD_NR-1));
-			if (!PageTeam(head)) {
+			if (!PageTeam(head) && page != head) {
 				error = -ENOENT;
 				goto decused;
 			}
