@@ -463,7 +463,6 @@ static inline struct page *shmem_hugeteam_lookup(struct address_space *mapping,
 
 static inline void shmem_disband_hugeteam(struct page *page)
 {
-	BUILD_BUG();
 }
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE */
 
