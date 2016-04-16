@@ -3084,7 +3084,7 @@ void __split_huge_pmd(struct vm_area_struct *vma, pmd_t *pmd,
 	struct mm_struct *mm = vma->vm_mm;
 	unsigned long haddr = address & HPAGE_PMD_MASK;
 
-	if (!vma_is_anonymous(vma) && !vma->vm_ops->pmd_fault) {
+	if (vma->vm_file && shmem_mapping(vma->vm_file->f_mapping)) {
 		remap_team_by_ptes(vma, address, pmd);
 		return;
 	}
@@ -3622,7 +3622,7 @@ int map_team_by_pmd(struct vm_area_struct *vma, unsigned long addr,
 	pgtable_t pgtable;
 	spinlock_t *pml;
 	pmd_t pmdval;
-	int ret = VM_FAULT_NOPAGE;
+	int ret = 0;
 
 	/*
 	 * Another task may have mapped it in just ahead of us; but we

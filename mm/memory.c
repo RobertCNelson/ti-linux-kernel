@@ -3410,6 +3410,7 @@ static int __handle_mm_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 	pud_t *pud;
 	pmd_t *pmd;
 	pte_t *pte;
+	int ret = 0;
 
 	if (!arch_vma_access_permitted(vma, flags & FAULT_FLAG_WRITE,
 					    flags & FAULT_FLAG_INSTRUCTION,
@@ -3426,13 +3427,16 @@ static int __handle_mm_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 	pmd = pmd_alloc(mm, pud, address);
 	if (!pmd)
 		return VM_FAULT_OOM;
-	if (pmd_none(*pmd) && transparent_hugepage_enabled(vma)) {
-		int ret = create_huge_pmd(mm, vma, address, pmd, flags);
+
+	if (pmd_none(*pmd) &&
+	    (transparent_hugepage_enabled(vma) ||
+	     (vma->vm_file && shmem_mapping(vma->vm_file->f_mapping)))) {
+		ret = create_huge_pmd(mm, vma, address, pmd, flags);
 		if (!(ret & VM_FAULT_FALLBACK))
 			return ret;
+		ret &= VM_FAULT_MAJOR;
 	} else {
 		pmd_t orig_pmd = *pmd;
-		int ret;
 
 		barrier();
 		if (pmd_trans_huge(orig_pmd) || pmd_devmap(orig_pmd)) {
@@ -3447,6 +3451,7 @@ static int __handle_mm_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 							orig_pmd, flags);
 				if (!(ret & VM_FAULT_FALLBACK))
 					return ret;
+				ret = 0;
 			} else {
 				huge_pmd_set_accessed(mm, vma, address, pmd,
 						      orig_pmd, dirty);
@@ -3483,7 +3488,7 @@ static int __handle_mm_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 	 */
 	pte = pte_offset_map(pmd, address);
 
-	return handle_pte_fault(mm, vma, address, pte, pmd, flags);
+	return ret | handle_pte_fault(mm, vma, address, pte, pmd, flags);
 }
 
 /*

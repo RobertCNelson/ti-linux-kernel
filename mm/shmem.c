@@ -3223,6 +3223,36 @@ single:
 	return ret | VM_FAULT_LOCKED | VM_FAULT_HUGE;
 }
 
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+static int shmem_pmd_fault(struct vm_area_struct *vma, unsigned long address,
+			   pmd_t *pmd, unsigned int flags)
+{
+	struct vm_fault vmf;
+	int ret;
+
+	if ((flags & FAULT_FLAG_WRITE) && !(vma->vm_flags & VM_SHARED)) {
+		/* Copy On Write: don't insert huge pmd; or split if already */
+		if (pmd_trans_huge(*pmd))
+			remap_team_by_ptes(vma, address, pmd);
+		return VM_FAULT_FALLBACK;
+	}
+
+	vmf.virtual_address = (void __user *)(address & PAGE_MASK);
+	vmf.pgoff = linear_page_index(vma, address);
+	vmf.flags = flags | FAULT_FLAG_MAY_HUGE;
+
+	ret = shmem_fault(vma, &vmf);
+	if (ret & VM_FAULT_HUGE)
+		return ret | map_team_by_pmd(vma, address, pmd, vmf.page);
+	if (ret & VM_FAULT_ERROR)
+		return ret;
+
+	unlock_page(vmf.page);
+	put_page(vmf.page);
+	return ret | VM_FAULT_FALLBACK;
+}
+#endif
+
 unsigned long shmem_get_unmapped_area(struct file *file,
 				      unsigned long uaddr, unsigned long len,
 				      unsigned long pgoff, unsigned long flags)
@@ -5129,6 +5159,9 @@ static const struct super_operations shmem_ops = {
 
 static const struct vm_operations_struct shmem_vm_ops = {
 	.fault		= shmem_fault,
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+	.pmd_fault	= shmem_pmd_fault,
+#endif
 	.map_pages	= filemap_map_pages,
 #ifdef CONFIG_NUMA
 	.set_policy     = shmem_set_policy,
