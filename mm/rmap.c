@@ -1443,8 +1443,12 @@ static int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 	 */
 	if (!(flags & TTU_IGNORE_MLOCK)) {
 		if (vma->vm_flags & VM_LOCKED) {
+			int nr_pages = 1;
+
+			if (IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE) && !pte)
+				nr_pages = HPAGE_PMD_NR;
 			/* Holding pte lock, we do *not* need mmap_sem here */
-			mlock_vma_pages(page, pte ? 1 : HPAGE_PMD_NR);
+			mlock_vma_pages(page, nr_pages);
 			ret = SWAP_MLOCK;
 			goto out_unmap;
 		}
