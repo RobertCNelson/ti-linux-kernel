@@ -562,7 +562,7 @@ skd_prep_discard_cdb(struct skd_scsi_request *scsi_req,
 	put_unaligned_be32(count, &buf[16]);
 
 	req = skreq->req;
-	blk_add_request_payload(req, page, len);
+	blk_add_request_payload(req, page, 0, len);
 }
 
 static void skd_request_fn_not_online(struct request_queue *q);
@@ -4412,7 +4412,7 @@ static int skd_cons_disk(struct skd_device *skdev)
 	disk->queue = q;
 	q->queuedata = skdev;
 
-	blk_queue_flush(q, REQ_FLUSH | REQ_FUA);
+	blk_queue_write_cache(q, true, true);
 	blk_queue_max_segments(q, skdev->sgs_per_request);
 	blk_queue_max_hw_sectors(q, SKD_N_MAX_SECTORS);
 
