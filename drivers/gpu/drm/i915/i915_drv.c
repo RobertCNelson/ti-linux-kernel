@@ -360,14 +360,12 @@ static const struct intel_device_info intel_broxton_info = {
 
 static const struct intel_device_info intel_kabylake_info = {
 	BDW_FEATURES,
-	.is_preliminary = 1,
 	.is_kabylake = 1,
 	.gen = 9,
 };
 
 static const struct intel_device_info intel_kabylake_gt3_info = {
 	BDW_FEATURES,
-	.is_preliminary = 1,
 	.is_kabylake = 1,
 	.gen = 9,
 	.ring_mask = RENDER_RING | BSD_RING | BLT_RING | VEBOX_RING | BSD2_RING,
@@ -659,7 +657,8 @@ static int i915_drm_suspend_late(struct drm_device *drm_dev, bool hibernation)
 
 	disable_rpm_wakeref_asserts(dev_priv);
 
-	fw_csr = suspend_to_idle(dev_priv) && dev_priv->csr.dmc_payload;
+	fw_csr = !IS_BROXTON(dev_priv) &&
+		suspend_to_idle(dev_priv) && dev_priv->csr.dmc_payload;
 	/*
 	 * In case of firmware assisted context save/restore don't manually
 	 * deinit the power domains. This also means the CSR/DMC firmware will
@@ -839,7 +838,8 @@ static int i915_drm_resume_early(struct drm_device *dev)
 
 	intel_uncore_sanitize(dev);
 
-	if (!(dev_priv->suspended_to_idle && dev_priv->csr.dmc_payload))
+	if (IS_BROXTON(dev_priv) ||
+	    !(dev_priv->suspended_to_idle && dev_priv->csr.dmc_payload))
 		intel_power_domains_init_hw(dev_priv, true);
 
 out:
@@ -882,23 +882,32 @@ int i915_resume_switcheroo(struct drm_device *dev)
 int i915_reset(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	bool simulated;
+	struct i915_gpu_error *error = &dev_priv->gpu_error;
+	unsigned reset_counter;
 	int ret;
 
 	intel_reset_gt_powersave(dev);
 
 	mutex_lock(&dev->struct_mutex);
 
-	i915_gem_reset(dev);
+	/* Clear any previous failed attempts at recovery. Time to try again. */
+	atomic_andnot(I915_WEDGED, &error->reset_counter);
 
-	simulated = dev_priv->gpu_error.stop_rings != 0;
+	/* Clear the reset-in-progress flag and increment the reset epoch. */
+	reset_counter = atomic_inc_return(&error->reset_counter);
+	if (WARN_ON(__i915_reset_in_progress(reset_counter))) {
+		ret = -EIO;
+		goto error;
+	}
+
+	i915_gem_reset(dev);
 
 	ret = intel_gpu_reset(dev, ALL_ENGINES);
 
 	/* Also reset the gpu hangman. */
-	if (simulated) {
+	if (error->stop_rings != 0) {
 		DRM_INFO("Simulated gpu hang, resetting stop_rings\n");
-		dev_priv->gpu_error.stop_rings = 0;
+		error->stop_rings = 0;
 		if (ret == -ENODEV) {
 			DRM_INFO("Reset not implemented, but ignoring "
 				 "error for simulated gpu hangs\n");
@@ -910,9 +919,11 @@ int i915_reset(struct drm_device *dev)
 		pr_notice("drm/i915: Resetting chip after gpu hang\n");
 
 	if (ret) {
-		DRM_ERROR("Failed to reset chip: %i\n", ret);
-		mutex_unlock(&dev->struct_mutex);
-		return ret;
+		if (ret != -ENODEV)
+			DRM_ERROR("Failed to reset chip: %i\n", ret);
+		else
+			DRM_DEBUG_DRIVER("GPU reset disabled\n");
+		goto error;
 	}
 
 	intel_overlay_reset(dev_priv);
@@ -931,19 +942,13 @@ int i915_reset(struct drm_device *dev)
 	 * was running at the time of the reset (i.e. we weren't VT
 	 * switched away).
 	 */
-
-	/* Used to prevent gem_check_wedged returning -EAGAIN during gpu reset */
-	dev_priv->gpu_error.reload_in_reset = true;
-
 	ret = i915_gem_init_hw(dev);
-
-	dev_priv->gpu_error.reload_in_reset = false;
-
-	mutex_unlock(&dev->struct_mutex);
 	if (ret) {
 		DRM_ERROR("Failed hw init on reset %d\n", ret);
-		return ret;
+		goto error;
 	}
+
+	mutex_unlock(&dev->struct_mutex);
 
 	/*
 	 * rps/rc6 re-init is necessary to restore state lost after the
@@ -955,6 +960,11 @@ int i915_reset(struct drm_device *dev)
 		intel_enable_gt_powersave(dev);
 
 	return 0;
+
+error:
+	atomic_or(I915_WEDGED, &error->reset_counter);
+	mutex_unlock(&dev->struct_mutex);
+	return ret;
 }
 
 static int i915_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
@@ -1070,12 +1080,7 @@ static int hsw_suspend_complete(struct drm_i915_private *dev_priv)
 
 static int bxt_suspend_complete(struct drm_i915_private *dev_priv)
 {
-	struct drm_device *dev = dev_priv->dev;
-
-	/* TODO: when DC5 support is added disable DC5 here. */
-
-	broxton_ddi_phy_uninit(dev);
-	broxton_uninit_cdclk(dev);
+	bxt_display_core_uninit(dev_priv);
 	bxt_enable_dc9(dev_priv);
 
 	return 0;
@@ -1083,18 +1088,8 @@ static int bxt_suspend_complete(struct drm_i915_private *dev_priv)
 
 static int bxt_resume_prepare(struct drm_i915_private *dev_priv)
 {
-	struct drm_device *dev = dev_priv->dev;
-
-	/* TODO: when CSR FW support is added make sure the FW is loaded */
-
 	bxt_disable_dc9(dev_priv);
-
-	/*
-	 * TODO: when DC5 support is added enable DC5 here if the CSR FW
-	 * is available.
-	 */
-	broxton_init_cdclk(dev);
-	broxton_ddi_phy_init(dev);
+	bxt_display_core_init(dev_priv, true);
 
 	return 0;
 }
@@ -1402,7 +1397,7 @@ static int vlv_suspend_complete(struct drm_i915_private *dev_priv)
 	if (err)
 		goto err2;
 
-	if (!IS_CHERRYVIEW(dev_priv->dev))
+	if (!IS_CHERRYVIEW(dev_priv))
 		vlv_save_gunit_s0ix_state(dev_priv);
 
 	err = vlv_force_gfx_clock(dev_priv, false);
@@ -1434,7 +1429,7 @@ static int vlv_resume_prepare(struct drm_i915_private *dev_priv,
 	 */
 	ret = vlv_force_gfx_clock(dev_priv, true);
 
-	if (!IS_CHERRYVIEW(dev_priv->dev))
+	if (!IS_CHERRYVIEW(dev_priv))
 		vlv_restore_gunit_s0ix_state(dev_priv);
 
 	err = vlv_allow_gt_wake(dev_priv, true);
