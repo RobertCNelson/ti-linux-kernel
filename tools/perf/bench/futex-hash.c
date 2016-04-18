@@ -25,7 +25,7 @@ static unsigned int nthreads = 0;
 static unsigned int nsecs    = 10;
 /* amount of futexes per thread */
 static unsigned int nfutexes = 1024;
-static bool fshared = false, done = false, silent = false;
+static bool fshared = false, done = false, silent = false, attached = false;
 static int futex_flag = 0;
 
 struct timeval start, end, runtime;
@@ -42,11 +42,12 @@ struct worker {
 };
 
 static const struct option options[] = {
-	OPT_UINTEGER('t', "threads", &nthreads, "Specify amount of threads"),
-	OPT_UINTEGER('r', "runtime", &nsecs,    "Specify runtime (in seconds)"),
-	OPT_UINTEGER('f', "futexes", &nfutexes, "Specify amount of futexes per threads"),
-	OPT_BOOLEAN( 's', "silent",  &silent,   "Silent mode: do not display data/details"),
-	OPT_BOOLEAN( 'S', "shared",  &fshared,  "Use shared futexes instead of private ones"),
+	OPT_UINTEGER('t', "threads",  &nthreads, "Specify amount of threads"),
+	OPT_UINTEGER('r', "runtime",  &nsecs,    "Specify runtime (in seconds)"),
+	OPT_UINTEGER('f', "futexes",  &nfutexes, "Specify amount of futexes per threads"),
+	OPT_BOOLEAN( 's', "silent",   &silent,   "Silent mode: do not display data/details"),
+	OPT_BOOLEAN( 'S', "shared",   &fshared,  "Use shared futexes instead of private ones"),
+	OPT_BOOLEAN( 'a', "attached", &attached, "Use attached futexes"),
 	OPT_END()
 };
 
@@ -60,6 +61,14 @@ static void *workerfn(void *arg)
 	int ret;
 	unsigned int i;
 	struct worker *w = (struct worker *) arg;
+
+	if (attached) {
+		for (i = 0; i < nfutexes; i++) {
+			ret = futex_attach(&w->futex[i], futex_flag);
+			if (ret < 0)
+				err(EXIT_FAILURE, "Attach futex failed\n");
+		}
+	}
 
 	pthread_mutex_lock(&thread_lock);
 	threads_starting--;
@@ -82,6 +91,14 @@ static void *workerfn(void *arg)
 				warn("Non-expected futex return call");
 		}
 	}  while (!done);
+
+	if (attached) {
+		for (i = 0; i < nfutexes; i++) {
+			ret = futex_detach(&w->futex[i], futex_flag);
+			if (ret < 0)
+				err(EXIT_FAILURE, "Detach futex failed");
+		}
+	}
 
 	return NULL;
 }
@@ -136,10 +153,13 @@ int bench_futex_hash(int argc, const char **argv,
 		goto errmem;
 
 	if (!fshared)
-		futex_flag = FUTEX_PRIVATE_FLAG;
+		futex_flag |= FUTEX_PRIVATE_FLAG;
+	if (attached)
+		futex_flag |= FUTEX_ATTACHED;
 
-	printf("Run summary [PID %d]: %d threads, each operating on %d [%s] futexes for %d secs.\n\n",
-	       getpid(), nthreads, nfutexes, fshared ? "shared":"private", nsecs);
+	printf("Run summary [PID %d]: %d threads, each operating on %d [%s %s] futexes for %d secs.\n\n",
+	       getpid(), nthreads, nfutexes, fshared ? "shared":"private",
+	       attached ? "attached" : "", nsecs);
 
 	init_stats(&throughput_stats);
 	pthread_mutex_init(&thread_lock, NULL);

@@ -226,7 +226,8 @@ struct perf_evsel *perf_evsel__new_idx(struct perf_event_attr *attr, int idx)
 		perf_evsel__init(evsel, attr, idx);
 
 	if (perf_evsel__is_bpf_output(evsel)) {
-		evsel->attr.sample_type |= PERF_SAMPLE_RAW;
+		evsel->attr.sample_type |= (PERF_SAMPLE_RAW | PERF_SAMPLE_TIME |
+					    PERF_SAMPLE_CPU | PERF_SAMPLE_PERIOD),
 		evsel->attr.sample_period = 1;
 	}
 
@@ -561,10 +562,9 @@ int perf_evsel__group_desc(struct perf_evsel *evsel, char *buf, size_t size)
 	return ret;
 }
 
-static void
-perf_evsel__config_callgraph(struct perf_evsel *evsel,
-			     struct record_opts *opts,
-			     struct callchain_param *param)
+void perf_evsel__config_callchain(struct perf_evsel *evsel,
+				  struct record_opts *opts,
+				  struct callchain_param *param)
 {
 	bool function = perf_evsel__is_function_event(evsel);
 	struct perf_event_attr *attr = &evsel->attr;
@@ -704,7 +704,7 @@ static void apply_config_terms(struct perf_evsel *evsel,
 
 		/* set perf-event callgraph */
 		if (param.enabled)
-			perf_evsel__config_callgraph(evsel, opts, &param);
+			perf_evsel__config_callchain(evsel, opts, &param);
 	}
 }
 
@@ -736,7 +736,8 @@ static void apply_config_terms(struct perf_evsel *evsel,
  *     enable/disable events specifically, as there's no
  *     initial traced exec call.
  */
-void perf_evsel__config(struct perf_evsel *evsel, struct record_opts *opts)
+void perf_evsel__config(struct perf_evsel *evsel, struct record_opts *opts,
+			struct callchain_param *callchain)
 {
 	struct perf_evsel *leader = evsel->leader;
 	struct perf_event_attr *attr = &evsel->attr;
@@ -811,8 +812,8 @@ void perf_evsel__config(struct perf_evsel *evsel, struct record_opts *opts)
 	if (perf_evsel__is_function_event(evsel))
 		evsel->attr.exclude_callchain_user = 1;
 
-	if (callchain_param.enabled && !evsel->no_aux_samples)
-		perf_evsel__config_callgraph(evsel, opts, &callchain_param);
+	if (callchain && callchain->enabled && !evsel->no_aux_samples)
+		perf_evsel__config_callchain(evsel, opts, callchain);
 
 	if (opts->sample_intr_regs) {
 		attr->sample_regs_intr = opts->sample_intr_regs;
@@ -2251,95 +2252,6 @@ u64 perf_evsel__intval(struct perf_evsel *evsel, struct perf_sample *sample,
 	}
 
 	return 0;
-}
-
-static int comma_fprintf(FILE *fp, bool *first, const char *fmt, ...)
-{
-	va_list args;
-	int ret = 0;
-
-	if (!*first) {
-		ret += fprintf(fp, ",");
-	} else {
-		ret += fprintf(fp, ":");
-		*first = false;
-	}
-
-	va_start(args, fmt);
-	ret += vfprintf(fp, fmt, args);
-	va_end(args);
-	return ret;
-}
-
-static int __print_attr__fprintf(FILE *fp, const char *name, const char *val, void *priv)
-{
-	return comma_fprintf(fp, (bool *)priv, " %s: %s", name, val);
-}
-
-int perf_evsel__fprintf(struct perf_evsel *evsel,
-			struct perf_attr_details *details, FILE *fp)
-{
-	bool first = true;
-	int printed = 0;
-
-	if (details->event_group) {
-		struct perf_evsel *pos;
-
-		if (!perf_evsel__is_group_leader(evsel))
-			return 0;
-
-		if (evsel->nr_members > 1)
-			printed += fprintf(fp, "%s{", evsel->group_name ?: "");
-
-		printed += fprintf(fp, "%s", perf_evsel__name(evsel));
-		for_each_group_member(pos, evsel)
-			printed += fprintf(fp, ",%s", perf_evsel__name(pos));
-
-		if (evsel->nr_members > 1)
-			printed += fprintf(fp, "}");
-		goto out;
-	}
-
-	printed += fprintf(fp, "%s", perf_evsel__name(evsel));
-
-	if (details->verbose) {
-		printed += perf_event_attr__fprintf(fp, &evsel->attr,
-						    __print_attr__fprintf, &first);
-	} else if (details->freq) {
-		const char *term = "sample_freq";
-
-		if (!evsel->attr.freq)
-			term = "sample_period";
-
-		printed += comma_fprintf(fp, &first, " %s=%" PRIu64,
-					 term, (u64)evsel->attr.sample_freq);
-	}
-
-	if (details->trace_fields) {
-		struct format_field *field;
-
-		if (evsel->attr.type != PERF_TYPE_TRACEPOINT) {
-			printed += comma_fprintf(fp, &first, " (not a tracepoint)");
-			goto out;
-		}
-
-		field = evsel->tp_format->format.fields;
-		if (field == NULL) {
-			printed += comma_fprintf(fp, &first, " (no trace field)");
-			goto out;
-		}
-
-		printed += comma_fprintf(fp, &first, " trace_fields: %s", field->name);
-
-		field = field->next;
-		while (field) {
-			printed += comma_fprintf(fp, &first, "%s", field->name);
-			field = field->next;
-		}
-	}
-out:
-	fputc('\n', fp);
-	return ++printed;
 }
 
 bool perf_evsel__fallback(struct perf_evsel *evsel, int err,
