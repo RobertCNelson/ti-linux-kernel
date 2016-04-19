@@ -180,7 +180,7 @@ static void dwc3_frame_length_adjustment(struct dwc3 *dwc, u32 fladj)
 static void dwc3_free_one_event_buffer(struct dwc3 *dwc,
 		struct dwc3_event_buffer *evt)
 {
-	dma_free_coherent(dwc->dev, evt->length, evt->buf, evt->dma);
+	dma_free_coherent(dwc->dev->parent, evt->length, evt->buf, evt->dma);
 }
 
 /**
@@ -202,7 +202,7 @@ static struct dwc3_event_buffer *dwc3_alloc_one_event_buffer(struct dwc3 *dwc,
 
 	evt->dwc	= dwc;
 	evt->length	= length;
-	evt->buf	= dma_alloc_coherent(dwc->dev, length,
+	evt->buf	= dma_alloc_coherent(dwc->dev->parent, length,
 			&evt->dma, GFP_KERNEL);
 	if (!evt->buf)
 		return ERR_PTR(-ENOMEM);
