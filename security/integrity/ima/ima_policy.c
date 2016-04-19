@@ -873,9 +873,9 @@ static char *mask_tokens[] = {
 
 enum {
 	func_file = 0, func_mmap, func_bprm,
-	func_module, func_firmware, func_post,
+	func_module, func_firmware,
 	func_kexec_kernel, func_kexec_initramfs,
-	func_policy
+	func_policy, func_post
 };
 
 static char *func_tokens[] = {
