@@ -181,8 +181,9 @@ int ll_setxattr_common(struct inode *inode, const char *name,
 			size = rc;
 
 			pv = (const char *)new_value;
-		} else
+		} else {
 			return -EOPNOTSUPP;
+		}
 
 		valid |= rce_ops2valid(rce->rce_ops);
 	}
@@ -243,12 +244,12 @@ int ll_setxattr(struct dentry *dentry, const char *name,
 			lump->lmm_stripe_offset = -1;
 
 		if (lump && S_ISREG(inode->i_mode)) {
-			int flags = FMODE_WRITE;
+			__u64 it_flags = FMODE_WRITE;
 			int lum_size = (lump->lmm_magic == LOV_USER_MAGIC_V1) ?
 				sizeof(*lump) : sizeof(struct lov_user_md_v3);
 
-			rc = ll_lov_setstripe_ea_info(inode, dentry, flags, lump,
-						      lum_size);
+			rc = ll_lov_setstripe_ea_info(inode, dentry, it_flags,
+						      lump, lum_size);
 			/* b10667: rc always be 0 here for now */
 			rc = 0;
 		} else if (S_ISDIR(inode->i_mode)) {
@@ -423,8 +424,7 @@ getxattr_nocache:
 	if (rce && rce->rce_ops == RMT_LSETFACL) {
 		ext_acl_xattr_header *acl;
 
-		acl = lustre_posix_acl_xattr_2ext(
-					(posix_acl_xattr_header *)buffer, rc);
+		acl = lustre_posix_acl_xattr_2ext(buffer, rc);
 		if (IS_ERR(acl)) {
 			rc = PTR_ERR(acl);
 			goto out;
