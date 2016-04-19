@@ -22,25 +22,53 @@
 #include <net/dsa.h>
 #include "mv88e6xxx.h"
 
-static const struct mv88e6xxx_switch_id mv88e6352_table[] = {
-	{ PORT_SWITCH_ID_6172, "Marvell 88E6172" },
-	{ PORT_SWITCH_ID_6176, "Marvell 88E6176" },
-	{ PORT_SWITCH_ID_6240, "Marvell 88E6240" },
-	{ PORT_SWITCH_ID_6320, "Marvell 88E6320" },
-	{ PORT_SWITCH_ID_6320_A1, "Marvell 88E6320 (A1)" },
-	{ PORT_SWITCH_ID_6320_A2, "Marvell 88e6320 (A2)" },
-	{ PORT_SWITCH_ID_6321, "Marvell 88E6321" },
-	{ PORT_SWITCH_ID_6321_A1, "Marvell 88E6321 (A1)" },
-	{ PORT_SWITCH_ID_6321_A2, "Marvell 88e6321 (A2)" },
-	{ PORT_SWITCH_ID_6352, "Marvell 88E6352" },
-	{ PORT_SWITCH_ID_6352_A0, "Marvell 88E6352 (A0)" },
-	{ PORT_SWITCH_ID_6352_A1, "Marvell 88E6352 (A1)" },
+static const struct mv88e6xxx_info mv88e6352_table[] = {
+	{
+		.prod_num = PORT_SWITCH_ID_PROD_NUM_6320,
+		.family = MV88E6XXX_FAMILY_6320,
+		.name = "Marvell 88E6320",
+		.num_databases = 4096,
+		.num_ports = 7,
+	}, {
+		.prod_num = PORT_SWITCH_ID_PROD_NUM_6321,
+		.family = MV88E6XXX_FAMILY_6320,
+		.name = "Marvell 88E6321",
+		.num_databases = 4096,
+		.num_ports = 7,
+	}, {
+		.prod_num = PORT_SWITCH_ID_PROD_NUM_6172,
+		.family = MV88E6XXX_FAMILY_6352,
+		.name = "Marvell 88E6172",
+		.num_databases = 4096,
+		.num_ports = 7,
+	}, {
+		.prod_num = PORT_SWITCH_ID_PROD_NUM_6176,
+		.family = MV88E6XXX_FAMILY_6352,
+		.name = "Marvell 88E6176",
+		.num_databases = 4096,
+		.num_ports = 7,
+	}, {
+		.prod_num = PORT_SWITCH_ID_PROD_NUM_6240,
+		.family = MV88E6XXX_FAMILY_6352,
+		.name = "Marvell 88E6240",
+		.num_databases = 4096,
+		.num_ports = 7,
+	}, {
+		.prod_num = PORT_SWITCH_ID_PROD_NUM_6352,
+		.family = MV88E6XXX_FAMILY_6352,
+		.name = "Marvell 88E6352",
+		.num_databases = 4096,
+		.num_ports = 7,
+	}
 };
 
-static char *mv88e6352_probe(struct device *host_dev, int sw_addr)
+static const char *mv88e6352_drv_probe(struct device *dsa_dev,
+				       struct device *host_dev, int sw_addr,
+				       void **priv)
 {
-	return mv88e6xxx_lookup_name(host_dev, sw_addr, mv88e6352_table,
-				     ARRAY_SIZE(mv88e6352_table));
+	return mv88e6xxx_drv_probe(dsa_dev, host_dev, sw_addr, priv,
+				   mv88e6352_table,
+				   ARRAY_SIZE(mv88e6352_table));
 }
 
 static int mv88e6352_setup_global(struct dsa_switch *ds)
@@ -56,8 +84,11 @@ static int mv88e6352_setup_global(struct dsa_switch *ds)
 	/* Discard packets with excessive collisions,
 	 * mask all interrupt sources, enable PPU (bit 14, undocumented).
 	 */
-	REG_WRITE(REG_GLOBAL, GLOBAL_CONTROL,
-		  GLOBAL_CONTROL_PPU_ENABLE | GLOBAL_CONTROL_DISCARD_EXCESS);
+	ret = mv88e6xxx_reg_write(ds, REG_GLOBAL, GLOBAL_CONTROL,
+				  GLOBAL_CONTROL_PPU_ENABLE |
+				  GLOBAL_CONTROL_DISCARD_EXCESS);
+	if (ret)
+		return ret;
 
 	/* Configure the upstream port, and configure the upstream
 	 * port as the port to which ingress and egress monitor frames
@@ -66,14 +97,14 @@ static int mv88e6352_setup_global(struct dsa_switch *ds)
 	reg = upstream_port << GLOBAL_MONITOR_CONTROL_INGRESS_SHIFT |
 		upstream_port << GLOBAL_MONITOR_CONTROL_EGRESS_SHIFT |
 		upstream_port << GLOBAL_MONITOR_CONTROL_ARP_SHIFT;
-	REG_WRITE(REG_GLOBAL, GLOBAL_MONITOR_CONTROL, reg);
+	ret = mv88e6xxx_reg_write(ds, REG_GLOBAL, GLOBAL_MONITOR_CONTROL, reg);
+	if (ret)
+		return ret;
 
 	/* Disable remote management for now, and set the switch's
 	 * DSA device number.
 	 */
-	REG_WRITE(REG_GLOBAL, 0x1c, ds->index & 0x1f);
-
-	return 0;
+	return mv88e6xxx_reg_write(ds, REG_GLOBAL, 0x1c, ds->index & 0x1f);
 }
 
 static int mv88e6352_setup(struct dsa_switch *ds)
@@ -84,8 +115,6 @@ static int mv88e6352_setup(struct dsa_switch *ds)
 	ret = mv88e6xxx_setup_common(ds);
 	if (ret < 0)
 		return ret;
-
-	ps->num_ports = 7;
 
 	mutex_init(&ps->eeprom_mutex);
 
@@ -302,8 +331,7 @@ static int mv88e6352_set_eeprom(struct dsa_switch *ds,
 
 struct dsa_switch_driver mv88e6352_switch_driver = {
 	.tag_protocol		= DSA_TAG_PROTO_EDSA,
-	.priv_size		= sizeof(struct mv88e6xxx_priv_state),
-	.probe			= mv88e6352_probe,
+	.probe			= mv88e6352_drv_probe,
 	.setup			= mv88e6352_setup,
 	.set_addr		= mv88e6xxx_set_addr_indirect,
 	.phy_read		= mv88e6xxx_phy_read_indirect,
@@ -326,7 +354,7 @@ struct dsa_switch_driver mv88e6352_switch_driver = {
 	.get_regs		= mv88e6xxx_get_regs,
 	.port_bridge_join	= mv88e6xxx_port_bridge_join,
 	.port_bridge_leave	= mv88e6xxx_port_bridge_leave,
-	.port_stp_update	= mv88e6xxx_port_stp_update,
+	.port_stp_state_set	= mv88e6xxx_port_stp_state_set,
 	.port_vlan_filtering	= mv88e6xxx_port_vlan_filtering,
 	.port_vlan_prepare	= mv88e6xxx_port_vlan_prepare,
 	.port_vlan_add		= mv88e6xxx_port_vlan_add,
