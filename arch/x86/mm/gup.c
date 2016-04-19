@@ -196,9 +196,22 @@ static noinline int gup_huge_pmd(pmd_t pmd, unsigned long addr,
 	/* hugepages are never "special" */
 	VM_BUG_ON(pmd_flags(pmd) & _PAGE_SPECIAL);
 
-	refs = 0;
 	head = pmd_page(pmd);
 	page = head + ((addr & ~PMD_MASK) >> PAGE_SHIFT);
+
+	if (PageTeam(head)) {
+		/* Handle a huge tmpfs team with normal refcounting. */
+		do {
+			get_page(page);
+			SetPageReferenced(page);
+			pages[*nr] = page;
+			(*nr)++;
+			page++;
+		} while (addr += PAGE_SIZE, addr != end);
+		return 1;
+	}
+
+	refs = 0;
 	do {
 		VM_BUG_ON_PAGE(compound_head(page) != head, page);
 		pages[*nr] = page;
