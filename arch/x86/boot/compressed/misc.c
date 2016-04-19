@@ -1,8 +1,10 @@
 /*
  * misc.c
  *
- * This is a collection of several routines from gzip-1.0.3
- * adapted for Linux.
+ * This is a collection of several routines used to extract the kernel
+ * which includes KASLR relocation, decompression, ELF parsing, and
+ * relocation processing. Additionally included are the screen and serial
+ * output functions and related debugging support functions.
  *
  * malloc by Hannu Savolainen 1993 and Matthias Urlichs 1994
  * puts by Nick Holloway 1993, better puts by Martin Mares 1995
@@ -114,7 +116,7 @@ static void error(char *m);
 /*
  * This is set up by the setup-routine at boot-time
  */
-struct boot_params *real_mode;		/* Pointer to real-mode data */
+struct boot_params *boot_params;
 
 memptr free_mem_ptr;
 memptr free_mem_end_ptr;
@@ -184,12 +186,12 @@ void __putstr(const char *s)
 		}
 	}
 
-	if (real_mode->screen_info.orig_video_mode == 0 &&
+	if (boot_params->screen_info.orig_video_mode == 0 &&
 	    lines == 0 && cols == 0)
 		return;
 
-	x = real_mode->screen_info.orig_x;
-	y = real_mode->screen_info.orig_y;
+	x = boot_params->screen_info.orig_x;
+	y = boot_params->screen_info.orig_y;
 
 	while ((c = *s++) != '\0') {
 		if (c == '\n') {
@@ -210,8 +212,8 @@ void __putstr(const char *s)
 		}
 	}
 
-	real_mode->screen_info.orig_x = x;
-	real_mode->screen_info.orig_y = y;
+	boot_params->screen_info.orig_x = x;
+	boot_params->screen_info.orig_y = y;
 
 	pos = (x + cols * y) * 2;	/* Update cursor position */
 	outb(14, vidport);
@@ -383,7 +385,7 @@ static void parse_elf(void *output)
 	free(phdrs);
 }
 
-asmlinkage __visible void *decompress_kernel(void *rmode, memptr heap,
+asmlinkage __visible void *extract_kernel(void *rmode, memptr heap,
 				  unsigned char *input_data,
 				  unsigned long input_len,
 				  unsigned char *output,
@@ -392,14 +394,15 @@ asmlinkage __visible void *decompress_kernel(void *rmode, memptr heap,
 {
 	unsigned char *output_orig = output;
 
-	real_mode = rmode;
+	/* Retain x86 boot parameters pointer passed from startup_32/64. */
+	boot_params = rmode;
 
-	/* Clear it for solely in-kernel use */
-	real_mode->hdr.loadflags &= ~KASLR_FLAG;
+	/* Clear flags intended for solely in-kernel use. */
+	boot_params->hdr.loadflags &= ~KASLR_FLAG;
 
-	sanitize_boot_params(real_mode);
+	sanitize_boot_params(boot_params);
 
-	if (real_mode->screen_info.orig_video_mode == 7) {
+	if (boot_params->screen_info.orig_video_mode == 7) {
 		vidmem = (char *) 0xb0000;
 		vidport = 0x3b4;
 	} else {
@@ -407,11 +410,11 @@ asmlinkage __visible void *decompress_kernel(void *rmode, memptr heap,
 		vidport = 0x3d4;
 	}
 
-	lines = real_mode->screen_info.orig_video_lines;
-	cols = real_mode->screen_info.orig_video_cols;
+	lines = boot_params->screen_info.orig_video_lines;
+	cols = boot_params->screen_info.orig_video_cols;
 
 	console_init();
-	debug_putstr("early console in decompress_kernel\n");
+	debug_putstr("early console in extract_kernel\n");
 
 	free_mem_ptr     = heap;	/* Heap */
 	free_mem_end_ptr = heap + BOOT_HEAP_SIZE;
@@ -428,7 +431,7 @@ asmlinkage __visible void *decompress_kernel(void *rmode, memptr heap,
 	 * the entire decompressed kernel plus relocation table, or the
 	 * entire decompressed kernel plus .bss and .brk sections.
 	 */
-	output = choose_kernel_location(real_mode, input_data, input_len, output,
+	output = choose_random_location(input_data, input_len, output,
 					output_len > run_size ? output_len
 							      : run_size);
 
