@@ -953,7 +953,7 @@ int hist_entry_iter__add(struct hist_entry_iter *iter, struct addr_location *al,
 {
 	int err, err2;
 
-	err = sample__resolve_callchain(iter->sample, &iter->parent,
+	err = sample__resolve_callchain(iter->sample, &callchain_cursor, &iter->parent,
 					iter->evsel, al, max_stack_depth);
 	if (err)
 		return err;
@@ -1295,8 +1295,9 @@ static int hists__hierarchy_insert_entry(struct hists *hists,
 	return ret;
 }
 
-int hists__collapse_insert_entry(struct hists *hists, struct rb_root *root,
-				 struct hist_entry *he)
+static int hists__collapse_insert_entry(struct hists *hists,
+					struct rb_root *root,
+					struct hist_entry *he)
 {
 	struct rb_node **p = &root->rb_node;
 	struct rb_node *parent = NULL;
