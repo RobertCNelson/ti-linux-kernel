@@ -45,6 +45,7 @@
 #include <asm/cputype.h>
 #include <asm/cpu_ops.h>
 #include <asm/mmu_context.h>
+#include <asm/numa.h>
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
 #include <asm/processor.h>
@@ -74,6 +75,43 @@ enum ipi_msg_type {
 	IPI_IRQ_WORK,
 	IPI_WAKEUP
 };
+
+#ifdef CONFIG_ARM64_VHE
+
+/* Whether the boot CPU is running in HYP mode or not*/
+static bool boot_cpu_hyp_mode;
+
+static inline void save_boot_cpu_run_el(void)
+{
+	boot_cpu_hyp_mode = is_kernel_in_hyp_mode();
+}
+
+static inline bool is_boot_cpu_in_hyp_mode(void)
+{
+	return boot_cpu_hyp_mode;
+}
+
+/*
+ * Verify that a secondary CPU is running the kernel at the same
+ * EL as that of the boot CPU.
+ */
+void verify_cpu_run_el(void)
+{
+	bool in_el2 = is_kernel_in_hyp_mode();
+	bool boot_cpu_el2 = is_boot_cpu_in_hyp_mode();
+
+	if (in_el2 ^ boot_cpu_el2) {
+		pr_crit("CPU%d: mismatched Exception Level(EL%d) with boot CPU(EL%d)\n",
+					smp_processor_id(),
+					in_el2 ? 2 : 1,
+					boot_cpu_el2 ? 2 : 1);
+		cpu_panic_kernel();
+	}
+}
+
+#else
+static inline void save_boot_cpu_run_el(void) {}
+#endif
 
 #ifdef CONFIG_HOTPLUG_CPU
 static int op_cpu_kill(unsigned int cpu);
@@ -166,6 +204,7 @@ int __cpu_up(unsigned int cpu, struct task_struct *idle)
 static void smp_store_cpu_info(unsigned int cpuid)
 {
 	store_cpu_topology(cpuid);
+	numa_store_cpu_info(cpuid);
 }
 
 /*
@@ -401,6 +440,7 @@ void __init smp_cpus_done(unsigned int max_cpus)
 void __init smp_prepare_boot_cpu(void)
 {
 	cpuinfo_store_boot_cpu();
+	save_boot_cpu_run_el();
 	set_my_cpu_offset(per_cpu_offset(smp_processor_id()));
 }
 
@@ -595,6 +635,8 @@ static void __init of_parse_and_init_cpus(void)
 
 		pr_debug("cpu logical map 0x%llx\n", hwid);
 		cpu_logical_map(cpu_count) = hwid;
+
+		early_map_cpu_to_node(cpu_count, of_node_to_nid(dn));
 next:
 		cpu_count++;
 	}
