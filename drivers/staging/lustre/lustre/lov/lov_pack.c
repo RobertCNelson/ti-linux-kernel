@@ -444,8 +444,7 @@ int lov_getstripe(struct obd_export *exp, struct lov_stripe_md *lsm,
 	if (lum.lmm_magic == LOV_USER_MAGIC) {
 		/* User request for v1, we need skip lmm_pool_name */
 		if (lmmk->lmm_magic == LOV_MAGIC_V3) {
-			memmove((char *)(&lmmk->lmm_stripe_count) +
-				sizeof(lmmk->lmm_stripe_count),
+			memmove(((struct lov_mds_md_v1 *)lmmk)->lmm_objects,
 				((struct lov_mds_md_v3 *)lmmk)->lmm_objects,
 				lmmk->lmm_stripe_count *
 				sizeof(struct lov_ost_data_v1));
@@ -457,9 +456,9 @@ int lov_getstripe(struct obd_export *exp, struct lov_stripe_md *lsm,
 	}
 
 	/* User wasn't expecting this many OST entries */
-	if (lum.lmm_stripe_count == 0)
+	if (lum.lmm_stripe_count == 0) {
 		lmm_size = lum_size;
-	else if (lum.lmm_stripe_count < lmmk->lmm_stripe_count) {
+	} else if (lum.lmm_stripe_count < lmmk->lmm_stripe_count) {
 		rc = -EOVERFLOW;
 		goto out_set;
 	}
