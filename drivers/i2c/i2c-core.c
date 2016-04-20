@@ -1559,6 +1559,7 @@ static int i2c_register_adapter(struct i2c_adapter *adap)
 	dev_dbg(&adap->dev, "adapter [%s] registered\n", adap->name);
 
 	pm_runtime_no_callbacks(&adap->dev);
+	pm_suspend_ignore_children(&adap->dev, true);
 	pm_runtime_enable(&adap->dev);
 
 #ifdef CONFIG_I2C_COMPAT
@@ -2646,7 +2647,7 @@ static u8 i2c_smbus_pec(u8 crc, u8 *p, size_t count)
 static u8 i2c_smbus_msg_pec(u8 pec, struct i2c_msg *msg)
 {
 	/* The address will be sent first */
-	u8 addr = (msg->addr << 1) | !!(msg->flags & I2C_M_RD);
+	u8 addr = i2c_8bit_addr_from_msg(msg);
 	pec = i2c_smbus_pec(pec, &addr, 1);
 
 	/* The data buffer follows */
