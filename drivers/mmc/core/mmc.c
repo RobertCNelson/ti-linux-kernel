@@ -1314,7 +1314,8 @@ static int mmc_select_timing(struct mmc_card *card)
 
 	if (card->mmc_avail_type & EXT_CSD_CARD_TYPE_HS200)
 		err = mmc_select_hs200(card);
-	else if (card->mmc_avail_type & EXT_CSD_CARD_TYPE_HS)
+
+	if (err && (card->mmc_avail_type & EXT_CSD_CARD_TYPE_HS))
 		err = mmc_select_hs(card);
 
 	if (err && err != -EBADMSG)
