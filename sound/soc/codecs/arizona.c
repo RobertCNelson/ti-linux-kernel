@@ -221,6 +221,8 @@ int arizona_init_spk(struct snd_soc_codec *codec)
 
 	switch (arizona->type) {
 	case WM8997:
+	case CS47L24:
+	case WM1831:
 		break;
 	default:
 		ret = snd_soc_dapm_new_controls(dapm, &arizona_spkr, 1);
@@ -248,6 +250,18 @@ int arizona_init_spk(struct snd_soc_codec *codec)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(arizona_init_spk);
+
+int arizona_free_spk(struct snd_soc_codec *codec)
+{
+	struct arizona_priv *priv = snd_soc_codec_get_drvdata(codec);
+	struct arizona *arizona = priv->arizona;
+
+	arizona_free_irq(arizona, ARIZONA_IRQ_SPK_OVERHEAT_WARN, arizona);
+	arizona_free_irq(arizona, ARIZONA_IRQ_SPK_OVERHEAT, arizona);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(arizona_free_spk);
 
 static const struct snd_soc_dapm_route arizona_mono_routes[] = {
 	{ "OUT1R", NULL, "OUT1L" },
