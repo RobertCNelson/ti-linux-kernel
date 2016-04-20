@@ -35,19 +35,6 @@
 #include "qed_reg_addr.h"
 #include "qed_sp.h"
 
-enum qed_rss_caps {
-	QED_RSS_IPV4		= 0x1,
-	QED_RSS_IPV6		= 0x2,
-	QED_RSS_IPV4_TCP	= 0x4,
-	QED_RSS_IPV6_TCP	= 0x8,
-	QED_RSS_IPV4_UDP	= 0x10,
-	QED_RSS_IPV6_UDP	= 0x20,
-};
-
-/* Should be the same as ETH_RSS_IND_TABLE_ENTRIES_NUM */
-#define QED_RSS_IND_TABLE_SIZE 128
-#define QED_RSS_KEY_SIZE 10 /* size in 32b chunks */
-
 struct qed_rss_params {
 	u8	update_rss_config;
 	u8	rss_enable;
@@ -1744,9 +1731,7 @@ static int qed_update_vport(struct qed_dev *cdev,
 		sp_rss_params.update_rss_capabilities = 1;
 		sp_rss_params.update_rss_ind_table = 1;
 		sp_rss_params.update_rss_key = 1;
-		sp_rss_params.rss_caps = QED_RSS_IPV4 |
-					 QED_RSS_IPV6 |
-					 QED_RSS_IPV4_TCP | QED_RSS_IPV6_TCP;
+		sp_rss_params.rss_caps = params->rss_params.rss_caps;
 		sp_rss_params.rss_table_size_log = 7; /* 2^7 = 128 */
 		memcpy(sp_rss_params.rss_ind_table,
 		       params->rss_params.rss_ind_table,
@@ -1899,6 +1884,36 @@ static int qed_stop_txq(struct qed_dev *cdev,
 	return 0;
 }
 
+static int qed_tunn_configure(struct qed_dev *cdev,
+			      struct qed_tunn_params *tunn_params)
+{
+	struct qed_tunn_update_params tunn_info;
+	int i, rc;
+
+	memset(&tunn_info, 0, sizeof(tunn_info));
+	if (tunn_params->update_vxlan_port == 1) {
+		tunn_info.update_vxlan_udp_port = 1;
+		tunn_info.vxlan_udp_port = tunn_params->vxlan_port;
+	}
+
+	if (tunn_params->update_geneve_port == 1) {
+		tunn_info.update_geneve_udp_port = 1;
+		tunn_info.geneve_udp_port = tunn_params->geneve_port;
+	}
+
+	for_each_hwfn(cdev, i) {
+		struct qed_hwfn *hwfn = &cdev->hwfns[i];
+
+		rc = qed_sp_pf_update_tunn_cfg(hwfn, &tunn_info,
+					       QED_SPQ_MODE_EBLOCK, NULL);
+
+		if (rc)
+			return rc;
+	}
+
+	return 0;
+}
+
 static int qed_configure_filter_rx_mode(struct qed_dev *cdev,
 					enum qed_filter_rx_mode_type type)
 {
@@ -2041,16 +2056,11 @@ static const struct qed_eth_ops qed_eth_ops_pass = {
 	.fastpath_stop = &qed_fastpath_stop,
 	.eth_cqe_completion = &qed_fp_cqe_completion,
 	.get_vport_stats = &qed_get_vport_stats,
+	.tunn_config = &qed_tunn_configure,
 };
 
-const struct qed_eth_ops *qed_get_eth_ops(u32 version)
+const struct qed_eth_ops *qed_get_eth_ops(void)
 {
-	if (version != QED_ETH_INTERFACE_VERSION) {
-		pr_notice("Cannot supply ethtool operations [%08x != %08x]\n",
-			  version, QED_ETH_INTERFACE_VERSION);
-		return NULL;
-	}
-
 	return &qed_eth_ops_pass;
 }
 EXPORT_SYMBOL(qed_get_eth_ops);
