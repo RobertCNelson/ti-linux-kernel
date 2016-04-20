@@ -37,6 +37,7 @@
 #include <linux/mm.h>
 #include <linux/hugetlb.h>
 #include <linux/pagemap.h>
+#include <linux/pageteam.h>
 #include <linux/smp.h>
 #include <linux/page-flags.h>
 #include <linux/backing-dev.h>
@@ -106,6 +107,8 @@ static const char * const mem_cgroup_stat_names[] = {
 	"dirty",
 	"writeback",
 	"swap",
+	"shmem_hugepages",
+	"shmem_pmdmapped",
 };
 
 static const char * const mem_cgroup_events_names[] = {
@@ -1022,22 +1025,50 @@ out:
  * @lru: index of lru list the page is sitting on
  * @nr_pages: positive when adding or negative when removing
  *
- * This function must be called when a page is added to or removed from an
- * lru list.
+ * This function must be called under lru_lock, just before a page is added
+ * to or just after a page is removed from an lru list (that ordering being
+ * so as to allow it to check that lru_size 0 is consistent with list_empty).
  */
 void mem_cgroup_update_lru_size(struct lruvec *lruvec, enum lru_list lru,
 				int nr_pages)
 {
 	struct mem_cgroup_per_zone *mz;
 	unsigned long *lru_size;
+	long size;
+	bool empty;
+
+	__update_lru_size(lruvec, lru, nr_pages);
 
 	if (mem_cgroup_disabled())
 		return;
 
 	mz = container_of(lruvec, struct mem_cgroup_per_zone, lruvec);
 	lru_size = mz->lru_size + lru;
-	*lru_size += nr_pages;
-	VM_BUG_ON((long)(*lru_size) < 0);
+	empty = list_empty(lruvec->lists + lru);
+
+	if (nr_pages < 0)
+		*lru_size += nr_pages;
+
+	size = *lru_size;
+	if (!size && !empty && lru == LRU_UNEVICTABLE) {
+		struct page *page;
+		/*
+		 * The unevictable list might be full of team tail pages of 0
+		 * weight: check the first, and skip the warning if that fits.
+		 */
+		page = list_first_entry(lruvec->lists + lru, struct page, lru);
+		if (hpage_nr_pages(page) == 0)
+			empty = true;
+	}
+	if (WARN_ONCE(size < 0 || empty != !size,
+		"%s(%p, %d, %d): lru_size %ld but %sempty\n",
+		__func__, lruvec, lru, nr_pages, size, empty ? "" : "not ")) {
+		VM_BUG_ON(1);
+		*lru_size = 0;
+	}
+
+	if (nr_pages > 0)
+		*lru_size += nr_pages;
 }
 
 bool task_in_mem_cgroup(struct task_struct *task, struct mem_cgroup *memcg)
@@ -1388,14 +1419,11 @@ int mem_cgroup_select_victim_node(struct mem_cgroup *memcg)
 	mem_cgroup_may_update_nodemask(memcg);
 	node = memcg->last_scanned_node;
 
-	node = next_node(node, memcg->scan_nodes);
-	if (node == MAX_NUMNODES)
-		node = first_node(memcg->scan_nodes);
+	node = next_node_in(node, memcg->scan_nodes);
 	/*
-	 * We call this when we hit limit, not when pages are added to LRU.
-	 * No LRU may hold pages because all pages are UNEVICTABLE or
-	 * memcg is too small and all pages are not on LRU. In that case,
-	 * we use curret node.
+	 * mem_cgroup_may_update_nodemask might have seen no reclaimmable pages
+	 * last time it really checked all the LRUs due to rate limiting.
+	 * Fallback to the current node in that case for simplicity.
 	 */
 	if (unlikely(node == MAX_NUMNODES))
 		node = numa_node_id();
@@ -4304,6 +4332,7 @@ static int mem_cgroup_do_precharge(unsigned long count)
  *   2(MC_TARGET_SWAP): if the swap entry corresponding to this pte is a
  *     target for charge migration. if @target is not NULL, the entry is stored
  *     in target->ent.
+ *   3(MC_TARGET_TEAM): if pmd entry is not an anon THP: check it page by page
  *
  * Called with pte lock held.
  */
@@ -4316,6 +4345,7 @@ enum mc_target_type {
 	MC_TARGET_NONE = 0,
 	MC_TARGET_PAGE,
 	MC_TARGET_SWAP,
+	MC_TARGET_TEAM,
 };
 
 static struct page *mc_handle_present_pte(struct vm_area_struct *vma,
@@ -4399,6 +4429,17 @@ static struct page *mc_handle_file_pte(struct vm_area_struct *vma,
 	return page;
 }
 
+void mem_cgroup_update_page_stat_treelocked(struct page *page,
+				enum mem_cgroup_stat_index idx, int val)
+{
+	/* Update this VM_BUG_ON if other cases are added */
+	VM_BUG_ON(idx != MEM_CGROUP_STAT_SHMEM_HUGEPAGES);
+	lockdep_assert_held(&page->mapping->tree_lock);
+
+	if (page->mem_cgroup)
+		__this_cpu_add(page->mem_cgroup->stat->count[idx], val);
+}
+
 /**
  * mem_cgroup_move_account - move account of the page
  * @page: the page
@@ -4416,8 +4457,10 @@ static int mem_cgroup_move_account(struct page *page,
 				   struct mem_cgroup *from,
 				   struct mem_cgroup *to)
 {
+	spinlock_t *tree_lock = NULL;
 	unsigned long flags;
-	unsigned int nr_pages = compound ? hpage_nr_pages(page) : 1;
+	int nr_pages = compound ? hpage_nr_pages(page) : 1;
+	int file_mapped = 1;
 	int ret;
 	bool anon;
 
@@ -4441,10 +4484,10 @@ static int mem_cgroup_move_account(struct page *page,
 
 	spin_lock_irqsave(&from->move_lock, flags);
 
-	if (!anon && page_mapped(page)) {
-		__this_cpu_sub(from->stat->count[MEM_CGROUP_STAT_FILE_MAPPED],
+	if (PageWriteback(page)) {
+		__this_cpu_sub(from->stat->count[MEM_CGROUP_STAT_WRITEBACK],
 			       nr_pages);
-		__this_cpu_add(to->stat->count[MEM_CGROUP_STAT_FILE_MAPPED],
+		__this_cpu_add(to->stat->count[MEM_CGROUP_STAT_WRITEBACK],
 			       nr_pages);
 	}
 
@@ -4454,9 +4497,9 @@ static int mem_cgroup_move_account(struct page *page,
 	 * So mapping should be stable for dirty pages.
 	 */
 	if (!anon && PageDirty(page)) {
-		struct address_space *mapping = page_mapping(page);
+		struct address_space *mapping = page->mapping;
 
-		if (mapping_cap_account_dirty(mapping)) {
+		if (mapping && mapping_cap_account_dirty(mapping)) {
 			__this_cpu_sub(from->stat->count[MEM_CGROUP_STAT_DIRTY],
 				       nr_pages);
 			__this_cpu_add(to->stat->count[MEM_CGROUP_STAT_DIRTY],
@@ -4464,21 +4507,55 @@ static int mem_cgroup_move_account(struct page *page,
 		}
 	}
 
-	if (PageWriteback(page)) {
-		__this_cpu_sub(from->stat->count[MEM_CGROUP_STAT_WRITEBACK],
-			       nr_pages);
-		__this_cpu_add(to->stat->count[MEM_CGROUP_STAT_WRITEBACK],
-			       nr_pages);
+	if (!anon && PageTeam(page)) {
+		struct address_space *mapping = page->mapping;
+
+		if (mapping && page == team_head(page)) {
+			bool pmd_mapped, team_complete;
+			/*
+			 * We avoided taking mapping->tree_lock unnecessarily.
+			 * Is it safe to take mapping->tree_lock below?  Was it
+			 * safe to peek at PageTeam above, without tree_lock?
+			 * Yes, this is a team head, just now taken from its
+			 * lru: PageTeam must already be set. And we took
+			 * page lock above, so page->mapping is stable.
+			 */
+			tree_lock = &mapping->tree_lock;
+			spin_lock(tree_lock);
+			count_team_pmd_mapped(page, &file_mapped, &pmd_mapped,
+					      &team_complete);
+			if (team_complete) {
+				__this_cpu_sub(from->stat->count[
+				MEM_CGROUP_STAT_SHMEM_HUGEPAGES], HPAGE_PMD_NR);
+				__this_cpu_add(to->stat->count[
+				MEM_CGROUP_STAT_SHMEM_HUGEPAGES], HPAGE_PMD_NR);
+			}
+			if (pmd_mapped) {
+				__this_cpu_sub(from->stat->count[
+				MEM_CGROUP_STAT_SHMEM_PMDMAPPED], HPAGE_PMD_NR);
+				__this_cpu_add(to->stat->count[
+				MEM_CGROUP_STAT_SHMEM_PMDMAPPED], HPAGE_PMD_NR);
+			}
+		}
+	}
+
+	if (!anon && page_mapped(page)) {
+		__this_cpu_sub(from->stat->count[MEM_CGROUP_STAT_FILE_MAPPED],
+			       file_mapped);
+		__this_cpu_add(to->stat->count[MEM_CGROUP_STAT_FILE_MAPPED],
+			       file_mapped);
 	}
 
 	/*
 	 * It is safe to change page->mem_cgroup here because the page
 	 * is referenced, charged, and isolated - we can't race with
 	 * uncharging, charging, migration, or LRU putback.
+	 * Caller should have done css_get.
 	 */
-
-	/* caller should have done css_get */
 	page->mem_cgroup = to;
+
+	if (tree_lock)
+		spin_unlock(tree_lock);
 	spin_unlock_irqrestore(&from->move_lock, flags);
 
 	ret = 0;
@@ -4537,18 +4614,21 @@ static enum mc_target_type get_mctgt_type(struct vm_area_struct *vma,
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 /*
- * We don't consider swapping or file mapped pages because THP does not
- * support them for now.
  * Caller should make sure that pmd_trans_huge(pmd) is true.
  */
-static enum mc_target_type get_mctgt_type_thp(struct vm_area_struct *vma,
-		unsigned long addr, pmd_t pmd, union mc_target *target)
+static enum mc_target_type get_mctgt_type_thp(pmd_t pmd,
+		union mc_target *target, unsigned long *pfn)
 {
-	struct page *page = NULL;
+	struct page *page;
 	enum mc_target_type ret = MC_TARGET_NONE;
 
 	page = pmd_page(pmd);
-	VM_BUG_ON_PAGE(!page || !PageHead(page), page);
+	if (!PageAnon(page)) {
+		if (!(mc.flags & MOVE_FILE))
+			return ret;
+		*pfn = page_to_pfn(page);
+		return MC_TARGET_TEAM;
+	}
 	if (!(mc.flags & MOVE_ANON))
 		return ret;
 	if (page->mem_cgroup == mc.from) {
@@ -4561,8 +4641,8 @@ static enum mc_target_type get_mctgt_type_thp(struct vm_area_struct *vma,
 	return ret;
 }
 #else
-static inline enum mc_target_type get_mctgt_type_thp(struct vm_area_struct *vma,
-		unsigned long addr, pmd_t pmd, union mc_target *target)
+static inline enum mc_target_type get_mctgt_type_thp(pmd_t pmd,
+		union mc_target *target, unsigned long *pfn)
 {
 	return MC_TARGET_NONE;
 }
@@ -4573,24 +4653,33 @@ static int mem_cgroup_count_precharge_pte_range(pmd_t *pmd,
 					struct mm_walk *walk)
 {
 	struct vm_area_struct *vma = walk->vma;
-	pte_t *pte;
+	enum mc_target_type target_type;
+	unsigned long uninitialized_var(pfn);
+	pte_t ptent;
+	pte_t *pte = NULL;
 	spinlock_t *ptl;
 
 	ptl = pmd_trans_huge_lock(pmd, vma);
 	if (ptl) {
-		if (get_mctgt_type_thp(vma, addr, *pmd, NULL) == MC_TARGET_PAGE)
+		target_type = get_mctgt_type_thp(*pmd, NULL, &pfn);
+		if (target_type == MC_TARGET_PAGE)
 			mc.precharge += HPAGE_PMD_NR;
-		spin_unlock(ptl);
-		return 0;
+		if (target_type != MC_TARGET_TEAM)
+			goto unlock;
+	} else {
+		if (pmd_trans_unstable(pmd))
+			return 0;
+		pte = pte_offset_map_lock(vma->vm_mm, pmd, addr, &ptl);
 	}
-
-	if (pmd_trans_unstable(pmd))
-		return 0;
-	pte = pte_offset_map_lock(vma->vm_mm, pmd, addr, &ptl);
-	for (; addr != end; pte++, addr += PAGE_SIZE)
-		if (get_mctgt_type(vma, addr, *pte, NULL))
+	for (; addr != end; addr += PAGE_SIZE) {
+		ptent = pte ? *(pte++) : pfn_pte(pfn++, vma->vm_page_prot);
+		if (get_mctgt_type(vma, addr, ptent, NULL))
 			mc.precharge++;	/* increment precharge temporarily */
-	pte_unmap_unlock(pte - 1, ptl);
+	}
+	if (pte)
+		pte_unmap(pte - 1);
+unlock:
+	spin_unlock(ptl);
 	cond_resched();
 
 	return 0;
@@ -4759,22 +4848,21 @@ static int mem_cgroup_move_charge_pte_range(pmd_t *pmd,
 {
 	int ret = 0;
 	struct vm_area_struct *vma = walk->vma;
-	pte_t *pte;
+	unsigned long uninitialized_var(pfn);
+	pte_t ptent;
+	pte_t *pte = NULL;
 	spinlock_t *ptl;
 	enum mc_target_type target_type;
 	union mc_target target;
 	struct page *page;
-
+retry:
 	ptl = pmd_trans_huge_lock(pmd, vma);
 	if (ptl) {
-		if (mc.precharge < HPAGE_PMD_NR) {
-			spin_unlock(ptl);
-			return 0;
-		}
-		target_type = get_mctgt_type_thp(vma, addr, *pmd, &target);
+		target_type = get_mctgt_type_thp(*pmd, &target, &pfn);
 		if (target_type == MC_TARGET_PAGE) {
 			page = target.page;
-			if (!isolate_lru_page(page)) {
+			if (mc.precharge >= HPAGE_PMD_NR &&
+			    !isolate_lru_page(page)) {
 				if (!mem_cgroup_move_account(page, true,
 							     mc.from, mc.to)) {
 					mc.precharge -= HPAGE_PMD_NR;
@@ -4783,22 +4871,19 @@ static int mem_cgroup_move_charge_pte_range(pmd_t *pmd,
 				putback_lru_page(page);
 			}
 			put_page(page);
+			addr = end;
 		}
-		spin_unlock(ptl);
-		return 0;
+		if (target_type != MC_TARGET_TEAM)
+			goto unlock;
+		/* addr is not aligned when retrying after precharge ran out */
+		pfn += (addr & (HPAGE_PMD_SIZE-1)) >> PAGE_SHIFT;
+	} else {
+		if (pmd_trans_unstable(pmd))
+			return 0;
+		pte = pte_offset_map_lock(vma->vm_mm, pmd, addr, &ptl);
 	}
-
-	if (pmd_trans_unstable(pmd))
-		return 0;
-retry:
-	pte = pte_offset_map_lock(vma->vm_mm, pmd, addr, &ptl);
-	for (; addr != end; addr += PAGE_SIZE) {
-		pte_t ptent = *(pte++);
-		swp_entry_t ent;
-
-		if (!mc.precharge)
-			break;
-
+	for (; addr != end && mc.precharge; addr += PAGE_SIZE) {
+		ptent = pte ? *(pte++) : pfn_pte(pfn++, vma->vm_page_prot);
 		switch (get_mctgt_type(vma, addr, ptent, &target)) {
 		case MC_TARGET_PAGE:
 			page = target.page;
@@ -4823,8 +4908,8 @@ put:			/* get_mctgt_type() gets the page */
 			put_page(page);
 			break;
 		case MC_TARGET_SWAP:
-			ent = target.ent;
-			if (!mem_cgroup_move_swap_account(ent, mc.from, mc.to)) {
+			if (!mem_cgroup_move_swap_account(target.ent,
+							  mc.from, mc.to)) {
 				mc.precharge--;
 				/* we fixup refcnts and charges later. */
 				mc.moved_swap++;
@@ -4834,7 +4919,10 @@ put:			/* get_mctgt_type() gets the page */
 			break;
 		}
 	}
-	pte_unmap_unlock(pte - 1, ptl);
+	if (pte)
+		pte_unmap(pte - 1);
+unlock:
+	spin_unlock(ptl);
 	cond_resched();
 
 	if (addr != end) {

@@ -111,9 +111,6 @@ static ssize_t node_read_meminfo(struct device *dev,
 		       "Node %d Slab:           %8lu kB\n"
 		       "Node %d SReclaimable:   %8lu kB\n"
 		       "Node %d SUnreclaim:     %8lu kB\n"
-#ifdef CONFIG_TRANSPARENT_HUGEPAGE
-		       "Node %d AnonHugePages:  %8lu kB\n"
-#endif
 			,
 		       nid, K(node_page_state(nid, NR_FILE_DIRTY)),
 		       nid, K(node_page_state(nid, NR_WRITEBACK)),
@@ -130,13 +127,18 @@ static ssize_t node_read_meminfo(struct device *dev,
 		       nid, K(node_page_state(nid, NR_SLAB_RECLAIMABLE) +
 				node_page_state(nid, NR_SLAB_UNRECLAIMABLE)),
 		       nid, K(node_page_state(nid, NR_SLAB_RECLAIMABLE)),
-#ifdef CONFIG_TRANSPARENT_HUGEPAGE
-		       nid, K(node_page_state(nid, NR_SLAB_UNRECLAIMABLE))
-			, nid,
-			K(node_page_state(nid, NR_ANON_TRANSPARENT_HUGEPAGES) *
-			HPAGE_PMD_NR));
-#else
 		       nid, K(node_page_state(nid, NR_SLAB_UNRECLAIMABLE)));
+
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+	n += sprintf(buf + n,
+		"Node %d AnonHugePages:  %8lu kB\n"
+		"Node %d ShmemHugePages: %8lu kB\n"
+		"Node %d ShmemPmdMapped: %8lu kB\n"
+		"Node %d ShmemFreeHoles: %8lu kB\n",
+		nid, K(node_page_state(nid, NR_ANON_HUGEPAGES)*HPAGE_PMD_NR),
+		nid, K(node_page_state(nid, NR_SHMEM_HUGEPAGES)*HPAGE_PMD_NR),
+		nid, K(node_page_state(nid, NR_SHMEM_PMDMAPPED)*HPAGE_PMD_NR),
+		nid, K(node_page_state(nid, NR_SHMEM_FREEHOLES)));
 #endif
 	n += hugetlb_report_node_meminfo(nid, buf + n);
 	return n;
