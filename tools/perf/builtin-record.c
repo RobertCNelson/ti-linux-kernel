@@ -29,6 +29,7 @@
 #include "util/data.h"
 #include "util/perf_regs.h"
 #include "util/auxtrace.h"
+#include "util/tsc.h"
 #include "util/parse-branch-options.h"
 #include "util/parse-regs-options.h"
 #include "util/llvm-utils.h"
@@ -55,6 +56,7 @@ struct record {
 	bool			no_buildid_cache;
 	bool			no_buildid_cache_set;
 	bool			buildid_all;
+	bool			timestamp_filename;
 	unsigned long long	samples;
 };
 
@@ -124,7 +126,43 @@ out:
 static volatile int done;
 static volatile int signr = -1;
 static volatile int child_finished;
-static volatile int auxtrace_snapshot_enabled;
+
+static volatile enum {
+	AUXTRACE_SNAPSHOT_OFF = -1,
+	AUXTRACE_SNAPSHOT_DISABLED = 0,
+	AUXTRACE_SNAPSHOT_ENABLED = 1,
+} auxtrace_snapshot_state = AUXTRACE_SNAPSHOT_OFF;
+
+static inline void
+auxtrace_snapshot_on(void)
+{
+	auxtrace_snapshot_state = AUXTRACE_SNAPSHOT_DISABLED;
+}
+
+static inline void
+auxtrace_snapshot_enable(void)
+{
+	if (auxtrace_snapshot_state == AUXTRACE_SNAPSHOT_OFF)
+		return;
+	auxtrace_snapshot_state = AUXTRACE_SNAPSHOT_ENABLED;
+}
+
+static inline void
+auxtrace_snapshot_disable(void)
+{
+	if (auxtrace_snapshot_state == AUXTRACE_SNAPSHOT_OFF)
+		return;
+	auxtrace_snapshot_state = AUXTRACE_SNAPSHOT_DISABLED;
+}
+
+static inline bool
+auxtrace_snapshot_is_enabled(void)
+{
+	if (auxtrace_snapshot_state == AUXTRACE_SNAPSHOT_OFF)
+		return false;
+	return auxtrace_snapshot_state == AUXTRACE_SNAPSHOT_ENABLED;
+}
+
 static volatile int auxtrace_snapshot_err;
 static volatile int auxtrace_record__snapshot_started;
 
@@ -248,7 +286,7 @@ static void record__read_auxtrace_snapshot(struct record *rec)
 	} else {
 		auxtrace_snapshot_err = auxtrace_record__snapshot_finish(rec->itr);
 		if (!auxtrace_snapshot_err)
-			auxtrace_snapshot_enabled = 1;
+			auxtrace_snapshot_enable();
 	}
 }
 
@@ -283,7 +321,7 @@ static int record__open(struct record *rec)
 	struct record_opts *opts = &rec->opts;
 	int rc = 0;
 
-	perf_evlist__config(evlist, opts);
+	perf_evlist__config(evlist, opts, &callchain_param);
 
 	evlist__for_each(evlist, pos) {
 try_again:
@@ -494,6 +532,37 @@ record__finish_output(struct record *rec)
 	return;
 }
 
+static int
+record__switch_output(struct record *rec, bool at_exit)
+{
+	struct perf_data_file *file = &rec->file;
+	int fd, err;
+
+	/* Same Size:      "2015122520103046"*/
+	char timestamp[] = "InvalidTimestamp";
+
+	rec->samples = 0;
+	record__finish_output(rec);
+	err = fetch_current_timestamp(timestamp, sizeof(timestamp));
+	if (err) {
+		pr_err("Failed to get current timestamp\n");
+		return -EINVAL;
+	}
+
+	fd = perf_data_file__switch(file, timestamp,
+				    rec->session->header.data_offset,
+				    at_exit);
+	if (fd >= 0 && !at_exit) {
+		rec->bytes_written = 0;
+		rec->session->header.data_size = 0;
+	}
+
+	if (!quiet)
+		fprintf(stderr, "[ perf record: Dump %s.%s ]\n",
+			file->path, timestamp);
+	return fd;
+}
+
 static volatile int workload_exec_errno;
 
 /*
@@ -511,6 +580,15 @@ static void workload_exec_failed_signal(int signo __maybe_unused,
 }
 
 static void snapshot_sig_handler(int sig);
+
+int __weak
+perf_event__synth_time_conv(const struct perf_event_mmap_page *pc __maybe_unused,
+			    struct perf_tool *tool __maybe_unused,
+			    perf_event__handler_t process __maybe_unused,
+			    struct machine *machine __maybe_unused)
+{
+	return 0;
+}
 
 static int record__synthesize(struct record *rec)
 {
@@ -548,6 +626,11 @@ static int record__synthesize(struct record *rec)
 			rec->bytes_written += err;
 		}
 	}
+
+	err = perf_event__synth_time_conv(rec->evlist->mmap[0].base, tool,
+					  process_synthesized_event, machine);
+	if (err)
+		goto out;
 
 	if (rec->opts.full_auxtrace) {
 		err = perf_event__synthesize_auxtrace_info(rec->itr, tool,
@@ -600,10 +683,13 @@ static int __cmd_record(struct record *rec, int argc, const char **argv)
 	signal(SIGCHLD, sig_handler);
 	signal(SIGINT, sig_handler);
 	signal(SIGTERM, sig_handler);
-	if (rec->opts.auxtrace_snapshot_mode)
+
+	if (rec->opts.auxtrace_snapshot_mode) {
 		signal(SIGUSR2, snapshot_sig_handler);
-	else
+		auxtrace_snapshot_on();
+	} else {
 		signal(SIGUSR2, SIG_IGN);
+	}
 
 	session = perf_session__new(file, false, tool);
 	if (session == NULL) {
@@ -729,12 +815,12 @@ static int __cmd_record(struct record *rec, int argc, const char **argv)
 		perf_evlist__enable(rec->evlist);
 	}
 
-	auxtrace_snapshot_enabled = 1;
+	auxtrace_snapshot_enable();
 	for (;;) {
 		unsigned long long hits = rec->samples;
 
 		if (record__mmap_read_all(rec) < 0) {
-			auxtrace_snapshot_enabled = 0;
+			auxtrace_snapshot_disable();
 			err = -1;
 			goto out_child;
 		}
@@ -772,12 +858,12 @@ static int __cmd_record(struct record *rec, int argc, const char **argv)
 		 * disable events in this case.
 		 */
 		if (done && !disabled && !target__none(&opts->target)) {
-			auxtrace_snapshot_enabled = 0;
+			auxtrace_snapshot_disable();
 			perf_evlist__disable(rec->evlist);
 			disabled = true;
 		}
 	}
-	auxtrace_snapshot_enabled = 0;
+	auxtrace_snapshot_disable();
 
 	if (forks && workload_exec_errno) {
 		char msg[STRERR_BUFSIZE];
@@ -811,11 +897,22 @@ out_child:
 	/* this will be recalculated during process_buildids() */
 	rec->samples = 0;
 
-	if (!err)
-		record__finish_output(rec);
+	if (!err) {
+		if (!rec->timestamp_filename) {
+			record__finish_output(rec);
+		} else {
+			fd = record__switch_output(rec, true);
+			if (fd < 0) {
+				status = fd;
+				goto out_delete_session;
+			}
+		}
+	}
 
 	if (!err && !quiet) {
 		char samples[128];
+		const char *postfix = rec->timestamp_filename ?
+					".<timestamp>" : "";
 
 		if (rec->samples && !rec->opts.full_auxtrace)
 			scnprintf(samples, sizeof(samples),
@@ -823,9 +920,9 @@ out_child:
 		else
 			samples[0] = '\0';
 
-		fprintf(stderr,	"[ perf record: Captured and wrote %.3f MB %s%s ]\n",
+		fprintf(stderr,	"[ perf record: Captured and wrote %.3f MB %s%s%s ]\n",
 			perf_data_file__size(file) / 1024.0 / 1024.0,
-			file->path, samples);
+			file->path, postfix, samples);
 	}
 
 out_delete_session:
@@ -833,58 +930,61 @@ out_delete_session:
 	return status;
 }
 
-static void callchain_debug(void)
+static void callchain_debug(struct callchain_param *callchain)
 {
 	static const char *str[CALLCHAIN_MAX] = { "NONE", "FP", "DWARF", "LBR" };
 
-	pr_debug("callchain: type %s\n", str[callchain_param.record_mode]);
+	pr_debug("callchain: type %s\n", str[callchain->record_mode]);
 
-	if (callchain_param.record_mode == CALLCHAIN_DWARF)
+	if (callchain->record_mode == CALLCHAIN_DWARF)
 		pr_debug("callchain: stack dump size %d\n",
-			 callchain_param.dump_size);
+			 callchain->dump_size);
+}
+
+int record_opts__parse_callchain(struct record_opts *record,
+				 struct callchain_param *callchain,
+				 const char *arg, bool unset)
+{
+	int ret;
+	callchain->enabled = !unset;
+
+	/* --no-call-graph */
+	if (unset) {
+		callchain->record_mode = CALLCHAIN_NONE;
+		pr_debug("callchain: disabled\n");
+		return 0;
+	}
+
+	ret = parse_callchain_record_opt(arg, callchain);
+	if (!ret) {
+		/* Enable data address sampling for DWARF unwind. */
+		if (callchain->record_mode == CALLCHAIN_DWARF)
+			record->sample_address = true;
+		callchain_debug(callchain);
+	}
+
+	return ret;
 }
 
 int record_parse_callchain_opt(const struct option *opt,
 			       const char *arg,
 			       int unset)
 {
-	int ret;
-	struct record_opts *record = (struct record_opts *)opt->value;
-
-	record->callgraph_set = true;
-	callchain_param.enabled = !unset;
-
-	/* --no-call-graph */
-	if (unset) {
-		callchain_param.record_mode = CALLCHAIN_NONE;
-		pr_debug("callchain: disabled\n");
-		return 0;
-	}
-
-	ret = parse_callchain_record_opt(arg, &callchain_param);
-	if (!ret) {
-		/* Enable data address sampling for DWARF unwind. */
-		if (callchain_param.record_mode == CALLCHAIN_DWARF)
-			record->sample_address = true;
-		callchain_debug();
-	}
-
-	return ret;
+	return record_opts__parse_callchain(opt->value, &callchain_param, arg, unset);
 }
 
 int record_callchain_opt(const struct option *opt,
 			 const char *arg __maybe_unused,
 			 int unset __maybe_unused)
 {
-	struct record_opts *record = (struct record_opts *)opt->value;
+	struct callchain_param *callchain = opt->value;
 
-	record->callgraph_set = true;
-	callchain_param.enabled = true;
+	callchain->enabled = true;
 
-	if (callchain_param.record_mode == CALLCHAIN_NONE)
-		callchain_param.record_mode = CALLCHAIN_FP;
+	if (callchain->record_mode == CALLCHAIN_NONE)
+		callchain->record_mode = CALLCHAIN_FP;
 
-	callchain_debug();
+	callchain_debug(callchain);
 	return 0;
 }
 
@@ -1122,7 +1222,7 @@ struct option __record_options[] = {
 		     record__parse_mmap_pages),
 	OPT_BOOLEAN(0, "group", &record.opts.group,
 		    "put the counters into a counter group"),
-	OPT_CALLBACK_NOOPT('g', NULL, &record.opts,
+	OPT_CALLBACK_NOOPT('g', NULL, &callchain_param,
 			   NULL, "enables call-graph recording" ,
 			   &record_callchain_opt),
 	OPT_CALLBACK(0, "call-graph", &record.opts,
@@ -1195,6 +1295,8 @@ struct option __record_options[] = {
 		   "file", "vmlinux pathname"),
 	OPT_BOOLEAN(0, "buildid-all", &record.buildid_all,
 		    "Record build-id of all DSOs regardless of hits"),
+	OPT_BOOLEAN(0, "timestamp-filename", &record.timestamp_filename,
+		    "append timestamp to output filename"),
 	OPT_END()
 };
 
@@ -1260,6 +1362,14 @@ int cmd_record(int argc, const char **argv, const char *prefix __maybe_unused)
 					      rec->opts.auxtrace_snapshot_opts);
 	if (err)
 		return err;
+
+	err = bpf__setup_stdout(rec->evlist);
+	if (err) {
+		bpf__strerror_setup_stdout(rec->evlist, err, errbuf, sizeof(errbuf));
+		pr_err("ERROR: Setup BPF stdout failed: %s\n",
+			 errbuf);
+		return err;
+	}
 
 	err = -ENOMEM;
 
@@ -1335,9 +1445,9 @@ out_symbol_exit:
 
 static void snapshot_sig_handler(int sig __maybe_unused)
 {
-	if (!auxtrace_snapshot_enabled)
+	if (!auxtrace_snapshot_is_enabled())
 		return;
-	auxtrace_snapshot_enabled = 0;
+	auxtrace_snapshot_disable();
 	auxtrace_snapshot_err = auxtrace_record__snapshot_start(record.itr);
 	auxtrace_record__snapshot_started = 1;
 }
