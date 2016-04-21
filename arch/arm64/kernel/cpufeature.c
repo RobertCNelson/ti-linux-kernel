@@ -130,7 +130,11 @@ static struct arm64_ftr_bits ftr_id_aa64mmfr1[] = {
 };
 
 static struct arm64_ftr_bits ftr_id_aa64mmfr2[] = {
+	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, ID_AA64MMFR2_LVA_SHIFT, 4, 0),
+	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, ID_AA64MMFR2_IESB_SHIFT, 4, 0),
+	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, ID_AA64MMFR2_LSM_SHIFT, 4, 0),
 	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, ID_AA64MMFR2_UAO_SHIFT, 4, 0),
+	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, ID_AA64MMFR2_CNP_SHIFT, 4, 0),
 	ARM64_FTR_END,
 };
 
@@ -435,22 +439,26 @@ void __init init_cpu_features(struct cpuinfo_arm64 *info)
 	init_cpu_ftr_reg(SYS_ID_AA64MMFR2_EL1, info->reg_id_aa64mmfr2);
 	init_cpu_ftr_reg(SYS_ID_AA64PFR0_EL1, info->reg_id_aa64pfr0);
 	init_cpu_ftr_reg(SYS_ID_AA64PFR1_EL1, info->reg_id_aa64pfr1);
-	init_cpu_ftr_reg(SYS_ID_DFR0_EL1, info->reg_id_dfr0);
-	init_cpu_ftr_reg(SYS_ID_ISAR0_EL1, info->reg_id_isar0);
-	init_cpu_ftr_reg(SYS_ID_ISAR1_EL1, info->reg_id_isar1);
-	init_cpu_ftr_reg(SYS_ID_ISAR2_EL1, info->reg_id_isar2);
-	init_cpu_ftr_reg(SYS_ID_ISAR3_EL1, info->reg_id_isar3);
-	init_cpu_ftr_reg(SYS_ID_ISAR4_EL1, info->reg_id_isar4);
-	init_cpu_ftr_reg(SYS_ID_ISAR5_EL1, info->reg_id_isar5);
-	init_cpu_ftr_reg(SYS_ID_MMFR0_EL1, info->reg_id_mmfr0);
-	init_cpu_ftr_reg(SYS_ID_MMFR1_EL1, info->reg_id_mmfr1);
-	init_cpu_ftr_reg(SYS_ID_MMFR2_EL1, info->reg_id_mmfr2);
-	init_cpu_ftr_reg(SYS_ID_MMFR3_EL1, info->reg_id_mmfr3);
-	init_cpu_ftr_reg(SYS_ID_PFR0_EL1, info->reg_id_pfr0);
-	init_cpu_ftr_reg(SYS_ID_PFR1_EL1, info->reg_id_pfr1);
-	init_cpu_ftr_reg(SYS_MVFR0_EL1, info->reg_mvfr0);
-	init_cpu_ftr_reg(SYS_MVFR1_EL1, info->reg_mvfr1);
-	init_cpu_ftr_reg(SYS_MVFR2_EL1, info->reg_mvfr2);
+
+	if (id_aa64pfr0_32bit_el0(info->reg_id_aa64pfr0)) {
+		init_cpu_ftr_reg(SYS_ID_DFR0_EL1, info->reg_id_dfr0);
+		init_cpu_ftr_reg(SYS_ID_ISAR0_EL1, info->reg_id_isar0);
+		init_cpu_ftr_reg(SYS_ID_ISAR1_EL1, info->reg_id_isar1);
+		init_cpu_ftr_reg(SYS_ID_ISAR2_EL1, info->reg_id_isar2);
+		init_cpu_ftr_reg(SYS_ID_ISAR3_EL1, info->reg_id_isar3);
+		init_cpu_ftr_reg(SYS_ID_ISAR4_EL1, info->reg_id_isar4);
+		init_cpu_ftr_reg(SYS_ID_ISAR5_EL1, info->reg_id_isar5);
+		init_cpu_ftr_reg(SYS_ID_MMFR0_EL1, info->reg_id_mmfr0);
+		init_cpu_ftr_reg(SYS_ID_MMFR1_EL1, info->reg_id_mmfr1);
+		init_cpu_ftr_reg(SYS_ID_MMFR2_EL1, info->reg_id_mmfr2);
+		init_cpu_ftr_reg(SYS_ID_MMFR3_EL1, info->reg_id_mmfr3);
+		init_cpu_ftr_reg(SYS_ID_PFR0_EL1, info->reg_id_pfr0);
+		init_cpu_ftr_reg(SYS_ID_PFR1_EL1, info->reg_id_pfr1);
+		init_cpu_ftr_reg(SYS_MVFR0_EL1, info->reg_mvfr0);
+		init_cpu_ftr_reg(SYS_MVFR1_EL1, info->reg_mvfr1);
+		init_cpu_ftr_reg(SYS_MVFR2_EL1, info->reg_mvfr2);
+	}
+
 }
 
 static void update_cpu_ftr_reg(struct arm64_ftr_reg *reg, u64 new)
@@ -555,47 +563,51 @@ void update_cpu_features(int cpu,
 				      info->reg_id_aa64pfr1, boot->reg_id_aa64pfr1);
 
 	/*
-	 * If we have AArch32, we care about 32-bit features for compat. These
-	 * registers should be RES0 otherwise.
+	 * If we have AArch32, we care about 32-bit features for compat.
+	 * If the system doesn't support AArch32, don't update them.
 	 */
-	taint |= check_update_ftr_reg(SYS_ID_DFR0_EL1, cpu,
+	if (id_aa64pfr0_32bit_el0(read_system_reg(SYS_ID_AA64PFR0_EL1)) &&
+		id_aa64pfr0_32bit_el0(info->reg_id_aa64pfr0)) {
+
+		taint |= check_update_ftr_reg(SYS_ID_DFR0_EL1, cpu,
 					info->reg_id_dfr0, boot->reg_id_dfr0);
-	taint |= check_update_ftr_reg(SYS_ID_ISAR0_EL1, cpu,
+		taint |= check_update_ftr_reg(SYS_ID_ISAR0_EL1, cpu,
 					info->reg_id_isar0, boot->reg_id_isar0);
-	taint |= check_update_ftr_reg(SYS_ID_ISAR1_EL1, cpu,
+		taint |= check_update_ftr_reg(SYS_ID_ISAR1_EL1, cpu,
 					info->reg_id_isar1, boot->reg_id_isar1);
-	taint |= check_update_ftr_reg(SYS_ID_ISAR2_EL1, cpu,
+		taint |= check_update_ftr_reg(SYS_ID_ISAR2_EL1, cpu,
 					info->reg_id_isar2, boot->reg_id_isar2);
-	taint |= check_update_ftr_reg(SYS_ID_ISAR3_EL1, cpu,
+		taint |= check_update_ftr_reg(SYS_ID_ISAR3_EL1, cpu,
 					info->reg_id_isar3, boot->reg_id_isar3);
-	taint |= check_update_ftr_reg(SYS_ID_ISAR4_EL1, cpu,
+		taint |= check_update_ftr_reg(SYS_ID_ISAR4_EL1, cpu,
 					info->reg_id_isar4, boot->reg_id_isar4);
-	taint |= check_update_ftr_reg(SYS_ID_ISAR5_EL1, cpu,
+		taint |= check_update_ftr_reg(SYS_ID_ISAR5_EL1, cpu,
 					info->reg_id_isar5, boot->reg_id_isar5);
 
-	/*
-	 * Regardless of the value of the AuxReg field, the AIFSR, ADFSR, and
-	 * ACTLR formats could differ across CPUs and therefore would have to
-	 * be trapped for virtualization anyway.
-	 */
-	taint |= check_update_ftr_reg(SYS_ID_MMFR0_EL1, cpu,
+		/*
+		 * Regardless of the value of the AuxReg field, the AIFSR, ADFSR, and
+		 * ACTLR formats could differ across CPUs and therefore would have to
+		 * be trapped for virtualization anyway.
+		 */
+		taint |= check_update_ftr_reg(SYS_ID_MMFR0_EL1, cpu,
 					info->reg_id_mmfr0, boot->reg_id_mmfr0);
-	taint |= check_update_ftr_reg(SYS_ID_MMFR1_EL1, cpu,
+		taint |= check_update_ftr_reg(SYS_ID_MMFR1_EL1, cpu,
 					info->reg_id_mmfr1, boot->reg_id_mmfr1);
-	taint |= check_update_ftr_reg(SYS_ID_MMFR2_EL1, cpu,
+		taint |= check_update_ftr_reg(SYS_ID_MMFR2_EL1, cpu,
 					info->reg_id_mmfr2, boot->reg_id_mmfr2);
-	taint |= check_update_ftr_reg(SYS_ID_MMFR3_EL1, cpu,
+		taint |= check_update_ftr_reg(SYS_ID_MMFR3_EL1, cpu,
 					info->reg_id_mmfr3, boot->reg_id_mmfr3);
-	taint |= check_update_ftr_reg(SYS_ID_PFR0_EL1, cpu,
+		taint |= check_update_ftr_reg(SYS_ID_PFR0_EL1, cpu,
 					info->reg_id_pfr0, boot->reg_id_pfr0);
-	taint |= check_update_ftr_reg(SYS_ID_PFR1_EL1, cpu,
+		taint |= check_update_ftr_reg(SYS_ID_PFR1_EL1, cpu,
 					info->reg_id_pfr1, boot->reg_id_pfr1);
-	taint |= check_update_ftr_reg(SYS_MVFR0_EL1, cpu,
+		taint |= check_update_ftr_reg(SYS_MVFR0_EL1, cpu,
 					info->reg_mvfr0, boot->reg_mvfr0);
-	taint |= check_update_ftr_reg(SYS_MVFR1_EL1, cpu,
+		taint |= check_update_ftr_reg(SYS_MVFR1_EL1, cpu,
 					info->reg_mvfr1, boot->reg_mvfr1);
-	taint |= check_update_ftr_reg(SYS_MVFR2_EL1, cpu,
+		taint |= check_update_ftr_reg(SYS_MVFR2_EL1, cpu,
 					info->reg_mvfr2, boot->reg_mvfr2);
+	}
 
 	/*
 	 * Mismatched CPU features are a recipe for disaster. Don't even
@@ -725,6 +737,15 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.capability = ARM64_HAS_VIRT_HOST_EXTN,
 		.matches = runs_at_el2,
 	},
+	{
+		.desc = "32-bit EL0 Support",
+		.capability = ARM64_HAS_32BIT_EL0,
+		.matches = has_cpuid_feature,
+		.sys_reg = SYS_ID_AA64PFR0_EL1,
+		.sign = FTR_UNSIGNED,
+		.field_pos = ID_AA64PFR0_EL0_SHIFT,
+		.min_field_value = ID_AA64PFR0_EL0_32BIT_64BIT,
+	},
 	{},
 };
 
@@ -740,7 +761,7 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.hwcap = cap,					\
 	}
 
-static const struct arm64_cpu_capabilities arm64_hwcaps[] = {
+static const struct arm64_cpu_capabilities arm64_elf_hwcaps[] = {
 	HWCAP_CAP(SYS_ID_AA64ISAR0_EL1, ID_AA64ISAR0_AES_SHIFT, FTR_UNSIGNED, 2, CAP_HWCAP, HWCAP_PMULL),
 	HWCAP_CAP(SYS_ID_AA64ISAR0_EL1, ID_AA64ISAR0_AES_SHIFT, FTR_UNSIGNED, 1, CAP_HWCAP, HWCAP_AES),
 	HWCAP_CAP(SYS_ID_AA64ISAR0_EL1, ID_AA64ISAR0_SHA1_SHIFT, FTR_UNSIGNED, 1, CAP_HWCAP, HWCAP_SHA1),
@@ -751,6 +772,10 @@ static const struct arm64_cpu_capabilities arm64_hwcaps[] = {
 	HWCAP_CAP(SYS_ID_AA64PFR0_EL1, ID_AA64PFR0_FP_SHIFT, FTR_SIGNED, 1, CAP_HWCAP, HWCAP_FPHP),
 	HWCAP_CAP(SYS_ID_AA64PFR0_EL1, ID_AA64PFR0_ASIMD_SHIFT, FTR_SIGNED, 0, CAP_HWCAP, HWCAP_ASIMD),
 	HWCAP_CAP(SYS_ID_AA64PFR0_EL1, ID_AA64PFR0_ASIMD_SHIFT, FTR_SIGNED, 1, CAP_HWCAP, HWCAP_ASIMDHP),
+	{},
+};
+
+static const struct arm64_cpu_capabilities compat_elf_hwcaps[] = {
 #ifdef CONFIG_COMPAT
 	HWCAP_CAP(SYS_ID_ISAR5_EL1, ID_ISAR5_AES_SHIFT, FTR_UNSIGNED, 2, CAP_COMPAT_HWCAP2, COMPAT_HWCAP2_PMULL),
 	HWCAP_CAP(SYS_ID_ISAR5_EL1, ID_ISAR5_AES_SHIFT, FTR_UNSIGNED, 1, CAP_COMPAT_HWCAP2, COMPAT_HWCAP2_AES),
@@ -761,7 +786,7 @@ static const struct arm64_cpu_capabilities arm64_hwcaps[] = {
 	{},
 };
 
-static void __init cap_set_hwcap(const struct arm64_cpu_capabilities *cap)
+static void __init cap_set_elf_hwcap(const struct arm64_cpu_capabilities *cap)
 {
 	switch (cap->hwcap_type) {
 	case CAP_HWCAP:
@@ -782,7 +807,7 @@ static void __init cap_set_hwcap(const struct arm64_cpu_capabilities *cap)
 }
 
 /* Check if we have a particular HWCAP enabled */
-static bool __maybe_unused cpus_have_hwcap(const struct arm64_cpu_capabilities *cap)
+static bool cpus_have_elf_hwcap(const struct arm64_cpu_capabilities *cap)
 {
 	bool rc;
 
@@ -806,28 +831,23 @@ static bool __maybe_unused cpus_have_hwcap(const struct arm64_cpu_capabilities *
 	return rc;
 }
 
-static void __init setup_cpu_hwcaps(void)
+static void __init setup_elf_hwcaps(const struct arm64_cpu_capabilities *hwcaps)
 {
-	int i;
-	const struct arm64_cpu_capabilities *hwcaps = arm64_hwcaps;
-
-	for (i = 0; hwcaps[i].matches; i++)
-		if (hwcaps[i].matches(&hwcaps[i]))
-			cap_set_hwcap(&hwcaps[i]);
+	for (; hwcaps->matches; hwcaps++)
+		if (hwcaps->matches(hwcaps))
+			cap_set_elf_hwcap(hwcaps);
 }
 
 void update_cpu_capabilities(const struct arm64_cpu_capabilities *caps,
 			    const char *info)
 {
-	int i;
-
-	for (i = 0; caps[i].matches; i++) {
-		if (!caps[i].matches(&caps[i]))
+	for (; caps->matches; caps++) {
+		if (!caps->matches(caps))
 			continue;
 
-		if (!cpus_have_cap(caps[i].capability) && caps[i].desc)
-			pr_info("%s %s\n", info, caps[i].desc);
-		cpus_set_cap(caps[i].capability);
+		if (!cpus_have_cap(caps->capability) && caps->desc)
+			pr_info("%s %s\n", info, caps->desc);
+		cpus_set_cap(caps->capability);
 	}
 }
 
@@ -838,11 +858,9 @@ void update_cpu_capabilities(const struct arm64_cpu_capabilities *caps,
 static void __init
 enable_cpu_capabilities(const struct arm64_cpu_capabilities *caps)
 {
-	int i;
-
-	for (i = 0; caps[i].matches; i++)
-		if (caps[i].enable && cpus_have_cap(caps[i].capability))
-			on_each_cpu(caps[i].enable, NULL, true);
+	for (; caps->matches; caps++)
+		if (caps->enable && cpus_have_cap(caps->capability))
+			on_each_cpu(caps->enable, NULL, true);
 }
 
 /*
@@ -908,7 +926,43 @@ static u64 __raw_read_system_reg(u32 sys_id)
  */
 static void check_early_cpu_features(void)
 {
+	verify_cpu_run_el();
 	verify_cpu_asid_bits();
+}
+
+static void
+verify_local_elf_hwcaps(const struct arm64_cpu_capabilities *caps)
+{
+
+	for (; caps->matches; caps++) {
+		if (!cpus_have_elf_hwcap(caps))
+			continue;
+		if (!feature_matches(__raw_read_system_reg(caps->sys_reg), caps)) {
+			pr_crit("CPU%d: missing HWCAP: %s\n",
+					smp_processor_id(), caps->desc);
+			cpu_die_early();
+		}
+	}
+}
+
+static void
+verify_local_cpu_features(const struct arm64_cpu_capabilities *caps)
+{
+	for (; caps->matches; caps++) {
+		if (!cpus_have_cap(caps->capability) || !caps->sys_reg)
+			continue;
+		/*
+		 * If the new CPU misses an advertised feature, we cannot proceed
+		 * further, park the cpu.
+		 */
+		if (!feature_matches(__raw_read_system_reg(caps->sys_reg), caps)) {
+			pr_crit("CPU%d: missing feature: %s\n",
+					smp_processor_id(), caps->desc);
+			cpu_die_early();
+		}
+		if (caps->enable)
+			caps->enable(NULL);
+	}
 }
 
 /*
@@ -921,8 +975,6 @@ static void check_early_cpu_features(void)
  */
 void verify_local_cpu_capabilities(void)
 {
-	int i;
-	const struct arm64_cpu_capabilities *caps;
 
 	check_early_cpu_features();
 
@@ -933,32 +985,10 @@ void verify_local_cpu_capabilities(void)
 	if (!sys_caps_initialised)
 		return;
 
-	caps = arm64_features;
-	for (i = 0; caps[i].matches; i++) {
-		if (!cpus_have_cap(caps[i].capability) || !caps[i].sys_reg)
-			continue;
-		/*
-		 * If the new CPU misses an advertised feature, we cannot proceed
-		 * further, park the cpu.
-		 */
-		if (!feature_matches(__raw_read_system_reg(caps[i].sys_reg), &caps[i])) {
-			pr_crit("CPU%d: missing feature: %s\n",
-					smp_processor_id(), caps[i].desc);
-			cpu_die_early();
-		}
-		if (caps[i].enable)
-			caps[i].enable(NULL);
-	}
-
-	for (i = 0, caps = arm64_hwcaps; caps[i].matches; i++) {
-		if (!cpus_have_hwcap(&caps[i]))
-			continue;
-		if (!feature_matches(__raw_read_system_reg(caps[i].sys_reg), &caps[i])) {
-			pr_crit("CPU%d: missing HWCAP: %s\n",
-					smp_processor_id(), caps[i].desc);
-			cpu_die_early();
-		}
-	}
+	verify_local_cpu_features(arm64_features);
+	verify_local_elf_hwcaps(arm64_elf_hwcaps);
+	if (system_supports_32bit_el0())
+		verify_local_elf_hwcaps(compat_elf_hwcaps);
 }
 
 static void __init setup_feature_capabilities(void)
@@ -974,7 +1004,10 @@ void __init setup_cpu_features(void)
 
 	/* Set the CPU feature capabilies */
 	setup_feature_capabilities();
-	setup_cpu_hwcaps();
+	setup_elf_hwcaps(arm64_elf_hwcaps);
+
+	if (system_supports_32bit_el0())
+		setup_elf_hwcaps(compat_elf_hwcaps);
 
 	/* Advertise that we have computed the system capabilities */
 	set_sys_caps_initialised();
