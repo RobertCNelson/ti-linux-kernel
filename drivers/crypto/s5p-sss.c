@@ -11,24 +11,24 @@
  *
  */
 
-#include <linux/delay.h>
-#include <linux/err.h>
-#include <linux/module.h>
-#include <linux/init.h>
-#include <linux/errno.h>
-#include <linux/kernel.h>
 #include <linux/clk.h>
+#include <linux/crypto.h>
+#include <linux/dma-mapping.h>
+#include <linux/err.h>
+#include <linux/errno.h>
+#include <linux/init.h>
+#include <linux/interrupt.h>
+#include <linux/io.h>
+#include <linux/kernel.h>
+#include <linux/module.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/scatterlist.h>
-#include <linux/dma-mapping.h>
-#include <linux/io.h>
-#include <linux/of.h>
-#include <linux/crypto.h>
-#include <linux/interrupt.h>
 
-#include <crypto/algapi.h>
-#include <crypto/aes.h>
 #include <crypto/ctr.h>
+#include <crypto/aes.h>
+#include <crypto/algapi.h>
+#include <crypto/scatterwalk.h>
 
 #define _SBF(s, v)                      ((v) << (s))
 #define _BIT(b)                         _SBF(b, 1)
@@ -149,7 +149,6 @@
 
 /**
  * struct samsung_aes_variant - platform specific SSS driver data
- * @has_hash_irq: true if SSS module uses hash interrupt, false otherwise
  * @aes_offset: AES register offset from SSS module's base.
  *
  * Specifies platform specific configuration of SSS module.
@@ -157,7 +156,6 @@
  * expansion of its usage.
  */
 struct samsung_aes_variant {
-	bool			    has_hash_irq;
 	unsigned int		    aes_offset;
 };
 
@@ -178,13 +176,16 @@ struct s5p_aes_dev {
 	struct clk                 *clk;
 	void __iomem               *ioaddr;
 	void __iomem               *aes_ioaddr;
-	int                         irq_hash;
 	int                         irq_fc;
 
 	struct ablkcipher_request  *req;
 	struct s5p_aes_ctx         *ctx;
 	struct scatterlist         *sg_src;
 	struct scatterlist         *sg_dst;
+
+	/* In case of unaligned access: */
+	struct scatterlist         *sg_src_cpy;
+	struct scatterlist         *sg_dst_cpy;
 
 	struct tasklet_struct       tasklet;
 	struct crypto_queue         queue;
@@ -197,12 +198,10 @@ struct s5p_aes_dev {
 static struct s5p_aes_dev *s5p_dev;
 
 static const struct samsung_aes_variant s5p_aes_data = {
-	.has_hash_irq	= true,
 	.aes_offset	= 0x4000,
 };
 
 static const struct samsung_aes_variant exynos_aes_data = {
-	.has_hash_irq	= false,
 	.aes_offset	= 0x200,
 };
 
@@ -245,8 +244,45 @@ static void s5p_set_dma_outdata(struct s5p_aes_dev *dev, struct scatterlist *sg)
 	SSS_WRITE(dev, FCBTDMAL, sg_dma_len(sg));
 }
 
+static void s5p_free_sg_cpy(struct s5p_aes_dev *dev, struct scatterlist **sg)
+{
+	int len;
+
+	if (!*sg)
+		return;
+
+	len = ALIGN(dev->req->nbytes, AES_BLOCK_SIZE);
+	free_pages((unsigned long)sg_virt(*sg), get_order(len));
+
+	kfree(*sg);
+	*sg = NULL;
+}
+
+static void s5p_sg_copy_buf(void *buf, struct scatterlist *sg,
+			    unsigned int nbytes, int out)
+{
+	struct scatter_walk walk;
+
+	if (!nbytes)
+		return;
+
+	scatterwalk_start(&walk, sg);
+	scatterwalk_copychunks(buf, &walk, nbytes, out);
+	scatterwalk_done(&walk, out, 0);
+}
+
 static void s5p_aes_complete(struct s5p_aes_dev *dev, int err)
 {
+	if (dev->sg_dst_cpy) {
+		dev_dbg(dev->dev,
+			"Copying %d bytes of output data back to original place\n",
+			dev->req->nbytes);
+		s5p_sg_copy_buf(sg_virt(dev->sg_dst_cpy), dev->req->dst,
+				dev->req->nbytes, 1);
+	}
+	s5p_free_sg_cpy(dev, &dev->sg_src_cpy);
+	s5p_free_sg_cpy(dev, &dev->sg_dst_cpy);
+
 	/* holding a lock outside */
 	dev->req->base.complete(&dev->req->base, err);
 	dev->busy = false;
@@ -262,14 +298,36 @@ static void s5p_unset_indata(struct s5p_aes_dev *dev)
 	dma_unmap_sg(dev->dev, dev->sg_src, 1, DMA_TO_DEVICE);
 }
 
+static int s5p_make_sg_cpy(struct s5p_aes_dev *dev, struct scatterlist *src,
+			    struct scatterlist **dst)
+{
+	void *pages;
+	int len;
+
+	*dst = kmalloc(sizeof(**dst), GFP_ATOMIC);
+	if (!*dst)
+		return -ENOMEM;
+
+	len = ALIGN(dev->req->nbytes, AES_BLOCK_SIZE);
+	pages = (void *)__get_free_pages(GFP_ATOMIC, get_order(len));
+	if (!pages) {
+		kfree(*dst);
+		*dst = NULL;
+		return -ENOMEM;
+	}
+
+	s5p_sg_copy_buf(pages, src, dev->req->nbytes, 0);
+
+	sg_init_table(*dst, 1);
+	sg_set_buf(*dst, pages, len);
+
+	return 0;
+}
+
 static int s5p_set_outdata(struct s5p_aes_dev *dev, struct scatterlist *sg)
 {
 	int err;
 
-	if (!IS_ALIGNED(sg_dma_len(sg), AES_BLOCK_SIZE)) {
-		err = -EINVAL;
-		goto exit;
-	}
 	if (!sg_dma_len(sg)) {
 		err = -EINVAL;
 		goto exit;
@@ -284,7 +342,7 @@ static int s5p_set_outdata(struct s5p_aes_dev *dev, struct scatterlist *sg)
 	dev->sg_dst = sg;
 	err = 0;
 
- exit:
+exit:
 	return err;
 }
 
@@ -292,10 +350,6 @@ static int s5p_set_indata(struct s5p_aes_dev *dev, struct scatterlist *sg)
 {
 	int err;
 
-	if (!IS_ALIGNED(sg_dma_len(sg), AES_BLOCK_SIZE)) {
-		err = -EINVAL;
-		goto exit;
-	}
 	if (!sg_dma_len(sg)) {
 		err = -EINVAL;
 		goto exit;
@@ -310,7 +364,7 @@ static int s5p_set_indata(struct s5p_aes_dev *dev, struct scatterlist *sg)
 	dev->sg_src = sg;
 	err = 0;
 
- exit:
+exit:
 	return err;
 }
 
@@ -362,15 +416,13 @@ static irqreturn_t s5p_aes_interrupt(int irq, void *dev_id)
 
 	spin_lock_irqsave(&dev->lock, flags);
 
-	if (irq == dev->irq_fc) {
-		status = SSS_READ(dev, FCINTSTAT);
-		if (status & SSS_FCINTSTAT_BRDMAINT)
-			s5p_aes_rx(dev);
-		if (status & SSS_FCINTSTAT_BTDMAINT)
-			s5p_aes_tx(dev);
+	status = SSS_READ(dev, FCINTSTAT);
+	if (status & SSS_FCINTSTAT_BRDMAINT)
+		s5p_aes_rx(dev);
+	if (status & SSS_FCINTSTAT_BTDMAINT)
+		s5p_aes_tx(dev);
 
-		SSS_WRITE(dev, FCINTPEND, status);
-	}
+	SSS_WRITE(dev, FCINTPEND, status);
 
 	spin_unlock_irqrestore(&dev->lock, flags);
 
@@ -393,6 +445,71 @@ static void s5p_set_aes(struct s5p_aes_dev *dev,
 		keystart = dev->aes_ioaddr + SSS_REG_AES_KEY_DATA(4);
 
 	memcpy_toio(keystart, key, keylen);
+}
+
+static bool s5p_is_sg_aligned(struct scatterlist *sg)
+{
+	while (sg) {
+		if (!IS_ALIGNED(sg_dma_len(sg), AES_BLOCK_SIZE))
+			return false;
+		sg = sg_next(sg);
+	}
+
+	return true;
+}
+
+static int s5p_set_indata_start(struct s5p_aes_dev *dev,
+				struct ablkcipher_request *req)
+{
+	struct scatterlist *sg;
+	int err;
+
+	dev->sg_src_cpy = NULL;
+	sg = req->src;
+	if (!s5p_is_sg_aligned(sg)) {
+		dev_dbg(dev->dev,
+			"At least one unaligned source scatter list, making a copy\n");
+		err = s5p_make_sg_cpy(dev, sg, &dev->sg_src_cpy);
+		if (err)
+			return err;
+
+		sg = dev->sg_src_cpy;
+	}
+
+	err = s5p_set_indata(dev, sg);
+	if (err) {
+		s5p_free_sg_cpy(dev, &dev->sg_src_cpy);
+		return err;
+	}
+
+	return 0;
+}
+
+static int s5p_set_outdata_start(struct s5p_aes_dev *dev,
+				struct ablkcipher_request *req)
+{
+	struct scatterlist *sg;
+	int err;
+
+	dev->sg_dst_cpy = NULL;
+	sg = req->dst;
+	if (!s5p_is_sg_aligned(sg)) {
+		dev_dbg(dev->dev,
+			"At least one unaligned dest scatter list, making a copy\n");
+		err = s5p_make_sg_cpy(dev, sg, &dev->sg_dst_cpy);
+		if (err)
+			return err;
+
+		sg = dev->sg_dst_cpy;
+	}
+
+	err = s5p_set_outdata(dev, sg);
+	if (err) {
+		s5p_free_sg_cpy(dev, &dev->sg_dst_cpy);
+		return err;
+	}
+
+	return 0;
 }
 
 static void s5p_aes_crypt_start(struct s5p_aes_dev *dev, unsigned long mode)
@@ -431,19 +548,19 @@ static void s5p_aes_crypt_start(struct s5p_aes_dev *dev, unsigned long mode)
 		  SSS_FCINTENCLR_BTDMAINTENCLR | SSS_FCINTENCLR_BRDMAINTENCLR);
 	SSS_WRITE(dev, FCFIFOCTRL, 0x00);
 
-	err = s5p_set_indata(dev, req->src);
+	err = s5p_set_indata_start(dev, req);
 	if (err)
 		goto indata_error;
 
-	err = s5p_set_outdata(dev, req->dst);
+	err = s5p_set_outdata_start(dev, req);
 	if (err)
 		goto outdata_error;
 
 	SSS_AES_WRITE(dev, AES_CONTROL, aes_control);
 	s5p_set_aes(dev, dev->ctx->aes_key, req->info, dev->ctx->keylen);
 
-	s5p_set_dma_indata(dev,  req->src);
-	s5p_set_dma_outdata(dev, req->dst);
+	s5p_set_dma_indata(dev,  dev->sg_src);
+	s5p_set_dma_outdata(dev, dev->sg_dst);
 
 	SSS_WRITE(dev, FCINTENSET,
 		  SSS_FCINTENSET_BTDMAINTENSET | SSS_FCINTENSET_BRDMAINTENSET);
@@ -452,10 +569,10 @@ static void s5p_aes_crypt_start(struct s5p_aes_dev *dev, unsigned long mode)
 
 	return;
 
- outdata_error:
+outdata_error:
 	s5p_unset_indata(dev);
 
- indata_error:
+indata_error:
 	s5p_aes_complete(dev, err);
 	spin_unlock_irqrestore(&dev->lock, flags);
 }
@@ -506,7 +623,7 @@ static int s5p_aes_handle_req(struct s5p_aes_dev *dev,
 
 	tasklet_schedule(&dev->tasklet);
 
- exit:
+exit:
 	return err;
 }
 
@@ -671,21 +788,6 @@ static int s5p_aes_probe(struct platform_device *pdev)
 		goto err_irq;
 	}
 
-	if (variant->has_hash_irq) {
-		pdata->irq_hash = platform_get_irq(pdev, 1);
-		if (pdata->irq_hash < 0) {
-			err = pdata->irq_hash;
-			dev_warn(dev, "hash interrupt is not available.\n");
-			goto err_irq;
-		}
-		err = devm_request_irq(dev, pdata->irq_hash, s5p_aes_interrupt,
-				       IRQF_SHARED, pdev->name, pdev);
-		if (err < 0) {
-			dev_warn(dev, "hash interrupt is not available.\n");
-			goto err_irq;
-		}
-	}
-
 	pdata->busy = false;
 	pdata->variant = variant;
 	pdata->dev = dev;
@@ -705,7 +807,7 @@ static int s5p_aes_probe(struct platform_device *pdev)
 
 	return 0;
 
- err_algs:
+err_algs:
 	dev_err(dev, "can't register '%s': %d\n", algs[i].cra_name, err);
 
 	for (j = 0; j < i; j++)
@@ -713,7 +815,7 @@ static int s5p_aes_probe(struct platform_device *pdev)
 
 	tasklet_kill(&pdata->tasklet);
 
- err_irq:
+err_irq:
 	clk_disable_unprepare(pdata->clk);
 
 	s5p_dev = NULL;
