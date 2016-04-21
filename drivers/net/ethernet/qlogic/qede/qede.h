@@ -25,14 +25,12 @@
 
 #define QEDE_MAJOR_VERSION		8
 #define QEDE_MINOR_VERSION		7
-#define QEDE_REVISION_VERSION		0
-#define QEDE_ENGINEERING_VERSION	0
+#define QEDE_REVISION_VERSION		1
+#define QEDE_ENGINEERING_VERSION	20
 #define DRV_MODULE_VERSION __stringify(QEDE_MAJOR_VERSION) "."	\
 		__stringify(QEDE_MINOR_VERSION) "."		\
 		__stringify(QEDE_REVISION_VERSION) "."		\
 		__stringify(QEDE_ENGINEERING_VERSION)
-
-#define QEDE_ETH_INTERFACE_VERSION	300
 
 #define DRV_MODULE_SYM		qede
 
@@ -156,6 +154,10 @@ struct qede_dev {
 	      SKB_DATA_ALIGN(sizeof(struct skb_shared_info)))
 
 	struct qede_stats		stats;
+#define QEDE_RSS_INDIR_INITED	BIT(0)
+#define QEDE_RSS_KEY_INITED	BIT(1)
+#define QEDE_RSS_CAPS_INITED	BIT(2)
+	u32 rss_params_inited; /* bit-field to track initialized rss params */
 	struct qed_update_vport_rss_params	rss_params;
 	u16			q_num_rx_buffers; /* Must be a power of two */
 	u16			q_num_tx_buffers; /* Must be a power of two */
@@ -167,6 +169,8 @@ struct qede_dev {
 	bool accept_any_vlan;
 	struct delayed_work		sp_task;
 	unsigned long			sp_flags;
+	u16				vxlan_dst_port;
+	u16				geneve_dst_port;
 };
 
 enum QEDE_STATE {
@@ -286,8 +290,11 @@ struct qede_fastpath {
 
 #define QEDE_CSUM_ERROR			BIT(0)
 #define QEDE_CSUM_UNNECESSARY		BIT(1)
+#define QEDE_TUNN_CSUM_UNNECESSARY	BIT(2)
 
-#define QEDE_SP_RX_MODE		1
+#define QEDE_SP_RX_MODE			1
+#define QEDE_SP_VXLAN_PORT_CONFIG	2
+#define QEDE_SP_GENEVE_PORT_CONFIG	3
 
 union qede_reload_args {
 	u16 mtu;
