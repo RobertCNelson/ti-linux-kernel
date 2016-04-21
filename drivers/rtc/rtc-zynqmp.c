@@ -45,6 +45,7 @@
 #define RTC_INT_SEC		BIT(0)
 #define RTC_INT_ALRM		BIT(1)
 #define RTC_OSC_EN		BIT(24)
+#define RTC_BATT_EN		BIT(31)
 
 #define RTC_CALIB_DEF		0x198233
 #define RTC_CALIB_MASK		0x1FFFFF
@@ -55,6 +56,7 @@ struct xlnx_rtc_dev {
 	void __iomem		*reg_base;
 	int			alarm_irq;
 	int			sec_irq;
+	int			calibval;
 };
 
 static int xlnx_rtc_set_time(struct device *dev, struct rtc_time *tm)
@@ -66,6 +68,13 @@ static int xlnx_rtc_set_time(struct device *dev, struct rtc_time *tm)
 
 	if (new_time > RTC_SEC_MAX_VAL)
 		return -EINVAL;
+
+	/*
+	 * Writing into calibration register will clear the Tick Counter and
+	 * force the next second to be signaled exactly in 1 second period
+	 */
+	xrtcdev->calibval &= RTC_CALIB_MASK;
+	writel(xrtcdev->calibval, (xrtcdev->reg_base + RTC_CALIB_WR));
 
 	writel(new_time, xrtcdev->reg_base + RTC_SET_TM_WR);
 
@@ -120,16 +129,23 @@ static int xlnx_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alrm)
 	return 0;
 }
 
-static void xlnx_init_rtc(struct xlnx_rtc_dev *xrtcdev, u32 calibval)
+static void xlnx_init_rtc(struct xlnx_rtc_dev *xrtcdev)
 {
+	u32 rtc_ctrl;
+
+	/* Enable RTC switch to battery when VCC_PSAUX is not available */
+	rtc_ctrl = readl(xrtcdev->reg_base + RTC_CTRL);
+	rtc_ctrl |= RTC_BATT_EN;
+	writel(rtc_ctrl, xrtcdev->reg_base + RTC_CTRL);
+
 	/*
 	 * Based on crystal freq of 33.330 KHz
 	 * set the seconds counter and enable, set fractions counter
 	 * to default value suggested as per design spec
 	 * to correct RTC delay in frequency over period of time.
 	 */
-	calibval &= RTC_CALIB_MASK;
-	writel(calibval, (xrtcdev->reg_base + RTC_CALIB_WR));
+	xrtcdev->calibval &= RTC_CALIB_MASK;
+	writel(xrtcdev->calibval, (xrtcdev->reg_base + RTC_CALIB_WR));
 }
 
 static const struct rtc_class_ops xlnx_rtc_ops = {
@@ -166,7 +182,6 @@ static int xlnx_rtc_probe(struct platform_device *pdev)
 	struct xlnx_rtc_dev *xrtcdev;
 	struct resource *res;
 	int ret;
-	unsigned int calibvalue;
 
 	xrtcdev = devm_kzalloc(&pdev->dev, sizeof(*xrtcdev), GFP_KERNEL);
 	if (!xrtcdev)
@@ -207,11 +222,11 @@ static int xlnx_rtc_probe(struct platform_device *pdev)
 	}
 
 	ret = of_property_read_u32(pdev->dev.of_node, "calibration",
-				   &calibvalue);
+				   &xrtcdev->calibval);
 	if (ret)
-		calibvalue = RTC_CALIB_DEF;
+		xrtcdev->calibval = RTC_CALIB_DEF;
 
-	xlnx_init_rtc(xrtcdev, calibvalue);
+	xlnx_init_rtc(xrtcdev);
 
 	device_init_wakeup(&pdev->dev, 1);
 
