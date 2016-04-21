@@ -2483,7 +2483,7 @@ static void ilk_wm_merge(struct drm_device *dev,
 	/* ILK/SNB/IVB: LP1+ watermarks only w/ single pipe */
 	if ((INTEL_INFO(dev)->gen <= 6 || IS_IVYBRIDGE(dev)) &&
 	    config->num_pipes_active > 1)
-		return;
+		last_enabled_level = 0;
 
 	/* ILK: FBC WM must be disabled always */
 	merged->fbc_wm_enabled = INTEL_INFO(dev)->gen >= 6;
@@ -4302,7 +4302,7 @@ static u32 intel_rps_limits(struct drm_i915_private *dev_priv, u8 val)
 	 * the hw runs at the minimal clock before selecting the desired
 	 * frequency, if the down threshold expires in that window we will not
 	 * receive a down interrupt. */
-	if (IS_GEN9(dev_priv->dev)) {
+	if (IS_GEN9(dev_priv)) {
 		limits = (dev_priv->rps.max_freq_softlimit) << 23;
 		if (val <= dev_priv->rps.min_freq_softlimit)
 			limits |= (dev_priv->rps.min_freq_softlimit) << 14;
@@ -4644,7 +4644,8 @@ static void intel_print_rc6_info(struct drm_device *dev, u32 mode)
 
 static bool bxt_check_bios_rc6_setup(const struct drm_device *dev)
 {
-	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_i915_private *dev_priv = to_i915(dev);
+	struct i915_ggtt *ggtt = &dev_priv->ggtt;
 	bool enable_rc6 = true;
 	unsigned long rc6_ctx_base;
 
@@ -4658,9 +4659,9 @@ static bool bxt_check_bios_rc6_setup(const struct drm_device *dev)
 	 * for this check.
 	 */
 	rc6_ctx_base = I915_READ(RC6_CTX_BASE) & RC6_CTX_BASE_MASK;
-	if (!((rc6_ctx_base >= dev_priv->ggtt.stolen_reserved_base) &&
-	      (rc6_ctx_base + PAGE_SIZE <= dev_priv->ggtt.stolen_reserved_base +
-					dev_priv->ggtt.stolen_reserved_size))) {
+	if (!((rc6_ctx_base >= ggtt->stolen_reserved_base) &&
+	      (rc6_ctx_base + PAGE_SIZE <= ggtt->stolen_reserved_base +
+					ggtt->stolen_reserved_size))) {
 		DRM_DEBUG_KMS("RC6 Base address not as expected.\n");
 		enable_rc6 = false;
 	}
@@ -4821,7 +4822,7 @@ static void gen9_enable_rps(struct drm_device *dev)
 	 * Up/Down EI & threshold registers, as well as the RP_CONTROL,
 	 * RP_INTERRUPT_LIMITS & RPNSWREQ registers */
 	dev_priv->rps.power = HIGH_POWER; /* force a reset */
-	gen6_set_rps(dev_priv->dev, dev_priv->rps.min_freq_softlimit);
+	gen6_set_rps(dev_priv->dev, dev_priv->rps.idle_freq);
 
 	intel_uncore_forcewake_put(dev_priv, FORCEWAKE_ALL);
 }
@@ -4996,7 +4997,8 @@ static void gen6_enable_rps(struct drm_device *dev)
 	I915_WRITE(GEN6_RC_STATE, 0);
 
 	/* Clear the DBG now so we don't confuse earlier errors */
-	if ((gtfifodbg = I915_READ(GTFIFODBG))) {
+	gtfifodbg = I915_READ(GTFIFODBG);
+	if (gtfifodbg) {
 		DRM_ERROR("GT fifo had a previous error %x\n", gtfifodbg);
 		I915_WRITE(GTFIFODBG, gtfifodbg);
 	}
@@ -5301,9 +5303,9 @@ static void cherryview_check_pctx(struct drm_i915_private *dev_priv)
 
 static void cherryview_setup_pctx(struct drm_device *dev)
 {
-	struct drm_i915_private *dev_priv = dev->dev_private;
-	unsigned long pctx_paddr, paddr;
+	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct i915_ggtt *ggtt = &dev_priv->ggtt;
+	unsigned long pctx_paddr, paddr;
 	u32 pcbr;
 	int pctx_size = 32*1024;
 
@@ -5379,12 +5381,25 @@ static void valleyview_cleanup_pctx(struct drm_device *dev)
 	dev_priv->vlv_pctx = NULL;
 }
 
+static void vlv_init_gpll_ref_freq(struct drm_i915_private *dev_priv)
+{
+	dev_priv->rps.gpll_ref_freq =
+		vlv_get_cck_clock(dev_priv, "GPLL ref",
+				  CCK_GPLL_CLOCK_CONTROL,
+				  dev_priv->czclk_freq);
+
+	DRM_DEBUG_DRIVER("GPLL reference freq: %d kHz\n",
+			 dev_priv->rps.gpll_ref_freq);
+}
+
 static void valleyview_init_gt_powersave(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 val;
 
 	valleyview_setup_pctx(dev);
+
+	vlv_init_gpll_ref_freq(dev_priv);
 
 	mutex_lock(&dev_priv->rps.hw_lock);
 
@@ -5442,6 +5457,8 @@ static void cherryview_init_gt_powersave(struct drm_device *dev)
 	u32 val;
 
 	cherryview_setup_pctx(dev);
+
+	vlv_init_gpll_ref_freq(dev_priv);
 
 	mutex_lock(&dev_priv->rps.hw_lock);
 
@@ -5512,7 +5529,8 @@ static void cherryview_enable_rps(struct drm_device *dev)
 
 	WARN_ON(!mutex_is_locked(&dev_priv->rps.hw_lock));
 
-	gtfifodbg = I915_READ(GTFIFODBG);
+	gtfifodbg = I915_READ(GTFIFODBG) & ~(GT_FIFO_SBDEDICATE_FREE_ENTRY_CHV |
+					     GT_FIFO_FREE_ENTRIES_CHV);
 	if (gtfifodbg) {
 		DRM_DEBUG_DRIVER("GT fifo had a previous error %x\n",
 				 gtfifodbg);
@@ -5593,10 +5611,10 @@ static void cherryview_enable_rps(struct drm_device *dev)
 			 dev_priv->rps.cur_freq);
 
 	DRM_DEBUG_DRIVER("setting GPU freq to %d MHz (%u)\n",
-			 intel_gpu_freq(dev_priv, dev_priv->rps.efficient_freq),
-			 dev_priv->rps.efficient_freq);
+			 intel_gpu_freq(dev_priv, dev_priv->rps.idle_freq),
+			 dev_priv->rps.idle_freq);
 
-	valleyview_set_rps(dev_priv->dev, dev_priv->rps.efficient_freq);
+	valleyview_set_rps(dev_priv->dev, dev_priv->rps.idle_freq);
 
 	intel_uncore_forcewake_put(dev_priv, FORCEWAKE_ALL);
 }
@@ -5611,7 +5629,8 @@ static void valleyview_enable_rps(struct drm_device *dev)
 
 	valleyview_check_pctx(dev_priv);
 
-	if ((gtfifodbg = I915_READ(GTFIFODBG))) {
+	gtfifodbg = I915_READ(GTFIFODBG);
+	if (gtfifodbg) {
 		DRM_DEBUG_DRIVER("GT fifo had a previous error %x\n",
 				 gtfifodbg);
 		I915_WRITE(GTFIFODBG, gtfifodbg);
@@ -5682,10 +5701,10 @@ static void valleyview_enable_rps(struct drm_device *dev)
 			 dev_priv->rps.cur_freq);
 
 	DRM_DEBUG_DRIVER("setting GPU freq to %d MHz (%u)\n",
-			 intel_gpu_freq(dev_priv, dev_priv->rps.efficient_freq),
-			 dev_priv->rps.efficient_freq);
+			 intel_gpu_freq(dev_priv, dev_priv->rps.idle_freq),
+			 dev_priv->rps.idle_freq);
 
-	valleyview_set_rps(dev_priv->dev, dev_priv->rps.efficient_freq);
+	valleyview_set_rps(dev_priv->dev, dev_priv->rps.idle_freq);
 
 	intel_uncore_forcewake_put(dev_priv, FORCEWAKE_ALL);
 }
@@ -6866,22 +6885,9 @@ static void ivybridge_init_clock_gating(struct drm_device *dev)
 	gen6_check_mch_setup(dev);
 }
 
-static void vlv_init_display_clock_gating(struct drm_i915_private *dev_priv)
-{
-	I915_WRITE(DSPCLK_GATE_D, VRHUNIT_CLOCK_GATE_DISABLE);
-
-	/*
-	 * Disable trickle feed and enable pnd deadline calculation
-	 */
-	I915_WRITE(MI_ARB_VLV, MI_ARB_DISPLAY_TRICKLE_FEED_DISABLE);
-	I915_WRITE(CBR1_VLV, 0);
-}
-
 static void valleyview_init_clock_gating(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-
-	vlv_init_display_clock_gating(dev_priv);
 
 	/* WaDisableEarlyCull:vlv */
 	I915_WRITE(_3D_CHICKEN3,
@@ -6964,8 +6970,6 @@ static void valleyview_init_clock_gating(struct drm_device *dev)
 static void cherryview_init_clock_gating(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-
-	vlv_init_display_clock_gating(dev_priv);
 
 	/* WaVSRefCountFullforceMissDisable:chv */
 	/* WaDSRefCountFullforceMissDisable:chv */
@@ -7293,78 +7297,43 @@ int sandybridge_pcode_write(struct drm_i915_private *dev_priv, u32 mbox, u32 val
 	return 0;
 }
 
-static int vlv_gpu_freq_div(unsigned int czclk_freq)
-{
-	switch (czclk_freq) {
-	case 200:
-		return 10;
-	case 267:
-		return 12;
-	case 320:
-	case 333:
-		return 16;
-	case 400:
-		return 20;
-	default:
-		return -1;
-	}
-}
-
 static int byt_gpu_freq(struct drm_i915_private *dev_priv, int val)
 {
-	int div, czclk_freq = DIV_ROUND_CLOSEST(dev_priv->czclk_freq, 1000);
-
-	div = vlv_gpu_freq_div(czclk_freq);
-	if (div < 0)
-		return div;
-
-	return DIV_ROUND_CLOSEST(czclk_freq * (val + 6 - 0xbd), div);
+	/*
+	 * N = val - 0xb7
+	 * Slow = Fast = GPLL ref * N
+	 */
+	return DIV_ROUND_CLOSEST(dev_priv->rps.gpll_ref_freq * (val - 0xb7), 1000);
 }
 
 static int byt_freq_opcode(struct drm_i915_private *dev_priv, int val)
 {
-	int mul, czclk_freq = DIV_ROUND_CLOSEST(dev_priv->czclk_freq, 1000);
-
-	mul = vlv_gpu_freq_div(czclk_freq);
-	if (mul < 0)
-		return mul;
-
-	return DIV_ROUND_CLOSEST(mul * val, czclk_freq) + 0xbd - 6;
+	return DIV_ROUND_CLOSEST(1000 * val, dev_priv->rps.gpll_ref_freq) + 0xb7;
 }
 
 static int chv_gpu_freq(struct drm_i915_private *dev_priv, int val)
 {
-	int div, czclk_freq = DIV_ROUND_CLOSEST(dev_priv->czclk_freq, 1000);
-
-	div = vlv_gpu_freq_div(czclk_freq);
-	if (div < 0)
-		return div;
-	div /= 2;
-
-	return DIV_ROUND_CLOSEST(czclk_freq * val, 2 * div) / 2;
+	/*
+	 * N = val / 2
+	 * CU (slow) = CU2x (fast) / 2 = GPLL ref * N / 2
+	 */
+	return DIV_ROUND_CLOSEST(dev_priv->rps.gpll_ref_freq * val, 2 * 2 * 1000);
 }
 
 static int chv_freq_opcode(struct drm_i915_private *dev_priv, int val)
 {
-	int mul, czclk_freq = DIV_ROUND_CLOSEST(dev_priv->czclk_freq, 1000);
-
-	mul = vlv_gpu_freq_div(czclk_freq);
-	if (mul < 0)
-		return mul;
-	mul /= 2;
-
 	/* CHV needs even values */
-	return DIV_ROUND_CLOSEST(val * 2 * mul, czclk_freq) * 2;
+	return DIV_ROUND_CLOSEST(2 * 1000 * val, dev_priv->rps.gpll_ref_freq) * 2;
 }
 
 int intel_gpu_freq(struct drm_i915_private *dev_priv, int val)
 {
-	if (IS_GEN9(dev_priv->dev))
+	if (IS_GEN9(dev_priv))
 		return DIV_ROUND_CLOSEST(val * GT_FREQUENCY_MULTIPLIER,
 					 GEN9_FREQ_SCALER);
-	else if (IS_CHERRYVIEW(dev_priv->dev))
+	else if (IS_CHERRYVIEW(dev_priv))
 		return chv_gpu_freq(dev_priv, val);
-	else if (IS_VALLEYVIEW(dev_priv->dev))
+	else if (IS_VALLEYVIEW(dev_priv))
 		return byt_gpu_freq(dev_priv, val);
 	else
 		return val * GT_FREQUENCY_MULTIPLIER;
@@ -7372,12 +7341,12 @@ int intel_gpu_freq(struct drm_i915_private *dev_priv, int val)
 
 int intel_freq_opcode(struct drm_i915_private *dev_priv, int val)
 {
-	if (IS_GEN9(dev_priv->dev))
+	if (IS_GEN9(dev_priv))
 		return DIV_ROUND_CLOSEST(val * GEN9_FREQ_SCALER,
 					 GT_FREQUENCY_MULTIPLIER);
-	else if (IS_CHERRYVIEW(dev_priv->dev))
+	else if (IS_CHERRYVIEW(dev_priv))
 		return chv_freq_opcode(dev_priv, val);
-	else if (IS_VALLEYVIEW(dev_priv->dev))
+	else if (IS_VALLEYVIEW(dev_priv))
 		return byt_freq_opcode(dev_priv, val);
 	else
 		return DIV_ROUND_CLOSEST(val, GT_FREQUENCY_MULTIPLIER);

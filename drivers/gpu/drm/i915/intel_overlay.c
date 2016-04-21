@@ -190,13 +190,14 @@ struct intel_overlay {
 static struct overlay_registers __iomem *
 intel_overlay_map_regs(struct intel_overlay *overlay)
 {
-	struct drm_i915_private *dev_priv = overlay->dev->dev_private;
+	struct drm_i915_private *dev_priv = to_i915(overlay->dev);
+	struct i915_ggtt *ggtt = &dev_priv->ggtt;
 	struct overlay_registers __iomem *regs;
 
 	if (OVERLAY_NEEDS_PHYSICAL(overlay->dev))
 		regs = (struct overlay_registers __iomem *)overlay->reg_bo->phys_handle->vaddr;
 	else
-		regs = io_mapping_map_wc(dev_priv->ggtt.mappable,
+		regs = io_mapping_map_wc(ggtt->mappable,
 					 i915_gem_obj_ggtt_offset(overlay->reg_bo));
 
 	return regs;
@@ -246,7 +247,7 @@ static int intel_overlay_on(struct intel_overlay *overlay)
 
 	ret = intel_ring_begin(req, 4);
 	if (ret) {
-		i915_gem_request_cancel(req);
+		i915_add_request_no_flush(req);
 		return ret;
 	}
 
@@ -289,7 +290,7 @@ static int intel_overlay_continue(struct intel_overlay *overlay,
 
 	ret = intel_ring_begin(req, 2);
 	if (ret) {
-		i915_gem_request_cancel(req);
+		i915_add_request_no_flush(req);
 		return ret;
 	}
 
@@ -355,7 +356,7 @@ static int intel_overlay_off(struct intel_overlay *overlay)
 
 	ret = intel_ring_begin(req, 6);
 	if (ret) {
-		i915_gem_request_cancel(req);
+		i915_add_request_no_flush(req);
 		return ret;
 	}
 
@@ -430,7 +431,7 @@ static int intel_overlay_release_old_vid(struct intel_overlay *overlay)
 
 		ret = intel_ring_begin(req, 2);
 		if (ret) {
-			i915_gem_request_cancel(req);
+			i915_add_request_no_flush(req);
 			return ret;
 		}
 
@@ -1481,7 +1482,8 @@ struct intel_overlay_error_state {
 static struct overlay_registers __iomem *
 intel_overlay_map_regs_atomic(struct intel_overlay *overlay)
 {
-	struct drm_i915_private *dev_priv = overlay->dev->dev_private;
+	struct drm_i915_private *dev_priv = to_i915(overlay->dev);
+	struct i915_ggtt *ggtt = &dev_priv->ggtt;
 	struct overlay_registers __iomem *regs;
 
 	if (OVERLAY_NEEDS_PHYSICAL(overlay->dev))
@@ -1490,7 +1492,7 @@ intel_overlay_map_regs_atomic(struct intel_overlay *overlay)
 		regs = (struct overlay_registers __iomem *)
 			overlay->reg_bo->phys_handle->vaddr;
 	else
-		regs = io_mapping_map_atomic_wc(dev_priv->ggtt.mappable,
+		regs = io_mapping_map_atomic_wc(ggtt->mappable,
 						i915_gem_obj_ggtt_offset(overlay->reg_bo));
 
 	return regs;

@@ -257,13 +257,6 @@ static int i915_get_bridge_dev(struct drm_device *dev)
 	return 0;
 }
 
-#define MCHBAR_I915 0x44
-#define MCHBAR_I965 0x48
-#define MCHBAR_SIZE (4*4096)
-
-#define DEVEN_REG 0x54
-#define   DEVEN_MCHBAR_EN (1 << 28)
-
 /* Allocate space for the MCH regs if needed, return nonzero on error */
 static int
 intel_alloc_mchbar_resource(struct drm_device *dev)
@@ -325,7 +318,7 @@ intel_setup_mchbar(struct drm_device *dev)
 	dev_priv->mchbar_need_disable = false;
 
 	if (IS_I915G(dev) || IS_I915GM(dev)) {
-		pci_read_config_dword(dev_priv->bridge_dev, DEVEN_REG, &temp);
+		pci_read_config_dword(dev_priv->bridge_dev, DEVEN, &temp);
 		enabled = !!(temp & DEVEN_MCHBAR_EN);
 	} else {
 		pci_read_config_dword(dev_priv->bridge_dev, mchbar_reg, &temp);
@@ -343,7 +336,7 @@ intel_setup_mchbar(struct drm_device *dev)
 
 	/* Space is allocated or reserved, so enable it. */
 	if (IS_I915G(dev) || IS_I915GM(dev)) {
-		pci_write_config_dword(dev_priv->bridge_dev, DEVEN_REG,
+		pci_write_config_dword(dev_priv->bridge_dev, DEVEN,
 				       temp | DEVEN_MCHBAR_EN);
 	} else {
 		pci_read_config_dword(dev_priv->bridge_dev, mchbar_reg, &temp);
@@ -356,17 +349,24 @@ intel_teardown_mchbar(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int mchbar_reg = INTEL_INFO(dev)->gen >= 4 ? MCHBAR_I965 : MCHBAR_I915;
-	u32 temp;
 
 	if (dev_priv->mchbar_need_disable) {
 		if (IS_I915G(dev) || IS_I915GM(dev)) {
-			pci_read_config_dword(dev_priv->bridge_dev, DEVEN_REG, &temp);
-			temp &= ~DEVEN_MCHBAR_EN;
-			pci_write_config_dword(dev_priv->bridge_dev, DEVEN_REG, temp);
+			u32 deven_val;
+
+			pci_read_config_dword(dev_priv->bridge_dev, DEVEN,
+					      &deven_val);
+			deven_val &= ~DEVEN_MCHBAR_EN;
+			pci_write_config_dword(dev_priv->bridge_dev, DEVEN,
+					       deven_val);
 		} else {
-			pci_read_config_dword(dev_priv->bridge_dev, mchbar_reg, &temp);
-			temp &= ~1;
-			pci_write_config_dword(dev_priv->bridge_dev, mchbar_reg, temp);
+			u32 mchbar_val;
+
+			pci_read_config_dword(dev_priv->bridge_dev, mchbar_reg,
+					      &mchbar_val);
+			mchbar_val &= ~1;
+			pci_write_config_dword(dev_priv->bridge_dev, mchbar_reg,
+					       mchbar_val);
 		}
 	}
 
@@ -493,9 +493,11 @@ static int i915_load_modeset_init(struct drm_device *dev)
 	 * Some ports require correctly set-up hpd registers for detection to
 	 * work properly (leading to ghost connected connector status), e.g. VGA
 	 * on gm45.  Hence we can only set up the initial fbdev config after hpd
-	 * irqs are fully enabled. We protect the fbdev initial config scanning
-	 * against hotplug events by waiting in intel_fbdev_output_poll_changed
-	 * until the asynchronous thread has finished.
+	 * irqs are fully enabled. Now we should scan for the initial config
+	 * only once hotplug handling is enabled, but due to screwed-up locking
+	 * around kms/fbdev init we can't protect the fdbev initial config
+	 * scanning against hotplug events. Hence do this first and ignore the
+	 * tiny window where we will loose hotplug notifactions.
 	 */
 	intel_fbdev_initial_config_async(dev);
 
@@ -527,6 +529,7 @@ static int i915_kick_out_firmware_fb(struct drm_i915_private *dev_priv)
 {
 	struct apertures_struct *ap;
 	struct pci_dev *pdev = dev_priv->dev->pdev;
+	struct i915_ggtt *ggtt = &dev_priv->ggtt;
 	bool primary;
 	int ret;
 
@@ -534,8 +537,8 @@ static int i915_kick_out_firmware_fb(struct drm_i915_private *dev_priv)
 	if (!ap)
 		return -ENOMEM;
 
-	ap->ranges[0].base = dev_priv->ggtt.mappable_base;
-	ap->ranges[0].size = dev_priv->ggtt.mappable_end;
+	ap->ranges[0].base = ggtt->mappable_base;
+	ap->ranges[0].size = ggtt->mappable_end;
 
 	primary =
 		pdev->resource[PCI_ROM_RESOURCE].flags & IORESOURCE_ROM_SHADOW;
@@ -1170,6 +1173,7 @@ static void i915_driver_cleanup_mmio(struct drm_i915_private *dev_priv)
 static int i915_driver_init_hw(struct drm_i915_private *dev_priv)
 {
 	struct drm_device *dev = dev_priv->dev;
+	struct i915_ggtt *ggtt = &dev_priv->ggtt;
 	uint32_t aperture_size;
 	int ret;
 
@@ -1178,7 +1182,7 @@ static int i915_driver_init_hw(struct drm_i915_private *dev_priv)
 
 	intel_device_info_runtime_init(dev);
 
-	ret = i915_gem_gtt_init(dev);
+	ret = i915_ggtt_init_hw(dev);
 	if (ret)
 		return ret;
 
@@ -1187,13 +1191,13 @@ static int i915_driver_init_hw(struct drm_i915_private *dev_priv)
 	ret = i915_kick_out_firmware_fb(dev_priv);
 	if (ret) {
 		DRM_ERROR("failed to remove conflicting framebuffer drivers\n");
-		goto out_gtt;
+		goto out_ggtt;
 	}
 
 	ret = i915_kick_out_vgacon(dev_priv);
 	if (ret) {
 		DRM_ERROR("failed to remove conflicting VGA console\n");
-		goto out_gtt;
+		goto out_ggtt;
 	}
 
 	pci_set_master(dev->pdev);
@@ -1213,17 +1217,17 @@ static int i915_driver_init_hw(struct drm_i915_private *dev_priv)
 	if (IS_BROADWATER(dev) || IS_CRESTLINE(dev))
 		dma_set_coherent_mask(&dev->pdev->dev, DMA_BIT_MASK(32));
 
-	aperture_size = dev_priv->ggtt.mappable_end;
+	aperture_size = ggtt->mappable_end;
 
-	dev_priv->ggtt.mappable =
-		io_mapping_create_wc(dev_priv->ggtt.mappable_base,
+	ggtt->mappable =
+		io_mapping_create_wc(ggtt->mappable_base,
 				     aperture_size);
-	if (dev_priv->ggtt.mappable == NULL) {
+	if (!ggtt->mappable) {
 		ret = -EIO;
-		goto out_gtt;
+		goto out_ggtt;
 	}
 
-	dev_priv->ggtt.mtrr = arch_phys_wc_add(dev_priv->ggtt.mappable_base,
+	ggtt->mtrr = arch_phys_wc_add(ggtt->mappable_base,
 					      aperture_size);
 
 	pm_qos_add_request(&dev_priv->pm_qos, PM_QOS_CPU_DMA_LATENCY,
@@ -1253,8 +1257,8 @@ static int i915_driver_init_hw(struct drm_i915_private *dev_priv)
 
 	return 0;
 
-out_gtt:
-	i915_global_gtt_cleanup(dev);
+out_ggtt:
+	i915_ggtt_cleanup_hw(dev);
 
 	return ret;
 }
@@ -1266,14 +1270,15 @@ out_gtt:
 static void i915_driver_cleanup_hw(struct drm_i915_private *dev_priv)
 {
 	struct drm_device *dev = dev_priv->dev;
+	struct i915_ggtt *ggtt = &dev_priv->ggtt;
 
 	if (dev->pdev->msi_enabled)
 		pci_disable_msi(dev->pdev);
 
 	pm_qos_remove_request(&dev_priv->pm_qos);
-	arch_phys_wc_del(dev_priv->ggtt.mtrr);
-	io_mapping_free(dev_priv->ggtt.mappable);
-	i915_global_gtt_cleanup(dev);
+	arch_phys_wc_del(ggtt->mtrr);
+	io_mapping_free(ggtt->mappable);
+	i915_ggtt_cleanup_hw(dev);
 }
 
 /**

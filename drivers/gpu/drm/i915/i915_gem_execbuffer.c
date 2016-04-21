@@ -313,7 +313,8 @@ relocate_entry_gtt(struct drm_i915_gem_object *obj,
 		   uint64_t target_offset)
 {
 	struct drm_device *dev = obj->base.dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_i915_private *dev_priv = to_i915(dev);
+	struct i915_ggtt *ggtt = &dev_priv->ggtt;
 	uint64_t delta = relocation_target(reloc, target_offset);
 	uint64_t offset;
 	void __iomem *reloc_page;
@@ -330,7 +331,7 @@ relocate_entry_gtt(struct drm_i915_gem_object *obj,
 	/* Map the page containing the relocation we're going to perform.  */
 	offset = i915_gem_obj_ggtt_offset(obj);
 	offset += reloc->offset;
-	reloc_page = io_mapping_map_atomic_wc(dev_priv->ggtt.mappable,
+	reloc_page = io_mapping_map_atomic_wc(ggtt->mappable,
 					      offset & PAGE_MASK);
 	iowrite32(lower_32_bits(delta), reloc_page + offset_in_page(offset));
 
@@ -340,7 +341,7 @@ relocate_entry_gtt(struct drm_i915_gem_object *obj,
 		if (offset_in_page(offset) == 0) {
 			io_mapping_unmap_atomic(reloc_page);
 			reloc_page =
-				io_mapping_map_atomic_wc(dev_priv->ggtt.mappable,
+				io_mapping_map_atomic_wc(ggtt->mappable,
 							 offset);
 		}
 
@@ -1136,7 +1137,7 @@ i915_gem_execbuffer_move_to_active(struct list_head *vmas,
 	}
 }
 
-void
+static void
 i915_gem_execbuffer_retire_commands(struct i915_execbuffer_params *params)
 {
 	/* Unconditionally force add_request to emit a full flush. */
@@ -1321,7 +1322,6 @@ i915_gem_ringbuffer_submission(struct i915_execbuffer_params *params,
 	trace_i915_gem_ring_dispatch(params->request, params->dispatch_flags);
 
 	i915_gem_execbuffer_move_to_active(vmas, params->request);
-	i915_gem_execbuffer_retire_commands(params);
 
 	return 0;
 }
@@ -1431,7 +1431,8 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 		       struct drm_i915_gem_execbuffer2 *args,
 		       struct drm_i915_gem_exec_object2 *exec)
 {
-	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_i915_private *dev_priv = to_i915(dev);
+	struct i915_ggtt *ggtt = &dev_priv->ggtt;
 	struct drm_i915_gem_request *req = NULL;
 	struct eb_vmas *eb;
 	struct drm_i915_gem_object *batch_obj;
@@ -1504,7 +1505,7 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 	if (ctx->ppgtt)
 		vm = &ctx->ppgtt->base;
 	else
-		vm = &dev_priv->ggtt.base;
+		vm = &ggtt->base;
 
 	memset(&params_master, 0x00, sizeof(params_master));
 
@@ -1622,7 +1623,7 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 
 	ret = i915_gem_request_add_to_client(req, file);
 	if (ret)
-		goto err_batch_unpin;
+		goto err_request;
 
 	/*
 	 * Save assorted stuff away to pass through to *_submission().
@@ -1639,6 +1640,8 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 	params->request                 = req;
 
 	ret = dev_priv->gt.execbuf_submit(params, args, &eb->vmas);
+err_request:
+	i915_gem_execbuffer_retire_commands(params);
 
 err_batch_unpin:
 	/*
@@ -1654,14 +1657,6 @@ err:
 	/* the request owns the ref now */
 	i915_gem_context_unreference(ctx);
 	eb_destroy(eb);
-
-	/*
-	 * If the request was created but not successfully submitted then it
-	 * must be freed again. If it was submitted then it is being tracked
-	 * on the active request list and no clean up is required here.
-	 */
-	if (ret && !IS_ERR_OR_NULL(req))
-		i915_gem_request_cancel(req);
 
 	mutex_unlock(&dev->struct_mutex);
 
@@ -1781,11 +1776,9 @@ i915_gem_execbuffer2(struct drm_device *dev, void *data,
 		return -EINVAL;
 	}
 
-	exec2_list = kmalloc(sizeof(*exec2_list)*args->buffer_count,
-			     GFP_TEMPORARY | __GFP_NOWARN | __GFP_NORETRY);
-	if (exec2_list == NULL)
-		exec2_list = drm_malloc_ab(sizeof(*exec2_list),
-					   args->buffer_count);
+	exec2_list = drm_malloc_gfp(args->buffer_count,
+				    sizeof(*exec2_list),
+				    GFP_TEMPORARY);
 	if (exec2_list == NULL) {
 		DRM_DEBUG("Failed to allocate exec list for %d buffers\n",
 			  args->buffer_count);
