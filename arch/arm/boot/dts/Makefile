@@ -510,6 +510,7 @@ dtb-$(CONFIG_SOC_AM33XX) += \
 	am335x-cm-t335.dtb \
 	am335x-evm.dtb \
 	am335x-evmsk.dtb \
+	am335x-icev2.dtb \
 	am335x-lxm.dtb \
 	am335x-nano.dtb \
 	am335x-pepper.dtb \
@@ -519,6 +520,7 @@ dtb-$(CONFIG_SOC_AM33XX) += \
 	am335x-wega-rdk.dtb
 dtb-$(CONFIG_ARCH_OMAP4) += \
 	omap4-duovero-parlor.dtb \
+	omap4-kc1.dtb \
 	omap4-panda.dtb \
 	omap4-panda-a4.dtb \
 	omap4-panda-es.dtb \
@@ -542,8 +544,10 @@ dtb-$(CONFIG_SOC_DRA7XX) += \
 	am57xx-beagle-x15.dtb \
 	am57xx-cl-som-am57x.dtb \
 	am57xx-sbc-am57x.dtb \
+	am572x-idk.dtb \
 	dra7-evm.dtb \
-	dra72-evm.dtb
+	dra72-evm.dtb \
+	dra72-evm-revc.dtb
 dtb-$(CONFIG_ARCH_ORION5X) += \
 	orion5x-lacie-d2-network.dtb \
 	orion5x-lacie-ethernet-disk-mini-v2.dtb \

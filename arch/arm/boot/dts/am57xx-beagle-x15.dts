@@ -99,13 +99,6 @@
 		#cooling-cells = <2>;
 	};
 
-	extcon_usb1: extcon_usb1 {
-		compatible = "linux,extcon-usb-gpio";
-		id-gpio = <&gpio7 25 GPIO_ACTIVE_HIGH>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&extcon_usb1_pins>;
-	};
-
 	hdmi0: connector {
 		compatible = "hdmi-connector";
 		label = "hdmi";
@@ -151,7 +144,7 @@
 		};
 	};
 
-	sound0: sound@0 {
+	sound0: sound0 {
 		compatible = "simple-audio-card";
 		simple-audio-card,name = "BeagleBoard-X15";
 		simple-audio-card,widgets =
@@ -173,8 +166,6 @@
 
 		sound0_master: simple-audio-card,codec {
 			sound-dai = <&tlv320aic3104>;
-			assigned-clocks = <&clkoutmux2_clk_mux>;
-			assigned-clock-parents = <&sys_clk2_dclk_div>;
 			clocks = <&clkout2_clk>;
 		};
 	};
@@ -346,12 +337,6 @@
 	usb1_pins: pinmux_usb1_pins {
 		pinctrl-single,pins = <
 			DRA7XX_CORE_IOPAD(0x3680, PIN_INPUT_SLEW | MUX_MODE0) /* usb1_drvvbus */
-		>;
-	};
-
-	extcon_usb1_pins: extcon_usb1_pins {
-		pinctrl-single,pins = <
-			DRA7XX_CORE_IOPAD(0x37ec, PIN_INPUT_PULLUP | MUX_MODE14) /* uart1_rtsn.gpio7_25 */
 		>;
 	};
 
@@ -584,6 +569,9 @@
 		pinctrl-names = "default", "sleep";
 		pinctrl-0 = <&clkout2_pins_default>;
 		pinctrl-1 = <&clkout2_pins_sleep>;
+		assigned-clocks = <&clkoutmux2_clk_mux>;
+		assigned-clock-parents = <&sys_clk2_dclk_div>;
+
 		status = "okay";
 		adc-settle-ms = <40>;
 
@@ -706,10 +694,6 @@
 	pinctrl-0 = <&usb1_pins>;
 };
 
-&omap_dwc3_1 {
-	extcon = <&extcon_usb1>;
-};
-
 &omap_dwc3_2 {
 	extcon = <&extcon_usb2>;
 };
@@ -812,6 +796,8 @@
 	serial-dir = <	/* 0: INACTIVE, 1: TX, 2: RX */
 		1 2 0 0
 	>;
+	tx-num-evt = <32>;
+	rx-num-evt = <32>;
 };
 
 &mailbox5 {
