@@ -61,7 +61,7 @@ static int mlx4_alloc_pages(struct mlx4_en_priv *priv,
 		gfp_t gfp = _gfp;
 
 		if (order)
-			gfp |= __GFP_COMP | __GFP_NOWARN;
+			gfp |= __GFP_COMP | __GFP_NOWARN | __GFP_NOMEMALLOC;
 		page = alloc_pages(gfp, order);
 		if (likely(page))
 			break;
@@ -126,7 +126,9 @@ out:
 			dma_unmap_page(priv->ddev, page_alloc[i].dma,
 				page_alloc[i].page_size, PCI_DMA_FROMDEVICE);
 			page = page_alloc[i].page;
-			set_page_count(page, 1);
+			/* Revert changes done by mlx4_alloc_pages */
+			page_ref_sub(page, page_alloc[i].page_size /
+					   priv->frag_info[i].frag_stride - 1);
 			put_page(page);
 		}
 	}
@@ -176,7 +178,9 @@ out:
 		dma_unmap_page(priv->ddev, page_alloc->dma,
 			       page_alloc->page_size, PCI_DMA_FROMDEVICE);
 		page = page_alloc->page;
-		set_page_count(page, 1);
+		/* Revert changes done by mlx4_alloc_pages */
+		page_ref_sub(page, page_alloc->page_size /
+				   priv->frag_info[i].frag_stride - 1);
 		put_page(page);
 		page_alloc->page = NULL;
 	}
