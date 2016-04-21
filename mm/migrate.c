@@ -23,6 +23,7 @@
 #include <linux/pagevec.h>
 #include <linux/ksm.h>
 #include <linux/rmap.h>
+#include <linux/shmem_fs.h>
 #include <linux/topology.h>
 #include <linux/cpu.h>
 #include <linux/cpuset.h>
@@ -332,7 +333,7 @@ int migrate_page_move_mapping(struct address_space *mapping,
 		newpage->index = page->index;
 		newpage->mapping = page->mapping;
 		if (PageSwapBacked(page))
-			SetPageSwapBacked(newpage);
+			__SetPageSwapBacked(newpage);
 
 		return MIGRATEPAGE_SUCCESS;
 	}
@@ -346,7 +347,7 @@ int migrate_page_move_mapping(struct address_space *mapping,
  					page_index(page));
 
 	expected_count += 1 + page_has_private(page);
-	if (page_count(page) != expected_count ||
+	if (page_count(page) != expected_count || PageTeam(page) ||
 		radix_tree_deref_slot_protected(pslot, &mapping->tree_lock) != page) {
 		spin_unlock_irq(&mapping->tree_lock);
 		return -EAGAIN;
@@ -371,6 +372,15 @@ int migrate_page_move_mapping(struct address_space *mapping,
 		return -EAGAIN;
 	}
 
+	if (mode == MIGRATE_SHMEM_RECOVERY) {
+		if (!shmem_recovery_migrate_page(newpage, page)) {
+			page_ref_unfreeze(page, expected_count);
+			spin_unlock_irq(&mapping->tree_lock);
+			return -ENOMEM;	/* quit migrate_pages() immediately */
+		}
+	} else
+		get_page(newpage);	/* add cache reference */
+
 	/*
 	 * Now we know that no one else is looking at the page:
 	 * no turning back from here.
@@ -378,9 +388,8 @@ int migrate_page_move_mapping(struct address_space *mapping,
 	newpage->index = page->index;
 	newpage->mapping = page->mapping;
 	if (PageSwapBacked(page))
-		SetPageSwapBacked(newpage);
+		__SetPageSwapBacked(newpage);
 
-	get_page(newpage);	/* add cache reference */
 	if (PageSwapCache(page)) {
 		SetPageSwapCache(newpage);
 		set_page_private(newpage, page_private(page));
@@ -815,6 +824,17 @@ static int __unmap_and_move(struct page *page, struct page *newpage,
 		lock_page(page);
 	}
 
+	/*
+	 * huge tmpfs recovery: must not proceed if page has been truncated,
+	 * because the newpage we are about to migrate into *might* then be
+	 * already in use, on lru, with data newly written for that offset.
+	 * We can only be sure of this check once we have the page locked.
+	 */
+	if (mode == MIGRATE_SHMEM_RECOVERY && !page->mapping) {
+		rc = -ENOMEM;	/* quit migrate_pages() immediately */
+		goto out_unlock;
+	}
+
 	if (PageWriteback(page)) {
 		/*
 		 * Only in the case of a full synchronous migration is it
@@ -944,6 +964,11 @@ static ICE_noinline int unmap_and_move(new_page_t get_new_page,
 	if (!newpage)
 		return -ENOMEM;
 
+	if (PageTeam(page)) {
+		rc = -EBUSY;
+		goto out;
+	}
+
 	if (page_count(page) == 1) {
 		/* page was freed from under us. So we are done. */
 		goto out;
@@ -975,7 +1000,13 @@ out:
 		dec_zone_page_state(page, NR_ISOLATED_ANON +
 				page_is_file_cache(page));
 		/* Soft-offlined page shouldn't go through lru cache list */
-		if (reason == MR_MEMORY_FAILURE) {
+		if (reason == MR_MEMORY_FAILURE && rc == MIGRATEPAGE_SUCCESS) {
+			/*
+			 * With this release, we free successfully migrated
+			 * page and set PG_HWPoison on just freed page
+			 * intentionally. Although it's rather weird, it's how
+			 * HWPoison flag works at the moment.
+			 */
 			put_page(page);
 			if (!test_set_page_hwpoison(page))
 				num_poisoned_pages_inc();
@@ -1757,6 +1788,14 @@ int migrate_misplaced_transhuge_page(struct mm_struct *mm,
 	pmd_t orig_entry;
 
 	/*
+	 * Leave support for NUMA balancing on huge tmpfs pages to the future.
+	 * The pmd marking up to this point should work okay, but from here on
+	 * there is work to be done: e.g. anon page->mapping assumption below.
+	 */
+	if (!PageAnon(page))
+		goto out_dropref;
+
+	/*
 	 * Rate-limit the amount of data that is being migrated to a node.
 	 * Optimal placement is no good if the memory bus is saturated and
 	 * all the time is being spent migrating!
@@ -1785,7 +1824,7 @@ int migrate_misplaced_transhuge_page(struct mm_struct *mm,
 
 	/* Prepare a page as a migration target */
 	__SetPageLocked(new_page);
-	SetPageSwapBacked(new_page);
+	__SetPageSwapBacked(new_page);
 
 	/* anon mapping, we can simply copy page->mapping to the new page: */
 	new_page->mapping = page->mapping;
