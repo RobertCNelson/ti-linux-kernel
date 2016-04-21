@@ -190,7 +190,7 @@ static int ll_dir_filler(void *_hash, struct page *page0)
 		body = req_capsule_server_get(&request->rq_pill, &RMF_MDT_BODY);
 		/* Checked by mdc_readpage() */
 		if (body->valid & OBD_MD_FLSIZE)
-			cl_isize_write(inode, body->size);
+			i_size_write(inode, body->size);
 
 		nrdpgs = (request->rq_bulk->bd_nob_transferred+PAGE_SIZE-1)
 			 >> PAGE_SHIFT;
@@ -468,6 +468,28 @@ fail:
 	goto out_unlock;
 }
 
+/**
+ * return IF_* type for given lu_dirent entry.
+ * IF_* flag shld be converted to particular OS file type in
+ * platform llite module.
+ */
+static __u16 ll_dirent_type_get(struct lu_dirent *ent)
+{
+	__u16 type = 0;
+	struct luda_type *lt;
+	int len = 0;
+
+	if (le32_to_cpu(ent->lde_attrs) & LUDA_TYPE) {
+		const unsigned int align = sizeof(struct luda_type) - 1;
+
+		len = le16_to_cpu(ent->lde_namelen);
+		len = (len + align) & ~align;
+		lt = (void *)ent->lde_name + len;
+		type = IFTODT(le16_to_cpu(lt->lt_type));
+	}
+	return type;
+}
+
 int ll_dir_read(struct inode *inode, struct dir_context *ctx)
 {
 	struct ll_inode_info *info       = ll_i2info(inode);
@@ -589,15 +611,16 @@ static int ll_readdir(struct file *filp, struct dir_context *ctx)
 	struct inode		*inode	= file_inode(filp);
 	struct ll_file_data	*lfd	= LUSTRE_FPRIVATE(filp);
 	struct ll_sb_info	*sbi	= ll_i2sbi(inode);
+	__u64 pos = lfd ? lfd->lfd_pos : 0;
 	int			hash64	= sbi->ll_flags & LL_SBI_64BIT_HASH;
 	int			api32	= ll_need_32bit_api(sbi);
 	int			rc;
 
 	CDEBUG(D_VFSTRACE, "VFS Op:inode=%lu/%u(%p) pos %lu/%llu 32bit_api %d\n",
 	       inode->i_ino, inode->i_generation,
-	       inode, (unsigned long)lfd->lfd_pos, i_size_read(inode), api32);
+	       inode, (unsigned long)pos, i_size_read(inode), api32);
 
-	if (lfd->lfd_pos == MDS_DIR_END_OFF) {
+	if (pos == MDS_DIR_END_OFF) {
 		/*
 		 * end-of-file.
 		 */
@@ -605,9 +628,10 @@ static int ll_readdir(struct file *filp, struct dir_context *ctx)
 		goto out;
 	}
 
-	ctx->pos = lfd->lfd_pos;
+	ctx->pos = pos;
 	rc = ll_dir_read(inode, ctx);
-	lfd->lfd_pos = ctx->pos;
+	if (lfd)
+		lfd->lfd_pos = ctx->pos;
 	if (ctx->pos == MDS_DIR_END_OFF) {
 		if (api32)
 			ctx->pos = LL_DIR_END_OFF_32BIT;
@@ -916,7 +940,7 @@ static int ll_ioc_copy_start(struct super_block *sb, struct hsm_copy *copy)
 		}
 
 		/* Read current file data version */
-		rc = ll_data_version(inode, &data_version, 1);
+		rc = ll_data_version(inode, &data_version, LL_DV_RD_FLUSH);
 		iput(inode);
 		if (rc != 0) {
 			CDEBUG(D_HSM, "Could not read file data version of "
@@ -936,6 +960,9 @@ static int ll_ioc_copy_start(struct super_block *sb, struct hsm_copy *copy)
 	}
 
 progress:
+	/* On error, the request should be considered as completed */
+	if (hpk.hpk_errval > 0)
+		hpk.hpk_flags |= HP_FLAG_COMPLETED;
 	rc = obd_iocontrol(LL_IOC_HSM_PROGRESS, sbi->ll_md_exp, sizeof(hpk),
 			   &hpk, NULL);
 
@@ -997,8 +1024,7 @@ static int ll_ioc_copy_end(struct super_block *sb, struct hsm_copy *copy)
 			goto progress;
 		}
 
-		rc = ll_data_version(inode, &data_version,
-				     copy->hc_hai.hai_action == HSMA_ARCHIVE);
+		rc = ll_data_version(inode, &data_version, LL_DV_RD_FLUSH);
 		iput(inode);
 		if (rc) {
 			CDEBUG(D_HSM, "Could not read file data version. Request could not be confirmed.\n");
@@ -1474,8 +1500,9 @@ free_lmv:
 					       cmd == LL_IOC_MDC_GETINFO)) {
 				rc = 0;
 				goto skip_lmm;
-			} else
+			} else {
 				goto out_req;
+			}
 		}
 
 		if (cmd == IOC_MDC_GETFILESTRIPE ||
@@ -1688,15 +1715,16 @@ out_quotactl:
 		return ll_flush_ctx(inode);
 #ifdef CONFIG_FS_POSIX_ACL
 	case LL_IOC_RMTACL: {
-	    if (sbi->ll_flags & LL_SBI_RMT_CLIENT && is_root_inode(inode)) {
-		struct ll_file_data *fd = LUSTRE_FPRIVATE(file);
+		if (sbi->ll_flags & LL_SBI_RMT_CLIENT && is_root_inode(inode)) {
+			struct ll_file_data *fd = LUSTRE_FPRIVATE(file);
 
-		rc = rct_add(&sbi->ll_rct, current_pid(), arg);
-		if (!rc)
-			fd->fd_flags |= LL_FILE_RMTACL;
-		return rc;
-	    } else
-		return 0;
+			rc = rct_add(&sbi->ll_rct, current_pid(), arg);
+			if (!rc)
+				fd->fd_flags |= LL_FILE_RMTACL;
+			return rc;
+		} else {
+			return 0;
+		}
 	}
 #endif
 	case LL_IOC_GETOBDCOUNT: {
