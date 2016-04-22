@@ -1053,7 +1053,7 @@ static bool free_pcp_prepare(struct page *page)
 
 	trace_mm_page_free(page, 0);
 	kmemcheck_free_shadow(page, 0);
-	kasan_free_pages(page, 0);
+	kasan_poison_free_pages(page, 0);
 
 	if (PageAnonHead(page))
 		page->mapping = NULL;
