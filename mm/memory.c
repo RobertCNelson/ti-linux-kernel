@@ -1795,6 +1795,7 @@ int remap_pfn_range(struct vm_area_struct *vma, unsigned long addr,
 			break;
 	} while (pgd++, addr = next, addr != end);
 
+	pfn += (end - PAGE_ALIGN(size)) >> PAGE_SHIFT;
 	if (err)
 		untrack_pfn(vma, pfn, PAGE_ALIGN(size));
 
