@@ -420,7 +420,7 @@ static void o2hb_nego_timeout(struct work_struct *work)
 static int o2hb_nego_timeout_handler(struct o2net_msg *msg, u32 len, void *data,
 				void **ret_data)
 {
-	struct o2hb_region *reg = (struct o2hb_region *)data;
+	struct o2hb_region *reg = data;
 	struct o2hb_nego_msg *nego_msg;
 
 	nego_msg = (struct o2hb_nego_msg *)msg->buf;
@@ -2102,12 +2102,12 @@ static struct config_item *o2hb_heartbeat_group_make_item(struct config_group *g
 	ret = o2hb_debug_region_init(reg, o2hb_debug_dir);
 	if (ret) {
 		config_item_put(&reg->hr_item);
-		goto free_handler;
+		goto unregister_handler;
 	}
 
 	return &reg->hr_item;
 
-free_handler:
+unregister_handler:
 	o2net_unregister_handler_list(&reg->hr_handler_list);
 free:
 	kfree(reg);
