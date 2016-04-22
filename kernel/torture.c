@@ -142,7 +142,7 @@ bool torture_online(int cpu, long *n_onl_attempts, long *n_onl_successes,
 	int ret;
 	unsigned long starttime;
 
-	if (cpu_is_hotpluggable(cpu))
+	if (cpu_online(cpu) || !cpu_is_hotpluggable(cpu))
 		return false;
 
 	if (verbose)
@@ -201,9 +201,9 @@ torture_onoff(void *arg)
 	}
 	while (!torture_must_stop()) {
 		cpu = (torture_random(&rand) >> 4) % (maxcpu + 1);
-		if (!torture_online(cpu,
-				    &n_offline_attempts, &n_offline_successes,
-				    &sum_offline, &min_offline, &max_offline))
+		if (!torture_offline(cpu,
+				     &n_offline_attempts, &n_offline_successes,
+				     &sum_offline, &min_offline, &max_offline))
 			torture_online(cpu,
 				       &n_online_attempts, &n_online_successes,
 				       &sum_online, &min_online, &max_online);
