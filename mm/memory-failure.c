@@ -45,6 +45,7 @@
 #include <linux/rmap.h>
 #include <linux/export.h>
 #include <linux/pagemap.h>
+#include <linux/pageteam.h>
 #include <linux/swap.h>
 #include <linux/backing-dev.h>
 #include <linux/migrate.h>
@@ -902,6 +903,7 @@ static int hwpoison_user_mappings(struct page *p, unsigned long pfn,
 	enum ttu_flags ttu = TTU_UNMAP | TTU_IGNORE_MLOCK | TTU_IGNORE_ACCESS;
 	struct address_space *mapping;
 	LIST_HEAD(tokill);
+	bool mapped;
 	int ret;
 	int kill = 1, forcekill;
 	struct page *hpage = *hpagep;
@@ -919,7 +921,10 @@ static int hwpoison_user_mappings(struct page *p, unsigned long pfn,
 	 * This check implies we don't kill processes if their pages
 	 * are in the swap cache early. Those are always late kills.
 	 */
-	if (!page_mapped(hpage))
+	mapped = page_mapped(hpage);
+	if (PageTeam(p) && team_pmd_mapped(team_head(p)))
+		mapped = true;
+	if (!mapped)
 		return SWAP_SUCCESS;
 
 	if (PageKsm(p)) {

@@ -213,7 +213,7 @@ void __delete_from_page_cache(struct page *page, void *shadow)
 			 * some other bad page check should catch it later.
 			 */
 			page_mapcount_reset(page);
-			atomic_sub(mapcount, &page->_count);
+			page_ref_sub(page, mapcount);
 		}
 	}
 
@@ -713,8 +713,12 @@ int add_to_page_cache_lru(struct page *page, struct address_space *mapping,
 		 * The page might have been evicted from cache only
 		 * recently, in which case it should be activated like
 		 * any other repeatedly accessed page.
+		 * The exception is pages getting rewritten; evicting other
+		 * data from the working set, only to cache data that will
+		 * get overwritten with something else, is a waste of memory.
 		 */
-		if (shadow && workingset_refault(shadow)) {
+		if (!(gfp_mask & __GFP_WRITE) &&
+		    shadow && workingset_refault(shadow)) {
 			SetPageActive(page);
 			workingset_activation(page);
 		} else
@@ -2575,7 +2579,7 @@ struct page *grab_cache_page_write_begin(struct address_space *mapping,
 					pgoff_t index, unsigned flags)
 {
 	struct page *page;
-	int fgp_flags = FGP_LOCK|FGP_ACCESSED|FGP_WRITE|FGP_CREAT;
+	int fgp_flags = FGP_LOCK|FGP_WRITE|FGP_CREAT;
 
 	if (flags & AOP_FLAG_NOFS)
 		fgp_flags |= FGP_NOFS;

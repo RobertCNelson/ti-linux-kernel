@@ -435,6 +435,7 @@ Private_Dirty:         0 kB
 Referenced:          892 kB
 Anonymous:             0 kB
 AnonHugePages:         0 kB
+ShmemHugePages:        0 kB
 Shared_Hugetlb:        0 kB
 Private_Hugetlb:       0 kB
 Swap:                  0 kB
@@ -462,10 +463,11 @@ accessed.
 "Anonymous" shows the amount of memory that does not belong to any file.  Even
 a mapping associated with a file may contain anonymous pages: when MAP_PRIVATE
 and a page is modified, the file page is replaced by a private anonymous copy.
-"AnonHugePages" shows the ammount of memory backed by transparent hugepage.
-"Shared_Hugetlb" and "Private_Hugetlb" show the ammounts of memory backed by
-hugetlbfs page which is *not* counted in "RSS" or "PSS" field for historical
-reasons. And these are not included in {Shared,Private}_{Clean,Dirty} field.
+"AnonHugePages" shows how much of Anonymous is in Transparent Huge Pages, and
+"ShmemHugePages" shows how much of Rss is from huge tmpfs pages mapped by pmd.
+"Shared_Hugetlb" and "Private_Hugetlb" show the amounts of memory backed by
+hugetlbfs pages: which are not counted in "Rss" or "Pss" fields for historical
+reasons; nor are they included in the {Shared,Private}_{Clean,Dirty} fields.
 "Swap" shows how much would-be-anonymous memory is also used, but out on swap.
 For shmem mappings, "Swap" includes also the size of the mapped (and not
 replaced by copy-on-write) part of the underlying shmem object out on swap.
@@ -853,7 +855,7 @@ Dirty:             968 kB
 Writeback:           0 kB
 AnonPages:      861800 kB
 Mapped:         280372 kB
-Shmem:             644 kB
+Shmem:           26396 kB
 Slab:           284364 kB
 SReclaimable:   159856 kB
 SUnreclaim:     124508 kB
@@ -867,6 +869,9 @@ VmallocTotal:   112216 kB
 VmallocUsed:       428 kB
 VmallocChunk:   111088 kB
 AnonHugePages:   49152 kB
+ShmemHugePages:  20480 kB
+ShmemPmdMapped:  12288 kB
+ShmemFreeHoles:      0 kB
 
     MemTotal: Total usable ram (i.e. physical ram minus a few reserved
               bits and the kernel binary code)
@@ -908,7 +913,6 @@ MemAvailable: An estimate of how much memory is available for starting new
        Dirty: Memory which is waiting to get written back to the disk
    Writeback: Memory which is actively being written back to the disk
    AnonPages: Non-file backed pages mapped into userspace page tables
-AnonHugePages: Non-file backed huge pages mapped into userspace page tables
       Mapped: files which have been mmaped, such as libraries
        Shmem: Total memory used by shared memory (shmem) and tmpfs
         Slab: in-kernel data structures cache
@@ -949,6 +953,10 @@ Committed_AS: The amount of memory presently allocated on the system.
 VmallocTotal: total size of vmalloc memory area
  VmallocUsed: amount of vmalloc area which is used
 VmallocChunk: largest contiguous block of vmalloc area which is free
+ AnonHugePages: Non-file backed huge pages mapped into userspace page tables
+ShmemHugePages: tmpfs-file backed huge pages completed (subset of Shmem)
+ShmemPmdMapped: tmpfs-file backed huge pages with huge mappings into userspace
+ShmemFreeHoles: Space reserved for tmpfs team pages but available to shrinker
 
 ..............................................................................
 

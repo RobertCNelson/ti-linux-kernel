@@ -50,6 +50,10 @@ enum mem_cgroup_stat_index {
 	MEM_CGROUP_STAT_DIRTY,          /* # of dirty pages in page cache */
 	MEM_CGROUP_STAT_WRITEBACK,	/* # of pages under writeback */
 	MEM_CGROUP_STAT_SWAP,		/* # of pages, swapped out */
+	/* # of pages charged as non-disbanded huge teams */
+	MEM_CGROUP_STAT_SHMEM_HUGEPAGES,
+	/* # of pages charged as hugely mapped teams */
+	MEM_CGROUP_STAT_SHMEM_PMDMAPPED,
 	MEM_CGROUP_STAT_NSTATS,
 	/* default hierarchy stats */
 	MEMCG_KERNEL_STACK = MEM_CGROUP_STAT_NSTATS,
@@ -415,25 +419,6 @@ unsigned long mem_cgroup_get_lru_size(struct lruvec *lruvec, enum lru_list lru)
 	return mz->lru_size[lru];
 }
 
-static inline bool mem_cgroup_inactive_anon_is_low(struct lruvec *lruvec)
-{
-	unsigned long inactive_ratio;
-	unsigned long inactive;
-	unsigned long active;
-	unsigned long gb;
-
-	inactive = mem_cgroup_get_lru_size(lruvec, LRU_INACTIVE_ANON);
-	active = mem_cgroup_get_lru_size(lruvec, LRU_ACTIVE_ANON);
-
-	gb = (inactive + active) >> (30 - PAGE_SHIFT);
-	if (gb)
-		inactive_ratio = int_sqrt(10 * gb);
-	else
-		inactive_ratio = 1;
-
-	return inactive * inactive_ratio < active;
-}
-
 void mem_cgroup_handle_over_high(void);
 
 void mem_cgroup_print_oom_info(struct mem_cgroup *memcg,
@@ -488,6 +473,9 @@ static inline void mem_cgroup_update_page_stat(struct page *page,
 	if (page->mem_cgroup)
 		this_cpu_add(page->mem_cgroup->stat->count[idx], val);
 }
+
+void mem_cgroup_update_page_stat_treelocked(struct page *page,
+				enum mem_cgroup_stat_index idx, int val);
 
 static inline void mem_cgroup_inc_page_stat(struct page *page,
 					    enum mem_cgroup_stat_index idx)
@@ -646,22 +634,10 @@ static inline bool mem_cgroup_online(struct mem_cgroup *memcg)
 	return true;
 }
 
-static inline bool
-mem_cgroup_inactive_anon_is_low(struct lruvec *lruvec)
-{
-	return true;
-}
-
 static inline unsigned long
 mem_cgroup_get_lru_size(struct lruvec *lruvec, enum lru_list lru)
 {
 	return 0;
-}
-
-static inline void
-mem_cgroup_update_lru_size(struct lruvec *lruvec, enum lru_list lru,
-			      int increment)
-{
 }
 
 static inline unsigned long
@@ -704,6 +680,16 @@ static inline bool task_in_memcg_oom(struct task_struct *p)
 static inline bool mem_cgroup_oom_synchronize(bool wait)
 {
 	return false;
+}
+
+static inline void mem_cgroup_update_page_stat(struct page *page,
+				enum mem_cgroup_stat_index idx, int val)
+{
+}
+
+static inline void mem_cgroup_update_page_stat_treelocked(struct page *page,
+				enum mem_cgroup_stat_index idx, int val)
+{
 }
 
 static inline void mem_cgroup_inc_page_stat(struct page *page,

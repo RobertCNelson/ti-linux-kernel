@@ -47,6 +47,7 @@
 
 #include <linux/mm.h>
 #include <linux/pagemap.h>
+#include <linux/pageteam.h>
 #include <linux/swap.h>
 #include <linux/swapops.h>
 #include <linux/slab.h>
@@ -409,7 +410,7 @@ void unlink_anon_vmas(struct vm_area_struct *vma)
 	list_for_each_entry_safe(avc, next, &vma->anon_vma_chain, same_vma) {
 		struct anon_vma *anon_vma = avc->anon_vma;
 
-		BUG_ON(anon_vma->degree);
+		VM_WARN_ON(anon_vma->degree);
 		put_anon_vma(anon_vma);
 
 		list_del(&avc->same_vma);
@@ -687,7 +688,7 @@ pmd_t *mm_find_pmd(struct mm_struct *mm, unsigned long address)
 	pgd_t *pgd;
 	pud_t *pud;
 	pmd_t *pmd = NULL;
-	pmd_t pmde;
+	pmd_t pmdval;
 
 	pgd = pgd_offset(mm, address);
 	if (!pgd_present(*pgd))
@@ -700,12 +701,12 @@ pmd_t *mm_find_pmd(struct mm_struct *mm, unsigned long address)
 	pmd = pmd_offset(pud, address);
 	/*
 	 * Some THP functions use the sequence pmdp_huge_clear_flush(), set_pmd_at()
-	 * without holding anon_vma lock for write.  So when looking for a
-	 * genuine pmde (in which to find pte), test present and !THP together.
+	 * without locking out concurrent rmap lookups.  So when looking for a
+	 * pmd entry, in which to find a pte, test present and !THP together.
 	 */
-	pmde = *pmd;
+	pmdval = *pmd;
 	barrier();
-	if (!pmd_present(pmde) || pmd_trans_huge(pmde))
+	if (!pmd_present(pmdval) || pmd_trans_huge(pmdval))
 		pmd = NULL;
 out:
 	return pmd;
@@ -800,6 +801,7 @@ bool page_check_address_transhuge(struct page *page, struct mm_struct *mm,
 	pgd_t *pgd;
 	pud_t *pud;
 	pmd_t *pmd;
+	pmd_t pmdval;
 	pte_t *pte;
 	spinlock_t *ptl;
 
@@ -821,32 +823,29 @@ bool page_check_address_transhuge(struct page *page, struct mm_struct *mm,
 	if (!pud_present(*pud))
 		return false;
 	pmd = pmd_offset(pud, address);
-
-	if (pmd_trans_huge(*pmd)) {
-		ptl = pmd_lock(mm, pmd);
-		if (!pmd_present(*pmd))
-			goto unlock_pmd;
-		if (unlikely(!pmd_trans_huge(*pmd))) {
-			spin_unlock(ptl);
-			goto map_pte;
-		}
-
-		if (pmd_page(*pmd) != page)
-			goto unlock_pmd;
-
-		pte = NULL;
-		goto found;
-unlock_pmd:
-		spin_unlock(ptl);
+again:
+	pmdval = *pmd;
+	barrier();
+	if (!pmd_present(pmdval))
 		return false;
-	} else {
-		pmd_t pmde = *pmd;
 
-		barrier();
-		if (!pmd_present(pmde) || pmd_trans_huge(pmde))
+	if (pmd_trans_huge(pmdval)) {
+		if (pmd_page(pmdval) != page)
 			return false;
+		ptl = pmd_lock(mm, pmd);
+		if (unlikely(!pmd_same(*pmd, pmdval))) {
+			spin_unlock(ptl);
+			goto again;
+		}
+		if (ptep)
+			*ptep = NULL;
+		goto found;
 	}
-map_pte:
+
+	/* TTU_MUNLOCK on PageTeam makes a second try for huge pmd only */
+	if (unlikely(!ptep))
+		return false;
+
 	pte = pte_offset_map(pmd, address);
 	if (!pte_present(*pte)) {
 		pte_unmap(pte);
@@ -863,12 +862,13 @@ check_pte:
 	}
 
 	/* THP can be referenced by any subpage */
-	if (pte_pfn(*pte) - page_to_pfn(page) >= hpage_nr_pages(page)) {
+	if (pte_pfn(*pte) - page_to_pfn(page) >= (1 << compound_order(page))) {
 		pte_unmap_unlock(pte, ptl);
 		return false;
 	}
-found:
+
 	*ptep = pte;
+found:
 	*pmdp = pmd;
 	*ptlp = ptl;
 	return true;
@@ -1213,10 +1213,8 @@ void do_page_add_anon_rmap(struct page *page,
 		 * pte lock(a spinlock) is held, which implies preemption
 		 * disabled.
 		 */
-		if (compound) {
-			__inc_zone_page_state(page,
-					      NR_ANON_TRANSPARENT_HUGEPAGES);
-		}
+		if (compound)
+			__inc_zone_page_state(page, NR_ANON_HUGEPAGES);
 		__mod_zone_page_state(page_zone(page), NR_ANON_PAGES, nr);
 	}
 	if (unlikely(PageKsm(page)))
@@ -1249,12 +1247,12 @@ void page_add_new_anon_rmap(struct page *page,
 	int nr = compound ? hpage_nr_pages(page) : 1;
 
 	VM_BUG_ON_VMA(address < vma->vm_start || address >= vma->vm_end, vma);
-	SetPageSwapBacked(page);
+	__SetPageSwapBacked(page);
 	if (compound) {
 		VM_BUG_ON_PAGE(!PageTransHuge(page), page);
 		/* increment count (starts at -1) */
 		atomic_set(compound_mapcount_ptr(page), 0);
-		__inc_zone_page_state(page, NR_ANON_TRANSPARENT_HUGEPAGES);
+		__inc_zone_page_state(page, NR_ANON_HUGEPAGES);
 	} else {
 		/* Anon THP always mapped first with PMD */
 		VM_BUG_ON_PAGE(PageTransCompound(page), page);
@@ -1274,7 +1272,8 @@ void page_add_new_anon_rmap(struct page *page,
 void page_add_file_rmap(struct page *page)
 {
 	lock_page_memcg(page);
-	if (atomic_inc_and_test(&page->_mapcount)) {
+	if (atomic_inc_and_test(&page->_mapcount) &&
+	    inc_team_pte_mapped(page)) {
 		__inc_zone_page_state(page, NR_FILE_MAPPED);
 		mem_cgroup_inc_page_stat(page, MEM_CGROUP_STAT_FILE_MAPPED);
 	}
@@ -1285,7 +1284,7 @@ static void page_remove_file_rmap(struct page *page)
 {
 	lock_page_memcg(page);
 
-	/* Hugepages are not counted in NR_FILE_MAPPED for now. */
+	/* hugetlbfs pages are not counted in NR_FILE_MAPPED for now. */
 	if (unlikely(PageHuge(page))) {
 		/* hugetlb pages are always mapped with pmds */
 		atomic_dec(compound_mapcount_ptr(page));
@@ -1301,9 +1300,10 @@ static void page_remove_file_rmap(struct page *page)
 	 * these counters are not modified in interrupt context, and
 	 * pte lock(a spinlock) is held, which implies preemption disabled.
 	 */
-	__dec_zone_page_state(page, NR_FILE_MAPPED);
-	mem_cgroup_dec_page_stat(page, MEM_CGROUP_STAT_FILE_MAPPED);
-
+	if (dec_team_pte_mapped(page)) {
+		__dec_zone_page_state(page, NR_FILE_MAPPED);
+		mem_cgroup_dec_page_stat(page, MEM_CGROUP_STAT_FILE_MAPPED);
+	}
 	if (unlikely(PageMlocked(page)))
 		clear_page_mlock(page);
 out:
@@ -1317,14 +1317,14 @@ static void page_remove_anon_compound_rmap(struct page *page)
 	if (!atomic_add_negative(-1, compound_mapcount_ptr(page)))
 		return;
 
-	/* Hugepages are not counted in NR_ANON_PAGES for now. */
+	/* hugetlbfs pages are not counted in NR_ANON_PAGES for now. */
 	if (unlikely(PageHuge(page)))
 		return;
 
 	if (!IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE))
 		return;
 
-	__dec_zone_page_state(page, NR_ANON_TRANSPARENT_HUGEPAGES);
+	__dec_zone_page_state(page, NR_ANON_HUGEPAGES);
 
 	if (TestClearPageDoubleMap(page)) {
 		/*
@@ -1340,7 +1340,7 @@ static void page_remove_anon_compound_rmap(struct page *page)
 	}
 
 	if (unlikely(PageMlocked(page)))
-		clear_page_mlock(page);
+		clear_pages_mlock(page, HPAGE_PMD_NR);
 
 	if (nr) {
 		__mod_zone_page_state(page_zone(page), NR_ANON_PAGES, -nr);
@@ -1406,6 +1406,7 @@ static int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 		     unsigned long address, void *arg)
 {
 	struct mm_struct *mm = vma->vm_mm;
+	pmd_t *pmd;
 	pte_t *pte;
 	pte_t pteval;
 	spinlock_t *ptl;
@@ -1425,9 +1426,17 @@ static int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 			goto out;
 	}
 
-	pte = page_check_address(page, mm, address, &ptl, 0);
-	if (!pte)
-		goto out;
+	if (!page_check_address_transhuge(page, mm, address,
+							&pmd, &pte, &ptl)) {
+		if (!(flags & TTU_MUNLOCK) || !PageTeam(page))
+			goto out;
+		/* We need also to check whether head is hugely mapped here */
+		pte = NULL;
+		page = team_head(page);
+		if (!page_check_address_transhuge(page, mm, address,
+							&pmd, NULL, &ptl))
+			goto out;
+	}
 
 	/*
 	 * If the page is mlock()d, we cannot swap it out.
@@ -1436,14 +1445,31 @@ static int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 	 */
 	if (!(flags & TTU_IGNORE_MLOCK)) {
 		if (vma->vm_flags & VM_LOCKED) {
+			int nr_pages = 1;
+
+			if (IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE) && !pte)
+				nr_pages = HPAGE_PMD_NR;
 			/* Holding pte lock, we do *not* need mmap_sem here */
-			mlock_vma_page(page);
+			mlock_vma_pages(page, nr_pages);
 			ret = SWAP_MLOCK;
 			goto out_unmap;
 		}
 		if (flags & TTU_MUNLOCK)
 			goto out_unmap;
 	}
+
+	if (!pte) {
+		if (!(flags & TTU_IGNORE_ACCESS) &&
+		    IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE) &&
+		    pmdp_clear_flush_young_notify(vma, address, pmd)) {
+			ret = SWAP_FAIL;
+			goto out_unmap;
+		}
+		spin_unlock(ptl);
+		unmap_team_by_pmd(vma, address, pmd, page);
+		goto out;
+	}
+
 	if (!(flags & TTU_IGNORE_ACCESS)) {
 		if (ptep_clear_flush_young_notify(vma, address, pte)) {
 			ret = SWAP_FAIL;
@@ -1544,7 +1570,9 @@ discard:
 	put_page(page);
 
 out_unmap:
-	pte_unmap_unlock(pte, ptl);
+	spin_unlock(ptl);
+	if (pte)
+		pte_unmap(pte);
 	if (ret != SWAP_FAIL && ret != SWAP_MLOCK && !(flags & TTU_MUNLOCK))
 		mmu_notifier_invalidate_page(mm, address);
 out:
@@ -1628,11 +1656,6 @@ int try_to_unmap(struct page *page, enum ttu_flags flags)
 	return ret;
 }
 
-static int page_not_mapped(struct page *page)
-{
-	return !page_mapped(page);
-};
-
 /**
  * try_to_munlock - try to munlock a page
  * @page: the page to be munlocked
@@ -1650,24 +1673,20 @@ static int page_not_mapped(struct page *page)
  */
 int try_to_munlock(struct page *page)
 {
-	int ret;
 	struct rmap_private rp = {
 		.flags = TTU_MUNLOCK,
 		.lazyfreed = 0,
 	};
-
 	struct rmap_walk_control rwc = {
 		.rmap_one = try_to_unmap_one,
 		.arg = &rp,
-		.done = page_not_mapped,
 		.anon_lock = page_lock_anon_vma_read,
-
 	};
 
-	VM_BUG_ON_PAGE(!PageLocked(page) || PageLRU(page), page);
+	VM_BUG_ON_PAGE(!PageLocked(page) && !PageTeam(page), page);
+	VM_BUG_ON_PAGE(PageLRU(page), page);
 
-	ret = rmap_walk(page, &rwc);
-	return ret;
+	return rmap_walk(page, &rwc);
 }
 
 void __put_anon_vma(struct anon_vma *anon_vma)
@@ -1782,7 +1801,7 @@ static int rmap_walk_file(struct page *page, struct rmap_walk_control *rwc,
 	 * structure at mapping cannot be freed and reused yet,
 	 * so we can safely take mapping->i_mmap_rwsem.
 	 */
-	VM_BUG_ON_PAGE(!PageLocked(page), page);
+	VM_BUG_ON_PAGE(!PageLocked(page) && !PageTeam(page), page);
 
 	if (!mapping)
 		return ret;
