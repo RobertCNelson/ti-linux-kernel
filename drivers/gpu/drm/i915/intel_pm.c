@@ -2483,7 +2483,7 @@ static void ilk_wm_merge(struct drm_device *dev,
 	/* ILK/SNB/IVB: LP1+ watermarks only w/ single pipe */
 	if ((INTEL_INFO(dev)->gen <= 6 || IS_IVYBRIDGE(dev)) &&
 	    config->num_pipes_active > 1)
-		return;
+		last_enabled_level = 0;
 
 	/* ILK: FBC WM must be disabled always */
 	merged->fbc_wm_enabled = INTEL_INFO(dev)->gen >= 6;
@@ -4997,7 +4997,8 @@ static void gen6_enable_rps(struct drm_device *dev)
 	I915_WRITE(GEN6_RC_STATE, 0);
 
 	/* Clear the DBG now so we don't confuse earlier errors */
-	if ((gtfifodbg = I915_READ(GTFIFODBG))) {
+	gtfifodbg = I915_READ(GTFIFODBG);
+	if (gtfifodbg) {
 		DRM_ERROR("GT fifo had a previous error %x\n", gtfifodbg);
 		I915_WRITE(GTFIFODBG, gtfifodbg);
 	}
@@ -5528,7 +5529,8 @@ static void cherryview_enable_rps(struct drm_device *dev)
 
 	WARN_ON(!mutex_is_locked(&dev_priv->rps.hw_lock));
 
-	gtfifodbg = I915_READ(GTFIFODBG);
+	gtfifodbg = I915_READ(GTFIFODBG) & ~(GT_FIFO_SBDEDICATE_FREE_ENTRY_CHV |
+					     GT_FIFO_FREE_ENTRIES_CHV);
 	if (gtfifodbg) {
 		DRM_DEBUG_DRIVER("GT fifo had a previous error %x\n",
 				 gtfifodbg);
@@ -5627,7 +5629,8 @@ static void valleyview_enable_rps(struct drm_device *dev)
 
 	valleyview_check_pctx(dev_priv);
 
-	if ((gtfifodbg = I915_READ(GTFIFODBG))) {
+	gtfifodbg = I915_READ(GTFIFODBG);
+	if (gtfifodbg) {
 		DRM_DEBUG_DRIVER("GT fifo had a previous error %x\n",
 				 gtfifodbg);
 		I915_WRITE(GTFIFODBG, gtfifodbg);
@@ -6882,22 +6885,9 @@ static void ivybridge_init_clock_gating(struct drm_device *dev)
 	gen6_check_mch_setup(dev);
 }
 
-static void vlv_init_display_clock_gating(struct drm_i915_private *dev_priv)
-{
-	I915_WRITE(DSPCLK_GATE_D, VRHUNIT_CLOCK_GATE_DISABLE);
-
-	/*
-	 * Disable trickle feed and enable pnd deadline calculation
-	 */
-	I915_WRITE(MI_ARB_VLV, MI_ARB_DISPLAY_TRICKLE_FEED_DISABLE);
-	I915_WRITE(CBR1_VLV, 0);
-}
-
 static void valleyview_init_clock_gating(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-
-	vlv_init_display_clock_gating(dev_priv);
 
 	/* WaDisableEarlyCull:vlv */
 	I915_WRITE(_3D_CHICKEN3,
@@ -6980,8 +6970,6 @@ static void valleyview_init_clock_gating(struct drm_device *dev)
 static void cherryview_init_clock_gating(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-
-	vlv_init_display_clock_gating(dev_priv);
 
 	/* WaVSRefCountFullforceMissDisable:chv */
 	/* WaDSRefCountFullforceMissDisable:chv */
