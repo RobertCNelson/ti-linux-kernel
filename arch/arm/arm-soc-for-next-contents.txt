@@ -1,4 +1,18 @@
 fixes
+	<no branch> (d9c9f3b809d2bb0356f013e88d10730eafab5346)
+		https://github.com/mbgg/linux-mediatek tags/v4.6-soc-fixes
+	<no branch> (3d51ae172d759198b2e47e104c31a92d20d17927)
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.6/fixes-rc2-v2-signed
+	<no branch> (c531fb27e9699eaee478ee5686a3cca5dee73602)
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-fixes-for-v4.6
+	<no branch> (1560d15861769c23fd981e2d60dc7fd790b21e1e)
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.6/fixes-rc3
+	<no branch> (fc26fe9c3869f02dd9dc54ff3a45c6d9d4bbbdfa)
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-fixes-4.6
+	patch
+		arm64: dts: uniphier: fix I2C nodes of PH1-LD20
+	<no branch> (10c0f0e92f019ab8d0c17da3696e35b0eef4ec16)
+		git://git.kernel.org/pub/scm/linux/kernel/git/agross/linux tags/qcom-fixes-for-4.6-rc2
 
 next/fixes-non-critical
 
@@ -37,6 +51,32 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/dinguyen/linux tags/socfpga_dts_for_v4.7
 	rockchip/dt32
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.7-rockchip-dts32-1
+	samsung/dt-arktik5
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-dt-exynos3250-artik5-4.7
+	samsung/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-dt-4.7
+	mvebu/dt
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-4.7-1
+	nomadik/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-nomadik tags/nomadik-dts-v4.7
+	davinci/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v4.7/dt
+	tegra/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-4.7-arm
+	imx/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-dt-4.7
+	patch
+		ARM: dts: uniphier: add NAND pinmux node
+	renesas/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-rcar-sysc-for-v4.7
+	omap/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.7/dt-part1
+	broadcom/dt
+		http://github.com/Broadcom/stblinux tags/arm-soc/for-4.7/devicetree
+	qcom/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/agross/linux tags/qcom-dt-for-4.7
+	patch
+		ARM: dts: artpec: update clock bindings in artpec6.dtsi
 
 next/dt64
 	meson/dt64
@@ -66,4 +106,3 @@ next/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-simple-pm-bus-for-v4.7
 	rockchip/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.7-rockchip-drivers-1
-
