@@ -199,6 +199,20 @@ struct mlx5e_params {
 	bool rx_am_enabled;
 };
 
+#ifdef CONFIG_MLX5_CORE_EN_DCB
+struct mlx5e_cee_config {
+	/* bw pct for priority group */
+	u8                         pg_bw_pct[CEE_DCBX_MAX_PGS];
+	u8                         prio_to_pg_map[CEE_DCBX_MAX_PRIO];
+	bool                       pfc_setting[CEE_DCBX_MAX_PRIO];
+	bool                       pfc_enable;
+};
+
+struct mlx5e_dcbx {
+	struct mlx5e_cee_config    cee_cfg; /* pending configuration */
+};
+#endif
+
 struct mlx5e_tstamp {
 	rwlock_t                   lock;
 	struct cyclecounter        cycles;
@@ -600,6 +614,9 @@ struct mlx5e_priv {
 	struct mlx5e_stats         stats;
 	struct mlx5e_tstamp        tstamp;
 	u16 q_counter;
+#ifdef CONFIG_MLX5_CORE_EN_DCB
+	struct mlx5e_dcbx          dcbx;
+#endif
 };
 
 enum mlx5e_link_mode {
