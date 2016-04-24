@@ -41,6 +41,26 @@
 #define MLX5E_CEE_STATE_UP    1
 #define MLX5E_CEE_STATE_DOWN  0
 
+/* If dcbx mode is non-host and qos_with_dcbx_by_fw is off, set the
+ * dcbx mode to host.
+ */
+static inline bool mlx5e_dcbnl_is_allowed(struct mlx5e_priv *priv)
+{
+	struct mlx5e_dcbx *dcbx = &priv->dcbx;
+
+	if (!MLX5_CAP_GEN(priv->mdev, dcbx))
+		return true;
+
+	if (dcbx->mode == MLX5E_DCBX_PARAM_VER_OPER_HOST)
+		return true;
+
+	if (mlx5e_dcbnl_set_dcbx_mode(priv, MLX5E_DCBX_PARAM_VER_OPER_HOST))
+		return false;
+
+	dcbx->mode = MLX5E_DCBX_PARAM_VER_OPER_HOST;
+	return true;
+}
+
 static int mlx5e_dcbnl_ieee_getets(struct net_device *netdev,
 				   struct ieee_ets *ets)
 {
@@ -51,6 +71,9 @@ static int mlx5e_dcbnl_ieee_getets(struct net_device *netdev,
 
 	if (!MLX5_CAP_GEN(priv->mdev, ets))
 		return -ENOTSUPP;
+
+	if (!mlx5e_dcbnl_is_allowed(priv))
+		return -EPERM;
 
 	ets->ets_cap = mlx5_max_tc(priv->mdev) + 1;
 	for (i = 0; i < ets->ets_cap; i++) {
@@ -184,6 +207,12 @@ static int mlx5e_dcbnl_ieee_setets(struct net_device *netdev,
 	struct mlx5e_priv *priv = netdev_priv(netdev);
 	int err;
 
+	if (!MLX5_CAP_GEN(priv->mdev, ets))
+		return -ENOTSUPP;
+
+	if (!mlx5e_dcbnl_is_allowed(priv))
+		return -EPERM;
+
 	err = mlx5e_dbcnl_validate_ets(ets);
 	if (err)
 		return err;
@@ -203,6 +232,9 @@ static int mlx5e_dcbnl_ieee_getpfc(struct net_device *dev,
 	struct mlx5e_pport_stats *pstats = &priv->stats.pport;
 	int i;
 
+	if (!mlx5e_dcbnl_is_allowed(priv))
+		return -EPERM;
+
 	pfc->pfc_cap = mlx5_max_tc(mdev) + 1;
 	for (i = 0; i < IEEE_8021QAZ_MAX_TCS; i++) {
 		pfc->requests[i]    = PPORT_PER_PRIO_GET(pstats, i, tx_pause);
@@ -219,6 +251,9 @@ static int mlx5e_dcbnl_ieee_setpfc(struct net_device *dev,
 	struct mlx5_core_dev *mdev = priv->mdev;
 	u8 curr_pfc_en;
 	int ret;
+
+	if (!mlx5e_dcbnl_is_allowed(priv))
+		return -EPERM;
 
 	mlx5_query_port_pfc(mdev, &curr_pfc_en, NULL);
 
@@ -240,6 +275,9 @@ static u8 mlx5e_dcbnl_getdcbx(struct net_device *dev)
 
 static u8 mlx5e_dcbnl_setdcbx(struct net_device *dev, u8 mode)
 {
+	if (!mlx5e_dcbnl_is_allowed(netdev_priv(dev)))
+		return 1;
+
 	if ((mode & DCB_CAP_DCBX_LLD_MANAGED) ||
 	    !(mode & DCB_CAP_DCBX_VER_CEE) ||
 	    !(mode & DCB_CAP_DCBX_VER_IEEE) ||
@@ -258,6 +296,9 @@ static int mlx5e_dcbnl_ieee_getmaxrate(struct net_device *netdev,
 	u8 max_bw_unit[IEEE_8021QAZ_MAX_TCS];
 	int err;
 	int i;
+
+	if (!mlx5e_dcbnl_is_allowed(priv))
+		return -EPERM;
 
 	err = mlx5_query_port_ets_rate_limit(mdev, max_bw_value, max_bw_unit);
 	if (err)
@@ -294,6 +335,9 @@ static int mlx5e_dcbnl_ieee_setmaxrate(struct net_device *netdev,
 	__u64 upper_limit_mbps = roundup(255 * MLX5E_100MB, MLX5E_1GB);
 	int i;
 
+	if (!mlx5e_dcbnl_is_allowed(priv))
+		return -EPERM;
+
 	memset(max_bw_value, 0, sizeof(max_bw_value));
 	memset(max_bw_unit, 0, sizeof(max_bw_unit));
 
@@ -325,7 +369,10 @@ static u8 mlx5e_dcbnl_setall(struct net_device *netdev)
 	struct ieee_ets  ets;
 	struct ieee_pfc  pfc;
 	int i;
-	int err = 0;
+	int err;
+
+	if (!mlx5e_dcbnl_is_allowed(priv))
+		return -EPERM;
 
 	memset(&ets, 0, sizeof(ets));
 	memset(&pfc, 0, sizeof(pfc));
@@ -380,6 +427,9 @@ static void mlx5e_dcbnl_getpermhwaddr(struct net_device *netdev,
 {
 	struct mlx5e_priv *priv = netdev_priv(netdev);
 
+	if (!mlx5e_dcbnl_is_allowed(priv))
+		return;
+
 	if (!perm_addr)
 		return;
 
@@ -392,6 +442,9 @@ static void mlx5e_dcbnl_setpgtccfgtx(struct net_device *netdev,
 {
 	struct mlx5e_priv *priv = netdev_priv(netdev);
 	struct mlx5e_cee_config *cee_cfg = &priv->dcbx.cee_cfg;
+
+	if (!mlx5e_dcbnl_is_allowed(priv))
+		return;
 
 	if (priority >= CEE_DCBX_MAX_PRIO) {
 		netdev_err(netdev,
@@ -414,6 +467,9 @@ static void mlx5e_dcbnl_setpgbwgcfgtx(struct net_device *netdev,
 	struct mlx5e_priv *priv = netdev_priv(netdev);
 	struct mlx5e_cee_config *cee_cfg = &priv->dcbx.cee_cfg;
 
+	if (!mlx5e_dcbnl_is_allowed(priv))
+		return;
+
 	if (pgid >= CEE_DCBX_MAX_PGS) {
 		netdev_err(netdev,
 			   "%s, priority group is out of range\n", __func__);
@@ -429,6 +485,9 @@ static void mlx5e_dcbnl_getpgtccfgtx(struct net_device *netdev,
 {
 	struct mlx5e_priv *priv = netdev_priv(netdev);
 	struct mlx5_core_dev *mdev = priv->mdev;
+
+	if (!mlx5e_dcbnl_is_allowed(priv))
+		return;
 
 	if (priority >= CEE_DCBX_MAX_PRIO) {
 		netdev_err(netdev,
@@ -450,6 +509,9 @@ static void mlx5e_dcbnl_getpgbwgcfgtx(struct net_device *netdev,
 	struct mlx5e_priv *priv = netdev_priv(netdev);
 	struct mlx5_core_dev *mdev = priv->mdev;
 
+	if (!mlx5e_dcbnl_is_allowed(priv))
+		return;
+
 	if (pgid >= CEE_DCBX_MAX_PGS) {
 		netdev_err(netdev,
 			   "%s, priority group is out of range\n", __func__);
@@ -465,6 +527,9 @@ static void mlx5e_dcbnl_setpfccfg(struct net_device *netdev,
 {
 	struct mlx5e_priv *priv = netdev_priv(netdev);
 	struct mlx5e_cee_config *cee_cfg = &priv->dcbx.cee_cfg;
+
+	if (!mlx5e_dcbnl_is_allowed(priv))
+		return;
 
 	if (priority >= CEE_DCBX_MAX_PRIO) {
 		netdev_err(netdev,
@@ -498,6 +563,9 @@ mlx5e_dcbnl_get_priority_pfc(struct net_device *netdev,
 static void mlx5e_dcbnl_getpfccfg(struct net_device *netdev,
 				  int priority, u8 *setting)
 {
+	if (!mlx5e_dcbnl_is_allowed(netdev_priv(netdev)))
+		return;
+
 	if (priority >= CEE_DCBX_MAX_PRIO) {
 		netdev_err(netdev,
 			   "%s, priority is out of range\n", __func__);
@@ -516,6 +584,9 @@ static u8 mlx5e_dcbnl_getcap(struct net_device *netdev,
 	struct mlx5e_priv *priv = netdev_priv(netdev);
 	struct mlx5_core_dev *mdev = priv->mdev;
 	u8 rval = 0;
+
+	if (!mlx5e_dcbnl_is_allowed(priv))
+		return 1;
 
 	switch (capid) {
 	case DCB_CAP_ATTR_PG:
@@ -559,6 +630,9 @@ static int mlx5e_dcbnl_getnumtcs(struct net_device *netdev,
 	struct mlx5e_priv *priv = netdev_priv(netdev);
 	struct mlx5_core_dev *mdev = priv->mdev;
 
+	if (!mlx5e_dcbnl_is_allowed(priv))
+		return -EPERM;
+
 	switch (tcs_id) {
 	case DCB_NUMTCS_ATTR_PG:
 	case DCB_NUMTCS_ATTR_PFC:
@@ -575,6 +649,9 @@ static u8 mlx5e_dcbnl_getpfcstate(struct net_device *netdev)
 {
 	struct ieee_pfc pfc;
 
+	if (!mlx5e_dcbnl_is_allowed(netdev_priv(netdev)))
+		return MLX5E_CEE_STATE_DOWN;
+
 	if (mlx5e_dcbnl_ieee_getpfc(netdev, &pfc))
 		return MLX5E_CEE_STATE_DOWN;
 
@@ -585,6 +662,9 @@ static void mlx5e_dcbnl_setpfcstate(struct net_device *netdev, u8 state)
 {
 	struct mlx5e_priv *priv = netdev_priv(netdev);
 	struct mlx5e_cee_config *cee_cfg = &priv->dcbx.cee_cfg;
+
+	if (!mlx5e_dcbnl_is_allowed(priv))
+		return;
 
 	if ((state != MLX5E_CEE_STATE_UP) && (state != MLX5E_CEE_STATE_DOWN))
 		return;
@@ -619,3 +699,71 @@ const struct dcbnl_rtnl_ops mlx5e_dcbnl_ops = {
 	.getpfcstate    = mlx5e_dcbnl_getpfcstate,
 	.setpfcstate    = mlx5e_dcbnl_setpfcstate,
 };
+
+void mlx5e_dcbnl_query_dcbx_mode(struct mlx5e_priv *priv,
+				 enum mlx5_dcbx_oper_mode *mode)
+{
+	u32 out[MLX5_ST_SZ_DW(dcbx_param)];
+
+	*mode = MLX5E_DCBX_PARAM_VER_OPER_HOST;
+
+	if (!mlx5_query_port_dcbx_param(priv->mdev, out))
+		*mode = MLX5_GET(dcbx_param, out, version_oper);
+
+	/* From driver's point of view, we only care if the mode
+	 * is host (HOST) or non-host (AUTO)
+	 */
+	if (*mode != MLX5E_DCBX_PARAM_VER_OPER_HOST)
+		*mode = MLX5E_DCBX_PARAM_VER_OPER_AUTO;
+}
+
+int mlx5e_dcbnl_set_dcbx_mode(struct mlx5e_priv *priv,
+			      enum mlx5_dcbx_oper_mode mode)
+{
+	struct mlx5_core_dev *mdev = priv->mdev;
+	u32 tmp[MLX5_ST_SZ_DW(dcbx_param)];
+	int err;
+
+	err = mlx5_query_port_dcbx_param(mdev, tmp);
+	if (err)
+		return err;
+
+	MLX5_SET(dcbx_param, tmp, version_admin, mode);
+	if (mode != MLX5E_DCBX_PARAM_VER_OPER_HOST)
+		MLX5_SET(dcbx_param, tmp, willing_admin, 1);
+
+	return mlx5_set_port_dcbx_param(mdev, tmp);
+}
+
+static void mlx5e_ets_init(struct mlx5e_priv *priv)
+{
+	int i;
+	struct ieee_ets ets;
+
+	memset(&ets, 0, sizeof(ets));
+	ets.ets_cap = mlx5_max_tc(priv->mdev) + 1;
+	for (i = 0; i < ets.ets_cap; i++) {
+		ets.tc_tx_bw[i] = MLX5E_MAX_BW_ALLOC;
+		ets.tc_tsa[i] = IEEE_8021QAZ_TSA_VENDOR;
+		ets.prio_tc[i] = i;
+	}
+
+	memcpy(priv->dcbx.tc_tsa, ets.tc_tsa, sizeof(ets.tc_tsa));
+
+	/* tclass[prio=0]=1, tclass[prio=1]=0, tclass[prio=i]=i (for i>1) */
+	ets.prio_tc[0] = 1;
+	ets.prio_tc[1] = 0;
+
+	mlx5e_dcbnl_ieee_setets_core(priv, &ets);
+}
+
+void mlx5e_dcbnl_initialize(struct net_device *netdev)
+{
+	struct mlx5e_priv *priv = netdev_priv(netdev);
+	struct mlx5e_dcbx *dcbx = &priv->dcbx;
+
+	if (MLX5_CAP_GEN(priv->mdev, dcbx))
+		mlx5e_dcbnl_query_dcbx_mode(priv, &dcbx->mode);
+
+	mlx5e_ets_init(priv);
+}

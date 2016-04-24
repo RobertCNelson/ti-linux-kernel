@@ -206,6 +206,7 @@ struct mlx5e_cee_config {
 };
 
 struct mlx5e_dcbx {
+	enum mlx5_dcbx_oper_mode   mode;
 	struct mlx5e_cee_config    cee_cfg; /* pending configuration */
 
 	/* The only setting that cannot be read from FW */
@@ -782,6 +783,11 @@ extern const struct ethtool_ops mlx5e_ethtool_ops;
 #ifdef CONFIG_MLX5_CORE_EN_DCB
 extern const struct dcbnl_rtnl_ops mlx5e_dcbnl_ops;
 int mlx5e_dcbnl_ieee_setets_core(struct mlx5e_priv *priv, struct ieee_ets *ets);
+int mlx5e_dcbnl_set_dcbx_mode(struct mlx5e_priv *priv,
+			      enum mlx5_dcbx_oper_mode mode);
+void mlx5e_dcbnl_query_dcbx_mode(struct mlx5e_priv *priv,
+				 enum mlx5_dcbx_oper_mode *mode);
+void mlx5e_dcbnl_initialize(struct net_device *netdev);
 #endif
 
 #ifndef CONFIG_RFS_ACCEL
