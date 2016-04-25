@@ -81,6 +81,12 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/agross/linux tags/qcom-dt-for-4.7
 	patch
 		ARM: dts: artpec: update clock bindings in artpec6.dtsi
+	renesas/dt-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-for-v4.7
+	vexpress/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/sudeep.holla/linux tags/vexpress-for-v4.7/updates
+	keystone/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone_dts_for_4.7
 
 next/dt64
 	meson/dt64
@@ -91,6 +97,21 @@ next/dt64
 		arm64: dts: Add dts files for LG Electronics's lg1312 SoC
 	rockchip/dt64
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.7-rockchip-dts64-1
+	samsung/dt64
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-dt64-4.7
+	tegra/dt64
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-4.7-arm64
+	juno/dt64
+		git://git.kernel.org/pub/scm/linux/kernel/git/sudeep.holla/linux tags/juno-for-v4.7/dt-updates
+	hisi/dt64
+		git://github.com/hisilicon/linux-hisi tags/hi6220-dt-for-4.7
+	xgene/dt64
+		https://github.com/AppliedMicro/xgene-next tags/xgene-dts-for-v4.7-part1
+	broadcom/dt64
+		http://github.com/Broadcom/stblinux tags/arm-soc/for-4.7/devicetree-arm64
+	patch
+		arm64: dts: uniphier: use Daughter board on PH1-LD20 reference board
+		arm64: dts: uniphier: add reference clock node for PH1-LD20
 
 next/defconfig
 	renesas/defconfig
