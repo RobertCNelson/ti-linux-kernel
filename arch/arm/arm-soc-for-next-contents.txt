@@ -13,7 +13,7 @@ fixes
 		arm64: dts: uniphier: fix I2C nodes of PH1-LD20
 	<no branch> (10c0f0e92f019ab8d0c17da3696e35b0eef4ec16)
 		git://git.kernel.org/pub/scm/linux/kernel/git/agross/linux tags/qcom-fixes-for-4.6-rc2
-	<no branch> (5d7e23a79444385d03717dc19cc58dd2d5883052)
+	omap/dt-ti81xx
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.6/dt-ti81xx-signed
 
 next/fixes-non-critical
@@ -31,6 +31,13 @@ next/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-soc
 	sti/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/mcoquelin/sti tags/sti-soc-for-v4.7-1
+	davinci/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v4.7/soc
+		contains davinci/cleanup
+	renesas/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-for-v4.7
+	patch
+		ARM: uniphier: correct the call order of of_node_put()
 
 next/arm64
 	meson/arm64
@@ -89,6 +96,8 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/sudeep.holla/linux tags/vexpress-for-v4.7/updates
 	keystone/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone_dts_for_4.7
+	omap/dt-ti81xx
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.6/dt-ti81xx-signed
 
 next/dt64
 	meson/dt64
