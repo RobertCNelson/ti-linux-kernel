@@ -100,6 +100,9 @@ struct btrfs_ordered_sum;
 /* tracks free space in block groups. */
 #define BTRFS_FREE_SPACE_TREE_OBJECTID 10ULL
 
+/* device stats in the device tree */
+#define BTRFS_DEV_STATS_OBJECTID 0ULL
+
 /* for storing balance parameters in the root tree */
 #define BTRFS_BALANCE_OBJECTID -4ULL
 
@@ -715,14 +718,6 @@ struct btrfs_timespec {
 	__le32 nsec;
 } __attribute__ ((__packed__));
 
-enum btrfs_compression_type {
-	BTRFS_COMPRESS_NONE  = 0,
-	BTRFS_COMPRESS_ZLIB  = 1,
-	BTRFS_COMPRESS_LZO   = 2,
-	BTRFS_COMPRESS_TYPES = 2,
-	BTRFS_COMPRESS_LAST  = 3,
-};
-
 struct btrfs_inode_item {
 	/* nfs style generation number */
 	__le64 generation;
@@ -793,7 +788,7 @@ struct btrfs_root_item {
 
 	/*
 	 * This generation number is used to test if the new fields are valid
-	 * and up to date while reading the root item. Everytime the root item
+	 * and up to date while reading the root item. Every time the root item
 	 * is written out, the "generation" field is copied into this field. If
 	 * anyone ever mounted the fs with an older kernel, we will have
 	 * mismatching generation values here and thus must invalidate the
@@ -1002,8 +997,10 @@ struct btrfs_dev_replace {
 	pid_t lock_owner;
 	atomic_t nesting_level;
 	struct mutex lock_finishing_cancel_unmount;
-	struct mutex lock_management_lock;
-	struct mutex lock;
+	rwlock_t lock;
+	atomic_t read_locks;
+	atomic_t blocking_readers;
+	wait_queue_head_t read_lock_wq;
 
 	struct btrfs_scrub_progress scrub_progress;
 };
@@ -1222,16 +1219,18 @@ struct btrfs_space_info {
 	 * we've called update_block_group and dropped the bytes_used counter
 	 * and increased the bytes_pinned counter.  However this means that
 	 * bytes_pinned does not reflect the bytes that will be pinned once the
-	 * delayed refs are flushed, so this counter is inc'ed everytime we call
-	 * btrfs_free_extent so it is a realtime count of what will be freed
-	 * once the transaction is committed.  It will be zero'ed everytime the
-	 * transaction commits.
+	 * delayed refs are flushed, so this counter is inc'ed every time we
+	 * call btrfs_free_extent so it is a realtime count of what will be
+	 * freed once the transaction is committed.  It will be zero'ed every
+	 * time the transaction commits.
 	 */
 	struct percpu_counter total_bytes_pinned;
 
 	struct list_head list;
 	/* Protected by the spinlock 'lock'. */
 	struct list_head ro_bgs;
+	struct list_head priority_tickets;
+	struct list_head tickets;
 
 	struct rw_semaphore groups_sem;
 	/* for block groups in our same type */
@@ -1822,6 +1821,9 @@ struct btrfs_fs_info {
 	spinlock_t reada_lock;
 	struct radix_tree_root reada_tree;
 
+	/* readahead works cnt */
+	atomic_t reada_works_cnt;
+
 	/* Extent buffer radix tree */
 	spinlock_t buffer_lock;
 	struct radix_tree_root buffer_radix;
@@ -2185,13 +2187,43 @@ struct btrfs_ioctl_defrag_range_args {
  */
 #define BTRFS_QGROUP_RELATION_KEY       246
 
+/*
+ * Obsolete name, see BTRFS_TEMPORARY_ITEM_KEY.
+ */
 #define BTRFS_BALANCE_ITEM_KEY	248
 
 /*
- * Persistantly stores the io stats in the device tree.
- * One key for all stats, (0, BTRFS_DEV_STATS_KEY, devid).
+ * The key type for tree items that are stored persistently, but do not need to
+ * exist for extended period of time. The items can exist in any tree.
+ *
+ * [subtype, BTRFS_TEMPORARY_ITEM_KEY, data]
+ *
+ * Existing items:
+ *
+ * - balance status item
+ *   (BTRFS_BALANCE_OBJECTID, BTRFS_TEMPORARY_ITEM_KEY, 0)
  */
-#define BTRFS_DEV_STATS_KEY	249
+#define BTRFS_TEMPORARY_ITEM_KEY	248
+
+/*
+ * Obsolete name, see BTRFS_PERSISTENT_ITEM_KEY
+ */
+#define BTRFS_DEV_STATS_KEY		249
+
+/*
+ * The key type for tree items that are stored persistently and usually exist
+ * for a long period, eg. filesystem lifetime. The item kinds can be status
+ * information, stats or preference values. The item can exist in any tree.
+ *
+ * [subtype, BTRFS_PERSISTENT_ITEM_KEY, data]
+ *
+ * Existing items:
+ *
+ * - device statistics, store IO stats in the device tree, one key for all
+ *   stats
+ *   (BTRFS_DEV_STATS_OBJECTID, BTRFS_DEV_STATS_KEY, 0)
+ */
+#define BTRFS_PERSISTENT_ITEM_KEY	249
 
 /*
  * Persistantly stores the device replace state in the device tree.
@@ -2241,7 +2273,7 @@ struct btrfs_ioctl_defrag_range_args {
 #define BTRFS_MOUNT_ENOSPC_DEBUG	 (1 << 15)
 #define BTRFS_MOUNT_AUTO_DEFRAG		(1 << 16)
 #define BTRFS_MOUNT_INODE_MAP_CACHE	(1 << 17)
-#define BTRFS_MOUNT_RECOVERY		(1 << 18)
+#define BTRFS_MOUNT_USEBACKUPROOT	(1 << 18)
 #define BTRFS_MOUNT_SKIP_BALANCE	(1 << 19)
 #define BTRFS_MOUNT_CHECK_INTEGRITY	(1 << 20)
 #define BTRFS_MOUNT_CHECK_INTEGRITY_INCLUDING_EXTENT_DATA (1 << 21)
@@ -2250,9 +2282,10 @@ struct btrfs_ioctl_defrag_range_args {
 #define BTRFS_MOUNT_FRAGMENT_DATA	(1 << 24)
 #define BTRFS_MOUNT_FRAGMENT_METADATA	(1 << 25)
 #define BTRFS_MOUNT_FREE_SPACE_TREE	(1 << 26)
+#define BTRFS_MOUNT_NOLOGREPLAY		(1 << 27)
 
 #define BTRFS_DEFAULT_COMMIT_INTERVAL	(30)
-#define BTRFS_DEFAULT_MAX_INLINE	(8192)
+#define BTRFS_DEFAULT_MAX_INLINE	(2048)
 
 #define btrfs_clear_opt(o, opt)		((o) &= ~BTRFS_MOUNT_##opt)
 #define btrfs_set_opt(o, opt)		((o) |= BTRFS_MOUNT_##opt)
@@ -2352,6 +2385,9 @@ struct btrfs_map_token {
 	char *kaddr;
 	unsigned long offset;
 };
+
+#define BTRFS_BYTES_TO_BLKS(fs_info, bytes) \
+				((bytes) >> (fs_info)->sb->s_blocksize_bits)
 
 static inline void btrfs_init_map_token (struct btrfs_map_token *token)
 {
@@ -3448,8 +3484,7 @@ u64 btrfs_csum_bytes_to_leaves(struct btrfs_root *root, u64 csum_bytes);
 static inline u64 btrfs_calc_trans_metadata_size(struct btrfs_root *root,
 						 unsigned num_items)
 {
-	return (root->nodesize + root->nodesize * (BTRFS_MAX_LEVEL - 1)) *
-		2 * num_items;
+	return root->nodesize * BTRFS_MAX_LEVEL * 2 * num_items;
 }
 
 /*
@@ -3576,6 +3611,15 @@ enum btrfs_reserve_flush_enum {
 	BTRFS_RESERVE_FLUSH_ALL,
 };
 
+enum btrfs_flush_state {
+	FLUSH_DELAYED_ITEMS_NR	=	1,
+	FLUSH_DELAYED_ITEMS	=	2,
+	FLUSH_DELALLOC		=	3,
+	FLUSH_DELALLOC_WAIT	=	4,
+	ALLOC_CHUNK		=	5,
+	COMMIT_TRANS		=	6,
+};
+
 int btrfs_check_data_free_space(struct inode *inode, u64 start, u64 len);
 int btrfs_alloc_data_chunk_ondemand(struct inode *inode, u64 bytes);
 void btrfs_free_reserved_data_space(struct inode *inode, u64 start, u64 len);
@@ -3613,8 +3657,8 @@ int btrfs_block_rsv_refill(struct btrfs_root *root,
 			   struct btrfs_block_rsv *block_rsv, u64 min_reserved,
 			   enum btrfs_reserve_flush_enum flush);
 int btrfs_block_rsv_migrate(struct btrfs_block_rsv *src_rsv,
-			    struct btrfs_block_rsv *dst_rsv,
-			    u64 num_bytes);
+			    struct btrfs_block_rsv *dst_rsv, u64 num_bytes,
+			    int update_size);
 int btrfs_cond_migrate_bytes(struct btrfs_fs_info *fs_info,
 			     struct btrfs_block_rsv *dest, u64 num_bytes,
 			     int min_factor);
@@ -4027,7 +4071,7 @@ int btrfs_unlink_subvol(struct btrfs_trans_handle *trans,
 			struct btrfs_root *root,
 			struct inode *dir, u64 objectid,
 			const char *name, int name_len);
-int btrfs_truncate_page(struct inode *inode, loff_t from, loff_t len,
+int btrfs_truncate_block(struct inode *inode, loff_t from, loff_t len,
 			int front);
 int btrfs_truncate_inode_items(struct btrfs_trans_handle *trans,
 			       struct btrfs_root *root,
@@ -4089,6 +4133,7 @@ void btrfs_test_inode_set_ops(struct inode *inode);
 
 /* ioctl.c */
 long btrfs_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
+int btrfs_ioctl_get_supported_features(void __user *arg);
 void btrfs_update_iflags(struct inode *inode);
 void btrfs_inherit_iflags(struct inode *inode, struct inode *dir);
 int btrfs_is_empty_uuid(u8 *uuid);
@@ -4151,7 +4196,8 @@ void btrfs_sysfs_remove_mounted(struct btrfs_fs_info *fs_info);
 ssize_t btrfs_listxattr(struct dentry *dentry, char *buffer, size_t size);
 
 /* super.c */
-int btrfs_parse_options(struct btrfs_root *root, char *options);
+int btrfs_parse_options(struct btrfs_root *root, char *options,
+			unsigned long new_flags);
 int btrfs_sync_fs(struct super_block *sb, int wait);
 
 #ifdef CONFIG_PRINTK
@@ -4525,8 +4571,8 @@ struct reada_control *btrfs_reada_add(struct btrfs_root *root,
 			      struct btrfs_key *start, struct btrfs_key *end);
 int btrfs_reada_wait(void *handle);
 void btrfs_reada_detach(void *handle);
-int btree_readahead_hook(struct btrfs_root *root, struct extent_buffer *eb,
-			 u64 start, int err);
+int btree_readahead_hook(struct btrfs_fs_info *fs_info,
+			 struct extent_buffer *eb, u64 start, int err);
 
 static inline int is_fstree(u64 rootid)
 {
