@@ -23,6 +23,8 @@ next/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/versatile-cleanup-1
 	rockchip/soc32
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.7-rockchip-soc32-1
+	davinci/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v4.7/cleanup
 
 next/soc
 	at91/soc
@@ -141,3 +143,14 @@ next/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-simple-pm-bus-for-v4.7
 	rockchip/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.7-rockchip-drivers-1
+	versatile/flash
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/versatile-flash-for-arm-soc
+	tegra/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-4.7-soc
+	patch
+		drivers: firmware: psci: drop duplicate const from psci_of_match
+		drivers: firmware: psci: make two helper functions static
+	broadcom/drivers
+		http://github.com/Broadcom/stblinux tags/arm-soc/for-4.7/drivers
+	qcom/soc-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/agross/linux tags/qcom-soc-for-4.7-2
