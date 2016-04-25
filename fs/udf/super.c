@@ -279,17 +279,12 @@ static void udf_sb_free_bitmap(struct udf_bitmap *bitmap)
 {
 	int i;
 	int nr_groups = bitmap->s_nr_groups;
-	int size = sizeof(struct udf_bitmap) + (sizeof(struct buffer_head *) *
-						nr_groups);
 
 	for (i = 0; i < nr_groups; i++)
 		if (bitmap->s_block_bitmap[i])
 			brelse(bitmap->s_block_bitmap[i]);
 
-	if (size <= PAGE_SIZE)
-		kfree(bitmap);
-	else
-		vfree(bitmap);
+	kvfree(bitmap);
 }
 
 static void udf_free_partition(struct udf_part_map *map)
@@ -892,18 +887,14 @@ static int udf_find_fileset(struct super_block *sb,
 static int udf_load_pvoldesc(struct super_block *sb, sector_t block)
 {
 	struct primaryVolDesc *pvoldesc;
-	struct ustr *instr, *outstr;
+	uint8_t *outstr;
 	struct buffer_head *bh;
 	uint16_t ident;
 	int ret = -ENOMEM;
 
-	instr = kmalloc(sizeof(struct ustr), GFP_NOFS);
-	if (!instr)
-		return -ENOMEM;
-
-	outstr = kmalloc(sizeof(struct ustr), GFP_NOFS);
+	outstr = kmalloc(128, GFP_NOFS);
 	if (!outstr)
-		goto out1;
+		return -ENOMEM;
 
 	bh = udf_read_tagged(sb, block, block, &ident);
 	if (!bh) {
@@ -928,31 +919,25 @@ static int udf_load_pvoldesc(struct super_block *sb, sector_t block)
 #endif
 	}
 
-	if (!udf_build_ustr(instr, pvoldesc->volIdent, 32)) {
-		ret = udf_CS0toUTF8(outstr, instr);
-		if (ret < 0)
-			goto out_bh;
+	ret = udf_CS0toUTF8(outstr, 31, pvoldesc->volIdent, 32);
+	if (ret < 0)
+		goto out_bh;
 
-		strncpy(UDF_SB(sb)->s_volume_ident, outstr->u_name,
-			outstr->u_len > 31 ? 31 : outstr->u_len);
-		udf_debug("volIdent[] = '%s'\n", UDF_SB(sb)->s_volume_ident);
-	}
+	strncpy(UDF_SB(sb)->s_volume_ident, outstr, ret);
+	udf_debug("volIdent[] = '%s'\n", UDF_SB(sb)->s_volume_ident);
 
-	if (!udf_build_ustr(instr, pvoldesc->volSetIdent, 128)) {
-		ret = udf_CS0toUTF8(outstr, instr);
-		if (ret < 0)
-			goto out_bh;
+	ret = udf_CS0toUTF8(outstr, 127, pvoldesc->volSetIdent, 128);
+	if (ret < 0)
+		goto out_bh;
 
-		udf_debug("volSetIdent[] = '%s'\n", outstr->u_name);
-	}
+	outstr[ret] = 0;
+	udf_debug("volSetIdent[] = '%s'\n", outstr);
 
 	ret = 0;
 out_bh:
 	brelse(bh);
 out2:
 	kfree(outstr);
-out1:
-	kfree(instr);
 	return ret;
 }
 
@@ -2363,7 +2348,7 @@ static int udf_statfs(struct dentry *dentry, struct kstatfs *buf)
 					  le32_to_cpu(lvidiu->numDirs)) : 0)
 			+ buf->f_bfree;
 	buf->f_ffree = buf->f_bfree;
-	buf->f_namelen = UDF_NAME_LEN - 2;
+	buf->f_namelen = UDF_NAME_LEN;
 	buf->f_fsid.val[0] = (u32)id;
 	buf->f_fsid.val[1] = (u32)(id >> 32);
 

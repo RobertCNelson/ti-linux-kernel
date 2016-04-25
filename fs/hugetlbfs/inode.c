@@ -141,7 +141,7 @@ static int hugetlbfs_file_mmap(struct file *file, struct vm_area_struct *vma)
 
 	vma_len = (loff_t)(vma->vm_end - vma->vm_start);
 
-	mutex_lock(&inode->i_mutex);
+	inode_lock(inode);
 	file_accessed(file);
 
 	ret = -ENOMEM;
@@ -157,7 +157,7 @@ static int hugetlbfs_file_mmap(struct file *file, struct vm_area_struct *vma)
 	if (vma->vm_flags & VM_WRITE && inode->i_size < len)
 		inode->i_size = len;
 out:
-	mutex_unlock(&inode->i_mutex);
+	inode_unlock(inode);
 
 	return ret;
 }
@@ -213,12 +213,12 @@ hugetlbfs_read_actor(struct page *page, unsigned long offset,
 	int i, chunksize;
 
 	/* Find which 4k chunk and offset with in that chunk */
-	i = offset >> PAGE_CACHE_SHIFT;
-	offset = offset & ~PAGE_CACHE_MASK;
+	i = offset >> PAGE_SHIFT;
+	offset = offset & ~PAGE_MASK;
 
 	while (size) {
 		size_t n;
-		chunksize = PAGE_CACHE_SIZE;
+		chunksize = PAGE_SIZE;
 		if (offset)
 			chunksize -= offset;
 		if (chunksize > size)
@@ -237,7 +237,7 @@ hugetlbfs_read_actor(struct page *page, unsigned long offset,
 /*
  * Support for read() - Find the page attached to f_mapping and copy out the
  * data. Its *very* similar to do_generic_mapping_read(), we can't use that
- * since it has PAGE_CACHE_SIZE assumptions.
+ * since it has PAGE_SIZE assumptions.
  */
 static ssize_t hugetlbfs_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
@@ -285,7 +285,7 @@ static ssize_t hugetlbfs_read_iter(struct kiocb *iocb, struct iov_iter *to)
 			 * We have the page, copy it to user space buffer.
 			 */
 			copied = hugetlbfs_read_actor(page, offset, to, nr);
-			page_cache_release(page);
+			put_page(page);
 		}
 		offset += copied;
 		retval += copied;
@@ -530,7 +530,7 @@ static long hugetlbfs_punch_hole(struct inode *inode, loff_t offset, loff_t len)
 	if (hole_end > hole_start) {
 		struct address_space *mapping = inode->i_mapping;
 
-		mutex_lock(&inode->i_mutex);
+		inode_lock(inode);
 		i_mmap_lock_write(mapping);
 		if (!RB_EMPTY_ROOT(&mapping->i_mmap))
 			hugetlb_vmdelete_list(&mapping->i_mmap,
@@ -538,7 +538,7 @@ static long hugetlbfs_punch_hole(struct inode *inode, loff_t offset, loff_t len)
 						hole_end  >> PAGE_SHIFT);
 		i_mmap_unlock_write(mapping);
 		remove_inode_hugepages(inode, hole_start, hole_end);
-		mutex_unlock(&inode->i_mutex);
+		inode_unlock(inode);
 	}
 
 	return 0;
@@ -572,7 +572,7 @@ static long hugetlbfs_fallocate(struct file *file, int mode, loff_t offset,
 	start = offset >> hpage_shift;
 	end = (offset + len + hpage_size - 1) >> hpage_shift;
 
-	mutex_lock(&inode->i_mutex);
+	inode_lock(inode);
 
 	/* We need to check rlimit even when FALLOC_FL_KEEP_SIZE */
 	error = inode_newsize_ok(inode, offset + len);
@@ -659,7 +659,7 @@ static long hugetlbfs_fallocate(struct file *file, int mode, loff_t offset,
 		i_size_write(inode, offset + len);
 	inode->i_ctime = CURRENT_TIME;
 out:
-	mutex_unlock(&inode->i_mutex);
+	inode_unlock(inode);
 	return error;
 }
 

@@ -29,7 +29,6 @@
 #include <linux/dcache.h>
 #include <linux/namei.h>
 #include <linux/mount.h>
-#include <linux/crypto.h>
 #include <linux/fs_stack.h>
 #include <linux/slab.h>
 #include <linux/xattr.h>
@@ -41,13 +40,13 @@ static struct dentry *lock_parent(struct dentry *dentry)
 	struct dentry *dir;
 
 	dir = dget_parent(dentry);
-	mutex_lock_nested(&(d_inode(dir)->i_mutex), I_MUTEX_PARENT);
+	inode_lock_nested(d_inode(dir), I_MUTEX_PARENT);
 	return dir;
 }
 
 static void unlock_dir(struct dentry *dir)
 {
-	mutex_unlock(&d_inode(dir)->i_mutex);
+	inode_unlock(d_inode(dir));
 	dput(dir);
 }
 
@@ -397,11 +396,9 @@ static struct dentry *ecryptfs_lookup(struct inode *ecryptfs_dir_inode,
 	int rc = 0;
 
 	lower_dir_dentry = ecryptfs_dentry_to_lower(ecryptfs_dentry->d_parent);
-	mutex_lock(&d_inode(lower_dir_dentry)->i_mutex);
-	lower_dentry = lookup_one_len(ecryptfs_dentry->d_name.name,
+	lower_dentry = lookup_one_len_unlocked(ecryptfs_dentry->d_name.name,
 				      lower_dir_dentry,
 				      ecryptfs_dentry->d_name.len);
-	mutex_unlock(&d_inode(lower_dir_dentry)->i_mutex);
 	if (IS_ERR(lower_dentry)) {
 		rc = PTR_ERR(lower_dentry);
 		ecryptfs_printk(KERN_DEBUG, "%s: lookup_one_len() returned "
@@ -419,18 +416,16 @@ static struct dentry *ecryptfs_lookup(struct inode *ecryptfs_dir_inode,
 	dput(lower_dentry);
 	rc = ecryptfs_encrypt_and_encode_filename(
 		&encrypted_and_encoded_name, &encrypted_and_encoded_name_size,
-		NULL, mount_crypt_stat, ecryptfs_dentry->d_name.name,
+		mount_crypt_stat, ecryptfs_dentry->d_name.name,
 		ecryptfs_dentry->d_name.len);
 	if (rc) {
 		printk(KERN_ERR "%s: Error attempting to encrypt and encode "
 		       "filename; rc = [%d]\n", __func__, rc);
 		goto out;
 	}
-	mutex_lock(&d_inode(lower_dir_dentry)->i_mutex);
-	lower_dentry = lookup_one_len(encrypted_and_encoded_name,
+	lower_dentry = lookup_one_len_unlocked(encrypted_and_encoded_name,
 				      lower_dir_dentry,
 				      encrypted_and_encoded_name_size);
-	mutex_unlock(&d_inode(lower_dir_dentry)->i_mutex);
 	if (IS_ERR(lower_dentry)) {
 		rc = PTR_ERR(lower_dentry);
 		ecryptfs_printk(KERN_DEBUG, "%s: lookup_one_len() returned "
@@ -502,7 +497,6 @@ static int ecryptfs_symlink(struct inode *dir, struct dentry *dentry,
 		dir->i_sb)->mount_crypt_stat;
 	rc = ecryptfs_encrypt_and_encode_filename(&encoded_symname,
 						  &encoded_symlen,
-						  NULL,
 						  mount_crypt_stat, symname,
 						  strlen(symname));
 	if (rc)
@@ -769,10 +763,10 @@ static int truncate_upper(struct dentry *dentry, struct iattr *ia,
 	} else { /* ia->ia_size < i_size_read(inode) */
 		/* We're chopping off all the pages down to the page
 		 * in which ia->ia_size is located. Fill in the end of
-		 * that page from (ia->ia_size & ~PAGE_CACHE_MASK) to
-		 * PAGE_CACHE_SIZE with zeros. */
-		size_t num_zeros = (PAGE_CACHE_SIZE
-				    - (ia->ia_size & ~PAGE_CACHE_MASK));
+		 * that page from (ia->ia_size & ~PAGE_MASK) to
+		 * PAGE_SIZE with zeros. */
+		size_t num_zeros = (PAGE_SIZE
+				    - (ia->ia_size & ~PAGE_MASK));
 
 		if (!(crypt_stat->flags & ECRYPTFS_ENCRYPTED)) {
 			truncate_setsize(inode, ia->ia_size);
@@ -869,9 +863,9 @@ int ecryptfs_truncate(struct dentry *dentry, loff_t new_length)
 	if (!rc && lower_ia.ia_valid & ATTR_SIZE) {
 		struct dentry *lower_dentry = ecryptfs_dentry_to_lower(dentry);
 
-		mutex_lock(&d_inode(lower_dentry)->i_mutex);
+		inode_lock(d_inode(lower_dentry));
 		rc = notify_change(lower_dentry, &lower_ia, NULL);
-		mutex_unlock(&d_inode(lower_dentry)->i_mutex);
+		inode_unlock(d_inode(lower_dentry));
 	}
 	return rc;
 }
@@ -970,9 +964,9 @@ static int ecryptfs_setattr(struct dentry *dentry, struct iattr *ia)
 	if (lower_ia.ia_valid & (ATTR_KILL_SUID | ATTR_KILL_SGID))
 		lower_ia.ia_valid &= ~ATTR_MODE;
 
-	mutex_lock(&d_inode(lower_dentry)->i_mutex);
+	inode_lock(d_inode(lower_dentry));
 	rc = notify_change(lower_dentry, &lower_ia, NULL);
-	mutex_unlock(&d_inode(lower_dentry)->i_mutex);
+	inode_unlock(d_inode(lower_dentry));
 out:
 	fsstack_copy_attr_all(inode, lower_inode);
 	return rc;
@@ -1048,10 +1042,10 @@ ecryptfs_getxattr_lower(struct dentry *lower_dentry, const char *name,
 		rc = -EOPNOTSUPP;
 		goto out;
 	}
-	mutex_lock(&d_inode(lower_dentry)->i_mutex);
+	inode_lock(d_inode(lower_dentry));
 	rc = d_inode(lower_dentry)->i_op->getxattr(lower_dentry, name, value,
 						   size);
-	mutex_unlock(&d_inode(lower_dentry)->i_mutex);
+	inode_unlock(d_inode(lower_dentry));
 out:
 	return rc;
 }
@@ -1075,9 +1069,9 @@ ecryptfs_listxattr(struct dentry *dentry, char *list, size_t size)
 		rc = -EOPNOTSUPP;
 		goto out;
 	}
-	mutex_lock(&d_inode(lower_dentry)->i_mutex);
+	inode_lock(d_inode(lower_dentry));
 	rc = d_inode(lower_dentry)->i_op->listxattr(lower_dentry, list, size);
-	mutex_unlock(&d_inode(lower_dentry)->i_mutex);
+	inode_unlock(d_inode(lower_dentry));
 out:
 	return rc;
 }
@@ -1092,9 +1086,9 @@ static int ecryptfs_removexattr(struct dentry *dentry, const char *name)
 		rc = -EOPNOTSUPP;
 		goto out;
 	}
-	mutex_lock(&d_inode(lower_dentry)->i_mutex);
+	inode_lock(d_inode(lower_dentry));
 	rc = d_inode(lower_dentry)->i_op->removexattr(lower_dentry, name);
-	mutex_unlock(&d_inode(lower_dentry)->i_mutex);
+	inode_unlock(d_inode(lower_dentry));
 out:
 	return rc;
 }

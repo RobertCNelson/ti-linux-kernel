@@ -701,7 +701,7 @@ static int gfs2_write_buf_to_page(struct gfs2_inode *ip, unsigned long index,
 	unsigned to_write = bytes, pg_off = off;
 	int done = 0;
 
-	blk = index << (PAGE_CACHE_SHIFT - sdp->sd_sb.sb_bsize_shift);
+	blk = index << (PAGE_SHIFT - sdp->sd_sb.sb_bsize_shift);
 	boff = off % bsize;
 
 	page = find_or_create_page(mapping, index, GFP_NOFS);
@@ -753,13 +753,13 @@ static int gfs2_write_buf_to_page(struct gfs2_inode *ip, unsigned long index,
 	flush_dcache_page(page);
 	kunmap_atomic(kaddr);
 	unlock_page(page);
-	page_cache_release(page);
+	put_page(page);
 
 	return 0;
 
 unlock_out:
 	unlock_page(page);
-	page_cache_release(page);
+	put_page(page);
 	return -EIO;
 }
 
@@ -773,13 +773,13 @@ static int gfs2_write_disk_quota(struct gfs2_inode *ip, struct gfs2_quota *qp,
 
 	nbytes = sizeof(struct gfs2_quota);
 
-	pg_beg = loc >> PAGE_CACHE_SHIFT;
-	pg_off = loc % PAGE_CACHE_SIZE;
+	pg_beg = loc >> PAGE_SHIFT;
+	pg_off = loc % PAGE_SIZE;
 
 	/* If the quota straddles a page boundary, split the write in two */
-	if ((pg_off + nbytes) > PAGE_CACHE_SIZE) {
+	if ((pg_off + nbytes) > PAGE_SIZE) {
 		pg_oflow = 1;
-		overflow = (pg_off + nbytes) - PAGE_CACHE_SIZE;
+		overflow = (pg_off + nbytes) - PAGE_SIZE;
 	}
 
 	ptr = qp;
@@ -888,7 +888,7 @@ static int do_sync(unsigned int num_qd, struct gfs2_quota_data **qda)
 		return -ENOMEM;
 
 	sort(qda, num_qd, sizeof(struct gfs2_quota_data *), sort_qd, NULL);
-	mutex_lock(&ip->i_inode.i_mutex);
+	inode_lock(&ip->i_inode);
 	for (qx = 0; qx < num_qd; qx++) {
 		error = gfs2_glock_nq_init(qda[qx]->qd_gl, LM_ST_EXCLUSIVE,
 					   GL_NOCACHE, &ghs[qx]);
@@ -953,7 +953,7 @@ out_alloc:
 out:
 	while (qx--)
 		gfs2_glock_dq_uninit(&ghs[qx]);
-	mutex_unlock(&ip->i_inode.i_mutex);
+	inode_unlock(&ip->i_inode);
 	kfree(ghs);
 	gfs2_log_flush(ip->i_gl->gl_name.ln_sbd, ip->i_gl, NORMAL_FLUSH);
 	return error;
@@ -1674,7 +1674,7 @@ static int gfs2_set_dqblk(struct super_block *sb, struct kqid qid,
 	if (error)
 		goto out_put;
 
-	mutex_lock(&ip->i_inode.i_mutex);
+	inode_lock(&ip->i_inode);
 	error = gfs2_glock_nq_init(qd->qd_gl, LM_ST_EXCLUSIVE, 0, &q_gh);
 	if (error)
 		goto out_unlockput;
@@ -1739,7 +1739,7 @@ out_i:
 out_q:
 	gfs2_glock_dq_uninit(&q_gh);
 out_unlockput:
-	mutex_unlock(&ip->i_inode.i_mutex);
+	inode_unlock(&ip->i_inode);
 out_put:
 	qd_put(qd);
 	return error;

@@ -98,7 +98,7 @@ void __init paging_init(void)
 	__ctl_load(S390_lowcore.kernel_asce, 1, 1);
 	__ctl_load(S390_lowcore.kernel_asce, 7, 7);
 	__ctl_load(S390_lowcore.kernel_asce, 13, 13);
-	arch_local_irq_restore(4UL << (BITS_PER_LONG - 8));
+	__arch_local_irq_stosm(0x04);
 
 	sparse_memory_present_with_active_regions(MAX_NUMNODES);
 	sparse_init();
@@ -106,6 +106,13 @@ void __init paging_init(void)
 	max_zone_pfns[ZONE_DMA] = PFN_DOWN(MAX_DMA_ADDRESS);
 	max_zone_pfns[ZONE_NORMAL] = max_low_pfn;
 	free_area_init_nodes(max_zone_pfns);
+}
+
+void mark_rodata_ro(void)
+{
+	/* Text and rodata are already protected. Nothing to do here. */
+	pr_info("Write protecting the kernel read-only data: %luk\n",
+		((unsigned long)&_eshared - (unsigned long)&_stext) >> 10);
 }
 
 void __init mem_init(void)
@@ -126,9 +133,6 @@ void __init mem_init(void)
 	setup_zero_pages();	/* Setup zeroed pages. */
 
 	mem_init_print_info(NULL);
-	printk("Write protected kernel read-only data: %#lx - %#lx\n",
-	       (unsigned long)&_stext,
-	       PFN_ALIGN((unsigned long)&_eshared) - 1);
 }
 
 void free_initmem(void)

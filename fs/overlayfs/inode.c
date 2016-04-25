@@ -63,9 +63,11 @@ int ovl_setattr(struct dentry *dentry, struct iattr *attr)
 	if (!err) {
 		upperdentry = ovl_dentry_upper(dentry);
 
-		mutex_lock(&upperdentry->d_inode->i_mutex);
+		inode_lock(upperdentry->d_inode);
 		err = notify_change(upperdentry, attr, NULL);
-		mutex_unlock(&upperdentry->d_inode->i_mutex);
+		if (!err)
+			ovl_copyattr(upperdentry->d_inode, dentry->d_inode);
+		inode_unlock(upperdentry->d_inode);
 	}
 	ovl_drop_write(dentry);
 out:

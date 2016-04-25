@@ -493,9 +493,9 @@ __be32 nfsd4_set_nfs4_label(struct svc_rqst *rqstp, struct svc_fh *fhp,
 
 	dentry = fhp->fh_dentry;
 
-	mutex_lock(&d_inode(dentry)->i_mutex);
+	inode_lock(d_inode(dentry));
 	host_error = security_inode_setsecctx(dentry, label->data, label->len);
-	mutex_unlock(&d_inode(dentry)->i_mutex);
+	inode_unlock(d_inode(dentry));
 	return nfserrno(host_error);
 }
 #else
@@ -870,7 +870,7 @@ __be32 nfsd_readv(struct file *file, loff_t offset, struct kvec *vec, int vlen,
 
 	oldfs = get_fs();
 	set_fs(KERNEL_DS);
-	host_err = vfs_readv(file, (struct iovec __user *)vec, vlen, &offset);
+	host_err = vfs_readv(file, (struct iovec __user *)vec, vlen, &offset, 0);
 	set_fs(oldfs);
 	return nfsd_finish_read(file, count, host_err);
 }
@@ -957,7 +957,7 @@ nfsd_vfs_write(struct svc_rqst *rqstp, struct svc_fh *fhp, struct file *file,
 
 	/* Write the data. */
 	oldfs = get_fs(); set_fs(KERNEL_DS);
-	host_err = vfs_writev(file, (struct iovec __user *)vec, vlen, &pos);
+	host_err = vfs_writev(file, (struct iovec __user *)vec, vlen, &pos, 0);
 	set_fs(oldfs);
 	if (host_err < 0)
 		goto out_nfserr;

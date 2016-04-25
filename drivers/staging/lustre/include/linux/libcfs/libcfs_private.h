@@ -88,7 +88,7 @@ do {								    \
 } while (0)
 
 #ifndef LIBCFS_VMALLOC_SIZE
-#define LIBCFS_VMALLOC_SIZE	(2 << PAGE_CACHE_SHIFT) /* 2 pages */
+#define LIBCFS_VMALLOC_SIZE	(2 << PAGE_SHIFT) /* 2 pages */
 #endif
 
 #define LIBCFS_ALLOC_PRE(size, mask)					    \
@@ -151,16 +151,12 @@ do {									    \
 
 #define LIBCFS_FREE(ptr, size)					  \
 do {								    \
-	int s = (size);						 \
 	if (unlikely((ptr) == NULL)) {				  \
 		CERROR("LIBCFS: free NULL '" #ptr "' (%d bytes) at "    \
-		       "%s:%d\n", s, __FILE__, __LINE__);	       \
+		       "%s:%d\n", (int)(size), __FILE__, __LINE__);	\
 		break;						  \
 	}							       \
-	if (unlikely(s > LIBCFS_VMALLOC_SIZE))			  \
-		vfree(ptr);				    \
-	else							    \
-		kfree(ptr);					  \
+	kvfree(ptr);					  \
 } while (0)
 
 /******************************************************************************/
@@ -390,11 +386,6 @@ int cfs_percpt_atomic_summary(atomic_t **refs);
  * Light-weight trace
  * Support for temporary event tracing with minimal Heisenberg effect.
  * -------------------------------------------------------------------- */
-
-struct libcfs_device_userstate {
-	int	   ldu_memhog_pages;
-	struct page   *ldu_memhog_root_page;
-};
 
 #define MKSTR(ptr) ((ptr)) ? (ptr) : ""
 
