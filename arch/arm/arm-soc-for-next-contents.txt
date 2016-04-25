@@ -13,6 +13,8 @@ fixes
 		arm64: dts: uniphier: fix I2C nodes of PH1-LD20
 	<no branch> (10c0f0e92f019ab8d0c17da3696e35b0eef4ec16)
 		git://git.kernel.org/pub/scm/linux/kernel/git/agross/linux tags/qcom-fixes-for-4.6-rc2
+	<no branch> (5d7e23a79444385d03717dc19cc58dd2d5883052)
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.6/dt-ti81xx-signed
 
 next/fixes-non-critical
 
@@ -35,6 +37,8 @@ next/arm64
 		arm64: add Kconfig entry for LG1K SoC family
 		arm64: defconfig: enable ARCH_LG1K
 		MAINTAINERS: add Chanho Min as ARM/LG1K maintainer
+	samsung/defconfig-64
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-defconfig64-4.7
 
 next/dt
 	at91/dt
@@ -96,6 +100,16 @@ next/defconfig
 		ARM: multi_v7_defconfig: Enable new Rockchip display-controller drivers
 	sti/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/mcoquelin/sti tags/sti-defconfig-for-v4.7-1
+	samsung/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-defconfig-4.7
+	patch
+		ARM: multi_v7_defconfig: enable Denali NAND controller
+	mvebu/defconfig
+		git://git.infradead.org/linux-mvebu tags/mvebu-defconfig-4.7-1
+	broadcom/defconfig
+		http://github.com/Broadcom/stblinux tags/arm-soc/for-4.7/defconfig
+	keystone/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone_config_for_4.7
 
 next/drivers
 	qcom/soc
