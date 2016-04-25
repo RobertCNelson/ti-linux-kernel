@@ -135,13 +135,19 @@ static struct phy *phy_find(struct device *dev, const char *con_id)
 static struct phy_provider *of_phy_provider_lookup(struct device_node *node)
 {
 	struct phy_provider *phy_provider;
+	struct device_node *children;
 	struct device_node *child;
 
 	list_for_each_entry(phy_provider, &phy_provider_list, list) {
 		if (phy_provider->dev->of_node == node)
 			return phy_provider;
 
-		for_each_child_of_node(phy_provider->dev->of_node, child)
+		if (!phy_provider->children)
+			children = phy_provider->dev->of_node;
+		else
+			children = phy_provider->children;
+
+		for_each_child_of_node(children, child)
 			if (child == node)
 				return phy_provider;
 	}
@@ -811,16 +817,22 @@ EXPORT_SYMBOL_GPL(devm_phy_destroy);
 /**
  * __of_phy_provider_register() - create/register phy provider with the framework
  * @dev: struct device of the phy provider
+ * @children: device node containing children (if different from dev->of_node)
  * @owner: the module owner containing of_xlate
  * @of_xlate: function pointer to obtain phy instance from phy provider
  *
  * Creates struct phy_provider from dev and of_xlate function pointer.
  * This is used in the case of dt boot for finding the phy instance from
  * phy provider.
+ *
+ * If the PHY provider doesn't nest children directly but uses a separate
+ * child node to contain the individual children, the @children parameter
+ * can be used to override the default (i.e. dev->of_node).
  */
 struct phy_provider *__of_phy_provider_register(struct device *dev,
-	struct module *owner, struct phy * (*of_xlate)(struct device *dev,
-	struct of_phandle_args *args))
+	struct device_node *children, struct module *owner,
+	struct phy * (*of_xlate)(struct device *dev,
+				 struct of_phandle_args *args))
 {
 	struct phy_provider *phy_provider;
 
@@ -829,6 +841,7 @@ struct phy_provider *__of_phy_provider_register(struct device *dev,
 		return ERR_PTR(-ENOMEM);
 
 	phy_provider->dev = dev;
+	phy_provider->children = children;
 	phy_provider->owner = owner;
 	phy_provider->of_xlate = of_xlate;
 
@@ -854,8 +867,9 @@ EXPORT_SYMBOL_GPL(__of_phy_provider_register);
  * on the devres data, then, devres data is freed.
  */
 struct phy_provider *__devm_of_phy_provider_register(struct device *dev,
-	struct module *owner, struct phy * (*of_xlate)(struct device *dev,
-	struct of_phandle_args *args))
+	struct device_node *children, struct module *owner,
+	struct phy * (*of_xlate)(struct device *dev,
+				 struct of_phandle_args *args))
 {
 	struct phy_provider **ptr, *phy_provider;
 
@@ -863,7 +877,8 @@ struct phy_provider *__devm_of_phy_provider_register(struct device *dev,
 	if (!ptr)
 		return ERR_PTR(-ENOMEM);
 
-	phy_provider = __of_phy_provider_register(dev, owner, of_xlate);
+	phy_provider = __of_phy_provider_register(dev, children, owner,
+						  of_xlate);
 	if (!IS_ERR(phy_provider)) {
 		*ptr = phy_provider;
 		devres_add(dev, ptr);
