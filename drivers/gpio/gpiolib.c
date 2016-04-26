@@ -1547,8 +1547,8 @@ EXPORT_SYMBOL_GPL(gpiod_direction_input);
 
 static int _gpiod_direction_output_raw(struct gpio_desc *desc, int value)
 {
-	struct gpio_chip	*chip;
-	int			status = -EINVAL;
+	struct gpio_chip *gc = desc->gdev->chip;
+	int ret;
 
 	/* GPIOs used for IRQs shall not be set as output */
 	if (test_bit(FLAG_USED_AS_IRQ, &desc->flags)) {
@@ -1558,28 +1558,50 @@ static int _gpiod_direction_output_raw(struct gpio_desc *desc, int value)
 		return -EIO;
 	}
 
-	/* Open drain pin should not be driven to 1 */
-	if (value && test_bit(FLAG_OPEN_DRAIN,  &desc->flags))
-		return gpiod_direction_input(desc);
+	if (test_bit(FLAG_OPEN_DRAIN, &desc->flags)) {
+		/* First see if we can enable open drain in hardware */
+		if (gc->set_single_ended) {
+			ret = gc->set_single_ended(gc, gpio_chip_hwgpio(desc),
+						   LINE_MODE_OPEN_DRAIN);
+			if (!ret)
+				goto set_output_value;
+		}
+		/* Emulate open drain by not actively driving the line high */
+		if (value)
+			return gpiod_direction_input(desc);
+	}
+	else if (test_bit(FLAG_OPEN_SOURCE, &desc->flags)) {
+		if (gc->set_single_ended) {
+			ret = gc->set_single_ended(gc, gpio_chip_hwgpio(desc),
+						   LINE_MODE_OPEN_SOURCE);
+			if (!ret)
+				goto set_output_value;
+		}
+		/* Emulate open source by not actively driving the line low */
+		if (!value)
+			return gpiod_direction_input(desc);
+	} else {
+		/* Make sure to disable open drain/source hardware, if any */
+		if (gc->set_single_ended)
+			gc->set_single_ended(gc,
+					     gpio_chip_hwgpio(desc),
+					     LINE_MODE_PUSH_PULL);
+	}
 
-	/* Open source pin should not be driven to 0 */
-	if (!value && test_bit(FLAG_OPEN_SOURCE,  &desc->flags))
-		return gpiod_direction_input(desc);
-
-	chip = desc->gdev->chip;
-	if (!chip->set || !chip->direction_output) {
+set_output_value:
+	if (!gc->set || !gc->direction_output) {
 		gpiod_warn(desc,
 		       "%s: missing set() or direction_output() operations\n",
 		       __func__);
 		return -EIO;
 	}
 
-	status = chip->direction_output(chip, gpio_chip_hwgpio(desc), value);
-	if (status == 0)
+	ret = gc->direction_output(gc, gpio_chip_hwgpio(desc), value);
+	if (!ret)
 		set_bit(FLAG_IS_OUT, &desc->flags);
 	trace_gpio_value(desc_to_gpio(desc), 0, value);
-	trace_gpio_direction(desc_to_gpio(desc), 0, status);
-	return status;
+	trace_gpio_direction(desc_to_gpio(desc), 0, ret);
+	return ret;
 }
 
 /**
@@ -2726,15 +2748,16 @@ int gpiod_hog(struct gpio_desc *desc, const char *name,
 
 	local_desc = gpiochip_request_own_desc(chip, hwnum, name);
 	if (IS_ERR(local_desc)) {
-		pr_err("requesting hog GPIO %s (chip %s, offset %d) failed\n",
-		       name, chip->label, hwnum);
-		return PTR_ERR(local_desc);
+		status = PTR_ERR(local_desc);
+		pr_err("requesting hog GPIO %s (chip %s, offset %d) failed, %d\n",
+		       name, chip->label, hwnum, status);
+		return status;
 	}
 
 	status = gpiod_configure_flags(desc, name, dflags);
 	if (status < 0) {
-		pr_err("setup of hog GPIO %s (chip %s, offset %d) failed\n",
-		       name, chip->label, hwnum);
+		pr_err("setup of hog GPIO %s (chip %s, offset %d) failed, %d\n",
+		       name, chip->label, hwnum, status);
 		gpiochip_free_own_desc(desc);
 		return status;
 	}
