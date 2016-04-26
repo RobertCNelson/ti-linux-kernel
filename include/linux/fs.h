@@ -484,9 +484,6 @@ struct block_device {
 	int			bd_fsfreeze_count;
 	/* Mutex for freeze */
 	struct mutex		bd_fsfreeze_mutex;
-#ifdef CONFIG_FS_DAX
-	int			bd_map_count;
-#endif
 };
 
 /*
@@ -2579,7 +2576,22 @@ static inline void i_readcount_inc(struct inode *inode)
 #endif
 extern int do_pipe_flags(int *, int);
 
+enum kernel_read_file_id {
+	READING_FIRMWARE = 1,
+	READING_MODULE,
+	READING_KEXEC_IMAGE,
+	READING_KEXEC_INITRAMFS,
+	READING_POLICY,
+	READING_MAX_ID
+};
+
 extern int kernel_read(struct file *, loff_t, char *, unsigned long);
+extern int kernel_read_file(struct file *, void **, loff_t *, loff_t,
+			    enum kernel_read_file_id);
+extern int kernel_read_file_from_path(char *, void **, loff_t *, loff_t,
+				      enum kernel_read_file_id);
+extern int kernel_read_file_from_fd(int, void **, loff_t *, loff_t,
+				    enum kernel_read_file_id);
 extern ssize_t kernel_write(struct file *, const char *, size_t, loff_t);
 extern ssize_t __kernel_write(struct file *, const char *, size_t, loff_t *);
 extern struct file * open_exec(const char *);
@@ -2907,7 +2919,7 @@ extern void replace_mount_options(struct super_block *sb, char *options);
 
 static inline bool io_is_direct(struct file *filp)
 {
-	return (filp->f_flags & O_DIRECT) || IS_DAX(file_inode(filp));
+	return (filp->f_flags & O_DIRECT) || IS_DAX(filp->f_mapping->host);
 }
 
 static inline int iocb_flags(struct file *file)

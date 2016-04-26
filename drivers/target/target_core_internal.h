@@ -22,7 +22,6 @@ struct target_fabric_configfs {
 	struct list_head	tf_list;
 	struct config_group	tf_group;
 	struct config_group	tf_disc_group;
-	struct config_group	*tf_default_groups[2];
 	const struct target_core_fabric_ops *tf_ops;
 
 	struct config_item_type tf_discovery_cit;
@@ -141,7 +140,6 @@ void	transport_dump_vpd_proto_id(struct t10_vpd *, unsigned char *, int);
 int	transport_dump_vpd_assoc(struct t10_vpd *, unsigned char *, int);
 int	transport_dump_vpd_ident_type(struct t10_vpd *, unsigned char *, int);
 int	transport_dump_vpd_ident(struct t10_vpd *, unsigned char *, int);
-bool	target_stop_cmd(struct se_cmd *cmd, unsigned long *flags);
 void	transport_clear_lun_ref(struct se_lun *);
 void	transport_send_task_abort(struct se_cmd *);
 sense_reason_t	target_cmd_size_check(struct se_cmd *cmd, unsigned int size);

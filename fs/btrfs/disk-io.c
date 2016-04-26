@@ -182,6 +182,7 @@ static struct btrfs_lockdep_keyset {
 	{ .id = BTRFS_TREE_RELOC_OBJECTID,	.name_stem = "treloc"	},
 	{ .id = BTRFS_DATA_RELOC_TREE_OBJECTID,	.name_stem = "dreloc"	},
 	{ .id = BTRFS_UUID_TREE_OBJECTID,	.name_stem = "uuid"	},
+	{ .id = BTRFS_FREE_SPACE_TREE_OBJECTID,	.name_stem = "free-space" },
 	{ .id = 0,				.name_stem = "tree"	},
 };
 
@@ -930,7 +931,7 @@ static int check_async_write(struct inode *inode, unsigned long bio_flags)
 	if (bio_flags & EXTENT_BIO_TREE_LOG)
 		return 0;
 #ifdef CONFIG_X86
-	if (static_cpu_has_safe(X86_FEATURE_XMM4_2))
+	if (static_cpu_has(X86_FEATURE_XMM4_2))
 		return 0;
 #endif
 	return 1;
@@ -1787,7 +1788,6 @@ static int cleaner_kthread(void *arg)
 	int again;
 	struct btrfs_trans_handle *trans;
 
-	set_freezable();
 	do {
 		again = 0;
 
