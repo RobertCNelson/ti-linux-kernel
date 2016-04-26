@@ -1103,7 +1103,6 @@
 			#clock-cells = <0>;
 			/* This value must be overridden by the board. */
 			clock-frequency = <0>;
-			clock-output-names = "can_clk";
 		};
 
 		/* Special CPG clocks */
