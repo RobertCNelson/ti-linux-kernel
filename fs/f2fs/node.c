@@ -832,7 +832,7 @@ int truncate_inode_blocks(struct inode *inode, pgoff_t from)
 	trace_f2fs_truncate_inode_blocks_enter(inode, from);
 
 	level = get_node_path(inode, from, offset, noffset);
-restart:
+
 	page = get_node_page(sbi, inode->i_ino);
 	if (IS_ERR(page)) {
 		trace_f2fs_truncate_inode_blocks_exit(inode, PTR_ERR(page));
@@ -896,10 +896,7 @@ skip_partial:
 		if (offset[1] == 0 &&
 				ri->i_nid[offset[0] - NODE_DIR1_BLOCK]) {
 			lock_page(page);
-			if (unlikely(page->mapping != NODE_MAPPING(sbi))) {
-				f2fs_put_page(page, 1);
-				goto restart;
-			}
+			BUG_ON(page->mapping != NODE_MAPPING(sbi));
 			f2fs_wait_on_page_writeback(page, NODE, true);
 			ri->i_nid[offset[0] - NODE_DIR1_BLOCK] = 0;
 			set_page_dirty(page);
@@ -1202,12 +1199,9 @@ static void flush_inline_data(struct f2fs_sb_info *sbi, nid_t ino)
 	if (!inode)
 		return;
 
-	page = pagecache_get_page(inode->i_mapping, 0, FGP_NOWAIT, 0);
+	page = pagecache_get_page(inode->i_mapping, 0, FGP_LOCK|FGP_NOWAIT, 0);
 	if (!page)
 		goto iput_out;
-
-	if (!trylock_page(page))
-		goto release_out;
 
 	if (!PageUptodate(page))
 		goto page_out;
@@ -1223,9 +1217,7 @@ static void flush_inline_data(struct f2fs_sb_info *sbi, nid_t ino)
 	else
 		set_page_dirty(page);
 page_out:
-	unlock_page(page);
-release_out:
-	f2fs_put_page(page, 0);
+	f2fs_put_page(page, 1);
 iput_out:
 	iput(inode);
 }
