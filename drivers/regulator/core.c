@@ -1570,6 +1570,7 @@ static int regulator_resolve_supply(struct regulator_dev *rdev)
 		ret = regulator_enable(rdev->supply);
 		if (ret < 0) {
 			_regulator_put(rdev->supply);
+			rdev->supply = NULL;
 			return ret;
 		}
 	}
@@ -3885,7 +3886,12 @@ static void rdev_init_debugfs(struct regulator_dev *rdev)
 
 static int regulator_register_resolve_supply(struct device *dev, void *data)
 {
-	return regulator_resolve_supply(dev_to_rdev(dev));
+	struct regulator_dev *rdev = dev_to_rdev(dev);
+
+	if (regulator_resolve_supply(rdev))
+		rdev_dbg(rdev, "unable to resolve supply\n");
+
+	return 0;
 }
 
 /**
@@ -3998,13 +4004,6 @@ regulator_register(const struct regulator_desc *regulator_desc,
 	rdev->dev.parent = dev;
 	dev_set_name(&rdev->dev, "regulator.%lu",
 		    (unsigned long) atomic_inc_return(&regulator_no));
-	ret = device_register(&rdev->dev);
-	if (ret != 0) {
-		put_device(&rdev->dev);
-		goto wash;
-	}
-
-	dev_set_drvdata(&rdev->dev, rdev);
 
 	/* set regulator constraints */
 	if (init_data)
@@ -4012,7 +4011,7 @@ regulator_register(const struct regulator_desc *regulator_desc,
 
 	ret = set_machine_constraints(rdev, constraints);
 	if (ret < 0)
-		goto scrub;
+		goto wash;
 
 	if (init_data && init_data->supply_regulator)
 		rdev->supply_name = init_data->supply_regulator;
@@ -4033,8 +4032,16 @@ regulator_register(const struct regulator_desc *regulator_desc,
 		}
 	}
 
-	rdev_init_debugfs(rdev);
 	mutex_unlock(&regulator_list_mutex);
+
+	ret = device_register(&rdev->dev);
+	if (ret != 0) {
+		put_device(&rdev->dev);
+		goto unset_supplies;
+	}
+
+	dev_set_drvdata(&rdev->dev, rdev);
+	rdev_init_debugfs(rdev);
 
 	/* try to resolve regulators supply since a new one was registered */
 	class_for_each_device(&regulator_class, NULL, NULL,
@@ -4044,18 +4051,11 @@ regulator_register(const struct regulator_desc *regulator_desc,
 
 unset_supplies:
 	unset_regulator_supplies(rdev);
-
-scrub:
-	regulator_ena_gpio_free(rdev);
-	device_unregister(&rdev->dev);
-	/* device core frees rdev */
-	goto out;
-
 wash:
+	kfree(rdev->constraints);
 	regulator_ena_gpio_free(rdev);
 clean:
 	kfree(rdev);
-out:
 	mutex_unlock(&regulator_list_mutex);
 	kfree(config);
 	return ERR_PTR(ret);
