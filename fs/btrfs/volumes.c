@@ -1006,7 +1006,7 @@ int btrfs_open_devices(struct btrfs_fs_devices *fs_devices,
 void btrfs_release_disk_super(struct page *page)
 {
 	kunmap(page);
-	page_cache_release(page);
+	put_page(page);
 }
 
 int btrfs_read_disk_super(struct block_device *bdev, u64 bytenr,
@@ -1016,16 +1016,16 @@ int btrfs_read_disk_super(struct block_device *bdev, u64 bytenr,
 	pgoff_t index;
 
 	/* make sure our super fits in the device */
-	if (bytenr + PAGE_CACHE_SIZE >= i_size_read(bdev->bd_inode))
+	if (bytenr + PAGE_SIZE >= i_size_read(bdev->bd_inode))
 		return 1;
 
 	/* make sure our super fits in the page */
-	if (sizeof(**disk_super) > PAGE_CACHE_SIZE)
+	if (sizeof(**disk_super) > PAGE_SIZE)
 		return 1;
 
 	/* make sure our super doesn't straddle pages on disk */
-	index = bytenr >> PAGE_CACHE_SHIFT;
-	if ((bytenr + sizeof(**disk_super) - 1) >> PAGE_CACHE_SHIFT != index)
+	index = bytenr >> PAGE_SHIFT;
+	if ((bytenr + sizeof(**disk_super) - 1) >> PAGE_SHIFT != index)
 		return 1;
 
 	/* pull in the page with our super */
@@ -1038,7 +1038,7 @@ int btrfs_read_disk_super(struct block_device *bdev, u64 bytenr,
 	p = kmap(*page);
 
 	/* align our pointer to the offset of the super block */
-	*disk_super = p + (bytenr & ~PAGE_CACHE_MASK);
+	*disk_super = p + (bytenr & ~PAGE_MASK);
 
 	if (btrfs_super_bytenr(*disk_super) != bytenr ||
 	    btrfs_super_magic(*disk_super) != BTRFS_MAGIC) {
