@@ -1549,7 +1549,7 @@ static noinline ssize_t __btrfs_buffered_write(struct file *file,
 				 * write_bytes, so scale down.
 				 */
 				num_pages = DIV_ROUND_UP(write_bytes + offset,
-							 PAGE_CACHE_SIZE);
+							 PAGE_SIZE);
 				reserve_bytes = round_up(write_bytes +
 							 sector_offset,
 							 root->sectorsize);
