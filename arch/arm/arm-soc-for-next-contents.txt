@@ -15,6 +15,8 @@ fixes
 		git://git.kernel.org/pub/scm/linux/kernel/git/agross/linux tags/qcom-fixes-for-4.6-rc2
 	omap/dt-ti81xx
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.6/dt-ti81xx-signed
+	patch
+		drivers: firmware: psci: unify enable-method binding on ARM {64,32}-bit systems
 
 next/fixes-non-critical
 
@@ -25,6 +27,8 @@ next/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v4.7-rockchip-soc32-1
 	davinci/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v4.7/cleanup
+	patch
+		ARM: debug: remove extraneous DEBUG_HI3716_UART option
 
 next/soc
 	at91/soc
@@ -38,6 +42,10 @@ next/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-for-v4.7
 	patch
 		ARM: uniphier: correct the call order of of_node_put()
+		ARM: vexpress/mps2: introduce MPS2 platform
+		MAINTAINERS: Update ARM Versatile Express platform entry
+	oxnas/soc
+		https://github.com/superna9999/linux tags/ox810se-arm-v4.6-rc3
 
 next/arm64
 	meson/arm64
@@ -48,6 +56,8 @@ next/arm64
 		MAINTAINERS: add Chanho Min as ARM/LG1K maintainer
 	samsung/defconfig-64
 		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-defconfig64-4.7
+	hisi/config
+		git://github.com/hisilicon/linux-hisi tags/hi6220-config-for-4.7v3
 
 next/dt
 	at91/dt
@@ -98,6 +108,13 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone_dts_for_4.7
 	omap/dt-ti81xx
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.6/dt-ti81xx-signed
+	renesas/fixes
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-fixes-for-v4.6
+	patch
+		ARM: dts: introduce MPS2 AN385/AN386
+		ARM: dts: introduce MPS2 AN399/AN400
+	oxnas/dt
+		https://github.com/superna9999/linux tags/ox810se-arm-dt-v4.6-rc3
 
 next/dt64
 	meson/dt64
@@ -142,6 +159,10 @@ next/defconfig
 		http://github.com/Broadcom/stblinux tags/arm-soc/for-4.7/defconfig
 	keystone/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone_config_for_4.7
+	patch
+		ARM: configs: add MPS2 defconfig
+	renesas/pci-defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-pci-defconfig-for-v4.7
 
 next/drivers
 	qcom/soc
@@ -163,3 +184,11 @@ next/drivers
 		http://github.com/Broadcom/stblinux tags/arm-soc/for-4.7/drivers
 	qcom/soc-2
 		git://git.kernel.org/pub/scm/linux/kernel/git/agross/linux tags/qcom-soc-for-4.7-2
+	patch
+		soc: brcmstb: select SOC_BUS
+		soc: brcmstb: Unmap sun_top_ctrl_base on errors
+		physmap_of: ensure versatile code is reachable
+		drivers: firmware: psci: make two helper functions inline
+	renesas/rcar-sysc2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-rcar-sysc2-for-v4.7
+		contains renesas/dt
