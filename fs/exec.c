@@ -1495,8 +1495,15 @@ int remove_arg_zero(struct linux_binprm *bprm)
 		kunmap_atomic(kaddr);
 		put_arg_page(page);
 
-		if (offset == PAGE_SIZE)
+		if (offset == PAGE_SIZE) {
 			free_arg_page(bprm, (bprm->p >> PAGE_SHIFT) - 1);
+		} else if (offset == PAGE_SIZE - 1) {
+			/*
+			 * The trailing '\0' is the last byte in a page - we're
+			 * about to advance past that byte so free its page now
+			 */
+			free_arg_page(bprm, (bprm->p >> PAGE_SHIFT));
+		}
 	} while (offset == PAGE_SIZE);
 
 	bprm->p++;
