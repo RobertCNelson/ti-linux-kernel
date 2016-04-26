@@ -66,12 +66,24 @@ static int __init dt_scan_depth1_nodes(unsigned long node,
 				       void *data)
 {
 	/*
-	 * Return 1 as soon as we encounter a node at depth 1 that is
-	 * not the /chosen node.
+	 * Ignore anything not directly under the root node; we'll
+	 * catch its parent instead.
 	 */
-	if (depth == 1 && (strcmp(uname, "chosen") != 0))
-		return 1;
-	return 0;
+	if (depth != 1)
+		return 0;
+
+	if (strcmp(uname, "chosen") == 0)
+		return 0;
+
+	if (strcmp(uname, "hypervisor") == 0 &&
+	    of_flat_dt_is_compatible(node, "xen,xen"))
+		return 0;
+
+	/*
+	 * This node at depth 1 is neither a chosen node nor a xen node,
+	 * which we do not expect.
+	 */
+	return 1;
 }
 
 /*
@@ -184,7 +196,8 @@ void __init acpi_boot_table_init(void)
 	/*
 	 * Enable ACPI instead of device tree unless
 	 * - ACPI has been disabled explicitly (acpi=off), or
-	 * - the device tree is not empty (it has more than just a /chosen node)
+	 * - the device tree is not empty (it has more than just a /chosen node,
+	 *   and a /hypervisor node when running on Xen)
 	 *   and ACPI has not been force enabled (acpi=force)
 	 */
 	if (param_acpi_off ||
