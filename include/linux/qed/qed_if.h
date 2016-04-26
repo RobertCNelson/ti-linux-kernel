@@ -211,6 +211,16 @@ struct qed_common_ops {
 
 	void		(*simd_handler_clean)(struct qed_dev *cdev,
 					      int index);
+
+/**
+ * @brief can_link_change - can the instance change the link or not
+ *
+ * @param cdev
+ *
+ * @return true if link-change is allowed, false otherwise.
+ */
+	bool (*can_link_change)(struct qed_dev *cdev);
+
 /**
  * @brief set_link - set links according to params
  *
@@ -270,15 +280,6 @@ struct qed_common_ops {
 	int (*set_led)(struct qed_dev *cdev,
 		       enum qed_led_mode mode);
 };
-
-/**
- * @brief qed_get_protocol_version
- *
- * @param protocol
- *
- * @return version supported by qed for given protocol driver
- */
-u32 qed_get_protocol_version(enum qed_protocol protocol);
 
 #define MASK_FIELD(_name, _value) \
 	((_value) &= (_name ## _MASK))
@@ -393,16 +394,16 @@ struct qed_eth_stats {
 
 	/* port */
 	u64	rx_64_byte_packets;
-	u64	rx_127_byte_packets;
-	u64	rx_255_byte_packets;
-	u64	rx_511_byte_packets;
-	u64	rx_1023_byte_packets;
-	u64	rx_1518_byte_packets;
-	u64	rx_1522_byte_packets;
-	u64	rx_2047_byte_packets;
-	u64	rx_4095_byte_packets;
-	u64	rx_9216_byte_packets;
-	u64	rx_16383_byte_packets;
+	u64	rx_65_to_127_byte_packets;
+	u64	rx_128_to_255_byte_packets;
+	u64	rx_256_to_511_byte_packets;
+	u64	rx_512_to_1023_byte_packets;
+	u64	rx_1024_to_1518_byte_packets;
+	u64	rx_1519_to_1522_byte_packets;
+	u64	rx_1519_to_2047_byte_packets;
+	u64	rx_2048_to_4095_byte_packets;
+	u64	rx_4096_to_9216_byte_packets;
+	u64	rx_9217_to_16383_byte_packets;
 	u64	rx_crc_errors;
 	u64	rx_mac_crtl_frames;
 	u64	rx_pause_frames;
@@ -524,4 +525,15 @@ static inline void internal_ram_wr(void __iomem *addr,
 	__internal_ram_wr(NULL, addr, size, data);
 }
 
+enum qed_rss_caps {
+	QED_RSS_IPV4		= 0x1,
+	QED_RSS_IPV6		= 0x2,
+	QED_RSS_IPV4_TCP	= 0x4,
+	QED_RSS_IPV6_TCP	= 0x8,
+	QED_RSS_IPV4_UDP	= 0x10,
+	QED_RSS_IPV6_UDP	= 0x20,
+};
+
+#define QED_RSS_IND_TABLE_SIZE 128
+#define QED_RSS_KEY_SIZE 10 /* size in 32b chunks */
 #endif

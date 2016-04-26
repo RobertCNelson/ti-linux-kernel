@@ -62,7 +62,8 @@ struct ipv6_devconf {
 		struct in6_addr secret;
 	} stable_secret;
 	__s32		use_oif_addrs_only;
-	void		*sysctl;
+
+	struct ctl_table_header *sysctl_header;
 };
 
 struct ipv6_params {

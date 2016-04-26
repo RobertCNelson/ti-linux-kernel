@@ -26,7 +26,7 @@
 #include "qed_hsi.h"
 
 extern const struct qed_common_ops qed_common_ops_pass;
-#define DRV_MODULE_VERSION "8.7.0.0"
+#define DRV_MODULE_VERSION "8.7.1.20"
 
 #define MAX_HWFNS_PER_DEVICE    (4)
 #define NAME_SIZE 16
@@ -72,6 +72,51 @@ struct qed_mcp_info;
 struct qed_rt_data {
 	u32	*init_val;
 	bool	*b_valid;
+};
+
+enum qed_tunn_mode {
+	QED_MODE_L2GENEVE_TUNN,
+	QED_MODE_IPGENEVE_TUNN,
+	QED_MODE_L2GRE_TUNN,
+	QED_MODE_IPGRE_TUNN,
+	QED_MODE_VXLAN_TUNN,
+};
+
+enum qed_tunn_clss {
+	QED_TUNN_CLSS_MAC_VLAN,
+	QED_TUNN_CLSS_MAC_VNI,
+	QED_TUNN_CLSS_INNER_MAC_VLAN,
+	QED_TUNN_CLSS_INNER_MAC_VNI,
+	MAX_QED_TUNN_CLSS,
+};
+
+struct qed_tunn_start_params {
+	unsigned long	tunn_mode;
+	u16		vxlan_udp_port;
+	u16		geneve_udp_port;
+	u8		update_vxlan_udp_port;
+	u8		update_geneve_udp_port;
+	u8		tunn_clss_vxlan;
+	u8		tunn_clss_l2geneve;
+	u8		tunn_clss_ipgeneve;
+	u8		tunn_clss_l2gre;
+	u8		tunn_clss_ipgre;
+};
+
+struct qed_tunn_update_params {
+	unsigned long	tunn_mode_update_mask;
+	unsigned long	tunn_mode;
+	u16		vxlan_udp_port;
+	u16		geneve_udp_port;
+	u8		update_rx_pf_clss;
+	u8		update_tx_pf_clss;
+	u8		update_vxlan_udp_port;
+	u8		update_geneve_udp_port;
+	u8		tunn_clss_vxlan;
+	u8		tunn_clss_l2geneve;
+	u8		tunn_clss_ipgeneve;
+	u8		tunn_clss_l2gre;
+	u8		tunn_clss_ipgre;
 };
 
 /* The PCI personality is not quite synonymous to protocol ID:
@@ -430,6 +475,7 @@ struct qed_dev {
 	u8				num_hwfns;
 	struct qed_hwfn			hwfns[MAX_HWFNS_PER_DEVICE];
 
+	unsigned long			tunn_mode;
 	u32				drv_type;
 
 	struct qed_eth_stats		*reset_stats;
@@ -506,7 +552,5 @@ u32 qed_unzip_data(struct qed_hwfn *p_hwfn,
 		   u32 max_size, u8 *unzip_buf);
 
 int qed_slowpath_irq_req(struct qed_hwfn *hwfn);
-
-#define QED_ETH_INTERFACE_VERSION       300
 
 #endif /* _QED_H */
