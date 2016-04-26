@@ -247,7 +247,7 @@ static int intel_overlay_on(struct intel_overlay *overlay)
 
 	ret = intel_ring_begin(req, 4);
 	if (ret) {
-		i915_gem_request_cancel(req);
+		i915_add_request_no_flush(req);
 		return ret;
 	}
 
@@ -290,7 +290,7 @@ static int intel_overlay_continue(struct intel_overlay *overlay,
 
 	ret = intel_ring_begin(req, 2);
 	if (ret) {
-		i915_gem_request_cancel(req);
+		i915_add_request_no_flush(req);
 		return ret;
 	}
 
@@ -356,7 +356,7 @@ static int intel_overlay_off(struct intel_overlay *overlay)
 
 	ret = intel_ring_begin(req, 6);
 	if (ret) {
-		i915_gem_request_cancel(req);
+		i915_add_request_no_flush(req);
 		return ret;
 	}
 
@@ -431,7 +431,7 @@ static int intel_overlay_release_old_vid(struct intel_overlay *overlay)
 
 		ret = intel_ring_begin(req, 2);
 		if (ret) {
-			i915_gem_request_cancel(req);
+			i915_add_request_no_flush(req);
 			return ret;
 		}
 
@@ -1396,7 +1396,7 @@ void intel_setup_overlay(struct drm_device *dev)
 	if (!OVERLAY_NEEDS_PHYSICAL(dev))
 		reg_bo = i915_gem_object_create_stolen(dev, PAGE_SIZE);
 	if (reg_bo == NULL)
-		reg_bo = i915_gem_alloc_object(dev, PAGE_SIZE);
+		reg_bo = i915_gem_object_create(dev, PAGE_SIZE);
 	if (reg_bo == NULL)
 		goto out_free;
 	overlay->reg_bo = reg_bo;
