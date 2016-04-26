@@ -1063,6 +1063,7 @@ void __init setup_arch(char **cmdline_p)
 	early_paging_init(mdesc);
 #endif
 	setup_dma_zone(mdesc);
+	xen_early_init();
 	efi_init();
 	sanity_check_meminfo();
 	arm_memblock_init(mdesc);
@@ -1079,7 +1080,6 @@ void __init setup_arch(char **cmdline_p)
 
 	arm_dt_init_cpu_maps();
 	psci_dt_init();
-	xen_early_init();
 #ifdef CONFIG_SMP
 	if (is_smp()) {
 		if (!mdesc->smp_init || !mdesc->smp_init()) {
