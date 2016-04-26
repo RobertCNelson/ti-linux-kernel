@@ -377,6 +377,8 @@ int btrfs_dev_replace_start(struct btrfs_root *root, char *tgtdev_name,
 	dev_replace->cursor_right = 0;
 	dev_replace->is_valid = 1;
 	dev_replace->item_needs_writeback = 1;
+	atomic64_set(&dev_replace->num_write_errors, 0);
+	atomic64_set(&dev_replace->num_uncorrectable_read_errors, 0);
 	btrfs_dev_replace_unlock(dev_replace, 1);
 
 	ret = btrfs_sysfs_add_device_link(tgt_device->fs_devices, tgt_device);
