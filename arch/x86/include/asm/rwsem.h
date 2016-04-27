@@ -99,23 +99,25 @@ static inline int __down_read_trylock(struct rw_semaphore *sem)
 /*
  * lock for writing
  */
-#define ____down_write(sem, slow_path)			\
-({							\
-	long tmp;					\
-	struct rw_semaphore* ret;			\
-	asm volatile("# beginning down_write\n\t"	\
-		     LOCK_PREFIX "  xadd      %1,(%3)\n\t"	\
-		     /* adds 0xffff0001, returns the old value */ \
-		     "  test " __ASM_SEL(%w1,%k1) "," __ASM_SEL(%w1,%k1) "\n\t" \
-		     /* was the active mask 0 before? */\
-		     "  jz        1f\n"			\
-		     "  call " slow_path "\n"		\
-		     "1:\n"				\
-		     "# ending down_write"		\
-		     : "+m" (sem->count), "=d" (tmp), "=a" (ret)	\
-		     : "a" (sem), "1" (RWSEM_ACTIVE_WRITE_BIAS) \
-		     : "memory", "cc");			\
-	ret;						\
+#define ____down_write(sem, slow_path)						\
+({										\
+	long tmp = RWSEM_ACTIVE_WRITE_BIAS;					\
+	struct rw_semaphore* ret;						\
+										\
+	asm volatile("# beginning down_write\n\t"				\
+		     LOCK_PREFIX "  xadd      %[tmp],(%[sem])\n\t"		\
+		     /* adds 0xffff0001, returns the old value */		\
+		     "  test " __ASM_SEL(%w[tmp],%k[tmp]) ","			\
+			       __ASM_SEL(%w[tmp],%k[tmp]) "\n\t"		\
+		     /* was the active mask 0 before? */			\
+		     "  jz        1f\n"						\
+		     "  call " slow_path "\n"					\
+		     "1:\n"							\
+		     "# ending down_write"					\
+		     : "+m" (sem->count), "=a" (ret)				\
+		     : [sem] "a" (sem), [tmp] "r" (tmp)				\
+		     : "memory", "cc");						\
+	ret;									\
 })
 
 static inline void __down_write(struct rw_semaphore *sem)
