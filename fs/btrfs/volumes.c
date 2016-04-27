@@ -1454,7 +1454,7 @@ again:
 		extent = btrfs_item_ptr(leaf, path->slots[0],
 					struct btrfs_dev_extent);
 	} else {
-		btrfs_std_error(root->fs_info, ret, "Slot search failed");
+		btrfs_handle_fs_error(root->fs_info, ret, "Slot search failed");
 		goto out;
 	}
 
@@ -1462,7 +1462,7 @@ again:
 
 	ret = btrfs_del_item(trans, root, path);
 	if (ret) {
-		btrfs_std_error(root->fs_info, ret,
+		btrfs_handle_fs_error(root->fs_info, ret,
 			    "Failed to remove dev extent item");
 	} else {
 		set_bit(BTRFS_TRANS_HAVE_FREE_BGS, &trans->transaction->flags);
@@ -2024,10 +2024,9 @@ void btrfs_destroy_dev_replace_tgtdev(struct btrfs_fs_info *fs_info,
 
 	btrfs_sysfs_rm_device_link(fs_info->fs_devices, tgtdev);
 
-	if (tgtdev->bdev) {
-		btrfs_scratch_superblocks(tgtdev->bdev, tgtdev->name->str);
+	if (tgtdev->bdev)
 		fs_info->fs_devices->open_devices--;
-	}
+
 	fs_info->fs_devices->num_devices--;
 
 	next_device = list_entry(fs_info->fs_devices->devices.next,
@@ -2038,10 +2037,18 @@ void btrfs_destroy_dev_replace_tgtdev(struct btrfs_fs_info *fs_info,
 		fs_info->fs_devices->latest_bdev = next_device->bdev;
 	list_del_rcu(&tgtdev->dev_list);
 
-	call_rcu(&tgtdev->rcu, free_device);
-
 	mutex_unlock(&fs_info->fs_devices->device_list_mutex);
 	mutex_unlock(&uuid_mutex);
+
+	/*
+	 * The update_dev_time() with in btrfs_scratch_superblocks()
+	 * may lead to a call to btrfs_show_devname() which will try
+	 * to hold device_list_mutex. And here this device
+	 * is already out of device list, so we don't have to hold
+	 * the device_list_mutex lock.
+	 */
+	btrfs_scratch_superblocks(tgtdev->bdev, tgtdev->name->str);
+	call_rcu(&tgtdev->rcu, free_device);
 }
 
 static int btrfs_find_device_by_path(struct btrfs_root *root, char *device_path,
@@ -2418,7 +2425,7 @@ int btrfs_init_new_device(struct btrfs_root *root, char *device_path)
 
 		ret = btrfs_relocate_sys_chunks(root);
 		if (ret < 0)
-			btrfs_std_error(root->fs_info, ret,
+			btrfs_handle_fs_error(root->fs_info, ret,
 				    "Failed to relocate sys chunks after "
 				    "device initialization. This can be fixed "
 				    "using the \"btrfs balance\" command.");
@@ -2663,7 +2670,7 @@ static int btrfs_free_chunk(struct btrfs_trans_handle *trans,
 	if (ret < 0)
 		goto out;
 	else if (ret > 0) { /* Logic error or corruption */
-		btrfs_std_error(root->fs_info, -ENOENT,
+		btrfs_handle_fs_error(root->fs_info, -ENOENT,
 			    "Failed lookup while freeing chunk.");
 		ret = -ENOENT;
 		goto out;
@@ -2671,7 +2678,7 @@ static int btrfs_free_chunk(struct btrfs_trans_handle *trans,
 
 	ret = btrfs_del_item(trans, root, path);
 	if (ret < 0)
-		btrfs_std_error(root->fs_info, ret,
+		btrfs_handle_fs_error(root->fs_info, ret,
 			    "Failed to delete chunk item.");
 out:
 	btrfs_free_path(path);
@@ -2857,7 +2864,7 @@ static int btrfs_relocate_chunk(struct btrfs_root *root, u64 chunk_offset)
 						     chunk_offset);
 	if (IS_ERR(trans)) {
 		ret = PTR_ERR(trans);
-		btrfs_std_error(root->fs_info, ret, NULL);
+		btrfs_handle_fs_error(root->fs_info, ret, NULL);
 		return ret;
 	}
 
@@ -3402,6 +3409,7 @@ static int __btrfs_balance(struct btrfs_fs_info *fs_info)
 	u32 count_meta = 0;
 	u32 count_sys = 0;
 	int chunk_reserved = 0;
+	u64 bytes_used = 0;
 
 	/* step one make some room on all the devices */
 	devices = &fs_info->fs_devices->devices;
@@ -3540,7 +3548,13 @@ again:
 			goto loop;
 		}
 
-		if ((chunk_type & BTRFS_BLOCK_GROUP_DATA) && !chunk_reserved) {
+		ASSERT(fs_info->data_sinfo);
+		spin_lock(&fs_info->data_sinfo->lock);
+		bytes_used = fs_info->data_sinfo->bytes_used;
+		spin_unlock(&fs_info->data_sinfo->lock);
+
+		if ((chunk_type & BTRFS_BLOCK_GROUP_DATA) &&
+		    !chunk_reserved && !bytes_used) {
 			trans = btrfs_start_transaction(chunk_root, 0);
 			if (IS_ERR(trans)) {
 				mutex_unlock(&fs_info->delete_unused_bgs_mutex);
@@ -3632,7 +3646,7 @@ static void __cancel_balance(struct btrfs_fs_info *fs_info)
 	unset_balance_control(fs_info);
 	ret = del_balance_item(fs_info->tree_root);
 	if (ret)
-		btrfs_std_error(fs_info, ret, NULL);
+		btrfs_handle_fs_error(fs_info, ret, NULL);
 
 	atomic_set(&fs_info->mutually_exclusive_operation_running, 0);
 }
@@ -3693,10 +3707,8 @@ int btrfs_balance(struct btrfs_balance_control *bctl,
 		num_devices--;
 	}
 	btrfs_dev_replace_unlock(&fs_info->dev_replace, 0);
-	allowed = BTRFS_AVAIL_ALLOC_BIT_SINGLE;
-	if (num_devices == 1)
-		allowed |= BTRFS_BLOCK_GROUP_DUP;
-	else if (num_devices > 1)
+	allowed = BTRFS_AVAIL_ALLOC_BIT_SINGLE | BTRFS_BLOCK_GROUP_DUP;
+	if (num_devices > 1)
 		allowed |= (BTRFS_BLOCK_GROUP_RAID0 | BTRFS_BLOCK_GROUP_RAID1);
 	if (num_devices > 2)
 		allowed |= BTRFS_BLOCK_GROUP_RAID5;
