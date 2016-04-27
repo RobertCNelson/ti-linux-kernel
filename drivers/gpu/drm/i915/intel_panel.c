@@ -504,7 +504,7 @@ static u32 i9xx_get_backlight(struct intel_connector *connector)
 	if (panel->backlight.combination_mode) {
 		u8 lbpc;
 
-		pci_read_config_byte(dev_priv->dev->pdev, PCI_LBPC, &lbpc);
+		pci_read_config_byte(dev_priv->dev->pdev, LBPC, &lbpc);
 		val *= lbpc;
 	}
 
@@ -592,7 +592,7 @@ static void i9xx_set_backlight(struct intel_connector *connector, u32 level)
 
 		lbpc = level * 0xfe / panel->backlight.max + 1;
 		level /= lbpc;
-		pci_write_config_byte(dev_priv->dev->pdev, PCI_LBPC, lbpc);
+		pci_write_config_byte(dev_priv->dev->pdev, LBPC, lbpc);
 	}
 
 	if (IS_GEN4(dev_priv)) {
@@ -1717,6 +1717,10 @@ intel_panel_init_backlight_funcs(struct intel_panel *panel)
 	struct intel_connector *connector =
 		container_of(panel, struct intel_connector, panel);
 	struct drm_i915_private *dev_priv = to_i915(connector->base.dev);
+
+	if (connector->base.connector_type == DRM_MODE_CONNECTOR_eDP &&
+	    intel_dp_aux_init_backlight_funcs(connector) == 0)
+		return;
 
 	if (IS_BROXTON(dev_priv)) {
 		panel->backlight.setup = bxt_setup_backlight;

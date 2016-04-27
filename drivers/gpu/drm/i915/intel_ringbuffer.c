@@ -671,7 +671,7 @@ intel_init_pipe_control(struct intel_engine_cs *engine)
 
 	WARN_ON(engine->scratch.obj);
 
-	engine->scratch.obj = i915_gem_alloc_object(engine->dev, 4096);
+	engine->scratch.obj = i915_gem_object_create(engine->dev, 4096);
 	if (engine->scratch.obj == NULL) {
 		DRM_ERROR("Failed to allocate seqno page\n");
 		ret = -ENOMEM;
@@ -959,9 +959,10 @@ static int gen9_init_workarounds(struct intel_engine_cs *engine)
 	}
 
 	/* WaEnableYV12BugFixInHalfSliceChicken7:skl,bxt */
-	if (IS_SKL_REVID(dev, SKL_REVID_C0, REVID_FOREVER) || IS_BROXTON(dev))
-		WA_SET_BIT_MASKED(GEN9_HALF_SLICE_CHICKEN7,
-				  GEN9_ENABLE_YV12_BUGFIX);
+	/* WaEnableSamplerGPGPUPreemptionSupport:skl,bxt */
+	WA_SET_BIT_MASKED(GEN9_HALF_SLICE_CHICKEN7,
+			  GEN9_ENABLE_YV12_BUGFIX |
+			  GEN9_ENABLE_GPGPU_PREEMPTION);
 
 	/* Wa4x4STCOptimizationDisable:skl,bxt */
 	/* WaDisablePartialResolveInVc:skl,bxt */
@@ -1178,6 +1179,10 @@ static int bxt_init_workarounds(struct intel_engine_cs *engine)
 		if (ret)
 			return ret;
 	}
+
+	/* WaProgramL3SqcReg1DefaultForPerf:bxt */
+	if (IS_BXT_REVID(dev, BXT_REVID_B0, REVID_FOREVER))
+		I915_WRITE(GEN8_L3SQCREG1, BXT_WA_L3SQCREG1_DEFAULT);
 
 	return 0;
 }
@@ -2021,7 +2026,7 @@ static int init_status_page(struct intel_engine_cs *engine)
 		unsigned flags;
 		int ret;
 
-		obj = i915_gem_alloc_object(engine->dev, 4096);
+		obj = i915_gem_object_create(engine->dev, 4096);
 		if (obj == NULL) {
 			DRM_ERROR("Failed to allocate status page\n");
 			return -ENOMEM;
@@ -2087,6 +2092,7 @@ void intel_unpin_ringbuffer_obj(struct intel_ringbuffer *ringbuf)
 		i915_gem_object_unpin_map(ringbuf->obj);
 	else
 		iounmap(ringbuf->virtual_start);
+	ringbuf->virtual_start = NULL;
 	ringbuf->vma = NULL;
 	i915_gem_object_ggtt_unpin(ringbuf->obj);
 }
@@ -2099,6 +2105,7 @@ int intel_pin_and_map_ringbuffer_obj(struct drm_device *dev,
 	struct drm_i915_gem_object *obj = ringbuf->obj;
 	/* Ring wraparound at offset 0 sometimes hangs. No idea why. */
 	unsigned flags = PIN_OFFSET_BIAS | 4096;
+	void *addr;
 	int ret;
 
 	if (HAS_LLC(dev_priv) && !obj->stolen) {
@@ -2110,9 +2117,9 @@ int intel_pin_and_map_ringbuffer_obj(struct drm_device *dev,
 		if (ret)
 			goto err_unpin;
 
-		ringbuf->virtual_start = i915_gem_object_pin_map(obj);
-		if (ringbuf->virtual_start == NULL) {
-			ret = -ENOMEM;
+		addr = i915_gem_object_pin_map(obj);
+		if (IS_ERR(addr)) {
+			ret = PTR_ERR(addr);
 			goto err_unpin;
 		}
 	} else {
@@ -2128,14 +2135,15 @@ int intel_pin_and_map_ringbuffer_obj(struct drm_device *dev,
 		/* Access through the GTT requires the device to be awake. */
 		assert_rpm_wakelock_held(dev_priv);
 
-		ringbuf->virtual_start = ioremap_wc(ggtt->mappable_base +
-						    i915_gem_obj_ggtt_offset(obj), ringbuf->size);
-		if (ringbuf->virtual_start == NULL) {
+		addr = ioremap_wc(ggtt->mappable_base +
+				  i915_gem_obj_ggtt_offset(obj), ringbuf->size);
+		if (addr == NULL) {
 			ret = -ENOMEM;
 			goto err_unpin;
 		}
 	}
 
+	ringbuf->virtual_start = addr;
 	ringbuf->vma = i915_gem_obj_to_ggtt(obj);
 	return 0;
 
@@ -2159,7 +2167,7 @@ static int intel_alloc_ringbuffer_obj(struct drm_device *dev,
 	if (!HAS_LLC(dev))
 		obj = i915_gem_object_create_stolen(dev, ringbuf->size);
 	if (obj == NULL)
-		obj = i915_gem_alloc_object(dev, ringbuf->size);
+		obj = i915_gem_object_create(dev, ringbuf->size);
 	if (obj == NULL)
 		return -ENOMEM;
 
@@ -2367,8 +2375,7 @@ int intel_engine_idle(struct intel_engine_cs *engine)
 
 	/* Make sure we do not trigger any retires */
 	return __i915_wait_request(req,
-				   atomic_read(&to_i915(engine->dev)->gpu_error.reset_counter),
-				   to_i915(engine->dev)->mm.interruptible,
+				   req->i915->mm.interruptible,
 				   NULL, NULL);
 }
 
@@ -2490,18 +2497,8 @@ static int __intel_ring_prepare(struct intel_engine_cs *engine, int bytes)
 int intel_ring_begin(struct drm_i915_gem_request *req,
 		     int num_dwords)
 {
-	struct intel_engine_cs *engine;
-	struct drm_i915_private *dev_priv;
+	struct intel_engine_cs *engine = req->engine;
 	int ret;
-
-	WARN_ON(req == NULL);
-	engine = req->engine;
-	dev_priv = req->i915;
-
-	ret = i915_gem_check_wedge(&dev_priv->gpu_error,
-				   dev_priv->mm.interruptible);
-	if (ret)
-		return ret;
 
 	ret = __intel_ring_prepare(engine, num_dwords * sizeof(uint32_t));
 	if (ret)
@@ -2783,7 +2780,7 @@ int intel_init_render_ring_buffer(struct drm_device *dev)
 
 	if (INTEL_INFO(dev)->gen >= 8) {
 		if (i915_semaphore_is_enabled(dev)) {
-			obj = i915_gem_alloc_object(dev, 4096);
+			obj = i915_gem_object_create(dev, 4096);
 			if (obj == NULL) {
 				DRM_ERROR("Failed to allocate semaphore bo. Disabling semaphores\n");
 				i915.semaphores = 0;
@@ -2892,7 +2889,7 @@ int intel_init_render_ring_buffer(struct drm_device *dev)
 
 	/* Workaround batchbuffer to combat CS tlb bug. */
 	if (HAS_BROKEN_CS_TLB(dev)) {
-		obj = i915_gem_alloc_object(dev, I830_WA_SIZE);
+		obj = i915_gem_object_create(dev, I830_WA_SIZE);
 		if (obj == NULL) {
 			DRM_ERROR("Failed to allocate batch bo\n");
 			return -ENOMEM;
@@ -3193,7 +3190,7 @@ intel_stop_engine(struct intel_engine_cs *engine)
 		return;
 
 	ret = intel_engine_idle(engine);
-	if (ret && !i915_reset_in_progress(&to_i915(engine->dev)->gpu_error))
+	if (ret)
 		DRM_ERROR("failed to quiesce %s whilst cleaning up: %d\n",
 			  engine->name, ret);
 

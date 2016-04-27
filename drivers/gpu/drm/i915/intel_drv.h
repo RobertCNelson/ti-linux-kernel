@@ -497,6 +497,11 @@ struct intel_crtc_state {
 	/* Actual register state of the dpll, for shared dpll cross-checking. */
 	struct intel_dpll_hw_state dpll_hw_state;
 
+	/* DSI PLL registers */
+	struct {
+		u32 ctrl, div;
+	} dsi_pll;
+
 	int pipe_bpp;
 	struct intel_link_m_n dp_m_n;
 
@@ -805,6 +810,7 @@ struct intel_dp {
 	uint8_t dpcd[DP_RECEIVER_CAP_SIZE];
 	uint8_t psr_dpcd[EDP_PSR_RECEIVER_CAP_SIZE];
 	uint8_t downstream_ports[DP_MAX_DOWNSTREAM_PORTS];
+	uint8_t edp_dpcd[EDP_DISPLAY_CTL_CAP_SIZE];
 	/* sink rates as reported by DP_SUPPORTED_LINK_RATES */
 	uint8_t num_sink_rates;
 	int sink_rates[DP_MAX_SUPPORTED_RATES];
@@ -1224,12 +1230,16 @@ void intel_prepare_reset(struct drm_device *dev);
 void intel_finish_reset(struct drm_device *dev);
 void hsw_enable_pc8(struct drm_i915_private *dev_priv);
 void hsw_disable_pc8(struct drm_i915_private *dev_priv);
-void broxton_init_cdclk(struct drm_device *dev);
-void broxton_uninit_cdclk(struct drm_device *dev);
-void broxton_ddi_phy_init(struct drm_device *dev);
-void broxton_ddi_phy_uninit(struct drm_device *dev);
+void broxton_init_cdclk(struct drm_i915_private *dev_priv);
+void broxton_uninit_cdclk(struct drm_i915_private *dev_priv);
+bool broxton_cdclk_verify_state(struct drm_i915_private *dev_priv);
+void broxton_ddi_phy_init(struct drm_i915_private *dev_priv);
+void broxton_ddi_phy_uninit(struct drm_i915_private *dev_priv);
+void broxton_ddi_phy_verify_state(struct drm_i915_private *dev_priv);
+void gen9_sanitize_dc_state(struct drm_i915_private *dev_priv);
 void bxt_enable_dc9(struct drm_i915_private *dev_priv);
 void bxt_disable_dc9(struct drm_i915_private *dev_priv);
+void gen9_enable_dc5(struct drm_i915_private *dev_priv);
 void skl_init_cdclk(struct drm_i915_private *dev_priv);
 int skl_sanitize_cdclk(struct drm_i915_private *dev_priv);
 void skl_uninit_cdclk(struct drm_i915_private *dev_priv);
@@ -1268,6 +1278,8 @@ u32 skl_plane_ctl_rotation(unsigned int rotation);
 void intel_csr_ucode_init(struct drm_i915_private *);
 void intel_csr_load_program(struct drm_i915_private *);
 void intel_csr_ucode_fini(struct drm_i915_private *);
+void intel_csr_ucode_suspend(struct drm_i915_private *);
+void intel_csr_ucode_resume(struct drm_i915_private *);
 
 /* intel_dp.c */
 void intel_dp_init(struct drm_device *dev, i915_reg_t output_reg, enum port port);
@@ -1278,6 +1290,8 @@ void intel_dp_set_link_params(struct intel_dp *intel_dp,
 void intel_dp_start_link_train(struct intel_dp *intel_dp);
 void intel_dp_stop_link_train(struct intel_dp *intel_dp);
 void intel_dp_sink_dpms(struct intel_dp *intel_dp, int mode);
+void intel_dp_encoder_reset(struct drm_encoder *encoder);
+void intel_dp_encoder_suspend(struct intel_encoder *intel_encoder);
 void intel_dp_encoder_destroy(struct drm_encoder *encoder);
 int intel_dp_sink_crc(struct intel_dp *intel_dp, u8 *crc);
 bool intel_dp_compute_config(struct intel_encoder *encoder,
@@ -1322,6 +1336,9 @@ void intel_dp_compute_rate(struct intel_dp *intel_dp, int port_clock,
 bool intel_dp_source_supports_hbr2(struct intel_dp *intel_dp);
 bool
 intel_dp_get_link_status(struct intel_dp *intel_dp, uint8_t link_status[DP_LINK_STATUS_SIZE]);
+
+/* intel_dp_aux_backlight.c */
+int intel_dp_aux_init_backlight_funcs(struct intel_connector *intel_connector);
 
 /* intel_dp_mst.c */
 int intel_dp_mst_encoder_init(struct intel_digital_port *intel_dig_port, int conn_id);
@@ -1462,8 +1479,8 @@ int intel_power_domains_init(struct drm_i915_private *);
 void intel_power_domains_fini(struct drm_i915_private *);
 void intel_power_domains_init_hw(struct drm_i915_private *dev_priv, bool resume);
 void intel_power_domains_suspend(struct drm_i915_private *dev_priv);
-void skl_pw1_misc_io_init(struct drm_i915_private *dev_priv);
-void skl_pw1_misc_io_fini(struct drm_i915_private *dev_priv);
+void bxt_display_core_init(struct drm_i915_private *dev_priv, bool resume);
+void bxt_display_core_uninit(struct drm_i915_private *dev_priv);
 void intel_runtime_pm_enable(struct drm_i915_private *dev_priv);
 const char *
 intel_display_power_domain_str(enum intel_display_power_domain domain);
