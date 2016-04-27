@@ -447,7 +447,7 @@ static int o2hb_nego_timeout_handler(struct o2net_msg *msg, u32 len, void *data,
 static int o2hb_nego_approve_handler(struct o2net_msg *msg, u32 len, void *data,
 				void **ret_data)
 {
-	o2hb_arm_timeout((struct o2hb_region *)data);
+	o2hb_arm_timeout(data);
 	return 0;
 }
 
@@ -2123,7 +2123,7 @@ static struct config_item *o2hb_heartbeat_group_make_item(struct config_group *g
 			o2hb_nego_approve_handler,
 			reg, NULL, &reg->hr_handler_list);
 	if (ret)
-		goto free_handler;
+		goto unregister_handler;
 
 	ret = o2hb_debug_region_init(reg, o2hb_debug_dir);
 	if (ret) {
