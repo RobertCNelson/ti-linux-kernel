@@ -27,18 +27,6 @@
 #include <asm/thread_info.h>
 
 /*
- * Stack pushing/popping (register pairs only). Equivalent to store decrement
- * before, load increment after.
- */
-	.macro	push, xreg1, xreg2
-	stp	\xreg1, \xreg2, [sp, #-16]!
-	.endm
-
-	.macro	pop, xreg1, xreg2
-	ldp	\xreg1, \xreg2, [sp], #16
-	.endm
-
-/*
  * Enable and disable interrupts.
  */
 	.macro	disable_irq
@@ -231,6 +219,26 @@ lr	.req	x30		// link register
 	.macro	le64sym, sym
 	.long	\sym\()_lo32
 	.long	\sym\()_hi32
+	.endm
+
+	/*
+	 * mov_q - move an immediate constant into a 64-bit register using
+	 *         between 2 and 4 movz/movk instructions (depending on the
+	 *         magnitude and sign of the operand)
+	 */
+	.macro	mov_q, reg, val
+	.if (((\val) >> 31) == 0 || ((\val) >> 31) == 0x1ffffffff)
+	movz	\reg, :abs_g1_s:\val
+	.else
+	.if (((\val) >> 47) == 0 || ((\val) >> 47) == 0x1ffff)
+	movz	\reg, :abs_g2_s:\val
+	.else
+	movz	\reg, :abs_g3:\val
+	movk	\reg, :abs_g2_nc:\val
+	.endif
+	movk	\reg, :abs_g1_nc:\val
+	.endif
+	movk	\reg, :abs_g0_nc:\val
 	.endm
 
 #endif	/* __ASM_ASSEMBLER_H */
