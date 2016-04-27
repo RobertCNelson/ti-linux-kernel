@@ -606,7 +606,7 @@ static int class_del_conn(struct obd_device *obd, struct lustre_cfg *lcfg)
 	return rc;
 }
 
-LIST_HEAD(lustre_profile_list);
+static LIST_HEAD(lustre_profile_list);
 
 struct lustre_profile *class_get_profile(const char *prof)
 {
@@ -961,7 +961,6 @@ int class_process_config(struct lustre_cfg *lcfg)
 	default: {
 		err = obd_process_config(obd, sizeof(*lcfg), lcfg);
 		goto out;
-
 	}
 	}
 out:

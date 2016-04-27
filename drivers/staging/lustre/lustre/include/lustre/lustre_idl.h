@@ -1001,8 +1001,9 @@ static inline int lu_dirent_calc_size(int namelen, __u16 attr)
 
 		size = (sizeof(struct lu_dirent) + namelen + align) & ~align;
 		size += sizeof(struct luda_type);
-	} else
+	} else {
 		size = sizeof(struct lu_dirent) + namelen;
+	}
 
 	return (size + 7) & ~7;
 }
@@ -1428,6 +1429,7 @@ enum obdo_flags {
 					   */
 	OBD_FL_RECOV_RESEND = 0x00080000, /* recoverable resent */
 	OBD_FL_NOSPC_BLK    = 0x00100000, /* no more block space on OST */
+	OBD_FL_FLUSH	    = 0x00200000, /* flush pages on the OST */
 
 	/* Note that while these checksum values are currently separate bits,
 	 * in 2.x we can actually allow all values from 1-31 if we wanted.
@@ -2582,6 +2584,8 @@ struct ldlm_extent {
 	__u64 gid;
 };
 
+#define LDLM_GID_ANY ((__u64)-1)
+
 static inline int ldlm_extent_overlap(struct ldlm_extent *ex1,
 				      struct ldlm_extent *ex2)
 {
@@ -3304,7 +3308,7 @@ struct getinfo_fid2path {
 	char	    gf_path[0];
 } __packed;
 
-void lustre_swab_fid2path (struct getinfo_fid2path *gf);
+void lustre_swab_fid2path(struct getinfo_fid2path *gf);
 
 enum {
 	LAYOUT_INTENT_ACCESS    = 0,
