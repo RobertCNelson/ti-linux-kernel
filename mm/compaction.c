@@ -1403,7 +1403,7 @@ bool compaction_zonelist_suitable(struct alloc_context *ac, int order,
 		available = zone_reclaimable_pages(zone) / order;
 		available += zone_page_state_snapshot(zone, NR_FREE_PAGES);
 		compact_result = __compaction_suitable(zone, order, alloc_flags,
-				ac->classzone_idx, available);
+				ac_classzone_idx(ac), available);
 		if (compact_result != COMPACT_SKIPPED &&
 				compact_result != COMPACT_NOT_SUITABLE_ZONE)
 			return true;
