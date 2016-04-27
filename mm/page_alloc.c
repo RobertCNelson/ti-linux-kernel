@@ -991,6 +991,8 @@ out:
 	return ret;
 }
 
+static bool free_pages_prepare(struct page *page, unsigned int order);
+
 #ifdef CONFIG_DEBUG_VM
 static inline bool free_pcp_prepare(struct page *page)
 {
