@@ -894,7 +894,8 @@ int get_hwpoison_page(struct page *page)
 		if (head == compound_head(page))
 			return 1;
 
-		pr_info("MCE: %#lx cannot catch tail\n", page_to_pfn(page));
+		pr_info("Memory failure: %#lx cannot catch tail\n",
+			page_to_pfn(page));
 		put_page(head);
 	}
 
