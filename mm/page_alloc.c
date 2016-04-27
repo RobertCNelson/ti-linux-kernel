@@ -831,6 +831,7 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 	int batch_free = 0;
 	int to_free = count;
 	unsigned long nr_scanned;
+	bool isolated_pageblocks = has_isolate_pageblock(zone);
 
 	spin_lock(&zone->lock);
 	nr_scanned = zone_page_state(zone, NR_PAGES_SCANNED);
@@ -870,7 +871,7 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 			/* MIGRATE_ISOLATE page should not go to pcplists */
 			VM_BUG_ON_PAGE(is_migrate_isolate(mt), page);
 			/* Pageblock could have been isolated meanwhile */
-			if (unlikely(has_isolate_pageblock(zone)))
+			if (unlikely(isolated_pageblocks))
 				mt = get_pageblock_migratetype(page);
 
 			__free_one_page(page, page_to_pfn(page), zone, 0, mt);
