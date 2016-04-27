@@ -1,18 +1,21 @@
 /*
  * z3fold.c
  *
- * Copyright (C) 2016, Vitaly Wool <vitalywool@gmail.com>
+ * Author: Vitaly Wool <vitalywool@gmail.com>
+ * Copyright (C) 2016, Sony Mobile Communications Inc.
  *
  * This implementation is heavily based on zbud written by Seth Jennings.
  *
  * z3fold is an special purpose allocator for storing compressed pages. It
  * can store up to three compressed pages per page which improves the
- * compression ratio of zbud while pertaining its concept and simplicity.
+ * compression ratio of zbud while retaining its main concepts (e. g. always
+ * storing an integral number of objects per page) and simplicity.
  * It still has simple and deterministic reclaim properties that make it
- * preferable to a higher density approach when reclaim is used.
+ * preferable to a higher density approach (with no requirement on integral
+ * number of object per page) when reclaim is used.
  *
  * As in zbud, pages are divided into "chunks".  The size of the chunks is
- * fixed at compile time and determined by NCHUNKS_ORDER below.
+ * fixed at compile time and is determined by NCHUNKS_ORDER below.
  *
  * The z3fold API doesn't differ from zbud API and zpool is also supported.
  */
@@ -36,9 +39,9 @@
  * adjusting internal fragmentation.  It also determines the number of
  * freelists maintained in each pool. NCHUNKS_ORDER of 6 means that the
  * allocation granularity will be in chunks of size PAGE_SIZE/64. As one chunk
- * in allocated page is occupied by z3fold header, NCHUNKS will be calculated to
- * 63 which shows the max number of free chunks in z3fold page, also there will be
- * 63 freelists per pool.
+ * in allocated page is occupied by z3fold header, NCHUNKS will be calculated
+ * to 63 which shows the max number of free chunks in z3fold page, also there
+ * will be 63 freelists per pool.
  */
 #define NCHUNKS_ORDER	6
 
@@ -53,17 +56,6 @@ struct z3fold_pool;
 struct z3fold_ops {
 	int (*evict)(struct z3fold_pool *pool, unsigned long handle);
 };
-
-/* Forward declarations */
-struct z3fold_pool *z3fold_create_pool(gfp_t gfp, const struct z3fold_ops *ops);
-void z3fold_destroy_pool(struct z3fold_pool *pool);
-int z3fold_alloc(struct z3fold_pool *pool, size_t size, gfp_t gfp,
-	unsigned long *handle);
-void z3fold_free(struct z3fold_pool *pool, unsigned long handle);
-int z3fold_reclaim_page(struct z3fold_pool *pool, unsigned int retries);
-void *z3fold_map(struct z3fold_pool *pool, unsigned long handle);
-void z3fold_unmap(struct z3fold_pool *pool, unsigned long handle);
-u64 z3fold_get_pool_size(struct z3fold_pool *pool);
 
 /**
  * struct z3fold_pool - stores metadata for each z3fold pool
@@ -132,103 +124,6 @@ enum z3fold_page_flags {
 };
 
 /*****************
- * zpool
- ****************/
-
-#ifdef CONFIG_ZPOOL
-
-static int z3fold_zpool_evict(struct z3fold_pool *pool, unsigned long handle)
-{
-	if (pool->zpool && pool->zpool_ops && pool->zpool_ops->evict)
-		return pool->zpool_ops->evict(pool->zpool, handle);
-	else
-		return -ENOENT;
-}
-
-static const struct z3fold_ops z3fold_zpool_ops = {
-	.evict =	z3fold_zpool_evict
-};
-
-static void *z3fold_zpool_create(const char *name, gfp_t gfp,
-			       const struct zpool_ops *zpool_ops,
-			       struct zpool *zpool)
-{
-	struct z3fold_pool *pool;
-
-	pool = z3fold_create_pool(gfp, zpool_ops ? &z3fold_zpool_ops : NULL);
-	if (pool) {
-		pool->zpool = zpool;
-		pool->zpool_ops = zpool_ops;
-	}
-	return pool;
-}
-
-static void z3fold_zpool_destroy(void *pool)
-{
-	z3fold_destroy_pool(pool);
-}
-
-static int z3fold_zpool_malloc(void *pool, size_t size, gfp_t gfp,
-			unsigned long *handle)
-{
-	return z3fold_alloc(pool, size, gfp, handle);
-}
-static void z3fold_zpool_free(void *pool, unsigned long handle)
-{
-	z3fold_free(pool, handle);
-}
-
-static int z3fold_zpool_shrink(void *pool, unsigned int pages,
-			unsigned int *reclaimed)
-{
-	unsigned int total = 0;
-	int ret = -EINVAL;
-
-	while (total < pages) {
-		ret = z3fold_reclaim_page(pool, 8);
-		if (ret < 0)
-			break;
-		total++;
-	}
-
-	if (reclaimed)
-		*reclaimed = total;
-
-	return ret;
-}
-
-static void *z3fold_zpool_map(void *pool, unsigned long handle,
-			enum zpool_mapmode mm)
-{
-	return z3fold_map(pool, handle);
-}
-static void z3fold_zpool_unmap(void *pool, unsigned long handle)
-{
-	z3fold_unmap(pool, handle);
-}
-
-static u64 z3fold_zpool_total_size(void *pool)
-{
-	return z3fold_get_pool_size(pool) * PAGE_SIZE;
-}
-
-static struct zpool_driver z3fold_zpool_driver = {
-	.type =		"z3fold",
-	.owner =	THIS_MODULE,
-	.create =	z3fold_zpool_create,
-	.destroy =	z3fold_zpool_destroy,
-	.malloc =	z3fold_zpool_malloc,
-	.free =		z3fold_zpool_free,
-	.shrink =	z3fold_zpool_shrink,
-	.map =		z3fold_zpool_map,
-	.unmap =	z3fold_zpool_unmap,
-	.total_size =	z3fold_zpool_total_size,
-};
-
-MODULE_ALIAS("zpool-z3fold");
-#endif /* CONFIG_ZPOOL */
-
-/*****************
  * Helpers
 *****************/
 
@@ -249,6 +144,7 @@ static struct z3fold_header *init_z3fold_page(struct page *page)
 	INIT_LIST_HEAD(&page->lru);
 	clear_bit(UNDER_RECLAIM, &page->private);
 	clear_bit(PAGE_HEADLESS, &page->private);
+	clear_bit(MIDDLE_CHUNK_MAPPED, &page->private);
 
 	zhdr->first_chunks = 0;
 	zhdr->middle_chunks = 0;
@@ -273,7 +169,7 @@ static unsigned long encode_handle(struct z3fold_header *zhdr, enum buddy bud)
 {
 	unsigned long handle;
 
- 	handle = (unsigned long)zhdr;
+	handle = (unsigned long)zhdr;
 	if (bud != HEADLESS)
 		handle += (bud + zhdr->first_num) & BUDDY_MASK;
 	return handle;
@@ -293,16 +189,18 @@ static int num_free_chunks(struct z3fold_header *zhdr)
 {
 	int nfree;
 	/*
-	 * There is one special case, where first_chunks == 0 and
-	 * middle_chunks != 0. In this case there may be a hole between
-	 * the middle and the last objects, or middle object may be in use
-	 * and thus temporarily unmovable.
+	 * If there is a middle object, pick up the bigger free space
+	 * either before or after it. Otherwise just subtract the number
+	 * of chunks occupied by the first and the last objects.
 	 */
-	if (zhdr->first_chunks == 0 && zhdr->middle_chunks != 0)
-		nfree = zhdr->start_middle - 1;
-	else
-		nfree = NCHUNKS - zhdr->first_chunks -
-			zhdr->middle_chunks - zhdr->last_chunks;
+	if (zhdr->middle_chunks != 0) {
+		int nfree_before = zhdr->first_chunks ?
+			0 : zhdr->start_middle - 1;
+		int nfree_after = zhdr->last_chunks ?
+			0 : NCHUNKS - zhdr->start_middle - zhdr->middle_chunks;
+		nfree = max(nfree_before, nfree_after);
+	} else
+		nfree = NCHUNKS - zhdr->first_chunks - zhdr->last_chunks;
 	return nfree;
 }
 
@@ -350,19 +248,27 @@ void z3fold_destroy_pool(struct z3fold_pool *pool)
 static int z3fold_compact_page(struct z3fold_header *zhdr)
 {
 	struct page *page = virt_to_page(zhdr);
+	void *beg = zhdr;
 
-	if (zhdr->first_chunks == 0 && zhdr->last_chunks == 0 &&
-	    zhdr->middle_chunks != 0 &&
-	    !test_bit(MIDDLE_CHUNK_MAPPED, &page->private)) {
-		/* move middle chunk to the first chunk */
-		memmove((void *)zhdr + ZHDR_SIZE_ALIGNED,
-			(void *)zhdr + (zhdr->start_middle << CHUNK_SHIFT),
-			zhdr->middle_chunks << CHUNK_SHIFT);
-		zhdr->first_chunks = zhdr->middle_chunks;
-		zhdr->middle_chunks = 0;
-		zhdr->start_middle = 0;
-		zhdr->first_num++;
-		return 1;
+	if (!test_bit(MIDDLE_CHUNK_MAPPED, &page->private) &&
+	    zhdr->middle_chunks != 0) {
+		if (zhdr->first_chunks == 0 && zhdr->last_chunks == 0) {
+			memmove(beg + ZHDR_SIZE_ALIGNED,
+				beg + (zhdr->start_middle << CHUNK_SHIFT),
+				zhdr->middle_chunks << CHUNK_SHIFT);
+			zhdr->first_chunks = zhdr->middle_chunks;
+			zhdr->middle_chunks = 0;
+			zhdr->start_middle = 0;
+			zhdr->first_num++;
+			return 1;
+		} else if (zhdr->first_chunks != 0 &&
+			   zhdr->start_middle != zhdr->first_chunks + 1) {
+			memmove(beg + ((zhdr->first_chunks+1) << CHUNK_SHIFT),
+				beg + (zhdr->start_middle << CHUNK_SHIFT),
+				zhdr->middle_chunks << CHUNK_SHIFT);
+			zhdr->start_middle = zhdr->first_chunks + 1;
+			return 1;
+		}
 	}
 	return 0;
 }
@@ -416,18 +322,21 @@ int z3fold_alloc(struct z3fold_pool *pool, size_t size, gfp_t gfp,
 				if (zhdr->first_chunks == 0) {
 					if (zhdr->middle_chunks == 0)
 						bud = FIRST;
-					else if (zhdr->last_chunks == 0 &&
-						 z3fold_compact_page(zhdr))
+					else if (chunks >= zhdr->start_middle)
 						bud = LAST;
-					else
+					else if (test_bit(MIDDLE_CHUNK_MAPPED,
+						     &page->private))
 						continue;
+					else
+						bud = FIRST;
 				} else if (zhdr->last_chunks == 0)
 					bud = LAST;
 				else if (zhdr->middle_chunks == 0)
 					bud = MIDDLE;
 				else {
 					pr_err("No free chunks in unbuddied\n");
-					BUG();
+					WARN_ON(1);
+					continue;
 				}
 				list_del(&zhdr->buddy);
 				goto found;
@@ -451,6 +360,9 @@ int z3fold_alloc(struct z3fold_pool *pool, size_t size, gfp_t gfp,
 	}
 
 found:
+	if (zhdr->middle_chunks != 0)
+		z3fold_compact_page(zhdr);
+
 	if (bud == FIRST)
 		zhdr->first_chunks = chunks;
 	else if (bud == LAST)
@@ -523,8 +435,9 @@ void z3fold_free(struct z3fold_pool *pool, unsigned long handle)
 			break;
 		default:
 			pr_err("%s: unknown bud %d\n", __func__, bud);
-			BUG();
-			break;
+			WARN_ON(1);
+			spin_unlock(&pool->lock);
+			return;
 		}
 	}
 
@@ -733,7 +646,8 @@ void *z3fold_map(struct z3fold_pool *pool, unsigned long handle)
 		break;
 	default:
 		pr_err("unknown buddy id %d\n", buddy);
-		BUG();
+		WARN_ON(1);
+		addr = NULL;
 		break;
 	}
 out:
@@ -778,6 +692,104 @@ u64 z3fold_get_pool_size(struct z3fold_pool *pool)
 {
 	return pool->pages_nr;
 }
+
+/*****************
+ * zpool
+ ****************/
+
+#ifdef CONFIG_ZPOOL
+
+static int z3fold_zpool_evict(struct z3fold_pool *pool, unsigned long handle)
+{
+	if (pool->zpool && pool->zpool_ops && pool->zpool_ops->evict)
+		return pool->zpool_ops->evict(pool->zpool, handle);
+	else
+		return -ENOENT;
+}
+
+static const struct z3fold_ops z3fold_zpool_ops = {
+	.evict =	z3fold_zpool_evict
+};
+
+static void *z3fold_zpool_create(const char *name, gfp_t gfp,
+			       const struct zpool_ops *zpool_ops,
+			       struct zpool *zpool)
+{
+	struct z3fold_pool *pool;
+
+	pool = z3fold_create_pool(gfp, zpool_ops ? &z3fold_zpool_ops : NULL);
+	if (pool) {
+		pool->zpool = zpool;
+		pool->zpool_ops = zpool_ops;
+	}
+	return pool;
+}
+
+static void z3fold_zpool_destroy(void *pool)
+{
+	z3fold_destroy_pool(pool);
+}
+
+static int z3fold_zpool_malloc(void *pool, size_t size, gfp_t gfp,
+			unsigned long *handle)
+{
+	return z3fold_alloc(pool, size, gfp, handle);
+}
+static void z3fold_zpool_free(void *pool, unsigned long handle)
+{
+	z3fold_free(pool, handle);
+}
+
+static int z3fold_zpool_shrink(void *pool, unsigned int pages,
+			unsigned int *reclaimed)
+{
+	unsigned int total = 0;
+	int ret = -EINVAL;
+
+	while (total < pages) {
+		ret = z3fold_reclaim_page(pool, 8);
+		if (ret < 0)
+			break;
+		total++;
+	}
+
+	if (reclaimed)
+		*reclaimed = total;
+
+	return ret;
+}
+
+static void *z3fold_zpool_map(void *pool, unsigned long handle,
+			enum zpool_mapmode mm)
+{
+	return z3fold_map(pool, handle);
+}
+static void z3fold_zpool_unmap(void *pool, unsigned long handle)
+{
+	z3fold_unmap(pool, handle);
+}
+
+static u64 z3fold_zpool_total_size(void *pool)
+{
+	return z3fold_get_pool_size(pool) * PAGE_SIZE;
+}
+
+static struct zpool_driver z3fold_zpool_driver = {
+	.type =		"z3fold",
+	.owner =	THIS_MODULE,
+	.create =	z3fold_zpool_create,
+	.destroy =	z3fold_zpool_destroy,
+	.malloc =	z3fold_zpool_malloc,
+	.free =		z3fold_zpool_free,
+	.shrink =	z3fold_zpool_shrink,
+	.map =		z3fold_zpool_map,
+	.unmap =	z3fold_zpool_unmap,
+	.total_size =	z3fold_zpool_total_size,
+};
+
+MODULE_ALIAS("zpool-z3fold");
+#endif /* CONFIG_ZPOOL */
+
 
 static int __init init_z3fold(void)
 {
