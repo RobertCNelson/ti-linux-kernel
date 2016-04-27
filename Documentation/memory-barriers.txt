@@ -4,8 +4,40 @@
 
 By: David Howells <dhowells@redhat.com>
     Paul E. McKenney <paulmck@linux.vnet.ibm.com>
+    Will Deacon <will.deacon@arm.com>
+    Peter Zijlstra <peterz@infradead.org>
 
-Contents:
+==========
+DISCLAIMER
+==========
+
+This document is not a specification; it is intentionally (for the sake of
+brevity) and unintentionally (due to being human) incomplete. This document is
+meant as a guide to using the various memory barriers provided by Linux, but
+in case of any doubt (and there are many) please ask.
+
+To repeat, this document is not a specification of what Linux expects from
+hardware.
+
+The purpose of this document is twofold:
+
+ (1) to specify the minimum functionality that one can rely on for any
+     particular barrier, and
+
+ (2) to provide a guide as to how to use the barriers that are available.
+
+Note that an architecture can provide more than the minimum requirement
+for any particular barrier, but if the architecure provides less than
+that, that architecture is incorrect.
+
+Note also that it is possible that a barrier may be a no-op for an
+architecture because the way that arch works renders an explicit barrier
+unnecessary in that case.
+
+
+========
+CONTENTS
+========
 
  (*) Abstract memory access model.
 
@@ -466,6 +498,11 @@ And a couple of implicit varieties:
      This means that ACQUIRE acts as a minimal "acquire" operation and
      RELEASE acts as a minimal "release" operation.
 
+A subset of the atomic operations described in atomic_ops.txt have ACQUIRE
+and RELEASE variants in addition to fully-ordered and relaxed (no barrier
+semantics) definitions.  For compound atomics performing both a load and a
+store, ACQUIRE semantics apply only to the load and RELEASE semantics apply
+only to the store portion of the operation.
 
 Memory barriers are only required where there's a possibility of interaction
 between two CPUs or between a CPU and a device.  If it can be guaranteed that
