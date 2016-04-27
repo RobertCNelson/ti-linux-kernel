@@ -43,6 +43,7 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_AK5386
 	select SND_SOC_ALC5623 if I2C
 	select SND_SOC_ALC5632 if I2C
+	select SND_SOC_BT_SCO
 	select SND_SOC_CQ0093VC if MFD_DAVINCI_VOICECODEC
 	select SND_SOC_CS35L32 if I2C
 	select SND_SOC_CS42L51_I2C if I2C
@@ -64,7 +65,6 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_DA732X if I2C
 	select SND_SOC_DA9055 if I2C
 	select SND_SOC_DMIC
-	select SND_SOC_BT_SCO
 	select SND_SOC_ES8328_SPI if SPI_MASTER
 	select SND_SOC_ES8328_I2C if I2C
 	select SND_SOC_GTM601
@@ -88,6 +88,7 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_MC13783 if MFD_MC13XXX
 	select SND_SOC_ML26124 if I2C
 	select SND_SOC_NAU8825 if I2C
+	select SND_SOC_HDMI_CODEC
 	select SND_SOC_PCM1681 if I2C
 	select SND_SOC_PCM179X_I2C if I2C
 	select SND_SOC_PCM179X_SPI if SPI_MASTER
@@ -129,7 +130,8 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_TLV320AIC23_SPI if SPI_MASTER
 	select SND_SOC_TLV320AIC26 if SPI_MASTER
 	select SND_SOC_TLV320AIC31XX if I2C
-	select SND_SOC_TLV320AIC32X4 if I2C
+	select SND_SOC_TLV320AIC32X4_I2C if I2C
+	select SND_SOC_TLV320AIC32X4_SPI if SPI_MASTER
 	select SND_SOC_TLV320AIC3X if I2C
 	select SND_SOC_TPA6130A2 if I2C
 	select SND_SOC_TLV320DAC33 if I2C
@@ -365,6 +367,9 @@ config SND_SOC_ALC5623
 config SND_SOC_ALC5632
 	tristate
 
+config SND_SOC_BT_SCO
+	tristate
+
 config SND_SOC_CQ0093VC
 	tristate
 
@@ -471,11 +476,13 @@ config SND_SOC_DA732X
 config SND_SOC_DA9055
 	tristate
 
-config SND_SOC_BT_SCO
-	tristate
-
 config SND_SOC_DMIC
 	tristate
+
+config SND_SOC_HDMI_CODEC
+       tristate
+       select SND_PCM_ELD
+       select SND_PCM_IEC958
 
 config SND_SOC_ES8328
 	tristate "Everest Semi ES8328 CODEC"
@@ -629,6 +636,7 @@ config SND_SOC_RT5514
 
 config SND_SOC_RT5616
 	tristate "Realtek RT5616 CODEC"
+	depends on I2C
 
 config SND_SOC_RT5631
 	tristate "Realtek ALC5631/RT5631 CODEC"
@@ -737,7 +745,7 @@ config SND_SOC_TAS5086
 	depends on I2C
 
 config SND_SOC_TAS571X
-	tristate "Texas Instruments TAS5711/TAS5717/TAS5719 power amplifiers"
+	tristate "Texas Instruments TAS5711/TAS5717/TAS5719/TAS5721 power amplifiers"
 	depends on I2C
 
 config SND_SOC_TFA9879
@@ -768,6 +776,16 @@ config SND_SOC_TLV320AIC31XX
 
 config SND_SOC_TLV320AIC32X4
 	tristate
+
+config SND_SOC_TLV320AIC32X4_I2C
+	tristate
+	depends on I2C
+	select SND_SOC_TLV320AIC32X4
+
+config SND_SOC_TLV320AIC32X4_SPI
+	tristate
+	depends on SPI_MASTER
+	select SND_SOC_TLV320AIC32X4
 
 config SND_SOC_TLV320AIC3X
 	tristate "Texas Instruments TLV320AIC3x CODECs"
@@ -909,7 +927,8 @@ config SND_SOC_WM8955
 	tristate
 
 config SND_SOC_WM8960
-	tristate
+	tristate "Wolfson Microelectronics WM8960 CODEC"
+	depends on I2C
 
 config SND_SOC_WM8961
 	tristate
