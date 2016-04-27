@@ -95,7 +95,7 @@ static inline bool compaction_made_progress(enum compact_result result)
 /* Compaction has failed and it doesn't make much sense to keep retrying. */
 static inline bool compaction_failed(enum compact_result result)
 {
-	/* All zones where scanned completely and still not result. */
+	/* All zones were scanned completely and still not result. */
 	if (result == COMPACT_COMPLETE)
 		return true;
 
