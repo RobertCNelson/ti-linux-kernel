@@ -3405,22 +3405,17 @@ retry_cpuset:
 
 	/* First allocation attempt */
 	page = get_page_from_freelist(alloc_mask, order, alloc_flags, &ac);
-	if (unlikely(!page)) {
-		/*
-		 * Runtime PM, block IO and its error handling path
-		 * can deadlock because I/O on the device might not
-		 * complete.
-		 */
-		alloc_mask = memalloc_noio_flags(gfp_mask);
-		ac.spread_dirty_pages = false;
+	if (likely(page))
+		goto out;
 
-		page = __alloc_pages_slowpath(alloc_mask, order, &ac);
-	}
+	/*
+	 * Runtime PM, block IO and its error handling path can deadlock
+	 * because I/O on the device might not complete.
+	 */
+	alloc_mask = memalloc_noio_flags(gfp_mask);
+	ac.spread_dirty_pages = false;
 
-	if (kmemcheck_enabled && page)
-		kmemcheck_pagealloc_alloc(page, order, gfp_mask);
-
-	trace_mm_page_alloc(page, order, alloc_mask, ac.migratetype);
+	page = __alloc_pages_slowpath(alloc_mask, order, &ac);
 
 out:
 	/*
@@ -3433,6 +3428,12 @@ out:
 		alloc_mask = gfp_mask;
 		goto retry_cpuset;
 	}
+
+out:
+	if (kmemcheck_enabled && page)
+		kmemcheck_pagealloc_alloc(page, order, gfp_mask);
+
+	trace_mm_page_alloc(page, order, alloc_mask, ac.migratetype);
 
 	return page;
 }
