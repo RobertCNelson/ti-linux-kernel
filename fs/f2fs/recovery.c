@@ -257,11 +257,8 @@ static int find_fsync_dnodes(struct f2fs_sb_info *sbi, struct list_head *head)
 		}
 		entry->blkaddr = blkaddr;
 
-		if (IS_INODE(page)) {
-			entry->last_inode = blkaddr;
-			if (is_dent_dnode(page))
-				entry->last_dentry = blkaddr;
-		}
+		if (IS_INODE(page) && is_dent_dnode(page))
+			entry->last_dentry = blkaddr;
 next:
 		/* check next segment */
 		blkaddr = next_blkaddr_of_node(page);
@@ -521,7 +518,7 @@ static int recover_data(struct f2fs_sb_info *sbi, struct list_head *head)
 		 * In this case, we can lose the latest inode(x).
 		 * So, call recover_inode for the inode update.
 		 */
-		if (entry->last_inode == blkaddr)
+		if (IS_INODE(page))
 			recover_inode(entry->inode, page);
 		if (entry->last_dentry == blkaddr) {
 			err = recover_dentry(entry->inode, page);
@@ -551,12 +548,13 @@ next:
 	return err;
 }
 
-int recover_fsync_data(struct f2fs_sb_info *sbi)
+int recover_fsync_data(struct f2fs_sb_info *sbi, bool check_only)
 {
 	struct curseg_info *curseg = CURSEG_I(sbi, CURSEG_WARM_NODE);
 	struct list_head inode_list;
 	block_t blkaddr;
 	int err;
+	int ret = 0;
 	bool need_writecp = false;
 
 	fsync_entry_slab = f2fs_kmem_cache_create("f2fs_fsync_inode_entry",
@@ -573,11 +571,13 @@ int recover_fsync_data(struct f2fs_sb_info *sbi)
 
 	/* step #1: find fsynced inode numbers */
 	err = find_fsync_dnodes(sbi, &inode_list);
-	if (err)
+	if (err || list_empty(&inode_list))
 		goto out;
 
-	if (list_empty(&inode_list))
+	if (check_only) {
+		ret = 1;
 		goto out;
+	}
 
 	need_writecp = true;
 
@@ -625,5 +625,5 @@ out:
 	} else {
 		mutex_unlock(&sbi->cp_mutex);
 	}
-	return err;
+	return ret ? ret: err;
 }
