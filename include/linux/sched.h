@@ -784,7 +784,11 @@ struct signal_struct {
 	struct tty_audit_buf *tty_audit_buf;
 #endif
 
-	oom_flags_t oom_flags;
+	/*
+	 * Thread is the potential origin of an oom condition; kill first on
+	 * oom
+	 */
+	bool oom_flag_origin;
 	short oom_score_adj;		/* OOM kill score adjustment */
 	short oom_score_adj_min;	/* OOM kill score adjustment min value.
 					 * Only settable by CAP_SYS_RESOURCE. */
@@ -2681,7 +2685,14 @@ static inline int copy_thread_tls(
 }
 #endif
 extern void flush_thread(void);
-extern void exit_thread(void);
+
+#ifdef CONFIG_HAVE_EXIT_THREAD
+extern void exit_thread(struct task_struct *tsk);
+#else
+static inline void exit_thread(struct task_struct *tsk)
+{
+}
+#endif
 
 extern void exit_files(struct task_struct *);
 extern void __cleanup_sighand(struct sighand_struct *);

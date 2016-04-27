@@ -33,6 +33,7 @@ my $summary = 1;
 my $mailback = 0;
 my $summary_file = 0;
 my $show_types = 0;
+my $list_types = 0;
 my $fix = 0;
 my $fix_inplace = 0;
 my $root;
@@ -70,11 +71,12 @@ Options:
   --showfile                 emit diffed file position, not input file position
   -f, --file                 treat FILE as regular source file
   --subjective, --strict     enable more subjective tests
+  --list-types               list the possible message types
   --types TYPE(,TYPE2...)    show only these comma separated message types
   --ignore TYPE(,TYPE2...)   ignore various comma separated message types
+  --show-types               show the specific message type in the output
   --max-line-length=n        set the maximum line length, if exceeded, warn
   --min-conf-desc-length=n   set the min description length, if shorter, warn
-  --show-types               show the message "types" in the output
   --root=PATH                PATH to the kernel tree root
   --no-summary               suppress the per-file summary
   --mailback                 only produce a report in case of warnings/errors
@@ -102,6 +104,37 @@ Options:
 
 When FILE is - read standard input.
 EOM
+
+	exit($exitcode);
+}
+
+sub uniq {
+	my %seen;
+	return grep { !$seen{$_}++ } @_;
+}
+
+sub list_types {
+	my ($exitcode) = @_;
+
+	my $count = 0;
+
+	local $/ = undef;
+
+	open(my $script, '<', abs_path($P)) or
+	    die "$P: Can't read '$P' $!\n";
+
+	my $text = <$script>;
+	close($script);
+
+	my @types = ();
+	for ($text =~ /\b(?:(?:CHK|WARN|ERROR)\s*\(\s*"([^"]+)")/g) {
+		push (@types, $_);
+	}
+	@types = sort(uniq(@types));
+	print("#\tMessage type\n\n");
+	foreach my $type (@types) {
+		print(++$count . "\t" . $type . "\n");
+	}
 
 	exit($exitcode);
 }
@@ -146,6 +179,7 @@ GetOptions(
 	'ignore=s'	=> \@ignore,
 	'types=s'	=> \@use,
 	'show-types!'	=> \$show_types,
+	'list-types!'	=> \$list_types,
 	'max-line-length=i' => \$max_line_length,
 	'min-conf-desc-length=i' => \$min_conf_desc_length,
 	'root=s'	=> \$root,
@@ -165,6 +199,8 @@ GetOptions(
 ) or help(1);
 
 help(0) if ($help);
+
+list_types(0) if ($list_types);
 
 $fix = 1 if ($fix_inplace);
 $check_orig = $check;
@@ -2755,6 +2791,19 @@ sub process {
 			    "Logical continuations should be on the previous line\n" . $hereprev);
 		}
 
+# check indentation starts on a tab stop
+		if ($^V && $^V ge 5.10.0 &&
+		    $sline =~ /^\+\t+( +)(?:$c90_Keywords\b|\{\s*$|\}\s*(?:else\b|while\b|\s*$))/) {
+			my $indent = length($1);
+			if ($indent % 8) {
+				if (WARN("TABSTOP",
+					 "Statements should start on a tabstop\n" . $herecurr) &&
+				    $fix) {
+					$fixed[$fixlinenr] =~ s@(^\+\t+) +@$1 . "\t" x ($indent/8)@e;
+				}
+			}
+		}
+
 # check multi-line statement indentation matches previous line
 		if ($^V && $^V ge 5.10.0 &&
 		    $prevline =~ /^\+([ \t]*)((?:$c90_Keywords(?:\s+if)\s*)|(?:$Declare\s*)?(?:$Ident|\(\s*\*\s*$Ident\s*\))\s*|$Ident\s*=\s*$Ident\s*)\(.*(\&\&|\|\||,)\s*$/) {
@@ -4291,7 +4340,7 @@ sub process {
 			my $comp = $3;
 			my $to = $4;
 			my $newcomp = $comp;
-			if ($lead !~ /$Operators\s*$/ &&
+			if ($lead !~ /(?:$Operators|\.)\s*$/ &&
 			    $to !~ /^(?:Constant|[A-Z_][A-Z0-9_]*)$/ &&
 			    WARN("CONSTANT_COMPARISON",
 				 "Comparisons should place the constant on the right side of the test\n" . $herecurr) &&
@@ -5637,6 +5686,16 @@ sub process {
 			}
 		}
 
+# check for #if defined CONFIG_<FOO> || defined CONFIG_<FOO>_MODULE
+		if ($line =~ /^\+\s*#\s*if\s+defined(?:\s*\(?\s*|\s+)(CONFIG_[A-Z_]+)\s*\)?\s*\|\|\s*defined(?:\s*\(?\s*|\s+)\1_MODULE\s*\)?\s*$/) {
+			my $config = $1;
+			if (WARN("PREFER_IS_ENABLED",
+				 "Prefer IS_ENABLED(<FOO>) to CONFIG_<FOO> || CONFIG_<FOO>_MODULE\n" . $herecurr) &&
+			    $fix) {
+				$fixed[$fixlinenr] = "\+#if IS_ENABLED($config)";
+			}
+		}
+
 # check for case / default statements not preceded by break/fallthrough/switch
 		if ($line =~ /^.\s*(?:case\s+(?:$Ident|$Constant)\s*|default):/) {
 			my $has_break = 0;
@@ -5827,6 +5886,28 @@ sub process {
 			}
 		}
 
+# whine about ACCESS_ONCE
+		if ($^V && $^V ge 5.10.0 &&
+		    $line =~ /\bACCESS_ONCE\s*$balanced_parens\s*(=(?!=))?\s*($FuncArg)?/) {
+			my $par = $1;
+			my $eq = $2;
+			my $fun = $3;
+			$par =~ s/^\(\s*(.*)\s*\)$/$1/;
+			if (defined($eq)) {
+				if (WARN("PREFER_WRITE_ONCE",
+					 "Prefer WRITE_ONCE(<FOO>, <BAR>) over ACCESS_ONCE(<FOO>) = <BAR>\n" . $herecurr) &&
+				    $fix) {
+					$fixed[$fixlinenr] =~ s/\bACCESS_ONCE\s*\(\s*\Q$par\E\s*\)\s*$eq\s*\Q$fun\E/WRITE_ONCE($par, $fun)/;
+				}
+			} else {
+				if (WARN("PREFER_READ_ONCE",
+					 "Prefer READ_ONCE(<FOO>) over ACCESS_ONCE(<FOO>)\n" . $herecurr) &&
+				    $fix) {
+					$fixed[$fixlinenr] =~ s/\bACCESS_ONCE\s*\(\s*\Q$par\E\s*\)/READ_ONCE($par)/;
+				}
+			}
+		}
+
 # check for lockdep_set_novalidate_class
 		if ($line =~ /^.\s*lockdep_set_novalidate_class\s*\(/ ||
 		    $line =~ /__lockdep_no_validate__\s*\)/ ) {
@@ -5930,6 +6011,14 @@ sub process {
 	}
 
 	if ($quiet == 0) {
+		# If there were any defects found and not already fixing them
+		if (!$clean and !$fix) {
+			print << "EOM"
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+EOM
+		}
 		# If there were whitespace errors which cleanpatch can fix
 		# then suggest that.
 		if ($rpt_cleaners) {
