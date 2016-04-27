@@ -641,10 +641,6 @@ static int __init oom_init(void)
 }
 subsys_initcall(oom_init)
 #else
-static void try_oom_reaper(struct task_struct *tsk)
-{
-}
-
 static void wake_oom_reaper(struct task_struct *tsk)
 {
 }
