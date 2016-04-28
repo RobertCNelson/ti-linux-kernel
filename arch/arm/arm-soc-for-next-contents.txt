@@ -1,22 +1,12 @@
 fixes
-	<no branch> (d9c9f3b809d2bb0356f013e88d10730eafab5346)
-		https://github.com/mbgg/linux-mediatek tags/v4.6-soc-fixes
-	<no branch> (3d51ae172d759198b2e47e104c31a92d20d17927)
-		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.6/fixes-rc2-v2-signed
-	<no branch> (c531fb27e9699eaee478ee5686a3cca5dee73602)
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-fixes-for-v4.6
-	<no branch> (1560d15861769c23fd981e2d60dc7fd790b21e1e)
-		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.6/fixes-rc3
-	<no branch> (fc26fe9c3869f02dd9dc54ff3a45c6d9d4bbbdfa)
-		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-fixes-4.6
+	<no branch> (a0a966b83873f33778710a4fc59240244b0734a5)
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-fixes-4.6
 	patch
-		arm64: dts: uniphier: fix I2C nodes of PH1-LD20
-	<no branch> (10c0f0e92f019ab8d0c17da3696e35b0eef4ec16)
-		git://git.kernel.org/pub/scm/linux/kernel/git/agross/linux tags/qcom-fixes-for-4.6-rc2
-	omap/dt-ti81xx
-		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.6/dt-ti81xx-signed
-	patch
-		drivers: firmware: psci: unify enable-method binding on ARM {64,32}-bit systems
+		ARM: SoCFPGA: Fix secondary CPU startup in thumb2 kernel
+	<no branch> (7472931f7f1e9d91f761dce30107ae345b61a5c3)
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.6/fixes-rc5-signed
+	at91/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-fixes2-for-v4.6
 
 next/fixes-non-critical
 
@@ -58,6 +48,8 @@ next/arm64
 		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-defconfig64-4.7
 	hisi/config
 		git://github.com/hisilicon/linux-hisi tags/hi6220-config-for-4.7v3
+	renesas/defconfig64
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-arm64-defconfig-for-v4.7
 
 next/dt
 	at91/dt
@@ -108,13 +100,27 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone_dts_for_4.7
 	omap/dt-ti81xx
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v4.6/dt-ti81xx-signed
-	renesas/fixes
+	<no branch> (c531fb27e9699eaee478ee5686a3cca5dee73602)
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-fixes-for-v4.6
 	patch
 		ARM: dts: introduce MPS2 AN385/AN386
 		ARM: dts: introduce MPS2 AN399/AN400
 	oxnas/dt
 		https://github.com/superna9999/linux tags/ox810se-arm-dt-v4.6-rc3
+	sti/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/mcoquelin/sti tags/sti-dt-for-v4.7b-1
+	at91/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-dt2
+	lpc32xx/dt
+		git://github.com/vzapolskiy/linux-lpc32xx tags/lpc32xx-dt-4.7
+	renesas/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt2-for-v4.7
+	samsung/dt-4.7-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-dt-4.7-2
+	socfpga/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/dinguyen/linux tags/socfpga_dts_for_v4.7_part_2
+	<no branch> (4d7820b0465a78e6c85a74474b89fb4ab84768ba)
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-dt-exynos-srom-fixup-4.7
 
 next/dt64
 	meson/dt64
@@ -140,6 +146,12 @@ next/dt64
 	patch
 		arm64: dts: uniphier: use Daughter board on PH1-LD20 reference board
 		arm64: dts: uniphier: add reference clock node for PH1-LD20
+	renesas/dt64-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-arm64-dt2-for-v4.7
+		contains renesas/dt64
+	hisi/dt64-2
+hisi/hip06-dt
+		git://github.com/hisilicon/linux-hisi tags/hip0x-dt-for-4.7
 
 next/defconfig
 	renesas/defconfig
@@ -163,6 +175,8 @@ next/defconfig
 		ARM: configs: add MPS2 defconfig
 	renesas/pci-defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-pci-defconfig-for-v4.7
+	<no branch> (3b3c6ad5353951cd01523add5a1930c743d4f807)
+		git://github.com/vzapolskiy/linux-lpc32xx tags/lpc32xx-defconfig-4.7
 
 next/drivers
 	qcom/soc
@@ -192,3 +206,13 @@ next/drivers
 	renesas/rcar-sysc2
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-rcar-sysc2-for-v4.7
 		contains renesas/dt
+	samsung/srom
+		git://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux tags/samsung-drivers-exynos-srom-4.7
+
+next/late
+	renesas/dt-pm-domain
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-pm-domain-for-v4.7
+		contains renesas/cleanup
+		contains renesas/dt
+		contains renesas/dt-2
+		contains renesas/rcar-sysc2
