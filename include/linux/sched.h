@@ -40,7 +40,6 @@ struct sched_param {
 #include <linux/pid.h>
 #include <linux/percpu.h>
 #include <linux/topology.h>
-#include <linux/proportions.h>
 #include <linux/seccomp.h>
 #include <linux/rcupdate.h>
 #include <linux/rculist.h>
@@ -128,6 +127,7 @@ struct sched_attr {
 };
 
 struct futex_pi_state;
+struct futex_cache;
 struct robust_list_head;
 struct bio_list;
 struct fs_struct;
@@ -178,9 +178,11 @@ extern void get_iowait_load(unsigned long *nr_waiters, unsigned long *load);
 extern void calc_global_load(unsigned long ticks);
 
 #if defined(CONFIG_SMP) && defined(CONFIG_NO_HZ_COMMON)
-extern void update_cpu_load_nohz(int active);
+extern void cpu_load_update_nohz_start(void);
+extern void cpu_load_update_nohz_stop(void);
 #else
-static inline void update_cpu_load_nohz(int active) { }
+static inline void cpu_load_update_nohz_start(void) { }
+static inline void cpu_load_update_nohz_stop(void) { }
 #endif
 
 extern void dump_cpu_task(int cpu);
@@ -1702,6 +1704,7 @@ struct task_struct {
 #endif
 	struct list_head pi_state_list;
 	struct futex_pi_state *pi_state_cache;
+	struct futex_cache *futex_cache;
 #endif
 #ifdef CONFIG_PERF_EVENTS
 	struct perf_event_context *perf_event_ctxp[perf_nr_task_contexts];
@@ -2303,8 +2306,6 @@ extern unsigned long long notrace sched_clock(void);
 /*
  * See the comment in kernel/sched/clock.c
  */
-extern u64 cpu_clock(int cpu);
-extern u64 local_clock(void);
 extern u64 running_clock(void);
 extern u64 sched_clock_cpu(int cpu);
 
@@ -2323,6 +2324,16 @@ static inline void sched_clock_idle_sleep_event(void)
 static inline void sched_clock_idle_wakeup_event(u64 delta_ns)
 {
 }
+
+static inline u64 cpu_clock(int cpu)
+{
+	return sched_clock();
+}
+
+static inline u64 local_clock(void)
+{
+	return sched_clock();
+}
 #else
 /*
  * Architectures can set this to 1 if they have specified
@@ -2337,6 +2348,26 @@ extern void clear_sched_clock_stable(void);
 extern void sched_clock_tick(void);
 extern void sched_clock_idle_sleep_event(void);
 extern void sched_clock_idle_wakeup_event(u64 delta_ns);
+
+/*
+ * As outlined in clock.c, provides a fast, high resolution, nanosecond
+ * time source that is monotonic per cpu argument and has bounded drift
+ * between cpus.
+ *
+ * ######################### BIG FAT WARNING ##########################
+ * # when comparing cpu_clock(i) to cpu_clock(j) for i != j, time can #
+ * # go backwards !!                                                  #
+ * ####################################################################
+ */
+static inline u64 cpu_clock(int cpu)
+{
+	return sched_clock_cpu(cpu);
+}
+
+static inline u64 local_clock(void)
+{
+	return sched_clock_cpu(raw_smp_processor_id());
+}
 #endif
 
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
