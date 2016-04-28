@@ -432,9 +432,21 @@ config SPI_OMAP_100K
 
 config SPI_ORION
 	tristate "Orion SPI master"
-	depends on PLAT_ORION || COMPILE_TEST
+	depends on PLAT_ORION || ARCH_MVEBU || COMPILE_TEST
 	help
 	  This enables using the SPI master controller on the Orion chips.
+
+config SPI_PIC32
+	tristate "Microchip PIC32 series SPI"
+	depends on MACH_PIC32 || COMPILE_TEST
+	help
+	  SPI driver for Microchip PIC32 SPI master controller.
+
+config SPI_PIC32_SQI
+	tristate "Microchip PIC32 Quad SPI driver"
+	depends on MACH_PIC32 || COMPILE_TEST
+	help
+	  SPI driver for PIC32 Quad SPI controller.
 
 config SPI_PL022
 	tristate "ARM AMBA PL022 SSP controller"
@@ -656,7 +668,7 @@ config SPI_XILINX
 
 config SPI_XLP
 	tristate "Netlogic XLP SPI controller driver"
-	depends on CPU_XLP || COMPILE_TEST
+	depends on CPU_XLP || ARCH_VULCAN || COMPILE_TEST
 	help
 	  Enable support for the SPI controller on the Netlogic XLP SoCs.
 	  Currently supported XLP variants are XLP8XX, XLP3XX, XLP2XX, XLP9XX
