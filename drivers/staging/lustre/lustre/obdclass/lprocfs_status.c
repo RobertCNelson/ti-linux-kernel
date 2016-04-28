@@ -694,8 +694,9 @@ int lprocfs_rd_import(struct seq_file *m, void *data)
 
 		do_div(sum, ret.lc_count);
 		ret.lc_sum = sum;
-	} else
+	} else {
 		ret.lc_sum = 0;
+	}
 	seq_printf(m,
 		   "    rpcs:\n"
 		   "       inflight: %u\n"
@@ -1471,10 +1472,10 @@ EXPORT_SYMBOL(lprocfs_oh_tally);
 
 void lprocfs_oh_tally_log2(struct obd_histogram *oh, unsigned int value)
 {
-	unsigned int val;
+	unsigned int val = 0;
 
-	for (val = 0; ((1 << val) < value) && (val <= OBD_HIST_MAX); val++)
-		;
+	if (likely(value != 0))
+		val = min(fls(value - 1), OBD_HIST_MAX);
 
 	lprocfs_oh_tally(oh, val);
 }
