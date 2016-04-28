@@ -211,7 +211,7 @@ void ra_meta_pages_cond(struct f2fs_sb_info *sbi, pgoff_t index)
 	bool readahead = false;
 
 	page = find_get_page(META_MAPPING(sbi), index);
-	if (!page || (page && !PageUptodate(page)))
+	if (!page || !PageUptodate(page))
 		readahead = true;
 	f2fs_put_page(page, 0);
 
@@ -892,7 +892,7 @@ retry_flush_nodes:
 
 	if (get_pages(sbi, F2FS_DIRTY_NODES)) {
 		up_write(&sbi->node_write);
-		err = sync_node_pages(sbi, 0, &wbc);
+		err = sync_node_pages(sbi, &wbc);
 		if (err) {
 			f2fs_unlock_all(sbi);
 			goto out;
