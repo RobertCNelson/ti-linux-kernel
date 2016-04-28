@@ -60,6 +60,7 @@ struct cpuinfo_mips {
 	int			tlbsizeftlbways;
 	struct cache_desc	icache; /* Primary I-cache */
 	struct cache_desc	dcache; /* Primary D or combined I/D cache */
+	struct cache_desc	vcache; /* Victim cache, between pcache and scache */
 	struct cache_desc	scache; /* Secondary cache */
 	struct cache_desc	tcache; /* Tertiary/split secondary cache */
 	int			srsets; /* Shadow register sets */
@@ -68,7 +69,7 @@ struct cpuinfo_mips {
 #ifdef CONFIG_64BIT
 	int			vmbits; /* Virtual memory size in bits */
 #endif
-#ifdef CONFIG_MIPS_MT_SMP
+#if defined(CONFIG_MIPS_MT_SMP) || defined(CONFIG_CPU_MIPSR6)
 	/*
 	 * There is not necessarily a 1:1 mapping of VPE num to CPU number
 	 * in particular on multi-core systems.
@@ -125,7 +126,7 @@ struct proc_cpuinfo_notifier_args {
 	unsigned long n;
 };
 
-#ifdef CONFIG_MIPS_MT_SMP
+#if defined(CONFIG_MIPS_MT_SMP) || defined(CONFIG_CPU_MIPSR6)
 # define cpu_vpe_id(cpuinfo)	((cpuinfo)->vpe_id)
 #else
 # define cpu_vpe_id(cpuinfo)	({ (void)cpuinfo; 0; })
