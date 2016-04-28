@@ -1,6 +1,8 @@
 /*
  * linux/drivers/mmc/host/tmio_mmc.h
  *
+ * Copyright (C) 2016 Sang Engineering, Wolfram Sang
+ * Copyright (C) 2015-16 Renesas Electronics Corporation
  * Copyright (C) 2007 Ian Molton
  * Copyright (C) 2004 Ian Molton
  *
@@ -18,11 +20,63 @@
 
 #include <linux/dmaengine.h>
 #include <linux/highmem.h>
-#include <linux/mmc/tmio.h>
 #include <linux/mutex.h>
 #include <linux/pagemap.h>
 #include <linux/scatterlist.h>
 #include <linux/spinlock.h>
+
+#define CTL_SD_CMD 0x00
+#define CTL_ARG_REG 0x04
+#define CTL_STOP_INTERNAL_ACTION 0x08
+#define CTL_XFER_BLK_COUNT 0xa
+#define CTL_RESPONSE 0x0c
+#define CTL_STATUS 0x1c
+#define CTL_STATUS2 0x1e
+#define CTL_IRQ_MASK 0x20
+#define CTL_SD_CARD_CLK_CTL 0x24
+#define CTL_SD_XFER_LEN 0x26
+#define CTL_SD_MEM_CARD_OPT 0x28
+#define CTL_SD_ERROR_DETAIL_STATUS 0x2c
+#define CTL_SD_DATA_PORT 0x30
+#define CTL_TRANSACTION_CTL 0x34
+#define CTL_SDIO_STATUS 0x36
+#define CTL_SDIO_IRQ_MASK 0x38
+#define CTL_DMA_ENABLE 0xd8
+#define CTL_RESET_SD 0xe0
+#define CTL_VERSION 0xe2
+#define CTL_SDIO_REGS 0x100
+#define CTL_CLK_AND_WAIT_CTL 0x138
+#define CTL_RESET_SDIO 0x1e0
+
+/* Definitions for values the CTRL_STATUS register can take. */
+#define TMIO_STAT_CMDRESPEND    0x00000001
+#define TMIO_STAT_DATAEND       0x00000004
+#define TMIO_STAT_CARD_REMOVE   0x00000008
+#define TMIO_STAT_CARD_INSERT   0x00000010
+#define TMIO_STAT_SIGSTATE      0x00000020
+#define TMIO_STAT_WRPROTECT     0x00000080
+#define TMIO_STAT_CARD_REMOVE_A 0x00000100
+#define TMIO_STAT_CARD_INSERT_A 0x00000200
+#define TMIO_STAT_SIGSTATE_A    0x00000400
+#define TMIO_STAT_CMD_IDX_ERR   0x00010000
+#define TMIO_STAT_CRCFAIL       0x00020000
+#define TMIO_STAT_STOPBIT_ERR   0x00040000
+#define TMIO_STAT_DATATIMEOUT   0x00080000
+#define TMIO_STAT_RXOVERFLOW    0x00100000
+#define TMIO_STAT_TXUNDERRUN    0x00200000
+#define TMIO_STAT_CMDTIMEOUT    0x00400000
+#define TMIO_STAT_RXRDY         0x01000000
+#define TMIO_STAT_TXRQ          0x02000000
+#define TMIO_STAT_ILL_FUNC      0x20000000
+#define TMIO_STAT_CMD_BUSY      0x40000000
+#define TMIO_STAT_ILL_ACCESS    0x80000000
+
+#define TMIO_STATUS2_DAT0	BIT(7)
+
+#define	CLK_CTL_DIV_MASK	0xff
+#define	CLK_CTL_SCLKEN		BIT(8)
+
+#define TMIO_BBS		512		/* Boot block size */
 
 /* Definitions for values the CTRL_SDIO_STATUS register can take. */
 #define TMIO_SDIO_STAT_IOIRQ	0x0001
@@ -95,10 +149,14 @@ struct tmio_mmc_host {
 	bool			sdio_irq_enabled;
 
 	int (*write16_hook)(struct tmio_mmc_host *host, int addr);
-	int (*clk_enable)(struct platform_device *pdev, unsigned int *f);
-	void (*clk_disable)(struct platform_device *pdev);
+	int (*clk_enable)(struct tmio_mmc_host *host);
+	unsigned int (*clk_update)(struct tmio_mmc_host *host,
+				   unsigned int new_clock);
+	void (*clk_disable)(struct tmio_mmc_host *host);
 	int (*multi_io_quirk)(struct mmc_card *card,
 			      unsigned int direction, int blk_size);
+	int (*start_signal_voltage_switch)(struct mmc_host *mmc,
+					   struct mmc_ios *ios);
 };
 
 struct tmio_mmc_host *tmio_mmc_host_alloc(struct platform_device *pdev);
@@ -111,9 +169,6 @@ void tmio_mmc_do_data_irq(struct tmio_mmc_host *host);
 void tmio_mmc_enable_mmc_irqs(struct tmio_mmc_host *host, u32 i);
 void tmio_mmc_disable_mmc_irqs(struct tmio_mmc_host *host, u32 i);
 irqreturn_t tmio_mmc_irq(int irq, void *devid);
-irqreturn_t tmio_mmc_sdcard_irq(int irq, void *devid);
-irqreturn_t tmio_mmc_card_detect_irq(int irq, void *devid);
-irqreturn_t tmio_mmc_sdio_irq(int irq, void *devid);
 
 static inline char *tmio_mmc_kmap_atomic(struct scatterlist *sg,
 					 unsigned long *flags)
