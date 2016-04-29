@@ -2418,7 +2418,7 @@ again:
 	}
 out:
 	if (ret) {
-		btrfs_std_error(root->fs_info, ret, NULL);
+		btrfs_handle_fs_error(root->fs_info, ret, NULL);
 		if (!list_empty(&reloc_roots))
 			free_reloc_roots(&reloc_roots);
 
@@ -4643,7 +4643,7 @@ int btrfs_reloc_post_snapshot(struct btrfs_trans_handle *trans,
 	if (rc->merge_reloc_tree) {
 		ret = btrfs_block_rsv_migrate(&pending->block_rsv,
 					      rc->block_rsv,
-					      rc->nodes_relocated);
+					      rc->nodes_relocated, 1);
 		if (ret)
 			return ret;
 	}
