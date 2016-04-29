@@ -734,7 +734,9 @@ static int mgc_setup(struct obd_device *obd, struct lustre_cfg *lcfg)
 	struct task_struct *task;
 	int rc;
 
-	ptlrpcd_addref();
+	rc = ptlrpcd_addref();
+	if (rc < 0)
+		goto err_noref;
 
 	rc = client_obd_setup(obd, lcfg);
 	if (rc)
@@ -773,6 +775,7 @@ err_cleanup:
 	client_obd_cleanup(obd);
 err_decref:
 	ptlrpcd_decref();
+err_noref:
 	return rc;
 }
 
@@ -1720,7 +1723,6 @@ static int mgc_process_config(struct obd_device *obd, u32 len, void *buf)
 		CERROR("Unknown command: %d\n", lcfg->lcfg_command);
 		rc = -EINVAL;
 		goto out;
-
 	}
 	}
 out:
