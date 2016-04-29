@@ -26,7 +26,7 @@ struct property_set {
 
 static inline bool is_pset_node(struct fwnode_handle *fwnode)
 {
-	return fwnode && fwnode->type == FWNODE_PDATA;
+	return !IS_ERR_OR_NULL(fwnode) && fwnode->type == FWNODE_PDATA;
 }
 
 static inline struct property_set *to_pset_node(struct fwnode_handle *fwnode)
