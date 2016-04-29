@@ -1742,7 +1742,7 @@ config SLOB
 
 endchoice
 
-config FREELIST_RANDOM
+config SLAB_FREELIST_RANDOM
 	default n
 	depends on SLAB
 	bool "SLAB freelist randomization"
