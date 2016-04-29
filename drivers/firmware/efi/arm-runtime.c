@@ -27,6 +27,7 @@
 #include <asm/mmu.h>
 #include <asm/pgalloc.h>
 #include <asm/pgtable.h>
+#include <asm/xen/xen-ops.h>
 
 extern u64 efi_system_table;
 
@@ -118,13 +119,19 @@ static int __init arm_enable_runtime_services(void)
 	}
 	efi.memmap.map_end = efi.memmap.map + mapsize;
 
-	if (!efi_virtmap_init()) {
-		pr_err("UEFI virtual mapping missing or invalid -- runtime services will not be available\n");
-		return -ENOMEM;
+	if (IS_ENABLED(CONFIG_XEN_EFI) && efi_enabled(EFI_PARAVIRT)) {
+		/* Set up runtime services function pointers for Xen Dom0 */
+		xen_efi_runtime_setup();
+	} else {
+		if (!efi_virtmap_init()) {
+			pr_err("UEFI virtual mapping missing or invalid -- runtime services will not be available\n");
+			return -ENOMEM;
+		}
+
+		/* Set up runtime services function pointers */
+		efi_native_runtime_setup();
 	}
 
-	/* Set up runtime services function pointers */
-	efi_native_runtime_setup();
 	set_bit(EFI_RUNTIME_SERVICES, &efi.flags);
 
 	return 0;
