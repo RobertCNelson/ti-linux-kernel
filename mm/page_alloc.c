@@ -3417,7 +3417,7 @@ retry_cpuset:
 	/* The preferred zone is used for statistics later */
 	ac.preferred_zoneref = first_zones_zonelist(ac.zonelist,
 					ac.high_zoneidx, ac.nodemask);
-	if (!ac.preferred_zone) {
+	if (!ac.preferred_zoneref) {
 		page = NULL;
 		goto no_zone;
 	}
