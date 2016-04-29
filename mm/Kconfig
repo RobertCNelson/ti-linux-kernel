@@ -582,7 +582,8 @@ config ZBUD
 	  density approach when reclaim will be used.
 
 config Z3FOLD
-	tristate "Low density storage for compressed pages"
+	tristate "Higher density storage for compressed pages"
+	depends on ZPOOL
 	default n
 	help
 	  A special purpose allocator for storing compressed pages.
