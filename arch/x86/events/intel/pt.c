@@ -136,8 +136,20 @@ static int __init pt_pmu_hw_init(void)
 	struct dev_ext_attribute *de_attrs;
 	struct attribute **attrs;
 	size_t size;
+	u64 reg;
 	int ret;
 	long i;
+
+	if (boot_cpu_has(X86_FEATURE_VMX)) {
+		/*
+		 * Intel SDM, 36.5 "Tracing post-VMXON" says that
+		 * "IA32_VMX_MISC[bit 14]" being 1 means PT can trace
+		 * post-VMXON.
+		 */
+		rdmsrl(MSR_IA32_VMX_MISC, reg);
+		if (reg & BIT(14))
+			pt_pmu.vmx = true;
+	}
 
 	attrs = NULL;
 
@@ -269,19 +281,22 @@ static void pt_config(struct perf_event *event)
 
 	reg |= (event->attr.config & PT_CONFIG_MASK);
 
+	event->hw.config = reg;
 	wrmsrl(MSR_IA32_RTIT_CTL, reg);
 }
 
-static void pt_config_start(bool start)
+static void pt_config_stop(struct perf_event *event)
 {
-	u64 ctl;
+	u64 ctl = READ_ONCE(event->hw.config);
 
-	rdmsrl(MSR_IA32_RTIT_CTL, ctl);
-	if (start)
-		ctl |= RTIT_CTL_TRACEEN;
-	else
-		ctl &= ~RTIT_CTL_TRACEEN;
+	/* may be already stopped by a PMI */
+	if (!(ctl & RTIT_CTL_TRACEEN))
+		return;
+
+	ctl &= ~RTIT_CTL_TRACEEN;
 	wrmsrl(MSR_IA32_RTIT_CTL, ctl);
+
+	WRITE_ONCE(event->hw.config, ctl);
 
 	/*
 	 * A wrmsr that disables trace generation serializes other PT
@@ -291,8 +306,7 @@ static void pt_config_start(bool start)
 	 * The below WMB, separating data store and aux_head store matches
 	 * the consumer's RMB that separates aux_head load and data load.
 	 */
-	if (!start)
-		wmb();
+	wmb();
 }
 
 static void pt_config_buffer(void *buf, unsigned int topa_idx,
@@ -906,26 +920,6 @@ static void pt_buffer_free_aux(void *data)
 }
 
 /**
- * pt_buffer_is_full() - check if the buffer is full
- * @buf:	PT buffer.
- * @pt:		Per-cpu pt handle.
- *
- * If the user hasn't read data from the output region that aux_head
- * points to, the buffer is considered full: the user needs to read at
- * least this region and update aux_tail to point past it.
- */
-static bool pt_buffer_is_full(struct pt_buffer *buf, struct pt *pt)
-{
-	if (buf->snapshot)
-		return false;
-
-	if (local_read(&buf->data_size) >= pt->handle.size)
-		return true;
-
-	return false;
-}
-
-/**
  * intel_pt_interrupt() - PT PMI handler
  */
 void intel_pt_interrupt(void)
@@ -942,10 +936,16 @@ void intel_pt_interrupt(void)
 	if (!ACCESS_ONCE(pt->handle_nmi))
 		return;
 
-	pt_config_start(false);
+	/*
+	 * If VMX is on and PT does not support it, don't touch anything.
+	 */
+	if (READ_ONCE(pt->vmx_on))
+		return;
 
 	if (!event)
 		return;
+
+	pt_config_stop(event);
 
 	buf = perf_get_aux(&pt->handle);
 	if (!buf)
@@ -983,26 +983,71 @@ void intel_pt_interrupt(void)
 	}
 }
 
+void intel_pt_handle_vmx(int on)
+{
+	struct pt *pt = this_cpu_ptr(&pt_ctx);
+	struct perf_event *event;
+	unsigned long flags;
+
+	/* PT plays nice with VMX, do nothing */
+	if (pt_pmu.vmx)
+		return;
+
+	/*
+	 * VMXON will clear RTIT_CTL.TraceEn; we need to make
+	 * sure to not try to set it while VMX is on. Disable
+	 * interrupts to avoid racing with pmu callbacks;
+	 * concurrent PMI should be handled fine.
+	 */
+	local_irq_save(flags);
+	WRITE_ONCE(pt->vmx_on, on);
+
+	if (on) {
+		/* prevent pt_config_stop() from writing RTIT_CTL */
+		event = pt->handle.event;
+		if (event)
+			event->hw.config = 0;
+	}
+	local_irq_restore(flags);
+}
+EXPORT_SYMBOL_GPL(intel_pt_handle_vmx);
+
 /*
  * PMU callbacks
  */
 
 static void pt_event_start(struct perf_event *event, int mode)
 {
+	struct hw_perf_event *hwc = &event->hw;
 	struct pt *pt = this_cpu_ptr(&pt_ctx);
-	struct pt_buffer *buf = perf_get_aux(&pt->handle);
+	struct pt_buffer *buf;
 
-	if (!buf || pt_buffer_is_full(buf, pt)) {
-		event->hw.state = PERF_HES_STOPPED;
+	if (READ_ONCE(pt->vmx_on))
 		return;
+
+	buf = perf_aux_output_begin(&pt->handle, event);
+	if (!buf)
+		goto fail_stop;
+
+	pt_buffer_reset_offsets(buf, pt->handle.head);
+	if (!buf->snapshot) {
+		if (pt_buffer_reset_markers(buf, &pt->handle))
+			goto fail_end_stop;
 	}
 
 	ACCESS_ONCE(pt->handle_nmi) = 1;
-	event->hw.state = 0;
+	hwc->state = 0;
 
 	pt_config_buffer(buf->cur->table, buf->cur_idx,
 			 buf->output_off);
 	pt_config(event);
+
+	return;
+
+fail_end_stop:
+	perf_aux_output_end(&pt->handle, 0, true);
+fail_stop:
+	hwc->state = PERF_HES_STOPPED;
 }
 
 static void pt_event_stop(struct perf_event *event, int mode)
@@ -1014,7 +1059,8 @@ static void pt_event_stop(struct perf_event *event, int mode)
 	 * see comment in intel_pt_interrupt().
 	 */
 	ACCESS_ONCE(pt->handle_nmi) = 0;
-	pt_config_start(false);
+
+	pt_config_stop(event);
 
 	if (event->hw.state == PERF_HES_STOPPED)
 		return;
@@ -1035,19 +1081,7 @@ static void pt_event_stop(struct perf_event *event, int mode)
 		pt_handle_status(pt);
 
 		pt_update_head(pt);
-	}
-}
 
-static void pt_event_del(struct perf_event *event, int mode)
-{
-	struct pt *pt = this_cpu_ptr(&pt_ctx);
-	struct pt_buffer *buf;
-
-	pt_event_stop(event, PERF_EF_UPDATE);
-
-	buf = perf_get_aux(&pt->handle);
-
-	if (buf) {
 		if (buf->snapshot)
 			pt->handle.head =
 				local_xchg(&buf->data_size,
@@ -1057,9 +1091,13 @@ static void pt_event_del(struct perf_event *event, int mode)
 	}
 }
 
+static void pt_event_del(struct perf_event *event, int mode)
+{
+	pt_event_stop(event, PERF_EF_UPDATE);
+}
+
 static int pt_event_add(struct perf_event *event, int mode)
 {
-	struct pt_buffer *buf;
 	struct pt *pt = this_cpu_ptr(&pt_ctx);
 	struct hw_perf_event *hwc = &event->hw;
 	int ret = -EBUSY;
@@ -1067,34 +1105,18 @@ static int pt_event_add(struct perf_event *event, int mode)
 	if (pt->handle.event)
 		goto fail;
 
-	buf = perf_aux_output_begin(&pt->handle, event);
-	ret = -EINVAL;
-	if (!buf)
-		goto fail_stop;
-
-	pt_buffer_reset_offsets(buf, pt->handle.head);
-	if (!buf->snapshot) {
-		ret = pt_buffer_reset_markers(buf, &pt->handle);
-		if (ret)
-			goto fail_end_stop;
-	}
-
 	if (mode & PERF_EF_START) {
 		pt_event_start(event, 0);
-		ret = -EBUSY;
+		ret = -EINVAL;
 		if (hwc->state == PERF_HES_STOPPED)
-			goto fail_end_stop;
+			goto fail;
 	} else {
 		hwc->state = PERF_HES_STOPPED;
 	}
 
-	return 0;
-
-fail_end_stop:
-	perf_aux_output_end(&pt->handle, 0, true);
-fail_stop:
-	hwc->state = PERF_HES_STOPPED;
+	ret = 0;
 fail:
+
 	return ret;
 }
 
@@ -1137,7 +1159,7 @@ static __init int pt_init(void)
 
 	BUILD_BUG_ON(sizeof(struct topa) > PAGE_SIZE);
 
-	if (!test_cpu_cap(&boot_cpu_data, X86_FEATURE_INTEL_PT))
+	if (!boot_cpu_has(X86_FEATURE_INTEL_PT))
 		return -ENODEV;
 
 	get_online_cpus();
