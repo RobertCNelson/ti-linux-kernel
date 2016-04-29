@@ -370,6 +370,25 @@ static noinline void __init kasan_quarantine_cache(void)
 }
 #endif
 
+static noinline void __init ksize_unpoisons_memory(void)
+{
+	char *ptr;
+	size_t size = 123, real_size = size;
+
+	pr_info("ksize() unpoisons the whole allocated chunk\n");
+	ptr = kmalloc(size, GFP_KERNEL);
+	if (!ptr) {
+		pr_err("Allocation failed\n");
+		return;
+	}
+	real_size = ksize(ptr);
+	/* This access doesn't trigger an error. */
+	ptr[size] = 'x';
+	/* This one does. */
+	ptr[real_size] = 'y';
+	kfree(ptr);
+}
+
 static int __init kmalloc_tests_init(void)
 {
 	kmalloc_oob_right();
@@ -396,6 +415,7 @@ static int __init kmalloc_tests_init(void)
 #ifdef CONFIG_SLAB
 	kasan_quarantine_cache();
 #endif
+	ksize_unpoisons_memory();
 	return -EAGAIN;
 }
 
