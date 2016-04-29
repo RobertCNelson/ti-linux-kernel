@@ -830,6 +830,7 @@ static void free_pages_check_bad(struct page *page)
 #endif
 	bad_page(page, bad_reason, bad_flags);
 }
+
 static inline int free_pages_check(struct page *page)
 {
 	if (likely(page_expected_state(page, PAGE_FLAGS_CHECK_AT_FREE))) {
