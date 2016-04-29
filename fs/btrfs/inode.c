@@ -824,6 +824,7 @@ retry:
 						async_extent->ram_size - 1, 0);
 			goto out_free_reserve;
 		}
+		btrfs_dec_block_group_reservations(root->fs_info, ins.objectid);
 
 		/*
 		 * clear dirty, set writeback and unlock the pages.
@@ -861,6 +862,7 @@ retry:
 	}
 	return;
 out_free_reserve:
+	btrfs_dec_block_group_reservations(root->fs_info, ins.objectid);
 	btrfs_free_reserved_extent(root, ins.objectid, ins.offset, 1);
 out_free:
 	extent_clear_unlock_delalloc(inode, async_extent->start,
@@ -1038,6 +1040,8 @@ static noinline int cow_file_range(struct inode *inode,
 				goto out_drop_extent_cache;
 		}
 
+		btrfs_dec_block_group_reservations(root->fs_info, ins.objectid);
+
 		if (disk_num_bytes < cur_alloc_size)
 			break;
 
@@ -1066,6 +1070,7 @@ out:
 out_drop_extent_cache:
 	btrfs_drop_extent_cache(inode, start, start + ram_size - 1, 0);
 out_reserve:
+	btrfs_dec_block_group_reservations(root->fs_info, ins.objectid);
 	btrfs_free_reserved_extent(root, ins.objectid, ins.offset, 1);
 out_unlock:
 	extent_clear_unlock_delalloc(inode, start, end, locked_page,
@@ -5239,7 +5244,7 @@ void btrfs_evict_inode(struct inode *inode)
 		if (steal_from_global) {
 			if (!btrfs_check_space_for_delayed_refs(trans, root))
 				ret = btrfs_block_rsv_migrate(global_rsv, rsv,
-							      min_size);
+							      min_size, 0);
 			else
 				ret = -ENOSPC;
 		}
@@ -7162,6 +7167,8 @@ static struct extent_map *btrfs_new_extent_direct(struct inode *inode,
 		return ERR_PTR(ret);
 	}
 
+	btrfs_dec_block_group_reservations(root->fs_info, ins.objectid);
+
 	em = create_pinned_em(inode, start, ins.offset, start, ins.objectid,
 			      ins.offset, ins.offset, ins.offset, 0);
 	if (IS_ERR(em)) {
@@ -9072,7 +9079,7 @@ static int btrfs_truncate(struct inode *inode)
 
 	/* Migrate the slack space for the truncate to our reserve */
 	ret = btrfs_block_rsv_migrate(&root->fs_info->trans_block_rsv, rsv,
-				      min_size);
+				      min_size, 0);
 	BUG_ON(ret);
 
 	/*
@@ -9112,7 +9119,7 @@ static int btrfs_truncate(struct inode *inode)
 		}
 
 		ret = btrfs_block_rsv_migrate(&root->fs_info->trans_block_rsv,
-					      rsv, min_size);
+					      rsv, min_size, 0);
 		BUG_ON(ret);	/* shouldn't happen */
 		trans->block_rsv = rsv;
 	}
@@ -9133,7 +9140,6 @@ static int btrfs_truncate(struct inode *inode)
 		ret = btrfs_end_transaction(trans, root);
 		btrfs_btree_balance_dirty(root);
 	}
-
 out:
 	btrfs_free_block_rsv(root, rsv);
 
@@ -9387,8 +9393,244 @@ static int btrfs_getattr(struct vfsmount *mnt,
 	return 0;
 }
 
+static int btrfs_rename_exchange(struct inode *old_dir,
+			      struct dentry *old_dentry,
+			      struct inode *new_dir,
+			      struct dentry *new_dentry)
+{
+	struct btrfs_trans_handle *trans;
+	struct btrfs_root *root = BTRFS_I(old_dir)->root;
+	struct btrfs_root *dest = BTRFS_I(new_dir)->root;
+	struct inode *new_inode = new_dentry->d_inode;
+	struct inode *old_inode = old_dentry->d_inode;
+	struct timespec ctime = CURRENT_TIME;
+	struct dentry *parent;
+	u64 old_ino = btrfs_ino(old_inode);
+	u64 new_ino = btrfs_ino(new_inode);
+	u64 old_idx = 0;
+	u64 new_idx = 0;
+	u64 root_objectid;
+	int ret;
+
+	/* we only allow rename subvolume link between subvolumes */
+	if (old_ino != BTRFS_FIRST_FREE_OBJECTID && root != dest)
+		return -EXDEV;
+
+	/* close the race window with snapshot create/destroy ioctl */
+	if (old_ino == BTRFS_FIRST_FREE_OBJECTID)
+		down_read(&root->fs_info->subvol_sem);
+	if (new_ino == BTRFS_FIRST_FREE_OBJECTID)
+		down_read(&dest->fs_info->subvol_sem);
+
+	/*
+	 * We want to reserve the absolute worst case amount of items.  So if
+	 * both inodes are subvols and we need to unlink them then that would
+	 * require 4 item modifications, but if they are both normal inodes it
+	 * would require 5 item modifications, so we'll assume their normal
+	 * inodes.  So 5 * 2 is 10, plus 2 for the new links, so 12 total items
+	 * should cover the worst case number of items we'll modify.
+	 */
+	trans = btrfs_start_transaction(root, 12);
+	if (IS_ERR(trans)) {
+		ret = PTR_ERR(trans);
+		goto out_notrans;
+	}
+
+	/*
+	 * We need to find a free sequence number both in the source and
+	 * in the destination directory for the exchange.
+	 */
+	ret = btrfs_set_inode_index(new_dir, &old_idx);
+	if (ret)
+		goto out_fail;
+	ret = btrfs_set_inode_index(old_dir, &new_idx);
+	if (ret)
+		goto out_fail;
+
+	BTRFS_I(old_inode)->dir_index = 0ULL;
+	BTRFS_I(new_inode)->dir_index = 0ULL;
+
+	/* Reference for the source. */
+	if (old_ino == BTRFS_FIRST_FREE_OBJECTID) {
+		/* force full log commit if subvolume involved. */
+		btrfs_set_log_full_commit(root->fs_info, trans);
+	} else {
+		ret = btrfs_insert_inode_ref(trans, dest,
+					     new_dentry->d_name.name,
+					     new_dentry->d_name.len,
+					     old_ino,
+					     btrfs_ino(new_dir), old_idx);
+		if (ret)
+			goto out_fail;
+		btrfs_pin_log_trans(root);
+	}
+
+	/* And now for the dest. */
+	if (new_ino == BTRFS_FIRST_FREE_OBJECTID) {
+		/* force full log commit if subvolume involved. */
+		btrfs_set_log_full_commit(dest->fs_info, trans);
+	} else {
+		ret = btrfs_insert_inode_ref(trans, root,
+					     old_dentry->d_name.name,
+					     old_dentry->d_name.len,
+					     new_ino,
+					     btrfs_ino(old_dir), new_idx);
+		if (ret)
+			goto out_fail;
+		btrfs_pin_log_trans(dest);
+	}
+
+	/* Update inode version and ctime/mtime. */
+	inode_inc_iversion(old_dir);
+	inode_inc_iversion(new_dir);
+	inode_inc_iversion(old_inode);
+	inode_inc_iversion(new_inode);
+	old_dir->i_ctime = old_dir->i_mtime = ctime;
+	new_dir->i_ctime = new_dir->i_mtime = ctime;
+	old_inode->i_ctime = ctime;
+	new_inode->i_ctime = ctime;
+
+	if (old_dentry->d_parent != new_dentry->d_parent) {
+		btrfs_record_unlink_dir(trans, old_dir, old_inode, 1);
+		btrfs_record_unlink_dir(trans, new_dir, new_inode, 1);
+	}
+
+	/* src is a subvolume */
+	if (old_ino == BTRFS_FIRST_FREE_OBJECTID) {
+		root_objectid = BTRFS_I(old_inode)->root->root_key.objectid;
+		ret = btrfs_unlink_subvol(trans, root, old_dir,
+					  root_objectid,
+					  old_dentry->d_name.name,
+					  old_dentry->d_name.len);
+	} else { /* src is an inode */
+		ret = __btrfs_unlink_inode(trans, root, old_dir,
+					   old_dentry->d_inode,
+					   old_dentry->d_name.name,
+					   old_dentry->d_name.len);
+		if (!ret)
+			ret = btrfs_update_inode(trans, root, old_inode);
+	}
+	if (ret) {
+		btrfs_abort_transaction(trans, root, ret);
+		goto out_fail;
+	}
+
+	/* dest is a subvolume */
+	if (new_ino == BTRFS_FIRST_FREE_OBJECTID) {
+		root_objectid = BTRFS_I(new_inode)->root->root_key.objectid;
+		ret = btrfs_unlink_subvol(trans, dest, new_dir,
+					  root_objectid,
+					  new_dentry->d_name.name,
+					  new_dentry->d_name.len);
+	} else { /* dest is an inode */
+		ret = __btrfs_unlink_inode(trans, dest, new_dir,
+					   new_dentry->d_inode,
+					   new_dentry->d_name.name,
+					   new_dentry->d_name.len);
+		if (!ret)
+			ret = btrfs_update_inode(trans, dest, new_inode);
+	}
+	if (ret) {
+		btrfs_abort_transaction(trans, root, ret);
+		goto out_fail;
+	}
+
+	ret = btrfs_add_link(trans, new_dir, old_inode,
+			     new_dentry->d_name.name,
+			     new_dentry->d_name.len, 0, old_idx);
+	if (ret) {
+		btrfs_abort_transaction(trans, root, ret);
+		goto out_fail;
+	}
+
+	ret = btrfs_add_link(trans, old_dir, new_inode,
+			     old_dentry->d_name.name,
+			     old_dentry->d_name.len, 0, new_idx);
+	if (ret) {
+		btrfs_abort_transaction(trans, root, ret);
+		goto out_fail;
+	}
+
+	if (old_inode->i_nlink == 1)
+		BTRFS_I(old_inode)->dir_index = old_idx;
+	if (new_inode->i_nlink == 1)
+		BTRFS_I(new_inode)->dir_index = new_idx;
+
+	if (old_ino != BTRFS_FIRST_FREE_OBJECTID) {
+		parent = new_dentry->d_parent;
+		btrfs_log_new_name(trans, old_inode, old_dir, parent);
+		btrfs_end_log_trans(root);
+	}
+	if (new_ino != BTRFS_FIRST_FREE_OBJECTID) {
+		parent = old_dentry->d_parent;
+		btrfs_log_new_name(trans, new_inode, new_dir, parent);
+		btrfs_end_log_trans(dest);
+	}
+out_fail:
+	ret = btrfs_end_transaction(trans, root);
+out_notrans:
+	if (new_ino == BTRFS_FIRST_FREE_OBJECTID)
+		up_read(&dest->fs_info->subvol_sem);
+	if (old_ino == BTRFS_FIRST_FREE_OBJECTID)
+		up_read(&root->fs_info->subvol_sem);
+
+	return ret;
+}
+
+static int btrfs_whiteout_for_rename(struct btrfs_trans_handle *trans,
+				     struct btrfs_root *root,
+				     struct inode *dir,
+				     struct dentry *dentry)
+{
+	int ret;
+	struct inode *inode;
+	u64 objectid;
+	u64 index;
+
+	ret = btrfs_find_free_ino(root, &objectid);
+	if (ret)
+		return ret;
+
+	inode = btrfs_new_inode(trans, root, dir,
+				dentry->d_name.name,
+				dentry->d_name.len,
+				btrfs_ino(dir),
+				objectid,
+				S_IFCHR | WHITEOUT_MODE,
+				&index);
+
+	if (IS_ERR(inode)) {
+		ret = PTR_ERR(inode);
+		return ret;
+	}
+
+	inode->i_op = &btrfs_special_inode_operations;
+	init_special_inode(inode, inode->i_mode,
+		WHITEOUT_DEV);
+
+	ret = btrfs_init_inode_security(trans, inode, dir,
+				&dentry->d_name);
+	if (ret)
+		return ret;
+
+	ret = btrfs_add_nondir(trans, dir, dentry,
+				inode, 0, index);
+	if (ret)
+		return ret;
+
+	ret = btrfs_update_inode(trans, root, inode);
+	if (ret)
+		return ret;
+
+	unlock_new_inode(inode);
+	iput(inode);
+
+	return 0;
+}
+
 static int btrfs_rename(struct inode *old_dir, struct dentry *old_dentry,
-			   struct inode *new_dir, struct dentry *new_dentry)
+			   struct inode *new_dir, struct dentry *new_dentry,
+			   unsigned int flags)
 {
 	struct btrfs_trans_handle *trans;
 	struct btrfs_root *root = BTRFS_I(old_dir)->root;
@@ -9449,15 +9691,15 @@ static int btrfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	 * We want to reserve the absolute worst case amount of items.  So if
 	 * both inodes are subvols and we need to unlink them then that would
 	 * require 4 item modifications, but if they are both normal inodes it
-	 * would require 5 item modifications, so we'll assume their normal
+	 * would require 5 item modifications, so we'll assume they are normal
 	 * inodes.  So 5 * 2 is 10, plus 1 for the new link, so 11 total items
 	 * should cover the worst case number of items we'll modify.
 	 */
 	trans = btrfs_start_transaction(root, 11);
 	if (IS_ERR(trans)) {
-                ret = PTR_ERR(trans);
-                goto out_notrans;
-        }
+		ret = PTR_ERR(trans);
+		goto out_notrans;
+	}
 
 	if (dest != root)
 		btrfs_record_root_in_trans(trans, dest);
@@ -9557,6 +9799,16 @@ static int btrfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 		btrfs_log_new_name(trans, old_inode, old_dir, parent);
 		btrfs_end_log_trans(root);
 	}
+
+	if (flags & RENAME_WHITEOUT) {
+		ret = btrfs_whiteout_for_rename(trans, root, old_dir,
+						old_dentry);
+
+		if (ret) {
+			btrfs_abort_transaction(trans, root, ret);
+			goto out_fail;
+		}
+	}
 out_fail:
 	btrfs_end_transaction(trans, root);
 out_notrans:
@@ -9570,10 +9822,14 @@ static int btrfs_rename2(struct inode *old_dir, struct dentry *old_dentry,
 			 struct inode *new_dir, struct dentry *new_dentry,
 			 unsigned int flags)
 {
-	if (flags & ~RENAME_NOREPLACE)
+	if (flags & ~(RENAME_NOREPLACE | RENAME_EXCHANGE | RENAME_WHITEOUT))
 		return -EINVAL;
 
-	return btrfs_rename(old_dir, old_dentry, new_dir, new_dentry);
+	if (flags & RENAME_EXCHANGE)
+		return btrfs_rename_exchange(old_dir, old_dentry, new_dir,
+					  new_dentry);
+
+	return btrfs_rename(old_dir, old_dentry, new_dir, new_dentry, flags);
 }
 
 static void btrfs_run_delalloc_work(struct btrfs_work *work)
@@ -9942,6 +10198,7 @@ static int __btrfs_prealloc_file_range(struct inode *inode, int mode,
 				btrfs_end_transaction(trans, root);
 			break;
 		}
+		btrfs_dec_block_group_reservations(root->fs_info, ins.objectid);
 
 		last_alloc = ins.offset;
 		ret = insert_reserved_file_extent(trans, inode,
@@ -10184,7 +10441,7 @@ static const struct file_operations btrfs_dir_file_operations = {
 	.iterate	= btrfs_real_readdir,
 	.unlocked_ioctl	= btrfs_ioctl,
 #ifdef CONFIG_COMPAT
-	.compat_ioctl	= btrfs_ioctl,
+	.compat_ioctl	= btrfs_compat_ioctl,
 #endif
 	.release        = btrfs_release_file,
 	.fsync		= btrfs_sync_file,
