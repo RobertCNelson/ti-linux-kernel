@@ -1612,7 +1612,7 @@ static int nmk_pinctrl_dt_node_to_map(struct pinctrl_dev *pctldev,
 		ret = nmk_pinctrl_dt_subnode_to_map(pctldev, np, map,
 				&reserved_maps, num_maps);
 		if (ret < 0) {
-			pinctrl_utils_dt_free_map(pctldev, *map, *num_maps);
+			pinctrl_utils_free_map(pctldev, *map, *num_maps);
 			return ret;
 		}
 	}
@@ -1626,7 +1626,7 @@ static const struct pinctrl_ops nmk_pinctrl_ops = {
 	.get_group_pins = nmk_get_group_pins,
 	.pin_dbg_show = nmk_pin_dbg_show,
 	.dt_node_to_map = nmk_pinctrl_dt_node_to_map,
-	.dt_free_map = pinctrl_utils_dt_free_map,
+	.dt_free_map = pinctrl_utils_free_map,
 };
 
 static int nmk_pmx_get_funcs_cnt(struct pinctrl_dev *pctldev)
@@ -2044,7 +2044,7 @@ static int nmk_pinctrl_probe(struct platform_device *pdev)
 	nmk_pinctrl_desc.npins = npct->soc->npins;
 	npct->dev = &pdev->dev;
 
-	npct->pctl = pinctrl_register(&nmk_pinctrl_desc, &pdev->dev, npct);
+	npct->pctl = devm_pinctrl_register(&pdev->dev, &nmk_pinctrl_desc, npct);
 	if (IS_ERR(npct->pctl)) {
 		dev_err(&pdev->dev, "could not register Nomadik pinctrl driver\n");
 		return PTR_ERR(npct->pctl);
