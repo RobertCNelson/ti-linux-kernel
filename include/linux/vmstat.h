@@ -53,6 +53,8 @@ static inline void count_vm_events(enum vm_event_item item, long delta)
 
 extern void all_vm_events(unsigned long *);
 
+extern unsigned long sum_vm_event(enum vm_event_item item);
+
 extern void vm_events_fold_cpu(int cpu);
 
 #else
@@ -72,6 +74,10 @@ static inline void __count_vm_events(enum vm_event_item item, long delta)
 }
 static inline void all_vm_events(unsigned long *ret)
 {
+}
+static inline unsigned long sum_vm_event(enum vm_event_item item)
+{
+	return 0;
 }
 static inline void vm_events_fold_cpu(int cpu)
 {
