@@ -88,6 +88,15 @@
  */
 #define MMU_FTR_1T_SEGMENT		ASM_CONST(0x40000000)
 
+/*
+ * Radix page table available
+ */
+#ifdef CONFIG_PPC_RADIX_MMU
+#define MMU_FTR_RADIX                  ASM_CONST(0x80000000)
+#else
+#define MMU_FTR_RADIX                  ASM_CONST(0)
+#endif
+
 /* MMU feature bit sets for various CPUs */
 #define MMU_FTRS_DEFAULT_HPTE_ARCH_V2	\
 	MMU_FTR_HPTE_TABLE | MMU_FTR_PPCAS_ARCH_V2
