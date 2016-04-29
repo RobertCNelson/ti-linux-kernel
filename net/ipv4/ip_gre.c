@@ -500,8 +500,7 @@ static void __gre_xmit(struct sk_buff *skb, struct net_device *dev,
 	ip_tunnel_xmit(skb, dev, tnl_params, tnl_params->protocol);
 }
 
-static struct sk_buff *gre_handle_offloads(struct sk_buff *skb,
-					   bool csum)
+static int gre_handle_offloads(struct sk_buff *skb, bool csum)
 {
 	return iptunnel_handle_offloads(skb, csum ? SKB_GSO_GRE_CSUM : SKB_GSO_GRE);
 }
@@ -569,11 +568,8 @@ static void gre_fb_xmit(struct sk_buff *skb, struct net_device *dev,
 	}
 
 	/* Push Tunnel header. */
-	skb = gre_handle_offloads(skb, !!(tun_info->key.tun_flags & TUNNEL_CSUM));
-	if (IS_ERR(skb)) {
-		skb = NULL;
+	if (gre_handle_offloads(skb, !!(tun_info->key.tun_flags & TUNNEL_CSUM)))
 		goto err_free_rt;
-	}
 
 	flags = tun_info->key.tun_flags & (TUNNEL_CSUM | TUNNEL_KEY);
 	build_header(skb, tunnel_hlen, flags, proto,
@@ -641,16 +637,14 @@ static netdev_tx_t ipgre_xmit(struct sk_buff *skb,
 		tnl_params = &tunnel->parms.iph;
 	}
 
-	skb = gre_handle_offloads(skb, !!(tunnel->parms.o_flags&TUNNEL_CSUM));
-	if (IS_ERR(skb))
-		goto out;
+	if (gre_handle_offloads(skb, !!(tunnel->parms.o_flags & TUNNEL_CSUM)))
+		goto free_skb;
 
 	__gre_xmit(skb, dev, tnl_params, skb->protocol);
 	return NETDEV_TX_OK;
 
 free_skb:
 	kfree_skb(skb);
-out:
 	dev->stats.tx_dropped++;
 	return NETDEV_TX_OK;
 }
@@ -665,9 +659,8 @@ static netdev_tx_t gre_tap_xmit(struct sk_buff *skb,
 		return NETDEV_TX_OK;
 	}
 
-	skb = gre_handle_offloads(skb, !!(tunnel->parms.o_flags&TUNNEL_CSUM));
-	if (IS_ERR(skb))
-		goto out;
+	if (gre_handle_offloads(skb, !!(tunnel->parms.o_flags & TUNNEL_CSUM)))
+		goto free_skb;
 
 	if (skb_cow_head(skb, dev->needed_headroom))
 		goto free_skb;
@@ -677,7 +670,6 @@ static netdev_tx_t gre_tap_xmit(struct sk_buff *skb,
 
 free_skb:
 	kfree_skb(skb);
-out:
 	dev->stats.tx_dropped++;
 	return NETDEV_TX_OK;
 }
