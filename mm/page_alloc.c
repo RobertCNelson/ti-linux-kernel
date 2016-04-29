@@ -3398,7 +3398,7 @@ retry_cpuset:
 				ac.nodemask, &ac.preferred_zone);
 	if (!ac.preferred_zone) {
 		page = NULL;
-		goto out;
+		goto no_zone;
 	}
 
 	ac.classzone_idx = zonelist_zone_idx(preferred_zoneref);
@@ -3417,7 +3417,7 @@ retry_cpuset:
 
 	page = __alloc_pages_slowpath(alloc_mask, order, &ac);
 
-out:
+no_zone:
 	/*
 	 * When updating a task's mems_allowed, it is possible to race with
 	 * parallel threads in such a way that an allocation can fail while
