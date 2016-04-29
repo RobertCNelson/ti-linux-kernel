@@ -19,6 +19,8 @@
 
 #include <linux/ratelimit.h>
 #include <linux/pci.h>
+#include <linux/acpi.h>
+#include <linux/amba/bus.h>
 #include <linux/pci-ats.h>
 #include <linux/bitmap.h>
 #include <linux/slab.h>
@@ -72,6 +74,7 @@ static DEFINE_SPINLOCK(dev_data_list_lock);
 
 LIST_HEAD(ioapic_map);
 LIST_HEAD(hpet_map);
+LIST_HEAD(acpihid_map);
 
 /*
  * Domain for untranslated devices - only allocated
@@ -162,16 +165,63 @@ struct dma_ops_domain {
  *
  ****************************************************************************/
 
-static struct protection_domain *to_pdomain(struct iommu_domain *dom)
+static inline int match_hid_uid(struct device *dev,
+				struct acpihid_map_entry *entry)
 {
-	return container_of(dom, struct protection_domain, domain);
+	const char *hid, *uid;
+
+	hid = acpi_device_hid(ACPI_COMPANION(dev));
+	uid = acpi_device_uid(ACPI_COMPANION(dev));
+
+	if (!hid || !(*hid))
+		return -ENODEV;
+
+	if (!uid || !(*uid))
+		return strcmp(hid, entry->hid);
+
+	if (!(*entry->uid))
+		return strcmp(hid, entry->hid);
+
+	return (strcmp(hid, entry->hid) || strcmp(uid, entry->uid));
 }
 
-static inline u16 get_device_id(struct device *dev)
+static inline u16 get_pci_device_id(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
 
 	return PCI_DEVID(pdev->bus->number, pdev->devfn);
+}
+
+static inline int get_acpihid_device_id(struct device *dev,
+					struct acpihid_map_entry **entry)
+{
+	struct acpihid_map_entry *p;
+
+	list_for_each_entry(p, &acpihid_map, list) {
+		if (!match_hid_uid(dev, p)) {
+			if (entry)
+				*entry = p;
+			return p->devid;
+		}
+	}
+	return -EINVAL;
+}
+
+static inline int get_device_id(struct device *dev)
+{
+	int devid;
+
+	if (dev_is_pci(dev))
+		devid = get_pci_device_id(dev);
+	else
+		devid = get_acpihid_device_id(dev, NULL);
+
+	return devid;
+}
+
+static struct protection_domain *to_pdomain(struct iommu_domain *dom)
+{
+	return container_of(dom, struct protection_domain, domain);
 }
 
 static struct iommu_dev_data *alloc_dev_data(u16 devid)
@@ -222,6 +272,7 @@ static u16 get_alias(struct device *dev)
 	struct pci_dev *pdev = to_pci_dev(dev);
 	u16 devid, ivrs_alias, pci_alias;
 
+	/* The callers make sure that get_device_id() does not fail here */
 	devid = get_device_id(dev);
 	ivrs_alias = amd_iommu_alias_table[devid];
 	pci_for_each_dma_alias(pdev, __last_alias, &pci_alias);
@@ -289,6 +340,29 @@ static struct iommu_dev_data *get_dev_data(struct device *dev)
 	return dev->archdata.iommu;
 }
 
+/*
+* Find or create an IOMMU group for a acpihid device.
+*/
+static struct iommu_group *acpihid_device_group(struct device *dev)
+{
+	struct acpihid_map_entry *p, *entry = NULL;
+	int devid;
+
+	devid = get_acpihid_device_id(dev, &entry);
+	if (devid < 0)
+		return ERR_PTR(devid);
+
+	list_for_each_entry(p, &acpihid_map, list) {
+		if ((devid == p->devid) && p->group)
+			entry->group = p->group;
+	}
+
+	if (!entry->group)
+		entry->group = generic_device_group(dev);
+
+	return entry->group;
+}
+
 static bool pci_iommuv2_capable(struct pci_dev *pdev)
 {
 	static const int caps[] = {
@@ -340,9 +414,11 @@ static void init_unity_mappings_for_device(struct device *dev,
 					   struct dma_ops_domain *dma_dom)
 {
 	struct unity_map_entry *e;
-	u16 devid;
+	int devid;
 
 	devid = get_device_id(dev);
+	if (devid < 0)
+		return;
 
 	list_for_each_entry(e, &amd_iommu_unity_map, list) {
 		if (!(devid >= e->devid_start && devid <= e->devid_end))
@@ -357,16 +433,14 @@ static void init_unity_mappings_for_device(struct device *dev,
  */
 static bool check_device(struct device *dev)
 {
-	u16 devid;
+	int devid;
 
 	if (!dev || !dev->dma_mask)
 		return false;
 
-	/* No PCI device */
-	if (!dev_is_pci(dev))
-		return false;
-
 	devid = get_device_id(dev);
+	if (devid < 0)
+		return false;
 
 	/* Out of our scope? */
 	if (devid > amd_iommu_last_bdf)
@@ -401,22 +475,26 @@ out:
 
 static int iommu_init_device(struct device *dev)
 {
-	struct pci_dev *pdev = to_pci_dev(dev);
 	struct iommu_dev_data *dev_data;
+	int devid;
 
 	if (dev->archdata.iommu)
 		return 0;
 
-	dev_data = find_dev_data(get_device_id(dev));
+	devid = get_device_id(dev);
+	if (devid < 0)
+		return devid;
+
+	dev_data = find_dev_data(devid);
 	if (!dev_data)
 		return -ENOMEM;
 
 	dev_data->alias = get_alias(dev);
 
-	if (pci_iommuv2_capable(pdev)) {
+	if (dev_is_pci(dev) && pci_iommuv2_capable(to_pci_dev(dev))) {
 		struct amd_iommu *iommu;
 
-		iommu              = amd_iommu_rlookup_table[dev_data->devid];
+		iommu = amd_iommu_rlookup_table[dev_data->devid];
 		dev_data->iommu_v2 = iommu->is_iommu_v2;
 	}
 
@@ -430,9 +508,13 @@ static int iommu_init_device(struct device *dev)
 
 static void iommu_ignore_device(struct device *dev)
 {
-	u16 devid, alias;
+	u16 alias;
+	int devid;
 
 	devid = get_device_id(dev);
+	if (devid < 0)
+		return;
+
 	alias = get_alias(dev);
 
 	memset(&amd_iommu_dev_table[devid], 0, sizeof(struct dev_table_entry));
@@ -444,8 +526,14 @@ static void iommu_ignore_device(struct device *dev)
 
 static void iommu_uninit_device(struct device *dev)
 {
-	struct iommu_dev_data *dev_data = search_dev_data(get_device_id(dev));
+	int devid;
+	struct iommu_dev_data *dev_data;
 
+	devid = get_device_id(dev);
+	if (devid < 0)
+		return;
+
+	dev_data = search_dev_data(devid);
 	if (!dev_data)
 		return;
 
@@ -2283,13 +2371,17 @@ static bool pci_pri_tlp_required(struct pci_dev *pdev)
 static int attach_device(struct device *dev,
 			 struct protection_domain *domain)
 {
-	struct pci_dev *pdev = to_pci_dev(dev);
+	struct pci_dev *pdev;
 	struct iommu_dev_data *dev_data;
 	unsigned long flags;
 	int ret;
 
 	dev_data = get_dev_data(dev);
 
+	if (!dev_is_pci(dev))
+		goto skip_ats_check;
+
+	pdev = to_pci_dev(dev);
 	if (domain->flags & PD_IOMMUV2_MASK) {
 		if (!dev_data->passthrough)
 			return -EINVAL;
@@ -2308,6 +2400,7 @@ static int attach_device(struct device *dev,
 		dev_data->ats.qdep    = pci_ats_queue_depth(pdev);
 	}
 
+skip_ats_check:
 	write_lock_irqsave(&amd_iommu_devtable_lock, flags);
 	ret = __attach_device(dev_data, domain);
 	write_unlock_irqrestore(&amd_iommu_devtable_lock, flags);
@@ -2364,6 +2457,9 @@ static void detach_device(struct device *dev)
 	__detach_device(dev_data);
 	write_unlock_irqrestore(&amd_iommu_devtable_lock, flags);
 
+	if (!dev_is_pci(dev))
+		return;
+
 	if (domain->flags & PD_IOMMUV2_MASK && dev_data->iommu_v2)
 		pdev_iommuv2_disable(to_pci_dev(dev));
 	else if (dev_data->ats.enabled)
@@ -2377,13 +2473,15 @@ static int amd_iommu_add_device(struct device *dev)
 	struct iommu_dev_data *dev_data;
 	struct iommu_domain *domain;
 	struct amd_iommu *iommu;
-	u16 devid;
-	int ret;
+	int ret, devid;
 
 	if (!check_device(dev) || get_dev_data(dev))
 		return 0;
 
 	devid = get_device_id(dev);
+	if (devid < 0)
+		return devid;
+
 	iommu = amd_iommu_rlookup_table[devid];
 
 	ret = iommu_init_device(dev);
@@ -2421,16 +2519,27 @@ out:
 static void amd_iommu_remove_device(struct device *dev)
 {
 	struct amd_iommu *iommu;
-	u16 devid;
+	int devid;
 
 	if (!check_device(dev))
 		return;
 
 	devid = get_device_id(dev);
+	if (devid < 0)
+		return;
+
 	iommu = amd_iommu_rlookup_table[devid];
 
 	iommu_uninit_device(dev);
 	iommu_completion_wait(iommu);
+}
+
+static struct iommu_group *amd_iommu_device_group(struct device *dev)
+{
+	if (dev_is_pci(dev))
+		return pci_device_group(dev);
+
+	return acpihid_device_group(dev);
 }
 
 /*****************************************************************************
@@ -2926,7 +3035,17 @@ static struct dma_map_ops amd_iommu_dma_ops = {
 
 int __init amd_iommu_init_api(void)
 {
-	return bus_set_iommu(&pci_bus_type, &amd_iommu_ops);
+	int err = 0;
+
+	err = bus_set_iommu(&pci_bus_type, &amd_iommu_ops);
+	if (err)
+		return err;
+#ifdef CONFIG_ARM_AMBA
+	err = bus_set_iommu(&amba_bustype, &amd_iommu_ops);
+	if (err)
+		return err;
+#endif
+	return 0;
 }
 
 int __init amd_iommu_init_dma_ops(void)
@@ -3098,12 +3217,14 @@ static void amd_iommu_detach_device(struct iommu_domain *dom,
 {
 	struct iommu_dev_data *dev_data = dev->archdata.iommu;
 	struct amd_iommu *iommu;
-	u16 devid;
+	int devid;
 
 	if (!check_device(dev))
 		return;
 
 	devid = get_device_id(dev);
+	if (devid < 0)
+		return;
 
 	if (dev_data->domain != NULL)
 		detach_device(dev);
@@ -3221,9 +3342,11 @@ static void amd_iommu_get_dm_regions(struct device *dev,
 				     struct list_head *head)
 {
 	struct unity_map_entry *entry;
-	u16 devid;
+	int devid;
 
 	devid = get_device_id(dev);
+	if (devid < 0)
+		return;
 
 	list_for_each_entry(entry, &amd_iommu_unity_map, list) {
 		struct iommu_dm_region *region;
@@ -3270,7 +3393,7 @@ static const struct iommu_ops amd_iommu_ops = {
 	.iova_to_phys = amd_iommu_iova_to_phys,
 	.add_device = amd_iommu_add_device,
 	.remove_device = amd_iommu_remove_device,
-	.device_group = pci_device_group,
+	.device_group = amd_iommu_device_group,
 	.get_dm_regions = amd_iommu_get_dm_regions,
 	.put_dm_regions = amd_iommu_put_dm_regions,
 	.pgsize_bitmap	= AMD_IOMMU_PGSIZES,
@@ -3925,6 +4048,9 @@ static struct irq_domain *get_irq_domain(struct irq_alloc_info *info)
 	case X86_IRQ_ALLOC_TYPE_MSI:
 	case X86_IRQ_ALLOC_TYPE_MSIX:
 		devid = get_device_id(&info->msi_dev->dev);
+		if (devid < 0)
+			return NULL;
+
 		iommu = amd_iommu_rlookup_table[devid];
 		if (iommu)
 			return iommu->msi_domain;
