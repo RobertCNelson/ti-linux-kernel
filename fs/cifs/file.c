@@ -3305,13 +3305,13 @@ cifs_readpages_read_into_pages(struct TCP_Server_Info *server,
 	rdata->tailsz = PAGE_CACHE_SIZE;
 	for (i = 0; i < nr_pages; i++) {
 		struct page *page = rdata->pages[i];
-		size_t n = PAGE_CACHE_SIZE;
+		size_t n = PAGE_SIZE;
 
-		if (len >= PAGE_CACHE_SIZE) {
-			len -= PAGE_CACHE_SIZE;
+		if (len >= PAGE_SIZE) {
+			len -= PAGE_SIZE;
 		} else if (len > 0) {
 			/* enough for partial page, fill and zero the rest */
-			zero_user(page, len, PAGE_CACHE_SIZE - len);
+			zero_user(page, len, PAGE_SIZE - len);
 			n = rdata->tailsz = len;
 			len = 0;
 		} else if (page->index > eof_index) {

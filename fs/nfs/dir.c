@@ -719,7 +719,7 @@ static
 void cache_page_release(nfs_readdir_descriptor_t *desc)
 {
 	nfs_readdir_clear_array(desc->page);
-	page_cache_release(desc->page);
+	put_page(desc->page);
 	desc->page = NULL;
 }
 
@@ -733,7 +733,7 @@ struct page *get_cache_page(nfs_readdir_descriptor_t *desc)
 			desc->page_index, (filler_t *)nfs_readdir_filler, desc);
 		if (IS_ERR(page) || grab_page(page))
 			break;
-		page_cache_release(page);
+		put_page(page);
 	}
 	return page;
 }
