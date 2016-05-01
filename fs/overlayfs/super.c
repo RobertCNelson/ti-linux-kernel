@@ -274,7 +274,7 @@ static bool ovl_is_opaquedir(struct dentry *dentry)
 	if (!S_ISDIR(inode->i_mode) || !inode->i_op->getxattr)
 		return false;
 
-	res = inode->i_op->getxattr(dentry, OVL_XATTR_OPAQUE, &val, 1);
+	res = inode->i_op->getxattr(dentry, inode, OVL_XATTR_OPAQUE, &val, 1);
 	if (res == 1 && val == 'y')
 		return true;
 
@@ -378,9 +378,7 @@ static inline struct dentry *ovl_lookup_real(struct dentry *dir,
 {
 	struct dentry *dentry;
 
-	inode_lock(dir->d_inode);
-	dentry = lookup_one_len(name->name, dir, name->len);
-	inode_unlock(dir->d_inode);
+	dentry = lookup_one_len_unlocked(name->name, dir, name->len);
 
 	if (IS_ERR(dentry)) {
 		if (PTR_ERR(dentry) == -ENOENT)
