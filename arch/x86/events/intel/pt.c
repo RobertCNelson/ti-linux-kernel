@@ -920,26 +920,6 @@ static void pt_buffer_free_aux(void *data)
 }
 
 /**
- * pt_buffer_is_full() - check if the buffer is full
- * @buf:	PT buffer.
- * @pt:		Per-cpu pt handle.
- *
- * If the user hasn't read data from the output region that aux_head
- * points to, the buffer is considered full: the user needs to read at
- * least this region and update aux_tail to point past it.
- */
-static bool pt_buffer_is_full(struct pt_buffer *buf, struct pt *pt)
-{
-	if (buf->snapshot)
-		return false;
-
-	if (local_read(&buf->data_size) >= pt->handle.size)
-		return true;
-
-	return false;
-}
-
-/**
  * intel_pt_interrupt() - PT PMI handler
  */
 void intel_pt_interrupt(void)
@@ -1038,23 +1018,36 @@ EXPORT_SYMBOL_GPL(intel_pt_handle_vmx);
 
 static void pt_event_start(struct perf_event *event, int mode)
 {
+	struct hw_perf_event *hwc = &event->hw;
 	struct pt *pt = this_cpu_ptr(&pt_ctx);
-	struct pt_buffer *buf = perf_get_aux(&pt->handle);
+	struct pt_buffer *buf;
 
 	if (READ_ONCE(pt->vmx_on))
 		return;
 
-	if (!buf || pt_buffer_is_full(buf, pt)) {
-		event->hw.state = PERF_HES_STOPPED;
-		return;
+	buf = perf_aux_output_begin(&pt->handle, event);
+	if (!buf)
+		goto fail_stop;
+
+	pt_buffer_reset_offsets(buf, pt->handle.head);
+	if (!buf->snapshot) {
+		if (pt_buffer_reset_markers(buf, &pt->handle))
+			goto fail_end_stop;
 	}
 
 	ACCESS_ONCE(pt->handle_nmi) = 1;
-	event->hw.state = 0;
+	hwc->state = 0;
 
 	pt_config_buffer(buf->cur->table, buf->cur_idx,
 			 buf->output_off);
 	pt_config(event);
+
+	return;
+
+fail_end_stop:
+	perf_aux_output_end(&pt->handle, 0, true);
+fail_stop:
+	hwc->state = PERF_HES_STOPPED;
 }
 
 static void pt_event_stop(struct perf_event *event, int mode)
@@ -1088,19 +1081,7 @@ static void pt_event_stop(struct perf_event *event, int mode)
 		pt_handle_status(pt);
 
 		pt_update_head(pt);
-	}
-}
 
-static void pt_event_del(struct perf_event *event, int mode)
-{
-	struct pt *pt = this_cpu_ptr(&pt_ctx);
-	struct pt_buffer *buf;
-
-	pt_event_stop(event, PERF_EF_UPDATE);
-
-	buf = perf_get_aux(&pt->handle);
-
-	if (buf) {
 		if (buf->snapshot)
 			pt->handle.head =
 				local_xchg(&buf->data_size,
@@ -1110,9 +1091,13 @@ static void pt_event_del(struct perf_event *event, int mode)
 	}
 }
 
+static void pt_event_del(struct perf_event *event, int mode)
+{
+	pt_event_stop(event, PERF_EF_UPDATE);
+}
+
 static int pt_event_add(struct perf_event *event, int mode)
 {
-	struct pt_buffer *buf;
 	struct pt *pt = this_cpu_ptr(&pt_ctx);
 	struct hw_perf_event *hwc = &event->hw;
 	int ret = -EBUSY;
@@ -1120,34 +1105,18 @@ static int pt_event_add(struct perf_event *event, int mode)
 	if (pt->handle.event)
 		goto fail;
 
-	buf = perf_aux_output_begin(&pt->handle, event);
-	ret = -EINVAL;
-	if (!buf)
-		goto fail_stop;
-
-	pt_buffer_reset_offsets(buf, pt->handle.head);
-	if (!buf->snapshot) {
-		ret = pt_buffer_reset_markers(buf, &pt->handle);
-		if (ret)
-			goto fail_end_stop;
-	}
-
 	if (mode & PERF_EF_START) {
 		pt_event_start(event, 0);
-		ret = -EBUSY;
+		ret = -EINVAL;
 		if (hwc->state == PERF_HES_STOPPED)
-			goto fail_end_stop;
+			goto fail;
 	} else {
 		hwc->state = PERF_HES_STOPPED;
 	}
 
-	return 0;
-
-fail_end_stop:
-	perf_aux_output_end(&pt->handle, 0, true);
-fail_stop:
-	hwc->state = PERF_HES_STOPPED;
+	ret = 0;
 fail:
+
 	return ret;
 }
 
@@ -1190,7 +1159,7 @@ static __init int pt_init(void)
 
 	BUILD_BUG_ON(sizeof(struct topa) > PAGE_SIZE);
 
-	if (!test_cpu_cap(&boot_cpu_data, X86_FEATURE_INTEL_PT))
+	if (!boot_cpu_has(X86_FEATURE_INTEL_PT))
 		return -ENODEV;
 
 	get_online_cpus();
