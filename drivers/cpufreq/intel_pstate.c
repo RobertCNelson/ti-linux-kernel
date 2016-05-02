@@ -583,6 +583,14 @@ static void intel_pstate_hwp_set(const struct cpumask *cpumask)
 	}
 }
 
+static int intel_pstate_hwp_set_policy(struct cpufreq_policy *policy)
+{
+	if (hwp_active)
+		intel_pstate_hwp_set(policy->cpus);
+
+	return 0;
+}
+
 static void intel_pstate_hwp_set_online_cpus(void)
 {
 	get_online_cpus();
@@ -1487,8 +1495,7 @@ static int intel_pstate_set_policy(struct cpufreq_policy *policy)
  out:
 	intel_pstate_set_update_util_hook(policy->cpu);
 
-	if (hwp_active)
-		intel_pstate_hwp_set(policy->cpus);
+	intel_pstate_hwp_set_policy(policy);
 
 	return 0;
 }
@@ -1560,6 +1567,7 @@ static struct cpufreq_driver intel_pstate_driver = {
 	.flags		= CPUFREQ_CONST_LOOPS,
 	.verify		= intel_pstate_verify_policy,
 	.setpolicy	= intel_pstate_set_policy,
+	.resume		= intel_pstate_hwp_set_policy,
 	.get		= intel_pstate_get,
 	.init		= intel_pstate_cpu_init,
 	.exit		= intel_pstate_cpu_exit,
