@@ -61,6 +61,8 @@ enum i40e_vf_states {
 	I40E_VF_STAT_IWARPENA,
 	I40E_VF_STAT_FCOEENA,
 	I40E_VF_STAT_DISABLED,
+	I40E_VF_STAT_MC_PROMISC,
+	I40E_VF_STAT_UC_PROMISC,
 };
 
 /* VF capabilities */
@@ -88,6 +90,7 @@ struct i40e_vf {
 	struct i40e_virtchnl_ether_addr default_fcoe_addr;
 	u16 port_vlan_id;
 	bool pf_set_mac;	/* The VMM admin set the VF MAC address */
+	bool trusted;
 
 	/* VSI indices - actual VSI pointers are maintained in the PF structure
 	 * When assigned, these will be non-zero, because VSI 0 is always
@@ -127,6 +130,7 @@ int i40e_ndo_set_vf_port_vlan(struct net_device *netdev,
 			      int vf_id, u16 vlan_id, u8 qos);
 int i40e_ndo_set_vf_bw(struct net_device *netdev, int vf_id, int min_tx_rate,
 		       int max_tx_rate);
+int i40e_ndo_set_vf_trust(struct net_device *netdev, int vf_id, bool setting);
 int i40e_ndo_get_vf_config(struct net_device *netdev,
 			   int vf_id, struct ifla_vf_info *ivi);
 int i40e_ndo_set_vf_link_state(struct net_device *netdev, int vf_id, int link);
