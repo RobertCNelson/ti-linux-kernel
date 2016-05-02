@@ -71,26 +71,6 @@
 #define ETB_FRAME_SIZE_WORDS	4
 
 /**
- * struct cs_buffer - keep track of a recording session' specifics
- * @cur:	index of the current buffer
- * @nr_pages:	max number of pages granted to us
- * @offset:	offset within the current buffer
- * @data_size:	how much we collected in this run
- * @lost:	other than zero if we had a HW buffer wrap around
- * @snapshot:	is this run in snapshot mode
- * @data_pages:	a handle the ring buffer
- */
-struct cs_buffers {
-	unsigned int		cur;
-	unsigned int		nr_pages;
-	unsigned long		offset;
-	local_t			data_size;
-	local_t			lost;
-	bool			snapshot;
-	void			**data_pages;
-};
-
-/**
  * struct etb_drvdata - specifics associated to an ETB component
  * @base:	memory mapped base address for this component.
  * @dev:	the device entity associated to this component.
@@ -440,7 +420,7 @@ static void etb_update_buffer(struct coresight_device *csdev,
 		u32 mask = ~(ETB_FRAME_SIZE_WORDS - 1);
 
 		/* The new read pointer must be frame size aligned */
-		to_read -= handle->size & mask;
+		to_read = handle->size & mask;
 		/*
 		 * Move the RAM read pointer up, keeping in mind that
 		 * everything is in frame size units.
@@ -448,7 +428,8 @@ static void etb_update_buffer(struct coresight_device *csdev,
 		read_ptr = (write_ptr + drvdata->buffer_depth) -
 					to_read / ETB_FRAME_SIZE_WORDS;
 		/* Wrap around if need be*/
-		read_ptr &= ~(drvdata->buffer_depth - 1);
+		if (read_ptr > (drvdata->buffer_depth - 1))
+			read_ptr -= drvdata->buffer_depth;
 		/* let the decoder know we've skipped ahead */
 		local_inc(&buf->lost);
 	}
@@ -697,11 +678,8 @@ static int etb_probe(struct amba_device *adev, const struct amba_id *id)
 
 	drvdata->buf = devm_kzalloc(dev,
 				    drvdata->buffer_depth * 4, GFP_KERNEL);
-	if (!drvdata->buf) {
-		dev_err(dev, "Failed to allocate %u bytes for buffer data\n",
-			drvdata->buffer_depth * 4);
+	if (!drvdata->buf)
 		return -ENOMEM;
-	}
 
 	desc = devm_kzalloc(dev, sizeof(*desc), GFP_KERNEL);
 	if (!desc)
