@@ -17,12 +17,15 @@ int __dax_fault(struct vm_area_struct *, struct vm_fault *, get_block_t,
 
 #ifdef CONFIG_FS_DAX
 struct page *read_dax_sector(struct block_device *bdev, sector_t n);
+unsigned long dax_get_unmapped_area(struct file *filp, unsigned long addr,
+		unsigned long len, unsigned long pgoff, unsigned long flags);
 #else
 static inline struct page *read_dax_sector(struct block_device *bdev,
 		sector_t n)
 {
 	return ERR_PTR(-ENXIO);
 }
+#define dax_get_unmapped_area	NULL
 #endif
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
