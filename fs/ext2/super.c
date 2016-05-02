@@ -922,14 +922,31 @@ static int ext2_fill_super(struct super_block *sb, void *data, int silent)
 	blocksize = BLOCK_SIZE << le32_to_cpu(sbi->s_es->s_log_block_size);
 
 	if (sbi->s_mount_opt & EXT2_MOUNT_DAX) {
+		struct blk_dax_ctl dax = {
+			.sector = 0,
+			.size = PAGE_SIZE,
+		};
 		if (blocksize != PAGE_SIZE) {
 			ext2_msg(sb, KERN_ERR,
 					"error: unsupported blocksize for dax");
 			goto failed_mount;
 		}
-		if (!sb->s_bdev->bd_disk->fops->direct_access) {
-			ext2_msg(sb, KERN_ERR,
+		err = bdev_direct_access(sb->s_bdev, &dax);
+		if (err < 0) {
+			switch (err) {
+			case -EOPNOTSUPP:
+				ext2_msg(sb, KERN_ERR,
 					"error: device does not support dax");
+				break;
+			case -EINVAL:
+				ext2_msg(sb, KERN_ERR,
+					"error: unaligned partition for dax");
+				break;
+			default:
+				ext2_msg(sb, KERN_ERR,
+					"error: dax access failed (%d)", err);
+				break;
+			}
 			goto failed_mount;
 		}
 	}
