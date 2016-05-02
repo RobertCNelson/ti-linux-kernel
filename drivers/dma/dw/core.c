@@ -162,21 +162,6 @@ static void dwc_initialize(struct dw_dma_chan *dwc)
 
 /*----------------------------------------------------------------------*/
 
-static inline unsigned int dwc_fast_ffs(unsigned long long v)
-{
-	/*
-	 * We can be a lot more clever here, but this should take care
-	 * of the most common optimization.
-	 */
-	if (!(v & 7))
-		return 3;
-	else if (!(v & 3))
-		return 2;
-	else if (!(v & 1))
-		return 1;
-	return 0;
-}
-
 static inline void dwc_dump_chan_regs(struct dw_dma_chan *dwc)
 {
 	dev_err(chan2dev(&dwc->chan),
@@ -677,11 +662,12 @@ dwc_prep_dma_memcpy(struct dma_chan *chan, dma_addr_t dest, dma_addr_t src,
 	struct dw_desc		*prev;
 	size_t			xfer_count;
 	size_t			offset;
+	u8			m_master = dwc->m_master;
 	unsigned int		src_width;
 	unsigned int		dst_width;
-	unsigned int		data_width;
+	unsigned int		data_width = dw->pdata->data_width[m_master];
 	u32			ctllo;
-	u8			lms = DWC_LLP_LMS(dwc->m_master);
+	u8			lms = DWC_LLP_LMS(m_master);
 
 	dev_vdbg(chan2dev(chan),
 			"%s: d%pad s%pad l0x%zx f0x%lx\n", __func__,
@@ -694,10 +680,7 @@ dwc_prep_dma_memcpy(struct dma_chan *chan, dma_addr_t dest, dma_addr_t src,
 
 	dwc->direction = DMA_MEM_TO_MEM;
 
-	data_width = dw->data_width[dwc->m_master];
-
-	src_width = dst_width = min_t(unsigned int, data_width,
-				      dwc_fast_ffs(src | dest | len));
+	src_width = dst_width = __ffs(data_width | src | dest | len);
 
 	ctllo = DWC_DEFAULT_CTLLO(chan)
 			| DWC_CTLL_DST_WIDTH(dst_width)
@@ -757,11 +740,12 @@ dwc_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
 	struct dw_desc		*prev;
 	struct dw_desc		*first;
 	u32			ctllo;
-	u8			lms = DWC_LLP_LMS(dwc->m_master);
+	u8			m_master = dwc->m_master;
+	u8			lms = DWC_LLP_LMS(m_master);
 	dma_addr_t		reg;
 	unsigned int		reg_width;
 	unsigned int		mem_width;
-	unsigned int		data_width;
+	unsigned int		data_width = dw->pdata->data_width[m_master];
 	unsigned int		i;
 	struct scatterlist	*sg;
 	size_t			total_len = 0;
@@ -787,8 +771,6 @@ dwc_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
 		ctllo |= sconfig->device_fc ? DWC_CTLL_FC(DW_DMA_FC_P_M2P) :
 			DWC_CTLL_FC(DW_DMA_FC_D_M2P);
 
-		data_width = dw->data_width[dwc->m_master];
-
 		for_each_sg(sgl, sg, sg_len, i) {
 			struct dw_desc	*desc;
 			u32		len, dlen, mem;
@@ -796,8 +778,7 @@ dwc_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
 			mem = sg_dma_address(sg);
 			len = sg_dma_len(sg);
 
-			mem_width = min_t(unsigned int,
-					  data_width, dwc_fast_ffs(mem | len));
+			mem_width = __ffs(data_width | mem | len);
 
 slave_sg_todev_fill_desc:
 			desc = dwc_desc_get(dwc);
@@ -843,8 +824,6 @@ slave_sg_todev_fill_desc:
 		ctllo |= sconfig->device_fc ? DWC_CTLL_FC(DW_DMA_FC_P_P2M) :
 			DWC_CTLL_FC(DW_DMA_FC_D_P2M);
 
-		data_width = dw->data_width[dwc->m_master];
-
 		for_each_sg(sgl, sg, sg_len, i) {
 			struct dw_desc	*desc;
 			u32		len, dlen, mem;
@@ -852,8 +831,7 @@ slave_sg_todev_fill_desc:
 			mem = sg_dma_address(sg);
 			len = sg_dma_len(sg);
 
-			mem_width = min_t(unsigned int,
-					  data_width, dwc_fast_ffs(mem | len));
+			mem_width = __ffs(data_width | mem | len);
 
 slave_sg_fromdev_fill_desc:
 			desc = dwc_desc_get(dwc);
@@ -1461,12 +1439,12 @@ EXPORT_SYMBOL(dw_dma_cyclic_free);
 
 /*----------------------------------------------------------------------*/
 
-int dw_dma_probe(struct dw_dma_chip *chip, struct dw_dma_platform_data *pdata)
+int dw_dma_probe(struct dw_dma_chip *chip)
 {
+	struct dw_dma_platform_data *pdata;
 	struct dw_dma		*dw;
 	bool			autocfg = false;
 	unsigned int		dw_params;
-	unsigned int		max_blk_size = 0;
 	unsigned int		i;
 	int			err;
 
@@ -1474,12 +1452,16 @@ int dw_dma_probe(struct dw_dma_chip *chip, struct dw_dma_platform_data *pdata)
 	if (!dw)
 		return -ENOMEM;
 
+	dw->pdata = devm_kzalloc(chip->dev, sizeof(*dw->pdata), GFP_KERNEL);
+	if (!dw->pdata)
+		return -ENOMEM;
+
 	dw->regs = chip->regs;
 	chip->dw = dw;
 
 	pm_runtime_get_sync(chip->dev);
 
-	if (!pdata) {
+	if (!chip->pdata) {
 		dw_params = dma_readl(dw, DW_PARAMS);
 		dev_dbg(chip->dev, "DW_PARAMS: 0x%08x\n", dw_params);
 
@@ -1489,29 +1471,31 @@ int dw_dma_probe(struct dw_dma_chip *chip, struct dw_dma_platform_data *pdata)
 			goto err_pdata;
 		}
 
-		pdata = devm_kzalloc(chip->dev, sizeof(*pdata), GFP_KERNEL);
-		if (!pdata) {
-			err = -ENOMEM;
-			goto err_pdata;
-		}
+		/* Reassign the platform data pointer */
+		pdata = dw->pdata;
 
 		/* Get hardware configuration parameters */
 		pdata->nr_channels = (dw_params >> DW_PARAMS_NR_CHAN & 7) + 1;
 		pdata->nr_masters = (dw_params >> DW_PARAMS_NR_MASTER & 3) + 1;
 		for (i = 0; i < pdata->nr_masters; i++) {
 			pdata->data_width[i] =
-				(dw_params >> DW_PARAMS_DATA_WIDTH(i) & 3) + 2;
+				4 << (dw_params >> DW_PARAMS_DATA_WIDTH(i) & 3);
 		}
-		max_blk_size = dma_readl(dw, MAX_BLK_SIZE);
+		pdata->block_size = dma_readl(dw, MAX_BLK_SIZE);
 
 		/* Fill platform data with the default values */
 		pdata->is_private = true;
 		pdata->is_memcpy = true;
 		pdata->chan_allocation_order = CHAN_ALLOCATION_ASCENDING;
 		pdata->chan_priority = CHAN_PRIORITY_ASCENDING;
-	} else if (pdata->nr_channels > DW_DMA_MAX_NR_CHANNELS) {
+	} else if (chip->pdata->nr_channels > DW_DMA_MAX_NR_CHANNELS) {
 		err = -EINVAL;
 		goto err_pdata;
+	} else {
+		memcpy(dw->pdata, chip->pdata, sizeof(*dw->pdata));
+
+		/* Reassign the platform data pointer */
+		pdata = dw->pdata;
 	}
 
 	dw->chan = devm_kcalloc(chip->dev, pdata->nr_channels, sizeof(*dw->chan),
@@ -1520,11 +1504,6 @@ int dw_dma_probe(struct dw_dma_chip *chip, struct dw_dma_platform_data *pdata)
 		err = -ENOMEM;
 		goto err_pdata;
 	}
-
-	/* Get hardware configuration parameters */
-	dw->nr_masters = pdata->nr_masters;
-	for (i = 0; i < dw->nr_masters; i++)
-		dw->data_width[i] = pdata->data_width[i];
 
 	/* Calculate all channel mask before DMA setup */
 	dw->all_chan_mask = (1 << pdata->nr_channels) - 1;
@@ -1592,7 +1571,7 @@ int dw_dma_probe(struct dw_dma_chip *chip, struct dw_dma_platform_data *pdata)
 			 * up to 0x0a for 4095.
 			 */
 			dwc->block_size =
-				(4 << ((max_blk_size >> 4 * i) & 0xf)) - 1;
+				(4 << ((pdata->block_size >> 4 * i) & 0xf)) - 1;
 			dwc->nollp =
 				(dwc_params >> DWC_PARAMS_MBLK_EN & 0x1) == 0;
 		} else {
