@@ -498,7 +498,14 @@ static inline void local_r4k_flush_cache_range(void * args)
 	if (!(has_valid_asid(vma->vm_mm)))
 		return;
 
-	r4k_blast_dcache();
+	/*
+	 * If dcache can alias, we must blast it since mapping is changing.
+	 * If executable, we must ensure any dirty lines are written back far
+	 * enough to be visible to icache.
+	 */
+	if (cpu_has_dc_aliases || (exec && !cpu_has_ic_fills_f_dc))
+		r4k_blast_dcache();
+	/* If executable, blast stale lines from icache */
 	if (exec)
 		r4k_blast_icache();
 }
@@ -508,7 +515,7 @@ static void r4k_flush_cache_range(struct vm_area_struct *vma,
 {
 	int exec = vma->vm_flags & VM_EXEC;
 
-	if (cpu_has_dc_aliases || (exec && !cpu_has_ic_fills_f_dc))
+	if (cpu_has_dc_aliases || exec)
 		r4k_on_each_cpu(local_r4k_flush_cache_range, vma);
 }
 
@@ -1314,6 +1321,7 @@ static void probe_pcache(void)
 		break;
 
 	case CPU_ALCHEMY:
+	case CPU_I6400:
 		c->icache.flags |= MIPS_CACHE_IC_F_DC;
 		break;
 
