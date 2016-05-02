@@ -848,6 +848,12 @@ S:	Maintained
 F:	drivers/net/arcnet/
 F:	include/uapi/linux/if_arcnet.h
 
+ARC PGU DRM DRIVER
+M:	Alexey Brodkin <abrodkin@synopsys.com>
+S:	Supported
+F:	drivers/gpu/drm/arc/
+F:	Documentation/devicetree/bindings/display/snps,arcpgu.txt
+
 ARM HDLCD DRM DRIVER
 M:	Liviu Dudau <liviu.dudau@arm.com>
 S:	Supported
@@ -3832,6 +3838,13 @@ S:	Supported
 F:	drivers/gpu/drm/atmel-hlcdc/
 F:	Documentation/devicetree/bindings/drm/atmel/
 
+DRM DRIVERS FOR ALLWINNER A10
+M:	Maxime Ripard  <maxime.ripard@free-electrons.com>
+L:	dri-devel@lists.freedesktop.org
+S:	Supported
+F:	drivers/gpu/drm/sun4i/
+F:	Documentation/devicetree/bindings/display/sunxi/sun4i-drm.txt
+
 DRM DRIVERS FOR EXYNOS
 M:	Inki Dae <inki.dae@samsung.com>
 M:	Joonyoung Shim <jy0922.shim@samsung.com>
@@ -3851,6 +3864,7 @@ L:	dri-devel@lists.freedesktop.org
 S:	Supported
 F:	drivers/gpu/drm/fsl-dcu/
 F:	Documentation/devicetree/bindings/display/fsl,dcu.txt
+F:	Documentation/devicetree/bindings/display/fsl,tcon.txt
 F:	Documentation/devicetree/bindings/display/panel/nec,nl4827hc19_05b.txt
 
 DRM DRIVERS FOR FREESCALE IMX
