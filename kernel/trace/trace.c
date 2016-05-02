@@ -253,6 +253,9 @@ unsigned long long ns2usecs(cycle_t nsec)
 #define TOP_LEVEL_TRACE_FLAGS (TRACE_ITER_PRINTK |			\
 	       TRACE_ITER_PRINTK_MSGONLY | TRACE_ITER_RECORD_CMD)
 
+/* trace_flags that are default zero for instances */
+#define ZEROED_TRACE_FLAGS \
+	TRACE_ITER_EVENT_FORK
 
 /*
  * The global_trace is the descriptor that holds the tracing
@@ -303,20 +306,6 @@ void trace_array_put(struct trace_array *this_tr)
 	mutex_unlock(&trace_types_lock);
 }
 
-int filter_check_discard(struct trace_event_file *file, void *rec,
-			 struct ring_buffer *buffer,
-			 struct ring_buffer_event *event)
-{
-	if (unlikely(file->flags & EVENT_FILE_FL_FILTERED) &&
-	    !filter_match_preds(file->filter, rec)) {
-		ring_buffer_discard_commit(buffer, event);
-		return 1;
-	}
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(filter_check_discard);
-
 int call_filter_check_discard(struct trace_event_call *call, void *rec,
 			      struct ring_buffer *buffer,
 			      struct ring_buffer_event *event)
@@ -329,7 +318,6 @@ int call_filter_check_discard(struct trace_event_call *call, void *rec,
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(call_filter_check_discard);
 
 static cycle_t buffer_ftrace_now(struct trace_buffer *buf, int cpu)
 {
@@ -1698,18 +1686,6 @@ __buffer_unlock_commit(struct ring_buffer *buffer, struct ring_buffer_event *eve
 	ring_buffer_unlock_commit(buffer, event);
 }
 
-void trace_buffer_unlock_commit(struct trace_array *tr,
-				struct ring_buffer *buffer,
-				struct ring_buffer_event *event,
-				unsigned long flags, int pc)
-{
-	__buffer_unlock_commit(buffer, event);
-
-	ftrace_trace_stack(tr, buffer, flags, 6, pc, NULL);
-	ftrace_trace_userstack(buffer, flags, pc);
-}
-EXPORT_SYMBOL_GPL(trace_buffer_unlock_commit);
-
 static struct ring_buffer *temp_buffer;
 
 struct ring_buffer_event *
@@ -1738,17 +1714,6 @@ trace_event_buffer_lock_reserve(struct ring_buffer **current_rb,
 }
 EXPORT_SYMBOL_GPL(trace_event_buffer_lock_reserve);
 
-struct ring_buffer_event *
-trace_current_buffer_lock_reserve(struct ring_buffer **current_rb,
-				  int type, unsigned long len,
-				  unsigned long flags, int pc)
-{
-	*current_rb = global_trace.trace_buffer.buffer;
-	return trace_buffer_lock_reserve(*current_rb,
-					 type, len, flags, pc);
-}
-EXPORT_SYMBOL_GPL(trace_current_buffer_lock_reserve);
-
 void trace_buffer_unlock_commit_regs(struct trace_array *tr,
 				     struct ring_buffer *buffer,
 				     struct ring_buffer_event *event,
@@ -1760,14 +1725,6 @@ void trace_buffer_unlock_commit_regs(struct trace_array *tr,
 	ftrace_trace_stack(tr, buffer, flags, 0, pc, regs);
 	ftrace_trace_userstack(buffer, flags, pc);
 }
-EXPORT_SYMBOL_GPL(trace_buffer_unlock_commit_regs);
-
-void trace_current_buffer_discard_commit(struct ring_buffer *buffer,
-					 struct ring_buffer_event *event)
-{
-	ring_buffer_discard_commit(buffer, event);
-}
-EXPORT_SYMBOL_GPL(trace_current_buffer_discard_commit);
 
 void
 trace_function(struct trace_array *tr,
@@ -3571,6 +3528,9 @@ int set_tracer_flag(struct trace_array *tr, unsigned int mask, int enabled)
 	if (mask == TRACE_ITER_RECORD_CMD)
 		trace_event_enable_cmd_record(enabled);
 
+	if (mask == TRACE_ITER_EVENT_FORK)
+		trace_event_follow_fork(tr, enabled);
+
 	if (mask == TRACE_ITER_OVERWRITE) {
 		ring_buffer_change_overwrite(tr->trace_buffer.buffer, enabled);
 #ifdef CONFIG_TRACER_MAX_TRACE
@@ -3658,7 +3618,7 @@ tracing_trace_options_write(struct file *filp, const char __user *ubuf,
 	if (cnt >= sizeof(buf))
 		return -EINVAL;
 
-	if (copy_from_user(&buf, ubuf, cnt))
+	if (copy_from_user(buf, ubuf, cnt))
 		return -EFAULT;
 
 	buf[cnt] = 0;
@@ -3804,11 +3764,18 @@ static const char readme_msg[] =
 	"\t   trigger: traceon, traceoff\n"
 	"\t            enable_event:<system>:<event>\n"
 	"\t            disable_event:<system>:<event>\n"
+#ifdef CONFIG_HIST_TRIGGERS
+	"\t            enable_hist:<system>:<event>\n"
+	"\t            disable_hist:<system>:<event>\n"
+#endif
 #ifdef CONFIG_STACKTRACE
 	"\t\t    stacktrace\n"
 #endif
 #ifdef CONFIG_TRACER_SNAPSHOT
 	"\t\t    snapshot\n"
+#endif
+#ifdef CONFIG_HIST_TRIGGERS
+	"\t\t    hist (see below)\n"
 #endif
 	"\t   example: echo traceoff > events/block/block_unplug/trigger\n"
 	"\t            echo traceoff:3 > events/block/block_unplug/trigger\n"
@@ -3825,6 +3792,56 @@ static const char readme_msg[] =
 	"\t   To remove a trigger with a count:\n"
 	"\t     echo '!<trigger>:0 > <system>/<event>/trigger\n"
 	"\t   Filters can be ignored when removing a trigger.\n"
+#ifdef CONFIG_HIST_TRIGGERS
+	"      hist trigger\t- If set, event hits are aggregated into a hash table\n"
+	"\t    Format: hist:keys=<field1[,field2,...]>\n"
+	"\t            [:values=<field1[,field2,...]>]\n"
+	"\t            [:sort=<field1[,field2,...]>]\n"
+	"\t            [:size=#entries]\n"
+	"\t            [:pause][:continue][:clear]\n"
+	"\t            [:name=histname1]\n"
+	"\t            [if <filter>]\n\n"
+	"\t    When a matching event is hit, an entry is added to a hash\n"
+	"\t    table using the key(s) and value(s) named, and the value of a\n"
+	"\t    sum called 'hitcount' is incremented.  Keys and values\n"
+	"\t    correspond to fields in the event's format description.  Keys\n"
+	"\t    can be any field, or the special string 'stacktrace'.\n"
+	"\t    Compound keys consisting of up to two fields can be specified\n"
+	"\t    by the 'keys' keyword.  Values must correspond to numeric\n"
+	"\t    fields.  Sort keys consisting of up to two fields can be\n"
+	"\t    specified using the 'sort' keyword.  The sort direction can\n"
+	"\t    be modified by appending '.descending' or '.ascending' to a\n"
+	"\t    sort field.  The 'size' parameter can be used to specify more\n"
+	"\t    or fewer than the default 2048 entries for the hashtable size.\n"
+	"\t    If a hist trigger is given a name using the 'name' parameter,\n"
+	"\t    its histogram data will be shared with other triggers of the\n"
+	"\t    same name, and trigger hits will update this common data.\n\n"
+	"\t    Reading the 'hist' file for the event will dump the hash\n"
+	"\t    table in its entirety to stdout.  If there are multiple hist\n"
+	"\t    triggers attached to an event, there will be a table for each\n"
+	"\t    trigger in the output.  The table displayed for a named\n"
+	"\t    trigger will be the same as any other instance having the\n"
+	"\t    same name.  The default format used to display a given field\n"
+	"\t    can be modified by appending any of the following modifiers\n"
+	"\t    to the field name, as applicable:\n\n"
+	"\t            .hex        display a number as a hex value\n"
+	"\t            .sym        display an address as a symbol\n"
+	"\t            .sym-offset display an address as a symbol and offset\n"
+	"\t            .execname   display a common_pid as a program name\n"
+	"\t            .syscall    display a syscall id as a syscall name\n\n"
+	"\t            .log2       display log2 value rather than raw number\n\n"
+	"\t    The 'pause' parameter can be used to pause an existing hist\n"
+	"\t    trigger or to start a hist trigger but not log any events\n"
+	"\t    until told to do so.  'continue' can be used to start or\n"
+	"\t    restart a paused hist trigger.\n\n"
+	"\t    The 'clear' parameter will clear the contents of a running\n"
+	"\t    hist trigger and leave its current paused/active state\n"
+	"\t    unchanged.\n\n"
+	"\t    The enable_hist and disable_hist triggers can be used to\n"
+	"\t    have one event conditionally start and stop another event's\n"
+	"\t    already-attached hist trigger.  The syntax is analagous to\n"
+	"\t    the enable_event and disable_event triggers.\n"
+#endif
 ;
 
 static ssize_t
@@ -4474,7 +4491,7 @@ tracing_set_trace_write(struct file *filp, const char __user *ubuf,
 	if (cnt > MAX_TRACER_SIZE)
 		cnt = MAX_TRACER_SIZE;
 
-	if (copy_from_user(&buf, ubuf, cnt))
+	if (copy_from_user(buf, ubuf, cnt))
 		return -EFAULT;
 
 	buf[cnt] = 0;
@@ -5264,7 +5281,7 @@ static ssize_t tracing_clock_write(struct file *filp, const char __user *ubuf,
 	if (cnt >= sizeof(buf))
 		return -EINVAL;
 
-	if (copy_from_user(&buf, ubuf, cnt))
+	if (copy_from_user(buf, ubuf, cnt))
 		return -EFAULT;
 
 	buf[cnt] = 0;
@@ -6650,7 +6667,7 @@ static int instance_mkdir(const char *name)
 	if (!alloc_cpumask_var(&tr->tracing_cpumask, GFP_KERNEL))
 		goto out_free_tr;
 
-	tr->trace_flags = global_trace.trace_flags;
+	tr->trace_flags = global_trace.trace_flags & ~ZEROED_TRACE_FLAGS;
 
 	cpumask_copy(tr->tracing_cpumask, cpu_all_mask);
 
@@ -6723,6 +6740,12 @@ static int instance_rmdir(const char *name)
 		goto out_unlock;
 
 	list_del(&tr->list);
+
+	/* Disable all the flags that were enabled coming in */
+	for (i = 0; i < TRACE_FLAGS_MAX_SIZE; i++) {
+		if ((1 << i) & ZEROED_TRACE_FLAGS)
+			set_tracer_flag(tr, 1 << i, 0);
+	}
 
 	tracing_set_nop(tr);
 	event_trace_del_tracer(tr);
