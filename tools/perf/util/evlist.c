@@ -684,6 +684,7 @@ union perf_event *perf_evlist__mmap_read(struct perf_evlist *evlist, int idx)
 	struct perf_mmap *md = &evlist->mmap[idx];
 	u64 head;
 	u64 old = md->prev;
+	int diff;
 	unsigned char *data = md->base + page_size;
 	union perf_event *event = NULL;
 
@@ -694,6 +695,7 @@ union perf_event *perf_evlist__mmap_read(struct perf_evlist *evlist, int idx)
 		return NULL;
 
 	head = perf_mmap__read_head(md);
+	diff = head - old;
 	if (evlist->overwrite) {
 		/*
 		 * If we're further behind than half the buffer, there's a chance
@@ -703,7 +705,6 @@ union perf_event *perf_evlist__mmap_read(struct perf_evlist *evlist, int idx)
 		 *
 		 * In either case, truncate and restart at head.
 		 */
-		int diff = head - old;
 		if (diff > md->mask / 2 || diff < 0) {
 			fprintf(stderr, "WARNING: failed to keep up with mmap data.\n");
 
@@ -711,14 +712,20 @@ union perf_event *perf_evlist__mmap_read(struct perf_evlist *evlist, int idx)
 			 * head points to a known good entry, start there.
 			 */
 			old = head;
+			diff = 0;
 		}
 	}
 
-	if (old != head) {
+	if (diff >= (int)sizeof(event->header)) {
 		size_t size;
 
 		event = (union perf_event *)&data[old & md->mask];
 		size = event->header.size;
+
+		if (size < sizeof(event->header) || diff < (int)size) {
+			event = NULL;
+			goto broken_event;
+		}
 
 		/*
 		 * Event straddles the mmap boundary -- header should always
@@ -743,6 +750,7 @@ union perf_event *perf_evlist__mmap_read(struct perf_evlist *evlist, int idx)
 		old += size;
 	}
 
+broken_event:
 	md->prev = old;
 
 	return event;
@@ -986,26 +994,34 @@ out_unmap:
 	return -1;
 }
 
+unsigned long perf_event_mlock_kb_in_pages(void)
+{
+	unsigned long pages;
+	int max;
+
+	if (sysctl__read_int("kernel/perf_event_mlock_kb", &max) < 0) {
+		/*
+		 * Pick a once upon a time good value, i.e. things look
+		 * strange since we can't read a sysctl value, but lets not
+		 * die yet...
+		 */
+		max = 512;
+	} else {
+		max -= (page_size / 1024);
+	}
+
+	pages = (max * 1024) / page_size;
+	if (!is_power_of_2(pages))
+		pages = rounddown_pow_of_two(pages);
+
+	return pages;
+}
+
 static size_t perf_evlist__mmap_size(unsigned long pages)
 {
-	if (pages == UINT_MAX) {
-		int max;
-
-		if (sysctl__read_int("kernel/perf_event_mlock_kb", &max) < 0) {
-			/*
-			 * Pick a once upon a time good value, i.e. things look
-			 * strange since we can't read a sysctl value, but lets not
-			 * die yet...
-			 */
-			max = 512;
-		} else {
-			max -= (page_size / 1024);
-		}
-
-		pages = (max * 1024) / page_size;
-		if (!is_power_of_2(pages))
-			pages = rounddown_pow_of_two(pages);
-	} else if (!is_power_of_2(pages))
+	if (pages == UINT_MAX)
+		pages = perf_event_mlock_kb_in_pages();
+	else if (!is_power_of_2(pages))
 		return 0;
 
 	return (pages + 1) * page_size;
@@ -1190,6 +1206,24 @@ void perf_evlist__set_maps(struct perf_evlist *evlist, struct cpu_map *cpus,
 	}
 
 	perf_evlist__propagate_maps(evlist);
+}
+
+void __perf_evlist__set_sample_bit(struct perf_evlist *evlist,
+				   enum perf_event_sample_format bit)
+{
+	struct perf_evsel *evsel;
+
+	evlist__for_each(evlist, evsel)
+		__perf_evsel__set_sample_bit(evsel, bit);
+}
+
+void __perf_evlist__reset_sample_bit(struct perf_evlist *evlist,
+				     enum perf_event_sample_format bit)
+{
+	struct perf_evsel *evsel;
+
+	evlist__for_each(evlist, evsel)
+		__perf_evsel__reset_sample_bit(evsel, bit);
 }
 
 int perf_evlist__apply_filters(struct perf_evlist *evlist, struct perf_evsel **err_evsel)

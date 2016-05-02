@@ -31,9 +31,9 @@ extern void calc_global_load_tick(struct rq *this_rq);
 extern long calc_load_fold_active(struct rq *this_rq);
 
 #ifdef CONFIG_SMP
-extern void update_cpu_load_active(struct rq *this_rq);
+extern void cpu_load_update_active(struct rq *this_rq);
 #else
-static inline void update_cpu_load_active(struct rq *this_rq) { }
+static inline void cpu_load_update_active(struct rq *this_rq) { }
 #endif
 
 /*
@@ -585,11 +585,13 @@ struct rq {
 #endif
 	#define CPU_LOAD_IDX_MAX 5
 	unsigned long cpu_load[CPU_LOAD_IDX_MAX];
-	unsigned long last_load_update_tick;
 #ifdef CONFIG_NO_HZ_COMMON
+#ifdef CONFIG_SMP
+	unsigned long last_load_update_tick;
+#endif /* CONFIG_SMP */
 	u64 nohz_stamp;
 	unsigned long nohz_flags;
-#endif
+#endif /* CONFIG_NO_HZ_COMMON */
 #ifdef CONFIG_NO_HZ_FULL
 	unsigned long last_sched_tick;
 #endif
@@ -1313,6 +1315,7 @@ extern void init_dl_task_timer(struct sched_dl_entity *dl_se);
 unsigned long to_ratio(u64 period, u64 runtime);
 
 extern void init_entity_runnable_average(struct sched_entity *se);
+extern void post_init_entity_util_avg(struct sched_entity *se);
 
 #ifdef CONFIG_NO_HZ_FULL
 extern bool sched_can_stop_tick(struct rq *rq);

@@ -32,9 +32,10 @@
 /* misc.c */
 extern memptr free_mem_ptr;
 extern memptr free_mem_end_ptr;
-extern struct boot_params *real_mode;		/* Pointer to real-mode data */
+extern struct boot_params *boot_params;
 void __putstr(const char *s);
 void __puthex(unsigned long value);
+void warn(char *m);
 #define error_putstr(__x)  __putstr(__x)
 #define error_puthex(__x)  __puthex(__x)
 
@@ -66,9 +67,8 @@ int cmdline_find_option_bool(const char *option);
 
 
 #if CONFIG_RANDOMIZE_BASE
-/* aslr.c */
-unsigned char *choose_kernel_location(struct boot_params *boot_params,
-				      unsigned char *input,
+/* kaslr.c */
+unsigned char *choose_random_location(unsigned char *input,
 				      unsigned long input_size,
 				      unsigned char *output,
 				      unsigned long output_size);
@@ -76,8 +76,7 @@ unsigned char *choose_kernel_location(struct boot_params *boot_params,
 bool has_cpuflag(int flag);
 #else
 static inline
-unsigned char *choose_kernel_location(struct boot_params *boot_params,
-				      unsigned char *input,
+unsigned char *choose_random_location(unsigned char *input,
 				      unsigned long input_size,
 				      unsigned char *output,
 				      unsigned long output_size)
