@@ -943,7 +943,7 @@ int btrfs_write_marked_extents(struct btrfs_root *root,
 
 		err = convert_extent_bit(dirty_pages, start, end,
 					 EXTENT_NEED_WAIT,
-					 mark, &cached_state, GFP_NOFS);
+					 mark, &cached_state);
 		/*
 		 * convert_extent_bit can return -ENOMEM, which is most of the
 		 * time a temporary error. So when it happens, ignore the error
@@ -2145,7 +2145,7 @@ int btrfs_commit_transaction(struct btrfs_trans_handle *trans,
 
 	ret = btrfs_write_and_wait_transaction(trans, root);
 	if (ret) {
-		btrfs_std_error(root->fs_info, ret,
+		btrfs_handle_fs_error(root->fs_info, ret,
 			    "Error while writing out transaction");
 		mutex_unlock(&root->fs_info->tree_log_mutex);
 		goto scrub_continue;
