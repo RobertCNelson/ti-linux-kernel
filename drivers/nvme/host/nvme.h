@@ -67,7 +67,16 @@ enum nvme_quirks {
 	NVME_QUIRK_DISCARD_ZEROES		= (1 << 2),
 };
 
+enum nvme_ctrl_state {
+	NVME_CTRL_NEW,
+	NVME_CTRL_LIVE,
+	NVME_CTRL_RESETTING,
+	NVME_CTRL_DELETING,
+};
+
 struct nvme_ctrl {
+	enum nvme_ctrl_state state;
+	spinlock_t lock;
 	const struct nvme_ctrl_ops *ops;
 	struct request_queue *admin_q;
 	struct device *dev;
@@ -99,6 +108,8 @@ struct nvme_ctrl {
 	u32 vs;
 	bool subsystem;
 	unsigned long quirks;
+	struct work_struct scan_work;
+	struct work_struct async_event_work;
 };
 
 /*
@@ -136,9 +147,10 @@ struct nvme_ctrl_ops {
 	int (*reg_read32)(struct nvme_ctrl *ctrl, u32 off, u32 *val);
 	int (*reg_write32)(struct nvme_ctrl *ctrl, u32 off, u32 val);
 	int (*reg_read64)(struct nvme_ctrl *ctrl, u32 off, u64 *val);
-	bool (*io_incapable)(struct nvme_ctrl *ctrl);
 	int (*reset_ctrl)(struct nvme_ctrl *ctrl);
 	void (*free_ctrl)(struct nvme_ctrl *ctrl);
+	void (*post_scan)(struct nvme_ctrl *ctrl);
+	void (*submit_async_event)(struct nvme_ctrl *ctrl, int aer_idx);
 };
 
 static inline bool nvme_ctrl_ready(struct nvme_ctrl *ctrl)
@@ -148,17 +160,6 @@ static inline bool nvme_ctrl_ready(struct nvme_ctrl *ctrl)
 	if (ctrl->ops->reg_read32(ctrl, NVME_REG_CSTS, &val))
 		return false;
 	return val & NVME_CSTS_RDY;
-}
-
-static inline bool nvme_io_incapable(struct nvme_ctrl *ctrl)
-{
-	u32 val = 0;
-
-	if (ctrl->ops->io_incapable(ctrl))
-		return true;
-	if (ctrl->ops->reg_read32(ctrl, NVME_REG_CSTS, &val))
-		return true;
-	return val & NVME_CSTS_CFS;
 }
 
 static inline int nvme_reset_subsystem(struct nvme_ctrl *ctrl)
@@ -199,6 +200,8 @@ static inline bool nvme_req_needs_retry(struct request *req, u16 status)
 		(jiffies - req->start_time) < req->timeout;
 }
 
+bool nvme_change_ctrl_state(struct nvme_ctrl *ctrl,
+		enum nvme_ctrl_state new_state);
 int nvme_disable_ctrl(struct nvme_ctrl *ctrl, u64 cap);
 int nvme_enable_ctrl(struct nvme_ctrl *ctrl, u64 cap);
 int nvme_shutdown_ctrl(struct nvme_ctrl *ctrl);
@@ -208,8 +211,13 @@ void nvme_uninit_ctrl(struct nvme_ctrl *ctrl);
 void nvme_put_ctrl(struct nvme_ctrl *ctrl);
 int nvme_init_identify(struct nvme_ctrl *ctrl);
 
-void nvme_scan_namespaces(struct nvme_ctrl *ctrl);
+void nvme_queue_scan(struct nvme_ctrl *ctrl);
 void nvme_remove_namespaces(struct nvme_ctrl *ctrl);
+
+#define NVME_NR_AERS	1
+void nvme_complete_async_event(struct nvme_ctrl *ctrl,
+		struct nvme_completion *cqe);
+void nvme_queue_async_events(struct nvme_ctrl *ctrl);
 
 void nvme_stop_queues(struct nvme_ctrl *ctrl);
 void nvme_start_queues(struct nvme_ctrl *ctrl);
