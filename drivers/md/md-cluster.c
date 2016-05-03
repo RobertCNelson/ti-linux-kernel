@@ -85,6 +85,9 @@ struct md_cluster_info {
 	struct completion newdisk_completion;
 	wait_queue_head_t wait;
 	unsigned long state;
+	/* record the region in RESYNCING message */
+	sector_t sync_low;
+	sector_t sync_hi;
 };
 
 enum msg_type {
@@ -284,11 +287,14 @@ static void recover_bitmaps(struct md_thread *thread)
 			goto dlm_unlock;
 		}
 		if (hi > 0) {
-			/* TODO:Wait for current resync to get over */
-			set_bit(MD_RECOVERY_NEEDED, &mddev->recovery);
 			if (lo < mddev->recovery_cp)
 				mddev->recovery_cp = lo;
-			md_check_recovery(mddev);
+			/* wake up thread to continue resync in case resync
+			 * is not finished */
+			if (mddev->recovery_cp != MaxSector) {
+			    set_bit(MD_RECOVERY_NEEDED, &mddev->recovery);
+			    md_wakeup_thread(mddev->thread);
+			}
 		}
 dlm_unlock:
 		dlm_unlock_sync(bm_lockres);
@@ -408,6 +414,30 @@ static void process_suspend_info(struct mddev *mddev,
 		md_wakeup_thread(mddev->thread);
 		return;
 	}
+
+	/*
+	 * The bitmaps are not same for different nodes
+	 * if RESYNCING is happening in one node, then
+	 * the node which received the RESYNCING message
+	 * probably will perform resync with the region
+	 * [lo, hi] again, so we could reduce resync time
+	 * a lot if we can ensure that the bitmaps among
+	 * different nodes are match up well.
+	 *
+	 * sync_low/hi is used to record the region which
+	 * arrived in the previous RESYNCING message,
+	 *
+	 * Call bitmap_sync_with_cluster to clear
+	 * NEEDED_MASK and set RESYNC_MASK since
+	 * resync thread is running in another node,
+	 * so we don't need to do the resync again
+	 * with the same section */
+	bitmap_sync_with_cluster(mddev, cinfo->sync_low,
+					cinfo->sync_hi,
+					lo, hi);
+	cinfo->sync_low = lo;
+	cinfo->sync_hi = hi;
+
 	s = kzalloc(sizeof(struct suspend_info), GFP_KERNEL);
 	if (!s)
 		return;
@@ -778,17 +808,24 @@ static int join(struct mddev *mddev, int nodes)
 	cinfo->token_lockres = lockres_init(mddev, "token", NULL, 0);
 	if (!cinfo->token_lockres)
 		goto err;
-	cinfo->ack_lockres = lockres_init(mddev, "ack", ack_bast, 0);
-	if (!cinfo->ack_lockres)
-		goto err;
 	cinfo->no_new_dev_lockres = lockres_init(mddev, "no-new-dev", NULL, 0);
 	if (!cinfo->no_new_dev_lockres)
 		goto err;
 
+	ret = dlm_lock_sync(cinfo->token_lockres, DLM_LOCK_EX);
+	if (ret) {
+		ret = -EAGAIN;
+		pr_err("md-cluster: can't join cluster to avoid lock issue\n");
+		goto err;
+	}
+	cinfo->ack_lockres = lockres_init(mddev, "ack", ack_bast, 0);
+	if (!cinfo->ack_lockres)
+		goto err;
 	/* get sync CR lock on ACK. */
 	if (dlm_lock_sync(cinfo->ack_lockres, DLM_LOCK_CR))
 		pr_err("md-cluster: failed to get a sync CR lock on ACK!(%d)\n",
 				ret);
+	dlm_unlock_sync(cinfo->token_lockres);
 	/* get sync CR lock on no-new-dev. */
 	if (dlm_lock_sync(cinfo->no_new_dev_lockres, DLM_LOCK_CR))
 		pr_err("md-cluster: failed to get a sync CR lock on no-new-dev!(%d)\n", ret);
@@ -815,6 +852,8 @@ static int join(struct mddev *mddev, int nodes)
 
 	return 0;
 err:
+	md_unregister_thread(&cinfo->recovery_thread);
+	md_unregister_thread(&cinfo->recv_thread);
 	lockres_free(cinfo->message_lockres);
 	lockres_free(cinfo->token_lockres);
 	lockres_free(cinfo->ack_lockres);
@@ -937,7 +976,6 @@ static void metadata_update_cancel(struct mddev *mddev)
 static int resync_start(struct mddev *mddev)
 {
 	struct md_cluster_info *cinfo = mddev->cluster_info;
-	cinfo->resync_lockres->flags |= DLM_LKF_NOQUEUE;
 	return dlm_lock_sync(cinfo->resync_lockres, DLM_LOCK_EX);
 }
 
@@ -967,7 +1005,6 @@ static int resync_info_update(struct mddev *mddev, sector_t lo, sector_t hi)
 static int resync_finish(struct mddev *mddev)
 {
 	struct md_cluster_info *cinfo = mddev->cluster_info;
-	cinfo->resync_lockres->flags &= ~DLM_LKF_NOQUEUE;
 	dlm_unlock_sync(cinfo->resync_lockres);
 	return resync_info_update(mddev, 0, 0);
 }
