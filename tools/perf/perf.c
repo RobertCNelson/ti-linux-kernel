@@ -17,6 +17,7 @@
 #include <subcmd/parse-options.h>
 #include "util/bpf-loader.h"
 #include "util/debug.h"
+#include <api/fs/fs.h>
 #include <api/fs/tracing_path.h>
 #include <pthread.h>
 #include <stdlib.h>
@@ -533,6 +534,7 @@ int main(int argc, const char **argv)
 {
 	const char *cmd;
 	char sbuf[STRERR_BUFSIZE];
+	int value;
 
 	/* libsubcmd init */
 	exec_cmd_init("perf", PREFIX, PERF_EXEC_PATH, EXEC_PATH_ENVIRONMENT);
@@ -542,6 +544,9 @@ int main(int argc, const char **argv)
 	page_size = sysconf(_SC_PAGE_SIZE);
 	cacheline_size = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
 
+	if (sysctl__read_int("kernel/perf_event_max_stack", &value) == 0)
+		sysctl_perf_event_max_stack = value;
+
 	cmd = extract_argv0_path(argv[0]);
 	if (!cmd)
 		cmd = "perf-help";
@@ -549,6 +554,7 @@ int main(int argc, const char **argv)
 	srandom(time(NULL));
 
 	perf_config(perf_default_config, NULL);
+	set_buildid_dir(NULL);
 
 	/* get debugfs/tracefs mount point from /proc/mounts */
 	tracing_path_mount();
@@ -572,7 +578,6 @@ int main(int argc, const char **argv)
 	}
 	if (!prefixcmp(cmd, "trace")) {
 #ifdef HAVE_LIBAUDIT_SUPPORT
-		set_buildid_dir(NULL);
 		setup_path();
 		argv[0] = "trace";
 		return cmd_trace(argc, argv, NULL);
@@ -587,7 +592,6 @@ int main(int argc, const char **argv)
 	argc--;
 	handle_options(&argv, &argc, NULL);
 	commit_pager_choice();
-	set_buildid_dir(NULL);
 
 	if (argc > 0) {
 		if (!prefixcmp(argv[0], "--"))

@@ -57,13 +57,11 @@ futex_wake(u_int32_t *uaddr, int nr_wake, int opflags)
 
 /**
  * futex_lock_pi() - block on uaddr as a PI mutex
- * @detect:	whether (1) or not (0) to perform deadlock detection
  */
 static inline int
-futex_lock_pi(u_int32_t *uaddr, struct timespec *timeout, int detect,
-	      int opflags)
+futex_lock_pi(u_int32_t *uaddr, struct timespec *timeout, int opflags)
 {
-	return futex(uaddr, FUTEX_LOCK_PI, detect, timeout, NULL, 0, opflags);
+	return futex(uaddr, FUTEX_LOCK_PI, 0, timeout, NULL, 0, opflags);
 }
 
 /**
@@ -100,5 +98,19 @@ static inline int pthread_attr_setaffinity_np(pthread_attr_t *attr,
 	return 0;
 }
 #endif
+
+#define FUTEX_ATTACH		13
+#define FUTEX_DETACH		14
+#define FUTEX_ATTACHED		512
+
+static inline int futex_attach(u_int32_t *uaddr, int opflags)
+{
+	return futex(uaddr, FUTEX_ATTACH, 0, NULL, NULL, 0, opflags);
+}
+
+static inline int futex_detach(u_int32_t *uaddr, int opflags)
+{
+	return futex(uaddr, FUTEX_DETACH, 0, NULL, NULL, 0, opflags);
+}
 
 #endif /* _FUTEX_H */
