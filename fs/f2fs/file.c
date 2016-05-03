@@ -182,7 +182,8 @@ static void try_to_fix_pino(struct inode *inode)
 	}
 }
 
-int f2fs_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
+static int f2fs_do_sync_file(struct file *file, loff_t start, loff_t end,
+						int datasync, bool atomic)
 {
 	struct inode *inode = file->f_mapping->host;
 	struct f2fs_inode_info *fi = F2FS_I(inode);
@@ -256,7 +257,9 @@ go_write:
 		goto out;
 	}
 sync_nodes:
-	sync_node_pages(sbi, ino, &wbc);
+	ret = fsync_node_pages(sbi, ino, &wbc, atomic);
+	if (ret)
+		goto out;
 
 	/* if cp_error was enabled, we should avoid infinite loop */
 	if (unlikely(f2fs_cp_error(sbi))) {
@@ -286,6 +289,11 @@ out:
 	trace_f2fs_sync_file_exit(inode, need_cp, datasync, ret);
 	f2fs_trace_ios(NULL, 1);
 	return ret;
+}
+
+int f2fs_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
+{
+	return f2fs_do_sync_file(file, start, end, datasync, false);
 }
 
 static pgoff_t __get_first_dirty_index(struct address_space *mapping,
@@ -1254,10 +1262,19 @@ out:
 
 static int f2fs_release_file(struct inode *inode, struct file *filp)
 {
+	/*
+	 * f2fs_relase_file is called at every close calls. So we should
+	 * not drop any inmemory pages by close called by other process.
+	 */
+	if (!(filp->f_mode & FMODE_WRITE) ||
+			atomic_read(&inode->i_writecount) != 1)
+		return 0;
+
 	/* some remained atomic pages should discarded */
 	if (f2fs_is_atomic_file(inode))
 		drop_inmem_pages(inode);
 	if (f2fs_is_volatile_file(inode)) {
+		clear_inode_flag(F2FS_I(inode), FI_VOLATILE_FILE);
 		set_inode_flag(F2FS_I(inode), FI_DROP_CACHE);
 		filemap_fdatawrite(inode->i_mapping);
 		clear_inode_flag(F2FS_I(inode), FI_DROP_CACHE);
@@ -1360,7 +1377,16 @@ static int f2fs_ioc_start_atomic_write(struct file *filp)
 	set_inode_flag(F2FS_I(inode), FI_ATOMIC_FILE);
 	f2fs_update_time(F2FS_I_SB(inode), REQ_TIME);
 
-	return 0;
+	if (!get_dirty_pages(inode))
+		return 0;
+
+	f2fs_msg(F2FS_I_SB(inode)->sb, KERN_WARNING,
+		"Unexpected flush for atomic writes: ino=%lu, npages=%u",
+					inode->i_ino, get_dirty_pages(inode));
+	ret = filemap_write_and_wait_range(inode->i_mapping, 0, LLONG_MAX);
+	if (ret)
+		clear_inode_flag(F2FS_I(inode), FI_ATOMIC_FILE);
+	return ret;
 }
 
 static int f2fs_ioc_commit_atomic_write(struct file *filp)
@@ -1387,7 +1413,7 @@ static int f2fs_ioc_commit_atomic_write(struct file *filp)
 		}
 	}
 
-	ret = f2fs_sync_file(filp, 0, LLONG_MAX, 0);
+	ret = f2fs_do_sync_file(filp, 0, LLONG_MAX, 0, true);
 err_out:
 	mnt_drop_write_file(filp);
 	return ret;
@@ -1441,13 +1467,11 @@ static int f2fs_ioc_abort_volatile_write(struct file *filp)
 	if (ret)
 		return ret;
 
-	if (f2fs_is_atomic_file(inode)) {
-		clear_inode_flag(F2FS_I(inode), FI_ATOMIC_FILE);
+	if (f2fs_is_atomic_file(inode))
 		drop_inmem_pages(inode);
-	}
 	if (f2fs_is_volatile_file(inode)) {
 		clear_inode_flag(F2FS_I(inode), FI_VOLATILE_FILE);
-		ret = f2fs_sync_file(filp, 0, LLONG_MAX, 0);
+		ret = f2fs_do_sync_file(filp, 0, LLONG_MAX, 0, true);
 	}
 
 	mnt_drop_write_file(filp);
