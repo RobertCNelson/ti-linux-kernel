@@ -1199,7 +1199,8 @@ static void __exit iw_cm_cleanup(void)
 {
 	unregister_net_sysctl_table(iwcm_ctl_table_hdr);
 	destroy_workqueue(iwcm_wq);
-	ibnl_remove_client(RDMA_NL_IWCM);
+	ibnl_remove_client(RDMA_NL_IWCM, RDMA_NL_IWPM_NUM_OPS,
+			   iwcm_nl_cb_table);
 	iwpm_exit(RDMA_NL_IWCM);
 }
 
