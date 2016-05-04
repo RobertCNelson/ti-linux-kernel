@@ -62,6 +62,7 @@ struct kasan_global {
 enum kasan_state {
 	KASAN_STATE_INIT,
 	KASAN_STATE_ALLOC,
+	KASAN_STATE_QUARANTINE,
 	KASAN_STATE_FREE
 };
 
@@ -80,8 +81,10 @@ struct kasan_alloc_meta {
 };
 
 struct kasan_free_meta {
-	/* Allocator freelist pointer, unused by KASAN. */
-	void **freelist;
+	/* This field is used while the object is in the quarantine.
+	 * Otherwise it might be used for the allocator freelist.
+	 */
+	void **quarantine_link;
 	struct kasan_track track;
 };
 
@@ -104,5 +107,9 @@ static inline bool kasan_report_enabled(void)
 
 void kasan_report(unsigned long addr, size_t size,
 		bool is_write, unsigned long ip);
+
+void quarantine_put(struct kasan_free_meta *info, struct kmem_cache *cache);
+void quarantine_reduce(void);
+void quarantine_remove_cache(struct kmem_cache *cache);
 
 #endif
