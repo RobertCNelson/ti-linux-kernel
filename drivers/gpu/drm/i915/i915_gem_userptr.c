@@ -494,10 +494,7 @@ __i915_gem_userptr_get_pages_worker(struct work_struct *_work)
 	ret = -ENOMEM;
 	pinned = 0;
 
-	pvec = kmalloc(npages*sizeof(struct page *),
-		       GFP_TEMPORARY | __GFP_NOWARN | __GFP_NORETRY);
-	if (pvec == NULL)
-		pvec = drm_malloc_ab(npages, sizeof(struct page *));
+	pvec = drm_malloc_gfp(npages, sizeof(struct page *), GFP_TEMPORARY);
 	if (pvec != NULL) {
 		struct mm_struct *mm = obj->userptr.mm->mm;
 
@@ -634,14 +631,11 @@ i915_gem_userptr_get_pages(struct drm_i915_gem_object *obj)
 	pvec = NULL;
 	pinned = 0;
 	if (obj->userptr.mm->mm == current->mm) {
-		pvec = kmalloc(num_pages*sizeof(struct page *),
-			       GFP_TEMPORARY | __GFP_NOWARN | __GFP_NORETRY);
+		pvec = drm_malloc_gfp(num_pages, sizeof(struct page *),
+				      GFP_TEMPORARY);
 		if (pvec == NULL) {
-			pvec = drm_malloc_ab(num_pages, sizeof(struct page *));
-			if (pvec == NULL) {
-				__i915_gem_userptr_set_active(obj, false);
-				return -ENOMEM;
-			}
+			__i915_gem_userptr_set_active(obj, false);
+			return -ENOMEM;
 		}
 
 		pinned = __get_user_pages_fast(obj->userptr.ptr, num_pages,
@@ -683,7 +677,7 @@ i915_gem_userptr_put_pages(struct drm_i915_gem_object *obj)
 			set_page_dirty(page);
 
 		mark_page_accessed(page);
-		page_cache_release(page);
+		put_page(page);
 	}
 	obj->dirty = 0;
 
@@ -757,6 +751,13 @@ i915_gem_userptr_ioctl(struct drm_device *dev, void *data, struct drm_file *file
 	struct drm_i915_gem_object *obj;
 	int ret;
 	u32 handle;
+
+	if (!HAS_LLC(dev) && !HAS_SNOOP(dev)) {
+		/* We cannot support coherent userptr objects on hw without
+		 * LLC and broken snooping.
+		 */
+		return -ENODEV;
+	}
 
 	if (args->flags & ~(I915_USERPTR_READ_ONLY |
 			    I915_USERPTR_UNSYNCHRONIZED))
