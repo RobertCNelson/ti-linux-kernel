@@ -41,13 +41,11 @@ struct nvm_id;
 struct nvm_dev;
 
 typedef int (nvm_l2p_update_fn)(u64, u32, __le64 *, void *);
-typedef int (nvm_bb_update_fn)(struct ppa_addr, int, u8 *, void *);
 typedef int (nvm_id_fn)(struct nvm_dev *, struct nvm_id *);
 typedef int (nvm_get_l2p_tbl_fn)(struct nvm_dev *, u64, u32,
 				nvm_l2p_update_fn *, void *);
-typedef int (nvm_op_bb_tbl_fn)(struct nvm_dev *, struct ppa_addr, int,
-				nvm_bb_update_fn *, void *);
-typedef int (nvm_op_set_bb_fn)(struct nvm_dev *, struct nvm_rq *, int);
+typedef int (nvm_op_bb_tbl_fn)(struct nvm_dev *, struct ppa_addr, u8 *);
+typedef int (nvm_op_set_bb_fn)(struct nvm_dev *, struct ppa_addr *, int, int);
 typedef int (nvm_submit_io_fn)(struct nvm_dev *, struct nvm_rq *);
 typedef int (nvm_erase_blk_fn)(struct nvm_dev *, struct nvm_rq *);
 typedef void *(nvm_create_dma_pool_fn)(struct nvm_dev *, char *);
@@ -232,8 +230,8 @@ struct nvm_rq {
 
 	struct ppa_addr *ppa_list;
 
-	void *metadata;
-	dma_addr_t dma_metadata;
+	void *meta_list;
+	dma_addr_t dma_meta_list;
 
 	struct completion *wait;
 	nvm_end_io_fn *end_io;
@@ -307,7 +305,6 @@ struct nvm_dev {
 	struct nvm_dev_ops *ops;
 
 	struct list_head devices;
-	struct list_head online_targets;
 
 	/* Media manager */
 	struct nvmm_type *mt;
@@ -323,6 +320,8 @@ struct nvm_dev {
 	int sec_per_pg; /* only sectors for a single page */
 	int pgs_per_blk;
 	int blks_per_lun;
+	int fpg_size;
+	int pfpg_size; /* size of buffer if all pages are to be read */
 	int sec_size;
 	int oob_size;
 	int mccap;
@@ -348,7 +347,7 @@ struct nvm_dev {
 	unsigned max_pages_per_blk;
 
 	unsigned long *lun_map;
-	void *ppalist_pool;
+	void *dma_pool;
 
 	struct nvm_id identity;
 
@@ -450,8 +449,8 @@ struct nvm_tgt_type {
 	struct list_head list;
 };
 
-extern int nvm_register_target(struct nvm_tgt_type *);
-extern void nvm_unregister_target(struct nvm_tgt_type *);
+extern int nvm_register_tgt_type(struct nvm_tgt_type *);
+extern void nvm_unregister_tgt_type(struct nvm_tgt_type *);
 
 extern void *nvm_dev_dma_alloc(struct nvm_dev *, gfp_t, dma_addr_t *);
 extern void nvm_dev_dma_free(struct nvm_dev *, void *, dma_addr_t);
@@ -527,13 +526,17 @@ extern int nvm_submit_io(struct nvm_dev *, struct nvm_rq *);
 extern void nvm_generic_to_addr_mode(struct nvm_dev *, struct nvm_rq *);
 extern void nvm_addr_to_generic_mode(struct nvm_dev *, struct nvm_rq *);
 extern int nvm_set_rqd_ppalist(struct nvm_dev *, struct nvm_rq *,
-							struct ppa_addr *, int);
+						struct ppa_addr *, int, int);
 extern void nvm_free_rqd_ppalist(struct nvm_dev *, struct nvm_rq *);
 extern int nvm_erase_ppa(struct nvm_dev *, struct ppa_addr *, int);
 extern int nvm_erase_blk(struct nvm_dev *, struct nvm_block *);
 extern void nvm_end_io(struct nvm_rq *, int);
 extern int nvm_submit_ppa(struct nvm_dev *, struct ppa_addr *, int, int, int,
 								void *, int);
+extern int nvm_submit_ppa_list(struct nvm_dev *, struct ppa_addr *, int, int,
+							int, void *, int);
+extern int nvm_bb_tbl_fold(struct nvm_dev *, u8 *, int);
+extern int nvm_get_bb_tbl(struct nvm_dev *, struct ppa_addr, u8 *);
 
 /* sysblk.c */
 #define NVM_SYSBLK_MAGIC 0x4E564D53 /* "NVMS" */
@@ -554,6 +557,13 @@ extern int nvm_update_sysblock(struct nvm_dev *, struct nvm_sb_info *);
 extern int nvm_init_sysblock(struct nvm_dev *, struct nvm_sb_info *);
 
 extern int nvm_dev_factory(struct nvm_dev *, int flags);
+
+#define nvm_for_each_lun_ppa(dev, ppa, chid, lunid)			\
+	for ((chid) = 0, (ppa).ppa = 0; (chid) < (dev)->nr_chnls;	\
+					(chid)++, (ppa).g.ch = (chid))	\
+		for ((lunid) = 0; (lunid) < (dev)->luns_per_chnl;	\
+					(lunid)++, (ppa).g.lun = (lunid))
+
 #else /* CONFIG_NVM */
 struct nvm_dev_ops;
 
