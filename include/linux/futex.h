@@ -47,6 +47,8 @@ union futex_key {
 		unsigned long word;
 		void *ptr;
 		int offset;
+		unsigned int slot;
+		bool attached;
 	} both;
 };
 
@@ -55,17 +57,15 @@ union futex_key {
 #ifdef CONFIG_FUTEX
 extern void exit_robust_list(struct task_struct *curr);
 extern void exit_pi_state_list(struct task_struct *curr);
+extern void exit_futex_task_cache(struct task_struct *curr);
 #ifdef CONFIG_HAVE_FUTEX_CMPXCHG
 #define futex_cmpxchg_enabled 1
 #else
 extern int futex_cmpxchg_enabled;
 #endif
 #else
-static inline void exit_robust_list(struct task_struct *curr)
-{
-}
-static inline void exit_pi_state_list(struct task_struct *curr)
-{
-}
+static inline void exit_robust_list(struct task_struct *curr) { }
+static inline void exit_pi_state_list(struct task_struct *curr) { }
+static inline void exit_futex_task_cache(struct task_struct *curr) { }
 #endif
 #endif
