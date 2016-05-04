@@ -265,6 +265,65 @@ static bool kprobe_warn_out_range(const char *symbol, unsigned long address)
 	return true;
 }
 
+/*
+ * NOTE:
+ * '.gnu.linkonce.this_module' section of kernel module elf directly
+ * maps to 'struct module' from linux/module.h. This section contains
+ * actual module name which will be used by kernel after loading it.
+ * But, we cannot use 'struct module' here since linux/module.h is not
+ * exposed to user-space. Offset of 'name' has remained same from long
+ * time, so hardcoding it here.
+ */
+#ifdef __LP64__
+#define MOD_NAME_OFFSET 24
+#else
+#define MOD_NAME_OFFSET 12
+#endif
+
+/*
+ * @module can be module name of module file path. In case of path,
+ * inspect elf and find out what is actual module name.
+ * Caller has to free mod_name after using it.
+ */
+static char *find_module_name(const char *module)
+{
+	int fd;
+	Elf *elf;
+	GElf_Ehdr ehdr;
+	GElf_Shdr shdr;
+	Elf_Data *data;
+	Elf_Scn *sec;
+	char *mod_name = NULL;
+
+	fd = open(module, O_RDONLY);
+	if (fd < 0)
+		return NULL;
+
+	elf = elf_begin(fd, PERF_ELF_C_READ_MMAP, NULL);
+	if (elf == NULL)
+		goto elf_err;
+
+	if (gelf_getehdr(elf, &ehdr) == NULL)
+		goto ret_err;
+
+	sec = elf_section_by_name(elf, &ehdr, &shdr,
+			".gnu.linkonce.this_module", NULL);
+	if (!sec)
+		goto ret_err;
+
+	data = elf_getdata(sec, NULL);
+	if (!data || !data->d_buf)
+		goto ret_err;
+
+	mod_name = strdup((char *)data->d_buf + MOD_NAME_OFFSET);
+
+ret_err:
+	elf_end(elf);
+elf_err:
+	close(fd);
+	return mod_name;
+}
+
 #ifdef HAVE_DWARF_SUPPORT
 
 static int kernel_get_module_dso(const char *module, struct dso **pdso)
@@ -486,8 +545,10 @@ static int get_text_start_address(const char *exec, unsigned long *address)
 		return -errno;
 
 	elf = elf_begin(fd, PERF_ELF_C_READ_MMAP, NULL);
-	if (elf == NULL)
-		return -EINVAL;
+	if (elf == NULL) {
+		ret = -EINVAL;
+		goto out_close;
+	}
 
 	if (gelf_getehdr(elf, &ehdr) == NULL)
 		goto out;
@@ -499,6 +560,9 @@ static int get_text_start_address(const char *exec, unsigned long *address)
 	ret = 0;
 out:
 	elf_end(elf);
+out_close:
+	close(fd);
+
 	return ret;
 }
 
@@ -583,32 +647,23 @@ static int add_module_to_probe_trace_events(struct probe_trace_event *tevs,
 					    int ntevs, const char *module)
 {
 	int i, ret = 0;
-	char *tmp;
+	char *mod_name = NULL;
 
 	if (!module)
 		return 0;
 
-	tmp = strrchr(module, '/');
-	if (tmp) {
-		/* This is a module path -- get the module name */
-		module = strdup(tmp + 1);
-		if (!module)
-			return -ENOMEM;
-		tmp = strchr(module, '.');
-		if (tmp)
-			*tmp = '\0';
-		tmp = (char *)module;	/* For free() */
-	}
+	mod_name = find_module_name(module);
 
 	for (i = 0; i < ntevs; i++) {
-		tevs[i].point.module = strdup(module);
+		tevs[i].point.module =
+			strdup(mod_name ? mod_name : module);
 		if (!tevs[i].point.module) {
 			ret = -ENOMEM;
 			break;
 		}
 	}
 
-	free(tmp);
+	free(mod_name);
 	return ret;
 }
 
@@ -1618,69 +1673,51 @@ out:
 }
 
 /* Compose only probe arg */
-int synthesize_perf_probe_arg(struct perf_probe_arg *pa, char *buf, size_t len)
+char *synthesize_perf_probe_arg(struct perf_probe_arg *pa)
 {
 	struct perf_probe_arg_field *field = pa->field;
-	int ret;
-	char *tmp = buf;
+	struct strbuf buf;
+	char *ret;
 
+	strbuf_init(&buf, 64);
 	if (pa->name && pa->var)
-		ret = e_snprintf(tmp, len, "%s=%s", pa->name, pa->var);
+		strbuf_addf(&buf, "%s=%s", pa->name, pa->var);
 	else
-		ret = e_snprintf(tmp, len, "%s", pa->name ? pa->name : pa->var);
-	if (ret <= 0)
-		goto error;
-	tmp += ret;
-	len -= ret;
+		strbuf_addstr(&buf, pa->name ?: pa->var);
 
 	while (field) {
 		if (field->name[0] == '[')
-			ret = e_snprintf(tmp, len, "%s", field->name);
+			strbuf_addstr(&buf, field->name);
 		else
-			ret = e_snprintf(tmp, len, "%s%s",
-					 field->ref ? "->" : ".", field->name);
-		if (ret <= 0)
-			goto error;
-		tmp += ret;
-		len -= ret;
+			strbuf_addf(&buf, "%s%s", field->ref ? "->" : ".",
+				    field->name);
 		field = field->next;
 	}
 
-	if (pa->type) {
-		ret = e_snprintf(tmp, len, ":%s", pa->type);
-		if (ret <= 0)
-			goto error;
-		tmp += ret;
-		len -= ret;
-	}
+	if (pa->type)
+		strbuf_addf(&buf, ":%s", pa->type);
 
-	return tmp - buf;
-error:
-	pr_debug("Failed to synthesize perf probe argument: %d\n", ret);
+	ret = strbuf_detach(&buf, NULL);
+
 	return ret;
 }
 
 /* Compose only probe point (not argument) */
 static char *synthesize_perf_probe_point(struct perf_probe_point *pp)
 {
-	char *buf, *tmp;
-	char offs[32] = "", line[32] = "", file[32] = "";
-	int ret, len;
+	struct strbuf buf;
+	char *tmp;
+	int len;
 
-	buf = zalloc(MAX_CMDLEN);
-	if (buf == NULL) {
-		ret = -ENOMEM;
-		goto error;
-	}
-	if (pp->offset) {
-		ret = e_snprintf(offs, 32, "+%lu", pp->offset);
-		if (ret <= 0)
-			goto error;
-	}
-	if (pp->line) {
-		ret = e_snprintf(line, 32, ":%d", pp->line);
-		if (ret <= 0)
-			goto error;
+	strbuf_init(&buf, 64);
+	if (pp->function) {
+		strbuf_addstr(&buf, pp->function);
+		if (pp->offset)
+			strbuf_addf(&buf, "+%lu", pp->offset);
+		else if (pp->line)
+			strbuf_addf(&buf, ":%d", pp->line);
+		else if (pp->retprobe)
+			strbuf_addstr(&buf, "%return");
 	}
 	if (pp->file) {
 		tmp = pp->file;
@@ -1689,25 +1726,12 @@ static char *synthesize_perf_probe_point(struct perf_probe_point *pp)
 			tmp = strchr(pp->file + len - 30, '/');
 			tmp = tmp ? tmp + 1 : pp->file + len - 30;
 		}
-		ret = e_snprintf(file, 32, "@%s", tmp);
-		if (ret <= 0)
-			goto error;
+		strbuf_addf(&buf, "@%s", tmp);
+		if (!pp->function && pp->line)
+			strbuf_addf(&buf, ":%d", pp->line);
 	}
 
-	if (pp->function)
-		ret = e_snprintf(buf, MAX_CMDLEN, "%s%s%s%s%s", pp->function,
-				 offs, pp->retprobe ? "%return" : "", line,
-				 file);
-	else
-		ret = e_snprintf(buf, MAX_CMDLEN, "%s%s", file, line);
-	if (ret <= 0)
-		goto error;
-
-	return buf;
-error:
-	pr_debug("Failed to synthesize perf probe point: %d\n", ret);
-	free(buf);
-	return NULL;
+	return strbuf_detach(&buf, NULL);
 }
 
 #if 0
@@ -1736,45 +1760,30 @@ char *synthesize_perf_probe_command(struct perf_probe_event *pev)
 #endif
 
 static int __synthesize_probe_trace_arg_ref(struct probe_trace_arg_ref *ref,
-					     char **buf, size_t *buflen,
-					     int depth)
+					    struct strbuf *buf, int depth)
 {
-	int ret;
 	if (ref->next) {
 		depth = __synthesize_probe_trace_arg_ref(ref->next, buf,
-							 buflen, depth + 1);
+							 depth + 1);
 		if (depth < 0)
 			goto out;
 	}
-
-	ret = e_snprintf(*buf, *buflen, "%+ld(", ref->offset);
-	if (ret < 0)
-		depth = ret;
-	else {
-		*buf += ret;
-		*buflen -= ret;
-	}
+	strbuf_addf(buf, "%+ld(", ref->offset);
 out:
 	return depth;
-
 }
 
 static int synthesize_probe_trace_arg(struct probe_trace_arg *arg,
-				       char *buf, size_t buflen)
+				      struct strbuf *buf)
 {
 	struct probe_trace_arg_ref *ref = arg->ref;
-	int ret, depth = 0;
-	char *tmp = buf;
+	int depth = 0;
 
 	/* Argument name or separator */
 	if (arg->name)
-		ret = e_snprintf(buf, buflen, " %s=", arg->name);
+		strbuf_addf(buf, " %s=", arg->name);
 	else
-		ret = e_snprintf(buf, buflen, " ");
-	if (ret < 0)
-		return ret;
-	buf += ret;
-	buflen -= ret;
+		strbuf_addch(buf, ' ');
 
 	/* Special case: @XXX */
 	if (arg->value[0] == '@' && arg->ref)
@@ -1782,60 +1791,41 @@ static int synthesize_probe_trace_arg(struct probe_trace_arg *arg,
 
 	/* Dereferencing arguments */
 	if (ref) {
-		depth = __synthesize_probe_trace_arg_ref(ref, &buf,
-							  &buflen, 1);
+		depth = __synthesize_probe_trace_arg_ref(ref, buf, 1);
 		if (depth < 0)
 			return depth;
 	}
 
 	/* Print argument value */
 	if (arg->value[0] == '@' && arg->ref)
-		ret = e_snprintf(buf, buflen, "%s%+ld", arg->value,
-				 arg->ref->offset);
+		strbuf_addf(buf, "%s%+ld", arg->value, arg->ref->offset);
 	else
-		ret = e_snprintf(buf, buflen, "%s", arg->value);
-	if (ret < 0)
-		return ret;
-	buf += ret;
-	buflen -= ret;
+		strbuf_addstr(buf, arg->value);
 
 	/* Closing */
-	while (depth--) {
-		ret = e_snprintf(buf, buflen, ")");
-		if (ret < 0)
-			return ret;
-		buf += ret;
-		buflen -= ret;
-	}
+	while (depth--)
+		strbuf_addch(buf, ')');
 	/* Print argument type */
-	if (arg->type) {
-		ret = e_snprintf(buf, buflen, ":%s", arg->type);
-		if (ret <= 0)
-			return ret;
-		buf += ret;
-	}
+	if (arg->type)
+		strbuf_addf(buf, ":%s", arg->type);
 
-	return buf - tmp;
+	return 0;
 }
 
 char *synthesize_probe_trace_command(struct probe_trace_event *tev)
 {
 	struct probe_trace_point *tp = &tev->point;
-	char *buf;
-	int i, len, ret;
-
-	buf = zalloc(MAX_CMDLEN);
-	if (buf == NULL)
-		return NULL;
-
-	len = e_snprintf(buf, MAX_CMDLEN, "%c:%s/%s ", tp->retprobe ? 'r' : 'p',
-			 tev->group, tev->event);
-	if (len <= 0)
-		goto error;
+	struct strbuf buf;
+	char *ret = NULL;
+	int i;
 
 	/* Uprobes must have tp->module */
 	if (tev->uprobes && !tp->module)
-		goto error;
+		return NULL;
+
+	strbuf_init(&buf, 32);
+	strbuf_addf(&buf, "%c:%s/%s ", tp->retprobe ? 'r' : 'p',
+		    tev->group, tev->event);
 	/*
 	 * If tp->address == 0, then this point must be a
 	 * absolute address uprobe.
@@ -1849,34 +1839,23 @@ char *synthesize_probe_trace_command(struct probe_trace_event *tev)
 
 	/* Use the tp->address for uprobes */
 	if (tev->uprobes)
-		ret = e_snprintf(buf + len, MAX_CMDLEN - len, "%s:0x%lx",
-				 tp->module, tp->address);
+		strbuf_addf(&buf, "%s:0x%lx", tp->module, tp->address);
 	else if (!strncmp(tp->symbol, "0x", 2))
 		/* Absolute address. See try_to_find_absolute_address() */
-		ret = e_snprintf(buf + len, MAX_CMDLEN - len, "%s%s0x%lx",
-				 tp->module ?: "", tp->module ? ":" : "",
-				 tp->address);
+		strbuf_addf(&buf, "%s%s0x%lx", tp->module ?: "",
+			    tp->module ? ":" : "", tp->address);
 	else
-		ret = e_snprintf(buf + len, MAX_CMDLEN - len, "%s%s%s+%lu",
-				 tp->module ?: "", tp->module ? ":" : "",
-				 tp->symbol, tp->offset);
+		strbuf_addf(&buf, "%s%s%s+%lu", tp->module ?: "",
+			    tp->module ? ":" : "", tp->symbol, tp->offset);
 
-	if (ret <= 0)
-		goto error;
-	len += ret;
-
-	for (i = 0; i < tev->nargs; i++) {
-		ret = synthesize_probe_trace_arg(&tev->args[i], buf + len,
-						  MAX_CMDLEN - len);
-		if (ret <= 0)
+	for (i = 0; i < tev->nargs; i++)
+		if (synthesize_probe_trace_arg(&tev->args[i], &buf) < 0)
 			goto error;
-		len += ret;
-	}
 
-	return buf;
+	ret = strbuf_detach(&buf, NULL);
 error:
-	free(buf);
-	return NULL;
+	strbuf_release(&buf);
+	return ret;
 }
 
 static int find_perf_probe_point_from_map(struct probe_trace_point *tp,
@@ -1958,7 +1937,7 @@ static int convert_to_perf_probe_point(struct probe_trace_point *tp,
 static int convert_to_perf_probe_event(struct probe_trace_event *tev,
 			       struct perf_probe_event *pev, bool is_kprobe)
 {
-	char buf[64] = "";
+	struct strbuf buf = STRBUF_INIT;
 	int i, ret;
 
 	/* Convert event/group name */
@@ -1981,9 +1960,9 @@ static int convert_to_perf_probe_event(struct probe_trace_event *tev,
 		if (tev->args[i].name)
 			pev->args[i].name = strdup(tev->args[i].name);
 		else {
-			ret = synthesize_probe_trace_arg(&tev->args[i],
-							  buf, 64);
-			pev->args[i].name = strdup(buf);
+			strbuf_init(&buf, 32);
+			ret = synthesize_probe_trace_arg(&tev->args[i], &buf);
+			pev->args[i].name = strbuf_detach(&buf, NULL);
 		}
 		if (pev->args[i].name == NULL && ret >= 0)
 			ret = -ENOMEM;
@@ -2161,37 +2140,37 @@ static int perf_probe_event__sprintf(const char *group, const char *event,
 				     const char *module,
 				     struct strbuf *result)
 {
-	int i, ret;
-	char buf[128];
-	char *place;
+	int i;
+	char *buf;
+
+	if (asprintf(&buf, "%s:%s", group, event) < 0)
+		return -errno;
+	strbuf_addf(result, "  %-20s (on ", buf);
+	free(buf);
 
 	/* Synthesize only event probe point */
-	place = synthesize_perf_probe_point(&pev->point);
-	if (!place)
-		return -EINVAL;
+	buf = synthesize_perf_probe_point(&pev->point);
+	if (!buf)
+		return -ENOMEM;
+	strbuf_addstr(result, buf);
+	free(buf);
 
-	ret = e_snprintf(buf, 128, "%s:%s", group, event);
-	if (ret < 0)
-		goto out;
-
-	strbuf_addf(result, "  %-20s (on %s", buf, place);
 	if (module)
 		strbuf_addf(result, " in %s", module);
 
 	if (pev->nargs > 0) {
 		strbuf_add(result, " with", 5);
 		for (i = 0; i < pev->nargs; i++) {
-			ret = synthesize_perf_probe_arg(&pev->args[i],
-							buf, 128);
-			if (ret < 0)
-				goto out;
+			buf = synthesize_perf_probe_arg(&pev->args[i]);
+			if (!buf)
+				return -ENOMEM;
 			strbuf_addf(result, " %s", buf);
+			free(buf);
 		}
 	}
 	strbuf_addch(result, ')');
-out:
-	free(place);
-	return ret;
+
+	return 0;
 }
 
 /* Show an event */
@@ -2516,6 +2495,7 @@ static int find_probe_trace_events_from_map(struct perf_probe_event *pev,
 	struct probe_trace_point *tp;
 	int num_matched_functions;
 	int ret, i, j, skipped = 0;
+	char *mod_name;
 
 	map = get_target_map(pev->target, pev->uprobes);
 	if (!map) {
@@ -2600,9 +2580,19 @@ static int find_probe_trace_events_from_map(struct perf_probe_event *pev,
 		tp->realname = strdup_or_goto(sym->name, nomem_out);
 
 		tp->retprobe = pp->retprobe;
-		if (pev->target)
-			tev->point.module = strdup_or_goto(pev->target,
-							   nomem_out);
+		if (pev->target) {
+			if (pev->uprobes) {
+				tev->point.module = strdup_or_goto(pev->target,
+								   nomem_out);
+			} else {
+				mod_name = find_module_name(pev->target);
+				tev->point.module =
+					strdup(mod_name ? mod_name : pev->target);
+				free(mod_name);
+				if (!tev->point.module)
+					goto nomem_out;
+			}
+		}
 		tev->uprobes = pev->uprobes;
 		tev->nargs = pev->nargs;
 		if (tev->nargs) {
@@ -2743,9 +2733,13 @@ static int convert_to_probe_trace_events(struct perf_probe_event *pev,
 {
 	int ret;
 
-	if (pev->uprobes && !pev->group) {
-		/* Replace group name if not given */
-		ret = convert_exec_to_group(pev->target, &pev->group);
+	if (!pev->group) {
+		/* Set group name if not given */
+		if (!pev->uprobes) {
+			pev->group = strdup(PERFPROBE_GROUP);
+			ret = pev->group ? 0 : -ENOMEM;
+		} else
+			ret = convert_exec_to_group(pev->target, &pev->group);
 		if (ret != 0) {
 			pr_warning("Failed to make a group name.\n");
 			return ret;
