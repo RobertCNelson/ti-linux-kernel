@@ -23,6 +23,7 @@ amlogic	Amlogic, Inc.
 ampire	Ampire Co., Ltd.
 ams	AMS AG
 amstaos	AMS-Taos Inc.
+analogix	Analogix Semiconductor, Inc.
 apm	Applied Micro Circuits Corporation (APM)
 aptina	Aptina Imaging
 arasan	Arasan Chip Systems
@@ -179,6 +180,7 @@ okaya	Okaya Electric America, Inc.
 olimex	OLIMEX Ltd.
 onion	Onion Corporation
 onnn	ON Semiconductor Corp.
+ontat	On Tat Industrial Company
 opencores	OpenCores.org
 option	Option NV
 ortustech	Ortus Technology Co., Ltd.
