@@ -536,7 +536,7 @@ static int ib_nl_send_msg(struct ib_sa_query *query, gfp_t gfp_mask)
 	data = ibnl_put_msg(skb, &nlh, query->seq, 0, RDMA_NL_LS,
 			    RDMA_NL_LS_OP_RESOLVE, NLM_F_REQUEST);
 	if (!data) {
-		kfree_skb(skb);
+		nlmsg_free(skb);
 		return -EMSGSIZE;
 	}
 
@@ -838,7 +838,7 @@ resp_out:
 	return skb->len;
 }
 
-static struct ibnl_client_cbs ib_sa_cb_table[] = {
+static struct ibnl_client_cbs ib_sa_cb_table[RDMA_NL_LS_NUM_OPS] = {
 	[RDMA_NL_LS_OP_RESOLVE] = {
 		.dump = ib_nl_handle_resolve_resp,
 		.module = THIS_MODULE },
@@ -1841,7 +1841,7 @@ err1:
 
 static void __exit ib_sa_cleanup(void)
 {
-	ibnl_remove_client(RDMA_NL_LS);
+	ibnl_remove_client(RDMA_NL_LS, RDMA_NL_LS_NUM_OPS, ib_sa_cb_table);
 	cancel_delayed_work(&ib_nl_timed_work);
 	flush_workqueue(ib_nl_wq);
 	destroy_workqueue(ib_nl_wq);
