@@ -33,7 +33,7 @@
 #include <linux/init.h>
 #include <linux/uaccess.h>
 #include <linux/highmem.h>
-#include <asm/mmu_context.h>
+#include <linux/mmu_context.h>
 #include <linux/interrupt.h>
 #include <linux/capability.h>
 #include <linux/completion.h>
@@ -596,17 +596,8 @@ bool sched_can_stop_tick(struct rq *rq)
 		return false;
 
 	/*
-	 * FIFO realtime policy runs the highest priority task (after DEADLINE).
-	 * Other runnable tasks are of a lower priority. The scheduler tick
-	 * isn't needed.
-	 */
-	fifo_nr_running = rq->rt.rt_nr_running - rq->rt.rr_nr_running;
-	if (fifo_nr_running)
-		return true;
-
-	/*
-	 * Round-robin realtime tasks time slice with other tasks at the same
-	 * realtime priority.
+	 * If there are more than one RR tasks, we need the tick to effect the
+	 * actual RR behaviour.
 	 */
 	if (rq->rt.rr_nr_running) {
 		if (rq->rt.rr_nr_running == 1)
@@ -615,8 +606,20 @@ bool sched_can_stop_tick(struct rq *rq)
 			return false;
 	}
 
-	/* Normal multitasking need periodic preemption checks */
-	if (rq->cfs.nr_running > 1)
+	/*
+	 * If there's no RR tasks, but FIFO tasks, we can skip the tick, no
+	 * forced preemption between FIFO tasks.
+	 */
+	fifo_nr_running = rq->rt.rt_nr_running - rq->rt.rr_nr_running;
+	if (fifo_nr_running)
+		return true;
+
+	/*
+	 * If there are no DL,RR/FIFO tasks, there must only be CFS tasks left;
+	 * if there's more than one we need the tick for involuntary
+	 * preemption.
+	 */
+	if (rq->nr_running > 1)
 		return false;
 
 	return true;
@@ -2378,7 +2381,8 @@ static int dl_overflow(struct task_struct *p, int policy,
 	u64 new_bw = dl_policy(policy) ? to_ratio(period, runtime) : 0;
 	int cpus, err = -1;
 
-	if (new_bw == p->dl.dl_bw)
+	/* !deadline task may carry old deadline bandwidth */
+	if (new_bw == p->dl.dl_bw && task_has_dl_policy(p))
 		return 0;
 
 	/*
@@ -2431,6 +2435,8 @@ void wake_up_new_task(struct task_struct *p)
 	 */
 	set_task_cpu(p, select_task_rq(p, task_cpu(p), SD_BALANCE_FORK, 0));
 #endif
+	/* Post initialize new task's util average when its cfs_rq is set */
+	post_init_entity_util_avg(&p->se);
 
 	rq = __task_rq_lock(p);
 	activate_task(rq, p, 0);
@@ -2730,7 +2736,7 @@ context_switch(struct rq *rq, struct task_struct *prev,
 		atomic_inc(&oldmm->mm_count);
 		enter_lazy_tlb(oldmm, next);
 	} else
-		switch_mm(oldmm, mm, next);
+		switch_mm_irqs_off(oldmm, mm, next);
 
 	if (!prev->mm) {
 		prev->active_mm = NULL;
@@ -2915,7 +2921,7 @@ void scheduler_tick(void)
 	raw_spin_lock(&rq->lock);
 	update_rq_clock(rq);
 	curr->sched_class->task_tick(rq, curr, 0);
-	update_cpu_load_active(rq);
+	cpu_load_update_active(rq);
 	calc_global_load_tick(rq);
 	raw_spin_unlock(&rq->lock);
 
@@ -2958,6 +2964,20 @@ u64 scheduler_tick_max_deferment(void)
 
 #if defined(CONFIG_PREEMPT) && (defined(CONFIG_DEBUG_PREEMPT) || \
 				defined(CONFIG_PREEMPT_TRACER))
+/*
+ * If the value passed in is equal to the current preempt count
+ * then we just disabled preemption. Start timing the latency.
+ */
+static inline void preempt_latency_start(int val)
+{
+	if (preempt_count() == val) {
+		unsigned long ip = get_lock_parent_ip();
+#ifdef CONFIG_DEBUG_PREEMPT
+		current->preempt_disable_ip = ip;
+#endif
+		trace_preempt_off(CALLER_ADDR0, ip);
+	}
+}
 
 void preempt_count_add(int val)
 {
@@ -2976,16 +2996,20 @@ void preempt_count_add(int val)
 	DEBUG_LOCKS_WARN_ON((preempt_count() & PREEMPT_MASK) >=
 				PREEMPT_MASK - 10);
 #endif
-	if (preempt_count() == val) {
-		unsigned long ip = get_lock_parent_ip();
-#ifdef CONFIG_DEBUG_PREEMPT
-		current->preempt_disable_ip = ip;
-#endif
-		trace_preempt_off(CALLER_ADDR0, ip);
-	}
+	preempt_latency_start(val);
 }
 EXPORT_SYMBOL(preempt_count_add);
 NOKPROBE_SYMBOL(preempt_count_add);
+
+/*
+ * If the value passed in equals to the current preempt count
+ * then we just enabled preemption. Stop timing the latency.
+ */
+static inline void preempt_latency_stop(int val)
+{
+	if (preempt_count() == val)
+		trace_preempt_on(CALLER_ADDR0, get_lock_parent_ip());
+}
 
 void preempt_count_sub(int val)
 {
@@ -3003,13 +3027,15 @@ void preempt_count_sub(int val)
 		return;
 #endif
 
-	if (preempt_count() == val)
-		trace_preempt_on(CALLER_ADDR0, get_lock_parent_ip());
+	preempt_latency_stop(val);
 	__preempt_count_sub(val);
 }
 EXPORT_SYMBOL(preempt_count_sub);
 NOKPROBE_SYMBOL(preempt_count_sub);
 
+#else
+static inline void preempt_latency_start(int val) { }
+static inline void preempt_latency_stop(int val) { }
 #endif
 
 /*
@@ -3284,8 +3310,23 @@ void __sched schedule_preempt_disabled(void)
 static void __sched notrace preempt_schedule_common(void)
 {
 	do {
+		/*
+		 * Because the function tracer can trace preempt_count_sub()
+		 * and it also uses preempt_enable/disable_notrace(), if
+		 * NEED_RESCHED is set, the preempt_enable_notrace() called
+		 * by the function tracer will call this function again and
+		 * cause infinite recursion.
+		 *
+		 * Preemption must be disabled here before the function
+		 * tracer can trace. Break up preempt_disable() into two
+		 * calls. One to disable preemption without fear of being
+		 * traced. The other to still record the preemption latency,
+		 * which can also be traced by the function tracer.
+		 */
 		preempt_disable_notrace();
+		preempt_latency_start(1);
 		__schedule(true);
+		preempt_latency_stop(1);
 		preempt_enable_no_resched_notrace();
 
 		/*
@@ -3337,7 +3378,21 @@ asmlinkage __visible void __sched notrace preempt_schedule_notrace(void)
 		return;
 
 	do {
+		/*
+		 * Because the function tracer can trace preempt_count_sub()
+		 * and it also uses preempt_enable/disable_notrace(), if
+		 * NEED_RESCHED is set, the preempt_enable_notrace() called
+		 * by the function tracer will call this function again and
+		 * cause infinite recursion.
+		 *
+		 * Preemption must be disabled here before the function
+		 * tracer can trace. Break up preempt_disable() into two
+		 * calls. One to disable preemption without fear of being
+		 * traced. The other to still record the preemption latency,
+		 * which can also be traced by the function tracer.
+		 */
 		preempt_disable_notrace();
+		preempt_latency_start(1);
 		/*
 		 * Needs preempt disabled in case user_exit() is traced
 		 * and the tracer calls preempt_enable_notrace() causing
@@ -3347,6 +3402,7 @@ asmlinkage __visible void __sched notrace preempt_schedule_notrace(void)
 		__schedule(true);
 		exception_exit(prev_ctx);
 
+		preempt_latency_stop(1);
 		preempt_enable_no_resched_notrace();
 	} while (need_resched());
 }
@@ -4998,7 +5054,8 @@ void show_state_filter(unsigned long state_filter)
 	touch_all_softlockup_watchdogs();
 
 #ifdef CONFIG_SCHED_DEBUG
-	sysrq_sched_debug_show();
+	if (!state_filter)
+		sysrq_sched_debug_show();
 #endif
 	rcu_read_unlock();
 	/*
@@ -5220,7 +5277,7 @@ void idle_task_exit(void)
 	BUG_ON(cpu_online(smp_processor_id()));
 
 	if (mm != &init_mm) {
-		switch_mm(mm, &init_mm, current);
+		switch_mm_irqs_off(mm, &init_mm, current);
 		finish_arch_post_lock_switch();
 	}
 	mmdrop(mm);
@@ -7328,8 +7385,6 @@ void __init sched_init(void)
 		for (j = 0; j < CPU_LOAD_IDX_MAX; j++)
 			rq->cpu_load[j] = 0;
 
-		rq->last_load_update_tick = jiffies;
-
 #ifdef CONFIG_SMP
 		rq->sd = NULL;
 		rq->rd = NULL;
@@ -7348,12 +7403,13 @@ void __init sched_init(void)
 
 		rq_attach_root(rq, &def_root_domain);
 #ifdef CONFIG_NO_HZ_COMMON
+		rq->last_load_update_tick = jiffies;
 		rq->nohz_flags = 0;
 #endif
 #ifdef CONFIG_NO_HZ_FULL
 		rq->last_sched_tick = 0;
 #endif
-#endif
+#endif /* CONFIG_SMP */
 		init_rq_hrtick(rq);
 		atomic_set(&rq->nr_iowait, 0);
 	}

@@ -1607,9 +1607,8 @@ static int hists_browser__scnprintf_hierarchy_headers(struct hist_browser *brows
 
 			ret = fmt->header(fmt, &dummy_hpp, hists_to_evsel(hists));
 			dummy_hpp.buf[ret] = '\0';
-			rtrim(dummy_hpp.buf);
 
-			start = ltrim(dummy_hpp.buf);
+			start = trim(dummy_hpp.buf);
 			ret = strlen(start);
 
 			if (start != dummy_hpp.buf)
@@ -1897,11 +1896,10 @@ static int hist_browser__fprintf_entry(struct hist_browser *browser,
 	bool first = true;
 	int ret;
 
-	if (symbol_conf.use_callchain)
+	if (symbol_conf.use_callchain) {
 		folded_sign = hist_entry__folded(he);
-
-	if (symbol_conf.use_callchain)
 		printed += fprintf(fp, "%c ", folded_sign);
+	}
 
 	hists__for_each_format(browser->hists, fmt) {
 		if (perf_hpp__should_skip(fmt, he->hists))

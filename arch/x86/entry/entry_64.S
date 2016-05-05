@@ -781,19 +781,25 @@ ENTRY(native_load_gs_index)
 	pushfq
 	DISABLE_INTERRUPTS(CLBR_ANY & ~CLBR_RDI)
 	SWAPGS
-gs_change:
+.Lgs_change:
 	movl	%edi, %gs
-2:	mfence					/* workaround */
+2:	ALTERNATIVE "", "mfence", X86_BUG_SWAPGS_FENCE
 	SWAPGS
 	popfq
 	ret
 END(native_load_gs_index)
 
-	_ASM_EXTABLE(gs_change, bad_gs)
+	_ASM_EXTABLE(.Lgs_change, bad_gs)
 	.section .fixup, "ax"
 	/* running with kernelgs */
 bad_gs:
 	SWAPGS					/* switch back to user gs */
+.macro ZAP_GS
+	/* This can't be a string because the preprocessor needs to see it. */
+	movl $__USER_DS, %eax
+	movl %eax, %gs
+.endm
+	ALTERNATIVE "", "ZAP_GS", X86_BUG_NULL_SEG
 	xorl	%eax, %eax
 	movl	%eax, %gs
 	jmp	2b
@@ -1019,13 +1025,13 @@ ENTRY(error_entry)
 	movl	%ecx, %eax			/* zero extend */
 	cmpq	%rax, RIP+8(%rsp)
 	je	.Lbstep_iret
-	cmpq	$gs_change, RIP+8(%rsp)
+	cmpq	$.Lgs_change, RIP+8(%rsp)
 	jne	.Lerror_entry_done
 
 	/*
-	 * hack: gs_change can fail with user gsbase.  If this happens, fix up
+	 * hack: .Lgs_change can fail with user gsbase.  If this happens, fix up
 	 * gsbase and proceed.  We'll fix up the exception and land in
-	 * gs_change's error handler with kernel gsbase.
+	 * .Lgs_change's error handler with kernel gsbase.
 	 */
 	jmp	.Lerror_entry_from_usermode_swapgs
 

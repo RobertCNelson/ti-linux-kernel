@@ -859,6 +859,8 @@ extern struct event_constraint intel_atom_pebs_event_constraints[];
 
 extern struct event_constraint intel_slm_pebs_event_constraints[];
 
+extern struct event_constraint intel_glm_pebs_event_constraints[];
+
 extern struct event_constraint intel_nehalem_pebs_event_constraints[];
 
 extern struct event_constraint intel_westmere_pebs_event_constraints[];
@@ -906,6 +908,8 @@ void intel_pmu_lbr_init_core(void);
 void intel_pmu_lbr_init_nhm(void);
 
 void intel_pmu_lbr_init_atom(void);
+
+void intel_pmu_lbr_init_slm(void);
 
 void intel_pmu_lbr_init_snb(void);
 

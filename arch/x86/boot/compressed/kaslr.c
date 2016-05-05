@@ -1,4 +1,16 @@
+/*
+ * kaslr.c
+ *
+ * This contains the routines needed to generate a reasonable level of
+ * entropy to choose a randomized kernel base address offset in support
+ * of Kernel Address Space Layout Randomization (KASLR). Additionally
+ * handles walking the physical memory maps (and tracking memory regions
+ * to avoid) in order to select a physical memory location that can
+ * contain the entire properly aligned running kernel image.
+ *
+ */
 #include "misc.h"
+#include "error.h"
 
 #include <asm/msr.h>
 #include <asm/archrandom.h>
@@ -55,7 +67,7 @@ static unsigned long get_random_boot(void)
 	unsigned long hash = 0;
 
 	hash = rotate_xor(hash, build_str, sizeof(build_str));
-	hash = rotate_xor(hash, real_mode, sizeof(*real_mode));
+	hash = rotate_xor(hash, boot_params, sizeof(*boot_params));
 
 	return hash;
 }
@@ -144,7 +156,7 @@ static void mem_avoid_init(unsigned long input, unsigned long input_size,
 
 	/*
 	 * Avoid the region that is unsafe to overlap during
-	 * decompression (see calculations at top of misc.c).
+	 * decompression (see calculations in ../header.S).
 	 */
 	unsafe_len = (output_size >> 12) + 32768 + 18;
 	unsafe = (unsigned long)input + input_size - unsafe_len;
@@ -152,16 +164,16 @@ static void mem_avoid_init(unsigned long input, unsigned long input_size,
 	mem_avoid[0].size = unsafe_len;
 
 	/* Avoid initrd. */
-	initrd_start  = (u64)real_mode->ext_ramdisk_image << 32;
-	initrd_start |= real_mode->hdr.ramdisk_image;
-	initrd_size  = (u64)real_mode->ext_ramdisk_size << 32;
-	initrd_size |= real_mode->hdr.ramdisk_size;
+	initrd_start  = (u64)boot_params->ext_ramdisk_image << 32;
+	initrd_start |= boot_params->hdr.ramdisk_image;
+	initrd_size  = (u64)boot_params->ext_ramdisk_size << 32;
+	initrd_size |= boot_params->hdr.ramdisk_size;
 	mem_avoid[1].start = initrd_start;
 	mem_avoid[1].size = initrd_size;
 
 	/* Avoid kernel command line. */
-	cmd_line  = (u64)real_mode->ext_cmd_line_ptr << 32;
-	cmd_line |= real_mode->hdr.cmd_line_ptr;
+	cmd_line  = (u64)boot_params->ext_cmd_line_ptr << 32;
+	cmd_line |= boot_params->hdr.cmd_line_ptr;
 	/* Calculate size of cmd_line. */
 	ptr = (char *)(unsigned long)cmd_line;
 	for (cmd_line_size = 0; ptr[cmd_line_size++]; )
@@ -190,7 +202,7 @@ static bool mem_avoid_overlap(struct mem_vector *img)
 	}
 
 	/* Avoid all entries in the setup_data linked list. */
-	ptr = (struct setup_data *)(unsigned long)real_mode->hdr.setup_data;
+	ptr = (struct setup_data *)(unsigned long)boot_params->hdr.setup_data;
 	while (ptr) {
 		struct mem_vector avoid;
 
@@ -206,15 +218,13 @@ static bool mem_avoid_overlap(struct mem_vector *img)
 	return false;
 }
 
-static unsigned long slots[CONFIG_RANDOMIZE_BASE_MAX_OFFSET /
-			   CONFIG_PHYSICAL_ALIGN];
+static unsigned long slots[KERNEL_IMAGE_SIZE / CONFIG_PHYSICAL_ALIGN];
 static unsigned long slot_max;
 
 static void slots_append(unsigned long addr)
 {
 	/* Overflowing the slots list should be impossible. */
-	if (slot_max >= CONFIG_RANDOMIZE_BASE_MAX_OFFSET /
-			CONFIG_PHYSICAL_ALIGN)
+	if (slot_max >= KERNEL_IMAGE_SIZE / CONFIG_PHYSICAL_ALIGN)
 		return;
 
 	slots[slot_max++] = addr;
@@ -240,7 +250,7 @@ static void process_e820_entry(struct e820entry *entry,
 		return;
 
 	/* Ignore entries entirely above our maximum. */
-	if (entry->addr >= CONFIG_RANDOMIZE_BASE_MAX_OFFSET)
+	if (entry->addr >= KERNEL_IMAGE_SIZE)
 		return;
 
 	/* Ignore entries entirely below our minimum. */
@@ -265,8 +275,8 @@ static void process_e820_entry(struct e820entry *entry,
 	region.size -= region.start - entry->addr;
 
 	/* Reduce maximum size to fit end of image within maximum limit. */
-	if (region.start + region.size > CONFIG_RANDOMIZE_BASE_MAX_OFFSET)
-		region.size = CONFIG_RANDOMIZE_BASE_MAX_OFFSET - region.start;
+	if (region.start + region.size > KERNEL_IMAGE_SIZE)
+		region.size = KERNEL_IMAGE_SIZE - region.start;
 
 	/* Walk each aligned slot and check for avoided areas. */
 	for (img.start = region.start, img.size = image_size ;
@@ -288,30 +298,29 @@ static unsigned long find_random_addr(unsigned long minimum,
 	minimum = ALIGN(minimum, CONFIG_PHYSICAL_ALIGN);
 
 	/* Verify potential e820 positions, appending to slots list. */
-	for (i = 0; i < real_mode->e820_entries; i++) {
-		process_e820_entry(&real_mode->e820_map[i], minimum, size);
+	for (i = 0; i < boot_params->e820_entries; i++) {
+		process_e820_entry(&boot_params->e820_map[i], minimum, size);
 	}
 
 	return slots_fetch_random();
 }
 
-unsigned char *choose_kernel_location(struct boot_params *boot_params,
-				      unsigned char *input,
+unsigned char *choose_random_location(unsigned char *input,
 				      unsigned long input_size,
 				      unsigned char *output,
 				      unsigned long output_size)
 {
 	unsigned long choice = (unsigned long)output;
-	unsigned long random;
+	unsigned long random_addr;
 
 #ifdef CONFIG_HIBERNATION
 	if (!cmdline_find_option_bool("kaslr")) {
-		debug_putstr("KASLR disabled by default...\n");
+		warn("KASLR disabled: 'kaslr' not on cmdline (hibernation selected).");
 		goto out;
 	}
 #else
 	if (cmdline_find_option_bool("nokaslr")) {
-		debug_putstr("KASLR disabled by cmdline...\n");
+		warn("KASLR disabled: 'nokaslr' on cmdline.");
 		goto out;
 	}
 #endif
@@ -323,17 +332,17 @@ unsigned char *choose_kernel_location(struct boot_params *boot_params,
 		       (unsigned long)output, output_size);
 
 	/* Walk e820 and find a random address. */
-	random = find_random_addr(choice, output_size);
-	if (!random) {
-		debug_putstr("KASLR could not find suitable E820 region...\n");
+	random_addr = find_random_addr(choice, output_size);
+	if (!random_addr) {
+		warn("KASLR disabled: could not find suitable E820 region!");
 		goto out;
 	}
 
 	/* Always enforce the minimum. */
-	if (random < choice)
+	if (random_addr < choice)
 		goto out;
 
-	choice = random;
+	choice = random_addr;
 out:
 	return (unsigned char *)choice;
 }
