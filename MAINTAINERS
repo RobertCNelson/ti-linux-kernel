@@ -2230,10 +2230,13 @@ BATMAN ADVANCED
 M:	Marek Lindner <mareklindner@neomailbox.ch>
 M:	Simon Wunderlich <sw@simonwunderlich.de>
 M:	Antonio Quartulli <a@unstable.cc>
-L:	b.a.t.m.a.n@lists.open-mesh.org
+L:	b.a.t.m.a.n@lists.open-mesh.org (moderated for non-subscribers)
 W:	https://www.open-mesh.org/
 Q:	https://patchwork.open-mesh.org/project/batman/list/
 S:	Maintained
+F:	Documentation/ABI/testing/sysfs-class-net-batman-adv
+F:	Documentation/ABI/testing/sysfs-class-net-mesh
+F:	Documentation/networking/batman-adv.txt
 F:	net/batman-adv/
 
 BAYCOM/HDLCDRV DRIVERS FOR AX.25
@@ -3375,6 +3378,7 @@ F:	Documentation/powerpc/cxlflash.txt
 
 STMMAC ETHERNET DRIVER
 M:	Giuseppe Cavallaro <peppe.cavallaro@st.com>
+M:	Alexandre Torgue <alexandre.torgue@st.com>
 L:	netdev@vger.kernel.org
 W:	http://www.stlinux.com
 S:	Supported
@@ -9545,7 +9549,7 @@ F:	drivers/net/wireless/realtek/rtlwifi/rtl8192ce/
 RTL8XXXU WIRELESS DRIVER (rtl8xxxu)
 M:	Jes Sorensen <Jes.Sorensen@redhat.com>
 L:	linux-wireless@vger.kernel.org
-T:	git git://git.kernel.org/pub/scm/linux/kernel/git/jes/linux.git rtl8723au-mac80211
+T:	git git://git.kernel.org/pub/scm/linux/kernel/git/jes/linux.git rtl8xxxu-devel
 S:	Maintained
 F:	drivers/net/wireless/realtek/rtl8xxxu/
 
