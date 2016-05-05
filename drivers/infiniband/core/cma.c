@@ -4240,7 +4240,7 @@ out:
 	return skb->len;
 }
 
-static const struct ibnl_client_cbs cma_cb_table[] = {
+static const struct ibnl_client_cbs cma_cb_table[RDMA_NL_RDMA_CM_NUM_OPS] = {
 	[RDMA_NL_RDMA_CM_ID_STATS] = { .dump = cma_get_id_stats,
 				       .module = THIS_MODULE },
 };
@@ -4312,7 +4312,8 @@ err_wq:
 static void __exit cma_cleanup(void)
 {
 	cma_configfs_exit();
-	ibnl_remove_client(RDMA_NL_RDMA_CM);
+	ibnl_remove_client(RDMA_NL_RDMA_CM,
+			   RDMA_NL_RDMA_CM_NUM_OPS, cma_cb_table);
 	ib_unregister_client(&cma_client);
 	unregister_netdevice_notifier(&cma_nb);
 	rdma_addr_unregister_client(&addr_client);

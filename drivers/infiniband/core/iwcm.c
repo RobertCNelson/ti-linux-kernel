@@ -59,7 +59,7 @@ MODULE_AUTHOR("Tom Tucker");
 MODULE_DESCRIPTION("iWARP CM");
 MODULE_LICENSE("Dual BSD/GPL");
 
-static struct ibnl_client_cbs iwcm_nl_cb_table[] = {
+static struct ibnl_client_cbs iwcm_nl_cb_table[RDMA_NL_IWPM_NUM_OPS] = {
 	[RDMA_NL_IWPM_REG_PID] = {.dump = iwpm_register_pid_cb},
 	[RDMA_NL_IWPM_ADD_MAPPING] = {.dump = iwpm_add_mapping_cb},
 	[RDMA_NL_IWPM_QUERY_MAPPING] = {.dump = iwpm_add_and_query_mapping_cb},
@@ -1199,7 +1199,8 @@ static void __exit iw_cm_cleanup(void)
 {
 	unregister_net_sysctl_table(iwcm_ctl_table_hdr);
 	destroy_workqueue(iwcm_wq);
-	ibnl_remove_client(RDMA_NL_IWCM);
+	ibnl_remove_client(RDMA_NL_IWCM, RDMA_NL_IWPM_NUM_OPS,
+			   iwcm_nl_cb_table);
 	iwpm_exit(RDMA_NL_IWCM);
 }
 
