@@ -20,6 +20,7 @@
 #include <linux/irqreturn.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/of_fdt.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
 #include <linux/cpuidle.h>
@@ -30,6 +31,7 @@
 #include <linux/time64.h>
 #include <linux/timekeeping.h>
 #include <linux/timekeeper_internal.h>
+#include <linux/acpi.h>
 
 #include <linux/mm.h>
 
@@ -51,8 +53,6 @@ unsigned long xen_released_pages;
 struct xen_memory_region xen_extra_mem[XEN_EXTRA_MEM_MAX_REGIONS] __initdata;
 
 static __read_mostly unsigned int xen_events_irq;
-
-static __initdata struct device_node *xen_node;
 
 int xen_remap_domain_gfn_array(struct vm_area_struct *vma,
 			       unsigned long addr,
@@ -237,6 +237,33 @@ static irqreturn_t xen_arm_callback(int irq, void *arg)
 	return IRQ_HANDLED;
 }
 
+static __initdata struct {
+	const char *compat;
+	const char *prefix;
+	const char *version;
+	bool found;
+} hyper_node = {"xen,xen", "xen,xen-", NULL, false};
+
+static int __init fdt_find_hyper_node(unsigned long node, const char *uname,
+				      int depth, void *data)
+{
+	const void *s = NULL;
+	int len;
+
+	if (depth != 1 || strcmp(uname, "hypervisor") != 0)
+		return 0;
+
+	if (of_flat_dt_is_compatible(node, hyper_node.compat))
+		hyper_node.found = true;
+
+	s = of_get_flat_dt_prop(node, "compatible", &len);
+	if (strlen(hyper_node.prefix) + 3  < len &&
+	    !strncmp(hyper_node.prefix, s, strlen(hyper_node.prefix)))
+		hyper_node.version = s + strlen(hyper_node.prefix);
+
+	return 0;
+}
+
 /*
  * see Documentation/devicetree/bindings/arm/xen.txt for the
  * documentation of the Xen Device Tree format.
@@ -244,26 +271,18 @@ static irqreturn_t xen_arm_callback(int irq, void *arg)
 #define GRANT_TABLE_PHYSADDR 0
 void __init xen_early_init(void)
 {
-	int len;
-	const char *s = NULL;
-	const char *version = NULL;
-	const char *xen_prefix = "xen,xen-";
-
-	xen_node = of_find_compatible_node(NULL, NULL, "xen,xen");
-	if (!xen_node) {
+	of_scan_flat_dt(fdt_find_hyper_node, NULL);
+	if (!hyper_node.found) {
 		pr_debug("No Xen support\n");
 		return;
 	}
-	s = of_get_property(xen_node, "compatible", &len);
-	if (strlen(xen_prefix) + 3  < len &&
-			!strncmp(xen_prefix, s, strlen(xen_prefix)))
-		version = s + strlen(xen_prefix);
-	if (version == NULL) {
+
+	if (hyper_node.version == NULL) {
 		pr_debug("Xen version not found\n");
 		return;
 	}
 
-	pr_info("Xen %s support found\n", version);
+	pr_info("Xen %s support found\n", hyper_node.version);
 
 	xen_domain_type = XEN_HVM_DOMAIN;
 
@@ -278,23 +297,56 @@ void __init xen_early_init(void)
 		add_preferred_console("hvc", 0, NULL);
 }
 
+static void __init xen_acpi_guest_init(void)
+{
+#ifdef CONFIG_ACPI
+	struct xen_hvm_param a;
+	int interrupt, trigger, polarity;
+
+	a.domid = DOMID_SELF;
+	a.index = HVM_PARAM_CALLBACK_IRQ;
+
+	if (HYPERVISOR_hvm_op(HVMOP_get_param, &a)
+	    || (a.value >> 56) != HVM_PARAM_CALLBACK_TYPE_PPI) {
+		xen_events_irq = 0;
+		return;
+	}
+
+	interrupt = a.value & 0xff;
+	trigger = ((a.value >> 8) & 0x1) ? ACPI_EDGE_SENSITIVE
+					 : ACPI_LEVEL_SENSITIVE;
+	polarity = ((a.value >> 8) & 0x2) ? ACPI_ACTIVE_LOW
+					  : ACPI_ACTIVE_HIGH;
+	xen_events_irq = acpi_register_gsi(NULL, interrupt, trigger, polarity);
+#endif
+}
+
+static void __init xen_dt_guest_init(void)
+{
+	struct device_node *xen_node;
+
+	xen_node = of_find_compatible_node(NULL, NULL, "xen,xen");
+	if (!xen_node) {
+		pr_err("Xen support was detected before, but it has disappeared\n");
+		return;
+	}
+
+	xen_events_irq = irq_of_parse_and_map(xen_node, 0);
+}
+
 static int __init xen_guest_init(void)
 {
 	struct xen_add_to_physmap xatp;
 	struct shared_info *shared_info_page = NULL;
-	struct resource res;
-	phys_addr_t grant_frames;
 
 	if (!xen_domain())
 		return 0;
 
-	if (of_address_to_resource(xen_node, GRANT_TABLE_PHYSADDR, &res)) {
-		pr_err("Xen grant table base address not found\n");
-		return -ENODEV;
-	}
-	grant_frames = res.start;
+	if (!acpi_disabled)
+		xen_acpi_guest_init();
+	else
+		xen_dt_guest_init();
 
-	xen_events_irq = irq_of_parse_and_map(xen_node, 0);
 	if (!xen_events_irq) {
 		pr_err("Xen event channel interrupt not found\n");
 		return -ENODEV;
@@ -328,7 +380,10 @@ static int __init xen_guest_init(void)
 	if (xen_vcpu_info == NULL)
 		return -ENOMEM;
 
-	if (gnttab_setup_auto_xlat_frames(grant_frames)) {
+	xen_auto_xlat_grant_frames.count = gnttab_max_grant_frames();
+	if (xen_xlate_map_ballooned_pages(&xen_auto_xlat_grant_frames.pfn,
+					  &xen_auto_xlat_grant_frames.vaddr,
+					  xen_auto_xlat_grant_frames.count)) {
 		free_percpu(xen_vcpu_info);
 		return -ENOMEM;
 	}
