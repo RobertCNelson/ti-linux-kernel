@@ -525,7 +525,7 @@ static struct drm_driver kms_driver = {
 	.irq_uninstall = radeon_driver_irq_uninstall_kms,
 	.irq_handler = radeon_driver_irq_handler_kms,
 	.ioctls = radeon_ioctls_kms,
-	.gem_free_object = radeon_gem_object_free,
+	.gem_free_object_unlocked = radeon_gem_object_free,
 	.gem_open_object = radeon_gem_object_open,
 	.gem_close_object = radeon_gem_object_close,
 	.dumb_create = radeon_mode_dumb_create,
@@ -566,12 +566,10 @@ static struct pci_driver radeon_kms_pci_driver = {
 
 static int __init radeon_init(void)
 {
-#ifdef CONFIG_VGA_CONSOLE
 	if (vgacon_text_force() && radeon_modeset == -1) {
 		DRM_INFO("VGACON disable radeon kernel modesetting.\n");
 		radeon_modeset = 0;
 	}
-#endif
 	/* set to modesetting by default if not nomodeset */
 	if (radeon_modeset == -1)
 		radeon_modeset = 1;
