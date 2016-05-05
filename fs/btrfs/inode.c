@@ -824,6 +824,7 @@ retry:
 						async_extent->ram_size - 1, 0);
 			goto out_free_reserve;
 		}
+		btrfs_dec_block_group_reservations(root->fs_info, ins.objectid);
 
 		/*
 		 * clear dirty, set writeback and unlock the pages.
@@ -861,6 +862,7 @@ retry:
 	}
 	return;
 out_free_reserve:
+	btrfs_dec_block_group_reservations(root->fs_info, ins.objectid);
 	btrfs_free_reserved_extent(root, ins.objectid, ins.offset, 1);
 out_free:
 	extent_clear_unlock_delalloc(inode, async_extent->start,
@@ -1038,6 +1040,8 @@ static noinline int cow_file_range(struct inode *inode,
 				goto out_drop_extent_cache;
 		}
 
+		btrfs_dec_block_group_reservations(root->fs_info, ins.objectid);
+
 		if (disk_num_bytes < cur_alloc_size)
 			break;
 
@@ -1066,6 +1070,7 @@ out:
 out_drop_extent_cache:
 	btrfs_drop_extent_cache(inode, start, start + ram_size - 1, 0);
 out_reserve:
+	btrfs_dec_block_group_reservations(root->fs_info, ins.objectid);
 	btrfs_free_reserved_extent(root, ins.objectid, ins.offset, 1);
 out_unlock:
 	extent_clear_unlock_delalloc(inode, start, end, locked_page,
@@ -7162,6 +7167,8 @@ static struct extent_map *btrfs_new_extent_direct(struct inode *inode,
 		return ERR_PTR(ret);
 	}
 
+	btrfs_dec_block_group_reservations(root->fs_info, ins.objectid);
+
 	em = create_pinned_em(inode, start, ins.offset, start, ins.objectid,
 			      ins.offset, ins.offset, ins.offset, 0);
 	if (IS_ERR(em)) {
@@ -9399,6 +9406,7 @@ static int btrfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	u64 root_objectid;
 	int ret;
 	u64 old_ino = btrfs_ino(old_inode);
+	bool log_pinned = false;
 
 	if (btrfs_ino(new_dir) == BTRFS_EMPTY_SUBVOL_DIR_OBJECTID)
 		return -EPERM;
@@ -9471,6 +9479,8 @@ static int btrfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 		/* force full log commit if subvolume involved. */
 		btrfs_set_log_full_commit(root->fs_info, trans);
 	} else {
+		btrfs_pin_log_trans(root);
+		log_pinned = true;
 		ret = btrfs_insert_inode_ref(trans, dest,
 					     new_dentry->d_name.name,
 					     new_dentry->d_name.len,
@@ -9478,14 +9488,6 @@ static int btrfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 					     btrfs_ino(new_dir), index);
 		if (ret)
 			goto out_fail;
-		/*
-		 * this is an ugly little race, but the rename is required
-		 * to make sure that if we crash, the inode is either at the
-		 * old name or the new one.  pinning the log transaction lets
-		 * us make sure we don't allow a log commit to come in after
-		 * we unlink the name but before we add the new name back in.
-		 */
-		btrfs_pin_log_trans(root);
 	}
 
 	inode_inc_iversion(old_dir);
@@ -9552,12 +9554,36 @@ static int btrfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	if (old_inode->i_nlink == 1)
 		BTRFS_I(old_inode)->dir_index = index;
 
-	if (old_ino != BTRFS_FIRST_FREE_OBJECTID) {
+	if (log_pinned) {
 		struct dentry *parent = new_dentry->d_parent;
+
 		btrfs_log_new_name(trans, old_inode, old_dir, parent);
 		btrfs_end_log_trans(root);
+		log_pinned = false;
 	}
 out_fail:
+	/*
+	 * If we have pinned the log and an error happened, we unpin tasks
+	 * trying to sync the log and force them to fallback to a transaction
+	 * commit if the log currently contains any of the inodes involved in
+	 * this rename operation (to ensure we do not persist a log with an
+	 * inconsistent state for any of these inodes or leading to any
+	 * inconsistencies when replayed). If the transaction was aborted, the
+	 * abortion reason is propagated to userspace when attempting to commit
+	 * the transaction. If the log does not contain any of these inodes, we
+	 * allow the tasks to sync it.
+	 */
+	if (ret && log_pinned) {
+		if (btrfs_inode_in_log(old_dir, root->fs_info->generation) ||
+		    btrfs_inode_in_log(new_dir, root->fs_info->generation) ||
+		    btrfs_inode_in_log(old_inode, root->fs_info->generation) ||
+		    (new_inode &&
+		     btrfs_inode_in_log(new_inode, root->fs_info->generation)))
+		    btrfs_set_log_full_commit(root->fs_info, trans);
+
+		btrfs_end_log_trans(root);
+		log_pinned = false;
+	}
 	btrfs_end_transaction(trans, root);
 out_notrans:
 	if (old_ino == BTRFS_FIRST_FREE_OBJECTID)
@@ -9942,6 +9968,7 @@ static int __btrfs_prealloc_file_range(struct inode *inode, int mode,
 				btrfs_end_transaction(trans, root);
 			break;
 		}
+		btrfs_dec_block_group_reservations(root->fs_info, ins.objectid);
 
 		last_alloc = ins.offset;
 		ret = insert_reserved_file_extent(trans, inode,
