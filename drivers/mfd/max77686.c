@@ -2,7 +2,7 @@
  * max77686.c - mfd core driver for the Maxim 77686/802
  *
  * Copyright (C) 2012 Samsung Electronics
- * Chiwoong Byun <woong.byun@smasung.com>
+ * Chiwoong Byun <woong.byun@samsung.com>
  * Jonghwa Lee <jonghwa3.lee@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -321,18 +321,7 @@ static struct i2c_driver max77686_i2c_driver = {
 	.id_table = max77686_i2c_id,
 };
 
-static int __init max77686_i2c_init(void)
-{
-	return i2c_add_driver(&max77686_i2c_driver);
-}
-/* init early so consumer devices can complete system boot */
-subsys_initcall(max77686_i2c_init);
-
-static void __exit max77686_i2c_exit(void)
-{
-	i2c_del_driver(&max77686_i2c_driver);
-}
-module_exit(max77686_i2c_exit);
+module_i2c_driver(max77686_i2c_driver);
 
 MODULE_DESCRIPTION("MAXIM 77686/802 multi-function core driver");
 MODULE_AUTHOR("Chiwoong Byun <woong.byun@samsung.com>");
