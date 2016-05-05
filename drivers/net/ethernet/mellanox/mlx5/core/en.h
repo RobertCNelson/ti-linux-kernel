@@ -641,6 +641,8 @@ enum mlx5e_link_mode {
 int mlx5e_sniffer_start(struct mlx5e_priv *priv);
 int mlx5e_sniffer_stop(struct mlx5e_priv *priv);
 
+void mlx5e_build_ptys2ethtool_map(void);
+
 void mlx5e_send_nop(struct mlx5e_sq *sq, bool notify_hw);
 u16 mlx5e_select_queue(struct net_device *dev, struct sk_buff *skb,
 		       void *accel_priv, select_queue_fallback_t fallback);

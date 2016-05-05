@@ -3193,6 +3193,7 @@ static void *mlx5e_create_netdev(struct mlx5_core_dev *mdev)
 	if (mlx5e_check_required_hca_cap(mdev))
 		return NULL;
 
+	mlx5e_build_ptys2ethtool_map();
 	netdev = alloc_etherdev_mqs(sizeof(struct mlx5e_priv),
 				    nch * MLX5E_MAX_NUM_TC,
 				    nch);
