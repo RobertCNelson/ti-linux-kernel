@@ -73,9 +73,9 @@ struct page {
 			unsigned long counters;
 #else
 			/*
-			 * Keep _count separate from slub cmpxchg_double data.
-			 * As the rest of the double word is protected by
-			 * slab_lock but _count is not.
+			 * Keep _refcount separate from slub cmpxchg_double
+			 * data.  As the rest of the double word is protected by
+			 * slab_lock but _refcount is not.
 			 */
 			unsigned counters;
 #endif
