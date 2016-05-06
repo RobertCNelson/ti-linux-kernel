@@ -991,7 +991,8 @@ out:
 	return ret;
 }
 
-static bool free_pages_prepare(struct page *page, unsigned int order);
+static bool free_pages_prepare(struct page *page, unsigned int order,
+			       bool check_free);
 
 #ifdef CONFIG_DEBUG_VM
 static inline bool free_pcp_prepare(struct page *page)
@@ -1178,8 +1179,8 @@ void __meminit reserve_bootmem_region(unsigned long start, unsigned long end)
 	}
 }
 
-static __always_inline bool free_pages_prepare(struct page *page, unsigned int order,
-						bool check_free)
+static __always_inline bool free_pages_prepare(struct page *page,
+					unsigned int order, bool check_free)
 {
 	int bad = 0;
 
