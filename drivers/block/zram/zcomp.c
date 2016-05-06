@@ -209,9 +209,9 @@ void zcomp_destroy(struct zcomp *comp)
  * backend pointer or ERR_PTR if things went bad. ERR_PTR(-EINVAL)
  * if requested algorithm is not supported, ERR_PTR(-ENOMEM) in
  * case of allocation error, or any other error potentially
- * returned by functions zcomp_strm_{multi,single}_create.
+ * returned by zcomp_init().
  */
-struct zcomp *zcomp_create(const char *compress, int max_strm)
+struct zcomp *zcomp_create(const char *compress)
 {
 	struct zcomp *comp;
 	struct zcomp_backend *backend;
