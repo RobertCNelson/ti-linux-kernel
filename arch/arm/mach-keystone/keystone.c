@@ -63,6 +63,11 @@ static void __init keystone_init(void)
 	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
 }
 
+static unsigned long keystone_virt_to_idmap(unsigned long x)
+{
+	return (phys_addr_t)(x) - CONFIG_PAGE_OFFSET + KEYSTONE_LOW_PHYS_START;
+}
+
 static long long __init keystone_pv_fixup(void)
 {
 	long long offset;
@@ -86,7 +91,7 @@ static long long __init keystone_pv_fixup(void)
 	offset = KEYSTONE_HIGH_PHYS_START - KEYSTONE_LOW_PHYS_START;
 
 	/* Populate the arch idmap hook */
-	arch_phys_to_idmap_offset = -offset;
+	arch_virt_to_idmap = keystone_virt_to_idmap;
 
 	return offset;
 }
