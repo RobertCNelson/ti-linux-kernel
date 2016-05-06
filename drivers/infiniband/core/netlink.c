@@ -38,6 +38,10 @@
 #include <net/sock.h>
 #include <rdma/rdma_netlink.h>
 
+MODULE_AUTHOR("Roland Dreier");
+MODULE_DESCRIPTION("RDMA netlink infrastructure");
+MODULE_LICENSE("Dual BSD/GPL");
+
 struct ibnl_client {
 	struct list_head		list;
 	int				index;
@@ -62,6 +66,7 @@ int ibnl_add_client(int index, int nops,
 {
 	struct ibnl_client *cur;
 	struct ibnl_client *nl_client;
+	int i;
 
 	nl_client = kmalloc(sizeof *nl_client, GFP_KERNEL);
 	if (!nl_client)
@@ -75,10 +80,15 @@ int ibnl_add_client(int index, int nops,
 
 	list_for_each_entry(cur, &client_list, list) {
 		if (cur->index == index) {
-			pr_warn("Client for %d already exists\n", index);
-			mutex_unlock(&ibnl_mutex);
-			kfree(nl_client);
-			return -EINVAL;
+			for (i = 0; i < min(nops, cur->nops); i++) {
+				if (cur->cb_table[i].dump &&
+				    cb_table[i].dump) {
+					pr_warn("Client for %d already exists\n", index);
+					mutex_unlock(&ibnl_mutex);
+					kfree(nl_client);
+					return -EINVAL;
+				}
+			}
 		}
 	}
 
@@ -90,17 +100,24 @@ int ibnl_add_client(int index, int nops,
 }
 EXPORT_SYMBOL(ibnl_add_client);
 
-int ibnl_remove_client(int index)
+int ibnl_remove_client(int index, int nops,
+		       const struct ibnl_client_cbs cb_table[])
 {
 	struct ibnl_client *cur, *next;
+	int i;
 
 	mutex_lock(&ibnl_mutex);
 	list_for_each_entry_safe(cur, next, &client_list, list) {
-		if (cur->index == index) {
-			list_del(&(cur->list));
-			mutex_unlock(&ibnl_mutex);
-			kfree(cur);
-			return 0;
+		if (cur->index == index && cur->nops == nops) {
+			for (i = 0; i < nops; i++) {
+				if (cb_table[i].dump &&
+				    cur->cb_table[i].dump) {
+					list_del(&cur->list);
+					mutex_unlock(&ibnl_mutex);
+					kfree(cur);
+					return 0;
+				}
+			}
 		}
 	}
 	pr_warn("Can't remove callback for client idx %d. Not found\n", index);
@@ -155,10 +172,11 @@ static int ibnl_rcv_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 
 	list_for_each_entry(client, &client_list, list) {
 		if (client->index == index) {
-			if (op < 0 || op >= client->nops ||
-			    !client->cb_table[op].dump)
+			if (op >= client->nops)
 				return -EINVAL;
 
+			if (!client->cb_table[op].dump)
+				continue;
 			/*
 			 * For response or local service set_timeout request,
 			 * there is no need to use netlink_dump_start.
@@ -256,7 +274,7 @@ int __init ibnl_init(void)
 	return 0;
 }
 
-void ibnl_cleanup(void)
+void __exit ibnl_cleanup(void)
 {
 	struct ibnl_client *cur, *next;
 
@@ -269,3 +287,6 @@ void ibnl_cleanup(void)
 
 	netlink_kernel_release(nls);
 }
+
+module_init(ibnl_init);
+module_exit(ibnl_cleanup);

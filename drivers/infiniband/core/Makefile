@@ -3,13 +3,13 @@ user_access-$(CONFIG_INFINIBAND_ADDR_TRANS)	:= rdma_ucm.o
 
 obj-$(CONFIG_INFINIBAND) +=		ib_core.o ib_mad.o ib_sa.o \
 					ib_cm.o iw_cm.o ib_addr.o \
-					$(infiniband-y)
+					ib_netlink.o $(infiniband-y)
 obj-$(CONFIG_INFINIBAND_USER_MAD) +=	ib_umad.o
 obj-$(CONFIG_INFINIBAND_USER_ACCESS) +=	ib_uverbs.o ib_ucm.o \
 					$(user_access-y)
 
 ib_core-y :=			packer.o ud_header.o verbs.o cq.o sysfs.o \
-				device.o fmr_pool.o cache.o netlink.o \
+				device.o fmr_pool.o cache.o \
 				roce_gid_mgmt.o
 ib_core-$(CONFIG_INFINIBAND_USER_MEM) += umem.o
 ib_core-$(CONFIG_INFINIBAND_ON_DEMAND_PAGING) += umem_odp.o umem_rbtree.o
@@ -17,6 +17,8 @@ ib_core-$(CONFIG_INFINIBAND_ON_DEMAND_PAGING) += umem_odp.o umem_rbtree.o
 ib_mad-y :=			mad.o smi.o agent.o mad_rmpp.o
 
 ib_sa-y :=			sa_query.o multicast.o
+
+ib_netlink-y :=			netlink.o
 
 ib_cm-y :=			cm.o
 

@@ -977,18 +977,10 @@ static int __init ib_core_init(void)
 		goto err_comp;
 	}
 
-	ret = ibnl_init();
-	if (ret) {
-		pr_warn("Couldn't init IB netlink interface\n");
-		goto err_sysfs;
-	}
-
 	ib_cache_setup();
 
 	return 0;
 
-err_sysfs:
-	class_unregister(&ib_class);
 err_comp:
 	destroy_workqueue(ib_comp_wq);
 err:
@@ -999,7 +991,6 @@ err:
 static void __exit ib_core_cleanup(void)
 {
 	ib_cache_cleanup();
-	ibnl_cleanup();
 	class_unregister(&ib_class);
 	destroy_workqueue(ib_comp_wq);
 	/* Make sure that any pending umem accounting work is done. */
