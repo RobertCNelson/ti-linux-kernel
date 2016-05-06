@@ -155,7 +155,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
 --- a/kernel/workqueue.c
 +++ b/kernel/workqueue.c
-@@ -821,44 +821,31 @@ static void wake_up_worker(struct worker
+@@ -850,44 +850,31 @@ static void wake_up_worker(struct worker
  }
  
  /**
@@ -212,7 +212,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	struct worker_pool *pool;
  
  	/*
-@@ -867,14 +854,15 @@ struct task_struct *wq_worker_sleeping(s
+@@ -896,14 +883,15 @@ struct task_struct *wq_worker_sleeping(s
  	 * checking NOT_RUNNING.
  	 */
  	if (worker->flags & WORKER_NOT_RUNNING)
@@ -232,7 +232,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	/*
  	 * The counterpart of the following dec_and_test, implied mb,
  	 * worklist not empty test sequence is in insert_work().
-@@ -887,9 +875,12 @@ struct task_struct *wq_worker_sleeping(s
+@@ -916,9 +904,12 @@ struct task_struct *wq_worker_sleeping(s
  	 * lock is safe.
  	 */
  	if (atomic_dec_and_test(&pool->nr_running) &&

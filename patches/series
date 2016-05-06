@@ -6,7 +6,6 @@
 # UPSTREAM changes queued
 ############################################################
 rtmutex-Make-wait_lock-irq-safe.patch
-arm64-replace-read_lock-to-rcu-lock-in-call_step_hoo.patch
 tracing-writeback-Replace-cgroup-path-to-cgroup-ino.patch
 kvm-rt-change-async-pagefault-code-locking-for-PREEM.patch
 panic-x86-Fix-re-entrance-problem-due-to-panic-on-NM.patch

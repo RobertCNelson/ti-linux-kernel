@@ -922,7 +922,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	bool deboost;
  	int ret = 0;
  
-@@ -1268,7 +1269,8 @@ static int wake_futex_pi(u32 __user *uad
+@@ -1278,7 +1279,8 @@ static int wake_futex_pi(u32 __user *uad
  
  	raw_spin_unlock_irq(&pi_state->pi_mutex.wait_lock);
  
@@ -932,7 +932,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	/*
  	 * First unlock HB so the waiter does not spin on it once he got woken
-@@ -1278,6 +1280,7 @@ static int wake_futex_pi(u32 __user *uad
+@@ -1288,6 +1290,7 @@ static int wake_futex_pi(u32 __user *uad
  	 */
  	spin_unlock(&hb->lock);
  	wake_up_q(&wake_q);
@@ -940,7 +940,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	if (deboost)
  		rt_mutex_adjust_prio(current);
  
-@@ -2709,10 +2712,7 @@ static int futex_wait_requeue_pi(u32 __u
+@@ -2728,10 +2731,7 @@ static int futex_wait_requeue_pi(u32 __u
  	 * The waiter is allocated on our stack, manipulated by the requeue
  	 * code while we sleep on uaddr.
  	 */

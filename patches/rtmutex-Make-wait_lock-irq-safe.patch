@@ -51,9 +51,9 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	new_owner = rt_mutex_next_owner(&pi_state->pi_mutex);
  
  	/*
-@@ -1249,22 +1249,22 @@ static int wake_futex_pi(u32 __user *uad
- 	else if (curval != uval)
- 		ret = -EINVAL;
+@@ -1259,22 +1259,22 @@ static int wake_futex_pi(u32 __user *uad
+ 			ret = -EINVAL;
+ 	}
  	if (ret) {
 -		raw_spin_unlock(&pi_state->pi_mutex.wait_lock);
 +		raw_spin_unlock_irq(&pi_state->pi_mutex.wait_lock);
@@ -80,7 +80,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	deboost = rt_mutex_futex_unlock(&pi_state->pi_mutex, &wake_q);
  
-@@ -2129,11 +2129,11 @@ static int fixup_owner(u32 __user *uaddr
+@@ -2139,11 +2139,11 @@ static int fixup_owner(u32 __user *uaddr
  		 * we returned due to timeout or signal without taking the
  		 * rt_mutex. Too late.
  		 */

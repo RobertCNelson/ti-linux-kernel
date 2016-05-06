@@ -111,7 +111,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  #ifdef CONFIG_DEBUG_OBJECTS_WORK
  
  static struct debug_obj_descr work_debug_descr;
-@@ -814,10 +844,16 @@ static struct worker *first_idle_worker(
+@@ -843,10 +873,16 @@ static struct worker *first_idle_worker(
   */
  static void wake_up_worker(struct worker_pool *pool)
  {
@@ -129,7 +129,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  }
  
  /**
-@@ -845,7 +881,7 @@ void wq_worker_running(struct task_struc
+@@ -874,7 +910,7 @@ void wq_worker_running(struct task_struc
   */
  void wq_worker_sleeping(struct task_struct *task)
  {
@@ -138,7 +138,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  	struct worker_pool *pool;
  
  	/*
-@@ -862,25 +898,18 @@ void wq_worker_sleeping(struct task_stru
+@@ -891,25 +927,18 @@ void wq_worker_sleeping(struct task_stru
  		return;
  
  	worker->sleeping = 1;
@@ -168,7 +168,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  }
  
  /**
-@@ -1571,7 +1600,9 @@ static void worker_enter_idle(struct wor
+@@ -1600,7 +1629,9 @@ static void worker_enter_idle(struct wor
  	worker->last_active = jiffies;
  
  	/* idle_list is LIFO */
@@ -178,7 +178,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  
  	if (too_many_workers(pool) && !timer_pending(&pool->idle_timer))
  		mod_timer(&pool->idle_timer, jiffies + IDLE_WORKER_TIMEOUT);
-@@ -1604,7 +1635,9 @@ static void worker_leave_idle(struct wor
+@@ -1633,7 +1664,9 @@ static void worker_leave_idle(struct wor
  		return;
  	worker_clr_flags(worker, WORKER_IDLE);
  	pool->nr_idle--;
@@ -188,7 +188,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  }
  
  static struct worker *alloc_worker(int node)
-@@ -1770,7 +1803,9 @@ static void destroy_worker(struct worker
+@@ -1799,7 +1832,9 @@ static void destroy_worker(struct worker
  	pool->nr_workers--;
  	pool->nr_idle--;
  
