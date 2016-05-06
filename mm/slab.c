@@ -1262,7 +1262,7 @@ static void freelist_randomize(struct rnd_state *state, freelist_idx_t *list,
 }
 
 /* Create a random sequence per cache */
-static int cache_random_seq_create(struct kmem_cache *cachep)
+static int cache_random_seq_create(struct kmem_cache *cachep, gfp_t gfp)
 {
 	unsigned int seed, count = cachep->num;
 	struct rnd_state state;
@@ -1271,7 +1271,7 @@ static int cache_random_seq_create(struct kmem_cache *cachep)
 		return 0;
 
 	/* If it fails, we will just use the global lists */
-	cachep->random_seq = kcalloc(count, sizeof(freelist_idx_t), GFP_KERNEL);
+	cachep->random_seq = kcalloc(count, sizeof(freelist_idx_t), gfp);
 	if (!cachep->random_seq)
 		return -ENOMEM;
 
@@ -1290,7 +1290,7 @@ static void cache_random_seq_destroy(struct kmem_cache *cachep)
 	cachep->random_seq = NULL;
 }
 #else
-static inline int cache_random_seq_create(struct kmem_cache *cachep)
+static inline int cache_random_seq_create(struct kmem_cache *cachep, gfp_t gfp)
 {
 	return 0;
 }
@@ -3999,7 +3999,7 @@ static int enable_cpucache(struct kmem_cache *cachep, gfp_t gfp)
 	int shared = 0;
 	int batchcount = 0;
 
-	err = cache_random_seq_create(cachep);
+	err = cache_random_seq_create(cachep, gfp);
 	if (err)
 		goto end;
 
