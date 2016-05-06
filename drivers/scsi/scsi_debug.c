@@ -59,8 +59,8 @@
 #include "scsi_logging.h"
 
 /* make sure inq_product_rev string corresponds to this version */
-#define SCSI_DEBUG_VERSION "1.86"
-static const char *sdebug_version_date = "20160422";
+#define SDEBUG_VERSION "1.86"
+static const char *sdebug_version_date = "20160430";
 
 #define MY_NAME "scsi_debug"
 
@@ -123,7 +123,7 @@ static const char *sdebug_version_date = "20160422";
 #define DEF_OPTS   0
 #define DEF_OPT_BLKS 1024
 #define DEF_PHYSBLK_EXP 0
-#define DEF_PTYPE   0
+#define DEF_PTYPE   TYPE_DISK
 #define DEF_REMOVABLE false
 #define DEF_SCSI_LEVEL   6    /* INQUIRY, byte2 [6->SPC-4] */
 #define DEF_SECTOR_SIZE 512
@@ -136,6 +136,8 @@ static const char *sdebug_version_date = "20160422";
 #define DEF_WRITESAME_LENGTH 0xFFFF
 #define DEF_STRICT 0
 #define JDELAY_OVERRIDDEN -9999
+
+#define SDEBUG_LUN_0_VAL 0
 
 /* bit mask values for sdebug_opts */
 #define SDEBUG_OPT_NOISE		1
@@ -232,7 +234,7 @@ static const char *sdebug_version_date = "20160422";
 
 #define SDEBUG_MAX_PARTS 4
 
-#define SCSI_DEBUG_MAX_CMD_LEN 32
+#define SDEBUG_MAX_CMD_LEN 32
 
 
 struct sdebug_dev_info {
@@ -278,8 +280,8 @@ struct sdebug_scmd_extra_t {
 };
 
 struct opcode_info_t {
-	u8 num_attached;	/* 0 if this is it (i.e. a leaf); use 0xff
-				 * for terminating element */
+	u8 num_attached;	/* 0 if this is it (i.e. a leaf); use 0xff */
+				/* for terminating element */
 	u8 opcode;		/* if num_attached > 0, preferred */
 	u16 sa;			/* service action */
 	u32 flags;		/* OR-ed set of SDEB_F_* */
@@ -571,7 +573,7 @@ static int sdebug_num_tgts = DEF_NUM_TGTS; /* targets per host */
 static int sdebug_opt_blks = DEF_OPT_BLKS;
 static int sdebug_opts = DEF_OPTS;
 static int sdebug_physblk_exp = DEF_PHYSBLK_EXP;
-static int sdebug_ptype = DEF_PTYPE; /* SCSI peripheral type (0==disk) */
+static int sdebug_ptype = DEF_PTYPE; /* SCSI peripheral device type */
 static int sdebug_scsi_level = DEF_SCSI_LEVEL;
 static int sdebug_sector_size = DEF_SECTOR_SIZE;
 static int sdebug_virtual_gb = DEF_VIRTUAL_GB;
@@ -649,7 +651,7 @@ static const int device_qfull_result =
 	(DID_OK << 16) | (COMMAND_COMPLETE << 8) | SAM_STAT_TASK_SET_FULL;
 
 
-static unsigned int scsi_debug_lbp(void)
+static inline unsigned int scsi_debug_lbp(void)
 {
 	return 0 == sdebug_fake_rw &&
 		(sdebug_lbpu || sdebug_lbpws || sdebug_lbpws10);
@@ -825,7 +827,8 @@ static int make_ua(struct scsi_cmnd *scp, struct sdebug_dev_info *devip)
 			break;
 		case SDEBUG_UA_MICROCODE_CHANGED:
 			mk_sense_buffer(scp, UNIT_ATTENTION,
-				TARGET_CHANGED_ASC, MICROCODE_CHANGED_ASCQ);
+					TARGET_CHANGED_ASC,
+					MICROCODE_CHANGED_ASCQ);
 			if (sdebug_verbose)
 				cp = "microcode has been changed";
 			break;
@@ -1225,11 +1228,11 @@ static int resp_inquiry(struct scsi_cmnd *scp, struct sdebug_dev_info *devip)
 	arr = kzalloc(SDEBUG_MAX_INQ_ARR_SZ, GFP_ATOMIC);
 	if (! arr)
 		return DID_REQUEUE << 16;
-	have_wlun = (scp->device->lun == SCSI_W_LUN_REPORT_LUNS);
+	have_wlun = scsi_is_wlun(scp->device->lun);
 	if (have_wlun)
-		pq_pdt = 0x1e;	/* present, wlun */
-	else if (sdebug_no_lun_0 && (0 == devip->lun))
-		pq_pdt = 0x7f;	/* not present, no device type */
+		pq_pdt = TYPE_WLUN;	/* present, wlun */
+	else if (sdebug_no_lun_0 && (devip->lun == SDEBUG_LUN_0_VAL))
+		pq_pdt = 0x7f;	/* not present, PQ=3, PDT=0x1f */
 	else
 		pq_pdt = (sdebug_ptype & 0x1f);
 	arr[0] = pq_pdt;
@@ -1244,7 +1247,7 @@ static int resp_inquiry(struct scsi_cmnd *scp, struct sdebug_dev_info *devip)
 		
 		port_group_id = (((host_no + 1) & 0x7f) << 8) +
 		    (devip->channel & 0x7f);
-		if (0 == sdebug_vpd_use_hostno)
+		if (sdebug_vpd_use_hostno == 0)
 			host_no = 0;
 		lu_id_num = have_wlun ? -1 : (((host_no + 1) * 2000) +
 			    (devip->target * 1000) + devip->lun);
@@ -1333,7 +1336,7 @@ static int resp_inquiry(struct scsi_cmnd *scp, struct sdebug_dev_info *devip)
 	arr[3] = 2;    /* response_data_format==2 */
 	arr[4] = SDEBUG_LONG_INQ_SZ - 5;
 	arr[5] = (int)have_dif_prot;	/* PROTECT bit */
-	if (0 == sdebug_vpd_use_hostno)
+	if (sdebug_vpd_use_hostno == 0)
 		arr[5] = 0x10; /* claim: implicit TGPS */
 	arr[6] = 0x10; /* claim: MultiP */
 	/* arr[6] |= 0x40; ... claim: EncServ (enclosure services) */
@@ -1345,9 +1348,9 @@ static int resp_inquiry(struct scsi_cmnd *scp, struct sdebug_dev_info *devip)
 	arr[58] = 0x0; arr[59] = 0xa2;  /* SAM-5 rev 4 */
 	arr[60] = 0x4; arr[61] = 0x68;  /* SPC-4 rev 37 */
 	n = 62;
-	if (sdebug_ptype == 0) {
+	if (sdebug_ptype == TYPE_DISK) {
 		arr[n++] = 0x4; arr[n++] = 0xc5; /* SBC-4 rev 36 */
-	} else if (sdebug_ptype == 1) {
+	} else if (sdebug_ptype == TYPE_TAPE) {
 		arr[n++] = 0x5; arr[n++] = 0x25; /* SSC-4 rev 3 */
 	}
 	arr[n++] = 0x20; arr[n++] = 0xe6;  /* SPL-3 rev 7 */
@@ -1534,7 +1537,7 @@ static int resp_report_tgtpgs(struct scsi_cmnd * scp,
 	 * The asymmetric access state is cycled according to the host_id.
 	 */
 	n = 4;
-	if (0 == sdebug_vpd_use_hostno) {
+	if (sdebug_vpd_use_hostno == 0) {
 		arr[n++] = host_no % 3; /* Asymm access state */
 		arr[n++] = 0x0F; /* claim: all states are supported */
 	} else {
@@ -1938,7 +1941,7 @@ static int resp_mode_sense(struct scsi_cmnd *scp,
 	subpcode = cmd[3];
 	msense_6 = (MODE_SENSE == cmd[0]);
 	llbaa = msense_6 ? 0 : !!(cmd[1] & 0x10);
-	if ((0 == sdebug_ptype) && (0 == dbd))
+	if ((sdebug_ptype == TYPE_DISK) && (dbd == 0))
 		bd_len = llbaa ? 16 : 8;
 	else
 		bd_len = 0;
@@ -1950,9 +1953,9 @@ static int resp_mode_sense(struct scsi_cmnd *scp,
 	}
 	target_dev_id = ((devip->sdbg_host->shost->host_no + 1) * 2000) +
 			(devip->target * 1000) - 3;
-	/* set DPOFUA bit for disks */
-	if (0 == sdebug_ptype)
-		dev_spec = 0x10;	/* would be 0x90 if read-only */
+	/* for disks set DPOFUA bit and clear write protect (WP) bit */
+	if (sdebug_ptype == TYPE_DISK)
+		dev_spec = 0x10;	/* =0x90 if WP=1 implies read-only */
 	else
 		dev_spec = 0x0;
 	if (msense_6) {
@@ -3205,63 +3208,94 @@ static int resp_get_lba_status(struct scsi_cmnd *scp,
 	return fill_from_dev_buffer(scp, arr, SDEBUG_GET_LBA_STATUS_LEN);
 }
 
-#define SDEBUG_RLUN_ARR_SZ 256
-
-static int resp_report_luns(struct scsi_cmnd * scp,
-			    struct sdebug_dev_info * devip)
+/* Even though each pseudo target has a REPORT LUNS "well known logical unit"
+ * (W-LUN), the normal Linux scanning logic does not associate it with a
+ * device (e.g. /dev/sg7). The following magic will make that association:
+ *   "cd /sys/class/scsi_host/host<n> ; echo '- - 49409' > scan"
+ * where <n> is a host number. If there are multiple targets in a host then
+ * the above will associate a W-LUN to each target. To only get a W-LUN
+ * for target 2, then use "echo '- 2 49409' > scan" .
+ */
+static int resp_report_luns(struct scsi_cmnd *scp,
+			    struct sdebug_dev_info *devip)
 {
-	unsigned int alloc_len;
-	int lun_cnt, i, upper, num, n, want_wlun, shortish;
-	u64 lun;
 	unsigned char *cmd = scp->cmnd;
-	int select_report = (int)cmd[2];
-	struct scsi_lun *one_lun;
-	unsigned char arr[SDEBUG_RLUN_ARR_SZ];
-	unsigned char * max_addr;
+	unsigned int alloc_len;
+	unsigned char select_report;
+	u64 lun;
+	struct scsi_lun *lun_p;
+	u8 *arr;
+	unsigned int lun_cnt;	/* normal LUN count (max: 256) */
+	unsigned int wlun_cnt;	/* report luns W-LUN count */
+	unsigned int tlun_cnt;	/* total LUN count */
+	unsigned int rlen;	/* response length (in bytes) */
+	int i, res;
 
 	clear_luns_changed_on_target(devip);
-	alloc_len = cmd[9] + (cmd[8] << 8) + (cmd[7] << 16) + (cmd[6] << 24);
-	shortish = (alloc_len < 4);
-	if (shortish || (select_report > 2)) {
-		mk_sense_invalid_fld(scp, SDEB_IN_CDB, shortish ? 6 : 2, -1);
+
+	select_report = cmd[2];
+	alloc_len = get_unaligned_be32(cmd + 6);
+
+	if (alloc_len < 4) {
+		pr_err("alloc len too small %d\n", alloc_len);
+		mk_sense_invalid_fld(scp, SDEB_IN_CDB, 6, -1);
 		return check_condition_result;
 	}
-	/* can produce response with up to 16k luns (lun 0 to lun 16383) */
-	memset(arr, 0, SDEBUG_RLUN_ARR_SZ);
-	lun_cnt = sdebug_max_luns;
-	if (1 == select_report)
+
+	switch (select_report) {
+	case 0:		/* all LUNs apart from W-LUNs */
+		lun_cnt = sdebug_max_luns;
+		wlun_cnt = 0;
+		break;
+	case 1:		/* only W-LUNs */
 		lun_cnt = 0;
-	else if (sdebug_no_lun_0 && (lun_cnt > 0))
+		wlun_cnt = 1;
+		break;
+	case 2:		/* all LUNs */
+		lun_cnt = sdebug_max_luns;
+		wlun_cnt = 1;
+		break;
+	case 0x10:	/* only administrative LUs */
+	case 0x11:	/* see SPC-5 */
+	case 0x12:	/* only subsiduary LUs owned by referenced LU */
+	default:
+		pr_debug("select report invalid %d\n", select_report);
+		mk_sense_invalid_fld(scp, SDEB_IN_CDB, 2, -1);
+		return check_condition_result;
+	}
+
+	if (sdebug_no_lun_0 && (lun_cnt > 0))
 		--lun_cnt;
-	want_wlun = (select_report > 0) ? 1 : 0;
-	num = lun_cnt + want_wlun;
-	arr[2] = ((sizeof(struct scsi_lun) * num) >> 8) & 0xff;
-	arr[3] = (sizeof(struct scsi_lun) * num) & 0xff;
-	n = min((int)((SDEBUG_RLUN_ARR_SZ - 8) /
-			    sizeof(struct scsi_lun)), num);
-	if (n < num) {
-		want_wlun = 0;
-		lun_cnt = n;
+
+	tlun_cnt = lun_cnt + wlun_cnt;
+
+	rlen = (tlun_cnt * sizeof(struct scsi_lun)) + 8;
+	arr = vmalloc(rlen);
+	if (!arr) {
+		mk_sense_buffer(scp, ILLEGAL_REQUEST, INSUFF_RES_ASC,
+				INSUFF_RES_ASCQ);
+		return check_condition_result;
 	}
-	one_lun = (struct scsi_lun *) &arr[8];
-	max_addr = arr + SDEBUG_RLUN_ARR_SZ;
-	for (i = 0, lun = (sdebug_no_lun_0 ? 1 : 0);
-             ((i < lun_cnt) && ((unsigned char *)(one_lun + i) < max_addr));
-	     i++, lun++) {
-		upper = (lun >> 8) & 0x3f;
-		if (upper)
-			one_lun[i].scsi_lun[0] =
-			    (upper | (SAM2_LUN_ADDRESS_METHOD << 6));
-		one_lun[i].scsi_lun[1] = lun & 0xff;
-	}
-	if (want_wlun) {
-		one_lun[i].scsi_lun[0] = (SCSI_W_LUN_REPORT_LUNS >> 8) & 0xff;
-		one_lun[i].scsi_lun[1] = SCSI_W_LUN_REPORT_LUNS & 0xff;
-		i++;
-	}
-	alloc_len = (unsigned char *)(one_lun + i) - arr;
-	return fill_from_dev_buffer(scp, arr,
-				    min((int)alloc_len, SDEBUG_RLUN_ARR_SZ));
+	memset(arr, 0, rlen);
+	pr_debug("select_report %d luns = %d wluns = %d no_lun0 %d\n",
+		 select_report, lun_cnt, wlun_cnt, sdebug_no_lun_0);
+
+	/* luns start at byte 8 in response following the header */
+	lun_p = (struct scsi_lun *)&arr[8];
+
+	/* LUNs use single level peripheral device addressing method */
+	lun = sdebug_no_lun_0 ? 1 : 0;
+	for (i = 0; i < lun_cnt; i++)
+		int_to_scsilun(lun++, lun_p++);
+
+	if (wlun_cnt)
+		int_to_scsilun(SCSI_W_LUN_REPORT_LUNS, lun_p++);
+
+	put_unaligned_be32(rlen - 8, &arr[0]);
+
+	res = fill_from_dev_buffer(scp, arr, rlen);
+	vfree(arr);
+	return res;
 }
 
 static int resp_xdwriteread(struct scsi_cmnd *scp, unsigned long long lba,
@@ -3345,7 +3379,7 @@ static void sdebug_q_cmd_complete(struct sdebug_defer *sd_dp)
 	spin_lock_irqsave(&queued_arr_lock, iflags);
 	sqcp = &queued_arr[qa_indx];
 	scp = sqcp->a_cmnd;
-	if (unlikely(NULL == scp)) {
+	if (unlikely(scp == NULL)) {
 		spin_unlock_irqrestore(&queued_arr_lock, iflags);
 		pr_err("scp is NULL\n");
 		return;
@@ -3470,11 +3504,11 @@ static int scsi_debug_slave_configure(struct scsi_device *sdp)
 	if (sdebug_verbose)
 		pr_info("slave_configure <%u %u %u %llu>\n",
 		       sdp->host->host_no, sdp->channel, sdp->id, sdp->lun);
-	if (sdp->host->max_cmd_len != SCSI_DEBUG_MAX_CMD_LEN)
-		sdp->host->max_cmd_len = SCSI_DEBUG_MAX_CMD_LEN;
-	if (NULL == devip) {
+	if (sdp->host->max_cmd_len != SDEBUG_MAX_CMD_LEN)
+		sdp->host->max_cmd_len = SDEBUG_MAX_CMD_LEN;
+	if (devip == NULL) {
 		devip = find_build_dev_info(sdp);
-		if (NULL == devip)
+		if (devip == NULL)
 			return 1;  /* no resources, will be marked offline */
 	}
 	sdp->hostdata = devip;
@@ -3528,7 +3562,7 @@ static bool stop_queued_cmnd(struct scsi_cmnd *cmnd)
 			sd_dp = sqcp->sd_dp;
 			spin_unlock_irqrestore(&queued_arr_lock,
 					       iflags);
-			if ((sdebug_jdelay > 0) || (sdebug_ndelay > 0)) {
+			if (sdebug_jdelay > 0 || sdebug_ndelay > 0) {
 				if (sd_dp)
 					hrtimer_cancel(&sd_dp->hrt);
 			} else if (sdebug_jdelay < 0) {
@@ -3565,7 +3599,7 @@ static void stop_all_queued(void)
 			sqcp->a_cmnd = NULL;
 			sd_dp = sqcp->sd_dp;
 			spin_unlock_irqrestore(&queued_arr_lock, iflags);
-			if ((sdebug_jdelay > 0) || (sdebug_ndelay > 0)) {
+			if (sdebug_jdelay > 0 || sdebug_ndelay > 0) {
 				if (sd_dp)
 					hrtimer_cancel(&sd_dp->hrt);
 			} else if (sdebug_jdelay < 0) {
@@ -3779,8 +3813,8 @@ static int schedule_resp(struct scsi_cmnd *cmnd, struct sdebug_dev_info *devip,
 	if (unlikely(WARN_ON(!cmnd)))
 		return SCSI_MLQUEUE_HOST_BUSY;
 
-	if (unlikely(NULL == devip)) {
-		if (0 == scsi_result)
+	if (unlikely(devip == NULL)) {
+		if (scsi_result == 0)
 			scsi_result = DID_NO_CONNECT << 16;
 		goto respond_in_thread;
 	}
@@ -3841,7 +3875,7 @@ static int schedule_resp(struct scsi_cmnd *cmnd, struct sdebug_dev_info *devip,
 	cmnd->result = scsi_result;
 	spin_unlock_irqrestore(&queued_arr_lock, iflags);
 	sd_dp = sqcp->sd_dp;
-	if ((delta_jiff > 0) || (sdebug_ndelay > 0)) {
+	if (delta_jiff > 0 || sdebug_ndelay > 0) {
 		ktime_t kt;
 
 		if (delta_jiff > 0) {
@@ -3938,7 +3972,7 @@ module_param_named(write_same_length, sdebug_write_same_length, int,
 MODULE_AUTHOR("Eric Youngdale + Douglas Gilbert");
 MODULE_DESCRIPTION("SCSI debug adapter driver");
 MODULE_LICENSE("GPL");
-MODULE_VERSION(SCSI_DEBUG_VERSION);
+MODULE_VERSION(SDEBUG_VERSION);
 
 MODULE_PARM_DESC(add_host, "0..127 hosts allowed(def=1)");
 MODULE_PARM_DESC(ato, "application tag ownership: 0=disk 1=host (def=1)");
@@ -3984,9 +4018,10 @@ static char sdebug_info[256];
 
 static const char * scsi_debug_info(struct Scsi_Host * shp)
 {
-	sprintf(sdebug_info, "scsi_debug, version %s [%s], "
-		"dev_size_mb=%d, opts=0x%x", SCSI_DEBUG_VERSION,
-		sdebug_version_date, sdebug_dev_size_mb, sdebug_opts);
+	sprintf(sdebug_info,
+		"scsi_debug, version %s [%s], dev_size_mb=%d, opts=0x%x",
+		SDEBUG_VERSION, sdebug_version_date, sdebug_dev_size_mb,
+		sdebug_opts);
 	return sdebug_info;
 }
 
@@ -4036,7 +4071,7 @@ static int scsi_debug_show_info(struct seq_file *m, struct Scsi_Host *host)
 		"command aborts=%d; RESETs: device=%d, target=%d, bus=%d, "
 		"host=%d\ndix_reads=%d dix_writes=%d dif_errors=%d "
 		"usec_in_jiffy=%lu\n",
-		SCSI_DEBUG_VERSION, sdebug_version_date,
+		SDEBUG_VERSION, sdebug_version_date,
 		sdebug_num_tgts, sdebug_dev_size_mb, sdebug_opts,
 		sdebug_every_nth, b, sdebug_jdelay, sdebug_ndelay,
 		sdebug_max_luns, atomic_read(&sdebug_completions),
@@ -4064,7 +4099,7 @@ static ssize_t delay_store(struct device_driver *ddp, const char *buf,
 {
 	int jdelay, res;
 
-	if ((count > 0) && (1 == sscanf(buf, "%d", &jdelay))) {
+	if (count > 0 && sscanf(buf, "%d", &jdelay) == 1) {
 		res = count;
 		if (sdebug_jdelay != jdelay) {
 			unsigned long iflags;
@@ -4299,6 +4334,10 @@ static ssize_t max_luns_store(struct device_driver *ddp, const char *buf,
 	bool changed;
 
 	if ((count > 0) && (1 == sscanf(buf, "%d", &n)) && (n >= 0)) {
+		if (n > 256) {
+			pr_warn("max_luns can be no more than 256\n");
+			return -EINVAL;
+		}
 		changed = (sdebug_max_luns != n);
 		sdebug_max_luns = n;
 		sdebug_max_tgts_luns();
@@ -4643,6 +4682,10 @@ static int __init scsi_debug_init(void)
 		pr_err("invalid physblk_exp %u\n", sdebug_physblk_exp);
 		return -EINVAL;
 	}
+	if (sdebug_max_luns > 256) {
+		pr_warn("max_luns can be no more than 256, use default\n");
+		sdebug_max_luns = DEF_MAX_LUNS;
+	}
 
 	if (sdebug_lowest_aligned > 0x3fff) {
 		pr_err("lowest_aligned too big: %u\n", sdebug_lowest_aligned);
@@ -4672,7 +4715,7 @@ static int __init scsi_debug_init(void)
 			       (sdebug_sectors_per * sdebug_heads);
 	}
 
-	if (0 == sdebug_fake_rw) {
+	if (sdebug_fake_rw == 0) {
 		fake_storep = vmalloc(sz);
 		if (NULL == fake_storep) {
 			pr_err("out of memory, 1\n");
@@ -5044,8 +5087,8 @@ static int scsi_debug_queuecommand(struct Scsi_Host *shost,
 		}
 	}
 	if (unlikely(!(F_SKIP_UA & flags) &&
-		     SDEBUG_NUM_UAS != find_first_bit(devip->uas_bm,
-						      SDEBUG_NUM_UAS))) {
+		     find_first_bit(devip->uas_bm,
+				    SDEBUG_NUM_UAS) != SDEBUG_NUM_UAS)) {
 		errsts = make_ua(scp, devip);
 		if (errsts)
 			goto check_cond;
