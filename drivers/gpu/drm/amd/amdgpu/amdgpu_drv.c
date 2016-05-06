@@ -514,7 +514,7 @@ static struct drm_driver kms_driver = {
 	.irq_uninstall = amdgpu_irq_uninstall,
 	.irq_handler = amdgpu_irq_handler,
 	.ioctls = amdgpu_ioctls_kms,
-	.gem_free_object = amdgpu_gem_object_free,
+	.gem_free_object_unlocked = amdgpu_gem_object_free,
 	.gem_open_object = amdgpu_gem_object_open,
 	.gem_close_object = amdgpu_gem_object_close,
 	.dumb_create = amdgpu_mode_dumb_create,
@@ -556,12 +556,10 @@ static struct pci_driver amdgpu_kms_pci_driver = {
 static int __init amdgpu_init(void)
 {
 	amdgpu_sync_init();
-#ifdef CONFIG_VGA_CONSOLE
 	if (vgacon_text_force()) {
 		DRM_ERROR("VGACON disables amdgpu kernel modesetting.\n");
 		return -EINVAL;
 	}
-#endif
 	DRM_INFO("amdgpu kernel modesetting enabled.\n");
 	driver = &kms_driver;
 	pdriver = &amdgpu_kms_pci_driver;
