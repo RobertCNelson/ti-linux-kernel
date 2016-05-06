@@ -659,7 +659,7 @@ int padata_start(struct padata_instance *pinst)
 	mutex_lock(&pinst->lock);
 
 	if (pinst->flags & PADATA_INVALID)
-		err =-EINVAL;
+		err = -EINVAL;
 
 	 __padata_start(pinst);
 
