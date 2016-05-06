@@ -585,7 +585,7 @@ static void wake_oom_reaper(struct task_struct *tsk)
 /* Check if we can reap the given task. This has to be called with stable
  * tsk->mm
  */
-static void try_oom_reaper(struct task_struct *tsk)
+void try_oom_reaper(struct task_struct *tsk)
 {
 	struct mm_struct *mm = tsk->mm;
 	struct task_struct *p;
