@@ -7822,7 +7822,7 @@ static void nohz_balancer_kick(void)
 	return;
 }
 
-static inline void nohz_balance_exit_idle(int cpu)
+void nohz_balance_exit_idle(unsigned int cpu)
 {
 	if (unlikely(test_bit(NOHZ_TICK_STOPPED, nohz_flags(cpu)))) {
 		/*
@@ -7894,18 +7894,6 @@ void nohz_balance_enter_idle(int cpu)
 	cpumask_set_cpu(cpu, nohz.idle_cpus_mask);
 	atomic_inc(&nohz.nr_cpus);
 	set_bit(NOHZ_TICK_STOPPED, nohz_flags(cpu));
-}
-
-static int sched_ilb_notifier(struct notifier_block *nfb,
-					unsigned long action, void *hcpu)
-{
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_DYING:
-		nohz_balance_exit_idle(smp_processor_id());
-		return NOTIFY_OK;
-	default:
-		return NOTIFY_DONE;
-	}
 }
 #endif
 
@@ -8712,7 +8700,6 @@ __init void init_sched_fair_class(void)
 #ifdef CONFIG_NO_HZ_COMMON
 	nohz.next_balance = jiffies;
 	zalloc_cpumask_var(&nohz.idle_cpus_mask, GFP_NOWAIT);
-	cpu_notifier(sched_ilb_notifier, 0);
 #endif
 #endif /* SMP */
 
