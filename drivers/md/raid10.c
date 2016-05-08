@@ -157,7 +157,7 @@ static void * r10buf_pool_alloc(gfp_t gfp_flags, void *data)
 	/*
 	 * Allocate bios.
 	 */
-	for (j = nalloc ; j-- ; ) {
+	for (j = nalloc - 1; j >= 0; j--) {
 		bio = bio_kmalloc(gfp_flags, RESYNC_PAGES);
 		if (!bio)
 			goto out_free_bio;

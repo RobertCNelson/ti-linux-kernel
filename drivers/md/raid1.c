@@ -109,7 +109,7 @@ static void * r1buf_pool_alloc(gfp_t gfp_flags, void *data)
 	/*
 	 * Allocate bios : 1 for reading, n-1 for writing
 	 */
-	for (j = pi->raid_disks ; j-- ; ) {
+	for (j = pi->raid_disks - 1; j >= 0; j--) {
 		bio = bio_kmalloc(gfp_flags, RESYNC_PAGES);
 		if (!bio)
 			goto out_free_bio;
@@ -166,7 +166,7 @@ static void r1buf_pool_free(void *__r1_bio, void *data)
 	struct r1bio *r1bio = __r1_bio;
 
 	for (i = 0; i < RESYNC_PAGES; i++)
-		for (j = pi->raid_disks; j-- ;) {
+		for (j = pi->raid_disks - 1; j >= 0; j--) {
 			if (j == 0 ||
 			    r1bio->bios[j]->bi_io_vec[i].bv_page !=
 			    r1bio->bios[0]->bi_io_vec[i].bv_page)
@@ -1976,7 +1976,7 @@ static void process_checks(struct r1bio *r1_bio)
 		sbio->bi_error = 0;
 
 		if (!error) {
-			for (j = vcnt; j-- ; ) {
+			for (j = vcnt - 1; j >= 0; j--) {
 				struct page *p, *s;
 				p = pbio->bi_io_vec[j].bv_page;
 				s = sbio->bi_io_vec[j].bv_page;
