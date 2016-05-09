@@ -2017,8 +2017,8 @@ static void mlx5e_build_indir_tir_ctx(struct mlx5e_priv *priv, u32 *tirc,
 	}
 }
 
-static void mlx5e_build_direct_tir_ctx(struct mlx5e_priv *priv, u32 *tirc,
-				       u32 rqtn)
+void mlx5e_build_direct_tir_ctx(struct mlx5e_priv *priv, u32 *tirc,
+				u32 rqtn)
 {
 	MLX5_SET(tirc, tirc, transport_domain, priv->tdn);
 

@@ -43,6 +43,9 @@ enum {
 	MLX5_FLOW_CONTEXT_ACTION_FWD_NEXT_PRIO	= 1 << 16,
 };
 
+#define FS_MAX_TYPES             10
+#define FS_MAX_ENTRIES           32000U
+
 #define LEFTOVERS_RULE_NUM	 2
 static inline void build_leftovers_ft_param(int *priority,
 					    int *n_ent,

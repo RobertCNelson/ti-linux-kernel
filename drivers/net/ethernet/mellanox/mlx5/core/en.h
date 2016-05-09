@@ -492,6 +492,8 @@ enum {
 	MLX5E_ARFS_FT_LEVEL
 };
 
+struct mlx5e_sniffer;
+
 struct mlx5e_flow_steering {
 	struct mlx5_flow_namespace      *ns;
 	struct mlx5e_tc_table           tc;
@@ -499,6 +501,7 @@ struct mlx5e_flow_steering {
 	struct mlx5e_l2_table           l2;
 	struct mlx5e_ttc_table          ttc;
 	struct mlx5e_arfs_tables        arfs;
+	struct mlx5e_sniffer            *sniffer;
 };
 
 struct mlx5e_direct_tir {
@@ -580,6 +583,9 @@ enum mlx5e_link_mode {
 
 #define MLX5E_PROT_MASK(link_mode) (1 << link_mode)
 
+int mlx5e_sniffer_start(struct mlx5e_priv *priv);
+int mlx5e_sniffer_stop(struct mlx5e_priv *priv);
+
 void mlx5e_send_nop(struct mlx5e_sq *sq, bool notify_hw);
 u16 mlx5e_select_queue(struct net_device *dev, struct sk_buff *skb,
 		       void *accel_priv, select_queue_fallback_t fallback);
@@ -646,6 +652,9 @@ int mlx5e_close_locked(struct net_device *netdev);
 void mlx5e_build_default_indir_rqt(struct mlx5_core_dev *mdev,
 				   u32 *indirection_rqt, int len,
 				   int num_channels);
+void mlx5e_build_direct_tir_ctx(struct mlx5e_priv *priv, u32 *tirc,
+				u32 rqtn);
+
 int mlx5e_get_max_linkspeed(struct mlx5_core_dev *mdev, u32 *speed);
 
 static inline void mlx5e_tx_notify_hw(struct mlx5e_sq *sq,
