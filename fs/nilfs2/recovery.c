@@ -13,11 +13,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
- * Written by Ryusuke Konishi <ryusuke@osrg.net>
+ * Written by Ryusuke Konishi.
  */
 
 #include <linux/buffer_head.h>
@@ -526,6 +522,7 @@ static int nilfs_recover_dsync_blocks(struct the_nilfs *nilfs,
 					0, &page, nilfs_get_block);
 		if (unlikely(err)) {
 			loff_t isize = inode->i_size;
+
 			if (pos + blocksize > isize)
 				nilfs_write_failed(inode->i_mapping,
 							pos + blocksize);

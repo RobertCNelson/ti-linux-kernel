@@ -13,11 +13,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
- * Written by Ryusuke Konishi <ryusuke@osrg.net>
+ * Written by Ryusuke Konishi.
  */
 /*
  *  linux/fs/ext2/super.c
@@ -173,12 +169,10 @@ struct inode *nilfs_alloc_inode(struct super_block *sb)
 static void nilfs_i_callback(struct rcu_head *head)
 {
 	struct inode *inode = container_of(head, struct inode, i_rcu);
-	struct nilfs_mdt_info *mdi = NILFS_MDT(inode);
 
-	if (mdi) {
-		kfree(mdi->mi_bgl); /* kfree(NULL) is safe */
-		kfree(mdi);
-	}
+	if (nilfs_is_metadata_file_inode(inode))
+		nilfs_mdt_destroy(inode);
+
 	kmem_cache_free(nilfs_inode_cachep, NILFS_I(inode));
 }
 
@@ -749,6 +743,7 @@ static int parse_options(char *options, struct super_block *sb, int is_remount)
 
 	while ((p = strsep(&options, ",")) != NULL) {
 		int token;
+
 		if (!*p)
 			continue;
 
@@ -1316,7 +1311,7 @@ nilfs_mount(struct file_system_type *fs_type, int flags,
 	}
 
 	if (!s->s_root) {
- 		s_new = true;
+		s_new = true;
 
 		/* New superblock instance created */
 		s->s_mode = mode;

@@ -13,11 +13,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
- * Written by Ryusuke Konishi <ryusuke@osrg.net>
+ * Written by Ryusuke Konishi.
  */
 
 #ifndef _NILFS_MDT_H
@@ -71,6 +67,11 @@ static inline struct nilfs_mdt_info *NILFS_MDT(const struct inode *inode)
 	return inode->i_private;
 }
 
+static inline int nilfs_is_metadata_file_inode(const struct inode *inode)
+{
+	return inode->i_private != NULL;
+}
+
 /* Default GFP flags using highmem */
 #define NILFS_MDT_GFP      (__GFP_RECLAIM | __GFP_IO | __GFP_HIGHMEM)
 
@@ -83,10 +84,12 @@ int nilfs_mdt_find_block(struct inode *inode, unsigned long start,
 			 struct buffer_head **out_bh);
 int nilfs_mdt_delete_block(struct inode *, unsigned long);
 int nilfs_mdt_forget_block(struct inode *, unsigned long);
-int nilfs_mdt_mark_block_dirty(struct inode *, unsigned long);
 int nilfs_mdt_fetch_dirty(struct inode *);
 
 int nilfs_mdt_init(struct inode *inode, gfp_t gfp_mask, size_t objsz);
+void nilfs_mdt_clear(struct inode *inode);
+void nilfs_mdt_destroy(struct inode *inode);
+
 void nilfs_mdt_set_entry_size(struct inode *, unsigned, unsigned);
 
 int nilfs_mdt_setup_shadow_map(struct inode *inode,

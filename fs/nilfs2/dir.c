@@ -13,11 +13,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
- * Modified for NILFS by Amagai Yoshiji <amagai@osrg.net>
+ * Modified for NILFS by Amagai Yoshiji.
  */
 /*
  *  linux/fs/ext2/dir.c
@@ -78,6 +74,7 @@ static unsigned nilfs_last_byte(struct inode *inode, unsigned long page_nr)
 static int nilfs_prepare_chunk(struct page *page, unsigned from, unsigned to)
 {
 	loff_t pos = page_offset(page) + from;
+
 	return __block_write_begin(page, pos, to - from, nilfs_get_block);
 }
 
@@ -340,6 +337,7 @@ nilfs_find_entry(struct inode *dir, const struct qstr *qstr,
 	n = start;
 	do {
 		char *kaddr;
+
 		page = nilfs_get_page(dir, n);
 		if (!IS_ERR(page)) {
 			kaddr = page_address(page);
