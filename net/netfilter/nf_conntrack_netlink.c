@@ -824,19 +824,22 @@ ctnetlink_dump_table(struct sk_buff *skb, struct netlink_callback *cb)
 	last = (struct nf_conn *)cb->args[1];
 
 	local_bh_disable();
-	for (; cb->args[0] < net->ct.htable_size; cb->args[0]++) {
+	for (; cb->args[0] < nf_conntrack_htable_size; cb->args[0]++) {
 restart:
 		lockp = &nf_conntrack_locks[cb->args[0] % CONNTRACK_LOCKS];
 		nf_conntrack_lock(lockp);
-		if (cb->args[0] >= net->ct.htable_size) {
+		if (cb->args[0] >= nf_conntrack_htable_size) {
 			spin_unlock(lockp);
 			goto out;
 		}
-		hlist_nulls_for_each_entry(h, n, &net->ct.hash[cb->args[0]],
-					 hnnode) {
+		hlist_nulls_for_each_entry(h, n, &nf_conntrack_hash[cb->args[0]],
+					   hnnode) {
 			if (NF_CT_DIRECTION(h) != IP_CT_DIR_ORIGINAL)
 				continue;
 			ct = nf_ct_tuplehash_to_ctrack(h);
+			if (!net_eq(net, nf_ct_net(ct)))
+				continue;
+
 			/* Dump entries of a given L3 protocol number.
 			 * If it is not specified, ie. l3proto == 0,
 			 * then dump everything. */
