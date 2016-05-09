@@ -1702,6 +1702,9 @@ int mlx5e_open_locked(struct net_device *netdev)
 	priv->netdev->rx_cpu_rmap = priv->mdev->rmap;
 #endif
 
+	if (netdev->features & NETIF_F_BYPASS_SNIFFER)
+		mlx5e_sniffer_start(priv);
+
 	queue_delayed_work(priv->wq, &priv->update_stats_work, 0);
 
 	return 0;
@@ -1736,6 +1739,9 @@ int mlx5e_close_locked(struct net_device *netdev)
 		return 0;
 
 	clear_bit(MLX5E_STATE_OPENED, &priv->state);
+
+	if (netdev->features & NETIF_F_BYPASS_SNIFFER)
+		mlx5e_sniffer_stop(priv);
 
 	mlx5e_timestamp_cleanup(priv);
 	netif_carrier_off(priv->netdev);
@@ -2325,6 +2331,22 @@ static int set_feature_arfs(struct net_device *netdev, bool enable)
 }
 #endif
 
+static int set_feature_bypass_sniffer(struct net_device *netdev, bool enable)
+{
+	struct mlx5e_priv *priv = netdev_priv(netdev);
+	int err;
+
+	if (!test_bit(MLX5E_STATE_OPENED, &priv->state))
+		return 0;
+
+	if (enable)
+		err = mlx5e_sniffer_start(priv);
+	else
+		err = mlx5e_sniffer_stop(priv);
+
+	return err;
+}
+
 static int mlx5e_handle_feature(struct net_device *netdev,
 				netdev_features_t wanted_features,
 				netdev_features_t feature,
@@ -2371,6 +2393,8 @@ static int mlx5e_set_features(struct net_device *netdev,
 	err |= mlx5e_handle_feature(netdev, features, NETIF_F_NTUPLE,
 				    set_feature_arfs);
 #endif
+	err |= mlx5e_handle_feature(netdev, features, NETIF_F_BYPASS_SNIFFER,
+				    set_feature_bypass_sniffer);
 
 	mutex_unlock(&priv->state_lock);
 
@@ -2911,6 +2935,10 @@ static void mlx5e_build_netdev(struct net_device *netdev)
 		netdev->hw_features |= NETIF_F_RXALL;
 
 	netdev->features          = netdev->hw_features;
+
+	/* Put it here because default is off */
+	netdev->hw_features      |= NETIF_F_BYPASS_SNIFFER;
+
 	if (!priv->params.lro_en)
 		netdev->features  &= ~NETIF_F_LRO;
 
