@@ -44,6 +44,7 @@
 #include <linux/mlx5/vport.h>
 #include <linux/mlx5/transobj.h>
 #include <linux/rhashtable.h>
+#include <linux/mlx5/fs.h>
 #include "wq.h"
 #include "mlx5_core.h"
 #include "en_stats.h"

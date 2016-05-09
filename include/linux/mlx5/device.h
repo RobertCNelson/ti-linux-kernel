@@ -754,6 +754,11 @@ static inline u64 get_cqe_ts(struct mlx5_cqe64 *cqe)
 	return (u64)lo | ((u64)hi << 32);
 }
 
+static inline __be32 mlx5_get_cqe_ft(struct mlx5_cqe64 *cqe)
+{
+	return cqe->sop_drop_qpn & cpu_to_be32(0xFFFFFF);
+}
+
 struct mpwrq_cqe_bc {
 	__be16	filler_consumed_strides;
 	__be16	byte_cnt;
