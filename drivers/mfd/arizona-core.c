@@ -36,63 +36,6 @@ static const char * const wm5102_core_supplies[] = {
 	"DBVDD1",
 };
 
-int arizona_clk32k_enable(struct arizona *arizona)
-{
-	int ret = 0;
-
-	mutex_lock(&arizona->clk_lock);
-
-	arizona->clk32k_ref++;
-
-	if (arizona->clk32k_ref == 1) {
-		switch (arizona->pdata.clk32k_src) {
-		case ARIZONA_32KZ_MCLK1:
-			ret = pm_runtime_get_sync(arizona->dev);
-			if (ret != 0)
-				goto out;
-			break;
-		}
-
-		ret = regmap_update_bits(arizona->regmap, ARIZONA_CLOCK_32K_1,
-					 ARIZONA_CLK_32K_ENA,
-					 ARIZONA_CLK_32K_ENA);
-	}
-
-out:
-	if (ret != 0)
-		arizona->clk32k_ref--;
-
-	mutex_unlock(&arizona->clk_lock);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(arizona_clk32k_enable);
-
-int arizona_clk32k_disable(struct arizona *arizona)
-{
-	mutex_lock(&arizona->clk_lock);
-
-	BUG_ON(arizona->clk32k_ref <= 0);
-
-	arizona->clk32k_ref--;
-
-	if (arizona->clk32k_ref == 0) {
-		regmap_update_bits(arizona->regmap, ARIZONA_CLOCK_32K_1,
-				   ARIZONA_CLK_32K_ENA, 0);
-
-		switch (arizona->pdata.clk32k_src) {
-		case ARIZONA_32KZ_MCLK1:
-			pm_runtime_put_sync(arizona->dev);
-			break;
-		}
-	}
-
-	mutex_unlock(&arizona->clk_lock);
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(arizona_clk32k_disable);
-
 static irqreturn_t arizona_clkgen_err(int irq, void *data)
 {
 	struct arizona *arizona = data;
@@ -895,6 +838,7 @@ static inline int arizona_of_get_core_pdata(struct arizona *arizona)
 
 static const struct mfd_cell early_devs[] = {
 	{ .name = "arizona-ldo1" },
+	{ .name = "arizona-clk" },
 };
 
 static const char * const wm5102_supplies[] = {
@@ -1008,7 +952,6 @@ int arizona_dev_init(struct arizona *arizona)
 	int n_subdevs, ret, i;
 
 	dev_set_drvdata(arizona->dev, arizona);
-	mutex_init(&arizona->clk_lock);
 
 	if (dev_get_platdata(arizona->dev))
 		memcpy(&arizona->pdata, dev_get_platdata(arizona->dev),
@@ -1333,28 +1276,6 @@ int arizona_dev_init(struct arizona *arizona)
 	}
 
 	/* Chip default */
-	if (!arizona->pdata.clk32k_src)
-		arizona->pdata.clk32k_src = ARIZONA_32KZ_MCLK2;
-
-	switch (arizona->pdata.clk32k_src) {
-	case ARIZONA_32KZ_MCLK1:
-	case ARIZONA_32KZ_MCLK2:
-		regmap_update_bits(arizona->regmap, ARIZONA_CLOCK_32K_1,
-				   ARIZONA_CLK_32K_SRC_MASK,
-				   arizona->pdata.clk32k_src - 1);
-		arizona_clk32k_enable(arizona);
-		break;
-	case ARIZONA_32KZ_NONE:
-		regmap_update_bits(arizona->regmap, ARIZONA_CLOCK_32K_1,
-				   ARIZONA_CLK_32K_SRC_MASK, 2);
-		break;
-	default:
-		dev_err(arizona->dev, "Invalid 32kHz clock source: %d\n",
-			arizona->pdata.clk32k_src);
-		ret = -EINVAL;
-		goto err_reset;
-	}
-
 	for (i = 0; i < ARIZONA_MAX_MICBIAS; i++) {
 		if (!arizona->pdata.micbias[i].mV &&
 		    !arizona->pdata.micbias[i].bypass)
@@ -1459,10 +1380,25 @@ int arizona_dev_init(struct arizona *arizona)
 	pm_runtime_set_active(arizona->dev);
 	pm_runtime_enable(arizona->dev);
 
+	arizona->clk32k = devm_clk_get(arizona->dev, "arizona-32k");
+	if (IS_ERR(arizona->clk32k)) {
+		ret = PTR_ERR(arizona->clk32k);
+		if (ret == -ENOENT)
+			ret = -EPROBE_DEFER;
+		dev_err(arizona->dev, "Failed to get 32k clock: %d\n", ret);
+		goto err_pm;
+	}
+
+	ret = clk_prepare_enable(arizona->clk32k);
+	if (ret < 0) {
+		dev_err(arizona->dev, "Failed to enable 32k clock: %d\n", ret);
+		goto err_pm;
+	}
+
 	/* Set up for interrupts */
 	ret = arizona_irq_init(arizona);
 	if (ret != 0)
-		goto err_reset;
+		goto err_clock;
 
 	pm_runtime_set_autosuspend_delay(arizona->dev, 100);
 	pm_runtime_use_autosuspend(arizona->dev);
@@ -1486,6 +1422,10 @@ int arizona_dev_init(struct arizona *arizona)
 
 err_irq:
 	arizona_irq_exit(arizona);
+err_clock:
+	clk_disable_unprepare(arizona->clk32k);
+err_pm:
+	pm_runtime_disable(arizona->dev);
 err_reset:
 	arizona_enable_reset(arizona);
 	regulator_disable(arizona->dcvdd);
@@ -1502,6 +1442,8 @@ EXPORT_SYMBOL_GPL(arizona_dev_init);
 
 int arizona_dev_exit(struct arizona *arizona)
 {
+	clk_disable_unprepare(arizona->clk32k);
+
 	pm_runtime_disable(arizona->dev);
 
 	regulator_disable(arizona->dcvdd);

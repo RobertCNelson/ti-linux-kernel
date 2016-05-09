@@ -13,6 +13,7 @@
 #ifndef _WM_ARIZONA_CORE_H
 #define _WM_ARIZONA_CORE_H
 
+#include <linux/clk.h>
 #include <linux/interrupt.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
@@ -135,8 +136,7 @@ struct arizona {
 	bool hpdet_clamp;
 	unsigned int hp_ena;
 
-	struct mutex clk_lock;
-	int clk32k_ref;
+	struct clk *clk32k;
 
 	bool ctrlif_error;
 
@@ -149,9 +149,6 @@ struct arizona {
 	uint8_t dac_comp_enabled;
 	struct mutex dac_comp_lock;
 };
-
-int arizona_clk32k_enable(struct arizona *arizona);
-int arizona_clk32k_disable(struct arizona *arizona);
 
 int arizona_request_irq(struct arizona *arizona, int irq, char *name,
 			irq_handler_t handler, void *data);
