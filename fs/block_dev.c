@@ -1798,6 +1798,7 @@ const struct file_operations def_blk_fops = {
 	.write_iter	= blkdev_write_iter,
 	.mmap		= blkdev_mmap,
 	.fsync		= blkdev_fsync,
+	.get_unmapped_area = dax_get_unmapped_area,
 	.unlocked_ioctl	= block_ioctl,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= compat_blkdev_ioctl,
