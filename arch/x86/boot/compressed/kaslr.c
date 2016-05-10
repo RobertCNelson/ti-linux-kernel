@@ -72,7 +72,7 @@ static unsigned long get_random_boot(void)
 	return hash;
 }
 
-static unsigned long get_random_long(void)
+static unsigned long get_random_long(const char *purpose)
 {
 #ifdef CONFIG_X86_64
 	const unsigned long mix_const = 0x5d6008cbf3848dd3UL;
@@ -82,7 +82,8 @@ static unsigned long get_random_long(void)
 	unsigned long raw, random = get_random_boot();
 	bool use_i8254 = true;
 
-	debug_putstr("KASLR using");
+	debug_putstr(purpose);
+	debug_putstr(" KASLR using");
 
 	if (has_cpuflag(X86_FEATURE_RDRAND)) {
 		debug_putstr(" RDRAND");
@@ -163,7 +164,7 @@ static bool mem_overlaps(struct mem_vector *one, struct mem_vector *two)
  * memory ranges lead to really hard to debug boot failures.
  *
  * The initrd, cmdline, and boot_params are trivial to identify for
- * avoiding. The are MEM_AVOID_INITRD, MEM_AVOID_CMDLINE, and
+ * avoiding. They are MEM_AVOID_INITRD, MEM_AVOID_CMDLINE, and
  * MEM_AVOID_BOOTPARAMS respectively below.
  *
  * What is not obvious how to avoid is the range of memory that is used
@@ -279,15 +280,24 @@ static void mem_avoid_init(unsigned long input, unsigned long input_size,
 #endif
 }
 
-/* Does this memory vector overlap a known avoided area? */
-static bool mem_avoid_overlap(struct mem_vector *img)
+/*
+ * Does this memory vector overlap a known avoided area? If so, record the
+ * overlap region with the lowest address.
+ */
+static bool mem_avoid_overlap(struct mem_vector *img,
+			      struct mem_vector *overlap)
 {
 	int i;
 	struct setup_data *ptr;
+	unsigned long earliest = img->start + img->size;
+	bool is_overlapping = false;
 
 	for (i = 0; i < MEM_AVOID_MAX; i++) {
-		if (mem_overlaps(img, &mem_avoid[i]))
-			return true;
+		if (mem_overlaps(img, &mem_avoid[i]) &&
+		    mem_avoid[i].start < earliest) {
+			*overlap = mem_avoid[i];
+			is_overlapping = true;
+		}
 	}
 
 	/* Avoid all entries in the setup_data linked list. */
@@ -298,17 +308,48 @@ static bool mem_avoid_overlap(struct mem_vector *img)
 		avoid.start = (unsigned long)ptr;
 		avoid.size = sizeof(*ptr) + ptr->len;
 
-		if (mem_overlaps(img, &avoid))
-			return true;
+		if (mem_overlaps(img, &avoid) && (avoid.start < earliest)) {
+			*overlap = avoid;
+			is_overlapping = true;
+		}
 
 		ptr = (struct setup_data *)(unsigned long)ptr->next;
 	}
 
-	return false;
+	return is_overlapping;
 }
 
 static unsigned long slots[KERNEL_IMAGE_SIZE / CONFIG_PHYSICAL_ALIGN];
+
+struct slot_area {
+	unsigned long addr;
+	int num;
+};
+
+#define MAX_SLOT_AREA 100
+
+static struct slot_area slot_areas[MAX_SLOT_AREA];
+
 static unsigned long slot_max;
+
+static unsigned long slot_area_index;
+
+static void store_slot_info(struct mem_vector *region, unsigned long image_size)
+{
+	struct slot_area slot_area;
+
+	if (slot_area_index == MAX_SLOT_AREA)
+		return;
+
+	slot_area.addr = region->start;
+	slot_area.num = (region->size - image_size) /
+			CONFIG_PHYSICAL_ALIGN + 1;
+
+	if (slot_area.num > 0) {
+		slot_areas[slot_area_index++] = slot_area;
+		slot_max += slot_area.num;
+	}
+}
 
 static void slots_append(unsigned long addr)
 {
@@ -325,14 +366,14 @@ static unsigned long slots_fetch_random(void)
 	if (slot_max == 0)
 		return 0;
 
-	return slots[get_random_long() % slot_max];
+	return slots[get_random_long("Physical") % slot_max];
 }
 
 static void process_e820_entry(struct e820entry *entry,
 			       unsigned long minimum,
 			       unsigned long image_size)
 {
-	struct mem_vector region, img;
+	struct mem_vector region, img, overlap;
 
 	/* Skip non-RAM entries. */
 	if (entry->type != E820_RAM)
@@ -371,14 +412,14 @@ static void process_e820_entry(struct e820entry *entry,
 	for (img.start = region.start, img.size = image_size ;
 	     mem_contains(&region, &img) ;
 	     img.start += CONFIG_PHYSICAL_ALIGN) {
-		if (mem_avoid_overlap(&img))
+		if (mem_avoid_overlap(&img, &overlap))
 			continue;
 		slots_append(img.start);
 	}
 }
 
-static unsigned long find_random_addr(unsigned long minimum,
-				      unsigned long size)
+static unsigned long find_random_phys_addr(unsigned long minimum,
+					   unsigned long image_size)
 {
 	int i;
 	unsigned long addr;
@@ -388,10 +429,34 @@ static unsigned long find_random_addr(unsigned long minimum,
 
 	/* Verify potential e820 positions, appending to slots list. */
 	for (i = 0; i < boot_params->e820_entries; i++) {
-		process_e820_entry(&boot_params->e820_map[i], minimum, size);
+		process_e820_entry(&boot_params->e820_map[i], minimum,
+				   image_size);
 	}
 
 	return slots_fetch_random();
+}
+
+static unsigned long find_random_virt_addr(unsigned long minimum,
+					   unsigned long image_size)
+{
+	unsigned long slots, random_addr;
+
+	/* Make sure minimum is aligned. */
+	minimum = ALIGN(minimum, CONFIG_PHYSICAL_ALIGN);
+	/* Align image_size for easy slot calculations. */
+	image_size = ALIGN(image_size, CONFIG_PHYSICAL_ALIGN);
+
+	/*
+	 * There are how many CONFIG_PHYSICAL_ALIGN-sized slots
+	 * that can hold image_size within the range of minimum to
+	 * KERNEL_IMAGE_SIZE?
+	 */
+	slots = (KERNEL_IMAGE_SIZE - minimum - image_size) /
+		 CONFIG_PHYSICAL_ALIGN + 1;
+
+	random_addr = get_random_long("Virtual") % slots;
+
+	return random_addr * CONFIG_PHYSICAL_ALIGN + minimum;
 }
 
 /*
@@ -424,7 +489,7 @@ unsigned char *choose_random_location(unsigned long input,
 	mem_avoid_init(input, input_size, output);
 
 	/* Walk e820 and find a random address. */
-	random_addr = find_random_addr(output, output_size);
+	random_addr = find_random_phys_addr(output, output_size);
 	if (!random_addr) {
 		warn("KASLR disabled: could not find suitable E820 region!");
 		goto out;
@@ -437,6 +502,8 @@ unsigned char *choose_random_location(unsigned long input,
 	choice = random_addr;
 
 	add_identity_map(choice, output_size);
+
+	/* This actually loads the identity pagetable on x86_64. */
 	finalize_identity_maps();
 out:
 	return (unsigned char *)choice;
