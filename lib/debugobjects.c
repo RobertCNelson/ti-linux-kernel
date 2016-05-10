@@ -431,12 +431,14 @@ int debug_object_activate(void *addr, struct debug_obj_descr *descr)
 
 	raw_spin_unlock_irqrestore(&db->lock, flags);
 	/*
-	 * This happens when a static object is activated. We
-	 * let the type specific code decide whether this is
-	 * true or not.
+	 * We are here when a static object is activated. We
+	 * let the type specific code confirm whether this is
+	 * true or not. if true, we just make sure that the
+	 * static object is tracked in the object tracker. If
+	 * not, this must be a bug, so we try to fix it up.
 	 */
 	if (descr->is_static_object && descr->is_static_object(addr)) {
-		/* Just make sure that it is tracked in the object tracker */
+		/* track this static object */
 		debug_object_init(addr, descr);
 		debug_object_activate(addr, descr);
 	} else {
@@ -607,11 +609,12 @@ void debug_object_assert_init(void *addr, struct debug_obj_descr *descr)
 
 		raw_spin_unlock_irqrestore(&db->lock, flags);
 		/*
-		 * Maybe the object is static. Let the type specific
-		 * code decide what to do.
+		 * Maybe the object is static, and we let the type specific
+		 * code confirm. Track this static object if true, else invoke
+		 * fixup.
 		 */
 		if (descr->is_static_object && descr->is_static_object(addr)) {
-			/* Make sure that it is tracked in the object tracker */
+			/* Track this static object */
 			debug_object_init(addr, descr);
 		} else {
 			debug_print_object(&o, "assert_init");
