@@ -106,7 +106,7 @@ static int __uuid_to_bin(const char *uuid, __u8 b[16], const u8 ei[16])
 	static const u8 si[16] = {0,2,4,6,9,11,14,16,19,21,24,26,28,30,32,34};
 	unsigned int i;
 
-	if (uuid_is_valid(uuid))
+	if (!uuid_is_valid(uuid))
 		return -EINVAL;
 
 	for (i = 0; i < 16; i++) {
