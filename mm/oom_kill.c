@@ -540,6 +540,7 @@ static void oom_reap_task(struct task_struct *tsk)
 	 * for the oom victim right now because it cannot release its memory
 	 * itself nor by the oom reaper.
 	 */
+	tsk->oom_reaper_list = NULL;
 	exit_oom_victim(tsk);
 
 	/* Drop a reference taken by wake_oom_reaper */
