@@ -858,8 +858,14 @@ static int init_cache_node(struct kmem_cache *cachep, int node, gfp_t gfp)
 	 * node has not already allocated this
 	 */
 	n = get_node(cachep, node);
-	if (n)
+	if (n) {
+		spin_lock_irq(&n->list_lock);
+		n->free_limit = (1 + nr_cpus_node(node)) * cachep->batchcount +
+				cachep->num;
+		spin_unlock_irq(&n->list_lock);
+
 		return 0;
+	}
 
 	n = kmalloc_node(sizeof(struct kmem_cache_node), gfp, node);
 	if (!n)
