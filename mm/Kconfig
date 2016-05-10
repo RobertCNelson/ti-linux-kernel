@@ -438,6 +438,38 @@ choice
 	  benefit.
 endchoice
 
+choice
+	prompt "Overcommit Mode"
+	default OVERCOMMIT_GUESS
+	depends on EXPERT
+	help
+	  Selects the initial value for Overcommit mode.
+
+	  NOTE: The overcommit mode can be changed dynamically through sysctl.
+
+	config OVERCOMMIT_GUESS
+		bool "Guess"
+	help
+	  Selecting this option forces the initial value of overcommit mode to
+	  "Guess" overcommits. This is the default value.
+	  See Documentation/vm/overcommit-accounting for more information.
+
+	config OVERCOMMIT_ALWAYS
+		bool "Always"
+	help
+	  Selecting this option forces the initial value of overcommit mode to
+	  "Always" overcommit.
+	  See Documentation/vm/overcommit-accounting for more information.
+
+	config OVERCOMMIT_NEVER
+		bool "Never"
+	help
+	  Selecting this option forces the initial value of overcommit mode to
+	  "Never" overcommit.
+	  See Documentation/vm/overcommit-accounting for more information.
+
+endchoice
+
 #
 # UP and nommu archs use km based percpu allocator
 #
