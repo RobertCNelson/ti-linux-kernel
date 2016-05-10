@@ -307,9 +307,8 @@ void exit_thread(struct task_struct *tsk)
 	 * which it would get safely nulled.
 	 */
 #ifdef CONFIG_SH_FPU
-	if (last_task_used_math == tsk) {
+	if (last_task_used_math == tsk)
 		last_task_used_math = NULL;
-	}
 #endif
 }
 
