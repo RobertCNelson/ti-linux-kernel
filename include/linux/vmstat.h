@@ -53,6 +53,8 @@ static inline void count_vm_events(enum vm_event_item item, long delta)
 
 extern void all_vm_events(unsigned long *);
 
+extern unsigned long sum_vm_event(enum vm_event_item item);
+
 extern void vm_events_fold_cpu(int cpu);
 
 #else
@@ -72,6 +74,10 @@ static inline void __count_vm_events(enum vm_event_item item, long delta)
 }
 static inline void all_vm_events(unsigned long *ret)
 {
+}
+static inline unsigned long sum_vm_event(enum vm_event_item item)
+{
+	return 0;
 }
 static inline void vm_events_fold_cpu(int cpu)
 {
@@ -163,12 +169,10 @@ static inline unsigned long zone_page_state_snapshot(struct zone *zone,
 #ifdef CONFIG_NUMA
 
 extern unsigned long node_page_state(int node, enum zone_stat_item item);
-extern void zone_statistics(struct zone *, struct zone *, gfp_t gfp);
 
 #else
 
 #define node_page_state(node, item) global_page_state(item)
-#define zone_statistics(_zl, _z, gfp) do { } while (0)
 
 #endif /* CONFIG_NUMA */
 
@@ -192,6 +196,10 @@ extern void __dec_zone_state(struct zone *, enum zone_stat_item);
 void quiet_vmstat(void);
 void cpu_vm_stats_fold(int cpu);
 void refresh_zone_stat_thresholds(void);
+
+struct ctl_table;
+int vmstat_refresh(struct ctl_table *, int write,
+		   void __user *buffer, size_t *lenp, loff_t *ppos);
 
 void drain_zonestat(struct zone *zone, struct per_cpu_pageset *);
 

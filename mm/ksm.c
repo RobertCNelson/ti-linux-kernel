@@ -1640,6 +1640,7 @@ next_mm:
 	 * because there were no VM_MERGEABLE vmas with such addresses.
 	 */
 	remove_trailing_rmap_items(slot, ksm_scan.rmap_list);
+	up_read(&mm->mmap_sem);
 
 	spin_lock(&ksm_mmlist_lock);
 	ksm_scan.mm_slot = list_entry(slot->mm_list.next,
@@ -1656,16 +1657,12 @@ next_mm:
 		 */
 		hash_del(&slot->link);
 		list_del(&slot->mm_list);
-		spin_unlock(&ksm_mmlist_lock);
 
 		free_mm_slot(slot);
 		clear_bit(MMF_VM_MERGEABLE, &mm->flags);
-		up_read(&mm->mmap_sem);
 		mmdrop(mm);
-	} else {
-		spin_unlock(&ksm_mmlist_lock);
-		up_read(&mm->mmap_sem);
 	}
+	spin_unlock(&ksm_mmlist_lock);
 
 	/* Repeat until we've completed scanning the whole list */
 	slot = ksm_scan.mm_slot;
