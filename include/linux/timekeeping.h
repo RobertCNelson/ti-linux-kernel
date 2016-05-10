@@ -233,6 +233,7 @@ static inline u64 ktime_get_raw_ns(void)
 
 extern u64 ktime_get_mono_fast_ns(void);
 extern u64 ktime_get_raw_fast_ns(void);
+extern u64 ktime_get_log_ts(u64 *offset_real);
 
 /*
  * Timespec interfaces utilizing the ktime based ones
