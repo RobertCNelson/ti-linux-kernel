@@ -993,7 +993,7 @@ static __always_inline bool free_pages_prepare(struct page *page,
 
 	trace_mm_page_free(page, order);
 	kmemcheck_free_shadow(page, order);
-	kasan_free_pages(page, order);
+	kasan_poison_free_pages(page, order);
 
 	/*
 	 * Check tail pages before head page information is cleared to

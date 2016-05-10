@@ -327,7 +327,7 @@ void kasan_alloc_pages(struct page *page, unsigned int order)
 		kasan_unpoison_shadow(page_address(page), PAGE_SIZE << order);
 }
 
-void kasan_free_pages(struct page *page, unsigned int order)
+void kasan_poison_free_pages(struct page *page, unsigned int order)
 {
 	if (likely(!PageHighMem(page)))
 		kasan_poison_shadow(page_address(page),
@@ -387,6 +387,20 @@ void kasan_cache_create(struct kmem_cache *cache, size_t *size,
 			optimal_redzone(cache->object_size)));
 }
 #endif
+
+void kasan_cache_shrink(struct kmem_cache *cache)
+{
+#ifdef CONFIG_SLAB
+	quarantine_remove_cache(cache);
+#endif
+}
+
+void kasan_cache_destroy(struct kmem_cache *cache)
+{
+#ifdef CONFIG_SLAB
+	quarantine_remove_cache(cache);
+#endif
+}
 
 void kasan_poison_slab(struct page *page)
 {
@@ -482,7 +496,7 @@ void kasan_slab_alloc(struct kmem_cache *cache, void *object, gfp_t flags)
 	kasan_kmalloc(cache, object, cache->object_size, flags);
 }
 
-void kasan_slab_free(struct kmem_cache *cache, void *object)
+void kasan_poison_slab_free(struct kmem_cache *cache, void *object)
 {
 	unsigned long size = cache->object_size;
 	unsigned long rounded_up_size = round_up(size, KASAN_SHADOW_SCALE_SIZE);
@@ -491,18 +505,43 @@ void kasan_slab_free(struct kmem_cache *cache, void *object)
 	if (unlikely(cache->flags & SLAB_DESTROY_BY_RCU))
 		return;
 
+	kasan_poison_shadow(object, rounded_up_size, KASAN_KMALLOC_FREE);
+}
+
+bool kasan_slab_free(struct kmem_cache *cache, void *object)
+{
 #ifdef CONFIG_SLAB
-	if (cache->flags & SLAB_KASAN) {
-		struct kasan_free_meta *free_info =
-			get_free_info(cache, object);
+	/* RCU slabs could be legally used after free within the RCU period */
+	if (unlikely(cache->flags & SLAB_DESTROY_BY_RCU))
+		return false;
+
+	if (likely(cache->flags & SLAB_KASAN)) {
 		struct kasan_alloc_meta *alloc_info =
 			get_alloc_info(cache, object);
-		alloc_info->state = KASAN_STATE_FREE;
-		set_track(&free_info->track, GFP_NOWAIT);
-	}
-#endif
+		struct kasan_free_meta *free_info =
+			get_free_info(cache, object);
 
-	kasan_poison_shadow(object, rounded_up_size, KASAN_KMALLOC_FREE);
+		switch (alloc_info->state) {
+		case KASAN_STATE_ALLOC:
+			alloc_info->state = KASAN_STATE_QUARANTINE;
+			quarantine_put(free_info, cache);
+			set_track(&free_info->track, GFP_NOWAIT);
+			kasan_poison_slab_free(cache, object);
+			return true;
+		case KASAN_STATE_QUARANTINE:
+		case KASAN_STATE_FREE:
+			pr_err("Double free");
+			dump_stack();
+			break;
+		default:
+			break;
+		}
+	}
+	return false;
+#else
+	kasan_poison_slab_free(cache, object);
+	return false;
+#endif
 }
 
 void kasan_kmalloc(struct kmem_cache *cache, const void *object, size_t size,
@@ -510,6 +549,11 @@ void kasan_kmalloc(struct kmem_cache *cache, const void *object, size_t size,
 {
 	unsigned long redzone_start;
 	unsigned long redzone_end;
+
+#ifdef CONFIG_SLAB
+	if (flags & __GFP_RECLAIM)
+		quarantine_reduce();
+#endif
 
 	if (unlikely(object == NULL))
 		return;
@@ -541,6 +585,11 @@ void kasan_kmalloc_large(const void *ptr, size_t size, gfp_t flags)
 	unsigned long redzone_start;
 	unsigned long redzone_end;
 
+#ifdef CONFIG_SLAB
+	if (flags & __GFP_RECLAIM)
+		quarantine_reduce();
+#endif
+
 	if (unlikely(ptr == NULL))
 		return;
 
@@ -569,7 +618,7 @@ void kasan_krealloc(const void *object, size_t size, gfp_t flags)
 		kasan_kmalloc(page->slab_cache, object, size, flags);
 }
 
-void kasan_kfree(void *ptr)
+void kasan_poison_kfree(void *ptr)
 {
 	struct page *page;
 
@@ -582,7 +631,7 @@ void kasan_kfree(void *ptr)
 		kasan_slab_free(page->slab_cache, ptr);
 }
 
-void kasan_kfree_large(const void *ptr)
+void kasan_poison_kfree_large(const void *ptr)
 {
 	struct page *page = virt_to_page(ptr);
 
