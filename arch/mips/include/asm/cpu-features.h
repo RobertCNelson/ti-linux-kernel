@@ -187,7 +187,7 @@
 	  (defined(cpu_has_mips64r1) && cpu_has_mips64r1) || \
 	  (defined(cpu_has_mips64r2) && cpu_has_mips64r2) || \
 	  (defined(cpu_has_mips64r6) && cpu_has_mips64r6))
-#define CONFIG_CPU_NO_EFFICIENT_FFS 1
+#define CPU_NO_EFFICIENT_FFS 1
 #endif
 
 #ifndef cpu_has_mips_1
