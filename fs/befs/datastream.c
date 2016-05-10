@@ -127,7 +127,7 @@ befs_read_lsymlink(struct super_block * sb, befs_data_stream * ds, void *buff,
 {
 	befs_off_t bytes_read = 0;	/* bytes readed */
 	u16 plen;
-	struct buffer_head *bh = NULL;
+	struct buffer_head *bh;
 	befs_debug(sb, "---> %s length: %llu", __func__, len);
 
 	while (bytes_read < len) {
