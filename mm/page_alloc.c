@@ -6864,7 +6864,7 @@ bool has_unmovable_pages(struct zone *zone, struct page *page, int count,
 		 * We can't use page_count without pin a page
 		 * because another CPU can free compound page.
 		 * This check already skips compound tails of THP
-		 * because their page->_count is zero at all time.
+		 * because their page->_refcount is zero at all time.
 		 */
 		if (!page_ref_count(page)) {
 			if (PageBuddy(page))
