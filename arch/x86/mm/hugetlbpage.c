@@ -165,6 +165,7 @@ static __init int setup_hugepagesz(char *opt)
 	} else if (ps == PUD_SIZE && cpu_has_gbpages) {
 		hugetlb_add_hstate(PUD_SHIFT - PAGE_SHIFT);
 	} else {
+		hugetlb_bad_size();
 		printk(KERN_ERR "hugepagesz: Unsupported page size %lu M\n",
 			ps >> 20);
 		return 0;
