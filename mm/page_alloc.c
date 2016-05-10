@@ -1036,7 +1036,7 @@ static bool free_pages_prepare(struct page *page, unsigned int order)
 	 * Check tail pages before head page information is cleared to
 	 * avoid checking PageCompound for order-0 pages.
 	 */
-	if (order) {
+	if (unlikely(order)) {
 		bool compound = PageCompound(page);
 		int i;
 
