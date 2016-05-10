@@ -2376,6 +2376,33 @@ struct dentry *lookup_one_len_unlocked(const char *name,
 }
 EXPORT_SYMBOL(lookup_one_len_unlocked);
 
+
+/**
+ * lookup_hash - lookup single pathname component on already hashed name
+ * @name:	name and hash to lookup
+ * @base:	base directory to lookup from
+ *
+ * The name must have been verified and hashed (see lookup_one_len()).  Using
+ * this after just full_name_hash() is unsafe.
+ *
+ * This function also doesn't check for search permission on base directory.
+ *
+ * Use lookup_one_len() or lookup_one_len_unlocked() instead, unless you really
+ * know what you are doing.
+ *
+ */
+struct dentry *lookup_hash(const struct qstr *name, struct dentry *base)
+{
+	struct dentry *ret;
+
+	ret = lookup_dcache(name, base, 0);
+	if (!ret)
+		ret = lookup_slow(name, base, 0);
+
+	return ret;
+}
+EXPORT_SYMBOL(lookup_hash);
+
 int user_path_at_empty(int dfd, const char __user *name, unsigned flags,
 		 struct path *path, int *empty)
 {
@@ -4152,6 +4179,17 @@ SYSCALL_DEFINE2(link, const char __user *, oldname, const char __user *, newname
 	return sys_linkat(AT_FDCWD, oldname, AT_FDCWD, newname, 0);
 }
 
+static struct inode *backing_inode(struct dentry *dentry)
+{
+	struct inode *inode = d_inode(dentry);
+
+	if (inode && dentry->d_flags & DCACHE_OP_SELECT_INODE) {
+		inode = dentry->d_op->d_select_inode(dentry, 0);
+		WARN_ON(IS_ERR(inode));
+	}
+	return inode;
+}
+
 /**
  * vfs_rename - rename a filesystem object
  * @old_dir:	parent of source
@@ -4213,7 +4251,7 @@ int vfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	bool new_is_dir = false;
 	unsigned max_links = new_dir->i_sb->s_max_links;
 
-	if (source == target)
+	if (backing_inode(old_dentry) == backing_inode(new_dentry))
 		return 0;
 
 	error = may_delete(old_dir, old_dentry, is_dir);
