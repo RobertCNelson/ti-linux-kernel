@@ -1909,6 +1909,14 @@ scsih_slave_configure(struct scsi_device *sdev)
 			    (unsigned long long)raid_device->wwid,
 			    raid_device->num_pds, ds);
 
+		if (shost->max_sectors > MPT3SAS_RAID_MAX_SECTORS) {
+			blk_queue_max_hw_sectors(sdev->request_queue,
+						MPT3SAS_RAID_MAX_SECTORS);
+			sdev_printk(KERN_INFO, sdev,
+					"Set queue's max_sector to: %u\n",
+						MPT3SAS_RAID_MAX_SECTORS);
+		}
+
 		scsih_change_queue_depth(sdev, qdepth);
 
 		/* raid transport support */
@@ -2116,7 +2124,6 @@ _scsih_tm_done(struct MPT3SAS_ADAPTER *ioc, u16 smid, u8 msix_index, u32 reply)
 		return 1;
 	if (ioc->tm_cmds.smid != smid)
 		return 1;
-	mpt3sas_base_flush_reply_queues(ioc);
 	ioc->tm_cmds.status |= MPT3_CMD_COMPLETE;
 	mpi_reply =  mpt3sas_base_get_reply_virt_addr(ioc, reply);
 	if (mpi_reply) {
@@ -2300,6 +2307,9 @@ mpt3sas_scsih_issue_tm(struct MPT3SAS_ADAPTER *ioc, u16 handle, uint channel,
 			goto err_out;
 		}
 	}
+
+	/* sync IRQs in case those were busy during flush. */
+	mpt3sas_base_sync_reply_irqs(ioc);
 
 	if (ioc->tm_cmds.status & MPT3_CMD_REPLY_VALID) {
 		mpt3sas_trigger_master(ioc, MASTER_TRIGGER_TASK_MANAGMENT);
@@ -3959,7 +3969,7 @@ _scsih_setup_eedp(struct MPT3SAS_ADAPTER *ioc, struct scsi_cmnd *scmd,
 		    MPI2_SCSIIO_EEDPFLAGS_CHECK_REFTAG |
 		    MPI2_SCSIIO_EEDPFLAGS_CHECK_GUARD;
 		mpi_request->CDB.EEDP32.PrimaryReferenceTag =
-		    cpu_to_be32(scsi_get_lba(scmd));
+		    cpu_to_be32(scsi_prot_ref_tag(scmd));
 		break;
 
 	case SCSI_PROT_DIF_TYPE3:
@@ -7848,6 +7858,7 @@ mpt3sas_scsih_event_callback(struct MPT3SAS_ADAPTER *ioc, u8 msix_index,
 	Mpi2EventNotificationReply_t *mpi_reply;
 	u16 event;
 	u16 sz;
+	Mpi26EventDataActiveCableExcept_t *ActiveCableEventData;
 
 	/* events turned off due to host reset or driver unloading */
 	if (ioc->remove_host || ioc->pci_error_recovery)
@@ -7959,6 +7970,18 @@ mpt3sas_scsih_event_callback(struct MPT3SAS_ADAPTER *ioc, u8 msix_index,
 		_scsih_temp_threshold_events(ioc,
 			(Mpi2EventDataTemperature_t *)
 			mpi_reply->EventData);
+		break;
+	case MPI2_EVENT_ACTIVE_CABLE_EXCEPTION:
+		ActiveCableEventData =
+		    (Mpi26EventDataActiveCableExcept_t *) mpi_reply->EventData;
+		if (ActiveCableEventData->ReasonCode ==
+				MPI26_EVENT_ACTIVE_CABLE_INSUFFICIENT_POWER)
+			pr_info(MPT3SAS_FMT "Currently an active cable with ReceptacleID %d",
+			    ioc->name, ActiveCableEventData->ReceptacleID);
+			pr_info("cannot be powered and devices connected to this active cable");
+			pr_info("will not be seen. This active cable");
+			pr_info("requires %d mW of power",
+			    ActiveCableEventData->ActiveCablePowerRequirement);
 		break;
 
 	default: /* ignore the rest */
