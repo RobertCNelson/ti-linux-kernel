@@ -229,6 +229,8 @@
 
 /* MIPS32/64 EntryHI bit definitions */
 #define MIPS_ENTRYHI_EHINV	(_ULCAST_(1) << 10)
+#define MIPS_ENTRYHI_ASIDX	(_ULCAST_(0x3) << 8)
+#define MIPS_ENTRYHI_ASID	(_ULCAST_(0xff) << 0)
 
 /*
  * R4x00 interrupt enable / cause bits
@@ -390,6 +392,8 @@
 #define	 CAUSEF_IP7		(_ULCAST_(1)   << 15)
 #define CAUSEB_FDCI		21
 #define CAUSEF_FDCI		(_ULCAST_(1)   << 21)
+#define CAUSEB_WP		22
+#define CAUSEF_WP		(_ULCAST_(1)   << 22)
 #define CAUSEB_IV		23
 #define CAUSEF_IV		(_ULCAST_(1)   << 23)
 #define CAUSEB_PCI		26
@@ -623,6 +627,7 @@
 #define MIPS_CONF5_MRP		(_ULCAST_(1) << 3)
 #define MIPS_CONF5_LLB		(_ULCAST_(1) << 4)
 #define MIPS_CONF5_MVH		(_ULCAST_(1) << 5)
+#define MIPS_CONF5_VP		(_ULCAST_(1) << 7)
 #define MIPS_CONF5_FRE		(_ULCAST_(1) << 8)
 #define MIPS_CONF5_UFE		(_ULCAST_(1) << 9)
 #define MIPS_CONF5_MSAEN	(_ULCAST_(1) << 27)
@@ -633,6 +638,8 @@
 #define MIPS_CONF6_SYND		(_ULCAST_(1) << 13)
 /* proAptiv FTLB on/off bit */
 #define MIPS_CONF6_FTLBEN	(_ULCAST_(1) << 15)
+/* Loongson-3 FTLB on/off bit */
+#define MIPS_CONF6_FTLBDIS	(_ULCAST_(1) << 22)
 /* FTLB probability bits */
 #define MIPS_CONF6_FTLBP_SHIFT	(16)
 
@@ -644,6 +651,24 @@
 #define MIPS_CONF7_AR		(_ULCAST_(1) << 16)
 /* FTLB probability bits for R6 */
 #define MIPS_CONF7_FTLBP_SHIFT	(18)
+
+/* WatchLo* register definitions */
+#define MIPS_WATCHLO_IRW	(_ULCAST_(0x7) << 0)
+
+/* WatchHi* register definitions */
+#define MIPS_WATCHHI_M		(_ULCAST_(1) << 31)
+#define MIPS_WATCHHI_G		(_ULCAST_(1) << 30)
+#define MIPS_WATCHHI_WM		(_ULCAST_(0x3) << 28)
+#define MIPS_WATCHHI_WM_R_RVA	(_ULCAST_(0) << 28)
+#define MIPS_WATCHHI_WM_R_GPA	(_ULCAST_(1) << 28)
+#define MIPS_WATCHHI_WM_G_GVA	(_ULCAST_(2) << 28)
+#define MIPS_WATCHHI_EAS	(_ULCAST_(0x3) << 24)
+#define MIPS_WATCHHI_ASID	(_ULCAST_(0xff) << 16)
+#define MIPS_WATCHHI_MASK	(_ULCAST_(0x1ff) << 3)
+#define MIPS_WATCHHI_I		(_ULCAST_(1) << 2)
+#define MIPS_WATCHHI_R		(_ULCAST_(1) << 1)
+#define MIPS_WATCHHI_W		(_ULCAST_(1) << 0)
+#define MIPS_WATCHHI_IRW	(_ULCAST_(0x7) << 0)
 
 /* MAAR bit definitions */
 #define MIPS_MAAR_ADDR		((BIT_ULL(BITS_PER_LONG - 12) - 1) << 12)
@@ -756,6 +781,15 @@
 #define R10K_DIAG_E_GHIST	(_ULCAST_(1) << 26)
 /* Disable Branch Return Cache */
 #define R10K_DIAG_D_BRC		(_ULCAST_(1) << 22)
+
+/* Flush ITLB */
+#define LOONGSON_DIAG_ITLB	(_ULCAST_(1) << 2)
+/* Flush DTLB */
+#define LOONGSON_DIAG_DTLB	(_ULCAST_(1) << 3)
+/* Flush VTLB */
+#define LOONGSON_DIAG_VTLB	(_ULCAST_(1) << 12)
+/* Flush FTLB */
+#define LOONGSON_DIAG_FTLB	(_ULCAST_(1) << 13)
 
 /*
  * Coprocessor 1 (FPU) register names
@@ -1441,6 +1475,12 @@ do {									\
 
 #define read_c0_pwctl()		__read_32bit_c0_register($6, 6)
 #define write_c0_pwctl(val)	__write_32bit_c0_register($6, 6, val)
+
+#define read_c0_pgd()		__read_64bit_c0_register($9, 7)
+#define write_c0_pgd(val)	__write_64bit_c0_register($9, 7, val)
+
+#define read_c0_kpgd()		__read_64bit_c0_register($31, 7)
+#define write_c0_kpgd(val)	__write_64bit_c0_register($31, 7, val)
 
 /* Cavium OCTEON (cnMIPS) */
 #define read_c0_cvmcount()	__read_ulong_c0_register($9, 6)

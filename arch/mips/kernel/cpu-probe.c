@@ -539,6 +539,7 @@ static int set_ftlb_enable(struct cpuinfo_mips *c, int enable)
 	switch (c->cputype) {
 	case CPU_PROAPTIV:
 	case CPU_P5600:
+	case CPU_P6600:
 		/* proAptiv & related cores use Config6 to enable the FTLB */
 		config = read_c0_config6();
 		/* Clear the old probability value */
@@ -560,6 +561,19 @@ static int set_ftlb_enable(struct cpuinfo_mips *c, int enable)
 		config &= ~(3 << MIPS_CONF7_FTLBP_SHIFT);
 		write_c0_config7(config | (calculate_ftlb_probability(c)
 					   << MIPS_CONF7_FTLBP_SHIFT));
+		break;
+	case CPU_LOONGSON3:
+		/* Flush ITLB, DTLB, VTLB and FTLB */
+		write_c0_diag(LOONGSON_DIAG_ITLB | LOONGSON_DIAG_DTLB |
+			      LOONGSON_DIAG_VTLB | LOONGSON_DIAG_FTLB);
+		/* Loongson-3 cores use Config6 to enable the FTLB */
+		config = read_c0_config6();
+		if (enable)
+			/* Enable FTLB */
+			write_c0_config6(config & ~MIPS_CONF6_FTLBDIS);
+		else
+			/* Disable FTLB */
+			write_c0_config6(config | MIPS_CONF6_FTLBDIS);
 		break;
 	default:
 		return 1;
@@ -679,12 +693,17 @@ static inline unsigned int decode_config3(struct cpuinfo_mips *c)
 		c->options |= MIPS_CPU_RIXI;
 	if (config3 & MIPS_CONF3_DSP)
 		c->ases |= MIPS_ASE_DSP;
-	if (config3 & MIPS_CONF3_DSP2P)
+	if (config3 & MIPS_CONF3_DSP2P) {
 		c->ases |= MIPS_ASE_DSP2P;
+		if (cpu_has_mips_r6)
+			c->ases |= MIPS_ASE_DSP3;
+	}
 	if (config3 & MIPS_CONF3_VINT)
 		c->options |= MIPS_CPU_VINT;
 	if (config3 & MIPS_CONF3_VEIC)
 		c->options |= MIPS_CPU_VEIC;
+	if (config3 & MIPS_CONF3_LPA)
+		c->options |= MIPS_CPU_LPA;
 	if (config3 & MIPS_CONF3_MT)
 		c->ases |= MIPS_ASE_MIPSMT;
 	if (config3 & MIPS_CONF3_ULRI)
@@ -715,6 +734,7 @@ static inline unsigned int decode_config4(struct cpuinfo_mips *c)
 	unsigned int newcf4;
 	unsigned int mmuextdef;
 	unsigned int ftlb_page = MIPS_CONF4_FTLBPAGESIZE;
+	unsigned long asid_mask;
 
 	config4 = read_c0_config4();
 
@@ -775,6 +795,18 @@ static inline unsigned int decode_config4(struct cpuinfo_mips *c)
 
 	c->kscratch_mask = (config4 >> 16) & 0xff;
 
+	asid_mask = MIPS_ENTRYHI_ASID;
+	if (config4 & MIPS_CONF4_AE)
+		asid_mask |= MIPS_ENTRYHI_ASIDX;
+	set_cpu_asid_mask(c, asid_mask);
+
+	/*
+	 * Warn if the computed ASID mask doesn't match the mask the kernel
+	 * is built for. This may indicate either a serious problem or an
+	 * easy optimisation opportunity, but either way should be addressed.
+	 */
+	WARN_ON(asid_mask != cpu_asid_mask(c));
+
 	return config4 & MIPS_CONF_M;
 }
 
@@ -796,6 +828,8 @@ static inline unsigned int decode_config5(struct cpuinfo_mips *c)
 	if (config5 & MIPS_CONF5_MVH)
 		c->options |= MIPS_CPU_XPA;
 #endif
+	if (cpu_has_mips_r6 && (config5 & MIPS_CONF5_VP))
+		c->options |= MIPS_CPU_VP;
 
 	return config5 & MIPS_CONF_M;
 }
@@ -827,15 +861,6 @@ static void decode_configs(struct cpuinfo_mips *c)
 		ok = decode_config5(c);
 
 	mips_probe_watch_registers(c);
-
-	if (cpu_has_rixi) {
-		/* Enable the RIXI exceptions */
-		set_c0_pagegrain(PG_IEC);
-		back_to_back_c0_hazard();
-		/* Verify the IEC bit is set */
-		if (read_c0_pagegrain() & PG_IEC)
-			c->options |= MIPS_CPU_RIXIEX;
-	}
 
 #ifndef CONFIG_MIPS_CPS
 	if (cpu_has_mips_r2_r6) {
@@ -1172,7 +1197,7 @@ static inline void cpu_probe_legacy(struct cpuinfo_mips *c, unsigned int cpu)
 			set_isa(c, MIPS_CPU_ISA_III);
 			c->fpu_msk31 |= FPU_CSR_CONDX;
 			break;
-		case PRID_REV_LOONGSON3A:
+		case PRID_REV_LOONGSON3A_R1:
 			c->cputype = CPU_LOONGSON3;
 			__cpu_name[cpu] = "ICT Loongson-3";
 			set_elf_platform(cpu, "loongson3a");
@@ -1314,6 +1339,10 @@ static inline void cpu_probe_mips(struct cpuinfo_mips *c, unsigned int cpu)
 		c->cputype = CPU_P5600;
 		__cpu_name[cpu] = "MIPS P5600";
 		break;
+	case PRID_IMP_P6600:
+		c->cputype = CPU_P6600;
+		__cpu_name[cpu] = "MIPS P6600";
+		break;
 	case PRID_IMP_I6400:
 		c->cputype = CPU_I6400;
 		__cpu_name[cpu] = "MIPS I6400";
@@ -1321,6 +1350,10 @@ static inline void cpu_probe_mips(struct cpuinfo_mips *c, unsigned int cpu)
 	case PRID_IMP_M5150:
 		c->cputype = CPU_M5150;
 		__cpu_name[cpu] = "MIPS M5150";
+		break;
+	case PRID_IMP_M6250:
+		c->cputype = CPU_M6250;
+		__cpu_name[cpu] = "MIPS M6250";
 		break;
 	}
 
@@ -1435,6 +1468,7 @@ static inline void cpu_probe_broadcom(struct cpuinfo_mips *c, unsigned int cpu)
 			c->cputype = CPU_BMIPS4380;
 			__cpu_name[cpu] = "Broadcom BMIPS4380";
 			set_elf_platform(cpu, "bmips4380");
+			c->options |= MIPS_CPU_RIXI;
 		} else {
 			c->cputype = CPU_BMIPS4350;
 			__cpu_name[cpu] = "Broadcom BMIPS4350";
@@ -1445,9 +1479,12 @@ static inline void cpu_probe_broadcom(struct cpuinfo_mips *c, unsigned int cpu)
 	case PRID_IMP_BMIPS5000:
 	case PRID_IMP_BMIPS5200:
 		c->cputype = CPU_BMIPS5000;
-		__cpu_name[cpu] = "Broadcom BMIPS5000";
+		if ((c->processor_id & PRID_IMP_MASK) == PRID_IMP_BMIPS5200)
+			__cpu_name[cpu] = "Broadcom BMIPS5200";
+		else
+			__cpu_name[cpu] = "Broadcom BMIPS5000";
 		set_elf_platform(cpu, "bmips5000");
-		c->options |= MIPS_CPU_ULRI;
+		c->options |= MIPS_CPU_ULRI | MIPS_CPU_RIXI;
 		break;
 	}
 }
@@ -1481,6 +1518,8 @@ platform:
 		set_elf_platform(cpu, "octeon2");
 		break;
 	case PRID_IMP_CAVIUM_CN70XX:
+	case PRID_IMP_CAVIUM_CN73XX:
+	case PRID_IMP_CAVIUM_CNF75XX:
 	case PRID_IMP_CAVIUM_CN78XX:
 		c->cputype = CPU_CAVIUM_OCTEON3;
 		__cpu_name[cpu] = "Cavium Octeon III";
@@ -1489,6 +1528,29 @@ platform:
 	default:
 		printk(KERN_INFO "Unknown Octeon chip!\n");
 		c->cputype = CPU_UNKNOWN;
+		break;
+	}
+}
+
+static inline void cpu_probe_loongson(struct cpuinfo_mips *c, unsigned int cpu)
+{
+	switch (c->processor_id & PRID_IMP_MASK) {
+	case PRID_IMP_LOONGSON_64:  /* Loongson-2/3 */
+		switch (c->processor_id & PRID_REV_MASK) {
+		case PRID_REV_LOONGSON3A_R2:
+			c->cputype = CPU_LOONGSON3;
+			__cpu_name[cpu] = "ICT Loongson-3";
+			set_elf_platform(cpu, "loongson3a");
+			set_isa(c, MIPS_CPU_ISA_M64R2);
+			break;
+		}
+
+		decode_configs(c);
+		c->options |= MIPS_CPU_TLBINV | MIPS_CPU_LDPTE;
+		c->writecombine = _CACHE_UNCACHED_ACCELERATED;
+		break;
+	default:
+		panic("Unknown Loongson Processor ID!");
 		break;
 	}
 }
@@ -1640,6 +1702,9 @@ void cpu_probe(void)
 	case PRID_COMP_CAVIUM:
 		cpu_probe_cavium(c, cpu);
 		break;
+	case PRID_COMP_LOONGSON:
+		cpu_probe_loongson(c, cpu);
+		break;
 	case PRID_COMP_INGENIC_D0:
 	case PRID_COMP_INGENIC_D1:
 	case PRID_COMP_INGENIC_E1:
@@ -1659,6 +1724,15 @@ void cpu_probe(void)
 	 * manually setup otherwise it could trigger some nasty bugs.
 	 */
 	BUG_ON(current_cpu_type() != c->cputype);
+
+	if (cpu_has_rixi) {
+		/* Enable the RIXI exceptions */
+		set_c0_pagegrain(PG_IEC);
+		back_to_back_c0_hazard();
+		/* Verify the IEC bit is set */
+		if (read_c0_pagegrain() & PG_IEC)
+			c->options |= MIPS_CPU_RIXIEX;
+	}
 
 	if (mips_fpu_disabled)
 		c->options &= ~MIPS_CPU_FPU;
