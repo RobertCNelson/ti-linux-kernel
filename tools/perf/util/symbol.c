@@ -255,40 +255,6 @@ void symbol__delete(struct symbol *sym)
 	free(((void *)sym) - symbol_conf.priv_size);
 }
 
-size_t symbol__fprintf(struct symbol *sym, FILE *fp)
-{
-	return fprintf(fp, " %" PRIx64 "-%" PRIx64 " %c %s\n",
-		       sym->start, sym->end,
-		       sym->binding == STB_GLOBAL ? 'g' :
-		       sym->binding == STB_LOCAL  ? 'l' : 'w',
-		       sym->name);
-}
-
-size_t symbol__fprintf_symname_offs(const struct symbol *sym,
-				    const struct addr_location *al, FILE *fp)
-{
-	unsigned long offset;
-	size_t length;
-
-	if (sym && sym->name) {
-		length = fprintf(fp, "%s", sym->name);
-		if (al) {
-			if (al->addr < sym->end)
-				offset = al->addr - sym->start;
-			else
-				offset = al->addr - al->map->start - sym->start;
-			length += fprintf(fp, "+0x%lx", offset);
-		}
-		return length;
-	} else
-		return fprintf(fp, "[unknown]");
-}
-
-size_t symbol__fprintf_symname(const struct symbol *sym, FILE *fp)
-{
-	return symbol__fprintf_symname_offs(sym, NULL, fp);
-}
-
 void symbols__delete(struct rb_root *symbols)
 {
 	struct symbol *pos;
@@ -335,7 +301,7 @@ static struct symbol *symbols__find(struct rb_root *symbols, u64 ip)
 
 		if (ip < s->start)
 			n = n->rb_left;
-		else if (ip >= s->end)
+		else if (ip > s->end || (ip == s->end && ip != s->start))
 			n = n->rb_right;
 		else
 			return s;
@@ -363,11 +329,6 @@ static struct symbol *symbols__next(struct symbol *sym)
 
 	return NULL;
 }
-
-struct symbol_name_rb_node {
-	struct rb_node	rb_node;
-	struct symbol	sym;
-};
 
 static void symbols__insert_by_name(struct rb_root *symbols, struct symbol *sym)
 {
@@ -495,21 +456,6 @@ void dso__sort_by_name(struct dso *dso, enum map_type type)
 	dso__set_sorted_by_name(dso, type);
 	return symbols__sort_by_name(&dso->symbol_names[type],
 				     &dso->symbols[type]);
-}
-
-size_t dso__fprintf_symbols_by_name(struct dso *dso,
-				    enum map_type type, FILE *fp)
-{
-	size_t ret = 0;
-	struct rb_node *nd;
-	struct symbol_name_rb_node *pos;
-
-	for (nd = rb_first(&dso->symbol_names[type]); nd; nd = rb_next(nd)) {
-		pos = rb_entry(nd, struct symbol_name_rb_node, rb_node);
-		fprintf(fp, "%s\n", pos->sym.name);
-	}
-
-	return ret;
 }
 
 int modules__parse(const char *filename, void *arg,
@@ -1262,8 +1208,8 @@ static int kallsyms__delta(struct map *map, const char *filename, u64 *delta)
 	return 0;
 }
 
-int dso__load_kallsyms(struct dso *dso, const char *filename,
-		       struct map *map, symbol_filter_t filter)
+int __dso__load_kallsyms(struct dso *dso, const char *filename,
+			 struct map *map, bool no_kcore, symbol_filter_t filter)
 {
 	u64 delta = 0;
 
@@ -1284,10 +1230,16 @@ int dso__load_kallsyms(struct dso *dso, const char *filename,
 	else
 		dso->symtab_type = DSO_BINARY_TYPE__KALLSYMS;
 
-	if (!dso__load_kcore(dso, map, filename))
+	if (!no_kcore && !dso__load_kcore(dso, map, filename))
 		return dso__split_kallsyms_for_kcore(dso, map, filter);
 	else
 		return dso__split_kallsyms(dso, map, delta, filter);
+}
+
+int dso__load_kallsyms(struct dso *dso, const char *filename,
+		       struct map *map, symbol_filter_t filter)
+{
+	return __dso__load_kallsyms(dso, filename, map, false, filter);
 }
 
 static int dso__load_perf_map(struct dso *dso, struct map *map,
