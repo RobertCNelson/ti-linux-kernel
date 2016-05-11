@@ -55,6 +55,7 @@
 
 #include "console_cmdline.h"
 #include "braille.h"
+#include "internal.h"
 
 int console_printk[4] = {
 	CONSOLE_LOGLEVEL_DEFAULT,	/* console_loglevel */
@@ -244,7 +245,7 @@ __packed __aligned(4)
  * within the scheduler's rq lock. It must be released before calling
  * console_unlock() or anything else that might wake up a process.
  */
-static DEFINE_RAW_SPINLOCK(logbuf_lock);
+DEFINE_RAW_SPINLOCK(logbuf_lock);
 
 #ifdef CONFIG_PRINTK
 DECLARE_WAIT_QUEUE_HEAD(log_wait);
@@ -424,6 +425,8 @@ static u32 truncate_msg(u16 *text_len, u16 *trunc_msg_len,
 	return msg_used_size(*text_len + *trunc_msg_len, 0, pad_len);
 }
 
+static u64 printk_get_ts(void);
+
 /* insert record into the buffer, discard old ones, update heads */
 static int log_store(int facility, int level,
 		     enum log_flags flags, u64 ts_nsec,
@@ -472,7 +475,7 @@ static int log_store(int facility, int level,
 	if (ts_nsec > 0)
 		msg->ts_nsec = ts_nsec;
 	else
-		msg->ts_nsec = local_clock();
+		msg->ts_nsec = printk_get_ts();
 	memset(log_dict(msg) + dict_len, 0, pad_len);
 	msg->len = size;
 
@@ -1040,8 +1043,74 @@ static inline void boot_delay_msec(int level)
 }
 #endif
 
-static bool printk_time = IS_ENABLED(CONFIG_PRINTK_TIME);
-module_param_named(time, printk_time, bool, S_IRUGO | S_IWUSR);
+static int printk_time = CONFIG_PRINTK_TIME;
+
+/*
+ * Real clock & 32-bit systems:  Selecting the real clock printk timestamp may
+ * lead to unlikely situations where a timestamp is wrong because the real time
+ * offset is read without the protection of a sequence lock in the call to
+ * ktime_get_log_ts() in printk_get_ts() below.
+ */
+static int printk_time_param_set(const char *val,
+				 const struct kernel_param *kp)
+{
+	char *param = strstrip((char *)val);
+
+	if (strlen(param) != 1)
+		return -EINVAL;
+
+	switch (param[0]) {
+	/* 0/N/n = disabled */
+	case '0':
+	case 'N':
+	case 'n':
+		printk_time = 0;
+		break;
+	/* 1/Y/y = local clock */
+	case '1':
+	case 'Y':
+	case 'y':
+		printk_time = 1;
+		break;
+	/* 2 = monotonic clock */
+	case '2':
+		printk_time = 2;
+		break;
+	/* 3 = real clock */
+	case '3':
+		printk_time = 3;
+		break;
+	default:
+		pr_warn("printk: invalid timestamp value\n");
+		return -EINVAL;
+		break;
+	}
+
+	pr_info("printk: timestamp set to %d.\n", printk_time);
+	return 0;
+}
+
+static struct kernel_param_ops printk_time_param_ops = {
+	.set = printk_time_param_set,
+	.get = param_get_int,
+};
+
+module_param_cb(time, &printk_time_param_ops, &printk_time, S_IRUGO);
+
+static u64 printk_get_ts(void)
+{
+	u64 mono, offset_real;
+
+	if (printk_time <= 1)
+		return local_clock();
+
+	mono = ktime_get_log_ts(&offset_real);
+
+	if (printk_time == 2)
+		return mono;
+
+	return mono + offset_real;
+}
 
 static size_t print_time(u64 ts, char *buf)
 {
@@ -1561,7 +1630,7 @@ static bool cont_add(int facility, int level, const char *text, size_t len)
 		cont.facility = facility;
 		cont.level = level;
 		cont.owner = current;
-		cont.ts_nsec = local_clock();
+		cont.ts_nsec = printk_get_ts();
 		cont.flags = 0;
 		cont.cons = 0;
 		cont.flushed = false;
@@ -1616,6 +1685,7 @@ asmlinkage int vprintk_emit(int facility, int level,
 	unsigned long flags;
 	int this_cpu;
 	int printed_len = 0;
+	int nmi_message_lost;
 	bool in_sched = false;
 	/* cpu currently holding logbuf_lock in this function */
 	static unsigned int logbuf_cpu = UINT_MAX;
@@ -1664,6 +1734,15 @@ asmlinkage int vprintk_emit(int facility, int level,
 		printed_len += log_store(0, 2, LOG_PREFIX|LOG_NEWLINE, 0,
 					 NULL, 0, recursion_msg,
 					 strlen(recursion_msg));
+	}
+
+	nmi_message_lost = get_nmi_message_lost();
+	if (unlikely(nmi_message_lost)) {
+		text_len = scnprintf(textbuf, sizeof(textbuf),
+				     "BAD LUCK: lost %d message(s) from NMI context!",
+				     nmi_message_lost);
+		printed_len += log_store(0, 2, LOG_PREFIX|LOG_NEWLINE, 0,
+					 NULL, 0, textbuf, text_len);
 	}
 
 	/*
@@ -1807,14 +1886,6 @@ int vprintk_default(const char *fmt, va_list args)
 }
 EXPORT_SYMBOL_GPL(vprintk_default);
 
-/*
- * This allows printk to be diverted to another function per cpu.
- * This is useful for calling printk functions from within NMI
- * without worrying about race conditions that can lock up the
- * box.
- */
-DEFINE_PER_CPU(printk_func_t, printk_func) = vprintk_default;
-
 /**
  * printk - print a kernel message
  * @fmt: format string
@@ -1838,21 +1909,11 @@ DEFINE_PER_CPU(printk_func_t, printk_func) = vprintk_default;
  */
 asmlinkage __visible int printk(const char *fmt, ...)
 {
-	printk_func_t vprintk_func;
 	va_list args;
 	int r;
 
 	va_start(args, fmt);
-
-	/*
-	 * If a caller overrides the per_cpu printk_func, then it needs
-	 * to disable preemption when calling printk(). Otherwise
-	 * the printk_func should be set to the default. No need to
-	 * disable preemption here.
-	 */
-	vprintk_func = this_cpu_read(printk_func);
 	r = vprintk_func(fmt, args);
-
 	va_end(args);
 
 	return r;

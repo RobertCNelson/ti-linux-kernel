@@ -346,6 +346,29 @@ void *page_rmapping(struct page *page)
 	return __page_rmapping(page);
 }
 
+/*
+ * Return true if this page is mapped into pagetables.
+ * For compound page it returns true if any subpage of compound page is mapped.
+ */
+bool page_mapped(struct page *page)
+{
+	int i;
+
+	if (likely(!PageCompound(page)))
+		return atomic_read(&page->_mapcount) >= 0;
+	page = compound_head(page);
+	if (atomic_read(compound_mapcount_ptr(page)) >= 0)
+		return true;
+	if (PageHuge(page))
+		return false;
+	for (i = 0; i < hpage_nr_pages(page); i++) {
+		if (atomic_read(&page[i]._mapcount) >= 0)
+			return true;
+	}
+	return false;
+}
+EXPORT_SYMBOL(page_mapped);
+
 struct anon_vma *page_anon_vma(struct page *page)
 {
 	unsigned long mapping;
@@ -394,7 +417,13 @@ int __page_mapcount(struct page *page)
 }
 EXPORT_SYMBOL_GPL(__page_mapcount);
 
+#if defined(CONFIG_OVERCOMMIT_NEVER)
+int sysctl_overcommit_memory __read_mostly = OVERCOMMIT_NEVER;
+#elif defined(CONFIG_OVERCOMMIT_ALWAYS)
+int sysctl_overcommit_memory __read_mostly = OVERCOMMIT_ALWAYS;
+#else
 int sysctl_overcommit_memory __read_mostly = OVERCOMMIT_GUESS;
+#endif
 int sysctl_overcommit_ratio __read_mostly = 50;
 unsigned long sysctl_overcommit_kbytes __read_mostly;
 int sysctl_max_map_count __read_mostly = DEFAULT_MAX_MAP_COUNT;
