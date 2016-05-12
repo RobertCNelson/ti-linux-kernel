@@ -2418,7 +2418,7 @@ again:
 	}
 out:
 	if (ret) {
-		btrfs_std_error(root->fs_info, ret, NULL);
+		btrfs_handle_fs_error(root->fs_info, ret, NULL);
 		if (!list_empty(&reloc_roots))
 			free_reloc_roots(&reloc_roots);
 
@@ -2814,7 +2814,7 @@ static void mark_block_processed(struct reloc_control *rc,
 				 u64 bytenr, u32 blocksize)
 {
 	set_extent_bits(&rc->processed_blocks, bytenr, bytenr + blocksize - 1,
-			EXTENT_DIRTY, GFP_NOFS);
+			EXTENT_DIRTY);
 }
 
 static void __mark_block_processed(struct reloc_control *rc,
@@ -3182,7 +3182,7 @@ static int relocate_file_extent_cluster(struct inode *inode,
 		    page_start + offset == cluster->boundary[nr]) {
 			set_extent_bits(&BTRFS_I(inode)->io_tree,
 					page_start, page_end,
-					EXTENT_BOUNDARY, GFP_NOFS);
+					EXTENT_BOUNDARY);
 			nr++;
 		}
 
@@ -4059,8 +4059,7 @@ restart:
 	}
 
 	btrfs_release_path(path);
-	clear_extent_bits(&rc->processed_blocks, 0, (u64)-1, EXTENT_DIRTY,
-			  GFP_NOFS);
+	clear_extent_bits(&rc->processed_blocks, 0, (u64)-1, EXTENT_DIRTY);
 
 	if (trans) {
 		btrfs_end_transaction_throttle(trans, rc->extent_root);
