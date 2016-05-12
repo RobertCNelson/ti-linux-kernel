@@ -2002,22 +2002,8 @@ static void kvmclock_reset(struct kvm_vcpu *vcpu)
 	vcpu->arch.pv_time_enabled = false;
 }
 
-static void accumulate_steal_time(struct kvm_vcpu *vcpu)
-{
-	u64 delta;
-
-	if (!(vcpu->arch.st.msr_val & KVM_MSR_ENABLED))
-		return;
-
-	delta = current->sched_info.run_delay - vcpu->arch.st.last_steal;
-	vcpu->arch.st.last_steal = current->sched_info.run_delay;
-	vcpu->arch.st.accum_steal = delta;
-}
-
 static void record_steal_time(struct kvm_vcpu *vcpu)
 {
-	accumulate_steal_time(vcpu);
-
 	if (!(vcpu->arch.st.msr_val & KVM_MSR_ENABLED))
 		return;
 
@@ -2025,9 +2011,26 @@ static void record_steal_time(struct kvm_vcpu *vcpu)
 		&vcpu->arch.st.steal, sizeof(struct kvm_steal_time))))
 		return;
 
-	vcpu->arch.st.steal.steal += vcpu->arch.st.accum_steal;
-	vcpu->arch.st.steal.version += 2;
-	vcpu->arch.st.accum_steal = 0;
+	if (vcpu->arch.st.steal.version & 1)
+		vcpu->arch.st.steal.version += 1;  /* first time write, random junk */
+
+	vcpu->arch.st.steal.version += 1;
+
+	kvm_write_guest_cached(vcpu->kvm, &vcpu->arch.st.stime,
+		&vcpu->arch.st.steal, sizeof(struct kvm_steal_time));
+
+	smp_wmb();
+
+	vcpu->arch.st.steal.steal += current->sched_info.run_delay -
+		vcpu->arch.st.last_steal;
+	vcpu->arch.st.last_steal = current->sched_info.run_delay;
+
+	kvm_write_guest_cached(vcpu->kvm, &vcpu->arch.st.stime,
+		&vcpu->arch.st.steal, sizeof(struct kvm_steal_time));
+
+	smp_wmb();
+
+	vcpu->arch.st.steal.version += 1;
 
 	kvm_write_guest_cached(vcpu->kvm, &vcpu->arch.st.stime,
 		&vcpu->arch.st.steal, sizeof(struct kvm_steal_time));
@@ -8355,19 +8358,21 @@ bool kvm_arch_has_noncoherent_dma(struct kvm *kvm)
 }
 EXPORT_SYMBOL_GPL(kvm_arch_has_noncoherent_dma);
 
+bool kvm_arch_has_irq_bypass(void)
+{
+	return kvm_x86_ops->update_pi_irte != NULL;
+}
+
 int kvm_arch_irq_bypass_add_producer(struct irq_bypass_consumer *cons,
 				      struct irq_bypass_producer *prod)
 {
 	struct kvm_kernel_irqfd *irqfd =
 		container_of(cons, struct kvm_kernel_irqfd, consumer);
 
-	if (kvm_x86_ops->update_pi_irte) {
-		irqfd->producer = prod;
-		return kvm_x86_ops->update_pi_irte(irqfd->kvm,
-				prod->irq, irqfd->gsi, 1);
-	}
+	irqfd->producer = prod;
 
-	return -EINVAL;
+	return kvm_x86_ops->update_pi_irte(irqfd->kvm,
+					   prod->irq, irqfd->gsi, 1);
 }
 
 void kvm_arch_irq_bypass_del_producer(struct irq_bypass_consumer *cons,
@@ -8376,11 +8381,6 @@ void kvm_arch_irq_bypass_del_producer(struct irq_bypass_consumer *cons,
 	int ret;
 	struct kvm_kernel_irqfd *irqfd =
 		container_of(cons, struct kvm_kernel_irqfd, consumer);
-
-	if (!kvm_x86_ops->update_pi_irte) {
-		WARN_ON(irqfd->producer != NULL);
-		return;
-	}
 
 	WARN_ON(irqfd->producer != prod);
 	irqfd->producer = NULL;
