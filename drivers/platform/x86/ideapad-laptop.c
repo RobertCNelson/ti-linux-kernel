@@ -809,6 +809,7 @@ static void ideapad_acpi_notify(acpi_handle handle, u32 event, void *data)
 			case 6:
 				ideapad_input_report(priv, vpc_bit);
 				break;
+			case 10:
 			case 5:
 				ideapad_sync_touchpad_state(priv);
 				break;
