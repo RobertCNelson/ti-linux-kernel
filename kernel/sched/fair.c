@@ -3254,20 +3254,61 @@ static inline void check_schedstat_required(void)
 #endif
 }
 
+
+/*
+ * MIGRATION
+ *
+ *	dequeue
+ *	  update_curr()
+ *	    update_min_vruntime()
+ *	  vruntime -= min_vruntime
+ *
+ *	enqueue
+ *	  update_curr()
+ *	    update_min_vruntime()
+ *	  vruntime += min_vruntime
+ *
+ * this way the vruntime transition between RQs is done when both
+ * min_vruntime are up-to-date.
+ *
+ * WAKEUP (remote)
+ *
+ *	->migrate_task_rq_fair() (p->state == TASK_WAKING)
+ *	  vruntime -= min_vruntime
+ *
+ *	enqueue
+ *	  update_curr()
+ *	    update_min_vruntime()
+ *	  vruntime += min_vruntime
+ *
+ * this way we don't have the most up-to-date min_vruntime on the originating
+ * CPU and an up-to-date min_vruntime on the destination CPU.
+ */
+
 static void
 enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 {
-	/*
-	 * Update the normalized vruntime before updating min_vruntime
-	 * through calling update_curr().
-	 */
-	if (!(flags & ENQUEUE_WAKEUP) || (flags & ENQUEUE_WAKING))
-		se->vruntime += cfs_rq->min_vruntime;
+	bool renorm = !(flags & ENQUEUE_WAKEUP) || (flags & ENQUEUE_MIGRATED);
+	bool curr = cfs_rq->curr == se;
 
 	/*
-	 * Update run-time statistics of the 'current'.
+	 * If we're the current task, we must renormalise before calling
+	 * update_curr().
 	 */
+	if (renorm && curr)
+		se->vruntime += cfs_rq->min_vruntime;
+
 	update_curr(cfs_rq);
+
+	/*
+	 * Otherwise, renormalise after, such that we're placed at the current
+	 * moment in time, instead of some random moment in the past. Being
+	 * placed in the past could significantly boost this task to the
+	 * fairness detriment of existing tasks.
+	 */
+	if (renorm && !curr)
+		se->vruntime += cfs_rq->min_vruntime;
+
 	enqueue_entity_load_avg(cfs_rq, se);
 	account_entity_enqueue(cfs_rq, se);
 	update_cfs_shares(cfs_rq);
@@ -3283,7 +3324,7 @@ enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 		update_stats_enqueue(cfs_rq, se);
 		check_spread(cfs_rq, se);
 	}
-	if (se != cfs_rq->curr)
+	if (!curr)
 		__enqueue_entity(cfs_rq, se);
 	se->on_rq = 1;
 
@@ -4810,46 +4851,6 @@ static unsigned long cpu_avg_load_per_task(int cpu)
 	return 0;
 }
 
-static void record_wakee(struct task_struct *p)
-{
-	/*
-	 * Rough decay (wiping) for cost saving, don't worry
-	 * about the boundary, really active task won't care
-	 * about the loss.
-	 */
-	if (time_after(jiffies, current->wakee_flip_decay_ts + HZ)) {
-		current->wakee_flips >>= 1;
-		current->wakee_flip_decay_ts = jiffies;
-	}
-
-	if (current->last_wakee != p) {
-		current->last_wakee = p;
-		current->wakee_flips++;
-	}
-}
-
-static void task_waking_fair(struct task_struct *p)
-{
-	struct sched_entity *se = &p->se;
-	struct cfs_rq *cfs_rq = cfs_rq_of(se);
-	u64 min_vruntime;
-
-#ifndef CONFIG_64BIT
-	u64 min_vruntime_copy;
-
-	do {
-		min_vruntime_copy = cfs_rq->min_vruntime_copy;
-		smp_rmb();
-		min_vruntime = cfs_rq->min_vruntime;
-	} while (min_vruntime != min_vruntime_copy);
-#else
-	min_vruntime = cfs_rq->min_vruntime;
-#endif
-
-	se->vruntime -= min_vruntime;
-	record_wakee(p);
-}
-
 #ifdef CONFIG_FAIR_GROUP_SCHED
 /*
  * effective_load() calculates the load change as seen from the root_task_group
@@ -4965,17 +4966,39 @@ static long effective_load(struct task_group *tg, int cpu, long wl, long wg)
 
 #endif
 
+static void record_wakee(struct task_struct *p)
+{
+	/*
+	 * Only decay a single time; tasks that have less then 1 wakeup per
+	 * jiffy will not have built up many flips.
+	 */
+	if (time_after(jiffies, current->wakee_flip_decay_ts + HZ)) {
+		current->wakee_flips >>= 1;
+		current->wakee_flip_decay_ts = jiffies;
+	}
+
+	if (current->last_wakee != p) {
+		current->last_wakee = p;
+		current->wakee_flips++;
+	}
+}
+
 /*
  * Detect M:N waker/wakee relationships via a switching-frequency heuristic.
+ *
  * A waker of many should wake a different task than the one last awakened
- * at a frequency roughly N times higher than one of its wakees.  In order
- * to determine whether we should let the load spread vs consolodating to
- * shared cache, we look for a minimum 'flip' frequency of llc_size in one
- * partner, and a factor of lls_size higher frequency in the other.  With
- * both conditions met, we can be relatively sure that the relationship is
- * non-monogamous, with partner count exceeding socket size.  Waker/wakee
- * being client/server, worker/dispatcher, interrupt source or whatever is
- * irrelevant, spread criteria is apparent partner count exceeds socket size.
+ * at a frequency roughly N times higher than one of its wakees.
+ *
+ * In order to determine whether we should let the load spread vs consolidating
+ * to shared cache, we look for a minimum 'flip' frequency of llc_size in one
+ * partner, and a factor of lls_size higher frequency in the other.
+ *
+ * With both conditions met, we can be relatively sure that the relationship is
+ * non-monogamous, with partner count exceeding socket size.
+ *
+ * Waker/wakee being client/server, worker/dispatcher, interrupt source or
+ * whatever is irrelevant, spread criteria is apparent partner count exceeds
+ * socket size.
  */
 static int wake_wide(struct task_struct *p)
 {
@@ -5280,8 +5303,10 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	int want_affine = 0;
 	int sync = wake_flags & WF_SYNC;
 
-	if (sd_flag & SD_BALANCE_WAKE)
+	if (sd_flag & SD_BALANCE_WAKE) {
+		record_wakee(p);
 		want_affine = !wake_wide(p) && cpumask_test_cpu(cpu, tsk_cpus_allowed(p));
+	}
 
 	rcu_read_lock();
 	for_each_domain(cpu, tmp) {
@@ -5360,6 +5385,32 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
  */
 static void migrate_task_rq_fair(struct task_struct *p)
 {
+	/*
+	 * As blocked tasks retain absolute vruntime the migration needs to
+	 * deal with this by subtracting the old and adding the new
+	 * min_vruntime -- the latter is done by enqueue_entity() when placing
+	 * the task on the new runqueue.
+	 */
+	if (p->state == TASK_WAKING) {
+		struct sched_entity *se = &p->se;
+		struct cfs_rq *cfs_rq = cfs_rq_of(se);
+		u64 min_vruntime;
+
+#ifndef CONFIG_64BIT
+		u64 min_vruntime_copy;
+
+		do {
+			min_vruntime_copy = cfs_rq->min_vruntime_copy;
+			smp_rmb();
+			min_vruntime = cfs_rq->min_vruntime;
+		} while (min_vruntime != min_vruntime_copy);
+#else
+		min_vruntime = cfs_rq->min_vruntime;
+#endif
+
+		se->vruntime -= min_vruntime;
+	}
+
 	/*
 	 * We are supposed to update the task to "current" time, then its up to date
 	 * and ready to go to new CPU/cfs_rq. But we have difficulty in getting
@@ -7015,11 +7066,12 @@ static inline void calculate_imbalance(struct lb_env *env, struct sd_lb_stats *s
 	 */
 	if (busiest->group_type == group_overloaded &&
 	    local->group_type   == group_overloaded) {
-		load_above_capacity = busiest->sum_nr_running *
-				      scale_load_down(NICE_0_LOAD);
-		if (load_above_capacity > busiest->group_capacity)
+		load_above_capacity = busiest->sum_nr_running * SCHED_CAPACITY_SCALE;
+		if (load_above_capacity > busiest->group_capacity) {
 			load_above_capacity -= busiest->group_capacity;
-		else
+			load_above_capacity *= NICE_0_LOAD;
+			load_above_capacity /= busiest->group_capacity;
+		} else
 			load_above_capacity = ~0UL;
 	}
 
@@ -8630,7 +8682,6 @@ const struct sched_class fair_sched_class = {
 	.rq_online		= rq_online_fair,
 	.rq_offline		= rq_offline_fair,
 
-	.task_waking		= task_waking_fair,
 	.task_dead		= task_dead_fair,
 	.set_cpus_allowed	= set_cpus_allowed_common,
 #endif

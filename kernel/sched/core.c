@@ -533,7 +533,10 @@ int get_nohz_timer_target(void)
 	rcu_read_lock();
 	for_each_domain(cpu, sd) {
 		for_each_cpu(i, sched_domain_span(sd)) {
-			if (!idle_cpu(i) && is_housekeeping_cpu(cpu)) {
+			if (cpu == i)
+				continue;
+
+			if (!idle_cpu(i) && is_housekeeping_cpu(i)) {
 				cpu = i;
 				goto unlock;
 			}
@@ -1582,7 +1585,7 @@ int select_task_rq(struct task_struct *p, int cpu, int sd_flags, int wake_flags)
 {
 	lockdep_assert_held(&p->pi_lock);
 
-	if (p->nr_cpus_allowed > 1)
+	if (tsk_nr_cpus_allowed(p) > 1)
 		cpu = p->sched_class->select_task_rq(p, cpu, sd_flags, wake_flags);
 	else
 		cpu = cpumask_any(tsk_cpus_allowed(p));
@@ -1709,14 +1712,19 @@ static void
 ttwu_do_activate(struct rq *rq, struct task_struct *p, int wake_flags,
 		 struct pin_cookie cookie)
 {
+	int en_flags = ENQUEUE_WAKEUP;
+
 	lockdep_assert_held(&rq->lock);
 
 #ifdef CONFIG_SMP
 	if (p->sched_contributes_to_load)
 		rq->nr_uninterruptible--;
+
+	if (wake_flags & WF_MIGRATED)
+		en_flags |= ENQUEUE_MIGRATED;
 #endif
 
-	ttwu_activate(rq, p, ENQUEUE_WAKEUP | ENQUEUE_WAKING);
+	ttwu_activate(rq, p, en_flags);
 	ttwu_do_wakeup(rq, p, wake_flags, cookie);
 }
 
@@ -1762,7 +1770,11 @@ void sched_ttwu_pending(void)
 	while (llist) {
 		p = llist_entry(llist, struct task_struct, wake_entry);
 		llist = llist_next(llist);
-		ttwu_do_activate(rq, p, 0, cookie);
+		/*
+		 * See ttwu_queue(); we only call ttwu_queue_remote() when
+		 * its a x-cpu wakeup.
+		 */
+		ttwu_do_activate(rq, p, WF_MIGRATED, cookie);
 	}
 
 	lockdep_unpin_lock(&rq->lock, cookie);
@@ -1849,7 +1861,7 @@ bool cpus_share_cache(int this_cpu, int that_cpu)
 }
 #endif /* CONFIG_SMP */
 
-static void ttwu_queue(struct task_struct *p, int cpu)
+static void ttwu_queue(struct task_struct *p, int cpu, int wake_flags)
 {
 	struct rq *rq = cpu_rq(cpu);
 	struct pin_cookie cookie;
@@ -1864,7 +1876,7 @@ static void ttwu_queue(struct task_struct *p, int cpu)
 
 	raw_spin_lock(&rq->lock);
 	cookie = lockdep_pin_lock(&rq->lock);
-	ttwu_do_activate(rq, p, 0, cookie);
+	ttwu_do_activate(rq, p, wake_flags, cookie);
 	lockdep_unpin_lock(&rq->lock, cookie);
 	raw_spin_unlock(&rq->lock);
 }
@@ -2034,9 +2046,6 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	p->sched_contributes_to_load = !!task_contributes_to_load(p);
 	p->state = TASK_WAKING;
 
-	if (p->sched_class->task_waking)
-		p->sched_class->task_waking(p);
-
 	cpu = select_task_rq(p, p->wake_cpu, SD_BALANCE_WAKE, wake_flags);
 	if (task_cpu(p) != cpu) {
 		wake_flags |= WF_MIGRATED;
@@ -2044,7 +2053,7 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	}
 #endif /* CONFIG_SMP */
 
-	ttwu_queue(p, cpu);
+	ttwu_queue(p, cpu, wake_flags);
 stat:
 	if (schedstat_enabled())
 		ttwu_stat(p, cpu, wake_flags);
