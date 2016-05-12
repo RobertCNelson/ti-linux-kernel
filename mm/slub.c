@@ -329,8 +329,8 @@ static inline void set_page_slub_counters(struct page *page, unsigned long count
 	tmp.counters = counters_new;
 	/*
 	 * page->counters can cover frozen/inuse/objects as well
-	 * as page->_count.  If we assign to ->counters directly
-	 * we run the risk of losing updates to page->_count, so
+	 * as page->_refcount.  If we assign to ->counters directly
+	 * we run the risk of losing updates to page->_refcount, so
 	 * be careful and only assign to the fields we need.
 	 */
 	page->frozen  = tmp.frozen;
@@ -3635,8 +3635,9 @@ size_t ksize(const void *object)
 {
 	size_t size = __ksize(object);
 	/* We assume that ksize callers could use whole allocated area,
-	   so we need unpoison this area. */
-	kasan_krealloc(object, size, GFP_NOWAIT);
+	 * so we need to unpoison this area.
+	 */
+	kasan_unpoison_shadow(object, size);
 	return size;
 }
 EXPORT_SYMBOL(ksize);
@@ -3697,7 +3698,7 @@ int __kmem_cache_shrink(struct kmem_cache *s, bool deactivate)
 		 * s->cpu_partial is checked locklessly (see put_cpu_partial),
 		 * so we have to make sure the change is visible.
 		 */
-		kick_all_cpus_sync();
+		synchronize_sched();
 	}
 
 	flush_all(s);
