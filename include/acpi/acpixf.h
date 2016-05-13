@@ -196,9 +196,9 @@ ACPI_INIT_GLOBAL(u8, acpi_gbl_group_module_level_code, FALSE);
 
 /*
  * Optionally support module level code by parsing the entire table as
- * a term_list. Default is FALSE, do not execute entire table.
+ * a term_list. Default is TRUE, do execute entire table.
  */
-ACPI_INIT_GLOBAL(u8, acpi_gbl_parse_table_as_term_list, FALSE);
+ACPI_INIT_GLOBAL(u8, acpi_gbl_parse_table_as_term_list, TRUE);
 
 /*
  * Optionally use 32-bit FADT addresses if and when there is a conflict
