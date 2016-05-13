@@ -108,8 +108,10 @@ acpi_ex_add_table(u32 table_index,
 
 	/* Add the table to the namespace */
 
+	acpi_ex_exit_interpreter();
 	status = acpi_ns_load_table(table_index, parent_node);
 	if (ACPI_FAILURE(status)) {
+		acpi_ex_enter_interpreter();
 		acpi_ut_remove_reference(obj_desc);
 		*ddb_handle = NULL;
 		return_ACPI_STATUS(status);
@@ -117,8 +119,8 @@ acpi_ex_add_table(u32 table_index,
 
 	/* Execute any module-level code that was found in the table */
 
-	acpi_ex_exit_interpreter();
-	if (acpi_gbl_group_module_level_code) {
+	if (!acpi_gbl_parse_table_as_term_list
+	    && acpi_gbl_group_module_level_code) {
 		acpi_ns_exec_module_code_list();
 	}
 	acpi_ex_enter_interpreter();
