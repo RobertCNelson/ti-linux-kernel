@@ -526,9 +526,13 @@ static struct inode *f2fs_alloc_inode(struct super_block *sb)
 
 	init_once((void *) fi);
 
+	if (percpu_counter_init(&fi->dirty_pages, 0, GFP_NOFS)) {
+		kmem_cache_free(f2fs_inode_cachep, fi);
+		return NULL;
+	}
+
 	/* Initialize f2fs-specific inode info */
 	fi->vfs_inode.i_version = 1;
-	atomic_set(&fi->dirty_pages, 0);
 	fi->i_current_depth = 1;
 	fi->i_advise = 0;
 	init_rwsem(&fi->i_sem);
@@ -598,6 +602,8 @@ static void f2fs_dirty_inode(struct inode *inode, int flags)
 static void f2fs_i_callback(struct rcu_head *head)
 {
 	struct inode *inode = container_of(head, struct inode, i_rcu);
+
+	percpu_counter_destroy(&F2FS_I(inode)->dirty_pages);
 	kmem_cache_free(f2fs_inode_cachep, F2FS_I(inode));
 }
 
