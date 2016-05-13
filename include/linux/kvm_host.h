@@ -35,6 +35,10 @@
 
 #include <asm/kvm_host.h>
 
+#ifndef KVM_MAX_VCPU_ID
+#define KVM_MAX_VCPU_ID KVM_MAX_VCPUS
+#endif
+
 /*
  * The bit 16 ~ bit 31 of kvm_memory_region::flags are internally used
  * in kvm, other bits are visible for userspace which are defined in
@@ -447,12 +451,13 @@ static inline struct kvm_vcpu *kvm_get_vcpu(struct kvm *kvm, int i)
 
 static inline struct kvm_vcpu *kvm_get_vcpu_by_id(struct kvm *kvm, int id)
 {
-	struct kvm_vcpu *vcpu;
+	struct kvm_vcpu *vcpu = NULL;
 	int i;
 
-	if (id < 0 || id >= KVM_MAX_VCPUS)
+	if (id < 0)
 		return NULL;
-	vcpu = kvm_get_vcpu(kvm, id);
+	if (id < KVM_MAX_VCPUS)
+		vcpu = kvm_get_vcpu(kvm, id);
 	if (vcpu && vcpu->vcpu_id == id)
 		return vcpu;
 	kvm_for_each_vcpu(i, vcpu, kvm)
@@ -1091,6 +1096,11 @@ static inline bool kvm_vcpu_compatible(struct kvm_vcpu *vcpu) { return true; }
 
 static inline void kvm_make_request(int req, struct kvm_vcpu *vcpu)
 {
+	/*
+	 * Ensure the rest of the request is published to kvm_check_request's
+	 * caller.  Paired with the smp_mb__after_atomic in kvm_check_request.
+	 */
+	smp_wmb();
 	set_bit(req, &vcpu->requests);
 }
 
@@ -1098,6 +1108,12 @@ static inline bool kvm_check_request(int req, struct kvm_vcpu *vcpu)
 {
 	if (test_bit(req, &vcpu->requests)) {
 		clear_bit(req, &vcpu->requests);
+
+		/*
+		 * Ensure the rest of the request is visible to kvm_check_request's
+		 * caller.  Paired with the smp_wmb in kvm_make_request.
+		 */
+		smp_mb__after_atomic();
 		return true;
 	} else {
 		return false;
@@ -1169,6 +1185,7 @@ static inline void kvm_vcpu_set_dy_eligible(struct kvm_vcpu *vcpu, bool val)
 #endif /* CONFIG_HAVE_KVM_CPU_RELAX_INTERCEPT */
 
 #ifdef CONFIG_HAVE_KVM_IRQ_BYPASS
+bool kvm_arch_has_irq_bypass(void);
 int kvm_arch_irq_bypass_add_producer(struct irq_bypass_consumer *,
 			   struct irq_bypass_producer *);
 void kvm_arch_irq_bypass_del_producer(struct irq_bypass_consumer *,
