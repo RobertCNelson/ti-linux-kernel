@@ -22,9 +22,9 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  include/linux/irq_work.h |    1 +
  kernel/irq_work.c        |   47 ++++++++++++++++++++++++++++++++++-------------
  kernel/sched/rt.c        |    1 +
- kernel/time/tick-sched.c |    6 ++++++
+ kernel/time/tick-sched.c |    1 +
  kernel/time/timer.c      |    6 +++++-
- 5 files changed, 47 insertions(+), 14 deletions(-)
+ 5 files changed, 42 insertions(+), 14 deletions(-)
 
 --- a/include/linux/irq_work.h
 +++ b/include/linux/irq_work.h
@@ -143,7 +143,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
 --- a/kernel/sched/rt.c
 +++ b/kernel/sched/rt.c
-@@ -94,6 +94,7 @@ void init_rt_rq(struct rt_rq *rt_rq)
+@@ -102,6 +102,7 @@ void init_rt_rq(struct rt_rq *rt_rq)
  	rt_rq->push_cpu = nr_cpu_ids;
  	raw_spin_lock_init(&rt_rq->push_lock);
  	init_irq_work(&rt_rq->push_work, push_irq_work_func);
@@ -153,22 +153,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	/* We start is dequeued state, because no RT tasks are queued */
 --- a/kernel/time/tick-sched.c
 +++ b/kernel/time/tick-sched.c
-@@ -181,6 +181,11 @@ static bool can_stop_full_tick(void)
- 		return false;
- 	}
- 
-+	if (!arch_irq_work_has_interrupt()) {
-+		trace_tick_stop(0, "missing irq work interrupt\n");
-+		return false;
-+	}
-+
- 	/* sched_clock_tick() needs us? */
- #ifdef CONFIG_HAVE_UNSTABLE_SCHED_CLOCK
- 	/*
-@@ -209,6 +214,7 @@ static void nohz_full_kick_work_func(str
+@@ -217,6 +217,7 @@ static void nohz_full_kick_func(struct i
  
  static DEFINE_PER_CPU(struct irq_work, nohz_full_kick_work) = {
- 	.func = nohz_full_kick_work_func,
+ 	.func = nohz_full_kick_func,
 +	.flags = IRQ_WORK_HARD_IRQ,
  };
  

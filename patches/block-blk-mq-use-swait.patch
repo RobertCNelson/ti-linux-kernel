@@ -46,7 +46,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 --- a/block/blk-core.c
 +++ b/block/blk-core.c
 @@ -660,7 +660,7 @@ int blk_queue_enter(struct request_queue
- 		if (!gfpflags_allow_blocking(gfp))
+ 		if (nowait)
  			return -EBUSY;
  
 -		ret = wait_event_interruptible(q->mq_freeze_wq,
@@ -62,8 +62,8 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 +	swake_up_all(&q->mq_freeze_wq);
  }
  
- struct request_queue *blk_alloc_queue_node(gfp_t gfp_mask, int node_id)
-@@ -742,7 +742,7 @@ struct request_queue *blk_alloc_queue_no
+ static void blk_rq_timed_out_timer(unsigned long data)
+@@ -749,7 +749,7 @@ struct request_queue *blk_alloc_queue_no
  	q->bypass_depth = 1;
  	__set_bit(QUEUE_FLAG_BYPASS, &q->queue_flags);
  
@@ -103,7 +103,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  bool blk_mq_can_queue(struct blk_mq_hw_ctx *hctx)
 --- a/include/linux/blkdev.h
 +++ b/include/linux/blkdev.h
-@@ -456,7 +456,7 @@ struct request_queue {
+@@ -458,7 +458,7 @@ struct request_queue {
  	struct throtl_data *td;
  #endif
  	struct rcu_head		rcu_head;

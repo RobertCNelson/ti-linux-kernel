@@ -35,7 +35,7 @@ Cc: stable-rt@vger.kernel.org
 
 --- a/net/core/dev.c
 +++ b/net/core/dev.c
-@@ -7473,7 +7473,7 @@ static int dev_cpu_callback(struct notif
+@@ -7789,7 +7789,7 @@ static int dev_cpu_callback(struct notif
  		netif_rx_ni(skb);
  		input_queue_head_incr(oldsd);
  	}

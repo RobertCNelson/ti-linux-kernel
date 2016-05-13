@@ -131,7 +131,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	if (ACPI_FAILURE (status)) {
  		return_ACPI_STATUS (status);
  	}
-@@ -156,7 +156,7 @@ void acpi_ut_mutex_terminate(void)
+@@ -145,7 +145,7 @@ void acpi_ut_mutex_terminate(void)
  	/* Delete the spinlocks */
  
  	acpi_os_delete_lock(acpi_gbl_gpe_lock);

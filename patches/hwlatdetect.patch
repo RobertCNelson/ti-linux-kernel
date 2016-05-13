@@ -84,7 +84,7 @@ Signed-off-by: Carsten Emde <C.Emde@osadl.org>
 +consumed by reading from the "sample" (pipe) debugfs file interface.
 --- a/drivers/misc/Kconfig
 +++ b/drivers/misc/Kconfig
-@@ -121,6 +121,35 @@ config IBM_ASM
+@@ -122,6 +122,35 @@ config IBM_ASM
  	  for information on the specific driver level and support statement
  	  for your IBM server.
  

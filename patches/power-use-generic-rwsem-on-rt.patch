@@ -11,7 +11,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/arch/powerpc/Kconfig
 +++ b/arch/powerpc/Kconfig
-@@ -60,10 +60,11 @@ config LOCKDEP_SUPPORT
+@@ -57,10 +57,11 @@ config LOCKDEP_SUPPORT
  
  config RWSEM_GENERIC_SPINLOCK
  	bool

@@ -15,7 +15,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/arch/powerpc/Kconfig
 +++ b/arch/powerpc/Kconfig
-@@ -142,6 +142,7 @@ config PPC
+@@ -139,6 +139,7 @@ config PPC
  	select ARCH_HAS_TICK_BROADCAST if GENERIC_CLOCKEVENTS_BROADCAST
  	select GENERIC_STRNCPY_FROM_USER
  	select GENERIC_STRNLEN_USER
@@ -73,7 +73,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /* Don't move TLF_NAPPING without adjusting the code in entry_32.S */
 --- a/arch/powerpc/kernel/asm-offsets.c
 +++ b/arch/powerpc/kernel/asm-offsets.c
-@@ -160,6 +160,7 @@ int main(void)
+@@ -162,6 +162,7 @@ int main(void)
  	DEFINE(TI_FLAGS, offsetof(struct thread_info, flags));
  	DEFINE(TI_LOCAL_FLAGS, offsetof(struct thread_info, local_flags));
  	DEFINE(TI_PREEMPT, offsetof(struct thread_info, preempt_count));
@@ -133,16 +133,16 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	beq	restore_user
 --- a/arch/powerpc/kernel/entry_64.S
 +++ b/arch/powerpc/kernel/entry_64.S
-@@ -683,7 +683,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_DSCR)
- #else
- 	beq	restore
+@@ -644,7 +644,7 @@ END_MMU_FTR_SECTION_IFSET(MMU_FTR_1T_SEG
+ 	bl	restore_math
+ 	b	restore
  #endif
 -1:	andi.	r0,r4,_TIF_NEED_RESCHED
 +1:	andi.	r0,r4,_TIF_NEED_RESCHED_MASK
  	beq	2f
  	bl	restore_interrupts
  	SCHEDULE_USER
-@@ -745,10 +745,18 @@ END_FTR_SECTION_IFSET(CPU_FTR_DSCR)
+@@ -706,10 +706,18 @@ END_MMU_FTR_SECTION_IFSET(MMU_FTR_1T_SEG
  
  #ifdef CONFIG_PREEMPT
  	/* Check if we need to preempt */
@@ -162,7 +162,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	cmpwi	cr1,r8,0
  	ld	r0,SOFTE(r1)
  	cmpdi	r0,0
-@@ -765,7 +773,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_DSCR)
+@@ -726,7 +734,7 @@ END_MMU_FTR_SECTION_IFSET(MMU_FTR_1T_SEG
  	/* Re-test flags and eventually loop */
  	CURRENT_THREAD_INFO(r9, r1)
  	ld	r4,TI_FLAGS(r9)

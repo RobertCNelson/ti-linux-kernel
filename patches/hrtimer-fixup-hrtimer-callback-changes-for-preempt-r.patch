@@ -66,7 +66,7 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  	unsigned int			clock_was_set_seq;
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -438,6 +438,7 @@ static void init_rq_hrtick(struct rq *rq
+@@ -306,6 +306,7 @@ static void init_rq_hrtick(struct rq *rq
  
  	hrtimer_init(&rq->hrtick_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
  	rq->hrtick_timer.function = hrtick;
@@ -86,7 +86,7 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  
 --- a/kernel/time/hrtimer.c
 +++ b/kernel/time/hrtimer.c
-@@ -730,11 +730,8 @@ static inline int hrtimer_is_hres_enable
+@@ -724,11 +724,8 @@ static inline int hrtimer_is_hres_enable
  static inline void hrtimer_switch_to_hres(void) { }
  static inline void
  hrtimer_force_reprogram(struct hrtimer_cpu_base *base, int skip_equal) { }
@@ -100,7 +100,7 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  static inline void hrtimer_init_hres(struct hrtimer_cpu_base *base) { }
  static inline void retrigger_next_event(void *arg) { }
  
-@@ -883,7 +880,7 @@ void hrtimer_wait_for_timer(const struct
+@@ -877,7 +874,7 @@ void hrtimer_wait_for_timer(const struct
  {
  	struct hrtimer_clock_base *base = timer->base;
  
@@ -109,7 +109,7 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  		wait_event(base->cpu_base->wait,
  				!(hrtimer_callback_running(timer)));
  }
-@@ -933,6 +930,11 @@ static void __remove_hrtimer(struct hrti
+@@ -927,6 +924,11 @@ static void __remove_hrtimer(struct hrti
  	if (!(state & HRTIMER_STATE_ENQUEUED))
  		return;
  
@@ -121,7 +121,7 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  	if (!timerqueue_del(&base->active, &timer->node))
  		cpu_base->active_bases &= ~(1 << base->index);
  
-@@ -1173,6 +1175,7 @@ static void __hrtimer_init(struct hrtime
+@@ -1167,6 +1169,7 @@ static void __hrtimer_init(struct hrtime
  
  	base = hrtimer_clockid_to_base(clock_id);
  	timer->base = &cpu_base->clock_base[base];
@@ -129,7 +129,7 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  	timerqueue_init(&timer->node);
  
  #ifdef CONFIG_TIMER_STATS
-@@ -1213,6 +1216,7 @@ bool hrtimer_active(const struct hrtimer
+@@ -1207,6 +1210,7 @@ bool hrtimer_active(const struct hrtimer
  		seq = raw_read_seqcount_begin(&cpu_base->seq);
  
  		if (timer->state != HRTIMER_STATE_INACTIVE ||
@@ -137,7 +137,7 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  		    cpu_base->running == timer)
  			return true;
  
-@@ -1311,12 +1315,112 @@ static void __run_hrtimer(struct hrtimer
+@@ -1305,12 +1309,112 @@ static void __run_hrtimer(struct hrtimer
  	cpu_base->running = NULL;
  }
  
@@ -250,7 +250,7 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  
  	for (; active; base++, active >>= 1) {
  		struct timerqueue_node *node;
-@@ -1356,9 +1460,14 @@ static void __hrtimer_run_queues(struct
+@@ -1350,9 +1454,14 @@ static void __hrtimer_run_queues(struct
  			if (basenow.tv64 < hrtimer_get_softexpires_tv64(timer))
  				break;
  
@@ -266,7 +266,7 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  }
  
  #ifdef CONFIG_HIGH_RES_TIMERS
-@@ -1500,8 +1609,6 @@ void hrtimer_run_queues(void)
+@@ -1494,8 +1603,6 @@ void hrtimer_run_queues(void)
  	now = hrtimer_update_base(cpu_base);
  	__hrtimer_run_queues(cpu_base, now);
  	raw_spin_unlock(&cpu_base->lock);
@@ -275,7 +275,7 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  }
  
  /*
-@@ -1523,6 +1630,7 @@ static enum hrtimer_restart hrtimer_wake
+@@ -1517,6 +1624,7 @@ static enum hrtimer_restart hrtimer_wake
  void hrtimer_init_sleeper(struct hrtimer_sleeper *sl, struct task_struct *task)
  {
  	sl->timer.function = hrtimer_wakeup;
@@ -283,7 +283,7 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  	sl->task = task;
  }
  EXPORT_SYMBOL_GPL(hrtimer_init_sleeper);
-@@ -1657,6 +1765,7 @@ static void init_hrtimers_cpu(int cpu)
+@@ -1651,6 +1759,7 @@ static void init_hrtimers_cpu(int cpu)
  	for (i = 0; i < HRTIMER_MAX_CLOCK_BASES; i++) {
  		cpu_base->clock_base[i].cpu_base = cpu_base;
  		timerqueue_init_head(&cpu_base->clock_base[i].active);
@@ -291,7 +291,7 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  	}
  
  	cpu_base->cpu = cpu;
-@@ -1761,11 +1870,21 @@ static struct notifier_block hrtimers_nb
+@@ -1755,11 +1864,21 @@ static struct notifier_block hrtimers_nb
  	.notifier_call = hrtimer_cpu_notify,
  };
  
@@ -315,7 +315,7 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  /**
 --- a/kernel/time/tick-sched.c
 +++ b/kernel/time/tick-sched.c
-@@ -1105,6 +1105,7 @@ void tick_setup_sched_timer(void)
+@@ -1213,6 +1213,7 @@ void tick_setup_sched_timer(void)
  	 * Emulate tick processing via per-CPU hrtimers:
  	 */
  	hrtimer_init(&ts->sched_timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
@@ -325,7 +325,7 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  	/* Get the next period (per cpu) */
 --- a/kernel/watchdog.c
 +++ b/kernel/watchdog.c
-@@ -507,6 +507,7 @@ static void watchdog_enable(unsigned int
+@@ -523,6 +523,7 @@ static void watchdog_enable(unsigned int
  	/* kick off the timer for the hardlockup detector */
  	hrtimer_init(hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
  	hrtimer->function = watchdog_timer_fn;

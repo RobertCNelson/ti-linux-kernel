@@ -28,7 +28,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  # define del_timer_sync(t)		del_timer(t)
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -618,11 +618,14 @@ void resched_cpu(int cpu)
+@@ -490,11 +490,14 @@ void resched_cpu(int cpu)
   */
  int get_nohz_timer_target(void)
  {
@@ -45,7 +45,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	rcu_read_lock();
  	for_each_domain(cpu, sd) {
-@@ -638,6 +641,8 @@ int get_nohz_timer_target(void)
+@@ -510,6 +513,8 @@ int get_nohz_timer_target(void)
  		cpu = housekeeping_any_cpu();
  unlock:
  	rcu_read_unlock();
@@ -137,7 +137,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	spin_unlock_irq(&base->lock);
  }
  
-@@ -1645,6 +1677,9 @@ static void __init init_timer_cpu(int cp
+@@ -1656,6 +1688,9 @@ static void __init init_timer_cpu(int cp
  
  	base->cpu = cpu;
  	spin_lock_init(&base->lock);

@@ -33,7 +33,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/kernel/rcu/tree.c
 +++ b/kernel/rcu/tree.c
-@@ -271,7 +271,12 @@ static void rcu_preempt_qs(void);
+@@ -259,7 +259,12 @@ static void rcu_preempt_qs(void);
  
  void rcu_bh_qs(void)
  {

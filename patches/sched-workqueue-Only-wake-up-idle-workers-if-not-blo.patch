@@ -23,7 +23,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -3254,8 +3254,10 @@ static void __sched notrace __schedule(b
+@@ -3305,8 +3305,10 @@ static void __sched notrace __schedule(b
  			 * If a worker went to sleep, notify and ask workqueue
  			 * whether it wants to wake up a task to maintain
  			 * concurrency.
@@ -34,4 +34,4 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 +			if (prev->flags & PF_WQ_WORKER && !prev->saved_state) {
  				struct task_struct *to_wakeup;
  
- 				to_wakeup = wq_worker_sleeping(prev, cpu);
+ 				to_wakeup = wq_worker_sleeping(prev);

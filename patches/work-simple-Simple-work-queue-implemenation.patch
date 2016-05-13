@@ -46,7 +46,7 @@ Cc: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 +#endif /* _LINUX_SWORK_H */
 --- a/kernel/sched/Makefile
 +++ b/kernel/sched/Makefile
-@@ -13,7 +13,7 @@ endif
+@@ -17,7 +17,7 @@ endif
  
  obj-y += core.o loadavg.o clock.o cputime.o
  obj-y += idle_task.o fair.o rt.o deadline.o stop_task.o

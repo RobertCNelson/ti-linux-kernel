@@ -13,7 +13,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/kernel/rcu/rcutorture.c
 +++ b/kernel/rcu/rcutorture.c
-@@ -390,6 +390,7 @@ static struct rcu_torture_ops rcu_ops =
+@@ -409,6 +409,7 @@ static struct rcu_torture_ops rcu_ops =
  	.name		= "rcu"
  };
  
@@ -21,7 +21,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
   * Definitions for rcu_bh torture testing.
   */
-@@ -429,6 +430,12 @@ static struct rcu_torture_ops rcu_bh_ops
+@@ -448,6 +449,12 @@ static struct rcu_torture_ops rcu_bh_ops
  	.name		= "rcu_bh"
  };
  

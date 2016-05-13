@@ -12,7 +12,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/kernel/sched/deadline.c
 +++ b/kernel/sched/deadline.c
-@@ -697,6 +697,7 @@ void init_dl_task_timer(struct sched_dl_
+@@ -694,6 +694,7 @@ void init_dl_task_timer(struct sched_dl_
  
  	hrtimer_init(timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
  	timer->function = dl_task_timer;

@@ -33,7 +33,7 @@ Signed-off-by: Steven Rostedt <rostedt@goodmis.org>
  #include <linux/math64.h>
  #include <linux/timex.h>
  #include <linux/time.h>
-@@ -562,10 +563,52 @@ static void sync_cmos_clock(struct work_
+@@ -568,10 +569,52 @@ static void sync_cmos_clock(struct work_
  			   &sync_cmos_work, timespec64_to_jiffies(&next));
  }
  

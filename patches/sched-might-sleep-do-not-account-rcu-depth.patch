@@ -13,7 +13,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/include/linux/rcupdate.h
 +++ b/include/linux/rcupdate.h
-@@ -292,6 +292,11 @@ void synchronize_rcu(void);
+@@ -300,6 +300,11 @@ void synchronize_rcu(void);
   * types of kernel builds, the rcu_read_lock() nesting depth is unknowable.
   */
  #define rcu_preempt_depth() (current->rcu_read_lock_nesting)
@@ -25,7 +25,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  #else /* #ifdef CONFIG_PREEMPT_RCU */
  
-@@ -317,6 +322,8 @@ static inline int rcu_preempt_depth(void
+@@ -325,6 +330,8 @@ static inline int rcu_preempt_depth(void
  	return 0;
  }
  
@@ -36,7 +36,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /* Internal to kernel */
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -7658,7 +7658,7 @@ void __init sched_init(void)
+@@ -7534,7 +7534,7 @@ void __init sched_init(void)
  #ifdef CONFIG_DEBUG_ATOMIC_SLEEP
  static inline int preempt_count_equals(int preempt_offset)
  {

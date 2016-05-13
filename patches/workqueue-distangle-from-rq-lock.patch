@@ -24,14 +24,14 @@ Link: http://lkml.kernel.org/r/20110622174919.135236139@linutronix.de
 Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 ---
- kernel/sched/core.c         |   80 ++++++++------------------------------------
- kernel/workqueue.c          |   55 ++++++++++++------------------
+ kernel/sched/core.c         |   81 ++++++++------------------------------------
+ kernel/workqueue.c          |   52 ++++++++++++----------------
  kernel/workqueue_internal.h |    5 +-
- 3 files changed, 41 insertions(+), 99 deletions(-)
+ 3 files changed, 41 insertions(+), 97 deletions(-)
 
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -1735,10 +1735,6 @@ static inline void ttwu_activate(struct
+@@ -1626,10 +1626,6 @@ static inline void ttwu_activate(struct
  {
  	activate_task(rq, p, en_flags);
  	p->on_rq = TASK_ON_RQ_QUEUED;
@@ -42,7 +42,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /*
-@@ -2055,52 +2051,6 @@ try_to_wake_up(struct task_struct *p, un
+@@ -2032,53 +2028,6 @@ try_to_wake_up(struct task_struct *p, un
  }
  
  /**
@@ -86,7 +86,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 -		ttwu_activate(rq, p, ENQUEUE_WAKEUP);
 -
 -	ttwu_do_wakeup(rq, p, 0);
--	ttwu_stat(p, smp_processor_id(), 0);
+-	if (schedstat_enabled())
+-		ttwu_stat(p, smp_processor_id(), 0);
 -out:
 -	raw_spin_unlock(&p->pi_lock);
 -}
@@ -95,7 +96,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
   * wake_up_process - Wake up a specific process
   * @p: The process to be woken up.
   *
-@@ -3271,21 +3221,6 @@ static void __sched notrace __schedule(b
+@@ -3322,21 +3271,6 @@ static void __sched notrace __schedule(b
  		} else {
  			deactivate_task(rq, prev, DEQUEUE_SLEEP);
  			prev->on_rq = 0;
@@ -110,14 +111,14 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 -			if (prev->flags & PF_WQ_WORKER && !prev->saved_state) {
 -				struct task_struct *to_wakeup;
 -
--				to_wakeup = wq_worker_sleeping(prev, cpu);
+-				to_wakeup = wq_worker_sleeping(prev);
 -				if (to_wakeup)
 -					try_to_wake_up_local(to_wakeup);
 -			}
  		}
  		switch_count = &prev->nvcsw;
  	}
-@@ -3318,6 +3253,14 @@ static inline void sched_submit_work(str
+@@ -3369,6 +3303,14 @@ static inline void sched_submit_work(str
  {
  	if (!tsk->state || tsk_is_pi_blocked(tsk))
  		return;
@@ -132,7 +133,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	/*
  	 * If we are going to sleep and we have plugged IO queued,
  	 * make sure to submit it to avoid deadlocks.
-@@ -3326,6 +3269,12 @@ static inline void sched_submit_work(str
+@@ -3377,6 +3319,12 @@ static inline void sched_submit_work(str
  		blk_schedule_flush_plug(tsk);
  }
  
@@ -145,7 +146,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  asmlinkage __visible void __sched schedule(void)
  {
  	struct task_struct *tsk = current;
-@@ -3336,6 +3285,7 @@ asmlinkage __visible void __sched schedu
+@@ -3387,6 +3335,7 @@ asmlinkage __visible void __sched schedu
  		__schedule(false);
  		sched_preempt_enable_no_resched();
  	} while (need_resched());
@@ -155,15 +156,14 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
 --- a/kernel/workqueue.c
 +++ b/kernel/workqueue.c
-@@ -850,44 +850,31 @@ static void wake_up_worker(struct worker
+@@ -867,43 +867,32 @@ static void wake_up_worker(struct worker
  }
  
  /**
 - * wq_worker_waking_up - a worker is waking up
 - * @task: task waking up
-- * @cpu: CPU @task is waking up to
 + * wq_worker_running - a worker is running again
-+ * @task: task returning from sleep
+  * @cpu: CPU @task is waking up to
   *
 - * This function is called during try_to_wake_up() when a worker is
 - * being awoken.
@@ -190,8 +190,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /**
   * wq_worker_sleeping - a worker is going to sleep
   * @task: task going to sleep
-- * @cpu: CPU in question, must be the current CPU number
-- *
+  *
 - * This function is called during schedule() when a busy worker is
 - * going to sleep.  Worker on the same cpu can be woken up by
 - * returning pointer to its task.
@@ -204,7 +203,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 + * This function is called from schedule() when a busy worker is
 + * going to sleep.
   */
--struct task_struct *wq_worker_sleeping(struct task_struct *task, int cpu)
+-struct task_struct *wq_worker_sleeping(struct task_struct *task)
 +void wq_worker_sleeping(struct task_struct *task)
  {
 -	struct worker *worker = kthread_data(task), *to_wakeup = NULL;
@@ -212,7 +211,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	struct worker_pool *pool;
  
  	/*
-@@ -896,14 +883,15 @@ struct task_struct *wq_worker_sleeping(s
+@@ -912,13 +901,15 @@ struct task_struct *wq_worker_sleeping(s
  	 * checking NOT_RUNNING.
  	 */
  	if (worker->flags & WORKER_NOT_RUNNING)
@@ -222,17 +221,17 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	pool = worker->pool;
  
 -	/* this can only happen on the local cpu */
--	if (WARN_ON_ONCE(cpu != raw_smp_processor_id() || pool->cpu != cpu))
+-	if (WARN_ON_ONCE(pool->cpu != raw_smp_processor_id()))
 -		return NULL;
 +	if (WARN_ON_ONCE(worker->sleeping))
 +		return;
- 
++
 +	worker->sleeping = 1;
 +	spin_lock_irq(&pool->lock);
+ 
  	/*
  	 * The counterpart of the following dec_and_test, implied mb,
- 	 * worklist not empty test sequence is in insert_work().
-@@ -916,9 +904,12 @@ struct task_struct *wq_worker_sleeping(s
+@@ -932,9 +923,12 @@ struct task_struct *wq_worker_sleeping(s
  	 * lock is safe.
  	 */
  	if (atomic_dec_and_test(&pool->nr_running) &&
@@ -263,7 +262,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
   * sched/core.c and workqueue.c.
   */
 -void wq_worker_waking_up(struct task_struct *task, int cpu);
--struct task_struct *wq_worker_sleeping(struct task_struct *task, int cpu);
+-struct task_struct *wq_worker_sleeping(struct task_struct *task);
 +void wq_worker_running(struct task_struct *task);
 +void wq_worker_sleeping(struct task_struct *task);
  

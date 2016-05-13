@@ -37,13 +37,13 @@ Cc: Richard Weinberger <richard.weinberger@gmail.com>
 Cc: Steven Rostedt <rostedt@goodmis.org>
 
 ---
- kernel/sched/core.c |    7 ++++-
- kernel/workqueue.c  |   61 ++++++++++++++++++++++++++++++++++++++++------------
- 2 files changed, 53 insertions(+), 15 deletions(-)
+ kernel/sched/core.c |    7 ++++--
+ kernel/workqueue.c  |   60 ++++++++++++++++++++++++++++++++++++++++------------
+ 2 files changed, 52 insertions(+), 15 deletions(-)
 
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -3367,9 +3367,8 @@ static void __sched notrace __schedule(b
+@@ -3417,9 +3417,8 @@ STACK_FRAME_NON_STANDARD(__schedule); /*
  
  static inline void sched_submit_work(struct task_struct *tsk)
  {
@@ -54,7 +54,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  	/*
  	 * If a worker went to sleep, notify and ask workqueue whether
  	 * it wants to wake up a task to maintain concurrency.
-@@ -3377,6 +3376,10 @@ static inline void sched_submit_work(str
+@@ -3427,6 +3426,10 @@ static inline void sched_submit_work(str
  	if (tsk->flags & PF_WQ_WORKER)
  		wq_worker_sleeping(tsk);
  
@@ -79,7 +79,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
   * A: pool->attach_mutex protected.
   *
   * PL: wq_pool_mutex protected.
-@@ -411,6 +416,31 @@ static void workqueue_sysfs_unregister(s
+@@ -428,6 +433,31 @@ static void workqueue_sysfs_unregister(s
  		if (({ assert_rcu_or_wq_mutex(wq); false; })) { }	\
  		else
  
@@ -111,7 +111,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  #ifdef CONFIG_DEBUG_OBJECTS_WORK
  
  static struct debug_obj_descr work_debug_descr;
-@@ -843,10 +873,16 @@ static struct worker *first_idle_worker(
+@@ -860,10 +890,16 @@ static struct worker *first_idle_worker(
   */
  static void wake_up_worker(struct worker_pool *pool)
  {
@@ -129,7 +129,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  }
  
  /**
-@@ -874,7 +910,7 @@ void wq_worker_running(struct task_struc
+@@ -892,7 +928,7 @@ void wq_worker_running(struct task_struc
   */
  void wq_worker_sleeping(struct task_struct *task)
  {
@@ -138,12 +138,12 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  	struct worker_pool *pool;
  
  	/*
-@@ -891,25 +927,18 @@ void wq_worker_sleeping(struct task_stru
+@@ -909,26 +945,18 @@ void wq_worker_sleeping(struct task_stru
  		return;
  
  	worker->sleeping = 1;
 -	spin_lock_irq(&pool->lock);
-+
+ 
  	/*
  	 * The counterpart of the following dec_and_test, implied mb,
  	 * worklist not empty test sequence is in insert_work().
@@ -168,7 +168,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  }
  
  /**
-@@ -1600,7 +1629,9 @@ static void worker_enter_idle(struct wor
+@@ -1655,7 +1683,9 @@ static void worker_enter_idle(struct wor
  	worker->last_active = jiffies;
  
  	/* idle_list is LIFO */
@@ -178,7 +178,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  
  	if (too_many_workers(pool) && !timer_pending(&pool->idle_timer))
  		mod_timer(&pool->idle_timer, jiffies + IDLE_WORKER_TIMEOUT);
-@@ -1633,7 +1664,9 @@ static void worker_leave_idle(struct wor
+@@ -1688,7 +1718,9 @@ static void worker_leave_idle(struct wor
  		return;
  	worker_clr_flags(worker, WORKER_IDLE);
  	pool->nr_idle--;
@@ -188,7 +188,7 @@ Cc: Steven Rostedt <rostedt@goodmis.org>
  }
  
  static struct worker *alloc_worker(int node)
-@@ -1799,7 +1832,9 @@ static void destroy_worker(struct worker
+@@ -1854,7 +1886,9 @@ static void destroy_worker(struct worker
  	pool->nr_workers--;
  	pool->nr_idle--;
  

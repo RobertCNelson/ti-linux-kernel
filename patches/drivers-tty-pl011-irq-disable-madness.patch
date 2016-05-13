@@ -12,7 +12,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/drivers/tty/serial/amba-pl011.c
 +++ b/drivers/tty/serial/amba-pl011.c
-@@ -2067,13 +2067,19 @@ pl011_console_write(struct console *co,
+@@ -2166,13 +2166,19 @@ pl011_console_write(struct console *co,
  
  	clk_enable(uap->clk);
  
@@ -35,8 +35,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	/*
  	 *	First save the CR then disable the interrupts
-@@ -2098,8 +2104,7 @@ pl011_console_write(struct console *co,
- 		writew(old_cr, uap->port.membase + UART011_CR);
+@@ -2196,8 +2202,7 @@ pl011_console_write(struct console *co,
+ 		pl011_write(old_cr, uap, REG_CR);
  
  	if (locked)
 -		spin_unlock(&uap->port.lock);

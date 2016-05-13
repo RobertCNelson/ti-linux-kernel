@@ -36,7 +36,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -1748,7 +1748,7 @@ endchoice
+@@ -1746,7 +1746,7 @@ endchoice
  
  config SLUB_CPU_PARTIAL
  	default y

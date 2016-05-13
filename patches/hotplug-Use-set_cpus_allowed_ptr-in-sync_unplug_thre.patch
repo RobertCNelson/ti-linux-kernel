@@ -35,7 +35,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/kernel/cpu.c
 +++ b/kernel/cpu.c
-@@ -268,7 +268,7 @@ static int sync_unplug_thread(void *data
+@@ -345,7 +345,7 @@ static int sync_unplug_thread(void *data
  	 * we don't want any more work on this CPU.
  	 */
  	current->flags &= ~PF_NO_SETAFFINITY;

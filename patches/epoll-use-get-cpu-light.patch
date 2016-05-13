@@ -13,7 +13,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/fs/eventpoll.c
 +++ b/fs/eventpoll.c
-@@ -505,12 +505,12 @@ static int ep_poll_wakeup_proc(void *pri
+@@ -510,12 +510,12 @@ static int ep_poll_wakeup_proc(void *pri
   */
  static void ep_poll_safewake(wait_queue_head_t *wq)
  {

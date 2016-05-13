@@ -35,10 +35,10 @@ Signed-off-by: Peter Zijlstra <a.p.zijlstra@chello.nl>
  /* whether file capabilities are enabled */
  static ssize_t fscaps_show(struct kobject *kobj,
  				  struct kobj_attribute *attr, char *buf)
-@@ -203,6 +212,9 @@ static struct attribute * kernel_attrs[]
- 	&vmcoreinfo_attr.attr,
- #endif
+@@ -225,6 +234,9 @@ static struct attribute * kernel_attrs[]
  	&rcu_expedited_attr.attr,
+ 	&rcu_normal_attr.attr,
+ #endif
 +#ifdef CONFIG_PREEMPT_RT_FULL
 +	&realtime_attr.attr,
 +#endif

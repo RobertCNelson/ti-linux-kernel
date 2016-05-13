@@ -37,7 +37,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	INIT_LIST_HEAD(&rq->timeout_list);
  	rq->timeout = 0;
  
-@@ -325,6 +328,17 @@ void blk_mq_end_request(struct request *
+@@ -323,6 +326,17 @@ void blk_mq_end_request(struct request *
  }
  EXPORT_SYMBOL(blk_mq_end_request);
  
@@ -55,7 +55,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  static void __blk_mq_complete_request_remote(void *data)
  {
  	struct request *rq = data;
-@@ -332,6 +346,8 @@ static void __blk_mq_complete_request_re
+@@ -330,6 +344,8 @@ static void __blk_mq_complete_request_re
  	rq->q->softirq_done_fn(rq);
  }
  
@@ -64,7 +64,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  static void blk_mq_ipi_complete_request(struct request *rq)
  {
  	struct blk_mq_ctx *ctx = rq->mq_ctx;
-@@ -348,10 +364,14 @@ static void blk_mq_ipi_complete_request(
+@@ -346,10 +362,14 @@ static void blk_mq_ipi_complete_request(
  		shared = cpus_share_cache(cpu, ctx->cpu);
  
  	if (cpu != ctx->cpu && !shared && cpu_online(ctx->cpu)) {
@@ -81,7 +81,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	}
 --- a/include/linux/blk-mq.h
 +++ b/include/linux/blk-mq.h
-@@ -212,6 +212,7 @@ static inline u16 blk_mq_unique_tag_to_t
+@@ -218,6 +218,7 @@ static inline u16 blk_mq_unique_tag_to_t
  
  struct blk_mq_hw_ctx *blk_mq_map_queue(struct request_queue *, const int ctx_index);
  struct blk_mq_hw_ctx *blk_mq_alloc_single_hw_queue(struct blk_mq_tag_set *, unsigned int, int);
@@ -91,7 +91,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  void blk_mq_start_request(struct request *rq);
 --- a/include/linux/blkdev.h
 +++ b/include/linux/blkdev.h
-@@ -89,6 +89,7 @@ struct request {
+@@ -90,6 +90,7 @@ struct request {
  	struct list_head queuelist;
  	union {
  		struct call_single_data csd;

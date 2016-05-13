@@ -105,7 +105,7 @@ Signed-off-by: Carsten Emde <C.Emde@osadl.org>
  	return true;
 --- a/net/ipv4/sysctl_net_ipv4.c
 +++ b/net/ipv4/sysctl_net_ipv4.c
-@@ -818,6 +818,13 @@ static struct ctl_table ipv4_net_table[]
+@@ -681,6 +681,13 @@ static struct ctl_table ipv4_net_table[]
  		.proc_handler	= proc_dointvec
  	},
  	{

@@ -159,7 +159,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
 --- a/include/net/dst.h
 +++ b/include/net/dst.h
-@@ -437,7 +437,7 @@ static inline void dst_confirm(struct ds
+@@ -449,7 +449,7 @@ static inline void dst_confirm(struct ds
  static inline int dst_neigh_output(struct dst_entry *dst, struct neighbour *n,
  				   struct sk_buff *skb)
  {

@@ -56,7 +56,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -2288,6 +2288,10 @@ extern void do_set_cpus_allowed(struct t
+@@ -2325,6 +2325,10 @@ extern void do_set_cpus_allowed(struct t
  
  extern int set_cpus_allowed_ptr(struct task_struct *p,
  				const struct cpumask *new_mask);
@@ -67,7 +67,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #else
  static inline void do_set_cpus_allowed(struct task_struct *p,
  				      const struct cpumask *new_mask)
-@@ -2300,6 +2304,9 @@ static inline int set_cpus_allowed_ptr(s
+@@ -2337,6 +2341,9 @@ static inline int set_cpus_allowed_ptr(s
  		return -EINVAL;
  	return 0;
  }
@@ -79,7 +79,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #ifdef CONFIG_NO_HZ_COMMON
 --- a/kernel/cpu.c
 +++ b/kernel/cpu.c
-@@ -60,16 +60,10 @@ static int cpu_hotplug_disabled;
+@@ -137,16 +137,10 @@ static int cpu_hotplug_disabled;
  
  static struct {
  	struct task_struct *active_writer;
@@ -96,7 +96,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	/*
  	 * Also blocks the new readers during
  	 * an ongoing cpu hotplug operation.
-@@ -81,27 +75,13 @@ static struct {
+@@ -158,27 +152,13 @@ static struct {
  #endif
  } cpu_hotplug = {
  	.active_writer = NULL,
@@ -125,7 +125,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /* Lockdep annotations for get/put_online_cpus() and cpu_hotplug_begin/end() */
  #define cpuhp_lock_acquire_read() lock_map_acquire_read(&cpu_hotplug.dep_map)
  #define cpuhp_lock_acquire_tryread() \
-@@ -109,12 +89,42 @@ static struct {
+@@ -186,12 +166,42 @@ static struct {
  #define cpuhp_lock_acquire()      lock_map_acquire(&cpu_hotplug.dep_map)
  #define cpuhp_lock_release()      lock_map_release(&cpu_hotplug.dep_map)
  
@@ -168,7 +168,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  static DEFINE_PER_CPU(struct hotplug_pcp, hotplug_pcp);
  
  /**
-@@ -128,18 +138,39 @@ static DEFINE_PER_CPU(struct hotplug_pcp
+@@ -205,18 +215,39 @@ static DEFINE_PER_CPU(struct hotplug_pcp
  void pin_current_cpu(void)
  {
  	struct hotplug_pcp *hp;
@@ -212,7 +212,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	preempt_disable();
  	goto retry;
  }
-@@ -160,26 +191,84 @@ void unpin_current_cpu(void)
+@@ -237,26 +268,84 @@ void unpin_current_cpu(void)
  		wake_up_process(hp->unplug);
  }
  
@@ -304,7 +304,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
   * Start the sync_unplug_thread on the target cpu and wait for it to
   * complete.
-@@ -187,23 +276,83 @@ static int sync_unplug_thread(void *data
+@@ -264,23 +353,83 @@ static int sync_unplug_thread(void *data
  static int cpu_unplug_begin(unsigned int cpu)
  {
  	struct hotplug_pcp *hp = &per_cpu(hotplug_pcp, cpu);
@@ -395,7 +395,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  void get_online_cpus(void)
-@@ -212,9 +361,9 @@ void get_online_cpus(void)
+@@ -289,9 +438,9 @@ void get_online_cpus(void)
  	if (cpu_hotplug.active_writer == current)
  		return;
  	cpuhp_lock_acquire_read();
@@ -407,7 +407,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  EXPORT_SYMBOL_GPL(get_online_cpus);
  
-@@ -267,11 +416,11 @@ void cpu_hotplug_begin(void)
+@@ -344,11 +493,11 @@ void cpu_hotplug_begin(void)
  	cpuhp_lock_acquire();
  
  	for (;;) {
@@ -421,7 +421,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		schedule();
  	}
  	finish_wait(&cpu_hotplug.wq, &wait);
-@@ -280,7 +429,7 @@ void cpu_hotplug_begin(void)
+@@ -357,7 +506,7 @@ void cpu_hotplug_begin(void)
  void cpu_hotplug_done(void)
  {
  	cpu_hotplug.active_writer = NULL;
@@ -430,8 +430,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	cpuhp_lock_release();
  }
  
-@@ -516,6 +665,9 @@ static int _cpu_down(unsigned int cpu, i
- 
+@@ -838,6 +987,9 @@ static int takedown_cpu(unsigned int cpu
+ 	kthread_park(per_cpu_ptr(&cpuhp_state, cpu)->thread);
  	smpboot_park_threads(cpu);
  
 +	/* Notifiers are done. Don't let any more tasks pin this CPU. */
@@ -442,7 +442,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	 * interrupt affinities.
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -1211,6 +1211,84 @@ void do_set_cpus_allowed(struct task_str
+@@ -1091,6 +1091,84 @@ void do_set_cpus_allowed(struct task_str
  		enqueue_task(rq, p, ENQUEUE_RESTORE);
  }
  

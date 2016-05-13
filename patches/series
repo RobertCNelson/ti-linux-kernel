@@ -5,35 +5,7 @@
 ############################################################
 # UPSTREAM changes queued
 ############################################################
-rtmutex-Make-wait_lock-irq-safe.patch
-tracing-writeback-Replace-cgroup-path-to-cgroup-ino.patch
-kvm-rt-change-async-pagefault-code-locking-for-PREEM.patch
-panic-x86-Fix-re-entrance-problem-due-to-panic-on-NM.patch
-panic-x86-Allow-CPUs-to-save-registers-even-if-loopi.patch
-panic-change-nmi_panic-from-macro-to-function.patch
-sched-cputime-Clarify-vtime-symbols-and-document-the.patch
-sched-cputime-Convert-vtime_seqlock-to-seqcount.patch
-
-# AT91 queue in ARM-SOC
-0001-clk-at91-make-use-of-syscon-to-share-PMC-registers-i.patch
-0002-clk-at91-make-use-of-syscon-regmap-internally.patch
-0003-clk-at91-remove-IRQ-handling-and-use-polling.patch
-0004-clk-at91-pmc-merge-at91_pmc_init-in-atmel_pmc_probe.patch
-0005-clk-at91-pmc-move-pmc-structures-to-C-file.patch
-0006-ARM-at91-pm-simply-call-at91_pm_init.patch
-0007-ARM-at91-pm-find-and-remap-the-pmc.patch
-0008-ARM-at91-pm-move-idle-functions-to-pm.c.patch
-0009-ARM-at91-remove-useless-includes-and-function-protot.patch
-0010-usb-gadget-atmel-access-the-PMC-using-regmap.patch
-0011-clk-at91-pmc-drop-at91_pmc_base.patch
-0012-clk-at91-pmc-remove-useless-capacities-handling.patch
-0013-clk-at91-remove-useless-includes.patch
-# SWAIT queue in TIP
-0001-wait.-ch-Introduce-the-simple-waitqueue-swait-implem.patch
-0002-kbuild-Add-option-to-turn-incompatible-pointer-check.patch
-0003-KVM-Use-simple-waitqueue-for-vcpu-wq.patch
-0004-rcu-Do-not-call-rcu_nocb_gp_cleanup-while-holding-rn.patch
-0005-rcu-Use-simple-wait-queues-where-possible-in-rcutree.patch
+ARM-imx-always-use-TWD-on-IMX6Q.patch
 
 ############################################################
 # UPSTREAM FIXES, patches pending
@@ -44,11 +16,9 @@ sched-cputime-Convert-vtime_seqlock-to-seqcount.patch
 ############################################################
 sched-use-tsk_cpus_allowed-instead-of-accessing-cpus.patch
 sched-provide-a-tsk_nr_cpus_allowed-helper.patch
-drivers-cpuidle-coupled-fix-warning-cpuidle_coupled_.patch
-drivers-media-vsp1_video-fix-compile-error.patch
 sc16is7xx_Drop_bogus_use_of_IRQF_ONESHOT.patch
-f2fs_Mutex_cant_be_used_by_down_write_nest_lock().patch
-ARM-imx-always-use-TWD-on-IMX6Q.patch
+crypto-ccp-remove-rwlocks_types.h.patch
+infiniband-ulp-ipoib-remove-pkey_mutex.patch
 
 # Those two should vanish soon (not use PIT during bootup)
 at91_dont_enable_disable_clock.patch
@@ -63,15 +33,12 @@ rfc-arm-smp-__cpu_disable-fix-sleeping-function-called-from-invalid-context.patc
 # Stuff broken upstream, need to be sent
 ############################################################
 rtmutex--Handle-non-enqueued-waiters-gracefully.patch
-kernel-sched-fix-preempt_disable_ip-recodring-for-pr.patch
 
 # Wants a different fix for upstream
-iommu-amd--Use-WARN_ON_NORT.patch
 
 ############################################################
 # Submitted on LKML
 ############################################################
-genirq-Add-default-affinity-mask-command-line-option.patch
 
 # SPARC part of erly printk consolidation
 sparc64-use-generic-rwsem-spinlocks-rt.patch
@@ -202,6 +169,7 @@ kconfig-preempt-rt-full.patch
 
 # WARN/BUG_ON_RT
 bug-rt-dependend-variants.patch
+iommu-amd--Use-WARN_ON_NORT.patch
 
 # LOCAL_IRQ_RT/NON_RT
 local-irq-rt-depending-variants.patch
@@ -348,6 +316,8 @@ rtmutex-trylock-is-okay-on-RT.patch
 
 # RAID5
 md-raid5-percpu-handling-rt-aware.patch
+#
+i915_compile_fix.patch
 
 # FUTEX/RTMUTEX
 rtmutex-futex-prepare-rt.patch
@@ -364,21 +334,15 @@ rtmutex_dont_include_rcu.patch
 rt-add-rt-locks.patch
 rtmutex-Use-chainwalking-control-enum.patch
 rtmutex-add-a-first-shot-of-ww_mutex.patch
-
 ptrace-fix-ptrace-vs-tasklist_lock-race.patch
-
-# RTMUTEX Fallout
-tasklist-lock-fix-section-conflict.patch
-#fold
-ptrace-don-t-open-IRQs-in-ptrace_freeze_traced-too-e.patch
 
 # RCU
 peter_zijlstra-frob-rcu.patch
 rcu-merge-rcu-bh-into-rcu-preempt-for-rt.patch
 patch-to-introduce-rcu-bh-qs-where-safe-from-softirq.patch
 rcutree-rcu_bh_qs-disable-irq-while-calling-rcu_pree.patch
-rcu-disable-more-spots-of-rcu_bh.patch
 rcutorture-comment-out-rcu_bh-ops-on-PREEMPT_RT_FULL.patch
+rcu-disable-more-spots-of-rcu_bh.patch
 
 # LGLOCKS - lovely
 lglocks-rt.patch
@@ -387,7 +351,6 @@ lockinglglocks_Use_preempt_enabledisable_nort()_in_lg_double_locklg_double_unloc
 # STOP machine (depend on lglock & rtmutex)
 stomp-machine-create-lg_global_trylock_relax-primiti.patch
 stomp-machine-use-lg_global_trylock_relax-to-dead-wi.patch
-kernel-stop_machine-partly-revert-stop_machine-Use-r.patch
 
 # DRIVERS SERIAL
 drivers-tty-fix-omap-lock-crap.patch
@@ -431,8 +394,6 @@ cpu_chill-Add-a-UNINTERRUPTIBLE-hrtimer_nanosleep.patch
 # block
 blk-mq-revert-raw-locks-post-pone-notifier-to-POST_D.patchto-POST_D.patch
 block-blk-mq-use-swait.patch
-# XXX melt
-block-mq-drop-per-ctx-cpu_lock.patch
 
 # BLOCK LIVELOCK PREVENTION
 block-use-cpu-chill.patch
@@ -602,7 +563,6 @@ cpufreq-drop-K8-s-driver-from-beeing-selected.patch
 drivers-block-zram-Replace-bit-spinlocks-with-rtmute.patch
 
 # I915
-i915_compile_fix.patch
 drm-i915-drop-trace_i915_gem_ring_dispatch-onrt.patch
 i915-bogus-warning-from-i915-when-running-on-PREEMPT.patch
 drmradeoni915_Use_preempt_disableenable_rt()_where_recommended.patch

@@ -64,7 +64,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
 --- a/arch/arm64/include/asm/thread_info.h
 +++ b/arch/arm64/include/asm/thread_info.h
-@@ -129,7 +129,8 @@ static inline struct thread_info *curren
+@@ -135,7 +135,8 @@ static inline struct thread_info *curren
  #define _TIF_32BIT		(1 << TIF_32BIT)
  
  #define _TIF_WORK_MASK		(_TIF_NEED_RESCHED | _TIF_SIGPENDING | \

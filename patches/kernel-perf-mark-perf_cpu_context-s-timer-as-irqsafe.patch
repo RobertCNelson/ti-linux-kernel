@@ -14,7 +14,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/kernel/events/core.c
 +++ b/kernel/events/core.c
-@@ -802,6 +802,7 @@ static void __perf_mux_hrtimer_init(stru
+@@ -963,6 +963,7 @@ static void __perf_mux_hrtimer_init(stru
  	raw_spin_lock_init(&cpuctx->hrtimer_lock);
  	hrtimer_init(timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
  	timer->function = perf_mux_hrtimer_handler;

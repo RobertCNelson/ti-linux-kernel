@@ -126,7 +126,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
 --- a/kernel/cpu.c
 +++ b/kernel/cpu.c
-@@ -127,8 +127,8 @@ struct hotplug_pcp {
+@@ -204,8 +204,8 @@ struct hotplug_pcp {
  };
  
  #ifdef CONFIG_PREEMPT_RT_FULL

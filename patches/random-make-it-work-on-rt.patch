@@ -55,7 +55,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	add_interrupt_bench(cycles);
 --- a/include/linux/irqdesc.h
 +++ b/include/linux/irqdesc.h
-@@ -61,6 +61,7 @@ struct irq_desc {
+@@ -64,6 +64,7 @@ struct irq_desc {
  	unsigned int		irqs_unhandled;
  	atomic_t		threads_handled;
  	int			threads_handled_last;
@@ -84,9 +84,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +	u64 ip = regs ? instruction_pointer(regs) : 0;
  	irqreturn_t retval = IRQ_NONE;
  	unsigned int flags = 0, irq = desc->irq_data.irq;
- 	struct irqaction *action = desc->action;
-@@ -176,7 +178,11 @@ irqreturn_t handle_irq_event_percpu(stru
- 		action = action->next;
+ 	struct irqaction *action;
+@@ -174,7 +176,11 @@ irqreturn_t handle_irq_event_percpu(stru
+ 		retval |= res;
  	}
  
 -	add_interrupt_randomness(irq, flags);
@@ -100,7 +100,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		note_interrupt(desc, retval);
 --- a/kernel/irq/manage.c
 +++ b/kernel/irq/manage.c
-@@ -1045,6 +1045,12 @@ static int irq_thread(void *data)
+@@ -1043,6 +1043,12 @@ static int irq_thread(void *data)
  		if (action_ret == IRQ_WAKE_THREAD)
  			irq_wake_secondary(desc, action);
  

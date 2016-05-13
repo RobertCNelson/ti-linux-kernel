@@ -14,7 +14,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/drivers/pci/access.c
 +++ b/drivers/pci/access.c
-@@ -561,7 +561,7 @@ void pci_cfg_access_unlock(struct pci_de
+@@ -672,7 +672,7 @@ void pci_cfg_access_unlock(struct pci_de
  	WARN_ON(!dev->block_cfg_access);
  
  	dev->block_cfg_access = 0;

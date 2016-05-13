@@ -37,7 +37,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
 --- a/include/linux/jbd2.h
 +++ b/include/linux/jbd2.h
-@@ -352,32 +352,56 @@ static inline struct journal_head *bh2jh
+@@ -347,32 +347,56 @@ static inline struct journal_head *bh2jh
  
  static inline void jbd_lock_bh_state(struct buffer_head *bh)
  {

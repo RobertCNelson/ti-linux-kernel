@@ -15,7 +15,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/kernel/ptrace.c
 +++ b/kernel/ptrace.c
-@@ -129,12 +129,14 @@ static bool ptrace_freeze_traced(struct
+@@ -128,12 +128,14 @@ static bool ptrace_freeze_traced(struct
  
  	spin_lock_irq(&task->sighand->siglock);
  	if (task_is_traced(task) && !__fatal_signal_pending(task)) {

@@ -12,7 +12,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/include/linux/trace_events.h
 +++ b/include/linux/trace_events.h
-@@ -66,6 +66,8 @@ struct trace_entry {
+@@ -56,6 +56,8 @@ struct trace_entry {
  	unsigned char		flags;
  	unsigned char		preempt_count;
  	int			pid;
@@ -23,7 +23,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #define TRACE_EVENT_TYPE_MAX						\
 --- a/kernel/trace/trace.c
 +++ b/kernel/trace/trace.c
-@@ -1663,6 +1663,8 @@ tracing_generic_entry_update(struct trac
+@@ -1669,6 +1669,8 @@ tracing_generic_entry_update(struct trac
  		((pc & SOFTIRQ_MASK) ? TRACE_FLAG_SOFTIRQ : 0) |
  		(tif_need_resched() ? TRACE_FLAG_NEED_RESCHED : 0) |
  		(test_preempt_need_resched() ? TRACE_FLAG_PREEMPT_RESCHED : 0);
@@ -32,7 +32,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  EXPORT_SYMBOL_GPL(tracing_generic_entry_update);
  
-@@ -2560,9 +2562,10 @@ static void print_lat_help_header(struct
+@@ -2566,9 +2568,10 @@ static void print_lat_help_header(struct
  		    "#                | / _----=> need-resched    \n"
  		    "#                || / _---=> hardirq/softirq \n"
  		    "#                ||| / _--=> preempt-depth   \n"
@@ -59,7 +59,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
 --- a/kernel/trace/trace_output.c
 +++ b/kernel/trace/trace_output.c
-@@ -428,6 +428,11 @@ int trace_print_lat_fmt(struct trace_seq
+@@ -432,6 +432,11 @@ int trace_print_lat_fmt(struct trace_seq
  	else
  		trace_seq_putc(s, '.');
  

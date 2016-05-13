@@ -21,15 +21,15 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/net/core/dev.c
 +++ b/net/core/dev.c
-@@ -186,6 +186,7 @@ static unsigned int napi_gen_id;
- static DEFINE_HASHTABLE(napi_hash, 8);
+@@ -188,6 +188,7 @@ static unsigned int napi_gen_id = NR_CPU
+ static DEFINE_READ_MOSTLY_HASHTABLE(napi_hash, 8);
  
  static seqcount_t devnet_rename_seq;
 +static DEFINE_MUTEX(devnet_rename_mutex);
  
  static inline void dev_base_seq_inc(struct net *net)
  {
-@@ -884,7 +885,8 @@ int netdev_get_name(struct net *net, cha
+@@ -886,7 +887,8 @@ int netdev_get_name(struct net *net, cha
  	strcpy(name, dev->name);
  	rcu_read_unlock();
  	if (read_seqcount_retry(&devnet_rename_seq, seq)) {
@@ -39,7 +39,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		goto retry;
  	}
  
-@@ -1153,20 +1155,17 @@ int dev_change_name(struct net_device *d
+@@ -1155,20 +1157,17 @@ int dev_change_name(struct net_device *d
  	if (dev->flags & IFF_UP)
  		return -EBUSY;
  
@@ -66,7 +66,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	if (oldname[0] && !strchr(oldname, '%'))
  		netdev_info(dev, "renamed from %s\n", oldname);
-@@ -1179,11 +1178,12 @@ int dev_change_name(struct net_device *d
+@@ -1181,11 +1180,12 @@ int dev_change_name(struct net_device *d
  	if (ret) {
  		memcpy(dev->name, oldname, IFNAMSIZ);
  		dev->name_assign_type = old_assign_type;
@@ -82,7 +82,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	netdev_adjacent_rename_links(dev, oldname);
  
-@@ -1204,7 +1204,8 @@ int dev_change_name(struct net_device *d
+@@ -1206,7 +1206,8 @@ int dev_change_name(struct net_device *d
  		/* err >= 0 after dev_alloc_name() or stores the first errno */
  		if (err >= 0) {
  			err = ret;
@@ -92,7 +92,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  			memcpy(dev->name, oldname, IFNAMSIZ);
  			memcpy(oldname, newname, IFNAMSIZ);
  			dev->name_assign_type = old_assign_type;
-@@ -1217,6 +1218,11 @@ int dev_change_name(struct net_device *d
+@@ -1219,6 +1220,11 @@ int dev_change_name(struct net_device *d
  	}
  
  	return err;

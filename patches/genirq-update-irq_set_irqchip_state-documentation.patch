@@ -14,7 +14,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/kernel/irq/manage.c
 +++ b/kernel/irq/manage.c
-@@ -2054,7 +2054,7 @@ EXPORT_SYMBOL_GPL(irq_get_irqchip_state)
+@@ -2084,7 +2084,7 @@ EXPORT_SYMBOL_GPL(irq_get_irqchip_state)
   *	This call sets the internal irqchip state of an interrupt,
   *	depending on the value of @which.
   *

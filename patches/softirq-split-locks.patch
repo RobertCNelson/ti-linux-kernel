@@ -85,7 +85,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #endif /* _LINUX_BH_H */
 --- a/include/linux/interrupt.h
 +++ b/include/linux/interrupt.h
-@@ -444,10 +444,11 @@ struct softirq_action
+@@ -455,10 +455,11 @@ struct softirq_action
  	void	(*action)(struct softirq_action *);
  };
  
@@ -99,7 +99,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  void do_softirq_own_stack(void);
  #else
  static inline void do_softirq_own_stack(void)
-@@ -455,6 +456,9 @@ static inline void do_softirq_own_stack(
+@@ -466,6 +467,9 @@ static inline void do_softirq_own_stack(
  	__do_softirq();
  }
  #endif
@@ -109,7 +109,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  extern void open_softirq(int nr, void (*action)(struct softirq_action *));
  extern void softirq_init(void);
-@@ -462,6 +466,7 @@ extern void __raise_softirq_irqoff(unsig
+@@ -473,6 +477,7 @@ extern void __raise_softirq_irqoff(unsig
  
  extern void raise_softirq_irqoff(unsigned int nr);
  extern void raise_softirq(unsigned int nr);
@@ -117,7 +117,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  DECLARE_PER_CPU(struct task_struct *, ksoftirqd);
  
-@@ -619,6 +624,12 @@ void tasklet_hrtimer_cancel(struct taskl
+@@ -630,6 +635,12 @@ void tasklet_hrtimer_cancel(struct taskl
  	tasklet_kill(&ttimer->tasklet);
  }
  
@@ -172,7 +172,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
   * Are we in NMI context?
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -1834,6 +1834,8 @@ struct task_struct {
+@@ -1868,6 +1868,8 @@ struct task_struct {
  #endif
  #ifdef CONFIG_PREEMPT_RT_BASE
  	struct rcu_head put_rcu;
@@ -181,7 +181,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #endif
  #ifdef CONFIG_DEBUG_ATOMIC_SLEEP
  	unsigned long	task_state_change;
-@@ -2099,6 +2101,7 @@ extern void thread_group_cputime_adjuste
+@@ -2136,6 +2138,7 @@ extern void thread_group_cputime_adjuste
  /*
   * Per process flags
   */
@@ -191,14 +191,14 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #define PF_VCPU		0x00000010	/* I'm a virtual CPU */
 --- a/init/main.c
 +++ b/init/main.c
-@@ -530,6 +530,7 @@ asmlinkage __visible void __init start_k
+@@ -507,6 +507,7 @@ asmlinkage __visible void __init start_k
  	setup_command_line(command_line);
  	setup_nr_cpu_ids();
  	setup_per_cpu_areas();
 +	softirq_early_init();
+ 	boot_cpu_state_init();
  	smp_prepare_boot_cpu();	/* arch-specific boot-cpu hooks */
  
- 	build_all_zonelists(NULL, NULL);
 --- a/kernel/softirq.c
 +++ b/kernel/softirq.c
 @@ -26,6 +26,7 @@
@@ -377,7 +377,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
   * preempt_count and SOFTIRQ_OFFSET usage:
   * - preempt_count is changed by SOFTIRQ_OFFSET on entering or leaving
-@@ -233,10 +388,8 @@ asmlinkage __visible void __do_softirq(v
+@@ -233,10 +388,8 @@ asmlinkage __visible void __softirq_entr
  	unsigned long end = jiffies + MAX_SOFTIRQ_TIME;
  	unsigned long old_flags = current->flags;
  	int max_restart = MAX_SOFTIRQ_RESTART;
@@ -388,7 +388,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	/*
  	 * Mask out PF_MEMALLOC s current task context is borrowed for the
-@@ -255,36 +408,7 @@ asmlinkage __visible void __do_softirq(v
+@@ -255,36 +408,7 @@ asmlinkage __visible void __softirq_entr
  	/* Reset the pending bitmask before enabling irqs */
  	set_softirq_pending(0);
  
@@ -785,7 +785,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	.thread_comm		= "ksoftirqd/%u",
 --- a/kernel/time/tick-sched.c
 +++ b/kernel/time/tick-sched.c
-@@ -758,14 +758,7 @@ static bool can_stop_idle_tick(int cpu,
+@@ -866,14 +866,7 @@ static bool can_stop_idle_tick(int cpu,
  		return false;
  
  	if (unlikely(local_softirq_pending() && cpu_online(cpu))) {
@@ -803,7 +803,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
 --- a/net/core/dev.c
 +++ b/net/core/dev.c
-@@ -3595,11 +3595,9 @@ int netif_rx_ni(struct sk_buff *skb)
+@@ -3801,11 +3801,9 @@ int netif_rx_ni(struct sk_buff *skb)
  
  	trace_netif_rx_ni_entry(skb);
  

@@ -19,7 +19,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/arch/arm/mach-imx/Kconfig
 +++ b/arch/arm/mach-imx/Kconfig
-@@ -524,7 +524,7 @@ config SOC_IMX6Q
+@@ -526,7 +526,7 @@ config SOC_IMX6Q
  	bool "i.MX6 Quad/DualLite support"
  	select ARM_ERRATA_764369 if SMP
  	select HAVE_ARM_SCU if SMP

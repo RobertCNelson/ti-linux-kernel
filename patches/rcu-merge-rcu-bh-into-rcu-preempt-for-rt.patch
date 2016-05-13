@@ -32,7 +32,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/include/linux/rcupdate.h
 +++ b/include/linux/rcupdate.h
-@@ -169,6 +169,9 @@ void call_rcu(struct rcu_head *head,
+@@ -177,6 +177,9 @@ void call_rcu(struct rcu_head *head,
  
  #endif /* #else #ifdef CONFIG_PREEMPT_RCU */
  
@@ -42,7 +42,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /**
   * call_rcu_bh() - Queue an RCU for invocation after a quicker grace period.
   * @head: structure to be used for queueing the RCU updates.
-@@ -192,6 +195,7 @@ void call_rcu(struct rcu_head *head,
+@@ -200,6 +203,7 @@ void call_rcu(struct rcu_head *head,
   */
  void call_rcu_bh(struct rcu_head *head,
  		 rcu_callback_t func);
@@ -50,9 +50,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  /**
   * call_rcu_sched() - Queue an RCU for invocation after sched grace period.
-@@ -330,7 +334,11 @@ static inline int rcu_preempt_depth(void
+@@ -337,7 +341,11 @@ static inline int rcu_preempt_depth(void
+ /* Internal to kernel */
  void rcu_init(void);
- void rcu_end_inkernel_boot(void);
  void rcu_sched_qs(void);
 +#ifdef CONFIG_PREEMPT_RT_FULL
 +static inline void rcu_bh_qs(void) { }
@@ -60,9 +60,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  void rcu_bh_qs(void);
 +#endif
  void rcu_check_callbacks(int user);
- struct notifier_block;
- int rcu_cpu_notify(struct notifier_block *self,
-@@ -496,7 +504,14 @@ extern struct lockdep_map rcu_callback_m
+ void rcu_report_dead(unsigned int cpu);
+ 
+@@ -505,7 +513,14 @@ extern struct lockdep_map rcu_callback_m
  int debug_lockdep_rcu_enabled(void);
  
  int rcu_read_lock_held(void);
@@ -77,7 +77,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  /**
   * rcu_read_lock_sched_held() - might we be in RCU-sched read-side critical section?
-@@ -944,10 +959,14 @@ static inline void rcu_read_unlock(void)
+@@ -953,10 +968,14 @@ static inline void rcu_read_unlock(void)
  static inline void rcu_read_lock_bh(void)
  {
  	local_bh_disable();
@@ -92,7 +92,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /*
-@@ -957,10 +976,14 @@ static inline void rcu_read_lock_bh(void
+@@ -966,10 +985,14 @@ static inline void rcu_read_lock_bh(void
   */
  static inline void rcu_read_unlock_bh(void)
  {
@@ -146,7 +146,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  void rcu_sched_force_quiescent_state(void);
  
  void rcu_idle_enter(void);
-@@ -105,6 +111,14 @@ extern int rcu_scheduler_active __read_m
+@@ -107,6 +113,14 @@ extern int rcu_scheduler_active __read_m
  
  bool rcu_is_watching(void);
  
@@ -163,15 +163,15 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #endif /* __LINUX_RCUTREE_H */
 --- a/kernel/rcu/tree.c
 +++ b/kernel/rcu/tree.c
-@@ -266,6 +266,7 @@ void rcu_sched_qs(void)
- 	}
+@@ -254,6 +254,7 @@ void rcu_sched_qs(void)
+ 			   this_cpu_ptr(&rcu_sched_data), true);
  }
  
 +#ifndef CONFIG_PREEMPT_RT_FULL
  void rcu_bh_qs(void)
  {
  	if (__this_cpu_read(rcu_bh_data.cpu_no_qs.s)) {
-@@ -275,6 +276,7 @@ void rcu_bh_qs(void)
+@@ -263,6 +264,7 @@ void rcu_bh_qs(void)
  		__this_cpu_write(rcu_bh_data.cpu_no_qs.b.norm, false);
  	}
  }
@@ -179,7 +179,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  static DEFINE_PER_CPU(int, rcu_sched_qs_mask);
  
-@@ -459,6 +461,7 @@ unsigned long rcu_batches_completed_sche
+@@ -450,6 +452,7 @@ unsigned long rcu_batches_completed_sche
  }
  EXPORT_SYMBOL_GPL(rcu_batches_completed_sched);
  
@@ -187,7 +187,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
   * Return the number of RCU BH batches completed thus far for debug & stats.
   */
-@@ -486,6 +489,13 @@ void rcu_bh_force_quiescent_state(void)
+@@ -477,6 +480,13 @@ void rcu_bh_force_quiescent_state(void)
  }
  EXPORT_SYMBOL_GPL(rcu_bh_force_quiescent_state);
  
@@ -201,7 +201,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
   * Force a quiescent state for RCU-sched.
   */
-@@ -3116,6 +3126,7 @@ void call_rcu_sched(struct rcu_head *hea
+@@ -3099,6 +3109,7 @@ void call_rcu_sched(struct rcu_head *hea
  }
  EXPORT_SYMBOL_GPL(call_rcu_sched);
  
@@ -209,7 +209,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
   * Queue an RCU callback for invocation after a quicker grace period.
   */
-@@ -3124,6 +3135,7 @@ void call_rcu_bh(struct rcu_head *head,
+@@ -3107,6 +3118,7 @@ void call_rcu_bh(struct rcu_head *head,
  	__call_rcu(head, func, &rcu_bh_state, -1, 0);
  }
  EXPORT_SYMBOL_GPL(call_rcu_bh);
@@ -217,7 +217,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  /*
   * Queue an RCU callback for lazy invocation after a grace period.
-@@ -3215,6 +3227,7 @@ void synchronize_sched(void)
+@@ -3198,6 +3210,7 @@ void synchronize_sched(void)
  }
  EXPORT_SYMBOL_GPL(synchronize_sched);
  
@@ -225,7 +225,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /**
   * synchronize_rcu_bh - wait until an rcu_bh grace period has elapsed.
   *
-@@ -3241,6 +3254,7 @@ void synchronize_rcu_bh(void)
+@@ -3224,6 +3237,7 @@ void synchronize_rcu_bh(void)
  		wait_rcu_gp(call_rcu_bh);
  }
  EXPORT_SYMBOL_GPL(synchronize_rcu_bh);
@@ -233,7 +233,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  /**
   * get_state_synchronize_rcu - Snapshot current RCU state
-@@ -4103,6 +4117,7 @@ static void _rcu_barrier(struct rcu_stat
+@@ -4104,6 +4118,7 @@ static void _rcu_barrier(struct rcu_stat
  	mutex_unlock(&rsp->barrier_mutex);
  }
  
@@ -241,7 +241,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /**
   * rcu_barrier_bh - Wait until all in-flight call_rcu_bh() callbacks complete.
   */
-@@ -4111,6 +4126,7 @@ void rcu_barrier_bh(void)
+@@ -4112,6 +4127,7 @@ void rcu_barrier_bh(void)
  	_rcu_barrier(&rcu_bh_state);
  }
  EXPORT_SYMBOL_GPL(rcu_barrier_bh);
@@ -251,7 +251,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
   * rcu_barrier_sched - Wait for in-flight call_rcu_sched() callbacks.
 --- a/kernel/rcu/update.c
 +++ b/kernel/rcu/update.c
-@@ -276,6 +276,7 @@ int rcu_read_lock_held(void)
+@@ -295,6 +295,7 @@ int rcu_read_lock_held(void)
  }
  EXPORT_SYMBOL_GPL(rcu_read_lock_held);
  
@@ -259,7 +259,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /**
   * rcu_read_lock_bh_held() - might we be in RCU-bh read-side critical section?
   *
-@@ -302,6 +303,7 @@ int rcu_read_lock_bh_held(void)
+@@ -321,6 +322,7 @@ int rcu_read_lock_bh_held(void)
  	return in_softirq() || irqs_disabled();
  }
  EXPORT_SYMBOL_GPL(rcu_read_lock_bh_held);

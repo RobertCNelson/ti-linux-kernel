@@ -46,7 +46,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  			 * We have to ensure that we have at least one bit
 --- a/kernel/sched/deadline.c
 +++ b/kernel/sched/deadline.c
-@@ -1441,7 +1441,7 @@ static struct rq *find_lock_later_rq(str
+@@ -1392,7 +1392,7 @@ static struct rq *find_lock_later_rq(str
  		if (double_lock_balance(rq, later_rq)) {
  			if (unlikely(task_rq(task) != rq ||
  				     !cpumask_test_cpu(later_rq->cpu,

@@ -23,7 +23,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  include/linux/spinlock_api_smp.h  |    4 
  include/linux/spinlock_rt.h       |  173 +++++++++++++
  include/linux/spinlock_types.h    |   11 
- include/linux/spinlock_types_rt.h |   51 ++++
+ include/linux/spinlock_types_rt.h |   48 +++
  kernel/futex.c                    |   10 
  kernel/locking/Makefile           |    9 
  kernel/locking/rt.c               |  476 ++++++++++++++++++++++++++++++++++++++
@@ -32,7 +32,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  kernel/locking/spinlock.c         |    7 
  kernel/locking/spinlock_debug.c   |    5 
  kernel/sched/core.c               |    7 
- 23 files changed, 1597 insertions(+), 56 deletions(-)
+ 23 files changed, 1594 insertions(+), 56 deletions(-)
 
 --- a/include/linux/kernel.h
 +++ b/include/linux/kernel.h
@@ -405,7 +405,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +	  RW_DEP_MAP_INIT(name) }
 +
 +#define DEFINE_RWLOCK(name) \
-+	rwlock_t name __cacheline_aligned_in_smp = __RW_LOCK_UNLOCKED(name)
++	rwlock_t name = __RW_LOCK_UNLOCKED(name)
 +
 +#endif
 --- a/include/linux/rwsem.h
@@ -585,7 +585,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +#endif
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -309,6 +309,11 @@ extern char ___assert_task_state[1 - 2*!
+@@ -310,6 +310,11 @@ extern char ___assert_task_state[1 - 2*!
  
  #endif
  
@@ -597,7 +597,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /* Task command name length */
  #define TASK_COMM_LEN 16
  
-@@ -967,8 +972,18 @@ struct wake_q_head {
+@@ -981,8 +986,18 @@ struct wake_q_head {
  	struct wake_q_head name = { WAKE_Q_TAIL, &name.first }
  
  extern void wake_q_add(struct wake_q_head *head,
@@ -860,7 +860,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #endif /* __LINUX_SPINLOCK_TYPES_H */
 --- /dev/null
 +++ b/include/linux/spinlock_types_rt.h
-@@ -0,0 +1,51 @@
+@@ -0,0 +1,48 @@
 +#ifndef __LINUX_SPINLOCK_TYPES_RT_H
 +#define __LINUX_SPINLOCK_TYPES_RT_H
 +
@@ -905,16 +905,13 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +	{ .lock = __RT_SPIN_INITIALIZER(name.lock),		\
 +	  SPIN_DEP_MAP_INIT(name) }
 +
-+#define __DEFINE_SPINLOCK(name) \
-+	spinlock_t name = __SPIN_LOCK_UNLOCKED(name)
-+
 +#define DEFINE_SPINLOCK(name) \
-+	spinlock_t name __cacheline_aligned_in_smp = __SPIN_LOCK_UNLOCKED(name)
++	spinlock_t name = __SPIN_LOCK_UNLOCKED(name)
 +
 +#endif
 --- a/kernel/futex.c
 +++ b/kernel/futex.c
-@@ -1212,6 +1212,7 @@ static int wake_futex_pi(u32 __user *uad
+@@ -1263,6 +1263,7 @@ static int wake_futex_pi(u32 __user *uad
  	struct futex_pi_state *pi_state = this->pi_state;
  	u32 uninitialized_var(curval), newval;
  	WAKE_Q(wake_q);
@@ -922,7 +919,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	bool deboost;
  	int ret = 0;
  
-@@ -1278,7 +1279,8 @@ static int wake_futex_pi(u32 __user *uad
+@@ -1329,7 +1330,8 @@ static int wake_futex_pi(u32 __user *uad
  
  	raw_spin_unlock_irq(&pi_state->pi_mutex.wait_lock);
  
@@ -932,7 +929,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	/*
  	 * First unlock HB so the waiter does not spin on it once he got woken
-@@ -1288,6 +1290,7 @@ static int wake_futex_pi(u32 __user *uad
+@@ -1339,6 +1341,7 @@ static int wake_futex_pi(u32 __user *uad
  	 */
  	spin_unlock(&hb->lock);
  	wake_up_q(&wake_q);
@@ -940,7 +937,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	if (deboost)
  		rt_mutex_adjust_prio(current);
  
-@@ -2728,10 +2731,7 @@ static int futex_wait_requeue_pi(u32 __u
+@@ -2813,10 +2816,7 @@ static int futex_wait_requeue_pi(u32 __u
  	 * The waiter is allocated on our stack, manipulated by the requeue
  	 * code while we sleep on uaddr.
  	 */
@@ -954,14 +951,16 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	if (unlikely(ret != 0))
 --- a/kernel/locking/Makefile
 +++ b/kernel/locking/Makefile
-@@ -1,5 +1,5 @@
+@@ -2,7 +2,7 @@
+ # and is generally not a function of system call inputs.
+ KCOV_INSTRUMENT		:= n
  
 -obj-y += mutex.o semaphore.o rwsem.o percpu-rwsem.o
 +obj-y += semaphore.o percpu-rwsem.o
  
  ifdef CONFIG_FUNCTION_TRACER
  CFLAGS_REMOVE_lockdep.o = $(CC_FLAGS_FTRACE)
-@@ -8,7 +8,11 @@ CFLAGS_REMOVE_mutex-debug.o = $(CC_FLAGS
+@@ -11,7 +11,11 @@ CFLAGS_REMOVE_mutex-debug.o = $(CC_FLAGS
  CFLAGS_REMOVE_rtmutex-debug.o = $(CC_FLAGS_FTRACE)
  endif
  
@@ -973,7 +972,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  obj-$(CONFIG_LOCKDEP) += lockdep.o
  ifeq ($(CONFIG_PROC_FS),y)
  obj-$(CONFIG_LOCKDEP) += lockdep_proc.o
-@@ -22,7 +26,10 @@ obj-$(CONFIG_RT_MUTEXES) += rtmutex.o
+@@ -25,7 +29,10 @@ obj-$(CONFIG_RT_MUTEXES) += rtmutex.o
  obj-$(CONFIG_DEBUG_RT_MUTEXES) += rtmutex-debug.o
  obj-$(CONFIG_DEBUG_SPINLOCK) += spinlock.o
  obj-$(CONFIG_DEBUG_SPINLOCK) += spinlock_debug.o
@@ -2148,7 +2147,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +#endif
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -547,7 +547,7 @@ void wake_q_add(struct wake_q_head *head
+@@ -419,7 +419,7 @@ void wake_q_add(struct wake_q_head *head
  	head->lastp = &node->next;
  }
  
@@ -2157,7 +2156,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  {
  	struct wake_q_node *node = head->first;
  
-@@ -564,7 +564,10 @@ void wake_up_q(struct wake_q_head *head)
+@@ -436,7 +436,10 @@ void wake_up_q(struct wake_q_head *head)
  		 * wake_up_process() implies a wmb() to pair with the queueing
  		 * in wake_q_add() so as not to miss wakeups.
  		 */

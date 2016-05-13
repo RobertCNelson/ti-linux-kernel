@@ -24,13 +24,13 @@ taken in case the caller is interrupted between looking into ->state and
 Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 ---
  include/linux/sched.h |   48 +++++++++++++++++++++++++++++++++++++++++++++---
- kernel/ptrace.c       |    7 ++++++-
+ kernel/ptrace.c       |    9 ++++++++-
  kernel/sched/core.c   |   17 +++++++++++++++--
- 3 files changed, 66 insertions(+), 6 deletions(-)
+ 3 files changed, 68 insertions(+), 6 deletions(-)
 
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -240,10 +240,7 @@ extern char ___assert_task_state[1 - 2*!
+@@ -241,10 +241,7 @@ extern char ___assert_task_state[1 - 2*!
  				 TASK_UNINTERRUPTIBLE | __TASK_STOPPED | \
  				 __TASK_TRACED | EXIT_ZOMBIE | EXIT_DEAD)
  
@@ -41,7 +41,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  #define task_contributes_to_load(task)	\
  				((task->state & TASK_UNINTERRUPTIBLE) != 0 && \
  				 (task->flags & PF_FROZEN) == 0 && \
-@@ -2984,6 +2981,51 @@ static inline int signal_pending_state(l
+@@ -3026,6 +3023,51 @@ static inline int signal_pending_state(l
  	return (state & TASK_INTERRUPTIBLE) || __fatal_signal_pending(p);
  }
  
@@ -95,23 +95,25 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
   * explicit rescheduling in places that are safe. The return
 --- a/kernel/ptrace.c
 +++ b/kernel/ptrace.c
-@@ -129,7 +129,12 @@ static bool ptrace_freeze_traced(struct
+@@ -128,7 +128,14 @@ static bool ptrace_freeze_traced(struct
  
  	spin_lock_irq(&task->sighand->siglock);
  	if (task_is_traced(task) && !__fatal_signal_pending(task)) {
 -		task->state = __TASK_TRACED;
-+		raw_spin_lock_irq(&task->pi_lock);
++		unsigned long flags;
++
++		raw_spin_lock_irqsave(&task->pi_lock, flags);
 +		if (task->state & __TASK_TRACED)
 +			task->state = __TASK_TRACED;
 +		else
 +			task->saved_state = __TASK_TRACED;
-+		raw_spin_unlock_irq(&task->pi_lock);
++		raw_spin_unlock_irqrestore(&task->pi_lock, flags);
  		ret = true;
  	}
  	spin_unlock_irq(&task->sighand->siglock);
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -1426,6 +1426,18 @@ int migrate_swap(struct task_struct *cur
+@@ -1317,6 +1317,18 @@ int migrate_swap(struct task_struct *cur
  	return ret;
  }
  
@@ -130,7 +132,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  /*
   * wait_task_inactive - wait for a thread to unschedule.
   *
-@@ -1470,7 +1482,7 @@ unsigned long wait_task_inactive(struct
+@@ -1361,7 +1373,7 @@ unsigned long wait_task_inactive(struct
  		 * is actually now running somewhere else!
  		 */
  		while (task_running(rq, p)) {
@@ -139,7 +141,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  				return 0;
  			cpu_relax();
  		}
-@@ -1485,7 +1497,8 @@ unsigned long wait_task_inactive(struct
+@@ -1376,7 +1388,8 @@ unsigned long wait_task_inactive(struct
  		running = task_running(rq, p);
  		queued = task_on_rq_queued(p);
  		ncsw = 0;

@@ -19,7 +19,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/kernel/cpu.c
 +++ b/kernel/cpu.c
-@@ -107,9 +107,11 @@ static DEFINE_PER_CPU(struct hotplug_pcp
+@@ -184,9 +184,11 @@ static DEFINE_PER_CPU(struct hotplug_pcp
   */
  void pin_current_cpu(void)
  {

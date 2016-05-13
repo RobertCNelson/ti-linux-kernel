@@ -15,9 +15,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/kernel/stop_machine.c
 +++ b/kernel/stop_machine.c
-@@ -450,6 +450,16 @@ static void cpu_stopper_thread(unsigned
+@@ -452,6 +452,16 @@ static void cpu_stopper_thread(unsigned
  		struct cpu_stop_done *done = work->done;
- 		char ksym_buf[KSYM_NAME_LEN] __maybe_unused;
+ 		int ret;
  
 +		/*
 +		 * Wait until the stopper finished scheduling on all
@@ -29,6 +29,6 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +		 */
 +		lg_global_unlock(&stop_cpus_lock);
 +
- 		/* cpu stop callbacks are not allowed to sleep */
- 		preempt_disable();
- 
+ 		/* cpu stop callbacks must not sleep, make in_atomic() == T */
+ 		preempt_count_inc();
+ 		ret = fn(arg);

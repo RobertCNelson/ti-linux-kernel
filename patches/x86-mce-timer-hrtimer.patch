@@ -34,7 +34,7 @@ fold in:
  
  #include <asm/processor.h>
  #include <asm/traps.h>
-@@ -1236,7 +1237,7 @@ void mce_log_therm_throt_event(__u64 sta
+@@ -1240,7 +1241,7 @@ void mce_log_therm_throt_event(__u64 sta
  static unsigned long check_interval = INITIAL_CHECK_INTERVAL;
  
  static DEFINE_PER_CPU(unsigned long, mce_next_interval); /* in jiffies */
@@ -43,7 +43,7 @@ fold in:
  
  static unsigned long mce_adjust_timer_default(unsigned long interval)
  {
-@@ -1245,32 +1246,18 @@ static unsigned long mce_adjust_timer_de
+@@ -1249,32 +1250,18 @@ static unsigned long mce_adjust_timer_de
  
  static unsigned long (*mce_adjust_timer)(unsigned long interval) = mce_adjust_timer_default;
  
@@ -82,7 +82,7 @@ fold in:
  	iv = __this_cpu_read(mce_next_interval);
  
  	if (mce_available(this_cpu_ptr(&cpu_info))) {
-@@ -1293,7 +1280,7 @@ static void mce_timer_fn(unsigned long d
+@@ -1297,7 +1284,7 @@ static void mce_timer_fn(unsigned long d
  
  done:
  	__this_cpu_write(mce_next_interval, iv);
@@ -91,7 +91,7 @@ fold in:
  }
  
  /*
-@@ -1301,7 +1288,7 @@ static void mce_timer_fn(unsigned long d
+@@ -1305,7 +1292,7 @@ static void mce_timer_fn(unsigned long d
   */
  void mce_timer_kick(unsigned long interval)
  {
@@ -100,7 +100,7 @@ fold in:
  	unsigned long iv = __this_cpu_read(mce_next_interval);
  
  	__restart_timer(t, interval);
-@@ -1316,7 +1303,7 @@ static void mce_timer_delete_all(void)
+@@ -1320,7 +1307,7 @@ static void mce_timer_delete_all(void)
  	int cpu;
  
  	for_each_online_cpu(cpu)
@@ -109,7 +109,7 @@ fold in:
  }
  
  static void mce_do_trigger(struct work_struct *work)
-@@ -1639,7 +1626,7 @@ static void __mcheck_cpu_clear_vendor(st
+@@ -1654,7 +1641,7 @@ static void __mcheck_cpu_clear_vendor(st
  	}
  }
  
@@ -118,7 +118,7 @@ fold in:
  {
  	unsigned long iv = check_interval * HZ;
  
-@@ -1648,16 +1635,17 @@ static void mce_start_timer(unsigned int
+@@ -1663,16 +1650,17 @@ static void mce_start_timer(unsigned int
  
  	per_cpu(mce_next_interval, cpu) = iv;
  
@@ -140,7 +140,7 @@ fold in:
  	mce_start_timer(cpu, t);
  }
  
-@@ -2376,6 +2364,8 @@ static void mce_disable_cpu(void *h)
+@@ -2393,6 +2381,8 @@ static void mce_disable_cpu(void *h)
  	if (!mce_available(raw_cpu_ptr(&cpu_info)))
  		return;
  
@@ -149,7 +149,7 @@ fold in:
  	if (!(action & CPU_TASKS_FROZEN))
  		cmci_clear();
  
-@@ -2398,6 +2388,7 @@ static void mce_reenable_cpu(void *h)
+@@ -2415,6 +2405,7 @@ static void mce_reenable_cpu(void *h)
  		if (b->init)
  			wrmsrl(MSR_IA32_MCx_CTL(i), b->ctl);
  	}
@@ -157,7 +157,7 @@ fold in:
  }
  
  /* Get notified when a cpu comes on/off. Be hotplug friendly. */
-@@ -2405,7 +2396,6 @@ static int
+@@ -2422,7 +2413,6 @@ static int
  mce_cpu_callback(struct notifier_block *nfb, unsigned long action, void *hcpu)
  {
  	unsigned int cpu = (unsigned long)hcpu;
@@ -165,7 +165,7 @@ fold in:
  
  	switch (action & ~CPU_TASKS_FROZEN) {
  	case CPU_ONLINE:
-@@ -2425,11 +2415,9 @@ mce_cpu_callback(struct notifier_block *
+@@ -2442,11 +2432,9 @@ mce_cpu_callback(struct notifier_block *
  		break;
  	case CPU_DOWN_PREPARE:
  		smp_call_function_single(cpu, mce_disable_cpu, &action, 1);

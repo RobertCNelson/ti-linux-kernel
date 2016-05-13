@@ -43,7 +43,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/drivers/usb/core/hcd.c
 +++ b/drivers/usb/core/hcd.c
-@@ -1735,9 +1735,9 @@ static void __usb_hcd_giveback_urb(struc
+@@ -1759,9 +1759,9 @@ static void __usb_hcd_giveback_urb(struc
  	 * and no one may trigger the above deadlock situation when
  	 * running complete() in tasklet.
  	 */

@@ -121,7 +121,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  #include "workqueue_internal.h"
  
-@@ -1285,7 +1286,7 @@ static int try_to_grab_pending(struct wo
+@@ -1303,7 +1304,7 @@ static int try_to_grab_pending(struct wo
  	local_unlock_irqrestore(pendingb_lock, *flags);
  	if (work_is_canceling(work))
  		return -ENOENT;

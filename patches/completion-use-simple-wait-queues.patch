@@ -8,22 +8,22 @@ contention on the waitqueue lock.
 
 Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 ---
- drivers/net/wireless/orinoco/orinoco_usb.c |    2 -
- drivers/usb/gadget/function/f_fs.c         |    2 -
- drivers/usb/gadget/legacy/inode.c          |    4 +--
- include/linux/completion.h                 |    9 +++-----
- include/linux/suspend.h                    |    6 +++++
- include/linux/swait.h                      |    1 
- include/linux/uprobes.h                    |    1 
- kernel/power/hibernate.c                   |    7 ++++++
- kernel/power/suspend.c                     |    5 ++++
- kernel/sched/completion.c                  |   32 ++++++++++++++---------------
- kernel/sched/core.c                        |   10 +++++++--
- kernel/sched/swait.c                       |   20 ++++++++++++++++++
+ drivers/net/wireless/intersil/orinoco/orinoco_usb.c |    2 -
+ drivers/usb/gadget/function/f_fs.c                  |    2 -
+ drivers/usb/gadget/legacy/inode.c                   |    4 +-
+ include/linux/completion.h                          |    9 ++---
+ include/linux/suspend.h                             |    6 +++
+ include/linux/swait.h                               |    1 
+ include/linux/uprobes.h                             |    1 
+ kernel/power/hibernate.c                            |    7 ++++
+ kernel/power/suspend.c                              |    5 +++
+ kernel/sched/completion.c                           |   32 ++++++++++----------
+ kernel/sched/core.c                                 |   10 +++++-
+ kernel/sched/swait.c                                |   20 ++++++++++++
  12 files changed, 72 insertions(+), 27 deletions(-)
 
---- a/drivers/net/wireless/orinoco/orinoco_usb.c
-+++ b/drivers/net/wireless/orinoco/orinoco_usb.c
+--- a/drivers/net/wireless/intersil/orinoco/orinoco_usb.c
++++ b/drivers/net/wireless/intersil/orinoco/orinoco_usb.c
 @@ -697,7 +697,7 @@ static void ezusb_req_ctx_wait(struct ez
  			while (!ctx->done.done && msecs--)
  				udelay(1000);
@@ -35,7 +35,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		break;
 --- a/drivers/usb/gadget/function/f_fs.c
 +++ b/drivers/usb/gadget/function/f_fs.c
-@@ -1404,7 +1404,7 @@ static void ffs_data_put(struct ffs_data
+@@ -1393,7 +1393,7 @@ static void ffs_data_put(struct ffs_data
  		pr_info("%s(): freeing\n", __func__);
  		ffs_data_clear(ffs);
  		BUG_ON(waitqueue_active(&ffs->ev.waitq) ||
@@ -46,7 +46,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	}
 --- a/drivers/usb/gadget/legacy/inode.c
 +++ b/drivers/usb/gadget/legacy/inode.c
-@@ -345,7 +345,7 @@ ep_io (struct ep_data *epdata, void *buf
+@@ -346,7 +346,7 @@ ep_io (struct ep_data *epdata, void *buf
  	spin_unlock_irq (&epdata->dev->lock);
  
  	if (likely (value == 0)) {
@@ -55,7 +55,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		if (value != 0) {
  			spin_lock_irq (&epdata->dev->lock);
  			if (likely (epdata->ep != NULL)) {
-@@ -354,7 +354,7 @@ ep_io (struct ep_data *epdata, void *buf
+@@ -355,7 +355,7 @@ ep_io (struct ep_data *epdata, void *buf
  				usb_ep_dequeue (epdata->ep, epdata->req);
  				spin_unlock_irq (&epdata->dev->lock);
  
@@ -166,7 +166,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
 --- a/kernel/power/suspend.c
 +++ b/kernel/power/suspend.c
-@@ -522,6 +522,8 @@ static int enter_state(suspend_state_t s
+@@ -521,6 +521,8 @@ static int enter_state(suspend_state_t s
  	return error;
  }
  
@@ -175,7 +175,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /**
   * pm_suspend - Externally visible function for suspending the system.
   * @state: System sleep state to enter.
-@@ -536,6 +538,8 @@ int pm_suspend(suspend_state_t state)
+@@ -535,6 +537,8 @@ int pm_suspend(suspend_state_t state)
  	if (state <= PM_SUSPEND_ON || state >= PM_SUSPEND_MAX)
  		return -EINVAL;
  
@@ -184,7 +184,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	error = enter_state(state);
  	if (error) {
  		suspend_stats.fail++;
-@@ -543,6 +547,7 @@ int pm_suspend(suspend_state_t state)
+@@ -542,6 +546,7 @@ int pm_suspend(suspend_state_t state)
  	} else {
  		suspend_stats.success++;
  	}
@@ -286,7 +286,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  EXPORT_SYMBOL(completion_done);
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -3092,7 +3092,10 @@ void migrate_disable(void)
+@@ -3141,7 +3141,10 @@ void migrate_disable(void)
  	}
  
  #ifdef CONFIG_SCHED_DEBUG
@@ -298,7 +298,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #endif
  
  	if (p->migrate_disable) {
-@@ -3119,7 +3122,10 @@ void migrate_enable(void)
+@@ -3168,7 +3171,10 @@ void migrate_enable(void)
  	}
  
  #ifdef CONFIG_SCHED_DEBUG
@@ -338,7 +338,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +	}
 +	if (pm_in_action)
 +		return;
-+	WARN(wakes > 2, "complate_all() with %d waiters\n", wakes);
++	WARN(wakes > 2, "complete_all() with %d waiters\n", wakes);
 +}
 +EXPORT_SYMBOL(swake_up_all_locked);
 +

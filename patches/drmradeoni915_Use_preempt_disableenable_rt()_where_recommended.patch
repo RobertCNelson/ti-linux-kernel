@@ -15,7 +15,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/drivers/gpu/drm/i915/i915_irq.c
 +++ b/drivers/gpu/drm/i915/i915_irq.c
-@@ -812,6 +812,7 @@ static int i915_get_crtc_scanoutpos(stru
+@@ -830,6 +830,7 @@ static int i915_get_crtc_scanoutpos(stru
  	spin_lock_irqsave(&dev_priv->uncore.lock, irqflags);
  
  	/* preempt_disable_rt() should go right here in PREEMPT_RT patchset. */
@@ -23,7 +23,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	/* Get optional system timestamp before query. */
  	if (stime)
-@@ -863,6 +864,7 @@ static int i915_get_crtc_scanoutpos(stru
+@@ -881,6 +882,7 @@ static int i915_get_crtc_scanoutpos(stru
  		*etime = ktime_get();
  
  	/* preempt_enable_rt() should go right here in PREEMPT_RT patchset. */
@@ -33,7 +33,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
 --- a/drivers/gpu/drm/radeon/radeon_display.c
 +++ b/drivers/gpu/drm/radeon/radeon_display.c
-@@ -1862,6 +1862,7 @@ int radeon_get_crtc_scanoutpos(struct dr
+@@ -1863,6 +1863,7 @@ int radeon_get_crtc_scanoutpos(struct dr
  	struct radeon_device *rdev = dev->dev_private;
  
  	/* preempt_disable_rt() should go right here in PREEMPT_RT patchset. */
@@ -41,7 +41,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	/* Get optional system timestamp before query. */
  	if (stime)
-@@ -1954,6 +1955,7 @@ int radeon_get_crtc_scanoutpos(struct dr
+@@ -1955,6 +1956,7 @@ int radeon_get_crtc_scanoutpos(struct dr
  		*etime = ktime_get();
  
  	/* preempt_enable_rt() should go right here in PREEMPT_RT patchset. */

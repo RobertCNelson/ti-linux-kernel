@@ -16,7 +16,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/drivers/iommu/amd_iommu.c
 +++ b/drivers/iommu/amd_iommu.c
-@@ -2017,10 +2017,10 @@ static int __attach_device(struct iommu_
+@@ -2165,10 +2165,10 @@ static int __attach_device(struct iommu_
  	int ret;
  
  	/*
@@ -30,7 +30,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	/* lock domain */
  	spin_lock(&domain->lock);
-@@ -2183,10 +2183,10 @@ static void __detach_device(struct iommu
+@@ -2331,10 +2331,10 @@ static void __detach_device(struct iommu
  	struct protection_domain *domain;
  
  	/*

@@ -15,12 +15,12 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/drivers/md/dm.c
 +++ b/drivers/md/dm.c
-@@ -2127,7 +2127,7 @@ static void dm_request_fn(struct request
+@@ -2187,7 +2187,7 @@ static void dm_request_fn(struct request
  		/* Establish tio->ti before queuing work (map_tio_request) */
  		tio->ti = ti;
  		queue_kthread_work(&md->kworker, &tio->work);
 -		BUG_ON(!irqs_disabled());
 +		BUG_ON_NONRT(!irqs_disabled());
  	}
+ }
  
- 	goto out;

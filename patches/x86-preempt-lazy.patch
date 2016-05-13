@@ -26,7 +26,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	select ANON_INODES
 --- a/arch/x86/entry/common.c
 +++ b/arch/x86/entry/common.c
-@@ -220,7 +220,7 @@ long syscall_trace_enter(struct pt_regs
+@@ -202,7 +202,7 @@ long syscall_trace_enter(struct pt_regs
  
  #define EXIT_TO_USERMODE_LOOP_FLAGS				\
  	(_TIF_SIGPENDING | _TIF_NOTIFY_RESUME | _TIF_UPROBE |	\
@@ -35,7 +35,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  static void exit_to_usermode_loop(struct pt_regs *regs, u32 cached_flags)
  {
-@@ -236,7 +236,7 @@ static void exit_to_usermode_loop(struct
+@@ -218,7 +218,7 @@ static void exit_to_usermode_loop(struct
  		/* We have work to do. */
  		local_irq_enable();
  
@@ -73,7 +73,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	call	preempt_schedule_irq
 --- a/arch/x86/entry/entry_64.S
 +++ b/arch/x86/entry/entry_64.S
-@@ -579,7 +579,23 @@ GLOBAL(retint_user)
+@@ -511,7 +511,23 @@ GLOBAL(retint_user)
  	bt	$9, EFLAGS(%rsp)		/* were interrupts off? */
  	jnc	1f
  0:	cmpl	$0, PER_CPU_VAR(__preempt_count)
@@ -124,7 +124,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #define _TIF_USER_RETURN_NOTIFY	(1 << TIF_USER_RETURN_NOTIFY)
  #define _TIF_UPROBE		(1 << TIF_UPROBE)
  #define _TIF_NOTSC		(1 << TIF_NOTSC)
-@@ -152,6 +156,8 @@ struct thread_info {
+@@ -155,6 +159,8 @@ struct thread_info {
  #define _TIF_WORK_CTXSW_PREV (_TIF_WORK_CTXSW|_TIF_USER_RETURN_NOTIFY)
  #define _TIF_WORK_CTXSW_NEXT (_TIF_WORK_CTXSW)
  
@@ -143,7 +143,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	BLANK();
  	OFFSET(crypto_tfm_ctx_offset, crypto_tfm, __crt_ctx);
-@@ -89,4 +90,5 @@ void common(void) {
+@@ -85,4 +86,5 @@ void common(void) {
  
  	BLANK();
  	DEFINE(PTREGS_SIZE, sizeof(struct pt_regs));

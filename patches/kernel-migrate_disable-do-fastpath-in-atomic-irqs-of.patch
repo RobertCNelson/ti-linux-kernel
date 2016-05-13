@@ -13,7 +13,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -3068,7 +3068,7 @@ void migrate_disable(void)
+@@ -3117,7 +3117,7 @@ void migrate_disable(void)
  {
  	struct task_struct *p = current;
  
@@ -22,7 +22,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  #ifdef CONFIG_SCHED_DEBUG
  		p->migrate_disable_atomic++;
  #endif
-@@ -3095,7 +3095,7 @@ void migrate_enable(void)
+@@ -3144,7 +3144,7 @@ void migrate_enable(void)
  {
  	struct task_struct *p = current;
  

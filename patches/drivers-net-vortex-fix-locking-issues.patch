@@ -31,7 +31,7 @@ Signed-off-by: Ingo Molnar <mingo@elte.hu>
  }
  #endif
  
-@@ -1916,12 +1916,12 @@ static void vortex_tx_timeout(struct net
+@@ -1910,12 +1910,12 @@ static void vortex_tx_timeout(struct net
  			 * Block interrupts because vortex_interrupt does a bare spin_lock()
  			 */
  			unsigned long flags;

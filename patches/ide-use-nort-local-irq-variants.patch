@@ -39,7 +39,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
 --- a/drivers/ide/hpt366.c
 +++ b/drivers/ide/hpt366.c
-@@ -1241,7 +1241,7 @@ static int init_dma_hpt366(ide_hwif_t *h
+@@ -1236,7 +1236,7 @@ static int init_dma_hpt366(ide_hwif_t *h
  
  	dma_old = inb(base + 2);
  
@@ -48,7 +48,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	dma_new = dma_old;
  	pci_read_config_byte(dev, hwif->channel ? 0x4b : 0x43, &masterdma);
-@@ -1252,7 +1252,7 @@ static int init_dma_hpt366(ide_hwif_t *h
+@@ -1247,7 +1247,7 @@ static int init_dma_hpt366(ide_hwif_t *h
  	if (dma_new != dma_old)
  		outb(dma_new, base + 2);
  

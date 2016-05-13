@@ -13,12 +13,12 @@ tasks on the cpu which should be brought down.
 Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 ---
  include/linux/cpu.h |    7 +--
- kernel/cpu.c        |  119 +++++++++++++++++++++++++++++++++++++++++++++++++++-
- 2 files changed, 122 insertions(+), 4 deletions(-)
+ kernel/cpu.c        |  118 ++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 122 insertions(+), 3 deletions(-)
 
 --- a/include/linux/cpu.h
 +++ b/include/linux/cpu.h
-@@ -222,9 +222,6 @@ static inline void smpboot_thread_init(v
+@@ -221,9 +221,6 @@ static inline void cpu_notifier_register
  #endif /* CONFIG_SMP */
  extern struct bus_type cpu_subsys;
  
@@ -28,7 +28,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #ifdef CONFIG_HOTPLUG_CPU
  /* Stop CPUs going up and down. */
  
-@@ -234,6 +231,8 @@ extern void get_online_cpus(void);
+@@ -233,6 +230,8 @@ extern void get_online_cpus(void);
  extern void put_online_cpus(void);
  extern void cpu_hotplug_disable(void);
  extern void cpu_hotplug_enable(void);
@@ -37,7 +37,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #define hotcpu_notifier(fn, pri)	cpu_notifier(fn, pri)
  #define __hotcpu_notifier(fn, pri)	__cpu_notifier(fn, pri)
  #define register_hotcpu_notifier(nb)	register_cpu_notifier(nb)
-@@ -251,6 +250,8 @@ static inline void cpu_hotplug_done(void
+@@ -250,6 +249,8 @@ static inline void cpu_hotplug_done(void
  #define put_online_cpus()	do { } while (0)
  #define cpu_hotplug_disable()	do { } while (0)
  #define cpu_hotplug_enable()	do { } while (0)
@@ -48,7 +48,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /* These aren't inline functions due to a GCC bug. */
 --- a/kernel/cpu.c
 +++ b/kernel/cpu.c
-@@ -89,6 +89,100 @@ static struct {
+@@ -166,6 +166,100 @@ static struct {
  #define cpuhp_lock_acquire()      lock_map_acquire(&cpu_hotplug.dep_map)
  #define cpuhp_lock_release()      lock_map_release(&cpu_hotplug.dep_map)
  
@@ -149,24 +149,17 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  void get_online_cpus(void)
  {
-@@ -338,13 +432,14 @@ static int take_cpu_down(void *_param)
- /* Requires cpu_add_remove_lock to be held */
- static int _cpu_down(unsigned int cpu, int tasks_frozen)
- {
--	int err, nr_calls = 0;
-+	int mycpu, err, nr_calls = 0;
- 	void *hcpu = (void *)(long)cpu;
- 	unsigned long mod = tasks_frozen ? CPU_TASKS_FROZEN : 0;
- 	struct take_cpu_down_param tcd_param = {
- 		.mod = mod,
- 		.hcpu = hcpu,
- 	};
+@@ -807,6 +901,8 @@ static int __ref _cpu_down(unsigned int
+ 	struct cpuhp_cpu_state *st = per_cpu_ptr(&cpuhp_state, cpu);
+ 	int prev_state, ret = 0;
+ 	bool hasdied = false;
++	int mycpu;
 +	cpumask_var_t cpumask;
  
  	if (num_online_cpus() == 1)
  		return -EBUSY;
-@@ -352,7 +447,27 @@ static int _cpu_down(unsigned int cpu, i
- 	if (!cpu_online(cpu))
+@@ -814,7 +910,27 @@ static int __ref _cpu_down(unsigned int
+ 	if (!cpu_present(cpu))
  		return -EINVAL;
  
 +	/* Move the downtaker off the unplug cpu */
@@ -185,20 +178,20 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +	preempt_enable();
 +
  	cpu_hotplug_begin();
-+	err = cpu_unplug_begin(cpu);
-+	if (err) {
++	ret = cpu_unplug_begin(cpu);
++	if (ret) {
 +		printk("cpu_unplug_begin(%d) failed\n", cpu);
 +		goto out_cancel;
 +	}
  
- 	err = __cpu_notify(CPU_DOWN_PREPARE | mod, hcpu, -1, &nr_calls);
- 	if (err) {
-@@ -424,6 +539,8 @@ static int _cpu_down(unsigned int cpu, i
- 	check_for_tasks(cpu);
+ 	cpuhp_tasks_frozen = tasks_frozen;
  
- out_release:
+@@ -853,6 +969,8 @@ static int __ref _cpu_down(unsigned int
+ 
+ 	hasdied = prev_state != st->state && st->state == CPUHP_OFFLINE;
+ out:
 +	cpu_unplug_done(cpu);
 +out_cancel:
  	cpu_hotplug_done();
- 	if (!err)
- 		cpu_notify_nofail(CPU_POST_DEAD | mod, hcpu);
+ 	/* This post dead nonsense must die */
+ 	if (!ret && hasdied)

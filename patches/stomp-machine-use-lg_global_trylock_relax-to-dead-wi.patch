@@ -12,43 +12,21 @@ now do that trylock()/relax() across an entire herd of locks. Joy.
 Signed-off-by: Mike Galbraith <umgwanakikbuti@gmail.com>
 Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 ---
- kernel/stop_machine.c |   25 +++++++++++++++----------
- 1 file changed, 15 insertions(+), 10 deletions(-)
+ kernel/stop_machine.c |   19 ++++++++++++-------
+ 1 file changed, 12 insertions(+), 7 deletions(-)
 
 --- a/kernel/stop_machine.c
 +++ b/kernel/stop_machine.c
-@@ -276,7 +276,7 @@ int stop_two_cpus(unsigned int cpu1, uns
- 	struct cpu_stop_work work1, work2;
- 	struct multi_stop_data msdata;
+@@ -313,18 +313,21 @@ static DEFINE_MUTEX(stop_cpus_mutex);
  
--	preempt_disable();
-+	preempt_disable_nort();
- 	msdata = (struct multi_stop_data){
- 		.fn = fn,
- 		.data = arg,
-@@ -296,11 +296,11 @@ int stop_two_cpus(unsigned int cpu1, uns
- 	if (cpu1 > cpu2)
- 		swap(cpu1, cpu2);
- 	if (cpu_stop_queue_two_works(cpu1, &work1, cpu2, &work2)) {
--		preempt_enable();
-+		preempt_enable_nort();
- 		return -ENOENT;
- 	}
- 
--	preempt_enable();
-+	preempt_enable_nort();
- 
- 	wait_for_stop_done(&done);
- 
-@@ -333,17 +333,20 @@ static DEFINE_MUTEX(stop_cpus_mutex);
- 
- static void queue_stop_cpus_work(const struct cpumask *cpumask,
+ static bool queue_stop_cpus_work(const struct cpumask *cpumask,
  				 cpu_stop_fn_t fn, void *arg,
 -				 struct cpu_stop_done *done)
 +				 struct cpu_stop_done *done, bool inactive)
  {
  	struct cpu_stop_work *work;
  	unsigned int cpu;
+ 	bool queued = false;
  
  	/*
 -	 * Disable preemption while queueing to avoid getting
@@ -66,16 +44,16 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	for_each_cpu(cpu, cpumask) {
  		work = &per_cpu(cpu_stopper.stop_work, cpu);
  		work->fn = fn;
-@@ -360,7 +363,7 @@ static int __stop_cpus(const struct cpum
+@@ -344,7 +347,7 @@ static int __stop_cpus(const struct cpum
  	struct cpu_stop_done done;
  
  	cpu_stop_init_done(&done, cpumask_weight(cpumask));
--	queue_stop_cpus_work(cpumask, fn, arg, &done);
-+	queue_stop_cpus_work(cpumask, fn, arg, &done, false);
- 	wait_for_stop_done(&done);
- 	return done.executed ? done.ret : -ENOENT;
- }
-@@ -558,6 +561,8 @@ static int __init cpu_stop_init(void)
+-	if (!queue_stop_cpus_work(cpumask, fn, arg, &done))
++	if (!queue_stop_cpus_work(cpumask, fn, arg, &done, false))
+ 		return -ENOENT;
+ 	wait_for_completion(&done.completion);
+ 	return done.ret;
+@@ -532,6 +535,8 @@ static int __init cpu_stop_init(void)
  		INIT_LIST_HEAD(&stopper->works);
  	}
  
@@ -84,7 +62,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	BUG_ON(smpboot_register_percpu_thread(&cpu_stop_threads));
  	stop_machine_unpark(raw_smp_processor_id());
  	stop_machine_initialized = true;
-@@ -654,7 +659,7 @@ int stop_machine_from_inactive_cpu(cpu_s
+@@ -626,7 +631,7 @@ int stop_machine_from_inactive_cpu(cpu_s
  	set_state(&msdata, MULTI_STOP_PREPARE);
  	cpu_stop_init_done(&done, num_active_cpus());
  	queue_stop_cpus_work(cpu_active_mask, multi_cpu_stop, &msdata,

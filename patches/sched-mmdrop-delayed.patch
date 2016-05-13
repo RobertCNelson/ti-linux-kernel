@@ -23,7 +23,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #include <linux/page-flags-layout.h>
  #include <asm/page.h>
  #include <asm/mmu.h>
-@@ -504,6 +505,9 @@ struct mm_struct {
+@@ -502,6 +503,9 @@ struct mm_struct {
  	bool tlb_flush_pending;
  #endif
  	struct uprobes_state uprobes_state;
@@ -35,7 +35,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	void __user *bd_addr;
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -2606,12 +2606,24 @@ extern struct mm_struct * mm_alloc(void)
+@@ -2640,12 +2640,24 @@ extern struct mm_struct * mm_alloc(void)
  
  /* mmdrop drops the mm and the page tables */
  extern void __mmdrop(struct mm_struct *);
@@ -62,7 +62,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /* Grab a reference to a task's mm, if it is not already going away */
 --- a/kernel/fork.c
 +++ b/kernel/fork.c
-@@ -702,6 +702,19 @@ void __mmdrop(struct mm_struct *mm)
+@@ -712,6 +712,19 @@ void __mmdrop(struct mm_struct *mm)
  }
  EXPORT_SYMBOL_GPL(__mmdrop);
  
@@ -84,7 +84,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
   */
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -2593,8 +2593,12 @@ static struct rq *finish_task_switch(str
+@@ -2642,8 +2642,12 @@ static struct rq *finish_task_switch(str
  	finish_arch_post_lock_switch();
  
  	fire_sched_in_preempt_notifiers(current);
@@ -98,7 +98,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	if (unlikely(prev_state == TASK_DEAD)) {
  		if (prev->sched_class->task_dead)
  			prev->sched_class->task_dead(prev);
-@@ -5245,6 +5249,8 @@ void sched_setnuma(struct task_struct *p
+@@ -5299,6 +5303,8 @@ void sched_setnuma(struct task_struct *p
  #endif /* CONFIG_NUMA_BALANCING */
  
  #ifdef CONFIG_HOTPLUG_CPU
@@ -107,7 +107,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
   * Ensures that the idle task is using init_mm right before its cpu goes
   * offline.
-@@ -5259,7 +5265,11 @@ void idle_task_exit(void)
+@@ -5313,7 +5319,11 @@ void idle_task_exit(void)
  		switch_mm(mm, &init_mm, current);
  		finish_arch_post_lock_switch();
  	}
@@ -120,7 +120,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /*
-@@ -5632,6 +5642,10 @@ migration_call(struct notifier_block *nf
+@@ -5509,6 +5519,10 @@ migration_call(struct notifier_block *nf
  
  	case CPU_DEAD:
  		calc_load_migrate(rq);
