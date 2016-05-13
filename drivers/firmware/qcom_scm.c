@@ -189,6 +189,8 @@ static int qcom_scm_probe(struct platform_device *pdev)
 	__scm = scm;
 	__scm->dev = &pdev->dev;
 
+	__qcom_scm_init();
+
 	return 0;
 }
 
