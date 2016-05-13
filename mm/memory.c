@@ -1744,6 +1744,7 @@ int remap_pfn_range(struct vm_area_struct *vma, unsigned long addr,
 	unsigned long next;
 	unsigned long end = addr + PAGE_ALIGN(size);
 	struct mm_struct *mm = vma->vm_mm;
+	unsigned long remap_pfn = pfn;
 	int err;
 
 	/*
@@ -1770,7 +1771,7 @@ int remap_pfn_range(struct vm_area_struct *vma, unsigned long addr,
 		vma->vm_pgoff = pfn;
 	}
 
-	err = track_pfn_remap(vma, &prot, pfn, addr, PAGE_ALIGN(size));
+	err = track_pfn_remap(vma, &prot, remap_pfn, addr, PAGE_ALIGN(size));
 	if (err)
 		return -EINVAL;
 
@@ -1789,7 +1790,7 @@ int remap_pfn_range(struct vm_area_struct *vma, unsigned long addr,
 	} while (pgd++, addr = next, addr != end);
 
 	if (err)
-		untrack_pfn(vma, pfn, PAGE_ALIGN(size));
+		untrack_pfn(vma, remap_pfn, PAGE_ALIGN(size));
 
 	return err;
 }
@@ -2373,6 +2374,7 @@ static int do_wp_page(struct mm_struct *mm, struct vm_area_struct *vma,
 	 * not dirty accountable.
 	 */
 	if (PageAnon(old_page) && !PageKsm(old_page)) {
+		int total_mapcount;
 		if (!trylock_page(old_page)) {
 			get_page(old_page);
 			pte_unmap_unlock(page_table, ptl);
@@ -2387,13 +2389,18 @@ static int do_wp_page(struct mm_struct *mm, struct vm_area_struct *vma,
 			}
 			put_page(old_page);
 		}
-		if (reuse_swap_page(old_page)) {
-			/*
-			 * The page is all ours.  Move it to our anon_vma so
-			 * the rmap code will not search our parent or siblings.
-			 * Protected against the rmap code by the page lock.
-			 */
-			page_move_anon_rmap(old_page, vma, address);
+		if (reuse_swap_page(old_page, &total_mapcount)) {
+			if (total_mapcount == 1) {
+				/*
+				 * The page is all ours. Move it to
+				 * our anon_vma so the rmap code will
+				 * not search our parent or siblings.
+				 * Protected against the rmap code by
+				 * the page lock.
+				 */
+				page_move_anon_rmap(compound_head(old_page),
+						    vma, address);
+			}
 			unlock_page(old_page);
 			return wp_page_reuse(mm, vma, address, page_table, ptl,
 					     orig_pte, old_page, 0, 0);
@@ -2502,7 +2509,7 @@ EXPORT_SYMBOL(unmap_mapping_range);
  * We return with the mmap_sem locked or unlocked in the same cases
  * as does filemap_fault().
  */
-static int do_swap_page(struct mm_struct *mm, struct vm_area_struct *vma,
+int do_swap_page(struct mm_struct *mm, struct vm_area_struct *vma,
 		unsigned long address, pte_t *page_table, pmd_t *pmd,
 		unsigned int flags, pte_t orig_pte)
 {
@@ -2617,7 +2624,7 @@ static int do_swap_page(struct mm_struct *mm, struct vm_area_struct *vma,
 	inc_mm_counter_fast(mm, MM_ANONPAGES);
 	dec_mm_counter_fast(mm, MM_SWAPENTS);
 	pte = mk_pte(page, vma->vm_page_prot);
-	if ((flags & FAULT_FLAG_WRITE) && reuse_swap_page(page)) {
+	if ((flags & FAULT_FLAG_WRITE) && reuse_swap_page(page, NULL)) {
 		pte = maybe_mkwrite(pte_mkdirty(pte), vma);
 		flags &= ~FAULT_FLAG_WRITE;
 		ret |= VM_FAULT_WRITE;

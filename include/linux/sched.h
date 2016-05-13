@@ -522,6 +522,7 @@ static inline int get_dumpable(struct mm_struct *mm)
 
 #define MMF_HAS_UPROBES		19	/* has uprobes */
 #define MMF_RECALC_UPROBES	20	/* MMF_HAS_UPROBES can be wrong */
+#define MMF_OOM_REAPED		21	/* mm has been already reaped */
 
 #define MMF_INIT_MASK		(MMF_DUMPABLE_MASK | MMF_DUMP_FILTER_MASK)
 
@@ -793,7 +794,11 @@ struct signal_struct {
 	struct tty_audit_buf *tty_audit_buf;
 #endif
 
-	oom_flags_t oom_flags;
+	/*
+	 * Thread is the potential origin of an oom condition; kill first on
+	 * oom
+	 */
+	bool oom_flag_origin;
 	short oom_score_adj;		/* OOM kill score adjustment */
 	short oom_score_adj_min;	/* OOM kill score adjustment min value.
 					 * Only settable by CAP_SYS_RESOURCE. */
@@ -2735,6 +2740,11 @@ static inline void mmdrop(struct mm_struct * mm)
 
 /* mmput gets rid of the mappings and all user-space */
 extern void mmput(struct mm_struct *);
+/* same as above but performs the slow path from the async kontext. Can
+ * be called from the atomic context as well
+ */
+extern void mmput_async(struct mm_struct *);
+
 /* Grab a reference to a task's mm, if it is not already going away */
 extern struct mm_struct *get_task_mm(struct task_struct *task);
 /*
@@ -2763,7 +2773,14 @@ static inline int copy_thread_tls(
 }
 #endif
 extern void flush_thread(void);
-extern void exit_thread(void);
+
+#ifdef CONFIG_HAVE_EXIT_THREAD
+extern void exit_thread(struct task_struct *tsk);
+#else
+static inline void exit_thread(struct task_struct *tsk)
+{
+}
+#endif
 
 extern void exit_files(struct task_struct *);
 extern void __cleanup_sighand(struct sighand_struct *);
