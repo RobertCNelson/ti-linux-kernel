@@ -3001,7 +3001,7 @@ static void free_log_tree(struct btrfs_trans_handle *trans,
 			break;
 
 		clear_extent_bits(&log->dirty_log_pages, start, end,
-				  EXTENT_DIRTY | EXTENT_NEW, GFP_NOFS);
+				  EXTENT_DIRTY | EXTENT_NEW);
 	}
 
 	/*
@@ -5158,7 +5158,7 @@ process_leaf:
 			}
 
 			ctx->log_new_dentries = false;
-			if (type == BTRFS_FT_DIR)
+			if (type == BTRFS_FT_DIR || type == BTRFS_FT_SYMLINK)
 				log_mode = LOG_INODE_ALL;
 			btrfs_release_path(path);
 			ret = btrfs_log_inode(trans, root, di_inode,
@@ -5278,11 +5278,16 @@ static int btrfs_log_all_parents(struct btrfs_trans_handle *trans,
 			if (IS_ERR(dir_inode))
 				continue;
 
+			if (ctx)
+				ctx->log_new_dentries = false;
 			ret = btrfs_log_inode(trans, root, dir_inode,
 					      LOG_INODE_ALL, 0, LLONG_MAX, ctx);
 			if (!ret &&
 			    btrfs_must_commit_transaction(trans, dir_inode))
 				ret = 1;
+			if (!ret && ctx && ctx->log_new_dentries)
+				ret = log_new_dir_dentries(trans, root,
+							   dir_inode, ctx);
 			iput(dir_inode);
 			if (ret)
 				goto out;
@@ -5519,7 +5524,7 @@ int btrfs_recover_log_trees(struct btrfs_root *log_root_tree)
 
 	ret = walk_log_tree(trans, log_root_tree, &wc);
 	if (ret) {
-		btrfs_std_error(fs_info, ret, "Failed to pin buffers while "
+		btrfs_handle_fs_error(fs_info, ret, "Failed to pin buffers while "
 			    "recovering log root tree.");
 		goto error;
 	}
@@ -5533,7 +5538,7 @@ again:
 		ret = btrfs_search_slot(NULL, log_root_tree, &key, path, 0, 0);
 
 		if (ret < 0) {
-			btrfs_std_error(fs_info, ret,
+			btrfs_handle_fs_error(fs_info, ret,
 				    "Couldn't find tree log root.");
 			goto error;
 		}
@@ -5551,7 +5556,7 @@ again:
 		log = btrfs_read_fs_root(log_root_tree, &found_key);
 		if (IS_ERR(log)) {
 			ret = PTR_ERR(log);
-			btrfs_std_error(fs_info, ret,
+			btrfs_handle_fs_error(fs_info, ret,
 				    "Couldn't read tree log root.");
 			goto error;
 		}
@@ -5566,7 +5571,7 @@ again:
 			free_extent_buffer(log->node);
 			free_extent_buffer(log->commit_root);
 			kfree(log);
-			btrfs_std_error(fs_info, ret, "Couldn't read target root "
+			btrfs_handle_fs_error(fs_info, ret, "Couldn't read target root "
 				    "for tree log recovery.");
 			goto error;
 		}
@@ -5652,11 +5657,9 @@ void btrfs_record_unlink_dir(struct btrfs_trans_handle *trans,
 	 * into the file.  When the file is logged we check it and
 	 * don't log the parents if the file is fully on disk.
 	 */
-	if (S_ISREG(inode->i_mode)) {
-		mutex_lock(&BTRFS_I(inode)->log_mutex);
-		BTRFS_I(inode)->last_unlink_trans = trans->transid;
-		mutex_unlock(&BTRFS_I(inode)->log_mutex);
-	}
+	mutex_lock(&BTRFS_I(inode)->log_mutex);
+	BTRFS_I(inode)->last_unlink_trans = trans->transid;
+	mutex_unlock(&BTRFS_I(inode)->log_mutex);
 
 	/*
 	 * if this directory was already logged any new
