@@ -2253,6 +2253,8 @@ static int mlx5_port_immutable(struct ib_device *ibdev, u8 port_num,
 			       struct ib_port_immutable *immutable)
 {
 	struct ib_port_attr attr;
+	struct mlx5_ib_dev *dev = to_mdev(ibdev);
+	enum rdma_link_layer ll = mlx5_ib_port_link_layer(ibdev, 1);
 	int err;
 
 	err = mlx5_ib_query_port(ibdev, port_num, &attr);
@@ -2262,35 +2264,10 @@ static int mlx5_port_immutable(struct ib_device *ibdev, u8 port_num,
 	immutable->pkey_tbl_len = attr.pkey_tbl_len;
 	immutable->gid_tbl_len = attr.gid_tbl_len;
 	immutable->core_cap_flags = get_core_cap_flags(ibdev);
-	immutable->max_mad_size = IB_MGMT_MAD_SIZE;
+	if ((ll == IB_LINK_LAYER_INFINIBAND) || MLX5_CAP_GEN(dev->mdev, roce))
+		immutable->max_mad_size = IB_MGMT_MAD_SIZE;
 
 	return 0;
-}
-
-static int mlx5_enable_roce(struct mlx5_ib_dev *dev)
-{
-	int err;
-
-	dev->roce.nb.notifier_call = mlx5_netdev_event;
-	err = register_netdevice_notifier(&dev->roce.nb);
-	if (err)
-		return err;
-
-	err = mlx5_nic_vport_enable_roce(dev->mdev);
-	if (err)
-		goto err_unregister_netdevice_notifier;
-
-	return 0;
-
-err_unregister_netdevice_notifier:
-	unregister_netdevice_notifier(&dev->roce.nb);
-	return err;
-}
-
-static void mlx5_disable_roce(struct mlx5_ib_dev *dev)
-{
-	mlx5_nic_vport_disable_roce(dev->mdev);
-	unregister_netdevice_notifier(&dev->roce.nb);
 }
 
 static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
@@ -2303,9 +2280,6 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 
 	port_type_cap = MLX5_CAP_GEN(mdev, port_type);
 	ll = mlx5_port_type_cap_to_rdma_ll(port_type_cap);
-
-	if ((ll == IB_LINK_LAYER_ETHERNET) && !MLX5_CAP_GEN(mdev, roce))
-		return NULL;
 
 	printk_once(KERN_INFO "%s", mlx5_version);
 
@@ -2454,9 +2428,15 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 	mutex_init(&dev->cap_mask_mutex);
 
 	if (ll == IB_LINK_LAYER_ETHERNET) {
-		err = mlx5_enable_roce(dev);
+		dev->roce.nb.notifier_call = mlx5_netdev_event;
+		err = register_netdevice_notifier(&dev->roce.nb);
 		if (err)
 			goto err_dealloc;
+		if (MLX5_CAP_GEN(mdev, roce)) {
+			err = mlx5_nic_vport_enable_roce(dev->mdev);
+			if (err)
+				goto err_unreg_notifier;
+		}
 	}
 
 	err = create_dev_resources(&dev->devr);
@@ -2499,8 +2479,12 @@ err_rsrc:
 	destroy_dev_resources(&dev->devr);
 
 err_disable_roce:
+	if (ll == IB_LINK_LAYER_ETHERNET && MLX5_CAP_GEN(mdev, roce))
+		mlx5_nic_vport_disable_roce(dev->mdev);
+
+err_unreg_notifier:
 	if (ll == IB_LINK_LAYER_ETHERNET)
-		mlx5_disable_roce(dev);
+		unregister_netdevice_notifier(&dev->roce.nb);
 
 err_dealloc:
 	ib_dealloc_device((struct ib_device *)dev);
@@ -2517,8 +2501,11 @@ static void mlx5_ib_remove(struct mlx5_core_dev *mdev, void *context)
 	destroy_umrc_res(dev);
 	mlx5_ib_odp_remove_one(dev);
 	destroy_dev_resources(&dev->devr);
-	if (ll == IB_LINK_LAYER_ETHERNET)
-		mlx5_disable_roce(dev);
+	if (ll == IB_LINK_LAYER_ETHERNET) {
+		if (MLX5_CAP_GEN(mdev, roce))
+			mlx5_nic_vport_disable_roce(dev->mdev);
+		unregister_netdevice_notifier(&dev->roce.nb);
+	}
 	ib_dealloc_device(&dev->ib_dev);
 }
 
