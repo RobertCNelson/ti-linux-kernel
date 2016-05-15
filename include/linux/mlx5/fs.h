@@ -67,6 +67,28 @@ struct mlx5_flow_group;
 struct mlx5_flow_rule;
 struct mlx5_flow_namespace;
 
+#define MLX5_RULE_ATTR(attr, mc_e, mc, mv, action_v, flow_tag_v, dest_v)  {\
+	attr.flow_match.match_criteria_enable = mc_e;		\
+	attr.flow_match.match_criteria = mc;			\
+	attr.flow_match.match_value = mv;			\
+	attr.action = action_v;					\
+	attr.flow_tag = flow_tag_v;				\
+	attr.dest = dest_v;					\
+}
+
+struct mlx5_flow_match {
+	   u8 match_criteria_enable;
+	   u32 *match_criteria;
+	   u32 *match_value;
+};
+
+struct mlx5_flow_attr {
+	struct mlx5_flow_match flow_match;
+	u32 action;
+	u32 flow_tag;
+	struct mlx5_flow_destination *dest;
+};
+
 struct mlx5_flow_destination {
 	enum mlx5_flow_destination_type	type;
 	union {
@@ -115,12 +137,7 @@ void mlx5_destroy_flow_group(struct mlx5_flow_group *fg);
  */
 struct mlx5_flow_rule *
 mlx5_add_flow_rule(struct mlx5_flow_table *ft,
-		   u8 match_criteria_enable,
-		   u32 *match_criteria,
-		   u32 *match_value,
-		   u32 action,
-		   u32 flow_tag,
-		   struct mlx5_flow_destination *dest);
+		   struct mlx5_flow_attr *attr);
 void mlx5_del_flow_rule(struct mlx5_flow_rule *fr);
 
 int mlx5_modify_rule_destination(struct mlx5_flow_rule *rule,

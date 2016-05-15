@@ -55,6 +55,7 @@ static struct mlx5_flow_rule *mlx5e_tc_add_flow(struct mlx5e_priv *priv,
 {
 	struct mlx5_core_dev *dev = priv->mdev;
 	struct mlx5_flow_destination dest = { 0 };
+	struct mlx5_flow_attr flow_attr;
 	struct mlx5_fc *counter = NULL;
 	struct mlx5_flow_rule *rule;
 	bool table_created = false;
@@ -88,10 +89,9 @@ static struct mlx5_flow_rule *mlx5e_tc_add_flow(struct mlx5e_priv *priv,
 		table_created = true;
 	}
 
-	rule = mlx5_add_flow_rule(priv->fs.tc.t, MLX5_MATCH_OUTER_HEADERS,
-				  match_c, match_v,
-				  action, flow_tag,
-				  &dest);
+	MLX5_RULE_ATTR(flow_attr, MLX5_MATCH_OUTER_HEADERS, match_c,
+		       match_v, action, flow_tag, &dest);
+	rule = mlx5_add_flow_rule(priv->fs.tc.t, &flow_attr);
 
 	if (IS_ERR(rule))
 		goto err_add_rule;

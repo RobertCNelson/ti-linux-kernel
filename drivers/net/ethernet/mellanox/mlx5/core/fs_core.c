@@ -1152,39 +1152,37 @@ static bool dest_is_valid(struct mlx5_flow_destination *dest,
 
 static struct mlx5_flow_rule *
 _mlx5_add_flow_rule(struct mlx5_flow_table *ft,
-		    u8 match_criteria_enable,
-		    u32 *match_criteria,
-		    u32 *match_value,
-		    u32 action,
-		    u32 flow_tag,
-		    struct mlx5_flow_destination *dest)
+		    struct mlx5_flow_attr *attr)
 {
+	struct mlx5_flow_match *match = &attr->flow_match;
 	struct mlx5_flow_group *g;
 	struct mlx5_flow_rule *rule;
 
-	if (!dest_is_valid(dest, action, ft))
+	if (!dest_is_valid(attr->dest, attr->action, ft))
 		return ERR_PTR(-EINVAL);
 
 	nested_lock_ref_node(&ft->node, FS_MUTEX_GRANDPARENT);
 	fs_for_each_fg(g, ft)
 		if (compare_match_criteria(g->mask.match_criteria_enable,
-					   match_criteria_enable,
+					   match->match_criteria_enable,
 					   g->mask.match_criteria,
-					   match_criteria)) {
-			rule = add_rule_fg(g, match_value,
-					   action, flow_tag, dest);
+					   match->match_criteria)) {
+			rule = add_rule_fg(g, match->match_value,
+					   attr->action, attr->flow_tag,
+					   attr->dest);
 			if (!IS_ERR(rule) || PTR_ERR(rule) != -ENOSPC)
 				goto unlock;
 		}
 
-	g = create_autogroup(ft, match_criteria_enable, match_criteria);
+	g = create_autogroup(ft, match->match_criteria_enable,
+			     match->match_criteria);
 	if (IS_ERR(g)) {
 		rule = (void *)g;
 		goto unlock;
 	}
 
-	rule = add_rule_fg(g, match_value,
-			   action, flow_tag, dest);
+	rule = add_rule_fg(g, match->match_value,
+			   attr->action, attr->flow_tag, attr->dest);
 	if (IS_ERR(rule)) {
 		/* Remove assumes refcount > 0 and autogroup creates a group
 		 * with a refcount = 0.
@@ -1207,41 +1205,35 @@ static bool fwd_next_prio_supported(struct mlx5_flow_table *ft)
 
 struct mlx5_flow_rule *
 mlx5_add_flow_rule(struct mlx5_flow_table *ft,
-		   u8 match_criteria_enable,
-		   u32 *match_criteria,
-		   u32 *match_value,
-		   u32 action,
-		   u32 flow_tag,
-		   struct mlx5_flow_destination *dest)
+		   struct mlx5_flow_attr *attr)
 {
 	struct mlx5_flow_root_namespace *root = find_root(&ft->node);
 	struct mlx5_flow_destination gen_dest;
 	struct mlx5_flow_table *next_ft = NULL;
 	struct mlx5_flow_rule *rule = NULL;
-	u32 sw_action = action;
+	u32 sw_action = attr->action;
 	struct fs_prio *prio;
 
 	fs_get_obj(prio, ft->node.parent);
-	if (action == MLX5_FLOW_CONTEXT_ACTION_FWD_NEXT_PRIO) {
+	if (attr->action == MLX5_FLOW_CONTEXT_ACTION_FWD_NEXT_PRIO) {
 		if (!fwd_next_prio_supported(ft))
 			return ERR_PTR(-EOPNOTSUPP);
-		if (dest)
+		if (attr->dest)
 			return ERR_PTR(-EINVAL);
 		mutex_lock(&root->chain_lock);
 		next_ft = find_next_chained_ft(prio);
 		if (next_ft) {
 			gen_dest.type = MLX5_FLOW_DESTINATION_TYPE_FLOW_TABLE;
 			gen_dest.ft = next_ft;
-			dest = &gen_dest;
-			action = MLX5_FLOW_CONTEXT_ACTION_FWD_DEST;
+			attr->dest = &gen_dest;
+			attr->action = MLX5_FLOW_CONTEXT_ACTION_FWD_DEST;
 		} else {
 			mutex_unlock(&root->chain_lock);
 			return ERR_PTR(-EOPNOTSUPP);
 		}
 	}
 
-	rule =	_mlx5_add_flow_rule(ft, match_criteria_enable, match_criteria,
-				    match_value, action, flow_tag, dest);
+	rule =	_mlx5_add_flow_rule(ft, attr);
 
 	if (sw_action == MLX5_FLOW_CONTEXT_ACTION_FWD_NEXT_PRIO) {
 		if (!IS_ERR_OR_NULL(rule) &&

@@ -1528,6 +1528,7 @@ static struct mlx5_ib_flow_handler *create_flow_rule(struct mlx5_ib_dev *dev,
 {
 	struct mlx5_flow_table	*ft = ft_prio->flow_table;
 	struct mlx5_ib_flow_handler *handler;
+	struct mlx5_flow_attr flow_rule_attr;
 	void *ib_flow = flow_attr + 1;
 	u8 match_criteria_enable = 0;
 	unsigned int spec_index;
@@ -1561,11 +1562,10 @@ static struct mlx5_ib_flow_handler *create_flow_rule(struct mlx5_ib_dev *dev,
 	match_criteria_enable = (!outer_header_zero(match_c)) << 0;
 	action = dst ? MLX5_FLOW_CONTEXT_ACTION_FWD_DEST :
 		MLX5_FLOW_CONTEXT_ACTION_FWD_NEXT_PRIO;
-	handler->rule = mlx5_add_flow_rule(ft, match_criteria_enable,
-					   match_c, match_v,
-					   action,
-					   MLX5_FS_DEFAULT_FLOW_TAG,
-					   dst);
+
+	MLX5_RULE_ATTR(flow_rule_attr, match_criteria_enable, match_c,
+		       match_v, action, MLX5_FS_DEFAULT_FLOW_TAG, dst);
+	handler->rule = mlx5_add_flow_rule(ft, &flow_rule_attr);
 
 	if (IS_ERR(handler->rule)) {
 		err = PTR_ERR(handler->rule);

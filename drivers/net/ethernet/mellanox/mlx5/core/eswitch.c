@@ -337,6 +337,7 @@ __esw_fdb_set_vport_rule(struct mlx5_eswitch *esw, u32 vport, bool rx_rule,
 			    MLX5_MATCH_OUTER_HEADERS);
 	struct mlx5_flow_rule *flow_rule = NULL;
 	struct mlx5_flow_destination dest;
+	struct mlx5_flow_attr flow_attr;
 	void *mv_misc = NULL;
 	void *mc_misc = NULL;
 	u8 *dmac_v = NULL;
@@ -376,13 +377,10 @@ __esw_fdb_set_vport_rule(struct mlx5_eswitch *esw, u32 vport, bool rx_rule,
 	esw_debug(esw->dev,
 		  "\tFDB add rule dmac_v(%pM) dmac_c(%pM) -> vport(%d)\n",
 		  dmac_v, dmac_c, vport);
-	flow_rule =
-		mlx5_add_flow_rule(esw->fdb_table.fdb,
-				   match_header,
-				   match_c,
-				   match_v,
-				   MLX5_FLOW_CONTEXT_ACTION_FWD_DEST,
-				   0, &dest);
+	MLX5_RULE_ATTR(flow_attr, match_header, match_c, match_v,
+		       MLX5_FLOW_CONTEXT_ACTION_FWD_DEST,
+		       0, &dest);
+	flow_rule = mlx5_add_flow_rule(esw->fdb_table.fdb, &flow_attr);
 	if (IS_ERR(flow_rule)) {
 		pr_warn(
 			"FDB: Failed to add flow rule: dmac_v(%pM) dmac_c(%pM) -> vport(%d), err(%ld)\n",
@@ -1300,6 +1298,7 @@ static void esw_vport_disable_ingress_acl(struct mlx5_eswitch *esw,
 static int esw_vport_ingress_config(struct mlx5_eswitch *esw,
 				    struct mlx5_vport *vport)
 {
+	struct mlx5_flow_attr flow_attr;
 	u8 smac[ETH_ALEN];
 	u32 *match_v;
 	u32 *match_c;
@@ -1357,13 +1356,11 @@ static int esw_vport_ingress_config(struct mlx5_eswitch *esw,
 		ether_addr_copy(smac_v, smac);
 	}
 
+	MLX5_RULE_ATTR(flow_attr, MLX5_MATCH_OUTER_HEADERS, match_c, match_v,
+		       MLX5_FLOW_CONTEXT_ACTION_FWD_DEST,
+		       0, NULL);
 	vport->ingress.allow_rule =
-		mlx5_add_flow_rule(vport->ingress.acl,
-				   MLX5_MATCH_OUTER_HEADERS,
-				   match_c,
-				   match_v,
-				   MLX5_FLOW_CONTEXT_ACTION_ALLOW,
-				   0, NULL);
+		mlx5_add_flow_rule(vport->ingress.acl, &flow_attr);
 	if (IS_ERR(vport->ingress.allow_rule)) {
 		err = PTR_ERR(vport->ingress.allow_rule);
 		pr_warn("vport[%d] configure ingress allow rule, err(%d)\n",
@@ -1374,13 +1371,10 @@ static int esw_vport_ingress_config(struct mlx5_eswitch *esw,
 
 	memset(match_c, 0, MLX5_ST_SZ_BYTES(fte_match_param));
 	memset(match_v, 0, MLX5_ST_SZ_BYTES(fte_match_param));
+	flow_attr.flow_match.match_criteria_enable = 0;
+	flow_attr.action = MLX5_FLOW_CONTEXT_ACTION_DROP;
 	vport->ingress.drop_rule =
-		mlx5_add_flow_rule(vport->ingress.acl,
-				   0,
-				   match_c,
-				   match_v,
-				   MLX5_FLOW_CONTEXT_ACTION_DROP,
-				   0, NULL);
+		mlx5_add_flow_rule(vport->ingress.acl, &flow_attr);
 	if (IS_ERR(vport->ingress.drop_rule)) {
 		err = PTR_ERR(vport->ingress.drop_rule);
 		pr_warn("vport[%d] configure ingress drop rule, err(%d)\n",
@@ -1401,6 +1395,7 @@ out:
 static int esw_vport_egress_config(struct mlx5_eswitch *esw,
 				   struct mlx5_vport *vport)
 {
+	struct mlx5_flow_attr flow_attr;
 	u32 *match_v;
 	u32 *match_c;
 	int err = 0;
@@ -1433,13 +1428,11 @@ static int esw_vport_egress_config(struct mlx5_eswitch *esw,
 	MLX5_SET_TO_ONES(fte_match_param, match_c, outer_headers.first_vid);
 	MLX5_SET(fte_match_param, match_v, outer_headers.first_vid, vport->vlan);
 
+	MLX5_RULE_ATTR(flow_attr, MLX5_MATCH_OUTER_HEADERS, match_c, match_v,
+		       MLX5_FLOW_CONTEXT_ACTION_ALLOW,
+		       0, NULL);
 	vport->egress.allowed_vlan =
-		mlx5_add_flow_rule(vport->egress.acl,
-				   MLX5_MATCH_OUTER_HEADERS,
-				   match_c,
-				   match_v,
-				   MLX5_FLOW_CONTEXT_ACTION_ALLOW,
-				   0, NULL);
+		mlx5_add_flow_rule(vport->egress.acl, &flow_attr);
 	if (IS_ERR(vport->egress.allowed_vlan)) {
 		err = PTR_ERR(vport->egress.allowed_vlan);
 		pr_warn("vport[%d] configure egress allowed vlan rule failed, err(%d)\n",
@@ -1451,13 +1444,9 @@ static int esw_vport_egress_config(struct mlx5_eswitch *esw,
 	/* Drop others rule (star rule) */
 	memset(match_c, 0, MLX5_ST_SZ_BYTES(fte_match_param));
 	memset(match_v, 0, MLX5_ST_SZ_BYTES(fte_match_param));
+	flow_attr.flow_match.match_criteria_enable = 0;
 	vport->egress.drop_rule =
-		mlx5_add_flow_rule(vport->egress.acl,
-				   0,
-				   match_c,
-				   match_v,
-				   MLX5_FLOW_CONTEXT_ACTION_DROP,
-				   0, NULL);
+		mlx5_add_flow_rule(vport->egress.acl, &flow_attr);
 	if (IS_ERR(vport->egress.drop_rule)) {
 		err = PTR_ERR(vport->egress.drop_rule);
 		pr_warn("vport[%d] configure egress drop rule failed, err(%d)\n",
