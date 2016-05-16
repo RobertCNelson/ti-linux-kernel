@@ -101,8 +101,6 @@ struct mips_pmu {
 
 static struct mips_pmu mipspmu;
 
-#define M_CONFIG1_PC	(1 << 4)
-
 #define M_PERFCTL_EXL			(1	<<  0)
 #define M_PERFCTL_KERNEL		(1	<<  1)
 #define M_PERFCTL_SUPERVISOR		(1	<<  2)
@@ -754,7 +752,7 @@ static void handle_associated_event(struct cpu_hw_events *cpuc,
 
 static int __n_counters(void)
 {
-	if (!(read_c0_config1() & M_CONFIG1_PC))
+	if (!cpu_has_perf)
 		return 0;
 	if (!(read_c0_perfctrl0() & M_PERFCTL_MORE))
 		return 1;
@@ -1556,6 +1554,7 @@ static const struct mips_perf_event *mipsxx_pmu_map_raw_event(u64 config)
 #endif
 		break;
 	case CPU_P5600:
+	case CPU_P6600:
 	case CPU_I6400:
 		/* 8-bit event numbers */
 		raw_id = config & 0x1ff;
@@ -1715,6 +1714,11 @@ init_hw_perf_events(void)
 		break;
 	case CPU_P5600:
 		mipspmu.name = "mips/P5600";
+		mipspmu.general_event_map = &mipsxxcore_event_map2;
+		mipspmu.cache_event_map = &mipsxxcore_cache_map2;
+		break;
+	case CPU_P6600:
+		mipspmu.name = "mips/P6600";
 		mipspmu.general_event_map = &mipsxxcore_event_map2;
 		mipspmu.cache_event_map = &mipsxxcore_cache_map2;
 		break;
