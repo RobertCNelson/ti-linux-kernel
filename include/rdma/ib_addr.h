@@ -54,6 +54,9 @@ struct rdma_addr_client {
 	struct completion comp;
 };
 
+int addr_init(void);
+void addr_cleanup(void);
+
 /**
  * rdma_addr_register_client - Register an address client.
  */
