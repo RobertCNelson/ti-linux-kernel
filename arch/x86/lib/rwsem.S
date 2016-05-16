@@ -33,10 +33,12 @@
  * value or just clobbered..
  */
 
-#define save_common_regs \
-	pushl %ecx
+#define save_common_regs	\
+	pushl %ecx;		\
+	pushl %edx
 
-#define restore_common_regs \
+#define restore_common_regs	\
+	popl %edx;		\
 	popl %ecx
 
 	/* Avoid uglifying the argument copying x86-64 needs to do. */
@@ -105,6 +107,16 @@ ENTRY(call_rwsem_down_write_failed)
 	FRAME_END
 	ret
 ENDPROC(call_rwsem_down_write_failed)
+
+ENTRY(call_rwsem_down_write_failed_killable)
+	FRAME_BEGIN
+	save_common_regs
+	movq %rax,%rdi
+	call rwsem_down_write_failed_killable
+	restore_common_regs
+	FRAME_END
+	ret
+ENDPROC(call_rwsem_down_write_failed_killable)
 
 ENTRY(call_rwsem_wake)
 	FRAME_BEGIN
