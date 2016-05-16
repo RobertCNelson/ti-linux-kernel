@@ -556,9 +556,10 @@ struct mlx5e_flow_steering {
 	struct mlx5e_sniffer            *sniffer;
 };
 
-struct mlx5e_direct_tir {
+struct mlx5e_tir {
 	u32              tirn;
 	u32              rqtn;
+	struct list_head list;
 };
 
 enum {
@@ -580,8 +581,8 @@ struct mlx5e_priv {
 	struct mlx5e_channel     **channel;
 	u32                        tisn[MLX5E_MAX_NUM_TC];
 	u32                        indir_rqtn;
-	u32                        indir_tirn[MLX5E_NUM_INDIR_TIRS];
-	struct mlx5e_direct_tir    direct_tir[MLX5E_MAX_NUM_CHANNELS];
+	struct mlx5e_tir           indir_tir[MLX5E_NUM_INDIR_TIRS];
+	struct mlx5e_tir           direct_tir[MLX5E_MAX_NUM_CHANNELS];
 	u32                        tx_rates[MLX5E_MAX_NUM_SQS];
 
 	struct mlx5e_flow_steering fs;
@@ -793,7 +794,12 @@ int mlx5e_rx_flow_steer(struct net_device *dev, const struct sk_buff *skb,
 #endif
 
 u16 mlx5e_get_max_inline_cap(struct mlx5_core_dev *mdev);
+int mlx5e_create_tir(struct mlx5_core_dev *mdev,
+		     struct mlx5e_tir *tir, u32 *in, int inlen);
+void mlx5e_destroy_tir(struct mlx5_core_dev *mdev,
+		       struct mlx5e_tir *tir);
 int mlx5e_create_mdev_resources(struct mlx5_core_dev *mdev);
 void mlx5e_destroy_mdev_resources(struct mlx5_core_dev *mdev);
+int mlx5e_refresh_tirs_self_loopback_enable(struct mlx5_core_dev *mdev);
 
 #endif /* __MLX5_EN_H__ */
