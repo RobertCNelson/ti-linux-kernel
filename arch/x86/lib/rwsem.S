@@ -35,10 +35,12 @@
  * example see ____down_write().
  */
 
-#define save_common_regs \
-	pushl %ecx
+#define save_common_regs	\
+	pushl %ecx;		\
+	pushl %edx
 
-#define restore_common_regs \
+#define restore_common_regs	\
+	popl %edx;		\
 	popl %ecx
 
 	/* Avoid uglifying the argument copying x86-64 needs to do. */

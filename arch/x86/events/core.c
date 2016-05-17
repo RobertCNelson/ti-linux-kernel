@@ -1524,7 +1524,7 @@ x86_pmu_notifier(struct notifier_block *self, unsigned long action, void *hcpu)
 
 static void __init pmu_check_apic(void)
 {
-	if (cpu_has_apic)
+	if (boot_cpu_has(X86_FEATURE_APIC))
 		return;
 
 	x86_pmu.apic = 0;
@@ -2183,7 +2183,7 @@ void arch_perf_update_userpage(struct perf_event *event,
 	 * cap_user_time_zero doesn't make sense when we're using a different
 	 * time base for the records.
 	 */
-	if (event->clock == &local_clock) {
+	if (!event->attr.use_clockid) {
 		userpg->cap_user_time_zero = 1;
 		userpg->time_zero = data->cyc2ns_offset;
 	}
