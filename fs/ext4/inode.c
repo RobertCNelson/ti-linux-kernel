@@ -3327,13 +3327,13 @@ static int ext4_end_io_dio(struct kiocb *iocb, loff_t offset,
  * if the machine crashes during the write.
  *
  */
-static ssize_t ext4_direct_IO_write(struct kiocb *iocb, struct iov_iter *iter,
-				    loff_t offset)
+static ssize_t ext4_direct_IO_write(struct kiocb *iocb, struct iov_iter *iter)
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file->f_mapping->host;
 	struct ext4_inode_info *ei = EXT4_I(inode);
 	ssize_t ret;
+	loff_t offset = iocb->ki_pos;
 	size_t count = iov_iter_count(iter);
 	int overwrite = 0;
 	get_block_t *get_block_func = NULL;
@@ -3424,11 +3424,11 @@ static ssize_t ext4_direct_IO_write(struct kiocb *iocb, struct iov_iter *iter,
 	BUG_ON(ext4_encrypted_inode(inode) && S_ISREG(inode->i_mode));
 #endif
 	if (IS_DAX(inode)) {
-		ret = dax_do_io(iocb, inode, iter, offset, get_block_func,
+		ret = dax_do_io(iocb, inode, iter, get_block_func,
 				ext4_end_io_dio, dio_flags);
 	} else
 		ret = __blockdev_direct_IO(iocb, inode,
-					   inode->i_sb->s_bdev, iter, offset,
+					   inode->i_sb->s_bdev, iter,
 					   get_block_func,
 					   ext4_end_io_dio, NULL, dio_flags);
 
@@ -3495,11 +3495,11 @@ out:
 	return ret;
 }
 
-static ssize_t ext4_direct_IO_read(struct kiocb *iocb, struct iov_iter *iter,
-				   loff_t offset)
+static ssize_t ext4_direct_IO_read(struct kiocb *iocb, struct iov_iter *iter)
 {
 	int unlocked = 0;
 	struct inode *inode = iocb->ki_filp->f_mapping->host;
+	loff_t offset = iocb->ki_pos;
 	ssize_t ret;
 
 	if (ext4_should_dioread_nolock(inode)) {
@@ -3517,11 +3517,11 @@ static ssize_t ext4_direct_IO_read(struct kiocb *iocb, struct iov_iter *iter,
 			unlocked = 1;
 	}
 	if (IS_DAX(inode)) {
-		ret = dax_do_io(iocb, inode, iter, offset, ext4_dio_get_block,
+		ret = dax_do_io(iocb, inode, iter, ext4_dio_get_block,
 				NULL, unlocked ? 0 : DIO_LOCKING);
 	} else {
 		ret = __blockdev_direct_IO(iocb, inode, inode->i_sb->s_bdev,
-					   iter, offset, ext4_dio_get_block,
+					   iter, ext4_dio_get_block,
 					   NULL, NULL,
 					   unlocked ? 0 : DIO_LOCKING);
 	}
@@ -3530,12 +3530,12 @@ static ssize_t ext4_direct_IO_read(struct kiocb *iocb, struct iov_iter *iter,
 	return ret;
 }
 
-static ssize_t ext4_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
-			      loff_t offset)
+static ssize_t ext4_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file->f_mapping->host;
 	size_t count = iov_iter_count(iter);
+	loff_t offset = iocb->ki_pos;
 	ssize_t ret;
 
 #ifdef CONFIG_EXT4_FS_ENCRYPTION
@@ -3555,9 +3555,9 @@ static ssize_t ext4_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 
 	trace_ext4_direct_IO_enter(inode, offset, count, iov_iter_rw(iter));
 	if (iov_iter_rw(iter) == READ)
-		ret = ext4_direct_IO_read(iocb, iter, offset);
+		ret = ext4_direct_IO_read(iocb, iter);
 	else
-		ret = ext4_direct_IO_write(iocb, iter, offset);
+		ret = ext4_direct_IO_write(iocb, iter);
 	trace_ext4_direct_IO_exit(inode, offset, count, iov_iter_rw(iter), ret);
 	return ret;
 }
