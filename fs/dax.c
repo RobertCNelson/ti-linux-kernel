@@ -1036,3 +1036,46 @@ int dax_truncate_page(struct inode *inode, loff_t from, get_block_t get_block)
 	return dax_zero_page_range(inode, from, length, get_block);
 }
 EXPORT_SYMBOL_GPL(dax_truncate_page);
+
+/**
+ * dax_get_unmapped_area - handle get_unmapped_area for a DAX file
+ * @filp: The file being mmap'd, if not NULL
+ * @addr: The mmap address. If NULL, the kernel assigns the address
+ * @len: The mmap size in bytes
+ * @pgoff: The page offset in the file where the mapping starts from.
+ * @flags: The mmap flags
+ *
+ * This function can be called by a filesystem for get_unmapped_area().
+ * When a target file is a DAX file, it aligns the mmap address at the
+ * beginning of the file by the pmd size.
+ */
+unsigned long dax_get_unmapped_area(struct file *filp, unsigned long addr,
+		unsigned long len, unsigned long pgoff, unsigned long flags)
+{
+	unsigned long off, off_end, off_pmd, len_pmd, addr_pmd;
+
+	if (!IS_ENABLED(CONFIG_FS_DAX_PMD) ||
+	    !filp || addr || !IS_DAX(filp->f_mapping->host))
+		goto out;
+
+	off = pgoff << PAGE_SHIFT;
+	off_end = off + len;
+	off_pmd = round_up(off, PMD_SIZE);  /* pmd-aligned offset */
+
+	if ((off_end <= off_pmd) || ((off_end - off_pmd) < PMD_SIZE))
+		goto out;
+
+	len_pmd = len + PMD_SIZE;
+	if ((off + len_pmd) < off)
+		goto out;
+
+	addr_pmd = current->mm->get_unmapped_area(filp, addr, len_pmd,
+						  pgoff, flags);
+	if (!IS_ERR_VALUE(addr_pmd)) {
+		addr_pmd += (off - addr_pmd) & (PMD_SIZE - 1);
+		return addr_pmd;
+	}
+out:
+	return current->mm->get_unmapped_area(filp, addr, len, pgoff, flags);
+}
+EXPORT_SYMBOL_GPL(dax_get_unmapped_area);
