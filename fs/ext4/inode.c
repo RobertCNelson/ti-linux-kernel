@@ -3499,7 +3499,6 @@ static ssize_t ext4_direct_IO_read(struct kiocb *iocb, struct iov_iter *iter)
 {
 	int unlocked = 0;
 	struct inode *inode = iocb->ki_filp->f_mapping->host;
-	loff_t offset = iocb->ki_pos;
 	ssize_t ret;
 
 	if (ext4_should_dioread_nolock(inode)) {

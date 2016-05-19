@@ -917,7 +917,7 @@ const struct inode_operations cifs_symlink_inode_ops = {
 	.permission = cifs_permission,
 	/* BB add the following two eventually */
 	/* revalidate: cifs_revalidate,
-	   setattr:    cifs_notify_change, *//* BB do we need notify change */
+	.setattr = cifs_notify_change, *//* BB do we need notify change */
 	.setxattr = generic_setxattr,
 	.getxattr = generic_getxattr,
 	.listxattr = cifs_listxattr,
