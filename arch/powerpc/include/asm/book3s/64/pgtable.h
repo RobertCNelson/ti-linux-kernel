@@ -829,6 +829,7 @@ extern void set_pmd_at(struct mm_struct *mm, unsigned long addr,
 extern void update_mmu_cache_pmd(struct vm_area_struct *vma, unsigned long addr,
 				 pmd_t *pmd);
 extern int hash__has_transparent_hugepage(void);
+#define has_transparent_hugepage has_transparent_hugepage
 static inline int has_transparent_hugepage(void)
 {
 	if (radix_enabled())
