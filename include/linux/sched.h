@@ -771,6 +771,7 @@ struct signal_struct {
 	 */
 	unsigned long long sum_sched_runtime;
 
+	atomic_t oom_victims; /* # of TIF_MEDIE threads in this thread group */
 	/*
 	 * We don't bother to synchronize most readers of this at all,
 	 * because there is no reader checking a limit that actually needs
