@@ -3142,8 +3142,10 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			Format: <bool>  (1/Y/y=enable, 0/N/n=disable)
 			default: disabled
 
-	printk.time=	Show timing data prefixed to each printk message line
-			Format: <string>  (1/Y/y=enable, 0/N/n=disable)
+	printk.time=	Show timestamp prefixed to each printk message line
+			Format: <string>
+				(0/N/n = disable, 1/Y/y = local clock,
+				2 = monotonic clock, 3 = real clock)
 
 	processor.max_cstate=	[HW,ACPI]
 			Limit processor to maximum C-state
