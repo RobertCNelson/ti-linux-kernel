@@ -446,7 +446,7 @@ static ssize_t debug_stat_show(struct device *dev,
 	ret = scnprintf(buf, PAGE_SIZE,
 			"version: %d\n%8llu\n",
 			version,
-			(u64)atomic64_read(&zram->stats.num_recompress));
+			(u64)atomic64_read(&zram->stats.writestall));
 	up_read(&zram->init_lock);
 
 	return ret;
@@ -737,12 +737,12 @@ compress_again:
 		zcomp_strm_release(zram->comp, zstrm);
 		zstrm = NULL;
 
+		atomic64_inc(&zram->stats.writestall);
+
 		handle = zs_malloc(meta->mem_pool, clen,
 				GFP_NOIO | __GFP_HIGHMEM);
-		if (handle) {
-			atomic64_inc(&zram->stats.num_recompress);
+		if (handle)
 			goto compress_again;
-		}
 
 		pr_err("Error allocating memory for compressed page: %u, size=%zu\n",
 			index, clen);
