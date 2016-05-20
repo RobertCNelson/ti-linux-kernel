@@ -554,6 +554,13 @@ static inline struct dentry *d_backing_dentry(struct dentry *upper)
 	return upper;
 }
 
+/**
+ * d_real - Return the real dentry
+ * @dentry: The dentry to query
+ *
+ * If dentry is on an union/overlay, then return the underlying, real dentry.
+ * Otherwise return the dentry itself.
+ */
 static inline struct dentry *d_real(struct dentry *dentry)
 {
 	if (unlikely(dentry->d_flags & DCACHE_OP_REAL))
