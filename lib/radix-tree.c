@@ -1315,18 +1315,17 @@ static unsigned long __locate(struct radix_tree_node *slot, void *item,
 			      unsigned long index, struct locate_info *info)
 {
 	unsigned int shift, height;
-	unsigned long base, i;
+	unsigned long i;
 
 	height = slot->path & RADIX_TREE_HEIGHT_MASK;
 	shift = height * RADIX_TREE_MAP_SHIFT;
 
 	do {
 		shift -= RADIX_TREE_MAP_SHIFT;
-		base = index & ~((1UL << shift) - 1);
 
 		for (i = (index >> shift) & RADIX_TREE_MAP_MASK;
 		     i < RADIX_TREE_MAP_SIZE;
-		     i++, index = base + (i << shift)) {
+		     i++, index += (1UL << shift)) {
 			struct radix_tree_node *node =
 					rcu_dereference_raw(slot->slots[i]);
 			if (node == RADIX_TREE_RETRY)
