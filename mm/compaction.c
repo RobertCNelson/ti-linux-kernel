@@ -1897,7 +1897,7 @@ static void kcompactd_do_work(pg_data_t *pgdat)
 							cc.classzone_idx);
 	count_vm_event(KCOMPACTD_WAKE);
 
-	for (zoneid = 0; zoneid < cc.classzone_idx; zoneid++) {
+	for (zoneid = 0; zoneid <= cc.classzone_idx; zoneid++) {
 		int status;
 
 		zone = &pgdat->node_zones[zoneid];
