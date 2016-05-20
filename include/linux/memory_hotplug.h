@@ -247,16 +247,16 @@ static inline void mem_hotplug_done(void) {}
 
 #ifdef CONFIG_MEMORY_HOTREMOVE
 
-extern int is_mem_section_removable(unsigned long pfn, unsigned long nr_pages);
+extern bool is_mem_section_removable(unsigned long pfn, unsigned long nr_pages);
 extern void try_offline_node(int nid);
 extern int offline_pages(unsigned long start_pfn, unsigned long nr_pages);
 extern void remove_memory(int nid, u64 start, u64 size);
 
 #else
-static inline int is_mem_section_removable(unsigned long pfn,
+static inline bool is_mem_section_removable(unsigned long pfn,
 					unsigned long nr_pages)
 {
-	return 0;
+	return false;
 }
 
 static inline void try_offline_node(int nid) {}
@@ -284,5 +284,7 @@ extern void sparse_remove_one_section(struct zone *zone, struct mem_section *ms,
 		unsigned long map_offset);
 extern struct page *sparse_decode_mem_map(unsigned long coded_mem_map,
 					  unsigned long pnum);
+extern int zone_can_shift(unsigned long pfn, unsigned long nr_pages,
+			  enum zone_type target);
 
 #endif /* __LINUX_MEMORY_HOTPLUG_H */

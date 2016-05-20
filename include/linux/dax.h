@@ -24,6 +24,8 @@ struct page *read_dax_sector(struct block_device *bdev, sector_t n);
 void dax_unlock_mapping_entry(struct address_space *mapping, pgoff_t index);
 int __dax_zero_page_range(struct block_device *bdev, sector_t sector,
 		unsigned int offset, unsigned int length);
+unsigned long dax_get_unmapped_area(struct file *filp, unsigned long addr,
+		unsigned long len, unsigned long pgoff, unsigned long flags);
 #else
 static inline struct page *read_dax_sector(struct block_device *bdev,
 		sector_t n)
@@ -41,6 +43,7 @@ static inline int __dax_zero_page_range(struct block_device *bdev,
 {
 	return -ENXIO;
 }
+#define dax_get_unmapped_area	NULL
 #endif
 
 #if defined(CONFIG_TRANSPARENT_HUGEPAGE)
