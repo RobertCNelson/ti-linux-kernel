@@ -107,10 +107,9 @@ static void kasan_poison_element(mempool_t *pool, void *element)
 	if (pool->alloc == mempool_alloc_slab)
 		kasan_poison_slab_free(pool->pool_data, element);
 	if (pool->alloc == mempool_kmalloc)
-		kasan_poison_kfree(element);
+		kasan_kfree(element);
 	if (pool->alloc == mempool_alloc_pages)
-		kasan_poison_free_pages(element,
-					(unsigned long)pool->pool_data);
+		kasan_free_pages(element, (unsigned long)pool->pool_data);
 }
 
 static void kasan_unpoison_element(mempool_t *pool, void *element, gfp_t flags)

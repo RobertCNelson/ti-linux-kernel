@@ -1028,7 +1028,7 @@ static __always_inline bool free_pages_prepare(struct page *page,
 	arch_free_page(page, order);
 	kernel_poison_pages(page, 1 << order, 0);
 	kernel_map_pages(page, 1 << order, 0);
-	kasan_poison_free_pages(page, order);
+	kasan_free_pages(page, order);
 
 	return true;
 }
