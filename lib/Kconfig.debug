@@ -1,8 +1,8 @@
 menu "printk and dmesg options"
 
 config PRINTK_TIME
-	int "Show timing information on printks (0-1)"
-	range 0 1
+	int "Show timing information on printks (0-3)"
+	range 0 3
 	default "0"
 	depends on PRINTK
 	help
@@ -13,7 +13,8 @@ config PRINTK_TIME
 	  The timestamp is always recorded internally, and exported
 	  to /dev/kmsg. This flag just specifies if the timestamp should
 	  be included, not that the timestamp is recorded. 0 disables the
-	  timestamp and 1 uses the local clock.
+	  timestamp and 1 uses the local clock, 2 uses the monotonic clock, and
+	  3 uses real clock.
 
 	  The behavior is also controlled by the kernel command line
 	  parameter printk.time=1. See Documentation/kernel-parameters.txt
