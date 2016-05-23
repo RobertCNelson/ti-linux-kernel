@@ -117,7 +117,10 @@ struct vring_virtqueue {
 #define to_vvq(_vq) container_of(_vq, struct vring_virtqueue, vq)
 
 /*
- * The interaction between virtio and a possible IOMMU is a mess.
+ * Modern virtio devices might set feature bits to specify whether
+ * they use or unconditionally bypass the platform IOMMU.
+ *
+ * If not there, the interaction between virtio and DMA API is messy.
  *
  * On most systems with virtio, physical addresses match bus addresses,
  * and it doesn't particularly matter whether we use the DMA API.
@@ -137,6 +140,13 @@ struct vring_virtqueue {
 
 static bool vring_use_dma_api(struct virtio_device *vdev)
 {
+	if (virtio_has_feature(vdev, VIRTIO_F_IOMMU_PLATFORM))
+		return true;
+
+	if (virtio_has_feature(vdev, VIRTIO_F_IOMMU_PASSTHROUGH))
+		return false;
+
+	/* Otherwise, we are left to guess. */
 	/*
 	 * In theory, it's possible to have a buggy QEMU-supposed
 	 * emulated Q35 IOMMU and Xen enabled at the same time.  On
@@ -1098,6 +1108,12 @@ void vring_transport_features(struct virtio_device *vdev)
 		case VIRTIO_RING_F_EVENT_IDX:
 			break;
 		case VIRTIO_F_VERSION_1:
+			break;
+		case VIRTIO_F_IOMMU_PASSTHROUGH:
+			break;
+		case VIRTIO_F_IOMMU_PLATFORM:
+			/* Ignore passthrough hint for now, obey kernel config. */
+			__virtio_clear_bit(vdev, VIRTIO_F_IOMMU_PASSTHROUGH);
 			break;
 		default:
 			/* We don't understand this bit. */

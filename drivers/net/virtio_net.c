@@ -38,6 +38,8 @@ module_param(gso, bool, 0444);
 
 /* FIXME: MTU in config. */
 #define GOOD_PACKET_LEN (ETH_HLEN + VLAN_HLEN + ETH_DATA_LEN)
+//#define MIN_PACKET_ALLOC GOOD_PACKET_LEN
+#define MIN_PACKET_ALLOC 128
 #define GOOD_COPY_LEN	128
 
 /* RX packet size EWMA. The average packet size is used to determine the packet
@@ -243,6 +245,9 @@ static void *mergeable_ctx_to_buf_address(unsigned long mrg_ctx)
 static unsigned long mergeable_buf_to_ctx(void *buf, unsigned int truesize)
 {
 	unsigned int size = truesize / MERGEABLE_BUFFER_ALIGN;
+
+	BUG_ON((unsigned long)buf & (MERGEABLE_BUFFER_ALIGN - 1));
+	BUG_ON(size - 1 >= MERGEABLE_BUFFER_ALIGN);
 	return (unsigned long)buf | (size - 1);
 }
 
@@ -351,25 +356,54 @@ err:
 	return NULL;
 }
 
+#define VNET_SKB_PAD (NET_SKB_PAD + NET_IP_ALIGN)
+#define VNET_SKB_BUG (VNET_SKB_PAD < sizeof(struct virtio_net_hdr_mrg_rxbuf))
+#define VNET_SKB_LEN(len) ((len) - sizeof(struct virtio_net_hdr_mrg_rxbuf))
+#define VNET_SKB_OFF VNET_SKB_LEN(VNET_SKB_PAD)
+
+static struct sk_buff *vnet_build_skb(struct virtnet_info *vi,
+				      void *buf,
+				      unsigned int len, unsigned int truesize)
+{
+	struct sk_buff *skb = build_skb(buf, truesize);
+
+	if (!skb)
+		return NULL;
+
+	skb_reserve(skb, VNET_SKB_PAD);
+	skb_put(skb, VNET_SKB_LEN(len));
+
+	return skb;
+}
+
 static struct sk_buff *receive_mergeable(struct net_device *dev,
 					 struct virtnet_info *vi,
 					 struct receive_queue *rq,
 					 unsigned long ctx,
-					 unsigned int len)
+					 unsigned int len,
+					 struct virtio_net_hdr_mrg_rxbuf *hdr)
 {
 	void *buf = mergeable_ctx_to_buf_address(ctx);
-	struct virtio_net_hdr_mrg_rxbuf *hdr = buf;
-	u16 num_buf = virtio16_to_cpu(vi->vdev, hdr->num_buffers);
+	u16 num_buf;
 	struct page *page = virt_to_head_page(buf);
-	int offset = buf - page_address(page);
-	unsigned int truesize = max(len, mergeable_ctx_to_buf_truesize(ctx));
+	unsigned int truesize = mergeable_ctx_to_buf_truesize(ctx);
+	int offset;
+	struct sk_buff *head_skb;
+	struct sk_buff *curr_skb;
 
-	struct sk_buff *head_skb = page_to_skb(vi, rq, page, offset, len,
-					       truesize);
-	struct sk_buff *curr_skb = head_skb;
+	BUG_ON(len > truesize);
+
+	/* copy header: build_skb will overwrite it */
+	memcpy(hdr, buf + VNET_SKB_OFF, sizeof *hdr);
+
+	head_skb = vnet_build_skb(vi, buf, len, truesize);
+	curr_skb = head_skb;
+
+	num_buf = virtio16_to_cpu(vi->vdev, hdr->num_buffers);
 
 	if (unlikely(!curr_skb))
 		goto err_skb;
+
 	while (--num_buf) {
 		int num_skb_frags;
 
@@ -383,7 +417,7 @@ static struct sk_buff *receive_mergeable(struct net_device *dev,
 			goto err_buf;
 		}
 
-		buf = mergeable_ctx_to_buf_address(ctx);
+		buf = mergeable_ctx_to_buf_address(ctx) + VNET_SKB_OFF;
 		page = virt_to_head_page(buf);
 
 		num_skb_frags = skb_shinfo(curr_skb)->nr_frags;
@@ -400,7 +434,8 @@ static struct sk_buff *receive_mergeable(struct net_device *dev,
 			head_skb->truesize += nskb->truesize;
 			num_skb_frags = 0;
 		}
-		truesize = max(len, mergeable_ctx_to_buf_truesize(ctx));
+		truesize = mergeable_ctx_to_buf_truesize(ctx);
+		BUG_ON(len > truesize);
 		if (curr_skb != head_skb) {
 			head_skb->data_len += len;
 			head_skb->len += len;
@@ -446,6 +481,7 @@ static void receive_buf(struct virtnet_info *vi, struct receive_queue *rq,
 	struct virtnet_stats *stats = this_cpu_ptr(vi->stats);
 	struct sk_buff *skb;
 	struct virtio_net_hdr_mrg_rxbuf *hdr;
+	struct virtio_net_hdr_mrg_rxbuf hdr0;
 
 	if (unlikely(len < vi->hdr_len + ETH_HLEN)) {
 		pr_debug("%s: short packet %i\n", dev->name, len);
@@ -462,17 +498,24 @@ static void receive_buf(struct virtnet_info *vi, struct receive_queue *rq,
 		return;
 	}
 
-	if (vi->mergeable_rx_bufs)
-		skb = receive_mergeable(dev, vi, rq, (unsigned long)buf, len);
-	else if (vi->big_packets)
+	if (vi->mergeable_rx_bufs) {
+		skb = receive_mergeable(dev, vi, rq, (unsigned long)buf, len,
+					&hdr0);
+		if (unlikely(!skb))
+			return;
+		hdr = &hdr0;
+	} else if (vi->big_packets) {
 		skb = receive_big(dev, vi, rq, buf, len);
-	else
+		if (unlikely(!skb))
+			return;
+		hdr = skb_vnet_hdr(skb);
+	} else {
 		skb = receive_small(vi, buf, len);
+		if (unlikely(!skb))
+			return;
+		hdr = skb_vnet_hdr(skb);
+	}
 
-	if (unlikely(!skb))
-		return;
-
-	hdr = skb_vnet_hdr(skb);
 
 	u64_stats_update_begin(&stats->rx_syncp);
 	stats->rx_bytes += skb->len;
@@ -610,11 +653,14 @@ static int add_recvbuf_big(struct virtnet_info *vi, struct receive_queue *rq,
 
 static unsigned int get_mergeable_buf_len(struct ewma_pkt_len *avg_pkt_len)
 {
-	const size_t hdr_len = sizeof(struct virtio_net_hdr_mrg_rxbuf);
+	unsigned int hdr;
 	unsigned int len;
 
-	len = hdr_len + clamp_t(unsigned int, ewma_pkt_len_read(avg_pkt_len),
-			GOOD_PACKET_LEN, PAGE_SIZE - hdr_len);
+	hdr = ALIGN(VNET_SKB_PAD + SKB_DATA_ALIGN(sizeof(struct skb_shared_info)),
+		    MERGEABLE_BUFFER_ALIGN);
+
+	len = hdr + clamp_t(unsigned int, ewma_pkt_len_read(avg_pkt_len),
+			    MIN_PACKET_ALLOC, PAGE_SIZE - hdr);
 	return ALIGN(len, MERGEABLE_BUFFER_ALIGN);
 }
 
@@ -630,8 +676,11 @@ static int add_recvbuf_mergeable(struct receive_queue *rq, gfp_t gfp)
 	if (unlikely(!skb_page_frag_refill(len, alloc_frag, gfp)))
 		return -ENOMEM;
 
-	buf = (char *)page_address(alloc_frag->page) + alloc_frag->offset;
-	ctx = mergeable_buf_to_ctx(buf, len);
+	BUILD_BUG_ON(VNET_SKB_BUG);
+
+	buf = (char *)page_address(alloc_frag->page) + alloc_frag->offset +
+		VNET_SKB_OFF;
+	//ctx = mergeable_buf_to_ctx(buf - VNET_SKB_OFF, len);
 	get_page(alloc_frag->page);
 	alloc_frag->offset += len;
 	hole = alloc_frag->size - alloc_frag->offset;
@@ -644,8 +693,10 @@ static int add_recvbuf_mergeable(struct receive_queue *rq, gfp_t gfp)
 		len += hole;
 		alloc_frag->offset += hole;
 	}
+	ctx = mergeable_buf_to_ctx(buf - VNET_SKB_OFF, len);
 
-	sg_init_one(rq->sg, buf, len);
+	sg_init_one(rq->sg, buf,
+		    len - VNET_SKB_OFF - SKB_DATA_ALIGN(sizeof(struct skb_shared_info)));
 	err = virtqueue_add_inbuf(rq->vq, rq->sg, 1, (void *)ctx, gfp);
 	if (err < 0)
 		put_page(virt_to_head_page(buf));

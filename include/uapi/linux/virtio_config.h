@@ -49,7 +49,7 @@
  * transport being used (eg. virtio_ring), the rest are per-device feature
  * bits. */
 #define VIRTIO_TRANSPORT_F_START	28
-#define VIRTIO_TRANSPORT_F_END		33
+#define VIRTIO_TRANSPORT_F_END		35
 
 #ifndef VIRTIO_CONFIG_NO_LEGACY
 /* Do we get callbacks when the ring is completely used, even if we've
@@ -63,4 +63,12 @@
 /* v1.0 compliant. */
 #define VIRTIO_F_VERSION_1		32
 
+/* Request IOMMU passthrough (if available)
+ * Without VIRTIO_F_IOMMU_PLATFORM: bypass the IOMMU even if enabled.
+ * With VIRTIO_F_IOMMU_PLATFORM: suggest disabling IOMMU.
+ */
+#define VIRTIO_F_IOMMU_PASSTHROUGH	33
+
+/* Do not bypass the IOMMU (if configured) */
+#define VIRTIO_F_IOMMU_PLATFORM		34
 #endif /* _UAPI_LINUX_VIRTIO_CONFIG_H */
