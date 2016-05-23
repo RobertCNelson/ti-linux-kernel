@@ -48,6 +48,9 @@
 #define CP0_CONF $3
 #define CP0_CONTEXT $4
 #define CP0_PAGEMASK $5
+#define CP0_SEGCTL0 $5, 2
+#define CP0_SEGCTL1 $5, 3
+#define CP0_SEGCTL2 $5, 4
 #define CP0_WIRED $6
 #define CP0_INFO $7
 #define CP0_HWRENA $7, 0
@@ -1770,7 +1773,7 @@ do {									\
 	__asm__ __volatile__(						\
 		".set\tpush\n\t"					\
 		".set\tnoat\n\t"					\
-		"move\t$1, %0\n\t"					\
+		"move\t$1, %z0\n\t"					\
 		"# mtgc0\t$1, $%1, %2\n\t"				\
 		".word\t(0x40610200 | %1 << 11 | %2)\n\t"		\
 		".set\tpop"						\
@@ -1783,7 +1786,7 @@ do {									\
 	__asm__ __volatile__(						\
 		".set\tpush\n\t"					\
 		".set\tnoat\n\t"					\
-		"move\t$1, %0\n\t"					\
+		"move\t$1, %z0\n\t"					\
 		"# dmtgc0\t$1, $%1, %2\n\t"				\
 		".word\t(0x40610300 | %1 << 11 | %2)\n\t"		\
 		".set\tpop"						\
