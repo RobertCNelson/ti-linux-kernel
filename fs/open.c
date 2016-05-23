@@ -831,6 +831,15 @@ char *file_path(struct file *filp, char *buf, int buflen)
 }
 EXPORT_SYMBOL(file_path);
 
+static struct dentry *open_select_dentry(struct dentry *dentry,
+					 unsigned int open_flags)
+{
+	if (unlikely(dentry->d_flags & DCACHE_OP_REAL))
+		return dentry->d_op->d_real(dentry, NULL, open_flags);
+	else
+		return dentry;
+}
+
 /**
  * vfs_open - open the file at the given path
  * @path: path to open
@@ -840,13 +849,13 @@ EXPORT_SYMBOL(file_path);
 int vfs_open(const struct path *path, struct file *file,
 	     const struct cred *cred)
 {
-	struct inode *inode = vfs_select_inode(path->dentry, file->f_flags);
+	struct dentry *dentry = open_select_dentry(path->dentry, file->f_flags);
 
-	if (IS_ERR(inode))
-		return PTR_ERR(inode);
+	if (IS_ERR(dentry))
+		return PTR_ERR(dentry);
 
 	file->f_path = *path;
-	return do_dentry_open(file, inode, NULL, cred);
+	return do_dentry_open(file, d_backing_inode(dentry), NULL, cred);
 }
 
 struct file *dentry_open(const struct path *path, int flags,
