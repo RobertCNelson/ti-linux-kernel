@@ -85,6 +85,9 @@ struct mlx5_flow_rule {
 	struct list_head			next_ft;
 	u32					sw_action;
 	atomic_t				refcount;
+	struct list_head			clients_data;
+	/* Protect clients data list */
+	struct mutex				clients_lock;
 };
 
 /* Type of children is mlx5_flow_group */
@@ -153,6 +156,12 @@ struct fs_prio {
 struct mlx5_flow_namespace {
 	/* parent == NULL => root ns */
 	struct	fs_node			node;
+	/* Listeners list for rule add/del operations */
+	struct raw_notifier_head	listeners;
+	/* We take write lock when we iterate on the
+	 * namespace's rules.
+	 */
+	struct  rw_semaphore		ns_rw_sem;
 };
 
 struct mlx5_flow_group_mask {
@@ -181,6 +190,12 @@ struct mlx5_flow_root_namespace {
 
 int mlx5_init_fc_stats(struct mlx5_core_dev *dev);
 void mlx5_cleanup_fc_stats(struct mlx5_core_dev *dev);
+
+struct rule_client_data {
+	struct notifier_block *nb;
+	struct list_head list;
+	void   *client_data;
+};
 
 int mlx5_init_fs(struct mlx5_core_dev *dev);
 void mlx5_cleanup_fs(struct mlx5_core_dev *dev);
