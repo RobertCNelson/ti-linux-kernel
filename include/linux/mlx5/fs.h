@@ -149,4 +149,7 @@ void mlx5_fc_destroy(struct mlx5_core_dev *dev, struct mlx5_fc *counter);
 void mlx5_fc_query_cached(struct mlx5_fc *counter,
 			  u64 *bytes, u64 *packets, u64 *lastuse);
 
+void mlx5_get_flow_rule(struct mlx5_flow_rule *rule);
+void mlx5_put_flow_rule(struct mlx5_flow_rule *rule);
+
 #endif

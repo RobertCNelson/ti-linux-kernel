@@ -71,6 +71,7 @@ struct fs_node {
 	struct fs_node		*root;
 	/* lock the node for writing and traversing */
 	struct mutex		lock;
+	struct completion	complete;
 	atomic_t		refcount;
 	void			(*remove_func)(struct fs_node *);
 };
@@ -83,6 +84,7 @@ struct mlx5_flow_rule {
 	 */
 	struct list_head			next_ft;
 	u32					sw_action;
+	atomic_t				refcount;
 };
 
 /* Type of children is mlx5_flow_group */
