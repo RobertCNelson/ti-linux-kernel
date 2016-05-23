@@ -1110,6 +1110,7 @@ static const struct x86_cpu_id rapl_ids[] __initconst = {
 	RAPL_CPU(0x4E, rapl_defaults_core),/* Skylake */
 	RAPL_CPU(0x4C, rapl_defaults_cht),/* Braswell/Cherryview */
 	RAPL_CPU(0x4A, rapl_defaults_tng),/* Tangier */
+	RAPL_CPU(0x55, rapl_defaults_hsw_server),/* Skylake server */
 	RAPL_CPU(0x56, rapl_defaults_core),/* Future Xeon */
 	RAPL_CPU(0x5A, rapl_defaults_ann),/* Annidale */
 	RAPL_CPU(0X5C, rapl_defaults_core),/* Broxton */
