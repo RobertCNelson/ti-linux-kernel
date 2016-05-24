@@ -294,9 +294,11 @@ static int qcom_scm_probe(struct platform_device *pdev)
 
 	scm->core_clk = devm_clk_get(&pdev->dev, "core");
 	if (IS_ERR(scm->core_clk)) {
-		if (PTR_ERR(scm->core_clk) != -EPROBE_DEFER)
-			dev_err(&pdev->dev, "failed to acquire core clk\n");
-		return PTR_ERR(scm->core_clk);
+		if (PTR_ERR(scm->core_clk) == -EPROBE_DEFER)
+			return PTR_ERR(scm->core_clk);
+
+		dev_info(&pdev->dev, "failed to acquire optional core clk\n");
+		scm->core_clk = NULL;
 	}
 
 	if (of_device_is_compatible(pdev->dev.of_node, "qcom,scm")) {
