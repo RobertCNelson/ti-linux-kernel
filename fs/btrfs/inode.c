@@ -1978,7 +1978,7 @@ int btrfs_set_extent_delalloc(struct inode *inode, u64 start, u64 end,
 {
 	WARN_ON((end & (PAGE_SIZE - 1)) == 0);
 	return set_extent_delalloc(&BTRFS_I(inode)->io_tree, start, end,
-				   cached_state, GFP_NOFS);
+				   cached_state);
 }
 
 /* see btrfs_writepage_start_hook for details on why this is required */
@@ -3119,8 +3119,7 @@ static int btrfs_readpage_end_io_hook(struct btrfs_io_bio *io_bio,
 
 	if (root->root_key.objectid == BTRFS_DATA_RELOC_TREE_OBJECTID &&
 	    test_range_bit(io_tree, start, end, EXTENT_NODATASUM, 1, NULL)) {
-		clear_extent_bits(io_tree, start, end, EXTENT_NODATASUM,
-				  GFP_NOFS);
+		clear_extent_bits(io_tree, start, end, EXTENT_NODATASUM);
 		return 0;
 	}
 
@@ -5255,7 +5254,7 @@ void btrfs_evict_inode(struct inode *inode)
 		if (steal_from_global) {
 			if (!btrfs_check_space_for_delayed_refs(trans, root))
 				ret = btrfs_block_rsv_migrate(global_rsv, rsv,
-							      min_size);
+							      min_size, 0);
 			else
 				ret = -ENOSPC;
 		}
@@ -9094,7 +9093,7 @@ static int btrfs_truncate(struct inode *inode)
 
 	/* Migrate the slack space for the truncate to our reserve */
 	ret = btrfs_block_rsv_migrate(&root->fs_info->trans_block_rsv, rsv,
-				      min_size);
+				      min_size, 0);
 	BUG_ON(ret);
 
 	/*
@@ -9134,7 +9133,7 @@ static int btrfs_truncate(struct inode *inode)
 		}
 
 		ret = btrfs_block_rsv_migrate(&root->fs_info->trans_block_rsv,
-					      rsv, min_size);
+					      rsv, min_size, 0);
 		BUG_ON(ret);	/* shouldn't happen */
 		trans->block_rsv = rsv;
 	}
@@ -9155,7 +9154,6 @@ static int btrfs_truncate(struct inode *inode)
 		ret = btrfs_end_transaction(trans, root);
 		btrfs_btree_balance_dirty(root);
 	}
-
 out:
 	btrfs_free_block_rsv(root, rsv);
 
