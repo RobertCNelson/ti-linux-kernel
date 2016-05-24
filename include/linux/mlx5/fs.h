@@ -173,4 +173,7 @@ struct mlx5_event_data {
 	struct mlx5_flow_table *ft;
 	struct mlx5_flow_rule *rule;
 };
+
+void mlx5_get_rule_flow_match(struct mlx5_flow_match *flow_match,
+			      struct mlx5_flow_rule *rule);
 #endif

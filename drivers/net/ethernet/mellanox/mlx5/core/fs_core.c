@@ -2073,3 +2073,22 @@ unlock:
 
 	return 0;
 }
+
+void mlx5_get_rule_flow_match(struct mlx5_flow_match *flow_match,
+			      struct mlx5_flow_rule *rule)
+{
+	struct mlx5_flow_group *fg;
+	struct fs_node *pnode;
+	struct fs_fte *fte;
+
+	pnode = rule->node.parent;
+	WARN_ON(!pnode);
+	fs_get_obj(fte, pnode);
+	pnode = pnode->parent;
+	WARN_ON(!pnode);
+	fs_get_obj(fg, pnode);
+
+	flow_match->match_value = fte->val;
+	flow_match->match_criteria = fg->mask.match_criteria;
+	flow_match->match_criteria_enable = fg->mask.match_criteria_enable;
+}
