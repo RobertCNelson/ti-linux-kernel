@@ -336,7 +336,7 @@ static inline void add_taint_module(struct module *mod, unsigned flag,
  * A thread that wants to hold a reference to a module only while it
  * is running can call this to safely exit.  nfsd and lockd use this.
  */
-void __module_put_and_exit(struct module *mod, long code)
+void __noreturn __module_put_and_exit(struct module *mod, long code)
 {
 	module_put(mod);
 	do_exit(code);
@@ -1693,8 +1693,7 @@ static int module_add_modinfo_attrs(struct module *mod)
 
 	temp_attr = mod->modinfo_attrs;
 	for (i = 0; (attr = modinfo_attrs[i]) && !error; i++) {
-		if (!attr->test ||
-		    (attr->test && attr->test(mod))) {
+		if (!attr->test || attr->test(mod)) {
 			memcpy(temp_attr, attr, sizeof(*temp_attr));
 			sysfs_attr_init(&temp_attr->attr);
 			error = sysfs_create_file(&mod->mkobj.kobj,
@@ -2687,13 +2686,18 @@ static inline void kmemleak_load_module(const struct module *mod,
 #endif
 
 #ifdef CONFIG_MODULE_SIG
-static int module_sig_check(struct load_info *info)
+static int module_sig_check(struct load_info *info, int flags)
 {
 	int err = -ENOKEY;
 	const unsigned long markerlen = sizeof(MODULE_SIG_STRING) - 1;
 	const void *mod = info->hdr;
 
-	if (info->len > markerlen &&
+	/*
+	 * Require flags == 0, as a module with version information
+	 * removed is no longer the module that was signed
+	 */
+	if (flags == 0 &&
+	    info->len > markerlen &&
 	    memcmp(mod + info->len - markerlen, MODULE_SIG_STRING, markerlen) == 0) {
 		/* We truncate the module to discard the signature */
 		info->len -= markerlen;
@@ -2712,7 +2716,7 @@ static int module_sig_check(struct load_info *info)
 	return err;
 }
 #else /* !CONFIG_MODULE_SIG */
-static int module_sig_check(struct load_info *info)
+static int module_sig_check(struct load_info *info, int flags)
 {
 	return 0;
 }
@@ -2920,8 +2924,12 @@ static int check_modinfo(struct module *mod, struct load_info *info, int flags)
 		return -ENOEXEC;
 	}
 
-	if (!get_modinfo(info, "intree"))
+	if (!get_modinfo(info, "intree")) {
+		if (!test_taint(TAINT_OOT_MODULE))
+			pr_warn("%s: loading out-of-tree module taints kernel.\n",
+				mod->name);
 		add_taint_module(mod, TAINT_OOT_MODULE, LOCKDEP_STILL_OK);
+	}
 
 	if (get_modinfo(info, "staging")) {
 		add_taint_module(mod, TAINT_CRAP, LOCKDEP_STILL_OK);
@@ -3090,6 +3098,8 @@ static int move_module(struct module *mod, struct load_info *info)
 
 static int check_module_license_and_versions(struct module *mod)
 {
+	int prev_taint = test_taint(TAINT_PROPRIETARY_MODULE);
+
 	/*
 	 * ndiswrapper is under GPL by itself, but loads proprietary modules.
 	 * Don't use add_taint_module(), as it would prevent ndiswrapper from
@@ -3107,6 +3117,9 @@ static int check_module_license_and_versions(struct module *mod)
 	if (strcmp(mod->name, "lve") == 0)
 		add_taint_module(mod, TAINT_PROPRIETARY_MODULE,
 				 LOCKDEP_NOW_UNRELIABLE);
+
+	if (!prev_taint && test_taint(TAINT_PROPRIETARY_MODULE))
+		pr_warn("%s: module license taints kernel.\n", mod->name);
 
 #ifdef CONFIG_MODVERSIONS
 	if ((mod->num_syms && !mod->crcs)
@@ -3498,7 +3511,7 @@ static int load_module(struct load_info *info, const char __user *uargs,
 	long err;
 	char *after_dashes;
 
-	err = module_sig_check(info);
+	err = module_sig_check(info, flags);
 	if (err)
 		goto free_copy;
 
