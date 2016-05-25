@@ -1534,6 +1534,7 @@ static struct mlx5_ib_flow_handler *create_flow_rule(struct mlx5_ib_dev *dev,
 	unsigned int spec_index;
 	u32 *match_c;
 	u32 *match_v;
+	u32 flow_tag;
 	u32 action;
 	int err = 0;
 
@@ -1562,9 +1563,12 @@ static struct mlx5_ib_flow_handler *create_flow_rule(struct mlx5_ib_dev *dev,
 	match_criteria_enable = (!outer_header_zero(match_c)) << 0;
 	action = dst ? MLX5_FLOW_CONTEXT_ACTION_FWD_DEST :
 		MLX5_FLOW_CONTEXT_ACTION_FWD_NEXT_PRIO;
+	flow_tag = (flow_attr->type == IB_FLOW_ATTR_ALL_DEFAULT ||
+		    flow_attr->type == IB_FLOW_ATTR_MC_DEFAULT) ?
+		MLX5_FS_BYPASS_FLOW_TAG : MLX5_FS_DEFAULT_FLOW_TAG;
 
 	MLX5_RULE_ATTR(flow_rule_attr, match_criteria_enable, match_c,
-		       match_v, action, MLX5_FS_DEFAULT_FLOW_TAG, dst);
+		       match_v, action, flow_tag, dst);
 	handler->rule = mlx5_add_flow_rule(ft, &flow_rule_attr);
 
 	if (IS_ERR(handler->rule)) {
@@ -1619,12 +1623,13 @@ static struct mlx5_ib_flow_handler *create_leftovers_rule(struct mlx5_ib_dev *de
 	struct mlx5_ib_flow_handler *handler_ucast = NULL;
 	struct mlx5_ib_flow_handler *handler = NULL;
 
-	static struct {
+	struct {
 		struct ib_flow_attr	flow_attr;
 		struct ib_flow_spec_eth eth_flow;
 	} leftovers_specs[] = {
 		[LEFTOVERS_MC] = {
 			.flow_attr = {
+				.type = flow_attr->type,
 				.num_of_specs = 1,
 				.size = sizeof(leftovers_specs[0])
 			},
@@ -1637,6 +1642,7 @@ static struct mlx5_ib_flow_handler *create_leftovers_rule(struct mlx5_ib_dev *de
 		},
 		[LEFTOVERS_UC] = {
 			.flow_attr = {
+				.type = flow_attr->type,
 				.num_of_specs = 1,
 				.size = sizeof(leftovers_specs[0])
 			},
