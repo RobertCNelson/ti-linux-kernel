@@ -1499,6 +1499,11 @@ struct mlx5_flow_namespace *mlx5_get_flow_namespace(struct mlx5_core_dev *dev,
 			return &steering->esw_ingress_root_ns->ns;
 		else
 			return NULL;
+	case MLX5_FLOW_NAMESPACE_ROCE:
+		if (steering->roce_root_ns)
+			return &steering->roce_root_ns->ns;
+		else
+			return NULL;
 	default:
 		return NULL;
 	}
@@ -1804,8 +1809,28 @@ void mlx5_cleanup_fs(struct mlx5_core_dev *dev)
 	cleanup_root_ns(steering->esw_egress_root_ns);
 	cleanup_root_ns(steering->esw_ingress_root_ns);
 	cleanup_root_ns(steering->fdb_root_ns);
+	cleanup_root_ns(steering->roce_root_ns);
 	mlx5_cleanup_fc_stats(dev);
 	kfree(steering);
+}
+
+static int init_roce_root_ns(struct mlx5_flow_steering *steering)
+{
+	struct fs_prio *prio;
+
+	steering->roce_root_ns = create_root_ns(steering, FS_FT_NIC_RX,
+						mlx5_get_virt_fs_cmds());
+	if (!steering->roce_root_ns)
+		return -ENOMEM;
+
+	/* Create single prio */
+	prio = fs_create_prio(&steering->roce_root_ns->ns, 0, 1);
+	if (IS_ERR(prio)) {
+		cleanup_root_ns(steering->roce_root_ns);
+		return PTR_ERR(prio);
+	}
+
+	return 0;
 }
 
 static int init_fdb_root_ns(struct mlx5_flow_steering *steering)
@@ -1904,6 +1929,12 @@ int mlx5_init_fs(struct mlx5_core_dev *dev)
 			if (err)
 				goto err;
 		}
+	}
+
+	if (MLX5_CAP_GEN(dev, roce)) {
+		err = init_roce_root_ns(steering);
+		if (err)
+			goto err;
 	}
 
 	return 0;

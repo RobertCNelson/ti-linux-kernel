@@ -60,6 +60,7 @@ enum mlx5_flow_namespace_type {
 	MLX5_FLOW_NAMESPACE_FDB,
 	MLX5_FLOW_NAMESPACE_ESW_EGRESS,
 	MLX5_FLOW_NAMESPACE_ESW_INGRESS,
+	MLX5_FLOW_NAMESPACE_ROCE,
 };
 
 struct mlx5_flow_table;

@@ -148,6 +148,14 @@ struct mlx5_ib_flow_handler {
 	struct mlx5_flow_rule	*rule;
 };
 
+struct mlx5_flow_roce_ns {
+	struct mlx5_flow_namespace	*ns;
+	struct mlx5_flow_table		*ft;
+	struct mlx5_flow_rule		*rocev1_rule;
+	struct mlx5_flow_rule		*rocev2_ipv4_rule;
+	struct mlx5_flow_rule		*rocev2_ipv6_rule;
+};
+
 struct mlx5_ib_flow_db {
 	struct mlx5_ib_flow_prio	prios[MLX5_IB_NUM_FLOW_FT];
 	/* Protect flow steering bypass flow tables
@@ -550,9 +558,10 @@ struct mlx5_roce {
 	/* Protect mlx5_ib_get_netdev from invoking dev_hold() with a NULL
 	 * netdev pointer
 	 */
-	rwlock_t		netdev_lock;
-	struct net_device	*netdev;
-	struct notifier_block	nb;
+	rwlock_t			netdev_lock;
+	struct net_device		*netdev;
+	struct notifier_block		nb;
+	struct mlx5_flow_roce_ns	roce_ns;
 };
 
 struct mlx5_ib_dev {
