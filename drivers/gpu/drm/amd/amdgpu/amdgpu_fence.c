@@ -121,7 +121,7 @@ int amdgpu_fence_emit(struct amdgpu_ring *ring, struct fence **f)
 {
 	struct amdgpu_device *adev = ring->adev;
 	struct amdgpu_fence *fence;
-	struct fence **ptr;
+	struct fence *old, **ptr;
 	uint32_t seq;
 
 	fence = kmem_cache_alloc(amdgpu_fence_slab, GFP_KERNEL);
@@ -141,7 +141,11 @@ int amdgpu_fence_emit(struct amdgpu_ring *ring, struct fence **f)
 	/* This function can't be called concurrently anyway, otherwise
 	 * emitting the fence would mess up the hardware ring buffer.
 	 */
-	BUG_ON(rcu_dereference_protected(*ptr, 1));
+	old = rcu_dereference_protected(*ptr, 1);
+	if (old && !fence_is_signaled(old)) {
+		DRM_INFO("rcu slot is busy\n");
+		fence_wait(old, false);
+	}
 
 	rcu_assign_pointer(*ptr, fence_get(&fence->base));
 
@@ -194,7 +198,7 @@ void amdgpu_fence_process(struct amdgpu_ring *ring)
 
 		/* There is always exactly one thread signaling this fence slot */
 		fence = rcu_dereference_protected(*ptr, 1);
-		rcu_assign_pointer(*ptr, NULL);
+		RCU_INIT_POINTER(*ptr, NULL);
 
 		BUG_ON(!fence);
 
@@ -348,9 +352,9 @@ int amdgpu_fence_driver_init_ring(struct amdgpu_ring *ring,
 	setup_timer(&ring->fence_drv.fallback_timer, amdgpu_fence_fallback,
 		    (unsigned long)ring);
 
-	ring->fence_drv.num_fences_mask = num_hw_submission - 1;
+	ring->fence_drv.num_fences_mask = num_hw_submission * 2 - 1;
 	spin_lock_init(&ring->fence_drv.lock);
-	ring->fence_drv.fences = kcalloc(num_hw_submission, sizeof(void *),
+	ring->fence_drv.fences = kcalloc(num_hw_submission * 2, sizeof(void *),
 					 GFP_KERNEL);
 	if (!ring->fence_drv.fences)
 		return -ENOMEM;
@@ -635,7 +639,7 @@ static int amdgpu_debugfs_gpu_reset(struct seq_file *m, void *data)
 	return 0;
 }
 
-static struct drm_info_list amdgpu_debugfs_fence_list[] = {
+static const struct drm_info_list amdgpu_debugfs_fence_list[] = {
 	{"amdgpu_fence_info", &amdgpu_debugfs_fence_info, 0, NULL},
 	{"amdgpu_gpu_reset", &amdgpu_debugfs_gpu_reset, 0, NULL}
 };

@@ -20,7 +20,8 @@
 
 #define PREFIX "ACPI: "
 
-void acpi_initrd_initialize_tables(void);
+int early_acpi_osi_init(void);
+int acpi_osi_init(void);
 acpi_status acpi_os_initialize1(void);
 void init_acpi_device_notify(void);
 int acpi_scan_init(void);
@@ -143,6 +144,12 @@ int acpi_wakeup_device_init(void);
 void acpi_early_processor_set_pdc(void);
 #else
 static inline void acpi_early_processor_set_pdc(void) {}
+#endif
+
+#ifdef CONFIG_X86
+void acpi_early_processor_osc(void);
+#else
+static inline void acpi_early_processor_osc(void) {}
 #endif
 
 /* --------------------------------------------------------------------------

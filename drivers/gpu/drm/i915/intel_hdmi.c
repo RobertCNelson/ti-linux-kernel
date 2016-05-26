@@ -638,7 +638,7 @@ static bool intel_hdmi_set_gcp_infoframe(struct drm_encoder *encoder)
 		reg = HSW_TVIDEO_DIP_GCP(crtc->config->cpu_transcoder);
 	else if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
 		reg = VLV_TVIDEO_DIP_GCP(crtc->pipe);
-	else if (HAS_PCH_SPLIT(dev_priv->dev))
+	else if (HAS_PCH_SPLIT(dev_priv))
 		reg = TVIDEO_DIP_GCP(crtc->pipe);
 	else
 		return false;
@@ -951,9 +951,6 @@ static void intel_hdmi_get_config(struct intel_encoder *encoder,
 
 	if (pipe_config->pixel_multiplier)
 		dotclock /= pipe_config->pixel_multiplier;
-
-	if (HAS_PCH_SPLIT(dev_priv->dev))
-		ironlake_check_encoder_dotclock(pipe_config, dotclock);
 
 	pipe_config->base.adjusted_mode.crtc_clock = dotclock;
 }
@@ -1415,8 +1412,16 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 				hdmi_to_dig_port(intel_hdmi));
 	}
 
-	if (!live_status)
-		DRM_DEBUG_KMS("Live status not up!");
+	if (!live_status) {
+		DRM_DEBUG_KMS("HDMI live status down\n");
+		/*
+		 * Live status register is not reliable on all intel platforms.
+		 * So consider live_status only for certain platforms, for
+		 * others, read EDID to determine presence of sink.
+		 */
+		if (INTEL_INFO(dev_priv)->gen < 7 || IS_IVYBRIDGE(dev_priv))
+			live_status = true;
+	}
 
 	intel_hdmi_unset_edid(connector);
 

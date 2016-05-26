@@ -57,14 +57,13 @@ static int hdlcd_load(struct drm_device *drm, unsigned long flags)
 		DRM_ERROR("failed to map control registers area\n");
 		ret = PTR_ERR(hdlcd->mmio);
 		hdlcd->mmio = NULL;
-		goto fail;
+		return ret;
 	}
 
 	version = hdlcd_read(hdlcd, HDLCD_REG_VERSION);
 	if ((version & HDLCD_PRODUCT_MASK) != HDLCD_PRODUCT_ID) {
 		DRM_ERROR("unknown product id: 0x%x\n", version);
-		ret = -EINVAL;
-		goto fail;
+		return -EINVAL;
 	}
 	DRM_INFO("found ARM HDLCD version r%dp%d\n",
 		(version & HDLCD_VERSION_MAJOR_MASK) >> 8,
@@ -73,7 +72,7 @@ static int hdlcd_load(struct drm_device *drm, unsigned long flags)
 	/* Get the optional framebuffer memory resource */
 	ret = of_reserved_mem_device_init(drm->dev);
 	if (ret && ret != -ENODEV)
-		goto fail;
+		return ret;
 
 	ret = dma_set_mask_and_coherent(drm->dev, DMA_BIT_MASK(32));
 	if (ret)
@@ -101,8 +100,6 @@ irq_fail:
 	drm_crtc_cleanup(&hdlcd->crtc);
 setup_fail:
 	of_reserved_mem_device_release(drm->dev);
-fail:
-	devm_clk_put(drm->dev, hdlcd->clk);
 
 	return ret;
 }
@@ -116,7 +113,7 @@ static void hdlcd_fb_output_poll_changed(struct drm_device *drm)
 }
 
 static int hdlcd_atomic_commit(struct drm_device *dev,
-			       struct drm_atomic_state *state, bool async)
+			       struct drm_atomic_state *state, bool nonblock)
 {
 	return drm_atomic_helper_commit(dev, state, false);
 }
@@ -382,7 +379,6 @@ static int hdlcd_drm_bind(struct device *dev)
 		DRM_ERROR("failed to initialise vblank\n");
 		goto err_vblank;
 	}
-	drm->vblank_disable_allowed = true;
 
 	drm_mode_config_reset(drm);
 	drm_kms_helper_poll_init(drm);
@@ -412,7 +408,6 @@ err_unload:
 	pm_runtime_put_sync(drm->dev);
 	pm_runtime_disable(drm->dev);
 	of_reserved_mem_device_release(drm->dev);
-	devm_clk_put(dev, hdlcd->clk);
 err_free:
 	drm_dev_unref(drm);
 
@@ -436,10 +431,6 @@ static void hdlcd_drm_unbind(struct device *dev)
 	pm_runtime_put_sync(drm->dev);
 	pm_runtime_disable(drm->dev);
 	of_reserved_mem_device_release(drm->dev);
-	if (!IS_ERR(hdlcd->clk)) {
-		devm_clk_put(drm->dev, hdlcd->clk);
-		hdlcd->clk = NULL;
-	}
 	drm_mode_config_cleanup(drm);
 	drm_dev_unregister(drm);
 	drm_dev_unref(drm);

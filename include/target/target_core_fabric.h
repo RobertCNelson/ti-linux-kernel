@@ -76,6 +76,7 @@ struct target_core_fabric_ops {
 	struct se_wwn *(*fabric_make_wwn)(struct target_fabric_configfs *,
 				struct config_group *, const char *);
 	void (*fabric_drop_wwn)(struct se_wwn *);
+	void (*add_wwn_groups)(struct se_wwn *);
 	struct se_portal_group *(*fabric_make_tpg)(struct se_wwn *,
 				struct config_group *, const char *);
 	void (*fabric_drop_tpg)(struct se_portal_group *);
@@ -87,7 +88,6 @@ struct target_core_fabric_ops {
 				struct config_group *, const char *);
 	void (*fabric_drop_np)(struct se_tpg_np *);
 	int (*fabric_init_nodeacl)(struct se_node_acl *, const char *);
-	void (*fabric_cleanup_nodeacl)(struct se_node_acl *);
 
 	struct configfs_attribute **tfc_discovery_attrs;
 	struct configfs_attribute **tfc_wwn_attrs;
@@ -184,6 +184,10 @@ int	core_tpg_set_initiator_node_tag(struct se_portal_group *,
 		struct se_node_acl *, const char *);
 int	core_tpg_register(struct se_wwn *, struct se_portal_group *, int);
 int	core_tpg_deregister(struct se_portal_group *);
+
+int	target_alloc_sgl(struct scatterlist **sgl, unsigned int *nents,
+		u32 length, bool zero_page, bool chainable);
+void	target_free_sgl(struct scatterlist *sgl, int nents);
 
 /*
  * The LIO target core uses DMA_TO_DEVICE to mean that data is going

@@ -748,10 +748,10 @@ static int truncate_upper(struct dentry *dentry, struct iattr *ia,
 	} else { /* ia->ia_size < i_size_read(inode) */
 		/* We're chopping off all the pages down to the page
 		 * in which ia->ia_size is located. Fill in the end of
-		 * that page from (ia->ia_size & ~PAGE_CACHE_MASK) to
-		 * PAGE_CACHE_SIZE with zeros. */
-		size_t num_zeros = (PAGE_CACHE_SIZE
-				    - (ia->ia_size & ~PAGE_CACHE_MASK));
+		 * that page from (ia->ia_size & ~PAGE_MASK) to
+		 * PAGE_SIZE with zeros. */
+		size_t num_zeros = (PAGE_SIZE
+				    - (ia->ia_size & ~PAGE_MASK));
 
 		if (!(crypt_stat->flags & ECRYPTFS_ENCRYPTED)) {
 			truncate_setsize(inode, ia->ia_size);
@@ -883,8 +883,11 @@ static int ecryptfs_setattr(struct dentry *dentry, struct iattr *ia)
 	struct ecryptfs_crypt_stat *crypt_stat;
 
 	crypt_stat = &ecryptfs_inode_to_private(d_inode(dentry))->crypt_stat;
-	if (!(crypt_stat->flags & ECRYPTFS_STRUCT_INITIALIZED))
-		ecryptfs_init_crypt_stat(crypt_stat);
+	if (!(crypt_stat->flags & ECRYPTFS_STRUCT_INITIALIZED)) {
+		rc = ecryptfs_init_crypt_stat(crypt_stat);
+		if (rc)
+			return rc;
+	}
 	inode = d_inode(dentry);
 	lower_inode = ecryptfs_inode_to_lower(inode);
 	lower_dentry = ecryptfs_dentry_to_lower(dentry);
@@ -1018,29 +1021,30 @@ out:
 }
 
 ssize_t
-ecryptfs_getxattr_lower(struct dentry *lower_dentry, const char *name,
-			void *value, size_t size)
+ecryptfs_getxattr_lower(struct dentry *lower_dentry, struct inode *lower_inode,
+			const char *name, void *value, size_t size)
 {
 	int rc = 0;
 
-	if (!d_inode(lower_dentry)->i_op->getxattr) {
+	if (!lower_inode->i_op->getxattr) {
 		rc = -EOPNOTSUPP;
 		goto out;
 	}
-	inode_lock(d_inode(lower_dentry));
-	rc = d_inode(lower_dentry)->i_op->getxattr(lower_dentry, name, value,
-						   size);
-	inode_unlock(d_inode(lower_dentry));
+	inode_lock(lower_inode);
+	rc = lower_inode->i_op->getxattr(lower_dentry, lower_inode,
+					 name, value, size);
+	inode_unlock(lower_inode);
 out:
 	return rc;
 }
 
 static ssize_t
-ecryptfs_getxattr(struct dentry *dentry, const char *name, void *value,
-		  size_t size)
+ecryptfs_getxattr(struct dentry *dentry, struct inode *inode,
+		  const char *name, void *value, size_t size)
 {
-	return ecryptfs_getxattr_lower(ecryptfs_dentry_to_lower(dentry), name,
-				       value, size);
+	return ecryptfs_getxattr_lower(ecryptfs_dentry_to_lower(dentry),
+				       ecryptfs_inode_to_lower(inode),
+				       name, value, size);
 }
 
 static ssize_t

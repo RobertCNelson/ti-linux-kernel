@@ -252,13 +252,6 @@ static int imx_drm_driver_load(struct drm_device *drm, unsigned long flags)
 	if (ret)
 		goto err_kms;
 
-	/*
-	 * with vblank_disable_allowed = true, vblank interrupt will be
-	 * disabled by drm timer once a current process gives up ownership
-	 * of vblank event. (after drm_vblank_put function is called)
-	 */
-	drm->vblank_disable_allowed = true;
-
 	platform_set_drvdata(drm->platformdev, drm);
 
 	/* Now try and bind all our sub-components */
@@ -326,7 +319,6 @@ int imx_drm_add_crtc(struct drm_device *drm, struct drm_crtc *crtc,
 {
 	struct imx_drm_device *imxdrm = drm->dev_private;
 	struct imx_drm_crtc *imx_drm_crtc;
-	int ret;
 
 	/*
 	 * The vblank arrays are dimensioned by MAX_CRTC - we can't
@@ -351,10 +343,6 @@ int imx_drm_add_crtc(struct drm_device *drm, struct drm_crtc *crtc,
 
 	*new_crtc = imx_drm_crtc;
 
-	ret = drm_mode_crtc_set_gamma_size(imx_drm_crtc->crtc, 256);
-	if (ret)
-		goto err_register;
-
 	drm_crtc_helper_add(crtc,
 			imx_drm_crtc->imx_drm_helper_funcs.crtc_helper_funcs);
 
@@ -362,11 +350,6 @@ int imx_drm_add_crtc(struct drm_device *drm, struct drm_crtc *crtc,
 			imx_drm_crtc->imx_drm_helper_funcs.crtc_funcs, NULL);
 
 	return 0;
-
-err_register:
-	imxdrm->crtc[--imxdrm->pipes] = NULL;
-	kfree(imx_drm_crtc);
-	return ret;
 }
 EXPORT_SYMBOL_GPL(imx_drm_add_crtc);
 
@@ -421,7 +404,7 @@ static struct drm_driver imx_drm_driver = {
 	.unload			= imx_drm_driver_unload,
 	.lastclose		= imx_drm_driver_lastclose,
 	.set_busid		= drm_platform_set_busid,
-	.gem_free_object	= drm_gem_cma_free_object,
+	.gem_free_object_unlocked = drm_gem_cma_free_object,
 	.gem_vm_ops		= &drm_gem_cma_vm_ops,
 	.dumb_create		= drm_gem_cma_dumb_create,
 	.dumb_map_offset	= drm_gem_cma_dumb_map_offset,
