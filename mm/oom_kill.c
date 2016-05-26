@@ -450,6 +450,22 @@ static bool __oom_reap_task(struct task_struct *tsk)
 	bool ret = true;
 
 	/*
+	 * We have to make sure to not race with the victim exit path
+	 * and cause premature new oom victim selection:
+	 * __oom_reap_task		exit_mm
+	 *   atomic_inc_not_zero
+	 *   				  mmput
+	 *   				    atomic_dec_and_test
+	 *				  exit_oom_victim
+	 *				[...]
+	 *				out_of_memory
+	 *				  select_bad_process
+	 *				    # no TIF_MEMDIE task select new victim
+	 *  unmap_page_range # frees some memory
+	 */
+	mutex_lock(&oom_lock);
+
+	/*
 	 * Make sure we find the associated mm_struct even when the particular
 	 * thread has already terminated and cleared its mm.
 	 * We might have race with exit path so consider our work done if there
@@ -457,19 +473,19 @@ static bool __oom_reap_task(struct task_struct *tsk)
 	 */
 	p = find_lock_task_mm(tsk);
 	if (!p)
-		return true;
+		goto unlock_oom;
 
 	mm = p->mm;
 	if (!atomic_inc_not_zero(&mm->mm_users)) {
 		task_unlock(p);
-		return true;
+		goto unlock_oom;
 	}
 
 	task_unlock(p);
 
 	if (!down_read_trylock(&mm->mmap_sem)) {
 		ret = false;
-		goto out;
+		goto unlock_oom;
 	}
 
 	tlb_gather_mmu(&tlb, mm, 0, -1);
@@ -511,7 +527,8 @@ static bool __oom_reap_task(struct task_struct *tsk)
 	 * to release its memory.
 	 */
 	set_bit(MMF_OOM_REAPED, &mm->flags);
-out:
+unlock_oom:
+	mutex_unlock(&oom_lock);
 	/*
 	 * Drop our reference but make sure the mmput slow path is called from a
 	 * different context because we shouldn't risk we get stuck there and
