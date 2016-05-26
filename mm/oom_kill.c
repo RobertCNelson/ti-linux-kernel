@@ -454,13 +454,13 @@ static bool __oom_reap_task(struct task_struct *tsk)
 	 * and cause premature new oom victim selection:
 	 * __oom_reap_task		exit_mm
 	 *   atomic_inc_not_zero
-	 *   				  mmput
-	 *   				    atomic_dec_and_test
+	 *				  mmput
+	 *				    atomic_dec_and_test
 	 *				  exit_oom_victim
 	 *				[...]
 	 *				out_of_memory
 	 *				  select_bad_process
-	 *				    # no TIF_MEMDIE task select new victim
+	 *				    # no TIF_MEMDIE task selects new victim
 	 *  unmap_page_range # frees some memory
 	 */
 	mutex_lock(&oom_lock);
