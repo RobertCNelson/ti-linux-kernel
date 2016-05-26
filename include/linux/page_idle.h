@@ -46,8 +46,8 @@ extern struct page_ext_operations page_idle_ops;
 
 static inline bool page_is_young(struct page *page)
 {
-	struct page_ext *page_ext;
-	page_ext = lookup_page_ext(page);
+	struct page_ext *page_ext = lookup_page_ext(page);
+
 	if (unlikely(!page_ext))
 		return false;
 
@@ -56,8 +56,8 @@ static inline bool page_is_young(struct page *page)
 
 static inline void set_page_young(struct page *page)
 {
-	struct page_ext *page_ext;
-	page_ext = lookup_page_ext(page);
+	struct page_ext *page_ext = lookup_page_ext(page);
+
 	if (unlikely(!page_ext))
 		return;
 
@@ -66,8 +66,8 @@ static inline void set_page_young(struct page *page)
 
 static inline bool test_and_clear_page_young(struct page *page)
 {
-	struct page_ext *page_ext;
-	page_ext = lookup_page_ext(page);
+	struct page_ext *page_ext = lookup_page_ext(page);
+
 	if (unlikely(!page_ext))
 		return false;
 
@@ -76,8 +76,8 @@ static inline bool test_and_clear_page_young(struct page *page)
 
 static inline bool page_is_idle(struct page *page)
 {
-	struct page_ext *page_ext;
-	page_ext = lookup_page_ext(page);
+	struct page_ext *page_ext = lookup_page_ext(page);
+
 	if (unlikely(!page_ext))
 		return false;
 
@@ -86,8 +86,8 @@ static inline bool page_is_idle(struct page *page)
 
 static inline void set_page_idle(struct page *page)
 {
-	struct page_ext *page_ext;
-	page_ext = lookup_page_ext(page);
+	struct page_ext *page_ext = lookup_page_ext(page);
+
 	if (unlikely(!page_ext))
 		return;
 
@@ -96,8 +96,8 @@ static inline void set_page_idle(struct page *page)
 
 static inline void clear_page_idle(struct page *page)
 {
-	struct page_ext *page_ext;
-	page_ext = lookup_page_ext(page);
+	struct page_ext *page_ext = lookup_page_ext(page);
+
 	if (unlikely(!page_ext))
 		return;
 
