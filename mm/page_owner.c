@@ -65,15 +65,15 @@ void __set_page_owner(struct page *page, unsigned int order, gfp_t gfp_mask)
 {
 	struct page_ext *page_ext = lookup_page_ext(page);
 
-	if (unlikely(!page_ext))
-		return;
-
 	struct stack_trace trace = {
 		.nr_entries = 0,
 		.max_entries = ARRAY_SIZE(page_ext->trace_entries),
 		.entries = &page_ext->trace_entries[0],
 		.skip = 3,
 	};
+
+	if (unlikely(!page_ext))
+		return;
 
 	save_stack_trace(&trace);
 
@@ -111,11 +111,10 @@ void __copy_page_owner(struct page *oldpage, struct page *newpage)
 {
 	struct page_ext *old_ext = lookup_page_ext(oldpage);
 	struct page_ext *new_ext = lookup_page_ext(newpage);
+	int i;
 
 	if (unlikely(!old_ext || !new_ext))
 		return;
-
-	int i;
 
 	new_ext->order = old_ext->order;
 	new_ext->gfp_mask = old_ext->gfp_mask;
@@ -204,17 +203,17 @@ err:
 void __dump_page_owner(struct page *page)
 {
 	struct page_ext *page_ext = lookup_page_ext(page);
-	if (unlikely(!page_ext)) {
-		pr_alert("There is not page extension available.\n");
-		return;
-	}
-
 	struct stack_trace trace = {
 		.nr_entries = page_ext->nr_entries,
 		.entries = &page_ext->trace_entries[0],
 	};
 	gfp_t gfp_mask = page_ext->gfp_mask;
 	int mt = gfpflags_to_migratetype(gfp_mask);
+
+	if (unlikely(!page_ext)) {
+		pr_alert("There is not page extension available.\n");
+		return;
+	}
 
 	if (!test_bit(PAGE_EXT_OWNER, &page_ext->flags)) {
 		pr_alert("page_owner info is not active (free page?)\n");
