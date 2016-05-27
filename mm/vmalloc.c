@@ -1105,7 +1105,7 @@ EXPORT_SYMBOL_GPL(vm_unmap_aliases);
  */
 void vm_unmap_ram(const void *mem, unsigned int count)
 {
-	unsigned long size = count << PAGE_SHIFT;
+	unsigned long size = (unsigned long)count << PAGE_SHIFT;
 	unsigned long addr = (unsigned long)mem;
 
 	BUG_ON(!addr);
@@ -1140,7 +1140,7 @@ EXPORT_SYMBOL(vm_unmap_ram);
  */
 void *vm_map_ram(struct page **pages, unsigned int count, int node, pgprot_t prot)
 {
-	unsigned long size = count << PAGE_SHIFT;
+	unsigned long size = (unsigned long)count << PAGE_SHIFT;
 	unsigned long addr;
 	void *mem;
 
