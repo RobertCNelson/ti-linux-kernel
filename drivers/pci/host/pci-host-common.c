@@ -73,6 +73,7 @@ static int gen_pci_parse_request_of_pci_ranges(struct device *dev,
 	return 0;
 
 out_release_res:
+	pci_free_resource_list(resources);
 	return err;
 }
 
@@ -89,32 +90,29 @@ static struct pci_config_window *gen_pci_init(struct device *dev,
 	struct resource *bus_range = NULL;
 	struct pci_config_window *cfg;
 
-	/* Parse our PCI ranges and request their resources */
-	err = gen_pci_parse_request_of_pci_ranges(dev, resources, &bus_range);
-	if (err)
-		goto err_out;
-
 	err = of_address_to_resource(dev->of_node, 0, &cfgres);
 	if (err) {
 		dev_err(dev, "missing \"reg\" property\n");
-		goto err_out;
+		return ERR_PTR(err);
 	}
 
 	cfg = pci_ecam_create(dev, &cfgres, bus_range, ops);
-	if (IS_ERR(cfg)) {
-		err = PTR_ERR(cfg);
-		goto err_out;
-	}
+	if (IS_ERR(cfg))
+		return PTR_ERR(cfg);
 
 	err = devm_add_action(dev, gen_pci_unmap_cfg, cfg);
-	if (err) {
-		gen_pci_unmap_cfg(cfg);
-		goto err_out;
-	}
+	if (err)
+		goto err_cfg;
+
+	/* Parse our PCI ranges and request their resources */
+	err = gen_pci_parse_request_of_pci_ranges(dev, resources, &bus_range);
+	if (err)
+		goto err_cfg;
+
 	return cfg;
 
-err_out:
-	pci_free_resource_list(resources);
+err_cfg:
+	gen_pci_unmap_cfg(cfg);
 	return ERR_PTR(err);
 }
 
