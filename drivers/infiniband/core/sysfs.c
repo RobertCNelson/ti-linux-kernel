@@ -902,8 +902,11 @@ static void setup_hw_stats(struct ib_device *device, struct ib_port *port,
 		goto err;
 
 	hsag = kzalloc(sizeof(*hsag) +
-		       // 1 extra for the lifespan config entry
-		       sizeof(void *) * (stats->num_counters + 1),
+		       /* 1 extra for the lifespan config entry,
+			* and 1 more because attrs should be
+			* NULL terminated.
+			*/
+		       sizeof(void *) * (stats->num_counters + 2),
 		       GFP_KERNEL);
 	if (!hsag)
 		return;
