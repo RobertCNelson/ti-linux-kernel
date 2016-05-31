@@ -311,8 +311,14 @@ static ssize_t
 policy_show(struct device *dev, struct device_attribute *devattr, char *buf)
 {
 	struct thermal_zone_device *tz = to_thermal_zone(dev);
+	char *name;
 
-	return sprintf(buf, "%s\n", tz->governor->name);
+	/* locking the zone because governor->name does not change */
+	mutex_lock(&tz->lock);
+	name = tz->governor->name;
+	mutex_unlock(&tz->lock);
+
+	return sprintf(buf, "%s\n", name);
 }
 
 static ssize_t
