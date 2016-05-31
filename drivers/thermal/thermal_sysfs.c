@@ -62,7 +62,9 @@ mode_show(struct device *dev, struct device_attribute *attr, char *buf)
 	if (!tz->ops->get_mode)
 		return -EPERM;
 
+	mutex_lock(&tz->lock);
 	result = tz->ops->get_mode(tz, &mode);
+	mutex_unlock(&tz->lock);
 	if (result)
 		return result;
 
@@ -75,17 +77,22 @@ mode_store(struct device *dev, struct device_attribute *attr,
 	   const char *buf, size_t count)
 {
 	struct thermal_zone_device *tz = to_thermal_zone(dev);
+	enum thermal_device_mode mode = THERMAL_DEVICE_DISABLED;
 	int result;
 
 	if (!tz->ops->set_mode)
 		return -EPERM;
 
 	if (!strncmp(buf, "enabled", sizeof("enabled") - 1))
-		result = tz->ops->set_mode(tz, THERMAL_DEVICE_ENABLED);
+		mode = THERMAL_DEVICE_ENABLED;
 	else if (!strncmp(buf, "disabled", sizeof("disabled") - 1))
-		result = tz->ops->set_mode(tz, THERMAL_DEVICE_DISABLED);
+		mode = THERMAL_DEVICE_DISABLED;
 	else
-		result = -EINVAL;
+		return -EINVAL;
+
+	mutex_lock(&tz->lock);
+	result = tz->ops->set_mode(tz, mode);
+	mutex_unlock(&tz->lock);
 
 	if (result)
 		return result;
