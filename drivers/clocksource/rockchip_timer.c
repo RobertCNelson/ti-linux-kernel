@@ -113,17 +113,17 @@ static irqreturn_t rk_timer_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static void __init rk_timer_init(struct device_node *np, u32 ctrl_reg)
+static int __init rk_timer_init(struct device_node *np, u32 ctrl_reg)
 {
 	struct clock_event_device *ce = &bc_timer.ce;
 	struct clk *timer_clk;
 	struct clk *pclk;
-	int ret, irq;
+	int ret = -EINVAL, irq;
 
 	bc_timer.base = of_iomap(np, 0);
 	if (!bc_timer.base) {
 		pr_err("Failed to get base address for '%s'\n", TIMER_NAME);
-		return;
+		return -ENXIO;
 	}
 	bc_timer.ctrl = bc_timer.base + ctrl_reg;
 
@@ -178,7 +178,7 @@ static void __init rk_timer_init(struct device_node *np, u32 ctrl_reg)
 
 	clockevents_config_and_register(ce, bc_timer.freq, 1, UINT_MAX);
 
-	return;
+	return 0;
 
 out_irq:
 	clk_disable_unprepare(timer_clk);
@@ -186,19 +186,21 @@ out_timer_clk:
 	clk_disable_unprepare(pclk);
 out_unmap:
 	iounmap(bc_timer.base);
+
+	return ret;
 }
 
-static void __init rk3288_timer_init(struct device_node *np)
+static int __init rk3288_timer_init(struct device_node *np)
 {
-	rk_timer_init(np, TIMER_CONTROL_REG3288);
+	return rk_timer_init(np, TIMER_CONTROL_REG3288);
 }
 
-static void __init rk3399_timer_init(struct device_node *np)
+static int __init rk3399_timer_init(struct device_node *np)
 {
-	rk_timer_init(np, TIMER_CONTROL_REG3399);
+	return rk_timer_init(np, TIMER_CONTROL_REG3399);
 }
 
-CLOCKSOURCE_OF_DECLARE(rk3288_timer, "rockchip,rk3288-timer",
-		       rk3288_timer_init);
-CLOCKSOURCE_OF_DECLARE(rk3399_timer, "rockchip,rk3399-timer",
-		       rk3399_timer_init);
+CLOCKSOURCE_OF_DECLARE_RET(rk3288_timer, "rockchip,rk3288-timer",
+			   rk3288_timer_init);
+CLOCKSOURCE_OF_DECLARE_RET(rk3399_timer, "rockchip,rk3399-timer",
+			   rk3399_timer_init);
