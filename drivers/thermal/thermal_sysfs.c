@@ -360,9 +360,14 @@ sustainable_power_show(struct device *dev, struct device_attribute *devattr,
 		       char *buf)
 {
 	struct thermal_zone_device *tz = to_thermal_zone(dev);
+	unsigned int sustainable_power;
+
+	mutex_lock(&tz->lock);
+	sustainable_power = tz->tzp->sustainable_power;
+	mutex_unlock(&tz->lock);
 
 	if (tz->tzp)
-		return sprintf(buf, "%u\n", tz->tzp->sustainable_power);
+		return sprintf(buf, "%u\n", sustainable_power);
 	else
 		return -EIO;
 }
@@ -380,7 +385,9 @@ sustainable_power_store(struct device *dev, struct device_attribute *devattr,
 	if (kstrtou32(buf, 10, &sustainable_power))
 		return -EINVAL;
 
+	mutex_lock(&tz->lock);
 	tz->tzp->sustainable_power = sustainable_power;
+	mutex_unlock(&tz->lock);
 
 	return count;
 }
