@@ -682,8 +682,13 @@ thermal_cooling_device_type_show(struct device *dev,
 				 struct device_attribute *attr, char *buf)
 {
 	struct thermal_cooling_device *cdev = to_cooling_device(dev);
+	char *type;
 
-	return sprintf(buf, "%s\n", cdev->type);
+	mutex_lock(&cdev->lock);
+	type = cdev->type;
+	mutex_unlock(&cdev->lock);
+
+	return sprintf(buf, "%s\n", type);
 }
 
 static ssize_t
