@@ -151,7 +151,9 @@ trip_point_temp_store(struct device *dev, struct device_attribute *attr,
 	if (kstrtoint(buf, 10, &temperature))
 		return -EINVAL;
 
+	mutex_lock(&tz->lock);
 	ret = tz->ops->set_trip_temp(tz, trip, temperature);
+	mutex_unlock(&tz->lock);
 	if (ret)
 		return ret;
 
@@ -174,7 +176,9 @@ trip_point_temp_show(struct device *dev, struct device_attribute *attr,
 	if (sscanf(attr->attr.name, "trip_point_%d_temp", &trip) != 1)
 		return -EINVAL;
 
+	mutex_lock(&tz->lock);
 	ret = tz->ops->get_trip_temp(tz, trip, &temperature);
+	mutex_unlock(&tz->lock);
 
 	if (ret)
 		return ret;
