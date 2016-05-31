@@ -456,6 +456,13 @@ static void thermal_zone_device_check(struct work_struct *work)
 	thermal_zone_device_update(tz);
 }
 
+/*
+ * Power actor section: interface to power actors to estimate power
+ *
+ * Set of functions used to interact to cooling devices that know
+ * how to estimate their devices power consumption.
+ */
+
 /**
  * power_actor_get_max_power() - get the maximum power that a cdev can consume
  * @cdev:	pointer to &thermal_cooling_device
