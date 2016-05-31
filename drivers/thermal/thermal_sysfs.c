@@ -114,7 +114,9 @@ trip_point_type_show(struct device *dev, struct device_attribute *attr,
 	if (sscanf(attr->attr.name, "trip_point_%d_type", &trip) != 1)
 		return -EINVAL;
 
+	mutex_lock(&tz->lock);
 	result = tz->ops->get_trip_type(tz, trip, &type);
+	mutex_unlock(&tz->lock);
 	if (result)
 		return result;
 
