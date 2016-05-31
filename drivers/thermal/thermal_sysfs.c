@@ -781,14 +781,20 @@ thermal_cooling_device_trip_point_show(struct device *dev,
 				       struct device_attribute *attr, char *buf)
 {
 	struct thermal_instance *instance;
+	int trip;
 
 	instance =
 	    container_of(attr, struct thermal_instance, attr);
 
+	mutex_lock(&instance->tz->lock);
+	mutex_lock(&instance->cdev->lock);
+	trip = instance->trip;
+	mutex_unlock(&instance->cdev->lock);
+	mutex_unlock(&instance->tz->lock);
 	if (instance->trip == THERMAL_TRIPS_NONE)
 		return sprintf(buf, "-1\n");
 	else
-		return sprintf(buf, "%d\n", instance->trip);
+		return sprintf(buf, "%d\n", trip);
 }
 
 ssize_t
@@ -796,10 +802,16 @@ thermal_cooling_device_weight_show(struct device *dev,
 				   struct device_attribute *attr, char *buf)
 {
 	struct thermal_instance *instance;
+	int weight;
 
 	instance = container_of(attr, struct thermal_instance, weight_attr);
+	mutex_lock(&instance->tz->lock);
+	mutex_lock(&instance->cdev->lock);
+	weight = instance->weight;
+	mutex_unlock(&instance->cdev->lock);
+	mutex_unlock(&instance->tz->lock);
 
-	return sprintf(buf, "%d\n", instance->weight);
+	return sprintf(buf, "%d\n", weight);
 }
 
 ssize_t
@@ -815,7 +827,11 @@ thermal_cooling_device_weight_store(struct device *dev,
 		return ret;
 
 	instance = container_of(attr, struct thermal_instance, weight_attr);
+	mutex_lock(&instance->tz->lock);
+	mutex_lock(&instance->cdev->lock);
 	instance->weight = weight;
+	mutex_unlock(&instance->cdev->lock);
+	mutex_unlock(&instance->tz->lock);
 
 	return count;
 }
