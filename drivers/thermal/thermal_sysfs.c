@@ -340,13 +340,12 @@ emul_temp_store(struct device *dev, struct device_attribute *attr,
 	if (kstrtoint(buf, 10, &temperature))
 		return -EINVAL;
 
-	if (!tz->ops->set_emul_temp) {
-		mutex_lock(&tz->lock);
+	mutex_lock(&tz->lock);
+	if (!tz->ops->set_emul_temp)
 		tz->emul_temperature = temperature;
-		mutex_unlock(&tz->lock);
-	} else {
+	else
 		ret = tz->ops->set_emul_temp(tz, temperature);
-	}
+	mutex_unlock(&tz->lock);
 
 	if (!ret)
 		thermal_zone_device_update(tz);
