@@ -715,7 +715,9 @@ thermal_cooling_device_cur_state_show(struct device *dev,
 	unsigned long state;
 	int ret;
 
+	mutex_lock(&cdev->lock);
 	ret = cdev->ops->get_cur_state(cdev, &state);
+	mutex_unlock(&cdev->lock);
 	if (ret)
 		return ret;
 	return sprintf(buf, "%ld\n", state);
@@ -736,7 +738,9 @@ thermal_cooling_device_cur_state_store(struct device *dev,
 	if ((long)state < 0)
 		return -EINVAL;
 
+	mutex_lock(&cdev->lock);
 	result = cdev->ops->set_cur_state(cdev, state);
+	mutex_unlock(&cdev->lock);
 	if (result)
 		return result;
 	return count;
