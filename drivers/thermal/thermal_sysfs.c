@@ -29,8 +29,13 @@ static ssize_t
 type_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct thermal_zone_device *tz = to_thermal_zone(dev);
+	char *type;
 
-	return sprintf(buf, "%s\n", tz->type);
+	mutex_lock(&tz->lock);
+	type = tz->type;
+	mutex_unlock(&tz->lock);
+
+	return sprintf(buf, "%s\n", type);
 }
 
 static ssize_t
