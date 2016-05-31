@@ -289,6 +289,7 @@ available_policies_show(struct device *dev, struct device_attribute *devattr,
 	return thermal_build_list_of_policies(buf);
 }
 
+#if (IS_ENABLED(CONFIG_THERMAL_EMULATION))
 static ssize_t
 emul_temp_store(struct device *dev, struct device_attribute *attr,
 		const char *buf, size_t count)
@@ -313,6 +314,8 @@ emul_temp_store(struct device *dev, struct device_attribute *attr,
 
 	return ret ? ret : count;
 }
+static DEVICE_ATTR(emul_temp, S_IWUSR, NULL, emul_temp_store);
+#endif
 
 static ssize_t
 sustainable_power_show(struct device *dev, struct device_attribute *devattr,
@@ -392,7 +395,6 @@ create_s32_tzp_attr(offset);
  */
 static DEVICE_ATTR(type, 0444, type_show, NULL);
 static DEVICE_ATTR(temp, 0444, temp_show, NULL);
-static DEVICE_ATTR(emul_temp, S_IWUSR, NULL, emul_temp_store);
 static DEVICE_ATTR(policy, S_IRUGO | S_IWUSR, policy_show, policy_store);
 static DEVICE_ATTR(available_policies, S_IRUGO, available_policies_show, NULL);
 static DEVICE_ATTR(sustainable_power, S_IWUSR | S_IRUGO, sustainable_power_show,
