@@ -23,7 +23,14 @@
 
 #include "thermal_core.h"
 
-/* sys I/F for thermal zone */
+/*
+ * sys I/F for thermal zone
+ *
+ * Note on locking. The sysfs interface will always first
+ * lock the zone to serialize data access and ops calls.
+ * All calls to thermal_core and thermal_helpers are assumed
+ * to handle locking properly.
+ */
 
 static ssize_t
 type_show(struct device *dev, struct device_attribute *attr, char *buf)
@@ -555,6 +562,9 @@ static const struct attribute_group *thermal_zone_attribute_groups[] = {
  * helper function to instantiate sysfs entries for every trip
  * point and its properties of a struct thermal_zone_device.
  *
+ * This function is assumed to be called only during probe,
+ * and therefore no locking in the thermal zone device is done.
+ *
  * Return: 0 on success, the proper error value otherwise.
  */
 static int create_trip_attrs(struct thermal_zone_device *tz, int mask)
@@ -770,6 +780,10 @@ static const struct attribute_group *cooling_device_attr_groups[] = {
 	NULL,
 };
 
+/*
+ * Assumed to be called at the creation of the cooling device
+ * and for this reason, no locking is done
+ */
 void thermal_cooling_device_setup_sysfs(struct thermal_cooling_device *cdev)
 {
 	cdev->device.groups = cooling_device_attr_groups;
