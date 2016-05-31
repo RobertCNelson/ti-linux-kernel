@@ -398,11 +398,16 @@ sustainable_power_store(struct device *dev, struct device_attribute *devattr,
 		char *buf)						\
 	{								\
 	struct thermal_zone_device *tz = to_thermal_zone(dev);		\
+	int value;							\
 									\
-	if (tz->tzp)							\
-		return sprintf(buf, "%d\n", tz->tzp->name);		\
-	else								\
+	if (!tz->tzp)							\
 		return -EIO;						\
+									\
+	mutex_lock(&tz->lock);						\
+	value = tz->tzp->name;						\
+	mutex_unlock(&tz->lock);					\
+									\
+	return sprintf(buf, "%d\n", value);				\
 	}								\
 									\
 	static ssize_t							\
@@ -418,7 +423,9 @@ sustainable_power_store(struct device *dev, struct device_attribute *devattr,
 		if (kstrtos32(buf, 10, &value))				\
 			return -EINVAL;					\
 									\
+		mutex_lock(&tz->lock);					\
 		tz->tzp->name = value;					\
+		mutex_unlock(&tz->lock);				\
 									\
 		return count;						\
 	}								\
