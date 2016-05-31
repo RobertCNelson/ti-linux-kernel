@@ -252,18 +252,24 @@ passive_store(struct device *dev, struct device_attribute *attr,
 	if (state && state < 1000)
 		return -EINVAL;
 
+	mutex_lock(&tz->lock);
 	if (state && !tz->forced_passive) {
 		if (!tz->passive_delay)
 			tz->passive_delay = 1000;
+		mutex_unlock(&tz->lock);
 		thermal_zone_device_rebind_exception(tz, "Processor",
 						     sizeof("Processor"));
+		mutex_lock(&tz->lock);
 	} else if (!state && tz->forced_passive) {
 		tz->passive_delay = 0;
+		mutex_unlock(&tz->lock);
 		thermal_zone_device_unbind_exception(tz, "Processor",
 						     sizeof("Processor"));
+		mutex_lock(&tz->lock);
 	}
 
 	tz->forced_passive = state;
+	mutex_unlock(&tz->lock);
 
 	thermal_zone_device_update(tz);
 
@@ -275,8 +281,13 @@ passive_show(struct device *dev, struct device_attribute *attr,
 	     char *buf)
 {
 	struct thermal_zone_device *tz = to_thermal_zone(dev);
+	unsigned int passive;
 
-	return sprintf(buf, "%d\n", tz->forced_passive);
+	mutex_lock(&tz->lock);
+	passive = tz->forced_passive;
+	mutex_unlock(&tz->lock);
+
+	return sprintf(buf, "%u\n", passive);
 }
 
 static ssize_t
@@ -494,7 +505,9 @@ static umode_t thermal_zone_passive_is_visible(struct kobject *kobj,
 	tz = container_of(dev, struct thermal_zone_device, device);
 
 	for (count = 0; count < tz->trips; count++) {
+		mutex_lock(&tz->lock);
 		tz->ops->get_trip_type(tz, count, &trip_type);
+		mutex_unlock(&tz->lock);
 
 		if (trip_type == THERMAL_TRIP_PASSIVE)
 			return attr->mode;
