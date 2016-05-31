@@ -699,7 +699,9 @@ thermal_cooling_device_max_state_show(struct device *dev,
 	unsigned long state;
 	int ret;
 
+	mutex_lock(&cdev->lock);
 	ret = cdev->ops->get_max_state(cdev, &state);
+	mutex_unlock(&cdev->lock);
 	if (ret)
 		return ret;
 	return sprintf(buf, "%ld\n", state);
