@@ -1832,11 +1832,13 @@ int mlx5_init_fs(struct mlx5_core_dev *dev)
 	if (err)
 		return err;
 
-	if (MLX5_CAP_GEN(dev, nic_flow_table)) {
+	if (MLX5_CAP_GEN(dev, nic_flow_table) &&
+	    MLX5_CAP_FLOWTABLE_NIC_RX(dev, ft_support)) {
 		err = init_root_ns(dev);
 		if (err)
 			goto err;
 	}
+
 	if (MLX5_CAP_GEN(dev, eswitch_flow_table)) {
 		err = init_fdb_root_ns(dev);
 		if (err)
