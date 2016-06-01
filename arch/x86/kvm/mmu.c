@@ -2823,7 +2823,7 @@ static void transparent_hugepage_adjust(struct kvm_vcpu *vcpu,
 	 */
 	if (!is_error_noslot_pfn(pfn) && !kvm_is_reserved_pfn(pfn) &&
 	    level == PT_PAGE_TABLE_LEVEL &&
-	    PageTransCompound(pfn_to_page(pfn)) &&
+	    PageTransCompoundMap(pfn_to_page(pfn)) &&
 	    !mmu_gfn_lpage_is_disallowed(vcpu, gfn, PT_DIRECTORY_LEVEL)) {
 		unsigned long mask;
 		/*
@@ -3844,7 +3844,8 @@ reset_tdp_shadow_zero_bits_mask(struct kvm_vcpu *vcpu,
 		__reset_rsvds_bits_mask(vcpu, &context->shadow_zero_check,
 					boot_cpu_data.x86_phys_bits,
 					context->shadow_root_level, false,
-					cpu_has_gbpages, true, true);
+					boot_cpu_has(X86_FEATURE_GBPAGES),
+					true, true);
 	else
 		__reset_rsvds_bits_mask_ept(&context->shadow_zero_check,
 					    boot_cpu_data.x86_phys_bits,
@@ -4785,7 +4786,7 @@ restart:
 		 */
 		if (sp->role.direct &&
 			!kvm_is_reserved_pfn(pfn) &&
-			PageTransCompound(pfn_to_page(pfn))) {
+			PageTransCompoundMap(pfn_to_page(pfn))) {
 			drop_spte(kvm, sptep);
 			need_tlb_flush = 1;
 			goto restart;
