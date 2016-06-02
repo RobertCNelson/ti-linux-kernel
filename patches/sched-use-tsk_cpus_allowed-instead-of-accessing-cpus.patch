@@ -51,7 +51,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  			if (unlikely(task_rq(task) != rq ||
  				     !cpumask_test_cpu(later_rq->cpu,
 -				                       &task->cpus_allowed) ||
-+						       tsk_cpus_allowed(task)) ||
++				                       tsk_cpus_allowed(task)) ||
  				     task_running(rq, task) ||
+ 				     !dl_task(task) ||
  				     !task_on_rq_queued(task))) {
- 				double_unlock_balance(rq, later_rq);

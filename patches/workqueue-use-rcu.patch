@@ -311,7 +311,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /*
-@@ -4808,16 +4815,16 @@ bool freeze_workqueues_busy(void)
+@@ -4819,16 +4826,16 @@ bool freeze_workqueues_busy(void)
  		 * nr_active is monotonically decreasing.  It's safe
  		 * to peek without lock.
  		 */
@@ -331,7 +331,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	}
  out_unlock:
  	mutex_unlock(&wq_pool_mutex);
-@@ -5007,7 +5014,8 @@ static ssize_t wq_pool_ids_show(struct d
+@@ -5018,7 +5025,8 @@ static ssize_t wq_pool_ids_show(struct d
  	const char *delim = "";
  	int node, written = 0;
  
@@ -341,7 +341,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	for_each_node(node) {
  		written += scnprintf(buf + written, PAGE_SIZE - written,
  				     "%s%d:%d", delim, node,
-@@ -5015,7 +5023,8 @@ static ssize_t wq_pool_ids_show(struct d
+@@ -5026,7 +5034,8 @@ static ssize_t wq_pool_ids_show(struct d
  		delim = " ";
  	}
  	written += scnprintf(buf + written, PAGE_SIZE - written, "\n");
