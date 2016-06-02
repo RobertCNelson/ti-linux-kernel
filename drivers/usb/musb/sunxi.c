@@ -112,7 +112,7 @@ static void sunxi_musb_work(struct work_struct *work)
 		if (test_bit(SUNXI_MUSB_FL_HOSTMODE, &glue->flags)) {
 			set_bit(SUNXI_MUSB_FL_VBUS_ON, &glue->flags);
 			musb->xceiv->otg->default_a = 1;
-			musb->xceiv->otg->state = OTG_STATE_A_IDLE;
+			musb->xceiv->otg->state = OTG_STATE_A_WAIT_VRISE;
 			MUSB_HST_MODE(musb);
 			devctl |= MUSB_DEVCTL_SESSION;
 		} else {
@@ -145,10 +145,12 @@ static void sunxi_musb_set_vbus(struct musb *musb, int is_on)
 {
 	struct sunxi_glue *glue = dev_get_drvdata(musb->controller->parent);
 
-	if (is_on)
+	if (is_on) {
 		set_bit(SUNXI_MUSB_FL_VBUS_ON, &glue->flags);
-	else
+		musb->xceiv->otg->state = OTG_STATE_A_WAIT_VRISE;
+	} else {
 		clear_bit(SUNXI_MUSB_FL_VBUS_ON, &glue->flags);
+	}
 
 	schedule_work(&glue->work);
 }
@@ -264,15 +266,6 @@ static int sunxi_musb_init(struct musb *musb)
 	if (ret)
 		goto error_unregister_notifier;
 
-	if (musb->port_mode == MUSB_PORT_MODE_HOST) {
-		ret = phy_power_on(glue->phy);
-		if (ret)
-			goto error_phy_exit;
-		set_bit(SUNXI_MUSB_FL_PHY_ON, &glue->flags);
-		/* Stop musb work from turning vbus off again */
-		set_bit(SUNXI_MUSB_FL_VBUS_ON, &glue->flags);
-	}
-
 	musb->isr = sunxi_musb_interrupt;
 
 	/* Stop the musb-core from doing runtime pm (not supported on sunxi) */
@@ -280,8 +273,6 @@ static int sunxi_musb_init(struct musb *musb)
 
 	return 0;
 
-error_phy_exit:
-	phy_exit(glue->phy);
 error_unregister_notifier:
 	if (musb->port_mode == MUSB_PORT_MODE_DUAL_ROLE)
 		extcon_unregister_notifier(glue->extcon, EXTCON_USB_HOST,
@@ -319,6 +310,25 @@ static int sunxi_musb_exit(struct musb *musb)
 	clk_disable_unprepare(glue->clk);
 	if (test_bit(SUNXI_MUSB_FL_HAS_SRAM, &glue->flags))
 		sunxi_sram_release(musb->controller->parent);
+
+	return 0;
+}
+
+static int sunxi_set_mode(struct musb *musb, u8 mode)
+{
+	struct sunxi_glue *glue = dev_get_drvdata(musb->controller->parent);
+	int ret;
+
+	if (mode == MUSB_HOST) {
+		ret = phy_power_on(glue->phy);
+		if (ret)
+			return ret;
+
+		set_bit(SUNXI_MUSB_FL_PHY_ON, &glue->flags);
+		/* Stop musb work from turning vbus off again */
+		set_bit(SUNXI_MUSB_FL_VBUS_ON, &glue->flags);
+		musb->xceiv->otg->state = OTG_STATE_A_WAIT_VRISE;
+	}
 
 	return 0;
 }
@@ -569,6 +579,7 @@ static const struct musb_platform_ops sunxi_musb_ops = {
 	.exit		= sunxi_musb_exit,
 	.enable		= sunxi_musb_enable,
 	.disable	= sunxi_musb_disable,
+	.set_mode	= sunxi_set_mode,
 	.fifo_offset	= sunxi_musb_fifo_offset,
 	.ep_offset	= sunxi_musb_ep_offset,
 	.busctl_offset	= sunxi_musb_busctl_offset,
