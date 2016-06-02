@@ -317,10 +317,16 @@ static void set_node_addr(struct f2fs_sb_info *sbi, struct node_info *ni,
 	}
 
 	/* change address */
-	nat_set_blkaddr(e, new_blkaddr);
-	if (new_blkaddr == NEW_ADDR || new_blkaddr == NULL_ADDR)
-		set_nat_flag(e, IS_CHECKPOINTED, false);
-	__set_nat_cache_dirty(nm_i, e);
+	if (nat_get_blkaddr(e) == NEW_ADDR && new_blkaddr == NULL_ADDR) {
+		nat_set_blkaddr(e, new_blkaddr);
+		nat_reset_flag(e);
+		__clear_nat_cache_dirty(nm_i, e);
+	} else {
+		nat_set_blkaddr(e, new_blkaddr);
+		if (new_blkaddr == NEW_ADDR || new_blkaddr == NULL_ADDR)
+			set_nat_flag(e, IS_CHECKPOINTED, false);
+		__set_nat_cache_dirty(nm_i, e);
+	}
 
 	/* update fsync_mark if its inode nat entry is still alive */
 	if (ni->nid != ni->ino)
