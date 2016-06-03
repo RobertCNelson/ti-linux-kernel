@@ -13,6 +13,7 @@ panic-x86-Allow-CPUs-to-save-registers-even-if-loopi.patch
 panic-change-nmi_panic-from-macro-to-function.patch
 sched-cputime-Clarify-vtime-symbols-and-document-the.patch
 sched-cputime-Convert-vtime_seqlock-to-seqcount.patch
+perf-x86-intel-rapl-Make-PMU-lock-raw.patch
 
 # AT91 queue in ARM-SOC
 0001-clk-at91-make-use-of-syscon-to-share-PMC-registers-i.patch
@@ -49,6 +50,7 @@ drivers-media-vsp1_video-fix-compile-error.patch
 sc16is7xx_Drop_bogus_use_of_IRQF_ONESHOT.patch
 f2fs_Mutex_cant_be_used_by_down_write_nest_lock().patch
 ARM-imx-always-use-TWD-on-IMX6Q.patch
+sched-preempt-Fix-preempt_count-manipulations.patch
 
 # Those two should vanish soon (not use PIT during bootup)
 at91_dont_enable_disable_clock.patch
@@ -345,6 +347,7 @@ kernel-migrate_disable-do-fastpath-in-atomic-irqs-of.patch
 irq-allow-disabling-of-softirq-processing-in-irq-thread-context.patch
 softirq-split-timer-softirqs-out-of-ksoftirqd.patch
 rtmutex-trylock-is-okay-on-RT.patch
+kernel-rtmutex-only-warn-once-on-a-try-lock-from-bad.patch
 
 # RAID5
 md-raid5-percpu-handling-rt-aware.patch
@@ -481,6 +484,7 @@ snd-pcm-fix-snd_pcm_stream_lock-irqs_disabled-splats.patch
 
 # CONSOLE. NEEDS more thought !!!
 printk-rt-aware.patch
+kernel-printk-Don-t-try-to-print-from-IRQ-NMI-region.patch
 HACK-printk-drop-the-logbuf_lock-more-often.patch
 
 # POWERC
@@ -588,6 +592,7 @@ preempt-lazy-support.patch
 preempt-lazy-check-preempt_schedule.patch
 x86-preempt-lazy.patch
 arm-preempt-lazy-support.patch
+arm-lazy-preempt-correct-resched-condition.patch
 powerpc-preempt-lazy-support.patch
 arch-arm64-Add-lazy-preempt-support.patch
 arm-arm64-lazy-preempt-add-TIF_NEED_RESCHED_LAZY-to-.patch

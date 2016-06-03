@@ -25,7 +25,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  extern void lru_cache_add_file(struct page *page);
 --- a/mm/compaction.c
 +++ b/mm/compaction.c
-@@ -1443,10 +1443,12 @@ static int compact_zone(struct zone *zon
+@@ -1435,10 +1435,12 @@ static int compact_zone(struct zone *zon
  				cc->migrate_pfn & ~((1UL << cc->order) - 1);
  
  			if (cc->last_migrated_pfn < current_block_start) {

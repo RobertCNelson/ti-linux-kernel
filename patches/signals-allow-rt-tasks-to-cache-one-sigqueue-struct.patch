@@ -27,7 +27,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	sigset_t saved_sigmask;	/* restored if set_restore_sigmask() was used */
 --- a/include/linux/signal.h
 +++ b/include/linux/signal.h
-@@ -218,6 +218,7 @@ static inline void init_sigpending(struc
+@@ -233,6 +233,7 @@ static inline void init_sigpending(struc
  }
  
  extern void flush_sigqueue(struct sigpending *queue);
