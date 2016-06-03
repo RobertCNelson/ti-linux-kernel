@@ -753,6 +753,9 @@ struct drm_crtc {
 	struct drm_plane *primary;
 	struct drm_plane *cursor;
 
+	/* position inside the mode_config.list, can be used as a [] idx */
+	unsigned index;
+
 	/* position of cursor plane on crtc */
 	int cursor_x;
 	int cursor_y;
@@ -1097,6 +1100,10 @@ struct drm_encoder {
 	struct drm_mode_object base;
 	char *name;
 	int encoder_type;
+
+	/* position inside the mode_config.list, can be used as a [] idx */
+	unsigned index;
+
 	uint32_t possible_crtcs;
 	uint32_t possible_clones;
 
@@ -1543,6 +1550,9 @@ struct drm_plane {
 
 	enum drm_plane_type type;
 
+	/* position inside the mode_config.list, can be used as a [] idx */
+	unsigned index;
+
 	const struct drm_plane_helper_funcs *helper_private;
 
 	struct drm_plane_state *state;
@@ -1693,19 +1703,32 @@ struct drm_bridge {
 	void *driver_private;
 };
 
+struct __drm_planes_state {
+	struct drm_plane *ptr;
+	struct drm_plane_state *state;
+};
+
+struct __drm_crtcs_state {
+	struct drm_crtc *ptr;
+	struct drm_crtc_state *state;
+};
+
+struct __drm_connnectors_state {
+	struct drm_connector *ptr;
+	struct drm_connector_state *state;
+};
+
 /**
  * struct drm_atomic_state - the global state object for atomic updates
  * @dev: parent DRM device
  * @allow_modeset: allow full modeset
  * @legacy_cursor_update: hint to enforce legacy cursor IOCTL semantics
  * @legacy_set_config: Disable conflicting encoders instead of failing with -EINVAL.
- * @planes: pointer to array of plane pointers
- * @plane_states: pointer to array of plane states pointers
+ * @planes: pointer to array of structures with per-plane data
  * @crtcs: pointer to array of CRTC pointers
  * @crtc_states: pointer to array of CRTC states pointers
  * @num_connector: size of the @connectors and @connector_states arrays
- * @connectors: pointer to array of connector pointers
- * @connector_states: pointer to array of connector states pointers
+ * @connectors: pointer to array of structures with per-connector data
  * @acquire_ctx: acquire context for this atomic modeset state update
  */
 struct drm_atomic_state {
@@ -1713,13 +1736,10 @@ struct drm_atomic_state {
 	bool allow_modeset : 1;
 	bool legacy_cursor_update : 1;
 	bool legacy_set_config : 1;
-	struct drm_plane **planes;
-	struct drm_plane_state **plane_states;
-	struct drm_crtc **crtcs;
-	struct drm_crtc_state **crtc_states;
+	struct __drm_planes_state *planes;
+	struct __drm_crtcs_state *crtcs;
 	int num_connector;
-	struct drm_connector **connectors;
-	struct drm_connector_state **connector_states;
+	struct __drm_connnectors_state *connectors;
 
 	struct drm_modeset_acquire_ctx *acquire_ctx;
 };
@@ -2230,7 +2250,18 @@ int drm_crtc_init_with_planes(struct drm_device *dev,
 			      const struct drm_crtc_funcs *funcs,
 			      const char *name, ...);
 extern void drm_crtc_cleanup(struct drm_crtc *crtc);
-extern unsigned int drm_crtc_index(struct drm_crtc *crtc);
+
+/**
+ * drm_crtc_index - find the index of a registered CRTC
+ * @crtc: CRTC to find index for
+ *
+ * Given a registered CRTC, return the index of that CRTC within a DRM
+ * device's list of CRTCs.
+ */
+static inline unsigned int drm_crtc_index(struct drm_crtc *crtc)
+{
+	return crtc->index;
+}
 
 /**
  * drm_crtc_mask - find the mask of a registered CRTC
@@ -2284,7 +2315,18 @@ int drm_encoder_init(struct drm_device *dev,
 		     struct drm_encoder *encoder,
 		     const struct drm_encoder_funcs *funcs,
 		     int encoder_type, const char *name, ...);
-extern unsigned int drm_encoder_index(struct drm_encoder *encoder);
+
+/**
+ * drm_encoder_index - find the index of a registered encoder
+ * @encoder: encoder to find index for
+ *
+ * Given a registered encoder, return the index of that encoder within a DRM
+ * device's list of encoders.
+ */
+static inline unsigned int drm_encoder_index(struct drm_encoder *encoder)
+{
+	return encoder->index;
+}
 
 /**
  * drm_encoder_crtc_ok - can a given crtc drive a given encoder?
@@ -2315,7 +2357,18 @@ extern int drm_plane_init(struct drm_device *dev,
 			  const uint32_t *formats, unsigned int format_count,
 			  bool is_primary);
 extern void drm_plane_cleanup(struct drm_plane *plane);
-extern unsigned int drm_plane_index(struct drm_plane *plane);
+
+/**
+ * drm_plane_index - find the index of a registered plane
+ * @plane: plane to find index for
+ *
+ * Given a registered plane, return the index of that plane within a DRM
+ * device's list of planes.
+ */
+static inline unsigned int drm_plane_index(struct drm_plane *plane)
+{
+	return plane->index;
+}
 extern struct drm_plane * drm_plane_from_index(struct drm_device *dev, int idx);
 extern void drm_plane_force_disable(struct drm_plane *plane);
 extern int drm_plane_check_pixel_format(const struct drm_plane *plane,
