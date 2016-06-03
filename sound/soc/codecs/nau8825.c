@@ -30,9 +30,15 @@
 
 #include "nau8825.h"
 
+
+#define NUVOTON_CODEC_DAI "nau8825-hifi"
+
 #define NAU_FREF_MAX 13500000
-#define NAU_FVCO_MAX 100000000
+#define NAU_FVCO_MAX 124000000
 #define NAU_FVCO_MIN 90000000
+
+static int nau8825_configure_sysclk(struct nau8825 *nau8825,
+		int clk_id, unsigned int freq);
 
 struct nau8825_fll {
 	int mclk_src;
@@ -217,10 +223,34 @@ static bool nau8825_volatile_reg(struct device *dev, unsigned int reg)
 	case NAU8825_REG_SARDOUT_RAM_STATUS:
 	case NAU8825_REG_CHARGE_PUMP_INPUT_READ:
 	case NAU8825_REG_GENERAL_STATUS:
+	case NAU8825_REG_BIQ_CTRL ... NAU8825_REG_BIQ_COF10:
 		return true;
 	default:
 		return false;
 	}
+}
+
+static int nau8825_adc_event(struct snd_soc_dapm_widget *w,
+		struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
+	struct nau8825 *nau8825 = snd_soc_codec_get_drvdata(codec);
+
+	switch (event) {
+	case SND_SOC_DAPM_POST_PMU:
+		regmap_update_bits(nau8825->regmap, NAU8825_REG_ENA_CTRL,
+			NAU8825_ENABLE_ADC, NAU8825_ENABLE_ADC);
+		break;
+	case SND_SOC_DAPM_POST_PMD:
+		if (!nau8825->irq)
+			regmap_update_bits(nau8825->regmap,
+				NAU8825_REG_ENA_CTRL, NAU8825_ENABLE_ADC, 0);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
 }
 
 static int nau8825_pump_event(struct snd_soc_dapm_widget *w,
@@ -270,6 +300,54 @@ static int nau8825_output_dac_event(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+static int nau8825_biq_coeff_get(struct snd_kcontrol *kcontrol,
+				     struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
+	struct soc_bytes_ext *params = (void *)kcontrol->private_value;
+
+	if (!component->regmap)
+		return -EINVAL;
+
+	regmap_raw_read(component->regmap, NAU8825_REG_BIQ_COF1,
+		ucontrol->value.bytes.data, params->max);
+	return 0;
+}
+
+static int nau8825_biq_coeff_put(struct snd_kcontrol *kcontrol,
+				     struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
+	struct soc_bytes_ext *params = (void *)kcontrol->private_value;
+	void *data;
+
+	if (!component->regmap)
+		return -EINVAL;
+
+	data = kmemdup(ucontrol->value.bytes.data,
+		params->max, GFP_KERNEL | GFP_DMA);
+	if (!data)
+		return -ENOMEM;
+
+	regmap_update_bits(component->regmap, NAU8825_REG_BIQ_CTRL,
+		NAU8825_BIQ_WRT_EN, 0);
+	regmap_raw_write(component->regmap, NAU8825_REG_BIQ_COF1,
+		data, params->max);
+	regmap_update_bits(component->regmap, NAU8825_REG_BIQ_CTRL,
+		NAU8825_BIQ_WRT_EN, NAU8825_BIQ_WRT_EN);
+
+	kfree(data);
+	return 0;
+}
+
+static const char * const nau8825_biq_path[] = {
+	"ADC", "DAC"
+};
+
+static const struct soc_enum nau8825_biq_path_enum =
+	SOC_ENUM_SINGLE(NAU8825_REG_BIQ_CTRL, NAU8825_BIQ_PATH_SFT,
+		ARRAY_SIZE(nau8825_biq_path), nau8825_biq_path);
+
 static const char * const nau8825_adc_decimation[] = {
 	"32", "64", "128", "256"
 };
@@ -306,6 +384,10 @@ static const struct snd_kcontrol_new nau8825_controls[] = {
 
 	SOC_ENUM("ADC Decimation Rate", nau8825_adc_decimation_enum),
 	SOC_ENUM("DAC Oversampling Rate", nau8825_dac_oversampl_enum),
+	/* programmable biquad filter */
+	SOC_ENUM("BIQ Path Select", nau8825_biq_path_enum),
+	SND_SOC_BYTES_EXT("BIQ Coefficients", 20,
+		  nau8825_biq_coeff_get, nau8825_biq_coeff_put),
 };
 
 /* DAC Mux 0x33[9] and 0x34[9] */
@@ -338,7 +420,9 @@ static const struct snd_soc_dapm_widget nau8825_dapm_widgets[] = {
 	SND_SOC_DAPM_PGA("Frontend PGA", NAU8825_REG_POWER_UP_CONTROL, 14, 0,
 		NULL, 0),
 
-	SND_SOC_DAPM_ADC("ADC", NULL, NAU8825_REG_ENA_CTRL, 8, 0),
+	SND_SOC_DAPM_ADC_E("ADC", NULL, SND_SOC_NOPM, 0, 0,
+		nau8825_adc_event, SND_SOC_DAPM_POST_PMU |
+		SND_SOC_DAPM_POST_PMD),
 	SND_SOC_DAPM_SUPPLY("ADC Clock", NAU8825_REG_ENA_CTRL, 7, 0, NULL, 0),
 	SND_SOC_DAPM_SUPPLY("ADC Power", NAU8825_REG_ANALOG_ADC_2, 6, 0, NULL,
 		0),
@@ -592,9 +676,6 @@ int nau8825_enable_jack_detect(struct snd_soc_codec *codec,
 		NAU8825_HSD_AUTO_MODE | NAU8825_SPKR_DWN1R | NAU8825_SPKR_DWN1L,
 		NAU8825_HSD_AUTO_MODE | NAU8825_SPKR_DWN1R | NAU8825_SPKR_DWN1L);
 
-	regmap_update_bits(regmap, NAU8825_REG_INTERRUPT_MASK,
-		NAU8825_IRQ_HEADSET_COMPLETE_EN | NAU8825_IRQ_EJECT_EN, 0);
-
 	return 0;
 }
 EXPORT_SYMBOL_GPL(nau8825_enable_jack_detect);
@@ -610,16 +691,6 @@ static bool nau8825_is_jack_inserted(struct regmap *regmap)
 
 static void nau8825_restart_jack_detection(struct regmap *regmap)
 {
-	/* Chip needs one FSCLK cycle in order to generate interrupts,
-	 * as we cannot guarantee one will be provided by the system. Turning
-	 * master mode on then off enables us to generate that FSCLK cycle
-	 * with a minimum of contention on the clock bus.
-	 */
-	regmap_update_bits(regmap, NAU8825_REG_I2S_PCM_CTRL2,
-		NAU8825_I2S_MS_MASK, NAU8825_I2S_MS_MASTER);
-	regmap_update_bits(regmap, NAU8825_REG_I2S_PCM_CTRL2,
-		NAU8825_I2S_MS_MASK, NAU8825_I2S_MS_SLAVE);
-
 	/* this will restart the entire jack detection process including MIC/GND
 	 * switching and create interrupts. We have to go from 0 to 1 and back
 	 * to 0 to restart.
@@ -628,6 +699,22 @@ static void nau8825_restart_jack_detection(struct regmap *regmap)
 		NAU8825_JACK_DET_RESTART, NAU8825_JACK_DET_RESTART);
 	regmap_update_bits(regmap, NAU8825_REG_JACK_DET_CTRL,
 		NAU8825_JACK_DET_RESTART, 0);
+}
+
+static void nau8825_int_status_clear_all(struct regmap *regmap)
+{
+	int active_irq, clear_irq, i;
+
+	/* Reset the intrruption status from rightmost bit if the corres-
+	 * ponding irq event occurs.
+	 */
+	regmap_read(regmap, NAU8825_REG_IRQ_STATUS, &active_irq);
+	for (i = 0; i < NAU8825_REG_DATA_LEN; i++) {
+		clear_irq = (0x1 << i);
+		if (active_irq & clear_irq)
+			regmap_write(regmap,
+				NAU8825_REG_INT_CLR_KEY_STATUS, clear_irq);
+	}
 }
 
 static void nau8825_eject_jack(struct nau8825 *nau8825)
@@ -644,6 +731,69 @@ static void nau8825_eject_jack(struct nau8825 *nau8825)
 	regmap_update_bits(regmap, NAU8825_REG_HSD_CTRL, 0xf, 0xf);
 
 	snd_soc_dapm_sync(dapm);
+
+	/* Clear all interruption status */
+	nau8825_int_status_clear_all(regmap);
+
+	/* Enable the insertion interruption, disable the ejection inter-
+	 * ruption, and then bypass de-bounce circuit.
+	 */
+	regmap_update_bits(regmap, NAU8825_REG_INTERRUPT_DIS_CTRL,
+		NAU8825_IRQ_EJECT_DIS | NAU8825_IRQ_INSERT_DIS,
+		NAU8825_IRQ_EJECT_DIS);
+	regmap_update_bits(regmap, NAU8825_REG_INTERRUPT_MASK,
+		NAU8825_IRQ_OUTPUT_EN | NAU8825_IRQ_EJECT_EN |
+		NAU8825_IRQ_HEADSET_COMPLETE_EN | NAU8825_IRQ_INSERT_EN,
+		NAU8825_IRQ_OUTPUT_EN | NAU8825_IRQ_EJECT_EN |
+		NAU8825_IRQ_HEADSET_COMPLETE_EN);
+	regmap_update_bits(regmap, NAU8825_REG_JACK_DET_CTRL,
+		NAU8825_JACK_DET_DB_BYPASS, NAU8825_JACK_DET_DB_BYPASS);
+
+	/* Disable ADC needed for interruptions at audo mode */
+	regmap_update_bits(regmap, NAU8825_REG_ENA_CTRL,
+		NAU8825_ENABLE_ADC, 0);
+
+	/* Close clock for jack type detection at manual mode */
+	nau8825_configure_sysclk(nau8825, NAU8825_CLK_DIS, 0);
+}
+
+/* Enable audo mode interruptions with internal clock. */
+static void nau8825_setup_auto_irq(struct nau8825 *nau8825)
+{
+	struct regmap *regmap = nau8825->regmap;
+
+	/* Enable headset jack type detection complete interruption and
+	 * jack ejection interruption.
+	 */
+	regmap_update_bits(regmap, NAU8825_REG_INTERRUPT_MASK,
+		NAU8825_IRQ_HEADSET_COMPLETE_EN | NAU8825_IRQ_EJECT_EN, 0);
+
+	/* Enable internal VCO needed for interruptions */
+	nau8825_configure_sysclk(nau8825, NAU8825_CLK_INTERNAL, 0);
+
+	/* Enable ADC needed for interruptions */
+	regmap_update_bits(regmap, NAU8825_REG_ENA_CTRL,
+		NAU8825_ENABLE_ADC, NAU8825_ENABLE_ADC);
+
+	/* Chip needs one FSCLK cycle in order to generate interruptions,
+	 * as we cannot guarantee one will be provided by the system. Turning
+	 * master mode on then off enables us to generate that FSCLK cycle
+	 * with a minimum of contention on the clock bus.
+	 */
+	regmap_update_bits(regmap, NAU8825_REG_I2S_PCM_CTRL2,
+		NAU8825_I2S_MS_MASK, NAU8825_I2S_MS_MASTER);
+	regmap_update_bits(regmap, NAU8825_REG_I2S_PCM_CTRL2,
+		NAU8825_I2S_MS_MASK, NAU8825_I2S_MS_SLAVE);
+
+	/* Not bypass de-bounce circuit */
+	regmap_update_bits(regmap, NAU8825_REG_JACK_DET_CTRL,
+		NAU8825_JACK_DET_DB_BYPASS, 0);
+
+	/* Unmask all interruptions */
+	regmap_write(regmap, NAU8825_REG_INTERRUPT_DIS_CTRL, 0);
+
+	/* Restart the jack detection process at auto mode */
+	nau8825_restart_jack_detection(regmap);
 }
 
 static int nau8825_button_decode(int value)
@@ -780,6 +930,26 @@ static irqreturn_t nau8825_interrupt(int irq, void *data)
 
 		event_mask |= SND_JACK_HEADSET;
 		clear_irq = NAU8825_HEADSET_COMPLETION_IRQ;
+	} else if ((active_irq & NAU8825_JACK_INSERTION_IRQ_MASK) ==
+		NAU8825_JACK_INSERTION_DETECTED) {
+		/* One more step to check GPIO status directly. Thus, the
+		 * driver can confirm the real insertion interruption because
+		 * the intrruption at manual mode has bypassed debounce
+		 * circuit which can get rid of unstable status.
+		 */
+		if (nau8825_is_jack_inserted(regmap)) {
+			/* Turn off insertion interruption at manual mode */
+			regmap_update_bits(regmap,
+				NAU8825_REG_INTERRUPT_DIS_CTRL,
+				NAU8825_IRQ_INSERT_DIS,
+				NAU8825_IRQ_INSERT_DIS);
+			regmap_update_bits(regmap, NAU8825_REG_INTERRUPT_MASK,
+				NAU8825_IRQ_INSERT_EN, NAU8825_IRQ_INSERT_EN);
+			/* Enable interruption for jack type detection at audo
+			 * mode which can detect microphone and jack type.
+			 */
+			nau8825_setup_auto_irq(nau8825);
+		}
 	}
 
 	if (!clear_irq)
@@ -921,11 +1091,16 @@ static void nau8825_init_regs(struct nau8825 *nau8825)
 		NAU8825_RDAC_CLK_DELAY_MASK | NAU8825_RDAC_VREF_MASK,
 		(0x2 << NAU8825_RDAC_CLK_DELAY_SFT) |
 		(0x3 << NAU8825_RDAC_VREF_SFT));
+	/* Config L/R channel */
+	regmap_update_bits(nau8825->regmap, NAU8825_REG_DACL_CTRL,
+		NAU8825_DACL_CH_SEL_MASK, NAU8825_DACL_CH_SEL_L);
+	regmap_update_bits(nau8825->regmap, NAU8825_REG_DACR_CTRL,
+		NAU8825_DACL_CH_SEL_MASK, NAU8825_DACL_CH_SEL_R);
 }
 
 static const struct regmap_config nau8825_regmap_config = {
-	.val_bits = 16,
-	.reg_bits = 16,
+	.val_bits = NAU8825_REG_DATA_LEN,
+	.reg_bits = NAU8825_REG_ADDR_LEN,
 
 	.max_register = NAU8825_REG_MAX,
 	.readable_reg = nau8825_readable_reg,
@@ -944,19 +1119,6 @@ static int nau8825_codec_probe(struct snd_soc_codec *codec)
 
 	nau8825->dapm = dapm;
 
-	/* The interrupt clock is gated by x1[10:8],
-	 * one of them needs to be enabled all the time for
-	 * interrupts to happen.
-	 */
-	snd_soc_dapm_force_enable_pin(dapm, "DDACR");
-	snd_soc_dapm_sync(dapm);
-
-	/* Unmask interruptions. Handler uses dapm object so we can enable
-	 * interruptions only after dapm is fully initialized.
-	 */
-	regmap_write(nau8825->regmap, NAU8825_REG_INTERRUPT_DIS_CTRL, 0);
-	nau8825_restart_jack_detection(nau8825->regmap);
-
 	return 0;
 }
 
@@ -973,8 +1135,8 @@ static int nau8825_codec_probe(struct snd_soc_codec *codec)
 static int nau8825_calc_fll_param(unsigned int fll_in, unsigned int fs,
 		struct nau8825_fll *fll_param)
 {
-	u64 fvco;
-	unsigned int fref, i;
+	u64 fvco, fvco_max;
+	unsigned int fref, i, fvco_sel;
 
 	/* Ensure the reference clock frequency (FREF) is <= 13.5MHz by dividing
 	 * freq_in by 1, 2, 4, or 8 using FLL pre-scalar.
@@ -999,18 +1161,23 @@ static int nau8825_calc_fll_param(unsigned int fll_in, unsigned int fs,
 	fll_param->ratio = fll_ratio[i].val;
 
 	/* Calculate the frequency of DCO (FDCO) given freq_out = 256 * Fs.
-	 * FDCO must be within the 90MHz - 100MHz or the FFL cannot be
+	 * FDCO must be within the 90MHz - 124MHz or the FFL cannot be
 	 * guaranteed across the full range of operation.
 	 * FDCO = freq_out * 2 * mclk_src_scaling
 	 */
+	fvco_max = 0;
+	fvco_sel = ARRAY_SIZE(mclk_src_scaling);
 	for (i = 0; i < ARRAY_SIZE(mclk_src_scaling); i++) {
 		fvco = 256 * fs * 2 * mclk_src_scaling[i].param;
-		if (NAU_FVCO_MIN < fvco && fvco < NAU_FVCO_MAX)
-			break;
+		if (fvco > NAU_FVCO_MIN && fvco < NAU_FVCO_MAX &&
+			fvco_max < fvco) {
+			fvco_max = fvco;
+			fvco_sel = i;
+		}
 	}
-	if (i == ARRAY_SIZE(mclk_src_scaling))
+	if (ARRAY_SIZE(mclk_src_scaling) == fvco_sel)
 		return -EINVAL;
-	fll_param->mclk_src = mclk_src_scaling[i].val;
+	fll_param->mclk_src = mclk_src_scaling[fvco_sel].val;
 
 	/* Calculate the FLL 10-bit integer input and the FLL 16-bit fractional
 	 * input based on FDCO, FREF and FLL ratio.
@@ -1025,7 +1192,8 @@ static void nau8825_fll_apply(struct nau8825 *nau8825,
 		struct nau8825_fll *fll_param)
 {
 	regmap_update_bits(nau8825->regmap, NAU8825_REG_CLK_DIVIDER,
-		NAU8825_CLK_MCLK_SRC_MASK, fll_param->mclk_src);
+		NAU8825_CLK_SRC_MASK | NAU8825_CLK_MCLK_SRC_MASK,
+		NAU8825_CLK_SRC_MCLK | fll_param->mclk_src);
 	regmap_update_bits(nau8825->regmap, NAU8825_REG_FLL1,
 			NAU8825_FLL_RATIO_MASK, fll_param->ratio);
 	/* FLL 16-bit fractional input */
@@ -1038,10 +1206,25 @@ static void nau8825_fll_apply(struct nau8825 *nau8825,
 			NAU8825_FLL_REF_DIV_MASK, fll_param->clk_ref_div);
 	/* select divided VCO input */
 	regmap_update_bits(nau8825->regmap, NAU8825_REG_FLL5,
-			NAU8825_FLL_FILTER_SW_MASK, 0x0000);
-	/* FLL sigma delta modulator enable */
-	regmap_update_bits(nau8825->regmap, NAU8825_REG_FLL6,
-			NAU8825_SDM_EN_MASK, NAU8825_SDM_EN);
+		NAU8825_FLL_CLK_SW_MASK, NAU8825_FLL_CLK_SW_REF);
+	/* Disable free-running mode */
+	regmap_update_bits(nau8825->regmap,
+		NAU8825_REG_FLL6, NAU8825_DCO_EN, 0);
+	if (fll_param->fll_frac) {
+		regmap_update_bits(nau8825->regmap, NAU8825_REG_FLL5,
+			NAU8825_FLL_PDB_DAC_EN | NAU8825_FLL_LOOP_FTR_EN |
+			NAU8825_FLL_FTR_SW_MASK,
+			NAU8825_FLL_PDB_DAC_EN | NAU8825_FLL_LOOP_FTR_EN |
+			NAU8825_FLL_FTR_SW_FILTER);
+		regmap_update_bits(nau8825->regmap, NAU8825_REG_FLL6,
+			NAU8825_SDM_EN, NAU8825_SDM_EN);
+	} else {
+		regmap_update_bits(nau8825->regmap, NAU8825_REG_FLL5,
+			NAU8825_FLL_PDB_DAC_EN | NAU8825_FLL_LOOP_FTR_EN |
+			NAU8825_FLL_FTR_SW_MASK, NAU8825_FLL_FTR_SW_ACCU);
+		regmap_update_bits(nau8825->regmap,
+			NAU8825_REG_FLL6, NAU8825_SDM_EN, 0);
+	}
 }
 
 /* freq_out must be 256*Fs in order to achieve the best performance */
@@ -1069,6 +1252,45 @@ static int nau8825_set_pll(struct snd_soc_codec *codec, int pll_id, int source,
 	return 0;
 }
 
+static int nau8825_mclk_prepare(struct nau8825 *nau8825, unsigned int freq)
+{
+	int ret = 0;
+
+	nau8825->mclk = devm_clk_get(nau8825->dev, "mclk");
+	if (IS_ERR(nau8825->mclk)) {
+		dev_info(nau8825->dev, "No 'mclk' clock found, assume MCLK is managed externally");
+		return 0;
+	}
+
+	if (!nau8825->mclk_freq) {
+		ret = clk_prepare_enable(nau8825->mclk);
+		if (ret) {
+			dev_err(nau8825->dev, "Unable to prepare codec mclk\n");
+			return ret;
+		}
+	}
+
+	if (nau8825->mclk_freq != freq) {
+		freq = clk_round_rate(nau8825->mclk, freq);
+		ret = clk_set_rate(nau8825->mclk, freq);
+		if (ret) {
+			dev_err(nau8825->dev, "Unable to set mclk rate\n");
+			return ret;
+		}
+		nau8825->mclk_freq = freq;
+	}
+
+	return 0;
+}
+
+static void nau8825_configure_mclk_as_sysclk(struct regmap *regmap)
+{
+	regmap_update_bits(regmap, NAU8825_REG_CLK_DIVIDER,
+		NAU8825_CLK_SRC_MASK, NAU8825_CLK_SRC_MCLK);
+	regmap_update_bits(regmap, NAU8825_REG_FLL6,
+		NAU8825_DCO_EN, 0);
+}
+
 static int nau8825_configure_sysclk(struct nau8825 *nau8825, int clk_id,
 	unsigned int freq)
 {
@@ -1076,41 +1298,71 @@ static int nau8825_configure_sysclk(struct nau8825 *nau8825, int clk_id,
 	int ret;
 
 	switch (clk_id) {
-	case NAU8825_CLK_MCLK:
-		regmap_update_bits(regmap, NAU8825_REG_CLK_DIVIDER,
-			NAU8825_CLK_SRC_MASK, NAU8825_CLK_SRC_MCLK);
-		regmap_update_bits(regmap, NAU8825_REG_FLL6, NAU8825_DCO_EN, 0);
-
-		/* We selected MCLK source but the clock itself managed externally */
-		if (!nau8825->mclk)
-			break;
-
-		if (!nau8825->mclk_freq) {
-			ret = clk_prepare_enable(nau8825->mclk);
-			if (ret) {
-				dev_err(nau8825->dev, "Unable to prepare codec mclk\n");
-				return ret;
-			}
-		}
-
-		if (nau8825->mclk_freq != freq) {
-			nau8825->mclk_freq = freq;
-
-			freq = clk_round_rate(nau8825->mclk, freq);
-			ret = clk_set_rate(nau8825->mclk, freq);
-			if (ret) {
-				dev_err(nau8825->dev, "Unable to set mclk rate\n");
-				return ret;
-			}
+	case NAU8825_CLK_DIS:
+		/* Clock provided externally and disable internal VCO clock */
+		nau8825_configure_mclk_as_sysclk(regmap);
+		if (nau8825->mclk_freq) {
+			clk_disable_unprepare(nau8825->mclk);
+			nau8825->mclk_freq = 0;
 		}
 
 		break;
-	case NAU8825_CLK_INTERNAL:
-		regmap_update_bits(regmap, NAU8825_REG_FLL6, NAU8825_DCO_EN,
-			NAU8825_DCO_EN);
+	case NAU8825_CLK_MCLK:
+		nau8825_configure_mclk_as_sysclk(regmap);
+		/* MCLK not changed by clock tree */
 		regmap_update_bits(regmap, NAU8825_REG_CLK_DIVIDER,
-			NAU8825_CLK_SRC_MASK, NAU8825_CLK_SRC_VCO);
+			NAU8825_CLK_MCLK_SRC_MASK, 0);
+		ret = nau8825_mclk_prepare(nau8825, freq);
+		if (ret)
+			return ret;
 
+		break;
+	case NAU8825_CLK_INTERNAL:
+		if (nau8825_is_jack_inserted(nau8825->regmap)) {
+			regmap_update_bits(regmap, NAU8825_REG_FLL6,
+				NAU8825_DCO_EN, NAU8825_DCO_EN);
+			regmap_update_bits(regmap, NAU8825_REG_CLK_DIVIDER,
+				NAU8825_CLK_SRC_MASK, NAU8825_CLK_SRC_VCO);
+			/* Decrease the VCO frequency for power saving */
+			regmap_update_bits(regmap, NAU8825_REG_CLK_DIVIDER,
+				NAU8825_CLK_MCLK_SRC_MASK, 0xf);
+			regmap_update_bits(regmap, NAU8825_REG_FLL1,
+				NAU8825_FLL_RATIO_MASK, 0x10);
+			regmap_update_bits(regmap, NAU8825_REG_FLL6,
+				NAU8825_SDM_EN, NAU8825_SDM_EN);
+		} else {
+			/* The clock turns off intentionally for power saving
+			 * when no headset connected.
+			 */
+			nau8825_configure_mclk_as_sysclk(regmap);
+			dev_warn(nau8825->dev, "Disable clock for power saving when no headset connected\n");
+		}
+		if (nau8825->mclk_freq) {
+			clk_disable_unprepare(nau8825->mclk);
+			nau8825->mclk_freq = 0;
+		}
+
+		break;
+	case NAU8825_CLK_FLL_MCLK:
+		regmap_update_bits(regmap, NAU8825_REG_FLL3,
+			NAU8825_FLL_CLK_SRC_MASK, NAU8825_FLL_CLK_SRC_MCLK);
+		ret = nau8825_mclk_prepare(nau8825, freq);
+		if (ret)
+			return ret;
+
+		break;
+	case NAU8825_CLK_FLL_BLK:
+		regmap_update_bits(regmap, NAU8825_REG_FLL3,
+			NAU8825_FLL_CLK_SRC_MASK, NAU8825_FLL_CLK_SRC_BLK);
+		if (nau8825->mclk_freq) {
+			clk_disable_unprepare(nau8825->mclk);
+			nau8825->mclk_freq = 0;
+		}
+
+		break;
+	case NAU8825_CLK_FLL_FS:
+		regmap_update_bits(regmap, NAU8825_REG_FLL3,
+			NAU8825_FLL_CLK_SRC_MASK, NAU8825_FLL_CLK_SRC_FS);
 		if (nau8825->mclk_freq) {
 			clk_disable_unprepare(nau8825->mclk);
 			nau8825->mclk_freq = 0;
@@ -1135,6 +1387,31 @@ static int nau8825_set_sysclk(struct snd_soc_codec *codec, int clk_id,
 	return nau8825_configure_sysclk(nau8825, clk_id, freq);
 }
 
+static int nau8825_resume_setup(struct nau8825 *nau8825)
+{
+	struct regmap *regmap = nau8825->regmap;
+
+	/* Close clock when jack type detection at manual mode */
+	nau8825_configure_sysclk(nau8825, NAU8825_CLK_DIS, 0);
+
+	/* Clear all interruption status */
+	nau8825_int_status_clear_all(regmap);
+
+	/* Enable both insertion and ejection interruptions, and then
+	 * bypass de-bounce circuit.
+	 */
+	regmap_update_bits(regmap, NAU8825_REG_INTERRUPT_MASK,
+		NAU8825_IRQ_OUTPUT_EN | NAU8825_IRQ_HEADSET_COMPLETE_EN |
+		NAU8825_IRQ_EJECT_EN | NAU8825_IRQ_INSERT_EN,
+		NAU8825_IRQ_OUTPUT_EN | NAU8825_IRQ_HEADSET_COMPLETE_EN);
+	regmap_update_bits(regmap, NAU8825_REG_JACK_DET_CTRL,
+		NAU8825_JACK_DET_DB_BYPASS, NAU8825_JACK_DET_DB_BYPASS);
+	regmap_update_bits(regmap, NAU8825_REG_INTERRUPT_DIS_CTRL,
+		NAU8825_IRQ_INSERT_DIS | NAU8825_IRQ_EJECT_DIS, 0);
+
+	return 0;
+}
+
 static int nau8825_set_bias_level(struct snd_soc_codec *codec,
 				   enum snd_soc_bias_level level)
 {
@@ -1157,10 +1434,20 @@ static int nau8825_set_bias_level(struct snd_soc_codec *codec,
 					return ret;
 				}
 			}
+			/* Setup codec configuration after resume */
+			nau8825_resume_setup(nau8825);
 		}
 		break;
 
 	case SND_SOC_BIAS_OFF:
+		/* Turn off all interruptions before system shutdown. Keep the
+		 * interruption quiet before resume setup completes.
+		 */
+		regmap_write(nau8825->regmap,
+			NAU8825_REG_INTERRUPT_DIS_CTRL, 0xffff);
+		/* Disable ADC needed for interruptions at audo mode */
+		regmap_update_bits(nau8825->regmap, NAU8825_REG_ENA_CTRL,
+			NAU8825_ENABLE_ADC, 0);
 		if (nau8825->mclk_freq)
 			clk_disable_unprepare(nau8825->mclk);
 		break;
@@ -1174,6 +1461,7 @@ static int nau8825_suspend(struct snd_soc_codec *codec)
 	struct nau8825 *nau8825 = snd_soc_codec_get_drvdata(codec);
 
 	disable_irq(nau8825->irq);
+	snd_soc_codec_force_bias_level(codec, SND_SOC_BIAS_OFF);
 	regcache_cache_only(nau8825->regmap, true);
 	regcache_mark_dirty(nau8825->regmap);
 
@@ -1184,31 +1472,9 @@ static int nau8825_resume(struct snd_soc_codec *codec)
 {
 	struct nau8825 *nau8825 = snd_soc_codec_get_drvdata(codec);
 
-	/* The chip may lose power and reset in S3. regcache_sync restores
-	 * register values including configurations for sysclk, irq, and
-	 * jack/button detection.
-	 */
 	regcache_cache_only(nau8825->regmap, false);
 	regcache_sync(nau8825->regmap);
-
-	/* Check the jack plug status directly. If the headset is unplugged
-	 * during S3 when the chip has no power, there will be no jack
-	 * detection irq even after the nau8825_restart_jack_detection below,
-	 * because the chip just thinks no headset has ever been plugged in.
-	 */
-	if (!nau8825_is_jack_inserted(nau8825->regmap)) {
-		nau8825_eject_jack(nau8825);
-		snd_soc_jack_report(nau8825->jack, 0, SND_JACK_HEADSET);
-	}
-
 	enable_irq(nau8825->irq);
-
-	/* Run jack detection to check the type (OMTP or CTIA) of the headset
-	 * if there is one. This handles the case where a different type of
-	 * headset is plugged in during S3. This triggers an IRQ iff a headset
-	 * is already plugged in.
-	 */
-	nau8825_restart_jack_detection(nau8825->regmap);
 
 	return 0;
 }
@@ -1318,21 +1584,7 @@ static int nau8825_read_device_properties(struct device *dev,
 
 static int nau8825_setup_irq(struct nau8825 *nau8825)
 {
-	struct regmap *regmap = nau8825->regmap;
 	int ret;
-
-	/* IRQ Output Enable */
-	regmap_update_bits(regmap, NAU8825_REG_INTERRUPT_MASK,
-		NAU8825_IRQ_OUTPUT_EN, NAU8825_IRQ_OUTPUT_EN);
-
-	/* Enable internal VCO needed for interruptions */
-	nau8825_configure_sysclk(nau8825, NAU8825_CLK_INTERNAL, 0);
-
-	/* Enable DDACR needed for interrupts
-	 * It is the same as force_enable_pin("DDACR") we do later
-	 */
-	regmap_update_bits(regmap, NAU8825_REG_ENA_CTRL,
-		NAU8825_ENABLE_DACR, NAU8825_ENABLE_DACR);
 
 	ret = devm_request_threaded_irq(nau8825->dev, nau8825->irq, NULL,
 		nau8825_interrupt, IRQF_TRIGGER_LOW | IRQF_ONESHOT,
@@ -1405,6 +1657,7 @@ static const struct i2c_device_id nau8825_i2c_ids[] = {
 	{ "nau8825", 0 },
 	{ }
 };
+MODULE_DEVICE_TABLE(i2c, nau8825_i2c_ids);
 
 #ifdef CONFIG_OF
 static const struct of_device_id nau8825_of_ids[] = {
