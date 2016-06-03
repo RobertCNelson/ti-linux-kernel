@@ -2870,6 +2870,7 @@ __get_extent_map(struct inode *inode, struct page *page, size_t pg_offset,
  * into the tree that are removed when the IO is done (by the end_io
  * handlers)
  * XXX JDM: This needs looking at to ensure proper page locking
+ * return 0 on success, otherwise return error
  */
 static int __do_readpage(struct extent_io_tree *tree,
 			 struct page *page,
@@ -2891,7 +2892,7 @@ static int __do_readpage(struct extent_io_tree *tree,
 	sector_t sector;
 	struct extent_map *em;
 	struct block_device *bdev;
-	int ret;
+	int ret = 0;
 	int nr = 0;
 	size_t pg_offset = 0;
 	size_t iosize;
@@ -3082,7 +3083,7 @@ out:
 			SetPageUptodate(page);
 		unlock_page(page);
 	}
-	return 0;
+	return ret;
 }
 
 static inline void __do_contiguous_readpages(struct extent_io_tree *tree,
@@ -5230,8 +5231,17 @@ int read_extent_buffer_pages(struct extent_io_tree *tree,
 						      get_extent, &bio,
 						      mirror_num, &bio_flags,
 						      READ | REQ_META);
-			if (err)
+			if (err) {
 				ret = err;
+				/*
+				 * We use &bio in above __extent_read_full_page,
+				 * so we ensure that if it returns error, the
+				 * current page fails to add itself to bio.
+				 *
+				 * We must dec io_pages by ourselves.
+				 */
+				atomic_dec(&eb->io_pages);
+			}
 		} else {
 			unlock_page(page);
 		}
