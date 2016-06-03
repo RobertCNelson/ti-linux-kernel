@@ -1511,6 +1511,7 @@ static void __init rk3399_clk_init(struct device_node *np)
 	ctx = rockchip_clk_init(np, reg_base, CLK_NR_CLKS);
 	if (IS_ERR(ctx)) {
 		pr_err("%s: rockchip clk init failed\n", __func__);
+		iounmap(reg_base);
 		return;
 	}
 
@@ -1564,6 +1565,7 @@ static void __init rk3399_pmu_clk_init(struct device_node *np)
 	ctx = rockchip_clk_init(np, reg_base, CLKPMU_NR_CLKS);
 	if (IS_ERR(ctx)) {
 		pr_err("%s: rockchip pmu clk init failed\n", __func__);
+		iounmap(reg_base);
 		return;
 	}
 
