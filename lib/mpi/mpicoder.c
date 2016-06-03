@@ -50,9 +50,7 @@ MPI mpi_read_raw_data(const void *xbuffer, size_t nbytes)
 		return NULL;
 	}
 	if (nbytes > 0)
-		nbits -= count_leading_zeros(buffer[0]);
-	else
-		nbits = 0;
+		nbits -= count_leading_zeros(buffer[0]) - (BITS_PER_LONG - 8);
 
 	nlimbs = DIV_ROUND_UP(nbytes, BYTES_PER_MPI_LIMB);
 	val = mpi_alloc(nlimbs);
@@ -82,50 +80,30 @@ EXPORT_SYMBOL_GPL(mpi_read_raw_data);
 MPI mpi_read_from_buffer(const void *xbuffer, unsigned *ret_nread)
 {
 	const uint8_t *buffer = xbuffer;
-	int i, j;
-	unsigned nbits, nbytes, nlimbs, nread = 0;
-	mpi_limb_t a;
-	MPI val = NULL;
+	unsigned int nbits, nbytes;
+	MPI val;
 
 	if (*ret_nread < 2)
-		goto leave;
+		return ERR_PTR(-EINVAL);
 	nbits = buffer[0] << 8 | buffer[1];
 
 	if (nbits > MAX_EXTERN_MPI_BITS) {
 		pr_info("MPI: mpi too large (%u bits)\n", nbits);
-		goto leave;
+		return ERR_PTR(-EINVAL);
 	}
-	buffer += 2;
-	nread = 2;
 
 	nbytes = DIV_ROUND_UP(nbits, 8);
-	nlimbs = DIV_ROUND_UP(nbytes, BYTES_PER_MPI_LIMB);
-	val = mpi_alloc(nlimbs);
-	if (!val)
-		return NULL;
-	i = BYTES_PER_MPI_LIMB - nbytes % BYTES_PER_MPI_LIMB;
-	i %= BYTES_PER_MPI_LIMB;
-	val->nbits = nbits;
-	j = val->nlimbs = nlimbs;
-	val->sign = 0;
-	for (; j > 0; j--) {
-		a = 0;
-		for (; i < BYTES_PER_MPI_LIMB; i++) {
-			if (++nread > *ret_nread) {
-				printk
-				    ("MPI: mpi larger than buffer nread=%d ret_nread=%d\n",
-				     nread, *ret_nread);
-				goto leave;
-			}
-			a <<= 8;
-			a |= *buffer++;
-		}
-		i = 0;
-		val->d[j - 1] = a;
+	if (nbytes + 2 > *ret_nread) {
+		pr_info("MPI: mpi larger than buffer nbytes=%u ret_nread=%u\n",
+				nbytes, *ret_nread);
+		return ERR_PTR(-EINVAL);
 	}
 
-leave:
-	*ret_nread = nread;
+	val = mpi_read_raw_data(buffer + 2, nbytes);
+	if (!val)
+		return ERR_PTR(-ENOMEM);
+
+	*ret_nread = nbytes + 2;
 	return val;
 }
 EXPORT_SYMBOL_GPL(mpi_read_from_buffer);
@@ -249,82 +227,6 @@ void *mpi_get_buffer(MPI a, unsigned *nbytes, int *sign)
 	return buf;
 }
 EXPORT_SYMBOL_GPL(mpi_get_buffer);
-
-/****************
- * Use BUFFER to update MPI.
- */
-int mpi_set_buffer(MPI a, const void *xbuffer, unsigned nbytes, int sign)
-{
-	const uint8_t *buffer = xbuffer, *p;
-	mpi_limb_t alimb;
-	int nlimbs;
-	int i;
-
-	nlimbs = DIV_ROUND_UP(nbytes, BYTES_PER_MPI_LIMB);
-	if (RESIZE_IF_NEEDED(a, nlimbs) < 0)
-		return -ENOMEM;
-	a->sign = sign;
-
-	for (i = 0, p = buffer + nbytes - 1; p >= buffer + BYTES_PER_MPI_LIMB;) {
-#if BYTES_PER_MPI_LIMB == 4
-		alimb = (mpi_limb_t) *p--;
-		alimb |= (mpi_limb_t) *p-- << 8;
-		alimb |= (mpi_limb_t) *p-- << 16;
-		alimb |= (mpi_limb_t) *p-- << 24;
-#elif BYTES_PER_MPI_LIMB == 8
-		alimb = (mpi_limb_t) *p--;
-		alimb |= (mpi_limb_t) *p-- << 8;
-		alimb |= (mpi_limb_t) *p-- << 16;
-		alimb |= (mpi_limb_t) *p-- << 24;
-		alimb |= (mpi_limb_t) *p-- << 32;
-		alimb |= (mpi_limb_t) *p-- << 40;
-		alimb |= (mpi_limb_t) *p-- << 48;
-		alimb |= (mpi_limb_t) *p-- << 56;
-#else
-#error please implement for this limb size.
-#endif
-		a->d[i++] = alimb;
-	}
-	if (p >= buffer) {
-#if BYTES_PER_MPI_LIMB == 4
-		alimb = *p--;
-		if (p >= buffer)
-			alimb |= (mpi_limb_t) *p-- << 8;
-		if (p >= buffer)
-			alimb |= (mpi_limb_t) *p-- << 16;
-		if (p >= buffer)
-			alimb |= (mpi_limb_t) *p-- << 24;
-#elif BYTES_PER_MPI_LIMB == 8
-		alimb = (mpi_limb_t) *p--;
-		if (p >= buffer)
-			alimb |= (mpi_limb_t) *p-- << 8;
-		if (p >= buffer)
-			alimb |= (mpi_limb_t) *p-- << 16;
-		if (p >= buffer)
-			alimb |= (mpi_limb_t) *p-- << 24;
-		if (p >= buffer)
-			alimb |= (mpi_limb_t) *p-- << 32;
-		if (p >= buffer)
-			alimb |= (mpi_limb_t) *p-- << 40;
-		if (p >= buffer)
-			alimb |= (mpi_limb_t) *p-- << 48;
-		if (p >= buffer)
-			alimb |= (mpi_limb_t) *p-- << 56;
-#else
-#error please implement for this limb size.
-#endif
-		a->d[i++] = alimb;
-	}
-	a->nlimbs = i;
-
-	if (i != nlimbs) {
-		pr_emerg("MPI: mpi_set_buffer: Assertion failed (%d != %d)", i,
-		       nlimbs);
-		BUG();
-	}
-	return 0;
-}
-EXPORT_SYMBOL_GPL(mpi_set_buffer);
 
 /**
  * mpi_write_to_sgl() - Funnction exports MPI to an sgl (msb first)
