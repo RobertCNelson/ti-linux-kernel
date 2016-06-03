@@ -574,6 +574,7 @@ ssize_t nfs_file_direct_read(struct kiocb *iocb, struct iov_iter *iter)
 	struct file *file = iocb->ki_filp;
 	struct address_space *mapping = file->f_mapping;
 	struct inode *inode = mapping->host;
+	struct nfs_inode *nfsi = NFS_I(inode);
 	struct nfs_direct_req *dreq;
 	struct nfs_lock_context *l_ctx;
 	ssize_t result = -EINVAL;
@@ -587,7 +588,7 @@ ssize_t nfs_file_direct_read(struct kiocb *iocb, struct iov_iter *iter)
 	if (!count)
 		goto out;
 
-	inode_lock(inode);
+	nfs_lock_dio(nfsi);
 	result = nfs_sync_mapping(mapping);
 	if (result)
 		goto out_unlock;
@@ -615,7 +616,7 @@ ssize_t nfs_file_direct_read(struct kiocb *iocb, struct iov_iter *iter)
 	NFS_I(inode)->read_io += count;
 	result = nfs_direct_read_schedule_iovec(dreq, iter, iocb->ki_pos);
 
-	inode_unlock(inode);
+	nfs_unlock_dio(nfsi);
 
 	if (!result) {
 		result = nfs_direct_wait(dreq);
@@ -629,7 +630,7 @@ ssize_t nfs_file_direct_read(struct kiocb *iocb, struct iov_iter *iter)
 out_release:
 	nfs_direct_req_release(dreq);
 out_unlock:
-	inode_unlock(inode);
+	nfs_unlock_dio(nfsi);
 out:
 	return result;
 }
@@ -1000,6 +1001,7 @@ ssize_t nfs_file_direct_write(struct kiocb *iocb, struct iov_iter *iter)
 	struct file *file = iocb->ki_filp;
 	struct address_space *mapping = file->f_mapping;
 	struct inode *inode = mapping->host;
+	struct nfs_inode *nfsi = NFS_I(inode);
 	struct nfs_direct_req *dreq;
 	struct nfs_lock_context *l_ctx;
 	loff_t pos, end;
@@ -1013,7 +1015,7 @@ ssize_t nfs_file_direct_write(struct kiocb *iocb, struct iov_iter *iter)
 	pos = iocb->ki_pos;
 	end = (pos + iov_iter_count(iter) - 1) >> PAGE_SHIFT;
 
-	inode_lock(inode);
+	nfs_lock_dio(nfsi);
 
 	result = nfs_sync_mapping(mapping);
 	if (result)
@@ -1053,7 +1055,7 @@ ssize_t nfs_file_direct_write(struct kiocb *iocb, struct iov_iter *iter)
 					      pos >> PAGE_SHIFT, end);
 	}
 
-	inode_unlock(inode);
+	nfs_unlock_dio(nfsi);
 
 	if (!result) {
 		result = nfs_direct_wait(dreq);
@@ -1076,7 +1078,7 @@ ssize_t nfs_file_direct_write(struct kiocb *iocb, struct iov_iter *iter)
 out_release:
 	nfs_direct_req_release(dreq);
 out_unlock:
-	inode_unlock(inode);
+	nfs_unlock_dio(nfsi);
 	return result;
 }
 

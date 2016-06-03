@@ -1984,6 +1984,7 @@ static void init_once(void *foo)
 	nfsi->commit_info.ncommit = 0;
 	atomic_set(&nfsi->commit_info.rpcs_out, 0);
 	init_rwsem(&nfsi->rmdir_sem);
+	init_rwsem(&nfsi->io_lock);
 	nfs4_init_once(nfsi);
 }
 

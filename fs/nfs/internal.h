@@ -411,6 +411,12 @@ extern void __exit unregister_nfs_fs(void);
 extern bool nfs_sb_active(struct super_block *sb);
 extern void nfs_sb_deactive(struct super_block *sb);
 
+/* io.c */
+extern void nfs_lock_bio(struct nfs_inode *nfsi);
+extern void nfs_unlock_bio(struct nfs_inode *nfsi);
+extern void nfs_lock_dio(struct nfs_inode *nfsi);
+extern void nfs_unlock_dio(struct nfs_inode *nfsi);
+
 /* namespace.c */
 #define NFS_PATH_CANONICAL 1
 extern char *nfs_path(char **p, struct dentry *dentry,

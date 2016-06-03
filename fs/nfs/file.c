@@ -161,6 +161,7 @@ ssize_t
 nfs_file_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct inode *inode = file_inode(iocb->ki_filp);
+	struct nfs_inode *nfsi = NFS_I(inode);
 	ssize_t result;
 
 	if (iocb->ki_flags & IOCB_DIRECT)
@@ -170,12 +171,14 @@ nfs_file_read(struct kiocb *iocb, struct iov_iter *to)
 		iocb->ki_filp,
 		iov_iter_count(to), (unsigned long) iocb->ki_pos);
 
+	nfs_lock_bio(nfsi);
 	result = nfs_revalidate_mapping_protected(inode, iocb->ki_filp->f_mapping);
 	if (!result) {
 		result = generic_file_read_iter(iocb, to);
 		if (result > 0)
 			nfs_add_stats(inode, NFSIOS_NORMALREADBYTES, result);
 	}
+	nfs_unlock_bio(nfsi);
 	return result;
 }
 EXPORT_SYMBOL_GPL(nfs_file_read);
@@ -186,17 +189,20 @@ nfs_file_splice_read(struct file *filp, loff_t *ppos,
 		     unsigned int flags)
 {
 	struct inode *inode = file_inode(filp);
+	struct nfs_inode *nfsi = NFS_I(inode);
 	ssize_t res;
 
 	dprintk("NFS: splice_read(%pD2, %lu@%Lu)\n",
 		filp, (unsigned long) count, (unsigned long long) *ppos);
 
+	nfs_lock_bio(nfsi);
 	res = nfs_revalidate_mapping_protected(inode, filp->f_mapping);
 	if (!res) {
 		res = generic_file_splice_read(filp, ppos, pipe, count, flags);
 		if (res > 0)
 			nfs_add_stats(inode, NFSIOS_NORMALREADBYTES, res);
 	}
+	nfs_unlock_bio(nfsi);
 	return res;
 }
 EXPORT_SYMBOL_GPL(nfs_file_splice_read);
@@ -621,6 +627,7 @@ ssize_t nfs_file_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file_inode(file);
+	struct nfs_inode *nfsi = NFS_I(inode);
 	unsigned long written = 0;
 	ssize_t result;
 	size_t count = iov_iter_count(from);
@@ -639,9 +646,10 @@ ssize_t nfs_file_write(struct kiocb *iocb, struct iov_iter *from)
 	dprintk("NFS: write(%pD2, %zu@%Ld)\n",
 		file, count, (long long) iocb->ki_pos);
 
-	result = -EBUSY;
 	if (IS_SWAPFILE(inode))
 		goto out_swapfile;
+
+	nfs_lock_bio(nfsi);
 	/*
 	 * O_APPEND implies that we must revalidate the file length.
 	 */
@@ -668,11 +676,12 @@ ssize_t nfs_file_write(struct kiocb *iocb, struct iov_iter *from)
 	if (result > 0)
 		nfs_add_stats(inode, NFSIOS_NORMALWRITTENBYTES, written);
 out:
+	nfs_unlock_bio(nfsi);
 	return result;
 
 out_swapfile:
 	printk(KERN_INFO "NFS: attempt to write to active swap file!\n");
-	goto out;
+	return -EBUSY;
 }
 EXPORT_SYMBOL_GPL(nfs_file_write);
 
