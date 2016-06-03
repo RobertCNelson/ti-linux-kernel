@@ -517,6 +517,11 @@ struct swevent_hlist {
 struct perf_cgroup;
 struct ring_buffer;
 
+struct pmu_event_list {
+	raw_spinlock_t		lock;
+	struct list_head	list;
+};
+
 /**
  * struct perf_event - performance event kernel representation:
  */
@@ -675,6 +680,7 @@ struct perf_event {
 	int				cgrp_defer_enabled;
 #endif
 
+	struct list_head		sb_list;
 #endif /* CONFIG_PERF_EVENTS */
 };
 
@@ -1324,6 +1330,13 @@ struct perf_pmu_events_attr {
 	struct device_attribute attr;
 	u64 id;
 	const char *event_str;
+};
+
+struct perf_pmu_events_ht_attr {
+	struct device_attribute			attr;
+	u64					id;
+	const char				*event_str_ht;
+	const char				*event_str_noht;
 };
 
 ssize_t perf_event_sysfs_show(struct device *dev, struct device_attribute *attr,
