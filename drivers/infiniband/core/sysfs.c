@@ -902,8 +902,11 @@ static void setup_hw_stats(struct ib_device *device, struct ib_port *port,
 		goto err;
 
 	hsag = kzalloc(sizeof(*hsag) +
-		       // 1 extra for the lifespan config entry
-		       sizeof(void *) * (stats->num_counters + 1),
+		       /* 1 extra for the lifespan config entry,
+			* and 1 more because attrs should be
+			* NULL terminated.
+			*/
+		       sizeof(void *) * (stats->num_counters + 2),
 		       GFP_KERNEL);
 	if (!hsag)
 		return;
@@ -922,10 +925,13 @@ static void setup_hw_stats(struct ib_device *device, struct ib_port *port,
 		hsag->attrs[i] = alloc_hsa(i, port_num, stats->names[i]);
 		if (!hsag->attrs[i])
 			goto err;
+		sysfs_attr_init(hsag->attrs[i]);
 	}
 
 	/* treat an error here as non-fatal */
 	hsag->attrs[i] = alloc_hsa_lifespan("lifespan", port_num);
+	if (hsag->attrs[i])
+		sysfs_attr_init(hsag->attrs[i]);
 
 	if (port) {
 		struct kobject *kobj = &port->kobj;
