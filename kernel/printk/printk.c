@@ -1041,8 +1041,45 @@ static inline void boot_delay_msec(int level)
 }
 #endif
 
-static bool printk_time = IS_ENABLED(CONFIG_PRINTK_TIME);
-module_param_named(time, printk_time, bool, S_IRUGO | S_IWUSR);
+static int printk_time = CONFIG_PRINTK_TIME;
+
+static int printk_time_param_set(const char *val,
+				 const struct kernel_param *kp)
+{
+	char *param = strstrip((char *)val);
+
+	if (strlen(param) != 1)
+		return -EINVAL;
+
+	switch (param[0]) {
+	/* 0/N/n = disabled */
+	case '0':
+	case 'N':
+	case 'n':
+		printk_time = 0;
+		break;
+	/* 1/Y/y = local clock */
+	case '1':
+	case 'Y':
+	case 'y':
+		printk_time = 1;
+		break;
+	default:
+		pr_warn("printk: invalid timestamp value\n");
+		return -EINVAL;
+		break;
+	}
+
+	pr_info("printk: timestamp set to %d.\n", printk_time);
+	return 0;
+}
+
+static struct kernel_param_ops printk_time_param_ops = {
+	.set = printk_time_param_set,
+	.get = param_get_int,
+};
+
+module_param_cb(time, &printk_time_param_ops, &printk_time, S_IRUGO);
 
 static size_t print_time(u64 ts, char *buf)
 {
