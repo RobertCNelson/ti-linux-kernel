@@ -60,7 +60,8 @@ static inline void dma_set_attr(enum dma_attr attr, struct dma_attrs *attrs)
  * @attr: attribute to set
  * @attrs: struct dma_attrs (may be NULL)
  */
-static inline int dma_get_attr(enum dma_attr attr, struct dma_attrs *attrs)
+static inline int dma_get_attr(enum dma_attr attr,
+			       const struct dma_attrs *attrs)
 {
 	if (attrs == NULL)
 		return 0;
