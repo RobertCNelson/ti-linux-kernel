@@ -186,6 +186,7 @@ struct mlx5_flow_root_namespace {
 	struct mlx5_flow_table		*root_ft;
 	/* Should be held when chaining flow tables */
 	struct mutex			chain_lock;
+	const struct steering_cmds	*cmds;
 };
 
 int mlx5_init_fc_stats(struct mlx5_core_dev *dev);

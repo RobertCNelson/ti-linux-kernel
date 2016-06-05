@@ -346,6 +346,7 @@ static bool compare_match_criteria(u8 match_criteria_enable1,
 
 static void del_flow_table(struct fs_node *node)
 {
+	struct mlx5_flow_root_namespace *root = find_root(node);
 	struct mlx5_flow_table *ft;
 	struct mlx5_core_dev *dev;
 	struct fs_prio *prio;
@@ -354,7 +355,7 @@ static void del_flow_table(struct fs_node *node)
 	fs_get_obj(ft, node);
 	dev = get_dev(&ft->node);
 
-	err = mlx5_cmd_destroy_flow_table(dev, ft);
+	err = root->cmds->destroy_flow_table(dev, ft);
 	if (err)
 		pr_warn("flow steering can't destroy ft\n");
 	fs_get_obj(prio, ft->node.parent);
@@ -363,6 +364,7 @@ static void del_flow_table(struct fs_node *node)
 
 static void del_rule(struct fs_node *node)
 {
+	struct mlx5_flow_root_namespace *root = find_root(node);
 	struct rule_client_data *priv_data;
 	struct rule_client_data *tmp;
 	struct mlx5_flow_rule *rule;
@@ -401,10 +403,8 @@ static void del_rule(struct fs_node *node)
 	if ((fte->action & MLX5_FLOW_CONTEXT_ACTION_FWD_DEST) &&
 	    --fte->dests_size) {
 		modify_mask = BIT(MLX5_SET_FTE_MODIFY_ENABLE_MASK_DESTINATION_LIST),
-		err = mlx5_cmd_update_fte(dev, ft,
-					  fg->id,
-					  modify_mask,
-					  fte);
+		err = root->cmds->update_fte(dev, ft, fg->id,
+					     modify_mask, fte);
 		if (err)
 			pr_warn("%s can't del rule fg id=%d fte_index=%d\n",
 				__func__, fg->id, fte->index);
@@ -414,6 +414,7 @@ static void del_rule(struct fs_node *node)
 
 static void del_fte(struct fs_node *node)
 {
+	struct mlx5_flow_root_namespace *root = find_root(node);
 	struct mlx5_flow_table *ft;
 	struct mlx5_flow_group *fg;
 	struct mlx5_core_dev *dev;
@@ -425,8 +426,8 @@ static void del_fte(struct fs_node *node)
 	fs_get_obj(ft, fg->node.parent);
 
 	dev = get_dev(&ft->node);
-	err = mlx5_cmd_delete_fte(dev, ft,
-				  fte->index);
+	err = root->cmds->delete_fte(dev, ft,
+				     fte->index);
 	if (err)
 		pr_warn("flow steering can't delete fte in index %d of flow group id %d\n",
 			fte->index, fg->id);
@@ -437,6 +438,7 @@ static void del_fte(struct fs_node *node)
 
 static void del_flow_group(struct fs_node *node)
 {
+	struct mlx5_flow_root_namespace *root = find_root(node);
 	struct mlx5_flow_group *fg;
 	struct mlx5_flow_table *ft;
 	struct mlx5_core_dev *dev;
@@ -445,7 +447,7 @@ static void del_flow_group(struct fs_node *node)
 	fs_get_obj(ft, fg->node.parent);
 	dev = get_dev(&ft->node);
 
-	if (mlx5_cmd_destroy_flow_group(dev, ft, fg->id))
+	if (root->cmds->destroy_flow_group(dev, ft, fg->id))
 		pr_warn("flow steering can't destroy fg %d of ft %d\n",
 			fg->id, ft->id);
 }
@@ -584,15 +586,16 @@ static int connect_fts_in_prio(struct mlx5_core_dev *dev,
 			       struct fs_prio *prio,
 			       struct mlx5_flow_table *ft)
 {
+	struct mlx5_flow_root_namespace *root = find_root(&prio->node);
 	struct mlx5_flow_table *iter;
 	int i = 0;
 	int err;
 
 	fs_for_each_ft(iter, prio) {
 		i++;
-		err = mlx5_cmd_modify_flow_table(dev,
-						 iter,
-						 ft);
+		err = root->cmds->modify_flow_table(dev,
+						    iter,
+						    ft);
 		if (err) {
 			mlx5_core_warn(dev, "Failed to modify flow table %d\n",
 				       iter->id);
@@ -635,7 +638,7 @@ static int update_root_ft_create(struct mlx5_flow_table *ft, struct fs_prio
 	if (ft->level >= min_level)
 		return 0;
 
-	err = mlx5_cmd_update_root_ft(root->dev, ft);
+	err = root->cmds->update_root_ft(root->dev, ft);
 	if (err)
 		mlx5_core_warn(root->dev, "Update root flow table of id=%u failed\n",
 			       ft->id);
@@ -648,6 +651,8 @@ static int update_root_ft_create(struct mlx5_flow_table *ft, struct fs_prio
 int mlx5_modify_rule_destination(struct mlx5_flow_rule *rule,
 				 struct mlx5_flow_destination *dest)
 {
+	struct mlx5_flow_root_namespace *root =
+		find_root(&rule->node);
 	struct mlx5_flow_table *ft;
 	struct mlx5_flow_group *fg;
 	struct fs_fte *fte;
@@ -662,10 +667,10 @@ int mlx5_modify_rule_destination(struct mlx5_flow_rule *rule,
 	fs_get_obj(ft, fg->node.parent);
 
 	memcpy(&rule->dest_attr, dest, sizeof(*dest));
-	err = mlx5_cmd_update_fte(get_dev(&ft->node),
-				  ft, fg->id,
-				  modify_mask,
-				  fte);
+	err = root->cmds->update_fte(get_dev(&ft->node),
+				     ft, fg->id,
+				     modify_mask,
+				     fte);
 	unlock_ref_node(&fte->node);
 
 	return err;
@@ -783,8 +788,8 @@ static struct mlx5_flow_table *__mlx5_create_flow_table(struct mlx5_flow_namespa
 	tree_init_node(&ft->node, 1, del_flow_table);
 	log_table_sz = ilog2(ft->max_fte);
 	next_ft = find_next_chained_ft(fs_prio);
-	err = mlx5_cmd_create_flow_table(root->dev, ft->vport, ft->type, ft->level,
-					 log_table_sz, next_ft, &ft->id);
+	err = root->cmds->create_flow_table(root->dev, ft->vport, ft->type, ft->level,
+					    log_table_sz, next_ft, &ft->id);
 	if (err)
 		goto free_ft;
 
@@ -799,7 +804,7 @@ static struct mlx5_flow_table *__mlx5_create_flow_table(struct mlx5_flow_namespa
 	mutex_unlock(&root->chain_lock);
 	return ft;
 destroy_ft:
-	mlx5_cmd_destroy_flow_table(root->dev, ft);
+	root->cmds->destroy_flow_table(root->dev, ft);
 free_ft:
 	kfree(ft);
 unlock_root:
@@ -850,6 +855,7 @@ static struct mlx5_flow_group *create_flow_group_common(struct mlx5_flow_table *
 							*prev_fg,
 							bool is_auto_fg)
 {
+	struct mlx5_flow_root_namespace *root = find_root(&ft->node);
 	struct mlx5_flow_group *fg;
 	struct mlx5_core_dev *dev = get_dev(&ft->node);
 	int err;
@@ -861,7 +867,7 @@ static struct mlx5_flow_group *create_flow_group_common(struct mlx5_flow_table *
 	if (IS_ERR(fg))
 		return fg;
 
-	err = mlx5_cmd_create_flow_group(dev, ft, fg_in, &fg->id);
+	err = root->cmds->create_flow_group(dev, ft, fg_in, &fg->id);
 	if (err) {
 		kfree(fg);
 		return ERR_PTR(err);
@@ -917,6 +923,7 @@ static struct mlx5_flow_rule *add_rule_fte(struct fs_fte *fte,
 					   struct mlx5_flow_group *fg,
 					   struct mlx5_flow_destination *dest)
 {
+	struct mlx5_flow_root_namespace *root = find_root(&fg->node);
 	struct mlx5_flow_table *ft;
 	struct mlx5_flow_rule *rule;
 	int modify_mask = 0;
@@ -944,11 +951,11 @@ static struct mlx5_flow_rule *add_rule_fte(struct fs_fte *fte,
 	}
 
 	if (fte->dests_size == 1 || !dest)
-		err = mlx5_cmd_create_fte(get_dev(&ft->node),
-					  ft, fg->id, fte);
+		err = root->cmds->create_fte(get_dev(&ft->node),
+					     ft, fg->id, fte);
 	else
-		err = mlx5_cmd_update_fte(get_dev(&ft->node),
-					  ft, fg->id, modify_mask, fte);
+		err = root->cmds->update_fte(get_dev(&ft->node),
+					     ft, fg->id, modify_mask, fte);
 	if (err)
 		goto free_rule;
 
@@ -1390,7 +1397,7 @@ static int update_root_ft_destroy(struct mlx5_flow_table *ft)
 
 	new_root_ft = find_next_ft(ft);
 	if (new_root_ft) {
-		int err = mlx5_cmd_update_root_ft(root->dev, new_root_ft);
+		int err = root->cmds->update_root_ft(root->dev, new_root_ft);
 
 		if (err) {
 			mlx5_core_warn(root->dev, "Update root flow table of id=%u failed\n",
@@ -1659,7 +1666,8 @@ static int init_root_tree(struct mlx5_flow_steering *steering,
 
 static struct mlx5_flow_root_namespace *create_root_ns(struct mlx5_flow_steering *steering,
 						       enum fs_flow_table_type
-						       table_type)
+						       table_type,
+						       const struct steering_cmds *cmds)
 {
 	struct mlx5_flow_root_namespace *root_ns;
 	struct mlx5_flow_namespace *ns;
@@ -1671,6 +1679,7 @@ static struct mlx5_flow_root_namespace *create_root_ns(struct mlx5_flow_steering
 
 	root_ns->dev = steering->dev;
 	root_ns->table_type = table_type;
+	root_ns->cmds = cmds;
 
 	ns = &root_ns->ns;
 	fs_init_namespace(ns);
@@ -1743,7 +1752,8 @@ static int create_anchor_flow_table(struct mlx5_flow_steering *steering)
 static int init_root_ns(struct mlx5_flow_steering *steering)
 {
 
-	steering->root_ns = create_root_ns(steering, FS_FT_NIC_RX);
+	steering->root_ns = create_root_ns(steering, FS_FT_NIC_RX,
+					   mlx5_get_phys_fs_cmds());
 	if (IS_ERR_OR_NULL(steering->root_ns))
 		goto cleanup;
 
@@ -1802,7 +1812,8 @@ static int init_fdb_root_ns(struct mlx5_flow_steering *steering)
 {
 	struct fs_prio *prio;
 
-	steering->fdb_root_ns = create_root_ns(steering, FS_FT_FDB);
+	steering->fdb_root_ns = create_root_ns(steering, FS_FT_FDB,
+					       mlx5_get_phys_fs_cmds());
 	if (!steering->fdb_root_ns)
 		return -ENOMEM;
 
@@ -1820,7 +1831,8 @@ static int init_ingress_acl_root_ns(struct mlx5_flow_steering *steering)
 {
 	struct fs_prio *prio;
 
-	steering->esw_egress_root_ns = create_root_ns(steering, FS_FT_ESW_EGRESS_ACL);
+	steering->esw_egress_root_ns = create_root_ns(steering, FS_FT_ESW_EGRESS_ACL,
+						      mlx5_get_phys_fs_cmds());
 	if (!steering->esw_egress_root_ns)
 		return -ENOMEM;
 
@@ -1837,7 +1849,8 @@ static int init_egress_acl_root_ns(struct mlx5_flow_steering *steering)
 {
 	struct fs_prio *prio;
 
-	steering->esw_ingress_root_ns = create_root_ns(steering, FS_FT_ESW_INGRESS_ACL);
+	steering->esw_ingress_root_ns = create_root_ns(steering, FS_FT_ESW_INGRESS_ACL,
+						       mlx5_get_phys_fs_cmds());
 	if (!steering->esw_ingress_root_ns)
 		return -ENOMEM;
 
