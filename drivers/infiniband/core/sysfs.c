@@ -891,7 +891,7 @@ static void setup_hw_stats(struct ib_device *device, struct ib_port *port,
 {
 	struct attribute_group *hsag = NULL;
 	struct rdma_hw_stats *stats;
-	int i = 0, ret;
+	int i = -1, ret;
 
 	stats = device->alloc_hw_stats(device, port_num);
 
