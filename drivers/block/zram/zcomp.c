@@ -21,6 +21,9 @@
 static const char * const backends[] = {
 	"lzo",
 	"lz4",
+	"deflate",
+	"lz4hc",
+	"842",
 	NULL
 };
 
