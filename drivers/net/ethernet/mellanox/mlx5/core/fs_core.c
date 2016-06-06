@@ -1292,8 +1292,8 @@ static int update_root_ft_destroy(struct mlx5_flow_table *ft)
 				       ft->id);
 			return err;
 		}
-		root->root_ft = new_root_ft;
 	}
+	root->root_ft = new_root_ft;
 	return 0;
 }
 
@@ -1832,25 +1832,29 @@ int mlx5_init_fs(struct mlx5_core_dev *dev)
 	if (err)
 		return err;
 
-	if (MLX5_CAP_GEN(dev, nic_flow_table)) {
+	if (MLX5_CAP_GEN(dev, nic_flow_table) &&
+	    MLX5_CAP_FLOWTABLE_NIC_RX(dev, ft_support)) {
 		err = init_root_ns(dev);
 		if (err)
 			goto err;
 	}
+
 	if (MLX5_CAP_GEN(dev, eswitch_flow_table)) {
-		err = init_fdb_root_ns(dev);
-		if (err)
-			goto err;
-	}
-	if (MLX5_CAP_ESW_EGRESS_ACL(dev, ft_support)) {
-		err = init_egress_acl_root_ns(dev);
-		if (err)
-			goto err;
-	}
-	if (MLX5_CAP_ESW_INGRESS_ACL(dev, ft_support)) {
-		err = init_ingress_acl_root_ns(dev);
-		if (err)
-			goto err;
+		if (MLX5_CAP_ESW_FLOWTABLE_FDB(dev, ft_support)) {
+			err = init_fdb_root_ns(dev);
+			if (err)
+				goto err;
+		}
+		if (MLX5_CAP_ESW_EGRESS_ACL(dev, ft_support)) {
+			err = init_egress_acl_root_ns(dev);
+			if (err)
+				goto err;
+		}
+		if (MLX5_CAP_ESW_INGRESS_ACL(dev, ft_support)) {
+			err = init_ingress_acl_root_ns(dev);
+			if (err)
+				goto err;
+		}
 	}
 
 	return 0;
