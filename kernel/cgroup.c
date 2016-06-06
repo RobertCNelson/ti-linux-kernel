@@ -5063,6 +5063,7 @@ static void init_and_link_css(struct cgroup_subsys_state *css,
 	memset(css, 0, sizeof(*css));
 	css->cgroup = cgrp;
 	css->ss = ss;
+	css->id = -1;
 	INIT_LIST_HEAD(&css->sibling);
 	INIT_LIST_HEAD(&css->children);
 	css->serial_nr = css_serial_nr_next++;
@@ -5150,7 +5151,7 @@ static struct cgroup_subsys_state *css_create(struct cgroup *cgrp,
 
 	err = cgroup_idr_alloc(&ss->css_idr, NULL, 2, 0, GFP_KERNEL);
 	if (err < 0)
-		goto err_free_percpu_ref;
+		goto err_free_css;
 	css->id = err;
 
 	/* @css is ready to be brought online now, make it visible */
@@ -5174,9 +5175,6 @@ static struct cgroup_subsys_state *css_create(struct cgroup *cgrp,
 
 err_list_del:
 	list_del_rcu(&css->sibling);
-	cgroup_idr_remove(&ss->css_idr, css->id);
-err_free_percpu_ref:
-	percpu_ref_exit(&css->refcnt);
 err_free_css:
 	call_rcu(&css->rcu_head, css_free_rcu_fn);
 	return ERR_PTR(err);
