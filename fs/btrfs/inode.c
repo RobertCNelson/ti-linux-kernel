@@ -585,9 +585,26 @@ cont:
 			will_compress = 0;
 		} else {
 			num_bytes = total_in;
+			*num_added += 1;
+
+			/* The async work queues will take care of doing actual
+			 * allocation on disk for these compressed pages, and
+			 * will submit them to the elevator.
+			 */
+			add_async_extent(async_cow, start, num_bytes,
+					total_compressed, pages, nr_pages_ret,
+					compress_type);
+
+			if (start + num_bytes < end) {
+				start += num_bytes;
+				pages = NULL;
+				cond_resched();
+				goto again;
+			}
+			return;
 		}
 	}
-	if (!will_compress && pages) {
+	if (pages) {
 		/*
 		 * the compression code ran but failed to make things smaller,
 		 * free any pages it allocated and our page pointer array
@@ -607,43 +624,23 @@ cont:
 			BTRFS_I(inode)->flags |= BTRFS_INODE_NOCOMPRESS;
 		}
 	}
-	if (will_compress) {
-		*num_added += 1;
-
-		/* the async work queues will take care of doing actual
-		 * allocation on disk for these compressed pages,
-		 * and will submit them to the elevator.
-		 */
-		add_async_extent(async_cow, start, num_bytes,
-				 total_compressed, pages, nr_pages_ret,
-				 compress_type);
-
-		if (start + num_bytes < end) {
-			start += num_bytes;
-			pages = NULL;
-			cond_resched();
-			goto again;
-		}
-	} else {
 cleanup_and_bail_uncompressed:
-		/*
-		 * No compression, but we still need to write the pages in
-		 * the file we've been given so far.  redirty the locked
-		 * page if it corresponds to our extent and set things up
-		 * for the async work queue to run cow_file_range to do
-		 * the normal delalloc dance
-		 */
-		if (page_offset(locked_page) >= start &&
-		    page_offset(locked_page) <= end) {
-			__set_page_dirty_nobuffers(locked_page);
-			/* unlocked later on in the async handlers */
-		}
-		if (redirty)
-			extent_range_redirty_for_io(inode, start, end);
-		add_async_extent(async_cow, start, end - start + 1,
-				 0, NULL, 0, BTRFS_COMPRESS_NONE);
-		*num_added += 1;
-	}
+	/*
+	 * No compression, but we still need to write the pages in the file
+	 * we've been given so far.  redirty the locked page if it corresponds
+	 * to our extent and set things up for the async work queue to run
+	 * cow_file_range to do the normal delalloc dance.
+	 */
+	if (page_offset(locked_page) >= start &&
+	    page_offset(locked_page) <= end)
+		__set_page_dirty_nobuffers(locked_page);
+		/* unlocked later on in the async handlers */
+
+	if (redirty)
+		extent_range_redirty_for_io(inode, start, end);
+	add_async_extent(async_cow, start, end - start + 1, 0, NULL, 0,
+			 BTRFS_COMPRESS_NONE);
+	*num_added += 1;
 
 	return;
 
@@ -3271,7 +3268,16 @@ int btrfs_orphan_add(struct btrfs_trans_handle *trans, struct inode *inode)
 	/* grab metadata reservation from transaction handle */
 	if (reserve) {
 		ret = btrfs_orphan_reserve_metadata(trans, inode);
-		BUG_ON(ret); /* -ENOSPC in reservation; Logic error? JDM */
+		ASSERT(!ret);
+		if (ret) {
+			atomic_dec(&root->orphan_inodes);
+			clear_bit(BTRFS_INODE_ORPHAN_META_RESERVED,
+				  &BTRFS_I(inode)->runtime_flags);
+			if (insert)
+				clear_bit(BTRFS_INODE_HAS_ORPHAN_ITEM,
+					  &BTRFS_I(inode)->runtime_flags);
+			return ret;
+		}
 	}
 
 	/* insert an orphan item to track this unlinked/truncated file */
@@ -5254,7 +5260,7 @@ void btrfs_evict_inode(struct inode *inode)
 		if (steal_from_global) {
 			if (!btrfs_check_space_for_delayed_refs(trans, root))
 				ret = btrfs_block_rsv_migrate(global_rsv, rsv,
-							      min_size);
+							      min_size, 0);
 			else
 				ret = -ENOSPC;
 		}
@@ -5748,6 +5754,7 @@ static int btrfs_real_readdir(struct file *file, struct dir_context *ctx)
 	int name_len;
 	int is_curr = 0;	/* ctx->pos points to the current index? */
 	bool emitted;
+	bool put = false;
 
 	/* FIXME, use a real flag for deciding about the key type */
 	if (root->fs_info->tree_root == root)
@@ -5765,7 +5772,8 @@ static int btrfs_real_readdir(struct file *file, struct dir_context *ctx)
 	if (key_type == BTRFS_DIR_INDEX_KEY) {
 		INIT_LIST_HEAD(&ins_list);
 		INIT_LIST_HEAD(&del_list);
-		btrfs_get_delayed_items(inode, &ins_list, &del_list);
+		put = btrfs_readdir_get_delayed_items(inode, &ins_list,
+						      &del_list);
 	}
 
 	key.type = key_type;
@@ -5912,8 +5920,8 @@ next:
 nopos:
 	ret = 0;
 err:
-	if (key_type == BTRFS_DIR_INDEX_KEY)
-		btrfs_put_delayed_items(&ins_list, &del_list);
+	if (put)
+		btrfs_readdir_put_delayed_items(inode, &ins_list, &del_list);
 	btrfs_free_path(path);
 	return ret;
 }
@@ -9104,7 +9112,7 @@ static int btrfs_truncate(struct inode *inode)
 
 	/* Migrate the slack space for the truncate to our reserve */
 	ret = btrfs_block_rsv_migrate(&root->fs_info->trans_block_rsv, rsv,
-				      min_size);
+				      min_size, 0);
 	BUG_ON(ret);
 
 	/*
@@ -9144,7 +9152,7 @@ static int btrfs_truncate(struct inode *inode)
 		}
 
 		ret = btrfs_block_rsv_migrate(&root->fs_info->trans_block_rsv,
-					      rsv, min_size);
+					      rsv, min_size, 0);
 		BUG_ON(ret);	/* shouldn't happen */
 		trans->block_rsv = rsv;
 	}
@@ -9165,7 +9173,6 @@ static int btrfs_truncate(struct inode *inode)
 		ret = btrfs_end_transaction(trans, root);
 		btrfs_btree_balance_dirty(root);
 	}
-
 out:
 	btrfs_free_block_rsv(root, rsv);
 
