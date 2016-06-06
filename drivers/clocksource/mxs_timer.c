@@ -226,7 +226,7 @@ static int __init mxs_clocksource_init(struct clk *timer_clk)
 	return 0;
 }
 
-static void __init mxs_timer_init(struct device_node *np)
+static int __init mxs_timer_init(struct device_node *np)
 {
 	struct clk *timer_clk;
 	int irq;
