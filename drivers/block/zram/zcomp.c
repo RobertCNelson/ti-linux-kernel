@@ -20,9 +20,7 @@
 
 static const char * const backends[] = {
 	"lzo",
-#ifdef CONFIG_ZRAM_LZ4_COMPRESS
 	"lz4",
-#endif
 	NULL
 };
 
