@@ -455,6 +455,12 @@ acpi_ds_eval_region_operands(struct acpi_walk_state *walk_state,
 	/* Now the address and length are valid for this opregion */
 
 	obj_desc->region.flags |= AOPOBJ_DATA_VALID;
+	if (walk_state->parse_flags & ACPI_PARSE_MODULE_LEVEL) {
+		status = acpi_ut_add_address_range(obj_desc->region.space_id,
+						   obj_desc->region.address,
+						   obj_desc->region.length,
+						   node);
+	}
 	return_ACPI_STATUS(status);
 }
 

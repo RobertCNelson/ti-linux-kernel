@@ -361,17 +361,15 @@ static void od_free(struct policy_dbs_info *policy_dbs)
 	kfree(to_dbs_info(policy_dbs));
 }
 
-static int od_init(struct dbs_data *dbs_data, bool notify)
+static int od_init(struct dbs_data *dbs_data)
 {
 	struct od_dbs_tuners *tuners;
 	u64 idle_time;
 	int cpu;
 
 	tuners = kzalloc(sizeof(*tuners), GFP_KERNEL);
-	if (!tuners) {
-		pr_err("%s: kzalloc failed\n", __func__);
+	if (!tuners)
 		return -ENOMEM;
-	}
 
 	cpu = get_cpu();
 	idle_time = get_cpu_idle_time_us(cpu, NULL);
@@ -402,7 +400,7 @@ static int od_init(struct dbs_data *dbs_data, bool notify)
 	return 0;
 }
 
-static void od_exit(struct dbs_data *dbs_data, bool notify)
+static void od_exit(struct dbs_data *dbs_data)
 {
 	kfree(dbs_data->tuners);
 }
@@ -420,12 +418,7 @@ static struct od_ops od_ops = {
 };
 
 static struct dbs_governor od_dbs_gov = {
-	.gov = {
-		.name = "ondemand",
-		.governor = cpufreq_governor_dbs,
-		.max_transition_latency	= TRANSITION_LATENCY_LIMIT,
-		.owner = THIS_MODULE,
-	},
+	.gov = CPUFREQ_DBS_GOVERNOR_INITIALIZER("ondemand"),
 	.kobj_type = { .default_attrs = od_attributes },
 	.gov_dbs_timer = od_dbs_timer,
 	.alloc = od_alloc,
