@@ -425,6 +425,8 @@ static u32 truncate_msg(u16 *text_len, u16 *trunc_msg_len,
 	return msg_used_size(*text_len + *trunc_msg_len, 0, pad_len);
 }
 
+static u64 printk_get_ts(void);
+
 /* insert record into the buffer, discard old ones, update heads */
 static int log_store(int facility, int level,
 		     enum log_flags flags, u64 ts_nsec,
@@ -473,7 +475,7 @@ static int log_store(int facility, int level,
 	if (ts_nsec > 0)
 		msg->ts_nsec = ts_nsec;
 	else
-		msg->ts_nsec = local_clock();
+		msg->ts_nsec = printk_get_ts();
 	memset(log_dict(msg) + dict_len, 0, pad_len);
 	msg->len = size;
 
@@ -1043,6 +1045,12 @@ static inline void boot_delay_msec(int level)
 
 static int printk_time = CONFIG_PRINTK_TIME;
 
+/*
+ * Real clock & 32-bit systems:  Selecting the real clock printk timestamp may
+ * lead to unlikely situations where a timestamp is wrong because the real time
+ * offset is read without the protection of a sequence lock in the call to
+ * ktime_get_log_ts() in printk_get_ts() below.
+ */
 static int printk_time_param_set(const char *val,
 				 const struct kernel_param *kp)
 {
@@ -1064,6 +1072,14 @@ static int printk_time_param_set(const char *val,
 	case 'y':
 		printk_time = 1;
 		break;
+	/* 2 = monotonic clock */
+	case '2':
+		printk_time = 2;
+		break;
+	/* 3 = real clock */
+	case '3':
+		printk_time = 3;
+		break;
 	default:
 		pr_warn("printk: invalid timestamp value\n");
 		return -EINVAL;
@@ -1080,6 +1096,21 @@ static struct kernel_param_ops printk_time_param_ops = {
 };
 
 module_param_cb(time, &printk_time_param_ops, &printk_time, S_IRUGO);
+
+static u64 printk_get_ts(void)
+{
+	u64 mono, offset_real;
+
+	if (printk_time <= 1)
+		return local_clock();
+
+	mono = ktime_get_log_ts(&offset_real);
+
+	if (printk_time == 2)
+		return mono;
+
+	return mono + offset_real;
+}
 
 static size_t print_time(u64 ts, char *buf)
 {
@@ -1599,7 +1630,7 @@ static bool cont_add(int facility, int level, const char *text, size_t len)
 		cont.facility = facility;
 		cont.level = level;
 		cont.owner = current;
-		cont.ts_nsec = local_clock();
+		cont.ts_nsec = printk_get_ts();
 		cont.flags = 0;
 		cont.cons = 0;
 		cont.flushed = false;
