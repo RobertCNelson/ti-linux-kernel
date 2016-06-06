@@ -1867,7 +1867,6 @@ void nvme_core_exit(void)
 {
 	class_destroy(nvme_class);
 	__unregister_chrdev(nvme_char_major, 0, NVME_MINORS, "nvme");
-	unregister_blkdev(nvme_major, "nvme");
 }
 
 MODULE_LICENSE("GPL");
