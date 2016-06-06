@@ -455,7 +455,7 @@ again:
 
 	/*
 	 * skip compression for a small file range(<=blocksize) that
-	 * isn't an inline extent, since it dosen't save disk space at all.
+	 * isn't an inline extent, since it doesn't save disk space at all.
 	 */
 	if (total_compressed <= blocksize &&
 	   (start > 0 || end + 1 < BTRFS_I(inode)->disk_i_size))
@@ -585,9 +585,27 @@ cont:
 			will_compress = 0;
 		} else {
 			num_bytes = total_in;
+			*num_added += 1;
+
+			/*
+			 * The async work queues will take care of doing actual
+			 * allocation on disk for these compressed pages, and
+			 * will submit them to the elevator.
+			 */
+			add_async_extent(async_cow, start, num_bytes,
+					total_compressed, pages, nr_pages_ret,
+					compress_type);
+
+			if (start + num_bytes < end) {
+				start += num_bytes;
+				pages = NULL;
+				cond_resched();
+				goto again;
+			}
+			return;
 		}
 	}
-	if (!will_compress && pages) {
+	if (pages) {
 		/*
 		 * the compression code ran but failed to make things smaller,
 		 * free any pages it allocated and our page pointer array
@@ -607,43 +625,23 @@ cont:
 			BTRFS_I(inode)->flags |= BTRFS_INODE_NOCOMPRESS;
 		}
 	}
-	if (will_compress) {
-		*num_added += 1;
-
-		/* the async work queues will take care of doing actual
-		 * allocation on disk for these compressed pages,
-		 * and will submit them to the elevator.
-		 */
-		add_async_extent(async_cow, start, num_bytes,
-				 total_compressed, pages, nr_pages_ret,
-				 compress_type);
-
-		if (start + num_bytes < end) {
-			start += num_bytes;
-			pages = NULL;
-			cond_resched();
-			goto again;
-		}
-	} else {
 cleanup_and_bail_uncompressed:
-		/*
-		 * No compression, but we still need to write the pages in
-		 * the file we've been given so far.  redirty the locked
-		 * page if it corresponds to our extent and set things up
-		 * for the async work queue to run cow_file_range to do
-		 * the normal delalloc dance
-		 */
-		if (page_offset(locked_page) >= start &&
-		    page_offset(locked_page) <= end) {
-			__set_page_dirty_nobuffers(locked_page);
-			/* unlocked later on in the async handlers */
-		}
-		if (redirty)
-			extent_range_redirty_for_io(inode, start, end);
-		add_async_extent(async_cow, start, end - start + 1,
-				 0, NULL, 0, BTRFS_COMPRESS_NONE);
-		*num_added += 1;
-	}
+	/*
+	 * No compression, but we still need to write the pages in the file
+	 * we've been given so far.  redirty the locked page if it corresponds
+	 * to our extent and set things up for the async work queue to run
+	 * cow_file_range to do the normal delalloc dance.
+	 */
+	if (page_offset(locked_page) >= start &&
+	    page_offset(locked_page) <= end)
+		__set_page_dirty_nobuffers(locked_page);
+		/* unlocked later on in the async handlers */
+
+	if (redirty)
+		extent_range_redirty_for_io(inode, start, end);
+	add_async_extent(async_cow, start, end - start + 1, 0, NULL, 0,
+			 BTRFS_COMPRESS_NONE);
+	*num_added += 1;
 
 	return;
 
@@ -1978,7 +1976,7 @@ int btrfs_set_extent_delalloc(struct inode *inode, u64 start, u64 end,
 {
 	WARN_ON((end & (PAGE_SIZE - 1)) == 0);
 	return set_extent_delalloc(&BTRFS_I(inode)->io_tree, start, end,
-				   cached_state, GFP_NOFS);
+				   cached_state);
 }
 
 /* see btrfs_writepage_start_hook for details on why this is required */
@@ -3119,8 +3117,7 @@ static int btrfs_readpage_end_io_hook(struct btrfs_io_bio *io_bio,
 
 	if (root->root_key.objectid == BTRFS_DATA_RELOC_TREE_OBJECTID &&
 	    test_range_bit(io_tree, start, end, EXTENT_NODATASUM, 1, NULL)) {
-		clear_extent_bits(io_tree, start, end, EXTENT_NODATASUM,
-				  GFP_NOFS);
+		clear_extent_bits(io_tree, start, end, EXTENT_NODATASUM);
 		return 0;
 	}
 
@@ -3722,7 +3719,7 @@ cache_index:
 	 * and doesn't have an inode ref with the name "bar" anymore.
 	 *
 	 * Setting last_unlink_trans to last_trans is a pessimistic approach,
-	 * but it guarantees correctness at the expense of ocassional full
+	 * but it guarantees correctness at the expense of occasional full
 	 * transaction commits on fsync if our inode is a directory, or if our
 	 * inode is not a directory, logging its parent unnecessarily.
 	 */
@@ -4978,7 +4975,7 @@ static int btrfs_setsize(struct inode *inode, struct iattr *attr)
 		 * be instantly completed which will give us extents that need
 		 * to be truncated.  If we fail to get an orphan inode down we
 		 * could have left over extents that were never meant to live,
-		 * so we need to garuntee from this point on that everything
+		 * so we need to guarantee from this point on that everything
 		 * will be consistent.
 		 */
 		ret = btrfs_orphan_add(trans, inode);
@@ -5248,7 +5245,7 @@ void btrfs_evict_inode(struct inode *inode)
 		}
 
 		/*
-		 * We can't just steal from the global reserve, we need tomake
+		 * We can't just steal from the global reserve, we need to make
 		 * sure there is room to do it, if not we need to commit and try
 		 * again.
 		 */
@@ -7435,7 +7432,7 @@ static int lock_extent_direct(struct inode *inode, u64 lockstart, u64 lockend,
 				 cached_state);
 		/*
 		 * We're concerned with the entire range that we're going to be
-		 * doing DIO to, so we need to make sure theres no ordered
+		 * doing DIO to, so we need to make sure there's no ordered
 		 * extents in this range.
 		 */
 		ordered = btrfs_lookup_ordered_range(inode, lockstart,
@@ -7597,7 +7594,7 @@ static int btrfs_get_blocks_direct(struct inode *inode, sector_t iblock,
 	if (current->journal_info) {
 		/*
 		 * Need to pull our outstanding extents and set journal_info to NULL so
-		 * that anything that needs to check if there's a transction doesn't get
+		 * that anything that needs to check if there's a transaction doesn't get
 		 * confused.
 		 */
 		dio_data = current->journal_info;
@@ -7630,7 +7627,7 @@ static int btrfs_get_blocks_direct(struct inode *inode, sector_t iblock,
 	 * decompress it, so there will be buffering required no matter what we
 	 * do, so go ahead and fallback to buffered.
 	 *
-	 * We return -ENOTBLK because thats what makes DIO go ahead and go back
+	 * We return -ENOTBLK because that's what makes DIO go ahead and go back
 	 * to buffered IO.  Don't blame me, this is the price we pay for using
 	 * the generic code.
 	 */
@@ -9043,7 +9040,7 @@ static int btrfs_truncate(struct inode *inode)
 		return ret;
 
 	/*
-	 * Yes ladies and gentelment, this is indeed ugly.  The fact is we have
+	 * Yes ladies and gentlemen, this is indeed ugly.  The fact is we have
 	 * 3 things going on here
 	 *
 	 * 1) We need to reserve space for our orphan item and the space to
@@ -9057,15 +9054,15 @@ static int btrfs_truncate(struct inode *inode)
 	 * space reserved in case it uses space during the truncate (thank you
 	 * very much snapshotting).
 	 *
-	 * And we need these to all be seperate.  The fact is we can use alot of
+	 * And we need these to all be separate.  The fact is we can use a lot of
 	 * space doing the truncate, and we have no earthly idea how much space
-	 * we will use, so we need the truncate reservation to be seperate so it
+	 * we will use, so we need the truncate reservation to be separate so it
 	 * doesn't end up using space reserved for updating the inode or
 	 * removing the orphan item.  We also need to be able to stop the
 	 * transaction and start a new one, which means we need to be able to
 	 * update the inode several times, and we have no idea of knowing how
 	 * many times that will be, so we can't just reserve 1 item for the
-	 * entirety of the opration, so that has to be done seperately as well.
+	 * entirety of the operation, so that has to be done separately as well.
 	 * Then there is the orphan item, which does indeed need to be held on
 	 * to for the whole operation, and we need nobody to touch this reserved
 	 * space except the orphan code.
