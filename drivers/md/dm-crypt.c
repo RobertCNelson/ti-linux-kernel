@@ -1910,6 +1910,10 @@ static int crypt_map(struct dm_target *ti, struct bio *bio)
 	struct dm_crypt_io *io;
 	struct crypt_config *cc = ti->private;
 
+	if (unlikely(bio->bi_iter.bi_size > BIO_MAX_SIZE) &&
+	    (bio->bi_rw & (REQ_FLUSH | REQ_DISCARD | REQ_WRITE)) == REQ_WRITE)
+		dm_accept_partial_bio(bio, BIO_MAX_SIZE >> SECTOR_SHIFT);
+
 	/*
 	 * If bio is REQ_FLUSH or REQ_DISCARD, just bypass crypt queues.
 	 * - for REQ_FLUSH device-mapper core ensures that no IO is in-flight
