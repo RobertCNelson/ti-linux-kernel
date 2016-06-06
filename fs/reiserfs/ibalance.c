@@ -1138,6 +1138,9 @@ int balance_internal(struct tree_balance *tb,
 		       S_new);
 
 		/* S_new is released in unfix_nodes */
+
+		memcpy(new_insert_key_addr, &new_insert_key, KEY_SIZE);
+		insert_ptr[0] = new_insert_ptr;
 	}
 
 	n = B_NR_ITEMS(tbSh);	/*number of items in S[h] */
@@ -1152,9 +1155,6 @@ int balance_internal(struct tree_balance *tb,
 				       child_pos, insert_num, insert_key,
 				       insert_ptr);
 	}
-
-	memcpy(new_insert_key_addr, &new_insert_key, KEY_SIZE);
-	insert_ptr[0] = new_insert_ptr;
 
 	return order;
 }
