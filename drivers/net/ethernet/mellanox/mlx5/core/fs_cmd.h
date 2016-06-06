@@ -67,6 +67,7 @@ struct steering_cmds {
 };
 
 const struct steering_cmds *mlx5_get_phys_fs_cmds(void);
+const struct steering_cmds *mlx5_get_virt_fs_cmds(void);
 
 int mlx5_cmd_fc_alloc(struct mlx5_core_dev *dev, u16 *id);
 int mlx5_cmd_fc_free(struct mlx5_core_dev *dev, u16 id);

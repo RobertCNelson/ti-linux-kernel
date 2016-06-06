@@ -410,7 +410,72 @@ int mlx5_cmd_fc_query(struct mlx5_core_dev *dev, u16 id,
 	stats = MLX5_ADDR_OF(query_flow_counter_out, out, flow_statistics);
 	*packets = MLX5_GET64(traffic_counter, stats, packets);
 	*bytes = MLX5_GET64(traffic_counter, stats, octets);
+	return 0;
+}
 
+static int mlx5_cmd_virt_update_root_ft(struct mlx5_core_dev *dev,
+					struct mlx5_flow_table *ft)
+{
+	return 0;
+}
+
+static int mlx5_cmd_virt_create_flow_table(struct mlx5_core_dev *dev, u16 vport,
+					   enum fs_flow_table_type type, unsigned int level,
+					   unsigned int log_size, struct mlx5_flow_table
+					   *next_ft, unsigned int *table_id)
+{
+	return 0;
+}
+
+static int mlx5_cmd_virt_destroy_flow_table(struct mlx5_core_dev *dev,
+					    struct mlx5_flow_table *ft)
+{
+	return 0;
+}
+
+static int mlx5_cmd_virt_modify_flow_table(struct mlx5_core_dev *dev,
+					   struct mlx5_flow_table *ft,
+					   struct mlx5_flow_table *next_ft)
+{
+	return -EOPNOTSUPP;
+}
+
+static int mlx5_cmd_virt_create_flow_group(struct mlx5_core_dev *dev,
+					   struct mlx5_flow_table *ft,
+					   u32 *in,
+					   unsigned int *group_id)
+{
+	return 0;
+}
+
+static int mlx5_cmd_virt_destroy_flow_group(struct mlx5_core_dev *dev,
+					    struct mlx5_flow_table *ft,
+					    unsigned int group_id)
+{
+	return 0;
+}
+
+static int mlx5_cmd_virt_create_fte(struct mlx5_core_dev *dev,
+				    struct mlx5_flow_table *ft,
+				    unsigned int group_id,
+				    struct fs_fte *fte)
+{
+	return 0;
+}
+
+static int mlx5_cmd_virt_update_fte(struct mlx5_core_dev *dev,
+				    struct mlx5_flow_table *ft,
+				    unsigned int group_id,
+				    int modify_mask,
+				    struct fs_fte *fte)
+{
+	return -EOPNOTSUPP;
+}
+
+static int mlx5_cmd_virt_delete_fte(struct mlx5_core_dev *dev,
+				    struct mlx5_flow_table *ft,
+				    unsigned int index)
+{
 	return 0;
 }
 
@@ -426,7 +491,24 @@ static const struct steering_cmds steering_cmds = {
 	.delete_fte		= mlx5_cmd_delete_fte,
 };
 
+static const struct steering_cmds steering_virt_cmds = {
+	.update_root_ft		= mlx5_cmd_virt_update_root_ft,
+	.create_flow_table	= mlx5_cmd_virt_create_flow_table,
+	.destroy_flow_table	= mlx5_cmd_virt_destroy_flow_table,
+	.modify_flow_table	= mlx5_cmd_virt_modify_flow_table,
+	.create_flow_group	= mlx5_cmd_virt_create_flow_group,
+	.destroy_flow_group	= mlx5_cmd_virt_destroy_flow_group,
+	.create_fte		= mlx5_cmd_virt_create_fte,
+	.update_fte		= mlx5_cmd_virt_update_fte,
+	.delete_fte		= mlx5_cmd_virt_delete_fte,
+};
+
 const struct steering_cmds *mlx5_get_phys_fs_cmds(void)
 {
 	return &steering_cmds;
+}
+
+const struct steering_cmds *mlx5_get_virt_fs_cmds(void)
+{
+	return &steering_virt_cmds;
 }
