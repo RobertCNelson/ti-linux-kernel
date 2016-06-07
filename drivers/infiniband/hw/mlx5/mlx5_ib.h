@@ -217,10 +217,39 @@ struct mlx5_ib_wq {
 	void		       *qend;
 };
 
+struct mlx5_ib_rwq {
+	struct ib_wq		ibwq;
+	u32			rqn;
+	u32			rq_num_pas;
+	u32			log_rq_stride;
+	u32			log_rq_size;
+	u32			rq_page_offset;
+	u32			log_page_size;
+	struct ib_umem		*umem;
+	size_t			buf_size;
+	unsigned int		page_shift;
+	int			create_type;
+	struct mlx5_db		db;
+	u32			user_index;
+	u32			wqe_count;
+	u32			wqe_shift;
+	int			wq_sig;
+};
+
 enum {
 	MLX5_QP_USER,
 	MLX5_QP_KERNEL,
 	MLX5_QP_EMPTY
+};
+
+enum {
+	MLX5_WQ_USER,
+	MLX5_WQ_KERNEL
+};
+
+struct mlx5_ib_rwq_ind_table {
+	struct ib_rwq_ind_table ib_rwq_ind_tbl;
+	u32			rqtn;
 };
 
 /*
@@ -266,6 +295,10 @@ struct mlx5_ib_qp_trans {
 	u8			resp_depth;
 };
 
+struct mlx5_ib_rss_qp {
+	u32	tirn;
+};
+
 struct mlx5_ib_rq {
 	struct mlx5_ib_qp_base base;
 	struct mlx5_ib_wq	*rq;
@@ -294,6 +327,7 @@ struct mlx5_ib_qp {
 	union {
 		struct mlx5_ib_qp_trans trans_qp;
 		struct mlx5_ib_raw_packet_qp raw_packet_qp;
+		struct mlx5_ib_rss_qp rss_qp;
 	};
 	struct mlx5_buf		buf;
 
@@ -628,6 +662,16 @@ static inline struct mlx5_ib_qp *to_mqp(struct ib_qp *ibqp)
 	return container_of(ibqp, struct mlx5_ib_qp, ibqp);
 }
 
+static inline struct mlx5_ib_rwq *to_mrwq(struct ib_wq *ibwq)
+{
+	return container_of(ibwq, struct mlx5_ib_rwq, ibwq);
+}
+
+static inline struct mlx5_ib_rwq_ind_table *to_mrwq_ind_table(struct ib_rwq_ind_table *ib_rwq_ind_tbl)
+{
+	return container_of(ib_rwq_ind_tbl, struct mlx5_ib_rwq_ind_table, ib_rwq_ind_tbl);
+}
+
 static inline struct mlx5_ib_srq *to_mibsrq(struct mlx5_core_srq *msrq)
 {
 	return container_of(msrq, struct mlx5_ib_srq, msrq);
@@ -762,6 +806,16 @@ int mlx5_mr_cache_cleanup(struct mlx5_ib_dev *dev);
 int mlx5_mr_ib_cont_pages(struct ib_umem *umem, u64 addr, int *count, int *shift);
 int mlx5_ib_check_mr_status(struct ib_mr *ibmr, u32 check_mask,
 			    struct ib_mr_status *mr_status);
+struct ib_wq *mlx5_ib_create_wq(struct ib_pd *pd,
+				struct ib_wq_init_attr *init_attr,
+				struct ib_udata *udata);
+int mlx5_ib_destroy_wq(struct ib_wq *wq);
+int mlx5_ib_modify_wq(struct ib_wq *wq, struct ib_wq_attr *wq_attr,
+		      u32 wq_attr_mask, struct ib_udata *udata);
+struct ib_rwq_ind_table *mlx5_ib_create_rwq_ind_table(struct ib_device *device,
+						      struct ib_rwq_ind_table_init_attr *init_attr,
+						      struct ib_udata *udata);
+int mlx5_ib_destroy_rwq_ind_table(struct ib_rwq_ind_table *wq_ind_table);
 
 #ifdef CONFIG_INFINIBAND_ON_DEMAND_PAGING
 extern struct workqueue_struct *mlx5_ib_page_fault_wq;
