@@ -106,17 +106,17 @@ static irqreturn_t rk_timer_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static void __init rk_timer_init(struct device_node *np)
+static int __init rk_timer_init(struct device_node *np)
 {
 	struct clock_event_device *ce = &bc_timer.ce;
 	struct clk *timer_clk;
 	struct clk *pclk;
-	int ret, irq;
+	int ret = -EINVAL, irq;
 
 	bc_timer.base = of_iomap(np, 0);
 	if (!bc_timer.base) {
 		pr_err("Failed to get base address for '%s'\n", TIMER_NAME);
-		return;
+		return -ENXIO;
 	}
 
 	pclk = of_clk_get_by_name(np, "pclk");
@@ -169,7 +169,7 @@ static void __init rk_timer_init(struct device_node *np)
 
 	clockevents_config_and_register(ce, bc_timer.freq, 1, UINT_MAX);
 
-	return;
+	return 0;
 
 out_irq:
 	clk_disable_unprepare(timer_clk);
@@ -177,6 +177,8 @@ out_timer_clk:
 	clk_disable_unprepare(pclk);
 out_unmap:
 	iounmap(bc_timer.base);
+
+	return ret;
 }
 
-CLOCKSOURCE_OF_DECLARE(rk_timer, "rockchip,rk3288-timer", rk_timer_init);
+CLOCKSOURCE_OF_DECLARE_RET(rk_timer, "rockchip,rk3288-timer", rk_timer_init);
