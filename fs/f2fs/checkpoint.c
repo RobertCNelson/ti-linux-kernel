@@ -846,7 +846,8 @@ retry:
 	inode = igrab(&fi->vfs_inode);
 	spin_unlock(&sbi->inode_lock[type]);
 	if (inode) {
-		filemap_fdatawrite(inode->i_mapping);
+		if (inode->i_nlink)
+			filemap_fdatawrite(inode->i_mapping);
 		iput(inode);
 	} else {
 		/*
