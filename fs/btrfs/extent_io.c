@@ -20,6 +20,7 @@
 #include "locking.h"
 #include "rcu-string.h"
 #include "backref.h"
+#include "transaction.h"
 
 static struct kmem_cache *extent_state_cache;
 static struct kmem_cache *extent_buffer_cache;
@@ -4493,10 +4494,23 @@ int extent_fiemap(struct inode *inode, struct fiemap_extent_info *fieinfo,
 			flags |= (FIEMAP_EXTENT_DELALLOC |
 				  FIEMAP_EXTENT_UNKNOWN);
 		} else if (fieinfo->fi_extents_max) {
+			struct btrfs_trans_handle *trans;
+
 			u64 bytenr = em->block_start -
 				(em->start - em->orig_start);
 
 			disko = em->block_start + offset_in_extent;
+
+			/*
+			 * We need a trans handle to get delayed refs
+			 */
+			trans = btrfs_join_transaction(root);
+			/*
+			 * It's OK if we can't start a trans
+			 * we can still check from commit_root
+			 */
+			if (IS_ERR(trans))
+				trans = NULL;
 
 			/*
 			 * As btrfs supports shared space, this information
@@ -4505,9 +4519,11 @@ int extent_fiemap(struct inode *inode, struct fiemap_extent_info *fieinfo,
 			 * then we're just getting a count and we can skip the
 			 * lookup stuff.
 			 */
-			ret = btrfs_check_shared(NULL, root->fs_info,
+			ret = btrfs_check_shared(trans, root->fs_info,
 						 root->objectid,
 						 btrfs_ino(inode), bytenr);
+			if (trans)
+				btrfs_end_transaction(trans, root);
 			if (ret < 0)
 				goto out_free;
 			if (ret)
@@ -4728,16 +4744,16 @@ err:
 }
 
 struct extent_buffer *alloc_dummy_extent_buffer(struct btrfs_fs_info *fs_info,
-						u64 start)
+						u64 start, u32 nodesize)
 {
 	unsigned long len;
 
 	if (!fs_info) {
 		/*
 		 * Called only from tests that don't always have a fs_info
-		 * available, but we know that nodesize is 4096
+		 * available
 		 */
-		len = 4096;
+		len = nodesize;
 	} else {
 		len = fs_info->tree_root->nodesize;
 	}
@@ -4833,7 +4849,7 @@ struct extent_buffer *find_extent_buffer(struct btrfs_fs_info *fs_info,
 
 #ifdef CONFIG_BTRFS_FS_RUN_SANITY_TESTS
 struct extent_buffer *alloc_test_extent_buffer(struct btrfs_fs_info *fs_info,
-					       u64 start)
+					u64 start, u32 nodesize)
 {
 	struct extent_buffer *eb, *exists = NULL;
 	int ret;
@@ -4841,7 +4857,7 @@ struct extent_buffer *alloc_test_extent_buffer(struct btrfs_fs_info *fs_info,
 	eb = find_extent_buffer(fs_info, start);
 	if (eb)
 		return eb;
-	eb = alloc_dummy_extent_buffer(fs_info, start);
+	eb = alloc_dummy_extent_buffer(fs_info, start, nodesize);
 	if (!eb)
 		return NULL;
 	eb->fs_info = fs_info;
