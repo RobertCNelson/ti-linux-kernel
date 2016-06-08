@@ -2247,7 +2247,6 @@ static int set_feature_lro(struct net_device *netdev, bool enable)
 	bool was_opened = test_bit(MLX5E_STATE_OPENED, &priv->state);
 	int err;
 
-	mutex_lock(&priv->state_lock);
 
 	if (was_opened && (priv->params.rq_wq_type == MLX5_WQ_TYPE_LINKED_LIST))
 		mlx5e_close_locked(priv->netdev);
@@ -2261,8 +2260,6 @@ static int set_feature_lro(struct net_device *netdev, bool enable)
 
 	if (was_opened && (priv->params.rq_wq_type == MLX5_WQ_TYPE_LINKED_LIST))
 		mlx5e_open_locked(priv->netdev);
-
-	mutex_unlock(&priv->state_lock);
 
 	return err;
 }
@@ -2305,14 +2302,10 @@ static int set_feature_rx_vlan(struct net_device *netdev, bool enable)
 	struct mlx5e_priv *priv = netdev_priv(netdev);
 	int err;
 
-	mutex_lock(&priv->state_lock);
-
 	priv->params.vlan_strip_disable = !enable;
 	err = mlx5e_modify_rqs_vsd(priv, !enable);
 	if (err)
 		priv->params.vlan_strip_disable = enable;
-
-	mutex_unlock(&priv->state_lock);
 
 	return err;
 }
@@ -2358,7 +2351,10 @@ static int mlx5e_handle_feature(struct net_device *netdev,
 static int mlx5e_set_features(struct net_device *netdev,
 			      netdev_features_t features)
 {
+	struct mlx5e_priv *priv = netdev_priv(netdev);
 	int err;
+
+	mutex_lock(&priv->state_lock);
 
 	err  = mlx5e_handle_feature(netdev, features, NETIF_F_LRO,
 				    set_feature_lro);
@@ -2375,6 +2371,8 @@ static int mlx5e_set_features(struct net_device *netdev,
 	err |= mlx5e_handle_feature(netdev, features, NETIF_F_NTUPLE,
 				    set_feature_arfs);
 #endif
+
+	mutex_unlock(&priv->state_lock);
 
 	return err ? -EINVAL : 0;
 }
