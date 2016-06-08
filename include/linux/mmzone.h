@@ -141,7 +141,7 @@ enum zone_stat_item {
 	NR_WRITTEN,		/* page writings since bootup */
 	NR_PAGES_SCANNED,	/* pages scanned since last reclaim */
 #if IS_ENABLED(CONFIG_ZSMALLOC)
-	NR_ZSMALLOC,
+	NR_ZSPAGES,		/* allocated in zsmalloc */
 #endif
 #ifdef CONFIG_NUMA
 	NUMA_HIT,		/* allocated in intended node */
