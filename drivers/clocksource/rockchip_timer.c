@@ -181,4 +181,4 @@ out_unmap:
 	return ret;
 }
 
-CLOCKSOURCE_OF_DECLARE_RET(rk_timer, "rockchip,rk3288-timer", rk_timer_init);
+CLOCKSOURCE_OF_DECLARE(rk_timer, "rockchip,rk3288-timer", rk_timer_init);
