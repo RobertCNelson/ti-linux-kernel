@@ -372,19 +372,8 @@ out:
  * Synchronous I/O uses a stack-allocated iocb.  Thus we can't trust
  * the iocb is still valid here if this is a synchronous request.
  */
-static void nfs_direct_complete(struct nfs_direct_req *dreq, bool write)
+static void nfs_direct_complete(struct nfs_direct_req *dreq)
 {
-	struct inode *inode = dreq->inode;
-
-	if (dreq->iocb && write) {
-		loff_t pos = dreq->iocb->ki_pos + dreq->count;
-
-		spin_lock(&inode->i_lock);
-		if (i_size_read(inode) < pos)
-			i_size_write(inode, pos);
-		spin_unlock(&inode->i_lock);
-	}
-
 	if (dreq->iocb) {
 		long res = (long) dreq->error;
 		if (!res)
@@ -435,7 +424,7 @@ static void nfs_direct_read_completion(struct nfs_pgio_header *hdr)
 	}
 out_put:
 	if (put_dreq(dreq))
-		nfs_direct_complete(dreq, false);
+		nfs_direct_complete(dreq);
 	hdr->release(hdr);
 }
 
@@ -539,7 +528,7 @@ static ssize_t nfs_direct_read_schedule_iovec(struct nfs_direct_req *dreq,
 	}
 
 	if (put_dreq(dreq))
-		nfs_direct_complete(dreq, false);
+		nfs_direct_complete(dreq);
 	return 0;
 }
 
@@ -764,6 +753,7 @@ static void nfs_direct_commit_schedule(struct nfs_direct_req *dreq)
 static void nfs_direct_write_schedule_work(struct work_struct *work)
 {
 	struct nfs_direct_req *dreq = container_of(work, struct nfs_direct_req, work);
+	loff_t pos = dreq->iocb->ki_pos + dreq->count;
 	struct inode *inode = dreq->inode;
 	int flags = dreq->flags;
 
@@ -776,10 +766,15 @@ static void nfs_direct_write_schedule_work(struct work_struct *work)
 			nfs_direct_write_reschedule(dreq);
 			break;
 		default:
+			spin_lock(&inode->i_lock);
+			if (i_size_read(inode) < pos)
+				i_size_write(inode, pos);
+			spin_unlock(&inode->i_lock);
+
 			nfs_zap_mapping(inode, inode->i_mapping);
 			inode_dio_end(inode);
 
-			nfs_direct_complete(dreq, true);
+			nfs_direct_complete(dreq);
 	}
 }
 
