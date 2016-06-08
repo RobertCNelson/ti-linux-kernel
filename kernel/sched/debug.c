@@ -427,19 +427,12 @@ print_task(struct seq_file *m, struct rq *rq, struct task_struct *p)
 		SPLIT_NS(p->se.vruntime),
 		(long long)(p->nvcsw + p->nivcsw),
 		p->prio);
-#ifdef CONFIG_SCHEDSTATS
-	if (schedstat_enabled()) {
-		SEQ_printf(m, "%9Ld.%06ld %9Ld.%06ld %9Ld.%06ld",
-			SPLIT_NS(p->se.statistics.wait_sum),
-			SPLIT_NS(p->se.sum_exec_runtime),
-			SPLIT_NS(p->se.statistics.sum_sleep_runtime));
-	}
-#else
+
 	SEQ_printf(m, "%9Ld.%06ld %9Ld.%06ld %9Ld.%06ld",
-		0LL, 0L,
+		SPLIT_NS(schedstat_val(p, se.statistics.wait_sum)),
 		SPLIT_NS(p->se.sum_exec_runtime),
-		0LL, 0L);
-#endif
+		SPLIT_NS(schedstat_val(p, se.statistics.sum_sleep_runtime)));
+
 #ifdef CONFIG_NUMA_BALANCING
 	SEQ_printf(m, " %d %d", task_node(p), task_numa_group_id(p));
 #endif
@@ -886,9 +879,9 @@ void proc_sched_show_task(struct task_struct *p, struct seq_file *m)
 
 	nr_switches = p->nvcsw + p->nivcsw;
 
-#ifdef CONFIG_SCHEDSTATS
 	P(se.nr_migrations);
 
+#ifdef CONFIG_SCHEDSTATS
 	if (schedstat_enabled()) {
 		u64 avg_atom, avg_per_cpu;
 
