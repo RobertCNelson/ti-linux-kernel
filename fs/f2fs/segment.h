@@ -479,6 +479,8 @@ static inline bool has_not_enough_free_secs(struct f2fs_sb_info *sbi, int freed)
 	int node_secs = get_blocktype_secs(sbi, F2FS_DIRTY_NODES);
 	int dent_secs = get_blocktype_secs(sbi, F2FS_DIRTY_DENTS);
 
+	node_secs += get_blocktype_secs(sbi, F2FS_DIRTY_IMETA);
+
 	if (unlikely(is_sbi_flag_set(sbi, SBI_POR_DOING)))
 		return false;
 
@@ -544,7 +546,7 @@ static inline bool need_inplace_update(struct inode *inode)
 
 	/* this is only set during fdatasync */
 	if (policy & (0x1 << F2FS_IPU_FSYNC) &&
-			is_inode_flag_set(F2FS_I(inode), FI_NEED_IPU))
+			is_inode_flag_set(inode, FI_NEED_IPU))
 		return true;
 
 	return false;
@@ -726,9 +728,7 @@ static inline long nr_pages_to_write(struct f2fs_sb_info *sbi, int type,
 
 	nr_to_write = wbc->nr_to_write;
 
-	if (type == DATA)
-		desired = 4096;
-	else if (type == NODE)
+	if (type == NODE)
 		desired = 3 * max_hw_blocks(sbi);
 	else
 		desired = MAX_BIO_BLOCKS(sbi);
