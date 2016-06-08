@@ -692,6 +692,12 @@ static bool khugepaged_scan_abort(int nid)
 	return false;
 }
 
+/* Defrag for khugepaged will enter direct reclaim/compaction if necessary */
+static inline gfp_t alloc_hugepage_khugepaged_gfpmask(void)
+{
+	return GFP_TRANSHUGE | (khugepaged_defrag() ? __GFP_DIRECT_RECLAIM : 0);
+}
+
 #ifdef CONFIG_NUMA
 
 static int khugepaged_find_target_node(void)
@@ -760,12 +766,6 @@ khugepaged_alloc_page(struct page **hpage, gfp_t gfp, struct mm_struct *mm,
 	prep_transhuge_page(*hpage);
 	count_vm_event(THP_COLLAPSE_ALLOC);
 	return *hpage;
-}
-
-/* Defrag for khugepaged will enter direct reclaim/compaction if necessary */
-static inline gfp_t alloc_hugepage_khugepaged_gfpmask(void)
-{
-	return GFP_TRANSHUGE | (khugepaged_defrag() ? __GFP_DIRECT_RECLAIM : 0);
 }
 
 #else
