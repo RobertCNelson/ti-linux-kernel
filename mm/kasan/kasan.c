@@ -371,14 +371,15 @@ static size_t optimal_redzone(size_t object_size)
 void kasan_cache_create(struct kmem_cache *cache, size_t *size,
 			unsigned long *flags)
 {
-	int redzone_adjust, orig_size = *size;
+	int redzone_adjust;
 
 #ifdef CONFIG_SLAB
+	int orig_size = *size;
+
 	/*
 	 * Make sure the adjusted size is still less than
 	 * KMALLOC_MAX_CACHE_SIZE, i.e. we don't use the page allocator.
 	 */
-
 	if (*size > KMALLOC_MAX_CACHE_SIZE -
 	    sizeof(struct kasan_alloc_meta) -
 	    sizeof(struct kasan_free_meta))
@@ -551,14 +552,16 @@ bool kasan_slab_free(struct kmem_cache *cache, void *object)
 		return false;
 
 	if (likely(cache->flags & SLAB_KASAN)) {
-		struct kasan_alloc_meta *alloc_info =
-			get_alloc_info(cache, object);
-		struct kasan_free_meta *free_info =
-			get_free_info(cache, object);
+		struct kasan_alloc_meta *alloc_info;
+		struct kasan_free_meta *free_info;
+
+		alloc_info = get_alloc_info(cache, object);
+		free_info = get_free_info(cache, object);
 		WARN_ON(!alloc_info);
 		WARN_ON(!free_info);
 		if (!alloc_info || !free_info)
-			return;
+			return false;
+
 		switch (alloc_info->state) {
 		case KASAN_STATE_ALLOC:
 			alloc_info->state = KASAN_STATE_QUARANTINE;
