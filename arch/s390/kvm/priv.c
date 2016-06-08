@@ -654,8 +654,10 @@ static int handle_epsw(struct kvm_vcpu *vcpu)
 
 static int handle_pfmf(struct kvm_vcpu *vcpu)
 {
+	bool mr = false, mc = false, nq;
 	int reg1, reg2;
 	unsigned long start, end;
+	unsigned char key;
 
 	vcpu->stat.instruction_pfmf++;
 
@@ -675,15 +677,27 @@ static int handle_pfmf(struct kvm_vcpu *vcpu)
 	    !test_kvm_facility(vcpu->kvm, 14))
 		return kvm_s390_inject_program_int(vcpu, PGM_SPECIFICATION);
 
-	/* No support for conditional-SSKE */
-	if (vcpu->run->s.regs.gprs[reg1] & (PFMF_MR | PFMF_MC))
-		return kvm_s390_inject_program_int(vcpu, PGM_SPECIFICATION);
+	/* Only provide conditional-SSKE support if enabled for the guest */
+	if (vcpu->run->s.regs.gprs[reg1] & PFMF_SK &&
+	    test_kvm_facility(vcpu->kvm, 10)) {
+		mr = vcpu->run->s.regs.gprs[reg1] & PFMF_MR;
+		mc = vcpu->run->s.regs.gprs[reg1] & PFMF_MC;
+	}
 
+	nq = vcpu->run->s.regs.gprs[reg1] & PFMF_NQ;
+	key = vcpu->run->s.regs.gprs[reg1] & PFMF_KEY;
 	start = vcpu->run->s.regs.gprs[reg2] & PAGE_MASK;
 	start = kvm_s390_logical_to_effective(vcpu, start);
 
+	if (vcpu->run->s.regs.gprs[reg1] & PFMF_CF) {
+		if (kvm_s390_check_low_addr_prot_real(vcpu, start))
+			return kvm_s390_inject_prog_irq(vcpu, &vcpu->arch.pgm);
+	}
+
 	switch (vcpu->run->s.regs.gprs[reg1] & PFMF_FSC) {
 	case 0x00000000:
+		/* only 4k frames specify a real address */
+		start = kvm_s390_real_to_abs(vcpu, start);
 		end = (start + (1UL << 12)) & ~((1UL << 12) - 1);
 		break;
 	case 0x00001000:
@@ -701,20 +715,11 @@ static int handle_pfmf(struct kvm_vcpu *vcpu)
 		return kvm_s390_inject_program_int(vcpu, PGM_SPECIFICATION);
 	}
 
-	if (vcpu->run->s.regs.gprs[reg1] & PFMF_CF) {
-		if (kvm_s390_check_low_addr_prot_real(vcpu, start))
-			return kvm_s390_inject_prog_irq(vcpu, &vcpu->arch.pgm);
-	}
-
-	while (start < end) {
-		unsigned long useraddr, abs_addr;
+	while (start != end) {
+		unsigned long useraddr;
 
 		/* Translate guest address to host address */
-		if ((vcpu->run->s.regs.gprs[reg1] & PFMF_FSC) == 0)
-			abs_addr = kvm_s390_real_to_abs(vcpu, start);
-		else
-			abs_addr = start;
-		useraddr = gfn_to_hva(vcpu->kvm, gpa_to_gfn(abs_addr));
+		useraddr = gfn_to_hva(vcpu->kvm, gpa_to_gfn(start));
 		if (kvm_is_error_hva(useraddr))
 			return kvm_s390_inject_program_int(vcpu, PGM_ADDRESSING);
 
@@ -728,16 +733,25 @@ static int handle_pfmf(struct kvm_vcpu *vcpu)
 
 			if (rc)
 				return rc;
-			if (set_guest_storage_key(current->mm, useraddr,
-					vcpu->run->s.regs.gprs[reg1] & PFMF_KEY,
-					vcpu->run->s.regs.gprs[reg1] & PFMF_NQ))
+			down_read(&current->mm->mmap_sem);
+			rc = cond_set_guest_storage_key(current->mm, useraddr,
+							key, NULL, nq, mr, mc);
+			up_read(&current->mm->mmap_sem);
+			if (rc < 0)
 				return kvm_s390_inject_program_int(vcpu, PGM_ADDRESSING);
 		}
 
 		start += PAGE_SIZE;
 	}
-	if (vcpu->run->s.regs.gprs[reg1] & PFMF_FSC)
-		vcpu->run->s.regs.gprs[reg2] = end;
+	if (vcpu->run->s.regs.gprs[reg1] & PFMF_FSC) {
+		if (psw_bits(vcpu->arch.sie_block->gpsw).eaba == PSW_AMODE_64BIT) {
+			vcpu->run->s.regs.gprs[reg2] = end;
+		} else {
+			vcpu->run->s.regs.gprs[reg2] &= ~0xffffffffUL;
+			end = kvm_s390_logical_to_effective(vcpu, end);
+			vcpu->run->s.regs.gprs[reg2] |= end;
+		}
+	}
 	return 0;
 }
 
