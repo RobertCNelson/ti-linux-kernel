@@ -6072,6 +6072,7 @@ enum skl_disp_power_wells {
 #define  GEN9_TSG_BARRIER_ACK_DISABLE		(1<<8)
 
 #define GEN9_CS_DEBUG_MODE1		_MMIO(0x20ec)
+#define GEN9_CTX_PREEMPT_REG		_MMIO(0x2248)
 #define GEN8_CS_CHICKEN1		_MMIO(0x2580)
 
 /* GEN7 chicken */
@@ -7031,7 +7032,7 @@ enum skl_disp_power_wells {
 #define VLV_RCEDATA				_MMIO(0xA0BC)
 #define GEN6_RC6pp_THRESHOLD			_MMIO(0xA0C0)
 #define GEN6_PMINTRMSK				_MMIO(0xA168)
-#define GEN8_PMINTR_REDIRECT_TO_NON_DISP	(1<<31)
+#define   GEN8_PMINTR_REDIRECT_TO_NON_DISP	(1<<31)
 #define VLV_PWRDWNUPCTL				_MMIO(0xA294)
 #define GEN9_MEDIA_PG_IDLE_HYSTERESIS		_MMIO(0xA0C4)
 #define GEN9_RENDER_PG_IDLE_HYSTERESIS		_MMIO(0xA0C8)
@@ -8151,6 +8152,8 @@ enum skl_disp_power_wells {
 #define _MIPIA_EOT_DISABLE		(dev_priv->mipi_mmio_base + 0xb05c)
 #define _MIPIC_EOT_DISABLE		(dev_priv->mipi_mmio_base + 0xb85c)
 #define MIPI_EOT_DISABLE(port)		_MMIO_MIPI(port, _MIPIA_EOT_DISABLE, _MIPIC_EOT_DISABLE)
+#define  BXT_DEFEATURE_DPI_FIFO_CTR			(1 << 9)
+#define  BXT_DPHY_DEFEATURE_EN				(1 << 8)
 #define  LP_RX_TIMEOUT_ERROR_RECOVERY_DISABLE		(1 << 7)
 #define  HS_RX_TIMEOUT_ERROR_RECOVERY_DISABLE		(1 << 6)
 #define  LOW_CONTENTION_RECOVERY_DISABLE		(1 << 5)

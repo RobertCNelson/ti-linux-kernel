@@ -1172,6 +1172,12 @@ static void intel_dsi_prepare(struct intel_encoder *intel_encoder)
 	if (intel_dsi->clock_stop)
 		tmp |= CLOCKSTOP;
 
+	if (IS_BROXTON(dev_priv)) {
+		tmp |= BXT_DPHY_DEFEATURE_EN;
+		if (!is_cmd_mode(intel_dsi))
+			tmp |= BXT_DEFEATURE_DPI_FIFO_CTR;
+	}
+
 	for_each_dsi_port(port, intel_dsi->ports) {
 		I915_WRITE(MIPI_DSI_FUNC_PRG(port), val);
 
@@ -1450,7 +1456,7 @@ void intel_dsi_init(struct drm_device *dev)
 	connector = &intel_connector->base;
 
 	drm_encoder_init(dev, encoder, &intel_dsi_funcs, DRM_MODE_ENCODER_DSI,
-			 NULL);
+			 "DSI %c", port_name(port));
 
 	intel_encoder->compute_config = intel_dsi_compute_config;
 	intel_encoder->pre_enable = intel_dsi_pre_enable;
@@ -1577,6 +1583,9 @@ void intel_dsi_init(struct drm_device *dev)
 		DRM_DEBUG_KMS("no fixed mode\n");
 		goto err;
 	}
+
+	connector->display_info.width_mm = fixed_mode->width_mm;
+	connector->display_info.height_mm = fixed_mode->height_mm;
 
 	intel_panel_init(&intel_connector->panel, fixed_mode, NULL);
 
