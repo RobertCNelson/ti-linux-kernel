@@ -57,7 +57,6 @@ static unsigned int khugepaged_scan_sleep_millisecs __read_mostly = 10000;
 static unsigned int khugepaged_alloc_sleep_millisecs __read_mostly = 60000;
 static unsigned long khugepaged_sleep_expire;
 static struct task_struct *khugepaged_thread __read_mostly;
-DEFINE_MUTEX(khugepaged_mutex);
 static DEFINE_SPINLOCK(khugepaged_mm_lock);
 static DECLARE_WAIT_QUEUE_HEAD(khugepaged_wait);
 /*

@@ -174,6 +174,7 @@ static ssize_t enabled_store(struct kobject *kobj,
 			     const char *buf, size_t count)
 {
 	ssize_t ret;
+	static DEFINE_MUTEX(khugepaged_mutex);
 
 	ret = triple_flag_store(kobj, attr, buf, count,
 				TRANSPARENT_HUGEPAGE_FLAG,

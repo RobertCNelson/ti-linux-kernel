@@ -4,7 +4,6 @@
 #include <linux/sched.h> /* MMF_VM_HUGEPAGE */
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
-extern struct mutex khugepaged_mutex;
 extern struct attribute_group khugepaged_attr_group;
 
 extern int khugepaged_init(void);
