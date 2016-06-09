@@ -149,7 +149,12 @@ static void qlink_free(struct qlist_node *qlink, struct kmem_cache *cache)
 
 	local_irq_save(flags);
 	alloc_info->state = KASAN_STATE_FREE;
+#ifdef CONFIG_SLAB
 	___cache_free(cache, object, _THIS_IP_);
+#elif defined(CONFIG_SLUB)
+	do_slab_free(cache, virt_to_head_page(object), object, NULL, 1,
+		_RET_IP_);
+#endif
 	local_irq_restore(flags);
 }
 
