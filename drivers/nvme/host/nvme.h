@@ -177,7 +177,7 @@ static inline u64 nvme_block_nr(struct nvme_ns *ns, sector_t sector)
 
 static inline unsigned nvme_map_len(struct request *rq)
 {
-	if (rq->cmd_flags & REQ_DISCARD)
+	if (req_op(rq) == REQ_OP_DISCARD)
 		return sizeof(struct nvme_dsm_range);
 	else
 		return blk_rq_bytes(rq);
@@ -185,7 +185,7 @@ static inline unsigned nvme_map_len(struct request *rq)
 
 static inline void nvme_cleanup_cmd(struct request *req)
 {
-	if (req->cmd_flags & REQ_DISCARD)
+	if (req_op(req) == REQ_OP_DISCARD)
 		kfree(req->completion_data);
 }
 
@@ -207,6 +207,7 @@ static inline bool nvme_req_needs_retry(struct request *req, u16 status)
 		(jiffies - req->start_time) < req->timeout;
 }
 
+void nvme_cancel_request(struct request *req, void *data, bool reserved);
 bool nvme_change_ctrl_state(struct nvme_ctrl *ctrl,
 		enum nvme_ctrl_state new_state);
 int nvme_disable_ctrl(struct nvme_ctrl *ctrl, u64 cap);

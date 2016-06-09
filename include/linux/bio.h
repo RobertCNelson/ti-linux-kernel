@@ -44,18 +44,8 @@
 #define BIO_MAX_SIZE		(BIO_MAX_PAGES << PAGE_SHIFT)
 #define BIO_MAX_SECTORS		(BIO_MAX_SIZE >> 9)
 
-/*
- * upper 16 bits of bi_rw define the io priority of this bio
- */
-#define BIO_PRIO_SHIFT	(8 * sizeof(unsigned long) - IOPRIO_BITS)
-#define bio_prio(bio)	((bio)->bi_rw >> BIO_PRIO_SHIFT)
-#define bio_prio_valid(bio)	ioprio_valid(bio_prio(bio))
-
-#define bio_set_prio(bio, prio)		do {			\
-	WARN_ON(prio >= (1 << IOPRIO_BITS));			\
-	(bio)->bi_rw &= ((1UL << BIO_PRIO_SHIFT) - 1);		\
-	(bio)->bi_rw |= ((unsigned long) (prio) << BIO_PRIO_SHIFT);	\
-} while (0)
+#define bio_prio(bio)			(bio)->bi_ioprio
+#define bio_set_prio(bio, prio)		((bio)->bi_ioprio = prio)
 
 /*
  * various member access, note that bio_data should of course not be used
@@ -106,10 +96,15 @@ static inline bool bio_has_data(struct bio *bio)
 {
 	if (bio &&
 	    bio->bi_iter.bi_size &&
-	    !(bio->bi_rw & REQ_DISCARD))
+	    bio_op(bio) != REQ_OP_DISCARD)
 		return true;
 
 	return false;
+}
+
+static inline bool bio_no_advance_iter(struct bio *bio)
+{
+	return bio_op(bio) == REQ_OP_DISCARD || bio_op(bio) == REQ_OP_WRITE_SAME;
 }
 
 static inline bool bio_is_rw(struct bio *bio)
@@ -117,7 +112,7 @@ static inline bool bio_is_rw(struct bio *bio)
 	if (!bio_has_data(bio))
 		return false;
 
-	if (bio->bi_rw & BIO_NO_ADVANCE_ITER_MASK)
+	if (bio_no_advance_iter(bio))
 		return false;
 
 	return true;
@@ -225,7 +220,7 @@ static inline void bio_advance_iter(struct bio *bio, struct bvec_iter *iter,
 {
 	iter->bi_sector += bytes >> 9;
 
-	if (bio->bi_rw & BIO_NO_ADVANCE_ITER_MASK)
+	if (bio_no_advance_iter(bio))
 		iter->bi_size -= bytes;
 	else
 		bvec_iter_advance(bio->bi_io_vec, iter, bytes);
@@ -253,10 +248,10 @@ static inline unsigned bio_segments(struct bio *bio)
 	 * differently:
 	 */
 
-	if (bio->bi_rw & REQ_DISCARD)
+	if (bio_op(bio) == REQ_OP_DISCARD)
 		return 1;
 
-	if (bio->bi_rw & REQ_WRITE_SAME)
+	if (bio_op(bio) == REQ_OP_WRITE_SAME)
 		return 1;
 
 	bio_for_each_segment(bv, bio, iter)
@@ -473,7 +468,7 @@ static inline void bio_io_error(struct bio *bio)
 struct request_queue;
 extern int bio_phys_segments(struct request_queue *, struct bio *);
 
-extern int submit_bio_wait(int rw, struct bio *bio);
+extern int submit_bio_wait(struct bio *bio);
 extern void bio_advance(struct bio *, unsigned);
 
 extern void bio_init(struct bio *);
