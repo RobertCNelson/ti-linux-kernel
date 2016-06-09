@@ -16,6 +16,7 @@
 #include <linux/errno.h>
 #include <linux/module.h>
 #include <linux/io.h>
+#include <linux/io-mapping.h>
 #include <linux/gpio/consumer.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
@@ -409,6 +410,7 @@ static int of_gpiochip_add_pin_range(struct gpio_chip *chip)
 			break;
 
 		pctldev = of_pinctrl_get(pinspec.np);
+		of_node_put(pinspec.np);
 		if (!pctldev)
 			return -EPROBE_DEFER;
 
