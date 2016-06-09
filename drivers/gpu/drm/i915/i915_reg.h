@@ -220,6 +220,9 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define   ECOCHK_PPGTT_WT_HSW		(0x2<<3)
 #define   ECOCHK_PPGTT_WB_HSW		(0x3<<3)
 
+#define GEN8_CONFIG0			_MMIO(0xD00)
+#define  GEN9_DEFAULT_FIXES		(1 << 3 | 1 << 2 | 1 << 1)
+
 #define GAC_ECO_BITS			_MMIO(0x14090)
 #define   ECOBITS_SNB_BIT		(1<<13)
 #define   ECOBITS_PPGTT_CACHE64B	(3<<8)
@@ -1669,6 +1672,9 @@ enum skl_disp_power_wells {
 
 #define GEN7_TLB_RD_ADDR	_MMIO(0x4700)
 
+#define GAMT_CHKN_BIT_REG	_MMIO(0x4ab8)
+#define   GAMT_CHKN_DISABLE_DYNAMIC_CREDIT_SHARING	(1<<28)
+
 #if 0
 #define PRB0_TAIL	_MMIO(0x2030)
 #define PRB0_HEAD	_MMIO(0x2034)
@@ -2161,6 +2167,9 @@ enum skl_disp_power_wells {
 
 #define FBC_LL_SIZE		(1536)
 
+#define FBC_LLC_READ_CTRL	_MMIO(0x9044)
+#define   FBC_LLC_FULLY_OPEN	(1<<30)
+
 /* Framebuffer compression for GM45+ */
 #define DPFC_CB_BASE		_MMIO(0x3200)
 #define DPFC_CONTROL		_MMIO(0x3208)
@@ -2200,6 +2209,8 @@ enum skl_disp_power_wells {
 #define ILK_DPFC_STATUS		_MMIO(0x43210)
 #define ILK_DPFC_FENCE_YOFF	_MMIO(0x43218)
 #define ILK_DPFC_CHICKEN	_MMIO(0x43224)
+#define   ILK_DPFC_DISABLE_DUMMY0 (1<<8)
+#define   ILK_DPFC_NUKE_ON_ANY_MODIFICATION	(1<<23)
 #define ILK_FBC_RT_BASE		_MMIO(0x2128)
 #define   ILK_FBC_RT_VALID	(1<<0)
 #define   SNB_FBC_FRONT_BUFFER	(1<<1)
@@ -6035,6 +6046,9 @@ enum skl_disp_power_wells {
 #define  FORCE_ARB_IDLE_PLANES	(1 << 14)
 #define  SKL_EDP_PSR_FIX_RDWRAP	(1 << 3)
 
+#define CHICKEN_PAR2_1		_MMIO(0x42090)
+#define  KVM_CONFIG_CHANGE_NOTIFICATION_SELECT	(1 << 14)
+
 #define _CHICKEN_PIPESL_1_A	0x420b0
 #define _CHICKEN_PIPESL_1_B	0x420b4
 #define  HSW_FBCQ_DIS			(1 << 22)
@@ -6042,6 +6056,7 @@ enum skl_disp_power_wells {
 #define CHICKEN_PIPESL_1(pipe) _MMIO_PIPE(pipe, _CHICKEN_PIPESL_1_A, _CHICKEN_PIPESL_1_B)
 
 #define DISP_ARB_CTL	_MMIO(0x45000)
+#define  DISP_FBC_MEMORY_WAKE		(1<<31)
 #define  DISP_TILE_SURFACE_SWIZZLING	(1<<13)
 #define  DISP_FBC_WM_DIS		(1<<15)
 #define DISP_ARB_CTL2	_MMIO(0x45004)
@@ -6054,6 +6069,9 @@ enum skl_disp_power_wells {
 #define  WAIT_FOR_PCH_FLR_ACK		(1<<0)
 #define HSW_NDE_RSTWRN_OPT	_MMIO(0x46408)
 #define  RESET_PCH_HANDSHAKE_ENABLE	(1<<4)
+
+#define GEN8_CHICKEN_DCPR_1		_MMIO(0x46430)
+#define   MASK_WAKEMEM			(1<<13)
 
 #define SKL_DFSM			_MMIO(0x51000)
 #define SKL_DFSM_CDCLK_LIMIT_MASK	(3 << 23)
@@ -6072,6 +6090,7 @@ enum skl_disp_power_wells {
 #define  GEN9_TSG_BARRIER_ACK_DISABLE		(1<<8)
 
 #define GEN9_CS_DEBUG_MODE1		_MMIO(0x20ec)
+#define GEN9_CTX_PREEMPT_REG		_MMIO(0x2248)
 #define GEN8_CS_CHICKEN1		_MMIO(0x2580)
 
 /* GEN7 chicken */
@@ -6079,6 +6098,7 @@ enum skl_disp_power_wells {
 # define GEN7_CSC1_RHWO_OPT_DISABLE_IN_RCC	((1<<10) | (1<<26))
 # define GEN9_RHWO_OPTIMIZATION_DISABLE		(1<<14)
 #define COMMON_SLICE_CHICKEN2			_MMIO(0x7014)
+# define GEN8_SBE_DISABLE_REPLAY_BUF_OPTIMIZATION (1<<8)
 # define GEN8_CSC2_SBE_VUE_CACHE_CONSERVATIVE	(1<<0)
 
 #define HIZ_CHICKEN					_MMIO(0x7018)
@@ -6931,6 +6951,7 @@ enum skl_disp_power_wells {
 #define    EDRAM_SETS_IDX(cap)			(((cap) >> 8) & 0x3)
 
 #define GEN6_UCGCTL1				_MMIO(0x9400)
+# define GEN6_GAMUNIT_CLOCK_GATE_DISABLE		(1 << 22)
 # define GEN6_EU_TCUNIT_CLOCK_GATE_DISABLE		(1 << 16)
 # define GEN6_BLBUNIT_CLOCK_GATE_DISABLE		(1 << 5)
 # define GEN6_CSUNIT_CLOCK_GATE_DISABLE			(1 << 7)
@@ -6947,6 +6968,7 @@ enum skl_disp_power_wells {
 
 #define GEN7_UCGCTL4				_MMIO(0x940c)
 #define  GEN7_L3BANK2X_CLOCK_GATE_DISABLE	(1<<25)
+#define  GEN8_EU_GAUNIT_CLOCK_GATE_DISABLE	(1<<14)
 
 #define GEN6_RCGCTL1				_MMIO(0x9410)
 #define GEN6_RCGCTL2				_MMIO(0x9414)
@@ -7031,7 +7053,7 @@ enum skl_disp_power_wells {
 #define VLV_RCEDATA				_MMIO(0xA0BC)
 #define GEN6_RC6pp_THRESHOLD			_MMIO(0xA0C0)
 #define GEN6_PMINTRMSK				_MMIO(0xA168)
-#define GEN8_PMINTR_REDIRECT_TO_NON_DISP	(1<<31)
+#define   GEN8_PMINTR_REDIRECT_TO_NON_DISP	(1<<31)
 #define VLV_PWRDWNUPCTL				_MMIO(0xA294)
 #define GEN9_MEDIA_PG_IDLE_HYSTERESIS		_MMIO(0xA0C4)
 #define GEN9_RENDER_PG_IDLE_HYSTERESIS		_MMIO(0xA0C8)
@@ -8151,6 +8173,8 @@ enum skl_disp_power_wells {
 #define _MIPIA_EOT_DISABLE		(dev_priv->mipi_mmio_base + 0xb05c)
 #define _MIPIC_EOT_DISABLE		(dev_priv->mipi_mmio_base + 0xb85c)
 #define MIPI_EOT_DISABLE(port)		_MMIO_MIPI(port, _MIPIA_EOT_DISABLE, _MIPIC_EOT_DISABLE)
+#define  BXT_DEFEATURE_DPI_FIFO_CTR			(1 << 9)
+#define  BXT_DPHY_DEFEATURE_EN				(1 << 8)
 #define  LP_RX_TIMEOUT_ERROR_RECOVERY_DISABLE		(1 << 7)
 #define  HS_RX_TIMEOUT_ERROR_RECOVERY_DISABLE		(1 << 6)
 #define  LOW_CONTENTION_RECOVERY_DISABLE		(1 << 5)
