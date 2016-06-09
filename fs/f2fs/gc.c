@@ -806,7 +806,8 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 		f2fs_put_page(sum_page, 0);
 
 		sum = page_address(sum_page);
-		f2fs_bug_on(sbi, type != GET_SUM_TYPE((&sum->footer)));
+		f2fs_bug_on(sbi, IS_DATASEG(type) !=
+				IS_DATASEG(GET_SUM_TYPE((&sum->footer))));
 
 		/*
 		 * this is to avoid deadlock:
