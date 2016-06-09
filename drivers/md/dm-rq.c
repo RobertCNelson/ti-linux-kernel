@@ -189,9 +189,9 @@ static void rq_end_stats(struct mapped_device *md, struct request *orig)
 	if (unlikely(dm_stats_used(&md->stats))) {
 		struct dm_rq_target_io *tio = tio_from_request(orig);
 		tio->duration_jiffies = jiffies - tio->duration_jiffies;
-		dm_stats_account_io(&md->stats, orig->cmd_flags, blk_rq_pos(orig),
-				    tio->n_sectors, true, tio->duration_jiffies,
-				    &tio->stats_aux);
+		dm_stats_account_io(&md->stats, rq_data_dir(orig),
+				    blk_rq_pos(orig), tio->n_sectors, true,
+				    tio->duration_jiffies, &tio->stats_aux);
 	}
 }
 
@@ -353,7 +353,7 @@ static void dm_done(struct request *clone, int error, bool mapped)
 			r = rq_end_io(tio->ti, clone, error, &tio->info);
 	}
 
-	if (unlikely(r == -EREMOTEIO && (clone->cmd_flags & REQ_WRITE_SAME) &&
+	if (unlikely(r == -EREMOTEIO && (req_op(clone) == REQ_OP_WRITE_SAME) &&
 		     !clone->q->limits.max_write_same_sectors))
 		disable_write_same(tio->md);
 
@@ -681,8 +681,9 @@ static void dm_start_request(struct mapped_device *md, struct request *orig)
 		struct dm_rq_target_io *tio = tio_from_request(orig);
 		tio->duration_jiffies = jiffies;
 		tio->n_sectors = blk_rq_sectors(orig);
-		dm_stats_account_io(&md->stats, orig->cmd_flags, blk_rq_pos(orig),
-				    tio->n_sectors, false, 0, &tio->stats_aux);
+		dm_stats_account_io(&md->stats, rq_data_dir(orig),
+				    blk_rq_pos(orig), tio->n_sectors, false, 0,
+				    &tio->stats_aux);
 	}
 
 	/*
@@ -777,7 +778,7 @@ static void dm_old_request_fn(struct request_queue *q)
 
 		/* always use block 0 to find the target for flushes for now */
 		pos = 0;
-		if (!(rq->cmd_flags & REQ_FLUSH))
+		if (req_op(rq) != REQ_OP_FLUSH)
 			pos = blk_rq_pos(rq);
 
 		if ((dm_old_request_peeked_before_merge_deadline(md) &&
