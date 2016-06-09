@@ -125,9 +125,7 @@ xfs_bmap_finish(
 		if (committed) {
 			xfs_efi_release(efi);
 			xfs_force_shutdown((*tp)->t_mountp,
-				(error == -EFSCORRUPTED) ?
-					SHUTDOWN_CORRUPT_INCORE :
-					SHUTDOWN_META_IO_ERROR);
+					   SHUTDOWN_META_IO_ERROR);
 		}
 		return error;
 	}
@@ -409,7 +407,7 @@ xfs_bmap_count_tree(
 /*
  * Count fsblocks of the given fork.
  */
-int						/* error */
+static int					/* error */
 xfs_bmap_count_blocks(
 	xfs_trans_t		*tp,		/* transaction pointer */
 	xfs_inode_t		*ip,		/* incore inode */
