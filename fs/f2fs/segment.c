@@ -241,7 +241,7 @@ void drop_inmem_pages(struct inode *inode)
 {
 	struct f2fs_inode_info *fi = F2FS_I(inode);
 
-	clear_inode_flag(F2FS_I(inode), FI_ATOMIC_FILE);
+	clear_inode_flag(inode, FI_ATOMIC_FILE);
 
 	mutex_lock(&fi->inmem_lock);
 	__revoke_inmem_pages(inode, &fi->inmem_pages, true, false);
@@ -345,6 +345,11 @@ void f2fs_balance_fs(struct f2fs_sb_info *sbi, bool need)
 {
 	if (!need)
 		return;
+
+	/* balance_fs_bg is able to be pending */
+	if (excess_cached_nats(sbi))
+		f2fs_balance_fs_bg(sbi);
+
 	/*
 	 * We should do GC or end up with checkpoint, if there are so many dirty
 	 * dir/node pages without enough free segments.
@@ -374,13 +379,8 @@ void f2fs_balance_fs_bg(struct f2fs_sb_info *sbi)
 			excess_prefree_segs(sbi) ||
 			excess_dirty_nats(sbi) ||
 			(is_idle(sbi) && f2fs_time_over(sbi, CP_TIME))) {
-		if (test_opt(sbi, DATA_FLUSH)) {
-			struct blk_plug plug;
-
-			blk_start_plug(&plug);
+		if (test_opt(sbi, DATA_FLUSH))
 			sync_dirty_inodes(sbi, FILE_INODE);
-			blk_finish_plug(&plug);
-		}
 		f2fs_sync_fs(sbi->sb, true);
 		stat_inc_bg_cp_count(sbi->stat_info);
 	}
@@ -433,24 +433,28 @@ int f2fs_issue_flush(struct f2fs_sb_info *sbi)
 	if (test_opt(sbi, NOBARRIER))
 		return 0;
 
-	if (!test_opt(sbi, FLUSH_MERGE)) {
+	if (!test_opt(sbi, FLUSH_MERGE) || !atomic_read(&fcc->submit_flush)) {
 		struct bio *bio = f2fs_bio_alloc(0);
 		int ret;
 
+		atomic_inc(&fcc->submit_flush);
 		bio->bi_bdev = sbi->sb->s_bdev;
 		ret = submit_bio_wait(WRITE_FLUSH, bio);
+		atomic_dec(&fcc->submit_flush);
 		bio_put(bio);
 		return ret;
 	}
 
 	init_completion(&cmd.wait);
 
+	atomic_inc(&fcc->submit_flush);
 	llist_add(&cmd.llnode, &fcc->issue_list);
 
 	if (!fcc->dispatch_list)
 		wake_up(&fcc->flush_wait_queue);
 
 	wait_for_completion(&cmd.wait);
+	atomic_dec(&fcc->submit_flush);
 
 	return cmd.ret;
 }
@@ -464,6 +468,7 @@ int create_flush_cmd_control(struct f2fs_sb_info *sbi)
 	fcc = kzalloc(sizeof(struct flush_cmd_control), GFP_KERNEL);
 	if (!fcc)
 		return -ENOMEM;
+	atomic_set(&fcc->submit_flush, 0);
 	init_waitqueue_head(&fcc->flush_wait_queue);
 	init_llist_head(&fcc->issue_list);
 	SM_I(sbi)->cmd_control_info = fcc;
@@ -589,6 +594,9 @@ bool discard_next_dnode(struct f2fs_sb_info *sbi, block_t blkaddr)
 {
 	int err = -EOPNOTSUPP;
 
+	if (test_opt(sbi, LFS))
+		return false;
+
 	if (test_opt(sbi, DISCARD)) {
 		struct seg_entry *se = get_seg_entry(sbi,
 				GET_SEGNO(sbi, blkaddr));
@@ -702,6 +710,7 @@ void clear_prefree_segments(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	struct dirty_seglist_info *dirty_i = DIRTY_I(sbi);
 	unsigned long *prefree_map = dirty_i->dirty_segmap[PRE];
 	unsigned int start = 0, end = -1;
+	unsigned int secno, start_segno;
 
 	mutex_lock(&dirty_i->seglist_lock);
 
@@ -721,8 +730,22 @@ void clear_prefree_segments(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 		if (!test_opt(sbi, DISCARD))
 			continue;
 
-		f2fs_issue_discard(sbi, START_BLOCK(sbi, start),
+		if (!test_opt(sbi, LFS) || sbi->segs_per_sec == 1) {
+			f2fs_issue_discard(sbi, START_BLOCK(sbi, start),
 				(end - start) << sbi->log_blocks_per_seg);
+			continue;
+		}
+next:
+		secno = GET_SECNO(sbi, start);
+		start_segno = secno * sbi->segs_per_sec;
+		if (!IS_CURSEC(sbi, secno) &&
+			!get_valid_blocks(sbi, start, sbi->segs_per_sec))
+			f2fs_issue_discard(sbi, START_BLOCK(sbi, start_segno),
+				sbi->segs_per_sec << sbi->log_blocks_per_seg);
+
+		start = start_segno + sbi->segs_per_sec;
+		if (start < end)
+			goto next;
 	}
 	mutex_unlock(&dirty_i->seglist_lock);
 
@@ -1389,11 +1412,17 @@ static void do_write_page(struct f2fs_summary *sum, struct f2fs_io_info *fio)
 {
 	int type = __get_segment_type(fio->page, fio->type);
 
+	if (fio->type == NODE || fio->type == DATA)
+		mutex_lock(&fio->sbi->wio_mutex[fio->type]);
+
 	allocate_data_block(fio->sbi, fio->page, fio->old_blkaddr,
 					&fio->new_blkaddr, sum, type);
 
 	/* writeout dirty page into bdev */
 	f2fs_submit_page_mbio(fio);
+
+	if (fio->type == NODE || fio->type == DATA)
+		mutex_unlock(&fio->sbi->wio_mutex[fio->type]);
 }
 
 void write_meta_page(struct f2fs_sb_info *sbi, struct page *page)
