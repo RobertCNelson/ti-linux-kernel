@@ -244,6 +244,7 @@ slub-disable-SLUB_CPU_PARTIAL.patch
 mm-page-alloc-use-local-lock-on-target-cpu.patch
 mm-memcontrol-Don-t-call-schedule_work_on-in-preempt.patch
 mm-memcontrol-do_not_disable_irq.patch
+mm-memcontrol-mem_cgroup_migrate-replace-another-loc.patch
 mm-backing-dev-don-t-disable-IRQs-in-wb_congested_pu.patch
 mm-zsmalloc-Use-get-put_cpu_light-in-zs_map_object-z.patch
 
