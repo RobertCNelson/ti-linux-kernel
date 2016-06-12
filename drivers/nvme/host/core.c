@@ -193,10 +193,9 @@ EXPORT_SYMBOL_GPL(nvme_requeue_req);
 struct request *nvme_alloc_request(struct request_queue *q,
 		struct nvme_command *cmd, unsigned int flags)
 {
-	bool write = cmd->common.opcode & 1;
 	struct request *req;
 
-	req = blk_mq_alloc_request(q, write, flags);
+	req = blk_mq_alloc_request(q, nvme_is_write(cmd), flags);
 	if (IS_ERR(req))
 		return req;
 
@@ -361,7 +360,7 @@ int __nvme_submit_user_cmd(struct request_queue *q, struct nvme_command *cmd,
 		void __user *meta_buffer, unsigned meta_len, u32 meta_seed,
 		u32 *result, unsigned timeout)
 {
-	bool write = cmd->common.opcode & 1;
+	bool write = nvme_is_write(cmd);
 	struct nvme_completion cqe;
 	struct nvme_ns *ns = q->queuedata;
 	struct gendisk *disk = ns ? ns->disk : NULL;
@@ -575,11 +574,22 @@ int nvme_set_queue_count(struct nvme_ctrl *ctrl, int *count)
 
 	status = nvme_set_features(ctrl, NVME_FEAT_NUM_QUEUES, q_count, 0,
 			&result);
-	if (status)
+	if (status < 0)
 		return status;
 
-	nr_io_queues = min(result & 0xffff, result >> 16) + 1;
-	*count = min(*count, nr_io_queues);
+	/*
+	 * Degraded controllers might return an error when setting the queue
+	 * count.  We still want to be able to bring them online and offer
+	 * access to the admin queue, as that might be only way to fix them up.
+	 */
+	if (status > 0) {
+		dev_err(ctrl->dev, "Could not set queue count (%d)\n", status);
+		*count = 0;
+	} else {
+		nr_io_queues = min(result & 0xffff, result >> 16) + 1;
+		*count = min(*count, nr_io_queues);
+	}
+
 	return 0;
 }
 EXPORT_SYMBOL_GPL(nvme_set_queue_count);
@@ -1105,6 +1115,7 @@ int nvme_init_identify(struct nvme_ctrl *ctrl)
 	struct nvme_id_ctrl *id;
 	u64 cap;
 	int ret, page_shift;
+	u32 max_hw_sectors;
 
 	ret = ctrl->ops->reg_read32(ctrl, NVME_REG_VS, &ctrl->vs);
 	if (ret) {
@@ -1137,9 +1148,11 @@ int nvme_init_identify(struct nvme_ctrl *ctrl)
 	memcpy(ctrl->model, id->mn, sizeof(id->mn));
 	memcpy(ctrl->firmware_rev, id->fr, sizeof(id->fr));
 	if (id->mdts)
-		ctrl->max_hw_sectors = 1 << (id->mdts + page_shift - 9);
+		max_hw_sectors = 1 << (id->mdts + page_shift - 9);
 	else
-		ctrl->max_hw_sectors = UINT_MAX;
+		max_hw_sectors = UINT_MAX;
+	ctrl->max_hw_sectors =
+		min_not_zero(ctrl->max_hw_sectors, max_hw_sectors);
 
 	if ((ctrl->quirks & NVME_QUIRK_STRIPE_SIZE) && id->vs[3]) {
 		unsigned int max_hw_sectors;
