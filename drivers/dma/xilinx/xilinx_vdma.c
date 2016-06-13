@@ -1745,7 +1745,13 @@ static struct dma_async_tx_descriptor *xilinx_dma_prep_dma_cyclic(
 	int i;
 	u32 reg;
 
+	if (!period_len)
+		return NULL;
+
 	num_periods = buf_len / period_len;
+
+	if (!num_periods)
+		return NULL;
 
 	if (!is_slave_direction(direction))
 		return NULL;
@@ -1805,7 +1811,7 @@ static struct dma_async_tx_descriptor *xilinx_dma_prep_dma_cyclic(
 
 	/* For the last DMA_MEM_TO_DEV transfer, set EOP */
 	if (direction == DMA_MEM_TO_DEV) {
-		segment->hw.control |= XILINX_DMA_BD_SOP;
+		head_segment->hw.control |= XILINX_DMA_BD_SOP;
 		segment = list_last_entry(&desc->segments,
 					  struct xilinx_axidma_tx_segment,
 					  node);
