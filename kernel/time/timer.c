@@ -1246,8 +1246,8 @@ static void expire_timers(struct timer_base *base, struct hlist_head *head)
 	}
 }
 
-static int collect_expired_timers(struct timer_base *base,
-				  struct hlist_head *heads)
+static int __collect_expired_timers(struct timer_base *base,
+				    struct hlist_head *heads)
 {
 	unsigned long clk = base->clk >> BASE_CLK_SHIFT;
 	struct hlist_head *vec;
@@ -1273,9 +1273,9 @@ static int collect_expired_timers(struct timer_base *base,
 
 #ifdef CONFIG_NO_HZ_COMMON
 /*
- * Find the next pending bucket of a level. Search from @offset + @clk upwards
- * and if nothing there, search from start of the level (@offset) up to
- * @offset + clk.
+ * Find the next pending bucket of a level. Search from level start (@offset)
+ * + @clk upwards and if nothing there, search from start of the level
+ * (@offset) up to @offset + clk.
  */
 static int next_pending_bucket(struct timer_base *base, unsigned offset,
 			       unsigned clk)
@@ -1292,7 +1292,8 @@ static int next_pending_bucket(struct timer_base *base, unsigned offset,
 }
 
 /*
- * Search the first expiring timer in the various clock levels.
+ * Search the first expiring timer in the various clock levels. Caller must
+ * hold base->lock.
  *
  * Note: This implementation might be suboptimal vs. timers enqueued in the
  *	 cascade level because we do not look at the timers to figure out when
@@ -1305,7 +1306,6 @@ static unsigned long __next_timer_interrupt(struct timer_base *base)
 	unsigned long clk, next, adj;
 	unsigned lvl, offset = 0;
 
-	spin_lock(&base->lock);
 	next = BASE_RND_UP(base->clk + NEXT_TIMER_MAX_DELTA);
 	clk = base->clk >> BASE_CLK_SHIFT;
 	for (lvl = 0; lvl < LVL_DEPTH; lvl++, offset += LVL_SIZE) {
@@ -1358,7 +1358,6 @@ static unsigned long __next_timer_interrupt(struct timer_base *base)
 		clk >>= LVL_CLK_SHIFT;
 		clk += adj;
 	}
-	spin_unlock(&base->lock);
 	return next;
 }
 
@@ -1416,13 +1415,50 @@ u64 get_next_timer_interrupt(unsigned long basej, u64 basem)
 	if (cpu_is_offline(smp_processor_id()))
 		return expires;
 
+	spin_lock(&base->lock);
 	nextevt = __next_timer_interrupt(base);
+	spin_unlock(&base->lock);
+
 	if (time_before_eq(nextevt, basej))
 		expires = basem;
 	else
 		expires = basem + (nextevt - basej) * TICK_NSEC;
 
 	return cmp_next_hrtimer_event(basem, expires);
+}
+
+static int collect_expired_timers(struct timer_base *base,
+				  struct hlist_head *heads)
+{
+	/*
+	 * NOHZ optimization. After a long idle sleep we need to forward the
+	 * base to current jiffies. Avoid a loop by searching the bitfield for
+	 * the next expiring timer.
+	 */
+	if ((long)(jiffies - base->clk) > 2 * BASE_INCR) {
+		unsigned long next = __next_timer_interrupt(base);
+
+		/*
+		 * If the next timer is ahead of time forward to current
+		 * jiffies, otherwise forward to the next expiry time.
+		 */
+		if (time_after(next, jiffies)) {
+			/*
+			 * We need to round down here as the call site will
+			 * increment clock once more.
+			 */
+			base->clk = BASE_RND_DN(jiffies);
+			return 0;
+		}
+		base->clk = next;
+	}
+	return __collect_expired_timers(base, heads);
+}
+#else
+static inline int collect_expired_timers(struct timer_base *base,
+					 struct hlist_head *heads)
+{
+	return __collect_expired_timers(base, heads);
 }
 #endif
 
