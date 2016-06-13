@@ -664,7 +664,7 @@ int rxe_qp_from_attr(struct rxe_qp *qp, struct ib_qp_attr *attr, int mask,
 			qp->qp_timeout_jiffies = 0;
 		} else {
 			/* According to the spec, timeout = 4.096 * 2 ^ attr->timeout [us] */
-			int j = usecs_to_jiffies((4096ULL << attr->timeout) / 1000);
+			int j = nsecs_to_jiffies(4096ULL << attr->timeout);
 
 			qp->qp_timeout_jiffies = j ? j : 1;
 		}

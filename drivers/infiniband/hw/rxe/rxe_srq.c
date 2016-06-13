@@ -121,8 +121,7 @@ int rxe_srq_from_init(struct rxe_dev *rxe, struct rxe_srq *srq,
 			   srq_wqe_size);
 	if (!q) {
 		pr_warn("unable to allocate queue for srq\n");
-		err = -ENOMEM;
-		goto err1;
+		return -ENOMEM;
 	}
 
 	srq->rq.queue = q;
@@ -130,15 +129,14 @@ int rxe_srq_from_init(struct rxe_dev *rxe, struct rxe_srq *srq,
 	err = do_mmap_info(rxe, udata, false, context, q->buf,
 			   q->buf_size, &q->ip);
 	if (err)
-		goto err1;
+		return err;
 
-	if (udata && udata->outlen >= sizeof(struct mminfo) + sizeof(u32))
-		return copy_to_user(udata->outbuf + sizeof(struct mminfo),
-			&srq->srq_num, sizeof(u32));
-	else
-		return 0;
-err1:
-	return err;
+	if (udata && udata->outlen >= sizeof(struct mminfo) + sizeof(u32)) {
+		if (copy_to_user(udata->outbuf + sizeof(struct mminfo),
+				 &srq->srq_num, sizeof(u32)))
+			return -EFAULT;
+	}
+	return 0;
 }
 
 int rxe_srq_from_attr(struct rxe_dev *rxe, struct rxe_srq *srq,
