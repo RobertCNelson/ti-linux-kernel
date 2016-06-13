@@ -20,6 +20,7 @@
 #include "locking.h"
 #include "rcu-string.h"
 #include "backref.h"
+#include "transaction.h"
 
 static struct kmem_cache *extent_state_cache;
 static struct kmem_cache *extent_buffer_cache;
@@ -2879,6 +2880,7 @@ __get_extent_map(struct inode *inode, struct page *page, size_t pg_offset,
  * into the tree that are removed when the IO is done (by the end_io
  * handlers)
  * XXX JDM: This needs looking at to ensure proper page locking
+ * return 0 on success, otherwise return error
  */
 static int __do_readpage(struct extent_io_tree *tree,
 			 struct page *page,
@@ -2900,7 +2902,7 @@ static int __do_readpage(struct extent_io_tree *tree,
 	sector_t sector;
 	struct extent_map *em;
 	struct block_device *bdev;
-	int ret;
+	int ret = 0;
 	int nr = 0;
 	size_t pg_offset = 0;
 	size_t iosize;
@@ -3091,7 +3093,7 @@ out:
 			SetPageUptodate(page);
 		unlock_page(page);
 	}
-	return 0;
+	return ret;
 }
 
 static inline void __do_contiguous_readpages(struct extent_io_tree *tree,
@@ -4493,10 +4495,23 @@ int extent_fiemap(struct inode *inode, struct fiemap_extent_info *fieinfo,
 			flags |= (FIEMAP_EXTENT_DELALLOC |
 				  FIEMAP_EXTENT_UNKNOWN);
 		} else if (fieinfo->fi_extents_max) {
+			struct btrfs_trans_handle *trans;
+
 			u64 bytenr = em->block_start -
 				(em->start - em->orig_start);
 
 			disko = em->block_start + offset_in_extent;
+
+			/*
+			 * We need a trans handle to get delayed refs
+			 */
+			trans = btrfs_join_transaction(root);
+			/*
+			 * It's OK if we can't start a trans
+			 * we can still check from commit_root
+			 */
+			if (IS_ERR(trans))
+				trans = NULL;
 
 			/*
 			 * As btrfs supports shared space, this information
@@ -4505,9 +4520,11 @@ int extent_fiemap(struct inode *inode, struct fiemap_extent_info *fieinfo,
 			 * then we're just getting a count and we can skip the
 			 * lookup stuff.
 			 */
-			ret = btrfs_check_shared(NULL, root->fs_info,
+			ret = btrfs_check_shared(trans, root->fs_info,
 						 root->objectid,
 						 btrfs_ino(inode), bytenr);
+			if (trans)
+				btrfs_end_transaction(trans, root);
 			if (ret < 0)
 				goto out_free;
 			if (ret)
@@ -5237,8 +5254,17 @@ int read_extent_buffer_pages(struct extent_io_tree *tree,
 						      get_extent, &bio,
 						      mirror_num, &bio_flags,
 						      READ | REQ_META);
-			if (err)
+			if (err) {
 				ret = err;
+				/*
+				 * We use &bio in above __extent_read_full_page,
+				 * so we ensure that if it returns error, the
+				 * current page fails to add itself to bio.
+				 *
+				 * We must dec io_pages by ourselves.
+				 */
+				atomic_dec(&eb->io_pages);
+			}
 		} else {
 			unlock_page(page);
 		}
