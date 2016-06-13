@@ -46,7 +46,7 @@ static u64 rxe_dma_map_single(struct ib_device *dev,
 			      enum dma_data_direction direction)
 {
 	WARN_ON(!valid_dma_direction(direction));
-	return (u64)cpu_addr;
+	return (uintptr_t)cpu_addr;
 }
 
 static void rxe_dma_unmap_single(struct ib_device *dev,
@@ -70,7 +70,7 @@ static u64 rxe_dma_map_page(struct ib_device *dev,
 		goto done;
 	}
 
-	addr = (u64)page_address(page);
+	addr = (uintptr_t)page_address(page);
 	if (addr)
 		addr += offset;
 
@@ -96,7 +96,7 @@ static int rxe_map_sg(struct ib_device *dev, struct scatterlist *sgl,
 	WARN_ON(!valid_dma_direction(direction));
 
 	for_each_sg(sgl, sg, nents, i) {
-		addr = (u64)page_address(sg_page(sg));
+		addr = (uintptr_t)page_address(sg_page(sg));
 		if (!addr) {
 			ret = 0;
 			break;
@@ -140,7 +140,7 @@ static void *rxe_dma_alloc_coherent(struct ib_device *dev, size_t size,
 		addr = page_address(p);
 
 	if (dma_handle)
-		*dma_handle = (u64)addr;
+		*dma_handle = (uintptr_t)addr;
 
 	return addr;
 }
