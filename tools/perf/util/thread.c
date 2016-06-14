@@ -43,9 +43,6 @@ struct thread *thread__new(pid_t pid, pid_t tid)
 		thread->cpu = -1;
 		INIT_LIST_HEAD(&thread->comm_list);
 
-		if (unwind__prepare_access(thread) < 0)
-			goto err_thread;
-
 		comm_str = malloc(32);
 		if (!comm_str)
 			goto err_thread;
@@ -201,10 +198,18 @@ size_t thread__fprintf(struct thread *thread, FILE *fp)
 	       map_groups__fprintf(thread->mg, fp);
 }
 
-void thread__insert_map(struct thread *thread, struct map *map)
+int thread__insert_map(struct thread *thread, struct map *map)
 {
+	int ret;
+
+	ret = unwind__prepare_access(thread, map);
+	if (ret)
+		return ret;
+
 	map_groups__fixup_overlappings(thread->mg, map, stderr);
 	map_groups__insert(thread->mg, map);
+
+	return 0;
 }
 
 static int thread__clone_map_groups(struct thread *thread,
@@ -264,4 +269,15 @@ void thread__find_cpumode_addr_location(struct thread *thread,
 		if (al->map)
 			break;
 	}
+}
+
+struct thread *thread__main_thread(struct machine *machine, struct thread *thread)
+{
+	if (thread->pid_ == thread->tid)
+		return thread__get(thread);
+
+	if (thread->pid_ == -1)
+		return NULL;
+
+	return machine__find_thread(machine, thread->pid_, thread->pid_);
 }

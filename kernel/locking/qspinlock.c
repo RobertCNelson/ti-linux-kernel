@@ -90,7 +90,7 @@ static DEFINE_PER_CPU_ALIGNED(struct mcs_spinlock, mcs_nodes[MAX_NODES]);
  * therefore increment the cpu number by one.
  */
 
-static inline u32 encode_tail(int cpu, int idx)
+static inline __pure u32 encode_tail(int cpu, int idx)
 {
 	u32 tail;
 
@@ -103,7 +103,7 @@ static inline u32 encode_tail(int cpu, int idx)
 	return tail;
 }
 
-static inline struct mcs_spinlock *decode_tail(u32 tail)
+static inline __pure struct mcs_spinlock *decode_tail(u32 tail)
 {
 	int cpu = (tail >> _Q_TAIL_CPU_OFFSET) - 1;
 	int idx = (tail &  _Q_TAIL_IDX_MASK) >> _Q_TAIL_IDX_OFFSET;
@@ -266,6 +266,63 @@ static __always_inline u32  __pv_wait_head_or_lock(struct qspinlock *lock,
 #ifdef CONFIG_PARAVIRT_SPINLOCKS
 #define queued_spin_lock_slowpath	native_queued_spin_lock_slowpath
 #endif
+
+/*
+ * Various notes on spin_is_locked() and spin_unlock_wait(), which are
+ * 'interesting' functions:
+ *
+ * PROBLEM: some architectures have an interesting issue with atomic ACQUIRE
+ * operations in that the ACQUIRE applies to the LOAD _not_ the STORE (ARM64,
+ * PPC). Also qspinlock has a similar issue per construction, the setting of
+ * the locked byte can be unordered acquiring the lock proper.
+ *
+ * This gets to be 'interesting' in the following cases, where the /should/s
+ * end up false because of this issue.
+ *
+ *
+ * CASE 1:
+ *
+ * So the spin_is_locked() correctness issue comes from something like:
+ *
+ *   CPU0				CPU1
+ *
+ *   global_lock();			local_lock(i)
+ *     spin_lock(&G)			  spin_lock(&L[i])
+ *     for (i)				  if (!spin_is_locked(&G)) {
+ *       spin_unlock_wait(&L[i]);	    smp_acquire__after_ctrl_dep();
+ *					    return;
+ *					  }
+ *					  // deal with fail
+ *
+ * Where it is important CPU1 sees G locked or CPU0 sees L[i] locked such
+ * that there is exclusion between the two critical sections.
+ *
+ * The load from spin_is_locked(&G) /should/ be constrained by the ACQUIRE from
+ * spin_lock(&L[i]), and similarly the load(s) from spin_unlock_wait(&L[i])
+ * /should/ be constrained by the ACQUIRE from spin_lock(&G).
+ *
+ * Similarly, later stuff is constrained by the ACQUIRE from CTRL+RMB.
+ *
+ *
+ * CASE 2:
+ *
+ * For spin_unlock_wait() there is a second correctness issue, namely:
+ *
+ *   CPU0				CPU1
+ *
+ *   flag = set;
+ *   smp_mb();				spin_lock(&l)
+ *   spin_unlock_wait(&l);		if (!flag)
+ *					  // add to lockless list
+ *					spin_unlock(&l);
+ *   // iterate lockless list
+ *
+ * Which wants to ensure that CPU1 will stop adding bits to the list and CPU0
+ * will observe the last entry on the list (if spin_unlock_wait() had ACQUIRE
+ * semantics etc..)
+ *
+ * Where flag /should/ be ordered against the locked store of l.
+ */
 
 /*
  * queued_spin_lock_slowpath() can (load-)ACQUIRE the lock before
@@ -455,6 +512,8 @@ queue:
 	 * pending stuff.
 	 *
 	 * p,*,* -> n,*,*
+	 *
+	 * RELEASE, such that the stores to @node must be complete.
 	 */
 	old = xchg_tail(lock, tail);
 	next = NULL;
@@ -465,6 +524,15 @@ queue:
 	 */
 	if (old & _Q_TAIL_MASK) {
 		prev = decode_tail(old);
+		/*
+		 * The above xchg_tail() is also a load of @lock which generates,
+		 * through decode_tail(), a pointer.
+		 *
+		 * The address dependency matches the RELEASE of xchg_tail()
+		 * such that the access to @prev must happen after.
+		 */
+		smp_read_barrier_depends();
+
 		WRITE_ONCE(prev->next, node);
 
 		pv_wait_node(node, prev);

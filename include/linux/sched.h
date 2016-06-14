@@ -127,6 +127,7 @@ struct sched_attr {
 };
 
 struct futex_pi_state;
+struct futex_cache;
 struct robust_list_head;
 struct bio_list;
 struct fs_struct;
@@ -1768,6 +1769,7 @@ struct task_struct {
 #endif
 	struct list_head pi_state_list;
 	struct futex_pi_state *pi_state_cache;
+	struct futex_cache *futex_cache;
 #endif
 #ifdef CONFIG_PERF_EVENTS
 	struct perf_event_context *perf_event_ctxp[perf_nr_task_contexts];
@@ -2138,6 +2140,9 @@ static inline void put_task_struct(struct task_struct *t)
 	if (atomic_dec_and_test(&t->usage))
 		__put_task_struct(t);
 }
+
+struct task_struct *task_rcu_dereference(struct task_struct **ptask);
+struct task_struct *try_get_task_struct(struct task_struct **ptask);
 
 #ifdef CONFIG_VIRT_CPU_ACCOUNTING_GEN
 extern void task_cputime(struct task_struct *t,
