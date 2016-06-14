@@ -9,6 +9,8 @@
  * 2 of the License, or (at your option) any later version.
  */
 
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #include <linux/module.h>
 #include <linux/net.h>
 #include <linux/skbuff.h>
@@ -732,7 +734,7 @@ void rxrpc_data_ready(struct sock *sk)
 		rxrpc_post_packet_to_local(local, skb);
 		goto out;
 	}
-	
+
 	if (sp->hdr.type == RXRPC_PACKET_TYPE_DATA &&
 	    (sp->hdr.callNumber == 0 || sp->hdr.seq == 0))
 		goto bad_message;
