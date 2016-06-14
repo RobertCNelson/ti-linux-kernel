@@ -356,6 +356,7 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6q-gw54xx.dtb \
 	imx6q-gw551x.dtb \
 	imx6q-gw552x.dtb \
+	imx6q-h100.dtb \
 	imx6q-hummingboard.dtb \
 	imx6q-icore-rqs.dtb \
 	imx6q-marsboard.dtb \
@@ -377,6 +378,7 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6q-tx6q-1110.dtb \
 	imx6q-tx6q-11x0-mb7.dtb \
 	imx6q-udoo.dtb \
+	imx6q-utilite-pro.dtb \
 	imx6q-wandboard.dtb \
 	imx6q-wandboard-revb1.dtb \
 	imx6qp-nitrogen6_max.dtb \
@@ -416,7 +418,9 @@ dtb-$(CONFIG_SOC_VF610) += \
 dtb-$(CONFIG_ARCH_MXS) += \
 	imx23-evk.dtb \
 	imx23-olinuxino.dtb \
+	imx23-sansa.dtb \
 	imx23-stmp378x_devb.dtb \
+	imx23-xfi3.dtb \
 	imx28-apf28.dtb \
 	imx28-apf28dev.dtb \
 	imx28-apx4devkit.dtb \
