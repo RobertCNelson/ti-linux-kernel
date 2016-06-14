@@ -160,6 +160,7 @@ static int __mlx5e_add_vlan_rule(struct mlx5e_priv *priv,
 {
 	struct mlx5_flow_table *ft = priv->fs.vlan.ft.t;
 	struct mlx5_flow_destination dest;
+	struct mlx5_flow_attr flow_attr;
 	u8 match_criteria_enable = 0;
 	struct mlx5_flow_rule **rule_p;
 	int err = 0;
@@ -186,10 +187,10 @@ static int __mlx5e_add_vlan_rule(struct mlx5e_priv *priv,
 		break;
 	}
 
-	*rule_p = mlx5_add_flow_rule(ft, match_criteria_enable, mc, mv,
-				     MLX5_FLOW_CONTEXT_ACTION_FWD_DEST,
-				     MLX5_FS_DEFAULT_FLOW_TAG,
-				     &dest);
+	MLX5_RULE_ATTR(flow_attr, match_criteria_enable, mc, mv,
+		       MLX5_FLOW_CONTEXT_ACTION_FWD_DEST,
+		       MLX5_FS_DEFAULT_FLOW_TAG, &dest);
+	*rule_p = mlx5_add_flow_rule(ft, &flow_attr);
 
 	if (IS_ERR(*rule_p)) {
 		err = PTR_ERR(*rule_p);
@@ -597,6 +598,7 @@ static struct mlx5_flow_rule *mlx5e_generate_ttc_rule(struct mlx5e_priv *priv,
 						      u16 etype,
 						      u8 proto)
 {
+	struct mlx5_flow_attr flow_attr;
 	struct mlx5_flow_rule *rule;
 	u8 match_criteria_enable = 0;
 	u32 *match_criteria;
@@ -622,11 +624,10 @@ static struct mlx5_flow_rule *mlx5e_generate_ttc_rule(struct mlx5e_priv *priv,
 		MLX5_SET(fte_match_param, match_value, outer_headers.ethertype, etype);
 	}
 
-	rule = mlx5_add_flow_rule(ft, match_criteria_enable,
-				  match_criteria, match_value,
-				  MLX5_FLOW_CONTEXT_ACTION_FWD_DEST,
-				  MLX5_FS_DEFAULT_FLOW_TAG,
-				  dest);
+	MLX5_RULE_ATTR(flow_attr, match_criteria_enable, match_criteria,
+		       match_value, MLX5_FLOW_CONTEXT_ACTION_FWD_DEST,
+		       MLX5_FS_DEFAULT_FLOW_TAG, dest);
+	rule = mlx5_add_flow_rule(ft, &flow_attr);
 	if (IS_ERR(rule)) {
 		err = PTR_ERR(rule);
 		netdev_err(priv->netdev, "%s: add rule failed\n", __func__);
@@ -655,7 +656,7 @@ static int mlx5e_generate_ttc_table_rules(struct mlx5e_priv *priv)
 		if (tt == MLX5E_TT_ANY)
 			dest.tir_num = priv->direct_tir[0].tirn;
 		else
-			dest.tir_num = priv->indir_tirn[tt];
+			dest.tir_num = priv->indir_tir[tt].tirn;
 		rules[tt] = mlx5e_generate_ttc_rule(priv, ft, &dest,
 						    ttc_rules[tt].etype,
 						    ttc_rules[tt].proto);
@@ -792,6 +793,7 @@ static int mlx5e_add_l2_flow_rule(struct mlx5e_priv *priv,
 {
 	struct mlx5_flow_table *ft = priv->fs.l2.ft.t;
 	struct mlx5_flow_destination dest;
+	struct mlx5_flow_attr flow_attr;
 	u8 match_criteria_enable = 0;
 	u32 *match_criteria;
 	u32 *match_value;
@@ -832,10 +834,10 @@ static int mlx5e_add_l2_flow_rule(struct mlx5e_priv *priv,
 		break;
 	}
 
-	ai->rule = mlx5_add_flow_rule(ft, match_criteria_enable, match_criteria,
-				      match_value,
-				      MLX5_FLOW_CONTEXT_ACTION_FWD_DEST,
-				      MLX5_FS_DEFAULT_FLOW_TAG, &dest);
+	MLX5_RULE_ATTR(flow_attr, match_criteria_enable, match_criteria,
+		       match_value, MLX5_FLOW_CONTEXT_ACTION_FWD_DEST,
+		       MLX5_FS_DEFAULT_FLOW_TAG, &dest);
+	ai->rule = mlx5_add_flow_rule(ft, &flow_attr);
 	if (IS_ERR(ai->rule)) {
 		netdev_err(priv->netdev, "%s: add l2 rule(mac:%pM) failed\n",
 			   __func__, mv_dmac);

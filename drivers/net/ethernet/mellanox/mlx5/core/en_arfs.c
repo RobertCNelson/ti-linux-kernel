@@ -93,14 +93,14 @@ static enum mlx5e_traffic_types arfs_get_tt(enum arfs_type type)
 static int arfs_disable(struct mlx5e_priv *priv)
 {
 	struct mlx5_flow_destination dest;
-	u32 *tirn = priv->indir_tirn;
+	struct mlx5e_tir *tir = priv->indir_tir;
 	int err = 0;
 	int tt;
 	int i;
 
 	dest.type = MLX5_FLOW_DESTINATION_TYPE_TIR;
 	for (i = 0; i < ARFS_NUM_TYPES; i++) {
-		dest.tir_num = tirn[i];
+		dest.tir_num = tir[i].tirn;
 		tt = arfs_get_tt(i);
 		/* Modify ttc rules destination to bypass the aRFS tables*/
 		err = mlx5_modify_rule_destination(priv->fs.ttc.rules[tt],
@@ -174,15 +174,15 @@ static int arfs_add_default_rule(struct mlx5e_priv *priv,
 				 enum arfs_type type)
 {
 	struct arfs_table *arfs_t = &priv->fs.arfs.arfs_tables[type];
+	struct mlx5e_tir *tir = priv->indir_tir;
 	struct mlx5_flow_destination dest;
-	u8 match_criteria_enable = 0;
-	u32 *tirn = priv->indir_tirn;
+	struct mlx5_flow_attr flow_attr;
 	u32 *match_criteria;
 	u32 *match_value;
 	int err = 0;
 
 	match_value	= mlx5_vzalloc(MLX5_ST_SZ_BYTES(fte_match_param));
-	match_criteria	= mlx5_vzalloc(MLX5_ST_SZ_BYTES(fte_match_param));
+	match_criteria = mlx5_vzalloc(MLX5_ST_SZ_BYTES(fte_match_param));
 	if (!match_value || !match_criteria) {
 		netdev_err(priv->netdev, "%s: alloc failed\n", __func__);
 		err = -ENOMEM;
@@ -192,27 +192,26 @@ static int arfs_add_default_rule(struct mlx5e_priv *priv,
 	dest.type = MLX5_FLOW_DESTINATION_TYPE_TIR;
 	switch (type) {
 	case ARFS_IPV4_TCP:
-		dest.tir_num = tirn[MLX5E_TT_IPV4_TCP];
+		dest.tir_num = tir[MLX5E_TT_IPV4_TCP].tirn;
 		break;
 	case ARFS_IPV4_UDP:
-		dest.tir_num = tirn[MLX5E_TT_IPV4_UDP];
+		dest.tir_num = tir[MLX5E_TT_IPV4_UDP].tirn;
 		break;
 	case ARFS_IPV6_TCP:
-		dest.tir_num = tirn[MLX5E_TT_IPV6_TCP];
+		dest.tir_num = tir[MLX5E_TT_IPV6_TCP].tirn;
 		break;
 	case ARFS_IPV6_UDP:
-		dest.tir_num = tirn[MLX5E_TT_IPV6_UDP];
+		dest.tir_num = tir[MLX5E_TT_IPV6_UDP].tirn;
 		break;
 	default:
 		err = -EINVAL;
 		goto out;
 	}
 
-	arfs_t->default_rule = mlx5_add_flow_rule(arfs_t->ft.t, match_criteria_enable,
-						  match_criteria, match_value,
-						  MLX5_FLOW_CONTEXT_ACTION_FWD_DEST,
-						  MLX5_FS_DEFAULT_FLOW_TAG,
-						  &dest);
+	MLX5_RULE_ATTR(flow_attr, 0, match_criteria,
+		       match_value, MLX5_FLOW_CONTEXT_ACTION_FWD_DEST,
+		       MLX5_FS_DEFAULT_FLOW_TAG, &dest);
+	arfs_t->default_rule = mlx5_add_flow_rule(arfs_t->ft.t, &flow_attr);
 	if (IS_ERR(arfs_t->default_rule)) {
 		err = PTR_ERR(arfs_t->default_rule);
 		arfs_t->default_rule = NULL;
@@ -474,21 +473,20 @@ static struct mlx5_flow_rule *arfs_add_rule(struct mlx5e_priv *priv,
 	struct arfs_tuple *tuple = &arfs_rule->tuple;
 	struct mlx5_flow_rule *rule = NULL;
 	struct mlx5_flow_destination dest;
+	struct mlx5_flow_attr flow_attr;
 	struct arfs_table *arfs_table;
-	u8 match_criteria_enable = 0;
 	struct mlx5_flow_table *ft;
 	u32 *match_criteria;
 	u32 *match_value;
 	int err = 0;
 
 	match_value	= mlx5_vzalloc(MLX5_ST_SZ_BYTES(fte_match_param));
-	match_criteria	= mlx5_vzalloc(MLX5_ST_SZ_BYTES(fte_match_param));
+	match_criteria = mlx5_vzalloc(MLX5_ST_SZ_BYTES(fte_match_param));
 	if (!match_value || !match_criteria) {
 		netdev_err(priv->netdev, "%s: alloc failed\n", __func__);
 		err = -ENOMEM;
 		goto out;
 	}
-	match_criteria_enable = MLX5_MATCH_OUTER_HEADERS;
 	MLX5_SET_TO_ONES(fte_match_param, match_criteria,
 			 outer_headers.ethertype);
 	MLX5_SET(fte_match_param, match_value, outer_headers.ethertype,
@@ -552,10 +550,10 @@ static struct mlx5_flow_rule *arfs_add_rule(struct mlx5e_priv *priv,
 	}
 	dest.type = MLX5_FLOW_DESTINATION_TYPE_TIR;
 	dest.tir_num = priv->direct_tir[arfs_rule->rxq].tirn;
-	rule = mlx5_add_flow_rule(ft, match_criteria_enable, match_criteria,
-				  match_value, MLX5_FLOW_CONTEXT_ACTION_FWD_DEST,
-				  MLX5_FS_DEFAULT_FLOW_TAG,
-				  &dest);
+	MLX5_RULE_ATTR(flow_attr, MLX5_MATCH_OUTER_HEADERS, match_criteria,
+		       match_value, MLX5_FLOW_CONTEXT_ACTION_FWD_DEST,
+		       MLX5_FS_DEFAULT_FLOW_TAG, &dest);
+	rule = mlx5_add_flow_rule(ft, &flow_attr);
 	if (IS_ERR(rule)) {
 		err = PTR_ERR(rule);
 		netdev_err(priv->netdev, "%s: add rule(filter id=%d, rq idx=%d) failed, err=%d\n",

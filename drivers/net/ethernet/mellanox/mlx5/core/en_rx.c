@@ -33,6 +33,7 @@
 #include <linux/ip.h>
 #include <linux/ipv6.h>
 #include <linux/tcp.h>
+#include <linux/if_packet.h>
 #include <net/busy_poll.h>
 #include "en.h"
 #include "en_tc.h"
@@ -741,6 +742,9 @@ static inline void mlx5e_build_rx_skb(struct mlx5_cqe64 *cqe,
 
 	mlx5e_handle_csum(netdev, cqe, rq, skb, !!lro_num_seg);
 	skb->protocol = eth_type_trans(skb, netdev);
+	if (unlikely((mlx5_get_cqe_ft(cqe) ==
+		      cpu_to_be32(MLX5_FS_BYPASS_FLOW_TAG))))
+		skb->pkt_type = PACKET_BYPASS_KERNEL;
 }
 
 static inline void mlx5e_complete_rx_cqe(struct mlx5e_rq *rq,

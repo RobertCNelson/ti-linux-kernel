@@ -1708,11 +1708,13 @@ static struct mlx5_ib_flow_handler *create_flow_rule(struct mlx5_ib_dev *dev,
 {
 	struct mlx5_flow_table	*ft = ft_prio->flow_table;
 	struct mlx5_ib_flow_handler *handler;
+	struct mlx5_flow_attr flow_rule_attr;
 	void *ib_flow = flow_attr + 1;
 	u8 match_criteria_enable = 0;
 	unsigned int spec_index;
 	u32 *match_c;
 	u32 *match_v;
+	u32 flow_tag;
 	u32 action;
 	int err = 0;
 
@@ -1741,11 +1743,13 @@ static struct mlx5_ib_flow_handler *create_flow_rule(struct mlx5_ib_dev *dev,
 	match_criteria_enable = (!outer_header_zero(match_c)) << 0;
 	action = dst ? MLX5_FLOW_CONTEXT_ACTION_FWD_DEST :
 		MLX5_FLOW_CONTEXT_ACTION_FWD_NEXT_PRIO;
-	handler->rule = mlx5_add_flow_rule(ft, match_criteria_enable,
-					   match_c, match_v,
-					   action,
-					   MLX5_FS_DEFAULT_FLOW_TAG,
-					   dst);
+	flow_tag = (flow_attr->type == IB_FLOW_ATTR_ALL_DEFAULT ||
+		    flow_attr->type == IB_FLOW_ATTR_MC_DEFAULT) ?
+		MLX5_FS_BYPASS_FLOW_TAG : MLX5_FS_DEFAULT_FLOW_TAG;
+
+	MLX5_RULE_ATTR(flow_rule_attr, match_criteria_enable, match_c,
+		       match_v, action, flow_tag, dst);
+	handler->rule = mlx5_add_flow_rule(ft, &flow_rule_attr);
 
 	if (IS_ERR(handler->rule)) {
 		err = PTR_ERR(handler->rule);
@@ -1799,12 +1803,13 @@ static struct mlx5_ib_flow_handler *create_leftovers_rule(struct mlx5_ib_dev *de
 	struct mlx5_ib_flow_handler *handler_ucast = NULL;
 	struct mlx5_ib_flow_handler *handler = NULL;
 
-	static struct {
+	struct {
 		struct ib_flow_attr	flow_attr;
 		struct ib_flow_spec_eth eth_flow;
 	} leftovers_specs[] = {
 		[LEFTOVERS_MC] = {
 			.flow_attr = {
+				.type = flow_attr->type,
 				.num_of_specs = 1,
 				.size = sizeof(leftovers_specs[0])
 			},
@@ -1817,6 +1822,7 @@ static struct mlx5_ib_flow_handler *create_leftovers_rule(struct mlx5_ib_dev *de
 		},
 		[LEFTOVERS_UC] = {
 			.flow_attr = {
+				.type = flow_attr->type,
 				.num_of_specs = 1,
 				.size = sizeof(leftovers_specs[0])
 			},
@@ -2515,6 +2521,116 @@ static int mlx5_port_immutable(struct ib_device *ibdev, u8 port_num,
 	return 0;
 }
 
+static void del_roce_rules(struct mlx5_flow_roce_ns *ns)
+
+{
+	if (ns->rocev1_rule) {
+		mlx5_del_flow_rule(ns->rocev1_rule);
+		ns->rocev1_rule = NULL;
+	}
+
+	if (ns->rocev2_ipv4_rule) {
+		mlx5_del_flow_rule(ns->rocev2_ipv4_rule);
+		ns->rocev2_ipv4_rule = NULL;
+	}
+
+	if (ns->rocev2_ipv6_rule) {
+		mlx5_del_flow_rule(ns->rocev2_ipv6_rule);
+		ns->rocev2_ipv6_rule = NULL;
+	}
+}
+
+static int add_roce_rules(struct mlx5_flow_roce_ns *ns)
+{
+	struct mlx5_flow_attr flow_attr;
+	u8 match_criteria_enable;
+	int inlen = MLX5_ST_SZ_BYTES(fte_match_param);
+	u32 *mc;
+	u32 *mv;
+	int err = 0;
+
+	mv = mlx5_vzalloc(inlen);
+	mc = mlx5_vzalloc(inlen);
+	if (!mv || !mc) {
+		err = -ENOMEM;
+		goto add_roce_rules_out;
+	}
+
+	match_criteria_enable = MLX5_MATCH_OUTER_HEADERS;
+
+	MLX5_SET_TO_ONES(fte_match_param, mc, outer_headers.ethertype);
+	MLX5_SET(fte_match_param, mv, outer_headers.ethertype, ETH_P_ROCE);
+
+	MLX5_RULE_ATTR(flow_attr, match_criteria_enable, mc, mv,
+		       MLX5_FLOW_CONTEXT_ACTION_ALLOW,
+		       MLX5_FS_DEFAULT_FLOW_TAG, NULL);
+	ns->rocev1_rule = mlx5_add_flow_rule(ns->ft, &flow_attr);
+	if (IS_ERR(ns->rocev1_rule)) {
+		err = PTR_ERR(ns->rocev1_rule);
+		ns->rocev1_rule = NULL;
+		goto add_roce_rules_out;
+	}
+
+	MLX5_SET(fte_match_param, mv, outer_headers.ethertype, ETH_P_IP);
+	MLX5_SET_TO_ONES(fte_match_param, mc, outer_headers.ip_protocol);
+	MLX5_SET(fte_match_param, mv, outer_headers.ip_protocol, IPPROTO_UDP);
+	MLX5_SET_TO_ONES(fte_match_param, mc, outer_headers.udp_dport);
+	MLX5_SET(fte_match_param, mv, outer_headers.udp_dport,
+		 ROCE_V2_UDP_DPORT);
+	ns->rocev2_ipv4_rule = mlx5_add_flow_rule(ns->ft, &flow_attr);
+	if (IS_ERR(ns->rocev2_ipv4_rule)) {
+		err = PTR_ERR(ns->rocev2_ipv4_rule);
+		ns->rocev2_ipv4_rule = NULL;
+		goto add_roce_rules_out;
+	}
+
+	MLX5_SET(fte_match_param, mv, outer_headers.ethertype, ETH_P_IPV6);
+	ns->rocev2_ipv6_rule = mlx5_add_flow_rule(ns->ft, &flow_attr);
+	if (IS_ERR(ns->rocev2_ipv6_rule)) {
+		err = PTR_ERR(ns->rocev2_ipv6_rule);
+		ns->rocev2_ipv6_rule = NULL;
+		goto add_roce_rules_out;
+	}
+
+add_roce_rules_out:
+	kvfree(mc);
+	kvfree(mv);
+	if (err)
+		del_roce_rules(ns);
+	return err;
+}
+
+#define ROCE_TABLE_SIZE 3
+static int mlx5_init_roce_steering(struct mlx5_ib_dev *dev)
+{
+	struct mlx5_flow_roce_ns *roce_ns = &dev->roce.roce_ns;
+	int err;
+
+	roce_ns->ns = mlx5_get_flow_namespace(dev->mdev,
+					      MLX5_FLOW_NAMESPACE_ROCE);
+	if (!roce_ns->ns)
+		return -EINVAL;
+
+	roce_ns->ft = mlx5_create_auto_grouped_flow_table(roce_ns->ns, 0,
+							  ROCE_TABLE_SIZE, 1, 0);
+	if (IS_ERR(roce_ns->ft)) {
+		err = PTR_ERR(roce_ns->ft);
+		pr_warn("Failed to create roce flow table\n");
+		roce_ns->ft = NULL;
+		return err;
+	}
+
+	err = add_roce_rules(roce_ns);
+	if (err)
+		goto destroy_flow_table;
+
+	return 0;
+
+destroy_flow_table:
+	mlx5_destroy_flow_table(roce_ns->ft);
+	return err;
+}
+
 static int mlx5_enable_roce(struct mlx5_ib_dev *dev)
 {
 	int err;
@@ -2528,6 +2644,9 @@ static int mlx5_enable_roce(struct mlx5_ib_dev *dev)
 	if (err)
 		goto err_unregister_netdevice_notifier;
 
+	/* RoCE can be supported without flow steering*/
+	mlx5_init_roce_steering(dev);
+
 	return 0;
 
 err_unregister_netdevice_notifier:
@@ -2535,8 +2654,20 @@ err_unregister_netdevice_notifier:
 	return err;
 }
 
+static void mlx5_cleanup_roce_steering(struct mlx5_ib_dev *dev)
+{
+	struct mlx5_flow_roce_ns *roce_ns = &dev->roce.roce_ns;
+
+	if (!roce_ns->ns || !roce_ns->ft)
+		return;
+
+	del_roce_rules(roce_ns);
+	mlx5_destroy_flow_table(roce_ns->ft);
+}
+
 static void mlx5_disable_roce(struct mlx5_ib_dev *dev)
 {
+	mlx5_cleanup_roce_steering(dev);
 	mlx5_nic_vport_disable_roce(dev->mdev);
 	unregister_netdevice_notifier(&dev->roce.nb);
 }
