@@ -365,7 +365,6 @@ static inline void slave_write(struct cpsw_slave *slave, u32 val, u32 offset)
 }
 
 struct cpsw_priv {
-	spinlock_t			lock;
 	struct platform_device		*pdev;
 	struct net_device		*ndev;
 	struct napi_struct		napi_rx;
@@ -381,7 +380,6 @@ struct cpsw_priv {
 	u32				coal_intvl;
 	u32				bus_freq_mhz;
 	int				rx_packet_max;
-	int				host_port;
 	struct clk			*clk;
 	u8				mac_addr[ETH_ALEN];
 	struct cpsw_slave		*slaves;
@@ -532,21 +530,18 @@ static const struct cpsw_stats cpsw_gstrings_stats[] = {
 			int slave_port = cpsw_get_slave_port(priv,	\
 						slave->slave_num);	\
 			cpsw_ale_add_mcast(priv->ale, addr,		\
-				1 << slave_port | 1 << priv->host_port,	\
+				1 << slave_port | ALE_PORT_HOST,	\
 				ALE_VLAN, slave->port_vlan, 0);		\
 		} else {						\
 			cpsw_ale_add_mcast(priv->ale, addr,		\
-				ALE_ALL_PORTS << priv->host_port,	\
+				ALE_ALL_PORTS,				\
 				0, 0, 0);				\
 		}							\
 	} while (0)
 
 static inline int cpsw_get_slave_port(struct cpsw_priv *priv, u32 slave_num)
 {
-	if (priv->host_port == 0)
-		return slave_num + 1;
-	else
-		return slave_num;
+	return slave_num + 1;
 }
 
 static void cpsw_set_promiscious(struct net_device *ndev, bool enable)
@@ -603,8 +598,7 @@ static void cpsw_set_promiscious(struct net_device *ndev, bool enable)
 			cpsw_ale_control_set(ale, 0, ALE_AGEOUT, 1);
 
 			/* Clear all mcast from ALE */
-			cpsw_ale_flush_multicast(ale, ALE_ALL_PORTS <<
-						 priv->host_port, -1);
+			cpsw_ale_flush_multicast(ale, ALE_ALL_PORTS, -1);
 
 			/* Flood All Unicast Packets to Host port */
 			cpsw_ale_control_set(ale, 0, ALE_P0_UNI_FLOOD, 1);
@@ -649,8 +643,7 @@ static void cpsw_ndo_set_rx_mode(struct net_device *ndev)
 	cpsw_ale_set_allmulti(priv->ale, priv->ndev->flags & IFF_ALLMULTI);
 
 	/* Clear all mcast from ALE */
-	cpsw_ale_flush_multicast(priv->ale, ALE_ALL_PORTS << priv->host_port,
-				 vid);
+	cpsw_ale_flush_multicast(priv->ale, ALE_ALL_PORTS, vid);
 
 	if (!netdev_mc_empty(ndev)) {
 		struct netdev_hw_addr *ha;
@@ -940,6 +933,13 @@ static int cpsw_set_coalesce(struct net_device *ndev,
 	u32 prescale = 0;
 	u32 addnl_dvdr = 1;
 	u32 coal_intvl = 0;
+	int ret;
+
+	ret = pm_runtime_get_sync(&priv->pdev->dev);
+	if (ret < 0) {
+		pm_runtime_put_noidle(&priv->pdev->dev);
+		return ret;
+	}
 
 	coal_intvl = coal->rx_coalesce_usecs;
 
@@ -994,6 +994,8 @@ update_return:
 		priv->coal_intvl = coal_intvl;
 	}
 
+	pm_runtime_put(&priv->pdev->dev);
+
 	return 0;
 }
 
@@ -1031,7 +1033,13 @@ static void cpsw_get_ethtool_stats(struct net_device *ndev,
 	struct cpdma_chan_stats tx_stats;
 	u32 val;
 	u8 *p;
-	int i;
+	int i, ret;
+
+	ret = pm_runtime_get_sync(&priv->pdev->dev);
+	if (ret < 0) {
+		pm_runtime_put_noidle(&priv->pdev->dev);
+		return;
+	}
 
 	/* Collect Davinci CPDMA stats for Rx and Tx Channel */
 	cpdma_chan_get_stats(priv->rxch, &rx_stats);
@@ -1058,6 +1066,8 @@ static void cpsw_get_ethtool_stats(struct net_device *ndev,
 			break;
 		}
 	}
+
+	pm_runtime_put(&priv->pdev->dev);
 }
 
 static int cpsw_common_res_usage_state(struct cpsw_priv *priv)
@@ -1094,7 +1104,7 @@ static inline void cpsw_add_dual_emac_def_ale_entries(
 		struct cpsw_priv *priv, struct cpsw_slave *slave,
 		u32 slave_port)
 {
-	u32 port_mask = 1 << slave_port | 1 << priv->host_port;
+	u32 port_mask = 1 << slave_port | ALE_PORT_HOST;
 
 	if (priv->version == CPSW_VERSION_1)
 		slave_write(slave, slave->port_vlan, CPSW1_PORT_VLAN);
@@ -1105,7 +1115,7 @@ static inline void cpsw_add_dual_emac_def_ale_entries(
 	cpsw_ale_add_mcast(priv->ale, priv->ndev->broadcast,
 			   port_mask, ALE_VLAN, slave->port_vlan, 0);
 	cpsw_ale_add_ucast(priv->ale, priv->mac_addr,
-		priv->host_port, ALE_VLAN | ALE_SECURE, slave->port_vlan);
+		HOST_PORT_NUM, ALE_VLAN | ALE_SECURE, slave->port_vlan);
 }
 
 static void soft_reset_slave(struct cpsw_slave *slave)
@@ -1185,7 +1195,6 @@ static void cpsw_slave_open(struct cpsw_slave *slave, struct cpsw_priv *priv)
 static inline void cpsw_add_default_vlan(struct cpsw_priv *priv)
 {
 	const int vlan = priv->data.default_vlan;
-	const int port = priv->host_port;
 	u32 reg;
 	int i;
 	int unreg_mcast_mask;
@@ -1203,9 +1212,9 @@ static inline void cpsw_add_default_vlan(struct cpsw_priv *priv)
 	else
 		unreg_mcast_mask = ALE_PORT_1 | ALE_PORT_2;
 
-	cpsw_ale_add_vlan(priv->ale, vlan, ALE_ALL_PORTS << port,
-			  ALE_ALL_PORTS << port, ALE_ALL_PORTS << port,
-			  unreg_mcast_mask << port);
+	cpsw_ale_add_vlan(priv->ale, vlan, ALE_ALL_PORTS,
+			  ALE_ALL_PORTS, ALE_ALL_PORTS,
+			  unreg_mcast_mask);
 }
 
 static void cpsw_init_host_port(struct cpsw_priv *priv)
@@ -1218,7 +1227,7 @@ static void cpsw_init_host_port(struct cpsw_priv *priv)
 	cpsw_ale_start(priv->ale);
 
 	/* switch to vlan unaware mode */
-	cpsw_ale_control_set(priv->ale, priv->host_port, ALE_VLAN_AWARE,
+	cpsw_ale_control_set(priv->ale, HOST_PORT_NUM, ALE_VLAN_AWARE,
 			     CPSW_ALE_VLAN_AWARE);
 	control_reg = readl(&priv->regs->control);
 	control_reg |= CPSW_VLAN_AWARE;
@@ -1232,14 +1241,14 @@ static void cpsw_init_host_port(struct cpsw_priv *priv)
 		     &priv->host_port_regs->cpdma_tx_pri_map);
 	__raw_writel(0, &priv->host_port_regs->cpdma_rx_chan_map);
 
-	cpsw_ale_control_set(priv->ale, priv->host_port,
+	cpsw_ale_control_set(priv->ale, HOST_PORT_NUM,
 			     ALE_PORT_STATE, ALE_PORT_STATE_FORWARD);
 
 	if (!priv->data.dual_emac) {
-		cpsw_ale_add_ucast(priv->ale, priv->mac_addr, priv->host_port,
+		cpsw_ale_add_ucast(priv->ale, priv->mac_addr, HOST_PORT_NUM,
 				   0, 0);
 		cpsw_ale_add_mcast(priv->ale, priv->ndev->broadcast,
-				   1 << priv->host_port, 0, 0, ALE_MCAST_FWD_2);
+				   ALE_PORT_HOST, 0, 0, ALE_MCAST_FWD_2);
 	}
 }
 
@@ -1256,6 +1265,7 @@ static void cpsw_slave_stop(struct cpsw_slave *slave, struct cpsw_priv *priv)
 	slave->phy = NULL;
 	cpsw_ale_control_set(priv->ale, slave_port,
 			     ALE_PORT_STATE, ALE_PORT_STATE_DISABLE);
+	soft_reset_slave(slave);
 }
 
 static int cpsw_ndo_open(struct net_device *ndev)
@@ -1264,7 +1274,11 @@ static int cpsw_ndo_open(struct net_device *ndev)
 	int i, ret;
 	u32 reg;
 
-	pm_runtime_get_sync(&priv->pdev->dev);
+	ret = pm_runtime_get_sync(&priv->pdev->dev);
+	if (ret < 0) {
+		pm_runtime_put_noidle(&priv->pdev->dev);
+		return ret;
+	}
 
 	if (!cpsw_common_res_usage_state(priv))
 		cpsw_intr_disable(priv);
@@ -1286,8 +1300,7 @@ static int cpsw_ndo_open(struct net_device *ndev)
 		cpsw_add_default_vlan(priv);
 	else
 		cpsw_ale_add_vlan(priv->ale, priv->data.default_vlan,
-				  ALE_ALL_PORTS << priv->host_port,
-				  ALE_ALL_PORTS << priv->host_port, 0, 0);
+				  ALE_ALL_PORTS, ALE_ALL_PORTS, 0, 0);
 
 	if (!cpsw_common_res_usage_state(priv)) {
 		struct cpsw_priv *priv_sl0 = cpsw_get_slave_priv(priv, 0);
@@ -1352,7 +1365,7 @@ static int cpsw_ndo_open(struct net_device *ndev)
 	if (priv->coal_intvl != 0) {
 		struct ethtool_coalesce coal;
 
-		coal.rx_coalesce_usecs = (priv->coal_intvl << 4);
+		coal.rx_coalesce_usecs = priv->coal_intvl;
 		cpsw_set_coalesce(ndev, &coal);
 	}
 
@@ -1900,23 +1913,32 @@ static int cpsw_ndo_set_mac_address(struct net_device *ndev, void *p)
 	struct sockaddr *addr = (struct sockaddr *)p;
 	int flags = 0;
 	u16 vid = 0;
+	int ret;
 
 	if (!is_valid_ether_addr(addr->sa_data))
 		return -EADDRNOTAVAIL;
+
+	ret = pm_runtime_get_sync(&priv->pdev->dev);
+	if (ret < 0) {
+		pm_runtime_put_noidle(&priv->pdev->dev);
+		return ret;
+	}
 
 	if (priv->data.dual_emac) {
 		vid = priv->slaves[priv->emac_port].port_vlan;
 		flags = ALE_VLAN;
 	}
 
-	cpsw_ale_del_ucast(priv->ale, priv->mac_addr, priv->host_port,
+	cpsw_ale_del_ucast(priv->ale, priv->mac_addr, HOST_PORT_NUM,
 			   flags, vid);
-	cpsw_ale_add_ucast(priv->ale, addr->sa_data, priv->host_port,
+	cpsw_ale_add_ucast(priv->ale, addr->sa_data, HOST_PORT_NUM,
 			   flags, vid);
 
 	memcpy(priv->mac_addr, addr->sa_data, ETH_ALEN);
 	memcpy(ndev->dev_addr, priv->mac_addr, ETH_ALEN);
 	for_each_slave(priv, cpsw_set_slave_mac, priv);
+
+	pm_runtime_put(&priv->pdev->dev);
 
 	return 0;
 }
@@ -1955,12 +1977,12 @@ static inline int cpsw_add_vlan_ale_entry(struct cpsw_priv *priv,
 	}
 
 	ret = cpsw_ale_add_vlan(priv->ale, vid, port_mask, 0, port_mask,
-				unreg_mcast_mask << priv->host_port);
+				unreg_mcast_mask);
 	if (ret != 0)
 		return ret;
 
 	ret = cpsw_ale_add_ucast(priv->ale, priv->mac_addr,
-				 priv->host_port, ALE_VLAN, vid);
+				 HOST_PORT_NUM, ALE_VLAN, vid);
 	if (ret != 0)
 		goto clean_vid;
 
@@ -1972,7 +1994,7 @@ static inline int cpsw_add_vlan_ale_entry(struct cpsw_priv *priv,
 
 clean_vlan_ucast:
 	cpsw_ale_del_ucast(priv->ale, priv->mac_addr,
-			    priv->host_port, ALE_VLAN, vid);
+			   HOST_PORT_NUM, ALE_VLAN, vid);
 clean_vid:
 	cpsw_ale_del_vlan(priv->ale, vid, 0);
 	return ret;
@@ -1982,9 +2004,16 @@ static int cpsw_ndo_vlan_rx_add_vid(struct net_device *ndev,
 				    __be16 proto, u16 vid)
 {
 	struct cpsw_priv *priv = netdev_priv(ndev);
+	int ret;
 
 	if (vid == priv->data.default_vlan)
 		return 0;
+
+	ret = pm_runtime_get_sync(&priv->pdev->dev);
+	if (ret < 0) {
+		pm_runtime_put_noidle(&priv->pdev->dev);
+		return ret;
+	}
 
 	if (priv->data.dual_emac) {
 		/* In dual EMAC, reserved VLAN id should not be used for
@@ -2000,7 +2029,10 @@ static int cpsw_ndo_vlan_rx_add_vid(struct net_device *ndev,
 	}
 
 	dev_info(priv->dev, "Adding vlanid %d to vlan filter\n", vid);
-	return cpsw_add_vlan_ale_entry(priv, vid);
+	ret = cpsw_add_vlan_ale_entry(priv, vid);
+
+	pm_runtime_put(&priv->pdev->dev);
+	return ret;
 }
 
 static int cpsw_ndo_vlan_rx_kill_vid(struct net_device *ndev,
@@ -2011,6 +2043,12 @@ static int cpsw_ndo_vlan_rx_kill_vid(struct net_device *ndev,
 
 	if (vid == priv->data.default_vlan)
 		return 0;
+
+	ret = pm_runtime_get_sync(&priv->pdev->dev);
+	if (ret < 0) {
+		pm_runtime_put_noidle(&priv->pdev->dev);
+		return ret;
+	}
 
 	if (priv->data.dual_emac) {
 		int i;
@@ -2027,12 +2065,14 @@ static int cpsw_ndo_vlan_rx_kill_vid(struct net_device *ndev,
 		return ret;
 
 	ret = cpsw_ale_del_ucast(priv->ale, priv->mac_addr,
-				 priv->host_port, ALE_VLAN, vid);
+				 HOST_PORT_NUM, ALE_VLAN, vid);
 	if (ret != 0)
 		return ret;
 
-	return cpsw_ale_del_mcast(priv->ale, priv->ndev->broadcast,
-				  0, ALE_VLAN, vid);
+	ret = cpsw_ale_del_mcast(priv->ale, priv->ndev->broadcast,
+				 0, ALE_VLAN, vid);
+	pm_runtime_put(&priv->pdev->dev);
+	return ret;
 }
 
 static const struct net_device_ops cpsw_netdev_ops = {
@@ -2064,11 +2104,20 @@ static void cpsw_get_regs(struct net_device *ndev,
 {
 	struct cpsw_priv *priv = netdev_priv(ndev);
 	u32 *reg = p;
+	int ret;
+
+	ret = pm_runtime_get_sync(&priv->pdev->dev);
+	if (ret < 0) {
+		pm_runtime_put_noidle(&priv->pdev->dev);
+		return;
+	}
 
 	/* update CPSW IP version */
 	regs->version = priv->version;
 
 	cpsw_ale_dump(priv->ale, reg);
+
+	pm_runtime_put(&priv->pdev->dev);
 }
 
 static void cpsw_get_drvinfo(struct net_device *ndev,
@@ -2186,12 +2235,20 @@ static int cpsw_set_pauseparam(struct net_device *ndev,
 {
 	struct cpsw_priv *priv = netdev_priv(ndev);
 	bool link;
+	int ret;
+
+	ret = pm_runtime_get_sync(&priv->pdev->dev);
+	if (ret < 0) {
+		pm_runtime_put_noidle(&priv->pdev->dev);
+		return ret;
+	}
 
 	priv->rx_pause = pause->rx_pause ? true : false;
 	priv->tx_pause = pause->tx_pause ? true : false;
 
 	for_each_slave(priv, _cpsw_adjust_link, priv, &link);
 
+	pm_runtime_put(&priv->pdev->dev);
 	return 0;
 }
 
@@ -2413,7 +2470,6 @@ static int cpsw_probe_dual_emac(struct platform_device *pdev,
 	}
 
 	priv_sl2 = netdev_priv(ndev);
-	spin_lock_init(&priv_sl2->lock);
 	priv_sl2->data = *data;
 	priv_sl2->pdev = pdev;
 	priv_sl2->ndev = ndev;
@@ -2438,7 +2494,6 @@ static int cpsw_probe_dual_emac(struct platform_device *pdev,
 	priv_sl2->bus_freq_mhz = priv->bus_freq_mhz;
 
 	priv_sl2->regs = priv->regs;
-	priv_sl2->host_port = priv->host_port;
 	priv_sl2->host_port_regs = priv->host_port_regs;
 	priv_sl2->wr_regs = priv->wr_regs;
 	priv_sl2->hw_stats = priv->hw_stats;
@@ -2533,7 +2588,6 @@ static int cpsw_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, ndev);
 	priv = netdev_priv(ndev);
-	spin_lock_init(&priv->lock);
 	priv->pdev = pdev;
 	priv->ndev = ndev;
 	priv->dev  = &ndev->dev;
@@ -2607,12 +2661,15 @@ static int cpsw_probe(struct platform_device *pdev)
 		goto clean_runtime_disable_ret;
 	}
 	priv->regs = ss_regs;
-	priv->host_port = HOST_PORT_NUM;
 
 	/* Need to enable clocks with runtime PM api to access module
 	 * registers
 	 */
-	pm_runtime_get_sync(&pdev->dev);
+	ret = pm_runtime_get_sync(&pdev->dev);
+	if (ret < 0) {
+		pm_runtime_put_noidle(&pdev->dev);
+		goto clean_runtime_disable_ret;
+	}
 	priv->version = readl(&priv->regs->id_ver);
 	pm_runtime_put_sync(&pdev->dev);
 
@@ -2849,15 +2906,11 @@ static int cpsw_suspend(struct device *dev)
 		for (i = 0; i < priv->data.slaves; i++) {
 			if (netif_running(priv->slaves[i].ndev))
 				cpsw_ndo_stop(priv->slaves[i].ndev);
-			soft_reset_slave(priv->slaves + i);
 		}
 	} else {
 		if (netif_running(ndev))
 			cpsw_ndo_stop(ndev);
-		for_each_slave(priv, soft_reset_slave);
 	}
-
-	pm_runtime_put_sync(&pdev->dev);
 
 	/* Select sleep pin state */
 	pinctrl_pm_select_sleep_state(&pdev->dev);
@@ -2870,8 +2923,6 @@ static int cpsw_resume(struct device *dev)
 	struct platform_device	*pdev = to_platform_device(dev);
 	struct net_device	*ndev = platform_get_drvdata(pdev);
 	struct cpsw_priv	*priv = netdev_priv(ndev);
-
-	pm_runtime_get_sync(&pdev->dev);
 
 	/* Select default pin state */
 	pinctrl_pm_select_default_state(&pdev->dev);
