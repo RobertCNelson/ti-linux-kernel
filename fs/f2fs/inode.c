@@ -394,7 +394,8 @@ no_delete:
 out_clear:
 	fscrypt_put_encryption_info(inode, NULL);
 
-	f2fs_bug_on(sbi, is_inode_flag_set(inode, FI_DIRTY_INODE));
+	f2fs_bug_on(sbi, !f2fs_cp_error(sbi) &&
+			is_inode_flag_set(inode, FI_DIRTY_INODE));
 	clear_inode(inode);
 }
 
@@ -421,7 +422,7 @@ void handle_failed_inode(struct inode *inode)
 			f2fs_msg(sbi->sb, KERN_WARNING,
 				"Too many orphan inodes, run fsck to fix.");
 		} else {
-			add_orphan_inode(sbi, inode->i_ino);
+			add_orphan_inode(inode);
 		}
 		alloc_nid_done(sbi, inode->i_ino);
 	} else {
