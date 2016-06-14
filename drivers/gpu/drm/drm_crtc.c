@@ -535,7 +535,7 @@ EXPORT_SYMBOL(drm_framebuffer_unregister_private);
  *
  * Cleanup framebuffer. This function is intended to be used from the drivers
  * ->destroy callback. It can also be used to clean up driver private
- *  framebuffers embedded into a larger structure.
+ * framebuffers embedded into a larger structure.
  *
  * Note that this function does not remove the fb from active usuage - if it is
  * still used anywhere, hilarity can ensue since userspace could call getfb on
@@ -692,7 +692,7 @@ int drm_crtc_init_with_planes(struct drm_device *dev, struct drm_crtc *crtc,
 	crtc->base.properties = &crtc->properties;
 
 	list_add_tail(&crtc->head, &config->crtc_list);
-	config->num_crtc++;
+	crtc->index = config->num_crtc++;
 
 	crtc->primary = primary;
 	crtc->cursor = cursor;
@@ -722,6 +722,11 @@ void drm_crtc_cleanup(struct drm_crtc *crtc)
 {
 	struct drm_device *dev = crtc->dev;
 
+	/* Note that the crtc_list is considered to be static; should we
+	 * remove the drm_crtc at runtime we would have to decrement all
+	 * the indices on the drm_crtc after us in the crtc_list.
+	 */
+
 	kfree(crtc->gamma_store);
 	crtc->gamma_store = NULL;
 
@@ -740,29 +745,6 @@ void drm_crtc_cleanup(struct drm_crtc *crtc)
 	memset(crtc, 0, sizeof(*crtc));
 }
 EXPORT_SYMBOL(drm_crtc_cleanup);
-
-/**
- * drm_crtc_index - find the index of a registered CRTC
- * @crtc: CRTC to find index for
- *
- * Given a registered CRTC, return the index of that CRTC within a DRM
- * device's list of CRTCs.
- */
-unsigned int drm_crtc_index(struct drm_crtc *crtc)
-{
-	unsigned int index = 0;
-	struct drm_crtc *tmp;
-
-	drm_for_each_crtc(tmp, crtc->dev) {
-		if (tmp == crtc)
-			return index;
-
-		index++;
-	}
-
-	BUG();
-}
-EXPORT_SYMBOL(drm_crtc_index);
 
 /*
  * drm_mode_remove - remove and free a mode
@@ -1166,7 +1148,7 @@ int drm_encoder_init(struct drm_device *dev,
 	}
 
 	list_add_tail(&encoder->head, &dev->mode_config.encoder_list);
-	dev->mode_config.num_encoder++;
+	encoder->index = dev->mode_config.num_encoder++;
 
 out_put:
 	if (ret)
@@ -1180,29 +1162,6 @@ out_unlock:
 EXPORT_SYMBOL(drm_encoder_init);
 
 /**
- * drm_encoder_index - find the index of a registered encoder
- * @encoder: encoder to find index for
- *
- * Given a registered encoder, return the index of that encoder within a DRM
- * device's list of encoders.
- */
-unsigned int drm_encoder_index(struct drm_encoder *encoder)
-{
-	unsigned int index = 0;
-	struct drm_encoder *tmp;
-
-	drm_for_each_encoder(tmp, encoder->dev) {
-		if (tmp == encoder)
-			return index;
-
-		index++;
-	}
-
-	BUG();
-}
-EXPORT_SYMBOL(drm_encoder_index);
-
-/**
  * drm_encoder_cleanup - cleans up an initialised encoder
  * @encoder: encoder to cleanup
  *
@@ -1211,6 +1170,11 @@ EXPORT_SYMBOL(drm_encoder_index);
 void drm_encoder_cleanup(struct drm_encoder *encoder)
 {
 	struct drm_device *dev = encoder->dev;
+
+	/* Note that the encoder_list is considered to be static; should we
+	 * remove the drm_encoder at runtime we would have to decrement all
+	 * the indices on the drm_encoder after us in the encoder_list.
+	 */
 
 	drm_modeset_lock_all(dev);
 	drm_mode_object_unregister(dev, &encoder->base);
@@ -1300,7 +1264,7 @@ int drm_universal_plane_init(struct drm_device *dev, struct drm_plane *plane,
 	plane->type = type;
 
 	list_add_tail(&plane->head, &config->plane_list);
-	config->num_total_plane++;
+	plane->index = config->num_total_plane++;
 	if (plane->type == DRM_PLANE_TYPE_OVERLAY)
 		config->num_overlay_plane++;
 
@@ -1374,6 +1338,11 @@ void drm_plane_cleanup(struct drm_plane *plane)
 
 	BUG_ON(list_empty(&plane->head));
 
+	/* Note that the plane_list is considered to be static; should we
+	 * remove the drm_plane at runtime we would have to decrement all
+	 * the indices on the drm_plane after us in the plane_list.
+	 */
+
 	list_del(&plane->head);
 	dev->mode_config.num_total_plane--;
 	if (plane->type == DRM_PLANE_TYPE_OVERLAY)
@@ -1391,29 +1360,6 @@ void drm_plane_cleanup(struct drm_plane *plane)
 EXPORT_SYMBOL(drm_plane_cleanup);
 
 /**
- * drm_plane_index - find the index of a registered plane
- * @plane: plane to find index for
- *
- * Given a registered plane, return the index of that CRTC within a DRM
- * device's list of planes.
- */
-unsigned int drm_plane_index(struct drm_plane *plane)
-{
-	unsigned int index = 0;
-	struct drm_plane *tmp;
-
-	drm_for_each_plane(tmp, plane->dev) {
-		if (tmp == plane)
-			return index;
-
-		index++;
-	}
-
-	BUG();
-}
-EXPORT_SYMBOL(drm_plane_index);
-
-/**
  * drm_plane_from_index - find the registered plane at an index
  * @dev: DRM device
  * @idx: index of registered plane to find for
@@ -1425,13 +1371,11 @@ struct drm_plane *
 drm_plane_from_index(struct drm_device *dev, int idx)
 {
 	struct drm_plane *plane;
-	unsigned int i = 0;
 
-	drm_for_each_plane(plane, dev) {
-		if (i == idx)
+	drm_for_each_plane(plane, dev)
+		if (idx == plane->index)
 			return plane;
-		i++;
-	}
+
 	return NULL;
 }
 EXPORT_SYMBOL(drm_plane_from_index);
@@ -2975,6 +2919,8 @@ static int drm_mode_cursor_universal(struct drm_crtc *crtc,
 				DRM_DEBUG_KMS("failed to wrap cursor buffer in drm framebuffer\n");
 				return PTR_ERR(fb);
 			}
+			fb->hot_x = req->hot_x;
+			fb->hot_y = req->hot_y;
 		} else {
 			fb = NULL;
 		}
@@ -5138,6 +5084,9 @@ EXPORT_SYMBOL(drm_mode_connector_attach_encoder);
 int drm_mode_crtc_set_gamma_size(struct drm_crtc *crtc,
 				 int gamma_size)
 {
+	uint16_t *r_base, *g_base, *b_base;
+	int i;
+
 	crtc->gamma_size = gamma_size;
 
 	crtc->gamma_store = kcalloc(gamma_size, sizeof(uint16_t) * 3,
@@ -5146,6 +5095,16 @@ int drm_mode_crtc_set_gamma_size(struct drm_crtc *crtc,
 		crtc->gamma_size = 0;
 		return -ENOMEM;
 	}
+
+	r_base = crtc->gamma_store;
+	g_base = r_base + gamma_size;
+	b_base = g_base + gamma_size;
+	for (i = 0; i < gamma_size; i++) {
+		r_base[i] = i << 8;
+		g_base[i] = i << 8;
+		b_base[i] = i << 8;
+	}
+
 
 	return 0;
 }
@@ -5214,7 +5173,7 @@ int drm_mode_gamma_set_ioctl(struct drm_device *dev,
 		goto out;
 	}
 
-	crtc->funcs->gamma_set(crtc, r_base, g_base, b_base, 0, crtc->gamma_size);
+	ret = crtc->funcs->gamma_set(crtc, r_base, g_base, b_base, crtc->gamma_size);
 
 out:
 	drm_modeset_unlock_all(dev);
@@ -6064,3 +6023,48 @@ struct drm_tile_group *drm_mode_create_tile_group(struct drm_device *dev,
 	return tg;
 }
 EXPORT_SYMBOL(drm_mode_create_tile_group);
+
+/**
+ * drm_crtc_enable_color_mgmt - enable color management properties
+ * @crtc: DRM CRTC
+ * @degamma_lut_size: the size of the degamma lut (before CSC)
+ * @has_ctm: whether to attach ctm_property for CSC matrix
+ * @gamma_lut_size: the size of the gamma lut (after CSC)
+ *
+ * This function lets the driver enable the color correction
+ * properties on a CRTC. This includes 3 degamma, csc and gamma
+ * properties that userspace can set and 2 size properties to inform
+ * the userspace of the lut sizes. Each of the properties are
+ * optional. The gamma and degamma properties are only attached if
+ * their size is not 0 and ctm_property is only attached if has_ctm is
+ * true.
+ */
+void drm_crtc_enable_color_mgmt(struct drm_crtc *crtc,
+				uint degamma_lut_size,
+				bool has_ctm,
+				uint gamma_lut_size)
+{
+	struct drm_device *dev = crtc->dev;
+	struct drm_mode_config *config = &dev->mode_config;
+
+	if (degamma_lut_size) {
+		drm_object_attach_property(&crtc->base,
+					   config->degamma_lut_property, 0);
+		drm_object_attach_property(&crtc->base,
+					   config->degamma_lut_size_property,
+					   degamma_lut_size);
+	}
+
+	if (has_ctm)
+		drm_object_attach_property(&crtc->base,
+					   config->ctm_property, 0);
+
+	if (gamma_lut_size) {
+		drm_object_attach_property(&crtc->base,
+					   config->gamma_lut_property, 0);
+		drm_object_attach_property(&crtc->base,
+					   config->gamma_lut_size_property,
+					   gamma_lut_size);
+	}
+}
+EXPORT_SYMBOL(drm_crtc_enable_color_mgmt);
