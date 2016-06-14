@@ -2717,6 +2717,15 @@ struct drm_i915_cmd_table {
 
 #define IS_BXT_REVID(p, since, until) (IS_BROXTON(p) && IS_REVID(p, since, until))
 
+#define KBL_REVID_A0		0x0
+#define KBL_REVID_B0		0x1
+#define KBL_REVID_C0		0x2
+#define KBL_REVID_D0		0x3
+#define KBL_REVID_E0		0x4
+
+#define IS_KBL_REVID(p, since, until) \
+	(IS_KABYLAKE(p) && IS_REVID(p, since, until))
+
 /*
  * The genX designation typically refers to the render engine, so render
  * capability related checks should use IS_GEN, while display and other checks
@@ -3108,6 +3117,23 @@ static inline int __sg_page_count(struct scatterlist *sg)
 
 struct page *
 i915_gem_object_get_dirty_page(struct drm_i915_gem_object *obj, int n);
+
+static inline dma_addr_t
+i915_gem_object_get_dma_address(struct drm_i915_gem_object *obj, int n)
+{
+	if (n < obj->get_page.last) {
+		obj->get_page.sg = obj->pages->sgl;
+		obj->get_page.last = 0;
+	}
+
+	while (obj->get_page.last + __sg_page_count(obj->get_page.sg) <= n) {
+		obj->get_page.last += __sg_page_count(obj->get_page.sg++);
+		if (unlikely(sg_is_chain(obj->get_page.sg)))
+			obj->get_page.sg = sg_chain_ptr(obj->get_page.sg);
+	}
+
+	return sg_dma_address(obj->get_page.sg) + ((n - obj->get_page.last) << PAGE_SHIFT);
+}
 
 static inline struct page *
 i915_gem_object_get_page(struct drm_i915_gem_object *obj, int n)

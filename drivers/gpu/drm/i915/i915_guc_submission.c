@@ -591,7 +591,7 @@ int i915_guc_submit(struct drm_i915_gem_request *rq)
 
 /**
  * gem_allocate_guc_obj() - Allocate gem object for GuC usage
- * @dev:	drm device
+ * @dev_priv:	driver private data structure
  * @size:	size of object
  *
  * This is a wrapper to create a gem obj. In order to use it inside GuC, the
@@ -600,13 +600,12 @@ int i915_guc_submit(struct drm_i915_gem_request *rq)
  *
  * Return:	A drm_i915_gem_object if successful, otherwise NULL.
  */
-static struct drm_i915_gem_object *gem_allocate_guc_obj(struct drm_device *dev,
-							u32 size)
+static struct drm_i915_gem_object *
+gem_allocate_guc_obj(struct drm_i915_private *dev_priv, u32 size)
 {
-	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_i915_gem_object *obj;
 
-	obj = i915_gem_object_create(dev, size);
+	obj = i915_gem_object_create(dev_priv->dev, size);
 	if (IS_ERR(obj))
 		return NULL;
 
@@ -642,10 +641,10 @@ static void gem_release_guc_obj(struct drm_i915_gem_object *obj)
 	drm_gem_object_unreference(&obj->base);
 }
 
-static void guc_client_free(struct drm_device *dev,
-			    struct i915_guc_client *client)
+static void
+guc_client_free(struct drm_i915_private *dev_priv,
+		struct i915_guc_client *client)
 {
-	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_guc *guc = &dev_priv->guc;
 
 	if (!client)
@@ -657,6 +656,8 @@ static void guc_client_free(struct drm_device *dev,
 	 */
 
 	if (client->client_base) {
+		uint16_t db_id = client->doorbell_id;
+
 		/*
 		 * If we got as far as setting up a doorbell, make sure
 		 * we shut it down before unmapping & deallocating the
@@ -664,10 +665,11 @@ static void guc_client_free(struct drm_device *dev,
 		 * GuC that we've finished with it, finally deallocate
 		 * it in our bitmap
 		 */
-		if (client->doorbell_id != GUC_INVALID_DOORBELL_ID) {
+		if (db_id != GUC_INVALID_DOORBELL_ID) {
 			guc_disable_doorbell(guc, client);
-			host2guc_release_doorbell(guc, client);
-			release_doorbell(guc, client->doorbell_id);
+			if (test_bit(db_id, guc->doorbell_bitmap))
+				host2guc_release_doorbell(guc, client);
+			release_doorbell(guc, db_id);
 		}
 
 		kunmap(kmap_to_page(client->client_base));
@@ -685,7 +687,7 @@ static void guc_client_free(struct drm_device *dev,
 
 /**
  * guc_client_alloc() - Allocate an i915_guc_client
- * @dev:	drm device
+ * @dev_priv:	driver private data structure
  * @priority:	four levels priority _CRITICAL, _HIGH, _NORMAL and _LOW
  * 		The kernel client to replace ExecList submission is created with
  * 		NORMAL priority. Priority of a client for scheduler can be HIGH,
@@ -695,12 +697,12 @@ static void guc_client_free(struct drm_device *dev,
  *
  * Return:	An i915_guc_client object if success, else NULL.
  */
-static struct i915_guc_client *guc_client_alloc(struct drm_device *dev,
-						uint32_t priority,
-						struct i915_gem_context *ctx)
+static struct i915_guc_client *
+guc_client_alloc(struct drm_i915_private *dev_priv,
+		 uint32_t priority,
+		 struct i915_gem_context *ctx)
 {
 	struct i915_guc_client *client;
-	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_guc *guc = &dev_priv->guc;
 	struct drm_i915_gem_object *obj;
 
@@ -721,7 +723,7 @@ static struct i915_guc_client *guc_client_alloc(struct drm_device *dev,
 	}
 
 	/* The first page is doorbell/proc_desc. Two followed pages are wq. */
-	obj = gem_allocate_guc_obj(dev, GUC_DB_SIZE + GUC_WQ_SIZE);
+	obj = gem_allocate_guc_obj(dev_priv, GUC_DB_SIZE + GUC_WQ_SIZE);
 	if (!obj)
 		goto err;
 
@@ -765,7 +767,7 @@ static struct i915_guc_client *guc_client_alloc(struct drm_device *dev,
 err:
 	DRM_ERROR("FAILED to create priority %u GuC client!\n", priority);
 
-	guc_client_free(dev, client);
+	guc_client_free(dev_priv, client);
 	return NULL;
 }
 
@@ -790,7 +792,7 @@ static void guc_create_log(struct intel_guc *guc)
 
 	obj = guc->log_obj;
 	if (!obj) {
-		obj = gem_allocate_guc_obj(dev_priv->dev, size);
+		obj = gem_allocate_guc_obj(dev_priv, size);
 		if (!obj) {
 			/* logging will be off */
 			i915.guc_log_level = -1;
@@ -850,7 +852,7 @@ static void guc_create_ads(struct intel_guc *guc)
 
 	obj = guc->ads_obj;
 	if (!obj) {
-		obj = gem_allocate_guc_obj(dev_priv->dev, PAGE_ALIGN(size));
+		obj = gem_allocate_guc_obj(dev_priv, PAGE_ALIGN(size));
 		if (!obj)
 			return;
 
@@ -904,13 +906,16 @@ static void guc_create_ads(struct intel_guc *guc)
  * Set up the memory resources to be shared with the GuC.  At this point,
  * we require just one object that can be mapped through the GGTT.
  */
-int i915_guc_submission_init(struct drm_device *dev)
+int i915_guc_submission_init(struct drm_i915_private *dev_priv)
 {
-	struct drm_i915_private *dev_priv = dev->dev_private;
 	const size_t ctxsize = sizeof(struct guc_context_desc);
 	const size_t poolsize = GUC_MAX_GPU_CONTEXTS * ctxsize;
 	const size_t gemsize = round_up(poolsize, PAGE_SIZE);
 	struct intel_guc *guc = &dev_priv->guc;
+
+	/* Wipe bitmap & delete client in case of reinitialisation */
+	bitmap_clear(guc->doorbell_bitmap, 0, GUC_MAX_DOORBELLS);
+	i915_guc_submission_disable(dev_priv);
 
 	if (!i915.enable_guc_submission)
 		return 0; /* not enabled  */
@@ -918,27 +923,24 @@ int i915_guc_submission_init(struct drm_device *dev)
 	if (guc->ctx_pool_obj)
 		return 0; /* already allocated */
 
-	guc->ctx_pool_obj = gem_allocate_guc_obj(dev_priv->dev, gemsize);
+	guc->ctx_pool_obj = gem_allocate_guc_obj(dev_priv, gemsize);
 	if (!guc->ctx_pool_obj)
 		return -ENOMEM;
 
 	ida_init(&guc->ctx_ids);
-
 	guc_create_log(guc);
-
 	guc_create_ads(guc);
 
 	return 0;
 }
 
-int i915_guc_submission_enable(struct drm_device *dev)
+int i915_guc_submission_enable(struct drm_i915_private *dev_priv)
 {
-	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_guc *guc = &dev_priv->guc;
 	struct i915_guc_client *client;
 
 	/* client for execbuf submission */
-	client = guc_client_alloc(dev,
+	client = guc_client_alloc(dev_priv,
 				  GUC_CTX_PRIORITY_KMD_NORMAL,
 				  dev_priv->kernel_context);
 	if (!client) {
@@ -953,18 +955,16 @@ int i915_guc_submission_enable(struct drm_device *dev)
 	return 0;
 }
 
-void i915_guc_submission_disable(struct drm_device *dev)
+void i915_guc_submission_disable(struct drm_i915_private *dev_priv)
 {
-	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_guc *guc = &dev_priv->guc;
 
-	guc_client_free(dev, guc->execbuf_client);
+	guc_client_free(dev_priv, guc->execbuf_client);
 	guc->execbuf_client = NULL;
 }
 
-void i915_guc_submission_fini(struct drm_device *dev)
+void i915_guc_submission_fini(struct drm_i915_private *dev_priv)
 {
-	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_guc *guc = &dev_priv->guc;
 
 	gem_release_guc_obj(dev_priv->guc.ads_obj);
