@@ -421,6 +421,11 @@ static int compare_of(struct device *dev, void *data)
 	return dev->of_node == np;
 }
 
+static void release_of(struct device *dev, void *data)
+{
+	of_node_put(data);
+}
+
 static void rockchip_add_endpoints(struct device *dev,
 				   struct component_match **match,
 				   struct device_node *port)
@@ -439,8 +444,8 @@ static void rockchip_add_endpoints(struct device *dev,
 			continue;
 		}
 
-		component_match_add(dev, match, compare_of, remote);
-		of_node_put(remote);
+		component_match_add_release(dev, match, release_of,
+					    compare_of, remote);
 	}
 }
 
@@ -518,7 +523,9 @@ static int rockchip_drm_platform_probe(struct platform_device *pdev)
 			is_support_iommu = false;
 		}
 
-		component_match_add(dev, &match, compare_of, port->parent);
+		of_node_get(port->parent);
+		component_match_add_release(dev, &match, release_of,
+					    compare_of, port->parent);
 		of_node_put(port);
 	}
 
