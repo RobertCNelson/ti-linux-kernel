@@ -2451,9 +2451,12 @@ static void collapse_huge_page(struct mm_struct *mm,
 		goto out_nolock;
 	}
 
+	swap = get_mm_counter(mm, MM_SWAPENTS);
+	curr_allocstall = sum_vm_event(ALLOCSTALL);
+
 	/*
 	 * Prevent all access to pagetables with the exception of
-	 * gup_fast later hanlded by the ptep_clear_flush and the VM
+	 * gup_fast later handled by the ptep_clear_flush and the VM
 	 * handled by the anon_vma lock + PG_lock.
 	 */
 	down_write(&mm->mmap_sem);
@@ -2483,8 +2486,6 @@ static void collapse_huge_page(struct mm_struct *mm,
 		goto out;
 	}
 
-	swap = get_mm_counter(mm, MM_SWAPENTS);
-	curr_allocstall = sum_vm_event(ALLOCSTALL);
 	/*
 	 * Don't perform swapin readahead when the system is under pressure,
 	 * to avoid unnecessary resource consumption.
