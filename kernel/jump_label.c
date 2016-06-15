@@ -14,6 +14,7 @@
 #include <linux/err.h>
 #include <linux/static_key.h>
 #include <linux/jump_label_ratelimit.h>
+#include <linux/bug.h>
 
 #ifdef HAVE_JUMP_LABEL
 
@@ -55,6 +56,44 @@ jump_label_sort_entries(struct jump_entry *start, struct jump_entry *stop)
 }
 
 static void jump_label_update(struct static_key *key);
+
+/*
+ * There is a similar definition for the !HAVE_JUMP_LABEL case in jump_label.h.
+ * The reason for the copying is that the use of 'atomic_read()' requires
+ * atomic.h and its problematic for some kernel headers such as kernel.h and
+ * others. Since static_key_count() is not used in the branch statements as it
+ * is for the !HAVE_JUMP_LABEL case its ok to have it be a function here.
+ * Similarly, for 'static_key_enable()' and 'static_key_disable()', which
+ * require bug.h. This should allow jump_label.h to be included from most/all
+ * places for HAVE_JUMP_LABEL.
+ */
+int static_key_count(struct static_key *key)
+{
+	return atomic_read(&key->enabled);
+}
+EXPORT_SYMBOL_GPL(static_key_count);
+
+void static_key_enable(struct static_key *key)
+{
+	int count = static_key_count(key);
+
+	WARN_ON_ONCE(count < 0 || count > 1);
+
+	if (!count)
+		static_key_slow_inc(key);
+}
+EXPORT_SYMBOL_GPL(static_key_enable);
+
+void static_key_disable(struct static_key *key)
+{
+	int count = static_key_count(key);
+
+	WARN_ON_ONCE(count < 0 || count > 1);
+
+	if (count)
+		static_key_slow_dec(key);
+}
+EXPORT_SYMBOL_GPL(static_key_disable);
 
 void static_key_slow_inc(struct static_key *key)
 {
@@ -204,6 +243,15 @@ void __init jump_label_init(void)
 	struct jump_entry *iter_stop = __stop___jump_table;
 	struct static_key *key = NULL;
 	struct jump_entry *iter;
+
+	/*
+	 * Since we are initializing the static_key.enabled field with
+	 * with the 'raw' int values (to avoid pulling in atomic.h), let's make
+	 * sure that is safe. There are only two cases to check since we
+	 * initialize to 0 or 1.
+	 */
+	BUILD_BUG_ON((int)ATOMIC_INIT(0) != 0);
+	BUILD_BUG_ON((int)ATOMIC_INIT(1) != 1);
 
 	jump_label_lock();
 	jump_label_sort_entries(iter_start, iter_stop);
