@@ -1008,6 +1008,7 @@ static void __free_zspage(struct zs_pool *pool, struct size_class *class,
 		reset_page(page);
 		unlock_page(page);
 		put_page(page);
+		dec_zone_page_state(page, NR_ZSMALLOC);
 		page = next;
 	} while (page != NULL);
 
@@ -1137,11 +1138,15 @@ static struct zspage *alloc_zspage(struct zs_pool *pool,
 
 		page = alloc_page(gfp);
 		if (!page) {
-			while (--i >= 0)
+			while (--i >= 0) {
 				__free_page(pages[i]);
+				dec_zone_page_state(page, NR_ZSMALLOC);
+			}
 			cache_free_zspage(pool, zspage);
 			return NULL;
 		}
+
+		inc_zone_page_state(page, NR_ZSMALLOC);
 		pages[i] = page;
 	}
 
