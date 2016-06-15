@@ -523,7 +523,7 @@ static void get_zspage_mapping(struct zspage *zspage,
 				unsigned int *class_idx,
 				enum fullness_group *fullness)
 {
-	VM_BUG_ON(zspage->magic != ZSPAGE_MAGIC);
+	BUG_ON(zspage->magic != ZSPAGE_MAGIC);
 
 	*fullness = zspage->fullness;
 	*class_idx = zspage->class;
@@ -857,7 +857,7 @@ static struct zspage *get_zspage(struct page *page)
 {
 	struct zspage *zspage = (struct zspage *)page->private;
 
-	VM_BUG_ON(zspage->magic != ZSPAGE_MAGIC);
+	BUG_ON(zspage->magic != ZSPAGE_MAGIC);
 	return zspage;
 }
 
