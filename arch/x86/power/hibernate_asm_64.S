@@ -44,9 +44,6 @@ ENTRY(swsusp_arch_suspend)
 	pushfq
 	popq	pt_regs_flags(%rax)
 
-	/* save the address of restore_registers */
-	movq	$restore_registers, %rax
-	movq	%rax, restore_jump_address(%rip)
 	/* save cr3 */
 	movq	%cr3, %rax
 	movq	%rax, restore_cr3(%rip)
@@ -72,8 +69,10 @@ ENTRY(restore_image)
 	movq	%rax, %cr4;  # turn PGE back on
 
 	/* prepare to jump to the image kernel */
-	movq	restore_jump_address(%rip), %rax
 	movq	restore_cr3(%rip), %rbx
+	movq	restore_jump_address(%rip), %r10
+	movq	restore_pgd(%rip), %r8
+	movq	restore_pgd_addr(%rip), %r9
 
 	/* prepare to copy image data to their original locations */
 	movq	restore_pblist(%rip), %rdx
@@ -96,20 +95,22 @@ ENTRY(core_restore_code)
 	/* progress to the next pbe */
 	movq	pbe_next(%rdx), %rdx
 	jmp	.Lloop
-.Ldone:
-	/* jump to the restore_registers address from the image header */
-	jmpq	*%rax
-	/*
-	 * NOTE: This assumes that the boot kernel's text mapping covers the
-	 * image kernel's page containing restore_registers and the address of
-	 * this page is the same as in the image kernel's text mapping (it
-	 * should always be true, because the text mapping is linear, starting
-	 * from 0, and is supposed to cover the entire kernel text for every
-	 * kernel).
-	 *
-	 * code below belongs to the image kernel
-	 */
 
+.Ldone:
+	/* switch over to the temporary kernel text mapping */
+	movq	%r8, (%r9)
+	/* flush TLB */
+	movq	%rax, %rdx
+	andq	$~(X86_CR4_PGE), %rdx
+	movq	%rdx, %cr4;  # turn off PGE
+	movq	%cr3, %rcx;  # flush TLB
+	movq	%rcx, %cr3;
+	movq	%rax, %cr4;  # turn PGE back on
+	/* jump to the restore_registers address from the image header */
+	jmpq	*%r10
+
+	 /* code below belongs to the image kernel */
+	.align PAGE_SIZE
 ENTRY(restore_registers)
 	FRAME_BEGIN
 	/* go back to the original page tables */
