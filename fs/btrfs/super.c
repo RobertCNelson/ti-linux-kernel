@@ -112,7 +112,7 @@ static void btrfs_handle_error(struct btrfs_fs_info *fs_info)
 		 * Note that a running device replace operation is not
 		 * canceled here although there is no way to update
 		 * the progress. It would add the risk of a deadlock,
-		 * therefore the canceling is ommited. The only penalty
+		 * therefore the canceling is omitted. The only penalty
 		 * is that some I/O remains active until the procedure
 		 * completes. The next time when the filesystem is
 		 * mounted writeable again, the device replace
@@ -1877,7 +1877,7 @@ static int btrfs_calc_avail_data_space(struct btrfs_root *root, u64 *free_bytes)
 	int ret;
 
 	/*
-	 * We aren't under the device list lock, so this is racey-ish, but good
+	 * We aren't under the device list lock, so this is racy-ish, but good
 	 * enough for our purposes.
 	 */
 	nr_devices = fs_info->fs_devices->open_devices;
@@ -1896,7 +1896,7 @@ static int btrfs_calc_avail_data_space(struct btrfs_root *root, u64 *free_bytes)
 	if (!devices_info)
 		return -ENOMEM;
 
-	/* calc min stripe number for data space alloction */
+	/* calc min stripe number for data space allocation */
 	type = btrfs_get_alloc_profile(root, 1);
 	if (type & BTRFS_BLOCK_GROUP_RAID0) {
 		min_stripes = 2;
@@ -1932,7 +1932,7 @@ static int btrfs_calc_avail_data_space(struct btrfs_root *root, u64 *free_bytes)
 		avail_space *= BTRFS_STRIPE_LEN;
 
 		/*
-		 * In order to avoid overwritting the superblock on the drive,
+		 * In order to avoid overwriting the superblock on the drive,
 		 * btrfs starts at an offset of at least 1MB when doing chunk
 		 * allocation.
 		 */
@@ -2303,7 +2303,7 @@ static void btrfs_interface_exit(void)
 
 static void btrfs_print_mod_info(void)
 {
-	printk(KERN_INFO "Btrfs loaded"
+	printk(KERN_INFO "Btrfs loaded, crc32c=%s"
 #ifdef CONFIG_BTRFS_DEBUG
 			", debug=on"
 #endif
@@ -2313,33 +2313,48 @@ static void btrfs_print_mod_info(void)
 #ifdef CONFIG_BTRFS_FS_CHECK_INTEGRITY
 			", integrity-checker=on"
 #endif
-			"\n");
+			"\n",
+			btrfs_crc32c_impl());
 }
 
 static int btrfs_run_sanity_tests(void)
 {
-	int ret;
-
+	int ret, i;
+	u32 sectorsize, nodesize;
+	u32 test_sectorsize[] = {
+		PAGE_SIZE,
+	};
 	ret = btrfs_init_test_fs();
 	if (ret)
 		return ret;
-
-	ret = btrfs_test_free_space_cache();
-	if (ret)
-		goto out;
-	ret = btrfs_test_extent_buffer_operations();
-	if (ret)
-		goto out;
-	ret = btrfs_test_extent_io();
-	if (ret)
-		goto out;
-	ret = btrfs_test_inodes();
-	if (ret)
-		goto out;
-	ret = btrfs_test_qgroups();
-	if (ret)
-		goto out;
-	ret = btrfs_test_free_space_tree();
+	for (i = 0; i < ARRAY_SIZE(test_sectorsize); i++) {
+		sectorsize = test_sectorsize[i];
+		for (nodesize = sectorsize;
+		     nodesize <= BTRFS_MAX_METADATA_BLOCKSIZE;
+		     nodesize <<= 1) {
+			pr_info("BTRFS: selftest: sectorsize: %u  nodesize: %u\n",
+				sectorsize, nodesize);
+			ret = btrfs_test_free_space_cache(sectorsize, nodesize);
+			if (ret)
+				goto out;
+			ret = btrfs_test_extent_buffer_operations(sectorsize,
+				nodesize);
+			if (ret)
+				goto out;
+			ret = btrfs_test_extent_io(sectorsize, nodesize);
+			if (ret)
+				goto out;
+			ret = btrfs_test_inodes(sectorsize, nodesize);
+			if (ret)
+				goto out;
+			ret = btrfs_test_qgroups(sectorsize, nodesize);
+			if (ret)
+				goto out;
+			ret = btrfs_test_free_space_tree(sectorsize, nodesize);
+			if (ret)
+				goto out;
+		}
+	}
 out:
 	btrfs_destroy_test_fs();
 	return ret;

@@ -602,6 +602,8 @@ int amdgpu_sync_wait(struct amdgpu_sync *sync);
 void amdgpu_sync_free(struct amdgpu_sync *sync);
 int amdgpu_sync_init(void);
 void amdgpu_sync_fini(void);
+int amdgpu_fence_slab_init(void);
+void amdgpu_fence_slab_fini(void);
 
 /*
  * GART structures, functions & helpers
@@ -797,6 +799,7 @@ struct amdgpu_ring {
 	unsigned		cond_exe_offs;
 	u64				cond_exe_gpu_addr;
 	volatile u32	*cond_exe_cpu_addr;
+	int                     vmid;
 };
 
 /*
@@ -934,7 +937,8 @@ int amdgpu_vm_flush(struct amdgpu_ring *ring,
 		    unsigned vm_id, uint64_t pd_addr,
 		    uint32_t gds_base, uint32_t gds_size,
 		    uint32_t gws_base, uint32_t gws_size,
-		    uint32_t oa_base, uint32_t oa_size);
+		    uint32_t oa_base, uint32_t oa_size,
+		    bool vmid_switch);
 void amdgpu_vm_reset_id(struct amdgpu_device *adev, unsigned vm_id);
 uint64_t amdgpu_vm_map_gart(const dma_addr_t *pages_addr, uint64_t addr);
 int amdgpu_vm_update_page_directory(struct amdgpu_device *adev,

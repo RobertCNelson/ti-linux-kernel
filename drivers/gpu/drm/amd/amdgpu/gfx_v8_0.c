@@ -267,10 +267,13 @@ static const u32 tonga_mgcg_cgcg_init[] =
 
 static const u32 golden_settings_polaris11_a11[] =
 {
+	mmCB_HW_CONTROL, 0xfffdf3cf, 0x00006208,
 	mmCB_HW_CONTROL_3, 0x000001ff, 0x00000040,
 	mmDB_DEBUG2, 0xf00fffff, 0x00000400,
 	mmPA_SC_ENHANCE, 0xffffffff, 0x20000001,
 	mmPA_SC_LINE_STIPPLE_STATE, 0x0000ff0f, 0x00000000,
+	mmPA_SC_RASTER_CONFIG, 0x3f3fffff, 0x16000012,
+	mmPA_SC_RASTER_CONFIG_1, 0x0000003f, 0x00000000,
 	mmRLC_CGCG_CGLS_CTRL, 0x00000003, 0x0001003c,
 	mmRLC_CGCG_CGLS_CTRL_3D, 0xffffffff, 0x0001003c,
 	mmSQ_CONFIG, 0x07f80000, 0x07180000,
@@ -284,8 +287,6 @@ static const u32 golden_settings_polaris11_a11[] =
 static const u32 polaris11_golden_common_all[] =
 {
 	mmGRBM_GFX_INDEX, 0xffffffff, 0xe0000000,
-	mmPA_SC_RASTER_CONFIG, 0xffffffff, 0x16000012,
-	mmPA_SC_RASTER_CONFIG_1, 0xffffffff, 0x00000000,
 	mmGB_ADDR_CONFIG, 0xffffffff, 0x22011002,
 	mmSPI_RESOURCE_RESERVE_CU_0, 0xffffffff, 0x00000800,
 	mmSPI_RESOURCE_RESERVE_CU_1, 0xffffffff, 0x00000800,
@@ -296,6 +297,7 @@ static const u32 polaris11_golden_common_all[] =
 static const u32 golden_settings_polaris10_a11[] =
 {
 	mmATC_MISC_CG, 0x000c0fc0, 0x000c0200,
+	mmCB_HW_CONTROL, 0xfffdf3cf, 0x00006208,
 	mmCB_HW_CONTROL_3, 0x000001ff, 0x00000040,
 	mmDB_DEBUG2, 0xf00fffff, 0x00000400,
 	mmPA_SC_ENHANCE, 0xffffffff, 0x20000001,
@@ -832,6 +834,26 @@ err2:
 err1:
 	amdgpu_gfx_scratch_free(adev, scratch);
 	return r;
+}
+
+
+static void gfx_v8_0_free_microcode(struct amdgpu_device *adev) {
+	release_firmware(adev->gfx.pfp_fw);
+	adev->gfx.pfp_fw = NULL;
+	release_firmware(adev->gfx.me_fw);
+	adev->gfx.me_fw = NULL;
+	release_firmware(adev->gfx.ce_fw);
+	adev->gfx.ce_fw = NULL;
+	release_firmware(adev->gfx.rlc_fw);
+	adev->gfx.rlc_fw = NULL;
+	release_firmware(adev->gfx.mec_fw);
+	adev->gfx.mec_fw = NULL;
+	if ((adev->asic_type != CHIP_STONEY) &&
+	    (adev->asic_type != CHIP_TOPAZ))
+		release_firmware(adev->gfx.mec2_fw);
+	adev->gfx.mec2_fw = NULL;
+
+	kfree(adev->gfx.rlc.register_list_format);
 }
 
 static int gfx_v8_0_init_microcode(struct amdgpu_device *adev)
@@ -1981,7 +2003,7 @@ static int gfx_v8_0_sw_fini(void *handle)
 
 	gfx_v8_0_rlc_fini(adev);
 
-	kfree(adev->gfx.rlc.register_list_format);
+	gfx_v8_0_free_microcode(adev);
 
 	return 0;
 }
@@ -3972,9 +3994,13 @@ static int gfx_v8_0_cp_gfx_start(struct amdgpu_device *adev)
 		amdgpu_ring_write(ring, 0x3a00161a);
 		amdgpu_ring_write(ring, 0x0000002e);
 		break;
-	case CHIP_TOPAZ:
 	case CHIP_CARRIZO:
 		amdgpu_ring_write(ring, 0x00000002);
+		amdgpu_ring_write(ring, 0x00000000);
+		break;
+	case CHIP_TOPAZ:
+		amdgpu_ring_write(ring, adev->gfx.config.num_rbs == 1 ?
+				0x00000000 : 0x00000002);
 		amdgpu_ring_write(ring, 0x00000000);
 		break;
 	case CHIP_STONEY:
@@ -5725,6 +5751,7 @@ static void gfx_v8_0_ring_emit_fence_gfx(struct amdgpu_ring *ring, u64 addr,
 	amdgpu_ring_write(ring, PACKET3(PACKET3_EVENT_WRITE_EOP, 4));
 	amdgpu_ring_write(ring, (EOP_TCL1_ACTION_EN |
 				 EOP_TC_ACTION_EN |
+				 EOP_TC_WB_ACTION_EN |
 				 EVENT_TYPE(CACHE_FLUSH_AND_INV_TS_EVENT) |
 				 EVENT_INDEX(5)));
 	amdgpu_ring_write(ring, addr & 0xfffffffc);
