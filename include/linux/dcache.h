@@ -139,8 +139,7 @@ struct dentry_operations {
 	char *(*d_dname)(struct dentry *, char *, int);
 	struct vfsmount *(*d_automount)(struct path *);
 	int (*d_manage)(struct dentry *, bool);
-	struct inode *(*d_select_inode)(struct dentry *, unsigned);
-	struct dentry *(*d_real)(struct dentry *, struct inode *);
+	struct dentry *(*d_real)(struct dentry *, struct inode *, unsigned int);
 } ____cacheline_aligned;
 
 /*
@@ -206,10 +205,8 @@ struct dentry_operations {
 
 #define DCACHE_MAY_FREE			0x00800000
 #define DCACHE_FALLTHRU			0x01000000 /* Fall through to lower layer */
-#define DCACHE_OP_SELECT_INODE		0x02000000 /* Unioned entry: dcache op selects inode */
-
-#define DCACHE_ENCRYPTED_WITH_KEY	0x04000000 /* dir is encrypted with a valid key */
-#define DCACHE_OP_REAL			0x08000000
+#define DCACHE_ENCRYPTED_WITH_KEY	0x02000000 /* dir is encrypted with a valid key */
+#define DCACHE_OP_REAL			0x04000000
 
 #define DCACHE_PAR_LOOKUP		0x10000000 /* being looked up (with parent locked shared) */
 
@@ -556,23 +553,19 @@ static inline struct dentry *d_backing_dentry(struct dentry *upper)
 	return upper;
 }
 
+/**
+ * d_real - Return the real dentry
+ * @dentry: The dentry to query
+ *
+ * If dentry is on an union/overlay, then return the underlying, real dentry.
+ * Otherwise return the dentry itself.
+ */
 static inline struct dentry *d_real(struct dentry *dentry)
 {
 	if (unlikely(dentry->d_flags & DCACHE_OP_REAL))
-		return dentry->d_op->d_real(dentry, NULL);
+		return dentry->d_op->d_real(dentry, NULL, 0);
 	else
 		return dentry;
-}
-
-static inline struct inode *vfs_select_inode(struct dentry *dentry,
-					     unsigned open_flags)
-{
-	struct inode *inode = d_inode(dentry);
-
-	if (inode && unlikely(dentry->d_flags & DCACHE_OP_SELECT_INODE))
-		inode = dentry->d_op->d_select_inode(dentry, open_flags);
-
-	return inode;
 }
 
 /**
