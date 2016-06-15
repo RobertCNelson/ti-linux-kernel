@@ -202,6 +202,7 @@ FEXPORT(__kvm_mips_load_k0k1)
 
 	/* Jump to guest */
 	eret
+EXPORT(__kvm_mips_vcpu_run_end)
 
 VECTOR(MIPSX(exception), unknown)
 /* Find out what mode we came from and jump to the proper handler. */
@@ -305,10 +306,7 @@ NESTED (MIPSX(GuestException), CALLFRAME_SIZ, ra)
 	LONG_S	k0, VCPU_HOST_CP0_BADVADDR(k1)
 
 	mfc0	k0, CP0_CAUSE
-	LONG_S	k0, VCPU_HOST_CP0_CAUSE(k1)
-
-	mfc0	k0, CP0_ENTRYHI
-	LONG_S	k0, VCPU_HOST_ENTRYHI(k1)
+	sw	k0, VCPU_HOST_CP0_CAUSE(k1)
 
 	/* Now restore the host state just enough to run the handlers */
 
@@ -321,7 +319,7 @@ NESTED (MIPSX(GuestException), CALLFRAME_SIZ, ra)
 	mtc0	k0, CP0_STATUS
 	ehb
 
-	LONG_L	k0, VCPU_HOST_EBASE(k1)
+	LONG_L	k0, ebase
 	mtc0	k0,CP0_EBASE
 
 	/*

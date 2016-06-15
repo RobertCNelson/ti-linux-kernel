@@ -28,18 +28,18 @@
 #define CLEAR_TEMPLATE  0x00000020
 #define SW_TEMPLATE     0xac000000
 
-int kvm_mips_trans_cache_index(uint32_t inst, uint32_t *opc,
+int kvm_mips_trans_cache_index(u32 inst, u32 *opc,
 			       struct kvm_vcpu *vcpu)
 {
 	int result = 0;
 	unsigned long kseg0_opc;
-	uint32_t synci_inst = 0x0;
+	u32 synci_inst = 0x0;
 
 	/* Replace the CACHE instruction, with a NOP */
 	kseg0_opc =
 	    CKSEG0ADDR(kvm_mips_translate_guest_kseg0_to_hpa
 		       (vcpu, (unsigned long) opc));
-	memcpy((void *)kseg0_opc, (void *)&synci_inst, sizeof(uint32_t));
+	memcpy((void *)kseg0_opc, (void *)&synci_inst, sizeof(u32));
 	local_flush_icache_range(kseg0_opc, kseg0_opc + 32);
 
 	return result;
@@ -49,12 +49,12 @@ int kvm_mips_trans_cache_index(uint32_t inst, uint32_t *opc,
  * Address based CACHE instructions are transformed into synci(s). A little
  * heavy for just D-cache invalidates, but avoids an expensive trap
  */
-int kvm_mips_trans_cache_va(uint32_t inst, uint32_t *opc,
+int kvm_mips_trans_cache_va(u32 inst, u32 *opc,
 			    struct kvm_vcpu *vcpu)
 {
 	int result = 0;
 	unsigned long kseg0_opc;
-	uint32_t synci_inst = SYNCI_TEMPLATE, base, offset;
+	u32 synci_inst = SYNCI_TEMPLATE, base, offset;
 
 	base = (inst >> 21) & 0x1f;
 	offset = inst & 0xffff;
@@ -64,16 +64,16 @@ int kvm_mips_trans_cache_va(uint32_t inst, uint32_t *opc,
 	kseg0_opc =
 	    CKSEG0ADDR(kvm_mips_translate_guest_kseg0_to_hpa
 		       (vcpu, (unsigned long) opc));
-	memcpy((void *)kseg0_opc, (void *)&synci_inst, sizeof(uint32_t));
+	memcpy((void *)kseg0_opc, (void *)&synci_inst, sizeof(u32));
 	local_flush_icache_range(kseg0_opc, kseg0_opc + 32);
 
 	return result;
 }
 
-int kvm_mips_trans_mfc0(uint32_t inst, uint32_t *opc, struct kvm_vcpu *vcpu)
+int kvm_mips_trans_mfc0(u32 inst, u32 *opc, struct kvm_vcpu *vcpu)
 {
-	int32_t rt, rd, sel;
-	uint32_t mfc0_inst;
+	u32 rt, rd, sel;
+	u32 mfc0_inst;
 	unsigned long kseg0_opc, flags;
 
 	rt = (inst >> 16) & 0x1f;
@@ -94,11 +94,11 @@ int kvm_mips_trans_mfc0(uint32_t inst, uint32_t *opc, struct kvm_vcpu *vcpu)
 		kseg0_opc =
 		    CKSEG0ADDR(kvm_mips_translate_guest_kseg0_to_hpa
 			       (vcpu, (unsigned long) opc));
-		memcpy((void *)kseg0_opc, (void *)&mfc0_inst, sizeof(uint32_t));
+		memcpy((void *)kseg0_opc, (void *)&mfc0_inst, sizeof(u32));
 		local_flush_icache_range(kseg0_opc, kseg0_opc + 32);
 	} else if (KVM_GUEST_KSEGX((unsigned long) opc) == KVM_GUEST_KSEG23) {
 		local_irq_save(flags);
-		memcpy((void *)opc, (void *)&mfc0_inst, sizeof(uint32_t));
+		memcpy((void *)opc, (void *)&mfc0_inst, sizeof(u32));
 		local_flush_icache_range((unsigned long)opc,
 					 (unsigned long)opc + 32);
 		local_irq_restore(flags);
@@ -110,10 +110,10 @@ int kvm_mips_trans_mfc0(uint32_t inst, uint32_t *opc, struct kvm_vcpu *vcpu)
 	return 0;
 }
 
-int kvm_mips_trans_mtc0(uint32_t inst, uint32_t *opc, struct kvm_vcpu *vcpu)
+int kvm_mips_trans_mtc0(u32 inst, u32 *opc, struct kvm_vcpu *vcpu)
 {
-	int32_t rt, rd, sel;
-	uint32_t mtc0_inst = SW_TEMPLATE;
+	u32 rt, rd, sel;
+	u32 mtc0_inst = SW_TEMPLATE;
 	unsigned long kseg0_opc, flags;
 
 	rt = (inst >> 16) & 0x1f;
@@ -127,11 +127,11 @@ int kvm_mips_trans_mtc0(uint32_t inst, uint32_t *opc, struct kvm_vcpu *vcpu)
 		kseg0_opc =
 		    CKSEG0ADDR(kvm_mips_translate_guest_kseg0_to_hpa
 			       (vcpu, (unsigned long) opc));
-		memcpy((void *)kseg0_opc, (void *)&mtc0_inst, sizeof(uint32_t));
+		memcpy((void *)kseg0_opc, (void *)&mtc0_inst, sizeof(u32));
 		local_flush_icache_range(kseg0_opc, kseg0_opc + 32);
 	} else if (KVM_GUEST_KSEGX((unsigned long) opc) == KVM_GUEST_KSEG23) {
 		local_irq_save(flags);
-		memcpy((void *)opc, (void *)&mtc0_inst, sizeof(uint32_t));
+		memcpy((void *)opc, (void *)&mtc0_inst, sizeof(u32));
 		local_flush_icache_range((unsigned long)opc,
 					 (unsigned long)opc + 32);
 		local_irq_restore(flags);
