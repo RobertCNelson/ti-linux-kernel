@@ -257,7 +257,8 @@ static int __commit_inmem_pages(struct inode *inode,
 	struct f2fs_io_info fio = {
 		.sbi = sbi,
 		.type = DATA,
-		.rw = WRITE_SYNC | REQ_PRIO,
+		.op = REQ_OP_WRITE,
+		.op_flags = WRITE_SYNC | REQ_PRIO,
 		.encrypted_page = NULL,
 	};
 	bool submit_bio = false;
@@ -406,7 +407,8 @@ repeat:
 		fcc->dispatch_list = llist_reverse_order(fcc->dispatch_list);
 
 		bio->bi_bdev = sbi->sb->s_bdev;
-		ret = submit_bio_wait(WRITE_FLUSH, bio);
+		bio_set_op_attrs(bio, REQ_OP_WRITE, WRITE_FLUSH);
+		ret = submit_bio_wait(bio);
 
 		llist_for_each_entry_safe(cmd, next,
 					  fcc->dispatch_list, llnode) {
@@ -439,7 +441,8 @@ int f2fs_issue_flush(struct f2fs_sb_info *sbi)
 
 		atomic_inc(&fcc->submit_flush);
 		bio->bi_bdev = sbi->sb->s_bdev;
-		ret = submit_bio_wait(WRITE_FLUSH, bio);
+		bio_set_op_attrs(bio, REQ_OP_WRITE, WRITE_FLUSH);
+		ret = submit_bio_wait(bio);
 		atomic_dec(&fcc->submit_flush);
 		bio_put(bio);
 		return ret;
@@ -1430,7 +1433,8 @@ void write_meta_page(struct f2fs_sb_info *sbi, struct page *page)
 	struct f2fs_io_info fio = {
 		.sbi = sbi,
 		.type = META,
-		.rw = WRITE_SYNC | REQ_META | REQ_PRIO,
+		.op = REQ_OP_WRITE,
+		.op_flags = WRITE_SYNC | REQ_META | REQ_PRIO,
 		.old_blkaddr = page->index,
 		.new_blkaddr = page->index,
 		.page = page,
@@ -1438,7 +1442,7 @@ void write_meta_page(struct f2fs_sb_info *sbi, struct page *page)
 	};
 
 	if (unlikely(page->index >= MAIN_BLKADDR(sbi)))
-		fio.rw &= ~REQ_META;
+		fio.op_flags &= ~REQ_META;
 
 	set_page_writeback(page);
 	f2fs_submit_page_mbio(&fio);
