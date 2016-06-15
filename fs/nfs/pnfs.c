@@ -1290,6 +1290,7 @@ alloc_init_layout_hdr(struct inode *ino,
 	INIT_LIST_HEAD(&lo->plh_bulk_destroy);
 	lo->plh_inode = ino;
 	lo->plh_lc_cred = get_rpccred(ctx->cred);
+	lo->plh_flags |= 1 << NFS_LAYOUT_INVALID_STID;
 	return lo;
 }
 
@@ -1297,6 +1298,8 @@ static struct pnfs_layout_hdr *
 pnfs_find_alloc_layout(struct inode *ino,
 		       struct nfs_open_context *ctx,
 		       gfp_t gfp_flags)
+	__releases(&ino->i_lock)
+	__acquires(&ino->i_lock)
 {
 	struct nfs_inode *nfsi = NFS_I(ino);
 	struct pnfs_layout_hdr *new = NULL;
@@ -1565,8 +1568,7 @@ lookup_again:
 	 * stateid, or it has been invalidated, then we must use the open
 	 * stateid.
 	 */
-	if (lo->plh_stateid.seqid == 0 ||
-	    test_bit(NFS_LAYOUT_INVALID_STID, &lo->plh_flags)) {
+	if (test_bit(NFS_LAYOUT_INVALID_STID, &lo->plh_flags)) {
 
 		/*
 		 * The first layoutget for the file. Need to serialize per
