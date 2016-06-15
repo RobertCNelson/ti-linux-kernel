@@ -252,7 +252,7 @@ int __frontswap_store(struct page *page)
 	pgoff_t offset = swp_offset(entry);
 	struct frontswap_ops *ops;
 
-	VM_BUG_ON (!frontswap_ops);
+	VM_BUG_ON(!frontswap_ops);
 	VM_BUG_ON(!PageLocked(page));
 	VM_BUG_ON(sis == NULL);
 
