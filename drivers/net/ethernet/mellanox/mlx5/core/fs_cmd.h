@@ -33,44 +33,41 @@
 #ifndef _MLX5_FS_CMD_
 #define _MLX5_FS_CMD_
 
-int mlx5_cmd_create_flow_table(struct mlx5_core_dev *dev,
-			       u16 vport,
-			       enum fs_flow_table_type type, unsigned int level,
-			       unsigned int log_size, struct mlx5_flow_table
-			       *next_ft, unsigned int *table_id);
+struct steering_cmds {
+	int (*update_root_ft)(struct mlx5_core_dev *dev,
+			      struct mlx5_flow_table *ft);
+	int (*create_flow_table)(struct mlx5_core_dev *dev, u16 vport,
+				 enum fs_flow_table_type type, unsigned int level,
+				 unsigned int log_size, struct mlx5_flow_table
+				 *next_ft, unsigned int *table_id);
+	int (*destroy_flow_table)(struct mlx5_core_dev *dev,
+				  struct mlx5_flow_table *ft);
+	int (*modify_flow_table)(struct mlx5_core_dev *dev,
+				 struct mlx5_flow_table *ft,
+				 struct mlx5_flow_table *next_ft);
+	int (*create_flow_group)(struct mlx5_core_dev *dev,
+				 struct mlx5_flow_table *ft,
+				 u32 *in,
+				 unsigned int *group_id);
+	int (*destroy_flow_group)(struct mlx5_core_dev *dev,
+				  struct mlx5_flow_table *ft,
+				  unsigned int group_id);
+	int (*create_fte)(struct mlx5_core_dev *dev,
+			  struct mlx5_flow_table *ft,
+			  unsigned int group_id,
+			  struct fs_fte *fte);
+	int (*update_fte)(struct mlx5_core_dev *dev,
+			  struct mlx5_flow_table *ft,
+			  unsigned int group_id,
+			  int modify_mask,
+			  struct fs_fte *fte);
+	int (*delete_fte)(struct mlx5_core_dev *dev,
+			  struct mlx5_flow_table *ft,
+			  unsigned int index);
+};
 
-int mlx5_cmd_destroy_flow_table(struct mlx5_core_dev *dev,
-				struct mlx5_flow_table *ft);
-
-int mlx5_cmd_modify_flow_table(struct mlx5_core_dev *dev,
-			       struct mlx5_flow_table *ft,
-			       struct mlx5_flow_table *next_ft);
-
-int mlx5_cmd_create_flow_group(struct mlx5_core_dev *dev,
-			       struct mlx5_flow_table *ft,
-			       u32 *in, unsigned int *group_id);
-
-int mlx5_cmd_destroy_flow_group(struct mlx5_core_dev *dev,
-				struct mlx5_flow_table *ft,
-				unsigned int group_id);
-
-int mlx5_cmd_create_fte(struct mlx5_core_dev *dev,
-			struct mlx5_flow_table *ft,
-			unsigned group_id,
-			struct fs_fte *fte);
-
-int mlx5_cmd_update_fte(struct mlx5_core_dev *dev,
-			struct mlx5_flow_table *ft,
-			unsigned group_id,
-			int modify_mask,
-			struct fs_fte *fte);
-
-int mlx5_cmd_delete_fte(struct mlx5_core_dev *dev,
-			struct mlx5_flow_table *ft,
-			unsigned int index);
-
-int mlx5_cmd_update_root_ft(struct mlx5_core_dev *dev,
-			    struct mlx5_flow_table *ft);
+const struct steering_cmds *mlx5_get_phys_fs_cmds(void);
+const struct steering_cmds *mlx5_get_virt_fs_cmds(void);
 
 int mlx5_cmd_fc_alloc(struct mlx5_core_dev *dev, u16 *id);
 int mlx5_cmd_fc_free(struct mlx5_core_dev *dev, u16 id);

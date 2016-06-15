@@ -29,6 +29,7 @@ struct sockaddr_ll {
 #define PACKET_LOOPBACK		5		/* MC/BRD frame looped back */
 #define PACKET_USER		6		/* To user space	*/
 #define PACKET_KERNEL		7		/* To kernel space	*/
+#define PACKET_BYPASS_KERNEL	8		/* Bypass kernel space	*/
 /* Unused, PACKET_FASTROUTE and PACKET_LOOPBACK are invisible to user space */
 #define PACKET_FASTROUTE	6		/* Fastrouted frame	*/
 

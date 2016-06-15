@@ -2985,7 +2985,7 @@ static int ocrdma_parse_dcbxcfg_rsp(struct ocrdma_dev *dev, int ptype,
 				OCRDMA_APP_PARAM_APP_PROTO_MASK;
 
 		if (
-			valid && proto == OCRDMA_APP_PROTO_ROCE &&
+			valid && proto == ETH_P_ROCE &&
 			proto_sel == OCRDMA_PROTO_SELECT_L2) {
 			for (slindx = 0; slindx <
 				OCRDMA_MAX_SERVICE_LEVEL_INDEX; slindx++) {

@@ -694,14 +694,14 @@ struct sk_buff {
 
 /* if you move pkt_type around you also must adapt those constants */
 #ifdef __BIG_ENDIAN_BITFIELD
-#define PKT_TYPE_MAX	(7 << 5)
+#define PKT_TYPE_MAX	(8 << 5)
 #else
-#define PKT_TYPE_MAX	7
+#define PKT_TYPE_MAX	8
 #endif
 #define PKT_TYPE_OFFSET()	offsetof(struct sk_buff, __pkt_type_offset)
 
 	__u8			__pkt_type_offset[0];
-	__u8			pkt_type:3;
+	__u8			pkt_type:4;
 	__u8			pfmemalloc:1;
 	__u8			ignore_df:1;
 	__u8			nfctinfo:3;

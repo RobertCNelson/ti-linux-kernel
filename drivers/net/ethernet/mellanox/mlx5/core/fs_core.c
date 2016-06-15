@@ -83,6 +83,11 @@
 #define ANCHOR_NUM_LEVELS 1
 #define ANCHOR_NUM_PRIOS 1
 #define ANCHOR_MIN_LEVEL (BY_PASS_MIN_LEVEL + 1)
+
+#define OFFLOADS_MAX_FT 1
+#define OFFLOADS_NUM_PRIOS 1
+#define OFFLOADS_MIN_LEVEL (ANCHOR_MIN_LEVEL + 1)
+
 struct node_caps {
 	size_t	arr_sz;
 	long	*caps;
@@ -98,7 +103,7 @@ static struct init_tree_node {
 	int num_levels;
 } root_fs = {
 	.type = FS_TYPE_NAMESPACE,
-	.ar_size = 4,
+	.ar_size = 5,
 	.children = (struct init_tree_node[]) {
 		ADD_PRIO(0, BY_PASS_MIN_LEVEL, 0,
 			 FS_REQUIRED_CAPS(FS_CAP(flow_table_properties_nic_receive.flow_modify_en),
@@ -107,6 +112,9 @@ static struct init_tree_node {
 					  FS_CAP(flow_table_properties_nic_receive.flow_table_modify)),
 			 ADD_NS(ADD_MULTIPLE_PRIO(MLX5_BY_PASS_NUM_PRIOS,
 						  BY_PASS_PRIO_NUM_LEVELS))),
+		ADD_PRIO(0, OFFLOADS_MIN_LEVEL, 0, {},
+			 ADD_NS(ADD_MULTIPLE_PRIO(OFFLOADS_NUM_PRIOS, OFFLOADS_MAX_FT))),
+
 		ADD_PRIO(0, KERNEL_MIN_LEVEL, 0, {},
 			 ADD_NS(ADD_MULTIPLE_PRIO(1, 1),
 				ADD_MULTIPLE_PRIO(KERNEL_NIC_NUM_PRIOS,
@@ -141,6 +149,7 @@ static void tree_init_node(struct fs_node *node,
 	INIT_LIST_HEAD(&node->list);
 	INIT_LIST_HEAD(&node->children);
 	mutex_init(&node->lock);
+	init_completion(&node->complete);
 	node->remove_func = remove_func;
 }
 
@@ -163,10 +172,10 @@ static void tree_get_node(struct fs_node *node)
 }
 
 static void nested_lock_ref_node(struct fs_node *node,
-				 enum fs_i_mutex_lock_class class)
+				 int nesting)
 {
 	if (node) {
-		mutex_lock_nested(&node->lock, class);
+		mutex_lock_nested(&node->lock, nesting);
 		atomic_inc(&node->refcount);
 	}
 }
@@ -190,6 +199,7 @@ static void unlock_ref_node(struct fs_node *node)
 static void tree_put_node(struct fs_node *node)
 {
 	struct fs_node *parent_node = node->parent;
+	bool node_deleted = false;
 
 	lock_ref_node(parent_node);
 	if (atomic_dec_and_test(&node->refcount)) {
@@ -197,21 +207,68 @@ static void tree_put_node(struct fs_node *node)
 			list_del_init(&node->list);
 		if (node->remove_func)
 			node->remove_func(node);
-		kfree(node);
-		node = NULL;
+		complete(&node->complete);
+		node_deleted = true;
 	}
 	unlock_ref_node(parent_node);
-	if (!node && parent_node)
+	if (node_deleted && parent_node)
 		tree_put_node(parent_node);
 }
 
+static struct mlx5_flow_root_namespace *find_root(struct fs_node *node)
+{
+	struct fs_node *root;
+	struct mlx5_flow_namespace *ns;
+
+	root = node->root;
+
+	if (WARN_ON(root->type != FS_TYPE_NAMESPACE)) {
+		pr_warn("mlx5: flow steering node is not in tree or garbaged\n");
+		return NULL;
+	}
+
+	ns = container_of(root, struct mlx5_flow_namespace, node);
+	return container_of(ns, struct mlx5_flow_root_namespace, ns);
+}
+
+static inline struct mlx5_core_dev *get_dev(struct fs_node *node)
+{
+	struct mlx5_flow_root_namespace *root = find_root(node);
+
+	if (root)
+		return root->dev;
+	return NULL;
+}
+
+#define MLX5_FS_TIMEOUT_MSEC 1000
 static int tree_remove_node(struct fs_node *node)
 {
-	if (atomic_read(&node->refcount) > 1) {
-		atomic_dec(&node->refcount);
-		return -EEXIST;
-	}
+	unsigned long timeout = msecs_to_jiffies(MLX5_FS_TIMEOUT_MSEC);
+	struct mlx5_core_dev *dev = get_dev(node);
+
 	tree_put_node(node);
+	if (!wait_for_completion_timeout(&node->complete, timeout)) {
+		mlx5_core_warn(dev, "Timeout waiting for removing steering object\n");
+		return -ETIMEDOUT;
+	}
+	kfree(node);
+	node = NULL;
+
+	return 0;
+}
+
+static int tree_force_remove_node(struct fs_node *node)
+{
+	struct fs_node *parent_node = node->parent;
+
+	lock_ref_node(parent_node);
+	list_del_init(&node->list);
+	if (node->remove_func)
+		node->remove_func(node);
+	kfree(node);
+	node = NULL;
+	unlock_ref_node(parent_node);
+
 	return 0;
 }
 
@@ -295,33 +352,9 @@ static bool compare_match_criteria(u8 match_criteria_enable1,
 		!memcmp(mask1, mask2, MLX5_ST_SZ_BYTES(fte_match_param));
 }
 
-static struct mlx5_flow_root_namespace *find_root(struct fs_node *node)
-{
-	struct fs_node *root;
-	struct mlx5_flow_namespace *ns;
-
-	root = node->root;
-
-	if (WARN_ON(root->type != FS_TYPE_NAMESPACE)) {
-		pr_warn("mlx5: flow steering node is not in tree or garbaged\n");
-		return NULL;
-	}
-
-	ns = container_of(root, struct mlx5_flow_namespace, node);
-	return container_of(ns, struct mlx5_flow_root_namespace, ns);
-}
-
-static inline struct mlx5_core_dev *get_dev(struct fs_node *node)
-{
-	struct mlx5_flow_root_namespace *root = find_root(node);
-
-	if (root)
-		return root->dev;
-	return NULL;
-}
-
 static void del_flow_table(struct fs_node *node)
 {
+	struct mlx5_flow_root_namespace *root = find_root(node);
 	struct mlx5_flow_table *ft;
 	struct mlx5_core_dev *dev;
 	struct fs_prio *prio;
@@ -330,7 +363,7 @@ static void del_flow_table(struct fs_node *node)
 	fs_get_obj(ft, node);
 	dev = get_dev(&ft->node);
 
-	err = mlx5_cmd_destroy_flow_table(dev, ft);
+	err = root->cmds->destroy_flow_table(dev, ft);
 	if (err)
 		pr_warn("flow steering can't destroy ft\n");
 	fs_get_obj(prio, ft->node.parent);
@@ -339,6 +372,9 @@ static void del_flow_table(struct fs_node *node)
 
 static void del_rule(struct fs_node *node)
 {
+	struct mlx5_flow_root_namespace *root = find_root(node);
+	struct rule_client_data *priv_data;
+	struct rule_client_data *tmp;
 	struct mlx5_flow_rule *rule;
 	struct mlx5_flow_table *ft;
 	struct mlx5_flow_group *fg;
@@ -356,6 +392,12 @@ static void del_rule(struct fs_node *node)
 	}
 
 	fs_get_obj(rule, node);
+
+	list_for_each_entry_safe(priv_data, tmp, &rule->clients_data, list) {
+		list_del(&priv_data->list);
+		kfree(priv_data);
+	}
+
 	fs_get_obj(fte, rule->node.parent);
 	fs_get_obj(fg, fte->node.parent);
 	memcpy(match_value, fte->val, sizeof(fte->val));
@@ -369,10 +411,8 @@ static void del_rule(struct fs_node *node)
 	if ((fte->action & MLX5_FLOW_CONTEXT_ACTION_FWD_DEST) &&
 	    --fte->dests_size) {
 		modify_mask = BIT(MLX5_SET_FTE_MODIFY_ENABLE_MASK_DESTINATION_LIST),
-		err = mlx5_cmd_update_fte(dev, ft,
-					  fg->id,
-					  modify_mask,
-					  fte);
+		err = root->cmds->update_fte(dev, ft, fg->id,
+					     modify_mask, fte);
 		if (err)
 			pr_warn("%s can't del rule fg id=%d fte_index=%d\n",
 				__func__, fg->id, fte->index);
@@ -382,6 +422,7 @@ static void del_rule(struct fs_node *node)
 
 static void del_fte(struct fs_node *node)
 {
+	struct mlx5_flow_root_namespace *root = find_root(node);
 	struct mlx5_flow_table *ft;
 	struct mlx5_flow_group *fg;
 	struct mlx5_core_dev *dev;
@@ -393,8 +434,8 @@ static void del_fte(struct fs_node *node)
 	fs_get_obj(ft, fg->node.parent);
 
 	dev = get_dev(&ft->node);
-	err = mlx5_cmd_delete_fte(dev, ft,
-				  fte->index);
+	err = root->cmds->delete_fte(dev, ft,
+				     fte->index);
 	if (err)
 		pr_warn("flow steering can't delete fte in index %d of flow group id %d\n",
 			fte->index, fg->id);
@@ -405,6 +446,7 @@ static void del_fte(struct fs_node *node)
 
 static void del_flow_group(struct fs_node *node)
 {
+	struct mlx5_flow_root_namespace *root = find_root(node);
 	struct mlx5_flow_group *fg;
 	struct mlx5_flow_table *ft;
 	struct mlx5_core_dev *dev;
@@ -413,7 +455,7 @@ static void del_flow_group(struct fs_node *node)
 	fs_get_obj(ft, fg->node.parent);
 	dev = get_dev(&ft->node);
 
-	if (mlx5_cmd_destroy_flow_group(dev, ft, fg->id))
+	if (root->cmds->destroy_flow_group(dev, ft, fg->id))
 		pr_warn("flow steering can't destroy fg %d of ft %d\n",
 			fg->id, ft->id);
 }
@@ -552,15 +594,16 @@ static int connect_fts_in_prio(struct mlx5_core_dev *dev,
 			       struct fs_prio *prio,
 			       struct mlx5_flow_table *ft)
 {
+	struct mlx5_flow_root_namespace *root = find_root(&prio->node);
 	struct mlx5_flow_table *iter;
 	int i = 0;
 	int err;
 
 	fs_for_each_ft(iter, prio) {
 		i++;
-		err = mlx5_cmd_modify_flow_table(dev,
-						 iter,
-						 ft);
+		err = root->cmds->modify_flow_table(dev,
+						    iter,
+						    ft);
 		if (err) {
 			mlx5_core_warn(dev, "Failed to modify flow table %d\n",
 				       iter->id);
@@ -603,7 +646,7 @@ static int update_root_ft_create(struct mlx5_flow_table *ft, struct fs_prio
 	if (ft->level >= min_level)
 		return 0;
 
-	err = mlx5_cmd_update_root_ft(root->dev, ft);
+	err = root->cmds->update_root_ft(root->dev, ft);
 	if (err)
 		mlx5_core_warn(root->dev, "Update root flow table of id=%u failed\n",
 			       ft->id);
@@ -616,6 +659,8 @@ static int update_root_ft_create(struct mlx5_flow_table *ft, struct fs_prio
 int mlx5_modify_rule_destination(struct mlx5_flow_rule *rule,
 				 struct mlx5_flow_destination *dest)
 {
+	struct mlx5_flow_root_namespace *root =
+		find_root(&rule->node);
 	struct mlx5_flow_table *ft;
 	struct mlx5_flow_group *fg;
 	struct fs_fte *fte;
@@ -630,10 +675,10 @@ int mlx5_modify_rule_destination(struct mlx5_flow_rule *rule,
 	fs_get_obj(ft, fg->node.parent);
 
 	memcpy(&rule->dest_attr, dest, sizeof(*dest));
-	err = mlx5_cmd_update_fte(get_dev(&ft->node),
-				  ft, fg->id,
-				  modify_mask,
-				  fte);
+	err = root->cmds->update_fte(get_dev(&ft->node),
+				     ft, fg->id,
+				     modify_mask,
+				     fte);
 	unlock_ref_node(&fte->node);
 
 	return err;
@@ -751,8 +796,8 @@ static struct mlx5_flow_table *__mlx5_create_flow_table(struct mlx5_flow_namespa
 	tree_init_node(&ft->node, 1, del_flow_table);
 	log_table_sz = ilog2(ft->max_fte);
 	next_ft = find_next_chained_ft(fs_prio);
-	err = mlx5_cmd_create_flow_table(root->dev, ft->vport, ft->type, ft->level,
-					 log_table_sz, next_ft, &ft->id);
+	err = root->cmds->create_flow_table(root->dev, ft->vport, ft->type, ft->level,
+					    log_table_sz, next_ft, &ft->id);
 	if (err)
 		goto free_ft;
 
@@ -767,7 +812,7 @@ static struct mlx5_flow_table *__mlx5_create_flow_table(struct mlx5_flow_namespa
 	mutex_unlock(&root->chain_lock);
 	return ft;
 destroy_ft:
-	mlx5_cmd_destroy_flow_table(root->dev, ft);
+	root->cmds->destroy_flow_table(root->dev, ft);
 free_ft:
 	kfree(ft);
 unlock_root:
@@ -818,6 +863,7 @@ static struct mlx5_flow_group *create_flow_group_common(struct mlx5_flow_table *
 							*prev_fg,
 							bool is_auto_fg)
 {
+	struct mlx5_flow_root_namespace *root = find_root(&ft->node);
 	struct mlx5_flow_group *fg;
 	struct mlx5_core_dev *dev = get_dev(&ft->node);
 	int err;
@@ -829,7 +875,7 @@ static struct mlx5_flow_group *create_flow_group_common(struct mlx5_flow_table *
 	if (IS_ERR(fg))
 		return fg;
 
-	err = mlx5_cmd_create_flow_group(dev, ft, fg_in, &fg->id);
+	err = root->cmds->create_flow_group(dev, ft, fg_in, &fg->id);
 	if (err) {
 		kfree(fg);
 		return ERR_PTR(err);
@@ -870,7 +916,10 @@ static struct mlx5_flow_rule *alloc_rule(struct mlx5_flow_destination *dest)
 		return NULL;
 
 	INIT_LIST_HEAD(&rule->next_ft);
+	atomic_set(&rule->refcount, 1);
 	rule->node.type = FS_TYPE_FLOW_DEST;
+	INIT_LIST_HEAD(&rule->clients_data);
+	mutex_init(&rule->clients_lock);
 	if (dest)
 		memcpy(&rule->dest_attr, dest, sizeof(*dest));
 
@@ -882,6 +931,7 @@ static struct mlx5_flow_rule *add_rule_fte(struct fs_fte *fte,
 					   struct mlx5_flow_group *fg,
 					   struct mlx5_flow_destination *dest)
 {
+	struct mlx5_flow_root_namespace *root = find_root(&fg->node);
 	struct mlx5_flow_table *ft;
 	struct mlx5_flow_rule *rule;
 	int modify_mask = 0;
@@ -909,11 +959,11 @@ static struct mlx5_flow_rule *add_rule_fte(struct fs_fte *fte,
 	}
 
 	if (fte->dests_size == 1 || !dest)
-		err = mlx5_cmd_create_fte(get_dev(&ft->node),
-					  ft, fg->id, fte);
+		err = root->cmds->create_fte(get_dev(&ft->node),
+					     ft, fg->id, fte);
 	else
-		err = mlx5_cmd_update_fte(get_dev(&ft->node),
-					  ft, fg->id, modify_mask, fte);
+		err = root->cmds->update_fte(get_dev(&ft->node),
+					     ft, fg->id, modify_mask, fte);
 	if (err)
 		goto free_rule;
 
@@ -1045,6 +1095,52 @@ static struct mlx5_flow_rule *find_flow_rule(struct fs_fte *fte,
 	return NULL;
 }
 
+static struct mlx5_flow_namespace *get_ns(struct fs_node *node)
+{
+	struct mlx5_flow_namespace *ns = NULL;
+
+	while (node  && (node->type != FS_TYPE_NAMESPACE))
+		node = node->parent;
+
+	if (node)
+		fs_get_obj(ns, node);
+
+	return ns;
+}
+
+static void get_event_data(struct mlx5_flow_rule *rule, struct mlx5_event_data
+			   *data)
+{
+	struct mlx5_flow_group *fg;
+	struct mlx5_flow_table *ft;
+	struct fs_fte *fte;
+
+	data->rule = rule;
+
+	fs_get_obj(fte, rule->node.parent);
+	WARN_ON(!fte);
+	fs_get_obj(fg, fte->node.parent);
+	WARN_ON(!fg);
+	fs_get_obj(ft, fg->node.parent);
+	WARN_ON(!ft);
+	data->ft = ft;
+}
+
+static void notify_add_rule(struct mlx5_flow_rule *rule)
+{
+	struct mlx5_event_data evt_data;
+	struct mlx5_flow_namespace *ns;
+	struct fs_fte *fte;
+
+	fs_get_obj(fte, rule->node.parent);
+	ns = get_ns(&fte->node);
+	if (!ns)
+		return;
+
+	get_event_data(rule, &evt_data);
+	raw_notifier_call_chain(&ns->listeners, MLX5_RULE_EVENT_ADD, &evt_data);
+}
+
 static struct mlx5_flow_rule *add_rule_fg(struct mlx5_flow_group *fg,
 					  u32 *match_value,
 					  u8 action,
@@ -1063,7 +1159,7 @@ static struct mlx5_flow_rule *add_rule_fg(struct mlx5_flow_group *fg,
 		    action == fte->action && flow_tag == fte->flow_tag) {
 			rule = find_flow_rule(fte, dest);
 			if (rule) {
-				atomic_inc(&rule->node.refcount);
+				atomic_inc(&rule->refcount);
 				unlock_ref_node(&fte->node);
 				unlock_ref_node(&fg->node);
 				return rule;
@@ -1101,6 +1197,7 @@ static struct mlx5_flow_rule *add_rule_fg(struct mlx5_flow_group *fg,
 	list_add(&fte->node.list, prev);
 add_rule:
 	tree_add_node(&rule->node, &fte->node);
+	notify_add_rule(rule);
 unlock_fg:
 	unlock_ref_node(&fg->node);
 	return rule;
@@ -1152,39 +1249,37 @@ static bool dest_is_valid(struct mlx5_flow_destination *dest,
 
 static struct mlx5_flow_rule *
 _mlx5_add_flow_rule(struct mlx5_flow_table *ft,
-		    u8 match_criteria_enable,
-		    u32 *match_criteria,
-		    u32 *match_value,
-		    u32 action,
-		    u32 flow_tag,
-		    struct mlx5_flow_destination *dest)
+		    struct mlx5_flow_attr *attr)
 {
+	struct mlx5_flow_match *match = &attr->flow_match;
 	struct mlx5_flow_group *g;
 	struct mlx5_flow_rule *rule;
 
-	if (!dest_is_valid(dest, action, ft))
+	if (!dest_is_valid(attr->dest, attr->action, ft))
 		return ERR_PTR(-EINVAL);
 
 	nested_lock_ref_node(&ft->node, FS_MUTEX_GRANDPARENT);
 	fs_for_each_fg(g, ft)
 		if (compare_match_criteria(g->mask.match_criteria_enable,
-					   match_criteria_enable,
+					   match->match_criteria_enable,
 					   g->mask.match_criteria,
-					   match_criteria)) {
-			rule = add_rule_fg(g, match_value,
-					   action, flow_tag, dest);
+					   match->match_criteria)) {
+			rule = add_rule_fg(g, match->match_value,
+					   attr->action, attr->flow_tag,
+					   attr->dest);
 			if (!IS_ERR(rule) || PTR_ERR(rule) != -ENOSPC)
 				goto unlock;
 		}
 
-	g = create_autogroup(ft, match_criteria_enable, match_criteria);
+	g = create_autogroup(ft, match->match_criteria_enable,
+			     match->match_criteria);
 	if (IS_ERR(g)) {
 		rule = (void *)g;
 		goto unlock;
 	}
 
-	rule = add_rule_fg(g, match_value,
-			   action, flow_tag, dest);
+	rule = add_rule_fg(g, match->match_value,
+			   attr->action, attr->flow_tag, attr->dest);
 	if (IS_ERR(rule)) {
 		/* Remove assumes refcount > 0 and autogroup creates a group
 		 * with a refcount = 0.
@@ -1207,42 +1302,39 @@ static bool fwd_next_prio_supported(struct mlx5_flow_table *ft)
 
 struct mlx5_flow_rule *
 mlx5_add_flow_rule(struct mlx5_flow_table *ft,
-		   u8 match_criteria_enable,
-		   u32 *match_criteria,
-		   u32 *match_value,
-		   u32 action,
-		   u32 flow_tag,
-		   struct mlx5_flow_destination *dest)
+		   struct mlx5_flow_attr *attr)
 {
 	struct mlx5_flow_root_namespace *root = find_root(&ft->node);
 	struct mlx5_flow_destination gen_dest;
 	struct mlx5_flow_table *next_ft = NULL;
 	struct mlx5_flow_rule *rule = NULL;
-	u32 sw_action = action;
+	u32 sw_action = attr->action;
 	struct fs_prio *prio;
+	struct mlx5_flow_namespace *ns;
 
 	fs_get_obj(prio, ft->node.parent);
-	if (action == MLX5_FLOW_CONTEXT_ACTION_FWD_NEXT_PRIO) {
+	if (attr->action == MLX5_FLOW_CONTEXT_ACTION_FWD_NEXT_PRIO) {
 		if (!fwd_next_prio_supported(ft))
 			return ERR_PTR(-EOPNOTSUPP);
-		if (dest)
+		if (attr->dest)
 			return ERR_PTR(-EINVAL);
 		mutex_lock(&root->chain_lock);
 		next_ft = find_next_chained_ft(prio);
 		if (next_ft) {
 			gen_dest.type = MLX5_FLOW_DESTINATION_TYPE_FLOW_TABLE;
 			gen_dest.ft = next_ft;
-			dest = &gen_dest;
-			action = MLX5_FLOW_CONTEXT_ACTION_FWD_DEST;
+			attr->dest = &gen_dest;
+			attr->action = MLX5_FLOW_CONTEXT_ACTION_FWD_DEST;
 		} else {
 			mutex_unlock(&root->chain_lock);
 			return ERR_PTR(-EOPNOTSUPP);
 		}
 	}
 
-	rule =	_mlx5_add_flow_rule(ft, match_criteria_enable, match_criteria,
-				    match_value, action, flow_tag, dest);
-
+	ns = get_ns(&ft->node);
+	if (ns)
+		down_read(&ns->ns_rw_sem);
+	rule =	_mlx5_add_flow_rule(ft, attr);
 	if (sw_action == MLX5_FLOW_CONTEXT_ACTION_FWD_NEXT_PRIO) {
 		if (!IS_ERR_OR_NULL(rule) &&
 		    (list_empty(&rule->next_ft))) {
@@ -1253,13 +1345,41 @@ mlx5_add_flow_rule(struct mlx5_flow_table *ft,
 		}
 		mutex_unlock(&root->chain_lock);
 	}
+	if (ns)
+		up_read(&ns->ns_rw_sem);
+
 	return rule;
 }
 EXPORT_SYMBOL(mlx5_add_flow_rule);
 
+static void notify_del_rule(struct mlx5_flow_rule *rule)
+{
+	struct mlx5_flow_namespace *ns;
+	struct mlx5_event_data evt_data;
+	struct fs_fte *fte;
+
+	fs_get_obj(fte, rule->node.parent);
+	ns = get_ns(&fte->node);
+	if (!ns)
+		return;
+
+	get_event_data(rule, &evt_data);
+	raw_notifier_call_chain(&ns->listeners, MLX5_RULE_EVENT_DEL, &evt_data);
+}
+
 void mlx5_del_flow_rule(struct mlx5_flow_rule *rule)
 {
+	struct mlx5_flow_namespace *ns;
+
+	if (!atomic_dec_and_test(&rule->refcount))
+		return;
+	ns = get_ns(&rule->node);
+	if (ns)
+		down_read(&ns->ns_rw_sem);
+	notify_del_rule(rule);
 	tree_remove_node(&rule->node);
+	if (ns)
+		up_read(&ns->ns_rw_sem);
 }
 EXPORT_SYMBOL(mlx5_del_flow_rule);
 
@@ -1285,7 +1405,7 @@ static int update_root_ft_destroy(struct mlx5_flow_table *ft)
 
 	new_root_ft = find_next_ft(ft);
 	if (new_root_ft) {
-		int err = mlx5_cmd_update_root_ft(root->dev, new_root_ft);
+		int err = root->cmds->update_root_ft(root->dev, new_root_ft);
 
 		if (err) {
 			mlx5_core_warn(root->dev, "Update root flow table of id=%u failed\n",
@@ -1359,39 +1479,57 @@ void mlx5_destroy_flow_group(struct mlx5_flow_group *fg)
 struct mlx5_flow_namespace *mlx5_get_flow_namespace(struct mlx5_core_dev *dev,
 						    enum mlx5_flow_namespace_type type)
 {
-	struct mlx5_flow_root_namespace *root_ns = dev->priv.root_ns;
+	struct mlx5_flow_steering *steering = dev->priv.steering;
+	struct mlx5_flow_root_namespace *root_ns;
 	int prio;
 	struct fs_prio *fs_prio;
 	struct mlx5_flow_namespace *ns;
 
-	if (!root_ns)
-		return NULL;
-
 	switch (type) {
 	case MLX5_FLOW_NAMESPACE_BYPASS:
+	case MLX5_FLOW_NAMESPACE_OFFLOADS:
 	case MLX5_FLOW_NAMESPACE_KERNEL:
 	case MLX5_FLOW_NAMESPACE_LEFTOVERS:
 	case MLX5_FLOW_NAMESPACE_ANCHOR:
 		prio = type;
 		break;
 	case MLX5_FLOW_NAMESPACE_FDB:
-		if (dev->priv.fdb_root_ns)
-			return &dev->priv.fdb_root_ns->ns;
+		if (steering->fdb_root_ns)
+			return &steering->fdb_root_ns->ns;
 		else
 			return NULL;
 	case MLX5_FLOW_NAMESPACE_ESW_EGRESS:
-		if (dev->priv.esw_egress_root_ns)
-			return &dev->priv.esw_egress_root_ns->ns;
+		if (steering->esw_egress_root_ns)
+			return &steering->esw_egress_root_ns->ns;
 		else
 			return NULL;
 	case MLX5_FLOW_NAMESPACE_ESW_INGRESS:
-		if (dev->priv.esw_ingress_root_ns)
-			return &dev->priv.esw_ingress_root_ns->ns;
+		if (steering->esw_ingress_root_ns)
+			return &steering->esw_ingress_root_ns->ns;
+		else
+			return NULL;
+	case MLX5_FLOW_NAMESPACE_SNIFFER_RX:
+		if (steering->sniffer_rx_root_ns)
+			return &steering->sniffer_rx_root_ns->ns;
+		else
+			return NULL;
+	case MLX5_FLOW_NAMESPACE_SNIFFER_TX:
+		if (steering->sniffer_tx_root_ns)
+			return &steering->sniffer_tx_root_ns->ns;
+		else
+			return NULL;
+	case MLX5_FLOW_NAMESPACE_ROCE:
+		if (steering->roce_root_ns)
+			return &steering->roce_root_ns->ns;
 		else
 			return NULL;
 	default:
 		return NULL;
 	}
+
+	root_ns = steering->root_ns;
+	if (!root_ns)
+		return NULL;
 
 	fs_prio = find_prio(&root_ns->ns, prio);
 	if (!fs_prio)
@@ -1428,6 +1566,8 @@ static struct mlx5_flow_namespace *fs_init_namespace(struct mlx5_flow_namespace
 						     *ns)
 {
 	ns->node.type = FS_TYPE_NAMESPACE;
+
+	init_rwsem(&ns->ns_rw_sem);
 
 	return ns;
 }
@@ -1478,13 +1618,13 @@ static bool has_required_caps(struct mlx5_core_dev *dev, struct node_caps *caps)
 	return true;
 }
 
-static int init_root_tree_recursive(struct mlx5_core_dev *dev,
+static int init_root_tree_recursive(struct mlx5_flow_steering *steering,
 				    struct init_tree_node *init_node,
 				    struct fs_node *fs_parent_node,
 				    struct init_tree_node *init_parent_node,
 				    int prio)
 {
-	int max_ft_level = MLX5_CAP_FLOWTABLE(dev,
+	int max_ft_level = MLX5_CAP_FLOWTABLE(steering->dev,
 					      flow_table_properties_nic_receive.
 					      max_ft_level);
 	struct mlx5_flow_namespace *fs_ns;
@@ -1495,7 +1635,7 @@ static int init_root_tree_recursive(struct mlx5_core_dev *dev,
 
 	if (init_node->type == FS_TYPE_PRIO) {
 		if ((init_node->min_ft_level > max_ft_level) ||
-		    !has_required_caps(dev, &init_node->caps))
+		    !has_required_caps(steering->dev, &init_node->caps))
 			return 0;
 
 		fs_get_obj(fs_ns, fs_parent_node);
@@ -1516,7 +1656,7 @@ static int init_root_tree_recursive(struct mlx5_core_dev *dev,
 	}
 	prio = 0;
 	for (i = 0; i < init_node->ar_size; i++) {
-		err = init_root_tree_recursive(dev, &init_node->children[i],
+		err = init_root_tree_recursive(steering, &init_node->children[i],
 					       base, init_node, prio);
 		if (err)
 			return err;
@@ -1529,7 +1669,7 @@ static int init_root_tree_recursive(struct mlx5_core_dev *dev,
 	return 0;
 }
 
-static int init_root_tree(struct mlx5_core_dev *dev,
+static int init_root_tree(struct mlx5_flow_steering *steering,
 			  struct init_tree_node *init_node,
 			  struct fs_node *fs_parent_node)
 {
@@ -1539,7 +1679,7 @@ static int init_root_tree(struct mlx5_core_dev *dev,
 
 	fs_get_obj(fs_ns, fs_parent_node);
 	for (i = 0; i < init_node->ar_size; i++) {
-		err = init_root_tree_recursive(dev, &init_node->children[i],
+		err = init_root_tree_recursive(steering, &init_node->children[i],
 					       &fs_ns->node,
 					       init_node, i);
 		if (err)
@@ -1548,9 +1688,10 @@ static int init_root_tree(struct mlx5_core_dev *dev,
 	return 0;
 }
 
-static struct mlx5_flow_root_namespace *create_root_ns(struct mlx5_core_dev *dev,
+static struct mlx5_flow_root_namespace *create_root_ns(struct mlx5_flow_steering *steering,
 						       enum fs_flow_table_type
-						       table_type)
+						       table_type,
+						       const struct steering_cmds *cmds)
 {
 	struct mlx5_flow_root_namespace *root_ns;
 	struct mlx5_flow_namespace *ns;
@@ -1560,8 +1701,9 @@ static struct mlx5_flow_root_namespace *create_root_ns(struct mlx5_core_dev *dev
 	if (!root_ns)
 		return NULL;
 
-	root_ns->dev = dev;
+	root_ns->dev = steering->dev;
 	root_ns->table_type = table_type;
+	root_ns->cmds = cmds;
 
 	ns = &root_ns->ns;
 	fs_init_namespace(ns);
@@ -1615,212 +1757,186 @@ static void set_prio_attrs(struct mlx5_flow_root_namespace *root_ns)
 #define ANCHOR_PRIO 0
 #define ANCHOR_SIZE 1
 #define ANCHOR_LEVEL 0
-static int create_anchor_flow_table(struct mlx5_core_dev
-							*dev)
+static int create_anchor_flow_table(struct mlx5_flow_steering *steering)
 {
 	struct mlx5_flow_namespace *ns = NULL;
 	struct mlx5_flow_table *ft;
 
-	ns = mlx5_get_flow_namespace(dev, MLX5_FLOW_NAMESPACE_ANCHOR);
+	ns = mlx5_get_flow_namespace(steering->dev, MLX5_FLOW_NAMESPACE_ANCHOR);
 	if (!ns)
 		return -EINVAL;
 	ft = mlx5_create_flow_table(ns, ANCHOR_PRIO, ANCHOR_SIZE, ANCHOR_LEVEL);
 	if (IS_ERR(ft)) {
-		mlx5_core_err(dev, "Failed to create last anchor flow table");
+		mlx5_core_err(steering->dev, "Failed to create last anchor flow table");
 		return PTR_ERR(ft);
 	}
 	return 0;
 }
 
-static int init_root_ns(struct mlx5_core_dev *dev)
+static int init_root_ns(struct mlx5_flow_steering *steering)
 {
 
-	dev->priv.root_ns = create_root_ns(dev, FS_FT_NIC_RX);
-	if (IS_ERR_OR_NULL(dev->priv.root_ns))
+	steering->root_ns = create_root_ns(steering, FS_FT_NIC_RX,
+					   mlx5_get_phys_fs_cmds());
+	if (IS_ERR_OR_NULL(steering->root_ns))
 		goto cleanup;
 
-	if (init_root_tree(dev, &root_fs, &dev->priv.root_ns->ns.node))
+	if (init_root_tree(steering, &root_fs, &steering->root_ns->ns.node))
 		goto cleanup;
 
-	set_prio_attrs(dev->priv.root_ns);
+	set_prio_attrs(steering->root_ns);
 
-	if (create_anchor_flow_table(dev))
+	if (create_anchor_flow_table(steering))
 		goto cleanup;
 
 	return 0;
 
 cleanup:
-	mlx5_cleanup_fs(dev);
+	mlx5_cleanup_fs(steering->dev);
 	return -ENOMEM;
 }
 
-static void cleanup_single_prio_root_ns(struct mlx5_core_dev *dev,
-					struct mlx5_flow_root_namespace *root_ns)
+static void clean_tree(struct fs_node *node)
 {
-	struct fs_node *prio;
+	if (node) {
+		struct fs_node *iter;
+		struct fs_node *temp;
 
+		list_for_each_entry_safe(iter, temp, &node->children, list)
+			clean_tree(iter);
+		tree_force_remove_node(node);
+	}
+}
+
+static void cleanup_root_ns(struct mlx5_flow_root_namespace *root_ns)
+{
 	if (!root_ns)
 		return;
 
-	if (!list_empty(&root_ns->ns.node.children)) {
-		prio = list_first_entry(&root_ns->ns.node.children,
-					struct fs_node,
-				 list);
-		if (tree_remove_node(prio))
-			mlx5_core_warn(dev,
-				       "Flow steering priority wasn't destroyed, refcount > 1\n");
-	}
-	if (tree_remove_node(&root_ns->ns.node))
-		mlx5_core_warn(dev,
-			       "Flow steering namespace wasn't destroyed, refcount > 1\n");
+	clean_tree(&root_ns->ns.node);
 	root_ns = NULL;
-}
-
-static void destroy_flow_tables(struct fs_prio *prio)
-{
-	struct mlx5_flow_table *iter;
-	struct mlx5_flow_table *tmp;
-
-	fs_for_each_ft_safe(iter, tmp, prio)
-		mlx5_destroy_flow_table(iter);
-}
-
-static void cleanup_root_ns(struct mlx5_core_dev *dev)
-{
-	struct mlx5_flow_root_namespace *root_ns = dev->priv.root_ns;
-	struct fs_prio *iter_prio;
-
-	if (!MLX5_CAP_GEN(dev, nic_flow_table))
-		return;
-
-	if (!root_ns)
-		return;
-
-	/* stage 1 */
-	fs_for_each_prio(iter_prio, &root_ns->ns) {
-		struct fs_node *node;
-		struct mlx5_flow_namespace *iter_ns;
-
-		fs_for_each_ns_or_ft(node, iter_prio) {
-			if (node->type == FS_TYPE_FLOW_TABLE)
-				continue;
-			fs_get_obj(iter_ns, node);
-			while (!list_empty(&iter_ns->node.children)) {
-				struct fs_prio *obj_iter_prio2;
-				struct fs_node *iter_prio2 =
-					list_first_entry(&iter_ns->node.children,
-							 struct fs_node,
-							 list);
-
-				fs_get_obj(obj_iter_prio2, iter_prio2);
-				destroy_flow_tables(obj_iter_prio2);
-				if (tree_remove_node(iter_prio2)) {
-					mlx5_core_warn(dev,
-						       "Priority %d wasn't destroyed, refcount > 1\n",
-						       obj_iter_prio2->prio);
-					return;
-				}
-			}
-		}
-	}
-
-	/* stage 2 */
-	fs_for_each_prio(iter_prio, &root_ns->ns) {
-		while (!list_empty(&iter_prio->node.children)) {
-			struct fs_node *iter_ns =
-				list_first_entry(&iter_prio->node.children,
-						 struct fs_node,
-						 list);
-			if (tree_remove_node(iter_ns)) {
-				mlx5_core_warn(dev,
-					       "Namespace wasn't destroyed, refcount > 1\n");
-				return;
-			}
-		}
-	}
-
-	/* stage 3 */
-	while (!list_empty(&root_ns->ns.node.children)) {
-		struct fs_prio *obj_prio_node;
-		struct fs_node *prio_node =
-			list_first_entry(&root_ns->ns.node.children,
-					 struct fs_node,
-					 list);
-
-		fs_get_obj(obj_prio_node, prio_node);
-		if (tree_remove_node(prio_node)) {
-			mlx5_core_warn(dev,
-				       "Priority %d wasn't destroyed, refcount > 1\n",
-				       obj_prio_node->prio);
-			return;
-		}
-	}
-
-	if (tree_remove_node(&root_ns->ns.node)) {
-		mlx5_core_warn(dev,
-			       "root namespace wasn't destroyed, refcount > 1\n");
-		return;
-	}
-
-	dev->priv.root_ns = NULL;
 }
 
 void mlx5_cleanup_fs(struct mlx5_core_dev *dev)
 {
+	struct mlx5_flow_steering *steering = dev->priv.steering;
+
 	if (MLX5_CAP_GEN(dev, port_type) != MLX5_CAP_PORT_TYPE_ETH)
 		return;
 
-	cleanup_root_ns(dev);
-	cleanup_single_prio_root_ns(dev, dev->priv.fdb_root_ns);
-	cleanup_single_prio_root_ns(dev, dev->priv.esw_egress_root_ns);
-	cleanup_single_prio_root_ns(dev, dev->priv.esw_ingress_root_ns);
+	cleanup_root_ns(steering->root_ns);
+	cleanup_root_ns(steering->esw_egress_root_ns);
+	cleanup_root_ns(steering->esw_ingress_root_ns);
+	cleanup_root_ns(steering->fdb_root_ns);
+	cleanup_root_ns(steering->roce_root_ns);
 	mlx5_cleanup_fc_stats(dev);
+	kfree(steering);
 }
 
-static int init_fdb_root_ns(struct mlx5_core_dev *dev)
+static int init_roce_root_ns(struct mlx5_flow_steering *steering)
 {
 	struct fs_prio *prio;
 
-	dev->priv.fdb_root_ns = create_root_ns(dev, FS_FT_FDB);
-	if (!dev->priv.fdb_root_ns)
+	steering->roce_root_ns = create_root_ns(steering, FS_FT_NIC_RX,
+						mlx5_get_virt_fs_cmds());
+	if (!steering->roce_root_ns)
 		return -ENOMEM;
 
 	/* Create single prio */
-	prio = fs_create_prio(&dev->priv.fdb_root_ns->ns, 0, 1);
+	prio = fs_create_prio(&steering->roce_root_ns->ns, 0, 1);
 	if (IS_ERR(prio)) {
-		cleanup_single_prio_root_ns(dev, dev->priv.fdb_root_ns);
+		cleanup_root_ns(steering->roce_root_ns);
+		return PTR_ERR(prio);
+	}
+
+	return 0;
+}
+
+static int init_sniffer_rx_root_ns(struct mlx5_flow_steering *steering)
+{
+	struct fs_prio *prio;
+
+	steering->sniffer_rx_root_ns = create_root_ns(steering, FS_FT_SNIFFER_RX,
+						      mlx5_get_phys_fs_cmds());
+	if (!steering->sniffer_rx_root_ns)
+		return -ENOMEM;
+
+	/* Create single prio */
+	prio = fs_create_prio(&steering->sniffer_rx_root_ns->ns, 0, 1);
+	if (IS_ERR(prio)) {
+		cleanup_root_ns(steering->sniffer_rx_root_ns);
+		return PTR_ERR(prio);
+	}
+	return 0;
+}
+
+static int init_sniffer_tx_root_ns(struct mlx5_flow_steering *steering)
+{
+	struct fs_prio *prio;
+
+	steering->sniffer_tx_root_ns = create_root_ns(steering, FS_FT_SNIFFER_TX,
+						      mlx5_get_phys_fs_cmds());
+	if (!steering->sniffer_tx_root_ns)
+		return -ENOMEM;
+
+	/* Create single prio */
+	prio = fs_create_prio(&steering->sniffer_tx_root_ns->ns, 0, 1);
+	if (IS_ERR(prio)) {
+		cleanup_root_ns(steering->sniffer_tx_root_ns);
+		return PTR_ERR(prio);
+	}
+	return 0;
+}
+
+static int init_fdb_root_ns(struct mlx5_flow_steering *steering)
+{
+	struct fs_prio *prio;
+
+	steering->fdb_root_ns = create_root_ns(steering, FS_FT_FDB,
+					       mlx5_get_phys_fs_cmds());
+	if (!steering->fdb_root_ns)
+		return -ENOMEM;
+
+	/* Create single prio */
+	prio = fs_create_prio(&steering->fdb_root_ns->ns, 0, 1);
+	if (IS_ERR(prio)) {
+		cleanup_root_ns(steering->fdb_root_ns);
 		return PTR_ERR(prio);
 	} else {
 		return 0;
 	}
 }
 
-static int init_egress_acl_root_ns(struct mlx5_core_dev *dev)
+static int init_ingress_acl_root_ns(struct mlx5_flow_steering *steering)
 {
 	struct fs_prio *prio;
 
-	dev->priv.esw_egress_root_ns = create_root_ns(dev, FS_FT_ESW_EGRESS_ACL);
-	if (!dev->priv.esw_egress_root_ns)
+	steering->esw_egress_root_ns = create_root_ns(steering, FS_FT_ESW_EGRESS_ACL,
+						      mlx5_get_phys_fs_cmds());
+	if (!steering->esw_egress_root_ns)
 		return -ENOMEM;
 
 	/* create 1 prio*/
-	prio = fs_create_prio(&dev->priv.esw_egress_root_ns->ns, 0, MLX5_TOTAL_VPORTS(dev));
+	prio = fs_create_prio(&steering->esw_egress_root_ns->ns, 0,
+			      MLX5_TOTAL_VPORTS(steering->dev));
 	if (IS_ERR(prio))
 		return PTR_ERR(prio);
 	else
 		return 0;
 }
 
-static int init_ingress_acl_root_ns(struct mlx5_core_dev *dev)
+static int init_egress_acl_root_ns(struct mlx5_flow_steering *steering)
 {
 	struct fs_prio *prio;
 
-	dev->priv.esw_ingress_root_ns = create_root_ns(dev, FS_FT_ESW_INGRESS_ACL);
-	if (!dev->priv.esw_ingress_root_ns)
+	steering->esw_ingress_root_ns = create_root_ns(steering, FS_FT_ESW_INGRESS_ACL,
+						       mlx5_get_phys_fs_cmds());
+	if (!steering->esw_ingress_root_ns)
 		return -ENOMEM;
 
 	/* create 1 prio*/
-	prio = fs_create_prio(&dev->priv.esw_ingress_root_ns->ns, 0, MLX5_TOTAL_VPORTS(dev));
+	prio = fs_create_prio(&steering->esw_ingress_root_ns->ns, 0,
+			      MLX5_TOTAL_VPORTS(steering->dev));
 	if (IS_ERR(prio))
 		return PTR_ERR(prio);
 	else
@@ -1829,6 +1945,7 @@ static int init_ingress_acl_root_ns(struct mlx5_core_dev *dev)
 
 int mlx5_init_fs(struct mlx5_core_dev *dev)
 {
+	struct mlx5_flow_steering *steering;
 	int err = 0;
 
 	if (MLX5_CAP_GEN(dev, port_type) != MLX5_CAP_PORT_TYPE_ETH)
@@ -1838,33 +1955,201 @@ int mlx5_init_fs(struct mlx5_core_dev *dev)
 	if (err)
 		return err;
 
+	steering = kzalloc(sizeof(*steering), GFP_KERNEL);
+	if (!steering)
+		return -ENOMEM;
+	steering->dev = dev;
+	dev->priv.steering = steering;
+
 	if (MLX5_CAP_GEN(dev, nic_flow_table) &&
 	    MLX5_CAP_FLOWTABLE_NIC_RX(dev, ft_support)) {
-		err = init_root_ns(dev);
+		err = init_root_ns(steering);
+		if (err)
+			goto err;
+		err = init_sniffer_tx_root_ns(steering);
+		if (err)
+			goto err;
+		err = init_sniffer_rx_root_ns(steering);
 		if (err)
 			goto err;
 	}
 
 	if (MLX5_CAP_GEN(dev, eswitch_flow_table)) {
 		if (MLX5_CAP_ESW_FLOWTABLE_FDB(dev, ft_support)) {
-			err = init_fdb_root_ns(dev);
+			err = init_fdb_root_ns(steering);
 			if (err)
 				goto err;
 		}
 		if (MLX5_CAP_ESW_EGRESS_ACL(dev, ft_support)) {
-			err = init_egress_acl_root_ns(dev);
+			err = init_egress_acl_root_ns(steering);
 			if (err)
 				goto err;
 		}
 		if (MLX5_CAP_ESW_INGRESS_ACL(dev, ft_support)) {
-			err = init_ingress_acl_root_ns(dev);
+			err = init_ingress_acl_root_ns(steering);
 			if (err)
 				goto err;
 		}
+	}
+
+	if (MLX5_CAP_GEN(dev, roce)) {
+		err = init_roce_root_ns(steering);
+		if (err)
+			goto err;
 	}
 
 	return 0;
 err:
 	mlx5_cleanup_fs(dev);
 	return err;
+}
+
+void mlx5_get_flow_rule(struct mlx5_flow_rule *rule)
+{
+	tree_get_node(&rule->node);
+}
+
+void mlx5_put_flow_rule(struct mlx5_flow_rule *rule)
+{
+	tree_put_node(&rule->node);
+}
+
+static void notify_existing_rules_recursive(struct fs_node *root,
+					    struct notifier_block *nb,
+					    int nesting)
+{
+	struct mlx5_event_data data;
+	struct fs_node *iter;
+
+	nested_lock_ref_node(root, nesting++);
+	if (root->type == FS_TYPE_FLOW_ENTRY) {
+		struct mlx5_flow_rule *rule;
+		int err = 0;
+
+		/* Iterate on destinations */
+		list_for_each_entry(iter, &root->children, list) {
+			fs_get_obj(rule, iter);
+			get_event_data(rule, &data);
+			err = nb->notifier_call(nb, MLX5_RULE_EVENT_ADD, &data);
+			if (err)
+				break;
+		}
+	} else {
+		list_for_each_entry(iter, &root->children, list)
+			notify_existing_rules_recursive(iter, nb, nesting);
+	}
+	unlock_ref_node(root);
+}
+
+static void mlx5_flow_notify_existing_rules(struct mlx5_flow_namespace *ns,
+					    struct notifier_block *nb)
+{
+	notify_existing_rules_recursive(&ns->node, nb, 0);
+}
+
+int mlx5_register_rule_notifier(struct mlx5_flow_namespace *ns,
+				struct notifier_block *nb)
+{
+	int err;
+
+	down_write(&ns->ns_rw_sem);
+	mlx5_flow_notify_existing_rules(ns, nb);
+	err = raw_notifier_chain_register(&ns->listeners, nb);
+	up_write(&ns->ns_rw_sem);
+
+	return err;
+}
+
+int mlx5_unregister_rule_notifier(struct mlx5_flow_namespace *ns,
+				  struct notifier_block *nb)
+{
+	int err;
+
+	down_write(&ns->ns_rw_sem);
+	err = raw_notifier_chain_unregister(&ns->listeners, nb);
+	up_write(&ns->ns_rw_sem);
+
+	return err;
+}
+
+void *mlx5_get_rule_private_data(struct mlx5_flow_rule *rule,
+				 struct notifier_block *nb)
+{
+	struct rule_client_data *priv_data;
+	void *data = NULL;
+
+	mutex_lock(&rule->clients_lock);
+	list_for_each_entry(priv_data, &rule->clients_data, list) {
+		if (priv_data->nb == nb) {
+			data = priv_data->client_data;
+			break;
+		}
+	}
+	mutex_unlock(&rule->clients_lock);
+
+	return data;
+}
+
+void mlx5_release_rule_private_data(struct mlx5_flow_rule *rule,
+				    struct notifier_block *nb)
+{
+	struct rule_client_data *priv_data;
+	struct rule_client_data *tmp;
+
+	mutex_lock(&rule->clients_lock);
+	list_for_each_entry_safe(priv_data, tmp, &rule->clients_data, list) {
+		if (priv_data->nb == nb) {
+			list_del(&priv_data->list);
+			break;
+		}
+	}
+	mutex_unlock(&rule->clients_lock);
+}
+
+int mlx5_set_rule_private_data(struct mlx5_flow_rule *rule,
+			       struct notifier_block *nb,
+			       void  *client_data)
+{
+	struct rule_client_data *priv_data;
+
+	mutex_lock(&rule->clients_lock);
+	list_for_each_entry(priv_data, &rule->clients_data, list) {
+		if (priv_data->nb == nb) {
+			priv_data->client_data = client_data;
+			goto unlock;
+		}
+	}
+	priv_data = kzalloc(sizeof(*priv_data), GFP_KERNEL);
+	if (!priv_data) {
+		mutex_unlock(&rule->clients_lock);
+		return -ENOMEM;
+	}
+
+	priv_data->client_data = client_data;
+	priv_data->nb = nb;
+	list_add(&priv_data->list, &rule->clients_data);
+
+unlock:
+	mutex_unlock(&rule->clients_lock);
+
+	return 0;
+}
+
+void mlx5_get_rule_flow_match(struct mlx5_flow_match *flow_match,
+			      struct mlx5_flow_rule *rule)
+{
+	struct mlx5_flow_group *fg;
+	struct fs_node *pnode;
+	struct fs_fte *fte;
+
+	pnode = rule->node.parent;
+	WARN_ON(!pnode);
+	fs_get_obj(fte, pnode);
+	pnode = pnode->parent;
+	WARN_ON(!pnode);
+	fs_get_obj(fg, pnode);
+
+	flow_match->match_value = fte->val;
+	flow_match->match_criteria = fg->mask.match_criteria;
+	flow_match->match_criteria_enable = fg->mask.match_criteria_enable;
 }

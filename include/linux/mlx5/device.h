@@ -754,6 +754,11 @@ static inline u64 get_cqe_ts(struct mlx5_cqe64 *cqe)
 	return (u64)lo | ((u64)hi << 32);
 }
 
+static inline __be32 mlx5_get_cqe_ft(struct mlx5_cqe64 *cqe)
+{
+	return cqe->sop_drop_qpn & cpu_to_be32(0xFFFFFF);
+}
+
 struct mpwrq_cqe_bc {
 	__be16	filler_consumed_strides;
 	__be16	byte_cnt;
@@ -1330,6 +1335,7 @@ enum mlx5_cap_type {
 	MLX5_CAP_ESWITCH,
 	MLX5_CAP_RESERVED,
 	MLX5_CAP_VECTOR_CALC,
+	MLX5_CAP_QOS,
 	/* NUM OF CAP Types */
 	MLX5_CAP_NUM
 };
@@ -1373,6 +1379,18 @@ enum mlx5_cap_type {
 #define MLX5_CAP_FLOWTABLE_NIC_RX_MAX(mdev, cap) \
 	MLX5_CAP_FLOWTABLE_MAX(mdev, flow_table_properties_nic_receive.cap)
 
+#define MLX5_CAP_FLOWTABLE_SNIFFER_RX(mdev, cap) \
+	MLX5_CAP_FLOWTABLE(mdev, flow_table_properties_nic_receive_sniffer.cap)
+
+#define MLX5_CAP_FLOWTABLE_SNIFFER_RX_MAX(mdev, cap) \
+	MLX5_CAP_FLOWTABLE_MAX(mdev, flow_table_properties_nic_receive_sniffer.cap)
+
+#define MLX5_CAP_FLOWTABLE_SNIFFER_TX(mdev, cap) \
+	MLX5_CAP_FLOWTABLE(mdev, flow_table_properties_nic_transmit_sniffer.cap)
+
+#define MLX5_CAP_FLOWTABLE_SNIFFER_TX_MAX(mdev, cap) \
+	MLX5_CAP_FLOWTABLE_MAX(mdev, flow_table_properties_nic_transmit_sniffer.cap)
+
 #define MLX5_CAP_ESW_FLOWTABLE(mdev, cap) \
 	MLX5_GET(flow_table_eswitch_cap, \
 		 mdev->hca_caps_cur[MLX5_CAP_ESWITCH_FLOW_TABLE], cap)
@@ -1413,6 +1431,9 @@ enum mlx5_cap_type {
 #define MLX5_CAP_VECTOR_CALC(mdev, cap) \
 	MLX5_GET(vector_calc_cap, \
 		 mdev->hca_caps_cur[MLX5_CAP_VECTOR_CALC], cap)
+
+#define MLX5_CAP_QOS(mdev, cap)\
+	MLX5_GET(qos_cap, mdev->hca_caps_cur[MLX5_CAP_QOS], cap)
 
 enum {
 	MLX5_CMD_STAT_OK			= 0x0,
