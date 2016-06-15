@@ -123,7 +123,7 @@ static void ironlake_pfit_enable(struct intel_crtc *crtc);
 static void intel_modeset_setup_hw_state(struct drm_device *dev);
 static void intel_pre_disable_primary_noatomic(struct drm_crtc *crtc);
 static int ilk_max_pixel_rate(struct drm_atomic_state *state);
-static int broxton_calc_cdclk(int max_pixclk);
+static int bxt_calc_cdclk(int max_pixclk);
 
 struct intel_limit {
 	struct {
@@ -4648,7 +4648,7 @@ static void intel_pre_plane_update(struct intel_crtc_state *old_crtc_state)
 			intel_pre_disable_primary(&crtc->base);
 	}
 
-	if (pipe_config->disable_cxsr) {
+	if (pipe_config->disable_cxsr && HAS_GMCH_DISPLAY(dev)) {
 		crtc->wm.cxsr_allowed = false;
 
 		/*
@@ -4840,6 +4840,10 @@ static void haswell_crtc_enable(struct drm_crtc *crtc)
 	if (intel_crtc->config->has_pch_encoder)
 		intel_set_pch_fifo_underrun_reporting(dev_priv, TRANSCODER_A,
 						      false);
+
+	for_each_encoder_on_crtc(dev, crtc, encoder)
+		if (encoder->pre_pll_enable)
+			encoder->pre_pll_enable(encoder);
 
 	if (intel_crtc->config->shared_dpll)
 		intel_enable_shared_dpll(intel_crtc);
@@ -5416,7 +5420,7 @@ static void bxt_de_pll_enable(struct drm_i915_private *dev_priv, int vco)
 	dev_priv->cdclk_pll.vco = vco;
 }
 
-static void broxton_set_cdclk(struct drm_i915_private *dev_priv, int cdclk)
+static void bxt_set_cdclk(struct drm_i915_private *dev_priv, int cdclk)
 {
 	u32 val, divider;
 	int vco, ret;
@@ -5541,7 +5545,7 @@ sanitize:
 	dev_priv->cdclk_pll.vco = -1;
 }
 
-void broxton_init_cdclk(struct drm_i915_private *dev_priv)
+void bxt_init_cdclk(struct drm_i915_private *dev_priv)
 {
 	bxt_sanitize_cdclk(dev_priv);
 
@@ -5553,12 +5557,12 @@ void broxton_init_cdclk(struct drm_i915_private *dev_priv)
 	 * - The initial CDCLK needs to be read from VBT.
 	 *   Need to make this change after VBT has changes for BXT.
 	 */
-	broxton_set_cdclk(dev_priv, broxton_calc_cdclk(0));
+	bxt_set_cdclk(dev_priv, bxt_calc_cdclk(0));
 }
 
-void broxton_uninit_cdclk(struct drm_i915_private *dev_priv)
+void bxt_uninit_cdclk(struct drm_i915_private *dev_priv)
 {
-	broxton_set_cdclk(dev_priv, dev_priv->cdclk_pll.ref);
+	bxt_set_cdclk(dev_priv, dev_priv->cdclk_pll.ref);
 }
 
 static int skl_calc_cdclk(int max_pixclk, int vco)
@@ -5984,7 +5988,7 @@ static int valleyview_calc_cdclk(struct drm_i915_private *dev_priv,
 		return 200000;
 }
 
-static int broxton_calc_cdclk(int max_pixclk)
+static int bxt_calc_cdclk(int max_pixclk)
 {
 	if (max_pixclk > 576000)
 		return 624000;
@@ -6044,17 +6048,17 @@ static int valleyview_modeset_calc_cdclk(struct drm_atomic_state *state)
 	return 0;
 }
 
-static int broxton_modeset_calc_cdclk(struct drm_atomic_state *state)
+static int bxt_modeset_calc_cdclk(struct drm_atomic_state *state)
 {
 	int max_pixclk = ilk_max_pixel_rate(state);
 	struct intel_atomic_state *intel_state =
 		to_intel_atomic_state(state);
 
 	intel_state->cdclk = intel_state->dev_cdclk =
-		broxton_calc_cdclk(max_pixclk);
+		bxt_calc_cdclk(max_pixclk);
 
 	if (!intel_state->active_crtcs)
-		intel_state->dev_cdclk = broxton_calc_cdclk(0);
+		intel_state->dev_cdclk = bxt_calc_cdclk(0);
 
 	return 0;
 }
@@ -8430,12 +8434,9 @@ static void ironlake_init_pch_refclk(struct drm_device *dev)
 	else
 		final |= DREF_NONSPREAD_SOURCE_ENABLE;
 
+	final &= ~DREF_SSC_SOURCE_MASK;
 	final &= ~DREF_CPU_SOURCE_OUTPUT_MASK;
-
-	if (!using_ssc_source) {
-		final &= ~DREF_SSC_SOURCE_MASK;
-		final &= ~DREF_SSC1_ENABLE;
-	}
+	final &= ~DREF_SSC1_ENABLE;
 
 	if (has_panel) {
 		final |= DREF_SSC_SOURCE_ENABLE;
@@ -9673,14 +9674,14 @@ void hsw_disable_pc8(struct drm_i915_private *dev_priv)
 	}
 }
 
-static void broxton_modeset_commit_cdclk(struct drm_atomic_state *old_state)
+static void bxt_modeset_commit_cdclk(struct drm_atomic_state *old_state)
 {
 	struct drm_device *dev = old_state->dev;
 	struct intel_atomic_state *old_intel_state =
 		to_intel_atomic_state(old_state);
 	unsigned int req_cdclk = old_intel_state->dev_cdclk;
 
-	broxton_set_cdclk(to_i915(dev), req_cdclk);
+	bxt_set_cdclk(to_i915(dev), req_cdclk);
 }
 
 /* compute the max rate for new configuration */
@@ -12816,6 +12817,7 @@ intel_pipe_config_compare(struct drm_device *dev,
 
 	PIPE_CONF_CHECK_I(has_dp_encoder);
 	PIPE_CONF_CHECK_I(lane_count);
+	PIPE_CONF_CHECK_X(lane_lat_optim_mask);
 
 	if (INTEL_INFO(dev)->gen < 8) {
 		PIPE_CONF_CHECK_M_N(dp_m_n);
@@ -15224,9 +15226,9 @@ void intel_init_display_hooks(struct drm_i915_private *dev_priv)
 			valleyview_modeset_calc_cdclk;
 	} else if (IS_BROXTON(dev_priv)) {
 		dev_priv->display.modeset_commit_cdclk =
-			broxton_modeset_commit_cdclk;
+			bxt_modeset_commit_cdclk;
 		dev_priv->display.modeset_calc_cdclk =
-			broxton_modeset_calc_cdclk;
+			bxt_modeset_calc_cdclk;
 	} else if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv)) {
 		dev_priv->display.modeset_commit_cdclk =
 			skl_modeset_commit_cdclk;
