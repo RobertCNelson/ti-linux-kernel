@@ -436,10 +436,9 @@ befs_init_inodecache(void)
 					      0, (SLAB_RECLAIM_ACCOUNT|
 						SLAB_MEM_SPREAD|SLAB_ACCOUNT),
 					      init_once);
-	if (befs_inode_cachep == NULL) {
-		pr_err("%s: Couldn't initialize inode slabcache\n", __func__);
+	if (befs_inode_cachep == NULL)
 		return -ENOMEM;
-	}
+
 	return 0;
 }
 
@@ -524,8 +523,6 @@ befs_utf2nls(struct super_block *sb, const char *in,
 
 	*out = result = kmalloc(maxlen, GFP_NOFS);
 	if (!*out) {
-		befs_error(sb, "%s cannot allocate memory", __func__);
-		*out_len = 0;
 		return -ENOMEM;
 	}
 
@@ -604,7 +601,6 @@ befs_nls2utf(struct super_block *sb, const char *in,
 
 	*out = result = kmalloc(maxlen, GFP_NOFS);
 	if (!*out) {
-		befs_error(sb, "%s cannot allocate memory", __func__);
 		*out_len = 0;
 		return -ENOMEM;
 	}
@@ -764,15 +760,14 @@ befs_fill_super(struct super_block *sb, void *data, int silent)
 	save_mount_options(sb, data);
 
 	sb->s_fs_info = kzalloc(sizeof(*befs_sb), GFP_KERNEL);
-	if (sb->s_fs_info == NULL) {
-		pr_err("(%s): Unable to allocate memory for private "
-		       "portion of superblock. Bailing.\n", sb->s_id);
+	if (sb->s_fs_info == NULL)
 		goto unacquire_none;
-	}
+
 	befs_sb = BEFS_SB(sb);
 
 	if (!parse_options((char *) data, &befs_sb->mount_opts)) {
-		befs_error(sb, "cannot parse mount options");
+		if (!silent)
+			befs_error(sb, "cannot parse mount options");
 		goto unacquire_priv_sbp;
 	}
 
@@ -796,7 +791,8 @@ befs_fill_super(struct super_block *sb, void *data, int silent)
 	sb_min_blocksize(sb, 1024);
 
 	if (!(bh = sb_bread(sb, sb_block))) {
-		befs_error(sb, "unable to read superblock");
+		if (!silent)
+			befs_error(sb, "unable to read superblock");
 		goto unacquire_priv_sbp;
 	}
 
@@ -820,9 +816,9 @@ befs_fill_super(struct super_block *sb, void *data, int silent)
 	brelse(bh);
 
 	if( befs_sb->num_blocks > ~((sector_t)0) ) {
-		befs_error(sb, "blocks count: %llu "
-			"is larger than the host can use",
-			befs_sb->num_blocks);
+		if (!silent)
+			befs_error(sb, "blocks count: %llu is larger than the host can use",
+					befs_sb->num_blocks);
 		goto unacquire_priv_sbp;
 	}
 
@@ -841,7 +837,8 @@ befs_fill_super(struct super_block *sb, void *data, int silent)
 	}
 	sb->s_root = d_make_root(root);
 	if (!sb->s_root) {
-		befs_error(sb, "get root inode failed");
+		if (!silent)
+			befs_error(sb, "get root inode failed");
 		goto unacquire_priv_sbp;
 	}
 
@@ -870,9 +867,9 @@ befs_fill_super(struct super_block *sb, void *data, int silent)
       unacquire_priv_sbp:
 	kfree(befs_sb->mount_opts.iocharset);
 	kfree(sb->s_fs_info);
+	sb->s_fs_info = NULL;
 
       unacquire_none:
-	sb->s_fs_info = NULL;
 	return ret;
 }
 
