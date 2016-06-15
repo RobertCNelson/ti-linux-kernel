@@ -718,7 +718,7 @@ const char * const vmstat_text[] = {
 	"nr_dirtied",
 	"nr_written",
 	"nr_pages_scanned",
-#ifdef CONFIG_ZSMALLOC
+#if IS_ENABLED(CONFIG_ZSMALLOC)
 	"nr_zsmalloc",
 #endif
 #ifdef CONFIG_NUMA
