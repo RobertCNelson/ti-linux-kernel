@@ -98,6 +98,11 @@ static inline void tlb_remove_page(struct mmu_gather *tlb, struct page *page)
 	free_page_and_swap_cache(page);
 }
 
+static inline bool __tlb_remove_pte_page(struct mmu_gather *tlb,
+					 struct page *page)
+{
+	return __tlb_remove_page(tlb, page);
+}
 /*
  * pte_free_tlb frees a pte table and clears the CRSTE for the
  * page table from the tlb.

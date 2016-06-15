@@ -1207,8 +1207,7 @@ again:
 		tlb_flush_mmu_free(tlb);
 		if (pending_page) {
 			/* remove the page with new size */
-			__tlb_adjust_range(tlb, tlb->addr);
-			__tlb_remove_page(tlb, pending_page);
+			__tlb_remove_pte_page(tlb, pending_page);
 			pending_page = NULL;
 		}
 		if (addr != end)
