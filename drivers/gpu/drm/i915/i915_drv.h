@@ -761,7 +761,8 @@ struct intel_csr {
 	func(has_llc) sep \
 	func(has_snoop) sep \
 	func(has_ddi) sep \
-	func(has_fpga_dbg)
+	func(has_fpga_dbg) sep \
+	func(has_pooled_eu)
 
 #define DEFINE_FLAG(name) u8 name:1
 #define SEP_SEMICOLON ;
@@ -787,6 +788,7 @@ struct intel_device_info {
 	u8 subslice_per_slice;
 	u8 eu_total;
 	u8 eu_per_subslice;
+	u8 min_eu_in_pool;
 	/* For each slice, which subslice(s) has(have) 7 EUs (bitfield)? */
 	u8 subslice_7eu[3];
 	u8 has_slice_pg:1;
@@ -2717,6 +2719,15 @@ struct drm_i915_cmd_table {
 
 #define IS_BXT_REVID(p, since, until) (IS_BROXTON(p) && IS_REVID(p, since, until))
 
+#define KBL_REVID_A0		0x0
+#define KBL_REVID_B0		0x1
+#define KBL_REVID_C0		0x2
+#define KBL_REVID_D0		0x3
+#define KBL_REVID_E0		0x4
+
+#define IS_KBL_REVID(p, since, until) \
+	(IS_KABYLAKE(p) && IS_REVID(p, since, until))
+
 /*
  * The genX designation typically refers to the render engine, so render
  * capability related checks should use IS_GEN, while display and other checks
@@ -2822,6 +2833,8 @@ struct drm_i915_cmd_table {
 #define HAS_CORE_RING_FREQ(dev)	(INTEL_INFO(dev)->gen >= 6 && \
 				 !IS_VALLEYVIEW(dev) && !IS_CHERRYVIEW(dev) && \
 				 !IS_BROXTON(dev))
+
+#define HAS_POOLED_EU(dev)	(INTEL_INFO(dev)->has_pooled_eu)
 
 #define INTEL_PCH_DEVICE_ID_MASK		0xff00
 #define INTEL_PCH_IBX_DEVICE_ID_TYPE		0x3b00
@@ -3108,6 +3121,23 @@ static inline int __sg_page_count(struct scatterlist *sg)
 
 struct page *
 i915_gem_object_get_dirty_page(struct drm_i915_gem_object *obj, int n);
+
+static inline dma_addr_t
+i915_gem_object_get_dma_address(struct drm_i915_gem_object *obj, int n)
+{
+	if (n < obj->get_page.last) {
+		obj->get_page.sg = obj->pages->sgl;
+		obj->get_page.last = 0;
+	}
+
+	while (obj->get_page.last + __sg_page_count(obj->get_page.sg) <= n) {
+		obj->get_page.last += __sg_page_count(obj->get_page.sg++);
+		if (unlikely(sg_is_chain(obj->get_page.sg)))
+			obj->get_page.sg = sg_chain_ptr(obj->get_page.sg);
+	}
+
+	return sg_dma_address(obj->get_page.sg) + ((n - obj->get_page.last) << PAGE_SHIFT);
+}
 
 static inline struct page *
 i915_gem_object_get_page(struct drm_i915_gem_object *obj, int n)
