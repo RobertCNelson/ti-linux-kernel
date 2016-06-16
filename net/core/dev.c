@@ -4113,6 +4113,9 @@ another_round:
 		pt_prev = ptype;
 	}
 
+	if (unlikely(skb->pkt_type == PACKET_BYPASS_KERNEL))
+		goto done;
+
 skip_taps:
 #ifdef CONFIG_NET_INGRESS
 	if (static_key_false(&ingress_needed)) {
@@ -4190,6 +4193,7 @@ ncls:
 				       &skb->dev->ptype_specific);
 	}
 
+done:
 	if (pt_prev) {
 		if (unlikely(skb_orphan_frags(skb, GFP_ATOMIC)))
 			goto drop;

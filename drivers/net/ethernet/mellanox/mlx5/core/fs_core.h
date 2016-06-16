@@ -49,10 +49,23 @@ enum fs_flow_table_type {
 	FS_FT_ESW_EGRESS_ACL  = 0x2,
 	FS_FT_ESW_INGRESS_ACL = 0x3,
 	FS_FT_FDB             = 0X4,
+	FS_FT_SNIFFER_RX	= 0X5,
+	FS_FT_SNIFFER_TX	= 0X6,
 };
 
 enum fs_fte_status {
 	FS_FTE_STATUS_EXISTING = 1UL << 0,
+};
+
+struct mlx5_flow_steering {
+	struct mlx5_core_dev *dev;
+	struct mlx5_flow_root_namespace *root_ns;
+	struct mlx5_flow_root_namespace *fdb_root_ns;
+	struct mlx5_flow_root_namespace *esw_egress_root_ns;
+	struct mlx5_flow_root_namespace *esw_ingress_root_ns;
+	struct mlx5_flow_root_namespace *roce_root_ns;
+	struct mlx5_flow_root_namespace	*sniffer_tx_root_ns;
+	struct mlx5_flow_root_namespace	*sniffer_rx_root_ns;
 };
 
 struct fs_node {
@@ -63,6 +76,7 @@ struct fs_node {
 	struct fs_node		*root;
 	/* lock the node for writing and traversing */
 	struct mutex		lock;
+	struct completion	complete;
 	atomic_t		refcount;
 	void			(*remove_func)(struct fs_node *);
 };
@@ -75,6 +89,10 @@ struct mlx5_flow_rule {
 	 */
 	struct list_head			next_ft;
 	u32					sw_action;
+	atomic_t				refcount;
+	struct list_head			clients_data;
+	/* Protect clients data list */
+	struct mutex				clients_lock;
 };
 
 /* Type of children is mlx5_flow_group */
@@ -143,6 +161,12 @@ struct fs_prio {
 struct mlx5_flow_namespace {
 	/* parent == NULL => root ns */
 	struct	fs_node			node;
+	/* Listeners list for rule add/del operations */
+	struct raw_notifier_head	listeners;
+	/* We take write lock when we iterate on the
+	 * namespace's rules.
+	 */
+	struct  rw_semaphore		ns_rw_sem;
 };
 
 struct mlx5_flow_group_mask {
@@ -167,10 +191,17 @@ struct mlx5_flow_root_namespace {
 	struct mlx5_flow_table		*root_ft;
 	/* Should be held when chaining flow tables */
 	struct mutex			chain_lock;
+	const struct steering_cmds	*cmds;
 };
 
 int mlx5_init_fc_stats(struct mlx5_core_dev *dev);
 void mlx5_cleanup_fc_stats(struct mlx5_core_dev *dev);
+
+struct rule_client_data {
+	struct notifier_block *nb;
+	struct list_head list;
+	void   *client_data;
+};
 
 int mlx5_init_fs(struct mlx5_core_dev *dev);
 void mlx5_cleanup_fs(struct mlx5_core_dev *dev);
