@@ -788,8 +788,7 @@ svc_exit_thread(struct svc_rqst *rqstp)
 	svc_rqst_free(rqstp);
 
 	/* Release the server */
-	if (serv)
-		svc_destroy(serv);
+	svc_destroy(serv);
 }
 EXPORT_SYMBOL_GPL(svc_exit_thread);
 
