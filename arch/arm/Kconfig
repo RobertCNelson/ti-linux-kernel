@@ -356,7 +356,7 @@ config ARM_SINGLE_ARMV7M
 config ARCH_CLPS711X
 	bool "Cirrus Logic CLPS711x/EP721x/EP731x-based"
 	select AUTO_ZRELADDR
-	select CLKSRC_MMIO
+	select CLPS711X_TIMER
 	select COMMON_CLK
 	select CPU_ARM720T
 	select GENERIC_CLOCKEVENTS
