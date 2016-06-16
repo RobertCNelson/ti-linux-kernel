@@ -537,7 +537,6 @@ void __put_page(struct page *page);
 void put_pages_list(struct list_head *pages);
 
 void split_page(struct page *page, unsigned int order);
-int split_free_page(struct page *page);
 
 /*
  * Compound pages have a destructor function.  Provide a
@@ -602,7 +601,7 @@ static inline pte_t maybe_mkwrite(pte_t pte, struct vm_area_struct *vma)
 }
 
 void do_set_pte(struct vm_area_struct *vma, unsigned long address,
-		struct page *page, pte_t *pte, bool write, bool anon, bool old);
+		struct page *page, pte_t *pte, bool write, bool anon);
 #endif
 
 /*
@@ -1035,6 +1034,7 @@ static inline pgoff_t page_file_index(struct page *page)
 }
 
 bool page_mapped(struct page *page);
+struct address_space *page_mapping(struct page *page);
 
 /*
  * Return true only if the page has been allocated with
