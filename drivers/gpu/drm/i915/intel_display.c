@@ -123,7 +123,7 @@ static void ironlake_pfit_enable(struct intel_crtc *crtc);
 static void intel_modeset_setup_hw_state(struct drm_device *dev);
 static void intel_pre_disable_primary_noatomic(struct drm_crtc *crtc);
 static int ilk_max_pixel_rate(struct drm_atomic_state *state);
-static int broxton_calc_cdclk(int max_pixclk);
+static int bxt_calc_cdclk(int max_pixclk);
 
 struct intel_limit {
 	struct {
@@ -4641,14 +4641,14 @@ static void intel_pre_plane_update(struct intel_crtc_state *old_crtc_state)
 		struct intel_plane_state *old_primary_state =
 			to_intel_plane_state(old_pri_state);
 
-		intel_fbc_pre_update(crtc);
+		intel_fbc_pre_update(crtc, pipe_config, primary_state);
 
 		if (old_primary_state->visible &&
 		    (modeset || !primary_state->visible))
 			intel_pre_disable_primary(&crtc->base);
 	}
 
-	if (pipe_config->disable_cxsr) {
+	if (pipe_config->disable_cxsr && HAS_GMCH_DISPLAY(dev)) {
 		crtc->wm.cxsr_allowed = false;
 
 		/*
@@ -4840,6 +4840,10 @@ static void haswell_crtc_enable(struct drm_crtc *crtc)
 	if (intel_crtc->config->has_pch_encoder)
 		intel_set_pch_fifo_underrun_reporting(dev_priv, TRANSCODER_A,
 						      false);
+
+	for_each_encoder_on_crtc(dev, crtc, encoder)
+		if (encoder->pre_pll_enable)
+			encoder->pre_pll_enable(encoder);
 
 	if (intel_crtc->config->shared_dpll)
 		intel_enable_shared_dpll(intel_crtc);
@@ -5416,7 +5420,7 @@ static void bxt_de_pll_enable(struct drm_i915_private *dev_priv, int vco)
 	dev_priv->cdclk_pll.vco = vco;
 }
 
-static void broxton_set_cdclk(struct drm_i915_private *dev_priv, int cdclk)
+static void bxt_set_cdclk(struct drm_i915_private *dev_priv, int cdclk)
 {
 	u32 val, divider;
 	int vco, ret;
@@ -5541,7 +5545,7 @@ sanitize:
 	dev_priv->cdclk_pll.vco = -1;
 }
 
-void broxton_init_cdclk(struct drm_i915_private *dev_priv)
+void bxt_init_cdclk(struct drm_i915_private *dev_priv)
 {
 	bxt_sanitize_cdclk(dev_priv);
 
@@ -5553,12 +5557,12 @@ void broxton_init_cdclk(struct drm_i915_private *dev_priv)
 	 * - The initial CDCLK needs to be read from VBT.
 	 *   Need to make this change after VBT has changes for BXT.
 	 */
-	broxton_set_cdclk(dev_priv, broxton_calc_cdclk(0));
+	bxt_set_cdclk(dev_priv, bxt_calc_cdclk(0));
 }
 
-void broxton_uninit_cdclk(struct drm_i915_private *dev_priv)
+void bxt_uninit_cdclk(struct drm_i915_private *dev_priv)
 {
-	broxton_set_cdclk(dev_priv, dev_priv->cdclk_pll.ref);
+	bxt_set_cdclk(dev_priv, dev_priv->cdclk_pll.ref);
 }
 
 static int skl_calc_cdclk(int max_pixclk, int vco)
@@ -5984,7 +5988,7 @@ static int valleyview_calc_cdclk(struct drm_i915_private *dev_priv,
 		return 200000;
 }
 
-static int broxton_calc_cdclk(int max_pixclk)
+static int bxt_calc_cdclk(int max_pixclk)
 {
 	if (max_pixclk > 576000)
 		return 624000;
@@ -6044,17 +6048,17 @@ static int valleyview_modeset_calc_cdclk(struct drm_atomic_state *state)
 	return 0;
 }
 
-static int broxton_modeset_calc_cdclk(struct drm_atomic_state *state)
+static int bxt_modeset_calc_cdclk(struct drm_atomic_state *state)
 {
 	int max_pixclk = ilk_max_pixel_rate(state);
 	struct intel_atomic_state *intel_state =
 		to_intel_atomic_state(state);
 
 	intel_state->cdclk = intel_state->dev_cdclk =
-		broxton_calc_cdclk(max_pixclk);
+		bxt_calc_cdclk(max_pixclk);
 
 	if (!intel_state->active_crtcs)
-		intel_state->dev_cdclk = broxton_calc_cdclk(0);
+		intel_state->dev_cdclk = bxt_calc_cdclk(0);
 
 	return 0;
 }
@@ -8430,12 +8434,9 @@ static void ironlake_init_pch_refclk(struct drm_device *dev)
 	else
 		final |= DREF_NONSPREAD_SOURCE_ENABLE;
 
+	final &= ~DREF_SSC_SOURCE_MASK;
 	final &= ~DREF_CPU_SOURCE_OUTPUT_MASK;
-
-	if (!using_ssc_source) {
-		final &= ~DREF_SSC_SOURCE_MASK;
-		final &= ~DREF_SSC1_ENABLE;
-	}
+	final &= ~DREF_SSC1_ENABLE;
 
 	if (has_panel) {
 		final |= DREF_SSC_SOURCE_ENABLE;
@@ -9673,14 +9674,14 @@ void hsw_disable_pc8(struct drm_i915_private *dev_priv)
 	}
 }
 
-static void broxton_modeset_commit_cdclk(struct drm_atomic_state *old_state)
+static void bxt_modeset_commit_cdclk(struct drm_atomic_state *old_state)
 {
 	struct drm_device *dev = old_state->dev;
 	struct intel_atomic_state *old_intel_state =
 		to_intel_atomic_state(old_state);
 	unsigned int req_cdclk = old_intel_state->dev_cdclk;
 
-	broxton_set_cdclk(to_i915(dev), req_cdclk);
+	bxt_set_cdclk(to_i915(dev), req_cdclk);
 }
 
 /* compute the max rate for new configuration */
@@ -11642,6 +11643,7 @@ void intel_check_page_flip(struct drm_i915_private *dev_priv, int pipe)
 	spin_unlock(&dev->event_lock);
 }
 
+__maybe_unused
 static int intel_crtc_page_flip(struct drm_crtc *crtc,
 				struct drm_framebuffer *fb,
 				struct drm_pending_vblank_event *event,
@@ -11727,7 +11729,9 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
 
 	crtc->primary->fb = fb;
 	update_state_fb(crtc->primary);
-	intel_fbc_pre_update(intel_crtc);
+
+	intel_fbc_pre_update(intel_crtc, intel_crtc->config,
+			     to_intel_plane_state(primary->state));
 
 	work->pending_flip_obj = obj;
 
@@ -12816,6 +12820,7 @@ intel_pipe_config_compare(struct drm_device *dev,
 
 	PIPE_CONF_CHECK_I(has_dp_encoder);
 	PIPE_CONF_CHECK_I(lane_count);
+	PIPE_CONF_CHECK_X(lane_lat_optim_mask);
 
 	if (INTEL_INFO(dev)->gen < 8) {
 		PIPE_CONF_CHECK_M_N(dp_m_n);
@@ -13567,11 +13572,6 @@ static int intel_atomic_prepare_commit(struct drm_device *dev,
 	struct drm_crtc *crtc;
 	int i, ret;
 
-	if (nonblock) {
-		DRM_DEBUG_KMS("i915 does not yet support nonblocking commit\n");
-		return -EINVAL;
-	}
-
 	for_each_crtc_in_state(state, crtc, crtc_state, i) {
 		if (state->legacy_cursor_update)
 			continue;
@@ -13690,46 +13690,36 @@ static bool needs_vblank_wait(struct intel_crtc_state *crtc_state)
 	return false;
 }
 
-/**
- * intel_atomic_commit - commit validated state object
- * @dev: DRM device
- * @state: the top-level driver state object
- * @nonblock: nonblocking commit
- *
- * This function commits a top-level state object that has been validated
- * with drm_atomic_helper_check().
- *
- * FIXME:  Atomic modeset support for i915 is not yet complete.  At the moment
- * we can only handle plane-related operations and do not yet support
- * nonblocking commit.
- *
- * RETURNS
- * Zero for success or -errno.
- */
-static int intel_atomic_commit(struct drm_device *dev,
-			       struct drm_atomic_state *state,
-			       bool nonblock)
+static void intel_atomic_commit_tail(struct drm_atomic_state *state)
 {
+	struct drm_device *dev = state->dev;
 	struct intel_atomic_state *intel_state = to_intel_atomic_state(state);
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_crtc_state *old_crtc_state;
 	struct drm_crtc *crtc;
 	struct intel_crtc_state *intel_cstate;
-	int ret = 0, i;
+	struct drm_plane *plane;
+	struct drm_plane_state *plane_state;
 	bool hw_check = intel_state->modeset;
 	unsigned long put_domains[I915_MAX_PIPES] = {};
 	unsigned crtc_vblank_mask = 0;
+	int i, ret;
 
-	ret = intel_atomic_prepare_commit(dev, state, nonblock);
-	if (ret) {
-		DRM_DEBUG_ATOMIC("Preparing state failed with %i\n", ret);
-		return ret;
+	for_each_plane_in_state(state, plane, plane_state, i) {
+		struct intel_plane_state *intel_plane_state =
+			to_intel_plane_state(plane_state);
+
+		if (!intel_plane_state->wait_req)
+			continue;
+
+		ret = __i915_wait_request(intel_plane_state->wait_req,
+					  true, NULL, NULL);
+		/* EIO should be eaten, and we can't get interrupted in the
+		 * worker, and blocking commits have waited already. */
+		WARN_ON(ret);
 	}
 
-	drm_atomic_helper_swap_state(state, true);
-	dev_priv->wm.distrust_bios_wm = false;
-	dev_priv->wm.skl_results = intel_state->wm_results;
-	intel_shared_dpll_commit(state);
+	drm_atomic_helper_wait_for_dependencies(state);
 
 	if (intel_state->modeset) {
 		memcpy(dev_priv->min_pixclk, intel_state->min_pixclk,
@@ -13797,11 +13787,19 @@ static int intel_atomic_commit(struct drm_device *dev,
 		bool modeset = needs_modeset(crtc->state);
 		struct intel_crtc_state *pipe_config =
 			to_intel_crtc_state(crtc->state);
-		bool update_pipe = !modeset && pipe_config->update_pipe;
 
 		if (modeset && crtc->state->active) {
 			update_scanline_offset(to_intel_crtc(crtc));
 			dev_priv->display.crtc_enable(crtc);
+		}
+
+		/* Complete events for now disable pipes here. */
+		if (modeset && !crtc->state->active && crtc->state->event) {
+			spin_lock_irq(&dev->event_lock);
+			drm_crtc_send_vblank_event(crtc, crtc->state->event);
+			spin_unlock_irq(&dev->event_lock);
+
+			crtc->state->event = NULL;
 		}
 
 		if (!modeset)
@@ -13809,18 +13807,24 @@ static int intel_atomic_commit(struct drm_device *dev,
 
 		if (crtc->state->active &&
 		    drm_atomic_get_existing_plane_state(state, crtc->primary))
-			intel_fbc_enable(intel_crtc);
+			intel_fbc_enable(intel_crtc, pipe_config, to_intel_plane_state(crtc->primary->state));
 
-		if (crtc->state->active &&
-		    (crtc->state->planes_changed || update_pipe))
+		if (crtc->state->active)
 			drm_atomic_helper_commit_planes_on_crtc(old_crtc_state);
 
 		if (pipe_config->base.active && needs_vblank_wait(pipe_config))
 			crtc_vblank_mask |= 1 << i;
 	}
 
-	/* FIXME: add subpixel order */
-
+	/* FIXME: We should call drm_atomic_helper_commit_hw_done() here
+	 * already, but still need the state for the delayed optimization. To
+	 * fix this:
+	 * - wrap the optimization/post_plane_update stuff into a per-crtc work.
+	 * - schedule that vblank worker _before_ calling hw_done
+	 * - at the start of commit_tail, cancel it _synchrously
+	 * - switch over to the vblank wait helper in the core after that since
+	 *   we don't need out special handling any more.
+	 */
 	if (!state->legacy_cursor_update)
 		intel_atomic_wait_for_vblanks(dev, dev_priv, crtc_vblank_mask);
 
@@ -13847,12 +13851,16 @@ static int intel_atomic_commit(struct drm_device *dev,
 		intel_modeset_verify_crtc(crtc, old_crtc_state, crtc->state);
 	}
 
+	drm_atomic_helper_commit_hw_done(state);
+
 	if (intel_state->modeset)
 		intel_display_power_put(dev_priv, POWER_DOMAIN_MODESET);
 
 	mutex_lock(&dev->struct_mutex);
 	drm_atomic_helper_cleanup_planes(dev, state);
 	mutex_unlock(&dev->struct_mutex);
+
+	drm_atomic_helper_commit_cleanup_done(state);
 
 	drm_atomic_state_free(state);
 
@@ -13868,6 +13876,86 @@ static int intel_atomic_commit(struct drm_device *dev,
 	 * can happen also when the device is completely off.
 	 */
 	intel_uncore_arm_unclaimed_mmio_detection(dev_priv);
+}
+
+static void intel_atomic_commit_work(struct work_struct *work)
+{
+	struct drm_atomic_state *state = container_of(work,
+						      struct drm_atomic_state,
+						      commit_work);
+	intel_atomic_commit_tail(state);
+}
+
+static void intel_atomic_track_fbs(struct drm_atomic_state *state)
+{
+	struct drm_plane_state *old_plane_state;
+	struct drm_plane *plane;
+	struct drm_i915_gem_object *obj, *old_obj;
+	struct intel_plane *intel_plane;
+	int i;
+
+	mutex_lock(&state->dev->struct_mutex);
+	for_each_plane_in_state(state, plane, old_plane_state, i) {
+		obj = intel_fb_obj(plane->state->fb);
+		old_obj = intel_fb_obj(old_plane_state->fb);
+		intel_plane = to_intel_plane(plane);
+
+		i915_gem_track_fb(old_obj, obj, intel_plane->frontbuffer_bit);
+	}
+	mutex_unlock(&state->dev->struct_mutex);
+}
+
+/**
+ * intel_atomic_commit - commit validated state object
+ * @dev: DRM device
+ * @state: the top-level driver state object
+ * @nonblock: nonblocking commit
+ *
+ * This function commits a top-level state object that has been validated
+ * with drm_atomic_helper_check().
+ *
+ * FIXME:  Atomic modeset support for i915 is not yet complete.  At the moment
+ * nonblocking commits are only safe for pure plane updates. Everything else
+ * should work though.
+ *
+ * RETURNS
+ * Zero for success or -errno.
+ */
+static int intel_atomic_commit(struct drm_device *dev,
+			       struct drm_atomic_state *state,
+			       bool nonblock)
+{
+	struct intel_atomic_state *intel_state = to_intel_atomic_state(state);
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	int ret = 0;
+
+	if (intel_state->modeset && nonblock) {
+		DRM_DEBUG_KMS("nonblocking commit for modeset not yet implemented.\n");
+		return -EINVAL;
+	}
+
+	ret = drm_atomic_helper_setup_commit(state, nonblock);
+	if (ret)
+		return ret;
+
+	INIT_WORK(&state->commit_work, intel_atomic_commit_work);
+
+	ret = intel_atomic_prepare_commit(dev, state, nonblock);
+	if (ret) {
+		DRM_DEBUG_ATOMIC("Preparing state failed with %i\n", ret);
+		return ret;
+	}
+
+	drm_atomic_helper_swap_state(state, true);
+	dev_priv->wm.distrust_bios_wm = false;
+	dev_priv->wm.skl_results = intel_state->wm_results;
+	intel_shared_dpll_commit(state);
+	intel_atomic_track_fbs(state);
+
+	if (nonblock)
+		queue_work(system_unbound_wq, &state->commit_work);
+	else
+		intel_atomic_commit_tail(state);
 
 	return 0;
 }
@@ -13917,7 +14005,7 @@ static const struct drm_crtc_funcs intel_crtc_funcs = {
 	.set_config = drm_atomic_helper_set_config,
 	.set_property = drm_atomic_helper_crtc_set_property,
 	.destroy = intel_crtc_destroy,
-	.page_flip = intel_crtc_page_flip,
+	.page_flip = drm_atomic_helper_page_flip,
 	.atomic_duplicate_state = intel_crtc_duplicate_state,
 	.atomic_destroy_state = intel_crtc_destroy_state,
 };
@@ -13942,7 +14030,6 @@ intel_prepare_plane_fb(struct drm_plane *plane,
 {
 	struct drm_device *dev = plane->dev;
 	struct drm_framebuffer *fb = new_state->fb;
-	struct intel_plane *intel_plane = to_intel_plane(plane);
 	struct drm_i915_gem_object *obj = intel_fb_obj(fb);
 	struct drm_i915_gem_object *old_obj = intel_fb_obj(plane->state->fb);
 	int ret = 0;
@@ -13999,16 +14086,12 @@ intel_prepare_plane_fb(struct drm_plane *plane,
 		ret = intel_pin_and_fence_fb_obj(fb, new_state->rotation);
 	}
 
-	if (ret == 0) {
-		if (obj) {
-			struct intel_plane_state *plane_state =
-				to_intel_plane_state(new_state);
+	if (ret == 0 && obj) {
+		struct intel_plane_state *plane_state =
+			to_intel_plane_state(new_state);
 
-			i915_gem_request_assign(&plane_state->wait_req,
-						obj->last_write_req);
-		}
-
-		i915_gem_track_fb(old_obj, obj, intel_plane->frontbuffer_bit);
+		i915_gem_request_assign(&plane_state->wait_req,
+					obj->last_write_req);
 	}
 
 	return ret;
@@ -14028,7 +14111,6 @@ intel_cleanup_plane_fb(struct drm_plane *plane,
 		       const struct drm_plane_state *old_state)
 {
 	struct drm_device *dev = plane->dev;
-	struct intel_plane *intel_plane = to_intel_plane(plane);
 	struct intel_plane_state *old_intel_state;
 	struct drm_i915_gem_object *old_obj = intel_fb_obj(old_state->fb);
 	struct drm_i915_gem_object *obj = intel_fb_obj(plane->state->fb);
@@ -14041,11 +14123,6 @@ intel_cleanup_plane_fb(struct drm_plane *plane,
 	if (old_obj && (plane->type != DRM_PLANE_TYPE_CURSOR ||
 	    !INTEL_INFO(dev)->cursor_needs_physical))
 		intel_unpin_fb_obj(old_state->fb, old_state->rotation);
-
-	/* prepare_fb aborted? */
-	if ((old_obj && (old_obj->frontbuffer_bits & intel_plane->frontbuffer_bit)) ||
-	    (obj && !(obj->frontbuffer_bits & intel_plane->frontbuffer_bit)))
-		i915_gem_track_fb(old_obj, obj, intel_plane->frontbuffer_bit);
 
 	i915_gem_request_assign(&old_intel_state->wait_req, NULL);
 }
@@ -15224,9 +15301,9 @@ void intel_init_display_hooks(struct drm_i915_private *dev_priv)
 			valleyview_modeset_calc_cdclk;
 	} else if (IS_BROXTON(dev_priv)) {
 		dev_priv->display.modeset_commit_cdclk =
-			broxton_modeset_commit_cdclk;
+			bxt_modeset_commit_cdclk;
 		dev_priv->display.modeset_calc_cdclk =
-			broxton_modeset_calc_cdclk;
+			bxt_modeset_calc_cdclk;
 	} else if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv)) {
 		dev_priv->display.modeset_commit_cdclk =
 			skl_modeset_commit_cdclk;
