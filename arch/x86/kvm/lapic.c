@@ -1313,6 +1313,98 @@ void wait_lapic_expire(struct kvm_vcpu *vcpu)
 		__delay(tsc_deadline - guest_tsc);
 }
 
+static void start_sw_tscdeadline(struct kvm_lapic *apic)
+{
+	u64 guest_tsc, tscdeadline = apic->lapic_timer.tscdeadline;
+	u64 ns = 0;
+	ktime_t expire;
+	struct kvm_vcpu *vcpu = apic->vcpu;
+	unsigned long this_tsc_khz = vcpu->arch.virtual_tsc_khz;
+	unsigned long flags;
+	ktime_t now;
+
+	if (unlikely(!tscdeadline || !this_tsc_khz))
+		return;
+
+	local_irq_save(flags);
+
+	now = apic->lapic_timer.timer.base->get_time();
+	guest_tsc = kvm_read_l1_tsc(vcpu, rdtsc());
+	if (likely(tscdeadline > guest_tsc)) {
+		ns = (tscdeadline - guest_tsc) * 1000000ULL;
+		do_div(ns, this_tsc_khz);
+		expire = ktime_add_ns(now, ns);
+		expire = ktime_sub_ns(expire, lapic_timer_advance_ns);
+		hrtimer_start(&apic->lapic_timer.timer,
+				expire, HRTIMER_MODE_ABS_PINNED);
+	} else
+		apic_timer_expired(apic);
+
+	local_irq_restore(flags);
+}
+
+bool kvm_lapic_hv_timer_in_use(struct kvm_vcpu *vcpu)
+{
+	return vcpu->arch.apic->lapic_timer.hv_timer_in_use;
+}
+EXPORT_SYMBOL_GPL(kvm_lapic_hv_timer_in_use);
+
+void kvm_lapic_expired_hv_timer(struct kvm_vcpu *vcpu)
+{
+	struct kvm_lapic *apic = vcpu->arch.apic;
+
+	WARN_ON(!apic->lapic_timer.hv_timer_in_use);
+	WARN_ON(swait_active(&vcpu->wq));
+	kvm_x86_ops->cancel_hv_timer(vcpu);
+	apic->lapic_timer.hv_timer_in_use = false;
+	apic_timer_expired(apic);
+}
+EXPORT_SYMBOL_GPL(kvm_lapic_expired_hv_timer);
+
+void kvm_lapic_switch_to_hv_timer(struct kvm_vcpu *vcpu)
+{
+	struct kvm_lapic *apic = vcpu->arch.apic;
+
+	WARN_ON(apic->lapic_timer.hv_timer_in_use);
+
+	if (apic_lvtt_tscdeadline(apic) &&
+	    !atomic_read(&apic->lapic_timer.pending)) {
+		u64 tscdeadline = apic->lapic_timer.tscdeadline;
+
+		if (!kvm_x86_ops->set_hv_timer(vcpu, tscdeadline)) {
+			apic->lapic_timer.hv_timer_in_use = true;
+			hrtimer_cancel(&apic->lapic_timer.timer);
+
+			/* In case the sw timer triggered in the window */
+			if (atomic_read(&apic->lapic_timer.pending)) {
+				apic->lapic_timer.hv_timer_in_use = false;
+				kvm_x86_ops->cancel_hv_timer(apic->vcpu);
+			}
+		}
+		trace_kvm_hv_timer_state(vcpu->vcpu_id,
+				apic->lapic_timer.hv_timer_in_use);
+	}
+}
+EXPORT_SYMBOL_GPL(kvm_lapic_switch_to_hv_timer);
+
+void kvm_lapic_switch_to_sw_timer(struct kvm_vcpu *vcpu)
+{
+	struct kvm_lapic *apic = vcpu->arch.apic;
+
+	/* Possibly the TSC deadline timer is not enabled yet */
+	if (!apic->lapic_timer.hv_timer_in_use)
+		return;
+
+	kvm_x86_ops->cancel_hv_timer(vcpu);
+	apic->lapic_timer.hv_timer_in_use = false;
+
+	if (atomic_read(&apic->lapic_timer.pending))
+		return;
+
+	start_sw_tscdeadline(apic);
+}
+EXPORT_SYMBOL_GPL(kvm_lapic_switch_to_sw_timer);
+
 static void start_apic_timer(struct kvm_lapic *apic)
 {
 	ktime_t now;
@@ -1360,31 +1452,15 @@ static void start_apic_timer(struct kvm_lapic *apic)
 					apic->lapic_timer.period)));
 	} else if (apic_lvtt_tscdeadline(apic)) {
 		/* lapic timer in tsc deadline mode */
-		u64 guest_tsc, tscdeadline = apic->lapic_timer.tscdeadline;
-		u64 ns = 0;
-		ktime_t expire;
-		struct kvm_vcpu *vcpu = apic->vcpu;
-		unsigned long this_tsc_khz = vcpu->arch.virtual_tsc_khz;
-		unsigned long flags;
+		u64 tscdeadline = apic->lapic_timer.tscdeadline;
 
-		if (unlikely(!tscdeadline || !this_tsc_khz))
-			return;
-
-		local_irq_save(flags);
-
-		now = apic->lapic_timer.timer.base->get_time();
-		guest_tsc = kvm_read_l1_tsc(vcpu, rdtsc());
-		if (likely(tscdeadline > guest_tsc)) {
-			ns = (tscdeadline - guest_tsc) * 1000000ULL;
-			do_div(ns, this_tsc_khz);
-			expire = ktime_add_ns(now, ns);
-			expire = ktime_sub_ns(expire, lapic_timer_advance_ns);
-			hrtimer_start(&apic->lapic_timer.timer,
-				      expire, HRTIMER_MODE_ABS_PINNED);
+		if (kvm_x86_ops->set_hv_timer &&
+		    !kvm_x86_ops->set_hv_timer(apic->vcpu, tscdeadline)) {
+			apic->lapic_timer.hv_timer_in_use = true;
+			trace_kvm_hv_timer_state(apic->vcpu->vcpu_id,
+					apic->lapic_timer.hv_timer_in_use);
 		} else
-			apic_timer_expired(apic);
-
-		local_irq_restore(flags);
+			start_sw_tscdeadline(apic);
 	}
 }
 
