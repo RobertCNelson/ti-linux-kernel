@@ -1339,12 +1339,16 @@ static int audit_filter_user_rules(struct audit_krule *rule, int type,
 			break;
 		}
 
-		if (!result)
-			return 0;
+		if (result <= 0)
+			return result;
 	}
 	switch (rule->action) {
-	case AUDIT_NEVER:    *state = AUDIT_DISABLED;	    break;
-	case AUDIT_ALWAYS:   *state = AUDIT_RECORD_CONTEXT; break;
+	case AUDIT_NEVER:
+		*state = AUDIT_DISABLED;
+		break;
+	case AUDIT_ALWAYS:
+		*state = AUDIT_RECORD_CONTEXT;
+		break;
 	}
 	return 1;
 }
