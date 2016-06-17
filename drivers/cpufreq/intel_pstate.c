@@ -35,6 +35,7 @@
 #include <asm/msr.h>
 #include <asm/cpu_device_id.h>
 #include <asm/cpufeature.h>
+#include <asm/intel-family.h>
 
 #define ATOM_RATIOS		0x66a
 #define ATOM_VIDS		0x66b
@@ -372,26 +373,9 @@ static bool intel_pstate_get_ppc_enable_status(void)
 	return acpi_ppc;
 }
 
-/*
- * The max target pstate ratio is a 8 bit value in both PLATFORM_INFO MSR and
- * in TURBO_RATIO_LIMIT MSR, which pstate driver stores in max_pstate and
- * max_turbo_pstate fields. The PERF_CTL MSR contains 16 bit value for P state
- * ratio, out of it only high 8 bits are used. For example 0x1700 is setting
- * target ratio 0x17. The _PSS control value stores in a format which can be
- * directly written to PERF_CTL MSR. But in intel_pstate driver this shift
- * occurs during write to PERF_CTL (E.g. for cores core_set_pstate()).
- * This function converts the _PSS control value to intel pstate driver format
- * for comparison and assignment.
- */
-static int convert_to_native_pstate_format(struct cpudata *cpu, int index)
-{
-	return cpu->acpi_perf_data.states[index].control >> 8;
-}
-
 static void intel_pstate_init_acpi_perf_limits(struct cpufreq_policy *policy)
 {
 	struct cpudata *cpu;
-	int turbo_pss_ctl;
 	int ret;
 	int i;
 
@@ -441,11 +425,10 @@ static void intel_pstate_init_acpi_perf_limits(struct cpufreq_policy *policy)
 	 * max frequency, which will cause a reduced performance as
 	 * this driver uses real max turbo frequency as the max
 	 * frequency. So correct this frequency in _PSS table to
-	 * correct max turbo frequency based on the turbo ratio.
+	 * correct max turbo frequency based on the turbo state.
 	 * Also need to convert to MHz as _PSS freq is in MHz.
 	 */
-	turbo_pss_ctl = convert_to_native_pstate_format(cpu, 0);
-	if (turbo_pss_ctl > cpu->pstate.max_pstate)
+	if (!limits->turbo_disabled)
 		cpu->acpi_perf_data.states[0].core_frequency =
 					policy->cpuinfo.max_freq / 1000;
 	cpu->valid_pss_table = true;
@@ -1109,6 +1092,26 @@ static struct cpu_defaults knl_params = {
 	},
 };
 
+static struct cpu_defaults bxt_params = {
+	.pid_policy = {
+		.sample_rate_ms = 10,
+		.deadband = 0,
+		.setpoint = 60,
+		.p_gain_pct = 14,
+		.d_gain_pct = 0,
+		.i_gain_pct = 4,
+	},
+	.funcs = {
+		.get_max = core_get_max_pstate,
+		.get_max_physical = core_get_max_pstate_physical,
+		.get_min = core_get_min_pstate,
+		.get_turbo = core_get_turbo_pstate,
+		.get_scaling = core_get_scaling,
+		.get_val = core_get_val,
+		.get_target_pstate = get_target_pstate_use_cpu_load,
+	},
+};
+
 static void intel_pstate_get_min_max(struct cpudata *cpu, int *min, int *max)
 {
 	int max_perf = cpu->pstate.turbo_pstate;
@@ -1352,29 +1355,30 @@ static void intel_pstate_update_util(struct update_util_data *data, u64 time,
 			(unsigned long)&policy }
 
 static const struct x86_cpu_id intel_pstate_cpu_ids[] = {
-	ICPU(0x2a, core_params),
-	ICPU(0x2d, core_params),
-	ICPU(0x37, silvermont_params),
-	ICPU(0x3a, core_params),
-	ICPU(0x3c, core_params),
-	ICPU(0x3d, core_params),
-	ICPU(0x3e, core_params),
-	ICPU(0x3f, core_params),
-	ICPU(0x45, core_params),
-	ICPU(0x46, core_params),
-	ICPU(0x47, core_params),
-	ICPU(0x4c, airmont_params),
-	ICPU(0x4e, core_params),
-	ICPU(0x4f, core_params),
-	ICPU(0x5e, core_params),
-	ICPU(0x56, core_params),
-	ICPU(0x57, knl_params),
+	ICPU(INTEL_FAM6_SANDYBRIDGE, 		core_params),
+	ICPU(INTEL_FAM6_SANDYBRIDGE_X,		core_params),
+	ICPU(INTEL_FAM6_ATOM_SILVERMONT1,	silvermont_params),
+	ICPU(INTEL_FAM6_IVYBRIDGE,		core_params),
+	ICPU(INTEL_FAM6_HASWELL_CORE,		core_params),
+	ICPU(INTEL_FAM6_BROADWELL_CORE,		core_params),
+	ICPU(INTEL_FAM6_IVYBRIDGE_X,		core_params),
+	ICPU(INTEL_FAM6_HASWELL_X,		core_params),
+	ICPU(INTEL_FAM6_HASWELL_ULT,		core_params),
+	ICPU(INTEL_FAM6_HASWELL_GT3E,		core_params),
+	ICPU(INTEL_FAM6_BROADWELL_GT3E,		core_params),
+	ICPU(INTEL_FAM6_ATOM_AIRMONT,		airmont_params),
+	ICPU(INTEL_FAM6_SKYLAKE_MOBILE,		core_params),
+	ICPU(INTEL_FAM6_BROADWELL_X,		core_params),
+	ICPU(INTEL_FAM6_SKYLAKE_DESKTOP,	core_params),
+	ICPU(INTEL_FAM6_BROADWELL_XEON_D,	core_params),
+	ICPU(INTEL_FAM6_XEON_PHI_KNL,		knl_params),
+	ICPU(INTEL_FAM6_ATOM_GOLDMONT,		bxt_params),
 	{}
 };
 MODULE_DEVICE_TABLE(x86cpu, intel_pstate_cpu_ids);
 
 static const struct x86_cpu_id intel_pstate_cpu_oob_ids[] = {
-	ICPU(0x56, core_params),
+	ICPU(INTEL_FAM6_BROADWELL_XEON_D, core_params),
 	{}
 };
 
