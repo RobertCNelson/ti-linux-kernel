@@ -384,7 +384,7 @@ static int verify_parent_transid(struct extent_io_tree *io_tree,
 	/*
 	 * Things reading via commit roots that don't have normal protection,
 	 * like send, can have a really old block in cache that may point at a
-	 * block that has been free'd and re-allocated.  So don't clear uptodate
+	 * block that has been freed and re-allocated.  So don't clear uptodate
 	 * if we find an eb that is under IO (dirty/writeback) because we could
 	 * end up reading in the stale data and then writing it back out and
 	 * making everybody very sad.
@@ -418,7 +418,7 @@ static int btrfs_check_super_csum(char *raw_disk_sb)
 		/*
 		 * The super_block structure does not span the whole
 		 * BTRFS_SUPER_INFO_SIZE range, we expect that the unused space
-		 * is filled with zeros and is included in the checkum.
+		 * is filled with zeros and is included in the checksum.
 		 */
 		crc = btrfs_csum_data(raw_disk_sb + BTRFS_CSUM_SIZE,
 				crc, BTRFS_SUPER_INFO_SIZE - BTRFS_CSUM_SIZE);
@@ -600,7 +600,7 @@ static noinline int check_leaf(struct btrfs_root *root,
 
 		/*
 		 * Check to make sure that we don't point outside of the leaf,
-		 * just incase all the items are consistent to eachother, but
+		 * just in case all the items are consistent to each other, but
 		 * all point outside of the leaf.
 		 */
 		if (btrfs_item_end_nr(leaf, slot) >
@@ -1147,7 +1147,8 @@ struct extent_buffer *btrfs_find_create_tree_block(struct btrfs_root *root,
 						 u64 bytenr)
 {
 	if (btrfs_test_is_dummy_root(root))
-		return alloc_test_extent_buffer(root->fs_info, bytenr);
+		return alloc_test_extent_buffer(root->fs_info, bytenr,
+				root->nodesize);
 	return alloc_extent_buffer(root->fs_info, bytenr);
 }
 
@@ -1314,14 +1315,16 @@ static struct btrfs_root *btrfs_alloc_root(struct btrfs_fs_info *fs_info,
 
 #ifdef CONFIG_BTRFS_FS_RUN_SANITY_TESTS
 /* Should only be used by the testing infrastructure */
-struct btrfs_root *btrfs_alloc_dummy_root(void)
+struct btrfs_root *btrfs_alloc_dummy_root(u32 sectorsize, u32 nodesize)
 {
 	struct btrfs_root *root;
 
 	root = btrfs_alloc_root(NULL, GFP_KERNEL);
 	if (!root)
 		return ERR_PTR(-ENOMEM);
-	__setup_root(4096, 4096, 4096, root, NULL, 1);
+	/* We don't use the stripesize in selftest, set it as sectorsize */
+	__setup_root(nodesize, sectorsize, sectorsize, root, NULL,
+			BTRFS_ROOT_TREE_OBJECTID);
 	set_bit(BTRFS_ROOT_DUMMY_ROOT, &root->state);
 	root->alloc_bytenr = 0;
 
@@ -3022,7 +3025,7 @@ retry_root_backup:
 	}
 
 	/*
-	 * Mount does not set all options immediatelly, we can do it now and do
+	 * Mount does not set all options immediately, we can do it now and do
 	 * not have to wait for transaction commit
 	 */
 	btrfs_apply_pending_changes(fs_info);
@@ -3255,7 +3258,7 @@ static void btrfs_end_buffer_write_sync(struct buffer_head *bh, int uptodate)
 		btrfs_warn_rl_in_rcu(device->dev_root->fs_info,
 				"lost page write due to IO error on %s",
 					  rcu_str_deref(device->name));
-		/* note, we dont' set_buffer_write_io_error because we have
+		/* note, we don't set_buffer_write_io_error because we have
 		 * our own ways of dealing with the IO errors
 		 */
 		clear_buffer_uptodate(bh);
@@ -4130,6 +4133,17 @@ static int btrfs_check_super_valid(struct btrfs_fs_info *fs_info,
 	 * Hint to catch really bogus numbers, bitflips or so, more exact checks are
 	 * done later
 	 */
+	if (btrfs_super_bytes_used(sb) < 6 * btrfs_super_nodesize(sb)) {
+		btrfs_err(fs_info, "bytes_used is too small %llu",
+		       btrfs_super_bytes_used(sb));
+		ret = -EINVAL;
+	}
+	if (!is_power_of_2(btrfs_super_stripesize(sb)) ||
+	    btrfs_super_stripesize(sb) != sectorsize) {
+		btrfs_err(fs_info, "invalid stripesize %u",
+		       btrfs_super_stripesize(sb));
+		ret = -EINVAL;
+	}
 	if (btrfs_super_num_devices(sb) > (1UL << 31))
 		printk(KERN_WARNING "BTRFS: suspicious number of devices: %llu\n",
 				btrfs_super_num_devices(sb));
@@ -4367,7 +4381,7 @@ static int btrfs_destroy_marked_extents(struct btrfs_root *root,
 		if (ret)
 			break;
 
-		clear_extent_bits(dirty_pages, start, end, mark, GFP_NOFS);
+		clear_extent_bits(dirty_pages, start, end, mark);
 		while (start <= end) {
 			eb = btrfs_find_tree_block(root->fs_info, start);
 			start += root->nodesize;
@@ -4402,7 +4416,7 @@ again:
 		if (ret)
 			break;
 
-		clear_extent_dirty(unpin, start, end, GFP_NOFS);
+		clear_extent_dirty(unpin, start, end);
 		btrfs_error_unpin_extent_range(root, start, end);
 		cond_resched();
 	}
