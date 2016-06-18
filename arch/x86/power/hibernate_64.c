@@ -142,8 +142,7 @@ int swsusp_arch_resume(void)
 	relocated_restore_code = (void *)get_safe_page(GFP_ATOMIC);
 	if (!relocated_restore_code)
 		return -ENOMEM;
-	memcpy(relocated_restore_code, &core_restore_code,
-	       &restore_registers - &core_restore_code);
+	memcpy(relocated_restore_code, &core_restore_code, PAGE_SIZE);
 
 	restore_image();
 	return 0;
