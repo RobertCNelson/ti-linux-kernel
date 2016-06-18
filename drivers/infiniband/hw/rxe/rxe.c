@@ -165,42 +165,25 @@ static int rxe_init_port_param(struct rxe_port *port)
  */
 static int rxe_init_ports(struct rxe_dev *rxe)
 {
-	int err;
-	struct rxe_port *port;
-
-	port = &rxe->port;
+	struct rxe_port *port = &rxe->port;
 
 	rxe_init_port_param(port);
 
-	if (!port->attr.pkey_tbl_len) {
-		err = -EINVAL;
-		goto err1;
-	}
+	if (!port->attr.pkey_tbl_len || !port->attr.gid_tbl_len)
+		return -EINVAL;
 
 	port->pkey_tbl = kcalloc(port->attr.pkey_tbl_len,
 			sizeof(*port->pkey_tbl), GFP_KERNEL);
-	if (!port->pkey_tbl) {
-		err = -ENOMEM;
-		goto err1;
-	}
+
+	if (!port->pkey_tbl)
+		return -ENOMEM;
 
 	port->pkey_tbl[0] = 0xffff;
-
-	if (!port->attr.gid_tbl_len) {
-		kfree(port->pkey_tbl);
-		err = -EINVAL;
-		goto err1;
-	}
-
 	port->port_guid = rxe->ifc_ops->port_guid(rxe);
 
 	spin_lock_init(&port->port_lock);
 
 	return 0;
-
-err1:
-	kfree(port->pkey_tbl);
-	return err;
 }
 
 /* init pools of managed objects */
