@@ -135,6 +135,7 @@ static void vmd_irq_disable(struct irq_data *data)
 
 	raw_spin_lock(&list_lock);
 	list_del_rcu(&vmdirq->node);
+	INIT_LIST_HEAD_RCU(&vmdirq->node);
 	raw_spin_unlock(&list_lock);
 }
 
@@ -261,7 +262,7 @@ static struct device *to_vmd_dev(struct device *dev)
 
 static struct dma_map_ops *vmd_dma_ops(struct device *dev)
 {
-	return to_vmd_dev(dev)->archdata.dma_ops;
+	return get_dma_ops(to_vmd_dev(dev));
 }
 
 static void *vmd_alloc(struct device *dev, size_t size, dma_addr_t *addr,
@@ -367,7 +368,7 @@ static void vmd_teardown_dma_ops(struct vmd_dev *vmd)
 {
 	struct dma_domain *domain = &vmd->dma_domain;
 
-	if (vmd->dev->dev.archdata.dma_ops)
+	if (get_dma_ops(&vmd->dev->dev))
 		del_dma_domain(domain);
 }
 
@@ -379,7 +380,7 @@ static void vmd_teardown_dma_ops(struct vmd_dev *vmd)
 
 static void vmd_setup_dma_ops(struct vmd_dev *vmd)
 {
-	const struct dma_map_ops *source = vmd->dev->dev.archdata.dma_ops;
+	const struct dma_map_ops *source = get_dma_ops(&vmd->dev->dev);
 	struct dma_map_ops *dest = &vmd->dma_ops;
 	struct dma_domain *domain = &vmd->dma_domain;
 
