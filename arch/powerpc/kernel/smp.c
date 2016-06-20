@@ -31,6 +31,7 @@
 #include <linux/cpu.h>
 #include <linux/notifier.h>
 #include <linux/topology.h>
+#include <linux/profile.h>
 
 #include <asm/ptrace.h>
 #include <linux/atomic.h>
@@ -53,6 +54,7 @@
 #include <asm/vdso.h>
 #include <asm/debug.h>
 #include <asm/kexec.h>
+#include <asm/asm-prototypes.h>
 
 #ifdef DEBUG
 #include <asm/udbg.h>
