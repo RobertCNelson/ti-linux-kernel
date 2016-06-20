@@ -1234,6 +1234,11 @@ static void __free_pages_ok(struct page *page, unsigned int order)
 	local_irq_restore(flags);
 }
 
+#ifdef CONFIG_GCC_PLUGIN_LATENT_ENTROPY
+volatile u64 latent_entropy;
+EXPORT_SYMBOL(latent_entropy);
+#endif
+
 static void __init __free_pages_boot_core(struct page *page, unsigned int order)
 {
 	unsigned int nr_pages = 1 << order;
