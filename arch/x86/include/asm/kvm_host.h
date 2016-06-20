@@ -1006,6 +1006,9 @@ struct kvm_x86_ops {
 	int (*update_pi_irte)(struct kvm *kvm, unsigned int host_irq,
 			      uint32_t guest_irq, bool set);
 	void (*apicv_post_state_restore)(struct kvm_vcpu *vcpu);
+
+	int (*set_hv_timer)(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc);
+	void (*cancel_hv_timer)(struct kvm_vcpu *vcpu);
 };
 
 struct kvm_arch_async_pf {
@@ -1077,6 +1080,8 @@ extern u32  kvm_max_guest_tsc_khz;
 extern u8   kvm_tsc_scaling_ratio_frac_bits;
 /* maximum allowed value of TSC scaling ratio */
 extern u64  kvm_max_tsc_scaling_ratio;
+/* 1ull << kvm_tsc_scaling_ratio_frac_bits */
+extern u64  kvm_default_tsc_scaling_ratio;
 
 enum emulation_result {
 	EMULATE_DONE,         /* no further processing */

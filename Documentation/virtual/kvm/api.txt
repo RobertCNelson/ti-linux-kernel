@@ -2032,6 +2032,12 @@ registers, find a list below:
   MIPS  | KVM_REG_MIPS_CP0_CONFIG5      | 32
   MIPS  | KVM_REG_MIPS_CP0_CONFIG7      | 32
   MIPS  | KVM_REG_MIPS_CP0_ERROREPC     | 64
+  MIPS  | KVM_REG_MIPS_CP0_KSCRATCH1    | 64
+  MIPS  | KVM_REG_MIPS_CP0_KSCRATCH2    | 64
+  MIPS  | KVM_REG_MIPS_CP0_KSCRATCH3    | 64
+  MIPS  | KVM_REG_MIPS_CP0_KSCRATCH4    | 64
+  MIPS  | KVM_REG_MIPS_CP0_KSCRATCH5    | 64
+  MIPS  | KVM_REG_MIPS_CP0_KSCRATCH6    | 64
   MIPS  | KVM_REG_MIPS_COUNT_CTL        | 64
   MIPS  | KVM_REG_MIPS_COUNT_RESUME     | 64
   MIPS  | KVM_REG_MIPS_COUNT_HZ         | 64
@@ -2520,6 +2526,7 @@ Parameters: struct kvm_device_attr
 Returns: 0 on success, -1 on error
 Errors:
   ENXIO:  The group or attribute is unknown/unsupported for this device
+          or hardware support is missing.
   EPERM:  The attribute cannot (currently) be accessed this way
           (e.g. read-only attribute, or attribute that only makes
           sense when the device is in a different state)
@@ -2547,6 +2554,7 @@ Parameters: struct kvm_device_attr
 Returns: 0 on success, -1 on error
 Errors:
   ENXIO:  The group or attribute is unknown/unsupported for this device
+          or hardware support is missing.
 
 Tests whether a device supports a particular attribute.  A successful
 return indicates the attribute is implemented.  It does not necessarily
