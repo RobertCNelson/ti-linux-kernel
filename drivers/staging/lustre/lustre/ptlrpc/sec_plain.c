@@ -15,11 +15,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * version 2 along with this program; If not, see
- * http://www.sun.com/software/products/lustre/docs/GPLv2.pdf
- *
- * Please contact Sun Microsystems, Inc., 4150 Network Circle, Santa Clara,
- * CA 95054 USA or visit www.sun.com if you need additional information or
- * have any questions.
+ * http://www.gnu.org/licenses/gpl-2.0.html
  *
  * GPL HEADER END
  */
@@ -574,8 +570,12 @@ int plain_alloc_reqbuf(struct ptlrpc_sec *sec,
 	lustre_init_msg_v2(req->rq_reqbuf, PLAIN_PACK_SEGMENTS, buflens, NULL);
 	req->rq_reqmsg = lustre_msg_buf(req->rq_reqbuf, PLAIN_PACK_MSG_OFF, 0);
 
-	if (req->rq_pack_udesc)
-		sptlrpc_pack_user_desc(req->rq_reqbuf, PLAIN_PACK_USER_OFF);
+	if (req->rq_pack_udesc) {
+		int rc = sptlrpc_pack_user_desc(req->rq_reqbuf,
+					      PLAIN_PACK_USER_OFF);
+		if (rc < 0)
+			return rc;
+	}
 
 	return 0;
 }

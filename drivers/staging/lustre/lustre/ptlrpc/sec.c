@@ -15,11 +15,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * version 2 along with this program; If not, see
- * http://www.sun.com/software/products/lustre/docs/GPLv2.pdf
- *
- * Please contact Sun Microsystems, Inc., 4150 Network Circle, Santa Clara,
- * CA 95054 USA or visit www.sun.com if you need additional information or
- * have any questions.
+ * http://www.gnu.org/licenses/gpl-2.0.html
  *
  * GPL HEADER END
  */
@@ -2195,6 +2191,9 @@ int sptlrpc_pack_user_desc(struct lustre_msg *msg, int offset)
 	struct ptlrpc_user_desc *pud;
 
 	pud = lustre_msg_buf(msg, offset, 0);
+
+	if (!pud)
+		return -EINVAL;
 
 	pud->pud_uid = from_kuid(&init_user_ns, current_uid());
 	pud->pud_gid = from_kgid(&init_user_ns, current_gid());
