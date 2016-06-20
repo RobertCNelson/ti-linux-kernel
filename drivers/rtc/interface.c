@@ -104,7 +104,17 @@ static int rtc_read_alarm_internal(struct rtc_device *rtc, struct rtc_wkalrm *al
 	else if (!rtc->ops->read_alarm)
 		err = -EINVAL;
 	else {
-		memset(alarm, 0, sizeof(struct rtc_wkalrm));
+		alarm->enabled = 0;
+		alarm->pending = 0;
+		alarm->time.tm_sec = -1;
+		alarm->time.tm_min = -1;
+		alarm->time.tm_hour = -1;
+		alarm->time.tm_mday = -1;
+		alarm->time.tm_mon = -1;
+		alarm->time.tm_year = -1;
+		alarm->time.tm_wday = -1;
+		alarm->time.tm_yday = -1;
+		alarm->time.tm_isdst = -1;
 		err = rtc->ops->read_alarm(rtc->dev.parent, alarm);
 	}
 
@@ -748,9 +758,23 @@ EXPORT_SYMBOL_GPL(rtc_irq_set_freq);
  */
 static int rtc_timer_enqueue(struct rtc_device *rtc, struct rtc_timer *timer)
 {
+	struct timerqueue_node *next = timerqueue_getnext(&rtc->timerqueue);
+	struct rtc_time tm;
+	ktime_t now;
+
 	timer->enabled = 1;
+	__rtc_read_time(rtc, &tm);
+	now = rtc_tm_to_ktime(tm);
+
+	/* Skip over expired timers */
+	while (next) {
+		if (next->expires.tv64 >= now.tv64)
+			break;
+		next = timerqueue_iterate_next(next);
+	}
+
 	timerqueue_add(&rtc->timerqueue, &timer->node);
-	if (&timer->node == timerqueue_getnext(&rtc->timerqueue)) {
+	if (!next) {
 		struct rtc_wkalrm alarm;
 		int err;
 		alarm.time = rtc_ktime_to_tm(timer->node.expires);
