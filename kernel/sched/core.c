@@ -1935,7 +1935,7 @@ static void ttwu_queue(struct task_struct *p, int cpu, int wake_flags)
  * chain to provide order. Instead we do:
  *
  *   1) smp_store_release(X->on_cpu, 0)
- *   2) smp_cond_acquire(!X->on_cpu)
+ *   2) smp_cond_load_acquire(!X->on_cpu)
  *
  * Example:
  *
@@ -1946,7 +1946,7 @@ static void ttwu_queue(struct task_struct *p, int cpu, int wake_flags)
  *   sched-out X
  *   smp_store_release(X->on_cpu, 0);
  *
- *                    smp_cond_acquire(!X->on_cpu);
+ *                    smp_cond_load_acquire(&X->on_cpu, !VAL);
  *                    X->state = WAKING
  *                    set_task_cpu(X,2)
  *
@@ -1972,7 +1972,7 @@ static void ttwu_queue(struct task_struct *p, int cpu, int wake_flags)
  * This means that any means of doing remote wakeups must order the CPU doing
  * the wakeup against the CPU the task is going to end up running on. This,
  * however, is already required for the regular Program-Order guarantee above,
- * since the waking CPU is the one issueing the ACQUIRE (smp_cond_acquire).
+ * since the waking CPU is the one issueing the ACQUIRE (smp_cond_load_acquire).
  *
  */
 
@@ -2045,7 +2045,7 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	 * This ensures that tasks getting woken will be fully ordered against
 	 * their previous state and preserve Program Order.
 	 */
-	smp_cond_acquire(!p->on_cpu);
+	smp_cond_load_acquire(&p->on_cpu, !VAL);
 
 	p->sched_contributes_to_load = !!task_contributes_to_load(p);
 	p->state = TASK_WAKING;
@@ -2535,10 +2535,9 @@ void wake_up_new_task(struct task_struct *p)
 	 */
 	set_task_cpu(p, select_task_rq(p, task_cpu(p), SD_BALANCE_FORK, 0));
 #endif
-	/* Post initialize new task's util average when its cfs_rq is set */
+	rq = __task_rq_lock(p, &rf);
 	post_init_entity_util_avg(&p->se);
 
-	rq = __task_rq_lock(p, &rf);
 	activate_task(rq, p, 0);
 	p->on_rq = TASK_ON_RQ_QUEUED;
 	trace_sched_wakeup_new(p);
@@ -5148,13 +5147,15 @@ void show_state_filter(unsigned long state_filter)
 		/*
 		 * reset the NMI-timeout, listing all files on a slow
 		 * console might take a lot of time:
+		 * Also, reset softlockup watchdogs on all CPUs, because
+		 * another CPU might be blocked waiting for us to process
+		 * an IPI.
 		 */
 		touch_nmi_watchdog();
+		touch_all_softlockup_watchdogs();
 		if (!state_filter || (p->state & state_filter))
 			sched_show_task(p);
 	}
-
-	touch_all_softlockup_watchdogs();
 
 #ifdef CONFIG_SCHED_DEBUG
 	if (!state_filter)
@@ -7228,7 +7229,6 @@ static void sched_rq_cpu_starting(unsigned int cpu)
 	struct rq *rq = cpu_rq(cpu);
 
 	rq->calc_load_update = calc_load_update;
-	account_reset_rq(rq);
 	update_max_interval();
 }
 
