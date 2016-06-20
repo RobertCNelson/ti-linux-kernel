@@ -1275,7 +1275,7 @@ static inline struct dentry *file_dentry(const struct file *file)
 	struct dentry *dentry = file->f_path.dentry;
 
 	if (unlikely(dentry->d_flags & DCACHE_OP_REAL))
-		return dentry->d_op->d_real(dentry, file_inode(file));
+		return dentry->d_op->d_real(dentry, file_inode(file), 0);
 	else
 		return dentry;
 }
