@@ -24,6 +24,7 @@
 #include <linux/iopoll.h>
 #include <linux/list.h>
 #include <linux/of_address.h>
+#include <linux/of_component.h>
 #include <linux/of_iommu.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
@@ -552,16 +553,6 @@ static int mtk_iommu_hw_init(const struct mtk_iommu_data *data)
 	return 0;
 }
 
-static int compare_of(struct device *dev, void *data)
-{
-	return dev->of_node == data;
-}
-
-static void release_of(struct device *dev, void *data)
-{
-	of_node_put(data);
-}
-
 static int mtk_iommu_bind(struct device *dev)
 {
 	struct mtk_iommu_data *data = dev_get_drvdata(dev);
@@ -646,8 +637,8 @@ static int mtk_iommu_probe(struct platform_device *pdev)
 		}
 		data->smi_imu.larb_imu[i].dev = &plarbdev->dev;
 
-		component_match_add_release(dev, &match, release_of,
-					    compare_of, larbnode);
+		component_match_add_of(dev, &match, larbnode);
+		of_node_put(larbnode);
 	}
 
 	platform_set_drvdata(pdev, data);
