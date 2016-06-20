@@ -1571,7 +1571,11 @@ struct dentry *__d_alloc(struct super_block *sb, const struct qstr *name)
 	 * be overwriting an internal NUL character
 	 */
 	dentry->d_iname[DNAME_INLINE_LEN-1] = 0;
-	if (name->len > DNAME_INLINE_LEN-1) {
+	if (unlikely(!name)) {
+		static const struct qstr anon = QSTR_INIT("/", 1);
+		name = &anon;
+		dname = dentry->d_iname;
+	} else if (name->len > DNAME_INLINE_LEN-1) {
 		size_t size = offsetof(struct external_name, name[1]);
 		struct external_name *p = kmalloc(size + name->len,
 						  GFP_KERNEL_ACCOUNT);
@@ -1632,7 +1636,7 @@ struct dentry *d_alloc(struct dentry * parent, const struct qstr *name)
 	struct dentry *dentry = __d_alloc(parent->d_sb, name);
 	if (!dentry)
 		return NULL;
-
+	dentry->d_flags |= DCACHE_RCUACCESS;
 	spin_lock(&parent->d_lock);
 	/*
 	 * don't need child lock because it is not subject
@@ -1666,8 +1670,7 @@ struct dentry *d_alloc_name(struct dentry *parent, const char *name)
 	struct qstr q;
 
 	q.name = name;
-	q.len = strlen(name);
-	q.hash = full_name_hash(q.name, q.len);
+	q.hash_len = hashlen_string(name);
 	return d_alloc(parent, &q);
 }
 EXPORT_SYMBOL(d_alloc_name);
@@ -1829,9 +1832,7 @@ struct dentry *d_make_root(struct inode *root_inode)
 	struct dentry *res = NULL;
 
 	if (root_inode) {
-		static const struct qstr name = QSTR_INIT("/", 1);
-
-		res = __d_alloc(root_inode->i_sb, &name);
+		res = __d_alloc(root_inode->i_sb, NULL);
 		if (res)
 			d_instantiate(res, root_inode);
 		else
@@ -1872,7 +1873,6 @@ EXPORT_SYMBOL(d_find_any_alias);
 
 static struct dentry *__d_obtain_alias(struct inode *inode, int disconnected)
 {
-	static const struct qstr anonstring = QSTR_INIT("/", 1);
 	struct dentry *tmp;
 	struct dentry *res;
 	unsigned add_flags;
@@ -1886,7 +1886,7 @@ static struct dentry *__d_obtain_alias(struct inode *inode, int disconnected)
 	if (res)
 		goto out_iput;
 
-	tmp = __d_alloc(inode->i_sb, &anonstring);
+	tmp = __d_alloc(inode->i_sb, NULL);
 	if (!tmp) {
 		res = ERR_PTR(-ENOMEM);
 		goto out_iput;
@@ -2358,7 +2358,6 @@ static void __d_rehash(struct dentry * entry, struct hlist_bl_head *b)
 {
 	BUG_ON(!d_unhashed(entry));
 	hlist_bl_lock(b);
-	entry->d_flags |= DCACHE_RCUACCESS;
 	hlist_bl_add_head_rcu(&entry->d_hash, b);
 	hlist_bl_unlock(b);
 }
@@ -2843,6 +2842,7 @@ static void __d_move(struct dentry *dentry, struct dentry *target,
 	/* ... and switch them in the tree */
 	if (IS_ROOT(dentry)) {
 		/* splicing a tree */
+		dentry->d_flags |= DCACHE_RCUACCESS;
 		dentry->d_parent = target->d_parent;
 		target->d_parent = target;
 		list_del_init(&target->d_child);
