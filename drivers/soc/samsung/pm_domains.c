@@ -75,12 +75,12 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 	}
 
 	pwr = power_on ? pd->local_pwr_cfg : 0;
-	__raw_writel(pwr, base);
+	writel_relaxed(pwr, base);
 
 	/* Wait max 1ms */
 	timeout = 10;
 
-	while ((__raw_readl(base + 0x4) & pd->local_pwr_cfg) != pwr) {
+	while ((readl_relaxed(base + 0x4) & pd->local_pwr_cfg) != pwr) {
 		if (!timeout) {
 			op = (power_on) ? "enable" : "disable";
 			pr_err("Power domain %s %s failed\n", domain->name, op);
@@ -207,7 +207,7 @@ static __init int exynos4_pm_init_power_domain(void)
 			clk_put(pd->oscclk);
 
 no_clk:
-		on = __raw_readl(pd->base + 0x4) & pd->local_pwr_cfg;
+		on = readl_relaxed(pd->base + 0x4) & pd->local_pwr_cfg;
 
 		pm_genpd_init(&pd->pd, NULL, !on);
 		of_genpd_add_provider_simple(np, &pd->pd);
