@@ -56,6 +56,14 @@
 	};
 };
 
+&pci_phy0 {
+	status = "ok";
+};
+
+&pci_phy1 {
+	status = "ok";
+};
+
 &pcie0 {
 	status = "ok";
 };
@@ -167,5 +175,13 @@
 	nand_sel: nand_sel {
 		function = "nand";
 		groups = "nand_grp";
+	};
+};
+
+&mdio_mux_iproc {
+	mdio@10 {
+		gphy0: eth-phy@10 {
+			reg = <0x10>;
+		};
 	};
 };
