@@ -162,8 +162,8 @@ void __weak arch_release_thread_info(struct thread_info *ti)
 static struct thread_info *alloc_thread_info_node(struct task_struct *tsk,
 						  int node)
 {
-	struct page *page = alloc_kmem_pages_node(node, THREADINFO_GFP,
-						  THREAD_SIZE_ORDER);
+	struct page *page = alloc_pages_node(node, THREADINFO_GFP,
+					     THREAD_SIZE_ORDER);
 
 	if (page)
 		memcg_kmem_update_page_stat(page, MEMCG_KERNEL_STACK,
@@ -178,7 +178,7 @@ static inline void free_thread_info(struct thread_info *ti)
 
 	memcg_kmem_update_page_stat(page, MEMCG_KERNEL_STACK,
 				    -(1 << THREAD_SIZE_ORDER));
-	__free_kmem_pages(page, THREAD_SIZE_ORDER);
+	__free_pages(page, THREAD_SIZE_ORDER);
 }
 # else
 static struct kmem_cache *thread_info_cache;
