@@ -1506,6 +1506,20 @@ int pm_runtime_force_resume(struct device *dev)
 		goto out;
 	}
 
+	if (!pm_runtime_status_suspended(dev))
+		goto out;
+
+	/*
+	 * The PM core increases the runtime PM usage count in the system PM
+	 * prepare phase. If the count is greater than 1 at this point, a real
+	 * user (such as a subsystem, driver, userspace, etc.) has also
+	 * increased it, indicating that the device was used when system suspend
+	 * was invoked. In this case, the device is expected to be used on
+	 * system resume as well, so invoke the ->runtime_resume() callback.
+	 */
+	if (atomic_read(&dev->power.usage_count) < 2)
+		goto out;
+
 	ret = pm_runtime_set_active(dev);
 	if (ret)
 		goto out;
