@@ -45,6 +45,7 @@
 #include <linux/of_irq.h>
 #include <linux/slab.h>
 #include <linux/clk.h>
+#include <linux/io-64-nonatomic-lo-hi.h>
 
 #include "../dmaengine.h"
 
@@ -195,22 +196,22 @@ struct xilinx_vdma_desc_hw {
 /**
  * struct xilinx_axidma_desc_hw - Hardware Descriptor for AXI DMA
  * @next_desc: Next Descriptor Pointer @0x00
- * @pad1: Reserved @0x04
+ * @next_desc_msb: MSB of Next Descriptor Pointer @0x04
  * @buf_addr: Buffer address @0x08
- * @pad2: Reserved @0x0C
- * @pad3: Reserved @0x10
- * @pad4: Reserved @0x14
+ * @buf_addr_msb: MSB of Buffer address @0x0C
+ * @pad1: Reserved @0x10
+ * @pad2: Reserved @0x14
  * @control: Control field @0x18
  * @status: Status field @0x1C
  * @app: APP Fields @0x20 - 0x30
  */
 struct xilinx_axidma_desc_hw {
 	u32 next_desc;
-	u32 pad1;
+	u32 next_desc_msb;
 	u32 buf_addr;
+	u32 buf_addr_msb;
+	u32 pad1;
 	u32 pad2;
-	u32 pad3;
-	u32 pad4;
 	u32 control;
 	u32 status;
 	u32 app[XILINX_DMA_NUM_APP_WORDS];
@@ -219,21 +220,21 @@ struct xilinx_axidma_desc_hw {
 /**
  * struct xilinx_cdma_desc_hw - Hardware Descriptor
  * @next_desc: Next Descriptor Pointer @0x00
- * @pad1: Reserved @0x04
+ * @next_descmsb: Next Descriptor Pointer MSB @0x04
  * @src_addr: Source address @0x08
- * @pad2: Reserved @0x0C
+ * @src_addrmsb: Source address MSB @0x0C
  * @dest_addr: Destination address @0x10
- * @pad3: Reserved @0x14
+ * @dest_addrmsb: Destination address MSB @0x14
  * @control: Control field @0x18
  * @status: Status field @0x1C
  */
 struct xilinx_cdma_desc_hw {
 	u32 next_desc;
-	u32 pad1;
+	u32 next_desc_msb;
 	u32 src_addr;
-	u32 pad2;
+	u32 src_addr_msb;
 	u32 dest_addr;
-	u32 pad3;
+	u32 dest_addr_msb;
 	u32 control;
 	u32 status;
 } __aligned(64);
@@ -459,6 +460,34 @@ static inline void vdma_desc_write_64(struct xilinx_dma_chan *chan, u32 reg,
 
 	/* Write the msb 32 bits */
 	writel(value_msb, chan->xdev->regs + chan->desc_offset + reg + 4);
+}
+
+static inline void dma_writeq(struct xilinx_dma_chan *chan, u32 reg, u64 value)
+{
+	lo_hi_writeq(value, chan->xdev->regs + chan->ctrl_offset + reg);
+}
+
+static inline void xilinx_write(struct xilinx_dma_chan *chan, u32 reg,
+				dma_addr_t addr)
+{
+	if (chan->ext_addr)
+		dma_writeq(chan, reg, addr);
+	else
+		dma_ctrl_write(chan, reg, addr);
+}
+
+static inline void xilinx_axidma_buf(struct xilinx_dma_chan *chan,
+				     struct xilinx_axidma_desc_hw *hw,
+				     dma_addr_t buf_addr, size_t sg_used,
+				     size_t period_len)
+{
+	if (chan->ext_addr) {
+		hw->buf_addr = lower_32_bits(buf_addr + sg_used + period_len);
+		hw->buf_addr_msb = upper_32_bits(buf_addr + sg_used +
+						 period_len);
+	} else {
+		hw->buf_addr = buf_addr + sg_used + period_len;
+	}
 }
 
 /* -----------------------------------------------------------------------------
@@ -1108,12 +1137,12 @@ static void xilinx_cdma_start_transfer(struct xilinx_dma_chan *chan)
 	}
 
 	if (chan->has_sg) {
-		dma_ctrl_write(chan, XILINX_DMA_REG_CURDESC,
-			   head_desc->async_tx.phys);
+		xilinx_write(chan, XILINX_DMA_REG_CURDESC,
+			     head_desc->async_tx.phys);
 
 		/* Update tail ptr register which will start the transfer */
-		dma_ctrl_write(chan, XILINX_DMA_REG_TAILDESC,
-			       tail_segment->phys);
+		xilinx_write(chan, XILINX_DMA_REG_TAILDESC,
+			     tail_segment->phys);
 	} else {
 		/* In simple mode */
 		struct xilinx_cdma_tx_segment *segment;
@@ -1125,8 +1154,8 @@ static void xilinx_cdma_start_transfer(struct xilinx_dma_chan *chan)
 
 		hw = &segment->hw;
 
-		dma_ctrl_write(chan, XILINX_CDMA_REG_SRCADDR, hw->src_addr);
-		dma_ctrl_write(chan, XILINX_CDMA_REG_DSTADDR, hw->dest_addr);
+		xilinx_write(chan, XILINX_CDMA_REG_SRCADDR, hw->src_addr);
+		xilinx_write(chan, XILINX_CDMA_REG_DSTADDR, hw->dest_addr);
 
 		/* Start the transfer */
 		dma_ctrl_write(chan, XILINX_DMA_REG_BTT,
@@ -1190,8 +1219,8 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 	}
 
 	if (chan->has_sg)
-		dma_ctrl_write(chan, XILINX_DMA_REG_CURDESC,
-			       head_desc->async_tx.phys);
+		xilinx_write(chan, XILINX_DMA_REG_CURDESC,
+			     head_desc->async_tx.phys);
 
 	xilinx_dma_start(chan);
 
@@ -1201,11 +1230,11 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 	/* Start the transfer */
 	if (chan->has_sg) {
 		if (chan->cyclic)
-			dma_ctrl_write(chan, XILINX_DMA_REG_TAILDESC,
-				       chan->cyclic_seg_v->phys);
+			xilinx_write(chan, XILINX_DMA_REG_TAILDESC,
+				     chan->cyclic_seg_v->phys);
 		else
-			dma_ctrl_write(chan, XILINX_DMA_REG_TAILDESC,
-				       tail_segment->phys);
+			xilinx_write(chan, XILINX_DMA_REG_TAILDESC,
+				     tail_segment->phys);
 	} else {
 		struct xilinx_axidma_tx_segment *segment;
 		struct xilinx_axidma_desc_hw *hw;
@@ -1215,7 +1244,7 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 					   node);
 		hw = &segment->hw;
 
-		dma_ctrl_write(chan, XILINX_DMA_REG_SRCDSTADDR, hw->buf_addr);
+		xilinx_write(chan, XILINX_DMA_REG_SRCDSTADDR, hw->buf_addr);
 
 		/* Start the transfer */
 		dma_ctrl_write(chan, XILINX_DMA_REG_BTT,
@@ -1597,6 +1626,10 @@ xilinx_cdma_prep_memcpy(struct dma_chan *dchan, dma_addr_t dma_dst,
 	hw->control = len;
 	hw->src_addr = dma_src;
 	hw->dest_addr = dma_dst;
+	if (chan->ext_addr) {
+		hw->src_addr_msb = upper_32_bits(dma_src);
+		hw->dest_addr_msb = upper_32_bits(dma_dst);
+	}
 
 	/* Fill the previous next descriptor with current */
 	prev = list_last_entry(&desc->segments,
@@ -1679,7 +1712,8 @@ static struct dma_async_tx_descriptor *xilinx_dma_prep_slave_sg(
 			hw = &segment->hw;
 
 			/* Fill in the descriptor */
-			hw->buf_addr = sg_dma_address(sg) + sg_used;
+			xilinx_axidma_buf(chan, hw, sg_dma_address(sg),
+					  sg_used, 0);
 
 			hw->control = copy;
 
@@ -1783,7 +1817,8 @@ static struct dma_async_tx_descriptor *xilinx_dma_prep_dma_cyclic(
 			copy = min_t(size_t, period_len - sg_used,
 				     XILINX_DMA_MAX_TRANS_LEN);
 			hw = &segment->hw;
-			hw->buf_addr = buf_addr + sg_used + (period_len * i);
+			xilinx_axidma_buf(chan, hw, buf_addr, sg_used,
+					  period_len * i);
 			hw->control = copy;
 
 			if (prev)
