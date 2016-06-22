@@ -59,14 +59,20 @@ static struct zcomp_strm *zcomp_strm_alloc(struct zcomp *comp, gfp_t flags)
 
 bool zcomp_available_algorithm(const char *comp)
 {
+	int i = 0;
+
+	while (backends[i]) {
+		if (sysfs_streq(comp, backends[i]))
+			return true;
+		i++;
+	}
+
 	/*
 	 * Crypto does not ignore a trailing new line symbol,
 	 * so make sure you don't supply a string containing
 	 * one.
-	 * This also means that we keep `backends' array for
-	 * zcomp_available_show() only and will init a new zram
-	 * device with any compressing algorithm known to crypto
-	 * api.
+	 * This also means that we permit zcomp initialisation
+	 * with any compressing algorithm known to crypto api.
 	 */
 	return crypto_has_comp(comp, 0, 0) == 1;
 }
@@ -79,9 +85,6 @@ ssize_t zcomp_available_show(const char *comp, char *buf)
 	int i = 0;
 
 	for (; backends[i]; i++) {
-		if (!zcomp_available_algorithm(backends[i]))
-			continue;
-
 		if (!strcmp(comp, backends[i])) {
 			known_algorithm = true;
 			sz += scnprintf(buf + sz, PAGE_SIZE - sz - 2,
@@ -96,7 +99,7 @@ ssize_t zcomp_available_show(const char *comp, char *buf)
 	 * Out-of-tree module known to crypto api or a missing
 	 * entry in `backends'.
 	 */
-	if (!known_algorithm && zcomp_available_algorithm(comp))
+	if (!known_algorithm && crypto_has_comp(comp, 0, 0) == 1)
 		sz += scnprintf(buf + sz, PAGE_SIZE - sz - 2,
 				"[%s] ", comp);
 
