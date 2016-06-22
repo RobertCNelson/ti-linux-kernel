@@ -388,6 +388,18 @@ config HID_LCPOWER
 	---help---
 	Support for LC-Power RC1000MCE RF remote control.
 
+config HID_LED
+	tristate "Simple RGB LED support"
+	depends on HID
+	depends on LEDS_CLASS
+	---help---
+	Support for simple RGB LED devices. Currently supported are the
+	Riso Kagaku Webmail Notifier and the Dream Cheeky Webmail Notifier
+	and Friends Alert.
+
+	To compile this driver as a module, choose M here: the
+	module will be called hid-led.
+
 config HID_LENOVO
 	tristate "Lenovo / Thinkpad devices"
 	depends on HID
@@ -935,6 +947,14 @@ config HID_SENSOR_CUSTOM_SENSOR
 	  should't use these special custom sensor ids to export any of the
 	  standard sensors.
 	  Select this config option for custom/generic sensor support.
+
+config HID_ALPS
+	tristate "Alps HID device support"
+	depends on HID
+	---help---
+	Support for Alps I2C HID touchpads and StickPointer.
+	Say Y here if you have a Alps touchpads over i2c-hid or usbhid
+	and want support for its special functionalities.
 
 endmenu
 
