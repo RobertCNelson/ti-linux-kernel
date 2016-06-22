@@ -525,18 +525,6 @@ static int i915_load_modeset_init(struct drm_device *dev)
 	/* Only enable hotplug handling once the fbdev is fully set up. */
 	intel_hpd_init(dev_priv);
 
-	/*
-	 * Some ports require correctly set-up hpd registers for detection to
-	 * work properly (leading to ghost connected connector status), e.g. VGA
-	 * on gm45.  Hence we can only set up the initial fbdev config after hpd
-	 * irqs are fully enabled. Now we should scan for the initial config
-	 * only once hotplug handling is enabled, but due to screwed-up locking
-	 * around kms/fbdev init we can't protect the fdbev initial config
-	 * scanning against hotplug events. Hence do this first and ignore the
-	 * tiny window where we will loose hotplug notifactions.
-	 */
-	intel_fbdev_initial_config_async(dev);
-
 	drm_kms_helper_poll_init(dev);
 
 	return 0;
@@ -764,6 +752,32 @@ static void gen9_sseu_info_init(struct drm_device *dev)
 			       (info->slice_total > 1));
 	info->has_subslice_pg = (IS_BROXTON(dev) && (info->subslice_total > 1));
 	info->has_eu_pg = (info->eu_per_subslice > 2);
+
+	if (IS_BROXTON(dev)) {
+#define IS_SS_DISABLED(_ss_disable, ss)    (_ss_disable & (0x1 << ss))
+		/*
+		 * There is a HW issue in 2x6 fused down parts that requires
+		 * Pooled EU to be enabled as a WA. The pool configuration
+		 * changes depending upon which subslice is fused down. This
+		 * doesn't affect if the device has all 3 subslices enabled.
+		 */
+		/* WaEnablePooledEuFor2x6:bxt */
+		info->has_pooled_eu = ((info->subslice_per_slice == 3) ||
+				       (info->subslice_per_slice == 2 &&
+					INTEL_REVID(dev) < BXT_REVID_C0));
+
+		info->min_eu_in_pool = 0;
+		if (info->has_pooled_eu) {
+			if (IS_SS_DISABLED(ss_disable, 0) ||
+			    IS_SS_DISABLED(ss_disable, 2))
+				info->min_eu_in_pool = 3;
+			else if (IS_SS_DISABLED(ss_disable, 1))
+				info->min_eu_in_pool = 6;
+			else
+				info->min_eu_in_pool = 9;
+		}
+#undef IS_SS_DISABLED
+	}
 }
 
 static void broadwell_sseu_info_init(struct drm_device *dev)
@@ -962,6 +976,9 @@ static void intel_device_info_runtime_init(struct drm_device *dev)
 	DRM_DEBUG_DRIVER("subslice per slice: %u\n", info->subslice_per_slice);
 	DRM_DEBUG_DRIVER("EU total: %u\n", info->eu_total);
 	DRM_DEBUG_DRIVER("EU per subslice: %u\n", info->eu_per_subslice);
+	DRM_DEBUG_DRIVER("Has Pooled EU: %s\n", HAS_POOLED_EU(dev) ? "y" : "n");
+	if (HAS_POOLED_EU(dev))
+		DRM_DEBUG_DRIVER("Min EU in pool: %u\n", info->min_eu_in_pool);
 	DRM_DEBUG_DRIVER("has slice power gating: %s\n",
 			 info->has_slice_pg ? "y" : "n");
 	DRM_DEBUG_DRIVER("has subslice power gating: %s\n",
@@ -1091,6 +1108,10 @@ static int i915_driver_init_early(struct drm_i915_private *dev_priv,
 	if (ret < 0)
 		return ret;
 
+	ret = intel_gvt_init(dev_priv);
+	if (ret < 0)
+		goto err_workqueues;
+
 	/* This must be called before any calls to HAS_PCH_* */
 	intel_detect_pch(dev);
 
@@ -1116,6 +1137,10 @@ static int i915_driver_init_early(struct drm_i915_private *dev_priv,
 			 "It may not be fully functional.\n");
 
 	return 0;
+
+err_workqueues:
+	i915_workqueues_cleanup(dev_priv);
+	return ret;
 }
 
 /**
@@ -1384,6 +1409,15 @@ static void i915_driver_register(struct drm_i915_private *dev_priv)
 		intel_gpu_ips_init(dev_priv);
 
 	i915_audio_component_init(dev_priv);
+
+	/*
+	 * Some ports require correctly set-up hpd registers for detection to
+	 * work properly (leading to ghost connected connector status), e.g. VGA
+	 * on gm45.  Hence we can only set up the initial fbdev config after hpd
+	 * irqs are fully enabled. We do it last so that the async config
+	 * cannot run before the connectors are registered.
+	 */
+	intel_fbdev_initial_config_async(dev);
 }
 
 /**
@@ -1486,6 +1520,8 @@ int i915_driver_unload(struct drm_device *dev)
 	int ret;
 
 	intel_fbdev_fini(dev);
+
+	intel_gvt_cleanup(dev_priv);
 
 	ret = i915_gem_suspend(dev);
 	if (ret) {

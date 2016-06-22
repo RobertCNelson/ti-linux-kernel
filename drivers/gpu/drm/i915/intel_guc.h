@@ -26,6 +26,7 @@
 
 #include "intel_guc_fwif.h"
 #include "i915_guc_reg.h"
+#include "intel_ringbuffer.h"
 
 struct drm_i915_gem_request;
 
@@ -86,7 +87,7 @@ struct i915_guc_client {
 	int retcode;
 
 	/* Per-engine counts of GuC submissions */
-	uint64_t submissions[GUC_MAX_ENGINES_NUM];
+	uint64_t submissions[I915_NUM_ENGINES];
 };
 
 enum intel_guc_fw_status {
@@ -143,8 +144,8 @@ struct intel_guc {
 	uint32_t action_fail;		/* Total number of failures	*/
 	int32_t action_err;		/* Last error code		*/
 
-	uint64_t submissions[GUC_MAX_ENGINES_NUM];
-	uint32_t last_seqno[GUC_MAX_ENGINES_NUM];
+	uint64_t submissions[I915_NUM_ENGINES];
+	uint32_t last_seqno[I915_NUM_ENGINES];
 };
 
 /* intel_guc_loader.c */
@@ -156,11 +157,11 @@ extern int intel_guc_suspend(struct drm_device *dev);
 extern int intel_guc_resume(struct drm_device *dev);
 
 /* i915_guc_submission.c */
-int i915_guc_submission_init(struct drm_device *dev);
-int i915_guc_submission_enable(struct drm_device *dev);
+int i915_guc_submission_init(struct drm_i915_private *dev_priv);
+int i915_guc_submission_enable(struct drm_i915_private *dev_priv);
 int i915_guc_wq_check_space(struct drm_i915_gem_request *rq);
 int i915_guc_submit(struct drm_i915_gem_request *rq);
-void i915_guc_submission_disable(struct drm_device *dev);
-void i915_guc_submission_fini(struct drm_device *dev);
+void i915_guc_submission_disable(struct drm_i915_private *dev_priv);
+void i915_guc_submission_fini(struct drm_i915_private *dev_priv);
 
 #endif
