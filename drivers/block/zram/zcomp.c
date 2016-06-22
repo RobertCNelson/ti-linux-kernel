@@ -23,6 +23,9 @@ static const char * const backends[] = {
 #if IS_ENABLED(CONFIG_CRYPTO_LZ4)
 	"lz4",
 #endif
+	"deflate",
+	"lz4hc",
+	"842",
 	NULL
 };
 
