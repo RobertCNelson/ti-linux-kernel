@@ -369,6 +369,8 @@ static inline size_t slab_ksize(const struct kmem_cache *s)
 	if (s->flags & (SLAB_RED_ZONE | SLAB_POISON))
 		return s->object_size;
 # endif
+	if (s->flags & SLAB_KASAN)
+		return s->object_size;
 	/*
 	 * If we have the need to store the freelist pointer
 	 * back there or track user information then we can
@@ -471,7 +473,14 @@ void *slab_next(struct seq_file *m, void *p, loff_t *pos);
 void slab_stop(struct seq_file *m, void *p);
 int memcg_slab_show(struct seq_file *m, void *p);
 
+void *nearest_obj(struct kmem_cache *cache, struct page *page, void *x);
+
 void ___cache_free(struct kmem_cache *cache, void *x, unsigned long addr);
+#if defined(CONFIG_SLUB)
+void do_slab_free(struct kmem_cache *s,
+		struct page *page, void *head, void *tail,
+		int cnt, unsigned long addr);
+#endif
 
 #ifdef CONFIG_SLAB_FREELIST_RANDOM
 int cache_random_seq_create(struct kmem_cache *cachep, unsigned int count,
