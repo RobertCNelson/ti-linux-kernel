@@ -725,7 +725,8 @@ static int coresight_orphan_match(struct device *dev, void *data)
 		/* We have found at least one orphan connection */
 		if (conn->child_dev == NULL) {
 			/* Does it match this newly added device? */
-			if (!strcmp(dev_name(&csdev->dev), conn->child_name)) {
+			if (conn->child_name &&
+			    !strcmp(dev_name(&csdev->dev), conn->child_name)) {
 				conn->child_dev = csdev;
 			} else {
 				/* This component still has an orphan */
@@ -893,7 +894,7 @@ struct coresight_device *coresight_register(struct coresight_desc *desc)
 	int nr_refcnts = 1;
 	atomic_t *refcnts = NULL;
 	struct coresight_device *csdev;
-	struct coresight_connection *conns;
+	struct coresight_connection *conns = NULL;
 
 	csdev = kzalloc(sizeof(*csdev), GFP_KERNEL);
 	if (!csdev) {
@@ -921,16 +922,20 @@ struct coresight_device *coresight_register(struct coresight_desc *desc)
 
 	csdev->nr_inport = desc->pdata->nr_inport;
 	csdev->nr_outport = desc->pdata->nr_outport;
-	conns = kcalloc(csdev->nr_outport, sizeof(*conns), GFP_KERNEL);
-	if (!conns) {
-		ret = -ENOMEM;
-		goto err_kzalloc_conns;
-	}
 
-	for (i = 0; i < csdev->nr_outport; i++) {
-		conns[i].outport = desc->pdata->outports[i];
-		conns[i].child_name = desc->pdata->child_names[i];
-		conns[i].child_port = desc->pdata->child_ports[i];
+	/* Initialise connections if there is at least one outport */
+	if (csdev->nr_outport) {
+		conns = kcalloc(csdev->nr_outport, sizeof(*conns), GFP_KERNEL);
+		if (!conns) {
+			ret = -ENOMEM;
+			goto err_kzalloc_conns;
+		}
+
+		for (i = 0; i < csdev->nr_outport; i++) {
+			conns[i].outport = desc->pdata->outports[i];
+			conns[i].child_name = desc->pdata->child_names[i];
+			conns[i].child_port = desc->pdata->child_ports[i];
+		}
 	}
 
 	csdev->conns = conns;
