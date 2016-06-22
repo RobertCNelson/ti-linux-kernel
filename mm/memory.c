@@ -233,6 +233,7 @@ void tlb_gather_mmu(struct mmu_gather *tlb, struct mm_struct *mm, unsigned long 
 #ifdef CONFIG_HAVE_RCU_TABLE_FREE
 	tlb->batch = NULL;
 #endif
+	tlb->page_size = 0;
 
 	__tlb_reset_range(tlb);
 }
@@ -292,23 +293,31 @@ void tlb_finish_mmu(struct mmu_gather *tlb, unsigned long start, unsigned long e
  *	handling the additional races in SMP caused by other CPUs caching valid
  *	mappings in their TLBs. Returns the number of free page slots left.
  *	When out of page slots we must call tlb_flush_mmu().
+ *returns true if the caller should flush.
  */
-int __tlb_remove_page(struct mmu_gather *tlb, struct page *page)
+bool __tlb_remove_page_size(struct mmu_gather *tlb, struct page *page, int page_size)
 {
 	struct mmu_gather_batch *batch;
 
 	VM_BUG_ON(!tlb->end);
 
+	if (!tlb->page_size)
+		tlb->page_size = page_size;
+	else {
+		if (page_size != tlb->page_size)
+			return true;
+	}
+
 	batch = tlb->active;
-	batch->pages[batch->nr++] = page;
 	if (batch->nr == batch->max) {
 		if (!tlb_next_batch(tlb))
-			return 0;
+			return true;
 		batch = tlb->active;
 	}
 	VM_BUG_ON_PAGE(batch->nr > batch->max, page);
 
-	return batch->max - batch->nr;
+	batch->pages[batch->nr++] = page;
+	return false;
 }
 
 #endif /* HAVE_GENERIC_MMU_GATHER */
@@ -1109,6 +1118,7 @@ static unsigned long zap_pte_range(struct mmu_gather *tlb,
 	pte_t *start_pte;
 	pte_t *pte;
 	swp_entry_t entry;
+	struct page *pending_page = NULL;
 
 again:
 	init_rss_vec(rss);
@@ -1160,8 +1170,9 @@ again:
 			page_remove_rmap(page, false);
 			if (unlikely(page_mapcount(page) < 0))
 				print_bad_pte(vma, addr, ptent, page);
-			if (unlikely(!__tlb_remove_page(tlb, page))) {
+			if (unlikely(__tlb_remove_page(tlb, page))) {
 				force_flush = 1;
+				pending_page = page;
 				addr += PAGE_SIZE;
 				break;
 			}
@@ -1202,7 +1213,11 @@ again:
 	if (force_flush) {
 		force_flush = 0;
 		tlb_flush_mmu_free(tlb);
-
+		if (pending_page) {
+			/* remove the page with new size */
+			__tlb_remove_pte_page(tlb, pending_page);
+			pending_page = NULL;
+		}
 		if (addr != end)
 			goto again;
 	}
@@ -2508,7 +2523,7 @@ EXPORT_SYMBOL(unmap_mapping_range);
  * We return with the mmap_sem locked or unlocked in the same cases
  * as does filemap_fault().
  */
-static int do_swap_page(struct mm_struct *mm, struct vm_area_struct *vma,
+int do_swap_page(struct mm_struct *mm, struct vm_area_struct *vma,
 		unsigned long address, pte_t *page_table, pmd_t *pmd,
 		unsigned int flags, pte_t orig_pte)
 {
@@ -2877,7 +2892,7 @@ static int __do_fault(struct vm_area_struct *vma, unsigned long address,
  * vm_ops->map_pages.
  */
 void do_set_pte(struct vm_area_struct *vma, unsigned long address,
-		struct page *page, pte_t *pte, bool write, bool anon, bool old)
+		struct page *page, pte_t *pte, bool write, bool anon)
 {
 	pte_t entry;
 
@@ -2885,8 +2900,6 @@ void do_set_pte(struct vm_area_struct *vma, unsigned long address,
 	entry = mk_pte(page, vma->vm_page_prot);
 	if (write)
 		entry = maybe_mkwrite(pte_mkdirty(entry), vma);
-	if (old)
-		entry = pte_mkold(entry);
 	if (anon) {
 		inc_mm_counter_fast(vma->vm_mm, MM_ANONPAGES);
 		page_add_new_anon_rmap(page, vma, address, false);
@@ -2900,16 +2913,8 @@ void do_set_pte(struct vm_area_struct *vma, unsigned long address,
 	update_mmu_cache(vma, address, pte);
 }
 
-/*
- * If architecture emulates "accessed" or "young" bit without HW support,
- * there is no much gain with fault_around.
- */
 static unsigned long fault_around_bytes __read_mostly =
-#ifndef __HAVE_ARCH_PTEP_SET_ACCESS_FLAGS
-	PAGE_SIZE;
-#else
 	rounddown_pow_of_two(65536);
-#endif
 
 #ifdef CONFIG_DEBUG_FS
 static int fault_around_bytes_get(void *data, u64 *val)
@@ -3032,20 +3037,9 @@ static int do_read_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 	 */
 	if (vma->vm_ops->map_pages && fault_around_bytes >> PAGE_SHIFT > 1) {
 		pte = pte_offset_map_lock(mm, pmd, address, &ptl);
+		do_fault_around(vma, address, pte, pgoff, flags);
 		if (!pte_same(*pte, orig_pte))
 			goto unlock_out;
-		do_fault_around(vma, address, pte, pgoff, flags);
-		/* Check if the fault is handled by faultaround */
-		if (!pte_same(*pte, orig_pte)) {
-			/*
-			 * Faultaround produce old pte, but the pte we've
-			 * handler fault for should be young.
-			 */
-			pte_t entry = pte_mkyoung(*pte);
-			if (ptep_set_access_flags(vma, address, pte, entry, 0))
-				update_mmu_cache(vma, address, pte);
-			goto unlock_out;
-		}
 		pte_unmap_unlock(pte, ptl);
 	}
 
@@ -3060,7 +3054,7 @@ static int do_read_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 		put_page(fault_page);
 		return ret;
 	}
-	do_set_pte(vma, address, fault_page, pte, false, false, false);
+	do_set_pte(vma, address, fault_page, pte, false, false);
 	unlock_page(fault_page);
 unlock_out:
 	pte_unmap_unlock(pte, ptl);
@@ -3111,7 +3105,7 @@ static int do_cow_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 		}
 		goto uncharge_out;
 	}
-	do_set_pte(vma, address, new_page, pte, true, true, false);
+	do_set_pte(vma, address, new_page, pte, true, true);
 	mem_cgroup_commit_charge(new_page, memcg, false, false);
 	lru_cache_add_active_or_unevictable(new_page, vma);
 	pte_unmap_unlock(pte, ptl);
@@ -3164,7 +3158,7 @@ static int do_shared_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 		put_page(fault_page);
 		return ret;
 	}
-	do_set_pte(vma, address, fault_page, pte, true, false, false);
+	do_set_pte(vma, address, fault_page, pte, true, false);
 	pte_unmap_unlock(pte, ptl);
 
 	if (set_page_dirty(fault_page))
