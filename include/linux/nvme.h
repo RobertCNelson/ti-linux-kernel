@@ -50,6 +50,13 @@ enum {
 #define NVME_CMB_CQS(cmbsz)	((cmbsz) & 0x2)
 #define NVME_CMB_SQS(cmbsz)	((cmbsz) & 0x1)
 
+/*
+ * Submission and Completion Queue Entry Sizes for the NVM command set.
+ * (In bytes and specified as a power of two (2^n)).
+ */
+#define NVME_NVM_IOSQES		6
+#define NVME_NVM_IOCQES		4
+
 enum {
 	NVME_CC_ENABLE		= 1 << 0,
 	NVME_CC_CSS_NVM		= 0 << 4,
@@ -61,8 +68,8 @@ enum {
 	NVME_CC_SHN_NORMAL	= 1 << 14,
 	NVME_CC_SHN_ABRUPT	= 2 << 14,
 	NVME_CC_SHN_MASK	= 3 << 14,
-	NVME_CC_IOSQES		= 6 << 16,
-	NVME_CC_IOCQES		= 4 << 20,
+	NVME_CC_IOSQES		= NVME_NVM_IOSQES << 16,
+	NVME_CC_IOCQES		= NVME_NVM_IOCQES << 20,
 	NVME_CSTS_RDY		= 1 << 0,
 	NVME_CSTS_CFS		= 1 << 1,
 	NVME_CSTS_NSSRO		= 1 << 4,
@@ -107,7 +114,10 @@ struct nvme_id_ctrl {
 	__u8			mdts;
 	__le16			cntlid;
 	__le32			ver;
-	__u8			rsvd84[172];
+	__le32			rtd3r;
+	__le32			rtd3e;
+	__le32			oaes;
+	__u8			rsvd96[160];
 	__le16			oacs;
 	__u8			acl;
 	__u8			aerl;
@@ -274,6 +284,12 @@ struct nvme_reservation_status {
 	} regctl_ds[];
 };
 
+enum nvme_async_event_type {
+	NVME_AER_TYPE_ERROR	= 0,
+	NVME_AER_TYPE_SMART	= 1,
+	NVME_AER_TYPE_NOTICE	= 2,
+};
+
 /* I/O commands */
 
 enum nvme_opcode {
@@ -288,6 +304,29 @@ enum nvme_opcode {
 	nvme_cmd_resv_report	= 0x0e,
 	nvme_cmd_resv_acquire	= 0x11,
 	nvme_cmd_resv_release	= 0x15,
+};
+
+/*
+ * Lowest two bits of our flags field (FUSE field in the spec):
+ *
+ * @NVME_CMD_FUSE_FIRST:   Fused Operation, first command
+ * @NVME_CMD_FUSE_SECOND:  Fused Operation, second command
+ *
+ * Highest two bits in our flags field (PSDT field in the spec):
+ *
+ * @NVME_CMD_PSDT_SGL_METABUF:	Use SGLS for this transfer,
+ *	If used, MPTR contains addr of single physical buffer (byte aligned).
+ * @NVME_CMD_PSDT_SGL_METASEG:	Use SGLS for this transfer,
+ *	If used, MPTR contains an address of an SGL segment containing
+ *	exactly 1 SGL descriptor (qword aligned).
+ */
+enum {
+	NVME_CMD_FUSE_FIRST	= (1 << 0),
+	NVME_CMD_FUSE_SECOND	= (1 << 1),
+
+	NVME_CMD_SGL_METABUF	= (1 << 6),
+	NVME_CMD_SGL_METASEG	= (1 << 7),
+	NVME_CMD_SGL_ALL	= NVME_CMD_SGL_METABUF | NVME_CMD_SGL_METASEG,
 };
 
 struct nvme_common_command {
@@ -516,6 +555,24 @@ struct nvme_format_cmd {
 	__u32			rsvd11[5];
 };
 
+struct nvme_get_log_page_command {
+	__u8			opcode;
+	__u8			flags;
+	__u16			command_id;
+	__le32			nsid;
+	__u64			rsvd2[2];
+	__le64			prp1;
+	__le64			prp2;
+	__u8			lid;
+	__u8			rsvd10;
+	__le16			numdl;
+	__le16			numdu;
+	__u16			rsvd11;
+	__le32			lpol;
+	__le32			lpou;
+	__u32			rsvd14[2];
+};
+
 struct nvme_command {
 	union {
 		struct nvme_common_command common;
@@ -529,8 +586,14 @@ struct nvme_command {
 		struct nvme_format_cmd format;
 		struct nvme_dsm_cmd dsm;
 		struct nvme_abort_cmd abort;
+		struct nvme_get_log_page_command get_log_page;
 	};
 };
+
+static inline bool nvme_is_write(struct nvme_command *cmd)
+{
+	return cmd->common.opcode & 1;
+}
 
 enum {
 	NVME_SC_SUCCESS			= 0x0,
