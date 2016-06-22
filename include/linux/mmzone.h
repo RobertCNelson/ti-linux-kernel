@@ -140,7 +140,7 @@ enum zone_stat_item {
 	NR_DIRTIED,		/* page dirtyings since bootup */
 	NR_WRITTEN,		/* page writings since bootup */
 	NR_PAGES_SCANNED,	/* pages scanned since last reclaim */
-#ifdef CONFIG_ZSMALLOC
+#if IS_ENABLED(CONFIG_ZSMALLOC)
 	NR_ZSMALLOC,
 #endif
 #ifdef CONFIG_NUMA
