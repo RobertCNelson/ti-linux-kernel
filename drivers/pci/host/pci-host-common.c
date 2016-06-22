@@ -143,8 +143,31 @@ int pci_host_common_probe(struct platform_device *pdev,
 	}
 
 	pci_fixup_irqs(pci_common_swizzle, of_irq_parse_and_map_pci);
-
-	if (!pci_has_flag(PCI_PROBE_ONLY)) {
+	/*
+	 * For PCI bridges and PCI devices to be fully set-up, their
+	 * resources must be initialized and inserted in the kernel
+	 * resource tree, which implicitly means that the resources
+	 * are correctly inserted in the kernel resource tree and are
+	 * assigned a parent pointer to create the resource hierarchy.
+	 *
+	 * On PCI_PROBE_ONLY systems, the pci_bus_claim_resource()
+	 * API claims the resources as set-up by firmware, which takes
+	 * care of inserting them in the resource tree and setting their
+	 * parent pointers accordingly.
+	 *
+	 * On !PCI_PROBE_ONLY systems, the firmware set-up is discarded,
+	 * and resource assignment and insertion in the resource tree is
+	 * carried out through the PCI resources API:
+	 *
+	 * (ie pci_bus_size_bridges() and pci_bus_assign_resources())
+	 *
+	 * that sizes the bridges and assigns and inserts resources in the
+	 * kernel resource tree (which also implies setting up their parent
+	 * pointers), completing the resources set-up.
+	 */
+	if (pci_has_flag(PCI_PROBE_ONLY)) {
+		pci_bus_claim_resources(bus);
+	} else {
 		pci_bus_size_bridges(bus);
 		pci_bus_assign_resources(bus);
 
