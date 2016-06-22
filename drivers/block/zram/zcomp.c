@@ -26,17 +26,6 @@ static const char * const backends[] = {
 	NULL
 };
 
-static const char *find_backend(const char *compress)
-{
-	int i = 0;
-	while (backends[i]) {
-		if (sysfs_streq(compress, backends[i]))
-			break;
-		i++;
-	}
-	return backends[i];
-}
-
 static void zcomp_strm_free(struct zcomp_strm *zstrm)
 {
 	if (!IS_ERR_OR_NULL(zstrm->tfm))
@@ -68,28 +57,51 @@ static struct zcomp_strm *zcomp_strm_alloc(struct zcomp *comp, gfp_t flags)
 	return zstrm;
 }
 
+bool zcomp_available_algorithm(const char *comp)
+{
+	/*
+	 * Crypto does not ignore a trailing new line symbol,
+	 * so make sure you don't supply a string containing
+	 * one.
+	 * This also means that we keep `backends' array for
+	 * zcomp_available_show() only and will init a new zram
+	 * device with any compressing algorithm known to crypto
+	 * api.
+	 */
+	return crypto_has_comp(comp, 0, 0) == 1;
+}
+
 /* show available compressors */
 ssize_t zcomp_available_show(const char *comp, char *buf)
 {
+	bool known_algorithm = false;
 	ssize_t sz = 0;
 	int i = 0;
 
-	while (backends[i]) {
-		if (!strcmp(comp, backends[i]))
+	for (; backends[i]; i++) {
+		if (!zcomp_available_algorithm(backends[i]))
+			continue;
+
+		if (!strcmp(comp, backends[i])) {
+			known_algorithm = true;
 			sz += scnprintf(buf + sz, PAGE_SIZE - sz - 2,
 					"[%s] ", backends[i]);
-		else
+		} else {
 			sz += scnprintf(buf + sz, PAGE_SIZE - sz - 2,
 					"%s ", backends[i]);
-		i++;
+		}
 	}
+
+	/*
+	 * Out-of-tree module known to crypto api or a missing
+	 * entry in `backends'.
+	 */
+	if (!known_algorithm && zcomp_available_algorithm(comp))
+		sz += scnprintf(buf + sz, PAGE_SIZE - sz - 2,
+				"[%s] ", comp);
+
 	sz += scnprintf(buf + sz, PAGE_SIZE - sz, "\n");
 	return sz;
-}
-
-bool zcomp_available_algorithm(const char *comp)
-{
-	return find_backend(comp) != NULL;
 }
 
 struct zcomp_strm *zcomp_stream_get(struct zcomp *comp)
@@ -227,18 +239,16 @@ void zcomp_destroy(struct zcomp *comp)
 struct zcomp *zcomp_create(const char *compress)
 {
 	struct zcomp *comp;
-	const char *backend;
 	int error;
 
-	backend = find_backend(compress);
-	if (!backend)
+	if (!zcomp_available_algorithm(compress))
 		return ERR_PTR(-EINVAL);
 
 	comp = kzalloc(sizeof(struct zcomp), GFP_KERNEL);
 	if (!comp)
 		return ERR_PTR(-ENOMEM);
 
-	comp->name = backend;
+	comp->name = compress;
 	error = zcomp_init(comp);
 	if (error) {
 		kfree(comp);
