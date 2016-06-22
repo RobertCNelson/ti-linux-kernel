@@ -964,8 +964,8 @@ static const struct panel_desc innolux_zj070na_01p = {
 	.num_modes = 1,
 	.bpc = 6,
 	.size = {
-		.width = 1024,
-		.height = 600,
+		.width = 154,
+		.height = 90,
 	},
 };
 
@@ -1242,8 +1242,8 @@ static const struct panel_desc samsung_ltn101nt05 = {
 	.num_modes = 1,
 	.bpc = 6,
 	.size = {
-		.width = 1024,
-		.height = 600,
+		.width = 223,
+		.height = 125,
 	},
 };
 
@@ -1700,7 +1700,6 @@ static const struct panel_desc_dsi panasonic_vvx10f004b00 = {
 	.format = MIPI_DSI_FMT_RGB888,
 	.lanes = 4,
 };
-
 
 static const struct of_device_id dsi_of_match[] = {
 	{
