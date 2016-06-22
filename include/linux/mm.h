@@ -978,8 +978,16 @@ static inline struct mem_cgroup *page_memcg(struct page *page)
 {
 	return page->mem_cgroup;
 }
+static inline struct mem_cgroup *page_memcg_rcu(struct page *page)
+{
+	return READ_ONCE(page->mem_cgroup);
+}
 #else
 static inline struct mem_cgroup *page_memcg(struct page *page)
+{
+	return NULL;
+}
+static inline struct mem_cgroup *page_memcg_rcu(struct page *page)
 {
 	return NULL;
 }
