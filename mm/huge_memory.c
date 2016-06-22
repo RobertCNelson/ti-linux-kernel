@@ -2503,9 +2503,9 @@ static void collapse_huge_page(struct mm_struct *mm,
 	}
 
 	/*
-	 * __collapse_huge_page_swapin always returns with mmap_sem
-	 * locked. If it fails, release mmap_sem and jump directly
-	 * label out. Continuing to collapse causes inconsistency.
+	 * __collapse_huge_page_swapin always returns with mmap_sem locked.
+	 * If it fails, release mmap_sem and jump directly out.
+	 * Continuing to collapse causes inconsistency.
 	 */
 	if (!__collapse_huge_page_swapin(mm, vma, address, pmd)) {
 		mem_cgroup_cancel_charge(new_page, memcg, true);
