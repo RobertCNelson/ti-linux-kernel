@@ -384,7 +384,7 @@ static int verify_parent_transid(struct extent_io_tree *io_tree,
 	/*
 	 * Things reading via commit roots that don't have normal protection,
 	 * like send, can have a really old block in cache that may point at a
-	 * block that has been free'd and re-allocated.  So don't clear uptodate
+	 * block that has been freed and re-allocated.  So don't clear uptodate
 	 * if we find an eb that is under IO (dirty/writeback) because we could
 	 * end up reading in the stale data and then writing it back out and
 	 * making everybody very sad.
@@ -418,7 +418,7 @@ static int btrfs_check_super_csum(char *raw_disk_sb)
 		/*
 		 * The super_block structure does not span the whole
 		 * BTRFS_SUPER_INFO_SIZE range, we expect that the unused space
-		 * is filled with zeros and is included in the checkum.
+		 * is filled with zeros and is included in the checksum.
 		 */
 		crc = btrfs_csum_data(raw_disk_sb + BTRFS_CSUM_SIZE,
 				crc, BTRFS_SUPER_INFO_SIZE - BTRFS_CSUM_SIZE);
@@ -600,7 +600,7 @@ static noinline int check_leaf(struct btrfs_root *root,
 
 		/*
 		 * Check to make sure that we don't point outside of the leaf,
-		 * just incase all the items are consistent to eachother, but
+		 * just in case all the items are consistent to each other, but
 		 * all point outside of the leaf.
 		 */
 		if (btrfs_item_end_nr(leaf, slot) >
@@ -2306,17 +2306,19 @@ static int btrfs_init_workqueues(struct btrfs_fs_info *fs_info,
 	unsigned int flags = WQ_MEM_RECLAIM | WQ_FREEZABLE | WQ_UNBOUND;
 
 	fs_info->workers =
-		btrfs_alloc_workqueue("worker", flags | WQ_HIGHPRI,
-				      max_active, 16);
+		btrfs_alloc_workqueue(fs_info, "worker",
+				      flags | WQ_HIGHPRI, max_active, 16);
 
 	fs_info->delalloc_workers =
-		btrfs_alloc_workqueue("delalloc", flags, max_active, 2);
+		btrfs_alloc_workqueue(fs_info, "delalloc",
+				      flags, max_active, 2);
 
 	fs_info->flush_workers =
-		btrfs_alloc_workqueue("flush_delalloc", flags, max_active, 0);
+		btrfs_alloc_workqueue(fs_info, "flush_delalloc",
+				      flags, max_active, 0);
 
 	fs_info->caching_workers =
-		btrfs_alloc_workqueue("cache", flags, max_active, 0);
+		btrfs_alloc_workqueue(fs_info, "cache", flags, max_active, 0);
 
 	/*
 	 * a higher idle thresh on the submit workers makes it much more
@@ -2324,41 +2326,48 @@ static int btrfs_init_workqueues(struct btrfs_fs_info *fs_info,
 	 * devices
 	 */
 	fs_info->submit_workers =
-		btrfs_alloc_workqueue("submit", flags,
+		btrfs_alloc_workqueue(fs_info, "submit", flags,
 				      min_t(u64, fs_devices->num_devices,
 					    max_active), 64);
 
 	fs_info->fixup_workers =
-		btrfs_alloc_workqueue("fixup", flags, 1, 0);
+		btrfs_alloc_workqueue(fs_info, "fixup", flags, 1, 0);
 
 	/*
 	 * endios are largely parallel and should have a very
 	 * low idle thresh
 	 */
 	fs_info->endio_workers =
-		btrfs_alloc_workqueue("endio", flags, max_active, 4);
+		btrfs_alloc_workqueue(fs_info, "endio", flags, max_active, 4);
 	fs_info->endio_meta_workers =
-		btrfs_alloc_workqueue("endio-meta", flags, max_active, 4);
+		btrfs_alloc_workqueue(fs_info, "endio-meta", flags,
+				      max_active, 4);
 	fs_info->endio_meta_write_workers =
-		btrfs_alloc_workqueue("endio-meta-write", flags, max_active, 2);
+		btrfs_alloc_workqueue(fs_info, "endio-meta-write", flags,
+				      max_active, 2);
 	fs_info->endio_raid56_workers =
-		btrfs_alloc_workqueue("endio-raid56", flags, max_active, 4);
+		btrfs_alloc_workqueue(fs_info, "endio-raid56", flags,
+				      max_active, 4);
 	fs_info->endio_repair_workers =
-		btrfs_alloc_workqueue("endio-repair", flags, 1, 0);
+		btrfs_alloc_workqueue(fs_info, "endio-repair", flags, 1, 0);
 	fs_info->rmw_workers =
-		btrfs_alloc_workqueue("rmw", flags, max_active, 2);
+		btrfs_alloc_workqueue(fs_info, "rmw", flags, max_active, 2);
 	fs_info->endio_write_workers =
-		btrfs_alloc_workqueue("endio-write", flags, max_active, 2);
+		btrfs_alloc_workqueue(fs_info, "endio-write", flags,
+				      max_active, 2);
 	fs_info->endio_freespace_worker =
-		btrfs_alloc_workqueue("freespace-write", flags, max_active, 0);
+		btrfs_alloc_workqueue(fs_info, "freespace-write", flags,
+				      max_active, 0);
 	fs_info->delayed_workers =
-		btrfs_alloc_workqueue("delayed-meta", flags, max_active, 0);
+		btrfs_alloc_workqueue(fs_info, "delayed-meta", flags,
+				      max_active, 0);
 	fs_info->readahead_workers =
-		btrfs_alloc_workqueue("readahead", flags, max_active, 2);
+		btrfs_alloc_workqueue(fs_info, "readahead", flags,
+				      max_active, 2);
 	fs_info->qgroup_rescan_workers =
-		btrfs_alloc_workqueue("qgroup-rescan", flags, 1, 0);
+		btrfs_alloc_workqueue(fs_info, "qgroup-rescan", flags, 1, 0);
 	fs_info->extent_workers =
-		btrfs_alloc_workqueue("extent-refs", flags,
+		btrfs_alloc_workqueue(fs_info, "extent-refs", flags,
 				      min_t(u64, fs_devices->num_devices,
 					    max_active), 8);
 
@@ -3022,7 +3031,7 @@ retry_root_backup:
 	}
 
 	/*
-	 * Mount does not set all options immediatelly, we can do it now and do
+	 * Mount does not set all options immediately, we can do it now and do
 	 * not have to wait for transaction commit
 	 */
 	btrfs_apply_pending_changes(fs_info);
@@ -3255,7 +3264,7 @@ static void btrfs_end_buffer_write_sync(struct buffer_head *bh, int uptodate)
 		btrfs_warn_rl_in_rcu(device->dev_root->fs_info,
 				"lost page write due to IO error on %s",
 					  rcu_str_deref(device->name));
-		/* note, we dont' set_buffer_write_io_error because we have
+		/* note, we don't set_buffer_write_io_error because we have
 		 * our own ways of dealing with the IO errors
 		 */
 		clear_buffer_uptodate(bh);
@@ -4367,7 +4376,7 @@ static int btrfs_destroy_marked_extents(struct btrfs_root *root,
 		if (ret)
 			break;
 
-		clear_extent_bits(dirty_pages, start, end, mark, GFP_NOFS);
+		clear_extent_bits(dirty_pages, start, end, mark);
 		while (start <= end) {
 			eb = btrfs_find_tree_block(root->fs_info, start);
 			start += root->nodesize;
@@ -4402,7 +4411,7 @@ again:
 		if (ret)
 			break;
 
-		clear_extent_dirty(unpin, start, end, GFP_NOFS);
+		clear_extent_dirty(unpin, start, end);
 		btrfs_error_unpin_extent_range(root, start, end);
 		cond_resched();
 	}
