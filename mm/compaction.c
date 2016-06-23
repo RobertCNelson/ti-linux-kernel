@@ -498,10 +498,14 @@ static unsigned long isolate_freepages_block(struct compact_control *cc,
 		/* Found a free page, will break it into order-0 pages */
 		order = page_order(page);
 		isolated = __isolate_free_page(page, order);
+		if (!isolated)
+			break;
 		set_page_private(page, order);
+
 		total_isolated += isolated;
-		list_add_tail(&page->lru, freelist);
 		cc->nr_freepages += isolated;
+		list_add_tail(&page->lru, freelist);
+
 		if (!strict && cc->nr_migratepages <= cc->nr_freepages) {
 			blockpfn += isolated;
 			break;
