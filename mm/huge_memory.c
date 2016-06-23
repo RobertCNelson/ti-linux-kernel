@@ -2438,6 +2438,9 @@ static bool __collapse_huge_page_swapin(struct mm_struct *mm,
 			/* vma is no longer available, don't continue to swapin */
 			if (hugepage_vma_revalidate(mm, address))
 				return false;
+			/* check if the pmd is still valid */
+			if (mm_find_pmd(mm, address) != pmd)
+				return false;
 		}
 		if (ret & VM_FAULT_ERROR) {
 			trace_mm_collapse_huge_page_swapin(mm, swapped_in, 0);
@@ -2522,6 +2525,9 @@ static void collapse_huge_page(struct mm_struct *mm,
 	down_write(&mm->mmap_sem);
 	result = hugepage_vma_revalidate(mm, address);
 	if (result)
+		goto out;
+	/* check if the pmd is still valid */
+	if (mm_find_pmd(mm, address) != pmd)
 		goto out;
 
 	anon_vma_lock_write(vma->anon_vma);
