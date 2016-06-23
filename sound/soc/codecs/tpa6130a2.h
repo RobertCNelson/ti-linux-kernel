@@ -30,8 +30,6 @@
 #define TPA6130A2_REG_OUT_IMPEDANCE	0x03
 #define TPA6130A2_REG_VERSION		0x04
 
-#define TPA6130A2_CACHEREGNUM	(TPA6130A2_REG_VERSION + 1)
-
 /* Register bits */
 /* TPA6130A2_REG_CONTROL (0x01) */
 #define TPA6130A2_SWS			(0x01 << 0)
@@ -56,7 +54,6 @@
 /* TPA6130A2_REG_VERSION (0x04) */
 #define TPA6130A2_VERSION_MASK		(0x0f)
 
-extern int tpa6130a2_add_controls(struct snd_soc_codec *codec);
 extern int tpa6130a2_stereo_enable(struct snd_soc_codec *codec, int enable);
 
 #endif /* __TPA6130A2_H__ */
