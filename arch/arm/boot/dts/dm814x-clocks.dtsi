@@ -175,7 +175,7 @@
 	};
 
 	/* CPTS_RFT_CLK in RMII_REFCLK_SRC, usually sourced from auiod */
-	cpsw_cpts_rft_clk: cpsw_cpts_rft_clk {
+	cpsw_cpts_rft_clk: cpsw_cpts_rft_clk@2e8 {
 		#clock-cells = <0>;
 		compatible = "ti,mux-clock";
 		clocks = <&adpll_video0_ck 1
@@ -311,7 +311,7 @@
 		ti,clock-div = <1>;
 	};
 
-	sysclk10_ck: sysclk10_ck {
+	sysclk10_ck: sysclk10_ck@324 {
 		compatible = "ti,divider-clock";
 		reg = <0x324>;
 		ti,max-div = <7>;
