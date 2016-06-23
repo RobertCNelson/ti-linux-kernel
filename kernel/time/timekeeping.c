@@ -43,6 +43,7 @@ static struct {
 
 static DEFINE_RAW_SPINLOCK(timekeeper_lock);
 static struct timekeeper shadow_timekeeper;
+static int timekeeping_active;
 
 /**
  * struct tk_fast - NMI safe timekeeper
@@ -418,6 +419,16 @@ u64 ktime_get_raw_fast_ns(void)
 	return __ktime_get_fast_ns(&tk_fast_raw);
 }
 EXPORT_SYMBOL_GPL(ktime_get_raw_fast_ns);
+
+u64 ktime_get_log_ts(u64 *offset_real)
+{
+	*offset_real = ktime_to_ns(tk_core.timekeeper.offs_real);
+
+	if (timekeeping_active)
+		return ktime_get_mono_fast_ns();
+	else
+		return local_clock();
+}
 
 /* Suspend-time cycles value for halted fast timekeeper. */
 static cycle_t cycles_at_suspend;
@@ -1505,6 +1516,8 @@ void __init timekeeping_init(void)
 
 	write_seqcount_end(&tk_core.seq);
 	raw_spin_unlock_irqrestore(&timekeeper_lock, flags);
+
+	timekeeping_active = 1;
 }
 
 /* time in seconds when suspend began for persistent clock */
