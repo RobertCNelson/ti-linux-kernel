@@ -4117,7 +4117,7 @@ static struct cftype mem_cgroup_legacy_files[] = {
  * those references are manageable from userspace.
  */
 
-static struct idr mem_cgroup_idr;
+static DEFINE_IDR(mem_cgroup_idr);
 
 static void mem_cgroup_id_get(struct mem_cgroup *memcg)
 {
