@@ -99,4 +99,18 @@ static inline int pthread_attr_setaffinity_np(pthread_attr_t *attr,
 }
 #endif
 
+#define FUTEX_ATTACH		13
+#define FUTEX_DETACH		14
+#define FUTEX_ATTACHED		512
+
+static inline int futex_attach(u_int32_t *uaddr, int opflags)
+{
+	return futex(uaddr, FUTEX_ATTACH, 0, NULL, NULL, 0, opflags);
+}
+
+static inline int futex_detach(u_int32_t *uaddr, int opflags)
+{
+	return futex(uaddr, FUTEX_DETACH, 0, NULL, NULL, 0, opflags);
+}
+
 #endif /* _FUTEX_H */
