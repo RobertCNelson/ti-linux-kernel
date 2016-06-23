@@ -2544,9 +2544,9 @@ static void i915_guc_client_info(struct seq_file *m,
 
 	for_each_engine(engine, dev_priv) {
 		seq_printf(m, "\tSubmissions: %llu %s\n",
-				client->submissions[engine->guc_id],
+				client->submissions[engine->id],
 				engine->name);
-		tot += client->submissions[engine->guc_id];
+		tot += client->submissions[engine->id];
 	}
 	seq_printf(m, "\tTotal: %llu\n", tot);
 }
@@ -2574,6 +2574,10 @@ static int i915_guc_info(struct seq_file *m, void *data)
 
 	mutex_unlock(&dev->struct_mutex);
 
+	seq_printf(m, "Doorbell map:\n");
+	seq_printf(m, "\t%*pb\n", GUC_MAX_DOORBELLS, guc.doorbell_bitmap);
+	seq_printf(m, "Doorbell next cacheline: 0x%x\n\n", guc.db_cacheline);
+
 	seq_printf(m, "GuC total action count: %llu\n", guc.action_count);
 	seq_printf(m, "GuC action failure count: %u\n", guc.action_fail);
 	seq_printf(m, "GuC last action command: 0x%x\n", guc.action_cmd);
@@ -2583,9 +2587,9 @@ static int i915_guc_info(struct seq_file *m, void *data)
 	seq_printf(m, "\nGuC submissions:\n");
 	for_each_engine(engine, dev_priv) {
 		seq_printf(m, "\t%-24s: %10llu, last seqno 0x%08x\n",
-			engine->name, guc.submissions[engine->guc_id],
-			guc.last_seqno[engine->guc_id]);
-		total += guc.submissions[engine->guc_id];
+			engine->name, guc.submissions[engine->id],
+			guc.last_seqno[engine->id]);
+		total += guc.submissions[engine->id];
 	}
 	seq_printf(m, "\t%s: %llu\n", "Total", total);
 
@@ -2697,7 +2701,6 @@ static int i915_sink_crc(struct seq_file *m, void *data)
 {
 	struct drm_info_node *node = m->private;
 	struct drm_device *dev = node->minor->dev;
-	struct intel_encoder *encoder;
 	struct intel_connector *connector;
 	struct intel_dp *intel_dp = NULL;
 	int ret;
@@ -2705,18 +2708,19 @@ static int i915_sink_crc(struct seq_file *m, void *data)
 
 	drm_modeset_lock_all(dev);
 	for_each_intel_connector(dev, connector) {
+		struct drm_crtc *crtc;
 
-		if (connector->base.dpms != DRM_MODE_DPMS_ON)
+		if (!connector->base.state->best_encoder)
 			continue;
 
-		if (!connector->base.encoder)
+		crtc = connector->base.state->crtc;
+		if (!crtc->state->active)
 			continue;
 
-		encoder = to_intel_encoder(connector->base.encoder);
-		if (encoder->type != INTEL_OUTPUT_EDP)
+		if (connector->base.connector_type != DRM_MODE_CONNECTOR_eDP)
 			continue;
 
-		intel_dp = enc_to_intel_dp(&encoder->base);
+		intel_dp = enc_to_intel_dp(connector->base.state->best_encoder);
 
 		ret = intel_dp_sink_crc(intel_dp, crc);
 		if (ret)
@@ -2946,7 +2950,7 @@ static void intel_dp_info(struct seq_file *m,
 
 	seq_printf(m, "\tDPCD rev: %x\n", intel_dp->dpcd[DP_DPCD_REV]);
 	seq_printf(m, "\taudio support: %s\n", yesno(intel_dp->has_audio));
-	if (intel_encoder->type == INTEL_OUTPUT_EDP)
+	if (intel_connector->base.connector_type == DRM_MODE_CONNECTOR_eDP)
 		intel_panel_info(m, &intel_connector->panel);
 }
 
@@ -2985,14 +2989,26 @@ static void intel_connector_info(struct seq_file *m,
 		seq_printf(m, "\tCEA rev: %d\n",
 			   connector->display_info.cea_rev);
 	}
-	if (intel_encoder) {
-		if (intel_encoder->type == INTEL_OUTPUT_DISPLAYPORT ||
-		    intel_encoder->type == INTEL_OUTPUT_EDP)
-			intel_dp_info(m, intel_connector);
-		else if (intel_encoder->type == INTEL_OUTPUT_HDMI)
-			intel_hdmi_info(m, intel_connector);
-		else if (intel_encoder->type == INTEL_OUTPUT_LVDS)
+
+	if (!intel_encoder || intel_encoder->type == INTEL_OUTPUT_DP_MST)
+		return;
+
+	switch (connector->connector_type) {
+	case DRM_MODE_CONNECTOR_DisplayPort:
+	case DRM_MODE_CONNECTOR_eDP:
+		intel_dp_info(m, intel_connector);
+		break;
+	case DRM_MODE_CONNECTOR_LVDS:
+		if (intel_encoder->type == INTEL_OUTPUT_LVDS)
 			intel_lvds_info(m, intel_connector);
+		break;
+	case DRM_MODE_CONNECTOR_HDMIA:
+		if (intel_encoder->type == INTEL_OUTPUT_HDMI ||
+		    intel_encoder->type == INTEL_OUTPUT_UNKNOWN)
+			intel_hdmi_info(m, intel_connector);
+		break;
+	default:
+		break;
 	}
 
 	seq_printf(m, "\tmodes:\n");
@@ -3370,31 +3386,16 @@ static int i915_ddb_info(struct seq_file *m, void *unused)
 static void drrs_status_per_crtc(struct seq_file *m,
 		struct drm_device *dev, struct intel_crtc *intel_crtc)
 {
-	struct intel_encoder *intel_encoder;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct i915_drrs *drrs = &dev_priv->drrs;
 	int vrefresh = 0;
+	struct drm_connector *connector;
 
-	for_each_encoder_on_crtc(dev, &intel_crtc->base, intel_encoder) {
-		/* Encoder connected on this CRTC */
-		switch (intel_encoder->type) {
-		case INTEL_OUTPUT_EDP:
-			seq_puts(m, "eDP:\n");
-			break;
-		case INTEL_OUTPUT_DSI:
-			seq_puts(m, "DSI:\n");
-			break;
-		case INTEL_OUTPUT_HDMI:
-			seq_puts(m, "HDMI:\n");
-			break;
-		case INTEL_OUTPUT_DISPLAYPORT:
-			seq_puts(m, "DP:\n");
-			break;
-		default:
-			seq_printf(m, "Other encoder (id=%d).\n",
-						intel_encoder->type);
-			return;
-		}
+	drm_for_each_connector(connector, dev) {
+		if (connector->state->crtc != &intel_crtc->base)
+			continue;
+
+		seq_printf(m, "%s:\n", connector->name);
 	}
 
 	if (dev_priv->vbt.drrs_type == STATIC_DRRS_SUPPORT)
@@ -3457,18 +3458,16 @@ static int i915_drrs_status(struct seq_file *m, void *unused)
 	struct intel_crtc *intel_crtc;
 	int active_crtc_cnt = 0;
 
+	drm_modeset_lock_all(dev);
 	for_each_intel_crtc(dev, intel_crtc) {
-		drm_modeset_lock(&intel_crtc->base.mutex, NULL);
-
 		if (intel_crtc->base.state->active) {
 			active_crtc_cnt++;
 			seq_printf(m, "\nCRTC %d:  ", active_crtc_cnt);
 
 			drrs_status_per_crtc(m, dev, intel_crtc);
 		}
-
-		drm_modeset_unlock(&intel_crtc->base.mutex);
 	}
+	drm_modeset_unlock_all(dev);
 
 	if (!active_crtc_cnt)
 		seq_puts(m, "No active crtc found\n");
@@ -3486,17 +3485,23 @@ static int i915_dp_mst_info(struct seq_file *m, void *unused)
 {
 	struct drm_info_node *node = (struct drm_info_node *) m->private;
 	struct drm_device *dev = node->minor->dev;
-	struct drm_encoder *encoder;
 	struct intel_encoder *intel_encoder;
 	struct intel_digital_port *intel_dig_port;
+	struct drm_connector *connector;
+
 	drm_modeset_lock_all(dev);
-	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
-		intel_encoder = to_intel_encoder(encoder);
-		if (intel_encoder->type != INTEL_OUTPUT_DISPLAYPORT)
+	drm_for_each_connector(connector, dev) {
+		if (connector->connector_type != DRM_MODE_CONNECTOR_DisplayPort)
 			continue;
-		intel_dig_port = enc_to_dig_port(encoder);
+
+		intel_encoder = intel_attached_encoder(connector);
+		if (!intel_encoder || intel_encoder->type == INTEL_OUTPUT_DP_MST)
+			continue;
+
+		intel_dig_port = enc_to_dig_port(&intel_encoder->base);
 		if (!intel_dig_port->dp.can_mst)
 			continue;
+
 		seq_printf(m, "MST Source Port %c\n",
 			   port_name(intel_dig_port->port));
 		drm_dp_mst_dump_topology(m, &intel_dig_port->dp.mst_mgr);
@@ -5306,6 +5311,10 @@ static int i915_sseu_status(struct seq_file *m, void *unused)
 		   INTEL_INFO(dev)->eu_total);
 	seq_printf(m, "  Available EU Per Subslice: %u\n",
 		   INTEL_INFO(dev)->eu_per_subslice);
+	seq_printf(m, "  Has Pooled EU: %s\n", yesno(HAS_POOLED_EU(dev)));
+	if (HAS_POOLED_EU(dev))
+		seq_printf(m, "  Min EU in pool: %u\n",
+			   INTEL_INFO(dev)->min_eu_in_pool);
 	seq_printf(m, "  Has Slice Power Gating: %s\n",
 		   yesno(INTEL_INFO(dev)->has_slice_pg));
 	seq_printf(m, "  Has Subslice Power Gating: %s\n",
