@@ -3158,8 +3158,10 @@ long do_futex(u32 __user *uaddr, int op, u32 val, ktime_t *timeout,
 	int cmd = op & FUTEX_CMD_MASK;
 	unsigned int flags = 0;
 
+#ifdef CONFIG_MMU
 	if (!(op & FUTEX_PRIVATE_FLAG))
 		flags |= FLAGS_SHARED;
+#endif
 
 	if (op & FUTEX_CLOCK_REALTIME) {
 		flags |= FLAGS_CLOCKRT;
