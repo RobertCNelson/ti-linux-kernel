@@ -456,6 +456,46 @@ TRACE_EVENT(btrfs_sync_fs,
 	TP_printk_btrfs("wait = %d", __entry->wait)
 );
 
+TRACE_EVENT(btrfs_add_block_group,
+
+	TP_PROTO(struct btrfs_fs_info *fs_info,
+		 struct btrfs_block_group_cache *block_group, int create),
+
+	TP_ARGS(fs_info, block_group, create),
+
+	TP_STRUCT__entry(
+		__array(	u8,	fsid,	BTRFS_UUID_SIZE	)
+		__field(	u64,	offset			)
+		__field(	u64,	size			)
+		__field(	u64,	flags			)
+		__field(	u64,	bytes_used		)
+		__field(	u64,	bytes_super		)
+		__field(	int,	create			)
+	),
+
+	TP_fast_assign(
+		memcpy(__entry->fsid, fs_info->fsid, BTRFS_UUID_SIZE);
+		__entry->offset		= block_group->key.objectid;
+		__entry->size		= block_group->key.offset;
+		__entry->flags		= block_group->flags;
+		__entry->bytes_used	=
+			btrfs_block_group_used(&block_group->item);
+		__entry->bytes_super	= block_group->bytes_super;
+		__entry->create		= create;
+	),
+
+	TP_printk("%pU: block_group offset = %llu, size = %llu, "
+		  "flags = %llu(%s), bytes_used = %llu, bytes_super = %llu, "
+		  "create = %d", __entry->fsid,
+		  (unsigned long long)__entry->offset,
+		  (unsigned long long)__entry->size,
+		  (unsigned long long)__entry->flags,
+		  __print_flags((unsigned long)__entry->flags, "|",
+				BTRFS_GROUP_FLAGS),
+		  (unsigned long long)__entry->bytes_used,
+		  (unsigned long long)__entry->bytes_super, __entry->create)
+);
+
 #define show_ref_action(action)						\
 	__print_symbolic(action,					\
 		{ BTRFS_ADD_DELAYED_REF,    "ADD_DELAYED_REF" },	\
@@ -765,6 +805,88 @@ TRACE_EVENT(btrfs_space_reservation,
 	TP_printk_btrfs("%s: %Lu %s %Lu", __get_str(type), __entry->val,
 			__entry->reserve ? "reserve" : "release",
 			__entry->bytes)
+);
+
+#define show_flush_action(action)						\
+	__print_symbolic(action,						\
+		{ BTRFS_RESERVE_NO_FLUSH,	"BTRFS_RESERVE_NO_FLUSH"},	\
+		{ BTRFS_RESERVE_FLUSH_LIMIT,	"BTRFS_RESERVE_FLUSH_LIMIT"},	\
+		{ BTRFS_RESERVE_FLUSH_ALL,	"BTRFS_RESERVE_FLUSH_ALL"})
+
+TRACE_EVENT(btrfs_trigger_flush,
+
+	TP_PROTO(struct btrfs_fs_info *fs_info, u64 flags, u64 bytes,
+		 int flush, char *reason),
+
+	TP_ARGS(fs_info, flags, bytes, flush, reason),
+
+	TP_STRUCT__entry(
+		__array(	u8,	fsid,	BTRFS_UUID_SIZE	)
+		__field(	u64,	flags			)
+		__field(	u64,	bytes			)
+		__field(	int,	flush			)
+		__string(	reason,	reason			)
+	),
+
+	TP_fast_assign(
+		memcpy(__entry->fsid, fs_info->fsid, BTRFS_UUID_SIZE);
+		__entry->flags	= flags;
+		__entry->bytes	= bytes;
+		__entry->flush	= flush;
+		__assign_str(reason, reason)
+	),
+
+	TP_printk("%pU: %s: flush = %d(%s), flags = %llu(%s), bytes = %llu",
+		  __entry->fsid, __get_str(reason), __entry->flush,
+		  show_flush_action(__entry->flush),
+		  (unsigned long long)__entry->flags,
+		  __print_flags((unsigned long)__entry->flags, "|",
+				BTRFS_GROUP_FLAGS),
+		  (unsigned long long)__entry->bytes)
+);
+
+#define show_flush_state(state)							\
+	__print_symbolic(state,							\
+		{ FLUSH_DELAYED_ITEMS_NR,	"FLUSH_DELAYED_ITEMS_NR"},	\
+		{ FLUSH_DELAYED_ITEMS,		"FLUSH_DELAYED_ITEMS"},		\
+		{ FLUSH_DELALLOC,		"FLUSH_DELALLOC"},		\
+		{ FLUSH_DELALLOC_WAIT,		"FLUSH_DELALLOC_WAIT"},		\
+		{ ALLOC_CHUNK,			"ALLOC_CHUNK"},			\
+		{ COMMIT_TRANS,			"COMMIT_TRANS"})
+
+TRACE_EVENT(btrfs_flush_space,
+
+	TP_PROTO(struct btrfs_fs_info *fs_info, u64 flags, u64 num_bytes,
+		 u64 orig_bytes, int state, int ret),
+
+	TP_ARGS(fs_info, flags, num_bytes, orig_bytes, state, ret),
+
+	TP_STRUCT__entry(
+		__array(	u8,	fsid,	BTRFS_UUID_SIZE	)
+		__field(	u64,	flags			)
+		__field(	u64,	num_bytes		)
+		__field(	u64,	orig_bytes		)
+		__field(	int,	state			)
+		__field(	int,	ret			)
+	),
+
+	TP_fast_assign(
+		memcpy(__entry->fsid, fs_info->fsid, BTRFS_UUID_SIZE);
+		__entry->flags		=	flags;
+		__entry->num_bytes	=	num_bytes;
+		__entry->orig_bytes	=	orig_bytes;
+		__entry->state		=	state;
+		__entry->ret		=	ret;
+	),
+
+	TP_printk("%pU: state = %d(%s), flags = %llu(%s), num_bytes = %llu, "
+		  "orig_bytes = %llu, ret = %d", __entry->fsid, __entry->state,
+		  show_flush_state(__entry->state),
+		  (unsigned long long)__entry->flags,
+		  __print_flags((unsigned long)__entry->flags, "|",
+				BTRFS_GROUP_FLAGS),
+		  (unsigned long long)__entry->num_bytes,
+		  (unsigned long long)__entry->orig_bytes, __entry->ret)
 );
 
 DECLARE_EVENT_CLASS(btrfs__reserved_extent,
