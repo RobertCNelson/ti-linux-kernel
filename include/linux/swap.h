@@ -287,7 +287,6 @@ static inline void workingset_node_shadows_dec(struct radix_tree_node *node)
 /* linux/mm/page_alloc.c */
 extern unsigned long totalram_pages;
 extern unsigned long totalreserve_pages;
-extern unsigned long dirty_balance_reserve;
 extern unsigned long nr_free_buffer_pages(void);
 extern unsigned long nr_free_pagecache_pages(void);
 
@@ -351,7 +350,15 @@ extern void check_move_unevictable_pages(struct page **, int nr_pages);
 extern int kswapd_run(int nid);
 extern void kswapd_stop(int nid);
 #ifdef CONFIG_MEMCG
-extern int mem_cgroup_swappiness(struct mem_cgroup *mem);
+static inline int mem_cgroup_swappiness(struct mem_cgroup *memcg)
+{
+	/* root ? */
+	if (mem_cgroup_disabled() || !memcg->css.parent)
+		return vm_swappiness;
+
+	return memcg->swappiness;
+}
+
 #else
 static inline int mem_cgroup_swappiness(struct mem_cgroup *mem)
 {
@@ -377,7 +384,6 @@ extern void end_swap_bio_write(struct bio *bio, int err);
 extern int __swap_writepage(struct page *page, struct writeback_control *wbc,
 	void (*end_write_func)(struct bio *, int));
 extern int swap_set_page_dirty(struct page *page);
-extern void end_swap_bio_read(struct bio *bio, int err);
 
 int add_swap_extent(struct swap_info_struct *sis, unsigned long start_page,
 		unsigned long nr_pages, sector_t start_block);

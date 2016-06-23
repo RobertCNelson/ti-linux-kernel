@@ -26,6 +26,7 @@
  *              Thomas Gleixner, Mike Kravetz
  */
 
+#include <linux/kasan.h>
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/nmi.h>
@@ -184,14 +185,12 @@ struct static_key sched_feat_keys[__SCHED_FEAT_NR] = {
 
 static void sched_feat_disable(int i)
 {
-	if (static_key_enabled(&sched_feat_keys[i]))
-		static_key_slow_dec(&sched_feat_keys[i]);
+	static_key_disable(&sched_feat_keys[i]);
 }
 
 static void sched_feat_enable(int i)
 {
-	if (!static_key_enabled(&sched_feat_keys[i]))
-		static_key_slow_inc(&sched_feat_keys[i]);
+	static_key_enable(&sched_feat_keys[i]);
 }
 #else
 static void sched_feat_disable(int i) { };
@@ -4611,7 +4610,9 @@ void init_idle(struct task_struct *idle, int cpu)
 	idle->state = TASK_RUNNING;
 	idle->se.exec_start = sched_clock();
 
+	kasan_unpoison_task_stack(idle);
 	do_set_cpus_allowed(idle, cpumask_of(cpu));
+
 	/*
 	 * We're having a chicken and egg problem, even though we are
 	 * holding rq->lock, the cpu isn't yet set to this cpu so the
@@ -6480,7 +6481,7 @@ static void sched_init_numa(void)
 
 			sched_domains_numa_masks[i][j] = mask;
 
-			for (k = 0; k < nr_node_ids; k++) {
+			for_each_node(k) {
 				if (node_distance(j, k) > sched_domains_numa_distance[i])
 					continue;
 
@@ -8002,17 +8003,17 @@ static void cpu_cgroup_css_offline(struct cgroup_subsys_state *css)
 	sched_offline_group(tg);
 }
 
-static void cpu_cgroup_fork(struct task_struct *task)
+static void cpu_cgroup_fork(struct task_struct *task, void *private)
 {
 	sched_move_task(task);
 }
 
-static int cpu_cgroup_can_attach(struct cgroup_subsys_state *css,
-				 struct cgroup_taskset *tset)
+static int cpu_cgroup_can_attach(struct cgroup_taskset *tset)
 {
 	struct task_struct *task;
+	struct cgroup_subsys_state *css;
 
-	cgroup_taskset_for_each(task, tset) {
+	cgroup_taskset_for_each(task, css, tset) {
 #ifdef CONFIG_RT_GROUP_SCHED
 		if (!sched_rt_can_attach(css_tg(css), task))
 			return -EINVAL;
@@ -8025,28 +8026,13 @@ static int cpu_cgroup_can_attach(struct cgroup_subsys_state *css,
 	return 0;
 }
 
-static void cpu_cgroup_attach(struct cgroup_subsys_state *css,
-			      struct cgroup_taskset *tset)
+static void cpu_cgroup_attach(struct cgroup_taskset *tset)
 {
 	struct task_struct *task;
+	struct cgroup_subsys_state *css;
 
-	cgroup_taskset_for_each(task, tset)
+	cgroup_taskset_for_each(task, css, tset)
 		sched_move_task(task);
-}
-
-static void cpu_cgroup_exit(struct cgroup_subsys_state *css,
-			    struct cgroup_subsys_state *old_css,
-			    struct task_struct *task)
-{
-	/*
-	 * cgroup_exit() is called in the copy_process() failure path.
-	 * Ignore this case since the task hasn't ran yet, this avoids
-	 * trying to poke a half freed task state from generic code.
-	 */
-	if (!(task->flags & PF_EXITING))
-		return;
-
-	sched_move_task(task);
 }
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
@@ -8382,7 +8368,6 @@ struct cgroup_subsys cpu_cgrp_subsys = {
 	.fork		= cpu_cgroup_fork,
 	.can_attach	= cpu_cgroup_can_attach,
 	.attach		= cpu_cgroup_attach,
-	.exit		= cpu_cgroup_exit,
 	.legacy_cftypes	= cpu_files,
 	.early_init	= 1,
 };

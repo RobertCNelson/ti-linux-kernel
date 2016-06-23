@@ -22,6 +22,7 @@
 #include <linux/time.h>
 #include <linux/highuid.h>
 #include <linux/pagemap.h>
+#include <linux/dax.h>
 #include <linux/quotaops.h>
 #include <linux/string.h>
 #include <linux/buffer_head.h>
@@ -656,16 +657,32 @@ has_zeroout:
 	return retval;
 }
 
-static void ext4_end_io_unwritten(struct buffer_head *bh, int uptodate)
+/*
+ * Update EXT4_MAP_FLAGS in bh->b_state. For buffer heads attached to pages
+ * we have to be careful as someone else may be manipulating b_state as well.
+ */
+static void ext4_update_bh_state(struct buffer_head *bh, unsigned long flags)
 {
-	struct inode *inode = bh->b_assoc_map->host;
-	/* XXX: breaks on 32-bit > 16GB. Is that even supported? */
-	loff_t offset = (loff_t)(uintptr_t)bh->b_private << inode->i_blkbits;
-	int err;
-	if (!uptodate)
+	unsigned long old_state;
+	unsigned long new_state;
+
+	flags &= EXT4_MAP_FLAGS;
+
+	/* Dummy buffer_head? Set non-atomically. */
+	if (!bh->b_page) {
+		bh->b_state = (bh->b_state & ~EXT4_MAP_FLAGS) | flags;
 		return;
-	WARN_ON(!buffer_unwritten(bh));
-	err = ext4_convert_unwritten_extents(NULL, inode, offset, bh->b_size);
+	}
+	/*
+	 * Someone else may be modifying b_state. Be careful! This is ugly but
+	 * once we get rid of using bh as a container for mapping information
+	 * to pass to / from get_block functions, this can go away.
+	 */
+	do {
+		old_state = READ_ONCE(bh->b_state);
+		new_state = (old_state & ~EXT4_MAP_FLAGS) | flags;
+	} while (unlikely(
+		 cmpxchg(&bh->b_state, old_state, new_state) != old_state));
 }
 
 /* Maximum number of blocks we map for direct IO at once. */
@@ -704,11 +721,16 @@ static int _ext4_get_block(struct inode *inode, sector_t iblock,
 		ext4_io_end_t *io_end = ext4_inode_aio(inode);
 
 		map_bh(bh, inode->i_sb, map.m_pblk);
-		bh->b_state = (bh->b_state & ~EXT4_MAP_FLAGS) | map.m_flags;
-		if (IS_DAX(inode) && buffer_unwritten(bh) && !io_end) {
+		ext4_update_bh_state(bh, map.m_flags);
+		if (IS_DAX(inode) && buffer_unwritten(bh)) {
+			/*
+			 * dgc: I suspect unwritten conversion on ext4+DAX is
+			 * fundamentally broken here when there are concurrent
+			 * read/write in progress on this inode.
+			 */
+			WARN_ON_ONCE(io_end);
 			bh->b_assoc_map = inode->i_mapping;
 			bh->b_private = (void *)(unsigned long)iblock;
-			bh->b_end_io = ext4_end_io_unwritten;
 		}
 		if (io_end && io_end->flag & EXT4_IO_END_UNWRITTEN)
 			set_buffer_defer_completion(bh);
@@ -1655,7 +1677,7 @@ int ext4_da_get_block_prep(struct inode *inode, sector_t iblock,
 		return ret;
 
 	map_bh(bh, inode->i_sb, map.m_pblk);
-	bh->b_state = (bh->b_state & ~EXT4_MAP_FLAGS) | map.m_flags;
+	ext4_update_bh_state(bh, map.m_flags);
 
 	if (buffer_unwritten(bh)) {
 		/* A delayed write to unwritten bh should be marked
@@ -1833,11 +1855,22 @@ static int ext4_writepage(struct page *page,
 	 * the page. But we may reach here when we do a journal commit via
 	 * journal_submit_inode_data_buffers() and in that case we must write
 	 * allocated buffers to achieve data=ordered mode guarantees.
+	 *
+	 * Also, if there is only one buffer per page (the fs block
+	 * size == the page size), if one buffer needs block
+	 * allocation or needs to modify the extent tree to clear the
+	 * unwritten flag, we know that the page can't be written at
+	 * all, so we might as well refuse the write immediately.
+	 * Unfortunately if the block size != page size, we can't as
+	 * easily detect this case using ext4_walk_page_buffers(), but
+	 * for the extremely common case, this is an optimization that
+	 * skips a useless round trip through ext4_bio_write_page().
 	 */
 	if (ext4_walk_page_buffers(NULL, page_bufs, 0, len, NULL,
 				   ext4_bh_delay_or_unwritten)) {
 		redirty_page_for_writepage(wbc, page);
-		if (current->flags & PF_MEMALLOC) {
+		if ((current->flags & PF_MEMALLOC) ||
+		    (inode->i_sb->s_blocksize == PAGE_CACHE_SIZE)) {
 			/*
 			 * For memory cleaning there's no point in writing only
 			 * some buffers. So just bail out. Warn if we came here

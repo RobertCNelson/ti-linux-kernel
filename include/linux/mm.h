@@ -246,6 +246,8 @@ struct vm_operations_struct {
 	void (*open)(struct vm_area_struct * area);
 	void (*close)(struct vm_area_struct * area);
 	int (*fault)(struct vm_area_struct *vma, struct vm_fault *vmf);
+	int (*pmd_fault)(struct vm_area_struct *, unsigned long address,
+						pmd_t *, unsigned int flags);
 	void (*map_pages)(struct vm_area_struct *vma, struct vm_fault *vmf);
 
 	/* notification that a previously read-only page is about to become
@@ -589,7 +591,7 @@ static inline compound_page_dtor *get_compound_page_dtor(struct page *page)
 	return page[1].compound_dtor;
 }
 
-static inline int compound_order(struct page *page)
+static inline unsigned int compound_order(struct page *page)
 {
 	if (!PageHead(page))
 		return 0;
@@ -915,6 +917,27 @@ static inline void set_page_links(struct page *page, enum zone_type zone,
 	set_page_section(page, pfn_to_section_nr(pfn));
 #endif
 }
+
+#ifdef CONFIG_MEMCG
+static inline struct mem_cgroup *page_memcg(struct page *page)
+{
+	return page->mem_cgroup;
+}
+
+static inline void set_page_memcg(struct page *page, struct mem_cgroup *memcg)
+{
+	page->mem_cgroup = memcg;
+}
+#else
+static inline struct mem_cgroup *page_memcg(struct page *page)
+{
+	return NULL;
+}
+
+static inline void set_page_memcg(struct page *page, struct mem_cgroup *memcg)
+{
+}
+#endif
 
 /*
  * Some inline functions in vmstat.h depend on page_zone()
@@ -1775,7 +1798,8 @@ extern void si_meminfo(struct sysinfo * val);
 extern void si_meminfo_node(struct sysinfo *val, int nid);
 
 extern __printf(3, 4)
-void warn_alloc_failed(gfp_t gfp_mask, int order, const char *fmt, ...);
+void warn_alloc_failed(gfp_t gfp_mask, unsigned int order,
+		const char *fmt, ...);
 
 extern void setup_per_cpu_pageset(void);
 

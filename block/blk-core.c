@@ -1881,8 +1881,8 @@ generic_make_request_checks(struct bio *bio)
 	 */
 	create_io_context(GFP_ATOMIC, q->node);
 
-	if (blk_throtl_bio(q, bio))
-		return false;	/* throttled, will be resubmitted later */
+	if (!blkcg_bio_issue_check(q, bio))
+		return false;
 
 	trace_block_bio_queue(q, bio);
 	return true;
@@ -2081,7 +2081,7 @@ int blk_insert_cloned_request(struct request_queue *q, struct request *rq)
 	if (q->mq_ops) {
 		if (blk_queue_io_stat(q))
 			blk_account_io_start(rq, true);
-		blk_mq_insert_request(rq, false, true, true);
+		blk_mq_insert_request(rq, false, true, false);
 		return 0;
 	}
 
