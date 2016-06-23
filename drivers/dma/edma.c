@@ -1069,10 +1069,8 @@ static struct dma_async_tx_descriptor *edma_prep_slave_sg(
 
 	edesc = kzalloc(sizeof(*edesc) + sg_len * sizeof(edesc->pset[0]),
 			GFP_ATOMIC);
-	if (!edesc) {
-		dev_err(dev, "%s: Failed to allocate a descriptor\n", __func__);
+	if (!edesc)
 		return NULL;
-	}
 
 	edesc->pset_nr = sg_len;
 	edesc->residue = 0;
@@ -1114,14 +1112,17 @@ static struct dma_async_tx_descriptor *edma_prep_slave_sg(
 		edesc->absync = ret;
 		edesc->residue += sg_dma_len(sg);
 
-		/* If this is the last in a current SG set of transactions,
-		   enable interrupts so that next set is processed */
-		if (!((i+1) % MAX_NR_SG))
-			edesc->pset[i].param.opt |= TCINTEN;
-
-		/* If this is the last set, enable completion interrupt flag */
 		if (i == sg_len - 1)
+			/* Enable completion interrupt */
 			edesc->pset[i].param.opt |= TCINTEN;
+		else if (!((i+1) % MAX_NR_SG))
+			/*
+			 * Enable early completion interrupt for the
+			 * intermediateset. In this case the driver will be
+			 * notified when the paRAM set is submitted to TC. This
+			 * will allow more time to set up the next set of slots.
+			 */
+			edesc->pset[i].param.opt |= (TCINTEN | TCCMODE);
 	}
 	edesc->residue_stat = edesc->residue;
 
@@ -1173,10 +1174,8 @@ static struct dma_async_tx_descriptor *edma_prep_dma_memcpy(
 
 	edesc = kzalloc(sizeof(*edesc) + nslots * sizeof(edesc->pset[0]),
 			GFP_ATOMIC);
-	if (!edesc) {
-		dev_dbg(dev, "Failed to allocate a descriptor\n");
+	if (!edesc)
 		return NULL;
-	}
 
 	edesc->pset_nr = nslots;
 	edesc->residue = edesc->residue_stat = len;
@@ -1298,10 +1297,8 @@ static struct dma_async_tx_descriptor *edma_prep_dma_cyclic(
 
 	edesc = kzalloc(sizeof(*edesc) + nslots * sizeof(edesc->pset[0]),
 			GFP_ATOMIC);
-	if (!edesc) {
-		dev_err(dev, "%s: Failed to allocate a descriptor\n", __func__);
+	if (!edesc)
 		return NULL;
-	}
 
 	edesc->cyclic = 1;
 	edesc->pset_nr = nslots;
@@ -2207,10 +2204,8 @@ static int edma_probe(struct platform_device *pdev)
 		return ret;
 
 	ecc = devm_kzalloc(dev, sizeof(*ecc), GFP_KERNEL);
-	if (!ecc) {
-		dev_err(dev, "Can't allocate controller\n");
+	if (!ecc)
 		return -ENOMEM;
-	}
 
 	ecc->dev = dev;
 	ecc->id = pdev->id;

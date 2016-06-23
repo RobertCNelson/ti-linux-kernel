@@ -300,10 +300,8 @@ static struct tegra_dma_desc *tegra_dma_desc_get(
 
 	/* Allocate DMA desc */
 	dma_desc = kzalloc(sizeof(*dma_desc), GFP_NOWAIT);
-	if (!dma_desc) {
-		dev_err(tdc2dev(tdc), "dma_desc alloc failed\n");
+	if (!dma_desc)
 		return NULL;
-	}
 
 	dma_async_tx_descriptor_init(&dma_desc->txd, &tdc->dma_chan);
 	dma_desc->txd.tx_submit = tegra_dma_tx_submit;
@@ -340,8 +338,7 @@ static struct tegra_dma_sg_req *tegra_dma_sg_req_get(
 	spin_unlock_irqrestore(&tdc->lock, flags);
 
 	sg_req = kzalloc(sizeof(struct tegra_dma_sg_req), GFP_NOWAIT);
-	if (!sg_req)
-		dev_err(tdc2dev(tdc), "sg_req alloc failed\n");
+
 	return sg_req;
 }
 
@@ -484,7 +481,7 @@ static void tegra_dma_configure_for_next(struct tegra_dma_channel *tdc,
 	 * load new configuration.
 	 */
 	tegra_dma_pause(tdc, false);
-	status  = tdc_read(tdc, TEGRA_APBDMA_CHAN_STATUS);
+	status = tdc_read(tdc, TEGRA_APBDMA_CHAN_STATUS);
 
 	/*
 	 * If interrupt is pending then do nothing as the ISR will handle
@@ -814,7 +811,7 @@ static enum dma_status tegra_dma_tx_status(struct dma_chan *dc,
 	unsigned int residual;
 
 	ret = dma_cookie_status(dc, cookie, txstate);
-	if (ret == DMA_COMPLETE)
+	if (ret == DMA_COMPLETE || !txstate)
 		return ret;
 
 	spin_lock_irqsave(&tdc->lock, flags);
@@ -905,7 +902,6 @@ static int get_transfer_param(struct tegra_dma_channel *tdc,
 	unsigned long *apb_seq,	unsigned long *csr, unsigned int *burst_size,
 	enum dma_slave_buswidth *slave_bw)
 {
-
 	switch (direction) {
 	case DMA_MEM_TO_DEV:
 		*apb_addr = tdc->dma_sconfig.dst_addr;
@@ -948,8 +944,8 @@ static struct dma_async_tx_descriptor *tegra_dma_prep_slave_sg(
 {
 	struct tegra_dma_channel *tdc = to_tegra_dma_chan(dc);
 	struct tegra_dma_desc *dma_desc;
-	unsigned int	    i;
-	struct scatterlist      *sg;
+	unsigned int i;
+	struct scatterlist *sg;
 	unsigned long csr, ahb_seq, apb_ptr, apb_seq;
 	struct list_head req_list;
 	struct tegra_dma_sg_req  *sg_req = NULL;
@@ -1062,7 +1058,7 @@ static struct dma_async_tx_descriptor *tegra_dma_prep_dma_cyclic(
 {
 	struct tegra_dma_channel *tdc = to_tegra_dma_chan(dc);
 	struct tegra_dma_desc *dma_desc = NULL;
-	struct tegra_dma_sg_req  *sg_req = NULL;
+	struct tegra_dma_sg_req *sg_req = NULL;
 	unsigned long csr, ahb_seq, apb_ptr, apb_seq;
 	int len;
 	size_t remain_len;
@@ -1204,7 +1200,6 @@ static void tegra_dma_free_chan_resources(struct dma_chan *dc)
 {
 	struct tegra_dma_channel *tdc = to_tegra_dma_chan(dc);
 	struct tegra_dma *tdma = tdc->tdma;
-
 	struct tegra_dma_desc *dma_desc;
 	struct tegra_dma_sg_req *sg_req;
 	struct list_head dma_desc_list;
@@ -1305,7 +1300,7 @@ static const struct tegra_dma_chip_data tegra148_dma_chip_data = {
 
 static int tegra_dma_probe(struct platform_device *pdev)
 {
-	struct resource	*res;
+	struct resource *res;
 	struct tegra_dma *tdma;
 	int ret;
 	int i;
@@ -1319,10 +1314,8 @@ static int tegra_dma_probe(struct platform_device *pdev)
 
 	tdma = devm_kzalloc(&pdev->dev, sizeof(*tdma) + cdata->nr_channels *
 			sizeof(struct tegra_dma_channel), GFP_KERNEL);
-	if (!tdma) {
-		dev_err(&pdev->dev, "Error: memory allocation failed\n");
+	if (!tdma)
 		return -ENOMEM;
-	}
 
 	tdma->dev = &pdev->dev;
 	tdma->chip_data = cdata;
