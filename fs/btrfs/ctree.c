@@ -1011,7 +1011,7 @@ static noinline int update_ref_for_cow(struct btrfs_trans_handle *trans,
 			return ret;
 		if (refs == 0) {
 			ret = -EROFS;
-			btrfs_std_error(root->fs_info, ret, NULL);
+			btrfs_handle_fs_error(root->fs_info, ret, NULL);
 			return ret;
 		}
 	} else {
@@ -1768,6 +1768,14 @@ static noinline int generic_bin_search(struct extent_buffer *eb,
 	unsigned long map_len = 0;
 	int err;
 
+	if (low > high) {
+		btrfs_err(eb->fs_info,
+		 "%s: low (%d) < high (%d) eb %llu owner %llu level %d",
+			  __func__, low, high, eb->start,
+			  btrfs_header_owner(eb), btrfs_header_level(eb));
+		return -EINVAL;
+	}
+
 	while (low < high) {
 		mid = (low + high) / 2;
 		offset = p + mid * item_size;
@@ -1928,7 +1936,7 @@ static noinline int balance_level(struct btrfs_trans_handle *trans,
 		child = read_node_slot(root, mid, 0);
 		if (!child) {
 			ret = -EROFS;
-			btrfs_std_error(root->fs_info, ret, NULL);
+			btrfs_handle_fs_error(root->fs_info, ret, NULL);
 			goto enospc;
 		}
 
@@ -2031,7 +2039,7 @@ static noinline int balance_level(struct btrfs_trans_handle *trans,
 		 */
 		if (!left) {
 			ret = -EROFS;
-			btrfs_std_error(root->fs_info, ret, NULL);
+			btrfs_handle_fs_error(root->fs_info, ret, NULL);
 			goto enospc;
 		}
 		wret = balance_node_right(trans, root, mid, left);
