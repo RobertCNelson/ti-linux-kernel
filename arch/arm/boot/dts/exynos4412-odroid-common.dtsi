@@ -509,11 +509,6 @@
 	clock-names = "iis", "i2s_opclk0", "i2s_opclk1";
 };
 
-&mfc {
-	memory-region = <&mfc_left>, <&mfc_right>;
-	status = "okay";
-};
-
 &mixer {
 	status = "okay";
 };
