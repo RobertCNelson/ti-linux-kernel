@@ -77,22 +77,8 @@ static int etm4_cpu_id(struct coresight_device *csdev)
 static int etm4_trace_id(struct coresight_device *csdev)
 {
 	struct etmv4_drvdata *drvdata = dev_get_drvdata(csdev->dev.parent);
-	unsigned long flags;
-	int trace_id = -1;
 
-	if (!local_read(&drvdata->mode))
-		return drvdata->trcid;
-
-	spin_lock_irqsave(&drvdata->spinlock, flags);
-
-	CS_UNLOCK(drvdata->base);
-	trace_id = readl_relaxed(drvdata->base + TRCTRACEIDR);
-	trace_id &= ETM_TRACEID_MASK;
-	CS_LOCK(drvdata->base);
-
-	spin_unlock_irqrestore(&drvdata->spinlock, flags);
-
-	return trace_id;
+	return drvdata->trcid;
 }
 
 static void etm4_enable_hw(void *info)
@@ -111,8 +97,7 @@ static void etm4_enable_hw(void *info)
 	/* wait for TRCSTATR.IDLE to go up */
 	if (coresight_timeout(drvdata->base, TRCSTATR, TRCSTATR_IDLE_BIT, 1))
 		dev_err(drvdata->dev,
-			"timeout observed when probing at offset %#x\n",
-			TRCSTATR);
+			"timeout while waiting for Idle Trace Status\n");
 
 	writel_relaxed(config->pe_sel, drvdata->base + TRCPROCSELR);
 	writel_relaxed(config->cfg, drvdata->base + TRCCONFIGR);
@@ -184,8 +169,7 @@ static void etm4_enable_hw(void *info)
 	/* wait for TRCSTATR.IDLE to go back down to '0' */
 	if (coresight_timeout(drvdata->base, TRCSTATR, TRCSTATR_IDLE_BIT, 0))
 		dev_err(drvdata->dev,
-			"timeout observed when probing at offset %#x\n",
-			TRCSTATR);
+			"timeout while waiting for Idle Trace Status\n");
 
 	CS_LOCK(drvdata->base);
 
@@ -815,12 +799,12 @@ err_arch_supported:
 }
 
 static struct amba_id etm4_ids[] = {
-	{       /* ETM 4.0 - Qualcomm */
-		.id	= 0x0003b95d,
-		.mask	= 0x0003ffff,
+	{       /* ETM 4.0 - Cortex-A53  */
+		.id	= 0x000bb95d,
+		.mask	= 0x000fffff,
 		.data	= "ETM 4.0",
 	},
-	{       /* ETM 4.0 - Juno board */
+	{       /* ETM 4.0 - Cortex-A57 */
 		.id	= 0x000bb95e,
 		.mask	= 0x000fffff,
 		.data	= "ETM 4.0",
