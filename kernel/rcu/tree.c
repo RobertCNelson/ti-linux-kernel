@@ -3004,6 +3004,7 @@ __rcu_process_callbacks(struct rcu_state *rsp)
 /*
  * Do RCU core processing for the current CPU.
  */
+__latent_entropy
 static void rcu_process_callbacks(struct softirq_action *unused)
 {
 	struct rcu_state *rsp;
