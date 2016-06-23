@@ -609,20 +609,19 @@ int netlbl_catmap_getlong(struct netlbl_lsm_catmap *catmap,
 		off = catmap->startbit;
 		*offset = off;
 	}
-	iter = _netlbl_catmap_getnode(&catmap, off, _CM_F_NONE, 0);
+	iter = _netlbl_catmap_getnode(&catmap, off, _CM_F_WALK, 0);
 	if (iter == NULL) {
 		*offset = (u32)-1;
 		return 0;
 	}
 
 	if (off < iter->startbit) {
-		off = iter->startbit;
-		*offset = off;
+		*offset = iter->startbit;
+		off = 0;
 	} else
 		off -= iter->startbit;
-
 	idx = off / NETLBL_CATMAP_MAPSIZE;
-	*bitmap = iter->bitmap[idx] >> (off % NETLBL_CATMAP_SIZE);
+	*bitmap = iter->bitmap[idx] >> (off % NETLBL_CATMAP_MAPSIZE);
 
 	return 0;
 }
@@ -824,7 +823,11 @@ socket_setattr_return:
  */
 void netlbl_sock_delattr(struct sock *sk)
 {
-	cipso_v4_sock_delattr(sk);
+	switch (sk->sk_family) {
+	case AF_INET:
+		cipso_v4_sock_delattr(sk);
+		break;
+	}
 }
 
 /**
@@ -987,7 +990,11 @@ req_setattr_return:
 */
 void netlbl_req_delattr(struct request_sock *req)
 {
-	cipso_v4_req_delattr(req);
+	switch (req->rsk_ops->family) {
+	case AF_INET:
+		cipso_v4_req_delattr(req);
+		break;
+	}
 }
 
 /**
