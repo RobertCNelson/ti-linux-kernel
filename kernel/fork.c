@@ -908,6 +908,12 @@ void mm_release(struct task_struct *tsk, struct mm_struct *mm)
 #endif
 	if (unlikely(!list_empty(&tsk->pi_state_list)))
 		exit_pi_state_list(tsk);
+
+	/* Must be last as the other cleanups might deref it */
+	if (unlikely(tsk->futex_cache)) {
+		exit_futex_task_cache(tsk);
+		tsk->futex_cache = NULL;
+	}
 #endif
 
 	uprobe_free_utask(tsk);
@@ -1519,6 +1525,7 @@ static __latent_entropy struct task_struct *copy_process(
 #endif
 	INIT_LIST_HEAD(&p->pi_state_list);
 	p->pi_state_cache = NULL;
+	p->futex_cache = NULL;
 #endif
 	/*
 	 * sigaltstack should be cleared when sharing the same VM

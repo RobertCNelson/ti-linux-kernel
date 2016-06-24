@@ -1305,6 +1305,8 @@ static void task_numa_assign(struct task_numa_env *env,
 {
 	if (env->best_task)
 		put_task_struct(env->best_task);
+	if (p)
+		get_task_struct(p);
 
 	env->best_task = p;
 	env->best_imp = imp;
@@ -1372,31 +1374,11 @@ static void task_numa_compare(struct task_numa_env *env,
 	long imp = env->p->numa_group ? groupimp : taskimp;
 	long moveimp = imp;
 	int dist = env->dist;
-	bool assigned = false;
 
 	rcu_read_lock();
-
-	raw_spin_lock_irq(&dst_rq->lock);
-	cur = dst_rq->curr;
-	/*
-	 * No need to move the exiting task or idle task.
-	 */
-	if ((cur->flags & PF_EXITING) || is_idle_task(cur))
+	cur = task_rcu_dereference(&dst_rq->curr);
+	if (cur && ((cur->flags & PF_EXITING) || is_idle_task(cur)))
 		cur = NULL;
-	else {
-		/*
-		 * The task_struct must be protected here to protect the
-		 * p->numa_faults access in the task_weight since the
-		 * numa_faults could already be freed in the following path:
-		 * finish_task_switch()
-		 *     --> put_task_struct()
-		 *         --> __put_task_struct()
-		 *             --> task_numa_free()
-		 */
-		get_task_struct(cur);
-	}
-
-	raw_spin_unlock_irq(&dst_rq->lock);
 
 	/*
 	 * Because we have preemption enabled we can get migrated around and
@@ -1479,7 +1461,6 @@ balance:
 		 */
 		if (!load_too_imbalanced(src_load, dst_load, env)) {
 			imp = moveimp - 1;
-			put_task_struct(cur);
 			cur = NULL;
 			goto assign;
 		}
@@ -1505,16 +1486,9 @@ balance:
 		env->dst_cpu = select_idle_sibling(env->p, env->dst_cpu);
 
 assign:
-	assigned = true;
 	task_numa_assign(env, cur, imp);
 unlock:
 	rcu_read_unlock();
-	/*
-	 * The dst_rq->curr isn't assigned. The protection for task_struct is
-	 * finished.
-	 */
-	if (cur && !assigned)
-		put_task_struct(cur);
 }
 
 static void task_numa_find_cpu(struct task_numa_env *env,
@@ -2904,6 +2878,23 @@ static inline void cfs_rq_util_change(struct cfs_rq *cfs_rq)
 	}
 }
 
+/*
+ * Unsigned subtract and clamp on underflow.
+ *
+ * Explicitly do a load-store to ensure the intermediate value never hits
+ * memory. This allows lockless observations without ever seeing the negative
+ * values.
+ */
+#define sub_positive(_ptr, _val) do {				\
+	typeof(_ptr) ptr = (_ptr);				\
+	typeof(*ptr) val = (_val);				\
+	typeof(*ptr) res, var = READ_ONCE(*ptr);		\
+	res = var - val;					\
+	if (res > var)						\
+		res = 0;					\
+	WRITE_ONCE(*ptr, res);					\
+} while (0)
+
 /* Group cfs_rq's load_avg is used for task_h_load and update_cfs_share */
 static inline int
 update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq, bool update_freq)
@@ -2913,15 +2904,15 @@ update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq, bool update_freq)
 
 	if (atomic_long_read(&cfs_rq->removed_load_avg)) {
 		s64 r = atomic_long_xchg(&cfs_rq->removed_load_avg, 0);
-		sa->load_avg = max_t(long, sa->load_avg - r, 0);
-		sa->load_sum = max_t(s64, sa->load_sum - r * LOAD_AVG_MAX, 0);
+		sub_positive(&sa->load_avg, r);
+		sub_positive(&sa->load_sum, r * LOAD_AVG_MAX);
 		removed_load = 1;
 	}
 
 	if (atomic_long_read(&cfs_rq->removed_util_avg)) {
 		long r = atomic_long_xchg(&cfs_rq->removed_util_avg, 0);
-		sa->util_avg = max_t(long, sa->util_avg - r, 0);
-		sa->util_sum = max_t(s32, sa->util_sum - r * LOAD_AVG_MAX, 0);
+		sub_positive(&sa->util_avg, r);
+		sub_positive(&sa->util_sum, r * LOAD_AVG_MAX);
 		removed_util = 1;
 	}
 
@@ -2994,10 +2985,10 @@ static void detach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 			  &se->avg, se->on_rq * scale_load_down(se->load.weight),
 			  cfs_rq->curr == se, NULL);
 
-	cfs_rq->avg.load_avg = max_t(long, cfs_rq->avg.load_avg - se->avg.load_avg, 0);
-	cfs_rq->avg.load_sum = max_t(s64,  cfs_rq->avg.load_sum - se->avg.load_sum, 0);
-	cfs_rq->avg.util_avg = max_t(long, cfs_rq->avg.util_avg - se->avg.util_avg, 0);
-	cfs_rq->avg.util_sum = max_t(s32,  cfs_rq->avg.util_sum - se->avg.util_sum, 0);
+	sub_positive(&cfs_rq->avg.load_avg, se->avg.load_avg);
+	sub_positive(&cfs_rq->avg.load_sum, se->avg.load_sum);
+	sub_positive(&cfs_rq->avg.util_avg, se->avg.util_avg);
+	sub_positive(&cfs_rq->avg.util_sum, se->avg.util_sum);
 
 	cfs_rq_util_change(cfs_rq);
 }
@@ -3246,7 +3237,7 @@ static inline void check_schedstat_required(void)
 			trace_sched_stat_iowait_enabled()  ||
 			trace_sched_stat_blocked_enabled() ||
 			trace_sched_stat_runtime_enabled())  {
-		pr_warn_once("Scheduler tracepoints stat_sleep, stat_iowait, "
+		printk_deferred_once("Scheduler tracepoints stat_sleep, stat_iowait, "
 			     "stat_blocked and stat_runtime require the "
 			     "kernel parameter schedstats=enabled or "
 			     "kernel.sched_schedstats=1\n");
@@ -3688,7 +3679,7 @@ static inline struct cfs_bandwidth *tg_cfs_bandwidth(struct task_group *tg)
 static inline u64 cfs_rq_clock_task(struct cfs_rq *cfs_rq)
 {
 	if (unlikely(cfs_rq->throttle_count))
-		return cfs_rq->throttled_clock_task;
+		return cfs_rq->throttled_clock_task - cfs_rq->throttled_clock_task_time;
 
 	return rq_clock_task(rq_of(cfs_rq)) - cfs_rq->throttled_clock_task_time;
 }
@@ -3826,13 +3817,11 @@ static int tg_unthrottle_up(struct task_group *tg, void *data)
 	struct cfs_rq *cfs_rq = tg->cfs_rq[cpu_of(rq)];
 
 	cfs_rq->throttle_count--;
-#ifdef CONFIG_SMP
 	if (!cfs_rq->throttle_count) {
 		/* adjust cfs_rq_clock_task() */
 		cfs_rq->throttled_clock_task_time += rq_clock_task(rq) -
 					     cfs_rq->throttled_clock_task;
 	}
-#endif
 
 	return 0;
 }
@@ -8496,8 +8485,9 @@ void free_fair_sched_group(struct task_group *tg)
 
 int alloc_fair_sched_group(struct task_group *tg, struct task_group *parent)
 {
-	struct cfs_rq *cfs_rq;
 	struct sched_entity *se;
+	struct cfs_rq *cfs_rq;
+	struct rq *rq;
 	int i;
 
 	tg->cfs_rq = kzalloc(sizeof(cfs_rq) * nr_cpu_ids, GFP_KERNEL);
@@ -8512,6 +8502,8 @@ int alloc_fair_sched_group(struct task_group *tg, struct task_group *parent)
 	init_cfs_bandwidth(tg_cfs_bandwidth(tg));
 
 	for_each_possible_cpu(i) {
+		rq = cpu_rq(i);
+
 		cfs_rq = kzalloc_node(sizeof(struct cfs_rq),
 				      GFP_KERNEL, cpu_to_node(i));
 		if (!cfs_rq)
@@ -8525,7 +8517,10 @@ int alloc_fair_sched_group(struct task_group *tg, struct task_group *parent)
 		init_cfs_rq(cfs_rq);
 		init_tg_cfs_entry(tg, cfs_rq, se, i, parent->se[i]);
 		init_entity_runnable_average(se);
+
+		raw_spin_lock_irq(&rq->lock);
 		post_init_entity_util_avg(se);
+		raw_spin_unlock_irq(&rq->lock);
 	}
 
 	return 1;
