@@ -481,10 +481,10 @@ static void intel_fbc_deactivate(struct drm_i915_private *dev_priv)
 		intel_fbc_hw_deactivate(dev_priv);
 }
 
-static bool multiple_pipes_ok(struct intel_crtc *crtc)
+static bool multiple_pipes_ok(struct intel_crtc *crtc,
+			      struct intel_plane_state *plane_state)
 {
-	struct drm_i915_private *dev_priv = crtc->base.dev->dev_private;
-	struct drm_plane *primary = crtc->base.primary;
+	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
 	struct intel_fbc *fbc = &dev_priv->fbc;
 	enum pipe pipe = crtc->pipe;
 
@@ -492,9 +492,7 @@ static bool multiple_pipes_ok(struct intel_crtc *crtc)
 	if (!no_fbc_on_multiple_pipes(dev_priv))
 		return true;
 
-	WARN_ON(!drm_modeset_is_locked(&primary->mutex));
-
-	if (to_intel_plane_state(primary->state)->visible)
+	if (plane_state->visible)
 		fbc->visible_pipes_mask |= (1 << pipe);
 	else
 		fbc->visible_pipes_mask &= ~(1 << pipe);
@@ -709,20 +707,15 @@ static bool intel_fbc_hw_tracking_covers_screen(struct intel_crtc *crtc)
 	return effective_w <= max_w && effective_h <= max_h;
 }
 
-static void intel_fbc_update_state_cache(struct intel_crtc *crtc)
+static void intel_fbc_update_state_cache(struct intel_crtc *crtc,
+					 struct intel_crtc_state *crtc_state,
+					 struct intel_plane_state *plane_state)
 {
 	struct drm_i915_private *dev_priv = crtc->base.dev->dev_private;
 	struct intel_fbc *fbc = &dev_priv->fbc;
 	struct intel_fbc_state_cache *cache = &fbc->state_cache;
-	struct intel_crtc_state *crtc_state =
-		to_intel_crtc_state(crtc->base.state);
-	struct intel_plane_state *plane_state =
-		to_intel_plane_state(crtc->base.primary->state);
 	struct drm_framebuffer *fb = plane_state->base.fb;
 	struct drm_i915_gem_object *obj;
-
-	WARN_ON(!drm_modeset_is_locked(&crtc->base.mutex));
-	WARN_ON(!drm_modeset_is_locked(&crtc->base.primary->mutex));
 
 	cache->crtc.mode_flags = crtc_state->base.adjusted_mode.flags;
 	if (IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv))
@@ -825,20 +818,14 @@ static bool intel_fbc_can_choose(struct intel_crtc *crtc)
 {
 	struct drm_i915_private *dev_priv = crtc->base.dev->dev_private;
 	struct intel_fbc *fbc = &dev_priv->fbc;
-	bool enable_by_default = IS_BROADWELL(dev_priv);
 
 	if (intel_vgpu_active(dev_priv)) {
 		fbc->no_fbc_reason = "VGPU is active";
 		return false;
 	}
 
-	if (i915.enable_fbc < 0 && !enable_by_default) {
-		fbc->no_fbc_reason = "disabled per chip default";
-		return false;
-	}
-
 	if (!i915.enable_fbc) {
-		fbc->no_fbc_reason = "disabled per module param";
+		fbc->no_fbc_reason = "disabled per module param or by default";
 		return false;
 	}
 
@@ -887,7 +874,9 @@ static bool intel_fbc_reg_params_equal(struct intel_fbc_reg_params *params1,
 	return memcmp(params1, params2, sizeof(*params1)) == 0;
 }
 
-void intel_fbc_pre_update(struct intel_crtc *crtc)
+void intel_fbc_pre_update(struct intel_crtc *crtc,
+			  struct intel_crtc_state *crtc_state,
+			  struct intel_plane_state *plane_state)
 {
 	struct drm_i915_private *dev_priv = crtc->base.dev->dev_private;
 	struct intel_fbc *fbc = &dev_priv->fbc;
@@ -897,7 +886,7 @@ void intel_fbc_pre_update(struct intel_crtc *crtc)
 
 	mutex_lock(&fbc->lock);
 
-	if (!multiple_pipes_ok(crtc)) {
+	if (!multiple_pipes_ok(crtc, plane_state)) {
 		fbc->no_fbc_reason = "more than one pipe active";
 		goto deactivate;
 	}
@@ -905,7 +894,7 @@ void intel_fbc_pre_update(struct intel_crtc *crtc)
 	if (!fbc->enabled || fbc->crtc != crtc)
 		goto unlock;
 
-	intel_fbc_update_state_cache(crtc);
+	intel_fbc_update_state_cache(crtc, crtc_state, plane_state);
 
 deactivate:
 	intel_fbc_deactivate(dev_priv);
@@ -997,12 +986,12 @@ void intel_fbc_flush(struct drm_i915_private *dev_priv,
 	if (!fbc_supported(dev_priv))
 		return;
 
-	if (origin == ORIGIN_GTT || origin == ORIGIN_FLIP)
-		return;
-
 	mutex_lock(&fbc->lock);
 
 	fbc->busy_bits &= ~frontbuffer_bits;
+
+	if (origin == ORIGIN_GTT || origin == ORIGIN_FLIP)
+		goto out;
 
 	if (!fbc->busy_bits && fbc->enabled &&
 	    (frontbuffer_bits & intel_fbc_get_frontbuffer_bit(fbc))) {
@@ -1012,6 +1001,7 @@ void intel_fbc_flush(struct drm_i915_private *dev_priv,
 			__intel_fbc_post_update(fbc->crtc);
 	}
 
+out:
 	mutex_unlock(&fbc->lock);
 }
 
@@ -1089,7 +1079,9 @@ out:
  * intel_fbc_enable multiple times for the same pipe without an
  * intel_fbc_disable in the middle, as long as it is deactivated.
  */
-void intel_fbc_enable(struct intel_crtc *crtc)
+void intel_fbc_enable(struct intel_crtc *crtc,
+		      struct intel_crtc_state *crtc_state,
+		      struct intel_plane_state *plane_state)
 {
 	struct drm_i915_private *dev_priv = crtc->base.dev->dev_private;
 	struct intel_fbc *fbc = &dev_priv->fbc;
@@ -1102,19 +1094,19 @@ void intel_fbc_enable(struct intel_crtc *crtc)
 	if (fbc->enabled) {
 		WARN_ON(fbc->crtc == NULL);
 		if (fbc->crtc == crtc) {
-			WARN_ON(!crtc->config->enable_fbc);
+			WARN_ON(!crtc_state->enable_fbc);
 			WARN_ON(fbc->active);
 		}
 		goto out;
 	}
 
-	if (!crtc->config->enable_fbc)
+	if (!crtc_state->enable_fbc)
 		goto out;
 
 	WARN_ON(fbc->active);
 	WARN_ON(fbc->crtc != NULL);
 
-	intel_fbc_update_state_cache(crtc);
+	intel_fbc_update_state_cache(crtc, crtc_state, plane_state);
 	if (intel_fbc_alloc_cfb(crtc)) {
 		fbc->no_fbc_reason = "not enough stolen memory";
 		goto out;
@@ -1222,6 +1214,26 @@ void intel_fbc_init_pipe_state(struct drm_i915_private *dev_priv)
 			dev_priv->fbc.visible_pipes_mask |= (1 << crtc->pipe);
 }
 
+/*
+ * The DDX driver changes its behavior depending on the value it reads from
+ * i915.enable_fbc, so sanitize it by translating the default value into either
+ * 0 or 1 in order to allow it to know what's going on.
+ *
+ * Notice that this is done at driver initialization and we still allow user
+ * space to change the value during runtime without sanitizing it again. IGT
+ * relies on being able to change i915.enable_fbc at runtime.
+ */
+static int intel_sanitize_fbc_option(struct drm_i915_private *dev_priv)
+{
+	if (i915.enable_fbc >= 0)
+		return !!i915.enable_fbc;
+
+	if (IS_BROADWELL(dev_priv))
+		return 1;
+
+	return 0;
+}
+
 /**
  * intel_fbc_init - Initialize FBC
  * @dev_priv: the i915 device
@@ -1238,6 +1250,9 @@ void intel_fbc_init(struct drm_i915_private *dev_priv)
 	fbc->enabled = false;
 	fbc->active = false;
 	fbc->work.scheduled = false;
+
+	i915.enable_fbc = intel_sanitize_fbc_option(dev_priv);
+	DRM_DEBUG_KMS("Sanitized enable_fbc value: %d\n", i915.enable_fbc);
 
 	if (!HAS_FBC(dev_priv)) {
 		fbc->no_fbc_reason = "unsupported by this chipset";
