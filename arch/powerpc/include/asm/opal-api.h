@@ -158,7 +158,11 @@
 #define OPAL_LEDS_SET_INDICATOR			115
 #define OPAL_CEC_REBOOT2			116
 #define OPAL_CONSOLE_FLUSH			117
-#define OPAL_LAST				117
+#define OPAL_GET_DEVICE_TREE			118
+#define OPAL_PCI_GET_PRESENCE_STATE		119
+#define OPAL_PCI_GET_POWER_STATE		120
+#define OPAL_PCI_SET_POWER_STATE		121
+#define OPAL_LAST				121
 
 /* Device tree flags */
 
@@ -342,6 +346,18 @@ enum OpalPciReinitScope {
 enum OpalPciResetState {
 	OPAL_DEASSERT_RESET = 0,
 	OPAL_ASSERT_RESET   = 1
+};
+
+enum OpalPciSlotPresence {
+	OPAL_PCI_SLOT_EMPTY	= 0,
+	OPAL_PCI_SLOT_PRESENT	= 1
+};
+
+enum OpalPciSlotPower {
+	OPAL_PCI_SLOT_POWER_OFF	= 0,
+	OPAL_PCI_SLOT_POWER_ON	= 1,
+	OPAL_PCI_SLOT_OFFLINE	= 2,
+	OPAL_PCI_SLOT_ONLINE	= 3
 };
 
 enum OpalSlotLedType {
@@ -802,7 +818,7 @@ struct opal_sg_entry {
 };
 
 /*
- * Candiate image SG list.
+ * Candidate image SG list.
  *
  * length = VER | length
  */
@@ -825,6 +841,7 @@ enum {
 	OPAL_PHB_CAPI_MODE_CAPI		= 1,
 	OPAL_PHB_CAPI_MODE_SNOOP_OFF    = 2,
 	OPAL_PHB_CAPI_MODE_SNOOP_ON	= 3,
+	OPAL_PHB_CAPI_MODE_DMA		= 4,
 };
 
 /* OPAL I2C request */
@@ -852,7 +869,7 @@ struct opal_i2c_request {
  * with individual elements being 16 bits wide to fetch the system
  * wide EPOW status. Each element in the buffer will contain the
  * EPOW status in it's bit representation for a particular EPOW sub
- * class as defiend here. So multiple detailed EPOW status bits
+ * class as defined here. So multiple detailed EPOW status bits
  * specific for any sub class can be represented in a single buffer
  * element as it's bit representation.
  */
