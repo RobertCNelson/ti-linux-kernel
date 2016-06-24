@@ -256,6 +256,7 @@ struct fuse_io_priv {
 	struct kiocb *iocb;
 	struct file *file;
 	struct completion *done;
+	bool blocking;
 };
 
 #define FUSE_IO_PRIV_SYNC(f) \
