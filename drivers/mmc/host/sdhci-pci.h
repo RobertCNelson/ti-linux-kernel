@@ -34,6 +34,7 @@
 #define PCI_DEVICE_ID_INTEL_APL_SD	0x5aca
 #define PCI_DEVICE_ID_INTEL_APL_EMMC	0x5acc
 #define PCI_DEVICE_ID_INTEL_APL_SDIO	0x5ad0
+#define PCI_DEVICE_ID_INTEL_KBP_SD	0xa2f5
 
 /*
  * PCI registers
