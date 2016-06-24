@@ -371,7 +371,15 @@ struct kvm {
 	struct srcu_struct srcu;
 	struct srcu_struct irq_srcu;
 	struct kvm_vcpu *vcpus[KVM_MAX_VCPUS];
+
+	/*
+	 * created_vcpus is protected by kvm->lock, and is incremented
+	 * at the beginning of KVM_CREATE_VCPU.  online_vcpus is only
+	 * incremented after storing the kvm_vcpu pointer in vcpus,
+	 * and is accessed atomically.
+	 */
 	atomic_t online_vcpus;
+	int created_vcpus;
 	int last_boosted_vcpu;
 	struct list_head vm_list;
 	struct mutex lock;
@@ -1096,12 +1104,6 @@ static inline int kvm_ioeventfd(struct kvm *kvm, struct kvm_ioeventfd *args)
 }
 
 #endif /* CONFIG_HAVE_KVM_EVENTFD */
-
-#ifdef CONFIG_KVM_APIC_ARCHITECTURE
-bool kvm_vcpu_compatible(struct kvm_vcpu *vcpu);
-#else
-static inline bool kvm_vcpu_compatible(struct kvm_vcpu *vcpu) { return true; }
-#endif
 
 static inline void kvm_make_request(int req, struct kvm_vcpu *vcpu)
 {
