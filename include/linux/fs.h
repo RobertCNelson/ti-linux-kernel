@@ -403,6 +403,8 @@ struct address_space_operations {
 	 */
 	int (*migratepage) (struct address_space *,
 			struct page *, struct page *, enum migrate_mode);
+	bool (*isolate_page)(struct page *, isolate_mode_t);
+	void (*putback_page)(struct page *);
 	int (*launder_page) (struct page *);
 	int (*is_partially_uptodate) (struct page *, unsigned long,
 					unsigned long);
@@ -666,6 +668,7 @@ struct inode {
 #endif
 	struct list_head	i_lru;		/* inode LRU list */
 	struct list_head	i_sb_list;
+	struct list_head	i_wb_list;	/* backing dev writeback list */
 	union {
 		struct hlist_head	i_dentry;
 		struct rcu_head		i_rcu;
@@ -1467,6 +1470,9 @@ struct super_block {
 	/* s_inode_list_lock protects s_inodes */
 	spinlock_t		s_inode_list_lock ____cacheline_aligned_in_smp;
 	struct list_head	s_inodes;	/* all inodes */
+
+	spinlock_t		s_inode_wblist_lock;
+	struct list_head	s_inodes_wb;	/* writeback inodes */
 };
 
 extern struct timespec current_fs_time(struct super_block *sb);
@@ -2689,6 +2695,7 @@ extern int do_pipe_flags(int *, int);
 #define __kernel_read_file_id(id) \
 	id(UNKNOWN, unknown)		\
 	id(FIRMWARE, firmware)		\
+	id(FIRMWARE_PREALLOC_BUFFER, firmware)	\
 	id(MODULE, kernel-module)		\
 	id(KEXEC_IMAGE, kexec-image)		\
 	id(KEXEC_INITRAMFS, kexec-initramfs)	\

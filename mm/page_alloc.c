@@ -64,6 +64,7 @@
 #include <linux/page_owner.h>
 #include <linux/kthread.h>
 #include <linux/random.h>
+#include <linux/memcontrol.h>
 
 #include <asm/sections.h>
 #include <asm/tlbflush.h>
@@ -1005,6 +1006,8 @@ static __always_inline bool free_pages_prepare(struct page *page,
 
 		VM_BUG_ON_PAGE(compound && compound_order(page) != order, page);
 
+		if (compound)
+			ClearPageDoubleMap(page);
 		for (i = 1; i < (1 << order); i++) {
 			if (compound)
 				bad += free_tail_pages_check(page, page + i);
@@ -1015,8 +1018,12 @@ static __always_inline bool free_pages_prepare(struct page *page,
 			(page + i)->flags &= ~PAGE_FLAGS_CHECK_AT_PREP;
 		}
 	}
-	if (PageAnonHead(page))
+	if (PageMappingFlags(page))
 		page->mapping = NULL;
+	if (memcg_kmem_enabled() && PageKmemcg(page)) {
+		memcg_kmem_uncharge(page, order);
+		__ClearPageKmemcg(page);
+	}
 	if (check_free)
 		bad += free_pages_check(page);
 	if (bad)
@@ -1754,6 +1761,18 @@ static bool check_new_pages(struct page *page, unsigned int order)
 	return false;
 }
 
+void post_alloc_hook(struct page *page, unsigned int order, gfp_t gfp_flags)
+{
+	set_page_private(page, 0);
+	set_page_refcounted(page);
+
+	arch_alloc_page(page, order);
+	kernel_map_pages(page, 1 << order, 1);
+	kernel_poison_pages(page, 1 << order, 1);
+	kasan_alloc_pages(page, order);
+	set_page_owner(page, order, gfp_flags);
+}
+
 static void prep_new_page(struct page *page, unsigned int order, gfp_t gfp_flags,
 							unsigned int alloc_flags)
 {
@@ -1766,13 +1785,7 @@ static void prep_new_page(struct page *page, unsigned int order, gfp_t gfp_flags
 			poisoned &= page_is_poisoned(p);
 	}
 
-	set_page_private(page, 0);
-	set_page_refcounted(page);
-
-	arch_alloc_page(page, order);
-	kernel_map_pages(page, 1 << order, 1);
-	kernel_poison_pages(page, 1 << order, 1);
-	kasan_alloc_pages(page, order);
+	post_alloc_hook(page, order, gfp_flags);
 
 	if (!free_pages_prezeroed(poisoned) && (gfp_flags & __GFP_ZERO))
 		for (i = 0; i < (1 << order); i++)
@@ -1780,8 +1793,6 @@ static void prep_new_page(struct page *page, unsigned int order, gfp_t gfp_flags
 
 	if (order && (gfp_flags & __GFP_COMP))
 		prep_compound_page(page, order);
-
-	set_page_owner(page, order, gfp_flags);
 
 	/*
 	 * page is set pfmemalloc when ALLOC_NO_WATERMARKS was necessary to
@@ -2491,7 +2502,6 @@ void free_hot_cold_page_list(struct list_head *list, bool cold)
 void split_page(struct page *page, unsigned int order)
 {
 	int i;
-	gfp_t gfp_mask;
 
 	VM_BUG_ON_PAGE(PageCompound(page), page);
 	VM_BUG_ON_PAGE(!page_count(page), page);
@@ -2505,12 +2515,9 @@ void split_page(struct page *page, unsigned int order)
 		split_page(virt_to_page(page[0].shadow), order);
 #endif
 
-	gfp_mask = get_page_owner_gfp(page);
-	set_page_owner(page, 0, gfp_mask);
-	for (i = 1; i < (1 << order); i++) {
+	for (i = 1; i < (1 << order); i++)
 		set_page_refcounted(page + i);
-		set_page_owner(page + i, 0, gfp_mask);
-	}
+	split_page_owner(page, order);
 }
 EXPORT_SYMBOL_GPL(split_page);
 
@@ -2539,9 +2546,10 @@ int __isolate_free_page(struct page *page, unsigned int order)
 	zone->free_area[order].nr_free--;
 	rmv_page_order(page);
 
-	set_page_owner(page, order, __GFP_MOVABLE);
-
-	/* Set the pageblock if the isolated page is at least a pageblock */
+	/*
+	 * Set the pageblock if the isolated page is at least half of a
+	 * pageblock
+	 */
 	if (order >= pageblock_order - 1) {
 		struct page *endpage = page + (1 << order) - 1;
 		for (; page < endpage; page += pageblock_nr_pages) {
@@ -2554,33 +2562,6 @@ int __isolate_free_page(struct page *page, unsigned int order)
 
 
 	return 1UL << order;
-}
-
-/*
- * Similar to split_page except the page is already free. As this is only
- * being used for migration, the migratetype of the block also changes.
- * As this is called with interrupts disabled, the caller is responsible
- * for calling arch_alloc_page() and kernel_map_page() after interrupts
- * are enabled.
- *
- * Note: this is probably too low level an operation for use in drivers.
- * Please consult with lkml before using this in your driver.
- */
-int split_free_page(struct page *page)
-{
-	unsigned int order;
-	int nr_pages;
-
-	order = page_order(page);
-
-	nr_pages = __isolate_free_page(page, order);
-	if (!nr_pages)
-		return 0;
-
-	/* Split into individual pages */
-	set_page_refcounted(page);
-	split_page(page, order);
-	return nr_pages;
 }
 
 /*
@@ -3135,6 +3116,7 @@ __alloc_pages_may_oom(gfp_t gfp_mask, unsigned int order,
 	struct oom_control oc = {
 		.zonelist = ac->zonelist,
 		.nodemask = ac->nodemask,
+		.memcg = NULL,
 		.gfp_mask = gfp_mask,
 		.order = order,
 	};
@@ -3898,6 +3880,14 @@ no_zone:
 	}
 
 out:
+	if (memcg_kmem_enabled() && (gfp_mask & __GFP_ACCOUNT) && page) {
+		if (unlikely(memcg_kmem_charge(page, gfp_mask, order))) {
+			__free_pages(page, order);
+			page = NULL;
+		} else
+			__SetPageKmemcg(page);
+	}
+
 	if (kmemcheck_enabled && page)
 		kmemcheck_pagealloc_alloc(page, order, gfp_mask);
 
@@ -4052,56 +4042,6 @@ void __free_page_frag(void *addr)
 		__free_pages_ok(page, compound_order(page));
 }
 EXPORT_SYMBOL(__free_page_frag);
-
-/*
- * alloc_kmem_pages charges newly allocated pages to the kmem resource counter
- * of the current memory cgroup if __GFP_ACCOUNT is set, other than that it is
- * equivalent to alloc_pages.
- *
- * It should be used when the caller would like to use kmalloc, but since the
- * allocation is large, it has to fall back to the page allocator.
- */
-struct page *alloc_kmem_pages(gfp_t gfp_mask, unsigned int order)
-{
-	struct page *page;
-
-	page = alloc_pages(gfp_mask, order);
-	if (page && memcg_kmem_charge(page, gfp_mask, order) != 0) {
-		__free_pages(page, order);
-		page = NULL;
-	}
-	return page;
-}
-
-struct page *alloc_kmem_pages_node(int nid, gfp_t gfp_mask, unsigned int order)
-{
-	struct page *page;
-
-	page = alloc_pages_node(nid, gfp_mask, order);
-	if (page && memcg_kmem_charge(page, gfp_mask, order) != 0) {
-		__free_pages(page, order);
-		page = NULL;
-	}
-	return page;
-}
-
-/*
- * __free_kmem_pages and free_kmem_pages will free pages allocated with
- * alloc_kmem_pages.
- */
-void __free_kmem_pages(struct page *page, unsigned int order)
-{
-	memcg_kmem_uncharge(page, order);
-	__free_pages(page, order);
-}
-
-void free_kmem_pages(unsigned long addr, unsigned int order)
-{
-	if (addr != 0) {
-		VM_BUG_ON(!virt_addr_valid((void *)addr));
-		__free_kmem_pages(virt_to_page((void *)addr), order);
-	}
-}
 
 static void *make_alloc_exact(unsigned long addr, unsigned int order,
 		size_t size)
@@ -4404,6 +4344,9 @@ void show_free_areas(unsigned int filter)
 		" unevictable:%lu dirty:%lu writeback:%lu unstable:%lu\n"
 		" slab_reclaimable:%lu slab_unreclaimable:%lu\n"
 		" mapped:%lu shmem:%lu pagetables:%lu bounce:%lu\n"
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+		" anon_thp: %lu shmem_thp: %lu shmem_pmdmapped: %lu\n"
+#endif
 		" free:%lu free_pcp:%lu free_cma:%lu\n",
 		global_page_state(NR_ACTIVE_ANON),
 		global_page_state(NR_INACTIVE_ANON),
@@ -4421,6 +4364,11 @@ void show_free_areas(unsigned int filter)
 		global_page_state(NR_SHMEM),
 		global_page_state(NR_PAGETABLE),
 		global_page_state(NR_BOUNCE),
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+		global_page_state(NR_ANON_THPS) * HPAGE_PMD_NR,
+		global_page_state(NR_SHMEM_THPS) * HPAGE_PMD_NR,
+		global_page_state(NR_SHMEM_PMDMAPPED) * HPAGE_PMD_NR,
+#endif
 		global_page_state(NR_FREE_PAGES),
 		free_pcp,
 		global_page_state(NR_FREE_CMA_PAGES));
@@ -4455,6 +4403,11 @@ void show_free_areas(unsigned int filter)
 			" writeback:%lukB"
 			" mapped:%lukB"
 			" shmem:%lukB"
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+			" shmem_thp: %lukB"
+			" shmem_pmdmapped: %lukB"
+			" anon_thp: %lukB"
+#endif
 			" slab_reclaimable:%lukB"
 			" slab_unreclaimable:%lukB"
 			" kernel_stack:%lukB"
@@ -4487,6 +4440,12 @@ void show_free_areas(unsigned int filter)
 			K(zone_page_state(zone, NR_WRITEBACK)),
 			K(zone_page_state(zone, NR_FILE_MAPPED)),
 			K(zone_page_state(zone, NR_SHMEM)),
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+			K(zone_page_state(zone, NR_SHMEM_THPS) * HPAGE_PMD_NR),
+			K(zone_page_state(zone, NR_SHMEM_PMDMAPPED)
+					* HPAGE_PMD_NR),
+			K(zone_page_state(zone, NR_ANON_THPS) * HPAGE_PMD_NR),
+#endif
 			K(zone_page_state(zone, NR_SLAB_RECLAIMABLE)),
 			K(zone_page_state(zone, NR_SLAB_UNRECLAIMABLE)),
 			zone_page_state(zone, NR_KERNEL_STACK) *
@@ -6497,15 +6456,18 @@ void __init free_area_init_nodes(unsigned long *max_zone_pfn)
 				sizeof(arch_zone_lowest_possible_pfn));
 	memset(arch_zone_highest_possible_pfn, 0,
 				sizeof(arch_zone_highest_possible_pfn));
-	arch_zone_lowest_possible_pfn[0] = find_min_pfn_with_active_regions();
-	arch_zone_highest_possible_pfn[0] = max_zone_pfn[0];
-	for (i = 1; i < MAX_NR_ZONES; i++) {
+
+	start_pfn = find_min_pfn_with_active_regions();
+
+	for (i = 0; i < MAX_NR_ZONES; i++) {
 		if (i == ZONE_MOVABLE)
 			continue;
-		arch_zone_lowest_possible_pfn[i] =
-			arch_zone_highest_possible_pfn[i-1];
-		arch_zone_highest_possible_pfn[i] =
-			max(max_zone_pfn[i], arch_zone_lowest_possible_pfn[i]);
+
+		end_pfn = max(max_zone_pfn[i], start_pfn);
+		arch_zone_lowest_possible_pfn[i] = start_pfn;
+		arch_zone_highest_possible_pfn[i] = end_pfn;
+
+		start_pfn = end_pfn;
 	}
 	arch_zone_lowest_possible_pfn[ZONE_MOVABLE] = 0;
 	arch_zone_highest_possible_pfn[ZONE_MOVABLE] = 0;
