@@ -1771,6 +1771,14 @@ static noinline int generic_bin_search(struct extent_buffer *eb,
 	unsigned long map_len = 0;
 	int err;
 
+	if (low > high) {
+		btrfs_err(eb->fs_info,
+		 "%s: low (%d) < high (%d) eb %llu owner %llu level %d",
+			  __func__, low, high, eb->start,
+			  btrfs_header_owner(eb), btrfs_header_level(eb));
+		return -EINVAL;
+	}
+
 	while (low < high) {
 		mid = (low + high) / 2;
 		offset = p + mid * item_size;
@@ -1786,10 +1794,12 @@ static noinline int generic_bin_search(struct extent_buffer *eb,
 			if (!err) {
 				tmp = (struct btrfs_disk_key *)(kaddr + offset -
 							map_start);
-			} else {
+			} else if (err == 1) {
 				read_extent_buffer(eb, &unaligned,
 						   offset, sizeof(unaligned));
 				tmp = &unaligned;
+			} else {
+				return err;
 			}
 
 		} else {
@@ -2830,6 +2840,8 @@ cow_done:
 		}
 
 		ret = key_search(b, key, level, &prev_cmp, &slot);
+		if (ret < 0)
+			goto done;
 
 		if (level != 0) {
 			int dec = 0;
