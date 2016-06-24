@@ -213,7 +213,7 @@ S:	Maintained
 F:	drivers/media/dvb-frontends/a8293*
 
 AACRAID SCSI RAID DRIVER
-M:	Adaptec OEM Raid Solutions <aacraid@adaptec.com>
+M:	Adaptec OEM Raid Solutions <aacraid@microsemi.com>
 L:	linux-scsi@vger.kernel.org
 W:	http://www.adaptec.com/
 S:	Supported
@@ -10249,6 +10249,7 @@ M:	"Martin K. Petersen" <martin.petersen@oracle.com>
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/mkp/scsi.git
 L:	linux-scsi@vger.kernel.org
 S:	Maintained
+F:	Documentation/devicetree/bindings/scsi/
 F:	drivers/scsi/
 F:	include/scsi/
 
@@ -11887,6 +11888,12 @@ S:	Supported
 F:	Documentation/scsi/ufs.txt
 F:	drivers/scsi/ufs/
 
+UNIVERSAL FLASH STORAGE HOST CONTROLLER DRIVER DWC HOOKS
+M:	Joao Pinto <Joao.Pinto@synopsys.com>
+L:	linux-scsi@vger.kernel.org
+S:	Supported
+F:	drivers/scsi/ufs/*dwc*
+
 UNSORTED BLOCK IMAGES (UBI)
 M:	Artem Bityutskiy <dedekind1@gmail.com>
 M:	Richard Weinberger <richard@nod.at>
@@ -12412,7 +12419,7 @@ S:	Maintained
 F:	drivers/net/vmxnet3/
 
 VMware PVSCSI driver
-M:	Arvind Kumar <arvindkumar@vmware.com>
+M:	Jim Gill <jgill@vmware.com>
 M:	VMware PV-Drivers <pv-drivers@vmware.com>
 L:	linux-scsi@vger.kernel.org
 S:	Maintained
