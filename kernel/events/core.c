@@ -175,8 +175,13 @@ static struct srcu_struct pmus_srcu;
  *   0 - disallow raw tracepoint access for unpriv
  *   1 - disallow cpu events for unpriv
  *   2 - disallow kernel profiling for unpriv
+ *   3 - disallow all unpriv perf event use
  */
+#ifdef CONFIG_SECURITY_PERF_EVENTS_RESTRICT
+int sysctl_perf_event_paranoid __read_mostly = 3;
+#else
 int sysctl_perf_event_paranoid __read_mostly = 1;
+#endif
 
 /* Minimum for 512 kiB + 1 user control page */
 int sysctl_perf_event_mlock __read_mostly = 512 + (PAGE_SIZE / 1024); /* 'free' kiB per user */
@@ -3720,6 +3725,9 @@ static void __free_event(struct perf_event *event)
 	if (event->destroy)
 		event->destroy(event);
 
+	if (event->pmu->free_drv_configs)
+		event->pmu->free_drv_configs(event);
+
 	if (event->ctx)
 		put_ctx(event->ctx);
 
@@ -4272,6 +4280,8 @@ static int perf_event_set_output(struct perf_event *event,
 				 struct perf_event *output_event);
 static int perf_event_set_filter(struct perf_event *event, void __user *arg);
 static int perf_event_set_bpf_prog(struct perf_event *event, u32 prog_fd);
+static int perf_event_drv_configs(struct perf_event *event,
+				  void __user *arg);
 
 static long _perf_ioctl(struct perf_event *event, unsigned int cmd, unsigned long arg)
 {
@@ -4328,6 +4338,9 @@ static long _perf_ioctl(struct perf_event *event, unsigned int cmd, unsigned lon
 	case PERF_EVENT_IOC_SET_BPF:
 		return perf_event_set_bpf_prog(event, arg);
 
+	case PERF_EVENT_IOC_SET_DRV_CONFIGS:
+		return perf_event_drv_configs(event, (void __user *)arg);
+
 	default:
 		return -ENOTTY;
 	}
@@ -4360,6 +4373,7 @@ static long perf_compat_ioctl(struct file *file, unsigned int cmd,
 	switch (_IOC_NR(cmd)) {
 	case _IOC_NR(PERF_EVENT_IOC_SET_FILTER):
 	case _IOC_NR(PERF_EVENT_IOC_ID):
+	case _IOC_NR(PERF_EVENT_IOC_SET_DRV_CONFIGS):
 		/* Fix up pointer size (usually 4 -> 8 in 32-on-64-bit case */
 		if (_IOC_SIZE(cmd) == sizeof(compat_uptr_t)) {
 			cmd &= ~IOCSIZE_MASK;
@@ -7259,6 +7273,15 @@ void perf_bp_event(struct perf_event *bp, void *data)
 }
 #endif
 
+static int perf_event_drv_configs(struct perf_event *event,
+				  void __user *arg)
+{
+	if (!event->pmu->get_drv_configs)
+		return -EINVAL;
+
+	return event->pmu->get_drv_configs(event, arg);
+}
+
 /*
  * hrtimer based swevent callback
  */
@@ -7995,6 +8018,7 @@ perf_event_alloc(struct perf_event_attr *attr, int cpu,
 	INIT_LIST_HEAD(&event->sibling_list);
 	INIT_LIST_HEAD(&event->rb_entry);
 	INIT_LIST_HEAD(&event->active_entry);
+	INIT_LIST_HEAD(&event->drv_configs);
 	INIT_HLIST_NODE(&event->hlist_entry);
 
 
@@ -8374,6 +8398,9 @@ SYSCALL_DEFINE5(perf_event_open,
 	/* for future expandability... */
 	if (flags & ~PERF_FLAG_ALL)
 		return -EINVAL;
+
+	if (perf_paranoid_any() && !capable(CAP_SYS_ADMIN))
+		return -EACCES;
 
 	err = perf_copy_attr(attr_uptr, &attr);
 	if (err)
