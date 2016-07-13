@@ -262,6 +262,8 @@ relay-fix-timer-madness.patch
 
 # TIMERS
 timers-prepare-for-full-preemption.patch
+timers-wakeup-all-timer-waiters.patch
+timers-wakeup-all-timer-waiters-without-holding-the-.patch
 timers-preempt-rt-support.patch
 timer-delay-waking-softirqs-from-the-jiffy-tick.patch
 timers-avoid-the-base-null-otptimization-on-rt.patch
