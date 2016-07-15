@@ -1,4 +1,3 @@
-From 08552bb6e497a6f37a31884083cdd2c046d0f674 Mon Sep 17 00:00:00 2001
 From: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 Date: Mon, 11 Apr 2016 16:55:02 +0200
 Subject: [PATCH] tty: serial: 8250: don't take the trylock during oops

@@ -57,7 +57,7 @@ fold in:
 -
 -	if (timer_pending(t)) {
 -		if (time_before(when, t->expires))
--			mod_timer_pinned(t, when);
+-			mod_timer(t, when);
 -	} else {
 -		t->expires = round_jiffies(when);
 -		add_timer_on(t, smp_processor_id());
@@ -134,7 +134,7 @@ fold in:
 +	struct hrtimer *t = this_cpu_ptr(&mce_timer);
  	unsigned int cpu = smp_processor_id();
  
--	setup_timer(t, mce_timer_fn, cpu);
+-	setup_pinned_timer(t, mce_timer_fn, cpu);
 +	hrtimer_init(t, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 +	t->function = mce_timer_fn;
  	mce_start_timer(cpu, t);

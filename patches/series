@@ -6,10 +6,38 @@
 # UPSTREAM changes queued
 ############################################################
 ARM-imx-always-use-TWD-on-IMX6Q.patch
+tracing-Show-the-preempt-count-of-when-the-event-was.patch
+
+# timer: "Refactor the timer wheel v4' + 2 prerequisites
+drm-i915-Use-consistent-forcewake-auto-release-timeo.patch
+timer-add-setup_deferrable_timer-macro.patch
+
+timer-Make-pinned-a-timer-property.patch
+x86-apic-uv-Initialize-timer-as-pinned.patch
+x86-mce-Initialize-timer-as-pinned.patch
+driver-net-ethernet-tile-Initialize-timer-as-pinned.patch
+drivers-tty-metag_da-Initialize-timer-as-pinned.patch
+drivers-tty-mips_ejtag-Initialize-timer-as-pinned.patch
+net-ipv4-inet-Initialize-timers-as-pinned.patch
+timer-Remove-mod_timer_pinned.patch
+signal-Use-hrtimer-for-sigtimedwait.patch
+hlist-Add-hlist_is_singular_node-helper.patch
+timer-Give-a-few-structs-and-members-proper-names.patch
+timer-Reduce-the-CPU-index-space-to-256k.patch
+timer-Switch-to-a-non-cascading-wheel.patch
+timer-Remove-slack-leftovers.patch
+timer-Move-__run_timers-function.patch
+timer-Optimize-collect-timers-for-NOHZ.patch
+tick-sched-Remove-pointless-empty-function.patch
+timer-Forward-wheel-clock-whenever-possible.patch
+timer-Only-wake-softirq-if-necessary.patch
+timer-Split-out-index-calculation.patch
+timer-Optimization-for-same-expiry-time-in-mod_timer.patch
 
 ############################################################
 # UPSTREAM FIXES, patches pending
 ############################################################
+timer-make-the-base-lock-raw.patch
 
 ############################################################
 # Stuff broken upstream, patches submitted
@@ -74,7 +102,6 @@ kernel-SRCU-provide-a-static-initializer.patch
 ############################################################
 # Stuff which should go upstream ASAP
 ############################################################
-trace-correct-off-by-one-while-recording-the-trace-e.patch
 
 # SCHED BLOCK/WQ
 block-shorten-interrupt-disabled-regions.patch
@@ -262,11 +289,7 @@ relay-fix-timer-madness.patch
 
 # TIMERS
 timers-prepare-for-full-preemption.patch
-timers-wakeup-all-timer-waiters.patch
-timers-wakeup-all-timer-waiters-without-holding-the-.patch
-timers-preempt-rt-support.patch
 timer-delay-waking-softirqs-from-the-jiffy-tick.patch
-timers-avoid-the-base-null-otptimization-on-rt.patch
 
 # HRTIMERS
 hrtimers-prepare-full-preemption.patch
@@ -556,6 +579,7 @@ rcu-make-RCU_BOOST-default-on-RT.patch
 # PREEMPT LAZY
 preempt-lazy-support.patch
 preempt-lazy-check-preempt_schedule.patch
+sched-lazy_preempt-avoid-a-warning-in-the-RT-case.patch
 x86-preempt-lazy.patch
 arm-preempt-lazy-support.patch
 arm-lazy-preempt-correct-resched-condition.patch
