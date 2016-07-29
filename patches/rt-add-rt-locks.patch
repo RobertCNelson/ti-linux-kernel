@@ -911,7 +911,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +#endif
 --- a/kernel/futex.c
 +++ b/kernel/futex.c
-@@ -1263,6 +1263,7 @@ static int wake_futex_pi(u32 __user *uad
+@@ -1271,6 +1271,7 @@ static int wake_futex_pi(u32 __user *uad
  	struct futex_pi_state *pi_state = this->pi_state;
  	u32 uninitialized_var(curval), newval;
  	WAKE_Q(wake_q);
@@ -919,7 +919,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	bool deboost;
  	int ret = 0;
  
-@@ -1329,7 +1330,8 @@ static int wake_futex_pi(u32 __user *uad
+@@ -1337,7 +1338,8 @@ static int wake_futex_pi(u32 __user *uad
  
  	raw_spin_unlock_irq(&pi_state->pi_mutex.wait_lock);
  
@@ -929,7 +929,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	/*
  	 * First unlock HB so the waiter does not spin on it once he got woken
-@@ -1339,6 +1341,7 @@ static int wake_futex_pi(u32 __user *uad
+@@ -1347,6 +1349,7 @@ static int wake_futex_pi(u32 __user *uad
  	 */
  	spin_unlock(&hb->lock);
  	wake_up_q(&wake_q);
@@ -937,7 +937,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	if (deboost)
  		rt_mutex_adjust_prio(current);
  
-@@ -2813,10 +2816,7 @@ static int futex_wait_requeue_pi(u32 __u
+@@ -2821,10 +2824,7 @@ static int futex_wait_requeue_pi(u32 __u
  	 * The waiter is allocated on our stack, manipulated by the requeue
  	 * code while we sleep on uaddr.
  	 */

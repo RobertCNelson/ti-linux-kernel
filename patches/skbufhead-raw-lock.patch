@@ -33,7 +33,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  };
  
  struct sk_buff;
-@@ -1537,6 +1538,12 @@ static inline void skb_queue_head_init(s
+@@ -1538,6 +1539,12 @@ static inline void skb_queue_head_init(s
  	__skb_queue_head_init(list);
  }
  
