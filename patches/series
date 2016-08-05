@@ -48,6 +48,7 @@ sc16is7xx_Drop_bogus_use_of_IRQF_ONESHOT.patch
 crypto-ccp-remove-rwlocks_types.h.patch
 infiniband-ulp-ipoib-remove-pkey_mutex.patch
 sched-preempt-Fix-preempt_count-manipulations.patch
+x86-mm-disable-preemption-during-CR3-read-write.patch
 
 # Those two should vanish soon (not use PIT during bootup)
 at91_dont_enable_disable_clock.patch
@@ -517,6 +518,7 @@ KVM-lapic-mark-LAPIC-timer-handler-as-irqsafe.patch
 
 # SCSI/FCOE
 scsi-fcoe-rt-aware.patch
+scsi-fcoe-Fix-get_cpu-put_cpu_light-imbalance-in-fco.patch
 sas-ata-isci-dont-t-disable-interrupts-in-qc_issue-h.patch
 
 # X86 crypto
