@@ -2618,10 +2618,10 @@ unsigned int vb2_poll(struct vb2_queue *q, struct file *file, poll_table *wait)
 		return res | POLLERR;
 
 	/*
-	 * For output streams you can write as long as there are fewer buffers
-	 * queued than there are buffers available.
+	 * For output streams you can call write() as long as there are fewer
+	 * buffers queued than there are buffers available.
 	 */
-	if (V4L2_TYPE_IS_OUTPUT(q->type) && q->queued_count < q->num_buffers)
+	if (V4L2_TYPE_IS_OUTPUT(q->type) && q->fileio && q->queued_count < q->num_buffers)
 		return res | POLLOUT | POLLWRNORM;
 
 	if (list_empty(&q->done_list))
@@ -3221,7 +3221,6 @@ EXPORT_SYMBOL_GPL(vb2_thread_start);
 int vb2_thread_stop(struct vb2_queue *q)
 {
 	struct vb2_threadio_data *threadio = q->threadio;
-	struct vb2_fileio_data *fileio = q->fileio;
 	int err;
 
 	if (threadio == NULL)

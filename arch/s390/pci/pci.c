@@ -50,8 +50,8 @@ static DEFINE_SPINLOCK(zpci_list_lock);
 
 static struct irq_chip zpci_irq_chip = {
 	.name = "zPCI",
-	.irq_unmask = unmask_msi_irq,
-	.irq_mask = mask_msi_irq,
+	.irq_unmask = pci_msi_unmask_irq,
+	.irq_mask = pci_msi_mask_irq,
 };
 
 static DECLARE_BITMAP(zpci_domain, ZPCI_NR_DEVICES);
@@ -189,6 +189,11 @@ int zpci_fmb_enable_device(struct zpci_dev *zdev)
 	if (!zdev->fmb)
 		return -ENOMEM;
 	WARN_ON((u64) zdev->fmb & 0xf);
+
+	/* reset software counters */
+	atomic64_set(&zdev->allocated_pages, 0);
+	atomic64_set(&zdev->mapped_pages, 0);
+	atomic64_set(&zdev->unmapped_pages, 0);
 
 	args.fmb_addr = virt_to_phys(zdev->fmb);
 	return mod_pci(zdev, ZPCI_MOD_FC_SET_MEASURE, 0, &args);
@@ -403,7 +408,7 @@ int arch_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 		msg.data = hwirq;
 		msg.address_lo = zdev->msi_addr & 0xffffffff;
 		msg.address_hi = zdev->msi_addr >> 32;
-		write_msi_msg(irq, &msg);
+		pci_write_msi_msg(irq, &msg);
 		airq_iv_set_data(zdev->aibv, hwirq, irq);
 		hwirq++;
 	}
@@ -448,9 +453,9 @@ void arch_teardown_msi_irqs(struct pci_dev *pdev)
 	/* Release MSI interrupts */
 	list_for_each_entry(msi, &pdev->msi_list, list) {
 		if (msi->msi_attrib.is_msix)
-			default_msix_mask_irq(msi, 1);
+			__pci_msix_desc_mask_irq(msi, 1);
 		else
-			default_msi_mask_irq(msi, 1, 1);
+			__pci_msi_desc_mask_irq(msi, 1, 1);
 		irq_set_msi_desc(msi->irq, NULL);
 		irq_free_desc(msi->irq);
 		msi->msg.address_lo = 0;
@@ -755,8 +760,8 @@ static int zpci_scan_bus(struct zpci_dev *zdev)
 		zpci_cleanup_bus_resources(zdev);
 		return -EIO;
 	}
-
 	zdev->bus->max_bus_speed = zdev->max_bus_speed;
+	pci_bus_add_devices(zdev->bus);
 	return 0;
 }
 
@@ -840,8 +845,11 @@ static inline int barsize(u8 size)
 
 static int zpci_mem_init(void)
 {
+	BUILD_BUG_ON(!is_power_of_2(__alignof__(struct zpci_fmb)) ||
+		     __alignof__(struct zpci_fmb) < sizeof(struct zpci_fmb));
+
 	zdev_fmb_cache = kmem_cache_create("PCI_FMB_cache", sizeof(struct zpci_fmb),
-				16, 0, NULL);
+					   __alignof__(struct zpci_fmb), 0, NULL);
 	if (!zdev_fmb_cache)
 		goto error_zdev;
 

@@ -186,6 +186,17 @@ static int receive_room(struct tty_struct *tty)
 	return left;
 }
 
+static inline int tty_copy_to_user(struct tty_struct *tty,
+					void __user *to,
+					const void *from,
+					unsigned long n)
+{
+	struct n_tty_data *ldata = tty->disc_data;
+
+	tty_audit_add_data(tty, to, n, ldata->icanon);
+	return copy_to_user(to, from, n);
+}
+
 /**
  *	n_tty_set_room	-	receive space
  *	@tty: terminal
@@ -266,16 +277,13 @@ static void n_tty_check_throttle(struct tty_struct *tty)
 
 static void n_tty_check_unthrottle(struct tty_struct *tty)
 {
-	if (tty->driver->type == TTY_DRIVER_TYPE_PTY &&
-	    tty->link->ldisc->ops->write_wakeup == n_tty_write_wakeup) {
+	if (tty->driver->type == TTY_DRIVER_TYPE_PTY) {
 		if (chars_in_buffer(tty) > TTY_THRESHOLD_UNTHROTTLE)
 			return;
 		if (!tty->count)
 			return;
 		n_tty_set_room(tty);
-		n_tty_write_wakeup(tty->link);
-		if (waitqueue_active(&tty->link->write_wait))
-			wake_up_interruptible_poll(&tty->link->write_wait, POLLOUT);
+		tty_wakeup(tty->link);
 		return;
 	}
 
@@ -353,8 +361,7 @@ static void n_tty_packet_mode_flush(struct tty_struct *tty)
 	spin_lock_irqsave(&tty->ctrl_lock, flags);
 	if (tty->link->packet) {
 		tty->ctrl_status |= TIOCPKT_FLUSHREAD;
-		if (waitqueue_active(&tty->link->read_wait))
-			wake_up_interruptible(&tty->link->read_wait);
+		wake_up_interruptible(&tty->link->read_wait);
 	}
 	spin_unlock_irqrestore(&tty->ctrl_lock, flags);
 }
@@ -1376,8 +1383,7 @@ handle_newline:
 			put_tty_queue(c, ldata);
 			ldata->canon_head = ldata->read_head;
 			kill_fasync(&tty->fasync, SIGIO, POLL_IN);
-			if (waitqueue_active(&tty->read_wait))
-				wake_up_interruptible_poll(&tty->read_wait, POLLIN);
+			wake_up_interruptible_poll(&tty->read_wait, POLLIN);
 			return 0;
 		}
 	}
@@ -1660,8 +1666,7 @@ static void __receive_buf(struct tty_struct *tty, const unsigned char *cp,
 	if ((!ldata->icanon && (read_cnt(ldata) >= ldata->minimum_to_wake)) ||
 		L_EXTPROC(tty)) {
 		kill_fasync(&tty->fasync, SIGIO, POLL_IN);
-		if (waitqueue_active(&tty->read_wait))
-			wake_up_interruptible_poll(&tty->read_wait, POLLIN);
+		wake_up_interruptible_poll(&tty->read_wait, POLLIN);
 	}
 }
 
@@ -1880,10 +1885,8 @@ static void n_tty_set_termios(struct tty_struct *tty, struct ktermios *old)
 	}
 
 	/* The termios change make the tty ready for I/O */
-	if (waitqueue_active(&tty->write_wait))
-		wake_up_interruptible(&tty->write_wait);
-	if (waitqueue_active(&tty->read_wait))
-		wake_up_interruptible(&tty->read_wait);
+	wake_up_interruptible(&tty->write_wait);
+	wake_up_interruptible(&tty->read_wait);
 }
 
 /**
@@ -2081,12 +2084,12 @@ static int canon_copy_from_read_buf(struct tty_struct *tty,
 		    __func__, eol, found, n, c, size, more);
 
 	if (n > size) {
-		ret = copy_to_user(*b, read_buf_addr(ldata, tail), size);
+		ret = tty_copy_to_user(tty, *b, read_buf_addr(ldata, tail), size);
 		if (ret)
 			return -EFAULT;
-		ret = copy_to_user(*b + size, ldata->read_buf, n - size);
+		ret = tty_copy_to_user(tty, *b + size, ldata->read_buf, n - size);
 	} else
-		ret = copy_to_user(*b, read_buf_addr(ldata, tail), n);
+		ret = tty_copy_to_user(tty, *b, read_buf_addr(ldata, tail), n);
 
 	if (ret)
 		return -EFAULT;

@@ -21,7 +21,7 @@
 #include <linux/init.h>
 #include <linux/linkage.h>
 
-#include <asm/alternative-asm.h>
+#include <asm/alternative.h>
 #include <asm/assembler.h>
 #include <asm/asm-offsets.h>
 #include <asm/cpufeature.h>
@@ -523,6 +523,7 @@ el0_sp_pc:
 	mrs	x26, far_el1
 	// enable interrupts before calling the main handler
 	enable_dbg_and_irq
+	ct_user_exit
 	mov	x0, x26
 	mov	x1, x25
 	mov	x2, sp
