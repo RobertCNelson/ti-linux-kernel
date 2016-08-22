@@ -27,7 +27,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/block/genhd.c
 +++ b/block/genhd.c
-@@ -1523,12 +1523,7 @@ static void __disk_unblock_events(struct
+@@ -1524,12 +1524,7 @@ static void __disk_unblock_events(struct
  	if (--ev->block)
  		goto out_unlock;
  

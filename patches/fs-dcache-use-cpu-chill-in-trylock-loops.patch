@@ -11,9 +11,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 ---
  fs/autofs4/autofs_i.h |    1 +
  fs/autofs4/expire.c   |    2 +-
- fs/dcache.c           |    5 +++--
+ fs/dcache.c           |   10 ++++++++--
  fs/namespace.c        |    3 ++-
- 4 files changed, 7 insertions(+), 4 deletions(-)
+ 4 files changed, 12 insertions(+), 4 deletions(-)
 
 --- a/fs/autofs4/autofs_i.h
 +++ b/fs/autofs4/autofs_i.h
@@ -46,16 +46,21 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #include <linux/slab.h>
  #include <linux/init.h>
  #include <linux/hash.h>
-@@ -578,7 +579,7 @@ static struct dentry *dentry_kill(struct
- 
- failed:
- 	spin_unlock(&dentry->d_lock);
--	cpu_relax();
-+	cpu_chill();
- 	return dentry; /* try again with same dentry */
+@@ -785,7 +786,12 @@ void dput(struct dentry *dentry)
+ kill_it:
+ 	dentry = dentry_kill(dentry);
+ 	if (dentry) {
+-		cond_resched();
++		int r;
++
++		/* the task with the highest priority won't schedule */
++		r = cond_resched();
++		if (!r)
++			cpu_chill();
+ 		goto repeat;
+ 	}
  }
- 
-@@ -2316,7 +2317,7 @@ void d_delete(struct dentry * dentry)
+@@ -2319,7 +2325,7 @@ void d_delete(struct dentry * dentry)
  	if (dentry->d_lockref.count == 1) {
  		if (!spin_trylock(&inode->i_lock)) {
  			spin_unlock(&dentry->d_lock);

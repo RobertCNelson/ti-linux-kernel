@@ -39,7 +39,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /**
 --- a/lib/radix-tree.c
 +++ b/lib/radix-tree.c
-@@ -240,13 +240,14 @@ radix_tree_node_alloc(struct radix_tree_
+@@ -241,13 +241,14 @@ radix_tree_node_alloc(struct radix_tree_
  		 * succeed in getting a node here (and never reach
  		 * kmem_cache_alloc)
  		 */
@@ -63,7 +63,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
   * Load up this CPU's radix_tree_node buffer with sufficient objects to
   * ensure that the addition of a single element in the tree cannot fail.  On
-@@ -355,6 +357,7 @@ int radix_tree_maybe_preload(gfp_t gfp_m
+@@ -361,6 +363,7 @@ int radix_tree_maybe_preload(gfp_t gfp_m
  	return 0;
  }
  EXPORT_SYMBOL(radix_tree_maybe_preload);

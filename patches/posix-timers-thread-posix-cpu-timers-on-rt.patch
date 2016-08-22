@@ -83,7 +83,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	ret = 0;
  	old_incr = timer->it.cpu.incr;
-@@ -1063,7 +1064,7 @@ void posix_cpu_timer_schedule(struct k_i
+@@ -1064,7 +1065,7 @@ void posix_cpu_timer_schedule(struct k_i
  	/*
  	 * Now re-arm for the new expiry time.
  	 */
@@ -92,7 +92,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	arm_timer(timer);
  	unlock_task_sighand(p, &flags);
  
-@@ -1152,13 +1153,13 @@ static inline int fastpath_timer_check(s
+@@ -1153,13 +1154,13 @@ static inline int fastpath_timer_check(s
   * already updated our counts.  We need to check if any timers fire now.
   * Interrupts are disabled.
   */
@@ -108,7 +108,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	/*
  	 * The fast path checks that there are no expired thread or thread
-@@ -1212,6 +1213,190 @@ void run_posix_cpu_timers(struct task_st
+@@ -1213,6 +1214,190 @@ void run_posix_cpu_timers(struct task_st
  	}
  }
  

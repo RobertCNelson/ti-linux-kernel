@@ -19,7 +19,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/drivers/char/random.c
 +++ b/drivers/char/random.c
-@@ -888,28 +888,27 @@ static __u32 get_reg(struct fast_pool *f
+@@ -891,28 +891,27 @@ static __u32 get_reg(struct fast_pool *f
  	return *(ptr + f->reg_idx++);
  }
  

@@ -24,7 +24,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/mm/swap.c
 +++ b/mm/swap.c
-@@ -596,9 +596,15 @@ void lru_add_drain_cpu(int cpu)
+@@ -595,9 +595,15 @@ void lru_add_drain_cpu(int cpu)
  		unsigned long flags;
  
  		/* No harm done if a racing interrupt already did this */
@@ -40,7 +40,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	}
  
  	pvec = &per_cpu(lru_deactivate_file_pvecs, cpu);
-@@ -666,12 +672,32 @@ void lru_add_drain(void)
+@@ -665,12 +671,32 @@ void lru_add_drain(void)
  	local_unlock_cpu(swapvec_lock);
  }
  
@@ -73,7 +73,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  void lru_add_drain_all(void)
  {
-@@ -684,21 +710,18 @@ void lru_add_drain_all(void)
+@@ -683,21 +709,18 @@ void lru_add_drain_all(void)
  	cpumask_clear(&has_work);
  
  	for_each_online_cpu(cpu) {

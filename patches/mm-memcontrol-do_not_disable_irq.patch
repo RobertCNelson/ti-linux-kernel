@@ -29,7 +29,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  /* Whether legacy memory+swap accounting is active */
  static bool do_memsw_account(void)
  {
-@@ -4487,12 +4490,12 @@ static int mem_cgroup_move_account(struc
+@@ -4579,12 +4582,12 @@ static int mem_cgroup_move_account(struc
  
  	ret = 0;
  
@@ -44,7 +44,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  out_unlock:
  	unlock_page(page);
  out:
-@@ -5342,10 +5345,10 @@ void mem_cgroup_commit_charge(struct pag
+@@ -5436,10 +5439,10 @@ void mem_cgroup_commit_charge(struct pag
  
  	commit_charge(page, memcg, lrucare);
  
@@ -57,7 +57,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	if (do_memsw_account() && PageSwapCache(page)) {
  		swp_entry_t entry = { .val = page_private(page) };
-@@ -5397,14 +5400,14 @@ static void uncharge_batch(struct mem_cg
+@@ -5491,14 +5494,14 @@ static void uncharge_batch(struct mem_cg
  		memcg_oom_recover(memcg);
  	}
  
@@ -74,15 +74,15 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	if (!mem_cgroup_is_root(memcg))
  		css_put_many(&memcg->css, nr_pages);
-@@ -5722,6 +5725,7 @@ void mem_cgroup_swapout(struct page *pag
+@@ -5817,6 +5820,7 @@ void mem_cgroup_swapout(struct page *pag
  {
- 	struct mem_cgroup *memcg;
+ 	struct mem_cgroup *memcg, *swap_memcg;
  	unsigned short oldid;
 +	unsigned long flags;
  
  	VM_BUG_ON_PAGE(PageLRU(page), page);
  	VM_BUG_ON_PAGE(page_count(page), page);
-@@ -5750,9 +5754,13 @@ void mem_cgroup_swapout(struct page *pag
+@@ -5857,12 +5861,16 @@ void mem_cgroup_swapout(struct page *pag
  	 * important here to have the interrupts disabled because it is the
  	 * only synchronisation we have for udpating the per-CPU variables.
  	 */
@@ -92,6 +92,9 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 +#endif
  	mem_cgroup_charge_statistics(memcg, page, false, -1);
  	memcg_check_events(memcg, page);
+ 
+ 	if (!mem_cgroup_is_root(memcg))
+ 		css_put(&memcg->css);
 +	local_unlock_irqrestore(event_lock, flags);
  }
  
