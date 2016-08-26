@@ -64,6 +64,7 @@ static void set_scanout(struct drm_crtc *crtc, struct drm_framebuffer *fb)
 	struct drm_gem_cma_object *gem;
 	unsigned int depth, bpp;
 	dma_addr_t start, end;
+	u64 dma_base_and_ceiling;
 
 	drm_fb_get_bpp_depth(fb->pixel_format, &depth, &bpp);
 	gem = drm_fb_cma_get_gem_obj(fb, 0);
@@ -74,8 +75,12 @@ static void set_scanout(struct drm_crtc *crtc, struct drm_framebuffer *fb)
 
 	end = start + (crtc->mode.vdisplay * fb->pitches[0]);
 
-	tilcdc_write(dev, LCDC_DMA_FB_BASE_ADDR_0_REG, start);
-	tilcdc_write(dev, LCDC_DMA_FB_CEILING_ADDR_0_REG, end);
+	/* Write DMA base and ceiling address with a single insruction,
+	 * if available. This should make it more unlikely that LCDC would
+	 * fetch the DMA addresses in the middle of an update.
+	 */
+	dma_base_and_ceiling = (u64)(end - 1) << 32 | start;
+	tilcdc_write64(dev, LCDC_DMA_FB_BASE_ADDR_0_REG, dma_base_and_ceiling);
 
 	if (tilcdc_crtc->curr_fb)
 		drm_flip_work_queue(&tilcdc_crtc->unref_work,
