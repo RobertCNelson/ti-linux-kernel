@@ -451,7 +451,11 @@ static int tilcdc_crtc_mode_set(struct drm_crtc *crtc,
 static int tilcdc_crtc_mode_set_base(struct drm_crtc *crtc, int x, int y,
 		struct drm_framebuffer *old_fb)
 {
+	struct tilcdc_crtc *tilcdc_crtc = to_tilcdc_crtc(crtc);
 	struct drm_device *dev = crtc->dev;
+	unsigned long flags;
+	ktime_t next_vblank;
+	s64 tdiff;
 	int r;
 
 	r = tilcdc_verify_fb(crtc, crtc->primary->fb);
@@ -462,7 +466,19 @@ static int tilcdc_crtc_mode_set_base(struct drm_crtc *crtc, int x, int y,
 
 	pm_runtime_get_sync(dev->dev);
 
-	set_scanout(crtc, crtc->primary->fb);
+	spin_lock_irqsave(&tilcdc_crtc->irq_lock, flags);
+
+	next_vblank = ktime_add_us(tilcdc_crtc->last_vblank,
+		1000000 / crtc->hwmode.vrefresh);
+
+	tdiff = ktime_to_us(ktime_sub(next_vblank, ktime_get()));
+
+	if (tdiff >= TILCDC_VBLANK_SAFETY_THRESHOLD_US)
+		set_scanout(crtc, crtc->primary->fb);
+	else
+		tilcdc_crtc->next_fb = crtc->primary->fb;
+
+	spin_unlock_irqrestore(&tilcdc_crtc->irq_lock, flags);
 
 	pm_runtime_put_sync(dev->dev);
 
