@@ -432,6 +432,7 @@ block-use-cpu-chill.patch
 
 # FS LIVELOCK PREVENTION
 fs-dcache-use-cpu-chill-in-trylock-loops.patch
+fs-dcache-resched-chill-only-if-we-make-no-progress.patch
 net-use-cpu-chill.patch
 
 # WORKQUEUE more fixes
@@ -458,6 +459,8 @@ net-core-cpuhotplug-drain-input_pkt_queue-lockless.patch
 net-move-xmit_recursion-to-per-task-variable-on-RT.patch
 net-provide-a-way-to-delegate-processing-a-softirq-t.patch
 net-dev-always-take-qdisc-s-busylock-in-__dev_xmit_s.patch
+net-add-back-the-missing-serialization-in-ip_send_un.patch
+net-add-a-lock-around-icmp_sk.patch
 
 # NETWORK livelock fix
 net-tx-action-avoid-livelock-on-rt.patch
