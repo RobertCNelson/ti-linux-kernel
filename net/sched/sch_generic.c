@@ -426,7 +426,11 @@ struct Qdisc noop_qdisc = {
 	.list		=	LIST_HEAD_INIT(noop_qdisc.list),
 	.q.lock		=	__SPIN_LOCK_UNLOCKED(noop_qdisc.q.lock),
 	.dev_queue	=	&noop_netdev_queue,
+#ifdef CONFIG_PREEMPT_RT_BASE
+	.running	=	__SEQLOCK_UNLOCKED(noop_qdisc.running),
+#else
 	.running	=	SEQCNT_ZERO(noop_qdisc.running),
+#endif
 	.busylock	=	__SPIN_LOCK_UNLOCKED(noop_qdisc.busylock),
 };
 EXPORT_SYMBOL(noop_qdisc);
@@ -620,9 +624,17 @@ struct Qdisc *qdisc_alloc(struct netdev_queue *dev_queue,
 	lockdep_set_class(&sch->busylock,
 			  dev->qdisc_tx_busylock ?: &qdisc_tx_busylock);
 
+#ifdef CONFIG_PREEMPT_RT_BASE
+	seqlock_init(&sch->running);
+	lockdep_set_class(&sch->running.seqcount,
+			  dev->qdisc_running_key ?: &qdisc_running_key);
+	lockdep_set_class(&sch->running.lock,
+			  dev->qdisc_running_key ?: &qdisc_running_key);
+#else
 	seqcount_init(&sch->running);
 	lockdep_set_class(&sch->running,
 			  dev->qdisc_running_key ?: &qdisc_running_key);
+#endif
 
 	sch->ops = ops;
 	sch->enqueue = ops->enqueue;
