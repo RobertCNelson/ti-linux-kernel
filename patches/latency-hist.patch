@@ -436,7 +436,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  config PREEMPT_TRACER
  	bool "Preemption-off Latency Tracer"
  	default n
-@@ -211,6 +229,24 @@ config PREEMPT_TRACER
+@@ -212,6 +230,24 @@ config PREEMPT_TRACER
  	  enabled. This option and the irqs-off timing option can be
  	  used together or separately.)
  
@@ -461,7 +461,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  config SCHED_TRACER
  	bool "Scheduling Latency Tracer"
  	select GENERIC_TRACER
-@@ -221,6 +257,74 @@ config SCHED_TRACER
+@@ -222,6 +258,74 @@ config SCHED_TRACER
  	  This tracer tracks the latency of the highest priority task
  	  to be scheduled in, starting from the point it has woken up.
  

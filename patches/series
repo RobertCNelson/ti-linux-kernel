@@ -49,6 +49,7 @@ crypto-ccp-remove-rwlocks_types.h.patch
 infiniband-ulp-ipoib-remove-pkey_mutex.patch
 sched-preempt-Fix-preempt_count-manipulations.patch
 x86-mm-disable-preemption-during-CR3-read-write.patch
+lockdep-Quiet-gcc-about-dangerous-__builtin_return_a.patch
 
 # Those two should vanish soon (not use PIT during bootup)
 at91_dont_enable_disable_clock.patch
@@ -586,6 +587,7 @@ preempt-lazy-support.patch
 preempt-lazy-check-preempt_schedule.patch
 sched-lazy_preempt-avoid-a-warning-in-the-RT-case.patch
 x86-preempt-lazy.patch
+x86-preempt-lazy-fixup-should_resched.patch
 arm-preempt-lazy-support.patch
 arm-lazy-preempt-correct-resched-condition.patch
 powerpc-preempt-lazy-support.patch

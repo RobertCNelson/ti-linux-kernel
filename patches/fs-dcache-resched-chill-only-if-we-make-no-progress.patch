@@ -23,21 +23,12 @@ progress.
 Cc: stable-rt@vger.kernel.org
 Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 ---
- fs/dcache.c |   19 +++++++++++++------
- 1 file changed, 13 insertions(+), 6 deletions(-)
+ fs/dcache.c |   18 ++++++++++++------
+ 1 file changed, 12 insertions(+), 6 deletions(-)
 
 --- a/fs/dcache.c
 +++ b/fs/dcache.c
-@@ -40,6 +40,8 @@
- #include <linux/ratelimit.h>
- #include <linux/list_lru.h>
- #include <linux/kasan.h>
-+#include <linux/sched/rt.h>
-+#include <linux/sched/deadline.h>
- 
- #include "internal.h"
- #include "mount.h"
-@@ -748,6 +750,8 @@ static inline bool fast_dput(struct dent
+@@ -748,6 +748,8 @@ static inline bool fast_dput(struct dent
   */
  void dput(struct dentry *dentry)
  {
@@ -46,7 +37,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	if (unlikely(!dentry))
  		return;
  
-@@ -784,14 +788,17 @@ void dput(struct dentry *dentry)
+@@ -784,14 +786,18 @@ void dput(struct dentry *dentry)
  	return;
  
  kill_it:
@@ -63,10 +54,11 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 +		if (parent == dentry) {
 +			/* the task with the highest priority won't schedule */
 +			r = cond_resched();
-+			if (!r && (rt_task(current) || dl_task(current)))
++			if (!r)
 +				cpu_chill();
-+		} else
++		} else {
 +			dentry = parent;
++		}
  		goto repeat;
  	}
  }
