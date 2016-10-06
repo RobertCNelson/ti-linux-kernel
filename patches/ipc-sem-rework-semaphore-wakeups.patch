@@ -29,7 +29,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/ipc/sem.c
 +++ b/ipc/sem.c
-@@ -697,6 +697,13 @@ static int perform_atomic_semop(struct s
+@@ -686,6 +686,13 @@ static int perform_atomic_semop(struct s
  static void wake_up_sem_queue_prepare(struct list_head *pt,
  				struct sem_queue *q, int error)
  {
@@ -43,7 +43,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	if (list_empty(pt)) {
  		/*
  		 * Hold preempt off so that we don't get preempted and have the
-@@ -708,6 +715,7 @@ static void wake_up_sem_queue_prepare(st
+@@ -697,6 +704,7 @@ static void wake_up_sem_queue_prepare(st
  	q->pid = error;
  
  	list_add_tail(&q->list, pt);
@@ -51,7 +51,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /**
-@@ -721,6 +729,7 @@ static void wake_up_sem_queue_prepare(st
+@@ -710,6 +718,7 @@ static void wake_up_sem_queue_prepare(st
   */
  static void wake_up_sem_queue_do(struct list_head *pt)
  {
@@ -59,7 +59,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	struct sem_queue *q, *t;
  	int did_something;
  
-@@ -733,6 +742,7 @@ static void wake_up_sem_queue_do(struct
+@@ -722,6 +731,7 @@ static void wake_up_sem_queue_do(struct
  	}
  	if (did_something)
  		preempt_enable();

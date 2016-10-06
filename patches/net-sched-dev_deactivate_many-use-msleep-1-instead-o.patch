@@ -46,7 +46,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/net/sched/sch_generic.c
 +++ b/net/sched/sch_generic.c
-@@ -894,7 +894,7 @@ void dev_deactivate_many(struct list_hea
+@@ -917,7 +917,7 @@ void dev_deactivate_many(struct list_hea
  	/* Wait for outstanding qdisc_run calls. */
  	list_for_each_entry(dev, head, close_list)
  		while (some_qdisc_is_busy(dev))

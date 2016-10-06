@@ -12,7 +12,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/kernel/printk/printk.c
 +++ b/kernel/printk/printk.c
-@@ -1502,6 +1502,7 @@ static void call_console_drivers(int lev
+@@ -1631,6 +1631,7 @@ static void call_console_drivers(int lev
  	if (!console_drivers)
  		return;
  
@@ -20,7 +20,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	for_each_console(con) {
  		if (exclusive_console && con != exclusive_console)
  			continue;
-@@ -1517,6 +1518,7 @@ static void call_console_drivers(int lev
+@@ -1646,6 +1647,7 @@ static void call_console_drivers(int lev
  		else
  			con->write(con, text, len);
  	}
@@ -28,7 +28,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /*
-@@ -1821,13 +1823,23 @@ asmlinkage int vprintk_emit(int facility
+@@ -1960,13 +1962,23 @@ asmlinkage int vprintk_emit(int facility
  
  	/* If called from the scheduler, we can not call up(). */
  	if (!in_sched) {
@@ -53,7 +53,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  			console_unlock();
  		lockdep_on();
  	}
-@@ -2229,11 +2241,16 @@ static void console_cont_flush(char *tex
+@@ -2358,11 +2370,16 @@ static void console_cont_flush(char *tex
  		goto out;
  
  	len = cont_print_text(text, size);
@@ -70,7 +70,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	return;
  out:
  	raw_spin_unlock_irqrestore(&logbuf_lock, flags);
-@@ -2355,13 +2372,17 @@ void console_unlock(void)
+@@ -2486,13 +2503,17 @@ void console_unlock(void)
  		console_idx = log_next(console_idx);
  		console_seq++;
  		console_prev = msg->flags;

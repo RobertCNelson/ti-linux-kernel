@@ -46,7 +46,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	/*
  	 * signals when all in-flight requests are done
-@@ -253,6 +254,7 @@ static int __init aio_setup(void)
+@@ -258,6 +259,7 @@ static int __init aio_setup(void)
  		.mount		= aio_mount,
  		.kill_sb	= kill_anon_super,
  	};
@@ -54,7 +54,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	aio_mnt = kern_mount(&aio_fs);
  	if (IS_ERR(aio_mnt))
  		panic("Failed to create aio fs mount.");
-@@ -568,9 +570,9 @@ static int kiocb_cancel(struct aio_kiocb
+@@ -578,9 +580,9 @@ static int kiocb_cancel(struct aio_kiocb
  	return cancel(&kiocb->common);
  }
  
@@ -66,7 +66,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	pr_debug("freeing %p\n", ctx);
  
-@@ -589,8 +591,8 @@ static void free_ioctx_reqs(struct percp
+@@ -599,8 +601,8 @@ static void free_ioctx_reqs(struct percp
  	if (ctx->rq_wait && atomic_dec_and_test(&ctx->rq_wait->count))
  		complete(&ctx->rq_wait->comp);
  
@@ -77,7 +77,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  }
  
  /*
-@@ -598,9 +600,9 @@ static void free_ioctx_reqs(struct percp
+@@ -608,9 +610,9 @@ static void free_ioctx_reqs(struct percp
   * and ctx->users has dropped to 0, so we know no more kiocbs can be submitted -
   * now it's safe to cancel any that need to be.
   */
@@ -89,7 +89,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	struct aio_kiocb *req;
  
  	spin_lock_irq(&ctx->ctx_lock);
-@@ -619,6 +621,14 @@ static void free_ioctx_users(struct perc
+@@ -629,6 +631,14 @@ static void free_ioctx_users(struct perc
  	percpu_ref_put(&ctx->reqs);
  }
  

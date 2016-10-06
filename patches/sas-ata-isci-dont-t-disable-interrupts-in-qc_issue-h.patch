@@ -67,7 +67,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	spin_unlock(ap->lock);
  
  	/* If the device fell off, no sense in issuing commands */
-@@ -255,7 +255,7 @@ static unsigned int sas_ata_qc_issue(str
+@@ -252,7 +252,7 @@ static unsigned int sas_ata_qc_issue(str
  
   out:
  	spin_lock(ap->lock);

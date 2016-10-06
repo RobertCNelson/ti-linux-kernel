@@ -63,7 +63,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /**
   * raw_write_seqcount_barrier - do a seq write barrier
   * @s: pointer to seqcount_t
-@@ -425,10 +435,32 @@ typedef struct {
+@@ -428,10 +438,32 @@ typedef struct {
  /*
   * Read side functions for starting and finalizing a read side section.
   */
@@ -96,7 +96,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  static inline unsigned read_seqretry(const seqlock_t *sl, unsigned start)
  {
-@@ -443,36 +475,36 @@ static inline unsigned read_seqretry(con
+@@ -446,36 +478,36 @@ static inline unsigned read_seqretry(con
  static inline void write_seqlock(seqlock_t *sl)
  {
  	spin_lock(&sl->lock);
@@ -139,7 +139,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	spin_unlock_irq(&sl->lock);
  }
  
-@@ -481,7 +513,7 @@ static inline unsigned long __write_seql
+@@ -484,7 +516,7 @@ static inline unsigned long __write_seql
  	unsigned long flags;
  
  	spin_lock_irqsave(&sl->lock, flags);
@@ -148,7 +148,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	return flags;
  }
  
-@@ -491,7 +523,7 @@ static inline unsigned long __write_seql
+@@ -494,7 +526,7 @@ static inline unsigned long __write_seql
  static inline void
  write_sequnlock_irqrestore(seqlock_t *sl, unsigned long flags)
  {
@@ -159,7 +159,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
 --- a/include/net/dst.h
 +++ b/include/net/dst.h
-@@ -449,7 +449,7 @@ static inline void dst_confirm(struct ds
+@@ -446,7 +446,7 @@ static inline void dst_confirm(struct ds
  static inline int dst_neigh_output(struct dst_entry *dst, struct neighbour *n,
  				   struct sk_buff *skb)
  {

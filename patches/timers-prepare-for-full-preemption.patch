@@ -28,7 +28,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  # define del_timer_sync(t)		del_timer(t)
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -490,11 +490,14 @@ void resched_cpu(int cpu)
+@@ -525,11 +525,14 @@ void resched_cpu(int cpu)
   */
  int get_nohz_timer_target(void)
  {
@@ -45,7 +45,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	rcu_read_lock();
  	for_each_domain(cpu, sd) {
-@@ -510,6 +513,8 @@ int get_nohz_timer_target(void)
+@@ -548,6 +551,8 @@ int get_nohz_timer_target(void)
  		cpu = housekeeping_any_cpu();
  unlock:
  	rcu_read_unlock();
@@ -66,7 +66,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	unsigned long		clk;
  	unsigned long		next_expiry;
  	unsigned int		cpu;
-@@ -1162,6 +1165,33 @@ void add_timer_on(struct timer_list *tim
+@@ -1147,6 +1150,33 @@ void add_timer_on(struct timer_list *tim
  }
  EXPORT_SYMBOL_GPL(add_timer_on);
  
@@ -100,7 +100,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /**
   * del_timer - deactive a timer.
   * @timer: the timer to be deactivated
-@@ -1219,7 +1249,7 @@ int try_to_del_timer_sync(struct timer_l
+@@ -1204,7 +1234,7 @@ int try_to_del_timer_sync(struct timer_l
  }
  EXPORT_SYMBOL(try_to_del_timer_sync);
  
@@ -109,7 +109,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /**
   * del_timer_sync - deactivate a timer and wait for the handler to finish.
   * @timer: the timer to be deactivated
-@@ -1279,7 +1309,7 @@ int del_timer_sync(struct timer_list *ti
+@@ -1264,7 +1294,7 @@ int del_timer_sync(struct timer_list *ti
  		int ret = try_to_del_timer_sync(timer);
  		if (ret >= 0)
  			return ret;
@@ -118,7 +118,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	}
  }
  EXPORT_SYMBOL(del_timer_sync);
-@@ -1344,13 +1374,16 @@ static void expire_timers(struct timer_b
+@@ -1329,13 +1359,16 @@ static void expire_timers(struct timer_b
  		fn = timer->function;
  		data = timer->data;
  
@@ -136,7 +136,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  			raw_spin_lock_irq(&base->lock);
  		}
  	}
-@@ -1638,8 +1671,8 @@ static inline void __run_timers(struct t
+@@ -1626,8 +1659,8 @@ static inline void __run_timers(struct t
  		while (levels--)
  			expire_timers(base, heads + levels);
  	}
@@ -146,7 +146,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /*
-@@ -1881,6 +1914,9 @@ static void __init init_timer_cpu(int cp
+@@ -1849,6 +1882,9 @@ static void __init init_timer_cpu(int cp
  		base->cpu = cpu;
  		raw_spin_lock_init(&base->lock);
  		base->clk = jiffies;

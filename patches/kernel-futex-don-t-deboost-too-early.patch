@@ -48,7 +48,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  extern void __lockfunc rt_spin_unlock_wait(spinlock_t *lock);
  extern int __lockfunc rt_spin_trylock_irqsave(spinlock_t *lock, unsigned long *flags);
  extern int __lockfunc rt_spin_trylock_bh(spinlock_t *lock);
-@@ -112,6 +113,7 @@ static inline unsigned long spin_lock_tr
+@@ -111,6 +112,7 @@ static inline unsigned long spin_lock_tr
  #define spin_lock_nest_lock(lock, nest_lock) spin_lock_nested(lock, 0)
  
  #define spin_unlock(lock)			rt_spin_unlock(lock)
@@ -58,7 +58,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	do {						\
 --- a/kernel/futex.c
 +++ b/kernel/futex.c
-@@ -1347,7 +1347,7 @@ static int wake_futex_pi(u32 __user *uad
+@@ -1368,7 +1368,7 @@ static int wake_futex_pi(u32 __user *uad
  	 * deboost first (and lose our higher priority), then the task might get
  	 * scheduled away before the wake up can take place.
  	 */
@@ -69,7 +69,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	if (deboost)
 --- a/kernel/locking/rtmutex.c
 +++ b/kernel/locking/rtmutex.c
-@@ -934,13 +934,14 @@ static inline void rt_spin_lock_fastlock
+@@ -933,13 +933,14 @@ static inline void rt_spin_lock_fastlock
  		slowfn(lock);
  }
  
@@ -89,7 +89,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  }
  #ifdef CONFIG_SMP
  /*
-@@ -1075,7 +1076,7 @@ static void mark_wakeup_next_waiter(stru
+@@ -1074,7 +1075,7 @@ static void mark_wakeup_next_waiter(stru
  /*
   * Slow path to release a rt_mutex spin_lock style
   */
@@ -98,7 +98,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  {
  	unsigned long flags;
  	WAKE_Q(wake_q);
-@@ -1090,7 +1091,7 @@ static void  noinline __sched rt_spin_lo
+@@ -1089,7 +1090,7 @@ static void  noinline __sched rt_spin_lo
  	if (!rt_mutex_has_waiters(lock)) {
  		lock->owner = NULL;
  		raw_spin_unlock_irqrestore(&lock->wait_lock, flags);
@@ -107,7 +107,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	}
  
  	mark_wakeup_next_waiter(&wake_q, &wake_sleeper_q, lock);
-@@ -1101,6 +1102,33 @@ static void  noinline __sched rt_spin_lo
+@@ -1100,6 +1101,33 @@ static void  noinline __sched rt_spin_lo
  
  	/* Undo pi boosting.when necessary */
  	rt_mutex_adjust_prio(current);
@@ -141,7 +141,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  }
  
  void __lockfunc rt_spin_lock__no_mg(spinlock_t *lock)
-@@ -1158,6 +1186,17 @@ void __lockfunc rt_spin_unlock(spinlock_
+@@ -1157,6 +1185,17 @@ void __lockfunc rt_spin_unlock(spinlock_
  }
  EXPORT_SYMBOL(rt_spin_unlock);
  

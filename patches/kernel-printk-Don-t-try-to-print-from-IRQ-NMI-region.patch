@@ -15,7 +15,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/kernel/printk/printk.c
 +++ b/kernel/printk/printk.c
-@@ -1502,6 +1502,11 @@ static void call_console_drivers(int lev
+@@ -1631,6 +1631,11 @@ static void call_console_drivers(int lev
  	if (!console_drivers)
  		return;
  
@@ -27,7 +27,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	migrate_disable();
  	for_each_console(con) {
  		if (exclusive_console && con != exclusive_console)
-@@ -2434,6 +2439,11 @@ void console_unblank(void)
+@@ -2565,6 +2570,11 @@ void console_unblank(void)
  {
  	struct console *c;
  

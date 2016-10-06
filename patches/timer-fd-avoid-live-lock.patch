@@ -16,7 +16,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/fs/timerfd.c
 +++ b/fs/timerfd.c
-@@ -450,7 +450,10 @@ static int do_timerfd_settime(int ufd, i
+@@ -460,7 +460,10 @@ static int do_timerfd_settime(int ufd, i
  				break;
  		}
  		spin_unlock_irq(&ctx->wqh.lock);

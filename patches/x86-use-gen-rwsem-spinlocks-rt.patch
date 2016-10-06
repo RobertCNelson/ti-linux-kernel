@@ -13,7 +13,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/arch/x86/Kconfig
 +++ b/arch/x86/Kconfig
-@@ -230,8 +230,11 @@ config ARCH_MAY_HAVE_PC_FDC
+@@ -231,8 +231,11 @@ config ARCH_MAY_HAVE_PC_FDC
  	def_bool y
  	depends on ISA_DMA_API
  

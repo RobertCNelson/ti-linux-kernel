@@ -122,7 +122,7 @@ Signed-off-by: Carsten Emde <C.Emde@osadl.org>
  	depends on PCI
 --- a/drivers/misc/Makefile
 +++ b/drivers/misc/Makefile
-@@ -39,6 +39,7 @@ obj-$(CONFIG_C2PORT)		+= c2port/
+@@ -38,6 +38,7 @@ obj-$(CONFIG_C2PORT)		+= c2port/
  obj-$(CONFIG_HMC6352)		+= hmc6352.o
  obj-y				+= eeprom/
  obj-y				+= cb710/

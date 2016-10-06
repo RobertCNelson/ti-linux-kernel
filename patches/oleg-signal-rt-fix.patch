@@ -38,7 +38,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/arch/x86/entry/common.c
 +++ b/arch/x86/entry/common.c
-@@ -221,6 +221,13 @@ static void exit_to_usermode_loop(struct
+@@ -155,6 +155,13 @@ static void exit_to_usermode_loop(struct
  		if (cached_flags & _TIF_NEED_RESCHED)
  			schedule();
  
@@ -76,7 +76,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #endif
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -1600,6 +1600,10 @@ struct task_struct {
+@@ -1670,6 +1670,10 @@ struct task_struct {
  	sigset_t blocked, real_blocked;
  	sigset_t saved_sigmask;	/* restored if set_restore_sigmask() was used */
  	struct sigpending pending;

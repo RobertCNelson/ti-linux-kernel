@@ -23,8 +23,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 +#include <linux/locallock.h>
  #include <uapi/linux/netfilter/x_tables.h>
  
- /**
-@@ -292,6 +293,8 @@ void xt_free_table_info(struct xt_table_
+ /* Test a struct->invflags and a boolean for inequality */
+@@ -300,6 +301,8 @@ void xt_free_table_info(struct xt_table_
   */
  DECLARE_PER_CPU(seqcount_t, xt_recseq);
  
@@ -33,7 +33,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /* xt_tee_enabled - true if x_tables needs to handle reentrancy
   *
   * Enabled if current ip(6)tables ruleset has at least one -j TEE rule.
-@@ -312,6 +315,9 @@ static inline unsigned int xt_write_recs
+@@ -320,6 +323,9 @@ static inline unsigned int xt_write_recs
  {
  	unsigned int addend;
  
@@ -43,7 +43,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	/*
  	 * Low order bit of sequence is set if we already
  	 * called xt_write_recseq_begin().
-@@ -342,6 +348,7 @@ static inline void xt_write_recseq_end(u
+@@ -350,6 +356,7 @@ static inline void xt_write_recseq_end(u
  	/* this is kind of a write_seqcount_end(), but addend is 0 or 1 */
  	smp_wmb();
  	__this_cpu_add(xt_recseq.sequence, addend);

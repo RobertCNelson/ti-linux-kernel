@@ -100,7 +100,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  #endif /* defined(_LINUX_DELAY_H) */
 --- a/kernel/time/hrtimer.c
 +++ b/kernel/time/hrtimer.c
-@@ -1788,6 +1788,25 @@ SYSCALL_DEFINE2(nanosleep, struct timesp
+@@ -1768,6 +1768,25 @@ SYSCALL_DEFINE2(nanosleep, struct timesp
  	return hrtimer_nanosleep(&tu, rmtp, HRTIMER_MODE_REL, CLOCK_MONOTONIC);
  }
  

@@ -34,7 +34,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	} else
  		del_timer_sync(&buf->timer);
  
-@@ -736,15 +741,6 @@ size_t relay_switch_subbuf(struct rchan_
+@@ -767,15 +772,6 @@ size_t relay_switch_subbuf(struct rchan_
  		else
  			buf->early_bytes += buf->chan->subbuf_size -
  					    buf->padding[old_subbuf];

@@ -13,15 +13,15 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -1718,6 +1718,7 @@ choice
+@@ -1761,6 +1761,7 @@ choice
  
  config SLAB
  	bool "SLAB"
 +	depends on !PREEMPT_RT_FULL
+ 	select HAVE_HARDENED_USERCOPY_ALLOCATOR
  	help
  	  The regular slab allocator that is established and known to work
- 	  well in all environments. It organizes cache hot objects in
-@@ -1736,6 +1737,7 @@ config SLUB
+@@ -1781,6 +1782,7 @@ config SLUB
  config SLOB
  	depends on EXPERT
  	bool "SLOB (Simple Allocator)"

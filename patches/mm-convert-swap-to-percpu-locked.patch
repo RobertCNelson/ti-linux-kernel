@@ -12,12 +12,12 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  include/linux/swap.h |    1 +
  mm/compaction.c      |    6 ++++--
  mm/page_alloc.c      |    2 ++
- mm/swap.c            |   39 +++++++++++++++++++++++----------------
- 4 files changed, 30 insertions(+), 18 deletions(-)
+ mm/swap.c            |   38 ++++++++++++++++++++++----------------
+ 4 files changed, 29 insertions(+), 18 deletions(-)
 
 --- a/include/linux/swap.h
 +++ b/include/linux/swap.h
-@@ -297,6 +297,7 @@ extern unsigned long nr_free_pagecache_p
+@@ -290,6 +290,7 @@ extern unsigned long nr_free_pagecache_p
  
  
  /* linux/mm/swap.c */
@@ -27,8 +27,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  extern void lru_cache_add_file(struct page *page);
 --- a/mm/compaction.c
 +++ b/mm/compaction.c
-@@ -1409,10 +1409,12 @@ static int compact_zone(struct zone *zon
- 				cc->migrate_pfn & ~((1UL << cc->order) - 1);
+@@ -1585,10 +1585,12 @@ static enum compact_result compact_zone(
+ 				block_start_pfn(cc->migrate_pfn, cc->order);
  
  			if (cc->last_migrated_pfn < current_block_start) {
 -				cpu = get_cpu();
@@ -44,7 +44,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  			}
 --- a/mm/page_alloc.c
 +++ b/mm/page_alloc.c
-@@ -6276,7 +6276,9 @@ static int page_alloc_cpu_notify(struct
+@@ -6590,7 +6590,9 @@ static int page_alloc_cpu_notify(struct
  	int cpu = (unsigned long)hcpu;
  
  	if (action == CPU_DEAD || action == CPU_DEAD_FROZEN) {
@@ -64,17 +64,16 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #include <linux/hugetlb.h>
  #include <linux/page_idle.h>
  
-@@ -48,6 +49,9 @@ static DEFINE_PER_CPU(struct pagevec, lr
- static DEFINE_PER_CPU(struct pagevec, lru_deactivate_file_pvecs);
- static DEFINE_PER_CPU(struct pagevec, lru_deactivate_pvecs);
- 
+@@ -50,6 +51,8 @@ static DEFINE_PER_CPU(struct pagevec, lr
+ #ifdef CONFIG_SMP
+ static DEFINE_PER_CPU(struct pagevec, activate_page_pvecs);
+ #endif
 +static DEFINE_LOCAL_IRQ_LOCK(rotate_lock);
 +DEFINE_LOCAL_IRQ_LOCK(swapvec_lock);
-+
+ 
  /*
   * This path almost never happens for VM activity - pages are normally
-  * freed via pagevecs.  But it gets used by networking.
-@@ -237,11 +241,11 @@ void rotate_reclaimable_page(struct page
+@@ -240,11 +243,11 @@ void rotate_reclaimable_page(struct page
  		unsigned long flags;
  
  		get_page(page);
@@ -88,9 +87,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	}
  }
  
-@@ -292,12 +296,13 @@ static bool need_activate_page_drain(int
- void activate_page(struct page *page)
+@@ -294,12 +297,13 @@ void activate_page(struct page *page)
  {
+ 	page = compound_head(page);
  	if (PageLRU(page) && !PageActive(page) && !PageUnevictable(page)) {
 -		struct pagevec *pvec = &get_cpu_var(activate_page_pvecs);
 +		struct pagevec *pvec = &get_locked_var(swapvec_lock,
@@ -104,7 +103,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	}
  }
  
-@@ -323,7 +328,7 @@ void activate_page(struct page *page)
+@@ -326,7 +330,7 @@ void activate_page(struct page *page)
  
  static void __lru_cache_activate_page(struct page *page)
  {
@@ -113,7 +112,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	int i;
  
  	/*
-@@ -345,7 +350,7 @@ static void __lru_cache_activate_page(st
+@@ -348,7 +352,7 @@ static void __lru_cache_activate_page(st
  		}
  	}
  
@@ -122,7 +121,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /*
-@@ -387,12 +392,12 @@ EXPORT_SYMBOL(mark_page_accessed);
+@@ -390,12 +394,12 @@ EXPORT_SYMBOL(mark_page_accessed);
  
  static void __lru_cache_add(struct page *page)
  {
@@ -137,7 +136,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /**
-@@ -590,9 +595,9 @@ void lru_add_drain_cpu(int cpu)
+@@ -593,9 +597,9 @@ void lru_add_drain_cpu(int cpu)
  		unsigned long flags;
  
  		/* No harm done if a racing interrupt already did this */
@@ -149,7 +148,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	}
  
  	pvec = &per_cpu(lru_deactivate_file_pvecs, cpu);
-@@ -624,11 +629,12 @@ void deactivate_file_page(struct page *p
+@@ -627,11 +631,12 @@ void deactivate_file_page(struct page *p
  		return;
  
  	if (likely(get_page_unless_zero(page))) {
@@ -164,7 +163,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	}
  }
  
-@@ -643,19 +649,20 @@ void deactivate_file_page(struct page *p
+@@ -646,19 +651,20 @@ void deactivate_file_page(struct page *p
  void deactivate_page(struct page *page)
  {
  	if (PageLRU(page) && PageActive(page) && !PageUnevictable(page)) {

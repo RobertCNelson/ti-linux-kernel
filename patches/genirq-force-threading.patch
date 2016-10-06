@@ -13,7 +13,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/include/linux/interrupt.h
 +++ b/include/linux/interrupt.h
-@@ -390,9 +390,13 @@ extern int irq_set_irqchip_state(unsigne
+@@ -398,9 +398,13 @@ extern int irq_set_irqchip_state(unsigne
  				 bool state);
  
  #ifdef CONFIG_IRQ_FORCED_THREADING

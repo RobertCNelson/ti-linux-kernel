@@ -35,7 +35,7 @@ Signed-off-by: Sebastian Andrzej Siewior <sebastian@breakpoint.cc>
  
  #include "rtmutex_common.h"
  
-@@ -1219,6 +1220,40 @@ EXPORT_SYMBOL(__rt_spin_lock_init);
+@@ -1296,6 +1297,40 @@ EXPORT_SYMBOL(__rt_spin_lock_init);
  
  #endif /* PREEMPT_RT_FULL */
  
@@ -76,7 +76,7 @@ Signed-off-by: Sebastian Andrzej Siewior <sebastian@breakpoint.cc>
  static inline int
  try_to_take_rt_mutex(struct rt_mutex *lock, struct task_struct *task,
  		     struct rt_mutex_waiter *waiter)
-@@ -1473,7 +1508,8 @@ void rt_mutex_adjust_pi(struct task_stru
+@@ -1550,7 +1585,8 @@ void rt_mutex_adjust_pi(struct task_stru
  static int __sched
  __rt_mutex_slowlock(struct rt_mutex *lock, int state,
  		    struct hrtimer_sleeper *timeout,
@@ -86,7 +86,7 @@ Signed-off-by: Sebastian Andrzej Siewior <sebastian@breakpoint.cc>
  {
  	int ret = 0;
  
-@@ -1496,6 +1532,12 @@ static int __sched
+@@ -1573,6 +1609,12 @@ static int __sched
  				break;
  		}
  
@@ -99,7 +99,7 @@ Signed-off-by: Sebastian Andrzej Siewior <sebastian@breakpoint.cc>
  		raw_spin_unlock_irq(&lock->wait_lock);
  
  		debug_rt_mutex_print_deadlock(waiter);
-@@ -1530,13 +1572,90 @@ static void rt_mutex_handle_deadlock(int
+@@ -1607,13 +1649,90 @@ static void rt_mutex_handle_deadlock(int
  	}
  }
  
@@ -191,7 +191,7 @@ Signed-off-by: Sebastian Andrzej Siewior <sebastian@breakpoint.cc>
  {
  	struct rt_mutex_waiter waiter;
  	unsigned long flags;
-@@ -1556,6 +1675,8 @@ rt_mutex_slowlock(struct rt_mutex *lock,
+@@ -1633,6 +1752,8 @@ rt_mutex_slowlock(struct rt_mutex *lock,
  
  	/* Try to acquire the lock again: */
  	if (try_to_take_rt_mutex(lock, current, NULL)) {
@@ -200,7 +200,7 @@ Signed-off-by: Sebastian Andrzej Siewior <sebastian@breakpoint.cc>
  		raw_spin_unlock_irqrestore(&lock->wait_lock, flags);
  		return 0;
  	}
-@@ -1570,13 +1691,23 @@ rt_mutex_slowlock(struct rt_mutex *lock,
+@@ -1647,13 +1768,23 @@ rt_mutex_slowlock(struct rt_mutex *lock,
  
  	if (likely(!ret))
  		/* sleep on the mutex */
@@ -226,7 +226,7 @@ Signed-off-by: Sebastian Andrzej Siewior <sebastian@breakpoint.cc>
  	}
  
  	/*
-@@ -1709,31 +1840,36 @@ static bool __sched rt_mutex_slowunlock(
+@@ -1786,31 +1917,36 @@ static bool __sched rt_mutex_slowunlock(
   */
  static inline int
  rt_mutex_fastlock(struct rt_mutex *lock, int state,
@@ -267,7 +267,7 @@ Signed-off-by: Sebastian Andrzej Siewior <sebastian@breakpoint.cc>
  }
  
  static inline int
-@@ -1780,7 +1916,7 @@ void __sched rt_mutex_lock(struct rt_mut
+@@ -1857,7 +1993,7 @@ void __sched rt_mutex_lock(struct rt_mut
  {
  	might_sleep();
  
@@ -276,7 +276,7 @@ Signed-off-by: Sebastian Andrzej Siewior <sebastian@breakpoint.cc>
  }
  EXPORT_SYMBOL_GPL(rt_mutex_lock);
  
-@@ -1797,7 +1933,7 @@ int __sched rt_mutex_lock_interruptible(
+@@ -1874,7 +2010,7 @@ int __sched rt_mutex_lock_interruptible(
  {
  	might_sleep();
  
@@ -285,7 +285,7 @@ Signed-off-by: Sebastian Andrzej Siewior <sebastian@breakpoint.cc>
  }
  EXPORT_SYMBOL_GPL(rt_mutex_lock_interruptible);
  
-@@ -1810,7 +1946,7 @@ int rt_mutex_timed_futex_lock(struct rt_
+@@ -1887,7 +2023,7 @@ int rt_mutex_timed_futex_lock(struct rt_
  	might_sleep();
  
  	return rt_mutex_timed_fastlock(lock, TASK_INTERRUPTIBLE, timeout,
@@ -294,7 +294,7 @@ Signed-off-by: Sebastian Andrzej Siewior <sebastian@breakpoint.cc>
  				       rt_mutex_slowlock);
  }
  
-@@ -1829,7 +1965,7 @@ int __sched rt_mutex_lock_killable(struc
+@@ -1906,7 +2042,7 @@ int __sched rt_mutex_lock_killable(struc
  {
  	might_sleep();
  
@@ -303,7 +303,7 @@ Signed-off-by: Sebastian Andrzej Siewior <sebastian@breakpoint.cc>
  }
  EXPORT_SYMBOL_GPL(rt_mutex_lock_killable);
  
-@@ -1853,6 +1989,7 @@ rt_mutex_timed_lock(struct rt_mutex *loc
+@@ -1930,6 +2066,7 @@ rt_mutex_timed_lock(struct rt_mutex *loc
  
  	return rt_mutex_timed_fastlock(lock, TASK_INTERRUPTIBLE, timeout,
  				       RT_MUTEX_MIN_CHAINWALK,
@@ -311,7 +311,7 @@ Signed-off-by: Sebastian Andrzej Siewior <sebastian@breakpoint.cc>
  				       rt_mutex_slowlock);
  }
  EXPORT_SYMBOL_GPL(rt_mutex_timed_lock);
-@@ -2107,7 +2244,7 @@ int rt_mutex_finish_proxy_lock(struct rt
+@@ -2184,7 +2321,7 @@ int rt_mutex_finish_proxy_lock(struct rt
  	set_current_state(TASK_INTERRUPTIBLE);
  
  	/* sleep on the mutex */
@@ -320,7 +320,7 @@ Signed-off-by: Sebastian Andrzej Siewior <sebastian@breakpoint.cc>
  
  	if (unlikely(ret))
  		remove_waiter(lock, waiter);
-@@ -2123,24 +2260,88 @@ int rt_mutex_finish_proxy_lock(struct rt
+@@ -2200,24 +2337,88 @@ int rt_mutex_finish_proxy_lock(struct rt
  	return ret;
  }
  

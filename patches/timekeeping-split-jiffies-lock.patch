@@ -75,7 +75,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 @@ -62,7 +62,8 @@ static void tick_do_update_jiffies64(kti
  		return;
  
- 	/* Reevalute with jiffies_lock held */
+ 	/* Reevaluate with jiffies_lock held */
 -	write_seqlock(&jiffies_lock);
 +	raw_spin_lock(&jiffies_lock);
 +	write_seqcount_begin(&jiffies_seq);
@@ -129,7 +129,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	if (rcu_needs_cpu(basemono, &next_rcu) ||
 --- a/kernel/time/timekeeping.c
 +++ b/kernel/time/timekeeping.c
-@@ -2319,8 +2319,10 @@ EXPORT_SYMBOL(hardpps);
+@@ -2325,8 +2325,10 @@ EXPORT_SYMBOL(hardpps);
   */
  void xtime_update(unsigned long ticks)
  {

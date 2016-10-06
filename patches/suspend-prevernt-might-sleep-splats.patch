@@ -25,7 +25,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/include/linux/kernel.h
 +++ b/include/linux/kernel.h
-@@ -484,6 +484,7 @@ extern enum system_states {
+@@ -491,6 +491,7 @@ extern enum system_states {
  	SYSTEM_HALT,
  	SYSTEM_POWER_OFF,
  	SYSTEM_RESTART,
@@ -35,7 +35,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #define TAINT_PROPRIETARY_MODULE	0
 --- a/kernel/power/hibernate.c
 +++ b/kernel/power/hibernate.c
-@@ -285,6 +285,8 @@ static int create_image(int platform_mod
+@@ -286,6 +286,8 @@ static int create_image(int platform_mod
  
  	local_irq_disable();
  
@@ -44,7 +44,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	error = syscore_suspend();
  	if (error) {
  		printk(KERN_ERR "PM: Some system devices failed to power down, "
-@@ -314,6 +316,7 @@ static int create_image(int platform_mod
+@@ -315,6 +317,7 @@ static int create_image(int platform_mod
  	syscore_resume();
  
   Enable_irqs:
@@ -52,7 +52,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	local_irq_enable();
  
   Enable_cpus:
-@@ -438,6 +441,7 @@ static int resume_target_kernel(bool pla
+@@ -444,6 +447,7 @@ static int resume_target_kernel(bool pla
  		goto Enable_cpus;
  
  	local_irq_disable();
@@ -60,7 +60,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	error = syscore_suspend();
  	if (error)
-@@ -471,6 +475,7 @@ static int resume_target_kernel(bool pla
+@@ -477,6 +481,7 @@ static int resume_target_kernel(bool pla
  	syscore_resume();
  
   Enable_irqs:
@@ -68,7 +68,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	local_irq_enable();
  
   Enable_cpus:
-@@ -556,6 +561,7 @@ int hibernation_platform_enter(void)
+@@ -562,6 +567,7 @@ int hibernation_platform_enter(void)
  		goto Enable_cpus;
  
  	local_irq_disable();
@@ -76,7 +76,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	syscore_suspend();
  	if (pm_wakeup_pending()) {
  		error = -EAGAIN;
-@@ -568,6 +574,7 @@ int hibernation_platform_enter(void)
+@@ -574,6 +580,7 @@ int hibernation_platform_enter(void)
  
   Power_up:
  	syscore_resume();
@@ -86,7 +86,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
   Enable_cpus:
 --- a/kernel/power/suspend.c
 +++ b/kernel/power/suspend.c
-@@ -359,6 +359,8 @@ static int suspend_enter(suspend_state_t
+@@ -361,6 +361,8 @@ static int suspend_enter(suspend_state_t
  	arch_suspend_disable_irqs();
  	BUG_ON(!irqs_disabled());
  
@@ -95,7 +95,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	error = syscore_suspend();
  	if (!error) {
  		*wakeup = pm_wakeup_pending();
-@@ -375,6 +377,8 @@ static int suspend_enter(suspend_state_t
+@@ -377,6 +379,8 @@ static int suspend_enter(suspend_state_t
  		syscore_resume();
  	}
  

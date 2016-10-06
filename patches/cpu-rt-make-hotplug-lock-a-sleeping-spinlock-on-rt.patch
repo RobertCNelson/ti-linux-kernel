@@ -19,8 +19,8 @@ Cc: Clark Williams <clark.williams@gmail.com>
 Link: http://lkml.kernel.org/r/1330702617.25686.265.camel@gandalf.stny.rr.com
 Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 ---
- kernel/cpu.c |   34 +++++++++++++++++++++++++++-------
- 1 file changed, 27 insertions(+), 7 deletions(-)
+ kernel/cpu.c |   32 +++++++++++++++++++++++++-------
+ 1 file changed, 25 insertions(+), 7 deletions(-)
 
 --- a/kernel/cpu.c
 +++ b/kernel/cpu.c
@@ -41,7 +41,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	/*
  	 * Also blocks the new readers during
  	 * an ongoing cpu hotplug operation.
-@@ -153,12 +159,26 @@ static struct {
+@@ -153,12 +159,24 @@ static struct {
  } cpu_hotplug = {
  	.active_writer = NULL,
  	.wq = __WAIT_QUEUE_HEAD_INITIALIZER(cpu_hotplug.wq),
@@ -56,19 +56,17 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  };
  
 +#ifdef CONFIG_PREEMPT_RT_FULL
-+# define hotplug_lock()		rt_spin_lock(&cpu_hotplug.lock)
-+# define hotplug_trylock()	rt_spin_trylock(&cpu_hotplug.lock)
-+# define hotplug_unlock()	rt_spin_unlock(&cpu_hotplug.lock)
++# define hotplug_lock()		rt_spin_lock__no_mg(&cpu_hotplug.lock)
++# define hotplug_unlock()	rt_spin_unlock__no_mg(&cpu_hotplug.lock)
 +#else
 +# define hotplug_lock()		mutex_lock(&cpu_hotplug.lock)
-+# define hotplug_trylock()	mutex_trylock(&cpu_hotplug.lock)
 +# define hotplug_unlock()	mutex_unlock(&cpu_hotplug.lock)
 +#endif
 +
  /* Lockdep annotations for get/put_online_cpus() and cpu_hotplug_begin/end() */
  #define cpuhp_lock_acquire_read() lock_map_acquire_read(&cpu_hotplug.dep_map)
  #define cpuhp_lock_acquire_tryread() \
-@@ -195,8 +215,8 @@ void pin_current_cpu(void)
+@@ -195,8 +213,8 @@ void pin_current_cpu(void)
  		return;
  	}
  	preempt_enable();
@@ -79,7 +77,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	preempt_disable();
  	goto retry;
  }
-@@ -269,9 +289,9 @@ void get_online_cpus(void)
+@@ -269,9 +287,9 @@ void get_online_cpus(void)
  	if (cpu_hotplug.active_writer == current)
  		return;
  	cpuhp_lock_acquire_read();
@@ -91,7 +89,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  EXPORT_SYMBOL_GPL(get_online_cpus);
  
-@@ -324,11 +344,11 @@ void cpu_hotplug_begin(void)
+@@ -324,11 +342,11 @@ void cpu_hotplug_begin(void)
  	cpuhp_lock_acquire();
  
  	for (;;) {
@@ -105,7 +103,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		schedule();
  	}
  	finish_wait(&cpu_hotplug.wq, &wait);
-@@ -337,7 +357,7 @@ void cpu_hotplug_begin(void)
+@@ -337,7 +355,7 @@ void cpu_hotplug_begin(void)
  void cpu_hotplug_done(void)
  {
  	cpu_hotplug.active_writer = NULL;

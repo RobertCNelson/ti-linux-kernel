@@ -21,7 +21,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/drivers/cpufreq/Kconfig.x86
 +++ b/drivers/cpufreq/Kconfig.x86
-@@ -123,7 +123,7 @@ config X86_POWERNOW_K7_ACPI
+@@ -124,7 +124,7 @@ config X86_POWERNOW_K7_ACPI
  
  config X86_POWERNOW_K8
  	tristate "AMD Opteron/Athlon64 PowerNow!"

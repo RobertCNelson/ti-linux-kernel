@@ -12,7 +12,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/drivers/mmc/host/mmci.c
 +++ b/drivers/mmc/host/mmci.c
-@@ -1155,15 +1155,12 @@ static irqreturn_t mmci_pio_irq(int irq,
+@@ -1147,15 +1147,12 @@ static irqreturn_t mmci_pio_irq(int irq,
  	struct sg_mapping_iter *sg_miter = &host->sg_miter;
  	struct variant_data *variant = host->variant;
  	void __iomem *base = host->base;
@@ -28,7 +28,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	do {
  		unsigned int remain, len;
  		char *buffer;
-@@ -1203,8 +1200,6 @@ static irqreturn_t mmci_pio_irq(int irq,
+@@ -1195,8 +1192,6 @@ static irqreturn_t mmci_pio_irq(int irq,
  
  	sg_miter_stop(sg_miter);
  

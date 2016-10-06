@@ -10,12 +10,12 @@ Reported-by: Luis Claudio R. Goncalves <lclaudio@uudg.org>
 
 Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 ---
- drivers/md/dm.c |    2 +-
+ drivers/md/dm-rq.c |    2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
---- a/drivers/md/dm.c
-+++ b/drivers/md/dm.c
-@@ -2187,7 +2187,7 @@ static void dm_request_fn(struct request
+--- a/drivers/md/dm-rq.c
++++ b/drivers/md/dm-rq.c
+@@ -802,7 +802,7 @@ static void dm_old_request_fn(struct req
  		/* Establish tio->ti before queuing work (map_tio_request) */
  		tio->ti = ti;
  		queue_kthread_work(&md->kworker, &tio->work);

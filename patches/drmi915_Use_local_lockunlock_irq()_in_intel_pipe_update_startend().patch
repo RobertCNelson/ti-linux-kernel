@@ -69,7 +69,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  static bool
  format_is_yuv(uint32_t format)
-@@ -64,6 +65,8 @@ static int usecs_to_scanlines(const stru
+@@ -64,6 +65,8 @@ int intel_usecs_to_scanlines(const struc
  			    1000 * adjusted_mode->crtc_htotal);
  }
  
@@ -78,8 +78,8 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /**
   * intel_pipe_update_start() - start update of a set of display registers
   * @crtc: the crtc of which the registers are going to be updated
-@@ -96,7 +99,7 @@ void intel_pipe_update_start(struct inte
- 	min = vblank_start - usecs_to_scanlines(adjusted_mode, 100);
+@@ -94,7 +97,7 @@ void intel_pipe_update_start(struct inte
+ 	min = vblank_start - intel_usecs_to_scanlines(adjusted_mode, 100);
  	max = vblank_start - 1;
  
 -	local_irq_disable();
@@ -87,7 +87,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  	if (min <= 0 || max <= 0)
  		return;
-@@ -126,11 +129,11 @@ void intel_pipe_update_start(struct inte
+@@ -124,11 +127,11 @@ void intel_pipe_update_start(struct inte
  			break;
  		}
  
@@ -101,9 +101,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	}
  
  	finish_wait(wq, &wait);
-@@ -164,7 +167,7 @@ void intel_pipe_update_end(struct intel_
- 
- 	trace_i915_pipe_update_end(crtc, end_vbl_count, scanline_end);
+@@ -180,7 +183,7 @@ void intel_pipe_update_end(struct intel_
+ 		crtc->base.state->event = NULL;
+ 	}
  
 -	local_irq_enable();
 +	local_unlock_irq(pipe_update_lock);
