@@ -129,7 +129,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	if (rcu_needs_cpu(basemono, &next_rcu) ||
 --- a/kernel/time/timekeeping.c
 +++ b/kernel/time/timekeeping.c
-@@ -2325,8 +2325,10 @@ EXPORT_SYMBOL(hardpps);
+@@ -2328,8 +2328,10 @@ EXPORT_SYMBOL(hardpps);
   */
  void xtime_update(unsigned long ticks)
  {

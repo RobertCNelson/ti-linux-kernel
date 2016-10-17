@@ -1,7 +1,6 @@
 ###########################################################
 # DELTA against a known Linus release
 ###########################################################
-Using-BUG_ON-as-an-assert-is-_never_-acceptable.patch
 mm-filemap-don-t-plant-shadow-entries-without-radix-.patch
 mm-filemap-fix-mapping-nrpages-double-accounting-in-.patch
 
