@@ -7569,7 +7569,7 @@ int sched_cpu_dying(unsigned int cpu)
 	nohz_balance_exit_idle(cpu);
 	hrtick_clear(rq);
 	if (per_cpu(idle_last_mm, cpu)) {
-		mmdrop(per_cpu(idle_last_mm, cpu));
+		mmdrop_delayed(per_cpu(idle_last_mm, cpu));
 		per_cpu(idle_last_mm, cpu) = NULL;
 	}
 	return 0;
