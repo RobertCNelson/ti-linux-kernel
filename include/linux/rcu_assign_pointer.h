@@ -1,6 +1,7 @@
 #ifndef __LINUX_RCU_ASSIGN_POINTER_H__
 #define __LINUX_RCU_ASSIGN_POINTER_H__
 #include <linux/compiler.h>
+#include <asm/barrier.h>
 
 /**
  * RCU_INITIALIZER() - statically initialize an RCU-protected global variable
