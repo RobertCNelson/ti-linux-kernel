@@ -878,7 +878,7 @@ static void wake_up_worker(struct worker_pool *pool)
 
 /**
  * wq_worker_running - a worker is running again
- * @cpu: CPU @task is waking up to
+ * @task: task waking up
  *
  * This function is called when a worker returns from schedule()
  */
