@@ -282,6 +282,7 @@ need_resched:
 	cmpl $_PREEMPT_ENABLED,PER_CPU_VAR(__preempt_count)
 	jne restore_all
 
+	GET_THREAD_INFO(%ebp)
 	cmpl $0,TI_preempt_lazy_count(%ebp)	# non-zero preempt_lazy_count ?
 	jnz restore_all
 
