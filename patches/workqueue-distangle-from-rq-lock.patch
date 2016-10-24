@@ -161,9 +161,9 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
  /**
 - * wq_worker_waking_up - a worker is waking up
-- * @task: task waking up
 + * wq_worker_running - a worker is running again
-  * @cpu: CPU @task is waking up to
+  * @task: task waking up
+- * @cpu: CPU @task is waking up to
   *
 - * This function is called during try_to_wake_up() when a worker is
 - * being awoken.

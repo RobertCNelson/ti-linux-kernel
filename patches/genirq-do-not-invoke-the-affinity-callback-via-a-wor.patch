@@ -10,9 +10,9 @@ This patch uses swork_queue() instead.
 Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 ---
  drivers/scsi/qla2xxx/qla_isr.c |    4 +++
- include/linux/interrupt.h      |    5 ++++
+ include/linux/interrupt.h      |    6 +++++
  kernel/irq/manage.c            |   43 ++++++++++++++++++++++++++++++++++++++---
- 3 files changed, 49 insertions(+), 3 deletions(-)
+ 3 files changed, 50 insertions(+), 3 deletions(-)
 
 --- a/drivers/scsi/qla2xxx/qla_isr.c
 +++ b/drivers/scsi/qla2xxx/qla_isr.c
@@ -38,7 +38,15 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  #include <linux/atomic.h>
  #include <asm/ptrace.h>
-@@ -229,7 +230,11 @@ extern void resume_device_irqs(void);
+@@ -218,6 +219,7 @@ extern void resume_device_irqs(void);
+  * struct irq_affinity_notify - context for notification of IRQ affinity changes
+  * @irq:		Interrupt to which notification applies
+  * @kref:		Reference count, for internal use
++ * @swork:		Swork item, for internal use
+  * @work:		Work item, for internal use
+  * @notify:		Function to be called on change.  This will be
+  *			called in process context.
+@@ -229,7 +231,11 @@ extern void resume_device_irqs(void);
  struct irq_affinity_notify {
  	unsigned int irq;
  	struct kref kref;

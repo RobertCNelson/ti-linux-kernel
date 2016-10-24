@@ -38,8 +38,12 @@ fs-dcache-init-in_lookup_hashtable.patch
 iommu-iova-don-t-disable-preempt-around-this_cpu_ptr.patch
 iommu-vt-d-don-t-disable-preemption-while-accessing-.patch
 lockdep-Quiet-gcc-about-dangerous-__builtin_return_a.patch
+x86-apic-get-rid-of-warning-acpi_ioapic_lock-defined.patch
+rxrpc-remove-unused-static-variables.patch
+kbuild-add-fno-PIE.patch
 
 # Wants a different fix for upstream
+NFSv4-replace-seqcount_t-with-a-seqlock_t.patch
 
 ############################################################
 # Submitted on LKML
@@ -247,7 +251,7 @@ mm-memcontrol-Don-t-call-schedule_work_on-in-preempt.patch
 mm-memcontrol-do_not_disable_irq.patch
 mm-memcontrol-mem_cgroup_migrate-replace-another-loc.patch
 mm-backing-dev-don-t-disable-IRQs-in-wb_congested_pu.patch
-mm-zsmalloc-Use-get-put_cpu_light-in-zs_map_object-z.patch
+mm_zsmalloc_copy_with_get_cpu_var_and_locking.patch
 
 # RADIX TREE
 radix-tree-rt-aware.patch
@@ -550,6 +554,7 @@ rcu-make-RCU_BOOST-default-on-RT.patch
 
 # PREEMPT LAZY
 preempt-lazy-support.patch
+ftrace-Fix-trace-header-alignment.patch
 x86-preempt-lazy.patch
 arm-preempt-lazy-support.patch
 powerpc-preempt-lazy-support.patch
@@ -561,7 +566,9 @@ leds-trigger-disable-CPU-trigger-on-RT.patch
 # DRIVERS
 mmci-remove-bogus-irq-save.patch
 cpufreq-drop-K8-s-driver-from-beeing-selected.patch
+connector-cn_proc-Protect-send_msg-with-a-local-lock.patch
 drivers-block-zram-Replace-bit-spinlocks-with-rtmute.patch
+drivers-zram-Don-t-disable-preemption-in-zcomp_strea.patch
 
 # I915
 drm-i915-drop-trace_i915_gem_ring_dispatch-onrt.patch
