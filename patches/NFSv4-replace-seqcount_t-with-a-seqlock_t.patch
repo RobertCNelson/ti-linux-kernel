@@ -1,7 +1,10 @@
-From 270706631839c60dfb6ed7ac7c1c7dde4cc1092f Mon Sep 17 00:00:00 2001
-From: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
-Date: Fri, 21 Oct 2016 18:07:24 +0200
-Subject: [RFC PATCH] NFSv4: replace seqcount_t with a seqlock_t
+Date:   Fri, 28 Oct 2016 23:05:11 +0200
+From:   Sebastian Andrzej Siewior <bigeasy@linutronix.de>
+To:     Trond Myklebust <trond.myklebust@primarydata.com>
+Cc:     Anna Schumaker <anna.schumaker@netapp.com>,
+        linux-nfs@vger.kernel.org, linux-kernel@vger.kernel.org,
+        tglx@linutronix.de
+Subject: NFSv4: replace seqcount_t with a seqlock_t
 
 The raw_write_seqcount_begin() in nfs4_reclaim_open_state() bugs me
 because it maps to preempt_disable() in -RT which I can't have at this
@@ -11,42 +14,19 @@ raw_write_seqcount_begin/end int nfs4_reclaim_open_state") because
 lockdep complained. The whole seqcount thing was introduced in commit
 c137afabe330 ("NFSv4: Allow the state manager to mark an open_owner as
 being recovered").
-I don't understand how it is possible that we don't end up with two
-writers for the same resource because the `sp->so_lock' lock is dropped
-is soon in the list_for_each_entry() loop. It might be the
-test_and_clear_bit() check in nfs4_do_reclaim() but it might clear one
-bit on each iteration so I *think* we could have two invocations of the
-same struct nfs4_state_owner in nfs4_reclaim_open_state().
-So there is that.
+The recovery threads runs only once.
+write_seqlock() does not work on !RT because it disables preemption and it the
+writer side is preemptible (has to remain so despite the fact that it will
+block readers).
 
-But back to the list_for_each_entry() macro.
-It seems that this `so_lock' lock protects the ->so_states list among
-other atomic_t & flags members. So at the begin of the loop we inc ->count
-ensuring that this field is not removed while we use it. So we drop the
-->so_lock lock during the loop. And after nfs4_reclaim_locks() invocation we
-nfs4_put_open_state() and then grab the ->so_lock again. So if we were the last
-user of this struct and we remove it, then the following list_next_entry()
-invocation is a use-after-free. Even if we use list_for_each_entry_safe() there
-is no guarantee that the following member is still valid because it might have
-been removed by something that invoked nfs4_put_open_state(), right?
-So there is this.
-
-However to address my initial problem I have here a patch :) So it uses
-a seqlock_t which ensures that there is only one writer at a time. So it
-should be basically what is happening now plus a tiny tiny tiny lock
-plus lockdep coverage. I tried to test this myself but I don't manage to get
-into this code path at all so I might be doing something wrong.
-
-Could you please check if this patch is working for you and whether my
-list_for_each_entry() observation is correct or not?
-
+Reported-by: kernel test robot <xiaolong.ye@intel.com>
 Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 ---
  fs/nfs/delegation.c |    4 ++--
  fs/nfs/nfs4_fs.h    |    2 +-
  fs/nfs/nfs4proc.c   |    4 ++--
- fs/nfs/nfs4state.c  |   10 ++++------
- 4 files changed, 9 insertions(+), 11 deletions(-)
+ fs/nfs/nfs4state.c  |   22 ++++++++++++++++------
+ 4 files changed, 21 insertions(+), 11 deletions(-)
 
 --- a/fs/nfs/delegation.c
 +++ b/fs/nfs/delegation.c
@@ -106,30 +86,42 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	mutex_init(&sp->so_delegreturn_mutex);
  	return sp;
  }
-@@ -1459,8 +1459,8 @@ static int nfs4_reclaim_open_state(struc
+@@ -1459,8 +1459,12 @@ static int nfs4_reclaim_open_state(struc
  	 * recovering after a network partition or a reboot from a
  	 * server that doesn't support a grace period.
  	 */
++#ifdef CONFIG_PREEMPT_RT_FULL
 +	write_seqlock(&sp->so_reclaim_seqlock);
++#else
++	write_seqcount_begin(&sp->so_reclaim_seqlock.seqcount);
++#endif
  	spin_lock(&sp->so_lock);
 -	raw_write_seqcount_begin(&sp->so_reclaim_seqcount);
  restart:
  	list_for_each_entry(state, &sp->so_states, open_states) {
  		if (!test_and_clear_bit(ops->state_flag_bit, &state->flags))
-@@ -1528,14 +1528,12 @@ static int nfs4_reclaim_open_state(struc
+@@ -1528,14 +1532,20 @@ static int nfs4_reclaim_open_state(struc
  		spin_lock(&sp->so_lock);
  		goto restart;
  	}
 -	raw_write_seqcount_end(&sp->so_reclaim_seqcount);
  	spin_unlock(&sp->so_lock);
++#ifdef CONFIG_PREEMPT_RT_FULL
 +	write_sequnlock(&sp->so_reclaim_seqlock);
++#else
++	write_seqcount_end(&sp->so_reclaim_seqlock.seqcount);
++#endif
  	return 0;
  out_err:
  	nfs4_put_open_state(state);
 -	spin_lock(&sp->so_lock);
 -	raw_write_seqcount_end(&sp->so_reclaim_seqcount);
 -	spin_unlock(&sp->so_lock);
++#ifdef CONFIG_PREEMPT_RT_FULL
 +	write_sequnlock(&sp->so_reclaim_seqlock);
++#else
++	write_seqcount_end(&sp->so_reclaim_seqlock.seqcount);
++#endif
  	return status;
  }
  
