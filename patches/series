@@ -1,8 +1,6 @@
 ###########################################################
 # DELTA against a known Linus release
 ###########################################################
-mm-filemap-don-t-plant-shadow-entries-without-radix-.patch
-mm-filemap-fix-mapping-nrpages-double-accounting-in-.patch
 
 ############################################################
 # UPSTREAM changes queued
@@ -12,7 +10,6 @@ mm-filemap-fix-mapping-nrpages-double-accounting-in-.patch
 # UPSTREAM FIXES, patches pending
 ############################################################
 timer-make-the-base-lock-raw.patch
-jbd2-Fix-lockdep-annotation-in-add_transaction_credi.patch
 
 ############################################################
 # Stuff broken upstream, patches submitted
