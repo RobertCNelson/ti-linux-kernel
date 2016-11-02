@@ -7766,7 +7766,7 @@ EXPORT_SYMBOL(free_netdev);
 void synchronize_net(void)
 {
 	might_sleep();
-	if (rtnl_is_locked() && !IS_ENABLED(CONFIG_PREEMPT_RT_FULL))
+	if (rtnl_is_locked())
 		synchronize_rcu_expedited();
 	else
 		synchronize_rcu();
