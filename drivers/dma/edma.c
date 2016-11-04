@@ -278,6 +278,13 @@ static int edma_terminate_all(struct edma_chan *echan)
 	return 0;
 }
 
+static void edma_synchronize(struct dma_chan *chan)
+{
+	struct edma_chan *echan = to_edma_chan(chan);
+
+	vchan_synchronize(&echan->vchan);
+}
+
 static int edma_slave_config(struct edma_chan *echan,
 	struct dma_slave_config *cfg)
 {
@@ -1017,6 +1024,7 @@ static void edma_dma_init(struct edma_cc *ecc, struct dma_device *dma,
 	dma->device_tx_status = edma_tx_status;
 	dma->device_control = edma_control;
 	dma->device_slave_caps = edma_dma_device_slave_caps;
+	dma->device_synchronize = edma_synchronize;
 	dma->dev = dev;
 
 	/*
