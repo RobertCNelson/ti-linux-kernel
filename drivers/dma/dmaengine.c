@@ -261,8 +261,13 @@ static void dma_chan_put(struct dma_chan *chan)
 		return; /* this channel failed alloc_chan_resources */
 	chan->client_count--;
 	module_put(dma_chan_to_owner(chan));
-	if (chan->client_count == 0)
+
+	/* This channel is not in use anymore, free it */
+	if (!chan->client_count && chan->device->device_free_chan_resources) {
+		/* Make sure all operations have completed */
+		dmaengine_synchronize(chan);
 		chan->device->device_free_chan_resources(chan);
+	}
 }
 
 enum dma_status dma_sync_wait(struct dma_chan *chan, dma_cookie_t cookie)

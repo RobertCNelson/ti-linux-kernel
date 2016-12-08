@@ -1066,6 +1066,13 @@ static int omap_dma_terminate_all(struct omap_chan *c)
 	return 0;
 }
 
+static void omap_dma_synchronize(struct dma_chan *chan)
+{
+	struct omap_chan *c = to_omap_dma_chan(chan);
+
+	vchan_synchronize(&c->vc);
+}
+
 static int omap_dma_pause(struct omap_chan *c)
 {
 	/* Pause/Resume only allowed with cyclic mode */
@@ -1241,6 +1248,7 @@ static int omap_dma_probe(struct platform_device *pdev)
 	od->ddev.device_control = omap_dma_control;
 	od->ddev.device_prep_dma_memcpy = omap_dma_prep_dma_memcpy;
 	od->ddev.device_slave_caps = omap_dma_device_slave_caps;
+	od->ddev.device_synchronize = omap_dma_synchronize;
 	od->ddev.dev = &pdev->dev;
 	INIT_LIST_HEAD(&od->ddev.channels);
 	INIT_LIST_HEAD(&od->pending);

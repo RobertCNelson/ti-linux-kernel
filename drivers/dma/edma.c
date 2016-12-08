@@ -278,6 +278,13 @@ static int edma_terminate_all(struct edma_chan *echan)
 	return 0;
 }
 
+static void edma_synchronize(struct dma_chan *chan)
+{
+	struct edma_chan *echan = to_edma_chan(chan);
+
+	vchan_synchronize(&echan->vchan);
+}
+
 static int edma_slave_config(struct edma_chan *echan,
 	struct dma_slave_config *cfg)
 {
@@ -743,6 +750,7 @@ static void edma_callback(unsigned ch_num, u16 ch_status, void *data)
 	struct edma_desc *edesc;
 	struct edmacc_param p;
 
+	spin_lock(&echan->vchan.lock);
 	edesc = echan->edesc;
 
 	/* Pause the channel for non-cyclic */
@@ -751,7 +759,6 @@ static void edma_callback(unsigned ch_num, u16 ch_status, void *data)
 
 	switch (ch_status) {
 	case EDMA_DMA_COMPLETE:
-		spin_lock(&echan->vchan.lock);
 
 		if (edesc) {
 			if (edesc->cyclic) {
@@ -774,11 +781,8 @@ static void edma_callback(unsigned ch_num, u16 ch_status, void *data)
 			}
 		}
 
-		spin_unlock(&echan->vchan.lock);
-
 		break;
 	case EDMA_DMA_CC_ERROR:
-		spin_lock(&echan->vchan.lock);
 
 		edma_read_slot(EDMA_CHAN_SLOT(echan->slot[0]), &p);
 
@@ -809,12 +813,12 @@ static void edma_callback(unsigned ch_num, u16 ch_status, void *data)
 			edma_trigger_channel(echan->ch_num);
 		}
 
-		spin_unlock(&echan->vchan.lock);
-
 		break;
 	default:
 		break;
 	}
+
+	spin_unlock(&echan->vchan.lock);
 }
 
 /* Alloc channel resources */
@@ -1020,6 +1024,7 @@ static void edma_dma_init(struct edma_cc *ecc, struct dma_device *dma,
 	dma->device_tx_status = edma_tx_status;
 	dma->device_control = edma_control;
 	dma->device_slave_caps = edma_dma_device_slave_caps;
+	dma->device_synchronize = edma_synchronize;
 	dma->dev = dev;
 
 	/*
