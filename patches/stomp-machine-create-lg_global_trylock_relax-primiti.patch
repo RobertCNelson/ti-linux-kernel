@@ -72,7 +72,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 +#endif
 --- a/kernel/locking/rtmutex.c
 +++ b/kernel/locking/rtmutex.c
-@@ -1215,6 +1215,11 @@ void __lockfunc rt_spin_unlock_wait(spin
+@@ -1279,6 +1279,11 @@ void __lockfunc rt_spin_unlock_wait(spin
  }
  EXPORT_SYMBOL(rt_spin_unlock_wait);
  

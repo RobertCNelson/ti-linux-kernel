@@ -55,7 +55,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/kernel/locking/rtmutex.c
 +++ b/kernel/locking/rtmutex.c
-@@ -71,7 +71,8 @@ static void fixup_rt_mutex_waiters(struc
+@@ -135,7 +135,8 @@ static void fixup_rt_mutex_waiters(struc
  
  static int rt_mutex_real_waiter(struct rt_mutex_waiter *waiter)
  {
@@ -65,7 +65,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  }
  
  /*
-@@ -1640,6 +1641,35 @@ int rt_mutex_start_proxy_lock(struct rt_
+@@ -1704,6 +1705,35 @@ int rt_mutex_start_proxy_lock(struct rt_
  		return 1;
  	}
  
