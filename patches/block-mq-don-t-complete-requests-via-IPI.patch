@@ -9,9 +9,9 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 ---
  block/blk-core.c       |    3 +++
  block/blk-mq.c         |   20 ++++++++++++++++++++
- include/linux/blk-mq.h |    1 +
+ include/linux/blk-mq.h |    2 +-
  include/linux/blkdev.h |    1 +
- 4 files changed, 25 insertions(+)
+ 4 files changed, 25 insertions(+), 1 deletion(-)
 
 --- a/block/blk-core.c
 +++ b/block/blk-core.c
@@ -27,7 +27,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	rq->__sector = (sector_t) -1;
 --- a/block/blk-mq.c
 +++ b/block/blk-mq.c
-@@ -197,6 +197,9 @@ static void blk_mq_rq_ctx_init(struct re
+@@ -177,6 +177,9 @@ static void blk_mq_rq_ctx_init(struct re
  	rq->resid_len = 0;
  	rq->sense = NULL;
  
@@ -37,7 +37,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	INIT_LIST_HEAD(&rq->timeout_list);
  	rq->timeout = 0;
  
-@@ -379,6 +382,17 @@ void blk_mq_end_request(struct request *
+@@ -345,6 +348,17 @@ void blk_mq_end_request(struct request *
  }
  EXPORT_SYMBOL(blk_mq_end_request);
  
@@ -55,7 +55,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  static void __blk_mq_complete_request_remote(void *data)
  {
  	struct request *rq = data;
-@@ -386,6 +400,8 @@ static void __blk_mq_complete_request_re
+@@ -352,6 +366,8 @@ static void __blk_mq_complete_request_re
  	rq->q->softirq_done_fn(rq);
  }
  
@@ -64,7 +64,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  static void blk_mq_ipi_complete_request(struct request *rq)
  {
  	struct blk_mq_ctx *ctx = rq->mq_ctx;
-@@ -402,10 +418,14 @@ static void blk_mq_ipi_complete_request(
+@@ -368,10 +384,14 @@ static void blk_mq_ipi_complete_request(
  		shared = cpus_share_cache(cpu, ctx->cpu);
  
  	if (cpu != ctx->cpu && !shared && cpu_online(ctx->cpu)) {
@@ -81,14 +81,15 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	}
 --- a/include/linux/blk-mq.h
 +++ b/include/linux/blk-mq.h
-@@ -222,6 +222,7 @@ static inline u16 blk_mq_unique_tag_to_t
+@@ -209,7 +209,7 @@ static inline u16 blk_mq_unique_tag_to_t
+ 	return unique_tag & BLK_MQ_UNIQUE_TAG_MASK;
+ }
  
- struct blk_mq_hw_ctx *blk_mq_map_queue(struct request_queue *, const int ctx_index);
- struct blk_mq_hw_ctx *blk_mq_alloc_single_hw_queue(struct blk_mq_tag_set *, unsigned int, int);
+-
 +void __blk_mq_complete_request_remote_work(struct work_struct *work);
- 
  int blk_mq_request_started(struct request *rq);
  void blk_mq_start_request(struct request *rq);
+ void blk_mq_end_request(struct request *rq, int error);
 --- a/include/linux/blkdev.h
 +++ b/include/linux/blkdev.h
 @@ -89,6 +89,7 @@ struct request {

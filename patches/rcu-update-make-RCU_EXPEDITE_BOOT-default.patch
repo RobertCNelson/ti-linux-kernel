@@ -16,7 +16,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -771,19 +771,6 @@ config RCU_NOCB_CPU_ALL
+@@ -781,19 +781,6 @@ config RCU_NOCB_CPU_ALL
  
  endchoice
  
@@ -38,7 +38,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  config BUILD_BIN2C
 --- a/kernel/rcu/update.c
 +++ b/kernel/rcu/update.c
-@@ -130,8 +130,7 @@ bool rcu_gp_is_normal(void)
+@@ -129,8 +129,7 @@ bool rcu_gp_is_normal(void)
  }
  EXPORT_SYMBOL_GPL(rcu_gp_is_normal);
  
@@ -48,7 +48,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  /*
   * Should normal grace-period primitives be expedited?  Intended for
-@@ -179,8 +178,7 @@ EXPORT_SYMBOL_GPL(rcu_unexpedite_gp);
+@@ -178,8 +177,7 @@ EXPORT_SYMBOL_GPL(rcu_unexpedite_gp);
   */
  void rcu_end_inkernel_boot(void)
  {

@@ -58,7 +58,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	do {						\
 --- a/kernel/futex.c
 +++ b/kernel/futex.c
-@@ -1368,7 +1368,7 @@ static int wake_futex_pi(u32 __user *uad
+@@ -1377,7 +1377,7 @@ static int wake_futex_pi(u32 __user *uad
  	 * deboost first (and lose our higher priority), then the task might get
  	 * scheduled away before the wake up can take place.
  	 */

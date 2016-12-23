@@ -31,7 +31,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/arch/x86/include/asm/signal.h
 +++ b/arch/x86/include/asm/signal.h
-@@ -32,7 +32,7 @@ typedef struct {
+@@ -36,7 +36,7 @@ typedef struct {
   * TIF_NOTIFY_RESUME and set up the signal to be sent on exit of the
   * trap.
   */

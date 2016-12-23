@@ -42,7 +42,7 @@ Signed-off-by: Carsten Emde <C.Emde@osadl.org>
  'b'     - Will immediately reboot the system without syncing or unmounting
 --- a/include/net/netns/ipv4.h
 +++ b/include/net/netns/ipv4.h
-@@ -70,6 +70,7 @@ struct netns_ipv4 {
+@@ -69,6 +69,7 @@ struct netns_ipv4 {
  
  	int sysctl_icmp_echo_ignore_all;
  	int sysctl_icmp_echo_ignore_broadcasts;

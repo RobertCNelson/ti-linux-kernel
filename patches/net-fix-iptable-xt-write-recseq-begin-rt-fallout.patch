@@ -53,11 +53,12 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  /*
 --- a/net/netfilter/core.c
 +++ b/net/netfilter/core.c
-@@ -22,11 +22,17 @@
+@@ -22,12 +22,18 @@
  #include <linux/proc_fs.h>
  #include <linux/mutex.h>
  #include <linux/slab.h>
 +#include <linux/locallock.h>
+ #include <linux/rcupdate.h>
  #include <net/net_namespace.h>
  #include <net/sock.h>
  

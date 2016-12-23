@@ -12,7 +12,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/mm/slub.c
 +++ b/mm/slub.c
-@@ -1533,14 +1533,17 @@ static struct page *allocate_slab(struct
+@@ -1529,14 +1529,17 @@ static struct page *allocate_slab(struct
  	void *start, *p;
  	int idx, order;
  	bool shuffle;
@@ -32,7 +32,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		local_irq_enable();
  
  	flags |= s->allocflags;
-@@ -1615,11 +1618,7 @@ static struct page *allocate_slab(struct
+@@ -1611,11 +1614,7 @@ static struct page *allocate_slab(struct
  	page->frozen = 1;
  
  out:

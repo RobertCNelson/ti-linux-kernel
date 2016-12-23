@@ -25,7 +25,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  #include <asm/page.h>
  
  struct notifier_block;
-@@ -243,7 +244,8 @@ struct swap_info_struct {
+@@ -246,7 +247,8 @@ struct swap_info_struct {
  void *workingset_eviction(struct address_space *mapping, struct page *page);
  bool workingset_refault(void *shadow);
  void workingset_activation(struct page *page);

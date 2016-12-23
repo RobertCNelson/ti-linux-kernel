@@ -13,7 +13,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/init/Makefile
 +++ b/init/Makefile
-@@ -33,4 +33,4 @@ mounts-$(CONFIG_BLK_DEV_MD)	+= do_mounts
+@@ -35,4 +35,4 @@ mounts-$(CONFIG_BLK_DEV_MD)	+= do_mounts
  include/generated/compile.h: FORCE
  	@$($(quiet)chk_compile.h)
  	$(Q)$(CONFIG_SHELL) $(srctree)/scripts/mkcompile_h $@ \

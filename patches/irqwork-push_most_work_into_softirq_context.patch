@@ -153,7 +153,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	/* We start is dequeued state, because no RT tasks are queued */
 --- a/kernel/time/tick-sched.c
 +++ b/kernel/time/tick-sched.c
-@@ -217,6 +217,7 @@ static void nohz_full_kick_func(struct i
+@@ -220,6 +220,7 @@ static void nohz_full_kick_func(struct i
  
  static DEFINE_PER_CPU(struct irq_work, nohz_full_kick_work) = {
  	.func = nohz_full_kick_func,
@@ -172,7 +172,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	if (in_irq())
  		irq_work_tick();
  #endif
-@@ -1684,6 +1684,10 @@ static void run_timer_softirq(struct sof
+@@ -1684,6 +1684,10 @@ static __latent_entropy void run_timer_s
  {
  	struct timer_base *base = this_cpu_ptr(&timer_bases[BASE_STD]);
  

@@ -13,7 +13,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/block/blk-mq.c
 +++ b/block/blk-mq.c
-@@ -397,7 +397,7 @@ static void blk_mq_ipi_complete_request(
+@@ -363,7 +363,7 @@ static void blk_mq_ipi_complete_request(
  		return;
  	}
  
@@ -22,7 +22,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  	if (!test_bit(QUEUE_FLAG_SAME_FORCE, &rq->q->queue_flags))
  		shared = cpus_share_cache(cpu, ctx->cpu);
  
-@@ -409,7 +409,7 @@ static void blk_mq_ipi_complete_request(
+@@ -375,7 +375,7 @@ static void blk_mq_ipi_complete_request(
  	} else {
  		rq->q->softirq_done_fn(rq);
  	}
@@ -31,10 +31,10 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  }
  
  static void __blk_mq_complete_request(struct request *rq)
-@@ -938,14 +938,14 @@ void blk_mq_run_hw_queue(struct blk_mq_h
+@@ -917,14 +917,14 @@ void blk_mq_run_hw_queue(struct blk_mq_h
  		return;
  
- 	if (!async) {
+ 	if (!async && !(hctx->flags & BLK_MQ_F_BLOCKING)) {
 -		int cpu = get_cpu();
 +		int cpu = get_cpu_light();
  		if (cpumask_test_cpu(cpu, hctx->cpumask)) {
@@ -48,4 +48,4 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 +		put_cpu_light();
  	}
  
- 	kblockd_schedule_delayed_work_on(blk_mq_hctx_next_cpu(hctx),
+ 	kblockd_schedule_work_on(blk_mq_hctx_next_cpu(hctx), &hctx->run_work);

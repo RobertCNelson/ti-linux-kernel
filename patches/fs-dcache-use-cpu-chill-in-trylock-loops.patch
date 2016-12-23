@@ -17,7 +17,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/fs/autofs4/autofs_i.h
 +++ b/fs/autofs4/autofs_i.h
-@@ -30,6 +30,7 @@
+@@ -31,6 +31,7 @@
  #include <linux/sched.h>
  #include <linux/mount.h>
  #include <linux/namei.h>
@@ -96,7 +96,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #include <linux/security.h>
  #include <linux/idr.h>
  #include <linux/init.h>		/* init_rootfs */
-@@ -355,7 +356,7 @@ int __mnt_want_write(struct vfsmount *m)
+@@ -358,7 +359,7 @@ int __mnt_want_write(struct vfsmount *m)
  	smp_mb();
  	while (ACCESS_ONCE(mnt->mnt.mnt_flags) & MNT_WRITE_HOLD) {
  		preempt_enable();

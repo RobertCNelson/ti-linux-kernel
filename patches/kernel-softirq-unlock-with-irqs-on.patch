@@ -13,7 +13,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/kernel/softirq.c
 +++ b/kernel/softirq.c
-@@ -549,8 +549,10 @@ static void do_current_softirqs(void)
+@@ -560,8 +560,10 @@ static void do_current_softirqs(void)
  			do_single_softirq(i);
  		}
  		softirq_clr_runner(i);

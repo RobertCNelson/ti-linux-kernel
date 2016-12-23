@@ -44,7 +44,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	/* update clocksource counter */
  	data->cnt += data->cycle * PIT_PICNT(pit_read(data->base, AT91_PIT_PIVR));
-@@ -211,15 +220,6 @@ static int __init at91sam926x_pit_common
+@@ -230,15 +239,6 @@ static int __init at91sam926x_pit_dt_ini
  		return ret;
  	}
  

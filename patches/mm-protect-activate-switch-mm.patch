@@ -36,7 +36,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/fs/exec.c
 +++ b/fs/exec.c
-@@ -1012,12 +1012,14 @@ static int exec_mmap(struct mm_struct *m
+@@ -1017,12 +1017,14 @@ static int exec_mmap(struct mm_struct *m
  		}
  	}
  	task_lock(tsk);

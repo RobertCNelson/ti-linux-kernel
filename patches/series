@@ -34,10 +34,12 @@ rbtree-include-rcu.h-because-we-use-it.patch
 fs-dcache-init-in_lookup_hashtable.patch
 iommu-iova-don-t-disable-preempt-around-this_cpu_ptr.patch
 iommu-vt-d-don-t-disable-preemption-while-accessing-.patch
-lockdep-Quiet-gcc-about-dangerous-__builtin_return_a.patch
 x86-apic-get-rid-of-warning-acpi_ioapic_lock-defined.patch
 rxrpc-remove-unused-static-variables.patch
 rcu-update-make-RCU_EXPEDITE_BOOT-default.patch
+locking-percpu-rwsem-use-swait-for-the-wating-writer.patch
+btrfs-drop-trace_btrfs_all_work_done-from-normal_wor.patch
+btrfs-swap-free-and-trace-point-in-run_ordered_work.patch
 
 # Wants a different fix for upstream
 NFSv4-replace-seqcount_t-with-a-seqlock_t.patch
@@ -154,13 +156,6 @@ latency_hist-update-sched_wakeup-probe.patch
 trace-latency-hist-Consider-new-argument-when-probin.patch
 trace_Use_rcuidle_version_for_preemptoff_hist_trace_point.patch
 
-# HW LATENCY DETECTOR - this really wants a rewrite
-hwlatdetect.patch
-hwlat-detector-Update-hwlat_detector-to-add-outer-lo.patch
-hwlat-detector-Use-trace_clock_local-if-available.patch
-hwlat-detector-Use-thread-instead-of-stop-machine.patch
-hwlat-detector-Don-t-ignore-threshold-module-paramet.patch
-
 ##################################################
 # REAL RT STUFF starts here
 ##################################################
@@ -257,12 +252,6 @@ radix-tree-rt-aware.patch
 # PANIC
 panic-disable-random-on-rt.patch
 
-# IPC
-ipc-msg-Implement-lockless-pipelined-wakeups.patch
-
-# RELAY
-relay-fix-timer-madness.patch
-
 # TIMERS
 timers-prepare-for-full-preemption.patch
 timer-delay-waking-softirqs-from-the-jiffy-tick.patch
@@ -282,6 +271,7 @@ posix-timers-thread-posix-cpu-timers-on-rt.patch
 sched-delay-put-task.patch
 sched-limit-nr-migrate.patch
 sched-mmdrop-delayed.patch
+kernel-sched-move-stack-kprobe-clean-up-to-__put_tas.patch
 sched-rt-mutex-wakeup.patch
 sched-might-sleep-do-not-account-rcu-depth.patch
 cond-resched-softirq-rt.patch
@@ -330,6 +320,7 @@ futex-Ensure-lock-unlock-symetry-versus-pi_lock-and-.patch
 
 # RTMUTEX
 pid.h-include-atomic.h.patch
+arm-include-definition-for-cpumask_t.patch
 locking-locktorture-Do-NOT-include-rwlock.h-directly.patch
 rtmutex-lock-killable.patch
 spinlock-types-separate-raw.patch
@@ -346,14 +337,6 @@ rcu-merge-rcu-bh-into-rcu-preempt-for-rt.patch
 patch-to-introduce-rcu-bh-qs-where-safe-from-softirq.patch
 rcutree-rcu_bh_qs-disable-irq-while-calling-rcu_pree.patch
 
-# LGLOCKS - lovely
-lglocks-rt.patch
-lockinglglocks_Use_preempt_enabledisable_nort.patch
-
-# STOP machine (depend on lglock & rtmutex)
-stomp-machine-create-lg_global_trylock_relax-primiti.patch
-stomp-machine-use-lg_global_trylock_relax-to-dead-wi.patch
-
 # DRIVERS SERIAL
 drivers-tty-fix-omap-lock-crap.patch
 drivers-tty-pl011-irq-disable-madness.patch
@@ -369,6 +352,7 @@ genirq-do-not-invoke-the-affinity-callback-via-a-wor.patch
 hrtimer-Move-schedule_work-call-to-helper-thread.patch
 
 # FS
+peterz-percpu-rwsem-rt.patch
 fs-namespace-preemption-fix.patch
 mm-protect-activate-switch-mm.patch
 fs-block-rt-support.patch
@@ -389,7 +373,6 @@ mm-vmalloc-use-get-cpu-light.patch
 block-mq-use-cpu_light.patch
 block-mq-drop-preempt-disable.patch
 block-mq-don-t-complete-requests-via-IPI.patch
-dump-stack-don-t-disable-preemption-during-trace.patch
 md-raid5-percpu-handling-rt-aware.patch
 
 # CPU CHILL
@@ -397,7 +380,6 @@ rt-introduce-cpu-chill.patch
 cpu_chill-Add-a-UNINTERRUPTIBLE-hrtimer_nanosleep.patch
 
 # block
-blk-mq-revert-raw-locks-post-pone-notifier-to-POST_D.patchto-POST_D.patch
 block-blk-mq-use-swait.patch
 
 # BLOCK LIVELOCK PREVENTION
@@ -411,7 +393,6 @@ fs-dcache-use-swait_queue-instead-of-waitqueue.patch
 # WORKQUEUE more fixes
 workqueue-use-rcu.patch
 workqueue-use-locallock.patch
-workqueue-use-rcu_readlock-in-put_pwq_unlocked.patch
 work-queue-work-around-irqsafe-timer-optimization.patch
 workqueue-distangle-from-rq-lock.patch
 
@@ -431,7 +412,6 @@ seqlock-prevent-rt-starvation.patch
 # NETWORKING
 sunrpc-make-svc_xprt_do_enqueue-use-get_cpu_light.patch
 skbufhead-raw-lock.patch
-skbufhead-raw-lock-free-skbs.patch
 net-core-cpuhotplug-drain-input_pkt_queue-lockless.patch
 net-move-xmit_recursion-to-per-task-variable-on-RT.patch
 net-provide-a-way-to-delegate-processing-a-softirq-t.patch

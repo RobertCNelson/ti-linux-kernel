@@ -42,7 +42,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/mm/memcontrol.c
 +++ b/mm/memcontrol.c
-@@ -1727,6 +1727,7 @@ struct memcg_stock_pcp {
+@@ -1697,6 +1697,7 @@ struct memcg_stock_pcp {
  #define FLUSHING_CACHED_CHARGE	0
  };
  static DEFINE_PER_CPU(struct memcg_stock_pcp, memcg_stock);
@@ -50,7 +50,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  static DEFINE_MUTEX(percpu_charge_mutex);
  
  /**
-@@ -1749,7 +1750,7 @@ static bool consume_stock(struct mem_cgr
+@@ -1719,7 +1720,7 @@ static bool consume_stock(struct mem_cgr
  	if (nr_pages > CHARGE_BATCH)
  		return ret;
  
@@ -59,7 +59,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	stock = this_cpu_ptr(&memcg_stock);
  	if (memcg == stock->cached && stock->nr_pages >= nr_pages) {
-@@ -1757,7 +1758,7 @@ static bool consume_stock(struct mem_cgr
+@@ -1727,7 +1728,7 @@ static bool consume_stock(struct mem_cgr
  		ret = true;
  	}
  
@@ -68,7 +68,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	return ret;
  }
-@@ -1784,13 +1785,13 @@ static void drain_local_stock(struct wor
+@@ -1754,13 +1755,13 @@ static void drain_local_stock(struct wor
  	struct memcg_stock_pcp *stock;
  	unsigned long flags;
  
@@ -84,7 +84,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  }
  
  /*
-@@ -1802,7 +1803,7 @@ static void refill_stock(struct mem_cgro
+@@ -1772,7 +1773,7 @@ static void refill_stock(struct mem_cgro
  	struct memcg_stock_pcp *stock;
  	unsigned long flags;
  
@@ -93,7 +93,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	stock = this_cpu_ptr(&memcg_stock);
  	if (stock->cached != memcg) { /* reset if necessary */
-@@ -1811,7 +1812,7 @@ static void refill_stock(struct mem_cgro
+@@ -1781,7 +1782,7 @@ static void refill_stock(struct mem_cgro
  	}
  	stock->nr_pages += nr_pages;
  

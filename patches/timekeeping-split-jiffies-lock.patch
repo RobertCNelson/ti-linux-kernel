@@ -114,7 +114,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	return period;
  }
  
-@@ -670,10 +675,10 @@ static ktime_t tick_nohz_stop_sched_tick
+@@ -673,10 +678,10 @@ static ktime_t tick_nohz_stop_sched_tick
  
  	/* Read jiffies and the time when jiffies were updated last */
  	do {
