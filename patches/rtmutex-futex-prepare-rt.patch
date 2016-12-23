@@ -232,7 +232,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  		return;
 --- a/kernel/locking/rtmutex_common.h
 +++ b/kernel/locking/rtmutex_common.h
-@@ -97,6 +97,8 @@ enum rtmutex_chainwalk {
+@@ -98,6 +98,8 @@ enum rtmutex_chainwalk {
  /*
   * PI-futex support (proxy locking functions, etc.):
   */

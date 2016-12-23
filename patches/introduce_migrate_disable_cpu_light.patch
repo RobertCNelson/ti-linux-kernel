@@ -41,7 +41,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
 
 --- a/include/linux/cpu.h
 +++ b/include/linux/cpu.h
-@@ -192,6 +192,9 @@ static inline void cpu_notifier_register
+@@ -185,6 +185,9 @@ static inline void cpu_notifier_register
  #endif /* CONFIG_SMP */
  extern struct bus_type cpu_subsys;
  
