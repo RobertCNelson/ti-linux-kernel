@@ -21,7 +21,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/fs/btrfs/async-thread.c
 +++ b/fs/btrfs/async-thread.c
-@@ -288,8 +288,8 @@ static void run_ordered_work(struct __bt
+@@ -302,8 +302,8 @@ static void run_ordered_work(struct __bt
  		 * we don't want to call the ordered free functions
  		 * with the lock held though
  		 */

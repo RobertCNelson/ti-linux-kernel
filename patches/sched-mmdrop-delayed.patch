@@ -23,7 +23,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  #include <linux/page-flags-layout.h>
  #include <linux/workqueue.h>
  #include <asm/page.h>
-@@ -508,6 +509,9 @@ struct mm_struct {
+@@ -509,6 +510,9 @@ struct mm_struct {
  	bool tlb_flush_pending;
  #endif
  	struct uprobes_state uprobes_state;
@@ -35,7 +35,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	void __user *bd_addr;
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -2905,6 +2905,17 @@ static inline void mmdrop(struct mm_stru
+@@ -2906,6 +2906,17 @@ static inline void mmdrop(struct mm_stru
  		__mmdrop(mm);
  }
  
@@ -55,7 +55,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  	struct mm_struct *mm = container_of(work, struct mm_struct, async_put_work);
 --- a/kernel/fork.c
 +++ b/kernel/fork.c
-@@ -862,6 +862,19 @@ void __mmdrop(struct mm_struct *mm)
+@@ -865,6 +865,19 @@ void __mmdrop(struct mm_struct *mm)
  }
  EXPORT_SYMBOL_GPL(__mmdrop);
  

@@ -35,7 +35,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  /* bitmap for indexing intel_iommus */
  static int g_num_of_iommus;
-@@ -3696,10 +3696,8 @@ static void add_unmap(struct dmar_domain
+@@ -3715,10 +3715,8 @@ static void add_unmap(struct dmar_domain
  	struct intel_iommu *iommu;
  	struct deferred_flush_entry *entry;
  	struct deferred_flush_data *flush_data;
@@ -47,7 +47,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	/* Flush all CPUs' entries to avoid deferring too much.  If
  	 * this becomes a bottleneck, can just flush us, and rely on
-@@ -3732,8 +3730,6 @@ static void add_unmap(struct dmar_domain
+@@ -3751,8 +3749,6 @@ static void add_unmap(struct dmar_domain
  	}
  	flush_data->size++;
  	spin_unlock_irqrestore(&flush_data->lock, flags);

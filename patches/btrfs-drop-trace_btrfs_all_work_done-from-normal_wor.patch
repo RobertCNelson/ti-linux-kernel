@@ -27,7 +27,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/fs/btrfs/async-thread.c
 +++ b/fs/btrfs/async-thread.c
-@@ -318,8 +318,6 @@ static void normal_work_helper(struct bt
+@@ -332,8 +332,6 @@ static void normal_work_helper(struct bt
  		set_bit(WORK_DONE_BIT, &work->flags);
  		run_ordered_work(wq);
  	}

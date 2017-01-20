@@ -41,7 +41,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  #define task_contributes_to_load(task)	\
  				((task->state & TASK_UNINTERRUPTIBLE) != 0 && \
  				 (task->flags & PF_FROZEN) == 0 && \
-@@ -3359,6 +3356,51 @@ static inline int signal_pending_state(l
+@@ -3360,6 +3357,51 @@ static inline int signal_pending_state(l
  	return (state & TASK_INTERRUPTIBLE) || __fatal_signal_pending(p);
  }
  
@@ -95,7 +95,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
   * explicit rescheduling in places that are safe. The return
 --- a/kernel/ptrace.c
 +++ b/kernel/ptrace.c
-@@ -130,7 +130,14 @@ static bool ptrace_freeze_traced(struct
+@@ -166,7 +166,14 @@ static bool ptrace_freeze_traced(struct
  
  	spin_lock_irq(&task->sighand->siglock);
  	if (task_is_traced(task) && !__fatal_signal_pending(task)) {
