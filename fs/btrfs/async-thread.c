@@ -342,7 +342,6 @@ static void normal_work_helper(struct btrfs_work *work)
 
 	if (!need_order)
 		trace_btrfs_all_work_done(wq->fs_info, wtag);
-
 }
 
 void btrfs_init_work(struct btrfs_work *work, btrfs_work_func_t uniq_func,
