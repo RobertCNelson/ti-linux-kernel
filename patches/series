@@ -37,6 +37,8 @@ x86-apic-get-rid-of-warning-acpi_ioapic_lock-defined.patch
 rxrpc-remove-unused-static-variables.patch
 rcu-update-make-RCU_EXPEDITE_BOOT-default.patch
 locking-percpu-rwsem-use-swait-for-the-wating-writer.patch
+pinctrl-qcom-Use-raw-spinlock-variants.patch
+x86-mm-cpa-avoid-wbinvd-for-PREEMPT.patch
 
 # Wants a different fix for upstream
 NFSv4-replace-seqcount_t-with-a-seqlock_t.patch
@@ -244,7 +246,7 @@ mm-backing-dev-don-t-disable-IRQs-in-wb_congested_pu.patch
 mm_zsmalloc_copy_with_get_cpu_var_and_locking.patch
 
 # RADIX TREE
-radix-tree-rt-aware.patch
+radix-tree-use-local-locks.patch
 
 # PANIC
 panic-disable-random-on-rt.patch
@@ -304,6 +306,7 @@ kernel-softirq-unlock-with-irqs-on.patch
 kernel-migrate_disable-do-fastpath-in-atomic-irqs-of.patch
 irq-allow-disabling-of-softirq-processing-in-irq-thread-context.patch
 softirq-split-timer-softirqs-out-of-ksoftirqd.patch
+softirq-wake-the-timer-softirq-if-needed.patch
 rtmutex-trylock-is-okay-on-RT.patch
 
 # compile fix due to rtmutex locks
@@ -557,6 +560,7 @@ drmi915_Use_local_lockunlock_irq()_in_intel_pipe_update_startend().patch
 # CGROUPS
 cgroups-use-simple-wait-in-css_release.patch
 cgroups-scheduling-while-atomic-in-cgroup-code.patch
+cpuset-Convert-callback_lock-to-raw_spinlock_t.patch
 
 # New stuff
 # Revisit: We need this in other places as well

@@ -101,7 +101,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  #include <asm/barrier.h>
  
-@@ -629,54 +630,6 @@ static inline void rcu_preempt_sleep_che
+@@ -633,54 +634,6 @@ static inline void rcu_preempt_sleep_che
  })
  
  /**

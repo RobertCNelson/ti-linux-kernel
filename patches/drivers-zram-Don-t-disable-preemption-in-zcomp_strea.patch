@@ -62,7 +62,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  /* dynamic per-device compression frontend */
 --- a/drivers/block/zram/zram_drv.c
 +++ b/drivers/block/zram/zram_drv.c
-@@ -568,6 +568,7 @@ static int zram_decompress_page(struct z
+@@ -577,6 +577,7 @@ static int zram_decompress_page(struct z
  	struct zram_meta *meta = zram->meta;
  	unsigned long handle;
  	unsigned int size;
@@ -70,7 +70,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  
  	zram_lock_table(&meta->table[index]);
  	handle = meta->table[index].handle;
-@@ -579,16 +580,15 @@ static int zram_decompress_page(struct z
+@@ -588,16 +589,15 @@ static int zram_decompress_page(struct z
  		return 0;
  	}
  

@@ -21,7 +21,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 
 --- a/fs/nfs/dir.c
 +++ b/fs/nfs/dir.c
-@@ -1813,7 +1813,11 @@ int nfs_rmdir(struct inode *dir, struct
+@@ -1802,7 +1802,11 @@ int nfs_rmdir(struct inode *dir, struct
  
  	trace_nfs_rmdir_enter(dir, dentry);
  	if (d_really_is_positive(dentry)) {
@@ -33,7 +33,7 @@ Signed-off-by: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  		error = NFS_PROTO(dir)->rmdir(dir, &dentry->d_name);
  		/* Ensure the VFS deletes this inode */
  		switch (error) {
-@@ -1823,7 +1827,11 @@ int nfs_rmdir(struct inode *dir, struct
+@@ -1812,7 +1816,11 @@ int nfs_rmdir(struct inode *dir, struct
  		case -ENOENT:
  			nfs_dentry_handle_enoent(dentry);
  		}
