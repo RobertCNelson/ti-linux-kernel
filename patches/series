@@ -37,8 +37,6 @@ x86-apic-get-rid-of-warning-acpi_ioapic_lock-defined.patch
 rxrpc-remove-unused-static-variables.patch
 rcu-update-make-RCU_EXPEDITE_BOOT-default.patch
 locking-percpu-rwsem-use-swait-for-the-wating-writer.patch
-btrfs-drop-trace_btrfs_all_work_done-from-normal_wor.patch
-btrfs-swap-free-and-trace-point-in-run_ordered_work.patch
 
 # Wants a different fix for upstream
 NFSv4-replace-seqcount_t-with-a-seqlock_t.patch
