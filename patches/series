@@ -307,6 +307,7 @@ kernel-migrate_disable-do-fastpath-in-atomic-irqs-of.patch
 irq-allow-disabling-of-softirq-processing-in-irq-thread-context.patch
 softirq-split-timer-softirqs-out-of-ksoftirqd.patch
 softirq-wake-the-timer-softirq-if-needed.patch
+timers-Don-t-wake-ktimersoftd-on-every-tick.patch
 rtmutex-trylock-is-okay-on-RT.patch
 
 # compile fix due to rtmutex locks
@@ -327,6 +328,7 @@ spinlock-types-separate-raw.patch
 rtmutex-avoid-include-hell.patch
 rtmutex_dont_include_rcu.patch
 rt-add-rt-locks.patch
+rt-drop_mutex_disable_on_not_debug.patch
 kernel-futex-don-t-deboost-too-early.patch
 rtmutex-add-a-first-shot-of-ww_mutex.patch
 ptrace-fix-ptrace-vs-tasklist_lock-race.patch
