@@ -816,7 +816,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
 --- a/net/core/dev.c
 +++ b/net/core/dev.c
-@@ -3834,11 +3834,9 @@ int netif_rx_ni(struct sk_buff *skb)
+@@ -3829,11 +3829,9 @@ int netif_rx_ni(struct sk_buff *skb)
  
  	trace_netif_rx_ni_entry(skb);
  
