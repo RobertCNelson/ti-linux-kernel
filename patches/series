@@ -16,6 +16,7 @@ timer-make-the-base-lock-raw.patch
 # Stuff broken upstream, patches submitted
 ############################################################
 lockdep-Handle-statically-initialized-PER_CPU-locks-.patch
+lockdep-Fix-compilation-error-for-CONFIG_MODULES-and.patch
 
 # Those two should vanish soon (not use PIT during bootup)
 at91_dont_enable_disable_clock.patch
