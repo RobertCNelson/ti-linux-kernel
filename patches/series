@@ -265,6 +265,7 @@ hrtimer-fixup-hrtimer-callback-changes-for-preempt-r.patch
 sched-deadline-dl_task_timer-has-to-be-irqsafe.patch
 timer-fd-avoid-live-lock.patch
 tick-broadcast--Make-hrtimer-irqsafe.patch
+timer-hrtimer-check-properly-for-a-running-timer.patch
 
 # POSIX-CPU-TIMERS
 posix-timers-thread-posix-cpu-timers-on-rt.patch
