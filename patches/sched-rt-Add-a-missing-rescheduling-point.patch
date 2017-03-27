@@ -1,4 +1,3 @@
-From 619bd4a71874a8fd78eb6ccf9f272c5e98bcc7b7 Mon Sep 17 00:00:00 2001
 From: Sebastian Andrzej Siewior <bigeasy@linutronix.de>
 Date: Tue, 24 Jan 2017 15:40:06 +0100
 Subject: [PATCH] sched/rt: Add a missing rescheduling point
