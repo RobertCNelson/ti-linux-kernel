@@ -138,7 +138,7 @@ Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
  
 --- a/include/linux/smp.h
 +++ b/include/linux/smp.h
-@@ -185,6 +185,9 @@ static inline void smp_init(void) { }
+@@ -197,6 +197,9 @@ static inline int get_boot_cpu_id(void)
  #define get_cpu()		({ preempt_disable(); smp_processor_id(); })
  #define put_cpu()		preempt_enable()
  

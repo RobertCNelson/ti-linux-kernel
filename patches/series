@@ -17,6 +17,21 @@ timer-make-the-base-lock-raw.patch
 ############################################################
 lockdep-Handle-statically-initialized-PER_CPU-locks-.patch
 lockdep-Fix-compilation-error-for-CONFIG_MODULES-and.patch
+lockdep-Fix-per-cpu-static-objects.patch
+
+0001-futex-Cleanup-variable-names-for-futex_top_waiter.patch
+0002-futex-Use-smp_store_release-in-mark_wake_futex.patch
+0003-futex-Remove-rt_mutex_deadlock_account_.patch
+0004-futex-rt_mutex-Provide-futex-specific-rt_mutex-API.patch
+0005-futex-Change-locking-rules.patch
+0006-futex-Cleanup-refcounting.patch
+0007-futex-Rework-inconsistent-rt_mutex-futex_q-state.patch
+0008-futex-Pull-rt_mutex_futex_unlock-out-from-under-hb-l.patch
+0009-futex-rt_mutex-Introduce-rt_mutex_init_waiter.patch
+0010-futex-rt_mutex-Restructure-rt_mutex_finish_proxy_loc.patch
+0011-futex-Rework-futex_lock_pi-to-use-rt_mutex_-_proxy_l.patch
+0012-futex-Futex_unlock_pi-determinism.patch
+0013-futex-Drop-hb-lock-before-enqueueing-on-the-rtmutex.patch
 
 # Those two should vanish soon (not use PIT during bootup)
 at91_dont_enable_disable_clock.patch
@@ -183,6 +198,7 @@ preempt-nort-rt-variants.patch
 
 # local locks & migrate disable
 introduce_migrate_disable_cpu_light.patch
+futex-workaround-migrate_disable-enable-in-different.patch
 rt-local-irq-lock.patch
 locallock-add-local_lock_on.patch
 
@@ -333,7 +349,6 @@ rtmutex-avoid-include-hell.patch
 rtmutex_dont_include_rcu.patch
 rt-add-rt-locks.patch
 rt-drop_mutex_disable_on_not_debug.patch
-kernel-futex-don-t-deboost-too-early.patch
 rtmutex-add-a-first-shot-of-ww_mutex.patch
 ptrace-fix-ptrace-vs-tasklist_lock-race.patch
 
