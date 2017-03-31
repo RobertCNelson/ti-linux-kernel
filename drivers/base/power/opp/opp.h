@@ -168,6 +168,7 @@ struct opp_table {
 	unsigned int *supported_hw;
 	unsigned int supported_hw_count;
 	const char *prop_name;
+	struct regulator *regulator;
 	struct pm_opp_domain *opp_domain;
 
 #ifdef CONFIG_DEBUG_FS
