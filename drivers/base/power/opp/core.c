@@ -242,6 +242,7 @@ unsigned long dev_pm_opp_get_max_volt_latency(struct device *dev)
 {
 	struct opp_table *opp_table;
 	struct dev_pm_opp *opp, *min_opp = NULL, *max_opp = NULL;
+	struct regulator *reg;
 	struct pm_opp_domain *pod;
 	unsigned long latency_ns = 0;
 	unsigned long old_min_uV, old_uV, old_max_uV;
@@ -252,6 +253,13 @@ unsigned long dev_pm_opp_get_max_volt_latency(struct device *dev)
 
 	opp_table = _find_opp_table(dev);
 	if (IS_ERR(opp_table)) {
+		rcu_read_unlock();
+		return 0;
+	}
+
+	reg = opp_table->regulator;
+	if (IS_ERR(reg)) {
+		/* Regulator may not be required for device */
 		rcu_read_unlock();
 		return 0;
 	}
