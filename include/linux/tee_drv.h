@@ -25,8 +25,9 @@
  * specific TEE driver.
  */
 
-#define TEE_SHM_MAPPED		0x1	/* Memory mapped by the kernel */
-#define TEE_SHM_DMA_BUF		0x2	/* Memory with dma-buf handle */
+#define TEE_SHM_MAPPED		BIT(0)	/* Memory mapped by the kernel */
+#define TEE_SHM_DMA_BUF		BIT(1)	/* Memory with dma-buf handle */
+#define TEE_SHM_EXT_DMA_BUF	BIT(2)	/* Memory with dma-buf handle */
 
 struct tee_device;
 struct tee_shm;
@@ -210,6 +211,16 @@ void *tee_get_drvdata(struct tee_device *teedev);
 struct tee_shm *tee_shm_alloc(struct tee_context *ctx, size_t size, u32 flags);
 
 /**
+ * tee_shm_register_fd() - Register shared memory from file descriptor
+ *
+ * @ctx:	Context that allocates the shared memory
+ * @fd:		shared memory file descriptor reference.
+ *
+ * @returns a pointer to 'struct tee_shm'
+ */
+struct tee_shm *tee_shm_register_fd(struct tee_context *ctx, int fd);
+
+/**
  * tee_shm_free() - Free shared memory
  * @shm:	Handle to shared memory to free
  */
@@ -273,5 +284,25 @@ int tee_shm_get_id(struct tee_shm *shm);
  * @returns a pointer to 'struct tee_shm' on success or an ERR_PTR on failure
  */
 struct tee_shm *tee_shm_get_from_id(struct tee_context *ctx, int id);
+
+struct tee_context *tee_client_open_context(struct tee_context *start,
+			int (*match)(struct tee_ioctl_version_data *,
+				const void *),
+			const void *data, struct tee_ioctl_version_data *vers);
+
+void tee_client_close_context(struct tee_context *ctx);
+
+void tee_client_get_version(struct tee_context *ctx,
+			struct tee_ioctl_version_data *vers);
+
+int tee_client_open_session(struct tee_context *ctx,
+			struct tee_ioctl_open_session_arg *arg,
+			struct tee_param *param);
+
+int tee_client_close_session(struct tee_context *ctx, u32 session);
+
+int tee_client_invoke_func(struct tee_context *ctx,
+			struct tee_ioctl_invoke_arg *arg,
+			struct tee_param *param);
 
 #endif /*__TEE_DRV_H*/
