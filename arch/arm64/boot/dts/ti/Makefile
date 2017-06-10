@@ -8,3 +8,5 @@
 dtb-$(CONFIG_ARCH_K3_AM6) += k3-am654-vlab.dtb
 dtb-$(CONFIG_ARCH_K3_AM6) += k3-am654-qt.dtb
 dtb-$(CONFIG_ARCH_K3_AM6) += k3-am654-zebu.dtb
+
+dtb-$(CONFIG_ARCH_K3_J7) += k3-j7-vlab.dtb

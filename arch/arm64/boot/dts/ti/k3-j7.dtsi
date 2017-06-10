@@ -94,9 +94,9 @@
 			compatible = "arm,gic-v3";
 			#address-cells = <2>;
 			#size-cells = <1>;
+			ranges;
 			#interrupt-cells = <3>;
 			interrupt-controller;
-			ranges;
 			/*
 			 * NOTE: we are NOT gicv2 backward compat, so no GICC,
 			 * GICH or GICV
