@@ -1,0 +1,181 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Device Tree Source for Jacinto7 SoC based on K3 architecture
+ *
+ * Copyright (C) 2017 Texas Instruments Incorporated - http://www.ti.com/
+ */
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/interrupt-controller/arm-gic.h>
+
+/ {
+	model = "Texas Instruments K3 J7 SoC";
+	compatible = "ti,j7";
+	interrupt-parent = <&gic>;
+	#address-cells = <2>;
+	#size-cells = <2>;
+
+	aliases {
+		serial0 = &uart0;
+		serial1 = &uart1;
+		serial2 = &uart2;
+		serial3 = &uart3;
+		serial4 = &uart4;
+	};
+
+	chosen { };
+
+	cpus: cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpu-map {
+			cluster0: cluster0 {
+				core0 {
+					cpu = <&cpu0>;
+				};
+			};
+		};
+
+		cpu0: cpu@0 {
+			compatible = "arm,cortex-a72","arm,armv8";
+			reg = <0x000>;
+			device_type = "cpu";
+			enable-method = "psci";
+			next-level-cache = <&L2_0>;
+		};
+	};
+
+	firmware {
+		optee {
+			compatible = "linaro,optee-tz";
+			method = "smc";
+		};
+	};
+
+	soc0: soc0 {
+		compatible = "simple-bus";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		L2_0: l2-cache0 {
+			compatible = "cache";
+			cache-level = <2>;
+			next-level-cache = <&msmc_l3>;
+		};
+
+		msmc_l3: l3-cache0 {
+			compatible = "cache";
+			cache-level = <3>;
+		};
+
+		a53_timer0: timer-cl0-cpu0 {
+			compatible = "arm,armv8-timer";
+			interrupts = <GIC_PPI 13 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>, /* cntpsirq */
+				     <GIC_PPI 14 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>, /* cntpnsirq */
+				     <GIC_PPI 11 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>, /* cntvirq */
+				     <GIC_PPI 10 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>; /* cnthpirq */
+		};
+
+		psci: psci {
+			compatible = "arm,psci-1.0";
+			method = "smc";
+		};
+
+		pmu: pmu {
+			compatible = "arm,armv8-pmuv3";
+			/* Recommendation from GIC500 TRM Table A.3 */
+			interrupts = <GIC_PPI 7 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_HIGH)>;
+		};
+
+		gic: interrupt-controller@1800000 {
+			compatible = "arm,gic-v3";
+			#address-cells = <2>;
+			#size-cells = <1>;
+			#interrupt-cells = <3>;
+			interrupt-controller;
+			ranges;
+			/*
+			 * NOTE: we are NOT gicv2 backward compat, so no GICC,
+			 * GICH or GICV
+			 */
+			reg = <0x0 0x01800000 0x0 0x10000>,	/* GICD */
+			      <0x0 0x01880000 0x0 0x100000>;	/* GICR */
+
+			/*
+			 * vcpumntirq:
+			 * virtual CPU interface maintenance interrupt
+			 */
+			interrupts = <GIC_PPI 9 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_HIGH)>;
+
+			gic_its: gic-its@1000000 {
+				compatible = "arm,gic-v3-its";
+				reg = <0x0 0x1820000 0x10000>;
+				msi-controller;
+				#msi-cells = <1>;
+			};
+		};
+
+		uart0: serial@42300000 {
+			/* USART0 in WKUP domain */
+			compatible = "ns16550a";
+			reg = <0x0 0x42300000 0x0 0x100>;
+			reg-shift = <2>;
+			reg-io-width = <4>;
+			interrupts = <GIC_SPI 697 IRQ_TYPE_LEVEL_HIGH>;
+			clock-frequency = <100000000>;
+			current-speed = <115200>;
+			status = "disabled";
+		};
+
+		uart1: serial@40a00000 {
+			/* USART0 in MCU domain */
+			compatible = "ns16550a";
+			reg = <0x0 0x40a00000 0x0 0x100>;
+			reg-shift = <2>;
+			reg-io-width = <4>;
+			interrupts = <GIC_SPI 565 IRQ_TYPE_LEVEL_HIGH>;
+			clock-frequency = <100000000>;
+			current-speed = <115200>;
+			status = "disabled";
+		};
+
+		uart2: serial@2800000 {
+			/* USART0 in MAIN domain */
+			compatible = "ns16550a";
+			reg = <0x0 0x02800000 0x0 0x100>;
+			reg-shift = <2>;
+			reg-io-width = <4>;
+			interrupts = <GIC_SPI 192 IRQ_TYPE_LEVEL_HIGH>;
+			clock-frequency = <100000000>;
+			current-speed = <115200>;
+			status = "disabled";
+		};
+
+		uart3: serial@2810000 {
+			/* USART1 in MAIN domain */
+			compatible = "ns16550a";
+			reg = <0x0 0x02810000 0x0 0x100>;
+			reg-shift = <2>;
+			reg-io-width = <4>;
+			interrupts = <GIC_SPI 193 IRQ_TYPE_LEVEL_HIGH>;
+			clock-frequency = <100000000>;
+			current-speed = <115200>;
+			status = "disabled";
+		};
+
+		uart4: serial@2820000 {
+			/* USART2 in MAIN domain */
+			compatible = "ns16550a";
+			reg = <0x0 0x02820000 0x0 0x100>;
+			reg-shift = <2>;
+			reg-io-width = <4>;
+			interrupts = <GIC_SPI 194 IRQ_TYPE_LEVEL_HIGH>;
+			clock-frequency = <100000000>;
+			current-speed = <115200>;
+			status = "disabled";
+		};
+	};
+};
