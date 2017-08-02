@@ -335,6 +335,10 @@
 };
 
 &pcie0 {
+	status = "disabled";
+};
+
+&pcie0_ep {
 	status = "okay";
 };
 
