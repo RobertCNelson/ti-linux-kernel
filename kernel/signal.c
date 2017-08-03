@@ -591,7 +591,6 @@ still_pending:
 			(info->si_sys_private);
 
 		sigqueue_free_current(first);
-
 	} else {
 		/*
 		 * Ok, it wasn't in the queue.  This must be
