@@ -250,8 +250,7 @@ static int tee_ioctl_open_session(struct tee_context *ctx,
 	    buf.buf_len < sizeof(struct tee_ioctl_open_session_arg))
 		return -EINVAL;
 
-	uarg = (struct tee_ioctl_open_session_arg __user *)(unsigned long)
-	       buf.buf_ptr;
+	uarg = u64_to_user_ptr(buf.buf_ptr);
 	if (copy_from_user(&arg, uarg, sizeof(arg)))
 		return -EFAULT;
 
@@ -322,8 +321,7 @@ static int tee_ioctl_invoke(struct tee_context *ctx,
 	    buf.buf_len < sizeof(struct tee_ioctl_invoke_arg))
 		return -EINVAL;
 
-	uarg = (struct tee_ioctl_invoke_arg __user *)(unsigned long)
-	       buf.buf_ptr;
+	uarg = u64_to_user_ptr(buf.buf_ptr);
 	if (copy_from_user(&arg, uarg, sizeof(arg)))
 		return -EFAULT;
 
@@ -457,8 +455,7 @@ static int tee_ioctl_supp_recv(struct tee_context *ctx,
 	    buf.buf_len < sizeof(struct tee_iocl_supp_recv_arg))
 		return -EINVAL;
 
-	uarg = (struct tee_iocl_supp_recv_arg __user *)(unsigned long)
-	       buf.buf_ptr;
+	uarg = u64_to_user_ptr(buf.buf_ptr);
 	if (get_user(num_params, &uarg->num_params))
 		return -EFAULT;
 
@@ -552,8 +549,7 @@ static int tee_ioctl_supp_send(struct tee_context *ctx,
 	    buf.buf_len < sizeof(struct tee_iocl_supp_send_arg))
 		return -EINVAL;
 
-	uarg = (struct tee_iocl_supp_send_arg __user *)(unsigned long)
-	       buf.buf_ptr;
+	uarg = u64_to_user_ptr(buf.buf_ptr);
 	if (get_user(ret, &uarg->ret) ||
 	    get_user(num_params, &uarg->num_params))
 		return -EFAULT;
