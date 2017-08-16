@@ -302,7 +302,7 @@ do {								\
 	: "r" ((unsigned long)addr), "i" (-EAGAIN),		\
 	  "i" (-EFAULT)						\
 	: "memory")						\
-	uaccess_disable();
+	uaccess_disable();					\
 } while (0)
 
 #define __user_swp_asm(data, addr, res, temp) \
