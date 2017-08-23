@@ -40,6 +40,12 @@ config ION_HISI
 	help
 	  Choose this option if you wish to use ion on Hisilicon Platform.
 
+config ION_TI
+	tristate "Ion for Texas Instruments"
+	depends on ION
+	help
+	  Choose this option if you wish to use ion on Texas Instruments platforms.
+
 source "drivers/staging/android/ion/hisilicon/Kconfig"
 
 config ION_OF
