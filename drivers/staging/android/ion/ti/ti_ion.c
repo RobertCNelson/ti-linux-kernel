@@ -16,6 +16,7 @@
 
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/sizes.h>
 #include "../ion_priv.h"
 
 static struct ion_device *idev;
