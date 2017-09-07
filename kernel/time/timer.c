@@ -1703,7 +1703,6 @@ static __latent_entropy void run_timer_softirq(struct softirq_action *h)
 {
 	struct timer_base *base = this_cpu_ptr(&timer_bases[BASE_STD]);
 
-	irq_work_tick_soft();
 	/*
 	 * must_forward_clk must be cleared before running timers so that any
 	 * timer functions that call mod_timer will not try to forward the
@@ -1716,6 +1715,8 @@ static __latent_entropy void run_timer_softirq(struct softirq_action *h)
 	 * long periods due to idle.
 	 */
 	base->must_forward_clk = false;
+
+	irq_work_tick_soft();
 
 	__run_timers(base);
 	if (IS_ENABLED(CONFIG_NO_HZ_COMMON) && base->nohz_active)
