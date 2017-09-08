@@ -2298,7 +2298,6 @@ static int omap_hsmmc_card_busy(struct mmc_host *mmc)
 {
 	struct omap_hsmmc_host *host;
 	u32 val;
-	u32 reg;
 	int ret;
 
 	host  = mmc_priv(mmc);
@@ -2308,12 +2307,7 @@ static int omap_hsmmc_card_busy(struct mmc_host *mmc)
 		 * PADEN should be set for DLEV to reflect the correct
 		 * state of data lines atleast for MMC1 on AM57x.
 		 */
-		reg = OMAP_HSMMC_READ(host->base, CON);
-		reg |= CON_PADEN;
-		OMAP_HSMMC_WRITE(host->base, CON, reg);
 		val = OMAP_HSMMC_READ(host->base, PSTATE);
-		reg &= ~CON_PADEN;
-		OMAP_HSMMC_WRITE(host->base, CON, reg);
 		if (val & PSTATE_DLEV_DAT0)
 			return false;
 		return true;
@@ -2858,6 +2852,7 @@ static int omap_hsmmc_probe(struct platform_device *pdev)
 	struct resource *res;
 	int ret, irq;
 	u32 val;
+	u32 reg;
 	const struct of_device_id *match;
 	const struct omap_mmc_of_data *data;
 	void __iomem *base;
@@ -3068,6 +3063,11 @@ static int omap_hsmmc_probe(struct platform_device *pdev)
 	}
 
 	omap_hsmmc_debugfs(mmc);
+
+	reg = OMAP_HSMMC_READ(host->base, CON) | CON_PADEN;
+	OMAP_HSMMC_WRITE(host->base, CON, reg);
+	while (!(OMAP_HSMMC_READ(host->base, CON) & CON_PADEN))
+		udelay(1);
 	pm_runtime_mark_last_busy(host->dev);
 	pm_runtime_put_autosuspend(host->dev);
 
