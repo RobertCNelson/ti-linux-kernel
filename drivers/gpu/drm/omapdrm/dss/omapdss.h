@@ -27,37 +27,49 @@
 #include <uapi/drm/drm_mode.h>
 #include <drm/drm_crtc.h>
 
-#define DISPC_IRQ_FRAMEDONE		(1 << 0)
-#define DISPC_IRQ_VSYNC			(1 << 1)
-#define DISPC_IRQ_EVSYNC_EVEN		(1 << 2)
-#define DISPC_IRQ_EVSYNC_ODD		(1 << 3)
-#define DISPC_IRQ_ACBIAS_COUNT_STAT	(1 << 4)
-#define DISPC_IRQ_PROG_LINE_NUM		(1 << 5)
-#define DISPC_IRQ_GFX_FIFO_UNDERFLOW	(1 << 6)
-#define DISPC_IRQ_GFX_END_WIN		(1 << 7)
-#define DISPC_IRQ_PAL_GAMMA_MASK	(1 << 8)
-#define DISPC_IRQ_OCP_ERR		(1 << 9)
-#define DISPC_IRQ_VID1_FIFO_UNDERFLOW	(1 << 10)
-#define DISPC_IRQ_VID1_END_WIN		(1 << 11)
-#define DISPC_IRQ_VID2_FIFO_UNDERFLOW	(1 << 12)
-#define DISPC_IRQ_VID2_END_WIN		(1 << 13)
-#define DISPC_IRQ_SYNC_LOST		(1 << 14)
-#define DISPC_IRQ_SYNC_LOST_DIGIT	(1 << 15)
-#define DISPC_IRQ_WAKEUP		(1 << 16)
-#define DISPC_IRQ_SYNC_LOST2		(1 << 17)
-#define DISPC_IRQ_VSYNC2		(1 << 18)
-#define DISPC_IRQ_VID3_END_WIN		(1 << 19)
-#define DISPC_IRQ_VID3_FIFO_UNDERFLOW	(1 << 20)
-#define DISPC_IRQ_ACBIAS_COUNT_STAT2	(1 << 21)
-#define DISPC_IRQ_FRAMEDONE2		(1 << 22)
-#define DISPC_IRQ_FRAMEDONEWB		(1 << 23)
-#define DISPC_IRQ_FRAMEDONETV		(1 << 24)
-#define DISPC_IRQ_WBBUFFEROVERFLOW	(1 << 25)
-#define DISPC_IRQ_WBUNCOMPLETEERROR	(1 << 26)
-#define DISPC_IRQ_SYNC_LOST3		(1 << 27)
-#define DISPC_IRQ_VSYNC3		(1 << 28)
-#define DISPC_IRQ_ACBIAS_COUNT_STAT3	(1 << 29)
-#define DISPC_IRQ_FRAMEDONE3		(1 << 30)
+#define DSS_MAX_CHANNELS 8
+#define DSS_MAX_OVLS 8
+
+/*
+ * Based on the above 2 defines the bellow defines describe following
+ * u64 IRQ bits:
+ *
+ * bit group |dev |mrg0|mrg1|mrg2|mrg3|mrg4|mrg5|mrg6|mrg7| ovl0-7  |<unused> |
+ * bit use   |Dfou|FEOL|FEOL|FEOL|FEOL|FEOL|FEOL|FEOL|FEOL|UUUU|UUUU| | | | | |
+ * bit number|0-3 |4-7 |8-11|            12-35            |  36-43  |  44-63  |
+ *
+ * device bits: D = OCP error
+ * WB bits:	f = frame done wb, o = wb buffer overflow,
+ *  		u = wb buffer uncomplete
+ * mgr bits:    F = frame done, E = vsync even, O = vsync odd, L = sync lost
+ * ovl bits:    U = fifo underflow
+ */
+
+#define DSS_IRQ_DEVICE_OCP_ERR		BIT_ULL(0)
+
+#define DSS_IRQ_DEVICE_FRAMEDONEWB		BIT_ULL(1)
+#define DSS_IRQ_DEVICE_WBBUFFEROVERFLOW		BIT_ULL(2)
+#define DSS_IRQ_DEVICE_WBUNCOMPLETEERROR	BIT_ULL(3)
+#define DSS_IRQ_DEVICE_WB_MASK			GENMASK_ULL(3, 1)
+
+#define DSS_IRQ_MGR_BIT_N(ch, bit)	(4 + 4 * ch + bit)
+#define DSS_IRQ_OVL_BIT_N(ovl, bit) \
+	(DSS_IRQ_MGR_BIT_N(DSS_MAX_CHANNELS, 0) + 1 * ovl + bit)
+
+#define DSS_IRQ_MGR_BIT(ch, bit)	BIT_ULL(DSS_IRQ_MGR_BIT_N(ch, bit))
+#define DSS_IRQ_OVL_BIT(ovl, bit)	BIT_ULL(DSS_IRQ_OVL_BIT_N(ovl, bit))
+
+#define DSS_IRQ_MGR_MASK(ch) \
+	GENMASK_ULL(DSS_IRQ_MGR_BIT_N(ch, 3), DSS_IRQ_MGR_BIT_N(ch, 0))
+#define DSS_IRQ_OVL_MASK(ovl) \
+	GENMASK_ULL(DSS_IRQ_OVL_BIT_N(ovl, 0), DSS_IRQ_OVL_BIT_N(ovl, 0))
+
+#define DSS_IRQ_MGR_FRAME_DONE(ch)	DSS_IRQ_MGR_BIT(ch, 0)
+#define DSS_IRQ_MGR_VSYNC_EVEN(ch)	DSS_IRQ_MGR_BIT(ch, 1)
+#define DSS_IRQ_MGR_VSYNC_ODD(ch)	DSS_IRQ_MGR_BIT(ch, 2)
+#define DSS_IRQ_MGR_SYNC_LOST(ch)	DSS_IRQ_MGR_BIT(ch, 3)
+
+#define DSS_IRQ_OVL_FIFO_UNDERFLOW(ovl)	DSS_IRQ_OVL_BIT(ovl, 0)
 
 struct omap_dss_device;
 struct dss_lcd_mgr_config;
@@ -678,9 +690,8 @@ void dss_mgr_unregister_framedone_handler(enum omap_channel channel,
 /* dispc ops */
 
 struct dispc_ops {
-	u32 (*read_irqstatus)(void);
-	void (*clear_irqstatus)(u32 mask);
-	void (*write_irqenable)(u32 mask);
+	u64 (*read_and_clear_irqstatus)(void);
+	void (*write_irqenable)(u64 enable);
 
 	int (*request_irq)(irq_handler_t handler, void *dev_id);
 	void (*free_irq)(void *dev_id);
@@ -694,13 +705,12 @@ struct dispc_ops {
 	const char *(*ovl_name)(enum omap_plane_id plane);
 	const char *(*mgr_name)(enum omap_channel channel);
 
+	bool (*mgr_has_framedone)(enum omap_channel channel);
+
 	u32 (*get_memory_bandwidth_limit)(void);
 
 	void (*mgr_enable)(enum omap_channel channel, bool enable);
 	bool (*mgr_is_enabled)(enum omap_channel channel);
-	u32 (*mgr_get_vsync_irq)(enum omap_channel channel);
-	u32 (*mgr_get_framedone_irq)(enum omap_channel channel);
-	u32 (*mgr_get_sync_lost_irq)(enum omap_channel channel);
 	bool (*mgr_go_busy)(enum omap_channel channel);
 	void (*mgr_go)(enum omap_channel channel);
 	void (*mgr_set_lcd_config)(enum omap_channel channel,

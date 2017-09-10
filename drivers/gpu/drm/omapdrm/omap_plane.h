@@ -33,5 +33,6 @@ struct drm_plane *omap_plane_init(struct drm_device *dev,
 		u32 possible_crtcs);
 void omap_plane_install_properties(struct drm_plane *plane,
 		struct drm_mode_object *obj);
+enum omap_plane_id omap_plane_get_id(struct drm_plane *plane);
 
 #endif /* __OMAPDRM_PLANE_H__ */

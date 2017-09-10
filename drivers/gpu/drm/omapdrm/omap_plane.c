@@ -239,6 +239,13 @@ static const struct drm_plane_funcs omap_plane_funcs = {
 	.atomic_get_property = omap_plane_atomic_get_property,
 };
 
+enum omap_plane_id omap_plane_get_id(struct drm_plane *plane)
+{
+	struct omap_plane *omap_plane = to_omap_plane(plane);
+
+	return omap_plane->id;
+}
+
 static const enum omap_plane_id plane_idx_to_id[] = {
 	OMAP_DSS_GFX,
 	OMAP_DSS_VIDEO1,
