@@ -45,6 +45,10 @@ source "drivers/staging/android/ion/hisilicon/Kconfig"
 config ION_OF
 	bool "Devicetree support for Ion"
 	depends on ION && OF_ADDRESS
+
+config ION_UNMAPPED_HEAP
+	bool "ION unmapped heap support"
+	depends on ION && ARM
 	help
 	  Provides base support for defining Ion heaps in devicetree
 	  and setting them up. Also includes functions for platforms
@@ -55,7 +59,7 @@ config ION_OF
 
 config ION_DUMMY_UNMAPPED_HEAP
 	bool "ION dummy driver define an ION unmapped heap"
-	depends on ION_DUMMY
+	depends on ION_DUMMY && ION_UNMAPPED_HEAP
 	help
 	  Dummy ION driver will create a unmapped heap from physical
 	  location provided through CONFIG_ION_DUMMY_UNMAPPED_BASE and
