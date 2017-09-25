@@ -16,6 +16,7 @@
 
 #ifdef CONFIG_CPUSETS
 
+extern struct static_key cpusets_pre_enable_key;
 extern struct static_key cpusets_enabled_key;
 static inline bool cpusets_enabled(void)
 {
@@ -30,12 +31,14 @@ static inline int nr_cpusets(void)
 
 static inline void cpuset_inc(void)
 {
+	static_key_slow_inc(&cpusets_pre_enable_key);
 	static_key_slow_inc(&cpusets_enabled_key);
 }
 
 static inline void cpuset_dec(void)
 {
 	static_key_slow_dec(&cpusets_enabled_key);
+	static_key_slow_dec(&cpusets_pre_enable_key);
 }
 
 extern int cpuset_init(void);
@@ -104,7 +107,7 @@ extern void cpuset_print_current_mems_allowed(void);
  */
 static inline unsigned int read_mems_allowed_begin(void)
 {
-	if (!cpusets_enabled())
+	if (!static_key_false(&cpusets_pre_enable_key))
 		return 0;
 
 	return read_seqcount_begin(&current->mems_allowed_seq);
@@ -118,7 +121,7 @@ static inline unsigned int read_mems_allowed_begin(void)
  */
 static inline bool read_mems_allowed_retry(unsigned int seq)
 {
-	if (!cpusets_enabled())
+	if (!static_key_false(&cpusets_enabled_key))
 		return false;
 
 	return read_seqcount_retry(&current->mems_allowed_seq, seq);
@@ -136,8 +139,6 @@ static inline void set_mems_allowed(nodemask_t nodemask)
 	local_irq_restore(flags);
 	task_unlock(current);
 }
-
-extern void cpuset_post_attach_flush(void);
 
 #else /* !CONFIG_CPUSETS */
 
@@ -243,10 +244,6 @@ static inline unsigned int read_mems_allowed_begin(void)
 static inline bool read_mems_allowed_retry(unsigned int seq)
 {
 	return false;
-}
-
-static inline void cpuset_post_attach_flush(void)
-{
 }
 
 #endif /* !CONFIG_CPUSETS */

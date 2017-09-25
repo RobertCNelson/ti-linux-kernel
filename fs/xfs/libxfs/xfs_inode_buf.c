@@ -68,6 +68,8 @@ xfs_inobp_check(
  * recovery and we don't get unnecssary panics on debug kernels. We use EIO here
  * because all we want to do is say readahead failed; there is no-one to report
  * the error to, so this will distinguish it from a non-ra verifier failure.
+ * Changes to this readahead error behavour also need to be reflected in
+ * xfs_dquot_buf_readahead_verify().
  */
 static void
 xfs_inode_buf_verify(
@@ -134,11 +136,13 @@ xfs_inode_buf_write_verify(
 }
 
 const struct xfs_buf_ops xfs_inode_buf_ops = {
+	.name = "xfs_inode",
 	.verify_read = xfs_inode_buf_read_verify,
 	.verify_write = xfs_inode_buf_write_verify,
 };
 
 const struct xfs_buf_ops xfs_inode_buf_ra_ops = {
+	.name = "xxfs_inode_ra",
 	.verify_read = xfs_inode_buf_readahead_verify,
 	.verify_write = xfs_inode_buf_write_verify,
 };
@@ -293,6 +297,14 @@ xfs_dinode_verify(
 	struct xfs_dinode	*dip)
 {
 	if (dip->di_magic != cpu_to_be16(XFS_DINODE_MAGIC))
+		return false;
+
+	/* don't allow invalid i_size */
+	if (be64_to_cpu(dip->di_size) & (1ULL << 63))
+		return false;
+
+	/* No zero-length symlinks. */
+	if (S_ISLNK(be16_to_cpu(dip->di_mode)) && dip->di_size == 0)
 		return false;
 
 	/* only version 3 or greater inodes are extensively verified here */

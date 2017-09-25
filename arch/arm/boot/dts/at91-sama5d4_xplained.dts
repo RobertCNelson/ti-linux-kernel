@@ -110,6 +110,8 @@
 			};
 
 			usart3: serial@fc00c000 {
+				atmel,use-dma-rx;
+				atmel,use-dma-tx;
 				status = "okay";
 			};
 
@@ -268,5 +270,6 @@
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
 		vin-supply = <&vcc_3v3_reg>;
+		regulator-always-on;
 	};
 };
