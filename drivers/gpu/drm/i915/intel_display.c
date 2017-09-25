@@ -2253,6 +2253,9 @@ void intel_unpin_fb_obj(struct drm_framebuffer *fb, unsigned int rotation)
 	intel_fill_fb_ggtt_view(&view, fb, rotation);
 	vma = i915_gem_object_to_ggtt(obj, &view);
 
+	if (WARN_ON_ONCE(!vma))
+		return;
+
 	i915_vma_unpin_fence(vma);
 	i915_gem_object_unpin_from_display_plane(vma);
 }
@@ -2587,8 +2590,9 @@ intel_fill_fb_info(struct drm_i915_private *dev_priv,
 			 * We only keep the x/y offsets, so push all of the
 			 * gtt offset into the x/y offsets.
 			 */
-			_intel_adjust_tile_offset(&x, &y, tile_size,
-						  tile_width, tile_height, pitch_tiles,
+			_intel_adjust_tile_offset(&x, &y,
+						  tile_width, tile_height,
+						  tile_size, pitch_tiles,
 						  gtt_offset_rotated * tile_size, 0);
 
 			gtt_offset_rotated += rot_info->plane[i].width * rot_info->plane[i].height;
@@ -2974,6 +2978,9 @@ int skl_check_plane_surface(struct intel_plane_state *plane_state)
 	const struct drm_framebuffer *fb = plane_state->base.fb;
 	unsigned int rotation = plane_state->base.rotation;
 	int ret;
+
+	if (!plane_state->base.visible)
+		return 0;
 
 	/* Rotate src coordinates to match rotated GTT view */
 	if (intel_rotation_90_or_270(rotation))
@@ -3692,10 +3699,6 @@ static void intel_update_pipe_config(struct intel_crtc *crtc,
 	/* drm_atomic_helper_update_legacy_modeset_state might not be called. */
 	crtc->base.mode = crtc->base.state->mode;
 
-	DRM_DEBUG_KMS("Updating pipe size %ix%i -> %ix%i\n",
-		      old_crtc_state->pipe_src_w, old_crtc_state->pipe_src_h,
-		      pipe_config->pipe_src_w, pipe_config->pipe_src_h);
-
 	/*
 	 * Update pipe size and adjust fitter if needed: the reason for this is
 	 * that in compute_mode_changes we check the native mode (not the pfit
@@ -4276,10 +4279,10 @@ static void page_flip_completed(struct intel_crtc *intel_crtc)
 	drm_crtc_vblank_put(&intel_crtc->base);
 
 	wake_up_all(&dev_priv->pending_flip_queue);
-	queue_work(dev_priv->wq, &work->unpin_work);
-
 	trace_i915_flip_complete(intel_crtc->plane,
 				 work->pending_flip_obj);
+
+	queue_work(dev_priv->wq, &work->unpin_work);
 }
 
 static int intel_crtc_wait_for_pending_flips(struct drm_crtc *crtc)
@@ -4828,23 +4831,17 @@ static void skylake_pfit_enable(struct intel_crtc *crtc)
 	struct intel_crtc_scaler_state *scaler_state =
 		&crtc->config->scaler_state;
 
-	DRM_DEBUG_KMS("for crtc_state = %p\n", crtc->config);
-
 	if (crtc->config->pch_pfit.enabled) {
 		int id;
 
-		if (WARN_ON(crtc->config->scaler_state.scaler_id < 0)) {
-			DRM_ERROR("Requesting pfit without getting a scaler first\n");
+		if (WARN_ON(crtc->config->scaler_state.scaler_id < 0))
 			return;
-		}
 
 		id = scaler_state->scaler_id;
 		I915_WRITE(SKL_PS_CTRL(pipe, id), PS_SCALER_EN |
 			PS_FILTER_MEDIUM | scaler_state->scalers[id].mode);
 		I915_WRITE(SKL_PS_WIN_POS(pipe, id), crtc->config->pch_pfit.pos);
 		I915_WRITE(SKL_PS_WIN_SZ(pipe, id), crtc->config->pch_pfit.size);
-
-		DRM_DEBUG_KMS("for crtc_state = %p scaler_id = %d\n", crtc->config, id);
 	}
 }
 
@@ -6865,6 +6862,12 @@ static void intel_crtc_disable_noatomic(struct drm_crtc *crtc)
 	}
 
 	state = drm_atomic_state_alloc(crtc->dev);
+	if (!state) {
+		DRM_DEBUG_KMS("failed to disable [CRTC:%d:%s], out of memory",
+			      crtc->base.id, crtc->name);
+		return;
+	}
+
 	state->acquire_ctx = crtc->dev->mode_config.acquire_ctx;
 
 	/* Everything's already locked, -EDEADLK can't happen. */
@@ -13764,6 +13767,15 @@ static void update_scanline_offset(struct intel_crtc *crtc)
 	 * type. For DP ports it behaves like most other platforms, but on HDMI
 	 * there's an extra 1 line difference. So we need to add two instead of
 	 * one to the value.
+	 *
+	 * On VLV/CHV DSI the scanline counter would appear to increment
+	 * approx. 1/3 of a scanline before start of vblank. Unfortunately
+	 * that means we can't tell whether we're in vblank or not while
+	 * we're on that particular line. We must still set scanline_offset
+	 * to 1 so that the vblank timestamps come out correct when we query
+	 * the scanline counter from within the vblank interrupt handler.
+	 * However if queried just before the start of vblank we'll get an
+	 * answer that's slightly in the future.
 	 */
 	if (IS_GEN2(dev)) {
 		const struct drm_display_mode *adjusted_mode = &crtc->config->base.adjusted_mode;
