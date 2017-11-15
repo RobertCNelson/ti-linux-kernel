@@ -44,6 +44,62 @@
 #define OVR_REG_FLD_MOD(dev, ovr, idx, val, start, end)				\
 	dispc7_ovr_write(dev, ovr, idx, FLD_MOD(dispc7_ovr_read(dev, ovr, idx), val, start, end))
 
+static const u16 omapdss_am6_common_regs[DSS7_COMMON_REG_TABLE_LEN] = {
+	[DSS_REVISION_OFF] =			0x4,
+	[DSS_SYSCONFIG_OFF] =			0x8,
+	[DSS_SYSSTATUS_OFF] =			0x20,
+	[DISPC_IRQ_EOI_OFF] =			0x24,
+	[DISPC_IRQSTATUS_RAW_OFF] =		0x28,
+	[DISPC_IRQSTATUS_OFF] =			0x2c,
+	[DISPC_IRQENABLE_SET_OFF] =		0x30,
+	[DISPC_IRQENABLE_CLR_OFF] =		0x40,
+	[DISPC_VID_IRQENABLE_OFF] =		0x44,
+	[DISPC_VID_IRQSTATUS_OFF] =		0x58,
+	[DISPC_VP_IRQENABLE_OFF] =		0x70,
+	[DISPC_VP_IRQSTATUS_OFF] =		0x7c,
+
+	[WB_IRQENABLE_OFF] =			0x88,
+	[WB_IRQSTATUS_OFF] =			0x8c,
+
+	[DISPC_GLOBAL_MFLAG_ATTRIBUTE_OFF] =	0x90,
+	[DISPC_GLOBAL_OUTPUT_ENABLE_OFF] =	0x94,
+	[DISPC_GLOBAL_BUFFER_OFF] =		0x98,
+	[DSS_CBA_CFG_OFF] =			0x9c,
+	[DISPC_DBG_CONTROL_OFF] =		0xa0,
+	[DISPC_DBG_STATUS_OFF] =		0xa4,
+	[DISPC_CLKGATING_DISABLE_OFF] =		0xa8,
+	[DISPC_SECURE_DISABLE_OFF] =		0xac,
+};
+
+static const u16 omapdss_dra8_common_regs[DSS7_COMMON_REG_TABLE_LEN] = {
+	[DSS_REVISION_OFF] =			0x4,
+	[DSS_SYSCONFIG_OFF] =			0x8,
+	[DSS_SYSSTATUS_OFF] =			0x20,
+	[DISPC_IRQ_EOI_OFF] =			0x24,
+	[DISPC_IRQSTATUS_RAW_OFF] =		0x28,
+	[DISPC_IRQSTATUS_OFF] =			0x2c,
+	[DISPC_IRQENABLE_SET_OFF] =		0x30,
+	[DISPC_IRQENABLE_CLR_OFF] =		0x40,
+	[DISPC_VID_IRQENABLE_OFF] =		0x44,
+	[DISPC_VID_IRQSTATUS_OFF] =		0x58,
+	[DISPC_VP_IRQENABLE_OFF] =		0x70,
+	[DISPC_VP_IRQSTATUS_OFF] =		0x80,
+
+	[WB_IRQENABLE_OFF] =			0x90,
+	[WB_IRQSTATUS_OFF] =			0x94,
+
+	[DISPC_GLOBAL_MFLAG_ATTRIBUTE_OFF] =	0x98,
+	[DISPC_GLOBAL_OUTPUT_ENABLE_OFF] =	0x9c,
+	[DISPC_GLOBAL_BUFFER_OFF] =		0xa0,
+	[DSS_CBA_CFG_OFF] =			0xa4,
+	[DISPC_DBG_CONTROL_OFF] =		0xa8,
+	[DISPC_DBG_STATUS_OFF] =		0xac,
+	[DISPC_CLKGATING_DISABLE_OFF] =		0xb0,
+	[DISPC_SECURE_DISABLE_OFF] =		0xb4,
+};
+
+const u16 *omapdss_regmap = NULL;
+
 struct dss_features {
 	int num_ports;
 
@@ -51,18 +107,57 @@ struct dss_features {
 	unsigned long min_pclk;
 	unsigned long max_pclk;
 
+	enum { DSS7_AM6, DSS7_DRA8 } subrev;
+
 	u32 num_mgrs;
+	const char *vp_name[4]; /* Should match dt reg name */
+	const char *ovr_name[4]; /* Should match dt reg name */
 	u32 num_ovls;
+	const char *vid_name[4]; /* Should match dt reg name */
+	bool vid_lite[4];
+
+	const u16 *regmap;
 };
 
-static const struct dss_features k3_dss_feats = {
+
+static const struct dss_features am6_dss_feats = {
 	.num_ports = 2,
 
 	.min_pclk = 1000,
 	.max_pclk = 200000000,
 
+	.subrev = DSS7_AM6,
+
 	.num_mgrs = 2,
+	.vp_name = { "vp1", "vp2" },
+	.ovr_name = { "ovr1", "ovr2" },
+
 	.num_ovls = 2,
+	/* note: vid is plane_id 0 and vidl1 is plane_id 1 */
+	.vid_name = { "vid", "vidl1" },
+	.vid_lite = { 0, 1, },
+
+	.regmap = omapdss_am6_common_regs,
+};
+
+static const struct dss_features dra8_dss_feats = {
+	.num_ports = 4,
+
+	.min_pclk = 1000,
+	.max_pclk = 200000000,
+
+	.subrev = DSS7_DRA8,
+
+	.num_mgrs = 4,
+	.vp_name = { "vp1", "vp2", "vp3", "vp4" },
+	.ovr_name = { "ovr1", "ovr2", "ovr3", "ovr4" },
+
+	.num_ovls = 4,
+
+	.vid_name = { "vid1", "vidl1", "vid2", "vidl2" },
+	.vid_lite = { 0, 1, 0, 1, },
+
+	.regmap = omapdss_dra8_common_regs,
 };
 
 static const struct of_device_id dss7_of_match[];
@@ -81,9 +176,9 @@ struct dss_data
 	struct platform_device *pdev;
 
 	void __iomem *base_common;
-	void __iomem *base_vid[2];
-	void __iomem *base_ovr[2];
-	void __iomem *base_vp[2];
+	void __iomem *base_vid[4];
+	void __iomem *base_ovr[4];
+	void __iomem *base_vp[4];
 
 	int irq;
 	irq_handler_t user_handler;
@@ -96,9 +191,9 @@ struct dss_data
 
 	bool is_enabled;
 
-	struct dss_mgr_data mgr_data[2];
+	struct dss_mgr_data mgr_data[4];
 
-	struct dss_plane_data plane_data[2];
+	struct dss_plane_data plane_data[4];
 };
 
 static struct dss_data *dispcp; // XXX A hack for dispc_ops without dev context
@@ -1059,8 +1154,7 @@ static int dispc7_ovl_setup(enum omap_plane_id plane, const struct omap_overlay_
 {
 	struct device *dev = &dispcp->pdev->dev;
 	struct dss_data *dss_data = dssdata(dev);
-	bool lite = plane != 0; // XXX vid lite doesn't have all the regs
-
+	bool lite = dss_data->feat->vid_lite[plane];
 	u32 fourcc = oi->fourcc;
 	int bytespp = dispc7_fourcc_to_bytespp(fourcc);
 
@@ -1212,6 +1306,7 @@ static int dss7_init_features(struct platform_device *pdev)
 	}
 
 	dss_data->feat = match->data;
+	omapdss_regmap = dss_data->feat->regmap;
 
 	return 0;
 }
@@ -1393,20 +1488,22 @@ static int dispc7_init_gamma_tables(struct device *dev)
 
 static const char *dispc7_ovl_name(enum omap_plane_id plane)
 {
-	static const char *ovl_names[] = { "VID", "VIDL1" };
+	struct device *dev = &dispcp->pdev->dev;
+	struct dss_data *dss_data = dssdata(dev);
 
-	if (plane < ARRAY_SIZE(ovl_names))
-		return ovl_names[plane];
+	if (plane < dss_data->feat->num_ovls)
+		return dss_data->feat->vid_name[plane];
 	else
 		return "ERROR";
 }
 
 static const char *dispc7_mgr_name(enum omap_channel channel)
 {
-	static const char *mgr_names[] = { "VP1", "VP2" };
+	struct device *dev = &dispcp->pdev->dev;
+	struct dss_data *dss_data = dssdata(dev);
 
-	if (channel < ARRAY_SIZE(mgr_names))
-		return mgr_names[channel];
+	if (channel < dss_data->feat->num_mgrs)
+		return dss_data->feat->vp_name[channel];
 	else
 		return "ERROR";
 }
@@ -1477,6 +1574,7 @@ static int dss7_probe(struct platform_device *pdev)
 {
 	struct dss_data *dss_data;
 	int r;
+	uint i;
 
 	dev_dbg(&pdev->dev, "PROBE\n");
 
@@ -1493,36 +1591,36 @@ static int dss7_probe(struct platform_device *pdev)
 	if (r)
 		return r;
 
-
 	r = dispc7_iomap_resource(pdev, "common", &dss_data->base_common);
 	if (r)
 		return r;
 
-	/* note: VIDL1 is plane 2 */
-	r = dispc7_iomap_resource(pdev, "vidl1", &dss_data->base_vid[1]);
-	if (r)
-		return r;
+	for (i = 0; i < dss_data->feat->num_ovls; i++) {
+		r = dispc7_iomap_resource(pdev, dss_data->feat->vid_name[i],
+					  &dss_data->base_vid[i]);
+		dev_dbg(&pdev->dev, "%s: %u %s %d\n", __func__,
+			i, dss_data->feat->vid_name[i], r);
+		if (r)
+			return r;
+	}
 
-	/* note: VID is plane 1 */
-	r = dispc7_iomap_resource(pdev, "vid", &dss_data->base_vid[0]);
-	if (r)
-		return r;
+	for (i = 0; i < dss_data->feat->num_mgrs; i++) {
+		r = dispc7_iomap_resource(pdev, dss_data->feat->ovr_name[i],
+					  &dss_data->base_ovr[i]);
+		dev_dbg(&pdev->dev, "%s: %u %s %d\n", __func__,
+			i, dss_data->feat->ovr_name[i], r);
+		if (r)
+			return r;
+	}
 
-	r = dispc7_iomap_resource(pdev, "ovr1", &dss_data->base_ovr[0]);
-	if (r)
-		return r;
-
-	r = dispc7_iomap_resource(pdev, "ovr2", &dss_data->base_ovr[1]);
-	if (r)
-		return r;
-
-	r = dispc7_iomap_resource(pdev, "vp1", &dss_data->base_vp[0]);
-	if (r)
-		return r;
-
-	r = dispc7_iomap_resource(pdev, "vp2", &dss_data->base_vp[1]);
-	if (r)
-		return r;
+	for (i = 0; i < dss_data->feat->num_mgrs; i++) {
+		r = dispc7_iomap_resource(pdev, dss_data->feat->vp_name[i],
+					  &dss_data->base_vp[i]);
+		dev_dbg(&pdev->dev, "%s: %u %s %d\n", __func__,
+			i, dss_data->feat->vp_name[i], r);
+		if (r)
+			return r;
+	}
 
 	dss_data->irq = platform_get_irq(dss_data->pdev, 0);
 	if (dss_data->irq < 0) {
@@ -1668,7 +1766,8 @@ static const struct dev_pm_ops dss7_pm_ops = {
 };
 
 static const struct of_device_id dss7_of_match[] = {
-	{ .compatible = "ti,k3-dss", .data = &k3_dss_feats, },
+	{ .compatible = "ti,am6-dss", .data = &am6_dss_feats, },
+	{ .compatible = "ti,dra8-dss", .data = &dra8_dss_feats, },
 	{},
 };
 

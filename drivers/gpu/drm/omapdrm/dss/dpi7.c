@@ -14,6 +14,7 @@
 
 struct dpi_data {
 	struct platform_device *pdev;
+	char name[16];
 
 	struct mutex lock;
 
@@ -201,20 +202,10 @@ static void dpi7_setup_output_port(struct platform_device *pdev,
 	if (r)
 		port_num = 0;
 
-	switch (port_num) {
-	case 1:
-		out->name = "dpi.1";
-		out->dispc_channel = OMAP_DSS_CHANNEL_DIGIT;
-		break;
-	default:
-		dev_err(&dpi->pdev->dev,
-			"Unsupported port number %d, assigning to 0\n",
-			port_num);
-	case 0:
-		out->name = "dpi.0";
-		out->dispc_channel = OMAP_DSS_CHANNEL_LCD;
-		break;
-	}
+	snprintf(dpi->name, sizeof(dpi->name), "dpi.%u", port_num);
+
+	out->name = dpi->name;
+	out->dispc_channel = port_num;
 
 	out->dev = &pdev->dev;
 	out->id = OMAP_DSS_OUTPUT_DPI;
