@@ -6,3 +6,4 @@
 # Copyright (C) 2016-2017 Texas Instruments Incorporated - http://www.ti.com/
 #
 dtb-$(CONFIG_ARCH_K3_AM6) += k3-am654-vlab.dtb
+dtb-$(CONFIG_ARCH_K3_AM6) += k3-am654-qt.dtb
