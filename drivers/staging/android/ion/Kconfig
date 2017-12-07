@@ -55,6 +55,7 @@ config ION_OF
 config ION_UNMAPPED_HEAP
 	bool "ION unmapped heap support"
 	depends on ION && (ARM || ARM64)
+	default y
 	help
 	  Provides base support for defining Ion heaps in devicetree
 	  and setting them up. Also includes functions for platforms
