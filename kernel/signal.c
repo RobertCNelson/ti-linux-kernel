@@ -584,6 +584,12 @@ static void collect_signal(int sig, struct sigpending *list, siginfo_t *info,
 still_pending:
 		list_del_init(&first->list);
 		copy_siginfo(info, &first->info);
+
+		*resched_timer =
+			(first->flags & SIGQUEUE_PREALLOC) &&
+			(info->si_code == SI_TIMER) &&
+			(info->si_sys_private);
+
 		sigqueue_free_current(first);
 	} else {
 		/*
