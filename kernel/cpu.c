@@ -1645,11 +1645,6 @@ static struct cpuhp_step cpuhp_bp_states[] = {
 		.teardown.single	= NULL,
 		.cant_stop		= true,
 	},
-	[CPUHP_AP_SMPCFD_DYING] = {
-		.name			= "smpcfd:dying",
-		.startup.single		= NULL,
-		.teardown.single	= smpcfd_dying_cpu,
-	},
 	/*
 	 * Handled on controll processor until the plugged processor manages
 	 * this itself.
@@ -1690,6 +1685,11 @@ static struct cpuhp_step cpuhp_ap_states[] = {
 		.name			= "RCU/tree:dying",
 		.startup.single		= NULL,
 		.teardown.single	= rcutree_dying_cpu,
+	},
+	[CPUHP_AP_SMPCFD_DYING] = {
+		.name			= "smpcfd:dying",
+		.startup.single		= NULL,
+		.teardown.single	= smpcfd_dying_cpu,
 	},
 	/* Entry state on starting. Interrupts enabled from here on. Transient
 	 * state for synchronsization */
