@@ -422,8 +422,10 @@ static inline void debug_hrtimer_activate(struct hrtimer *timer,
 	 * Check whether the HRTIMER_MODE_SOFT bit and hrtimer.is_soft
 	 * match, when a timer is started via__hrtimer_start_range_ns().
 	 */
+#ifndef CONFIG_PREEMPT_RT_BASE
 	if (modecheck)
-		WARN_ON_ONCE((mode & HRTIMER_MODE_SOFT) & !timer->is_soft);
+		WARN_ON_ONCE(!(mode & HRTIMER_MODE_SOFT) ^ !timer->is_soft);
+#endif
 
 	debug_object_activate(timer, &hrtimer_debug_descr);
 }
@@ -799,16 +801,18 @@ static void hrtimer_reprogram(struct hrtimer *timer, bool reprogram)
 		expires = 0;
 
 	if (timer->is_soft) {
-		if (cpu_base->softirq_activated)
+		struct hrtimer_cpu_base *timer_cpu_base = base->cpu_base;
+
+		if (timer_cpu_base->softirq_activated)
 			return;
 
-		if (!ktime_before(expires, cpu_base->softirq_expires_next))
+		if (!ktime_before(expires, timer_cpu_base->softirq_expires_next))
 			return;
 
-		cpu_base->softirq_next_timer = timer;
-		cpu_base->softirq_expires_next = expires;
+		timer_cpu_base->softirq_next_timer = timer;
+		timer_cpu_base->softirq_expires_next = expires;
 
-		if (!ktime_before(expires, cpu_base->expires_next) ||
+		if (!ktime_before(expires, timer_cpu_base->expires_next) ||
 		    !reprogram)
 			return;
 	}
