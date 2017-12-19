@@ -86,6 +86,7 @@ enum omap_display_type {
 	OMAP_DISPLAY_TYPE_VENC		= 1 << 4,
 	OMAP_DISPLAY_TYPE_HDMI		= 1 << 5,
 	OMAP_DISPLAY_TYPE_DVI		= 1 << 6,
+	OMAP_DISPLAY_TYPE_OLDI		= 1 << 7,
 };
 
 enum omap_plane_id {
@@ -194,6 +195,7 @@ enum omap_dss_output_id {
 	OMAP_DSS_OUTPUT_DSI2	= 1 << 4,
 	OMAP_DSS_OUTPUT_VENC	= 1 << 5,
 	OMAP_DSS_OUTPUT_HDMI	= 1 << 6,
+	OMAP_DSS_OUTPUT_OLDI	= 1 << 7,
 };
 
 /* DSI */
