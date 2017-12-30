@@ -144,14 +144,11 @@ static void omap_irq_fifo_underflow(struct omap_drm_private *priv,
 {
 	static DEFINE_RATELIMIT_STATE(_rs, DEFAULT_RATELIMIT_INTERVAL,
 				      DEFAULT_RATELIMIT_BURST);
-	static const struct {
-		const char *name;
-		u32 mask;
-	} sources[] = {
-		{ "gfx", DISPC_IRQ_GFX_FIFO_UNDERFLOW },
-		{ "vid1", DISPC_IRQ_VID1_FIFO_UNDERFLOW },
-		{ "vid2", DISPC_IRQ_VID2_FIFO_UNDERFLOW },
-		{ "vid3", DISPC_IRQ_VID3_FIFO_UNDERFLOW },
+	static const u32 irqbits[] = { 
+		DISPC_IRQ_GFX_FIFO_UNDERFLOW,
+		DISPC_IRQ_VID1_FIFO_UNDERFLOW,
+		DISPC_IRQ_VID2_FIFO_UNDERFLOW,
+		DISPC_IRQ_VID3_FIFO_UNDERFLOW
 	};
 
 	const u32 mask = DISPC_IRQ_GFX_FIFO_UNDERFLOW
@@ -172,9 +169,9 @@ static void omap_irq_fifo_underflow(struct omap_drm_private *priv,
 
 	DRM_ERROR("FIFO underflow on ");
 
-	for (i = 0; i < ARRAY_SIZE(sources); ++i) {
-		if (sources[i].mask & irqstatus)
-			pr_cont("%s ", sources[i].name);
+	for (i = 0; i < ARRAY_SIZE(irqbits); ++i) {
+		if (irqbits[i] & irqstatus)
+			pr_cont("%s ", priv->dispc_ops->ovl_name(i));
 	}
 
 	pr_cont("(0x%08x)\n", irqstatus);

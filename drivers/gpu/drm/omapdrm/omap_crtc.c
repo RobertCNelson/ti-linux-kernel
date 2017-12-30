@@ -662,13 +662,6 @@ static const struct drm_crtc_helper_funcs omap_crtc_helper_funcs = {
  * Init and Cleanup
  */
 
-static const char *channel_names[] = {
-	[OMAP_DSS_CHANNEL_LCD] = "lcd",
-	[OMAP_DSS_CHANNEL_DIGIT] = "tv",
-	[OMAP_DSS_CHANNEL_LCD2] = "lcd2",
-	[OMAP_DSS_CHANNEL_LCD3] = "lcd3",
-};
-
 void omap_crtc_pre_init(void)
 {
 	memset(omap_crtcs, 0, sizeof(omap_crtcs));
@@ -696,7 +689,7 @@ struct drm_crtc *omap_crtc_init(struct drm_device *dev,
 	channel = out->dispc_channel;
 	omap_dss_put_device(out);
 
-	DBG("%s", channel_names[channel]);
+	DBG("%s", priv->dispc_ops->mgr_name(channel));
 
 	/* Multiple displays on same channel is not allowed */
 	if (WARN_ON(omap_crtcs[channel] != NULL))
@@ -711,7 +704,7 @@ struct drm_crtc *omap_crtc_init(struct drm_device *dev,
 	init_waitqueue_head(&omap_crtc->pending_wait);
 
 	omap_crtc->channel = channel;
-	omap_crtc->name = channel_names[channel];
+	omap_crtc->name = priv->dispc_ops->mgr_name(channel);
 
 	ret = drm_crtc_init_with_planes(dev, crtc, plane, NULL,
 					&omap_crtc_funcs, NULL);

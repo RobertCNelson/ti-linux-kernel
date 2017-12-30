@@ -691,6 +691,9 @@ struct dispc_ops {
 	int (*get_num_ovls)(void);
 	int (*get_num_mgrs)(void);
 
+	const char *(*ovl_name)(enum omap_plane_id plane);
+	const char *(*mgr_name)(enum omap_channel channel);
+
 	u32 (*get_memory_bandwidth_limit)(void);
 
 	void (*mgr_enable)(enum omap_channel channel, bool enable);

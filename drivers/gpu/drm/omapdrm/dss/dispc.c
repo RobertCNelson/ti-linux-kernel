@@ -680,6 +680,24 @@ void dispc_runtime_put(void)
 	WARN_ON(r < 0 && r != -ENOSYS);
 }
 
+static const char *dispc_ovl_name(enum omap_plane_id plane)
+{
+	static const char *ovl_names[] = {
+		[OMAP_DSS_GFX]		= "GFX",
+		[OMAP_DSS_VIDEO1]	= "VID1",
+		[OMAP_DSS_VIDEO2]	= "VID2",
+		[OMAP_DSS_VIDEO3]	= "VID3",
+		[OMAP_DSS_WB]		= "WB",
+	};
+
+	return ovl_names[plane];
+}
+
+static const char *dispc_mgr_name(enum omap_channel channel)
+{
+	return mgr_desc[channel].name;
+}
+
 static u32 dispc_mgr_get_vsync_irq(enum omap_channel channel)
 {
 	return mgr_desc[channel].vsync_irq;
@@ -4505,6 +4523,9 @@ static const struct dispc_ops dispc_ops = {
 
 	.get_num_ovls = dispc_get_num_ovls,
 	.get_num_mgrs = dispc_get_num_mgrs,
+
+	.ovl_name = dispc_ovl_name,
+	.mgr_name = dispc_mgr_name,
 
 	.get_memory_bandwidth_limit = dispc_get_memory_bandwidth_limit,
 
