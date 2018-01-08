@@ -32,7 +32,7 @@
 #include <linux/init.h>
 #include <linux/uaccess.h>
 #include <linux/highmem.h>
-#include <asm/mmu_context.h>
+#include <linux/mmu_context.h>
 #include <linux/interrupt.h>
 #include <linux/capability.h>
 #include <linux/completion.h>
@@ -523,9 +523,15 @@ static bool set_nr_if_polling(struct task_struct *p)
 #endif
 #endif
 
-void wake_q_add(struct wake_q_head *head, struct task_struct *task)
+void __wake_q_add(struct wake_q_head *head, struct task_struct *task,
+		  bool sleeper)
 {
-	struct wake_q_node *node = &task->wake_q;
+	struct wake_q_node *node;
+
+	if (sleeper)
+		node = &task->wake_q_sleeper;
+	else
+		node = &task->wake_q;
 
 	/*
 	 * Atomically grab the task, if ->wake_q is !nil already it means
@@ -554,11 +560,17 @@ void __wake_up_q(struct wake_q_head *head, bool sleeper)
 	while (node != WAKE_Q_TAIL) {
 		struct task_struct *task;
 
-		task = container_of(node, struct task_struct, wake_q);
+		if (sleeper)
+			task = container_of(node, struct task_struct, wake_q_sleeper);
+		else
+			task = container_of(node, struct task_struct, wake_q);
 		BUG_ON(!task);
 		/* task can safely be re-inserted now */
 		node = node->next;
-		task->wake_q.next = NULL;
+		if (sleeper)
+			task->wake_q_sleeper.next = NULL;
+		else
+			task->wake_q.next = NULL;
 
 		/*
 		 * wake_up_process() implies a wmb() to pair with the queueing
@@ -640,8 +652,7 @@ void resched_cpu(int cpu)
 	struct rq *rq = cpu_rq(cpu);
 	unsigned long flags;
 
-	if (!raw_spin_trylock_irqsave(&rq->lock, flags))
-		return;
+	raw_spin_lock_irqsave(&rq->lock, flags);
 	resched_curr(rq);
 	raw_spin_unlock_irqrestore(&rq->lock, flags);
 }
@@ -1212,17 +1223,13 @@ void set_cpus_allowed_common(struct task_struct *p, const struct cpumask *new_ma
 	p->nr_cpus_allowed = cpumask_weight(new_mask);
 }
 
-void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
+static void __do_set_cpus_allowed_tail(struct task_struct *p,
+				       const struct cpumask *new_mask)
 {
 	struct rq *rq = task_rq(p);
 	bool queued, running;
 
 	lockdep_assert_held(&p->pi_lock);
-
-	if (__migrate_disabled(p)) {
-		cpumask_copy(&p->cpus_allowed, new_mask);
-		return;
-	}
 
 	queued = task_on_rq_queued(p);
 	running = task_current(rq, p);
@@ -1244,6 +1251,20 @@ void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
 		p->sched_class->set_curr_task(rq);
 	if (queued)
 		enqueue_task(rq, p, ENQUEUE_RESTORE);
+}
+
+void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
+{
+	if (__migrate_disabled(p)) {
+		lockdep_assert_held(&p->pi_lock);
+
+		cpumask_copy(&p->cpus_allowed, new_mask);
+#if defined(CONFIG_PREEMPT_RT_FULL) && defined(CONFIG_SMP)
+		p->migrate_disable_update = 1;
+#endif
+		return;
+	}
+	__do_set_cpus_allowed_tail(p, new_mask);
 }
 
 static DEFINE_PER_CPU(struct cpumask, sched_cpumasks);
@@ -2212,7 +2233,7 @@ EXPORT_SYMBOL(wake_up_process);
  */
 int wake_up_lock_sleeper(struct task_struct *p)
 {
-	return try_to_wake_up(p, TASK_ALL, WF_LOCK_SLEEPER);
+	return try_to_wake_up(p, TASK_UNINTERRUPTIBLE, WF_LOCK_SLEEPER);
 }
 
 int wake_up_state(struct task_struct *p, unsigned int state)
@@ -2838,7 +2859,7 @@ context_switch(struct rq *rq, struct task_struct *prev,
 		atomic_inc(&oldmm->mm_count);
 		enter_lazy_tlb(oldmm, next);
 	} else
-		switch_mm(oldmm, mm, next);
+		switch_mm_irqs_off(oldmm, mm, next);
 
 	if (!prev->mm) {
 		prev->active_mm = NULL;
@@ -3230,6 +3251,43 @@ void migrate_enable(void)
 	 * show the tasks original cpu affinity.
 	 */
 	p->migrate_disable = 0;
+
+	if (p->migrate_disable_update) {
+		unsigned long flags;
+		struct rq *rq;
+
+		rq = task_rq_lock(p, &flags);
+		update_rq_clock(rq);
+
+		__do_set_cpus_allowed_tail(p, &p->cpus_allowed);
+		task_rq_unlock(rq, p, &flags);
+
+		p->migrate_disable_update = 0;
+
+		WARN_ON(smp_processor_id() != task_cpu(p));
+		if (!cpumask_test_cpu(task_cpu(p), &p->cpus_allowed)) {
+			const struct cpumask *cpu_valid_mask = cpu_active_mask;
+			struct migration_arg arg;
+			unsigned int dest_cpu;
+
+			if (p->flags & PF_KTHREAD) {
+				/*
+				 * Kernel threads are allowed on online && !active CPUs
+				 */
+				cpu_valid_mask = cpu_online_mask;
+			}
+			dest_cpu = cpumask_any_and(cpu_valid_mask, &p->cpus_allowed);
+			arg.task = p;
+			arg.dest_cpu = dest_cpu;
+
+			unpin_current_cpu();
+			preempt_lazy_enable();
+			preempt_enable();
+			stop_one_cpu(task_cpu(p), migration_cpu_stop, &arg);
+			tlb_migrate_finish(p->mm);
+			return;
+		}
+	}
 
 	unpin_current_cpu();
 	preempt_enable();
@@ -6155,6 +6213,13 @@ static int init_rootdomain(struct root_domain *rd)
 	if (!zalloc_cpumask_var(&rd->rto_mask, GFP_KERNEL))
 		goto free_dlo_mask;
 
+#ifdef HAVE_RT_PUSH_IPI
+	rd->rto_cpu = -1;
+	raw_spin_lock_init(&rd->rto_lock);
+	init_irq_work(&rd->rto_push_work, rto_push_irq_work_func);
+	rd->rto_push_work.flags |= IRQ_WORK_HARD_IRQ;
+#endif
+
 	init_dl_bw(&rd->dl_bw);
 	if (cpudl_init(&rd->cpudl) != 0)
 		goto free_dlo_mask;
@@ -7533,17 +7598,16 @@ static int cpuset_cpu_active(struct notifier_block *nfb, unsigned long action,
 		 * operation in the resume sequence, just build a single sched
 		 * domain, ignoring cpusets.
 		 */
-		num_cpus_frozen--;
-		if (likely(num_cpus_frozen)) {
-			partition_sched_domains(1, NULL, NULL);
+		partition_sched_domains(1, NULL, NULL);
+		if (--num_cpus_frozen)
 			break;
-		}
 
 		/*
 		 * This is the last CPU online operation. So fall through and
 		 * restore the original sched domains by considering the
 		 * cpuset configurations.
 		 */
+		cpuset_force_rebuild();
 
 	case CPU_ONLINE:
 		cpuset_update_active_cpus(true);
