@@ -1,0 +1,97 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Device Tree Source for Jacinto7 (hexa core variant)
+ *
+ * Copyright (C) 2017 Texas Instruments Incorporated - http://www.ti.com/
+ */
+
+&cpus {
+	cpu-map {
+		cluster0: cluster0 {
+			core0 {
+				cpu = <&cpu0>;
+			};
+
+			core1 {
+				cpu = <&cpu1>;
+			};
+		};
+
+		cluster1: cluster1 {
+			core0 {
+				cpu = <&cpu2>;
+			};
+
+			core1 {
+				cpu = <&cpu3>;
+			};
+		};
+
+		cluster2: cluster2 {
+			core0 {
+				cpu = <&cpu4>;
+			};
+
+			core1 {
+				cpu = <&cpu5>;
+			};
+		};
+
+	};
+
+	/* CPU0 is already defined */
+
+	cpu1: cpu@1 {
+		compatible = "arm,cortex-a72","arm,armv8";
+		reg = <0x001>;
+		device_type = "cpu";
+		enable-method = "psci";
+		next-level-cache = <&L2_0>;
+	};
+
+	cpu2: cpu@100 {
+		compatible = "arm,cortex-a72","arm,armv8";
+		reg = <0x100>;
+		device_type = "cpu";
+		enable-method = "psci";
+		next-level-cache = <&L2_1>;
+	};
+
+	cpu3: cpu@101 {
+		compatible = "arm,cortex-a72","arm,armv8";
+		reg = <0x101>;
+		device_type = "cpu";
+		enable-method = "psci";
+		next-level-cache = <&L2_1>;
+	};
+
+	cpu4: cpu@200 {
+		compatible = "arm,cortex-a72","arm,armv8";
+		reg = <0x200>;
+		device_type = "cpu";
+		enable-method = "psci";
+		next-level-cache = <&L2_2>;
+	};
+
+	cpu5: cpu@201 {
+		compatible = "arm,cortex-a72","arm,armv8";
+		reg = <0x201>;
+		device_type = "cpu";
+		enable-method = "psci";
+		next-level-cache = <&L2_2>;
+	};
+};
+
+&soc0 {
+	L2_1: l2-cache1 {
+		compatible = "cache";
+		cache-level = <2>;
+		next-level-cache = <&msmc_l3>;
+	};
+
+	L2_2: l2-cache2 {
+		compatible = "cache";
+		cache-level = <2>;
+		next-level-cache = <&msmc_l3>;
+	};
+};
