@@ -8,7 +8,7 @@
 /dts-v1/;
 
 #include "k3-am6.dtsi"
-#include "k3-am6-quad-core.dtsi"
+#include "k3-am6-dual-core.dtsi"
 
 / {
 	compatible =  "ti,am654-evm", "ti,am654";
