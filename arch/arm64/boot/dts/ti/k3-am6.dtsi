@@ -93,7 +93,7 @@
 		gic: interrupt-controller@1800000 {
 			compatible = "arm,gic-v3";
 			#address-cells = <2>;
-			#size-cells = <1>;
+			#size-cells = <2>;
 			ranges;
 			#interrupt-cells = <3>;
 			interrupt-controller;
@@ -112,7 +112,7 @@
 
 			gic_its: gic-its@1000000 {
 				compatible = "arm,gic-v3-its";
-				reg = <0x0 0x1820000 0x10000>;
+				reg = <0x0 0x1820000 0x0 0x10000>;
 				msi-controller;
 				#msi-cells = <1>;
 			};
