@@ -8,7 +8,7 @@
 /dts-v1/;
 
 #include "k3-j7.dtsi"
-#include "k3-j7-hexa-core.dtsi"
+#include "k3-j7-dual-core.dtsi"
 
 / {
 	compatible =  "ti,j7-evm", "ti,j7";
