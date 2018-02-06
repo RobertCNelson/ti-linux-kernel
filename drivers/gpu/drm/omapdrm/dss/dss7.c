@@ -164,6 +164,7 @@ static const struct of_device_id dss7_of_match[];
 
 struct dss_mgr_data {
 	u32 gamma_table[256];
+	const struct videomode *vm;
 };
 
 struct dss_plane_data {
@@ -678,6 +679,48 @@ static void dispc7_mgr_setup(enum omap_channel channel,
 	dispc7_ovr_write(dev, channel, DISPC_OVR_DEFAULT_COLOR2, (v >> 32) & 0xffff);
 }
 
+static void dispc7_set_oldi_config(struct device *dev,
+				   enum omap_channel channel,
+				   const struct dss_lcd_mgr_config *config)
+{
+	struct dss_data *dss_data = dssdata(dev);
+	u32 oldi_cfg = 0;
+	u32 oldi_reset_bit = BIT(5 + channel);
+	int count = 0;
+
+	/* On am6 DUALMODESYNC, MASTERSLAVE, MODE, and SRC are set
+	 * statically to 0.
+	 */
+
+	if (config->video_port_width == 24)
+		oldi_cfg |= BIT(8); /* MSB */
+	else if (config->video_port_width != 18)
+		     dev_warn(dev, "%s: %d port width is not supported\n",
+			      __func__, config->video_port_width);
+
+	if (!WARN_ON(!dss_data->mgr_data[channel].vm))
+		if (!(dss_data->mgr_data[channel].vm->flags &
+		      DISPLAY_FLAGS_DE_HIGH))
+			oldi_cfg |= BIT(7); /* DEPOL */
+
+	oldi_cfg = FLD_MOD(oldi_cfg, config->oldi_mode, 3, 1);
+
+	oldi_cfg |= BIT(12); /* SOFTRST */
+
+	dispc7_vp_write(dev, channel, DISPC_VP_DSS_OLDI_CFG, oldi_cfg);
+
+	while (!(oldi_reset_bit & dispc7_read(dev, DSS_SYSSTATUS)) &&
+	       count < 10000)
+		count++;
+
+	if (!(oldi_reset_bit & dispc7_read(dev, DSS_SYSSTATUS)))
+		dev_warn(dev, "%s: timeout waiting for OLDI reset done\n",
+			 __func__);
+
+	/* ENABLE */
+	dispc7_vp_write(dev, channel, DISPC_VP_DSS_OLDI_CFG, BIT(1));
+}
+
 static void dispc7_set_num_datalines(struct device *dev,
 				     enum omap_channel channel, int num_lines)
 {
@@ -703,12 +746,16 @@ static void dispc7_set_num_datalines(struct device *dev,
 	VP_REG_FLD_MOD(dev, channel, DISPC_VP_CONTROL, v, 10, 8);
 }
 
+
 static void dispc7_mgr_set_lcd_config(enum omap_channel channel,
 				      const struct dss_lcd_mgr_config *config)
 {
 	struct device *dev = &dispcp->pdev->dev;
 
 	dispc7_set_num_datalines(dev, channel, config->video_port_width);
+
+	if (config->oldi)
+		dispc7_set_oldi_config(dev, channel, config);
 }
 
 static bool dispc7_lcd_timings_ok(int hsw, int hfp, int hbp,
@@ -757,6 +804,7 @@ static void dispc7_mgr_set_timings(enum omap_channel channel,
 				   const struct videomode *vm)
 {
 	struct device *dev = &dispcp->pdev->dev;
+	struct dss_data *dss_data = dssdata(dev);
 	bool align, onoff, rf, ieo, ipc, ihs, ivs;
 
 	dispc7_vp_write(dev, channel, DISPC_VP_TIMING_H,
@@ -812,6 +860,8 @@ static void dispc7_mgr_set_timings(enum omap_channel channel,
 	dispc7_vp_write(dev, channel, DISPC_VP_SIZE_SCREEN,
 			FLD_VAL(vm->hactive - 1, 11, 0) |
 			FLD_VAL(vm->vactive - 1, 27, 16));
+
+	dss_data->mgr_data[channel].vm = vm;
 }
 
 int dispc7_vp_enable_clk(enum omap_channel channel)
@@ -1311,19 +1361,51 @@ static int dss7_init_features(struct platform_device *pdev)
 	return 0;
 }
 
+static enum omap_display_type dss7_output_id(struct device_node *port)
+{
+	struct device_node *ep;
+	u32 dummy;
+	int r;
+
+	ep = of_get_next_child(port, NULL);
+	if (!ep)
+		return OMAP_DISPLAY_TYPE_NONE;
+
+	r = of_property_read_u32(ep, "oldi-mode", &dummy);
+
+	of_node_put(ep);
+
+	if (r)
+		return OMAP_DISPLAY_TYPE_DPI;
+
+	return OMAP_DISPLAY_TYPE_OLDI;
+}
+
 static int dss7_init_ports(struct platform_device *pdev)
 {
 	struct dss_data *dss_data = dssdata(&pdev->dev);
 	struct device_node *parent = pdev->dev.of_node;
 	struct device_node *port;
-	int i;
+	int i, r;
 
 	for (i = 0; i < dss_data->feat->num_ports; i++) {
 		port = of_graph_get_port_by_id(parent, i);
 		if (!port)
 			continue;
 
-		dpi7_init_port(pdev, port);
+		switch (dss7_output_id(port)) {
+		case OMAP_DISPLAY_TYPE_DPI:
+			r = dpi7_init_port(pdev, port);
+			break;
+		case OMAP_DISPLAY_TYPE_OLDI:
+			r = oldi7_init_port(pdev, port);
+			break;
+		default:
+			r = -EINVAL;
+		}
+
+		if (r)
+			return r;
 	}
 
 	return 0;
@@ -1341,13 +1423,23 @@ static void dss7_uninit_ports(struct platform_device *pdev)
 		if (!port)
 			continue;
 
-		dpi7_uninit_port(port);
+		switch (dss7_output_id(port)) {
+		case OMAP_DISPLAY_TYPE_DPI:
+			dpi7_uninit_port(port);
+			break;
+		case OMAP_DISPLAY_TYPE_OLDI:
+			oldi7_uninit_port(port);
+			break;
+		default:
+			WARN_ON(1);
+		}
+
 	}
 }
 
 static enum omap_dss_output_id dispc7_mgr_get_supported_outputs(enum omap_channel channel)
 {
-	return OMAP_DSS_OUTPUT_DPI;
+	return OMAP_DSS_OUTPUT_DPI | OMAP_DSS_OUTPUT_OLDI;
 }
 
 static const u32 dispc7_color_list[] = {

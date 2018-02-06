@@ -20,4 +20,4 @@ omapdss-$(CONFIG_OMAP5_DSS_HDMI) += hdmi5.o hdmi5_core.o
 ccflags-$(CONFIG_OMAP2_DSS_DEBUG) += -DDEBUG
 
 obj-$(CONFIG_TI_DSS7) += omapdss7.o
-omapdss7-y := dss7.o dpi7.o
+omapdss7-y := dss7.o dpi7.o oldi7.o

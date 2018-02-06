@@ -41,7 +41,7 @@ config DRM_OMAP_PANEL_DPI
 
 config DRM_OMAP_PANEL_OLDI
 	tristate "Generic OLDI panel"
-	depends on BACKLIGHT_CLASS_DEVICE
+	depends on BACKLIGHT_CLASS_DEVICE && TI_DSS7
 	help
 	  Driver for generic OLDI panels.
 

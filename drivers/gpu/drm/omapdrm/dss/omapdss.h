@@ -699,6 +699,9 @@ struct dss_lcd_mgr_config {
 	int video_port_width;
 
 	int lcden_sig_polarity;
+
+	bool oldi;
+	int oldi_mode;
 };
 
 void omapdss_set_is_initialized(bool set);

@@ -27,6 +27,10 @@ void dispc7_vp_disable_clk(enum omap_channel channel);
 int dpi7_init_port(struct platform_device *pdev, struct device_node *port);
 void dpi7_uninit_port(struct device_node *port);
 
+/* OLDI7 */
+int oldi7_init_port(struct platform_device *pdev, struct device_node *port);
+void oldi7_uninit_port(struct device_node *port);
+
 /* COMMON */
 enum dss7_common_regs {
 	NOT_APPLICABLE_OFF = 0,
