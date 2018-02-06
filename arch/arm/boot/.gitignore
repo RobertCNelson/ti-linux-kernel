@@ -6,3 +6,4 @@ uImage
 *.dtb
 *.dtbo
 *.itb
+zImage-dtb
