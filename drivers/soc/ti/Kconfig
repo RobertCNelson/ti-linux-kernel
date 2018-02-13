@@ -7,6 +7,11 @@ config ARCH_K3_AM6
 	bool "K3 AM6 SoC"
 	help
 	  Enable support for TI's AM6 SoC Family support
+
+config ARCH_K3_J7
+	bool "K3 J7 SoC"
+	help
+	  Enable support for TI's Jacinto7 SoC support.
 endif
 endif
 
