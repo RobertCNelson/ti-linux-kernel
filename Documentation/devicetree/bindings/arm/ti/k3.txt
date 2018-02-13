@@ -1,0 +1,31 @@
+Texas Instruments K3 device tree bindings
+-------------------------------------------
+
+Boards based on the K3 family of SoCs shall have the following property:
+- compatible: Every device present in K3 SoC shall be in the form:
+  "ti,XXX-YYY", where:
+     'XXX' represents the specific SoC part for which the support is added.
+     'YYY' represents the corresponding peripheral in SoC being supported.
+  NOTE: Generic devices such as GIC, NS16550 type UART shall use the specified
+  compatible for those devices.
+
+  Example:
+    compatible = "ti,am654-i2c";
+
+SoCs
+-------------------------------------------
+
+Each device tree root node must specify which exact K3 SoC it uses, using one
+of the following compatible values:
+
+- AM654
+  compatible = "ti,am654";
+
+Boards
+-------------------------------------------
+
+In addition, each device tree root node must specify which one or more of the
+following board-specific compatible values:
+
+- AM654 EVM
+  compatible = "ti,am654-evm", "ti,am654";
