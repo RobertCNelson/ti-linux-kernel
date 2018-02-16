@@ -516,9 +516,11 @@
 &mmc2 {
 	status = "okay";
 	vmmc-supply = <&v3_3d>;
+	vqmmc-supply = <&v3_3d>;
 	bus-width = <8>;
-	ti,non-removable;
+	non-removable;
 	max-frequency = <96000000>;
+	no-1-8-v;
 };
 
 &dcan1 {
@@ -612,5 +614,21 @@
 				data-lines = <24>;
 			};
 		};
+	};
+};
+
+&pruss_soc_bus1 {
+	status = "okay";
+
+	pruss1: pruss@0 {
+		status = "okay";
+	};
+};
+
+&pruss_soc_bus2 {
+	status = "okay";
+
+	pruss2: pruss@0 {
+		status = "okay";
 	};
 };
