@@ -5,4 +5,4 @@ classification: SDK_Release_Defconfigs type: ti_sdk_presil_mini_arm64_release de
 # Debug Defconfigs
 classification: SDK_Debug_Defconfigs type: ti_sdk_arm64_debug defconfig: defconfig config_file: None extra_configs: arm64_prune.cfg  baseport.cfg debug_options.cfg  systemd.cfg
 classification: SDK_Debug_Defconfigs type: ti_sdk_presil_arm64_debug defconfig: defconfig config_file: None extra_configs: arm64_prune.cfg presil_prune.cfg baseport.cfg debug_options.cfg  systemd.cfg
-classification: SDK_Release_Defconfigs type: ti_sdk_presil_mini_arm64_debug defconfig: defconfig config_file: None extra_configs: arm64_prune.cfg presil_prune.cfg baseport.cfg presil_mini_prune.cfg  debug_options.cfg
+classification: SDK_Debug_Defconfigs type: ti_sdk_presil_mini_arm64_debug defconfig: defconfig config_file: None extra_configs: arm64_prune.cfg presil_prune.cfg baseport.cfg presil_mini_prune.cfg  debug_options.cfg
