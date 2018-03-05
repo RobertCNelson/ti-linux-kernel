@@ -1041,8 +1041,7 @@ again:
 		}
 	}
 }
-
-static void tasklet_action(struct softirq_action *a)
+static __latent_entropy void tasklet_action(struct softirq_action *a)
 {
 	struct tasklet_struct *list;
 
