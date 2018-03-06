@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Device Tree Source for Jacinto7 DRA82 ASTC VLAB Model with Jailhouse support
+ *
+ * Copyright (C) 2017-2018 Texas Instruments Incorporated - http://www.ti.com/
+ */
+
+#include "k3-dra82-vlab.dts"
+
+/ {
+	compatible =  "ti,dra82-evm", "ti,dra82";
+	model = "Texas Instruments DRA82 ASTC Vlab Model with Jailhouse Support";
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		/*
+		 * Reserve for Jailhouse hypervisor firmware.
+		 * Must be in sync with jailhouse root cell configuration.
+		 */
+		hyp_mem: jailhouse@0xdc000000 {
+			reg = <0x0 0xdc000000 0x0 0x4000000>;
+			alignment = <0x1000>;
+			no-map;
+		};
+
+		/*
+		 * Reserve for Jailhouse inmates cells
+		 * Must be in sync with jailhouse inmate cell configuration.
+		 */
+		inmate_mem: jailhouse@0xe0000000 {
+			reg = <0x0 0xe0000000 0x0 0x20000000>;
+			alignment = <0x1000>;
+			no-map;
+		};
+	};
+};
+
+&uart2 {
+	status = "okay";
+};
