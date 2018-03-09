@@ -482,6 +482,23 @@ struct omapdss_dsi_ops {
 			int channel, u16 plen);
 };
 
+struct omapdss_oldi_ops {
+	int (*connect)(struct omap_dss_device *dssdev,
+			struct omap_dss_device *dst);
+	void (*disconnect)(struct omap_dss_device *dssdev,
+			struct omap_dss_device *dst);
+
+	int (*enable)(struct omap_dss_device *dssdev);
+	void (*disable)(struct omap_dss_device *dssdev);
+
+	int (*check_timings)(struct omap_dss_device *dssdev,
+			     struct videomode *vm);
+	void (*set_timings)(struct omap_dss_device *dssdev,
+			    struct videomode *vm);
+	void (*get_timings)(struct omap_dss_device *dssdev,
+			    struct videomode *vm);
+};
+
 struct omap_dss_device {
 	struct kobject kobj;
 	struct device *dev;
@@ -514,6 +531,7 @@ struct omap_dss_device {
 		const struct omapdss_hdmi_ops *hdmi;
 		const struct omapdss_atv_ops *atv;
 		const struct omapdss_dsi_ops *dsi;
+		const struct omapdss_oldi_ops *oldi;
 	} ops;
 
 	/* helper variable for driver suspend/resume */
