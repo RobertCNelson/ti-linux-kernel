@@ -15,6 +15,16 @@
 			load = <0x82000000>;
 			entry = <0x82000000>;
 		};
+		ramdisk@1 {
+			description = "Android Ramdisk Image";
+			data = /incbin/("ramdisk.img");
+			type = "ramdisk";
+			arch = "arm";
+			os = "linux";
+			compression = "none";
+			load = <0x88080000>;
+			entry = <0x88080000>;
+		};
 		fdt@1 {
 			description = "AM57xx-beagle-x15";
 			data = /incbin/("am57xx-beagle-x15.dtb");
@@ -83,6 +93,7 @@
 		am57xx-evm-reva3.dtb {
 			description = "AM57xx EVM rev A3";
 			kernel = "kernel@1";
+			ramdisk = "ramdisk@1";
 			fdt = "fdt@2", "fdt@3", "fdt@7";
 		};
 		am57xx-beagle-x15.dtb {
