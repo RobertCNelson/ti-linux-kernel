@@ -1,0 +1,52 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Device Tree Source for K3 SoC Family
+ *
+ * Copyright (C) 2016-2018 Texas Instruments Incorporated - http://www.ti.com/
+ */
+
+
+&lcd0 {
+	compatible = "panel-oldi";
+
+	status = "ok";
+
+	panel-timing {
+		clock-frequency = <7000000>;
+		hactive = <529>;
+		vactive = <423>;
+		hfront-porch = <33>;
+		hback-porch = <89>;
+		hsync-len = <57>;
+		vfront-porch = <3>;
+		vback-porch = <10>;
+		vsync-len = <8>;
+		hsync-active = <1>;
+		vsync-active = <1>;
+		de-active = <1>;
+		pixelclk-active = <1>;
+		syncclk-active = <0>;
+	};
+
+	port {
+		lcd_in0: endpoint {
+			remote-endpoint = <&oldi_out0>;
+		};
+	};
+};
+
+&dss {
+	status = "ok";
+};
+
+&dss_ports { 
+	   port@0 {
+		reg = <0>;
+
+		oldi_out0: endpoint {
+			remote-endpoint = <&lcd_in0>;
+			data-lines = <24>;
+			oldi-mode = <0>;
+		};
+	};
+};
