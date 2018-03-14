@@ -42,3 +42,5 @@
 	clock-frequency = <3686400>;
 	status = "okay";
 };
+
+#include "k3-dss-529x423-port1-dpi.dtsi"
