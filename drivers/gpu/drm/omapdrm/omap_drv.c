@@ -545,7 +545,7 @@ static int pdev_probe(struct platform_device *pdev)
 	priv->dispc_ops = dispc_get_ops();
 
 	soc = soc_device_match(omapdrm_soc_devices);
-	priv->omaprev = soc ? (unsigned int)soc->data : 0;
+	priv->omaprev = soc ? (uint32_t)(ptrdiff_t)soc->data : 0;
 	priv->wq = alloc_ordered_workqueue("omapdrm", 0);
 
 	spin_lock_init(&priv->list_lock);
