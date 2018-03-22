@@ -81,7 +81,8 @@ struct omap_drm_private {
 	/* irq handling: */
 	spinlock_t wait_lock;		/* protects the wait_list */
 	struct list_head wait_list;	/* list of omap_irq_wait */
-	uint32_t irq_mask;		/* enabled irqs in addition to wait_list */
+	u64 irq_mask;			/* enabled irqs in addition to wait_list */
+	u64 irq_uf_mask;
 
 	/* memory bandwidth limit if it is needed on the platform */
 	unsigned int max_bandwidth;

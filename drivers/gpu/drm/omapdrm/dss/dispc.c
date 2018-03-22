@@ -680,27 +680,30 @@ void dispc_runtime_put(void)
 	WARN_ON(r < 0 && r != -ENOSYS);
 }
 
-static u32 dispc_mgr_get_vsync_irq(enum omap_channel channel)
+static const char *dispc_ovl_name(enum omap_plane_id plane)
 {
-	return mgr_desc[channel].vsync_irq;
+	static const char *ovl_names[] = {
+		[OMAP_DSS_GFX]		= "GFX",
+		[OMAP_DSS_VIDEO1]	= "VID1",
+		[OMAP_DSS_VIDEO2]	= "VID2",
+		[OMAP_DSS_VIDEO3]	= "VID3",
+		[OMAP_DSS_WB]		= "WB",
+	};
+
+	return ovl_names[plane];
 }
 
-static u32 dispc_mgr_get_framedone_irq(enum omap_channel channel)
+static const char *dispc_mgr_name(enum omap_channel channel)
+{
+	return mgr_desc[channel].name;
+}
+
+static bool dispc_mgr_has_framedone(enum omap_channel channel)
 {
 	if (channel == OMAP_DSS_CHANNEL_DIGIT && dispc.feat->no_framedone_tv)
-		return 0;
+		return false;
 
-	return mgr_desc[channel].framedone_irq;
-}
-
-static u32 dispc_mgr_get_sync_lost_irq(enum omap_channel channel)
-{
-	return mgr_desc[channel].sync_lost_irq;
-}
-
-u32 dispc_wb_get_framedone_irq(void)
-{
-	return DISPC_IRQ_FRAMEDONEWB;
+	return true;
 }
 
 static void dispc_mgr_enable(enum omap_channel channel, bool enable)
@@ -3586,6 +3589,81 @@ static void dispc_write_irqenable(u32 mask)
 	dispc_read_reg(DISPC_IRQENABLE);
 }
 
+struct dispc_irq_bit {
+	u32 hw;
+	u64 api;
+};
+
+static const struct dispc_irq_bit dispc_irq_bits[] = {
+	{ DISPC_IRQ_OCP_ERR, DSS_IRQ_DEVICE_OCP_ERR },
+
+	{ DISPC_IRQ_FRAMEDONEWB, DSS_IRQ_DEVICE_FRAMEDONEWB },
+	{ DISPC_IRQ_WBBUFFEROVERFLOW, DSS_IRQ_DEVICE_WBBUFFEROVERFLOW },
+	{ DISPC_IRQ_WBUNCOMPLETEERROR, DSS_IRQ_DEVICE_WBUNCOMPLETEERROR },
+
+	{ DISPC_IRQ_FRAMEDONE, DSS_IRQ_MGR_FRAME_DONE(0) },
+	{ DISPC_IRQ_VSYNC, DSS_IRQ_MGR_VSYNC_EVEN(0) },
+	{ DISPC_IRQ_SYNC_LOST, DSS_IRQ_MGR_SYNC_LOST(0) },
+
+	{ DISPC_IRQ_EVSYNC_EVEN, DSS_IRQ_MGR_VSYNC_EVEN(1) },
+	{ DISPC_IRQ_EVSYNC_ODD, DSS_IRQ_MGR_VSYNC_ODD(1) },
+	{ DISPC_IRQ_SYNC_LOST_DIGIT, DSS_IRQ_MGR_SYNC_LOST(1) },
+	{ DISPC_IRQ_FRAMEDONETV, DSS_IRQ_MGR_FRAME_DONE(1) },
+
+	{ DISPC_IRQ_SYNC_LOST2, DSS_IRQ_MGR_SYNC_LOST(2) },
+	{ DISPC_IRQ_VSYNC2, DSS_IRQ_MGR_VSYNC_EVEN(2) },
+	{ DISPC_IRQ_FRAMEDONE2, DSS_IRQ_MGR_FRAME_DONE(2) },
+
+	{ DISPC_IRQ_SYNC_LOST3, DSS_IRQ_MGR_SYNC_LOST(3) },
+	{ DISPC_IRQ_VSYNC3, DSS_IRQ_MGR_VSYNC_EVEN(3) },
+	{ DISPC_IRQ_FRAMEDONE3, DSS_IRQ_MGR_FRAME_DONE(3) },
+
+	{ DISPC_IRQ_GFX_FIFO_UNDERFLOW, DSS_IRQ_OVL_FIFO_UNDERFLOW(0) },
+	{ DISPC_IRQ_VID1_FIFO_UNDERFLOW, DSS_IRQ_OVL_FIFO_UNDERFLOW(1) },
+	{ DISPC_IRQ_VID2_FIFO_UNDERFLOW, DSS_IRQ_OVL_FIFO_UNDERFLOW(2) },
+	{ DISPC_IRQ_VID3_FIFO_UNDERFLOW, DSS_IRQ_OVL_FIFO_UNDERFLOW(3) },
+};
+
+static u64 dispc_hw_to_api_irq(u32 hw)
+{
+	u64 api = 0;
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(dispc_irq_bits); i++)
+		if (hw & dispc_irq_bits[i].hw)
+			api |= dispc_irq_bits[i].api;
+
+	return api;
+}
+
+static u32 dispc_api_to_hw_irq(u64 api)
+{
+	u32 hw = 0;
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(dispc_irq_bits); i++)
+		if (api & dispc_irq_bits[i].api)
+			hw |= dispc_irq_bits[i].hw;
+
+	return hw;
+}
+
+static u64 dispc_api_read_and_clear_irqstatus(void)
+{
+	u32 hw_status = dispc_read_irqstatus();
+
+	dispc_clear_irqstatus(hw_status);
+
+	return dispc_hw_to_api_irq(hw_status);
+}
+
+static void dispc_api_write_irqenable(u64 enable)
+{
+	u32 hw_enable = dispc_api_to_hw_irq(enable);
+
+	dispc_write_irqenable(hw_enable);
+}
+
 void dispc_enable_sidle(void)
 {
 	REG_FLD_MOD(DISPC_SYSCONFIG, 2, 4, 3);	/* SIDLEMODE: smart idle */
@@ -4435,7 +4513,7 @@ static void dispc_errata_i734_wa_fini(void)
 
 static void dispc_errata_i734_wa(void)
 {
-	u32 framedone_irq = dispc_mgr_get_framedone_irq(OMAP_DSS_CHANNEL_LCD);
+	u32 framedone_irq = DISPC_IRQ_FRAMEDONE;
 	struct omap_overlay_info ovli;
 	struct dss_lcd_mgr_config lcd_conf;
 	u32 gatestate;
@@ -4493,9 +4571,8 @@ static void dispc_errata_i734_wa(void)
 }
 
 static const struct dispc_ops dispc_ops = {
-	.read_irqstatus = dispc_read_irqstatus,
-	.clear_irqstatus = dispc_clear_irqstatus,
-	.write_irqenable = dispc_write_irqenable,
+	.read_and_clear_irqstatus = dispc_api_read_and_clear_irqstatus,
+	.write_irqenable = dispc_api_write_irqenable,
 
 	.request_irq = dispc_request_irq,
 	.free_irq = dispc_free_irq,
@@ -4506,13 +4583,15 @@ static const struct dispc_ops dispc_ops = {
 	.get_num_ovls = dispc_get_num_ovls,
 	.get_num_mgrs = dispc_get_num_mgrs,
 
+	.ovl_name = dispc_ovl_name,
+	.mgr_name = dispc_mgr_name,
+
+	.mgr_has_framedone = dispc_mgr_has_framedone,
+
 	.get_memory_bandwidth_limit = dispc_get_memory_bandwidth_limit,
 
 	.mgr_enable = dispc_mgr_enable,
 	.mgr_is_enabled = dispc_mgr_is_enabled,
-	.mgr_get_vsync_irq = dispc_mgr_get_vsync_irq,
-	.mgr_get_framedone_irq = dispc_mgr_get_framedone_irq,
-	.mgr_get_sync_lost_irq = dispc_mgr_get_sync_lost_irq,
 	.mgr_go_busy = dispc_mgr_go_busy,
 	.mgr_go = dispc_mgr_go,
 	.mgr_set_lcd_config = dispc_mgr_set_lcd_config,

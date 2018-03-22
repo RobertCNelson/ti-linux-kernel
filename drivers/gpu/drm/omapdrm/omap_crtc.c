@@ -149,7 +149,7 @@ static void omap_crtc_set_enabled(struct drm_crtc *crtc, bool enable)
 	struct omap_crtc *omap_crtc = to_omap_crtc(crtc);
 	enum omap_channel channel = omap_crtc->channel;
 	struct omap_irq_wait *wait;
-	u32 framedone_irq, vsync_irq;
+	u64 vsync_irq;
 	int ret;
 
 	if (WARN_ON(omap_crtc->enabled == enable))
@@ -169,8 +169,9 @@ static void omap_crtc_set_enabled(struct drm_crtc *crtc, bool enable)
 		omap_crtc->ignore_digit_sync_lost = true;
 	}
 
-	framedone_irq = priv->dispc_ops->mgr_get_framedone_irq(channel);
-	vsync_irq = priv->dispc_ops->mgr_get_vsync_irq(channel);
+
+	vsync_irq = (DSS_IRQ_MGR_VSYNC_EVEN(channel) |
+		     DSS_IRQ_MGR_VSYNC_ODD(channel));
 
 	if (enable) {
 		wait = omap_irq_wait_init(dev, vsync_irq, 1);
@@ -184,8 +185,9 @@ static void omap_crtc_set_enabled(struct drm_crtc *crtc, bool enable)
 		 * even and odd frames.
 		 */
 
-		if (framedone_irq)
-			wait = omap_irq_wait_init(dev, framedone_irq, 1);
+		if (priv->dispc_ops->mgr_has_framedone(channel))
+			wait = omap_irq_wait_init(dev,
+					DSS_IRQ_MGR_FRAME_DONE(channel), 1);
 		else
 			wait = omap_irq_wait_init(dev, vsync_irq, 2);
 	}
@@ -272,17 +274,17 @@ static const struct dss_mgr_ops mgr_ops = {
  * Setup, Flush and Page Flip
  */
 
-void omap_crtc_error_irq(struct drm_crtc *crtc, uint32_t irqstatus)
+void omap_crtc_error_irq(struct drm_crtc *crtc, u64 irqstatus)
 {
 	struct omap_crtc *omap_crtc = to_omap_crtc(crtc);
 
 	if (omap_crtc->ignore_digit_sync_lost) {
-		irqstatus &= ~DISPC_IRQ_SYNC_LOST_DIGIT;
+		irqstatus &= ~DSS_IRQ_MGR_SYNC_LOST(omap_crtc->channel);
 		if (!irqstatus)
 			return;
 	}
 
-	DRM_ERROR_RATELIMITED("%s: errors: %08x\n", omap_crtc->name, irqstatus);
+	DRM_ERROR_RATELIMITED("%s: errors: %016llx\n", omap_crtc->name, irqstatus);
 }
 
 void omap_crtc_vblank_irq(struct drm_crtc *crtc)
@@ -662,13 +664,6 @@ static const struct drm_crtc_helper_funcs omap_crtc_helper_funcs = {
  * Init and Cleanup
  */
 
-static const char *channel_names[] = {
-	[OMAP_DSS_CHANNEL_LCD] = "lcd",
-	[OMAP_DSS_CHANNEL_DIGIT] = "tv",
-	[OMAP_DSS_CHANNEL_LCD2] = "lcd2",
-	[OMAP_DSS_CHANNEL_LCD3] = "lcd3",
-};
-
 void omap_crtc_pre_init(void)
 {
 	memset(omap_crtcs, 0, sizeof(omap_crtcs));
@@ -696,7 +691,7 @@ struct drm_crtc *omap_crtc_init(struct drm_device *dev,
 	channel = out->dispc_channel;
 	omap_dss_put_device(out);
 
-	DBG("%s", channel_names[channel]);
+	DBG("%s", priv->dispc_ops->mgr_name(channel));
 
 	/* Multiple displays on same channel is not allowed */
 	if (WARN_ON(omap_crtcs[channel] != NULL))
@@ -711,7 +706,7 @@ struct drm_crtc *omap_crtc_init(struct drm_device *dev,
 	init_waitqueue_head(&omap_crtc->pending_wait);
 
 	omap_crtc->channel = channel;
-	omap_crtc->name = channel_names[channel];
+	omap_crtc->name = priv->dispc_ops->mgr_name(channel);
 
 	ret = drm_crtc_init_with_planes(dev, crtc, plane, NULL,
 					&omap_crtc_funcs, NULL);

@@ -41,3 +41,6 @@
 &uart2 {
 	status = "okay";
 };
+
+#include "k3-dss-529x423-port0-oldi.dtsi"
+#include "k3-dss-640x480-port1-dpi.dtsi"
