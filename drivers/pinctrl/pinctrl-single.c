@@ -141,6 +141,18 @@ struct pcs_soc_data {
 };
 
 /**
+ * struct pcs_gap - pinctrl address range gap definition
+ * @start:	start address for the gap
+ * @end:	end address for the gap
+ * @node:	list entry for the gap
+ */
+struct pcs_gap {
+	int start;
+	int end;
+	struct list_head node;
+};
+
+/**
  * struct pcs_device - pinctrl device instance
  * @res:	resources
  * @base:	virtual address of the controller
@@ -678,7 +690,7 @@ static int pcs_add_pin(struct pcs_device *pcs, unsigned offset,
 	}
 
 	pin = &pcs->pins.pa[i];
-	pin->number = i;
+	pin->number = pin_pos;
 	pcs->pins.cur++;
 
 	return i;
@@ -687,16 +699,20 @@ static int pcs_add_pin(struct pcs_device *pcs, unsigned offset,
 /**
  * pcs_allocate_pin_table() - adds all the pins for the pinctrl driver
  * @pcs: pcs driver instance
+ * @gaps: pin table address space gaps
  *
  * In case of errors, resources are freed in pcs_free_resources.
  *
  * If your hardware needs holes in the address space, then just set
  * up multiple driver instances.
  */
-static int pcs_allocate_pin_table(struct pcs_device *pcs)
+static int pcs_allocate_pin_table(struct pcs_device *pcs,
+				  struct list_head *gaps)
 {
 	int mux_bytes, nr_pins, i;
 	int num_pins_in_register = 0;
+	struct pcs_gap *gap, *gap_save;
+	int n_gaps = 0;
 
 	mux_bytes = pcs->width / BITS_PER_BYTE;
 
@@ -718,6 +734,9 @@ static int pcs_allocate_pin_table(struct pcs_device *pcs)
 	pcs->desc.pins = pcs->pins.pa;
 	pcs->desc.npins = nr_pins;
 
+	gap = list_first_entry_or_null(gaps, struct pcs_gap, node);
+	gap_save = gap;
+
 	for (i = 0; i < pcs->desc.npins; i++) {
 		unsigned offset;
 		int res;
@@ -731,11 +750,33 @@ static int pcs_allocate_pin_table(struct pcs_device *pcs)
 		} else {
 			offset = i * mux_bytes;
 		}
-		res = pcs_add_pin(pcs, offset, pin_pos);
+
+		if (gap && offset >= gap->start) {
+			if (offset >= gap->end) {
+				gap = list_next_entry(gap, node);
+				if (gap == gap_save) {
+					gap = NULL;
+				}
+			} else {
+				dev_info(pcs->dev, "Added gap at offset %x\n",
+					offset);
+				n_gaps++;
+				continue;
+			}
+		}
+
+		res = pcs_add_pin(pcs, offset, i);
 		if (res < 0) {
 			dev_err(pcs->dev, "error adding pins: %i\n", res);
 			return res;
 		}
+	}
+
+	pcs->desc.npins -= n_gaps;
+
+	list_for_each_entry_safe(gap, gap_save, gaps, node) {
+		list_del(&gap->node);
+		devm_kfree(pcs->dev, gap);
 	}
 
 	return 0;
@@ -1653,10 +1694,14 @@ static int pcs_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	struct pcs_pdata *pdata;
+	struct resource *base_res;
 	struct resource *res;
 	struct pcs_device *pcs;
 	const struct pcs_soc_data *soc;
+	struct list_head gaps;
+	struct pcs_gap *gap;
 	int ret;
+	int i;
 
 	soc = of_device_get_match_data(&pdev->dev);
 	if (WARN_ON(!soc))
@@ -1709,14 +1754,29 @@ static int pcs_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
+	base_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!base_res) {
 		dev_err(pcs->dev, "could not get resource\n");
 		return -ENODEV;
 	}
 
-	pcs->res = devm_request_mem_region(pcs->dev, res->start,
-			resource_size(res), DRIVER_NAME);
+	i = 1;
+
+	INIT_LIST_HEAD(&gaps);
+
+	while ((res = platform_get_resource(pdev, IORESOURCE_MEM, i))) {
+		gap = devm_kmalloc(pcs->dev, sizeof(*gap), GFP_KERNEL);
+		if (!gap)
+			return -ENOMEM;
+		gap->start = base_res->end - base_res->start;
+		gap->end = res->start - base_res->start;
+		list_add_tail(&gap->node, &gaps);
+		i++;
+		base_res->end = res->end;
+	}
+
+	pcs->res = devm_request_mem_region(pcs->dev, base_res->start,
+			resource_size(base_res), DRIVER_NAME);
 	if (!pcs->res) {
 		dev_err(pcs->dev, "could not get mem_region\n");
 		return -EBUSY;
@@ -1755,7 +1815,7 @@ static int pcs_probe(struct platform_device *pdev)
 		pcs->desc.confops = &pcs_pinconf_ops;
 	pcs->desc.owner = THIS_MODULE;
 
-	ret = pcs_allocate_pin_table(pcs);
+	ret = pcs_allocate_pin_table(pcs, &gaps);
 	if (ret < 0)
 		goto free;
 
