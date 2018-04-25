@@ -177,5 +177,12 @@
 			current-speed = <115200>;
 			status = "disabled";
 		};
+
+		/* NAVSS IPs */
+		hwspinlock: spinlock@30e00000 {
+			compatible = "ti,k3-hwspinlock";
+			reg = <0x0 0x30e00000 0x0 0x1000>;
+			#hwlock-cells = <1>;
+		};
 	};
 };
