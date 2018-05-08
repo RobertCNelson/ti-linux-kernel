@@ -868,6 +868,10 @@ static void dispc7_dra8_ovr_setup(struct dispc_device *dispc,
 				  u32 hw_plane, u32 hw_videoport,
 				  uint x, uint y, uint zpos)
 {
+	// XXX HACK until vlab has proper dra8 dss support
+	dispc7_am6_ovr_setup(dispc, hw_plane, hw_videoport, x, y, zpos);
+	return;
+
 	OVR_REG_FLD_MOD(dispc, hw_videoport, DISPC_OVR_ATTRIBUTES(zpos),
 			hw_plane, 4, 1);
 	OVR_REG_FLD_MOD(dispc, hw_videoport, DISPC_OVR_ATTRIBUTES2(zpos),
