@@ -653,34 +653,6 @@ static int davinci_spi_bufs(struct spi_device *spi, struct spi_transfer *t)
 		dmaengine_slave_config(dspi->dma_rx, &dma_rx_conf);
 		dmaengine_slave_config(dspi->dma_tx, &dma_tx_conf);
 
-		sg_init_table(&sg_rx, 1);
-		if (!t->rx_buf)
-			buf = dummy_buf;
-		else
-			buf = t->rx_buf;
-		t->rx_dma = dma_map_single(&spi->dev, buf,
-				t->len, DMA_FROM_DEVICE);
-		if (dma_mapping_error(&spi->dev, t->rx_dma)) {
-			ret = -EFAULT;
-			goto err_rx_map;
-		}
-		sg_dma_address(&sg_rx) = t->rx_dma;
-		sg_dma_len(&sg_rx) = t->len;
-
-		sg_init_table(&sg_tx, 1);
-		if (!t->tx_buf)
-			buf = dummy_buf;
-		else
-			buf = (void *)t->tx_buf;
-		t->tx_dma = dma_map_single(&spi->dev, buf,
-				t->len, DMA_TO_DEVICE);
-		if (dma_mapping_error(&spi->dev, t->tx_dma)) {
-			ret = -EFAULT;
-			goto err_tx_map;
-		}
-		sg_dma_address(&sg_tx) = t->tx_dma;
-		sg_dma_len(&sg_tx) = t->len;
-
 		rxdesc = dmaengine_prep_slave_sg(dspi->dma_rx,
 				t->rx_sg.sgl, t->rx_sg.nents, DMA_DEV_TO_MEM,
 				DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
