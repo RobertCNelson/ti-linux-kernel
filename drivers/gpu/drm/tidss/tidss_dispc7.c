@@ -36,6 +36,8 @@ static const struct dispc7_features dispc7_am6_feats = {
 	.min_pclk = 1000,
 	.max_pclk = 200000000,
 
+	.subrev = DSS7_AM6,
+
 	.num_vps = 2,
 	.vp_name = { "vp1", "vp2" },
 	.ovr_name = { "ovr1", "ovr2" },
@@ -48,8 +50,27 @@ static const struct dispc7_features dispc7_am6_feats = {
 	.vid_lite = { false, true, },
 };
 
+static const struct dispc7_features dispc7_dra8_feats = {
+	.min_pclk = 1000,
+	.max_pclk = 200000000,
+
+	.subrev = DSS7_DRA8,
+
+	.num_vps = 4,
+	.vp_name = { "vp1", "vp2", "vp3", "vp4" },
+	.ovr_name = { "ovr1", "ovr2", "ovr3", "ovr4" },
+	.vpclk_name = { "vp1", "vp2", "vp3", "vp4" },
+	.vp_enc_type =	{ DRM_MODE_ENCODER_DPI, DRM_MODE_ENCODER_DPI,
+			  DRM_MODE_ENCODER_DPI, DRM_MODE_ENCODER_DPI, },
+
+	.num_planes = 4,
+	.vid_name = { "vid1", "vidl1", "vid2", "vidl2" },
+	.vid_lite = { 0, 1, 0, 1, },
+};
+
 static const struct of_device_id dispc7_of_table[] = {
 	{ .compatible = "ti,am6-dss", .data = &dispc7_am6_feats },
+	{ .compatible = "ti,dra8-dss", .data = &dispc7_dra8_feats },
 	{ }
 };
 
@@ -106,6 +127,63 @@ static const struct dispc7_bus_format dispc7_bus_formats[] = {
 
 #define OVR_REG_FLD_MOD(dispc, ovr, idx, val, start, end) \
 	dispc7_ovr_write(dispc, ovr, idx, FLD_MOD(dispc7_ovr_read(dispc, ovr, idx), val, start, end))
+
+static const u16 tidss_am6_common_regs[DSS7_COMMON_REG_TABLE_LEN] = {
+	[DSS_REVISION_OFF] =			0x4,
+	[DSS_SYSCONFIG_OFF] =			0x8,
+	[DSS_SYSSTATUS_OFF] =			0x20,
+	[DISPC_IRQ_EOI_OFF] =			0x24,
+	[DISPC_IRQSTATUS_RAW_OFF] =		0x28,
+	[DISPC_IRQSTATUS_OFF] =			0x2c,
+	[DISPC_IRQENABLE_SET_OFF] =		0x30,
+	[DISPC_IRQENABLE_CLR_OFF] =		0x40,
+	[DISPC_VID_IRQENABLE_OFF] =		0x44,
+	[DISPC_VID_IRQSTATUS_OFF] =		0x58,
+	[DISPC_VP_IRQENABLE_OFF] =		0x70,
+	[DISPC_VP_IRQSTATUS_OFF] =		0x7c,
+
+	[WB_IRQENABLE_OFF] =			0x88,
+	[WB_IRQSTATUS_OFF] =			0x8c,
+
+	[DISPC_GLOBAL_MFLAG_ATTRIBUTE_OFF] =	0x90,
+	[DISPC_GLOBAL_OUTPUT_ENABLE_OFF] =	0x94,
+	[DISPC_GLOBAL_BUFFER_OFF] =		0x98,
+	[DSS_CBA_CFG_OFF] =			0x9c,
+	[DISPC_DBG_CONTROL_OFF] =		0xa0,
+	[DISPC_DBG_STATUS_OFF] =		0xa4,
+	[DISPC_CLKGATING_DISABLE_OFF] =		0xa8,
+	[DISPC_SECURE_DISABLE_OFF] =		0xac,
+};
+
+static const u16 tidss_dra8_common_regs[DSS7_COMMON_REG_TABLE_LEN] = {
+        [DSS_REVISION_OFF] =                    0x4,
+        [DSS_SYSCONFIG_OFF] =                   0x8,
+        [DSS_SYSSTATUS_OFF] =                   0x20,
+        [DISPC_IRQ_EOI_OFF] =                   0x24,
+        [DISPC_IRQSTATUS_RAW_OFF] =             0x28,
+        [DISPC_IRQSTATUS_OFF] =                 0x2c,
+        [DISPC_IRQENABLE_SET_OFF] =             0x30,
+        [DISPC_IRQENABLE_CLR_OFF] =             0x40,
+        [DISPC_VID_IRQENABLE_OFF] =             0x44,
+        [DISPC_VID_IRQSTATUS_OFF] =             0x58,
+        [DISPC_VP_IRQENABLE_OFF] =              0x70,
+        [DISPC_VP_IRQSTATUS_OFF] =              0x80,
+
+        [WB_IRQENABLE_OFF] =                    0x90,
+        [WB_IRQSTATUS_OFF] =                    0x94,
+
+        [DISPC_GLOBAL_MFLAG_ATTRIBUTE_OFF] =    0x98,
+        [DISPC_GLOBAL_OUTPUT_ENABLE_OFF] =      0x9c,
+        [DISPC_GLOBAL_BUFFER_OFF] =             0xa0,
+        [DSS_CBA_CFG_OFF] =                     0xa4,
+        [DISPC_DBG_CONTROL_OFF] =               0xa8,
+        [DISPC_DBG_STATUS_OFF] =                0xac,
+        [DISPC_CLKGATING_DISABLE_OFF] =         0xb0,
+        [DISPC_SECURE_DISABLE_OFF] =            0xb4,
+};
+
+static const u16 *dispc7_common_regmap;
+
 
 struct dss_vp_data {
 	u32 gamma_table[256];
@@ -427,6 +505,9 @@ static void dispc7_write_irqenable(struct dispc_device *dispc, u64 mask)
 static void dispc7_oldi_tx_power(struct dispc_device *dispc, bool power)
 {
 	u32 val = power ? 0 : CTRLMMR0P1_OLDI_PWRDN_TX;
+
+	if (!dispc->syscon)
+		return;
 
 	regmap_update_bits(dispc->syscon, CTRLMMR0P1_OLDI_DAT0_IO_CTRL,
 			   CTRLMMR0P1_OLDI_PWRDN_TX, val);
@@ -768,6 +849,55 @@ static int dispc7_vp_set_clk_rate(struct dispc_device *dispc, u32 hw_videoport,
 		hw_videoport, clk_get_rate(dispc->vp_clk[hw_videoport]), rate);
 
 	return 0;
+}
+
+/* OVR */
+static void dispc7_am6_ovr_setup(struct dispc_device *dispc,
+				 u32 hw_plane, u32 hw_videoport,
+				 uint x, uint y, uint zpos)
+{
+	OVR_REG_FLD_MOD(dispc, hw_videoport, DISPC_OVR_ATTRIBUTES(zpos),
+			hw_plane, 4, 1);
+	OVR_REG_FLD_MOD(dispc, hw_videoport, DISPC_OVR_ATTRIBUTES(zpos),
+			x, 17, 6);
+	OVR_REG_FLD_MOD(dispc, hw_videoport, DISPC_OVR_ATTRIBUTES(zpos),
+			y, 30, 19);
+}
+
+static void dispc7_dra8_ovr_setup(struct dispc_device *dispc,
+				  u32 hw_plane, u32 hw_videoport,
+				  uint x, uint y, uint zpos)
+{
+	OVR_REG_FLD_MOD(dispc, hw_videoport, DISPC_OVR_ATTRIBUTES(zpos),
+			hw_plane, 4, 1);
+	OVR_REG_FLD_MOD(dispc, hw_videoport, DISPC_OVR_ATTRIBUTES2(zpos),
+			x, 13, 0);
+	OVR_REG_FLD_MOD(dispc, hw_videoport, DISPC_OVR_ATTRIBUTES2(zpos),
+			y, 29, 16);
+}
+
+static void dispc7_ovr_setup(struct dispc_device *dispc,
+			     u32 hw_plane, u32 hw_videoport,
+			     uint x, uint y, uint z)
+{
+	switch (dispc->feat->subrev) {
+	case DSS7_AM6:
+		dispc7_am6_ovr_setup(dispc, hw_plane, hw_videoport, x, y, z);
+		break;
+	case DSS7_DRA8:
+		dispc7_dra8_ovr_setup(dispc, hw_plane, hw_videoport, x, y, z);
+		break;
+	default:
+		WARN_ON(1);
+		break;
+	}
+}
+
+static void dispc7_ovr_enable(struct dispc_device *dispc, u32 hw_videoport,
+			      uint zpos, bool enable)
+{
+	OVR_REG_FLD_MOD(dispc, hw_videoport, DISPC_OVR_ATTRIBUTES(zpos),
+			!!enable, 0, 0);
 }
 
 /* CSC */
@@ -1156,12 +1286,8 @@ static int dispc7_plane_setup(struct dispc_device *dispc, u32 hw_plane,
 	else
 		dispc7_vid_csc_enable(dispc, hw_plane, false);
 
-	OVR_REG_FLD_MOD(dispc, hw_videoport, DISPC_OVR_ATTRIBUTES(pi->zorder),
-			hw_plane, 4, 1);
-	OVR_REG_FLD_MOD(dispc, hw_videoport, DISPC_OVR_ATTRIBUTES(pi->zorder),
-			pi->pos_x, 17, 6);
-	OVR_REG_FLD_MOD(dispc, hw_videoport, DISPC_OVR_ATTRIBUTES(pi->zorder),
-			pi->pos_y, 30, 19);
+	dispc7_ovr_setup(dispc, hw_plane, hw_videoport,
+			 pi->pos_x, pi->pos_y, pi->zorder);
 
 	dispc->plane_data[hw_plane].zorder = pi->zorder;
 	dispc->plane_data[hw_plane].hw_videoport = hw_videoport;
@@ -1172,10 +1298,11 @@ static int dispc7_plane_setup(struct dispc_device *dispc, u32 hw_plane,
 static int dispc7_plane_enable(struct dispc_device *dispc,
 			       u32 hw_plane, bool enable)
 {
-	OVR_REG_FLD_MOD(dispc, dispc->plane_data[hw_plane].hw_videoport,
-			DISPC_OVR_ATTRIBUTES(dispc->plane_data[hw_plane].zorder),
-			!!enable, 0, 0);
+	dispc7_ovr_enable(dispc, dispc->plane_data[hw_plane].hw_videoport,
+			  dispc->plane_data[hw_plane].zorder, enable);
+
 	VID_REG_FLD_MOD(dispc, hw_plane, DISPC_VID_ATTRIBUTES, !!enable, 0, 0);
+
 	return 0;
 }
 
@@ -1644,6 +1771,18 @@ int dispc7_init(struct tidss_device *tidss)
 	dispc->dev = dev;
 	dispc->feat = feat;
 
+	switch (feat->subrev) {
+	case DSS7_AM6:
+		dispc7_common_regmap = tidss_am6_common_regs;
+		break;
+	case DSS7_DRA8:
+		dispc7_common_regmap = tidss_dra8_common_regs;
+		break;
+	default:
+		WARN_ON(1);
+		return -EINVAL;
+	}
+
 	r = dispc7_iomap_resource(pdev, "common", &dispc->base_common);
 	if (r)
 		return r;
@@ -1683,11 +1822,14 @@ int dispc7_init(struct tidss_device *tidss)
 		dispc->vp_clk[i] = clk;
 	}
 
-	dispc->syscon = syscon_regmap_lookup_by_phandle(dev->of_node, "syscon");
-	if (IS_ERR(dispc->syscon)) {
-		dev_err(dev, "%s: syscon_regmap_lookup_by_phandle failed %ld\n",
-			__func__, PTR_ERR(dispc->syscon));
-		return PTR_ERR(dispc->syscon);
+	if (feat->subrev == DSS7_AM6) {
+		dispc->syscon = syscon_regmap_lookup_by_phandle(dev->of_node,
+								"syscon");
+		if (IS_ERR(dispc->syscon)) {
+			dev_err(dev, "%s: syscon_regmap_lookup_by_phandle failed %ld\n",
+				__func__, PTR_ERR(dispc->syscon));
+			return PTR_ERR(dispc->syscon);
+		}
 	}
 
 	dispc->fclk = devm_clk_get(dev, "fck");
