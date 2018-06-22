@@ -7,3 +7,4 @@
 #
 
 dtb-$(CONFIG_ARCH_K3_AM6_SOC) += k3-am654-base-board.dtb
+dtb-$(CONFIG_ARCH_K3_DRA8_SOC) += k3-dra822-vlab.dtb
