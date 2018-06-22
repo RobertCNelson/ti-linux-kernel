@@ -8,6 +8,10 @@ config ARCH_K3_AM6_SOC
 	help
 	  Enable support for TI's AM6 SoC Family support
 
+config ARCH_K3_DRA8_SOC
+	bool "K3 DRA8 SoC"
+	help
+	  Enable support for TI's DRA8 SoC Family support
 endif
 
 endif
