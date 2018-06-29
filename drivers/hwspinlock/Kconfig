@@ -16,6 +16,16 @@ config HWSPINLOCK_OMAP
 
 	  If unsure, say N.
 
+config HWSPINLOCK_OMAP_TEST
+	tristate "OMAP Hardware Spinlock test driver"
+	depends on HWSPINLOCK_OMAP
+	default m
+	help
+	  Say Y here to perform tests on the OMAP hwspinlock implementation.
+          It is recommended to build this test as a module always.
+
+	  Say N, unless you absolutely know what you are doing.
+
 config HWSPINLOCK_QCOM
 	tristate "Qualcomm Hardware Spinlock device"
 	depends on HWSPINLOCK
