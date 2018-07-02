@@ -39,30 +39,3 @@
 	/* Wakeup UART is used by System firmware */
 	status = "disabled";
 };
-
-/* None of the following uarts seems to be immediately functional */
-&main_uart2 {
-	status = "disabled";
-};
-
-&main_uart3 {
-	status = "disabled";
-};
-&main_uart4 {
-	status = "disabled";
-};
-&main_uart5 {
-	status = "disabled";
-};
-&main_uart6 {
-	status = "disabled";
-};
-&main_uart7 {
-	status = "disabled";
-};
-&main_uart8 {
-	status = "disabled";
-};
-&main_uart9 {
-	status = "disabled";
-};
