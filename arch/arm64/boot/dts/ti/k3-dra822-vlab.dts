@@ -39,3 +39,6 @@
 	/* Wakeup UART is used by System firmware */
 	status = "disabled";
 };
+
+#include "k3-dss-640x480-port0-oldi.dtsi"
+#include "k3-dss-640x480-port1-dpi.dtsi"
