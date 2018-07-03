@@ -23,9 +23,9 @@ All the current OMAP SoCs except for the newest DRA7xx SoC has a single IP
 instance. DRA7xx has multiple instances with different number of h/w fifo queues
 and interrupt lines between different instances. The interrupt lines can also be
 routed to different processor sub-systems on DRA7xx as they are routed through
-the Crossbar, a kind of interrupt router/multiplexer. The K3 AM65x SoCs has each
-of these instances form a cluster and combine multiple clusters into a single IP
-block.
+the Crossbar, a kind of interrupt router/multiplexer. The K3 AM65x and DRA82x
+SoCs has each of these instances form a cluster and combine multiple clusters
+into a single IP block.
 
 Mailbox Device Node:
 ====================
@@ -39,7 +39,7 @@ Required properties:
 			    "ti,omap3-mailbox" for OMAP3430, OMAP3630 SoCs
 			    "ti,omap4-mailbox" for OMAP44xx, OMAP54xx, AM33xx,
 						   AM43xx and DRA7xx SoCs
-			    "ti,am654-mailbox" for K3 AM65x SoCs
+			    "ti,am654-mailbox" for K3 AM65x and DRA82x SoCs
 - reg:			Contains the mailbox register address range (base
 			address and length)
 - interrupts:		Contains the interrupt information for the mailbox
