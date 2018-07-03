@@ -33,6 +33,8 @@
 
 	chosen { };
 
+	clocks: clocks { };
+
 	firmware {
 		optee {
 			compatible = "linaro,optee-tz";
