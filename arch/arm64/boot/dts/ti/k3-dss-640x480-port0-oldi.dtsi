@@ -1,0 +1,56 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Device Tree Source for AM6 SoC Family
+ *
+ * Copyright (C) 2016-2018 Texas Instruments Incorporated - http://www.ti.com/
+ */
+
+
+/ {
+	display0 {
+		compatible = "panel-lvds";
+		label = "lcd0";
+
+		status = "ok";
+		data-mapping = "vesa-24";
+
+		width-mm = <64>;
+		height-mm = <48>;
+
+		panel-timing {
+			clock-frequency = <7000000>;
+				hactive = <640>;
+				vactive = <480>;
+				hfront-porch = <2>;
+				hback-porch = <2>;
+				hsync-len = <41>;
+				vfront-porch = <2>;
+				vback-porch = <2>;
+				vsync-len = <10>;
+				hsync-active = <0>;
+				vsync-active = <0>;
+				de-active = <1>;
+				pixelclk-active = <1>;
+		};
+
+		port {
+			lcd_in0: endpoint {
+				remote-endpoint = <&dpi_out0>;
+			};
+		};
+	};
+};
+
+&dss {
+	status = "ok";
+};
+
+&dss_ports {
+	   port@0 {
+		reg = <0>;
+
+		dpi_out0: endpoint {
+			remote-endpoint = <&lcd_in0>;
+		};
+	};
+};

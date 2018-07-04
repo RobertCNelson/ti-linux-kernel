@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Device Tree Source for K3 SoC Family
+ *
+ * Copyright (C) 2016-2018 Texas Instruments Incorporated - http://www.ti.com/
+ */
+
+/ {
+	display0 {
+		/* Just a 640x480 panel with support in panel-simple driver. */
+		compatible = "edt,et057090dhu";
+
+		label = "lcd0";
+		status = "ok";
+
+		port {
+			lcd_in0: endpoint {
+				remote-endpoint = <&dpi_out0>;
+			};
+		};
+	};
+};
+
+&dss {
+	status = "ok";
+};
+
+&dss_ports {
+	   port@0 {
+		reg = <0>;
+
+		dpi_out0: endpoint {
+			remote-endpoint = <&lcd_in0>;
+		};
+	};
+};
