@@ -161,6 +161,12 @@
 		current-speed = <115200>;
 	};
 
+	hwspinlock: spinlock@30e00000 {
+		compatible = "ti,am654-hwspinlock";
+		reg = <0x30e00000 0x1000>;
+		#hwlock-cells = <1>;
+	};
+
 	dss: dss@04a00000 {
 		compatible = "ti,dra8-dss";
 		reg =
