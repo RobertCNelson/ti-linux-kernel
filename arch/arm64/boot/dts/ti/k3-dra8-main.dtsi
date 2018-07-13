@@ -141,6 +141,8 @@
 		#mbox-cells = <1>;
 		ti,mbox-num-users = <4>;
 		ti,mbox-num-fifos = <16>;
+		/* NAVSS512_IR_IN_498 -> NAVSS512_IR_OUT_191 -> GIC_SPI_735 */
+		interrupts = <GIC_SPI 703 IRQ_TYPE_LEVEL_HIGH>;
 
 		mbox_mcu1_r5f0: mbox-mcu1-r5f0 {
 			ti,mbox-rx = <0 0 0>;
@@ -159,6 +161,8 @@
 		#mbox-cells = <1>;
 		ti,mbox-num-users = <4>;
 		ti,mbox-num-fifos = <16>;
+		/* NAVSS512_IR_IN_494 -> NAVSS512_IR_OUT_190 -> GIC_SPI_734 */
+		interrupts = <GIC_SPI 702 IRQ_TYPE_LEVEL_HIGH>;
 
 		mbox_mcu2_r5f0: mbox-mcu2-r5f0 {
 			ti,mbox-rx = <0 0 0>;
@@ -177,6 +181,8 @@
 		#mbox-cells = <1>;
 		ti,mbox-num-users = <4>;
 		ti,mbox-num-fifos = <16>;
+		/* NAVSS512_IR_IN_490 -> NAVSS512_IR_OUT_189 -> GIC_SPI_733 */
+		interrupts = <GIC_SPI 701 IRQ_TYPE_LEVEL_HIGH>;
 
 		mbox_mcu0_r5f0: mbox-mcu0-r5f0 {
 			ti,mbox-rx = <0 0 0>;
@@ -195,6 +201,8 @@
 		#mbox-cells = <1>;
 		ti,mbox-num-users = <4>;
 		ti,mbox-num-fifos = <16>;
+		/* NAVSS512_IR_IN_486 -> NAVSS512_IR_OUT_188 -> GIC_SPI_732 */
+		interrupts = <GIC_SPI 700 IRQ_TYPE_LEVEL_HIGH>;
 
 		mbox_c660: mbox-c660 {
 			ti,mbox-rx = <0 0 0>;
@@ -213,6 +221,8 @@
 		#mbox-cells = <1>;
 		ti,mbox-num-users = <4>;
 		ti,mbox-num-fifos = <16>;
+		/* NAVSS512_IR_IN_482 -> NAVSS512_IR_OUT_187 -> GIC_SPI_731 */
+		interrupts = <GIC_SPI 699 IRQ_TYPE_LEVEL_HIGH>;
 
 		mbox_c71: mbox-c71 {
 			ti,mbox-rx = <0 0 0>;
