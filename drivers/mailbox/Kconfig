@@ -53,6 +53,16 @@ config OMAP_MBOX_KFIFO_SIZE
 	  This can also be changed at runtime (via the mbox_kfifo_size
 	  module parameter).
 
+config TI_MAILBOX_TEST
+	tristate "OMAP Maibox test driver"
+	depends on OMAP2PLUS_MBOX
+	default m
+	help
+	  Say Y here to perform tests on the OMAP Mailbox implementation.
+	  It is recommended to build this test as a module always.
+
+	  Say N, unless you absolutely know what you are doing.
+
 config ROCKCHIP_MBOX
 	bool "Rockchip Soc Intergrated Mailbox Support"
 	depends on ARCH_ROCKCHIP || COMPILE_TEST
