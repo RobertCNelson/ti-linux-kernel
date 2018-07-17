@@ -179,6 +179,189 @@
 		#hwlock-cells = <1>;
 	};
 
+	mailbox0: mailbox@31f80000 {
+		compatible = "ti,am654-mailbox";
+		reg = <0x31f80000 0x200>;
+		#mbox-cells = <1>;
+		ti,mbox-num-users = <4>;
+		ti,mbox-num-fifos = <16>;
+		/* NAVSS512_IR_IN_498 -> NAVSS512_IR_OUT_191 -> GIC_SPI_735 */
+		interrupts = <GIC_SPI 703 IRQ_TYPE_LEVEL_HIGH>;
+
+		mbox_mcu1_r5f0: mbox-mcu1-r5f0 {
+			ti,mbox-rx = <0 0 0>;
+			ti,mbox-tx = <1 0 0>;
+		};
+
+		mbox_mcu1_r5f1: mbox-mcu1-r5f1 {
+			ti,mbox-rx = <2 0 0>;
+			ti,mbox-tx = <3 0 0>;
+		};
+
+		mbox_loop0: mbox-loop0 {
+			ti,mbox-rx = <15 0 0>;
+			ti,mbox-tx = <15 0 0>;
+		};
+	};
+
+	mailbox1: mailbox@31f81000 {
+		compatible = "ti,am654-mailbox";
+		reg = <0x31f81000 0x200>;
+		#mbox-cells = <1>;
+		ti,mbox-num-users = <4>;
+		ti,mbox-num-fifos = <16>;
+		/* NAVSS512_IR_IN_494 -> NAVSS512_IR_OUT_190 -> GIC_SPI_734 */
+		interrupts = <GIC_SPI 702 IRQ_TYPE_LEVEL_HIGH>;
+
+		mbox_mcu2_r5f0: mbox-mcu2-r5f0 {
+			ti,mbox-rx = <0 0 0>;
+			ti,mbox-tx = <1 0 0>;
+		};
+
+		mbox_mcu2_r5f1: mbox-mcu2-r5f1 {
+			ti,mbox-rx = <2 0 0>;
+			ti,mbox-tx = <3 0 0>;
+		};
+
+		mbox_loop1: mbox-loop1 {
+			ti,mbox-rx = <15 0 0>;
+			ti,mbox-tx = <15 0 0>;
+		};
+	};
+
+	mailbox2: mailbox@31f82000 {
+		compatible = "ti,am654-mailbox";
+		reg = <0x31f82000 0x200>;
+		#mbox-cells = <1>;
+		ti,mbox-num-users = <4>;
+		ti,mbox-num-fifos = <16>;
+		/* NAVSS512_IR_IN_490 -> NAVSS512_IR_OUT_189 -> GIC_SPI_733 */
+		interrupts = <GIC_SPI 701 IRQ_TYPE_LEVEL_HIGH>;
+
+		mbox_mcu0_r5f0: mbox-mcu0-r5f0 {
+			ti,mbox-rx = <0 0 0>;
+			ti,mbox-tx = <1 0 0>;
+		};
+
+		mbox_mcu0_r5f1: mbox-mcu0-r5f1 {
+			ti,mbox-rx = <2 0 0>;
+			ti,mbox-tx = <3 0 0>;
+		};
+
+		mbox_loop2: mbox-loop2 {
+			ti,mbox-rx = <15 0 0>;
+			ti,mbox-tx = <15 0 0>;
+		};
+	};
+
+	mailbox3: mailbox@31f83000 {
+		compatible = "ti,am654-mailbox";
+		reg = <0x31f83000 0x200>;
+		#mbox-cells = <1>;
+		ti,mbox-num-users = <4>;
+		ti,mbox-num-fifos = <16>;
+		/* NAVSS512_IR_IN_486 -> NAVSS512_IR_OUT_188 -> GIC_SPI_732 */
+		interrupts = <GIC_SPI 700 IRQ_TYPE_LEVEL_HIGH>;
+
+		mbox_c660: mbox-c660 {
+			ti,mbox-rx = <0 0 0>;
+			ti,mbox-tx = <1 0 0>;
+		};
+
+		mbox_c661: mbox-c661 {
+			ti,mbox-rx = <2 0 0>;
+			ti,mbox-tx = <3 0 0>;
+		};
+
+		mbox_loop3: mbox-loop3 {
+			ti,mbox-rx = <15 0 0>;
+			ti,mbox-tx = <15 0 0>;
+		};
+	};
+
+	mailbox4: mailbox@31f84000 {
+		compatible = "ti,am654-mailbox";
+		reg = <0x31f84000 0x200>;
+		#mbox-cells = <1>;
+		ti,mbox-num-users = <4>;
+		ti,mbox-num-fifos = <16>;
+		/* NAVSS512_IR_IN_482 -> NAVSS512_IR_OUT_187 -> GIC_SPI_731 */
+		interrupts = <GIC_SPI 699 IRQ_TYPE_LEVEL_HIGH>;
+
+		mbox_c71: mbox-c71 {
+			ti,mbox-rx = <0 0 0>;
+			ti,mbox-tx = <1 0 0>;
+		};
+
+		mbox_loop4: mbox-loop4 {
+			ti,mbox-rx = <15 0 0>;
+			ti,mbox-tx = <15 0 0>;
+		};
+	};
+
+	mailbox5: mailbox@31f85000 {
+		compatible = "ti,am654-mailbox";
+		reg = <0x31f85000 0x200>;
+		#mbox-cells = <1>;
+		ti,mbox-num-users = <4>;
+		ti,mbox-num-fifos = <16>;
+		status = "disabled";
+	};
+
+	mailbox6: mailbox@31f86000 {
+		compatible = "ti,am654-mailbox";
+		reg = <0x31f86000 0x200>;
+		#mbox-cells = <1>;
+		ti,mbox-num-users = <4>;
+		ti,mbox-num-fifos = <16>;
+		status = "disabled";
+	};
+
+	mailbox7: mailbox@31f87000 {
+		compatible = "ti,am654-mailbox";
+		reg = <0x31f87000 0x200>;
+		#mbox-cells = <1>;
+		ti,mbox-num-users = <4>;
+		ti,mbox-num-fifos = <16>;
+		status = "disabled";
+	};
+
+	mailbox8: mailbox@31f88000 {
+		compatible = "ti,am654-mailbox";
+		reg = <0x31f88000 0x200>;
+		#mbox-cells = <1>;
+		ti,mbox-num-users = <4>;
+		ti,mbox-num-fifos = <16>;
+		status = "disabled";
+	};
+
+	mailbox9: mailbox@31f89000 {
+		compatible = "ti,am654-mailbox";
+		reg = <0x31f89000 0x200>;
+		#mbox-cells = <1>;
+		ti,mbox-num-users = <4>;
+		ti,mbox-num-fifos = <16>;
+		status = "disabled";
+	};
+
+	mailbox10: mailbox@31f8a000 {
+		compatible = "ti,am654-mailbox";
+		reg = <0x31f8a000 0x200>;
+		#mbox-cells = <1>;
+		ti,mbox-num-users = <4>;
+		ti,mbox-num-fifos = <16>;
+		status = "disabled";
+	};
+
+	mailbox11: mailbox@31f8b000 {
+		compatible = "ti,am654-mailbox";
+		reg = <0x31f8b000 0x200>;
+		#mbox-cells = <1>;
+		ti,mbox-num-users = <4>;
+		ti,mbox-num-fifos = <16>;
+		status = "disabled";
+	};
+
 	dss: dss@04a00000 {
 		compatible = "ti,dra8-dss";
 		reg =

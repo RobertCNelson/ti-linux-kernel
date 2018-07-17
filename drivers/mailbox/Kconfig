@@ -37,7 +37,7 @@ config PL320_MBOX
 
 config OMAP2PLUS_MBOX
 	tristate "OMAP2+ Mailbox framework support"
-	depends on ARCH_OMAP2PLUS
+	depends on ARCH_OMAP2PLUS || ARCH_K3
 	help
 	  Mailbox implementation for OMAP family chips with hardware for
 	  interprocessor communication involving DSP, IVA1.0 and IVA2 in
@@ -52,6 +52,16 @@ config OMAP_MBOX_KFIFO_SIZE
 	  Specify the default size of mailbox's kfifo buffers (bytes).
 	  This can also be changed at runtime (via the mbox_kfifo_size
 	  module parameter).
+
+config TI_MAILBOX_TEST
+	tristate "OMAP Maibox test driver"
+	depends on OMAP2PLUS_MBOX
+	default m
+	help
+	  Say Y here to perform tests on the OMAP Mailbox implementation.
+	  It is recommended to build this test as a module always.
+
+	  Say N, unless you absolutely know what you are doing.
 
 config ROCKCHIP_MBOX
 	bool "Rockchip Soc Intergrated Mailbox Support"
