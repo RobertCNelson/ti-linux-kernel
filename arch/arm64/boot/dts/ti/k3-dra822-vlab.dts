@@ -33,6 +33,15 @@
 			no-map;
 		};
 	};
+
+	mbox_test {
+		compatible = "ti,omap-mbox-test";
+		mboxes = <&mailbox0 &mbox_loop0>, <&mailbox1 &mbox_loop1>,
+			 <&mailbox2 &mbox_loop2>, <&mailbox3 &mbox_loop3>,
+			 <&mailbox4 &mbox_loop4>;
+		mbox-names = "mbox-loop0", "mbox-loop1",
+			     "mbox-loop2", "mbox-loop3", "mbox-loop4";
+	};
 };
 
 &mcu_uart0 {
