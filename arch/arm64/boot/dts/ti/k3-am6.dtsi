@@ -8,6 +8,7 @@
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/phy/phy-am654-serdes.h>
 #include <dt-bindings/pinctrl/k3-am6.h>
 #include <dt-bindings/dma/k3-udma.h>
 
@@ -77,6 +78,16 @@
 			pcie1_mode: pcie-mode@4070 {
 				compatible = "syscon";
 				reg = <0x00004070 0x4>;
+			};
+
+			serdes0_clk: serdes_clk@4080 {
+				compatible = "syscon";
+				reg = <0x00004080 0x4>;
+			};
+
+			serdes1_clk: serdes_clk@4090 {
+				compatible = "syscon";
+				reg = <0x00004090 0x4>;
 			};
 
 			pcie_devid: pcie-devid@210 {
@@ -311,6 +322,9 @@
 			interrupts = <GIC_SPI 565 IRQ_TYPE_LEVEL_HIGH>;
 			clock-frequency = <96000000>;
 			current-speed = <115200>;
+			dmas = <&mcu_udmap &pdma_mcu1 18 UDMA_DIR_TX>,
+			       <&mcu_udmap &pdma_mcu1 18 UDMA_DIR_RX>;
+			dma-names = "tx", "rx";
 			status = "disabled";
 		};
 
@@ -322,6 +336,9 @@
 			interrupts = <GIC_SPI 192 IRQ_TYPE_LEVEL_HIGH>;
 			clock-frequency = <48000000>;
 			current-speed = <115200>;
+			dmas = <&main_udmap &pdma_main1 20 UDMA_DIR_TX>,
+			       <&mcu_udmap &pdma_main1 20 UDMA_DIR_RX>;
+			dma-names = "tx", "rx";
 			status = "disabled";
 		};
 
@@ -333,6 +350,9 @@
 			interrupts = <GIC_SPI 193 IRQ_TYPE_LEVEL_HIGH>;
 			clock-frequency = <48000000>;
 			current-speed = <115200>;
+			dmas = <&main_udmap &pdma_main1 21 UDMA_DIR_TX>,
+			       <&mcu_udmap &pdma_main1 21 UDMA_DIR_RX>;
+			dma-names = "tx", "rx";
 			status = "disabled";
 		};
 
@@ -344,6 +364,9 @@
 			interrupts = <GIC_SPI 194 IRQ_TYPE_LEVEL_HIGH>;
 			clock-frequency = <48000000>;
 			current-speed = <115200>;
+			dmas = <&main_udmap &pdma_main1 22 UDMA_DIR_TX>,
+			       <&mcu_udmap &pdma_main1 22 UDMA_DIR_RX>;
+			dma-names = "tx", "rx";
 			status = "disabled";
 		};
 
@@ -498,7 +521,7 @@
 			#hwlock-cells = <1>;
 		};
 
-		mailbox1: mailbox@31f80000 {
+		mailbox0: mailbox@31f80000 {
 			compatible = "ti,am654-mailbox";
 			reg = <0x0 0x31f80000 0x0 0x200>;
 			#mbox-cells = <1>;
@@ -513,7 +536,7 @@
 			};
 		};
 
-		mailbox2: mailbox@31f81000 {
+		mailbox1: mailbox@31f81000 {
 			compatible = "ti,am654-mailbox";
 			reg = <0x0 0x31f81000 0x0 0x200>;
 			#mbox-cells = <1>;
@@ -528,7 +551,7 @@
 			};
 		};
 
-		mailbox3: mailbox@31f82000 {
+		mailbox2: mailbox@31f82000 {
 			compatible = "ti,am654-mailbox";
 			reg = <0x0 0x31f82000 0x0 0x200>;
 			#mbox-cells = <1>;
@@ -537,7 +560,7 @@
 			status = "disabled";
 		};
 
-		mailbox4: mailbox@31f83000 {
+		mailbox3: mailbox@31f83000 {
 			compatible = "ti,am654-mailbox";
 			reg = <0x0 0x31f83000 0x0 0x200>;
 			#mbox-cells = <1>;
@@ -546,7 +569,7 @@
 			status = "disabled";
 		};
 
-		mailbox5: mailbox@31f84000 {
+		mailbox4: mailbox@31f84000 {
 			compatible = "ti,am654-mailbox";
 			reg = <0x0 0x31f84000 0x0 0x200>;
 			#mbox-cells = <1>;
@@ -555,7 +578,7 @@
 			status = "disabled";
 		};
 
-		mailbox6: mailbox@31f85000 {
+		mailbox5: mailbox@31f85000 {
 			compatible = "ti,am654-mailbox";
 			reg = <0x0 0x31f85000 0x0 0x200>;
 			#mbox-cells = <1>;
@@ -564,7 +587,7 @@
 			status = "disabled";
 		};
 
-		mailbox7: mailbox@31f86000 {
+		mailbox6: mailbox@31f86000 {
 			compatible = "ti,am654-mailbox";
 			reg = <0x0 0x31f86000 0x0 0x200>;
 			#mbox-cells = <1>;
@@ -573,7 +596,7 @@
 			status = "disabled";
 		};
 
-		mailbox8: mailbox@31f87000 {
+		mailbox7: mailbox@31f87000 {
 			compatible = "ti,am654-mailbox";
 			reg = <0x0 0x31f87000 0x0 0x200>;
 			#mbox-cells = <1>;
@@ -582,7 +605,7 @@
 			status = "disabled";
 		};
 
-		mailbox9: mailbox@31f88000 {
+		mailbox8: mailbox@31f88000 {
 			compatible = "ti,am654-mailbox";
 			reg = <0x0 0x31f88000 0x0 0x200>;
 			#mbox-cells = <1>;
@@ -591,7 +614,7 @@
 			status = "disabled";
 		};
 
-		mailbox10: mailbox@31f89000 {
+		mailbox9: mailbox@31f89000 {
 			compatible = "ti,am654-mailbox";
 			reg = <0x0 0x31f89000 0x0 0x200>;
 			#mbox-cells = <1>;
@@ -600,9 +623,18 @@
 			status = "disabled";
 		};
 
-		mailbox11: mailbox@31f8a000 {
+		mailbox10: mailbox@31f8a000 {
 			compatible = "ti,am654-mailbox";
 			reg = <0x0 0x31f8a000 0x0 0x200>;
+			#mbox-cells = <1>;
+			ti,mbox-num-users = <4>;
+			ti,mbox-num-fifos = <16>;
+			status = "disabled";
+		};
+
+		mailbox11: mailbox@31f8b000 {
+			compatible = "ti,am654-mailbox";
+			reg = <0x0 0x31f8b000 0x0 0x200>;
 			#mbox-cells = <1>;
 			ti,mbox-num-users = <4>;
 			ti,mbox-num-fifos = <16>;
@@ -973,6 +1005,8 @@
 			compatible = "simple-bus";
 			#address-cells = <2>;
 			#size-cells = <2>;
+			dma-coherent;
+			dma-ranges;
 			ranges;
 
 			ringacc: ringacc@3c000000 {
@@ -1015,6 +1049,29 @@
 				ti,sci = <&dmsc>;
 				ti,sci-dev-id = <188>;
 			};
+
+			cpts@310d0000 {
+				compatible = "ti,am65-cpts";
+				reg = <0x0 0x310d0000 0x0 0x400>;
+				reg-names = "cpts";
+				clocks = <&main_cpts_mux>;
+				clock-names = "cpts";
+				interrupts-extended = <&k3_irq 163 0 IRQ_TYPE_LEVEL_HIGH>;
+				interrupt-names = "cpts";
+				ti,cpts-periodic-outputs = <6>;
+				ti,cpts-ext-ts-inputs = <8>;
+
+				main_cpts_mux: cpts_refclk_mux {
+					#clock-cells = <0>;
+					clocks = <&k3_clks 118 5>, <&k3_clks 118 11>,
+						<&k3_clks 157 91>, <&k3_clks 157 77>,
+						<&k3_clks 157 102>, <&k3_clks 157 80>,
+						<&k3_clks 120 3>, <&k3_clks 121 3>;
+					cpts-mux-tbl = <0>, <1>;
+					assigned-clocks = <&main_cpts_mux>;
+					assigned-clock-parents = <&k3_clks 118 5>;
+				};
+			};
 		};
 
 		cpsw-phy-sel@40f04040 {
@@ -1036,8 +1093,6 @@
 			power-domains = <&k3_pds 5>;
 			ti,psil-base = <0x7000>;
 
-			interrupts-extended = <&gic GIC_SPI 570 IRQ_TYPE_LEVEL_HIGH>;
-			interrupt-names = "cpts";
 			interrupt-parent = <&k3_irq>;
 
 			dmas = <&mcu_udmap &mcu_cpsw 0 UDMA_DIR_TX>,
@@ -1074,6 +1129,25 @@
 				#address-cells = <1>;
 				#size-cells = <0>;
 				bus_freq = <1000000>;
+			};
+
+			cpts {
+				clocks = <&mcu_cpsw_cpts_mux>;
+				clock-names = "cpts";
+				interrupts-extended = <&gic GIC_SPI 570 IRQ_TYPE_LEVEL_HIGH>;
+				interrupt-names = "cpts";
+				ti,cpts-ext-ts-inputs = <4>;
+				ti,cpts-periodic-outputs = <2>;
+
+				mcu_cpsw_cpts_mux: cpts_refclk_mux {
+					#clock-cells = <0>;
+					clocks = <&k3_clks 118 5>, <&k3_clks 118 11>,
+						<&k3_clks 157 91>, <&k3_clks 157 77>,
+						<&k3_clks 157 102>, <&k3_clks 157 80>,
+						<&k3_clks 120 3>, <&k3_clks 121 3>;
+					assigned-clocks = <&mcu_cpsw_cpts_mux>;
+					assigned-clock-parents = <&k3_clks 118 5>;
+				};
 			};
 
 			ti,psil-config0 {
@@ -1137,6 +1211,8 @@
 			compatible = "simple-bus";
 			#address-cells = <2>;
 			#size-cells = <2>;
+			dma-coherent;
+			dma-ranges;
 			ranges;
 
 			mcu_ringacc: ringacc@2b800000 {
@@ -1181,6 +1257,31 @@
 			};
 		};
 
+		pdma_mcu0: pdma@40710000 {
+			compatible = "ti,k3-pdma";
+			reg = <0x0 0x40710000 0x0 0x400>;
+			reg-names = "eccaggr_cfg";
+
+			ti,psil-base = <0x7100>;
+
+			/* ti,psil-config0-3 */
+			UDMA_PDMA_TR_XY(0);
+			UDMA_PDMA_TR_XY(1);
+			UDMA_PDMA_TR_XY(2);
+			UDMA_PDMA_TR_XY(3);
+		};
+
+		pdma_mcu1: pdma@40711000 {
+			compatible = "ti,k3-pdma";
+			reg = <0x0 0x40711000 0x0 0x400>;
+			reg-names = "eccaggr_cfg";
+
+			ti,psil-base = <0x7200>;
+
+			/* ti,psil-config18 */
+			UDMA_PDMA_PKT_XY(18);
+		};
+
 		pdma_main0: pdma@2a41000 {
 			compatible = "ti,k3-pdma";
 			reg = <0x0 0x02A41000 0x0 0x400>;
@@ -1223,8 +1324,8 @@
 			UDMA_PDMA_TR_XY(18);
 			UDMA_PDMA_TR_XY(19);
 			UDMA_PDMA_PKT_XY(20);
-			UDMA_PDMA_TR_XY(21);
-			UDMA_PDMA_TR_XY(22);
+			UDMA_PDMA_PKT_XY(21);
+			UDMA_PDMA_PKT_XY(22);
 		};
 
 		mcasp0: mcasp@02B00000 {
@@ -1290,6 +1391,13 @@
 			status = "disabled";
 		};
 
+		eip76d_trng: trng@4e10000 {
+			compatible = "inside-secure,safexcel-eip76", "ti,am654-eip76";
+			reg = <0x0 0x4e10000 0x0 0x7d>;
+			interrupts = <GIC_SPI 24 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&k3_clks 136 1>;
+		};
+
 		ecap0: pwm@3100000 {
 			compatible = "ti,am654-ecap", "ti,am3352-ecap";
 			#pwm-cells = <3>;
@@ -1306,11 +1414,13 @@
 			reg-names = "serdes";
 			#phy-cells = <2>;
 			power-domains = <&k3_pds 153>;
-			clocks = <&k3_clks 153 4>;
-			clock-names = "fck";
-			assigned-clocks = <&k3_clks 153 4>;
-			assigned-clock-parents = <&k3_clks 153 8>;
+			clocks = <&k3_clks 153 4>, <&k3_clks 153 1>, <&serdes1 AM654_SERDES_LO_REFCLK>;
+			clock-output-names = "serdes0_cmu_refclk", "serdes0_lo_refclk", "serdes0_ro_refclk";
+			assigned-clocks = <&k3_clks 153 4>, <&serdes0 AM654_SERDES_CMU_REFCLK>;
+			assigned-clock-parents = <&k3_clks 153 8>, <&k3_clks 153 4>;
+			ti,serdes-clk = <&serdes0_clk>;
 			mux-controls = <&serdes_mux 0>;
+			#clock-cells = <1>;
 			status = "disabled";
 		};
 
@@ -1320,11 +1430,13 @@
 			reg-names = "serdes";
 			#phy-cells = <2>;
 			power-domains = <&k3_pds 154>;
-			clocks = <&k3_clks 154 4>;
-			clock-names = "fck";
-			assigned-clocks = <&k3_clks 154 5>;
-			assigned-clock-parents = <&k3_clks 154 9>;
+			clocks = <&serdes0 AM654_SERDES_RO_REFCLK>, <&k3_clks 154 1>, <&k3_clks 154 5>;
+			clock-output-names = "serdes1_cmu_refclk", "serdes1_lo_refclk", "serdes1_ro_refclk";
+			assigned-clocks = <&k3_clks 154 5>, <&serdes1 AM654_SERDES_CMU_REFCLK>;
+			assigned-clock-parents = <&k3_clks 154 9>, <&k3_clks 154 5>;
+			ti,serdes-clk = <&serdes1_clk>;
 			mux-controls = <&serdes_mux 1>;
+			#clock-cells = <1>;
 			status = "disabled";
 		};
 
@@ -1513,6 +1625,7 @@
 				power-domains = <&k3_pds 55>;
 				#address-cells = <1>;
 				#size-cells = <0>;
+				dma-coherent;
 				status = "disabled";
 			};
 
@@ -1528,6 +1641,7 @@
 				power-domains = <&k3_pds 55>;
 				#address-cells = <1>;
 				#size-cells = <0>;
+				dma-coherent;
 				status = "disabled";
 			};
 		};
@@ -1593,6 +1707,61 @@
 			dss_ports: ports {
 				#address-cells = <1>;
 				#size-cells = <0>;
+			};
+		};
+
+		wkup_vtm0: wkup_vtm0@42050000 {
+			compatible = "ti,am654-vtm";
+			reg = <0x0 0x42050000 0x0 0x25c>;
+			power-domains = <&k3_pds 80>;
+			#thermal-sensor-cells = <1>;
+		};
+
+		thermal_zones: thermal-zones {
+			#include "am654-industrial-thermal.dtsi"
+		};
+
+		tscadc0: tscadc@40200000 {
+			compatible = "ti,am654-tscadc", "ti,am3359-tscadc";
+			reg = <0x0 0x40200000 0x0 0x1000>;
+			interrupts = <GIC_SPI 580 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&k3_clks 0 2>;
+			assigned-clocks = <&k3_clks 0 2>;
+			/* Set to 60MHz clock from MCUHSDIV_CLKOUT1 */
+			assigned-clock-parents = <&k3_clks 0 4>;
+			clock-names = "adc_tsc_fck";
+			dmas = <&mcu_udmap &pdma_mcu0 0 UDMA_DIR_RX>,
+			       <&mcu_udmap &pdma_mcu0 1 UDMA_DIR_RX>;
+			dma-names = "fifo0", "fifo1";
+			dma-coherent;
+			status = "disabled";
+
+			adc {
+				#io-channel-cells = <1>;
+				compatible = "ti,am654-adc", "ti,am3359-adc";
+				dma-coherent;
+			};
+		};
+
+		tscadc1: tscadc@40210000 {
+			compatible = "ti,am654-tscadc", "ti,am3359-tscadc";
+			reg = <0x0 0x40210000 0x0 0x1000>;
+			interrupts = <GIC_SPI 581 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&k3_clks 1 2>;
+			assigned-clocks = <&k3_clks 1 2>;
+			/* Set to 60MHz clock from MCUHSDIV_CLKOUT1 */
+			assigned-clock-parents = <&k3_clks 1 4>;
+			clock-names = "adc_tsc_fck";
+			dmas = <&mcu_udmap &pdma_mcu0 2 UDMA_DIR_RX>,
+			       <&mcu_udmap &pdma_mcu0 3 UDMA_DIR_RX>;
+			dma-names = "fifo0", "fifo1";
+			dma-coherent;
+			status = "disabled";
+
+			adc {
+				#io-channel-cells = <1>;
+				compatible = "ti,am654-adc", "ti,am3359-adc";
+				dma-coherent;
 			};
 		};
 	};

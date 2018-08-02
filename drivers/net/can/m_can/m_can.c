@@ -634,10 +634,12 @@ static int m_can_clk_start(struct m_can_priv *priv)
 	int err;
 
 	err = pm_runtime_get_sync(priv->device);
-	if (err)
+	if (err < 0) {
 		pm_runtime_put_noidle(priv->device);
+		return err;
+	}
 
-	return err;
+	return 0;
 }
 
 static void m_can_clk_stop(struct m_can_priv *priv)
@@ -1643,8 +1645,6 @@ static int m_can_plat_probe(struct platform_device *pdev)
 	priv->can.clock.freq = clk_get_rate(cclk);
 	priv->mram_base = mram_addr;
 
-	m_can_of_parse_mram(priv, mram_config_vals);
-
 	platform_set_drvdata(pdev, dev);
 	SET_NETDEV_DEV(dev, &pdev->dev);
 
@@ -1667,6 +1667,8 @@ static int m_can_plat_probe(struct platform_device *pdev)
 		goto clk_disable;
 	}
 
+	m_can_of_parse_mram(priv, mram_config_vals);
+
 	devm_can_led_init(dev);
 
 	of_can_transceiver(dev);
@@ -1687,8 +1689,6 @@ pm_runtime_fail:
 failed_ret:
 	return ret;
 }
-
-/* TODO: runtime PM with power down or sleep mode  */
 
 static __maybe_unused int m_can_suspend(struct device *dev)
 {
@@ -1716,8 +1716,6 @@ static __maybe_unused int m_can_resume(struct device *dev)
 
 	pinctrl_pm_select_default_state(dev);
 
-	m_can_init_ram(priv);
-
 	priv->can.state = CAN_STATE_ERROR_ACTIVE;
 
 	if (netif_running(ndev)) {
@@ -1727,6 +1725,7 @@ static __maybe_unused int m_can_resume(struct device *dev)
 		if (ret)
 			return ret;
 
+		m_can_init_ram(priv);
 		m_can_start(ndev);
 		netif_device_attach(ndev);
 		netif_start_queue(ndev);

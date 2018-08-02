@@ -322,7 +322,8 @@ static const struct sdhci_pltfm_data sdhci_arasan_am654_pdata = {
 		  SDHCI_QUIRK_INVERTED_WRITE_PROTECT |
 		  SDHCI_QUIRK_MULTIBLOCK_READ_ACMD12,
 	.quirks2 = SDHCI_QUIRK2_PRESET_VALUE_BROKEN |
-			SDHCI_QUIRK2_CLOCK_DIV_ZERO_BROKEN,
+			SDHCI_QUIRK2_CLOCK_DIV_ZERO_BROKEN |
+			SDHCI_QUIRK2_CAPS_BIT63_FOR_HS400,
 };
 
 static const struct sdhci_arasan_of_data sdhci_arasan_am654_data = {
@@ -716,9 +717,12 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 
 		host->mmc_host_ops.hs400_enhanced_strobe =
 					sdhci_arasan_hs400_enhanced_strobe;
+	}
+
+	if (of_device_is_compatible(pdev->dev.of_node,
+				    "rockchip,rk3399-sdhci-5.1"))
 		host->mmc_host_ops.start_signal_voltage_switch =
 					sdhci_arasan_voltage_switch;
-	}
 
 	ret = sdhci_add_host(host);
 	if (ret)

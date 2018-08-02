@@ -14,6 +14,7 @@
 
 #include <linux/clk.h>
 #include <linux/delay.h>
+#include <linux/gpio/consumer.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/irqchip/chained_irq.h>
@@ -24,6 +25,7 @@
 #include <linux/of_device.h>
 #include <linux/of_irq.h>
 #include <linux/of_pci.h>
+#include <linux/pci.h>
 #include <linux/phy/phy.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
@@ -114,6 +116,9 @@
 #define to_keystone_pcie(x)		dev_get_drvdata((x)->dev)
 
 #define PCI_DEVICE_ID_TI_AM654X		0xb00c
+
+#define EXP_CAP_ID_OFFSET              0x70
+
 /*
  * Size of BAR0, BAR2, BAR5 are from RESBAR.
  * TODO: How are sizes of other BARs determined.
@@ -365,6 +370,7 @@ static int ks_pcie_link_up(struct dw_pcie *pci)
 	return (val == PORT_LOGIC_LTSSM_STATE_L0);
 }
 
+#ifdef CONFIG_PCI
 static void ks_pcie_quirk(struct pci_dev *dev)
 {
 	struct pci_bus *bus = dev->bus;
@@ -409,6 +415,7 @@ static void ks_pcie_quirk(struct pci_dev *dev)
 	}
 }
 DECLARE_PCI_FIXUP_ENABLE(PCI_ANY_ID, PCI_ANY_ID, ks_pcie_quirk);
+#endif
 
 static void ks_pcie_msi_irq_handler(struct irq_desc *desc)
 {
@@ -1191,6 +1198,31 @@ static int ks_pcie_am654_set_mode(struct device *dev,
 	return 0;
 }
 
+static void ks_pcie_set_link_speed(struct dw_pcie *pci, int link_speed)
+{
+	u32 val;
+
+	dw_pcie_dbi_ro_wr_en(pci);
+
+	val = dw_pcie_readl_dbi(pci, EXP_CAP_ID_OFFSET + PCI_EXP_LNKCAP);
+	if ((val & PCI_EXP_LNKCAP_SLS) != link_speed) {
+		val &= ~((u32)PCI_EXP_LNKCAP_SLS);
+		val |= link_speed;
+		dw_pcie_writel_dbi(pci, EXP_CAP_ID_OFFSET + PCI_EXP_LNKCAP,
+				   val);
+	}
+
+	val = dw_pcie_readl_dbi(pci, EXP_CAP_ID_OFFSET + PCI_EXP_LNKCTL2);
+	if ((val & PCI_EXP_LNKCAP_SLS) != link_speed) {
+		val &= ~((u32)PCI_EXP_LNKCAP_SLS);
+		val |= link_speed;
+		dw_pcie_writel_dbi(pci, EXP_CAP_ID_OFFSET + PCI_EXP_LNKCTL2,
+				   val);
+	}
+
+	dw_pcie_dbi_ro_wr_dis(pci);
+}
+
 static const struct ks_pcie_of_data ks_pcie_rc_of_data = {
 	.ops = &ks_pcie_dw_pcie_ops,
 	.host_ops = &ks_pcie_host_ops,
@@ -1250,11 +1282,13 @@ static int __init ks_pcie_probe(struct platform_device *pdev)
 	struct dw_pcie *pci;
 	struct keystone_pcie *ks_pcie;
 	struct device_link **link;
+	struct gpio_desc *gpiod;
 	void __iomem *atu_base;
 	struct resource *res;
 	void __iomem *base;
 	u32 num_ob_windows;
 	struct phy **phy;
+	int link_speed;
 	u32 num_lanes;
 	char name[10];
 	int ret;
@@ -1275,7 +1309,7 @@ static int __init ks_pcie_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "dbics");
-	base = devm_pci_remap_cfg_resource(dev, res);
+	base = devm_ioremap_resource(dev, res);
 	if (IS_ERR(base))
 		return PTR_ERR(base);
 
@@ -1324,6 +1358,15 @@ static int __init ks_pcie_probe(struct platform_device *pdev)
 
 	ks_pcie->num_lanes = num_lanes;
 	ks_pcie->phy = phy;
+
+	gpiod = devm_gpiod_get_optional(dev, "reset",
+					GPIOD_OUT_LOW);
+	if (IS_ERR(gpiod)) {
+		ret = PTR_ERR(gpiod);
+		if (ret != -EPROBE_DEFER)
+			dev_err(dev, "Failed to get reset GPIO\n");
+		goto err_link;
+	}
 
 	ret = ks_pcie_enable_phy(ks_pcie);
 	if (ret) {
@@ -1382,11 +1425,30 @@ static int __init ks_pcie_probe(struct platform_device *pdev)
 			goto err_get_sync;
 	}
 
+	link_speed = of_pci_get_max_link_speed(np);
+	if (link_speed < 0)
+		link_speed = 2;
+
+	ks_pcie_set_link_speed(pci, link_speed);
+
 	switch (mode) {
 	case DW_PCIE_RC_TYPE:
 		if (!IS_ENABLED(CONFIG_PCI_KEYSTONE_HOST)) {
 			ret = -ENODEV;
 			goto err_get_sync;
+		}
+
+		/*
+		 * "Power Sequencing and Reset Signal Timings" table in
+		 * PCI EXPRESS CARD ELECTROMECHANICAL SPECIFICATION, REV. 2.0
+		 * indicates PERST# should be deasserted after minimum of 100us
+		 * once REFCLK is stable. The REFCLK to the connector in RC
+		 * mode is selected while enabling the PHY. So deassert PERST#
+		 * after 100 us.
+		 */
+		if (gpiod) {
+			usleep_range(100, 200);
+			gpiod_set_value_cansleep(gpiod, 1);
 		}
 
 		pci->pp.ops = data->host_ops;
