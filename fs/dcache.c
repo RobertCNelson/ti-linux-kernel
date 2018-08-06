@@ -2519,11 +2519,7 @@ retry:
 	}
 
 	hlist_bl_lock(b);
-<<<<<<< HEAD
-	if (unlikely(parent->d_inode->__i_dir_seq != seq)) {
-=======
-	if (unlikely(READ_ONCE(parent->d_inode->i_dir_seq) != seq)) {
->>>>>>> linux-linaro-lsk-v4.9
+	if (unlikely(READ_ONCE(parent->d_inode->__i_dir_seq) != seq)) {
 		hlist_bl_unlock(b);
 		rcu_read_unlock();
 		goto retry;
