@@ -6,6 +6,7 @@
 /dts-v1/;
 
 #include "k3-dra82.dtsi"
+#include <dt-bindings/pci/pci.h>
 
 / {
 	compatible =  "ti,dra82-vlab", "ti,dra822";
@@ -53,5 +54,15 @@
 #include "k3-dss-640x480-port1-dpi.dtsi"
 
 &main_sdhci0 {
+	status = "okay";
+};
+
+&pcie0 {
+	pci-mode = <PCI_MODE_RC>;
+	status = "okay";
+};
+
+&pcie1 {
+	pci-mode = <PCI_MODE_EP>;
 	status = "okay";
 };
