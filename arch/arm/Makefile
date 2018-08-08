@@ -309,7 +309,7 @@ endif
 
 # Build the DT binary blobs if we have OF configured
 ifeq ($(CONFIG_USE_OF),y)
-KBUILD_DTBS := dtbs itbs
+KBUILD_DTBS := dtbs
 endif
 
 all:	$(notdir $(KBUILD_IMAGE)) $(KBUILD_DTBS)
@@ -349,7 +349,7 @@ $(INSTALL_TARGETS):
 
 PHONY += dtbs dtbs_install itbs_install
 
-dtbs: prepare scripts
+dtbs: prepare scripts zImage
 	$(Q)$(MAKE) $(build)=$(boot)/dts
 
 itbs: prepare scripts zImage
