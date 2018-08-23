@@ -21,6 +21,7 @@
 #include <linux/of.h>
 #include <linux/of_dma.h>
 #include <linux/of_device.h>
+#include <linux/of_irq.h>
 #include <linux/workqueue.h>
 #include <linux/completion.h>
 #include <linux/soc/ti/k3-navss-psilcfg.h>
@@ -245,6 +246,8 @@ struct udma_dev {
 
 	struct device_node *psil_node;
 	struct k3_nav_ringacc *ringacc;
+
+	struct irq_domain *irq_domain;
 
 	struct work_struct purge_work;
 	struct list_head desc_to_purge;
@@ -674,16 +677,22 @@ static void udma_reset_rings(struct udma_chan *uc)
 
 	switch (uc->dir) {
 	case DMA_DEV_TO_MEM:
-		ring1 = uc->rchan->fd_ring;
-		ring2 = uc->rchan->r_ring;
+		if (uc->rchan) {
+			ring1 = uc->rchan->fd_ring;
+			ring2 = uc->rchan->r_ring;
+		}
 		break;
 	case DMA_MEM_TO_DEV:
-		ring1 = uc->tchan->t_ring;
-		ring2 = uc->tchan->tc_ring;
+		if (uc->tchan) {
+			ring1 = uc->tchan->t_ring;
+			ring2 = uc->tchan->tc_ring;
+		}
 		break;
 	case DMA_MEM_TO_MEM:
-		ring1 = uc->tchan->t_ring;
-		ring2 = uc->tchan->tc_ring;
+		if (uc->tchan) {
+			ring1 = uc->tchan->t_ring;
+			ring2 = uc->tchan->tc_ring;
+		}
 		break;
 	default:
 		break;
@@ -1002,7 +1011,7 @@ static irqreturn_t udma_udma_irq_handler(int irq, void *data)
 	struct udma_chan *uc = data;
 	struct udma_tisci_rm *tisci_rm = &uc->ud->tisci_rm;
 
-	ti_sci_inta_ack_event(uc->ud->dev, tisci_rm->tisci_dev_id,
+	ti_sci_inta_ack_event(uc->ud->irq_domain, tisci_rm->tisci_dev_id,
 			      uc->irq_udma_idx, uc->irq_num_udma);
 
 	udma_tr_event_callback(uc);
@@ -1430,6 +1439,14 @@ static int udma_alloc_chan_resources(struct dma_chan *chan)
 
 	pm_runtime_get_sync(ud->ddev.dev);
 
+	/*
+	 * Make sure that the completion is in a known state:
+	 * No teardown completion is running
+	 */
+	reinit_completion(&uc->teardown_completed);
+	complete_all(&uc->teardown_completed);
+	uc->teardown = false;
+
 	switch (uc->dir) {
 	case DMA_MEM_TO_MEM:
 		/* Non synchronized - mem to mem type of transfer */
@@ -1727,7 +1744,7 @@ static int udma_alloc_chan_resources(struct dma_chan *chan)
 	if (uc->irq_num_ring <= 0) {
 		dev_err(ud->dev, "Failed to get ring irq (index: %u) %d\n",
 			uc->irq_ra_idx, uc->irq_num_ring);
-		ret = uc->irq_num_ring;
+		ret = -EINVAL;
 		goto err_psi_free;
 	}
 
@@ -1742,7 +1759,7 @@ static int udma_alloc_chan_resources(struct dma_chan *chan)
 		ti_sci_inta_unregister_event(ud->dev, uc->irq_ra_tisci,
 					     uc->irq_ra_idx, uc->irq_num_ring);
 
-		ret = uc->irq_num_udma;
+		ret = -EINVAL;
 		goto err_psi_free;
 	}
 
@@ -1764,12 +1781,6 @@ static int udma_alloc_chan_resources(struct dma_chan *chan)
 	}
 
 	udma_reset_rings(uc);
-	/*
-	 * Make sure that the completion is in a known state:
-	 * No teardown completion is running
-	 */
-	reinit_completion(&uc->teardown_completed);
-	complete_all(&uc->teardown_completed);
 
 	return 0;
 
@@ -1783,6 +1794,7 @@ err_irq_free:
 	uc->irq_num_udma = 0;
 err_psi_free:
 	k3_nav_psil_release_link(uc->psi_link);
+	uc->psi_link = NULL;
 err_chan_free:
 	if (tchan)
 		tisci_ops->tx_ch_free(tisci_rm->tisci, TI_SCI_RM_NULL_U8,
@@ -2792,9 +2804,13 @@ static void udma_synchronize(struct dma_chan *chan)
 
 	vchan_synchronize(&uc->vc);
 
-	timeout = wait_for_completion_timeout(&uc->teardown_completed, timeout);
-	if (!timeout)
-		dev_warn(uc->ud->dev, "chan%d teardown timeout!\n", uc->id);
+	if (uc->teardown) {
+		timeout = wait_for_completion_timeout(&uc->teardown_completed,
+						      timeout);
+		if (!timeout)
+			dev_warn(uc->ud->dev, "chan%d teardown timeout!\n",
+				 uc->id);
+	}
 
 	udma_reset_chan(uc);
 	if (udma_is_chan_running(uc))
@@ -2914,7 +2930,8 @@ static void udma_free_chan_resources(struct dma_chan *chan)
 	}
 
 	/* Release PSI-L pairing */
-	k3_nav_psil_release_link(uc->psi_link);
+	if (uc->psi_link)
+		k3_nav_psil_release_link(uc->psi_link);
 
 	vchan_free_chan_resources(&uc->vc);
 	tasklet_kill(&uc->vc.task);
@@ -3061,6 +3078,7 @@ static int udma_get_mmrs(struct platform_device *pdev, struct udma_dev *ud)
 
 static int udma_probe(struct platform_device *pdev)
 {
+	struct device_node *parent_irq_node;
 	struct udma_dev *ud;
 	int i, ret;
 	u32 ch_count;
@@ -3087,6 +3105,16 @@ static int udma_probe(struct platform_device *pdev)
 						       "ti,ringacc");
 	if (IS_ERR(ud->ringacc))
 		return PTR_ERR(ud->ringacc);
+
+	parent_irq_node = of_irq_find_parent(pdev->dev.of_node);
+	if (!parent_irq_node) {
+		dev_err(&pdev->dev, "Failed to get IRQ parent node\n");
+		return -ENODEV;
+	}
+
+	ud->irq_domain = irq_find_host(parent_irq_node);
+	if (!ud->irq_domain)
+		return -EPROBE_DEFER;
 
 	dma_cap_set(DMA_SLAVE, ud->ddev.cap_mask);
 	dma_cap_set(DMA_CYCLIC, ud->ddev.cap_mask);
@@ -3216,8 +3244,6 @@ static int udma_probe(struct platform_device *pdev)
 		uc->vc.desc_free = udma_desc_free;
 		uc->id = i;
 		uc->slave_thread_id = -1;
-		uc->irq_num_ring = -1;
-		uc->irq_num_udma = -1;
 		uc->tchan = NULL;
 		uc->rchan = NULL;
 		uc->dir = DMA_MEM_TO_MEM;

@@ -355,7 +355,8 @@ static int am65_cpsw_nuss_rx_push(struct am65_cpsw_common *common,
 	return k3_nav_udmax_push_rx_chn(rx_chn->rx_chn, 0, desc_rx, desc_dma);
 }
 
-static int am65_cpsw_nuss_common_open(struct am65_cpsw_common *common)
+static int am65_cpsw_nuss_common_open(struct am65_cpsw_common *common,
+				      netdev_features_t features)
 {
 	struct am65_cpsw_port *host_p = am65_common_get_host_port(common);
 	int port_idx, i, ret;
@@ -376,8 +377,9 @@ static int am65_cpsw_nuss_common_open(struct am65_cpsw_common *common)
 	writel(common->rx_flow_id_base,
 	       host_p->port_base + AM65_CPSW_PORT0_REG_FLOW_ID_OFFSET);
 	/* en tx crc offload */
-	writel(AM65_CPSW_P0_REG_CTL_RX_CHECKSUM_EN,
-	       host_p->port_base + AM65_CPSW_P0_REG_CTL);
+	if (features & NETIF_F_HW_CSUM)
+		writel(AM65_CPSW_P0_REG_CTL_RX_CHECKSUM_EN,
+		       host_p->port_base + AM65_CPSW_P0_REG_CTL);
 
 	/* enable statistic */
 	val = 0;
@@ -397,26 +399,14 @@ static int am65_cpsw_nuss_common_open(struct am65_cpsw_common *common)
 	cpsw_ale_control_set(common->ale, HOST_PORT_NUM,
 			     ALE_PORT_STATE, ALE_PORT_STATE_FORWARD);
 
-	/* unknown vlan cfg */
+	/* default vlan cfg */
 	/* create mask based on enabled ports */
 	port_mask = GENMASK(common->port_num - 1, 0) &
 		    ~common->disabled_ports_mask;
 
-	cpsw_ale_control_set(common->ale, HOST_PORT_NUM,
-			     ALE_PORT_UNKNOWN_VLAN_MEMBER,
-			     port_mask);
-
-	cpsw_ale_control_set(common->ale, HOST_PORT_NUM,
-			     ALE_PORT_UNKNOWN_MCAST_FLOOD,
-			     port_mask & ~ALE_PORT_HOST);
-
-	cpsw_ale_control_set(common->ale, HOST_PORT_NUM,
-			     ALE_PORT_UNKNOWN_REG_MCAST_FLOOD,
-			     port_mask);
-
-	cpsw_ale_control_set(common->ale, HOST_PORT_NUM,
-			     ALE_PORT_UNTAGGED_EGRESS,
-			     port_mask);
+	cpsw_ale_add_vlan(common->ale, 0, port_mask,
+			  port_mask, port_mask,
+			  port_mask & ~ALE_PORT_HOST);
 
 	for (i = 0; i < common->rx_chns.descs_num; i++) {
 		skb = __netdev_alloc_skb_ip_align(NULL,
@@ -565,7 +555,7 @@ static int am65_cpsw_nuss_ndo_slave_open(struct net_device *ndev)
 	for (i = 0; i < AM65_CPSW_MAX_TX_QUEUES; i++)
 		netdev_tx_reset_queue(netdev_get_tx_queue(ndev, i));
 
-	ret = am65_cpsw_nuss_common_open(common);
+	ret = am65_cpsw_nuss_common_open(common, ndev->features);
 	if (ret)
 		return ret;
 
@@ -1821,6 +1811,8 @@ static int am65_cpsw_nuss_init_ndev_2g(struct am65_cpsw_common *common)
 				  NETIF_F_HW_CSUM;
 	port->ndev->features = port->ndev->hw_features |
 			       NETIF_F_HW_VLAN_CTAG_FILTER;
+	/* Disable TX checksum offload by default due to HW bug */
+	port->ndev->features &= ~NETIF_F_HW_CSUM;
 	port->ndev->vlan_features |=  NETIF_F_SG;
 	port->ndev->netdev_ops = &am65_cpsw_nuss_netdev_ops_2g;
 	port->ndev->ethtool_ops = &am65_cpsw_ethtool_ops_slave;
