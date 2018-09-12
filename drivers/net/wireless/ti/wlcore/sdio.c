@@ -411,7 +411,6 @@ static int wl1271_suspend(struct device *dev)
 	 * this is fine as driver controls the chip power anyway.
 	 */
 	sdio_flags = sdio_get_host_pm_caps(func);
-
 	if (!(sdio_flags & MMC_PM_KEEP_POWER)) {
 		dev_err(dev, "can't keep power while host is suspended\n");
 		ret = -EINVAL;
