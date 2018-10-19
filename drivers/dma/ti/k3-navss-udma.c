@@ -15,9 +15,9 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <dt-bindings/dma/k3-udma.h>
-#include <linux/irqchip/irq-ti-sci.h>
-#include <linux/soc/ti/cppi5.h>
+#include <linux/irqchip/irq-ti-sci-inta.h>
 #include <linux/soc/ti/k3-navss-ringacc.h>
+#include <linux/dma/ti-cppi5.h>
 #include <linux/dma/k3-navss-udma.h>
 
 #include "k3-udma.h"
@@ -26,7 +26,6 @@ struct k3_nav_udmax_common {
 	struct device *dev;
 	struct udma_dev *udmax;
 	const struct udma_tisci_rm *tisci_rm;
-	struct device_node *psil_np;
 	struct k3_nav_ringacc *ringacc;
 	u32 src_thread;
 	u32 dst_thread;
@@ -47,9 +46,9 @@ struct k3_nav_udmax_tx_channel {
 	struct k3_nav_ring *ringtx;
 	struct k3_nav_ring *ringtxcq;
 
-	struct k3_nav_psil_entry *psi_link;
+	bool psil_paired;
 
-	struct ti_sci_irq_desc *irq_desc;
+	unsigned int virq;
 
 	atomic_t free_pkts;
 	bool tx_pause_on_err;
@@ -68,7 +67,7 @@ struct k3_nav_udmax_rx_flow {
 	struct k3_nav_ring *ringrx;
 	struct k3_nav_ring *ringrxfdq;
 
-	struct ti_sci_irq_desc *irq_desc;
+	unsigned int virq;
 };
 
 struct k3_nav_udmax_rx_channel {
@@ -78,7 +77,7 @@ struct k3_nav_udmax_rx_channel {
 	int udma_rchan_id;
 	bool need_tisci_free;
 
-	struct k3_nav_psil_entry *psi_link;
+	bool psil_paired;
 
 	u32  swdata_size;
 	int  flow_id_base;
@@ -101,13 +100,6 @@ static int of_k3_nav_udmax_parse(struct device_node *udmax_np,
 	common->udmax = of_xudma_dev_get(udmax_np, NULL);
 	if (IS_ERR(common->udmax))
 		return PTR_ERR(common->udmax);
-
-	common->psil_np = of_k3_nav_psil_get_by_phandle(udmax_np,
-							"ti,psi-proxy");
-	if (IS_ERR(common->psil_np)) {
-		xudma_dev_put(common->udmax);
-		return PTR_ERR(common->psil_np);
-	}
 
 	common->tisci_rm = xudma_dev_get_tisci_rm(common->udmax);
 
@@ -225,11 +217,17 @@ static void k3_nav_udmax_dump_tx_rt_chn(struct k3_nav_udmax_tx_channel *chn,
 static int k3_nav_udmax_cfg_tx_chn(struct k3_nav_udmax_tx_channel *tx_chn)
 {
 	const struct udma_tisci_rm *tisci_rm = tx_chn->common.tisci_rm;
-	struct ti_sci_rm_udmap_tx_ch_alloc req;
-	u32 ch_index;
+	struct ti_sci_msg_rm_udmap_tx_ch_cfg req;
 
 	memset(&req, 0, sizeof(req));
 
+	req.valid_params = TI_SCI_MSG_VALUE_RM_UDMAP_CH_PAUSE_ON_ERR_VALID |
+			TI_SCI_MSG_VALUE_RM_UDMAP_CH_TX_FILT_EINFO_VALID |
+			TI_SCI_MSG_VALUE_RM_UDMAP_CH_TX_FILT_PSWORDS_VALID |
+			TI_SCI_MSG_VALUE_RM_UDMAP_CH_CHAN_TYPE_VALID |
+			TI_SCI_MSG_VALUE_RM_UDMAP_CH_TX_SUPR_TDPKT_VALID |
+			TI_SCI_MSG_VALUE_RM_UDMAP_CH_FETCH_SIZE_VALID |
+			TI_SCI_MSG_VALUE_RM_UDMAP_CH_CQ_QNUM_VALID;
 	req.nav_id = tisci_rm->tisci_dev_id;
 	req.index = tx_chn->udma_tchan_id;
 	if (tx_chn->tx_pause_on_err)
@@ -238,24 +236,13 @@ static int k3_nav_udmax_cfg_tx_chn(struct k3_nav_udmax_tx_channel *tx_chn)
 		req.tx_filt_einfo = 1;
 	if (tx_chn->tx_filt_pswords)
 		req.tx_filt_pswords = 1;
-	req.tx_atype = 0;
 	req.tx_chan_type = TI_SCI_RM_UDMAP_CHAN_TYPE_PKT_PBRR;
 	if (tx_chn->tx_supr_tdpkt)
 		req.tx_supr_tdpkt = 1;
 	req.tx_fetch_size = tx_chn->common.hdesc_size >> 2;
-	req.tx_credit_count = 0;
 	req.txcq_qnum = k3_nav_ringacc_get_ring_id(tx_chn->ringtxcq);
-	req.tx_priority = TI_SCI_RM_NULL_U8;
-	req.tx_qos = TI_SCI_RM_NULL_U8;
-	req.tx_orderid = TI_SCI_RM_NULL_U8;
-	req.fdepth = 0x80;
-	req.tx_sched_priority = 0;
-	req.share = 0;
-	req.type = TI_SCI_RM_NULL_U8;
-	req.secondary_host = TI_SCI_RM_NULL_U8;
 
-	return tisci_rm->tisci_udmap_ops->tx_ch_alloc(tisci_rm->tisci, &req,
-						      &ch_index);
+	return tisci_rm->tisci_udmap_ops->tx_ch_cfg(tisci_rm->tisci, &req);
 }
 
 struct k3_nav_udmax_tx_channel *k3_nav_udmax_request_tx_chn(
@@ -283,7 +270,7 @@ struct k3_nav_udmax_tx_channel *k3_nav_udmax_request_tx_chn(
 	if (ret)
 		goto err;
 
-	tx_chn->common.hdesc_size = knav_udmap_hdesc_calc_size(
+	tx_chn->common.hdesc_size = cppi5_hdesc_calc_size(
 				tx_chn->common.epib,
 				tx_chn->common.psdata_size,
 				tx_chn->common.swdata_size);
@@ -343,15 +330,15 @@ struct k3_nav_udmax_tx_channel *k3_nav_udmax_request_tx_chn(
 
 	tx_chn->need_tisci_free = true;
 
-	tx_chn->psi_link =
-		k3_nav_psil_request_link(tx_chn->common.psil_np,
-					 tx_chn->common.src_thread,
-					 tx_chn->common.dst_thread);
-	if (IS_ERR(tx_chn->psi_link)) {
-		ret = PTR_ERR(tx_chn->psi_link);
+	ret = xudma_navss_psil_pair(tx_chn->common.udmax,
+				    tx_chn->common.src_thread,
+				    tx_chn->common.dst_thread);
+	if (ret) {
 		dev_err(dev, "PSI-L request err %d\n", ret);
 		goto err;
 	}
+
+	tx_chn->psil_paired = true;
 
 	k3_nav_udmax_dump_tx_chn(tx_chn);
 
@@ -366,16 +353,15 @@ EXPORT_SYMBOL_GPL(k3_nav_udmax_request_tx_chn);
 void k3_nav_udmax_release_tx_chn(
 		struct k3_nav_udmax_tx_channel *tx_chn)
 {
-	if (!IS_ERR_OR_NULL(tx_chn->psi_link))
-		k3_nav_psil_release_link(tx_chn->psi_link);
+	if (tx_chn->psil_paired) {
+		xudma_navss_psil_unpair(tx_chn->common.udmax,
+					tx_chn->common.src_thread,
+					tx_chn->common.dst_thread);
+		tx_chn->psil_paired = false;
+	}
 
 	if (!IS_ERR_OR_NULL(tx_chn->common.udmax)) {
 		if (tx_chn->need_tisci_free) {
-			const struct udma_tisci_rm *tisci_rm =
-							tx_chn->common.tisci_rm;
-			tisci_rm->tisci_udmap_ops->tx_ch_free(tisci_rm->tisci,
-						0xff, tisci_rm->tisci_dev_id,
-						tx_chn->udma_tchan_id);
 			tx_chn->need_tisci_free = false;
 		}
 
@@ -391,15 +377,12 @@ void k3_nav_udmax_release_tx_chn(
 
 	if (tx_chn->ringtx)
 		k3_nav_ringacc_ring_free(tx_chn->ringtx);
-
-	if (!IS_ERR_OR_NULL(tx_chn->common.psil_np))
-		of_node_put(tx_chn->common.psil_np);
 }
 EXPORT_SYMBOL_GPL(k3_nav_udmax_release_tx_chn);
 
 int k3_nav_udmax_push_tx_chn(
 		struct k3_nav_udmax_tx_channel *tx_chn,
-		struct knav_udmap_host_desc_t *desc_tx,
+		struct cppi5_host_desc_t *desc_tx,
 		dma_addr_t desc_dma)
 {
 	u32 ringtxcq_id;
@@ -408,8 +391,7 @@ int k3_nav_udmax_push_tx_chn(
 		return -ENOMEM;
 
 	ringtxcq_id = k3_nav_ringacc_get_ring_id(tx_chn->ringtxcq);
-	knav_udmap_desc_set_retpolicy(&desc_tx->hdr, 0,
-				      ringtxcq_id);
+	cppi5_desc_set_retpolicy(&desc_tx->hdr, 0, ringtxcq_id);
 
 	return k3_nav_ringacc_ring_push(tx_chn->ringtx, &desc_dma);
 }
@@ -543,27 +525,20 @@ int k3_nav_udmax_tx_get_irq(struct k3_nav_udmax_tx_channel *tx_chn,
 			    unsigned int *irq, u32 flags, bool share,
 			    struct k3_nav_udmax_tx_channel *tx_chn_share)
 {
-	struct ti_sci_irq_desc *irq_desc_share = NULL;
-	int ret;
+	unsigned int virq = 0;
 
 	if (share && tx_chn_share)
-		irq_desc_share = tx_chn_share->irq_desc;
+		virq = tx_chn_share->virq;
 
-	tx_chn->irq_desc = ti_sci_register_irq(
+	tx_chn->virq = ti_sci_inta_register_event(
 			tx_chn->common.dev,
-			irq_desc_share,
 			k3_nav_ringacc_get_tisci_dev_id(tx_chn->ringtxcq),
 			k3_nav_ringacc_get_ring_id(tx_chn->ringtxcq),
-			share,
-			0,
-			flags);
-	if (IS_ERR(tx_chn->irq_desc)) {
-		ret = PTR_ERR(tx_chn->irq_desc);
-		tx_chn->irq_desc = NULL;
-		return ret;
-	}
+			virq, flags);
+	if (tx_chn->virq <= 0)
+		return -ENODEV;
 
-	*irq = ti_sci_irq_desc_to_virq(tx_chn->irq_desc);
+	*irq = tx_chn->virq;
 
 	return 0;
 }
@@ -571,84 +546,52 @@ EXPORT_SYMBOL_GPL(k3_nav_udmax_tx_get_irq);
 
 void k3_nav_udmax_tx_put_irq(struct k3_nav_udmax_tx_channel *tx_chn)
 {
-	if (!tx_chn->irq_desc)
+	if (tx_chn->virq <= 0)
 		return;
 
-	ti_sci_unregister_irq(
+	ti_sci_inta_unregister_event(
 			tx_chn->common.dev,
-			tx_chn->irq_desc,
 			k3_nav_ringacc_get_tisci_dev_id(tx_chn->ringtxcq),
-			k3_nav_ringacc_get_ring_id(tx_chn->ringtxcq));
+			k3_nav_ringacc_get_ring_id(tx_chn->ringtxcq),
+			tx_chn->virq);
 }
 EXPORT_SYMBOL_GPL(k3_nav_udmax_tx_put_irq);
 
 static int k3_nav_udmax_cfg_rx_chn(struct k3_nav_udmax_rx_channel *rx_chn)
 {
 	const struct udma_tisci_rm *tisci_rm = rx_chn->common.tisci_rm;
-	struct ti_sci_rm_udmap_rx_ch_alloc req;
-	u32 ch_index;
-	u32 def_flow_index, rng_flow_start_index, rng_flow_cnt;
+	struct ti_sci_msg_rm_udmap_rx_ch_cfg req;
 	int ret;
 
 	memset(&req, 0, sizeof(req));
 
+	req.valid_params = TI_SCI_MSG_VALUE_RM_UDMAP_CH_FETCH_SIZE_VALID |
+			TI_SCI_MSG_VALUE_RM_UDMAP_CH_CQ_QNUM_VALID |
+			TI_SCI_MSG_VALUE_RM_UDMAP_CH_CHAN_TYPE_VALID;
+
 	req.nav_id = tisci_rm->tisci_dev_id;
 	req.index = rx_chn->udma_rchan_id;
 	req.rx_fetch_size = rx_chn->common.hdesc_size >> 2;
-/*
- * TODO: we can't support rxcq_qnum/RCHAN[a]_RCQ cfg with current sysfw and
- * udmax impl, so just configure it to invalid value.
- *	req.rxcq_qnum = k3_nav_ringacc_get_ring_id(rx_chn->flows[0].ringrx);
- */
+	/*
+	 * TODO: we can't support rxcq_qnum/RCHAN[a]_RCQ cfg with current sysfw
+	 * and udmax impl, so just configure it to invalid value.
+	 * req.rxcq_qnum = k3_nav_ringacc_get_ring_id(rx_chn->flows[0].ringrx);
+	 */
 	req.rxcq_qnum = 0xFFFF;
-	req.rx_priority = TI_SCI_RM_NULL_U8;
-	req.rx_qos = TI_SCI_RM_NULL_U8;
-	req.rx_orderid = TI_SCI_RM_NULL_U8;
-	req.rx_sched_priority = 0;
 	if (rx_chn->flow_num && rx_chn->flow_id_base != rx_chn->udma_rchan_id) {
 		/* Default flow + extra ones */
 		req.flowid_start = rx_chn->flow_id_base;
 		req.flowid_cnt = rx_chn->flow_num;
-	} else {
-		/* Only default flow */
-		req.flowid_start = TI_SCI_RM_NULL_U16;
-		req.flowid_cnt = 0;
+		req.valid_params |=
+			TI_SCI_MSG_VALUE_RM_UDMAP_CH_RX_FLOWID_START_VALID |
+			TI_SCI_MSG_VALUE_RM_UDMAP_CH_RX_FLOWID_CNT_VALID;
 	}
-	req.rx_pause_on_err = 0;
-	req.rx_atype = 0;
 	req.rx_chan_type = TI_SCI_RM_UDMAP_CHAN_TYPE_PKT_PBRR;
-	req.rx_ignore_short = 0;
-	req.rx_ignore_long = 0;
-	req.share = 0;
-	req.type = TI_SCI_RM_NULL_U8;
-	req.secondary_host = TI_SCI_RM_NULL_U8;
 
-	ret = tisci_rm->tisci_udmap_ops->rx_ch_alloc(tisci_rm->tisci,
-			&req, &ch_index, &def_flow_index,
-			&rng_flow_start_index, &rng_flow_cnt);
-	if (ret) {
-		dev_err(rx_chn->common.dev, "rchan%d alloc failed %d\n",
+	ret = tisci_rm->tisci_udmap_ops->rx_ch_cfg(tisci_rm->tisci, &req);
+	if (ret)
+		dev_err(rx_chn->common.dev, "rchan%d cfg failed %d\n",
 			rx_chn->udma_rchan_id, ret);
-		return ret;
-	}
-
-	if (rx_chn->flow_num && rx_chn->flow_id_base != rx_chn->udma_rchan_id) {
-		if (rng_flow_start_index != rx_chn->flow_id_base ||
-		    rng_flow_cnt != rx_chn->flow_num) {
-			const struct udma_tisci_rm *tisci_rm =
-							rx_chn->common.tisci_rm;
-			dev_err(rx_chn->common.dev,
-				"rchan%d flow range mismatch %u:%u vs %u:%u\n",
-				rx_chn->udma_rchan_id,
-				rx_chn->flow_id_base, rx_chn->flow_num,
-				rng_flow_start_index, rng_flow_cnt);
-
-			tisci_rm->tisci_udmap_ops->rx_ch_free(tisci_rm->tisci,
-						0xff, tisci_rm->tisci_dev_id,
-						rx_chn->udma_rchan_id);
-			ret = -EINVAL;
-		}
-	}
 
 	return ret;
 }
@@ -680,7 +623,7 @@ static int k3_nav_udmax_cfg_rx_flow(
 	struct k3_nav_udmax_rx_flow *flow = &rx_chn->flows[flow_idx];
 	const struct udma_tisci_rm *tisci_rm = rx_chn->common.tisci_rm;
 	struct device *dev = rx_chn->common.dev;
-	struct ti_sci_rm_udmap_rx_flow_cfg req;
+	struct ti_sci_msg_rm_udmap_flow_cfg req;
 	int rx_ring_id;
 	int rx_ringfdq_id;
 	int ret = 0;
@@ -733,9 +676,22 @@ static int k3_nav_udmax_cfg_rx_flow(
 
 	memset(&req, 0, sizeof(req));
 
+	req.valid_params =
+			TI_SCI_MSG_VALUE_RM_UDMAP_FLOW_EINFO_PRESENT_VALID |
+			TI_SCI_MSG_VALUE_RM_UDMAP_FLOW_PSINFO_PRESENT_VALID |
+			TI_SCI_MSG_VALUE_RM_UDMAP_FLOW_ERROR_HANDLING_VALID |
+			TI_SCI_MSG_VALUE_RM_UDMAP_FLOW_DESC_TYPE_VALID |
+			TI_SCI_MSG_VALUE_RM_UDMAP_FLOW_DEST_QNUM_VALID |
+			TI_SCI_MSG_VALUE_RM_UDMAP_FLOW_SRC_TAG_HI_SEL_VALID |
+			TI_SCI_MSG_VALUE_RM_UDMAP_FLOW_SRC_TAG_LO_SEL_VALID |
+			TI_SCI_MSG_VALUE_RM_UDMAP_FLOW_DEST_TAG_HI_SEL_VALID |
+			TI_SCI_MSG_VALUE_RM_UDMAP_FLOW_DEST_TAG_LO_SEL_VALID |
+			TI_SCI_MSG_VALUE_RM_UDMAP_FLOW_FDQ0_SZ0_QNUM_VALID |
+			TI_SCI_MSG_VALUE_RM_UDMAP_FLOW_FDQ1_QNUM_VALID |
+			TI_SCI_MSG_VALUE_RM_UDMAP_FLOW_FDQ2_QNUM_VALID |
+			TI_SCI_MSG_VALUE_RM_UDMAP_FLOW_FDQ3_QNUM_VALID;
 	req.nav_id = tisci_rm->tisci_dev_id;
 	req.flow_index = flow->udma_rflow_id;
-	req.rx_ch_index = rx_chn->udma_rchan_id;
 	if (rx_chn->common.epib)
 		req.rx_einfo_present = 1;
 	if (rx_chn->common.psdata_size)
@@ -743,18 +699,11 @@ static int k3_nav_udmax_cfg_rx_flow(
 	if (flow_cfg->rx_error_handling)
 		req.rx_error_handling = 1;
 	req.rx_desc_type = 0;
-	req.rx_sop_offset = 0;
 	req.rx_dest_qnum = rx_ring_id;
-	req.rx_ps_location = 0;
-	req.rx_src_tag_hi = 0;
-	req.rx_src_tag_lo = 0;
-	req.rx_dest_tag_hi = 0;
-	req.rx_dest_tag_lo = 0;
 	req.rx_src_tag_hi_sel = 0;
 	req.rx_src_tag_lo_sel = flow_cfg->src_tag_lo_sel;
 	req.rx_dest_tag_hi_sel = 0;
 	req.rx_dest_tag_lo_sel = 0;
-	req.rx_size_thresh_en = 0;
 	req.rx_fdq0_sz0_qnum = rx_ringfdq_id;
 	req.rx_fdq1_qnum = rx_ringfdq_id;
 	req.rx_fdq2_qnum = rx_ringfdq_id;
@@ -847,7 +796,7 @@ struct k3_nav_udmax_rx_channel *k3_nav_udmax_request_rx_chn(
 	if (ret)
 		goto err;
 
-	rx_chn->common.hdesc_size = knav_udmap_hdesc_calc_size(
+	rx_chn->common.hdesc_size = cppi5_hdesc_calc_size(
 					rx_chn->common.epib,
 					rx_chn->common.psdata_size,
 					rx_chn->common.swdata_size);
@@ -911,15 +860,15 @@ struct k3_nav_udmax_rx_channel *k3_nav_udmax_request_rx_chn(
 	}
 
 	if (!cfg->skip_psil) {
-		rx_chn->psi_link =
-			k3_nav_psil_request_link(rx_chn->common.psil_np,
-						 rx_chn->common.src_thread,
-						 rx_chn->common.dst_thread);
-		if (IS_ERR(rx_chn->psi_link)) {
-			ret = PTR_ERR(rx_chn->psi_link);
+		ret = xudma_navss_psil_pair(rx_chn->common.udmax,
+					    rx_chn->common.src_thread,
+					    rx_chn->common.dst_thread);
+		if (ret) {
 			dev_err(dev, "PSI-L request err %d\n", ret);
 			goto err;
 		}
+
+		rx_chn->psil_paired = true;
 	}
 
 	k3_nav_udmax_dump_rx_chn(rx_chn);
@@ -937,8 +886,12 @@ void k3_nav_udmax_release_rx_chn(
 {
 	int i;
 
-	if (!IS_ERR_OR_NULL(rx_chn->psi_link))
-		k3_nav_psil_release_link(rx_chn->psi_link);
+	if (rx_chn->psil_paired) {
+		xudma_navss_psil_unpair(rx_chn->common.udmax,
+					rx_chn->common.src_thread,
+					rx_chn->common.dst_thread);
+		rx_chn->psil_paired = false;
+	}
 
 	if (IS_ERR_OR_NULL(rx_chn->common.udmax))
 		return;
@@ -947,22 +900,17 @@ void k3_nav_udmax_release_rx_chn(
 		k3_nav_udmax_release_rx_flow(rx_chn, i);
 
 	if (rx_chn->need_tisci_free) {
-		const struct udma_tisci_rm *tisci_rm =
-						rx_chn->common.tisci_rm;
-		tisci_rm->tisci_udmap_ops->rx_ch_free(tisci_rm->tisci,
-						0xff, tisci_rm->tisci_dev_id,
-						rx_chn->udma_rchan_id);
 		rx_chn->need_tisci_free = false;
 	}
+
+	xudma_free_rflow_range(rx_chn->common.udmax,
+			       rx_chn->flow_id_base, rx_chn->flow_num);
 
 	if (!IS_ERR_OR_NULL(rx_chn->udma_rchanx))
 		xudma_rchan_put(rx_chn->common.udmax,
 				rx_chn->udma_rchanx);
 
 	xudma_dev_put(rx_chn->common.udmax);
-
-	if (!IS_ERR_OR_NULL(rx_chn->common.psil_np))
-		of_node_put(rx_chn->common.psil_np);
 }
 EXPORT_SYMBOL_GPL(k3_nav_udmax_release_rx_chn);
 
@@ -1110,7 +1058,7 @@ EXPORT_SYMBOL_GPL(k3_nav_udmax_reset_rx_chn);
 int k3_nav_udmax_push_rx_chn(
 		struct k3_nav_udmax_rx_channel *rx_chn,
 		u32 flow_num,
-		struct knav_udmap_host_desc_t *desc_rx,
+		struct cppi5_host_desc_t *desc_rx,
 		dma_addr_t desc_dma)
 {
 	struct k3_nav_udmax_rx_flow *flow = &rx_chn->flows[flow_num];
@@ -1135,9 +1083,8 @@ int k3_nav_udmax_rx_get_irq(struct k3_nav_udmax_rx_channel *rx_chn,
 			    unsigned int *irq, u32 flags, bool share,
 			    u32 flow_num_share)
 {
-	struct ti_sci_irq_desc *irq_desc_share = NULL;
 	struct k3_nav_udmax_rx_flow *flow, *flow_share;
-	int ret;
+	unsigned int virq = 0;
 
 	if (flow_num >= rx_chn->flow_num ||
 	    (flow_num_share != -1 && flow_num_share >= rx_chn->flow_num))
@@ -1147,24 +1094,18 @@ int k3_nav_udmax_rx_get_irq(struct k3_nav_udmax_rx_channel *rx_chn,
 
 	if (share && flow_num_share != -1) {
 		flow_share = &rx_chn->flows[flow_num_share];
-		irq_desc_share = flow_share->irq_desc;
+		virq = flow_share->virq;
 	}
 
-	flow->irq_desc = ti_sci_register_irq(
+	flow->virq = ti_sci_inta_register_event(
 			rx_chn->common.dev,
-			irq_desc_share,
 			k3_nav_ringacc_get_tisci_dev_id(flow->ringrx),
 			k3_nav_ringacc_get_ring_id(flow->ringrx),
-			share,
-			0,
-			flags);
-	if (IS_ERR(flow->irq_desc)) {
-		ret = PTR_ERR(flow->irq_desc);
-		flow->irq_desc = NULL;
-		return ret;
-	}
+			virq, flags);
+	if (flow->virq <= 0)
+		return -ENODEV;
 
-	*irq = ti_sci_irq_desc_to_virq(flow->irq_desc);
+	*irq = flow->virq;
 
 	return 0;
 }
@@ -1180,13 +1121,12 @@ void k3_nav_udmax_rx_put_irq(struct k3_nav_udmax_rx_channel *rx_chn,
 
 	flow = &rx_chn->flows[flow_num];
 
-	if (!flow->irq_desc)
+	if (flow->virq <= 0)
 		return;
 
-	ti_sci_unregister_irq(
+	ti_sci_inta_unregister_event(
 			rx_chn->common.dev,
-			flow->irq_desc,
 			k3_nav_ringacc_get_tisci_dev_id(flow->ringrx),
-			k3_nav_ringacc_get_ring_id(flow->ringrx));
+			k3_nav_ringacc_get_ring_id(flow->ringrx), flow->virq);
 }
 EXPORT_SYMBOL_GPL(k3_nav_udmax_rx_put_irq);

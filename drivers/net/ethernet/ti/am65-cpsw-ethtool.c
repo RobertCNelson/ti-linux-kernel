@@ -408,8 +408,8 @@ static void am65_cpsw_get_channels(struct net_device *ndev,
 	struct am65_cpsw_common *common = am65_ndev_to_common(ndev);
 
 	ch->max_combined = 0;
-	ch->max_rx = AM65_CPSW_MAX_TX_QUEUES;
-	ch->max_tx = AM65_CPSW_MAX_RX_QUEUES;
+	ch->max_rx = AM65_CPSW_MAX_RX_QUEUES;
+	ch->max_tx = AM65_CPSW_MAX_TX_QUEUES;
 	ch->max_other = 0;
 	ch->other_count = 0;
 	ch->rx_count = common->rx_ch_num;
@@ -729,3 +729,4 @@ const struct ethtool_ops am65_cpsw_ethtool_ops_slave = {
 	.set_eee		= am65_cpsw_set_eee,
 	.nway_reset		= am65_cpsw_nway_reset,
 };
+EXPORT_SYMBOL_GPL(am65_cpsw_ethtool_ops_slave);

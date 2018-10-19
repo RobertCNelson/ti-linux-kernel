@@ -100,6 +100,8 @@ struct dispc_features {
 	u8 mgr_height_start;
 	u16 mgr_width_max;
 	u16 mgr_height_max;
+	u16 ovl_width_max;
+	u16 ovl_height_max;
 	unsigned long max_lcd_pclk;
 	unsigned long max_tv_pclk;
 	unsigned int max_downscale;
@@ -121,6 +123,7 @@ struct dispc_features {
 	const unsigned int num_reg_fields;
 	const enum omap_overlay_caps *overlay_caps;
 	const u32 **supported_color_modes;
+	const u32 *supported_scaler_color_modes;
 	unsigned int num_mgrs;
 	unsigned int num_ovls;
 	unsigned int buffer_size_unit;
@@ -2472,6 +2475,11 @@ static int dispc_ovl_calc_scaling_44xx(unsigned long pclk, unsigned long lclk,
 	return 0;
 }
 
+static enum omap_overlay_caps dispc_ovl_get_caps(enum omap_plane_id plane)
+{
+	return dispc.feat->overlay_caps[plane];
+}
+
 #define DIV_FRAC(dividend, divisor) \
 	((dividend) * 100 / (divisor) - ((dividend) / (divisor) * 100))
 
@@ -2492,6 +2500,19 @@ static int dispc_ovl_calc_scaling(enum omap_plane_id plane,
 
 	if (width == out_width && height == out_height)
 		return 0;
+
+	if (dispc.feat->supported_scaler_color_modes) {
+		const u32 *modes = dispc.feat->supported_scaler_color_modes;
+		int i;
+
+		for (i = 0; modes[i]; ++i) {
+			if (modes[i] == fourcc)
+				break;
+		}
+
+		if (modes[i] == 0)
+			return -EINVAL;
+	}
 
 	if (plane == OMAP_DSS_WB) {
 		switch (fourcc) {
@@ -2565,6 +2586,12 @@ static int dispc_ovl_calc_scaling(enum omap_plane_id plane,
 	*x_predecim = decim_x;
 	*y_predecim = decim_y;
 	return 0;
+}
+
+static void dispc_ovl_get_max_size(u16 *width, u16 *height)
+{
+	*width = dispc.feat->ovl_width_max;
+	*height = dispc.feat->ovl_height_max;
 }
 
 static int dispc_ovl_setup_common(enum omap_plane_id plane,
@@ -4166,6 +4193,12 @@ static const u32 *omap4_dispc_supported_color_modes[] = {
 	DRM_FORMAT_RGBX8888),
 };
 
+static const u32 omap3_dispc_supported_scaler_color_modes[] = {
+	DRM_FORMAT_XRGB8888, DRM_FORMAT_RGB565, DRM_FORMAT_YUYV,
+	DRM_FORMAT_UYVY,
+	0,
+};
+
 static const struct dispc_features omap24xx_dispc_feats = {
 	.sw_start		=	5,
 	.fp_start		=	15,
@@ -4177,6 +4210,8 @@ static const struct dispc_features omap24xx_dispc_feats = {
 	.mgr_height_start	=	26,
 	.mgr_width_max		=	2048,
 	.mgr_height_max		=	2048,
+	.ovl_width_max		=	2048,
+	.ovl_height_max		=	2048,
 	.max_lcd_pclk		=	66500000,
 	.max_downscale		=	2,
 	/*
@@ -4194,6 +4229,7 @@ static const struct dispc_features omap24xx_dispc_feats = {
 	.num_reg_fields		=	ARRAY_SIZE(omap2_dispc_reg_fields),
 	.overlay_caps		=	omap2_dispc_overlay_caps,
 	.supported_color_modes	=	omap2_dispc_supported_color_modes,
+	.supported_scaler_color_modes = COLOR_ARRAY(DRM_FORMAT_XRGB8888),
 	.num_mgrs		=	2,
 	.num_ovls		=	3,
 	.buffer_size_unit	=	1,
@@ -4214,6 +4250,8 @@ static const struct dispc_features omap34xx_rev1_0_dispc_feats = {
 	.mgr_height_start	=	26,
 	.mgr_width_max		=	2048,
 	.mgr_height_max		=	2048,
+	.ovl_width_max		=	2048,
+	.ovl_height_max		=	2048,
 	.max_lcd_pclk		=	173000000,
 	.max_tv_pclk		=	59000000,
 	.max_downscale		=	4,
@@ -4228,6 +4266,7 @@ static const struct dispc_features omap34xx_rev1_0_dispc_feats = {
 	.num_reg_fields		=	ARRAY_SIZE(omap3_dispc_reg_fields),
 	.overlay_caps		=	omap3430_dispc_overlay_caps,
 	.supported_color_modes	=	omap3_dispc_supported_color_modes,
+	.supported_scaler_color_modes = omap3_dispc_supported_scaler_color_modes,
 	.num_mgrs		=	2,
 	.num_ovls		=	3,
 	.buffer_size_unit	=	1,
@@ -4248,6 +4287,8 @@ static const struct dispc_features omap34xx_rev3_0_dispc_feats = {
 	.mgr_height_start	=	26,
 	.mgr_width_max		=	2048,
 	.mgr_height_max		=	2048,
+	.ovl_width_max		=	2048,
+	.ovl_height_max		=	2048,
 	.max_lcd_pclk		=	173000000,
 	.max_tv_pclk		=	59000000,
 	.max_downscale		=	4,
@@ -4262,6 +4303,7 @@ static const struct dispc_features omap34xx_rev3_0_dispc_feats = {
 	.num_reg_fields		=	ARRAY_SIZE(omap3_dispc_reg_fields),
 	.overlay_caps		=	omap3430_dispc_overlay_caps,
 	.supported_color_modes	=	omap3_dispc_supported_color_modes,
+	.supported_scaler_color_modes = omap3_dispc_supported_scaler_color_modes,
 	.num_mgrs		=	2,
 	.num_ovls		=	3,
 	.buffer_size_unit	=	1,
@@ -4282,6 +4324,8 @@ static const struct dispc_features omap36xx_dispc_feats = {
 	.mgr_height_start	=	26,
 	.mgr_width_max		=	2048,
 	.mgr_height_max		=	2048,
+	.ovl_width_max		=	2048,
+	.ovl_height_max		=	2048,
 	.max_lcd_pclk		=	173000000,
 	.max_tv_pclk		=	59000000,
 	.max_downscale		=	4,
@@ -4296,6 +4340,7 @@ static const struct dispc_features omap36xx_dispc_feats = {
 	.num_reg_fields		=	ARRAY_SIZE(omap3_dispc_reg_fields),
 	.overlay_caps		=	omap3630_dispc_overlay_caps,
 	.supported_color_modes	=	omap3_dispc_supported_color_modes,
+	.supported_scaler_color_modes = omap3_dispc_supported_scaler_color_modes,
 	.num_mgrs		=	2,
 	.num_ovls		=	3,
 	.buffer_size_unit	=	1,
@@ -4316,6 +4361,8 @@ static const struct dispc_features am43xx_dispc_feats = {
 	.mgr_height_start	=	26,
 	.mgr_width_max		=	2048,
 	.mgr_height_max		=	2048,
+	.ovl_width_max		=	2048,
+	.ovl_height_max		=	2048,
 	.max_lcd_pclk		=	173000000,
 	.max_tv_pclk		=	59000000,
 	.max_downscale		=	4,
@@ -4330,6 +4377,7 @@ static const struct dispc_features am43xx_dispc_feats = {
 	.num_reg_fields		=	ARRAY_SIZE(omap3_dispc_reg_fields),
 	.overlay_caps		=	omap3430_dispc_overlay_caps,
 	.supported_color_modes	=	omap3_dispc_supported_color_modes,
+	.supported_scaler_color_modes = omap3_dispc_supported_scaler_color_modes,
 	.num_mgrs		=	1,
 	.num_ovls		=	3,
 	.buffer_size_unit	=	1,
@@ -4350,6 +4398,8 @@ static const struct dispc_features omap44xx_dispc_feats = {
 	.mgr_height_start	=	26,
 	.mgr_width_max		=	2048,
 	.mgr_height_max		=	2048,
+	.ovl_width_max		=	2048,
+	.ovl_height_max		=	2048,
 	.max_lcd_pclk		=	170000000,
 	.max_tv_pclk		=	185625000,
 	.max_downscale		=	4,
@@ -4389,8 +4439,10 @@ static const struct dispc_features omap54xx_dispc_feats = {
 	.mgr_height_start	=	27,
 	.mgr_width_max		=	4096,
 	.mgr_height_max		=	4096,
+	.ovl_width_max		=	2048,
+	.ovl_height_max		=	4096,
 	.max_lcd_pclk		=	170000000,
-	.max_tv_pclk		=	186000000,
+	.max_tv_pclk		=	192000000,
 	.max_downscale		=	4,
 	.max_line_width		=	2048,
 	.min_pcd		=	1,
@@ -4659,6 +4711,9 @@ static const struct dispc_ops dispc_ops = {
 	.ovl_enable = dispc_ovl_enable,
 	.ovl_setup = dispc_ovl_setup,
 	.ovl_get_color_modes = dispc_ovl_get_color_modes,
+	.ovl_color_mode_supported = dispc_ovl_color_mode_supported,
+	.ovl_get_caps = dispc_ovl_get_caps,
+	.ovl_get_max_size = dispc_ovl_get_max_size,
 
 	.wb_get_framedone_irq = dispc_wb_get_framedone_irq,
 	.wb_setup = dispc_wb_setup,

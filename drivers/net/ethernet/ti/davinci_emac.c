@@ -1387,6 +1387,10 @@ static int emac_devioctl(struct net_device *ndev, struct ifreq *ifrq, int cmd)
 
 static int match_first_device(struct device *dev, void *data)
 {
+	if (dev->parent && dev->parent->of_node)
+		return of_device_is_compatible(dev->parent->of_node,
+					       "ti,davinci_mdio");
+
 	return !strncmp(dev_name(dev), "davinci_mdio", 12);
 }
 
@@ -1875,10 +1879,17 @@ static int davinci_emac_probe(struct platform_device *pdev)
 
 	priv->txchan = cpdma_chan_create(priv->dma, EMAC_DEF_TX_CH,
 					 emac_tx_handler, 0);
+	if (IS_ERR(priv->txchan)) {
+		dev_err(&pdev->dev, "error initializing tx dma channel\n");
+		rc = PTR_ERR(priv->txchan);
+		goto no_cpdma_chan;
+	}
+
 	priv->rxchan = cpdma_chan_create(priv->dma, EMAC_DEF_RX_CH,
 					 emac_rx_handler, 1);
-	if (WARN_ON(!priv->txchan || !priv->rxchan)) {
-		rc = -ENOMEM;
+	if (IS_ERR(priv->rxchan)) {
+		dev_err(&pdev->dev, "error initializing rx dma channel\n");
+		rc = PTR_ERR(priv->rxchan);
 		goto no_cpdma_chan;
 	}
 

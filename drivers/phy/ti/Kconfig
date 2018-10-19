@@ -23,6 +23,7 @@ config PHY_DM816X_USB
 config PHY_AM654
 	tristate "TI AM654 SERDES support"
 	depends on OF && ARCH_K3 || COMPILE_TEST
+	depends on COMMON_CLK
 	select GENERIC_PHY
 	select MULTIPLEXER
 	select REGMAP_MMIO
@@ -44,12 +45,11 @@ config OMAP_CONTROL_PHY
 
 config OMAP_USB2
 	tristate "OMAP USB2 PHY Driver"
-	depends on ARCH_OMAP2PLUS
+	depends on ARCH_OMAP2PLUS || ARCH_K3
 	depends on USB_SUPPORT
 	select GENERIC_PHY
 	select USB_PHY
-	select OMAP_CONTROL_PHY
-	depends on OMAP_OCP2SCP
+	select OMAP_CONTROL_PHY if ARCH_OMAP2PLUS
 	help
 	  Enable this to support the transceiver that is part of SOC. This
 	  driver takes care of all the PHY functionality apart from comparator.
@@ -61,7 +61,6 @@ config TI_PIPE3
 	depends on ARCH_OMAP2PLUS || COMPILE_TEST
 	select GENERIC_PHY
 	select OMAP_CONTROL_PHY
-	depends on OMAP_OCP2SCP
 	help
 	  Enable this to support the PIPE3 PHY that is part of TI SOCs. This
 	  driver takes care of all the PHY functionality apart from comparator.
@@ -97,7 +96,7 @@ config PHY_TI_KEYSTONE_SERDES
 	  in peripherals GBE, 10GBE and PCIe.
 
 config PHY_AM654_MMC
-	bool "TI AM654 MMC PHY Support"
+	tristate "TI AM654 MMC PHY Support"
 	select GENERIC_PHY
 	help
 	  This option enables support for the Physical layer for MMC host

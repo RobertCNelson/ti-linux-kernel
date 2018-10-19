@@ -8,10 +8,16 @@
 #include "k3-am654.dtsi"
 #include <dt-bindings/net/ti-dp83867.h>
 #include <dt-bindings/input/input.h>
+#include "am65x-android-fstab.dtsi"
 
 / {
 	compatible =  "ti,am654-evm", "ti,am654";
 	model = "Texas Instruments AM654 Base Board";
+
+	aliases {
+		ethernet1 = &pruss2_emac0;
+		ethernet2 = &pruss2_emac1;
+	};
 
 	chosen {
 		stdout-path = "serial2:115200n8";
@@ -29,6 +35,19 @@
 		#address-cells = <2>;
 		#size-cells = <2>;
 		ranges;
+
+		r5f1_memory_region: r5f1-memory@9b000000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0x9b000000 0 0x1000000>;
+			no-map;
+		};
+
+		r5f0_memory_region: r5f0-memory@9c000000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0x9c000000 0 0x800000>;
+			no-map;
+		};
+
 		secure_ddr: secure_ddr@9e800000 {
 			reg = <0 0x9e800000 0 0x01800000>; /* for OP-TEE */
 			alignment = <0x1000>;
@@ -42,14 +61,14 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&icssg2_rgmii_pins_default>;
 		sram = <&msmc_ram>;
-		interrupt-parent = <&k3_irq>;
+		interrupt-parent = <&main_udmass_inta>;
 
 		prus = <&pru2_0>, <&rtu2_0>, <&pru2_1>, <&rtu2_1>;
 		firmware-name = "ti-pruss/am65x-pru0-prueth-fw.elf",
 				"ti-pruss/am65x-rtu0-prueth-fw.elf",
 				"ti-pruss/am65x-pru1-prueth-fw.elf",
 				"ti-pruss/am65x-rtu1-prueth-fw.elf";
-
+		mii-g-rt = <&icssg2_mii_g_rt>;
 		dma-coherent;
 		dmas = <&main_udmap &pruss2_eth 0 UDMA_DIR_TX>,	/* SLICE 0 */
 		       <&main_udmap &pruss2_eth 0 UDMA_DIR_RX>,
@@ -108,6 +127,14 @@
 			gpios = <&wkup_gpio0 27 GPIO_ACTIVE_LOW>;
 		};
 	};
+};
+
+&mcu_r5f0 {
+	memory-region = <&r5f0_memory_region>;
+};
+
+&mcu_r5f1 {
+	memory-region = <&r5f1_memory_region>;
 };
 
 &main_uart0 {
@@ -204,6 +231,15 @@
 			AM65X_IOPAD(0x0088, PIN_INPUT | MUX_MODE2) /* (AG17) PRG2_PRU0_GPO4.PRG2_RGMII1_RX_CTL */
 		>;
 	};
+
+	main_spi0_pins_default: main_spi0_pins_default {
+		pinctrl-single,pins = <
+			AM65X_IOPAD(0x01c4, PIN_INPUT | MUX_MODE0) /* (AH13) SPI0_CLK */
+			AM65X_IOPAD(0x01c8, PIN_INPUT | MUX_MODE0) /* (AE13) SPI0_D0 */
+			AM65X_IOPAD(0x01cc, PIN_INPUT | MUX_MODE0) /* (AD13) SPI0_D1 */
+			AM65X_IOPAD(0x01bc, PIN_OUTPUT | MUX_MODE0) /* (AG13) SPI0_CS0 */
+		>;
+	};
 };
 
 &main_pmx1 {
@@ -233,6 +269,13 @@
 		pinctrl-single,pins = <
 			AM65X_WKUP_IOPAD(0x00e0, PIN_INPUT | MUX_MODE0) /* (AC7) WKUP_I2C0_SCL */
 			AM65X_WKUP_IOPAD(0x00e4, PIN_INPUT | MUX_MODE0) /* (AD6) WKUP_I2C0_SDA */
+		>;
+	};
+
+	mcu_i2c0_pins_default: mcu_i2c0_pins_default {
+		pinctrl-single,pins = <
+			AM65X_WKUP_IOPAD(0x00e8, PIN_INPUT | MUX_MODE0) /* (AD8) MCU_I2C0_SCL */
+			AM65X_WKUP_IOPAD(0x00ec, PIN_INPUT | MUX_MODE0) /* (AD7) MCU_I2C0_SDA */
 		>;
 	};
 
@@ -315,6 +358,13 @@
 	};
 };
 
+&mcu_i2c0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&mcu_i2c0_pins_default>;
+	status = "okay";
+	clock-frequency = <400000>;
+};
+
 &main_i2c0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&main_i2c0_pins_default>;
@@ -359,6 +409,10 @@
 	dr_mode = "otg";
 };
 
+&usb1_phy {
+	status = "okay";
+};
+
 &ospi0 {
 	status = "okay";
 	pinctrl-names = "default";
@@ -369,12 +423,14 @@
 		reg = <0x0>;
 		spi-tx-bus-width = <1>;
 		spi-rx-bus-width = <8>;
-		spi-max-frequency = <33333334>;
-		cdns,tshsl-ns = <500>;
-		cdns,tsd2d-ns = <500>;
-		cdns,tchsh-ns = <119>;
-		cdns,tslch-ns = <119>;
-		cdns,read-delay = <0>;
+		spi-max-frequency = <50000000>;
+		spi-dqs;
+		cdns,tshsl-ns = <60>;
+		cdns,tsd2d-ns = <60>;
+		cdns,tchsh-ns = <60>;
+		cdns,tslch-ns = <60>;
+		cdns,read-delay = <2>;
+		cdns,phy-mode;
 		#address-cells = <1>;
 		#size-cells = <1>;
 	};
@@ -411,17 +467,18 @@
 
 &mmc_phy0 {
 	status = "okay";
+	ti,driver-strength-ohm = <50>;
 };
 
 &sdhci1 {
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&main_mmc1_pins_default>;
-	sdhci-caps-mask = <0x7 0x200000>;
 };
 
 &mmc_phy1 {
 	status = "okay";
+	ti,driver-strength-ohm = <50>;
 };
 
 &gpu {
@@ -445,5 +502,40 @@
 		ti,rx-internal-delay = <DP83867_RGMIIDCTL_2_00_NS>;
 		ti,tx-internal-delay = <DP83867_RGMIIDCTL_2_00_NS>;
 		ti,fifo-depth = <DP83867_PHYCR_FIFO_DEPTH_4_B_NIB>;
+	};
+};
+
+&tscadc0 {
+	status = "okay";
+
+	adc {
+		ti,adc-channels = <0 1 2 3 4 5 6 7>;
+	};
+};
+
+&tscadc1 {
+	status = "okay";
+
+	adc {
+		ti,adc-channels = <0 1 2 3 4 5 6 7>;
+	};
+};
+
+&main_spi0 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&main_spi0_pins_default>;
+	#address-cells = <1>;
+	#size-cells= <0>;
+	ti,pindir-d0-out-d1-in = <1>;
+
+	flash@0{
+		compatible = "jedec,spi-nor";
+		reg = <0x0>;
+		spi-tx-bus-width = <1>;
+		spi-rx-bus-width = <1>;
+		spi-max-frequency = <48000000>;
+		#address-cells = <1>;
+		#size-cells= <1>;
 	};
 };

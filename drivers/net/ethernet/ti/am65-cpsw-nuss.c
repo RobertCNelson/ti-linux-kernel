@@ -6,10 +6,12 @@
  *
  */
 
+#include <linux/clk.h>
 #include <linux/etherdevice.h>
 #include <linux/if_vlan.h>
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
+#include <linux/kmemleak.h>
 #include <linux/module.h>
 #include <linux/netdevice.h>
 #include <linux/net_tstamp.h>
@@ -22,8 +24,10 @@
 #include <linux/pm_runtime.h>
 #include <linux/regmap.h>
 #include <linux/mfd/syscon.h>
-#include <linux/soc/ti/cppi5.h>
+#include <linux/soc/ti/k3-navss-desc-pool.h>
+#include <linux/dma/ti-cppi5.h>
 #include <linux/dma/k3-navss-udma.h>
+#include <linux/net_switch_config.h>
 
 #include "cpsw_ale.h"
 #include "cpsw_sl.h"
@@ -54,6 +58,7 @@
 #define AM65_CPSW_REG_STAT_PORT_EN	0x014
 #define AM65_CPSW_REG_PTYPE		0x018
 
+#define AM65_CPSW_P0_REG_CTL			0x004
 #define AM65_CPSW_PORT0_REG_FLOW_ID_OFFSET	0x008
 #define AM65_CPSW_PORT_REG_RX_MAXLEN		0x024
 
@@ -68,6 +73,9 @@
 #define AM65_CPSW_CTL_P0_ENABLE			BIT(2)
 #define AM65_CPSW_CTL_P0_TX_CRC_REMOVE		BIT(13)
 #define AM65_CPSW_CTL_P0_RX_PAD			BIT(14)
+
+/* AM65_CPSW_P0_REG_CTL */
+#define AM65_CPSW_P0_REG_CTL_RX_CHECKSUM_EN	BIT(0)
 
 /* AM65_CPSW_PN_TS_CTL register fields */
 #define AM65_CPSW_PN_TS_CTL_TX_ANX_F_EN		BIT(4)
@@ -188,6 +196,7 @@ void am65_cpsw_nuss_adjust_link(struct net_device *ndev)
 
 	phy_print_status(phy);
 }
+EXPORT_SYMBOL_GPL(am65_cpsw_nuss_adjust_link);
 
 static int am65_cpsw_nuss_ndo_slave_add_vid(struct net_device *ndev,
 					    __be16 proto, u16 vid)
@@ -318,7 +327,7 @@ static void am65_cpsw_nuss_ndo_host_tx_timeout(struct net_device *ndev)
 static int am65_cpsw_nuss_rx_push(struct am65_cpsw_common *common,
 				  struct sk_buff *skb)
 {
-	struct knav_udmap_host_desc_t *desc_rx;
+	struct cppi5_host_desc_t *desc_rx;
 	struct am65_cpsw_rx_chn *rx_chn = &common->rx_chns;
 	struct device *dev = common->dev;
 	dma_addr_t desc_dma;
@@ -336,21 +345,21 @@ static int am65_cpsw_nuss_rx_push(struct am65_cpsw_common *common,
 	buf_dma = dma_map_single(dev, skb->data, pkt_len, DMA_FROM_DEVICE);
 	if (unlikely(dma_mapping_error(dev, buf_dma))) {
 		k3_knav_pool_free(rx_chn->desc_pool, desc_rx);
-		dev_err(dev, "Failed to map skb buffer\n");
+		dev_err(dev, "Failed to map rx skb buffer\n");
 		return -EINVAL;
 	}
 
-	knav_udmap_hdesc_init(desc_rx, KNAV_UDMAP_INFO0_HDESC_EPIB_PRESENT,
-			      AM65_CPSW_NAV_PS_DATA_SIZE);
-	knav_udmap_hdesc_attach_buf(desc_rx, 0, 0,
-				    buf_dma, skb_tailroom(skb));
-	swdata = knav_udmap_hdesc_get_swdata(desc_rx);
+	cppi5_hdesc_init(desc_rx, CPPI5_INFO0_HDESC_EPIB_PRESENT,
+			 AM65_CPSW_NAV_PS_DATA_SIZE);
+	cppi5_hdesc_attach_buf(desc_rx, 0, 0, buf_dma, skb_tailroom(skb));
+	swdata = cppi5_hdesc_get_swdata(desc_rx);
 	*((void **)swdata) = skb;
 
 	return k3_nav_udmax_push_rx_chn(rx_chn->rx_chn, 0, desc_rx, desc_dma);
 }
 
-static int am65_cpsw_nuss_common_open(struct am65_cpsw_common *common)
+static int am65_cpsw_nuss_common_open(struct am65_cpsw_common *common,
+				      netdev_features_t features)
 {
 	struct am65_cpsw_port *host_p = am65_common_get_host_port(common);
 	int port_idx, i, ret;
@@ -370,6 +379,10 @@ static int am65_cpsw_nuss_common_open(struct am65_cpsw_common *common)
 	/* set base flow_id */
 	writel(common->rx_flow_id_base,
 	       host_p->port_base + AM65_CPSW_PORT0_REG_FLOW_ID_OFFSET);
+	/* en tx crc offload */
+	if (features & NETIF_F_HW_CSUM)
+		writel(AM65_CPSW_P0_REG_CTL_RX_CHECKSUM_EN,
+		       host_p->port_base + AM65_CPSW_P0_REG_CTL);
 
 	/* enable statistic */
 	val = 0;
@@ -389,26 +402,14 @@ static int am65_cpsw_nuss_common_open(struct am65_cpsw_common *common)
 	cpsw_ale_control_set(common->ale, HOST_PORT_NUM,
 			     ALE_PORT_STATE, ALE_PORT_STATE_FORWARD);
 
-	/* unknown vlan cfg */
+	/* default vlan cfg */
 	/* create mask based on enabled ports */
 	port_mask = GENMASK(common->port_num - 1, 0) &
 		    ~common->disabled_ports_mask;
 
-	cpsw_ale_control_set(common->ale, HOST_PORT_NUM,
-			     ALE_PORT_UNKNOWN_VLAN_MEMBER,
-			     port_mask);
-
-	cpsw_ale_control_set(common->ale, HOST_PORT_NUM,
-			     ALE_PORT_UNKNOWN_MCAST_FLOOD,
-			     port_mask & ~ALE_PORT_HOST);
-
-	cpsw_ale_control_set(common->ale, HOST_PORT_NUM,
-			     ALE_PORT_UNKNOWN_REG_MCAST_FLOOD,
-			     port_mask);
-
-	cpsw_ale_control_set(common->ale, HOST_PORT_NUM,
-			     ALE_PORT_UNTAGGED_EGRESS,
-			     port_mask);
+	cpsw_ale_add_vlan(common->ale, 0, port_mask,
+			  port_mask, port_mask,
+			  port_mask & ~ALE_PORT_HOST);
 
 	for (i = 0; i < common->rx_chns.descs_num; i++) {
 		skb = __netdev_alloc_skb_ip_align(NULL,
@@ -427,6 +428,7 @@ static int am65_cpsw_nuss_common_open(struct am65_cpsw_common *common)
 			kfree_skb(skb);
 			return ret;
 		}
+		kmemleak_not_leak(skb);
 	}
 	k3_nav_udmax_enable_rx_chn(common->rx_chns.rx_chn);
 
@@ -557,7 +559,7 @@ static int am65_cpsw_nuss_ndo_slave_open(struct net_device *ndev)
 	for (i = 0; i < AM65_CPSW_MAX_TX_QUEUES; i++)
 		netdev_tx_reset_queue(netdev_get_tx_queue(ndev, i));
 
-	ret = am65_cpsw_nuss_common_open(common);
+	ret = am65_cpsw_nuss_common_open(common, ndev->features);
 	if (ret)
 		return ret;
 
@@ -616,16 +618,16 @@ error_cleanup:
 static void am65_cpsw_nuss_rx_cleanup(void *data, dma_addr_t desc_dma)
 {
 	struct am65_cpsw_rx_chn *rx_chn = data;
-	struct knav_udmap_host_desc_t *desc_rx;
+	struct cppi5_host_desc_t *desc_rx;
 	struct sk_buff *skb;
 	dma_addr_t buf_dma;
 	u32 buf_dma_len;
 	void **swdata;
 
 	desc_rx = k3_knav_pool_dma2virt(rx_chn->desc_pool, desc_dma);
-	swdata = knav_udmap_hdesc_get_swdata(desc_rx);
+	swdata = cppi5_hdesc_get_swdata(desc_rx);
 	skb = *swdata;
-	knav_udmap_hdesc_get_obuf(desc_rx, &buf_dma, &buf_dma_len);
+	cppi5_hdesc_get_obuf(desc_rx, &buf_dma, &buf_dma_len);
 
 	dma_unmap_single(rx_chn->dev, buf_dma, buf_dma_len, DMA_FROM_DEVICE);
 	k3_knav_pool_free(rx_chn->desc_pool, desc_rx);
@@ -645,6 +647,43 @@ static void am65_cpsw_nuss_rx_ts(struct sk_buff *skb, u32 *psdata)
 	ssh->hwtstamp = ns_to_ktime(ns);
 }
 
+/* RX psdata[2] word format - checksum information */
+#define AM65_CPSW_RX_PSD_CSUM_ADD	GENMASK(15, 0)
+#define AM65_CPSW_RX_PSD_CSUM_ERR	BIT(16)
+#define AM65_CPSW_RX_PSD_IS_FRAGMENT	BIT(17)
+#define AM65_CPSW_RX_PSD_IS_TCP		BIT(18)
+#define AM65_CPSW_RX_PSD_IPV6_VALID	BIT(19)
+#define AM65_CPSW_RX_PSD_IPV4_VALID	BIT(20)
+
+static void am65_cpsw_nuss_rx_csum(struct sk_buff *skb, u32 csum_info)
+{
+	/* HW can verify IPv4/IPv6 TCP/UDP packets checksum
+	 * csum information provides in psdata[2] word:
+	 * AM65_CPSW_RX_PSD_CSUM_ERR bit - indicates csum error
+	 * AM65_CPSW_RX_PSD_IPV6_VALID and AM65_CPSW_RX_PSD_IPV4_VALID
+	 * bits - indicates IPv4/IPv6 packet
+	 * AM65_CPSW_RX_PSD_IS_FRAGMENT bit - indicates fragmented packet
+	 * AM65_CPSW_RX_PSD_CSUM_ADD has value 0xFFFF for non fragmented packets
+	 * or csum value for fragmented packets if !AM65_CPSW_RX_PSD_CSUM_ERR
+	 */
+	skb_checksum_none_assert(skb);
+
+	if (unlikely(!(skb->dev->features & NETIF_F_RXCSUM)))
+		return;
+
+	if (!(csum_info & AM65_CPSW_RX_PSD_CSUM_ERR) &&
+	    (csum_info & (AM65_CPSW_RX_PSD_IPV6_VALID |
+			  AM65_CPSW_RX_PSD_IPV6_VALID))) {
+		if (csum_info & AM65_CPSW_RX_PSD_IS_FRAGMENT) {
+			skb->ip_summed = CHECKSUM_COMPLETE;
+			skb->csum = csum_unfold(csum_info &
+						AM65_CPSW_RX_PSD_CSUM_ADD);
+		} else {
+			skb->ip_summed = CHECKSUM_UNNECESSARY;
+		}
+	}
+}
+
 static int am65_cpsw_nuss_rx_packets(struct am65_cpsw_common *common,
 				     u32 flow_idx)
 {
@@ -653,10 +692,10 @@ static int am65_cpsw_nuss_rx_packets(struct am65_cpsw_common *common,
 	struct am65_cpsw_ndev_priv *ndev_priv;
 	struct am65_cpsw_ndev_stats *stats;
 	struct net_device *ndev;
-	struct knav_udmap_host_desc_t *desc_rx;
+	struct cppi5_host_desc_t *desc_rx;
 	struct sk_buff *skb, *new_skb;
 	dma_addr_t desc_dma, buf_dma;
-	u32 buf_dma_len, pkt_len, port_id = 0;
+	u32 buf_dma_len, pkt_len, port_id = 0, csum_info;
 	int ret = 0;
 	void **swdata;
 	u32 *psdata;
@@ -677,21 +716,23 @@ static int am65_cpsw_nuss_rx_packets(struct am65_cpsw_common *common,
 	dev_dbg(dev, "%s flow_idx: %u desc %pad\n",
 		__func__, flow_idx, &desc_dma);
 
-	swdata = knav_udmap_hdesc_get_swdata(desc_rx);
+	swdata = cppi5_hdesc_get_swdata(desc_rx);
 	skb = *swdata;
-	knav_udmap_hdesc_get_obuf(desc_rx, &buf_dma, &buf_dma_len);
-	pkt_len = knav_udmap_hdesc_get_pktlen(desc_rx);
-	knav_udmap_desc_get_tags_ids(&desc_rx->hdr, &port_id, NULL);
+	cppi5_hdesc_get_obuf(desc_rx, &buf_dma, &buf_dma_len);
+	pkt_len = cppi5_hdesc_get_pktlen(desc_rx);
+	cppi5_desc_get_tags_ids(&desc_rx->hdr, &port_id, NULL);
 	if (port_id)
 		port_id = (port_id % common->port_num);
 	dev_dbg(dev, "%s rx port_id:%d\n", __func__, port_id);
 	ndev = common->ports[port_id].ndev;
 	skb->dev = ndev;
 
-	psdata = knav_udmap_hdesc_get_psdata32(desc_rx);
+	psdata = cppi5_hdesc_get_psdata32(desc_rx);
 	/* add RX timestamp */
 	if (common->ports[port_id].rx_ts_enabled)
 		am65_cpsw_nuss_rx_ts(skb, psdata);
+	csum_info = psdata[2];
+	dev_dbg(dev, "%s rx csum_info:%#x\n", __func__, csum_info);
 
 	dma_unmap_single(dev, buf_dma, buf_dma_len, DMA_FROM_DEVICE);
 
@@ -706,6 +747,7 @@ static int am65_cpsw_nuss_rx_packets(struct am65_cpsw_common *common,
 	if (new_skb) {
 		skb_put(skb, pkt_len);
 		skb->protocol = eth_type_trans(skb, ndev);
+		am65_cpsw_nuss_rx_csum(skb, csum_info);
 		netif_receive_skb(skb);
 
 		ndev_priv = netdev_priv(ndev);
@@ -715,6 +757,7 @@ static int am65_cpsw_nuss_rx_packets(struct am65_cpsw_common *common,
 		stats->rx_packets++;
 		stats->rx_bytes += pkt_len;
 		u64_stats_update_end(&stats->syncp);
+		kmemleak_not_leak(new_skb);
 	} else {
 		ndev->stats.rx_dropped++;
 		new_skb = skb;
@@ -770,30 +813,30 @@ static int am65_cpsw_nuss_rx_poll(struct napi_struct *napi_rx, int budget)
 
 static void am65_cpsw_nuss_xmit_free(struct am65_cpsw_tx_chn *tx_chn,
 				     struct device *dev,
-				     struct knav_udmap_host_desc_t *desc)
+				     struct cppi5_host_desc_t *desc)
 {
-	struct knav_udmap_host_desc_t *first_desc, *next_desc;
+	struct cppi5_host_desc_t *first_desc, *next_desc;
 	dma_addr_t buf_dma, next_desc_dma;
 	u32 buf_dma_len;
 
 	first_desc = desc;
 	next_desc = first_desc;
 
-	knav_udmap_hdesc_get_obuf(first_desc, &buf_dma, &buf_dma_len);
+	cppi5_hdesc_get_obuf(first_desc, &buf_dma, &buf_dma_len);
 
 	dma_unmap_single(dev, buf_dma, buf_dma_len,
 			 DMA_TO_DEVICE);
 
-	next_desc_dma = knav_udmap_hdesc_get_next_hbdesc(first_desc);
+	next_desc_dma = cppi5_hdesc_get_next_hbdesc(first_desc);
 	while (next_desc_dma) {
 		next_desc = k3_knav_pool_dma2virt(tx_chn->desc_pool,
 						  next_desc_dma);
-		knav_udmap_hdesc_get_obuf(next_desc, &buf_dma, &buf_dma_len);
+		cppi5_hdesc_get_obuf(next_desc, &buf_dma, &buf_dma_len);
 
 		dma_unmap_page(dev, buf_dma, buf_dma_len,
 			       DMA_TO_DEVICE);
 
-		next_desc_dma = knav_udmap_hdesc_get_next_hbdesc(next_desc);
+		next_desc_dma = cppi5_hdesc_get_next_hbdesc(next_desc);
 
 		k3_knav_pool_free(tx_chn->desc_pool, next_desc);
 	}
@@ -804,12 +847,12 @@ static void am65_cpsw_nuss_xmit_free(struct am65_cpsw_tx_chn *tx_chn,
 static void am65_cpsw_nuss_tx_cleanup(void *data, dma_addr_t desc_dma)
 {
 	struct am65_cpsw_tx_chn *tx_chn = data;
-	struct knav_udmap_host_desc_t *desc_tx;
+	struct cppi5_host_desc_t *desc_tx;
 	struct sk_buff *skb;
 	void **swdata;
 
 	desc_tx = k3_knav_pool_dma2virt(tx_chn->desc_pool, desc_dma);
-	swdata = knav_udmap_hdesc_get_swdata(desc_tx);
+	swdata = cppi5_hdesc_get_swdata(desc_tx);
 	skb = *(swdata);
 	am65_cpsw_nuss_xmit_free(tx_chn, tx_chn->dev, desc_tx);
 
@@ -819,7 +862,7 @@ static void am65_cpsw_nuss_tx_cleanup(void *data, dma_addr_t desc_dma)
 static int am65_cpsw_nuss_tx_compl_packets(struct am65_cpsw_common *common,
 					   int chn, unsigned int budget)
 {
-	struct knav_udmap_host_desc_t *desc_tx;
+	struct cppi5_host_desc_t *desc_tx;
 	struct device *dev = common->dev;
 	struct netdev_queue *netif_txq;
 	struct am65_cpsw_tx_chn *tx_chn;
@@ -847,7 +890,7 @@ static int am65_cpsw_nuss_tx_compl_packets(struct am65_cpsw_common *common,
 		}
 
 		desc_tx = k3_knav_pool_dma2virt(tx_chn->desc_pool, desc_dma);
-		swdata = knav_udmap_hdesc_get_swdata(desc_tx);
+		swdata = cppi5_hdesc_get_swdata(desc_tx);
 		skb = *(swdata);
 		am65_cpsw_nuss_xmit_free(tx_chn, dev, desc_tx);
 
@@ -941,13 +984,14 @@ static netdev_tx_t am65_cpsw_nuss_ndo_slave_xmit(struct sk_buff *skb,
 	struct am65_cpsw_port *port = am65_ndev_to_port(ndev);
 	struct am65_cpsw_common *common = am65_ndev_to_common(ndev);
 	struct device *dev = common->dev;
-	struct knav_udmap_host_desc_t *first_desc, *next_desc, *cur_desc;
+	struct cppi5_host_desc_t *first_desc, *next_desc, *cur_desc;
 	struct am65_cpsw_tx_chn *tx_chn;
 	struct netdev_queue *netif_txq;
 	dma_addr_t desc_dma, buf_dma;
 	int ret, q_idx, i;
 	u32 pkt_len;
 	void **swdata;
+	u32 *psdata;
 
 	/* frag list based linkage is not supported for now. */
 	if (skb_shinfo(skb)->frag_list) {
@@ -974,7 +1018,7 @@ static netdev_tx_t am65_cpsw_nuss_ndo_slave_xmit(struct sk_buff *skb,
 	buf_dma = dma_map_single(dev, skb->data, pkt_len,
 				 DMA_TO_DEVICE);
 	if (unlikely(dma_mapping_error(dev, buf_dma))) {
-		dev_err(dev, "Failed to map skb buffer\n");
+		dev_err(dev, "Failed to map tx skb buffer\n");
 		ret = -EINVAL;
 		ndev->stats.tx_errors++;
 		goto drop_stop_q;
@@ -987,17 +1031,29 @@ static netdev_tx_t am65_cpsw_nuss_ndo_slave_xmit(struct sk_buff *skb,
 		goto drop_stop_q_busy;
 	}
 
-	knav_udmap_hdesc_init(first_desc, KNAV_UDMAP_INFO0_HDESC_EPIB_PRESENT,
-			      AM65_CPSW_NAV_PS_DATA_SIZE);
-	knav_udmap_hdesc_set_pktids(&first_desc->hdr, 0, 0x3FFF);
-	knav_udmap_hdesc_set_pkttype(first_desc, 0x7);
-	knav_udmap_desc_set_tags_ids(&first_desc->hdr, 0, port->port_id);
+	cppi5_hdesc_init(first_desc, CPPI5_INFO0_HDESC_EPIB_PRESENT,
+			 AM65_CPSW_NAV_PS_DATA_SIZE);
+	cppi5_desc_set_pktids(&first_desc->hdr, 0, 0x3FFF);
+	cppi5_hdesc_set_pkttype(first_desc, 0x7);
+	cppi5_desc_set_tags_ids(&first_desc->hdr, 0, port->port_id);
 
-	knav_udmap_hdesc_attach_buf(first_desc,
-				    buf_dma, pkt_len,
-				    buf_dma, pkt_len);
-	swdata = knav_udmap_hdesc_get_swdata(first_desc);
+	cppi5_hdesc_attach_buf(first_desc, buf_dma, pkt_len, buf_dma, pkt_len);
+	swdata = cppi5_hdesc_get_swdata(first_desc);
 	*(swdata) = skb;
+	psdata = cppi5_hdesc_get_psdata32(first_desc);
+
+	/* HW csum offload if enabled */
+	psdata[2] = 0;
+	if (likely(skb->ip_summed == CHECKSUM_PARTIAL)) {
+		unsigned int cs_start, cs_offset;
+
+		cs_start = skb_transport_offset(skb);
+		cs_offset = cs_start + skb->csum_offset;
+		/* HW numerates bytes starting from 1 */
+		psdata[2] = ((cs_offset + 1) << 24) |
+			    ((cs_start + 1) << 16) | (skb->len - cs_start);
+		dev_dbg(dev, "%s tx psdata:%#x\n", __func__, psdata[2]);
+	}
 
 	if (!skb_is_nonlinear(skb))
 		goto done_tx;
@@ -1021,20 +1077,19 @@ static netdev_tx_t am65_cpsw_nuss_ndo_slave_xmit(struct sk_buff *skb,
 		buf_dma = skb_frag_dma_map(dev, frag, 0, frag_size,
 					   DMA_TO_DEVICE);
 		if (unlikely(dma_mapping_error(dev, buf_dma))) {
-			dev_err(dev, "Failed to map skb page\n");
+			dev_err(dev, "Failed to map tx skb page\n");
 			k3_knav_pool_free(tx_chn->desc_pool, next_desc);
 			ret = -EINVAL;
 			ndev->stats.tx_errors++;
 			goto drop_free_descs;
 		}
 
-		knav_udmap_hdesc_reset_hbdesc(next_desc);
-		knav_udmap_hdesc_attach_buf(next_desc,
-					    buf_dma, frag_size,
-					    buf_dma, frag_size);
+		cppi5_hdesc_reset_hbdesc(next_desc);
+		cppi5_hdesc_attach_buf(next_desc,
+				       buf_dma, frag_size, buf_dma, frag_size);
 
 		desc_dma = k3_knav_pool_virt2dma(tx_chn->desc_pool, next_desc);
-		knav_udmap_hdesc_link_hbdesc(cur_desc, desc_dma);
+		cppi5_hdesc_link_hbdesc(cur_desc, desc_dma);
 
 		pkt_len += frag_size;
 		cur_desc = next_desc;
@@ -1047,7 +1102,7 @@ done_tx:
 	/* report bql before sending packet */
 	netdev_tx_sent_queue(netif_txq, pkt_len);
 
-	knav_udmap_hdesc_set_pktlen(first_desc, pkt_len);
+	cppi5_hdesc_set_pktlen(first_desc, pkt_len);
 	desc_dma = k3_knav_pool_virt2dma(tx_chn->desc_pool, first_desc);
 	ret = k3_nav_udmax_push_tx_chn(tx_chn->tx_chn, first_desc, desc_dma);
 	if (ret) {
@@ -1212,6 +1267,47 @@ static int am65_cpsw_nuss_hwtstamp_set(struct net_device *ndev,
 }
 #endif /* CONFIG_TI_AM65_CPTS */
 
+static int am65_cpsw_switch_config_ioctl(struct net_device *ndev,
+					 struct ifreq *ifrq, int cmd)
+{
+	struct am65_cpsw_common *common = am65_ndev_to_common(ndev);
+	struct net_switch_config config;
+	int ret = -EINVAL;
+
+	/* Only SIOCSWITCHCONFIG is used as cmd argument and hence, there is no
+	 * switch statement required.
+	 * Function calls are based on switch_config.cmd
+	 */
+
+	if (copy_from_user(&config, ifrq->ifr_data, sizeof(config)))
+		return -EFAULT;
+
+	switch (config.cmd) {
+	case CONFIG_SWITCH_RATELIMIT:
+	{
+		if (config.port > 1) {
+			dev_err(common->dev, "Invalid Port number\n");
+			break;
+		}
+
+		ret = cpsw_ale_set_ratelimit(common->ale,
+					     common->bus_freq_mhz * 1000000,
+					     config.port,
+					     config.bcast_rate_limit,
+					     config.mcast_rate_limit,
+					     !!config.direction);
+		if (ret)
+			dev_err(common->dev, "CPSW_ALE set ratelimit failed");
+		break;
+	}
+
+	default:
+		ret = -EOPNOTSUPP;
+	}
+
+	return ret;
+}
+
 static int am65_cpsw_nuss_ndo_slave_ioctl(struct net_device *ndev,
 					  struct ifreq *req, int cmd)
 {
@@ -1225,6 +1321,8 @@ static int am65_cpsw_nuss_ndo_slave_ioctl(struct net_device *ndev,
 		return am65_cpsw_nuss_hwtstamp_set(ndev, req);
 	case SIOCGHWTSTAMP:
 		return am65_cpsw_nuss_hwtstamp_get(ndev, req);
+	case SIOCSWITCHCONFIG:
+		return am65_cpsw_switch_config_ioctl(ndev, req, cmd);
 	}
 
 	if (!port->slave.phy)
@@ -1267,6 +1365,29 @@ static void am65_cpsw_nuss_ndo_get_stats(struct net_device *dev,
 	stats->tx_dropped	= dev->stats.tx_dropped;
 }
 
+static int am65_cpsw_nuss_ndo_slave_set_features(struct net_device *ndev,
+						 netdev_features_t features)
+{
+	struct am65_cpsw_common *common = am65_ndev_to_common(ndev);
+	struct am65_cpsw_port *host_p = am65_common_get_host_port(common);
+	netdev_features_t changes = features ^ ndev->features;
+
+	if (changes & NETIF_F_HW_CSUM) {
+		bool enable = !!(features & NETIF_F_HW_CSUM);
+
+		dev_err(common->dev, "Turn %s tx-checksum-ip-generic\n",
+			enable ? "ON" : "OFF");
+		if (enable)
+			writel(AM65_CPSW_P0_REG_CTL_RX_CHECKSUM_EN,
+			       host_p->port_base + AM65_CPSW_P0_REG_CTL);
+		else
+			writel(0,
+			       host_p->port_base + AM65_CPSW_P0_REG_CTL);
+	}
+
+	return 0;
+}
+
 static const struct net_device_ops am65_cpsw_nuss_netdev_ops_2g = {
 	.ndo_open		= am65_cpsw_nuss_ndo_slave_open,
 	.ndo_stop		= am65_cpsw_nuss_ndo_slave_stop,
@@ -1279,6 +1400,7 @@ static const struct net_device_ops am65_cpsw_nuss_netdev_ops_2g = {
 	.ndo_vlan_rx_add_vid	= am65_cpsw_nuss_ndo_slave_add_vid,
 	.ndo_vlan_rx_kill_vid	= am65_cpsw_nuss_ndo_slave_kill_vid,
 	.ndo_do_ioctl		= am65_cpsw_nuss_ndo_slave_ioctl,
+	.ndo_set_features	= am65_cpsw_nuss_ndo_slave_set_features,
 };
 
 static void am65_cpsw_nuss_slave_disable_unused(struct am65_cpsw_port *port)
@@ -1296,6 +1418,27 @@ static void am65_cpsw_nuss_slave_disable_unused(struct am65_cpsw_port *port)
 	cpsw_sl_ctl_reset(port->slave.mac_sl);
 }
 
+static void am65_cpsw_nuss_free_tx_chns(void *data)
+{
+	struct am65_cpsw_common *common = data;
+	int i;
+
+	for (i = 0; i < AM65_CPSW_MAX_TX_QUEUES; i++) {
+		struct am65_cpsw_tx_chn	*tx_chn = &common->tx_chns[i];
+
+		if (tx_chn->irq > 0)
+			k3_nav_udmax_tx_put_irq(tx_chn->tx_chn);
+
+		if (!IS_ERR_OR_NULL(tx_chn->tx_chn))
+			k3_nav_udmax_release_tx_chn(tx_chn->tx_chn);
+
+		if (!IS_ERR_OR_NULL(tx_chn->desc_pool))
+			k3_knav_pool_destroy(tx_chn->desc_pool);
+
+		memset(tx_chn, 0, sizeof(*tx_chn));
+	};
+}
+
 static int am65_cpsw_nuss_init_tx_chns(struct am65_cpsw_common *common)
 {
 	struct device *dev = common->dev;
@@ -1311,9 +1454,8 @@ static int am65_cpsw_nuss_init_tx_chns(struct am65_cpsw_common *common)
 
 	init_completion(&common->tdown_complete);
 
-	hdesc_size = knav_udmap_hdesc_calc_size(true,
-						AM65_CPSW_NAV_PS_DATA_SIZE,
-						AM65_CPSW_NAV_SW_DATA_SIZE);
+	hdesc_size = cppi5_hdesc_calc_size(true, AM65_CPSW_NAV_PS_DATA_SIZE,
+					   AM65_CPSW_NAV_SW_DATA_SIZE);
 
 	tx_cfg.swdata_size = AM65_CPSW_NAV_SW_DATA_SIZE;
 	tx_cfg.tx_cfg = ring_cfg;
@@ -1335,7 +1477,6 @@ static int am65_cpsw_nuss_init_tx_chns(struct am65_cpsw_common *common)
 					hdesc_size, tx_chn_name);
 		if (IS_ERR(tx_chn->desc_pool)) {
 			ret = PTR_ERR(tx_chn->desc_pool);
-			tx_chn->desc_pool = NULL;
 			dev_err(dev, "Failed to create poll %d\n", ret);
 			goto err;
 		}
@@ -1344,7 +1485,6 @@ static int am65_cpsw_nuss_init_tx_chns(struct am65_cpsw_common *common)
 			k3_nav_udmax_request_tx_chn(dev, tx_chn_name, &tx_cfg);
 		if (IS_ERR(tx_chn->tx_chn)) {
 			ret = PTR_ERR(tx_chn->tx_chn);
-			tx_chn->tx_chn = NULL;
 			dev_err(dev, "Failed to request tx dma channel %d\n",
 				ret);
 			goto err;
@@ -1353,29 +1493,37 @@ static int am65_cpsw_nuss_init_tx_chns(struct am65_cpsw_common *common)
 				tx_chn->tx_chn, &tx_chn->irq,
 				IRQF_TRIGGER_HIGH, true,
 				i ? common->tx_chns[0].tx_chn : NULL);
-		if (ret)
+		if (ret) {
+			dev_err(dev, "Failed to get tx dma irq %d\n", ret);
 			goto err;
+		}
 	}
 
-	return 0;
-
 err:
-	for (i = 0; i < AM65_CPSW_MAX_TX_QUEUES; i++) {
-		struct am65_cpsw_tx_chn	*tx_chn = &common->tx_chns[i];
-
-		if (tx_chn->irq > 0)
-			k3_nav_udmax_tx_put_irq(tx_chn->tx_chn);
-
-		if (tx_chn->tx_chn)
-			k3_nav_udmax_release_tx_chn(tx_chn->tx_chn);
-
-		if (tx_chn->desc_pool)
-			k3_knav_pool_destroy(tx_chn->desc_pool);
-
-		memset(tx_chn, 0, sizeof(*tx_chn));
+	i = devm_add_action(dev, am65_cpsw_nuss_free_tx_chns, common);
+	if (i) {
+		dev_err(dev, "failed to add free_tx_chns action %d", i);
+		return i;
 	}
 
 	return ret;
+}
+
+static void am65_cpsw_nuss_free_rx_chns(void *data)
+{
+	struct am65_cpsw_common *common = data;
+	struct am65_cpsw_rx_chn *rx_chn = &common->rx_chns;
+	int i;
+
+	if (!IS_ERR_OR_NULL(rx_chn->rx_chn)) {
+		for (i = 0; i < AM65_CPSW_MAX_RX_FLOWS; i++)
+			k3_nav_udmax_rx_put_irq(rx_chn->rx_chn, i);
+
+		k3_nav_udmax_release_rx_chn(rx_chn->rx_chn);
+	}
+
+	if (!IS_ERR_OR_NULL(rx_chn->desc_pool))
+		k3_knav_pool_destroy(rx_chn->desc_pool);
 }
 
 static int am65_cpsw_nuss_init_rx_chns(struct am65_cpsw_common *common)
@@ -1392,9 +1540,8 @@ static int am65_cpsw_nuss_init_rx_chns(struct am65_cpsw_common *common)
 	 * N = n_mac_only*8 [+ 8 if switch ports] rest can be used for class
 	 */
 
-	hdesc_size = knav_udmap_hdesc_calc_size(true,
-						AM65_CPSW_NAV_PS_DATA_SIZE,
-						AM65_CPSW_NAV_SW_DATA_SIZE);
+	hdesc_size = cppi5_hdesc_calc_size(true, AM65_CPSW_NAV_PS_DATA_SIZE,
+					   AM65_CPSW_NAV_SW_DATA_SIZE);
 
 	rx_cfg.swdata_size = AM65_CPSW_NAV_SW_DATA_SIZE;
 	rx_cfg.flow_id_num = AM65_CPSW_MAX_RX_FLOWS;
@@ -1407,18 +1554,15 @@ static int am65_cpsw_nuss_init_rx_chns(struct am65_cpsw_common *common)
 						     hdesc_size, "rx");
 	if (IS_ERR(rx_chn->desc_pool)) {
 		ret = PTR_ERR(rx_chn->desc_pool);
-		rx_chn->desc_pool = NULL;
 		dev_err(dev, "Failed to create rx poll %d\n", ret);
-		return ret;
+		goto err;
 	}
 
 	rx_chn->rx_chn = k3_nav_udmax_request_rx_chn(dev, "rx", &rx_cfg);
 	if (IS_ERR(rx_chn->rx_chn)) {
 		ret = PTR_ERR(rx_chn->rx_chn);
-		rx_chn->rx_chn = NULL;
 		dev_err(dev, "Failed to request rx dma channel %d\n", ret);
-		k3_knav_pool_destroy(rx_chn->desc_pool);
-		return ret;
+		goto err;
 	}
 
 	common->rx_flow_id_base =
@@ -1462,23 +1606,18 @@ static int am65_cpsw_nuss_init_rx_chns(struct am65_cpsw_common *common)
 		ret = k3_nav_udmax_rx_get_irq(rx_chn->rx_chn, i, &rx_chn->irq,
 					      IRQF_TRIGGER_HIGH,
 					      true, i ? 0 : -1);
-		if (ret)
+		if (ret) {
+			dev_err(dev, "Failed to get rx dma irq %d\n", ret);
 			goto err;
+		}
 	}
 
-	return 0;
-
 err:
-	/* TODO: TI-SCI) irqchip driver is buggy and crashes when
-	 * set of irqs or irq group is released
-	 */
-	for (i = rx_cfg.flow_id_num; i; i--)
-		k3_nav_udmax_rx_put_irq(rx_chn->rx_chn, i - 1);
-
-	k3_nav_udmax_release_rx_chn(rx_chn->rx_chn);
-
-	if (rx_chn->desc_pool)
-		k3_knav_pool_destroy(rx_chn->desc_pool);
+	i = devm_add_action(dev, am65_cpsw_nuss_free_rx_chns, common);
+	if (i) {
+		dev_err(dev, "failed to add free_rx_chns action %d", i);
+		return i;
+	}
 
 	return ret;
 }
@@ -1523,6 +1662,7 @@ static int am65_cpsw_init_mdio(struct am65_cpsw_common *common)
 	reg_base = common->ss_base + AM65_CPSW_MDIO_BASE;
 	mdio = davinci_mdio_create(dev, node, reg_base, "fck");
 	if (IS_ERR(mdio)) {
+		of_node_put(node);
 		dev_err(dev, "MDIO init err %ld\n", PTR_ERR(mdio));
 		return PTR_ERR(mdio);
 	}
@@ -1729,9 +1869,13 @@ static int am65_cpsw_nuss_init_ndev_2g(struct am65_cpsw_common *common)
 
 	port->ndev->min_mtu = AM65_CPSW_MIN_PACKET_SIZE;
 	port->ndev->max_mtu = AM65_CPSW_MAX_PACKET_SIZE;
-	port->ndev->features |= NETIF_F_SG;
-	port->ndev->features |= NETIF_F_HW_VLAN_CTAG_FILTER;
-	port->ndev->hw_features = port->ndev->features;
+	port->ndev->hw_features = NETIF_F_SG |
+				  NETIF_F_RXCSUM |
+				  NETIF_F_HW_CSUM;
+	port->ndev->features = port->ndev->hw_features |
+			       NETIF_F_HW_VLAN_CTAG_FILTER;
+	/* Disable TX checksum offload by default due to HW bug */
+	port->ndev->features &= ~NETIF_F_HW_CSUM;
 	port->ndev->vlan_features |=  NETIF_F_SG;
 	port->ndev->netdev_ops = &am65_cpsw_nuss_netdev_ops_2g;
 	port->ndev->ethtool_ops = &am65_cpsw_ethtool_ops_slave;
@@ -1739,6 +1883,13 @@ static int am65_cpsw_nuss_init_ndev_2g(struct am65_cpsw_common *common)
 	ndev_priv->stats = netdev_alloc_pcpu_stats(struct am65_cpsw_ndev_stats);
 	if (!ndev_priv->stats)
 		return -ENOMEM;
+
+	ret = devm_add_action_or_reset(dev, (void(*)(void *))free_percpu,
+				       ndev_priv->stats);
+	if (ret) {
+		dev_err(dev, "failed to add percpu stat free action %d", ret);
+		return ret;
+	}
 
 	netif_tx_napi_add(port->ndev, &common->napi_tx,
 			  am65_cpsw_nuss_tx_poll, NAPI_POLL_WEIGHT);
@@ -1748,6 +1899,10 @@ static int am65_cpsw_nuss_init_ndev_2g(struct am65_cpsw_common *common)
 	ret = register_netdev(port->ndev);
 	if (ret)
 		dev_err(dev, "error registering slave net device %d\n", ret);
+
+	/* can't auto unregister ndev using devm_add_action() due to broken
+	 * devres release sequence in DD core
+	 */
 
 	return ret;
 }
@@ -1771,6 +1926,7 @@ static int am65_cpsw_nuss_probe(struct platform_device *pdev)
 	struct am65_cpsw_common *common;
 	struct device_node *node;
 	struct resource *res;
+	struct clk *clk;
 	int ret, i;
 
 	common = devm_kzalloc(dev, sizeof(struct am65_cpsw_common), GFP_KERNEL);
@@ -1785,10 +1941,8 @@ static int am65_cpsw_nuss_probe(struct platform_device *pdev)
 	common->cpsw_base = common->ss_base + AM65_CPSW_CPSW_NU_BASE;
 
 	node = of_get_child_by_name(dev->of_node, "ports");
-	if (!node) {
-		ret = -ENOENT;
-		goto clean_runtime_disable_ret;
-	}
+	if (!node)
+		return -ENOENT;
 	common->port_num = of_get_child_count(node);
 	if (common->port_num < 2 || common->port_num > AM65_CPSW_MAX_PORTS)
 		return -ENOENT;
@@ -1800,10 +1954,41 @@ static int am65_cpsw_nuss_probe(struct platform_device *pdev)
 	if (ret < 0)
 		dev_info(dev, "rx-flow-id-base is not set %d\n", ret);
 
+	clk = devm_clk_get(dev, "fck");
+	if (IS_ERR(clk)) {
+		ret = PTR_ERR(clk);
+
+		if (ret != -EPROBE_DEFER)
+			dev_err(dev, "error getting fck clock %d\n", ret);
+		return ret;
+	}
+	common->bus_freq_mhz = clk_get_rate(clk) / 1000000;
+
 	pm_runtime_enable(dev);
+	ret = devm_add_action_or_reset(dev, (void(*)(void *))pm_runtime_disable,
+				       dev);
+	if (ret) {
+		dev_err(dev, "failed to add pm reset action %d", ret);
+		return ret;
+	}
+
 	ret = pm_runtime_get_sync(dev);
-	if (ret < 0)
-		goto clean_runtime_disable_ret;
+	if (ret < 0) {
+		pm_runtime_put_noidle(dev);
+		return ret;
+	}
+
+	/* register devres action here, so dev will be disabled
+	 * at right moment. It's required to enable dev in .remove() callback
+	 * unconditionally.
+	 */
+	ret = devm_add_action_or_reset(dev,
+				       (void(*)(void *))pm_runtime_put_sync,
+				       dev);
+	if (ret) {
+		dev_err(dev, "failed to add pm put reset action %d", ret);
+		return ret;
+	}
 
 	ret = of_platform_populate(dev->of_node, NULL, NULL, dev);
 	/* We do not want to force this, as in some cases may not have child */
@@ -1818,33 +2003,31 @@ static int am65_cpsw_nuss_probe(struct platform_device *pdev)
 	common->ports = devm_kcalloc(dev, common->port_num,
 				     sizeof(struct am65_cpsw_port),
 				     GFP_KERNEL);
-	if (!common->ports) {
-		ret = -ENOMEM;
-		goto clean_runtime_disable_ret;
-	}
+	if (!common->ports)
+		return -ENOMEM;
 
 	/* init tx channels */
 	ret = am65_cpsw_nuss_init_tx_chns(common);
 	if (ret)
-		goto clean_runtime_disable_ret;
+		return ret;
 	ret = am65_cpsw_nuss_init_rx_chns(common);
 	if (ret)
-		goto clean_tx_chns;
+		return ret;
 
 	if (common->tx_chns[0].irq == 0 || common->rx_chns.irq == 0)
-		goto clean_rx_chns;
+		return -ENXIO;
 
 	ret = am65_cpsw_nuss_init_host_p(common);
 	if (ret)
-		goto clean_rx_chns;
+		return ret;
 
 	ret = am65_cpsw_nuss_init_slave_ports(common);
 	if (ret)
-		goto clean_rx_chns;
+		return ret;
 
 	ret = am65_cpsw_init_cpts(common);
 	if (ret)
-		goto clean_ports;
+		return ret;
 
 	/* init common data */
 	ale_params.dev = dev;
@@ -1857,26 +2040,25 @@ static int am65_cpsw_nuss_probe(struct platform_device *pdev)
 	common->ale = cpsw_ale_create(&ale_params);
 	if (!common->ale) {
 		dev_err(dev, "error initializing ale engine\n");
-		ret = -ENODEV;
-		goto clean_ports;
+		return -ENODEV;
 	}
 
 	ret = am65_cpsw_init_mdio(common);
 	if (ret)
-		goto clean_ale;
+		return ret;
 
 	/* init ports */
 	for (i = 0; i < common->port_num; i++)
 		am65_cpsw_nuss_slave_disable_unused(&common->ports[i]);
 
-	if (common->port_num != 2) {
-		ret = -EOPNOTSUPP;
-		goto clean_mdio;
-	}
+	if (common->port_num != 2)
+		return -EOPNOTSUPP;
+
+	dev_set_drvdata(dev, common);
 
 	ret = am65_cpsw_nuss_init_ndev_2g(common);
 	if (ret)
-		goto clean_mdio;
+		return ret;
 
 	ret = devm_request_irq(dev, common->tx_chns[0].irq,
 			       am65_cpsw_nuss_tx_irq,
@@ -1884,7 +2066,7 @@ static int am65_cpsw_nuss_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(dev, "failure requesting tx irq %u, %d\n",
 			common->tx_chns[0].irq, ret);
-		goto clean_ndev;
+		goto unreg_ndev;
 	}
 
 	ret = devm_request_irq(dev, common->rx_chns.irq,
@@ -1893,30 +2075,33 @@ static int am65_cpsw_nuss_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(dev, "failure requesting rx irq %u, %d\n",
 			common->rx_chns.irq, ret);
-		goto clean_ndev;
+		goto unreg_ndev;
 	}
 
 	pm_runtime_put(dev);
 	return 0;
 
-clean_ndev:
+unreg_ndev:
 	am65_cpsw_nuss_cleanup_ndev(common);
-clean_mdio:
-	davinci_mdio_release(common->mdio);
-clean_ale:
-clean_ports:
-	/* clean up ports */
-clean_rx_chns:
-clean_tx_chns:
-clean_runtime_disable_ret:
-	pm_runtime_put_noidle(dev);
-	pm_runtime_disable(dev);
-	am65_nav_dbg(dev, "%s error %d\n", __func__, ret);
 	return ret;
 }
 
 static int am65_cpsw_nuss_remove(struct platform_device *pdev)
 {
+	struct device *dev = &pdev->dev;
+	struct am65_cpsw_common *common = dev_get_drvdata(dev);
+	int ret;
+
+	/* enable dev here it will be released later by devres action */
+	ret = pm_runtime_get_sync(&pdev->dev);
+	if (ret < 0)
+		pm_runtime_put_noidle(&pdev->dev);
+
+	/* must unregister ndevs here because DD release_driver routine calls
+	 * dma_deconfigure(dev) before devres_release_all(dev)
+	 */
+	am65_cpsw_nuss_cleanup_ndev(common);
+
 	return 0;
 }
 

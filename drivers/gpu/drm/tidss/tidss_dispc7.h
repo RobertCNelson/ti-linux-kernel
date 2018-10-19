@@ -10,16 +10,34 @@
 #define DISPC7_MAX_PORTS	4
 #define DISPC7_MAX_PLANES	4
 
+struct dispc7_features_scaling {
+	u32 in_width_max_5tap_rgb;
+	u32 in_width_max_3tap_rgb;
+	u32 in_width_max_5tap_yuv;
+	u32 in_width_max_3tap_yuv;
+	u32 upscale_limit;
+	u32 downscale_limit_5tap;
+	u32 downscale_limit_3tap;
+	u32 xinc_max;
+};
+
+enum dispc7_vp_bus_type {
+	DISPC7_VP_DPI,
+	DISPC7_VP_OLDI,
+};
+
 struct dispc7_features {
 	/* XXX should these come from the .dts? Min pclk is not feature of DSS IP */
 	unsigned long min_pclk;
 	unsigned long max_pclk;
 
+	struct dispc7_features_scaling scaling;
+
 	u32 num_vps;
 	const char *vp_name[DISPC7_MAX_PORTS]; /* Should match dt reg names */
 	const char *ovr_name[DISPC7_MAX_PORTS]; /* Should match dt reg names */
 	const char *vpclk_name[DISPC7_MAX_PORTS]; /* Should match dt clk names */
-	const u32 vp_enc_type[DISPC7_MAX_PORTS];
+	const enum dispc7_vp_bus_type vp_bus_type[DISPC7_MAX_PORTS];
 	u32 num_planes;
 	const char *vid_name[DISPC7_MAX_PLANES]; /* Should match dt reg names */
 	bool vid_lite[DISPC7_MAX_PLANES];

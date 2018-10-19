@@ -40,6 +40,7 @@
 #include <dt-bindings/sound/ti-mcasp.h>
 
 #include "edma-pcm.h"
+#include "../ti/udma-pcm.h"
 #include "davinci-mcasp.h"
 
 #define MCASP_MAX_AFIFO_DEPTH	64
@@ -1074,6 +1075,42 @@ static int davinci_mcasp_calc_clk_div(struct davinci_mcasp *mcasp,
 	return error_ppm;
 }
 
+static inline u32 davinci_mcasp_tx_delay(struct davinci_mcasp *mcasp)
+{
+	if (!mcasp->txnumevt)
+		return 0;
+
+	return mcasp_get_reg(mcasp, mcasp->fifo_base + MCASP_WFIFOSTS_OFFSET);
+}
+
+static inline u32 davinci_mcasp_rx_delay(struct davinci_mcasp *mcasp)
+{
+	if (!mcasp->rxnumevt)
+		return 0;
+
+	return mcasp_get_reg(mcasp, mcasp->fifo_base + MCASP_RFIFOSTS_OFFSET);
+}
+
+static snd_pcm_sframes_t davinci_mcasp_delay(
+			struct snd_pcm_substream *substream,
+			struct snd_soc_dai *cpu_dai)
+{
+	struct davinci_mcasp *mcasp = snd_soc_dai_get_drvdata(cpu_dai);
+	u32 fifo_use;
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+		fifo_use = davinci_mcasp_tx_delay(mcasp);
+	else
+		fifo_use = davinci_mcasp_rx_delay(mcasp);
+
+	/*
+	 * Divide the used locations with the channel count to get the
+	 * FIFO usage in samples (don't care about partial samples in the
+	 * buffer).
+	 */
+	return fifo_use / substream->runtime->channels;
+}
+
 static int davinci_mcasp_hw_params(struct snd_pcm_substream *substream,
 					struct snd_pcm_hw_params *params,
 					struct snd_soc_dai *cpu_dai)
@@ -1398,6 +1435,7 @@ static const struct snd_soc_dai_ops davinci_mcasp_dai_ops = {
 	.startup	= davinci_mcasp_startup,
 	.shutdown	= davinci_mcasp_shutdown,
 	.trigger	= davinci_mcasp_trigger,
+	.delay		= davinci_mcasp_delay,
 	.hw_params	= davinci_mcasp_hw_params,
 	.set_fmt	= davinci_mcasp_set_dai_fmt,
 	.set_clkdiv	= davinci_mcasp_set_clkdiv,
@@ -1744,6 +1782,7 @@ nodata:
 enum {
 	PCM_EDMA,
 	PCM_SDMA,
+	PCM_UDMA,
 };
 static const char *sdma_prefix = "ti,omap";
 
@@ -1781,6 +1820,8 @@ static int davinci_mcasp_get_dma_type(struct davinci_mcasp *mcasp)
 	dev_dbg(mcasp->dev, "DMA controller compatible = \"%s\"\n", tmp);
 	if (!strncmp(tmp, sdma_prefix, strlen(sdma_prefix)))
 		return PCM_SDMA;
+	else if (strstr(tmp, "udmap"))
+		return PCM_UDMA;
 
 	return PCM_EDMA;
 }
@@ -2204,6 +2245,17 @@ static int davinci_mcasp_probe(struct platform_device *pdev)
 		ret = omap_pcm_platform_register(&pdev->dev);
 #else
 		dev_err(&pdev->dev, "Missing SND_SDMA_SOC\n");
+		ret = -EINVAL;
+		goto err;
+#endif
+		break;
+	case PCM_UDMA:
+#if IS_BUILTIN(CONFIG_SND_SOC_TI_UDMA_PCM) || \
+	(IS_MODULE(CONFIG_SND_DAVINCI_SOC_MCASP) && \
+	 IS_MODULE(CONFIG_SND_SOC_TI_UDMA_PCM))
+		ret = udma_pcm_platform_register(&pdev->dev);
+#else
+		dev_err(&pdev->dev, "Missing SND_SOC_TI_UDMA_PCM\n");
 		ret = -EINVAL;
 		goto err;
 #endif
