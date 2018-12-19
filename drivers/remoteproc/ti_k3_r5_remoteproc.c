@@ -6,6 +6,7 @@
  *	Suman Anna <s-anna@ti.com>
  */
 
+#include <linux/dma-mapping.h>
 #include <linux/err.h>
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
@@ -119,7 +120,8 @@ struct k3_r5_core {
  * @client: mailbox client to request the mailbox channel
  * @rproc: rproc handle
  * @core: cached pointer to r5 core structure being used
- * @is_remove: boolean flag indicating device is being removed
+ * @rmem: reserved memory regions data
+ * @num_rmems: number of reserved memory regions
  */
 struct k3_r5_rproc {
 	struct device *dev;
@@ -128,7 +130,8 @@ struct k3_r5_rproc {
 	struct mbox_client client;
 	struct rproc *rproc;
 	struct k3_r5_core *core;
-	bool is_remove;
+	struct k3_r5_mem *rmem;
+	int num_rmems;
 };
 
 /**
@@ -355,6 +358,56 @@ static inline int k3_r5_core_run(struct k3_r5_core *core)
 }
 
 /*
+ * The R5F cores have controls for both a reset and a halt/run. The code
+ * execution from DDR requires the initial boot-strapping code to be run
+ * from the internal TCMs. This function is used to release the resets on
+ * applicable cores to allow loading into the TCMs. The .prepare() ops is
+ * invoked by remoteproc core before any firmware loading, and is followed
+ * by the .start() ops after loading to actually let the R5 cores run.
+ */
+static int k3_r5_rproc_prepare(struct rproc *rproc)
+{
+	struct k3_r5_rproc *kproc = rproc->priv;
+	struct k3_r5_cluster *cluster = kproc->cluster;
+	struct k3_r5_core *core = kproc->core;
+	struct device *dev = kproc->dev;
+	int ret;
+
+	ret = cluster->mode ? k3_r5_lockstep_release(cluster) :
+			      k3_r5_split_release(core);
+	if (ret)
+		dev_err(dev, "unable to enable cores for TCM loading, ret = %d\n",
+			ret);
+
+	return ret;
+}
+
+/*
+ * This function implements the .unprepare() ops and performs the complimentary
+ * operations to that of the .prepare() ops. The function is used to assert the
+ * resets on all applicable cores for the rproc device (depending on LockStep
+ * or Split mode). This completes the second portion of powering down the R5F
+ * cores. The cores themselves are only halted in the .stop() ops, and the
+ * .unprepare() ops is invoked by the remoteproc core after the remoteproc is
+ * stopped.
+ */
+static int k3_r5_rproc_unprepare(struct rproc *rproc)
+{
+	struct k3_r5_rproc *kproc = rproc->priv;
+	struct k3_r5_cluster *cluster = kproc->cluster;
+	struct k3_r5_core *core = kproc->core;
+	struct device *dev = kproc->dev;
+	int ret;
+
+	ret = cluster->mode ? k3_r5_lockstep_reset(cluster) :
+			      k3_r5_split_reset(core);
+	if (ret)
+		dev_err(dev, "unable to disable cores, ret = %d\n", ret);
+
+	return ret;
+}
+
+/*
  * The R5F start sequence includes two different operations
  * 1. Configure the boot vector for R5F core(s)
  * 2. Unhalt/Run the R5F core(s)
@@ -439,10 +492,8 @@ put_mbox:
 }
 
 /*
- * The R5F stop function includes three different operations
+ * The R5F stop function includes the following operations
  * 1. Halt R5F core(s)
- * 2. Assert reset for R5F core(s)
- * 3. Deassert reset for R5F core(s) to allow TCM loading for next iteration
  *
  * The sequence is different between LockStep and Split modes, and the order
  * of cores the operations are performed are also in general reverse to that
@@ -453,7 +504,11 @@ put_mbox:
  *
  * Note that the R5F halt operation in general is not effective when the R5F
  * core is running, but is needed to make sure the core won't run after
- * deasserting the reset.
+ * deasserting the reset the subsequent time. The asserting of reset can
+ * be done here, but is preferred to be done in the .unprepare() ops - this
+ * maintains the symmetric behavior between the .start(), .stop(), .prepare()
+ * and .unprepare() ops, and also balances them well between sysfs 'state'
+ * flow and device bind/unbind or module removal.
  */
 static int k3_r5_rproc_stop(struct rproc *rproc)
 {
@@ -477,40 +532,7 @@ static int k3_r5_rproc_stop(struct rproc *rproc)
 			goto out;
 	}
 
-	/* assert resets on all applicable cores */
-	if (cluster->mode) {
-		ret = k3_r5_lockstep_reset(cluster);
-		if (ret) {
-			core = list_last_entry(&cluster->cores,
-					       struct k3_r5_core, elem);
-			goto unroll_core_halt;
-		}
-	} else {
-		ret = k3_r5_split_reset(core);
-		if (ret) {
-			if (k3_r5_core_run(core))
-				dev_warn(core->dev, "core run back failed\n");
-			goto out;
-		}
-	}
-
 	mbox_free_channel(kproc->mbox);
-
-	/*
-	 * deassert resets to allow TCM loading for next run. This is performed
-	 * only if the device is not being removed/unbound from the driver. The
-	 * stop is executed in that code path and the resets should not be
-	 * deasserted again, otherwise the devices are stuck in transition
-	 */
-	if (!kproc->is_remove) {
-		ret = cluster->mode ? k3_r5_lockstep_release(cluster) :
-				      k3_r5_split_release(core);
-		if (ret) {
-			dev_err(kproc->dev, "unable to re-release the resets, ret = %d\n",
-				ret);
-			goto out;
-		}
-	}
 
 	return 0;
 
@@ -575,14 +597,28 @@ static void *k3_r5_rproc_da_to_va(struct rproc *rproc, u64 da, int len,
 		if ((da >= dev_addr) && (da + len) <= (dev_addr + size)) {
 			offset = da - dev_addr;
 			va = core->sram[i].cpu_addr + offset;
-			break;
+			return (__force void *)va;
 		}
 	}
 
-	return (__force void *)va;
+	/* handle static DDR reserved memory regions */
+	for (i = 0; i < kproc->num_rmems; i++) {
+		dev_addr = kproc->rmem[i].dev_addr;
+		size = kproc->rmem[i].size;
+
+		if ((da >= dev_addr) && ((da + len) <= (dev_addr + size))) {
+			offset = da - dev_addr;
+			va = kproc->rmem[i].cpu_addr + offset;
+			return (__force void *)va;
+		}
+	}
+
+	return NULL;
 }
 
 static const struct rproc_ops k3_r5_rproc_ops = {
+	.prepare	= k3_r5_rproc_prepare,
+	.unprepare	= k3_r5_rproc_unprepare,
 	.start		= k3_r5_rproc_start,
 	.stop		= k3_r5_rproc_stop,
 	.kick		= k3_r5_rproc_kick,
@@ -694,27 +730,128 @@ out:
 	return ret;
 }
 
+static int k3_r5_reserved_mem_init(struct k3_r5_rproc *kproc)
+{
+	struct device *dev = kproc->dev;
+	struct device_node *np = dev->of_node;
+	struct device_node *rmem_np;
+	struct reserved_mem *rmem;
+	int num_rmems;
+	int ret, i;
+
+	num_rmems = of_property_count_elems_of_size(np, "memory-region",
+						    sizeof(phandle));
+	if (num_rmems <= 0) {
+		dev_err(dev, "device does not reserved memory regions, ret = %d\n",
+			num_rmems);
+		return -EINVAL;
+	}
+	if (num_rmems < 2) {
+		dev_err(dev, "device needs atleast two memory regions to be defined, num = %d\n",
+			num_rmems);
+		return -EINVAL;
+	}
+
+	/* use reserved memory region 0 for vring DMA allocations */
+	ret = of_reserved_mem_device_init_by_idx(dev, np, 0);
+	if (ret) {
+		dev_err(dev, "device cannot initialize DMA pool, ret = %d\n",
+			ret);
+		return ret;
+	}
+
+	num_rmems--;
+	kproc->rmem = kcalloc(num_rmems, sizeof(*kproc->rmem), GFP_KERNEL);
+	if (!kproc->rmem) {
+		ret = -ENOMEM;
+		goto release_rmem;
+	}
+
+	/* use remaining reserved memory regions for static carveouts */
+	for (i = 0; i < num_rmems; i++) {
+		rmem_np = of_parse_phandle(np, "memory-region", i + 1);
+		if (!rmem_np) {
+			ret = -EINVAL;
+			goto unmap_rmem;
+		}
+
+		rmem = of_reserved_mem_lookup(rmem_np);
+		if (!rmem) {
+			of_node_put(rmem_np);
+			ret = -EINVAL;
+			goto unmap_rmem;
+		}
+		of_node_put(rmem_np);
+
+		kproc->rmem[i].bus_addr = rmem->base;
+		/* 64-bit address regions currently not supported */
+		kproc->rmem[i].dev_addr = (u32)rmem->base;
+		kproc->rmem[i].size = rmem->size;
+		kproc->rmem[i].cpu_addr = ioremap_wc(rmem->base, rmem->size);
+		if (!kproc->rmem[i].cpu_addr) {
+			dev_err(dev, "failed to map reserved memory#%d at %pa of size %pa\n",
+				i + 1, &rmem->base, &rmem->size);
+			ret = -ENOMEM;
+			goto unmap_rmem;
+		}
+
+		dev_dbg(dev, "reserved memory%d: bus addr %pa size 0x%zx va %pK da 0x%x\n",
+			i + 1, &kproc->rmem[i].bus_addr,
+			kproc->rmem[i].size, kproc->rmem[i].cpu_addr,
+			kproc->rmem[i].dev_addr);
+	}
+	kproc->num_rmems = num_rmems;
+
+	return 0;
+
+unmap_rmem:
+	for (i--; i >= 0; i--) {
+		if (kproc->rmem[i].cpu_addr)
+			iounmap(kproc->rmem[i].cpu_addr);
+	}
+	kfree(kproc->rmem);
+release_rmem:
+	of_reserved_mem_device_release(kproc->dev);
+	return ret;
+}
+
+static void k3_r5_reserved_mem_exit(struct k3_r5_rproc *kproc)
+{
+	int i;
+
+	for (i = 0; i < kproc->num_rmems; i++)
+		iounmap(kproc->rmem[i].cpu_addr);
+	kfree(kproc->rmem);
+
+	of_reserved_mem_device_release(kproc->dev);
+}
+
 static int k3_r5_cluster_rproc_init(struct platform_device *pdev)
 {
 	struct k3_r5_cluster *cluster = platform_get_drvdata(pdev);
 	struct device *dev = &pdev->dev;
 	struct k3_r5_rproc *kproc;
-	struct k3_r5_core *core;
+	struct k3_r5_core *core, *core1;
 	struct device *cdev;
 	const char *fw_name;
 	struct rproc *rproc;
-	int ret, ret1;
+	int ret;
 
+	core1 = list_last_entry(&cluster->cores, struct k3_r5_core, elem);
 	list_for_each_entry(core, &cluster->cores, elem) {
 		cdev = core->dev;
 		fw_name = k3_r5_rproc_get_firmware(cdev);
-		if (IS_ERR(fw_name))
-			return PTR_ERR(fw_name);
+		if (IS_ERR(fw_name)) {
+			ret = PTR_ERR(fw_name);
+			goto out;
+		}
 
 		rproc = rproc_alloc(cdev, dev_name(cdev), &k3_r5_rproc_ops,
 				    fw_name, sizeof(*kproc));
-		if (!rproc)
-			return -ENOMEM;
+		if (!rproc) {
+			ret = -ENOMEM;
+			goto out;
+		}
 
 		/* K3 R5s have a Region Address Translator (RAT) but no MMU */
 		rproc->has_iommu = false;
@@ -735,26 +872,17 @@ static int k3_r5_cluster_rproc_init(struct platform_device *pdev)
 			goto err_config;
 		}
 
-		/* enable applicable cores to allow loading into TCM */
-		ret = cluster->mode ? k3_r5_lockstep_release(cluster) :
-				      k3_r5_split_release(core);
+		ret = k3_r5_reserved_mem_init(kproc);
 		if (ret) {
-			dev_err(dev, "unable to enable cores for TCM loading, ret = %d\n",
+			dev_err(dev, "reserved memory init failed, ret = %d\n",
 				ret);
 			goto err_config;
-		}
-
-		ret = of_reserved_mem_device_init(cdev);
-		if (ret) {
-			dev_err(dev, "device does not have specific CMA pool, ret = %d\n",
-				ret);
-			goto err_of;
 		}
 
 		ret = rproc_add(rproc);
 		if (ret) {
 			dev_err(dev, "rproc_add failed, ret = %d\n", ret);
-			goto err_mem;
+			goto err_add;
 		}
 
 		/* create only one rproc in lockstep mode */
@@ -764,48 +892,50 @@ static int k3_r5_cluster_rproc_init(struct platform_device *pdev)
 
 	return 0;
 
-err_mem:
-	of_reserved_mem_device_release(cdev);
-err_of:
-	ret1 = cluster->mode ? k3_r5_lockstep_reset(cluster) :
-			       k3_r5_split_reset(core);
-	if (ret1)
-		dev_err(dev, "unable to disable back cores\n");
+err_split:
+	rproc_del(rproc);
+err_add:
+	k3_r5_reserved_mem_exit(kproc);
 err_config:
 	rproc_free(rproc);
 	core->rproc = NULL;
+out:
+	/* undo core0 upon any failures on core1 in split-mode */
+	if (!cluster->mode && core == core1) {
+		core = list_prev_entry(core, elem);
+		rproc = core->rproc;
+		kproc = rproc->priv;
+		goto err_split;
+	}
 	return ret;
 }
 
 static int k3_r5_cluster_rproc_exit(struct platform_device *pdev)
 {
 	struct k3_r5_cluster *cluster = platform_get_drvdata(pdev);
-	struct device *dev = &pdev->dev;
 	struct k3_r5_rproc *kproc;
 	struct k3_r5_core *core;
 	struct rproc *rproc;
-	int ret;
 
-	list_for_each_entry(core, &cluster->cores, elem) {
+	/*
+	 * lockstep mode has only one rproc associated with first core, whereas
+	 * split-mode has two rprocs associated with each core, and requires
+	 * that core1 be powered down first
+	 */
+	core = cluster->mode ?
+		list_first_entry(&cluster->cores, struct k3_r5_core, elem) :
+		list_last_entry(&cluster->cores, struct k3_r5_core, elem);
+
+	list_for_each_entry_from_reverse(core, &cluster->cores, elem) {
 		rproc = core->rproc;
 		kproc = rproc->priv;
 
-		kproc->is_remove = true;
 		rproc_del(rproc);
 
-		ret = cluster->mode ? k3_r5_lockstep_reset(cluster) :
-				      k3_r5_split_reset(core);
-		if (ret)
-			dev_err(dev, "unable to disable cores\n");
+		k3_r5_reserved_mem_exit(kproc);
 
 		rproc_free(rproc);
 		core->rproc = NULL;
-
-		of_reserved_mem_device_release(core->dev);
-
-		/* only one rproc exists in lockstep mode */
-		if (cluster->mode)
-			break;
 	}
 
 	return 0;
@@ -1148,6 +1278,7 @@ static int k3_r5_cluster_of_init(struct platform_device *pdev)
 		}
 
 		core = platform_get_drvdata(cpdev);
+		put_device(&cpdev->dev);
 		list_add_tail(&core->elem, &cluster->cores);
 	}
 
