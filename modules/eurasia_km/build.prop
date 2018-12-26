@@ -1,0 +1,3 @@
+ro.build.id=OC
+ro.build.version.release=8.0.80
+ro.product.cpu.abilist=armeabi-v7a,armeabi

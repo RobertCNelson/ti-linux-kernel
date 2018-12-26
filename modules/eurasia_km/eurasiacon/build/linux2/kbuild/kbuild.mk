@@ -83,5 +83,6 @@ kbuild_clean: $(TARGET_PRIMARY_OUT)/kbuild/Makefile
 		V=$(V) W=$(W) \
 		TOP=$(TOP) clean
 
+modules_install: install
 kbuild_install: install
 kbuild: install_script_km

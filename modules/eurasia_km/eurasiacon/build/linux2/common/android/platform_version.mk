@@ -41,7 +41,7 @@
 # If there's no build.prop file in the expected location, bail out. Tell the
 # user which file we were trying to read in case TARGET_DEVICE was not set.
 #
-BUILD_PROP := $(TARGET_ROOT)/product/$(TARGET_DEVICE)/vendor/build.prop
+BUILD_PROP ?= $(TARGET_ROOT)/product/$(TARGET_DEVICE)/vendor/build.prop
 ifeq ($(wildcard $(BUILD_PROP)),)
 $(warning *** Could not determine Android version.  Did you set ANDROID_ROOT,\
 OUT_DIR and TARGET_DEVICE in your environment correctly?)
