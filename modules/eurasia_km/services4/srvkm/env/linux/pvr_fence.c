@@ -843,9 +843,16 @@ static int PVRSyncRelease(struct inode *inode, struct file *psFile)
 		 */
 		pvr_counting_fence_timeline_force_complete(psTimeline->pSWTimeline);
 		pvr_counting_fence_timeline_put(psTimeline->pSWTimeline);
+
+		/*
+		 * pvr_fence_context_destroy can not be called for sw timeline -
+		 * otherwise it leads to double list_del on sFenceCtxList
+		 */
+		kref_put(&psTimeline->psFenceCtx->sRef, pvr_fence_context_destroy_kref);
+	} else {
+		pvr_fence_context_destroy(psTimeline->psFenceCtx);
 	}
 
-	pvr_fence_context_destroy(psTimeline->psFenceCtx);
 	PVRSyncReleaseSyncInfo(psTimeline->psSyncInfo);
 	kfree(psTimeline);
 
