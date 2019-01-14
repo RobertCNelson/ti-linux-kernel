@@ -23,6 +23,7 @@
 #include <linux/workqueue.h>
 
 #include <drm/drmP.h>
+#include <drm/drm_atomic.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_gem.h>
 #include <drm/omap_drm.h>
@@ -37,6 +38,7 @@
 #include "omap_gem.h"
 #include "omap_irq.h"
 #include "omap_plane.h"
+#include "omap_overlay.h"
 
 #define DBG(fmt, ...) DRM_DEBUG(fmt"\n", ##__VA_ARGS__)
 #define VERB(fmt, ...) if (0) DRM_DEBUG(fmt, ##__VA_ARGS__) /* verbose debug */
@@ -44,6 +46,28 @@
 #define MODULE_NAME     "omapdrm"
 
 struct omap_drm_usergart;
+
+struct omap_drm_pipeline {
+	struct drm_crtc *crtc;
+	struct drm_encoder *encoder;
+	struct drm_connector *connector;
+	struct omap_dss_device *output;
+	struct omap_dss_device *display;
+};
+
+/*
+ * Global private object state for tracking resources that are shared across
+ * multiple kms objects (planes/crtcs/etc).
+ */
+#define to_omap_global_state(x) container_of(x, struct omap_global_state, base)
+struct omap_global_state {
+	struct drm_private_state base;
+
+	struct drm_atomic_state *state;
+
+	/* global atomic state of assignment between overlays and planes */
+	struct drm_plane *hwoverlay_to_plane[8];
+};
 
 struct omap_drm_private {
 	struct drm_device *ddev;
@@ -54,17 +78,22 @@ struct omap_drm_private {
 	struct dispc_device *dispc;
 	const struct dispc_ops *dispc_ops;
 
-	unsigned int num_crtcs;
-	struct drm_crtc *crtcs[8];
+	unsigned int num_pipes;
+	struct omap_drm_pipeline pipes[8];
+	struct omap_drm_pipeline *channels[8];
 
 	unsigned int num_planes;
 	struct drm_plane *planes[8];
 
-	unsigned int num_encoders;
-	struct drm_encoder *encoders[8];
+	unsigned int num_ovls;
+	struct omap_hw_overlay *overlays[8];
 
-	unsigned int num_connectors;
-	struct drm_connector *connectors[8];
+	/*
+	 * Global private object state, Do not access directly, use
+	 * omap_global_get_state()
+	 */
+	struct drm_modeset_lock glob_obj_lock;
+	struct drm_private_obj glob_obj;
 
 	struct drm_fb_helper *fbdev;
 
@@ -93,5 +122,9 @@ struct omap_drm_private {
 
 
 int omap_debugfs_init(struct drm_minor *minor);
+struct omap_global_state *__must_check
+omap_get_global_state(struct drm_atomic_state *s);
+struct omap_global_state *
+omap_get_existing_global_state(struct omap_drm_private *priv);
 
 #endif /* __OMAPDRM_DRV_H__ */

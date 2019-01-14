@@ -12,6 +12,7 @@
 #include "dra74x-mmc-iodelay.dtsi"
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/interrupt-controller/irq.h>
+#include "dra7xx-android-fstab.dtsi"
 
 / {
 	compatible = "ti,am572x-beagle-x15", "ti,am5728", "ti,dra742", "ti,dra74", "ti,dra7";
