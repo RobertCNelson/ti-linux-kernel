@@ -11,14 +11,14 @@
 				compatible = "android,fstab";
 				system {
 					compatible = "android,system";
-					dev = "/dev/block/platform/soc0/soc0:mmc@4f80000/4f80000.sdhci/by-name/system";
+					dev = "/dev/block/platform/interconnect@100000/4f80000.sdhci/by-name/system";
 					type = "ext4";
 					mnt_flags = "ro";
 					fsmgr_flags = "wait";
 				};
 				vendor {
 					compatible = "android,vendor";
-					dev = "/dev/block/platform/soc0/soc0:mmc@4f80000/4f80000.sdhci/by-name/vendor";
+					dev = "/dev/block/platform/interconnect@100000/4f80000.sdhci/by-name/vendor";
 					type = "ext4";
 					mnt_flags = "ro";
 					fsmgr_flags = "wait";
