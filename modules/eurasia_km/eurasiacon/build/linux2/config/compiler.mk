@@ -64,6 +64,9 @@ define calculate-compiler-preferred-target
   ifneq ($$(filter arm-linux-android,$$($(1)_compiler_preferred_target)),)
    $(1)_compiler_preferred_target := arm-linux-androideabi
   endif
+  ifneq ($$(filter arm-unknown-linux-androidkernel,$$($(1)_compiler_preferred_target)),)
+   $(1)_compiler_preferred_target := arm-linux-androideabi
+  endif
  endif
 endef
 
