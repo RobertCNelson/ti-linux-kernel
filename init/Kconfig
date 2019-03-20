@@ -22,6 +22,9 @@ config TOOLS_SUPPORT_RELR
 	# allmodconfig builds.
 	depends on !COMPILE_TEST
 
+config LD_IS_LLD
+	bool "Declare if LLD is used for kernel building"
+
 config CONSTRUCTORS
 	bool
 	depends on !UML
