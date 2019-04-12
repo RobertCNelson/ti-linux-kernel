@@ -1,5 +1,6 @@
 config PVR_SGX544
 	tristate "PowerVR SGX544"
+	depends on PREEMPT
 	default m
 	help
 	  Support for the PowerVR SGX544 3D core
