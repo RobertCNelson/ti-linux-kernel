@@ -1092,7 +1092,8 @@ static int ti_sci_cmd_get_clock(const struct ti_sci_handle *handle, u32 dev_id,
 static int ti_sci_cmd_idle_clock(const struct ti_sci_handle *handle,
 				 u32 dev_id, u8 clk_id)
 {
-	return ti_sci_set_clock_state(handle, dev_id, clk_id, 0,
+	return ti_sci_set_clock_state(handle, dev_id, clk_id,
+				      MSG_FLAG_CLOCK_ALLOW_FREQ_CHANGE,
 				      MSG_CLOCK_SW_STATE_UNREQ);
 }
 
@@ -1111,7 +1112,8 @@ static int ti_sci_cmd_idle_clock(const struct ti_sci_handle *handle,
 static int ti_sci_cmd_put_clock(const struct ti_sci_handle *handle,
 				u32 dev_id, u8 clk_id)
 {
-	return ti_sci_set_clock_state(handle, dev_id, clk_id, 0,
+	return ti_sci_set_clock_state(handle, dev_id, clk_id,
+				      MSG_FLAG_CLOCK_ALLOW_FREQ_CHANGE,
 				      MSG_CLOCK_SW_STATE_AUTO);
 }
 
@@ -2401,7 +2403,7 @@ static int ti_sci_cmd_rm_psil_pair(const struct ti_sci_handle *handle,
 	}
 
 	resp = (struct ti_sci_msg_hdr *)xfer->xfer_buf;
-	ret = ti_sci_is_response_ack(resp) ? 0 : -ENODEV;
+	ret = ti_sci_is_response_ack(resp) ? 0 : -EINVAL;
 
 fail:
 	ti_sci_put_one_xfer(&info->minfo, xfer);
@@ -2447,7 +2449,7 @@ static int ti_sci_cmd_rm_psil_unpair(const struct ti_sci_handle *handle,
 	}
 
 	resp = (struct ti_sci_msg_hdr *)xfer->xfer_buf;
-	ret = ti_sci_is_response_ack(resp) ? 0 : -ENODEV;
+	ret = ti_sci_is_response_ack(resp) ? 0 : -EINVAL;
 
 fail:
 	ti_sci_put_one_xfer(&info->minfo, xfer);
@@ -2497,6 +2499,7 @@ static int ti_sci_cmd_rm_udmap_tx_ch_cfg(const struct ti_sci_handle *handle,
 	req->tx_orderid = params->tx_orderid;
 	req->fdepth = params->fdepth;
 	req->tx_sched_priority = params->tx_sched_priority;
+	req->tx_burst_size = params->tx_burst_size;
 
 	ret = ti_sci_do_xfer(info, xfer);
 	if (ret) {
@@ -2555,6 +2558,7 @@ static int ti_sci_cmd_rm_udmap_rx_ch_cfg(const struct ti_sci_handle *handle,
 	req->rx_chan_type = params->rx_chan_type;
 	req->rx_ignore_short = params->rx_ignore_short;
 	req->rx_ignore_long = params->rx_ignore_long;
+	req->rx_burst_size = params->rx_burst_size;
 
 	ret = ti_sci_do_xfer(info, xfer);
 	if (ret) {

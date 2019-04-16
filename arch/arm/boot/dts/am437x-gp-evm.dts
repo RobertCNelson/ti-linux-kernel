@@ -89,7 +89,7 @@
 		};
 
 	lcd0: display {
-		compatible = "osddisplays,osd057T0559-34ts", "panel-dpi";
+		compatible = "osddisplays,osd070t1718-19ts", "panel-dpi";
 		label = "lcd";
 
 		backlight = <&lcd_bl>;
@@ -1143,4 +1143,20 @@
 &wkup_m3_ipc {
 	ti,set-io-isolation;
 	ti,scale-data-fw = "am43x-evm-scale-data.bin";
+};
+
+&sgx {
+	status = "okay";
+};
+
+&pruss_soc_bus {
+	status = "okay";
+
+	pruss1: pruss@54400000 {
+		status = "okay";
+	};
+
+	pruss0: pruss@54440000 {
+		status = "okay";
+	};
 };

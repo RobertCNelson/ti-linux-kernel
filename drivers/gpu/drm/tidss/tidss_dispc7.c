@@ -55,6 +55,8 @@ static const struct dispc7_features dispc7_am6_feats = {
 		.xinc_max = 32,
 	},
 
+	.subrev = DSS7_AM6,
+
 	.num_vps = 2,
 	.vp_name = { "vp1", "vp2" },
 	.ovr_name = { "ovr1", "ovr2" },
@@ -66,6 +68,10 @@ static const struct dispc7_features dispc7_am6_feats = {
 	.vid_name = { "vid", "vidl1" },
 	.vid_lite = { false, true, },
 	.vid_order = { 1, 0 },
+
+	.errata = {
+		.i2000 = true,
+	},
 };
 
 static const struct of_device_id dispc7_of_table[] = {
@@ -678,7 +684,7 @@ static u16 c8_to_c12(u8 c8, enum c8_to_c12_mode mode)
 	default:
 	case C8_TO_C12_MIN:
 		break;
-	};
+	}
 
 	return c12;
 }
@@ -1381,8 +1387,6 @@ static const struct {
 
 	{ DRM_FORMAT_ARGB2101010, 0xe, },
 	{ DRM_FORMAT_ABGR2101010, 0xf, },
-	{ DRM_FORMAT_RGBA1010102, 0x10, },
-	{ DRM_FORMAT_BGRA1010102, 0x11, },
 
 	{ DRM_FORMAT_XRGB4444, 0x20, },
 	{ DRM_FORMAT_XBGR4444, 0x21, },
@@ -1398,8 +1402,6 @@ static const struct {
 
 	{ DRM_FORMAT_XRGB2101010, 0x2e, },
 	{ DRM_FORMAT_XBGR2101010, 0x2f, },
-	{ DRM_FORMAT_RGBX1010102, 0x30, },
-	{ DRM_FORMAT_BGRX1010102, 0x31, },
 
 	{ DRM_FORMAT_YUYV, 0x3e, },
 	{ DRM_FORMAT_UYVY, 0x3f, },
@@ -1941,7 +1943,7 @@ static int dispc7_modeset_init(struct dispc_device *dispc)
 	struct tidss_device *tidss = dispc->tidss;
 	struct device *dev = tidss->dev;
 	u32 fourccs[ARRAY_SIZE(dispc7_color_formats)];
-	unsigned int i;
+	unsigned int i, num_fourccs;
 
 	struct pipe {
 		u32 hw_videoport;
@@ -1956,8 +1958,14 @@ static int dispc7_modeset_init(struct dispc_device *dispc)
 	u32 num_pipes = 0;
 	u32 crtc_mask;
 
-	for (i = 0; i < ARRAY_SIZE(fourccs); ++i)
-		fourccs[i] = dispc7_color_formats[i].fourcc;
+	num_fourccs = 0;
+	for (i = 0; i < ARRAY_SIZE(fourccs); ++i) {
+		if (dispc->feat->errata.i2000 &&
+		    dispc7_fourcc_is_yuv(dispc7_color_formats[i].fourcc))
+			continue;
+
+		fourccs[num_fourccs++] = dispc7_color_formats[i].fourcc;
+	}
 
 	/* first find all the connected panels & bridges */
 
@@ -2024,7 +2032,7 @@ static int dispc7_modeset_init(struct dispc_device *dispc)
 
 		tplane = tidss_plane_create(tidss, hw_plane_id,
 					    DRM_PLANE_TYPE_PRIMARY, crtc_mask,
-					    fourccs, ARRAY_SIZE(fourccs));
+					    fourccs, num_fourccs);
 		if (IS_ERR(tplane)) {
 			dev_err(tidss->dev, "plane create failed\n");
 			return PTR_ERR(tplane);
@@ -2158,6 +2166,10 @@ int dispc7_init(struct tidss_device *tidss)
 	int r = 0;
 
 	dev_dbg(dev, "%s\n", __func__);
+
+	r = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(48));
+	if (r)
+		dev_warn(dev, "cannot set DMA masks to 48-bit\n");
 
 	feat = of_match_device(dispc7_of_table, dev)->data;
 

@@ -457,7 +457,7 @@ mode_fixup(struct drm_atomic_state *state)
 static enum drm_mode_status mode_valid_path(struct drm_connector *connector,
 					    struct drm_encoder *encoder,
 					    struct drm_crtc *crtc,
-					    struct drm_display_mode *mode)
+					    const struct drm_display_mode *mode)
 {
 	enum drm_mode_status ret;
 
@@ -496,7 +496,7 @@ mode_valid(struct drm_atomic_state *state)
 		struct drm_crtc *crtc = conn_state->crtc;
 		struct drm_crtc_state *crtc_state;
 		enum drm_mode_status mode_status;
-		struct drm_display_mode *mode;
+		const struct drm_display_mode *mode;
 
 		if (!crtc || !encoder)
 			continue;
@@ -1562,6 +1562,24 @@ int drm_atomic_helper_async_check(struct drm_device *dev,
 
 	if (!new_plane_state->crtc ||
 	    old_plane_state->crtc != new_plane_state->crtc)
+		return -EINVAL;
+
+	/*
+	 * FIXME: Since prepare_fb and cleanup_fb are always called on
+	 * the new_plane_state for async updates we need to block framebuffer
+	 * changes. This prevents use of a fb that's been cleaned up and
+	 * double cleanups from occuring.
+	 */
+	if (old_plane_state->fb != new_plane_state->fb)
+		return -EINVAL;
+
+	/*
+	 * FIXME: Since prepare_fb and cleanup_fb are always called on
+	 * the new_plane_state for async updates we need to block framebuffer
+	 * changes. This prevents use of a fb that's been cleaned up and
+	 * double cleanups from occuring.
+	 */
+	if (old_plane_state->fb != new_plane_state->fb)
 		return -EINVAL;
 
 	funcs = plane->helper_private;
@@ -3192,18 +3210,23 @@ EXPORT_SYMBOL(drm_atomic_helper_suspend);
 int drm_atomic_helper_commit_duplicated_state(struct drm_atomic_state *state,
 					      struct drm_modeset_acquire_ctx *ctx)
 {
-	int i;
+	int i, ret;
 	struct drm_plane *plane;
 	struct drm_plane_state *new_plane_state;
 	struct drm_connector *connector;
 	struct drm_connector_state *new_conn_state;
 	struct drm_crtc *crtc;
 	struct drm_crtc_state *new_crtc_state;
+	struct drm_private_obj *privobj;
+	struct drm_private_state *new_priv_state;
 
 	state->acquire_ctx = ctx;
 
 	for_each_new_plane_in_state(state, plane, new_plane_state, i)
 		state->planes[i].old_state = plane->state;
+
+	for_each_new_private_obj_in_state(state, privobj, new_priv_state, i)
+		state->private_objs[i].old_state = privobj->state;
 
 	for_each_new_crtc_in_state(state, crtc, new_crtc_state, i)
 		state->crtcs[i].old_state = crtc->state;
@@ -3211,7 +3234,11 @@ int drm_atomic_helper_commit_duplicated_state(struct drm_atomic_state *state,
 	for_each_new_connector_in_state(state, connector, new_conn_state, i)
 		state->connectors[i].old_state = connector->state;
 
-	return drm_atomic_commit(state);
+	ret = drm_atomic_commit(state);
+
+	state->acquire_ctx = NULL;
+
+	return ret;
 }
 EXPORT_SYMBOL(drm_atomic_helper_commit_duplicated_state);
 
@@ -3790,6 +3817,7 @@ drm_atomic_helper_duplicate_state(struct drm_device *dev,
 	struct drm_connector_list_iter conn_iter;
 	struct drm_plane *plane;
 	struct drm_crtc *crtc;
+	struct drm_private_obj *privobj;
 	int err = 0;
 
 	state = drm_atomic_state_alloc(dev);
@@ -3814,6 +3842,16 @@ drm_atomic_helper_duplicate_state(struct drm_device *dev,
 		plane_state = drm_atomic_get_plane_state(state, plane);
 		if (IS_ERR(plane_state)) {
 			err = PTR_ERR(plane_state);
+			goto free;
+		}
+	}
+
+	drm_for_each_privobj(privobj, dev) {
+		struct drm_private_state *priv_state;
+
+		priv_state = drm_atomic_get_private_obj_state(state, privobj);
+		if (IS_ERR(priv_state)) {
+			err = PTR_ERR(priv_state);
 			goto free;
 		}
 	}

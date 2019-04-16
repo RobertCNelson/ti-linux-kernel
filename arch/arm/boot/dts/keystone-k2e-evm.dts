@@ -182,3 +182,15 @@
 	memory-region = <&dsp_common_memory>;
 	status = "okay";
 };
+
+&gbe_serdes0 {
+	status = "okay";
+};
+
+&pcie1_phy {
+	status = "okay";
+};
+
+&pcie1 {
+	status = "okay";
+};

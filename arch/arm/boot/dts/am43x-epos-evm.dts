@@ -45,7 +45,7 @@
 	};
 
 	lcd0: display {
-		compatible = "osddisplays,osd057T0559-34ts", "panel-dpi";
+		compatible = "osddisplays,osd070t1718-19ts", "panel-dpi";
 		label = "lcd";
 
 		backlight = <&lcd_bl>;
@@ -161,7 +161,6 @@
 
 		unused_pins: unused_pins {
 			pinctrl-single,pins = <
-				AM4372_IOPAD(0x848, DS0_PIN_OUTPUT_PULLUP | PIN_OUTPUT_PULLUP | MUX_MODE7)
 				AM4372_IOPAD(0x850, DS0_PIN_INPUT | PIN_INPUT_PULLDOWN | MUX_MODE7)
 				AM4372_IOPAD(0x858, DS0_PIN_INPUT | PIN_INPUT_PULLDOWN | MUX_MODE7)
 				AM4372_IOPAD(0x860, DS0_PIN_INPUT | PIN_INPUT_PULLDOWN | MUX_MODE7)
@@ -1019,4 +1018,8 @@
 
 &wkup_m3_ipc {
 	ti,scale-data-fw = "am43x-evm-scale-data.bin";
+};
+
+&sgx {
+	status = "okay";
 };
