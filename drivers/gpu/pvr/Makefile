@@ -1,6 +1,6 @@
 ccflags-y += \
 	-D__linux__ \
-	-include drivers/gpu/pvr/config_kernel.h \
+	-include $(srctree)/drivers/gpu/pvr/config_kernel.h \
 	-Idrivers/gpu/pvr/include4 \
 	-Idrivers/gpu/pvr/services4/include \
 	-Idrivers/gpu/pvr/services4/system/omap \
