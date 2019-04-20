@@ -1,6 +1,13 @@
+ifneq ($(CONFIG_PVR_SGX544), )
+ccflags-y += -include $(srctree)/drivers/gpu/pvr/config_kernel_am57x.h
+endif
+
+ifneq ($(CONFIG_PVR_SGX544_AM654), )
+ccflags-y += -include $(srctree)/drivers/gpu/pvr/config_kernel_am65x.h
+endif
+
 ccflags-y += \
 	-D__linux__ \
-	-include $(srctree)/drivers/gpu/pvr/config_kernel.h \
 	-Idrivers/gpu/pvr/include4 \
 	-Idrivers/gpu/pvr/services4/include \
 	-Idrivers/gpu/pvr/services4/system/omap \
@@ -64,3 +71,4 @@ pvrsrvkm-y += \
 	services4/system/omap/sysutils.o \
 
 obj-$(CONFIG_PVR_SGX544) += pvrsrvkm.o
+obj-$(CONFIG_PVR_SGX544_AM654) += pvrsrvkm.o
