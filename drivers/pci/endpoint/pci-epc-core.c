@@ -421,6 +421,7 @@ EXPORT_SYMBOL_GPL(pci_epc_write_header);
  */
 int pci_epc_add_epf(struct pci_epc *epc, struct pci_epf *epf)
 {
+
 	if (epf->epc)
 		return -EBUSY;
 
