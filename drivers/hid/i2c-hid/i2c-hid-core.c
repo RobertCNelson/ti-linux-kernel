@@ -42,6 +42,7 @@
 #include <linux/i2c/i2c-hid.h>
 
 #include "../hid-ids.h"
+#include "i2c-hid.h"
 
 /* quirks to control the device */
 #define I2C_HID_QUIRK_SET_PWR_WAKEUP_DEV	BIT(0)
@@ -142,10 +143,10 @@ struct i2c_hid {
 						   * register of the HID
 						   * descriptor. */
 	unsigned int		bufsize;	/* i2c buffer size */
-	char			*inbuf;		/* Input buffer */
-	char			*rawbuf;	/* Raw Input buffer */
-	char			*cmdbuf;	/* Command buffer */
-	char			*argsbuf;	/* Command arguments buffer */
+	u8			*inbuf;		/* Input buffer */
+	u8			*rawbuf;	/* Raw Input buffer */
+	u8			*cmdbuf;	/* Command buffer */
+	u8			*argsbuf;	/* Command arguments buffer */
 
 	unsigned long		flags;		/* device flags */
 	unsigned long		quirks;		/* Various quirks */
@@ -451,7 +452,8 @@ out_unlock:
 
 static void i2c_hid_get_input(struct i2c_hid *ihid)
 {
-	int ret, ret_size;
+	int ret;
+	u32 ret_size;
 	int size = le16_to_cpu(ihid->hdesc.wMaxInputLength);
 
 	if (size > ihid->bufsize)
@@ -476,7 +478,7 @@ static void i2c_hid_get_input(struct i2c_hid *ihid)
 		return;
 	}
 
-	if (ret_size > size) {
+	if ((ret_size > size) || (ret_size < 2)) {
 		dev_err(&ihid->client->dev, "%s: incomplete report (%d/%d)\n",
 			__func__, size, ret_size);
 		return;
@@ -723,6 +725,7 @@ static int i2c_hid_parse(struct hid_device *hid)
 	char *rdesc;
 	int ret;
 	int tries = 3;
+	char *use_override;
 
 	i2c_hid_dbg(ihid, "entering %s\n", __func__);
 
@@ -741,26 +744,37 @@ static int i2c_hid_parse(struct hid_device *hid)
 	if (ret)
 		return ret;
 
-	rdesc = kzalloc(rsize, GFP_KERNEL);
+	use_override = i2c_hid_get_dmi_hid_report_desc_override(client->name,
+								&rsize);
 
-	if (!rdesc) {
-		dbg_hid("couldn't allocate rdesc memory\n");
-		return -ENOMEM;
-	}
+	if (use_override) {
+		rdesc = use_override;
+		i2c_hid_dbg(ihid, "Using a HID report descriptor override\n");
+	} else {
+		rdesc = kzalloc(rsize, GFP_KERNEL);
 
-	i2c_hid_dbg(ihid, "asking HID report descriptor\n");
+		if (!rdesc) {
+			dbg_hid("couldn't allocate rdesc memory\n");
+			return -ENOMEM;
+		}
 
-	ret = i2c_hid_command(client, &hid_report_descr_cmd, rdesc, rsize);
-	if (ret) {
-		hid_err(hid, "reading report descriptor failed\n");
-		kfree(rdesc);
-		return -EIO;
+		i2c_hid_dbg(ihid, "asking HID report descriptor\n");
+
+		ret = i2c_hid_command(client, &hid_report_descr_cmd,
+				      rdesc, rsize);
+		if (ret) {
+			hid_err(hid, "reading report descriptor failed\n");
+			kfree(rdesc);
+			return -EIO;
+		}
 	}
 
 	i2c_hid_dbg(ihid, "Report Descriptor: %*ph\n", rsize, rdesc);
 
 	ret = hid_parse_report(hid, rdesc, rsize);
-	kfree(rdesc);
+	if (!use_override)
+		kfree(rdesc);
+
 	if (ret) {
 		dbg_hid("parsing report descriptor failed\n");
 		return ret;
@@ -898,12 +912,19 @@ static int i2c_hid_fetch_hid_descriptor(struct i2c_hid *ihid)
 	int ret;
 
 	/* i2c hid fetch using a fixed descriptor size (30 bytes) */
-	i2c_hid_dbg(ihid, "Fetching the HID descriptor\n");
-	ret = i2c_hid_command(client, &hid_descr_cmd, ihid->hdesc_buffer,
-				sizeof(struct i2c_hid_desc));
-	if (ret) {
-		dev_err(&client->dev, "hid_descr_cmd failed\n");
-		return -ENODEV;
+	if (i2c_hid_get_dmi_i2c_hid_desc_override(client->name)) {
+		i2c_hid_dbg(ihid, "Using a HID descriptor override\n");
+		ihid->hdesc =
+			*i2c_hid_get_dmi_i2c_hid_desc_override(client->name);
+	} else {
+		i2c_hid_dbg(ihid, "Fetching the HID descriptor\n");
+		ret = i2c_hid_command(client, &hid_descr_cmd,
+				      ihid->hdesc_buffer,
+				      sizeof(struct i2c_hid_desc));
+		if (ret) {
+			dev_err(&client->dev, "hid_descr_cmd failed\n");
+			return -ENODEV;
+		}
 	}
 
 	/* Validate the length of HID descriptor, the 4 first bytes:
@@ -968,6 +989,15 @@ static int i2c_hid_acpi_pdata(struct i2c_client *client,
 	return ret < 0 && ret != -ENXIO ? ret : 0;
 }
 
+static void i2c_hid_acpi_fix_up_power(struct device *dev)
+{
+	acpi_handle handle = ACPI_HANDLE(dev);
+	struct acpi_device *adev;
+
+	if (handle && acpi_bus_get_device(handle, &adev) == 0)
+		acpi_device_fix_up_power(adev);
+}
+
 static const struct acpi_device_id i2c_hid_acpi_match[] = {
 	{"ACPI0C50", 0 },
 	{"PNP0C50", 0 },
@@ -980,6 +1010,8 @@ static inline int i2c_hid_acpi_pdata(struct i2c_client *client,
 {
 	return -ENODEV;
 }
+
+static inline void i2c_hid_acpi_fix_up_power(struct device *dev) {}
 #endif
 
 #ifdef CONFIG_OF
@@ -1082,10 +1114,20 @@ static int i2c_hid_probe(struct i2c_client *client,
 	if (ret < 0)
 		goto err;
 
+	i2c_hid_acpi_fix_up_power(&client->dev);
+
 	pm_runtime_get_noresume(&client->dev);
 	pm_runtime_set_active(&client->dev);
 	pm_runtime_enable(&client->dev);
 	device_enable_async_suspend(&client->dev);
+
+	/* Make sure there is something at this address */
+	ret = i2c_smbus_read_byte(client);
+	if (ret < 0) {
+		dev_dbg(&client->dev, "nothing at this address: %d\n", ret);
+		ret = -ENXIO;
+		goto err_pm;
+	}
 
 	ret = i2c_hid_fetch_hid_descriptor(ihid);
 	if (ret < 0)
