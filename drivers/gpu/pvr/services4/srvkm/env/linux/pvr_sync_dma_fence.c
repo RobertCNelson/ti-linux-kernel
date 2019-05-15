@@ -184,7 +184,11 @@ static long PVRSyncIOCTLCreate(struct pvr_sync_timeline *psTimeline, void __user
 		goto err_out;
 	}
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0))
+	if (!access_ok(pvData, sizeof(sData)))
+#else
 	if (!access_ok(VERIFY_READ, pvData, sizeof(sData)))
+#endif
 		goto err_put_fd;
 
 	if (copy_from_user(&sData, pvData, sizeof(sData)))
@@ -241,7 +245,11 @@ static long PVRSyncIOCTLCreate(struct pvr_sync_timeline *psTimeline, void __user
 
 	sData.fence = iFd;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0))
+	if (!access_ok(pvData, sizeof(sData)))
+#else
 	if (!access_ok(VERIFY_WRITE, pvData, sizeof(sData)))
+#endif
 	{
 		goto err_destroy_fence;
 	}
@@ -274,7 +282,11 @@ static long pvr_sync_ioctl_rename(struct pvr_sync_timeline *timeline, void __use
 	int err = 0;
 	struct PVR_SYNC_RENAME_IOCTL_DATA data;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0))
+	if (!access_ok(user_data, sizeof(data))) {
+#else
 	if (!access_ok(VERIFY_READ, user_data, sizeof(data))) {
+#endif
 		err = -EFAULT;
 		goto err;
 	}
@@ -394,7 +406,11 @@ PVRSyncIOCTLAlloc(struct pvr_sync_timeline *psTimeline, void __user *pvData)
 		goto err_out;
 	}
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0))
+	if (!access_ok(pvData, sizeof(sData)))
+#else
 	if (!access_ok(VERIFY_READ, pvData, sizeof(sData)))
+#endif
 		goto err_put_fd;
 
 	if (copy_from_user(&sData, pvData, sizeof(sData)))
@@ -469,7 +485,11 @@ PVRSyncIOCTLAlloc(struct pvr_sync_timeline *psTimeline, void __user *pvData)
 
 	LinuxUnLockMutex(&gPVRSRVLock);
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0))
+	if (!access_ok(pvData, sizeof(sData)))
+#else
 	if (!access_ok(VERIFY_WRITE, pvData, sizeof(sData)))
+#endif
 		goto err_release_file;
 
 	if (copy_to_user(pvData, &sData, sizeof(sData)))
