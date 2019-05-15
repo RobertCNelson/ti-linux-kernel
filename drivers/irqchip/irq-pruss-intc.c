@@ -164,20 +164,23 @@ int pruss_intc_configure(struct pruss *pruss,
 			 struct pruss_intc_config *intc_config)
 {
 	struct device *dev = pruss->dev;
-	struct pruss_intc *intc = to_pruss_intc(pruss);
+	struct pruss_intc *intc;
 	int i, idx;
 	s8 ch, host;
-	u32 num_events = intc->data->num_system_events;
-	u32 num_intrs = intc->data->num_host_intrs;
-	u32 num_regs = DIV_ROUND_UP(num_events, 32);
+	u32 num_events, num_intrs, num_regs;
 	u32 *sysevt_mask = NULL;
 	u32 ch_mask = 0;
 	u32 host_mask = 0;
 	int ret = 0;
 	u32 val;
 
+	intc = to_pruss_intc(pruss);
 	if (!intc)
 		return -EINVAL;
+
+	num_events = intc->data->num_system_events;
+	num_intrs = intc->data->num_host_intrs;
+	num_regs = DIV_ROUND_UP(num_events, 32);
 
 	sysevt_mask = kcalloc(num_regs, sizeof(*sysevt_mask), GFP_KERNEL);
 	if (!sysevt_mask)
@@ -305,17 +308,20 @@ int pruss_intc_unconfigure(struct pruss *pruss,
 			   struct pruss_intc_config *intc_config)
 {
 	struct device *dev = pruss->dev;
-	struct pruss_intc *intc = to_pruss_intc(pruss);
+	struct pruss_intc *intc;
 	int i;
 	s8 ch, host;
-	u32 num_events = intc->data->num_system_events;
-	u32 num_intrs = intc->data->num_host_intrs;
-	u32 num_regs = DIV_ROUND_UP(num_events, 32);
+	u32 num_events, num_intrs, num_regs;
 	u32 *sysevt_mask = NULL;
 	u32 host_mask = 0;
 
+	intc = to_pruss_intc(pruss);
 	if (!intc)
 		return -EINVAL;
+
+	num_events = intc->data->num_system_events;
+	num_intrs = intc->data->num_host_intrs;
+	num_regs = DIV_ROUND_UP(num_events, 32);
 
 	sysevt_mask = kcalloc(num_regs, sizeof(*sysevt_mask), GFP_KERNEL);
 	if (!sysevt_mask)
@@ -361,7 +367,7 @@ int pruss_intc_unconfigure(struct pruss *pruss,
 	}
 
 	/* disable host interrupts */
-	for (i = 0; i < MAX_PRU_HOST_INT; i++) {
+	for (i = 0; i < num_intrs; i++) {
 		if (host_mask & BIT(i))
 			pruss_intc_write_reg(intc, PRU_INTC_HIDISR, i);
 	}
@@ -444,6 +450,65 @@ static void pruss_intc_irq_relres(struct irq_data *data)
 {
 	module_put(THIS_MODULE);
 }
+
+#ifdef CONFIG_SMP
+static int pruss_intc_irq_set_affinity(struct irq_data *data,
+				       const struct cpumask *mask_val,
+				       bool force)
+{
+	struct pruss_intc *intc = irq_data_get_irq_chip_data(data);
+	u32 ch, host;
+	s8 sch, shost;
+	unsigned int pirq;
+	struct irq_chip *pchip;
+	struct irq_data *pdata;
+	struct cpumask *eff_mask;
+	int ret;
+
+	/* check for stored channel & host config for this event */
+	sch = intc->config_map.sysev_to_ch[data->hwirq];
+	shost = sch != -1 ? intc->config_map.ch_to_host[sch] : -1;
+	if (sch == -1 || shost == -1) {
+		pr_err("%s: event %lu not configured: ch = %d, host = %d\n",
+		       __func__, data->hwirq, sch, shost);
+		return -EINVAL;
+	}
+
+	/* find programmed channel */
+	ch = pruss_intc_read_reg(intc, PRU_INTC_CMR(data->hwirq / 4));
+	ch >>= (data->hwirq % 4) * 8;
+	ch &= 0xf;
+
+	/* find programmed host interrupt */
+	host = pruss_intc_read_reg(intc, PRU_INTC_HMR(ch / 4));
+	host >>= (ch % 4) * 8;
+	host &= 0xf;
+
+	/* check programmed configuration for sanity */
+	if (ch != sch || host != shost) {
+		pr_err("%s: event %lu has mismatched configuration, ch = %d, host = %d\n",
+		       __func__, data->hwirq, sch, shost);
+		return -EINVAL;
+	}
+
+	/* program affinity using parent GIC irqchip and irqdata */
+	pirq = intc->irqs[host - MIN_PRU_HOST_INT];
+	pchip = irq_get_chip(pirq);
+	pdata = irq_get_irq_data(pirq);
+
+	if (pchip && pchip->irq_set_affinity) {
+		ret = pchip->irq_set_affinity(pdata, mask_val, force);
+		if (ret >= 0) {
+			eff_mask = irq_data_get_effective_affinity_mask(pdata);
+			irq_data_update_effective_affinity(data, eff_mask);
+		}
+
+		return ret;
+	}
+
+	return -EINVAL;
+}
+#endif
 
 /**
  * pruss_intc_trigger() - trigger a PRU system event
@@ -597,6 +662,9 @@ static int pruss_intc_probe(struct platform_device *pdev)
 	irqchip->irq_retrigger = pruss_intc_irq_retrigger;
 	irqchip->irq_request_resources = pruss_intc_irq_reqres;
 	irqchip->irq_release_resources = pruss_intc_irq_relres;
+#ifdef CONFIG_SMP
+	irqchip->irq_set_affinity = pruss_intc_irq_set_affinity;
+#endif
 	irqchip->name = dev_name(dev);
 	intc->irqchip = irqchip;
 
@@ -624,6 +692,11 @@ static int pruss_intc_probe(struct platform_device *pdev)
 	return 0;
 
 fail_irq:
+	while (--i >= 0) {
+		if (intc->irqs[i])
+			irq_set_chained_handler_and_data(intc->irqs[i], NULL,
+							 NULL);
+	}
 	irq_domain_remove(intc->domain);
 	return irq;
 }
@@ -633,6 +706,13 @@ static int pruss_intc_remove(struct platform_device *pdev)
 	struct pruss_intc *intc = platform_get_drvdata(pdev);
 	u8 max_system_events = intc->data->num_system_events;
 	unsigned int hwirq;
+	int i;
+
+	for (i = 0; i < MAX_HOST_NUM_IRQS; i++) {
+		if (intc->irqs[i])
+			irq_set_chained_handler_and_data(intc->irqs[i], NULL,
+							 NULL);
+	}
 
 	if (intc->domain) {
 		for (hwirq = 0; hwirq < max_system_events; hwirq++)

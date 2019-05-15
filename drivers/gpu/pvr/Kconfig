@@ -5,3 +5,12 @@ config PVR_SGX544
 	default n
 	help
 	  Support for the PowerVR SGX544 3D core
+
+config PVR_SGX544_AM654
+	tristate "PowerVR SGX544 for AM654"
+	depends on !(PVR_SGX544=y || PVR_SGX544=m)
+	depends on PREEMPT
+	depends on SYNC_FILE
+	default n
+	help
+	  Support for the PowerVR SGX544 3D core on AM654

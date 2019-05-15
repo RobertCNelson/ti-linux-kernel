@@ -20,8 +20,10 @@
 #include <linux/of_net.h>
 #include <linux/of_platform.h>
 #include <linux/mfd/syscon.h>
+#include <linux/net_tstamp.h>
 #include <linux/phy.h>
 #include <linux/pruss.h>
+#include <linux/ptp_clock_kernel.h>
 #include <linux/remoteproc.h>
 
 #include <linux/dma-mapping.h>
@@ -29,6 +31,7 @@
 #include <linux/dma/k3-navss-udma.h>
 
 #include "icssg_config.h"
+#include "icssg_iep.h"
 
 #define ICSS_SLICE0	0
 #define ICSS_SLICE1	1
@@ -88,11 +91,16 @@ struct prueth_tx_chn {
 };
 
 struct prueth_rx_chn {
+	struct device *dev;
 	struct k3_knav_desc_pool *desc_pool;
 	struct k3_nav_udmax_rx_channel *rx_chn;
 	u32 descs_num;
 	spinlock_t lock;	/* to serialize */
 	unsigned int irq;
+};
+
+enum prueth_state_flags {
+	__STATE_TX_TS_IN_PROGRESS,
 };
 
 /* data for each emac port */
@@ -113,15 +121,26 @@ struct prueth_emac {
 	int phy_if;
 	struct phy_device *phydev;
 	enum prueth_port port_id;
+	struct icssg_iep iep;
+	struct hwtstamp_config tstamp_config;
+	unsigned int rx_ts_enabled : 1;
+	unsigned int tx_ts_enabled : 1;
 
 	/* DMA related */
 	struct prueth_tx_chn tx_chns;
 	struct completion tdown_complete;
 	struct prueth_rx_chn rx_chns;
 	int rx_flow_id_base;
+	struct prueth_rx_chn rx_mgm_chn;
+	int rx_mgm_flow_id_base;
 
 	spinlock_t lock;	/* serialize access */
 	unsigned int flags;
+
+	/* TX HW Timestamping */
+	u32 tx_ts_cookie;
+	struct sk_buff *tx_ts_skb;
+	unsigned long state;
 };
 
 /**
@@ -155,6 +174,14 @@ struct prueth {
 	const struct prueth_private_data *fw_data;
 	struct icssg_config config[PRUSS_NUM_PRUS];
 	struct regmap *miig_rt;
+	struct regmap *mii_rt;
+};
+
+struct emac_tx_ts_response {
+	u32 lo_ts;
+	u32 hi_ts;
+	u32 reserved;
+	u32 cookie;
 };
 
 /* Classifier helpers */

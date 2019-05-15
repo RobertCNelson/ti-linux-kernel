@@ -39,6 +39,7 @@
 					"ti-pruss/am65x-pru1-prueth-fw.elf",
 					"ti-pruss/am65x-rtu1-prueth-fw.elf";
 			mii-g-rt = <&icssg0_mii_g_rt>;
+			mii-rt = <&icssg0_mii_rt>;
 			dma-coherent;
 			dmas = <&main_udmap &icssg0 0 UDMA_DIR_TX>, /* egress slice 0 */
 			       <&main_udmap &icssg0 1 UDMA_DIR_TX>, /* egress slice 0 */
@@ -62,6 +63,7 @@
 				phy-handle = <&pruss0_eth0_phy>;
 				phy-mode = "rgmii-id";
 				syscon-rgmii-delay = <&scm_conf 0x4100>;
+				iep = <&icssg0_iep0>;
 				/* Filled in by bootloader */
 				local-mac-address = [00 00 00 00 00 00];
 			};
@@ -70,6 +72,7 @@
 				phy-handle = <&pruss0_eth1_phy>;
 				phy-mode = "rgmii-id";
 				syscon-rgmii-delay = <&scm_conf 0x4104>;
+				iep = <&icssg0_iep1>;
 				/* Filled in by bootloader */
 				local-mac-address = [00 00 00 00 00 00];
 			};
@@ -89,6 +92,7 @@
 					"ti-pruss/am65x-pru1-prueth-fw.elf",
 					"ti-pruss/am65x-rtu1-prueth-fw.elf";
 			mii-g-rt = <&icssg1_mii_g_rt>;
+			mii-rt = <&icssg1_mii_rt>;
 			dma-coherent;
 			dmas = <&main_udmap &icssg1 0 UDMA_DIR_TX>, /* egress slice 0 */
 			       <&main_udmap &icssg1 1 UDMA_DIR_TX>, /* egress slice 0 */
@@ -112,6 +116,7 @@
 				phy-handle = <&pruss1_eth0_phy>;
 				phy-mode = "rgmii-id";
 				syscon-rgmii-delay = <&scm_conf 0x4110>;
+				iep = <&icssg1_iep0>;
 				/* Filled in by bootloader */
 				local-mac-address = [00 00 00 00 00 00];
 			};
@@ -119,8 +124,9 @@
 			pruss1_emac1: ethernet-mii1 {
 				phy-handle = <&pruss1_eth1_phy>;
 				phy-mode = "rgmii-id";
-				/* Filled in by bootloader */
 				syscon-rgmii-delay = <&scm_conf 0x4114>;
+				iep = <&icssg1_iep1>;
+				/* Filled in by bootloader */
 				local-mac-address = [00 00 00 00 00 00];
 			};
 		};

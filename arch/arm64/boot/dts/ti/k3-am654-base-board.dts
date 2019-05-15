@@ -100,6 +100,7 @@
 				"ti-pruss/am65x-pru1-prueth-fw.elf",
 				"ti-pruss/am65x-rtu1-prueth-fw.elf";
 		mii-g-rt = <&icssg2_mii_g_rt>;
+		mii-rt = <&icssg2_mii_rt>;
 		dma-coherent;
 		dmas = <&main_udmap &icssg2 0 UDMA_DIR_TX>, /* egress slice 0 */
 		       <&main_udmap &icssg2 1 UDMA_DIR_TX>, /* egress slice 0 */
@@ -123,6 +124,7 @@
 			phy-handle = <&pruss2_eth0_phy>;
 			phy-mode = "rgmii-id";
 			syscon-rgmii-delay = <&scm_conf 0x4120>;
+			iep = <&icssg2_iep0>;
 			/* Filled in by bootloader */
 			local-mac-address = [00 00 00 00 00 00];
 		};
@@ -131,6 +133,7 @@
 			phy-handle = <&pruss2_eth1_phy>;
 			phy-mode = "rgmii-id";
 			syscon-rgmii-delay = <&scm_conf 0x4124>;
+			iep = <&icssg2_iep1>;
 			/* Filled in by bootloader */
 			local-mac-address = [00 00 00 00 00 00];
 		};
@@ -379,6 +382,10 @@
 &mcu_cpsw {
 	pinctrl-names = "default";
 	pinctrl-0 = <&mcu_cpsw_pins_default &mcu_mdio_pins_default>;
+
+	cpts {
+		ti,pps = <3 1>;
+	};
 };
 
 &davinci_mdio {
@@ -520,5 +527,20 @@
 		ti,rx-internal-delay = <DP83867_RGMIIDCTL_2_00_NS>;
 		ti,tx-internal-delay = <DP83867_RGMIIDCTL_2_00_NS>;
 		ti,fifo-depth = <DP83867_PHYCR_FIFO_DEPTH_4_B_NIB>;
+	};
+};
+
+#define TS_OFFSET(pa, val)     (0x4+(pa)*4) (0x80000000 | val)
+
+&timesync_router {
+	pinctrl-names = "default";
+	pinctrl-0 = <&mcu_cpts>;
+
+	/* Example of the timesync routing */
+	mcu_cpts: mcu_cpts {
+		pinctrl-single,pins = <
+			/* pps [cpts genf1] in13 -> out25 [cpts hw4_push] */
+			TS_OFFSET(25, 13)
+		>;
 	};
 };
