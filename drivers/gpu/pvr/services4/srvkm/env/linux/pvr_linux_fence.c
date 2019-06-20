@@ -440,7 +440,11 @@ static int update_reservation_object_fences_src(struct pvr_fence_frame *pvr_fenc
 	struct dma_fence *fence;
 	int ret;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0))
+	ret = reservation_object_reserve_shared(resv, 1);
+#else
 	ret = reservation_object_reserve_shared(resv);
+#endif
 	if (ret)
 	{
 		return ret;
