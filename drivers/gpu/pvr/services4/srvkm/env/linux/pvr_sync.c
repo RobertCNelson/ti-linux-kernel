@@ -633,7 +633,11 @@ PVRSyncIOCTLCreate(struct PVR_SYNC_TIMELINE *psObj, void __user *pvData)
 		goto err_out;
 	}
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0))
+	if (!access_ok(pvData, sizeof(sData)))
+#else
 	if (!access_ok(VERIFY_READ, pvData, sizeof(sData)))
+#endif
 		goto err_put_fd;
 
 	if (copy_from_user(&sData, pvData, sizeof(sData)))
@@ -690,7 +694,11 @@ PVRSyncIOCTLCreate(struct PVR_SYNC_TIMELINE *psObj, void __user *pvData)
 
 	sData.fence = iFd;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0))
+	if (!access_ok(pvData, sizeof(sData)))
+#else
 	if (!access_ok(VERIFY_WRITE, pvData, sizeof(sData)))
+#endif
 	{
 		sync_fence_put(psFence);
 		goto err_put_fd;
@@ -735,7 +743,11 @@ PVRSyncIOCTLDebug(struct PVR_SYNC_TIMELINE *psObj, void __user *pvData)
 	struct sync_pt *sync_pt;
 	int i = 0, j, err = -EFAULT;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0))
+	if(!access_ok(pvData, sizeof(sData)))
+#else
 	if(!access_ok(VERIFY_READ, pvData, sizeof(sData)))
+#endif
 		goto err_out;
 
 	if(copy_from_user(&sData, pvData, sizeof(sData)))
@@ -788,7 +800,11 @@ PVRSyncIOCTLDebug(struct PVR_SYNC_TIMELINE *psObj, void __user *pvData)
 
 	sData.ui32NumPoints = i;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0))
+	if(!access_ok(pvData, sizeof(sData)))
+#else
 	if(!access_ok(VERIFY_WRITE, pvData, sizeof(sData)))
+#endif
 		goto err_out;
 
 	if(copy_to_user(pvData, &sData, sizeof(sData)))
@@ -863,7 +879,11 @@ PVRSyncIOCTLAlloc(struct PVR_SYNC_TIMELINE *psTimeline, void __user *pvData)
 		goto err_out;
 	}
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0))
+	if (!access_ok(pvData, sizeof(sData)))
+#else
 	if (!access_ok(VERIFY_READ, pvData, sizeof(sData)))
+#endif
 		goto err_put_fd;
 
 	if (copy_from_user(&sData, pvData, sizeof(sData)))
@@ -938,7 +958,11 @@ PVRSyncIOCTLAlloc(struct PVR_SYNC_TIMELINE *psTimeline, void __user *pvData)
 
 	LinuxUnLockMutex(&gPVRSRVLock);
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0))
+	if (!access_ok(pvData, sizeof(sData)))
+#else
 	if (!access_ok(VERIFY_WRITE, pvData, sizeof(sData)))
+#endif
 		goto err_release_file;
 
 	if (copy_to_user(pvData, &sData, sizeof(sData)))

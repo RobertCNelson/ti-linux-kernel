@@ -3796,7 +3796,6 @@ static int gbe_probe(struct netcp_device *netcp_device, struct device *dev,
 
 free_sec_ports:
 	free_secondary_ports(gbe_dev);
-exit_err:
 	return ret;
 }
 

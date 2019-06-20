@@ -70,7 +70,12 @@ static int tfp410_get_modes(struct drm_connector *connector)
 
 	drm_connector_update_edid_property(connector, edid);
 
-	return drm_add_edid_modes(connector, edid);
+	ret = drm_add_edid_modes(connector, edid);
+
+	kfree(edid);
+
+	return ret;
+
 fallback:
 	/* No EDID, fallback on the XGA standard modes */
 	ret = drm_add_modes_noedid(connector, 1920, 1200);
@@ -163,10 +168,20 @@ static void tfp410_disable(struct drm_bridge *bridge)
 	gpiod_set_value_cansleep(dvi->powerdown, 1);
 }
 
+static enum drm_mode_status tfp410_mode_valid(struct drm_bridge *bridge,
+					      const struct drm_display_mode *mode)
+{
+	if (mode->clock < 25000 || mode->clock > 165000)
+		return MODE_BAD;
+
+	return MODE_OK;
+}
+
 static const struct drm_bridge_funcs tfp410_bridge_funcs = {
 	.attach		= tfp410_attach,
 	.enable		= tfp410_enable,
 	.disable	= tfp410_disable,
+	.mode_valid	= tfp410_mode_valid,
 };
 
 static void tfp410_hpd_work_func(struct work_struct *work)
@@ -376,7 +391,8 @@ static int tfp410_fini(struct device *dev)
 {
 	struct tfp410 *dvi = dev_get_drvdata(dev);
 
-	cancel_delayed_work_sync(&dvi->hpd_work);
+	if (dvi->hpd_irq >= 0)
+		cancel_delayed_work_sync(&dvi->hpd_work);
 
 	drm_bridge_remove(&dvi->bridge);
 
