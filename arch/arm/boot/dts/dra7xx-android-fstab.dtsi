@@ -12,19 +12,12 @@
 			compatible = "android,firmware";
 			fstab {
 				compatible = "android,fstab";
-				system {
-					compatible = "android,system";
-					dev = "/dev/block/platform/44000000.ocp/480b4000.mmc/by-name/system";
-					type = "ext4";
-					mnt_flags = "ro";
-					fsmgr_flags = "wait";
-				};
 				vendor {
 					compatible = "android,vendor";
 					dev = "/dev/block/platform/44000000.ocp/480b4000.mmc/by-name/vendor";
 					type = "ext4";
-					mnt_flags = "ro";
-					fsmgr_flags = "wait";
+					mnt_flags = "ro,barrier=1";
+					fsmgr_flags = "wait,slotselect";
 				};
 			};
 		};
