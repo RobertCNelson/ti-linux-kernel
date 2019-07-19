@@ -10,6 +10,7 @@
 #include <dt-bindings/net/ti-dp83867.h>
 #include <dt-bindings/pci/pci.h>
 #include <dt-bindings/sound/ti-mcasp.h>
+#include "j721e-android-fstab.dtsi"
 
 / {
 	chosen {
