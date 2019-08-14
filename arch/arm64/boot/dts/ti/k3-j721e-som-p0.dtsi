@@ -139,6 +139,21 @@
 			alignment = <0x1000>;
 			no-map;
 		};
+
+		ion_block_mem_0: ion_block_mem@b0000000 {
+			reg = <0x0 0xb0000000 0x0 0x10000000>;
+			no-map;
+			status = "okay";
+		};
+	};
+
+	ion {
+		compatible = "ti,ion";
+
+		ti_carveout_heap_0 {
+			memory-region = <&ion_block_mem_0>;
+			ion-heap-type = <2>; // ION_HEAP_TYPE_CARVEOUT
+		};
 	};
 };
 
