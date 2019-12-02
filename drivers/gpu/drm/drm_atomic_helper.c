@@ -1581,8 +1581,11 @@ static void commit_tail(struct drm_atomic_state *old_state)
 {
 	struct drm_device *dev = old_state->dev;
 	const struct drm_mode_config_helper_funcs *funcs;
+	struct drm_crtc_state *new_crtc_state;
+	struct drm_crtc *crtc;
 	ktime_t start;
 	s64 commit_time_ms;
+	unsigned int i, new_self_refresh_mask = 0;
 
 	funcs = dev->mode_config.helper_private;
 
@@ -1602,6 +1605,15 @@ static void commit_tail(struct drm_atomic_state *old_state)
 
 	drm_atomic_helper_wait_for_dependencies(old_state);
 
+	/*
+	 * We cannot safely access new_crtc_state after
+	 * drm_atomic_helper_commit_hw_done() so figure out which crtc's have
+	 * self-refresh active beforehand:
+	 */
+	for_each_new_crtc_in_state(old_state, crtc, new_crtc_state, i)
+		if (new_crtc_state->self_refresh_active)
+			new_self_refresh_mask |= BIT(i);
+
 	if (funcs && funcs->atomic_commit_tail)
 		funcs->atomic_commit_tail(old_state);
 	else
@@ -1610,7 +1622,8 @@ static void commit_tail(struct drm_atomic_state *old_state)
 	commit_time_ms = ktime_ms_delta(ktime_get(), start);
 	if (commit_time_ms > 0)
 		drm_self_refresh_helper_update_avg_times(old_state,
-						 (unsigned long)commit_time_ms);
+						 (unsigned long)commit_time_ms,
+						 new_self_refresh_mask);
 
 	drm_atomic_helper_commit_cleanup_done(old_state);
 
@@ -3088,6 +3101,7 @@ drm_atomic_helper_duplicate_state(struct drm_device *dev,
 	struct drm_connector_list_iter conn_iter;
 	struct drm_plane *plane;
 	struct drm_crtc *crtc;
+	struct drm_private_obj *privobj;
 	int err = 0;
 
 	state = drm_atomic_state_alloc(dev);
@@ -3113,6 +3127,16 @@ drm_atomic_helper_duplicate_state(struct drm_device *dev,
 		plane_state = drm_atomic_get_plane_state(state, plane);
 		if (IS_ERR(plane_state)) {
 			err = PTR_ERR(plane_state);
+			goto free;
+		}
+	}
+
+	drm_for_each_privobj(privobj, dev) {
+		struct drm_private_state *priv_state;
+
+		priv_state = drm_atomic_get_private_obj_state(state, privobj);
+		if (IS_ERR(priv_state)) {
+			err = PTR_ERR(priv_state);
 			goto free;
 		}
 	}
@@ -3224,11 +3248,16 @@ int drm_atomic_helper_commit_duplicated_state(struct drm_atomic_state *state,
 	struct drm_connector_state *new_conn_state;
 	struct drm_crtc *crtc;
 	struct drm_crtc_state *new_crtc_state;
+	struct drm_private_obj *privobj;
+	struct drm_private_state *new_priv_state;
 
 	state->acquire_ctx = ctx;
 
 	for_each_new_plane_in_state(state, plane, new_plane_state, i)
 		state->planes[i].old_state = plane->state;
+
+	for_each_new_private_obj_in_state(state, privobj, new_priv_state, i)
+		state->private_objs[i].old_state = privobj->state;
 
 	for_each_new_crtc_in_state(state, crtc, new_crtc_state, i)
 		state->crtcs[i].old_state = crtc->state;
