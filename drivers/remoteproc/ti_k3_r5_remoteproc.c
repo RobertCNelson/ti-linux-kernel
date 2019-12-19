@@ -385,6 +385,17 @@ static int k3_r5_rproc_prepare(struct rproc *rproc)
 		dev_err(dev, "unable to enable cores for TCM loading, ret = %d\n",
 			ret);
 
+	/*
+	 * Zero out both TCMs unconditionally (access from v8 Arm core is not
+	 * affected by ATCM & BTCM enable configuration values) so that ECC
+	 * can be effective on all TCM addresses.
+	 */
+	dev_dbg(dev, "zeroing out ATCM memory\n");
+	memset(core->mem[0].cpu_addr, 0x00, core->mem[0].size);
+
+	dev_dbg(dev, "zeroing out BTCM memory\n");
+	memset(core->mem[1].cpu_addr, 0x00, core->mem[1].size);
+
 	return ret;
 }
 
@@ -596,22 +607,21 @@ static void *k3_r5_rproc_da_to_va(struct rproc *rproc, u64 da, int len,
 	if (len <= 0)
 		return NULL;
 
-	/* handle R5-view of ATCM addresses first using address 0 */
-	size = core->mem[0].size;
-	if (da >= 0 && ((da + len) <= size)) {
-		offset = da;
-		va = core->mem[0].cpu_addr + offset;
-		return (__force void *)va;
-	}
-
-	/* handle SoC-view addresses for ATCM and BTCM */
+	/* handle both R5 and SoC views of ATCM and BTCM */
 	for (i = 0; i < core->num_mems; i++) {
 		bus_addr = core->mem[i].bus_addr;
 		dev_addr = core->mem[i].dev_addr;
 		size = core->mem[i].size;
 
-		if (da >= bus_addr &&
-		    ((da + len) <= (bus_addr + size))) {
+		/* handle R5-view addresses of TCMs */
+		if (da >= dev_addr && ((da + len) <= (dev_addr + size))) {
+			offset = da - dev_addr;
+			va = core->mem[i].cpu_addr + offset;
+			return (__force void *)va;
+		}
+
+		/* handle SoC-view addresses of TCMs */
+		if (da >= bus_addr && ((da + len) <= (bus_addr + size))) {
 			offset = da - bus_addr;
 			va = core->mem[i].cpu_addr + offset;
 			return (__force void *)va;
@@ -867,9 +877,6 @@ static void k3_r5_reserved_mem_exit(struct k3_r5_rproc *kproc)
  * and cluster mode parsed originally from kernel DT are updated to reflect the
  * actual values configured by bootloader. The driver internal device memory
  * addresses for TCMs are also updated.
- *
- * The R5F cores on AM65x SoCs are currently limited to remoteproc mode only
- * until the early-boot support is added for the AM65x SoC family.
  */
 static int k3_r5_rproc_configure_mode(struct k3_r5_rproc *kproc)
 {
@@ -883,9 +890,6 @@ static int k3_r5_rproc_configure_mode(struct k3_r5_rproc *kproc)
 	struct k3_r5_core *core0;
 	enum cluster_mode mode;
 	int ret;
-
-	if (!of_device_is_compatible(cdev->of_node, "ti,j721e-r5f"))
-		return 0;
 
 	core0 = list_first_entry(&cluster->cores, struct k3_r5_core, elem);
 
@@ -1096,11 +1100,28 @@ static int k3_r5_core_of_get_internal_memories(struct platform_device *pdev,
 	for (i = 0; i < num_mems; i++) {
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 						   mem_names[i]);
-		core->mem[i].cpu_addr = devm_ioremap_resource(dev, res);
-		if (IS_ERR(core->mem[i].cpu_addr)) {
-			dev_err(dev, "failed to parse and map %s memory\n",
+		if (!res) {
+			dev_err(dev, "found no memory resource for %s\n",
 				mem_names[i]);
+			ret = -EINVAL;
+			goto fail;
+		}
+		if (!devm_request_mem_region(dev, res->start,
+					     resource_size(res),
+					     dev_name(dev))) {
+			dev_err(dev, "could not request %s region for resource\n",
+				mem_names[i]);
+			ret = -EBUSY;
+			goto fail;
+		}
+
+		core->mem[i].cpu_addr = devm_ioremap_wc(dev, res->start,
+							resource_size(res));
+		if (IS_ERR(core->mem[i].cpu_addr)) {
+			dev_err(dev, "failed to map %s memory\n", mem_names[i]);
 			ret = PTR_ERR(core->mem[i].cpu_addr);
+			devm_release_mem_region(dev, res->start,
+						resource_size(res));
 			goto fail;
 		}
 		core->mem[i].bus_addr = res->start;
@@ -1185,8 +1206,8 @@ static int k3_r5_core_of_get_sram_memories(struct platform_device *pdev,
 		core->sram[i].bus_addr = res.start;
 		core->sram[i].dev_addr = res.start;
 		core->sram[i].size = resource_size(&res);
-		core->sram[i].cpu_addr = ioremap(res.start,
-						 resource_size(&res));
+		core->sram[i].cpu_addr = ioremap_wc(res.start,
+						    resource_size(&res));
 		if (!core->sram[i].cpu_addr) {
 			dev_err(dev, "failed to parse and map sram%d memory at %pad\n",
 				i, &res.start);

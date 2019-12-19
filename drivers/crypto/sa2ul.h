@@ -157,6 +157,7 @@ struct sa_tfm_ctx;
 
 /**
  * struct sa_crypto_data - Crypto driver instance data
+ * @base: Base address of the register space
  * @pdev: Platform device pointer
  * @sc_pool: security context pool
  * @dev: Device pointer
@@ -171,6 +172,7 @@ struct sa_tfm_ctx;
  * @dma_tx: Pointer to DMA TX channel
  */
 struct sa_crypto_data {
+	void __iomem *base;
 	struct platform_device	*pdev;
 	struct dma_pool		*sc_pool;
 	struct device *dev;
@@ -285,6 +287,7 @@ struct sa_sham_hmac_ctx {
  * @key: encryption key
  * @shash: software hash crypto_hash
  * @authkey: authentication key
+ * @fallback_tfm: SW fallback ahash algorithm
  */
 struct sa_tfm_ctx {
 	struct sa_crypto_data *dev_data;
@@ -296,6 +299,8 @@ struct sa_tfm_ctx {
 	struct sa_sham_hmac_ctx base[0];
 	struct crypto_shash	*shash;
 	u8 authkey[SHA512_BLOCK_SIZE];
+	/* for fallback */
+	struct crypto_ahash	*fallback_tfm;
 };
 
 /**
@@ -312,6 +317,8 @@ struct sa_dma_req_ctx {
 	struct scatterlist *src;
 	unsigned int	src_nents;
 	bool		pkt;
+	struct ahash_request fallback_req;
+	u32 mode;
 };
 
 enum sa_submode {
@@ -344,6 +351,7 @@ enum sa_aalg_id {
 	SA_AALG_ID_SHA1,          /* SHA1 mode */
 	SA_AALG_ID_SHA2_224,      /* 224-bit SHA2 mode */
 	SA_AALG_ID_SHA2_256,      /* 256-bit SHA2 mode */
+	SA_AALG_ID_SHA2_512,      /* 512-bit SHA2 mode */
 	SA_AALG_ID_HMAC_MD5,      /* HMAC with MD5 mode */
 	SA_AALG_ID_HMAC_SHA1,     /* HMAC with SHA1 mode */
 	SA_AALG_ID_HMAC_SHA2_224, /* HMAC with 224-bit SHA2 mode */

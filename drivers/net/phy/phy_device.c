@@ -757,6 +757,9 @@ int phy_connect_direct(struct net_device *dev, struct phy_device *phydev,
 {
 	int rc;
 
+	if (!dev)
+		return -EINVAL;
+
 	rc = phy_attach_direct(dev, phydev, phydev->dev_flags, interface);
 	if (rc)
 		return rc;
@@ -821,8 +824,6 @@ void phy_disconnect(struct phy_device *phydev)
 {
 	if (phydev->irq > 0)
 		phy_stop_interrupts(phydev);
-
-	phy_stop_machine(phydev);
 
 	phydev->adjust_link = NULL;
 
@@ -1097,6 +1098,9 @@ struct phy_device *phy_attach(struct net_device *dev, const char *bus_id,
 	struct phy_device *phydev;
 	struct device *d;
 	int rc;
+
+	if (!dev)
+		return ERR_PTR(-EINVAL);
 
 	/* Search the list of PHY devices on the mdio bus for the
 	 * PHY with the requested name
@@ -1608,8 +1612,9 @@ int genphy_read_status(struct phy_device *phydev)
 				phydev->duplex = DUPLEX_FULL;
 
 		if (phydev->duplex == DUPLEX_FULL) {
-			phydev->pause = lpa & LPA_PAUSE_CAP ? 1 : 0;
-			phydev->asym_pause = lpa & LPA_PAUSE_ASYM ? 1 : 0;
+			phydev->pause = common_adv & LPA_PAUSE_CAP ? 1 : 0;
+			phydev->asym_pause = common_adv & LPA_PAUSE_ASYM ?
+					     1 : 0;
 		}
 	} else {
 		int bmcr = phy_read(phydev, MII_BMCR);

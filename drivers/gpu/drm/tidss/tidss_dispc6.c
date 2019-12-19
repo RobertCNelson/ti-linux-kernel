@@ -574,8 +574,7 @@ static enum drm_mode_status dispc6_vp_mode_valid(struct dispc_device *dispc,
 		return MODE_BAD_HVALUE;
 
 	if (vsw < 1 || vsw > 256 ||
-	    vfp < 0 || vfp > 4095 ||
-	    vbp < 0 || vbp > 4095)
+	    vfp > 4095 || vbp > 4095)
 		return MODE_BAD_VVALUE;
 
 	if (dispc->memory_bandwidth_limit) {
@@ -741,26 +740,6 @@ static const struct dispc6_vid_fir_coefs dispc6_fir_coefs_null = {
 	.c2 = {	0 },
 	.c1 = { 0 },
 	.c0 = { 512, 512, 512, 512, 512, 512, 512, 512, 256,  },
-};
-
-/* M=8, Upscale x >= 1 */
-static const struct dispc6_vid_fir_coefs dispc6_fir_coefs_m8 = {
-	.c2 = {	0, -4, -8, -16, -24, -32, -40, -48, 0, 2, 4, 6, 8, 6, 4, 2,  },
-	.c1 = { 0, 28, 56, 94, 132, 176, 220, 266, -56, -60, -64, -62, -60, -50, -40, -20,  },
-	.c0 = { 512, 506, 500, 478, 456, 424, 392, 352, 312,  },
-};
-
-/* 5-tap, M=22, Downscale Ratio 2.5 < x < 3 */
-static const struct dispc6_vid_fir_coefs dispc6_fir_coefs_m22_5tap = {
-	.c2 = { 16, 20, 24, 30, 36, 42, 48, 56, 0, 0, 0, 2, 4, 8, 12, 14,  },
-	.c1 = { 132, 140, 148, 156, 164, 172, 180, 186, 64, 72, 80, 88, 96, 104, 112, 122,  },
-	.c0 = { 216, 216, 216, 214, 212, 208, 204, 198, 192,  },
-};
-
-/* 3-tap, M=22, Downscale Ratio 2.5 < x < 3 */
-static const struct dispc6_vid_fir_coefs dispc6_fir_coefs_m22_3tap = {
-	.c1 = { 100, 118, 136, 156, 176, 196, 216, 236, 0, 10, 20, 30, 40, 54, 68, 84,  },
-	.c0 = { 312, 310, 308, 302, 296, 286, 276, 266, 256,  },
 };
 
 enum dispc6_vid_fir_coef_set {
@@ -1046,6 +1025,11 @@ static int dispc6_plane_enable(struct dispc_device *dispc,
 {
 	VID_REG_FLD_MOD(dispc, hw_plane, DISPC_VID_ATTRIBUTES, !!enable, 0, 0);
 	return 0;
+}
+
+static bool dispc6_has_writeback(struct dispc_device *dispc)
+{
+	return false;
 }
 
 static u32 dispc6_vid_get_fifo_size(struct dispc_device *dispc,
@@ -1368,6 +1352,11 @@ static int dispc6_modeset_init(struct dispc_device *dispc)
 	return 0;
 }
 
+static int dispc6_get_irq(struct dispc_device *dispc)
+{
+	return platform_get_irq(to_platform_device(dispc->tidss->dev), 0);
+}
+
 static void dispc6_remove(struct dispc_device *dispc);
 
 static const struct tidss_dispc_ops dispc6_ops = {
@@ -1405,6 +1394,10 @@ static const struct tidss_dispc_ops dispc6_ops = {
 	.remove = dispc6_remove,
 
 	.modeset_init = dispc6_modeset_init,
+
+	.get_irq = dispc6_get_irq,
+
+	.has_writeback = dispc6_has_writeback,
 };
 
 static int dispc6_iomap_resource(struct platform_device *pdev, const char *name,

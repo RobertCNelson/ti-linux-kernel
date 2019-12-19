@@ -27,6 +27,7 @@
 #include "prueth.h"
 #include "icss_mii_rt.h"
 #include "icss_switch.h"
+#include "icss_vlan_mcast_filter_mmap.h"
 
 #define PRUETH_MODULE_VERSION "0.2"
 #define PRUETH_MODULE_DESCRIPTION "PRUSS Ethernet driver"
@@ -37,7 +38,8 @@
 #define TX_MIN_IPG		0xb8
 
 #define TX_START_DELAY		0x40
-#define TX_CLK_DELAY		0x6
+#define TX_CLK_DELAY_100M	0x6
+#define TX_CLK_DELAY_10M	0
 
 /* PRUSS_IEP_GLOBAL_CFG register definitions */
 #define PRUSS_IEP_GLOBAL_CFG	0
@@ -397,7 +399,7 @@ static void prueth_mii_init(struct prueth *prueth)
 	prueth_mii_set(TX, 0, START_DELAY_MASK,
 		       TX_START_DELAY << PRUSS_MII_RT_TXCFG_TX_START_DELAY_SHIFT);
 	prueth_mii_set(TX, 0, CLK_DELAY_MASK,
-		       TX_CLK_DELAY << PRUSS_MII_RT_TXCFG_TX_CLK_DELAY_SHIFT);
+		       TX_CLK_DELAY_100M << PRUSS_MII_RT_TXCFG_TX_CLK_DELAY_SHIFT);
 
 	/* Configuration of Port 1 Rx */
 	prueth_mii_set(RX, 1, ENABLE, PRUSS_MII_RT_RXCFG_RX_ENABLE);
@@ -418,7 +420,7 @@ static void prueth_mii_init(struct prueth *prueth)
 	prueth_mii_set(TX, 1, START_DELAY_MASK,
 		       TX_START_DELAY << PRUSS_MII_RT_TXCFG_TX_START_DELAY_SHIFT);
 	prueth_mii_set(TX, 1, CLK_DELAY_MASK,
-		       TX_CLK_DELAY << PRUSS_MII_RT_TXCFG_TX_CLK_DELAY_SHIFT);
+		       TX_CLK_DELAY_100M << PRUSS_MII_RT_TXCFG_TX_CLK_DELAY_SHIFT);
 }
 
 static void prueth_clearmem(struct prueth *prueth, enum prueth_mem region)
@@ -517,10 +519,24 @@ static void emac_update_phystatus(struct prueth_emac *emac)
 	struct prueth *prueth = emac->prueth;
 	enum prueth_mem region;
 	u32 phy_speed, port_status = 0;
+	u8 delay;
 
 	region = emac->dram;
 	phy_speed = emac->speed;
 	prueth_write_reg(prueth, region, PHY_SPEED_OFFSET, phy_speed);
+
+	if (phy_speed == SPEED_10)
+		delay = TX_CLK_DELAY_10M;
+	else
+		delay = TX_CLK_DELAY_100M;
+
+	if (emac->port_id) {
+		prueth_mii_set(TX, 1, CLK_DELAY_MASK,
+			       delay << PRUSS_MII_RT_TXCFG_TX_CLK_DELAY_SHIFT);
+	} else {
+		prueth_mii_set(TX, 0, CLK_DELAY_MASK,
+			       delay << PRUSS_MII_RT_TXCFG_TX_CLK_DELAY_SHIFT);
+	}
 
 	if (emac->duplex == DUPLEX_HALF)
 		port_status |= PORT_IS_HD_MASK;
@@ -1190,6 +1206,66 @@ static struct net_device_stats *emac_ndo_get_stats(struct net_device *ndev)
 	return stats;
 }
 
+/* enable/disable MC filter */
+static void emac_mc_filter_ctrl(struct prueth_emac *emac, bool enable)
+{
+	struct prueth *prueth = emac->prueth;
+	void __iomem *mc_filter_ctrl;
+	u32 reg;
+
+	mc_filter_ctrl = prueth->mem[emac->dram].va +
+			 ICSS_EMAC_FW_MULTICAST_FILTER_CTRL_OFFSET;
+
+	if (enable)
+		reg = ICSS_EMAC_FW_MULTICAST_FILTER_CTRL_ENABLED;
+	else
+		reg = ICSS_EMAC_FW_MULTICAST_FILTER_CTRL_DISABLED;
+
+	writeb(reg, mc_filter_ctrl);
+}
+
+/* set MC filter hashmask override */
+static void emac_mc_filter_override_hashmask(struct prueth_emac *emac,
+					     u8 mask[ICSS_EMAC_FW_MULTICAST_FILTER_MASK_SIZE_BYTES])
+{
+	struct prueth *prueth = emac->prueth;
+	void __iomem *mc_filter_mask;
+
+	mc_filter_mask = prueth->mem[emac->dram].va +
+			 ICSS_EMAC_FW_MULTICAST_FILTER_MASK_OFFSET;
+	memcpy_toio(mc_filter_mask, mask,
+		    ICSS_EMAC_FW_MULTICAST_FILTER_MASK_SIZE_BYTES);
+}
+
+/* enable/disable allmulti */
+static void emac_mc_filter_allmulti_ctrl(struct prueth_emac *emac, bool enable)
+{
+	struct prueth *prueth = emac->prueth;
+	void __iomem *mc_filter_table_base;
+	u8 default_mask[] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
+	int i;
+
+	mc_filter_table_base = prueth->mem[emac->dram].va +
+			       ICSS_EMAC_FW_MULTICAST_FILTER_TABLE;
+	emac_mc_filter_override_hashmask(emac, default_mask);
+
+	if (enable) {
+		/* enable all bins */
+		for (i = 0; i < ICSS_EMAC_FW_MULTICAST_TABLE_SIZE_BYTES; i++) {
+			writeb(ICSS_EMAC_FW_MULTICAST_FILTER_HOST_RCV_ALLOWED,
+			       mc_filter_table_base + i);
+		}
+	} else {
+		/* disable all bins */
+		for (i = 0; i < ICSS_EMAC_FW_MULTICAST_TABLE_SIZE_BYTES; i++) {
+			writeb(ICSS_EMAC_FW_MULTICAST_FILTER_HOST_RCV_NOT_ALLOWED,
+			       mc_filter_table_base + i);
+		}
+	}
+
+	emac_mc_filter_ctrl(emac, true);
+}
+
 /**
  * emac_ndo_set_rx_mode - EMAC set receive mode function
  * @ndev: The EMAC network adapter
@@ -1204,6 +1280,7 @@ static void emac_ndo_set_rx_mode(struct net_device *ndev)
 	void __iomem *sram = prueth->mem[PRUETH_MEM_SHARED_RAM].va;
 	u32 reg = readl(sram + EMAC_PROMISCUOUS_MODE_OFFSET);
 	u32 mask;
+	bool promisc = ndev->flags & IFF_PROMISC;
 
 	switch (emac->port_id) {
 	case PRUETH_PORT_MII0:
@@ -1217,15 +1294,32 @@ static void emac_ndo_set_rx_mode(struct net_device *ndev)
 		return;
 	}
 
-	if (ndev->flags & IFF_PROMISC) {
+	if (promisc) {
 		/* Enable promiscuous mode */
 		reg |= mask;
+		emac_mc_filter_allmulti_ctrl(emac, true);
 	} else {
 		/* Disable promiscuous mode */
 		reg &= ~mask;
+		emac_mc_filter_allmulti_ctrl(emac, false);
 	}
 
 	writel(reg, sram + EMAC_PROMISCUOUS_MODE_OFFSET);
+
+	if (promisc)
+		return;
+
+	if (ndev->flags & IFF_ALLMULTI)
+		emac_mc_filter_allmulti_ctrl(emac, true);
+	else
+		emac_mc_filter_allmulti_ctrl(emac, false);
+}
+
+static int emac_ndo_ioctl(struct net_device *ndev, struct ifreq *ifr, int cmd)
+{
+	struct prueth_emac *emac = netdev_priv(ndev);
+
+	return phy_mii_ioctl(emac->phydev, ifr, cmd);
 }
 
 static const struct net_device_ops emac_netdev_ops = {
@@ -1238,6 +1332,7 @@ static const struct net_device_ops emac_netdev_ops = {
 	.ndo_tx_timeout = emac_ndo_tx_timeout,
 	.ndo_get_stats = emac_ndo_get_stats,
 	.ndo_set_rx_mode = emac_ndo_set_rx_mode,
+	.ndo_do_ioctl = emac_ndo_ioctl,
 };
 
 /**
@@ -1526,6 +1621,14 @@ static int prueth_netdev_init(struct prueth *prueth,
 		ret = -EPROBE_DEFER;
 		goto free;
 	}
+
+	/* remove unsupported modes */
+	emac->phydev->supported &= ~(PHY_10BT_FEATURES |
+				     SUPPORTED_100baseT_Half |
+				     PHY_1000BT_FEATURES |
+				     SUPPORTED_Pause |
+				     SUPPORTED_Asym_Pause);
+	emac->phydev->advertising = emac->phydev->supported;
 
 	ndev->netdev_ops = &emac_netdev_ops;
 	ndev->ethtool_ops = &emac_ethtool_ops;

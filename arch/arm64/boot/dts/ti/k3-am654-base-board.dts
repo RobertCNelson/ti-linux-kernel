@@ -36,32 +36,38 @@
 		#size-cells = <2>;
 		ranges;
 
-		mcu_r5fss0_core1_dma_memory_region: r5f-dma-memory@9b000000 {
-			compatible = "shared-dma-pool";
-			reg = <0 0x9b000000 0 0x100000>;
-			no-map;
-		};
-
-		mcu_r5fss0_core1_memory_region: r5f-memory@9b100000 {
-			compatible = "shared-dma-pool";
-			reg = <0 0x9b100000 0 0xf00000>;
-			no-map;
-		};
-
-		mcu_r5fss0_core0_dma_memory_region: r5f-dma-memory@9c000000 {
-			compatible = "shared-dma-pool";
-			reg = <0 0x9c000000 0 0x100000>;
-			no-map;
-		};
-
-		mcu_r5fss0_core0_memory_region: r5f-memory@9c100000 {
-			compatible = "shared-dma-pool";
-			reg = <0 0x9c100000 0 0x700000>;
-			no-map;
-		};
-
 		secure_ddr: secure_ddr@9e800000 {
 			reg = <0 0x9e800000 0 0x01800000>; /* for OP-TEE */
+			alignment = <0x1000>;
+			no-map;
+		};
+
+		mcu_r5fss0_core0_dma_memory_region: r5f-dma-memory@a0000000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0xa0000000 0 0x100000>;
+			no-map;
+		};
+
+		mcu_r5fss0_core0_memory_region: r5f-memory@a0100000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0xa0100000 0 0xf00000>;
+			no-map;
+		};
+
+		mcu_r5fss0_core1_dma_memory_region: r5f-dma-memory@a1000000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0xa1000000 0 0x100000>;
+			no-map;
+		};
+
+		mcu_r5fss0_core1_memory_region: r5f-memory@a1100000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0xa1100000 0 0xf00000>;
+			no-map;
+		};
+
+		rtos_ipc_memory_region: ipc-memories@a2000000 {
+			reg = <0x00 0xa2000000 0x00 0x00200000>;
 			alignment = <0x1000>;
 			no-map;
 		};
@@ -122,7 +128,7 @@
 
 		pruss2_emac0: ethernet-mii0 {
 			phy-handle = <&pruss2_eth0_phy>;
-			phy-mode = "rgmii-id";
+			phy-mode = "rgmii-rxid";
 			syscon-rgmii-delay = <&scm_conf 0x4120>;
 			iep = <&icssg2_iep0>;
 			/* Filled in by bootloader */
@@ -131,7 +137,7 @@
 
 		pruss2_emac1: ethernet-mii1 {
 			phy-handle = <&pruss2_eth1_phy>;
-			phy-mode = "rgmii-id";
+			phy-mode = "rgmii-rxid";
 			syscon-rgmii-delay = <&scm_conf 0x4124>;
 			iep = <&icssg2_iep1>;
 			/* Filled in by bootloader */
@@ -393,13 +399,12 @@
 		reg = <0>;
 		/* TODO: phy reset: TCA9555RTWR(i2c:0x21)[p04].GPIO_MCU_RGMII_RSTN */
 		ti,rx-internal-delay = <DP83867_RGMIIDCTL_2_00_NS>;
-		ti,tx-internal-delay = <DP83867_RGMIIDCTL_2_00_NS>;
 		ti,fifo-depth = <DP83867_PHYCR_FIFO_DEPTH_4_B_NIB>;
 	};
 };
 
 &cpsw_port1 {
-	phy-mode = "rgmii-id";
+	phy-mode = "rgmii-rxid";
 	phy-handle = <&phy0>;
 };
 
@@ -414,12 +419,14 @@
 	bus-width = <8>;
 	non-removable;
 	ti,driver-strength-ohm = <50>;
+	disable-wp;
 };
 
 &sdhci1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&main_mmc1_pins_default>;
 	ti,driver-strength-ohm = <50>;
+	disable-wp;
 };
 
 &gpu {
@@ -495,7 +502,7 @@
 	flash@0{
 		compatible = "jedec,spi-nor";
 		reg = <0x0>;
-		spi-tx-bus-width = <1>;
+		spi-tx-bus-width = <8>;
 		spi-rx-bus-width = <8>;
 		spi-max-frequency = <50000000>;
 		spi-dqs;
@@ -518,14 +525,12 @@
 	pruss2_eth0_phy: ethernet-phy@0 {
 		reg = <0>;
 		ti,rx-internal-delay = <DP83867_RGMIIDCTL_2_00_NS>;
-		ti,tx-internal-delay = <DP83867_RGMIIDCTL_2_00_NS>;
 		ti,fifo-depth = <DP83867_PHYCR_FIFO_DEPTH_4_B_NIB>;
 	};
 
 	pruss2_eth1_phy: ethernet-phy@3 {
 		reg = <3>;
 		ti,rx-internal-delay = <DP83867_RGMIIDCTL_2_00_NS>;
-		ti,tx-internal-delay = <DP83867_RGMIIDCTL_2_00_NS>;
 		ti,fifo-depth = <DP83867_PHYCR_FIFO_DEPTH_4_B_NIB>;
 	};
 };

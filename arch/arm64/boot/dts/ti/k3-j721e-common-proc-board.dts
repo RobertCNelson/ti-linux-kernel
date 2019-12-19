@@ -7,8 +7,11 @@
 
 #include "k3-j721e-som-p0.dtsi"
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
 #include <dt-bindings/net/ti-dp83867.h>
+#include <dt-bindings/pci/pci.h>
 #include <dt-bindings/sound/ti-mcasp.h>
+#include "j721e-android-fstab.dtsi"
 
 / {
 	chosen {
@@ -49,77 +52,41 @@
 	};
 
 	sound0: sound@0 {
-		compatible = "simple-audio-card";
-		simple-audio-card,name = "j721e-cpb-analog";
-		simple-audio-card,widgets =
-			"Headphone", "Stereo HP 1",
-			"Headphone", "Stereo HP 2",
-			"Headphone", "Stereo HP 3",
-			"Line", "Line Out",
-			"Microphone", "Stereo Mic 1",
-			"Microphone", "Stereo Mic 2",
-			"Line", "Line In";
-		simple-audio-card,routing =
-			"Stereo HP 1", "AOUT1L",
-			"Stereo HP 1", "AOUT1R",
-			"Stereo HP 2", "AOUT2L",
-			"Stereo HP 2", "AOUT2R",
-			"Stereo HP 3", "AOUT3L",
-			"Stereo HP 3", "AOUT3R",
-			"Line Out", "AOUT4L",
-			"Line Out", "AOUT4R",
-			"AIN1L", "Stereo Mic 1",
-			"AIN1R", "Stereo Mic 1",
-			"AIN2L", "Stereo Mic 2",
-			"AIN2R", "Stereo Mic 2",
-			"AIN3L", "Line In",
-			"AIN3R", "Line In";
-		simple-audio-card,mclk-fs = <512>;
+		compatible = "ti,j721e-cpb-audio";
+		ti,model = "j721e-cpb-analog";
 
-		simple-audio-card,dai-link@0 {
-			format = "dsp_a";
-			bitclock-master = <&sound0_0_master>;
-			frame-master = <&sound0_0_master>;
-			sound0_0_master: cpu {
-				sound-dai = <&mcasp10>;
-				clocks = <&k3_clks 184 1>;
-				system-clock-id = <MCASP_CLK_HCLK_AUXCLK>;
-				dai-tdm-slot-num = <8>;
-				dai-tdm-slot-width = <32>;
-				dai-tdm-slot-tx-mask = <1 1 1 1 1 1 1 1>;
-				dai-tdm-slot-rx-mask = <1 1 1 1 1 1 0 0>;
-			};
+		ti,cpb-mcasp = <&mcasp10>;
+		ti,cpb-codec = <&pcm3168a_1>;
 
-			codec {
-				sound-dai = <&pcm3168a_1 0>;
-				dai-tdm-slot-num = <8>;
-				dai-tdm-slot-width = <32>;
-				dai-tdm-slot-tx-mask = <1 1 1 1 1 1 1 1>;
-				dai-tdm-slot-rx-mask = <1 1 1 1 1 1 0 0>;
-			};
+		pll4-rate = <1179648000>; /* Used for 48KHz family */
+		pll15-rate = <1083801600>; /* Used for 44.1KHz family */
+
+		clocks = <&k3_clks 184 1>,
+			 <&k3_clks 184 2>, <&k3_clks 184 4>,
+			 <&k3_clks 157 371>,
+			 <&k3_clks 157 400>, <&k3_clks 157 401>;
+		clock-names = "cpb-mcasp",
+			      "cpb-mcasp-48000", "cpb-mcasp-44100",
+			      "audio-refclk2",
+			      "audio-refclk2-48000", "audio-refclk2-44100";
+	};
+
+	gpio_keys: gpio-keys {
+		compatible = "gpio-keys";
+		autorepeat;
+		pinctrl-names = "default";
+		pinctrl-0 = <&sw10_button_pins_default &sw11_button_pins_default>;
+
+		sw10: sw10 {
+			label = "GPIO Key USER1";
+			linux,code = <BTN_0>;
+			gpios = <&main_gpio0 0 GPIO_ACTIVE_LOW>;
 		};
 
-		simple-audio-card,dai-link@1 {
-			format = "dsp_a";
-			bitclock-master = <&sound0_1_master>;
-			frame-master = <&sound0_1_master>;
-			sound0_1_master: cpu {
-				sound-dai = <&mcasp10>;
-				clocks = <&k3_clks 184 1>;
-				system-clock-id = <MCASP_CLK_HCLK_AUXCLK>;
-				dai-tdm-slot-num = <8>;
-				dai-tdm-slot-width = <32>;
-				dai-tdm-slot-tx-mask = <1 1 1 1 1 1 1 1>;
-				dai-tdm-slot-rx-mask = <1 1 1 1 1 1 0 0>;
-			};
-
-			codec {
-				sound-dai = <&pcm3168a_1 1>;
-				dai-tdm-slot-num = <8>;
-				dai-tdm-slot-width = <32>;
-				dai-tdm-slot-tx-mask = <1 1 1 1 1 1 1 1>;
-				dai-tdm-slot-rx-mask = <1 1 1 1 1 1 0 0>;
-			};
+		sw11: sw11 {
+			label = "GPIO Key USER2";
+			linux,code = <BTN_1>;
+			gpios = <&wkup_gpio0 7 GPIO_ACTIVE_LOW>;
 		};
 	};
 
@@ -132,6 +99,112 @@
 		enable-active-high;
 		vin-supply = <&vsys_3v3>;
 		gpio = <&exp2 2 GPIO_ACTIVE_HIGH>;
+	};
+
+	dp0: connector {
+		compatible = "dp-connector";
+		label = "DP0";
+
+		port {
+			dp_connector_in: endpoint {
+				remote-endpoint = <&dp_bridge_output>;
+			};
+		};
+	};
+
+	cpsw9g_virt_mac: main_r5fss_cpsw9g_virt_mac0 {
+		compatible = "ti,j721e-cpsw-virt-mac";
+		dma-coherent;
+		ti,psil-base = <0x4a00>;
+		ti,remote-name = "mpu_1_0_ethswitch-device-0";
+		interrupt-parent = <&main_udmass_inta>;
+
+		dmas = <&main_udmap &cpsw9g_virt_mac 0 UDMA_DIR_TX>,
+		       <&main_udmap &cpsw9g_virt_mac 1 UDMA_DIR_TX>,
+		       <&main_udmap &cpsw9g_virt_mac 2 UDMA_DIR_TX>,
+		       <&main_udmap &cpsw9g_virt_mac 3 UDMA_DIR_TX>,
+		       <&main_udmap &cpsw9g_virt_mac 4 UDMA_DIR_TX>,
+		       <&main_udmap &cpsw9g_virt_mac 5 UDMA_DIR_TX>,
+		       <&main_udmap &cpsw9g_virt_mac 6 UDMA_DIR_TX>,
+		       <&main_udmap &cpsw9g_virt_mac 0 UDMA_DIR_RX>;
+		dma-names = "tx0", "tx1", "tx2", "tx3",
+			    "tx4", "tx5", "tx6",
+			    "rx";
+
+		virt_emac_port {
+			ti,label = "virt-port";
+			/* local-mac-address = [0 0 0 0 0 0]; */
+		};
+
+		ti,psil-config0 {
+			linux,udma-mode = <UDMA_PKT_MODE>;
+			statictr-type = <PSIL_STATIC_TR_NONE>;
+			ti,needs-epib;
+			ti,psd-size = <16>;
+		};
+
+		ti,psil-config1 {
+			linux,udma-mode = <UDMA_PKT_MODE>;
+			statictr-type = <PSIL_STATIC_TR_NONE>;
+			ti,needs-epib;
+			ti,psd-size = <16>;
+		};
+
+		ti,psil-config2 {
+			linux,udma-mode = <UDMA_PKT_MODE>;
+			statictr-type = <PSIL_STATIC_TR_NONE>;
+			ti,needs-epib;
+			ti,psd-size = <16>;
+		};
+
+		ti,psil-config3 {
+			linux,udma-mode = <UDMA_PKT_MODE>;
+			statictr-type = <PSIL_STATIC_TR_NONE>;
+			ti,needs-epib;
+			ti,psd-size = <16>;
+		};
+
+		ti,psil-config4 {
+			linux,udma-mode = <UDMA_PKT_MODE>;
+			statictr-type = <PSIL_STATIC_TR_NONE>;
+			ti,needs-epib;
+			ti,psd-size = <16>;
+		};
+
+		ti,psil-config5 {
+			linux,udma-mode = <UDMA_PKT_MODE>;
+			statictr-type = <PSIL_STATIC_TR_NONE>;
+			ti,needs-epib;
+			ti,psd-size = <16>;
+		};
+
+		ti,psil-config6 {
+			linux,udma-mode = <UDMA_PKT_MODE>;
+			statictr-type = <PSIL_STATIC_TR_NONE>;
+			ti,needs-epib;
+			ti,psd-size = <16>;
+		};
+
+		ti,psil-config7 {
+			linux,udma-mode = <UDMA_PKT_MODE>;
+			statictr-type = <PSIL_STATIC_TR_NONE>;
+			ti,needs-epib;
+			ti,psd-size = <16>;
+		};
+	};
+
+	vdd_sd_dv_alt: gpio-regulator-TLV71033 {
+		compatible = "regulator-gpio";
+		pinctrl-names = "default";
+		pinctrl-0 = <&vdd_sd_dv_alt_pins_default>;
+		regulator-name = "tlv71033";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-boot-on;
+		vin-supply = <&vsys_5v0>;
+		gpios = <&main_gpio0 117 GPIO_ACTIVE_HIGH>;
+		states = <1800000 0x0
+			  3300000 0x1>;
 	};
 };
 
@@ -170,6 +243,12 @@
 			J721E_WKUP_IOPAD(0x4c, PIN_INPUT, 0) /* (C23) MCU_OSPI1_D3 */
 			J721E_WKUP_IOPAD(0x3c, PIN_INPUT, 0) /* (B23) MCU_OSPI1_DQS */
 			J721E_WKUP_IOPAD(0x38, PIN_INPUT, 0) /* (A23) MCU_OSPI1_LBCLKO */
+		>;
+	};
+
+	sw11_button_pins_default: sw11_button_pins_default {
+		pinctrl-single,pins = <
+			J721E_WKUP_IOPAD(0xcc, PIN_INPUT, 7) /* (G28) WKUP_GPIO0_7 */
 		>;
 	};
 };
@@ -276,13 +355,13 @@
 		pinctrl-single,pins = <
 			J721E_IOPAD(0x158, PIN_OUTPUT_PULLDOWN, 12) /* (U23) RGMII5_TX_CTL.MCASP10_ACLKX */
 			J721E_IOPAD(0x15c, PIN_OUTPUT_PULLDOWN, 12) /* (U26) RGMII5_RX_CTL.MCASP10_AFSX */
-			J721E_IOPAD(0x160, PIN_INPUT_PULLDOWN, 12) /* (V28) RGMII5_TD3.MCASP10_AXR0 */
-			J721E_IOPAD(0x164, PIN_INPUT_PULLDOWN, 12) /* (V29) RGMII5_TD2.MCASP10_AXR1 */
-			J721E_IOPAD(0x170, PIN_INPUT_PULLDOWN, 12) /* (U29) RGMII5_TXC.MCASP10_AXR2 */
+			J721E_IOPAD(0x160, PIN_OUTPUT_PULLDOWN, 12) /* (V28) RGMII5_TD3.MCASP10_AXR0 */
+			J721E_IOPAD(0x164, PIN_OUTPUT_PULLDOWN, 12) /* (V29) RGMII5_TD2.MCASP10_AXR1 */
+			J721E_IOPAD(0x170, PIN_OUTPUT_PULLDOWN, 12) /* (U29) RGMII5_TXC.MCASP10_AXR2 */
 			J721E_IOPAD(0x174, PIN_OUTPUT_PULLDOWN, 12) /* (U25) RGMII5_RXC.MCASP10_AXR3 */
-			J721E_IOPAD(0x198, PIN_OUTPUT_PULLDOWN, 12) /* (V25) RGMII6_TD1.MCASP10_AXR4 */
-			J721E_IOPAD(0x19c, PIN_OUTPUT_PULLDOWN, 12) /* (W27) RGMII6_TD0.MCASP10_AXR5 */
-			J721E_IOPAD(0x1a0, PIN_OUTPUT_PULLDOWN, 12) /* (W29) RGMII6_TXC.MCASP10_AXR6 */
+			J721E_IOPAD(0x198, PIN_INPUT_PULLDOWN, 12) /* (V25) RGMII6_TD1.MCASP10_AXR4 */
+			J721E_IOPAD(0x19c, PIN_INPUT_PULLDOWN, 12) /* (W27) RGMII6_TD0.MCASP10_AXR5 */
+			J721E_IOPAD(0x1a0, PIN_INPUT_PULLDOWN, 12) /* (W29) RGMII6_TXC.MCASP10_AXR6 */
 		>;
 	};
 
@@ -295,6 +374,7 @@
 	main_usbss0_pins_default: main_usbss0_pins_default {
 		pinctrl-single,pins = <
 			J721E_IOPAD(0x290, PIN_OUTPUT, 0) /* (U6) USB0_DRVVBUS */
+			J721E_IOPAD(0x210, PIN_INPUT, 7) /* (W3) MCAN1_RX.GPIO1_3 */
 		>;
 	};
 
@@ -308,14 +388,81 @@
 		pinctrl-single,pins = <
 			J721E_IOPAD(0x254, PIN_INPUT, 0) /* (R29) MMC1_CMD */
 			J721E_IOPAD(0x250, PIN_INPUT, 0) /* (P25) MMC1_CLK */
+			J721E_IOPAD(0x2ac, PIN_INPUT, 0) /* (P25) MMC1_CLKLB */
 			J721E_IOPAD(0x24c, PIN_INPUT, 0) /* (R24) MMC1_DAT0 */
 			J721E_IOPAD(0x248, PIN_INPUT, 0) /* (P24) MMC1_DAT1 */
 			J721E_IOPAD(0x244, PIN_INPUT, 0) /* (R25) MMC1_DAT2 */
 			J721E_IOPAD(0x240, PIN_INPUT, 0) /* (R26) MMC1_DAT3 */
 			J721E_IOPAD(0x258, PIN_INPUT, 0) /* (P23) MMC1_SDCD */
 			J721E_IOPAD(0x25c, PIN_INPUT, 0) /* (R28) MMC1_SDWP */
-			J721E_IOPAD(0x2ac, PIN_INPUT, 0)
 		>;
+	};
+
+	dp0_pins_default: dp0_pins_default {
+		pinctrl-single,pins = <
+			J721E_IOPAD(0x1c4, PIN_INPUT, 5) /* SPI0_CS1.DP0_HPD */
+		>;
+	};
+
+	sw10_button_pins_default: sw10_button_pins_default {
+		pinctrl-single,pins = <
+			J721E_IOPAD(0x0, PIN_INPUT, 7) /* (AC18) EXTINTn.GPIO0_0 */
+		>;
+	};
+
+	vdd_sd_dv_alt_pins_default: vdd_sd_dv_alt_pins_default {
+		pinctrl-single,pins = <
+			J721E_IOPAD(0x1d8, PIN_INPUT, 7) /* (W4) SPI1_CS1.GPIO0_117 */
+		>;
+	};
+};
+
+&dss {
+	status = "ok";
+};
+
+&dss_ports {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	port@0 {
+		reg = <0>;
+
+		dpi_out_real0: endpoint {
+			remote-endpoint = <&dp_bridge_input>;
+		};
+	};
+};
+
+&serdes_wiz4 {
+	lane0-mode = <PHY_TYPE_DP>;
+	lane1-mode = <PHY_TYPE_DP>;
+	lane2-mode = <PHY_TYPE_DP>;
+	lane3-mode = <PHY_TYPE_DP>;
+};
+
+&mhdp {
+	status = "ok";
+	pinctrl-names = "default";
+	pinctrl-0 = <&dp0_pins_default>;
+};
+
+&dp0_ports {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	port@0 {
+		reg = <0>;
+		dp_bridge_input: endpoint {
+			remote-endpoint = <&dpi_out_real0>;
+		};
+	};
+
+	port@1 {
+		reg = <1>;
+		dp_bridge_output: endpoint {
+			remote-endpoint = <&dp_connector_in>;
+		};
 	};
 };
 
@@ -371,6 +518,14 @@
 		interrupts = <11 IRQ_TYPE_EDGE_FALLING>;
 		interrupt-controller;
 		#interrupt-cells = <2>;
+
+		p0 {
+			/* P0 - DP0_PWR_SW_EN */
+			gpio-hog;
+			gpios = <0 GPIO_ACTIVE_HIGH>;
+			output-high;
+			line-name = "DP0_PWR_SW_EN";
+		};
 	};
 };
 
@@ -447,13 +602,12 @@
 	phy0: ethernet-phy@0 {
 		reg = <0>;
 		ti,rx-internal-delay = <DP83867_RGMIIDCTL_2_00_NS>;
-		ti,tx-internal-delay = <DP83867_RGMIIDCTL_2_00_NS>;
 		ti,fifo-depth = <DP83867_PHYCR_FIFO_DEPTH_4_B_NIB>;
 	};
 };
 
 &cpsw_port1 {
-	phy-mode = "rgmii-id";
+	phy-mode = "rgmii-rxid";
 	phy-handle = <&phy0>;
 };
 
@@ -497,20 +651,13 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&mcasp10_pins_default>;
 
-	op-mode = <0>;          /* MCASP_IIS_MODE */
-	tdm-slots = <8>;
-	auxclk-fs-ratio = <512>;
+	op-mode = <0>;		/* MCASP_IIS_MODE */
+	tdm-slots = <2>;
+	auxclk-fs-ratio = <256>;
 
-	/*
-	 * 8 serializers
-	 * Enable only 1 serializer per direction for now.
-	 * The actual wireing in the board is:
-	 * 2 2 2 1
-	 * 1 1 1 0
-	 */
-	serial-dir = <  /* 0: INACTIVE, 1: TX, 2: RX */
-		2 0 0 1
-		0 0 0 0
+	serial-dir = <	/* 0: INACTIVE, 1: TX, 2: RX */
+		1 1 1 1
+		2 2 2 0
 	>;
 	tx-num-evt = <0>;
 	rx-num-evt = <0>;
@@ -518,16 +665,46 @@
 	status = "okay";
 };
 
+&usb_serdes_mux {
+	idle-states = <1>, <0>; /* USB0 to SERDES3, USB1 to SERDES1 */
+};
+
+&serdes_ln_ctrl {
+	idle-states = <SERDES0_LANE0_PCIE0_LANE0>, <SERDES0_LANE1_PCIE0_LANE1>,
+		      <SERDES1_LANE0_PCIE1_LANE0>, <SERDES1_LANE1_PCIE1_LANE1>,
+		      <SERDES2_LANE0_PCIE2_LANE0>, <SERDES2_LANE1_PCIE2_LANE1>,
+		      <SERDES3_LANE0_USB3_0_SWAP>, <SERDES3_LANE1_USB3_0>,
+		      <SERDES4_LANE0_EDP_LANE0>, <SERDES4_LANE1_EDP_LANE1>, <SERDES4_LANE2_EDP_LANE2>, <SERDES4_LANE3_EDP_LANE3>;
+};
+
+&serdes_wiz3 {
+	typec-dir-gpios = <&main_gpio1 3 GPIO_ACTIVE_HIGH>;
+	typec-dir-debounce = <300>;	/* TUSB321, tCCB_DEFAULT 133 ms */
+	lane0-mode = <PHY_TYPE_USB3>;
+	lane1-mode = <PHY_TYPE_USB3>;
+};
+
+&serdes3 {
+	serdes3_usb_link: link@0 {
+		reg = <0>;
+		cdns,num-lanes = <2>;
+		#phy-cells = <0>;
+		cdns,phy-type = <PHY_TYPE_USB3>;
+		resets = <&serdes_wiz3 1>, <&serdes_wiz3 2>;
+	};
+};
+
 &usbss0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&main_usbss0_pins_default>;
-	ti,usb2-only;
 	ti,vbus-divider;
 };
 
 &usb0 {
 	dr_mode = "otg";
-	maximum-speed = "high-speed";
+	maximum-speed = "super-speed";
+	phys = <&serdes3_usb_link>;
+	phy-names = "cdns3,usb3-phy";
 };
 
 &usbss1 {
@@ -545,18 +722,129 @@
 	/* eMMC */
 	non-removable;
 	ti,driver-strength-ohm = <50>;
-	mmc-hs400-1_8v;
+	disable-wp;
 };
 
 &main_sdhci1 {
 	/* SD/MMC */
 	vmmc-supply = <&vdd_mmc1>;
-	vqmmc-supply = <&ldo1_reg>;
+	vqmmc-supply = <&vdd_sd_dv_alt>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&main_mmc1_pins_default>;
+	disable-wp;
 };
 
 &main_sdhci2 {
 	/* Unused */
 	status = "disabled";
+};
+
+&serdes_wiz0 {
+	lane0-mode = <PHY_TYPE_PCIE>;
+	lane1-mode = <PHY_TYPE_PCIE>;
+};
+
+&serdes0 {
+	serdes0_pcie_link: link@0 {
+		reg = <0>;
+		cdns,num-lanes = <1>;
+		#phy-cells = <0>;
+		cdns,phy-type = <PHY_TYPE_PCIE>;
+		resets = <&serdes_wiz0 1>;
+	};
+};
+
+&serdes_wiz1 {
+	lane0-mode = <PHY_TYPE_PCIE>;
+	lane1-mode = <PHY_TYPE_PCIE>;
+};
+
+&serdes1 {
+	serdes1_pcie_link: link@0 {
+		reg = <0>;
+		cdns,num-lanes = <2>;
+		#phy-cells = <0>;
+		cdns,phy-type = <PHY_TYPE_PCIE>;
+		resets = <&serdes_wiz1 1>, <&serdes_wiz1 2>;
+	};
+};
+
+&serdes_wiz2 {
+	lane0-mode = <PHY_TYPE_PCIE>;
+	lane1-mode = <PHY_TYPE_PCIE>;
+};
+
+&serdes2 {
+	serdes2_pcie_link: link@0 {
+		reg = <0>;
+		cdns,num-lanes = <2>;
+		#phy-cells = <0>;
+		cdns,phy-type = <PHY_TYPE_PCIE>;
+		resets = <&serdes_wiz2 1>, <&serdes_wiz2 2>;
+	};
+};
+
+&pcie0 {
+	pci-mode = <PCI_MODE_RC>;
+	num-lanes = <1>;
+};
+
+&pcie1 {
+	pci-mode = <PCI_MODE_RC>;
+	num-lanes = <2>;
+};
+
+&pcie2 {
+	pci-mode = <PCI_MODE_RC>;
+	num-lanes = <2>;
+};
+
+&pcie0_rc {
+	reset-gpios = <&exp1 6 GPIO_ACTIVE_HIGH>;
+	phys = <&serdes0_pcie_link>;
+	phy-names = "pcie_phy";
+};
+
+&pcie1_rc {
+	reset-gpios = <&exp1 2 GPIO_ACTIVE_HIGH>;
+	phys = <&serdes1_pcie_link>;
+	phy-names = "pcie_phy";
+};
+
+&pcie2_rc {
+	reset-gpios = <&exp2 20 GPIO_ACTIVE_HIGH>;
+	phys = <&serdes2_pcie_link>;
+	phy-names = "pcie_phy";
+};
+
+&tscadc0 {
+	adc {
+		ti,adc-channels = <0 1 2 3 4 5 6 7>;
+	};
+};
+
+&tscadc1 {
+	adc {
+		ti,adc-channels = <0 1 2 3 4 5 6 7>;
+	};
+};
+
+/* uart2 assigned to cpsw9g eth-switch fw running on remote CPU core */
+&main_uart2 {
+	status = "disabled";
+};
+
+&pcie0_ep {
+	phys = <&serdes0_pcie_link>;
+	phy-names = "pcie_phy";
+};
+
+&pcie1_ep {
+	phys = <&serdes1_pcie_link>;
+	phy-names = "pcie_phy";
+};
+
+&pcie2_ep {
+	phys = <&serdes2_pcie_link>;
+	phy-names = "pcie_phy";
 };

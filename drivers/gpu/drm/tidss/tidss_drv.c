@@ -117,6 +117,64 @@ static const struct dev_pm_ops tidss_pm_ops = {
  * Platform driver
  */
 
+static int tidss_init_remote_device(struct tidss_device *tidss)
+{
+	int ret;
+	struct device *dev = tidss->dev;
+	struct device_node *dss_remote_dev_node;
+	const char *name;
+
+	dss_remote_dev_node = of_get_child_by_name(dev->of_node, "dss-remote");
+	if (!dss_remote_dev_node)
+		return 0;
+
+	if (!of_find_property(dss_remote_dev_node, "remote-name", NULL)) {
+		ret = 0;
+		goto out;
+	}
+
+	ret = of_property_read_string(dss_remote_dev_node, "remote-name", &name);
+	if (ret) {
+		dev_err(dev, "%s: could not read remote-name property\n", __func__);
+		goto out;
+	}
+
+	tidss->rdev = rpmsg_remotedev_get_named_device(name);
+	if (!tidss->rdev) {
+		ret = -EPROBE_DEFER;
+		goto out;
+	} else if (IS_ERR(tidss->rdev)) {
+		ret = PTR_ERR(tidss->rdev);
+		goto out;
+	}
+
+	tidss->rdev->cb_data = tidss;
+
+	if (tidss->rdev->device.display.ops->ready == NULL ||
+			tidss->rdev->device.display.ops->get_res_info == NULL ||
+			tidss->rdev->device.display.ops->commit == NULL) {
+		dev_err(dev, "%s: rpmsg remotedev ops not complete\n", __func__);
+		ret = -EINVAL;
+		goto disconnect;
+	}
+
+	/* Cant really do much if the remotedev is not ready yet */
+	if (!tidss->rdev->device.display.ops->ready(tidss->rdev)) {
+		ret = -EPROBE_DEFER;
+		goto disconnect;
+	}
+
+	goto out;
+
+disconnect:
+	rpmsg_remotedev_put_device(tidss->rdev);
+	tidss->rdev->cb_data = NULL;
+	tidss->rdev = NULL;
+out:
+	of_node_put(dss_remote_dev_node);
+	return ret;
+}
+
 static int tidss_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -134,11 +192,17 @@ static int tidss_probe(struct platform_device *pdev)
 	tidss->dev = dev;
 	tidss->features = of_device_get_match_data(dev);
 
+	ret = tidss_init_remote_device(tidss);
+	if (ret)
+		return ret;
+
 	platform_set_drvdata(pdev, tidss);
 
 	ddev = drm_dev_alloc(&tidss_driver, dev);
-	if (IS_ERR(ddev))
-		return PTR_ERR(ddev);
+	if (IS_ERR(ddev)) {
+		ret = PTR_ERR(ddev);
+		goto err_fini_rdev;
+	}
 
 	tidss->ddev = ddev;
 	ddev->dev_private = tidss;
@@ -163,10 +227,10 @@ static int tidss_probe(struct platform_device *pdev)
 		goto err_runtime_suspend;
 	}
 
-	irq = platform_get_irq(pdev, 0);
+	irq = tidss->dispc_ops->get_irq(tidss->dispc);
 	if (irq < 0) {
 		ret = irq;
-		dev_err(dev, "platform_get_irq failed: %d\n", ret);
+		dev_err(dev, "failed to get dispc irq: %d\n", ret);
 		goto err_modeset_cleanup;
 	}
 
@@ -177,6 +241,14 @@ static int tidss_probe(struct platform_device *pdev)
 	}
 
 	drm_kms_helper_poll_init(ddev);
+
+	if (tidss->dispc_ops->has_writeback(tidss->dispc)) {
+		ret = tidss_wb_init(ddev);
+		if (ret)
+			dev_warn(dev, "failed to initialize writeback\n");
+		else
+			tidss->wb_initialized = true;
+	}
 
 	ret = drm_dev_register(ddev, 0);
 	if (ret) {
@@ -191,6 +263,9 @@ static int tidss_probe(struct platform_device *pdev)
 	return 0;
 
 err_poll_fini:
+	if (tidss->wb_initialized)
+		tidss_wb_cleanup(ddev);
+
 	drm_kms_helper_poll_fini(ddev);
 
 	drm_atomic_helper_shutdown(ddev);
@@ -198,7 +273,7 @@ err_poll_fini:
 	drm_irq_uninstall(ddev);
 
 err_modeset_cleanup:
-	drm_mode_config_cleanup(ddev);
+	tidss_modeset_cleanup(tidss);
 
 err_runtime_suspend:
 #ifndef CONFIG_PM
@@ -210,6 +285,10 @@ err_runtime_suspend:
 
 err_disable_pm:
 	pm_runtime_disable(dev);
+
+err_fini_rdev:
+	if (tidss->rdev)
+		rpmsg_remotedev_put_device(tidss->rdev);
 
 	drm_dev_put(ddev);
 
@@ -226,13 +305,16 @@ static int tidss_remove(struct platform_device *pdev)
 
 	drm_dev_unregister(ddev);
 
+	if (tidss->wb_initialized)
+		tidss_wb_cleanup(ddev);
+
 	drm_kms_helper_poll_fini(ddev);
 
 	drm_atomic_helper_shutdown(ddev);
 
 	drm_irq_uninstall(ddev);
 
-	drm_mode_config_cleanup(ddev);
+	tidss_modeset_cleanup(tidss);
 
 #ifndef CONFIG_PM
 	/* If we don't have PM, we need to call suspend manually */

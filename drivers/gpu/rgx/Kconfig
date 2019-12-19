@@ -1,0 +1,7 @@
+config PVR_RGX
+	tristate "PowerVR RGX"
+	depends on PREEMPT
+	depends on SYNC_FILE
+	default n
+	help
+	  Support for the PowerVR RGX 3D core
