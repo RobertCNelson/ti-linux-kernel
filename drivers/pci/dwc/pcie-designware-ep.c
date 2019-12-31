@@ -165,9 +165,11 @@ static void dw_pcie_ep_clear_bar(struct pci_epc *epc, u8 func_no,
 	if (pci->ops->disable_atu)
 		pci->ops->disable_atu(pci, 0, atu_index,
 				      DW_PCIE_REGION_INBOUND);
-	else
+	else {
 		dw_pcie_disable_atu(pci, atu_index, DW_PCIE_REGION_INBOUND);
-	clear_bit(atu_index, ep->ib_window_map);
+		clear_bit(atu_index, ep->ib_window_map);
+	}
+
 }
 
 static int dw_pcie_ep_set_bar(struct pci_epc *epc, u8 func_no,

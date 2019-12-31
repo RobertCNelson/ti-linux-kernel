@@ -123,6 +123,10 @@
 #define MAX_IATU_IN			256
 #define MAX_IATU_OUT			256
 
+/* Maximum number of inbound/outbound iATUs */
+#define MAX_IATU_IN			256
+#define MAX_IATU_OUT			256
+
 struct pcie_port;
 struct dw_pcie;
 struct dw_pcie_ep;
