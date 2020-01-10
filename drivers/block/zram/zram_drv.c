@@ -429,7 +429,6 @@ static ssize_t backing_dev_show(struct device *dev,
 	ssize_t ret;
 
 	down_read(&zram->init_lock);
-
 	file = zram->backing_dev;
 	if (!file) {
 		memcpy(buf, "none\n", 5);
