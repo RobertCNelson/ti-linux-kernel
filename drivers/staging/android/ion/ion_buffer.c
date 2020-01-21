@@ -9,34 +9,9 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
+#include <linux/dma-noncoherent.h>
 
 #include "ion_private.h"
-
-/* this function should only be called while dev->lock is held */
-static void ion_buffer_add(struct ion_device *dev,
-			   struct ion_buffer *buffer)
-{
-	struct rb_node **p = &dev->buffers.rb_node;
-	struct rb_node *parent = NULL;
-	struct ion_buffer *entry;
-
-	while (*p) {
-		parent = *p;
-		entry = rb_entry(parent, struct ion_buffer, node);
-
-		if (buffer < entry) {
-			p = &(*p)->rb_left;
-		} else if (buffer > entry) {
-			p = &(*p)->rb_right;
-		} else {
-			pr_err("%s: buffer already found.", __func__);
-			BUG();
-		}
-	}
-
-	rb_link_node(&buffer->node, parent, p);
-	rb_insert_color(&buffer->node, &dev->buffers);
-}
 
 /* this function should only be called while dev->lock is held */
 static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
@@ -90,9 +65,6 @@ static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
 
 	INIT_LIST_HEAD(&buffer->attachments);
 	mutex_init(&buffer->lock);
-	mutex_lock(&dev->buffer_lock);
-	ion_buffer_add(dev, buffer);
-	mutex_unlock(&dev->buffer_lock);
 	return buffer;
 
 err1:
@@ -196,6 +168,24 @@ int ion_buffer_zero(struct ion_buffer *buffer)
 }
 EXPORT_SYMBOL_GPL(ion_buffer_zero);
 
+void ion_buffer_prep_noncached(struct ion_buffer *buffer)
+{
+	struct scatterlist *sg;
+	struct sg_table *table;
+	int i;
+
+	if (WARN_ONCE(!buffer || !buffer->sg_table,
+		      "%s needs a buffer and a sg_table", __func__) ||
+	    buffer->flags & ION_FLAG_CACHED)
+		return;
+
+	table = buffer->sg_table;
+
+	for_each_sg(table->sgl, sg, table->orig_nents, i)
+		arch_dma_prep_coherent(sg_page(sg), sg->length);
+}
+EXPORT_SYMBOL_GPL(ion_buffer_prep_noncached);
+
 void ion_buffer_release(struct ion_buffer *buffer)
 {
 	if (buffer->kmap_cnt > 0) {
@@ -225,9 +215,6 @@ int ion_buffer_destroy(struct ion_device *dev, struct ion_buffer *buffer)
 	}
 
 	heap = buffer->heap;
-	mutex_lock(&dev->buffer_lock);
-	rb_erase(&buffer->node, &dev->buffers);
-	mutex_unlock(&dev->buffer_lock);
 
 	if (heap->flags & ION_HEAP_FLAG_DEFER_FREE)
 		ion_heap_freelist_add(heap, buffer);

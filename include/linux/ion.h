@@ -22,7 +22,6 @@
 
 /**
  * struct ion_buffer - metadata for a particular buffer
- * @node:		node in the ion_device buffers tree
  * @list:		element in list of deferred freeable buffers
  * @heap:		back pointer to the heap the buffer came from
  * @flags:		buffer specific flags
@@ -37,10 +36,7 @@
  * @attachments:	list of devices attached to this buffer
  */
 struct ion_buffer {
-	union {
-		struct rb_node node;
-		struct list_head list;
-	};
+	struct list_head list;
 	struct ion_heap *heap;
 	unsigned long flags;
 	unsigned long private_flags;
@@ -280,6 +276,19 @@ int ion_heap_map_user(struct ion_heap *heap, struct ion_buffer *buffer,
 int ion_buffer_zero(struct ion_buffer *buffer);
 
 /**
+ * ion_buffer_prep_noncached - flush cache before non-cached mapping
+ *
+ * @buffer:		ion_buffer to flush
+ *
+ * The memory allocated by the heap could be in the CPU cache. To map
+ * this memory as non-cached, we need to flush the associated cache
+ * first. Without the flush, it is possible for stale dirty cache lines
+ * to be evicted after the ION client started writing into this buffer,
+ * leading to data corruption.
+ */
+void ion_buffer_prep_noncached(struct ion_buffer *buffer);
+
+/**
  * ion_alloc - Allocates an ion buffer of given size from given heap
  *
  * @len:               size of the buffer to be allocated.
@@ -357,6 +366,8 @@ static inline int ion_buffer_zero(struct ion_buffer *buffer)
 {
 	return -EINVAL;
 }
+
+static inline void ion_buffer_prep_noncached(struct ion_buffer *buffer) {}
 
 static inline struct dma_buf *ion_alloc(size_t len, unsigned int heap_id_mask,
 					unsigned int flags)
