@@ -50,7 +50,6 @@ void rproc_exit_sysfs(void);
 void rproc_free_vring(struct rproc_vring *rvring);
 int rproc_alloc_vring(struct rproc_vdev *rvdev, int i);
 
-void *rproc_da_to_va(struct rproc *rproc, u64 da, int len);
 phys_addr_t rproc_va_to_pa(void *cpu_addr);
 int rproc_trigger_recovery(struct rproc *rproc);
 
@@ -62,6 +61,14 @@ struct resource_table *rproc_elf_find_loaded_rsc_table(struct rproc *rproc,
 						       const struct firmware *fw);
 struct rproc_mem_entry *
 rproc_find_carveout_by_name(struct rproc *rproc, const char *name, ...);
+
+int rproc_elf64_sanity_check(struct rproc *rproc, const struct firmware *fw);
+u32 rproc_elf64_get_boot_addr(struct rproc *rproc, const struct firmware *fw);
+int rproc_elf64_load_segments(struct rproc *rproc, const struct firmware *fw);
+int rproc_elf64_load_rsc_table(struct rproc *rproc, const struct firmware *fw);
+struct resource_table *
+rproc_elf64_find_loaded_rsc_table(struct rproc *rproc,
+				  const struct firmware *fw);
 
 static inline
 int rproc_fw_sanity_check(struct rproc *rproc, const struct firmware *fw)
