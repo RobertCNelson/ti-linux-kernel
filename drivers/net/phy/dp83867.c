@@ -436,6 +436,7 @@ static int dp83867_config_init(struct phy_device *phydev)
 		val |= DP83867_CFG3_INT_OE;
 
 	val |= DP83867_CFG3_ROBUST_AUTO_MDIX;
+
 	phy_write(phydev, DP83867_CFG3, val);
 
 	if (dp83867->port_mirroring != DP83867_PORT_MIRROING_KEEP)
