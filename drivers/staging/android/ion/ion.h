@@ -347,4 +347,9 @@ static inline struct ion_heap *ion_chunk_heap_create(phys_addr_t base, size_t si
 }
 #endif
 
+#ifdef CONFIG_ION_MODULE
+int ion_add_cma_heaps(void);
+int ion_system_heap_create(void);
+int ion_system_contig_heap_create(void);
+#endif
 #endif /* _ION_H */
