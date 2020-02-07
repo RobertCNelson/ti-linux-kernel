@@ -203,7 +203,7 @@ PVRSRV_ERROR SysDevInit(void *pvOSDevice, PVRSRV_DEVICE_CONFIG **ppsDevConfig)
 		return PVRSRV_ERROR_INVALID_DEVICE;
 	}
 
-	dma_set_mask(pvOSDevice, DMA_BIT_MASK(32));
+	dma_set_mask(pvOSDevice, DMA_BIT_MASK(40));
 
 	/*
 	 * Setup information about physical memory heap(s) we have
