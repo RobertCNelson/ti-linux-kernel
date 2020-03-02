@@ -237,6 +237,7 @@ dtb-$(CONFIG_ARCH_KEYSTONE) += \
 	keystone-k2l-evm.dtb \
 	keystone-k2e-evm.dtb \
 	keystone-k2g-evm.dtb \
+	keystone-k2g-evm-lcd.dtb \
 	keystone-k2g-ice.dtb
 dtb-$(CONFIG_MACH_KIRKWOOD) += \
 	kirkwood-b3.dtb \
@@ -803,9 +804,10 @@ dtb-$(CONFIG_SOC_DRA7XX) += \
 	dra72-evm-revc.dtb \
 	dra71-evm.dtb \
 	dra76-evm.dtb
-ifeq ($(CONFIG_SOC_DRA7XX),y)
-subdir-y += ti
-endif
+dtb-merge-$(CONFIG_SOC_DRA7XX) += \
+	am57xx-evm.dtb \
+	am57xx-evm-reva3.dtb \
+	dra71-evm-nand.dtb
 dtb-$(CONFIG_ARCH_ORION5X) += \
 	orion5x-kuroboxpro.dtb \
 	orion5x-lacie-d2-network.dtb \
@@ -1308,3 +1310,11 @@ dtb-$(CONFIG_ARCH_ASPEED) += \
 	aspeed-bmc-opp-zaius.dtb \
 	aspeed-bmc-portwell-neptune.dtb \
 	aspeed-bmc-quanta-q71l.dtb
+
+always		+= $(dtb-merge-y)
+
+$(addprefix $(obj)/,$(dtb-merge-y)): TI_DTBOS
+	@$(srctree)/scripts/dtb-merge $(srctree) $(objtree) $@ $(objtree)/scripts/dtc/fdtoverlay $(src)/ti
+
+TI_DTBOS:
+	$(Q)$(MAKE) $(build)=$(src)/ti
