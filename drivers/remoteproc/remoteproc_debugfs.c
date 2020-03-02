@@ -41,11 +41,14 @@ static ssize_t rproc_trace_read(struct file *filp, char __user *userbuf,
 {
 	struct rproc_debug_trace *data = filp->private_data;
 	struct rproc_mem_entry *trace = &data->trace_mem;
-	void *va;
+	void *va = trace->va;
 	char buf[100];
 	int len;
 
-	va = rproc_da_to_va(data->rproc, trace->da, trace->len);
+	if (!va) {
+		va = rproc_da_to_va(data->rproc, trace->da, trace->len);
+		trace->va = va;
+	}
 
 	if (!va) {
 		len = scnprintf(buf, sizeof(buf), "Trace %s not available\n",
@@ -187,7 +190,8 @@ static const struct file_operations rproc_crash_ops = {
 /* Expose resource table content via debugfs */
 static int rproc_rsc_table_show(struct seq_file *seq, void *p)
 {
-	static const char * const types[] = {"carveout", "devmem", "trace", "vdev"};
+	static const char * const types[] = {"carveout", "devmem", "trace",
+					     "vdev", "preload", "postload"};
 	struct rproc *rproc = seq->private;
 	struct resource_table *table = rproc->table_ptr;
 	struct fw_rsc_carveout *c;
@@ -195,6 +199,7 @@ static int rproc_rsc_table_show(struct seq_file *seq, void *p)
 	struct fw_rsc_trace *t1;
 	struct fw_rsc_trace2 *t2;
 	struct fw_rsc_vdev *v;
+	struct fw_rsc_vendor *vr;
 	int i, j;
 
 	if (!table) {
@@ -282,6 +287,16 @@ static int rproc_rsc_table_show(struct seq_file *seq, void *p)
 				seq_printf(seq, "    Physical Address 0x%x\n\n",
 					   v->vring[j].pa);
 			}
+			break;
+		case RSC_PRELOAD_VENDOR:
+		case RSC_POSTLOAD_VENDOR:
+			vr = rsc;
+			seq_printf(seq, "Entry %d is of type vendor-%s\n",
+				   i, types[hdr->type]);
+			seq_printf(seq, "  Vendor sub-type %d version %d\n",
+				   vr->u.st.st_type, vr->u.st.st_ver);
+			seq_printf(seq, "  Vendor resource size %d\n",
+				   vr->size);
 			break;
 		default:
 			seq_printf(seq, "Unknown resource type found: %d [hdr: %pK]\n",

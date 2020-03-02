@@ -8,9 +8,9 @@
 
 #include <linux/device.h>
 #include <linux/dma-mapping.h>
+#include <linux/dmaengine.h>
 #include <linux/slab.h>
 #include <linux/module.h>
-
 #include <linux/pci-epc.h>
 #include <linux/pci-epf.h>
 #include <linux/pci-ep-cfs.h>
@@ -19,6 +19,134 @@ static DEFINE_MUTEX(pci_epf_mutex);
 
 static struct bus_type pci_epf_bus_type;
 static const struct device_type pci_epf_type;
+
+static void pci_epf_dma_callback(void *param)
+{
+	struct pci_epf *epf = param;
+
+	complete(&epf->transfer_complete);
+}
+
+/**
+ * pci_epf_data_transfer() - Helper to use dmaengine API to transfer data
+ *			     between PCIe EP and remote PCIe RC
+ * @epf: the EPF device that performs the data transfer operation
+ * @dma_dst: The destination address of the data transfer. It can be a physical
+ *	     address given by pci_epc_mem_alloc_addr or DMA mapping APIs.
+ * @dma_src: The source address of the data transfer. It can be a physical
+ *	     address given by pci_epc_mem_alloc_addr or DMA mapping APIs.
+ * @len: The size of the data transfer
+ *
+ * Helper to use dmaengine API to transfer data between PCIe EP and remote PCIe
+ * RC. The source and destination address can be a physical address given by
+ * pci_epc_mem_alloc_addr or the one obtained using DMA mapping APIs.
+ *
+ * The function returns '0' on success and negative value on failure.
+ */
+int pci_epf_data_transfer(struct pci_epf *epf, dma_addr_t dma_dst,
+			  dma_addr_t dma_src, size_t len)
+{
+	enum dma_ctrl_flags flags = DMA_CTRL_ACK | DMA_PREP_INTERRUPT;
+	struct dma_chan *chan = epf->dma_chan;
+	struct dma_async_tx_descriptor *tx;
+	struct device *dev = &epf->dev;
+	dma_cookie_t cookie;
+	int ret;
+
+	if (IS_ERR_OR_NULL(epf)) {
+		dev_err(dev, "Invalid EPF device\n");
+		return -EINVAL;
+	}
+
+	if (IS_ERR_OR_NULL(chan)) {
+		dev_err(dev, "Invalid DMA memcpy channel\n");
+		return -EINVAL;
+	}
+
+	tx = dmaengine_prep_dma_memcpy(chan, dma_dst, dma_src, len, flags);
+	if (!tx) {
+		dev_err(dev, "Failed to prepare DMA memcpy\n");
+		return -EIO;
+	}
+
+	tx->callback = pci_epf_dma_callback;
+	tx->callback_param = epf;
+	cookie = tx->tx_submit(tx);
+	reinit_completion(&epf->transfer_complete);
+
+	ret = dma_submit_error(cookie);
+	if (ret) {
+		dev_err(dev, "Failed to do DMA tx_submit %d\n", cookie);
+		return -EIO;
+	}
+
+	dma_async_issue_pending(chan);
+	ret = wait_for_completion_interruptible(&epf->transfer_complete);
+	if (ret < 0) {
+		dmaengine_terminate_sync(chan);
+		dev_err(dev, "DMA wait_for_completion_timeout\n");
+		return -ETIMEDOUT;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(pci_epf_data_transfer);
+
+/**
+ * pci_epf_init_dma_chan() - Helper to initialize EPF DMA channel
+ * @epf: the EPF device that has to perform the data transfer operation
+ *
+ * Helper to initialize EPF DMA channel.
+ */
+int pci_epf_init_dma_chan(struct pci_epf *epf)
+{
+	struct device *dev = &epf->dev;
+	struct dma_chan *dma_chan;
+	dma_cap_mask_t mask;
+	int ret;
+
+	if (IS_ERR_OR_NULL(epf)) {
+		dev_err(dev, "Invalid EPF device\n");
+		return -EINVAL;
+	}
+
+	dma_cap_zero(mask);
+	dma_cap_set(DMA_MEMCPY, mask);
+
+	dma_chan = dma_request_chan_by_mask(&mask);
+	if (IS_ERR(dma_chan)) {
+		ret = PTR_ERR(dma_chan);
+		if (ret != -EPROBE_DEFER)
+			dev_err(dev, "Failed to get DMA channel\n");
+		return ret;
+	}
+	init_completion(&epf->transfer_complete);
+
+	epf->dma_chan = dma_chan;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(pci_epf_init_dma_chan);
+
+/**
+ * pci_epf_clean_dma_chan() - Helper to cleanup EPF DMA channel
+ * @epf: the EPF device that performed the data transfer operation
+ *
+ * Helper to cleanup EPF DMA channel.
+ */
+void pci_epf_clean_dma_chan(struct pci_epf *epf)
+{
+	struct device *dev = &epf->dev;
+
+	if (IS_ERR_OR_NULL(epf)) {
+		dev_err(dev, "Invalid EPF device\n");
+		return;
+	}
+
+	dma_release_channel(epf->dma_chan);
+	epf->dma_chan = NULL;
+}
+EXPORT_SYMBOL_GPL(pci_epf_clean_dma_chan);
 
 /**
  * pci_epf_unbind() - Notify the function driver that the binding between the
@@ -159,24 +287,37 @@ EXPORT_SYMBOL_GPL(pci_epf_remove_vepf);
  * pci_epf_free_space() - free the allocated PCI EPF register space
  * @addr: the virtual address of the PCI EPF register space
  * @bar: the BAR number corresponding to the register space
+ * @type: Identifies if the allocated space is for primary EPC or secondary EPC
  *
  * Invoke to free the allocated PCI EPF register space.
  */
-void pci_epf_free_space(struct pci_epf *epf, void *addr, enum pci_barno bar)
+void pci_epf_free_space(struct pci_epf *epf, void *addr, enum pci_barno bar,
+			enum pci_epc_interface_type type)
 {
 	struct device *dev = epf->epc->dev.parent;
+	struct pci_epf_bar *epf_bar;
+	struct pci_epc *epc;
 
 	if (!addr)
 		return;
 
-	dma_free_coherent(dev, epf->bar[bar].size, addr,
-			  epf->bar[bar].phys_addr);
+	if (type == PRIMARY_INTERFACE) {
+		epc = epf->epc;
+		epf_bar = epf->bar;
+	} else {
+		epc = epf->sec_epc;
+		epf_bar = epf->sec_epc_bar;
+	}
 
-	epf->bar[bar].phys_addr = 0;
-	epf->bar[bar].addr = NULL;
-	epf->bar[bar].size = 0;
-	epf->bar[bar].barno = 0;
-	epf->bar[bar].flags = 0;
+	dev = epc->dev.parent;
+	dma_free_coherent(dev, epf_bar[bar].size, addr,
+			  epf_bar[bar].phys_addr);
+
+	epf_bar[bar].phys_addr = 0;
+	epf_bar[bar].addr = NULL;
+	epf_bar[bar].size = 0;
+	epf_bar[bar].barno = 0;
+	epf_bar[bar].flags = 0;
 }
 EXPORT_SYMBOL_GPL(pci_epf_free_space);
 
@@ -185,15 +326,18 @@ EXPORT_SYMBOL_GPL(pci_epf_free_space);
  * @size: the size of the memory that has to be allocated
  * @bar: the BAR number corresponding to the allocated register space
  * @align: alignment size for the allocation region
+ * @type: Identifies if the allocation is for primary EPC or secondary EPC
  *
  * Invoke to allocate memory for the PCI EPF register space.
  */
 void *pci_epf_alloc_space(struct pci_epf *epf, size_t size, enum pci_barno bar,
-			  size_t align)
+			  size_t align, enum pci_epc_interface_type type)
 {
-	void *space;
-	struct device *dev = epf->epc->dev.parent;
+	struct pci_epf_bar *epf_bar;
 	dma_addr_t phys_addr;
+	struct pci_epc *epc;
+	struct device *dev;
+	void *space;
 
 	if (size < 128)
 		size = 128;
@@ -203,17 +347,26 @@ void *pci_epf_alloc_space(struct pci_epf *epf, size_t size, enum pci_barno bar,
 	else
 		size = roundup_pow_of_two(size);
 
+	if (type == PRIMARY_INTERFACE) {
+		epc = epf->epc;
+		epf_bar = epf->bar;
+	} else {
+		epc = epf->sec_epc;
+		epf_bar = epf->sec_epc_bar;
+	}
+
+	dev = epc->dev.parent;
 	space = dma_alloc_coherent(dev, size, &phys_addr, GFP_KERNEL);
 	if (!space) {
 		dev_err(dev, "failed to allocate mem space\n");
 		return NULL;
 	}
 
-	epf->bar[bar].phys_addr = phys_addr;
-	epf->bar[bar].addr = space;
-	epf->bar[bar].size = size;
-	epf->bar[bar].barno = bar;
-	epf->bar[bar].flags |= upper_32_bits(size) ?
+	epf_bar[bar].phys_addr = phys_addr;
+	epf_bar[bar].addr = space;
+	epf_bar[bar].size = size;
+	epf_bar[bar].barno = bar;
+	epf_bar[bar].flags |= upper_32_bits(size) ?
 				PCI_BASE_ADDRESS_MEM_TYPE_64 :
 				PCI_BASE_ADDRESS_MEM_TYPE_32;
 
@@ -287,11 +440,9 @@ int __pci_epf_register_driver(struct pci_epf_driver *driver,
 {
 	int ret;
 
-	if (!driver->ops)
-		return -EINVAL;
-
-	if (!driver->ops->bind || !driver->ops->unbind)
-		return -EINVAL;
+	if (!driver->ops || !driver->ops->bind || !driver->ops->unbind)
+		pr_debug("%s: Supports only pci_epf device created using DT\n",
+			 driver->driver.name);
 
 	driver->driver.bus = &pci_epf_bus_type;
 	driver->driver.owner = owner;
@@ -370,26 +521,78 @@ struct pci_epf *pci_epf_create(const char *name)
 }
 EXPORT_SYMBOL_GPL(pci_epf_create);
 
-const struct pci_epf_device_id *
-pci_epf_match_device(const struct pci_epf_device_id *id, struct pci_epf *epf)
+/**
+ * pci_epf_of_create() - create a new PCI EPF device from device tree node
+ * @node: the device node of the PCI EPF device.
+ *
+ * Invoke to create a new PCI EPF device by providing a device tree node
+ * with compatible property.
+ */
+struct pci_epf *pci_epf_of_create(struct device_node *node)
 {
-	if (!id || !epf)
-		return NULL;
+	struct pci_epf *epf;
+	const char *compat;
+	int ret;
 
-	while (*id->name) {
-		if (strcmp(epf->name, id->name) == 0)
-			return id;
-		id++;
+	of_node_get(node);
+
+	ret = of_property_read_string(node, "compatible", &compat);
+	if (ret) {
+		of_node_put(node);
+		return ERR_PTR(ret);
 	}
 
-	return NULL;
+	epf = pci_epf_create(compat);
+	if (!IS_ERR(epf))
+		epf->node = node;
+
+	return epf;
 }
-EXPORT_SYMBOL_GPL(pci_epf_match_device);
+EXPORT_SYMBOL_GPL(pci_epf_of_create);
+
+static void devm_epf_release(struct device *dev, void *res)
+{
+	struct pci_epf *epf = *(struct pci_epf **)res;
+
+	pci_epf_destroy(epf);
+}
+
+/**
+ * devm_pci_epf_of_create() - create a new PCI EPF device from device tree node
+ * @dev: device that is creating the new EPF
+ * @node: the device node of the PCI EPF device.
+ *
+ * Invoke to create a new PCI EPF device by providing a device tree node with
+ * compatible property. While at that, it also associates the device with the
+ * EPF using devres. On driver detach, release function is invoked on the devres
+ * data, where devres data is freed.
+ */
+struct pci_epf *devm_pci_epf_of_create(struct device *dev,
+				       struct device_node *node)
+{
+	struct pci_epf **ptr, *epf;
+
+	ptr = devres_alloc(devm_epf_release, sizeof(*ptr), GFP_KERNEL);
+	if (!ptr)
+		return ERR_PTR(-ENOMEM);
+
+	epf = pci_epf_of_create(node);
+	if (!IS_ERR(epf)) {
+		*ptr = epf;
+		devres_add(dev, ptr);
+	} else {
+		devres_free(ptr);
+	}
+
+	return epf;
+}
+EXPORT_SYMBOL_GPL(devm_pci_epf_of_create);
 
 static void pci_epf_dev_release(struct device *dev)
 {
 	struct pci_epf *epf = to_pci_epf(dev);
 
+	of_node_put(epf->node);
 	kfree(epf->name);
 	kfree(epf);
 }

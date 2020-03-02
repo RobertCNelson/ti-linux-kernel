@@ -10,14 +10,47 @@
 #include "dra7-mmc-iodelay.dtsi"
 #include "dra72x-mmc-iodelay.dtsi"
 #include "am57xx-idk-common.dtsi"
+#include "dra7-ipu-dsp-common.dtsi"
 
 / {
 	model = "TI AM5718 IDK";
 	compatible = "ti,am5718-idk", "ti,am5718", "ti,dra7";
 
+	aliases {
+		ethernet4 = "/pruss1_eth/ethernet-mii0";
+		ethernet5 = "/pruss1_eth/ethernet-mii1";
+	};
+
 	memory@80000000 {
 		device_type = "memory";
 		reg = <0x0 0x80000000 0x0 0x40000000>;
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		ipu2_memory_region: ipu2-memory@95800000 {
+			compatible = "shared-dma-pool";
+			reg = <0x0 0x95800000 0x0 0x3800000>;
+			reusable;
+			status = "okay";
+		};
+
+		dsp1_memory_region: dsp1-memory@99000000 {
+			compatible = "shared-dma-pool";
+			reg = <0x0 0x99000000 0x0 0x4000000>;
+			reusable;
+			status = "okay";
+		};
+
+		ipu1_memory_region: ipu1-memory@9d000000 {
+			compatible = "shared-dma-pool";
+			reg = <0x0 0x9d000000 0x0 0x2000000>;
+			reusable;
+			status = "okay";
+		};
 	};
 
 	leds {
@@ -137,6 +170,39 @@
 			default-state = "off";
 		};
 	};
+
+	/* Dual mac ethernet application node on icss1 */
+	pruss1_eth {
+		status = "okay";
+		compatible = "ti,am57-prueth";
+		prus = <&pru1_0>, <&pru1_1>;
+		firmware-name = "ti-pruss/am57xx-pru0-prueth-fw.elf",
+				"ti-pruss/am57xx-pru1-prueth-fw.elf";
+		ti,pruss-gp-mux-sel = <0>,	/* GP, default */
+				      <4>;	/* MII2, needed for PRUSS1_MII1 */
+		sram = <&ocmcram1>;
+		interrupt-parent = <&pruss1_intc>;
+		mii-rt = <&pruss1_mii_rt>;
+		iep = <&pruss1_iep>;
+
+		ethernet-mii0 {
+			phy-handle = <&pruss1_eth0_phy>;
+			phy-mode = "mii";
+			interrupts = <20>, <22>;
+			interrupt-names = "rx", "tx";
+			/* Filled in by bootloader */
+			local-mac-address = [00 00 00 00 00 00];
+		};
+
+		ethernet-mii1 {
+			phy-handle = <&pruss1_eth1_phy>;
+			phy-mode = "mii";
+			interrupts = <21>, <23>;
+			interrupt-names = "rx", "tx";
+			/* Filled in by bootloader */
+			local-mac-address = [00 00 00 00 00 00];
+		};
+	};
 };
 
 &extcon_usb2 {
@@ -148,21 +214,19 @@
 	load-gpios = <&gpio2 23 GPIO_ACTIVE_LOW>;
 };
 
-&mailbox5 {
+&ipu2 {
 	status = "okay";
-	mbox_ipu1_ipc3x: mbox_ipu1_ipc3x {
-		status = "okay";
-	};
-	mbox_dsp1_ipc3x: mbox_dsp1_ipc3x {
-		status = "okay";
-	};
+	memory-region = <&ipu2_memory_region>;
 };
 
-&mailbox6 {
+&ipu1 {
 	status = "okay";
-	mbox_ipu2_ipc3x: mbox_ipu2_ipc3x {
-		status = "okay";
-	};
+	memory-region = <&ipu1_memory_region>;
+};
+
+&dsp1 {
+	status = "okay";
+	memory-region = <&dsp1_memory_region>;
 };
 
 &pcie1_rc {
@@ -196,3 +260,36 @@
 	};
 };
 
+&vip1 {
+	status = "okay";
+};
+
+&pruss2_mdio {
+	reset-gpios = <&gpio5 9 GPIO_ACTIVE_LOW>;
+	reset-delay-us = <2>;   /* PHY datasheet states 1uS min */
+};
+
+&pruss1_mdio {
+	status = "okay";
+	reset-gpios = <&gpio5 8 GPIO_ACTIVE_LOW>;
+	reset-delay-us = <2>;   /* PHY datasheet states 1uS min */
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	pruss1_eth0_phy: ethernet-phy@0 {
+		reg = <0>;
+		interrupt-parent = <&gpio3>;
+		interrupts = <28 IRQ_TYPE_EDGE_FALLING>;
+	};
+
+	pruss1_eth1_phy: ethernet-phy@1 {
+		reg = <1>;
+		interrupt-parent = <&gpio3>;
+		interrupts = <29 IRQ_TYPE_EDGE_FALLING>;
+	};
+};
+
+&pruss2_eth {
+	ti,pruss-gp-mux-sel = <4>,	/* MII2, needed for PRUSS1_MII0 */
+			      <4>;	/* MII2, needed for PRUSS1_MII1 */
+};
