@@ -19,6 +19,7 @@ enum blk_crypto_mode_num {
 #ifdef CONFIG_BLK_INLINE_ENCRYPTION
 
 #define BLK_CRYPTO_MAX_KEY_SIZE		64
+#define BLK_CRYPTO_MAX_WRAPPED_KEY_SIZE		128
 
 /**
  * struct blk_crypto_key - an inline encryption key
@@ -30,6 +31,8 @@ enum blk_crypto_mode_num {
  * @data_unit_size_bits: log2 of data_unit_size
  * @size: size of this key in bytes (determined by @crypto_mode)
  * @hash: hash of this key, for keyslot manager use only
+ * @is_hw_wrapped: @raw points to a wrapped key to be used by an inline
+ *	encryption hardware that accepts wrapped keys.
  * @raw: the raw bytes of this key.  Only the first @size bytes are used.
  *
  * A blk_crypto_key is immutable once created, and many bios can reference it at
@@ -41,7 +44,8 @@ struct blk_crypto_key {
 	unsigned int data_unit_size_bits;
 	unsigned int size;
 	unsigned int hash;
-	u8 raw[BLK_CRYPTO_MAX_KEY_SIZE];
+	bool is_hw_wrapped;
+	u8 raw[BLK_CRYPTO_MAX_WRAPPED_KEY_SIZE];
 };
 
 #define BLK_CRYPTO_MAX_IV_SIZE		32
@@ -117,7 +121,7 @@ static inline bool bio_crypt_dun_is_contiguous(const struct bio_crypt_ctx *bc,
 	int i = 0;
 	unsigned int inc = bytes >> bc->bc_key->data_unit_size_bits;
 
-	while (inc && i < BLK_CRYPTO_DUN_ARRAY_SIZE) {
+	while (i < BLK_CRYPTO_DUN_ARRAY_SIZE) {
 		if (bc->bc_dun[i] + inc != next_dun[i])
 			return false;
 		inc = ((bc->bc_dun[i] + inc)  < inc);
@@ -187,6 +191,38 @@ static inline bool bio_crypt_ctx_mergeable(struct bio *b_1,
 }
 
 #endif /* CONFIG_BLK_INLINE_ENCRYPTION */
+
+#if IS_ENABLED(CONFIG_DM_DEFAULT_KEY)
+static inline void bio_set_skip_dm_default_key(struct bio *bio)
+{
+	bio->bi_skip_dm_default_key = true;
+}
+
+static inline bool bio_should_skip_dm_default_key(const struct bio *bio)
+{
+	return bio->bi_skip_dm_default_key;
+}
+
+static inline void bio_clone_skip_dm_default_key(struct bio *dst,
+						 const struct bio *src)
+{
+	dst->bi_skip_dm_default_key = src->bi_skip_dm_default_key;
+}
+#else /* CONFIG_DM_DEFAULT_KEY */
+static inline void bio_set_skip_dm_default_key(struct bio *bio)
+{
+}
+
+static inline bool bio_should_skip_dm_default_key(const struct bio *bio)
+{
+	return false;
+}
+
+static inline void bio_clone_skip_dm_default_key(struct bio *dst,
+						 const struct bio *src)
+{
+}
+#endif /* !CONFIG_DM_DEFAULT_KEY */
 
 #endif /* CONFIG_BLOCK */
 

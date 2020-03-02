@@ -3039,7 +3039,7 @@
 
 			qcom,gmu = <&gmu>;
 
-			zap-shader {
+			zap_shader: zap-shader {
 				memory-region = <&gpu_mem>;
 			};
 
@@ -3126,6 +3126,8 @@
 			power-domains = <&gpucc GPU_CX_GDSC>,
 					<&gpucc GPU_GX_GDSC>;
 			power-domain-names = "cx", "gx";
+
+			dma-ranges = <0 0x60000000 0 0x60000000 0 0x20000000>;
 
 			iommus = <&adreno_smmu 5>;
 
