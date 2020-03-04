@@ -8,6 +8,8 @@
 #include <dt-bindings/mux/mux.h>
 #include <dt-bindings/mux/mux-j721e-wiz.h>
 
+#include <dt-bindings/phy/phy.h>
+
 &cbass_main {
 	msmc_ram: sram@70000000 {
 		compatible = "mmio-sram";
@@ -63,6 +65,13 @@
 				      <MUX_IDLE_AS_IS>, <SERDES3_LANE1_USB3_0>,
 				      <SERDES4_LANE0_EDP_LANE0>, <SERDES4_LANE1_EDP_LANE1>, <SERDES4_LANE2_EDP_LANE2>, <SERDES4_LANE3_EDP_LANE3>;
 		};
+
+		usb_serdes_mux: mux-controller@4000 {
+			compatible = "mmio-mux";
+			#mux-control-cells = <1>;
+			mux-reg-masks = <0x4000 0x8000000>, /* USB0 to SERDES0/3 mux */
+					<0x4010 0x8000000>; /* USB1 to SERDES1/2 mux */
+	    };
 	};
 
 	gic500: interrupt-controller@1800000 {
@@ -314,6 +323,56 @@
 			interrupt-names = "cpts";
 			ti,cpts-periodic-outputs = <6>;
 			ti,cpts-ext-ts-inputs = <8>;
+		};
+
+		navss_pat0: pat@31010000 {
+			compatible = "ti,j721e-pat";
+			reg = <0x00 0x31010000 0x00 0x00000100>,
+			      <0x00 0x36400000 0x00 0x00040000>;
+			reg-names = "mmrs",
+				    "table";
+			ti,pat-window-base = <0x48 0x00000000>;
+			ti,pat-window-size = <0x00 0x40000000>;
+		};
+
+		navss_pat1: pat@31011000 {
+			compatible = "ti,j721e-pat";
+			reg = <0x00 0x31011000 0x00 0x00000100>,
+			      <0x00 0x36440000 0x00 0x00040000>;
+			reg-names = "mmrs",
+				    "table";
+			ti,pat-window-base = <0x48 0x40000000>;
+			ti,pat-window-size = <0x00 0x40000000>;
+		};
+
+		navss_pat2: pat@31012000 {
+			compatible = "ti,j721e-pat";
+			reg = <0x00 0x31012000 0x00 0x00000100>,
+			      <0x00 0x36480000 0x00 0x00040000>;
+			reg-names = "mmrs",
+				    "table";
+			ti,pat-window-base = <0x48 0x80000000>;
+			ti,pat-window-size = <0x00 0x40000000>;
+		};
+
+		navss_pat3: pat@31013000 {
+			compatible = "ti,j721e-pat";
+			reg = <0x00 0x31013000 0x00 0x00000100>,
+			      <0x00 0x364C0000 0x00 0x00008000>;
+			reg-names = "mmrs",
+				    "table";
+			ti,pat-window-base = <0x49 0x00000000>;
+			ti,pat-window-size = <0x00 0x80000000>;
+		};
+
+		navss_pat4: pat@31014000 {
+			compatible = "ti,j721e-pat";
+			reg = <0x00 0x31014000 0x00 0x00000100>,
+			      <0x00 0x36500000 0x00 0x00008000>;
+			reg-names = "mmrs",
+				    "table";
+			ti,pat-window-base = <0x49 0x80000000>;
+			ti,pat-window-size = <0x00 0x80000000>;
 		};
 	};
 
@@ -615,6 +674,19 @@
 		dma-coherent;
 		ranges = <0x01000000 0x0 0x10001000  0x00 0x10001000  0x0 0x0010000>,
 			 <0x02000000 0x0 0x10011000  0x00 0x10011000  0x0 0x7fef000>;
+		#interrupt-cells = <1>;
+		interrupt-map-mask = <0 0 0 7>;
+		interrupt-map = <0 0 0 1 &pcie0_intc 0>, /* INT A */
+				<0 0 0 2 &pcie0_intc 0>, /* INT B */
+				<0 0 0 3 &pcie0_intc 0>, /* INT C */
+				<0 0 0 4 &pcie0_intc 0>; /* INT D */
+
+		pcie0_intc: legacy-interrupt-controller {
+			interrupt-controller;
+			#interrupt-cells = <1>;
+			interrupt-parent = <&gic500>;
+			interrupts = <GIC_SPI 312 IRQ_TYPE_EDGE_RISING>;
+		};
 	};
 
 	pcie0_ep: pcie-ep@2900000 {
@@ -663,6 +735,19 @@
 		dma-coherent;
 		ranges = <0x01000000 0x0 0x18001000  0x00 0x18001000  0x0 0x0010000>,
 			 <0x02000000 0x0 0x18011000  0x00 0x18011000  0x0 0x7fef000>;
+		#interrupt-cells = <1>;
+		interrupt-map-mask = <0 0 0 7>;
+		interrupt-map = <0 0 0 1 &pcie1_intc 0>, /* INT A */
+				<0 0 0 2 &pcie1_intc 0>, /* INT B */
+				<0 0 0 3 &pcie1_intc 0>, /* INT C */
+				<0 0 0 4 &pcie1_intc 0>; /* INT D */
+
+		pcie1_intc: legacy-interrupt-controller {
+			interrupt-controller;
+			#interrupt-cells = <2>;
+			interrupt-parent = <&gic500>;
+			interrupts = <GIC_SPI 324 IRQ_TYPE_EDGE_RISING>;
+		};
 	};
 
 	pcie1_ep: pcie-ep@2910000 {
@@ -708,6 +793,19 @@
 		dma-coherent;
 		ranges = <0x01000000 0x00 0x00001000  0x44 0x00001000  0x0 0x0010000>,
 			 <0x02000000 0x00 0x00011000  0x44 0x00011000  0x0 0x7fef000>;
+		#interrupt-cells = <1>;
+		interrupt-map-mask = <0 0 0 7>;
+		interrupt-map = <0 0 0 1 &pcie2_intc 0>, /* INT A */
+				<0 0 0 2 &pcie2_intc 0>, /* INT B */
+				<0 0 0 3 &pcie2_intc 0>, /* INT C */
+				<0 0 0 4 &pcie2_intc 0>; /* INT D */
+
+		pcie2_intc: legacy-interrupt-controller {
+			interrupt-controller;
+			#interrupt-cells = <2>;
+			interrupt-parent = <&gic500>;
+			interrupts = <GIC_SPI 336 IRQ_TYPE_EDGE_RISING>;
+		};
 	};
 
 	pcie2_ep: pcie-ep@2920000 {
@@ -753,6 +851,19 @@
 		dma-coherent;
 		ranges = <0x01000000 0x00 0x00001000  0x44 0x10001000  0x0 0x0010000>,
 			 <0x02000000 0x00 0x00011000  0x44 0x10011000  0x0 0x7fef000>;
+		#interrupt-cells = <1>;
+		interrupt-map-mask = <0 0 0 7>;
+		interrupt-map = <0 0 0 1 &pcie3_intc 0>, /* INT A */
+				<0 0 0 2 &pcie3_intc 0>, /* INT B */
+				<0 0 0 3 &pcie3_intc 0>, /* INT C */
+				<0 0 0 4 &pcie3_intc 0>; /* INT D */
+
+		pcie3_intc: legacy-interrupt-controller {
+			interrupt-controller;
+			#interrupt-cells = <2>;
+			interrupt-parent = <&gic500>;
+			interrupts = <GIC_SPI 348 IRQ_TYPE_EDGE_RISING>;
+		};
 	};
 
 	pcie3_ep: pcie-ep@2930000 {
@@ -774,6 +885,103 @@
 		dma-coherent;
 		#address-cells = <2>;
 		#size-cells = <2>;
+	};
+
+	serdes_wiz4: wiz@5050000 {
+		compatible = "ti,j721e-wiz-10g";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		power-domains = <&k3_pds 297 TI_SCI_PD_EXCLUSIVE>;
+		clocks = <&k3_clks 297 1>, <&k3_clks 297 9>, <&dummy_cmn_refclk>;
+		clock-names = "fck", "core_ref_clk", "ext_ref_clk";
+		num-lanes = <4>;
+		#reset-cells = <1>;
+		ranges;
+
+		assigned-clocks = <&k3_clks 297 9>;
+		assigned-clock-parents = <&k3_clks 297 10>;
+		assigned-clock-rates = <19200000>;
+
+		wiz4_pll0_refclk: pll0-refclk {
+			clocks = <&k3_clks 297 9>, <&dummy_cmn_refclk>;
+			clock-output-names = "wiz4_pll0_refclk";
+			#clock-cells = <0>;
+			assigned-clocks = <&wiz4_pll0_refclk>;
+			assigned-clock-parents = <&k3_clks 297 9>;
+		};
+
+		wiz4_pll1_refclk: pll1-refclk {
+			clocks = <&k3_clks 297 9>, <&dummy_cmn_refclk>;
+			clock-output-names = "wiz4_pll1_refclk";
+			#clock-cells = <0>;
+			assigned-clocks = <&wiz4_pll1_refclk>;
+			assigned-clock-parents = <&k3_clks 297 9>;
+		};
+
+		wiz4_refclk_dig: refclk-dig {
+			clocks = <&k3_clks 297 9>, <&dummy_cmn_refclk>;
+			clock-output-names = "wiz4_refclk_dig";
+			#clock-cells = <0>;
+			assigned-clocks = <&wiz4_refclk_dig>;
+			assigned-clock-parents = <&k3_clks 297 9>;
+		};
+
+		wiz4_cmn_refclk_dig_div: cmn-refclk-dig-div {
+			clocks = <&wiz4_refclk_dig>;
+			#clock-cells = <0>;
+		};
+
+		wiz4_cmn_refclk1_dig_div: cmn-refclk1-dig-div {
+			clocks = <&wiz4_pll1_refclk>;
+			#clock-cells = <0>;
+		};
+
+		serdes4: serdes@5050000 {
+			/* XXX we also map EDP0 registers here as the PHY driver needs those... */
+			compatible = "ti,j721e-serdes-10g";
+			reg = <0x00 0x05050000 0x0 0x00010000>, /* SERDES_10G0 */
+			      <0x00 0x0A030A00 0x0 0x00000040>; /* DSS_EDP0_V2A_CORE_VP_REGS_APB + 30A00 */
+
+			resets = <&serdes_wiz4 0>;
+			reset-names = "torrent_reset";
+			clocks = <&wiz4_pll0_refclk>;
+			clock-names = "refclk";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			torrent_phy_dp: torrent-phy@0{
+				reg = <0>;
+				resets = <&serdes_wiz4 1>;
+				cdns,phy-type = <PHY_TYPE_DP>;
+				cdns,num-lanes = <4>;
+				cdns,max-bit-rate = <5400>;
+				#phy-cells = <0>;
+			};
+		};
+	};
+
+	mhdp: dp-bridge@000A000000 {
+		compatible = "ti,j721e-mhdp8546", "cdns,mhdp8546";
+		reg = <0x00 0x0A000000 0x0 0x30A00>, /* DSS_EDP0_V2A_CORE_VP_REGS_APB - upto PHY mapped area */
+		      <0x00 0x04F40000 0x0 0x20>;    /* DSS_EDP0_INTG_CFG_VP */
+
+		status = "disabled";
+
+		clocks = <&k3_clks 151 36>;
+
+		phys = <&torrent_phy_dp>;
+		phy-names = "dpphy";
+
+		interrupt-parent = <&gic500>;
+		interrupts = <GIC_SPI 614 IRQ_TYPE_LEVEL_HIGH>;
+
+		power-domains = <&k3_pds 151 TI_SCI_PD_EXCLUSIVE>;
+
+		/* TODO: No audio config yet */
+
+		dp0_ports: ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
 	};
 
 	main_uart0: serial@2800000 {
@@ -1153,6 +1361,17 @@
 			clock-names = "core_clk", "phy_clk", "ref_clk";
 			dma-coherent;
 		};
+	};
+
+	gpu: gpu@4e20000000 {
+		compatible = "ti,j721e-pvr", "img,pvr-ge8430";
+		reg = <0x4e 0x20000000 0x00 0x80000>;
+		reg-names = "gpu_regs";
+		interrupts = <GIC_SPI 24 IRQ_TYPE_LEVEL_HIGH>;
+		power-domains = <&k3_pds 125 TI_SCI_PD_EXCLUSIVE>, <&k3_pds 126 TI_SCI_PD_EXCLUSIVE>;
+		power-domain-names = "gpu_0", "gpucore_0";
+		clocks = <&k3_clks 125 0>;
+		clock-names = "ctrl";
 	};
 
 	mcasp0: mcasp@02b00000 {
@@ -1577,6 +1796,322 @@
 		firmware-name = "j7-c71_0-fw";
 	};
 
+	icssg0: icssg@b000000 {
+		compatible = "ti,j721e-icssg";
+		reg = <0x00 0xb000000 0x00 0x80000>;
+		power-domains = <&k3_pds 119 TI_SCI_PD_EXCLUSIVE>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges = <0x0 0x00 0x0b000000 0x100000>;
+		dma-ranges;
+
+		icssg0_mem: memories@0 {
+			reg = <0x0 0x2000>,
+			      <0x2000 0x2000>,
+			      <0x10000 0x10000>;
+			reg-names = "dram0", "dram1",
+				    "shrdram2";
+		};
+
+		icssg0_cfg: cfg@26000 {
+			compatible = "syscon";
+			reg = <0x26000 0x200>;
+		};
+
+		icssg0_coreclk_mux: coreclk-mux {
+			#clock-cells = <0>;
+			clocks = <&k3_clks 119 24>, /* icssg0_core_clk */
+				 <&k3_clks 119 1>;  /* icssg0_iclk */
+			assigned-clocks = <&icssg0_coreclk_mux>;
+			assigned-clock-parents = <&k3_clks 119 1>;
+		};
+
+		icssg0_iepclk_mux: iepclk-mux {
+			#clock-cells = <0>;
+			clocks = <&k3_clks 119 3>,	/* icssg0_iep_clk */
+				 <&icssg0_coreclk_mux>;	/* core_clk */
+			assigned-clocks = <&icssg0_iepclk_mux>;
+			assigned-clock-parents = <&icssg0_coreclk_mux>;
+		};
+
+		icssg0_iep0: iep@2e000 {
+			compatible = "syscon";
+			reg = <0x2e000 0x1000>;
+			clocks = <&icssg0_iepclk_mux>;
+		};
+
+		icssg0_iep1: iep@2f000 {
+			compatible = "syscon";
+			reg = <0x2f000 0x1000>;
+			clocks = <&icssg0_iepclk_mux>;
+		};
+
+		icssg0_mii_rt: mii-rt@32000 {
+			compatible = "syscon";
+			reg = <0x32000 0x100>;
+		};
+
+		icssg0_mii_g_rt: mii-g-rt@33000 {
+			compatible = "syscon";
+			reg = <0x33000 0x1000>;
+		};
+
+		icssg0_intc: interrupt-controller@20000 {
+			compatible = "ti,icssg-intc";
+			reg = <0x20000 0x2000>;
+			interrupt-controller;
+			#interrupt-cells = <1>;
+			interrupts = <GIC_SPI 254 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 255 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 256 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 257 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 258 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 259 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 260 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 261 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "host_intr0", "host_intr1",
+					  "host_intr2", "host_intr3",
+					  "host_intr4", "host_intr5",
+					  "host_intr6", "host_intr7";
+			ti,irqs-shared = /bits/ 8 <0 1 2 3 4 5 6 7>;
+		};
+
+		pru0_0: pru@34000 {
+			compatible = "ti,j721e-pru";
+			reg = <0x34000 0x3000>,
+			      <0x22000 0x100>,
+			      <0x22400 0x100>;
+			reg-names = "iram", "control", "debug";
+			firmware-name = "j7-pru0_0-fw";
+			interrupt-parent = <&icssg0_intc>;
+			interrupts = <16>, <17>;
+			interrupt-names = "vring", "kick";
+		};
+
+		rtu0_0: rtu@4000 {
+			compatible = "ti,j721e-rtu";
+			reg = <0x4000 0x2000>,
+			      <0x23000 0x100>,
+			      <0x23400 0x100>;
+			reg-names = "iram", "control", "debug";
+			firmware-name = "j7-rtu0_0-fw";
+			interrupt-parent = <&icssg0_intc>;
+			interrupts = <20>, <21>;
+			interrupt-names = "vring", "kick";
+		};
+
+		tx_pru0_0: txpru@a000 {
+			compatible = "ti,j721e-tx-pru";
+			reg = <0xa000 0x1800>,
+			      <0x25000 0x100>,
+			      <0x25400 0x100>;
+			reg-names = "iram", "control", "debug";
+			firmware-name = "j7-txpru0_0-fw";
+		};
+
+		pru0_1: pru@38000 {
+			compatible = "ti,j721e-pru";
+			reg = <0x38000 0x3000>,
+			      <0x24000 0x100>,
+			      <0x24400 0x100>;
+			reg-names = "iram", "control", "debug";
+			firmware-name = "j7-pru0_1-fw";
+			interrupt-parent = <&icssg0_intc>;
+			interrupts = <18>, <19>;
+			interrupt-names = "vring", "kick";
+		};
+
+		rtu0_1: rtu@6000 {
+			compatible = "ti,j721e-rtu";
+			reg = <0x6000 0x2000>,
+			      <0x23800 0x100>,
+			      <0x23c00 0x100>;
+			reg-names = "iram", "control", "debug";
+			firmware-name = "j7-rtu0_1-fw";
+			interrupt-parent = <&icssg0_intc>;
+			interrupts = <22>, <23>;
+			interrupt-names = "vring", "kick";
+		};
+
+		tx_pru0_1: txpru@c000 {
+			compatible = "ti,j721e-tx-pru";
+			reg = <0xc000 0x1800>,
+			      <0x25800 0x100>,
+			      <0x25c00 0x100>;
+			reg-names = "iram", "control", "debug";
+			firmware-name = "j7-txpru0_1-fw";
+		};
+
+		icssg0_mdio: mdio@32400 {
+			compatible = "ti,davinci_mdio";
+			reg = <0x32400 0x100>;
+			clocks = <&k3_clks 119 1>;
+			clock-names = "fck";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			bus_freq = <1000000>;
+			status = "disabled";
+		};
+	};
+
+	icssg1: icssg@b100000 {
+		compatible = "ti,j721e-icssg";
+		reg = <0x00 0xb100000 0x00 0x80000>;
+		power-domains = <&k3_pds 120 TI_SCI_PD_EXCLUSIVE>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges = <0x0 0x00 0x0b100000 0x100000>;
+		dma-ranges;
+
+		icssg1_mem: memories@b100000 {
+			reg = <0x0 0x2000>,
+			      <0x2000 0x2000>,
+			      <0x10000 0x10000>;
+			reg-names = "dram0", "dram1",
+				    "shrdram2";
+		};
+
+		icssg1_cfg: cfg@26000 {
+			compatible = "syscon";
+			reg = <0x26000 0x200>;
+		};
+
+		icssg1_coreclk_mux: coreclk-mux {
+			#clock-cells = <0>;
+			clocks = <&k3_clks 120 54>, /* icssg1_core_clk */
+				 <&k3_clks 120 4>;  /* icssg1_iclk */
+			assigned-clocks = <&icssg1_coreclk_mux>;
+			assigned-clock-parents = <&k3_clks 120 4>;
+		};
+
+		icssg1_iepclk_mux: iepclk-mux {
+			#clock-cells = <0>;
+			clocks = <&k3_clks 120 9>,	/* icssg1_iep_clk */
+				 <&icssg1_coreclk_mux>;	/* core_clk */
+			assigned-clocks = <&icssg1_iepclk_mux>;
+			assigned-clock-parents = <&icssg1_coreclk_mux>;
+		};
+
+		icssg1_iep0: iep@2e000 {
+			compatible = "syscon";
+			reg = <0x2e000 0x1000>;
+			clocks = <&icssg1_iepclk_mux>;
+		};
+
+		icssg1_iep1: iep@2f000 {
+			compatible = "syscon";
+			reg = <0x2f000 0x1000>;
+			clocks = <&icssg1_iepclk_mux>;
+		};
+
+		icssg1_mii_rt: mii-rt@32000 {
+			compatible = "syscon";
+			reg = <0x32000 0x100>;
+		};
+
+		icssg1_mii_g_rt: mii-g-rt@33000 {
+			compatible = "syscon";
+			reg = <0x33000 0x1000>;
+		};
+
+		icssg1_intc: interrupt-controller@20000 {
+			compatible = "ti,icssg-intc";
+			reg = <0x20000 0x2000>;
+			interrupt-controller;
+			#interrupt-cells = <1>;
+			interrupts = <GIC_SPI 262 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 263 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 264 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 265 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 266 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 267 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 268 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 269 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "host_intr0", "host_intr1",
+					  "host_intr2", "host_intr3",
+					  "host_intr4", "host_intr5",
+					  "host_intr6", "host_intr7";
+			ti,irqs-shared = /bits/ 8 <0 1 2 3 4 5 6 7>;
+		};
+
+		pru1_0: pru@34000 {
+			compatible = "ti,j721e-pru";
+			reg = <0x34000 0x4000>,
+			      <0x22000 0x100>,
+			      <0x22400 0x100>;
+			reg-names = "iram", "control", "debug";
+			firmware-name = "j7-pru1_0-fw";
+			interrupt-parent = <&icssg1_intc>;
+			interrupts = <16>, <17>;
+			interrupt-names = "vring", "kick";
+		};
+
+		rtu1_0: rtu@4000 {
+			compatible = "ti,j721e-rtu";
+			reg = <0x4000 0x2000>,
+			      <0x23000 0x100>,
+			      <0x23400 0x100>;
+			reg-names = "iram", "control", "debug";
+			firmware-name = "j7-rtu1_0-fw";
+			interrupt-parent = <&icssg1_intc>;
+			interrupts = <20>, <21>;
+			interrupt-names = "vring", "kick";
+		};
+
+		tx_pru1_0: txpru@a000 {
+			compatible = "ti,j721e-tx-pru";
+			reg = <0xa000 0x1800>,
+			      <0x25000 0x100>,
+			      <0x25400 0x100>;
+			reg-names = "iram", "control", "debug";
+			firmware-name = "j7-txpru1_0-fw";
+		};
+
+		pru1_1: pru@38000 {
+			compatible = "ti,j721e-pru";
+			reg = <0x38000 0x4000>,
+			      <0x24000 0x100>,
+			      <0x24400 0x100>;
+			reg-names = "iram", "control", "debug";
+			firmware-name = "j7-pru1_1-fw";
+			interrupt-parent = <&icssg1_intc>;
+			interrupts = <18>, <19>;
+			interrupt-names = "vring", "kick";
+		};
+
+		rtu1_1: rtu@6000 {
+			compatible = "ti,j721e-rtu";
+			reg = <0x6000 0x2000>,
+			      <0x23800 0x100>,
+			      <0x23c00 0x100>;
+			reg-names = "iram", "control", "debug";
+			firmware-name = "j7-rtu1_1-fw";
+			interrupt-parent = <&icssg1_intc>;
+			interrupts = <22>, <23>;
+			interrupt-names = "vring", "kick";
+		};
+
+		tx_pru1_1: txpru@c000 {
+			compatible = "ti,j721e-tx-pru";
+			reg = <0xc000 0x1800>,
+			      <0x25800 0x100>,
+			      <0x25c00 0x100>;
+			reg-names = "iram", "control", "debug";
+			firmware-name = "j7-txpru1_1-fw";
+		};
+
+		icssg1_mdio: mdio@32400 {
+			compatible = "ti,davinci_mdio";
+			reg = <0x32400 0x100>;
+			clocks = <&k3_clks 120 4>;
+			clock-names = "fck";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			bus_freq = <1000000>;
+			status = "disabled";
+		};
+	};
+
 	dss: dss@04a00000 {
 		compatible = "ti,j721e-dss";
 		reg =
@@ -1640,6 +2175,66 @@
 		dss_ports: ports {
 			#address-cells = <1>;
 			#size-cells = <0>;
+		};
+	};
+
+	usbss0: cdns_usb@4104000 {
+		compatible = "ti,j721e-usb";
+		reg = <0x00 0x4104000 0x00 0x100>;
+		dma-coherent;
+		power-domains = <&k3_pds 288 TI_SCI_PD_EXCLUSIVE>;
+		clocks = <&k3_clks 288 15>, <&k3_clks 288 3>;
+		clock-names = "ref", "lpm";
+		assigned-clocks = <&k3_clks 288 15>;	/* USB2_REFCLK */
+		assigned-clock-parents = <&k3_clks 288 16>; /* HFOSC0 */
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		usb0: usb@6000000 {
+			compatible = "cdns,usb3";
+			reg = <0x00 0x6000000 0x00 0x10000>,
+			      <0x00 0x6010000 0x00 0x10000>,
+			      <0x00 0x6020000 0x00 0x10000>;
+			reg-names = "otg", "xhci", "dev";
+			interrupts = <GIC_SPI 96 IRQ_TYPE_LEVEL_HIGH>,	/* irq.0 */
+				     <GIC_SPI 102 IRQ_TYPE_LEVEL_HIGH>,	/* irq.6 */
+				     <GIC_SPI 120 IRQ_TYPE_LEVEL_HIGH>;	/* otgirq.0 */
+			interrupt-names = "host",
+					  "peripheral",
+					  "otg";
+			maximum-speed = "super-speed";
+			dr_mode = "otg";
+		};
+	};
+
+	usbss1: cdns_usb@4114000 {
+		compatible = "ti,j721e-usb";
+		reg = <0x00 0x4114000 0x00 0x100>;
+		dma-coherent;
+		power-domains = <&k3_pds 289 TI_SCI_PD_EXCLUSIVE>;
+		clocks = <&k3_clks 289 15>, <&k3_clks 289 3>;
+		clock-names = "ref", "lpm";
+		assigned-clocks = <&k3_clks 289 15>;	/* USB2_REFCLK */
+		assigned-clock-parents = <&k3_clks 289 16>; /* HFOSC0 */
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		usb1: usb@6400000 {
+			compatible = "cdns,usb3";
+			reg = <0x00 0x6400000 0x00 0x10000>,
+			      <0x00 0x6410000 0x00 0x10000>,
+			      <0x00 0x6420000 0x00 0x10000>;
+			reg-names = "otg", "xhci", "dev";
+			interrupts = <GIC_SPI 104 IRQ_TYPE_LEVEL_HIGH>,	/* irq.0 */
+				     <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH>,	/* irq.6 */
+				     <GIC_SPI 121 IRQ_TYPE_LEVEL_HIGH>;	/* otgirq.0 */
+			interrupt-names = "host",
+					  "peripheral",
+					  "otg";
+			maximum-speed = "super-speed";
+			dr_mode = "otg";
 		};
 	};
 };

@@ -518,6 +518,14 @@ struct ale_control_info {
 };
 
 static struct ale_control_info ale_controls[ALE_NUM_CONTROLS] = {
+	[ALE_VERSION]		= {
+		.name		= "version",
+		.offset		= ALE_IDVER,
+		.port_offset	= 0,
+		.shift		= 0,
+		.port_shift	= 0,
+		.bits		= 32,
+	},
 	[ALE_ENABLE]		= {
 		.name		= "enable",
 		.offset		= ALE_CONTROL,
@@ -686,6 +694,7 @@ static struct ale_control_info ale_controls[ALE_NUM_CONTROLS] = {
 		.port_shift	= 0,
 		.bits		= 8,
 	},
+	/* Fields below has individual registers on NetCP NU switch */
 	[ALE_PORT_UNKNOWN_VLAN_MEMBER] = {
 		.name		= "unknown_vlan_member",
 		.offset		= ALE_UNKNOWNVLAN,
@@ -790,6 +799,54 @@ int cpsw_ale_control_get(struct cpsw_ale *ale, int port, int control)
 	return tmp & BITMASK(info->bits);
 }
 
+int cpsw_ale_set_ratelimit(struct cpsw_ale *ale, unsigned long freq, int port,
+			   unsigned int bcast_rate_limit,
+			   unsigned int mcast_rate_limit,
+			   bool direction)
+
+{
+	unsigned int rate_limit;
+	unsigned long ale_prescale;
+	int val;
+
+	if (!bcast_rate_limit && !mcast_rate_limit) {
+		/* disable rate limit */
+		cpsw_ale_control_set(ale, 0, ALE_RATE_LIMIT, 0);
+		cpsw_ale_control_set(ale, port, ALE_PORT_BCAST_LIMIT, 0);
+		cpsw_ale_control_set(ale, port, ALE_PORT_MCAST_LIMIT, 0);
+		writel(0, ale->params.ale_regs + ALE_PRESCALE);
+		return 0;
+	}
+
+	/* configure Broadcast and Multicast Rate Limit
+	 * number_of_packets = (Fclk / ALE_PRESCALE) * port.BCASTMCAST/_LIMIT
+	 * ALE_PRESCALE width is 19bit and min value 0x10
+	 * with Fclk = 125MHz and port.BCASTMCAST/_LIMIT = 1
+	 *
+	 * max number_of_packets = (125MHz / 0x10) * 1 = 7812500
+	 * min number_of_packets = (125MHz / 0xFFFFF) * 1 = 119
+	 *
+	 * above values are more than enough (with higher Fclk they will be
+	 * just better), so port.BCASTMCAST/_LIMIT can be selected to be 1
+	 * while ALE_PRESCALE is calculated as:
+	 *  ALE_PRESCALE = Fclk / number_of_packets
+	 */
+	rate_limit = max_t(unsigned int, bcast_rate_limit, mcast_rate_limit);
+	ale_prescale = freq / rate_limit;
+	if (ale_prescale & (~0xfffff))
+		return -EINVAL;
+
+	cpsw_ale_control_set(ale, 0, ALE_RATE_LIMIT_TX, direction);
+	val = bcast_rate_limit ? 1 : 0;
+	cpsw_ale_control_set(ale, port, ALE_PORT_BCAST_LIMIT, val);
+	val = mcast_rate_limit ? 1 : 0;
+	cpsw_ale_control_set(ale, port, ALE_PORT_MCAST_LIMIT, val);
+	writel((u32)ale_prescale, ale->params.ale_regs + ALE_PRESCALE);
+	cpsw_ale_control_set(ale, 0, ALE_RATE_LIMIT, 1);
+
+	return 0;
+}
+
 static void cpsw_ale_timer(struct timer_list *t)
 {
 	struct cpsw_ale *ale = from_timer(ale, t, timer);
@@ -802,8 +859,12 @@ static void cpsw_ale_timer(struct timer_list *t)
 	}
 }
 
+/* HACK to support sysfs interface to configure ALE for netcp ethss */
+#include "cpsw_ale_sysfs.c"
+
 void cpsw_ale_start(struct cpsw_ale *ale)
 {
+	cpsw_ale_create_sysfs_entries(ale);
 	cpsw_ale_control_set(ale, 0, ALE_ENABLE, 1);
 	cpsw_ale_control_set(ale, 0, ALE_CLEAR, 1);
 
@@ -819,6 +880,7 @@ void cpsw_ale_stop(struct cpsw_ale *ale)
 	del_timer_sync(&ale->timer);
 	cpsw_ale_control_set(ale, 0, ALE_CLEAR, 1);
 	cpsw_ale_control_set(ale, 0, ALE_ENABLE, 0);
+	cpsw_ale_remove_sysfs_entries(ale);
 }
 
 struct cpsw_ale *cpsw_ale_create(struct cpsw_ale_params *params)
