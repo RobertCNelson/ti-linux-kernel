@@ -125,7 +125,6 @@ static int ufshcd_program_key(struct ufs_hba *hba,
 	u32 slot_offset = hba->crypto_cfg_register + slot * sizeof(*cfg);
 	int err;
 
-	pm_runtime_get_sync(hba->dev);
 	ufshcd_hold(hba, false);
 
 	if (hba->vops->program_key) {
@@ -155,7 +154,6 @@ static int ufshcd_program_key(struct ufs_hba *hba,
 	err = 0;
 out:
 	ufshcd_release(hba);
-	pm_runtime_put_sync(hba->dev);
 	return err;
 }
 
@@ -337,7 +335,9 @@ int ufshcd_hba_init_crypto_spec(struct ufs_hba *hba,
 
 	ufshcd_clear_all_keyslots(hba);
 
-	hba->ksm = keyslot_manager_create(ufshcd_num_keyslots(hba), ksm_ops,
+	hba->ksm = keyslot_manager_create(hba->dev, ufshcd_num_keyslots(hba),
+					  ksm_ops,
+					  BLK_CRYPTO_FEATURE_STANDARD_KEYS,
 					  crypto_modes_supported, hba);
 
 	if (!hba->ksm) {
@@ -456,6 +456,14 @@ int ufshcd_prepare_lrbp_crypto(struct ufs_hba *hba,
 		return hba->crypto_vops->prepare_lrbp_crypto(hba, cmd, lrbp);
 
 	return ufshcd_prepare_lrbp_crypto_spec(hba, cmd, lrbp);
+}
+
+int ufshcd_map_sg_crypto(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
+{
+	if (hba->crypto_vops && hba->crypto_vops->map_sg_crypto)
+		return hba->crypto_vops->map_sg_crypto(hba, lrbp);
+
+	return 0;
 }
 
 int ufshcd_complete_lrbp_crypto(struct ufs_hba *hba,

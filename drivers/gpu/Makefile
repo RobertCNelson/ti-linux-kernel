@@ -6,3 +6,4 @@ obj-y			+= drm/ vga/
 obj-$(CONFIG_IMX_IPUV3_CORE)	+= ipu-v3/
 obj-y			+= pvr/
 obj-y			+= rgx/
+obj-$(CONFIG_TRACE_GPU_MEM)		+= trace/
