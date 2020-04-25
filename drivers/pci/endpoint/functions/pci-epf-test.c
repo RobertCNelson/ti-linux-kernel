@@ -207,6 +207,7 @@ static int pci_epf_test_read(struct pci_epf_test *epf_test)
 	}
 
 	dma_unmap_single(dma_dev, dst_addr, reg->size, DMA_FROM_DEVICE);
+	memcpy_fromio(buf, src_addr, reg->size);
 
 skip_dma:
 	crc32 = crc32_le(~0, buf, reg->size);
@@ -280,6 +281,7 @@ static int pci_epf_test_write(struct pci_epf_test *epf_test)
 	}
 
 	dma_unmap_single(dma_dev, src_addr, reg->size, DMA_TO_DEVICE);
+	memcpy_toio(dst_addr, buf, reg->size);
 
 skip_dma:
 	/*

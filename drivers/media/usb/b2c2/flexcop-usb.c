@@ -294,7 +294,7 @@ static int flexcop_usb_i2c_req(struct flexcop_i2c_adapter *i2c,
 
 	mutex_unlock(&fc_usb->data_mutex);
 
-	return 0;
+	return ret;
 }
 
 /* actual bus specific access functions,
@@ -510,6 +510,9 @@ static int flexcop_usb_init(struct flexcop_usb *fc_usb)
 		return ret;
 	}
 
+	if (fc_usb->uintf->cur_altsetting->desc.bNumEndpoints < 1)
+		return -ENODEV;
+
 	switch (fc_usb->udev->speed) {
 	case USB_SPEED_LOW:
 		err("cannot handle USB speed because it is too slow.");
@@ -542,9 +545,6 @@ static int flexcop_usb_probe(struct usb_interface *intf,
 	struct flexcop_usb *fc_usb = NULL;
 	struct flexcop_device *fc = NULL;
 	int ret;
-
-	if (intf->cur_altsetting->desc.bNumEndpoints < 1)
-		return -ENODEV;
 
 	if ((fc = flexcop_device_kmalloc(sizeof(struct flexcop_usb))) == NULL) {
 		err("out of memory\n");
