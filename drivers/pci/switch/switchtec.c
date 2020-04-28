@@ -177,6 +177,7 @@ static int mrpc_queue_cmd(struct switchtec_user *stuser)
 	stuser->read_len = sizeof(stuser->data);
 	stuser_set_state(stuser, MRPC_QUEUED);
 	stuser->cmd_done = false;
+	reinit_completion(&stuser->comp);
 	list_add_tail(&stuser->list, &stdev->mrpc_queue);
 
 	mrpc_cmd_submit(stdev);
