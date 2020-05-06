@@ -584,7 +584,7 @@ copy_exit:
 static int virtio_gpu_resource_create_blob_ioctl(struct drm_device *dev,
 				void *data, struct drm_file *file)
 {
-	void *buf;
+	uint32_t device_blob_mem = 0;
 	int ret, si, nents;
 	uint32_t handle = 0;
 	struct scatterlist *sg;
@@ -596,14 +596,30 @@ static int virtio_gpu_resource_create_blob_ioctl(struct drm_device *dev,
 	struct virtio_gpu_device *vgdev = dev->dev_private;
 	struct virtio_gpu_fpriv *vfpriv = file->driver_priv;
 	bool use_dma_api = !virtio_has_iommu_quirk(vgdev->vdev);
-	bool mappable = rc_blob->flags & VIRTGPU_RES_BLOB_USE_MAPPABLE;
-	bool guest = rc_blob->flags & VIRTGPU_RES_BLOB_GUEST_MASK;
+	bool mappable = rc_blob->blob_flags & VIRTGPU_BLOB_FLAG_MAPPABLE;
+	bool has_guest = (rc_blob->blob_mem == VIRTGPU_BLOB_MEM_GUEST ||
+		rc_blob->blob_mem == VIRTGPU_BLOB_MEM_HOST_GUEST);
 
 	params.size = rc_blob->size;
-	params.blob_flags = rc_blob->flags;
+	params.blob_mem = rc_blob->blob_mem;
 	params.blob = true;
 
-	if (rc_blob->cmd_size && vfpriv) {
+	if (rc_blob->blob_mem == VIRTGPU_BLOB_MEM_GUEST)
+		device_blob_mem = VIRTIO_GPU_BLOB_MEM_GUEST;
+
+	if (vgdev->has_virgl_3d) {
+		if (rc_blob->blob_mem == VIRTGPU_BLOB_MEM_HOST)
+			device_blob_mem = VIRTIO_GPU_BLOB_MEM_HOST3D;
+		else if (rc_blob->blob_mem == VIRTGPU_BLOB_MEM_HOST_GUEST)
+			device_blob_mem = VIRTIO_GPU_BLOB_MEM_HOST3D_GUEST;
+	} else {
+		if (rc_blob->blob_mem == VIRTGPU_BLOB_MEM_HOST)
+			device_blob_mem = VIRTIO_GPU_BLOB_MEM_HOSTSYS;
+		else if (rc_blob->blob_mem == VIRTGPU_BLOB_MEM_HOST_GUEST)
+			device_blob_mem = VIRTIO_GPU_BLOB_MEM_HOSTSYS_GUEST;
+	}
+
+	if (rc_blob->cmd_size) {
 		void *buf;
 		void __user *cmd = u64_to_user_ptr(rc_blob->cmd);
 
@@ -630,7 +646,7 @@ static int virtio_gpu_resource_create_blob_ioctl(struct drm_device *dev,
 			goto err_free_obj;
         }
 
-	if (!guest) {
+	if (!has_guest) {
 		nents = 0;
 	} else if (use_dma_api) {
                 obj->mapped = dma_map_sg(vgdev->vdev->dev.parent,
@@ -642,7 +658,7 @@ static int virtio_gpu_resource_create_blob_ioctl(struct drm_device *dev,
         }
 
 	ents = kzalloc(nents * sizeof(struct virtio_gpu_mem_entry), GFP_KERNEL);
-	if (guest) {
+	if (has_guest) {
 		for_each_sg(obj->pages->sgl, sg, nents, si) {
 			ents[si].addr = cpu_to_le64(use_dma_api
 						    ? sg_dma_address(sg)
@@ -655,21 +671,22 @@ static int virtio_gpu_resource_create_blob_ioctl(struct drm_device *dev,
 	fence = virtio_gpu_fence_alloc(vgdev);
 	if (!fence) {
 		ret = -ENOMEM;
-		goto err_free_buf;
+		goto err_free_obj;
 	}
 
 	virtio_gpu_cmd_resource_create_blob(vgdev, obj, vfpriv->ctx_id,
-					    rc_blob->flags, rc_blob->size,
-					    rc_blob->memory_id, nents,
-					    ents);
+		device_blob_mem,
+		rc_blob->blob_flags,
+		rc_blob->blob_id,
+		rc_blob->size,
+		nents, ents);
 
 	ret = drm_gem_handle_create(file, &obj->gem_base, &handle);
 	if (ret)
 		goto err_fence_put;
 
-	if (!guest && mappable) {
+	if (!has_guest && mappable)
 		virtio_gpu_cmd_map(vgdev, obj, obj->tbo.offset, fence);
-	}
 
 	/*
 	 * No need to call virtio_gpu_object_reserve since the buffer is not
@@ -687,8 +704,6 @@ static int virtio_gpu_resource_create_blob_ioctl(struct drm_device *dev,
 
 err_fence_put:
 	dma_fence_put(&fence->f);
-err_free_buf:
-	kfree(buf);
 err_free_obj:
 	drm_gem_object_release(&obj->gem_base);
 	return ret;
