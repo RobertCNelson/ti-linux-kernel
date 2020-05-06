@@ -1297,6 +1297,14 @@ static void v4l_fill_fmtdesc(struct v4l2_fmtdesc *fmt)
 	case V4L2_META_FMT_UVC:		descr = "UVC payload header metadata"; break;
 	case V4L2_PIX_FMT_TI1210:       descr = "10-bit YUV 4:2:0 (NV12)"; break;
 	case V4L2_PIX_FMT_TI1610:	descr = "10-bit YUV 4:2:2 (NV16)"; break;
+	case V4L2_PIX_FMT_NV12_UBWC:
+					descr = "NV12 UBWC"; break;
+	case V4L2_PIX_FMT_SDE_Y_CBCR_H2V2_P010_VENUS:
+					descr = "Y/CbCr 4:2:0 P10 Venus"; break;
+	case V4L2_PIX_FMT_NV12_TP10_UBWC:
+					descr = "Y/CbCr 4:2:0 TP10 UBWC"; break;
+	case V4L2_PIX_FMT_NV12_512:
+				descr = "Y/CbCr 4:2:0 (512 align)"; break;
 
 	default:
 		/* Compressed formats */
