@@ -53,6 +53,7 @@ struct ion_buffer {
  * struct ion_heap_ops - ops to operate on a given heap
  * @allocate:		allocate memory
  * @free:		free memory
+ * @get_pool_size:	get pool size in pages
  *
  * allocate returns 0 on success, -errno on error.
  * map_dma and map_kernel return pointer on success, ERR_PTR on
@@ -67,6 +68,7 @@ struct ion_heap_ops {
 			unsigned long flags);
 	void (*free)(struct ion_buffer *buffer);
 	int (*shrink)(struct ion_heap *heap, gfp_t gfp_mask, int nr_to_scan);
+	long (*get_pool_size)(struct ion_heap *heap);
 };
 
 /**
@@ -143,6 +145,19 @@ struct ion_heap {
 };
 
 #define ion_device_add_heap(heap) __ion_device_add_heap(heap, THIS_MODULE)
+
+/**
+ * struct ion_dma_buf_attachment - hold device-table attachment data for buffer
+ * @dev:	device attached to the buffer.
+ * @table:	cached mapping.
+ * @list:	list of ion_dma_buf_attachment.
+ */
+struct ion_dma_buf_attachment {
+	struct device *dev;
+	struct sg_table *table;
+	struct list_head list;
+	bool mapped:1;
+};
 
 #ifdef CONFIG_ION
 

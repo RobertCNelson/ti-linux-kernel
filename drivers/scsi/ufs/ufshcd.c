@@ -42,6 +42,7 @@
 #include <linux/nls.h>
 #include <linux/of.h>
 #include <linux/bitfield.h>
+#include <linux/blk-pm.h>
 #include "ufshcd.h"
 #include "ufs_quirks.h"
 #include "unipro.h"
@@ -171,19 +172,6 @@ enum {
 	((h)->eh_flags & UFSHCD_EH_IN_PROGRESS)
 #define ufshcd_clear_eh_in_progress(h) \
 	((h)->eh_flags &= ~UFSHCD_EH_IN_PROGRESS)
-
-#define ufshcd_set_ufs_dev_active(h) \
-	((h)->curr_dev_pwr_mode = UFS_ACTIVE_PWR_MODE)
-#define ufshcd_set_ufs_dev_sleep(h) \
-	((h)->curr_dev_pwr_mode = UFS_SLEEP_PWR_MODE)
-#define ufshcd_set_ufs_dev_poweroff(h) \
-	((h)->curr_dev_pwr_mode = UFS_POWERDOWN_PWR_MODE)
-#define ufshcd_is_ufs_dev_active(h) \
-	((h)->curr_dev_pwr_mode == UFS_ACTIVE_PWR_MODE)
-#define ufshcd_is_ufs_dev_sleep(h) \
-	((h)->curr_dev_pwr_mode == UFS_SLEEP_PWR_MODE)
-#define ufshcd_is_ufs_dev_poweroff(h) \
-	((h)->curr_dev_pwr_mode == UFS_POWERDOWN_PWR_MODE)
 
 struct ufs_pm_lvl_states ufs_pm_lvl_states[] = {
 	{UFS_ACTIVE_PWR_MODE, UIC_LINK_ACTIVE_STATE},
@@ -539,6 +527,18 @@ static void ufshcd_print_pwr_info(struct ufs_hba *hba)
 		 names[hba->pwr_info.pwr_tx],
 		 hba->pwr_info.hs_rate);
 }
+
+void ufshcd_delay_us(unsigned long us, unsigned long tolerance)
+{
+	if (!us)
+		return;
+
+	if (us < 10)
+		udelay(us);
+	else
+		usleep_range(us, us + tolerance);
+}
+EXPORT_SYMBOL_GPL(ufshcd_delay_us);
 
 /*
  * ufshcd_wait_for_register - wait for register value to change
@@ -1263,6 +1263,9 @@ static int ufshcd_devfreq_target(struct device *dev,
 	if (!ufshcd_is_clkscaling_supported(hba))
 		return -EINVAL;
 
+	clki = list_first_entry(&hba->clk_list_head, struct ufs_clk_info, list);
+	/* Override with the closest supported frequency */
+	*freq = (unsigned long) clk_round_rate(clki->clk, *freq);
 	spin_lock_irqsave(hba->host->host_lock, irq_flags);
 	if (ufshcd_eh_in_progress(hba)) {
 		spin_unlock_irqrestore(hba->host->host_lock, irq_flags);
@@ -1277,8 +1280,11 @@ static int ufshcd_devfreq_target(struct device *dev,
 		goto out;
 	}
 
-	clki = list_first_entry(&hba->clk_list_head, struct ufs_clk_info, list);
+	/* Decide based on the rounded-off frequency and update */
 	scale_up = (*freq == clki->max_freq) ? true : false;
+	if (!scale_up)
+		*freq = clki->min_freq;
+	/* Update the frequency */
 	if (!ufshcd_is_devfreq_scaling_required(hba, scale_up)) {
 		spin_unlock_irqrestore(hba->host->host_lock, irq_flags);
 		ret = 0;
@@ -1308,6 +1314,8 @@ static int ufshcd_devfreq_get_dev_status(struct device *dev,
 	struct ufs_hba *hba = dev_get_drvdata(dev);
 	struct ufs_clk_scaling *scaling = &hba->clk_scaling;
 	unsigned long flags;
+	struct list_head *clk_list = &hba->clk_list_head;
+	struct ufs_clk_info *clki;
 
 	if (!ufshcd_is_clkscaling_supported(hba))
 		return -EINVAL;
@@ -1318,6 +1326,13 @@ static int ufshcd_devfreq_get_dev_status(struct device *dev,
 	if (!scaling->window_start_t)
 		goto start_window;
 
+	clki = list_first_entry(clk_list, struct ufs_clk_info, list);
+	/*
+	 * If current frequency is 0, then the ondemand governor considers
+	 * there's no initial frequency set. And it always requests to set
+	 * to max. frequency.
+	 */
+	stat->current_frequency = clki->curr_freq;
 	if (scaling->is_busy_started)
 		scaling->tot_busy_t += ktime_to_us(ktime_sub(ktime_get(),
 					scaling->busy_start_t));
@@ -1346,6 +1361,17 @@ static struct devfreq_dev_profile ufs_devfreq_profile = {
 	.get_dev_status	= ufshcd_devfreq_get_dev_status,
 };
 
+#if IS_ENABLED(CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND)
+static struct devfreq_simple_ondemand_data ufs_ondemand_data = {
+	.upthreshold = 70,
+	.downdifferential = 5,
+};
+
+static void *gov_data = &ufs_ondemand_data;
+#else
+static void *gov_data; /* NULL */
+#endif
+
 static int ufshcd_devfreq_init(struct ufs_hba *hba)
 {
 	struct list_head *clk_list = &hba->clk_list_head;
@@ -1361,10 +1387,12 @@ static int ufshcd_devfreq_init(struct ufs_hba *hba)
 	dev_pm_opp_add(hba->dev, clki->min_freq, 0);
 	dev_pm_opp_add(hba->dev, clki->max_freq, 0);
 
+	ufshcd_vops_config_scaling_param(hba, &ufs_devfreq_profile,
+					 gov_data);
 	devfreq = devfreq_add_device(hba->dev,
 			&ufs_devfreq_profile,
 			DEVFREQ_GOV_SIMPLE_ONDEMAND,
-			NULL);
+			gov_data);
 	if (IS_ERR(devfreq)) {
 		ret = PTR_ERR(devfreq);
 		dev_err(hba->dev, "Unable to register with devfreq %d\n", ret);
@@ -3938,7 +3966,7 @@ out:
 	return ret;
 }
 
-static int ufshcd_link_recovery(struct ufs_hba *hba)
+int ufshcd_link_recovery(struct ufs_hba *hba)
 {
 	int ret;
 	unsigned long flags;
@@ -3965,6 +3993,7 @@ static int ufshcd_link_recovery(struct ufs_hba *hba)
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(ufshcd_link_recovery);
 
 static int __ufshcd_uic_hibern8_enter(struct ufs_hba *hba)
 {
@@ -4050,18 +4079,25 @@ EXPORT_SYMBOL_GPL(ufshcd_uic_hibern8_exit);
 void ufshcd_auto_hibern8_update(struct ufs_hba *hba, u32 ahit)
 {
 	unsigned long flags;
+	bool update = false;
 
-	if (!(hba->capabilities & MASK_AUTO_HIBERN8_SUPPORT))
+	if (!ufshcd_is_auto_hibern8_supported(hba))
 		return;
 
 	spin_lock_irqsave(hba->host->host_lock, flags);
-	if (hba->ahit == ahit)
-		goto out_unlock;
-	hba->ahit = ahit;
-	if (!pm_runtime_suspended(hba->dev))
-		ufshcd_writel(hba, hba->ahit, REG_AUTO_HIBERNATE_IDLE_TIMER);
-out_unlock:
+	if (hba->ahit != ahit) {
+		hba->ahit = ahit;
+		update = true;
+	}
 	spin_unlock_irqrestore(hba->host->host_lock, flags);
+
+	if (update && !pm_runtime_suspended(hba->dev)) {
+		pm_runtime_get_sync(hba->dev);
+		ufshcd_hold(hba, false);
+		ufshcd_auto_hibern8_enable(hba);
+		ufshcd_release(hba);
+		pm_runtime_put(hba->dev);
+	}
 }
 EXPORT_SYMBOL_GPL(ufshcd_auto_hibern8_update);
 
@@ -4418,10 +4454,10 @@ static int ufshcd_hba_execute_hce(struct ufs_hba *hba)
 	 * instruction might be read back.
 	 * This delay can be changed based on the controller.
 	 */
-	usleep_range(1000, 1100);
+	ufshcd_delay_us(hba->hba_enable_delay_us, 100);
 
 	/* wait for the host controller to complete initialization */
-	retry = 10;
+	retry = 50;
 	while (ufshcd_is_hba_active(hba)) {
 		if (retry) {
 			retry--;
@@ -4430,7 +4466,7 @@ static int ufshcd_hba_execute_hce(struct ufs_hba *hba)
 				"Controller enable failed\n");
 			return -EIO;
 		}
-		usleep_range(5000, 5100);
+		usleep_range(1000, 1100);
 	}
 
 	/* enable UIC related interrupts */
@@ -4470,7 +4506,7 @@ EXPORT_SYMBOL_GPL(ufshcd_hba_enable);
 
 static int ufshcd_disable_tx_lcc(struct ufs_hba *hba, bool peer)
 {
-	int tx_lanes, i, err = 0;
+	int tx_lanes = 0, i, err = 0;
 
 	if (!peer)
 		ufshcd_dme_get(hba, UIC_ARG_MIB(PA_CONNECTEDTXDATALANES),
@@ -6675,6 +6711,16 @@ out:
 	kfree(desc_buf);
 }
 
+static inline void ufshcd_blk_pm_runtime_init(struct scsi_device *sdev)
+{
+	scsi_autopm_get_device(sdev);
+	blk_pm_runtime_init(sdev->request_queue, &sdev->sdev_gendev);
+	if (sdev->rpm_autosuspend)
+		pm_runtime_set_autosuspend_delay(&sdev->sdev_gendev,
+						 RPM_AUTOSUSPEND_DELAY_MS);
+	scsi_autopm_put_device(sdev);
+}
+
 /**
  * ufshcd_scsi_add_wlus - Adds required W-LUs
  * @hba: per-adapter instance
@@ -6714,6 +6760,7 @@ static int ufshcd_scsi_add_wlus(struct ufs_hba *hba)
 		hba->sdev_ufs_device = NULL;
 		goto out;
 	}
+	ufshcd_blk_pm_runtime_init(hba->sdev_ufs_device);
 	scsi_device_put(hba->sdev_ufs_device);
 
 	sdev_rpmb = __scsi_add_device(hba->host, 0, 0,
@@ -6722,14 +6769,17 @@ static int ufshcd_scsi_add_wlus(struct ufs_hba *hba)
 		ret = PTR_ERR(sdev_rpmb);
 		goto remove_sdev_ufs_device;
 	}
+	ufshcd_blk_pm_runtime_init(sdev_rpmb);
 	scsi_device_put(sdev_rpmb);
 
 	sdev_boot = __scsi_add_device(hba->host, 0, 0,
 		ufshcd_upiu_wlun_to_scsi_wlun(UFS_UPIU_BOOT_WLUN), NULL);
-	if (IS_ERR(sdev_boot))
+	if (IS_ERR(sdev_boot)) {
 		dev_err(hba->dev, "%s: BOOT WLUN not found\n", __func__);
-	else
+	} else {
+		ufshcd_blk_pm_runtime_init(sdev_boot);
 		scsi_device_put(sdev_boot);
+	}
 	goto out;
 
 remove_sdev_ufs_device:
@@ -7028,6 +7078,37 @@ static void ufshcd_init_desc_sizes(struct ufs_hba *hba)
 		hba->desc_size.hlth_desc = QUERY_DESC_HEALTH_DEF_SIZE;
 }
 
+static int ufshcd_device_geo_params_init(struct ufs_hba *hba)
+{
+	int err;
+	size_t buff_len;
+	u8 *desc_buf;
+
+	buff_len = hba->desc_size.geom_desc;
+	desc_buf = kmalloc(buff_len, GFP_KERNEL);
+	if (!desc_buf) {
+		err = -ENOMEM;
+		goto out;
+	}
+
+	err = ufshcd_read_desc(hba, QUERY_DESC_IDN_GEOMETRY, 0,
+			desc_buf, buff_len);
+	if (err) {
+		dev_err(hba->dev, "%s: Failed reading Geometry Desc. err = %d\n",
+				__func__, err);
+		goto out;
+	}
+
+	if (desc_buf[GEOMETRY_DESC_PARAM_MAX_NUM_LUN] == 1)
+		hba->dev_info.max_lu_supported = 32;
+	else if (desc_buf[GEOMETRY_DESC_PARAM_MAX_NUM_LUN] == 0)
+		hba->dev_info.max_lu_supported = 8;
+
+out:
+	kfree(desc_buf);
+	return err;
+}
+
 static struct ufs_ref_clk ufs_ref_clk_freqs[] = {
 	{19200000, REF_CLK_FREQ_19_2_MHZ},
 	{26000000, REF_CLK_FREQ_26_MHZ},
@@ -7101,8 +7182,16 @@ static int ufshcd_device_params_init(struct ufs_hba *hba)
 	bool flag;
 	int ret;
 
+	/* Clear any previous UFS device information */
+	memset(&hba->dev_info, 0, sizeof(hba->dev_info));
+
 	/* Init check for device descriptor sizes */
 	ufshcd_init_desc_sizes(hba);
+
+	/* Init UFS geometry descriptor related parameters */
+	ret = ufshcd_device_geo_params_init(hba);
+	if (ret)
+		goto out;
 
 	/* Check and apply UFS device quirks */
 	ret = ufs_get_device_desc(hba);
@@ -7114,8 +7203,6 @@ static int ufshcd_device_params_init(struct ufs_hba *hba)
 
 	ufs_fixup_device_setup(hba);
 
-	/* Clear any previous UFS device information */
-	memset(&hba->dev_info, 0, sizeof(hba->dev_info));
 	if (!ufshcd_query_flag_retry(hba, UPIU_QUERY_OPCODE_READ_FLAG,
 			QUERY_FLAG_IDN_PWR_ON_WPE, &flag))
 		hba->dev_info.f_power_on_wp_en = flag;
@@ -8196,9 +8283,13 @@ static int ufshcd_resume(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 		else
 			goto vendor_suspend;
 	} else if (ufshcd_is_link_off(hba)) {
-		ret = ufshcd_host_reset_and_restore(hba);
 		/*
-		 * ufshcd_host_reset_and_restore() should have already
+		 * A full initialization of the host and the device is required
+		 * since the link was put to off during suspend.
+		 */
+		ret = ufshcd_reset_and_restore(hba);
+		/*
+		 * ufshcd_reset_and_restore() should have already
 		 * set the link state as active
 		 */
 		if (ret || !ufshcd_is_link_active(hba))
@@ -8556,6 +8647,7 @@ int ufshcd_init(struct ufs_hba *hba, void __iomem *mmio_base, unsigned int irq)
 
 	hba->mmio_base = mmio_base;
 	hba->irq = irq;
+	hba->hba_enable_delay_us = 1000;
 
 	err = ufshcd_hba_init(hba);
 	if (err)

@@ -71,7 +71,7 @@ int ufshcd_crypto_cap_find(struct ufs_hba *hba,
 
 	return -EINVAL;
 }
-EXPORT_SYMBOL(ufshcd_crypto_cap_find);
+EXPORT_SYMBOL_GPL(ufshcd_crypto_cap_find);
 
 /**
  * ufshcd_crypto_cfg_entry_write_key - Write a key into a crypto_cfg_entry
@@ -336,7 +336,9 @@ int ufshcd_hba_init_crypto_spec(struct ufs_hba *hba,
 	ufshcd_clear_all_keyslots(hba);
 
 	hba->ksm = keyslot_manager_create(hba->dev, ufshcd_num_keyslots(hba),
-					  ksm_ops, crypto_modes_supported, hba);
+					  ksm_ops,
+					  BLK_CRYPTO_FEATURE_STANDARD_KEYS,
+					  crypto_modes_supported, hba);
 
 	if (!hba->ksm) {
 		err = -ENOMEM;

@@ -40,6 +40,7 @@
 #if IS_ENABLED(CONFIG_NF_CONNTRACK)
 #include <linux/netfilter/nf_conntrack_common.h>
 #endif
+#include <linux/android_kabi.h>
 
 /* The interface for checksum offload between the stack and networking drivers
  * is as follows...
@@ -634,8 +635,8 @@ typedef unsigned char *sk_buff_data_t;
  *	@offload_l3_fwd_mark: Packet was L3-forwarded in hardware
  *	@tc_skip_classify: do not classify packet. set by IFB device
  *	@tc_at_ingress: used within tc_classify to distinguish in/egress
- *	@tc_redirected: packet was redirected by a tc action
- *	@tc_from_ingress: if tc_redirected, tc_at_ingress at time of redirect
+ *	@redirected: packet was redirected by packet classifier
+ *	@from_ingress: packet was redirected from the ingress path
  *	@peeked: this packet has been seen already, so stats have been
  *		done for it, don't do them again
  *	@nf_trace: netfilter packet trace flag
@@ -816,8 +817,10 @@ struct sk_buff {
 #ifdef CONFIG_NET_CLS_ACT
 	__u8			tc_skip_classify:1;
 	__u8			tc_at_ingress:1;
-	__u8			tc_redirected:1;
-	__u8			tc_from_ingress:1;
+#endif
+#ifdef CONFIG_NET_REDIRECT
+	__u8			redirected:1;
+	__u8			from_ingress:1;
 #endif
 #ifdef CONFIG_TLS_DEVICE
 	__u8			decrypted:1;
@@ -871,6 +874,9 @@ struct sk_buff {
 	/* private: */
 	__u32			headers_end[0];
 	/* public: */
+
+	ANDROID_KABI_RESERVE(1);
+	ANDROID_KABI_RESERVE(2);
 
 	/* These elements must be at the end, see alloc_skb() for details.  */
 	sk_buff_data_t		tail;
@@ -4512,6 +4518,32 @@ static inline __wsum lco_csum(struct sk_buff *skb)
 	 * adjustment filled in by caller) and return result.
 	 */
 	return csum_partial(l4_hdr, csum_start - l4_hdr, partial);
+}
+
+static inline bool skb_is_redirected(const struct sk_buff *skb)
+{
+#ifdef CONFIG_NET_REDIRECT
+	return skb->redirected;
+#else
+	return false;
+#endif
+}
+
+static inline void skb_set_redirected(struct sk_buff *skb, bool from_ingress)
+{
+#ifdef CONFIG_NET_REDIRECT
+	skb->redirected = 1;
+	skb->from_ingress = from_ingress;
+	if (skb->from_ingress)
+		skb->tstamp = 0;
+#endif
+}
+
+static inline void skb_reset_redirect(struct sk_buff *skb)
+{
+#ifdef CONFIG_NET_REDIRECT
+	skb->redirected = 0;
+#endif
 }
 
 #endif	/* __KERNEL__ */
