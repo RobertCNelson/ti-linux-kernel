@@ -14,10 +14,12 @@
   __kmalloc
   kmalloc_caches
   kmem_cache_alloc_trace
+  kstrdup
   ktime_get
   __list_add_valid
   __ll_sc_atomic64_andnot
   __ll_sc_atomic_add_return
+  memzero_explicit
   module_layout
   __mutex_init
   mutex_lock
@@ -35,6 +37,7 @@
   __stack_chk_fail
   __stack_chk_guard
   strcmp
+  strlen
   __udelay
 
 # required by arm-smmu.ko
@@ -48,11 +51,15 @@
   free_io_pgtable_ops
   generic_device_group
   iommu_alloc_resv_region
+  iommu_device_link
   iommu_device_register
+  iommu_device_sysfs_add
+  iommu_device_unlink
   iommu_dma_get_resv_regions
   iommu_fwspec_add_ids
   iommu_fwspec_free
   iommu_fwspec_init
+  iommu_get_dma_cookie
   iommu_group_get_for_dev
   iommu_group_put
   iommu_group_ref_get
@@ -75,6 +82,23 @@
   __platform_driver_register
   platform_driver_unregister
   put_device
+
+# required by dm-default-key.ko
+  bio_crypt_alloc_ctx
+  blk_crypto_evict_key
+  blk_crypto_init_key
+  blk_crypto_start_using_mode
+  dm_get_device
+  dm_put_device
+  dm_read_arg_group
+  dm_register_target
+  dm_shift_arg
+  dm_table_get_mode
+  dm_unregister_target
+  hex2bin
+  kzfree
+  scnprintf
+  sscanf
 
 # required by ufshcd-core.ko
   __alloc_workqueue_key
@@ -137,7 +161,6 @@
   __ll_sc_atomic_sub_return
   memcpy
   memset
-  memzero_explicit
   __msecs_to_jiffies
   msleep
   perf_trace_buf_alloc
@@ -182,7 +205,6 @@
   sprintf
   strcpy
   strlcpy
-  strlen
   strncmp
   sysfs_create_groups
   sysfs_remove_groups
@@ -208,7 +230,6 @@
 
 # required by ufshcd-pltfrm.ko
   _dev_info
-  kstrdup
   of_get_property
   of_parse_phandle
   of_property_read_string_helper
