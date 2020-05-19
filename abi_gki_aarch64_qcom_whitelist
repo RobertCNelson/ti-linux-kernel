@@ -16,7 +16,6 @@
   __arch_copy_from_user
   __arch_copy_to_user
   arch_setup_dma_ops
-  arch_timer_read_ool_enabled
   arm64_const_caps_ready
   atomic_notifier_call_chain
   atomic_notifier_chain_register
@@ -537,6 +536,7 @@
   no_llseek
   nr_cpu_ids
   ns_capable
+  ns_to_timespec64
   ns_to_timespec
   nvmem_cell_get
   nvmem_cell_put
@@ -753,6 +753,7 @@
   __regmap_init
   regmap_multi_reg_write
   regmap_raw_read
+  regmap_raw_write
   regmap_read
   regmap_update_bits_base
   regmap_write
@@ -1133,9 +1134,6 @@
 # required by cam_flash.ko
   thermal_zone_get_cdev_by_name
 
-# required by cam_ife_csid.ko
-  ns_to_timespec64
-
 # required by cam_ife_hw_mgr.ko
   __ll_sc_atomic_fetch_add
 
@@ -1151,6 +1149,10 @@
   led_trigger_event
   led_trigger_register_simple
   led_trigger_unregister_simple
+
+# required by cam_smmu_api.ko
+  iommu_dma_enable_best_fit_algo
+  iommu_dma_reserve_iova
 
 # required by cam_utils.ko
   gpio_free_array
@@ -1430,6 +1432,7 @@
   snd_soc_dai_set_pll
   snd_soc_dai_set_sysclk
   snd_soc_dai_set_tdm_slot
+  snd_soc_get_pcm_runtime
   snd_soc_of_get_dai_link_codecs
   snd_soc_of_parse_audio_routing
   snd_soc_of_parse_card_name
@@ -2361,7 +2364,6 @@
 
 # required by snd-soc-wm-adsp.ko
   regmap_async_complete
-  regmap_raw_write
   regmap_raw_write_async
   snd_compr_stop_error
   snd_soc_component_disable_pin
