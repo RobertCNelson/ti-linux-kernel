@@ -48,11 +48,15 @@
   free_io_pgtable_ops
   generic_device_group
   iommu_alloc_resv_region
+  iommu_device_link
   iommu_device_register
+  iommu_device_sysfs_add
+  iommu_device_unlink
   iommu_dma_get_resv_regions
   iommu_fwspec_add_ids
   iommu_fwspec_free
   iommu_fwspec_init
+  iommu_get_dma_cookie
   iommu_group_get_for_dev
   iommu_group_put
   iommu_group_ref_get
@@ -130,6 +134,7 @@
   keyslot_manager_destroy
   keyslot_manager_private
   keyslot_manager_reprogram_all_keys
+  keyslot_manager_set_max_dun_bytes
   kstrtouint
   kstrtoull
   __ll_sc_atomic64_fetch_andnot_release

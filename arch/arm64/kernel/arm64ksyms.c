@@ -29,6 +29,7 @@
 #include <linux/arm-smccc.h>
 #include <linux/kprobes.h>
 
+#include <asm/cacheflush.h>
 #include <asm/checksum.h>
 
 EXPORT_SYMBOL(copy_page);
@@ -90,3 +91,14 @@ EXPORT_SYMBOL(__lshrti3);
 	/* hyp-stub.S */
 extern char __hyp_stub_vectors[];
 EXPORT_SYMBOL(__hyp_stub_vectors);
+	/* caching functions */
+EXPORT_SYMBOL_GPL(__dma_inv_area);
+EXPORT_SYMBOL_GPL(__dma_clean_area);
+EXPORT_SYMBOL_GPL(__dma_flush_area);
+EXPORT_SYMBOL_GPL(__flush_dcache_area);
+
+EXPORT_SYMBOL_GPL(__bss_stop);
+EXPORT_SYMBOL_GPL(__per_cpu_start);
+EXPORT_SYMBOL_GPL(__per_cpu_end);
+EXPORT_SYMBOL_GPL(_sdata);
+EXPORT_SYMBOL_GPL(cpu_do_idle);
