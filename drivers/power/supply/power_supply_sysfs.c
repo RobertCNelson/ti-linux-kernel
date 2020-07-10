@@ -477,6 +477,7 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(operating_freq),
 	POWER_SUPPLY_ATTR(aicl_delay),
 	POWER_SUPPLY_ATTR(aicl_icl),
+	POWER_SUPPLY_ATTR(rtx),
 	POWER_SUPPLY_ATTR(cutoff_soc),
 	POWER_SUPPLY_ATTR(sys_soc),
 	POWER_SUPPLY_ATTR(batt_soc),
@@ -507,6 +508,7 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(alignment),
 	POWER_SUPPLY_ATTR(moisture_detection_enabled),
 	POWER_SUPPLY_ATTR(fg_type),
+	POWER_SUPPLY_ATTR(charger_status),
 	/* Local extensions of type int64_t */
 	POWER_SUPPLY_ATTR(charge_counter_ext),
 	POWER_SUPPLY_ATTR(charge_charger_state),
