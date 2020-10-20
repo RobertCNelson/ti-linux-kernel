@@ -1884,7 +1884,7 @@ int ti_sci_cmd_get_resource_range_from_shost(const struct ti_sci_handle *handle,
  * @src_id:		Device ID of the IRQ source
  * @src_index:		IRQ source index within the source device
  * @dst_id:		Device ID of the IRQ destination
- * @dt_host_irq:	IRQ number of the destination device
+ * @dst_host_irq:	IRQ number of the destination device
  * @ia_id:		Device ID of the IA, if the IRQ flows through this IA
  * @vint:		Virtual interrupt to be used within the IA
  * @global_event:	Global event number to be used for the requesting event
@@ -1959,7 +1959,7 @@ fail:
  * @src_id:		Device ID of the IRQ source
  * @src_index:		IRQ source index within the source device
  * @dst_id:		Device ID of the IRQ destination
- * @dt_host_irq:	IRQ number of the destination device
+ * @dst_host_irq:	IRQ number of the destination device
  * @ia_id:		Device ID of the IA, if the IRQ flows through this IA
  * @vint:		Virtual interrupt to be used within the IA
  * @global_event:	Global event number to be used for the requesting event
@@ -1993,7 +1993,7 @@ static int ti_sci_set_irq(const struct ti_sci_handle *handle, u32 valid_params,
  * @src_id:		Device ID of the IRQ source
  * @src_index:		IRQ source index within the source device
  * @dst_id:		Device ID of the IRQ destination
- * @dt_host_irq:	IRQ number of the destination device
+ * @dst_host_irq:	IRQ number of the destination device
  * @ia_id:		Device ID of the IA, if the IRQ flows through this IA
  * @vint:		Virtual interrupt to be used within the IA
  * @global_event:	Global event number to be used for the requesting event
@@ -2020,141 +2020,44 @@ static int ti_sci_free_irq(const struct ti_sci_handle *handle, u32 valid_params,
 }
 
 /**
- * ti_sci_cmd_set_direct_irq() - Configure a non-event based direct irq route
- *				 between the requested source and destination.
+ * ti_sci_cmd_set_irq() - Configure a host irq route between the requested
+ *			  source and destination.
  * @handle:		Pointer to TISCI handle.
  * @src_id:		Device ID of the IRQ source
  * @src_index:		IRQ source index within the source device
  * @dst_id:		Device ID of the IRQ destination
- * @dt_host_irq:	IRQ number of the destination device
+ * @dst_host_irq:	IRQ number of the destination device
+ * @vint_irq:		Boolean specifying if this interrupt belongs to
+ *			Interrupt Aggregator.
  *
  * Return: 0 if all went fine, else return appropriate error.
  */
-static int ti_sci_cmd_set_direct_irq(const struct ti_sci_handle *handle,
-				     u16 src_id, u16 src_index, u16 dst_id,
-				     u16 dst_host_irq)
+static int ti_sci_cmd_set_irq(const struct ti_sci_handle *handle, u16 src_id,
+			      u16 src_index, u16 dst_id, u16 dst_host_irq)
 {
 	u32 valid_params = MSG_FLAG_DST_ID_VALID | MSG_FLAG_DST_HOST_IRQ_VALID;
 
-	return ti_sci_set_irq(handle, valid_params, src_id, src_index,
-			      dst_id, dst_host_irq, 0, 0, 0, 0, 0);
-}
-
-/**
- * ti_sci_cmd_set_event_irq() - Configure an event based irq route between the
- *				requested source and destination
- * @handle:		Pointer to TISCI handle.
- * @src_id:		Device ID of the IRQ source
- * @src_index:		IRQ source index within the source device
- * @dst_id:		Device ID of the IRQ destination
- * @dt_host_irq:	IRQ number of the destination device
- * @ia_id:		Device ID of the IA, if the IRQ flows through this IA
- * @vint:		Virtual interrupt to be used within the IA
- * @global_event:	Global event number to be used for the requesting event
- * @vint_status_bit:	Virtual interrupt status bit to be used for the event
- *
- * Return: 0 if all went fine, else return appropriate error.
- */
-static int ti_sci_cmd_set_event_irq(const struct ti_sci_handle *handle,
-				    u16 src_id, u16 src_index, u16 dst_id,
-				    u16 dst_host_irq, u16 ia_id, u16 vint,
-				    u16 global_event, u8 vint_status_bit)
-{
-	u32 valid_params = MSG_FLAG_DST_ID_VALID |
-			   MSG_FLAG_DST_HOST_IRQ_VALID | MSG_FLAG_IA_ID_VALID |
-			   MSG_FLAG_VINT_VALID | MSG_FLAG_GLB_EVNT_VALID |
-			   MSG_FLAG_VINT_STS_BIT_VALID;
-
 	return ti_sci_set_irq(handle, valid_params, src_id, src_index, dst_id,
-			      dst_host_irq, ia_id, vint, global_event,
-			      vint_status_bit, 0);
+			      dst_host_irq, 0, 0, 0, 0, 0);
 }
 
 /**
- * ti_sci_cmd_set_direct_irq_from_shost() - Configure a non-event based direct
- *					    irq route between the source and
- *					    destination belonging to a
- *					    specified host.
+ * ti_sci_cmd_set_event_map() - Configure an event based irq route between the
+ *				requested source and Interrupt Aggregator.
  * @handle:		Pointer to TISCI handle.
  * @src_id:		Device ID of the IRQ source
  * @src_index:		IRQ source index within the source device
- * @dst_id:		Device ID of the IRQ destination
- * @dt_host_irq:	IRQ number of the destination device
- * @s_host:		Secondary host ID to which the irq/event is being
- *			requested for.
- *
- * Return: 0 if all went fine, else return appropriate error.
- */
-static
-int ti_sci_cmd_set_direct_irq_from_shost(const struct ti_sci_handle *handle,
-					 u16 src_id, u16 src_index, u16 dst_id,
-					 u16 dst_host_irq, u8 s_host)
-{
-	u32 valid_params = MSG_FLAG_DST_ID_VALID | MSG_FLAG_DST_HOST_IRQ_VALID |
-			   MSG_FLAG_SHOST_VALID;
-
-	return ti_sci_set_irq(handle, valid_params, src_id, src_index,
-			      dst_id, dst_host_irq, 0, 0, 0, 0, s_host);
-}
-
-/**
- * ti_sci_cmd_set_event_irq_from_shost() - Configure an event based irq
- *					   route between the source and
- *					   destination belonging to a
- *					   specified host.
- * @handle:		Pointer to TISCI handle.
- * @src_id:		Device ID of the IRQ source
- * @src_index:		IRQ source index within the source device
- * @dst_id:		Device ID of the IRQ destination
- * @dt_host_irq:	IRQ number of the destination device
  * @ia_id:		Device ID of the IA, if the IRQ flows through this IA
  * @vint:		Virtual interrupt to be used within the IA
  * @global_event:	Global event number to be used for the requesting event
  * @vint_status_bit:	Virtual interrupt status bit to be used for the event
- * @s_host:		Secondary host ID to which the irq/event is being
- *			requested for.
  *
  * Return: 0 if all went fine, else return appropriate error.
  */
-static
-int ti_sci_cmd_set_event_irq_from_shost(const struct ti_sci_handle *handle,
-					u16 src_id, u16 src_index, u16 dst_id,
-					u16 dst_host_irq, u16 ia_id, u16 vint,
-					u16 global_event, u8 vint_status_bit,
-					u8 s_host)
-{
-	u32 valid_params = MSG_FLAG_DST_ID_VALID |
-			   MSG_FLAG_DST_HOST_IRQ_VALID | MSG_FLAG_IA_ID_VALID |
-			   MSG_FLAG_VINT_VALID | MSG_FLAG_GLB_EVNT_VALID |
-			   MSG_FLAG_VINT_STS_BIT_VALID | MSG_FLAG_SHOST_VALID;
-
-	return ti_sci_set_irq(handle, valid_params, src_id, src_index,
-			      dst_id, dst_host_irq, ia_id, vint,
-			      global_event, vint_status_bit, s_host);
-}
-
-/**
- * ti_sci_cmd_set_event_irq_to_poll() - Configure an event based irq
- *					in polling mode
- * @handle:		Pointer to TISCI handle.
- * @src_id:		Device ID of the IRQ source
- * @src_index:		IRQ source index within the source device
- * @dst_id:		Device ID of the IRQ destination
- * @dt_host_irq:	IRQ number of the destination device
- * @ia_id:		Device ID of the IA, if the IRQ flows through this IA
- * @vint:		Virtual interrupt to be used within the IA
- * @global_event:	Global event number to be used for the requesting event
- * @vint_status_bit:	Virtual interrupt status bit to be used for the event
- * @s_host:		Secondary host ID to which the irq/event is being
- *			requested for.
- *
- * Return: 0 if all went fine, else return appropriate error.
- */
-static int ti_sci_cmd_set_event_irq_to_poll(const struct ti_sci_handle *handle,
-					    u16 src_id, u16 src_index,
-					    u16 ia_id, u16 vint,
-					    u16 global_event,
-					    u8 vint_status_bit)
+static int ti_sci_cmd_set_event_map(const struct ti_sci_handle *handle,
+				    u16 src_id, u16 src_index, u16 ia_id,
+				    u16 vint, u16 global_event,
+				    u8 vint_status_bit)
 {
 	u32 valid_params = MSG_FLAG_IA_ID_VALID | MSG_FLAG_VINT_VALID |
 			   MSG_FLAG_GLB_EVNT_VALID |
@@ -2165,34 +2068,33 @@ static int ti_sci_cmd_set_event_irq_to_poll(const struct ti_sci_handle *handle,
 }
 
 /**
- * ti_sci_cmd_free_direct_irq() - Free a non-event based direct irq route
- *				  between the requested source and destination.
+ * ti_sci_cmd_free_irq() - Free a host irq route between the between the
+ *			   requested source and destination.
  * @handle:		Pointer to TISCI handle.
  * @src_id:		Device ID of the IRQ source
  * @src_index:		IRQ source index within the source device
  * @dst_id:		Device ID of the IRQ destination
- * @dt_host_irq:	IRQ number of the destination device
+ * @dst_host_irq:	IRQ number of the destination device
+ * @vint_irq:		Boolean specifying if this interrupt belongs to
+ *			Interrupt Aggregator.
  *
  * Return: 0 if all went fine, else return appropriate error.
  */
-static int ti_sci_cmd_free_direct_irq(const struct ti_sci_handle *handle,
-				      u16 src_id, u16 src_index, u16 dst_id,
-				      u16 dst_host_irq)
+static int ti_sci_cmd_free_irq(const struct ti_sci_handle *handle, u16 src_id,
+			       u16 src_index, u16 dst_id, u16 dst_host_irq)
 {
 	u32 valid_params = MSG_FLAG_DST_ID_VALID | MSG_FLAG_DST_HOST_IRQ_VALID;
 
-	return ti_sci_free_irq(handle, valid_params, src_id, src_index,
-			       dst_id, dst_host_irq, 0, 0, 0, 0, 0);
+	return ti_sci_free_irq(handle, valid_params, src_id, src_index, dst_id,
+			       dst_host_irq, 0, 0, 0, 0, 0);
 }
 
 /**
- * ti_sci_cmd_free_event_irq() - Free an event based irq route between the
- *				 requested source and destination
+ * ti_sci_cmd_free_event_map() - Free an event map between the requested source
+ *				 and Interrupt Aggregator.
  * @handle:		Pointer to TISCI handle.
  * @src_id:		Device ID of the IRQ source
  * @src_index:		IRQ source index within the source device
- * @dst_id:		Device ID of the IRQ destination
- * @dt_host_irq:	IRQ number of the destination device
  * @ia_id:		Device ID of the IA, if the IRQ flows through this IA
  * @vint:		Virtual interrupt to be used within the IA
  * @global_event:	Global event number to be used for the requesting event
@@ -2200,109 +2102,13 @@ static int ti_sci_cmd_free_direct_irq(const struct ti_sci_handle *handle,
  *
  * Return: 0 if all went fine, else return appropriate error.
  */
-static int ti_sci_cmd_free_event_irq(const struct ti_sci_handle *handle,
-				     u16 src_id, u16 src_index, u16 dst_id,
-				     u16 dst_host_irq, u16 ia_id, u16 vint,
-				     u16 global_event, u8 vint_status_bit)
+static int ti_sci_cmd_free_event_map(const struct ti_sci_handle *handle,
+				     u16 src_id, u16 src_index, u16 ia_id,
+				     u16 vint, u16 global_event,
+				     u8 vint_status_bit)
 {
-	u32 valid_params = MSG_FLAG_DST_ID_VALID |
-			   MSG_FLAG_DST_HOST_IRQ_VALID | MSG_FLAG_IA_ID_VALID |
+	u32 valid_params = MSG_FLAG_IA_ID_VALID |
 			   MSG_FLAG_VINT_VALID | MSG_FLAG_GLB_EVNT_VALID |
-			   MSG_FLAG_VINT_STS_BIT_VALID;
-
-	return ti_sci_free_irq(handle, valid_params, src_id, src_index,
-			       dst_id, dst_host_irq, ia_id, vint,
-			       global_event, vint_status_bit, 0);
-}
-
-/**
- * ti_sci_cmd_free_direct_irq_from_shost() - Free a non-event based direct irq
- *					     route between the source and
- *					     destination belonging to a
- *					     specified host.
- * @handle:		Pointer to TISCI handle.
- * @src_id:		Device ID of the IRQ source
- * @src_index:		IRQ source index within the source device
- * @dst_id:		Device ID of the IRQ destination
- * @dt_host_irq:	IRQ number of the destination device
- * @s_host:		Secondary host ID to which the irq/event is being
- *			requested for.
- *
- * Return: 0 if all went fine, else return appropriate error.
- */
-static
-int ti_sci_cmd_free_direct_irq_from_shost(const struct ti_sci_handle *handle,
-					  u16 src_id, u16 src_index, u16 dst_id,
-					  u16 dst_host_irq, u8 s_host)
-{
-	u32 valid_params = MSG_FLAG_DST_ID_VALID | MSG_FLAG_DST_HOST_IRQ_VALID |
-			   MSG_FLAG_SHOST_VALID;
-
-	return ti_sci_free_irq(handle, valid_params, src_id, src_index,
-			       dst_id, dst_host_irq, 0, 0, 0, 0, s_host);
-}
-
-/**
- * ti_sci_cmd_free_event_irq_from_shost() - Free an event based irq
- *					    route between the source and
- *					    destination belonging to a
- *					    specified host.
- * @handle:		Pointer to TISCI handle.
- * @src_id:		Device ID of the IRQ source
- * @src_index:		IRQ source index within the source device
- * @dst_id:		Device ID of the IRQ destination
- * @dt_host_irq:	IRQ number of the destination device
- * @ia_id:		Device ID of the IA, if the IRQ flows through this IA
- * @vint:		Virtual interrupt to be used within the IA
- * @global_event:	Global event number to be used for the requesting event
- * @vint_status_bit:	Virtual interrupt status bit to be used for the event
- * @s_host:		Secondary host ID to which the irq/event is being
- *			requested for.
- *
- * Return: 0 if all went fine, else return appropriate error.
- */
-static
-int ti_sci_cmd_free_event_irq_from_shost(const struct ti_sci_handle *handle,
-					 u16 src_id, u16 src_index, u16 dst_id,
-					 u16 dst_host_irq, u16 ia_id, u16 vint,
-					 u16 global_event, u8 vint_status_bit,
-					 u8 s_host)
-{
-	u32 valid_params = MSG_FLAG_DST_ID_VALID |
-			   MSG_FLAG_DST_HOST_IRQ_VALID | MSG_FLAG_IA_ID_VALID |
-			   MSG_FLAG_VINT_VALID | MSG_FLAG_GLB_EVNT_VALID |
-			   MSG_FLAG_VINT_STS_BIT_VALID | MSG_FLAG_SHOST_VALID;
-
-	return ti_sci_free_irq(handle, valid_params, src_id, src_index,
-			       dst_id, dst_host_irq, ia_id, vint,
-			       global_event, vint_status_bit, s_host);
-}
-
-/**
- * ti_sci_cmd_free_event_irq_to_poll() - Free an event based irq
- *					 in polling mode
- * @handle:		Pointer to TISCI handle.
- * @src_id:		Device ID of the IRQ source
- * @src_index:		IRQ source index within the source device
- * @dst_id:		Device ID of the IRQ destination
- * @dt_host_irq:	IRQ number of the destination device
- * @ia_id:		Device ID of the IA, if the IRQ flows through this IA
- * @vint:		Virtual interrupt to be used within the IA
- * @global_event:	Global event number to be used for the requesting event
- * @vint_status_bit:	Virtual interrupt status bit to be used for the event
- * @s_host:		Secondary host ID to which the irq/event is being
- *			requested for.
- *
- * Return: 0 if all went fine, else return appropriate error.
- */
-static int ti_sci_cmd_free_event_irq_to_poll(const struct ti_sci_handle *handle,
-					     u16 src_id, u16 src_index,
-					     u16 ia_id, u16 vint,
-					     u16 global_event,
-					     u8 vint_status_bit)
-{
-	u32 valid_params = MSG_FLAG_IA_ID_VALID | MSG_FLAG_VINT_VALID |
-			   MSG_FLAG_GLB_EVNT_VALID |
 			   MSG_FLAG_VINT_STS_BIT_VALID;
 
 	return ti_sci_free_irq(handle, valid_params, src_id, src_index, 0, 0,
@@ -3127,17 +2933,10 @@ static void ti_sci_setup_ops(struct ti_sci_info *info)
 	rm_core_ops->get_range_from_shost =
 				ti_sci_cmd_get_resource_range_from_shost;
 
-	iops->set_direct_irq = ti_sci_cmd_set_direct_irq;
-	iops->set_event_irq = ti_sci_cmd_set_event_irq;
-	iops->set_direct_irq_from_shost = ti_sci_cmd_set_direct_irq_from_shost;
-	iops->set_event_irq_from_shost = ti_sci_cmd_set_event_irq_from_shost;
-	iops->set_event_irq_to_poll = ti_sci_cmd_set_event_irq_to_poll;
-	iops->free_direct_irq = ti_sci_cmd_free_direct_irq;
-	iops->free_event_irq = ti_sci_cmd_free_event_irq;
-	iops->free_direct_irq_from_shost =
-					ti_sci_cmd_free_direct_irq_from_shost;
-	iops->free_event_irq_from_shost = ti_sci_cmd_free_event_irq_from_shost;
-	iops->free_event_irq_to_poll = ti_sci_cmd_free_event_irq_to_poll;
+	iops->set_irq = ti_sci_cmd_set_irq;
+	iops->set_event_map = ti_sci_cmd_set_event_map;
+	iops->free_irq = ti_sci_cmd_free_irq;
+	iops->free_event_map = ti_sci_cmd_free_event_map;
 
 	pops->request = ti_sci_cmd_proc_request;
 	pops->release = ti_sci_cmd_proc_release;

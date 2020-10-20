@@ -18,7 +18,6 @@
 #include <linux/soc/ti/ti_sci_protocol.h>
 
 #define MAX_EVENTS_PER_VINT	64
-#define TI_SCI_EVENT_IRQ	BIT(31)
 
 #define VINT_ENABLE_CLR_OFFSET	0x18
 
@@ -151,11 +150,9 @@ static void ti_sci_free_event_irq(struct ti_sci_inta_irq_domain *inta,
 		return;
 
 	event = &vint_desc->events[event_index];
-	inta->sci->ops.rm_irq_ops.free_event_irq(inta->sci,
+	inta->sci->ops.rm_irq_ops.free_event_map(inta->sci,
 						 event->src_id,
 						 event->src_index,
-						 inta->dst_id,
-						 dst_irq,
 						 inta->ia_id, vint,
 						 event->global_event,
 						 event_index);
@@ -234,18 +231,15 @@ static int ti_sci_allocate_event_irq(struct ti_sci_inta_irq_domain *inta,
 	event->src_index = src_index;
 	event->global_event = ti_sci_get_free_resource(inta->global_event);
 
-	err = inta->sci->ops.rm_irq_ops.set_event_irq(inta->sci,
+	err = inta->sci->ops.rm_irq_ops.set_event_map(inta->sci,
 						      src_id, src_index,
-						      inta->dst_id,
-						      dst_irq,
 						      inta->ia_id,
 						      vint,
 						      event->global_event,
 						      free_bit);
 	if (err) {
-		pr_err("%s: Event allocation failed from src = %d, index = %d, to dst = %d,irq = %d,via ia_id = %d, vint = %d,global event = %d, status_bit = %d\n",
-		       __func__, src_id, src_index, inta->dst_id, dst_irq,
-		       inta->ia_id, vint, event->global_event, free_bit);
+		pr_err("%s: Event allocation failed from src = %d, index = %d, to  ia_id = %d, vint = %d,global event = %d, status_bit = %d\n",
+		       __func__, src_id, src_index, inta->ia_id, vint, event->global_event, free_bit);
 		return err;
 	}
 
@@ -295,7 +289,7 @@ static struct ti_sci_inta_vint_desc *alloc_parent_irq(struct irq_domain *domain,
 	/* Interrupt parent is Interrupt Router */
 	fwspec.param[0] = inta->ia_id;
 	fwspec.param[1] = vint;
-	fwspec.param[2] = flags | TI_SCI_EVENT_IRQ;
+	fwspec.param[2] = flags;
 
 	err = irq_domain_alloc_irqs_parent(domain, virq, 1, &fwspec);
 	if (err)

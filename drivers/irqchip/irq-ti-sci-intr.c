@@ -21,7 +21,6 @@
 #define TI_SCI_DEV_ID_SHIFT	16
 #define TI_SCI_IRQ_ID_MASK	0xffff
 #define TI_SCI_IRQ_ID_SHIFT	0
-#define TI_SCI_IS_EVENT_IRQ	BIT(31)
 
 #define HWIRQ_TO_DEVID(hwirq)	(((hwirq) >> (TI_SCI_DEV_ID_SHIFT)) & \
 				 (TI_SCI_DEV_ID_MASK))
@@ -84,8 +83,8 @@ static inline void ti_sci_intr_delete_desc(struct ti_sci_intr_irq_domain *intr,
 					   u16 src_id, u16 src_index,
 					   u16 dst_irq)
 {
-	intr->sci->ops.rm_irq_ops.free_direct_irq(intr->sci, src_id, src_index,
-						  intr->dst_id, dst_irq);
+	intr->sci->ops.rm_irq_ops.free_irq(intr->sci, src_id, src_index,
+					   intr->dst_id, dst_irq);
 }
 
 /**
@@ -99,21 +98,16 @@ static void ti_sci_intr_irq_domain_free(struct irq_domain *domain,
 {
 	struct ti_sci_intr_irq_domain *intr = domain->host_data;
 	struct irq_data *data, *parent_data;
-	u32 flags;
 	int i;
 
 	intr = domain->host_data;
 
 	for (i = 0; i < nr_irqs; i++) {
 		data = irq_domain_get_irq_data(domain, virq + i);
-		flags = (u32)(u64)irq_data_get_irq_chip_data(data);
 		parent_data = irq_domain_get_irq_data(domain->parent, virq + i);
 
-		if (!(flags & TI_SCI_IS_EVENT_IRQ))
-			ti_sci_intr_delete_desc(intr,
-						HWIRQ_TO_DEVID(data->hwirq),
-						HWIRQ_TO_IRQID(data->hwirq),
-						parent_data->hwirq);
+		ti_sci_intr_delete_desc(intr, HWIRQ_TO_DEVID(data->hwirq),
+					HWIRQ_TO_IRQID(data->hwirq), parent_data->hwirq);
 		ti_sci_release_resource(intr->dst_irq, parent_data->hwirq);
 		irq_domain_free_irqs_parent(domain, virq + i, 1);
 		irq_domain_reset_irq_data(data);
@@ -152,12 +146,8 @@ static int allocate_gic_irq(struct irq_domain *domain, unsigned int virq,
 	if (err)
 		goto err_irqs;
 
-	/* If event is requested then return */
-	if (flags & TI_SCI_IS_EVENT_IRQ)
-		return 0;
-
-	err = intr->sci->ops.rm_irq_ops.set_direct_irq(intr->sci, dev, irq,
-						       intr->dst_id, dst_irq);
+	err = intr->sci->ops.rm_irq_ops.set_irq(intr->sci, dev, irq,
+						intr->dst_id, dst_irq);
 	if (err) {
 		pr_err("%s: IRQ allocation failed from src = %d, src_index = %d to dst_id = %d, dst_irq = %d",
 		       __func__, dev, irq, intr->dst_id, dst_irq);
@@ -206,8 +196,7 @@ static int ti_sci_intr_irq_domain_alloc(struct irq_domain *domain,
 			goto err_irq;
 
 		err = irq_domain_set_hwirq_and_chip(domain, virq + i, hwirq + i,
-						    &ti_sci_intr_irq_chip,
-						    (void *)(u64)type);
+						    &ti_sci_intr_irq_chip, NULL);
 		if (err)
 			goto err_irq;
 	}

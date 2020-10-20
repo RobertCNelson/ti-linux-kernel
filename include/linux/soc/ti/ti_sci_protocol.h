@@ -225,77 +225,26 @@ struct ti_sci_rm_core_ops {
 #define TI_SCI_RESASG_SUBTYPE_GLOBAL_EVENT_SEVT	0xd
 /**
  * struct ti_sci_rm_irq_ops: IRQ management operations
- * @set_direct_irq:		Set Non-event Sourced direct irq to destination
- *				host(same host as ti sci interface id).
- * @set_event_irq:		Set Event based peripheral irq to destination
- *				host(same host as ti sci interface id).
- * @set_direct_irq_from_shost:	Set Non-event Sourced direct irq to a
- *				specified destination host.
- * @set_event_irq_from_shost:	Set Event based peripheral irq to a
- *				specified destination host.
- * @set_event_irq_to_poll:	Set Event based peripheral irq to polling mode.
- *				vint_status_bit is used for polling.
- * @free_direct_irq:		Free a non-event sourced direct irq to
- *				destination host(same as ti sci interface id)
- * @free_event_irq:		Free an event based peripheral irq to
- *				destination host(same as ti sci interface id)
- * @free_direct_irq_from_shost:	Free non-event based direct irq from a
- *				specified destination host.
- * @free_event_irq_from_shost:	Free event based peripheral irq from a
- *				specified destination host.
- * @free_event_irq_to_poll:	Free an event based peripheral irq that is
- *				configured in polling mode.
- *
- * NOTE: for these functions, all the parameters are consolidated and defined
- * as below:
- * - handle:	Pointer to TISCI handle as retrieved by *ti_sci_get_handle
- * - src_id:	Device ID of the IRQ source
- * - src_index:	IRQ source index within the source device
- * - dst_id:	Device ID of the IRQ destination.
- * - dst_host_irq:	IRQ number of the destination device.
- * - ia_id:	Device ID of the IA, if the IRQ flows through this IA
- * - vint:	Virtual interrupt to be used within the IA
- * - global_event:	Global event number to be used for the requesting event.
- * - vint_status_bit:	Virtual interrupt status bit to be used for the event.
- * - s_host:	Secondary host ID to which the irq/event is being requested.
+ * @set_irq:		Set an IRQ route between the requested source
+ *			and destination
+ * @set_event_map:	Set an Event based peripheral irq to Interrupt
+ *			Aggregator.
+ * @free_irq:		Free an IRQ route between the requested source
+ *			and destination.
+ * @free_event_map:	Free an event based peripheral irq to Interrupt
+ *			Aggregator.
  */
 struct ti_sci_rm_irq_ops {
-	int (*set_direct_irq)(const struct ti_sci_handle *handle, u16 src_id,
-			      u16 src_index, u16 dst_id, u16 dst_host_irq);
-	int (*set_event_irq)(const struct ti_sci_handle *handle, u16 src_id,
-			     u16 src_index, u16 dst_id, u16 dst_host_irq,
-			     u16 ia_id, u16 vint, u16 global_event,
-			     u8 vint_status_bit);
-	int (*set_direct_irq_from_shost)(const struct ti_sci_handle *handle,
-					 u16 src_id, u16 src_index, u16 dst_id,
-					 u16 dst_host_irq, u8 s_host);
-	int (*set_event_irq_from_shost)(const struct ti_sci_handle *handle,
-					u16 src_id, u16 src_index, u16 dst_id,
-					u16 dst_host_irq, u16 ia_id, u16 vint,
-					u16 global_event, u8 vint_status_bit,
-					u8 s_host);
-	int (*set_event_irq_to_poll)(const struct ti_sci_handle *handle,
-				     u16 src_id, u16 src_index, u16 ia_id,
-				     u16 vint, u16 global_event,
-				     u8 vint_status_bit);
-	int (*free_direct_irq)(const struct ti_sci_handle *handle, u16 src_id,
-			       u16 src_index, u16 dst_id, u16 dst_host_irq);
-	int (*free_event_irq)(const struct ti_sci_handle *handle, u16 src_id,
-			      u16 src_index, u16 dst_id, u16 dst_host_irq,
-			      u16 ia_id, u16 vint, u16 global_event,
-			      u8 vint_status_bit);
-	int (*free_direct_irq_from_shost)(const struct ti_sci_handle *handle,
-					  u16 src_id, u16 src_index, u16 dst_id,
-					  u16 dst_host_irq, u8 s_host);
-	int (*free_event_irq_from_shost)(const struct ti_sci_handle *handle,
-					 u16 src_id, u16 src_index, u16 dst_id,
-					 u16 dst_host_irq, u16 ia_id, u16 vint,
-					 u16 global_event, u8 vint_status_bit,
-					 u8 s_host);
-	int (*free_event_irq_to_poll)(const struct ti_sci_handle *handle,
-				      u16 src_id, u16 src_index, u16 ia_id,
-				      u16 vint, u16 global_event,
-				      u8 vint_status_bit);
+	int (*set_irq)(const struct ti_sci_handle *handle, u16 src_id,
+		       u16 src_index, u16 dst_id, u16 dst_host_irq);
+	int (*set_event_map)(const struct ti_sci_handle *handle, u16 src_id,
+			     u16 src_index, u16 ia_id, u16 vint,
+			     u16 global_event, u8 vint_status_bit);
+	int (*free_irq)(const struct ti_sci_handle *handle, u16 src_id,
+			u16 src_index, u16 dst_id, u16 dst_host_irq);
+	int (*free_event_map)(const struct ti_sci_handle *handle, u16 src_id,
+			      u16 src_index, u16 ia_id, u16 vint,
+			      u16 global_event, u8 vint_status_bit);
 };
 
 /**
