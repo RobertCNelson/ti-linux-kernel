@@ -36,6 +36,7 @@ struct ti_sci_inta_irq_domain {
 	struct ti_sci_resource *vint;
 	struct ti_sci_resource *global_event;
 	void __iomem *base;
+	struct device *dev;
 	u16 ia_id;
 	u16 dst_id;
 };
@@ -195,6 +196,37 @@ static void ti_sci_inta_irq_domain_free(struct irq_domain *domain,
 }
 
 /**
+ * ti_sci_inta_xlate_irq() - Translate hwirq to parent's hwirq.
+ * @inta:	IRQ domain corresponding to Interrupt Aggregator
+ * @irq:	Hardware irq corresponding to the above irq domain
+ *
+ * Return parent irq number if translation is available else -ENOENT.
+ */
+static int ti_sci_inta_xlate_irq(struct ti_sci_inta_irq_domain *inta,
+				 u16 vint_id)
+{
+	struct device_node *np = dev_of_node(inta->dev);
+	u32 base, parent_base, size;
+	const __be32 *range;
+	int len;
+
+	range = of_get_property(np, "ti,interrupt-ranges", &len);
+	if (!range)
+		return vint_id;
+
+	for (len /= sizeof(*range); len >= 3; len -= 3) {
+		base = be32_to_cpu(*range++);
+		parent_base = be32_to_cpu(*range++);
+		size = be32_to_cpu(*range++);
+
+		if (base <= vint_id && vint_id < base + size)
+			return vint_id - base + parent_base;
+	}
+
+	return -ENOENT;
+}
+
+/**
  * ti_sci_allocate_event_irq() - Allocate an event to a IA vint.
  * @inta:	Pointer to Interrupt Aggregator IRQ domain
  * @vint_desc:	Virtual interrupt descriptor to which the event gets attached.
@@ -267,10 +299,17 @@ static struct ti_sci_inta_vint_desc *alloc_parent_irq(struct irq_domain *domain,
 	struct ti_sci_inta_vint_desc *vint_desc;
 	struct irq_data *gic_data;
 	struct irq_fwspec fwspec;
-	int err;
+	int err, p_hwirq;
 
 	if (!irq_domain_get_of_node(domain->parent))
 		return ERR_PTR(-EINVAL);
+
+	p_hwirq = vint;
+	if (ti_sci_abi_3_and_above(inta->sci)) {
+		p_hwirq = ti_sci_inta_xlate_irq(inta, vint);
+		if (p_hwirq < 0)
+			return ERR_PTR(p_hwirq);
+	}
 
 	vint_desc = kzalloc(sizeof(*vint_desc), GFP_KERNEL);
 	if (!vint_desc)
@@ -285,11 +324,17 @@ static struct ti_sci_inta_vint_desc *alloc_parent_irq(struct irq_domain *domain,
 	}
 
 	fwspec.fwnode = domain->parent->fwnode;
-	fwspec.param_count = 3;
-	/* Interrupt parent is Interrupt Router */
-	fwspec.param[0] = inta->ia_id;
-	fwspec.param[1] = vint;
-	fwspec.param[2] = flags;
+	if (ti_sci_abi_3_and_above(inta->sci)) {
+		/* Parent is Interrupt Router */
+		fwspec.param_count = 1;
+		fwspec.param[0] = p_hwirq;
+	} else {
+		fwspec.param_count = 3;
+		/* Interrupt parent is Interrupt Router */
+		fwspec.param[0] = inta->ia_id;
+		fwspec.param[1] = vint;
+		fwspec.param[2] = flags;
+	}
 
 	err = irq_domain_alloc_irqs_parent(domain, virq, 1, &fwspec);
 	if (err)
@@ -388,21 +433,35 @@ static int ti_sci_inta_irq_domain_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	inta->vint = devm_ti_sci_get_of_resource(inta->sci, dev,
-						 inta->ia_id,
-						 "ti,sci-rm-range-vint");
-	if (IS_ERR(inta->vint)) {
-		dev_err(dev, "VINT resource allocation failed\n");
-		return PTR_ERR(inta->vint);
-	}
+	inta->dev = dev;
+	if (ti_sci_abi_3_and_above(inta->sci)) {
+		inta->vint = devm_ti_sci_get_resource(inta->sci, dev, inta->ia_id,
+						      TI_SCI_RESASG_SUBTYPE_IA_VINT);
+		if (IS_ERR(inta->vint)) {
+			dev_err(dev, "VINT resource allocation failed\n");
+			return PTR_ERR(inta->vint);
+		}
 
-	inta->global_event =
-		devm_ti_sci_get_of_resource(inta->sci, dev,
-					    inta->ia_id,
-					    "ti,sci-rm-range-global-event");
-	if (IS_ERR(inta->global_event)) {
-		dev_err(dev, "Global event resource allocation failed\n");
-		return PTR_ERR(inta->global_event);
+		inta->global_event = devm_ti_sci_get_resource(inta->sci, dev, inta->ia_id,
+						      TI_SCI_RESASG_SUBTYPE_GLOBAL_EVENT_SEVT);
+		if (IS_ERR(inta->global_event)) {
+			dev_err(dev, "Global event resource allocation failed\n");
+			return PTR_ERR(inta->global_event);
+		}
+	} else {
+		inta->vint = devm_ti_sci_get_of_resource(inta->sci, dev, inta->ia_id,
+							 "ti,sci-rm-range-vint");
+		if (IS_ERR(inta->vint)) {
+			dev_err(dev, "VINT resource allocation failed\n");
+			return PTR_ERR(inta->vint);
+		}
+
+		inta->global_event = devm_ti_sci_get_of_resource(inta->sci, dev, inta->ia_id,
+							    "ti,sci-rm-range-global-event");
+		if (IS_ERR(inta->global_event)) {
+			dev_err(dev, "Global event resource allocation failed\n");
+			return PTR_ERR(inta->global_event);
+		}
 	}
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
