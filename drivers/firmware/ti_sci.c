@@ -1729,6 +1729,15 @@ fail:
 	return ret;
 }
 
+bool ti_sci_abi_3_and_above(const struct ti_sci_handle *handle)
+{
+	if (handle->version.abi_major >= 3)
+		return true;
+	else
+		return false;
+}
+EXPORT_SYMBOL_GPL(ti_sci_abi_3_and_above);
+
 static int ti_sci_get_resource_type(struct ti_sci_info *info, u16 dev_id,
 				    u16 *type)
 {
@@ -1736,8 +1745,11 @@ static int ti_sci_get_resource_type(struct ti_sci_info *info, u16 dev_id,
 	bool found = false;
 	int i;
 
-	/* If map is not provided then assume dev_id is used as type */
-	if (!rm_type_map) {
+	/*
+	 * - If map is not provided then assume dev_id is used as type.
+	 * - With abi 3.0, sysfw depricated special resource types. use dev_id as type.
+	 */
+	if (!rm_type_map || ti_sci_abi_3_and_above(&info->handle)) {
 		*type = dev_id;
 		return 0;
 	}
@@ -3246,7 +3258,6 @@ devm_ti_sci_get_resource_sets(const struct ti_sci_handle *handle,
 			      struct device *dev, u32 dev_id, u32 *sub_types,
 			      u32 sets)
 {
-	u32 resource_subtype;
 	u16 resource_type;
 	struct ti_sci_resource *res;
 	bool valid_set = false;

@@ -562,6 +562,7 @@ struct ti_sci_resource *
 devm_ti_sci_get_resource(const struct ti_sci_handle *handle, struct device *dev,
 			 u32 dev_id, u32 sub_type);
 
+bool ti_sci_abi_3_and_above(const struct ti_sci_handle *handle);
 #else	/* CONFIG_TI_SCI_PROTOCOL */
 
 static inline const struct ti_sci_handle *ti_sci_get_handle(struct device *dev)
@@ -615,6 +616,11 @@ devm_ti_sci_get_resource(const struct ti_sci_handle *handle, struct device *dev,
 			 u32 dev_id, u32 sub_type);
 {
 	return ERR_PTR(-EINVAL);
+}
+
+static inline bool ti_sci_abi_3_and_above(const struct ti_sci_handle *handle)
+{
+	return false;
 }
 #endif	/* CONFIG_TI_SCI_PROTOCOL */
 
