@@ -1583,6 +1583,7 @@ static int udma_alloc_chan_resources(struct dma_chan *chan)
 	const struct udma_match_data *match_data = uc->ud->match_data;
 	struct udma_tchan *tchan;
 	struct udma_rchan *rchan;
+	u32 rchan_oes_offset;
 	int ret;
 
 	if (uc->pkt_mode || uc->dir == DMA_MEM_TO_MEM) {
@@ -1881,8 +1882,12 @@ static int udma_alloc_chan_resources(struct dma_chan *chan)
 			uc->irq_ra_tisci = k3_ringacc_get_tisci_dev_id(
 								rchan->r_ring);
 			uc->irq_ra_idx = rx_ring;
-			uc->irq_udma_idx = match_data->rchan_oes_offset +
-					   rchan->id;
+			/* ToDo: This will fail for J721E */
+			if (ti_sci_abi_3_and_above(ud->tisci_rm.tisci))
+				rchan_oes_offset = 0x200;
+			else
+				rchan_oes_offset = match_data->rchan_oes_offset;
+			uc->irq_udma_idx = rchan_oes_offset + rchan->id;
 		}
 	}
 
