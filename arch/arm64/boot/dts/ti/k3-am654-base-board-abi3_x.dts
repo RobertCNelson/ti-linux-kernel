@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Copyright (C) 2016-2018 Texas Instruments Incorporated - http://www.ti.com/
+ */
+
+/dts-v1/;
+
+#include "k3-am654-base-board.dts"
+#include "k3-am65-main-abi3_x.dtsi"
+#include "k3-am65-mcu-abi3_x.dtsi"
+#include "k3-am65-wakeup-abi3_x.dtsi"
+
+/ {
+	compatible =  "ti,am654-evm", "ti,am654";
+	model = "Texas Instruments AM654 Base Board using sysfw ABI 3.x";
+};

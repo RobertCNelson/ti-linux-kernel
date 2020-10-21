@@ -1,0 +1,86 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Device Tree Source for AM6 SoC Family Main Domain peripherals
+ *
+ * Copyright (C) 2020 Texas Instruments Incorporated - https://www.ti.com/
+ */
+
+&cbass_main {
+	/delete-node/ main_intr;
+	
+	intr_main_gpio: interrupt-controller0 {
+		compatible = "ti,sci-intr";
+		ti,intr-trigger-type = <1>;
+		interrupt-controller;
+		interrupt-parent = <&gic500>;
+		#interrupt-cells = <1>;
+		ti,sci = <&dmsc>;
+		ti,sci-dev-id = <100>;
+		ti,interrupt-ranges = <0 392 32>;
+	};
+};
+
+&main_navss {
+	/delete-node/ main_navss_intr;
+	/delete-node/ main_navss_inta;
+
+	main_navss_intr: interrupt-controller1 {
+		compatible = "ti,sci-intr";
+		ti,intr-trigger-type = <4>;
+		interrupt-controller;
+		interrupt-parent = <&gic500>;
+		#interrupt-cells = <1>;
+		ti,sci = <&dmsc>;
+		ti,sci-dev-id = <182>;
+		ti,interrupt-ranges = <0 64 64>,
+				      <64 448 64>;
+	};
+
+	main_udmass_inta: interrupt-controller@33d00000 {
+		compatible = "ti,sci-inta";
+		reg = <0x0 0x33d00000 0x0 0x100000>;
+		interrupt-controller;
+		interrupt-parent = <&main_navss_intr>;
+		#interrupt-cells = <3>;
+		ti,sci = <&dmsc>;
+		ti,sci-dev-id = <179>;
+		ti,interrupt-ranges = <0 0 256>;
+	};
+};
+
+&mailbox0_cluster0 {
+	interrupt-parent = <&main_navss_intr>;
+	interrupts = <436>;
+};
+
+&mailbox0_cluster1 {
+	interrupt-parent = <&main_navss_intr>;
+	interrupts = <432>;
+};
+
+&ringacc {
+	ti,sci-rm-range-gp-rings = <0x1>; /* GP ring range */
+};
+
+&main_udmap {
+	ti,sci-rm-range-tchan = <0xf>, /* TX_HCHAN */
+				<0xd>; /* TX_CHAN */
+	ti,sci-rm-range-rchan = <0xb>, /* RX_HCHAN */
+				<0xa>; /* RX_CHAN */
+	ti,sci-rm-range-rflow = <0x0>; /* GP RFLOW */
+};
+
+&main_cpts {
+	interrupts-extended = <&main_navss_intr 391>;
+	interrupt-names = "cpts";
+};
+
+&main_gpio0 {
+	interrupt-parent = <&intr_main_gpio>;
+	interrupts = <192>, <193>, <194>, <195>, <196>, <197>;
+};
+
+&main_gpio1 {
+		interrupt-parent = <&intr_main_gpio>;
+		interrupts = <200>, <201>, <202>, <203>, <204>, <205>;
+};

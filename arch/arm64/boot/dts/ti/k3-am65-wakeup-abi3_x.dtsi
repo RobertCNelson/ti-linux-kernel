@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Device Tree Source for AM6 SoC Family Wakeup Domain peripherals
+ *
+ * Copyright (C) 2020 Texas Instruments Incorporated - https://www.ti.com/
+ */
+
+&cbass_wakeup {
+	/delete-node/ wkup_intr;
+	intr_wkup_gpio: interrupt-controller2 {
+		compatible = "ti,sci-intr";
+		ti,intr-trigger-type = <1>;
+		interrupt-controller;
+		interrupt-parent = <&gic500>;
+		#interrupt-cells = <1>;
+		ti,sci = <&dmsc>;
+		ti,sci-dev-id = <156>;
+		ti,interrupt-ranges = <0 712 16>;
+	};
+};
+
+&wkup_gpio0 {
+	interrupt-parent = <&intr_wkup_gpio>;
+	interrupts = <60>, <61>, <62>, <63>;
+};

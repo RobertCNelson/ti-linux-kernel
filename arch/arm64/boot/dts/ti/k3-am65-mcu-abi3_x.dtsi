@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Device Tree Source for AM6 SoC Family MCU Domain peripherals
+ *
+ * Copyright (C) 2020 Texas Instruments Incorporated - https://www.ti.com/
+ */
+
+&mcu_ringacc {
+	ti,sci-rm-range-gp-rings = <0x1>; /* GP ring range */
+};
+
+&mcu_udmap {
+	ti,sci-rm-range-tchan = <0xf>, /* TX_HCHAN */
+				<0xd>; /* TX_CHAN */
+	ti,sci-rm-range-rchan = <0xb>, /* RX_HCHAN */
+				<0xa>; /* RX_CHAN */
+	ti,sci-rm-range-rflow = <0x0>; /* GP RFLOW */
+};
