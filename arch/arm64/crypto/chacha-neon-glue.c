@@ -1,5 +1,5 @@
 /*
- * ARM NEON accelerated ChaCha and XChaCha stream ciphers,
+ * ARM NEON and scalar accelerated ChaCha and XChaCha stream ciphers,
  * including ChaCha20 (RFC7539)
  *
  * Copyright (C) 2016 - 2017 Linaro, Ltd. <ard.biesheuvel@linaro.org>
@@ -20,8 +20,9 @@
  */
 
 #include <crypto/algapi.h>
-#include <crypto/chacha.h>
+#include <crypto/internal/chacha.h>
 #include <crypto/internal/skcipher.h>
+#include <linux/jump_label.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 
@@ -32,45 +33,67 @@
 asmlinkage void chacha_block_xor_neon(u32 *state, u8 *dst, const u8 *src,
 				      int nrounds);
 asmlinkage void chacha_4block_xor_neon(u32 *state, u8 *dst, const u8 *src,
-				       int nrounds);
+				       int nrounds, int bytes);
 asmlinkage void hchacha_block_neon(const u32 *state, u32 *out, int nrounds);
 
+static __ro_after_init DEFINE_STATIC_KEY_FALSE(have_neon);
+
 static void chacha_doneon(u32 *state, u8 *dst, const u8 *src,
-			  unsigned int bytes, int nrounds)
+			  int bytes, int nrounds)
 {
-	u8 buf[CHACHA_BLOCK_SIZE];
+	while (bytes > 0) {
+		int l = min(bytes, CHACHA_BLOCK_SIZE * 5);
 
-	while (bytes >= CHACHA_BLOCK_SIZE * 4) {
-		kernel_neon_begin();
-		chacha_4block_xor_neon(state, dst, src, nrounds);
-		kernel_neon_end();
-		bytes -= CHACHA_BLOCK_SIZE * 4;
-		src += CHACHA_BLOCK_SIZE * 4;
-		dst += CHACHA_BLOCK_SIZE * 4;
-		state[12] += 4;
-	}
+		if (l <= CHACHA_BLOCK_SIZE) {
+			u8 buf[CHACHA_BLOCK_SIZE];
 
-	if (!bytes)
-		return;
-
-	kernel_neon_begin();
-	while (bytes >= CHACHA_BLOCK_SIZE) {
-		chacha_block_xor_neon(state, dst, src, nrounds);
-		bytes -= CHACHA_BLOCK_SIZE;
-		src += CHACHA_BLOCK_SIZE;
-		dst += CHACHA_BLOCK_SIZE;
-		state[12]++;
+			memcpy(buf, src, l);
+			chacha_block_xor_neon(state, buf, buf, nrounds);
+			memcpy(dst, buf, l);
+			state[12] += 1;
+			break;
+		}
+		chacha_4block_xor_neon(state, dst, src, nrounds, l);
+		bytes -= CHACHA_BLOCK_SIZE * 5;
+		src += CHACHA_BLOCK_SIZE * 5;
+		dst += CHACHA_BLOCK_SIZE * 5;
+		state[12] += 5;
 	}
-	if (bytes) {
-		memcpy(buf, src, bytes);
-		chacha_block_xor_neon(state, buf, buf, nrounds);
-		memcpy(dst, buf, bytes);
-	}
-	kernel_neon_end();
 }
 
+void hchacha_block_arch(const u32 *state, u32 *stream, int nrounds)
+{
+	if (!static_branch_likely(&have_neon) || !may_use_simd()) {
+		hchacha_block_generic(state, stream, nrounds);
+	} else {
+		kernel_neon_begin();
+		hchacha_block_neon(state, stream, nrounds);
+		kernel_neon_end();
+	}
+}
+EXPORT_SYMBOL(hchacha_block_arch);
+
+void chacha_init_arch(u32 *state, const u32 *key, const u8 *iv)
+{
+	chacha_init_generic(state, key, iv);
+}
+EXPORT_SYMBOL(chacha_init_arch);
+
+void chacha_crypt_arch(u32 *state, u8 *dst, const u8 *src, unsigned int bytes,
+		       int nrounds)
+{
+	if (!static_branch_likely(&have_neon) || bytes <= CHACHA_BLOCK_SIZE ||
+	    !may_use_simd())
+		return chacha_crypt_generic(state, dst, src, bytes, nrounds);
+
+	kernel_neon_begin();
+	chacha_doneon(state, dst, src, bytes, nrounds);
+	kernel_neon_end();
+}
+EXPORT_SYMBOL(chacha_crypt_arch);
+
 static int chacha_neon_stream_xor(struct skcipher_request *req,
-				  struct chacha_ctx *ctx, u8 *iv)
+				  const struct chacha_ctx *ctx, const u8 *iv)
 {
 	struct skcipher_walk walk;
 	u32 state[16];
@@ -78,16 +101,25 @@ static int chacha_neon_stream_xor(struct skcipher_request *req,
 
 	err = skcipher_walk_virt(&walk, req, false);
 
-	crypto_chacha_init(state, ctx, iv);
+	chacha_init_generic(state, ctx->key, iv);
 
 	while (walk.nbytes > 0) {
 		unsigned int nbytes = walk.nbytes;
 
 		if (nbytes < walk.total)
-			nbytes = round_down(nbytes, walk.stride);
+			nbytes = rounddown(nbytes, walk.stride);
 
-		chacha_doneon(state, walk.dst.virt.addr, walk.src.virt.addr,
-			      nbytes, ctx->nrounds);
+		if (!static_branch_likely(&have_neon) ||
+		    !may_use_simd()) {
+			chacha_crypt_generic(state, walk.dst.virt.addr,
+					     walk.src.virt.addr, nbytes,
+					     ctx->nrounds);
+		} else {
+			kernel_neon_begin();
+			chacha_doneon(state, walk.dst.virt.addr,
+				      walk.src.virt.addr, nbytes, ctx->nrounds);
+			kernel_neon_end();
+		}
 		err = skcipher_walk_done(&walk, walk.nbytes - nbytes);
 	}
 
@@ -98,9 +130,6 @@ static int chacha_neon(struct skcipher_request *req)
 {
 	struct crypto_skcipher *tfm = crypto_skcipher_reqtfm(req);
 	struct chacha_ctx *ctx = crypto_skcipher_ctx(tfm);
-
-	if (req->cryptlen <= CHACHA_BLOCK_SIZE || !may_use_simd())
-		return crypto_chacha_crypt(req);
 
 	return chacha_neon_stream_xor(req, ctx, req->iv);
 }
@@ -113,14 +142,8 @@ static int xchacha_neon(struct skcipher_request *req)
 	u32 state[16];
 	u8 real_iv[16];
 
-	if (req->cryptlen <= CHACHA_BLOCK_SIZE || !may_use_simd())
-		return crypto_xchacha_crypt(req);
-
-	crypto_chacha_init(state, ctx, req->iv);
-
-	kernel_neon_begin();
-	hchacha_block_neon(state, subctx.key, ctx->nrounds);
-	kernel_neon_end();
+	chacha_init_generic(state, ctx->key, req->iv);
+	hchacha_block_arch(state, subctx.key, ctx->nrounds);
 	subctx.nrounds = ctx->nrounds;
 
 	memcpy(&real_iv[0], req->iv + 24, 8);
@@ -141,8 +164,8 @@ static struct skcipher_alg algs[] = {
 		.max_keysize		= CHACHA_KEY_SIZE,
 		.ivsize			= CHACHA_IV_SIZE,
 		.chunksize		= CHACHA_BLOCK_SIZE,
-		.walksize		= 4 * CHACHA_BLOCK_SIZE,
-		.setkey			= crypto_chacha20_setkey,
+		.walksize		= 5 * CHACHA_BLOCK_SIZE,
+		.setkey			= chacha20_setkey,
 		.encrypt		= chacha_neon,
 		.decrypt		= chacha_neon,
 	}, {
@@ -157,8 +180,8 @@ static struct skcipher_alg algs[] = {
 		.max_keysize		= CHACHA_KEY_SIZE,
 		.ivsize			= XCHACHA_IV_SIZE,
 		.chunksize		= CHACHA_BLOCK_SIZE,
-		.walksize		= 4 * CHACHA_BLOCK_SIZE,
-		.setkey			= crypto_chacha20_setkey,
+		.walksize		= 5 * CHACHA_BLOCK_SIZE,
+		.setkey			= chacha20_setkey,
 		.encrypt		= xchacha_neon,
 		.decrypt		= xchacha_neon,
 	}, {
@@ -173,8 +196,8 @@ static struct skcipher_alg algs[] = {
 		.max_keysize		= CHACHA_KEY_SIZE,
 		.ivsize			= XCHACHA_IV_SIZE,
 		.chunksize		= CHACHA_BLOCK_SIZE,
-		.walksize		= 4 * CHACHA_BLOCK_SIZE,
-		.setkey			= crypto_chacha12_setkey,
+		.walksize		= 5 * CHACHA_BLOCK_SIZE,
+		.setkey			= chacha12_setkey,
 		.encrypt		= xchacha_neon,
 		.decrypt		= xchacha_neon,
 	}
@@ -183,14 +206,17 @@ static struct skcipher_alg algs[] = {
 static int __init chacha_simd_mod_init(void)
 {
 	if (!(elf_hwcap & HWCAP_ASIMD))
-		return -ENODEV;
+		return 0;
+
+	static_branch_enable(&have_neon);
 
 	return crypto_register_skciphers(algs, ARRAY_SIZE(algs));
 }
 
 static void __exit chacha_simd_mod_fini(void)
 {
-	crypto_unregister_skciphers(algs, ARRAY_SIZE(algs));
+	if (elf_hwcap & HWCAP_ASIMD)
+		crypto_unregister_skciphers(algs, ARRAY_SIZE(algs));
 }
 
 module_init(chacha_simd_mod_init);
