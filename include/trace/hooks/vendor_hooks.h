@@ -9,7 +9,11 @@
 
 #include <linux/tracepoint.h>
 
+#if defined(CONFIG_TRACEPOINTS) && defined(CONFIG_ANDROID_VENDOR_HOOKS)
+
 #define DECLARE_HOOK DECLARE_TRACE
+
+int android_rvh_probe_register(struct tracepoint *tp, void *probe, void *data);
 
 #ifdef TRACE_HEADER_MULTI_READ
 
@@ -36,9 +40,11 @@
 									\
 		it_func_ptr = (&__tracepoint_##_name)->funcs;		\
 		it_func = (it_func_ptr)->func;				\
-		__data = (it_func_ptr)->data;				\
-		((void(*)(void *, proto))(it_func))(__data, args);	\
-		WARN_ON(((++it_func_ptr)->func));			\
+		do {							\
+			__data = (it_func_ptr)->data;			\
+			((void(*)(void *, proto))(it_func))(__data, args); \
+			it_func = READ_ONCE((++it_func_ptr)->func);	\
+		} while (it_func);					\
 		return 0;						\
 	}								\
 	DEFINE_STATIC_CALL(tp_func_##_name, __traceiter_##_name);
@@ -70,7 +76,7 @@
 	extern int __traceiter_##name(data_proto);			\
 	DECLARE_STATIC_CALL(tp_func_##name, __traceiter_##name);	\
 	extern struct tracepoint __tracepoint_##name;			\
-	static inline void trace_##name(proto)				\
+	static inline void __nocfi trace_##name(proto)			\
 	{								\
 		if (static_key_false(&__tracepoint_##name.key))		\
 			DO_HOOK(name,					\
@@ -86,11 +92,8 @@
 	static inline int						\
 	register_trace_##name(void (*probe)(data_proto), void *data) 	\
 	{								\
-		/* only allow a single attachment */			\
-		if (trace_##name##_enabled())				\
-			return -EBUSY;					\
-		return tracepoint_probe_register(&__tracepoint_##name,	\
-						(void *)probe, data);	\
+		return android_rvh_probe_register(&__tracepoint_##name,	\
+						  (void *)probe, data);	\
 	}								\
 	/* vendor hooks cannot be unregistered */			\
 
@@ -102,3 +105,10 @@
 			PARAMS(__data, args))
 
 #endif /* TRACE_HEADER_MULTI_READ */
+
+#else /* !CONFIG_TRACEPOINTS || !CONFIG_ANDROID_VENDOR_HOOKS */
+/* suppress trace hooks */
+#define DECLARE_HOOK DECLARE_EVENT_NOP
+#define DECLARE_RESTRICTED_HOOK(name, proto, args, cond)		\
+	DECLARE_EVENT_NOP(name, PARAMS(proto), PARAMS(args))
+#endif

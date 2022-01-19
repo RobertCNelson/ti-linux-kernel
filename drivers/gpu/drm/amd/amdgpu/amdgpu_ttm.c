@@ -267,7 +267,7 @@ static int amdgpu_ttm_map_buffer(struct ttm_buffer_object *bo,
 	*addr += offset & ~PAGE_MASK;
 
 	num_dw = ALIGN(adev->mman.buffer_funcs->copy_num_dw, 8);
-	num_bytes = num_pages * 8;
+	num_bytes = num_pages * 8 * AMDGPU_GPU_PAGES_IN_CPU_PAGE;
 
 	r = amdgpu_job_alloc_with_ib(adev, num_dw * 4 + num_bytes,
 				     AMDGPU_IB_POOL_DELAYED, &job);
@@ -1034,7 +1034,7 @@ static void amdgpu_ttm_tt_unpin_userptr(struct ttm_bo_device *bdev,
 		DMA_BIDIRECTIONAL : DMA_TO_DEVICE;
 
 	/* double check that we don't free the table twice */
-	if (!ttm->sg->sgl)
+	if (!ttm->sg || !ttm->sg->sgl)
 		return;
 
 	/* unmap the pages mapped to the device */
@@ -1254,12 +1254,12 @@ static void amdgpu_ttm_backend_unbind(struct ttm_bo_device *bdev,
 	struct amdgpu_ttm_tt *gtt = (void *)ttm;
 	int r;
 
-	if (!gtt->bound)
-		return;
-
 	/* if the pages have userptr pinning then clear that first */
 	if (gtt->userptr)
 		amdgpu_ttm_tt_unpin_userptr(bdev, ttm);
+
+	if (!gtt->bound)
+		return;
 
 	if (gtt->offset == AMDGPU_BO_INVALID_OFFSET)
 		return;
@@ -1357,7 +1357,7 @@ static int amdgpu_ttm_tt_populate(struct ttm_bo_device *bdev,
 	}
 
 #ifdef CONFIG_SWIOTLB
-	if (adev->need_swiotlb && swiotlb_nr_tbl()) {
+	if (adev->need_swiotlb && is_swiotlb_active(adev->dev)) {
 		return ttm_dma_populate(&gtt->ttm, adev->dev, ctx);
 	}
 #endif
@@ -1381,6 +1381,7 @@ static void amdgpu_ttm_tt_unpopulate(struct ttm_bo_device *bdev, struct ttm_tt *
 	if (gtt && gtt->userptr) {
 		amdgpu_ttm_tt_set_user_pages(ttm, NULL);
 		kfree(ttm->sg);
+		ttm->sg = NULL;
 		ttm->page_flags &= ~TTM_PAGE_FLAG_SG;
 		return;
 	}
@@ -1400,7 +1401,7 @@ static void amdgpu_ttm_tt_unpopulate(struct ttm_bo_device *bdev, struct ttm_tt *
 	adev = amdgpu_ttm_adev(bdev);
 
 #ifdef CONFIG_SWIOTLB
-	if (adev->need_swiotlb && swiotlb_nr_tbl()) {
+	if (adev->need_swiotlb && is_swiotlb_active(adev->dev)) {
 		ttm_dma_unpopulate(&gtt->ttm, adev->dev);
 		return;
 	}
@@ -2588,7 +2589,7 @@ int amdgpu_ttm_debugfs_init(struct amdgpu_device *adev)
 	count = ARRAY_SIZE(amdgpu_ttm_debugfs_list);
 
 #ifdef CONFIG_SWIOTLB
-	if (!(adev->need_swiotlb && swiotlb_nr_tbl()))
+	if (!(adev->need_swiotlb && is_swiotlb_active(adev->dev)))
 		--count;
 #endif
 

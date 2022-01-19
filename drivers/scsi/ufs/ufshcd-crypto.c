@@ -6,6 +6,9 @@
 #include "ufshcd.h"
 #include "ufshcd-crypto.h"
 
+#undef CREATE_TRACE_POINTS
+#include <trace/hooks/ufshcd.h>
+
 /* Blk-crypto modes supported by UFS crypto */
 static const struct ufs_crypto_alg_entry {
 	enum ufs_crypto_alg ufs_alg;
@@ -120,8 +123,13 @@ bool ufshcd_crypto_enable(struct ufs_hba *hba)
 		return false;
 
 	/* Reset might clear all keys, so reprogram all the keys. */
-	if (hba->ksm.num_slots)
-		blk_ksm_reprogram_all_keys(&hba->ksm);
+	if (hba->ksm.num_slots) {
+		int err = -EOPNOTSUPP;
+
+		trace_android_rvh_ufs_reprogram_all_keys(hba, &err);
+		if (err == -EOPNOTSUPP)
+			blk_ksm_reprogram_all_keys(&hba->ksm);
+	}
 
 	if (hba->quirks & UFSHCD_QUIRK_BROKEN_CRYPTO_ENABLE)
 		return false;
@@ -187,10 +195,10 @@ int ufshcd_hba_init_crypto_capabilities(struct ufs_hba *hba)
 	}
 
 	/* The actual number of configurations supported is (CFGC+1) */
-	err = blk_ksm_init(&hba->ksm,
-			   hba->crypto_capabilities.config_count + 1);
+	err = devm_blk_ksm_init(hba->dev, &hba->ksm,
+				hba->crypto_capabilities.config_count + 1);
 	if (err)
-		goto out_free_caps;
+		goto out;
 
 	hba->ksm.ksm_ll_ops = ufshcd_ksm_ops;
 	/* UFS only supports 8 bytes for any DUN */
@@ -217,8 +225,6 @@ int ufshcd_hba_init_crypto_capabilities(struct ufs_hba *hba)
 
 	return 0;
 
-out_free_caps:
-	devm_kfree(hba->dev, hba->crypto_cap_array);
 out:
 	/* Indicate that init failed by clearing UFSHCD_CAP_CRYPTO */
 	hba->caps &= ~UFSHCD_CAP_CRYPTO;
@@ -246,9 +252,4 @@ void ufshcd_crypto_setup_rq_keyslot_manager(struct ufs_hba *hba,
 {
 	if (hba->caps & UFSHCD_CAP_CRYPTO)
 		blk_ksm_register(&hba->ksm, q);
-}
-
-void ufshcd_crypto_destroy_keyslot_manager(struct ufs_hba *hba)
-{
-	blk_ksm_destroy(&hba->ksm);
 }

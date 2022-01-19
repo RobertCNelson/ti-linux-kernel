@@ -23,6 +23,7 @@
 #include <linux/thermal.h>
 
 #include <trace/events/thermal.h>
+#include <trace/hooks/thermal.h>
 
 /*
  * Cooling state <-> CPUFreq frequency
@@ -123,7 +124,7 @@ static u32 cpu_power_to_freq(struct cpufreq_cooling_device *cpufreq_cdev,
 {
 	int i;
 
-	for (i = cpufreq_cdev->max_level; i >= 0; i--) {
+	for (i = cpufreq_cdev->max_level; i > 0; i--) {
 		if (power >= cpufreq_cdev->em->table[i].power)
 			break;
 	}
@@ -212,6 +213,8 @@ static int cpufreq_get_requested_power(struct thermal_cooling_device *cdev,
 	u32 *load_cpu = NULL;
 
 	freq = cpufreq_quick_get(policy->cpu);
+
+	trace_android_vh_modify_thermal_request_freq(policy, &freq);
 
 	if (trace_thermal_power_cpu_get_power_enabled()) {
 		u32 ncpus = cpumask_weight(policy->related_cpus);
@@ -311,6 +314,8 @@ static int cpufreq_power2state(struct thermal_cooling_device *cdev,
 	last_load = cpufreq_cdev->last_load ?: 1;
 	normalised_power = (power * 100) / last_load;
 	target_freq = cpu_power_to_freq(cpufreq_cdev, normalised_power);
+
+	trace_android_vh_modify_thermal_target_freq(policy, &target_freq);
 
 	*state = get_level(cpufreq_cdev, target_freq);
 	trace_thermal_power_cpu_limit(policy->related_cpus, target_freq, *state,
@@ -441,9 +446,9 @@ static int cpufreq_set_cur_state(struct thermal_cooling_device *cdev,
 	frequency = get_state_freq(cpufreq_cdev, state);
 
 	ret = freq_qos_update_request(&cpufreq_cdev->qos_req, frequency);
-	if (ret > 0) {
+	if (ret >= 0) {
 		cpufreq_cdev->cpufreq_state = state;
-		cpus = cpufreq_cdev->policy->cpus;
+		cpus = cpufreq_cdev->policy->related_cpus;
 		max_capacity = arch_scale_cpu_capacity(cpumask_first(cpus));
 		capacity = frequency * max_capacity;
 		capacity /= cpufreq_cdev->policy->cpuinfo.max_freq;

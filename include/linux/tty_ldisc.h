@@ -126,6 +126,7 @@
 #include <linux/fs.h>
 #include <linux/wait.h>
 #include <linux/atomic.h>
+#include <linux/android_kabi.h>
 
 /*
  * the semaphore definition
@@ -185,7 +186,8 @@ struct tty_ldisc_ops {
 	void	(*close)(struct tty_struct *);
 	void	(*flush_buffer)(struct tty_struct *tty);
 	ssize_t	(*read)(struct tty_struct *tty, struct file *file,
-			unsigned char __user *buf, size_t nr);
+			unsigned char *buf, size_t nr,
+			void **cookie, unsigned long offset);
 	ssize_t	(*write)(struct tty_struct *tty, struct file *file,
 			 const unsigned char *buf, size_t nr);
 	int	(*ioctl)(struct tty_struct *tty, struct file *file,
@@ -210,6 +212,9 @@ struct tty_ldisc_ops {
 	struct  module *owner;
 
 	int refcount;
+
+	ANDROID_KABI_RESERVE(1);
+	ANDROID_KABI_RESERVE(2);
 };
 
 struct tty_ldisc {

@@ -4,9 +4,13 @@
  */
 
 #include <linux/blkdev.h>
+#include <linux/compat.h>
 #include <linux/file.h>
 #include <linux/fs.h>
 #include <linux/fs_stack.h>
+#include <linux/fsnotify.h>
+#include <linux/fsverity.h>
+#include <linux/mmap_lock.h>
 #include <linux/namei.h>
 #include <linux/parser.h>
 #include <linux/seq_file.h>
@@ -19,6 +23,8 @@
 #include "format.h"
 #include "internal.h"
 #include "pseudo_files.h"
+#include "sysfs.h"
+#include "verity.h"
 
 static int incfs_remount_fs(struct super_block *sb, int *flags, char *data);
 
@@ -41,11 +47,19 @@ static int file_release(struct inode *inode, struct file *file);
 static int read_single_page(struct file *f, struct page *page);
 static long dispatch_ioctl(struct file *f, unsigned int req, unsigned long arg);
 
+#ifdef CONFIG_COMPAT
+static long incfs_compat_ioctl(struct file *file, unsigned int cmd,
+			 unsigned long arg);
+#endif
+
 static struct inode *alloc_inode(struct super_block *sb);
 static void free_inode(struct inode *inode);
 static void evict_inode(struct inode *inode);
 
 static int incfs_setattr(struct dentry *dentry, struct iattr *ia);
+static int incfs_getattr(const struct path *path,
+			 struct kstat *stat, u32 request_mask,
+			 unsigned int query_flags);
 static ssize_t incfs_getxattr(struct dentry *d, const char *name,
 			void *value, size_t size);
 static ssize_t incfs_setxattr(struct dentry *d, const char *name,
@@ -98,20 +112,47 @@ static const struct address_space_operations incfs_address_space_ops = {
 	/* .readpages = readpages */
 };
 
+static vm_fault_t incfs_fault(struct vm_fault *vmf)
+{
+	vmf->flags &= ~FAULT_FLAG_ALLOW_RETRY;
+	return filemap_fault(vmf);
+}
+
+static const struct vm_operations_struct incfs_file_vm_ops = {
+	.fault		= incfs_fault,
+	.map_pages	= filemap_map_pages,
+	.page_mkwrite	= filemap_page_mkwrite,
+};
+
+/* This is used for a general mmap of a disk file */
+
+static int incfs_file_mmap(struct file *file, struct vm_area_struct *vma)
+{
+	struct address_space *mapping = file->f_mapping;
+
+	if (!mapping->a_ops->readpage)
+		return -ENOEXEC;
+	file_accessed(file);
+	vma->vm_ops = &incfs_file_vm_ops;
+	return 0;
+}
+
 const struct file_operations incfs_file_ops = {
 	.open = file_open,
 	.release = file_release,
 	.read_iter = generic_file_read_iter,
-	.mmap = generic_file_mmap,
+	.mmap = incfs_file_mmap,
 	.splice_read = generic_file_splice_read,
 	.llseek = generic_file_llseek,
 	.unlocked_ioctl = dispatch_ioctl,
-	.compat_ioctl = dispatch_ioctl
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = incfs_compat_ioctl,
+#endif
 };
 
 const struct inode_operations incfs_file_inode_ops = {
 	.setattr = incfs_setattr,
-	.getattr = simple_getattr,
+	.getattr = incfs_getattr,
 	.listxattr = incfs_listxattr
 };
 
@@ -148,6 +189,8 @@ struct inode_search {
 	struct dentry *backing_dentry;
 
 	size_t size;
+
+	bool verity;
 };
 
 enum parse_parameter {
@@ -156,6 +199,7 @@ enum parse_parameter {
 	Opt_rlog_pages,
 	Opt_rlog_wakeup_cnt,
 	Opt_report_uid,
+	Opt_sysfs_name,
 	Opt_err
 };
 
@@ -165,8 +209,15 @@ static const match_table_t option_tokens = {
 	{ Opt_rlog_pages, "rlog_pages=%u" },
 	{ Opt_rlog_wakeup_cnt, "rlog_wakeup_cnt=%u" },
 	{ Opt_report_uid, "report_uid" },
+	{ Opt_sysfs_name, "sysfs_name=%s" },
 	{ Opt_err, NULL }
 };
+
+static void free_options(struct mount_options *opts)
+{
+	kfree(opts->sysfs_name);
+	opts->sysfs_name = NULL;
+}
 
 static int parse_options(struct mount_options *opts, char *str)
 {
@@ -221,7 +272,11 @@ static int parse_options(struct mount_options *opts, char *str)
 		case Opt_report_uid:
 			opts->report_uid = true;
 			break;
+		case Opt_sysfs_name:
+			opts->sysfs_name = match_strdup(&args[0]);
+			break;
 		default:
+			free_options(opts);
 			return -EINVAL;
 		}
 	}
@@ -242,6 +297,13 @@ static u64 read_size_attr(struct dentry *backing_dentry)
 		return 0;
 
 	return le64_to_cpu(attr_value);
+}
+
+/* Read verity flag from the attribute. Quicker than reading the header */
+static bool read_verity_attr(struct dentry *backing_dentry)
+{
+	return vfs_getxattr(backing_dentry, INCFS_XATTR_VERITY_NAME, NULL, 0)
+		>= 0;
 }
 
 static int inode_test(struct inode *inode, void *opaque)
@@ -274,6 +336,8 @@ static int inode_set(struct inode *inode, void *opaque)
 		inode->i_op = &incfs_file_inode_ops;
 		inode->i_fop = &incfs_file_ops;
 		inode->i_mode &= ~0222;
+		if (search->verity)
+			inode_set_flags(inode, S_VERITY, S_VERITY);
 	} else if (S_ISDIR(inode->i_mode)) {
 		inode->i_size = 0;
 		inode->i_blocks = 1;
@@ -308,6 +372,7 @@ static struct inode *fetch_regular_inode(struct super_block *sb,
 		.ino = backing_inode->i_ino,
 		.backing_dentry = backing_dentry,
 		.size = read_size_attr(backing_dentry),
+		.verity = read_verity_attr(backing_dentry),
 	};
 	struct inode *inode = iget5_locked(sb, search.ino, inode_test,
 				inode_set, &search);
@@ -393,8 +458,10 @@ static struct dentry *open_or_create_special_dir(struct dentry *backing_dir,
 	err = vfs_mkdir(backing_inode, index_dentry, 0777);
 	inode_unlock(backing_inode);
 
-	if (err)
+	if (err) {
+		dput(index_dentry);
 		return ERR_PTR(err);
+	}
 
 	if (!d_really_is_positive(index_dentry) ||
 		unlikely(d_unhashed(index_dentry))) {
@@ -410,9 +477,9 @@ static int read_single_page_timeouts(struct data_file *df, struct file *f,
 				     struct mem_range tmp)
 {
 	struct mount_info *mi = df->df_mount_info;
-	u32 min_time_us = 0;
-	u32 min_pending_time_us = 0;
-	u32 max_pending_time_us = U32_MAX;
+	struct incfs_read_data_file_timeouts timeouts = {
+		.max_pending_time_us = U32_MAX,
+	};
 	int uid = current_uid().val;
 	int i;
 
@@ -423,24 +490,23 @@ static int read_single_page_timeouts(struct data_file *df, struct file *f,
 			&mi->mi_per_uid_read_timeouts[i];
 
 		if(t->uid == uid) {
-			min_time_us = t->min_time_us;
-			min_pending_time_us = t->min_pending_time_us;
-			max_pending_time_us = t->max_pending_time_us;
+			timeouts.min_time_us = t->min_time_us;
+			timeouts.min_pending_time_us = t->min_pending_time_us;
+			timeouts.max_pending_time_us = t->max_pending_time_us;
 			break;
 		}
 	}
 	spin_unlock(&mi->mi_per_uid_read_timeouts_lock);
-	if (max_pending_time_us == U32_MAX) {
+	if (timeouts.max_pending_time_us == U32_MAX) {
 		u64 read_timeout_us = (u64)mi->mi_options.read_timeout_ms *
 					1000;
 
-		max_pending_time_us = read_timeout_us <= U32_MAX ?
-					read_timeout_us : U32_MAX;
+		timeouts.max_pending_time_us = read_timeout_us <= U32_MAX ?
+					       read_timeout_us : U32_MAX;
 	}
 
-	return incfs_read_data_file_block(range, f, block_index,
-		min_time_us, min_pending_time_us, max_pending_time_us,
-		tmp);
+	return incfs_read_data_file_block(range, f, block_index, tmp,
+					  &timeouts);
 }
 
 static int read_single_page(struct file *f, struct page *page)
@@ -545,18 +611,87 @@ static int incfs_rmdir(struct dentry *dentry)
 	return error;
 }
 
-static void maybe_delete_incomplete_file(struct data_file *df)
+static void notify_unlink(struct dentry *dentry, const char *file_id_str,
+			  const char *special_directory)
 {
-	char *file_id_str;
-	struct dentry *incomplete_file_dentry;
+	struct dentry *root = dentry;
+	struct dentry *file = NULL;
+	struct dentry *dir = NULL;
+	int error = 0;
+	bool take_lock = root->d_parent != root->d_parent->d_parent;
+
+	while (root != root->d_parent)
+		root = root->d_parent;
+
+	if (take_lock)
+		dir = incfs_lookup_dentry(root, special_directory);
+	else
+		dir = lookup_one_len(special_directory, root,
+				     strlen(special_directory));
+
+	if (IS_ERR(dir)) {
+		error = PTR_ERR(dir);
+		goto out;
+	}
+	if (d_is_negative(dir)) {
+		error = -ENOENT;
+		goto out;
+	}
+
+	file = incfs_lookup_dentry(dir, file_id_str);
+	if (IS_ERR(file)) {
+		error = PTR_ERR(file);
+		goto out;
+	}
+	if (d_is_negative(file)) {
+		error = -ENOENT;
+		goto out;
+	}
+
+	fsnotify_unlink(d_inode(dir), file);
+	d_delete(file);
+
+out:
+	if (error)
+		pr_warn("%s failed with error %d\n", __func__, error);
+
+	dput(dir);
+	dput(file);
+}
+
+static void maybe_delete_incomplete_file(struct file *f,
+					 struct data_file *df)
+{
+	struct backing_file_context *bfc;
+	struct mount_info *mi = df->df_mount_info;
+	char *file_id_str = NULL;
+	struct dentry *incomplete_file_dentry = NULL;
+	const struct cred *old_cred = override_creds(mi->mi_owner);
+	int error;
 
 	if (atomic_read(&df->df_data_blocks_written) < df->df_data_block_count)
-		return;
+		goto out;
+
+	/* Truncate file to remove any preallocated space */
+	bfc = df->df_backing_file_context;
+	if (bfc) {
+		struct file *f = bfc->bc_file;
+
+		if (f) {
+			loff_t size = i_size_read(file_inode(f));
+
+			error = vfs_truncate(&f->f_path, size);
+			if (error)
+				/* No useful action on failure */
+				pr_warn("incfs: Failed to truncate complete file: %d\n",
+					error);
+		}
+	}
 
 	/* This is best effort - there is no useful action to take on failure */
 	file_id_str = file_id_to_str(df->df_id);
 	if (!file_id_str)
-		return;
+		goto out;
 
 	incomplete_file_dentry = incfs_lookup_dentry(
 					df->df_mount_info->mi_incomplete_dir,
@@ -570,11 +705,18 @@ static void maybe_delete_incomplete_file(struct data_file *df)
 		goto out;
 
 	vfs_fsync(df->df_backing_file_context->bc_file, 0);
-	incfs_unlink(incomplete_file_dentry);
+	error = incfs_unlink(incomplete_file_dentry);
+	if (error) {
+		pr_warn("incfs: Deleting incomplete file failed: %d\n", error);
+		goto out;
+	}
+
+	notify_unlink(f->f_path.dentry, file_id_str, INCFS_INCOMPLETE_NAME);
 
 out:
 	dput(incomplete_file_dentry);
 	kfree(file_id_str);
+	revert_creds(old_cred);
 }
 
 static long ioctl_fill_blocks(struct file *f, void __user *arg)
@@ -638,7 +780,7 @@ static long ioctl_fill_blocks(struct file *f, void __user *arg)
 	if (data_buf)
 		free_pages((unsigned long)data_buf, get_order(data_buf_size));
 
-	maybe_delete_incomplete_file(df);
+	maybe_delete_incomplete_file(f, df);
 
 	/*
 	 * Only report the error if no records were processed, otherwise
@@ -744,6 +886,13 @@ static long ioctl_get_block_count(struct file *f, void __user *arg)
 	return 0;
 }
 
+static int incfs_ioctl_get_flags(struct file *f, void __user *arg)
+{
+	u32 flags = IS_VERITY(file_inode(f)) ? FS_VERITY_FL : 0;
+
+	return put_user(flags, (int __user *) arg);
+}
+
 static long dispatch_ioctl(struct file *f, unsigned int req, unsigned long arg)
 {
 	switch (req) {
@@ -755,10 +904,41 @@ static long dispatch_ioctl(struct file *f, unsigned int req, unsigned long arg)
 		return ioctl_get_filled_blocks(f, (void __user *)arg);
 	case INCFS_IOC_GET_BLOCK_COUNT:
 		return ioctl_get_block_count(f, (void __user *)arg);
+	case FS_IOC_ENABLE_VERITY:
+		return incfs_ioctl_enable_verity(f, (const void __user *)arg);
+	case FS_IOC_GETFLAGS:
+		return incfs_ioctl_get_flags(f, (void __user *) arg);
+	case FS_IOC_MEASURE_VERITY:
+		return incfs_ioctl_measure_verity(f, (void __user *)arg);
+	case FS_IOC_READ_VERITY_METADATA:
+		return incfs_ioctl_read_verity_metadata(f, (void __user *)arg);
 	default:
 		return -EINVAL;
 	}
 }
+
+#ifdef CONFIG_COMPAT
+static long incfs_compat_ioctl(struct file *file, unsigned int cmd,
+			       unsigned long arg)
+{
+	switch (cmd) {
+	case FS_IOC32_GETFLAGS:
+		cmd = FS_IOC_GETFLAGS;
+		break;
+	case INCFS_IOC_FILL_BLOCKS:
+	case INCFS_IOC_READ_FILE_SIGNATURE:
+	case INCFS_IOC_GET_FILLED_BLOCKS:
+	case INCFS_IOC_GET_BLOCK_COUNT:
+	case FS_IOC_ENABLE_VERITY:
+	case FS_IOC_MEASURE_VERITY:
+	case FS_IOC_READ_VERITY_METADATA:
+		break;
+	default:
+		return -ENOIOCTLCMD;
+	}
+	return dispatch_ioctl(file, cmd, (unsigned long) compat_ptr(arg));
+}
+#endif
 
 static struct dentry *dir_lookup(struct inode *dir_inode, struct dentry *dentry,
 				 unsigned int flags)
@@ -915,9 +1095,8 @@ path_err:
  * Delete file referenced by backing_dentry and if appropriate its hardlink
  * from .index and .incomplete
  */
-static int file_delete(struct mount_info *mi,
-			struct dentry *backing_dentry,
-			int nlink)
+static int file_delete(struct mount_info *mi, struct dentry *dentry,
+			struct dentry *backing_dentry, int nlink)
 {
 	struct dentry *index_file_dentry = NULL;
 	struct dentry *incomplete_file_dentry = NULL;
@@ -970,15 +1149,19 @@ static int file_delete(struct mount_info *mi,
 	if (nlink > 1)
 		goto just_unlink;
 
-	if (d_really_is_positive(index_file_dentry))
+	if (d_really_is_positive(index_file_dentry)) {
 		error = incfs_unlink(index_file_dentry);
-	if (error)
-		goto out;
+		if (error)
+			goto out;
+		notify_unlink(dentry, file_id_str, INCFS_INDEX_NAME);
+	}
 
-	if (d_really_is_positive(incomplete_file_dentry))
+	if (d_really_is_positive(incomplete_file_dentry)) {
 		error = incfs_unlink(incomplete_file_dentry);
-	if (error)
-		goto out;
+		if (error)
+			goto out;
+		notify_unlink(dentry, file_id_str, INCFS_INCOMPLETE_NAME);
+	}
 
 just_unlink:
 	error = incfs_unlink(backing_dentry);
@@ -1028,7 +1211,7 @@ static int dir_unlink(struct inode *dir, struct dentry *dentry)
 	if (err)
 		goto out;
 
-	err = file_delete(mi, backing_path.dentry, stat.nlink);
+	err = file_delete(mi, dentry, backing_path.dentry, stat.nlink);
 
 	d_drop(dentry);
 out:
@@ -1229,6 +1412,7 @@ static int file_open(struct inode *inode, struct file *file)
 	int err = 0;
 	int flags = O_NOATIME | O_LARGEFILE |
 		(S_ISDIR(inode->i_mode) ? O_RDONLY : O_RDWR);
+	const struct cred *old_cred;
 
 	WARN_ON(file->private_data);
 
@@ -1239,7 +1423,9 @@ static int file_open(struct inode *inode, struct file *file)
 	if (!backing_path.dentry)
 		return -EBADF;
 
-	backing_file = dentry_open(&backing_path, flags, mi->mi_owner);
+	old_cred = override_creds(mi->mi_owner);
+	backing_file = dentry_open(&backing_path, flags, current_cred());
+	revert_creds(old_cred);
 	path_put(&backing_path);
 
 	if (IS_ERR(backing_file)) {
@@ -1262,7 +1448,12 @@ static int file_open(struct inode *inode, struct file *file)
 		file->private_data = fd;
 
 		err = make_inode_ready_for_data_ops(mi, inode, backing_file);
+		if (err)
+			goto out;
 
+		err = incfs_fsverity_file_open(inode, file);
+		if (err)
+			goto out;
 	} else if (S_ISDIR(inode->i_mode)) {
 		struct dir_file *dir = NULL;
 
@@ -1427,6 +1618,43 @@ static int incfs_setattr(struct dentry *dentry, struct iattr *ia)
 	return simple_setattr(dentry, ia);
 }
 
+
+static int incfs_getattr(const struct path *path,
+			 struct kstat *stat, u32 request_mask,
+			 unsigned int query_flags)
+{
+	struct inode *inode = d_inode(path->dentry);
+
+	generic_fillattr(inode, stat);
+
+	if (inode->i_ino < INCFS_START_INO_RANGE)
+		return 0;
+
+	stat->attributes &= ~STATX_ATTR_VERITY;
+	if (IS_VERITY(inode))
+		stat->attributes |= STATX_ATTR_VERITY;
+	stat->attributes_mask |= STATX_ATTR_VERITY;
+
+	if (request_mask & STATX_BLOCKS) {
+		struct kstat backing_kstat;
+		struct dentry_info *di = get_incfs_dentry(path->dentry);
+		int error = 0;
+		struct path *backing_path;
+
+		if (!di)
+			return -EFSCORRUPTED;
+		backing_path = &di->backing_path;
+		error = vfs_getattr(backing_path, &backing_kstat, STATX_BLOCKS,
+				    AT_STATX_SYNC_AS_STAT);
+		if (error)
+			return error;
+
+		stat->blocks = backing_kstat.blocks;
+	}
+
+	return 0;
+}
+
 static ssize_t incfs_getxattr(struct dentry *d, const char *name,
 			void *value, size_t size)
 {
@@ -1434,6 +1662,7 @@ static ssize_t incfs_getxattr(struct dentry *d, const char *name,
 	struct mount_info *mi = get_mount_info(d->d_sb);
 	char *stored_value;
 	size_t stored_size;
+	int i;
 
 	if (di && di->backing_path.dentry)
 		return vfs_getxattr(di->backing_path.dentry, name, value, size);
@@ -1441,16 +1670,14 @@ static ssize_t incfs_getxattr(struct dentry *d, const char *name,
 	if (strcmp(name, "security.selinux"))
 		return -ENODATA;
 
-	if (!strcmp(d->d_iname, INCFS_PENDING_READS_FILENAME)) {
-		stored_value = mi->pending_read_xattr;
-		stored_size = mi->pending_read_xattr_size;
-	} else if (!strcmp(d->d_iname, INCFS_LOG_FILENAME)) {
-		stored_value = mi->log_xattr;
-		stored_size = mi->log_xattr_size;
-	} else {
+	for (i = 0; i < PSEUDO_FILE_COUNT; ++i)
+		if (!strcmp(d->d_iname, incfs_pseudo_file_names[i].data))
+			break;
+	if (i == PSEUDO_FILE_COUNT)
 		return -ENODATA;
-	}
 
+	stored_value = mi->pseudo_file_xattr[i].data;
+	stored_size = mi->pseudo_file_xattr[i].len;
 	if (!stored_value)
 		return -ENODATA;
 
@@ -1459,7 +1686,6 @@ static ssize_t incfs_getxattr(struct dentry *d, const char *name,
 
 	memcpy(value, stored_value, stored_size);
 	return stored_size;
-
 }
 
 
@@ -1468,8 +1694,9 @@ static ssize_t incfs_setxattr(struct dentry *d, const char *name,
 {
 	struct dentry_info *di = get_incfs_dentry(d);
 	struct mount_info *mi = get_mount_info(d->d_sb);
-	void **stored_value;
+	u8 **stored_value;
 	size_t *stored_size;
+	int i;
 
 	if (di && di->backing_path.dentry)
 		return vfs_setxattr(di->backing_path.dentry, name, value, size,
@@ -1481,16 +1708,14 @@ static ssize_t incfs_setxattr(struct dentry *d, const char *name,
 	if (size > INCFS_MAX_FILE_ATTR_SIZE)
 		return -E2BIG;
 
-	if (!strcmp(d->d_iname, INCFS_PENDING_READS_FILENAME)) {
-		stored_value = &mi->pending_read_xattr;
-		stored_size = &mi->pending_read_xattr_size;
-	} else if (!strcmp(d->d_iname, INCFS_LOG_FILENAME)) {
-		stored_value = &mi->log_xattr;
-		stored_size = &mi->log_xattr_size;
-	} else {
+	for (i = 0; i < PSEUDO_FILE_COUNT; ++i)
+		if (!strcmp(d->d_iname, incfs_pseudo_file_names[i].data))
+			break;
+	if (i == PSEUDO_FILE_COUNT)
 		return -ENODATA;
-	}
 
+	stored_value = &mi->pseudo_file_xattr[i].data;
+	stored_size = &mi->pseudo_file_xattr[i].len;
 	kfree (*stored_value);
 	*stored_value = kzalloc(size, GFP_NOFS);
 	if (!*stored_value)
@@ -1514,8 +1739,6 @@ static ssize_t incfs_listxattr(struct dentry *d, char *list, size_t size)
 struct dentry *incfs_mount_fs(struct file_system_type *type, int flags,
 			      const char *dev_name, void *data)
 {
-	static const char index_name[] = ".index";
-	static const char incomplete_name[] = ".incomplete";
 	struct mount_options options = {};
 	struct mount_info *mi = NULL;
 	struct path backing_dir_path = {};
@@ -1574,7 +1797,7 @@ struct dentry *incfs_mount_fs(struct file_system_type *type, int flags,
 	}
 
 	index_dir = open_or_create_special_dir(backing_dir_path.dentry,
-					       index_name);
+					       INCFS_INDEX_NAME);
 	if (IS_ERR_OR_NULL(index_dir)) {
 		error = PTR_ERR(index_dir);
 		pr_err("incfs: Can't find or create .index dir in %s\n",
@@ -1585,7 +1808,7 @@ struct dentry *incfs_mount_fs(struct file_system_type *type, int flags,
 	mi->mi_index_dir = index_dir;
 
 	incomplete_dir = open_or_create_special_dir(backing_dir_path.dentry,
-						    incomplete_name);
+						    INCFS_INCOMPLETE_NAME);
 	if (IS_ERR_OR_NULL(incomplete_dir)) {
 		error = PTR_ERR(incomplete_dir);
 		pr_err("incfs: Can't find or create .incomplete dir in %s\n",
@@ -1621,6 +1844,7 @@ err:
 	path_put(&backing_dir_path);
 	incfs_free_mount_info(mi);
 	deactivate_locked_super(sb);
+	free_options(&options);
 	return ERR_PTR(error);
 }
 
@@ -1637,15 +1861,19 @@ static int incfs_remount_fs(struct super_block *sb, int *flags, char *data)
 
 	if (options.report_uid != mi->mi_options.report_uid) {
 		pr_err("incfs: Can't change report_uid mount option on remount\n");
-		return -EOPNOTSUPP;
+		err = -EOPNOTSUPP;
+		goto out;
 	}
 
 	err = incfs_realloc_mount_info(mi, &options);
 	if (err)
-		return err;
+		goto out;
 
 	pr_debug("incfs: remount\n");
-	return 0;
+
+out:
+	free_options(&options);
+	return err;
 }
 
 void incfs_kill_sb(struct super_block *sb)
@@ -1653,8 +1881,8 @@ void incfs_kill_sb(struct super_block *sb)
 	struct mount_info *mi = sb->s_fs_info;
 
 	pr_debug("incfs: unmount\n");
-	incfs_free_mount_info(mi);
 	generic_shutdown_super(sb);
+	incfs_free_mount_info(mi);
 }
 
 static int show_options(struct seq_file *m, struct dentry *root)
@@ -1670,5 +1898,9 @@ static int show_options(struct seq_file *m, struct dentry *root)
 	}
 	if (mi->mi_options.report_uid)
 		seq_puts(m, ",report_uid");
+
+	if (mi->mi_sysfs_node)
+		seq_printf(m, ",sysfs_name=%s",
+			   kobject_name(&mi->mi_sysfs_node->isn_sysfs_node));
 	return 0;
 }

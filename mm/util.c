@@ -27,6 +27,9 @@
 #include <linux/uaccess.h>
 
 #include "internal.h"
+#ifndef __GENKSYMS__
+#include <trace/hooks/syscall_check.h>
+#endif
 
 /**
  * kfree_const - conditionally free memory
@@ -354,6 +357,7 @@ unsigned long arch_mmap_rnd(void)
 
 	return rnd << PAGE_SHIFT;
 }
+EXPORT_SYMBOL_GPL(arch_mmap_rnd);
 
 static int mmap_is_legacy(struct rlimit *rlim_stack)
 {
@@ -511,6 +515,7 @@ unsigned long vm_mmap_pgoff(struct file *file, unsigned long addr,
 		if (populate)
 			mm_populate(ret, populate);
 	}
+	trace_android_vh_check_mmap_file(file, prot, flag, ret);
 	return ret;
 }
 
@@ -580,6 +585,10 @@ void *kvmalloc_node(size_t size, gfp_t flags, int node)
 	 */
 	if (ret || size <= PAGE_SIZE)
 		return ret;
+
+	/* Don't even allow crazy sizes */
+	if (WARN_ON_ONCE(size > INT_MAX))
+		return NULL;
 
 	return __vmalloc_node(size, 1, flags, node,
 			__builtin_return_address(0));
@@ -756,7 +765,7 @@ int overcommit_policy_handler(struct ctl_table *table, int write, void *buffer,
 		size_t *lenp, loff_t *ppos)
 {
 	struct ctl_table t;
-	int new_policy;
+	int new_policy = -1;
 	int ret;
 
 	/*
@@ -774,7 +783,7 @@ int overcommit_policy_handler(struct ctl_table *table, int write, void *buffer,
 		t = *table;
 		t.data = &new_policy;
 		ret = proc_dointvec_minmax(&t, write, buffer, lenp, ppos);
-		if (ret)
+		if (ret || new_policy == -1)
 			return ret;
 
 		mm_compute_batch(new_policy);

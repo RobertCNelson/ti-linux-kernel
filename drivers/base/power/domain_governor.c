@@ -12,6 +12,8 @@
 #include <linux/cpumask.h>
 #include <linux/ktime.h>
 
+#include <trace/hooks/pm_domain.h>
+
 static int dev_update_qos_constraint(struct device *dev, void *data)
 {
 	s64 *constraint_ns_p = data;
@@ -124,7 +126,7 @@ static void update_domain_next_wakeup(struct generic_pm_domain *genpd, ktime_t n
 	struct pm_domain_data *pdd;
 	struct gpd_link *link;
 
-	if (!genpd_may_use_next_wakeup(genpd))
+	if (!(genpd->flags & GENPD_FLAG_MIN_RESIDENCY))
 		return;
 
 	/*
@@ -174,6 +176,11 @@ static bool __default_power_down_ok(struct dev_pm_domain *pd,
 	struct pm_domain_data *pdd;
 	s64 min_off_time_ns;
 	s64 off_on_time_ns;
+	bool allow = true;
+
+	trace_android_vh_allow_domain_state(genpd, state, &allow);
+	if (!allow)
+		return false;
 
 	off_on_time_ns = genpd->states[state].power_off_latency_ns +
 		genpd->states[state].power_on_latency_ns;
@@ -268,7 +275,7 @@ static bool _default_power_down_ok(struct dev_pm_domain *pd, ktime_t now)
 	 * cannot be met.
 	 */
 	update_domain_next_wakeup(genpd, now);
-	if (genpd->next_wakeup != KTIME_MAX) {
+	if ((genpd->flags & GENPD_FLAG_MIN_RESIDENCY) && (genpd->next_wakeup != KTIME_MAX)) {
 		/* Let's find out the deepest domain idle state, the devices prefer */
 		while (state_idx >= 0) {
 			if (next_wakeup_allows_state(genpd, state_idx, now)) {

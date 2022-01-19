@@ -98,54 +98,6 @@ static inline int op_cpu_kill(unsigned int cpu)
 }
 #endif
 
-#ifdef CONFIG_ASYMMETRIC_AARCH32
-static int last_aarch32_cpu = -1;
-static cpumask_t aarch32_online;
-
-static void asym_aarch32_online(void)
-{
-		/*
-		 * Since we onlined another cpu, restore the hotpluggability of
-		 * the last AAarch32 cpu if it was disabled.
-		 */
-		cpumask_and(&aarch32_online, &aarch32_el0_mask, cpu_online_mask);
-
-		if (last_aarch32_cpu >= 0 &&
-		    cpumask_weight(&aarch32_online) > 1) {
-
-			struct device *dev;
-
-			dev = get_cpu_device(last_aarch32_cpu);
-			dev->offline_disabled = 0;
-			last_aarch32_cpu = -1;
-		}
-}
-
-static void asym_aarch32_offline(void)
-{
-	/* Don't let the last AArch32-compatible CPU go down */
-	if (!cpumask_empty(&aarch32_el0_mask)) {
-
-		cpumask_and(&aarch32_online, &aarch32_el0_mask, cpu_online_mask);
-
-		/*
-		 * If we're left with only one AAarch32 cpu, prevent it from
-		 * being offlined.
-		 */
-		if (cpumask_weight(&aarch32_online) == 1) {
-			struct device *dev;
-
-			last_aarch32_cpu = cpumask_first(&aarch32_online);
-			dev = get_cpu_device(last_aarch32_cpu);
-			dev->offline_disabled = 1;
-		}
-	}
-}
-#else
-static void asym_aarch32_online(void) {}
-static void asym_aarch32_offline(void) {}
-#endif
-
 
 /*
  * Boot a secondary CPU, and assign it the specified idle task.
@@ -175,7 +127,9 @@ int __cpu_up(unsigned int cpu, struct task_struct *idle)
 	secondary_data.task = idle;
 	secondary_data.stack = task_stack_page(idle) + THREAD_SIZE;
 	update_cpu_boot_status(CPU_MMU_OFF);
-	__flush_dcache_area(&secondary_data, sizeof(secondary_data));
+	dcache_clean_inval_poc((unsigned long)&secondary_data,
+			    (unsigned long)&secondary_data +
+				    sizeof(secondary_data));
 
 	/* Now bring the CPU into our world */
 	ret = boot_secondary(cpu, idle);
@@ -190,15 +144,15 @@ int __cpu_up(unsigned int cpu, struct task_struct *idle)
 	 */
 	wait_for_completion_timeout(&cpu_running,
 				    msecs_to_jiffies(5000));
-	if (cpu_online(cpu)) {
-		asym_aarch32_online();
+	if (cpu_online(cpu))
 		return 0;
-	}
 
 	pr_crit("CPU%u: failed to come online\n", cpu);
 	secondary_data.task = NULL;
 	secondary_data.stack = NULL;
-	__flush_dcache_area(&secondary_data, sizeof(secondary_data));
+	dcache_clean_inval_poc((unsigned long)&secondary_data,
+			    (unsigned long)&secondary_data +
+				    sizeof(secondary_data));
 	status = READ_ONCE(secondary_data.status);
 	if (status == CPU_MMU_OFF)
 		status = READ_ONCE(__early_cpu_boot_status);
@@ -278,7 +232,6 @@ asmlinkage notrace void secondary_start_kernel(void)
 		init_gic_priority_masking();
 
 	rcu_cpu_starting(cpu);
-	preempt_disable();
 	trace_hardirqs_off();
 
 	/*
@@ -370,8 +323,6 @@ int __cpu_disable(void)
 	 */
 	set_cpu_online(cpu, false);
 	ipi_teardown(cpu);
-
-	asym_aarch32_offline();
 
 	/*
 	 * OK - migrate IRQs away from this CPU
@@ -491,8 +442,10 @@ static void __init hyp_mode_check(void)
 			   "CPU: CPUs started in inconsistent modes");
 	else
 		pr_info("CPU: All CPU(s) started at EL1\n");
-	if (IS_ENABLED(CONFIG_KVM))
+	if (IS_ENABLED(CONFIG_KVM) && !is_kernel_in_hyp_mode()) {
 		kvm_compute_layout();
+		kvm_apply_hyp_relocations();
+	}
 }
 
 void __init smp_cpus_done(unsigned int max_cpus)
@@ -519,6 +472,8 @@ void __init smp_prepare_boot_cpu(void)
 	/* Conditionally switch to GIC PMR for interrupt masking */
 	if (system_uses_irq_prio_masking())
 		init_gic_priority_masking();
+
+	kasan_init_hw_tags();
 }
 
 static u64 __init of_get_cpu_mpidr(struct device_node *dn)
@@ -1053,6 +1008,10 @@ void __init set_smp_ipi_range(int ipi_base, int n)
 
 		ipi_desc[i] = irq_to_desc(ipi_base + i);
 		irq_set_status_flags(ipi_base + i, IRQ_HIDDEN);
+
+		/* The recheduling IPI is special... */
+		if (i == IPI_RESCHEDULE)
+			__irq_modify_status(ipi_base + i, 0, IRQ_RAW, ~0);
 	}
 
 	ipi_irq_base = ipi_base;
@@ -1186,5 +1145,18 @@ bool cpus_are_stuck_in_kernel(void)
 {
 	bool smp_spin_tables = (num_possible_cpus() > 1 && !have_cpu_die());
 
-	return !!cpus_stuck_in_kernel || smp_spin_tables;
+	return !!cpus_stuck_in_kernel || smp_spin_tables ||
+		is_protected_kvm_enabled();
 }
+
+int nr_ipi_get(void)
+{
+	return nr_ipi;
+}
+EXPORT_SYMBOL_GPL(nr_ipi_get);
+
+struct irq_desc **ipi_desc_get(void)
+{
+	return ipi_desc;
+}
+EXPORT_SYMBOL_GPL(ipi_desc_get);
