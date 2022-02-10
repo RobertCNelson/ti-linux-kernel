@@ -28,13 +28,13 @@ struct v4l2_subdev;
 struct v4l2_subdev_pad_config;
 struct v4l2_subdev_selection;
 DECLARE_HOOK(android_vh_v4l2subdev_set_selection,
-	TP_PROTO(struct v4l2_subdev *sd, struct v4l2_subdev_pad_config *pad,
+	TP_PROTO(struct v4l2_subdev *sd, struct v4l2_subdev_state *sd_state,
 	struct v4l2_subdev_selection *sel, int *ret),
 	TP_ARGS(sd, pad, sel, ret));
 
 struct v4l2_subdev_format;
 DECLARE_HOOK(android_vh_v4l2subdev_set_fmt,
-	TP_PROTO(struct v4l2_subdev *sd, struct v4l2_subdev_pad_config *pad,
+	TP_PROTO(struct v4l2_subdev *sd, struct v4l2_subdev_state *sd_state,
 	struct v4l2_subdev_format *format, int *ret),
 	TP_ARGS(sd, pad, format, ret));
 
