@@ -460,7 +460,7 @@ static struct resource_table *k3_m4_get_loaded_rsc_table(struct rproc *rproc,
  * can be used either by the remoteproc core for loading (when using kernel
  * remoteproc loader), or by any rpmsg bus drivers.
  */
-static void *k3_m4_rproc_da_to_va(struct rproc *rproc, u64 da, size_t len)
+static void *k3_m4_rproc_da_to_va(struct rproc *rproc, u64 da, size_t len, bool *is_iomem)
 {
 	struct k3_m4_rproc *kproc = rproc->priv;
 	void __iomem *va = NULL;
