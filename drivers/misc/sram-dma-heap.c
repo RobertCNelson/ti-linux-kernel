@@ -150,7 +150,7 @@ const struct dma_buf_ops sram_dma_heap_buf_ops = {
 	.vmap = dma_heap_vmap,
 };
 
-static int sram_dma_heap_allocate(struct dma_heap *heap,
+static struct dma_buf * sram_dma_heap_allocate(struct dma_heap *heap,
 				  unsigned long len,
 				  unsigned long fd_flags,
 				  unsigned long heap_flags)
@@ -164,7 +164,7 @@ static int sram_dma_heap_allocate(struct dma_heap *heap,
 
 	buffer = kzalloc(sizeof(*buffer), GFP_KERNEL);
 	if (!buffer)
-		return -ENOMEM;
+		return ERR_PTR(-ENOMEM);
 	buffer->pool = sram_dma_heap->pool;
 	INIT_LIST_HEAD(&buffer->attachments);
 	mutex_init(&buffer->attachments_lock);
@@ -197,17 +197,17 @@ static int sram_dma_heap_allocate(struct dma_heap *heap,
 	if (ret < 0) {
 		dma_buf_put(dmabuf);
 		/* just return, as put will call release and that will free */
-		return ret;
+		return ERR_PTR(ret);
 	}
 
-	return ret;
+	return dmabuf;
 
 free_pool:
 	gen_pool_free(buffer->pool, (unsigned long)buffer->vaddr, buffer->len);
 free_buffer:
 	kfree(buffer);
 
-	return ret;
+	return ERR_PTR(ret);
 }
 
 static struct dma_heap_ops sram_dma_heap_ops = {

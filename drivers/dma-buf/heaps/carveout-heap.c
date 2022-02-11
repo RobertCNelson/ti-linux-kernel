@@ -187,7 +187,7 @@ const struct dma_buf_ops carveout_dma_heap_buf_ops = {
 	.vunmap = dma_heap_vunmap,
 };
 
-static int carveout_dma_heap_allocate(struct dma_heap *heap,
+static struct dma_buf * carveout_dma_heap_allocate(struct dma_heap *heap,
 				      unsigned long len,
 				      unsigned long fd_flags,
 				      unsigned long heap_flags)
@@ -201,7 +201,7 @@ static int carveout_dma_heap_allocate(struct dma_heap *heap,
 
 	buffer = kzalloc(sizeof(*buffer), GFP_KERNEL);
 	if (!buffer)
-		return -ENOMEM;
+		return ERR_PTR(-ENOMEM);
 	buffer->pool = carveout_dma_heap->pool;
 	INIT_LIST_HEAD(&buffer->attachments);
 	mutex_init(&buffer->attachments_lock);
@@ -229,17 +229,17 @@ static int carveout_dma_heap_allocate(struct dma_heap *heap,
 	if (ret < 0) {
 		dma_buf_put(dmabuf);
 		/* just return, as put will call release and that will free */
-		return ret;
+		return ERR_PTR(ret);
 	}
 
-	return ret;
+	return dmabuf;
 
 free_pool:
 	gen_pool_free(buffer->pool, buffer->paddr, buffer->len);
 free_buffer:
 	kfree(buffer);
 
-	return ret;
+	return ERR_PTR(ret);
 }
 
 static struct dma_heap_ops carveout_dma_heap_ops = {
