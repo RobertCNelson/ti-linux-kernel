@@ -156,9 +156,6 @@ struct kvm_sync_regs {
 	__u64 device_irq_level;
 };
 
-struct kvm_arch_memory_slot {
-};
-
 /*
  * PMU filter structure. Describe a range of events with a particular
  * action. To be used with KVM_ARM_VCPU_PMU_V3_FILTER.
@@ -186,6 +183,17 @@ struct kvm_vcpu_events {
 	} exception;
 	__u32 reserved[12];
 };
+
+struct kvm_arm_copy_mte_tags {
+	__u64 guest_ipa;
+	__u64 length;
+	void __user *addr;
+	__u64 flags;
+	__u64 reserved[2];
+};
+
+#define KVM_ARM_TAGS_TO_GUEST		0
+#define KVM_ARM_TAGS_FROM_GUEST		1
 
 /* If you need to interpret the index values, here is the key: */
 #define KVM_REG_ARM_COPROC_MASK		0x000000000FFF0000
@@ -404,6 +412,15 @@ struct kvm_vcpu_events {
 #define KVM_PSCI_RET_NI			PSCI_RET_NOT_SUPPORTED
 #define KVM_PSCI_RET_INVAL		PSCI_RET_INVALID_PARAMS
 #define KVM_PSCI_RET_DENIED		PSCI_RET_DENIED
+
+/* Protected KVM */
+#define KVM_CAP_ARM_PROTECTED_VM_FLAGS_SET_FW_IPA	0
+#define KVM_CAP_ARM_PROTECTED_VM_FLAGS_INFO		1
+
+struct kvm_protected_vm_info {
+	__u64 firmware_size;
+	__u64 __reserved[7];
+};
 
 #endif
 

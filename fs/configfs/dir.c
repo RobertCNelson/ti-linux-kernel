@@ -1409,6 +1409,21 @@ static int configfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode
 	else
 		ret = configfs_attach_item(parent_item, item, dentry, frag);
 
+	/* inherit uid/gid from process creating the directory */
+	if (!uid_eq(current_fsuid(), GLOBAL_ROOT_UID) ||
+	    !gid_eq(current_fsgid(), GLOBAL_ROOT_GID)) {
+		struct iattr ia = {
+			.ia_uid = current_fsuid(),
+			.ia_gid = current_fsgid(),
+			.ia_valid = ATTR_UID | ATTR_GID,
+		};
+		struct inode *inode = d_inode(dentry);
+		inode->i_uid = ia.ia_uid;
+		inode->i_gid = ia.ia_gid;
+		/* the above manual assignments skip the permission checks */
+		configfs_setattr(dentry, &ia);
+	}
+
 	spin_lock(&configfs_dirent_lock);
 	sd->s_type &= ~CONFIGFS_USET_IN_MKDIR;
 	if (!ret)
@@ -1805,8 +1820,8 @@ void configfs_unregister_group(struct config_group *group)
 	configfs_detach_group(&group->cg_item);
 	d_inode(dentry)->i_flags |= S_DEAD;
 	dont_mount(dentry);
+	d_drop(dentry);
 	fsnotify_rmdir(d_inode(parent), dentry);
-	d_delete(dentry);
 	inode_unlock(d_inode(parent));
 
 	dput(dentry);
@@ -1947,10 +1962,10 @@ void configfs_unregister_subsystem(struct configfs_subsystem *subsys)
 	configfs_detach_group(&group->cg_item);
 	d_inode(dentry)->i_flags |= S_DEAD;
 	dont_mount(dentry);
-	fsnotify_rmdir(d_inode(root), dentry);
 	inode_unlock(d_inode(dentry));
 
-	d_delete(dentry);
+	d_drop(dentry);
+	fsnotify_rmdir(d_inode(root), dentry);
 
 	inode_unlock(d_inode(root));
 

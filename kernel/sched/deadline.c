@@ -17,6 +17,7 @@
  */
 #include "sched.h"
 #include "pelt.h"
+#include <trace/hooks/sched.h>
 
 struct dl_bandwidth def_dl_bandwidth;
 
@@ -1675,6 +1676,11 @@ select_task_rq_dl(struct task_struct *p, int cpu, int sd_flag, int flags)
 	struct task_struct *curr;
 	bool select_rq;
 	struct rq *rq;
+	int target_cpu = -1;
+
+	trace_android_rvh_select_task_rq_dl(p, cpu, sd_flag, flags, &target_cpu);
+	if (target_cpu >= 0)
+		return target_cpu;
 
 	if (sd_flag != SD_BALANCE_WAKE)
 		goto out;
@@ -2376,9 +2382,13 @@ void dl_add_task_root_domain(struct task_struct *p)
 	struct rq *rq;
 	struct dl_bw *dl_b;
 
-	rq = task_rq_lock(p, &rf);
-	if (!dl_task(p))
-		goto unlock;
+	raw_spin_lock_irqsave(&p->pi_lock, rf.flags);
+	if (!dl_task(p)) {
+		raw_spin_unlock_irqrestore(&p->pi_lock, rf.flags);
+		return;
+	}
+
+	rq = __task_rq_lock(p, &rf);
 
 	dl_b = &rq->rd->dl_bw;
 	raw_spin_lock(&dl_b->lock);
@@ -2387,7 +2397,6 @@ void dl_add_task_root_domain(struct task_struct *p)
 
 	raw_spin_unlock(&dl_b->lock);
 
-unlock:
 	task_rq_unlock(rq, p, &rf);
 }
 

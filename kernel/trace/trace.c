@@ -48,6 +48,7 @@
 #include <linux/fsnotify.h>
 #include <linux/irq_work.h>
 #include <linux/workqueue.h>
+#include <trace/hooks/ftrace_dump.h>
 
 #include "trace.h"
 #include "trace_output.h"
@@ -3134,7 +3135,7 @@ struct trace_buffer_struct {
 	char buffer[4][TRACE_BUF_SIZE];
 };
 
-static struct trace_buffer_struct *trace_percpu_buffer;
+static struct trace_buffer_struct __percpu *trace_percpu_buffer;
 
 /*
  * Thise allows for lockless recording.  If we're nested too deeply, then
@@ -3144,7 +3145,7 @@ static char *get_trace_buf(void)
 {
 	struct trace_buffer_struct *buffer = this_cpu_ptr(trace_percpu_buffer);
 
-	if (!buffer || buffer->nesting >= 4)
+	if (!trace_percpu_buffer || buffer->nesting >= 4)
 		return NULL;
 
 	buffer->nesting++;
@@ -3163,7 +3164,7 @@ static void put_trace_buf(void)
 
 static int alloc_percpu_trace_buffer(void)
 {
-	struct trace_buffer_struct *buffers;
+	struct trace_buffer_struct __percpu *buffers;
 
 	if (trace_percpu_buffer)
 		return 0;
@@ -5234,6 +5235,7 @@ static const char readme_msg[] =
 #ifdef CONFIG_HIST_TRIGGERS
 	"      hist trigger\t- If set, event hits are aggregated into a hash table\n"
 	"\t    Format: hist:keys=<field1[,field2,...]>\n"
+	"\t            [:<var1>=<field|var_ref|numeric_literal>[,<var2>=...]]\n"
 	"\t            [:values=<field1[,field2,...]>]\n"
 	"\t            [:sort=<field1[,field2,...]>]\n"
 	"\t            [:size=#entries]\n"
@@ -5244,6 +5246,16 @@ static const char readme_msg[] =
 	"\t    Note, special fields can be used as well:\n"
 	"\t            common_timestamp - to record current timestamp\n"
 	"\t            common_cpu - to record the CPU the event happened on\n"
+	"\n"
+	"\t    A hist trigger variable can be:\n"
+	"\t        - a reference to a field e.g. x=current_timestamp,\n"
+	"\t        - a reference to another variable e.g. y=$x,\n"
+	"\t        - a numeric literal: e.g. ms_per_sec=1000,\n"
+	"\t        - an arithmetic expression: e.g. time_secs=current_timestamp/1000\n"
+	"\n"
+	"\t    hist trigger aritmethic expressions support addition(+), subtraction(-),\n"
+	"\t    multiplication(*) and division(/) operators. An operand can be either a\n"
+	"\t    variable reference, field or numeric literal.\n"
 	"\n"
 	"\t    When a matching event is hit, an entry is added to a hash\n"
 	"\t    table using the key(s) and value(s) named, and the value of a\n"
@@ -7257,7 +7269,8 @@ static struct tracing_log_err *get_tracing_log_err(struct trace_array *tr)
 		err = kzalloc(sizeof(*err), GFP_KERNEL);
 		if (!err)
 			err = ERR_PTR(-ENOMEM);
-		tr->n_err_log_entries++;
+		else
+			tr->n_err_log_entries++;
 
 		return err;
 	}
@@ -9013,6 +9026,7 @@ init_tracer_tracefs(struct trace_array *tr, struct dentry *d_tracer)
 	ftrace_init_tracefs(tr, d_tracer);
 }
 
+#ifndef CONFIG_TRACEFS_DISABLE_AUTOMOUNT
 static struct vfsmount *trace_automount(struct dentry *mntpt, void *ingore)
 {
 	struct vfsmount *mnt;
@@ -9034,6 +9048,7 @@ static struct vfsmount *trace_automount(struct dentry *mntpt, void *ingore)
 
 	return mnt;
 }
+#endif
 
 /**
  * tracing_init_dentry - initialize top level trace array
@@ -9058,6 +9073,7 @@ int tracing_init_dentry(void)
 	if (WARN_ON(!tracefs_initialized()))
 		return -ENODEV;
 
+#ifndef CONFIG_TRACEFS_DISABLE_AUTOMOUNT
 	/*
 	 * As there may still be users that expect the tracing
 	 * files to exist in debugfs/tracing, we must automount
@@ -9066,6 +9082,9 @@ int tracing_init_dentry(void)
 	 */
 	tr->dir = debugfs_create_automount("tracing", NULL,
 					   trace_automount, NULL);
+#else
+	tr->dir = ERR_PTR(-ENODEV);
+#endif
 
 	return 0;
 }
@@ -9205,8 +9224,17 @@ static __init int tracer_init_tracefs(void)
 static int trace_panic_handler(struct notifier_block *this,
 			       unsigned long event, void *unused)
 {
+	bool ftrace_check = false;
+
+	trace_android_vh_ftrace_oops_enter(&ftrace_check);
+
+	if (ftrace_check)
+		return NOTIFY_OK;
+
 	if (ftrace_dump_on_oops)
 		ftrace_dump(ftrace_dump_on_oops);
+
+	trace_android_vh_ftrace_oops_exit(&ftrace_check);
 	return NOTIFY_OK;
 }
 
@@ -9220,6 +9248,13 @@ static int trace_die_handler(struct notifier_block *self,
 			     unsigned long val,
 			     void *data)
 {
+	bool ftrace_check = false;
+
+	trace_android_vh_ftrace_oops_enter(&ftrace_check);
+
+	if (ftrace_check)
+		return NOTIFY_OK;
+
 	switch (val) {
 	case DIE_OOPS:
 		if (ftrace_dump_on_oops)
@@ -9228,6 +9263,8 @@ static int trace_die_handler(struct notifier_block *self,
 	default:
 		break;
 	}
+
+	trace_android_vh_ftrace_oops_exit(&ftrace_check);
 	return NOTIFY_OK;
 }
 
@@ -9252,6 +9289,8 @@ static struct notifier_block trace_die_notifier = {
 void
 trace_printk_seq(struct trace_seq *s)
 {
+	bool dump_printk = true;
+
 	/* Probably should print a warning here. */
 	if (s->seq.len >= TRACE_MAX_PRINT)
 		s->seq.len = TRACE_MAX_PRINT;
@@ -9267,7 +9306,9 @@ trace_printk_seq(struct trace_seq *s)
 	/* should be zero ended, but we are paranoid. */
 	s->buffer[s->seq.len] = 0;
 
-	printk(KERN_TRACE "%s", s->buffer);
+	trace_android_vh_ftrace_dump_buffer(s, &dump_printk);
+	if (dump_printk)
+		printk(KERN_TRACE "%s", s->buffer);
 
 	trace_seq_init(s);
 }
@@ -9300,6 +9341,8 @@ void ftrace_dump(enum ftrace_dump_mode oops_dump_mode)
 	unsigned int old_userobj;
 	unsigned long flags;
 	int cnt = 0, cpu;
+	bool ftrace_check = false;
+	unsigned long size;
 
 	/* Only allow one dump user at a time. */
 	if (atomic_inc_return(&dump_running) != 1) {
@@ -9328,12 +9371,17 @@ void ftrace_dump(enum ftrace_dump_mode oops_dump_mode)
 
 	for_each_tracing_cpu(cpu) {
 		atomic_inc(&per_cpu_ptr(iter.array_buffer->data, cpu)->disabled);
+		size = ring_buffer_size(iter.array_buffer->buffer, cpu);
+		trace_android_vh_ftrace_size_check(size, &ftrace_check);
 	}
 
 	old_userobj = tr->trace_flags & TRACE_ITER_SYM_USEROBJ;
 
 	/* don't look at user memory in panic mode */
 	tr->trace_flags &= ~TRACE_ITER_SYM_USEROBJ;
+
+	if (ftrace_check)
+		goto out_enable;
 
 	switch (oops_dump_mode) {
 	case DUMP_ALL:
@@ -9365,6 +9413,7 @@ void ftrace_dump(enum ftrace_dump_mode oops_dump_mode)
 	 */
 
 	while (!trace_empty(&iter)) {
+		ftrace_check = true;
 
 		if (!cnt)
 			printk(KERN_TRACE "---------------------------------\n");
@@ -9372,7 +9421,9 @@ void ftrace_dump(enum ftrace_dump_mode oops_dump_mode)
 		cnt++;
 
 		trace_iterator_reset(&iter);
-		iter.iter_flags |= TRACE_FILE_LAT_FMT;
+		trace_android_vh_ftrace_format_check(&ftrace_check);
+		if (ftrace_check)
+			iter.iter_flags |= TRACE_FILE_LAT_FMT;
 
 		if (trace_find_next_entry_inc(&iter) != NULL) {
 			int ret;

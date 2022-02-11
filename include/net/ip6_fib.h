@@ -13,6 +13,7 @@
 #include <linux/rtnetlink.h>
 #include <linux/spinlock.h>
 #include <linux/notifier.h>
+#include <linux/android_kabi.h>
 #include <net/dst.h>
 #include <net/flow.h>
 #include <net/ip_fib.h>
@@ -67,6 +68,8 @@ struct fib6_config {
 	struct nlattr	*fc_encap;
 	u16		fc_encap_type;
 	bool		fc_is_fdb;
+
+	ANDROID_KABI_RESERVE(1);
 };
 
 struct fib6_node {
@@ -83,6 +86,8 @@ struct fib6_node {
 	int			fn_sernum;
 	struct fib6_info __rcu	*rr_ptr;
 	struct rcu_head		rcu;
+
+	ANDROID_KABI_RESERVE(1);
 };
 
 struct fib6_gc_args {
@@ -199,6 +204,9 @@ struct fib6_info {
 
 	struct rcu_head			rcu;
 	struct nexthop			*nh;
+
+	ANDROID_KABI_RESERVE(1);
+
 	struct fib6_nh			fib6_nh[];
 };
 
@@ -218,6 +226,8 @@ struct rt6_info {
 
 	/* more non-fragment space at head required */
 	unsigned short			rt6i_nfheader_len;
+
+	ANDROID_KABI_RESERVE(1);
 };
 
 struct fib6_result {
@@ -280,7 +290,7 @@ static inline bool fib6_get_cookie_safe(const struct fib6_info *f6i,
 	fn = rcu_dereference(f6i->fib6_node);
 
 	if (fn) {
-		*cookie = fn->fn_sernum;
+		*cookie = READ_ONCE(fn->fn_sernum);
 		/* pairs with smp_wmb() in fib6_update_sernum_upto_root() */
 		smp_rmb();
 		status = true;
