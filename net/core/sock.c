@@ -226,7 +226,7 @@ static struct lock_class_key af_family_kern_slock_keys[AF_MAX];
   x "AF_IEEE802154",	x "AF_CAIF"	,	x "AF_ALG"      , \
   x "AF_NFC"   ,	x "AF_VSOCK"    ,	x "AF_KCM"      , \
   x "AF_QIPCRTR",	x "AF_SMC"	,	x "AF_XDP"	, \
-  x "AF_MAX"
+  x "AF_RPMSG" ,	x "AF_MAX"
 
 static const char *const af_family_key_strings[AF_MAX+1] = {
 	_sock_locks("sk_lock-")
@@ -2373,6 +2373,7 @@ EXPORT_SYMBOL(sock_alloc_send_skb);
 int __sock_cmsg_send(struct sock *sk, struct msghdr *msg, struct cmsghdr *cmsg,
 		     struct sockcm_cookie *sockc)
 {
+	struct skb_redundant_info *cred;
 	u32 tsflags;
 
 	switch (cmsg->cmsg_type) {
@@ -2404,6 +2405,15 @@ int __sock_cmsg_send(struct sock *sk, struct msghdr *msg, struct cmsghdr *cmsg,
 	/* SCM_RIGHTS and SCM_CREDENTIALS are semantically in SOL_UNIX. */
 	case SCM_RIGHTS:
 	case SCM_CREDENTIALS:
+		break;
+	case SCM_REDUNDANT:
+		if (cmsg->cmsg_len !=
+		    CMSG_LEN(sizeof(struct skb_redundant_info)))
+			return -EINVAL;
+
+		cred = (struct skb_redundant_info *)CMSG_DATA(cmsg);
+		memcpy(&sockc->redinfo, cred,
+		       sizeof(struct skb_redundant_info));
 		break;
 	default:
 		return -EINVAL;
@@ -3198,6 +3208,7 @@ int sock_recv_errqueue(struct sock *sk, struct msghdr *msg, int len,
 	struct sock_exterr_skb *serr;
 	struct sk_buff *skb;
 	int copied, err;
+	struct skb_redundant_info *sred;
 
 	err = -EAGAIN;
 	skb = sock_dequeue_err_skb(sk);
@@ -3214,6 +3225,9 @@ int sock_recv_errqueue(struct sock *sk, struct msghdr *msg, int len,
 		goto out_free_skb;
 
 	sock_recv_timestamp(msg, sk, skb);
+
+	sred = skb_redinfo(skb);
+	put_cmsg(msg, SOL_SOCKET, SCM_REDUNDANT, sizeof(*sred), sred);
 
 	serr = SKB_EXT_ERR(skb);
 	put_cmsg(msg, level, type, sizeof(serr->ee), &serr->ee);

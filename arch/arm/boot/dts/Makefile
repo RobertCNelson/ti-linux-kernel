@@ -796,15 +796,18 @@ dtb-$(CONFIG_SOC_AM33XX) += \
 	am335x-bone.dtb \
 	am335x-boneblack.dtb \
 	am335x-boneblack-wireless.dtb \
+	am335x-boneblack-pruswuart.dtb \
 	am335x-boneblue.dtb \
 	am335x-bonegreen.dtb \
 	am335x-bonegreen-wireless.dtb \
+	am335x-boneblack-pps.dtb \
 	am335x-chiliboard.dtb \
 	am335x-cm-t335.dtb \
 	am335x-evm.dtb \
 	am335x-evmsk.dtb \
 	am335x-guardian.dtb \
 	am335x-icev2.dtb \
+	am335x-icev2-prueth.dtb \
 	am335x-lxm.dtb \
 	am335x-moxa-uc-2101.dtb \
 	am335x-moxa-uc-8100-me-t.dtb \
@@ -837,8 +840,10 @@ dtb-$(CONFIG_ARCH_OMAP4) += \
 	omap4-var-stk-om44.dtb
 dtb-$(CONFIG_SOC_AM43XX) += \
 	am43x-epos-evm.dtb \
+	am43x-epos-evm-hdmi.dtb \
 	am437x-cm-t43.dtb \
 	am437x-gp-evm.dtb \
+	am437x-gp-evm-hdmi.dtb \
 	am437x-idk-evm.dtb \
 	am437x-sbc-t43.dtb \
 	am437x-sk-evm.dtb
@@ -862,6 +867,10 @@ dtb-$(CONFIG_SOC_DRA7XX) += \
 	dra72-evm-revc.dtb \
 	dra71-evm.dtb \
 	dra76-evm.dtb
+dtb-merge-$(CONFIG_SOC_DRA7XX) += \
+	am57xx-evm.dtb \
+	am57xx-evm-reva3.dtb \
+	dra71-evm-nand.dtb
 dtb-$(CONFIG_ARCH_ORION5X) += \
 	orion5x-kuroboxpro.dtb \
 	orion5x-lacie-d2-network.dtb \
@@ -1409,3 +1418,13 @@ dtb-$(CONFIG_ARCH_ASPEED) += \
 	aspeed-bmc-opp-zaius.dtb \
 	aspeed-bmc-portwell-neptune.dtb \
 	aspeed-bmc-quanta-q71l.dtb
+
+always-y += $(dtb-merge-y)
+
+$(addprefix $(obj)/,$(dtb-merge-y)): TI_DTBOS
+	@$(srctree)/scripts/dtb-merge $(srctree) $(objtree) $@ $(objtree)/scripts/dtc/fdtoverlay $(src)/ti
+
+TI_DTBOS:
+	$(Q)$(MAKE) $(build)=$(src)/ti
+
+PHONY += TI_DTBOS

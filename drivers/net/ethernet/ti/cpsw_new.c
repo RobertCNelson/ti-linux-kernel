@@ -46,6 +46,8 @@ static int debug_level;
 static int ale_ageout = CPSW_ALE_AGEOUT_DEFAULT;
 static int rx_packet_max = CPSW_MAX_PACKET_SIZE;
 static int descs_pool_size = CPSW_CPDMA_DESCS_POOL_SIZE_DEFAULT;
+module_param(descs_pool_size, int, 0444);
+MODULE_PARM_DESC(descs_pool_size, "Number of CPDMA CPPI descriptors in pool");
 
 struct cpsw_devlink {
 	struct cpsw_common *cpsw;
@@ -351,12 +353,10 @@ static void cpsw_rx_handler(void *token, int len, int status)
 		xdp.rxq = &priv->xdp_rxq[ch];
 		xdp.frame_sz = PAGE_SIZE;
 
-		ret = cpsw_run_xdp(priv, ch, &xdp, page, priv->emac_port);
+		ret = cpsw_run_xdp(priv, ch, &xdp, page, priv->emac_port, &len);
 		if (ret != CPSW_XDP_PASS)
 			goto requeue;
 
-		/* XDP prog might have changed packet data and boundaries */
-		len = xdp.data_end - xdp.data;
 		headroom = xdp.data - xdp.data_hard_start;
 
 		/* XDP prog can modify vlan tag, so can't use encap header */

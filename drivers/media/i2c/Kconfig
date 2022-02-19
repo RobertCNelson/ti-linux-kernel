@@ -886,7 +886,7 @@ config VIDEO_OV2740
 
 config VIDEO_OV5640
 	tristate "OmniVision OV5640 sensor support"
-	depends on OF
+	depends on OF && PM
 	depends on GPIOLIB && VIDEO_V4L2 && I2C
 	select MEDIA_CONTROLLER
 	select VIDEO_V4L2_SUBDEV_API
@@ -1059,6 +1059,18 @@ config VIDEO_OV13858
 	help
 	  This is a Video4Linux2 sensor driver for the OmniVision
 	  OV13858 camera.
+
+config VIDEO_OV1063X
+	tristate "OmniVision OV1063X sensor support"
+	depends on I2C && VIDEO_V4L2 && VIDEO_V4L2_SUBDEV_API
+	depends on MEDIA_CAMERA_SUPPORT && OF && GPIOLIB
+	select V4L2_FWNODE
+	help
+	  This is a Video4Linux2 sensor-level driver for the OmniVision
+	  OV1063X Sensor.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called ov1063x.
 
 config VIDEO_VS6624
 	tristate "ST VS6624 sensor support"

@@ -158,12 +158,6 @@
 		regulator-max-microvolt = <1800000>;
 	};
 
-	clk_ov5640_fixed: clock {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <24000000>;
-	};
-
 	hdmi0: connector {
 		compatible = "hdmi-connector";
 		label = "hdmi";
@@ -410,18 +404,19 @@
 	status = "okay";
 	clock-frequency = <400000>;
 
-	ov5640@3c {
-		compatible = "ovti,ov5640";
-		reg = <0x3c>;
+	ov10633@37 {
+		compatible = "ovti,ov10633";
+		reg = <0x37>;
 
-		clocks = <&clk_ov5640_fixed>;
-		clock-names = "xclk";
+		clocks = <&clk_ov10633_fixed>;
+		clock-names = "xvclk";
 
 		port {
-			csi2_cam0: endpoint {
-				remote-endpoint = <&csi2_phy0>;
-				clock-lanes = <0>;
-				data-lanes = <1 2>;
+			onboardLI: endpoint {
+				remote-endpoint = <&vin2a_ep>;
+				hsync-active = <1>;
+				vsync-active = <1>;
+				pclk-sample = <0>;
 			};
 		};
 	};
@@ -573,14 +568,6 @@
 	};
 };
 
-&csi2_0 {
-	csi2_phy0: endpoint {
-		remote-endpoint = <&csi2_cam0>;
-		clock-lanes = <0>;
-		data-lanes = <1 2>;
-	};
-};
-
 &ipu2 {
 	status = "okay";
 	memory-region = <&ipu2_cma_pool>;
@@ -599,4 +586,13 @@
 &dsp2 {
 	status = "okay";
 	memory-region = <&dsp2_cma_pool>;
+};
+
+&vin2a {
+	vin2a_ep: endpoint {
+		remote-endpoint = <&onboardLI>;
+		hsync-active = <1>;
+		vsync-active = <1>;
+		pclk-sample = <0>;
+	};
 };

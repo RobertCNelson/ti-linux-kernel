@@ -607,7 +607,7 @@ static struct media_entity *dcmi_find_source(struct stm32_dcmi *dcmi)
 }
 
 static int dcmi_pipeline_s_fmt(struct stm32_dcmi *dcmi,
-			       struct v4l2_subdev_pad_config *pad_cfg,
+			       struct v4l2_subdev_state *sd_state,
 			       struct v4l2_subdev_format *format)
 {
 	struct media_entity *entity = &dcmi->entity.source->entity;
@@ -649,7 +649,7 @@ static int dcmi_pipeline_s_fmt(struct stm32_dcmi *dcmi,
 			format->format.width, format->format.height);
 
 		fmt.pad = pad->index;
-		ret = v4l2_subdev_call(subdev, pad, set_fmt, pad_cfg, &fmt);
+		ret = v4l2_subdev_call(subdev, pad, set_fmt, sd_state, &fmt);
 		if (ret < 0) {
 			dev_err(dcmi->dev, "%s: Failed to set format 0x%x %ux%u on \"%s\":%d pad (%d)\n",
 				__func__, format->format.code,
@@ -737,7 +737,7 @@ static int dcmi_start_streaming(struct vb2_queue *vq, unsigned int count)
 		goto err_pm_put;
 	}
 
-	ret = media_pipeline_start(&dcmi->vdev->entity, &dcmi->pipeline);
+	ret = media_pipeline_start(dcmi->vdev->entity.pads, &dcmi->pipeline);
 	if (ret < 0) {
 		dev_err(dcmi->dev, "%s: Failed to start streaming, media pipeline start error (%d)\n",
 			__func__, ret);
@@ -834,7 +834,7 @@ err_pipeline_stop:
 	dcmi_pipeline_stop(dcmi);
 
 err_media_pipeline_stop:
-	media_pipeline_stop(&dcmi->vdev->entity);
+	media_pipeline_stop(dcmi->vdev->entity.pads);
 
 err_pm_put:
 	pm_runtime_put(dcmi->dev);
@@ -860,7 +860,7 @@ static void dcmi_stop_streaming(struct vb2_queue *vq)
 
 	dcmi_pipeline_stop(dcmi);
 
-	media_pipeline_stop(&dcmi->vdev->entity);
+	media_pipeline_stop(dcmi->vdev->entity.pads);
 
 	spin_lock_irq(&dcmi->irqlock);
 
@@ -967,6 +967,9 @@ static int dcmi_try_fmt(struct stm32_dcmi *dcmi, struct v4l2_format *f,
 	struct dcmi_framesize sd_fsize;
 	struct v4l2_pix_format *pix = &f->fmt.pix;
 	struct v4l2_subdev_pad_config pad_cfg;
+	struct v4l2_subdev_state pad_state = {
+		.pads = &pad_cfg
+		};
 	struct v4l2_subdev_format format = {
 		.which = V4L2_SUBDEV_FORMAT_TRY,
 	};
@@ -1002,7 +1005,7 @@ static int dcmi_try_fmt(struct stm32_dcmi *dcmi, struct v4l2_format *f,
 
 	v4l2_fill_mbus_format(&format.format, pix, sd_fmt->mbus_code);
 	ret = v4l2_subdev_call(dcmi->entity.source, pad, set_fmt,
-			       &pad_cfg, &format);
+			       &pad_state, &format);
 	if (ret < 0)
 		return ret;
 
@@ -1151,6 +1154,9 @@ static int dcmi_set_sensor_format(struct stm32_dcmi *dcmi,
 		.which = V4L2_SUBDEV_FORMAT_TRY,
 	};
 	struct v4l2_subdev_pad_config pad_cfg;
+	struct v4l2_subdev_state pad_state = {
+		.pads = &pad_cfg
+		};
 	int ret;
 
 	sd_fmt = find_format_by_fourcc(dcmi, pix->pixelformat);
@@ -1164,7 +1170,7 @@ static int dcmi_set_sensor_format(struct stm32_dcmi *dcmi,
 
 	v4l2_fill_mbus_format(&format.format, pix, sd_fmt->mbus_code);
 	ret = v4l2_subdev_call(dcmi->entity.source, pad, set_fmt,
-			       &pad_cfg, &format);
+			       &pad_state, &format);
 	if (ret < 0)
 		return ret;
 

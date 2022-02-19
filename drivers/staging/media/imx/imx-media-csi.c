@@ -1162,31 +1162,32 @@ static int csi_link_validate(struct v4l2_subdev *sd,
 }
 
 static struct v4l2_mbus_framefmt *
-__csi_get_fmt(struct csi_priv *priv, struct v4l2_subdev_pad_config *cfg,
+__csi_get_fmt(struct csi_priv *priv, struct v4l2_subdev_state *sd_state,
 	      unsigned int pad, enum v4l2_subdev_format_whence which)
 {
 	if (which == V4L2_SUBDEV_FORMAT_TRY)
-		return v4l2_subdev_get_try_format(&priv->sd, cfg, pad);
+		return v4l2_subdev_get_try_format(&priv->sd, sd_state, pad);
 	else
 		return &priv->format_mbus[pad];
 }
 
 static struct v4l2_rect *
-__csi_get_crop(struct csi_priv *priv, struct v4l2_subdev_pad_config *cfg,
+__csi_get_crop(struct csi_priv *priv, struct v4l2_subdev_state *sd_state,
 	       enum v4l2_subdev_format_whence which)
 {
 	if (which == V4L2_SUBDEV_FORMAT_TRY)
-		return v4l2_subdev_get_try_crop(&priv->sd, cfg, CSI_SINK_PAD);
+		return v4l2_subdev_get_try_crop(&priv->sd, sd_state,
+						CSI_SINK_PAD);
 	else
 		return &priv->crop;
 }
 
 static struct v4l2_rect *
-__csi_get_compose(struct csi_priv *priv, struct v4l2_subdev_pad_config *cfg,
+__csi_get_compose(struct csi_priv *priv, struct v4l2_subdev_state *sd_state,
 		  enum v4l2_subdev_format_whence which)
 {
 	if (which == V4L2_SUBDEV_FORMAT_TRY)
-		return v4l2_subdev_get_try_compose(&priv->sd, cfg,
+		return v4l2_subdev_get_try_compose(&priv->sd, sd_state,
 						   CSI_SINK_PAD);
 	else
 		return &priv->compose;
@@ -1194,7 +1195,7 @@ __csi_get_compose(struct csi_priv *priv, struct v4l2_subdev_pad_config *cfg,
 
 static void csi_try_crop(struct csi_priv *priv,
 			 struct v4l2_rect *crop,
-			 struct v4l2_subdev_pad_config *cfg,
+			 struct v4l2_subdev_state *sd_state,
 			 struct v4l2_mbus_framefmt *infmt,
 			 struct v4l2_fwnode_endpoint *upstream_ep)
 {
@@ -1233,7 +1234,7 @@ static void csi_try_crop(struct csi_priv *priv,
 }
 
 static int csi_enum_mbus_code(struct v4l2_subdev *sd,
-			      struct v4l2_subdev_pad_config *cfg,
+			      struct v4l2_subdev_state *sd_state,
 			      struct v4l2_subdev_mbus_code_enum *code)
 {
 	struct csi_priv *priv = v4l2_get_subdevdata(sd);
@@ -1244,7 +1245,7 @@ static int csi_enum_mbus_code(struct v4l2_subdev *sd,
 
 	mutex_lock(&priv->lock);
 
-	infmt = __csi_get_fmt(priv, cfg, CSI_SINK_PAD, code->which);
+	infmt = __csi_get_fmt(priv, sd_state, CSI_SINK_PAD, code->which);
 	incc = imx_media_find_mbus_format(infmt->code, PIXFMT_SEL_ANY);
 
 	switch (code->pad) {
@@ -1286,7 +1287,7 @@ out:
 }
 
 static int csi_enum_frame_size(struct v4l2_subdev *sd,
-			       struct v4l2_subdev_pad_config *cfg,
+			       struct v4l2_subdev_state *sd_state,
 			       struct v4l2_subdev_frame_size_enum *fse)
 {
 	struct csi_priv *priv = v4l2_get_subdevdata(sd);
@@ -1305,7 +1306,7 @@ static int csi_enum_frame_size(struct v4l2_subdev *sd,
 		fse->min_height = MIN_H;
 		fse->max_height = MAX_H;
 	} else {
-		crop = __csi_get_crop(priv, cfg, fse->which);
+		crop = __csi_get_crop(priv, sd_state, fse->which);
 
 		fse->min_width = fse->index & 1 ?
 			crop->width / 2 : crop->width;
@@ -1320,7 +1321,7 @@ static int csi_enum_frame_size(struct v4l2_subdev *sd,
 }
 
 static int csi_enum_frame_interval(struct v4l2_subdev *sd,
-				   struct v4l2_subdev_pad_config *cfg,
+				   struct v4l2_subdev_state *sd_state,
 				   struct v4l2_subdev_frame_interval_enum *fie)
 {
 	struct csi_priv *priv = v4l2_get_subdevdata(sd);
@@ -1336,7 +1337,7 @@ static int csi_enum_frame_interval(struct v4l2_subdev *sd,
 	mutex_lock(&priv->lock);
 
 	input_fi = &priv->frame_interval[CSI_SINK_PAD];
-	crop = __csi_get_crop(priv, cfg, fie->which);
+	crop = __csi_get_crop(priv, sd_state, fie->which);
 
 	if ((fie->width != crop->width && fie->width != crop->width / 2) ||
 	    (fie->height != crop->height && fie->height != crop->height / 2)) {
@@ -1356,7 +1357,7 @@ out:
 }
 
 static int csi_get_fmt(struct v4l2_subdev *sd,
-		       struct v4l2_subdev_pad_config *cfg,
+		       struct v4l2_subdev_state *sd_state,
 		       struct v4l2_subdev_format *sdformat)
 {
 	struct csi_priv *priv = v4l2_get_subdevdata(sd);
@@ -1368,7 +1369,7 @@ static int csi_get_fmt(struct v4l2_subdev *sd,
 
 	mutex_lock(&priv->lock);
 
-	fmt = __csi_get_fmt(priv, cfg, sdformat->pad, sdformat->which);
+	fmt = __csi_get_fmt(priv, sd_state, sdformat->pad, sdformat->which);
 	if (!fmt) {
 		ret = -EINVAL;
 		goto out;
@@ -1381,11 +1382,11 @@ out:
 }
 
 static void csi_try_field(struct csi_priv *priv,
-			  struct v4l2_subdev_pad_config *cfg,
+			  struct v4l2_subdev_state *sd_state,
 			  struct v4l2_subdev_format *sdformat)
 {
 	struct v4l2_mbus_framefmt *infmt =
-		__csi_get_fmt(priv, cfg, CSI_SINK_PAD, sdformat->which);
+		__csi_get_fmt(priv, sd_state, CSI_SINK_PAD, sdformat->which);
 
 	/*
 	 * no restrictions on sink pad field type except must
@@ -1431,7 +1432,7 @@ static void csi_try_field(struct csi_priv *priv,
 
 static void csi_try_fmt(struct csi_priv *priv,
 			struct v4l2_fwnode_endpoint *upstream_ep,
-			struct v4l2_subdev_pad_config *cfg,
+			struct v4l2_subdev_state *sd_state,
 			struct v4l2_subdev_format *sdformat,
 			struct v4l2_rect *crop,
 			struct v4l2_rect *compose,
@@ -1441,7 +1442,7 @@ static void csi_try_fmt(struct csi_priv *priv,
 	struct v4l2_mbus_framefmt *infmt;
 	u32 code;
 
-	infmt = __csi_get_fmt(priv, cfg, CSI_SINK_PAD, sdformat->which);
+	infmt = __csi_get_fmt(priv, sd_state, CSI_SINK_PAD, sdformat->which);
 
 	switch (sdformat->pad) {
 	case CSI_SRC_PAD_DIRECT:
@@ -1468,7 +1469,7 @@ static void csi_try_fmt(struct csi_priv *priv,
 			}
 		}
 
-		csi_try_field(priv, cfg, sdformat);
+		csi_try_field(priv, sd_state, sdformat);
 
 		/* propagate colorimetry from sink */
 		sdformat->format.colorspace = infmt->colorspace;
@@ -1492,7 +1493,7 @@ static void csi_try_fmt(struct csi_priv *priv,
 			sdformat->format.code = (*cc)->codes[0];
 		}
 
-		csi_try_field(priv, cfg, sdformat);
+		csi_try_field(priv, sd_state, sdformat);
 
 		/* Reset crop and compose rectangles */
 		crop->left = 0;
@@ -1501,7 +1502,8 @@ static void csi_try_fmt(struct csi_priv *priv,
 		crop->height = sdformat->format.height;
 		if (sdformat->format.field == V4L2_FIELD_ALTERNATE)
 			crop->height *= 2;
-		csi_try_crop(priv, crop, cfg, &sdformat->format, upstream_ep);
+		csi_try_crop(priv, crop, sd_state, &sdformat->format,
+			     upstream_ep);
 		compose->left = 0;
 		compose->top = 0;
 		compose->width = crop->width;
@@ -1515,7 +1517,7 @@ static void csi_try_fmt(struct csi_priv *priv,
 }
 
 static int csi_set_fmt(struct v4l2_subdev *sd,
-		       struct v4l2_subdev_pad_config *cfg,
+		       struct v4l2_subdev_state *sd_state,
 		       struct v4l2_subdev_format *sdformat)
 {
 	struct csi_priv *priv = v4l2_get_subdevdata(sd);
@@ -1541,12 +1543,13 @@ static int csi_set_fmt(struct v4l2_subdev *sd,
 		goto out;
 	}
 
-	crop = __csi_get_crop(priv, cfg, sdformat->which);
-	compose = __csi_get_compose(priv, cfg, sdformat->which);
+	crop = __csi_get_crop(priv, sd_state, sdformat->which);
+	compose = __csi_get_compose(priv, sd_state, sdformat->which);
 
-	csi_try_fmt(priv, &upstream_ep, cfg, sdformat, crop, compose, &cc);
+	csi_try_fmt(priv, &upstream_ep, sd_state, sdformat, crop, compose,
+		    &cc);
 
-	fmt = __csi_get_fmt(priv, cfg, sdformat->pad, sdformat->which);
+	fmt = __csi_get_fmt(priv, sd_state, sdformat->pad, sdformat->which);
 	*fmt = sdformat->format;
 
 	if (sdformat->pad == CSI_SINK_PAD) {
@@ -1561,10 +1564,11 @@ static int csi_set_fmt(struct v4l2_subdev *sd,
 			format.pad = pad;
 			format.which = sdformat->which;
 			format.format = sdformat->format;
-			csi_try_fmt(priv, &upstream_ep, cfg, &format,
+			csi_try_fmt(priv, &upstream_ep, sd_state, &format,
 				    NULL, compose, &outcc);
 
-			outfmt = __csi_get_fmt(priv, cfg, pad, sdformat->which);
+			outfmt = __csi_get_fmt(priv, sd_state, pad,
+					       sdformat->which);
 			*outfmt = format.format;
 
 			if (sdformat->which == V4L2_SUBDEV_FORMAT_ACTIVE)
@@ -1581,7 +1585,7 @@ out:
 }
 
 static int csi_get_selection(struct v4l2_subdev *sd,
-			     struct v4l2_subdev_pad_config *cfg,
+			     struct v4l2_subdev_state *sd_state,
 			     struct v4l2_subdev_selection *sel)
 {
 	struct csi_priv *priv = v4l2_get_subdevdata(sd);
@@ -1594,9 +1598,9 @@ static int csi_get_selection(struct v4l2_subdev *sd,
 
 	mutex_lock(&priv->lock);
 
-	infmt = __csi_get_fmt(priv, cfg, CSI_SINK_PAD, sel->which);
-	crop = __csi_get_crop(priv, cfg, sel->which);
-	compose = __csi_get_compose(priv, cfg, sel->which);
+	infmt = __csi_get_fmt(priv, sd_state, CSI_SINK_PAD, sel->which);
+	crop = __csi_get_crop(priv, sd_state, sel->which);
+	compose = __csi_get_compose(priv, sd_state, sel->which);
 
 	switch (sel->target) {
 	case V4L2_SEL_TGT_CROP_BOUNDS:
@@ -1645,7 +1649,7 @@ static int csi_set_scale(u32 *compose, u32 crop, u32 flags)
 }
 
 static int csi_set_selection(struct v4l2_subdev *sd,
-			     struct v4l2_subdev_pad_config *cfg,
+			     struct v4l2_subdev_state *sd_state,
 			     struct v4l2_subdev_selection *sel)
 {
 	struct csi_priv *priv = v4l2_get_subdevdata(sd);
@@ -1670,9 +1674,9 @@ static int csi_set_selection(struct v4l2_subdev *sd,
 		goto out;
 	}
 
-	infmt = __csi_get_fmt(priv, cfg, CSI_SINK_PAD, sel->which);
-	crop = __csi_get_crop(priv, cfg, sel->which);
-	compose = __csi_get_compose(priv, cfg, sel->which);
+	infmt = __csi_get_fmt(priv, sd_state, CSI_SINK_PAD, sel->which);
+	crop = __csi_get_crop(priv, sd_state, sel->which);
+	compose = __csi_get_compose(priv, sd_state, sel->which);
 
 	switch (sel->target) {
 	case V4L2_SEL_TGT_CROP:
@@ -1688,7 +1692,7 @@ static int csi_set_selection(struct v4l2_subdev *sd,
 			goto out;
 		}
 
-		csi_try_crop(priv, &sel->r, cfg, infmt, &upstream_ep);
+		csi_try_crop(priv, &sel->r, sd_state, infmt, &upstream_ep);
 
 		*crop = sel->r;
 
@@ -1729,7 +1733,7 @@ static int csi_set_selection(struct v4l2_subdev *sd,
 	for (pad = CSI_SINK_PAD + 1; pad < CSI_NUM_PADS; pad++) {
 		struct v4l2_mbus_framefmt *outfmt;
 
-		outfmt = __csi_get_fmt(priv, cfg, pad, sel->which);
+		outfmt = __csi_get_fmt(priv, sd_state, pad, sel->which);
 		outfmt->width = compose->width;
 		outfmt->height = compose->height;
 	}
