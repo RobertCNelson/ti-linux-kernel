@@ -191,7 +191,8 @@ void *fuse_open_finalize(struct fuse_args *fa,
 	struct fuse_file *ff = file->private_data;
 	struct fuse_open_out *foo = fa->out_args[0].value;
 
-	ff->fh = foo->fh;
+	if (ff)
+		ff->fh = foo->fh;
 	return 0;
 }
 
@@ -339,8 +340,10 @@ void *fuse_create_open_finalize(
 	struct fuse_entry_out *feo = fa->out_args[0].value;
 	struct fuse_open_out *foo = fa->out_args[1].value;
 
-	fi->nodeid = feo->nodeid;
-	ff->fh = foo->fh;
+	if (fi)
+		fi->nodeid = feo->nodeid;
+	if (ff)
+		ff->fh = foo->fh;
 	return 0;
 }
 
@@ -657,6 +660,39 @@ int fuse_setxattr_backing(struct fuse_args *fa, struct dentry *dentry,
 void *fuse_setxattr_finalize(struct fuse_args *fa, struct dentry *dentry,
 			     const char *name, const void *value, size_t size,
 			     int flags)
+{
+	return NULL;
+}
+
+int fuse_removexattr_initialize(struct fuse_args *fa,
+				struct fuse_dummy_io *unused,
+				struct dentry *dentry, const char *name)
+{
+	*fa = (struct fuse_args) {
+		.nodeid = get_fuse_inode(dentry->d_inode)->nodeid,
+		.opcode = FUSE_REMOVEXATTR,
+		.in_numargs = 1,
+		.in_args[0] = (struct fuse_in_arg) {
+			.size = strlen(name) + 1,
+			.value = name,
+		},
+	};
+
+	return 0;
+}
+
+int fuse_removexattr_backing(struct fuse_args *fa,
+			     struct dentry *dentry, const char *name)
+{
+	struct path *backing_path =
+		&get_fuse_dentry(dentry)->backing_path;
+
+	/* TODO account for changes of the name by prefilter */
+	return vfs_removexattr(backing_path->dentry, name);
+}
+
+void *fuse_removexattr_finalize(struct fuse_args *fa,
+				struct dentry *dentry, const char *name)
 {
 	return NULL;
 }
@@ -1091,8 +1127,11 @@ int fuse_mknod_backing(
 		return -EBADF;
 
 	inode_lock_nested(backing_inode, I_MUTEX_PARENT);
+	mode = fmi->mode;
+	if (!IS_POSIXACL(backing_inode))
+		mode &= ~fmi->umask;
 	err = vfs_mknod(backing_inode, backing_path.dentry,
-			fmi->mode & ~fmi->umask, new_decode_dev(fmi->rdev));
+			mode, new_decode_dev(fmi->rdev));
 	inode_unlock(backing_inode);
 	if (err)
 		goto out;
@@ -1165,7 +1204,10 @@ int fuse_mkdir_backing(
 		return -EBADF;
 
 	inode_lock_nested(backing_inode, I_MUTEX_PARENT);
-	err = vfs_mkdir(backing_inode, backing_path.dentry, fmi->mode & ~fmi->umask);
+	mode = fmi->mode;
+	if (!IS_POSIXACL(backing_inode))
+		mode &= ~fmi->umask;
+	err = vfs_mkdir(backing_inode, backing_path.dentry, mode);
 	if (err)
 		goto out;
 	if (d_really_is_negative(backing_path.dentry) ||
@@ -1732,12 +1774,65 @@ int fuse_setattr_backing(struct fuse_args *fa,
 	inode_lock(d_inode(backing_path->dentry));
 	res = notify_change(backing_path->dentry, &new_attr, NULL);
 	inode_unlock(d_inode(backing_path->dentry));
+
+	if (res == 0 && (new_attr.ia_valid & ATTR_SIZE))
+		i_size_write(dentry->d_inode, new_attr.ia_size);
 	return res;
 }
 
 void *fuse_setattr_finalize(struct fuse_args *fa,
 		struct dentry *dentry, struct iattr *attr, struct file *file)
 {
+	return NULL;
+}
+
+int fuse_statfs_initialize(
+		struct fuse_args *fa, struct fuse_statfs_out *fso,
+		struct dentry *dentry, struct kstatfs *buf)
+{
+	*fso = (struct fuse_statfs_out) {0};
+	*fa = (struct fuse_args) {
+		.nodeid = get_node_id(d_inode(dentry)),
+		.opcode = FUSE_STATFS,
+		.out_numargs = 1,
+		.out_numargs = 1,
+		.out_args[0].size = sizeof(fso),
+		.out_args[0].value = fso,
+	};
+
+	return 0;
+}
+
+int fuse_statfs_backing(
+		struct fuse_args *fa,
+		struct dentry *dentry, struct kstatfs *buf)
+{
+	int err = 0;
+	struct path backing_path;
+	struct fuse_statfs_out *fso = fa->out_args[0].value;
+
+	get_fuse_backing_path(dentry, &backing_path);
+	if (!backing_path.dentry)
+		return -EBADF;
+	err = vfs_statfs(&backing_path, buf);
+	path_put(&backing_path);
+	buf->f_type = FUSE_SUPER_MAGIC;
+
+	//TODO Provide postfilter opportunity to modify
+	if (!err)
+		convert_statfs_to_fuse(&fso->st, buf);
+
+	return err;
+}
+
+void *fuse_statfs_finalize(
+		struct fuse_args *fa,
+		struct dentry *dentry, struct kstatfs *buf)
+{
+	struct fuse_statfs_out *fso = fa->out_args[0].value;
+
+	if (!fa->error_in)
+		convert_fuse_statfs(buf, &fso->st);
 	return NULL;
 }
 
@@ -1943,7 +2038,7 @@ static int filldir(struct dir_context *ctx, const char *name, int namelen,
 		.type = d_type,
 	};
 
-	strcpy(fd->name, name);
+	memcpy(fd->name, name, namelen);
 	ec->offset += FUSE_DIRENT_SIZE(fd);
 
 	return 0;

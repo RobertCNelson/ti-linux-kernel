@@ -655,7 +655,6 @@ int __pkvm_teardown_shadow(struct kvm *kvm)
 	/* Reclaim guest pages, and page-table pages */
 	mc = &vm->host_kvm->arch.pkvm.teardown_mc;
 	reclaim_guest_pages(vm, mc);
-	remove_shadow_table(shadow_handle);
 	unpin_host_vcpus(vm);
 
 	/* Push the metadata pages to the teardown memcache */
@@ -1018,13 +1017,6 @@ static bool pkvm_handle_psci(struct kvm_vcpu *vcpu)
 	case PSCI_1_0_FN_PSCI_FEATURES:
 		return pvm_psci_features(vcpu);
 	case PSCI_0_2_FN_SYSTEM_RESET:
-		/*
-		 * NOTE: Until we add proper support for reset for protected
-		 * VMs, repaint reset requests as system off because some VMMs
-		 * use reset when tearing down a VM.
-		 */
-		vcpu_set_reg(vcpu, 0, PSCI_0_2_FN_SYSTEM_OFF);
-		fallthrough;
 	case PSCI_0_2_FN_CPU_SUSPEND:
 	case PSCI_0_2_FN64_CPU_SUSPEND:
 	case PSCI_0_2_FN_SYSTEM_OFF:
