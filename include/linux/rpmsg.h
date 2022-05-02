@@ -26,6 +26,10 @@ struct rpmsg_endpoint;
 struct rpmsg_device_ops;
 struct rpmsg_endpoint_ops;
 
+/* lockdep subclasses for use with ept cb_lock mutex nested calls */
+#define RPMSG_LOCKDEP_SUBCLASS_NORMAL   0 /* regular ept cb_lock */
+#define RPMSG_LOCKDEP_SUBCLASS_NS       1 /* name service ept cb_lock */
+
 /**
  * struct rpmsg_channel_info - channel info representation
  * @name: name of service
@@ -74,6 +78,7 @@ typedef int (*rpmsg_rx_sig_t)(struct rpmsg_device *, void *, u32, u32);
  * @cb: rx callback handler
  * @cb_lock: must be taken before accessing/changing @cb
  * @sig_cb: rx serial signal handler
+ * @cb_lockdep_class: mutex lockdep class to be used with @cb_lock
  * @addr: local rpmsg address
  * @priv: private data for the driver's use
  *
@@ -97,6 +102,7 @@ struct rpmsg_endpoint {
 	rpmsg_rx_cb_t cb;
 	struct mutex cb_lock;
 	rpmsg_rx_sig_t sig_cb;
+	int cb_lockdep_class;
 	u32 addr;
 	void *priv;
 
