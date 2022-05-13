@@ -24,6 +24,8 @@
 		spi0 = &ospi0;
 		usb0 = &usb0;
 		usb1 = &usb1;
+		ethernet0 = &cpsw_port1;
+		ethernet1 = &cpsw_port2;
 	};
 
 	chosen {
@@ -71,6 +73,11 @@
 			compatible = "shared-dma-pool";
 			reg = <0x00 0x9cc00000 0x00 0xf00000>;
 			no-map;
+		};
+
+		lpm_ctx_ddr: lpm-memory@a1000000 {
+			reg = <0x00 0xa1000000 0x00 0x40000>;
+			alignment = <0x1000>;
 		};
 	};
 
