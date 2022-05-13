@@ -720,7 +720,7 @@ static int rproc_process_last_trace(struct rproc *rproc,
 	/* lookup trace va if not stored already */
 	tmem = &trace->trace_mem;
 	if (!tmem->va) {
-		tmem->va = rproc_da_to_va(rproc, tmem->da, tmem->len);
+		tmem->va = rproc_da_to_va(rproc, tmem->da, tmem->len, NULL);
 		if (!tmem->va)
 			return -EINVAL;
 	}
@@ -2971,9 +2971,6 @@ void rproc_report_crash(struct rproc *rproc, enum rproc_crash_type type)
 	dev_err(&rproc->dev, "crash detected in %s: type %s\n",
 		rproc->name, rproc_crash_to_string(type));
 
-	/* Have a worker handle the error; ensure system is not suspended */
-	queue_work(system_freezable_wq, &rproc->crash_handler);
-	
 	/* create a new task to handle the error if not scheduled already */
 	if (!work_busy(&rproc->crash_handler))
 		schedule_work(&rproc->crash_handler);
