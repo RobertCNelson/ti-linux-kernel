@@ -5,7 +5,7 @@
 #So we unset the DTC
 unset DTC
 DEFCONFIG=ti_sdk_arm64_android_release_defconfig
-PRE_DEFCONFIG_CMDS="KCONFIG_CONFIG=${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/${DEFCONFIG} ${ROOT_DIR}/${KERNEL_DIR}/scripts/kconfig/merge_config.sh -m -r ${ROOT_DIR}/${KERNEL_DIR}/ti_config_fragments/arm64_prune.cfg ${ROOT_DIR}/${KERNEL_DIR}/ti_config_fragments/v8_baseport.cfg ${ROOT_DIR}/${KERNEL_DIR}/ti_config_fragments/v8_ipc.cfg ${ROOT_DIR}/${KERNEL_DIR}/ti_config_fragments/connectivity.cfg ${ROOT_DIR}/${KERNEL_DIR}/ti_config_fragments/audio_display.cfg ${ROOT_DIR}/${KERNEL_DIR}/ti_config_fragments/k3_soc.cfg ${ROOT_DIR}/${KERNEL_DIR}/kernel/configs/android-base.config ${ROOT_DIR}/${KERNEL_DIR}/kernel/configs/android-recommended.config ${ROOT_DIR}/${KERNEL_DIR}/ti_config_fragments/v8_android.cfg"
+PRE_DEFCONFIG_CMDS="KCONFIG_CONFIG=${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/${DEFCONFIG} ${ROOT_DIR}/${KERNEL_DIR}/scripts/kconfig/merge_config.sh -m -r ${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/defconfig  ${ROOT_DIR}/${KERNEL_DIR}/ti_config_fragments/arm64_prune.cfg ${ROOT_DIR}/${KERNEL_DIR}/ti_config_fragments/v8_baseport.cfg ${ROOT_DIR}/${KERNEL_DIR}/ti_config_fragments/v8_ipc.cfg ${ROOT_DIR}/${KERNEL_DIR}/ti_config_fragments/connectivity.cfg ${ROOT_DIR}/${KERNEL_DIR}/ti_config_fragments/audio_display.cfg ${ROOT_DIR}/${KERNEL_DIR}/kernel/configs/android-base.config ${ROOT_DIR}/${KERNEL_DIR}/kernel/configs/android-recommended.config ${ROOT_DIR}/${KERNEL_DIR}/ti_config_fragments/v8_android.cfg"
 POST_DEFCONFIG_CMDS="rm ${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/${DEFCONFIG}"
 
 KERNEL_DIR=common
@@ -19,6 +19,10 @@ MAKE_GOALS="${MAKE_GOALS}
 ti/k3-j721e-common-proc-board.dtb
 ti/k3-j721e-proc-board-tps65917.dtb
 ti/k3-j721e-sk.dtb
+ti/k3-am625-sk.dtb
+ti/k3-am625-skeleton.dtb
+ti/k3-am625-sk-lpmdemo.dtb
+ti/k3-am625-sk-csi2-ov5640.dtbo
 ti/k3-j721e-common-proc-board-infotainment.dtbo
 ti/k3-j721e-cpb-csi2-ov5640.dtbo
 ti/k3-j721e-sk-csi2-ov5640.dtbo
@@ -34,4 +38,8 @@ arch/arm64/boot/dts/ti/k3-j721e-common-proc-board-infotainment.dtbo
 arch/arm64/boot/dts/ti/k3-j721e-cpb-csi2-ov5640.dtbo
 arch/arm64/boot/dts/ti/k3-j721e-sk-csi2-ov5640.dtbo
 arch/arm64/boot/dts/ti/k3-j721e-sk-rpi-cam-imx219.dtbo
+arch/arm64/boot/dts/ti/k3-am625-sk.dtb
+arch/arm64/boot/dts/ti/k3-am625-skeleton.dtb
+arch/arm64/boot/dts/ti/k3-am625-sk-lpmdemo.dtb
+arch/arm64/boot/dts/ti/k3-am625-sk-csi2-ov5640.dtbo
 "
