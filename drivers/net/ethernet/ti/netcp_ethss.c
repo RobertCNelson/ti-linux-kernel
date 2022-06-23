@@ -3697,12 +3697,17 @@ static int gbe_probe(struct netcp_device *netcp_device, struct device *dev,
 
 	ret = netcp_txpipe_init(&gbe_dev->tx_pipe, netcp_device,
 				gbe_dev->dma_chan_name, gbe_dev->tx_queue_id);
-	if (ret)
+
+	if (ret) {
+		of_node_put(interfaces);
 		goto exit_err;
+	}
 
 	ret = netcp_txpipe_open(&gbe_dev->tx_pipe);
-	if (ret)
+	if (ret) {
+		of_node_put(interfaces);
 		goto exit_err;
+	}
 
 	/* Create network interfaces */
 	INIT_LIST_HEAD(&gbe_dev->gbe_intf_head);
@@ -3797,7 +3802,6 @@ static int gbe_probe(struct netcp_device *netcp_device, struct device *dev,
 
 free_sec_ports:
 	free_secondary_ports(gbe_dev);
-exit_err:
 	return ret;
 }
 

@@ -1,0 +1,7 @@
+config PVR_SGX544
+	tristate "PowerVR SGX544"
+	depends on PREEMPT
+	depends on SYNC_FILE
+	default n
+	help
+	  Support for the PowerVR SGX544 3D core
