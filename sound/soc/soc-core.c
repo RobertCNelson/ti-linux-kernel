@@ -749,6 +749,28 @@ struct snd_soc_component *soc_find_component(
 EXPORT_SYMBOL(soc_find_component);
 
 /**
+ * soc_find_component_locked: soc_find_component with client lock acquired
+ *
+ * @of_node: of_node of the component to query.
+ * @name: name of the component to query.
+ *
+ * function to find out if a component is already registered with ASoC core.
+ *
+ * Returns component handle for success, else NULL error.
+ */
+struct snd_soc_component *soc_find_component_locked(
+	const struct device_node *of_node, const char *name)
+{
+	struct snd_soc_component *component = NULL;
+
+	mutex_lock(&client_mutex);
+	component = soc_find_component(of_node, name);
+	mutex_unlock(&client_mutex);
+	return component;
+}
+EXPORT_SYMBOL(soc_find_component_locked);
+
+/**
  * snd_soc_find_dai - Find a registered DAI
  *
  * @dlc: name of the DAI or the DAI driver and optional component info to match
@@ -3542,7 +3564,7 @@ int snd_soc_of_parse_audio_routing(struct snd_soc_card *card,
 	if (!routes) {
 		dev_err(card->dev,
 			"ASoC: Could not allocate DAPM route table\n");
-		return -EINVAL;
+		return -ENOMEM;
 	}
 
 	for (i = 0; i < num_routes; i++) {
@@ -3772,7 +3794,7 @@ int snd_soc_get_dai_name(struct of_phandle_args *args,
 		if (!component_of_node && pos->dev->parent)
 			component_of_node = pos->dev->parent->of_node;
 
-		if (component_of_node != args->np)
+		if (component_of_node != args->np || !pos->num_dai)
 			continue;
 
 		if (pos->driver->of_xlate_dai_name) {
