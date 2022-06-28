@@ -15,6 +15,9 @@ SKIP_CP_KERNEL_HDR=1
 DTC_FLAGS="-@"
 KCFLAGS="-Werror"
 
+EXTRA_CMDS="update_prebuilt"
+KERNEL_ADDRESS=0x82000000
+
 MAKE_GOALS="${MAKE_GOALS}
 ti/k3-j721e-common-proc-board.dtb
 ti/k3-j721e-proc-board-tps65917.dtb
@@ -43,3 +46,32 @@ arch/arm64/boot/dts/ti/k3-am625-skeleton.dtb
 arch/arm64/boot/dts/ti/k3-am625-sk-lpmdemo.dtb
 arch/arm64/boot/dts/ti/k3-am625-sk-csi2-ov5640.dtbo
 "
+
+function update_bootimg() {
+    if [ -z "${UNPACK_BOOTIMG_PATH}" ]; then
+        UNPACK_BOOTIMG_PATH="tools/mkbootimg/unpack_bootimg.py"
+    fi
+    BOOTIMG_OUT=$(${UNPACK_BOOTIMG_PATH} --boot_img=${PREBUILT_BOOTIMG} --out ${TMP}/)
+    BOOTIMG_OUT=$(echo "$BOOTIMG_OUT" | tr "\n" ";")
+    KERNEL_CMDLINE=$(echo $BOOTIMG_OUT | cut -f 14 -d ";" | cut -f 2 -d ":")
+    cp -r -f ${OUT_DIR}/arch/arm64/boot/Image ${TMP}/kernel
+    if [ -z "${MKBOOTIMG_PATH}" ]; then
+        MKBOOTIMG_PATH="tools/mkbootimg/mkbootimg.py"
+    fi
+    ${MKBOOTIMG_PATH} \
+      --header_version 2 \
+      --kernel ${TMP}/kernel \
+      --ramdisk ${TMP}/ramdisk \
+      --cmdline "${KERNEL_CMDLINE}" \
+      --kernel_offset "${KERNEL_ADDRESS}" \
+      --dtb ${TMP}/dtb \
+      --output ${COMMON_OUT_DIR}/boot.img
+}
+
+function update_prebuilt() {
+    if [ -n "$PREBUILT_BOOTIMG" ]; then
+        TMP=${COMMON_OUT_DIR}/tmp
+        update_bootimg
+        rm -r -f ${TMP}
+    fi
+}
