@@ -115,6 +115,20 @@
 		pinctrl-single,function-mask = <0xffffffff>;
 	};
 
+	main_crypto: crypto@4e00000 {
+		compatible = "ti,j721e-sa2ul";
+		reg = <0x00 0x4e00000 0x00 0x1200>;
+		power-domains = <&k3_pds 297 TI_SCI_PD_SHARED>;
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges = <0x00 0x04e00000 0x00 0x04e00000 0x00 0x30000>;
+
+		dmas = <&main_udmap 0xca40>, <&main_udmap 0x4a40>,
+				<&main_udmap 0x4a41>;
+		dma-names = "tx", "rx1", "rx2";
+		dma-coherent;
+	};
+
 	main_uart0: serial@2800000 {
 		compatible = "ti,j721e-uart", "ti,am654-uart";
 		reg = <0x00 0x02800000 0x00 0x200>;
@@ -1350,6 +1364,41 @@
 		};
 	};
 
+	dphy0: phy@4480000 {
+		compatible = "ti,j721e-dphy";
+		reg = <0x0 0x04480000 0x0 0x1000>;
+		clocks = <&k3_clks 363 8>, <&k3_clks 363 14>;
+		clock-names = "psm", "pll_ref";
+		#phy-cells = <0>;
+		power-domains = <&k3_pds 363 TI_SCI_PD_EXCLUSIVE>;
+		assigned-clocks = <&k3_clks 363 14>;
+		assigned-clock-parents = <&k3_clks 363 15>;
+		assigned-clock-rates = <19200000>;
+	};
+
+	dsi0: dsi@4800000 {
+		compatible = "ti,j721e-dsi";
+		reg = <0x0 0x04800000 0x0 0x100000>, <0x0 0x04710000 0x0 0x100>;
+		clocks = <&k3_clks 154 4>, <&k3_clks 154 1>;
+		clock-names = "dsi_p_clk", "dsi_sys_clk";
+		power-domains = <&k3_pds 154 TI_SCI_PD_EXCLUSIVE>;
+		interrupt-parent = <&gic500>;
+		interrupts = <GIC_SPI 600 IRQ_TYPE_LEVEL_HIGH>;
+		phys = <&dphy0>;
+		phy-names = "dphy";
+
+		dsi0_ports: ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			port@0 {
+				reg = <0>;
+			};
+			port@1 {
+				reg = <1>;
+			};
+		};
+	};
+
 	dss: dss@4a00000 {
 		compatible = "ti,j721e-dss";
 		reg =
@@ -1381,11 +1430,11 @@
 			"vp1", "vp2", "vp3", "vp4",
 			"wb";
 
-		clocks =	<&k3_clks 158 11>,
-				<&k3_clks 158 35>,
-				<&k3_clks 158 17>,
-				<&k3_clks 158 26>,
-				<&k3_clks 158 0>;
+		clocks =	<&k3_clks 158 0>,
+				<&k3_clks 158 2>,
+				<&k3_clks 158 5>,
+				<&k3_clks 158 14>,
+				<&k3_clks 158 18>;
 		clock-names = "fck", "vp1", "vp2", "vp3", "vp4";
 
 		power-domains = <&k3_pds 158 TI_SCI_PD_EXCLUSIVE>;

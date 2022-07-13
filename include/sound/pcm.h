@@ -399,6 +399,8 @@ struct snd_pcm_runtime {
 	struct fasync_struct *fasync;
 	bool stop_operating;		/* sync_stop will be called */
 
+	atomic_t buffer_accessing;	/* >0: in r/w operation, <0: blocked */
+
 	/* -- private section -- */
 	void *private_data;
 	void (*private_free)(struct snd_pcm_runtime *runtime);

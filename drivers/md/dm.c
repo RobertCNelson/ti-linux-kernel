@@ -620,6 +620,10 @@ static void end_io_acct(struct mapped_device *md, struct bio *bio,
 				    bio->bi_iter.bi_sector, bio_sectors(bio),
 				    true, duration, stats_aux);
 
+	smp_wmb();
+
+	bio_end_io_acct(bio, start_time);
+
 	/* nudge anyone waiting on suspend queue */
 	if (unlikely(wq_has_sleeper(&md->wait)))
 		wake_up(&md->wait);
@@ -2368,6 +2372,8 @@ static int dm_wait_for_bios_completion(struct mapped_device *md, long task_state
 		io_schedule();
 	}
 	finish_wait(&md->wait, &wait);
+
+	smp_rmb();
 
 	return r;
 }
