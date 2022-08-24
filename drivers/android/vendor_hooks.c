@@ -410,3 +410,5 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_vfs_fsync_range);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_rvh_do_fcntl);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_evict);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_vmscan_kswapd_done);
+EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_alloc_pages_reclaim_bypass);
+EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_alloc_pages_failure_bypass);
