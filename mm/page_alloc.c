@@ -46,6 +46,7 @@
 #include <linux/migrate.h>
 #include <linux/sched/mm.h>
 #include <linux/page_owner.h>
+#include <linux/page_pinner.h>
 #include <linux/page_table_check.h>
 #include <linux/memcontrol.h>
 #include <linux/ftrace.h>
@@ -1217,6 +1218,7 @@ __always_inline bool free_pages_prepare(struct page *page,
 	if (unlikely(PageHWPoison(page)) && !order) {
 		/* Do not let hwpoison pages hit pcplists/buddy */
 		reset_page_owner(page, order);
+		free_page_pinner(page, order);
 		page_table_check_free(page, order);
 		pgalloc_tag_sub(page, 1 << order);
 
@@ -1267,6 +1269,7 @@ __always_inline bool free_pages_prepare(struct page *page,
 	page_cpupid_reset_last(page);
 	page->flags &= ~PAGE_FLAGS_CHECK_AT_PREP;
 	reset_page_owner(page, order);
+	free_page_pinner(page, order);
 	page_table_check_free(page, order);
 	pgalloc_tag_sub(page, 1 << order);
 
@@ -6753,8 +6756,17 @@ int __alloc_contig_migrate_range(struct compact_control *cc,
 
 	lru_cache_enable();
 	if (ret < 0) {
-		if (!(cc->gfp_mask & __GFP_NOWARN) && ret == -EBUSY)
+		if (!(cc->gfp_mask & __GFP_NOWARN) && ret == -EBUSY) {
+			struct page *page;
+
 			alloc_contig_dump_pages(&cc->migratepages);
+			list_for_each_entry(page, &cc->migratepages, lru) {
+				/* The page will be freed by putback_movable_pages soon */
+				if (page_count(page) == 1)
+					continue;
+				page_pinner_failure_detect(page);
+			}
+		}
 		putback_movable_pages(&cc->migratepages);
 	}
 
