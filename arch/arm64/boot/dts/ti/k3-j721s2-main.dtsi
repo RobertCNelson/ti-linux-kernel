@@ -1338,6 +1338,86 @@
 		bosch,mram-cfg = <0x0 128 64 64 64 64 32 32>;
 	};
 
+	main_spi0: spi@2100000 {
+		compatible = "ti,am654-mcspi","ti,omap4-mcspi";
+		reg = <0x00 0x02100000 0x00 0x400>;
+		interrupts = <GIC_SPI 184 IRQ_TYPE_LEVEL_HIGH>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		clocks = <&k3_clks 339 1>;
+		power-domains = <&k3_pds 339 TI_SCI_PD_EXCLUSIVE>;
+	};
+
+	main_spi1: spi@2110000 {
+		compatible = "ti,am654-mcspi","ti,omap4-mcspi";
+		reg = <0x00 0x02110000 0x00 0x400>;
+		interrupts = <GIC_SPI 185 IRQ_TYPE_LEVEL_HIGH>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		clocks = <&k3_clks 340 1>;
+		power-domains = <&k3_pds 340 TI_SCI_PD_EXCLUSIVE>;
+	};
+
+	main_spi2: spi@2120000 {
+		compatible = "ti,am654-mcspi","ti,omap4-mcspi";
+		reg = <0x00 0x02120000 0x00 0x400>;
+		interrupts = <GIC_SPI 186 IRQ_TYPE_LEVEL_HIGH>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		clocks = <&k3_clks 341 1>;
+		power-domains = <&k3_pds 341 TI_SCI_PD_EXCLUSIVE>;
+	};
+
+	main_spi3: spi@2130000 {
+		compatible = "ti,am654-mcspi","ti,omap4-mcspi";
+		reg = <0x00 0x02130000 0x00 0x400>;
+		interrupts = <GIC_SPI 187 IRQ_TYPE_LEVEL_HIGH>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		clocks = <&k3_clks 342 1>;
+		power-domains = <&k3_pds 342 TI_SCI_PD_EXCLUSIVE>;
+	};
+
+	main_spi4: spi@2140000 {
+		compatible = "ti,am654-mcspi","ti,omap4-mcspi";
+		reg = <0x00 0x02140000 0x00 0x400>;
+		interrupts = <GIC_SPI 188 IRQ_TYPE_LEVEL_HIGH>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		clocks = <&k3_clks 343 1>;
+		power-domains = <&k3_pds 343 TI_SCI_PD_EXCLUSIVE>;
+	};
+
+	main_spi5: spi@2150000 {
+		compatible = "ti,am654-mcspi","ti,omap4-mcspi";
+		reg = <0x00 0x02150000 0x00 0x400>;
+		interrupts = <GIC_SPI 189 IRQ_TYPE_LEVEL_HIGH>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		clocks = <&k3_clks 344 1>;
+		power-domains = <&k3_pds 344 TI_SCI_PD_EXCLUSIVE>;
+	};
+
+	main_spi6: spi@2160000 {
+		compatible = "ti,am654-mcspi","ti,omap4-mcspi";
+		reg = <0x00 0x02160000 0x00 0x400>;
+		interrupts = <GIC_SPI 190 IRQ_TYPE_LEVEL_HIGH>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		clocks = <&k3_clks 345 1>;
+		power-domains = <&k3_pds 345 TI_SCI_PD_EXCLUSIVE>;
+	};
+
+	main_spi7: spi@2170000 {
+		compatible = "ti,am654-mcspi","ti,omap4-mcspi";
+		reg = <0x00 0x02170000 0x00 0x400>;
+		interrupts = <GIC_SPI 191 IRQ_TYPE_LEVEL_HIGH>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		clocks = <&k3_clks 346 1>;
+		power-domains = <&k3_pds 346 TI_SCI_PD_EXCLUSIVE>;
+	};
+
 	mhdp: dp-bridge@a000000 {
 		compatible = "ti,j721e-mhdp8546";
 		/*
@@ -1450,5 +1530,119 @@
 
 		dss_ports: ports {
 		};
+	};
+
+	ti_csi2rx0: ticsi2rx@4500000 {
+		compatible = "ti,j721e-csi2rx";
+		dmas = <&main_udmap 0x4940>, <&main_udmap 0x4941>, <&main_udmap 0x4942>,
+			   <&main_udmap 0x4943>, <&main_udmap 0x4944>, <&main_udmap 0x4945>,
+			   <&main_udmap 0x4946>, <&main_udmap 0x4947>;
+		dma-names = "rx0", "rx1", "rx2", "rx3", "rx4", "rx5", "rx6", "rx7";
+		reg = <0x00 0x04500000 0x00 0x1000>;
+		power-domains = <&k3_pds 38 TI_SCI_PD_EXCLUSIVE>;
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		cdns_csi2rx0: csi-bridge@4504000 {
+			compatible = "cdns,csi2rx";
+			reg = <0x00 0x04504000 0x00 0x1000>;
+			clocks = <&k3_clks 38 3>, <&k3_clks 38 1>, <&k3_clks 38 3>,
+				<&k3_clks 38 3>, <&k3_clks 38 4>, <&k3_clks 38 4>;
+			clock-names = "sys_clk", "p_clk", "pixel_if0_clk",
+				"pixel_if1_clk", "pixel_if2_clk", "pixel_if3_clk";
+			phys = <&dphy_rx0>;
+			phy-names = "dphy";
+			power-domains = <&k3_pds 38 TI_SCI_PD_EXCLUSIVE>;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				csi0_port0: port@0 {
+					reg = <0>;
+				};
+
+				csi0_port1: port@1 {
+					reg = <1>;
+				};
+
+				csi0_port2: port@2 {
+					reg = <2>;
+				};
+
+				csi0_port3: port@3 {
+					reg = <3>;
+				};
+
+				csi0_port4: port@4 {
+					reg = <4>;
+				};
+			};
+		};
+	};
+
+	ti_csi2rx1: ticsi2rx@4510000 {
+		compatible = "ti,j721e-csi2rx";
+		dmas = <&main_udmap 0x4960>, <&main_udmap 0x4961>, <&main_udmap 0x4962>,
+			   <&main_udmap 0x4963>, <&main_udmap 0x4964>, <&main_udmap 0x4965>,
+			   <&main_udmap 0x4966>, <&main_udmap 0x4967>;
+		dma-names = "rx0", "rx1", "rx2", "rx3", "rx4", "rx5", "rx6", "rx7";
+		reg = <0x00 0x04510000 0x00 0x1000>;
+		power-domains = <&k3_pds 39 TI_SCI_PD_EXCLUSIVE>;
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		cdns_csi2rx1: csi-bridge@4514000 {
+			compatible = "cdns,csi2rx";
+			reg = <0x00 0x04514000 0x00 0x1000>;
+			clocks = <&k3_clks 39 3>, <&k3_clks 39 1>, <&k3_clks 39 3>,
+				<&k3_clks 39 3>, <&k3_clks 39 4>, <&k3_clks 39 4>;
+			clock-names = "sys_clk", "p_clk", "pixel_if0_clk",
+				"pixel_if1_clk", "pixel_if2_clk", "pixel_if3_clk";
+			phys = <&dphy_rx1>;
+			phy-names = "dphy";
+			power-domains = <&k3_pds 39 TI_SCI_PD_EXCLUSIVE>;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				csi1_port0: port@0 {
+					reg = <0>;
+				};
+
+				csi1_port1: port@1 {
+					reg = <1>;
+				};
+
+				csi1_port2: port@2 {
+					reg = <2>;
+				};
+
+				csi1_port3: port@3 {
+					reg = <3>;
+				};
+
+				csi1_port4: port@4 {
+					reg = <4>;
+				};
+			};
+		};
+	};
+
+	dphy_rx0: phy@4580000 {
+		compatible = "ti,j721e-dphy", "cdns,dphy";
+		reg = <0x00 0x04580000 0x00 0x1100>;
+		#phy-cells = <0>;
+		power-domains = <&k3_pds 152 TI_SCI_PD_EXCLUSIVE>;
+	};
+
+	dphy_rx1: phy@4590000 {
+		compatible = "ti,j721e-dphy", "cdns,dphy";
+		reg = <0x00 0x04590000 0x00 0x1100>;
+		#phy-cells = <0>;
+		power-domains = <&k3_pds 153 TI_SCI_PD_EXCLUSIVE>;
 	};
 };
