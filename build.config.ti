@@ -18,6 +18,8 @@ KCFLAGS="-Werror"
 EXTRA_CMDS="update_prebuilt"
 KERNEL_ADDRESS=0x82000000
 
+BUILD_DTBO_IMG=1
+
 MAKE_GOALS="${MAKE_GOALS}
 ti/k3-j721e-common-proc-board.dtb
 ti/k3-j721e-proc-board-tps65917.dtb
@@ -44,6 +46,9 @@ arch/arm64/boot/dts/ti/k3-j721e-sk-rpi-cam-imx219.dtbo
 arch/arm64/boot/dts/ti/k3-am625-sk.dtb
 arch/arm64/boot/dts/ti/k3-am625-skeleton.dtb
 arch/arm64/boot/dts/ti/k3-am625-sk-lpmdemo.dtb
+"
+
+MKDTIMG_DTBOS="
 arch/arm64/boot/dts/ti/k3-am625-sk-csi2-ov5640.dtbo
 "
 
