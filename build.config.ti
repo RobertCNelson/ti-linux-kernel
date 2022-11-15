@@ -29,6 +29,7 @@ ti/k3-am625-sk.dtb
 ti/k3-am625-skeleton.dtb
 ti/k3-am625-sk-lpmdemo.dtb
 ti/k3-am625-sk-csi2-ov5640.dtbo
+ti/k3-am625-sk-hdmi-audio.dtbo
 ti/k3-j721e-common-proc-board-infotainment.dtbo
 ti/k3-j721e-cpb-csi2-ov5640.dtbo
 ti/k3-j721e-sk-csi2-ov5640.dtbo
@@ -52,6 +53,7 @@ arch/arm64/boot/dts/ti/k3-am625-sk-lpmdemo.dtb
 
 MKDTIMG_DTBOS="
 arch/arm64/boot/dts/ti/k3-am625-sk-csi2-ov5640.dtbo
+arch/arm64/boot/dts/ti/k3-am625-sk-hdmi-audio.dtbo
 "
 
 function update_bootimg() {
