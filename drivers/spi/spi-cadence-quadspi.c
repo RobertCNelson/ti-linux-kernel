@@ -27,6 +27,7 @@
 #include <linux/sched.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/spi-mem.h>
+#include <linux/sys_soc.h>
 #include <linux/timer.h>
 
 #define CQSPI_NAME			"cadence-qspi"
@@ -835,6 +836,8 @@ static int cqspi_phy_calibrate(struct cqspi_flash_pdata *f_pdata,
 
 	ret = 0;
 	f_pdata->phy_setting.read_delay = searchpoint.read_delay;
+	f_pdata->phy_setting.rx = searchpoint.rx;
+	f_pdata->phy_setting.tx = searchpoint.tx;
 out:
 	if (ret)
 		f_pdata->use_phy = false;
@@ -2239,6 +2242,11 @@ static int cqspi_setup_flash(struct cqspi_st *cqspi)
 	return 0;
 }
 
+static const struct soc_device_attribute k3_soc_devices[] = {
+	{ .family = "AM64X", .revision = "SR1.0" },
+	{ /* sentinel */ }
+};
+
 static int cqspi_probe(struct platform_device *pdev)
 {
 	const struct cqspi_driver_platdata *ddata;
@@ -2373,7 +2381,7 @@ static int cqspi_probe(struct platform_device *pdev)
 		goto probe_setup_failed;
 	}
 
-	if (cqspi->use_direct_mode) {
+	if (cqspi->use_direct_mode && !soc_device_match(k3_soc_devices)) {
 		ret = cqspi_request_mmap_dma(cqspi);
 		if (ret == -EPROBE_DEFER)
 			goto probe_setup_failed;
@@ -2414,32 +2422,46 @@ static int cqspi_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM_SLEEP
-static int cqspi_suspend(struct device *dev)
+static void __maybe_unused cqspi_restore_context(struct cqspi_st *cqspi)
+{
+	cqspi_phy_apply_setting(cqspi->f_pdata,
+				    &cqspi->f_pdata->phy_setting);
+}
+
+static int __maybe_unused cqspi_suspend(struct device *dev)
 {
 	struct cqspi_st *cqspi = dev_get_drvdata(dev);
+	struct spi_master *master = dev_get_drvdata(dev);
+	int ret;
 
+	ret = spi_master_suspend(master);
 	cqspi_controller_enable(cqspi, 0);
-	return 0;
+
+	clk_disable_unprepare(cqspi->clk);
+
+	return ret;
 }
 
-static int cqspi_resume(struct device *dev)
+static int __maybe_unused cqspi_resume(struct device *dev)
 {
 	struct cqspi_st *cqspi = dev_get_drvdata(dev);
+	struct spi_master *master = dev_get_drvdata(dev);
 
-	cqspi_controller_enable(cqspi, 1);
-	return 0;
+	clk_prepare_enable(cqspi->clk);
+	cqspi_wait_idle(cqspi);
+	cqspi_controller_init(cqspi);
+
+	cqspi->current_cs = -1;
+	cqspi->sclk = 0;
+
+	cqspi_restore_context(cqspi);
+
+	return spi_master_resume(master);
 }
 
-static const struct dev_pm_ops cqspi__dev_pm_ops = {
-	.suspend = cqspi_suspend,
-	.resume = cqspi_resume,
-};
+static SIMPLE_DEV_PM_OPS(cqspi__dev_pm_ops, cqspi_suspend, cqspi_resume);
 
 #define CQSPI_DEV_PM_OPS	(&cqspi__dev_pm_ops)
-#else
-#define CQSPI_DEV_PM_OPS	NULL
-#endif
 
 static const struct cqspi_driver_platdata cdns_qspi = {
 	.quirks = CQSPI_DISABLE_DAC_MODE,

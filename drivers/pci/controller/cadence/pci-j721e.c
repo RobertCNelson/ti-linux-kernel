@@ -13,6 +13,7 @@
 #include <linux/irqchip/chained_irq.h>
 #include <linux/irqdomain.h>
 #include <linux/mfd/syscon.h>
+#include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_irq.h>
@@ -62,7 +63,6 @@ enum eoi_reg {
 };
 
 #define J721E_MODE_RC			BIT(7)
-#define LANE_COUNT_MASK			GENMASK(9, 8)
 #define LANE_COUNT(n)			((n) << 8)
 
 #define GENERATION_SEL_MASK		GENMASK(1, 0)
@@ -71,6 +71,7 @@ struct j721e_pcie {
 	struct device		*dev;
 	struct clk		*refclk;
 	u32			mode;
+	u32			max_lanes;
 	u32			num_lanes;
 	struct cdns_pcie	*cdns_pcie;
 	void __iomem		*user_cfg_base;
@@ -345,11 +346,15 @@ static int j721e_pcie_set_lane_count(struct j721e_pcie *pcie,
 {
 	struct device *dev = pcie->dev;
 	u32 lanes = pcie->num_lanes;
+	u32 mask = GENMASK(8, 8);
 	u32 val = 0;
 	int ret;
 
+	if (pcie->max_lanes == 4)
+		mask = GENMASK(9, 8);
+
 	val = LANE_COUNT(lanes - 1);
-	ret = regmap_update_bits(syscon, offset, LANE_COUNT_MASK, val);
+	ret = regmap_update_bits(syscon, offset, mask, val);
 	if (ret)
 		dev_err(dev, "failed to set link count\n");
 
@@ -445,13 +450,13 @@ static const struct j721e_pcie_data j7200_pcie_rc_data = {
 	.is_intc_v1 = false,
 	.byte_access_allowed = true,
 	.linkdown_irq_regfield = J7200_LINK_DOWN,
-	.max_lanes = 4,
+	.max_lanes = 2,
 };
 
 static const struct j721e_pcie_data j7200_pcie_ep_data = {
 	.mode = PCI_MODE_EP,
 	.quirk_detect_quiet_flag = true,
-	.max_lanes = 4,
+	.max_lanes = 2,
 };
 
 static const struct j721e_pcie_data am64_pcie_rc_data = {
@@ -465,6 +470,21 @@ static const struct j721e_pcie_data am64_pcie_ep_data = {
 	.mode = PCI_MODE_EP,
 	.linkdown_irq_regfield = J7200_LINK_DOWN,
 	.max_lanes = 1,
+};
+
+static const struct j721e_pcie_data j784s4_pcie_rc_data = {
+	.mode = PCI_MODE_RC,
+	.quirk_retrain_flag = true,
+	.is_intc_v1 = true,
+	.byte_access_allowed = false,
+	.linkdown_irq_regfield = LINK_DOWN,
+	.max_lanes = 4,
+};
+
+static const struct j721e_pcie_data j784s4_pcie_ep_data = {
+	.mode = PCI_MODE_EP,
+	.linkdown_irq_regfield = LINK_DOWN,
+	.max_lanes = 4,
 };
 
 static const struct of_device_id of_j721e_pcie_match[] = {
@@ -491,6 +511,14 @@ static const struct of_device_id of_j721e_pcie_match[] = {
 	{
 		.compatible = "ti,am64-pcie-ep",
 		.data = &am64_pcie_ep_data,
+	},
+	{
+		.compatible = "ti,j784s4-pcie-host",
+		.data = &j784s4_pcie_rc_data,
+	},
+	{
+		.compatible = "ti,j784s4-pcie-ep",
+		.data = &j784s4_pcie_ep_data,
 	},
 	{},
 };
@@ -550,6 +578,7 @@ static int j721e_pcie_probe(struct platform_device *pdev)
 			      num_lanes, data->max_lanes);
 		num_lanes = 1;
 	}
+	pcie->max_lanes = data->max_lanes;
 	pcie->num_lanes = num_lanes;
 
 	if (dma_set_mask_and_coherent(dev, DMA_BIT_MASK(48)))
@@ -709,6 +738,9 @@ static int j721e_pcie_remove(struct platform_device *pdev)
 	struct cdns_pcie *cdns_pcie = pcie->cdns_pcie;
 	struct device *dev = &pdev->dev;
 
+	if (pcie->legacy_irq_domain)
+		irq_domain_remove(pcie->legacy_irq_domain);
+
 	clk_disable_unprepare(pcie->refclk);
 	cdns_pcie_disable_phy(cdns_pcie);
 	pm_runtime_put(dev);
@@ -726,4 +758,7 @@ static struct platform_driver j721e_pcie_driver = {
 		.suppress_bind_attrs = true,
 	},
 };
-builtin_platform_driver(j721e_pcie_driver);
+module_platform_driver(j721e_pcie_driver);
+
+MODULE_AUTHOR("Kishon Vijay Abraham I <kishon@ti.com>");
+MODULE_LICENSE("GPL v2");

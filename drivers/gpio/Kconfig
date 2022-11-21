@@ -218,7 +218,7 @@ config GPIO_CLPS711X
 	  Say yes here to support GPIO on CLPS711X SoCs.
 
 config GPIO_DAVINCI
-	bool "TI Davinci/Keystone GPIO support"
+	tristate "TI Davinci/Keystone GPIO support"
 	default y if ARCH_DAVINCI
 	depends on (ARM || ARM64) && (ARCH_DAVINCI || ARCH_KEYSTONE || ARCH_K3)
 	help
@@ -1318,6 +1318,13 @@ config GPIO_TPS65912
 	depends on MFD_TPS65912
 	help
 	  This driver supports TPS65912 gpio chip
+
+config GPIO_TPS6594X
+	tristate "TI TPS6594X GPIO driver"
+	depends on MFD_TPS6594X
+	help
+	  Select this option to enable GPIO driver for the TPS6954X
+	  PMIC chip family. There are 11 GPIOs that can be configured.
 
 config GPIO_TPS68470
 	bool "TPS68470 GPIO"

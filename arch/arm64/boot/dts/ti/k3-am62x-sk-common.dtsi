@@ -58,19 +58,19 @@
 
 		mcu_m4fss_memory_region: m4f-memory@9cc00000 {
 			compatible = "shared-dma-pool";
-			reg = <0x00 0x9cc00000 0x00 0xd00000>;
+			reg = <0x00 0x9cc00000 0x00 0xe00000>;
 			no-map;
 		};
 
-		wkup_r5fss0_core0_dma_memory_region: r5f-dma-memory@9d900000 {
+		wkup_r5fss0_core0_dma_memory_region: r5f-dma-memory@9da00000 {
 			compatible = "shared-dma-pool";
-			reg = <0x00 0x9d900000 0x00 0x00100000>;
+			reg = <0x00 0x9da00000 0x00 0x00100000>;
 			no-map;
 		};
 
-		wkup_r5fss0_core0_memory_region: r5f-memory@9da00000 {
+		wkup_r5fss0_core0_memory_region: r5f-memory@9db00000 {
 			compatible = "shared-dma-pool";
-			reg = <0x00 0x9da00000 0x00 0x00d00000>;
+			reg = <0x00 0x9db00000 0x00 0x00c00000>;
 			no-map;
 		};
 
@@ -151,30 +151,6 @@
 			 <3300000 0x1>;
 	};
 
-	wlan_lten: regulator-5 {
-		compatible = "regulator-fixed";
-		regulator-name = "wlan_lten";
-		regulator-min-microvolt = <3300000>;
-		regulator-max-microvolt = <3300000>;
-		regulator-always-on;
-		vin-supply = <&vcc_3v3_sys>;
-		gpios = <&exp1 11 GPIO_ACTIVE_LOW>;
-	};
-
-	wlan_en: regulator-6 {
-		/* OUTPUT of SN74AVC2T244DQMR */
-		compatible = "regulator-fixed";
-		regulator-name = "wlan_en";
-		regulator-min-microvolt = <1800000>;
-		regulator-max-microvolt = <1800000>;
-		enable-active-high;
-		regulator-always-on;
-		vin-supply = <&wlan_lten>;
-		gpios = <&main_gpio0 71 GPIO_ACTIVE_HIGH>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&wlan_en_pins_default>;
-	};
-
 	vcc_1v8: regulator-7 {
 		/* output of TPS6282518DMQ */
 		compatible = "regulator-fixed";
@@ -192,7 +168,7 @@
 		clock-frequency = <12288000>;
 	};
 
-	sound {
+	codec_audio: sound {
 		compatible = "simple-audio-card";
 		simple-audio-card,name = "AM62x-SKEVM";
 		simple-audio-card,widgets =
@@ -216,17 +192,24 @@
 	};
 
 	leds {
-		compatible = "gpio-leds";
-		pinctrl-names = "default";
-		pinctrl-0 = <&usr_led_pins_default>;
+		compatible = "pwm-leds";
 
 		led-0 {
 			label = "am62-sk:green:heartbeat";
-			gpios = <&main_gpio1 49 GPIO_ACTIVE_HIGH>;
+			pwms = <&main_pwm7 0 7812500 0>;
+			max-brightness = <255>;
 			linux,default-trigger = "heartbeat";
 			function = LED_FUNCTION_HEARTBEAT;
 			default-state = "off";
 		};
+	};
+
+	main_pwm7: dmtimer-main-pwm-7 {
+		pinctrl-0 = <&usr_led_pins_default>;
+		pinctrl-names = "default";
+		compatible = "ti,omap-dmtimer-pwm";
+		#pwm-cells = <3>;
+		ti,timers = <&main_timer7>;
 	};
 
 	hdmi_mstrclk: hdmi-mstrclk {
@@ -303,12 +286,6 @@
 		>;
 	};
 
-	wlan_en_pins_default: wlan-en-pins-default {
-		pinctrl-single,pins = <
-			AM62X_IOPAD(0x124, PIN_OUTPUT, 7) /* (A23) MMC2_SDCD.GPIO0_71 */
-		>;
-	};
-
 	main_mmc2_pins_default: main-mmc2-pins-default {
 		pinctrl-single,pins = <
 			AM62X_IOPAD(0x120, PIN_INPUT, 0) /* (C24) MMC2_CMD */
@@ -329,7 +306,7 @@
 
 	usr_led_pins_default: usr-led-pins-default {
 		pinctrl-single,pins = <
-			AM62X_IOPAD(0x244, PIN_OUTPUT, 7) /* (C17) MMC1_SDWP.GPIO1_49 */
+			AM62X_IOPAD(0x244, PIN_OUTPUT, 2) /* (C17) MMC1_SDWP.TIMER_IO7 */
 		>;
 	};
 
@@ -557,6 +534,7 @@
 	};
 
 	sii9022: sii9022@3b {
+		#sound-dai-cells = <0>;
 		compatible = "sil,sii9022";
 		reg = <0x3b>;
 
@@ -565,6 +543,8 @@
 
 		interrupt-parent = <&exp1>;
 		interrupts = <16 IRQ_TYPE_EDGE_FALLING>;
+
+		sil,i2s-data-lanes = < 0 >;
 
 		ports {
 			#address-cells = <1>;

@@ -1991,6 +1991,9 @@ cfg80211_inform_single_bss_data(struct wiphy *wiphy,
 			}
 		}
 		spin_unlock_bh(&rdev->bss_lock);
+
+		if (!res)
+			return NULL;
 	}
 
 	trace_cfg80211_return_bss(&res->pub);
