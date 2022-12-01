@@ -16,8 +16,8 @@
 #include <linux/vmalloc.h>
 #include <linux/slab.h>
 #include <linux/io.h>
-#include <linux/arm-smccc.h>
 #include <linux/memblock.h>
+#include <linux/arm-smccc.h>
 
 #include <asm/fixmap.h>
 #include <asm/tlbflush.h>

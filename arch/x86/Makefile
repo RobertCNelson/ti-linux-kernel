@@ -196,6 +196,10 @@ ifdef CONFIG_RETPOLINE
   endif
 endif
 
+ifdef CONFIG_SLS
+  KBUILD_CFLAGS += -mharden-sls=all
+endif
+
 KBUILD_LDFLAGS += -m elf_$(UTS_MACHINE)
 
 ifdef CONFIG_LTO_CLANG
@@ -205,13 +209,6 @@ endif
 endif
 
 ifdef CONFIG_SLS
-  KBUILD_CFLAGS += -mharden-sls=all
-endif
-
-KBUILD_LDFLAGS += -m elf_$(UTS_MACHINE)
-
-ifdef CONFIG_X86_NEED_RELOCS
-LDFLAGS_vmlinux := --emit-relocs --discard-none
 else
 LDFLAGS_vmlinux :=
 endif

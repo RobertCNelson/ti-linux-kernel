@@ -75,11 +75,8 @@ static void vfio_amba_remove(struct amba_device *adev)
 {
 	struct vfio_platform_device *vdev;
 
-	vdev = vfio_platform_remove_common(&adev->dev);
-	if (vdev) {
-		kfree(vdev->name);
-		kfree(vdev);
-	}
+	kfree(vdev->name);
+	kfree(vdev);
 }
 
 static const struct amba_id pl330_ids[] = {

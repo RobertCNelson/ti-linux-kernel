@@ -673,7 +673,7 @@ done:
 	 */
 	set_bit(MMF_OOM_SKIP, &mm->flags);
 
-	/* Drop a reference taken by queue_oom_reaper */
+	/* Drop a reference taken by wake_oom_reaper */
 	put_task_struct(tsk);
 }
 
@@ -683,12 +683,12 @@ static int oom_reaper(void *unused)
 		struct task_struct *tsk = NULL;
 
 		wait_event_freezable(oom_reaper_wait, oom_reaper_list != NULL);
-		spin_lock_irq(&oom_reaper_lock);
+		spin_lock(&oom_reaper_lock);
 		if (oom_reaper_list != NULL) {
 			tsk = oom_reaper_list;
 			oom_reaper_list = tsk->oom_reaper_list;
 		}
-		spin_unlock_irq(&oom_reaper_lock);
+		spin_unlock(&oom_reaper_lock);
 
 		if (tsk)
 			oom_reap_task(tsk);
