@@ -14,6 +14,7 @@ struct v4l2_subdev_pad_config;
 struct v4l2_subdev_format;
 struct v4l2_subdev_frame_interval;
 struct v4l2_subdev_selection;
+struct v4l2_subdev_state;
 struct v4l2_fmtdesc;
 struct v4l2_format;
 
@@ -32,12 +33,12 @@ DECLARE_HOOK(android_vh_clear_mask_adjust,
 DECLARE_HOOK(android_vh_v4l2subdev_set_selection,
 	TP_PROTO(struct v4l2_subdev *sd, struct v4l2_subdev_state *sd_state,
 	struct v4l2_subdev_selection *sel, int *ret),
-	TP_ARGS(sd, pad, sel, ret));
+	TP_ARGS(sd, sd_state, sel, ret));
 
 DECLARE_HOOK(android_vh_v4l2subdev_set_fmt,
 	TP_PROTO(struct v4l2_subdev *sd, struct v4l2_subdev_state *sd_state,
 	struct v4l2_subdev_format *format, int *ret),
-	TP_ARGS(sd, pad, format, ret));
+	TP_ARGS(sd, sd_state, format, ret));
 
 DECLARE_HOOK(android_vh_v4l2subdev_set_frame_interval,
 	TP_PROTO(struct v4l2_subdev *sd, struct v4l2_subdev_frame_interval *fi,
