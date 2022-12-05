@@ -18,6 +18,10 @@ KCFLAGS="-Werror"
 EXTRA_CMDS="update_prebuilt"
 KERNEL_ADDRESS=0x82000000
 
+EXT_MODULES="
+imgtech-module/rgx/
+"
+
 BUILD_DTBO_IMG=1
 
 MAKE_GOALS="${MAKE_GOALS}
