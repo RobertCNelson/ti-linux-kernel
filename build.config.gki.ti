@@ -1,0 +1,45 @@
+. ${ROOT_DIR}/${KERNEL_DIR}/build.config.gki.aarch64
+KMI_SYMBOL_LIST_STRICT_MODE=""
+#the default prebuild DTC fails for .dtbo output(Unknown output format "dtbo")
+#So we unset the DTC
+unset DTC
+DEFCONFIG=ti_gki_defconfig
+PRE_DEFCONFIG_CMDS="KCONFIG_CONFIG=${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/${DEFCONFIG} ${ROOT_DIR}/${KERNEL_DIR}/scripts/kconfig/merge_config.sh -m -r ${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/gki_defconfig ${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/ti_gki.fragment"
+POST_DEFCONFIG_CMDS="rm ${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/${DEFCONFIG}"
+
+BUILD_DTBO_IMG=1
+
+# needed for DT overlay support
+DTC_FLAGS="-@"
+KCFLAGS="-Werror"
+
+EXT_MODULES="
+imgtech-module/
+"
+
+MAKE_GOALS="${MAKE_GOALS}
+ti/k3-am62x-lp-sk.dtb
+ti/k3-am625-sk.dtb
+ti/k3-am625-skeleton.dtb
+ti/k3-am625-sk-lpmdemo.dtb
+ti/k3-am625-sk-csi2-ov5640.dtbo
+ti/k3-am625-sk-csi2-tevi-ov5640.dtbo
+ti/k3-am625-sk-hdmi-audio.dtbo
+"
+
+FILES="${FILES}
+arch/arm64/boot/Image.lz4
+arch/arm64/boot/dts/ti/k3-am62x-lp-sk.dtb
+arch/arm64/boot/dts/ti/k3-am625-sk.dtb
+arch/arm64/boot/dts/ti/k3-am625-skeleton.dtb
+arch/arm64/boot/dts/ti/k3-am625-sk-lpmdemo.dtb
+"
+
+MKDTIMG_DTBOS="
+arch/arm64/boot/dts/ti/k3-am625-sk-hdmi-audio.dtbo
+arch/arm64/boot/dts/ti/k3-am625-sk-csi2-ov5640.dtbo
+arch/arm64/boot/dts/ti/k3-am625-sk-csi2-tevi-ov5640.dtbo
+"
+
+ADDITIONAL_KMI_SYMBOL_LISTS=android/abi_gki_aarch64_ti
+MODULES_ORDER=android/gki_aarch64_ti_modules
