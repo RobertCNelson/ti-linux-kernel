@@ -43,6 +43,7 @@ ti/k3-j721e-sk-rpi-cam-imx219.dtbo
 
 FILES="
 arch/arm64/boot/Image
+arch/arm64/boot/Image.lz4
 arch/arm64/boot/dts/ti/k3-j721e-common-proc-board.dtb
 arch/arm64/boot/dts/ti/k3-j721e-proc-board-tps65917.dtb
 arch/arm64/boot/dts/ti/k3-j721e-sk.dtb
@@ -69,7 +70,7 @@ function update_bootimg() {
     BOOTIMG_OUT=$(${UNPACK_BOOTIMG_PATH} --boot_img=${PREBUILT_BOOTIMG} --out ${TMP}/)
     BOOTIMG_OUT=$(echo "$BOOTIMG_OUT" | tr "\n" ";")
     KERNEL_CMDLINE=$(echo $BOOTIMG_OUT | cut -f 14 -d ";" | cut -f 2 -d ":")
-    cp -r -f ${OUT_DIR}/arch/arm64/boot/Image ${TMP}/kernel
+    cp -r -f ${OUT_DIR}/arch/arm64/boot/Image.lz4 ${TMP}/kernel
     if [ -z "${MKBOOTIMG_PATH}" ]; then
         MKBOOTIMG_PATH="tools/mkbootimg/mkbootimg.py"
     fi
@@ -89,4 +90,17 @@ function update_prebuilt() {
         update_bootimg
         rm -r -f ${TMP}
     fi
+}
+
+
+#
+# NOTE: Using Image.lz4 in MAKE_GOALS does not work because
+#   kernel build passes legacy option (-l) to lz4 command
+#   and u-boot fails to decompress.  Instead, add custom
+#   command to lz4 compress same options as kernel, but
+#   without the -l.
+#
+EXTRA_CMDS+="; lz4_compress"
+function lz4_compress() {
+        lz4 -f -12 --favor-decSpeed ${OUT_DIR}/arch/arm64/boot/Image ${OUT_DIR}/arch/arm64/boot/Image.lz4
 }

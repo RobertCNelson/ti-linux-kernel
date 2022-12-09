@@ -43,3 +43,15 @@ arch/arm64/boot/dts/ti/k3-am625-sk-csi2-tevi-ov5640.dtbo
 
 ADDITIONAL_KMI_SYMBOL_LISTS=android/abi_gki_aarch64_ti
 MODULES_ORDER=android/gki_aarch64_ti_modules
+
+#
+# NOTE: Using Image.lz4 in MAKE_GOALS does not work because
+#   kernel build passes legacy option (-l) to lz4 command
+#   and u-boot fails to decompress.  Instead, add custom
+#   command to lz4 compress same options as kernel, but
+#   without the -l.
+#
+EXTRA_CMDS="lz4_compress"
+function lz4_compress() {
+        lz4 -f -12 --favor-decSpeed ${OUT_DIR}/arch/arm64/boot/Image ${OUT_DIR}/arch/arm64/boot/Image.lz4
+}
