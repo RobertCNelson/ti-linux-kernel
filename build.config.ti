@@ -19,7 +19,7 @@ EXTRA_CMDS="update_prebuilt"
 KERNEL_ADDRESS=0x82000000
 
 EXT_MODULES="
-imgtech-module/rgx/
+imgtech-module/
 "
 
 BUILD_DTBO_IMG=1
