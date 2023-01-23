@@ -19,6 +19,12 @@
 			/delete-property/ default-state;
 		};
 	};
+
+	firmware {
+		optee {
+			status = "disabled";
+		};
+	};
 };
 
 &dmsc {
@@ -140,13 +146,5 @@
 };
 
 &tlv320aic3106 {
-	status = "disabled";
-};
-
-&gpmc0 {
-	status = "disabled";
-};
-
-&elm0 {
 	status = "disabled";
 };
