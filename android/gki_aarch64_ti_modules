@@ -24,6 +24,7 @@ drivers/reset/reset-ti-sci.ko
 drivers/reset/reset-ti-syscon.ko
 drivers/tty/serial/8250/8250_omap.ko
 drivers/tty/serial/8250/8250_pruss.ko
+drivers/char/hw_random/optee-rng.ko
 drivers/gpu/drm/panel/panel-osd-osd101t2587-53ts.ko
 drivers/gpu/drm/bridge/cadence/cdns-mhdp8546.ko
 drivers/gpu/drm/bridge/cadence/cdns-dsi.ko
@@ -75,6 +76,7 @@ drivers/remoteproc/ti_k3_r5_remoteproc.ko
 drivers/remoteproc/ti_k3_m4_remoteproc.ko
 drivers/rpmsg/virtio_rpmsg_bus.ko
 drivers/rpmsg/rpmsg_pru.ko
+drivers/tee/optee/optee.ko
 drivers/rpmsg-kdrv/rpmsg_kdrv.ko
 drivers/rpmsg-kdrv/rpmsg_kdrv_switch.ko
 drivers/mux/mux-core.ko
