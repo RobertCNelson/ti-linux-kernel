@@ -44,7 +44,9 @@ struct pkvm_hyp_vcpu {
 /* Holds the hyp address of the mapped RX/TX buffers inside the hypervisor */
 struct kvm_ffa_buffers {
 	void *tx;
+	u64 tx_ipa;
 	void *rx;
+	u64 rx_ipa;
 };
 
 /*
@@ -203,5 +205,6 @@ int pkvm_host_map_guest_mmio(struct pkvm_hyp_vcpu *hyp_vcpu, u64 pfn, u64 gfn);
 int pkvm_device_register_reset(u64 phys, void *cookie,
 			       int (*cb)(void *cookie, bool host_to_guest));
 int pkvm_handle_empty_memcache(struct pkvm_hyp_vcpu *hyp_vcpu, u64 *exit_code);
+u32 hyp_vcpu_to_ffa_handle(struct pkvm_hyp_vcpu *hyp_vcpu);
 
 #endif /* __ARM64_KVM_NVHE_PKVM_H__ */
