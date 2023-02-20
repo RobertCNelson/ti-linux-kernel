@@ -135,6 +135,8 @@ struct udma_match_data {
 	u32 flags;
 	u32 statictr_z_mask;
 	u8 burst_size[3];
+	struct udma_soc_data *soc_data;
+	u8 order_id;
 };
 
 struct udma_soc_data {
@@ -765,11 +767,12 @@ static void udma_decrement_byte_counters(struct udma_chan *uc, u32 val)
 	if (uc->desc->dir == DMA_DEV_TO_MEM) {
 		udma_rchanrt_write(uc, UDMA_CHAN_RT_BCNT_REG, val);
 		udma_rchanrt_write(uc, UDMA_CHAN_RT_SBCNT_REG, val);
-		udma_rchanrt_write(uc, UDMA_CHAN_RT_PEER_BCNT_REG, val);
+		if (uc->config.ep_type != PSIL_EP_NATIVE)
+			udma_rchanrt_write(uc, UDMA_CHAN_RT_PEER_BCNT_REG, val);
 	} else {
 		udma_tchanrt_write(uc, UDMA_CHAN_RT_BCNT_REG, val);
 		udma_tchanrt_write(uc, UDMA_CHAN_RT_SBCNT_REG, val);
-		if (!uc->bchan)
+		if (!uc->bchan && uc->config.ep_type != PSIL_EP_NATIVE)
 			udma_tchanrt_write(uc, UDMA_CHAN_RT_PEER_BCNT_REG, val);
 	}
 }
@@ -2110,6 +2113,7 @@ static int udma_tisci_rx_channel_config(struct udma_chan *uc)
 static int bcdma_tisci_rx_channel_config(struct udma_chan *uc)
 {
 	struct udma_dev *ud = uc->ud;
+	const struct udma_match_data *match_data = ud->match_data;
 	struct udma_tisci_rm *tisci_rm = &ud->tisci_rm;
 	const struct ti_sci_rm_udmap_ops *tisci_ops = tisci_rm->tisci_udmap_ops;
 	struct udma_rchan *rchan = uc->rchan;
@@ -2119,6 +2123,11 @@ static int bcdma_tisci_rx_channel_config(struct udma_chan *uc)
 	req_rx.valid_params = TISCI_BCDMA_RCHAN_VALID_PARAMS;
 	req_rx.nav_id = tisci_rm->tisci_dev_id;
 	req_rx.index = rchan->id;
+
+	if (match_data->order_id) {
+		req_rx.valid_params |= TI_SCI_MSG_VALUE_RM_UDMAP_CH_ORDER_ID_VALID;
+		req_rx.rx_orderid = match_data->order_id;
+	}
 
 	ret = tisci_ops->rx_ch_cfg(tisci_rm->tisci, &req_rx);
 	if (ret)
@@ -4299,6 +4308,26 @@ static struct udma_match_data j721e_mcu_data = {
 	},
 };
 
+static struct udma_soc_data am62a_dmss_csi_soc_data = {
+	.oes = {
+		.bcdma_rchan_data = 0xe00,
+		.bcdma_rchan_ring = 0x1000,
+	},
+};
+
+static struct udma_match_data am62a_bcdma_csirx_data = {
+	.type = DMA_TYPE_BCDMA,
+	.psil_base = 0x3100,
+	.enable_memcpy_support = false,
+	.burst_size = {
+		TI_SCI_RM_UDMAP_CHAN_BURST_SIZE_64_BYTES, /* Normal Channels */
+		0, /* No H Channels */
+		0, /* No UH Channels */
+	},
+	.soc_data = &am62a_dmss_csi_soc_data,
+	.order_id = 8,
+};
+
 static struct udma_match_data am64_bcdma_data = {
 	.type = DMA_TYPE_BCDMA,
 	.psil_base = 0x2000, /* for tchan and rchan, not applicable to bchan */
@@ -4348,6 +4377,10 @@ static const struct of_device_id udma_of_match[] = {
 		.compatible = "ti,am64-dmss-pktdma",
 		.data = &am64_pktdma_data,
 	},
+	{
+		.compatible = "ti,am62a-dmss-bcdma-csirx",
+		.data = &am62a_bcdma_csirx_data,
+	},
 	{ /* Sentinel */ },
 };
 
@@ -4391,6 +4424,7 @@ static const struct soc_device_attribute k3_soc_devices[] = {
 	{ .family = "J721S2", .data = &j721e_soc_data},
 	{ .family = "AM62X", .data = &am64_soc_data },
 	{ .family = "J784S4", .data = &j721e_soc_data },
+	{ .family = "AM62AX", .data = &am64_soc_data },
 	{ /* sentinel */ }
 };
 
@@ -4753,7 +4787,10 @@ static int bcdma_setup_resources(struct udma_dev *ud)
 						oes->bcdma_bchan_ring;
 			irq_res.desc[i].num = rm_res->desc[i].num;
 		}
+	} else {
+		i = 0;
 	}
+
 	if (ud->tchan_cnt) {
 		rm_res = tisci_rm->rm_ranges[RM_RANGE_TCHAN];
 		for (j = 0; j < rm_res->sets; j++, i += 2) {
@@ -5218,12 +5255,13 @@ static int udma_probe(struct platform_device *pdev)
 	}
 	ud->match_data = match->data;
 
-	soc = soc_device_match(k3_soc_devices);
-
-	if (!soc)
-		return -EPROBE_DEFER;
-
-	ud->soc_data = soc->data;
+	ud->soc_data = ud->match_data->soc_data;
+	if (!ud->soc_data) {
+		soc = soc_device_match(k3_soc_devices);
+		if (!soc)
+			return -EPROBE_DEFER;
+		ud->soc_data = soc->data;
+	}
 
 	ret = udma_get_mmrs(pdev, ud);
 	if (ret)
@@ -5292,7 +5330,7 @@ static int udma_probe(struct platform_device *pdev)
 	dev->msi_domain = of_msi_get_domain(dev, dev->of_node,
 					    DOMAIN_BUS_TI_SCI_INTA_MSI);
 	if (!dev->msi_domain) {
-		dev_err(dev, "Failed to get MSI domain\n");
+		dev_dbg(dev, "Failed to get MSI domain\n");
 		return -EPROBE_DEFER;
 	}
 

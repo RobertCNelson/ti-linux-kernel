@@ -160,7 +160,7 @@
 		reg-names = "debug_messages", "lpm";
 		reg = <0x00 0x44043000 0x00 0xfe0>,
 		      <0x00 0x78000000 0x00 0x8000>;
-		ti,lpm-firmware-name = "ti-sysfw/ti-fs-stub-firmware-am62x-gp-signed.bin";
+		firmware-name = "ti-sysfw/ti-fs-stub-firmware-am62x-gp-signed.bin";
 
 		k3_pds: power-controller {
 			compatible = "ti,sci-pm-domain";
@@ -197,6 +197,13 @@
 			clocks = <&k3_clks 70 0>;
 			status = "disabled";
 		};
+	};
+
+	mcrc: mcrc@30300000 {
+		compatible = "ti,mcrc";
+		reg = <0x00 0x30300000 0x00 0x1000>;
+		clocks = <&k3_clks 116 0>;
+		power-domains = <&k3_pds 116 TI_SCI_PD_EXCLUSIVE>;
 	};
 
 	main_pmx0: pinctrl@f4000 {
@@ -418,7 +425,7 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		power-domains = <&k3_pds 141 TI_SCI_PD_EXCLUSIVE>;
-		clocks = <&k3_clks 172 0>;
+		clocks = <&k3_clks 141 0>;
 	};
 
 	main_spi1: spi@20110000 {
@@ -428,7 +435,7 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		power-domains = <&k3_pds 142 TI_SCI_PD_EXCLUSIVE>;
-		clocks = <&k3_clks 173 0>;
+		clocks = <&k3_clks 142 0>;
 	};
 
 	main_spi2: spi@20120000 {
@@ -438,7 +445,7 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		power-domains = <&k3_pds 143 TI_SCI_PD_EXCLUSIVE>;
-		clocks = <&k3_clks 174 0>;
+		clocks = <&k3_clks 143 0>;
 	};
 
 	main_gpio_intr: interrupt-controller@a00000 {

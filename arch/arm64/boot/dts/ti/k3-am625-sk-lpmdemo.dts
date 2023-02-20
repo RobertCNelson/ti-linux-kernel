@@ -19,10 +19,12 @@
 			/delete-property/ default-state;
 		};
 	};
-};
 
-&dmsc {
-	ti,ctx-memory-region = <&lpm_ctx_ddr>;
+	firmware {
+		optee {
+			status = "disabled";
+		};
+	};
 };
 
 &crypto {
@@ -35,110 +37,6 @@
 	/delete-property/ clocks;
 };
 
-&main_spi0 {
-	status = "disabled";
-};
-
-&main_spi1 {
-	status = "disabled";
-};
-
-&main_spi2 {
-	status = "disabled";
-};
-
-&sdhci2 {
-	status = "disabled";
-};
-
-&gpu {
-	status = "disabled";
-};
-
-/*
- * FIXME: Check explicitly if this is still needed.
- * Regular SK dts does not have this, while the
- * LPMDEMO seems to be adding it for some reason
- */
-&usbss1 {
-	ti,vbus-divider;
-};
-
-&dss {
-	status = "disabled";
-};
-
-&ti_csi2rx0 {
-	status = "disabled";
-};
-
-&dphy0 {
-	status = "disabled";
-};
-
-&main_rti0 {
-	status = "disabled";
-};
-
-&main_rti1 {
-	status = "disabled";
-};
-
-&main_rti2 {
-	status = "disabled";
-};
-
-&main_rti3 {
-	status = "disabled";
-};
-
-&main_rti15 {
-	status = "disabled";
-};
-
-&mcasp1 {
-	status = "disabled";
-};
-
 &cbass_mcu {
-	status = "disabled";
-};
-
-
-/* regulator-5 */
-&wlan_lten {
-	status = "disabled";
-};
-
-/* regulator-6 */
-&wlan_en {
-	status = "disabled";
-};
-/* regulator-7 */
-&vcc_1v8 {
-	status = "disabled";
-};
-
-&tlv320_mclk {
-	status = "disabled";
-};
-
-&codec_audio {
-	status = "disabled";
-};
-
-&hdmi_mstrclk {
-	status = "disabled";
-};
-
-&hdmi {
-	status = "disabled";
-};
-
-&sii9022 {
-	status = "disabled";
-};
-
-&tlv320aic3106 {
 	status = "disabled";
 };

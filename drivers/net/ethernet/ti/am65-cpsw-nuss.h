@@ -96,6 +96,7 @@ struct am65_cpsw_rx_chn {
 
 #define AM65_CPSW_QUIRK_I2027_NO_TX_CSUM BIT(0)
 #define AM64_CPSW_QUIRK_CUT_THRU BIT(1)
+#define AM64_CPSW_QUIRK_DMA_RX_TDOWN_IRQ BIT(2)
 
 struct am65_cpsw_pdata {
 	u32	quirks;
@@ -139,6 +140,7 @@ struct am65_cpsw_common {
 
 	struct am65_cpsw_rx_chn	rx_chns;
 	struct napi_struct	napi_rx;
+	bool			rx_irq_disabled;
 	struct hrtimer rx_hrtimer;
 	unsigned long rx_pace_timeout;
 
