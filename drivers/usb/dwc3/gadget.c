@@ -1005,7 +1005,7 @@ static int __dwc3_gadget_ep_disable(struct dwc3_ep *dep)
 
 	dep->stream_capable = false;
 	dep->type = 0;
-	dep->flags = 0;
+	dep->flags &= DWC3_EP_TXFIFO_RESIZED;
 
 	/* Clear out the ep descriptors for non-ep0 */
 	if (dep->number > 1) {
