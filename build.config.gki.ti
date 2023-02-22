@@ -25,6 +25,7 @@ ti/k3-am625-sk-lpmdemo.dtb
 ti/k3-am625-sk-csi2-ov5640.dtbo
 ti/k3-am625-sk-csi2-tevi-ov5640.dtbo
 ti/k3-am625-sk-hdmi-audio.dtbo
+ti/k3-am625-sk-oldi-panel.dtbo
 "
 
 FILES="${FILES}
@@ -39,6 +40,7 @@ MKDTIMG_DTBOS="
 arch/arm64/boot/dts/ti/k3-am625-sk-hdmi-audio.dtbo
 arch/arm64/boot/dts/ti/k3-am625-sk-csi2-ov5640.dtbo
 arch/arm64/boot/dts/ti/k3-am625-sk-csi2-tevi-ov5640.dtbo
+arch/arm64/boot/dts/ti/k3-am625-sk-oldi-panel.dtbo
 "
 
 ADDITIONAL_KMI_SYMBOL_LISTS=android/abi_gki_aarch64_ti
