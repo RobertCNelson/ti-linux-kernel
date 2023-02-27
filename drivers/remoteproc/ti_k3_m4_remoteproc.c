@@ -374,7 +374,7 @@ static int k3_m4_rproc_stop(struct rproc *rproc)
 	}
 
 	reinit_completion(&kproc->shut_comp);
-	ret = mbox_send_message(kproc->mbox, (void *)RP_MBOX_SHUTDOWN);
+	ret = mbox_send_message(kproc->mbox, (void *)msg);
 	if (ret < 0) {
 		dev_err(dev, "PM mbox_send_message failed: %d\n", ret);
 		return ret;
