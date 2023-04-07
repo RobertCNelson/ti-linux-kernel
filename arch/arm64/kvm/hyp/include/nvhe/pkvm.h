@@ -185,7 +185,7 @@ int pkvm_init_scmi_pd(struct kvm_power_domain *pd,
 
 bool pkvm_device_request_mmio(struct pkvm_hyp_vcpu *hyp_vcpu, u64 *exit_code);
 void pkvm_devices_teardown(struct pkvm_hyp_vm *vm);
-int pkvm_devices_get_context(u64 iommu_id, u32 endpoint_id);
+int pkvm_devices_get_context(u64 iommu_id, u32 endpoint_id, struct pkvm_hyp_vm *vm);
 void pkvm_devices_put_context(u64 iommu_id, u32 endpoint_id);
 
 /*

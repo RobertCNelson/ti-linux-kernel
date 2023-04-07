@@ -336,16 +336,19 @@ int kvm_iommu_attach_dev(pkvm_handle_t iommu_id, pkvm_handle_t domain_id,
 	int ret;
 	struct kvm_hyp_iommu *iommu;
 	struct kvm_hyp_iommu_domain *domain;
+	struct pkvm_hyp_vcpu *hyp_vcpu = __get_vcpu();
+	struct pkvm_hyp_vm *vm = NULL;
 
 	iommu = kvm_iommu_ops->get_iommu_by_id(iommu_id);
 	if (!iommu)
 		return -EINVAL;
 
+	if (hyp_vcpu)
+		vm = pkvm_hyp_vcpu_to_hyp_vm(hyp_vcpu);
 	/*
-	 * At the moment the IOMMU in EL2 is not aware of guests and pvIOMMU
-	 * doesn't exist yet, so all attaches come from host, this should change soon.
+	 * Make sure device can't transition to/from VMs while in the middle of attach.
 	 */
-	ret = pkvm_devices_get_context(iommu_id, endpoint_id);
+	ret = pkvm_devices_get_context(iommu_id, endpoint_id, vm);
 	if (ret)
 		return ret;
 
@@ -370,13 +373,17 @@ int kvm_iommu_detach_dev(pkvm_handle_t iommu_id, pkvm_handle_t domain_id,
 	int ret;
 	struct kvm_hyp_iommu *iommu;
 	struct kvm_hyp_iommu_domain *domain;
+	struct pkvm_hyp_vcpu *hyp_vcpu = __get_vcpu();
+	struct pkvm_hyp_vm *vm = NULL;
 
 	iommu = kvm_iommu_ops->get_iommu_by_id(iommu_id);
 	if (!iommu)
 		return -EINVAL;
 
+	if (hyp_vcpu)
+		vm = pkvm_hyp_vcpu_to_hyp_vm(hyp_vcpu);
 	/* See kvm_iommu_attach_dev(). */
-	ret = pkvm_devices_get_context(iommu_id, endpoint_id);
+	ret = pkvm_devices_get_context(iommu_id, endpoint_id, vm);
 	if (ret)
 		return ret;
 
