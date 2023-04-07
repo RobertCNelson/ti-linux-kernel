@@ -621,6 +621,7 @@
 			ti,sci = <&sms>;
 			ti,sci-dev-id = <321>;
 			ti,interrupt-ranges = <0 0 256>;
+			ti,unmapped-event-sources = <&main_bcdma_csi>;
 			status = "disabled";
 		};
 
@@ -918,6 +919,21 @@
 						<0x0c>; /* RX_UHCHAN */
 			ti,sci-rm-range-rflow = <0x00>; /* GP RFLOW */
 			status = "disabled";
+		};
+
+		main_bcdma_csi: dma-controller@311a0000 {
+			compatible = "ti,j721s2-dmss-bcdma-csi";
+			reg = <0x00 0x311a0000 0x00 0x100>,
+				<0x00 0x35d00000 0x00 0x20000>,
+				<0x00 0x35c00000 0x00 0x10000>,
+				<0x00 0x35e00000 0x00 0x80000>;
+			reg-names = "gcfg", "rchanrt", "tchanrt", "ringrt";
+			msi-parent = <&main_udmass_inta>;
+			#dma-cells = <3>;
+			ti,sci = <&sms>;
+			ti,sci-dev-id = <281>;
+			ti,sci-rm-range-rchan = <0x21>;
+			ti,sci-rm-range-tchan = <0x22>;
 		};
 
 		cpts@310d0000 {
@@ -2008,9 +2024,10 @@
 	ti_csi2rx0: ticsi2rx@4500000 {
 		status = "disabled";
 		compatible = "ti,j721e-csi2rx";
-		dmas = <&main_udmap 0x4940>, <&main_udmap 0x4941>, <&main_udmap 0x4942>,
-			<&main_udmap 0x4943>, <&main_udmap 0x4944>, <&main_udmap 0x4945>,
-			<&main_udmap 0x4946>, <&main_udmap 0x4947>;
+		dmas = <&main_bcdma_csi 0 0x4940 0>, <&main_bcdma_csi 0 0x4941 0>,
+		<&main_bcdma_csi 0 0x4942 0>, <&main_bcdma_csi 0 0x4943 0>,
+		<&main_bcdma_csi 0 0x4944 0>, <&main_bcdma_csi 0 0x4945 0>,
+		<&main_bcdma_csi 0 0x4946 0>, <&main_bcdma_csi 0 0x4947 0>;
 		dma-names = "rx0", "rx1", "rx2", "rx3", "rx4", "rx5", "rx6", "rx7";
 		reg = <0x00 0x04500000 0x00 0x00001000>;
 		power-domains = <&k3_pds 72 TI_SCI_PD_EXCLUSIVE>;
@@ -2065,10 +2082,9 @@
 	ti_csi2rx1: ticsi2rx@4510000 {
 		status = "disabled";
 		compatible = "ti,j721e-csi2rx";
-		dmas = <&main_udmap 0x4960>, <&main_udmap 0x4961>, <&main_udmap 0x4962>,
-			<&main_udmap 0x4963>, <&main_udmap 0x4964>, <&main_udmap 0x4965>,
-			<&main_udmap 0x4966>, <&main_udmap 0x4967>;
-		dma-names = "rx0", "rx1", "rx2", "rx3", "rx4", "rx5", "rx6", "rx7";
+		dmas = <&main_bcdma_csi 0 0x4960 0>, <&main_bcdma_csi 0 0x4961 0>,
+		<&main_bcdma_csi 0 0x4962 0>, <&main_bcdma_csi 0 0x4963 0>;
+		dma-names = "rx0", "rx1", "rx2", "rx3";
 		reg = <0x00 0x04510000 0x00 0x00001000>;
 		power-domains = <&k3_pds 73 TI_SCI_PD_EXCLUSIVE>;
 		#address-cells = <2>;
@@ -2122,10 +2138,9 @@
 	ti_csi2rx2: ticsi2rx@4520000 {
 		status = "disabled";
 		compatible = "ti,j721e-csi2rx";
-		dmas = <&main_udmap 0x4980>, <&main_udmap 0x4981>, <&main_udmap 0x4982>,
-			<&main_udmap 0x4983>, <&main_udmap 0x4984>, <&main_udmap 0x4985>,
-			<&main_udmap 0x4986>, <&main_udmap 0x4987>;
-		dma-names = "rx0", "rx1", "rx2", "rx3", "rx4", "rx5", "rx6", "rx7";
+		dmas = <&main_bcdma_csi 0 0x4980 0>, <&main_bcdma_csi 0 0x4981 0>,
+		<&main_bcdma_csi 0 0x4982 0>, <&main_bcdma_csi 0 0x4983 0>;
+		dma-names = "rx0", "rx1", "rx2", "rx3";
 		reg = <0x00 0x04520000 0x00 0x00001000>;
 		power-domains = <&k3_pds 74 TI_SCI_PD_EXCLUSIVE>;
 		#address-cells = <2>;
