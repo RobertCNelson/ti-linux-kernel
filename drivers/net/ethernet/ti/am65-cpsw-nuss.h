@@ -32,6 +32,7 @@ struct am65_cpsw_slave_data {
 	struct device_node		*phy_node;
 	phy_interface_t			phy_if;
 	struct phy			*ifphy;
+	struct phy			*serdes_phy;
 	bool				rx_pause;
 	bool				tx_pause;
 	u8				mac_addr[ETH_ALEN];
@@ -74,6 +75,7 @@ struct am65_cpsw_tx_chn {
 	u32 id;
 	u32 descs_num;
 	char tx_chn_name[128];
+	u32 rate_mbps;
 };
 
 struct am65_cpsw_rx_chn {
@@ -86,6 +88,7 @@ struct am65_cpsw_rx_chn {
 };
 
 #define AM65_CPSW_QUIRK_I2027_NO_TX_CSUM BIT(0)
+#define AM64_CPSW_QUIRK_DMA_RX_TDOWN_IRQ BIT(1)
 
 struct am65_cpsw_pdata {
 	u32	quirks;
@@ -120,6 +123,7 @@ struct am65_cpsw_common {
 	int			usage_count; /* number of opened ports */
 	struct cpsw_ale		*ale;
 	int			tx_ch_num;
+	u32			tx_ch_rate_msk;
 	u32			rx_flow_id_base;
 
 	struct am65_cpsw_tx_chn	tx_chns[AM65_CPSW_MAX_TX_QUEUES];
