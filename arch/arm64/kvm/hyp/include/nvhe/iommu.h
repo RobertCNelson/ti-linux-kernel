@@ -87,6 +87,8 @@ int kvm_iommu_init(struct kvm_iommu_ops *ops,
 		   struct kvm_hyp_memcache *atomic_mc);
 int kvm_iommu_init_device(struct kvm_hyp_iommu *iommu);
 
+int iommu_pkvm_unuse_dma(u64 phys_addr, size_t size);
+
 void kvm_iommu_iotlb_gather_add_page(struct kvm_hyp_iommu_domain *domain,
 				     struct iommu_iotlb_gather *gather,
 				     unsigned long iova,

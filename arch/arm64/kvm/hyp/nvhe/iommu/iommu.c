@@ -83,6 +83,11 @@ struct pkvm_hyp_vcpu *__get_vcpu(void)
 	return NULL;
 }
 
+int iommu_pkvm_unuse_dma(u64 phys_addr, size_t size)
+{
+	return __pkvm_unuse_dma(phys_addr, size, __get_vcpu());
+}
+
 static void *__kvm_iommu_donate_pages(struct hyp_pool *pool, u8 order, int flags)
 {
 	void *p;
@@ -415,7 +420,7 @@ size_t kvm_iommu_map_pages(pkvm_handle_t domain_id,
 	if (!domain || domain_get(domain))
 		return 0;
 
-	ret = __pkvm_host_use_dma(paddr, size);
+	ret = __pkvm_use_dma(paddr, size, __get_vcpu());
 	if (ret)
 		return 0;
 
@@ -428,7 +433,7 @@ size_t kvm_iommu_map_pages(pkvm_handle_t domain_id,
 	 * so far.
 	 */
 	if (pgcount)
-		__pkvm_host_unuse_dma(paddr + total_mapped, pgcount * pgsize);
+		__pkvm_unuse_dma(paddr + total_mapped, pgcount * pgsize, __get_vcpu());
 
 	domain_put(domain);
 	return total_mapped;
@@ -551,7 +556,7 @@ size_t kvm_iommu_map_sg(pkvm_handle_t domain_id, unsigned long iova, struct kvm_
 		    iova + size < iova)
 			goto out_unpin_sg;
 
-		ret = __pkvm_host_use_dma(phys, size);
+		ret = __pkvm_use_dma(phys, size, __get_vcpu());
 		if (ret)
 			goto out_unpin_sg;
 
@@ -562,7 +567,7 @@ size_t kvm_iommu_map_sg(pkvm_handle_t domain_id, unsigned long iova, struct kvm_
 		iova += mapped;
 		/* Might need memory */
 		if (mapped != size) {
-			__pkvm_host_unuse_dma(phys, size - mapped);
+			__pkvm_unuse_dma(phys, size - mapped, __get_vcpu());
 			break;
 		}
 		sg++;

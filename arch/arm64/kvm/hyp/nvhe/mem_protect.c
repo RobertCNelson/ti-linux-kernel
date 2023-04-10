@@ -419,6 +419,12 @@ int __pkvm_guest_relinquish_to_host(struct pkvm_hyp_vcpu *vcpu,
 	addr = ALIGN_DOWN(ipa, kvm_granule_size(level));
 	phys = kvm_pte_to_phys(pte);
 	phys += ipa - addr;
+	/* page might be used for DMA! */
+	if (hyp_page_count(hyp_phys_to_virt(phys))) {
+		ret = -EBUSY;
+		goto end;
+	}
+
 	hyp_poison_page(phys, PAGE_SIZE);
 	psci_mem_protect_dec(1);
 
@@ -1832,14 +1838,14 @@ int __pkvm_host_unshare_ffa(u64 pfn, u64 nr_pages)
 	return ret;
 }
 
-static void __pkvm_host_use_dma_page(phys_addr_t phys_addr)
+static void __pkvm_use_dma_page(phys_addr_t phys_addr)
 {
 	struct hyp_page *p = hyp_phys_to_page(phys_addr);
 
 	hyp_page_ref_inc(p);
 }
 
-static void __pkvm_host_unuse_dma_page(phys_addr_t phys_addr)
+static void __pkvm_unuse_dma_page(phys_addr_t phys_addr)
 {
 	struct hyp_page *p = hyp_phys_to_page(phys_addr);
 
@@ -1847,7 +1853,7 @@ static void __pkvm_host_unuse_dma_page(phys_addr_t phys_addr)
 }
 
 /*
- * __pkvm_host_use_dma - Mark host memory as used for DMA
+ * __pkvm_use_dma - Mark memory as used for DMA
  * @phys_addr:	physical address of the DMA region
  * @size:	size of the DMA region
  * When a page is mapped in an IOMMU page table for DMA, it must
@@ -1862,7 +1868,7 @@ static void __pkvm_host_unuse_dma_page(phys_addr_t phys_addr)
  * similar checks are needed in host_request_unshare() and
  * host_ack_unshare()
  */
-int __pkvm_host_use_dma(phys_addr_t phys_addr, size_t size)
+int __pkvm_use_dma(phys_addr_t phys_addr, size_t size, struct pkvm_hyp_vcpu *hyp_vcpu)
 {
 	int i;
 	int ret = 0;
@@ -1874,6 +1880,7 @@ int __pkvm_host_use_dma(phys_addr_t phys_addr, size_t size)
 		return -EINVAL;
 
 	host_lock_component();
+
 	/*
 	 * Some differences between handling of RAM and device memory:
 	 * - The hyp vmemmap area for device memory is not backed by physical
@@ -1884,6 +1891,11 @@ int __pkvm_host_use_dma(phys_addr_t phys_addr, size_t size)
 	 */
 	if (!reg) {
 		enum kvm_pgtable_prot prot;
+
+		if (hyp_vcpu) {
+			ret = -EINVAL;
+			goto out_ret;
+		}
 
 		ret = ___host_check_page_state_range(phys_addr, size,
 						     PKVM_PAGE_TAINTED,
@@ -1898,12 +1910,16 @@ int __pkvm_host_use_dma(phys_addr_t phys_addr, size_t size)
 		prot = pkvm_mkstate(PKVM_HOST_MMIO_PROT, PKVM_PAGE_TAINTED);
 		ret = host_stage2_idmap_locked(phys_addr, size, prot, false);
 	} else {
-		ret = ___host_check_page_state_range(phys_addr, size, PKVM_PAGE_OWNED, reg, false);
-		if (ret)
-			goto out_ret;
+		/* For VMs, we know if we reach this point the VM has access to the page. */
+		if (!hyp_vcpu) {
+			ret = ___host_check_page_state_range(phys_addr, size,
+							     PKVM_PAGE_OWNED, reg, false);
+			if (ret)
+				goto out_ret;
+		}
 
 		for (i = 0; i < nr_pages; i++)
-			__pkvm_host_use_dma_page(phys_addr + i * PAGE_SIZE);
+			__pkvm_use_dma_page(phys_addr + i * PAGE_SIZE);
 	}
 
 out_ret:
@@ -1911,15 +1927,17 @@ out_ret:
 	return ret;
 }
 
-int __pkvm_host_unuse_dma(phys_addr_t phys_addr, size_t size)
+int __pkvm_unuse_dma(phys_addr_t phys_addr, size_t size, struct pkvm_hyp_vcpu *hyp_vcpu)
 {
 	int i;
 	size_t nr_pages = size >> PAGE_SHIFT;
 
 	if (WARN_ON(!PAGE_ALIGNED(phys_addr | size)))
 		return -EINVAL;
-	if (!range_is_memory(phys_addr, phys_addr + size))
+	if (!range_is_memory(phys_addr, phys_addr + size)) {
+		WARN_ON(hyp_vcpu);
 		return 0;
+	}
 
 	host_lock_component();
 	/*
@@ -1928,7 +1946,7 @@ int __pkvm_host_unuse_dma(phys_addr_t phys_addr, size_t size)
 	 * in the host s2, there can be no failure.
 	 */
 	for (i = 0; i < nr_pages; i++)
-		__pkvm_host_unuse_dma_page(phys_addr + i * PAGE_SIZE);
+		__pkvm_unuse_dma_page(phys_addr + i * PAGE_SIZE);
 
 	host_unlock_component();
 	return 0;

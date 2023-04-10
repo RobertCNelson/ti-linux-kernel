@@ -900,7 +900,7 @@ static void smmu_unmap_visit_leaf(phys_addr_t addr, size_t size,
 	/* Might be a cleared table. */
 	if (!pte)
 		return;
-	WARN_ON(__pkvm_host_unuse_dma(addr, size));
+	WARN_ON(iommu_pkvm_unuse_dma(addr, size));
 	*ptep = 0;
 }
 
