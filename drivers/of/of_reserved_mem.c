@@ -542,6 +542,8 @@ static void __init fdt_init_reserved_mem_node(struct reserved_mem *rmem)
 
 		memblock_memsize_record(rmem->name, rmem->base,
 					rmem->size, nomap, reusable);
+		if (reusable && !of_flat_dt_is_compatible(node, "shared-dma-pool"))
+			memblock_memsize_mod_reusable_size(rmem->size);
 	}
 }
 
