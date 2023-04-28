@@ -867,6 +867,8 @@ static int cqspi_phy_calibrate(struct cqspi_flash_pdata *f_pdata,
 
 	ret = 0;
 	f_pdata->phy_setting.read_delay = searchpoint.read_delay;
+	f_pdata->phy_setting.rx = searchpoint.rx;
+	f_pdata->phy_setting.tx = searchpoint.tx;
 out:
 	if (ret)
 		f_pdata->use_phy = false;
@@ -2576,7 +2578,12 @@ static int cqspi_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM_SLEEP
+static void __maybe_unused cqspi_restore_context(struct cqspi_st *cqspi)
+{
+	cqspi_phy_apply_setting(cqspi->f_pdata,
+				&cqspi->f_pdata->phy_setting);
+}
+
 static int cqspi_suspend(struct device *dev)
 {
 	struct cqspi_st *cqspi = dev_get_drvdata(dev);
@@ -2603,18 +2610,16 @@ static int cqspi_resume(struct device *dev)
 	cqspi->current_cs = -1;
 	cqspi->sclk = 0;
 
+	/*
+	 * Only restore context if PHY is enabled, or else skip this step
+	 */
+	if ((cqspi->f_pdata->use_phy) == true)
+		cqspi_restore_context(cqspi);
+
 	return spi_master_resume(master);
 }
 
-static const struct dev_pm_ops cqspi__dev_pm_ops = {
-	.suspend = cqspi_suspend,
-	.resume = cqspi_resume,
-};
-
-#define CQSPI_DEV_PM_OPS	(&cqspi__dev_pm_ops)
-#else
-#define CQSPI_DEV_PM_OPS	NULL
-#endif
+static DEFINE_SIMPLE_DEV_PM_OPS(cqspi_dev_pm_ops, cqspi_suspend, cqspi_resume);
 
 static const struct cqspi_driver_platdata cdns_qspi = {
 	.quirks = CQSPI_DISABLE_DAC_MODE,
@@ -2681,7 +2686,7 @@ static struct platform_driver cqspi_platform_driver = {
 	.remove = cqspi_remove,
 	.driver = {
 		.name = CQSPI_NAME,
-		.pm = CQSPI_DEV_PM_OPS,
+		.pm = &cqspi_dev_pm_ops,
 		.of_match_table = cqspi_dt_ids,
 	},
 };
