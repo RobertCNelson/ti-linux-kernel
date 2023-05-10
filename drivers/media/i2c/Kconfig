@@ -214,6 +214,18 @@ config VIDEO_IMX355
 	  To compile this driver as a module, choose M here: the
 	  module will be called imx355.
 
+config VIDEO_IMX390
+	tristate "Sony IMX390 sensor support"
+	depends on I2C && VIDEO_DEV
+	select MEDIA_CONTROLLER
+	select VIDEO_V4L2_SUBDEV_API
+	help
+	  This is a Video4Linux2 sensor driver for the Sony
+	  IMX390 camera.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called imx390.
+
 config VIDEO_IMX412
 	tristate "Sony IMX412 sensor support"
 	depends on OF_GPIO
@@ -383,6 +395,18 @@ config VIDEO_OV13B10
 	help
 	  This is a Video4Linux2 sensor driver for the OmniVision
 	  OV13B10 camera.
+
+config VIDEO_OV2312
+	tristate "OmniVision OV2312 sensor support"
+	depends on I2C && VIDEO_DEV
+	select MEDIA_CONTROLLER
+	select VIDEO_V4L2_SUBDEV_API
+	help
+	  This is a Video4Linux2 sensor driver for the OmniVision
+	  OV2312 camera.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called ov2312.
 
 config VIDEO_OV2640
 	tristate "OmniVision OV2640 sensor support"
@@ -1592,6 +1616,53 @@ config VIDEO_THS7303
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called ths7303.
+
+endmenu
+
+#
+# Video serializers and deserializers (e.g. FPD-Link)
+#
+
+menu "Video serializers and deserializers"
+
+config VIDEO_DS90UB913
+	tristate "TI DS90UB913 FPD-Link III Serializer"
+	depends on OF && I2C && VIDEO_DEV
+	select I2C_ATR
+	select MEDIA_CONTROLLER
+	select OF_GPIO
+	select REGMAP_I2C
+	select V4L2_FWNODE
+	select VIDEO_V4L2_SUBDEV_API
+	help
+	  Device driver for the Texas Instruments DS90UB913
+	  FPD-Link III Serializer.
+
+config VIDEO_DS90UB953
+	tristate "TI FPD-Link III/IV CSI-2 Serializers"
+	depends on OF && I2C && VIDEO_DEV
+	select I2C_ATR
+	select MEDIA_CONTROLLER
+	select OF_GPIO
+	select REGMAP_I2C
+	select V4L2_FWNODE
+	select VIDEO_V4L2_SUBDEV_API
+	help
+	  Device driver for the Texas Instruments DS90UB953
+	  FPD-Link III Serializer and DS90UB971 FPD-Link IV Serializer.
+
+config VIDEO_DS90UB960
+	tristate "TI FPD-Link III/IV Deserializers"
+	depends on OF && I2C && VIDEO_DEV
+	select I2C_ATR
+	select MEDIA_CONTROLLER
+	select OF_GPIO
+	select REGMAP_I2C
+	select V4L2_FWNODE
+	select VIDEO_V4L2_SUBDEV_API
+	help
+	  Device driver for the Texas Instruments DS90UB960
+	  FPD-Link III Deserializer and DS90UB9702 FPD-Link IV Deserializer.
 
 endmenu
 

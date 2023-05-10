@@ -19,9 +19,17 @@ dtb-$(CONFIG_ARCH_K3) += k3-am62-lp-sk.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-am62-lp-sk-microtips-mf101hie-panel.dtbo
 
 # Boards with AM62Ax SoC
-dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk.dtb
-dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-csi2-imx219.dtbo
+k3-am62a7-sk-csi2-imx219-dtbs := k3-am62a7-sk.dtb k3-am62a7-sk-csi2-imx219.dtbo
+k3-am62a7-sk-fusion-imx390-dtbs := k3-am62a7-sk.dtb \
+				   k3-am62a7-sk-fusion.dtbo \
+				   k3-fpdlink-imx390-rcm-0-0.dtbo
+k3-am62a7-sk-fusion-ov2312-dtbs := k3-am62a7-sk.dtb \
+				   k3-am62a7-sk-fusion.dtbo \
+				   k3-fpdlink-ov2312-0-0.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-csi2-imx219.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-ethernet-dc01.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-fusion-imx390.dtb
+dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-fusion-ov2312.dtb
 
 # Boards with AM64x SoC
 dtb-$(CONFIG_ARCH_K3) += k3-am642-evm.dtb
@@ -34,6 +42,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-am6548-iot2050-advanced.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-am6548-iot2050-advanced-pg2.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-am654-base-board.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-am654-evm-oldi-lcd1evm.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am654-idk.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am654-pcie-usb3.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am654-pcie-usb2.dtbo
 
@@ -58,11 +67,22 @@ dtb-$(CONFIG_ARCH_K3) += k3-j721s2-common-proc-board.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-am69-sk.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-j784s4-evm.dtb
 
+# FPDLink Sensors
+dtb-$(CONFIG_ARCH_K3) += k3-fpdlink-imx390-rcm-0-0.dtbo \
+			 k3-fpdlink-imx390-rcm-0-1.dtbo \
+			 k3-fpdlink-imx390-rcm-0-2.dtbo \
+			 k3-fpdlink-imx390-rcm-0-3.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-fpdlink-ov2312-0-0.dtbo \
+			 k3-fpdlink-ov2312-0-1.dtbo \
+			 k3-fpdlink-ov2312-0-2.dtbo \
+			 k3-fpdlink-ov2312-0-3.dtbo
+
 #Enable support for device-tree overlays
 DTC_FLAGS_k3-am62-lp-sk += -@
 DTC_FLAGS_k3-am625-sk += -@
 DTC_FLAGS_k3-am625-sk-lpmdemo += -@
 DTC_FLAGS_k3-am62a7-sk += -@
+DTC_FLAGS_k3-am62a7-sk-fusion += -@
 DTC_FLAGS_k3-am654-base-board += -@
 DTC_FLAGS_k3-j7200-common-proc-board += -@
 DTC_FLAGS_k3-j721e-common-proc-board += -@
