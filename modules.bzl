@@ -34,6 +34,8 @@ COMMON_GKI_MODULES_LIST = [
     "drivers/net/usb/r8153_ecm.ko",
     "drivers/net/usb/rtl8150.ko",
     "drivers/net/usb/usbnet.ko",
+    "drivers/rpmsg-kdrv/rpmsg_kdrv.ko",
+    "drivers/rpmsg-kdrv/rpmsg_kdrv_switch.ko",
     "drivers/usb/class/cdc-acm.ko",
     "drivers/usb/serial/ftdi_sio.ko",
     "drivers/usb/serial/usbserial.ko",
