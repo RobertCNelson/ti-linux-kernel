@@ -240,7 +240,7 @@ static void wave5_vpu_dec_start_decode(struct vpu_instance *inst)
 	memset(&pic_param, 0, sizeof(struct dec_param));
 
 	if (inst->state == VPU_INST_STATE_INIT_SEQ) {
-		u32 non_linear_num = inst->dst_buf_count;
+		u32 non_linear_num = inst->min_dst_buf_count;
 		u32 linear_num = inst->dst_buf_count;
 		u32 stride = inst->dst_fmt.width;
 
@@ -877,7 +877,7 @@ static int wave5_vpu_dec_queue_setup(struct vb2_queue *q, unsigned int *num_buff
 			inst->dst_buf_count = *num_buffers;
 
 		*num_buffers = inst->dst_buf_count;
-		non_linear_num = inst->dst_buf_count;
+		non_linear_num = inst->min_dst_buf_count;
 
 		for (i = 0; i < non_linear_num; i++) {
 			struct frame_buffer *frame = &inst->frame_buf[i];
@@ -1080,7 +1080,7 @@ static void wave5_vpu_dec_buf_queue_dst(struct vb2_buffer *vb)
 	if (inst->state == VPU_INST_STATE_INIT_SEQ) {
 		dma_addr_t buf_addr_y = 0, buf_addr_cb = 0, buf_addr_cr = 0;
 		u32 buf_size = 0;
-		u32 non_linear_num = inst->dst_buf_count;
+		u32 non_linear_num = inst->min_dst_buf_count;
 		u32 fb_stride = inst->dst_fmt.width;
 		u32 luma_size = fb_stride * inst->dst_fmt.height;
 		u32 chroma_size = (fb_stride / 2) * (inst->dst_fmt.height / 2);
