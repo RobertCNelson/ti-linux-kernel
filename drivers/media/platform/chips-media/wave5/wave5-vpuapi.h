@@ -1023,6 +1023,10 @@ struct vpu_device {
 	u32 ext_addr;
 	struct ida inst_ida;
 	struct clk_bulk_data *clks;
+	struct hrtimer hrtimer;
+	struct kthread_work work;
+	struct kthread_worker *worker;
+	int vpu_poll_interval;
 	int num_clks;
 };
 
