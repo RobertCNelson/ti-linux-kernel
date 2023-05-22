@@ -227,7 +227,7 @@ static int wave5_vpu_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	/* physical addresses limited to 48 bits */
+	/* physical addresses limited to 48  bits */
 	dma_set_mask(&pdev->dev, DMA_BIT_MASK(48));
 	dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(48));
 
