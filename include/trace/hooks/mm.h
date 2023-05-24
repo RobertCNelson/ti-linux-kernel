@@ -130,6 +130,16 @@ DECLARE_RESTRICTED_HOOK(android_rvh_vfree_bypass,
 DECLARE_HOOK(android_vh_cma_alloc_retry,
 	TP_PROTO(char *name, int *retry),
 	TP_ARGS(name, retry));
+DECLARE_HOOK(android_vh_smaps_pte_entry,
+	TP_PROTO(swp_entry_t entry, int mapcount,
+		unsigned long *swap_shared, unsigned long *writeback,
+		unsigned long *same, unsigned long *huge),
+	TP_ARGS(entry, mapcount, swap_shared, writeback, same, huge));
+DECLARE_HOOK(android_vh_show_smap,
+	TP_PROTO(struct seq_file *m,
+		unsigned long swap_shared, unsigned long writeback,
+		unsigned long same, unsigned long huge),
+	TP_ARGS(m, swap_shared, writeback, same, huge));
 #endif /* _TRACE_HOOK_MM_H */
 
 /* This part must be outside protection */
