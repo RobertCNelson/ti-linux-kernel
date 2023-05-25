@@ -35,6 +35,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-fusion-ov2312.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-am642-evm.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-am642-phyboard-electra-rdk.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-am642-sk.dtb
+dtb-$(CONFIG_ARCH_K3) += k3-am642-evm-icssg1-dualemac.dtbo
 
 # Boards with AM65x SoC
 dtb-$(CONFIG_ARCH_K3) += k3-am6528-iot2050-basic.dtb
@@ -103,3 +104,4 @@ DTC_FLAGS_k3-j721e-sk += -@
 DTC_FLAGS_k3-j721s2-common-proc-board += -@
 DTC_FLAGS_k3-j721s2-evm-fusion += -@
 DTC_FLAGS_k3-j784s4-evm += -@
+DTC_FLAGS_k3-am642-evm += -@
