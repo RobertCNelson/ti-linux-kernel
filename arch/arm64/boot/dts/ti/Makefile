@@ -61,6 +61,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-j721e-beagleboneai64.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-evm.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-evm-csi2-ov5640.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-evm-fusion.dtbo 
+dtb-$(CONFIG_ARCH_K3) += k3-j721e-evm-gesi-exp-board.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-evm-virt-mac-client.dtbo
 
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-sk.dtb
