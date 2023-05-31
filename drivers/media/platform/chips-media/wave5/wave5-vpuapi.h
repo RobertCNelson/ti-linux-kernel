@@ -212,6 +212,9 @@ enum DEC_PIC_OPTION {
 #define SEQ_CHANGE_INTER_RES_CHANGE BIT(17) /* VP9 */
 #define SEQ_CHANGE_ENABLE_BITDEPTH BIT(18)
 #define SEQ_CHANGE_ENABLE_DPB_COUNT BIT(19)
+#define SEQ_CHANGE_ENABLE_ASPECT_RATIO BIT(21)
+#define SEQ_CHANGE_ENABLE_VIDEO_SIGNAL BIT(23)
+#define SEQ_CHANGE_ENABLE_VUI_TIMING_INFO BIT(29)
 
 #define SEQ_CHANGE_ENABLE_ALL_VP9 (SEQ_CHANGE_ENABLE_PROFILE | \
 		SEQ_CHANGE_ENABLE_SIZE | \
@@ -231,7 +234,10 @@ enum DEC_PIC_OPTION {
 
 #define SEQ_CHANGE_ENABLE_ALL_AVC (SEQ_CHANGE_ENABLE_SIZE | \
 		SEQ_CHANGE_ENABLE_BITDEPTH | \
-		SEQ_CHANGE_ENABLE_DPB_COUNT)
+		SEQ_CHANGE_ENABLE_DPB_COUNT | \
+		SEQ_CHANGE_ENABLE_ASPECT_RATIO | \
+		SEQ_CHANGE_ENABLE_VIDEO_SIGNAL | \
+		SEQ_CHANGE_ENABLE_VUI_TIMING_INFO)
 
 #define SEQ_CHANGE_ENABLE_ALL_AV1 (SEQ_CHANGE_ENABLE_PROFILE | \
 		SEQ_CHANGE_CHROMA_FORMAT_IDC | \
@@ -1067,13 +1073,16 @@ struct vpu_instance {
 	} *codec_info;
 	struct frame_buffer frame_buf[MAX_REG_FRAME];
 	struct vpu_buf frame_vbuf[MAX_REG_FRAME];
-	u32 min_dst_buf_count;
+	u32 fbc_buf_count;
 	u32 dst_buf_count;
 	u32 queued_src_buf_num;
 	u32 queued_dst_buf_num;
+	struct list_head avail_src_bufs;
+	struct list_head avail_dst_bufs;
 	u32 conf_win_width;
 	u32 conf_win_height;
 	u64 timestamp;
+	enum frame_buffer_format output_format;
 	bool cbcr_interleave;
 	bool nv21;
 	bool eos;
