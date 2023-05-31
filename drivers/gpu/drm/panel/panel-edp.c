@@ -25,6 +25,7 @@
 #include <linux/delay.h>
 #include <linux/gpio/consumer.h>
 #include <linux/iopoll.h>
+#include <linux/media-bus-format.h>
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
@@ -189,6 +190,9 @@ struct panel_desc {
 
 	/** @delay: Structure containing various delay values for this panel. */
 	struct panel_delay delay;
+
+	/** @bus_format: See MEDIA_BUS_FMT_... defines. */
+	u32 bus_format;
 };
 
 /**
@@ -339,6 +343,9 @@ static int panel_edp_get_non_edid_modes(struct panel_edp *panel,
 	connector->display_info.bpc = panel->desc->bpc;
 	connector->display_info.width_mm = panel->desc->size.width;
 	connector->display_info.height_mm = panel->desc->size.height;
+	if (panel->desc->bus_format)
+		drm_display_info_set_bus_formats(&connector->display_info,
+						 &panel->desc->bus_format, 1);
 
 	return num;
 }
@@ -880,13 +887,15 @@ static int panel_edp_probe(struct device *dev, const struct panel_desc *desc,
 		dev_warn(dev, "Expected bpc in {6,8,10} but got: %u\n", desc->bpc);
 	}
 
-	if (!panel->base.backlight && panel->aux) {
-		pm_runtime_get_sync(dev);
-		err = drm_panel_dp_aux_backlight(&panel->base, panel->aux);
-		pm_runtime_mark_last_busy(dev);
-		pm_runtime_put_autosuspend(dev);
-		if (err)
-			goto err_finished_pm_runtime;
+	if (!of_device_is_compatible(dev->of_node, "ti,panel-edp")) {
+		if (!panel->base.backlight && panel->aux) {
+			pm_runtime_get_sync(dev);
+			err = drm_panel_dp_aux_backlight(&panel->base, panel->aux);
+			pm_runtime_mark_last_busy(dev);
+			pm_runtime_put_autosuspend(dev);
+			if (err)
+				goto err_finished_pm_runtime;
+		}
 	}
 
 	drm_panel_add(&panel->base);
@@ -1717,6 +1726,37 @@ static const struct panel_desc starry_kr122ea0sra = {
 	},
 };
 
+static const struct drm_display_mode ti_panel_edp_mode = {
+	.clock = 40000,
+	.hdisplay = 800,
+	.hsync_start = 800 + 40,
+	.hsync_end = 800 + 40 + 128,
+	.htotal = 800 + 40 + 128 + 88,
+	.vdisplay = 600,
+	.vsync_start = 600 + 1,
+	.vsync_end = 600 + 1 + 4,
+	.vtotal = 600 + 1 + 4 + 23,
+
+	.crtc_clock = 40000,
+	.crtc_hdisplay = 800,
+	.crtc_hsync_start = 800 + 40,
+	.crtc_hsync_end = 800 + 40 + 128,
+	.crtc_htotal = 800 + 40 + 128 + 88,
+	.crtc_vdisplay = 600,
+	.crtc_vsync_start = 600 + 1,
+	.crtc_vsync_end = 600 + 1 + 4,
+	.crtc_vtotal = 600 + 1 + 4 + 23,
+
+	.flags = DRM_MODE_FLAG_NVSYNC | DRM_MODE_FLAG_NHSYNC,
+};
+
+static const struct panel_desc ti_panel_edp = {
+	.modes = &ti_panel_edp_mode,
+	.num_modes = 1,
+	.bpc = 8,
+	.bus_format = MEDIA_BUS_FMT_RGB888_1X24,
+};
+
 static const struct of_device_id platform_of_match[] = {
 	{
 		/* Must be first */
@@ -1808,6 +1848,9 @@ static const struct of_device_id platform_of_match[] = {
 	}, {
 		.compatible = "starry,kr122ea0sra",
 		.data = &starry_kr122ea0sra,
+	}, {
+		.compatible = "ti,panel-edp",
+		.data = &ti_panel_edp,
 	}, {
 		/* sentinel */
 	}

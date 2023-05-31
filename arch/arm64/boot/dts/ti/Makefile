@@ -34,6 +34,8 @@ dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-fusion-ov2312.dtb
 # Boards with AM64x SoC
 dtb-$(CONFIG_ARCH_K3) += k3-am642-evm.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-am642-sk.dtb
+dtb-$(CONFIG_ARCH_K3) += k3-am642-evm-icssg1-dualemac.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am642-evm-icssg1-dualemac-mii.dtbo
 
 # Boards with AM65x SoC
 dtb-$(CONFIG_ARCH_K3) += k3-am6528-iot2050-basic.dtb
@@ -56,6 +58,7 @@ k3-j721e-evm-dtbs := k3-j721e-common-proc-board.dtb k3-j721e-evm-quad-port-eth-e
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-evm.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-evm-csi2-ov5640.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-evm-fusion.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-j721e-evm-gesi-exp-board.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-evm-virt-mac-client.dtbo
 
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-sk.dtb
@@ -67,11 +70,15 @@ dtb-$(CONFIG_ARCH_K3) += k3-am68-sk-base-board.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-j721s2-common-proc-board.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-j721s2-evm-csi2-ov5640.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721s2-evm-fusion.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-j721s2-evm-gesi-exp-board.dtbo
 
 # Boards with J784s4 SoC
 dtb-$(CONFIG_ARCH_K3) += k3-am69-sk.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-j784s4-evm.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-j784s4-evm-csi2-ov5640.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-j784s4-evm-quad-port-eth-exp1.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-j784s4-evm-usxgmii-exp1-exp2.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-j784s4-evm-virt-mac-client.dtbo
 
 # FPDLink Sensors
 dtb-$(CONFIG_ARCH_K3) += k3-fpdlink-imx390-rcm-0-0.dtbo \
@@ -101,3 +108,4 @@ DTC_FLAGS_k3-j721e-sk += -@
 DTC_FLAGS_k3-j721s2-common-proc-board += -@
 DTC_FLAGS_k3-j721s2-evm-fusion += -@
 DTC_FLAGS_k3-j784s4-evm += -@
+DTC_FLAGS_k3-am642-evm += -@
