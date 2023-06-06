@@ -173,6 +173,10 @@ struct sii902x {
 	struct i2c_mux_core *i2cmux;
 	struct regulator_bulk_data supplies[2];
 	bool sink_is_hdmi;
+	struct device_link *link;
+	unsigned int ctx_tpi;
+	unsigned int ctx_interrupt;
+
 	/*
 	 * Mutex protects audio and video functions from interfering
 	 * each other, by keeping their i2c command sequences atomic.
@@ -423,7 +427,14 @@ static int sii902x_bridge_attach(struct drm_bridge *bridge,
 	struct sii902x *sii902x = bridge_to_sii902x(bridge);
 	u32 bus_format = MEDIA_BUS_FMT_RGB888_1X24;
 	struct drm_device *drm = bridge->dev;
+	struct device *dev = &sii902x->i2c->dev;
 	int ret;
+
+	sii902x->link = device_link_add(drm->dev, dev, DL_FLAG_STATELESS);
+	if (!sii902x->link) {
+		dev_err(dev, "failed to create device link");
+		return -EINVAL;
+	}
 
 	if (flags & DRM_BRIDGE_ATTACH_NO_CONNECTOR)
 		return drm_bridge_attach(bridge->encoder, sii902x->next_bridge,
@@ -433,16 +444,17 @@ static int sii902x_bridge_attach(struct drm_bridge *bridge,
 				 &sii902x_connector_helper_funcs);
 
 	if (!drm_core_check_feature(drm, DRIVER_ATOMIC)) {
-		dev_err(&sii902x->i2c->dev,
+		dev_err(dev,
 			"sii902x driver is only compatible with DRM devices supporting atomic updates\n");
-		return -ENOTSUPP;
+		ret = -ENOTSUPP;
+		goto err_bridge_attach;
 	}
 
 	ret = drm_connector_init(drm, &sii902x->connector,
 				 &sii902x_connector_funcs,
 				 DRM_MODE_CONNECTOR_HDMIA);
 	if (ret)
-		return ret;
+		goto err_bridge_attach;
 
 	if (sii902x->i2c->irq > 0)
 		sii902x->connector.polled = DRM_CONNECTOR_POLL_HPD;
@@ -452,11 +464,16 @@ static int sii902x_bridge_attach(struct drm_bridge *bridge,
 	ret = drm_display_info_set_bus_formats(&sii902x->connector.display_info,
 					       &bus_format, 1);
 	if (ret)
-		return ret;
+		goto err_bridge_attach;
 
 	drm_connector_attach_encoder(&sii902x->connector, bridge->encoder);
 
 	return 0;
+
+err_bridge_attach:
+	device_link_del(sii902x->link);
+
+	return ret;
 }
 
 static enum drm_connector_status sii902x_bridge_detect(struct drm_bridge *bridge)
@@ -999,6 +1016,76 @@ static const struct drm_bridge_timings default_sii902x_timings = {
 		 | DRM_BUS_FLAG_DE_HIGH,
 };
 
+static int __maybe_unused sii902x_resume(struct device *dev)
+{
+	struct sii902x *sii902x = dev_get_drvdata(dev);
+	unsigned int tpi_reg, status;
+	int ret;
+
+	ret = regulator_bulk_enable(ARRAY_SIZE(sii902x->supplies),
+				    sii902x->supplies);
+	if (ret < 0) {
+		dev_err(dev, "Failed to enable supplies");
+		return ret;
+	}
+
+	ret = regmap_read(sii902x->regmap, SII902X_REG_TPI_RQB, &tpi_reg);
+	if (ret)
+		goto err_disable_supply;
+
+	if (tpi_reg != sii902x->ctx_tpi) {
+		/*
+		 * TPI register context has changed. SII902X power supply
+		 * device has been turned off and on.
+		 */
+
+		sii902x_reset(sii902x);
+
+		/* Configure the device to enter TPI mode. */
+		ret = regmap_write(sii902x->regmap, SII902X_REG_TPI_RQB, 0x0);
+		if (ret)
+			goto err_disable_supply;
+
+		/* Re enable the interrupts */
+		regmap_write(sii902x->regmap, SII902X_INT_ENABLE,
+			     sii902x->ctx_interrupt);
+	}
+
+	/* Clear all pending interrupts */
+	regmap_read(sii902x->regmap, SII902X_INT_STATUS, &status);
+	regmap_write(sii902x->regmap, SII902X_INT_STATUS, status);
+
+	return 0;
+
+err_disable_supply:
+
+	regulator_bulk_disable(ARRAY_SIZE(sii902x->supplies),
+			       sii902x->supplies);
+
+	return ret;
+}
+
+static int __maybe_unused sii902x_suspend(struct device *dev)
+{
+	struct sii902x *sii902x = dev_get_drvdata(dev);
+	int ret;
+
+	regmap_read(sii902x->regmap, SII902X_REG_TPI_RQB,
+		    &sii902x->ctx_tpi);
+
+	regmap_read(sii902x->regmap, SII902X_INT_ENABLE,
+		    &sii902x->ctx_interrupt);
+
+	ret = regulator_bulk_disable(ARRAY_SIZE(sii902x->supplies),
+				     sii902x->supplies);
+
+	return ret;
+}
+
+static const struct dev_pm_ops sii902x_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(sii902x_suspend, sii902x_resume)
+};
+
 static int sii902x_init(struct sii902x *sii902x)
 {
 	struct device *dev = &sii902x->i2c->dev;
@@ -1151,6 +1238,10 @@ static void sii902x_remove(struct i2c_client *client)
 	struct sii902x *sii902x = i2c_get_clientdata(client);
 
 	i2c_mux_del_adapters(sii902x->i2cmux);
+
+	if (sii902x->link)
+		device_link_del(sii902x->link);
+
 	drm_bridge_remove(&sii902x->bridge);
 	regulator_bulk_disable(ARRAY_SIZE(sii902x->supplies),
 			       sii902x->supplies);
@@ -1173,6 +1264,7 @@ static struct i2c_driver sii902x_driver = {
 	.remove = sii902x_remove,
 	.driver = {
 		.name = "sii902x",
+		.pm = &sii902x_pm_ops,
 		.of_match_table = sii902x_dt_ids,
 	},
 	.id_table = sii902x_i2c_ids,
