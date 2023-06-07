@@ -564,12 +564,33 @@ kernel_images(
     ]
 )
 
+#
+# NOTE: Using Image.lz4 in make_goals does not work because
+#   kernel build passes legacy option (-l) to lz4 command
+#   and u-boot fails to decompress.  Instead, add custom
+#   command to lz4 compress same options as kernel, but
+#   without the -l.
+#
+genrule(
+    name = "ti_compressed_image",
+    srcs = [":ti/Image"],
+    outs = ["Image.lz4"],
+    cmd = """
+        $(location //build/kernel:hermetic-tools/lz4) -f -12 --favor-decSpeed $(location :ti/Image) $@
+    """,
+    tools = [
+        "//build/kernel:hermetic-tools/lz4",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 copy_to_dist_dir(
     name = "ti_dist",
     data = [
         ":ti",
         "//imgtech-module:ti_ext_modules",
         ":ti_images",
+        ":ti_compressed_image",
         ":ti_modules_install",
     ],
     dist_dir = "out/ti/dist",
