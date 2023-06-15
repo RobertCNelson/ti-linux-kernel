@@ -53,6 +53,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-am654-pcie-usb2.dtbo
 # Boards with J7200 SoC
 k3-j7200-evm-dtbs := k3-j7200-common-proc-board.dtb k3-j7200-evm-quad-port-eth-exp.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j7200-evm.dtb
+dtb-$(CONFIG_ARCH_K3) += k3-j7200-evm-mcspi-loopback.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j7200-evm-virt-mac-client.dtbo
 
 # Boards with J721e SoC
@@ -77,6 +78,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-j721s2-evm-gesi-exp-board.dtbo
 
 # Boards with J784s4 SoC
 dtb-$(CONFIG_ARCH_K3) += k3-am69-sk.dtb
+dtb-$(CONFIG_ARCH_K3) += k3-am69-sk-ddr-mem-carveout.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j784s4-evm.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-j784s4-evm-csi2-ov5640.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j784s4-evm-quad-port-eth-exp1.dtbo
@@ -105,6 +107,7 @@ DTC_FLAGS_k3-am62a7-sk += -@
 DTC_FLAGS_k3-am62a7-sk-fusion += -@
 DTC_FLAGS_k3-am654-base-board += -@
 DTC_FLAGS_k3-am68-sk-base-board += -@
+DTC_FLAGS_k3-am69-sk += -@
 DTC_FLAGS_k3-j7200-common-proc-board += -@
 DTC_FLAGS_k3-j721e-common-proc-board += -@
 DTC_FLAGS_k3-j721e-evm-fusion += -@
