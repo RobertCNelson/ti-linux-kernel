@@ -213,6 +213,21 @@
 		power-domains = <&k3_pds 116 TI_SCI_PD_EXCLUSIVE>;
 	};
 
+	secure_proxy_sa3: mailbox@43600000 {
+		compatible = "ti,am654-secure-proxy";
+		#mbox-cells = <1>;
+		reg-names = "target_data", "rt", "scfg";
+		reg = <0x00 0x43600000 0x00 0x10000>,
+		      <0x00 0x44880000 0x00 0x20000>,
+		      <0x00 0x44860000 0x00 0x20000>;
+		/*
+		 * Marked Disabled:
+		 * Node is incomplete as it is meant for bootloaders and
+		 * firmware on non-MPU processors
+		 */
+		status = "disabled";
+	};
+
 	main_pmx0: pinctrl@f4000 {
 		compatible = "ti,am6-padconf";
 		reg = <0x00 0xf4000 0x00 0x2ac>;
@@ -318,6 +333,12 @@
 		assigned-clock-parents = <&k3_clks 43 3>;
 		power-domains = <&k3_pds 43 TI_SCI_PD_EXCLUSIVE>;
 		ti,timer-pwm;
+	};
+
+	main_esm: esm@420000 {
+		compatible = "ti,j721e-esm";
+		reg = <0x00 0x420000 0x00 0x1000>;
+		ti,esm-pins = <160>, <161>, <162>, <163>, <177>, <178>;
 	};
 
 	main_uart0: serial@2800000 {
