@@ -56,6 +56,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-am654-pcie-usb2.dtbo
 
 dtb-$(CONFIG_ARCH_K3) += k3-am68-sk-base-board.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-am68-sk-bb-csi2-ov5640.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am68-sk-bb-rpi-cam-imx219.dtso
 dtb-$(CONFIG_ARCH_K3) += k3-am68-sk-fpdlink-fusion.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am68-sk-som-ddr-mem-carveout.dtbo
 
