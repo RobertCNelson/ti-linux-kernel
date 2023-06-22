@@ -1021,14 +1021,14 @@ struct icssg_firmwares {
 
 static struct icssg_firmwares icssg_hsr_firmwares[] = {
 	{
-		.pru = "ti-pruss/am65x-sr2-pru0-pru-hsr-fw.elf",
-		.rtu = "ti-pruss/am65x-sr2-rtu0-pru-hsr-fw.elf",
-		.txpru = "ti-pruss/am65x-sr2-txpru0-pru-hsr-fw.elf",
+		.pru = "ti-pruss/am65x-sr2-pru0-pruhsr-fw.elf",
+		.rtu = "ti-pruss/am65x-sr2-rtu0-pruhsr-fw.elf",
+		.txpru = "ti-pruss/am65x-sr2-txpru0-pruhsr-fw.elf",
 	},
 	{
-		.pru = "ti-pruss/am65x-sr2-pru1-pru-hsr-fw.elf",
-		.rtu = "ti-pruss/am65x-sr2-rtu1-pru-hsr-fw.elf",
-		.txpru = "ti-pruss/am65x-sr2-txpru1-pru-hsr-fw.elf",
+		.pru = "ti-pruss/am65x-sr2-pru1-pruhsr-fw.elf",
+		.rtu = "ti-pruss/am65x-sr2-rtu1-pruhsr-fw.elf",
+		.txpru = "ti-pruss/am65x-sr2-txpru1-pruhsr-fw.elf",
 	}
 };
 
@@ -1836,6 +1836,7 @@ static void emac_ndo_tx_timeout(struct net_device *ndev, unsigned int txqueue)
 static void emac_ndo_set_rx_mode_work(struct work_struct *work)
 {
 	struct prueth_emac *emac = container_of(work, struct prueth_emac, rx_mode_work);
+	struct prueth *prueth = emac->prueth;
 	struct net_device *ndev = emac->ndev;
 	bool promisc, allmulti;
 
@@ -1858,18 +1859,21 @@ static void emac_ndo_set_rx_mode_work(struct work_struct *work)
 		return;
 	}
 
-	emac_fdb_flush_multicast(emac);
+	if (!prueth->is_switch_mode && !prueth->is_hsr_offload_mode) {
+		emac_fdb_flush_multicast(emac);
 
-	if (!netdev_mc_empty(ndev)) {
-		struct netdev_hw_addr *ha;
+		if (!netdev_mc_empty(ndev)) {
+			struct netdev_hw_addr *ha;
 
-		/* Program multicast address list into FDB Table */
-		netdev_for_each_mc_addr(ha, ndev) {
-			icssg_fdb_add_del(emac, ha->addr, 0, BIT(emac->port_id), true);
-			icssg_vtbl_modify(emac, 0, BIT(emac->port_id),
-					  BIT(emac->port_id), true);
+			/* Program multicast address list into FDB Table */
+			netdev_for_each_mc_addr(ha, ndev) {
+				icssg_fdb_add_del(emac, ha->addr, 0,
+						  BIT(emac->port_id), true);
+				icssg_vtbl_modify(emac, 0, BIT(emac->port_id),
+						  BIT(emac->port_id), true);
+			}
+			return;
 		}
-		return;
 	}
 }
 
@@ -2747,6 +2751,11 @@ static int prueth_dl_hsr_offload_mode_set(struct devlink *dl, u32 id,
 		goto exit;
 
 	prueth->is_hsr_offload_mode = hsr_offload_en;
+
+	if (prueth->is_hsr_offload_mode)
+		icss_iep_init_fw(prueth->iep1);
+	else
+		icss_iep_exit_fw(prueth->iep1);
 
 	dev_info(prueth->dev, "Enabling %s mode\n",
 		 hsr_offload_en ? "HSR offload" : "Dual EMAC");
