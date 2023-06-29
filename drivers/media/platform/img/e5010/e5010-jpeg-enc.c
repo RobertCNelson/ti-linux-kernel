@@ -462,8 +462,6 @@ static void e5010_queue_update_sizeimage(struct e5010_q_data *q, struct e5010_co
 		else
 			q->sizeimage[0] = q->width_adjusted * q->height_adjusted * 2;
 		q->sizeimage[0] += HEADER_SIZE;
-		/* jpeg stream size must be multiple of 4K */
-		q->sizeimage[0] = ALIGN(q->sizeimage[0], PAGE_SIZE);
 		q->sizeimage[1] = 0;
 	} else if (q->fmt->subsampling == V4L2_JPEG_CHROMA_SUBSAMPLING_420) {
 		if (q->fmt->num_planes == 1)	{
@@ -521,7 +519,13 @@ static int e5010_jpeg_try_fmt(struct v4l2_format *f, struct e5010_context *ctx)
 
 	if (V4L2_TYPE_IS_OUTPUT(f->type)) {
 		if (!pix_mp->colorspace)
-			pix_mp->colorspace = V4L2_COLORSPACE_SRGB;
+			pix_mp->colorspace = V4L2_COLORSPACE_JPEG;
+		if (!pix_mp->ycbcr_enc)
+			pix_mp->ycbcr_enc = V4L2_YCBCR_ENC_DEFAULT;
+		if (!pix_mp->quantization)
+			pix_mp->quantization = V4L2_QUANTIZATION_DEFAULT;
+		if (!pix_mp->xfer_func)
+			pix_mp->xfer_func = V4L2_XFER_FUNC_DEFAULT;
 
 		v4l_bound_align_image(&queue->width_adjusted,
 				      MIN_DIMENSION,
@@ -541,6 +545,10 @@ static int e5010_jpeg_try_fmt(struct v4l2_format *f, struct e5010_context *ctx)
 		}
 	} else {
 		pix_mp->colorspace = V4L2_COLORSPACE_JPEG;
+		pix_mp->ycbcr_enc = V4L2_YCBCR_ENC_DEFAULT;
+		pix_mp->quantization = V4L2_QUANTIZATION_DEFAULT;
+		pix_mp->xfer_func = V4L2_XFER_FUNC_DEFAULT;
+
 		plane_fmt[0].bytesperline = 0;
 
 		memset(plane_fmt[0].reserved, 0, sizeof(plane_fmt[0].reserved));
@@ -562,9 +570,6 @@ static int e5010_jpeg_try_fmt(struct v4l2_format *f, struct e5010_context *ctx)
 	pix_mp->pixelformat = fmt->fourcc;
 	pix_mp->width = queue->width_adjusted;
 	pix_mp->height = queue->height_adjusted;
-	pix_mp->ycbcr_enc = V4L2_YCBCR_ENC_DEFAULT;
-	pix_mp->quantization = V4L2_QUANTIZATION_DEFAULT;
-	pix_mp->xfer_func = V4L2_XFER_FUNC_DEFAULT;
 	pix_mp->num_planes = fmt->num_planes;
 	memset(pix_mp->reserved, 0, sizeof(pix_mp->reserved));
 
