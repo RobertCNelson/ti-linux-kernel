@@ -149,6 +149,24 @@ struct slabinfo;
 DECLARE_HOOK(android_vh_cache_show,
 	TP_PROTO(struct seq_file *m, struct slabinfo *sinfo, struct kmem_cache *s),
 	TP_ARGS(m, sinfo, s));
+DECLARE_HOOK(android_vh_free_unref_page_bypass,
+	TP_PROTO(struct page *page, int order, int migratetype, bool *bypass),
+	TP_ARGS(page, order, migratetype, bypass));
+DECLARE_HOOK(android_vh_kvmalloc_node_use_vmalloc,
+	TP_PROTO(size_t size, gfp_t *kmalloc_flags, bool *use_vmalloc),
+	TP_ARGS(size, kmalloc_flags, use_vmalloc));
+DECLARE_HOOK(android_vh_should_alloc_pages_retry,
+	TP_PROTO(gfp_t gfp_mask, int order, int *alloc_flags,
+	int migratetype, struct zone *preferred_zone, struct page **page, bool *should_alloc_retry),
+	TP_ARGS(gfp_mask, order, alloc_flags,
+		migratetype, preferred_zone, page, should_alloc_retry));
+DECLARE_HOOK(android_vh_unreserve_highatomic_bypass,
+	TP_PROTO(bool force, struct zone *zone, bool *skip_unreserve_highatomic),
+	TP_ARGS(force, zone, skip_unreserve_highatomic));
+DECLARE_HOOK(android_vh_rmqueue_bulk_bypass,
+	TP_PROTO(unsigned int order, struct per_cpu_pages *pcp, int migratetype,
+		struct list_head *list),
+	TP_ARGS(order, pcp, migratetype, list));
 DECLARE_HOOK(android_vh_madvise_swapin_walk_pmd_entry,
 	TP_PROTO(swp_entry_t entry),
 	TP_ARGS(entry));
