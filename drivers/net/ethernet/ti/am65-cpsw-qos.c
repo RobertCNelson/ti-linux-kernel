@@ -15,6 +15,44 @@
 #include "am65-cpts.h"
 #include "cpsw_ale.h"
 
+#define AM65_CPSW_REG_CTL			0x004
+#define AM65_CPSW_PN_REG_CTL			0x004
+#define AM65_CPSW_PN_REG_TX_PRI_MAP		0x018
+#define AM65_CPSW_PN_REG_RX_PRI_MAP		0x020
+#define AM65_CPSW_PN_REG_FIFO_STATUS		0x050
+#define AM65_CPSW_PN_REG_EST_CTL		0x060
+#define AM65_CPSW_PN_REG_PRI_CIR(pri)		(0x140 + 4 * (pri))
+#define AM65_CPSW_PN_REG_PRI_EIR(pri)		(0x160 + 4 * (pri))
+
+/* AM65_CPSW_REG_CTL register fields */
+#define AM65_CPSW_CTL_EST_EN			BIT(18)
+
+/* AM65_CPSW_PN_REG_CTL register fields */
+#define AM65_CPSW_PN_CTL_EST_PORT_EN		BIT(17)
+
+/* AM65_CPSW_PN_REG_EST_CTL register fields */
+#define AM65_CPSW_PN_EST_ONEBUF			BIT(0)
+#define AM65_CPSW_PN_EST_BUFSEL			BIT(1)
+#define AM65_CPSW_PN_EST_TS_EN			BIT(2)
+#define AM65_CPSW_PN_EST_TS_FIRST		BIT(3)
+#define AM65_CPSW_PN_EST_ONEPRI			BIT(4)
+#define AM65_CPSW_PN_EST_TS_PRI_MSK		GENMASK(7, 5)
+
+/* AM65_CPSW_PN_REG_FIFO_STATUS register fields */
+#define AM65_CPSW_PN_FST_TX_PRI_ACTIVE_MSK	GENMASK(7, 0)
+#define AM65_CPSW_PN_FST_TX_E_MAC_ALLOW_MSK	GENMASK(15, 8)
+#define AM65_CPSW_PN_FST_EST_CNT_ERR		BIT(16)
+#define AM65_CPSW_PN_FST_EST_ADD_ERR		BIT(17)
+#define AM65_CPSW_PN_FST_EST_BUFACT		BIT(18)
+
+/* EST FETCH COMMAND RAM */
+#define AM65_CPSW_FETCH_RAM_CMD_NUM		0x80
+#define AM65_CPSW_FETCH_CNT_MSK			GENMASK(21, 8)
+#define AM65_CPSW_FETCH_CNT_MAX			(AM65_CPSW_FETCH_CNT_MSK >> 8)
+#define AM65_CPSW_FETCH_CNT_OFFSET		8
+#define AM65_CPSW_FETCH_ALLOW_MSK		GENMASK(7, 0)
+#define AM65_CPSW_FETCH_ALLOW_MAX		AM65_CPSW_FETCH_ALLOW_MSK
+
 enum timer_act {
 	TACT_PROG,		/* need program timer */
 	TACT_NEED_STOP,		/* need stop first */
@@ -30,6 +68,12 @@ am65_cpsw_qos_tx_rate_calc(u32 rate_mbps, unsigned long bus_freq)
 	ir = DIV_ROUND_UP(((u64)rate_mbps * 32768),  bus_freq);
 	return ir;
 }
+
+/* number of traffic classes (FIFOs) per port */
+#define AM65_CPSW_PN_TC_NUM			8
+#define AM65_CPSW_PN_TX_PRI_MAP_DEFAULT		0x76543210
+
+static int am65_cpsw_setup_mqprio(struct net_device *ndev, void *type_data);
 
 static int am65_cpsw_port_est_enabled(struct am65_cpsw_port *port)
 {
@@ -515,7 +559,6 @@ static void am65_cpsw_est_link_up(struct net_device *ndev, int link_speed)
 	ktime_t cur_time;
 	s64 delta;
 
-	port->qos.link_speed = link_speed;
 	if (!am65_cpsw_port_est_enabled(port))
 		return;
 
@@ -849,6 +892,295 @@ void am65_cpsw_qos_tx_p0_rate_init(struct am65_cpsw_common *common)
 	}
 }
 
+static void am65_cpsw_tx_pn_shaper_apply(struct am65_cpsw_port *port)
+{
+       struct am65_cpsw_mqprio *p_mqprio = &port->qos.mqprio;
+       struct am65_cpsw_common *common = port->common;
+       struct tc_mqprio_qopt_offload *mqprio;
+       bool shaper_en;
+       u32 rate_mbps;
+       int i;
+
+       mqprio = &p_mqprio->mqprio_hw;
+       shaper_en = p_mqprio->shaper_en && !p_mqprio->shaper_susp;
+
+       for (i = 0; i < mqprio->qopt.num_tc; i++) {
+               rate_mbps = 0;
+               if (shaper_en) {
+                       rate_mbps = mqprio->min_rate[i] * 8 / 1000000;
+                       rate_mbps = am65_cpsw_qos_tx_rate_calc(rate_mbps,
+                                                              common->bus_freq);
+               }
+
+               writel(rate_mbps,
+                      port->port_base + AM65_CPSW_PN_REG_PRI_CIR(i));
+       }
+
+       for (i = 0; i < mqprio->qopt.num_tc; i++) {
+               rate_mbps = 0;
+               if (shaper_en && mqprio->max_rate[i]) {
+                       rate_mbps = mqprio->max_rate[i] - mqprio->min_rate[i];
+                       rate_mbps = rate_mbps * 8 / 1000000;
+                       rate_mbps = am65_cpsw_qos_tx_rate_calc(rate_mbps,
+                                                              common->bus_freq);
+               }
+
+               writel(rate_mbps,
+                      port->port_base + AM65_CPSW_PN_REG_PRI_EIR(i));
+       }
+}
+
+static void am65_cpsw_tx_pn_shaper_link_up(struct am65_cpsw_port *port)
+{
+       struct am65_cpsw_mqprio *p_mqprio = &port->qos.mqprio;
+       struct am65_cpsw_common *common = port->common;
+       bool shaper_susp = false;
+
+       if (!p_mqprio->enable || !p_mqprio->shaper_en)
+               return;
+
+       if (p_mqprio->max_rate_total > port->qos.link_speed)
+               shaper_susp = true;
+
+       if (p_mqprio->shaper_susp == shaper_susp)
+               return;
+
+       if (shaper_susp)
+               dev_info(common->dev,
+                        "Port%u: total shaper tx rate > link speed - suspend shaper\n",
+                        port->port_id);
+       else
+               dev_info(common->dev,
+                        "Port%u: link recover - resume shaper\n",
+                        port->port_id);
+
+       p_mqprio->shaper_susp = shaper_susp;
+       am65_cpsw_tx_pn_shaper_apply(port);
+}
+
+void am65_cpsw_qos_mqprio_init(struct am65_cpsw_port *port)
+{
+       struct am65_cpsw_host *host = am65_common_get_host(port->common);
+       struct am65_cpsw_mqprio *p_mqprio = &port->qos.mqprio;
+       struct tc_mqprio_qopt_offload *mqprio;
+       u32 tx_prio_map = 0, rx_prio_map;
+       int i, fifo;
+
+       mqprio = &p_mqprio->mqprio_hw;
+       rx_prio_map = readl(host->port_base + AM65_CPSW_PN_REG_RX_PRI_MAP);
+
+       if (p_mqprio->enable) {
+               for (i = 0; i < AM65_CPSW_PN_TC_NUM; i++) {
+                       fifo = mqprio->qopt.prio_tc_map[i];
+                       tx_prio_map |= fifo << (4 * i);
+               }
+
+               netdev_set_num_tc(port->ndev, mqprio->qopt.num_tc);
+               for (i = 0; i < mqprio->qopt.num_tc; i++) {
+                       netdev_set_tc_queue(port->ndev, i,
+                                           mqprio->qopt.count[i],
+                                           mqprio->qopt.offset[i]);
+                       if (!i) {
++                               p_mqprio->tc0_q = mqprio->qopt.offset[i];
++                               rx_prio_map &= ~(0x7 << (4 * p_mqprio->tc0_q));
+                       }
+               }
+       } else {
+               /* restore default configuration */
+               netdev_reset_tc(port->ndev);
+               tx_prio_map = AM65_CPSW_PN_TX_PRI_MAP_DEFAULT;
+               rx_prio_map |= p_mqprio->tc0_q << (4 * p_mqprio->tc0_q);
+               p_mqprio->tc0_q = 0;
+       }
+
+       writel(tx_prio_map,
+              port->port_base + AM65_CPSW_PN_REG_TX_PRI_MAP);
+       writel(rx_prio_map,
+              host->port_base + AM65_CPSW_PN_REG_RX_PRI_MAP);
+
+       am65_cpsw_tx_pn_shaper_apply(port);
+}
+
+static int am65_cpsw_mqprio_verify(struct am65_cpsw_port *port,
+                                  struct tc_mqprio_qopt_offload *mqprio)
+{
+       int i;
+
+       for (i = 0; i < mqprio->qopt.num_tc; i++) {
+               unsigned int last = mqprio->qopt.offset[i] +
+                                   mqprio->qopt.count[i];
+
+               if (mqprio->qopt.offset[i] >= port->ndev->real_num_tx_queues ||
+                   !mqprio->qopt.count[i] ||
+                   last >  port->ndev->real_num_tx_queues)
+                       return -EINVAL;
+       }
+
+       return 0;
+}
+
+static int am65_cpsw_mqprio_verify_shaper(struct am65_cpsw_port *port,
+                                         struct tc_mqprio_qopt_offload *mqprio,
+                                         u64 *max_rate)
+{
+       struct am65_cpsw_common *common = port->common;
+       u64 min_rate_total = 0, max_rate_total = 0;
+       u32 min_rate_msk = 0, max_rate_msk = 0;
+       bool has_min_rate, has_max_rate;
+       int num_tc, i;
+
+       has_min_rate = !!(mqprio->flags & TC_MQPRIO_F_MIN_RATE);
+       has_max_rate = !!(mqprio->flags & TC_MQPRIO_F_MAX_RATE);
+
+       if (!has_min_rate && has_max_rate)
+               return -EOPNOTSUPP;
+
+       if (!has_min_rate)
+               return 0;
+
+       num_tc = mqprio->qopt.num_tc;
+
+       for (i = num_tc - 1; i >= 0; i--) {
+               u32 ch_msk;
+
+               if (mqprio->min_rate[i])
+                       min_rate_msk |= BIT(i);
+               min_rate_total +=  mqprio->min_rate[i];
+
+               if (has_max_rate) {
+                       if (mqprio->max_rate[i])
+                               max_rate_msk |= BIT(i);
+                       max_rate_total +=  mqprio->max_rate[i];
+
+                       if (!mqprio->min_rate[i] && mqprio->max_rate[i]) {
+                               dev_err(common->dev, "TX tc%d rate max>0 but min=0\n",
+                                       i);
+                               return -EINVAL;
+                       }
+
+                       if (mqprio->max_rate[i] &&
+                           mqprio->max_rate[i] < mqprio->min_rate[i]) {
+                               dev_err(common->dev, "TX tc%d rate min(%llu)>max(%llu)\n",
+                                       i, mqprio->min_rate[i],
+                                       mqprio->max_rate[i]);
+                               return -EINVAL;
+                       }
+               }
+
+               ch_msk = GENMASK(num_tc - 1, i);
+               if ((min_rate_msk & BIT(i)) && (min_rate_msk ^ ch_msk)) {
+                       dev_err(common->dev, "TX Min rate limiting has to be enabled sequentially hi->lo tx_rate_msk%x\n",
+                               min_rate_msk);
+                       return -EINVAL;
+               }
+
+               if ((max_rate_msk & BIT(i)) && (max_rate_msk ^ ch_msk)) {
+                       dev_err(common->dev, "TX max rate limiting has to be enabled sequentially hi->lo tx_rate_msk%x\n",
+                               max_rate_msk);
+                       return -EINVAL;
+               }
+       }
+       min_rate_total *= 8;
+       min_rate_total /= 1000 * 1000;
+       max_rate_total *= 8;
+       max_rate_total /= 1000 * 1000;
+
+       if (port->qos.link_speed != SPEED_UNKNOWN) {
+               if (min_rate_total > port->qos.link_speed) {
+                       dev_err(common->dev, "TX rate min exceed %llu link speed %d\n",
+                               min_rate_total, port->qos.link_speed);
+                       return -EINVAL;
+               }
+       }
+       min_rate_total *= 8;
+       min_rate_total /= 1000 * 1000;
+       max_rate_total *= 8;
+       max_rate_total /= 1000 * 1000;
+
+       if (port->qos.link_speed != SPEED_UNKNOWN) {
+               if (min_rate_total > port->qos.link_speed) {
+                       dev_err(common->dev, "TX rate min exceed %llu link speed %d\n",
+                               min_rate_total, port->qos.link_speed);
+                       return -EINVAL;
+               }
+
+               if (max_rate_total > port->qos.link_speed) {
+                       dev_err(common->dev, "TX rate max exceed %llu link speed %d\n",
+                               max_rate_total, port->qos.link_speed);
+                       return -EINVAL;
+               }
+       }
+
+       *max_rate = max_t(u64, min_rate_total, max_rate_total);
+
+       return 0;
+}
+static int am65_cpsw_setup_mqprio(struct net_device *ndev, void *type_data)
+{
+       struct am65_cpsw_port *port = am65_ndev_to_port(ndev);
+       struct tc_mqprio_qopt_offload *mqprio = type_data;
+       struct am65_cpsw_common *common = port->common;
+       struct am65_cpsw_mqprio *p_mqprio;
+       bool has_min_rate;
+       int num_tc, ret;
+       u64 max_rate;
+
+       p_mqprio = &port->qos.mqprio;
+
+       if (!mqprio->qopt.hw)
+               goto skip_check;
+
+       if (mqprio->mode != TC_MQPRIO_MODE_CHANNEL)
+               return -EOPNOTSUPP;
+
+       num_tc = mqprio->qopt.num_tc;
+       if (num_tc > AM65_CPSW_PN_TC_NUM)
+               return -ERANGE;
+
+       if ((mqprio->flags & TC_MQPRIO_F_SHAPER) &&
+           mqprio->shaper != TC_MQPRIO_SHAPER_BW_RATE)
+               return -EOPNOTSUPP;
+
+       ret = am65_cpsw_mqprio_verify(port, mqprio);
+       if (ret)
+               return ret;
+
+       ret = am65_cpsw_mqprio_verify_shaper(port, mqprio, &max_rate);
+       if (ret)
+               return ret;
+
+skip_check:
+       ret = pm_runtime_get_sync(common->dev);
+       if (ret < 0) {
+               pm_runtime_put_noidle(common->dev);
+               return ret;
+       }
+
+       if (mqprio->qopt.hw) {
+               memcpy(&p_mqprio->mqprio_hw, mqprio, sizeof(*mqprio));
+               has_min_rate = !!(mqprio->flags & TC_MQPRIO_F_MIN_RATE);
+               p_mqprio->enable = 1;
+               p_mqprio->shaper_en = has_min_rate;
+               p_mqprio->shaper_susp = !has_min_rate;
+               p_mqprio->max_rate_total = max_rate;
+       } else {
+               unsigned int tc0_q = p_mqprio->tc0_q;
+
+               memset(p_mqprio, 0, sizeof(*p_mqprio));
+               p_mqprio->mqprio_hw.qopt.num_tc = AM65_CPSW_PN_TC_NUM;
+               p_mqprio->tc0_q = tc0_q;
+       }
+
+       if (!netif_running(ndev))
+               goto exit_put;
+
+       am65_cpsw_qos_mqprio_init(port);
+
+exit_put:
+       pm_runtime_put(common->dev);
+       return 0;
+}
+
 int am65_cpsw_qos_ndo_setup_tc(struct net_device *ndev, enum tc_setup_type type,
 			       void *type_data)
 {
@@ -857,6 +1189,8 @@ int am65_cpsw_qos_ndo_setup_tc(struct net_device *ndev, enum tc_setup_type type,
 		return am65_cpsw_tc_query_caps(ndev, type_data);
 	case TC_SETUP_QDISC_TAPRIO:
 		return am65_cpsw_setup_taprio(ndev, type_data);
+    case TC_SETUP_QDISC_MQPRIO:
+        return am65_cpsw_setup_mqprio(ndev, type_data);
 	case TC_SETUP_BLOCK:
 		return am65_cpsw_qos_setup_tc_block(ndev, type_data);
 	default:
@@ -864,10 +1198,14 @@ int am65_cpsw_qos_ndo_setup_tc(struct net_device *ndev, enum tc_setup_type type,
 	}
 }
 
+static void am65_cpsw_tx_pn_shaper_link_up(struct am65_cpsw_port *port);
+
 void am65_cpsw_qos_link_up(struct net_device *ndev, int link_speed)
 {
 	struct am65_cpsw_port *port = am65_ndev_to_port(ndev);
 
+	port->qos.link_speed = link_speed;
+    am65_cpsw_tx_pn_shaper_link_up(port);
 	am65_cpsw_est_link_up(ndev, link_speed);
 	port->qos.link_down_time = 0;
 }

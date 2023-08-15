@@ -7,13 +7,25 @@
 
 #include <linux/netdevice.h>
 #include <net/pkt_sched.h>
+#include <net/pkt_cls.h>
 
 struct am65_cpsw_common;
+struct am65_cpsw_port;
 
 struct am65_cpsw_est {
 	int buf;
 	/* has to be the last one */
 	struct tc_taprio_qopt_offload taprio;
+};
+
+struct am65_cpsw_mqprio {
+	struct tc_mqprio_qopt_offload mqprio_hw;
+	u64 max_rate_total;
+
+	unsigned enable:1;
+	unsigned shaper_en:1;
+	unsigned shaper_susp:1;
+	unsigned tc0_q:3;
 };
 
 struct am65_cpsw_ale_ratelimit {
@@ -26,6 +38,7 @@ struct am65_cpsw_qos {
 	struct am65_cpsw_est *est_oper;
 	ktime_t link_down_time;
 	int link_speed;
+	struct am65_cpsw_mqprio mqprio;
 
 	struct am65_cpsw_ale_ratelimit ale_bc_ratelimit;
 	struct am65_cpsw_ale_ratelimit ale_mc_ratelimit;
