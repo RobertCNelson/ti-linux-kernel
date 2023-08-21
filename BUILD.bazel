@@ -715,6 +715,7 @@ kernel_build(
         "k3-am625-sk-csi2-tevi-ov5640.dtbo",
         "k3-am625-sk-hdmi-audio.dtbo",
         "k3-am625-sk-microtips-mf101hie-panel.dtbo",
+        "k3-am62-lp-sk-microtips-mf101hie-panel.dtbo",
         "vmlinux",
         "vmlinux.symvers",
     ],
@@ -875,6 +876,7 @@ kernel_images(
         ":ti/k3-am625-sk-csi2-ov5640.dtbo",
         ":ti/k3-am625-sk-csi2-tevi-ov5640.dtbo",
         ":ti/k3-am625-sk-microtips-mf101hie-panel.dtbo",
+        ":ti/k3-am62-lp-sk-microtips-mf101hie-panel.dtbo",
     ]
 )
 
