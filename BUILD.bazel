@@ -835,6 +835,7 @@ kernel_build(
         "drivers/thermal/k3_bandgap.ko",
         "drivers/thermal/k3_j72xx_bandgap.ko",
         "drivers/tty/serial/8250/8250_omap.ko",
+        "drivers/tty/serial/8250/8250_pruss.ko",
         "drivers/usb/dwc3/dwc3-am62.ko",
         "drivers/usb/dwc3/dwc3-haps.ko",
         "drivers/usb/dwc3/dwc3-of-simple.ko",
