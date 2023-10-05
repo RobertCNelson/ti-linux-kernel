@@ -690,6 +690,10 @@
 	status = "okay";
 };
 
+&dsi0 {
+	status = "okay";
+};
+
 &dsi0_ports {
 
 	port@0 {
