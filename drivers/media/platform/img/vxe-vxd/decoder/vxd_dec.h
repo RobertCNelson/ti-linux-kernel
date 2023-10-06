@@ -322,13 +322,6 @@ struct vxd_stream {
 };
 
 
-struct vxd_mapping {
-	struct list_head list;
-	unsigned int buf_map_id;
-	unsigned char reuse;
-	unsigned long dma_addr;
-};
-
 /*
  * struct vxd_buffer - holds per buffer info.
  * @buffer: the vb2_v4l2_buffer
@@ -355,6 +348,14 @@ struct vxd_buffer {
 	struct vdecdd_str_unit pic_unit;
 	struct vdecdd_str_unit end_unit;
 	struct bspp_preparsed_data preparsed_data;
+};
+
+struct vxd_mapping {
+	struct list_head list;
+	unsigned int buf_map_id;
+	unsigned char reuse;
+	unsigned long dma_addr;
+	struct vxd_buffer *buf; /* point to the mapped buffer */
 };
 
 typedef void (*decode_cb)(int res_str_id, unsigned int *msg, unsigned int msg_size,
@@ -436,6 +437,24 @@ struct vxd_dec_ctx {
 	unsigned int out_seq; /* sequence number for output port */
 	struct vdec_str_opconfig str_opcfg;
 	struct vdec_pict_bufconfig pict_bufcfg;
+
+	struct vdec_comsequ_hdrinfo comseq_hdr_info;
+	struct vdec_str_configdata strcfgdata;
+	struct vdecdd_dddev_context     *dev_ctx;
+
+	struct v4l2_ctrl_handler v4l2_ctrl_hdl;
+
+	/* The following are parameters from V4L2 extra-controls */
+
+	/*
+	 * used by the IMG firmware to constrain DPB's utilized
+	 * a value of 0 indicates to let the firmware decide
+	 */
+	unsigned int max_dec_frame_buffering;
+	int override_spec_dpb_buffers;
+	int img_extra_decode_buffers;
+	unsigned int display_pipeline_size;
+
 	void *bspp_context;
 	struct bspp_bitstr_seg bstr_segments[MAX_SEGMENTS];
 	struct lst_t seg_list;
