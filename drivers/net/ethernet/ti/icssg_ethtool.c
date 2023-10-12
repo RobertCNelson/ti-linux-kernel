@@ -8,6 +8,9 @@
 #include "icssg_prueth.h"
 #include <linux/regmap.h>
 
+#define ICSSG_TX_PACKET_OFFSET 0xA0
+#define ICSSG_TX_BYTE_OFFSET   0xEC
+
 #define STATS_TIME_LIMIT_1G_MS    25000    /* 25 seconds @ 1G */
 static const u32 stats_base[] = {	0x54c,	/* Slice 0 stats start */
 					0xb18,	/* Slice 1 stats start */
@@ -312,6 +315,7 @@ static void emac_update_hardware_stats(struct prueth_emac *emac)
 	int slice = prueth_emac_slice(emac);
 	u32 base = stats_base[slice];
 	int i, j;
+	u32 tx_pkt_cnt = 0;
 	u32 val;
 
 	for (i = 0; i < ARRAY_SIZE(icssg_ethtool_stats); i++) {
@@ -321,8 +325,12 @@ static void emac_update_hardware_stats(struct prueth_emac *emac)
 		regmap_write(prueth->miig_rt,
 			     base + icssg_ethtool_stats[i].offset,
 			     val);
+		if (icssg_all_stats[i].offset == ICSSG_TX_PACKET_OFFSET)
+			tx_pkt_cnt = val;
 
 		emac->stats[i] += val;
+		if (icssg_all_stats[i].offset == ICSSG_TX_BYTE_OFFSET)
+			emac->stats[i] -= tx_pkt_cnt * 8;
 	}
 
 	for (j = 0; j < ARRAY_SIZE(icssg_pa_stats); j++) {
