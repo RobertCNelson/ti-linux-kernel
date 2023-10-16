@@ -744,7 +744,7 @@ kernel_build(
     kmi_symbol_list_strict_mode = True,
     strip_modules = True,
     collect_unstripped_modules = True,
-    module_outs = COMMON_GKI_MODULES_LIST + [
+    module_outs = get_gki_modules_list("arm64") + [
         # keep sorted
         "crypto/af_alg.ko",                                                                                                                                                                       
         "crypto/algif_hash.ko",                                                                                                                                                                   
