@@ -564,7 +564,7 @@ static int ks_pcie_v3_65_add_bus(struct pci_bus *bus)
 	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
 	struct keystone_pcie *ks_pcie = to_keystone_pcie(pci);
 
-	if (!pci_is_root_bus(bus))
+	if (!pci_is_root_bus(bus) || ks_pcie->is_am6)
 		return 0;
 
 	/* Configure and set up BAR0 */
@@ -1379,7 +1379,16 @@ static int __init ks_pcie_probe(struct platform_device *pdev)
 		goto err_link;
 	}
 
+	/* Obtain reference(s) to the phy(s) */
+	for (i = 0; i < num_lanes; i++)
+		phy_pm_runtime_get_sync(ks_pcie->phy[i]);
+
 	ret = ks_pcie_enable_phy(ks_pcie);
+
+	/* Release reference(s) to the phy(s) */
+	for (i = 0; i < num_lanes; i++)
+		phy_pm_runtime_put_sync(ks_pcie->phy[i]);
+
 	if (ret) {
 		dev_err(dev, "failed to enable phy\n");
 		goto err_link;
