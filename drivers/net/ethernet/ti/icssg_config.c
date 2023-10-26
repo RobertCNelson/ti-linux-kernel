@@ -418,7 +418,7 @@ static void icssg_init_emac_mode(struct prueth *prueth)
 	 */
 	u8 mac[ETH_ALEN] = { 0 };
 
-	if (prueth->emacs_initialized)
+	if (prueth->num_emacs_initialized)
 		return;
 
 	/* Set VLAN TABLE address base */
@@ -442,7 +442,7 @@ static void icssg_init_switch_mode(struct prueth *prueth)
 	int i;
 	u32 addr = prueth->shram.pa + EMAC_ICSSG_SWITCH_DEFAULT_VLAN_TABLE_OFFSET;
 
-	if (prueth->emacs_initialized)
+	if (prueth->num_emacs_initialized)
 		return;
 
 	/* Set VLAN TABLE address base */
@@ -851,4 +851,31 @@ int emac_fdb_flush_multicast(struct prueth_emac *emac)
 	}
 
 	return ret;
+}
+
+int emac_fdb_flow_id_updated(struct prueth_emac *emac)
+{
+	struct mgmt_cmd_rsp fdb_cmd_rsp = { 0 };
+	int slice = prueth_emac_slice(emac);
+	struct mgmt_cmd fdb_cmd = { 0 };
+	int ret = 0;
+
+	fdb_cmd.header = ICSSG_FW_MGMT_CMD_HEADER;
+	fdb_cmd.type   = ICSSG_FW_MGMT_FDB_CMD_TYPE_RX_FLOW;
+	fdb_cmd.seqnum = ++(emac->prueth->icssg_hwcmdseq);
+	fdb_cmd.param  = 0;
+
+	fdb_cmd.param |= (slice << 4);
+	fdb_cmd.cmd_args[0] = 0;
+
+	ret = icssg_send_fdb_msg(emac, &fdb_cmd, &fdb_cmd_rsp);
+
+	if (ret)
+		return ret;
+
+	WARN_ON(fdb_cmd.seqnum != fdb_cmd_rsp.seqnum);
+	if (fdb_cmd_rsp.status == 1)
+		return 0;
+
+	return -EINVAL;
 }

@@ -275,7 +275,7 @@ struct prueth_pdata {
  * @pdev: pointer to ICSSG platform device
  * @pdata: pointer to platform data for ICSSG driver
  * @icssg_hwcmdseq: seq counter or HWQ messages
- * @emacs_initialized: num of EMACs/ext ports that are up/running
+ * @num_emacs_initialized: num of EMACs/ext ports that are up/running
  * @iep0: pointer to IEP0 device
  * @iep1: pointer to IEP1 device
  * @vlan_tbl: VLAN-FID table pointer
@@ -313,7 +313,7 @@ struct prueth {
 	struct platform_device *pdev;
 	struct prueth_pdata pdata;
 	u8 icssg_hwcmdseq;
-	int emacs_initialized;
+	int num_emacs_initialized;
 	struct icss_iep *iep0;
 	struct icss_iep *iep1;
 	struct prueth_vlan_tbl *vlan_tbl;
@@ -385,6 +385,7 @@ u16 icssg_get_pvid(struct prueth_emac *emac);
 void icssg_set_pvid(struct prueth *prueth, u8 vid, u8 port);
 int emac_fdb_erase_all(struct prueth_emac *emac);
 int emac_fdb_flush_multicast(struct prueth_emac *emac);
+int emac_fdb_flow_id_updated(struct prueth_emac *emac);
 #define prueth_napi_to_tx_chn(pnapi) \
 	container_of(pnapi, struct prueth_tx_chn, napi_tx)
 
