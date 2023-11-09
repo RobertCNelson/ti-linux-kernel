@@ -10,6 +10,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/pm_domain.h>
 
+#include <drm/drm_aperture.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
@@ -34,9 +35,23 @@ int tidss_runtime_get(struct tidss_device *tidss)
 
 	dev_dbg(tidss->dev, "%s\n", __func__);
 
-	r = pm_runtime_get_sync(tidss->dev);
-	WARN_ON(r < 0);
-	return r < 0 ? r : 0;
+	r = pm_runtime_resume_and_get(tidss->dev);
+	if (WARN_ON(r < 0))
+		return r;
+
+	if (tidss->boot_enabled_vp_mask) {
+		/*
+		 * If 'boot_enabled_vp_mask' is set, it means that the DSS is
+		 * enabled and bootloader splash-screen is still on the screen,
+		 * using bootloader's DSS HW config.
+		 *
+		 * This is the first time the driver is about to use the HW, and
+		 * we need to do some cleanup and initial setup.
+		 */
+		dispc_splash_fini(tidss->dispc);
+	}
+
+	return 0;
 }
 
 void tidss_runtime_put(struct tidss_device *tidss)
@@ -45,7 +60,9 @@ void tidss_runtime_put(struct tidss_device *tidss)
 
 	dev_dbg(tidss->dev, "%s\n", __func__);
 
-	r = pm_runtime_put_sync(tidss->dev);
+	pm_runtime_mark_last_busy(tidss->dev);
+
+	r = pm_runtime_put_autosuspend(tidss->dev);
 	WARN_ON(r < 0);
 }
 
@@ -204,6 +221,8 @@ static int tidss_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, tidss);
 
+	spin_lock_init(&tidss->wait_lock);
+
 	/* powering up associated OLDI domains */
 	ret = tidss_attach_pm_domains(tidss);
 	if (ret < 0) {
@@ -218,6 +237,9 @@ static int tidss_probe(struct platform_device *pdev)
 	}
 
 	pm_runtime_enable(dev);
+
+	pm_runtime_set_autosuspend_delay(dev, 1000);
+	pm_runtime_use_autosuspend(dev);
 
 #ifndef CONFIG_PM
 	/* If we don't have PM, we need to call resume manually */
@@ -254,11 +276,19 @@ static int tidss_probe(struct platform_device *pdev)
 		goto err_irq_uninstall;
 	}
 
+	/* Remove possible early fb before setting up the fbdev */
+	ret = drm_aperture_remove_framebuffers(false, &tidss_driver);
+	if (ret)
+		goto err_drm_dev_unreg;
+
 	drm_fbdev_generic_setup(ddev, 32);
 
 	dev_dbg(dev, "%s done\n", __func__);
 
 	return 0;
+
+err_drm_dev_unreg:
+	drm_dev_unregister(ddev);
 
 err_irq_uninstall:
 	tidss_irq_uninstall(ddev);
@@ -267,6 +297,7 @@ err_runtime_suspend:
 #ifndef CONFIG_PM
 	dispc_runtime_suspend(tidss->dispc);
 #endif
+	pm_runtime_dont_use_autosuspend(dev);
 	pm_runtime_disable(dev);
 	tidss_detach_pm_domains(tidss);
 
@@ -291,6 +322,7 @@ static int tidss_remove(struct platform_device *pdev)
 	/* If we don't have PM, we need to call suspend manually */
 	dispc_runtime_suspend(tidss->dispc);
 #endif
+	pm_runtime_dont_use_autosuspend(dev);
 	pm_runtime_disable(dev);
 
 	/* devm allocated dispc goes away with the dev so mark it NULL */
