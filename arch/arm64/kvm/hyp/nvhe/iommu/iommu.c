@@ -20,6 +20,10 @@
 struct kvm_iommu_ops *kvm_iommu_ops;
 void **kvm_hyp_iommu_domains;
 
+/* Hypervisor is non-preemptable, so cur_context can be per cpu. */
+DEFINE_PER_CPU(struct pkvm_hyp_vcpu *, __cur_context);
+#define cur_context (*this_cpu_ptr(&__cur_context))
+
 /*
  * Common pool that can be used by IOMMU driver to allocate pages.
  */
@@ -80,7 +84,8 @@ struct pkvm_hyp_vcpu *__get_vcpu(void)
 
 	if (vcpu)
 		return container_of(vcpu, struct pkvm_hyp_vcpu, vcpu);
-	return NULL;
+	/* Maybe guest is not loaded but we are in teardown context. */
+	return cur_context;
 }
 
 int iommu_pkvm_unuse_dma(u64 phys_addr, size_t size)
