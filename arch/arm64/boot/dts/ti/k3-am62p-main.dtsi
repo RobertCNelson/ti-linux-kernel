@@ -483,7 +483,7 @@
 	};
 
 	vpu: video-codec@30210000 {
-		compatible = "cnm,cm521c-vpu";
+		compatible = "ti,j721s2-wave521c", "cnm,wave521c";
 		reg = <0x00 0x30210000 0x00 0x10000>;
 		interrupts = <GIC_SPI 225 IRQ_TYPE_LEVEL_HIGH>;
 		clocks = <&k3_clks 204 2>;
