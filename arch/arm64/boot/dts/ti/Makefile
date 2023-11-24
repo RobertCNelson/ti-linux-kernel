@@ -50,6 +50,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-ub954-evm-ov2312.dtb
 
 # Boards with AM62Px SoC
 dtb-$(CONFIG_ARCH_K3) += k3-am62p5-sk.dtb
+dtb-$(CONFIG_ARCH_K3) += k3-am62p5-sk-dsi-rpi-7inch-panel.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62p5-sk-eqep.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62p5-sk-mcan.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62p5-sk-microtips-mf101hie-panel.dtbo
@@ -84,6 +85,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-j7200-evm-virt-mac-client.dtbo
 # Boards with J721e SoC
 k3-j721e-evm-dtbs := k3-j721e-common-proc-board.dtb k3-j721e-evm-quad-port-eth-exp.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-beagleboneai64.dtb
+dtb-$(CONFIG_ARCH_K3) += k3-j721e-beagleboneai64-dsi-rpi-7inch-panel.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-evm.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-evm-csi2-ov5640.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-evm-fusion.dtbo
@@ -127,6 +129,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-am62x-sk-csi2-ov5640.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62x-sk-csi2-tevi-ov5640.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62x-sk-hdmi-audio.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62x-sk-mcan.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am625-sk-main-gpio-wakeup.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62x-sk-mcu-gpio-wakeup.dtbo
 
 # FPDLink Sensors
@@ -156,6 +159,7 @@ DTC_FLAGS_k3-am654-base-board += -@
 DTC_FLAGS_k3-am68-sk-base-board += -@
 DTC_FLAGS_k3-am69-sk += -@
 DTC_FLAGS_k3-j7200-common-proc-board += -@
+DTC_FLAGS_k3-j721e-beagleboneai64 += -@
 DTC_FLAGS_k3-j721e-common-proc-board += -@
 DTC_FLAGS_k3-j721e-evm-fusion += -@
 DTC_FLAGS_k3-j721e-sk += -@
