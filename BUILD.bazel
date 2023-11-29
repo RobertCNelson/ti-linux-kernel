@@ -794,6 +794,7 @@ kernel_build(
         "drivers/mailbox/ti-msgmgr.ko",
         "drivers/media/i2c/ov5640.ko",
         "drivers/media/platform/cadence/cdns-csi2rx.ko",
+        "drivers/media/platform/chips-media/wave5/wave5.ko",
         "drivers/media/platform/ti/j721e-csi2rx/j721e-csi2rx.ko",
         "drivers/media/v4l2-core/v4l2-async.ko",
         "drivers/media/v4l2-core/v4l2-fwnode.ko",
