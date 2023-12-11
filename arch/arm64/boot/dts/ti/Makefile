@@ -97,6 +97,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-j721e-evm-virt-mac-client.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-beagleboneai64.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-beagleboneai64-dsi-rpi-7inch-panel.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-common-proc-board.dtb
+dtb-$(CONFIG_ARCH_K3) += k3-j721e-evm-pcie0-ep.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-sk.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-sk-csi2-ov5640.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-sk-csi2-rpi-imx219.dtbo
