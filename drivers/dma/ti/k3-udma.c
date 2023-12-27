@@ -55,6 +55,8 @@ struct udma_static_tr {
 #define UDMA_RFLOW_DSTTAG_DST_TAG_LO	4
 #define UDMA_RFLOW_DSTTAG_DST_TAG_HI	5
 
+#define UDMA_J722S_BCDMA_PSIL_BASE		0x3100
+
 struct udma_chan;
 
 enum k3_dma_type {
@@ -4380,6 +4382,19 @@ static struct udma_match_data j721s2_bcdma_csi_data = {
 	.soc_data = &j721s2_bcdma_csi_soc_data,
 };
 
+static struct udma_match_data j722s_bcdma_data = {
+	.type = DMA_TYPE_BCDMA,
+	.psil_base = UDMA_J722S_BCDMA_PSIL_BASE,
+	.enable_memcpy_support = false,
+	.burst_size = {
+		TI_SCI_RM_UDMAP_CHAN_BURST_SIZE_64_BYTES, /* Normal Channels */
+		0, /* No H Channels */
+		0, /* No UH Channels */
+	},
+	.soc_data = &j721s2_bcdma_csi_soc_data,
+	.order_id = 15,
+};
+
 static const struct of_device_id udma_of_match[] = {
 	{
 		.compatible = "ti,am654-navss-main-udmap",
@@ -4410,6 +4425,10 @@ static const struct of_device_id udma_of_match[] = {
 	{
 		.compatible = "ti,j721s2-dmss-bcdma-csi",
 		.data = &j721s2_bcdma_csi_data,
+	},
+	{
+		.compatible = "ti,j722s-dmss-bcdma-csi",
+		.data = &j722s_bcdma_data,
 	},
 	{ /* Sentinel */ },
 };
