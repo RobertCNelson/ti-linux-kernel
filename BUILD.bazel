@@ -755,6 +755,7 @@ kernel_build(
         "drivers/char/hw_random/optee-rng.ko",
         "drivers/clk/keystone/sci-clk.ko",
         "drivers/clk/keystone/syscon-clk.ko",
+        "drivers/cpufreq/cpufreq-dt.ko",
         "drivers/counter/counter.ko",
         "drivers/counter/ti-ecap-capture.ko",
         "drivers/counter/ti-eqep.ko",
