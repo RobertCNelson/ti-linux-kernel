@@ -109,6 +109,12 @@
 			reg = <0x00 0x9e800000 0x00 0x01800000>; /* for OP-TEE */
 			no-map;
 		};
+
+		carveout_video: video {
+			compatible = "dma-heap-carveout";
+			reg = <0x00 0xa0000000 0x00 0x29000000>;
+			no-map;
+		};
 	};
 
 	vmain_pd: regulator-0 {
@@ -602,6 +608,10 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&main_i2c2_pins_default>;
 	clock-frequency = <400000>;
+};
+
+&vpu {
+	ti,dma-heap-name = "carveout_video";
 };
 
 &sdhci0 {
