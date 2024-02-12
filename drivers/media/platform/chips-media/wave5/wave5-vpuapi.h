@@ -758,6 +758,7 @@ struct vpu_device {
 	struct ida inst_ida;
 	struct clk_bulk_data *clks;
 	int num_clks;
+	const char *dma_heap_name;
 };
 
 struct vpu_instance;
