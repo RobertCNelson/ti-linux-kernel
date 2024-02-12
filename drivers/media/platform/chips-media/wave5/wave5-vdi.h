@@ -12,6 +12,7 @@
 #include <linux/string.h>
 #include <linux/slab.h>
 #include <linux/device.h>
+#include <linux/dma-buf.h>
 
 /************************************************************************/
 /* COMMON REGISTERS */
@@ -27,6 +28,8 @@ struct vpu_buf {
 	size_t size;
 	dma_addr_t daddr;
 	void *vaddr;
+	struct dma_buf *dma_buf;
+	struct iosys_map iosys_map;
 };
 
 int wave5_vdi_init(struct device *dev);

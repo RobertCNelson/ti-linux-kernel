@@ -792,6 +792,7 @@ struct vpu_device {
 	int num_clks;
 	unsigned long opp_pixel_rate;
 	unsigned long opp_freq;
+	const char *dma_heap_name;
 };
 
 struct vpu_instance;
