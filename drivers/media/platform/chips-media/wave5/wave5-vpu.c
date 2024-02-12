@@ -262,6 +262,11 @@ static int wave5_vpu_probe(struct platform_device *pdev)
 
 	dev->sram_size = match_data->sram_size;
 
+	ret = of_property_read_string(pdev->dev.of_node,
+				      "ti,dma-heap-name", &dev->dma_heap_name);
+	if (ret)
+		dev_info(&pdev->dev, "ti,dma-heap-name not set\n");
+
 	dev->product_code = wave5_vdi_read_register(dev, VPU_PRODUCT_CODE_REGISTER);
 	ret = wave5_vdi_init(&pdev->dev);
 	if (ret < 0) {

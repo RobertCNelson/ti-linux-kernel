@@ -10,6 +10,10 @@
 #include "wave5-vpu.h"
 #include "wave5-regdefine.h"
 #include <linux/delay.h>
+#include <linux/dma-heap.h>
+#include <linux/dma-heap-carveout.h>
+
+MODULE_IMPORT_NS(DMA_BUF);
 
 static int wave5_vdi_allocate_common_memory(struct device *dev)
 {
@@ -114,7 +118,7 @@ int wave5_vdi_write_memory(struct vpu_device *vpu_dev, struct vpu_buf *vb, size_
 	return len;
 }
 
-int wave5_vdi_allocate_dma_memory(struct vpu_device *vpu_dev, struct vpu_buf *vb)
+static int wave5_vdi_allocate_coherent_dma_memory(struct vpu_device *vpu_dev, struct vpu_buf *vb)
 {
 	void *vaddr;
 	dma_addr_t daddr;
@@ -133,16 +137,67 @@ int wave5_vdi_allocate_dma_memory(struct vpu_device *vpu_dev, struct vpu_buf *vb
 	return 0;
 }
 
+static int wave5_vdi_allocate_carveout_dma_memory(struct vpu_device *vpu_dev, struct vpu_buf *vb)
+{
+	int ret;
+	struct dma_buf *dma_buf;
+	struct dma_heap *carveout_heap;
+
+	if (!vb->size) {
+		dev_err(vpu_dev->dev, "%s: requested size==0\n", __func__);
+		return -EINVAL;
+	}
+
+	carveout_heap = dma_heap_find(vpu_dev->dma_heap_name);
+	if (!carveout_heap) {
+		dev_err(vpu_dev->dev, "%s: could not find carveout heap\n", __func__);
+		return -EINVAL;
+	}
+
+	dma_buf = dma_heap_buffer_alloc(carveout_heap, vb->size, 0, 0);
+	dma_heap_put(carveout_heap);
+	if (!dma_buf)
+		return -ENOMEM;
+
+	ret = dma_buf_vmap(dma_buf, &vb->iosys_map);
+	if (ret < 0) {
+		dma_heap_buffer_free(dma_buf);
+		return -ENOMEM;
+	}
+
+	vb->vaddr = vb->iosys_map.vaddr;
+	vb->daddr = carveout_dma_heap_to_paddr(dma_buf);
+	vb->dma_buf = dma_buf;
+
+	return ret;
+}
+
+int wave5_vdi_allocate_dma_memory(struct vpu_device *vpu_dev, struct vpu_buf *vb)
+{
+	if (!vpu_dev->dma_heap_name)
+		return wave5_vdi_allocate_coherent_dma_memory(vpu_dev, vb);
+	else
+		return wave5_vdi_allocate_carveout_dma_memory(vpu_dev, vb);
+}
+
 int wave5_vdi_free_dma_memory(struct vpu_device *vpu_dev, struct vpu_buf *vb)
 {
 	if (vb->size == 0)
 		return -EINVAL;
 
-	if (!vb->vaddr)
+	if (!vb->vaddr) {
 		dev_err(vpu_dev->dev, "%s: requested free of unmapped buffer\n", __func__);
-	else
-		dma_free_coherent(vpu_dev->dev, vb->size, vb->vaddr, vb->daddr);
+		goto erase_vpu_buf;
+	}
 
+	if (!vpu_dev->dma_heap_name) {
+		dma_free_coherent(vpu_dev->dev, vb->size, vb->vaddr, vb->daddr);
+	} else {
+		dma_buf_vunmap(vb->dma_buf, &vb->iosys_map);
+		dma_heap_buffer_free(vb->dma_buf);
+	}
+
+ erase_vpu_buf:
 	memset(vb, 0, sizeof(*vb));
 
 	return 0;
