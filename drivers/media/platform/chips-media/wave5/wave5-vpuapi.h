@@ -796,6 +796,7 @@ struct vpu_device {
 	int vpu_poll_interval;
 	int num_clks;
 	struct reset_control *resets;
+	const char *dma_heap_name;
 };
 
 struct timestamp_circ_buf {
