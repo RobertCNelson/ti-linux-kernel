@@ -800,6 +800,7 @@ struct vpu_device {
 	struct reset_control *resets;
 	spinlock_t irq_spinlock; /* protect instances list */
 	bool opp_table_detected;
+	const char *dma_heap_name;
 };
 
 struct vpu_instance;
