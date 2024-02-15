@@ -27,8 +27,8 @@
 #define CPSW_PROXY_CLIENT_MIN_PACKET_SIZE	ETH_ZLEN
 #define CPSW_PROXY_CLIENT_MAX_PACKET_SIZE	(VLAN_ETH_FRAME_LEN + ETH_FCS_LEN)
 #define CPSW_PROXY_CLIENT_MAX_RX_FLOWS		1
-#define CPSW_PROXY_CLIENT_MAX_RX_QUEUES		1
-#define CPSW_PROXY_CLIENT_MAX_TX_QUEUES		1
+#define CPSW_PROXY_CLIENT_MAX_RX_QUEUES		64
+#define CPSW_PROXY_CLIENT_MAX_TX_QUEUES		8
 #define CPSW_PROXY_CLIENT_REQ_TIMEOUT_MS	500
 
 #define CPSW_PROXY_CLIENT_MAX_TX_DESC		500
@@ -36,6 +36,8 @@
 
 #define CPSW_PROXY_CLIENT_NAV_PS_DATA_SIZE	16
 #define CPSW_PROXY_CLIENT_NAV_SW_DATA_SIZE	16
+
+#define CPSW_PROXY_CLIENT_MAX_CHAN_NAME_LEN	128
 
 enum cpsw_virt_port_type {
 	VIRT_SWITCH_PORT,
@@ -46,47 +48,59 @@ struct cpsw_proxy_tx_chan {
 	struct device			*dev;
 	struct k3_cppi_desc_pool	*desc_pool;
 	struct k3_udma_glue_tx_channel	*tx_chan;
-	u32				chan_id;
+	struct cpsw_virt_port		*virt_port;
+	struct hrtimer			tx_hrtimer;
+	struct napi_struct		napi_tx;
+	u32				rel_chan_idx;
 	u32				num_descs;
+	u32				tx_psil_dest_id;
+	u32				tx_pace_timeout;
 	unsigned int			irq;
+	char				tx_chan_name[CPSW_PROXY_CLIENT_MAX_CHAN_NAME_LEN];
+	bool				is_valid;
 };
 
 struct cpsw_proxy_rx_chan {
 	struct device			*dev;
 	struct k3_cppi_desc_pool	*desc_pool;
 	struct k3_udma_glue_rx_channel	*rx_chan;
+	struct cpsw_virt_port		*virt_port;
+	struct hrtimer			rx_hrtimer;
+	struct napi_struct		napi_rx;
+	u32				rx_flow_idx_base;
+	u32				rx_flow_idx_offset;
+	u32				rel_chan_idx;
 	u32				num_descs;
+	u32				rx_psil_src_id;
+	unsigned long			rx_pace_timeout;
 	unsigned int			irq;
+	bool				rx_irq_disabled;
+	char				rx_chan_name[CPSW_PROXY_CLIENT_MAX_CHAN_NAME_LEN];
+	bool				is_valid;
 };
 
 struct cpsw_virt_port {
 	struct cpsw_proxy_common	*common;
 	struct net_device		*ndev;
 	enum cpsw_virt_port_type	virt_port_type;
-	struct cpsw_proxy_tx_chan	virt_port_tx_chan;
-	struct cpsw_proxy_rx_chan	virt_port_rx_chan;
+	struct cpsw_proxy_tx_chan	virt_port_tx_chan[CPSW_PROXY_CLIENT_MAX_TX_QUEUES];
+	struct cpsw_proxy_rx_chan	virt_port_rx_chan[CPSW_PROXY_CLIENT_MAX_RX_QUEUES];
 	struct workqueue_struct		*virt_port_wq;
 	struct work_struct		rx_mode_work;
-	struct napi_struct		napi_tx;
-	struct napi_struct		napi_rx;
 	struct notifier_block		virt_port_inetaddr_nb;
 	struct netdev_hw_addr_list	mcast_list;
 	struct completion		tdown_complete;
-	struct hrtimer			tx_hrtimer;
 	struct mutex			mcast_filter_mutex; /* Multicast add/del ops mutex */
-	unsigned long			tx_pace_timeout;
-	struct hrtimer			rx_hrtimer;
-	unsigned long			rx_pace_timeout;
 	atomic_t			tdown_cnt;
-	bool				rx_irq_disabled;
 	bool				mcast_filter;
 	bool				promisc_enabled;
+	bool				mac_is_valid;
 	u32				virt_port_id;
 	u32				virt_port_token;
-	u32				tx_psil_dest_id;
-	u32				rx_psil_src_id;
-	u32				rx_flow_idx_base;
-	u32				rx_flow_idx_offset;
+	u32				num_tx_chan;
+	u32				num_rx_chan;
+	u32				curr_tx_chan_idx;
+	u32				curr_rx_chan_idx;
 	u16				vlan_id;
 	u8				ipv4_addr[ETHREMOTECFG_IPV4ADDRLEN];
 	u8				mcast_mac_addr[ETH_ALEN];
@@ -146,8 +160,12 @@ static int create_request(u32 token, u32 client_id, u32 req_type, struct cpsw_pr
 	struct rx_flow_release_request *rx_free_req;
 	struct ipv4_register_request *ipv4_reg_req;
 	struct request_message_header *req_msg_hdr;
+	struct rx_flow_alloc_request *rx_alloc_req;
+	struct tx_psil_alloc_request *tx_alloc_req;
 	struct mac_release_request *mac_free_req;
 	struct message *msg = &common->send_msg;
+	struct cpsw_proxy_rx_chan *rx_chn;
+	struct cpsw_proxy_tx_chan *tx_chn;
 	struct attach_request *attach_req;
 
 	/* Set message header fields */
@@ -157,6 +175,23 @@ static int create_request(u32 token, u32 client_id, u32 req_type, struct cpsw_pr
 
 	/* Handle differently based on type of request */
 	switch (req_type) {
+	case ETHREMOTECFG_ALLOC_RX:
+		rx_alloc_req = (struct rx_flow_alloc_request *)msg;
+		req_msg_hdr = &rx_alloc_req->request_msg_hdr;
+
+		/* Set relative index of the requested RX Flow */
+		rx_alloc_req->rx_flow_idx = virt_port->curr_rx_chan_idx;
+		break;
+
+	case ETHREMOTECFG_ALLOC_TX:
+		tx_alloc_req = (struct tx_psil_alloc_request *)msg;
+		req_msg_hdr = &tx_alloc_req->request_msg_hdr;
+
+		/* Set relative index of the requested TX Channel */
+		tx_alloc_req->tx_chan_idx = virt_port->curr_tx_chan_idx;
+		break;
+
+	case ETHREMOTECFG_ATTACH:
 	case ETHREMOTECFG_ATTACH_EXT:
 		attach_req = (struct attach_request *)msg;
 		req_msg_hdr = &attach_req->request_msg_hdr;
@@ -166,6 +201,7 @@ static int create_request(u32 token, u32 client_id, u32 req_type, struct cpsw_pr
 
 		break;
 
+	case ETHREMOTECFG_ALLOC_MAC:
 	case ETHREMOTECFG_DETACH:
 	case ETHREMOTECFG_PORT_LINK_STATUS:
 	case ETHREMOTECFG_PROMISC_DISABLE:
@@ -180,14 +216,15 @@ static int create_request(u32 token, u32 client_id, u32 req_type, struct cpsw_pr
 	case ETHREMOTECFG_FILTER_MAC_ADD:
 		mcast_add_req = (struct add_mcast_vlan_rx_flow_request *)msg;
 		req_msg_hdr = &mcast_add_req->request_msg_hdr;
+		rx_chn = &virt_port->virt_port_rx_chan[virt_port->curr_rx_chan_idx];
 
 		/* Set Multicast MAC Address */
 		ether_addr_copy(mcast_add_req->mac_addr, virt_port->mcast_mac_addr);
 		/* Set VLAN id */
 		mcast_add_req->vlan_id = virt_port->vlan_id;
 		/* Set RX Flow Index Base and Offset */
-		mcast_add_req->rx_flow_idx_base = virt_port->rx_flow_idx_base;
-		mcast_add_req->rx_flow_idx_offset = virt_port->rx_flow_idx_offset;
+		mcast_add_req->rx_flow_idx_base = rx_chn->rx_flow_idx_base;
+		mcast_add_req->rx_flow_idx_offset = rx_chn->rx_flow_idx_offset;
 
 		break;
 
@@ -214,18 +251,20 @@ static int create_request(u32 token, u32 client_id, u32 req_type, struct cpsw_pr
 	case ETHREMOTECFG_FREE_RX:
 		rx_free_req = (struct rx_flow_release_request *)msg;
 		req_msg_hdr = &rx_free_req->request_msg_hdr;
+		rx_chn = &virt_port->virt_port_rx_chan[virt_port->curr_rx_chan_idx];
 
 		/* Set RX Flow Index Base and Offset to release */
-		rx_free_req->rx_flow_idx_base = virt_port->rx_flow_idx_base;
-		rx_free_req->rx_flow_idx_offset = virt_port->rx_flow_idx_offset;
+		rx_free_req->rx_flow_idx_base = rx_chn->rx_flow_idx_base;
+		rx_free_req->rx_flow_idx_offset = rx_chn->rx_flow_idx_offset;
 
 		break;
 
 	case ETHREMOTECFG_FREE_TX:
 		tx_free_req = (struct tx_psil_release_request *)msg;
 		req_msg_hdr = &tx_free_req->request_msg_hdr;
+		tx_chn = &virt_port->virt_port_tx_chan[virt_port->curr_tx_chan_idx];
 
-		tx_free_req->tx_psil_dest_id = virt_port->tx_psil_dest_id;
+		tx_free_req->tx_psil_dest_id = tx_chn->tx_psil_dest_id;
 
 		break;
 
@@ -250,17 +289,14 @@ static int create_request(u32 token, u32 client_id, u32 req_type, struct cpsw_pr
 	case ETHREMOTECFG_MAC_DEREGISTER:
 		mac_reg_req = (struct mac_rx_flow_register_request *)msg;
 		req_msg_hdr = &mac_reg_req->request_msg_hdr;
+		rx_chn = &virt_port->virt_port_rx_chan[virt_port->curr_rx_chan_idx];
 
 		ether_addr_copy(mac_reg_req->mac_addr, virt_port->mac_addr);
-		mac_reg_req->rx_flow_idx_base = virt_port->rx_flow_idx_base;
-		mac_reg_req->rx_flow_idx_offset = virt_port->rx_flow_idx_offset;
+		mac_reg_req->rx_flow_idx_base = rx_chn->rx_flow_idx_base;
+		mac_reg_req->rx_flow_idx_offset = rx_chn->rx_flow_idx_offset;
 
 		break;
 
-	case ETHREMOTECFG_ATTACH:
-	case ETHREMOTECFG_ALLOC_TX:
-	case ETHREMOTECFG_ALLOC_RX:
-	case ETHREMOTECFG_ALLOC_MAC:
 	case ETHREMOTECFG_SET_RX_DEFAULTFLOW:
 	case ETHREMOTECFG_DEL_RX_DEFAULTFLOW:
 	case ETHREMOTECFG_REGISTER_READ:
@@ -510,9 +546,10 @@ static int cpsw_proxy_client_cb(struct rpmsg_device *rpdev, void *data,
 	return ret;
 }
 
-static int cpsw_virt_port_rx_push(struct cpsw_virt_port *virt_port, struct sk_buff *skb)
+static int cpsw_virt_port_rx_push(struct cpsw_virt_port *virt_port, struct sk_buff *skb,
+				  u32 rel_chan_idx)
 {
-	struct cpsw_proxy_rx_chan *rx_chn = &virt_port->virt_port_rx_chan;
+	struct cpsw_proxy_rx_chan *rx_chn = &virt_port->virt_port_rx_chan[rel_chan_idx];
 	struct cpsw_proxy_common *common = virt_port->common;
 	struct cppi5_host_desc_t *desc_rx;
 	struct device *dev = common->dev;
@@ -547,38 +584,49 @@ static int cpsw_virt_port_rx_push(struct cpsw_virt_port *virt_port, struct sk_bu
 static int cpsw_virt_port_open(struct cpsw_virt_port *virt_port, netdev_features_t features)
 {
 	struct cpsw_proxy_common *common = virt_port->common;
+	struct cpsw_proxy_rx_chan *rx_chn;
 	struct sk_buff *skb;
-	int i, ret;
+	int i, j, ret;
 
-	for (i = 0; i < virt_port->virt_port_rx_chan.num_descs; i++) {
-		skb = __netdev_alloc_skb_ip_align(NULL, CPSW_PROXY_CLIENT_MAX_PACKET_SIZE,
-						  GFP_KERNEL);
-		if (!skb)
-			return -ENOMEM;
+	for (i = 0; i < virt_port->num_rx_chan; i++) {
+		rx_chn = &virt_port->virt_port_rx_chan[i];
 
-		ret = cpsw_virt_port_rx_push(virt_port, skb);
-		if (ret < 0) {
-			dev_err(common->dev,
-				"cannot submit skb to channel rx, error %d\n",
-				ret);
-			kfree_skb(skb);
-			return ret;
+		for (j = 0; j < rx_chn->num_descs; j++) {
+			skb = __netdev_alloc_skb_ip_align(NULL, CPSW_PROXY_CLIENT_MAX_PACKET_SIZE,
+							  GFP_KERNEL);
+			if (!skb)
+				return -ENOMEM;
+
+			ret = cpsw_virt_port_rx_push(virt_port, skb, i);
+			if (ret < 0) {
+				dev_err(common->dev,
+					"cannot submit skb to channel rx, error %d\n",
+					ret);
+				kfree_skb(skb);
+				return ret;
+			}
+			kmemleak_not_leak(skb);
 		}
-		kmemleak_not_leak(skb);
+
+		ret = k3_udma_glue_rx_flow_enable(rx_chn->rx_chan, 0);
+		if (ret)
+			return ret;
 	}
-	ret = k3_udma_glue_rx_flow_enable(virt_port->virt_port_rx_chan.rx_chan, 0);
-	if (ret)
-		return ret;
 
-	ret = k3_udma_glue_enable_tx_chn(virt_port->virt_port_tx_chan.tx_chan);
-	if (ret)
-		return ret;
+	for (i = 0; i < virt_port->num_tx_chan; i++) {
+		ret = k3_udma_glue_enable_tx_chn(virt_port->virt_port_tx_chan[i].tx_chan);
+		if (ret)
+			return ret;
+		napi_enable(&virt_port->virt_port_tx_chan[i].napi_tx);
+	}
 
-	napi_enable(&virt_port->napi_tx);
-	napi_enable(&virt_port->napi_rx);
-	if (virt_port->rx_irq_disabled) {
-		virt_port->rx_irq_disabled = false;
-		enable_irq(virt_port->virt_port_rx_chan.irq);
+	for (i = 0; i < virt_port->num_rx_chan; i++) {
+		rx_chn = &virt_port->virt_port_rx_chan[i];
+		napi_enable(&rx_chn->napi_rx);
+		if (rx_chn->rx_irq_disabled) {
+			rx_chn->rx_irq_disabled = false;
+			enable_irq(rx_chn->irq);
+		}
 	}
 
 	return 0;
@@ -590,6 +638,8 @@ static int cpsw_proxy_client_register_mac(struct cpsw_virt_port *virt_port)
 	struct message response;
 	int ret;
 
+	/* Register MAC address only for default RX Channel/Flow */
+	virt_port->curr_rx_chan_idx = 0;
 	ret = cpsw_proxy_client_send_request(common, virt_port, virt_port->virt_port_token,
 					     ETHREMOTECFG_MAC_REGISTER, &response);
 	if (ret)
@@ -683,35 +733,42 @@ static void cpsw_virt_port_rx_cleanup(void *data, dma_addr_t desc_dma)
 static void cpsw_virt_port_stop(struct cpsw_virt_port *virt_port)
 {
 	struct cpsw_proxy_common *common = virt_port->common;
+	struct cpsw_proxy_rx_chan *rx_chn;
+	struct cpsw_proxy_tx_chan *tx_chn;
 	int i;
 
 	/* shutdown tx channels */
-	atomic_set(&virt_port->tdown_cnt, CPSW_PROXY_CLIENT_MAX_TX_QUEUES);
+	atomic_set(&virt_port->tdown_cnt, virt_port->num_tx_chan);
 	/* ensure new tdown_cnt value is visible */
 	smp_mb__after_atomic();
 	reinit_completion(&virt_port->tdown_complete);
 
-	k3_udma_glue_tdown_tx_chn(virt_port->virt_port_tx_chan.tx_chan, false);
+	for (i = 0; i < virt_port->num_tx_chan; i++)
+		k3_udma_glue_tdown_tx_chn(virt_port->virt_port_tx_chan[i].tx_chan, false);
 
 	i = wait_for_completion_timeout(&virt_port->tdown_complete, msecs_to_jiffies(1000));
 	if (!i)
 		dev_err(common->dev, "tx teardown timeout\n");
 
-	k3_udma_glue_reset_tx_chn(virt_port->virt_port_tx_chan.tx_chan,
-				  &virt_port->virt_port_tx_chan,
-				  cpsw_virt_port_tx_cleanup);
-	k3_udma_glue_disable_tx_chn(virt_port->virt_port_tx_chan.tx_chan);
-	napi_disable(&virt_port->napi_tx);
-	hrtimer_cancel(&virt_port->tx_hrtimer);
+	for (i = 0; i < virt_port->num_tx_chan; i++) {
+		tx_chn = &virt_port->virt_port_tx_chan[i];
+		k3_udma_glue_reset_tx_chn(tx_chn->tx_chan, tx_chn, cpsw_virt_port_tx_cleanup);
+		k3_udma_glue_disable_tx_chn(tx_chn->tx_chan);
+		napi_disable(&tx_chn->napi_tx);
+		hrtimer_cancel(&tx_chn->tx_hrtimer);
+	}
 
-	k3_udma_glue_rx_flow_disable(virt_port->virt_port_rx_chan.rx_chan, 0);
-	/* Need some delay to process RX ring before reset */
-	msleep(100);
-	k3_udma_glue_reset_rx_chn(virt_port->virt_port_rx_chan.rx_chan, 0,
-				  &virt_port->virt_port_rx_chan,
-				  cpsw_virt_port_rx_cleanup, false);
-	napi_disable(&virt_port->napi_rx);
-	hrtimer_cancel(&virt_port->rx_hrtimer);
+	for (i = 0; i < virt_port->num_rx_chan; i++) {
+		rx_chn = &virt_port->virt_port_rx_chan[i];
+		k3_udma_glue_rx_flow_disable(rx_chn->rx_chan, 0);
+		/* Need some delay to process RX ring before reset */
+		msleep(100);
+		k3_udma_glue_reset_rx_chn(rx_chn->rx_chan, 0, rx_chn, cpsw_virt_port_rx_cleanup,
+					  false);
+		napi_disable(&rx_chn->napi_rx);
+		hrtimer_cancel(&rx_chn->rx_hrtimer);
+	}
+
 	cancel_work_sync(&virt_port->rx_mode_work);
 }
 
@@ -725,6 +782,8 @@ static int cpsw_virt_port_add_mcast(struct net_device *ndev, const u8 *addr)
 	mutex_lock(&virt_port->mcast_filter_mutex);
 	ether_addr_copy(virt_port->mcast_mac_addr, addr);
 	virt_port->vlan_id = ETHREMOTECFG_ETHSWITCH_VLAN_USE_DFLT;
+	/* Register Multicast MAC address only for default RX Channel/Flow */
+	virt_port->curr_rx_chan_idx = 0;
 
 	ret = cpsw_proxy_client_send_request(common, virt_port, virt_port->virt_port_token,
 					     ETHREMOTECFG_FILTER_MAC_ADD, &response);
@@ -782,9 +841,15 @@ static int cpsw_virt_port_ndo_open(struct net_device *ndev)
 {
 	struct cpsw_virt_port *virt_port = cpsw_virt_port_ndev_to_virt_port(ndev);
 	struct cpsw_proxy_common *common = virt_port->common;
-	int ret;
+	int ret, i;
 
-	netdev_tx_reset_queue(netdev_get_tx_queue(ndev, 0));
+	/* Number of TX DMA Channels available to transfer data */
+	ret = netif_set_real_num_tx_queues(ndev, virt_port->num_tx_chan);
+	if (ret)
+		return ret;
+
+	for (i = 0; i < virt_port->num_tx_chan; i++)
+		netdev_tx_reset_queue(netdev_get_tx_queue(ndev, i));
 
 	ret = cpsw_virt_port_open(virt_port, ndev->features);
 	if (ret)
@@ -816,15 +881,17 @@ static netdev_tx_t cpsw_virt_port_ndo_xmit(struct sk_buff *skb, struct net_devic
 	struct netdev_queue *netif_txq;
 	dma_addr_t desc_dma, buf_dma;
 	void **swdata;
+	int ret, i, q;
 	u32 pkt_len;
 	u32 *psdata;
-	int ret, i;
 
 	/* padding enabled in hw */
 	pkt_len = skb_headlen(skb);
 
-	tx_chn = &virt_port->virt_port_tx_chan;
-	netif_txq = netdev_get_tx_queue(ndev, 0);
+	/* Get Queue / TX DMA Channel for the SKB */
+	q = skb_get_queue_mapping(skb);
+	tx_chn = &virt_port->virt_port_tx_chan[q];
+	netif_txq = netdev_get_tx_queue(ndev, q);
 
 	/* Map the linear buffer */
 	buf_dma = dma_map_single(dev, skb->data, pkt_len,
@@ -929,13 +996,13 @@ done_tx:
 		netif_tx_stop_queue(netif_txq);
 		/* Barrier, so that stop_queue visible to other cpus */
 		smp_mb__after_atomic();
-		dev_dbg(dev, "netif_tx_stop_queue %d\n", 0);
+		dev_dbg(dev, "netif_tx_stop_queue %d\n", q);
 
 		/* re-check for smp */
 		if (k3_cppi_desc_pool_avail(tx_chn->desc_pool) >=
 		    MAX_SKB_FRAGS) {
 			netif_tx_wake_queue(netif_txq);
-			dev_dbg(dev, "netif_tx_wake_queue %d\n", 0);
+			dev_dbg(dev, "netif_tx_wake_queue %d\n", q);
 		}
 	}
 
@@ -992,13 +1059,14 @@ static void cpsw_virt_port_ndo_get_stats(struct net_device *ndev,
 static void cpsw_virt_port_host_tx_timeout(struct net_device *ndev, unsigned int txqueue)
 {
 	struct cpsw_virt_port *virt_port = cpsw_virt_port_ndev_to_virt_port(ndev);
-	struct cpsw_proxy_tx_chan *tx_chn = &virt_port->virt_port_tx_chan;
+	struct cpsw_proxy_tx_chan *tx_chn;
 	struct netdev_queue *netif_txq;
 	unsigned long trans_start;
 
 	/* process every txq */
 	netif_txq = netdev_get_tx_queue(ndev, txqueue);
-	trans_start = netif_txq->trans_start;
+	tx_chn = &virt_port->virt_port_tx_chan[txqueue];
+	trans_start = READ_ONCE(netif_txq->trans_start);
 
 	netdev_err(ndev, "txq:%d DRV_XOFF:%d tmo:%u dql_avail:%d free_desc:%zu\n",
 		   txqueue,
@@ -1079,8 +1147,8 @@ static int cpsw_virt_port_get_coalesce(struct net_device *ndev, struct ethtool_c
 {
 	struct cpsw_virt_port *virt_port = cpsw_virt_port_ndev_to_virt_port(ndev);
 
-	coal->tx_coalesce_usecs = virt_port->tx_pace_timeout / 1000;
-	coal->rx_coalesce_usecs = virt_port->rx_pace_timeout / 1000;
+	coal->tx_coalesce_usecs = virt_port->virt_port_tx_chan[0].tx_pace_timeout / 1000;
+	coal->rx_coalesce_usecs = virt_port->virt_port_rx_chan[0].rx_pace_timeout / 1000;
 	return 0;
 }
 
@@ -1090,6 +1158,7 @@ static int cpsw_virt_port_set_coalesce(struct net_device *ndev, struct ethtool_c
 {
 	struct cpsw_virt_port *virt_port = cpsw_virt_port_ndev_to_virt_port(ndev);
 	struct cpsw_proxy_common *common = virt_port->common;
+	int i;
 
 	if (coal->tx_coalesce_usecs && coal->tx_coalesce_usecs < 20) {
 		dev_err(common->dev, "TX coalesce must be at least 20 usecs. Defaulting to 20 usecs\n");
@@ -1101,8 +1170,55 @@ static int cpsw_virt_port_set_coalesce(struct net_device *ndev, struct ethtool_c
 		coal->rx_coalesce_usecs = 20;
 	}
 
-	virt_port->tx_pace_timeout = coal->tx_coalesce_usecs * 1000;
-	virt_port->rx_pace_timeout = coal->rx_coalesce_usecs * 1000;
+	/* Since it is possible to set pacing values per TX and RX queue, if per queue value is
+	 * not specified, apply it to all available TX and RX queues.
+	 */
+
+	for (i = 0; i < virt_port->num_tx_chan; i++)
+		virt_port->virt_port_tx_chan[i].tx_pace_timeout = coal->tx_coalesce_usecs * 1000;
+
+	for (i = 0; i < virt_port->num_rx_chan; i++)
+		virt_port->virt_port_rx_chan[i].rx_pace_timeout = coal->rx_coalesce_usecs * 1000;
+
+	return 0;
+}
+
+static int cpsw_virt_port_get_per_queue_coalesce(struct net_device *ndev, u32 q,
+						 struct ethtool_coalesce *coal)
+{
+	struct cpsw_virt_port *virt_port = cpsw_virt_port_ndev_to_virt_port(ndev);
+
+	if (q >= virt_port->num_tx_chan || q >= virt_port->num_rx_chan)
+		return -EINVAL;
+
+	coal->tx_coalesce_usecs = virt_port->virt_port_tx_chan[q].tx_pace_timeout / 1000;
+	coal->rx_coalesce_usecs = virt_port->virt_port_rx_chan[q].rx_pace_timeout / 1000;
+
+	return 0;
+}
+
+static int cpsw_virt_port_set_per_queue_coalesce(struct net_device *ndev, u32 q,
+						 struct ethtool_coalesce *coal)
+{
+	struct cpsw_virt_port *virt_port = cpsw_virt_port_ndev_to_virt_port(ndev);
+	struct cpsw_proxy_common *common = virt_port->common;
+
+	if (q >= virt_port->num_tx_chan || q >= virt_port->num_rx_chan)
+		return -EINVAL;
+
+	if (coal->tx_coalesce_usecs && coal->tx_coalesce_usecs < 20) {
+		dev_err(common->dev, "TX coalesce must be at least 20 usecs. Defaulting to 20 usecs\n");
+		coal->tx_coalesce_usecs = 20;
+	}
+
+	if (coal->rx_coalesce_usecs && coal->rx_coalesce_usecs < 20) {
+		dev_err(common->dev, "RX coalesce must be at least 20 usecs. Defaulting to 20 usecs\n");
+		coal->rx_coalesce_usecs = 20;
+	}
+
+	virt_port->virt_port_tx_chan[q].tx_pace_timeout = coal->tx_coalesce_usecs * 1000;
+	virt_port->virt_port_rx_chan[q].rx_pace_timeout = coal->rx_coalesce_usecs * 1000;
+
 	return 0;
 }
 
@@ -1137,21 +1253,25 @@ const struct ethtool_ops cpsw_virt_port_ethtool_ops = {
 	.supported_coalesce_params = ETHTOOL_COALESCE_USECS,
 	.get_coalesce           = cpsw_virt_port_get_coalesce,
 	.set_coalesce           = cpsw_virt_port_set_coalesce,
+	.get_per_queue_coalesce = cpsw_virt_port_get_per_queue_coalesce,
+	.set_per_queue_coalesce = cpsw_virt_port_set_per_queue_coalesce,
 };
 
 static enum hrtimer_restart cpsw_virt_port_tx_timer_callback(struct hrtimer *timer)
 {
-	struct cpsw_virt_port *virt_port = container_of(timer, struct cpsw_virt_port, tx_hrtimer);
+	struct cpsw_proxy_tx_chan *tx_chn = container_of(timer, struct cpsw_proxy_tx_chan,
+							 tx_hrtimer);
 
-	enable_irq(virt_port->virt_port_tx_chan.irq);
+	enable_irq(tx_chn->irq);
 	return HRTIMER_NORESTART;
 }
 
 static enum hrtimer_restart cpsw_virt_port_rx_timer_callback(struct hrtimer *timer)
 {
-	struct cpsw_virt_port *virt_port = container_of(timer, struct cpsw_virt_port, rx_hrtimer);
+	struct cpsw_proxy_rx_chan *rx_chn = container_of(timer, struct cpsw_proxy_rx_chan,
+							 rx_hrtimer);
 
-	enable_irq(virt_port->virt_port_rx_chan.irq);
+	enable_irq(rx_chn->irq);
 	return HRTIMER_NORESTART;
 }
 
@@ -1170,7 +1290,7 @@ static int cpsw_virt_port_tx_compl_packets(struct cpsw_virt_port *virt_port,
 	int res, num_tx = 0;
 	void **swdata;
 
-	tx_chn = &virt_port->virt_port_tx_chan;
+	tx_chn = &virt_port->virt_port_tx_chan[chn];
 
 	while (budget--) {
 		struct cpsw_virt_port_ndev_priv *ndev_priv;
@@ -1210,7 +1330,7 @@ static int cpsw_virt_port_tx_compl_packets(struct cpsw_virt_port *virt_port,
 	if (!num_tx)
 		return 0;
 
-	netif_txq = netdev_get_tx_queue(ndev, 0);
+	netif_txq = netdev_get_tx_queue(ndev, chn);
 
 	netdev_tx_completed_queue(netif_txq, num_tx, total_bytes);
 	dev_dbg(dev, "compl 0 %d Bytes\n", total_bytes);
@@ -1235,23 +1355,25 @@ static int cpsw_virt_port_tx_compl_packets(struct cpsw_virt_port *virt_port,
 
 static int cpsw_virt_port_tx_poll(struct napi_struct *napi_tx, int budget)
 {
-	struct cpsw_virt_port *virt_port = container_of(napi_tx, struct cpsw_virt_port, napi_tx);
+	struct cpsw_proxy_tx_chan *tx_chn = container_of(napi_tx, struct cpsw_proxy_tx_chan,
+							 napi_tx);
+	struct cpsw_virt_port *virt_port = tx_chn->virt_port;
 	bool tdown = false;
 	int num_tx;
 
 	/* process every unprocessed channel */
-	num_tx = cpsw_virt_port_tx_compl_packets(virt_port, 0, budget, &tdown);
+	num_tx = cpsw_virt_port_tx_compl_packets(virt_port, tx_chn->rel_chan_idx, budget, &tdown);
 
 	if (num_tx >= budget)
 		return budget;
 
 	if (napi_complete_done(napi_tx, num_tx)) {
-		if (unlikely(virt_port->tx_pace_timeout && !tdown)) {
-			hrtimer_start(&virt_port->tx_hrtimer,
-				      ns_to_ktime(virt_port->tx_pace_timeout),
+		if (unlikely(tx_chn->tx_pace_timeout && !tdown)) {
+			hrtimer_start(&tx_chn->tx_hrtimer,
+				      ns_to_ktime(tx_chn->tx_pace_timeout),
 				      HRTIMER_MODE_REL_PINNED);
 		} else {
-			enable_irq(virt_port->virt_port_tx_chan.irq);
+			enable_irq(tx_chn->irq);
 		}
 	}
 
@@ -1292,9 +1414,9 @@ static void cpsw_virt_port_rx_csum(struct sk_buff *skb, u32 csum_info)
 }
 
 static int cpsw_virt_port_rx_packets(struct cpsw_virt_port *virt_port,
-				     u32 flow_idx)
+				     u32 rel_chan_idx)
 {
-	struct cpsw_proxy_rx_chan *rx_chn = &virt_port->virt_port_rx_chan;
+	struct cpsw_proxy_rx_chan *rx_chn = &virt_port->virt_port_rx_chan[rel_chan_idx];
 	struct cpsw_proxy_common *common = virt_port->common;
 	u32 buf_dma_len, pkt_len, port_id = 0, csum_info;
 	struct cpsw_virt_port_ndev_priv *ndev_priv;
@@ -1304,6 +1426,7 @@ static int cpsw_virt_port_rx_packets(struct cpsw_virt_port *virt_port,
 	struct sk_buff *skb, *new_skb;
 	dma_addr_t desc_dma, buf_dma;
 	struct net_device *ndev;
+	u32 flow_idx = 0;
 	void **swdata;
 	int ret = 0;
 	u32 *psdata;
@@ -1352,7 +1475,7 @@ static int cpsw_virt_port_rx_packets(struct cpsw_virt_port *virt_port,
 		skb_put(skb, pkt_len);
 		skb->protocol = eth_type_trans(skb, ndev);
 		cpsw_virt_port_rx_csum(skb, csum_info);
-		napi_gro_receive(&virt_port->napi_rx, skb);
+		napi_gro_receive(&rx_chn->napi_rx, skb);
 
 		ndev_priv = netdev_priv(ndev);
 		stats = this_cpu_ptr(ndev_priv->stats);
@@ -1373,7 +1496,7 @@ static int cpsw_virt_port_rx_packets(struct cpsw_virt_port *virt_port,
 		return -ENODEV;
 	}
 
-	ret = cpsw_virt_port_rx_push(virt_port, new_skb);
+	ret = cpsw_virt_port_rx_push(virt_port, new_skb, rx_chn->rel_chan_idx);
 	if (WARN_ON(ret < 0)) {
 		dev_kfree_skb_any(new_skb);
 		ndev->stats.rx_errors++;
@@ -1385,7 +1508,9 @@ static int cpsw_virt_port_rx_packets(struct cpsw_virt_port *virt_port,
 
 static int cpsw_virt_port_rx_poll(struct napi_struct *napi_rx, int budget)
 {
-	struct cpsw_virt_port *virt_port = container_of(napi_rx, struct cpsw_virt_port, napi_rx);
+	struct cpsw_proxy_rx_chan *rx_chn = container_of(napi_rx, struct cpsw_proxy_rx_chan,
+							 napi_rx);
+	struct cpsw_virt_port *virt_port = rx_chn->virt_port;
 	int num_rx = 0;
 	int cur_budget;
 	int ret;
@@ -1394,21 +1519,21 @@ static int cpsw_virt_port_rx_poll(struct napi_struct *napi_rx, int budget)
 	cur_budget = budget;
 
 	while (cur_budget--) {
-		ret = cpsw_virt_port_rx_packets(virt_port, 0);
+		ret = cpsw_virt_port_rx_packets(virt_port, rx_chn->rel_chan_idx);
 		if (ret)
 			break;
 		num_rx++;
 	}
 
 	if (num_rx < budget && napi_complete_done(napi_rx, num_rx)) {
-		if (virt_port->rx_irq_disabled) {
-			virt_port->rx_irq_disabled = false;
-			if (unlikely(virt_port->rx_pace_timeout)) {
-				hrtimer_start(&virt_port->rx_hrtimer,
-					      ns_to_ktime(virt_port->rx_pace_timeout),
+		if (rx_chn->rx_irq_disabled) {
+			rx_chn->rx_irq_disabled = false;
+			if (unlikely(rx_chn->rx_pace_timeout)) {
+				hrtimer_start(&rx_chn->rx_hrtimer,
+					      ns_to_ktime(rx_chn->rx_pace_timeout),
 					      HRTIMER_MODE_REL_PINNED);
 			} else {
-				enable_irq(virt_port->virt_port_rx_chan.irq);
+				enable_irq(rx_chn->irq);
 			}
 		}
 	}
@@ -1433,10 +1558,13 @@ static int
 cpsw_proxy_client_init_ndev(struct cpsw_proxy_common *common, struct cpsw_virt_port *virt_port)
 {
 	struct cpsw_virt_port_ndev_priv *ndev_priv;
+	struct cpsw_proxy_rx_chan *rx_chn;
+	struct cpsw_proxy_tx_chan *tx_chn;
 	struct device *dev = common->dev;
-	int ret = 0;
+	int ret = 0, i;
 
-	virt_port->ndev = devm_alloc_etherdev(dev, sizeof(struct cpsw_virt_port_ndev_priv));
+	virt_port->ndev = devm_alloc_etherdev_mqs(dev, sizeof(struct cpsw_virt_port_ndev_priv),
+						  virt_port->num_tx_chan, virt_port->num_rx_chan);
 
 	if (!virt_port->ndev) {
 		dev_err(dev, "error allocating net device for port: %u\n", virt_port->virt_port_id);
@@ -1468,13 +1596,19 @@ cpsw_proxy_client_init_ndev(struct cpsw_proxy_common *common, struct cpsw_virt_p
 		return ret;
 	}
 
-	netif_napi_add_tx(virt_port->ndev, &virt_port->napi_tx, cpsw_virt_port_tx_poll);
-	netif_napi_add(virt_port->ndev, &virt_port->napi_rx, cpsw_virt_port_rx_poll);
+	for (i = 0; i < virt_port->num_tx_chan; i++) {
+		tx_chn = &virt_port->virt_port_tx_chan[i];
+		netif_napi_add_tx(virt_port->ndev, &tx_chn->napi_tx, cpsw_virt_port_tx_poll);
+		hrtimer_init(&tx_chn->tx_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED);
+		tx_chn->tx_hrtimer.function = &cpsw_virt_port_tx_timer_callback;
+	}
 
-	hrtimer_init(&virt_port->tx_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED);
-	virt_port->tx_hrtimer.function = &cpsw_virt_port_tx_timer_callback;
-	hrtimer_init(&virt_port->rx_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED);
-	virt_port->rx_hrtimer.function = &cpsw_virt_port_rx_timer_callback;
+	for (i = 0; i < virt_port->num_rx_chan; i++) {
+		rx_chn = &virt_port->virt_port_rx_chan[i];
+		netif_napi_add(virt_port->ndev, &rx_chn->napi_rx, cpsw_virt_port_rx_poll);
+		hrtimer_init(&rx_chn->rx_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED);
+		rx_chn->rx_hrtimer.function = &cpsw_virt_port_rx_timer_callback;
+	}
 
 	ret = register_netdev(virt_port->ndev);
 	if (ret)
@@ -1531,50 +1665,59 @@ static void cpsw_proxy_client_destroy_wq(struct cpsw_proxy_common *common)
 
 static irqreturn_t cpsw_virt_port_tx_irq(int irq, void *dev_id)
 {
-	struct cpsw_virt_port *virt_port = dev_id;
+	struct cpsw_proxy_tx_chan *tx_chn = dev_id;
 
 	disable_irq_nosync(irq);
-	napi_schedule(&virt_port->napi_tx);
+	napi_schedule(&tx_chn->napi_tx);
 
 	return IRQ_HANDLED;
 }
 
 static irqreturn_t cpsw_virt_port_rx_irq(int irq, void *dev_id)
 {
-	struct cpsw_virt_port *virt_port = dev_id;
+	struct cpsw_proxy_rx_chan *rx_chn = dev_id;
 
-	virt_port->rx_irq_disabled = true;
+	rx_chn->rx_irq_disabled = true;
 	disable_irq_nosync(irq);
-	napi_schedule(&virt_port->napi_rx);
+	napi_schedule(&rx_chn->napi_rx);
 
 	return IRQ_HANDLED;
 }
 
 static int cpsw_proxy_client_setup_irq(struct cpsw_proxy_common *common)
 {
+	struct cpsw_proxy_rx_chan *rx_chn;
+	struct cpsw_proxy_tx_chan *tx_chn;
 	struct device *dev = common->dev;
 	struct cpsw_virt_port *virt_port;
-	int ret = 0, i;
+	int ret = 0, i, j;
 
 	for (i = 0; i < common->num_virt_ports; i++) {
 		virt_port = &common->virt_ports[i];
 
-		ret = devm_request_irq(dev, virt_port->virt_port_tx_chan.irq,
-				       cpsw_virt_port_tx_irq, IRQF_TRIGGER_HIGH,
-				       dev_name(dev), virt_port);
-		if (ret) {
-			dev_err(dev, "failure requesting tx irq: %u err: %d\n",
-				virt_port->virt_port_tx_chan.irq, ret);
-			goto err;
+		for (j = 0; j < virt_port->num_tx_chan; j++) {
+			tx_chn = &virt_port->virt_port_tx_chan[j];
+
+			ret = devm_request_irq(dev, tx_chn->irq, cpsw_virt_port_tx_irq,
+					       IRQF_TRIGGER_HIGH, tx_chn->tx_chan_name,
+					       tx_chn);
+			if (ret) {
+				dev_err(dev, "failure requesting tx irq: %u err: %d\n",
+					tx_chn->irq, ret);
+				goto err;
+			}
 		}
 
-		ret = devm_request_irq(dev, virt_port->virt_port_rx_chan.irq,
-				       cpsw_virt_port_rx_irq, IRQF_TRIGGER_HIGH,
-				       dev_name(dev), virt_port);
-		if (ret) {
-			dev_err(dev, "failure requesting rx irq: %u err: %d\n",
-				virt_port->virt_port_rx_chan.irq, ret);
-			goto err;
+		for (j = 0; j < virt_port->num_rx_chan; j++) {
+			rx_chn = &virt_port->virt_port_rx_chan[j];
+			ret = devm_request_irq(dev, rx_chn->irq, cpsw_virt_port_rx_irq,
+					       IRQF_TRIGGER_HIGH, rx_chn->rx_chan_name,
+					       rx_chn);
+			if (ret) {
+				dev_err(dev, "failure requesting rx irq: %u err: %d\n",
+					rx_chn->irq, ret);
+				goto err;
+			}
 		}
 	}
 
@@ -1587,37 +1730,56 @@ static void cpsw_proxy_client_detach(struct cpsw_proxy_common *common)
 	struct cpsw_virt_port *virt_port;
 	struct message response;
 	u32 port_id;
-	int ret, i;
+	int ret, i, j;
 
 	for (i = 0; i < common->num_virt_ports; i++) {
 		virt_port = &common->virt_ports[i];
 		port_id = virt_port->virt_port_id;
 
 		/* Free MAC Request */
-		ret = cpsw_proxy_client_send_request(common, virt_port,
-						     virt_port->virt_port_token,
-						     ETHREMOTECFG_FREE_MAC, &response);
-		if (ret) {
-			dev_err(common->dev, "failed to detach port %u err: %d\n", port_id, ret);
-			return;
+		if (virt_port->mac_is_valid) {
+			ret = cpsw_proxy_client_send_request(common, virt_port,
+							     virt_port->virt_port_token,
+							     ETHREMOTECFG_FREE_MAC, &response);
+			if (ret) {
+				dev_err(common->dev, "failed to detach port %u err: %d\n",
+					port_id, ret);
+				return;
+			}
 		}
 
 		/* Free TX DMA Channel */
-		ret = cpsw_proxy_client_send_request(common, virt_port,
-						     virt_port->virt_port_token,
-						     ETHREMOTECFG_FREE_TX, &response);
-		if (ret) {
-			dev_err(common->dev, "failed to detach port %u err: %d\n", port_id, ret);
-			return;
+		for (j = 0; j < virt_port->num_tx_chan; j++) {
+			if (&virt_port->virt_port_tx_chan &&
+			    &virt_port->virt_port_tx_chan->is_valid) {
+				virt_port->curr_tx_chan_idx = j;
+				ret = cpsw_proxy_client_send_request(common, virt_port,
+								     virt_port->virt_port_token,
+								     ETHREMOTECFG_FREE_TX,
+								     &response);
+				if (ret) {
+					dev_err(common->dev, "failed to detach port %u err: %d\n",
+						port_id, ret);
+					return;
+				}
+			}
 		}
 
 		/* Free RX DMA Flow */
-		ret = cpsw_proxy_client_send_request(common, virt_port,
-						     virt_port->virt_port_token,
-						     ETHREMOTECFG_FREE_RX, &response);
-		if (ret) {
-			dev_err(common->dev, "failed to detach port %u err: %d\n", port_id, ret);
-			return;
+		for (j = 0; j < virt_port->num_rx_chan; j++) {
+			if (&virt_port->virt_port_rx_chan &&
+			    &virt_port->virt_port_rx_chan->is_valid) {
+				virt_port->curr_rx_chan_idx = j;
+				ret = cpsw_proxy_client_send_request(common, virt_port,
+								     virt_port->virt_port_token,
+								     ETHREMOTECFG_FREE_RX,
+								     &response);
+				if (ret) {
+					dev_err(common->dev, "failed to detach port %u err: %d\n",
+						port_id, ret);
+					return;
+				}
+			}
 		}
 
 		/* Send Detach Request */
@@ -1631,34 +1793,45 @@ static void cpsw_proxy_client_detach(struct cpsw_proxy_common *common)
 	}
 }
 
-static int cpsw_proxy_client_attach_ext(struct cpsw_proxy_common *common)
+static int cpsw_proxy_client_attach(struct cpsw_proxy_common *common)
 {
-	struct attach_ext_response *att_ext_resp;
+	struct cpsw_proxy_rx_chan *rx_chn;
+	struct cpsw_proxy_tx_chan *tx_chn;
+	struct attach_response *att_resp;
 	struct cpsw_virt_port *virt_port;
 	struct message response;
-	int ret, ret1, i;
+	int ret, ret1, i, j;
 	u32 port_id;
 
 	for (i = 0; i < common->num_virt_ports; i++) {
 		virt_port = &common->virt_ports[i];
 		port_id = virt_port->virt_port_id;
 
-		/* Send Attach Ext Request */
+		/* Send Attach Request */
 		ret = cpsw_proxy_client_send_request(common, virt_port, ETHREMOTECFG_TOKEN_NONE,
-						     ETHREMOTECFG_ATTACH_EXT, &response);
+						     ETHREMOTECFG_ATTACH, &response);
 		if (ret) {
 			dev_err(common->dev, "failed to attach port %u err: %d\n", port_id, ret);
 			goto err;
 		}
 
-		att_ext_resp = (struct attach_ext_response *)&response;
-		virt_port->virt_port_token = att_ext_resp->response_msg_hdr.msg_hdr.token;
-		virt_port->tx_psil_dest_id = att_ext_resp->tx_psil_dest_id;
-		virt_port->rx_psil_src_id = att_ext_resp->rx_psil_src_id;
-		virt_port->rx_flow_idx_base = att_ext_resp->rx_flow_idx_base;
-		virt_port->rx_flow_idx_offset = att_ext_resp->rx_flow_idx_offset;
-		ether_addr_copy(virt_port->mac_addr, att_ext_resp->mac_addr);
-		virt_port->mcast_filter = att_ext_resp->features & ETHREMOTECFG_FEATURE_MC_FILTER;
+		att_resp = (struct attach_response *)&response;
+		virt_port->virt_port_token = att_resp->response_msg_hdr.msg_hdr.token;
+		virt_port->mcast_filter = att_resp->features & ETHREMOTECFG_FEATURE_MC_FILTER;
+		virt_port->num_tx_chan = att_resp->num_tx_chan;
+		virt_port->num_rx_chan = att_resp->num_rx_flow;
+
+		for (j = 0; j < virt_port->num_tx_chan; j++) {
+			tx_chn = &virt_port->virt_port_tx_chan[j];
+			tx_chn->virt_port = virt_port;
+			tx_chn->rel_chan_idx = j;
+		}
+
+		for (j = 0; j < virt_port->num_rx_chan; j++) {
+			rx_chn = &virt_port->virt_port_rx_chan[j];
+			rx_chn->virt_port = virt_port;
+			rx_chn->rel_chan_idx = j;
+		}
 	}
 
 	return 0;
@@ -1676,6 +1849,83 @@ err:
 			dev_err(common->dev, "failed to DETACH port: %u err: %d\n", port_id, ret1);
 	}
 
+	return ret;
+}
+
+static int cpsw_proxy_client_dma_mac_alloc(struct cpsw_proxy_common *common)
+{
+	struct rx_flow_alloc_response *rx_alloc_resp;
+	struct tx_psil_alloc_response *tx_alloc_resp;
+	struct mac_alloc_response *mac_alloc_resp;
+	struct cpsw_proxy_tx_chan *tx_chn;
+	struct cpsw_proxy_rx_chan *rx_chn;
+	struct cpsw_virt_port *virt_port;
+	struct message response;
+	int ret, i, j;
+	u32 port_id;
+
+	for (i = 0; i < common->num_virt_ports; i++) {
+		virt_port = &common->virt_ports[i];
+		port_id = virt_port->virt_port_id;
+
+		for (j = 0; j < virt_port->num_rx_chan; j++) {
+			/* Send RX Chan Allocation Request */
+			virt_port->curr_rx_chan_idx = j;
+			rx_chn = &virt_port->virt_port_rx_chan[j];
+
+			ret = cpsw_proxy_client_send_request(common, virt_port,
+							     virt_port->virt_port_token,
+							     ETHREMOTECFG_ALLOC_RX, &response);
+			if (ret) {
+				dev_err(common->dev, "failed to alloc RX for port %u err: %d\n",
+					port_id, ret);
+				goto err;
+			}
+
+			rx_alloc_resp = (struct rx_flow_alloc_response *)&response;
+			rx_chn->rx_flow_idx_base = rx_alloc_resp->rx_flow_idx_base;
+			rx_chn->rx_flow_idx_offset = rx_alloc_resp->rx_flow_idx_offset;
+			rx_chn->rx_psil_src_id = rx_alloc_resp->rx_psil_src_id;
+			rx_chn->is_valid = 1;
+		}
+
+		for (j = 0; j < virt_port->num_tx_chan; j++) {
+			/* Send TX Channel Allocation Request */
+			virt_port->curr_tx_chan_idx = j;
+			tx_chn = &virt_port->virt_port_tx_chan[j];
+
+			ret = cpsw_proxy_client_send_request(common, virt_port,
+							     virt_port->virt_port_token,
+							     ETHREMOTECFG_ALLOC_TX, &response);
+			if (ret) {
+				dev_err(common->dev, "failed to alloc TX for port %u err: %d\n",
+					port_id, ret);
+				goto err;
+			}
+
+			tx_alloc_resp = (struct tx_psil_alloc_response *)&response;
+			tx_chn->tx_psil_dest_id = tx_alloc_resp->tx_psil_dest_id;
+			tx_chn->is_valid = 1;
+		}
+
+		/* Send MAC Allocation Request */
+		ret = cpsw_proxy_client_send_request(common, virt_port, virt_port->virt_port_token,
+						     ETHREMOTECFG_ALLOC_MAC, &response);
+		if (ret) {
+			dev_err(common->dev, "failed to alloc MAC for port %u err: %d\n", port_id,
+				ret);
+			goto err;
+		}
+
+		mac_alloc_resp = (struct mac_alloc_response *)&response;
+		ether_addr_copy(virt_port->mac_addr, mac_alloc_resp->mac_addr);
+		virt_port->mac_is_valid = 1;
+	}
+
+	return 0;
+
+err:
+	cpsw_proxy_client_detach(common);
 	return ret;
 }
 
@@ -1742,19 +1992,21 @@ static void cpsw_virt_port_free_tx_chns(void *data)
 	struct cpsw_proxy_common *common = data;
 	struct cpsw_proxy_tx_chan *tx_chn;
 	struct cpsw_virt_port *virt_port;
-	int i;
+	int i, j;
 
 	for (i = 0; i < common->num_virt_ports; i++) {
 		virt_port = &common->virt_ports[i];
-		tx_chn = &virt_port->virt_port_tx_chan;
+		for (j = 0; j < virt_port->num_tx_chan; j++) {
+			tx_chn = &virt_port->virt_port_tx_chan[j];
 
-		if (!IS_ERR_OR_NULL(tx_chn->desc_pool))
-			k3_cppi_desc_pool_destroy(tx_chn->desc_pool);
+			if (!IS_ERR_OR_NULL(tx_chn->desc_pool))
+				k3_cppi_desc_pool_destroy(tx_chn->desc_pool);
 
-		if (!IS_ERR_OR_NULL(tx_chn->tx_chan))
-			k3_udma_glue_release_tx_chn(tx_chn->tx_chan);
+			if (!IS_ERR_OR_NULL(tx_chn->tx_chan))
+				k3_udma_glue_release_tx_chn(tx_chn->tx_chan);
 
-		memset(tx_chn, 0, sizeof(*tx_chn));
+			memset(tx_chn, 0, sizeof(*tx_chn));
+		}
 	}
 }
 
@@ -1772,50 +2024,56 @@ static int cpsw_proxy_client_init_tx_chans(struct cpsw_proxy_common *common)
 	};
 	char tx_chn_name[IFNAMSIZ];
 	u32 hdesc_size, tx_chn_num;
-	int ret = 0, ret1, i;
+	int ret = 0, ret1, i, j;
 
 	for (i = 0; i < common->num_virt_ports; i++) {
 		virt_port = &common->virt_ports[i];
-		tx_chn = &virt_port->virt_port_tx_chan;
 
-		tx_chn_num = common->num_active_tx_channels++;
-		snprintf(tx_chn_name, sizeof(tx_chn_name), "tx%d", tx_chn_num);
+		for (j = 0; j < virt_port->num_tx_chan; j++) {
+			tx_chn = &virt_port->virt_port_tx_chan[j];
 
-		init_completion(&virt_port->tdown_complete);
+			tx_chn_num = common->num_active_tx_channels++;
+			snprintf(tx_chn_name, sizeof(tx_chn_name), "tx%u-virt-port-%u",
+				 tx_chn_num, virt_port->virt_port_id);
+			strcpy(&tx_chn->tx_chan_name[0], tx_chn_name);
 
-		hdesc_size = cppi5_hdesc_calc_size(true, CPSW_PROXY_CLIENT_NAV_PS_DATA_SIZE,
-						   CPSW_PROXY_CLIENT_NAV_SW_DATA_SIZE);
+			init_completion(&virt_port->tdown_complete);
 
-		tx_cfg.swdata_size = CPSW_PROXY_CLIENT_NAV_SW_DATA_SIZE;
-		tx_cfg.tx_cfg = ring_cfg;
-		tx_cfg.txcq_cfg = ring_cfg;
-		tx_cfg.tx_cfg.size = max_desc_num;
-		tx_cfg.txcq_cfg.size = max_desc_num;
+			hdesc_size = cppi5_hdesc_calc_size(true, CPSW_PROXY_CLIENT_NAV_PS_DATA_SIZE,
+							   CPSW_PROXY_CLIENT_NAV_SW_DATA_SIZE);
 
-		tx_chn->dev = dev;
-		tx_chn->num_descs = max_desc_num;
-		tx_chn->desc_pool = k3_cppi_desc_pool_create_name(dev,
-								  tx_chn->num_descs,
-								  hdesc_size,
-								  tx_chn_name);
-		if (IS_ERR(tx_chn->desc_pool)) {
-			ret = PTR_ERR(tx_chn->desc_pool);
-			dev_err(dev, "Failed to create tx pool %d\n", ret);
-			goto err;
-		}
+			tx_cfg.swdata_size = CPSW_PROXY_CLIENT_NAV_SW_DATA_SIZE;
+			tx_cfg.tx_cfg = ring_cfg;
+			tx_cfg.txcq_cfg = ring_cfg;
+			tx_cfg.tx_cfg.size = max_desc_num;
+			tx_cfg.txcq_cfg.size = max_desc_num;
 
-		tx_chn->tx_chan = k3_udma_glue_request_tx_chn_by_id(dev, &tx_cfg, common->dma_node,
-								    virt_port->tx_psil_dest_id);
-		if (IS_ERR(tx_chn->tx_chan)) {
-			ret = PTR_ERR(tx_chn->tx_chan);
-			dev_err(dev, "Failed to request tx dma channel %d\n", ret);
-			goto err;
-		}
+			tx_chn->dev = dev;
+			tx_chn->num_descs = max_desc_num;
+			tx_chn->desc_pool = k3_cppi_desc_pool_create_name(dev,
+									  tx_chn->num_descs,
+									  hdesc_size,
+									  tx_chn_name);
+			if (IS_ERR(tx_chn->desc_pool)) {
+				ret = PTR_ERR(tx_chn->desc_pool);
+				dev_err(dev, "Failed to create tx pool %d\n", ret);
+				goto err;
+			}
 
-		tx_chn->irq = k3_udma_glue_tx_get_irq(tx_chn->tx_chan);
-		if (tx_chn->irq <= 0) {
-			dev_err(dev, "Failed to get tx dma irq %d\n", tx_chn->irq);
-			ret = -ENXIO;
+			tx_chn->tx_chan = k3_udma_glue_request_tx_chn_by_id(dev, &tx_cfg,
+									    common->dma_node,
+									    tx_chn->tx_psil_dest_id);
+			if (IS_ERR(tx_chn->tx_chan)) {
+				ret = PTR_ERR(tx_chn->tx_chan);
+				dev_err(dev, "Failed to request tx dma channel %d\n", ret);
+				goto err;
+			}
+
+			tx_chn->irq = k3_udma_glue_tx_get_irq(tx_chn->tx_chan);
+			if (tx_chn->irq <= 0) {
+				dev_err(dev, "Failed to get tx dma irq %d\n", tx_chn->irq);
+				ret = -ENXIO;
+			}
 		}
 	}
 
@@ -1834,17 +2092,20 @@ static void cpsw_proxy_client_free_rx_chns(void *data)
 	struct cpsw_proxy_common *common = data;
 	struct cpsw_proxy_rx_chan *rx_chn;
 	struct cpsw_virt_port *virt_port;
-	int i;
+	int i, j;
 
 	for (i = 0; i < common->num_virt_ports; i++) {
 		virt_port = &common->virt_ports[i];
-		rx_chn = &virt_port->virt_port_rx_chan;
 
-		if (!IS_ERR_OR_NULL(rx_chn->desc_pool))
-			k3_cppi_desc_pool_destroy(rx_chn->desc_pool);
+		for (j = 0; j < virt_port->num_rx_chan; j++) {
+			rx_chn = &virt_port->virt_port_rx_chan[j];
 
-		if (!IS_ERR_OR_NULL(rx_chn->rx_chan))
-			k3_udma_glue_release_rx_chn(rx_chn->rx_chan);
+			if (!IS_ERR_OR_NULL(rx_chn->desc_pool))
+				k3_cppi_desc_pool_destroy(rx_chn->desc_pool);
+
+			if (!IS_ERR_OR_NULL(rx_chn->rx_chan))
+				k3_udma_glue_release_rx_chn(rx_chn->rx_chan);
+		}
 	}
 }
 
@@ -1874,7 +2135,7 @@ static int cpsw_proxy_client_init_rx_chans(struct cpsw_proxy_common *common)
 		.ring_rxfdq0_id = K3_RINGACC_RING_ID_ANY,
 		.src_tag_lo_sel = K3_UDMA_GLUE_SRC_TAG_LO_USE_REMOTE_SRC_TAG,
 	};
-	int ret = 0, ret1, i;
+	int ret = 0, ret1, i, j;
 
 	hdesc_size = cppi5_hdesc_calc_size(true, CPSW_PROXY_CLIENT_NAV_PS_DATA_SIZE,
 					   CPSW_PROXY_CLIENT_NAV_SW_DATA_SIZE);
@@ -1885,48 +2146,54 @@ static int cpsw_proxy_client_init_rx_chans(struct cpsw_proxy_common *common)
 
 	for (i = 0; i < common->num_virt_ports; i++) {
 		virt_port = &common->virt_ports[i];
-		rx_chn = &virt_port->virt_port_rx_chan;
 
-		rx_chn_num = common->num_active_rx_channels++;
-		snprintf(rx_chn_name, sizeof(rx_chn_name), "rx%d", rx_chn_num);
+		for (j = 0; j < virt_port->num_rx_chan; j++) {
+			rx_chn = &virt_port->virt_port_rx_chan[j];
 
-		rx_cfg.flow_id_base = virt_port->rx_flow_idx_base + virt_port->rx_flow_idx_offset;
+			rx_chn_num = common->num_active_rx_channels++;
+			snprintf(rx_chn_name, sizeof(rx_chn_name), "rx%u-virt-port-%u", rx_chn_num,
+				 virt_port->virt_port_id);
+			strcpy(&rx_chn->rx_chan_name[0], rx_chn_name);
 
-		/* init all flows */
-		rx_chn->dev = dev;
-		rx_chn->num_descs = max_desc_num;
-		rx_chn->desc_pool = k3_cppi_desc_pool_create_name(dev,
-								  rx_chn->num_descs,
-								  hdesc_size,
-								  rx_chn_name);
-		if (IS_ERR(rx_chn->desc_pool)) {
-			ret = PTR_ERR(rx_chn->desc_pool);
-			dev_err(dev, "Failed to create rx pool %d\n", ret);
-			goto err;
-		}
+			rx_cfg.flow_id_base = rx_chn->rx_flow_idx_base + rx_chn->rx_flow_idx_offset;
 
-		rx_chn->rx_chan =
-			k3_udma_glue_request_remote_rx_chn_by_id(dev, common->dma_node, &rx_cfg,
-								 virt_port->rx_psil_src_id);
-		if (IS_ERR(rx_chn->rx_chan)) {
-			ret = PTR_ERR(rx_chn->rx_chan);
-			dev_err(dev, "Failed to request rx dma channel %d\n", ret);
-			goto err;
-		}
+			/* init all flows */
+			rx_chn->dev = dev;
+			rx_chn->num_descs = max_desc_num;
+			rx_chn->desc_pool = k3_cppi_desc_pool_create_name(dev,
+									  rx_chn->num_descs,
+									  hdesc_size,
+									  rx_chn_name);
+			if (IS_ERR(rx_chn->desc_pool)) {
+				ret = PTR_ERR(rx_chn->desc_pool);
+				dev_err(dev, "Failed to create rx pool %d\n", ret);
+				goto err;
+			}
 
-		rx_flow_cfg.rx_cfg.size = max_desc_num;
-		rx_flow_cfg.rxfdq_cfg.size = max_desc_num;
-		ret = k3_udma_glue_rx_flow_init(rx_chn->rx_chan,
-						0, &rx_flow_cfg);
-		if (ret) {
-			dev_err(dev, "Failed to init rx flow %d\n", ret);
-			goto err;
-		}
+			rx_chn->rx_chan =
+				k3_udma_glue_request_remote_rx_chn_by_id(dev, common->dma_node,
+									 &rx_cfg,
+									 rx_chn->rx_psil_src_id);
+			if (IS_ERR(rx_chn->rx_chan)) {
+				ret = PTR_ERR(rx_chn->rx_chan);
+				dev_err(dev, "Failed to request rx dma channel %d\n", ret);
+				goto err;
+			}
 
-		rx_chn->irq = k3_udma_glue_rx_get_irq(rx_chn->rx_chan, 0);
-		if (rx_chn->irq <= 0) {
-			ret = -ENXIO;
-			dev_err(dev, "Failed to get rx dma irq %d\n", rx_chn->irq);
+			rx_flow_cfg.rx_cfg.size = max_desc_num;
+			rx_flow_cfg.rxfdq_cfg.size = max_desc_num;
+			ret = k3_udma_glue_rx_flow_init(rx_chn->rx_chan,
+							0, &rx_flow_cfg);
+			if (ret) {
+				dev_err(dev, "Failed to init rx flow %d\n", ret);
+				goto err;
+			}
+
+			rx_chn->irq = k3_udma_glue_rx_get_irq(rx_chn->rx_chan, 0);
+			if (rx_chn->irq <= 0) {
+				ret = -ENXIO;
+				dev_err(dev, "Failed to get rx dma irq %d\n", rx_chn->irq);
+			}
 		}
 	}
 
@@ -2060,12 +2327,14 @@ static void cpsw_proxy_client_show_info(struct cpsw_proxy_common *common)
 		virt_port = &common->virt_ports[i];
 
 		if (virt_port->virt_port_type == VIRT_SWITCH_PORT)
-			dev_info(dev, "Virt Port: %u, Type: Switch Port, Iface: %s, Token: %u\n",
+			dev_info(dev, "Virt Port: %u, Type: Switch Port, Iface: %s, Num TX: %u, Num RX: %u, Token: %u\n",
 				 virt_port->virt_port_id, virt_port->ndev->name,
+				 virt_port->num_tx_chan, virt_port->num_rx_chan,
 				 virt_port->virt_port_token);
 		else
-			dev_info(dev, "Virt Port: %u, Type: MAC Port, Iface: %s, Token: %u\n",
+			dev_info(dev, "Virt Port: %u, Type: MAC Port, Iface: %s, Num TX: %u, Num RX: %u, Token: %u\n",
 				 virt_port->virt_port_id, virt_port->ndev->name,
+				 virt_port->num_tx_chan, virt_port->num_rx_chan,
 				 virt_port->virt_port_token);
 	}
 }
@@ -2099,8 +2368,13 @@ static int cpsw_proxy_client_probe(struct rpmsg_device *rpdev)
 	if (ret)
 		goto err;
 
-	/* Request DMA Channel Information for each Virtual Port */
-	ret = cpsw_proxy_client_attach_ext(common);
+	/* Request DMA Channels and MAC allocation Info for each Virtual Port */
+	ret = cpsw_proxy_client_attach(common);
+	if (ret)
+		goto err;
+
+	/* Request DMA Channels and MAC Address for each Virtual Port */
+	ret = cpsw_proxy_client_dma_mac_alloc(common);
 	if (ret)
 		goto err;
 
