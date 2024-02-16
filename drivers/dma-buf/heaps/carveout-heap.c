@@ -16,6 +16,7 @@
 #include <linux/highmem.h>
 #include <linux/dma-buf.h>
 #include <linux/dma-heap.h>
+#include <linux/dma-heap-carveout.h>
 
 struct carveout_dma_heap {
 	struct dma_heap *heap;
@@ -353,6 +354,14 @@ free_carveout_dma_heap:
 	kfree(carveout_dma_heap);
 	return ret;
 }
+
+phys_addr_t carveout_dma_heap_to_paddr(struct dma_buf *dmabuf)
+{
+	struct carveout_dma_heap_buffer *buffer = dmabuf->priv;
+
+	return buffer->paddr;
+}
+EXPORT_SYMBOL_GPL(carveout_dma_heap_to_paddr);
 
 #ifdef CONFIG_OF_RESERVED_MEM
 #include <linux/of.h>
