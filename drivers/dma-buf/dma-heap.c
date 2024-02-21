@@ -468,4 +468,4 @@ err_chrdev:
 	dma_heap_sysfs_teardown();
 	return ret;
 }
-subsys_initcall(dma_heap_init);
+core_initcall(dma_heap_init);
