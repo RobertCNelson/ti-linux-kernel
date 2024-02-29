@@ -129,6 +129,10 @@
  *    ->private_lock		(zap_pte_range->block_dirty_folio)
  */
 
+/* Export tracepoints that act as a bare tracehook */
+EXPORT_TRACEPOINT_SYMBOL_GPL(mm_filemap_delete_from_page_cache);
+EXPORT_TRACEPOINT_SYMBOL_GPL(mm_filemap_add_to_page_cache);
+
 static void mapping_set_update(struct xa_state *xas,
 		struct address_space *mapping)
 {
