@@ -469,7 +469,7 @@ static int cpsw_proxy_client_cb(struct rpmsg_device *rpdev, void *data,
 	u32 msg_type = msg->msg_hdr.msg_type;
 	u32 notify_type, response_id, token;
 	struct cpsw_virt_port *virt_port;
-	int response_status, ret = 0;
+	int ret = 0;
 
 	switch (msg_type) {
 	case ETHREMOTECFG_MSG_NOTIFY:
@@ -519,7 +519,6 @@ static int cpsw_proxy_client_cb(struct rpmsg_device *rpdev, void *data,
 	case ETHREMOTECFG_MSG_RESPONSE:
 		response_msg_hdr = (struct response_message_header *)msg;
 		response_id = response_msg_hdr->response_id;
-		response_status = response_msg_hdr->response_status;
 
 		if (response_id == common->request_id - 1) {
 			dev_info(common->dev, "ignoring delayed response for request: %u\n",
@@ -1381,10 +1380,8 @@ static int cpsw_virt_port_tx_poll(struct napi_struct *napi_tx, int budget)
 }
 
 /* RX psdata[2] word format - checksum information */
-#define CPSW_RX_PSD_CSUM_ADD	GENMASK(15, 0)
 #define CPSW_RX_PSD_CSUM_ERR	BIT(16)
 #define CPSW_RX_PSD_IS_FRAGMENT	BIT(17)
-#define CPSW_RX_PSD_IS_TCP		BIT(18)
 #define CPSW_RX_PSD_IPV6_VALID	BIT(19)
 #define CPSW_RX_PSD_IPV4_VALID	BIT(20)
 
@@ -1750,8 +1747,7 @@ static void cpsw_proxy_client_detach(struct cpsw_proxy_common *common)
 
 		/* Free TX DMA Channel */
 		for (j = 0; j < virt_port->num_tx_chan; j++) {
-			if (&virt_port->virt_port_tx_chan &&
-			    &virt_port->virt_port_tx_chan->is_valid) {
+			if (virt_port->virt_port_tx_chan->is_valid) {
 				virt_port->curr_tx_chan_idx = j;
 				ret = cpsw_proxy_client_send_request(common, virt_port,
 								     virt_port->virt_port_token,
@@ -1767,8 +1763,7 @@ static void cpsw_proxy_client_detach(struct cpsw_proxy_common *common)
 
 		/* Free RX DMA Flow */
 		for (j = 0; j < virt_port->num_rx_chan; j++) {
-			if (&virt_port->virt_port_rx_chan &&
-			    &virt_port->virt_port_rx_chan->is_valid) {
+			if (virt_port->virt_port_rx_chan->is_valid) {
 				virt_port->curr_rx_chan_idx = j;
 				ret = cpsw_proxy_client_send_request(common, virt_port,
 								     virt_port->virt_port_token,
