@@ -797,8 +797,6 @@ kernel_build(
         "drivers/media/platform/cadence/cdns-csi2rx.ko",
         "drivers/media/platform/chips-media/wave5/wave5.ko",
         "drivers/media/platform/ti/j721e-csi2rx/j721e-csi2rx.ko",
-        "drivers/media/v4l2-core/v4l2-async.ko",
-        "drivers/media/v4l2-core/v4l2-fwnode.ko",
         "drivers/mfd/palmas.ko",
         "drivers/mfd/ti_am335x_tscadc.ko",
         "drivers/mfd/tps65219.ko",
