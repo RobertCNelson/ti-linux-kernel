@@ -67,7 +67,9 @@
 #define DEFAULT_UNTAG_MASK	1
 
 #define NETIF_PRUETH_HSR_OFFLOAD	(NETIF_F_HW_HSR_FWD | \
-					 NETIF_F_HW_HSR_DUP)
+					 NETIF_F_HW_HSR_DUP | \
+					 NETIF_F_HW_HSR_TAG_INS | \
+					 NETIF_F_HW_HSR_TAG_RM)
 
 /* CTRLMMR_ICSSG_RGMII_CTRL register bits */
 #define ICSSG_CTRL_RGMII_ID_MODE		BIT(24)
@@ -75,6 +77,7 @@
 #define IEP_DEFAULT_CYCLE_TIME_NS	1000000	/* 1 ms */
 
 #define PRUETH_UNDIRECTED_PKT_DST_TAG	0
+#define PRUETH_UNDIRECTED_PKT_TAG_INS	BIT(30)
 
 static void prueth_cleanup_rx_chns(struct prueth_emac *emac,
 				   struct prueth_rx_chn *rx_chn,
@@ -875,6 +878,9 @@ static enum netdev_tx emac_ndo_start_xmit(struct sk_buff *skb, struct net_device
 	if (prueth->is_hsr_offload_mode && (ndev->features & NETIF_F_HW_HSR_DUP))
 		dst_tag_id = PRUETH_UNDIRECTED_PKT_DST_TAG;
 
+	if (prueth->is_hsr_offload_mode && (ndev->features & NETIF_F_HW_HSR_TAG_INS))
+		epib[1] |= PRUETH_UNDIRECTED_PKT_TAG_INS;
+
 	cppi5_desc_set_tags_ids(&first_desc->hdr, 0, dst_tag_id);
 	k3_udma_glue_tx_dma_to_cppi5_addr(tx_chn->tx_chn, &buf_dma);
 	cppi5_hdesc_attach_buf(first_desc, buf_dma, pkt_len, buf_dma, pkt_len);
@@ -1486,7 +1492,8 @@ static void prueth_iep_settime(void *clockops_data, u64 ns)
 	sc_desc.cyclecounter0_set = cyclecount & GENMASK(31, 0);
 	sc_desc.cyclecounter1_set = (cyclecount & GENMASK(63, 32)) >> 32;
 	sc_desc.iepcount_set = ns % cycletime;
-	sc_desc.CMP0_current = cycletime - 4; //Count from 0 to (cycle time)-4
+	/* Count from 0 to (cycle time)- emac->iep->def_inc */
+	sc_desc.CMP0_current = cycletime - emac->iep->def_inc;
 
 	memcpy_toio(sc_descp, &sc_desc, sizeof(sc_desc));
 
@@ -1675,6 +1682,13 @@ static int emac_ndo_open(struct net_device *ndev)
 				goto halt_slice0_prus;
 			}
 		}
+	}
+
+	if (prueth->is_hsr_offload_mode) {
+		if (ndev->features & NETIF_F_HW_HSR_TAG_RM)
+			emac_set_port_state(emac, ICSSG_EMAC_HSR_RX_OFFLOAD_ENABLE);
+		else
+			emac_set_port_state(emac, ICSSG_EMAC_HSR_RX_OFFLOAD_DISABLE);
 	}
 
 	flow_cfg = emac->dram.va + ICSSG_CONFIG_OFFSET + PSI_L_REGULAR_FLOW_ID_BASE_OFFSET;
@@ -2688,16 +2702,20 @@ static int prueth_netdevice_event(struct notifier_block *unused,
 
 		if ((ndev->features & NETIF_PRUETH_HSR_OFFLOAD) &&
 		    is_hsr_master(info->upper_dev)) {
-			if (!prueth->hsr_dev) {
-				prueth->hsr_dev = info->upper_dev;
+			if (info->linking) {
+				if (!prueth->hsr_dev) {
+					prueth->hsr_dev = info->upper_dev;
 
-				icssg_class_set_host_mac_addr(prueth->miig_rt,
-							      prueth->hsr_dev->dev_addr);
-			} else {
-				if (prueth->hsr_dev != info->upper_dev) {
-					dev_err(prueth->dev, "Both interfaces must be linked to same upper device\n");
-					return -EOPNOTSUPP;
+					icssg_class_set_host_mac_addr(prueth->miig_rt,
+								      prueth->hsr_dev->dev_addr);
+				} else {
+					if (prueth->hsr_dev != info->upper_dev) {
+						dev_err(prueth->dev, "Both interfaces must be linked to same upper device\n");
+						return -EOPNOTSUPP;
+					}
 				}
+			} else {
+				prueth->hsr_dev = NULL;
 			}
 		}
 
@@ -3280,6 +3298,7 @@ static int prueth_probe(struct platform_device *pdev)
 		icss_iep_init_fw(prueth->iep1);
 	}
 
+	spin_lock_init(&prueth->vtbl_lock);
 	/* setup netdev interfaces */
 	if (eth0_node) {
 		ret = prueth_netdev_init(prueth, eth0_node);

@@ -551,7 +551,9 @@ static const struct icssg_r30_cmd emac_r32_bitmask[] = {
 	{{EMAC_NONE,  0xffff4000, EMAC_NONE, EMAC_NONE}},	/* Preemption on Tx ENABLE*/
 	{{EMAC_NONE,  0xbfff0000, EMAC_NONE, EMAC_NONE}},	/* Preemption on Tx DISABLE*/
 	{{0xffff0010,  EMAC_NONE, 0xffff0010, EMAC_NONE}},	/* VLAN AWARE*/
-	{{0xffef0000,  EMAC_NONE, 0xffef0000, EMAC_NONE}}	/* VLAN UNWARE*/
+	{{0xffef0000,  EMAC_NONE, 0xffef0000, EMAC_NONE}},	/* VLAN UNWARE*/
+	{{0xffff2000, EMAC_NONE, EMAC_NONE, EMAC_NONE}},	/* HSR_RX_OFFLOAD_ENABLE */
+	{{0xdfff0000, EMAC_NONE, EMAC_NONE, EMAC_NONE}}		/* HSR_RX_OFFLOAD_DISABLE */
 };
 
 int emac_set_port_state(struct prueth_emac *emac,
@@ -769,7 +771,10 @@ void icssg_vtbl_modify(struct prueth_emac *emac, u8 vid, u8 port_mask,
 {
 	struct prueth *prueth = emac->prueth;
 	struct prueth_vlan_tbl *tbl = prueth->vlan_tbl;
-	u8 fid_c1 = tbl[vid].fid_c1;
+	u8 fid_c1;
+
+	spin_lock(&prueth->vtbl_lock);
+	fid_c1 = tbl[vid].fid_c1;
 
 	/* FID_C1: bit0..2 port membership mask,
 	 * bit3..5 tagging mask for each port
@@ -784,6 +789,7 @@ void icssg_vtbl_modify(struct prueth_emac *emac, u8 vid, u8 port_mask,
 	}
 
 	tbl[vid].fid_c1 = fid_c1;
+	spin_unlock(&prueth->vtbl_lock);
 }
 
 u16 icssg_get_pvid(struct prueth_emac *emac)
@@ -846,15 +852,18 @@ int emac_fdb_erase_all(struct prueth_emac *emac)
 int emac_fdb_flush_multicast(struct prueth_emac *emac)
 {
 	struct prueth *prueth = emac->prueth;
+	u8 port_mask = BIT(emac->port_id);
 	int ret = 0;
 	int i;
 
 	ret = emac_fdb_erase_all(emac);
 
+	spin_lock(&prueth->vtbl_lock);
 	for (i = 0; i < SZ_4K - 1; i++) {
 		prueth->vlan_tbl[i].fid = i;
-		prueth->vlan_tbl[i].fid_c1 = 0;
+		prueth->vlan_tbl[i].fid_c1 &= ~(port_mask | port_mask << 3);
 	}
+	spin_unlock(&prueth->vtbl_lock);
 
 	return ret;
 }
