@@ -39,6 +39,7 @@ k3-am62a7-sk-ub954-evm-ov2312-dtbs := k3-am62a7-sk.dtb \
 				      k3-am62a7-sk-ub954-evm.dtbo \
 				      k3-fpdlink-ov2312-0-0.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-csi2-imx219.dtb
+dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-csi2-ox05b1s.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-e3-max-opp.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-ethernet-dc01.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-fusion-imx390.dtb
@@ -95,6 +96,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-j721e-sk-csi2-ov5640.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-sk-csi2-rpi-imx219.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-sk-fusion.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-sk-rpi-hdr-ehrpwm.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-j721e-common-proc-board-infotainment.dtbo
 
 # Boards with J721s2 SoC
 dtb-$(CONFIG_ARCH_K3) += k3-am68-sk-base-board.dtb
@@ -103,6 +105,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-am68-sk-bb-rpi-cam-imx219.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am68-sk-fpdlink-fusion.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am68-sk-rpi-hdr-ehrpwm.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am68-sk-som-ddr-mem-carveout.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am68-sk-v3link-fusion.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721s2-common-proc-board.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-j721s2-evm-csi2-ov5640.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721s2-evm-fusion.dtbo
@@ -115,14 +118,18 @@ dtb-$(CONFIG_ARCH_K3) += k3-j722s-evm-csi2-ov5640.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j722s-evm-csi2-rpi-cam-imx219.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j722s-evm-csi2-tevi-ov5640.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j722s-evm-dsi-rpi-7inch-panel.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-j722s-evm-fpdlink-fusion.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j722s-evm-microtips-mf101hie-panel.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-j722s-evm-v3link-fusion.dtbo
 
 # Boards with J784s4 SoC
 dtb-$(CONFIG_ARCH_K3) += k3-am69-sk.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-am69-sk-csi2-ov5640.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am69-sk-ddr-mem-carveout.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am69-sk-csi2-rpi-cam-imx219.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am69-sk-csi2-v3link-fusion.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am69-sk-fpdlink-fusion.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am69-sk-fpdlink-fusion-auxport.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am69-sk-rpi-hdr-ehrpwm.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j784s4-evm.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-j784s4-evm-csi2-ov5640.dtbo
@@ -149,7 +156,11 @@ dtb-$(CONFIG_ARCH_K3) += k3-fpdlink-imx390-rcm-0-0.dtbo \
 			 k3-fpdlink-imx390-rcm-1-0.dtbo \
 			 k3-fpdlink-imx390-rcm-1-1.dtbo \
 			 k3-fpdlink-imx390-rcm-1-2.dtbo \
-			 k3-fpdlink-imx390-rcm-1-3.dtbo
+			 k3-fpdlink-imx390-rcm-1-3.dtbo \
+			 k3-fpdlink-imx390-rcm-2-0.dtbo \
+			 k3-fpdlink-imx390-rcm-2-1.dtbo \
+			 k3-fpdlink-imx390-rcm-2-2.dtbo \
+			 k3-fpdlink-imx390-rcm-2-3.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-fpdlink-ov2312-0-0.dtbo \
 			 k3-fpdlink-ov2312-0-1.dtbo \
 			 k3-fpdlink-ov2312-0-2.dtbo \
@@ -171,7 +182,12 @@ DTC_FLAGS_k3-am62p5-sk += -@
 DTC_FLAGS_k3-am62x-sk-csi2-v3link-fusion += -@
 DTC_FLAGS_k3-am654-base-board += -@
 DTC_FLAGS_k3-am68-sk-base-board += -@
+DTC_FLAGS_k3-am68-sk-fpdlink-fusion += -@
+DTC_FLAGS_k3-am68-sk-v3link-fusion += -@
 DTC_FLAGS_k3-am69-sk += -@
+DTC_FLAGS_k3-am69-sk-csi2-v3link-fusion += -@
+DTC_FLAGS_k3-am69-sk-fpdlink-fusion += -@
+DTC_FLAGS_k3-am69-sk-fpdlink-fusion-auxport += -@
 DTC_FLAGS_k3-j7200-common-proc-board += -@
 DTC_FLAGS_k3-j721e-beagleboneai64 += -@
 DTC_FLAGS_k3-j721e-common-proc-board += -@
@@ -181,5 +197,7 @@ DTC_FLAGS_k3-j721e-sk-fusion += -@
 DTC_FLAGS_k3-j721s2-common-proc-board += -@
 DTC_FLAGS_k3-j721s2-evm-fusion += -@
 DTC_FLAGS_k3-j722s-evm += -@
+DTC_FLAGS_k3-j722s-evm-fpdlink-fusion += -@
+DTC_FLAGS_k3-j722s-evm-v3link-fusion += -@
 DTC_FLAGS_k3-j784s4-evm += -@
 DTC_FLAGS_k3-am642-evm += -@
