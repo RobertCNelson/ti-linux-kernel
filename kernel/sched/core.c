@@ -8224,8 +8224,15 @@ void rt_mutex_setprio(struct task_struct *p, struct task_struct *pi_task)
 	} else {
 		if (dl_prio(oldprio))
 			p->dl.pi_se = &p->dl;
-		if (rt_prio(oldprio))
+		else if (rt_prio(oldprio))
 			p->rt.timeout = 0;
+		else if (!task_has_idle_policy(p)) {
+			struct load_weight lw;
+
+			lw.weight = scale_load(sched_prio_to_weight[prio - MAX_RT_PRIO]);
+			lw.inv_weight = sched_prio_to_wmult[prio - MAX_RT_PRIO];
+			p->sched_class->reweight_task(rq, p, &lw);
+		}
 	}
 
 	p->sched_class = next_class;
