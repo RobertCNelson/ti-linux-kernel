@@ -70,6 +70,7 @@ properties:
               - rockchip,rv1126-qos
               - starfive,jh7100-sysmain
               - ti,am62-opp-efuse-table
+              - ti,am62p-cpsw-mac-efuse
               - ti,am625-dss-oldi-io-ctrl
               - ti,am654-dss-oldi-io-ctrl
               - ti,j784s4-acspcie-proxy-ctrl
