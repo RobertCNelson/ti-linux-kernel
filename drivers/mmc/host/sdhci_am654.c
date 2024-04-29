@@ -152,7 +152,6 @@ struct sdhci_am654_data {
 	u32 flags;
 	u32 quirks;
 	bool dll_enable;
-	bool hs200_tunning;
 
 #define SDHCI_AM654_QUIRK_FORCE_CDTEST BIT(0)
 };
@@ -177,7 +176,6 @@ static void sdhci_am654_setup_dll(struct sdhci_host *host, unsigned int clock)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_am654_data *sdhci_am654 = sdhci_pltfm_priv(pltfm_host);
-	unsigned char timing = host->mmc->ios.timing;
 	int sel50, sel100, freqsel;
 	u32 mask, val;
 	int ret;
@@ -240,10 +238,6 @@ static void sdhci_am654_setup_dll(struct sdhci_host *host, unsigned int clock)
 		dev_err(mmc_dev(host->mmc), "DLL failed to relock\n");
 		return;
 	}
-
-	/* HS400 ITAPDLY should be the same as HS200 ITAPDLY*/
-	if (timing == MMC_TIMING_MMC_HS400)
-		sdhci_am654->itap_del_sel[timing] = sdhci_am654->itap_del_sel[timing - 1];
 }
 
 static void sdhci_am654_write_itapdly(struct sdhci_am654_data *sdhci_am654,
@@ -310,9 +304,15 @@ static void sdhci_am654_set_clock(struct sdhci_host *host, unsigned int clock)
 
 	if (timing > MMC_TIMING_UHS_SDR25 && clock >= CLOCK_TOO_SLOW_HZ) {
 		sdhci_am654_setup_dll(host, clock);
+		sdhci_am654->dll_enable = true;
+
+		if (timing == MMC_TIMING_MMC_HS400) {
+			sdhci_am654->itap_del_ena[timing] = 0x1;
+			sdhci_am654->itap_del_sel[timing] = sdhci_am654->itap_del_sel[timing - 1];
+		}
+
 		sdhci_am654_write_itapdly(sdhci_am654, sdhci_am654->itap_del_sel[timing],
 					  sdhci_am654->itap_del_ena[timing]);
-		sdhci_am654->dll_enable = true;
 	} else {
 		sdhci_am654_setup_delay_chain(sdhci_am654, timing);
 		sdhci_am654->dll_enable = false;
@@ -320,9 +320,6 @@ static void sdhci_am654_set_clock(struct sdhci_host *host, unsigned int clock)
 
 	regmap_update_bits(sdhci_am654->base, PHY_CTRL5, CLKBUFSEL_MASK,
 			   sdhci_am654->clkbuf_sel);
-
-	if (timing == MMC_TIMING_MMC_HS200 && sdhci_am654->dll_enable)
-		sdhci_am654->hs200_tunning = true;
 }
 
 static void sdhci_j721e_4bit_set_clock(struct sdhci_host *host,
@@ -346,7 +343,6 @@ static void sdhci_j721e_4bit_set_clock(struct sdhci_host *host,
 	val = (0x1 << OTAPDLYENA_SHIFT) |
 	      (otap_del_sel << OTAPDLYSEL_SHIFT);
 
-	/* Setup Input TAP delay */
 	itap_del_ena = sdhci_am654->itap_del_ena[timing];
 	itap_del_sel = sdhci_am654->itap_del_sel[timing];
 
@@ -469,15 +465,16 @@ static u32 sdhci_am654_cqhci_irq(struct sdhci_host *host, u32 intmask)
 }
 
 #define ITAPDLY_LENGTH 32
-#define ITAPDLY_LAST_INDEX 31
+#define ITAPDLY_LAST_INDEX (ITAPDLY_LENGTH - 1)
+
 static u32 sdhci_am654_calculate_itap(struct sdhci_host *host, struct window
 			  *fail_window, u8 num_fails, bool circular_buffer)
 {
+	u8 itap = 0, start_fail = 0, end_fail = 0, pass_length = 0;
+	u8 first_fail_start = 0, last_fail_end = 0;
 	struct device *dev = mmc_dev(host->mmc);
 	struct window pass_window = {0, 0, 0};
-	u8 first_fail_start = 0, last_fail_end = 0;
 	int prev_fail_end = -1;
-	u8 itap = 0, start_fail = 0, end_fail = 0, pass_length = 0;
 	u8 i;
 
 	if (!num_fails)
@@ -518,7 +515,7 @@ static u32 sdhci_am654_calculate_itap(struct sdhci_host *host, struct window
 	else
 		itap = (pass_window.start + (pass_window.length >> 1)) % ITAPDLY_LENGTH;
 
-	return (itap < 0 || itap > ITAPDLY_LAST_INDEX ? 0 : itap);
+	return (itap > ITAPDLY_LAST_INDEX) ? ITAPDLY_LAST_INDEX >> 1 : itap;
 }
 
 static int sdhci_am654_platform_execute_tuning(struct sdhci_host *host,
@@ -526,15 +523,19 @@ static int sdhci_am654_platform_execute_tuning(struct sdhci_host *host,
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_am654_data *sdhci_am654 = sdhci_pltfm_priv(pltfm_host);
+	unsigned char timing = host->mmc->ios.timing;
 	struct window fail_window[ITAPDLY_LENGTH];
-	u8 prev_pass = 1;
-	u8 fail_index = 0;
 	u8 curr_pass, itap;
+	u8 fail_index = 0;
+	u8 prev_pass = 1;
 
-	memset(fail_window, 0, sizeof(fail_window[0]) * ITAPDLY_LENGTH);
+	memset(fail_window, 0, sizeof(fail_window));
+
+	/* Enable ITAPDLY */
+	sdhci_am654->itap_del_ena[timing] = 0x1;
 
 	for (itap = 0; itap < ITAPDLY_LENGTH; itap++) {
-		sdhci_am654_write_itapdly(sdhci_am654, itap, 1);
+		sdhci_am654_write_itapdly(sdhci_am654, itap, sdhci_am654->itap_del_ena[timing]);
 
 		curr_pass = !mmc_send_tuning(host->mmc, opcode, NULL);
 
@@ -556,13 +557,12 @@ static int sdhci_am654_platform_execute_tuning(struct sdhci_host *host,
 		fail_index++;
 
 	itap = sdhci_am654_calculate_itap(host, fail_window, fail_index,
-					  (sdhci_am654->dll_enable));
+					  sdhci_am654->dll_enable);
 
-	sdhci_am654_write_itapdly(sdhci_am654, itap, 1);
+	sdhci_am654_write_itapdly(sdhci_am654, itap, sdhci_am654->itap_del_ena[timing]);
 
-	/* Save ITAPDLY for HS200 */
-	if (sdhci_am654->hs200_tunning)
-		sdhci_am654->itap_del_sel[MMC_TIMING_MMC_HS200] = itap;
+	/* Save ITAPDLY */
+	sdhci_am654->itap_del_sel[timing] = itap;
 
 	return 0;
 }
@@ -731,7 +731,6 @@ static int sdhci_am654_get_otap_delay(struct sdhci_host *host,
 		if (td[i].itap_binding) {
 			ret = device_property_read_u32(dev, td[i].itap_binding,
 						       &sdhci_am654->itap_del_sel[i]);
-
 			if (!ret)
 				sdhci_am654->itap_del_ena[i] = 0x1;
 		}
