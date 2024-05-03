@@ -768,8 +768,8 @@ static void cdns_dsi_bridge_early_enable(struct drm_bridge *bridge)
 
 	WARN_ON_ONCE(cdns_dsi_check_conf(dsi, mode, &dsi_cfg, false));
 
-	cdns_dsi_hs_init(dsi);
 	cdns_dsi_init_link(dsi);
+	cdns_dsi_hs_init(dsi);
 
 	writel(HBP_LEN(dsi_cfg.hbp) | HSA_LEN(dsi_cfg.hsa),
 	       dsi->regs + VID_HSIZE1);
@@ -1004,6 +1004,9 @@ static ssize_t cdns_dsi_transfer(struct mipi_dsi_host *host,
 		return ret;
 
 	cdns_dsi_init_link(dsi);
+
+	/* Reset the DCS Write FIFO */
+	writel(0x00, dsi->regs + DIRECT_CMD_FIFO_RST);
 
 	ret = mipi_dsi_create_packet(&packet, msg);
 	if (ret)
