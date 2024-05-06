@@ -52,12 +52,13 @@ static void wave5_vpu_handle_irq(void *dev_id)
 	struct vpu_device *dev = dev_id;
 
 	irq_reason = wave5_vdi_read_register(dev, W5_VPU_VINT_REASON);
+	seq_done = wave5_vdi_read_register(dev, W5_RET_SEQ_DONE_INSTANCE_INFO);
+	cmd_done = wave5_vdi_read_register(dev, W5_RET_QUEUE_CMD_DONE_INST);
+
 	wave5_vdi_write_register(dev, W5_VPU_VINT_REASON_CLR, irq_reason);
 	wave5_vdi_write_register(dev, W5_VPU_VINT_CLEAR, 0x1);
 
 	list_for_each_entry(inst, &dev->instances, list) {
-		seq_done = wave5_vdi_read_register(dev, W5_RET_SEQ_DONE_INSTANCE_INFO);
-		cmd_done = wave5_vdi_read_register(dev, W5_RET_QUEUE_CMD_DONE_INST);
 
 		if (irq_reason & BIT(INT_WAVE5_INIT_SEQ) ||
 		    irq_reason & BIT(INT_WAVE5_ENC_SET_PARAM)) {
@@ -158,8 +159,8 @@ static int wave5_vpu_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	/* physical addresses limited to 32 bits */
-	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
+	/* physical addresses limited to 48 bits */
+	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(48));
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to set DMA mask: %d\n", ret);
 		return ret;
@@ -212,6 +213,7 @@ static int wave5_vpu_probe(struct platform_device *pdev)
 		goto err_clk_dis;
 	}
 	dev->product = wave5_vpu_get_product_id(dev);
+	dev->ext_addr = ((dev->common_mem.daddr >> 32) & 0xFFFF);
 
 	dev->irq = platform_get_irq(pdev, 0);
 	if (dev->irq < 0) {
