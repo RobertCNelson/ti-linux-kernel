@@ -79,6 +79,39 @@
 #define PRUETH_UNDIRECTED_PKT_DST_TAG	0
 #define PRUETH_UNDIRECTED_PKT_TAG_INS	BIT(30)
 
+static int icssg_prueth_hsr_add_mcast(struct net_device *ndev, const u8 *addr)
+{
+	struct prueth_emac *emac = netdev_priv(ndev);
+	struct prueth *prueth = emac->prueth;
+
+	icssg_fdb_add_del(emac, addr, prueth->default_vlan,
+			  ICSSG_FDB_ENTRY_P0_MEMBERSHIP |
+			  ICSSG_FDB_ENTRY_P1_MEMBERSHIP |
+			  ICSSG_FDB_ENTRY_P2_MEMBERSHIP |
+			  ICSSG_FDB_ENTRY_BLOCK,
+			  true);
+
+	icssg_vtbl_modify(emac, emac->port_vlan, BIT(emac->port_id),
+			  BIT(emac->port_id), true);
+
+	return 0;
+}
+
+static int icssg_prueth_hsr_del_mcast(struct net_device *ndev, const u8 *addr)
+{
+	struct prueth_emac *emac = netdev_priv(ndev);
+	struct prueth *prueth = emac->prueth;
+
+	icssg_fdb_add_del(emac, addr, prueth->default_vlan,
+			  ICSSG_FDB_ENTRY_P0_MEMBERSHIP |
+			  ICSSG_FDB_ENTRY_P1_MEMBERSHIP |
+			  ICSSG_FDB_ENTRY_P2_MEMBERSHIP |
+			  ICSSG_FDB_ENTRY_BLOCK,
+			  false);
+
+	return 0;
+}
+
 static void prueth_cleanup_rx_chns(struct prueth_emac *emac,
 				   struct prueth_rx_chn *rx_chn,
 				   int max_rflows)
@@ -1753,7 +1786,9 @@ static int emac_ndo_open(struct net_device *ndev)
 				  DEFAULT_UNTAG_MASK, true);
 
 		icssg_set_pvid(emac->prueth, emac->port_vlan, emac->port_id);
-		emac_set_port_state(emac, ICSSG_EMAC_PORT_VLAN_AWARE_ENABLE);
+
+		if (prueth->is_switch_mode)
+			emac_set_port_state(emac, ICSSG_EMAC_PORT_VLAN_AWARE_ENABLE);
 	}
 
 	queue_work(system_long_wq, &emac->stats_work.work);
@@ -1814,6 +1849,11 @@ static int emac_ndo_stop(struct net_device *ndev)
 		icssg_class_disable(prueth->miig_rt, ICSS_SLICE0);
 		icssg_class_disable(prueth->miig_rt, ICSS_SLICE1);
 	}
+
+	if (prueth->is_hsr_offload_mode)
+		__dev_mc_unsync(ndev, icssg_prueth_hsr_del_mcast);
+
+	__hw_addr_init(&emac->mcast_list);
 
 	atomic_set(&emac->tdown_cnt, emac->tx_ch_num);
 	/* ensure new tdown_cnt value is visible */
@@ -1909,9 +1949,8 @@ static void emac_ndo_set_rx_mode_work(struct work_struct *work)
 	}
 
 	if (!prueth->is_switch_mode) {
-		emac_fdb_flush_multicast(emac);
-
 		if (!prueth->is_hsr_offload_mode) {
+			emac_fdb_flush_multicast(emac);
 			if (!netdev_mc_empty(ndev)) {
 				struct netdev_hw_addr *ha;
 
@@ -1925,42 +1964,15 @@ static void emac_ndo_set_rx_mode_work(struct work_struct *work)
 				return;
 			}
 		} else {
-			/* Now that the FDB entries are flushed, restore the
-			 * entries that were added during ndo_open
-			 */
-			icssg_fdb_add_del(emac, eth_stp_addr, prueth->default_vlan,
-					  ICSSG_FDB_ENTRY_P0_MEMBERSHIP |
-					  ICSSG_FDB_ENTRY_P1_MEMBERSHIP |
-					  ICSSG_FDB_ENTRY_P2_MEMBERSHIP |
-					  ICSSG_FDB_ENTRY_BLOCK,
-					  true);
-			icssg_vtbl_modify(emac, emac->port_vlan, BIT(emac->port_id),
-					  BIT(emac->port_id), true);
+			/* make a mc list copy */
 
-			/* In order for the packets to be received at host port, Both
-			 * HSR firmware requires VLAN ID = 1 to be present
-			 * in the VLAN table
-			 */
-			icssg_vtbl_modify(emac, DEFAULT_VID, DEFAULT_PORT_MASK,
-					  DEFAULT_UNTAG_MASK, true);
+			netif_addr_lock_bh(ndev);
+			__hw_addr_sync(&emac->mcast_list, &ndev->mc, ndev->addr_len);
+			netif_addr_unlock_bh(ndev);
 
-			if (!netdev_mc_empty(ndev)) {
-				struct netdev_hw_addr *ha;
-
-				/* Program multicast address list into FDB Table */
-				netdev_for_each_mc_addr(ha, ndev) {
-					icssg_fdb_add_del(emac, ha->addr, prueth->default_vlan,
-							  ICSSG_FDB_ENTRY_P0_MEMBERSHIP |
-							  ICSSG_FDB_ENTRY_P1_MEMBERSHIP |
-							  ICSSG_FDB_ENTRY_P2_MEMBERSHIP |
-							  ICSSG_FDB_ENTRY_BLOCK,
-							  true);
-				}
-
-				icssg_vtbl_modify(emac, emac->port_vlan, BIT(emac->port_id),
-						  BIT(emac->port_id), true);
-				return;
-			}
+			__hw_addr_sync_dev(&emac->mcast_list, ndev,
+					   icssg_prueth_hsr_add_mcast,
+					   icssg_prueth_hsr_del_mcast);
 		}
 	}
 }
@@ -1977,6 +1989,49 @@ static void emac_ndo_set_rx_mode(struct net_device *ndev)
 	struct prueth_emac *emac = netdev_priv(ndev);
 
 	queue_work(emac->cmd_wq, &emac->rx_mode_work);
+}
+
+static int emac_ndo_vlan_rx_add_vid(struct net_device *ndev,
+				    __be16 proto, u16 vid)
+{
+	struct prueth_emac *emac = netdev_priv(ndev);
+	struct prueth *prueth = emac->prueth;
+	int untag_mask = 0;
+	int port_mask;
+	int ret = 0;
+
+	if (prueth->is_hsr_offload_mode) {
+		port_mask = BIT(PRUETH_PORT_HOST) | BIT(emac->port_id);
+		untag_mask = 0;
+
+		netdev_dbg(emac->ndev, "VID add vid:%u port_mask:%X untag_mask %X\n",
+			   vid, port_mask, untag_mask);
+
+		icssg_vtbl_modify(emac, vid, port_mask, untag_mask, true);
+		icssg_set_pvid(emac->prueth, vid, emac->port_id);
+	}
+	return ret;
+}
+
+static int emac_ndo_vlan_rx_del_vid(struct net_device *ndev,
+				    __be16 proto, u16 vid)
+{
+	struct prueth_emac *emac = netdev_priv(ndev);
+	struct prueth *prueth = emac->prueth;
+	int untag_mask = 0;
+	int port_mask;
+	int ret = 0;
+
+	if (prueth->is_hsr_offload_mode) {
+		port_mask = BIT(PRUETH_PORT_HOST);
+		untag_mask = 0;
+
+		netdev_dbg(emac->ndev, "VID del vid:%u port_mask:%X untag_mask  %X\n",
+			   vid, port_mask, untag_mask);
+
+		icssg_vtbl_modify(emac, vid, port_mask, untag_mask, false);
+	}
+	return ret;
 }
 
 static int emac_set_ts_config(struct net_device *ndev, struct ifreq *ifr)
@@ -2336,6 +2391,8 @@ static const struct net_device_ops emac_netdev_ops = {
 	.ndo_bpf = emac_ndo_bpf,
 	.ndo_xdp_xmit = emac_xdp_xmit,
 	.ndo_set_features = emac_ndo_set_features,
+	.ndo_vlan_rx_add_vid = emac_ndo_vlan_rx_add_vid,
+	.ndo_vlan_rx_kill_vid = emac_ndo_vlan_rx_del_vid,
 };
 
 /* get emac_port corresponding to eth_node name */
@@ -2436,6 +2493,7 @@ static int prueth_netdev_init(struct prueth *prueth,
 	SET_NETDEV_DEV(ndev, prueth->dev);
 	spin_lock_init(&emac->lock);
 	mutex_init(&emac->cmd_lock);
+	__hw_addr_init(&emac->mcast_list);
 
 	emac->phy_node = of_parse_phandle(eth_node, "phy-handle", 0);
 	if (!emac->phy_node && !of_phy_is_fixed_link(eth_node)) {
@@ -2500,7 +2558,7 @@ static int prueth_netdev_init(struct prueth *prueth,
 	ndev->netdev_ops = &emac_netdev_ops;
 	ndev->ethtool_ops = &icssg_ethtool_ops;
 	ndev->hw_features = NETIF_F_SG;
-	ndev->features = ndev->hw_features;
+	ndev->features = ndev->hw_features | NETIF_F_HW_VLAN_CTAG_FILTER;
 	ndev->hw_features |= NETIF_PRUETH_HSR_OFFLOAD;
 
 	netif_napi_add(ndev, &emac->napi_rx,
