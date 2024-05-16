@@ -35,6 +35,17 @@ DECLARE_RESTRICTED_HOOK(android_rvh_shmem_allowable_huge_orders,
 			TP_PROTO(struct inode *inode, pgoff_t index,
 				struct vm_area_struct *vma, unsigned long *orders),
 			TP_ARGS(inode, index, vma, orders), 4);
+DECLARE_RESTRICTED_HOOK(android_rvh_bitmap_find_best_next_area,
+			TP_PROTO(unsigned long *bitmap,
+				unsigned long bitmap_maxno,
+				unsigned long start,
+				unsigned int bitmap_count,
+				unsigned long mask,
+				unsigned long offset,
+				unsigned long *bitmap_no,
+				bool status),
+			TP_ARGS(bitmap, bitmap_maxno, start, bitmap_count, mask,
+				offset, bitmap_no, status), 1);
 /*
 
 DECLARE_RESTRICTED_HOOK(android_rvh_set_skip_swapcache_flags,
