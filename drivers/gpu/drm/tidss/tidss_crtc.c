@@ -108,6 +108,7 @@ static int tidss_crtc_atomic_check(struct drm_crtc *crtc,
 		return -EINVAL;
 	}
 
+	drm_mode_set_crtcinfo(&crtc_state->adjusted_mode, 0);
 	return dispc_vp_bus_check(dispc, hw_videoport, crtc_state);
 }
 
@@ -173,10 +174,6 @@ static void tidss_crtc_atomic_flush(struct drm_crtc *crtc,
 		__func__, crtc->name, crtc->state->active ? "" : "not ",
 		drm_atomic_crtc_needs_modeset(crtc->state) ? "needs" : "doesn't need",
 		crtc->state->event);
-
-	/* There is nothing to do if CRTC is not going to be enabled. */
-	if (!crtc->state->active)
-		return;
 
 	/*
 	 * Flush CRTC changes with go bit only if new modeset is not
