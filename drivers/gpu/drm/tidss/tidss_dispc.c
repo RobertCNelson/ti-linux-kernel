@@ -3258,29 +3258,16 @@ static void dispc_init_errata(struct dispc_device *dispc)
 	}
 }
 
-/*
- * K2G display controller does not support soft reset, so we do a basic manual
- * reset here: make sure the IRQs are masked and VPs are disabled.
- */
-static void dispc_softreset_k2g(struct dispc_device *dispc)
-{
-	dispc_set_irqenable(dispc, 0);
-	dispc_read_and_clear_irqstatus(dispc);
-
-	for (unsigned int vp_idx = 0; vp_idx < dispc->feat->num_vps; ++vp_idx)
-		VP_REG_FLD_MOD(dispc, vp_idx, DISPC_VP_CONTROL, 0, 0, 0);
-}
-
 static int dispc_softreset(struct dispc_device *dispc)
 {
 	u32 val;
 	int ret;
 
+
 	/* K2G display controller does not support soft reset */
-	if (dispc->feat->subrev == DISPC_K2G) {
-		dispc_softreset_k2g(dispc);
+	if (dispc->feat->subrev == DISPC_K2G)
 		return 0;
-	}
+
 
 	/*
 	 * When we reset the DSS, we also reset the OLDI enable. This disables
@@ -3337,74 +3324,15 @@ static int dispc_init_hw(struct dispc_device *dispc)
 		goto err_runtime_suspend;
 	}
 
-	dispc->tidss->boot_enabled_vp_mask = 0;
+	ret = dispc_softreset(dispc);
+	if (ret)
+		goto err_clk_disable;
 
-	/* HACK: If simple-framebuffer device is absent, then soft reset dispc even if it is not
-	 * idle. This is to avoid powering-off of DSS (which can happen due
-	 * to probe deferral waiting for child drivers) while DSS is active thus leading to system
-	 * hang.
-	 */
-	if (dispc_is_idle(dispc) || !dispc->tidss->simplefb_enabled) {
-		ret = dispc_softreset(dispc);
-		if (ret)
-			goto err_clk_disable;
-	} else {
-		for (u32 vp_idx = 0; vp_idx < dispc->feat->num_vps; vp_idx++) {
-			bool enabled = VP_REG_GET(dispc, vp_idx,
-						  DISPC_VP_CONTROL, 0, 0);
-
-			if (!enabled)
-				continue;
-
-			dispc->tidss->boot_enabled_vp_mask |= BIT(vp_idx);
-
-			/* Keep the VP clk enabled */
-			ret = clk_prepare_enable(dispc->vp_clk[vp_idx]);
-			if (ret) {
-				while (vp_idx--) {
-					if (!(dispc->tidss->boot_enabled_vp_mask &
-					      BIT(vp_idx)))
-						continue;
-
-					clk_disable_unprepare(dispc->vp_clk[vp_idx]);
-				}
-
-				goto err_clk_disable;
-			}
-		}
-
-		if (!dispc->tidss->boot_enabled_vp_mask) {
-			dev_warn(dev,
-				 "Bad HW state: DSS not idle but no VPs are enabled. Resetting.\n");
-			ret = dispc_softreset(dispc);
-			if (ret)
-				goto err_clk_disable;
-		} else {
-			/*
-			 * Do basic HW init here, which won't interrupt the
-			 * splash-screen.
-			 */
-
-			/* Ensure we won't get interrupts */
-			dispc_set_irqenable(dispc, 0);
-			dispc_read_and_clear_irqstatus(dispc);
-		}
-	}
-
-	if (dispc->tidss->boot_enabled_vp_mask) {
-		dev_dbg(dev,
-			"Bootloader splash-screen detected, leaving DSS active.\n");
-		pm_runtime_get_noresume(dev);
-	} else {
-		/*
-		 * No splash-screen. Disable the clock and set DSS back to suspended.
-		 */
-		clk_disable_unprepare(dispc->fclk);
-		ret = pm_runtime_set_suspended(dev);
-		if (ret) {
-			dev_err(dev, "Failed to set DSS PM to suspended\n");
-			return ret;
-		}
+	clk_disable_unprepare(dispc->fclk);
+	ret = pm_runtime_set_suspended(dev);
+	if (ret) {
+		dev_err(dev, "Failed to set DSS PM to suspended\n");
+		return ret;
 	}
 
 	return 0;
@@ -3559,6 +3487,10 @@ int dispc_init(struct tidss_device *tidss)
 		if (r)
 			return r;
 	}
+
+	r = dispc_init_hw(dispc);
+	if (r)
+		return r;
 
 	tidss->dispc = dispc;
 
