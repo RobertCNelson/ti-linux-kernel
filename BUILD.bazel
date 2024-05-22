@@ -814,6 +814,7 @@ kernel_build(
         "drivers/gpu/drm/bridge/ite-it66121.ko",
         "drivers/gpu/drm/bridge/sii902x.ko",
         "drivers/gpu/drm/drm_dma_helper.ko",
+        "drivers/gpu/drm/panel/panel-ilitek-ili9881c.ko",
         "drivers/gpu/drm/panel/panel-osd-osd101t2587-53ts.ko",
         "drivers/gpu/drm/panel/panel-simple.ko",
         "drivers/gpu/drm/tidss/tidss.ko",
