@@ -42,6 +42,8 @@
 #define AM625_EFUSE_K_MPU_OPP			11
 #define AM625_EFUSE_S_MPU_OPP			19
 #define AM625_EFUSE_T_MPU_OPP			20
+#define AM625_EFUSE_U_MPU_OPP			21
+#define AM625_EFUSE_V_MPU_OPP			22
 
 #define AM625_SUPPORT_K_MPU_OPP			BIT(0)
 #define AM625_SUPPORT_S_MPU_OPP			BIT(1)
@@ -118,6 +120,8 @@ static unsigned long am625_efuse_xlate(struct ti_cpufreq_data *opp_data,
 	unsigned long calculated_efuse = AM625_SUPPORT_K_MPU_OPP;
 
 	switch (efuse) {
+	case AM625_EFUSE_V_MPU_OPP:
+	case AM625_EFUSE_U_MPU_OPP:
 	case AM625_EFUSE_T_MPU_OPP:
 		calculated_efuse |= AM625_SUPPORT_T_MPU_OPP;
 		fallthrough;
@@ -338,6 +342,7 @@ static const struct of_device_id ti_cpufreq_of_match[] = {
 	{ .compatible = "ti,omap36xx", .data = &omap36xx_soc_data, },
 	{ .compatible = "ti,am625", .data = &am625_soc_data, },
 	{ .compatible = "ti,am62a7", .data = &am625_soc_data, },
+	{ .compatible = "ti,am62p5", .data = &am625_soc_data, },
 	/* legacy */
 	{ .compatible = "ti,omap3430", .data = &omap34xx_soc_data, },
 	{ .compatible = "ti,omap3630", .data = &omap36xx_soc_data, },

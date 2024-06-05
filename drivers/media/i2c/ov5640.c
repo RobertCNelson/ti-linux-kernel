@@ -178,8 +178,8 @@ static const s64 ov5640_csi2_link_freqs[] = {
 	248000000, 192000000, 192000000, 192000000, 96000000,
 };
 
-/* Link freq for default mode: UYVY 16 bpp, 2 data lanes. */
-#define OV5640_DEFAULT_LINK_FREQ	13
+/* Link freq for default mode: UYVY 640x480, 16 bpp, 2 data lanes. */
+#define OV5640_DEFAULT_LINK_FREQ	19
 
 enum ov5640_format_mux {
 	OV5640_FMT_MUX_YUV422 = 0,
@@ -3943,7 +3943,7 @@ static int ov5640_probe(struct i2c_client *client)
 	if (ret)
 		goto err_pm_runtime;
 
-	pm_runtime_set_autosuspend_delay(dev, 1000);
+	pm_runtime_set_autosuspend_delay(dev, -1);
 	pm_runtime_use_autosuspend(dev);
 	pm_runtime_mark_last_busy(dev);
 	pm_runtime_put_autosuspend(dev);

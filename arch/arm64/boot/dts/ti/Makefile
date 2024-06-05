@@ -36,6 +36,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-am62-lp-sk-microtips-mf101hie-panel.dtbo
 # Boards with AM62Ax SoC
 dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-ethernet-dc01.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-fusion.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-rpi-hdr-ehrpwm.dtbo
 
 # Boards with AM62Px SoC
@@ -47,6 +48,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-am62p5-sk-rpi-hdr-ehrpwm.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62x-sk-csi2-ov5640.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62x-sk-csi2-tevi-ov5640.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62x-sk-csi2-imx219.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am62x-sk-csi2-v3link-fusion.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62x-sk-hdmi-audio.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62x-sk-mcan.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62x-sk-microtips-mf103hie-lcd2.dtbo
@@ -152,6 +154,12 @@ k3-am62a7-sk-csi2-tevi-ov5640-dtbs := k3-am62a7-sk.dtb \
 k3-am62a7-sk-ethernet-dc01-dtbs := k3-am62a7-sk.dtb \
 	k3-am62a7-sk-ethernet-dc01.dtbo
 k3-am62a7-sk-hdmi-audio-dtbs := k3-am62a7-sk.dtb k3-am62x-sk-hdmi-audio.dtbo
+k3-am62p5-sk-csi2-imx219-dtbs := k3-am62p5-sk.dtb \
+	k3-am62x-sk-csi2-imx219.dtbo
+k3-am62p5-sk-csi2-ov5640-dtbs := k3-am62p5-sk.dtb \
+	k3-am62x-sk-csi2-ov5640.dtbo
+k3-am62p5-sk-csi2-tevi-ov5640-dtbs := k3-am62p5-sk.dtb \
+	k3-am62x-sk-csi2-tevi-ov5640.dtbo
 k3-am642-evm-icssg1-dualemac-dtbs := \
 	k3-am642-evm.dtb k3-am642-evm-icssg1-dualemac.dtbo
 k3-am642-tqma64xxl-mbax4xxl-sdcard-dtbs := \
@@ -199,6 +207,9 @@ dtb- += k3-am625-beagleplay-csi2-ov5640.dtb \
 	k3-am62a7-sk-csi2-imx219.dtb \
 	k3-am62a7-sk-csi2-ov5640.dtb \
 	k3-am62a7-sk-hdmi-audio.dtb \
+	k3-am62p5-sk-csi2-imx219.dtb \
+	k3-am62p5-sk-csi2-ov5640.dtb \
+	k3-am62p5-sk-csi2-tevi-ov5640.dtb \
 	k3-am642-evm-icssg1-dualemac.dtb \
 	k3-am642-tqma64xxl-mbax4xxl-sdcard.dtb \
 	k3-am642-tqma64xxl-mbax4xxl-wlan.dtb \
@@ -215,10 +226,25 @@ dtb- += k3-am625-beagleplay-csi2-ov5640.dtb \
 	k3-j784s4-evm-quad-port-eth-exp1.dtb \
 	k3-j784s4-evm-usxgmii-exp1-exp2.dtb
 
+# FPDLink Sensors
+dtb-$(CONFIG_ARCH_K3) += k3-fpdlink-imx390-rcm-0-0.dtbo \
+			 k3-fpdlink-imx390-rcm-0-1.dtbo \
+			 k3-fpdlink-imx390-rcm-0-2.dtbo \
+			 k3-fpdlink-imx390-rcm-0-3.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-fpdlink-ov2312-0-0.dtbo \
+			 k3-fpdlink-ov2312-0-1.dtbo \
+			 k3-fpdlink-ov2312-0-2.dtbo \
+			 k3-fpdlink-ov2312-0-3.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-v3link-imx219-0-0.dtbo \
+			 k3-v3link-imx219-0-1.dtbo \
+			 k3-v3link-imx219-0-2.dtbo \
+			 k3-v3link-imx219-0-3.dtbo
+
 # Enable support for device-tree overlays
 DTC_FLAGS_k3-am625-beagleplay += -@
 DTC_FLAGS_k3-am625-sk += -@
 DTC_FLAGS_k3-am62-lp-sk += -@
+DTC_FLAGS_k3-am62x-sk-csi2-v3link-fusion += -@
 DTC_FLAGS_k3-am62a7-sk += -@
 DTC_FLAGS_k3-am62p5-sk += -@
 DTC_FLAGS_k3-am642-evm += -@
