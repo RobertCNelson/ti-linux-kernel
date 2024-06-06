@@ -170,6 +170,9 @@ static int rpmsg_eptdev_open(struct inode *inode, struct file *filp)
 
 	ept->flow_cb = rpmsg_ept_flow_cb;
 	eptdev->ept = ept;
+	if (eptdev->chinfo.src == RPMSG_ADDR_ANY)
+		eptdev->chinfo.src = ept->addr;
+
 	filp->private_data = eptdev;
 	mutex_unlock(&eptdev->ept_lock);
 
@@ -522,6 +525,7 @@ static void rpmsg_chrdev_remove(struct rpmsg_device *rpdev)
 
 static struct rpmsg_device_id rpmsg_chrdev_id_table[] = {
 	{ .name	= "rpmsg-raw" },
+	{ .name	= "rpmsg_chrdev" },
 	{ },
 };
 
