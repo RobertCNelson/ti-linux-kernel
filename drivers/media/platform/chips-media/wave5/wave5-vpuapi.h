@@ -457,6 +457,27 @@ struct queue_status_info {
 #define MAX_NUM_SPATIAL_LAYER 3
 #define MAX_GOP_NUM 8
 
+enum enc_change_param {
+	// COMMON parameters which can be changed frame by frame.
+	W5_ENC_CHANGE_PARAM_PPS                 = (1<<0),
+	W5_ENC_CHANGE_PARAM_INTRA_PARAM         = (1<<1),
+	W5_ENC_CHANGE_PARAM_RC_FRAME_RATE       = (1<<6),
+	W5_ENC_CHANGE_PARAM_RC_TARGET_RATE      = (1<<8),
+	W5_ENC_CHANGE_PARAM_RC                  = (1<<9),
+	W5_ENC_CHANGE_PARAM_RC_MIN_MAX_QP       = (1<<10),
+	W5_ENC_CHANGE_PARAM_RC_BIT_RATIO_LAYER  = (1<<11),
+	W5_ENC_CHANGE_PARAM_RC_INTER_MIN_MAX_QP = (1<<12),
+	W5_ENC_CHANGE_PARAM_RC_WEIGHT           = (1<<13),
+	W5_ENC_CHANGE_PARAM_INDEPEND_SLICE      = (1<<16),
+	W5_ENC_CHANGE_PARAM_DEPEND_SLICE        = (1<<17),
+	W5_ENC_CHANGE_PARAM_RDO                 = (1<<18),
+	W5_ENC_CHANGE_PARAM_NR                  = (1<<19),
+	W5_ENC_CHANGE_PARAM_BG                  = (1<<20),
+	W5_ENC_CHANGE_PARAM_CUSTOM_MD           = (1<<21),
+	W5_ENC_CHANGE_PARAM_CUSTOM_LAMBDA       = (1<<22),
+	W5_ENC_CHANGE_PARAM_VUI_HRD_PARAM       = (1<<23),
+};
+
 struct custom_gop_pic_param {
 	u32 pic_type; /* picture type of nth picture in the custom GOP */
 	u32 poc_offset; /* POC of nth picture in the custom GOP */
@@ -566,6 +587,9 @@ struct enc_wave_param {
 	u32 lambda_scaling_enable: 1; /* enable lambda scaling using custom GOP */
 	u32 transform8x8_enable: 1; /* enable 8x8 intra prediction and 8x8 transform */
 	u32 mb_level_rc_enable: 1; /* enable MB-level rate control */
+	u32 forced_idr_header_enable: 1; /* enable header encoding before IDR frame */
+	u32 constraint_set1_flag: 1; /* enable CBP */
+	u32 forced_idr_pictype_enable: 1;
 };
 
 struct enc_open_param {
@@ -615,6 +639,8 @@ struct enc_param {
 	struct enc_code_opt code_option;
 	u64 pts; /* presentation timestamp (PTS) of the input source */
 	bool src_end_flag;
+	s32  force_pictype_enable; /* A flag to use a force picture type (WAVE only) */
+	s32  force_pic_type;       /* A force picture type (I, P, B, IDR). It is valid when forcePicTypeEnable is 1. (WAVE only) */
 };
 
 struct enc_output_info {
@@ -824,6 +850,7 @@ struct vpu_instance {
 	unsigned int rc_enable;
 	unsigned int bit_rate;
 	unsigned int encode_aud;
+	unsigned int change_param_flags;
 	struct enc_wave_param enc_param;
 };
 
@@ -854,6 +881,7 @@ int wave5_vpu_dec_set_rd_ptr(struct vpu_instance *inst, dma_addr_t addr, int upd
 dma_addr_t wave5_vpu_dec_get_rd_ptr(struct vpu_instance *inst);
 int wave5_vpu_dec_reset_framebuffer(struct vpu_instance *inst, unsigned int index);
 int wave5_vpu_dec_give_command(struct vpu_instance *inst, enum codec_command cmd, void *parameter);
+int wave5_vpu_enc_change_param(struct vpu_instance *inst, u32 *fail_res);
 int wave5_vpu_dec_get_bitstream_buffer(struct vpu_instance *inst, dma_addr_t *prd_ptr,
 				       dma_addr_t *pwr_ptr, size_t *size);
 int wave5_vpu_dec_update_bitstream_buffer(struct vpu_instance *inst, size_t size);

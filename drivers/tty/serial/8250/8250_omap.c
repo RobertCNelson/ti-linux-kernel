@@ -26,8 +26,10 @@
 #include <linux/pm_qos.h>
 #include <linux/pm_wakeirq.h>
 #include <linux/dma-mapping.h>
+#include <linux/reboot.h>
 #include <linux/sys_soc.h>
 #include <linux/pm_domain.h>
+#include <linux/pinctrl/consumer.h>
 
 #include "8250.h"
 
@@ -139,7 +141,6 @@ struct omap8250_priv {
 	u8 rx_trigger;
 	bool is_suspending;
 	int wakeirq;
-	int wakeups_enabled;
 	u32 latency;
 	u32 calc_latency;
 	struct pm_qos_request pm_qos_request;
@@ -148,6 +149,9 @@ struct omap8250_priv {
 	spinlock_t rx_dma_lock;
 	bool rx_dma_broken;
 	bool throttled;
+
+	struct pinctrl *pinctrl;
+	struct pinctrl_state *pinctrl_wakeup;
 };
 
 struct omap8250_dma_params {
@@ -1338,6 +1342,30 @@ static int omap8250_no_handle_irq(struct uart_port *port)
 	return 0;
 }
 
+static int omap8250_select_wakeup_pinctrl(struct device *dev,
+					  struct omap8250_priv *priv)
+{
+	if (IS_ERR_OR_NULL(priv->pinctrl_wakeup))
+		return 0;
+
+	if (!device_may_wakeup(dev))
+		return 0;
+
+	return pinctrl_select_state(priv->pinctrl, priv->pinctrl_wakeup);
+}
+
+static int omap8250_sysoff_handler(struct sys_off_data *data)
+{
+	struct omap8250_priv *priv = dev_get_drvdata(data->dev);
+	int ret;
+
+	ret = omap8250_select_wakeup_pinctrl(data->dev, priv);
+	if (ret)
+		dev_err(data->dev, "Failed to select pinctrl state 'wakeup', continuing poweroff\n");
+
+	return NOTIFY_DONE;
+}
+
 static struct omap8250_dma_params am654_dma = {
 	.rx_size = SZ_2K,
 	.rx_trigger = 1,
@@ -1498,7 +1526,7 @@ static int omap8250_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, priv);
 
-	device_init_wakeup(&pdev->dev, true);
+	device_set_wakeup_capable(&pdev->dev, true);
 	pm_runtime_enable(&pdev->dev);
 	pm_runtime_use_autosuspend(&pdev->dev);
 
@@ -1570,6 +1598,16 @@ static int omap8250_probe(struct platform_device *pdev)
 	priv->line = ret;
 	pm_runtime_mark_last_busy(&pdev->dev);
 	pm_runtime_put_autosuspend(&pdev->dev);
+
+	priv->pinctrl = devm_pinctrl_get(&pdev->dev);
+	if (!IS_ERR_OR_NULL(priv->pinctrl))
+		priv->pinctrl_wakeup = pinctrl_lookup_state(priv->pinctrl, "wakeup");
+
+	devm_register_sys_off_handler(&pdev->dev,
+				      SYS_OFF_MODE_POWER_OFF_PREPARE,
+				      SYS_OFF_PRIO_DEFAULT,
+				      omap8250_sysoff_handler, NULL);
+
 	return 0;
 err:
 	pm_runtime_dont_use_autosuspend(&pdev->dev);
@@ -1629,6 +1667,13 @@ static int omap8250_suspend(struct device *dev)
 	struct generic_pm_domain *genpd = pd_to_genpd(dev->pm_domain);
 	int err = 0;
 
+	err = omap8250_select_wakeup_pinctrl(dev, priv);
+	if (err) {
+		dev_err(dev, "Failed to select wakeup pinctrl, aborting suspend %pe\n",
+			ERR_PTR(err));
+		return err;
+	}
+
 	serial8250_suspend_port(priv->line);
 
 	err = pm_runtime_resume_and_get(dev);
@@ -1661,6 +1706,13 @@ static int omap8250_resume(struct device *dev)
 	struct uart_8250_port *up = serial8250_get_port(priv->line);
 	struct generic_pm_domain *genpd = pd_to_genpd(dev->pm_domain);
 	int err;
+
+	err = pinctrl_select_default_state(dev);
+	if (err) {
+		dev_err(dev, "Failed to select default pinctrl state on resume: %pe\n",
+			ERR_PTR(err));
+		return err;
+	}
 
 	if (uart_console(&up->port) && console_suspend_enabled) {
 		if (console_suspend_enabled) {

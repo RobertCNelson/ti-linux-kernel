@@ -23,6 +23,15 @@
 #define FEATURE_AVC_ENCODER		BIT(1)
 #define FEATURE_HEVC_ENCODER		BIT(0)
 
+#define ENC_AVC_INTRA_IDR_PARAM_MASK	0x7ff
+#define ENC_AVC_INTRA_PERIOD_SHIFT		6
+#define ENC_AVC_IDR_PERIOD_SHIFT		17
+#define ENC_AVC_FORCED_IDR_HEADER_SHIFT		28
+
+#define ENC_HEVC_INTRA_QP_SHIFT			3
+#define ENC_HEVC_FORCED_IDR_HEADER_SHIFT	9
+#define ENC_HEVC_INTRA_PERIOD_SHIFT		16
+
 /* Decoder support fields */
 #define FEATURE_AVC_DECODER		BIT(3)
 #define FEATURE_HEVC_DECODER		BIT(2)
@@ -1090,8 +1099,8 @@ int wave5_vpu_re_init(struct device *dev, u8 *fw, size_t size)
 	return setup_wave5_properties(dev);
 }
 
-static int wave5_vpu_sleep_wake(struct device *dev, bool i_sleep_wake, const uint16_t *code,
-				size_t size)
+int wave5_vpu_sleep_wake(struct device *dev, bool i_sleep_wake, const uint16_t *code,
+			 size_t size)
 {
 	u32 reg_val;
 	struct vpu_buf *common_vb;
@@ -1598,6 +1607,9 @@ int wave5_vpu_enc_init_seq(struct vpu_instance *inst)
 			(p_param->skip_intra_trans << 25) |
 			(p_param->strong_intra_smooth_enable << 27) |
 			(p_param->en_still_picture << 30);
+	else if (inst->std == W_AVC_ENC)
+		reg_val |= (p_param->constraint_set1_flag << 29);
+
 	vpu_write_reg(inst->dev, W5_CMD_ENC_SEQ_SPS_PARAM, reg_val);
 
 	reg_val = (p_param->lossless_enable) |
@@ -1617,12 +1629,14 @@ int wave5_vpu_enc_init_seq(struct vpu_instance *inst)
 
 	if (inst->std == W_AVC_ENC)
 		vpu_write_reg(inst->dev, W5_CMD_ENC_SEQ_INTRA_PARAM, p_param->intra_qp |
-				((p_param->intra_period & 0x7ff) << 6) |
-				((p_param->avc_idr_period & 0x7ff) << 17));
+				((p_param->intra_period & ENC_AVC_INTRA_IDR_PARAM_MASK) << ENC_AVC_INTRA_PERIOD_SHIFT) |
+				((p_param->avc_idr_period & ENC_AVC_INTRA_IDR_PARAM_MASK) << ENC_AVC_IDR_PERIOD_SHIFT) |
+				(p_param->forced_idr_header_enable << ENC_AVC_FORCED_IDR_HEADER_SHIFT));
 	else if (inst->std == W_HEVC_ENC)
 		vpu_write_reg(inst->dev, W5_CMD_ENC_SEQ_INTRA_PARAM,
-			      p_param->decoding_refresh_type | (p_param->intra_qp << 3) |
-				(p_param->intra_period << 16));
+			      p_param->decoding_refresh_type | (p_param->intra_qp << ENC_HEVC_INTRA_QP_SHIFT) |
+			      (p_param->forced_idr_header_enable << ENC_HEVC_FORCED_IDR_HEADER_SHIFT) |
+			      (p_param->intra_period << ENC_HEVC_INTRA_PERIOD_SHIFT));
 
 	reg_val = (p_param->rdo_skip << 2) |
 		(p_param->lambda_scaling_enable << 3) |
@@ -1959,6 +1973,18 @@ free_vb_fbc_y_tbl:
 	return ret;
 }
 
+int wave5_vpu_enc_apply_change_param(struct vpu_instance *inst, u32 *fail_res)
+{
+	/* SET_PARAM + COMMON */
+	vpu_write_reg(inst->dev, W5_CMD_ENC_SEQ_SET_PARAM_OPTION, OPT_CHANGE_PARAM);
+	vpu_write_reg(inst->dev, W5_CMD_ENC_SEQ_SET_PARAM_ENABLE, inst->change_param_flags);
+
+	if (inst->change_param_flags & W5_ENC_CHANGE_PARAM_RC_TARGET_RATE)
+		vpu_write_reg(inst->dev, W5_CMD_ENC_SEQ_RC_TARGET_RATE, inst->bit_rate);
+
+	return send_firmware_command(inst, W5_ENC_SET_PARAM, true, NULL, fail_res);
+}
+
 int wave5_vpu_encode(struct vpu_instance *inst, struct enc_param *option, u32 *fail_res)
 {
 	u32 src_frame_format;
@@ -2007,7 +2033,11 @@ int wave5_vpu_encode(struct vpu_instance *inst, struct enc_param *option, u32 *f
 			      (option->code_option.encode_eos << 6) |
 			      (option->code_option.encode_eob << 7));
 
-	vpu_write_reg(inst->dev, W5_CMD_ENC_PIC_PIC_PARAM, 0);
+	vpu_write_reg(inst->dev, W5_CMD_ENC_PIC_PIC_PARAM, (option->force_pictype_enable<<20) |
+								(option->force_pic_type<<21));
+
+	option->force_pictype_enable = 0;
+	option->force_pic_type = 0;
 
 	if (option->src_end_flag)
 		/* no more source images. */
