@@ -13,6 +13,7 @@
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
+#include <linux/pm_runtime.h>
 
 #include <media/mipi-csi2.h>
 #include <media/v4l2-device.h>
@@ -124,6 +125,7 @@ struct ti_csi2rx_dev {
 	struct v4l2_subdev		*source;
 	struct v4l2_subdev		subdev;
 	struct ti_csi2rx_ctx		ctx[TI_CSI2RX_MAX_CTX];
+	u64				enabled_streams_mask;
 	/* Buffer to drain stale data from PSI-L endpoint */
 	struct {
 		void			*vaddr;
@@ -971,6 +973,10 @@ static int ti_csi2rx_start_streaming(struct vb2_queue *vq, unsigned int count)
 	int ret = 0, i;
 	struct v4l2_subdev_state *state;
 
+	ret = pm_runtime_resume_and_get(csi->dev);
+	if (ret)
+		return ret;
+
 	spin_lock_irqsave(&dma->lock, flags);
 	if (list_empty(&dma->queue))
 		ret = -EIO;
@@ -1054,6 +1060,8 @@ err_dma:
 	writel(0, csi->shim + SHIM_DMACNTX(ctx->idx));
 err:
 	ti_csi2rx_cleanup_buffers(ctx, VB2_BUF_STATE_QUEUED);
+	pm_runtime_put(csi->dev);
+
 	return ret;
 }
 
@@ -1079,6 +1087,7 @@ static void ti_csi2rx_stop_streaming(struct vb2_queue *vq)
 
 	ti_csi2rx_stop_dma(ctx);
 	ti_csi2rx_cleanup_buffers(ctx, VB2_BUF_STATE_ERROR);
+	pm_runtime_put(csi->dev);
 }
 
 static const struct vb2_ops csi_vb2_qops = {
@@ -1188,32 +1197,52 @@ static int ti_csi2rx_sd_init_cfg(struct v4l2_subdev *sd,
 	return _ti_csi2rx_sd_set_routing(sd, state, &routing);
 }
 
+static int ti_csi2rx_sd_all_sink_streams(struct v4l2_subdev_state *state)
+{
+	struct v4l2_subdev_krouting *routing = &state->routing;
+	u64 sink_streams = 0;
+	int i;
+
+	for (i = 0; i < routing->num_routes; i++) {
+		struct v4l2_subdev_route *r = &routing->routes[i];
+
+		if (r->sink_pad == TI_CSI2RX_PAD_SINK)
+			sink_streams |= BIT(r->sink_stream);
+	}
+
+	return sink_streams;
+}
+
 static int ti_csi2rx_sd_enable_streams(struct v4l2_subdev *sd,
 				       struct v4l2_subdev_state *state,
 				       u32 pad, u64 streams_mask)
 {
 	struct ti_csi2rx_dev *csi = to_csi2rx_dev(sd);
 	struct media_pad *remote_pad;
-	u64 sink_streams;
 	int ret = 0;
 
 	remote_pad = media_entity_remote_source_pad_unique(&csi->subdev.entity);
 	if (!remote_pad)
 		return -ENODEV;
-	sink_streams = v4l2_subdev_state_xlate_streams(state, pad,
-						       TI_CSI2RX_PAD_SINK,
-						       &streams_mask);
-
-	ret = v4l2_subdev_enable_streams(csi->source, remote_pad->index,
-					 sink_streams);
-	if (ret)
-		return ret;
 
 	mutex_lock(&csi->mutex);
-	csi->enable_count++;
-	mutex_unlock(&csi->mutex);
+	if (!csi->enable_count) {
+		u64 sink_streams;
 
-	return 0;
+		sink_streams = ti_csi2rx_sd_all_sink_streams(state);
+		dev_dbg(csi->dev, "Enabling all streams (%llx) on sink.\n",
+			sink_streams);
+		ret = v4l2_subdev_enable_streams(csi->source, remote_pad->index,
+						 sink_streams);
+		if (ret)
+			goto out;
+		csi->enabled_streams_mask = sink_streams;
+	}
+
+	csi->enable_count++;
+out:
+	mutex_unlock(&csi->mutex);
+	return ret;
 }
 
 static int ti_csi2rx_sd_disable_streams(struct v4l2_subdev *sd,
@@ -1222,15 +1251,11 @@ static int ti_csi2rx_sd_disable_streams(struct v4l2_subdev *sd,
 {
 	struct ti_csi2rx_dev *csi = to_csi2rx_dev(sd);
 	struct media_pad *remote_pad;
-	u64 sink_streams;
 	int ret = 0;
 
 	remote_pad = media_entity_remote_source_pad_unique(&csi->subdev.entity);
 	if (!remote_pad)
 		return -ENODEV;
-	sink_streams = v4l2_subdev_state_xlate_streams(state, pad,
-						       TI_CSI2RX_PAD_SINK,
-						       &streams_mask);
 
 	mutex_lock(&csi->mutex);
 	if (csi->enable_count == 0) {
@@ -1238,10 +1263,20 @@ static int ti_csi2rx_sd_disable_streams(struct v4l2_subdev *sd,
 		goto out;
 	}
 
-	ret = v4l2_subdev_disable_streams(csi->source, remote_pad->index,
-					  sink_streams);
-	if (!ret)
-		--csi->enable_count;
+	if (csi->enable_count == 1) {
+		u64 sink_streams;
+
+		sink_streams = ti_csi2rx_sd_all_sink_streams(state);
+		dev_dbg(csi->dev, "Disabling all streams (%llx) on sink.\n",
+			sink_streams);
+		ret = v4l2_subdev_disable_streams(csi->source, remote_pad->index,
+						  sink_streams);
+		if (ret)
+			goto out;
+		csi->enabled_streams_mask = 0;
+	}
+
+	--csi->enable_count;
 out:
 	mutex_unlock(&csi->mutex);
 	return ret;
@@ -1286,7 +1321,9 @@ static void ti_csi2rx_cleanup_vb2q(struct ti_csi2rx_ctx *ctx)
 
 static void ti_csi2rx_cleanup_ctx(struct ti_csi2rx_ctx *ctx)
 {
-	ti_csi2rx_cleanup_dma(ctx);
+	if (!pm_runtime_status_suspended(ctx->csi->dev))
+		ti_csi2rx_cleanup_dma(ctx);
+
 	ti_csi2rx_cleanup_vb2q(ctx);
 
 	video_unregister_device(&ctx->vdev);
@@ -1398,12 +1435,6 @@ static int ti_csi2rx_init_dma(struct ti_csi2rx_ctx *ctx)
 	};
 	char name[32];
 	int ret;
-
-	INIT_LIST_HEAD(&ctx->dma.queue);
-	INIT_LIST_HEAD(&ctx->dma.submitted);
-	spin_lock_init(&ctx->dma.lock);
-
-	ctx->dma.state = TI_CSI2RX_DMA_STOPPED;
 
 	snprintf(name, sizeof(name), "rx%u", ctx->idx);
 	ctx->dma.chan = dma_request_chan(ctx->csi->dev, name);
@@ -1524,6 +1555,11 @@ static int ti_csi2rx_init_ctx(struct ti_csi2rx_ctx *ctx)
 	vdev->lock = &ctx->mutex;
 	video_set_drvdata(vdev, ctx);
 
+	INIT_LIST_HEAD(&ctx->dma.queue);
+	INIT_LIST_HEAD(&ctx->dma.submitted);
+	spin_lock_init(&ctx->dma.lock);
+	ctx->dma.state = TI_CSI2RX_DMA_STOPPED;
+
 	ret = ti_csi2rx_init_dma(ctx);
 	if (ret)
 		return ret;
@@ -1538,6 +1574,138 @@ cleanup_dma:
 	ti_csi2rx_cleanup_dma(ctx);
 	return ret;
 }
+
+#ifdef CONFIG_PM
+static int ti_csi2rx_suspend(struct device *dev)
+{
+	struct ti_csi2rx_dev *csi = dev_get_drvdata(dev);
+	enum ti_csi2rx_dma_state state;
+	struct ti_csi2rx_ctx *ctx;
+	struct ti_csi2rx_dma *dma;
+	unsigned long flags = 0;
+	int i, ret = 0;
+
+	/* If device was not in use we can simply suspend */
+	if (pm_runtime_status_suspended(dev))
+		return 0;
+
+	/*
+	 * If device is running, assert the pixel reset to cleanly stop any
+	 * on-going streams before we suspend.
+	 */
+	writel(0, csi->shim + SHIM_CNTL);
+
+	for (i = 0; i < csi->num_ctx; i++) {
+		ctx = &csi->ctx[i];
+		dma = &ctx->dma;
+
+		spin_lock_irqsave(&dma->lock, flags);
+		state = dma->state;
+		spin_unlock_irqrestore(&dma->lock, flags);
+
+		if (state != TI_CSI2RX_DMA_STOPPED) {
+			/* Disable source */
+			ret = v4l2_subdev_disable_streams(&csi->subdev,
+							  TI_CSI2RX_PAD_FIRST_SOURCE + ctx->idx,
+							  BIT(0));
+			if (ret)
+				dev_err(csi->dev, "Failed to stop subdev stream\n");
+		}
+
+		/* Stop any on-going streams */
+		writel(0, csi->shim + SHIM_DMACNTX(ctx->idx));
+
+		/* Drain DMA */
+		ti_csi2rx_drain_dma(ctx);
+
+		/* Terminate DMA */
+		ret = dmaengine_terminate_sync(ctx->dma.chan);
+		if (ret)
+			dev_err(csi->dev, "Failed to stop DMA\n");
+	}
+
+	return ret;
+}
+
+static int ti_csi2rx_resume(struct device *dev)
+{
+	struct ti_csi2rx_dev *csi = dev_get_drvdata(dev);
+	struct ti_csi2rx_ctx *ctx;
+	struct ti_csi2rx_dma *dma;
+	struct ti_csi2rx_buffer *buf;
+	unsigned long flags = 0;
+	unsigned int reg;
+	int i, ret = 0;
+
+	/* If device was not in use, we can simply wakeup */
+	if (pm_runtime_status_suspended(dev))
+		return 0;
+
+	/* If device was in use before, restore all the running streams */
+	reg = SHIM_CNTL_PIX_RST;
+	writel(reg, csi->shim + SHIM_CNTL);
+
+	for (i = 0; i < csi->num_ctx; i++) {
+		ctx = &csi->ctx[i];
+		dma = &ctx->dma;
+		spin_lock_irqsave(&dma->lock, flags);
+		if (dma->state != TI_CSI2RX_DMA_STOPPED) {
+			/* Re-submit all previously submitted buffers to DMA */
+			list_for_each_entry(buf, &ctx->dma.submitted, list) {
+				ti_csi2rx_start_dma(ctx, buf);
+			}
+			spin_unlock_irqrestore(&dma->lock, flags);
+
+			/* Restore stream config */
+			ti_csi2rx_setup_shim(ctx);
+
+			ret = v4l2_subdev_enable_streams(&csi->subdev,
+							 TI_CSI2RX_PAD_FIRST_SOURCE + ctx->idx,
+							 BIT(0));
+			if (ret)
+				dev_err(ctx->csi->dev, "Failed to start subdev\n");
+		} else {
+			spin_unlock_irqrestore(&dma->lock, flags);
+		}
+	}
+
+	return ret;
+}
+
+static int ti_csi2rx_runtime_suspend(struct device *dev)
+{
+	struct ti_csi2rx_dev *csi = dev_get_drvdata(dev);
+	int i;
+
+	if (csi->enable_count != 0)
+		return -EBUSY;
+
+	for (i = 0; i < csi->num_ctx; i++)
+		ti_csi2rx_cleanup_dma(&csi->ctx[i]);
+
+	return 0;
+}
+
+static int ti_csi2rx_runtime_resume(struct device *dev)
+{
+	struct ti_csi2rx_dev *csi = dev_get_drvdata(dev);
+	int ret, i;
+
+	for (i = 0; i < csi->num_ctx; i++) {
+		ret = ti_csi2rx_init_dma(&csi->ctx[i]);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
+static const struct dev_pm_ops ti_csi2rx_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(ti_csi2rx_suspend, ti_csi2rx_resume)
+	SET_RUNTIME_PM_OPS(ti_csi2rx_runtime_suspend, ti_csi2rx_runtime_resume,
+			   NULL)
+};
+#endif /* CONFIG_PM */
 
 static int ti_csi2rx_probe(struct platform_device *pdev)
 {
@@ -1605,6 +1773,10 @@ static int ti_csi2rx_probe(struct platform_device *pdev)
 		goto err_notifier;
 	}
 
+	pm_runtime_set_active(csi->dev);
+	pm_runtime_enable(csi->dev);
+	pm_request_idle(csi->dev);
+
 	return 0;
 
 err_notifier:
@@ -1613,7 +1785,7 @@ err_ctx:
 	i--;
 	for (; i >= 0; i--)
 		ti_csi2rx_cleanup_ctx(&csi->ctx[i]);
-
+	ti_csi2rx_cleanup_v4l2(csi);
 err_v4l2:
 	mutex_destroy(&csi->mutex);
 	dma_free_coherent(csi->dev, csi->drain.len, csi->drain.vaddr,
@@ -1642,6 +1814,9 @@ static int ti_csi2rx_remove(struct platform_device *pdev)
 	dma_free_coherent(csi->dev, csi->drain.len, csi->drain.vaddr,
 			  csi->drain.paddr);
 
+	pm_runtime_disable(&pdev->dev);
+	pm_runtime_set_suspended(&pdev->dev);
+
 	return 0;
 }
 
@@ -1655,8 +1830,11 @@ static struct platform_driver ti_csi2rx_pdrv = {
 	.probe = ti_csi2rx_probe,
 	.remove = ti_csi2rx_remove,
 	.driver = {
-		.name = TI_CSI2RX_MODULE_NAME,
-		.of_match_table = ti_csi2rx_of_match,
+		.name		= TI_CSI2RX_MODULE_NAME,
+		.of_match_table	= ti_csi2rx_of_match,
+#ifdef CONFIG_PM
+		.pm		= &ti_csi2rx_pm_ops,
+#endif
 	},
 };
 

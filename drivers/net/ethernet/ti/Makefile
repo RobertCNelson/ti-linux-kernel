@@ -7,6 +7,9 @@ obj-$(CONFIG_TI_CPSW) += cpsw-common.o
 obj-$(CONFIG_TI_DAVINCI_EMAC) += cpsw-common.o
 obj-$(CONFIG_TI_CPSW_SWITCHDEV) += cpsw-common.o
 
+obj-$(CONFIG_TI_CPSW_PROXY_CLIENT) += ti-cpsw-proxy-client.o
+ti-cpsw-proxy-client-y := cpsw-proxy-client.o
+
 obj-$(CONFIG_TLAN) += tlan.o
 obj-$(CONFIG_CPMAC) += cpmac.o
 obj-$(CONFIG_TI_DAVINCI_EMAC) += ti_davinci_emac.o
@@ -41,7 +44,8 @@ icssg-prueth-y := icssg/icssg_prueth.o \
 		  icssg/icssg_mii_cfg.o \
 		  icssg/icssg_stats.o \
 		  icssg/icssg_ethtool.o \
-		  icssg/icssg_switchdev.o
+		  icssg/icssg_switchdev.o \
+		  icssg/icssg_qos.o
 obj-$(CONFIG_TI_ICSSG_PRUETH_SR1) += icssg-prueth-sr1.o
 icssg-prueth-sr1-y := icssg/icssg_prueth_sr1.o \
 		      icssg/icssg_common.o \
