@@ -828,6 +828,27 @@
 			};
 		};
 	};
+
+	tps62873a: regulator@40 {
+		compatible = "ti,tps62873";
+		reg = <0x40>;
+		bootph-pre-ram;
+		regulator-name = "VDD_CPU_AVS";
+		regulator-min-microvolt = <600000>;
+		regulator-max-microvolt = <900000>;
+		regulator-boot-on;
+		regulator-always-on;
+	};
+
+	tps62873b: regulator@43 {
+		compatible = "ti,tps62873";
+		reg = <0x43>;
+		regulator-name = "VDD_CORE_0V8";
+		regulator-min-microvolt = <760000>;
+		regulator-max-microvolt = <840000>;
+		regulator-boot-on;
+		regulator-always-on;
+	};
 };
 
 &wkup_gpio0 {
@@ -1232,12 +1253,20 @@
 
 &serdes0 {
 	status = "okay";
-	serdes0_pcie_link: phy@0 {
+	serdes0_pcie_link1: phy@0 {
 		reg = <0>;
-		cdns,num-lanes = <3>;
+		cdns,num-lanes = <2>;
 		#phy-cells = <0>;
 		cdns,phy-type = <PHY_TYPE_PCIE>;
-		resets = <&serdes_wiz0 1>, <&serdes_wiz0 2>, <&serdes_wiz0 3>;
+		resets = <&serdes_wiz0 1>, <&serdes_wiz0 2>;
+	};
+
+	serdes0_pcie_link2: phy@2 {
+		reg = <2>;
+		cdns,num-lanes = <1>;
+		#phy-cells = <0>;
+		cdns,phy-type = <PHY_TYPE_PCIE>;
+		resets = <&serdes_wiz0 3>;
 	};
 
 	serdes0_usb_link: phy@3 {
@@ -1274,7 +1303,7 @@
 &pcie1_rc {
 	status = "okay";
 	reset-gpios = <&exp1 5 GPIO_ACTIVE_HIGH>;
-	phys = <&serdes0_pcie_link>;
+	phys = <&serdes0_pcie_link1>;
 	phy-names = "pcie-phy";
 	num-lanes = <2>;
 };
@@ -1282,7 +1311,7 @@
 &pcie3_rc {
 	status = "okay";
 	reset-gpios = <&exp1 6 GPIO_ACTIVE_HIGH>;
-	phys = <&serdes0_pcie_link>;
+	phys = <&serdes0_pcie_link2>;
 	phy-names = "pcie-phy";
 	num-lanes = <1>;
 };
