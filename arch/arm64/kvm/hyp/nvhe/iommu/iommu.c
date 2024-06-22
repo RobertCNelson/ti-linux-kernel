@@ -538,6 +538,20 @@ out_put_domain:
 	return total_mapped;
 }
 
+int kvm_iommu_dev_block_dma(pkvm_handle_t iommu_id, u32 endpoint_id, bool host_to_guest)
+{
+	struct kvm_hyp_iommu *iommu;
+
+	if (!kvm_iommu_ops || !kvm_iommu_ops->dev_block_dma)
+		return -ENODEV;
+
+	iommu = kvm_iommu_ops->get_iommu_by_id(iommu_id);
+	if (!iommu)
+		return -ENOENT;
+
+	return kvm_iommu_ops->dev_block_dma(iommu, endpoint_id, host_to_guest);
+}
+
 static int iommu_power_on(struct kvm_power_domain *pd)
 {
 	struct kvm_hyp_iommu *iommu = container_of(pd, struct kvm_hyp_iommu,
