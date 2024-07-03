@@ -21,6 +21,16 @@ DECLARE_HOOK(android_vh_check_folio_look_around_ref,
 DECLARE_HOOK(android_vh_tune_swappiness,
 	TP_PROTO(int *swappiness),
 	TP_ARGS(swappiness));
+DECLARE_HOOK(android_vh_shrink_folio_list,
+	TP_PROTO(struct folio *folio, bool dirty, bool writeback,
+		bool *activate, bool *keep),
+	TP_ARGS(folio, dirty, writeback, activate, keep));
+DECLARE_HOOK(android_vh_inode_lru_isolate,
+	TP_PROTO(struct inode *inode, bool *skip),
+	TP_ARGS(inode, skip));
+DECLARE_HOOK(android_vh_invalidate_mapping_pagevec,
+	TP_PROTO(struct address_space *mapping, bool *skip),
+	TP_ARGS(mapping, skip));
 DECLARE_HOOK(android_vh_modify_scan_control,
 	TP_PROTO(u64 *ext, unsigned long *nr_to_reclaim,
 	struct mem_cgroup *target_mem_cgroup,
