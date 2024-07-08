@@ -931,6 +931,8 @@ int __pkvm_finalize_teardown_vm(pkvm_handle_t handle)
 	remove_vm_table_entry(handle);
 	hyp_write_unlock(&vm_table_lock);
 
+	pkvm_devices_teardown(hyp_vm);
+
 	/*
 	 * At this point, the VM has been detached from the VM table and
 	 * has a refcount of 0 so we're free to tear it down without
