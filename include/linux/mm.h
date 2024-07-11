@@ -4187,4 +4187,9 @@ static inline int do_mseal(unsigned long start, size_t len_in, unsigned long fla
 }
 #endif
 
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+void free_hpage(struct page *page, int __bitwise fpi_flags);
+void prep_new_hpage(struct page *page, gfp_t gfp_flags, unsigned int alloc_flags);
+#endif
+
 #endif /* _LINUX_MM_H */
