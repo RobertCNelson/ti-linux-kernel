@@ -9,6 +9,8 @@
 
 #define pr_fmt(fmt)	"spi-nand: " fmt
 
+#define PHY_PATTERN_SIZE	0x80
+
 #include <linux/device.h>
 #include <linux/jiffies.h>
 #include <linux/kernel.h>
@@ -20,7 +22,7 @@
 #include <linux/spi/spi.h>
 #include <linux/spi/spi-mem.h>
 
-static int spinand_read_reg_op(struct spinand_device *spinand, u8 reg, u8 *val)
+int spinand_read_reg_op(struct spinand_device *spinand, u8 reg, u8 *val)
 {
 	struct spi_mem_op op = SPINAND_GET_FEATURE_OP(reg,
 						      spinand->scratchbuf);
@@ -34,7 +36,7 @@ static int spinand_read_reg_op(struct spinand_device *spinand, u8 reg, u8 *val)
 	return 0;
 }
 
-static int spinand_write_reg_op(struct spinand_device *spinand, u8 reg, u8 val)
+int spinand_write_reg_op(struct spinand_device *spinand, u8 reg, u8 val)
 {
 	struct spi_mem_op op = SPINAND_SET_FEATURE_OP(reg,
 						      spinand->scratchbuf);
@@ -339,7 +341,7 @@ static void spinand_ondie_ecc_save_status(struct nand_device *nand, u8 status)
 		engine_conf->status = status;
 }
 
-static int spinand_write_enable_op(struct spinand_device *spinand)
+int spinand_write_enable_op(struct spinand_device *spinand)
 {
 	struct spi_mem_op op = SPINAND_WR_EN_DIS_OP(true);
 
@@ -1094,6 +1096,7 @@ int spinand_match_and_init(struct spinand_device *spinand,
 		spinand->flags = table[i].flags;
 		spinand->id.len = 1 + table[i].devid.len;
 		spinand->select_target = table[i].select_target;
+		spinand->late_init = table[i].late_init;
 
 		op = spinand_select_op_variant(spinand,
 					       info->op_variants.read_cache);
@@ -1176,6 +1179,12 @@ static int spinand_init_flash(struct spinand_device *spinand)
 		"Failed to initialize the SPI NAND chip (err = %d)\n",
 		ret);
 		return ret;
+	}
+
+	if (spinand->late_init) {
+		ret = spinand->late_init(spinand);
+		if (ret)
+			return ret;
 	}
 
 	/* After power up, all blocks are locked, so unlock them here. */
@@ -1326,7 +1335,12 @@ static int spinand_probe(struct spi_mem *mem)
 {
 	struct spinand_device *spinand;
 	struct mtd_info *mtd;
-	int ret;
+	struct mtd_part *part;
+	struct nand_device *nand;
+	struct nand_pos page_pos;
+	struct nand_page_io_req page_req;
+	struct spi_mem_op read_page_op;
+	int ret, pageoffs;
 
 	spinand = devm_kzalloc(&mem->spi->dev, sizeof(*spinand),
 			       GFP_KERNEL);
@@ -1344,9 +1358,31 @@ static int spinand_probe(struct spi_mem *mem)
 	if (ret)
 		return ret;
 
+	nand = spinand_to_nand(spinand);
+
 	ret = mtd_device_register(mtd, NULL, 0);
 	if (ret)
 		goto err_spinand_cleanup;
+
+	list_for_each_entry(part, &mtd->partitions, node) {
+		struct mtd_info *part_info =
+			container_of(part, struct mtd_info, part);
+		if (part_info->name &&
+		    !strcmp(part_info->name, "ospi_nand.phypattern")) {
+			pageoffs = nanddev_offs_to_pos(nand, part->offset, &page_pos);
+			page_req.pos = page_pos;
+
+			read_page_op = *spinand->op_templates.read_cache;
+			read_page_op.addr.val = pageoffs;
+			read_page_op.data.nbytes = PHY_PATTERN_SIZE;
+
+			ret = spinand_load_page_op(spinand, &page_req);
+			if (ret)
+				goto err_spinand_cleanup;
+
+			spi_mem_do_calibration(spinand->spimem, &read_page_op);
+		}
+	}
 
 	return 0;
 
