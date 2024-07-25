@@ -47,6 +47,7 @@ struct kvm_ffa_buffers {
 	u64 tx_ipa;
 	void *rx;
 	u64 rx_ipa;
+	struct list_head xfer_list;
 };
 
 /*
@@ -79,10 +80,13 @@ struct pkvm_hyp_vm {
 	bool is_dying;
 
 	struct kvm_ffa_buffers ffa_buf;
+	struct list_head vm_list;
 
 	/* Array of the hyp vCPU structures for this VM. */
 	struct pkvm_hyp_vcpu *vcpus[];
 };
+
+struct ffa_mem_transfer *__pkvm_get_vm_ffa_transfer(u16 handle);
 
 static inline struct pkvm_hyp_vm *
 pkvm_hyp_vcpu_to_hyp_vm(struct pkvm_hyp_vcpu *hyp_vcpu)
