@@ -1036,6 +1036,10 @@ compare:
 	dev_dbg(dev, "Final tuning point: RX: %d TX: %d RD: %d\n", final.rx,
 		final.tx, final.read_delay);
 
+	f_pdata->phy_setting.read_delay = final.read_delay;
+	f_pdata->phy_setting.rx = final.rx;
+	f_pdata->phy_setting.tx = final.tx;
+
 out:
 	if (ret)
 		f_pdata->use_phy = false;
@@ -2052,6 +2056,23 @@ static void cqspi_config_baudrate_div(struct cqspi_st *cqspi)
 	writel(reg, reg_base + CQSPI_REG_CONFIG);
 }
 
+static void cqspi_phy_set_dll_master(struct cqspi_st *cqspi)
+{
+	void __iomem *reg_base = cqspi->iobase;
+	unsigned int reg;
+
+	reg = readl(reg_base + CQSPI_REG_PHY_DLL_MASTER);
+	reg &= ~((CQSPI_REG_PHY_DLL_MASTER_DLY_ELMTS_LEN
+		  << CQSPI_REG_PHY_DLL_MASTER_DLY_ELMTS_LSB) |
+		 CQSPI_REG_PHY_DLL_MASTER_BYPASS |
+		 CQSPI_REG_PHY_DLL_MASTER_CYCLE);
+	reg |= ((CQSPI_REG_PHY_DLL_MASTER_DLY_ELMTS_3
+		 << CQSPI_REG_PHY_DLL_MASTER_DLY_ELMTS_LSB) |
+		CQSPI_REG_PHY_DLL_MASTER_CYCLE);
+
+	writel(reg, reg_base + CQSPI_REG_PHY_DLL_MASTER);
+}
+
 static void cqspi_phy_pre_config_sdr(struct cqspi_st *cqspi,
 				     struct cqspi_flash_pdata *f_pdata)
 {
@@ -2077,16 +2098,7 @@ static void cqspi_phy_pre_config_sdr(struct cqspi_st *cqspi,
 	       << CQSPI_REG_RD_INSTR_DUMMY_LSB;
 	writel(reg, reg_base + CQSPI_REG_RD_INSTR);
 
-	reg = readl(reg_base + CQSPI_REG_PHY_DLL_MASTER);
-	reg &= ~((CQSPI_REG_PHY_DLL_MASTER_DLY_ELMTS_LEN
-		  << CQSPI_REG_PHY_DLL_MASTER_DLY_ELMTS_LSB) |
-		 CQSPI_REG_PHY_DLL_MASTER_BYPASS |
-		 CQSPI_REG_PHY_DLL_MASTER_CYCLE);
-	reg |= ((CQSPI_REG_PHY_DLL_MASTER_DLY_ELMTS_3
-		 << CQSPI_REG_PHY_DLL_MASTER_DLY_ELMTS_LSB) |
-		CQSPI_REG_PHY_DLL_MASTER_CYCLE);
-
-	writel(reg, reg_base + CQSPI_REG_PHY_DLL_MASTER);
+	cqspi_phy_set_dll_master(cqspi);
 }
 
 static void cqspi_phy_post_config_sdr(struct cqspi_st *cqspi)
@@ -2673,7 +2685,7 @@ static int cqspi_request_mmap_dma(struct cqspi_st *cqspi)
 
 	cqspi->rx_chan = dma_request_chan_by_mask(&mask);
 	if (IS_ERR(cqspi->rx_chan)) {
-		int ret = PTR_ERR(cqspi->rx_chan);
+		int ret = (-EPROBE_DEFER);
 
 		cqspi->rx_chan = NULL;
 		return dev_err_probe(&cqspi->pdev->dev, ret, "No Rx DMA available\n");
@@ -3020,6 +3032,9 @@ static void cqspi_remove(struct platform_device *pdev)
 
 static void __maybe_unused cqspi_restore_context(struct cqspi_st *cqspi)
 {
+	if (!(cqspi->f_pdata->use_dqs))
+		cqspi_phy_set_dll_master(cqspi);
+
 	cqspi_phy_apply_setting(cqspi->f_pdata,
 				&cqspi->f_pdata->phy_setting);
 }
@@ -3040,6 +3055,12 @@ static int cqspi_runtime_resume(struct device *dev)
 	clk_prepare_enable(cqspi->clk);
 	cqspi_wait_idle(cqspi);
 	cqspi_controller_init(cqspi);
+
+	/*
+	 * Only restore context if PHY is enabled, or else skip this step
+	 */
+	if ((cqspi->f_pdata->use_phy) == true)
+		cqspi_restore_context(cqspi);
 
 	cqspi->current_cs = -1;
 	cqspi->sclk = 0;
@@ -3068,11 +3089,6 @@ static int cqspi_resume(struct device *dev)
 		dev_err(dev, "pm_runtime_force_resume failed on resume\n");
 		return ret;
 	}
-	/*
-	 * Only restore context if PHY is enabled, or else skip this step
-	 */
-	if ((cqspi->f_pdata->use_phy) == true)
-		cqspi_restore_context(cqspi);
 
 	return spi_controller_resume(cqspi->host);
 }
