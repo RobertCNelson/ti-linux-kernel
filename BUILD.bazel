@@ -758,6 +758,7 @@ kernel_build(
         "ti/k3-am62x-sk-lpm-wkup-sources.dtbo",
         "ti/k3-am625-sk-microtips-mf101hie-panel.dtbo",
         "ti/k3-am625-sk-m2-cc3301.dtbo",
+        "ti/k3-am625-sk-wl1837.dtbo",
         "ti/k3-am625-beagleplay-csi2-ov5640.dtbo",
         "ti/k3-am625-beagleplay-csi2-tevi-ov5640.dtbo",
         "ti/k3-am625-beagleplay-lincolntech-lcd185-panel.dtbo",
@@ -787,6 +788,7 @@ kernel_build(
         "k3-am62p5-sk-microtips-mf101hie-panel.dtbo",
         "k3-am625-sk-m2-cc3301.dtbo",
         "k3-am62p5-sk-m2-cc3301.dtbo",
+        "k3-am625-sk-wl1837.dtbo",
         "vmlinux",
         "vmlinux.symvers",
     ],
@@ -963,6 +965,7 @@ kernel_images(
         ":ti/k3-am62p5-sk-microtips-mf101hie-panel.dtbo",
         ":ti/k3-am625-sk-m2-cc3301.dtbo",
         ":ti/k3-am62p5-sk-m2-cc3301.dtbo",
+        ":ti/k3-am625-sk-wl1837.dtbo",
     ]
 )
 
