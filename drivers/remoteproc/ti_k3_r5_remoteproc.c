@@ -640,7 +640,7 @@ static int k3_r5_rproc_start(struct rproc *rproc)
 	struct k3_r5_rproc *kproc = rproc->priv;
 	struct k3_r5_cluster *cluster = kproc->cluster;
 	struct device *dev = kproc->dev;
-	struct k3_r5_core *core;
+	struct k3_r5_core *core0, *core;
 	u32 boot_addr;
 	int ret;
 
@@ -666,6 +666,16 @@ static int k3_r5_rproc_start(struct rproc *rproc)
 				goto unroll_core_run;
 		}
 	} else {
+		/* do not allow core 1 to start before core 0 */
+		core0 = list_first_entry(&cluster->cores, struct k3_r5_core,
+					 elem);
+		if (core != core0 && core0->rproc->state == RPROC_OFFLINE) {
+			dev_err(dev, "%s: can not start core 1 before core 0\n",
+				__func__);
+			ret = -EPERM;
+			goto put_mbox;
+		}
+
 		ret = k3_r5_core_run(core);
 		if (ret)
 			goto put_mbox;
@@ -709,14 +719,11 @@ put_mbox:
  */
 static int k3_r5_rproc_stop(struct rproc *rproc)
 {
-	unsigned long to  = msecs_to_jiffies(5000);
 	struct k3_r5_rproc *kproc = rproc->priv;
 	struct k3_r5_cluster *cluster = kproc->cluster;
-	struct k3_r5_core *core = kproc->core;
 	struct device *dev = kproc->dev;
-	unsigned long msg = RP_MBOX_SHUTDOWN;
+	struct k3_r5_core *core1, *core = kproc->core;
 	int ret;
-	u32 stat = 0;
 
 	/* halt all applicable cores */
 	if (cluster->mode == CLUSTER_MODE_LOCKSTEP) {
@@ -728,28 +735,22 @@ static int k3_r5_rproc_stop(struct rproc *rproc)
 			}
 		}
 	} else {
-		reinit_completion(&kproc->shut_comp);
-		ret = mbox_send_message(kproc->mbox, (void *)msg);
-		if (ret < 0) {
-			dev_err(dev, "PM mbox_send_message failed: %d\n", ret);
-			return ret;
-		}
-
-		ret = wait_for_completion_timeout(&kproc->shut_comp, to);
-		if (ret == 0) {
-			dev_err(dev, "%s: timeout waiting for rproc completion event\n", __func__);
-			return -EBUSY;
-		}
-
-		mbox_free_channel(kproc->mbox);
-		ret = readx_poll_timeout(is_core_in_wfi, core, stat, stat, 200, 2000);
-		if (ret)
+		/* do not allow core 0 to stop before core 1 */
+		core1 = list_last_entry(&cluster->cores, struct k3_r5_core,
+					elem);
+		if (core != core1 && core1->rproc->state != RPROC_OFFLINE) {
+			dev_err(dev, "%s: can not stop core 0 before core 1\n",
+				__func__);
+			ret = -EPERM;
 			goto out;
+		}
 
 		ret = k3_r5_core_halt(core);
 		if (ret)
 			goto out;
 	}
+
+	mbox_free_channel(kproc->mbox);
 
 	return 0;
 
@@ -1258,7 +1259,12 @@ static int k3_r5_rproc_configure_mode(struct k3_r5_rproc *kproc)
 		return ret;
 	}
 
+	/*
+	 * Skip the waiting mechanism for sequential power-on of cores if the
+	 * core has already been booted by another entity.
+	 */
 	core->released_from_reset = c_state;
+
 	ret = ti_sci_proc_get_status(core->tsp, &boot_vec, &cfg, &ctrl,
 				     &stat);
 	if (ret < 0) {
@@ -1409,6 +1415,10 @@ init_rmem:
 		 * should be in higher power state than core1 in a cluster
 		 * So, wait for current core to power up before proceeding
 		 * to next core and put timeout of 2sec for each core.
+		 *
+		 * This waiting mechanism is necessary because
+		 * rproc_auto_boot_callback() for core1 can be called before
+		 * core0 due to thread execution order.
 		 */
 		ret = wait_event_interruptible_timeout(cluster->core_transition,
 						       core->released_from_reset,
