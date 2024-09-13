@@ -819,8 +819,8 @@ static int ti_eqep_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct counter_device *counter;
 	struct ti_eqep_cnt *priv;
-	struct clk *clk;
 	void __iomem *base;
+	struct clk *clk;
 	int err;
 	int irq;
 
@@ -892,6 +892,10 @@ static int ti_eqep_probe(struct platform_device *pdev)
 	 */
 	regmap_write(priv->regmap32, QPOSMAX, UINT_MAX);
 	regmap_write(priv->regmap32, QUPRD, UINT_MAX);
+
+	clk = devm_clk_get_enabled(dev, NULL);
+	if (IS_ERR(clk))
+		return dev_err_probe(dev, PTR_ERR(clk), "failed to enable clock\n");
 
 	err = counter_add(counter);
 	if (err < 0) {
