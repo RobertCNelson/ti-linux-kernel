@@ -829,19 +829,6 @@ static int ti_eqep_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	priv = counter_priv(counter);
 
-	clk = devm_clk_get(dev, NULL);
-	if (IS_ERR(clk)) {
-		if (PTR_ERR(clk) != -EPROBE_DEFER)
-			dev_err(dev, "failed to get clock");
-		return PTR_ERR(clk);
-	}
-
-	priv->clock_rate = clk_get_rate(clk);
-	if (priv->clock_rate == 0) {
-		dev_err(dev, "failed to get clock rate");
-		return -EINVAL;
-	}
-
 	base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(base))
 		return PTR_ERR(base);
@@ -896,6 +883,12 @@ static int ti_eqep_probe(struct platform_device *pdev)
 	clk = devm_clk_get_enabled(dev, NULL);
 	if (IS_ERR(clk))
 		return dev_err_probe(dev, PTR_ERR(clk), "failed to enable clock\n");
+
+	priv->clock_rate = clk_get_rate(clk);
+	if (priv->clock_rate == 0) {
+		dev_err(dev, "failed to get clock rate");
+		return -EINVAL;
+	}
 
 	err = counter_add(counter);
 	if (err < 0) {
