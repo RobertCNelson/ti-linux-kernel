@@ -59,6 +59,7 @@ struct Ashmem {
 }
 
 struct AshmemInner {
+    size: usize,
     /// If set, then this holds the ashmem name without the dev/ashmem/ prefix. No zero terminator.
     name: Option<Vec<u8>>,
 }
@@ -72,6 +73,7 @@ impl MiscDevice for Ashmem {
             try_pin_init! {
                 Ashmem {
                     inner <- new_mutex!(AshmemInner {
+                        size: 0,
                         name: None,
                     }),
                 }
@@ -85,6 +87,8 @@ impl MiscDevice for Ashmem {
         match cmd {
             bindings::ASHMEM_SET_NAME => me.set_name(UserSlice::new(arg, size).reader()),
             bindings::ASHMEM_GET_NAME => me.get_name(UserSlice::new(arg, size).writer()),
+            bindings::ASHMEM_SET_SIZE => me.set_size(arg),
+            bindings::ASHMEM_GET_SIZE => me.get_size(),
             _ => Err(EINVAL),
         }
     }
@@ -129,5 +133,16 @@ impl Ashmem {
 
         writer.write_slice(&local_name[..len_with_nul])?;
         Ok(0)
+    }
+
+    fn set_size(&self, size: usize) -> Result<isize> {
+        let mut asma = self.inner.lock();
+        // TODO: fail if `mmap` is already called
+        asma.size = size;
+        Ok(0)
+    }
+
+    fn get_size(&self) -> Result<isize> {
+        Ok(self.inner.lock().size as isize)
     }
 }
