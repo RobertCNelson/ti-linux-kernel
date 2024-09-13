@@ -24,6 +24,14 @@ use core::{
 /// # Safety
 ///
 /// Caller must ensure that access to the file position is properly synchronized.
+pub(crate) unsafe fn file_get_fpos(file: &LocalFile) -> loff_t {
+    // SAFETY: Caller ensures that this is okay.
+    unsafe { (*file.as_ptr()).f_pos }
+}
+
+/// # Safety
+///
+/// Caller must ensure that access to the file position is properly synchronized.
 pub(crate) unsafe fn file_set_fpos(file: &LocalFile, pos: loff_t) {
     // SAFETY: Caller ensures that this is okay.
     unsafe { (*file.as_ptr()).f_pos = pos };
@@ -76,6 +84,17 @@ impl ShmemFile {
 
     pub(crate) fn file(&self) -> &File {
         &self.inner
+    }
+
+    pub(crate) fn vfs_llseek(&self, offset: loff_t, whence: c_int) -> Result<loff_t> {
+        // SAFETY: Just an FFI call. The file is valid.
+        let ret = unsafe { bindings::vfs_llseek(self.inner.as_ptr(), offset, whence) };
+
+        if ret < 0 {
+            Err(Error::from_errno(ret as i32))
+        } else {
+            Ok(ret)
+        }
     }
 
     pub(crate) fn vfs_iter_read(&self, iov: &mut IovIter, pos: &mut loff_t) -> Result<loff_t> {

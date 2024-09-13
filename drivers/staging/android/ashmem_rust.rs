@@ -10,13 +10,13 @@
 //! It is, in theory, a good memory allocator for low-memory devices, because it can discard shared
 //! memory units when under memory pressure.
 
-use core::pin::Pin;
+use core::{ffi::c_int, pin::Pin};
 use kernel::{
     bindings, c_str,
     error::Result,
-    fs::File,
+    fs::{File, LocalFile},
     ioctl::_IOC_SIZE,
-    miscdevice::{IovIter, Kiocb, MiscDevice, MiscDeviceOptions, MiscDeviceRegistration},
+    miscdevice::{loff_t, IovIter, Kiocb, MiscDevice, MiscDeviceOptions, MiscDeviceRegistration},
     mm::virt::{flags as vma_flags, VmAreaNew},
     page::page_align,
     prelude::*,
@@ -153,6 +153,27 @@ impl MiscDevice for Ashmem {
 
         shmem::set_file(vma, file.file());
         Ok(())
+    }
+
+    fn llseek(me: Pin<&Ashmem>, file: &LocalFile, offset: loff_t, whence: c_int) -> Result<loff_t> {
+        let asma_file = {
+            let asma = me.inner.lock();
+            if asma.size == 0 {
+                return Err(EINVAL);
+            }
+            match asma.file.as_ref() {
+                Some(asma_file) => asma_file.clone(),
+                None => return Err(EBADF),
+            }
+        };
+
+        let ret = asma_file.vfs_llseek(offset, whence)?;
+
+        // SAFETY: We protect the shmem file with the same mechanism as the ashmem file. We are in
+        // llseek, so our caller ensures that accessing f_pos is okay.
+        unsafe { shmem::file_set_fpos(file, shmem::file_get_fpos(asma_file.file())) };
+
+        Ok(ret)
     }
 
     fn read_iter(mut kiocb: Kiocb<'_, Self::Ptr>, iov: &mut IovIter) -> Result<usize> {
