@@ -1621,6 +1621,37 @@ static void prueth_destroy_xdp_rxqs(struct prueth_emac *emac)
 	xdp_rxq_info_unreg(rxq);
 }
 
+static int icssg_prueth_add_mcast(struct net_device *ndev, const u8 *addr)
+{
+	struct prueth_emac *emac = netdev_priv(ndev);
+	int port_mask = BIT(emac->port_id);
+
+	port_mask |= icssg_fdb_lookup(emac, addr, 0);
+	icssg_fdb_add_del(emac, addr, 0, port_mask, true);
+	icssg_vtbl_modify(emac, 0, port_mask, port_mask, true);
+
+	return 0;
+}
+
+static int icssg_prueth_del_mcast(struct net_device *ndev, const u8 *addr)
+{
+	struct prueth_emac *emac = netdev_priv(ndev);
+	int port_mask = BIT(emac->port_id);
+	int other_port_mask;
+
+	other_port_mask = port_mask ^ icssg_fdb_lookup(emac, addr, 0);
+
+	icssg_fdb_add_del(emac, addr, 0, port_mask, false);
+	icssg_vtbl_modify(emac, 0, port_mask, port_mask, false);
+
+	if (other_port_mask) {
+		icssg_fdb_add_del(emac, addr, 0, other_port_mask, true);
+		icssg_vtbl_modify(emac, 0, other_port_mask, other_port_mask, true);
+	}
+
+	return 0;
+}
+
 /**
  * emac_ndo_open - EMAC device open
  * @ndev: network adapter device
@@ -1850,8 +1881,11 @@ static int emac_ndo_stop(struct net_device *ndev)
 		icssg_class_disable(prueth->miig_rt, ICSS_SLICE1);
 	}
 
-	if (prueth->is_hsr_offload_mode)
-		__dev_mc_unsync(ndev, icssg_prueth_hsr_del_mcast);
+	if (!prueth->is_switch_mode)
+		if (prueth->is_hsr_offload_mode)
+			__dev_mc_unsync(ndev, icssg_prueth_hsr_del_mcast);
+		else
+			__dev_mc_unsync(ndev, icssg_prueth_del_mcast);
 
 	__hw_addr_init(&emac->mcast_list);
 
@@ -1950,19 +1984,7 @@ static void emac_ndo_set_rx_mode_work(struct work_struct *work)
 
 	if (!prueth->is_switch_mode) {
 		if (!prueth->is_hsr_offload_mode) {
-			emac_fdb_flush_multicast(emac);
-			if (!netdev_mc_empty(ndev)) {
-				struct netdev_hw_addr *ha;
-
-				/* Program multicast address list into FDB Table */
-				netdev_for_each_mc_addr(ha, ndev) {
-					icssg_fdb_add_del(emac, ha->addr, 0,
-							  BIT(emac->port_id), true);
-					icssg_vtbl_modify(emac, 0, BIT(emac->port_id),
-							  BIT(emac->port_id), true);
-				}
-				return;
-			}
+			__dev_mc_sync(ndev, icssg_prueth_add_mcast, icssg_prueth_del_mcast);
 		} else {
 			/* make a mc list copy */
 
@@ -3588,6 +3610,7 @@ static const struct prueth_pdata am654_icssg_pdata = {
 
 static const struct prueth_pdata am64x_icssg_pdata = {
 	.fdqring_mode = K3_RINGACC_RING_MODE_RING,
+	.quirk_10m_link_issue = 1,
 	.switch_mode = 1,
 };
 
