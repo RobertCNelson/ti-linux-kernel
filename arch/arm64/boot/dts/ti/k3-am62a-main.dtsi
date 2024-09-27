@@ -274,7 +274,8 @@
 	main_esm: esm@420000 {
 		compatible = "ti,j721e-esm";
 		reg = <0x0 0x420000 0x0 0x1000>;
-		ti,esm-pins = <160>, <161>, <162>, <163>, <177>, <178>;
+		/* Interrupt sources: rti0, rti1, wrti0, rti4, rti2, rti3 */
+		ti,esm-pins = <192>, <193>, <195>, <204>, <209>, <210>;
 		bootph-pre-ram;
 	};
 
@@ -1140,25 +1141,6 @@
 		power-domains = <&k3_pds 204 TI_SCI_PD_EXCLUSIVE>;
 		sram = <&oc_sram>;
 		sram-size=<0xf800>;
-		operating-points-v2 = <&vpu_opp_table>;
-		vpu_opp_table: opp-table {
-			compatible = "operating-points-v2";
-			opp-20000000 {
-				opp-hz = /bits/ 64 <20000000>;
-			};
-
-			opp-100000000 {
-				opp-hz = /bits/ 64 <100000000>;
-			};
-
-			opp-200000000 {
-				opp-hz = /bits/ 64 <200000000>;
-			};
-
-			opp-400000000 {
-				opp-hz = /bits/ 64 <400000000>;
-			};
-		};
 	};
 
 	c7x_0: dsp@7e000000 {
