@@ -1709,4 +1709,6 @@ static inline void kvm_iommu_sg_free(struct kvm_iommu_sg *sg, unsigned int nents
 int kvm_iommu_share_hyp_sg(struct kvm_iommu_sg *sg, unsigned int nents);
 int kvm_iommu_unshare_hyp_sg(struct kvm_iommu_sg *sg, unsigned int nents);
 
+#define __KVM_HAVE_ARCH_ASSIGNED_DEVICE_GROUP
+
 #endif /* __ARM64_KVM_HOST_H__ */
