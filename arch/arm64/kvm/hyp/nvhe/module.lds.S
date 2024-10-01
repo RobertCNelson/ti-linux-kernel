@@ -41,5 +41,7 @@ SECTIONS {
 		*(__patchable_function_entries __patchable_function_entries.*)
 	}
 
+	.hyp.ftrace_tramp : {
+		. = . +20;
 	}
 }
