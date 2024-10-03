@@ -120,6 +120,9 @@ DECLARE_HOOK(android_vh_si_mem_available_adjust,
 DECLARE_HOOK(android_vh_si_meminfo_adjust,
 	TP_PROTO(unsigned long *totalram, unsigned long *freeram),
 	TP_ARGS(totalram, freeram));
+DECLARE_HOOK(android_vh_si_meminfo_adjust_shmem,
+	TP_PROTO(unsigned long *sharedram),
+	TP_ARGS(sharedram));
 DECLARE_HOOK(android_vh_test_clear_look_around_ref,
 	TP_PROTO(struct page *page),
 	TP_ARGS(page));
