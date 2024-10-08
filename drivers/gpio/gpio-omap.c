@@ -708,6 +708,31 @@ static void omap_gpio_unmask_irq(struct irq_data *d)
 	raw_spin_unlock_irqrestore(&bank->lock, flags);
 }
 
+static void omap_gpio_set_irq(struct irq_data *d, bool enable)
+{
+	struct gpio_bank *bank = omap_irq_data_get_bank(d);
+	unsigned int offset = d->hwirq;
+	unsigned long flags;
+
+	raw_spin_lock_irqsave(&bank->lock, flags);
+	omap_set_gpio_irqenable(bank, offset, enable);
+	raw_spin_unlock_irqrestore(&bank->lock, flags);
+}
+
+static void omap_gpio_disable_irq(struct irq_data *d)
+{
+	bool enable = 1;
+
+	omap_gpio_set_irq(d, !enable);
+}
+
+static void omap_gpio_enable_irq(struct irq_data *d)
+{
+	bool enable = 1;
+
+	omap_gpio_set_irq(d, enable);
+}
+
 /*---------------------------------------------------------------------*/
 
 static int omap_mpuio_suspend_noirq(struct device *dev)
@@ -1398,6 +1423,8 @@ static int omap_gpio_probe(struct platform_device *pdev)
 	irqc->irq_ack = dummy_irq_chip.irq_ack,
 	irqc->irq_mask = omap_gpio_mask_irq,
 	irqc->irq_unmask = omap_gpio_unmask_irq,
+	irqc->irq_disable = omap_gpio_disable_irq,
+	irqc->irq_enable = omap_gpio_enable_irq,
 	irqc->irq_set_type = omap_gpio_irq_type,
 	irqc->irq_set_wake = omap_gpio_wake_enable,
 	irqc->irq_bus_lock = omap_gpio_irq_bus_lock,
