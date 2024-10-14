@@ -565,6 +565,18 @@ static enum kvm_pgtable_prot default_hyp_prot(phys_addr_t phys)
 	return addr_is_memory(phys) ? PAGE_HYP : PAGE_HYP_DEVICE;
 }
 
+/*
+ * Use NORMAL_NC for guest MMIO, when a guest has:
+ * No FWB: It will combined with stage-1 attrs where device has precedence over normal.
+ * FWB: With MT_S2_FWB_NORMAL_NC encoding, results in device if stage-1 used device attr.
+ *      otherwise NC.
+ */
+static enum kvm_pgtable_prot default_guest_prot(bool is_memory)
+{
+	return is_memory ? KVM_PGTABLE_PROT_RWX :
+		KVM_PGTABLE_PROT_RW | KVM_PGTABLE_PROT_NORMAL_NC;
+}
+
 bool addr_is_memory(phys_addr_t phys)
 {
 	struct kvm_mem_range range;
@@ -1385,6 +1397,38 @@ int ___pkvm_host_donate_hyp(u64 pfn, u64 nr_pages, bool accept_mmio)
 {
 	return ___pkvm_host_donate_hyp_prot(pfn, nr_pages, accept_mmio,
 					    default_hyp_prot(hyp_pfn_to_phys(pfn)));
+}
+
+int pkvm_hyp_donate_guest(struct pkvm_hyp_vcpu *vcpu, u64 pfn, u64 gfn)
+{
+	struct pkvm_hyp_vm *vm = pkvm_hyp_vcpu_to_hyp_vm(vcpu);
+	u64 phys = hyp_pfn_to_phys(pfn);
+	u64 ipa = hyp_pfn_to_phys(gfn);
+	u64 hyp_addr = (u64)__hyp_va(phys);
+	size_t size = PAGE_SIZE;
+	enum kvm_pgtable_prot prot;
+	int ret;
+
+	hyp_lock_component();
+	guest_lock_component(vm);
+
+	ret = __hyp_check_page_state_range(hyp_addr, size, PKVM_PAGE_OWNED);
+	if (ret)
+		goto unlock;
+	ret = __guest_check_page_state_range(vcpu, ipa, size, PKVM_NOPAGE);
+	if (ret)
+		goto unlock;
+
+	WARN_ON(kvm_pgtable_hyp_unmap(&pkvm_pgtable, hyp_addr, size) != size);
+	prot = pkvm_mkstate(default_guest_prot(addr_is_memory(phys)), PKVM_PAGE_OWNED);
+	WARN_ON(kvm_pgtable_stage2_map(&vm->pgt, ipa, size, phys, prot,
+				       &vcpu->vcpu.arch.stage2_mc, 0));
+
+unlock:
+	guest_unlock_component(vm);
+	hyp_unlock_component();
+
+	return ret;
 }
 
 int __pkvm_host_donate_hyp_locked(u64 pfn, u64 nr_pages, enum kvm_pgtable_prot prot)
