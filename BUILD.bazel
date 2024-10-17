@@ -812,7 +812,6 @@ _TI_MODULE_OUTS = [
     "drivers/usb/dwc3/dwc3-haps.ko",
     "drivers/usb/dwc3/dwc3-of-simple.ko",
     "drivers/usb/typec/tipd/tps6598x.ko",
-    "drivers/watchdog/rti_wdt.ko",
     "lib/crc64.ko",
     "net/hsr/hsr.ko",
     "net/mac80211/mac80211.ko",
@@ -831,6 +830,11 @@ _TI_MODULE_OUTS = [
     "sound/soc/ti/snd-soc-ti-edma.ko",
     "sound/soc/ti/snd-soc-ti-sdma.ko",
     "sound/soc/ti/snd-soc-ti-udma.ko",
+]
+
+_TI_WATCHDOG_MODULE_OUTS = [
+    # keep sorted
+    "drivers/watchdog/rti_wdt.ko",
 ]
 
 kernel_build(
@@ -886,7 +890,7 @@ kernel_build(
         "ti/k3-am62p5-sk-mcan.dtbo",
         "ti/k3-am62p5-sk-microtips-mf101hie-panel.dtbo",
     ],
-    module_outs = get_gki_modules_list("arm64") + _TI_MODULE_OUTS,
+    module_outs = get_gki_modules_list("arm64") + _TI_MODULE_OUTS + _TI_WATCHDOG_MODULE_OUTS,
     strip_modules = True,
 )
 
