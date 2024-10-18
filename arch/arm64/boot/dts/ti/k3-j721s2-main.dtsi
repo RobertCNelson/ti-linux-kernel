@@ -38,8 +38,8 @@
 		};
 	};
 
-	scm_conf: syscon@104000 {
-		compatible = "ti,j721e-system-controller", "syscon", "simple-mfd";
+	scm_conf: bus@104000 {
+		compatible = "simple-bus";
 		reg = <0x00 0x00104000 0x00 0x18000>;
 		#address-cells = <1>;
 		#size-cells = <1>;
@@ -56,6 +56,11 @@
 			compatible = "ti,am654-phy-gmii-sel";
 			reg = <0x34 0x4>;
 			#phy-cells = <1>;
+		};
+
+		pcie1_ctrl: pcie1-ctrl@74 {
+			compatible = "ti,j784s4-pcie-ctrl", "syscon";
+			reg = <0x74 0x4>;
 		};
 
 		serdes_ln_ctrl: mux-controller@80 {
@@ -78,6 +83,15 @@
 			#mux-control-cells = <1>;
 			/* EDP0 to SERDES0 lane 0/1 or 2/3 mux */
 			mux-reg-masks = <0x310 0x10000000>;
+		};
+
+		audio_refclk1: clock-controller@42e4 {
+			compatible = "ti,am62-audio-refclk";
+			reg = <0x42e4 0x4>;
+			clocks = <&k3_clks 157 299>;
+			assigned-clocks = <&k3_clks 157 299>;
+			assigned-clock-parents = <&k3_clks 157 328>;
+			#clock-cells = <0>;
 		};
 	};
 
@@ -1467,7 +1481,7 @@
 		interrupt-names = "link_state";
 		interrupts = <GIC_SPI 330 IRQ_TYPE_EDGE_RISING>;
 		device_type = "pci";
-		ti,syscon-pcie-ctrl = <&scm_conf 0x074>;
+		ti,syscon-pcie-ctrl = <&pcie1_ctrl 0x0>;
 		max-link-speed = <3>;
 		num-lanes = <4>;
 		power-domains = <&k3_pds 276 TI_SCI_PD_EXCLUSIVE>;
@@ -2191,5 +2205,95 @@
 		assigned-clock-parents = <&k3_clks 294 5>;
 		/* reserved for MAIN_R5F1_1 */
 		status = "reserved";
+	};
+
+	mcasp0: mcasp@2b00000 {
+		compatible = "ti,am33xx-mcasp-audio";
+		reg = <0x0 0x02b00000 0x0 0x2000>,
+		      <0x0 0x02b08000 0x0 0x1000>;
+		reg-names = "mpu","dat";
+		interrupts = <GIC_SPI 512 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 513 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt-names = "tx", "rx";
+		dmas = <&main_udmap 0xc400>, <&main_udmap 0x4400>;
+		dma-names = "tx", "rx";
+		clocks = <&k3_clks 209 0>;
+		clock-names = "fck";
+		assigned-clocks = <&k3_clks 209 0>;
+		assigned-clock-parents = <&k3_clks 209 1>;
+		power-domains = <&k3_pds 209 TI_SCI_PD_EXCLUSIVE>;
+		status = "disabled";
+	};
+
+	mcasp1: mcasp@2b10000 {
+		compatible = "ti,am33xx-mcasp-audio";
+		reg = <0x0 0x02b10000 0x0 0x2000>,
+		      <0x0 0x02b18000 0x0 0x1000>;
+		reg-names = "mpu","dat";
+		interrupts = <GIC_SPI 514 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 515 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt-names = "tx", "rx";
+		dmas = <&main_udmap 0xc401>, <&main_udmap 0x4401>;
+		dma-names = "tx", "rx";
+		clocks = <&k3_clks 210 0>;
+		clock-names = "fck";
+		assigned-clocks = <&k3_clks 210 0>;
+		assigned-clock-parents = <&k3_clks 210 1>;
+		power-domains = <&k3_pds 210 TI_SCI_PD_EXCLUSIVE>;
+		status = "disabled";
+	};
+
+	mcasp2: mcasp@2b20000 {
+		compatible = "ti,am33xx-mcasp-audio";
+		reg = <0x0 0x02b20000 0x0 0x2000>,
+		      <0x0 0x02b28000 0x0 0x1000>;
+		reg-names = "mpu","dat";
+		interrupts = <GIC_SPI 516 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 517 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt-names = "tx", "rx";
+		dmas = <&main_udmap 0xc402>, <&main_udmap 0x4402>;
+		dma-names = "tx", "rx";
+		clocks = <&k3_clks 211 0>;
+		clock-names = "fck";
+		assigned-clocks = <&k3_clks 211 0>;
+		assigned-clock-parents = <&k3_clks 211 1>;
+		power-domains = <&k3_pds 211 TI_SCI_PD_EXCLUSIVE>;
+		status = "disabled";
+	};
+
+	mcasp3: mcasp@2b30000 {
+		compatible = "ti,am33xx-mcasp-audio";
+		reg = <0x0 0x02b30000 0x0 0x2000>,
+		      <0x0 0x02b38000 0x0 0x1000>;
+		reg-names = "mpu","dat";
+		interrupts = <GIC_SPI 518 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 519 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt-names = "tx", "rx";
+		dmas = <&main_udmap 0xc403>, <&main_udmap 0x4403>;
+		dma-names = "tx", "rx";
+		clocks = <&k3_clks 212 0>;
+		clock-names = "fck";
+		assigned-clocks = <&k3_clks 212 0>;
+		assigned-clock-parents = <&k3_clks 212 1>;
+		power-domains = <&k3_pds 212 TI_SCI_PD_EXCLUSIVE>;
+		status = "disabled";
+	};
+
+	mcasp4: mcasp@2b40000 {
+		compatible = "ti,am33xx-mcasp-audio";
+		reg = <0x0 0x02b40000 0x0 0x2000>,
+		      <0x0 0x02b48000 0x0 0x1000>;
+		reg-names = "mpu","dat";
+		interrupts = <GIC_SPI 520 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 521 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt-names = "tx", "rx";
+		dmas = <&main_udmap 0xc404>, <&main_udmap 0x4404>;
+		dma-names = "tx", "rx";
+		clocks = <&k3_clks 213 0>;
+		clock-names = "fck";
+		assigned-clocks = <&k3_clks 213 0>;
+		assigned-clock-parents = <&k3_clks 213 1>;
+		power-domains = <&k3_pds 213 TI_SCI_PD_EXCLUSIVE>;
+		status = "disabled";
 	};
 };
