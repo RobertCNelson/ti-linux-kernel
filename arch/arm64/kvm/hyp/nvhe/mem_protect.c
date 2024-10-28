@@ -273,25 +273,68 @@ static void guest_s2_put_page(void *addr)
 	hyp_put_page(&current_vm->pool, addr);
 }
 
+static void *__fixmap_guest_page(void *va, size_t *size)
+{
+	void *addr;
+
+	if (WARN_ON(!IS_ALIGNED(*size, *size)))
+		return NULL;
+
+	if (IS_ALIGNED(*size, PMD_SIZE)) {
+		addr = hyp_fixblock_map(__hyp_pa(va));
+		if (addr)
+			return addr;
+
+		*size = PAGE_SIZE;
+	}
+
+	if (IS_ALIGNED(*size, PAGE_SIZE))
+		return hyp_fixmap_map(__hyp_pa(va));
+
+	WARN_ON(1);
+
+	return NULL;
+}
+
+static void __fixunmap_guest_page(size_t size)
+{
+	switch (size) {
+	case PAGE_SIZE:
+		hyp_fixmap_unmap();
+		break;
+	case PMD_SIZE:
+		hyp_fixblock_unmap();
+		break;
+	default:
+		BUG();
+	}
+}
+
 static void clean_dcache_guest_page(void *va, size_t size)
 {
 	while (size) {
-		__clean_dcache_guest_page(hyp_fixmap_map(__hyp_pa(va)),
-					  PAGE_SIZE);
-		hyp_fixmap_unmap();
-		va += PAGE_SIZE;
-		size -= PAGE_SIZE;
+		size_t __size = size == PMD_SIZE ? size : PAGE_SIZE;
+		void *addr = __fixmap_guest_page(va, &__size);
+
+		__clean_dcache_guest_page(addr, __size);
+		__fixunmap_guest_page(__size);
+
+		size -= __size;
+		va += __size;
 	}
 }
 
 static void invalidate_icache_guest_page(void *va, size_t size)
 {
 	while (size) {
-		__invalidate_icache_guest_page(hyp_fixmap_map(__hyp_pa(va)),
-					       PAGE_SIZE);
-		hyp_fixmap_unmap();
-		va += PAGE_SIZE;
-		size -= PAGE_SIZE;
+		size_t __size = size == PMD_SIZE ? size : PAGE_SIZE;
+		void *addr = __fixmap_guest_page(va, &__size);
+
+		__invalidate_icache_guest_page(addr, __size);
+		__fixunmap_guest_page(__size);
+
+		size -= __size;
+		va += __size;
 	}
 }
 
@@ -2384,7 +2427,7 @@ static int __pkvm_host_use_dma_page(phys_addr_t phys_addr)
 			return 0;
 		if (state != PKVM_PAGE_OWNED)
 			return -EPERM;
-		prot = pkvm_mkstate(KVM_HOST_S2_DEFAULT_MMIO_PTE, PKVM_PAGE_MMIO_DMA);
+		prot = pkvm_mkstate(PKVM_HOST_MMIO_PROT, PKVM_PAGE_MMIO_DMA);
 		return host_stage2_idmap_locked(phys_addr, PAGE_SIZE, prot, false);
 	}
 

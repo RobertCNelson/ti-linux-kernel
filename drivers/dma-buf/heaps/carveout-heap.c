@@ -16,7 +16,6 @@
 #include <linux/highmem.h>
 #include <linux/dma-buf.h>
 #include <linux/dma-heap.h>
-#include <linux/dma-heap-carveout.h>
 
 struct carveout_dma_heap {
 	struct dma_heap *heap;
@@ -258,8 +257,8 @@ static const struct dma_buf_ops carveout_dma_heap_buf_ops = {
 
 static struct dma_buf *carveout_dma_heap_allocate(struct dma_heap *heap,
 						  unsigned long len,
-						  unsigned long fd_flags,
-						  unsigned long heap_flags)
+						  u32 fd_flags,
+						  u64 heap_flags)
 {
 	struct carveout_dma_heap *carveout_dma_heap = dma_heap_get_drvdata(heap);
 	struct carveout_dma_heap_buffer *buffer;

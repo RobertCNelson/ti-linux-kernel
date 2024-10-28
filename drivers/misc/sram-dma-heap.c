@@ -160,8 +160,8 @@ static const struct dma_buf_ops sram_dma_heap_buf_ops = {
 
 static struct dma_buf *sram_dma_heap_allocate(struct dma_heap *heap,
 					      unsigned long len,
-					      unsigned long fd_flags,
-					      unsigned long heap_flags)
+					      u32 fd_flags,
+					      u64 heap_flags)
 {
 	struct sram_dma_heap *sram_dma_heap = dma_heap_get_drvdata(heap);
 	struct sram_dma_heap_buffer *buffer;
