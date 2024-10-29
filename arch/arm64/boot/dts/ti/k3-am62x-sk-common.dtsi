@@ -587,8 +587,7 @@
 	       0 0 0 0
 	       0 0 0 0
 	>;
-	tx-num-evt = <0>;
-	rx-num-evt = <0>;
+
 };
 
 &dss_oldi_io_ctrl {

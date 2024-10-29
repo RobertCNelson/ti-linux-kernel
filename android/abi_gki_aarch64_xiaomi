@@ -1,5 +1,7 @@
 [abi_symbol_list]
 # commonly used symbols
+  __traceiter_android_rvh_logbuf
+  __tracepoint_android_rvh_logbuf
   __traceiter_android_vh_logbuf
   __tracepoint_android_vh_logbuf
   tracepoint_probe_register
@@ -15,6 +17,10 @@
   __tracepoint_android_vh_shrink_slab_bypass
   __traceiter_android_vh_do_shrink_slab
   __traceiter_android_vh_shrink_slab_bypass
+
+# required by lz4 decompress module
+  __tracepoint_android_vh_lz4_decompress_bypass
+  __traceiter_android_vh_lz4_decompress_bypass
 
 # required by SAGT module
   __traceiter_android_rvh_before_do_sched_yield
@@ -62,12 +68,22 @@
   scsi_device_lookup
   scsi_host_lookup
   scsi_device_lookup
+  blk_mq_quiesce_tagset
+  blk_mq_unquiesce_tagset
   __traceiter_android_vh_anon_vma_name_recog
   __traceiter_android_vh_restore_mm_flags
   __traceiter_android_vh_update_vma_flags
   __tracepoint_android_vh_anon_vma_name_recog
   __tracepoint_android_vh_restore_mm_flags
   __tracepoint_android_vh_update_vma_flags
+  __traceiter_android_vh_madvise_cold_or_pageout_abort
+  __traceiter_android_vh_compact_finished
+  __tracepoint_android_vh_madvise_cold_or_pageout_abort
+  __tracepoint_android_vh_compact_finished
+  __traceiter_android_vh_customize_thp_pcp_order
+  __tracepoint_android_vh_customize_thp_pcp_order
+  __traceiter_android_vh_customize_thp_gfp_orders
+  __tracepoint_android_vh_customize_thp_gfp_orders
 
 #required by metis.ko module
   __traceiter_android_vh_rwsem_read_wait_start
@@ -88,6 +104,7 @@
   __tracepoint_android_rvh_dequeue_task
   cpuset_cpus_allowed
   cpufreq_update_policy
+  cgroup_threadgroup_rwsem
 
 #required by millet.ko
   __traceiter_android_rvh_refrigerator
@@ -125,6 +142,22 @@
   __tracepoint_android_vh_freq_qos_add_request
   __tracepoint_android_rvh_dequeue_task_fair
   __tracepoint_android_rvh_entity_tick
+
+#required by cpq.ko
+  elv_rb_former_request
+  elv_rb_latter_request
+  blk_mq_sched_try_merge
+  elv_rb_find
+  elv_bio_merge_ok
+  elv_rb_del
+  elv_rb_add
+  elv_rqhash_del
+  blk_mq_sched_mark_restart_hctx
+  __blk_req_zone_write_unlock
+  blk_mq_sched_try_insert_merge
+  elv_rqhash_add
+  blk_req_needs_zone_write_lock
+  __blk_req_zone_write_lock
 
 #required by cifs.ko
   add_swap_extent
@@ -369,3 +402,26 @@ __tracepoint_android_vh_page_should_be_protected
 __traceiter_android_vh_page_referenced_check_bypass
 __tracepoint_android_vh_page_referenced_check_bypass
 folio_total_mapcount
+
+#required by speed_ui.ko
+__tracepoint_android_rvh_update_cpus_allowed
+__traceiter_android_rvh_update_cpus_allowed
+
+# required by xring_pmt.ko
+__traceiter_android_rvh_armv8pmu_counter_overflowed
+__traceiter_android_rvh_perf_rotate_context
+__tracepoint_android_rvh_armv8pmu_counter_overflowed
+__tracepoint_android_rvh_perf_rotate_context
+
+#required by mi_async_reclaim.ko
+__traceiter_android_vh_handle_trylock_failed_folio
+__tracepoint_android_vh_handle_trylock_failed_folio
+__traceiter_android_vh_folio_trylock_set
+__tracepoint_android_vh_folio_trylock_set
+__traceiter_android_vh_folio_trylock_clear
+__tracepoint_android_vh_folio_trylock_clear
+__traceiter_android_vh_get_folio_trylock_result
+__tracepoint_android_vh_get_folio_trylock_result
+__traceiter_android_vh_do_folio_trylock
+__tracepoint_android_vh_do_folio_trylock
+reclaim_pages

@@ -193,7 +193,6 @@ int gunyah_vm_provide_folio(struct gunyah_vm *ghvm, struct folio *folio,
 		goto memextent_reclaim;
 	}
 
-	folio_get(folio);
 	return 0;
 memextent_reclaim:
 	gunyah_error = gunyah_hypercall_memextent_donate(
@@ -474,7 +473,7 @@ int gunyah_gup_share_parcel(struct gunyah_vm *ghvm, struct gunyah_rm_mem_parcel 
 	u16 vmid;
 	struct folio *folio;
 	unsigned int gup_flags;
-	unsigned long i, offset;
+	unsigned long i, offset, entries;
 
 	parcel->mem_handle = GUNYAH_MEM_HANDLE_INVAL;
 
@@ -549,6 +548,7 @@ int gunyah_gup_share_parcel(struct gunyah_vm *ghvm, struct gunyah_rm_mem_parcel 
 		parcel->acl_entries[1].perms = GUNYAH_RM_ACL_R | GUNYAH_RM_ACL_W | GUNYAH_RM_ACL_X;
 	}
 
+	/* overallocate & assume no large folios */
 	parcel->mem_entries = kcalloc(pinned, sizeof(parcel->mem_entries[0]),
 					GFP_KERNEL_ACCOUNT);
 	if (!parcel->mem_entries) {
@@ -557,20 +557,25 @@ int gunyah_gup_share_parcel(struct gunyah_vm *ghvm, struct gunyah_rm_mem_parcel 
 	}
 	folio = page_folio(pages[0]);
 	*gfn -= folio_page_idx(folio, pages[0]);
+	*nr = folio_nr_pages(folio);
 	parcel->mem_entries[0].size = cpu_to_le64(folio_size(folio));
 	parcel->mem_entries[0].phys_addr = cpu_to_le64(PFN_PHYS(folio_pfn(folio)));
 
-	for (i = 1; i < pinned; i++) {
+	for (i = 1, entries = 1; i < pinned; i++) {
 		folio = page_folio(pages[i]);
 		if (pages[i] == folio_page(folio, 0)) {
-			parcel->mem_entries[i].size = cpu_to_le64(folio_size(folio));
-			parcel->mem_entries[i].phys_addr = cpu_to_le64(PFN_PHYS(folio_pfn(folio)));
+			parcel->mem_entries[entries].size =
+				cpu_to_le64(folio_size(folio));
+			parcel->mem_entries[entries].phys_addr =
+				cpu_to_le64(PFN_PHYS(folio_pfn(folio)));
+			*nr += folio_nr_pages(folio);
+			entries++;
 		} else {
 			unpin_user_page(pages[i]);
 			account_locked_vm(current->mm, 1, false);
 		}
 	}
-	parcel->n_mem_entries = i;
+	parcel->n_mem_entries = entries;
 	ret = gunyah_rm_mem_share(ghvm->rm, parcel);
 	goto free_pages;
 
