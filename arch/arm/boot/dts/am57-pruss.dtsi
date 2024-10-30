@@ -5,6 +5,13 @@
  * Common PRUSS data for TI AM57xx platforms
  */
 
+/ {
+	aliases {
+		pruss_iep1 = &pruss1_iep;
+		pruss_iep2 = &pruss2_iep;
+	};
+};
+
 &ocp {
 	pruss1_tm: target-module@4b226000 {
 		compatible = "ti,sysc-pruss", "ti,sysc";
@@ -59,6 +66,12 @@
 							 <&dpll_gmac_h13x2_ck>; /* icss_clk */
 					};
 				};
+			};
+
+			pruss1_iep: iep@2e000 {
+				compatible = "ti,am5728-icss-iep";
+				reg = <0x2e000 0x31c>;
+				clocks = <&pruss1_iepclk_mux>;
 			};
 
 			pruss1_mii_rt: mii-rt@32000 {
@@ -117,6 +130,7 @@
 				clock-names = "fck";
 				bus_freq = <1000000>;
 				reg = <0x32400 0x90>;
+				status = "disabled";
 			};
 		};
 	};
@@ -176,6 +190,12 @@
 				};
 			};
 
+			pruss2_iep: iep@2e000 {
+				compatible = "ti,am5728-icss-iep";
+				reg = <0x2e000 0x31c>;
+				clocks = <&pruss2_iepclk_mux>;
+			};
+
 			pruss2_mii_rt: mii-rt@32000 {
 				compatible = "ti,pruss-mii", "syscon";
 				reg = <0x32000 0x58>;
@@ -232,6 +252,7 @@
 				clock-names = "fck";
 				bus_freq = <1000000>;
 				reg = <0x32400 0x90>;
+				status = "disabled";
 			};
 		};
 	};
