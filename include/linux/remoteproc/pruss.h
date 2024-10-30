@@ -1,8 +1,8 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only or MIT*/
 /*
  * PRU-ICSS Subsystem user interfaces
  *
- * Copyright (C) 2015-2022 Texas Instruments Incorporated - http://www.ti.com
+ * Copyright (C) 2015-2024 Texas Instruments Incorporated - http://www.ti.com
  *	Suman Anna <s-anna@ti.com>
  */
 
@@ -44,6 +44,7 @@ enum pru_ctable_idx {
 
 struct device_node;
 struct rproc;
+struct pruss;
 
 #if IS_ENABLED(CONFIG_PRU_REMOTEPROC)
 
@@ -51,7 +52,7 @@ struct rproc *pru_rproc_get(struct device_node *np, int index,
 			    enum pruss_pru_id *pru_id);
 void pru_rproc_put(struct rproc *rproc);
 int pru_rproc_set_ctable(struct rproc *rproc, enum pru_ctable_idx c, u32 addr);
-
+int pruss_cfg_ocp_master_ports(struct pruss *pruss, bool enable);
 #else
 
 static inline struct rproc *
@@ -64,6 +65,11 @@ static inline void pru_rproc_put(struct rproc *rproc) { }
 
 static inline int pru_rproc_set_ctable(struct rproc *rproc,
 				       enum pru_ctable_idx c, u32 addr)
+{
+	return -EOPNOTSUPP;
+}
+
+static inline int pruss_cfg_ocp_master_ports(struct pruss *pruss, bool enable)
 {
 	return -EOPNOTSUPP;
 }

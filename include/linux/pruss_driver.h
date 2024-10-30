@@ -1,8 +1,8 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only or MIT*/
 /*
  * PRU-ICSS sub-system specific definitions
  *
- * Copyright (C) 2014-2020 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C) 2014-2024 Texas Instruments Incorporated - http://www.ti.com/
  *	Suman Anna <s-anna@ti.com>
  */
 
