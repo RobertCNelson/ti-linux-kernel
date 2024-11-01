@@ -1947,6 +1947,7 @@
   sdhci_set_power_and_bus_voltage
   sdhci_set_uhs_signaling
   sdhci_setup_host
+  sdhci_start_signal_voltage_switch
   sdio_claim_host
   sdio_claim_irq
   sdio_disable_func
