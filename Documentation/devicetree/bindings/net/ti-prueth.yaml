@@ -1,0 +1,132 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/net/ti-prueth.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Texas Instruments PRUSS Ethernet MAC (Media Access Controller)
+
+maintainers:
+  - Andrew F. Davis <afd@ti.com>
+
+description:
+  Ethernet based on the Programmable Real-Time Unit Subsystem.
+
+properties:
+  compatible:
+    enum:
+      - ti,am57-prueth    # for AM57xx SoCs
+
+  ti,prus:
+    maxItems: 2
+    description:
+      list of pHandles to the PRU nodes
+
+  sram:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description:
+      pHandle to OCMC SRAM node
+
+  interrupt-parent:
+    maxItems: 1
+    description:
+      pHandle to the PRUSS INTC node
+
+  mii-rt:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description:
+      pHandle to MII_RT module's syscon regmap
+
+  iep:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description:
+      pHandle to IEP module's syscon regmap
+
+patternProperties:
+  ^ethernet-mii[0-1]$:
+    type: object
+    description: PRUETH external ports
+    $ref: ethernet-controller.yaml#
+
+    properties:
+      interrupts:
+        maxItems: 3
+
+      interrupt-names:
+        items:
+          - const: rx
+          - const: tx
+          - const: emac_ptp_tx
+
+    required:
+      - phy-handle
+      - phy-mode
+      - interrupt-names
+      - interrupts
+
+    unevaluatedProperties: false
+
+anyOf:
+  - required:
+      - ethernet-mii1
+  - required:
+      - ethernet-mii0
+
+required:
+  - compatible
+  - ti,prus
+  - sram
+  - mii-rt
+  - iep
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    /* Example am572x-idk board, dual-emac */
+    pruss2_eth {
+            compatible = "ti,am57-prueth";
+            ti,prus = <&pru2_0>, <&pru2_1>;
+            sram = <&ocmcram1>;
+            interrupt-parent = <&pruss2_intc>;
+            mii-rt = <&pruss2_mii_rt>;
+            iep = <&pruss2_iep>;
+
+            pruss2_emac0: ethernet-mii0 {
+                    phy-handle = <&pruss2_eth0_phy>;
+                    phy-mode = "mii";
+                    interrupts = <20 2 2>, <22 4 4 >, <26 6 6>;
+                    interrupt-names = "rx", "tx", "emac_ptp_tx";
+                    /* Filled in by bootloader */
+                    local-mac-address = [00 00 00 00 00 00];
+            };
+
+            pruss2_emac1: ethernet-mii1 {
+                    phy-handle = <&pruss2_eth1_phy>;
+                    phy-mode = "mii";
+                    interrupts = <21 3 3>, <23 5 5>, <27 9 7>;
+                    interrupt-names = "rx", "tx", "emac_ptp_tx";
+                    /* Filled in by bootloader */
+                    local-mac-address = [00 00 00 00 00 00];
+            };
+    };
+
+  - |
+    /* Example am572x-idk board, single-emac */
+    pruss2_eth {
+            compatible = "ti,am57-prueth";
+            ti,prus = <&pru2_0>, <&pru2_1>;
+            sram = <&ocmcram1>;
+            interrupt-parent = <&pruss2_intc>;
+            mii-rt = <&pruss2_mii_rt>;
+            iep = <&pruss2_iep>;
+
+            pruss2_emac2: ethernet-mii1 {
+                    phy-handle = <&pruss2_eth1_phy>;
+                    phy-mode = "mii";
+                    interrupts = <21 2 2>, <23 3 3>, <27 4 4>;
+                    interrupt-names = "rx", "tx", "emac_ptp_tx";
+                    /* Filled in by bootloader */
+                    local-mac-address = [00 00 00 00 00 00];
+            };
+    };

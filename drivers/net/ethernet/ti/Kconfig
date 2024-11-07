@@ -204,6 +204,18 @@ config TI_RDEV_ETH_SWITCH_VIRT_EMAC
 	  is utilized to communicate with Eth Switch FW via RPMSG.
 	  This is available starting with the J721E platform.
 
+config TI_PRUETH
+	tristate "TI PRU Ethernet EMAC driver"
+	depends on PRU_REMOTEPROC
+	depends on NET_SWITCHDEV
+	select TI_ICSS_IEP
+	imply PTP_1588_CLOCK
+	help
+	  Some TI SoCs has Programmable Realtime Units (PRUs) cores which can
+	  support Single or Dual Ethernet ports with help of firmware code running
+	  on PRU cores. This driver supports remoteproc based communication to
+	  PRU firmware to expose ethernet interface to Linux.
+
 config TI_ICSSG_PRUETH
 	tristate "TI Gigabit PRU Ethernet driver"
 	select PHYLIB
