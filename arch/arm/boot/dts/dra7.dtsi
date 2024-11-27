@@ -577,7 +577,7 @@
 			};
 		};
 
-		target-module@58882000 {
+		target_module_mmu_ipu1: target-module@58882000 {
 			compatible = "ti,sysc-omap2", "ti,sysc";
 			reg = <0x58882000 0x4>,
 			      <0x58882010 0x4>,

@@ -1884,7 +1884,7 @@
 			};
 		};
 
-		target-module@88000 {			/* 0x48088000, ap 43 66.0 */
+		target_module_timer11: target-module@88000 {			/* 0x48088000, ap 43 66.0 */
 			compatible = "ti,sysc-omap4-timer", "ti,sysc";
 			reg = <0x88000 0x4>,
 			      <0x88010 0x4>;
@@ -3373,7 +3373,7 @@
 			};
 		};
 
-		target-module@24000 {			/* 0x48824000, ap 9 26.0 */
+		target_module_timer7: target-module@24000 {			/* 0x48824000, ap 9 26.0 */
 			compatible = "ti,sysc-omap4-timer", "ti,sysc";
 			reg = <0x24000 0x4>,
 			      <0x24010 0x4>;
@@ -3400,7 +3400,7 @@
 			};
 		};
 
-		target-module@26000 {			/* 0x48826000, ap 11 0c.0 */
+		target_module_timer8: target-module@26000 {			/* 0x48826000, ap 11 0c.0 */
 			compatible = "ti,sysc-omap4-timer", "ti,sysc";
 			reg = <0x26000 0x4>,
 			      <0x26010 0x4>;
