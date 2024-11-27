@@ -643,10 +643,13 @@ static int rproc_handle_devmem(struct rproc *rproc, void *ptr,
 	if (!mapping)
 		return -ENOMEM;
 
-	ret = iommu_map(rproc->domain, rsc->da, rsc->pa, rsc->len, rsc->flags);
-	if (ret) {
-		dev_err(dev, "failed to map devmem: %d\n", ret);
-		goto out;
+	if (!rproc->late_attach) {
+		ret = iommu_map(rproc->domain, rsc->da, rsc->pa, rsc->len,
+				rsc->flags);
+		if (ret) {
+			dev_err(dev, "failed to map devmem: %d\n", ret);
+			goto out;
+		}
 	}
 
 	/*
@@ -660,8 +663,12 @@ static int rproc_handle_devmem(struct rproc *rproc, void *ptr,
 	mapping->len = rsc->len;
 	list_add_tail(&mapping->node, &rproc->mappings);
 
-	dev_dbg(dev, "mapped devmem pa 0x%x, da 0x%x, len 0x%x\n",
-		rsc->pa, rsc->da, rsc->len);
+	if (!rproc->late_attach)
+		dev_dbg(dev, "mapped devmem pa 0x%x, da 0x%x, len 0x%x\n",
+			rsc->pa, rsc->da, rsc->len);
+	else
+		dev_dbg(dev, "late-attach: processed devmem pa 0x%x, da 0x%x, len 0x%x\n",
+			rsc->pa, rsc->da, rsc->len);
 
 	return 0;
 
@@ -736,11 +743,13 @@ static int rproc_alloc_carveout(struct rproc *rproc,
 			goto dma_free;
 		}
 
-		ret = iommu_map(rproc->domain, mem->da, dma, mem->len,
-				mem->flags);
-		if (ret) {
-			dev_err(dev, "iommu_map failed: %d\n", ret);
-			goto free_mapping;
+		if (!rproc->late_attach) {
+			ret = iommu_map(rproc->domain, mem->da, dma, mem->len,
+					mem->flags);
+			if (ret) {
+				dev_err(dev, "iommu_map failed: %d\n", ret);
+				goto free_mapping;
+			}
 		}
 
 		/*
@@ -754,8 +763,13 @@ static int rproc_alloc_carveout(struct rproc *rproc,
 		mapping->len = mem->len;
 		list_add_tail(&mapping->node, &rproc->mappings);
 
-		dev_dbg(dev, "carveout mapped 0x%x to %pad\n",
-			mem->da, &dma);
+		if (!rproc->late_attach)
+			dev_dbg(dev, "carveout mapped 0x%x to %pad\n",
+				mem->da, &dma);
+		else
+			dev_dbg(dev, "late-attach: carveout processed 0x%x to %pad\n",
+				mem->da, &dma);
+
 	}
 
 	if (mem->da == FW_RSC_ADDR_ANY) {
@@ -1235,11 +1249,14 @@ void rproc_resource_cleanup(struct rproc *rproc)
 	list_for_each_entry_safe(entry, tmp, &rproc->mappings, node) {
 		size_t unmapped;
 
-		unmapped = iommu_unmap(rproc->domain, entry->da, entry->len);
-		if (unmapped != entry->len) {
-			/* nothing much to do besides complaining */
-			dev_err(dev, "failed to unmap %zx/%zu\n", entry->len,
-				unmapped);
+		if (!rproc->late_attach) {
+			unmapped = iommu_unmap(rproc->domain, entry->da,
+					       entry->len);
+			if (unmapped != entry->len) {
+				/* nothing much to do besides complaining */
+				dev_err(dev, "failed to unmap %zx/%zu\n",
+					entry->len, unmapped);
+			}
 		}
 
 		list_del(&entry->node);
@@ -1268,11 +1285,16 @@ static int rproc_start(struct rproc *rproc, const struct firmware *fw)
 	struct device *dev = &rproc->dev;
 	int ret;
 
-	/* load the ELF segments to memory */
-	ret = rproc_load_segments(rproc, fw);
-	if (ret) {
-		dev_err(dev, "Failed to load program segments: %d\n", ret);
-		return ret;
+	if (!rproc->late_attach) {
+		/* load the ELF segments to memory */
+		ret = rproc_load_segments(rproc, fw);
+
+		if (ret) {
+			dev_err(dev, "Failed to load program segments: %d\n", ret);
+			return ret;
+		}
+	} else {
+		dev_dbg(dev, "Skipped program segments load for pre-booted rproc\n");
 	}
 
 	/*
@@ -1732,6 +1754,7 @@ static int rproc_stop(struct rproc *rproc, bool crashed)
 	rproc_unprepare_subdevices(rproc);
 
 	rproc->state = RPROC_OFFLINE;
+	rproc->late_attach = 0;
 
 	dev_info(dev, "stopped remote processor %s\n", rproc->name);
 
