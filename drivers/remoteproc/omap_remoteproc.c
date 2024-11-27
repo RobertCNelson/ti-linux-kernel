@@ -597,6 +597,10 @@ static int omap_rproc_start(struct rproc *rproc)
 	int ret;
 	struct mbox_client *client = &oproc->client;
 
+	/*
+	 * We set boot address irrespective of the value of the late attach flag
+	 * as boot address takes effect only on a deassert of remoteproc reset.
+	 */
 	if (oproc->boot_data) {
 		ret = omap_rproc_write_dsp_boot_addr(rproc);
 		if (ret)
@@ -1276,6 +1280,12 @@ static int omap_rproc_of_get_timers(struct platform_device *pdev,
 	return 0;
 }
 
+static const struct dev_pm_ops omap_rproc_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(omap_rproc_suspend, omap_rproc_resume)
+	SET_RUNTIME_PM_OPS(omap_rproc_runtime_suspend,
+			   omap_rproc_runtime_resume, NULL)
+};
+
 static int omap_rproc_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -1290,7 +1300,7 @@ static int omap_rproc_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	reset = devm_reset_control_array_get_exclusive(&pdev->dev);
+	reset = devm_reset_control_array_get_optional_exclusive(&pdev->dev);
 	if (IS_ERR(reset))
 		return PTR_ERR(reset);
 
@@ -1308,6 +1318,17 @@ static int omap_rproc_probe(struct platform_device *pdev)
 			    firmware, sizeof(*oproc));
 	if (!rproc)
 		return -ENOMEM;
+
+	/*
+	 * HACK: Do not set pm ops for early booted rprocs as pwrdms and clkdms
+	 * are not registered for such cases.
+	 */
+	if (of_property_read_bool(np, "late_attach")) {
+		rproc->late_attach = 1;
+		pdev->dev.driver->pm = NULL;
+	} else {
+		pdev->dev.driver->pm = &omap_rproc_pm_ops;
+	}
 
 	oproc = rproc->priv;
 	oproc->rproc = rproc;
@@ -1335,11 +1356,9 @@ static int omap_rproc_probe(struct platform_device *pdev)
 
 	pm_runtime_set_autosuspend_delay(&pdev->dev, oproc->autosuspend_delay);
 
-	oproc->fck = devm_clk_get(&pdev->dev, 0);
-	if (IS_ERR(oproc->fck)) {
-		ret = PTR_ERR(oproc->fck);
-		goto free_rproc;
-	}
+	oproc->fck = devm_clk_get_optional(&pdev->dev, 0);
+	if (IS_ERR(oproc->fck))
+		return PTR_ERR(oproc->fck);
 
 	ret = of_reserved_mem_device_init(&pdev->dev);
 	if (ret) {
@@ -1374,18 +1393,11 @@ static int omap_rproc_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static const struct dev_pm_ops omap_rproc_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(omap_rproc_suspend, omap_rproc_resume)
-	SET_RUNTIME_PM_OPS(omap_rproc_runtime_suspend,
-			   omap_rproc_runtime_resume, NULL)
-};
-
 static struct platform_driver omap_rproc_driver = {
 	.probe = omap_rproc_probe,
 	.remove = omap_rproc_remove,
 	.driver = {
 		.name = "omap-rproc",
-		.pm = &omap_rproc_pm_ops,
 		.of_match_table = omap_rproc_of_match,
 	},
 };
