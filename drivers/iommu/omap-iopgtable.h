@@ -97,4 +97,16 @@ static inline phys_addr_t omap_iommu_translate(unsigned long d, dma_addr_t va,
 #define iopte_index(da)		(((da) >> IOPTE_SHIFT) & (PTRS_PER_IOPTE - 1))
 #define iopte_offset(iopgd, da)	(iopgd_page_vaddr(iopgd) + iopte_index(da))
 
+/*
+ * compute vaddr for second-level page table relative to page table directory
+ * for late-attach mode
+ */
+#define iopgd_page_vaddr_lateattach(obj, pgd)				\
+	((u32 *)((u32 *)((obj)->iopgd)) +				\
+	((u32 *)iopgd_page_paddr((pgd)) - (u32 *)((obj)->iopgd_pa)))
+
+/* to find an entry in the second-level page table for late-attach mode */
+#define iopte_offset_lateattach(obj, iopgd, da)				\
+	(iopgd_page_vaddr_lateattach(obj, iopgd) + iopte_index(da))
+
 #endif /* _OMAP_IOPGTABLE_H */
