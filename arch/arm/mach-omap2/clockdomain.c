@@ -41,6 +41,9 @@ static struct clkdm_ops *arch_clkdm;
 void clkdm_save_context(void);
 void clkdm_restore_context(void);
 
+struct device_node *np;
+bool ipu_early_booted;
+
 /* Private functions */
 
 static struct clockdomain *_clkdm_lookup(const char *name)
@@ -172,8 +175,9 @@ static void _resolve_clkdm_deps(struct clockdomain *clkdm,
 			continue;
 		cd->clkdm = _clkdm_lookup(cd->clkdm_name);
 
-		WARN(!cd->clkdm, "clockdomain: %s: could not find clkdm %s while resolving dependencies - should never happen",
-		     clkdm->name, cd->clkdm_name);
+		if (!((strcmp(cd->clkdm_name, "ipu_clkdm") == 0 || strcmp(cd->clkdm_name, "ipu1_clkdm") == 0) && ipu_early_booted))
+			WARN(!cd->clkdm, "clockdomain: %s: could not find clkdm %s while resolving dependencies - should never happen",
+			     clkdm->name, cd->clkdm_name);
 	}
 }
 
@@ -478,18 +482,26 @@ int clkdm_complete_init(void)
 {
 	struct clockdomain *clkdm;
 	static struct notifier_block nb;
+	np = of_find_node_by_path("/ocp/ipu@58820000");
+	ipu_early_booted = of_property_read_bool(np, "late_attach");
 
 	if (list_empty(&clkdm_list))
 		return -EACCES;
 
+	/*
+	 * Do not initialize ipu_clkdms if IPU is early booted to prevent
+	 * Kernel from messing up with its clks.
+	 */
 	list_for_each_entry(clkdm, &clkdm_list, node) {
-		clkdm_deny_idle(clkdm);
+		if (!((strcmp(clkdm->name, "ipu_clkdm") == 0 || strcmp(clkdm->name, "ipu1_clkdm") == 0) && ipu_early_booted)) {
+			clkdm_deny_idle(clkdm);
 
-		_resolve_clkdm_deps(clkdm, clkdm->wkdep_srcs);
-		clkdm_clear_all_wkdeps(clkdm);
+			_resolve_clkdm_deps(clkdm, clkdm->wkdep_srcs);
+			clkdm_clear_all_wkdeps(clkdm);
 
-		_resolve_clkdm_deps(clkdm, clkdm->sleepdep_srcs);
-		clkdm_clear_all_sleepdeps(clkdm);
+			_resolve_clkdm_deps(clkdm, clkdm->sleepdep_srcs);
+			clkdm_clear_all_sleepdeps(clkdm);
+		}
 	}
 
 	/* Only AM43XX can lose clkdm context during rtc-ddr suspend */
