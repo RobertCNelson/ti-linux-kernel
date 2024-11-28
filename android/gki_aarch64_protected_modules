@@ -26,9 +26,6 @@ drivers/net/usb/r8153_ecm.ko
 drivers/net/usb/rtl8150.ko
 drivers/net/usb/usbnet.ko
 drivers/net/wwan/wwan.ko
-drivers/pps/pps_core.ko
-drivers/ptp/ptp.ko
-drivers/ptp/ptp_kvm.ko
 drivers/usb/class/cdc-acm.ko
 drivers/usb/mon/usbmon.ko
 drivers/usb/serial/ftdi_sio.ko
@@ -44,7 +41,6 @@ net/6lowpan/nhc_udp.ko
 net/8021q/8021q.ko
 net/9p/9pnet.ko
 net/9p/9pnet_fd.ko
-net/bluetooth/bluetooth.ko
 net/bluetooth/hidp/hidp.ko
 net/bluetooth/rfcomm/rfcomm.ko
 net/can/can.ko
