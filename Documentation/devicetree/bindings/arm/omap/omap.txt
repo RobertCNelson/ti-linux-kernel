@@ -24,6 +24,8 @@ Optional properties:
 - ti,no-reset-on-init: When present, the module should not be reset at init
 - ti,no-idle-on-init: When present, the module should not be idled at init
 - ti,no-idle: When present, the module is never allowed to idle.
+- late_attach: Flag to convey the driver that the module has been already
+  initialized by an external entity.
 
 Example:
 

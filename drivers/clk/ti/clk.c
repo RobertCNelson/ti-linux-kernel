@@ -176,10 +176,20 @@ void __init ti_dt_clocks_register(struct ti_dt_clk oclks[])
 	static bool clkctrl_nodes_missing;
 	static bool has_clkctrl_data;
 	static bool compat_mode;
+	struct device_node *np = of_find_node_by_path("/ocp/ipu@58820000");
+	bool ipu_early_booted = of_property_read_bool(np, "late_attach");
+
 
 	compat_mode = ti_clk_get_features()->flags & TI_CLK_CLKCTRL_COMPAT;
 
+	/*
+	 * Do not register IPU DT clkctrls if IPU is early booted to prevent
+	 * Kernel from messing up with its clks.
+	 */
 	for (c = oclks; c->node_name != NULL; c++) {
+		if (strcmp(c->node_name, "ipu1-clkctrl:0000:24") == 0 && ipu_early_booted)
+			continue;
+
 		strcpy(buf, c->node_name);
 		ptr = buf;
 		for (i = 0; i < 2; i++)

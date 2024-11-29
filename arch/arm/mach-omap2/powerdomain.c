@@ -321,6 +321,8 @@ int pwrdm_register_platform_funcs(struct pwrdm_ops *po)
 int pwrdm_register_pwrdms(struct powerdomain **ps)
 {
 	struct powerdomain **p = NULL;
+	struct device_node *np = of_find_node_by_path("/ocp/ipu@58820000");
+	bool ipu_early_booted = of_property_read_bool(np, "late_attach");
 
 	if (!arch_pwrdm)
 		return -EEXIST;
@@ -328,8 +330,15 @@ int pwrdm_register_pwrdms(struct powerdomain **ps)
 	if (!ps)
 		return -EINVAL;
 
-	for (p = ps; *p; p++)
+	/*
+	 * Do not register ipu_pwrdm if it is early booted to prevent
+	 * Kernel from resetting its next pwrst.
+	 */
+	for (p = ps; *p; p++) {
+		if (strcmp((*p)->name, "ipu_pwrdm") == 0 && ipu_early_booted)
+			continue;
 		_pwrdm_register(*p);
+	}
 
 	return 0;
 }

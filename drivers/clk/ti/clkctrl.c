@@ -522,6 +522,9 @@ static void __init _ti_omap4_clkctrl_setup(struct device_node *node)
 	int ret;
 	char *c;
 	u16 soc_mask = 0;
+	struct device_node *np = of_find_node_by_path("/ocp/ipu@58820000");
+	bool ipu_early_booted = of_property_read_bool(np, "late_attach");
+
 
 	addrp = of_get_address(node, 0, NULL, NULL);
 	addr = (u32)of_translate_address(node, addrp);
@@ -577,6 +580,13 @@ static void __init _ti_omap4_clkctrl_setup(struct device_node *node)
 		pr_err("%pOF not found from clkctrl data.\n", node);
 		return;
 	}
+
+	/*
+	 * Do not initialize ipu_clkctrls if IPU is early booted to prevent
+	 * Kernel from messing up with its clks.
+	 */
+	if (data->addr == 0x4a005520 && ipu_early_booted)
+		return;
 
 	provider = kzalloc(sizeof(*provider), GFP_KERNEL);
 	if (!provider)

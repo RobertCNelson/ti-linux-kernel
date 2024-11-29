@@ -39,6 +39,12 @@ static const struct iommu_ops omap_iommu_ops;
 /* bitmap of the page sizes currently supported */
 #define OMAP_IOMMU_PGSIZES	(SZ_4K | SZ_64K | SZ_1M | SZ_16M)
 
+/*
+ * total size of L1 and L2 page tables reserved/used by bootloader per rproc
+ * for early boot usecases, must match the value used in bootloader
+ */
+#define EARLY_PAGE_TABLES_SIZE	SZ_256K
+
 #define MMU_LOCK_BASE_SHIFT	10
 #define MMU_LOCK_BASE_MASK	(0x1f << MMU_LOCK_BASE_SHIFT)
 #define MMU_LOCK_BASE(x)	\
@@ -158,7 +164,7 @@ static int omap2_iommu_enable(struct omap_iommu *obj)
 	if (!obj->iopgd || !IS_ALIGNED((unsigned long)obj->iopgd,  SZ_16K))
 		return -EINVAL;
 
-	pa = virt_to_phys(obj->iopgd);
+	pa = obj->iopgd_pa;
 	if (!IS_ALIGNED(pa, SZ_16K))
 		return -EINVAL;
 
@@ -192,6 +198,15 @@ static void omap2_iommu_disable(struct omap_iommu *obj)
 static int iommu_enable(struct omap_iommu *obj)
 {
 	int ret;
+
+	/*
+	 * now that the threat of idling has passed, decrement the
+	 * device usage count to balance the increment done in probe,
+	 * the pm runtime device usage count will be managed normally
+	 * from here on
+	 */
+	if (obj->late_attach)
+		pm_runtime_put_noidle(obj->dev);
 
 	ret = pm_runtime_get_sync(obj->dev);
 	if (ret < 0)
@@ -532,7 +547,7 @@ static u32 *iopte_alloc(struct omap_iommu *obj, u32 *iopgd,
 	}
 
 pte_ready:
-	iopte = iopte_offset(iopgd, da);
+	iopte = iopte_get(obj, iopgd, da);
 	*pt_dma = iopgd_page_paddr(iopgd);
 	dev_vdbg(obj->dev,
 		 "%s: da:%08x pgd:%p *pgd:%08x pte:%p *pte:%08x\n",
@@ -691,7 +706,7 @@ iopgtable_lookup_entry(struct omap_iommu *obj, u32 da, u32 **ppgd, u32 **ppte)
 		goto out;
 
 	if (iopgd_is_table(*iopgd))
-		iopte = iopte_offset(iopgd, da);
+		iopte = iopte_get(obj, iopgd, da);
 out:
 	*ppgd = iopgd;
 	*ppte = iopte;
@@ -711,13 +726,13 @@ static size_t iopgtable_clear_entry_core(struct omap_iommu *obj, u32 da)
 
 	if (iopgd_is_table(*iopgd)) {
 		int i;
-		u32 *iopte = iopte_offset(iopgd, da);
+		u32 *iopte = iopte_get(obj, iopgd, da);
 
 		bytes = IOPTE_SIZE;
 		if (*iopte & IOPTE_LARGE) {
 			nent *= 16;
 			/* rewind to the 1st entry */
-			iopte = iopte_offset(iopgd, (da & IOLARGE_MASK));
+			iopte = iopte_get(obj, iopgd, (da & IOLARGE_MASK));
 		}
 		bytes *= nent;
 		memset(iopte, 0, nent * sizeof(*iopte));
@@ -727,7 +742,8 @@ static size_t iopgtable_clear_entry_core(struct omap_iommu *obj, u32 da)
 		/*
 		 * do table walk to check if this table is necessary or not
 		 */
-		iopte = iopte_offset(iopgd, 0);
+		iopte = iopte_get(obj, iopgd, 0);
+
 		for (i = 0; i < PTRS_PER_IOPTE; i++)
 			if (iopte[i])
 				goto out;
@@ -786,8 +802,15 @@ static void iopgtable_clear_entry_all(struct omap_iommu *obj)
 		if (!*iopgd)
 			continue;
 
-		if (iopgd_is_table(*iopgd))
-			iopte_free(obj, iopte_offset(iopgd, 0), true);
+		if (iopgd_is_table(*iopgd)) {
+			if (obj->late_attach)
+				iopte_free(obj, iopte_offset_lateattach(obj,
+									iopgd,
+									0),
+					   true);
+			else
+				iopte_free(obj, iopte_offset(iopgd, 0), true);
+		}
 
 		*iopgd = 0;
 		flush_iopte_range(obj->dev, obj->pd_dma, offset, 1);
@@ -830,7 +853,7 @@ static irqreturn_t iommu_fault_handler(int irq, void *data)
 		return IRQ_NONE;
 	}
 
-	iopte = iopte_offset(iopgd, da);
+	iopte = iopte_get(obj, iopgd, da);
 
 	dev_err(obj->dev, "%s: errs:0x%08x da:0x%08x pgd:0x%p *pgd:0x%08x pte:0x%p *pte:0x%08x\n",
 		obj->name, errs, da, iopgd, *iopgd, iopte, *iopte);
@@ -846,22 +869,37 @@ static irqreturn_t iommu_fault_handler(int irq, void *data)
 static int omap_iommu_attach(struct omap_iommu *obj, u32 *iopgd)
 {
 	int err;
+	u32 iopgd_pa;
+
+	if (obj->late_attach) {
+		iopgd_pa = iommu_read_reg(obj, MMU_TTB);
+		iopgd = ioremap(iopgd_pa, EARLY_PAGE_TABLES_SIZE);
+		if (!iopgd)
+			return -ENOMEM;
+	} else {
+		iopgd_pa = virt_to_phys(iopgd);
+	}
 
 	spin_lock(&obj->iommu_lock);
 
-	obj->pd_dma = dma_map_single(obj->dev, iopgd, IOPGD_TABLE_SIZE,
-				     DMA_TO_DEVICE);
-	if (dma_mapping_error(obj->dev, obj->pd_dma)) {
-		dev_err(obj->dev, "DMA map error for L1 table\n");
-		err = -ENOMEM;
-		goto out_err;
+	if (!obj->late_attach) {
+		obj->pd_dma = dma_map_single(obj->dev, iopgd, IOPGD_TABLE_SIZE,
+					     DMA_TO_DEVICE);
+		if (dma_mapping_error(obj->dev, obj->pd_dma)) {
+			dev_err(obj->dev, "DMA map error for L1 table\n");
+			err = -ENOMEM;
+			goto out_err;
+		}
 	}
 
+	obj->iopgd_pa = iopgd_pa;
 	obj->iopgd = iopgd;
 	err = iommu_enable(obj);
 	if (err)
 		goto out_err;
-	flush_iotlb_all(obj);
+
+	if (!obj->late_attach)
+		flush_iotlb_all(obj);
 
 	spin_unlock(&obj->iommu_lock);
 
@@ -884,13 +922,19 @@ static void omap_iommu_detach(struct omap_iommu *obj)
 	if (!obj || IS_ERR(obj))
 		return;
 
+	if (obj->late_attach && obj->iopgd)
+		iounmap(obj->iopgd);
+
 	spin_lock(&obj->iommu_lock);
 
 	dma_unmap_single(obj->dev, obj->pd_dma, IOPGD_TABLE_SIZE,
 			 DMA_TO_DEVICE);
 	obj->pd_dma = 0;
+
+	obj->iopgd_pa = 0;
 	obj->iopgd = NULL;
 	iommu_disable(obj);
+	obj->late_attach = 0;
 
 	spin_unlock(&obj->iommu_lock);
 
@@ -1064,7 +1108,9 @@ static __maybe_unused int omap_iommu_runtime_resume(struct device *dev)
 		}
 	}
 
-	if (pdata && pdata->deassert_reset) {
+	/* do not deassert reset only during initial boot for late attach */
+	if ((!obj->late_attach || obj->domain) &&
+	    pdata && pdata->deassert_reset) {
 		ret = pdata->deassert_reset(pdev, pdata->reset_name);
 		if (ret) {
 			dev_err(dev, "deassert_reset failed: %d\n", ret);
@@ -1165,6 +1211,7 @@ static int omap_iommu_probe(struct platform_device *pdev)
 	struct omap_iommu *obj;
 	struct resource *res;
 	struct device_node *of = pdev->dev.of_node;
+	struct iommu_platform_data *pdata = dev_get_platdata(&pdev->dev);
 
 	if (!of) {
 		pr_err("%s: only DT-based devices are supported\n", __func__);
@@ -1187,12 +1234,16 @@ static int omap_iommu_probe(struct platform_device *pdev)
 	obj->name = dev_name(&pdev->dev);
 	obj->nr_tlb_entries = 32;
 	err = of_property_read_u32(of, "ti,#tlb-entries", &obj->nr_tlb_entries);
+
 	if (err && err != -EINVAL)
 		return err;
 	if (obj->nr_tlb_entries != 32 && obj->nr_tlb_entries != 8)
 		return -EINVAL;
 	if (of_find_property(of, "ti,iommu-bus-err-back", NULL))
 		obj->has_bus_err_back = MMU_GP_REG_BUS_ERR_BACK_EN;
+
+	if (of_property_read_bool(of, "late_attach"))
+		obj->late_attach = 1;
 
 	obj->dev = &pdev->dev;
 	obj->ctx = (void *)obj + sizeof(*obj);
@@ -1238,6 +1289,14 @@ static int omap_iommu_probe(struct platform_device *pdev)
 		if (err)
 			goto out_sysfs;
 	}
+
+	/*
+	 * increment the device usage count so that runtime_suspend is not
+	 * invoked immediately after the probe (due to the ti,no-idle-on-init)
+	 * and before any remoteproc has attached to the iommu
+	 */
+	if (obj->late_attach)
+		pm_runtime_get_noresume(obj->dev);
 
 	pm_runtime_enable(obj->dev);
 
@@ -1423,6 +1482,11 @@ static int omap_iommu_attach_init(struct device *dev,
 
 	iommu = odomain->iommus;
 	for (i = 0; i < odomain->num_iommus; i++, iommu++) {
+		/*
+		 * not necessary for late attach, the page table would be setup
+		 * by the boot loader. Leaving the below code in place, it does
+		 * not have any side effects during late attach.
+		 */
 		iommu->pgtable = kzalloc(IOPGD_TABLE_SIZE, GFP_ATOMIC);
 		if (!iommu->pgtable)
 			return -ENOMEM;
@@ -1544,7 +1608,8 @@ static void _omap_iommu_detach_dev(struct omap_iommu_domain *omap_domain,
 	arch_data += (omap_domain->num_iommus - 1);
 	for (i = 0; i < omap_domain->num_iommus; i++, iommu--, arch_data--) {
 		oiommu = iommu->iommu_dev;
-		iopgtable_clear_entry_all(oiommu);
+		if (!oiommu->late_attach)
+			iopgtable_clear_entry_all(oiommu);
 
 		omap_iommu_detach(oiommu);
 		iommu->iommu_dev = NULL;
