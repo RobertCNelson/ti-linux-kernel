@@ -284,3 +284,5 @@
 	ti,pruss-gp-mux-sel = <4>,	/* MII2, needed for PRUSS1_MII0 */
 			      <4>;	/* MII2, needed for PRUSS1_MII1 */
 };
+
+#include "dra7-ipu-common-early-boot.dtsi"
