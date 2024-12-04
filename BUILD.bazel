@@ -939,7 +939,6 @@ kernel_build(
         "ti/k3-am62-lp-sk-microtips-mf101hie-panel.dtbo",
         "ti/k3-am62p5-sk-mcan.dtbo",
         "ti/k3-am62p5-sk-microtips-mf101hie-panel.dtbo",
-        "ti/k3-am625-sk-wl1837.dtbo",
 
     ],
     module_outs = get_gki_modules_list("arm64") + get_kunit_modules_list("arm64") + _TI_MODULE_OUTS + _TI_WATCHDOG_MODULE_OUTS,
