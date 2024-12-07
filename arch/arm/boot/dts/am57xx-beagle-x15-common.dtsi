@@ -645,3 +645,5 @@
 &pruss2_mdio {
 	status = "disabled";
 };
+
+#include "dra7-ipu-common-early-boot.dtsi"

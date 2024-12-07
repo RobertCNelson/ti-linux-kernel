@@ -47,4 +47,3 @@
 &pruss2_mdio {
 	status = "disabled";
 };
-
