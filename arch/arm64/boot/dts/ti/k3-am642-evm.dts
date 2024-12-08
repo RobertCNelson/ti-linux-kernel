@@ -872,7 +872,7 @@
 &timesync_router {
 	status = "okay";
 	pinctrl-names = "default";
-	pinctrl-0 = <&cpsw_cpts_pps>;
+	pinctrl-0 = <&cpsw_cpts_pps>, <&iep_cpts_pps>;
 
 	/* Use Time Sync Router to map GENF1 input to HW8_TS_PUSH output. */
 	cpsw_cpts_pps: cpsw-cpts-pps {
@@ -881,9 +881,25 @@
 			TS_OFFSET(37, 22)
 			>;
 	};
+
+	/* Use Time Sync Router to map PR1_EDC0_SYNC0_OUT input to HW8_TS_PUSH output. */
+	iep_cpts_pps: iep-cpts-pps {
+		pinctrl-single,pins = <
+			/* iep-pps [iep sync_out0] in29 -> out23 [navss cpts hw8_push] */
+			TS_OFFSET(23, 29)
+			>;
+	};
 };
 
 &icssg1_iep0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&icssg1_iep0_pins_default>;
+};
+
+&main_cpts0 {
+	/*
+	 * Use HW8_TS_PUSH of NAVSS CPTS to generate events for IEP PPS
+	 * signal (PRGx_IEP0_EDC_SYNC_OUT0)
+	 */
+	ti,pps = <7 1>;
 };
