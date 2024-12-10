@@ -396,18 +396,6 @@ static inline u64 icssg_read_time(const void __iomem *addr)
 	return low + ((u64)high << 32);
 }
 
-static inline u64 icssg_read_time(const void __iomem *addr)
-{
-	u32 low, high;
-
-	do {
-		high = readl(addr + 4);
-		low = readl(addr);
-	} while (high != readl(addr + 4));
-
-	return low + ((u64)high << 32);
-}
-
 /* Classifier helpers */
 void icssg_class_set_mac_addr(struct regmap *miig_rt, int slice, u8 *mac);
 void icssg_class_set_host_mac_addr(struct regmap *miig_rt, const u8 *mac);
