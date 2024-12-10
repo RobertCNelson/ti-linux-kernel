@@ -498,3 +498,142 @@ impl AshmemInner {
         CStr::from_bytes_with_nul(&name[..len_with_nul]).unwrap()
     }
 }
+
+#[no_mangle]
+unsafe extern "C" fn ashmem_memfd_ioctl(file: *mut bindings::file, cmd: u32, arg: usize) -> isize {
+    #[cfg(CONFIG_COMPAT)]
+    let cmd = match cmd {
+        bindings::COMPAT_ASHMEM_SET_SIZE => bindings::ASHMEM_SET_SIZE,
+        bindings::COMPAT_ASHMEM_SET_PROT_MASK => bindings::ASHMEM_SET_PROT_MASK,
+        cmd => cmd,
+    };
+
+    // SAFETY:
+    // * The file is valid for the duration of this call.
+    // * There is no active fdget_pos region on the file on this thread.
+    let file = unsafe { File::from_raw_file(file) };
+
+    match ashmem_memfd_ioctl_inner(file, cmd, arg) {
+        Ok(ret) => ret,
+        Err(err) => err.to_errno() as isize,
+    }
+}
+
+fn ashmem_memfd_ioctl_inner(file: &File, cmd: u32, arg: usize) -> Result<isize> {
+    use kernel::bindings::{F_ADD_SEALS, F_GET_SEALS, F_SEAL_FUTURE_WRITE, F_SEAL_WRITE};
+    const WRITE_SEALS_MASK: u64 = (F_SEAL_WRITE | F_SEAL_FUTURE_WRITE) as u64;
+
+    /// # Safety
+    /// The file must be a memfd file.
+    unsafe fn get_seals(file: &File) -> Result<u64> {
+        // SAFETY: This is a memfd file.
+        let seals: i64 = unsafe { bindings::memfd_fcntl(file.as_ptr(), F_GET_SEALS, 0) };
+        if seals < 0 {
+            return Err(Error::from_errno(seals as i32));
+        }
+        Ok(seals as u64)
+    }
+
+    let size = _IOC_SIZE(cmd);
+    match cmd {
+        bindings::ASHMEM_GET_NAME => {
+            let file_ptr = file.as_ptr();
+            // SAFETY: It's safe to access a file's dentry.
+            let dentry = unsafe { (*file_ptr).f_path.dentry };
+            // SAFETY: memfd stores the supplied name at this location. A default value is stored
+            // when no name is supplied, so this is always a valid string.
+            let full_name = unsafe {
+                core::slice::from_raw_parts(
+                    (*dentry).d_name.name,
+                    (*dentry).d_name.__bindgen_anon_1.__bindgen_anon_1.len as usize,
+                )
+            };
+
+            let name = full_name.strip_prefix(b"memfd:").unwrap_or(full_name);
+            let max = usize::min(name.len(), ASHMEM_NAME_LEN);
+
+            let mut local_name = [0u8; ASHMEM_NAME_LEN];
+            local_name[..max].copy_from_slice(&name[..max]);
+            local_name[ASHMEM_NAME_LEN - 1] = 0;
+
+            let mut writer = UserSlice::new(arg, size).writer();
+            writer.write_slice(&local_name)?;
+            Ok(0)
+        }
+        bindings::ASHMEM_GET_SIZE => {
+            let file_ptr = file.as_ptr();
+            // SAFETY: It's safe to access a file's inode.
+            let inode = unsafe { (*file_ptr).f_inode };
+            // SAFETY: It's safe to read the size of an inode.
+            let size = unsafe { bindings::i_size_read(inode) };
+            Ok(size as isize)
+        }
+        bindings::ASHMEM_SET_PROT_MASK => {
+            // SAFETY: This is a memfd file.
+            let seals = unsafe { get_seals(file) }?;
+            let mut prot = arg;
+
+            // The memfd compat layer does not support unsetting these.
+            prot |= PROT_READ | PROT_EXEC;
+
+            let is_writable = seals & WRITE_SEALS_MASK == 0;
+            let should_be_writable = prot & PROT_WRITE != 0;
+
+            if !is_writable && should_be_writable {
+                // Can't add PROT bits.
+                return Err(EINVAL);
+            }
+
+            if is_writable && !should_be_writable {
+                // SAFETY: This is a memfd file.
+                let ret = unsafe {
+                    bindings::memfd_fcntl(file.as_ptr(), F_ADD_SEALS, F_SEAL_FUTURE_WRITE)
+                };
+                if ret < 0 {
+                    return Err(Error::from_errno(ret as i32));
+                }
+            }
+            Ok(0)
+        }
+        bindings::ASHMEM_GET_PROT_MASK => {
+            // SAFETY: This is a memfd file.
+            let seals = unsafe { get_seals(file) }?;
+
+            let mut prot = PROT_READ | PROT_EXEC;
+            if seals & WRITE_SEALS_MASK == 0 {
+                prot |= PROT_WRITE;
+            }
+            Ok(prot as isize)
+        }
+        bindings::ASHMEM_GET_FILE_ID => {
+            // SAFETY: Accessing the ino is always okay.
+            let ino = unsafe { (*(*file.as_ptr()).f_inode).i_ino as usize };
+
+            let mut writer = UserSlice::new(arg, size).writer();
+            writer.write(&ino)?;
+            Ok(0)
+        }
+        // Just ignore unpin requests.
+        ASHMEM_PIN => Ok(bindings::ASHMEM_NOT_PURGED as isize),
+        ASHMEM_UNPIN => Ok(0),
+        ASHMEM_GET_PIN_STATUS => Ok(bindings::ASHMEM_IS_PINNED as isize),
+        bindings::ASHMEM_PURGE_ALL_CACHES => {
+            if !has_cap_sys_admin() {
+                return Err(EPERM);
+            }
+            Ok(0)
+        }
+        // We do not need to implement SET_NAME or SET_SIZE. The ioctls in this function are only
+        // called when you:
+        //
+        // 1. Think you have an ashmem fd.
+        // 2. But actually have a memfd fd.
+        //
+        // This can only happen if you created the fd through the libcutils library, and that
+        // library sets the name and size in the fd constructor where it knows whether ashmem or
+        // memfd is used, so we should never end up here.
+        bindings::ASHMEM_SET_NAME => Err(EINVAL),
+        bindings::ASHMEM_SET_SIZE => Err(EINVAL),
+        _ => Err(EINVAL),
+    }
+}
