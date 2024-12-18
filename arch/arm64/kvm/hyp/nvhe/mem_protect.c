@@ -589,6 +589,25 @@ static bool is_in_mem_range(u64 addr, struct kvm_mem_range *range)
 	return range->start <= addr && addr < range->end;
 }
 
+static int check_range_allowed_memory(u64 start, u64 end)
+{
+	struct memblock_region *reg;
+	struct kvm_mem_range range;
+
+	/*
+	 * Callers can't check the state of a range that overlaps memory and
+	 * MMIO regions, so ensure [start, end[ is in the same kvm_mem_range.
+	 */
+	reg = find_mem_range(start, &range);
+	if (!is_in_mem_range(end - 1, &range))
+		return -EINVAL;
+
+	if (!reg || reg->flags & MEMBLOCK_NOMAP)
+		return -EPERM;
+
+	return 0;
+}
+
 static bool range_is_memory(u64 start, u64 end)
 {
 	struct kvm_mem_range r;
@@ -1785,7 +1804,9 @@ int __pkvm_host_share_guest(u64 pfn, u64 gfn, struct pkvm_hyp_vcpu *vcpu,
 	struct pkvm_hyp_vm *vm = pkvm_hyp_vcpu_to_hyp_vm(vcpu);
 	u64 phys = hyp_pfn_to_phys(pfn);
 	u64 ipa = hyp_pfn_to_phys(gfn);
+	struct hyp_page *page;
 	size_t size;
+	u64 end;
 	int ret;
 
 	if (prot & ~KVM_PGTABLE_PROT_RWX)
@@ -1794,20 +1815,38 @@ int __pkvm_host_share_guest(u64 pfn, u64 gfn, struct pkvm_hyp_vcpu *vcpu,
 	if (check_shl_overflow(nr_pages, PAGE_SHIFT, &size))
 		return -EINVAL;
 
+	end = phys + size;
+	ret = check_range_allowed_memory(phys, end);
+	if (ret)
+		return ret;
+
 	host_lock_component();
 	guest_lock_component(vm);
 
-	ret = __host_check_page_state_range(phys, size, PKVM_PAGE_OWNED);
-	if (ret)
-		goto unlock;
 	ret = __guest_check_page_state_range(vcpu, ipa, size, PKVM_NOPAGE);
 	if (ret)
 		goto unlock;
 
-	WARN_ON(__host_set_page_state_range(phys, size, PKVM_PAGE_SHARED_OWNED));
-	prot = pkvm_mkstate(prot, PKVM_PAGE_SHARED_BORROWED);
-	WARN_ON(kvm_pgtable_stage2_map(&vm->pgt, ipa, size, phys, prot,
+	for (; phys < end; phys += PAGE_SIZE) {
+		page = hyp_phys_to_page(phys);
+		if (page->host_state == PKVM_PAGE_OWNED && !hyp_refcount_get(page->refcount))
+			continue;
+		else if (page->host_state == PKVM_PAGE_SHARED_OWNED && page->host_share_guest_count)
+			continue;
+		WARN_ON(1);
+		ret = -EINVAL;
+		goto unlock;
+	}
+
+	phys = hyp_pfn_to_phys(pfn) ;
+	WARN_ON(kvm_pgtable_stage2_map(&vm->pgt, ipa, size, phys,
+				       pkvm_mkstate(prot, PKVM_PAGE_SHARED_BORROWED),
 				       &vcpu->vcpu.arch.stage2_mc, 0));
+	for (; phys < end; phys += PAGE_SIZE) {
+		page = hyp_phys_to_page(phys);
+		page->host_state = PKVM_PAGE_SHARED_OWNED;
+		page->host_share_guest_count++;
+	}
 
 unlock:
 	guest_unlock_component(vm);
