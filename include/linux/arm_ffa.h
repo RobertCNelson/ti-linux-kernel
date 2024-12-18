@@ -259,6 +259,8 @@ bool ffa_partition_check_property(struct ffa_device *dev, u32 property)
 #define ffa_partition_supports_direct_recv(dev)	\
 	ffa_partition_check_property(dev, FFA_PARTITION_DIRECT_RECV)
 
+#define FFA_SRC_ENDPOINT_MASK	GENMASK(31, 16)
+
 /* For use with FFA_MSG_SEND_DIRECT_{REQ,RESP} which pass data via registers */
 struct ffa_send_direct_data {
 	unsigned long data0; /* w3/x3 */
