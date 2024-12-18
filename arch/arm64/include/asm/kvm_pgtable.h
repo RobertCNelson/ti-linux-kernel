@@ -606,8 +606,12 @@ int __kvm_pgtable_stage2_init(struct kvm_pgtable *pgt, struct kvm_s2_mmu *mmu,
 			      enum kvm_pgtable_stage2_flags flags,
 			      struct kvm_pgtable_pte_ops *pte_ops);
 
-#define kvm_pgtable_stage2_init(pgt, mmu, mm_ops, pte_ops) \
-	__kvm_pgtable_stage2_init(pgt, mmu, mm_ops, 0, pte_ops)
+static inline int kvm_pgtable_stage2_init(struct kvm_pgtable *pgt, struct kvm_s2_mmu *mmu,
+					  struct kvm_pgtable_mm_ops *mm_ops,
+					  struct kvm_pgtable_pte_ops *pte_ops)
+{
+	return __kvm_pgtable_stage2_init(pgt, mmu, mm_ops, 0, pte_ops);
+}
 
 /**
  * kvm_pgtable_stage2_destroy() - Destroy an unused guest stage-2 page-table.
