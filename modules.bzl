@@ -192,3 +192,48 @@ def get_kunit_modules_list(arch = None):
         ))
 
     return kunit_modules_list
+
+_COMMON_UNPROTECTED_MODULES_LIST = [
+    "drivers/base/regmap/regmap-kunit.ko",
+    "drivers/base/regmap/regmap-ram.ko",
+    "drivers/base/regmap/regmap-raw-ram.ko",
+    "drivers/block/virtio_blk.ko",
+    "drivers/block/zram/zram.ko",
+    "drivers/clk/clk-gate_test.ko",
+    "drivers/clk/clk_test.ko",
+    "drivers/char/hw_random/cctrng.ko",
+    "drivers/char/virtio_console.ko",
+    "drivers/hid/hid-uclogic-test.ko",
+    "drivers/iio/test/iio-test-format.ko",
+    "drivers/input/tests/input_test.ko",
+    "drivers/misc/open-dice.ko",
+    "drivers/misc/vcpu_stall_detector.ko",
+    "drivers/pps/pps_core.ko",
+    "drivers/ptp/ptp.ko",
+    "drivers/ptp/ptp_kvm.ko",
+    "drivers/rtc/lib_test.ko",
+    "drivers/virtio/virtio_balloon.ko",
+    "drivers/virtio/virtio_pci.ko",
+    "drivers/virtio/virtio_pci_modern_dev.ko",
+    "fs/ext4/ext4-inode-test.ko",
+    "fs/fat/fat_test.ko",
+    "kernel/kheaders.ko",
+    "kernel/time/time_test.ko",
+    "lib/crypto/libarc4.ko",
+    "lib/kunit/kunit-example-test.ko",
+    "lib/kunit/kunit-test.ko",
+    "mm/zsmalloc.ko",
+    "net/bluetooth/bluetooth.ko",
+    "net/core/dev_addr_lists_test.ko",
+    "net/rfkill/rfkill.ko",
+    "net/vmw_vsock/vmw_vsock_virtio_transport.ko",
+    "sound/soc/soc-topology-test.ko",
+    "sound/soc/soc-utils-test.ko",
+]
+
+# buildifier: disable=unnamed-macro
+def get_gki_protected_modules_list(arch = None):
+    all_gki_modules = get_gki_modules_list(arch) + get_kunit_modules_list(arch)
+    unprotected_modules = _COMMON_UNPROTECTED_MODULES_LIST
+    protected_modules = [mod for mod in all_gki_modules if mod not in unprotected_modules]
+    return protected_modules
