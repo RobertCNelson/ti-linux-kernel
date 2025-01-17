@@ -5298,6 +5298,9 @@ inline void update_misfit_status(struct task_struct *p, struct rq *rq)
 	bool need_update = true;
 	misfit_reason_t reason;
 
+	rq->misfit_task_load = 0;
+	rq->misfit_reason = -1;
+
 	trace_android_rvh_update_misfit_status(p, rq, &need_update);
 	if (!sched_asym_cpucap_active() || !need_update)
 		return;
@@ -5306,18 +5309,15 @@ inline void update_misfit_status(struct task_struct *p, struct rq *rq)
 	 * Affinity allows us to go somewhere higher?  Or are we on biggest
 	 * available CPU already? Or do we fit into this CPU ?
 	 */
-	if (!is_misfit_task(p, rq, &reason)) {
-		rq->misfit_task_load = 0;
-		rq->misfit_reason = -1;
-		return;
+	if (is_misfit_task(p, rq, &reason)) {
+		/*
+		 * Make sure that misfit_task_load will not be null even if
+		 * task_h_load() returns 0.
+		 */
+		rq->misfit_task_load = max_t(unsigned long, task_h_load(p), 1);
+		rq->misfit_reason = reason;
 	}
 
-	/*
-	 * Make sure that misfit_task_load will not be null even if
-	 * task_h_load() returns 0.
-	 */
-	rq->misfit_task_load = max_t(unsigned long, task_h_load(p), 1);
-	rq->misfit_reason = reason;
 }
 EXPORT_SYMBOL_GPL(update_misfit_status);
 
