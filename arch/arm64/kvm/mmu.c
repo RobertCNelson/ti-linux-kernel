@@ -1568,6 +1568,21 @@ static struct kvm_pinned_page *find_ppage(struct kvm *kvm, u64 ipa)
 					   ipa, ipa + PAGE_SIZE - 1);
 }
 
+static u16 pkvm_prefault __read_mostly;
+
+static int __init early_pkvm_prefault_cfg(char *buf)
+{
+	int ret = kstrtou16(buf, 10, &pkvm_prefault);
+
+	if (ret)
+		return ret;
+
+	pkvm_prefault = min(pkvm_prefault, 9);
+
+	return 0;
+}
+early_param("kvm-arm.protected_prefault", early_pkvm_prefault_cfg);
+
 static int insert_ppage(struct kvm *kvm, struct kvm_pinned_page *ppage)
 {
 	if (find_ppage(kvm, ppage->ipa))
@@ -1830,7 +1845,7 @@ static int __pkvm_host_donate_guest_sglist(struct kvm_vcpu *vcpu, struct list_he
 			nr_ppages++;
 
 			/* Limit the time spent at EL2 */
-			if (nr_ppages >= 32)
+			if (nr_ppages >= (1 << max(pkvm_prefault, 5)))
 				break;
 		}
 
@@ -1992,6 +2007,21 @@ int pkvm_mem_abort_range(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa, size_t si
 	srcu_read_unlock(&vcpu->kvm->srcu, idx);
 
 	return err;
+}
+
+int pkvm_mem_abort_prefault(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
+			    struct kvm_memory_slot *memslot)
+{
+	phys_addr_t memslot_start = memslot->base_gfn << PAGE_SHIFT;
+	size_t size = (1 << pkvm_prefault) << PAGE_SHIFT;
+
+	fault_ipa = ALIGN_DOWN(fault_ipa, size);
+	if (fault_ipa < memslot_start) {
+		size -= memslot_start - fault_ipa;
+		fault_ipa = memslot_start;
+	}
+
+	return pkvm_mem_abort(vcpu, fault_ipa, size, memslot);
 }
 
 static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
@@ -2472,7 +2502,7 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu)
 	}
 
 	if (kvm_vm_is_protected(vcpu->kvm))
-		ret = pkvm_mem_abort(vcpu, fault_ipa, PAGE_SIZE, memslot);
+		ret = pkvm_mem_abort_prefault(vcpu, fault_ipa, memslot);
 	else
 		ret = user_mem_abort(vcpu, fault_ipa, nested, memslot,
 				     esr_fsc_is_permission_fault(esr));
