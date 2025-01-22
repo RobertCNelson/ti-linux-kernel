@@ -85,7 +85,7 @@ config TI_PRUSS
 endif # SOC_TI
 
 config TI_SCI_INTA_MSI_DOMAIN
-	bool
+	bool "TI SCI INTA MSI Domain support"
 	select GENERIC_MSI_IRQ
 	help
 	  Driver to enable Interrupt Aggregator specific MSI Domain.
