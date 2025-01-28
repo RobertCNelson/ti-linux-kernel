@@ -1779,8 +1779,8 @@ int __pkvm_host_unuse_dma(phys_addr_t phys_addr, size_t size)
 	return 0;
 }
 
-int __pkvm_host_share_guest(struct pkvm_hyp_vcpu *vcpu, u64 pfn, u64 gfn,
-			    u64 nr_pages, enum kvm_pgtable_prot prot)
+int __pkvm_host_share_guest(u64 pfn, u64 gfn, struct pkvm_hyp_vcpu *vcpu,
+			    enum kvm_pgtable_prot prot, u64 nr_pages)
 {
 	struct pkvm_hyp_vm *vm = pkvm_hyp_vcpu_to_hyp_vm(vcpu);
 	u64 phys = hyp_pfn_to_phys(pfn);
@@ -1872,7 +1872,7 @@ static int __check_host_unshare_guest(struct pkvm_hyp_vm *vm, u64 *phys, u64 ipa
 					     PKVM_PAGE_SHARED_OWNED);
 }
 
-int __pkvm_host_unshare_guest(struct pkvm_hyp_vm *hyp_vm, u64 gfn, u8 order)
+int __pkvm_host_unshare_guest(u64 gfn, struct pkvm_hyp_vm *hyp_vm, u8 order)
 {
 	u64 ipa = hyp_pfn_to_phys(gfn);
 	u64 phys;
@@ -1899,8 +1899,8 @@ unlock:
 	return ret;
 }
 
-int __pkvm_host_relax_guest_perms(u64 gfn, u8 order, enum kvm_pgtable_prot prot,
-				  struct pkvm_hyp_vcpu *vcpu)
+int __pkvm_host_relax_perms_guest(u64 gfn, struct pkvm_hyp_vcpu *vcpu, enum kvm_pgtable_prot prot,
+				  u8 order)
 {
 	struct pkvm_hyp_vm *vm = pkvm_hyp_vcpu_to_hyp_vm(vcpu);
 	u64 ipa = hyp_pfn_to_phys(gfn);
@@ -1925,7 +1925,7 @@ unlock:
 	return ret;
 }
 
-int __pkvm_host_wrprotect_guest(u64 gfn, u8 order, struct pkvm_hyp_vm *vm)
+int __pkvm_host_wrprotect_guest(u64 gfn, struct pkvm_hyp_vm *vm, u8 order)
 {
 	u64 ipa = hyp_pfn_to_phys(gfn);
 	u64 phys;
@@ -1972,8 +1972,7 @@ unlock:
 
 }
 
-int __pkvm_host_donate_guest(struct pkvm_hyp_vcpu *vcpu, u64 pfn, u64 gfn,
-			     u64 nr_pages)
+int __pkvm_host_donate_guest(u64 pfn, u64 gfn, struct pkvm_hyp_vcpu *vcpu, u64 nr_pages)
 {
 	struct pkvm_hyp_vm *vm = pkvm_hyp_vcpu_to_hyp_vm(vcpu);
 	u64 phys = hyp_pfn_to_phys(pfn);

@@ -311,7 +311,7 @@ static int __pkvm_unmap_guest_call(u64 pfn, u64 gfn, u8 order, void *args)
 {
 	struct kvm *kvm = args;
 
-	return kvm_call_hyp_nvhe(__pkvm_host_unmap_guest, kvm->arch.pkvm.handle,
+	return kvm_call_hyp_nvhe(__pkvm_host_unshare_guest, kvm->arch.pkvm.handle,
 				 gfn, order);
 }
 
@@ -1639,10 +1639,15 @@ static bool kvm_vma_mte_allowed(struct vm_area_struct *vma)
 	return vma->vm_flags & VM_MTE_ALLOWED;
 }
 
-static int pkvm_host_map_guest(u64 pfn, u64 gfn, u64 nr_pages,
+static int pkvm_host_map_guest(struct kvm *kvm, u64 pfn, u64 gfn, u64 nr_pages,
 			       enum kvm_pgtable_prot prot)
 {
-	int ret = kvm_call_hyp_nvhe(__pkvm_host_map_guest, pfn, gfn, nr_pages, prot);
+	int ret;
+
+	if (kvm_vm_is_protected(kvm))
+		ret = kvm_call_hyp_nvhe(__pkvm_host_donate_guest, pfn, gfn, nr_pages);
+	else
+		ret = kvm_call_hyp_nvhe(__pkvm_host_share_guest, pfn, gfn, prot, nr_pages);
 
 	/*
 	 * Getting -EPERM at this point implies that the pfn has already been
@@ -1675,7 +1680,7 @@ static int __pkvm_relax_perms_call(u64 pfn, u64 gfn, u8 order, void *args)
 {
 	enum kvm_pgtable_prot prot = (enum kvm_pgtable_prot)args;
 
-	return kvm_call_hyp_nvhe(__pkvm_host_relax_guest_perms, gfn, order, prot);
+	return kvm_call_hyp_nvhe(__pkvm_host_relax_perms_guest, gfn, prot, order);
 }
 
 static int pkvm_relax_perms(struct kvm_vcpu *vcpu, u64 pfn, u64 gfn, u8 order,
@@ -1839,7 +1844,7 @@ retry:
 		goto retry;
 	}
 
-	ret = pkvm_host_map_guest(pfn, *fault_ipa >> PAGE_SHIFT,
+	ret = pkvm_host_map_guest(kvm, pfn, *fault_ipa >> PAGE_SHIFT,
 				  page_size >> PAGE_SHIFT, KVM_PGTABLE_PROT_R);
 	if (ret) {
 		if (ret == -EAGAIN)
