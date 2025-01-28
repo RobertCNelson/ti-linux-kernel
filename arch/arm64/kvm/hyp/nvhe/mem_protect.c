@@ -1855,6 +1855,83 @@ unlock:
 	return ret;
 }
 
+static int __check_host_shared_guest(struct pkvm_hyp_vm *vm, u64 *__phys, u64 ipa, u8 order)
+{
+	size_t size = PAGE_SIZE << order;
+	enum pkvm_page_state state;
+	struct hyp_page *page;
+	kvm_pte_t pte;
+	u64 phys, end;
+	s8 level;
+	int ret;
+
+	if (order && size != PMD_SIZE)
+		return -EINVAL;
+	ret = kvm_pgtable_get_leaf(&vm->pgt, ipa, &pte, &level);
+	if (ret)
+		return ret;
+	if (kvm_granule_size(level) != size)
+		return -E2BIG;
+	if (!kvm_pte_valid(pte))
+		return -ENOENT;
+
+	state = guest_get_page_state(pte, ipa) & ~PKVM_PAGE_RESTRICTED_PROT;
+	if (state != PKVM_PAGE_SHARED_BORROWED)
+		return -EPERM;
+
+	phys = kvm_pte_to_phys(pte);
+	end = phys + size;
+	ret = check_range_allowed_memory(phys, end);
+	if (WARN_ON(ret))
+		return ret;
+
+	for (; phys < end; phys += PAGE_SIZE) {
+		page = hyp_phys_to_page(phys);
+		if (page->host_state != PKVM_PAGE_SHARED_OWNED)
+			return -EPERM;
+		if (WARN_ON(!page->host_share_guest_count))
+			return -EINVAL;
+	}
+
+	*__phys = kvm_pte_to_phys(pte);
+
+	return 0;
+}
+
+int __pkvm_host_unshare_guest(u64 gfn, struct pkvm_hyp_vm *vm, u8 order)
+{
+	size_t size = PAGE_SIZE << order;
+	u64 ipa = hyp_pfn_to_phys(gfn);
+	struct hyp_page *page;
+	u64 phys, end;
+	int ret;
+
+	host_lock_component();
+	guest_lock_component(vm);
+
+	ret = __check_host_shared_guest(vm, &phys, ipa, order);
+	if (ret)
+		goto unlock;
+
+	ret = kvm_pgtable_stage2_unmap(&vm->pgt, ipa, size);
+	if (ret)
+		goto unlock;
+
+	end = phys + size;
+	for (; phys < end; phys += PAGE_SIZE) {
+		page = hyp_phys_to_page(phys);
+		page->host_share_guest_count--;
+		if (!page->host_share_guest_count)
+			page->host_state = PKVM_PAGE_OWNED;
+	}
+
+unlock:
+	guest_unlock_component(vm);
+	host_unlock_component();
+
+	return ret;
+}
+
 static int guest_get_valid_pte(struct pkvm_hyp_vm *vm, u64 *phys, u64 ipa, u8 order, kvm_pte_t *pte)
 {
 	size_t size = PAGE_SIZE << order;
@@ -1909,33 +1986,6 @@ static int __check_host_unshare_guest(struct pkvm_hyp_vm *vm, u64 *phys, u64 ipa
 
 	return __host_check_page_state_range(*phys, PAGE_SIZE << order,
 					     PKVM_PAGE_SHARED_OWNED);
-}
-
-int __pkvm_host_unshare_guest(u64 gfn, struct pkvm_hyp_vm *hyp_vm, u8 order)
-{
-	u64 ipa = hyp_pfn_to_phys(gfn);
-	u64 phys;
-	int ret;
-
-	host_lock_component();
-	guest_lock_component(hyp_vm);
-
-	ret = __check_host_unshare_guest(hyp_vm, &phys, ipa, order);
-	if (ret)
-		goto unlock;
-
-	ret = kvm_pgtable_stage2_unmap(&hyp_vm->pgt, ipa, PAGE_SIZE);
-	if (ret)
-		goto unlock;
-
-	WARN_ON(__host_set_page_state_range(phys, PAGE_SIZE << order,
-					    PKVM_PAGE_OWNED));
-
-unlock:
-	guest_unlock_component(hyp_vm);
-	host_unlock_component();
-
-	return ret;
 }
 
 int __pkvm_host_relax_perms_guest(u64 gfn, struct pkvm_hyp_vcpu *vcpu, enum kvm_pgtable_prot prot,
