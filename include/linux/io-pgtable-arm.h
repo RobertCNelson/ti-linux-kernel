@@ -23,8 +23,6 @@ struct io_pgtable_walk_data {
 	struct io_pgtable_walk_common	*data;
 	int (*visit)(struct io_pgtable_walk_data *walk_data, int lvl,
 		     arm_lpae_iopte *ptep, size_t size);
-	void (*visit_post_table)(struct io_pgtable_walk_data *walk_data,
-				 arm_lpae_iopte *ptep, int lvl);
 	unsigned long			flags;
 	u64				addr;
 	const u64			end;
