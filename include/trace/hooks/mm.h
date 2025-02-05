@@ -155,6 +155,10 @@ DECLARE_HOOK(android_vh_alloc_pages_entry,
 		nodemask_t *nodemask),
 	TP_ARGS(gfp, order, preferred_nid, nodemask));
 
+DECLARE_HOOK(android_vh_watermark_fast_ok,
+	TP_PROTO(unsigned int order, gfp_t gfp_mask, bool *is_watermark_ok),
+	TP_ARGS(order, gfp_mask, is_watermark_ok));
+
 DECLARE_HOOK(android_vh_free_unref_folios_to_pcp_bypass,
 	TP_PROTO(struct folio_batch *folios, bool *bypass),
 	TP_ARGS(folios, bypass));
