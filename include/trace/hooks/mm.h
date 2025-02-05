@@ -150,6 +150,10 @@ DECLARE_RESTRICTED_HOOK(android_rvh_ctl_dirty_rate,
 	TP_PROTO(struct inode *inode),
 	TP_ARGS(inode), 1);
 
+DECLARE_HOOK(android_vh_reserve_highatomic_bypass,
+	TP_PROTO(struct page *page, bool *bypass),
+	TP_ARGS(page, bypass));
+
 DECLARE_HOOK(android_vh_alloc_pages_entry,
 	TP_PROTO(gfp_t *gfp, unsigned int order, int preferred_nid,
 		nodemask_t *nodemask),
