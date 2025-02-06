@@ -7,6 +7,7 @@
  * Sorted alphabetically.
  */
 
+#include "binder.c"
 #include "blk.c"
 #include "bug.c"
 #include "build_assert.c"
