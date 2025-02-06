@@ -164,6 +164,7 @@
  * @ln_polrs:     Value for the 4-bit LN_POLRS field of SN_ENH_FRAME_REG.
  * @comms_enabled: If true then communication over the aux channel is enabled.
  * @hpd_enabled:   If true then HPD events are enabled.
+ * @plugged:       Plug connection status
  * @comms_mutex:   Protects modification of comms_enabled.
  * @hpd_mutex:     Protects modification of hpd_enabled.
  *
@@ -204,6 +205,7 @@ struct ti_sn65dsi86 {
 	u8				ln_polrs;
 	bool				comms_enabled;
 	bool				hpd_enabled;
+	bool				plugged;
 	struct mutex			comms_mutex;
 	struct mutex			hpd_mutex;
 
@@ -1221,12 +1223,31 @@ ti_sn_bridge_detect(struct drm_bridge *bridge, struct drm_connector *connector)
 	int val = 0;
 
 	/*
-	 * Runtime reference is grabbed in ti_sn_bridge_hpd_enable()
+	 * TI HACK: for the eDP connector modeling, HPD is kept disabled, so the
+	 * HPD_DEBOUNCED_STATE read below cannot report connection. Use an AUX
+	 * DPCD link-status read instead and cache the result in ->plugged.
+	 */
+	if (pdata->bridge.type == DRM_MODE_CONNECTOR_eDP) {
+		u8 link_status[DP_LINK_STATUS_SIZE];
+
+		if (!pdata->plugged) {
+			pm_runtime_get_sync(pdata->dev);
+			val = drm_dp_dpcd_read_link_status(&pdata->aux, link_status);
+			pm_runtime_put_autosuspend(pdata->dev);
+			if (val > 0)
+				pdata->plugged = true;
+		}
+
+		return pdata->plugged ? connector_status_connected
+				      : connector_status_disconnected;
+	}
+
+	/*
+	 * DisplayPort: runtime reference is grabbed in ti_sn_bridge_hpd_enable()
 	 * as the chip won't report HPD just after being powered on.
 	 * HPD_DEBOUNCED_STATE reflects correct state only after the
 	 * debounce time (~100-400 ms).
 	 */
-
 	regmap_read(pdata->regmap, SN_HPD_DISABLE_REG, &val);
 
 	return val & HPD_DEBOUNCED_STATE ? connector_status_connected
@@ -1435,6 +1456,8 @@ static int ti_sn_bridge_probe(struct auxiliary_device *adev,
 	pdata->bridge.type = pdata->next_bridge->type == DRM_MODE_CONNECTOR_DisplayPort
 			   ? DRM_MODE_CONNECTOR_DisplayPort : DRM_MODE_CONNECTOR_eDP;
 
+	pdata->plugged = false;
+
 	if (pdata->bridge.type == DRM_MODE_CONNECTOR_DisplayPort) {
 		pdata->bridge.ops = DRM_BRIDGE_OP_EDID | DRM_BRIDGE_OP_DETECT;
 		if (client->irq)
@@ -1455,6 +1478,9 @@ static int ti_sn_bridge_probe(struct auxiliary_device *adev,
 			regmap_update_bits(pdata->regmap, SN_HPD_DISABLE_REG,
 					   HPD_DISABLE, 0);
 		mutex_unlock(&pdata->comms_mutex);
+	} else {
+		/* TI HACK: enable DETECT for the eDP connector (DPCD-polled). */
+		pdata->bridge.ops |= DRM_BRIDGE_OP_DETECT;
 	}
 
 	drm_bridge_add(&pdata->bridge);
