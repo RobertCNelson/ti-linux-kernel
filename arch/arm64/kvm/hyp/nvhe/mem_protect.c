@@ -369,67 +369,37 @@ int kvm_guest_prepare_stage2(struct pkvm_hyp_vm *vm, void *pgd)
 	return 0;
 }
 
-struct relinquish_data {
-	enum pkvm_page_state expected_state;
-	u64 pa;
-};
-
-static int relinquish_walker(const struct kvm_pgtable_visit_ctx *ctx,
-			     enum kvm_pgtable_walk_flags visit)
-{
-	u64 addr = ALIGN_DOWN(ctx->addr, kvm_granule_size(ctx->level));
-	kvm_pte_t pte = *ctx->ptep;
-	struct relinquish_data *data = ctx->arg;
-	enum pkvm_page_state state;
-	phys_addr_t phys;
-
-	if (!kvm_pte_valid(pte))
-		return 0;
-
-	state = pkvm_getstate(kvm_pgtable_stage2_pte_prot(pte));
-	if (state != data->expected_state)
-		return -EPERM;
-
-	phys = kvm_pte_to_phys(pte);
-	phys += ctx->addr - addr;
-
-	if (state == PKVM_PAGE_OWNED) {
-		hyp_poison_page(phys);
-		psci_mem_protect_dec(1);
-	}
-
-	data->pa = phys;
-
-	return 0;
-}
-
 int __pkvm_guest_relinquish_to_host(struct pkvm_hyp_vcpu *vcpu,
 				    u64 ipa, u64 *ppa)
 {
-	struct relinquish_data data;
-	struct kvm_pgtable_walker walker = {
-		.cb     = relinquish_walker,
-		.flags  = KVM_PGTABLE_WALK_LEAF,
-		.arg    = &data,
-	};
 	struct pkvm_hyp_vm *vm = pkvm_hyp_vcpu_to_hyp_vm(vcpu);
+	enum pkvm_page_state state;
+	u64 phys = 0, addr;
+	kvm_pte_t pte;
+	s8 level;
 	int ret;
+
+	if (!pkvm_hyp_vcpu_is_protected(vcpu))
+		return 0;
 
 	host_lock_component();
 	guest_lock_component(vm);
 
-	/* Expected page state depends on VM type. */
-	data.expected_state = pkvm_hyp_vcpu_is_protected(vcpu) ?
-		PKVM_PAGE_OWNED :
-		PKVM_PAGE_SHARED_BORROWED;
-
-	/* Set default pa value to "not found". */
-	data.pa = 0;
-
-	/* If ipa is mapped: poisons the page, and gets the pa. */
-	ret = kvm_pgtable_walk(&vm->pgt, ipa, PAGE_SIZE, &walker);
-	if (ret || !data.pa)
+	ret = kvm_pgtable_get_leaf(&vm->pgt, ipa, &pte, &level);
+	if (ret || !kvm_pte_valid(pte))
 		goto end;
+
+	state = pkvm_getstate(kvm_pgtable_stage2_pte_prot(pte));
+	if (state != PKVM_PAGE_OWNED) {
+		ret = -EPERM;
+		goto end;
+	}
+
+	addr = ALIGN_DOWN(ipa, kvm_granule_size(level));
+	phys = kvm_pte_to_phys(pte);
+	phys += ipa - addr;
+	hyp_poison_page(phys);
+	psci_mem_protect_dec(1);
 
 	/* Zap the guest stage2 pte and return ownership to the host */
 	ret = kvm_pgtable_stage2_annotate(&vm->pgt, ipa, PAGE_SIZE,
@@ -437,12 +407,13 @@ int __pkvm_guest_relinquish_to_host(struct pkvm_hyp_vcpu *vcpu,
 	if (ret)
 		goto end;
 
-	WARN_ON(host_stage2_set_owner_locked(data.pa, PAGE_SIZE, PKVM_ID_HOST));
+	WARN_ON(host_stage2_set_owner_locked(phys, PAGE_SIZE, PKVM_ID_HOST));
 end:
 	guest_unlock_component(vm);
 	host_unlock_component();
 
-	*ppa = data.pa;
+	*ppa = phys;
+
 	return ret;
 }
 

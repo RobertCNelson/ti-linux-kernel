@@ -1683,26 +1683,3 @@ bool kvm_handle_pvm_hvc64(struct kvm_vcpu *vcpu, u64 *exit_code)
 	smccc_set_retval(vcpu, val[0], val[1], val[2], val[3]);
 	return true;
 }
-
-/*
- * Handler for non-protected VM HVC calls.
- *
- * Returns true if the hypervisor has handled the exit, and control should go
- * back to the guest, or false if it hasn't.
- */
-bool kvm_hyp_handle_hvc64(struct kvm_vcpu *vcpu, u64 *exit_code)
-{
-	u32 fn = smccc_get_function(vcpu);
-	struct pkvm_hyp_vcpu *hyp_vcpu;
-
-	hyp_vcpu = container_of(vcpu, struct pkvm_hyp_vcpu, vcpu);
-
-	switch (fn) {
-	case ARM_SMCCC_VENDOR_HYP_KVM_HYP_MEMINFO_FUNC_ID:
-		return pkvm_meminfo_call(hyp_vcpu);
-	case ARM_SMCCC_VENDOR_HYP_KVM_MEM_RELINQUISH_FUNC_ID:
-		return pkvm_memrelinquish_call(hyp_vcpu, exit_code);
-	}
-
-	return false;
-}
