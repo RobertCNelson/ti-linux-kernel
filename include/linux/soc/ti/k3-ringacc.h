@@ -8,6 +8,7 @@
 #ifndef __SOC_TI_K3_RINGACC_API_H_
 #define __SOC_TI_K3_RINGACC_API_H_
 
+#include <linux/platform_device.h>
 #include <linux/types.h>
 
 #define K3_RINGACC_RT_INT_STATUS_COMPLETE	BIT(0)
