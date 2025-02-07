@@ -7473,6 +7473,7 @@ find_proxy_task(struct rq *rq, struct task_struct *donor, struct rq_flags *rf)
 	return owner;
 
 needs_return:
+#ifdef CONFIG_SMP
 	WARN_ON(!is_cpu_allowed(p, p->wake_cpu));
 	if (p->wake_cpu == this_cpu) {
 		/* We can actually run here fine */
@@ -7490,7 +7491,11 @@ needs_return:
 	_trace_sched_pe_return_migration(p);
 	proxy_migrate_task(rq, rf, p, p->wake_cpu);
 	return NULL;
-
+#else
+	/* Nowhere else to migrate on UP */
+	p->blocked_on_state = BO_RUNNABLE;
+	ret = p;
+#endif
 out:
 	raw_spin_unlock(&p->blocked_lock);
 	raw_spin_unlock(&mutex->wait_lock);
