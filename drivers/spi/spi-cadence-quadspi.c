@@ -28,6 +28,7 @@
 #include <linux/sched.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/spi-mem.h>
+#include <linux/sys_soc.h>
 #include <linux/timer.h>
 
 #define CQSPI_NAME			"cadence-qspi"
@@ -3776,6 +3777,11 @@ static void cqspi_jh7110_disable_clk(struct platform_device *pdev, struct cqspi_
 	clk_disable_unprepare(cqspi->clks[CLK_QSPI_AHB]);
 	clk_disable_unprepare(cqspi->clks[CLK_QSPI_APB]);
 }
+static const struct soc_device_attribute k3_soc_devices[] = {
+	{ .family = "AM64X", .revision = "SR1.0" },
+	{ /* sentinel */ }
+};
+
 static int cqspi_probe(struct platform_device *pdev)
 {
 	const struct cqspi_driver_platdata *ddata;
@@ -3965,7 +3971,7 @@ static int cqspi_probe(struct platform_device *pdev)
 	if (ddata && (ddata->quirks & CQSPI_SUPPORT_DEVICE_RESET))
 		cqspi_device_reset(cqspi);
 
-	if (cqspi->use_direct_mode) {
+	if (cqspi->use_direct_mode && !soc_device_match(k3_soc_devices)) {
 		ret = cqspi_request_mmap_dma(cqspi);
 		if (ret == -EPROBE_DEFER)
 			goto probe_setup_failed;
