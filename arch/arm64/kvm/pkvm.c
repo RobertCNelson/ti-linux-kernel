@@ -244,17 +244,13 @@ void __init kvm_hyp_reserve(void)
 		 hyp_mem_base);
 }
 
-static int __pkvm_create_hyp_vcpu(struct kvm *host_kvm, struct kvm_vcpu *host_vcpu, unsigned long idx)
+static int __pkvm_create_hyp_vcpu(struct kvm_vcpu *host_vcpu)
 {
-	pkvm_handle_t handle = host_kvm->arch.pkvm.handle;
+	pkvm_handle_t handle = host_vcpu->kvm->arch.pkvm.handle;
 	struct kvm_hyp_req *hyp_reqs;
 	int ret;
 
 	init_hyp_stage2_memcache(&host_vcpu->arch.stage2_mc);
-
-	/* Indexing of the vcpus to be sequential starting at 0. */
-	if (WARN_ON(host_vcpu->vcpu_idx != idx))
-		return -EINVAL;
 
 	hyp_reqs = (struct kvm_hyp_req *)__get_free_page(GFP_KERNEL_ACCOUNT);
 	if (!hyp_reqs)
@@ -265,8 +261,7 @@ static int __pkvm_create_hyp_vcpu(struct kvm *host_kvm, struct kvm_vcpu *host_vc
 		goto err_free_reqs;
 	host_vcpu->arch.hyp_reqs = hyp_reqs;
 
-	ret = kvm_call_refill_hyp_nvhe(__pkvm_init_vcpu,
-				       handle, host_vcpu);
+	ret = kvm_call_refill_hyp_nvhe(__pkvm_init_vcpu, handle, host_vcpu);
 	if (!ret)
 		return 0;
 
@@ -424,7 +419,6 @@ static void __pkvm_vcpu_hyp_created(struct kvm_vcpu *vcpu)
 static int __pkvm_create_hyp_vm(struct kvm *host_kvm)
 {
 	struct kvm_vcpu *host_vcpu;
-	pkvm_handle_t handle;
 	unsigned long idx;
 	size_t pgd_sz;
 	void *pgd;
@@ -452,13 +446,11 @@ static int __pkvm_create_hyp_vm(struct kvm *host_kvm)
 	if (ret < 0)
 		goto free_pgd;
 
-	handle = ret;
-
-	WRITE_ONCE(host_kvm->arch.pkvm.handle, handle);
+	WRITE_ONCE(host_kvm->arch.pkvm.handle, ret);
 
 	/* Donate memory for the vcpus at hyp and initialize it. */
 	kvm_for_each_vcpu(idx, host_vcpu, host_kvm) {
-		ret = __pkvm_create_hyp_vcpu(host_kvm, host_vcpu, idx);
+		ret = __pkvm_create_hyp_vcpu(host_vcpu);
 		if (ret)
 			goto destroy_vm;
 		__pkvm_vcpu_hyp_created(host_vcpu);
