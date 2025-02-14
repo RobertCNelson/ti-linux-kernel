@@ -45,8 +45,7 @@ static struct file *ovl_open_realfile(const struct file *file,
 	if (err) {
 		realfile = ERR_PTR(err);
 	} else {
-		if (old_cred && !inode_owner_or_capable(real_idmap,
-							realinode))
+		if (!inode_owner_or_capable(real_idmap, realinode))
 			flags &= ~O_NOATIME;
 
 		realfile = backing_file_open(&file->f_path, flags, realpath,
