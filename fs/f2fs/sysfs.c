@@ -501,9 +501,7 @@ out:
 	if (a->struct_type == RESERVED_BLOCKS) {
 		spin_lock(&sbi->stat_lock);
 		if (t > (unsigned long)(sbi->user_block_count -
-				F2FS_OPTION(sbi).root_reserved_blocks -
-				SEGS_TO_BLKS(sbi,
-				SM_I(sbi)->additional_reserved_segments))) {
+				F2FS_OPTION(sbi).root_reserved_blocks)) {
 			spin_unlock(&sbi->stat_lock);
 			return -EINVAL;
 		}
@@ -789,6 +787,13 @@ out:
 		return count;
 	}
 
+	if (!strcmp(a->attr.name, "max_read_extent_count")) {
+		if (t > UINT_MAX)
+			return -EINVAL;
+		*ui = (unsigned int)t;
+		return count;
+	}
+
 	if (!strcmp(a->attr.name, "ipu_policy")) {
 		if (t >= BIT(F2FS_IPU_MAX))
 			return -EINVAL;
@@ -1054,6 +1059,8 @@ F2FS_SBI_GENERAL_RW_ATTR(revoked_atomic_block);
 F2FS_SBI_GENERAL_RW_ATTR(hot_data_age_threshold);
 F2FS_SBI_GENERAL_RW_ATTR(warm_data_age_threshold);
 F2FS_SBI_GENERAL_RW_ATTR(last_age_weight);
+/* read extent cache */
+F2FS_SBI_GENERAL_RW_ATTR(max_read_extent_count);
 #ifdef CONFIG_BLK_DEV_ZONED
 F2FS_SBI_GENERAL_RO_ATTR(unusable_blocks_per_sec);
 F2FS_SBI_GENERAL_RW_ATTR(blkzone_alloc_policy);
@@ -1244,6 +1251,7 @@ static struct attribute *f2fs_attrs[] = {
 	ATTR_LIST(hot_data_age_threshold),
 	ATTR_LIST(warm_data_age_threshold),
 	ATTR_LIST(last_age_weight),
+	ATTR_LIST(max_read_extent_count),
 	NULL,
 };
 ATTRIBUTE_GROUPS(f2fs);
@@ -1464,7 +1472,7 @@ static int __maybe_unused segment_bits_seq_show(struct seq_file *seq,
 			le32_to_cpu(sbi->raw_super->segment_count_main);
 	int i, j;
 
-	seq_puts(seq, "format: segment_type|valid_blocks|bitmaps\n"
+	seq_puts(seq, "format: segment_type|valid_blocks|bitmaps|mtime\n"
 		"segment_type(0:HD, 1:WD, 2:CD, 3:HN, 4:WN, 5:CN)\n");
 
 	for (i = 0; i < total_segs; i++) {
@@ -1474,6 +1482,7 @@ static int __maybe_unused segment_bits_seq_show(struct seq_file *seq,
 		seq_printf(seq, "%d|%-3u|", se->type, se->valid_blocks);
 		for (j = 0; j < SIT_VBLOCK_MAP_SIZE; j++)
 			seq_printf(seq, " %.2x", se->cur_valid_map[j]);
+		seq_printf(seq, "| %llx", se->mtime);
 		seq_putc(seq, '\n');
 	}
 	return 0;

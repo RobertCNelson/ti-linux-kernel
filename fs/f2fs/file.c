@@ -38,6 +38,9 @@
 #undef CREATE_TRACE_POINTS
 #include <trace/hooks/fs.h>
 
+EXPORT_TRACEPOINT_SYMBOL_GPL(f2fs_sync_file_enter);
+EXPORT_TRACEPOINT_SYMBOL_GPL(f2fs_sync_file_exit);
+
 vm_fault_t f2fs_filemap_fault(struct vm_fault *vmf)
 {
 	struct inode *inode = file_inode(vmf->vma->vm_file);
@@ -627,8 +630,11 @@ void f2fs_truncate_data_blocks_range(struct dnode_of_data *dn, int count)
 	int cluster_index = 0, valid_blocks = 0;
 	int cluster_size = F2FS_I(dn->inode)->i_cluster_size;
 	bool released = !atomic_read(&F2FS_I(dn->inode)->i_compr_blocks);
+	block_t blkstart;
+	int blklen = 0;
 
 	addr = get_dnode_addr(dn->inode, dn->node_page) + ofs;
+	blkstart = le32_to_cpu(*addr);
 
 	/* Assumption: truncation starts with cluster */
 	for (; count > 0; count--, addr++, dn->ofs_in_node++, cluster_index++) {
@@ -644,25 +650,43 @@ void f2fs_truncate_data_blocks_range(struct dnode_of_data *dn, int count)
 		}
 
 		if (blkaddr == NULL_ADDR)
-			continue;
+			goto next;
 
 		f2fs_set_data_blkaddr(dn, NULL_ADDR);
 
 		if (__is_valid_data_blkaddr(blkaddr)) {
 			if (time_to_inject(sbi, FAULT_BLKADDR_CONSISTENCE))
-				continue;
+				goto next;
 			if (!f2fs_is_valid_blkaddr_raw(sbi, blkaddr,
 						DATA_GENERIC_ENHANCE))
-				continue;
+				goto next;
 			if (compressed_cluster)
 				valid_blocks++;
 		}
 
-		f2fs_invalidate_blocks(sbi, blkaddr);
+		if (blkstart + blklen == blkaddr) {
+			blklen++;
+		} else {
+			f2fs_invalidate_blocks(sbi, blkstart, blklen);
+			blkstart = blkaddr;
+			blklen = 1;
+		}
 
 		if (!released || blkaddr != COMPRESS_ADDR)
 			nr_free++;
+
+		continue;
+
+next:
+		if (blklen)
+			f2fs_invalidate_blocks(sbi, blkstart, blklen);
+
+		blkstart = le32_to_cpu(*(addr + 1));
+		blklen = 0;
 	}
+
+	if (blklen)
+		f2fs_invalidate_blocks(sbi, blkstart, blklen);
 
 	if (compressed_cluster)
 		f2fs_i_compr_blocks_update(dn->inode, valid_blocks, false);
@@ -753,10 +777,8 @@ int f2fs_do_truncate_blocks(struct inode *inode, u64 from, bool lock)
 	if (IS_DEVICE_ALIASING(inode)) {
 		struct extent_tree *et = F2FS_I(inode)->extent_tree[EX_READ];
 		struct extent_info ei = et->largest;
-		unsigned int i;
 
-		for (i = 0; i < ei.len; i++)
-			f2fs_invalidate_blocks(sbi, ei.blk + i);
+		f2fs_invalidate_blocks(sbi, ei.blk, ei.len);
 
 		dec_valid_block_count(sbi, inode, ei.len);
 		f2fs_update_time(sbi, REQ_TIME);
@@ -889,7 +911,11 @@ static bool f2fs_force_buffered_io(struct inode *inode, int rw)
 		return true;
 	if (f2fs_compressed_file(inode))
 		return true;
-	if (f2fs_has_inline_data(inode))
+	/*
+	 * only force direct read to use buffered IO, for direct write,
+	 * it expects inline data conversion before committing IO.
+	 */
+	if (f2fs_has_inline_data(inode) && rw == READ)
 		return true;
 
 	/* disallow direct IO if any of devices has unaligned blksize */
@@ -1327,7 +1353,7 @@ static int __roll_back_blkaddrs(struct inode *inode, block_t *blkaddr,
 		ret = f2fs_get_dnode_of_data(&dn, off + i, LOOKUP_NODE_RA);
 		if (ret) {
 			dec_valid_block_count(sbi, inode, 1);
-			f2fs_invalidate_blocks(sbi, *blkaddr);
+			f2fs_invalidate_blocks(sbi, *blkaddr, 1);
 		} else {
 			f2fs_update_data_blkaddr(&dn, *blkaddr);
 		}
@@ -1579,7 +1605,7 @@ static int f2fs_do_zero_range(struct dnode_of_data *dn, pgoff_t start,
 			break;
 		}
 
-		f2fs_invalidate_blocks(sbi, dn->data_blkaddr);
+		f2fs_invalidate_blocks(sbi, dn->data_blkaddr, 1);
 		f2fs_set_data_blkaddr(dn, NEW_ADDR);
 	}
 
@@ -1819,7 +1845,8 @@ static int f2fs_expand_inode_data(struct inode *inode, loff_t offset,
 
 		map.m_len = sec_blks;
 next_alloc:
-		if (has_not_enough_free_secs(sbi, 0,
+		if (has_not_enough_free_secs(sbi, 0, f2fs_sb_has_blkzoned(sbi) ?
+			ZONED_PIN_SEC_REQUIRED_COUNT :
 			GET_SEC_FROM_SEG(sbi, overprovision_segments(sbi)))) {
 			f2fs_down_write(&sbi->gc_lock);
 			stat_inc_gc_call_count(sbi, FOREGROUND);
@@ -2372,9 +2399,12 @@ int f2fs_do_shutdown(struct f2fs_sb_info *sbi, unsigned int flag,
 	if (readonly)
 		goto out;
 
-	/* grab sb->s_umount to avoid racing w/ remount() */
+	/*
+	 * grab sb->s_umount to avoid racing w/ remount() and other shutdown
+	 * paths.
+	 */
 	if (need_lock)
-		down_read(&sbi->sb->s_umount);
+		down_write(&sbi->sb->s_umount);
 
 	f2fs_stop_gc_thread(sbi);
 	f2fs_stop_discard_thread(sbi);
@@ -2383,7 +2413,7 @@ int f2fs_do_shutdown(struct f2fs_sb_info *sbi, unsigned int flag,
 	clear_opt(sbi, DISCARD);
 
 	if (need_lock)
-		up_read(&sbi->sb->s_umount);
+		up_write(&sbi->sb->s_umount);
 
 	f2fs_update_time(sbi, REQ_TIME);
 out:
@@ -2890,7 +2920,7 @@ static int f2fs_ioc_defragment(struct file *filp, unsigned long arg)
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
-	if (!S_ISREG(inode->i_mode) || f2fs_is_atomic_file(inode))
+	if (!S_ISREG(inode->i_mode))
 		return -EINVAL;
 
 	if (f2fs_readonly(sbi->sb))
@@ -3833,7 +3863,7 @@ static int reserve_compress_blocks(struct dnode_of_data *dn, pgoff_t count,
 		to_reserved = cluster_size - compr_blocks - reserved;
 
 		/* for the case all blocks in cluster were reserved */
-		if (to_reserved == 1) {
+		if (reserved && to_reserved == 1) {
 			dn->ofs_in_node += cluster_size;
 			goto next;
 		}
@@ -4865,8 +4895,8 @@ static void f2fs_dio_write_submit_io(const struct iomap_iter *iter,
 {
 	struct inode *inode = iter->inode;
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
-	int seg_type = f2fs_rw_hint_to_seg_type(sbi, inode->i_write_hint);
-	enum temp_type temp = f2fs_get_segment_temp(seg_type);
+	enum log_type type = f2fs_rw_hint_to_seg_type(sbi, inode->i_write_hint);
+	enum temp_type temp = f2fs_get_segment_temp(sbi, type);
 
 	bio->bi_write_hint = f2fs_io_type_to_rw_hint(sbi, DATA, temp);
 	submit_bio(bio);

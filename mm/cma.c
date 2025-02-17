@@ -550,6 +550,7 @@ struct page *__cma_alloc(struct cma *cma, unsigned long count,
 	}
 
 	if (ret && !(gfp_mask & __GFP_NOWARN)) {
+		trace_android_vh_cma_alloc_fail(cma->name, cma->count, count);
 		pr_err_ratelimited("%s: %s: alloc failed, req-size: %lu pages, ret: %d\n",
 				   __func__, cma->name, count, ret);
 		cma_debug_show_areas(cma);
@@ -653,3 +654,7 @@ int cma_for_each_area(int (*it)(struct cma *cma, void *data), void *data)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(cma_for_each_area);
+EXPORT_TRACEPOINT_SYMBOL_GPL(cma_alloc_start);
+EXPORT_TRACEPOINT_SYMBOL_GPL(cma_alloc_busy_retry);
+EXPORT_TRACEPOINT_SYMBOL_GPL(cma_alloc_finish);
+EXPORT_TRACEPOINT_SYMBOL_GPL(cma_release);

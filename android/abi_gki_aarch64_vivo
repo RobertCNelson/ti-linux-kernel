@@ -129,6 +129,7 @@
   __traceiter_android_vh_configfs_uevent_work
   __traceiter_android_vh_count_workingset_refault
   __traceiter_android_vh_do_anonymous_page
+  __traceiter_android_vh_do_async_mmap_readahead
   __traceiter_android_vh_do_group_exit
   __traceiter_android_vh_do_new_mount_fc
   __traceiter_android_vh_do_swap_page
@@ -154,7 +155,7 @@
   __traceiter_android_vh_mmap_region
   __traceiter_android_vh_mutex_init
   __traceiter_android_vh_mutex_unlock_slowpath
-  __traceiter_android_vh_mutex_unlock_slowpath_before_wakeq
+  __traceiter_android_vh_mutex_unlock_slowpath_bf_wakeq
   __traceiter_android_vh_mutex_wait_finish
   __traceiter_android_vh_mutex_wait_start
   __traceiter_android_vh_oom_swapmem_gather_finish
@@ -258,6 +259,7 @@
   __tracepoint_android_vh_configfs_uevent_work
   __tracepoint_android_vh_count_workingset_refault
   __tracepoint_android_vh_do_anonymous_page
+  __tracepoint_android_vh_do_async_mmap_readahead
   __tracepoint_android_vh_do_group_exit
   __tracepoint_android_vh_do_new_mount_fc
   __tracepoint_android_vh_do_swap_page
@@ -283,7 +285,7 @@
   __tracepoint_android_vh_mmap_region
   __tracepoint_android_vh_mutex_init
   __tracepoint_android_vh_mutex_unlock_slowpath
-  __tracepoint_android_vh_mutex_unlock_slowpath_before_wakeq
+  __tracepoint_android_vh_mutex_unlock_slowpath_bf_wakeq
   __tracepoint_android_vh_mutex_wait_finish
   __tracepoint_android_vh_mutex_wait_start
   __tracepoint_android_vh_oom_swapmem_gather_finish
