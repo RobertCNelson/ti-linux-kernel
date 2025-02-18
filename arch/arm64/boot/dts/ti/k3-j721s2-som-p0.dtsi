@@ -475,23 +475,23 @@
 
 			partition@80000 {
 				bootph-all;
-				label = "ospi.tispl";
+				label = "ospi_nand.tispl";
 				reg = <0x80000 0x200000>;
 			};
 
 			partition@280000 {
 				bootph-all;
-				label = "ospi.u-boot";
+				label = "ospi_nand.u-boot";
 				reg = <0x280000 0x400000>;
 			};
 
 			partition@680000 {
-				label = "ospi.env";
+				label = "ospi_nand.env";
 				reg = <0x680000 0x40000>;
 			};
 
 			partition@6c0000 {
-				label = "ospi.env.backup";
+				label = "ospi_nand.env.backup";
 				reg = <0x6c0000 0x40000>;
 			};
 
