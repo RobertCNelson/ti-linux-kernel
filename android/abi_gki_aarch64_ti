@@ -32,10 +32,10 @@
   dma_buf_export
   dma_buf_fd
   dma_buf_get
-  dma_buf_map_attachment
+  dma_buf_map_attachment_unlocked
   dma_buf_mmap
   dma_buf_put
-  dma_buf_unmap_attachment
+  dma_buf_unmap_attachment_unlocked
   dma_buf_vmap
   dma_buf_vunmap
   dma_fence_add_callback
@@ -85,6 +85,7 @@
   fd_install
   fget
   find_get_pid
+  find_pid_ns
   find_vma
   find_vpid
   finish_wait
@@ -109,6 +110,7 @@
   idr_remove
   idr_replace
   init_on_alloc
+  init_pid_ns
   __init_rwsem
   init_timer_key
   __init_waitqueue_head
@@ -204,10 +206,6 @@
   _raw_spin_unlock_irqrestore
   _raw_write_lock_bh
   _raw_write_unlock_bh
-  rb_erase
-  rb_first
-  rb_insert_color
-  rb_next
   rcu_barrier
   refcount_warn_saturate
   __refrigerator
@@ -243,10 +241,10 @@
   strchr
   strcpy
   strlcat
-  strlcpy
   strlen
   strncmp
   strnlen
+  strscpy
   strsep
   sync_file_create
   sync_file_get_fence
@@ -278,6 +276,7 @@
   up_read
   up_write
   __usecs_to_jiffies
+  utf8_data_table
   vfree
   vmalloc
   vmap
@@ -289,6 +288,8 @@
   vzalloc
   __wake_up
   wake_up_process
+  ww_mutex_lock
+  ww_mutex_unlock
 
 # required by pvrsrvkm.ko
   clk_set_rate
@@ -818,6 +819,8 @@
   dma_async_device_register
   dma_async_device_unregister
   dma_async_tx_descriptor_init
+  dma_buf_map_attachment
+  dma_buf_unmap_attachment
   dma_buf_vmap_unlocked
   dma_buf_vunmap_unlocked
   dma_contiguous_default_area
@@ -1773,9 +1776,13 @@
   _raw_spin_unlock_irq
   _raw_write_lock
   _raw_write_unlock
+  rb_erase
   __rb_erase_color
+  rb_first
   rb_first_postorder
   __rb_insert_augmented
+  rb_insert_color
+  rb_next
   rb_next_postorder
   __rcu_read_lock
   __rcu_read_unlock
@@ -2206,9 +2213,9 @@
   strcmp
   stream_open
   string_get_size
+  strlcpy
   strncpy
   strrchr
-  strscpy
   strscpy_pad
   strstr
   __sw_hweight16
