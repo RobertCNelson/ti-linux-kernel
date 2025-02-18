@@ -365,7 +365,9 @@ int module_frob_arch_sections(Elf_Ehdr *ehdr, Elf_Shdr *sechdrs,
 		tramp->sh_size = NR_FTRACE_PLTS * sizeof(struct plt_entry);
 	}
 
+#if IS_ENABLED(CONFIG_KVM)
 	pkvm_el2_mod_frob_sections(ehdr, sechdrs, secstrings);
+#endif
 
 	return 0;
 }
