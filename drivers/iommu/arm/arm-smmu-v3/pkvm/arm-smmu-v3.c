@@ -1119,6 +1119,8 @@ static int smmu_domain_finalise(struct hyp_arm_smmu_v3_device *smmu,
 	struct io_pgtable_cfg cfg;
 	struct hyp_arm_smmu_v3_domain *smmu_domain = domain->priv;
 	struct arm_lpae_io_pgtable *data;
+	bool idmapped = domain->domain_id == KVM_IOMMU_DOMAIN_IDMAP_ID;
+	unsigned long quirks = idmapped ? 0 : IO_PGTABLE_QUIRK_UNMAP_INVAL;
 
 	if (smmu_domain->type == KVM_ARM_SMMU_DOMAIN_S1) {
 		size_t ias = (smmu->features & ARM_SMMU_FEAT_VAX) ? 52 : 48;
@@ -1130,7 +1132,7 @@ static int smmu_domain_finalise(struct hyp_arm_smmu_v3_device *smmu,
 			.oas = smmu->ias,
 			.coherent_walk = smmu->features & ARM_SMMU_FEAT_COHERENCY,
 			.tlb = &smmu_tlb_ops,
-			.quirks = IO_PGTABLE_QUIRK_UNMAP_INVAL,
+			.quirks = quirks,
 		};
 	} else {
 		cfg = (struct io_pgtable_cfg) {
@@ -1140,7 +1142,7 @@ static int smmu_domain_finalise(struct hyp_arm_smmu_v3_device *smmu,
 			.oas = smmu->oas,
 			.coherent_walk = smmu->features & ARM_SMMU_FEAT_COHERENCY,
 			.tlb = &smmu_tlb_ops,
-			.quirks = IO_PGTABLE_QUIRK_UNMAP_INVAL,
+			.quirks = quirks,
 		};
 	}
 
@@ -1151,7 +1153,7 @@ static int smmu_domain_finalise(struct hyp_arm_smmu_v3_device *smmu,
 		return ret;
 
 	data = io_pgtable_to_data(smmu_domain->pgtable);
-	data->idmapped = (domain->domain_id == KVM_IOMMU_DOMAIN_IDMAP_ID);
+	data->idmapped = idmapped;
 	return ret;
 }
 
