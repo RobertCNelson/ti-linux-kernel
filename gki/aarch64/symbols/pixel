@@ -1420,6 +1420,8 @@
   log_threaded_irq_wakeup_reason
   log_write_mmio
   loops_per_jiffy
+  lru_cache_disable
+  lru_disable_count
   mac_pton
   mbox_chan_received_data
   mbox_chan_txdone
@@ -2390,8 +2392,6 @@
   tcpci_get_tcpm_port
   tcpci_irq
   tcpci_register_port
-  tcpci_register_port
-  tcpci_unregister_port
   tcpci_unregister_port
   tcpm_cc_change
   tcpm_pd_hard_reset
