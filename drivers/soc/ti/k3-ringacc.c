@@ -516,20 +516,18 @@ static void k3_ringacc_ring_reset_sci(struct k3_ring *ring)
 	struct ti_sci_msg_rm_ring_cfg ring_cfg = { 0 };
 	struct k3_ringacc *ringacc = ring->parent;
 	int ret;
+	u32 reg;
 
 	if (!ringacc->tisci) {
-		u32 reg;
-
-		if (!ring->cfg)
+		if (ring->cfg == NULL)
 			return;
-
 		reg = readl(&ring->cfg->size);
 		reg &= ~K3_DMARING_CFG_SIZE_MASK;
-		writel(reg, &ring->cfg->size);
 
-		/* Ensure the register clear operation completes before writing new value */
+		writel(reg, &ring->cfg->size);
 		wmb();
 		reg |= ring->size;
+
 		writel(reg, &ring->cfg->size);
 	} else {
 		ring_cfg.nav_id = ringacc->tisci_dev_id;
