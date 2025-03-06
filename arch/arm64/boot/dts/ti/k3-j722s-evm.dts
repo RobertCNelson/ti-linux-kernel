@@ -960,6 +960,7 @@
 		cdns,read-delay = <2>;
 		#address-cells = <1>;
 		#size-cells = <1>;
+		cdns,phy-mode;
 
 		partitions {
 			compatible = "fixed-partitions";
