@@ -369,6 +369,27 @@ int kvm_guest_prepare_stage2(struct pkvm_hyp_vm *vm, void *pgd)
 	return 0;
 }
 
+static enum pkvm_page_state guest_get_page_state(kvm_pte_t pte, u64 addr)
+{
+	enum pkvm_page_state state = 0;
+	enum kvm_pgtable_prot prot;
+
+	if (!kvm_pte_valid(pte)) {
+		state = PKVM_NOPAGE;
+
+		if (pte == KVM_INVALID_PTE_MMIO_NOTE)
+			state |= PKVM_MMIO;
+
+		return state;
+	}
+
+	prot = kvm_pgtable_stage2_pte_prot(pte);
+	if (kvm_pte_valid(pte) && ((prot & KVM_PGTABLE_PROT_RWX) != KVM_PGTABLE_PROT_RWX))
+		state = PKVM_PAGE_RESTRICTED_PROT;
+
+	return state | pkvm_getstate(prot);
+}
+
 int __pkvm_guest_relinquish_to_host(struct pkvm_hyp_vcpu *vcpu,
 				    u64 ipa, u64 *ppa)
 {
@@ -389,7 +410,7 @@ int __pkvm_guest_relinquish_to_host(struct pkvm_hyp_vcpu *vcpu,
 	if (ret || !kvm_pte_valid(pte))
 		goto end;
 
-	state = pkvm_getstate(kvm_pgtable_stage2_pte_prot(pte));
+	state = guest_get_page_state(pte, ipa);
 	if (state != PKVM_PAGE_OWNED) {
 		ret = -EPERM;
 		goto end;
@@ -1063,27 +1084,6 @@ int hyp_check_range_owned(u64 phys_addr, u64 size)
 	hyp_unlock_component();
 
 	return ret;
-}
-
-static enum pkvm_page_state guest_get_page_state(kvm_pte_t pte, u64 addr)
-{
-	enum pkvm_page_state state = 0;
-	enum kvm_pgtable_prot prot;
-
-	if (!kvm_pte_valid(pte)) {
-		state = PKVM_NOPAGE;
-
-		if (pte == KVM_INVALID_PTE_MMIO_NOTE)
-			state |= PKVM_MMIO;
-
-		return state;
-	}
-
-	prot = kvm_pgtable_stage2_pte_prot(pte);
-	if (kvm_pte_valid(pte) && ((prot & KVM_PGTABLE_PROT_RWX) != KVM_PGTABLE_PROT_RWX))
-		state = PKVM_PAGE_RESTRICTED_PROT;
-
-	return state | pkvm_getstate(prot);
 }
 
 static int __guest_check_page_state_range(struct pkvm_hyp_vcpu *vcpu, u64 addr,
