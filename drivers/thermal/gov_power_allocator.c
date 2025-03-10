@@ -635,22 +635,6 @@ clean_state:
 	return ret;
 }
 
-static void power_allocator_update_weight(struct power_allocator_params *params)
-{
-	const struct thermal_trip_desc *td;
-	struct thermal_instance *instance;
-
-	if (!params->trip_max)
-		return;
-
-	td = trip_to_trip_desc(params->trip_max);
-
-	params->total_weight = 0;
-	list_for_each_entry(instance, &td->thermal_instances, trip_node)
-		if (power_actor_is_valid(instance))
-			params->total_weight += instance->weight;
-}
-
 static void power_allocator_update_tz(struct thermal_zone_device *tz,
 				      enum thermal_notify_event reason)
 {
@@ -666,12 +650,16 @@ static void power_allocator_update_tz(struct thermal_zone_device *tz,
 			if (power_actor_is_valid(instance))
 				num_actors++;
 
-		if (num_actors != params->num_actors)
-			allocate_actors_buffer(params, num_actors);
+		if (num_actors == params->num_actors)
+			return;
 
-		fallthrough;
+		allocate_actors_buffer(params, num_actors);
+		break;
 	case THERMAL_INSTANCE_WEIGHT_CHANGED:
-		power_allocator_update_weight(params);
+		params->total_weight = 0;
+		list_for_each_entry(instance, &td->thermal_instances, trip_node)
+			if (power_actor_is_valid(instance))
+				params->total_weight += instance->weight;
 		break;
 	default:
 		break;
@@ -736,8 +724,6 @@ static int power_allocator_bind(struct thermal_zone_device *tz)
 	reset_pid_controller(params);
 
 	tz->governor_data = params;
-
-	power_allocator_update_weight(params);
 
 	return 0;
 
