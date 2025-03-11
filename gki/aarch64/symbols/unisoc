@@ -232,3 +232,9 @@
   vsscanf
   __wake_up
   __warn_printk
+
+# required inode_info.ko
+  __traceiter_mm_filemap_delete_from_page_cache
+  __traceiter_mm_filemap_add_to_page_cache
+  __tracepoint_mm_filemap_delete_from_page_cache
+  __tracepoint_mm_filemap_add_to_page_cache
