@@ -480,6 +480,8 @@ struct lru_gen_folio {
 	u8 seg;
 	/* per-node lru_gen_folio list for global reclaim */
 	struct hlist_nulls_node list;
+
+	ANDROID_OEM_DATA_ARRAY(1, 6);
 };
 
 enum {

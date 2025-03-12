@@ -10,6 +10,7 @@
 #include <trace/hooks/vendor_hooks.h>
 
 struct mem_cgroup_reclaim_cookie;
+struct lruvec;
 
 DECLARE_RESTRICTED_HOOK(android_rvh_set_balance_anon_file_reclaim,
 			TP_PROTO(bool *balance_anon_file_reclaim),
@@ -36,6 +37,10 @@ DECLARE_HOOK(android_vh_mglru_should_abort_scan,
 	TP_PROTO(unsigned long nr_reclaimed, unsigned long nr_to_reclaim,
 	unsigned int order, bool *bypass),
 	TP_ARGS(nr_to_reclaim, nr_reclaimed, order, bypass));
+DECLARE_HOOK(android_vh_mglru_aging_bypass,
+	TP_PROTO(struct lruvec *lruvec, unsigned long max_seq,
+	int swappiness, bool *bypass, bool *young),
+	TP_ARGS(lruvec, max_seq, swappiness, bypass, young));
 DECLARE_HOOK(android_vh_shrink_node_memcgs_bypass,
 	TP_PROTO(u64 *ext, struct mem_cgroup_reclaim_cookie *partial,
 	unsigned long nr_to_reclaim, unsigned long nr_reclaimed,
