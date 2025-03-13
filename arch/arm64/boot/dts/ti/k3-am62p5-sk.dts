@@ -13,8 +13,6 @@
 #include <dt-bindings/net/ti-dp83867.h>
 #include "k3-am62p5.dtsi"
 
-#include "k3-timesync-router.h"
-
 / {
 	compatible = "ti,am62p5-sk", "ti,am62p5";
 	model = "Texas Instruments AM62P5 SK";
@@ -305,9 +303,9 @@
 			AM62PX_IOPAD(0x023c, PIN_INPUT, 0) /* (H20) MMC1_CMD */
 			AM62PX_IOPAD(0x0234, PIN_OUTPUT, 0) /* (J24) MMC1_CLK */
 			AM62PX_IOPAD(0x0230, PIN_INPUT, 0) /* (H21) MMC1_DAT0 */
-			AM62PX_IOPAD(0x022c, PIN_INPUT, 0) /* (H23) MMC1_DAT1 */
-			AM62PX_IOPAD(0x0228, PIN_INPUT, 0) /* (H22) MMC1_DAT2 */
-			AM62PX_IOPAD(0x0224, PIN_INPUT, 0) /* (H25) MMC1_DAT3 */
+			AM62PX_IOPAD(0x022c, PIN_INPUT_PULLUP, 0) /* (H23) MMC1_DAT1 */
+			AM62PX_IOPAD(0x0228, PIN_INPUT_PULLUP, 0) /* (H22) MMC1_DAT2 */
+			AM62PX_IOPAD(0x0224, PIN_INPUT_PULLUP, 0) /* (H25) MMC1_DAT3 */
 			AM62PX_IOPAD(0x0240, PIN_INPUT, 0) /* (D23) MMC1_SDCD */
 		>;
 		bootph-all;
@@ -648,11 +646,6 @@
 	pinctrl-0 = <&main_rgmii1_pins_default>,
 		    <&main_rgmii2_pins_default>;
 	status = "okay";
-
-	cpts@3d000 {
-		/* MAP HW3_TS_PUSH to GENF1 */
-		ti,pps = <2 1>;
-	};
 };
 
 &cpsw_port1 {
@@ -922,6 +915,28 @@
 	status = "okay";
 };
 
+&dss_oldi_io_ctrl {
+	bootph-all;
+};
+
+&dss0 {
+	bootph-all;
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&main_dpi_pins_default>;
+};
+
+&dss0_ports {
+	/* DSS0-VP2: DPI/HDMI Output */
+	hdmi0_dss: port@1 {
+		reg = <1>;
+
+		dss0_dpi1_out: endpoint {
+			remote-endpoint = <&sii9022_in>;
+		};
+	};
+};
+
 &mcu_mcan0 {
 	pinctrl-names = "default", "wakeup";
 	pinctrl-0 = <&mcu_mcan0_tx_pins_default>, <&mcu_mcan0_rx_pins_default>;
@@ -949,38 +964,6 @@
 			<&system_deep_sleep>,
 			<&system_mcu_only>,
 			<&system_standby>;
-};
-
-&dss_oldi_io_ctrl {
-       bootph-all;
-};
-
-&dss0 {
-	bootph-all;
-	status = "okay";
-	pinctrl-names = "default";
-	pinctrl-0 = <&main_dpi_pins_default>;
-};
-
-&dss0_ports {
-	/* DSS0-VP2: DPI/HDMI Output */
-	port@1 {
-		reg = <1>;
-
-		dss0_dpi1_out: endpoint {
-			remote-endpoint = <&sii9022_in>;
-		};
-	};
-};
-
-&timesync_router {
-	/* Use Time Sync Router to map GENF1 input to HW3_TS_PUSH output */
-	mux-reg-mask-val = <
-		/* pps [cpsw cpts genf1] in17 -> out12 [cpsw cpts hw3_push] */
-		K3_TS_OFFSET(12, 0x0001ffff, 17)
-		>;
-	idle-states = <0x1>;
-	status = "okay";
 };
 
 #include "k3-am62p-ti-ipc-firmware.dtsi"
