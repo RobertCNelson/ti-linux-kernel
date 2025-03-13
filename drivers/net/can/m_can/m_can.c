@@ -2459,8 +2459,10 @@ struct m_can_classdev *m_can_class_allocate_dev(struct device *dev,
 		return ERR_PTR(ret);
 	}
 
-	if (dev->of_node && of_property_read_bool(dev->of_node, "wakeup-source"))
+	if (dev->of_node && of_property_read_bool(dev->of_node, "wakeup-source")) {
 		device_set_wakeup_capable(dev, true);
+		device_set_wakeup_enable(dev, true);
+	}
 
 	/* Get TX FIFO size
 	 * Defines the total amount of echo buffers for loopback
