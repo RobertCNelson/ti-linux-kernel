@@ -182,6 +182,13 @@
   __traceiter_android_vh_binder_trans
   __traceiter_android_vh_binder_transaction_received
   __traceiter_android_vh_binder_wait_for_work
+  __traceiter_android_vh_task_should_scx
+  __traceiter_android_vh_scx_ops_consider_migration
+  __traceiter_android_vh_scx_fix_prev_slice
+  __traceiter_android_vh_scx_ops_enable_state
+  __traceiter_android_vh_scx_enabled
+  __traceiter_android_vh_scx_set_cpus_allowed
+  __traceiter_android_vh_scx_task_switch_finish
   __traceiter_android_vh_cgroup_set_task
   __traceiter_android_vh_check_folio_look_around_ref
   __traceiter_android_vh_cpu_cgroup_css_alloc
@@ -280,6 +287,13 @@
   __tracepoint_android_vh_binder_trans
   __tracepoint_android_vh_binder_transaction_received
   __tracepoint_android_vh_binder_wait_for_work
+  __tracepoint_android_vh_task_should_scx
+  __tracepoint_android_vh_scx_ops_consider_migration
+  __tracepoint_android_vh_scx_fix_prev_slice
+  __tracepoint_android_vh_scx_ops_enable_state
+  __tracepoint_android_vh_scx_enabled
+  __tracepoint_android_vh_scx_set_cpus_allowed
+  __tracepoint_android_vh_scx_task_switch_finish
   __tracepoint_android_vh_cgroup_set_task
   __tracepoint_android_vh_check_folio_look_around_ref
   __tracepoint_android_vh_cpu_cgroup_css_alloc
