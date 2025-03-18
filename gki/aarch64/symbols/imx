@@ -889,8 +889,8 @@
   dw_pcie_find_ext_capability
   dw_pcie_host_init
   dw_pcie_read_dbi
-  dw_pcie_setup_rc
   dw_pcie_resume_noirq
+  dw_pcie_setup_rc
   dw_pcie_suspend_noirq
   dw_pcie_wait_for_link
   dw_pcie_write_dbi
@@ -1188,6 +1188,7 @@
   import_iovec
   in4_pton
   inet_csk_get_port
+  inet_proto_csum_replace4
   init_dummy_netdev
   init_net
   __init_rwsem
@@ -1225,6 +1226,7 @@
   iommu_iova_to_phys
   ioremap_prot
   iounmap
+  iov_iter_revert
   __iowrite32_copy_full
   __irq_alloc_descs
   __irq_alloc_domain_generic_chips
@@ -2149,14 +2151,19 @@
   round_jiffies
   round_jiffies_relative
   round_jiffies_up
+  rpmsg_chrdev_eptdev_destroy
+  rpmsg_class
   rpmsg_create_channel
   rpmsg_create_ept
+  rpmsg_destroy_ept
   rpmsg_find_device
+  rpmsg_poll
   rpmsg_register_device
   rpmsg_register_device_override
   rpmsg_release_channel
   rpmsg_send
   rpmsg_sendto
+  rpmsg_trysendto
   rpmsg_unregister_device
   rproc_add
   rproc_add_carveout
@@ -2796,10 +2803,10 @@
   v4l2_m2m_update_start_streaming_state
   v4l2_m2m_update_stop_streaming_state
   v4l2_match_dv_timings
-  v4l2_s_parm_cap
   v4l2_pipeline_link_notify
   v4l2_pipeline_pm_get
   v4l2_pipeline_pm_put
+  v4l2_s_parm_cap
   v4l2_src_change_event_subscribe
   v4l2_subdev_call_wrappers
   v4l2_subdev_cleanup
@@ -2895,6 +2902,7 @@
   vmalloc_to_page
   vmalloc_user_noprof
   vmap
+  __vma_start_write
   vmf_insert_pfn
   vmf_insert_pfn_prot
   vm_get_page_prot
