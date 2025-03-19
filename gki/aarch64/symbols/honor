@@ -79,4 +79,38 @@
   __tracepoint_android_rvh_do_fcntl
   __traceiter_android_vh_evict
   __tracepoint_android_vh_evict
+  sock_from_file
+  tcp_done
+  udp4_lib_lookup
+  udp6_lib_lookup
+  __traceiter_android_vh_sk_alloc
+  __tracepoint_android_vh_sk_alloc
+  __traceiter_android_vh_sk_free
+  __tracepoint_android_vh_sk_free
+  __traceiter_android_vh_sk_clone_lock
+  __tracepoint_android_vh_sk_clone_lock
+  __traceiter_android_vh_inet_create
+  __tracepoint_android_vh_inet_create
+  __traceiter_android_vh_tcp_sock_error
+  __tracepoint_android_vh_tcp_sock_error
+  __traceiter_android_vh_tcp_select_window
+  __tracepoint_android_vh_tcp_select_window
+  __traceiter_android_vh_uplink_send_msg
+  __tracepoint_android_vh_uplink_send_msg
+  __traceiter_android_vh_tcp_fastsyn
+  __tracepoint_android_vh_tcp_fastsyn
+  __traceiter_android_vh_tcp_state_change
+  __tracepoint_android_vh_tcp_state_change
+  __traceiter_android_vh_tcp_update_rtt
+  __tracepoint_android_vh_tcp_update_rtt
+  __traceiter_android_vh_tcp_v4_connect
+  __tracepoint_android_vh_tcp_v4_connect
+  __traceiter_android_vh_tcp_v6_connect
+  __tracepoint_android_vh_tcp_v6_connect
+  __traceiter_android_vh_udp_v4_connect
+  __tracepoint_android_vh_udp_v4_connect
+  __traceiter_android_vh_udp_v6_connect
+  __tracepoint_android_vh_udp_v6_connect
+  __traceiter_android_vh_sock_create
+  __tracepoint_android_vh_sock_create
 
