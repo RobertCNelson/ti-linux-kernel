@@ -1611,11 +1611,14 @@
   phy_basic_features
   phy_basic_t1_features
   phy_configure
+  phy_create
+  phy_destroy
   phy_drivers_register
   phy_drivers_unregister
   phy_error
   phy_exit
   phy_gbit_features
+  phy_get
   phy_get_internal_delay
   phy_init
   phy_init_eee
@@ -1660,6 +1663,7 @@
   phy_power_off
   phy_power_on
   phy_print_status
+  phy_put
   phy_read_paged
   phy_restore_page
   phy_resume
