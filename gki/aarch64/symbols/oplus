@@ -134,6 +134,7 @@
   qdisc_watchdog_cancel
   qdisc_watchdog_init
   qdisc_watchdog_schedule_range_ns
+  __qdisc_calculate_pkt_len
   radix_tree_lookup_slot
   radix_tree_replace_slot
   _raw_write_trylock
