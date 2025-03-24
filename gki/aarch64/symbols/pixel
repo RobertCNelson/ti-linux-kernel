@@ -22,6 +22,7 @@
   __alloc_skb
   alloc_skb_with_frags
   alloc_workqueue
+  all_vm_events
   alt_cb_patch_nops
   amba_bustype
   __amba_driver_register
@@ -952,6 +953,7 @@
   __flush_workqueue
   __folio_lock
   __folio_put
+  folio_wait_writeback
   for_each_thermal_trip
   __fortify_panic
   fput
@@ -1740,6 +1742,7 @@
   pci_write_config_dword
   pci_write_config_word
   pcpu_alloc_noprof
+  pcpu_nr_pages
   percpu_counter_add_batch
   percpu_counter_batch
   __per_cpu_offset
@@ -2055,6 +2058,7 @@
   rps_needed
   rtc_class_close
   rtc_class_open
+  rtc_ktime_to_tm
   rtc_read_time
   rtc_time64_to_tm
   rtc_tm_to_time64
@@ -2102,6 +2106,8 @@
   __seq_open_private
   seq_printf
   seq_putc
+  seq_put_decimal_ll
+  seq_put_decimal_ull_width
   __seq_puts
   seq_read
   seq_release
@@ -2440,10 +2446,21 @@
   __traceiter_android_rvh_iommu_alloc_insert_iova
   __traceiter_android_rvh_iommu_iovad_init_alloc_algo
   __traceiter_android_rvh_iommu_limit_align_shift
+  __traceiter_android_rvh_madvise_pageout_begin
+  __traceiter_android_rvh_madvise_pageout_end
+  __traceiter_android_rvh_mapping_shrinkable
+  __traceiter_android_rvh_meminfo_proc_show
+  __traceiter_android_rvh_reclaim_folio_list
+  __traceiter_android_rvh_vmscan_kswapd_done
+  __traceiter_android_rvh_vmscan_kswapd_wake
   __traceiter_android_vh_cpu_idle_enter
   __traceiter_android_vh_cpu_idle_exit
   __traceiter_android_vh_enable_thermal_genl_check
+  __traceiter_android_vh_filemap_get_folio
   __traceiter_android_vh_ipi_stop
+  __traceiter_android_vh_mm_compaction_begin
+  __traceiter_android_vh_mm_compaction_end
+  __traceiter_android_vh_rmqueue
   __traceiter_android_vh_scheduler_tick
   __traceiter_android_vh_si_meminfo_adjust
   __traceiter_android_vh_sysrq_crash
@@ -2457,6 +2474,8 @@
   __traceiter_android_vh_ufs_update_sdev
   __traceiter_android_vh_ufs_update_sysfs
   __traceiter_clock_set_rate
+  __traceiter_cma_alloc_finish
+  __traceiter_cma_alloc_start
   __traceiter_device_pm_callback_end
   __traceiter_device_pm_callback_start
   __traceiter_gpu_mem_total
@@ -2465,6 +2484,8 @@
   __traceiter_mmap_lock_acquire_returned
   __traceiter_mmap_lock_released
   __traceiter_mmap_lock_start_locking
+  __traceiter_mm_vmscan_direct_reclaim_begin
+  __traceiter_mm_vmscan_direct_reclaim_end
   __traceiter_sched_switch
   __traceiter_suspend_resume
   __traceiter_workqueue_execute_end
@@ -2473,10 +2494,21 @@
   __tracepoint_android_rvh_iommu_alloc_insert_iova
   __tracepoint_android_rvh_iommu_iovad_init_alloc_algo
   __tracepoint_android_rvh_iommu_limit_align_shift
+  __tracepoint_android_rvh_madvise_pageout_begin
+  __tracepoint_android_rvh_madvise_pageout_end
+  __tracepoint_android_rvh_mapping_shrinkable
+  __tracepoint_android_rvh_meminfo_proc_show
+  __tracepoint_android_rvh_reclaim_folio_list
+  __tracepoint_android_rvh_vmscan_kswapd_done
+  __tracepoint_android_rvh_vmscan_kswapd_wake
   __tracepoint_android_vh_cpu_idle_enter
   __tracepoint_android_vh_cpu_idle_exit
   __tracepoint_android_vh_enable_thermal_genl_check
+  __tracepoint_android_vh_filemap_get_folio
   __tracepoint_android_vh_ipi_stop
+  __tracepoint_android_vh_mm_compaction_begin
+  __tracepoint_android_vh_mm_compaction_end
+  __tracepoint_android_vh_rmqueue
   __tracepoint_android_vh_scheduler_tick
   __tracepoint_android_vh_si_meminfo_adjust
   __tracepoint_android_vh_sysrq_crash
@@ -2490,6 +2522,8 @@
   __tracepoint_android_vh_ufs_update_sdev
   __tracepoint_android_vh_ufs_update_sysfs
   __tracepoint_clock_set_rate
+  __tracepoint_cma_alloc_finish
+  __tracepoint_cma_alloc_start
   __tracepoint_device_pm_callback_end
   __tracepoint_device_pm_callback_start
   __tracepoint_gpu_mem_total
@@ -2498,6 +2532,8 @@
   __tracepoint_mmap_lock_acquire_returned
   __tracepoint_mmap_lock_released
   __tracepoint_mmap_lock_start_locking
+  __tracepoint_mm_vmscan_direct_reclaim_begin
+  __tracepoint_mm_vmscan_direct_reclaim_end
   tracepoint_probe_register
   tracepoint_probe_unregister
   __tracepoint_sched_switch
@@ -2724,6 +2760,7 @@
   virtqueue_kick_prepare
   virtqueue_notify
   vmalloc_noprof
+  vmalloc_nr_pages
   vmalloc_to_page
   vmalloc_user_noprof
   vmap
@@ -2733,6 +2770,7 @@
   vm_get_page_prot
   vm_iomap_memory
   vm_map_ram
+  vm_node_stat
   vm_unmapped_area
   vm_unmap_ram
   vprintk
