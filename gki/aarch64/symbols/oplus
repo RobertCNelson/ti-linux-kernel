@@ -225,6 +225,7 @@
   __traceiter_android_vh_cpu_cgroup_css_alloc_early
   __traceiter_android_vh_cpu_cgroup_css_free
   __traceiter_android_vh_cpufreq_acct_update_power
+  __traceiter_android_vh_customize_alloc_gfp
   __traceiter_android_vh_do_futex
   __traceiter_android_vh_do_send_sig_info
   __traceiter_android_vh_do_shrink_slab
@@ -353,6 +354,7 @@
   __tracepoint_android_vh_cpu_cgroup_css_alloc_early
   __tracepoint_android_vh_cpu_cgroup_css_free
   __tracepoint_android_vh_cpufreq_acct_update_power
+  __tracepoint_android_vh_customize_alloc_gfp
   __tracepoint_android_vh_do_futex
   __tracepoint_android_vh_do_send_sig_info
   __tracepoint_android_vh_do_shrink_slab
