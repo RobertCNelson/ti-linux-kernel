@@ -299,6 +299,7 @@
   __traceiter_netif_rx
   __traceiter_mm_vmscan_kswapd_wake
   __traceiter_sched_stat_blocked
+  __traceiter_sched_stat_iowait
   __traceiter_sched_stat_runtime
   __traceiter_sched_stat_sleep
   __traceiter_sched_stat_wait
@@ -425,6 +426,7 @@
   __tracepoint_netif_rx
   __tracepoint_mm_vmscan_kswapd_wake
   __tracepoint_sched_stat_blocked
+  __tracepoint_sched_stat_iowait
   __tracepoint_sched_stat_runtime
   __tracepoint_sched_stat_sleep
   __tracepoint_sched_stat_wait
