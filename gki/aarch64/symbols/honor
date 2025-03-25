@@ -299,4 +299,28 @@
   utf8s_to_utf16s
   vfs_parse_fs_string
   vfs_setpos
+  __traceiter_block_rq_insert
+  __traceiter_task_newtask
+  __tracepoint_block_rq_insert
+  __tracepoint_task_newtask
+  blkcg_policy_register
+  blkcg_policy_unregister
+  fwnode_usb_role_switch_get
+  get_user_pages_remote
+  mktime64
+  profile_event_unregister
+  rdev_get_dev
+  task_cputime_adjusted
+  tracepoint_srcu
+  tty_chars_in_buffer
+  tty_dev_name_to_number
+  tty_kclose
+  tty_kopen_exclusive
+  tty_set_ldisc
+  tty_unlock
+  usb_for_each_dev
+  usb_gadget_connect
+  usb_gadget_disconnect
+  wakeup_sources_walk_next
+  wakeup_sources_walk_start
 
