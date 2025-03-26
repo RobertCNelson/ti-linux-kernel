@@ -1842,6 +1842,7 @@
   register_reboot_notifier
   register_restart_handler
   register_syscore_ops
+  register_sysctl_sz
   register_wide_hw_breakpoint
   regmap_bulk_write
   regmap_field_read
