@@ -1,5 +1,6 @@
 [abi_symbol_list]
   address_space_init_once
+  alarm_start
   bio_add_page
   bio_associate_blkg
   bio_put
@@ -11,6 +12,7 @@
   blk_start_plug
   __break_lease
   cgroup_add_legacy_cftypes
+  clk_hw_init_rate_request
   config_item_init_type_name
   console_printk
   contpte_ptep_test_and_clear_young
@@ -26,6 +28,7 @@
   device_remove_bin_file
   devres_destroy
   dev_get_by_index_rcu
+  devm_led_classdev_unregister
   dget_parent
   d_invalidate
   down_write_killable
@@ -50,6 +53,21 @@
   generic_delete_inode
   __generic_file_fsync
   get_wchan
+  gether_cleanup
+  gether_connect
+  gether_disconnect
+  gether_get_dev_addr
+  gether_get_host_addr
+  gether_get_host_addr_u8
+  gether_get_ifname
+  gether_get_qmult
+  gether_register_netdev
+  gether_set_dev_addr
+  gether_set_gadget
+  gether_set_host_addr
+  gether_set_ifname
+  gether_set_qmult
+  gether_setup_name_default
   gnet_stats_add_queue
   gnet_stats_copy_basic
   gnet_stats_copy_queue
@@ -75,6 +93,7 @@
   is_dma_buf_file
   iterate_dir
   jiffies_64_to_clock_t
+  jiffies64_to_nsecs
   kick_process
   ktime_get_coarse_real_ts64
   ktime_get_real_ts64
@@ -114,6 +133,7 @@
   of_css
   override_creds
   path_get
+  param_get_ulong
   pfifo_qdisc_ops
   pm_get_active_wakeup_sources
   platform_device_add
@@ -121,6 +141,7 @@
   platform_device_put
   platform_driver_unregister
   prepare_creds
+  prepare_kernel_cred
   prepare_to_wait_exclusive
   proc_symlink
   psched_ratecfg_precompute
@@ -137,6 +158,7 @@
   __qdisc_calculate_pkt_len
   radix_tree_lookup_slot
   radix_tree_replace_slot
+  _raw_read_trylock
   _raw_write_trylock
   reciprocal_value
   register_tcf_proto_ops
