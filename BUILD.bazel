@@ -1737,6 +1737,7 @@ ddk_headers(
     hdrs = [
         "drivers/devfreq/governor.h",
         "drivers/pinctrl/core.h",
+        "drivers/ufs/core/ufshcd-priv.h",
         "drivers/ufs/host/ufshcd-pltfrm.h",
         "drivers/usb/dwc3/core.h",
         "drivers/usb/dwc3/debug.h",
@@ -1762,6 +1763,7 @@ ddk_headers(
         ".",
         "drivers/devfreq",
         "drivers/pinctrl",
+        "drivers/ufs/core",
         "drivers/ufs/host",
         "drivers/usb/dwc3",
         "drivers/usb/gadget",
