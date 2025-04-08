@@ -1280,6 +1280,8 @@
   gro_cells_destroy
   gro_cells_init
   gro_cells_receive
+  gunyah_qtvm_register_notifier
+  gunyah_qtvm_unregister_notifier
   gunyah_rm_call
   gunyah_rm_notifier_register
   gunyah_rm_notifier_unregister
@@ -3279,6 +3281,8 @@
   __traceiter_android_rvh_finish_prio_fork
   __traceiter_android_rvh_flush_task
   __traceiter_android_rvh_get_nohz_timer_target
+  __traceiter_android_rvh_gh_after_vcpu_run
+  __traceiter_android_rvh_gh_before_vcpu_run
   __traceiter_android_rvh_gic_v3_set_affinity
   __traceiter_android_rvh_iommu_setup_dma_ops
   __traceiter_android_rvh_is_cpu_allowed
@@ -3403,6 +3407,8 @@
   __tracepoint_android_rvh_finish_prio_fork
   __tracepoint_android_rvh_flush_task
   __tracepoint_android_rvh_get_nohz_timer_target
+  __tracepoint_android_rvh_gh_after_vcpu_run
+  __tracepoint_android_rvh_gh_before_vcpu_run
   __tracepoint_android_rvh_gic_v3_set_affinity
   __tracepoint_android_rvh_iommu_setup_dma_ops
   __tracepoint_android_rvh_is_cpu_allowed
