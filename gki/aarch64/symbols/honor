@@ -111,6 +111,8 @@
   __traceiter_f2fs_submit_folio_write
   __tracepoint_android_vh_f2fs_printk
   __traceiter_android_vh_f2fs_printk
+  __tracepoint_android_vh_f2fs_create
+  __traceiter_android_vh_f2fs_create
   wb_wakeup
   redirty_tail_locked
   bdi_list
