@@ -182,6 +182,7 @@ filegroup(
         "gki/aarch64/symbols/galaxy",
         "gki/aarch64/symbols/honor",
         "gki/aarch64/symbols/imx",
+        "gki/aarch64/symbols/mtk",
         "gki/aarch64/symbols/mtktv",
         "gki/aarch64/symbols/oplus",
         "gki/aarch64/symbols/pixel",
