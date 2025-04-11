@@ -11,7 +11,6 @@
 //! memory units when under memory pressure.
 
 use core::{
-    ffi::c_int,
     pin::Pin,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
@@ -19,6 +18,7 @@ use kernel::{
     bindings::{self, ASHMEM_GET_PIN_STATUS, ASHMEM_PIN, ASHMEM_UNPIN},
     c_str,
     error::Result,
+    ffi::c_int,
     fs::{File, LocalFile},
     ioctl::_IOC_SIZE,
     miscdevice::{loff_t, IovIter, Kiocb, MiscDevice, MiscDeviceOptions, MiscDeviceRegistration},
@@ -521,17 +521,17 @@ unsafe extern "C" fn ashmem_memfd_ioctl(file: *mut bindings::file, cmd: u32, arg
 
 fn ashmem_memfd_ioctl_inner(file: &File, cmd: u32, arg: usize) -> Result<isize> {
     use kernel::bindings::{F_ADD_SEALS, F_GET_SEALS, F_SEAL_FUTURE_WRITE, F_SEAL_WRITE};
-    const WRITE_SEALS_MASK: u64 = (F_SEAL_WRITE | F_SEAL_FUTURE_WRITE) as u64;
+    const WRITE_SEALS_MASK: usize = (F_SEAL_WRITE | F_SEAL_FUTURE_WRITE) as usize;
 
     /// # Safety
     /// The file must be a memfd file.
-    unsafe fn get_seals(file: &File) -> Result<u64> {
+    unsafe fn get_seals(file: &File) -> Result<usize> {
         // SAFETY: This is a memfd file.
-        let seals: i64 = unsafe { bindings::memfd_fcntl(file.as_ptr(), F_GET_SEALS, 0) };
+        let seals: isize = unsafe { bindings::memfd_fcntl(file.as_ptr(), F_GET_SEALS, 0) };
         if seals < 0 {
             return Err(Error::from_errno(seals as i32));
         }
-        Ok(seals as u64)
+        Ok(seals as usize)
     }
 
     let size = _IOC_SIZE(cmd);
