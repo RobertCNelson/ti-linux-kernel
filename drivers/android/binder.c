@@ -3900,6 +3900,8 @@ static void binder_transaction(struct binder_proc *proc,
 		tcomplete->type = BINDER_WORK_TRANSACTION_COMPLETE;
 	t->work.type = BINDER_WORK_TRANSACTION;
 
+	trace_android_vh_binder_transaction_record(tr, t, in_reply_to);
+
 	if (reply) {
 		binder_enqueue_thread_work(thread, tcomplete);
 		binder_inner_proc_lock(target_proc);
@@ -6298,6 +6300,9 @@ static int binder_open(struct inode *nodp, struct file *filp)
 	filp->private_data = proc;
 
 	trace_android_vh_binder_preset(&binder_procs, &binder_procs_lock, proc);
+	trace_android_vh_binder_data_preset(&binder_procs, &binder_procs_lock,
+			&binder_transaction_log, &binder_transaction_log_failed,
+			sizeof(struct binder_transaction_log));
 	mutex_lock(&binder_procs_lock);
 	hlist_for_each_entry(itr, &binder_procs, proc_node) {
 		if (itr->pid == proc->pid) {
