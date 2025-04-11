@@ -15,6 +15,8 @@
   __tracepoint_android_rvh_hw_protection_shutdown
   __traceiter_android_rvh_cpuinfo_c_show
   __tracepoint_android_rvh_cpuinfo_c_show
+  __tracepoint_android_vh_security_audit_log_setid
+  __traceiter_android_vh_security_audit_log_setid
   __traceiter_signal_generate
   __tracepoint_signal_generate
   __traceiter_android_rvh_do_el1_bti
