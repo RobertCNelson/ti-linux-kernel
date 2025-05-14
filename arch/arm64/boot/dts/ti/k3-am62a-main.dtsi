@@ -91,6 +91,7 @@
 		#size-cells = <2>;
 		dma-ranges;
 		ranges = <0x00 0x48000000 0x00 0x48000000 0x00 0x06000000>;
+		bootph-all;
 
 		ti,sci-dev-id = <25>;
 
@@ -178,6 +179,7 @@
 						<0x2c>, /* FLOW_CPSW_RX_CHAN */
 						<0x2e>, /* FLOW_SAUL_RX_0/1_CHAN */
 						<0x32>; /* FLOW_SAUL_RX_2/3_CHAN */
+			bootph-all;
 		};
 	};
 
@@ -227,6 +229,7 @@
 		mbox-names = "rx", "tx";
 		mboxes = <&secure_proxy_main 12>,
 			 <&secure_proxy_main 13>;
+		bootph-all;
 
 		k3_pds: power-controller {
 			compatible = "ti,sci-pm-domain";
@@ -307,6 +310,7 @@
 		interrupts = <GIC_SPI 99 IRQ_TYPE_LEVEL_HIGH>;
 		interrupt-controller;
 		#interrupt-cells = <1>;
+		bootph-all;
 	};
 
 	main_esm: esm@420000 {
@@ -703,6 +707,7 @@
 			bootph-all;
 			snps,usb2-gadget-lpm-disable;
 			snps,usb2-lpm-disable;
+			bootph-all;
 		};
 	};
 
