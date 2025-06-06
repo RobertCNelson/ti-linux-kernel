@@ -132,6 +132,7 @@ config ARCH_K3
 	bool "Texas Instruments Inc. K3 multicore SoC architecture"
 	select SOC_TI
 	select TI_K3_SOCINFO
+	select SG_SPLIT
 	help
 	  This enables support for Texas Instruments' K3 multicore SoC
 	  architecture.
