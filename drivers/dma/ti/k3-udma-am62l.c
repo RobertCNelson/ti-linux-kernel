@@ -76,6 +76,15 @@ static bool am62l_udma_is_chan_paused(struct udma_chan *uc)
 	return false;
 }
 
+static void am62l_udma_reset_rings(struct udma_chan *uc)
+{
+	/* make sure we are not leaking memory by stalled descriptor */
+	if (uc->terminated_desc) {
+		udma_desc_free(&uc->terminated_desc->vd);
+		uc->terminated_desc = NULL;
+	}
+}
+
 static void am62l_udma_decrement_byte_counters(struct udma_chan *uc, u32 val)
 {
 	udma_chanrt_write(uc, UDMA_CHAN_RT_BCNT_REG, val);
@@ -754,7 +763,7 @@ static int am62l_bcdma_v2_alloc_chan_resources(struct dma_chan *chan)
 		goto err_irq_free;
 	}
 
-	udma_reset_rings(uc);
+	ud->udma_reset_rings(uc);
 
 	INIT_DELAYED_WORK_ONSTACK(&uc->tx_drain.work,
 				  udma_check_tx_completion);
@@ -888,7 +897,7 @@ static int am62l_pktdma_v2_alloc_chan_resources(struct dma_chan *chan)
 
 	uc->irq_num_udma = 0;
 
-	udma_reset_rings(uc);
+	ud->udma_reset_rings(uc);
 
 	INIT_DELAYED_WORK_ONSTACK(&uc->tx_drain.work,
 				  udma_check_tx_completion);
@@ -1279,6 +1288,7 @@ static int am62l_udma_probe(struct platform_device *pdev)
 	ud->udma_start = am62l_udma_start;
 	ud->udma_stop = am62l_udma_stop;
 	ud->udma_reset_chan = am62l_udma_reset_chan;
+	ud->udma_reset_rings = am62l_udma_reset_rings;
 	ud->udma_is_desc_really_done = am62l_udma_is_desc_really_done;
 	ud->udma_decrement_byte_counters = am62l_udma_decrement_byte_counters;
 
