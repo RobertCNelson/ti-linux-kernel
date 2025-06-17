@@ -2435,13 +2435,13 @@ static int m_can_class_sysoff_handler(struct sys_off_data *data)
 {
 	struct m_can_classdev *cdev = data->cb_data;
 	struct device *dev = data->dev;
-	int ret;
+	int ret = 0;
 
-	if (device_may_wakeup(dev) && !IS_ERR(cdev->pinctrl_state_wakeup))
+	if (device_may_wakeup(dev) && !IS_ERR(cdev->pinctrl_state_wakeup)) {
 		ret = pinctrl_select_state(cdev->pinctrl, cdev->pinctrl_state_wakeup);
-
-	if (ret)
-		dev_err(dev, "Failed to select pinctrl state 'wakeup', continuing poweroff\n");
+		if (ret)
+			dev_err(dev, "Failed to select pinctrl state 'wakeup', continuing poweroff\n");
+	}
 
 	return NOTIFY_DONE;
 }
