@@ -192,6 +192,7 @@ static const struct of_device_id blocklist[] __initconst = {
 	{ .compatible = "ti,dra7", },
 	{ .compatible = "ti,omap3", },
 	{ .compatible = "ti,am625", },
+	{ .compatible = "ti,am6254xxl", },
 	{ .compatible = "ti,am62a7", },
 	{ .compatible = "ti,am62d2", },
 	{ .compatible = "ti,am62l3", },
