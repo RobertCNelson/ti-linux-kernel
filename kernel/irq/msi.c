@@ -163,6 +163,7 @@ int msi_domain_insert_msi_desc(struct device *dev, unsigned int domid,
 
 	return msi_insert_desc(dev, desc, domid, init_desc->msi_index);
 }
+EXPORT_SYMBOL_GPL(msi_domain_insert_msi_desc);
 
 static bool msi_desc_match(struct msi_desc *desc, enum msi_desc_filter filter)
 {
@@ -235,6 +236,7 @@ void msi_domain_free_msi_descs_range(struct device *dev, unsigned int domid,
 
 	msi_domain_free_descs(dev, &ctrl);
 }
+EXPORT_SYMBOL_GPL(msi_domain_free_msi_descs_range);
 
 /**
  * msi_domain_add_simple_msi_descs - Allocate and initialize MSI descriptors
@@ -342,6 +344,7 @@ int msi_setup_device_data(struct device *dev)
 	devres_add(dev, md);
 	return 0;
 }
+EXPORT_SYMBOL_GPL(msi_setup_device_data);
 
 /**
  * __msi_lock_descs - Lock the MSI descriptor storage of a device
@@ -911,6 +914,7 @@ struct irq_domain *msi_create_irq_domain(struct fwnode_handle *fwnode,
 {
 	return __msi_create_irq_domain(fwnode, info, 0, parent);
 }
+EXPORT_SYMBOL_GPL(msi_create_irq_domain);
 
 /**
  * msi_create_parent_irq_domain - Create an MSI-parent interrupt domain
@@ -1473,6 +1477,7 @@ int msi_domain_alloc_irqs_all_locked(struct device *dev, unsigned int domid, int
 
 	return msi_domain_alloc_locked(dev, &ctrl);
 }
+EXPORT_SYMBOL_GPL(msi_domain_alloc_irqs_all_locked);
 
 static struct msi_map __msi_domain_alloc_irq_at(struct device *dev, unsigned int domid,
 						unsigned int index,
