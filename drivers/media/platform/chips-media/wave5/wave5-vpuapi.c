@@ -514,7 +514,8 @@ int wave5_vpu_dec_get_output_info(struct vpu_instance *inst, struct dec_output_i
 	rect_info.top = 0;
 	rect_info.bottom = 0;
 
-	if (decoded_index < WAVE5_MAX_FBS) {
+	/* Validate decoded_index to prevent array bounds overflow */
+	if (decoded_index >= 0 && decoded_index < WAVE5_MAX_FBS) {
 		if (inst->std == W_HEVC_DEC || inst->std == W_AVC_DEC)
 			rect_info = p_dec_info->initial_info.pic_crop_rect;
 
@@ -569,11 +570,15 @@ int wave5_vpu_dec_get_output_info(struct vpu_instance *inst, struct dec_output_i
 	info->frame_display_flag = p_dec_info->frame_display_flag;
 
 	info->sequence_no = p_dec_info->initial_info.sequence_no;
-	if (decoded_index < WAVE5_MAX_FBS)
+	/* Validate decoded_index for bounds checking */
+	if (decoded_index >= 0 && decoded_index < WAVE5_MAX_FBS)
 		p_dec_info->dec_out_info[decoded_index] = *info;
 
-	if (disp_idx < WAVE5_MAX_FBS)
+	/* Validate disp_idx for bounds checking - Fix for DECODED_IDX_FLAG_SKIP panic */
+	if (disp_idx >= 0 && disp_idx < WAVE5_MAX_FBS) {
+		disp_info = &p_dec_info->dec_out_info[disp_idx];
 		info->disp_frame.sequence_no = info->sequence_no;
+	}
 
 	if (info->sequence_changed) {
 		memcpy((void *)&p_dec_info->initial_info, (void *)&p_dec_info->new_seq_info,
