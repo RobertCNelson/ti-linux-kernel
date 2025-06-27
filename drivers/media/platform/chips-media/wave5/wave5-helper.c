@@ -49,8 +49,12 @@ void wave5_cleanup_instance(struct vpu_instance *inst)
 		v4l2_fh_del(&inst->v4l2_fh);
 		v4l2_fh_exit(&inst->v4l2_fh);
 	}
+	/* Check if instance was added to device list (indicates successful initialization) */
+	bool was_added = !list_empty(&inst->list);
 	list_del_init(&inst->list);
-	ida_free(&inst->dev->inst_ida, inst->id);
+	/* Only free ID if instance was successfully added to device list */
+	if (was_added)
+		ida_free(&inst->dev->inst_ida, inst->id);
 	kfree(inst->codec_info);
 	kfree(inst);
 }
@@ -62,13 +66,15 @@ int wave5_vpu_release_device(struct file *filp,
 	struct vpu_instance *inst = wave5_to_vpu_inst(filp->private_data);
 	int ret = 0;
 
+	/*
+	 * Stop run thread first to prevent any new operations
+	 */
 	if (inst->run_thread) {
 		kthread_stop(inst->run_thread);
 		up(&inst->run_sem);
 		inst->run_thread = NULL;
 	}
 
-	v4l2_m2m_ctx_release(inst->v4l2_fh.m2m_ctx);
 	if (inst->state != VPU_INST_STATE_NONE) {
 		u32 fail_res;
 
@@ -83,6 +89,12 @@ int wave5_vpu_release_device(struct file *filp,
 			return ret;
 		}
 	}
+
+	/*
+	 * Release M2M context AFTER hardware is stopped and instance is removed
+	 * from active lists to prevent race conditions
+	 */
+	v4l2_m2m_ctx_release(inst->v4l2_fh.m2m_ctx);
 
 	wave5_cleanup_instance(inst);
 
