@@ -8,6 +8,7 @@
 
 #include <linux/irq.h>
 #include <linux/irqdomain.h>
+#include <linux/module.h>
 #include <linux/msi.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
@@ -119,3 +120,7 @@ unlock:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(ti_sci_inta_msi_domain_alloc_irqs);
+
+MODULE_LICENSE("GPL v2");
+MODULE_DESCRIPTION("Texas Instruments K3 Interrupt Aggregator MSI bus");
+MODULE_AUTHOR("Lokesh Vutla <lokeshvutla@ti.com>");
