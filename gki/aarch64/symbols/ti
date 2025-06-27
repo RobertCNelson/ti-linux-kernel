@@ -139,6 +139,7 @@
   can_rx_offload_threaded_irq_finish
   can_skb_get_frame_len
   capable
+  carveout_dma_heap_to_paddr
   cdc_parse_cdc_header
   cdev_add
   cdev_alloc
