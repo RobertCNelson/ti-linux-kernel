@@ -397,6 +397,7 @@
   device_property_read_u32_array
   device_property_read_u8_array
   device_register
+  device_release_driver
   device_remove_bin_file
   device_remove_file
   device_remove_software_node
@@ -1780,6 +1781,7 @@
   phy_print_status
   phy_read_mmd
   phy_remove_link_mode
+  phy_reset
   phy_resolve_aneg_linkmode
   phy_set_max_speed
   phy_set_mode_ext
@@ -2808,10 +2810,12 @@
   usb_free_coherent
   usb_free_urb
   usb_get_dev
+  usb_get_dr_mode
   usb_get_from_anchor
   usb_get_intf
   usb_get_phy
   usb_get_urb
+  usb_hcd_is_primary_hcd
   usb_ifnum_to_if
   usb_kill_urb
   usb_match_id
@@ -2828,8 +2832,11 @@
   usb_remove_phy
   usb_reset_configuration
   usb_reset_device
+  usb_role_switch_get_drvdata
   usb_role_switch_put
+  usb_role_switch_register
   usb_role_switch_set_role
+  usb_role_switch_unregister
   usb_set_configuration
   usb_set_interface
   usb_show_dynids
@@ -2839,6 +2846,7 @@
   usb_unlink_urb
   usb_unpoison_urb
   usb_unregister_notify
+  usb_wakeup_enabled_descendants
   __usecs_to_jiffies
   usleep_range_state
   utf8_data_table
