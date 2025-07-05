@@ -93,6 +93,7 @@ dtb-$(CONFIG_SOC_AM33XX) += \
 	am335x-boneblue.dtb \
 	am335x-bonegreen.dtb \
 	am335x-bonegreen-wireless.dtb \
+	am335x-bonegreen-eco.dtb \
 	am335x-chiliboard.dtb \
 	am335x-cm-t335.dtb \
 	am335x-evm.dtb \
@@ -158,6 +159,7 @@ dtb-$(CONFIG_SOC_DRA7XX) += \
 	am57xx-idk-lcd-osd101t2045.dtbo \
 	am57xx-idk-lcd-osd101t2587.dtbo \
 	dra7-evm.dtb \
+	am57xx-evm-ov10635.dtbo \
 	dra72-evm.dtb \
 	dra72-evm-revc.dtb \
 	dra71-evm.dtb \

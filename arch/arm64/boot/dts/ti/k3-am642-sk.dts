@@ -12,6 +12,7 @@
 #include "k3-am642.dtsi"
 
 #include "k3-serdes.h"
+#include "k3-timesync-router.h"
 
 / {
 	compatible = "ti,am642-sk", "ti,am642";
@@ -25,6 +26,7 @@
 		serial0 = &mcu_uart0;
 		serial1 = &main_uart1;
 		serial2 = &main_uart0;
+		serial3 = &icssg0_uart;
 		i2c0 = &main_i2c0;
 		i2c1 = &main_i2c1;
 		mmc0 = &sdhci0;
@@ -96,6 +98,18 @@
 		main_r5fss1_core1_memory_region: r5f-memory@a3100000 {
 			compatible = "shared-dma-pool";
 			reg = <0x00 0xa3100000 0x00 0xf00000>;
+			no-map;
+		};
+
+		mcu_m4fss_dma_memory_region: m4f-dma-memory@a4000000 {
+			compatible = "shared-dma-pool";
+			reg = <0x00 0xa4000000 0x00 0x100000>;
+			no-map;
+		};
+
+		mcu_m4fss_memory_region: m4f-memory@a4100000 {
+			compatible = "shared-dma-pool";
+			reg = <0x00 0xa4100000 0x00 0xf00000>;
 			no-map;
 		};
 
@@ -350,6 +364,7 @@
 			AM64X_IOPAD(0x0028, PIN_INPUT, 0) /* (M17) OSPI0_D7 */
 			AM64X_IOPAD(0x0008, PIN_INPUT, 0) /* (N19) OSPI0_DQS */
 		>;
+		bootph-all;
 	};
 
 	main_ecap0_pins_default: main-ecap0-default-pins {
@@ -357,6 +372,16 @@
 			AM64X_IOPAD(0x0270, PIN_INPUT, 0) /* (D18) ECAP0_IN_APWM_OUT */
 		>;
 	};
+
+	main_eqep0_pins_default: main-eqep0-default-pins {
+		pinctrl-single,pins = <
+			AM64X_IOPAD(0x00a0, PIN_INPUT, 3) /* (N16) GPMC0_WPn.EQEP0_A */
+			AM64X_IOPAD(0x00a4, PIN_INPUT, 3) /* (N17) GPMC0_DIR.EQEP0_B */
+			AM64X_IOPAD(0x00ac, PIN_INPUT, 3) /* (R20) GPMC0_CSn1.EQEP0_I */
+			AM64X_IOPAD(0x00a8, PIN_INPUT, 3) /* (R19) GPMC0_CSn0.EQEP0_S */
+		>;
+	};
+
 	main_wlan_en_pins_default: main-wlan-en-default-pins {
 		pinctrl-single,pins = <
 			AM64X_IOPAD(0x00c4, PIN_OUTPUT_PULLUP, 7) /* (V8) GPIO0_48 */
@@ -372,6 +397,15 @@
 	main_wlan_pins_default: main-wlan-default-pins {
 		pinctrl-single,pins = <
 			AM64X_IOPAD(0x00bc, PIN_INPUT, 7) /* (U8) GPIO0_46 */
+		>;
+	};
+
+	icssg0_uart_pins_default: icssg0-uart-default-pins {
+		pinctrl-single,pins = <
+			AM64X_IOPAD(0x0184, PIN_INPUT, 2) /* (W6) PRG0_PRU0_GPO9.PRG0_UART0_CTSn */
+			AM64X_IOPAD(0x0188, PIN_OUTPUT, 2) /* (AA5) PRG0_PRU0_GPO10.PRG0_UART0_RTSn */
+			AM64X_IOPAD(0x01d4, PIN_INPUT, 2) /* (Y5) PRG0_PRU1_GPO9.PRG0_UART0_RXD */
+			AM64X_IOPAD(0x01d8, PIN_OUTPUT, 2) /* (V6) PRG0_PRU1_GPO10.PRG0_UART0_TXD */
 		>;
 	};
 };
@@ -528,6 +562,11 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&rgmii1_pins_default>, <&rgmii2_pins_default>;
 	status = "okay";
+
+	/* Map HW8_TS_PUSH to GENF1 */
+	cpts@3d000 {
+		ti,pps = <7 1>;
+	};
 };
 
 &cpsw_port1 {
@@ -564,6 +603,7 @@
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&ospi0_pins_default>;
+	bootph-all;
 
 	flash@0 {
 		compatible = "jedec,spi-nor";
@@ -576,11 +616,14 @@
 		cdns,tchsh-ns = <60>;
 		cdns,tslch-ns = <60>;
 		cdns,read-delay = <4>;
+		cdns,phy-mode;
+		bootph-all;
 
 		partitions {
 			compatible = "fixed-partitions";
 			#address-cells = <1>;
 			#size-cells = <1>;
+			bootph-all;
 
 			partition@0 {
 				label = "ospi.tiboot3";
@@ -615,6 +658,7 @@
 			partition@3fc0000 {
 				label = "ospi.phypattern";
 				reg = <0x3fc0000 0x40000>;
+				bootph-all;
 			};
 		};
 	};
@@ -681,9 +725,55 @@
 			<&main_r5fss1_core1_memory_region>;
 };
 
+&mcu_m4fss {
+	mboxes = <&mailbox0_cluster6 &mbox_m4_0>;
+	memory-region = <&mcu_m4fss_dma_memory_region>,
+			<&mcu_m4fss_memory_region>;
+	status = "okay";
+};
+
+/* main domain timers 8 to 11 are used by TI MCU FW */
+&main_timer8 {
+	status = "reserved";
+};
+
+&main_timer9 {
+	status = "reserved";
+};
+
+&main_timer10 {
+	status = "reserved";
+};
+
+&main_timer11 {
+	status = "reserved";
+};
+
 &ecap0 {
 	status = "okay";
 	/* PWM is available on Pin 1 of header J3 */
 	pinctrl-names = "default";
 	pinctrl-0 = <&main_ecap0_pins_default>;
+};
+
+&eqep0 {
+	status = "okay";
+	/* EQEP0 A & B available on pins 18 & 22 of J4 header */
+	pinctrl-names = "default";
+	pinctrl-0 = <&main_eqep0_pins_default>;
+};
+
+&timesync_router {
+	/* Use Time Sync Router to map GENF1 input to HW8_TS_PUSH output. */
+	mux-reg-masks-state = <
+		/* pps [cpts genf1] in22 -> out37 [cpts hw8_push] */
+		K3_TS_OFFSET(37, 0x0001ffff, 22)
+		>;
+	status = "okay";
+};
+
+&icssg0_uart {
+	pinctrl-names = "default";
+	pinctrl-0 = <&icssg0_uart_pins_default>;
+	status = "okay";
 };

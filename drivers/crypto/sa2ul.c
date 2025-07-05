@@ -13,6 +13,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/dmaengine.h>
 #include <linux/dmapool.h>
+#include <linux/fips.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -23,6 +24,7 @@
 #include <crypto/aes.h>
 #include <crypto/authenc.h>
 #include <crypto/des.h>
+#include <crypto/hmac.h>
 #include <crypto/internal/aead.h>
 #include <crypto/internal/hash.h>
 #include <crypto/internal/skcipher.h>
@@ -81,6 +83,9 @@ enum sa_algo_id {
 	SA_ALG_SHA512,
 	SA_ALG_AUTHENC_SHA1_AES,
 	SA_ALG_AUTHENC_SHA256_AES,
+	SA_ALG_HMAC_SHA1,
+	SA_ALG_HMAC_SHA256,
+	SA_ALG_HMAC_SHA512,
 };
 
 struct sa_match_data {
@@ -93,21 +98,15 @@ static struct device *sa_k3_dev;
 
 /**
  * struct sa_cmdl_cfg - Command label configuration descriptor
- * @aalg: authentication algorithm ID
  * @enc_eng_id: Encryption Engine ID supported by the SA hardware
  * @auth_eng_id: Authentication Engine ID
  * @iv_size: Initialization Vector size
- * @akey: Authentication key
- * @akey_len: Authentication key length
  * @enc: True, if this is an encode request
  */
 struct sa_cmdl_cfg {
-	int aalg;
 	u8 enc_eng_id;
 	u8 auth_eng_id;
 	u8 iv_size;
-	const u8 *akey;
-	u16 akey_len;
 	bool enc;
 };
 
@@ -142,8 +141,9 @@ struct algo_data {
 	bool inv_key;
 	struct sa_tfm_ctx *ctx;
 	bool keyed_mac;
-	void (*prep_iopad)(struct algo_data *algo, const u8 *key,
-			   u16 key_sz, __be32 *ipad, __be32 *opad);
+	int (*prep_iopad)(struct algo_data *algo, const u8 *key,
+			   u16 key_sz, __be32 *lower_ipad, __be32 *lower_opad,
+			   __be32 *upper_ipad, __be32 *upper_opad);
 };
 
 /**
@@ -380,86 +380,134 @@ static void sa_swiz_128(u8 *in, u16 len)
 	}
 }
 
-/* Prepare the ipad and opad from key as per SHA algorithm step 1*/
-static void prepare_kipad(u8 *k_ipad, const u8 *key, u16 key_sz)
+static int sa_export_shash(struct shash_desc *hash, int digest_size,
+		void *lower_out, void *upper_out)
 {
-	int i;
-
-	for (i = 0; i < key_sz; i++)
-		k_ipad[i] = key[i] ^ 0x36;
-
-	/* Instead of XOR with 0 */
-	for (; i < SHA1_BLOCK_SIZE; i++)
-		k_ipad[i] = 0x36;
-}
-
-static void prepare_kopad(u8 *k_opad, const u8 *key, u16 key_sz)
-{
-	int i;
-
-	for (i = 0; i < key_sz; i++)
-		k_opad[i] = key[i] ^ 0x5c;
-
-	/* Instead of XOR with 0 */
-	for (; i < SHA1_BLOCK_SIZE; i++)
-		k_opad[i] = 0x5c;
-}
-
-static void sa_export_shash(void *state, struct shash_desc *hash,
-			    int digest_size, __be32 *out)
-{
-	struct sha1_state *sha1;
-	struct sha256_state *sha256;
 	u32 *result;
+	u64 *result64;
+	int ret = 0;
+
+	union {
+		struct sha1_state sha1;
+		struct sha256_state sha256;
+		struct sha512_state sha512;
+	} sha;
+
+	/* Export the intermediate digest to program into SA2UL */
+	ret = crypto_shash_export(hash, &sha);
+	if (ret) {
+		dev_err(sa_k3_dev, "%s: crypto_shash_export failed\n",
+			__func__);
+		return ret;
+	}
 
 	switch (digest_size) {
 	case SHA1_DIGEST_SIZE:
-		sha1 = state;
-		result = sha1->state;
+		result = sha.sha1.state;
+		cpu_to_be32_array(lower_out, result, digest_size / 4);
 		break;
 	case SHA256_DIGEST_SIZE:
-		sha256 = state;
-		result = sha256->state;
+		result = sha.sha256.state;
+		cpu_to_be32_array(lower_out, result, digest_size / 4);
+		break;
+	case SHA512_DIGEST_SIZE:
+		result64 = sha.sha512.state;
+		cpu_to_be64_array(upper_out, result64, digest_size / 8 / 2);
+		cpu_to_be64_array(lower_out, result64 + digest_size / 8 / 2, digest_size / 8 / 2);
 		break;
 	default:
 		dev_err(sa_k3_dev, "%s: bad digest_size=%d\n", __func__,
 			digest_size);
-		return;
+		return -EINVAL;
 	}
 
-	crypto_shash_export(hash, state);
 
-	cpu_to_be32_array(out, result, digest_size / 4);
+	return ret;
 }
 
-static void sa_prepare_iopads(struct algo_data *data, const u8 *key,
-			      u16 key_sz, __be32 *ipad, __be32 *opad)
+static int sa_prepare_iopads(struct algo_data *data, const u8 *key,
+			     u16 key_sz, __be32 *lower_ipad, __be32 *lower_opad,
+			     __be32 *upper_ipad, __be32 *upper_opad)
 {
 	SHASH_DESC_ON_STACK(shash, data->ctx->shash);
 	int block_size = crypto_shash_blocksize(data->ctx->shash);
 	int digest_size = crypto_shash_digestsize(data->ctx->shash);
-	union {
-		struct sha1_state sha1;
-		struct sha256_state sha256;
-		u8 k_pad[SHA1_BLOCK_SIZE];
-	} sha;
+	int ret = 0;
+	int i = 0;
+	u8 k_ipad[SHA512_BLOCK_SIZE];
+	u8 k_opad[SHA512_BLOCK_SIZE];
+
+	if (fips_enabled && (key_sz < 112 / 8))
+		return -EINVAL;
 
 	shash->tfm = data->ctx->shash;
 
-	prepare_kipad(sha.k_pad, key, key_sz);
+	if (key_sz > block_size) {
+		int err;
 
-	crypto_shash_init(shash);
-	crypto_shash_update(shash, sha.k_pad, block_size);
-	sa_export_shash(&sha, shash, digest_size, ipad);
+		err = crypto_shash_digest(shash, key, key_sz, k_ipad);
+		if (err)
+			return err;
 
-	prepare_kopad(sha.k_pad, key, key_sz);
+		key_sz = digest_size;
+	} else
+		memcpy(k_ipad, key, key_sz);
 
-	crypto_shash_init(shash);
-	crypto_shash_update(shash, sha.k_pad, block_size);
+	memset(k_ipad + key_sz, 0, block_size - key_sz);
+	memcpy(k_opad, k_ipad, block_size);
 
-	sa_export_shash(&sha, shash, digest_size, opad);
+	for (i = 0; i < block_size; i++) {
+		k_ipad[i] ^= HMAC_IPAD_VALUE;
+		k_opad[i] ^= HMAC_OPAD_VALUE;
+	}
 
-	memzero_explicit(&sha, sizeof(sha));
+	memset(lower_ipad, 0, digest_size / 2);
+	memset(lower_opad, 0, digest_size / 2);
+	memset(upper_ipad, 0, digest_size / 2);
+	memset(upper_opad, 0, digest_size / 2);
+
+	ret = crypto_shash_init(shash);
+	if (ret) {
+		dev_err(sa_k3_dev, "%s: %d: crypto_shash_init for ipad failed, ret=%d\n",
+			__func__, __LINE__, ret);
+		return ret;
+	}
+	ret = crypto_shash_update(shash, k_ipad, block_size);
+	if (ret) {
+		dev_err(sa_k3_dev, "%s: %d: crypto_shash_update for ipad failed, ret=%d\n",
+			__func__, __LINE__, ret);
+		return ret;
+	}
+	ret = sa_export_shash(shash, digest_size, lower_ipad, upper_ipad);
+	if (ret) {
+		dev_err(sa_k3_dev, "%s: %d: sa_export_shash for ipad failed, ret=%d\n",
+			__func__, __LINE__, ret);
+		return ret;
+	}
+
+	ret = crypto_shash_init(shash);
+	if (ret) {
+		dev_err(sa_k3_dev, "%s: %d: crypto_shash_init for opad failed, ret=%d\n",
+			__func__, __LINE__, ret);
+		return ret;
+	}
+	ret = crypto_shash_update(shash, k_opad, block_size);
+	if (ret) {
+		dev_err(sa_k3_dev, "%s: %d: crypto_shash_update for opad failed, ret=%d\n",
+			__func__, __LINE__, ret);
+		return ret;
+	}
+	ret = sa_export_shash(shash, digest_size, lower_opad, upper_opad);
+	if (ret) {
+		dev_err(sa_k3_dev, "%s: %d: sa_export_shash for opad failed, ret=%d\n",
+			__func__, __LINE__, ret);
+		return ret;
+	}
+
+	memzero_explicit(k_ipad, sizeof(SHA1_BLOCK_SIZE));
+	memzero_explicit(k_opad, sizeof(SHA1_BLOCK_SIZE));
+
+	return ret;
 }
 
 /* Derive the inverse key used in AES-CBC decryption operation */
@@ -529,11 +577,14 @@ static int sa_set_sc_enc(struct algo_data *ad, const u8 *key, u16 key_sz,
 }
 
 /* Set Security context for the authentication engine */
-static void sa_set_sc_auth(struct algo_data *ad, const u8 *key, u16 key_sz,
+static int sa_set_sc_auth(struct algo_data *ad, const u8 *key, u16 key_sz,
 			   u8 *sc_buf)
 {
-	__be32 *ipad = (void *)(sc_buf + 32);
-	__be32 *opad = (void *)(sc_buf + 64);
+	__be32 *lower_ipad = (void *)(sc_buf + 32);
+	__be32 *lower_opad = (void *)(sc_buf + 64);
+	__be32 *upper_ipad = (void *)(sc_buf + 96);
+	__be32 *upper_opad = (void *)(sc_buf + 128);
+	int ret = 0;
 
 	/* Set Authentication mode selector to hash processing */
 	sc_buf[0] = SA_HASH_PROCESSING;
@@ -542,12 +593,21 @@ static void sa_set_sc_auth(struct algo_data *ad, const u8 *key, u16 key_sz,
 	sc_buf[1] |= ad->auth_ctrl;
 
 	/* Copy the keys or ipad/opad */
-	if (ad->keyed_mac)
-		ad->prep_iopad(ad, key, key_sz, ipad, opad);
+	if (ad->keyed_mac) {
+		ret = ad->prep_iopad(ad, key, key_sz, lower_ipad,
+				lower_opad, upper_ipad, upper_opad);
+		if (ret) {
+			dev_err(sa_k3_dev, "%s: %d: sa_prepare_iopads failed, ret=%d\n",
+				__func__, __LINE__, ret);
+			return ret;
+		}
+	}
 	else {
 		/* basic hash */
 		sc_buf[1] |= SA_BASIC_HASH;
 	}
+
+	return 0;
 }
 
 static inline void sa_copy_iv(__be32 *out, const u8 *iv, bool size16)
@@ -723,8 +783,13 @@ int sa_init_sc(struct sa_ctx_info *ctx, const struct sa_match_data *match_data,
 	u8 *sc_buf = ctx->sc;
 	u16 sc_id = ctx->sc_id;
 	u8 first_engine = 0;
+	int ret = 0;
 
 	memzero_explicit(sc_buf, SA_CTX_MAX_SZ);
+
+	sc_buf[1] = SA_SCCTL_FE_AUTH_ENC;
+	enc_sc_offset = SA_CTX_PHP_PE_CTX_SZ;
+	auth_sc_offset = enc_sc_offset + ad->enc_eng.sc_size;
 
 	if (ad->auth_eng.eng_id) {
 		if (enc)
@@ -732,17 +797,12 @@ int sa_init_sc(struct sa_ctx_info *ctx, const struct sa_match_data *match_data,
 		else
 			first_engine = ad->auth_eng.eng_id;
 
-		enc_sc_offset = SA_CTX_PHP_PE_CTX_SZ;
-		auth_sc_offset = enc_sc_offset + ad->enc_eng.sc_size;
-		sc_buf[1] = SA_SCCTL_FE_AUTH_ENC;
 		if (!ad->hash_size)
 			return -EINVAL;
 		ad->hash_size = roundup(ad->hash_size, 8);
 
-	} else if (ad->enc_eng.eng_id && !ad->auth_eng.eng_id) {
-		enc_sc_offset = SA_CTX_PHP_PE_CTX_SZ;
+	} else if (ad->enc_eng.eng_id) {
 		first_engine = ad->enc_eng.eng_id;
-		sc_buf[1] = SA_SCCTL_FE_ENC;
 		ad->hash_size = ad->iv_out_size;
 	}
 
@@ -762,9 +822,15 @@ int sa_init_sc(struct sa_ctx_info *ctx, const struct sa_match_data *match_data,
 	}
 
 	/* Prepare context for authentication engine */
-	if (ad->auth_eng.sc_size)
-		sa_set_sc_auth(ad, auth_key, auth_key_sz,
+	if (ad->auth_eng.sc_size) {
+		ret = sa_set_sc_auth(ad, auth_key, auth_key_sz,
 			       &sc_buf[auth_sc_offset]);
+		if (ret) {
+			dev_err(sa_k3_dev, "%s: Error in setting authentication context\n",
+					__func__);
+			return ret;
+		}
+	}
 
 	/* Set the ownership of context to CP_ACE */
 	sc_buf[SA_CTX_SCCTL_OWNER_OFFSET] = 0x80;
@@ -896,7 +962,7 @@ static int sa_cipher_setkey(struct crypto_skcipher *tfm, const u8 *key,
 		return -EINVAL;
 
 	ad->enc_eng.eng_id = SA_ENG_ID_EM1;
-	ad->enc_eng.sc_size = SA_CTX_ENC_TYPE1_SZ;
+	ad->enc_eng.sc_size = SA_CTX_ENC_TYPE_SZ;
 
 	memzero_explicit(&cfg, sizeof(cfg));
 	cfg.enc_eng_id = ad->enc_eng.eng_id;
@@ -1377,29 +1443,7 @@ static void sa_sha_dma_in_callback(void *data)
 	ahash_request_complete(req, 0);
 }
 
-static int zero_message_process(struct ahash_request *req)
-{
-	struct crypto_ahash *tfm = crypto_ahash_reqtfm(req);
-	int sa_digest_size = crypto_ahash_digestsize(tfm);
-
-	switch (sa_digest_size) {
-	case SHA1_DIGEST_SIZE:
-		memcpy(req->result, sha1_zero_message_hash, sa_digest_size);
-		break;
-	case SHA256_DIGEST_SIZE:
-		memcpy(req->result, sha256_zero_message_hash, sa_digest_size);
-		break;
-	case SHA512_DIGEST_SIZE:
-		memcpy(req->result, sha512_zero_message_hash, sa_digest_size);
-		break;
-	default:
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-static int sa_sha_run(struct ahash_request *req)
+static int sa_sha_digest(struct ahash_request *req)
 {
 	struct sa_tfm_ctx *ctx = crypto_ahash_ctx(crypto_ahash_reqtfm(req));
 	struct sa_sha_req_ctx *rctx = ahash_request_ctx(req);
@@ -1408,10 +1452,7 @@ static int sa_sha_run(struct ahash_request *req)
 
 	auth_len = req->nbytes;
 
-	if (!auth_len)
-		return zero_message_process(req);
-
-	if (auth_len > SA_MAX_DATA_SZ ||
+	if (!auth_len || auth_len > SA_MAX_DATA_SZ ||
 	    (auth_len >= SA_UNSAFE_DATA_SZ_MIN &&
 	     auth_len <= SA_UNSAFE_DATA_SZ_MAX)) {
 		struct ahash_request *subreq = &rctx->fallback_req;
@@ -1449,29 +1490,41 @@ static int sa_sha_run(struct ahash_request *req)
 	return sa_run(&sa_req);
 }
 
-static int sa_sha_setup(struct sa_tfm_ctx *ctx, struct  algo_data *ad)
+static int sa_sha_setup(struct sa_tfm_ctx *ctx, struct algo_data *ad,
+		const u8 *key, u8 key_sz)
 {
-	int bs = crypto_shash_blocksize(ctx->shash);
 	int cmdl_len;
 	struct sa_cmdl_cfg cfg;
+	int ret;
 
-	ad->enc_eng.sc_size = SA_CTX_ENC_TYPE1_SZ;
+	ad->ctx = ctx;
+	ad->enc_eng.sc_size = SA_CTX_ENC_TYPE_SZ;
 	ad->auth_eng.eng_id = SA_ENG_ID_AM1;
-	ad->auth_eng.sc_size = SA_CTX_AUTH_TYPE2_SZ;
+	ad->auth_eng.sc_size = SA_CTX_AUTH_TYPE_SZ;
 
-	memset(ctx->authkey, 0, bs);
+	if (key_sz) {
+		/* Initialize fallback setkey */
+		ret = crypto_ahash_setkey(ad->ctx->fallback.ahash,
+				key, key_sz);
+		if (ret) {
+			dev_err(sa_k3_dev, "%s: Failed to set fallback.ahash setkey=%d",
+					__func__, ret);
+			return ret;
+		}
+
+		ad->keyed_mac = true;
+		ad->prep_iopad = sa_prepare_iopads;
+	}
+
 	memset(&cfg, 0, sizeof(cfg));
-	cfg.aalg = ad->aalg_id;
 	cfg.enc_eng_id = ad->enc_eng.eng_id;
 	cfg.auth_eng_id = ad->auth_eng.eng_id;
 	cfg.iv_size = 0;
-	cfg.akey = NULL;
-	cfg.akey_len = 0;
 
 	ctx->dev_data = dev_get_drvdata(sa_k3_dev);
 	/* Setup Encryption Security Context & Command label template */
-	if (sa_init_sc(&ctx->enc, ctx->dev_data->match_data, NULL, 0, NULL, 0,
-		       ad, 0, &ctx->enc.epib[1]))
+	if (sa_init_sc(&ctx->enc, ctx->dev_data->match_data, NULL, 0, key,
+			key_sz, ad, 0, &ctx->enc.epib[1]))
 		goto badkey;
 
 	cmdl_len = sa_format_cmdl_gen(&cfg,
@@ -1489,7 +1542,7 @@ badkey:
 	return -EINVAL;
 }
 
-static int sa_sha_cra_init_alg(struct crypto_tfm *tfm, const char *alg_base)
+static int sa_sha_cra_init_alg(struct crypto_tfm *tfm, const char *hash, const char *alg_base)
 {
 	struct sa_tfm_ctx *ctx = crypto_tfm_ctx(tfm);
 	struct sa_crypto_data *data = dev_get_drvdata(sa_k3_dev);
@@ -1501,23 +1554,31 @@ static int sa_sha_cra_init_alg(struct crypto_tfm *tfm, const char *alg_base)
 	if (ret)
 		return ret;
 
-	if (alg_base) {
-		ctx->shash = crypto_alloc_shash(alg_base, 0,
+	if (!alg_base)
+		dev_err(sa_k3_dev, "alg_base is NULL\n");
+
+	if (hash) {
+		/* Allocating fallback for intermediate setkey calculations */
+		ctx->shash = crypto_alloc_shash(hash, 0,
 						CRYPTO_ALG_NEED_FALLBACK);
 		if (IS_ERR(ctx->shash)) {
 			dev_err(sa_k3_dev, "base driver %s couldn't be loaded\n",
 				alg_base);
 			return PTR_ERR(ctx->shash);
 		}
-		/* for fallback */
-		ctx->fallback.ahash =
-			crypto_alloc_ahash(alg_base, 0,
-					   CRYPTO_ALG_NEED_FALLBACK);
-		if (IS_ERR(ctx->fallback.ahash)) {
-			dev_err(ctx->dev_data->dev,
-				"Could not load fallback driver\n");
-			return PTR_ERR(ctx->fallback.ahash);
-		}
+	} else {
+		dev_dbg(sa_k3_dev, "%s: hash is NULL so not allocating ctx->shash\n",
+				__func__);
+	}
+
+	/* for fallback */
+	ctx->fallback.ahash =
+		crypto_alloc_ahash(alg_base, 0,
+				   CRYPTO_ALG_NEED_FALLBACK);
+	if (IS_ERR(ctx->fallback.ahash)) {
+		dev_err(ctx->dev_data->dev,
+			"Could not load fallback driver\n");
+		return PTR_ERR(ctx->fallback.ahash);
 	}
 
 	dev_dbg(sa_k3_dev, "%s(0x%p) sc-ids(0x%x(0x%pad), 0x%x(0x%pad))\n",
@@ -1529,11 +1590,6 @@ static int sa_sha_cra_init_alg(struct crypto_tfm *tfm, const char *alg_base)
 				 crypto_ahash_reqsize(ctx->fallback.ahash));
 
 	return 0;
-}
-
-static int sa_sha_digest(struct ahash_request *req)
-{
-	return sa_sha_run(req);
 }
 
 static int sa_sha_init(struct ahash_request *req)
@@ -1629,13 +1685,13 @@ static int sa_sha1_cra_init(struct crypto_tfm *tfm)
 	struct algo_data ad = { 0 };
 	struct sa_tfm_ctx *ctx = crypto_tfm_ctx(tfm);
 
-	sa_sha_cra_init_alg(tfm, "sha1");
+	sa_sha_cra_init_alg(tfm, NULL, "sha1");
 
 	ad.aalg_id = SA_AALG_ID_SHA1;
 	ad.hash_size = SHA1_DIGEST_SIZE;
 	ad.auth_ctrl = SA_AUTH_SW_CTRL_SHA1;
 
-	sa_sha_setup(ctx, &ad);
+	sa_sha_setup(ctx, &ad, NULL, 0);
 
 	return 0;
 }
@@ -1645,13 +1701,13 @@ static int sa_sha256_cra_init(struct crypto_tfm *tfm)
 	struct algo_data ad = { 0 };
 	struct sa_tfm_ctx *ctx = crypto_tfm_ctx(tfm);
 
-	sa_sha_cra_init_alg(tfm, "sha256");
+	sa_sha_cra_init_alg(tfm, NULL, "sha256");
 
 	ad.aalg_id = SA_AALG_ID_SHA2_256;
 	ad.hash_size = SHA256_DIGEST_SIZE;
 	ad.auth_ctrl = SA_AUTH_SW_CTRL_SHA256;
 
-	sa_sha_setup(ctx, &ad);
+	sa_sha_setup(ctx, &ad, NULL, 0);
 
 	return 0;
 }
@@ -1661,15 +1717,61 @@ static int sa_sha512_cra_init(struct crypto_tfm *tfm)
 	struct algo_data ad = { 0 };
 	struct sa_tfm_ctx *ctx = crypto_tfm_ctx(tfm);
 
-	sa_sha_cra_init_alg(tfm, "sha512");
+	sa_sha_cra_init_alg(tfm, NULL, "sha512");
 
 	ad.aalg_id = SA_AALG_ID_SHA2_512;
 	ad.hash_size = SHA512_DIGEST_SIZE;
 	ad.auth_ctrl = SA_AUTH_SW_CTRL_SHA512;
 
-	sa_sha_setup(ctx, &ad);
+	sa_sha_setup(ctx, &ad, NULL, 0);
 
 	return 0;
+}
+
+static int sa_hmac_cra_init(struct crypto_tfm *tfm)
+{
+	const char *alg_name = crypto_tfm_alg_name(tfm);
+	int ret = -EINVAL;
+
+	if (!strcmp(alg_name, "hmac(sha1)"))
+		ret = sa_sha_cra_init_alg(tfm, "sha1", alg_name);
+	else if (!strcmp(alg_name, "hmac(sha256)"))
+		ret = sa_sha_cra_init_alg(tfm, "sha256", alg_name);
+	else if (!strcmp(alg_name, "hmac(sha512)"))
+		ret = sa_sha_cra_init_alg(tfm, "sha512", alg_name);
+	else
+		dev_err(sa_k3_dev, "%s: unsupported algo %s\n", __func__, alg_name);
+
+	return ret;
+}
+
+
+static int sa_hmac_sha_setkey(struct crypto_ahash *ahash, const u8 *key,
+			     unsigned int keylen)
+{
+	struct crypto_tfm *tfm = crypto_ahash_tfm(ahash);
+	const char *alg_name = crypto_tfm_alg_name(tfm);
+	struct sa_tfm_ctx *ctx = crypto_tfm_ctx(tfm);
+	struct algo_data ad = { 0 };
+
+	if (!strcmp(alg_name, "hmac(sha1)")) {
+		ad.aalg_id = SA_AALG_ID_SHA1;
+		ad.hash_size = SHA1_DIGEST_SIZE;
+		ad.auth_ctrl = SA_AUTH_SW_CTRL_SHA1;
+	} else if (!strcmp(alg_name, "hmac(sha256)")) {
+		ad.aalg_id = SA_AALG_ID_SHA2_256;
+		ad.hash_size = SHA256_DIGEST_SIZE;
+		ad.auth_ctrl = SA_AUTH_SW_CTRL_SHA256;
+	} else if (!strcmp(alg_name, "hmac(sha512)")) {
+		ad.aalg_id = SA_AALG_ID_SHA2_512;
+		ad.hash_size = SHA512_DIGEST_SIZE;
+		ad.auth_ctrl = SA_AUTH_SW_CTRL_SHA512;
+	} else {
+		dev_err(sa_k3_dev, "%s: unsupported algo %s\n", __func__, alg_name);
+		return -EINVAL;
+	}
+
+	return sa_sha_setup(ctx, &ad, key, keylen);
 }
 
 static void sa_sha_cra_exit(struct crypto_tfm *tfm)
@@ -1817,9 +1919,9 @@ static int sa_aead_setkey(struct crypto_aead *authenc,
 
 	ad->ctx = ctx;
 	ad->enc_eng.eng_id = SA_ENG_ID_EM1;
-	ad->enc_eng.sc_size = SA_CTX_ENC_TYPE1_SZ;
+	ad->enc_eng.sc_size = SA_CTX_ENC_TYPE_SZ;
 	ad->auth_eng.eng_id = SA_ENG_ID_AM1;
-	ad->auth_eng.sc_size = SA_CTX_AUTH_TYPE2_SZ;
+	ad->auth_eng.sc_size = SA_CTX_AUTH_TYPE_SZ;
 	ad->mci_enc = mci_cbc_enc_no_iv_array[key_idx];
 	ad->mci_dec = mci_cbc_dec_no_iv_array[key_idx];
 	ad->inv_key = true;
@@ -1829,12 +1931,9 @@ static int sa_aead_setkey(struct crypto_aead *authenc,
 
 	memset(&cfg, 0, sizeof(cfg));
 	cfg.enc = true;
-	cfg.aalg = ad->aalg_id;
 	cfg.enc_eng_id = ad->enc_eng.eng_id;
 	cfg.auth_eng_id = ad->auth_eng.eng_id;
 	cfg.iv_size = crypto_aead_ivsize(authenc);
-	cfg.akey = keys.authkey;
-	cfg.akey_len = keys.authkeylen;
 
 	/* Setup Encryption Security Context & Command label template */
 	if (sa_init_sc(&ctx->enc, ctx->dev_data->match_data, keys.enckey,
@@ -2201,6 +2300,96 @@ static struct sa_alg_tmpl sa_algs[] = {
 			.decrypt = sa_aead_decrypt,
 		},
 	},
+	[SA_ALG_HMAC_SHA256] = {
+		.type = CRYPTO_ALG_TYPE_AHASH,
+		.alg.ahash = {
+		       .halg.base = {
+			       .cra_name       = "hmac(sha256)",
+			       .cra_driver_name        = "hmac(sha256-sa2ul)",
+			       .cra_priority   = 1000,
+			       .cra_flags      = CRYPTO_ALG_TYPE_AHASH |
+						 CRYPTO_ALG_ASYNC |
+						 CRYPTO_ALG_KERN_DRIVER_ONLY |
+						 CRYPTO_ALG_NEED_FALLBACK,
+			       .cra_blocksize  = SHA256_BLOCK_SIZE,
+			       .cra_ctxsize    = sizeof(struct sa_tfm_ctx),
+			       .cra_module     = THIS_MODULE,
+			       .cra_init       = sa_hmac_cra_init,
+			       .cra_exit       = sa_sha_cra_exit,
+		       },
+		       .halg.digestsize        = SHA256_DIGEST_SIZE,
+		       .halg.statesize	       = sizeof(struct sa_sha_req_ctx) +
+						 sizeof(struct sha256_state),
+		       .init		       = sa_sha_init,
+		       .update		       = sa_sha_update,
+		       .final		       = sa_sha_final,
+		       .finup		       = sa_sha_finup,
+		       .setkey		       = sa_hmac_sha_setkey,
+		       .digest		       = sa_sha_digest,
+		       .export		       = sa_sha_export,
+		       .import		       = sa_sha_import,
+	       },
+	},
+	[SA_ALG_HMAC_SHA1] = {
+		.type = CRYPTO_ALG_TYPE_AHASH,
+		.alg.ahash = {
+			.halg.base = {
+				.cra_name	= "hmac(sha1)",
+				.cra_driver_name	= "hmac(sha1-sa2ul)",
+				.cra_priority	= 400,
+				.cra_flags	= CRYPTO_ALG_TYPE_AHASH |
+						  CRYPTO_ALG_ASYNC |
+						  CRYPTO_ALG_KERN_DRIVER_ONLY |
+						  CRYPTO_ALG_NEED_FALLBACK,
+				.cra_blocksize	= SHA1_BLOCK_SIZE,
+				.cra_ctxsize	= sizeof(struct sa_tfm_ctx),
+				.cra_module	= THIS_MODULE,
+				.cra_init	= sa_hmac_cra_init,
+				.cra_exit	= sa_sha_cra_exit,
+			},
+			.halg.digestsize	= SHA1_DIGEST_SIZE,
+			.halg.statesize		= sizeof(struct sa_sha_req_ctx) +
+						  sizeof(struct sha1_state),
+			.init			= sa_sha_init,
+			.update			= sa_sha_update,
+			.final			= sa_sha_final,
+			.finup			= sa_sha_finup,
+			.setkey		        = sa_hmac_sha_setkey,
+			.digest			= sa_sha_digest,
+			.export			= sa_sha_export,
+			.import			= sa_sha_import,
+		},
+	},
+	[SA_ALG_HMAC_SHA512] = {
+		.type = CRYPTO_ALG_TYPE_AHASH,
+		.alg.ahash = {
+			.halg.base = {
+				.cra_name	= "hmac(sha512)",
+				.cra_driver_name	= "hmac(sha512-sa2ul)",
+				.cra_priority	= 400,
+				.cra_flags	= CRYPTO_ALG_TYPE_AHASH |
+						  CRYPTO_ALG_ASYNC |
+						  CRYPTO_ALG_KERN_DRIVER_ONLY |
+						  CRYPTO_ALG_NEED_FALLBACK,
+				.cra_blocksize	= SHA512_BLOCK_SIZE,
+				.cra_ctxsize	= sizeof(struct sa_tfm_ctx),
+				.cra_module	= THIS_MODULE,
+				.cra_init	= sa_hmac_cra_init,
+				.cra_exit	= sa_sha_cra_exit,
+			},
+			.halg.digestsize	= SHA512_DIGEST_SIZE,
+			.halg.statesize		= sizeof(struct sa_sha_req_ctx) +
+						  sizeof(struct sha512_state),
+			.init			= sa_sha_init,
+			.update			= sa_sha_update,
+			.final			= sa_sha_final,
+			.finup			= sa_sha_finup,
+			.setkey		        = sa_hmac_sha_setkey,
+			.digest			= sa_sha_digest,
+			.export			= sa_sha_export,
+			.import			= sa_sha_import,
+		},
+	},
 };
 
 /* Register the algorithms in crypto framework */
@@ -2262,9 +2451,12 @@ static void sa_unregister_algos(const struct device *dev)
 	}
 }
 
-static int sa_init_mem(struct sa_crypto_data *dev_data)
+static int sa_dma_init(struct sa_crypto_data *dev_data)
 {
+	int ret;
+	struct dma_slave_config cfg;
 	struct device *dev = &dev_data->pdev->dev;
+
 	/* Setup dma pool for security context buffers */
 	dev_data->sc_pool = dma_pool_create("keystone-sc", dev,
 					    SA_CTX_MAX_SZ, 64, 0);
@@ -2273,37 +2465,29 @@ static int sa_init_mem(struct sa_crypto_data *dev_data)
 		return -ENOMEM;
 	}
 
-	return 0;
-}
+	dev_data->dma_rx1 = NULL;
+	dev_data->dma_tx = NULL;
+	dev_data->dma_rx2 = NULL;
 
-static int sa_dma_init(struct sa_crypto_data *dd)
-{
-	int ret;
-	struct dma_slave_config cfg;
-
-	dd->dma_rx1 = NULL;
-	dd->dma_tx = NULL;
-	dd->dma_rx2 = NULL;
-
-	ret = dma_coerce_mask_and_coherent(dd->dev, DMA_BIT_MASK(48));
+	ret = dma_coerce_mask_and_coherent(dev_data->dev, DMA_BIT_MASK(48));
 	if (ret)
-		return ret;
+		goto err_dma_coerce;
 
-	dd->dma_rx1 = dma_request_chan(dd->dev, "rx1");
-	if (IS_ERR(dd->dma_rx1))
-		return dev_err_probe(dd->dev, PTR_ERR(dd->dma_rx1),
+	dev_data->dma_rx1 = dma_request_chan(dev_data->dev, "rx1");
+	if (IS_ERR(dev_data->dma_rx1))
+		return dev_err_probe(dev_data->dev, PTR_ERR(dev_data->dma_rx1),
 				     "Unable to request rx1 DMA channel\n");
 
-	dd->dma_rx2 = dma_request_chan(dd->dev, "rx2");
-	if (IS_ERR(dd->dma_rx2)) {
-		ret = dev_err_probe(dd->dev, PTR_ERR(dd->dma_rx2),
+	dev_data->dma_rx2 = dma_request_chan(dev_data->dev, "rx2");
+	if (IS_ERR(dev_data->dma_rx2)) {
+		ret = dev_err_probe(dev_data->dev, PTR_ERR(dev_data->dma_rx2),
 				    "Unable to request rx2 DMA channel\n");
 		goto err_dma_rx2;
 	}
 
-	dd->dma_tx = dma_request_chan(dd->dev, "tx");
-	if (IS_ERR(dd->dma_tx)) {
-		ret = dev_err_probe(dd->dev, PTR_ERR(dd->dma_tx),
+	dev_data->dma_tx = dma_request_chan(dev_data->dev, "tx");
+	if (IS_ERR(dev_data->dma_tx)) {
+		ret = dev_err_probe(dev_data->dev, PTR_ERR(dev_data->dma_tx),
 				    "Unable to request tx DMA channel\n");
 		goto err_dma_tx;
 	}
@@ -2315,23 +2499,23 @@ static int sa_dma_init(struct sa_crypto_data *dd)
 	cfg.src_maxburst = 4;
 	cfg.dst_maxburst = 4;
 
-	ret = dmaengine_slave_config(dd->dma_rx1, &cfg);
+	ret = dmaengine_slave_config(dev_data->dma_rx1, &cfg);
 	if (ret) {
-		dev_err(dd->dev, "can't configure IN dmaengine slave: %d\n",
+		dev_err(dev_data->dev, "can't configure IN dmaengine slave: %d\n",
 			ret);
 		goto err_dma_config;
 	}
 
-	ret = dmaengine_slave_config(dd->dma_rx2, &cfg);
+	ret = dmaengine_slave_config(dev_data->dma_rx2, &cfg);
 	if (ret) {
-		dev_err(dd->dev, "can't configure IN dmaengine slave: %d\n",
+		dev_err(dev_data->dev, "can't configure IN dmaengine slave: %d\n",
 			ret);
 		goto err_dma_config;
 	}
 
-	ret = dmaengine_slave_config(dd->dma_tx, &cfg);
+	ret = dmaengine_slave_config(dev_data->dma_tx, &cfg);
 	if (ret) {
-		dev_err(dd->dev, "can't configure OUT dmaengine slave: %d\n",
+		dev_err(dev_data->dev, "can't configure OUT dmaengine slave: %d\n",
 			ret);
 		goto err_dma_config;
 	}
@@ -2339,13 +2523,23 @@ static int sa_dma_init(struct sa_crypto_data *dd)
 	return 0;
 
 err_dma_config:
-	dma_release_channel(dd->dma_tx);
+	dma_release_channel(dev_data->dma_tx);
 err_dma_tx:
-	dma_release_channel(dd->dma_rx2);
+	dma_release_channel(dev_data->dma_rx2);
 err_dma_rx2:
-	dma_release_channel(dd->dma_rx1);
+	dma_release_channel(dev_data->dma_rx1);
+err_dma_coerce:
+	dma_pool_destroy(dev_data->sc_pool);
 
 	return ret;
+}
+
+static void sa_dma_cleanup(struct sa_crypto_data *dev_data)
+{
+	dma_release_channel(dev_data->dma_rx2);
+	dma_release_channel(dev_data->dma_rx1);
+	dma_release_channel(dev_data->dma_tx);
+	dma_pool_destroy(dev_data->sc_pool);
 }
 
 static int sa_link_child(struct device *dev, void *data)
@@ -2368,7 +2562,10 @@ static struct sa_match_data am654_match_data = {
 			   BIT(SA_ALG_SHA256) |
 			   BIT(SA_ALG_SHA512) |
 			   BIT(SA_ALG_AUTHENC_SHA1_AES) |
-			   BIT(SA_ALG_AUTHENC_SHA256_AES),
+			   BIT(SA_ALG_AUTHENC_SHA256_AES) |
+			   BIT(SA_ALG_HMAC_SHA1) |
+			   BIT(SA_ALG_HMAC_SHA256)  |
+			   BIT(SA_ALG_HMAC_SHA512),
 };
 
 static struct sa_match_data am64_match_data = {
@@ -2426,10 +2623,9 @@ static int sa_ul_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	sa_init_mem(dev_data);
 	ret = sa_dma_init(dev_data);
 	if (ret)
-		goto destroy_dma_pool;
+		goto disable_pm_runtime;
 
 	spin_lock_init(&dev_data->scid_lock);
 
@@ -2453,14 +2649,9 @@ static int sa_ul_probe(struct platform_device *pdev)
 
 release_dma:
 	sa_unregister_algos(dev);
+	sa_dma_cleanup(dev_data);
 
-	dma_release_channel(dev_data->dma_rx2);
-	dma_release_channel(dev_data->dma_rx1);
-	dma_release_channel(dev_data->dma_tx);
-
-destroy_dma_pool:
-	dma_pool_destroy(dev_data->sc_pool);
-
+disable_pm_runtime:
 	pm_runtime_put_sync(dev);
 	pm_runtime_disable(dev);
 
@@ -2474,12 +2665,7 @@ static void sa_ul_remove(struct platform_device *pdev)
 	of_platform_depopulate(&pdev->dev);
 
 	sa_unregister_algos(&pdev->dev);
-
-	dma_release_channel(dev_data->dma_rx2);
-	dma_release_channel(dev_data->dma_rx1);
-	dma_release_channel(dev_data->dma_tx);
-
-	dma_pool_destroy(dev_data->sc_pool);
+	sa_dma_cleanup(dev_data);
 
 	platform_set_drvdata(pdev, NULL);
 

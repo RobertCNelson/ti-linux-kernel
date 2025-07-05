@@ -40,6 +40,16 @@
 
 #define FASTIO_ADDRESS_MASK		GENMASK(15, 0)
 #define SEQ_PARAM_PROFILE_MASK		GENMASK(30, 24)
+#define SEQ_BG_PARAM_REG_DATA		0x3800410
+
+#define ENC_AVC_INTRA_IDR_PARAM_MASK	0x7ff
+#define ENC_AVC_INTRA_PERIOD_SHIFT		6
+#define ENC_AVC_IDR_PERIOD_SHIFT		17
+#define ENC_AVC_FORCED_IDR_HEADER_SHIFT		28
+
+#define ENC_HEVC_INTRA_QP_SHIFT			3
+#define ENC_HEVC_FORCED_IDR_HEADER_SHIFT	9
+#define ENC_HEVC_INTRA_PERIOD_SHIFT		16
 
 static void _wave5_print_reg_err(struct vpu_device *vpu_dev, u32 reg_fail_reason,
 				 const char *func);
@@ -93,7 +103,7 @@ static void _wave5_print_reg_err(struct vpu_device *vpu_dev, u32 reg_fail_reason
 		dev_dbg(dev, "%s: queueing failure: 0x%x\n", func, reg_val);
 		break;
 	case WAVE5_SYSERR_RESULT_NOT_READY:
-		dev_err(dev, "%s: result not ready: 0x%x\n", func, reg_fail_reason);
+		dev_dbg(dev, "%s: result not ready: 0x%x\n", func, reg_fail_reason);
 		break;
 	case WAVE5_SYSERR_ACCESS_VIOLATION_HW:
 		dev_err(dev, "%s: access violation: 0x%x\n", func, reg_fail_reason);
@@ -183,6 +193,19 @@ static int wave5_wait_vcpu_bus_busy(struct vpu_device *vpu_dev, unsigned int add
 bool wave5_vpu_is_init(struct vpu_device *vpu_dev)
 {
 	return vpu_read_reg(vpu_dev, W5_VCPU_CUR_PC) != 0;
+}
+
+static dma_addr_t wave5_read_reg_for_mem_addr(struct vpu_instance *inst,
+					      unsigned int reg_addr)
+{
+	dma_addr_t addr;
+	dma_addr_t high_addr = inst->dev->ext_addr;
+	u32 val;
+
+	val = vpu_read_reg(inst->dev, reg_addr);
+	addr = ((high_addr << 32) | val);
+
+	return addr;
 }
 
 unsigned int wave5_vpu_get_product_id(struct vpu_device *vpu_dev)
@@ -466,7 +489,8 @@ int wave5_vpu_init(struct device *dev, u8 *fw, size_t size)
 	vpu_write_reg(vpu_dev, W5_HW_OPTION, 0);
 
 	if (vpu_dev->product_code != WAVE515_CODE) {
-		wave5_fio_writel(vpu_dev, W5_BACKBONE_PROC_EXT_ADDR, 0);
+		reg_val = (vpu_dev->ext_addr & 0xFFFF);
+		wave5_fio_writel(vpu_dev, W5_BACKBONE_PROC_EXT_ADDR, reg_val);
 		wave5_fio_writel(vpu_dev, W5_BACKBONE_AXI_PARAM, 0);
 		vpu_write_reg(vpu_dev, W5_SEC_AXI_PARAM, 0);
 	}
@@ -572,7 +596,7 @@ int wave5_vpu_build_up_dec_param(struct vpu_instance *inst,
 
 	if (inst->dev->product_code != WAVE515_CODE) {
 		/* This register must be reset explicitly */
-		vpu_write_reg(inst->dev, W5_CMD_EXT_ADDR, 0);
+		vpu_write_reg(inst->dev, W5_CMD_EXT_ADDR, inst->dev->ext_addr);
 		vpu_write_reg(inst->dev, W5_CMD_NUM_CQ_DEPTH_M1,
 			      WAVE521_COMMAND_QUEUE_DEPTH - 1);
 	}
@@ -1160,7 +1184,8 @@ int wave5_vpu_re_init(struct device *dev, u8 *fw, size_t size)
 		vpu_write_reg(vpu_dev, W5_HW_OPTION, 0);
 
 		if (vpu_dev->product_code != WAVE515_CODE) {
-			wave5_fio_writel(vpu_dev, W5_BACKBONE_PROC_EXT_ADDR, 0);
+			reg_val = (vpu_dev->ext_addr & 0xFFFF);
+			wave5_fio_writel(vpu_dev, W5_BACKBONE_PROC_EXT_ADDR, reg_val);
 			wave5_fio_writel(vpu_dev, W5_BACKBONE_AXI_PARAM, 0);
 			vpu_write_reg(vpu_dev, W5_SEC_AXI_PARAM, 0);
 		}
@@ -1219,7 +1244,7 @@ int wave5_vpu_re_init(struct device *dev, u8 *fw, size_t size)
 	return setup_wave5_properties(dev);
 }
 
-static int wave5_vpu_sleep_wake(struct device *dev, bool i_sleep_wake, const uint16_t *code,
+int wave5_vpu_sleep_wake(struct device *dev, bool i_sleep_wake, const uint16_t *code,
 				size_t size)
 {
 	u32 reg_val;
@@ -1285,7 +1310,8 @@ static int wave5_vpu_sleep_wake(struct device *dev, bool i_sleep_wake, const uin
 		vpu_write_reg(vpu_dev, W5_HW_OPTION, 0);
 
 		if (vpu_dev->product_code != WAVE515_CODE) {
-			wave5_fio_writel(vpu_dev, W5_BACKBONE_PROC_EXT_ADDR, 0);
+			reg_val = (vpu_dev->ext_addr & 0xFFFF);
+			wave5_fio_writel(vpu_dev, W5_BACKBONE_PROC_EXT_ADDR, reg_val);
 			wave5_fio_writel(vpu_dev, W5_BACKBONE_AXI_PARAM, 0);
 			vpu_write_reg(vpu_dev, W5_SEC_AXI_PARAM, 0);
 		}
@@ -1520,7 +1546,7 @@ dma_addr_t wave5_dec_get_rd_ptr(struct vpu_instance *inst)
 	if (ret)
 		return inst->codec_info->dec_info.stream_rd_ptr;
 
-	return vpu_read_reg(inst->dev, W5_RET_QUERY_DEC_BS_RD_PTR);
+	return wave5_read_reg_for_mem_addr(inst, W5_RET_QUERY_DEC_BS_RD_PTR);
 }
 
 int wave5_dec_set_rd_ptr(struct vpu_instance *inst, dma_addr_t addr)
@@ -1571,7 +1597,7 @@ int wave5_vpu_build_up_enc_param(struct device *dev, struct vpu_instance *inst,
 
 	reg_val = (open_param->line_buf_int_en << 6) | BITSTREAM_ENDIANNESS_BIG_ENDIAN;
 	vpu_write_reg(inst->dev, W5_CMD_BS_PARAM, reg_val);
-	vpu_write_reg(inst->dev, W5_CMD_EXT_ADDR, 0);
+	vpu_write_reg(inst->dev, W5_CMD_EXT_ADDR, inst->dev->ext_addr);
 	vpu_write_reg(inst->dev, W5_CMD_NUM_CQ_DEPTH_M1, WAVE521_COMMAND_QUEUE_DEPTH - 1);
 
 	/* This register must be reset explicitly */
@@ -1753,6 +1779,9 @@ int wave5_vpu_enc_init_seq(struct vpu_instance *inst)
 			(p_param->skip_intra_trans << 25) |
 			(p_param->strong_intra_smooth_enable << 27) |
 			(p_param->en_still_picture << 30);
+	else if (inst->std == W_AVC_ENC)
+		reg_val |= (p_param->constraint_set1_flag << 29);
+
 	vpu_write_reg(inst->dev, W5_CMD_ENC_SEQ_SPS_PARAM, reg_val);
 
 	reg_val = (p_param->lossless_enable) |
@@ -1772,12 +1801,14 @@ int wave5_vpu_enc_init_seq(struct vpu_instance *inst)
 
 	if (inst->std == W_AVC_ENC)
 		vpu_write_reg(inst->dev, W5_CMD_ENC_SEQ_INTRA_PARAM, p_param->intra_qp |
-				((p_param->intra_period & 0x7ff) << 6) |
-				((p_param->avc_idr_period & 0x7ff) << 17));
+				((p_param->intra_period & ENC_AVC_INTRA_IDR_PARAM_MASK) << ENC_AVC_INTRA_PERIOD_SHIFT) |
+				((p_param->avc_idr_period & ENC_AVC_INTRA_IDR_PARAM_MASK) << ENC_AVC_IDR_PERIOD_SHIFT) |
+				(p_param->forced_idr_header_enable << ENC_AVC_FORCED_IDR_HEADER_SHIFT));
 	else if (inst->std == W_HEVC_ENC)
 		vpu_write_reg(inst->dev, W5_CMD_ENC_SEQ_INTRA_PARAM,
-			      p_param->decoding_refresh_type | (p_param->intra_qp << 3) |
-				(p_param->intra_period << 16));
+				p_param->decoding_refresh_type | (p_param->intra_qp << ENC_HEVC_INTRA_QP_SHIFT) |
+				(p_param->forced_idr_header_enable << ENC_HEVC_FORCED_IDR_HEADER_SHIFT) |
+				(p_param->intra_period << ENC_HEVC_INTRA_PERIOD_SHIFT));
 
 	reg_val = (p_param->rdo_skip << 2) |
 		(p_param->lambda_scaling_enable << 3) |
@@ -1822,7 +1853,7 @@ int wave5_vpu_enc_init_seq(struct vpu_instance *inst)
 	vpu_write_reg(inst->dev, W5_CMD_ENC_SEQ_RC_BIT_RATIO_LAYER_4_7, 0);
 	vpu_write_reg(inst->dev, W5_CMD_ENC_SEQ_ROT_PARAM, rot_mir_mode);
 
-	vpu_write_reg(inst->dev, W5_CMD_ENC_SEQ_BG_PARAM, 0);
+	vpu_write_reg(inst->dev, W5_CMD_ENC_SEQ_BG_PARAM, SEQ_BG_PARAM_REG_DATA | p_param->bg_detection);
 	vpu_write_reg(inst->dev, W5_CMD_ENC_SEQ_CUSTOM_LAMBDA_ADDR, 0);
 	vpu_write_reg(inst->dev, W5_CMD_ENC_SEQ_CONF_WIN_TOP_BOT,
 		      p_param->conf_win_bot << 16 | p_param->conf_win_top);
@@ -2139,6 +2170,18 @@ static u32 wave5_vpu_enc_validate_sec_axi(struct vpu_instance *inst)
 	return ret;
 }
 
+int wave5_vpu_enc_apply_change_param(struct vpu_instance *inst, u32 *fail_res)
+{
+	/* SET_PARAM + COMMON */
+	vpu_write_reg(inst->dev, W5_CMD_ENC_SEQ_SET_PARAM_OPTION, OPT_CHANGE_PARAM);
+	vpu_write_reg(inst->dev, W5_CMD_ENC_SEQ_SET_PARAM_ENABLE, inst->change_param_flags);
+
+	if (inst->change_param_flags & W5_ENC_CHANGE_PARAM_RC_TARGET_RATE)
+		vpu_write_reg(inst->dev, W5_CMD_ENC_SEQ_RC_TARGET_RATE, inst->bit_rate);
+
+	return send_firmware_command(inst, W5_ENC_SET_PARAM, true, NULL, fail_res);
+}
+
 int wave5_vpu_encode(struct vpu_instance *inst, struct enc_param *option, u32 *fail_res)
 {
 	u32 src_frame_format;
@@ -2186,7 +2229,11 @@ int wave5_vpu_encode(struct vpu_instance *inst, struct enc_param *option, u32 *f
 			      (option->code_option.encode_eos << 6) |
 			      (option->code_option.encode_eob << 7));
 
-	vpu_write_reg(inst->dev, W5_CMD_ENC_PIC_PIC_PARAM, 0);
+	vpu_write_reg(inst->dev, W5_CMD_ENC_PIC_PIC_PARAM, (option->force_pictype_enable<<20) |
+								(option->force_pic_type<<21));
+
+	option->force_pictype_enable = 0;
+	option->force_pic_type = 0;
 
 	if (option->src_end_flag)
 		/* no more source images. */
@@ -2354,10 +2401,10 @@ int wave5_vpu_enc_get_result(struct vpu_instance *inst, struct enc_output_info *
 	result->recon_frame_index = vpu_read_reg(inst->dev, W5_RET_ENC_PIC_IDX);
 	result->enc_pic_byte = vpu_read_reg(inst->dev, W5_RET_ENC_PIC_BYTE);
 	result->enc_src_idx = vpu_read_reg(inst->dev, W5_RET_ENC_USED_SRC_IDX);
-	p_enc_info->stream_wr_ptr = vpu_read_reg(inst->dev, W5_RET_ENC_WR_PTR);
-	p_enc_info->stream_rd_ptr = vpu_read_reg(inst->dev, W5_RET_ENC_RD_PTR);
+	p_enc_info->stream_wr_ptr = wave5_read_reg_for_mem_addr(inst, W5_RET_ENC_WR_PTR);
+	p_enc_info->stream_rd_ptr = wave5_read_reg_for_mem_addr(inst, W5_RET_ENC_RD_PTR);
 
-	result->bitstream_buffer = vpu_read_reg(inst->dev, W5_RET_ENC_RD_PTR);
+	result->bitstream_buffer = wave5_read_reg_for_mem_addr(inst, W5_RET_ENC_RD_PTR);
 	result->rd_ptr = p_enc_info->stream_rd_ptr;
 	result->wr_ptr = p_enc_info->stream_wr_ptr;
 

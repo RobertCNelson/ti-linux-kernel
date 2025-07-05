@@ -220,6 +220,27 @@ static void icssg_miig_queues_init(struct prueth *prueth, int slice)
 	}
 }
 
+static void icssg_config_cut_thru(struct prueth_emac *emac)
+{
+	void __iomem *config = emac->dram.va + ICSSG_CONFIG_OFFSET;
+	u8 mask = ICSSG_CUT_THRU_BIT;
+	u8 val;
+	int i;
+
+	for (i = 0; i < PRUETH_MAX_TX_QUEUES * PRUETH_NUM_MACS; i++) {
+		val = readb(config + EXPRESS_PRE_EMPTIVE_Q_MAP + i);
+		if (emac->cut_thru_queue_map & BIT(i)) {
+			val |= mask;
+			netdev_info(emac->ndev, "cut-thru enabled for q%d\n", i);
+		} else if (val & mask){
+			val &= ~mask;
+			netdev_info(emac->ndev, "cut-thru disabled for q%d\n", i);
+		}
+
+		writeb(val, config + EXPRESS_PRE_EMPTIVE_Q_MAP + i);
+	}
+}
+
 void icssg_config_ipg(struct prueth_emac *emac)
 {
 	struct prueth *prueth = emac->prueth;
@@ -326,14 +347,23 @@ static int prueth_fw_offload_buffer_setup(struct prueth_emac *emac)
 	if (!slice)
 		addr += PRUETH_SW_NUM_BUF_POOLS_HOST * PRUETH_SW_BUF_POOL_SIZE_HOST;
 	else
-		addr += PRUETH_EMAC_RX_CTX_BUF_SIZE;
+		addr += PRUETH_EMAC_RX_CTX_BUF_SIZE * 2;
 
+	/* Pre-emptible RX buffer queue */
 	rxq_ctx = emac->dram.va + HOST_RX_Q_PRE_CONTEXT_OFFSET;
 	for (i = 0; i < 3; i++)
 		writel(addr, &rxq_ctx->start[i]);
 
 	addr += PRUETH_EMAC_RX_CTX_BUF_SIZE;
-	writel(addr - SZ_2K, &rxq_ctx->end);
+	writel(addr, &rxq_ctx->end);
+
+	/* Express RX buffer queue */
+	rxq_ctx = emac->dram.va + HOST_RX_Q_EXP_CONTEXT_OFFSET;
+	for (i = 0; i < 3; i++)
+		writel(addr, &rxq_ctx->start[i]);
+
+	addr += PRUETH_EMAC_RX_CTX_BUF_SIZE;
+	writel(addr, &rxq_ctx->end);
 
 	return 0;
 }
@@ -497,6 +527,9 @@ int icssg_config(struct prueth *prueth, struct prueth_emac *emac, int slice)
 		return ret;
 
 	emac_r30_cmd_init(emac);
+
+	if (prueth->is_switch_mode || prueth->is_hsr_offload_mode)
+		icssg_config_cut_thru(emac);
 
 	return 0;
 }

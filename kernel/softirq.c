@@ -126,6 +126,18 @@ static DEFINE_PER_CPU(struct softirq_ctrl, softirq_ctrl) = {
 	.lock	= INIT_LOCAL_LOCK(softirq_ctrl.lock),
 };
 
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+static struct lock_class_key bh_lock_key;
+struct lockdep_map bh_lock_map = {
+	.name			= "local_bh",
+	.key			= &bh_lock_key,
+	.wait_type_outer	= LD_WAIT_FREE,
+	.wait_type_inner	= LD_WAIT_CONFIG, /* PREEMPT_RT makes BH preemptible. */
+	.lock_type		= LD_LOCK_PERCPU,
+};
+EXPORT_SYMBOL_GPL(bh_lock_map);
+#endif
+
 /**
  * local_bh_blocked() - Check for idle whether BH processing is blocked
  *
@@ -147,6 +159,8 @@ void __local_bh_disable_ip(unsigned long ip, unsigned int cnt)
 	int newcnt;
 
 	WARN_ON_ONCE(in_hardirq());
+
+	lock_map_acquire_read(&bh_lock_map);
 
 	/* First entry of a task into a BH disabled section? */
 	if (!current->softirq_disable_cnt) {
@@ -211,6 +225,8 @@ void __local_bh_enable_ip(unsigned long ip, unsigned int cnt)
 	WARN_ON_ONCE(in_hardirq());
 	lockdep_assert_irqs_enabled();
 
+	lock_map_release(&bh_lock_map);
+
 	local_irq_save(flags);
 	curcnt = __this_cpu_read(softirq_ctrl.cnt);
 
@@ -261,6 +277,8 @@ static inline void ksoftirqd_run_begin(void)
 /* Counterpart to ksoftirqd_run_begin() */
 static inline void ksoftirqd_run_end(void)
 {
+	/* pairs with the lock_map_acquire_read() in ksoftirqd_run_begin() */
+	lock_map_release(&bh_lock_map);
 	__local_bh_enable(SOFTIRQ_OFFSET, true);
 	WARN_ON_ONCE(in_interrupt());
 	local_irq_enable();
@@ -631,6 +649,24 @@ static inline void tick_irq_exit(void)
 #endif
 }
 
+#ifdef CONFIG_IRQ_FORCED_THREADING
+DEFINE_PER_CPU(struct task_struct *, ktimerd);
+DEFINE_PER_CPU(unsigned long, pending_timer_softirq);
+
+static void wake_timersd(void)
+{
+	struct task_struct *tsk = __this_cpu_read(ktimerd);
+
+	if (tsk)
+		wake_up_process(tsk);
+}
+
+#else
+
+static inline void wake_timersd(void) { }
+
+#endif
+
 static inline void __irq_exit_rcu(void)
 {
 #ifndef __ARCH_IRQ_EXIT_IRQS_DISABLED
@@ -642,6 +678,10 @@ static inline void __irq_exit_rcu(void)
 	preempt_count_sub(HARDIRQ_OFFSET);
 	if (!in_interrupt() && local_softirq_pending())
 		invoke_softirq();
+
+	if (IS_ENABLED(CONFIG_IRQ_FORCED_THREADING) && force_irqthreads() &&
+	    local_timers_pending_force_th() && !(in_nmi() | in_hardirq()))
+		wake_timersd();
 
 	tick_irq_exit();
 }
@@ -978,12 +1018,57 @@ static struct smp_hotplug_thread softirq_threads = {
 	.thread_comm		= "ksoftirqd/%u",
 };
 
+#ifdef CONFIG_IRQ_FORCED_THREADING
+static void ktimerd_setup(unsigned int cpu)
+{
+	/* Above SCHED_NORMAL to handle timers before regular tasks. */
+	sched_set_fifo_low(current);
+}
+
+static int ktimerd_should_run(unsigned int cpu)
+{
+	return local_timers_pending_force_th();
+}
+
+void raise_ktimers_thread(unsigned int nr)
+{
+	trace_softirq_raise(nr);
+	__this_cpu_or(pending_timer_softirq, BIT(nr));
+}
+
+static void run_ktimerd(unsigned int cpu)
+{
+	unsigned int timer_si;
+
+	ksoftirqd_run_begin();
+
+	timer_si = local_timers_pending_force_th();
+	__this_cpu_write(pending_timer_softirq, 0);
+	or_softirq_pending(timer_si);
+
+	__do_softirq();
+
+	ksoftirqd_run_end();
+}
+
+static struct smp_hotplug_thread timer_thread = {
+	.store			= &ktimerd,
+	.setup			= ktimerd_setup,
+	.thread_should_run	= ktimerd_should_run,
+	.thread_fn		= run_ktimerd,
+	.thread_comm		= "ktimers/%u",
+};
+#endif
+
 static __init int spawn_ksoftirqd(void)
 {
 	cpuhp_setup_state_nocalls(CPUHP_SOFTIRQ_DEAD, "softirq:dead", NULL,
 				  takeover_tasklets);
 	BUG_ON(smpboot_register_percpu_thread(&softirq_threads));
-
+#ifdef CONFIG_IRQ_FORCED_THREADING
+	if (force_irqthreads())
+		BUG_ON(smpboot_register_percpu_thread(&timer_thread));
+#endif
 	return 0;
 }
 early_initcall(spawn_ksoftirqd);

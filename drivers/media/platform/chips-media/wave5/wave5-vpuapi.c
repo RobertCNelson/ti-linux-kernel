@@ -6,6 +6,8 @@
  */
 
 #include <linux/bug.h>
+#include <linux/pm_runtime.h>
+#include <linux/delay.h>
 #include "wave5-vpuapi.h"
 #include "wave5-regdefine.h"
 #include "wave5.h"
@@ -81,6 +83,7 @@ int wave5_vpu_flush_instance(struct vpu_instance *inst)
 			ret = mutex_lock_interruptible(&inst->dev->hw_lock);
 			if (ret)
 				return ret;
+
 			if (dec_info.index_frame_display > 0)
 				wave5_vpu_dec_set_disp_flag(inst, dec_info.index_frame_display);
 		}
@@ -210,9 +213,13 @@ int wave5_vpu_dec_close(struct vpu_instance *inst, u32 *fail_res)
 	if (!inst->codec_info)
 		return -EINVAL;
 
+	pm_runtime_resume_and_get(inst->dev->dev);
+
 	ret = mutex_lock_interruptible(&vpu_dev->hw_lock);
-	if (ret)
+	if (ret) {
+		pm_runtime_put_sync(inst->dev->dev);
 		return ret;
+	}
 
 	do {
 		ret = wave5_vpu_dec_finish_seq(inst, fail_res);
@@ -244,7 +251,8 @@ int wave5_vpu_dec_close(struct vpu_instance *inst, u32 *fail_res)
 
 unlock_and_return:
 	mutex_unlock(&vpu_dev->hw_lock);
-
+	mutex_destroy(&inst->feed_lock);
+	pm_runtime_put_sync(inst->dev->dev);
 	return ret;
 }
 
@@ -712,6 +720,8 @@ int wave5_vpu_enc_close(struct vpu_instance *inst, u32 *fail_res)
 	if (!inst->codec_info)
 		return -EINVAL;
 
+	pm_runtime_resume_and_get(inst->dev->dev);
+
 	ret = mutex_lock_interruptible(&vpu_dev->hw_lock);
 	if (ret)
 		return ret;
@@ -745,6 +755,8 @@ int wave5_vpu_enc_close(struct vpu_instance *inst, u32 *fail_res)
 	wave5_vdi_free_dma_memory(vpu_dev, &p_enc_info->vb_task);
 
 	mutex_unlock(&vpu_dev->hw_lock);
+
+	pm_runtime_put_sync(inst->dev->dev);
 
 	return 0;
 }
@@ -825,6 +837,21 @@ static int wave5_check_enc_param(struct vpu_instance *inst, struct enc_param *pa
 		return -EINVAL;
 
 	return 0;
+}
+
+int wave5_vpu_enc_change_param(struct vpu_instance *inst, u32 *fail_res)
+{
+	int ret;
+	struct vpu_device *vpu_dev = inst->dev;
+
+	ret = mutex_lock_interruptible(&vpu_dev->hw_lock);
+	if (ret)
+		return ret;
+
+	ret = wave5_vpu_enc_apply_change_param(inst, fail_res);
+	mutex_unlock(&vpu_dev->hw_lock);
+
+	return ret;
 }
 
 int wave5_vpu_enc_start_one_frame(struct vpu_instance *inst, struct enc_param *param, u32 *fail_res)

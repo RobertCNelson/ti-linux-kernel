@@ -109,6 +109,8 @@ select:
           - st,spear1340-misc
           - stericsson,nomadik-pmu
           - starfive,jh7100-sysmain
+          - ti,am62-canuart-wake
+          - ti,am62-ddr-pmctrl
           - ti,am62-opp-efuse-table
           - ti,am62-usb-phy-ctrl
           - ti,am625-dss-oldi-io-ctrl
@@ -206,6 +208,8 @@ properties:
           - st,spear1340-misc
           - stericsson,nomadik-pmu
           - starfive,jh7100-sysmain
+          - ti,am62-canuart-wake
+          - ti,am62-ddr-pmctrl
           - ti,am62-opp-efuse-table
           - ti,am62-usb-phy-ctrl
           - ti,am625-dss-oldi-io-ctrl

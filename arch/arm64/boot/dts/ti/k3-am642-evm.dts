@@ -12,6 +12,7 @@
 #include "k3-am642.dtsi"
 
 #include "k3-serdes.h"
+#include "k3-timesync-router.h"
 
 / {
 	compatible = "ti,am642-evm", "ti,am642";
@@ -98,6 +99,18 @@
 		main_r5fss1_core1_memory_region: r5f-memory@a3100000 {
 			compatible = "shared-dma-pool";
 			reg = <0x00 0xa3100000 0x00 0xf00000>;
+			no-map;
+		};
+
+		mcu_m4fss_dma_memory_region: m4f-dma-memory@a4000000 {
+			compatible = "shared-dma-pool";
+			reg = <0x00 0xa4000000 0x00 0x100000>;
+			no-map;
+		};
+
+		mcu_m4fss_memory_region: m4f-memory@a4100000 {
+			compatible = "shared-dma-pool";
+			reg = <0x00 0xa4100000 0x00 0xf00000>;
 			no-map;
 		};
 
@@ -253,6 +266,7 @@
 		ti,mii-g-rt = <&icssg1_mii_g_rt>;
 		ti,mii-rt = <&icssg1_mii_rt>;
 		ti,iep = <&icssg1_iep0>,  <&icssg1_iep1>;
+		ti,pa-stats = <&icssg1_pa_stats>;
 		interrupt-parent = <&icssg1_intc>;
 		interrupts = <24 0 2>, <25 1 3>;
 		interrupt-names = "tx_ts0", "tx_ts1";
@@ -414,6 +428,7 @@
 			AM64X_IOPAD(0x0028, PIN_INPUT, 0) /* (M17) OSPI0_D7 */
 			AM64X_IOPAD(0x0008, PIN_INPUT, 0) /* (N19) OSPI0_DQS */
 		>;
+		bootph-all;
 	};
 
 	main_ecap0_pins_default: main-ecap0-default-pins {
@@ -450,7 +465,7 @@
 		>;
 	};
 
-	icssg1_rgmii1_pins_default: icssg1-rgmii1-default-pins{
+	icssg1_rgmii1_pins_default: icssg1-rgmii1-default-pins {
 		pinctrl-single,pins = <
 			AM64X_IOPAD(0x00b8, PIN_INPUT, 2) /* (Y7) PRG1_PRU0_GPO0.PRG1_RGMII1_RD0 */
 			AM64X_IOPAD(0x00bc, PIN_INPUT, 2) /* (U8) PRG1_PRU0_GPO1.PRG1_RGMII1_RD1 */
@@ -472,6 +487,10 @@
 			AM64X_IOPAD(0x0104, PIN_OUTPUT, 2) /* (W7) PRG1_PRU0_GPO19.PRG1_IEP0_EDC_SYNC_OUT0 */
 		>;
 	};
+};
+
+&fss {
+	bootph-all;
 };
 
 &main_uart0 {
@@ -581,6 +600,7 @@
 
 /* eMMC */
 &sdhci0 {
+	bootph-all;
 	status = "okay";
 	non-removable;
 	ti,driver-strength-ohm = <50>;
@@ -617,6 +637,11 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&rgmii1_pins_default>, <&rgmii2_pins_default>;
 	status = "okay";
+
+	/* Map HW8_TS_PUSH to GENF1 */
+	cpts@3d000 {
+		ti,pps = <7 1>;
+	};
 };
 
 &cpsw_port1 {
@@ -659,6 +684,7 @@
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&ospi0_pins_default>;
+	bootph-all;
 
 	flash@0 {
 		compatible = "jedec,spi-nor";
@@ -671,11 +697,14 @@
 		cdns,tchsh-ns = <60>;
 		cdns,tslch-ns = <60>;
 		cdns,read-delay = <4>;
+		cdns,phy-mode;
+		bootph-all;
 
 		partitions {
 			compatible = "fixed-partitions";
 			#address-cells = <1>;
 			#size-cells = <1>;
+			bootph-all;
 
 			partition@0 {
 				label = "ospi.tiboot3";
@@ -710,6 +739,7 @@
 			partition@3fc0000 {
 				label = "ospi.phypattern";
 				reg = <0x3fc0000 0x40000>;
+				bootph-all;
 			};
 		};
 	};
@@ -776,6 +806,30 @@
 			<&main_r5fss1_core1_memory_region>;
 };
 
+&mcu_m4fss {
+	mboxes = <&mailbox0_cluster6 &mbox_m4_0>;
+	memory-region = <&mcu_m4fss_dma_memory_region>,
+			<&mcu_m4fss_memory_region>;
+	status = "okay";
+};
+
+/* main domain timers 8 to 11 are used by TI MCU FW */
+&main_timer8 {
+	status = "reserved";
+};
+
+&main_timer9 {
+	status = "reserved";
+};
+
+&main_timer10 {
+	status = "reserved";
+};
+
+&main_timer11 {
+	status = "reserved";
+};
+
 &serdes_ln_ctrl {
 	idle-states = <AM64_SERDES0_LANE0_PCIE0>;
 };
@@ -838,4 +892,23 @@
 &icssg1_iep0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&icssg1_iep0_pins_default>;
+};
+
+&timesync_router {
+	/* Use Time Sync Router to map GENF1 input to HW8_TS_PUSH output. */
+	mux-reg-masks-state = <
+		/* pps [cpts genf1] in22 -> out37 [cpts hw8_push] */
+		K3_TS_OFFSET(37, 0x0001ffff, 22)
+		/* iep-pps [iep sync_out0] in29 -> out23 [navss cpts hw8_push] */
+		K3_TS_OFFSET(23, 0x0001ffff, 29)
+		>;
+	status = "okay";
+};
+
+&main_cpts0 {
+	/*
+	 * Use HW8_TS_PUSH of NAVSS CPTS to generate events for IEP PPS
+	 * signal (PRGx_IEP0_EDC_SYNC_OUT0)
+	 */
+	ti,pps = <7 1>;
 };

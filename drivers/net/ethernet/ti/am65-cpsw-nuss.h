@@ -6,6 +6,7 @@
 #ifndef AM65_CPSW_NUSS_H_
 #define AM65_CPSW_NUSS_H_
 
+#include <linux/debugfs.h>
 #include <linux/if_ether.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -55,6 +56,7 @@ struct am65_cpsw_port {
 	bool				rx_ts_enabled;
 	struct am65_cpsw_qos		qos;
 	struct devlink_port		devlink_port;
+	struct dentry			*debugfs_port;
 	struct bpf_prog			*xdp_prog;
 	struct xdp_rxq_info		xdp_rxq[AM65_CPSW_MAX_QUEUES];
 	/* Only for suspend resume context */
@@ -121,6 +123,7 @@ struct am65_cpsw_rx_chn {
 
 #define AM65_CPSW_QUIRK_I2027_NO_TX_CSUM BIT(0)
 #define AM64_CPSW_QUIRK_DMA_RX_TDOWN_IRQ BIT(1)
+#define AM64_CPSW_QUIRK_CUT_THRU	 BIT(2)
 
 struct am65_cpsw_pdata {
 	u32	quirks;
@@ -172,6 +175,7 @@ struct am65_cpsw_common {
 	struct am65_cpts	*cpts;
 	int			est_enabled;
 	bool			iet_enabled;
+	unsigned int		cut_thru_enabled;
 
 	bool		is_emac_mode;
 	u16			br_members;
@@ -180,6 +184,8 @@ struct am65_cpsw_common {
 	struct net_device *hw_bridge_dev;
 	struct notifier_block am65_cpsw_netdevice_nb;
 	unsigned char switch_id[MAX_PHYS_ITEM_ID_LEN];
+
+	struct dentry		*debugfs_root;
 	/* only for suspend/resume context restore */
 	u32			*ale_context;
 };
@@ -228,5 +234,9 @@ int am65_cpsw_nuss_update_tx_rx_chns(struct am65_cpsw_common *common,
 				     int num_tx, int num_rx);
 
 bool am65_cpsw_port_dev_check(const struct net_device *dev);
+
+int am65_cpsw_nuss_register_port_debugfs(struct am65_cpsw_port *port);
+int am65_cpsw_nuss_register_debugfs(struct am65_cpsw_common *common);
+void am65_cpsw_nuss_unregister_debugfs(struct am65_cpsw_common *common);
 
 #endif /* AM65_CPSW_NUSS_H_ */

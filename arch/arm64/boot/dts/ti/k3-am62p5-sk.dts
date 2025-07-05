@@ -19,6 +19,7 @@
 
 	aliases {
 		serial0 = &wkup_uart0;
+		serial1 = &mcu_uart0;
 		serial2 = &main_uart0;
 		serial3 = &main_uart1;
 		mmc0 = &sdhci0;
@@ -32,7 +33,21 @@
 	};
 
 	chosen {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
 		stdout-path = &main_uart0;
+
+		framebuffer0: framebuffer@0 {
+			compatible = "simple-framebuffer";
+			power-domains = <&k3_pds 186 TI_SCI_PD_EXCLUSIVE>;
+			clocks = <&k3_clks 186 6>,
+				 <&dss0_vp1_clk>,
+				 <&k3_clks 186 2>;
+			display = <&dss0>;
+			status = "disabled";
+		};
 	};
 
 	memory@80000000 {
@@ -43,10 +58,47 @@
 		bootph-pre-ram;
 	};
 
-	reserved-memory {
+	reserved_memory: reserved-memory {
 		#address-cells = <2>;
 		#size-cells = <2>;
 		ranges;
+
+		linux,cma {
+			compatible = "shared-dma-pool";
+			reusable;
+			size = <0x00 0x24000000>;
+			linux,cma-default;
+		};
+
+		rtos_ipc_memory_region: rtos-ipc-memory@9b500000 {
+			compatible = "shared-dma-pool";
+			reg = <0x00 0x9b500000 0x00 0x00300000>;
+			no-map;
+		};
+
+		mcu_r5fss0_core0_dma_memory_region: mcu-r5fss-dma-memory-region@9b800000 {
+			compatible = "shared-dma-pool";
+			reg = <0x00 0x9b800000 0x00 0x100000>;
+			no-map;
+		};
+
+		mcu_r5fss0_core0_memory_region: mcu-r5fss-memory-region@9b900000 {
+			compatible = "shared-dma-pool";
+			reg = <0x00 0x9b900000 0x00 0xf00000>;
+			no-map;
+		};
+
+		wkup_r5fss0_core0_dma_memory_region: r5f-dma-memory@9c800000 {
+			compatible = "shared-dma-pool";
+			reg = <0x00 0x9c800000 0x00 0x100000>;
+			no-map;
+		};
+
+		wkup_r5fss0_core0_memory_region: r5f-memory@9c900000 {
+			compatible = "shared-dma-pool";
+			reg = <0x00 0x9c900000 0x00 0x1e00000>;
+			no-map;
+		};
 
 		secure_tfa_ddr: tfa@9e780000 {
 			reg = <0x00 0x9e780000 0x00 0x80000>;
@@ -55,12 +107,6 @@
 
 		secure_ddr: optee@9e800000 {
 			reg = <0x00 0x9e800000 0x00 0x01800000>; /* for OP-TEE */
-			no-map;
-		};
-
-		wkup_r5fss0_core0_memory_region: r5f-dma-memory@9c900000 {
-			compatible = "shared-dma-pool";
-			reg = <0x00 0x9c900000 0x00 0x01e00000>;
 			no-map;
 		};
 	};
@@ -128,6 +174,15 @@
 		};
 	};
 
+	opp-table {
+		/* Requires VDD_CORE at 0v85 */
+		opp-1400000000 {
+			opp-hz = /bits/ 64 <1400000000>;
+			opp-supported-hw = <0x01 0x0004>;
+			clock-latency-ns = <6000000>;
+		};
+	};
+
 	tlv320_mclk: clk-0 {
 		#clock-cells = <0>;
 		compatible = "fixed-clock";
@@ -160,6 +215,17 @@
 		sound_master: simple-audio-card,codec {
 			sound-dai = <&tlv320aic3106>;
 			clocks = <&tlv320_mclk>;
+		};
+	};
+
+	hdmi0: connector-hdmi {
+		compatible = "hdmi-connector";
+		label = "hdmi";
+		type = "a";
+		port {
+			hdmi_connector_in: endpoint {
+				remote-endpoint = <&sii9022_out>;
+			};
 		};
 	};
 };
@@ -217,6 +283,7 @@
 			AM62PX_IOPAD(0x0160, PIN_OUTPUT, 0) /* (F17) MDIO0_MDC */
 			AM62PX_IOPAD(0x015c, PIN_INPUT, 0) /* (F16) MDIO0_MDIO */
 		>;
+		bootph-all;
 	};
 
 	main_mmc1_pins_default: main-mmc1-default-pins {
@@ -301,7 +368,7 @@
 
 	main_usb1_pins_default: main-usb1-default-pins {
 		pinctrl-single,pins = <
-			AM62PX_IOPAD(0x0258, PIN_INPUT, 0) /* (G21) USB1_DRVVBUS */
+			AM62PX_IOPAD(0x0258, PIN_INPUT | PIN_DS_PULLUD_ENABLE | PIN_DS_PULL_UP, 0) /* (G21) USB1_DRVVBUS */
 		>;
 	};
 
@@ -344,6 +411,66 @@
 	wlan_en_pins_default: wlan-en-default-pins {
 		pinctrl-single,pins = <
 			AM62PX_IOPAD(0x0124, PIN_INPUT, 7) /* (J25) MMC2_SDCD.GPIO0_71 */
+		>;
+	};
+
+	main_dpi_pins_default: main-dpi-default-pins {
+		pinctrl-single,pins = <
+			AM62PX_IOPAD(0x0100, PIN_OUTPUT, 0) /* (W20) VOUT0_VSYNC */
+			AM62PX_IOPAD(0x00f8, PIN_OUTPUT, 0) /* (AC20) VOUT0_HSYNC */
+			AM62PX_IOPAD(0x0104, PIN_OUTPUT, 0) /* (Y21) VOUT0_PCLK */
+			AM62PX_IOPAD(0x00fc, PIN_OUTPUT, 0) /* (W21) VOUT0_DE */
+			AM62PX_IOPAD(0x00b8, PIN_OUTPUT, 0) /* (AE24) VOUT0_DATA0 */
+			AM62PX_IOPAD(0x00bc, PIN_OUTPUT, 0) /* (W23) VOUT0_DATA1 */
+			AM62PX_IOPAD(0x00c0, PIN_OUTPUT, 0) /* (AA23) VOUT0_DATA2 */
+			AM62PX_IOPAD(0x00c4, PIN_OUTPUT, 0) /* (Y23) VOUT0_DATA3 */
+			AM62PX_IOPAD(0x00c8, PIN_OUTPUT, 0) /* (AB23) VOUT0_DATA4 */
+			AM62PX_IOPAD(0x00cc, PIN_OUTPUT, 0) /* (AD23) VOUT0_DATA5 */
+			AM62PX_IOPAD(0x00d0, PIN_OUTPUT, 0) /* (AC23) VOUT0_DATA6 */
+			AM62PX_IOPAD(0x00d4, PIN_OUTPUT, 0) /* (AE23) VOUT0_DATA7 */
+			AM62PX_IOPAD(0x00d8, PIN_OUTPUT, 0) /* (AE22) VOUT0_DATA8 */
+			AM62PX_IOPAD(0x00dc, PIN_OUTPUT, 0) /* (AC22) VOUT0_DATA9 */
+			AM62PX_IOPAD(0x00e0, PIN_OUTPUT, 0) /* (W22) VOUT0_DATA10 */
+			AM62PX_IOPAD(0x00e4, PIN_OUTPUT, 0) /* (AE21) VOUT0_DATA11 */
+			AM62PX_IOPAD(0x00e8, PIN_OUTPUT, 0) /* (AD21) VOUT0_DATA12 */
+			AM62PX_IOPAD(0x00ec, PIN_OUTPUT, 0) /* (AC21) VOUT0_DATA13 */
+			AM62PX_IOPAD(0x00f0, PIN_OUTPUT, 0) /* (AA20) VOUT0_DATA14 */
+			AM62PX_IOPAD(0x00f4, PIN_OUTPUT, 0) /* (Y20) VOUT0_DATA15 */
+			AM62PX_IOPAD(0x005c, PIN_OUTPUT, 1) /* (AC25) GPMC0_AD8.VOUT0_DATA16 */
+			AM62PX_IOPAD(0x0060, PIN_OUTPUT, 1) /* (AB25) GPMC0_AD9.VOUT0_DATA17 */
+			AM62PX_IOPAD(0x0064, PIN_OUTPUT, 1) /* (AA25) GPMC0_AD10.VOUT0_DATA18 */
+			AM62PX_IOPAD(0x0068, PIN_OUTPUT, 1) /* (W24) GPMC0_AD11.VOUT0_DATA19 */
+			AM62PX_IOPAD(0x006c, PIN_OUTPUT, 1) /* (Y24) GPMC0_AD12.VOUT0_DATA20 */
+			AM62PX_IOPAD(0x0070, PIN_OUTPUT, 1) /* (AD25) GPMC0_AD13.VOUT0_DATA21 */
+			AM62PX_IOPAD(0x0074, PIN_OUTPUT, 1) /* (AB24) GPMC0_AD14.VOUT0_DATA22 */
+			AM62PX_IOPAD(0x0078, PIN_OUTPUT, 1) /* (AC24) GPMC0_AD15.VOUT0_DATA23 */
+			AM62PX_IOPAD(0x009c, PIN_OUTPUT, 1) /* (AD24) GPMC0_WAIT1.VOUT0_EXTPCLKIN */
+		>;
+	};
+
+	main_epwm0_pins_default: main_epwm0-default-pins {
+		pinctrl-single,pins = <
+			AM62PX_IOPAD(0x01b4, PIN_OUTPUT, 2) /* (D20) SPI0_CS0.EHRPWM0_A */
+			AM62PX_IOPAD(0x01b8, PIN_OUTPUT, 2) /* (E20) SPI0_CS1.EHRPWM0_B */
+		>;
+	};
+
+	main_epwm1_pins_default: main_epwm1-default-pins {
+		pinctrl-single,pins = <
+			AM62PX_IOPAD(0x01bc, PIN_OUTPUT, 2) /* (B21) SPI0_CLK.EHRPWM1_A */
+			AM62PX_IOPAD(0x01c0, PIN_OUTPUT, 2) /* (B20) SPI0_D0.EHRPWM1_B */
+		>;
+	};
+
+	main_ecap1_pins_default: main_ecap1-default-pins {
+		pinctrl-single,pins = <
+			AM62PX_IOPAD(0x019c, PIN_OUTPUT, 2) /* (E24) MCASP0_AXR1.ECAP1_IN_APWM_OUT */
+		>;
+	};
+
+	main_ecap2_pins_default: main-ecap2-default-pins {
+		pinctrl-single,pins = <
+			AM62PX_IOPAD(0x01a4, PIN_OUTPUT, 2) /* (F24) MCASP0_ACLKX.ECAP2_IN_APWM_OUT */
 		>;
 	};
 };
@@ -433,6 +560,41 @@
 				   "GPIO_OLDI_RSTn", "GPIO_AUD_RSTn",
 				   "GPIO_eMMC_RSTn", "SoC_WLAN_SDIO_RST";
 	};
+
+	sii9022: bridge-hdmi@3b {
+		compatible = "sil,sii9022";
+		reg = <0x3b>;
+		interrupt-parent = <&exp1>;
+		interrupts = <16 IRQ_TYPE_EDGE_FALLING>;
+		#sound-dai-cells = <0>;
+		sil,i2s-data-lanes = < 0 >;
+
+		hdmi_tx_ports: ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			/*
+			 * HDMI can be serviced with 3 potential VPs -
+			 * (DSS0 VP1 / DSS1 VP0 / DSS1 VP1).
+			 * For now, we will service it with DSS0 VP1.
+			 */
+			port@0 {
+				reg = <0>;
+
+				sii9022_in: endpoint {
+					remote-endpoint = <&dss0_dpi1_out>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+
+				sii9022_out: endpoint {
+					remote-endpoint = <&hdmi_connector_in>;
+				};
+			};
+		};
+	};
 };
 
 &main_i2c2 {
@@ -486,6 +648,7 @@
 
 	cpsw3g_phy0: ethernet-phy@0 {
 		reg = <0>;
+		bootph-all;
 		ti,rx-internal-delay = <DP83867_RGMIIDCTL_2_00_NS>;
 		ti,fifo-depth = <DP83867_PHYCR_FIFO_DEPTH_4_B_NIB>;
 		ti,min-output-impedance;
@@ -564,6 +727,7 @@
 		cdns,tchsh-ns = <60>;
 		cdns,tslch-ns = <60>;
 		cdns,read-delay = <4>;
+		cdns,phy-mode;
 		bootph-all;
 
 		partitions {
@@ -612,6 +776,8 @@
 };
 
 &mailbox0_cluster0 {
+	status = "okay";
+
 	mbox_r5_0: mbox-r5-0 {
 		ti,mbox-rx = <0 0 0>;
 		ti,mbox-tx = <1 0 0>;
@@ -619,15 +785,40 @@
 };
 
 &mailbox0_cluster1 {
+	status = "okay";
+
 	mbox_mcu_r5_0: mbox-mcu-r5-0 {
 		ti,mbox-rx = <0 0 0>;
 		ti,mbox-tx = <1 0 0>;
 	};
 };
 
+&wkup_r5fss0 {
+	status = "okay";
+};
+
+&wkup_r5fss0_core0 {
+	mboxes = <&mailbox0_cluster0 &mbox_r5_0>;
+	memory-region = <&wkup_r5fss0_core0_dma_memory_region>,
+			<&wkup_r5fss0_core0_memory_region>;
+};
+
+&mcu_r5fss0 {
+	status = "okay";
+};
+
+&mcu_r5fss0_core0 {
+	mboxes = <&mailbox0_cluster1 &mbox_mcu_r5_0>;
+	memory-region = <&mcu_r5fss0_core0_dma_memory_region>,
+			<&mcu_r5fss0_core0_memory_region>;
+};
+
 &main_uart0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&main_uart0_pins_default>;
+	interrupts-extended = <&gic500 GIC_SPI 178 IRQ_TYPE_LEVEL_HIGH>,
+			<&main_pmx0 0x1c8>; /* (D14) UART0_RXD PADCONFIG114 */
+	interrupt-names = "irq", "wakeup";
 	status = "okay";
 	bootph-all;
 };
@@ -667,4 +858,56 @@
 
 &mcu_gpio_intr {
 	status = "reserved";
+};
+
+&dss_oldi_io_ctrl {
+	bootph-all;
+};
+
+&dss0 {
+	bootph-all;
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&main_dpi_pins_default>;
+};
+
+&dss0_ports {
+	/* DSS0-VP2: DPI/HDMI Output */
+	hdmi0_dss: port@1 {
+		reg = <1>;
+
+		dss0_dpi1_out: endpoint {
+			remote-endpoint = <&sii9022_in>;
+		};
+	};
+};
+
+&epwm0 {
+	/* Pin 24/26 of J4 */
+	pinctrl-names = "default";
+	pinctrl-0 = <&main_epwm0_pins_default>;
+	status = "okay";
+};
+
+&epwm1 {
+	/* Pin 23/19 of J4 */
+	pinctrl-names = "default";
+	pinctrl-0 = <&main_epwm1_pins_default>;
+	status = "okay";
+};
+
+&ecap1 {
+	/* ECAP1 in APWM mode */
+	/* Pin 36 of J4 */
+	pinctrl-names = "default";
+	pinctrl-0 = <&main_ecap1_pins_default>;
+	status = "okay";
+};
+
+&ecap2 {
+	/* ECAP2 in APWM mode */
+	/* Pin 11 of J4 */
+	pinctrl-names = "default";
+	pinctrl-0 = <&main_ecap2_pins_default>;
+	status = "okay";
 };

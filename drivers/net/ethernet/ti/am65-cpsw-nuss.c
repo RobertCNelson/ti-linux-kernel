@@ -32,6 +32,7 @@
 #include <linux/dma/ti-cppi5.h>
 #include <linux/dma/k3-udma-glue.h>
 #include <net/page_pool/helpers.h>
+#include <net/dsa.h>
 #include <net/switchdev.h>
 
 #include "cpsw_ale.h"
@@ -71,6 +72,8 @@
 #define AM65_CPSW_PORT_REG_RX_PRI_MAP		0x020
 #define AM65_CPSW_PORT_REG_RX_MAXLEN		0x024
 
+#define AM65_CPSW_PORTN_REG_CTL			0x004
+#define AM65_CPSW_PORTN_REG_DSCP_MAP		0x120
 #define AM65_CPSW_PORTN_REG_SA_L		0x308
 #define AM65_CPSW_PORTN_REG_SA_H		0x30c
 #define AM65_CPSW_PORTN_REG_TS_CTL              0x310
@@ -93,6 +96,10 @@
 
 /* AM65_CPSW_PORT_REG_PRI_CTL */
 #define AM65_CPSW_PORT_REG_PRI_CTL_RX_PTYPE_RROBIN	BIT(8)
+
+/* AM65_CPSW_PN_REG_CTL */
+#define AM65_CPSW_PN_REG_CTL_DSCP_IPV4_EN	BIT(1)
+#define AM65_CPSW_PN_REG_CTL_DSCP_IPV6_EN	BIT(2)
 
 /* AM65_CPSW_PN_TS_CTL register fields */
 #define AM65_CPSW_PN_TS_CTL_TX_ANX_F_EN		BIT(4)
@@ -174,6 +181,99 @@ static void am65_cpsw_port_set_sl_mac(struct am65_cpsw_port *slave,
 
 	writel(mac_hi, slave->port_base + AM65_CPSW_PORTN_REG_SA_H);
 	writel(mac_lo, slave->port_base + AM65_CPSW_PORTN_REG_SA_L);
+}
+
+#define AM65_CPSW_DSCP_MAX	GENMASK(5, 0)
+#define AM65_CPSW_PRI_MAX	GENMASK(2, 0)
+#define AM65_CPSW_DSCP_PRI_PER_REG	8
+#define AM65_CPSW_DSCP_PRI_SIZE		4	/* in bits */
+static int am65_cpsw_port_set_dscp_map(struct am65_cpsw_port *slave, u8 dscp, u8 pri)
+{
+	int reg_ofs;
+	int bit_ofs;
+	u32 val;
+
+	if (dscp > AM65_CPSW_DSCP_MAX)
+		return -EINVAL;
+
+	if (pri > AM65_CPSW_PRI_MAX)
+		return -EINVAL;
+
+	/* 32-bit register offset to this dscp */
+	reg_ofs = (dscp / AM65_CPSW_DSCP_PRI_PER_REG) * 4;
+	/* bit field offset to this dscp */
+	bit_ofs = AM65_CPSW_DSCP_PRI_SIZE * (dscp % AM65_CPSW_DSCP_PRI_PER_REG);
+
+	val = readl(slave->port_base + AM65_CPSW_PORTN_REG_DSCP_MAP + reg_ofs);
+	val &= ~(AM65_CPSW_PRI_MAX << bit_ofs);	/* clear */
+	val |= pri << bit_ofs;			/* set */
+	writel(val, slave->port_base + AM65_CPSW_PORTN_REG_DSCP_MAP + reg_ofs);
+
+	return 0;
+}
+
+static void am65_cpsw_port_enable_dscp_map(struct am65_cpsw_port *slave)
+{
+	int dscp, pri;
+	u32 val;
+
+	/* Default DSCP to User Priority mapping as per:
+	 * https://datatracker.ietf.org/doc/html/rfc8325#section-4.3
+	 * and
+	 * https://datatracker.ietf.org/doc/html/rfc8622#section-11
+	 */
+	for (dscp = 0; dscp <= AM65_CPSW_DSCP_MAX; dscp++) {
+		switch (dscp) {
+		case 56:	/* CS7 */
+		case 48:	/* CS6 */
+			pri = 7;
+			break;
+		case 46:	/* EF */
+		case 44:	/* VA */
+			pri = 6;
+			break;
+		case 40:	/* CS5 */
+			pri = 5;
+			break;
+		case 34:	/* AF41 */
+		case 36:	/* AF42 */
+		case 38:	/* AF43 */
+		case 32:	/* CS4 */
+		case 26:	/* AF31 */
+		case 28:	/* AF32 */
+		case 30:	/* AF33 */
+		case 24:	/* CS3 */
+			pri = 4;
+			break;
+		case 18:	/* AF21 */
+		case 20:	/* AF22 */
+		case 22:	/* AF23 */
+			pri = 3;
+			break;
+		case 16:	/* CS2 */
+		case 10:	/* AF11 */
+		case 12:	/* AF12 */
+		case 14:	/* AF13 */
+		case 0:		/* DF */
+			pri = 0;
+			break;
+		case 8:		/* CS1 */
+		case 1:		/* LE */
+			pri = 1;
+			break;
+		default:
+			pri = 0;
+			break;
+		}
+
+		am65_cpsw_port_set_dscp_map(slave, dscp, pri);
+	}
+
+	/* enable port IPV4 and IPV6 DSCP for this port */
+	val = readl(slave->port_base + AM65_CPSW_PORTN_REG_CTL);
+	val |= AM65_CPSW_PN_REG_CTL_DSCP_IPV4_EN |
+		AM65_CPSW_PN_REG_CTL_DSCP_IPV6_EN;
+	writel(val, slave->port_base + AM65_CPSW_PORTN_REG_CTL);
 }
 
 static void am65_cpsw_sl_ctl_reset(struct am65_cpsw_port *port)
@@ -290,7 +390,7 @@ static void am65_cpsw_nuss_ndo_slave_set_rx_mode(struct net_device *ndev)
 	cpsw_ale_set_allmulti(common->ale,
 			      ndev->flags & IFF_ALLMULTI, port->port_id);
 
-	port_mask = ALE_PORT_HOST;
+	port_mask = BIT(port->port_id) | ALE_PORT_HOST;
 	/* Clear all mcast from ALE */
 	cpsw_ale_flush_multicast(common->ale, port_mask, -1);
 
@@ -612,7 +712,7 @@ static struct sk_buff *am65_cpsw_build_skb(void *page_addr,
 {
 	struct sk_buff *skb;
 
-	len += AM65_CPSW_HEADROOM;
+	len += AM65_CPSW_HEADROOM + SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
 
 	skb = build_skb(page_addr, len);
 	if (unlikely(!skb))
@@ -672,7 +772,7 @@ static int am65_cpsw_nuss_common_open(struct am65_cpsw_common *common)
 			     ALE_DEFAULT_THREAD_ID, 0);
 	cpsw_ale_control_set(common->ale, HOST_PORT_NUM,
 			     ALE_DEFAULT_THREAD_ENABLE, 1);
-	/* switch to vlan unaware mode */
+	/* switch to vlan aware mode */
 	cpsw_ale_control_set(common->ale, HOST_PORT_NUM, ALE_VLAN_AWARE, 1);
 	cpsw_ale_control_set(common->ale, HOST_PORT_NUM,
 			     ALE_PORT_STATE, ALE_PORT_STATE_FORWARD);
@@ -853,6 +953,7 @@ static int am65_cpsw_nuss_ndo_slave_stop(struct net_device *ndev)
 
 	phylink_disconnect_phy(port->slave.phylink);
 
+	am65_cpsw_qos_cut_thru_cleanup(port);
 	ret = am65_cpsw_nuss_common_stop(common);
 	if (ret)
 		return ret;
@@ -924,7 +1025,17 @@ static int am65_cpsw_nuss_ndo_slave_open(struct net_device *ndev)
 
 	common->usage_count++;
 
+	/* VLAN aware CPSW mode is incompatible with some DSA tagging schemes.
+	 * Therefore disable VLAN_AWARE mode if any of the ports is a DSA Port.
+	 */
+	if (netdev_uses_dsa(ndev)) {
+		reg = readl(common->cpsw_base + AM65_CPSW_REG_CTL);
+		reg &= ~AM65_CPSW_CTL_VLAN_AWARE;
+		writel(reg, common->cpsw_base + AM65_CPSW_REG_CTL);
+	}
+
 	am65_cpsw_port_set_sl_mac(port, ndev->dev_addr);
+	am65_cpsw_port_enable_dscp_map(port);
 
 	if (common->is_emac_mode)
 		am65_cpsw_init_port_emac_ale(port);
@@ -941,6 +1052,7 @@ static int am65_cpsw_nuss_ndo_slave_open(struct net_device *ndev)
 	/* restore vlan configurations */
 	vlan_for_each(ndev, cpsw_restore_vlans, port);
 
+	am65_cpsw_qos_cut_thru_init(port);
 	phylink_start(port->slave.phylink);
 
 	return 0;
@@ -2162,7 +2274,7 @@ static void am65_cpsw_nuss_mac_link_up(struct phylink_config *config, struct phy
 	/* enable forwarding */
 	cpsw_ale_control_set(common->ale, port->port_id, ALE_PORT_STATE, ALE_PORT_STATE_FORWARD);
 
-	am65_cpsw_qos_link_up(ndev, speed);
+	am65_cpsw_qos_link_up(ndev, speed, duplex);
 	netif_tx_wake_all_queues(ndev);
 }
 
@@ -2194,6 +2306,8 @@ static void am65_cpsw_nuss_free_tx_chns(void *data)
 	for (i = 0; i < common->tx_ch_num; i++) {
 		struct am65_cpsw_tx_chn *tx_chn = &common->tx_chns[i];
 
+		irq_set_affinity_hint(tx_chn->irq, NULL);
+
 		if (!IS_ERR_OR_NULL(tx_chn->desc_pool))
 			k3_cppi_desc_pool_destroy(tx_chn->desc_pool);
 
@@ -2213,8 +2327,10 @@ static void am65_cpsw_nuss_remove_tx_chns(struct am65_cpsw_common *common)
 	for (i = 0; i < common->tx_ch_num; i++) {
 		struct am65_cpsw_tx_chn *tx_chn = &common->tx_chns[i];
 
-		if (tx_chn->irq > 0)
+		if (tx_chn->irq > 0) {
+			irq_set_affinity_hint(tx_chn->irq, NULL);
 			devm_free_irq(dev, tx_chn->irq, tx_chn);
+		}
 
 		netif_napi_del(&tx_chn->napi_tx);
 	}
@@ -2246,6 +2362,7 @@ static int am65_cpsw_nuss_ndev_add_tx_napi(struct am65_cpsw_common *common)
 				tx_chn->id, tx_chn->irq, ret);
 			goto err;
 		}
+		irq_set_affinity_hint(tx_chn->irq, get_cpu_mask(i % num_online_cpus()));
 	}
 
 	return 0;
@@ -2254,6 +2371,7 @@ err:
 	netif_napi_del(&tx_chn->napi_tx);
 	for (--i; i >= 0; i--) {
 		tx_chn = &common->tx_chns[i];
+		irq_set_affinity_hint(tx_chn->irq, NULL);
 		devm_free_irq(dev, tx_chn->irq, tx_chn);
 		netif_napi_del(&tx_chn->napi_tx);
 	}
@@ -2350,8 +2468,14 @@ static void am65_cpsw_nuss_free_rx_chns(void *data)
 {
 	struct am65_cpsw_common *common = data;
 	struct am65_cpsw_rx_chn *rx_chn;
+	struct am65_cpsw_rx_flow *flows;
+	int i;
 
 	rx_chn = &common->rx_chns;
+	flows = rx_chn->flows;
+
+	for (i = 0; i < common->rx_ch_num_flows; i++)
+		irq_set_affinity_hint(flows[i].irq, NULL);
 
 	if (!IS_ERR_OR_NULL(rx_chn->desc_pool))
 		k3_cppi_desc_pool_destroy(rx_chn->desc_pool);
@@ -2371,8 +2495,11 @@ static void am65_cpsw_nuss_remove_rx_chns(struct am65_cpsw_common *common)
 	flows = rx_chn->flows;
 
 	for (i = 0; i < common->rx_ch_num_flows; i++) {
-		if (!(flows[i].irq < 0))
+		if (!(flows[i].irq < 0)) {
+			irq_set_affinity_hint(flows[i].irq, NULL);
 			devm_free_irq(dev, flows[i].irq, &flows[i]);
+		}
+
 		netif_napi_del(&flows[i].napi_rx);
 	}
 
@@ -2502,6 +2629,8 @@ static int am65_cpsw_nuss_init_rx_chns(struct am65_cpsw_common *common)
 			flow->irq = -EINVAL;
 			goto err_request_irq;
 		}
+
+		irq_set_affinity_hint(flow->irq, get_cpu_mask(cpumask_first(cpu_present_mask)));
 	}
 
 	/* setup classifier to route priorities to flows */
@@ -2515,6 +2644,7 @@ err_request_irq:
 err_flow:
 	for (--i; i >= 0; i--) {
 		flow = &rx_chn->flows[i];
+		irq_set_affinity_hint(flow->irq, NULL);
 		devm_free_irq(dev, flow->irq, flow);
 		netif_napi_del(&flow->napi_rx);
 	}
@@ -2693,13 +2823,15 @@ static int am65_cpsw_nuss_init_slave_ports(struct am65_cpsw_common *common)
 			goto of_node_put;
 
 		ret = of_get_mac_address(port_np, port->slave.mac_addr);
-		if (ret) {
+		if (ret == -EPROBE_DEFER) {
+			goto of_node_put;
+		} else if (ret) {
 			am65_cpsw_am654_get_efuse_macid(port_np,
 							port->port_id,
 							port->slave.mac_addr);
 			if (!is_valid_ether_addr(port->slave.mac_addr)) {
 				eth_random_addr(port->slave.mac_addr);
-				dev_err(dev, "Use random MAC address\n");
+				dev_info(dev, "Use random MAC address\n");
 			}
 		}
 
@@ -3234,8 +3366,10 @@ static int am65_cpsw_dl_switch_mode_set(struct devlink *dl, u32 id,
 
 			port = am65_ndev_to_port(sl_ndev);
 			port->slave.port_vlan = 0;
-			if (netif_running(sl_ndev))
+			if (netif_running(sl_ndev)) {
 				am65_cpsw_init_port_emac_ale(port);
+				am65_cpsw_qos_cut_thru_cleanup(port);
+			}
 		}
 	}
 	cpsw_ale_control_set(cpsw->ale, HOST_PORT_NUM, ALE_BYPASS, 0);
@@ -3384,6 +3518,10 @@ static int am65_cpsw_nuss_register_ndevs(struct am65_cpsw_common *common)
 	for (i = 0; i < common->port_num; i++) {
 		port = &common->ports[i];
 
+		ret = am65_cpsw_nuss_register_port_debugfs(port);
+		if (ret)
+			goto err_cleanup_ndev;
+
 		if (!port->ndev)
 			continue;
 
@@ -3468,7 +3606,7 @@ static const struct am65_cpsw_pdata j721e_pdata = {
 };
 
 static const struct am65_cpsw_pdata am64x_cpswxg_pdata = {
-	.quirks = AM64_CPSW_QUIRK_DMA_RX_TDOWN_IRQ,
+	.quirks = AM64_CPSW_QUIRK_DMA_RX_TDOWN_IRQ | AM64_CPSW_QUIRK_CUT_THRU,
 	.ale_dev_id = "am64-cpswxg",
 	.fdqring_mode = K3_RINGACC_RING_MODE_RING,
 };
@@ -3477,7 +3615,8 @@ static const struct am65_cpsw_pdata j7200_cpswxg_pdata = {
 	.quirks = 0,
 	.ale_dev_id = "am64-cpswxg",
 	.fdqring_mode = K3_RINGACC_RING_MODE_RING,
-	.extra_modes = BIT(PHY_INTERFACE_MODE_QSGMII) | BIT(PHY_INTERFACE_MODE_SGMII),
+	.extra_modes = BIT(PHY_INTERFACE_MODE_QSGMII) | BIT(PHY_INTERFACE_MODE_SGMII) |
+		       BIT(PHY_INTERFACE_MODE_USXGMII),
 };
 
 static const struct am65_cpsw_pdata j721e_cpswxg_pdata = {
@@ -3586,6 +3725,16 @@ static int am65_cpsw_nuss_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	am65_cpsw_nuss_get_ver(common);
+
+	ret = am65_cpsw_nuss_init_host_p(common);
+	if (ret)
+		goto err_pm_clear;
+
+	ret = am65_cpsw_nuss_init_slave_ports(common);
+	if (ret)
+		goto err_pm_clear;
+
 	node = of_get_child_by_name(dev->of_node, "mdio");
 	if (!node) {
 		dev_warn(dev, "MDIO node not found\n");
@@ -3601,16 +3750,6 @@ static int am65_cpsw_nuss_probe(struct platform_device *pdev)
 		common->mdio_dev =  &mdio_pdev->dev;
 	}
 	of_node_put(node);
-
-	am65_cpsw_nuss_get_ver(common);
-
-	ret = am65_cpsw_nuss_init_host_p(common);
-	if (ret)
-		goto err_of_clear;
-
-	ret = am65_cpsw_nuss_init_slave_ports(common);
-	if (ret)
-		goto err_of_clear;
 
 	/* init common data */
 	ale_params.dev = dev;
@@ -3647,9 +3786,15 @@ static int am65_cpsw_nuss_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_ndevs_clear;
 
-	ret = am65_cpsw_nuss_register_ndevs(common);
+	ret = am65_cpsw_nuss_register_debugfs(common);
 	if (ret)
 		goto err_ndevs_clear;
+
+	ret = am65_cpsw_nuss_register_ndevs(common);
+	if (ret) {
+		am65_cpsw_nuss_unregister_debugfs(common);
+		goto err_ndevs_clear;
+	}
 
 	pm_runtime_put(dev);
 	return 0;

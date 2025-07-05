@@ -62,6 +62,9 @@ enum dispc_dss_subrevision {
 	DISPC_K2G,
 	DISPC_AM625,
 	DISPC_AM62A7,
+	DISPC_AM62P51,
+	DISPC_AM62P52,
+	DISPC_AM62L,
 	DISPC_AM65X,
 	DISPC_J721E,
 };
@@ -80,7 +83,7 @@ struct dispc_features {
 	const char *vp_name[TIDSS_MAX_PORTS]; /* Should match dt reg names */
 	const char *ovr_name[TIDSS_MAX_PORTS]; /* Should match dt reg names */
 	const char *vpclk_name[TIDSS_MAX_PORTS]; /* Should match dt clk names */
-	const enum dispc_vp_bus_type vp_bus_type[TIDSS_MAX_PORTS];
+	enum dispc_vp_bus_type vp_bus_type[TIDSS_MAX_PORTS];
 	struct tidss_vp_feat vp_feat;
 	u32 num_planes;
 	const char *vid_name[TIDSS_MAX_PLANES]; /* Should match dt reg names */
@@ -91,8 +94,15 @@ struct dispc_features {
 extern const struct dispc_features dispc_k2g_feats;
 extern const struct dispc_features dispc_am625_feats;
 extern const struct dispc_features dispc_am62a7_feats;
+extern const struct dispc_features dispc_am62l_feats;
+extern const struct dispc_features dispc_am62p51_feats;
+extern const struct dispc_features dispc_am62p52_feats;
 extern const struct dispc_features dispc_am65x_feats;
 extern const struct dispc_features dispc_j721e_feats;
+
+void tidss_configure_oldi(struct tidss_device *tidss, u32 hw_videoport,
+			  u32 oldi_cfg);
+unsigned int dispc_pclk_diff(unsigned long rate, unsigned long real_rate);
 
 void dispc_set_irqenable(struct dispc_device *dispc, dispc_irq_t mask);
 dispc_irq_t dispc_read_and_clear_irqstatus(struct dispc_device *dispc);
@@ -136,5 +146,7 @@ const u32 *dispc_plane_formats(struct dispc_device *dispc, unsigned int *len);
 
 int dispc_init(struct tidss_device *tidss);
 void dispc_remove(struct tidss_device *tidss);
+
+void dispc_splash_fini(struct dispc_device *dispc);
 
 #endif

@@ -25,6 +25,14 @@
 		#size-cells = <2>;
 		ranges;
 
+		 /* global cma region */
+		linux,cma {
+			compatible = "shared-dma-pool";
+			reusable;
+			size = <0x00 0x38000000>;
+			linux,cma-default;
+		};
+
 		secure_ddr: optee@9e800000 {
 			reg = <0x00 0x9e800000 0x00 0x01800000>;
 			alignment = <0x1000>;
@@ -152,6 +160,30 @@
 		#phy-cells = <0>;
 		max-bitrate = <5000000>;
 	};
+
+	vsys_io_1v8: regulator-vsys-io-1v8 {
+		compatible = "regulator-fixed";
+		regulator-name = "vsys_io_1v8";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+
+	vsys_io_1v2: regulator-vsys-io-1v2 {
+		compatible = "regulator-fixed";
+		regulator-name = "vsys_io_1v2";
+		regulator-min-microvolt = <1200000>;
+		regulator-max-microvolt = <1200000>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+
+	edp1_refclk: clock-edp1-refclk {
+		#clock-cells = <0>;
+		compatible = "fixed-clock";
+		clock-frequency = <19200000>;
+	};
 };
 
 &wkup_pmx0 {
@@ -168,8 +200,8 @@
 			J721S2_WKUP_IOPAD(0x024, PIN_INPUT, 0) /* (F19) MCU_OSPI0_D6 */
 			J721S2_WKUP_IOPAD(0x028, PIN_INPUT, 0) /* (F20) MCU_OSPI0_D7 */
 			J721S2_WKUP_IOPAD(0x008, PIN_INPUT, 0) /* (E18) MCU_OSPI0_DQS */
-			J721S2_WKUP_IOPAD(0x004, PIN_INPUT, 0) /* (E20) MCU_OSPI0_LBCLKO */
 		>;
+		bootph-all;
 	};
 };
 
@@ -180,6 +212,13 @@
 			J721S2_WKUP_IOPAD(0x028, PIN_INPUT, 7)
 		>;
 	};
+
+	mcu_fss0_ospi0_1_pins_default: mcu-fss0-ospi0_1_default-pins {
+		pinctrl-single,pins = <
+			J721S2_WKUP_IOPAD(0x004, PIN_OUTPUT, 6) /* (B19) MCU_OSPI0_ECC_FAIL */
+			J721S2_WKUP_IOPAD(0x000, PIN_OUTPUT, 6) /* (B20) MCU_OSPI0_RESET_OUT0 */
+		>;
+	};
 };
 
 &wkup_pmx2 {
@@ -188,6 +227,7 @@
 			J721S2_WKUP_IOPAD(0x98, PIN_INPUT, 0) /* (H24) WKUP_I2C0_SCL */
 			J721S2_WKUP_IOPAD(0x9c, PIN_INPUT, 0) /* (H27) WKUP_I2C0_SDA */
 		>;
+		bootph-pre-ram;
 	};
 };
 
@@ -432,10 +472,66 @@
 &ospi0 {
 	status = "okay";
 	pinctrl-names = "default";
-	pinctrl-0 = <&mcu_fss0_ospi0_pins_default>;
+	pinctrl-0 = <&mcu_fss0_ospi0_pins_default>, <&mcu_fss0_ospi0_1_pins_default>;
 
-	flash@0 {
+	ospi0_nor: flash@0 {
 		compatible = "jedec,spi-nor";
+		reg = <0x0>;
+		spi-tx-bus-width = <8>;
+		spi-rx-bus-width = <8>;
+		spi-max-frequency = <25000000>;
+		bootph-all;
+		cdns,tshsl-ns = <60>;
+		cdns,tsd2d-ns = <60>;
+		cdns,tchsh-ns = <60>;
+		cdns,tslch-ns = <60>;
+		cdns,read-delay = <4>;
+		cdns,phy-mode;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "ospi.tiboot3";
+				reg = <0x0 0x80000>;
+			};
+
+			partition@80000 {
+				label = "ospi.tispl";
+				reg = <0x80000 0x200000>;
+			};
+
+			partition@280000 {
+				label = "ospi.u-boot";
+				reg = <0x280000 0x400000>;
+			};
+
+			partition@680000 {
+				label = "ospi.env";
+				reg = <0x680000 0x40000>;
+			};
+
+			partition@6c0000 {
+				label = "ospi.env.backup";
+				reg = <0x6c0000 0x40000>;
+			};
+
+			partition@800000 {
+				label = "ospi.rootfs";
+				reg = <0x800000 0x37c0000>;
+			};
+
+			partition@3fc0000 {
+				label = "ospi.phypattern";
+				reg = <0x3fc0000 0x40000>;
+			};
+		};
+	};
+
+	ospi0_nand: nand@0 {
+		compatible = "spi-nand";
 		reg = <0x0>;
 		spi-tx-bus-width = <8>;
 		spi-rx-bus-width = <8>;
@@ -444,7 +540,52 @@
 		cdns,tsd2d-ns = <60>;
 		cdns,tchsh-ns = <60>;
 		cdns,tslch-ns = <60>;
-		cdns,read-delay = <4>;
+		cdns,read-delay = <2>;
+		cdns,phy-mode;
+		status = "disabled";
+		bootph-all;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "ospi_nand.tiboot3";
+				reg = <0x0 0x80000>;
+			};
+
+			partition@80000 {
+				label = "ospi_nand.tispl";
+				reg = <0x80000 0x200000>;
+			};
+
+			partition@280000 {
+				label = "ospi_nand.u-boot";
+				reg = <0x280000 0x400000>;
+			};
+
+			partition@680000 {
+				label = "ospi_nand.env";
+				reg = <0x680000 0x40000>;
+			};
+
+			partition@6c0000 {
+				label = "ospi_nand.env.backup";
+				reg = <0x6c0000 0x40000>;
+			};
+
+			partition@2000000 {
+				label = "ospi_nand.rootfs";
+				reg = <0x2000000 0x5fc0000>;
+			};
+
+			partition@7fc0000 {
+				bootph-all;
+				label = "ospi_nand.phypattern";
+				reg = <0x7fc0000 0x40000>;
+			};
+		};
 	};
 };
 
@@ -585,4 +726,32 @@
 	mboxes = <&mailbox0_cluster4 &mbox_c71_1>;
 	memory-region = <&c71_1_dma_memory_region>,
 			<&c71_1_memory_region>;
+};
+
+&main_i2c4 {
+	dsi_edp_bridge: dsi-edp-bridge@2c {
+		compatible = "ti,sn65dsi86";
+		reg = <0x2c>;
+
+		clock-names = "refclk";
+		clocks = <&edp1_refclk>;
+
+		enable-gpios = <&exp_som 5 0>;
+
+		vpll-supply = <&vsys_io_1v8>;
+		vccio-supply = <&vsys_io_1v8>;
+		vcca-supply = <&vsys_io_1v2>;
+		vcc-supply = <&vsys_io_1v2>;
+
+		dsi_edp_bridge_ports: ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			port@0 {
+				reg = <0>;
+			};
+			port@1 {
+				reg = <1>;
+			};
+		};
+	};
 };

@@ -12,16 +12,23 @@
 #include <dt-bindings/net/ti-dp83867.h>
 #include "k3-am62a7.dtsi"
 
+#include "k3-timesync-router.h"
+
 / {
 	compatible = "ti,am62a7-sk", "ti,am62a7";
 	model = "Texas Instruments AM62A7 SK";
 
 	aliases {
 		serial0 = &wkup_uart0;
+		serial1 = &mcu_uart0;
 		serial2 = &main_uart0;
 		serial3 = &main_uart1;
 		mmc0 = &sdhci0;
 		mmc1 = &sdhci1;
+		rtc0 = &wkup_rtc0;
+		rtc1 = &tps659312;
+		ethernet0 = &cpsw_port1;
+		spi0 = &ospi0;
 	};
 
 	chosen {
@@ -49,6 +56,42 @@
 			linux,cma-default;
 		};
 
+		c7x_0_dma_memory_region: c7x-dma-memory@99800000 {
+			compatible = "shared-dma-pool";
+			reg = <0x00 0x99800000 0x00 0x100000>;
+			no-map;
+		};
+
+		c7x_0_memory_region: c7x-memory@99900000 {
+			compatible = "shared-dma-pool";
+			reg = <0x00 0x99900000 0x00 0xf00000>;
+			no-map;
+		};
+
+		mcu_r5fss0_core0_dma_memory_region: r5f-dma-memory@9b800000 {
+			compatible = "shared-dma-pool";
+			reg = <0x00 0x9b800000 0x00 0x100000>;
+			no-map;
+		};
+
+		mcu_r5fss0_core0_memory_region: r5f-dma-memory@9b900000 {
+			compatible = "shared-dma-pool";
+			reg = <0x00 0x9b900000 0x00 0xf00000>;
+			no-map;
+		};
+
+		wkup_r5fss0_core0_dma_memory_region: r5f-dma-memory@9c800000 {
+			compatible = "shared-dma-pool";
+			reg = <0x00 0x9c800000 0x00 0x100000>;
+			no-map;
+		};
+
+		wkup_r5fss0_core0_memory_region: r5f-dma-memory@9c900000 {
+			compatible = "shared-dma-pool";
+			reg = <0x00 0x9c900000 0x00 0x1e00000>;
+			no-map;
+		};
+
 		secure_tfa_ddr: tfa@9e780000 {
 			reg = <0x00 0x9e780000 0x00 0x80000>;
 			alignment = <0x1000>;
@@ -61,10 +104,19 @@
 			no-map;
 		};
 
-		wkup_r5fss0_core0_memory_region: r5f-dma-memory@9c900000 {
+		rtos_ipc_memory_region: ipc-memories@a0000000 {
 			compatible = "shared-dma-pool";
-			reg = <0x00 0x9c900000 0x00 0x01e00000>;
+			reg = <0x00 0xa0000000 0x00 0x01000000>;
 			no-map;
+		};
+	};
+
+	opp-table {
+		/* Requires VDD_CORE at 0v85 */
+		opp-1400000000 {
+			opp-hz = /bits/ 64 <1400000000>;
+			opp-supported-hw = <0x01 0x0004>;
+			clock-latency-ns = <6000000>;
 		};
 	};
 
@@ -288,6 +340,7 @@
 	};
 
 	main_mmc0_pins_default: main-mmc0-default-pins {
+		bootph-all;
 		pinctrl-single,pins = <
 			AM62AX_IOPAD(0x220, PIN_INPUT, 0) /* (Y3) MMC0_CMD */
 			AM62AX_IOPAD(0x218, PIN_INPUT, 0) /* (AB1) MMC0_CLKLB */
@@ -369,6 +422,23 @@
 	vddshv_sdio_pins_default: vddshv-sdio-default-pins {
 		pinctrl-single,pins = <
 			AM62AX_IOPAD(0x07c, PIN_OUTPUT, 7) /* (M19) GPMC0_CLK.GPIO0_31 */
+		>;
+	};
+
+	ospi0_pins_default: ospi0-default-pins {
+		bootph-all;
+		pinctrl-single,pins = <
+			AM62AX_IOPAD(0x0000, PIN_OUTPUT, 0) /* (L22) OSPI0_CLK */
+			AM62AX_IOPAD(0x002c, PIN_OUTPUT, 0) /* (H21) OSPI0_CSn0 */
+			AM62AX_IOPAD(0x000c, PIN_INPUT, 0) /* (J21) OSPI0_D0 */
+			AM62AX_IOPAD(0x0010, PIN_INPUT, 0) /* (J18) OSPI0_D1 */
+			AM62AX_IOPAD(0x0014, PIN_INPUT, 0) /* (J19) OSPI0_D2 */
+			AM62AX_IOPAD(0x0018, PIN_INPUT, 0) /* (H18) OSPI0_D3 */
+			AM62AX_IOPAD(0x001c, PIN_INPUT, 0) /* (K21) OSPI0_D4 */
+			AM62AX_IOPAD(0x0020, PIN_INPUT, 0) /* (H19) OSPI0_D5 */
+			AM62AX_IOPAD(0x0024, PIN_INPUT, 0) /* (J20) OSPI0_D6 */
+			AM62AX_IOPAD(0x0028, PIN_INPUT, 0) /* (J22) OSPI0_D7 */
+			AM62AX_IOPAD(0x0008, PIN_INPUT, 0) /* (L21) OSPI0_DQS */
 		>;
 	};
 };
@@ -598,6 +668,7 @@
 
 &sdhci0 {
 	/* eMMC */
+	bootph-all;
 	status = "okay";
 	non-removable;
 	pinctrl-names = "default";
@@ -631,12 +702,20 @@
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&main_uart0_pins_default>;
+	interrupts-extended = <&gic500 GIC_SPI 178 IRQ_TYPE_LEVEL_HIGH>,
+			<&main_pmx0 0x1c8>; /* (D14) UART0_RXD PADCONFIG114 */
+	interrupt-names = "irq", "wakeup";
 };
 
 /* Main UART1 is used for TIFS firmware logs */
 &main_uart1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&main_uart1_pins_default>;
+	status = "reserved";
+};
+
+/* main_timer2 is used by C7x DSP */
+&main_timer2 {
 	status = "reserved";
 };
 
@@ -669,6 +748,11 @@
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&main_rgmii1_pins_default>;
+
+	cpts@3d000 {
+		/* MAP HW3_TS_PUSH to GENF1 */
+		ti,pps = <2 1>;
+	};
 };
 
 &cpsw_port1 {
@@ -691,6 +775,74 @@
 		ti,rx-internal-delay = <DP83867_RGMIIDCTL_2_00_NS>;
 		ti,fifo-depth = <DP83867_PHYCR_FIFO_DEPTH_4_B_NIB>;
 		ti,min-output-impedance;
+	};
+};
+
+&fss {
+	status = "okay";
+};
+
+&ospi0 {
+	bootph-all;
+	pinctrl-names = "default";
+	pinctrl-0 = <&ospi0_pins_default>;
+
+	flash@0{
+		compatible = "spi-nand";
+		reg = <0x0>;
+		spi-tx-bus-width = <8>;
+		spi-rx-bus-width = <8>;
+		spi-max-frequency = <25000000>;
+		cdns,tshsl-ns = <60>;
+		cdns,tsd2d-ns = <60>;
+		cdns,tchsh-ns = <60>;
+		cdns,tslch-ns = <60>;
+		cdns,read-delay = <2>;
+		cdns,phy-mode;
+		bootph-all;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+			bootph-all;
+
+			partition@0 {
+				label = "ospi_nand.tiboot3";
+				reg = <0x0 0x80000>;
+			};
+
+			partition@80000 {
+				label = "ospi_nand.tispl";
+				reg = <0x80000 0x200000>;
+			};
+
+			partition@280000 {
+				label = "ospi_nand.u-boot";
+				reg = <0x280000 0x400000>;
+			};
+
+			partition@680000 {
+				label = "ospi_nand.env";
+				reg = <0x680000 0x40000>;
+			};
+
+			partition@6c0000 {
+				label = "ospi_nand.env.backup";
+				reg = <0x6c0000 0x40000>;
+			};
+
+			partition@2000000 {
+				label = "ospi_nand.rootfs";
+				reg = <0x2000000 0x5fc0000>;
+			};
+
+			partition@7fc0000 {
+				label = "ospi_nand.phypattern";
+				reg = <0x7fc0000 0x40000>;
+				bootph-all;
+			};
+		};
 	};
 };
 
@@ -720,11 +872,73 @@
 
 &dss_ports {
 	/* VP2: DPI Output */
-	port@1 {
+	hdmi0_dss: port@1 {
 		reg = <1>;
 
 		dpi1_out: endpoint {
 			remote-endpoint = <&sii9022_in>;
 		};
 	};
+};
+
+&mailbox0_cluster0 {
+	mbox_r5_0: mbox-r5-0 {
+		ti,mbox-rx = <0 0 0>;
+		ti,mbox-tx = <1 0 0>;
+	};
+};
+
+&mailbox0_cluster1 {
+	mbox_c7x_0: mbox-c7x-0 {
+		ti,mbox-rx = <0 0 0>;
+		ti,mbox-tx = <1 0 0>;
+	};
+};
+
+&mailbox0_cluster2 {
+	mbox_mcu_r5_0: mbox-mcu-r5-0 {
+		ti,mbox-rx = <0 0 0>;
+		ti,mbox-tx = <1 0 0>;
+	};
+};
+
+&wkup_r5fss0 {
+	status = "okay";
+};
+
+&wkup_r5fss0_core0 {
+	mboxes = <&mailbox0_cluster0>, <&mbox_r5_0>;
+	memory-region = <&wkup_r5fss0_core0_dma_memory_region>,
+			<&wkup_r5fss0_core0_memory_region>;
+};
+
+&mcu_r5fss0 {
+	status = "okay";
+};
+
+&mcu_r5fss0_core0 {
+	mboxes = <&mailbox0_cluster2>, <&mbox_mcu_r5_0>;
+	memory-region = <&mcu_r5fss0_core0_dma_memory_region>,
+			<&mcu_r5fss0_core0_memory_region>;
+};
+
+&c7x_0 {
+	mboxes = <&mailbox0_cluster1>, <&mbox_c7x_0>;
+	memory-region = <&c7x_0_dma_memory_region>,
+			<&c7x_0_memory_region>;
+	status = "okay";
+};
+
+/* main_rti4 is used by C7x DSP */
+&main_rti4 {
+	status = "reserved";
+};
+
+&timesync_router {
+	/* Use Time Sync Router to map GENF1 input to HW3_TS_PUSH output */
+	mux-reg-masks-state = <
+		/* pps [cpsw cpts genf1] in17 -> out12 [cpsw cpts hw3_push] */
+		K3_TS_OFFSET(12, 0x0001ffff, 17)
+		>;
+	status = "okay";
 };
