@@ -136,6 +136,5 @@
 		reg = <0x41>;
 		interrupt-parent = <&exp2>;
 		interrupts = <12 IRQ_TYPE_EDGE_FALLING>;
-		reset-gpios = <&exp2 3 GPIO_ACTIVE_LOW>;
 	};
 };
