@@ -877,6 +877,18 @@
 	};
 };
 
+&mailbox0_cluster0 {
+	ti,mbox-num-fifos = <2>;
+};
+
+&mailbox0_cluster1 {
+	ti,mbox-num-fifos = <2>;
+};
+
+&mailbox0_cluster2 {
+	ti,mbox-num-fifos = <2>;
+};
+
 &ecap0 {
 	/* P26 of J3 */
 	pinctrl-names = "default";
