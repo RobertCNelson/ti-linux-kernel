@@ -3,6 +3,9 @@
 # Makefile for the TI network device drivers.
 #
 
+obj-$(CONFIG_TI_PRUETH) += icssm-prueth.o
+icssm-prueth-y := icssm/icssm_prueth.o icssm/icssm_ethtool.o icssm/icssm_prueth_dos.o
+
 obj-$(CONFIG_TI_CPSW) += cpsw-common.o
 obj-$(CONFIG_TI_DAVINCI_EMAC) += cpsw-common.o
 obj-$(CONFIG_TI_CPSW_SWITCHDEV) += cpsw-common.o
@@ -49,3 +52,5 @@ icssg-y := icssg/icssg_common.o \
 	   icssg/icssg_ethtool.o
 
 obj-$(CONFIG_TI_ICSS_IEP) += icssg/icss_iep.o
+
+obj-$(CONFIG_TI_PRUETH_ECAP) += icssm/icssm_prueth_ecap.o
