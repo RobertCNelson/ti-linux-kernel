@@ -814,7 +814,7 @@ static void ti_csi2rx_dma_callback(void *param)
 	if (list_empty(&dma->submitted)) {
 		if (ti_csi2rx_drain_dma(ctx))
 			dev_warn(ctx->csi->dev,
-				"DMA drain failed on one of the transactions\n");
+				 "DMA drain failed on one of the transactions\n");
 	}
 	spin_unlock_irqrestore(&dma->lock, flags);
 }
