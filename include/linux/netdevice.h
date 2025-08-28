@@ -2179,6 +2179,9 @@ struct net_device {
 	const struct iw_handler_def *wireless_handlers;
 	struct iw_public_data	*wireless_data;
 	const struct ethtool_ops *ethtool_ops;
+#if IS_ENABLED(CONFIG_HSR)
+	const struct lredev_ops *lredev_ops;
+#endif
 #ifdef CONFIG_NET_L3_MASTER_DEV
 	const struct l3mdev_ops	*l3mdev_ops;
 #endif
