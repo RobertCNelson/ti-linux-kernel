@@ -79,6 +79,12 @@
 			no-map;
 			bootph-all;
 		};
+
+		carveout_video: video {
+			compatible = "dma-heap-carveout";
+			reg = <0x00 0xa7000000 0x00 0x29000000>;
+			no-map;
+		};
 	};
 
 	vmain_pd: regulator-0 {
@@ -1242,6 +1248,11 @@
 
 &main_rti3 {
 	assigned-clock-parents = <&k3_clks 128 4>;
+};
+
+&vpu {
+	status = "okay";
+	ti,dma-heap-name = "carveout_video";
 };
 
 #include "k3-j722s-ti-ipc-firmware.dtsi"
