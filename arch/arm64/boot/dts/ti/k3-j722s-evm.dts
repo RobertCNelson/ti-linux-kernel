@@ -126,6 +126,11 @@
 			alignment = <0x1000>;
 			no-map;
 		};
+		carveout_video: video {
+			compatible = "dma-heap-carveout";
+			reg = <0x00 0xa6c00000 0x00 0x29000000>;
+			no-map;
+		};
 	};
 
 	vmain_pd: regulator-0 {
@@ -1224,4 +1229,9 @@
 		K3_TS_OFFSET(12, 0x0001ffff, 17)
 		>;
 	status = "okay";
+};
+
+&vpu {
+	status = "okay";
+	ti,dma-heap-name = "carveout_video";
 };
