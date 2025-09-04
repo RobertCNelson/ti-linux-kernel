@@ -443,6 +443,8 @@
   dev_mc_sync
   dev_mc_sync_multiple
   dev_mc_unsync
+  devm_devfreq_add_device
+  devm_devfreq_remove_device
   devm_device_add_group
   __devm_drm_dev_alloc
   devm_drm_of_get_bridge
@@ -745,6 +747,7 @@
   drm_dev_unregister
   drm_display_info_set_bus_formats
   drm_display_mode_from_videomode
+  drm_display_mode_to_videomode
   drm_edid_connector_add_modes
   drm_edid_connector_update
   drm_edid_free
@@ -1414,10 +1417,14 @@
   memparse
   mempool_alloc_noprof
   mempool_alloc_slab
+  mempool_create_node_noprof
+  mempool_destroy
   mempool_exit
   mempool_free
   mempool_free_slab
   mempool_init_noprof
+  mempool_kfree
+  mempool_kmalloc
   memremap
   memscan
   memset
@@ -1825,6 +1832,7 @@
   pm_generic_resume
   pm_generic_suspend
   pm_generic_suspend_late
+  pm_generic_suspend_noirq
   pm_genpd_init
   pm_power_off
   pm_relax
@@ -2327,6 +2335,7 @@
   sg_alloc_table
   sg_alloc_table_chained
   sg_alloc_table_from_pages_segment
+  sg_copy_to_buffer
   sg_free_table
   sg_free_table_chained
   sg_init_one
