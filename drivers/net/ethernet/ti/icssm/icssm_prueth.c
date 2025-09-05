@@ -2453,8 +2453,10 @@ static int icssm_prueth_netdev_init(struct prueth *prueth,
 	ndev->netdev_ops = &emac_netdev_ops;
 	ndev->ethtool_ops = &emac_ethtool_ops;
 #if IS_ENABLED(CONFIG_HSR)
-	if (fw_data->support_lre)
-		ndev->lredev_ops = &icssm_prueth_lredev_ops;
+	if (fw_data->support_lre) {
+		/* Store lredev_ops in device private data for GKI compatibility */
+		emac->lredev_ops = &icssm_prueth_lredev_ops;
+	}
 #endif
 
 	if (PRUETH_IS_EMAC(prueth))

@@ -132,4 +132,15 @@ int icssm_prueth_lre_nt_insert(struct prueth *prueth,
 
 extern const struct lredev_ops icssm_prueth_lredev_ops;
 
+/* GKI-compatible accessor function for lredev_ops */
+static inline const struct lredev_ops *icssm_prueth_get_lredev_ops(struct net_device *ndev)
+{
+#if IS_ENABLED(CONFIG_HSR)
+	struct prueth_emac *emac = netdev_priv(ndev);
+	return emac->lredev_ops;
+#else
+	return NULL;
+#endif
+}
+
 #endif /* __NET_TI_PRUETH_LRE_H */

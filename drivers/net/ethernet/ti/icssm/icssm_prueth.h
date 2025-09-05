@@ -399,6 +399,10 @@ struct prueth_emac {
 	unsigned char mc_filter_mask[ETH_ALEN];	/* for multicast filtering */
 	phy_interface_t phy_if;
 
+#if IS_ENABLED(CONFIG_HSR)
+	const struct lredev_ops *lredev_ops;  /* LRE operations for GKI compatibility */
+#endif
+
 	/* spin lock used to protect
 	 * during link configuration
 	 */
