@@ -24,6 +24,10 @@
 #define QUEUE_3_SIZE		97	/* Protocol specific */
 #define QUEUE_4_SIZE		97	/* NRT (IP,ARP, ICMP) */
 
+/* HSR PRP TX optimization: Queue Size after Optimization */
+#define QUEUE_3_TXOPT_SIZE	194	/* Protocol specific - High Priority */
+#define QUEUE_4_TXOPT_SIZE	194	/* NRT(IP,ARP, ICMP) - Low Priority*/
+
 /* Host queue size (number of BDs). Each BD points to data buffer of 32 bytes.
  * HOST PORT QUEUES can buffer up to 4 full sized frames per queue
  */
@@ -49,20 +53,23 @@
  *				For RED, NodeTable lookup was successful.
  * 7		Flood		Packet should be flooded (destination MAC
  *				address found in FDB). For switch only.
- * 8..12	Block_length	number of valid bytes in this specific block.
- *				Will be <=32 bytes on last block of packet
- * 13		More		"More" bit indicating that there are more blocks
+ * 8		RED_INFO	indicate whether the packet has redundancy
+ *				tag (HSR/PRP).
+ * 10		HostRecv	indicates whether packet is consumed by host
+ *				or not.
+ * 13		LinkLocal	indicates that Link local packet has HSR tag
+ *				or not.
  * 14		Shadow		indicates that "index" is pointing into shadow
  *				buffer
  * 15		TimeStamp	indicates that this packet has time stamp in
  *				separate buffer - only needed if PTP runs on
  *				host
- * 16..17	Port		different meaning for ingress and egress,
- *				Ingress: Port = 0 indicates phy port 1 and
- *				Port = 1 indicates phy port 2.
- *				Egress: 0 sends on phy port 1 and 1 sends on
- *				phy port 2. Port = 2 goes over MAC table
- *				look-up
+ * 16..17	LAN		This bits are used to indicate firmware
+ *				to send packets on LAN A or LAN B or both
+ *				the LANs, If only 16th bit is set then send
+ *				packet on LAN A. If only 17th bit is set then
+ *				send packet on LAN B, If both 16th and 17th
+ *				are set then send packet on both the LANs
  * 18..28	Length		11 bit of total packet length which is put into
  *				first BD only so that host access only one BD
  * 29		VlanTag		indicates that packet has Length/Type field of
@@ -86,14 +93,25 @@
 #define PRUETH_BD_SW_FLOOD_MASK		BIT(7)
 #define PRUETH_BD_SW_FLOOD_SHIFT	7
 
+#define PRUETH_BD_RED_PKT_MASK	        BIT(8)
+#define PRUETH_BD_RED_PKT		8
+
+/* Added for HSR Rx optimization */
+#define PRUETH_BD_HOST_RECV_MASK	BIT(10)
+#define PRUETH_BD_HOST_RECV_SHIFT	10
+
+#define	PRUETH_LL_HAS_NO_HSRTAG_MASK	BIT(13)
+#define	PRUETH_LL_HAS_NO_HSRTAG_SHIFT	13
+
 #define	PRUETH_BD_SHADOW_MASK		BIT(14)
 #define	PRUETH_BD_SHADOW_SHIFT		14
 
 #define PRUETH_BD_TIMESTAMP_MASK	BIT(15)
 #define PRUETH_BD_TIMESTAMP_SHIFT	15
 
-#define PRUETH_BD_PORT_MASK		GENMASK(17, 16)
-#define PRUETH_BD_PORT_SHIFT		16
+#define PRUETH_BD_LAN_INFO_MASK	GENMASK(17, 16)
+#define PRUETH_BD_LAN_A_SHIFT		16
+#define PRUETH_BD_LAN_B_SHIFT		17
 
 #define PRUETH_BD_LENGTH_MASK		GENMASK(28, 18)
 #define PRUETH_BD_LENGTH_SHIFT		18
@@ -116,6 +134,15 @@
 /* base statistics offset */
 #define STATISTICS_OFFSET	0x1F00
 #define STAT_SIZE		0x98
+
+/* The following offsets indicate which sections of the memory are used
+ * for switch internal tasks
+ */
+#define SWITCH_SPECIFIC_DRAM0_START_SIZE		0x100
+#define SWITCH_SPECIFIC_DRAM0_START_OFFSET		0x1F00
+
+#define SWITCH_SPECIFIC_DRAM1_START_SIZE		0x300
+#define SWITCH_SPECIFIC_DRAM1_START_OFFSET		0x1D00
 
 /* Offset for storing
  * 1. Storm Prevention Params
@@ -145,6 +172,74 @@
 #define STORM_PREVENTION_OFFSET_UC	(STATISTICS_OFFSET + STAT_SIZE + 29)
 /* 4 bytes ? */
 #define STP_INVALID_STATE_OFFSET	(STATISTICS_OFFSET + STAT_SIZE + 33)
+
+/* DRAM1 Offsets for Switch */
+/* 4 queue descriptors for port 0 (host receive) */
+#define P0_QUEUE_DESC_OFFSET		0x1E7C
+#define P1_QUEUE_DESC_OFFSET		0x1E9C
+#define P2_QUEUE_DESC_OFFSET		0x1EBC
+/* collision descriptor of port 0 */
+#define P0_COL_QUEUE_DESC_OFFSET	0x1E64
+#define P1_COL_QUEUE_DESC_OFFSET	0x1E6C
+#define P2_COL_QUEUE_DESC_OFFSET	0x1E74
+/* Collision Status Register
+ *    P0: bit 0 is pending flag, bit 1..2 indicates which queue,
+ *    P1: bit 8 is pending flag, 9..10 is queue number
+ *    P2: bit 16 is pending flag, 17..18 is queue number, remaining bits are 0.
+ */
+#define COLLISION_STATUS_ADDR		0x1E60
+
+#define INTERFACE_MAC_ADDR		0x1E58
+#define P2_MAC_ADDR			0x1E50
+#define P1_MAC_ADDR			0x1E48
+
+#define QUEUE_SIZE_ADDR			0x1E30
+#define QUEUE_OFFSET_ADDR		0x1E18
+#define QUEUE_DESCRIPTOR_OFFSET_ADDR	0x1E00
+
+#define COL_RX_CONTEXT_P2_OFFSET_ADDR	(COL_RX_CONTEXT_P1_OFFSET_ADDR + 12)
+#define COL_RX_CONTEXT_P1_OFFSET_ADDR	(COL_RX_CONTEXT_P0_OFFSET_ADDR + 12)
+#define COL_RX_CONTEXT_P0_OFFSET_ADDR	(P2_Q4_RX_CONTEXT_OFFSET + 8)
+
+/* Port 2 Rx Context */
+#define P2_Q4_RX_CONTEXT_OFFSET		(P2_Q3_RX_CONTEXT_OFFSET + 8)
+#define P2_Q3_RX_CONTEXT_OFFSET		(P2_Q2_RX_CONTEXT_OFFSET + 8)
+#define P2_Q2_RX_CONTEXT_OFFSET		(P2_Q1_RX_CONTEXT_OFFSET + 8)
+#define P2_Q1_RX_CONTEXT_OFFSET		RX_CONTEXT_P2_Q1_OFFSET_ADDR
+#define RX_CONTEXT_P2_Q1_OFFSET_ADDR	(P1_Q4_RX_CONTEXT_OFFSET + 8)
+
+/* Port 1 Rx Context */
+#define P1_Q4_RX_CONTEXT_OFFSET		(P1_Q3_RX_CONTEXT_OFFSET + 8)
+#define P1_Q3_RX_CONTEXT_OFFSET		(P1_Q2_RX_CONTEXT_OFFSET + 8)
+#define P1_Q2_RX_CONTEXT_OFFSET		(P1_Q1_RX_CONTEXT_OFFSET + 8)
+#define P1_Q1_RX_CONTEXT_OFFSET		(RX_CONTEXT_P1_Q1_OFFSET_ADDR)
+#define RX_CONTEXT_P1_Q1_OFFSET_ADDR	(P0_Q4_RX_CONTEXT_OFFSET + 8)
+
+/* Host Port Rx Context */
+#define P0_Q4_RX_CONTEXT_OFFSET		(P0_Q3_RX_CONTEXT_OFFSET + 8)
+#define P0_Q3_RX_CONTEXT_OFFSET		(P0_Q2_RX_CONTEXT_OFFSET + 8)
+#define P0_Q2_RX_CONTEXT_OFFSET		(P0_Q1_RX_CONTEXT_OFFSET + 8)
+#define P0_Q1_RX_CONTEXT_OFFSET		RX_CONTEXT_P0_Q1_OFFSET_ADDR
+#define RX_CONTEXT_P0_Q1_OFFSET_ADDR	(COL_TX_CONTEXT_P2_Q1_OFFSET_ADDR + 8)
+
+/* Port 2 Tx Collision Context */
+#define COL_TX_CONTEXT_P2_Q1_OFFSET_ADDR (COL_TX_CONTEXT_P1_Q1_OFFSET_ADDR + 8)
+/* Port 1 Tx Collision Context */
+#define COL_TX_CONTEXT_P1_Q1_OFFSET_ADDR (P2_Q4_TX_CONTEXT_OFFSET + 8)
+
+/* Port 2 */
+#define P2_Q4_TX_CONTEXT_OFFSET		(P2_Q3_TX_CONTEXT_OFFSET + 8)
+#define P2_Q3_TX_CONTEXT_OFFSET		(P2_Q2_TX_CONTEXT_OFFSET + 8)
+#define P2_Q2_TX_CONTEXT_OFFSET		(P2_Q1_TX_CONTEXT_OFFSET + 8)
+#define P2_Q1_TX_CONTEXT_OFFSET		TX_CONTEXT_P2_Q1_OFFSET_ADDR
+#define TX_CONTEXT_P2_Q1_OFFSET_ADDR	(P1_Q4_TX_CONTEXT_OFFSET + 8)
+
+/* Port 1 */
+#define P1_Q4_TX_CONTEXT_OFFSET		(P1_Q3_TX_CONTEXT_OFFSET + 8)
+#define P1_Q3_TX_CONTEXT_OFFSET		(P1_Q2_TX_CONTEXT_OFFSET + 8)
+#define P1_Q2_TX_CONTEXT_OFFSET		(P1_Q1_TX_CONTEXT_OFFSET + 8)
+#define P1_Q1_TX_CONTEXT_OFFSET		TX_CONTEXT_P1_Q1_OFFSET_ADDR
+#define TX_CONTEXT_P1_Q1_OFFSET_ADDR	SWITCH_SPECIFIC_DRAM1_START_OFFSET
 
 /* Shared RAM Offsets for Switch */
 /* NSP (Network Storm Prevention) timer re-uses NT timer */
@@ -226,6 +321,18 @@
 #define P0_Q4_BD_OFFSET		(P0_Q3_BD_OFFSET + HOST_QUEUE_3_SIZE * BD_SIZE)
 #define P0_Q3_BD_OFFSET		(P0_Q2_BD_OFFSET + HOST_QUEUE_2_SIZE * BD_SIZE)
 #define P0_Q2_BD_OFFSET		(P0_Q1_BD_OFFSET + HOST_QUEUE_1_SIZE * BD_SIZE)
+/*
+ * HSR PRP TX optimization:
+ * We have merged the Q3 and Q4 of both the ports to create larger queues
+ * commonly for both port1 and port2
+ * Host Tx High Priority:
+ *  Port1 Q1 and  Q2 is merged and made as common queue Port1/Port2 Q3
+ * Host Tx Low Priority:
+ *  Port2 Q1 and  Q2 is merged and made as common queue Port1/Port2 Q4
+ */
+#define P1_Q3_TXOPT_BD_OFFSET	(P0_Q4_BD_OFFSET + HOST_QUEUE_4_SIZE * BD_SIZE)
+#define P2_Q1_TXOPT_BD_OFFSET	(P1_Q3_TXOPT_BD_OFFSET +  \
+				 QUEUE_3_TXOPT_SIZE * BD_SIZE)
 #define P0_Q1_BD_OFFSET		P0_BUFFER_DESC_OFFSET
 #define P0_BUFFER_DESC_OFFSET	SRAM_START_OFFSET
 
@@ -256,8 +363,22 @@
 				 ICSS_BLOCK_SIZE)
 #define P0_Q2_BUFFER_OFFSET	(P0_Q1_BUFFER_OFFSET + HOST_QUEUE_1_SIZE * \
 				 ICSS_BLOCK_SIZE)
+/* HSR PRP TX optimization:
+ * We have merged the Q3 and Q4 of both the ports to create larger queues for
+ * both port1 and port2
+ * Host Tx High Priority:
+ * Port1 Q1 and  Q2 is merged and made as common queue Port1/Port2 Q3
+ * Host Tx Low Priority:
+ * Port2 Q1 and  Q2 is merged and made as common queue Port1/Port2 Q4
+ */
+#define P1_Q3_TXOPT_BUFFER_OFFSET	(P0_Q4_BUFFER_OFFSET +	\
+					 HOST_QUEUE_4_SIZE * ICSS_BLOCK_SIZE)
+#define P2_Q1_TXOPT_BUFFER_OFFSET	(P1_Q3_TXOPT_BUFFER_OFFSET +  \
+					 QUEUE_3_TXOPT_SIZE * ICSS_BLOCK_SIZE)
 #define P0_COL_BUFFER_OFFSET	0xEE00
 #define P0_Q1_BUFFER_OFFSET	0x0000
+
+#define ICSS_COMMON_TIMESTAMP_ARRAY_OFFSET          0xC200
 
 /* Below Rx Interrupt pacing defines. */
 /* shared RAM */
@@ -282,4 +403,9 @@
 #define INTR_PAC_TMR_EXP_OFFSET_PRU1                 0x1FBC
 #define INTR_PAC_PREV_TS_RESET_VAL                   0x0
 
+#define V2_1_FDB_TBL_LOC          PRUETH_MEM_SHARED_RAM
+#define V2_1_FDB_TBL_OFFSET       0x2000
+
+#define FDB_INDEX_TBL_MAX_ENTRIES     256
+#define FDB_MAC_TBL_MAX_ENTRIES       256
 #endif /* __ICSS_SWITCH_H */

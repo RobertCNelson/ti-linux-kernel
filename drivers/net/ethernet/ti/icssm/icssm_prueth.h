@@ -13,9 +13,12 @@
 #include <linux/pruss_driver.h>
 #include <linux/remoteproc/pruss.h>
 #include <linux/netdevice.h>
+#include <net/lredev.h>
 
 #include "icssm_switch.h"
 #include "icssm_prueth_ptp.h"
+#include "icssm_prueth_fdb_tbl.h"
+#include "icssm_lre_firmware.h"
 
 /* ICSSM size of redundancy tag */
 #define ICSSM_LRE_TAG_SIZE	6
@@ -31,6 +34,8 @@
 
 /* default timer for NSP and HSR/PRP */
 #define PRUETH_NSP_TIMER_MS	(100) /* Refresh NSP counters every 100ms */
+
+#define PRUETH_TIMER_MS (10)
 
 #define PRUETH_REG_DUMP_VER		1
 
@@ -51,6 +56,12 @@ enum pruss_ethtype {
 
 #define PRUETH_IS_EMAC(p)	((p)->eth_type == PRUSS_ETHTYPE_EMAC)
 #define PRUETH_IS_SWITCH(p)	((p)->eth_type == PRUSS_ETHTYPE_SWITCH)
+#define PRUETH_IS_HSR(p)	((p)->eth_type == PRUSS_ETHTYPE_HSR)
+#define PRUETH_IS_PRP(p)	((p)->eth_type == PRUSS_ETHTYPE_PRP)
+#define PRUETH_IS_LRE(p) ({		\
+	typeof(p) __p = (p);		\
+	PRUETH_IS_HSR(__p) || PRUETH_IS_PRP(__p);	\
+})
 
 /**
  * struct prueth_queue_desc - Queue descriptor
@@ -108,7 +119,13 @@ struct prueth_queue_info {
  */
 struct prueth_packet_info {
 	bool start_offset;
+	/* indicate whether Link local packet has HSR tag or not */
+	bool ll_has_no_hsr_tag;
 	bool shadow;
+	/* HSR RX optimization
+	 * indicates packet has to be consumed for host.
+	 */
+	bool host_recv_flag;
 	unsigned int port;
 	unsigned int length;
 	bool broadcast;
@@ -121,6 +138,30 @@ struct prueth_packet_info {
 
 #define ICSSM_NUM_STANDARD_STATS       18
 #define ICSSM_NUM_STATS      40
+
+/*If 0 and 1 bytes are 0x33 then it is a IPv6 entries*/
+#define IPV6_MAC_IDENTITY_BYTE		0x33
+/*Bit Number mask for entry*/
+#define MAC_FILTER_BIT_NUM_MASK		0x7
+/*Bit Number shift/position for entry*/
+#define MAC_FILTER_BIT_NUM_SHIFT	 5
+/*Map Index mask for creating/removing entry*/
+#define MAC_FILTER_MAP_IDX_MASK		0x1F
+
+/**
+ * @brief xor of 0, 1, 2 byte for MAC address to
+ * identify type of entry for categorization.
+ */
+enum prueth_mc_ether {
+	/**PTPv2 xor of 0,1,2 bytes*/
+	MC_FILTER_TABLE_PTP = 0,
+	/**IEEE802 xor of 0,1,2 bytes*/
+	MC_FILTER_TABLE_IEEE_802 = 4,
+	/**IPv4 xor of 0,1,2 bytes*/
+	MC_FILTER_TABLE_IPv4 = 5,
+	/**IEC_61850_GOOSE xor of 0,1,2 bytes*/
+	MC_FILTER_TABLE_IEC_61850_GOOSE = 12
+};
 
 /**
  * struct port_statistics - Statistics structure for capturing statistics
@@ -343,11 +384,15 @@ enum pruss_device {
  * @driver_data: PRU Ethernet device name
  * @fw_pru: firmware names to be used for PRUSS ethernet usecases
  * @fw_rev: Firmware revision identifier
+ * @support_switch: boolean to indicate if switch is enabled
+ * @support_lre: boolean to indicate if lre is enabled
  */
 struct prueth_private_data {
 	enum pruss_device driver_data;
 	const struct prueth_firmware fw_pru[PRUSS_NUM_PRUS];
 	enum fw_revision fw_rev;
+	bool support_switch;
+	bool support_lre;
 };
 
 struct nsp_counter {
@@ -365,8 +410,14 @@ struct prueth_emac {
 	struct phy_device *phydev;
 	struct prueth_queue_desc __iomem *rx_queue_descs;
 	struct prueth_queue_desc __iomem *tx_queue_descs;
+	/*
+	 * HSR/PRP TX optimization:
+	 * Because we need to write the packet in to both the port queues
+	 */
+	struct prueth_queue_desc __iomem *tx_queue_descs_other_port;
 	struct port_statistics stats; /* stats holder when i/f is down */
 	u32 emac_stats[ICSSM_NUM_STATS];
+	u32 lre_stats[ICSS_LRE_NUM_STATS];
 
 	int link;
 	int speed;
@@ -396,12 +447,26 @@ struct prueth_emac {
 	bool nsp_enabled;
 
 	struct sk_buff *ptp_skb[PRUETH_PTP_TS_EVENTS];
+	struct sk_buff *ptp_ct_skb[PRUETH_PTP_TS_EVENTS];
 	spinlock_t ptp_skb_lock; /* spin lock used to protect PTP */
 	int emac_ptp_tx_irq;
+	int hsr_ptp_tx_irq;
 	bool ptp_tx_enable;
 	bool ptp_rx_enable;
+	/* HSR PRP Tx Optimization:
+	 * raw spin lock for locking and unlocking
+	 * Host Tx Queues for EMAC and RSTP Protocols
+	 */
+	raw_spinlock_t host_queue_lock[NUM_QUEUES];
 
 	struct hrtimer tx_hrtimer;
+	int offload_fwd_mark;
+
+};
+
+struct prueth_ndev_priority {
+	struct net_device *ndev;
+	int priority;
 };
 
 struct prueth {
@@ -420,13 +485,54 @@ struct prueth {
 	struct device_node *eth_node[PRUETH_NUM_MACS];
 	struct prueth_emac *emac[PRUETH_NUM_MACS];
 	struct net_device *registered_netdevs[PRUETH_NUM_MACS];
+	struct prueth_ndev_priority *hp, *lp;
+	/* NAPI for lp and hp queue scans */
+	struct napi_struct napi_lpq;
+	struct napi_struct napi_hpq;
+	int rx_lpq_irq;
+	int rx_hpq_irq;
+
+	bool support_lre;
+	struct hrtimer tbl_check_timer;
+	unsigned int hsr_mode;
+	unsigned int tbl_check_period;
+	unsigned int node_table_clear;
+	unsigned int node_table_clear_last_cmd;
+	unsigned int tbl_check_mask;
+	enum iec62439_3_tr_modes prp_tr_mode;
+	struct node_tbl *nt;
+	struct nt_queue_t *mac_queue;
+	struct kthread_worker *nt_kworker;
+	struct kthread_work nt_work;
+	u32 rem_cnt;
+	/* lock between kthread worker and rx packet processing code */
+	spinlock_t nt_lock;
+	struct lre_statistics *lre_stats;
+
+	struct net_device *hw_bridge_dev;
+	struct fdb_tbl *fdb_tbl;
+
+	struct notifier_block prueth_netdevice_nb;
+	struct notifier_block prueth_switchdev_nb;
+	struct notifier_block prueth_switchdev_bl_nb;
 
 	unsigned int eth_type;
 	size_t ocmc_ram_size;
 	struct mutex mlock; /* serialize access */
 	u8 emac_configured;
+	u8 br_members;
 	u8 base_mac[ETH_ALEN];
+
+	/* HSR PRP Tx Optimization:
+	 * raw spin lock for locking and unlocking
+	 * Host Tx Queues for HSR and PRP Protocols
+	 */
+	raw_spinlock_t lre_host_queue_lock[NUM_QUEUES / 2];
 };
+
+extern const struct prueth_queue_desc queue_descs[][NUM_QUEUES];
+/* HSR PRP Tx Optimization: Queue descriptors for HSR PRP */
+extern const struct prueth_queue_desc hsr_prp_txopt_queue_descs[][NUM_QUEUES];
 
 extern const struct ethtool_ops emac_ethtool_ops;
 
@@ -443,12 +549,20 @@ int icssm_emac_add_del_vid(struct prueth_emac *emac,
 irqreturn_t icssm_prueth_ptp_tx_irq_handle(int irq, void *dev);
 irqreturn_t icssm_prueth_ptp_tx_irq_work(int irq, void *dev);
 
+int icssm_prueth_lre_napi_poll_lpq(struct napi_struct *napi, int budget);
+int icssm_prueth_lre_napi_poll_hpq(struct napi_struct *napi, int budget);
+
+int icssm_prueth_common_request_irqs(struct prueth_emac *emac);
+void icssm_prueth_common_free_irqs(struct prueth_emac *emac);
+
 u64 icssm_iep_get_timestamp_cycles(struct icss_iep *iep,
 				   void __iomem *mem);
 
 void icssm_emac_mc_filter_bin_allow(struct prueth_emac *emac, u8 hash);
 void icssm_emac_mc_filter_bin_disallow(struct prueth_emac *emac, u8 hash);
 u8 icssm_emac_get_mc_hash(u8 *mac, u8 *mask);
+void icssm_emac_mc_filter_enhanced(struct prueth_emac *emac,
+				   struct netdev_hw_addr *ha);
 
 void icssm_emac_update_hardware_stats(struct prueth_emac *emac);
 void icssm_emac_set_stats(struct prueth_emac *emac,
