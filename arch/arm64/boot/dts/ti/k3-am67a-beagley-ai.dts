@@ -742,3 +742,14 @@
 	tx-num-evt = <32>;
 	rx-num-evt = <32>;
 };
+
+&usbss0 {
+	status = "okay";
+	ti,vbus-divider;
+};
+
+&usb0 {
+	status = "okay";
+	dr_mode = "otg";
+	usb-role-switch;
+};
