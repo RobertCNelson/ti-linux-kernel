@@ -10,6 +10,7 @@
 
 #include <dt-bindings/leds/common.h>
 #include <dt-bindings/net/ti-dp83867.h>
+#include <dt-bindings/phy/phy.h>
 #include "k3-j722s.dtsi"
 
 / {
@@ -303,6 +304,12 @@
 		>;
 	};
 
+	main_usb1_pins_default: main-usb1-default-pins {
+		pinctrl-single,pins = <
+			J722S_IOPAD(0x0258, PIN_INPUT, 0) /* (B27) USB1_DRVVBUS */
+		>;
+	};
+
 	main_mcasp1_pins_default: main-mcasp1-default-pins {
 		pinctrl-single,pins = <
 			J722S_IOPAD(0x0090, PIN_INPUT, 2) /* (P27) GPMC0_BE0n_CLE.MCASP1_ACLKX */
@@ -575,6 +582,17 @@
 	};
 };
 
+&serdes0 {
+	status = "okay";
+	serdes0_usb_link: phy@0 {
+		reg = <0>;
+		cdns,num-lanes = <1>;
+		#phy-cells = <0>;
+		cdns,phy-type = <PHY_TYPE_USB3>;
+		resets = <&serdes_wiz0 1>;
+	};
+};
+
 &mcasp1 {
 	status = "okay";
 	#sound-dai-cells = <0>;
@@ -602,6 +620,21 @@
 	status = "okay";
 	dr_mode = "otg";
 	usb-role-switch;
+};
+
+&usbss1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&main_usb1_pins_default>;
+	status = "okay";
+	ti,vbus-divider;
+};
+
+&usb1 {
+	status = "okay";
+	dr_mode = "host";
+	maximum-speed = "super-speed";
+	phys = <&serdes0_usb_link>;
+	phy-names = "cdns3,usb3-phy";
 };
 
 #include "k3-j722s-ti-ipc-firmware.dtsi"
