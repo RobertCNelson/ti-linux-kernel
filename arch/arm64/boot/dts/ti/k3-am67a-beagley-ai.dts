@@ -11,6 +11,7 @@
 #include <dt-bindings/leds/common.h>
 #include <dt-bindings/net/ti-dp83867.h>
 #include <dt-bindings/phy/phy.h>
+#include "k3-serdes.h"
 #include "k3-j722s.dtsi"
 
 / {
@@ -182,6 +183,20 @@
 		regulator-max-microvolt = <1200000>;
 		regulator-always-on;
 		regulator-boot-on;
+	};
+
+	wlan_en: regulator-7 {
+		compatible = "regulator-fixed";
+		regulator-name = "wlan_en";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		enable-active-high;
+		/* regulator-always-on; */
+		regulator-off-in-suspend;
+		vin-supply = <&vdd_3v3>;
+		gpio = <&main_gpio0 4 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&wifi_en_pins_default>;
 	};
 
 	leds {
@@ -371,6 +386,30 @@
 			J722S_IOPAD(0x008c, PIN_INPUT, 2) /* (N23) GPMC0_WEn.MCASP1_AXR0 */
 		>;
 	};
+
+	wifi_pins_default: wifi-default-pins {
+		pinctrl-single,pins = <
+			J722S_IOPAD(0x0120, PIN_INPUT, 0) /* (F27) MMC2_CMD */
+			J722S_IOPAD(0x0118, PIN_OUTPUT, 0) /* (H26) MMC2_CLK */
+			J722S_IOPAD(0x011C, PIN_INPUT, 0) /* () MMC2_CLKLB */
+			J722S_IOPAD(0x0114, PIN_INPUT, 0) /* (G26) MMC2_DAT0 */
+			J722S_IOPAD(0x0110, PIN_INPUT_PULLUP, 0) /* (G27) MMC2_DAT1 */
+			J722S_IOPAD(0x010c, PIN_INPUT_PULLUP, 0) /* (H27) MMC2_DAT2 */
+			J722S_IOPAD(0x0108, PIN_INPUT_PULLUP, 0) /* (J27) MMC2_DAT3 */
+		>;
+	};
+
+	wifi_en_pins_default: wifi-en-default-pins {
+		pinctrl-single,pins = <
+			J722S_IOPAD(0x0010, PIN_OUTPUT, 7) /* (L27) OSPI0_D1.GPIO0_4 */
+		>;
+	};
+
+	wifi_wlirq_pins_default: wifi-wlirq-default-pins {
+		pinctrl-single,pins = <
+			J722S_IOPAD(0x0014, PIN_INPUT, 7) /* (L26) OSPI0_D2.GPIO0_5 */
+		>;
+	};
 };
 
 &cpsw3g {
@@ -440,6 +479,12 @@
 		pinctrl-single,pins = <
 			J722S_MCU_IOPAD(0x0038, PIN_INPUT_PULLUP | PIN_DEBOUNCE_CONF6, 7) /* (D8) MCU_MCAN0_RX.MCU_GPIO0_14 HDMI_INTn */
 			J722S_MCU_IOPAD(0x0034, PIN_OUTPUT_PULLUP, 7) /* (B2) MCU_MCAN0_TX.MCU_GPIO0_13 HDMI_RSTn */
+		>;
+	};
+
+	wifi_32k_clk: mcu-clk-out-default-pins {
+		pinctrl-single,pins = <
+			J722S_MCU_IOPAD(0x0084, PIN_OUTPUT, 0) /* (F12) WKUP_CLKOUT0 */
 		>;
 	};
 };
@@ -604,6 +649,32 @@
 	bootph-all;
 	ti,fails-without-test-cd;
 	status = "okay";
+};
+
+&sdhci2 {
+	vmmc-supply = <&wlan_en>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&wifi_pins_default>, <&wifi_32k_clk>;
+	bus-width = <4>;
+	non-removable;
+	ti,fails-without-test-cd;
+	cap-power-off-card;
+	keep-power-in-suspend;
+	ti,driver-strength-ohm = <50>;
+	assigned-clocks = <&k3_clks 157 174>;
+	assigned-clock-parents = <&k3_clks 157 175>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	cc33xx: cc33xx@0 {
+		compatible = "ti,cc3300";
+		reg = <2>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&wifi_wlirq_pins_default>;
+		interrupt-parent = <&main_gpio0>;
+		interrupts = <5 IRQ_TYPE_EDGE_RISING>;
+	};
 };
 
 &mailbox0_cluster0 {
