@@ -49,7 +49,6 @@ int navss_psil_pair(struct udma_dev *ud, u32 src_thread, u32 dst_thread)
 					      tisci_rm->tisci_navss_dev_id,
 					      src_thread, dst_thread);
 }
-EXPORT_SYMBOL_GPL(navss_psil_pair);
 
 int navss_psil_unpair(struct udma_dev *ud, u32 src_thread,
 			     u32 dst_thread)
@@ -61,7 +60,6 @@ int navss_psil_unpair(struct udma_dev *ud, u32 src_thread,
 						tisci_rm->tisci_navss_dev_id,
 						src_thread, dst_thread);
 }
-EXPORT_SYMBOL_GPL(navss_psil_unpair);
 
 static bool udma_is_chan_paused(struct udma_chan *uc)
 {

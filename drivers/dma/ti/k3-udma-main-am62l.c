@@ -1505,5 +1505,5 @@ static struct platform_driver am62l_bcdma_v2_driver = {
 
 module_platform_driver(am62l_bcdma_v2_driver);
 MODULE_DESCRIPTION("Texas Instruments K3 AM62L UDMA support");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL v2");
 

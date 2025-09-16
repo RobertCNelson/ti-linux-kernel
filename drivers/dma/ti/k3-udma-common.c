@@ -64,6 +64,7 @@ void k3_configure_chan_coherency(struct dma_chan *chan, u32 asel)
 		chan_dev->dma_parms = NULL;
 	}
 }
+EXPORT_SYMBOL_GPL(k3_configure_chan_coherency);
 
 u8 udma_get_chan_tpl_index(struct udma_tpl *tpl_map, int chan_id)
 {
@@ -85,6 +86,7 @@ void udma_reset_uchan(struct udma_chan *uc)
 	uc->config.default_flow_id = -1;
 	uc->state = UDMA_CHAN_IS_IDLE;
 }
+EXPORT_SYMBOL_GPL(udma_reset_uchan);
 
 void udma_dump_chan_stdata(struct udma_chan *uc)
 {
@@ -137,6 +139,7 @@ struct udma_desc *udma_udma_desc_from_paddr(struct udma_chan *uc,
 
 	return d;
 }
+EXPORT_SYMBOL_GPL(udma_udma_desc_from_paddr);
 
 void udma_free_hwdesc(struct udma_chan *uc, struct udma_desc *d)
 {
@@ -186,6 +189,7 @@ void udma_purge_desc_work(struct work_struct *work)
 	if (!list_empty(&ud->desc_to_purge))
 		schedule_work(&ud->purge_work);
 }
+EXPORT_SYMBOL_GPL(udma_purge_desc_work);
 
 void udma_desc_free(struct virt_dma_desc *vd)
 {
@@ -209,6 +213,7 @@ void udma_desc_free(struct virt_dma_desc *vd)
 
 	schedule_work(&ud->purge_work);
 }
+EXPORT_SYMBOL_GPL(udma_desc_free);
 
 bool udma_is_chan_running(struct udma_chan *uc)
 {
@@ -225,6 +230,7 @@ bool udma_is_chan_running(struct udma_chan *uc)
 
 	return false;
 }
+EXPORT_SYMBOL_GPL(udma_is_chan_running);
 
 void udma_reset_rings(struct udma_chan *uc)
 {
@@ -261,6 +267,7 @@ void udma_reset_rings(struct udma_chan *uc)
 		uc->terminated_desc = NULL;
 	}
 }
+EXPORT_SYMBOL_GPL(udma_reset_rings);
 
 int udma_push_to_ring(struct udma_chan *uc, int idx)
 {
@@ -291,6 +298,7 @@ int udma_push_to_ring(struct udma_chan *uc, int idx)
 
 	return k3_ringacc_ring_push(ring, &paddr);
 }
+EXPORT_SYMBOL_GPL(udma_push_to_ring);
 
 bool udma_desc_is_rx_flush(struct udma_chan *uc, dma_addr_t addr)
 {
@@ -336,6 +344,7 @@ int udma_pop_from_ring(struct udma_chan *uc, dma_addr_t *addr)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(udma_pop_from_ring);
 
 void udma_start_desc(struct udma_chan *uc)
 {
@@ -357,6 +366,7 @@ void udma_start_desc(struct udma_chan *uc)
 		udma_push_to_ring(uc, 0);
 	}
 }
+EXPORT_SYMBOL_GPL(udma_start_desc);
 
 bool udma_chan_needs_reconfiguration(struct udma_chan *uc)
 {
@@ -370,6 +380,7 @@ bool udma_chan_needs_reconfiguration(struct udma_chan *uc)
 
 	return false;
 }
+EXPORT_SYMBOL_GPL(udma_chan_needs_reconfiguration);
 
 void udma_cyclic_packet_elapsed(struct udma_chan *uc)
 {
@@ -381,6 +392,7 @@ void udma_cyclic_packet_elapsed(struct udma_chan *uc)
 	udma_push_to_ring(uc, d->desc_idx);
 	d->desc_idx = (d->desc_idx + 1) % d->sglen;
 }
+EXPORT_SYMBOL_GPL(udma_cyclic_packet_elapsed);
 
 void udma_check_tx_completion(struct work_struct *work)
 {
@@ -444,6 +456,7 @@ void udma_check_tx_completion(struct work_struct *work)
 		break;
 	}
 }
+EXPORT_SYMBOL_GPL(udma_check_tx_completion);
 
 /**
  * __udma_alloc_gp_rflow_range - alloc range of GP RX flows
@@ -568,7 +581,8 @@ struct udma_##res *__udma_reserve_##res(struct udma_dev *ud,	\
 									\
 	set_bit(id, ud->res##_map);					\
 	return &ud->res##s[id];						\
-}
+}						\
+EXPORT_SYMBOL_GPL(__udma_reserve_##res);
 
 UDMA_RESERVE_RESOURCE(bchan);
 UDMA_RESERVE_RESOURCE(tchan);
@@ -624,6 +638,7 @@ int udma_get_tchan(struct udma_chan *uc)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(udma_get_tchan);
 
 int udma_get_rchan(struct udma_chan *uc)
 {
@@ -653,6 +668,7 @@ int udma_get_rchan(struct udma_chan *uc)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(udma_get_rchan);
 
 int udma_get_chan_pair(struct udma_chan *uc)
 {
@@ -727,6 +743,7 @@ int udma_get_rflow(struct udma_chan *uc, int flow_id)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(udma_get_rflow);
 
 void bcdma_put_bchan(struct udma_chan *uc)
 {
@@ -740,6 +757,7 @@ void bcdma_put_bchan(struct udma_chan *uc)
 		uc->tchan = NULL;
 	}
 }
+EXPORT_SYMBOL_GPL(bcdma_put_bchan);
 
 void udma_put_rchan(struct udma_chan *uc)
 {
@@ -752,6 +770,7 @@ void udma_put_rchan(struct udma_chan *uc)
 		uc->rchan = NULL;
 	}
 }
+EXPORT_SYMBOL_GPL(udma_put_rchan);
 
 void udma_put_tchan(struct udma_chan *uc)
 {
@@ -768,6 +787,7 @@ void udma_put_tchan(struct udma_chan *uc)
 		uc->tchan = NULL;
 	}
 }
+EXPORT_SYMBOL_GPL(udma_put_tchan);
 
 void udma_put_rflow(struct udma_chan *uc)
 {
@@ -780,6 +800,7 @@ void udma_put_rflow(struct udma_chan *uc)
 		uc->rflow = NULL;
 	}
 }
+EXPORT_SYMBOL_GPL(udma_put_rflow);
 
 void bcdma_free_bchan_resources(struct udma_chan *uc)
 {
@@ -794,6 +815,7 @@ void bcdma_free_bchan_resources(struct udma_chan *uc)
 
 	bcdma_put_bchan(uc);
 }
+EXPORT_SYMBOL_GPL(bcdma_free_bchan_resources);
 
 void udma_free_tx_resources(struct udma_chan *uc)
 {
@@ -807,6 +829,7 @@ void udma_free_tx_resources(struct udma_chan *uc)
 
 	udma_put_tchan(uc);
 }
+EXPORT_SYMBOL_GPL(udma_free_tx_resources);
 
 void udma_free_rx_resources(struct udma_chan *uc)
 {
@@ -826,6 +849,7 @@ void udma_free_rx_resources(struct udma_chan *uc)
 
 	udma_put_rchan(uc);
 }
+EXPORT_SYMBOL_GPL(udma_free_rx_resources);
 
 int udma_slave_config(struct dma_chan *chan,
 			     struct dma_slave_config *cfg)
@@ -836,6 +860,7 @@ int udma_slave_config(struct dma_chan *chan,
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(udma_slave_config);
 
 struct udma_desc *udma_alloc_tr_desc(struct udma_chan *uc,
 					    size_t tr_size, int tr_count,
@@ -1568,6 +1593,7 @@ udma_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
 
 	return vchan_tx_prep(&uc->vc, &d->vd, tx_flags);
 }
+EXPORT_SYMBOL_GPL(udma_prep_slave_sg);
 
 struct udma_desc *
 udma_prep_dma_cyclic_tr(struct udma_chan *uc, dma_addr_t buf_addr,
@@ -1792,6 +1818,7 @@ udma_prep_dma_cyclic(struct dma_chan *chan, dma_addr_t buf_addr, size_t buf_len,
 
 	return vchan_tx_prep(&uc->vc, &d->vd, flags);
 }
+EXPORT_SYMBOL_GPL(udma_prep_dma_cyclic);
 
 struct dma_async_tx_descriptor *
 udma_prep_dma_memcpy(struct dma_chan *chan, dma_addr_t dest, dma_addr_t src,
@@ -1883,6 +1910,7 @@ udma_prep_dma_memcpy(struct dma_chan *chan, dma_addr_t dest, dma_addr_t src,
 
 	return vchan_tx_prep(&uc->vc, &d->vd, tx_flags);
 }
+EXPORT_SYMBOL_GPL(udma_prep_dma_memcpy);
 
 void udma_issue_pending(struct dma_chan *chan)
 {
@@ -1906,6 +1934,7 @@ void udma_issue_pending(struct dma_chan *chan)
 
 	spin_unlock_irqrestore(&uc->vc.lock, flags);
 }
+EXPORT_SYMBOL_GPL(udma_issue_pending);
 
 int udma_terminate_all(struct dma_chan *chan)
 {
@@ -1934,6 +1963,7 @@ int udma_terminate_all(struct dma_chan *chan)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(udma_terminate_all);
 
 void udma_synchronize(struct dma_chan *chan)
 {
@@ -1961,6 +1991,7 @@ void udma_synchronize(struct dma_chan *chan)
 	cancel_delayed_work_sync(&uc->tx_drain.work);
 	udma_reset_rings(uc);
 }
+EXPORT_SYMBOL_GPL(udma_synchronize);
 
 void udma_desc_pre_callback(struct virt_dma_chan *vc,
 				   struct virt_dma_desc *vd,
@@ -2040,6 +2071,7 @@ void udma_vchan_complete(struct tasklet_struct *t)
 		vchan_vdesc_fini(vd);
 	}
 }
+EXPORT_SYMBOL_GPL(udma_vchan_complete);
 
 void udma_free_chan_resources(struct dma_chan *chan)
 {
@@ -2086,6 +2118,7 @@ void udma_free_chan_resources(struct dma_chan *chan)
 		uc->use_dma_pool = false;
 	}
 }
+EXPORT_SYMBOL_GPL(udma_free_chan_resources);
 
 int setup_resources(struct udma_dev *ud)
 {
@@ -2185,6 +2218,7 @@ int setup_resources(struct udma_dev *ud)
 
 	return ch_count;
 }
+EXPORT_SYMBOL_GPL(setup_resources);
 
 void udma_mark_resource_ranges(struct udma_dev *ud, unsigned long *map,
 				      struct ti_sci_resource_desc *rm_desc,
@@ -2865,6 +2899,7 @@ int udma_setup_rx_flush(struct udma_dev *ud)
 				   hwdesc->cppi5_desc_size, DMA_TO_DEVICE);
 	return 0;
 }
+EXPORT_SYMBOL_GPL(udma_setup_rx_flush);
 
 #ifdef CONFIG_DEBUG_FS
 void udma_dbg_summary_show_chan(struct seq_file *s,
@@ -2938,6 +2973,7 @@ void udma_dbg_summary_show(struct seq_file *s,
 			udma_dbg_summary_show_chan(s, chan);
 	}
 }
+EXPORT_SYMBOL_GPL(udma_dbg_summary_show);
 #endif /* CONFIG_DEBUG_FS */
 
 enum dmaengine_alignment udma_get_copy_align(struct udma_dev *ud)
@@ -2967,6 +3003,7 @@ enum dmaengine_alignment udma_get_copy_align(struct udma_dev *ud)
 		return DMAENGINE_ALIGN_64_BYTES;
 	}
 }
+EXPORT_SYMBOL_GPL(udma_get_copy_align);
 
 /* Private interfaces to UDMA */
 #include "k3-udma-private.c"
