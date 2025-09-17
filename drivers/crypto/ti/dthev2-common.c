@@ -8,6 +8,7 @@
 
 #include <crypto/aes.h>
 #include <crypto/algapi.h>
+#include <crypto/engine.h>
 #include <crypto/internal/aead.h>
 #include <crypto/internal/skcipher.h>
 
@@ -45,6 +46,25 @@ struct dthe_data *dthe_get_dev(struct dthe_tfm_ctx *ctx)
 	spin_unlock_bh(&dthe_dev_list.lock);
 
 	return dev_data;
+}
+
+struct scatterlist *dthe_copy_sg(struct scatterlist *dst,
+				 struct scatterlist *src,
+				 int buflen)
+{
+	struct scatterlist *from_sg, *to_sg;
+	int sglen;
+
+	for (to_sg = dst, from_sg = src; buflen && from_sg; buflen -= sglen) {
+		sglen = from_sg->length;
+		if (sglen > buflen)
+			sglen = buflen;
+		sg_set_buf(to_sg, sg_virt(from_sg), sglen);
+		from_sg = sg_next(from_sg);
+		to_sg = sg_next(to_sg);
+	}
+
+	return to_sg;
 }
 
 static int dthe_dma_init(struct dthe_data *dev_data)
@@ -147,23 +167,35 @@ static int dthe_probe(struct platform_device *pdev)
 	spin_lock(&dthe_dev_list.lock);
 	list_add(&dev_data->list, &dthe_dev_list.dev_list);
 	spin_unlock(&dthe_dev_list.lock);
-
-	mutex_init(&dev_data->aes_mutex);
 	mutex_init(&dev_data->hash_mutex);
 
 	ret = dthe_dma_init(dev_data);
 	if (ret)
 		goto probe_dma_err;
 
+	dev_data->aes_engine = crypto_engine_alloc_init(dev, 1);
+	if (!dev_data->aes_engine) {
+		ret = -ENOMEM;
+		goto probe_aes_engine_init_err;
+	}
+
+	ret = crypto_engine_start(dev_data->aes_engine);
+	if (ret) {
+		dev_err(dev, "Failed to start aes crypto engine\n");
+		goto probe_aes_engine_start_err;
+	}
+
 	ret = dthe_register_algs();
 	if (ret) {
 		dev_err(dev, "Failed to register algs\n");
-		goto probe_reg_err;
+		goto probe_aes_engine_start_err;
 	}
 
 	return 0;
 
-probe_reg_err:
+probe_aes_engine_start_err:
+	crypto_engine_exit(dev_data->aes_engine);
+probe_aes_engine_init_err:
 	dma_release_channel(dev_data->dma_aes_rx);
 	dma_release_channel(dev_data->dma_aes_tx);
 	dma_release_channel(dev_data->dma_sha_tx);
@@ -171,8 +203,6 @@ probe_dma_err:
 	spin_lock(&dthe_dev_list.lock);
 	list_del(&dev_data->list);
 	spin_unlock(&dthe_dev_list.lock);
-
-	mutex_destroy(&dev_data->aes_mutex);
 	mutex_destroy(&dev_data->hash_mutex);
 
 	return ret;
@@ -185,11 +215,11 @@ static void dthe_remove(struct platform_device *pdev)
 	spin_lock(&dthe_dev_list.lock);
 	list_del(&dev_data->list);
 	spin_unlock(&dthe_dev_list.lock);
-
-	mutex_destroy(&dev_data->aes_mutex);
 	mutex_destroy(&dev_data->hash_mutex);
 
 	dthe_unregister_algs();
+
+	crypto_engine_exit(dev_data->aes_engine);
 
 	dma_release_channel(dev_data->dma_aes_rx);
 	dma_release_channel(dev_data->dma_aes_tx);
