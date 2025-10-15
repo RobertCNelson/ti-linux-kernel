@@ -2333,20 +2333,33 @@ static void ub960_rxport_handle_events(struct ub960_data *priv, u8 nport)
  * TODO: implement a more sophisticated VC mapping. As the driver cannot know
  * what VCs the sinks expect (say, an FPGA with hardcoded VC routing), this
  * probably needs to be somehow configurable. Device tree?
+ *
+ * VC mapping differs between ub960 and ub9702 deserializers:
+ * For ub960:
+ *		- Each VC uses 2 bits in the mapping register
+ *		- Supports up to 4 virtual channels (VC0-VC3)
+ * For ub9702:
+ *		- Each VC uses 4 bits in the mapping register
+ *		- Currently uses only 2 virtual channels (VC0, VC1)
+ *
+ * The mapping registers determine which output VC a given input VC
+ * will be mapped to when forwarding data from the deserializer.
  */
+
 static void ub960_get_vc_maps(struct ub960_data *priv, u8 *vc_map)
 {
 	struct device *dev = &priv->client->dev;
 	u8 nport, available_vc = 0;
 
-	for (nport = 0;
-	     nport < priv->hw_data->num_rxports && priv->rxports[nport];
-	     ++nport) {
+	for (nport = 0; nport < priv->hw_data->num_rxports; ++nport) {
 		struct v4l2_mbus_frame_desc source_fd;
 		bool used_vc[UB960_MAX_VC] = {false};
 		u8 vc, cur_vc = available_vc;
 		int j, ret;
 		u8 map;
+
+		if (!priv->rxports[nport])
+			continue;
 
 		ret = v4l2_subdev_call(priv->rxports[nport]->source.sd, pad,
 				       get_frame_desc,
@@ -2368,14 +2381,26 @@ static void ub960_get_vc_maps(struct ub960_data *priv, u8 *vc_map)
 		}
 
 		/* Start with all channels mapped to first free output */
-		map = (cur_vc << 6) | (cur_vc << 4) | (cur_vc << 2) |
-			(cur_vc << 0);
+
+		if (!priv->hw_data->is_ub9702) {
+			map = (cur_vc << 6) | (cur_vc << 4) | (cur_vc << 2) |
+				(cur_vc << 0);
+		} else {
+			map = (cur_vc << 4) | (cur_vc << 0);
+		}
 
 		/* Map actually used to channels to distinct free outputs */
 		for (vc = 0; vc < UB960_MAX_VC; ++vc) {
 			if (used_vc[vc]) {
-				map &= ~(0x03 << (2 * vc));
-				map |= (cur_vc << (2 * vc));
+				if (!priv->hw_data->is_ub9702) {
+					/* For ub960: 2 bits per VC */
+					map &= ~(0x03 << (2 * vc));
+					map |= (cur_vc << (2 * vc));
+				} else {
+					/* For ub9702: 4 bits per VC */
+					map &= ~(0x0f << (4 * vc));
+					map |= (cur_vc << (4 * vc));
+				}
 				++cur_vc;
 			}
 		}
@@ -2547,7 +2572,7 @@ static int ub960_configure_ports_for_streaming(struct ub960_data *priv,
 				for (i = 0; i < 8; i++)
 					ub960_rxport_write(priv, nport,
 							   UB960_RR_VC_ID_MAP(i),
-							   (nport << 4) | nport);
+							   vc_map[nport]);
 			}
 
 			break;
@@ -2861,9 +2886,13 @@ static int ub960_get_frame_desc(struct v4l2_subdev *sd, unsigned int pad,
 		fd->entry[fd->num_entries].length = source_entry->length;
 		fd->entry[fd->num_entries].pixelcode = source_entry->pixelcode;
 
-		fd->entry[fd->num_entries].bus.csi2.vc =
-			ub960_get_output_vc(vc_map[nport],
-					    source_entry->bus.csi2.vc);
+		if (!priv->hw_data->is_ub9702)
+			fd->entry[fd->num_entries].bus.csi2.vc =
+				(vc_map[nport] >> (2 * source_entry->bus.csi2.vc)) & 0x03;
+		else
+			fd->entry[fd->num_entries].bus.csi2.vc =
+				(vc_map[nport] >> (4 * source_entry->bus.csi2.vc)) & 0x0f;
+
 		dev_dbg(dev, "Mapping sink %d/%d to output VC %d",
 			route->sink_pad, route->sink_stream,
 			fd->entry[fd->num_entries].bus.csi2.vc);
