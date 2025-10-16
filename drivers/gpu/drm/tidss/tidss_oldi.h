@@ -32,17 +32,9 @@ enum tidss_oldi_link_type {
 	OLDI_MODE_UNSUPPORTED,
 	OLDI_MODE_SINGLE_LINK,
 	OLDI_MODE_CLONE_SINGLE_LINK,
+	OLDI_MODE_SECONDARY_CLONE_SINGLE_LINK,
 	OLDI_MODE_DUAL_LINK,
-	OLDI_MODE_SECONDARY,
-};
-
-enum oldi_mode_reg_val { SPWG_18 = 0, JEIDA_24 = 1, SPWG_24 = 2 };
-
-struct oldi_bus_format {
-	u32 bus_fmt;
-	u32 data_width;
-	enum oldi_mode_reg_val oldi_mode_reg_val;
-	u32 input_bus_fmt;
+	OLDI_MODE_SECONDARY_DUAL_LINK,
 };
 
 int tidss_oldi_init(struct tidss_device *tidss);
