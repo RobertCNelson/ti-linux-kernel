@@ -48,7 +48,10 @@ enum dthe_hash_alg_sel {
 enum dthe_aes_mode {
 	DTHE_AES_ECB = 0,
 	DTHE_AES_CBC,
+	DTHE_AES_CTR,
+	DTHE_AES_XTS,
 	DTHE_AES_GCM,
+	DTHE_AES_CCM,
 };
 
 /* Driver specific struct definitions */
@@ -98,8 +101,9 @@ struct dthe_list {
  * @block_size: block size of hash algorithm selected
  * @digest_size: digest size of hash algorithm selected
  * @phash_size: partial hash size of the hash algorithm selected
- * @fallback: Fallback crypto aead instance for GCM mode
+ * @fallback: Fallback crypto aead handle
  * @ahash_fb: Fallback crypto ahash instance for hashing algorithms
+ * @skcipher_fb: Fallback crypto skcipher handle for AES-XTS mode
  */
 struct dthe_tfm_ctx {
 	struct dthe_data *dev_data;
@@ -114,8 +118,9 @@ struct dthe_tfm_ctx {
 	u32 digest_size;
 	u32 phash_size;
 	union {
-		struct crypto_aead *aead_fb;
+		struct crypto_sync_aead *aead_fb;
 		struct crypto_ahash *ahash_fb;
+		struct crypto_sync_skcipher *skcipher_fb;
 	};
 };
 
@@ -123,12 +128,10 @@ struct dthe_tfm_ctx {
  * struct dthe_aes_req_ctx - AES engine req ctx struct
  * @enc: flag indicating encryption or decryption operation
  * @aes_compl: Completion variable for use in manual completion in case of DMA callback failure
- * @fb_req: Fallback aead_request structure for GCM mode
  */
 struct dthe_aes_req_ctx {
 	int enc;
 	struct completion aes_compl;
-	struct aead_request fb_req;
 };
 
 /**
