@@ -1420,13 +1420,17 @@ static int sa_3des_ecb_setkey(struct crypto_skcipher *tfm, const u8 *key,
 static void sa_sync_from_device(struct sa_rx_data *rxd)
 {
 	struct sg_table *sgt;
+	enum dma_data_direction dir;
 
-	if (rxd->mapped_sg[0].dir == DMA_BIDIRECTIONAL)
+	if (rxd->mapped_sg[0].dir == DMA_BIDIRECTIONAL) {
 		sgt = &rxd->mapped_sg[0].sgt;
-	else
+		dir = rxd->mapped_sg[0].dir;
+	} else {
 		sgt = &rxd->mapped_sg[1].sgt;
+		dir = rxd->mapped_sg[1].dir;
+	}
 
-	dma_sync_sgtable_for_cpu(rxd->ddev, sgt, DMA_FROM_DEVICE);
+	dma_sync_sgtable_for_cpu(rxd->ddev, sgt, dir);
 }
 
 static void sa_free_sa_rx_data(struct sa_rx_data *rxd)
@@ -1438,7 +1442,7 @@ static void sa_free_sa_rx_data(struct sa_rx_data *rxd)
 
 		if (mapped_sg->mapped) {
 			dma_unmap_sgtable(rxd->ddev, &mapped_sg->sgt,
-					  mapped_sg->dir, 0);
+					  mapped_sg->dir, DMA_ATTR_SKIP_CPU_SYNC);
 			kfree(mapped_sg->split_sg);
 		}
 	}
@@ -1551,7 +1555,7 @@ static int sa_run(struct sa_req *req)
 					   sa_ctx->cmdl_size);
 
 	if (cmdl_len > SA_MAX_CMDL_WORDS * sizeof(u32)) {
-		dev_err(pdata->dev, "sa_update_cmdl returned %u, exceeds max %u\n",
+		dev_err(pdata->dev, "sa_update_cmdl returned %u, exceeds max %lu\n",
 			cmdl_len, SA_MAX_CMDL_WORDS * sizeof(u32));
 		kfree(rxd);
 		return -EINVAL;
@@ -1608,7 +1612,7 @@ static int sa_run(struct sa_req *req)
 		}
 	}
 
-	dma_sync_sgtable_for_device(ddev, &mapped_sg->sgt, DMA_TO_DEVICE);
+	dma_sync_sgtable_for_device(ddev, &mapped_sg->sgt, mapped_sg->dir);
 
 	if (!diff_dst) {
 		dst_nents = src_nents;
@@ -3431,6 +3435,7 @@ static struct sa_match_data am64_match_data = {
 			   BIT(SA_ALG_SHA256) |
 			   BIT(SA_ALG_SHA512) |
 			   BIT(SA_ALG_AUTHENC_SHA256_AES) |
+			   BIT(SA_ALG_GCM_AES) |
 			   BIT(SA_ALG_CMAC_AES)
 };
 

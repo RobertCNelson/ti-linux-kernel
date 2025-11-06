@@ -213,8 +213,22 @@
 		compatible = "simple-audio-card";
 		simple-audio-card,name = "AM62D2-EVM";
 
+		simple-audio-card,routing =
+			/* J3A (tad5x1x@50) */
+			"J3A IN1 Source Mux", "J3A Playback",
+			"J3A IN2 Source Mux", "J3A Playback",
+			/* J3B (tad5x1x@51) */
+			"J3B IN1 Source Mux", "J3B Playback",
+			"J3B IN2 Source Mux", "J3B Playback",
+			/* J4A (tad5x1x@52) */
+			"J4A IN1 Source Mux", "J4A Playback",
+			"J4A IN2 Source Mux", "J4A Playback",
+			/* J4B (tad5x1x@53) */
+			"J4B IN1 Source Mux", "J4B Playback",
+			"J4B IN2 Source Mux", "J4B Playback";
+
 		simple-audio-card,dai-link@0 {
-			format = "dsp_b";
+			format = "dsp_a";
 			bitclock-master = <&master0>;
 			frame-master = <&master0>;
 
@@ -224,13 +238,12 @@
 			};
 
 			codec@0 {
-				sound-dai = <&tad5x1x_50>;
-				playback-only;
+				sound-dai = <&pcm6240>;
 			};
 		};
 
 		simple-audio-card,dai-link@1 {
-			format = "dsp_b";
+			format = "dsp_a";
 			bitclock-master = <&master1>;
 			frame-master = <&master1>;
 
@@ -240,29 +253,29 @@
 			};
 
 			codec@1 {
-				sound-dai = <&tad5x1x_51>;
+				sound-dai = <&tad5x1x_50>;
 				playback-only;
 			};
 		};
 
 		simple-audio-card,dai-link@2 {
-			format = "dsp_b";
+			format = "dsp_a";
 			bitclock-master = <&master2>;
 			frame-master = <&master2>;
 
 			master2: cpu {
-			sound-dai = <&mcasp2>;
+				sound-dai = <&mcasp2>;
 				system-clock-direction-out;
 			};
 
 			codec@2 {
-				sound-dai = <&tad5x1x_52>;
+				sound-dai = <&tad5x1x_51>;
 				playback-only;
 			};
 		};
 
 		simple-audio-card,dai-link@3 {
-			format = "dsp_b";
+			format = "dsp_a";
 			bitclock-master = <&master3>;
 			frame-master = <&master3>;
 
@@ -272,6 +285,22 @@
 			};
 
 			codec@3 {
+				sound-dai = <&tad5x1x_52>;
+				playback-only;
+			};
+		};
+
+		simple-audio-card,dai-link@4 {
+			format = "dsp_a";
+			bitclock-master = <&master4>;
+			frame-master = <&master4>;
+
+			master4: cpu {
+				sound-dai = <&mcasp2>;
+				system-clock-direction-out;
+			};
+
+			codec@4 {
 				sound-dai = <&tad5x1x_53>;
 				playback-only;
 			};
@@ -300,6 +329,14 @@
 			AM62DX_MCU_IOPAD(0x0028, PIN_OUTPUT, 0) /* (E9) WKUP_UART0_TXD */
 			AM62DX_MCU_IOPAD(0x002c, PIN_INPUT, 0) /* (C10) WKUP_UART0_CTSn */
 			AM62DX_MCU_IOPAD(0x0030, PIN_OUTPUT, 0) /* (C8) WKUP_UART0_RTSn */
+		>;
+		bootph-all;
+	};
+
+	wkup_i2c0_pins_default: wkup-i2c0-default-pins {
+		pinctrl-single,pins = <
+			AM62DX_MCU_IOPAD(0x004c, PIN_INPUT, 0) /* (D13) WKUP_I2C0_SCL */
+			AM62DX_MCU_IOPAD(0x0050, PIN_INPUT, 0) /* (E13) WKUP_I2C0_SDA */
 		>;
 		bootph-all;
 	};
@@ -420,12 +457,15 @@
 
 	main_mcasp2_pins_default: main-mcasp2-default-pins {
 		pinctrl-single,pins = <
+			AM62DX_IOPAD(0x0078, PIN_INPUT, 3) /* (T21) GPMC0_AD15.MCASP2_ACLKR */
 			AM62DX_IOPAD(0x0070, PIN_INPUT, 3) /* (R21) GPMC0_AD13.MCASP2_ACLKX */
+			AM62DX_IOPAD(0x0074, PIN_INPUT, 3) /* (T20) GPMC0_AD14.MCASP2_AFSR */
 			AM62DX_IOPAD(0x006c, PIN_INPUT, 3) /* (T22) GPMC0_AD12.MCASP2_AFSX */
-			AM62DX_IOPAD(0x005C, PIN_INPUT, 3) /* (P22) GPMC0_AD8.MCASP2_AXR0 */
+			AM62DX_IOPAD(0x005c, PIN_INPUT, 3) /* (P22) GPMC0_AD8.MCASP2_AXR0 */
 			AM62DX_IOPAD(0x0060, PIN_INPUT, 3) /* (R19) GPMC0_AD9.MCASP2_AXR1 */
 			AM62DX_IOPAD(0x0068, PIN_INPUT, 3) /* (R22) GPMC0_AD11.MCASP2_AXR3 */
 			AM62DX_IOPAD(0x003c, PIN_INPUT, 3) /* (N21) GPMC0_AD0.MCASP2_AXR4 */
+			AM62DX_IOPAD(0x00a8, PIN_INPUT, 3) /* (M19) GPMC0_CSn0.MCASP2_AXR14 */
 		>;
 	};
 
@@ -458,9 +498,6 @@
 		pinctrl-single,pins = <
 			AM62DX_IOPAD(0x0000, PIN_OUTPUT, 0) /* (L22) OSPI0_CLK */
 			AM62DX_IOPAD(0x002c, PIN_OUTPUT, 0) /* (H21) OSPI0_CSn0 */
-			AM62DX_IOPAD(0x0030, PIN_OUTPUT, 0) /* (G19) OSPI0_CSn1 */
-			AM62DX_IOPAD(0x0034, PIN_OUTPUT, 0) /* (K20) OSPI0_CSn2 */
-			AM62DX_IOPAD(0x0038, PIN_OUTPUT, 0) /* (G20) OSPI0_CSn3 */
 			AM62DX_IOPAD(0x000c, PIN_INPUT, 0) /* (J21) OSPI0_D0 */
 			AM62DX_IOPAD(0x0010, PIN_INPUT, 0) /* (J18) OSPI0_D1 */
 			AM62DX_IOPAD(0x0014, PIN_INPUT, 0) /* (J19) OSPI0_D2 */
@@ -480,7 +517,7 @@
 
 	pmic_irq_pins_default: pmic-irq-default-pins {
 		pinctrl-single,pins = <
-			AM62DX_MCU_IOPAD(0x000, PIN_INPUT, 7) /* (E11) MCU_GPIO0_0 */
+			AM62DX_IOPAD(0x01f4, PIN_INPUT, 7) /* (F17) EXTINTn.GPIO1_31 */
 		>;
 	};
 };
@@ -594,6 +631,13 @@
 		ti,micbias-vg = <3>;
 		sound-name-prefix = "J4B";
 	};
+
+	pcm6240: adc@48 {
+		compatible = "ti,pcm6240";
+		reg = <0x48>, <0x49>;
+		#sound-dai-cells = <0>;
+		sound-name-prefix = "pcm6240-2dev-reg";
+	};
 };
 
 &main_i2c1 {
@@ -619,14 +663,98 @@
 
 	auxclk-fs-ratio = <2177>;
 	op-mode = <0>;          /* MCASP_IIS_MODE */
-	tdm-slots = <2>;
+	tdm-slots = <4>;
 	slot-width = <32>;
+	ti,async-mode;
 	serial-dir = <
 	       1 1 0 1
 	       1 0 0 0
 	       0 0 0 0
-	       0 0 0 0
+	       0 0 2 0
 	>;
+};
+
+&wkup_i2c0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&wkup_i2c0_pins_default>;
+	clock-frequency = <400000>;
+	status = "okay";
+
+	tps65224: pmic@48 {
+		compatible = "ti,tps65224-q1";
+		reg = <0x48>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pmic_irq_pins_default>;
+		interrupt-parent = <&main_gpio1>;
+		interrupts = <31 IRQ_TYPE_EDGE_FALLING>;
+		ti,primary-pmic;
+
+		gpio-controller;
+		#gpio-cells = <2>;
+
+		buck12-supply = <&vcc_3v3_sys>;
+		buck3-supply = <&vcc_3v3_sys>;
+		buck4-supply = <&vcc_3v3_sys>;
+		ldo1-supply = <&vcc_3v3_sys>;
+		ldo2-supply = <&vcc_3v3_sys>;
+		ldo3-supply = <&vcc_3v3_sys>;
+
+		regulators {
+			buck12: buck12 {
+				regulator-name = "vdd_core";
+				regulator-min-microvolt = <850000>;
+				regulator-max-microvolt = <850000>;
+				regulator-boot-on;
+				regulator-always-on;
+				bootph-all;
+			};
+
+			buck3: buck3 {
+				regulator-name = "dvdd1v8";
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+				regulator-boot-on;
+				regulator-always-on;
+				bootph-all;
+			};
+
+			buck4: buck4 {
+				regulator-name = "vdds_ddr";
+				regulator-min-microvolt = <1100000>;
+				regulator-max-microvolt = <1100000>;
+				regulator-boot-on;
+				regulator-always-on;
+				bootph-all;
+			};
+
+			ldo1: ldo1 {
+				regulator-name = "vdda_1v8";
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+				regulator-boot-on;
+				regulator-always-on;
+				bootph-all;
+			};
+
+			ldo2: ldo2 {
+				regulator-name = "dvdd3v3";
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
+				bootph-all;
+			};
+
+			ldo3: ldo3 {
+				regulator-name = "vddr_core";
+				regulator-min-microvolt = <850000>;
+				regulator-max-microvolt = <850000>;
+				regulator-boot-on;
+				regulator-always-on;
+				bootph-all;
+			};
+		};
+	};
 };
 
 &sdhci0 {

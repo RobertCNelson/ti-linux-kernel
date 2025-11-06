@@ -42,6 +42,7 @@
 
 #define TX_START_DELAY		0x40
 #define TX_CLK_DELAY_100M	0x6
+#define TX_CLK_DELAY_10M	0x0
 #define HR_TIMER_TX_DELAY_US	100
 
 #define TIMESYNC_SECONDS_BIT_MASK   0x0000ffffffffffff
@@ -585,10 +586,17 @@ static void icssm_emac_adjust_link(struct net_device *ndev)
 		if (emac->link) {
 			port_status |= PORT_LINK_MASK;
 
+			if (emac->duplex == DUPLEX_HALF)
+				port_status |= PORT_IS_HD_MASK;
+
 			icssm_prueth_write_reg(prueth, region, PHY_SPEED_OFFSET,
 					       emac->speed);
 
-			delay = TX_CLK_DELAY_100M;
+			if (emac->speed == SPEED_100)
+				delay = TX_CLK_DELAY_100M;
+			else
+				delay = TX_CLK_DELAY_10M;
+
 			delay = delay << PRUSS_MII_RT_TXCFG_TX_CLK_DELAY_SHIFT;
 			mask = PRUSS_MII_RT_TXCFG_TX_CLK_DELAY_MASK;
 
@@ -2779,9 +2787,13 @@ static int icssm_emac_ndo_set_features(struct net_device *ndev,
 		ndev->features |= NETIF_F_HW_HSR_TAG_RM;
 	} else if (features & NETIF_F_HW_HSR_FWD) {
 		ndev->features |= NETIF_F_HW_HSR_FWD;
+	} else if (features & NETIF_F_HW_HSR_DUP) {
+		ndev->features |= NETIF_F_HW_HSR_DUP;
 	} else {
 		prueth->eth_type = PRUSS_ETHTYPE_EMAC;
-		ndev->features &= ~(NETIF_F_HW_HSR_TAG_RM | NETIF_F_HW_HSR_FWD);
+		ndev->features &= ~(NETIF_F_HW_HSR_TAG_RM |
+				    NETIF_F_HW_HSR_FWD |
+				    NETIF_F_HW_HSR_DUP);
 	}
 
 	return 0;
@@ -2958,10 +2970,6 @@ static int icssm_prueth_netdev_init(struct prueth *prueth,
 	}
 
 	/* remove unsupported modes */
-	phy_remove_link_mode(emac->phydev, ETHTOOL_LINK_MODE_10baseT_Full_BIT);
-
-	phy_remove_link_mode(emac->phydev, ETHTOOL_LINK_MODE_10baseT_Half_BIT);
-	phy_remove_link_mode(emac->phydev, ETHTOOL_LINK_MODE_100baseT_Half_BIT);
 
 	phy_remove_link_mode(emac->phydev, ETHTOOL_LINK_MODE_Pause_BIT);
 	phy_remove_link_mode(emac->phydev, ETHTOOL_LINK_MODE_Asym_Pause_BIT);
@@ -2980,7 +2988,9 @@ static int icssm_prueth_netdev_init(struct prueth *prueth,
 
 	if (prueth->support_lre)
 		ndev->hw_features |=
-			(NETIF_F_HW_HSR_FWD | NETIF_F_HW_HSR_TAG_RM);
+			(NETIF_F_HW_HSR_FWD |
+			 NETIF_F_HW_HSR_TAG_RM |
+			 NETIF_F_HW_HSR_DUP);
 
 	ndev->features |= NETIF_F_HW_VLAN_CTAG_FILTER | NETIF_F_HW_TC;
 
