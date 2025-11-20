@@ -152,6 +152,18 @@ struct sa_tfm_ctx;
 struct sa_match_data;
 
 /**
+ * struct sa_hw_state - Hardware-level lock state
+ * @lock: Spinlock to protect busy flag
+ * @wq: Wait queue for hardware availability
+ * @busy: Hardware busy flag
+ */
+struct sa_hw_state {
+	spinlock_t lock;
+	wait_queue_head_t wq;
+	bool busy;
+};
+
+/**
  * struct sa_crypto_data - Crypto driver instance data
  * @base: Base address of the register space
  * @soc_data: Pointer to SoC specific data
@@ -185,6 +197,7 @@ struct sa_crypto_data {
 	struct dma_chan		*dma_rx1;
 	struct dma_chan		*dma_rx2;
 	struct dma_chan		*dma_tx;
+	struct sa_hw_state	hw;
 };
 
 /**
@@ -260,6 +273,18 @@ struct sa_ctx_info {
 	struct sa_cmdl_upd_info cmdl_upd_info;
 	/* Store Auxiliary data such as K2/K3 subkeys in AES-XCBC */
 	u32		epib[SA_DMA_NUM_EPIB_WORDS];
+};
+
+/**
+ * struct sa_req_ctx_data - Per-request snapshot of command label metadata
+ * @cmdl_size: template command label size in bytes
+ * @cmdl: mutable command label buffer for the request
+ * @cmdl_upd_info: request-local copy of update metadata
+ */
+struct sa_req_ctx_data {
+	u16 cmdl_size;
+	u32 cmdl[SA_MAX_CMDL_WORDS];
+	struct sa_cmdl_upd_info cmdl_upd_info;
 };
 
 /**

@@ -8,6 +8,7 @@
  *		Vitaly Andrianov
  *		Tero Kristo
  */
+#include <linux/atomic.h>
 #include <linux/bitfield.h>
 #include <linux/clk.h>
 #include <linux/dma-mapping.h>
@@ -21,6 +22,7 @@
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
+#include <linux/wait.h>
 
 #include <crypto/aes.h>
 #include <crypto/authenc.h>
@@ -226,6 +228,9 @@ struct sa_rx_data {
 	u8 enc;
 	u8 enc_iv_size;
 	u8 iv_idx;
+	struct sa_crypto_data *pdata;
+	struct sa_req_ctx_data req_ctx;
+	bool hw_locked;
 };
 
 /**
@@ -269,6 +274,33 @@ struct sa_req {
 	dma_async_tx_callback callback;
 	u16 mdata_size;
 };
+
+static void sa_hw_lock(struct sa_crypto_data *pdata, bool may_sleep)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&pdata->hw.lock, flags);
+	while (pdata->hw.busy) {
+		spin_unlock_irqrestore(&pdata->hw.lock, flags);
+		if (may_sleep)
+			wait_event(pdata->hw.wq, !pdata->hw.busy);
+		else
+			cpu_relax();
+		spin_lock_irqsave(&pdata->hw.lock, flags);
+	}
+	pdata->hw.busy = true;
+	spin_unlock_irqrestore(&pdata->hw.lock, flags);
+}
+
+static void sa_hw_unlock(struct sa_crypto_data *pdata)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&pdata->hw.lock, flags);
+	pdata->hw.busy = false;
+	spin_unlock_irqrestore(&pdata->hw.lock, flags);
+	wake_up_all(&pdata->hw.wq);
+}
 
 /*
  * Mode Control Instructions for various Key lengths 128, 192, 256
@@ -635,6 +667,7 @@ static inline int sa_aes_inv_key(u8 *inv_key, const u8 *key, u16 key_sz)
 static int sa_set_sc_enc(struct algo_data *ad, const u8 *key, u16 key_sz,
 			 u8 enc, u8 *sc_buf)
 {
+	WARN_ON(!ad->ctx);
 	SYNC_SKCIPHER_REQUEST_ON_STACK(req, ad->ctx->skcipher);
 	const u8 *mci = NULL;
 	int ret = 0;
@@ -1224,6 +1257,7 @@ static int sa_cipher_setkey(struct crypto_skcipher *tfm, const u8 *key,
 	    keylen != AES_KEYSIZE_256)
 		return -EINVAL;
 
+	ad->ctx = ctx;
 	ad->enc_eng.eng_id = SA_ENG_ID_EM1;
 	ad->enc_eng.sc_size = SA_CTX_ENC_TYPE_SZ;
 
@@ -1471,6 +1505,10 @@ static void sa_aes_dma_in_callback(void *data)
 			result[i] = be32_to_cpu(mdptr[i + rxd->iv_idx]);
 	}
 
+	if (rxd->hw_locked) {
+		sa_hw_unlock(rxd->pdata);
+		rxd->hw_locked = false;
+	}
 	sa_free_sa_rx_data(rxd);
 
 	skcipher_request_complete(req, 0);
@@ -1496,8 +1534,8 @@ sa_prepare_tx_desc(u32 *mdptr, u32 pslen, u32 *psdata, u32 epiblen, u32 *epib)
 static int sa_run(struct sa_req *req)
 {
 	struct sa_rx_data *rxd;
+	struct sa_req_ctx_data *req_ctx;
 	gfp_t gfp_flags;
-	u32 cmdl[SA_MAX_CMDL_WORDS];
 	struct sa_crypto_data *pdata = dev_get_drvdata(sa_k3_dev);
 	struct device *ddev;
 	struct dma_chan *dma_rx;
@@ -1511,6 +1549,8 @@ static int sa_run(struct sa_req *req)
 	bool diff_dst;
 	enum dma_data_direction dir_src;
 	struct sa_mapped_sg *mapped_sg;
+	bool hw_locked = false;
+	bool may_sleep = req->base->flags & CRYPTO_TFM_REQ_MAY_SLEEP;
 
 	gfp_flags = req->base->flags & CRYPTO_TFM_REQ_MAY_SLEEP ?
 		GFP_KERNEL : GFP_ATOMIC;
@@ -1518,6 +1558,7 @@ static int sa_run(struct sa_req *req)
 	rxd = kzalloc(sizeof(*rxd), gfp_flags);
 	if (!rxd)
 		return -ENOMEM;
+	rxd->pdata = pdata;
 
 	if (req->src != req->dst) {
 		diff_dst = true;
@@ -1543,16 +1584,21 @@ static int sa_run(struct sa_req *req)
 	ddev = dmaengine_get_dma_device(pdata->dma_tx);
 	rxd->ddev = ddev;
 
-	memcpy(cmdl, sa_ctx->cmdl, sa_ctx->cmdl_size);
+	req_ctx = &rxd->req_ctx;
+	memset(req_ctx, 0, sizeof(*req_ctx));
+
+	req_ctx->cmdl_size = sa_ctx->cmdl_size;
+	memcpy(req_ctx->cmdl, sa_ctx->cmdl, req_ctx->cmdl_size);
+	req_ctx->cmdl_upd_info = sa_ctx->cmdl_upd_info;
 
 	/* Process the command label for this request.
 	 * IMPORTANT: Use local variable to store the processed size.
 	 * sa_ctx->cmdl_size must remain unchanged as it stores the
 	 * template size for use across multiple requests.
 	 */
-	u32 cmdl_len = sa_update_cmdl(req, cmdl,
-					   &sa_ctx->cmdl_upd_info,
-					   sa_ctx->cmdl_size);
+	u32 cmdl_len = sa_update_cmdl(req, req_ctx->cmdl,
+			      &req_ctx->cmdl_upd_info,
+			      req_ctx->cmdl_size);
 
 	if (cmdl_len > SA_MAX_CMDL_WORDS * sizeof(u32)) {
 		dev_err(pdata->dev, "sa_update_cmdl returned %u, exceeds max %lu\n",
@@ -1660,6 +1706,9 @@ static int sa_run(struct sa_req *req)
 		}
 	}
 
+	sa_hw_lock(pdata, may_sleep);
+	hw_locked = true;
+
 	rxd->tx_in = dmaengine_prep_slave_sg(dma_rx, dst, dst_nents,
 					     DMA_DEV_TO_MEM,
 					     DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
@@ -1672,7 +1721,7 @@ static int sa_run(struct sa_req *req)
 	rxd->req = (void *)req->base;
 	rxd->enc = req->enc;
 	rxd->iv_idx = req->ctx->iv_idx;
-	rxd->enc_iv_size = sa_ctx->cmdl_upd_info.enc_iv.size;
+	rxd->enc_iv_size = req_ctx->cmdl_upd_info.enc_iv.size;
 	rxd->tx_in->callback = req->callback;
 	rxd->tx_in->callback_param = rxd;
 
@@ -1693,10 +1742,13 @@ static int sa_run(struct sa_req *req)
 	mdptr = (u32 *)dmaengine_desc_get_metadata_ptr(tx_out, &pl, &ml);
 
 	req->mdata_size = sa_prepare_tx_desc(mdptr, cmdl_len,
-					     cmdl, sizeof(sa_ctx->epib),
+				     req_ctx->cmdl, sizeof(sa_ctx->epib),
 					     sa_ctx->epib);
 
 	dmaengine_desc_set_metadata_len(tx_out, req->mdata_size);
+
+	rxd->hw_locked = true;
+	hw_locked = false;
 
 	dmaengine_submit(tx_out);
 	dmaengine_submit(rxd->tx_in);
@@ -1707,6 +1759,8 @@ static int sa_run(struct sa_req *req)
 	return -EINPROGRESS;
 
 err_cleanup:
+	if (hw_locked)
+		sa_hw_unlock(pdata);
 	sa_free_sa_rx_data(rxd);
 
 	return ret;
@@ -1789,6 +1843,10 @@ static void sa_sha_dma_in_callback(void *data)
 	for (i = 0; i < (authsize / 4); i++)
 		result[i] = be32_to_cpu(mdptr[i + 4]);
 
+	if (rxd->hw_locked) {
+		sa_hw_unlock(rxd->pdata);
+		rxd->hw_locked = false;
+	}
 	sa_free_sa_rx_data(rxd);
 
 	ahash_request_complete(req, 0);
@@ -2494,6 +2552,10 @@ static void sa_aead_dma_in_callback(void *data)
 		err = memcmp(&mdptr[4], auth_tag, authsize) ? -EBADMSG : 0;
 	}
 
+	if (rxd->hw_locked) {
+		sa_hw_unlock(rxd->pdata);
+		rxd->hw_locked = false;
+	}
 	sa_free_sa_rx_data(rxd);
 
 	aead_request_complete(req, err);
@@ -3489,6 +3551,9 @@ static int sa_ul_probe(struct platform_device *pdev)
 		goto disable_pm_runtime;
 
 	spin_lock_init(&dev_data->scid_lock);
+	spin_lock_init(&dev_data->hw.lock);
+	init_waitqueue_head(&dev_data->hw.wq);
+	dev_data->hw.busy = false;
 
 	val = SA_EEC_ENCSS_EN | SA_EEC_AUTHSS_EN | SA_EEC_CTXCACH_EN |
 	      SA_EEC_CPPI_PORT_IN_EN | SA_EEC_CPPI_PORT_OUT_EN |
