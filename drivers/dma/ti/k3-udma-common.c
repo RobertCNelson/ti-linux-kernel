@@ -921,24 +921,39 @@ struct udma_desc *udma_alloc_tr_desc(struct udma_chan *uc,
 }
 
 /**
- * udma_get_tr_counters - calculate TR counters for a given length
- * @len: Length of the trasnfer
- * @align_to: Preferred alignment
+ * udma_get_tr_counters - Calculate TR counters for a given length
+ * @len: Length of the transfer
  * @tr0_cnt0: First TR icnt0
  * @tr0_cnt1: First TR icnt1
  * @tr1_cnt0: Second (if used) TR icnt0
  *
- * For len < SZ_64K only one TR is enough, tr1_cnt0 is not updated
- * For len >= SZ_64K two TRs are used in a simple way:
- * First TR: SZ_64K-alignment blocks (tr0_cnt0, tr0_cnt1)
- * Second TR: the remaining length (tr1_cnt0)
+ * This function calculates the loop counters (icnt0, icnt1) required to
+ * perform a transfer of size @len.
+ *
+ * For @len < SZ_64K, only one TR is required.
+ *
+ * For @len > SZ_64K, the transfer is split into two TRs. To support BCDMA
+ * static TR configuration (where the static bstcnt register applies to all
+ * TRs in a descriptor), the split must ensure that TRs are of equal size.
+ *
+ * Limits: The maximum supported length is (SZ_128K - 2) = 131070 bytes,
+ * because the split logic relies on fitting half the length into a 16-bit
+ * counter.
  *
  * Returns the number of TRs the length needs (1 or 2)
  * -EINVAL if the length can not be supported
  */
-int udma_get_tr_counters(size_t len, unsigned long align_to,
-				u16 *tr0_cnt0, u16 *tr0_cnt1, u16 *tr1_cnt0)
+int udma_get_tr_counters(size_t len, u16 *tr0_cnt0, u16 *tr0_cnt1,
+			 u16 *tr1_cnt0)
 {
+	/*
+	 * transfers >= 131070 bytes (128K - 2) requires more than 2 TRs
+	 * and the current logic doesn't support it.
+	 */
+	if (len > SZ_128K - 2) {
+		return -EINVAL;
+	}
+
 	if (len < SZ_64K) {
 		*tr0_cnt0 = len;
 		*tr0_cnt1 = 1;
@@ -946,21 +961,18 @@ int udma_get_tr_counters(size_t len, unsigned long align_to,
 		return 1;
 	}
 
-	if (align_to > 3)
-		align_to = 3;
-
-realign:
-	*tr0_cnt0 = SZ_64K - BIT(align_to);
-	if (len / *tr0_cnt0 >= SZ_64K) {
-		if (align_to) {
-			align_to--;
-			goto realign;
-		}
-		return -EINVAL;
-	}
-
-	*tr0_cnt1 = len / *tr0_cnt0;
-	*tr1_cnt0 = len % *tr0_cnt0;
+	/*
+	 * For transfers >= 64K, we must use equal-sized TRs.
+	 * This is required for the static `bstcnt` logic in
+	 * `udma_configure_statictr` to be valid.
+	 *
+	 * We can only do this if `len / 2` fits in a 16-bit counter.
+	 * The max 16-bit value is 65535. Max len = 65535 * 2 = 131070
+	 * which is 128K-2.
+	 */
+	*tr0_cnt0 = len / 2;
+	*tr0_cnt1 = 1;
+	*tr1_cnt0 = len - *tr0_cnt0;
 
 	return 2;
 }
@@ -1009,7 +1021,7 @@ udma_prep_slave_sg_tr(struct udma_chan *uc, struct scatterlist *sgl,
 	for_each_sg(sgl, sgent, sglen, i) {
 		dma_addr_t sg_addr = sg_dma_address(sgent);
 
-		num_tr = udma_get_tr_counters(sg_dma_len(sgent), __ffs(sg_addr),
+		num_tr = udma_get_tr_counters(sg_dma_len(sgent),
 					      &tr0_cnt0, &tr0_cnt1, &tr1_cnt0);
 		if (num_tr < 0) {
 			dev_err(uc->ud->dev, "size %u is not supported\n",
@@ -1145,7 +1157,7 @@ udma_prep_slave_sg_triggered_tr(struct udma_chan *uc, struct scatterlist *sgl,
 		dma_addr_t sg_addr = sg_dma_address(sgent);
 
 		sg_len = sg_dma_len(sgent);
-		num_tr = udma_get_tr_counters(sg_len / trigger_size, 0,
+		num_tr = udma_get_tr_counters(sg_len / trigger_size,
 					      &tr0_cnt2, &tr0_cnt3, &tr1_cnt2);
 		if (num_tr < 0) {
 			dev_err(uc->ud->dev, "size %zu is not supported\n",
@@ -1309,6 +1321,9 @@ int udma_configure_statictr(struct udma_chan *uc, struct udma_desc *d,
 
 		d->static_tr.bstcnt =
 			(tr_req->icnt0 * tr_req->icnt1) / dev_width;
+
+		if (!(tr_req->flags & CPPI5_TR_CSF_EOP))
+			d->static_tr.bstcnt += (tr_req[1].icnt0 * tr_req[1].icnt1) / dev_width;
 	} else {
 		d->static_tr.bstcnt = 0;
 	}
@@ -1590,8 +1605,8 @@ udma_prep_dma_cyclic_tr(struct udma_chan *uc, dma_addr_t buf_addr,
 	int num_tr;
 	u32 period_csf = 0;
 
-	num_tr = udma_get_tr_counters(period_len, __ffs(buf_addr), &tr0_cnt0,
-				      &tr0_cnt1, &tr1_cnt0);
+	num_tr = udma_get_tr_counters(period_len,
+				      &tr0_cnt0, &tr0_cnt1, &tr1_cnt0);
 	if (num_tr < 0) {
 		dev_err(uc->ud->dev, "size %zu is not supported\n",
 			period_len);
@@ -1821,8 +1836,8 @@ udma_prep_dma_memcpy(struct dma_chan *chan, dma_addr_t dest, dma_addr_t src,
 		return NULL;
 	}
 
-	num_tr = udma_get_tr_counters(len, __ffs(src | dest), &tr0_cnt0,
-				      &tr0_cnt1, &tr1_cnt0);
+	num_tr = udma_get_tr_counters(len, &tr0_cnt0, &tr0_cnt1,
+				      &tr1_cnt0);
 	if (num_tr < 0) {
 		dev_err(uc->ud->dev, "size %zu is not supported\n",
 			len);
