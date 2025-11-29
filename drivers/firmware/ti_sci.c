@@ -89,6 +89,16 @@ struct ti_sci_desc {
 };
 
 /**
+ * struct ti_sci_irq - Description of allocated irqs
+ * @list: List head
+ * @desc: Description of the irq
+ */
+struct ti_sci_irq {
+	struct list_head list;
+	struct ti_sci_msg_req_manage_irq desc;
+};
+
+/**
  * struct ti_sci_info - Structure representing a TI SCI instance
  * @dev:	Device pointer
  * @desc:	SoC description for this instance
@@ -102,6 +112,7 @@ struct ti_sci_desc {
  * @chan_rx:	Receive mailbox channel
  * @minfo:	Message info
  * @node:	list head
+ * @irqs:      List of allocated irqs
  * @host_id:	Host ID
  * @fw_caps:	FW/SoC low power capabilities
  * @users:	Number of users of this instance
@@ -118,6 +129,7 @@ struct ti_sci_info {
 	struct mbox_chan *chan_tx;
 	struct mbox_chan *chan_rx;
 	struct ti_sci_xfers_info minfo;
+	struct ti_sci_irq irqs;
 	struct list_head node;
 	u8 host_id;
 	u64 fw_caps;
@@ -1450,6 +1462,14 @@ fail:
 }
 
 /**
+ * ti_sci_restore_clk_upon_resume() - Check if clock parents and rate are to be restored
+ */
+static bool ti_sci_restore_clk_upon_resume(void)
+{
+	return true;
+}
+
+/**
  * ti_sci_cmd_clk_get_match_freq() - Find a good match for frequency
  * @handle:	pointer to TI SCI handle
  * @dev_id:	Device identifier this request is for
@@ -2385,6 +2405,29 @@ fail:
 }
 
 /**
+ * ti_sci_irq_equal() - Helper API to compare two irqs (generic headers are not
+ *                       compared)
+ * @irq_a:     irq_a to compare
+ * @irq_b:     irq_b to compare
+ *
+ * Return: true if the two irqs are equal, else false.
+ */
+static bool ti_sci_irq_equal(struct ti_sci_msg_req_manage_irq irq_a,
+			     struct ti_sci_msg_req_manage_irq irq_b)
+{
+	return irq_a.valid_params == irq_b.valid_params &&
+		irq_a.src_id == irq_b.src_id &&
+		irq_a.src_index == irq_b.src_index &&
+		irq_a.dst_id == irq_b.dst_id &&
+		irq_a.dst_host_irq == irq_b.dst_host_irq &&
+		irq_a.ia_id == irq_b.ia_id &&
+		irq_a.vint == irq_b.vint &&
+		irq_a.global_event == irq_b.global_event &&
+		irq_a.vint_status_bit == irq_b.vint_status_bit &&
+		irq_a.secondary_host == irq_b.secondary_host;
+}
+
+/**
  * ti_sci_set_irq() - Helper api to configure the irq route between the
  *		      requested source and destination
  * @handle:		Pointer to TISCI handle.
@@ -2407,15 +2450,44 @@ static int ti_sci_set_irq(const struct ti_sci_handle *handle, u32 valid_params,
 			  u16 dst_host_irq, u16 ia_id, u16 vint,
 			  u16 global_event, u8 vint_status_bit, u8 s_host)
 {
+	struct ti_sci_info *info = handle_to_ti_sci_info(handle);
+	struct ti_sci_msg_req_manage_irq *desc;
+	struct ti_sci_irq *irq;
+	int ret;
 	pr_debug("%s: IRQ set with valid_params = 0x%x from src = %d, index = %d, to dst = %d, irq = %d,via ia_id = %d, vint = %d, global event = %d,status_bit = %d\n",
-		 __func__, valid_params, src_id, src_index,
+		__func__, valid_params, src_id, src_index,
 		 dst_id, dst_host_irq, ia_id, vint, global_event,
 		 vint_status_bit);
 
-	return ti_sci_manage_irq(handle, valid_params, src_id, src_index,
-				 dst_id, dst_host_irq, ia_id, vint,
-				 global_event, vint_status_bit, s_host,
-				 TI_SCI_MSG_SET_IRQ);
+	ret = ti_sci_manage_irq(handle, valid_params, src_id, src_index,
+				dst_id, dst_host_irq, ia_id, vint,
+				global_event, vint_status_bit, s_host,
+				TI_SCI_MSG_SET_IRQ);
+
+	if (ret)
+		return ret;
+
+	if (info->fw_caps & MSG_FLAG_CAPS_LPM_BOARDCFG_MANAGED) {
+		irq = kzalloc(sizeof(*irq), GFP_KERNEL);
+		if (!irq)
+			return -ENOMEM;
+
+		desc = &irq->desc;
+		desc->valid_params = valid_params;
+		desc->src_id = src_id;
+		desc->src_index = src_index;
+		desc->dst_id = dst_id;
+		desc->dst_host_irq = dst_host_irq;
+		desc->ia_id = ia_id;
+		desc->vint = vint;
+		desc->global_event = global_event;
+		desc->vint_status_bit = vint_status_bit;
+		desc->secondary_host = s_host;
+
+		list_add(&irq->list, &info->irqs.list);
+	}
+
+	return 0;
 }
 
 /**
@@ -2441,15 +2513,48 @@ static int ti_sci_free_irq(const struct ti_sci_handle *handle, u32 valid_params,
 			   u16 dst_host_irq, u16 ia_id, u16 vint,
 			   u16 global_event, u8 vint_status_bit, u8 s_host)
 {
-	pr_debug("%s: IRQ release with valid_params = 0x%x from src = %d, index = %d, to dst = %d, irq = %d,via ia_id = %d, vint = %d, global event = %d,status_bit = %d\n",
-		 __func__, valid_params, src_id, src_index,
-		 dst_id, dst_host_irq, ia_id, vint, global_event,
-		 vint_status_bit);
+	struct ti_sci_info *info = handle_to_ti_sci_info(handle);
+	struct ti_sci_msg_req_manage_irq irq_desc;
+	struct ti_sci_irq *this_irq;
+	struct list_head *this;
+	int ret;
 
-	return ti_sci_manage_irq(handle, valid_params, src_id, src_index,
-				 dst_id, dst_host_irq, ia_id, vint,
-				 global_event, vint_status_bit, s_host,
-				 TI_SCI_MSG_FREE_IRQ);
+	pr_debug("%s: IRQ release with valid_params = 0x%x from src = %d, index = %d, to dst = %d, irq = %d,via ia_id = %d, vint = %d, global event = %d,status_bit = %d\n",
+		__func__, valid_params, src_id, src_index,
+		dst_id, dst_host_irq, ia_id, vint, global_event,
+		vint_status_bit);
+
+	ret = ti_sci_manage_irq(handle, valid_params, src_id, src_index,
+				dst_id, dst_host_irq, ia_id, vint,
+				global_event, vint_status_bit, s_host,
+				TI_SCI_MSG_FREE_IRQ);
+
+	if (ret)
+		return ret;
+
+	if (info->fw_caps & MSG_FLAG_CAPS_LPM_BOARDCFG_MANAGED) {
+		irq_desc.valid_params = valid_params;
+		irq_desc.src_id = src_id;
+		irq_desc.src_index = src_index;
+		irq_desc.dst_id = dst_id;
+		irq_desc.dst_host_irq = dst_host_irq;
+		irq_desc.ia_id = ia_id;
+		irq_desc.vint = vint;
+		irq_desc.global_event = global_event;
+		irq_desc.vint_status_bit = vint_status_bit;
+		irq_desc.secondary_host = s_host;
+
+		list_for_each(this, &info->irqs.list) {
+			this_irq = list_entry(this, struct ti_sci_irq, list);
+			if (ti_sci_irq_equal(irq_desc, this_irq->desc)) {
+				list_del(&this_irq->list);
+				kfree(this_irq);
+				break;
+			}
+		}
+	}
+
+	return 0;
 }
 
 /**
@@ -3325,6 +3430,8 @@ static void ti_sci_setup_ops(struct ti_sci_info *info)
 	cops->set_parent = ti_sci_cmd_clk_set_parent;
 	cops->get_parent = ti_sci_cmd_clk_get_parent;
 	cops->get_num_parents = ti_sci_cmd_clk_get_num_parents;
+	if (info->fw_caps & MSG_FLAG_CAPS_LPM_BOARDCFG_MANAGED)
+		cops->restore_clk = ti_sci_restore_clk_upon_resume;
 
 	cops->get_best_match_freq = ti_sci_cmd_clk_get_match_freq;
 	cops->set_freq = ti_sci_cmd_clk_set_freq;
@@ -3786,8 +3893,11 @@ static int ti_sci_prepare_system_suspend(struct ti_sci_info *info)
 			return ti_sci_cmd_prepare_sleep(&info->handle,
 							TISCI_MSG_VALUE_SLEEP_MODE_DM_MANAGED,
 							0, 0, 0);
+		} else if (info->fw_caps & MSG_FLAG_CAPS_LPM_BOARDCFG_MANAGED) {
+			/* Nothing to do in the BOARDCFG_MANAGED mode */
+			return 0;
 		} else {
-			/* DM Managed is not supported by the firmware. */
+			/* DM Managed and BoardCfg Managed are not supported by the firmware. */
 			dev_err(info->dev, "Suspend to memory is not supported by the firmware\n");
 			return -EOPNOTSUPP;
 		}
@@ -3801,7 +3911,7 @@ static int ti_sci_prepare_system_suspend(struct ti_sci_info *info)
 	}
 }
 
-static int __maybe_unused ti_sci_suspend(struct device *dev)
+static int ti_sci_suspend(struct device *dev)
 {
 	struct ti_sci_info *info = dev_get_drvdata(dev);
 	struct device *cpu_dev, *cpu_dev_max = NULL;
@@ -3842,17 +3952,19 @@ static int __maybe_unused ti_sci_suspend(struct device *dev)
 	return 0;
 }
 
-static int __maybe_unused ti_sci_suspend_noirq(struct device *dev)
+static int ti_sci_suspend_noirq(struct device *dev)
 {
 	struct ti_sci_info *info = dev_get_drvdata(dev);
 	int ret = 0;
 
-	ret = ti_sci_cmd_set_io_isolation(&info->handle, TISCI_MSG_VALUE_IO_ENABLE);
-	if (ret) {
-		dev_err(dev, "%s: Failed to suspend. Abort entering low power mode.\n", __func__);
-		if (ti_sci_cmd_lpm_abort(&info->handle))
-			dev_err(dev, "%s: Failed to abort.\n", __func__);
-		return ret;
+	if (info->fw_caps & MSG_FLAG_CAPS_IO_ISOLATION) {
+		ret = ti_sci_cmd_set_io_isolation(&info->handle, TISCI_MSG_VALUE_IO_ENABLE);
+		if (ret) {
+			dev_err(dev, "%s: Failed to suspend. Abort entering low power mode.\n", __func__);
+			if (ti_sci_cmd_lpm_abort(&info->handle))
+				dev_err(dev, "%s: Failed to abort.\n", __func__);
+			return ret;
+		}
 	}
 
 	return 0;
@@ -3860,9 +3972,12 @@ static int __maybe_unused ti_sci_suspend_noirq(struct device *dev)
 
 extern int davinci_gpio_resume_all_devices(void);
 
-static int __maybe_unused ti_sci_resume_noirq(struct device *dev)
+static int ti_sci_resume_noirq(struct device *dev)
 {
 	struct ti_sci_info *info = dev_get_drvdata(dev);
+	struct ti_sci_msg_req_manage_irq *irq_desc;
+	struct ti_sci_irq *irq;
+	struct list_head *this;
 	int ret = 0;
 	int err;
 	u32 source;
@@ -3870,14 +3985,43 @@ static int __maybe_unused ti_sci_resume_noirq(struct device *dev)
 	u8 pin;
 	u8 mode;
 
-	/* Resume GPIO before disabling isolation to maintain GPIO state */
-	err = davinci_gpio_resume_all_devices();
-	if (err)
-		return err;
+	switch (pm_suspend_target_state) {
+	case PM_SUSPEND_MEM:
+		if (info->fw_caps & MSG_FLAG_CAPS_LPM_BOARDCFG_MANAGED) {
+			list_for_each(this, &info->irqs.list) {
+				irq = list_entry(this, struct ti_sci_irq, list);
+				irq_desc = &irq->desc;
+				ret = ti_sci_manage_irq(&info->handle,
+							irq_desc->valid_params,
+							irq_desc->src_id,
+							irq_desc->src_index,
+							irq_desc->dst_id,
+							irq_desc->dst_host_irq,
+							irq_desc->ia_id,
+							irq_desc->vint,
+							irq_desc->global_event,
+							irq_desc->vint_status_bit,
+							irq_desc->secondary_host,
+							TI_SCI_MSG_SET_IRQ);
+				if (ret)
+					return ret;
+			}
+		}
+		break;
+	default:
+		break;
+	}
 
-	ret = ti_sci_cmd_set_io_isolation(&info->handle, TISCI_MSG_VALUE_IO_DISABLE);
-	if (ret)
-		return ret;
+	if (info->fw_caps & MSG_FLAG_CAPS_IO_ISOLATION) {
+		/* Resume GPIO before disabling isolation to maintain GPIO state */
+		err = davinci_gpio_resume_all_devices();
+		if (err)
+			return err;
+
+		ret = ti_sci_cmd_set_io_isolation(&info->handle, TISCI_MSG_VALUE_IO_DISABLE);
+		if (ret)
+			return ret;
+	}
 
 	ret = ti_sci_msg_cmd_lpm_wake_reason(&info->handle, &source, &time, &pin, &mode);
 	/* Do not fail to resume on error as the wake reason is not critical */
@@ -3889,11 +4033,9 @@ static int __maybe_unused ti_sci_resume_noirq(struct device *dev)
 }
 
 static const struct dev_pm_ops ti_sci_pm_ops = {
-#ifdef CONFIG_PM_SLEEP
-	.suspend = ti_sci_suspend,
-	.suspend_noirq = ti_sci_suspend_noirq,
-	.resume_noirq = ti_sci_resume_noirq,
-#endif
+	.suspend = pm_sleep_ptr(ti_sci_suspend),
+	.suspend_noirq = pm_sleep_ptr(ti_sci_suspend_noirq),
+	.resume_noirq = pm_sleep_ptr(ti_sci_resume_noirq),
 };
 
 /*
@@ -4119,10 +4261,13 @@ static int ti_sci_probe(struct platform_device *pdev)
 	}
 
 	ti_sci_msg_cmd_query_fw_caps(&info->handle, &info->fw_caps);
-	dev_dbg(dev, "Detected firmware capabilities: %s%s%s\n",
+	dev_dbg(dev, "Detected firmware capabilities: %s%s%s%s%s%s\n",
 		info->fw_caps & MSG_FLAG_CAPS_GENERIC ? "Generic" : "",
 		info->fw_caps & MSG_FLAG_CAPS_LPM_PARTIAL_IO ? " Partial-IO" : "",
-		info->fw_caps & MSG_FLAG_CAPS_LPM_DM_MANAGED ? " DM-Managed" : ""
+		info->fw_caps & MSG_FLAG_CAPS_LPM_DM_MANAGED ? " DM-Managed" : "",
+		info->fw_caps & MSG_FLAG_CAPS_LPM_ABORT ? " LPM-Abort" : "",
+		info->fw_caps & MSG_FLAG_CAPS_IO_ISOLATION ? " IO-Isolation" : "",
+		info->fw_caps & MSG_FLAG_CAPS_LPM_BOARDCFG_MANAGED ? " BoardConfig-Managed" : ""
 	);
 
 	ti_sci_setup_ops(info);
@@ -4154,6 +4299,9 @@ static int ti_sci_probe(struct platform_device *pdev)
 	mutex_lock(&ti_sci_list_mutex);
 	list_add_tail(&info->node, &ti_sci_list);
 	mutex_unlock(&ti_sci_list_mutex);
+
+	if (info->fw_caps & MSG_FLAG_CAPS_LPM_BOARDCFG_MANAGED)
+		INIT_LIST_HEAD(&info->irqs.list);
 
 	ret = of_platform_populate(dev->of_node, NULL, NULL, dev);
 	if (ret) {
