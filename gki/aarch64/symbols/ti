@@ -1996,6 +1996,7 @@
   regmap_field_update_bits_base
   regmap_get_device
   __regmap_init
+  __regmap_init_i2c
   __regmap_init_mmio_clk
   regmap_irq_get_domain
   regmap_might_sleep
@@ -2355,7 +2356,9 @@
   si_mem_available
   si_meminfo
   simple_attr_open
+  simple_attr_read
   simple_attr_release
+  simple_attr_write
   simple_dir_inode_operations
   simple_dir_operations
   simple_inode_init_ts
@@ -2590,6 +2593,7 @@
   string_get_size
   strlcat
   strlen
+  strncasecmp
   strncmp
   strncpy
   strnlen
