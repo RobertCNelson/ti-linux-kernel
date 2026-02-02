@@ -41,7 +41,7 @@
 #define OTAPDLYENA_SHIFT	20
 #define OTAPDLYENA_MASK		BIT(OTAPDLYENA_SHIFT)
 #define OTAPDLYSEL_SHIFT	12
-#define OTAPDLYSEL_MASK		GENMASK(15, 12)
+#define OTAPDLYSEL_MASK		GENMASK(16, 12)
 #define STRBSEL_SHIFT		24
 #define STRBSEL_4BIT_MASK	GENMASK(27, 24)
 #define STRBSEL_8BIT_MASK	GENMASK(31, 24)
@@ -156,6 +156,7 @@ struct sdhci_am654_data {
 #define SDHCI_AM654_QUIRK_FORCE_CDTEST BIT(0)
 #define SDHCI_AM654_QUIRK_SUPPRESS_V1P8_ENA BIT(1)
 #define SDHCI_AM654_QUIRK_DISABLE_HS400 BIT(2)
+#define SDHCI_AM654_QUIRK_DDR52_LIMIT_40MHZ BIT(3)
 };
 
 struct window {
@@ -332,6 +333,14 @@ static void sdhci_j721e_4bit_set_clock(struct sdhci_host *host,
 	u32 itap_del_ena;
 	u32 itap_del_sel;
 	u32 mask, val;
+
+	/* Override speed for DDR52 mode */
+	if (timing == MMC_TIMING_MMC_DDR52) {
+		if ((sdhci_am654->quirks & SDHCI_AM654_QUIRK_DDR52_LIMIT_40MHZ) &&
+		    (clock > 40000000)) {
+			clock = 40000000;
+		}
+	}
 
 	/* Setup Output TAP delay */
 	otap_del_sel = sdhci_am654->otap_del_sel[timing];
@@ -681,7 +690,8 @@ static const struct sdhci_am654_driver_data sdhci_j721e_4bit_drvdata = {
 static const struct sdhci_am654_driver_data sdhci_am62_4bit_drvdata = {
 	.pdata = &sdhci_j721e_4bit_pdata,
 	.flags = IOMUX_PRESENT,
-	.quirks = SDHCI_AM654_QUIRK_SUPPRESS_V1P8_ENA,
+	.quirks = SDHCI_AM654_QUIRK_SUPPRESS_V1P8_ENA |
+		  SDHCI_AM654_QUIRK_DDR52_LIMIT_40MHZ,
 };
 
 static const struct soc_device_attribute sdhci_am654_devices[] = {
