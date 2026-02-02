@@ -316,8 +316,8 @@ static void sdhci_am654_set_clock(struct sdhci_host *host, unsigned int clock)
 
 	regmap_update_bits(sdhci_am654->base, PHY_CTRL4, mask, val);
 
-	if (timing > MMC_TIMING_UHS_SDR25 && clock >= CLOCK_TOO_SLOW_HZ) {
-		sdhci_am654_setup_dll(host, clock);
+	if (timing > MMC_TIMING_UHS_SDR25 && host->mmc->actual_clock >= CLOCK_TOO_SLOW_HZ) {
+		sdhci_am654_setup_dll(host, host->mmc->actual_clock);
 		sdhci_am654->dll_enable = true;
 
 		if (timing == MMC_TIMING_MMC_HS400) {
