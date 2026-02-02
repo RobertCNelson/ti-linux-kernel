@@ -176,13 +176,26 @@ struct sdhci_am654_driver_data {
 #define DLL_CALIB	(1 << 4)
 };
 
+struct freqsel_data {
+	unsigned int min_hz;
+	u8 freqsel;
+};
+
+static const struct freqsel_data freqsel_map[] = {
+	{ 170000000, 0x0 },  /* 200-170 MHz */
+	{ 140000000, 0x1 },  /* 169-140 MHz */
+	{ 110000000, 0x2 },  /* 139-110 MHz */
+	{  80000000, 0x3 },  /* 109-80 MHz */
+	{  50000000, 0x4 },  /* 79-50 MHz */
+};
+
 static void sdhci_am654_setup_dll(struct sdhci_host *host, unsigned int clock)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_am654_data *sdhci_am654 = sdhci_pltfm_priv(pltfm_host);
 	int sel50, sel100, freqsel;
 	u32 mask, val;
-	int ret;
+	int ret, i;
 
 	/* Disable delay chain mode */
 	regmap_update_bits(sdhci_am654->base, PHY_CTRL5,
@@ -209,12 +222,12 @@ static void sdhci_am654_setup_dll(struct sdhci_host *host, unsigned int clock)
 		regmap_update_bits(sdhci_am654->base, PHY_CTRL5, mask, val);
 
 	} else {
-		switch (clock) {
-		case 200000000:
-			freqsel = 0x0;
-			break;
-		default:
-			freqsel = 0x4;
+		freqsel = 0x4;
+		for (i = 0; i < ARRAY_SIZE(freqsel_map); i++) {
+			if (clock >= freqsel_map[i].min_hz) {
+				freqsel = freqsel_map[i].freqsel;
+				break;
+			}
 		}
 
 		regmap_update_bits(sdhci_am654->base, PHY_CTRL5, FREQSEL_MASK,
