@@ -78,6 +78,10 @@
 #define ITAPCHGWIN_SHIFT	9
 #define ITAPCHGWIN_MASK		BIT(ITAPCHGWIN_SHIFT)
 
+#define DEFAULT_DLL_TRIM_ICP	8
+
+#define DEFAULT_DLL_DRIVER_STRENGTH	50
+
 #define DRIVER_STRENGTH_50_OHM	0x0
 #define DRIVER_STRENGTH_33_OHM	0x1
 #define DRIVER_STRENGTH_66_OHM	0x2
@@ -871,13 +875,19 @@ static int sdhci_am654_get_of_property(struct platform_device *pdev,
 	if (sdhci_am654->flags & DLL_PRESENT) {
 		ret = device_property_read_u32(dev, "ti,trm-icp",
 					       &sdhci_am654->trm_icp);
-		if (ret)
-			return ret;
+		if (ret) {
+			sdhci_am654->trm_icp = DEFAULT_DLL_TRIM_ICP;
+			dev_warn(dev, "ti,trm-icp not found, using default value: 0x%x\n",
+				 sdhci_am654->trm_icp);
+		}
 
 		ret = device_property_read_u32(dev, "ti,driver-strength-ohm",
 					       &drv_strength);
-		if (ret)
-			return ret;
+		if (ret) {
+			drv_strength = DEFAULT_DLL_DRIVER_STRENGTH;
+			dev_warn(dev, "ti,driver-strength-ohm not found, using default value: %d ohm\n",
+				 drv_strength);
+		}
 
 		switch (drv_strength) {
 		case 50:
