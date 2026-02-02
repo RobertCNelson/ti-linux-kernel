@@ -287,10 +287,13 @@
 		clock-names = "clk_ahb", "clk_xin";
 		assigned-clocks = <&scmi_clk 125>;
 		bus-width = <8>;
+		mmc-ddr-1_8v;
 		ti,clkbuf-sel = <0x7>;
 		ti,otap-del-sel-legacy = <0x0>;
 		ti,otap-del-sel-mmc-hs = <0x0>;
+		ti,otap-del-sel-ddr52 = <0x15>;
 		ti,otap-del-sel-hs200 = <0x6>;
+		ti,itap-del-sel-ddr52 = <0x2>;
 		status = "disabled";
 	};
 
