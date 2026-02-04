@@ -181,6 +181,104 @@
 		bootph-all;
 	};
 
+	codec_audio: sound {
+		compatible = "simple-audio-card";
+		simple-audio-card,name = "AM62D2-EVM";
+
+		simple-audio-card,routing =
+			/* J3A (tad5x1x@50) */
+			"J3A IN1 Source Mux", "J3A Playback",
+			"J3A IN2 Source Mux", "J3A Playback",
+			/* J3B (tad5x1x@51) */
+			"J3B IN1 Source Mux", "J3B Playback",
+			"J3B IN2 Source Mux", "J3B Playback",
+			/* J4A (tad5x1x@52) */
+			"J4A IN1 Source Mux", "J4A Playback",
+			"J4A IN2 Source Mux", "J4A Playback",
+			/* J4B (tad5x1x@53) */
+			"J4B IN1 Source Mux", "J4B Playback",
+			"J4B IN2 Source Mux", "J4B Playback";
+
+		simple-audio-card,dai-link@0 {
+			format = "dsp_a";
+			bitclock-master = <&master0>;
+			frame-master = <&master0>;
+
+			master0: cpu {
+				sound-dai = <&mcasp2>;
+				system-clock-direction-out;
+			};
+
+			codec@0 {
+				sound-dai = <&pcm6240>;
+			};
+		};
+
+		simple-audio-card,dai-link@1 {
+			format = "dsp_a";
+			bitclock-master = <&master1>;
+			frame-master = <&master1>;
+
+			master1: cpu {
+				sound-dai = <&mcasp2>;
+				system-clock-direction-out;
+			};
+
+			codec@1 {
+				sound-dai = <&tad5x1x_50>;
+				playback-only;
+			};
+		};
+
+		simple-audio-card,dai-link@2 {
+			format = "dsp_a";
+			bitclock-master = <&master2>;
+			frame-master = <&master2>;
+
+			master2: cpu {
+				sound-dai = <&mcasp2>;
+				system-clock-direction-out;
+			};
+
+			codec@2 {
+				sound-dai = <&tad5x1x_51>;
+				playback-only;
+			};
+		};
+
+		simple-audio-card,dai-link@3 {
+			format = "dsp_a";
+			bitclock-master = <&master3>;
+			frame-master = <&master3>;
+
+			master3: cpu {
+				sound-dai = <&mcasp2>;
+				system-clock-direction-out;
+			};
+
+			codec@3 {
+				sound-dai = <&tad5x1x_52>;
+				playback-only;
+			};
+		};
+
+		simple-audio-card,dai-link@4 {
+			format = "dsp_a";
+			bitclock-master = <&master4>;
+			frame-master = <&master4>;
+
+			master4: cpu {
+				sound-dai = <&mcasp2>;
+				system-clock-direction-out;
+			};
+
+			codec@4 {
+				sound-dai = <&tad5x1x_53>;
+				playback-only;
+			};
+		};
+	};
+
 	leds {
 		compatible = "gpio-leds";
 		pinctrl-names = "default";
@@ -384,6 +482,20 @@
 		bootph-all;
 	};
 
+	main_mcasp2_pins_default: main-mcasp2-default-pins {
+		pinctrl-single,pins = <
+			AM62DX_IOPAD(0x0078, PIN_INPUT, 3) /* (T21) GPMC0_AD15.MCASP2_ACLKR */
+			AM62DX_IOPAD(0x0070, PIN_INPUT, 3) /* (R21) GPMC0_AD13.MCASP2_ACLKX */
+			AM62DX_IOPAD(0x0074, PIN_INPUT, 3) /* (T20) GPMC0_AD14.MCASP2_AFSR */
+			AM62DX_IOPAD(0x006c, PIN_INPUT, 3) /* (T22) GPMC0_AD12.MCASP2_AFSX */
+			AM62DX_IOPAD(0x005c, PIN_INPUT, 3) /* (P22) GPMC0_AD8.MCASP2_AXR0 */
+			AM62DX_IOPAD(0x0060, PIN_INPUT, 3) /* (R19) GPMC0_AD9.MCASP2_AXR1 */
+			AM62DX_IOPAD(0x0068, PIN_INPUT, 3) /* (R22) GPMC0_AD11.MCASP2_AXR3 */
+			AM62DX_IOPAD(0x003c, PIN_INPUT, 3) /* (N21) GPMC0_AD0.MCASP2_AXR4 */
+			AM62DX_IOPAD(0x00a8, PIN_INPUT, 3) /* (M19) GPMC0_CSn0.MCASP2_AXR14 */
+		>;
+	};
+
 	main_gpio1_ioexp_intr_pins_default: main-gpio1-ioexp-intr-default-pins {
 		pinctrl-single,pins = <
 			AM62DX_IOPAD(0x01d4, PIN_INPUT, 7) /* (C15) UART0_RTSn.GPIO1_23 */
@@ -500,6 +612,49 @@
 				  "CPLD2_TDO", "ADDR1_IO_EXP",
 				  "SoC_I2C0_SCL", "SoC_I2C0_SDA";
 	};
+
+	tad5x1x_50: tad5x1x@50 {
+		compatible = "ti,tad5212";
+		reg = <0x50>;
+		#sound-dai-cells = <0>;
+		ti,vref = <0>;
+		ti,micbias-vg = <3>;
+		sound-name-prefix = "J3A";
+	};
+
+	tad5x1x_51: tad5x1x@51 {
+		compatible = "ti,tad5212";
+		reg = <0x51>;
+		#sound-dai-cells = <0>;
+		ti,vref = <0>;
+		ti,micbias-vg = <3>;
+		sound-name-prefix = "J3B";
+	};
+
+	tad5x1x_52: tad5x1x@52 {
+		compatible = "ti,tad5212";
+		reg = <0x52>;
+		#sound-dai-cells = <0>;
+		ti,vref = <0>;
+		ti,micbias-vg = <3>;
+		sound-name-prefix = "J4A";
+	};
+
+	tad5x1x_53: tad5x1x@53 {
+		compatible = "ti,tad5212";
+		reg = <0x53>;
+		#sound-dai-cells = <0>;
+		ti,vref = <0>;
+		ti,micbias-vg = <3>;
+		sound-name-prefix = "J4B";
+	};
+
+	pcm6240: adc@48 {
+		compatible = "ti,pcm6240";
+		reg = <0x48>, <0x49>;
+		#sound-dai-cells = <0>;
+		sound-name-prefix = "pcm6240-2dev-reg";
+	};
 };
 
 &main_i2c1 {
@@ -514,6 +669,25 @@
 	pinctrl-0 = <&main_i2c2_pins_default>;
 	clock-frequency = <400000>;
 	status = "okay";
+};
+
+&mcasp2 {
+	status = "okay";
+	#sound-dai-cells = <0>;
+
+	pinctrl-names = "default";
+	pinctrl-0 = <&main_mcasp2_pins_default>;
+
+	auxclk-fs-ratio = <2177>;
+	op-mode = <0>;          /* MCASP_IIS_MODE */
+	tdm-slots = <2>;
+	slot-width = <32>;
+	serial-dir = <
+	       1 1 0 1
+	       1 0 0 0
+	       0 0 0 0
+	       0 0 2 0
+	>;
 };
 
 &wkup_i2c0 {
