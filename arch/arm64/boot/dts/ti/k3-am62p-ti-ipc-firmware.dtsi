@@ -6,6 +6,12 @@
  */
 
 &reserved_memory {
+	rtos_ipc_memory_region: rtos-ipc-memory@9b500000 {
+		compatible = "shared-dma-pool";
+		reg = <0x00 0x9b500000 0x00 0x00300000>;
+		no-map;
+	};
+
 	mcu_r5fss0_core0_dma_memory_region: memory@9b800000 {
 		compatible = "shared-dma-pool";
 		reg = <0x00 0x9b800000 0x00 0x100000>;
@@ -53,6 +59,7 @@
 };
 
 &mcu_r5fss0_core0 {
+	sram = <&mcu_ram>;
 	mboxes = <&mailbox0_cluster1 &mbox_mcu_r5_0>;
 	memory-region = <&mcu_r5fss0_core0_dma_memory_region>,
 			<&mcu_r5fss0_core0_memory_region>;
