@@ -22,3 +22,13 @@ config DMABUF_HEAPS_CMA_LEGACY
 	  from the CMA area's devicetree node, or "reserved" if the area is not
 	  defined in the devicetree. This uses the same underlying allocator as
 	  CONFIG_DMABUF_HEAPS_CMA.
+
+config DMABUF_HEAPS_CARVEOUT
+	bool "DMA-BUF Carveout Heap"
+	depends on DMABUF_HEAPS && HAS_IOMEM
+	depends on OF_RESERVED_MEM
+	select GENERIC_ALLOCATOR
+	help
+	  Choose this option to enable dma-buf Carveout heap. This heap is
+	  backed by the a carved-out of memory. If your system has these
+	  regions, you should say Y here.
