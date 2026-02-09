@@ -533,6 +533,10 @@ static int k3_r5_rproc_stop(struct rproc *rproc)
 	struct k3_r5_cluster *cluster = core->cluster;
 	int ret;
 
+	ret = notify_shutdown_rproc(kproc);
+	if (ret)
+		return ret;
+
 	/* halt all applicable cores */
 	if (cluster->mode == CLUSTER_MODE_LOCKSTEP) {
 		list_for_each_entry(core, &cluster->cores, elem) {
@@ -1129,6 +1133,7 @@ static int k3_r5_cluster_rproc_init(struct platform_device *pdev)
 			goto out;
 		}
 
+		init_completion(&kproc->shutdown_complete);
 init_rmem:
 		k3_r5_adjust_tcm_sizes(kproc);
 

@@ -42,6 +42,11 @@
  * @RP_MBOX_SUSPEND_CANCEL: a cancel suspend response from a remote processor
  * on a suspend request
  *
+ * @RP_MBOX_SHUTDOWN: shutdown request for the remote processor
+ *
+ * @RP_MBOX_SHUTDOWN_ACK: successful response from remote processor for a
+ * shutdown request. The remote processor should be in WFI state short after.
+ *
  * Introduce new message definitions if any here.
  *
  * @RP_MBOX_END_MSG: Indicates end of known/defined messages from remote core
@@ -59,7 +64,9 @@ enum omap_rp_mbox_messages {
 	RP_MBOX_SUSPEND_SYSTEM	= 0xFFFFFF11,
 	RP_MBOX_SUSPEND_ACK	= 0xFFFFFF12,
 	RP_MBOX_SUSPEND_CANCEL	= 0xFFFFFF13,
-	RP_MBOX_END_MSG		= 0xFFFFFF14,
+	RP_MBOX_SHUTDOWN	= 0xFFFFFF14,
+	RP_MBOX_SHUTDOWN_ACK	= 0xFFFFFF15,
+	RP_MBOX_END_MSG		= 0xFFFFFF16,
 };
 
 #endif /* _OMAP_RPMSG_H */

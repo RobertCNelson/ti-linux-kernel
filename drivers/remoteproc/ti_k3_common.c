@@ -18,7 +18,9 @@
  *	Hari Nagalla <hnagalla@ti.com>
  */
 
+#include <linux/delay.h>
 #include <linux/io.h>
+#include <linux/iopoll.h>
 #include <linux/mailbox_client.h>
 #include <linux/module.h>
 #include <linux/of_address.h>
@@ -68,6 +70,10 @@ void k3_rproc_mbox_callback(struct mbox_client *client, void *data)
 		break;
 	case RP_MBOX_ECHO_REPLY:
 		dev_info(dev, "received echo reply from %s\n", rproc->name);
+		break;
+	case RP_MBOX_SHUTDOWN_ACK:
+		dev_dbg(dev, "received shutdown_ack from %s\n", rproc->name);
+		complete(&kproc->shutdown_complete);
 		break;
 	default:
 		/* silently handle all other valid messages */
@@ -188,6 +194,67 @@ int k3_rproc_request_mbox(struct rproc *rproc)
 }
 EXPORT_SYMBOL_GPL(k3_rproc_request_mbox);
 
+/**
+ * is_core_in_wfi - Utility function to check core status
+ * @kproc: remote core pointer used for checking core status
+ *
+ * This utility function is invoked by the shutdown sequence to ensure
+ * the remote core is in wfi, before asserting a reset.
+ */
+bool is_core_in_wfi(struct k3_rproc *kproc)
+{
+	int ret;
+	u64 boot_vec;
+	u32 cfg, ctrl, stat;
+
+	ret = ti_sci_proc_get_status(kproc->tsp, &boot_vec, &cfg, &ctrl, &stat);
+	if (ret)
+		return false;
+
+	return (bool)(stat & PROC_BOOT_STATUS_FLAG_CPU_WFI);
+}
+EXPORT_SYMBOL_GPL(is_core_in_wfi);
+
+/**
+ * notify_shutdown_rproc - Prepare the remoteproc for a shutdown
+ * @kproc: remote core pointer used for sending mbox msg
+ *
+ * This function sends the shutdown prepare message to remote processor and
+ * waits for an ACK. Further, it checks if the remote processor has entered
+ * into WFI mode. It is invoked in shutdown sequence to ensure the rproc
+ * has relinquished its resources before asserting a reset, so the shutdown
+ * happens cleanly.
+ */
+int notify_shutdown_rproc(struct k3_rproc *kproc)
+{
+	bool wfi_status = false;
+	int ret;
+
+	reinit_completion(&kproc->shutdown_complete);
+
+	ret = mbox_send_message(kproc->mbox, (void *)(uintptr_t)RP_MBOX_SHUTDOWN);
+	if (ret < 0) {
+		dev_err(kproc->dev, "PM mbox_send_message failed: %d\n", ret);
+		return ret;
+	}
+
+	ret = wait_for_completion_timeout(&kproc->shutdown_complete,
+					  msecs_to_jiffies(5000));
+	if (ret == 0) {
+		dev_err(kproc->dev, "%s: timeout waiting for rproc completion event\n",
+			__func__);
+		return -EBUSY;
+	}
+
+	ret = readx_poll_timeout(is_core_in_wfi, kproc, wfi_status, wfi_status,
+				 200, 2000);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(notify_shutdown_rproc);
+
 /*
  * The K3 DSP and M4 cores have a local reset that affects only the CPU, and a
  * generic module reset that powers on the device and allows the internal
@@ -288,6 +355,11 @@ EXPORT_SYMBOL_GPL(k3_rproc_start);
 int k3_rproc_stop(struct rproc *rproc)
 {
 	struct k3_rproc *kproc = rproc->priv;
+	int ret;
+
+	ret = notify_shutdown_rproc(kproc);
+	if (ret)
+		return ret;
 
 	return k3_rproc_reset(kproc);
 }

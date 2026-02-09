@@ -133,6 +133,8 @@ static int k3_dsp_rproc_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+	init_completion(&kproc->shutdown_complete);
+
 	ret = k3_rproc_of_get_memories(pdev, kproc);
 	if (ret)
 		return ret;

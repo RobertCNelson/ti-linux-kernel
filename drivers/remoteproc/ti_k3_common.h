@@ -22,6 +22,7 @@
 #define REMOTEPROC_TI_K3_COMMON_H
 
 #define KEYSTONE_RPROC_LOCAL_ADDRESS_MASK	(SZ_16M - 1)
+#define PROC_BOOT_STATUS_FLAG_CPU_WFI		0x00000002
 
 /**
  * struct k3_rproc_mem - internal memory structure
@@ -92,6 +93,7 @@ struct k3_rproc {
 	u32 ti_sci_id;
 	struct mbox_chan *mbox;
 	struct mbox_client client;
+	struct completion shutdown_complete;
 	void *priv;
 };
 
@@ -115,4 +117,6 @@ int k3_rproc_of_get_memories(struct platform_device *pdev,
 void k3_mem_release(void *data);
 int k3_reserved_mem_init(struct k3_rproc *kproc);
 void k3_release_tsp(void *data);
+bool is_core_in_wfi(struct k3_rproc *kproc);
+int notify_shutdown_rproc(struct k3_rproc *kproc);
 #endif /* REMOTEPROC_TI_K3_COMMON_H */
