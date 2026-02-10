@@ -94,6 +94,7 @@
 
 &mcu_r5fss0 {
 	status = "okay";
+	ti,cluster-mode = <0>;
 };
 
 &mcu_r5fss0_core0 {
