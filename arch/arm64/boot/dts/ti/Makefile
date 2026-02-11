@@ -293,5 +293,15 @@ dtb- += k3-am625-beagleplay-csi2-ov5640.dtb \
 	k3-j784s4-evm-usb0-type-a.dtb \
 	k3-j784s4-evm-usxgmii-exp1-exp2.dtb
 
+# FPDLink Sensors
+dtb-$(CONFIG_ARCH_K3) += k3-v3link-imx219-0-0.dtbo \
+			 k3-v3link-imx219-0-1.dtbo \
+			 k3-v3link-imx219-0-2.dtbo \
+			 k3-v3link-imx219-0-3.dtbo \
+			 k3-v3link-imx219-1-0.dtbo \
+			 k3-v3link-imx219-1-1.dtbo \
+			 k3-v3link-imx219-1-2.dtbo \
+			 k3-v3link-imx219-1-3.dtbo
+
 # Enable support for device-tree overlays
 DTC_FLAGS := -@
